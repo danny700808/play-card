@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>柚子樂器員工打卡系統</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <h1>柚子樂器員工打卡系統</h1>
+      <p class="subtitle">請使用員工 Email 進行打卡</p>
+
+      <div class="info-box">
+        <div class="row">
+          <span class="label">今天日期</span>
+          <span id="todayDate">--</span>
+        </div>
+        <div class="row">
+          <span class="label">目前時間</span>
+          <span id="liveTime">--</span>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="email">員工 Email</label>
+        <input
+          type="email"
+          id="email"
+          placeholder="請輸入員工 Email"
+          autocomplete="email"
+        />
+      </div>
+
+      <div class="btn-group">
+        <button class="btn btn-checkin" id="checkInBtn">上班打卡</button>
+        <button class="btn btn-checkout" id="checkOutBtn">下班打卡</button>
+      </div>
+
+      <div class="status-box">
+        <div class="status-title">系統訊息</div>
+        <div id="message">請先輸入員工 Email</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
