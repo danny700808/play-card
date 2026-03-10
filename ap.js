@@ -1,4 +1,4 @@
-const API_URL = "請改成你的AppsScript網址";
+const API_URL = "https://script.google.com/macros/s/AKfycbxB0Z0OSox6qikxiWmqKPiD50zizkfYiR4y5kekfCSFFt91nQfNd8hWafRkemG0Xfk/exec";
 
 const todayDateEl = document.getElementById("todayDate");
 const liveTimeEl = document.getElementById("liveTime");
@@ -87,4 +87,5 @@ async function submitClock(type) {
 }
 
 checkInBtn.addEventListener("click", () => submitClock("上班"));
+
 checkOutBtn.addEventListener("click", () => submitClock("下班"));
