@@ -17,7 +17,10 @@
         <div class="row"><span>目前時間</span><span id="time">--</span></div>
       </div>
 
-      <input id="email" placeholder="請輸入員工 Email">
+      <div class="grid">
+        <input id="email" placeholder="請輸入員工 Email">
+        <input id="pin" placeholder="請輸入4位數密碼" maxlength="4" inputmode="numeric">
+      </div>
 
       <div class="btns">
         <button class="checkin" onclick="clockAction('上班')">上班打卡</button>
@@ -43,12 +46,8 @@
 
     function tick(){
       const n = new Date();
-      qs("date").innerText = n.toLocaleDateString("zh-TW",{
-        year:"numeric",month:"2-digit",day:"2-digit",weekday:"long"
-      });
-      qs("time").innerText = n.toLocaleTimeString("zh-TW",{
-        hour:"2-digit",minute:"2-digit",second:"2-digit"
-      });
+      qs("date").innerText = n.toLocaleDateString("zh-TW",{year:"numeric",month:"2-digit",day:"2-digit",weekday:"long"});
+      qs("time").innerText = n.toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
     }
 
     setInterval(tick,1000);
@@ -70,13 +69,17 @@
 
     async function clockAction(type){
       const email = qs("email").value.trim().toLowerCase();
+      const pin = qs("pin").value.trim();
+
       if(!email) return setMsg("msg","請先輸入員工 Email");
+      if(!/^\d{4}$/.test(pin)) return setMsg("msg","請輸入4位數密碼");
 
       setMsg("msg","送出中...");
       const d = await postApi({
         action:"clock",
         type:type,
         email:email,
+        pin:pin,
         userAgent:navigator.userAgent
       });
 
