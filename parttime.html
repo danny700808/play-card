@@ -10,10 +10,11 @@
   <div class="container">
     <div class="card">
       <h1>工讀上班時間登記</h1>
-      <div class="subtitle">先輸入 Email 確認身份，再新增或修改時數</div>
+      <div class="subtitle">先輸入 Email 與 4 位數密碼，再新增或修改時數</div>
 
       <div class="grid">
         <input id="email" placeholder="員工 Email">
+        <input id="pin" placeholder="請輸入4位數密碼" maxlength="4" inputmode="numeric">
         <button class="primary" onclick="loadMyRecords()">確認身份 / 查詢紀錄</button>
       </div>
 
@@ -57,13 +58,13 @@
       <hr style="margin:20px 0;border:none;border-top:1px solid #e5e7eb;">
 
       <h3 style="margin:0 0 10px;">我的最近紀錄</h3>
-      <div id="recordsBox" class="msg">請先輸入 Email 後按「確認身份 / 查詢紀錄」</div>
+      <div id="recordsBox" class="msg">請先輸入 Email 與 4 位數密碼 後按「確認身份 / 查詢紀錄」</div>
 
       <div class="link-box">
         <a href="./index.html">回到打卡頁</a>
       </div>
 
-      <div class="msg" id="msg">請先輸入 Email</div>
+      <div class="msg" id="msg">請先輸入 Email 與 4 位數密碼</div>
     </div>
   </div>
 
@@ -97,15 +98,21 @@
 
     async function loadMyRecords(){
       const email = qs("email").value.trim().toLowerCase();
+      const pin = qs("pin").value.trim();
+
       if(!email){
         return setMsg("msg","請先輸入 Email");
+      }
+      if(!/^\d{4}$/.test(pin)){
+        return setMsg("msg","請輸入4位數密碼");
       }
 
       setMsg("msg","查詢中...");
 
       const d = await postApi({
         action:"parttimeListMine",
-        email:email
+        email:email,
+        pin:pin
       });
 
       if(!d.status){
@@ -149,12 +156,14 @@
 
     async function saveParttime(){
       const email = qs("email").value.trim().toLowerCase();
+      const pin = qs("pin").value.trim();
       const recordId = qs("recordId").value.trim();
 
       const p = {
         action: recordId ? "parttimeUpdate" : "parttime",
         recordId: recordId,
         email: email,
+        pin: pin,
         workDate: qs("workDate").value,
         hours: qs("hours").value,
         halfHour: qs("halfHour").value
@@ -162,6 +171,10 @@
 
       if(!p.email || !p.workDate || !p.hours){
         return setMsg("msg","Email、日期、時數為必填");
+      }
+
+      if(!/^\d{4}$/.test(p.pin)){
+        return setMsg("msg","請輸入4位數密碼");
       }
 
       setMsg("msg","送出中...");
