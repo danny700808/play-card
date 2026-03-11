@@ -122,13 +122,14 @@
 
       let html = "";
       d.rows.forEach(row => {
+        const safeRow = encodeURIComponent(JSON.stringify(row));
         html += `
           <div style="border:1px solid #ddd;border-radius:10px;padding:10px;margin-bottom:10px;">
             <div>日期：${row.workDate}</div>
-            <div>時數：${row.hours}</div>
-            <div>半小時：${row.halfHour}</div>
+            <div>基本時數：${row.hours}</div>
+            <div>今天是否多半小時：${row.halfHour}</div>
             <div>最終時數：${row.finalHours}</div>
-            <button class="primary" style="margin-top:8px;" onclick='editRecord(${JSON.stringify(row)})'>修改</button>
+            <button class="primary" style="margin-top:8px;" onclick="editRecord('${safeRow}')">修改</button>
           </div>
         `;
       });
@@ -136,7 +137,8 @@
       qs("recordsBox").innerHTML = html;
     }
 
-    function editRecord(row){
+    function editRecord(encodedRow){
+      const row = JSON.parse(decodeURIComponent(encodedRow));
       qs("recordId").value = row.id || "";
       qs("workDate").value = row.workDate || "";
       qs("hours").value = row.hours || "";
