@@ -1,5 +1,92 @@
-<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>打卡</title><link rel="stylesheet" href="./style.css"></head><body><div class="container"><div class="card"><h1>柚子樂器員工打卡系統</h1><div class="subtitle">員工打卡</div><div class="info"><div class="row"><span>今天日期</span><span id="date">--</span></div><div class="row"><span>目前時間</span><span id="time">--</span></div></div><input id="email" placeholder="請輸入員工 Email"><div class="btns"><button class="checkin" onclick="clockAction('上班')">上班打卡</button><button class="checkout" onclick="clockAction('下班')">下班打卡</button></div><div class="menu"><a href="./register.html">員工註冊</a><a href="./leave.html">請假申請</a><a href="./parttime.html">工讀申報</a><a href="./admin-login.html">管理後台</a></div><div class="msg" id="msg">系統準備中</div></div></div><script>const API_URL="https://script.google.com/macros/s/AKfycbxB0Z0OSox6qikxiWmqKPiD50zizkfYiR4y5kekfCSFFt91nQfNd8hWafRkemG0Xfk/exec";
-function qs(id){return document.getElementById(id);}
-function setMsg(id,t){qs(id).innerText=t;}
-function tickDate(){const n=new Date();if(qs("date"))qs("date").innerText=n.toLocaleDateString("zh-TW",{year:"numeric",month:"2-digit",day:"2-digit",weekday:"long"});if(qs("time"))qs("time").innerText=n.toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit",second:"2-digit"});}
-setInterval(tickDate,1000);tickDate();async function postApi(p){const r=await fetch(API_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(p)});const t=await r.text();try{return JSON.parse(t)}catch(e){return{status:false,msg:"API 回傳格式錯誤\n"+t}}}async function clockAction(type){const email=qs("email").value.trim().toLowerCase();if(!email)return setMsg("msg","請先輸入員工 Email");setMsg("msg","送出中...");const d=await postApi({action:"clock",type,email,userAgent:navigator.userAgent});setMsg("msg",d.status?`${type}打卡成功\n姓名：${d.name||""}\n時間：${d.time||""}\n${d.msg||""}`:(d.msg||"打卡失敗"));}</script></body></html>
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>打卡</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <h1>柚子樂器員工打卡系統</h1>
+      <div class="subtitle">員工打卡</div>
+
+      <div class="info">
+        <div class="row"><span>今天日期</span><span id="date">--</span></div>
+        <div class="row"><span>目前時間</span><span id="time">--</span></div>
+      </div>
+
+      <input id="email" placeholder="請輸入員工 Email">
+
+      <div class="btns">
+        <button class="checkin" onclick="clockAction('上班')">上班打卡</button>
+        <button class="checkout" onclick="clockAction('下班')">下班打卡</button>
+      </div>
+
+      <div class="menu">
+        <a href="./register.html">員工註冊</a>
+        <a href="./leave.html">請假申請</a>
+        <a href="./parttime.html">工讀上班時間登記</a>
+        <a href="./admin-login.html">管理後台</a>
+      </div>
+
+      <div class="msg" id="msg">系統準備中</div>
+    </div>
+  </div>
+
+  <script>
+    const API_URL = "https://script.google.com/macros/s/AKfycbxB0Z0OSox6qikxiWmqKPiD50zizkfYiR4y5kekfCSFFt91nQfNd8hWafRkemG0Xfk/exec";
+
+    function qs(id){ return document.getElementById(id); }
+    function setMsg(id,t){ qs(id).innerText = t; }
+
+    function tick(){
+      const n = new Date();
+      qs("date").innerText = n.toLocaleDateString("zh-TW",{
+        year:"numeric",month:"2-digit",day:"2-digit",weekday:"long"
+      });
+      qs("time").innerText = n.toLocaleTimeString("zh-TW",{
+        hour:"2-digit",minute:"2-digit",second:"2-digit"
+      });
+    }
+
+    setInterval(tick,1000);
+    tick();
+
+    async function postApi(p){
+      const r = await fetch(API_URL,{
+        method:"POST",
+        headers:{"Content-Type":"text/plain;charset=utf-8"},
+        body:JSON.stringify(p)
+      });
+      const t = await r.text();
+      try{
+        return JSON.parse(t);
+      }catch(e){
+        return {status:false,msg:"API 回傳格式錯誤\n"+t};
+      }
+    }
+
+    async function clockAction(type){
+      const email = qs("email").value.trim().toLowerCase();
+      if(!email) return setMsg("msg","請先輸入員工 Email");
+
+      setMsg("msg","送出中...");
+      const d = await postApi({
+        action:"clock",
+        type:type,
+        email:email,
+        userAgent:navigator.userAgent
+      });
+
+      setMsg(
+        "msg",
+        d.status
+          ? `${type}打卡成功\n姓名：${d.name||""}\n時間：${d.time||""}\n${d.msg||""}`
+          : (d.msg||"打卡失敗")
+      );
+    }
+  </script>
+</body>
+</html>
