@@ -1,5 +1,179 @@
-<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>工讀申報</title><link rel="stylesheet" href="./style.css"></head><body><div class="container"><div class="card"><h1>工讀可上班申報</h1><div class="subtitle">可填半小時制</div><div class="grid"><input id="email" placeholder="員工 Email"><input id="workDate" type="date"><input id="startTime" type="time"><input id="endTime" type="time"><input id="hours" type="number" step="0.5" min="0.5" placeholder="可工作時數"><select id="halfHour"><option>是</option><option>否</option></select></div><textarea id="remark" placeholder="備註"></textarea><div class="btns"><button class="purple" onclick="parttimeAction()">送出申報</button></div><div class="link-box"><a href="./index.html">回到打卡頁</a></div><div class="msg" id="msg">請填寫今天可上班資料</div></div></div><script>const API_URL="https://script.google.com/macros/s/AKfycbxB0Z0OSox6qikxiWmqKPiD50zizkfYiR4y5kekfCSFFt91nQfNd8hWafRkemG0Xfk/exec";
-function qs(id){return document.getElementById(id);}
-function setMsg(id,t){qs(id).innerText=t;}
-function tickDate(){const n=new Date();if(qs("date"))qs("date").innerText=n.toLocaleDateString("zh-TW",{year:"numeric",month:"2-digit",day:"2-digit",weekday:"long"});if(qs("time"))qs("time").innerText=n.toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit",second:"2-digit"});}
-setInterval(tickDate,1000);async function postApi(p){const r=await fetch(API_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(p)});const t=await r.text();try{return JSON.parse(t)}catch(e){return{status:false,msg:"API 回傳格式錯誤\n"+t}}}async function parttimeAction(){const p={action:"parttime",email:qs("email").value.trim().toLowerCase(),workDate:qs("workDate").value,startTime:qs("startTime").value,endTime:qs("endTime").value,hours:qs("hours").value,halfHour:qs("halfHour").value,remark:qs("remark").value.trim()};if(!p.email||!p.workDate||!p.hours)return setMsg("msg","Email、日期、時數為必填");setMsg("msg","送出中...");const d=await postApi(p);setMsg("msg",d.status?`申報成功\n單號：${d.reportId||""}`:(d.msg||"送出失敗"));}</script></body></html>
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>工讀上班時數登記</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <h1>工讀上班時數登記</h1>
+      <div class="subtitle">先輸入 Email 確認身份，再新增或修改時數</div>
+
+      <div class="grid">
+        <input id="email" placeholder="員工 Email">
+        <button class="primary" onclick="loadMyRecords()">確認身份 / 查詢紀錄</button>
+      </div>
+
+      <hr style="margin:20px 0;border:none;border-top:1px solid #e5e7eb;">
+
+      <h3 style="margin:0 0 10px;">新增 / 修改時數</h3>
+
+      <div class="grid">
+        <input id="recordId" type="hidden">
+        <input id="workDate" type="date">
+
+        <select id="hours">
+          <option value="">請選擇時數</option>
+          <option value="1">1 小時</option>
+          <option value="2">2 小時</option>
+          <option value="3">3 小時</option>
+          <option value="4">4 小時</option>
+          <option value="5">5 小時</option>
+          <option value="6">6 小時</option>
+          <option value="7">7 小時</option>
+          <option value="8">8 小時</option>
+          <option value="9">9 小時</option>
+          <option value="10">10 小時</option>
+        </select>
+
+        <select id="halfHour">
+          <option value="否">今天是否多半小時：否</option>
+          <option value="是">今天是否多半小時：是</option>
+        </select>
+      </div>
+
+      <div style="margin-top:8px;font-size:14px;color:#666;">
+        例如今天工作 4 小時 30 分，請先選 4 小時，再選「是」
+      </div>
+
+      <div class="btns">
+        <button class="purple" onclick="saveParttime()">送出登記</button>
+        <button class="orange" onclick="resetForm()">清空表單</button>
+      </div>
+
+      <hr style="margin:20px 0;border:none;border-top:1px solid #e5e7eb;">
+
+      <h3 style="margin:0 0 10px;">我的最近紀錄</h3>
+      <div id="recordsBox" class="msg">請先輸入 Email 後按「確認身份 / 查詢紀錄」</div>
+
+      <div class="link-box">
+        <a href="./index.html">回到打卡頁</a>
+      </div>
+
+      <div class="msg" id="msg">請先輸入 Email</div>
+    </div>
+  </div>
+
+  <script>
+    const API_URL = "https://script.google.com/macros/s/AKfycbxB0Z0OSox6qikxiWmqKPiD50zizkfYiR4y5kekfCSFFt91nQfNd8hWafRkemG0Xfk/exec";
+
+    function qs(id){ return document.getElementById(id); }
+    function setMsg(id,t){ qs(id).innerText = t; }
+
+    async function postApi(p){
+      const r = await fetch(API_URL,{
+        method:"POST",
+        headers:{"Content-Type":"text/plain;charset=utf-8"},
+        body:JSON.stringify(p)
+      });
+      const t = await r.text();
+      try{
+        return JSON.parse(t);
+      }catch(e){
+        return {status:false,msg:"API 回傳格式錯誤\n"+t};
+      }
+    }
+
+    function resetForm(){
+      qs("recordId").value = "";
+      qs("workDate").value = "";
+      qs("hours").value = "";
+      qs("halfHour").value = "否";
+      setMsg("msg","表單已清空");
+    }
+
+    async function loadMyRecords(){
+      const email = qs("email").value.trim().toLowerCase();
+      if(!email){
+        return setMsg("msg","請先輸入 Email");
+      }
+
+      setMsg("msg","查詢中...");
+
+      const d = await postApi({
+        action:"parttimeListMine",
+        email:email
+      });
+
+      if(!d.status){
+        setMsg("msg", d.msg || "查詢失敗");
+        return;
+      }
+
+      setMsg("msg","查詢成功");
+
+      if(!d.rows || d.rows.length === 0){
+        qs("recordsBox").innerHTML = "目前沒有紀錄";
+        return;
+      }
+
+      let html = "";
+      d.rows.forEach(row => {
+        html += `
+          <div style="border:1px solid #ddd;border-radius:10px;padding:10px;margin-bottom:10px;">
+            <div>日期：${row.workDate}</div>
+            <div>時數：${row.hours}</div>
+            <div>半小時：${row.halfHour}</div>
+            <div>最終時數：${row.finalHours}</div>
+            <button class="primary" style="margin-top:8px;" onclick='editRecord(${JSON.stringify(row)})'>修改</button>
+          </div>
+        `;
+      });
+
+      qs("recordsBox").innerHTML = html;
+    }
+
+    function editRecord(row){
+      qs("recordId").value = row.id || "";
+      qs("workDate").value = row.workDate || "";
+      qs("hours").value = row.hours || "";
+      qs("halfHour").value = row.halfHour || "否";
+      setMsg("msg","已載入紀錄，修改後按送出登記");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    async function saveParttime(){
+      const email = qs("email").value.trim().toLowerCase();
+      const recordId = qs("recordId").value.trim();
+
+      const p = {
+        action: recordId ? "parttimeUpdate" : "parttime",
+        recordId: recordId,
+        email: email,
+        workDate: qs("workDate").value,
+        hours: qs("hours").value,
+        halfHour: qs("halfHour").value
+      };
+
+      if(!p.email || !p.workDate || !p.hours){
+        return setMsg("msg","Email、日期、時數為必填");
+      }
+
+      setMsg("msg","送出中...");
+
+      const d = await postApi(p);
+
+      if(d.status){
+        setMsg("msg", d.msg || "成功");
+        resetForm();
+        loadMyRecords();
+      }else{
+        setMsg("msg", d.msg || "送出失敗");
+      }
+    }
+  </script>
+</body>
+</html>
