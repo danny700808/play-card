@@ -10,7 +10,7 @@
   <div class="container">
     <div class="card">
       <h1>員工註冊</h1>
-      <div class="subtitle">第一次使用請先填寫資料</div>
+      <div class="subtitle">第一次使用請先填寫資料並設定 4 位數密碼</div>
 
       <div class="grid">
         <input id="name" placeholder="姓名">
@@ -52,6 +52,8 @@
         <input id="emergencyRelation" placeholder="緊急聯絡人關係">
         <input id="emergencyPhone" placeholder="緊急聯絡人電話">
         <input id="signName" placeholder="資料確認簽名（輸入姓名）">
+        <input id="pin" placeholder="設定4位數密碼" maxlength="4" inputmode="numeric">
+        <input id="pinConfirm" placeholder="再次輸入4位數密碼" maxlength="4" inputmode="numeric">
       </div>
 
       <div class="btns">
@@ -69,20 +71,13 @@
   <script>
     const API_URL = "https://script.google.com/macros/s/AKfycbxB0Z0OSox6qikxiWmqKPiD50zizkfYiR4y5kekfCSFFt91nQfNd8hWafRkemG0Xfk/exec";
 
-    function qs(id){
-      return document.getElementById(id);
-    }
-
-    function setMsg(id, text){
-      qs(id).innerText = text;
-    }
+    function qs(id){ return document.getElementById(id); }
+    function setMsg(id, text){ qs(id).innerText = text; }
 
     async function postApi(payload){
       const response = await fetch(API_URL, {
         method: "POST",
-        headers: {
-          "Content-Type": "text/plain;charset=utf-8"
-        },
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify(payload)
       });
 
@@ -91,10 +86,7 @@
       try{
         return JSON.parse(text);
       }catch(e){
-        return {
-          status: false,
-          msg: "API 回傳格式錯誤\n" + text
-        };
+        return { status:false, msg:"API 回傳格式錯誤\n" + text };
       }
     }
 
@@ -143,6 +135,17 @@
           ? `${qs("birthYear").value}-${qs("birthMonth").value}-${qs("birthDay").value}`
           : "";
 
+      const pin = qs("pin").value.trim();
+      const pinConfirm = qs("pinConfirm").value.trim();
+
+      if(!/^\d{4}$/.test(pin)){
+        return setMsg("msg","請輸入4位數字密碼");
+      }
+
+      if(pin !== pinConfirm){
+        return setMsg("msg","兩次輸入的4位數密碼不一致");
+      }
+
       const payload = {
         action: "register",
         name: qs("name").value.trim(),
@@ -153,6 +156,7 @@
         idNo: qs("idNo").value.trim(),
         phone: qs("phone").value.trim(),
         email: qs("email").value.trim().toLowerCase(),
+        pin: pin,
         homeAddress: qs("homeAddress").value.trim(),
         mailAddress: qs("mailAddress").value.trim(),
         emergencyName: qs("emergencyName").value.trim(),
@@ -162,8 +166,7 @@
       };
 
       if(!payload.name || !payload.email){
-        setMsg("msg", "姓名與 Email 為必填");
-        return;
+        return setMsg("msg", "姓名與 Email 為必填");
       }
 
       setMsg("msg", "送出中...");
@@ -171,10 +174,7 @@
       const result = await postApi(payload);
 
       if(result.status){
-        setMsg(
-          "msg",
-          `註冊成功\n員工編號：${result.empId || ""}\n系統已寄信通知你與管理者`
-        );
+        setMsg("msg", `註冊成功\n員工編號：${result.empId || ""}\n之後請用 Email + 4位數密碼 操作系統`);
       }else{
         setMsg("msg", result.msg || "註冊失敗");
       }
