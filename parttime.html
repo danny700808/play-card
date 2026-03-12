@@ -10,12 +10,10 @@
   <div class="container">
     <div class="card">
       <h1>工讀上班時間登記</h1>
-      <div class="subtitle">先輸入 Email 與 4 位數密碼，再新增或修改時數</div>
+      <div class="subtitle">登入後可直接填寫、查詢、修改</div>
 
-      <div class="grid">
-        <input id="email" placeholder="員工 Email">
-        <input id="pin" placeholder="請輸入4位數密碼" maxlength="4" inputmode="numeric">
-        <button class="primary" onclick="loadMyRecords()">確認身份 / 查詢紀錄</button>
+      <div class="info">
+        <div class="row"><span>目前登入</span><span id="userName">--</span></div>
       </div>
 
       <hr style="margin:20px 0;border:none;border-top:1px solid #e5e7eb;">
@@ -58,33 +56,41 @@
       <hr style="margin:20px 0;border:none;border-top:1px solid #e5e7eb;">
 
       <h3 style="margin:0 0 10px;">我的最近紀錄</h3>
-      <div id="recordsBox" class="msg">請先輸入 Email 與 4 位數密碼 後按「確認身份 / 查詢紀錄」</div>
+      <div id="recordsBox" class="msg">載入中...</div>
 
-      <div class="link-box">
-        <a href="./index.html">回到打卡頁</a>
+      <div class="btns">
+        <button class="primary" onclick="loadMyRecords()">重新整理紀錄</button>
+        <button class="primary" onclick="goHome()">回主畫面</button>
       </div>
 
-      <div class="msg" id="msg">請先輸入 Email 與 4 位數密碼</div>
+      <div class="msg" id="msg">請填寫資料</div>
     </div>
   </div>
 
   <script>
+    if(localStorage.getItem("emp_login") !== "ok"){
+      location.href = "./index.html";
+    }
+
     const API_URL = "https://script.google.com/macros/s/AKfycbxB0Z0OSox6qikxiWmqKPiD50zizkfYiR4y5kekfCSFFt91nQfNd8hWafRkemG0Xfk/exec";
+    const empEmail = localStorage.getItem("emp_email") || "";
+    const empName = localStorage.getItem("emp_name") || "";
 
     function qs(id){ return document.getElementById(id); }
-    function setMsg(id,t){ qs(id).innerText = t; }
+    function setMsg(t){ qs("msg").innerText = t; }
+    qs("userName").innerText = empName + " / " + empEmail;
 
-    async function postApi(p){
-      const r = await fetch(API_URL,{
+    async function postApi(payload){
+      const res = await fetch(API_URL,{
         method:"POST",
         headers:{"Content-Type":"text/plain;charset=utf-8"},
-        body:JSON.stringify(p)
+        body:JSON.stringify(payload)
       });
-      const t = await r.text();
+      const text = await res.text();
       try{
-        return JSON.parse(t);
+        return JSON.parse(text);
       }catch(e){
-        return {status:false,msg:"API 回傳格式錯誤\n"+t};
+        return {status:false,msg:"API 回傳格式錯誤\n" + text};
       }
     }
 
@@ -93,34 +99,19 @@
       qs("workDate").value = "";
       qs("hours").value = "";
       qs("halfHour").value = "否";
-      setMsg("msg","表單已清空");
+      setMsg("表單已清空");
     }
 
     async function loadMyRecords(){
-      const email = qs("email").value.trim().toLowerCase();
-      const pin = qs("pin").value.trim();
-
-      if(!email){
-        return setMsg("msg","請先輸入 Email");
-      }
-      if(!/^\d{4}$/.test(pin)){
-        return setMsg("msg","請輸入4位數密碼");
-      }
-
-      setMsg("msg","查詢中...");
-
       const d = await postApi({
-        action:"parttimeListMine",
-        email:email,
-        pin:pin
+        action:"parttimeListMineSession",
+        email:empEmail
       });
 
       if(!d.status){
-        setMsg("msg", d.msg || "查詢失敗");
+        qs("recordsBox").innerHTML = d.msg || "查詢失敗";
         return;
       }
-
-      setMsg("msg","查詢成功");
 
       if(!d.rows || d.rows.length === 0){
         qs("recordsBox").innerHTML = "目前沒有紀錄";
@@ -150,45 +141,43 @@
       qs("workDate").value = row.workDate || "";
       qs("hours").value = row.hours || "";
       qs("halfHour").value = row.halfHour || "否";
-      setMsg("msg","已載入紀錄，修改後按送出登記");
+      setMsg("已載入紀錄，修改後按送出登記");
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
 
     async function saveParttime(){
-      const email = qs("email").value.trim().toLowerCase();
-      const pin = qs("pin").value.trim();
       const recordId = qs("recordId").value.trim();
 
-      const p = {
-        action: recordId ? "parttimeUpdate" : "parttime",
+      const payload = {
+        action: recordId ? "parttimeUpdateSession" : "parttimeSession",
         recordId: recordId,
-        email: email,
-        pin: pin,
+        email: empEmail,
         workDate: qs("workDate").value,
         hours: qs("hours").value,
         halfHour: qs("halfHour").value
       };
 
-      if(!p.email || !p.workDate || !p.hours){
-        return setMsg("msg","Email、日期、時數為必填");
+      if(!payload.workDate || !payload.hours){
+        return setMsg("日期、時數為必填");
       }
 
-      if(!/^\d{4}$/.test(p.pin)){
-        return setMsg("msg","請輸入4位數密碼");
-      }
-
-      setMsg("msg","送出中...");
-
-      const d = await postApi(p);
+      setMsg("送出中...");
+      const d = await postApi(payload);
 
       if(d.status){
-        setMsg("msg", d.msg || "成功");
+        setMsg(d.msg || "成功");
         resetForm();
         loadMyRecords();
       }else{
-        setMsg("msg", d.msg || "送出失敗");
+        setMsg(d.msg || "送出失敗");
       }
     }
+
+    function goHome(){
+      location.href = "./home.html";
+    }
+
+    loadMyRecords();
   </script>
 </body>
 </html>
