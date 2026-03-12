@@ -1,6 +1,14 @@
-【GitHub 前端說明】
+這一包是 GitHub Pages 前端檔案。
 
-1. 請先把整包上傳到 GitHub Pages 專案。
-2. 打開 config.js，把 API_URL 改成你 Apps Script Web App 的部署網址。
-3. 忘記密碼會寄到 reset-password.html。
-4. 打卡頁會先用瀏覽器去抓目前外網 IP，再送到 Apps Script 比對「公司固定IP」。
+使用前請先修改：
+1. config.js
+2. 把 API_URL 換成你 Apps Script Web App 的部署網址
+
+本版重點：
+- 一般班才判定遲到
+- 例外班不顯示遲到
+- 打卡頁已拿掉「今日班表」
+- 只有打卡功能會檢查固定外網 IP
+- 其他功能不檢查固定 IP
+- 密碼改為正式密碼
+- 支援忘記密碼 / 重設密碼
