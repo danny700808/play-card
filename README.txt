@@ -1,1 +1,0 @@
-GitHub 上傳：index.html、register.html、leave.html、parttime.html、admin-login.html、admin.html、style.css\nApps Script：Code.gs 直接覆蓋後重新部署。
