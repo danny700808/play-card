@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>柚子樂器系統登入</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+  <div class="container">
+    <div class="card" style="max-width:720px;">
+      <h1>柚子樂器系統</h1>
+      <div class="subtitle">請先登入。第一次使用可先註冊；忘記密碼可從信箱重設。</div>
+      <div class="grid">
+        <input id="email" type="email" placeholder="請輸入員工 Email">
+        <input id="password" type="password" placeholder="請輸入密碼">
+      </div>
+      <div class="btns">
+        <button class="primary" onclick="loginAction()">登入系統</button>
+        <button class="orange" onclick="location.href='./register.html'">新員工註冊</button>
+      </div>
+      <div class="link-box">
+        <a href="./forgot-password.html">忘記密碼</a>
+      </div>
+      <div class="msg" id="msg">請輸入 Email 與密碼</div>
+    </div>
+  </div>
+
+<script src="./config.js"></script>
+<script src="./app.js"></script>
+
+<script>
+if(EMP_APP.getSessionToken()){ location.href='./home.html'; }
+async function loginAction(){
+  const email = EMP_APP.qs('email').value.trim().toLowerCase();
+  const password = EMP_APP.qs('password').value;
+  if(!email) return EMP_APP.setMsg('msg','請輸入 Email');
+  if(!password) return EMP_APP.setMsg('msg','請輸入密碼');
+  EMP_APP.setMsg('msg','登入中...');
+  const result = await EMP_APP.postApi({ action:'employeeLogin', email, password, userAgent:navigator.userAgent });
+  if(!result.status) return EMP_APP.setMsg('msg', result.msg || '登入失敗');
+  EMP_APP.saveSession(result);
+  location.href = './home.html';
+}
+</script>
+
+</body>
+</html>

@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>柚子樂器系統</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+  <div class="container">
+    <div class="card" style="max-width:860px;">
+      <h1>柚子樂器系統</h1>
+      <div class="subtitle">請選擇要使用的功能</div>
+      <div class="top-user" id="userBox">目前登入：--</div>
+      <div class="home-grid">
+        <a class="home-card" href="./clock.html">
+          <div class="home-card-title">打卡</div>
+          <div class="home-card-desc">公司網路驗證、上班打卡、下班打卡、遲到判定。</div>
+        </a>
+        <a class="home-card" href="./parttime.html">
+          <div class="home-card-title">工讀上班時間登記</div>
+          <div class="home-card-desc">工讀時數填寫、查詢、修改。</div>
+        </a>
+        <a class="home-card" href="./leave.html">
+          <div class="home-card-title">請假</div>
+          <div class="home-card-desc">送出請假申請。</div>
+        </a>
+        <a class="home-card" href="./handover.html">
+          <div class="home-card-title">交班事項</div>
+          <div class="home-card-desc">先預留，可之後再擴充內容。</div>
+        </a>
+      </div>
+      <div class="btns" style="margin-top:20px;">
+        <button class="checkout" onclick="EMP_APP.logoutAction()">登出</button>
+      </div>
+    </div>
+  </div>
+
+<script src="./config.js"></script>
+<script src="./app.js"></script>
+
+<script>
+EMP_APP.requireLogin();
+const user = EMP_APP.getUser();
+EMP_APP.qs('userBox').innerText = '目前登入：' + (user.name || '--') + ' / ' + (user.email || '--');
+</script>
+
+</body>
+</html>

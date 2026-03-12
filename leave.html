@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>請假申請</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+  <div class="container">
+    <div class="card">
+      <h1>請假</h1>
+      <div class="subtitle">登入後可直接送出請假申請</div>
+      <div class="info"><div class="row"><span>目前登入</span><span id="userName">--</span></div></div>
+      <div class="grid">
+        <select id="leaveType">
+          <option value="">假別</option><option>事假</option><option>病假</option><option>特休</option><option>其他</option>
+        </select>
+        <input id="leaveDate" type="date">
+        <input id="startTime" type="time">
+        <input id="endTime" type="time">
+        <input id="hours" type="number" step="0.5" min="0.5" placeholder="請假時數">
+      </div>
+      <textarea id="reason" placeholder="請假原因"></textarea>
+      <div class="btns">
+        <button class="orange" onclick="leaveAction()">送出請假</button>
+        <button class="primary" onclick="location.href='./home.html'">回主畫面</button>
+      </div>
+      <div class="msg" id="msg">請填寫請假資料</div>
+    </div>
+  </div>
+
+<script src="./config.js"></script>
+<script src="./app.js"></script>
+
+<script>
+EMP_APP.requireLogin();
+const user = EMP_APP.getUser();
+EMP_APP.qs('userName').innerText = user.name + ' / ' + user.email;
+async function leaveAction(){
+  const payload = {
+    action:'leaveSession', sessionToken:user.token,
+    leaveType: EMP_APP.qs('leaveType').value,
+    leaveDate: EMP_APP.qs('leaveDate').value,
+    startTime: EMP_APP.qs('startTime').value,
+    endTime: EMP_APP.qs('endTime').value,
+    hours: EMP_APP.qs('hours').value,
+    reason: EMP_APP.qs('reason').value.trim()
+  };
+  if(!payload.leaveType || !payload.leaveDate) return EMP_APP.setMsg('msg','假別、日期為必填');
+  EMP_APP.setMsg('msg','送出中...');
+  const result = await EMP_APP.postApi(payload);
+  EMP_APP.setMsg('msg', result.status ? '請假申請成功\n單號：' + (result.requestId || '') : (result.msg || '送出失敗'));
+}
+</script>
+
+</body>
+</html>

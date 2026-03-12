@@ -1,0 +1,3 @@
+window.EMP_CONFIG = {
+  API_URL: "https://script.google.com/macros/s/REPLACE_WITH_YOUR_DEPLOYMENT_ID/exec"
+};
