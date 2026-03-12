@@ -1,1 +1,69 @@
-<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>員工註冊</title><link rel="stylesheet" href="./style.css"></head><body><div class="container"><div class="card"><h1>員工註冊</h1><div class="subtitle">第一次使用請先填寫資料並設定密碼（至少 8 碼，需包含英文與數字）</div><div class="grid"><input id="name" placeholder="姓名"><select id="gender"><option value="">性別</option><option>男</option><option>女</option></select><div><label style="display:block;margin-bottom:6px;">出生年月日</label><div class="grid" style="grid-template-columns:1fr 1fr 1fr;"><select id="birthYear"></select><select id="birthMonth"></select><select id="birthDay"></select></div></div><select id="nativePlace"><option value="">本籍</option><option>台灣</option><option>外國</option></select><select id="education"><option value="">教育程度</option><option>高中</option><option>大學</option><option>研究所</option></select><select id="role"><option value="正職">正職</option><option value="工讀">工讀</option></select><input id="idNo" placeholder="身分證統一號碼"><input id="phone" placeholder="手機"><input id="email" placeholder="Email"><input id="homeAddress" placeholder="戶籍地址"><input id="mailAddress" placeholder="通訊地址"><input id="emergencyName" placeholder="緊急聯絡人姓名"><input id="emergencyRelation" placeholder="緊急聯絡人關係"><input id="emergencyPhone" placeholder="緊急聯絡人電話"><input id="signName" placeholder="資料確認簽名（輸入姓名）"><input id="password" type="password" placeholder="設定密碼"><input id="passwordConfirm" type="password" placeholder="再次輸入密碼"></div><div class="btns"><button class="primary" onclick="registerAction()">送出註冊</button></div><div class="link-box"><a href="./index.html">回到登入頁</a></div><div class="msg" id="msg">請填寫完整資料後送出</div></div></div><script src="./config.js"></script><script src="./common.js"></script><script>function isStrongPassword(password){return /^(?=.*[A-Za-z])(?=.*\d).{8,}$/.test(password);}function initBirthSelectors(){const yearEl=qs("birthYear"),monthEl=qs("birthMonth"),dayEl=qs("birthDay"),now=new Date(),currentYear=now.getFullYear();yearEl.innerHTML='<option value="">年</option>';for(let y=currentYear;y>=1950;y--){yearEl.innerHTML+=`<option value="${y}">${y}</option>`;}monthEl.innerHTML='<option value="">月</option>';for(let m=1;m<=12;m++){monthEl.innerHTML+=`<option value="${String(m).padStart(2,"0")}">${m}</option>`;}function updateDays(){const year=parseInt(yearEl.value,10),month=parseInt(monthEl.value,10);dayEl.innerHTML='<option value="">日</option>';if(!year||!month)return;const daysInMonth=new Date(year,month,0).getDate();for(let d=1;d<=daysInMonth;d++){dayEl.innerHTML+=`<option value="${String(d).padStart(2,"0")}">${d}</option>`;}}yearEl.addEventListener("change",updateDays);monthEl.addEventListener("change",updateDays);updateDays();}async function registerAction(){const birth=qs("birthYear").value&&qs("birthMonth").value&&qs("birthDay").value?`${qs("birthYear").value}-${qs("birthMonth").value}-${qs("birthDay").value}`:"";const password=qs("password").value,passwordConfirm=qs("passwordConfirm").value;if(!isStrongPassword(password))return setMsg("msg","密碼至少 8 碼，且需包含英文與數字");if(password!==passwordConfirm)return setMsg("msg","兩次輸入的密碼不一致");const payload={action:"register",name:qs("name").value.trim(),gender:qs("gender").value,birth,nativePlace:qs("nativePlace").value,education:qs("education").value,role:qs("role").value,idNo:qs("idNo").value.trim(),phone:qs("phone").value.trim(),email:qs("email").value.trim().toLowerCase(),password,homeAddress:qs("homeAddress").value.trim(),mailAddress:qs("mailAddress").value.trim(),emergencyName:qs("emergencyName").value.trim(),emergencyRelation:qs("emergencyRelation").value.trim(),emergencyPhone:qs("emergencyPhone").value.trim(),signName:qs("signName").value.trim()};if(!payload.name||!payload.email)return setMsg("msg","姓名與 Email 為必填");setMsg("msg","送出中...");const result=await postApi(payload);if(result.status){setMsg("msg",`註冊成功\n員工編號：${result.empId||""}\n之後請用 Email + 密碼 登入`);}else{setMsg("msg",result.msg||"註冊失敗");}}initBirthSelectors();</script></body></html>
+要改的檔案：register.html
+
+========================
+【1】先把原本這兩行刪掉
+========================
+<input id="pin" placeholder="設定4位數密碼" maxlength="4" inputmode="numeric">
+<input id="pinConfirm" placeholder="再次輸入4位數密碼" maxlength="4" inputmode="numeric">
+
+
+========================
+【2】改貼成下面這一段
+========================
+<div class="password-wrap">
+  <input id="pin" type="password" placeholder="設定4位數密碼" maxlength="4" inputmode="numeric">
+  <button type="button" class="toggle-btn" onclick="togglePassword('pin', this)">顯示</button>
+</div>
+
+<div class="password-wrap">
+  <input id="pinConfirm" type="password" placeholder="再次輸入4位數密碼" maxlength="4" inputmode="numeric">
+  <button type="button" class="toggle-btn" onclick="togglePassword('pinConfirm', this)">顯示</button>
+</div>
+
+
+========================
+【3】在 <head> 裡面補這段 CSS
+========================
+<style>
+  .password-wrap{
+    display:flex;
+    gap:8px;
+    align-items:center;
+  }
+
+  .password-wrap input{
+    flex:1;
+  }
+
+  .toggle-btn{
+    border:none;
+    background:#e5e7eb;
+    padding:10px 14px;
+    border-radius:10px;
+    cursor:pointer;
+    white-space:nowrap;
+  }
+</style>
+
+
+========================
+【4】在 register.html 最下面的 <script> 裡面，加這個 function
+========================
+function togglePassword(inputId, btn){
+  const input = document.getElementById(inputId);
+  if(input.type === "password"){
+    input.type = "text";
+    btn.innerText = "隱藏";
+  }else{
+    input.type = "password";
+    btn.innerText = "顯示";
+  }
+}
+
+
+========================
+【5】如果你要我下一步直接幫你改成完整 register.html 版本
+========================
+你只要跟我說：
+「直接給我完整 register.html TXT」
+我就會直接整份給你。
