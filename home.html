@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>柚子樂器系統</title>
+  <link rel="stylesheet" href="./style.css">
+  <style>
+    .home-grid{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:16px;
+      margin-top:20px;
+    }
+    .home-card{
+      display:block;
+      text-decoration:none;
+      color:#111;
+      background:#f8fafc;
+      border:1px solid #e5e7eb;
+      border-radius:18px;
+      padding:22px;
+      transition:.2s ease;
+    }
+    .home-card:hover{
+      transform:translateY(-2px);
+      box-shadow:0 8px 20px rgba(0,0,0,.08);
+    }
+    .home-card-title{
+      font-size:22px;
+      font-weight:700;
+      margin-bottom:8px;
+    }
+    .home-card-desc{
+      font-size:15px;
+      color:#666;
+      line-height:1.6;
+    }
+    .top-user{
+      margin-top:12px;
+      padding:12px;
+      background:#f8fafc;
+      border:1px solid #e5e7eb;
+      border-radius:12px;
+      font-size:15px;
+      color:#444;
+    }
+    @media (max-width:640px){
+      .home-grid{grid-template-columns:1fr;}
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card" style="max-width:760px;">
+      <h1>柚子樂器系統</h1>
+      <div class="subtitle">請選擇要使用的功能</div>
+
+      <div class="top-user" id="userBox">目前登入：--</div>
+
+      <div class="home-grid">
+        <a class="home-card" href="./clock.html">
+          <div class="home-card-title">打卡</div>
+          <div class="home-card-desc">上班打卡、下班打卡。</div>
+        </a>
+
+        <a class="home-card" href="./parttime.html">
+          <div class="home-card-title">工讀上班時間登記</div>
+          <div class="home-card-desc">工讀時數填寫、查詢、修改。</div>
+        </a>
+
+        <a class="home-card" href="./leave.html">
+          <div class="home-card-title">請假</div>
+          <div class="home-card-desc">送出請假申請。</div>
+        </a>
+
+        <a class="home-card" href="./handover.html" onclick="goHandover(event)">
+          <div class="home-card-title">交班事項</div>
+          <div class="home-card-desc">先預留，之後再補內容。</div>
+        </a>
+      </div>
+
+      <div class="btns" style="margin-top:20px;">
+        <button class="checkout" onclick="logoutAction()">登出</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    if(localStorage.getItem("emp_login") !== "ok"){
+      location.href = "./index.html";
+    }
+
+    const empName = localStorage.getItem("emp_name") || "";
+    const empEmail = localStorage.getItem("emp_email") || "";
+    document.getElementById("userBox").innerText = "目前登入：" + empName + " / " + empEmail;
+
+    function logoutAction(){
+      localStorage.removeItem("emp_login");
+      localStorage.removeItem("emp_email");
+      localStorage.removeItem("emp_name");
+      localStorage.removeItem("emp_id");
+      location.href = "./index.html";
+    }
+
+    function goHandover(e){
+      e.preventDefault();
+      alert("交班事項區塊目前先預留，之後再補。");
+    }
+  </script>
+</body>
+</html>
