@@ -3,122 +3,26 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1.0">
-  <title>打卡測試頁</title>
-  <style>
-    body{
-      font-family:Arial,"Noto Sans TC",sans-serif;
-      background:#f3f4f6;
-      margin:0;
-      padding:20px;
-    }
-    .wrap{
-      max-width:720px;
-      margin:40px auto;
-      background:#fff;
-      border-radius:20px;
-      padding:24px;
-      box-shadow:0 10px 30px rgba(0,0,0,.08);
-    }
-    h1{
-      margin:0 0 8px;
-      text-align:center;
-      font-size:38px;
-    }
-    .sub{
-      text-align:center;
-      color:#666;
-      margin-bottom:24px;
-      font-size:18px;
-    }
-    .info{
-      background:#f8fafc;
-      border:1px solid #e5e7eb;
-      border-radius:14px;
-      padding:16px;
-      margin-bottom:20px;
-      font-size:18px;
-    }
-    .row{
-      display:flex;
-      justify-content:space-between;
-      padding:6px 0;
-    }
-    .grid{
-      display:grid;
-      grid-template-columns:1fr 1fr;
-      gap:14px;
-      margin-bottom:18px;
-    }
-    input{
-      width:100%;
-      box-sizing:border-box;
-      padding:16px;
-      border-radius:14px;
-      border:1px solid #ccc;
-      font-size:18px;
-    }
-    .btns{
-      display:grid;
-      grid-template-columns:1fr 1fr;
-      gap:14px;
-      margin-bottom:18px;
-    }
-    button{
-      padding:18px;
-      border:none;
-      border-radius:16px;
-      font-size:20px;
-      font-weight:bold;
-      color:#fff;
-      cursor:pointer;
-    }
-    .checkin{background:#22c55e;}
-    .checkout{background:#ef4444;}
-    .msg{
-      background:#fff7ed;
-      border:1px solid #fed7aa;
-      border-radius:12px;
-      padding:14px;
-      font-size:18px;
-      white-space:pre-line;
-    }
-    .test{
-      margin-top:16px;
-      font-size:16px;
-      color:#666;
-      line-height:1.6;
-    }
-    @media (max-width:640px){
-      .grid,.btns{grid-template-columns:1fr;}
-      h1{font-size:28px;}
-    }
-  </style>
+  <title>柚子樂器系統</title>
+  <link rel="stylesheet" href="./style.css">
 </head>
 <body>
-  <div class="wrap">
-    <h1>柚子樂器員工打卡系統</h1>
-    <div class="sub">打卡測試頁</div>
+  <div class="container">
+    <div class="card" style="max-width:720px;">
+      <h1>柚子樂器系統</h1>
+      <div class="subtitle">請先登入或註冊後再進入系統</div>
 
-    <div class="info">
-      <div class="row"><span>今天日期</span><span id="date">--</span></div>
-      <div class="row"><span>目前時間</span><span id="time">--</span></div>
-    </div>
+      <div class="grid">
+        <input id="email" placeholder="請輸入員工 Email">
+        <input id="pin" placeholder="請輸入4位數密碼" maxlength="4" inputmode="numeric">
+      </div>
 
-    <div class="grid">
-      <input id="email" placeholder="請輸入員工 Email" value="danny700808@gmail.com">
-      <input id="pin" placeholder="請輸入4位數密碼" maxlength="4" inputmode="numeric" value="1234">
-    </div>
+      <div class="btns">
+        <button class="primary" onclick="loginAction()">登入系統</button>
+        <button class="orange" onclick="goRegister()">新員工註冊</button>
+      </div>
 
-    <div class="btns">
-      <button class="checkin" onclick="clockAction('上班')">上班打卡</button>
-      <button class="checkout" onclick="clockAction('下班')">下班打卡</button>
-    </div>
-
-    <div class="msg" id="msg">請按上班打卡測試</div>
-
-    <div class="test">
-      測試帳號：danny700808@gmail.com<br>
-      測試密碼：1234
+      <div class="msg" id="msg">請先輸入 Email 與 4 位數密碼</div>
     </div>
   </div>
 
@@ -128,15 +32,6 @@
     function qs(id){ return document.getElementById(id); }
     function setMsg(t){ qs("msg").innerText = t; }
 
-    function tick(){
-      const n = new Date();
-      qs("date").innerText = n.toLocaleDateString("zh-TW",{year:"numeric",month:"2-digit",day:"2-digit",weekday:"long"});
-      qs("time").innerText = n.toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
-    }
-
-    setInterval(tick,1000);
-    tick();
-
     async function postApi(payload){
       const res = await fetch(API_URL,{
         method:"POST",
@@ -144,15 +39,14 @@
         body:JSON.stringify(payload)
       });
       const text = await res.text();
-
       try{
         return JSON.parse(text);
       }catch(e){
-        return {status:false,msg:"API 回傳格式錯誤\\n" + text};
+        return {status:false,msg:"API 回傳格式錯誤\n" + text};
       }
     }
 
-    async function clockAction(type){
+    async function loginAction(){
       const email = qs("email").value.trim().toLowerCase();
       const pin = qs("pin").value.trim();
 
@@ -160,29 +54,32 @@
         return setMsg("請輸入 Email");
       }
 
-      if(!/^\\d{4}$/.test(pin)){
+      if(!/^\d{4}$/.test(pin)){
         return setMsg("請輸入4位數密碼");
       }
 
-      setMsg("送出中...");
+      setMsg("登入中...");
 
       const result = await postApi({
-        action:"clock",
-        type:type,
+        action:"employeeLogin",
         email:email,
-        pin:pin,
-        userAgent:navigator.userAgent
+        pin:pin
       });
 
-      if(result.status){
-        setMsg(
-          type + "打卡成功\\n" +
-          "姓名：" + (result.name || "") + "\\n" +
-          "時間：" + (result.time || "")
-        );
-      }else{
-        setMsg(result.msg || "打卡失敗");
+      if(!result.status){
+        return setMsg(result.msg || "登入失敗");
       }
+
+      localStorage.setItem("emp_login", "ok");
+      localStorage.setItem("emp_email", result.email || "");
+      localStorage.setItem("emp_name", result.name || "");
+      localStorage.setItem("emp_id", result.empId || "");
+
+      window.location.href = "./home.html";
+    }
+
+    function goRegister(){
+      window.location.href = "./register.html";
     }
   </script>
 </body>
