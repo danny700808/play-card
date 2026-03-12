@@ -1,1 +1,152 @@
-<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>打卡</title><link rel="stylesheet" href="./style.css"></head><body><div class="container"><div class="card"><h1>打卡</h1><div class="subtitle">只有打卡功能會檢查公司固定外網 IP。一般班才會判定遲到，例外班不顯示遲到。</div><div class="info"><div class="row"><span>目前登入</span><span id="userName">--</span></div><div class="row"><span>員工類型</span><span id="roleName">--</span></div><div class="row"><span>今天日期</span><span id="date">--</span></div><div class="row"><span>目前時間</span><span id="time">--</span></div><div class="row"><span>目前外網 IP</span><span id="publicIp">讀取中...</span></div></div><div class="grid"><select id="shiftType"><option value="一般班">一般班</option><option value="例外班">例外班</option></select></div><div class="small" style="margin-top:10px;">正職一般班：週二到週五 12:30 上班、週六日 10:00 上班。工讀一般班：18:00 上班。</div><div class="btns"><button class="checkin" onclick="clockAction('上班')">上班打卡</button><button class="checkout" onclick="clockAction('下班')">下班打卡</button></div><div class="btns"><button class="primary" onclick="goHome()">回主畫面</button></div><div class="msg" id="msg">請選擇班別後打卡</div></div></div><script src="./config.js"></script><script src="./common.js"></script><script>if(!requireLogin()){}const empEmail=localStorage.getItem("emp_email")||"";const empName=localStorage.getItem("emp_name")||"";const empRole=localStorage.getItem("emp_role")||"正職";let currentIp="";qs("userName").innerText=empName+" / "+empEmail;qs("roleName").innerText=empRole;function tick(){const n=new Date();qs("date").innerText=n.toLocaleDateString("zh-TW",{year:"numeric",month:"2-digit",day:"2-digit",weekday:"long"});qs("time").innerText=n.toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit",second:"2-digit"});}setInterval(tick,1000);tick();async function loadIp(){currentIp=await fetchPublicIp();qs("publicIp").innerText=currentIp||"讀取失敗";}loadIp();async function clockAction(type){setMsg("msg","送出中...");const result=await postApi({action:"clockWithSession",type:type,shiftType:qs("shiftType").value,publicIp:currentIp,userAgent:navigator.userAgent,...getSessionPayload()});if(result.status){let text=type+"打卡成功\n姓名："+(result.name||"")+"\n時間："+(result.time||"");if(result.attendanceLabel){text+="\n狀態："+result.attendanceLabel;}if(result.lateMinutes&&Number(result.lateMinutes)>0){text+="\n遲到："+result.lateMinutes+" 分鐘";}if(result.shiftType){text+="\n班別："+result.shiftType;}setMsg("msg",text);}else{setMsg("msg",result.msg||"打卡失敗");}}function goHome(){location.href="./home.html";}</script></body></html>
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>打卡</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <h1>打卡</h1>
+      <div class="subtitle">只有打卡功能檢查固定 IP</div>
+
+      <div class="info">
+        <div class="row"><span>目前登入</span><span id="userName">--</span></div>
+        <div class="row"><span>員工類型</span><span id="empType">--</span></div>
+        <div class="row"><span>今天日期</span><span id="date">--</span></div>
+        <div class="row"><span>目前時間</span><span id="time">--</span></div>
+        <div class="row"><span>目前外網 IP</span><span id="ipText">抓取中...</span></div>
+      </div>
+
+      <div class="grid">
+        <select id="shiftMode">
+          <option value="一般班">一般班</option>
+          <option value="例外班">例外班</option>
+        </select>
+      </div>
+
+      <div class="small-note">一般班才會判定遲到；例外班只記錄打卡，不顯示遲到。</div>
+
+      <div class="btns">
+        <button class="checkin" onclick="clockAction('上班')">上班打卡</button>
+        <button class="checkout" onclick="clockAction('下班')">下班打卡</button>
+      </div>
+
+      <div class="btns">
+        <button class="primary" onclick="goHome()">回主畫面</button>
+      </div>
+
+      <div class="msg" id="msg">請選擇打卡類型</div>
+    </div>
+  </div>
+
+  
+<script src="./config.js"></script>
+<script>
+  const API_URL = window.APP_CONFIG.API_URL;
+  function qs(id){ return document.getElementById(id); }
+  function setMsg(id, text){ qs(id).innerText = text; }
+  async function postApi(payload){
+    const res = await fetch(API_URL,{
+      method:"POST",
+      headers:{"Content-Type":"text/plain;charset=utf-8"},
+      body:JSON.stringify(payload)
+    });
+    const text = await res.text();
+    try{
+      return JSON.parse(text);
+    }catch(e){
+      return {status:false,msg:"API 回傳格式錯誤\n" + text};
+    }
+  }
+  function togglePassword(inputId, btn){
+    const input = document.getElementById(inputId);
+    if(input.type === "password"){
+      input.type = "text";
+      btn.innerText = "隱藏";
+    }else{
+      input.type = "password";
+      btn.innerText = "顯示";
+    }
+  }
+  function logoutAction(){
+    localStorage.removeItem("emp_session_token");
+    localStorage.removeItem("emp_email");
+    localStorage.removeItem("emp_name");
+    localStorage.removeItem("emp_id");
+    localStorage.removeItem("emp_type");
+    location.href = "./index.html";
+  }
+  function requireLogin(){
+    const token = localStorage.getItem("emp_session_token") || "";
+    if(!token){
+      location.href = "./index.html";
+      return false;
+    }
+    return true;
+  }
+</script>
+
+  <script>
+    if(!requireLogin()){}
+    const sessionToken = localStorage.getItem("emp_session_token") || "";
+    const empEmail = localStorage.getItem("emp_email") || "";
+    const empName = localStorage.getItem("emp_name") || "";
+    const empType = localStorage.getItem("emp_type") || "";
+    let currentIp = "";
+
+    qs("userName").innerText = empName + " / " + empEmail;
+    qs("empType").innerText = empType || "未設定";
+
+    function tick(){
+      const n = new Date();
+      qs("date").innerText = n.toLocaleDateString("zh-TW",{year:"numeric",month:"2-digit",day:"2-digit",weekday:"long"});
+      qs("time").innerText = n.toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
+    }
+    setInterval(tick,1000);
+    tick();
+
+    async function getPublicIp(){
+      try{
+        const res = await fetch("https://api.ipify.org?format=json");
+        const data = await res.json();
+        currentIp = (data && data.ip) || "";
+        qs("ipText").innerText = currentIp || "抓取失敗";
+      }catch(e){
+        qs("ipText").innerText = "抓取失敗";
+      }
+    }
+
+    async function clockAction(type){
+      setMsg("msg","送出中...");
+      const result = await postApi({
+        action:"clockSession",
+        sessionToken:sessionToken,
+        type:type,
+        shiftMode:qs("shiftMode").value,
+        publicIp:currentIp,
+        userAgent:navigator.userAgent
+      });
+
+      if(result.status){
+        let msg = type + "打卡成功\n姓名：" + (result.name || "") + "\n時間：" + (result.time || "");
+        if(result.shiftMode) msg += "\n班別：" + result.shiftMode;
+        if(result.lateStatus === "是") msg += "\n狀態：遲到\n遲到分鐘：" + (result.lateMinutes || 0);
+        if(result.lateStatus === "否") msg += "\n狀態：準時";
+        if(result.lateStatus === "不判定") msg += "\n狀態：例外班不判定遲到";
+        setMsg("msg", msg);
+      }else{
+        setMsg("msg", result.msg || "打卡失敗");
+      }
+    }
+
+    function goHome(){
+      location.href = "./home.html";
+    }
+
+    getPublicIp();
+  </script>
+</body>
+</html>
