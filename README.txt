@@ -1,19 +1,23 @@
-這次只需要替換 6 個檔案：
-1. config.js
-2. app.js
-3. index.html
-4. register.html
-5. task.html
-6. dashboard.html
+這包是目前最需要一次更新的檔案。
 
-這版效果：
-- admin / 老闆登入後，直接先進 task.html
-- 一般員工登入後，進 dashboard.html
-- 老闆在 task.html 上方可直接切換到：員工首頁 / 打卡 / 請假 / 工讀時數 / 交辦事項
-- 老闆同一個帳號仍然可以看到全部功能，不是只剩 task
-- 登入頁與註冊頁分開
-- config.js 已更新成新的 Apps Script 部署網址
+請照順序做：
+1. 將 apps-script.gs 全部覆蓋到 Google Apps Script。
+2. 存檔後重新部署 Web App。
+3. 將以下前端檔案覆蓋到 GitHub：
+   - config.js
+   - app.js
+   - index.html
+   - register.html
+   - dashboard.html
+   - task.html
+   - clock.html
+4. 若 Sheet 欄位尚未更新，請依 sheet-setup.txt 調整。
+5. 用無痕視窗重新測試登入。
 
-注意：
-- 員工資料 的 角色 欄位請填 admin
-- 帳號狀態 請填 active
+這包用途：
+- 管理者 admin 登入後先進 task.html
+- 一般員工登入後進 dashboard.html
+- 打卡頁為三鍵版本：上班打卡 / 下班打卡 / 補登
+- 補登按下後才展開表單
+
+若仍卡在登入成功不跳頁，通常是 GitHub 快取或檔案未覆蓋完整。
