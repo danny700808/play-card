@@ -1,0 +1,23 @@
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>員工註冊</title><link rel="stylesheet" href="style.css"></head><body><div class="container"><div class="card"><div class="header"><h1 class="title">柚子員工系統</h1><p class="subtitle">員工註冊申請</p></div><div id="msg" class="message"></div><div class="field"><label>姓名</label><input id="name" placeholder="請輸入姓名"></div><div class="field"><label>Email</label><input id="email" type="email" placeholder="請輸入 Email"></div><div class="field"><label>密碼</label><div class="password-wrap"><input id="password" type="password" placeholder="請輸入密碼"><button type="button" class="eye" id="eyeBtn">👁</button></div></div><div class="field"><label>是否為工讀生</label><select id="isPartTime"><option value="no">否</option><option value="yes">是</option></select></div><div class="small-actions"><a href="index.html" class="navlink">回登入</a><span class="muted">送出後需主管審核</span></div><div class="btn-row" style="margin-top:14px"><button class="btn secondary" id="registerBtn">送出註冊申請</button></div></div></div><script src="config.js"></script><script src="app.js"></script><script>
+const msg=qs('#msg');
+qs('#eyeBtn').onclick=()=>togglePassword('#password', qs('#eyeBtn'));
+qs('#registerBtn').onclick=async()=>{
+  setMsg(msg,'');
+  const btn=qs('#registerBtn');
+  const name=qs('#name').value.trim();
+  const email=qs('#email').value.trim();
+  const password=qs('#password').value.trim();
+  const isPartTime=qs('#isPartTime').value;
+  if(!name || !email || !password){setMsg(msg,'姓名、Email、密碼不可空白',true); return;}
+  setButtonLoading(btn,true,'送出中，請稍候...');
+  const r=await api('register',{name,email,password,isPartTime});
+  setButtonLoading(btn,false,'','送出註冊申請');
+  setMsg(msg,r.message,!r.ok);
+  if(r.ok){
+    qs('#name').value='';
+    qs('#email').value='';
+    qs('#password').value='';
+    qs('#isPartTime').value='no';
+  }
+};
+</script></body></html>
