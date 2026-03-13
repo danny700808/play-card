@@ -1,1 +1,69 @@
-<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>打卡系統</title><link rel="stylesheet" href="style.css"></head><body onload="init()"><div class="container"><div class="card"><div class="topbar"><div><h1 class="title" style="margin:0">打卡系統</h1><div class="welcome">歡迎 <span data-user-name></span></div></div><a class="navlink" href="dashboard.html">回首頁</a></div><div class="timebox" id="nowBox"></div><div id="msg" class="message"></div><div class="field"><label>打卡方式</label><select id="clockType"><option>標準打卡</option><option>星期四特殊班</option><option>特殊時間打卡</option><option>社團 / 外出打卡</option></select></div><div class="btn-row"><button class="btn" id="clockInBtn">上班打卡</button><button class="btn secondary" id="clockOutBtn">下班打卡</button></div></div><div class="card"><h2 class="title" style="font-size:20px">我的打卡紀錄</h2><div id="list" class="list"></div></div></div><script src="config.js"></script><script src="app.js"></script><script>function tick(){const d=new Date(); qs('#nowBox').textContent=d.toLocaleString('zh-TW',{hour12:false});} async function loadHistory(){const user=requireLogin(); const r=await api('getClockHistory',{userId:user.id}); const list=qs('#list'); list.innerHTML=(r.rows||[]).map(x=>`<div class="item"><div class="top"><strong>${x.date} ${x.time}</strong><span class="tag">${x.status}</span></div><div>${x.actionName}｜${x.clockType}｜遲到 ${x.lateMinutes || 0} 分鐘</div></div>`).join('')||'<div class="muted">目前沒有紀錄</div>';} async function doClock(actionName){const user=requireLogin(); const msg=qs('#msg'); setMsg(msg,'正在偵測公司 Wi‑Fi IP...'); const clientIp=await getPublicIp(); const clockType=qs('#clockType').value; const r=await api('clock',{userId:user.id,clientIp,clockType,actionName}); setMsg(msg,r.message,!r.ok); if(r.ok) loadHistory();} function init(){fillHeader(); tick(); setInterval(tick,1000); qs('#clockInBtn').onclick=()=>doClock('上班打卡'); qs('#clockOutBtn').onclick=()=>doClock('下班打卡'); loadHistory();}</script></body></html>
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>打卡系統</title><link rel="stylesheet" href="style.css"></head><body onload="init()"><div class="container"><div class="card"><div class="topbar"><div><h1 class="title" style="margin:0">打卡系統</h1><div class="welcome">歡迎 <span data-user-name></span></div></div><a class="navlink" href="dashboard.html">回首頁</a></div><div class="timebox" id="nowBox"></div><div id="msg" class="message"></div><div class="field"><label>打卡方式</label><select id="clockType"><option>標準打卡</option><option>星期四特殊班</option><option>特殊時間打卡</option><option>社團 / 外出打卡</option></select></div><div class="btn-row"><button class="btn" id="clockInBtn">上班打卡</button><button class="btn secondary" id="clockOutBtn">下班打卡</button></div><div class="muted" style="margin-top:10px">若今天中途請假後回來需要再打一次卡，系統會先詢問你這是不是當天第二次打卡。</div></div><div class="card"><h2 class="title" style="font-size:20px">忘記打卡補登</h2><div id="forgotMsg" class="message"></div><div class="field"><label>補登日期</label><input id="forgotDate" type="date"></div><div class="field"><label>補登類型</label><select id="forgotActionName"><option>上班打卡</option><option>下班打卡</option></select></div><div class="field"><label>實際打卡時間</label><input id="forgotTime" type="time"></div><div class="field"><label>補登原因</label><textarea id="forgotReason" placeholder="請寫明忘記打卡原因"></textarea></div><button class="btn secondary" id="forgotClockBtn">送出補登</button></div><div class="card"><h2 class="title" style="font-size:20px">我的打卡紀錄</h2><div id="list" class="list"></div></div></div><script src="config.js"></script><script src="app.js"></script><script>
+function tick(){const d=new Date(); qs('#nowBox').textContent=d.toLocaleString('zh-TW',{hour12:false});}
+function buildClockLine(x){
+  const parts=[x.actionName, x.clockType];
+  if(Number(x.sequence||1)===2) parts.push('第二次打卡');
+  if(String(x.isSupplement||'').toLowerCase()==='yes') parts.push('補登');
+  if(x.actionName==='上班打卡' && x.clockType==='標準打卡' && Number(x.lateMinutes||0)>0) parts.push('遲到 ' + x.lateMinutes + ' 分鐘');
+  if(x.isSupplement && x.supplementReason) parts.push('原因：' + x.supplementReason);
+  return parts.join('｜');
+}
+async function loadHistory(){
+  const user=requireLogin();
+  const r=await api('getClockHistory',{userId:user.id});
+  const list=qs('#list');
+  list.innerHTML=(r.rows||[]).map(x=>`<div class="item"><div class="top"><strong>${x.date} ${x.time}</strong><span class="tag">${x.status||'已記錄'}</span></div><div>${buildClockLine(x)}</div></div>`).join('')||'<div class="muted">目前沒有紀錄</div>';
+}
+async function doClock(actionName, allowSecondPunch){
+  const user=requireLogin();
+  const msg=qs('#msg');
+  const btn=actionName==='上班打卡'?qs('#clockInBtn'):qs('#clockOutBtn');
+  setBtnLoading(btn,true,'處理中...');
+  try{
+    setMsg(msg,'正在偵測公司 Wi‑Fi IP...');
+    const clientIp=await getPublicIp();
+    const clockType=qs('#clockType').value;
+    const r=await api('clock',{userId:user.id,clientIp,clockType,actionName,allowSecondPunch:!!allowSecondPunch});
+    if(!r.ok && r.needsSecondConfirm){
+      const ok=confirm(r.message + '\n\n如果這是當天第二次打卡，請按「確定」；如果不是，請按「取消」。');
+      if(ok){
+        return await doClock(actionName,true);
+      }
+      setMsg(msg,'已取消本次打卡',true);
+      return;
+    }
+    setMsg(msg,r.message,!r.ok);
+    if(r.ok) loadHistory();
+  }catch(e){setMsg(msg,'打卡失敗，請稍後再試',true);}finally{setBtnLoading(btn,false);}
+}
+async function doForgotClock(){
+  const user=requireLogin();
+  const msg=qs('#forgotMsg');
+  const btn=qs('#forgotClockBtn');
+  setBtnLoading(btn,true,'送出中...');
+  try{
+    const forgotDate=qs('#forgotDate').value;
+    const actualTime=qs('#forgotTime').value;
+    const actionName=qs('#forgotActionName').value;
+    const reason=qs('#forgotReason').value.trim();
+    if(!forgotDate || !actualTime || !reason){setMsg(msg,'請填寫補登日期、時間與原因',true); return;}
+    const clockType=qs('#clockType').value;
+    const clientIp=await getPublicIp();
+    const r=await api('forgotClock',{userId:user.id,clientIp,clockType,actionName,forgotDate,actualTime,reason});
+    setMsg(msg,r.message,!r.ok);
+    if(r.ok){qs('#forgotReason').value=''; loadHistory();}
+  }catch(e){setMsg(msg,'補登失敗，請稍後再試',true);}finally{setBtnLoading(btn,false);}
+}
+function init(){
+  fillHeader();
+  tick();
+  qs('#forgotDate').value=todayStr();
+  const now=new Date();
+  qs('#forgotTime').value=`${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+  setInterval(tick,1000);
+  qs('#clockInBtn').onclick=()=>doClock('上班打卡',false);
+  qs('#clockOutBtn').onclick=()=>doClock('下班打卡',false);
+  qs('#forgotClockBtn').onclick=()=>doForgotClock();
+  loadHistory();
+}
+</script></body></html>
