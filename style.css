@@ -38,3 +38,13 @@ a{text-decoration:none;color:inherit} .container{max-width:760px;margin:0 auto;p
 .inline-label{display:block;font-size:13px;color:var(--muted);margin-bottom:8px}
 .progress-fill{position:relative}
 .progress-fill::after{content:'';position:absolute;right:0;top:0;bottom:0;width:42px;background:linear-gradient(90deg,rgba(255,255,255,0),rgba(255,255,255,.25));}
+
+.task-submit-zone{margin-top:6px;margin-bottom:8px}
+.task-submit-zone .progress-card{margin:0}
+.count-badge{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;padding:0 7px;border-radius:999px;background:#e94b4b;color:#fff;font-size:12px;font-weight:800;vertical-align:middle;margin-left:6px}.count-badge.inline{position:relative;top:-2px}
+.task-tile strong{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.focus-task{border-color:#48a67f;box-shadow:0 0 0 3px rgba(31,122,90,.12)}
+.task-cta-note{margin-top:10px;padding:10px 12px;border-radius:12px;background:#eef7f2;color:#1f5e49;font-size:13px;font-weight:700}
+.media-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.media-link{display:inline-flex;padding:9px 12px;border-radius:10px;background:#eef7f2;color:#1f7a5a;font-weight:700}
+.audio-box audio{width:100%}

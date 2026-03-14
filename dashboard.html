@@ -22,12 +22,12 @@
     <a class="tile" href="clock.html"><strong>打卡系統</strong><span>上班 / 下班打卡與本月紀錄</span></a>
     <a class="tile" href="parttime.html"><strong>工讀生時數</strong><span>1～12 小時與半小時加時</span></a>
     <a class="tile" href="leave.html"><strong>請假系統</strong><span>請假申請單與審核狀態</span></a>
-    <a class="tile" href="task.html"><strong>交辦事項</strong><span>查看任務、回報完成狀態</span></a>
+    <a class="tile task-tile" href="task.html"><strong>交辦事項 <span id="taskTileBadge" class="count-badge hidden">0</span></strong><span id="taskTileSubtext">查看任務、回報完成狀態</span></a>
   </div>
 
   <div class="card">
     <div class="topbar">
-      <h2 class="title" style="font-size:20px;margin:0">我的任務</h2>
+      <h2 class="title" style="font-size:20px;margin:0">我的任務 <span id="taskTitleBadge" class="count-badge inline hidden">0</span></h2>
       <a class="navlink" href="task.html">前往任務頁</a>
     </div>
     <div class="muted" style="margin-bottom:10px">這裡會先顯示最近幾筆任務；要回報完成，直接按每筆下方的按鈕即可。</div>
@@ -39,14 +39,25 @@
 <script src="config.js"></script>
 <script src="app.js"></script>
 <script>
+function setTaskBadges(count){
+  ['#taskTileBadge','#taskTitleBadge'].forEach(sel=>{
+    const el=qs(sel); if(!el) return;
+    el.textContent=String(count);
+    el.classList.toggle('hidden', count<=0);
+  });
+  const sub=qs('#taskTileSubtext');
+  if(sub) sub.textContent=count>0?`目前有 ${count} 筆待完成任務，請點入處理`:'查看任務、回報完成狀態';
+}
 async function init(){
   fillHeader();
   const user=requireLogin();
   if(!user) return;
-  const r=await api('getTasks',{userId:user.id,email:user.email,role:'staff'});
+  const r=await api('getTasks',{userId:user.id,email:user.email,role:user.role});
   const el=qs('#myTasks');
-  const rows=(r.rows||[]).filter(x=>x.status!=='已完成').slice(0,5);
-  el.innerHTML=rows.map(x=>`<div class="item"><div class="top"><strong>${esc(x.title||'')}</strong>${formatTaskStatusTag(x.status||'待處理')}</div><div>${esc(x.content||'')}</div><div class="muted">截止：${esc(x.dueLabel||((x.dueDate||'')+' '+(x.dueTime||'')).trim()||'未設定')}</div><div style="margin-top:10px"><a class="btn secondary" style="display:inline-flex;width:auto;padding:10px 14px" href="task.html#task_${esc(x.id)}">前往完成任務</a></div></div>`).join('')||'<div class="muted">目前沒有待完成任務</div>';
+  const all=(r.rows||[]);
+  const rows=all.filter(x=>x.status!=='已完成' && (String(x.assigneeId||'').trim()===String(user.id||'').trim() || String(x.assigneeEmail||'').trim().toLowerCase()===String(user.email||'').trim().toLowerCase()));
+  setTaskBadges(rows.length);
+  el.innerHTML=rows.slice(0,5).map(x=>`<div class="item"><div class="top"><strong>${esc(x.title||'')}</strong>${formatTaskStatusTag(x.status||'待處理')}</div><div>${esc(x.content||'')}</div><div class="muted">截止：${esc(x.dueLabel||((x.dueDate||'')+' '+(x.dueTime||'')).trim()||'未設定')}</div><div style="margin-top:10px"><a class="btn secondary" style="display:inline-flex;width:auto;padding:10px 14px" href="task.html?taskId=${encodeURIComponent(x.id)}">前往完成任務</a></div></div>`).join('')||'<div class="muted">目前沒有待完成任務</div>';
 }
 </script>
 </body>

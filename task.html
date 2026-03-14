@@ -19,15 +19,6 @@
 
     <div id="msg" class="message"></div>
 
-    <div id="progressCard" class="progress-card hidden" aria-live="polite">
-      <div class="progress-head">
-        <span id="progressTitle">正在處理</span>
-        <span id="progressPercent">0%</span>
-      </div>
-      <div class="progress-track"><div id="progressFill" class="progress-fill"></div></div>
-      <div id="progressNote" class="progress-note">請稍候…</div>
-    </div>
-
     <div id="adminBlock" data-if-admin style="display:none">
       <div class="task-admin-nav">
         <a class="navlink" href="dashboard.html">員工首頁</a>
@@ -84,7 +75,7 @@
 
       <div class="field"><label>完成回報需求</label><select id="requirePhotoReturn"><option value="否">不需要</option><option value="是">完成時需回傳照片</option></select></div>
       <div class="field"><label>提醒頻率</label><select id="remindFreq"><option value="低提醒">低提醒</option><option value="一般提醒" selected>一般提醒</option><option value="重要提醒">重要提醒</option></select></div>
-      <button class="btn" id="createBtn">建立交辦事項</button>
+      <div class="task-submit-zone"><button class="btn" id="createBtn">建立交辦事項</button><div id="progressCard" class="progress-card hidden" aria-live="polite"><div class="progress-head"><span id="progressTitle">正在處理</span><span id="progressPercent">0%</span></div><div class="progress-track"><div id="progressFill" class="progress-fill"></div></div><div id="progressNote" class="progress-note">請稍候…</div></div></div>
 
       <hr style="border:none;border-top:1px solid #e5ebf1;margin:18px 0">
       <div class="section-title">已建立任務</div>
@@ -163,17 +154,20 @@ function parseMediaValue(value){
 }
 function bestImageUrl(item){ return item.thumbnailUrl || item.rawUrl || item.previewUrl || item.viewUrl || item.openUrl || item.url || ''; }
 function bestOpenUrl(item){ return item.openUrl || item.viewUrl || item.previewUrl || item.url || item.rawUrl || ''; }
-function bestAudioFrameUrl(item){ return item.previewUrl || item.viewUrl || item.openUrl || ''; }
 function bestAudioRawUrl(item){ return item.rawUrl || item.directUrl || item.downloadUrl || ''; }
 function bestAudioOpenUrl(item){ return item.openUrl || item.previewUrl || item.viewUrl || item.url || item.rawUrl || ''; }
 function renderAudioMedia(item){
-  const frameUrl=bestAudioFrameUrl(item);
   const rawUrl=bestAudioRawUrl(item);
   const openUrl=bestAudioOpenUrl(item);
-  const player=frameUrl
-    ? `<iframe class="audio-frame" src="${esc(frameUrl)}" title="任務錄音預覽" loading="lazy" allow="autoplay"></iframe>`
-    : (rawUrl ? `<audio controls preload="none" src="${esc(rawUrl)}"></audio>` : `<div class="muted">此錄音請用下方按鈕開啟</div>`);
-  return `<div class="audio-box media-box">${player}<div class="media-actions"><a class="media-link" href="${esc(openUrl||rawUrl)}" target="_blank" rel="noopener">開啟錄音</a>${rawUrl && rawUrl!==openUrl ? `<a class="media-link" href="${esc(rawUrl)}" target="_blank" rel="noopener">直接播放連結</a>`:''}</div></div>`;
+  const player=rawUrl
+    ? `<audio controls preload="none" src="${esc(rawUrl)}"></audio>`
+    : `<div class="muted">此錄音請用下方按鈕開啟</div>`;
+  return `<div class="audio-box media-box">${player}<div class="media-actions"><a class="media-link" href="${esc(rawUrl||openUrl)}" target="_blank" rel="noopener">開啟錄音</a></div></div>`;
+}
+function canCompleteTask(x,currentUser){
+  const currentId=String((currentUser&&currentUser.id)||'').trim();
+  const currentEmail=String((currentUser&&currentUser.email)||'').trim().toLowerCase();
+  return x.status!=='已完成' && (String(x.assigneeId||'').trim()===currentId || String(x.assigneeEmail||'').trim().toLowerCase()===currentEmail);
 }
 function renderCompletePanel(x){
   return `
@@ -184,15 +178,27 @@ function renderCompletePanel(x){
       <button class="btn secondary" onclick="completeTask('${String(x.id).replace(/'/g,"\\'")}', ${x.requirePhotoReturn==='是'})">完成任務</button>
     </div>`;
 }
-function renderTaskRow(x,isAdmin){
+function renderTaskRow(x,currentUser,isAdminView){
   const proofText=x.requirePhotoReturn==='是'?'完成時需回傳照片':'不需照片回報';
   const dueText=x.dueLabel||(`${x.dueDate||''}${x.dueTime?(' '+x.dueTime):''}`.trim())||'未設定';
   const images=parseMediaValue(x.taskImageUrl);
   const audios=parseMediaValue(x.taskAudioUrl);
   const imageHtml=images.length?`<div class="gallery">${images.map(img=>`<a href="${esc(bestOpenUrl(img))}" target="_blank" rel="noopener"><img class="task-thumb" src="${esc(bestImageUrl(img))}" alt="任務圖片"></a>`).join('')}</div>`:'';
   const audioHtml=audios.length?audios.map(renderAudioMedia).join(''):'';
-  const completeBox=isAdmin?'':renderCompletePanel(x);
-  return `<div class="item" id="task_${esc(x.id)}"><div class="top"><strong>${esc(x.title)}</strong>${formatTaskStatusTag(esc(x.status))}</div><div>${esc(x.content||'')}</div>${imageHtml}${audioHtml}<div class="muted">指派：${esc(x.assigneeName||'')}｜期限：${esc(dueText)}</div><div class="muted">提醒：${esc(x.remindFreq||'一般提醒')}｜${proofText}</div>${isAdmin?`<div class="muted">建立者：${esc(x.createdByName||'')}｜建立時間：${esc(x.createdAt||'')}</div>`:''}${completeBox}</div>`;
+  const completeBox=canCompleteTask(x,currentUser)?renderCompletePanel(x):'';
+  const showOwnerHint=isAdminView && !completeBox;
+  const selfHint=completeBox?'<div class="task-cta-note">這筆任務指派給你本人，可直接在下方完成回報。</div>':'';
+  return `<div class="item" id="task_${esc(x.id)}"><div class="top"><strong>${esc(x.title)}</strong>${formatTaskStatusTag(esc(x.status))}</div><div>${esc(x.content||'')}</div>${imageHtml}${audioHtml}<div class="muted">指派：${esc(x.assigneeName||'')}｜期限：${esc(dueText)}</div><div class="muted">提醒：${esc(x.remindFreq||'一般提醒')}｜${proofText}</div>${isAdminView?`<div class="muted">建立者：${esc(x.createdByName||'')}｜建立時間：${esc(x.createdAt||'')}</div>`:''}${selfHint}${showOwnerHint?'<div class="muted">此任務不是指派給你本人，因此此處只顯示查看。</div>':''}${completeBox}</div>`;
+}
+function applyTaskFocus(){
+  const params=new URLSearchParams(location.search);
+  const taskId=(params.get('taskId')||'').trim();
+  const hash=location.hash||'';
+  const target=taskId?document.getElementById('task_'+taskId): (hash?document.querySelector(hash):null);
+  if(target){
+    target.classList.add('focus-task');
+    target.scrollIntoView({behavior:'smooth',block:'start'});
+  }
 }
 async function loadTasks(){
   const user=requireLogin();
@@ -200,11 +206,12 @@ async function loadTasks(){
   const r=await api('getTasks',{userId:user.id,email:user.email,role:user.role});
   const rows=r.rows||[];
   if(user.role==='admin'){
-    qs('#adminList').innerHTML=rows.map(x=>renderTaskRow(x,true)).join('')||'<div class="muted">目前沒有已建立任務</div>';
+    qs('#adminList').innerHTML=rows.map(x=>renderTaskRow(x,user,true)).join('')||'<div class="muted">目前沒有已建立任務</div>';
     qs('#staffBlock').style.display='none';
   }else{
-    qs('#list').innerHTML=rows.filter(x=>x.status!=='已完成').map(x=>renderTaskRow(x,false)).join('')||'<div class="muted">目前沒有任務</div>';
+    qs('#list').innerHTML=rows.filter(x=>x.status!=='已完成').map(x=>renderTaskRow(x,user,false)).join('')||'<div class="muted">目前沒有任務</div>';
   }
+  applyTaskFocus();
 }
 async function completeTask(taskId, requirePhoto){
   const user=requireLogin();
@@ -239,7 +246,7 @@ function setProgress(percent, title, note){
   if(title) qs('#progressTitle').textContent=title;
   if(note) qs('#progressNote').textContent=note;
 }
-function hideProgress(delay=0){
+function hideProgress(delay=0, restoreButton=true){
   clearInterval(fakeProgressTimer); fakeProgressTimer=null;
   setTimeout(()=>{
     qs('#progressCard').classList.add('hidden');
@@ -247,6 +254,7 @@ function hideProgress(delay=0){
     qs('#progressPercent').textContent='0%';
     qs('#progressTitle').textContent='正在處理';
     qs('#progressNote').textContent='請稍候…';
+    if(restoreButton){ qs('#createBtn').disabled=false; qs('#createBtn').classList.remove('hidden'); }
   }, delay);
 }
 function startFakeProgress(base=10, ceiling=86){
@@ -327,7 +335,9 @@ async function init(){
 
       const files=Array.from(qs('#taskImage').files||[]);
       try{
+        setMsg(qs('#msg'),'');
         qs('#createBtn').disabled=true;
+        qs('#createBtn').classList.add('hidden');
         startFakeProgress();
         let taskImages=[];
         if(files.length){
@@ -354,13 +364,12 @@ async function init(){
         setProgress(100,r.ok?'上傳完成':'建立失敗',r.message||'交辦事項已建立');
         setMsg(qs('#msg'),r.message,!r.ok);
         if(r.ok){ resetTaskForm(); await loadTasks(); }
-        hideProgress(r.ok?1800:2600);
+        hideProgress(r.ok?1800:2600,true);
       }catch(err){
         setMsg(qs('#msg'),err.message||String(err),true);
         setProgress(100,'建立失敗',err.message||String(err));
-        hideProgress(2600);
+        hideProgress(2600,true);
       }finally{
-        qs('#createBtn').disabled=false;
       }
     };
   }else{
@@ -368,10 +377,6 @@ async function init(){
   }
 
   await loadTasks();
-  if(location.hash){
-    const target=document.querySelector(location.hash);
-    if(target) target.scrollIntoView({behavior:'smooth',block:'start'});
-  }
 }
 </script>
 </body>
