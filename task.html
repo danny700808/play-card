@@ -1,257 +1,159 @@
 <!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>交辦事項</title><link rel="stylesheet" href="style.css"></head>
-<body onload="initTaskPage()">
-<div class="container">
-  <div class="card">
-    <div class="topbar wrap">
-      <div>
-        <h1 class="title" style="margin:0">交辦事項</h1>
-        <div class="welcome">歡迎 <span data-user-name></span></div>
-      </div>
-      <button class="btn secondary mini" onclick="logout()">登出</button>
-    </div>
+<body onload="initTaskPage()"><div class="container"><div class="card"><div class="topbar topbar-stack"><div><h1 class="title" style="margin:0">交辦事項</h1><div class="welcome">歡迎 <span data-user-name></span></div></div><div class="nav-row"><a class="navlink" href="dashboard.html">員工首頁</a><a class="navlink" href="clock.html">打卡</a><a class="navlink" href="leave.html">請假</a><a class="navlink" href="parttime.html">工讀時數</a></div></div><div id="msg" class="message"></div>
 
-    <div class="nav-strip">
-      <a class="navlink" href="dashboard.html">員工首頁</a>
-      <a class="navlink" href="clock.html">打卡</a>
-      <a class="navlink" href="leave.html">請假</a>
-      <a class="navlink" href="parttime.html">工讀時數</a>
-    </div>
+<div id="adminBlock" data-if-admin style="display:none">
+  <h2 class="section-title">快速交辦</h2>
+  <div class="field"><label>任務標題</label><input id="title" placeholder="例如：蝦皮寄出"></div>
+  <div class="field"><label>任務內容</label><textarea id="content" placeholder="例如：把蝦皮寄出，標籤都貼好，貨到付款"></textarea></div>
+  <div class="field"><label>指派員工</label><select id="assigneeName"><option value="">請選擇員工</option></select><div class="muted">畫面選姓名，系統會自動對應到員工 Email。</div></div>
 
-    <div id="msg" class="message"></div>
+  <div class="field"><label>期限快速選項</label><div class="quick-grid">
+    <button type="button" class="pill" onclick="setQuickDue('today')">今天內</button>
+    <button type="button" class="pill" onclick="setQuickDue('tomorrow')">明天內</button>
+    <button type="button" class="pill" onclick="setQuickDue('2days')">兩天內</button>
+    <button type="button" class="pill" onclick="setQuickDue('week')">本週內</button>
+    <button type="button" class="pill" onclick="setQuickDue('shopee')">蝦皮 19:00 前寄出</button>
+    <button type="button" class="pill" onclick="setQuickDue('momo')">Momo 15:00 前完成</button>
+    <button type="button" class="pill" onclick="toggleCustomDue(true)">自訂時間</button>
+  </div><div id="dueSummary" class="muted" style="margin-top:8px">尚未選擇期限</div></div>
 
-    <section id="adminSection" data-if-admin style="display:none">
-      <h2 class="section-title">快速交辦</h2>
-
-      <div class="field"><label>任務標題</label><input id="title" placeholder="例如：蝦皮寄出"></div>
-      <div class="field"><label>任務內容</label><textarea id="content" placeholder="請輸入交辦內容"></textarea></div>
-
-      <div class="field"><label>指派員工</label><select id="assigneeId"><option value="">請選擇員工</option></select></div>
-
-      <div class="field">
-        <label>期限快速選項</label>
-        <div class="chip-row">
-          <button type="button" class="chip" onclick="applyDuePreset('today')">今天內</button>
-          <button type="button" class="chip" onclick="applyDuePreset('tomorrow')">明天內</button>
-          <button type="button" class="chip" onclick="applyDuePreset('2days')">兩天內</button>
-          <button type="button" class="chip" onclick="applyDuePreset('week')">本週內</button>
-          <button type="button" class="chip" onclick="applyDuePreset('shopee')">蝦皮 19:00 前寄出</button>
-          <button type="button" class="chip" onclick="applyDuePreset('momo')">Momo 15:00 前完成</button>
-          <button type="button" class="chip chip-outline" onclick="toggleCustomDue()">自訂時間</button>
-        </div>
-        <div id="duePreview" class="hint" style="margin-top:8px">目前期限：未指定</div>
-      </div>
-
-      <div id="customDueBox" class="hidden-box">
-        <div class="field"><label>截止日期</label><input id="dueDate" type="date"></div>
-        <div class="field"><label>截止時間</label><input id="dueTime" type="time"></div>
-      </div>
-
-      <div class="field">
-        <label>任務圖片</label>
-        <input id="taskImageFile" type="file" accept="image/*">
-        <div id="taskImageHint" class="hint">選圖後會自動壓縮再上傳</div>
-      </div>
-
-      <div class="field">
-        <label>任務錄音</label>
-        <div class="btn-row">
-          <button type="button" class="btn secondary" id="startRecBtn" onclick="startTaskRecording()">開始錄音</button>
-          <button type="button" class="btn secondary" id="stopRecBtn" onclick="stopTaskRecording()" disabled>完成錄音</button>
-        </div>
-        <div id="audioHint" class="hint">尚未錄音</div>
-      </div>
-
-      <div class="field">
-        <label>完成回報需求</label>
-        <select id="completionNeed">
-          <option value="不需要">不需要</option>
-          <option value="需照片">需照片</option>
-          <option value="需備註">需備註</option>
-          <option value="需照片＋備註">需照片＋備註</option>
-        </select>
-      </div>
-
-      <div class="field">
-        <label>提醒頻率</label>
-        <select id="remindFreq">
-          <option value="低提醒">低提醒</option>
-          <option value="一般提醒" selected>一般提醒</option>
-          <option value="重要提醒">重要提醒</option>
-        </select>
-      </div>
-
-      <button class="btn" id="createBtn">建立交辦事項</button>
-
-      <hr class="section-divider">
-
-      <h2 class="section-title">已建立任務</h2>
-      <div id="adminTaskList" class="list"></div>
-    </section>
-
-    <section id="staffSection" data-if-staff style="display:none">
-      <h2 class="section-title">我的任務</h2>
-      <div id="staffTaskList" class="list"></div>
-    </section>
+  <div id="customDueBlock" class="hidden-block">
+    <div class="field"><label>截止日期</label><input id="dueDate" type="date"></div>
+    <div class="field"><label>截止時間</label><input id="dueTime" type="time"></div>
   </div>
+
+  <div class="field"><label>任務圖片</label><input id="taskImage" type="file" accept="image/*"><div class="muted">圖片會先自動壓縮再上傳。</div><div id="taskImagePreview" class="preview-wrap"></div></div>
+
+  <div class="field"><label>任務錄音</label><div class="btn-row"><button type="button" class="btn secondary" id="recStartBtn">開始錄音</button><button type="button" class="btn secondary" id="recStopBtn" disabled>完成錄音</button></div><div id="recStatus" class="muted" style="margin-top:8px">目前版本先保留錄音按鍵介面；若你的後端尚未支援錄音存檔，按鍵不會送出錄音。</div></div>
+
+  <div class="field"><label>完成回報需求</label><select id="requirePhoto"><option value="否">不需要</option><option value="是">需照片</option></select></div>
+  <div class="field"><label>提醒頻率</label><select id="remindFreq"><option value="低提醒">低提醒</option><option value="一般提醒" selected>一般提醒</option><option value="重要提醒">重要提醒</option></select></div>
+  <button class="btn" id="createBtn">建立交辦事項</button>
+  <hr style="border:none;border-top:1px solid #e5ebf1;margin:18px 0">
+  <h2 class="section-title">已建立任務</h2>
+  <div id="adminTaskList" class="list"></div>
 </div>
 
-<script src="config.js"></script>
-<script src="app.js"></script>
+<div id="employeeBlock" style="display:none">
+  <h2 class="section-title">我的任務</h2>
+  <div id="list" class="list"></div>
+</div>
+
+</div></div>
+<script src="config.js"></script><script src="app.js"></script>
 <script>
-let taskImageData = '';
-let taskAudioData = '';
+let currentDueMode = '';
+let recordedAudioData = '';
 let mediaRecorder = null;
-let audioChunks = [];
-let currentDuePreset = '';
+let mediaChunks = [];
 
-function toDateInputValue(d){
-  const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), day=String(d.getDate()).padStart(2,'0');
-  return `${y}-${m}-${day}`;
-}
-function addDays(d, days){ const x = new Date(d); x.setDate(x.getDate()+days); return x; }
-
-function applyDuePreset(mode){
-  currentDuePreset = mode;
+function setQuickDue(mode){
+  currentDueMode = mode;
+  toggleCustomDue(mode === 'custom');
   const now = new Date();
-  let dueDate = '', dueTime = '';
-  if(mode==='today'){ dueDate = toDateInputValue(now); dueTime = '23:59'; }
-  else if(mode==='tomorrow'){ dueDate = toDateInputValue(addDays(now,1)); dueTime = '23:59'; }
-  else if(mode==='2days'){ dueDate = toDateInputValue(addDays(now,2)); dueTime = '23:59'; }
-  else if(mode==='week'){ dueDate = toDateInputValue(addDays(now,7)); dueTime = '23:59'; }
-  else if(mode==='shopee'){ dueDate = toDateInputValue(now); dueTime = '19:00'; }
-  else if(mode==='momo'){ dueDate = toDateInputValue(now); dueTime = '15:00'; }
+  const summary = qs('#dueSummary');
+  let dueDate = ''; let dueTime = '';
+  if(mode==='today'){ dueDate = formatDateInput(now); dueTime = '23:59'; summary.textContent='已選：今天內'; }
+  else if(mode==='tomorrow'){ const d=new Date(now); d.setDate(d.getDate()+1); dueDate=formatDateInput(d); dueTime='23:59'; summary.textContent='已選：明天內'; }
+  else if(mode==='2days'){ const d=new Date(now); d.setDate(d.getDate()+2); dueDate=formatDateInput(d); dueTime='23:59'; summary.textContent='已選：兩天內'; }
+  else if(mode==='week'){ const d=new Date(now); const day=d.getDay()||7; d.setDate(d.getDate()+(7-day)); dueDate=formatDateInput(d); dueTime='23:59'; summary.textContent='已選：本週內'; }
+  else if(mode==='shopee'){ dueDate=formatDateInput(now); dueTime='19:00'; summary.textContent='已選：蝦皮 19:00 前寄出'; }
+  else if(mode==='momo'){ dueDate=formatDateInput(now); dueTime='15:00'; summary.textContent='已選：Momo 15:00 前完成'; }
+  else if(mode==='custom'){ currentDueMode='custom'; summary.textContent='已選：自訂時間'; return; }
   qs('#dueDate').value = dueDate; qs('#dueTime').value = dueTime;
-  qs('#customDueBox').style.display = mode==='custom' ? 'block' : 'none';
-  qs('#duePreview').textContent = '目前期限：' + fmtDue(dueDate, dueTime);
 }
-function toggleCustomDue(){
-  currentDuePreset = 'custom';
-  const box = qs('#customDueBox');
-  box.style.display = box.style.display==='block' ? 'none' : 'block';
-}
-async function loadEmployees(){
-  const r = await api('getEmployees');
-  const sel = qs('#assigneeId');
-  if(!sel) return;
-  sel.innerHTML = '<option value="">請選擇員工</option>';
-  (r.rows||[]).forEach(u=>{
-    const opt=document.createElement('option');
-    opt.value=u.id;
-    opt.textContent=u.name;
-    opt.dataset.email=u.email;
-    sel.appendChild(opt);
-  });
-}
-async function handleTaskImageChange(){
-  const file = qs('#taskImageFile').files[0];
-  if(!file){ taskImageData=''; qs('#taskImageHint').textContent='未選擇圖片'; return; }
-  taskImageData = await compressImageToDataUrl(file, 1280, 0.78);
-  qs('#taskImageHint').textContent='圖片已準備，送出時會上傳';
-}
-async function startTaskRecording(){
-  try{
-    const stream = await navigator.mediaDevices.getUserMedia({audio:true});
-    audioChunks = [];
-    mediaRecorder = new MediaRecorder(stream);
-    mediaRecorder.ondataavailable = e => { if(e.data && e.data.size) audioChunks.push(e.data); };
-    mediaRecorder.onstop = async () => {
-      const blob = new Blob(audioChunks, {type: mediaRecorder.mimeType || 'audio/webm'});
-      taskAudioData = await fileToDataUrl(new File([blob], 'task-audio.webm', {type: blob.type || 'audio/webm'}));
-      qs('#audioHint').textContent = '錄音已完成，送出時會一併上傳';
-      stream.getTracks().forEach(t=>t.stop());
-    };
-    mediaRecorder.start();
-    qs('#startRecBtn').disabled = true;
-    qs('#stopRecBtn').disabled = false;
-    qs('#audioHint').textContent = '錄音中...';
-  }catch(err){
-    setMsg(qs('#msg'),'無法啟用錄音：' + (err.message||err), true);
-  }
-}
-function stopTaskRecording(){
-  if(mediaRecorder && mediaRecorder.state !== 'inactive'){
-    mediaRecorder.stop();
-  }
-  qs('#startRecBtn').disabled = false;
-  qs('#stopRecBtn').disabled = true;
-}
-function renderTaskCard(x, isAdmin){
-  const showDone = x.status !== '已完成' && !isAdmin;
-  const needPhoto = String(x.completionNeed||'').includes('照片');
-  const needNote = String(x.completionNeed||'').includes('備註');
-  return `<div class="item">
-    <div class="top"><strong>${x.title || ''}</strong><span class="tag ${x.status==='已完成'?'':'pending'}">${x.status || ''}</span></div>
-    <div class="item-body">${x.content || ''}</div>
-    <div class="muted">指派：${x.assigneeName || ''}</div>
-    <div class="muted">截止：${fmtDue(x.dueDate, x.dueTime)}</div>
-    <div class="muted">完成回報需求：${x.completionNeed || '不需要'}｜提醒：${x.remindFreq || '一般提醒'}</div>
-    ${x.taskImageUrl ? `<a href="${x.taskImageUrl}" target="_blank" rel="noopener"><img class="task-thumb" src="${x.taskImageUrl}" alt="任務圖片"></a>` : ''}
-    ${x.taskAudioUrl ? `<audio controls class="audio-player" src="${x.taskAudioUrl}"></audio>` : ''}
-    ${isAdmin ? `<div class="muted">建立時間：${x.createdAt || ''}</div>` : ''}
-    ${showDone ? `
-      <div class="field" style="margin-top:10px"><label>完成備註</label><textarea id="note_${x.id}" placeholder="${needNote?'請填寫完成說明':'可填寫完成說明'}"></textarea></div>
-      <div class="field"><label>完成照片</label><input id="photo_${x.id}" type="file" accept="image/*">${needPhoto?'<div class="hint">此任務需要回傳照片</div>':''}</div>
-      <button class="btn secondary" onclick="completeTask('${x.id}')">完成任務</button>` : ''}
-  </div>`;
-}
+function toggleCustomDue(show){ qs('#customDueBlock').style.display = show ? 'block' : 'none'; if(show) currentDueMode='custom'; }
+function formatDateInput(d){ const y=d.getFullYear(); const m=String(d.getMonth()+1).padStart(2,'0'); const day=String(d.getDate()).padStart(2,'0'); return `${y}-${m}-${day}`; }
+function renderAssigneeSelect(){ const sel = qs('#assigneeName'); if(!sel) return; sel.innerHTML = '<option value="">請選擇員工</option>' + employeeOptionsHtml(); }
+function previewImage(file){ if(!file) return; const url = URL.createObjectURL(file); qs('#taskImagePreview').innerHTML = `<img class="task-thumb" src="${url}" alt="任務圖片預覽">`; }
+function getAssigneeEmail(){ const name = qs('#assigneeName').value; const found = findEmployeeByName(name); return found ? found.email : ''; }
+function isAdminView(){ const user = requireLogin(); return user && user.role === 'admin'; }
+
 async function loadTasks(){
-  const user = requireLogin(); if(!user) return;
-  const r = await api('getTasks', {userId:user.id, email:user.email, role:user.role});
+  const user=requireLogin(); if(!user) return;
+  const r=await api('getTasks',{userId:user.id,email:user.email,role:user.role});
   const rows = r.rows || [];
   if(user.role==='admin'){
-    qs('#adminTaskList').innerHTML = rows.map(x=>renderTaskCard(x, true)).join('') || '<div class="muted">目前沒有已建立任務</div>';
+    qs('#employeeBlock').style.display='none';
+    const adminList = qs('#adminTaskList');
+    adminList.innerHTML = rows.map(x=>`<div class="item"><div class="top"><strong>${x.title||''}</strong><span class="tag">${formatTaskStatus(x.status)}</span></div><div>${x.content||''}</div><div class="muted">指派：${x.assigneeName||x.assigneeEmail||''}｜截止：${x.dueDate||''} ${x.dueTime||''}</div>${x.taskImageUrl ? `<a href="${x.taskImageUrl}" target="_blank" rel="noopener"><img class="task-thumb" src="${x.taskImageUrl}" alt="任務圖片"></a>`:''}</div>`).join('') || '<div class="muted">目前沒有已建立任務</div>';
   } else {
-    qs('#staffTaskList').innerHTML = rows.map(x=>renderTaskCard(x, false)).join('') || '<div class="muted">目前沒有任務</div>';
+    qs('#employeeBlock').style.display='block';
+    qs('#list').innerHTML = rows.map(x=>`<div class="item"><div class="top"><strong>${x.title||''}</strong><span class="tag">${formatTaskStatus(x.status)}</span></div><div>${x.content||''}</div><div class="muted">截止：${x.dueDate||''} ${x.dueTime||''}${x.requirePhoto ? '｜完成回報：'+x.requirePhoto : ''}</div>${x.taskImageUrl ? `<div class="hint">交辦圖片</div><a href="${x.taskImageUrl}" target="_blank" rel="noopener"><img class="task-thumb" src="${x.taskImageUrl}" alt="交辦圖片"></a>` : ''}<div class="field" style="margin-top:10px"><textarea id="note_${x.id}" placeholder="完成備註"></textarea></div><div class="field"><input id="photo_${x.id}" type="file" accept="image/*"></div><button class="btn secondary" onclick="completeTask('${x.id}')">完成任務</button></div>`).join('') || '<div class="muted">目前沒有任務</div>';
   }
 }
+
 async function completeTask(taskId){
-  const user = requireLogin(); if(!user) return;
-  const file = qs('#photo_'+taskId)?.files?.[0];
-  let photo = '';
-  if(file) photo = await compressImageToDataUrl(file, 1280, 0.78);
-  const note = qs('#note_'+taskId)?.value || '';
-  const r = await api('completeTask', {userId:user.id, taskId, note, photo});
-  setMsg(qs('#msg'), r.message, !r.ok);
+  const user=requireLogin();
+  const file=qs('#photo_'+taskId).files[0];
+  let photo='';
+  if(file) photo=await compressImageToDataUrl(file, 1280, 0.78);
+  const r=await api('completeTask',{userId:user.id,taskId,note:qs('#note_'+taskId).value,photo});
+  setMsg(qs('#msg'),r.message,!r.ok);
   if(r.ok) loadTasks();
 }
+
 async function createTask(){
-  const user = requireLogin(); if(!user) return;
-  const assigneeId = qs('#assigneeId').value;
-  const selected = qs('#assigneeId').selectedOptions[0];
-  const assigneeEmail = selected ? selected.dataset.email || '' : '';
+  const user = requireLogin();
+  const assigneeEmail = getAssigneeEmail();
+  if(!assigneeEmail){ setMsg(qs('#msg'),'請先選擇指派員工',true); return; }
+  const imgFile = qs('#taskImage').files[0];
+  let taskImage='';
+  if(imgFile) taskImage = await compressImageToDataUrl(imgFile, 1280, 0.78);
   const payload = {
     creatorId: user.id,
-    title: qs('#title').value.trim(),
-    content: qs('#content').value.trim(),
-    assigneeId,
+    title: qs('#title').value,
+    content: qs('#content').value,
     assigneeEmail,
     dueDate: qs('#dueDate').value,
     dueTime: qs('#dueTime').value,
-    completionNeed: qs('#completionNeed').value,
+    requirePhoto: qs('#requirePhoto').value,
     remindFreq: qs('#remindFreq').value,
-    taskImage: taskImageData,
-    taskAudio: taskAudioData
+    taskImage,
+    dueMode: currentDueMode || 'today'
   };
   const r = await api('createTask', payload);
   setMsg(qs('#msg'), r.message, !r.ok);
   if(r.ok){
-    qs('#title').value=''; qs('#content').value=''; qs('#assigneeId').value='';
-    qs('#taskImageFile').value=''; taskImageData=''; qs('#taskImageHint').textContent='選圖後會自動壓縮再上傳';
-    taskAudioData=''; qs('#audioHint').textContent='尚未錄音';
-    applyDuePreset('today');
+    qs('#title').value=''; qs('#content').value=''; qs('#assigneeName').value=''; qs('#taskImage').value=''; qs('#taskImagePreview').innerHTML='';
+    qs('#requirePhoto').value='否'; qs('#remindFreq').value='一般提醒'; qs('#dueSummary').textContent='尚未選擇期限'; qs('#dueDate').value=''; qs('#dueTime').value='';
+    toggleCustomDue(false); currentDueMode='';
     loadTasks();
   }
 }
+
+async function startRecording(){
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+    mediaChunks = [];
+    mediaRecorder = new MediaRecorder(stream);
+    mediaRecorder.ondataavailable = e => { if(e.data && e.data.size>0) mediaChunks.push(e.data); };
+    mediaRecorder.onstop = ()=>{
+      const blob = new Blob(mediaChunks,{type:'audio/webm'});
+      const reader = new FileReader();
+      reader.onload = ()=>{ recordedAudioData = String(reader.result||''); qs('#recStatus').textContent='已完成錄音（目前版本僅保留前端錄音介面）'; };
+      reader.readAsDataURL(blob);
+      stream.getTracks().forEach(t=>t.stop());
+    };
+    mediaRecorder.start();
+    qs('#recStartBtn').disabled = true;
+    qs('#recStopBtn').disabled = false;
+    qs('#recStatus').textContent = '錄音中...';
+  }catch(err){ qs('#recStatus').textContent='無法開始錄音：' + (err.message||err); }
+}
+function stopRecording(){ if(mediaRecorder && mediaRecorder.state!=='inactive') mediaRecorder.stop(); qs('#recStartBtn').disabled=false; qs('#recStopBtn').disabled=true; }
+
 function initTaskPage(){
   fillHeader();
-  const user = requireLogin(); if(!user) return;
+  const user=requireLogin(); if(!user) return;
+  renderAssigneeSelect();
+  toggleCustomDue(false);
+  const taskImage = qs('#taskImage'); if(taskImage) taskImage.onchange = e => previewImage(e.target.files[0]);
   if(user.role==='admin'){
-    loadEmployees();
-    qs('#taskImageFile').addEventListener('change', handleTaskImageChange);
-    qs('#createBtn').addEventListener('click', createTask);
-    applyDuePreset('today');
+    qs('#createBtn').onclick = createTask;
   }
+  qs('#recStartBtn')?.addEventListener('click', startRecording);
+  qs('#recStopBtn')?.addEventListener('click', stopRecording);
   loadTasks();
 }
-</script>
-</body></html>
+</script></body></html>

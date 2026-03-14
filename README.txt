@@ -1,19 +1,19 @@
-這包是「交辦事項手機版修正版 + 安全可用 GS」同步版。
+這一包是純前端修正版，不要貼 apps-script.gs。
 
-【你要做的事】
-1. 先看 sheet-setup.txt，確認 Google Sheet 欄位
-2. 把 apps-script.gs 全貼到 Google Apps Script
-3. 先執行一次 testDriveWrite()，完成 Drive 權限授權
-4. 重新部署 Web App
-5. 把 task.html / app.js / style.css 覆蓋到 GitHub
-6. 用無痕視窗測試
+請只覆蓋 GitHub 的這 5 個檔案：
+- task.html
+- app.js
+- style.css
+- dashboard.html
+- config.js
 
-【這次重點】
-- 指派員工改成姓名下拉選單
-- 截止日期 / 時間預設隱藏，只有點自訂才展開
-- 完成回報需求改成比較清楚的欄位
-- 提醒頻率改成：低提醒 / 一般提醒 / 重要提醒
-- 管理者頁面不顯示「我的任務」
-- 員工頁面才顯示「我的任務」
-- 任務圖片支援自動壓縮上傳
-- 任務錄音支援錄製後上傳到 Google Drive
+重點：
+1. 指派員工改成姓名選單（目前 config.js 先放一位員工，可自行追加）
+2. 截止日期/時間預設隱藏，只有按「自訂時間」才展開
+3. 完成回報需求取代原本「是否需要照片」
+4. 老闆版 task.html 不顯示「我的任務」
+5. 員工在 dashboard.html 看「我的任務」
+6. 不動目前可用的 Google Apps Script
+
+如果要新增員工姓名選單，請在 config.js 的 EMPLOYEES 陣列裡追加：
+{ id: '員工ID', name: '姓名', email: '信箱' }
