@@ -44,10 +44,9 @@ function formatTaskStatusTag(status){
 
 function getPreferredRecorderMimeType(){
   const candidates = [
-    'audio/mp4;codecs=mp4a.40.2',
     'audio/mp4',
+    'audio/mp4;codecs=mp4a.40.2',
     'audio/x-m4a',
-    'audio/aac',
     'audio/wav',
     'audio/webm;codecs=opus',
     'audio/webm'
@@ -58,19 +57,25 @@ function getPreferredRecorderMimeType(){
   }
   return '';
 }
-async function startRecorder(onDone){
+
+async function startRecorder(onDone, onState){
   if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){throw new Error('目前裝置不支援錄音');}
   const stream=await navigator.mediaDevices.getUserMedia({audio:true});
   const mimeType = getPreferredRecorderMimeType();
   const rec=new MediaRecorder(stream, mimeType?{mimeType}:undefined);
   const chunks=[];
+  rec.onstart=()=>{ if(typeof onState==='function') onState('start', rec.mimeType || mimeType || ''); };
   rec.ondataavailable=e=>{if(e.data && e.data.size) chunks.push(e.data);};
+  rec.onerror=()=>{ if(typeof onState==='function') onState('error', rec.mimeType || mimeType || ''); };
   rec.onstop=async()=>{
     stream.getTracks().forEach(t=>t.stop());
     const finalType = rec.mimeType || mimeType || 'audio/webm';
     const blob=new Blob(chunks,{type:finalType});
     const reader=new FileReader();
-    reader.onload=()=>onDone(String(reader.result||''), finalType);
+    reader.onload=()=>{
+      if(typeof onState==='function') onState('stop', finalType);
+      onDone(String(reader.result||''), finalType);
+    };
     reader.readAsDataURL(blob);
   };
   rec.start();
