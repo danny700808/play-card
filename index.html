@@ -1,11 +1,18 @@
-<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>柚子員工系統｜登入</title><link rel="stylesheet" href="style.css"></head><body><div class="container"><div class="card"><div class="header"><h1 class="title">柚子員工系統</h1><p class="subtitle">員工登入</p></div><div id="msg" class="message"></div><div class="field"><label>Email</label><input id="email" type="email" placeholder="請輸入 Email"></div><div class="field"><label>密碼</label><div class="password-wrap"><input id="password" type="password" placeholder="請輸入密碼"><button type="button" class="eye" id="eyeBtn">👁</button></div></div><div class="small-actions"><a href="#" class="navlink" id="forgotBtn">忘記密碼？</a><a href="register.html" class="navlink">前往註冊</a></div><div class="btn-row" style="margin-top:14px"><button class="btn" id="loginBtn">登入</button></div></div></div><script src="config.js"></script><script src="app.js"></script><script>
+<!doctype html><html lang='zh-Hant'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>柚子員工系統｜登入</title><link rel='stylesheet' href='style.css'></head><body><div class='container'><div class='card'><h1 class='title'>柚子員工系統</h1><div class='subtitle'>員工登入</div><div id='msg' class='message'></div><div class='field'><label>Email</label><input id='email' type='email' placeholder='請輸入 Email'></div><div class='field'><label>密碼</label><div class='password-wrap'><input id='password' type='password' placeholder='請輸入密碼'><button type='button' class='eye' id='eyeBtn'>👁</button></div></div><div class='small-actions'><a href='#' class='navlink' id='forgotBtn'>忘記密碼？</a><a href='register.html' class='navlink'>前往註冊</a></div><div class='btn-row' style='margin-top:16px'><button class='btn' id='loginBtn'>登入</button></div></div></div><script src='config.js'></script><script src='app.js'></script><script>
 const msg=qs('#msg');
-qs('#eyeBtn').onclick=()=>togglePassword('#password',qs('#eyeBtn'));
+qs('#eyeBtn').onclick=()=>togglePassword('#password', qs('#eyeBtn'));
 qs('#loginBtn').onclick=async()=>{
-  const btn=qs('#loginBtn'); btn.disabled=true; btn.textContent='登入中...';
-  const r=await api('login',{email:qs('#email').value.trim(),password:qs('#password').value.trim()});
-  if(!r.ok){setMsg(msg,r.message,true); btn.disabled=false; btn.textContent='登入'; return;}
-  saveUser(r.user); setMsg(msg,'登入成功，正在進入系統...'); redirectAfterLogin(r.user);
+  setMsg(msg,'');
+  const email=qs('#email').value.trim();
+  const password=qs('#password').value.trim();
+  if(!email||!password){setMsg(msg,'請輸入 Email 與密碼',true);return;}
+  qs('#loginBtn').textContent='登入中...'; qs('#loginBtn').disabled=true;
+  try{
+    const r=await api('login',{email,password});
+    if(!r.ok){setMsg(msg,r.message,true); return;}
+    saveUser(r.user); setMsg(msg,'登入成功，正在進入系統...');
+    setTimeout(()=>redirectAfterLogin(r.user),400);
+  }finally{ qs('#loginBtn').textContent='登入'; qs('#loginBtn').disabled=false; }
 };
-qs('#forgotBtn').onclick=async(e)=>{e.preventDefault(); const email=qs('#email').value.trim(); if(!email){setMsg(msg,'請先輸入 Email',true); return;} const r=await api('forgotPassword',{email}); setMsg(msg,r.message,!r.ok);};
+qs('#forgotBtn').onclick=async(e)=>{e.preventDefault(); setMsg(msg,''); const email=qs('#email').value.trim(); if(!email){setMsg(msg,'請先輸入 Email',true); return;} const r=await api('forgotPassword',{email}); setMsg(msg,r.message,!r.ok);};
 </script></body></html>
