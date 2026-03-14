@@ -19,7 +19,7 @@
 
     <div id="msg" class="message"></div>
 
-    <div id="progressCard" class="progress-card hidden">
+    <div id="progressCard" class="progress-card hidden" aria-live="polite">
       <div class="progress-head">
         <span id="progressTitle">正在處理</span>
         <span id="progressPercent">0%</span>
@@ -93,6 +93,7 @@
 
     <div id="staffBlock">
       <div class="section-title">我的任務</div>
+      <div class="muted" style="margin-bottom:10px">每一筆未完成任務下方都可以直接填寫完成備註並按「完成任務」。</div>
       <div id="list" class="list"></div>
     </div>
   </div>
@@ -158,20 +159,40 @@ function parseMediaValue(value){
     if(Array.isArray(parsed)) return parsed;
     if(parsed && typeof parsed==='object') return [parsed];
   }catch(e){}
-  return [{url:raw,viewUrl:raw,directUrl:raw,thumbnailUrl:raw,name:''}];
+  return [{url:raw,viewUrl:raw,openUrl:raw,previewUrl:raw,rawUrl:raw,thumbnailUrl:raw,name:''}];
 }
-function bestImageUrl(item){ return item.thumbnailUrl || item.directUrl || item.viewUrl || item.url || ''; }
-function bestOpenUrl(item){ return item.viewUrl || item.url || item.directUrl || ''; }
-function bestAudioUrl(item){ return item.directUrl || item.viewUrl || item.url || ''; }
+function bestImageUrl(item){ return item.thumbnailUrl || item.rawUrl || item.previewUrl || item.viewUrl || item.openUrl || item.url || ''; }
+function bestOpenUrl(item){ return item.openUrl || item.viewUrl || item.previewUrl || item.url || item.rawUrl || ''; }
+function bestAudioFrameUrl(item){ return item.previewUrl || item.viewUrl || item.openUrl || ''; }
+function bestAudioRawUrl(item){ return item.rawUrl || item.directUrl || item.downloadUrl || ''; }
+function bestAudioOpenUrl(item){ return item.openUrl || item.previewUrl || item.viewUrl || item.url || item.rawUrl || ''; }
+function renderAudioMedia(item){
+  const frameUrl=bestAudioFrameUrl(item);
+  const rawUrl=bestAudioRawUrl(item);
+  const openUrl=bestAudioOpenUrl(item);
+  const player=frameUrl
+    ? `<iframe class="audio-frame" src="${esc(frameUrl)}" title="任務錄音預覽" loading="lazy" allow="autoplay"></iframe>`
+    : (rawUrl ? `<audio controls preload="none" src="${esc(rawUrl)}"></audio>` : `<div class="muted">此錄音請用下方按鈕開啟</div>`);
+  return `<div class="audio-box media-box">${player}<div class="media-actions"><a class="media-link" href="${esc(openUrl||rawUrl)}" target="_blank" rel="noopener">開啟錄音</a>${rawUrl && rawUrl!==openUrl ? `<a class="media-link" href="${esc(rawUrl)}" target="_blank" rel="noopener">直接播放連結</a>`:''}</div></div>`;
+}
+function renderCompletePanel(x){
+  return `
+    <div class="complete-panel">
+      <div class="complete-title">完成任務回報</div>
+      <div class="field" style="margin-top:10px"><textarea id="note_${esc(x.id)}" placeholder="可填寫完成備註"></textarea></div>
+      <div class="field"><label class="inline-label">完成照片${x.requirePhotoReturn==='是'?'（此任務必傳）':'（選填）'}</label><input id="photo_${esc(x.id)}" type="file" accept=".jpg,.jpeg,.png"></div>
+      <button class="btn secondary" onclick="completeTask('${String(x.id).replace(/'/g,"\\'")}', ${x.requirePhotoReturn==='是'})">完成任務</button>
+    </div>`;
+}
 function renderTaskRow(x,isAdmin){
   const proofText=x.requirePhotoReturn==='是'?'完成時需回傳照片':'不需照片回報';
   const dueText=x.dueLabel||(`${x.dueDate||''}${x.dueTime?(' '+x.dueTime):''}`.trim())||'未設定';
   const images=parseMediaValue(x.taskImageUrl);
   const audios=parseMediaValue(x.taskAudioUrl);
   const imageHtml=images.length?`<div class="gallery">${images.map(img=>`<a href="${esc(bestOpenUrl(img))}" target="_blank" rel="noopener"><img class="task-thumb" src="${esc(bestImageUrl(img))}" alt="任務圖片"></a>`).join('')}</div>`:'';
-  const audioHtml=audios.length?audios.map(a=>`<div class="audio-box"><audio controls preload="none" src="${esc(bestAudioUrl(a))}"></audio></div>`).join(''):'';
-  const completeBox=isAdmin?'':`<div class="field" style="margin-top:10px"><textarea id="note_${esc(x.id)}" placeholder="完成備註"></textarea></div><div class="field"><input id="photo_${esc(x.id)}" type="file" accept=".jpg,.jpeg,.png"></div><button class="btn secondary" onclick="completeTask('${String(x.id).replace(/'/g,"\\'")}', ${x.requirePhotoReturn==='是'})">完成任務</button>`;
-  return `<div class="item"><div class="top"><strong>${esc(x.title)}</strong>${formatTaskStatusTag(esc(x.status))}</div><div>${esc(x.content||'')}</div>${imageHtml}${audioHtml}<div class="muted">指派：${esc(x.assigneeName||'')}｜期限：${esc(dueText)}</div><div class="muted">提醒：${esc(x.remindFreq||'一般提醒')}｜${proofText}</div>${isAdmin?`<div class="muted">建立者：${esc(x.createdByName||'')}｜建立時間：${esc(x.createdAt||'')}</div>`:''}${completeBox}</div>`;
+  const audioHtml=audios.length?audios.map(renderAudioMedia).join(''):'';
+  const completeBox=isAdmin?'':renderCompletePanel(x);
+  return `<div class="item" id="task_${esc(x.id)}"><div class="top"><strong>${esc(x.title)}</strong>${formatTaskStatusTag(esc(x.status))}</div><div>${esc(x.content||'')}</div>${imageHtml}${audioHtml}<div class="muted">指派：${esc(x.assigneeName||'')}｜期限：${esc(dueText)}</div><div class="muted">提醒：${esc(x.remindFreq||'一般提醒')}｜${proofText}</div>${isAdmin?`<div class="muted">建立者：${esc(x.createdByName||'')}｜建立時間：${esc(x.createdAt||'')}</div>`:''}${completeBox}</div>`;
 }
 async function loadTasks(){
   const user=requireLogin();
@@ -218,15 +239,25 @@ function setProgress(percent, title, note){
   if(title) qs('#progressTitle').textContent=title;
   if(note) qs('#progressNote').textContent=note;
 }
-function hideProgress(){
+function hideProgress(delay=0){
   clearInterval(fakeProgressTimer); fakeProgressTimer=null;
-  qs('#progressCard').classList.add('hidden');
-  qs('#progressFill').style.width='0%'; qs('#progressPercent').textContent='0%'; qs('#progressNote').textContent='請稍候…';
+  setTimeout(()=>{
+    qs('#progressCard').classList.add('hidden');
+    qs('#progressFill').style.width='0%';
+    qs('#progressPercent').textContent='0%';
+    qs('#progressTitle').textContent='正在處理';
+    qs('#progressNote').textContent='請稍候…';
+  }, delay);
 }
-function startFakeProgress(base=12, ceiling=88){
+function startFakeProgress(base=10, ceiling=86){
   clearInterval(fakeProgressTimer);
-  let current=base; setProgress(current,'正在建立交辦','正在準備資料…');
-  fakeProgressTimer=setInterval(()=>{ current=Math.min(ceiling, current + (current<50?4:(current<75?2:1))); setProgress(current); if(current>=ceiling) clearInterval(fakeProgressTimer); }, 350);
+  let current=base;
+  setProgress(current,'正在建立交辦','正在整理資料…');
+  fakeProgressTimer=setInterval(()=>{
+    current=Math.min(ceiling, current + (current<40?5:(current<72?3:1)));
+    setProgress(current,'正在建立交辦','檔案上傳中，請不要關閉畫面');
+    if(current>=ceiling) clearInterval(fakeProgressTimer);
+  }, 320);
 }
 function renderSelectedImages(){
   const files=Array.from(qs('#taskImage').files||[]);
@@ -300,10 +331,12 @@ async function init(){
         startFakeProgress();
         let taskImages=[];
         if(files.length){
-          setProgress(18,'正在建立交辦',`正在壓縮圖片 0/${files.length}`);
-          taskImages=await compressFilesToDataUrls(files,(done,total)=>{ setProgress(18+Math.round((done/total)*30),'正在建立交辦',`正在壓縮圖片 ${done}/${total}`); });
+          setProgress(16,'正在建立交辦',`正在處理圖片 0/${files.length}`);
+          taskImages=await compressFilesToDataUrls(files,(done,total)=>{
+            setProgress(16+Math.round((done/total)*28),'正在建立交辦',`正在處理圖片 ${done}/${total}`);
+          });
         }
-        setProgress(files.length?52:28,'正在建立交辦','正在整理錄音與任務資料…');
+        setProgress(files.length?50:24,'正在建立交辦','正在整理錄音與任務資料…');
         const r=await api('createTask',{
           creatorId:user.id,
           title,
@@ -318,21 +351,27 @@ async function init(){
           taskImages,
           taskAudio
         });
-        setProgress(100,'處理完成',r.message||'交辦事項已建立');
+        setProgress(100,r.ok?'上傳完成':'建立失敗',r.message||'交辦事項已建立');
         setMsg(qs('#msg'),r.message,!r.ok);
         if(r.ok){ resetTaskForm(); await loadTasks(); }
+        hideProgress(r.ok?1800:2600);
       }catch(err){
         setMsg(qs('#msg'),err.message||String(err),true);
+        setProgress(100,'建立失敗',err.message||String(err));
+        hideProgress(2600);
       }finally{
         qs('#createBtn').disabled=false;
-        setTimeout(hideProgress, 900);
       }
     };
   }else{
     qs('#adminBlock').style.display='none';
   }
 
-  loadTasks();
+  await loadTasks();
+  if(location.hash){
+    const target=document.querySelector(location.hash);
+    if(target) target.scrollIntoView({behavior:'smooth',block:'start'});
+  }
 }
 </script>
 </body>
