@@ -29,6 +29,12 @@ a{text-decoration:none;color:inherit} .container{max-width:760px;margin:0 auto;p
   .audio-open-btn{width:100%;margin-top:10px}
 }
 
-.tile-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
-.tile-badge{display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:28px;padding:0 9px;border-radius:999px;background:#e74c3c;color:#fff;font-size:14px;font-weight:800;line-height:1;box-shadow:0 4px 10px rgba(231,76,60,.18)}
-.tile-task .tile-head strong{margin:0}
+.tile-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.count-badge{display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:30px;padding:0 10px;border-radius:999px;background:#e24c4c;color:#fff;font-size:14px;font-weight:800}
+.task-image-grid{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;margin-bottom:6px}
+.task-image-link{display:block}
+.task-thumb.multi{width:112px;height:112px;object-fit:cover;max-width:none;margin-top:0}
+.focus-task{outline:3px solid rgba(31,122,90,.22);border-radius:14px}
+@media (max-width:560px){
+  .task-thumb.multi{width:88px;height:88px}
+}
