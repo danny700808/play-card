@@ -21,10 +21,12 @@ async function loadAssignees(){
 function renderTaskRow(x, isAdmin){
   const proofText = x.requirePhotoReturn==='是' ? '完成時需回傳照片' : '不需照片回報';
   const dueText = x.dueLabel || ((x.dueDate||'') + (x.dueTime?(' '+x.dueTime):''));
-  const imageHtml = x.taskImageUrl ? `<a href="${x.taskImageUrl}" target="_blank" rel="noopener"><img class="task-thumb" src="${x.taskImageUrl}" alt="任務圖片"></a>` : '';
-  const audioHtml = x.taskAudioUrl ? `<div class="audio-box"><audio controls preload="none" src="${x.taskAudioUrl}"></audio></div>` : '';
-  const completeBox = isAdmin ? '' : `<div class="field" style="margin-top:10px"><textarea id="note_${x.id}" placeholder="完成備註"></textarea></div><div class="field"><input id="photo_${x.id}" type="file" accept=".jpg,.jpeg,.png"></div><button class="btn secondary" onclick="completeTask('${x.id}')">完成任務</button>`;
-  return `<div class="item"><div class="top"><strong>${x.title}</strong>${formatTaskStatusTag(x.status)}</div><div>${x.content||''}</div>${imageHtml}${audioHtml}<div class="muted">指派：${x.assigneeName||''}｜期限：${dueText}</div><div class="muted">提醒：${x.remindFreq||'一般提醒'}｜${proofText}</div>${isAdmin?`<div class="muted">建立者：${x.createdByName||''}｜建立時間：${x.createdAt||''}</div>`:''}${completeBox}</div>`;
+  const imgUrl = imagePreviewUrl(x.taskImageUrl);
+  const imageOpenUrl = audioOpenUrl(x.taskImageUrl);
+  const imageHtml = x.taskImageUrl ? `<div class="task-image-wrap"><a href="${imageOpenUrl}" target="_blank" rel="noopener"><img class="task-thumb" src="${imgUrl}" alt="任務圖片"></a></div>` : '';
+  const audioHtml = x.taskAudioUrl ? `<div class="audio-box"><audio controls preload="none" src="${x.taskAudioUrl}"></audio><a class="btn secondary audio-open-btn" href="${audioOpenUrl(x.taskAudioUrl)}" target="_blank" rel="noopener">開啟錄音</a></div>` : '';
+  const completeBox = isAdmin ? '' : `<div class="field" style="margin-top:10px"><textarea id="note_${x.id}" placeholder="完成備註"></textarea></div><div class="field"><input id="photo_${x.id}" type="file" accept=".jpg,.jpeg,.png"></div><button class="btn secondary" onclick="completeTask('${x.id}', this)">完成任務</button>`;
+  return `<div class="item" id="task_${x.id}"><div class="top"><strong>${x.title}</strong>${formatTaskStatusTag(x.status)}</div><div>${x.content||''}</div>${imageHtml}${audioHtml}<div class="muted">指派：${x.assigneeName||''}｜期限：${dueText}</div><div class="muted">提醒：${x.remindFreq||'一般提醒'}｜${proofText}</div>${isAdmin?`<div class="muted">建立者：${x.createdByName||''}｜建立時間：${x.createdAt||''}</div>`:''}${completeBox}</div>`;
 }
 async function loadTasks(){
   const user=requireLogin();
@@ -36,14 +38,19 @@ async function loadTasks(){
   }else{
     qs('#list').innerHTML = rows.filter(x=>x.status!=='已完成').map(x=>renderTaskRow(x,false)).join('') || '<div class="muted">目前沒有任務</div>';
   }
+  const taskId=new URLSearchParams(location.search).get('taskId');
+  if(taskId){const el=qs('#task_'+taskId); if(el){el.scrollIntoView({behavior:'smooth', block:'start'}); el.classList.add('focus-task'); setTimeout(()=>el.classList.remove('focus-task'),2200);}}
 }
-async function completeTask(taskId){
+async function completeTask(taskId, btnEl){
   const user=requireLogin();
   const file=qs('#photo_'+taskId).files[0];
   let photo='';
   if(file) photo=await compressImageToDataUrl(file,1280,0.78);
+  const btn=btnEl||null;
+  if(btn){btn.disabled=true; btn.textContent='送出中...';}
   const r=await api('completeTask',{userId:user.id,taskId,note:qs('#note_'+taskId).value,photo});
   setMsg(qs('#msg'),r.message,!r.ok);
+  if(btn){btn.disabled=false; btn.textContent='完成任務';}
   if(r.ok) loadTasks();
 }
 async function init(){
