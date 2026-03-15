@@ -18,25 +18,13 @@ async function loadAssignees(){
   const sel=qs('#assigneeId');
   sel.innerHTML='<option value="">請選擇員工</option>' + (r.rows||[]).map(x=>`<option value="${x.id}">${x.name}</option>`).join('');
 }
-
-function audioMimeTypeFromName(name){
-  const n=String(name||'').toLowerCase();
-  if(n.endsWith('.mp3')) return 'audio/mpeg';
-  if(n.endsWith('.m4a')) return 'audio/mp4';
-  if(n.endsWith('.wav')) return 'audio/wav';
-  if(n.endsWith('.ogg')) return 'audio/ogg';
-  if(n.endsWith('.webm')) return 'audio/webm';
-  return '';
-}
 function renderTaskRow(x, isAdmin){
   const proofText = x.requirePhotoReturn==='是' ? '完成時需回傳照片' : '不需照片回報';
   const dueText = x.dueLabel || ((x.dueDate||'') + (x.dueTime?(' '+x.dueTime):''));
   const imgUrl = imagePreviewUrl(x.taskImageUrl);
   const imageOpenUrl = audioOpenUrl(x.taskImageUrl);
   const imageHtml = x.taskImageUrl ? `<div class="task-image-wrap"><a href="${imageOpenUrl}" target="_blank" rel="noopener"><img class="task-thumb" src="${imgUrl}" alt="任務圖片"></a></div>` : '';
-  const audioType = audioMimeTypeFromName(x.taskAudioName);
-  const audioSrc = audioStreamUrl(x.taskAudioUrl);
-  const audioHtml = x.taskAudioUrl ? `<div class="audio-box task-audio-box"><audio controls preload="metadata" playsinline controlsList="nodownload"><source src="${audioSrc}" ${audioType?`type="${audioType}"`:''}>你的瀏覽器不支援音訊播放</audio><a class="btn secondary audio-open-btn" href="${audioOpenUrl(x.taskAudioUrl)}" target="_blank" rel="noopener">無法播放時改用這裡開啟錄音</a></div>` : '';
+  const audioHtml = x.taskAudioUrl ? `<div class="audio-box task-audio-box"><audio id="audio_${x.id}" controls preload="none"></audio><div class="attach-row"><button type="button" class="btn secondary audio-open-btn" onclick="loadTaskAudio('${x.id}','${x.taskAudioUrl}', this)">載入錄音</button><a class="btn secondary audio-open-btn" href="${audioOpenUrl(x.taskAudioUrl)}" target="_blank" rel="noopener">直接開啟</a></div><div class="attach-badge" id="audio_status_${x.id}">若播放器不能按，請先點「載入錄音」</div></div>` : '';
   const completeBox = isAdmin ? '' : `<div class="field" style="margin-top:10px"><textarea id="note_${x.id}" placeholder="完成備註"></textarea></div><div class="field"><input id="photo_${x.id}" type="file" accept=".jpg,.jpeg,.png"></div><div class="complete-action-box" id="completeWrap_${x.id}"><button class="btn secondary" onclick="completeTask('${x.id}', this)">完成任務</button><div class="progress-box hidden" id="completeProgress_${x.id}"><div class="progress-head"><strong>完成任務送出中</strong><span id="completePct_${x.id}">0%</span></div><div class="progress-track"><div id="completeBar_${x.id}" class="progress-bar"></div></div><div id="completeText_${x.id}" class="attach-badge">準備送出...</div></div></div>`;
   return `<div class="item" id="task_${x.id}"><div class="top"><strong>${x.title}</strong>${formatTaskStatusTag(x.status)}</div><div>${x.content||''}</div>${imageHtml}${audioHtml}<div class="muted">指派：${x.assigneeName||''}｜期限：${dueText}</div><div class="muted">提醒：${x.remindFreq||'一般提醒'}｜${proofText}</div>${isAdmin?`<div class="muted">建立者：${x.createdByName||''}｜建立時間：${x.createdAt||''}</div>`:''}${completeBox}</div>`;
 }
@@ -118,7 +106,7 @@ async function init(){
     await loadAssignees();
     initRecMeter();
     let recorder=null;
-    qs('#startRecBtn').onclick=async()=>{try{qs('#recMeter').classList.remove('hidden');recorder=await startRecorder((data,meta)=>{taskAudio=data;const label=(meta&&meta.mimeType)?('已附加錄音（'+meta.mimeType.replace('audio/','').toUpperCase()+'）'):'已附加錄音';qs('#recStatus').textContent=label;qs('#clearRecBtn').classList.remove('hidden');renderRecMeter(0.04);},(level)=>renderRecMeter(level));qs('#startRecBtn').disabled=true;qs('#stopRecBtn').disabled=false;qs('#recStatus').textContent='錄音中，請直接說話';}catch(e){setMsg(qs('#msg'),e.message||String(e),true);}};
+    qs('#startRecBtn').onclick=async()=>{try{qs('#recMeter').classList.remove('hidden');recorder=await startRecorder((data)=>{taskAudio=data;qs('#recStatus').textContent='已附加錄音';qs('#clearRecBtn').classList.remove('hidden');renderRecMeter(0.04);},(level)=>renderRecMeter(level));qs('#startRecBtn').disabled=true;qs('#stopRecBtn').disabled=false;qs('#recStatus').textContent='錄音中，請直接說話';}catch(e){setMsg(qs('#msg'),e.message||String(e),true);}};
     qs('#stopRecBtn').onclick=()=>{if(recorder){recorder.stop(); recorder=null;}qs('#startRecBtn').disabled=false;qs('#stopRecBtn').disabled=true;qs('#recStatus').textContent='已錄音，可建立交辦事項';};
     qs('#clearRecBtn').onclick=()=>{taskAudio='';qs('#recStatus').textContent='尚未錄音';qs('#clearRecBtn').classList.add('hidden');renderRecMeter(0);qs('#recMeter').classList.add('hidden');};
     qs('#createBtn').onclick=async()=>{

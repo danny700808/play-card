@@ -19,7 +19,7 @@ function applySavedLogin(emailSel='#email',passwordSel='#password',rememberSel='
 function getDriveFileId(url){const m=String(url||'').match(/(?:file\/d\/|[?&]id=)([-_a-zA-Z0-9]+)/);return m?m[1]:'';}
 function imagePreviewUrl(url){const id=getDriveFileId(url);return id?('https://drive.google.com/thumbnail?id='+id+'&sz=w1200'):url;}
 function audioOpenUrl(url){const id=getDriveFileId(url);return id?('https://drive.google.com/file/d/'+id+'/view'):url;}
-function audioStreamUrl(url){const id=getDriveFileId(url);if(!id) return url;return 'https://drive.google.com/uc?export=view&id='+id;}
+function audioStreamUrl(url){const id=getDriveFileId(url);return id?('https://drive.google.com/uc?export=download&id='+id):url;}
 async function compressImageToDataUrl(file, maxSize=1280, quality=0.78){
   if(!file) return '';
   if(!file.type.startsWith('image/')) return await fileToDataUrl(file);
@@ -48,18 +48,11 @@ function formatTaskStatusTag(status){
   const cls=status==='待處理'?'pending':(status==='已完成'?'done':'');
   return `<span class="tag ${cls}">${status}</span>`;
 }
-function pickAudioMimeType(){
-  const ua=String(navigator.userAgent||'').toLowerCase();
-  const isSafari=/safari/.test(ua) && !/chrome|crios|android/.test(ua);
-  const mimeCandidates=isSafari
-    ? ['audio/mp4','audio/x-m4a','audio/wav','audio/webm;codecs=opus','audio/webm']
-    : ['audio/webm;codecs=opus','audio/webm','audio/wav','audio/mp4','audio/x-m4a'];
-  return mimeCandidates.find(t=>window.MediaRecorder&&MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported(t))||'';
-}
 async function startRecorder(onDone, onLevel){
   if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){throw new Error('目前裝置不支援錄音');}
   const stream=await navigator.mediaDevices.getUserMedia({audio:true});
-  const mimeType=pickAudioMimeType();
+  const mimeCandidates=['audio/mp4','audio/m4a','audio/wav','audio/webm;codecs=opus','audio/webm'];
+  const mimeType=mimeCandidates.find(t=>window.MediaRecorder&&MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported(t))||'';
   const rec=new MediaRecorder(stream, mimeType?{mimeType}:undefined);
   const chunks=[];
   let audioCtx=null, analyser=null, source=null, rafId=0, dataArray=null;
@@ -89,11 +82,37 @@ async function startRecorder(onDone, onLevel){
     try{ audioCtx && audioCtx.close && audioCtx.close(); }catch(e){}
     stream.getTracks().forEach(t=>t.stop());
     const blob=new Blob(chunks,{type:rec.mimeType || mimeType || 'audio/webm'});
-    if(!blob || !blob.size){ throw new Error('錄音資料為空，請重新錄一次'); }
     const reader=new FileReader();
-    reader.onload=()=>onDone(String(reader.result||''), { mimeType: blob.type||rec.mimeType||mimeType||'', size: blob.size });
+    reader.onload=()=>onDone(String(reader.result||''));
     reader.readAsDataURL(blob);
   };
   rec.start(250);
   return rec;
 }
+
+
+function escapeHtml(s){return String(s==null?'':s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",""":"&quot;","'":"&#39;"}[m]));}
+async function fetchTaskAudioData(taskId, audioUrl){
+  return await api('getTaskAudioData',{taskId:taskId||'',audioUrl:audioUrl||'',userId:(getUser()||{}).id||''});
+}
+async function loadTaskAudio(taskId, audioUrl, btn){
+  const audio=document.getElementById('audio_'+taskId);
+  const status=document.getElementById('audio_status_'+taskId);
+  if(!audio) return;
+  try{
+    if(btn){btn.disabled=true; btn.textContent='載入錄音中...';}
+    if(status){status.textContent='錄音載入中...'; status.classList.remove('hidden');}
+    const r=await fetchTaskAudioData(taskId, audioUrl);
+    if(!r || !r.ok || !r.dataUrl) throw new Error((r&&r.message)||'錄音讀取失敗');
+    audio.src=r.dataUrl;
+    if(r.contentType){ audio.setAttribute('data-content-type', r.contentType); }
+    audio.load();
+    try{ await audio.play(); }catch(e){}
+    if(status){status.textContent='錄音已載入，可直接播放'; status.classList.remove('hidden');}
+    if(btn){btn.textContent='重新載入錄音'; btn.disabled=false;}
+  }catch(err){
+    if(status){status.textContent='錄音載入失敗：'+(err.message||String(err)); status.classList.remove('hidden');}
+    if(btn){btn.textContent='重新載入錄音'; btn.disabled=false;}
+  }
+}
+

@@ -1,25 +1,20 @@
-這版是針對「電腦版音檔播放器按了沒反應 / 顯示 0:00 / 不能播放」做的第二版修正。
+【這次修正重點】
+1. 不再讓 <audio> 直接吃 Google Drive 網址。
+2. 改成前端先按「載入錄音」，再向 Apps Script 讀取 Drive 音檔內容。
+3. Apps Script 會把 Drive 裡的音檔轉成 data URL 回給前端播放。
+4. 這樣就不依賴 Google Drive 的直接串流行為，比較能避開 0:00 / 0:00 與按鈕不能按的問題。
 
-本次修正重點：
-1. app.js
-- 將音檔播放網址固定改成 Google Drive 的 export=view，避免前端播放器吃到 download 型網址。
-- 調整錄音格式選擇：
-  - Safari / iPhone 優先 mp4 / m4a
-  - Chrome / Edge / 桌機優先 webm
-- 若錄音檔是空的，會直接丟出錯誤，避免後面產生 0 秒音檔。
+【要更新的檔案】
+- GitHub：app.js、task.html
+- Apps Script：apps-script.gs（重新部署）
 
-2. task.html
-- 音檔播放器改成 <audio><source ... type=...></audio> 方式。
-- 依據檔名自動補上對應 MIME type。
-- 顯示「無法播放時改用這裡開啟錄音」備援按鈕。
-- 管理者錄完音後，會顯示目前實際錄下來的格式。
+【測試方式】
+1. 換掉 GitHub 的 app.js 與 task.html
+2. Apps Script 貼上新的 apps-script.gs 並重新部署 Web App
+3. 強制重新整理 task.html
+4. 到任務卡點「載入錄音」
 
-建議你測試方式：
-1. 先把 GitHub 的 app.js 與 task.html 覆蓋成這版
-2. 強制重新整理（Ctrl+F5）
-3. 用電腦 Chrome 重新錄一筆新的任務音檔
-4. 再到任務頁測播放
-
-注意：
-- 舊的錄音如果本身就是空檔或格式有問題，換前端後仍可能播不了。
-- 最準的是「新錄一筆再測」。
+【判讀結果】
+- 若載入後能播：代表原本問題是 Google Drive 直接串流不穩。
+- 若載入後仍失敗，而且顯示錄音檔是空的：代表那一筆錄音本身壞掉。
+- 若新錄音可播、舊錄音不能播：代表舊資料格式異常，不是播放器介面問題。
