@@ -34,12 +34,12 @@
         <div class="field">
           <label>急件快速選單</label>
           <div class="quick-row" id="dueModeChips">
-            <button type="button" class="quick-chip" data-mode="today">今天內</button>
-            <button type="button" class="quick-chip" data-mode="tomorrow">明天內</button>
-            <button type="button" class="quick-chip" data-mode="2days">兩天內</button>
-            <button type="button" class="quick-chip" data-mode="week">本週內</button>
-            <button type="button" class="quick-chip" data-mode="shopee">蝦皮 19:00 前寄出</button>
-            <button type="button" class="quick-chip" data-mode="momo">Momo 15:00 前完成</button>
+            <button type="button" class="quick-chip" data-mode="today">今天 9 點前</button>
+            <button type="button" class="quick-chip" data-mode="tomorrow">明天 9 點前</button>
+            <button type="button" class="quick-chip" data-mode="3days">三天內</button>
+            <button type="button" class="quick-chip" data-mode="week">七天內</button>
+            <button type="button" class="quick-chip" data-mode="shopee">蝦皮今天 19:00 前寄出</button>
+            <button type="button" class="quick-chip" data-mode="momo">MOMO 今天 15:00 前完成</button>
             <button type="button" class="quick-chip" data-mode="custom">自訂時間</button>
           </div>
         </div>
@@ -81,13 +81,19 @@
         </div>
 
         <hr style="border:none;border-top:1px solid #e5ebf1;margin:18px 0">
-        <div class="section-title">已建立任務</div>
+        <div class="section-title">待處理任務</div>
         <div id="adminList" class="list"></div>
+        <div class="section-title" style="margin-top:16px">近 3 天已完成任務</div>
+        <div class="attach-badge section-note">完成超過 3 天的資料不會再載入。</div>
+        <div id="adminDoneList" class="list" style="margin-top:10px"></div>
       </div>
 
       <div id="staffBlock">
         <div class="section-title">我的任務</div>
         <div id="list" class="list"></div>
+        <div class="section-title" style="margin-top:16px">近 3 天已完成任務</div>
+        <div class="attach-badge section-note">完成超過 3 天的資料不會再載入。</div>
+        <div id="doneList" class="list" style="margin-top:10px"></div>
       </div>
     </div>
   </div>
@@ -100,28 +106,29 @@
     let currentUser=null;
 
     function fmtDate(d){return new Date(d).toLocaleDateString('sv-SE');}
+    function sleep(ms){return new Promise(r=>setTimeout(r, ms));}
     function applyDueMode(mode){
       dueMode=mode;
       qsa('#dueModeChips .quick-chip').forEach(b=>b.classList.toggle('active',b.dataset.mode===mode));
       const custom = mode==='custom';
       qs('#customDueBox').classList.toggle('hidden', !custom);
       const now = new Date();
-      if(mode==='today'){ qs('#dueDate').value=fmtDate(now); qs('#dueTime').value='23:59'; }
-      if(mode==='tomorrow'){ const d=new Date(now); d.setDate(d.getDate()+1); qs('#dueDate').value=fmtDate(d); qs('#dueTime').value='23:59'; }
-      if(mode==='2days'){ const d=new Date(now); d.setDate(d.getDate()+2); qs('#dueDate').value=fmtDate(d); qs('#dueTime').value='23:59'; }
-      if(mode==='week'){ const d=new Date(now); d.setDate(d.getDate()+(6-d.getDay())); qs('#dueDate').value=fmtDate(d); qs('#dueTime').value='23:59'; }
+      if(mode==='today'){ qs('#dueDate').value=fmtDate(now); qs('#dueTime').value='09:00'; }
+      if(mode==='tomorrow'){ const d=new Date(now); d.setDate(d.getDate()+1); qs('#dueDate').value=fmtDate(d); qs('#dueTime').value='09:00'; }
+      if(mode==='3days'){ const d=new Date(now); d.setDate(d.getDate()+3); qs('#dueDate').value=fmtDate(d); qs('#dueTime').value='09:00'; }
+      if(mode==='week'){ const d=new Date(now); d.setDate(d.getDate()+7); qs('#dueDate').value=fmtDate(d); qs('#dueTime').value='09:00'; }
       if(mode==='shopee'){ qs('#dueDate').value=fmtDate(now); qs('#dueTime').value='19:00'; }
       if(mode==='momo'){ qs('#dueDate').value=fmtDate(now); qs('#dueTime').value='15:00'; }
     }
     function computeDeadline(mode){
       const now=new Date();
-      if(mode==='custom') return {dueDate:qs('#dueDate').value||'', dueTime:qs('#dueTime').value||'', dueLabel:''};
-      if(mode==='today') return {dueDate:fmtDate(now),dueTime:'23:59',dueLabel:'今天內'};
-      if(mode==='tomorrow'){ const d=new Date(now); d.setDate(d.getDate()+1); return {dueDate:fmtDate(d),dueTime:'23:59',dueLabel:'明天內'}; }
-      if(mode==='2days'){ const d=new Date(now); d.setDate(d.getDate()+2); return {dueDate:fmtDate(d),dueTime:'23:59',dueLabel:'兩天內'}; }
-      if(mode==='week'){ const d=new Date(now); d.setDate(d.getDate()+(6-d.getDay())); return {dueDate:fmtDate(d),dueTime:'23:59',dueLabel:'本週內'}; }
-      if(mode==='shopee') return {dueDate:fmtDate(now),dueTime:'19:00',dueLabel:'蝦皮 19:00 前寄出'};
-      if(mode==='momo') return {dueDate:fmtDate(now),dueTime:'15:00',dueLabel:'Momo 15:00 前完成'};
+      if(mode==='custom') return {dueDate:qs('#dueDate').value||'', dueTime:qs('#dueTime').value||'', dueLabel:'自訂時間'};
+      if(mode==='today') return {dueDate:fmtDate(now),dueTime:'09:00',dueLabel:'今天 9 點前'};
+      if(mode==='tomorrow'){ const d=new Date(now); d.setDate(d.getDate()+1); return {dueDate:fmtDate(d),dueTime:'09:00',dueLabel:'明天 9 點前'}; }
+      if(mode==='3days'){ const d=new Date(now); d.setDate(d.getDate()+3); return {dueDate:fmtDate(d),dueTime:'09:00',dueLabel:'三天後 9 點前'}; }
+      if(mode==='week'){ const d=new Date(now); d.setDate(d.getDate()+7); return {dueDate:fmtDate(d),dueTime:'09:00',dueLabel:'七天內 9 點前'}; }
+      if(mode==='shopee') return {dueDate:fmtDate(now),dueTime:'19:00',dueLabel:'蝦皮今天 19:00 前寄出'};
+      if(mode==='momo') return {dueDate:fmtDate(now),dueTime:'15:00',dueLabel:'MOMO 今天 15:00 前完成'};
       return {dueDate:'',dueTime:'',dueLabel:''};
     }
 
@@ -131,45 +138,93 @@
       sel.innerHTML='<option value="">請選擇員工</option>' + (r.rows||[]).map(x=>`<option value="${x.id}">${x.name}</option>`).join('');
     }
 
-    function renderImageGallery(images){
+    function priorityClass(freq){
+      if(freq==='重要提醒') return 'high';
+      if(freq==='低提醒') return 'low';
+      return 'normal';
+    }
+    function esc(text){
+      return String(text||'').replace(/[&<>"]/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[s]));
+    }
+    function renderImageGallery(images, titleText=''){ 
       if(!images || !images.length) return '';
-      return `<div class="task-image-grid">${images.map((img,idx)=>{
+      return `<div class="task-gallery-block">${titleText?`<div class="task-gallery-title">${titleText}</div>`:''}<div class="task-image-grid">${images.map((img,idx)=>{
         const raw = img.rawUrl || img.viewUrl || '';
         const open = audioOpenUrl(img.viewUrl || raw);
-        return `<a class="task-image-link" href="${open}" target="_blank" rel="noopener" title="任務圖片 ${idx+1}"><img class="task-thumb multi" src="${imagePreviewUrl(raw)}" alt="任務圖片 ${idx+1}"></a>`;
-      }).join('')}</div><div class="attach-badge">共 ${images.length} 張任務圖片</div>`;
+        return `<a class="task-image-link" href="${open}" target="_blank" rel="noopener" title="${titleText||'圖片'} ${idx+1}"><img class="task-thumb multi" src="${imagePreviewUrl(raw)}" alt="${titleText||'圖片'} ${idx+1}"></a>`;
+      }).join('')}</div><div class="attach-badge">共 ${images.length} 張</div></div>`;
     }
-
-    function renderTaskRow(x, isAdmin){
+    function renderMetaLine(label, value, cls=''){
+      if(!value) return '';
+      return `<div class="task-line ${cls}"><span class="task-line-label">${label}</span><span class="task-line-value">${value}</span></div>`;
+    }
+    function renderActiveTaskRow(x, isAdmin){
       const proofText = x.requirePhotoReturn==='是' ? '完成時需回傳照片' : '不需照片回報';
       const dueText = x.dueLabel || ((x.dueDate||'') + (x.dueTime?(' '+x.dueTime):''));
-      const imageHtml = renderImageGallery(x.taskImages || []);
-      const audioHtml = x.taskAudioUrl ? `<div class="audio-box task-audio-box"><a class="btn secondary audio-open-btn" href="${audioOpenUrl(x.taskAudioUrl)}" target="_blank" rel="noopener">錄音說明</a></div>` : '';
+      const remind = x.remindFreq || '一般提醒';
+      const audioHtml = x.taskAudioUrl ? `<div class="audio-box task-audio-box"><a class="btn deep audio-open-btn" href="${audioOpenUrl(x.taskAudioUrl)}" target="_blank" rel="noopener">錄音說明</a></div>` : '';
       const canComplete = !isAdmin || !!x.canComplete;
       const completeBox = canComplete ? `
-        <div class="field" style="margin-top:10px"><textarea id="note_${x.id}" placeholder="完成備註"></textarea></div>
+        <div class="field" style="margin-top:12px"><textarea id="note_${x.id}" placeholder="完成備註"></textarea></div>
         <div class="field">
           <input id="photo_${x.id}" type="file" accept=".jpg,.jpeg,.png" multiple onchange="updateSelectedCount('photo_${x.id}','photoHint_${x.id}','完成照片')">
           <div class="attach-badge" id="photoHint_${x.id}">可一次選多張完成照片</div>
         </div>
         <div class="complete-action-box" id="completeWrap_${x.id}">
-          <button class="btn secondary" onclick="completeTask('${x.id}', this)">完成任務</button>
+          <button class="btn strong-action" onclick="completeTask('${x.id}', this)">完成任務</button>
           <div class="progress-box hidden" id="completeProgress_${x.id}">
             <div class="progress-head"><strong>完成任務送出中</strong><span id="completePct_${x.id}">0%</span></div>
             <div class="progress-track"><div id="completeBar_${x.id}" class="progress-bar"></div></div>
             <div id="completeText_${x.id}" class="attach-badge">準備送出...</div>
           </div>
         </div>` : '';
-      return `<div class="item" id="task_${x.id}">
-        <div class="top"><strong>${x.title}</strong>${formatTaskStatusTag(x.status)}</div>
-        <div>${x.content||''}</div>
-        ${imageHtml}
+      const deleteBtn = x.canDelete ? `<button class="btn danger-outline" onclick="deleteTask('${x.id}')">刪除任務</button>` : '';
+      return `<div class="item task-card" id="task_${x.id}">
+        <div class="top"><div class="task-title-wrap"><div class="task-main-title">${esc(x.title)}</div></div>${formatTaskStatusTag(x.status)}</div>
+        <div class="task-main-content">${esc(x.content||'')}</div>
+        ${renderImageGallery(x.taskImages || [], '任務圖片')}
         ${audioHtml}
-        <div class="muted">指派：${x.assigneeName||''}｜期限：${dueText}</div>
-        <div class="muted">提醒：${x.remindFreq||'一般提醒'}｜${proofText}</div>
-        ${isAdmin?`<div class="muted">建立者：${x.createdByName||''}｜建立時間：${x.createdAt||''}</div>`:''}
-        ${isAdmin && x.canComplete ? `<div class="attach-badge">這筆任務是指派給你自己，因此你也可以直接回報完成。</div>` : ''}
+        ${renderMetaLine('期限', dueText, 'due-line')}
+        <div class="task-line remind-line ${priorityClass(remind)}"><span class="task-line-label">提醒</span><span class="task-pill ${priorityClass(remind)}">${remind}</span><span class="task-proof">${proofText}</span></div>
+        ${renderMetaLine('建立時間', x.createdAt || '', 'created-line')}
+        ${isAdmin && x.canComplete ? `<div class="attach-badge emphasis-note">這筆任務有指派給你自己，所以你也可以直接回報完成。</div>` : ''}
         ${completeBox}
+        ${deleteBtn ? `<div class="task-actions-row">${deleteBtn}</div>` : ''}
+      </div>`;
+    }
+    function renderCompletedTaskRow(x){
+      const dueText = x.dueLabel || ((x.dueDate||'') + (x.dueTime?(' '+x.dueTime):''));
+      const remind = x.remindFreq || '一般提醒';
+      const canEdit = !!x.canEditCompletion;
+      const updateBox = canEdit ? `
+        <div class="field" style="margin-top:12px"><textarea id="doneNote_${x.id}" placeholder="可在三天內修正完成內容">${esc(x.completeNote||'')}</textarea></div>
+        <div class="field">
+          <input id="donePhoto_${x.id}" type="file" accept=".jpg,.jpeg,.png" multiple onchange="updateSelectedCount('donePhoto_${x.id}','donePhotoHint_${x.id}','修正照片')">
+          <div class="attach-badge" id="donePhotoHint_${x.id}">如需更換照片，可一次重傳多張</div>
+        </div>
+        <div class="task-actions-row">
+          <button class="btn strong-action" onclick="updateCompletion('${x.id}')">更新完成內容</button>
+          ${x.canRestore ? `<button class="btn secondary" onclick="restoreTask('${x.id}')">恢復成未完成</button>` : ''}
+          ${x.canDelete ? `<button class="btn danger-outline" onclick="deleteTask('${x.id}')">刪除任務</button>` : ''}
+        </div>
+        <div class="progress-box hidden" id="editProgress_${x.id}">
+          <div class="progress-head"><strong>更新完成內容</strong><span id="editPct_${x.id}">0%</span></div>
+          <div class="progress-track"><div id="editBar_${x.id}" class="progress-bar"></div></div>
+          <div id="editText_${x.id}" class="attach-badge">準備送出...</div>
+        </div>` : '';
+      const actions = !canEdit && (x.canRestore || x.canDelete) ? `<div class="task-actions-row">${x.canRestore ? `<button class="btn secondary" onclick="restoreTask('${x.id}')">恢復成未完成</button>` : ''}${x.canDelete ? `<button class="btn danger-outline" onclick="deleteTask('${x.id}')">刪除任務</button>` : ''}</div>` : '';
+      return `<div class="item task-card completed-card" id="task_${x.id}">
+        <div class="top"><div class="task-title-wrap"><div class="task-main-title">${esc(x.title)}</div></div>${formatTaskStatusTag(x.status)}</div>
+        <div class="task-main-content">${esc(x.content||'')}</div>
+        ${renderImageGallery(x.taskImages || [], '任務圖片')}
+        ${renderImageGallery(x.completeImages || [], '完成照片')}
+        ${renderMetaLine('期限', dueText, 'due-line')}
+        <div class="task-line remind-line ${priorityClass(remind)}"><span class="task-line-label">提醒</span><span class="task-pill ${priorityClass(remind)}">${remind}</span></div>
+        ${renderMetaLine('完成時間', x.completedAt || '', 'done-line')}
+        ${renderMetaLine('建立時間', x.createdAt || '', 'created-line')}
+        <div class="attach-badge emphasis-note">三天內可修正完成內容或恢復成未完成。</div>
+        ${updateBox}
+        ${actions}
       </div>`;
     }
 
@@ -178,11 +233,14 @@
       currentUser=user;
       const r=await api('getTasks',{userId:user.id,email:user.email,role:user.role});
       const rows=r.rows||[];
+      const completedRows=r.completedRows||[];
       if(user.role==='admin'){
-        qs('#adminList').innerHTML = rows.map(x=>renderTaskRow(x,true)).join('') || '<div class="muted">目前沒有已建立任務</div>';
+        qs('#adminList').innerHTML = rows.map(x=>renderActiveTaskRow(x,true)).join('') || '<div class="muted">目前沒有待處理任務</div>';
+        qs('#adminDoneList').innerHTML = completedRows.map(x=>renderCompletedTaskRow(x)).join('') || '<div class="muted">近 3 天沒有已完成任務</div>';
         qs('#staffBlock').style.display='none';
       }else{
-        qs('#list').innerHTML = rows.filter(x=>x.status!=='已完成').map(x=>renderTaskRow(x,false)).join('') || '<div class="muted">目前沒有任務</div>';
+        qs('#list').innerHTML = rows.map(x=>renderActiveTaskRow(x,false)).join('') || '<div class="muted">目前沒有任務</div>';
+        qs('#doneList').innerHTML = completedRows.map(x=>renderCompletedTaskRow(x)).join('') || '<div class="muted">近 3 天沒有已完成任務</div>';
       }
       const taskId=new URLSearchParams(location.search).get('taskId');
       if(taskId){
@@ -199,14 +257,36 @@
       const pctEl=qs(`#${prefix}Pct`), barEl=qs(`#${prefix}Bar`), txtEl=qs(`#${prefix}Text`), titleEl=qs(`#${prefix}Title`);
       if(pctEl) pctEl.textContent=`${pct}%`;
       if(barEl) barEl.style.width=`${pct}%`;
-      if(txtEl) txtEl.textContent=text||'';
+      if(txtEl && text!=null) txtEl.textContent=text||'';
       if(titleEl && title) titleEl.textContent=title;
     }
-    async function runFakeProgress(prefix, steps){
-      for(const step of steps){
-        setProgressUI(prefix, step.pct, step.text, step.title);
-        await new Promise(r=>setTimeout(r, step.wait||220));
+    function startPendingProgress(prefix, startPct, capPct, text){
+      let pct=startPct;
+      setProgressUI(prefix, pct, text || '等待系統寫入...');
+      const timer=setInterval(()=>{
+        if(pct >= capPct) return;
+        pct += pct < 90 ? 2 : 1;
+        if(pct > capPct) pct = capPct;
+        setProgressUI(prefix, pct, text || '等待系統寫入...');
+      }, 360);
+      return ()=>clearInterval(timer);
+    }
+    async function compressFilesForProgress(fileList, prefix, startPct, endPct, label){
+      const files = Array.from(fileList || []);
+      if(!files.length){
+        setProgressUI(prefix, endPct, `沒有需要處理的${label}`);
+        return [];
       }
+      const out=[];
+      for(let i=0;i<files.length;i++){
+        const before = startPct + Math.round((i / files.length) * (endPct - startPct));
+        setProgressUI(prefix, before, `${label}處理中 ${i+1}/${files.length}`);
+        out.push(await compressImageToDataUrl(files[i],1280,0.78));
+        const after = startPct + Math.round(((i + 1) / files.length) * (endPct - startPct));
+        setProgressUI(prefix, after, `${label}已完成 ${i+1}/${files.length}`);
+        await sleep(40);
+      }
+      return out;
     }
 
     function renderRecMeter(level=0){
@@ -238,35 +318,66 @@
       hint.textContent = count ? `已選擇 ${count} 張${label}` : `可一次選多張${label}`;
     }
 
-    async function filesToCompressedDataUrls(fileList){
-      const files = Array.from(fileList || []);
-      const out = [];
-      for(const file of files){
-        out.push(await compressImageToDataUrl(file,1280,0.78));
-      }
-      return out;
-    }
-
     async function completeTask(taskId, btnEl){
       const user=requireLogin();
-      const files=qs('#photo_'+taskId).files;
-      const photos=await filesToCompressedDataUrls(files);
       const btn=btnEl||null;
       const progressBox=qs('#completeProgress_'+taskId);
-      if(btn){btn.disabled=true; btn.classList.add('hidden');}
+      if(btn){btn.disabled=true;}
       if(progressBox){progressBox.classList.remove('hidden');}
-      runFakeProgress('complete_'+taskId,[
-        {pct:10,text:'檢查資料中...',wait:180},
-        {pct:30,text:'整理完成內容...',wait:220},
-        {pct:55,text:'壓縮照片中...',wait:220},
-        {pct:80,text:'上傳多張照片中...',wait:260},
-        {pct:92,text:'等待系統寫入...',wait:220}
-      ]);
-      const r=await api('completeTask',{userId:user.id,taskId,note:qs('#note_'+taskId).value,photos});
-      setProgressUI('complete_'+taskId,100,r.ok?'完成任務送出成功':'送出失敗');
+      try{
+        setProgressUI('complete_'+taskId, 8, '檢查資料中...');
+        const photos=await compressFilesForProgress(qs('#photo_'+taskId).files, 'complete_'+taskId, 18, 74, '完成照片');
+        setProgressUI('complete_'+taskId, 82, '送出完成資料中...');
+        const stopPending=startPendingProgress('complete_'+taskId, 84, 96, '系統寫入中...');
+        const r=await api('completeTask',{userId:user.id,taskId,note:qs('#note_'+taskId).value,photos});
+        stopPending();
+        setProgressUI('complete_'+taskId,100,r.ok?'完成任務送出成功':'送出失敗');
+        setMsg(qs('#msg'),r.message,!r.ok);
+        if(r.ok) setTimeout(loadTasks,450);
+      }catch(err){
+        setProgressUI('complete_'+taskId,100,'送出失敗');
+        setMsg(qs('#msg'), err.message || String(err), true);
+      }finally{
+        setTimeout(()=>{ if(btn){btn.disabled=false;} if(progressBox){progressBox.classList.add('hidden');} }, 900);
+      }
+    }
+
+    async function updateCompletion(taskId){
+      const user=requireLogin();
+      const progressBox=qs('#editProgress_'+taskId);
+      progressBox.classList.remove('hidden');
+      try{
+        setProgressUI('edit_'+taskId, 8, '檢查修正內容中...');
+        const photos=await compressFilesForProgress(qs('#donePhoto_'+taskId).files, 'edit_'+taskId, 18, 72, '修正照片');
+        setProgressUI('edit_'+taskId, 80, '送出修正內容中...');
+        const stopPending=startPendingProgress('edit_'+taskId, 84, 96, '系統更新中...');
+        const r=await api('updateTaskCompletion',{userId:user.id,taskId,note:qs('#doneNote_'+taskId).value,photos});
+        stopPending();
+        setProgressUI('edit_'+taskId,100,r.ok?'修正完成':'送出失敗');
+        setMsg(qs('#msg'),r.message,!r.ok);
+        if(r.ok) setTimeout(loadTasks,450);
+      }catch(err){
+        setProgressUI('edit_'+taskId,100,'送出失敗');
+        setMsg(qs('#msg'), err.message || String(err), true);
+      }finally{
+        setTimeout(()=>{progressBox.classList.add('hidden');}, 900);
+      }
+    }
+
+    async function restoreTask(taskId){
+      if(!confirm('要把這筆任務恢復成未完成嗎？')) return;
+      const user=requireLogin();
+      const r=await api('restoreTask',{userId:user.id,taskId});
       setMsg(qs('#msg'),r.message,!r.ok);
-      setTimeout(()=>{ if(btn){btn.disabled=false; btn.classList.remove('hidden');} if(progressBox){progressBox.classList.add('hidden');} if(btn){btn.textContent='完成任務';}}, r.ok?700:1200);
-      if(r.ok) setTimeout(loadTasks,450);
+      if(r.ok) loadTasks();
+    }
+
+    async function deleteTask(taskId){
+      if(!confirm('確定要刪除這筆任務嗎？刪除後不會再顯示。')) return;
+      const user=requireLogin();
+      const r=await api('deleteTask',{userId:user.id,taskId});
+      setMsg(qs('#msg'),r.message,!r.ok);
+      if(r.ok) loadTasks();
     }
 
     async function init(){
@@ -319,43 +430,46 @@
           const box=qs('#createProgressBox');
           btn.classList.add('hidden');
           box.classList.remove('hidden');
-          runFakeProgress('createProgress',[
-            {pct:10,text:'檢查欄位中...',wait:180},
-            {pct:28,text:'整理圖片與錄音...',wait:220},
-            {pct:50,text:'壓縮多張圖片中...',wait:240},
-            {pct:72,text:'上傳任務附件中...',wait:260},
-            {pct:90,text:'等待系統寫入...',wait:220}
-          ]);
-          const taskImages=await filesToCompressedDataUrls(qs('#taskImage').files);
-          const r=await api('createTask',{
-            creatorId:user.id,
-            title:qs('#title').value,
-            content:qs('#content').value,
-            assigneeId:qs('#assigneeId').value,
-            dueMode,
-            dueLabel:deadline.dueLabel,
-            dueDate:deadline.dueDate,
-            dueTime:deadline.dueTime,
-            requirePhotoReturn:qs('#requirePhotoReturn').value,
-            remindFreq:qs('#remindFreq').value,
-            taskImages,
-            taskAudio
-          });
-          setProgressUI('createProgress',100,r.ok?'建立完成':'建立失敗');
-          setMsg(qs('#msg'),r.message,!r.ok);
-          setTimeout(()=>{btn.classList.remove('hidden'); box.classList.add('hidden');}, r.ok?700:1200);
-          if(r.ok){
-            qs('#title').value='';
-            qs('#content').value='';
-            qs('#taskImage').value='';
-            qs('#taskImageHint').textContent='可一次選多張，會自動壓縮後上傳到任務附件';
-            taskAudio='';
-            qs('#recStatus').textContent='尚未錄音';
-            qs('#clearRecBtn').classList.add('hidden');
-            renderRecMeter(0);
-            qs('#recMeter').classList.add('hidden');
-            applyDueMode('today');
-            setTimeout(loadTasks,450);
+          try{
+            setProgressUI('createProgress', 8, '檢查欄位中...');
+            const taskImages=await compressFilesForProgress(qs('#taskImage').files, 'createProgress', 18, 72, '任務圖片');
+            setProgressUI('createProgress', 80, '送出交辦事項中...');
+            const stopPending=startPendingProgress('createProgress', 84, 96, '系統建立中...');
+            const r=await api('createTask',{
+              creatorId:user.id,
+              title:qs('#title').value,
+              content:qs('#content').value,
+              assigneeId:qs('#assigneeId').value,
+              dueMode,
+              dueLabel:deadline.dueLabel,
+              dueDate:deadline.dueDate,
+              dueTime:deadline.dueTime,
+              requirePhotoReturn:qs('#requirePhotoReturn').value,
+              remindFreq:qs('#remindFreq').value,
+              taskImages,
+              taskAudio
+            });
+            stopPending();
+            setProgressUI('createProgress',100,r.ok?'建立完成':'建立失敗');
+            setMsg(qs('#msg'),r.message,!r.ok);
+            if(r.ok){
+              qs('#title').value='';
+              qs('#content').value='';
+              qs('#taskImage').value='';
+              qs('#taskImageHint').textContent='可一次選多張，會自動壓縮後上傳到任務附件';
+              taskAudio='';
+              qs('#recStatus').textContent='尚未錄音';
+              qs('#clearRecBtn').classList.add('hidden');
+              renderRecMeter(0);
+              qs('#recMeter').classList.add('hidden');
+              applyDueMode('today');
+              setTimeout(loadTasks,450);
+            }
+          }catch(err){
+            setProgressUI('createProgress',100,'建立失敗');
+            setMsg(qs('#msg'), err.message || String(err), true);
+          }finally{
+            setTimeout(()=>{btn.classList.remove('hidden'); box.classList.add('hidden');}, 900);
           }
         };
       } else {
