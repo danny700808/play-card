@@ -19,7 +19,7 @@ function applySavedLogin(emailSel='#email',passwordSel='#password',rememberSel='
 function getDriveFileId(url){const m=String(url||'').match(/(?:file\/d\/|[?&]id=)([-_a-zA-Z0-9]+)/);return m?m[1]:'';}
 function imagePreviewUrl(url){const id=getDriveFileId(url);return id?('https://drive.google.com/thumbnail?id='+id+'&sz=w1200'):url;}
 function audioOpenUrl(url){const id=getDriveFileId(url);return id?('https://drive.google.com/file/d/'+id+'/view'):url;}
-function audioStreamUrl(url){const id=getDriveFileId(url);return id?('https://drive.google.com/uc?export=view&id='+id):url;}
+function audioStreamUrl(url){const id=getDriveFileId(url);if(!id) return url;return 'https://drive.google.com/uc?export=view&id='+id;}
 async function compressImageToDataUrl(file, maxSize=1280, quality=0.78){
   if(!file) return '';
   if(!file.type.startsWith('image/')) return await fileToDataUrl(file);
@@ -48,11 +48,18 @@ function formatTaskStatusTag(status){
   const cls=status==='待處理'?'pending':(status==='已完成'?'done':'');
   return `<span class="tag ${cls}">${status}</span>`;
 }
+function pickAudioMimeType(){
+  const ua=String(navigator.userAgent||'').toLowerCase();
+  const isSafari=/safari/.test(ua) && !/chrome|crios|android/.test(ua);
+  const mimeCandidates=isSafari
+    ? ['audio/mp4','audio/x-m4a','audio/wav','audio/webm;codecs=opus','audio/webm']
+    : ['audio/webm;codecs=opus','audio/webm','audio/wav','audio/mp4','audio/x-m4a'];
+  return mimeCandidates.find(t=>window.MediaRecorder&&MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported(t))||'';
+}
 async function startRecorder(onDone, onLevel){
   if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){throw new Error('目前裝置不支援錄音');}
   const stream=await navigator.mediaDevices.getUserMedia({audio:true});
-  const mimeCandidates=['audio/mp4','audio/m4a','audio/wav','audio/webm;codecs=opus','audio/webm'];
-  const mimeType=mimeCandidates.find(t=>window.MediaRecorder&&MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported(t))||'';
+  const mimeType=pickAudioMimeType();
   const rec=new MediaRecorder(stream, mimeType?{mimeType}:undefined);
   const chunks=[];
   let audioCtx=null, analyser=null, source=null, rafId=0, dataArray=null;
@@ -82,8 +89,9 @@ async function startRecorder(onDone, onLevel){
     try{ audioCtx && audioCtx.close && audioCtx.close(); }catch(e){}
     stream.getTracks().forEach(t=>t.stop());
     const blob=new Blob(chunks,{type:rec.mimeType || mimeType || 'audio/webm'});
+    if(!blob || !blob.size){ throw new Error('錄音資料為空，請重新錄一次'); }
     const reader=new FileReader();
-    reader.onload=()=>onDone(String(reader.result||''));
+    reader.onload=()=>onDone(String(reader.result||''), { mimeType: blob.type||rec.mimeType||mimeType||'', size: blob.size });
     reader.readAsDataURL(blob);
   };
   rec.start(250);
