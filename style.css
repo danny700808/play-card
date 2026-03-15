@@ -28,3 +28,7 @@ a{text-decoration:none;color:inherit} .container{max-width:760px;margin:0 auto;p
   .task-audio-box{display:block}
   .audio-open-btn{width:100%;margin-top:10px}
 }
+
+.tile-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.tile-badge{display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:28px;padding:0 9px;border-radius:999px;background:#e74c3c;color:#fff;font-size:14px;font-weight:800;line-height:1;box-shadow:0 4px 10px rgba(231,76,60,.18)}
+.tile-task .tile-head strong{margin:0}
