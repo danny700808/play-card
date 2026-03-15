@@ -1,4 +1,3 @@
-
 const API_URL = window.APP_CONFIG.API_URL;
 function qs(s){return document.querySelector(s)}
 function qsa(s){return Array.from(document.querySelectorAll(s))}
@@ -6,9 +5,12 @@ function saveUser(user){localStorage.setItem('employeeUser', JSON.stringify(user
 function getUser(){try{return JSON.parse(localStorage.getItem('employeeUser')||'null')}catch(e){return null}}
 function logout(){localStorage.removeItem('employeeUser'); location.href='index.html'}
 function requireLogin(){const user=getUser(); if(!user){location.href='index.html'; return null;} return user;}
-async function api(action, payload={}){const res=await fetch(API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action,...payload})}); return res.json();}
+async function api(action, payload={}){
+  const res=await fetch(API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action,...payload})});
+  return res.json();
+}
 function setMsg(el, text, isError=false){if(!el) return; el.style.display=text?'block':'none'; el.textContent=text||''; el.classList.toggle('error',!!isError)}
-function togglePassword(inputSel, btn){const input=qs(inputSel); const show=input.type==='password'; input.type=show?'text':'password'; btn.textContent=show?'🙈':'👁';}
+function togglePassword(inputSel, btn){const input=qs(inputSel); const show=input.type==='password'; input.type=show?'text':'password'; if(btn) btn.textContent=show?'🙈':'👁';}
 async function getPublicIp(){try{const r=await fetch('https://api.ipify.org?format=json'); const j=await r.json(); return j.ip||'';}catch(e){return '';}}
 async function fileToDataUrl(file){return new Promise((resolve,reject)=>{const r=new FileReader(); r.onload=()=>resolve(String(r.result||'')); r.onerror=reject; r.readAsDataURL(file);});}
 function fillHeader(){const user=requireLogin(); if(!user) return; qsa('[data-user-name]').forEach(el=>el.textContent=user.name||'員工'); qsa('[data-if-parttime]').forEach(el=>el.style.display=user.isPartTime?'':'none'); qsa('[data-if-admin]').forEach(el=>el.style.display=user.role==='admin'?'':'none'); qsa('[data-if-staff-view]').forEach(el=>el.style.display=user.role==='admin'?'none':'');}
@@ -45,8 +47,44 @@ async function compressImageToDataUrl(file, maxSize=1280, quality=0.78){
   });
 }
 function formatTaskStatusTag(status){
-  const cls=status==='待處理'?'pending':(status==='已完成'?'done':'');
-  return `<span class="tag ${cls}">${status}</span>`;
+  const cls=status==='待處理'?'pending':(status==='已完成'?'done':(String(status||'').toLowerCase()));
+  return `<span class="tag ${cls}">${status||''}</span>`;
+}
+function formatDateText(v){
+  if(!v) return '';
+  if(typeof v==='string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+  const d=new Date(v);
+  if(Number.isNaN(d.getTime())) return String(v).replace('T',' ').replace('.000Z','');
+  const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+function formatTimeText(v){
+  if(v===0) return '00:00';
+  if(!v) return '';
+  if(typeof v==='string' && /^\d{2}:\d{2}(:\d{2})?$/.test(v)) return v.slice(0,5);
+  if(typeof v==='string' && v.includes('T')){
+    const d=new Date(v); if(!Number.isNaN(d.getTime())) return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  }
+  const d=new Date(v);
+  if(Number.isNaN(d.getTime())) return String(v).replace('1899-12-30T','').replace('.000Z','').slice(0,5);
+  return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+function formatDateTimeText(v){
+  if(!v) return '';
+  if(typeof v==='string' && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(v)) return v.slice(0,16);
+  const d=new Date(v);
+  if(Number.isNaN(d.getTime())) return String(v).replace('T',' ').replace('.000Z','').slice(0,16);
+  return `${formatDateText(d)} ${formatTimeText(d)}`;
+}
+function formatLateDuration(mins){
+  const n=Number(mins||0);
+  if(!n) return '0 小時 0 分';
+  const h=Math.floor(n/60), m=n%60;
+  return `${h} 小時 ${m} 分`;
+}
+function isStrongPassword(value){
+  const s=String(value||'');
+  return s.length>=8 && /[A-Za-z]/.test(s) && /\d/.test(s);
 }
 async function startRecorder(onDone, onLevel){
   if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){throw new Error('目前裝置不支援錄音');}

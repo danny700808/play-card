@@ -1,1 +1,69 @@
-<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>工讀生時數</title><link rel="stylesheet" href="style.css"></head><body onload="init()"><div class="container"><div class="card"><div class="topbar"><div><h1 class="title" style="margin:0">工讀生時數登記</h1><div class="welcome">歡迎 <span data-user-name></span></div></div><a class="navlink" href="dashboard.html">回首頁</a></div><div id="msg" class="message"></div><div class="field"><label>日期</label><input id="workDate" type="date"></div><div class="field"><label>時數</label><select id="hours"></select></div><div class="field"><label>半小時加時</label><div class="check-row"><label><input id="halfHour" type="checkbox"> 另外增加半小時</label></div><div class="muted">如果當天有超過時數需要增加，如果同意增加半小時，請點選這個地方。</div></div><div class="field"><label>備註</label><textarea id="note" placeholder="選填"></textarea></div><button class="btn" id="submitBtn">送出時數</button></div><div class="card"><h2 class="title" style="font-size:20px">我的時數紀錄</h2><div id="list" class="list"></div></div></div><script src="config.js"></script><script src="app.js"></script><script>function fillHours(){const sel=qs('#hours'); let h=''; for(let i=1;i<=12;i++) h+=`<option value="${i}">${i} 小時</option>`; sel.innerHTML=h;} async function loadHistory(){const user=requireLogin(); const r=await api('getParttimeHistory',{userId:user.id}); qs('#list').innerHTML=(r.rows||[]).map(x=>`<div class="item"><div class="top"><strong>${x.date}</strong><span class="tag">$${x.dailyPay}</span></div><div>${x.totalHours} 小時（含半小時 ${x.halfHour}）</div></div>`).join('')||'<div class="muted">目前沒有紀錄</div>';} function init(){fillHeader(); fillHours(); qs('#workDate').value=new Date().toISOString().slice(0,10); qs('#submitBtn').onclick=async()=>{const user=requireLogin(); const r=await api('parttime',{userId:user.id,workDate:qs('#workDate').value,hours:qs('#hours').value,halfHour:qs('#halfHour').checked,note:qs('#note').value}); setMsg(qs('#msg'),r.message,!r.ok); if(r.ok) loadHistory();}; loadHistory();}</script></body></html>
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>工讀生時數</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body onload="init()">
+  <div class="container">
+    <div class="card">
+      <div class="topbar">
+        <div>
+          <h1 class="title" style="margin:0">工讀生時數登記</h1>
+          <div class="welcome">歡迎 <span data-user-name></span></div>
+        </div>
+        <a class="navlink" href="dashboard.html">回首頁</a>
+      </div>
+      <div id="msg" class="message"></div>
+      <div class="field"><label>日期</label><input id="workDate" type="date"></div>
+      <div class="field">
+        <label>時數</label>
+        <div id="hoursRow" class="hours-chip-row"></div>
+      </div>
+      <div class="field">
+        <label>半小時加時</label>
+        <div class="check-row"><label><input id="halfHour" type="checkbox"> 如果當天主管有同意增加半小時可以打勾</label></div>
+      </div>
+      <div class="field"><label>備註</label><textarea id="note" placeholder="有任何問題，請填寫在這邊"></textarea></div>
+      <button class="btn" id="submitBtn">送出時數</button>
+    </div>
+    <div class="card">
+      <h2 class="title" style="font-size:20px">我的時數紀錄</h2>
+      <div id="list" class="list"></div>
+    </div>
+  </div>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+  <script>
+    let selectedHours=1;
+    function fillHours(){
+      const wrap=qs('#hoursRow');
+      wrap.innerHTML='';
+      for(let i=1;i<=12;i++){
+        const label=document.createElement('label');
+        label.className='hour-chip';
+        label.innerHTML=`<input type="radio" name="ptHours" value="${i}" ${i===1?'checked':''}><span>${i} 小時</span>`;
+        wrap.appendChild(label);
+      }
+      qsa('input[name="ptHours"]').forEach(r=>r.onchange=()=>selectedHours=Number(r.value||1));
+    }
+    async function loadHistory(){
+      const user=requireLogin();
+      const r=await api('getParttimeHistory',{userId:user.id});
+      qs('#list').innerHTML=(r.rows||[]).map(x=>`<div class="item"><div class="top"><strong>${x.date}</strong><span class="tag">$${x.dailyPay}</span></div><div>${x.totalHours} 小時（含半小時 ${x.halfHour}）</div>${x.note?`<div class="muted">${x.note}</div>`:''}</div>`).join('')||'<div class="muted">目前沒有紀錄</div>';
+    }
+    function init(){
+      fillHeader(); fillHours(); qs('#workDate').value=new Date().toISOString().slice(0,10);
+      qs('#submitBtn').onclick=async()=>{
+        const user=requireLogin();
+        const r=await api('parttime',{userId:user.id,workDate:qs('#workDate').value,hours:selectedHours,halfHour:qs('#halfHour').checked,note:qs('#note').value.trim()});
+        setMsg(qs('#msg'),r.message,!r.ok);
+        if(r.ok){qs('#note').value=''; qs('#halfHour').checked=false; loadHistory();}
+      };
+      loadHistory();
+    }
+  </script>
+</body>
+</html>
