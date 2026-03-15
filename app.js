@@ -89,30 +89,3 @@ async function startRecorder(onDone, onLevel){
   rec.start(250);
   return rec;
 }
-
-
-function escapeHtml(s){return String(s==null?'':s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",""":"&quot;","'":"&#39;"}[m]));}
-async function fetchTaskAudioData(taskId, audioUrl){
-  return await api('getTaskAudioData',{taskId:taskId||'',audioUrl:audioUrl||'',userId:(getUser()||{}).id||''});
-}
-async function loadTaskAudio(taskId, audioUrl, btn){
-  const audio=document.getElementById('audio_'+taskId);
-  const status=document.getElementById('audio_status_'+taskId);
-  if(!audio) return;
-  try{
-    if(btn){btn.disabled=true; btn.textContent='載入錄音中...';}
-    if(status){status.textContent='錄音載入中...'; status.classList.remove('hidden');}
-    const r=await fetchTaskAudioData(taskId, audioUrl);
-    if(!r || !r.ok || !r.dataUrl) throw new Error((r&&r.message)||'錄音讀取失敗');
-    audio.src=r.dataUrl;
-    if(r.contentType){ audio.setAttribute('data-content-type', r.contentType); }
-    audio.load();
-    try{ await audio.play(); }catch(e){}
-    if(status){status.textContent='錄音已載入，可直接播放'; status.classList.remove('hidden');}
-    if(btn){btn.textContent='重新載入錄音'; btn.disabled=false;}
-  }catch(err){
-    if(status){status.textContent='錄音載入失敗：'+(err.message||String(err)); status.classList.remove('hidden');}
-    if(btn){btn.textContent='重新載入錄音'; btn.disabled=false;}
-  }
-}
-
