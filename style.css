@@ -13,3 +13,18 @@ a{text-decoration:none;color:inherit} .container{max-width:760px;margin:0 auto;p
 .audio-box{border:1px dashed var(--line);border-radius:12px;padding:10px 12px}
 .task-admin-nav{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
 .task-admin-nav a{font-size:14px}
+
+.progress-box{border:1px solid #d7e3db;background:#f6fbf8;border-radius:14px;padding:12px 14px;margin-top:2px}
+.progress-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px}
+.progress-track{height:12px;background:#e4e9ef;border-radius:999px;overflow:hidden}
+.progress-bar{height:100%;width:0;background:linear-gradient(90deg,var(--brand),#56b58b);border-radius:999px;transition:width .28s ease}
+.rec-meter{display:flex;align-items:flex-end;gap:6px;min-height:58px;margin:12px 0 8px}
+.rec-bar{display:block;width:10px;border-radius:999px;background:#cbd8e5;height:20px;transition:height .12s ease, background-color .12s ease}
+.rec-bar.live{background:#4da97f}
+.task-audio-box audio{width:100%;display:block}
+.audio-open-btn{display:block;margin-top:10px;text-align:center}
+.complete-action-box{margin-top:6px}
+@media (max-width:560px){
+  .task-audio-box{display:block}
+  .audio-open-btn{width:100%;margin-top:10px}
+}
