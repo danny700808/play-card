@@ -5,6 +5,27 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>交辦事項</title>
   <link rel="stylesheet" href="style.css">
+  <style>
+    .task-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+    .task-actions .btn{width:auto;min-width:120px}
+    .task-note{background:#f7fafc;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;font-size:13px;color:#526174;margin-top:8px}
+    .task-note.warn{background:#fff8e8;border-color:#f0d18a;color:#8a6413}
+    .task-note.self{background:#eef7f2;border-color:#cfe5da;color:#1f5e49}
+    .remind-explain{font-size:14px;color:#6b7b8c;margin-top:8px;line-height:1.7}
+    .remind-chip-row{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px}
+    .remind-chip{display:inline-flex;align-items:center;gap:8px;padding:10px 14px;border-radius:999px;background:#eef4ef;color:#23684f;font-weight:800}
+    .remind-chip.fixed{background:#f8eed7;color:#9a6700}
+    .remind-chip button{border:none;background:none;color:#6b7b8c;font-size:22px;line-height:1;cursor:pointer;padding:0}
+    .task-summary-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+    .task-summary-chip{display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;background:#f4f7fb;border:1px solid #dfe6ee;font-size:12px;color:#486070}
+    .task-audio-link{margin-top:10px}
+    .task-audio-link .btn{width:auto}
+    .task-del-wrap{margin-left:auto}
+    @media (max-width:560px){
+      .task-actions .btn,.task-audio-link .btn{width:100%}
+      .task-del-wrap{margin-left:0;width:100%}
+    }
+  </style>
 </head>
 <body onload="init()">
   <div class="container">
@@ -28,50 +49,71 @@
 
         <div class="section-title">快速建立交辦</div>
         <div class="field"><label>任務標題</label><input id="title" placeholder="請輸入任務標題"></div>
-        <div class="field"><label>任務內容（選填）</label><textarea id="content" placeholder="有需要再填寫即可"></textarea></div>
+        <div class="field"><label>任務內容（選填）</label><textarea id="content" placeholder="需要補充時再填寫"></textarea></div>
         <div class="field"><label>指派員工</label><select id="assigneeId"><option value="">請選擇員工</option></select></div>
 
         <div class="field">
-          <label>期限時間</label>
-          <select id="duePreset"></select>
+          <label>急件快速選單</label>
+          <div class="quick-row" id="dueModeChips">
+            <button type="button" class="quick-chip" data-mode="today">今天 9 點前</button>
+            <button type="button" class="quick-chip" data-mode="tomorrow">明天 9 點前</button>
+            <button type="button" class="quick-chip" data-mode="2days">兩天後 9 點前</button>
+            <button type="button" class="quick-chip" data-mode="week">本週內</button>
+            <button type="button" class="quick-chip" data-mode="shopee">蝦皮 19:00 前寄出</button>
+            <button type="button" class="quick-chip" data-mode="momo">Momo 15:00 前完成</button>
+            <button type="button" class="quick-chip" data-mode="custom">自訂時間</button>
+          </div>
         </div>
+
         <div id="customDueBox" class="hidden">
           <div class="field"><label>截止日期</label><input id="dueDate" type="date"></div>
           <div class="field"><label>截止時間</label><input id="dueTime" type="time"></div>
         </div>
 
-        <div class="field"><label>任務圖片（選填）</label><input id="taskImage" type="file" accept=".jpg,.jpeg,.png"></div>
+        <div class="field">
+          <label>任務圖片（選填）</label>
+          <input id="taskImage" type="file" accept=".jpg,.jpeg,.png" multiple>
+        </div>
 
         <div class="field">
           <label>任務錄音（選填）</label>
           <div class="audio-box">
             <div class="attach-row">
-              <button type="button" class="btn secondary inline-btn" id="startRecBtn">開始錄音</button>
-              <button type="button" class="btn secondary inline-btn" id="stopRecBtn" disabled>完成錄音</button>
-              <button type="button" class="btn secondary inline-btn hidden" id="clearRecBtn">刪除錄音</button>
+              <button type="button" class="btn secondary" style="width:auto" id="startRecBtn">開始錄音</button>
+              <button type="button" class="btn secondary" style="width:auto" id="stopRecBtn" disabled>完成錄音</button>
+              <button type="button" class="btn secondary hidden" style="width:auto" id="clearRecBtn">刪除錄音</button>
             </div>
             <div id="recMeter" class="rec-meter hidden" aria-hidden="true"></div>
             <div class="attach-badge" id="recStatus">尚未錄音</div>
           </div>
         </div>
 
-        <div class="field"><label>完成回報需求</label><select id="requirePhotoReturn"><option value="否">不需要</option><option value="是">完成時需回傳照片</option></select></div>
+        <div class="field">
+          <label>完成回報需求</label>
+          <select id="requirePhotoReturn">
+            <option value="否">不需要</option>
+            <option value="是">完成時需回傳照片</option>
+          </select>
+        </div>
 
         <div class="field">
           <label>提醒頻率</label>
           <select id="remindFreq">
-            <option value="可取消提醒">可取消提醒</option>
             <option value="低提醒">低提醒</option>
             <option value="一般提醒" selected>一般提醒</option>
             <option value="重要提醒">重要提醒</option>
-            <option value="根據層級提醒">根據層級提醒</option>
           </select>
-          <div id="remindExplain" class="muted"></div>
-          <div id="remindChips" class="remind-chip-wrap"></div>
+          <div class="remind-explain" id="remindExplain"></div>
+          <div class="remind-chip-row" id="remindChipRow"></div>
         </div>
 
         <div id="createActionBox">
           <button class="btn" id="createBtn">建立交辦事項</button>
+          <div id="createProgressBox" class="progress-box hidden">
+            <div class="progress-head"><strong id="createProgressTitle">建立交辦事項</strong><span id="createProgressPct">0%</span></div>
+            <div class="progress-track"><div id="createProgressBar" class="progress-bar"></div></div>
+            <div id="createProgressText" class="attach-badge">準備送出...</div>
+          </div>
         </div>
 
         <hr style="border:none;border-top:1px solid #e5ebf1;margin:18px 0">
@@ -89,68 +131,73 @@
   <script src="config.js"></script>
   <script src="app.js"></script>
   <script>
-    let taskAudio='';
-    let recorder=null;
-    let activeReminders=[];
+    let dueMode = 'today';
+    let taskAudio = '';
+    let reminderState = {freq:'一般提醒', labels:[], active:[]};
 
-    function dueOptions(){
-      return [
-        {value:'today9',label:'今天 9 點前'},
-        {value:'tomorrow9',label:'明天 9 點前'},
-        {value:'2days9',label:'兩天內 9 點前'},
-        {value:'week9',label:'本週內 9 點前'},
-        {value:'shopee',label:'蝦皮 19:00 前寄出'},
-        {value:'momo',label:'Momo 15:00 前完成'},
-        {value:'custom',label:'自訂時間'}
-      ];
+    function applyDueMode(mode){
+      dueMode = mode;
+      qsa('#dueModeChips .quick-chip').forEach(b=>b.classList.toggle('active', b.dataset.mode===mode));
+      qs('#customDueBox').classList.toggle('hidden', mode!=='custom');
     }
-    function fillDuePreset(){
-      qs('#duePreset').innerHTML = dueOptions().map(x=>`<option value="${x.value}">${x.label}</option>`).join('');
-      qs('#duePreset').value='today9';
-      qs('#duePreset').onchange=()=>qs('#customDueBox').classList.toggle('hidden',qs('#duePreset').value!=='custom');
-    }
-    function fmtDate(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
-    function computeDeadline(){
-      const mode=qs('#duePreset').value;
+
+    function computeDeadline(mode){
       const now=new Date();
-      if(mode==='custom') return {dueDate:qs('#dueDate').value,dueTime:qs('#dueTime').value,dueLabel:'自訂時間',dueMode:'custom'};
-      if(mode==='today9') return {dueDate:fmtDate(now),dueTime:'09:00',dueLabel:'今天 9 點前',dueMode:mode};
-      if(mode==='tomorrow9'){const d=new Date(now); d.setDate(d.getDate()+1); return {dueDate:fmtDate(d),dueTime:'09:00',dueLabel:'明天 9 點前',dueMode:mode};}
-      if(mode==='2days9'){const d=new Date(now); d.setDate(d.getDate()+2); return {dueDate:fmtDate(d),dueTime:'09:00',dueLabel:'兩天內 9 點前',dueMode:mode};}
-      if(mode==='week9'){const d=new Date(now); const day=d.getDay()||7; d.setDate(d.getDate()+(7-day)); return {dueDate:fmtDate(d),dueTime:'09:00',dueLabel:'本週內 9 點前',dueMode:mode};}
-      if(mode==='shopee') return {dueDate:fmtDate(now),dueTime:'19:00',dueLabel:'蝦皮 19:00 前寄出',dueMode:mode};
-      if(mode==='momo') return {dueDate:fmtDate(now),dueTime:'15:00',dueLabel:'Momo 15:00 前完成',dueMode:mode};
-      return {dueDate:'',dueTime:'',dueLabel:'',dueMode:mode};
+      const fmtDate=(d)=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      if(mode==='custom'){return {dueDate:qs('#dueDate').value,dueTime:qs('#dueTime').value,dueLabel:'自訂時間'};}
+      if(mode==='today'){return {dueDate:fmtDate(now),dueTime:'09:00',dueLabel:'今天 9 點前'};}
+      if(mode==='tomorrow'){const d=new Date(now); d.setDate(d.getDate()+1); return {dueDate:fmtDate(d),dueTime:'09:00',dueLabel:'明天 9 點前'};}
+      if(mode==='2days'){const d=new Date(now); d.setDate(d.getDate()+2); return {dueDate:fmtDate(d),dueTime:'09:00',dueLabel:'兩天後 9 點前'};}
+      if(mode==='week'){const d=new Date(now); const day=d.getDay()||7; d.setDate(d.getDate()+(7-day)); return {dueDate:fmtDate(d),dueTime:'23:59',dueLabel:'本週內'};}
+      if(mode==='shopee'){return {dueDate:fmtDate(now),dueTime:'19:00',dueLabel:'蝦皮 19:00 前寄出'};}
+      if(mode==='momo'){return {dueDate:fmtDate(now),dueTime:'15:00',dueLabel:'Momo 15:00 前完成'};}
+      return {dueDate:'',dueTime:'',dueLabel:''};
     }
 
-    function buildReminderConfig(freq){
-      const map={
-        '可取消提醒':{explain:'這個任務預設會有 5 次提醒，你可以取消前面的提醒，但最後一次未完成提醒不能取消。',labels:['提醒 1','提醒 2','提醒 3','提醒 4','最後提醒']},
-        '低提醒':{explain:'低提醒：共 2 次提醒，適合一般追蹤。',labels:['第一次提醒','最後提醒']},
-        '一般提醒':{explain:'一般提醒：共 3 次提醒，前面提醒可取消，最後提醒不可取消。',labels:['提醒 1','提醒 2','最後提醒']},
-        '重要提醒':{explain:'重要提醒：共 5 次提醒，提醒頻率較高。',labels:['提醒 1','提醒 2','提醒 3','提醒 4','最後提醒']},
-        '根據層級提醒':{explain:'根據層級提醒：會先一般提醒，再逐步提高提醒強度，最後提醒不可取消。',labels:['一般提醒','加強提醒','主管提醒','再次提醒','最後提醒']}
-      };
-      return map[freq] || map['一般提醒'];
+    function getRemindPreset(freq){
+      if(freq==='低提醒') return ['第一次提醒','最後提醒'];
+      if(freq==='重要提醒') return ['第一次提醒','第二次提醒','第三次提醒','第四次提醒','最後提醒'];
+      return ['第一次提醒','第二次提醒','最後提醒'];
     }
-    function renderReminderChips(){
-      const wrap=qs('#remindChips');
-      wrap.innerHTML=activeReminders.map((x,i)=>`<span class="remind-chip ${i===activeReminders.length-1?'locked':''}">${x}${i===activeReminders.length-1?'<em>不可取消</em>':`<button type="button" onclick="removeReminder(${i})">×</button>`}</span>`).join('');
+
+    function currentRemindLabels(){
+      return reminderState.labels.filter((label,idx)=>reminderState.active[idx]);
     }
-    function refreshReminderUI(){
-      const cfg=buildReminderConfig(qs('#remindFreq').value);
-      if(!activeReminders.length) activeReminders=[...cfg.labels];
-      qs('#remindExplain').textContent=cfg.explain;
-      renderReminderChips();
+
+    function refreshRemindUi(){
+      const labels=getRemindPreset(reminderState.freq);
+      if(!reminderState.labels.length || reminderState.labels.join('|')!==labels.join('|')){
+        reminderState.labels=labels.slice();
+        reminderState.active=labels.map(()=>true);
+      }
+      const activeLabels=currentRemindLabels();
+      qs('#remindExplain').textContent=`${reminderState.freq}：共 ${activeLabels.length} 次提醒，收件人可自行取消前面提醒，但最後一次提醒一定保留。`;
+      qs('#remindChipRow').innerHTML = reminderState.labels.map((label,idx)=>{
+        if(!reminderState.active[idx]) return '';
+        const isLast = idx===reminderState.labels.length-1;
+        return `<span class="remind-chip ${isLast?'fixed':''}">${label}${isLast?'<span>不可取消</span>':`<button type="button" onclick="removeRemindChip(${idx})" aria-label="取消${label}">×</button>`}</span>`;
+      }).join('');
     }
-    function resetReminderUI(){
-      activeReminders=[...buildReminderConfig(qs('#remindFreq').value).labels];
-      refreshReminderUI();
+
+    function removeRemindChip(idx){
+      if(idx>=reminderState.labels.length-1) return;
+      reminderState.active[idx]=false;
+      refreshRemindUi();
     }
-    function removeReminder(idx){
-      if(idx>=activeReminders.length-1) return;
-      activeReminders.splice(idx,1);
-      renderReminderChips();
+
+    function parseRemindPlan(raw, freq){
+      try{
+        const obj=JSON.parse(raw||'');
+        if(obj && Array.isArray(obj.labels) && obj.labels.length) return obj;
+      }catch(e){}
+      const labels=getRemindPreset(freq||'一般提醒');
+      return {freq:freq||'一般提醒', labels};
+    }
+
+    function renderRemindSummary(task){
+      const plan=parseRemindPlan(task.remindPlan, task.remindFreq);
+      const labels=(plan.labels||[]).map((x,i)=>`<span class="task-summary-chip">${x}${i===plan.labels.length-1?'｜保留最後提醒':''}</span>`).join('');
+      return `<div class="muted">提醒：${plan.freq||task.remindFreq||'一般提醒'}｜共 ${(plan.labels||[]).length} 次提醒</div><div class="task-summary-row">${labels}</div>`;
     }
 
     async function loadAssignees(){
@@ -159,35 +206,43 @@
       sel.innerHTML='<option value="">請選擇員工</option>' + (r.rows||[]).map(x=>`<option value="${x.id}">${x.name}</option>`).join('');
     }
 
-    function renderTaskRow(x, isAdmin){
-      const proofText = x.requirePhotoReturn==='是' ? '完成時需回傳照片' : '不需照片回報';
-      const dueText = x.dueLabel || ((x.dueDate||'') + (x.dueTime?(' '+formatTimeText(x.dueTime)):''));
-      const imgUrl = imagePreviewUrl(x.taskImageUrl);
+    function renderTaskRow(x, isAdmin, currentUser){
+      const proofText = x.requirePhotoReturn==='是' ? '完成時必須回傳照片' : '不需照片回報';
+      const dueText = x.dueLabel || ((x.dueDate||'') + (x.dueTime?(' '+x.dueTime):''));
       const imageOpenUrl = audioOpenUrl(x.taskImageUrl);
+      const imgUrl = imagePreviewUrl(x.taskImageUrl);
       const imageHtml = x.taskImageUrl ? `<div class="task-image-wrap"><a href="${imageOpenUrl}" target="_blank" rel="noopener"><img class="task-thumb" src="${imgUrl}" alt="任務圖片"></a></div>` : '';
-      const audioHtml = x.taskAudioUrl ? `<div class="audio-box task-audio-box"><audio controls preload="none" src="${audioStreamUrl(x.taskAudioUrl)}"></audio></div>` : '';
-      const reminderText = x.reminderPlan || x.remindFreq || '一般提醒';
-      const completeBox = isAdmin ? '' : `
-        <div class="field" style="margin-top:10px">
-          <label>問問題回報備注說明（選填）</label>
-          <textarea id="note_${x.id}" placeholder="有任何問題或回報都可以寫在這裡"></textarea>
-        </div>
-        <div class="field">
-          <label>${x.requirePhotoReturn==='是'?'請回傳照片後才可完成任務':'上傳照片（選填）'}</label>
-          <input id="photo_${x.id}" type="file" accept=".jpg,.jpeg,.png">
-          ${x.requirePhotoReturn==='是'?'<div class="muted require-note">此任務有要求照片回覆，若未上傳照片將不能完成任務。</div>':''}
-        </div>
-        <div class="complete-action-box" id="completeWrap_${x.id}"><button class="btn secondary" onclick="completeTask('${x.id}', this)">完成任務</button></div>`;
-      return `<div class="item" id="task_${x.id}" data-require-photo="${x.requirePhotoReturn==='是'?'yes':'no'}">
-        <div class="top"><strong>${x.title}</strong>${formatTaskStatusTag(x.status)}</div>
-        ${x.content?`<div>${x.content}</div>`:''}
-        ${imageHtml}
-        ${audioHtml}
-        <div class="muted">指派：${x.assigneeName||''}｜期限：${dueText}</div>
-        <div class="muted">提醒：${reminderText}｜${proofText}</div>
-        ${isAdmin?`<div class="muted">建立者：${x.createdByName||''}｜建立時間：${formatDateTimeText(x.createdAt)}</div>`:''}
-        ${completeBox}
-      </div>`;
+      const audioHtml = x.taskAudioUrl ? `<div class="task-audio-link"><a class="btn secondary audio-open-btn" href="${audioOpenUrl(x.taskAudioUrl)}" target="_blank" rel="noopener">前往 Google 開啟錄音</a></div>` : '';
+      const isMyAssignedTask = String(x.assigneeId||'')===String(currentUser.id||'') || String(x.assigneeEmail||'').toLowerCase()===String(currentUser.email||'').toLowerCase();
+      const canComplete = x.status!=='已完成' && (!isAdmin || isMyAssignedTask);
+      const selfNote = isMyAssignedTask ? `<div class="task-note self">這筆任務有指派給你自己，所以你也可以直接回報完成。</div>` : '';
+      const proofNote = x.requirePhotoReturn==='是' ? `<div class="task-note warn">管理者要求回傳照片，沒有上傳照片就不能完成任務。</div>` : '';
+      const completeBox = canComplete ? `
+        ${selfNote}
+        ${proofNote}
+        <div class="field" style="margin-top:10px"><textarea id="note_${x.id}" placeholder="問問題回報備注說明（選填）"></textarea></div>
+        <div class="field"><input id="photo_${x.id}" type="file" accept=".jpg,.jpeg,.png"><div class="attach-badge">${x.requirePhotoReturn==='是'?'這筆任務必須回傳照片才可完成':'有需要再補充照片即可'}</div></div>
+        <div class="complete-action-box" id="completeWrap_${x.id}">
+          <button class="btn secondary" onclick="completeTask('${x.id}', this)">完成任務</button>
+          <div class="progress-box hidden" id="completeProgress_${x.id}">
+            <div class="progress-head"><strong>完成任務送出中</strong><span id="complete_${x.id}Pct">0%</span></div>
+            <div class="progress-track"><div id="complete_${x.id}Bar" class="progress-bar"></div></div>
+            <div id="complete_${x.id}Text" class="attach-badge">準備送出...</div>
+          </div>
+        </div>` : '';
+      const deleteBtn = isAdmin ? `<div class="task-del-wrap"><button class="btn secondary" onclick="deleteTask('${x.id}', '${(x.title||'').replace(/'/g,"&#39;")}')">刪除任務</button></div>` : '';
+      return `
+        <div class="item" id="task_${x.id}" data-require-photo="${x.requirePhotoReturn||'否'}">
+          <div class="top"><strong>${x.title}</strong>${formatTaskStatusTag(x.status)}</div>
+          ${x.content ? `<div>${x.content}</div>` : ''}
+          ${imageHtml}
+          ${audioHtml}
+          <div class="muted">指派：${x.assigneeName||''}｜期限：${dueText}</div>
+          ${renderRemindSummary(x)}
+          <div class="muted">${proofText}</div>
+          ${isAdmin?`<div class="muted">建立者：${x.createdByName||''}｜建立時間：${x.createdAt||''}</div>`:''}
+          <div class="task-actions">${completeBox}${deleteBtn}</div>
+        </div>`;
     }
 
     async function loadTasks(){
@@ -195,106 +250,156 @@
       const r=await api('getTasks',{userId:user.id,email:user.email,role:user.role});
       const rows=r.rows||[];
       if(user.role==='admin'){
-        qs('#adminList').innerHTML = rows.map(x=>renderTaskRow(x,true)).join('') || '<div class="muted">目前沒有已建立任務</div>';
+        qs('#adminList').innerHTML = rows.map(x=>renderTaskRow(x,true,user)).join('') || '<div class="muted">目前沒有已建立任務</div>';
         qs('#staffBlock').style.display='none';
       }else{
-        qs('#list').innerHTML = rows.filter(x=>x.status!=='已完成').map(x=>renderTaskRow(x,false)).join('') || '<div class="muted">目前沒有任務</div>';
+        qs('#list').innerHTML = rows.filter(x=>x.status!=='已完成').map(x=>renderTaskRow(x,false,user)).join('') || '<div class="muted">目前沒有任務</div>';
       }
       const taskId=new URLSearchParams(location.search).get('taskId');
-      if(taskId){const el=qs('#task_'+taskId); if(el){el.scrollIntoView({behavior:'smooth', block:'start'});}}
+      if(taskId){
+        const el=qs('#task_'+taskId);
+        if(el){el.scrollIntoView({behavior:'smooth', block:'start'}); el.classList.add('focus-task'); setTimeout(()=>el.classList.remove('focus-task'),2200);}
+      }
+    }
+
+    function setProgressUI(prefix,pct,text,title){
+      const pctEl=qs(`#${prefix}Pct`), barEl=qs(`#${prefix}Bar`), txtEl=qs(`#${prefix}Text`), titleEl=qs(`#${prefix}Title`);
+      if(pctEl) pctEl.textContent=`${pct}%`;
+      if(barEl) barEl.style.width=`${pct}%`;
+      if(txtEl) txtEl.textContent=text||'';
+      if(titleEl && title) titleEl.textContent=title;
+    }
+
+    async function runFakeProgress(prefix, steps){
+      for(const step of steps){
+        setProgressUI(prefix, step.pct, step.text, step.title);
+        await new Promise(r=>setTimeout(r, step.wait||220));
+      }
     }
 
     function renderRecMeter(level=0){
-      const meter=qs('#recMeter');
-      const bars=Array.from(meter.children);
+      const meter=qs('#recMeter'); if(!meter) return;
+      const bars=Array.from(meter.children); if(!bars.length) return;
       const active=Math.max(1, Math.min(bars.length, Math.round(level*bars.length)));
-      bars.forEach((bar,i)=>bar.classList.toggle('live', i<active && level>0.03));
+      bars.forEach((bar,i)=>{
+        const on=i<active && level>0.03;
+        const base=18 + ((i%5)*6);
+        const boost=on ? Math.max(10, level*42 - i*1.2) : 0;
+        bar.style.height=(base+boost)+'px';
+        bar.classList.toggle('live', on);
+      });
     }
+
     function initRecMeter(){
       const meter=qs('#recMeter');
-      if(meter.children.length) return;
+      if(!meter || meter.children.length) return;
       meter.innerHTML=Array.from({length:18}).map(()=>'<span class="rec-bar"></span>').join('');
       renderRecMeter(0);
     }
 
     async function completeTask(taskId, btnEl){
       const user=requireLogin();
-      const note=qs('#note_'+taskId).value.trim();
+      const item=qs('#task_'+taskId);
+      const requirePhoto=item ? item.dataset.requirePhoto==='是' : false;
       const file=qs('#photo_'+taskId).files[0];
-      const card=qs('#task_'+taskId);
-      const requirePhoto = card && card.dataset.requirePhoto==='yes';
-      if(requirePhoto && !file){ setMsg(qs('#msg'),'這筆任務有要求照片回覆，請先上傳照片才可完成任務。',true); return; }
+      if(requirePhoto && !file){setMsg(qs('#msg'),'這筆任務需要回傳照片，請先上傳照片再完成任務。',true); return;}
       let photo='';
       if(file) photo=await compressImageToDataUrl(file,1280,0.78);
       const btn=btnEl||null;
-      if(btn){btn.disabled=true;}
-      try{
-        const r=await api('completeTask',{userId:user.id,taskId,note,photo});
-        setMsg(qs('#msg'),r.message,!r.ok);
-        if(r.ok) loadTasks();
-      }catch(err){
-        setMsg(qs('#msg'),err.message||'送出失敗',true);
-      }finally{ if(btn){btn.disabled=false;} }
+      const progressBox=qs('#completeProgress_'+taskId);
+      if(btn){btn.disabled=true; btn.classList.add('hidden');}
+      if(progressBox){progressBox.classList.remove('hidden');}
+      runFakeProgress('complete_'+taskId,[
+        {pct:10,text:'檢查資料中...',wait:180},
+        {pct:30,text:'整理完成內容...',wait:220},
+        {pct:60,text:'上傳中...',wait:260},
+        {pct:85,text:'等待系統寫入...',wait:220}
+      ]);
+      const r=await api('completeTask',{userId:user.id,taskId,note:qs('#note_'+taskId).value,photo});
+      setProgressUI('complete_'+taskId,100,r.ok?'完成任務送出成功':'送出失敗');
+      setMsg(qs('#msg'),r.message,!r.ok);
+      setTimeout(()=>{ if(btn){btn.disabled=false; btn.classList.remove('hidden');} if(progressBox){progressBox.classList.add('hidden');} if(btn){btn.textContent='完成任務';}}, r.ok?700:1200);
+      if(r.ok) setTimeout(loadTasks,450);
     }
 
-    async function createTask(){
+    async function deleteTask(taskId, title){
       const user=requireLogin();
-      const deadline=computeDeadline();
-      if(deadline.dueMode==='custom' && (!deadline.dueDate || !deadline.dueTime)){ setMsg(qs('#msg'),'請完整選擇截止日期與時間',true); return; }
-      const imageFile=qs('#taskImage').files[0];
-      let taskImage='';
-      if(imageFile) taskImage=await compressImageToDataUrl(imageFile,1280,0.78);
-      const payload={
-        creatorId:user.id,
-        title:qs('#title').value.trim(),
-        content:qs('#content').value.trim(),
-        assigneeId:qs('#assigneeId').value,
-        dueDate:deadline.dueDate,
-        dueTime:deadline.dueTime,
-        dueMode:deadline.dueMode,
-        dueLabel:deadline.dueLabel,
-        taskImage,
-        taskAudio,
-        requirePhotoReturn:qs('#requirePhotoReturn').value,
-        remindFreq:qs('#remindFreq').value,
-        reminderPlan:activeReminders.join('、')
-      };
-      if(!payload.title){ setMsg(qs('#msg'),'請輸入任務標題',true); return; }
-      if(!payload.assigneeId){ setMsg(qs('#msg'),'請選擇指派員工',true); return; }
-      const btn=qs('#createBtn');
-      btn.disabled=true;
-      try{
-        const r=await api('createTask',payload);
-        setMsg(qs('#msg'),r.message,!r.ok);
-        if(r.ok){
-          qs('#title').value=''; qs('#content').value=''; qs('#taskImage').value=''; taskAudio='';
-          qs('#recStatus').textContent='尚未錄音'; qs('#clearRecBtn').classList.add('hidden');
-          resetReminderUI();
-          loadTasks();
-        }
-      }catch(err){
-        setMsg(qs('#msg'),err.message||'建立失敗',true);
-      }finally{ btn.disabled=false; }
+      if(user.role!=='admin') return;
+      if(!confirm(`確定要刪除任務「${title||taskId}」嗎？`)) return;
+      const r=await api('deleteTask',{userId:user.id,taskId});
+      setMsg(qs('#msg'),r.message,!r.ok);
+      if(r.ok) setTimeout(loadTasks,220);
     }
 
     async function init(){
       fillHeader();
+      applyDueMode('today');
+      reminderState.freq=qs('#remindFreq') ? qs('#remindFreq').value : '一般提醒';
+      refreshRemindUi();
+      qsa('#dueModeChips .quick-chip').forEach(b=>b.onclick=()=>applyDueMode(b.dataset.mode));
       const user=requireLogin();
-      fillDuePreset();
-      initRecMeter();
-      qs('#remindFreq').onchange=resetReminderUI;
-      resetReminderUI();
-      await loadTasks();
-      if(user.role==='admin') await loadAssignees();
-      qs('#createBtn')?.addEventListener('click',createTask);
-      qs('#startRecBtn')?.addEventListener('click',async()=>{
-        try{
-          recorder=await startRecorder((dataUrl)=>{taskAudio=dataUrl; qs('#recStatus').textContent='已完成錄音'; qs('#clearRecBtn').classList.remove('hidden'); qs('#recMeter').classList.add('hidden');}, level=>{qs('#recMeter').classList.remove('hidden'); renderRecMeter(level);});
-          qs('#startRecBtn').disabled=true; qs('#stopRecBtn').disabled=false; qs('#recStatus').textContent='錄音中...';
-        }catch(err){setMsg(qs('#msg'),err.message||'無法錄音',true);}
-      });
-      qs('#stopRecBtn')?.addEventListener('click',()=>{ if(recorder){ recorder.stop(); recorder=null; qs('#startRecBtn').disabled=false; qs('#stopRecBtn').disabled=true; }});
-      qs('#clearRecBtn')?.addEventListener('click',()=>{taskAudio=''; qs('#clearRecBtn').classList.add('hidden'); qs('#recStatus').textContent='尚未錄音';});
+      if(user.role==='admin'){
+        await loadAssignees();
+        initRecMeter();
+        let recorder=null;
+        qs('#remindFreq').onchange=(e)=>{reminderState={freq:e.target.value,labels:[],active:[]}; refreshRemindUi();};
+        qs('#startRecBtn').onclick=async()=>{
+          try{
+            qs('#recMeter').classList.remove('hidden');
+            recorder=await startRecorder((data)=>{taskAudio=data;qs('#recStatus').textContent='已附加錄音';qs('#clearRecBtn').classList.remove('hidden');renderRecMeter(0.04);},(level)=>renderRecMeter(level));
+            qs('#startRecBtn').disabled=true;qs('#stopRecBtn').disabled=false;qs('#recStatus').textContent='錄音中，請直接說話';
+          }catch(e){setMsg(qs('#msg'),e.message||String(e),true);}
+        };
+        qs('#stopRecBtn').onclick=()=>{if(recorder){recorder.stop(); recorder=null;}qs('#startRecBtn').disabled=false;qs('#stopRecBtn').disabled=true;qs('#recStatus').textContent='已錄音，可建立交辦事項';};
+        qs('#clearRecBtn').onclick=()=>{taskAudio='';qs('#recStatus').textContent='尚未錄音';qs('#clearRecBtn').classList.add('hidden');renderRecMeter(0);qs('#recMeter').classList.add('hidden');};
+        qs('#createBtn').onclick=async()=>{
+          const deadline=computeDeadline(dueMode);
+          if(!qs('#title').value.trim() || !qs('#assigneeId').value){setMsg(qs('#msg'),'請先輸入標題並選擇員工',true);return;}
+          let taskImage='';
+          const f=qs('#taskImage').files[0];
+          const btn=qs('#createBtn');
+          const box=qs('#createProgressBox');
+          btn.classList.add('hidden');
+          box.classList.remove('hidden');
+          runFakeProgress('createProgress',[
+            {pct:10,text:'檢查欄位中...',wait:180},
+            {pct:25,text:'整理圖片與錄音...',wait:220},
+            {pct:45,text:'準備送出資料...',wait:220}
+          ]);
+          if(f){ setProgressUI('createProgress',35,'壓縮圖片中...'); taskImage=await compressImageToDataUrl(f,1280,0.78); }
+          setProgressUI('createProgress',60,'上傳中...');
+          const remindPlan = JSON.stringify({freq:reminderState.freq, labels:currentRemindLabels()});
+          const r=await api('createTask',{
+            creatorId:user.id,
+            title:qs('#title').value,
+            content:qs('#content').value,
+            assigneeId:qs('#assigneeId').value,
+            dueMode,
+            dueLabel:deadline.dueLabel,
+            dueDate:deadline.dueDate,
+            dueTime:deadline.dueTime,
+            requirePhotoReturn:qs('#requirePhotoReturn').value,
+            remindFreq:qs('#remindFreq').value,
+            remindPlan,
+            taskImage,
+            taskAudio
+          });
+          setProgressUI('createProgress',100,r.ok?'建立完成':'建立失敗');
+          setMsg(qs('#msg'),r.message,!r.ok);
+          setTimeout(()=>{btn.classList.remove('hidden'); box.classList.add('hidden');}, r.ok?700:1200);
+          if(r.ok){
+            qs('#title').value=''; qs('#content').value=''; qs('#taskImage').value=''; taskAudio='';
+            qs('#recStatus').textContent='尚未錄音'; qs('#clearRecBtn').classList.add('hidden');
+            renderRecMeter(0); qs('#recMeter').classList.add('hidden');
+            reminderState={freq:qs('#remindFreq').value,labels:[],active:[]}; refreshRemindUi();
+            applyDueMode('today');
+            setTimeout(loadTasks,450);
+          }
+        };
+      } else {
+        qs('#adminBlock').style.display='none';
+      }
+      loadTasks();
     }
   </script>
 </body>
