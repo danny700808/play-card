@@ -10,14 +10,11 @@
     .task-actions .btn{width:auto;min-width:120px}
     .task-note{background:#f7fafc;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;font-size:13px;color:#526174;margin-top:8px}
     .task-note.warn{background:#fff8e8;border-color:#f0d18a;color:#8a6413}
-    .task-note.self{background:#eef7f2;border-color:#cfe5da;color:#1f5e49}
     .remind-explain{font-size:14px;color:#6b7b8c;margin-top:8px;line-height:1.7}
-    .remind-chip-row{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px}
-    .remind-chip{display:inline-flex;align-items:center;gap:8px;padding:10px 14px;border-radius:999px;background:#eef4ef;color:#23684f;font-weight:800}
-    .remind-chip.fixed{background:#f8eed7;color:#9a6700}
-    .remind-chip button{border:none;background:none;color:#6b7b8c;font-size:22px;line-height:1;cursor:pointer;padding:0}
-    .task-summary-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
-    .task-summary-chip{display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;background:#f4f7fb;border:1px solid #dfe6ee;font-size:12px;color:#486070}
+    .remind-plan-box{margin-top:10px;padding:12px 14px;border-radius:14px;background:#f7fafc;border:1px solid #e2e8f0;color:#526174;font-size:13px;line-height:1.8}
+    .task-summary-box{margin-top:8px;padding:10px 12px;border-radius:12px;background:#f7fafc;border:1px solid #e2e8f0}
+    .task-summary-box .muted{margin:0}
+    .complete-primary{background:#1f7a5a !important;color:#fff !important;width:100% !important;min-height:54px;border-radius:14px;font-size:18px;font-weight:800}
     .task-audio-link{margin-top:10px}
     .task-audio-link .btn{width:auto}
     .task-del-wrap{margin-left:auto}
@@ -53,16 +50,16 @@
         <div class="field"><label>指派員工</label><select id="assigneeId"><option value="">請選擇員工</option></select></div>
 
         <div class="field">
-          <label>急件快速選單</label>
-          <div class="quick-row" id="dueModeChips">
-            <button type="button" class="quick-chip" data-mode="today">今天 9 點前</button>
-            <button type="button" class="quick-chip" data-mode="tomorrow">明天 9 點前</button>
-            <button type="button" class="quick-chip" data-mode="2days">兩天後 9 點前</button>
-            <button type="button" class="quick-chip" data-mode="week">本週內</button>
-            <button type="button" class="quick-chip" data-mode="shopee">蝦皮 19:00 前寄出</button>
-            <button type="button" class="quick-chip" data-mode="momo">Momo 15:00 前完成</button>
-            <button type="button" class="quick-chip" data-mode="custom">自訂時間</button>
-          </div>
+          <label>時間選擇</label>
+          <select id="dueModeSelect">
+            <option value="today">今天 9 點前</option>
+            <option value="tomorrow">明天 9 點前</option>
+            <option value="2days">兩天後 9 點前</option>
+            <option value="week">本週內</option>
+            <option value="shopee">蝦皮 19:00 前寄出</option>
+            <option value="momo">Momo 15:00 前完成</option>
+            <option value="custom">自訂時間</option>
+          </select>
         </div>
 
         <div id="customDueBox" class="hidden">
@@ -101,10 +98,10 @@
           <select id="remindFreq">
             <option value="低提醒">低提醒</option>
             <option value="一般提醒" selected>一般提醒</option>
-            <option value="重要提醒">重要提醒</option>
+            <option value="高提醒">高提醒</option>
           </select>
           <div class="remind-explain" id="remindExplain"></div>
-          <div class="remind-chip-row" id="remindChipRow"></div>
+          <div class="remind-plan-box" id="remindPlanBox"></div>
         </div>
 
         <div id="createActionBox">
@@ -133,11 +130,11 @@
   <script>
     let dueMode = 'today';
     let taskAudio = '';
-    let reminderState = {freq:'一般提醒', labels:[], active:[]};
+    let reminderState = {freq:'一般提醒', times:[]};
 
     function applyDueMode(mode){
       dueMode = mode;
-      qsa('#dueModeChips .quick-chip').forEach(b=>b.classList.toggle('active', b.dataset.mode===mode));
+      if(qs('#dueModeSelect')) qs('#dueModeSelect').value = mode;
       qs('#customDueBox').classList.toggle('hidden', mode!=='custom');
     }
 
@@ -155,49 +152,39 @@
     }
 
     function getRemindPreset(freq){
-      if(freq==='低提醒') return ['第一次提醒','最後提醒'];
-      if(freq==='重要提醒') return ['第一次提醒','第二次提醒','第三次提醒','第四次提醒','最後提醒'];
-      return ['第一次提醒','第二次提醒','最後提醒'];
-    }
-
-    function currentRemindLabels(){
-      return reminderState.labels.filter((label,idx)=>reminderState.active[idx]);
+      if(freq==='低提醒') return ['截止前 24 小時','截止前 2 小時','截止時間到時'];
+      if(freq==='高提醒') return ['截止前 24 小時','截止前 6 小時','截止前 2 小時','截止前 30 分鐘','截止時間到時'];
+      return ['截止前 24 小時','截止前 6 小時','截止前 1 小時','截止時間到時'];
     }
 
     function refreshRemindUi(){
-      const labels=getRemindPreset(reminderState.freq);
-      if(!reminderState.labels.length || reminderState.labels.join('|')!==labels.join('|')){
-        reminderState.labels=labels.slice();
-        reminderState.active=labels.map(()=>true);
-      }
-      const activeLabels=currentRemindLabels();
-      qs('#remindExplain').textContent=`${reminderState.freq}：共 ${activeLabels.length} 次提醒，收件人可自行取消前面提醒，但最後一次提醒一定保留。`;
-      qs('#remindChipRow').innerHTML = reminderState.labels.map((label,idx)=>{
-        if(!reminderState.active[idx]) return '';
-        const isLast = idx===reminderState.labels.length-1;
-        return `<span class="remind-chip ${isLast?'fixed':''}">${label}${isLast?'<span>不可取消</span>':`<button type="button" onclick="removeRemindChip(${idx})" aria-label="取消${label}">×</button>`}</span>`;
-      }).join('');
-    }
-
-    function removeRemindChip(idx){
-      if(idx>=reminderState.labels.length-1) return;
-      reminderState.active[idx]=false;
-      refreshRemindUi();
+      const times=getRemindPreset(reminderState.freq);
+      reminderState.times=times.slice();
+      qs('#remindExplain').textContent=`${reminderState.freq}：以下是通知員工的提醒時間。`;
+      qs('#remindPlanBox').innerHTML = times.map((time,idx)=>`<div>${idx+1}. ${time} 提醒一次</div>`).join('');
     }
 
     function parseRemindPlan(raw, freq){
       try{
         const obj=JSON.parse(raw||'');
-        if(obj && Array.isArray(obj.labels) && obj.labels.length) return obj;
+        if(obj && Array.isArray(obj.times) && obj.times.length) return obj;
       }catch(e){}
-      const labels=getRemindPreset(freq||'一般提醒');
-      return {freq:freq||'一般提醒', labels};
+      const times=getRemindPreset(freq||'一般提醒');
+      return {freq:freq||'一般提醒', times};
     }
 
     function renderRemindSummary(task){
       const plan=parseRemindPlan(task.remindPlan, task.remindFreq);
-      const labels=(plan.labels||[]).map((x,i)=>`<span class="task-summary-chip">${x}${i===plan.labels.length-1?'｜保留最後提醒':''}</span>`).join('');
-      return `<div class="muted">提醒：${plan.freq||task.remindFreq||'一般提醒'}｜共 ${(plan.labels||[]).length} 次提醒</div><div class="task-summary-row">${labels}</div>`;
+      const lines=(plan.times||[]).map((x,i)=>`<div class="muted">${i+1}. ${x} 提醒一次</div>`).join('');
+      return `<div class="task-summary-box"><div class="muted">提醒方式：${plan.freq||task.remindFreq||'一般提醒'}</div>${lines}</div>`;
+    }
+
+
+    function formatDisplayDateTime(v){
+      const s=String(v||'').trim();
+      if(!s) return '';
+      const iso=s.replace('T',' ').replace(/\.\d+Z?$/,'').replace(/Z$/,'');
+      return iso;
     }
 
     async function loadAssignees(){
@@ -212,18 +199,16 @@
       const imageOpenUrl = audioOpenUrl(x.taskImageUrl);
       const imgUrl = imagePreviewUrl(x.taskImageUrl);
       const imageHtml = x.taskImageUrl ? `<div class="task-image-wrap"><a href="${imageOpenUrl}" target="_blank" rel="noopener"><img class="task-thumb" src="${imgUrl}" alt="任務圖片"></a></div>` : '';
-      const audioHtml = x.taskAudioUrl ? `<div class="task-audio-link"><a class="btn secondary audio-open-btn" href="${audioOpenUrl(x.taskAudioUrl)}" target="_blank" rel="noopener">前往 Google 開啟錄音</a></div>` : '';
+      const audioHtml = x.taskAudioUrl ? `<div class="task-audio-link"><a class="btn secondary audio-open-btn" href="${audioOpenUrl(x.taskAudioUrl)}" target="_blank" rel="noopener">開啟語音檔案</a></div>` : '';
       const isMyAssignedTask = String(x.assigneeId||'')===String(currentUser.id||'') || String(x.assigneeEmail||'').toLowerCase()===String(currentUser.email||'').toLowerCase();
       const canComplete = x.status!=='已完成' && (!isAdmin || isMyAssignedTask);
-      const selfNote = isMyAssignedTask ? `<div class="task-note self">這筆任務有指派給你自己，所以你也可以直接回報完成。</div>` : '';
-      const proofNote = x.requirePhotoReturn==='是' ? `<div class="task-note warn">管理者要求回傳照片，沒有上傳照片就不能完成任務。</div>` : '';
+      const proofNote = x.requirePhotoReturn==='是' ? `<div class="task-note warn">這筆任務需要回傳照片，沒有上傳照片就不能完成任務。</div>` : '';
       const completeBox = canComplete ? `
-        ${selfNote}
         ${proofNote}
         <div class="field" style="margin-top:10px"><textarea id="note_${x.id}" placeholder="問問題回報備注說明（選填）"></textarea></div>
         <div class="field"><input id="photo_${x.id}" type="file" accept=".jpg,.jpeg,.png"><div class="attach-badge">${x.requirePhotoReturn==='是'?'這筆任務必須回傳照片才可完成':'有需要再補充照片即可'}</div></div>
         <div class="complete-action-box" id="completeWrap_${x.id}">
-          <button class="btn secondary" onclick="completeTask('${x.id}', this)">完成任務</button>
+          <button class="btn complete-primary" onclick="completeTask('${x.id}', this)">完成任務</button>
           <div class="progress-box hidden" id="completeProgress_${x.id}">
             <div class="progress-head"><strong>完成任務送出中</strong><span id="complete_${x.id}Pct">0%</span></div>
             <div class="progress-track"><div id="complete_${x.id}Bar" class="progress-bar"></div></div>
@@ -240,7 +225,7 @@
           <div class="muted">指派：${x.assigneeName||''}｜期限：${dueText}</div>
           ${renderRemindSummary(x)}
           <div class="muted">${proofText}</div>
-          ${isAdmin?`<div class="muted">建立者：${x.createdByName||''}｜建立時間：${x.createdAt||''}</div>`:''}
+          ${isAdmin?`<div class="muted">建立者：${x.createdByName||''}｜建立時間：${formatDisplayDateTime(x.createdAt||'')||''}</div>`:''}
           <div class="task-actions">${completeBox}${deleteBtn}</div>
         </div>`;
     }
@@ -336,13 +321,13 @@
       applyDueMode('today');
       reminderState.freq=qs('#remindFreq') ? qs('#remindFreq').value : '一般提醒';
       refreshRemindUi();
-      qsa('#dueModeChips .quick-chip').forEach(b=>b.onclick=()=>applyDueMode(b.dataset.mode));
+      if(qs('#dueModeSelect')) qs('#dueModeSelect').onchange=(e)=>applyDueMode(e.target.value);
       const user=requireLogin();
       if(user.role==='admin'){
         await loadAssignees();
         initRecMeter();
         let recorder=null;
-        qs('#remindFreq').onchange=(e)=>{reminderState={freq:e.target.value,labels:[],active:[]}; refreshRemindUi();};
+        qs('#remindFreq').onchange=(e)=>{reminderState={freq:e.target.value,times:[]}; refreshRemindUi();};
         qs('#startRecBtn').onclick=async()=>{
           try{
             qs('#recMeter').classList.remove('hidden');
@@ -368,7 +353,7 @@
           ]);
           if(f){ setProgressUI('createProgress',35,'壓縮圖片中...'); taskImage=await compressImageToDataUrl(f,1280,0.78); }
           setProgressUI('createProgress',60,'上傳中...');
-          const remindPlan = JSON.stringify({freq:reminderState.freq, labels:currentRemindLabels()});
+          const remindPlan = JSON.stringify({freq:reminderState.freq, times:reminderState.times||getRemindPreset(reminderState.freq)});
           const r=await api('createTask',{
             creatorId:user.id,
             title:qs('#title').value,
@@ -391,7 +376,7 @@
             qs('#title').value=''; qs('#content').value=''; qs('#taskImage').value=''; taskAudio='';
             qs('#recStatus').textContent='尚未錄音'; qs('#clearRecBtn').classList.add('hidden');
             renderRecMeter(0); qs('#recMeter').classList.add('hidden');
-            reminderState={freq:qs('#remindFreq').value,labels:[],active:[]}; refreshRemindUi();
+            reminderState={freq:qs('#remindFreq').value,times:[]}; refreshRemindUi();
             applyDueMode('today');
             setTimeout(loadTasks,450);
           }
