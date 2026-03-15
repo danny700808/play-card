@@ -13,6 +13,22 @@ async function getPublicIp(){try{const r=await fetch('https://api.ipify.org?form
 async function fileToDataUrl(file){return new Promise((resolve,reject)=>{const r=new FileReader(); r.onload=()=>resolve(String(r.result||'')); r.onerror=reject; r.readAsDataURL(file);});}
 function fillHeader(){const user=requireLogin(); if(!user) return; qsa('[data-user-name]').forEach(el=>el.textContent=user.name||'員工'); qsa('[data-if-parttime]').forEach(el=>el.style.display=user.isPartTime?'':'none'); qsa('[data-if-admin]').forEach(el=>el.style.display=user.role==='admin'?'':'none'); qsa('[data-if-staff-view]').forEach(el=>el.style.display=user.role==='admin'?'none':'');}
 function redirectAfterLogin(user){saveUser(user); location.href = user.role==='admin' ? 'task.html' : 'dashboard.html';}
+
+function saveLoginPref(email, password, remember=true){
+  if(!remember){ localStorage.removeItem('employeeSavedLogin'); return; }
+  localStorage.setItem('employeeSavedLogin', JSON.stringify({email:email||'', password:password||'', remember:true}));
+}
+function getLoginPref(){
+  try{return JSON.parse(localStorage.getItem('employeeSavedLogin')||'null')}catch(e){return null}
+}
+function applySavedLogin(emailSel='#email', passwordSel='#password', rememberSel='#rememberLogin'){
+  const saved=getLoginPref();
+  if(!saved) return;
+  const email=qs(emailSel), password=qs(passwordSel), remember=qs(rememberSel);
+  if(email && saved.email) email.value=saved.email;
+  if(password && saved.password) password.value=saved.password;
+  if(remember) remember.checked=!!saved.remember;
+}
 async function compressImageToDataUrl(file, maxSize=1280, quality=0.78){
   if(!file) return '';
   if(!file.type.startsWith('image/')) return await fileToDataUrl(file);
@@ -41,44 +57,20 @@ function formatTaskStatusTag(status){
   const cls=status==='待處理'?'pending':(status==='已完成'?'done':'');
   return `<span class="tag ${cls}">${status}</span>`;
 }
-
-function getPreferredRecorderMimeType(){
-  const candidates = [
-    'audio/mp4',
-    'audio/mp4;codecs=mp4a.40.2',
-    'audio/x-m4a',
-    'audio/wav',
-    'audio/webm;codecs=opus',
-    'audio/webm'
-  ];
-  if (typeof MediaRecorder === 'undefined' || typeof MediaRecorder.isTypeSupported !== 'function') return '';
-  for (const type of candidates){
-    try{ if(type && MediaRecorder.isTypeSupported(type)) return type; }catch(e){}
-  }
-  return '';
-}
-
-async function startRecorder(onDone, onState){
+async function startRecorder(onDone){
   if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){throw new Error('目前裝置不支援錄音');}
   const stream=await navigator.mediaDevices.getUserMedia({audio:true});
-  const mimeType = getPreferredRecorderMimeType();
+  const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
   const rec=new MediaRecorder(stream, mimeType?{mimeType}:undefined);
   const chunks=[];
-  rec.onstart=()=>{ if(typeof onState==='function') onState('start', rec.mimeType || mimeType || ''); };
   rec.ondataavailable=e=>{if(e.data && e.data.size) chunks.push(e.data);};
-  rec.onerror=()=>{ if(typeof onState==='function') onState('error', rec.mimeType || mimeType || ''); };
   rec.onstop=async()=>{
     stream.getTracks().forEach(t=>t.stop());
-    const finalType = rec.mimeType || mimeType || 'audio/webm';
-    const blob=new Blob(chunks,{type:finalType});
+    const blob=new Blob(chunks,{type:rec.mimeType || 'audio/webm'});
     const reader=new FileReader();
-    reader.onload=()=>{
-      if(typeof onState==='function') onState('stop', finalType);
-      onDone(String(reader.result||''), finalType);
-    };
+    reader.onload=()=>onDone(String(reader.result||''));
     reader.readAsDataURL(blob);
   };
   rec.start();
   return rec;
 }
-
