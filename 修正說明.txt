@@ -1,0 +1,18 @@
+這次修正重點：
+1. app.js
+   - 將 audioStreamUrl() 從 Google Drive 的 export=download 改成 export=view
+   - 避免 <audio> 直接吃下載型回應，降低播放錯誤機率
+
+2. task.html
+   - audio 標籤從 preload="none" 改成 preload="metadata"
+   - 增加 playsinline
+   - 將按鈕文案改成「無法播放時改用這裡開啟錄音」
+
+建議測試方式：
+1. 先覆蓋 GitHub 的 app.js 與 task.html
+2. 強制重新整理或用無痕開 task.html
+3. 用新建立的一筆錄音任務測試，不要只測舊資料
+
+另外提醒：
+- 若仍有少數裝置無法播放，下一步要處理的是「錄音格式統一」問題。
+- 目前不同瀏覽器可能錄成 mp4 或 webm；若要更穩，之後可改成固定輸出 wav。

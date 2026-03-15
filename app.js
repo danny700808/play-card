@@ -19,7 +19,7 @@ function applySavedLogin(emailSel='#email',passwordSel='#password',rememberSel='
 function getDriveFileId(url){const m=String(url||'').match(/(?:file\/d\/|[?&]id=)([-_a-zA-Z0-9]+)/);return m?m[1]:'';}
 function imagePreviewUrl(url){const id=getDriveFileId(url);return id?('https://drive.google.com/thumbnail?id='+id+'&sz=w1200'):url;}
 function audioOpenUrl(url){const id=getDriveFileId(url);return id?('https://drive.google.com/file/d/'+id+'/view'):url;}
-function audioStreamUrl(url){const id=getDriveFileId(url);return id?('https://drive.google.com/uc?export=download&id='+id):url;}
+function audioStreamUrl(url){const id=getDriveFileId(url);return id?('https://drive.google.com/uc?export=view&id='+id):url;}
 async function compressImageToDataUrl(file, maxSize=1280, quality=0.78){
   if(!file) return '';
   if(!file.type.startsWith('image/')) return await fileToDataUrl(file);
