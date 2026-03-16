@@ -3,8 +3,14 @@ const API_URL = window.APP_CONFIG.API_URL;
 function qs(s){return document.querySelector(s)}
 function qsa(s){return Array.from(document.querySelectorAll(s))}
 function saveUser(user){localStorage.setItem('employeeUser', JSON.stringify(user))}
+function setPortalMode(mode){localStorage.setItem('employeePortalMode', mode==='settings'?'settings':'staff')}
+function getPortalMode(){return localStorage.getItem('employeePortalMode')||'staff'}
+function clearPortalMode(){localStorage.removeItem('employeePortalMode')}
+function hasSettingsZoneAccess(user=getUser()){return !!(user && user.showSettingsZone)}
+function isSettingsMode(){return hasSettingsZoneAccess() && getPortalMode()==='settings'}
+function modeHomeHref(){return isSettingsMode() ? 'settings.html' : 'dashboard.html'}
 function getUser(){try{return JSON.parse(localStorage.getItem('employeeUser')||'null')}catch(e){return null}}
-function logout(){localStorage.removeItem('employeeUser'); location.href='index.html'}
+function logout(){localStorage.removeItem('employeeUser'); clearPortalMode(); location.href='index.html'}
 function requireLogin(){const user=getUser(); if(!user){location.href='index.html'; return null;} return user;}
 async function api(action, payload={}){const res=await fetch(API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action,...payload})}); return res.json();}
 function setMsg(el, text, isError=false){if(!el) return; el.style.display=text?'block':'none'; el.textContent=text||''; el.classList.toggle('error',!!isError)}
@@ -12,7 +18,7 @@ function togglePassword(inputSel, btn){const input=qs(inputSel); const show=inpu
 async function getPublicIp(){try{const r=await fetch('https://api.ipify.org?format=json'); const j=await r.json(); return j.ip||'';}catch(e){return '';}}
 async function fileToDataUrl(file){return new Promise((resolve,reject)=>{const r=new FileReader(); r.onload=()=>resolve(String(r.result||'')); r.onerror=reject; r.readAsDataURL(file);});}
 function fillHeader(){const user=requireLogin(); if(!user) return; qsa('[data-user-name]').forEach(el=>el.textContent=user.name||'員工'); qsa('[data-if-parttime]').forEach(el=>el.style.display=user.isPartTime?'':'none'); qsa('[data-if-admin]').forEach(el=>el.style.display=user.role==='admin'?'':'none'); qsa('[data-if-staff-view]').forEach(el=>el.style.display=user.role==='admin'?'none':'');}
-function redirectAfterLogin(user){saveUser(user); location.href = user.role==='admin' ? 'task.html' : 'dashboard.html';}
+function redirectAfterLogin(user){saveUser(user); if(user && user.showSettingsZone){setPortalMode('staff'); location.href='portal.html'; return;} location.href = user.role==='admin' ? 'task.html' : 'dashboard.html';}
 function saveLoginPref(email,password,remember=true){if(!remember){localStorage.removeItem('employeeSavedLogin');return;}localStorage.setItem('employeeSavedLogin',JSON.stringify({email:email||'',password:password||'',remember:true}));}
 function getSavedLogin(){try{return JSON.parse(localStorage.getItem('employeeSavedLogin')||'null')}catch(e){return null}}
 function applySavedLogin(emailSel='#email',passwordSel='#password',rememberSel='#rememberLogin'){const s=getSavedLogin();if(!s)return;const e=qs(emailSel),p=qs(passwordSel),r=qs(rememberSel);if(e)e.value=s.email||'';if(p)p.value=s.password||'';if(r)r.checked=!!s.remember;}

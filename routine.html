@@ -34,21 +34,23 @@
     <div class="card">
       <div class="topbar">
         <div>
-          <h1 class="title" style="margin:0">定期事項</h1>
+          <h1 class="title" id="routinePageTitle" style="margin:0">定期事項</h1>
           <div class="welcome">歡迎 <span data-user-name></span></div>
         </div>
-        <a class="navlink" href="dashboard.html">員工首頁</a>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+          <a class="navlink hidden" id="routinePortalLink" href="portal.html">返回入口</a>
+          <a class="navlink" id="routineHomeLink" href="dashboard.html">員工首頁</a>
+        </div>
       </div>
       <div id="msg" class="message"></div>
 
-      <div class="routine-nav" data-if-admin style="display:none">
-        <a class="navlink" href="task.html">交辦事項</a>
-        <a class="navlink" href="clock.html">打卡系統</a>
-        <a class="navlink" href="leave.html">請假系統</a>
-        <a class="navlink" href="parttime.html">工讀生時數</a>
+      <div class="routine-nav" data-if-admin style="display:none" id="routineAdminNav">
+        <a class="navlink" href="settings.html">設定區首頁</a>
+        <a class="navlink" href="task.html">交辦事項設定</a>
+        <a class="navlink" href="leave.html">請假簽核</a>
       </div>
 
-      <div class="summary-grid">
+      <div class="summary-grid" id="routineSummaryWrap">
         <div class="summary-card"><div class="muted">待完成</div><strong id="sumPending">0</strong></div>
         <div class="summary-card"><div class="muted">已逾期</div><strong id="sumOverdue">0</strong></div>
         <div class="summary-card"><div class="muted">本月已完成</div><strong id="sumCompleted">0</strong></div>
@@ -111,6 +113,7 @@
         <div id="adminPendingList" class="compact-list"></div>
       </div>
 
+      <div id="routineStaffWrap">
       <div class="section-title">我的定期事項</div>
       <div class="help-box">
         <div class="help-title">頁面說明</div>
@@ -121,6 +124,7 @@
       <hr style="border:none;border-top:1px solid #e5ebf1;margin:18px 0">
       <div class="section-title">本月已完成紀錄</div>
       <div id="routineHistory" class="compact-list"></div>
+      </div>
     </div>
   </div>
 
@@ -128,8 +132,21 @@
   <script src="app.js"></script>
   <script>
     let currentUser = null;
+    let routineAdminMode = false;
     let pageData = {mine:[], history:[], summary:{pending:0,overdue:0,completed:0}, admin:{templates:[], pendingAll:[]}};
     let employeeOptions = [];
+
+    function applyRoutineMode(){
+      routineAdminMode = !!(currentUser && currentUser.role==='admin' && isSettingsMode());
+      qs('#adminBlock').style.display = routineAdminMode ? '' : 'none';
+      qs('#routineAdminNav').style.display = routineAdminMode ? 'flex' : 'none';
+      qs('#routineStaffWrap').style.display = routineAdminMode ? 'none' : '';
+      qs('#routineSummaryWrap').style.display = routineAdminMode ? 'none' : 'grid';
+      qs('#routinePageTitle').textContent = routineAdminMode ? '定期事項設定' : '定期事項';
+      qs('#routineHomeLink').href = routineAdminMode ? 'settings.html' : 'dashboard.html';
+      qs('#routineHomeLink').textContent = routineAdminMode ? '設定區首頁' : '員工首頁';
+      if(currentUser && currentUser.showSettingsZone){ qs('#routinePortalLink').classList.remove('hidden'); }
+    }
 
     function statusBadge(status){
       const cls = status==='待完成' ? 'todo' : (status==='已逾期' ? 'overdue' : (status==='停用' ? 'off' : ''));
@@ -189,7 +206,7 @@
       onCycleTypeChange();
       currentUser=requireLogin();
       if(!currentUser) return;
-      if(currentUser.role==='admin'){
+      if(routineAdminMode){
         const emp=await api('getEmployeeOptions',{userId:currentUser.id});
         employeeOptions = emp.rows||[];
         fillEmployeeOptions();
@@ -197,13 +214,14 @@
       await refreshPage();
     }
     async function refreshPage(){
-      const r=await api('getRoutinePageData',{userId:currentUser.id,email:currentUser.email,role:currentUser.role});
+      const requestRole = routineAdminMode ? 'admin' : 'staff';
+      const r=await api('getRoutinePageData',{userId:currentUser.id,email:currentUser.email,role:requestRole});
       if(!r.ok){ setMsg(qs('#msg'),r.message||'讀取失敗',true); return; }
       pageData=r;
       renderSummary();
       renderMine();
       renderHistory();
-      if(currentUser.role==='admin') renderAdmin();
+      if(routineAdminMode) renderAdmin();
     }
     function renderSummary(){
       qs('#sumPending').textContent = pageData.summary?.pending || 0;

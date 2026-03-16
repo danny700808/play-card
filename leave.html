@@ -15,13 +15,16 @@
 </head>
 <body onload="init()">
   <div class="container">
-    <div class="card">
+    <div class="card" id="leaveEmployeeCard">
       <div class="topbar">
         <div>
-          <h1 class="title" style="margin:0">請假申請單</h1>
+          <h1 class="title" id="leavePageTitle" style="margin:0">請假申請單</h1>
           <div class="welcome">歡迎 <span data-user-name></span></div>
         </div>
-        <a class="navlink" href="dashboard.html">回首頁</a>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+          <a class="navlink hidden" id="leavePortalLink" href="portal.html">返回入口</a>
+          <a class="navlink" id="leaveHomeLink" href="dashboard.html">回首頁</a>
+        </div>
       </div>
       <div class="muted">請假原因放最上方；送出後 7 天內可修改或刪除。特休會直接視為整天。主管登入後可直接在本頁看到待簽核請假單。</div>
 
@@ -92,7 +95,7 @@
       <div id="approvalList" class="list" style="margin-top:12px"></div>
     </div>
 
-    <div class="card">
+    <div class="card" id="leaveHistoryCard">
       <h2 class="title" style="font-size:20px;margin-bottom:8px">本年度請假紀錄</h2>
       <div class="muted" id="yearText">只顯示今年資料。</div>
       <div id="list" class="list" style="margin-top:12px"></div>
@@ -108,6 +111,19 @@
   <script>
     let historyRows = [];
     let approvalRows = [];
+    let currentUser = null;
+    let leaveApprovalMode = false;
+
+    function applyLeaveMode(){
+      leaveApprovalMode = !!(currentUser && currentUser.role==='admin' && isSettingsMode());
+      qs('#leaveEmployeeCard').style.display = leaveApprovalMode ? 'none' : '';
+      qs('#leaveHistoryCard').style.display = leaveApprovalMode ? 'none' : '';
+      qs('#approvalCard').classList.toggle('hidden', !leaveApprovalMode);
+      qs('#leavePageTitle').textContent = leaveApprovalMode ? '請假簽核' : '請假申請單';
+      qs('#leaveHomeLink').href = leaveApprovalMode ? 'settings.html' : 'dashboard.html';
+      qs('#leaveHomeLink').textContent = leaveApprovalMode ? '設定區首頁' : '回首頁';
+      if(currentUser && currentUser.showSettingsZone){ qs('#leavePortalLink').classList.remove('hidden'); }
+    }
 
     function localDateInputValue(){
       const now = new Date();
@@ -238,7 +254,7 @@ function renderApprovalRows(rows){
 }
 async function loadApprovalList(){
   const user = requireLogin();
-  if(!user || user.role !== 'admin') return;
+  if(!user || !leaveApprovalMode) return;
   const r = await api('getPendingLeaveApprovals',{userId:user.id});
   if(!r.ok){ setMsg(qs('#approvalMsg'), r.message || '待簽核資料讀取失敗', true); return; }
   setMsg(qs('#approvalMsg'),'');
@@ -246,7 +262,7 @@ async function loadApprovalList(){
 }
 async function handleApproval(requestId, decision){
   const user = requireLogin();
-  if(!user || user.role !== 'admin') return;
+  if(!user || !leaveApprovalMode) return;
   const text = decision === 'approve' ? '同意' : '駁回';
   if(!confirm(`確定要${text}這張請假單嗎？`)) return;
   setMsg(qs('#approvalMsg'),'');

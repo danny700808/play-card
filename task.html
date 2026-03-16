@@ -29,20 +29,21 @@
     <div class="card">
       <div class="topbar">
         <div>
-          <h1 class="title" style="margin:0">交辦事項</h1>
+          <h1 class="title" id="taskPageTitle" style="margin:0">交辦事項</h1>
           <div class="welcome">歡迎 <span data-user-name></span></div>
         </div>
-        <a class="navlink" href="dashboard.html">員工首頁</a>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+          <a class="navlink hidden" id="taskPortalLink" href="portal.html">返回入口</a>
+          <a class="navlink" id="taskHomeLink" href="dashboard.html">員工首頁</a>
+        </div>
       </div>
       <div id="msg" class="message"></div>
 
       <div id="adminBlock" data-if-admin style="display:none">
         <div class="task-admin-nav">
-          <a class="navlink" href="dashboard.html">員工首頁</a>
-          <a class="navlink" href="clock.html">打卡系統</a>
-          <a class="navlink" href="leave.html">請假系統</a>
-          <a class="navlink" href="parttime.html">工讀生時數</a>
-          <a class="navlink" href="routine.html">定期事項</a>
+          <a class="navlink" href="settings.html">設定區首頁</a>
+          <a class="navlink" href="leave.html">請假簽核</a>
+          <a class="navlink" href="routine.html">定期事項設定</a>
         </div>
 
         <div class="section-title">快速建立交辦</div>
@@ -132,6 +133,18 @@
     let dueMode = 'today';
     let taskAudio = '';
     let reminderState = {freq:'一般提醒', times:[]};
+    let currentUser = null;
+    let taskAdminMode = false;
+
+    function applyTaskMode(){
+      taskAdminMode = !!(currentUser && currentUser.role==='admin' && isSettingsMode());
+      qs('#adminBlock').style.display = taskAdminMode ? '' : 'none';
+      qs('#staffBlock').style.display = taskAdminMode ? 'none' : '';
+      qs('#taskPageTitle').textContent = taskAdminMode ? '交辦事項設定' : '交辦事項';
+      qs('#taskHomeLink').href = taskAdminMode ? 'settings.html' : 'dashboard.html';
+      qs('#taskHomeLink').textContent = taskAdminMode ? '設定區首頁' : '員工首頁';
+      if(currentUser && currentUser.showSettingsZone){ qs('#taskPortalLink').classList.remove('hidden'); }
+    }
 
     function applyDueMode(mode){
       dueMode = mode;
@@ -232,10 +245,11 @@
     }
 
     async function loadTasks(){
-      const user=requireLogin();
-      const r=await api('getTasks',{userId:user.id,email:user.email,role:user.role});
+      const user=currentUser||requireLogin();
+      const requestRole = taskAdminMode ? 'admin' : 'staff';
+      const r=await api('getTasks',{userId:user.id,email:user.email,role:requestRole});
       const rows=r.rows||[];
-      if(user.role==='admin'){
+      if(taskAdminMode){
         qs('#adminList').innerHTML = rows.map(x=>renderTaskRow(x,true,user)).join('') || '<div class="muted">目前沒有已建立任務</div>';
         qs('#staffBlock').style.display='none';
       }else{
@@ -310,7 +324,7 @@
 
     async function deleteTask(taskId, title){
       const user=requireLogin();
-      if(user.role!=='admin') return;
+      if(!taskAdminMode) return;
       if(!confirm(`確定要刪除任務「${title||taskId}」嗎？`)) return;
       const r=await api('deleteTask',{userId:user.id,taskId});
       setMsg(qs('#msg'),r.message,!r.ok);
@@ -323,8 +337,10 @@
       reminderState.freq=qs('#remindFreq') ? qs('#remindFreq').value : '一般提醒';
       refreshRemindUi();
       if(qs('#dueModeSelect')) qs('#dueModeSelect').onchange=(e)=>applyDueMode(e.target.value);
-      const user=requireLogin();
-      if(user.role==='admin'){
+      currentUser=requireLogin();
+      if(!currentUser) return;
+      applyTaskMode();
+      if(taskAdminMode){
         await loadAssignees();
         initRecMeter();
         let recorder=null;
@@ -356,7 +372,7 @@
           setProgressUI('createProgress',60,'上傳中...');
           const remindPlan = JSON.stringify({freq:reminderState.freq, times:reminderState.times||getRemindPreset(reminderState.freq)});
           const r=await api('createTask',{
-            creatorId:user.id,
+            creatorId:currentUser.id,
             title:qs('#title').value,
             content:qs('#content').value,
             assigneeId:qs('#assigneeId').value,
@@ -382,8 +398,6 @@
             setTimeout(loadTasks,450);
           }
         };
-      } else {
-        qs('#adminBlock').style.display='none';
       }
       loadTasks();
     }

@@ -1,0 +1,30 @@
+這包只處理雙入口模式：
+
+1. 員工資料新增欄位
+   N1（或你目前最後一欄的下一欄）貼上：是否顯示設定區
+   你的帳號填：是
+   其他員工填：否
+
+2. 只有填「是」的帳號登入後，會先進 portal.html，可選：
+   - 員工區
+   - 設定區
+
+3. 員工區只看：
+   - dashboard.html
+   - task.html（員工模式）
+   - leave.html（員工模式）
+   - routine.html（員工模式）
+
+4. 設定區只看：
+   - settings.html
+   - leave.html（請假簽核模式）
+   - task.html（交辦事項設定模式）
+   - routine.html（定期事項設定模式）
+
+5. 這次重點：設定就是設定，員工就是員工。
+   需要切換時，按頁面右上方「返回入口」。
+
+6. 如果你目前 Code.gs 比這包更新，請至少替換：
+   - mapEmployeeRow_
+   - loginUser_
+   內容在 Code.gs_只需替換函式.txt
