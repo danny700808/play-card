@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>員工首頁</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .home-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+    .home-head .title{margin:0}
+    .home-grid{display:grid;grid-template-columns:1fr;gap:18px}
+    .home-tile{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:28px 32px;border:1px solid var(--line);border-radius:28px;background:#fff;text-decoration:none;color:inherit;box-shadow:0 12px 30px rgba(15,23,42,.04)}
+    .home-tile strong{display:block;font-size:26px;line-height:1.2;margin-bottom:8px}
+    .home-tile span{display:block;color:var(--muted);font-size:18px;line-height:1.7}
+    .tile-count{min-width:96px;text-align:center;font-weight:900;font-size:42px;line-height:1;color:#1f7a5a}
+    .tile-count.zero{color:#b8c3cf}
+    @media (max-width:560px){
+      .home-tile{padding:24px 22px;border-radius:22px}
+      .home-tile strong{font-size:22px}
+      .home-tile span{font-size:16px}
+      .tile-count{min-width:74px;font-size:38px}
+    }
+  </style>
+</head>
+<body onload="init()">
+  <div class="container">
+    <div class="card">
+      <div class="home-head">
+        <div class="header" style="margin:0">
+          <h1 class="title">柚子員工系統｜員工區</h1>
+          <div class="welcome">歡迎 <span data-user-name></span></div>
+        </div>
+        <button class="btn secondary" style="width:auto;padding:10px 14px" onclick="logout()">登出</button>
+      </div>
+    </div>
+
+    <div class="home-grid">
+      <a class="home-tile" href="clock.html"><div><strong>打卡系統</strong><span>上班 / 下班打卡與本月紀錄</span></div><div class="tile-count zero">&nbsp;</div></a>
+      <a class="home-tile" href="parttime.html"><div><strong>工讀生時數</strong><span>1～12 小時與半小時加時</span></div><div class="tile-count zero">&nbsp;</div></a>
+      <a class="home-tile" href="leave.html"><div><strong>請假系統</strong><span>請假申請與自己的請假紀錄</span></div><div class="tile-count zero">&nbsp;</div></a>
+      <a class="home-tile" href="task.html"><div><strong>交辦事項</strong><span>查看任務、回報完成狀態</span></div><div class="tile-count" id="taskCount">0</div></a>
+      <a class="home-tile" href="routine.html"><div><strong>定期事項</strong><span>固定週期工作與完成回報</span></div><div class="tile-count" id="routineCount">0</div></a>
+    </div>
+  </div>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+  <script>
+    async function init(){
+      fillHeader();
+      const user=requireLogin();
+      if(!user) return;
+      setPortalMode('staff');
+      await refreshHomeCounts(user);
+    }
+    async function refreshHomeCounts(user){
+      try{
+        const taskRes = await api('getTasks',{userId:user.id,email:user.email,role:'staff'});
+        const taskCount = (taskRes.rows||[]).filter(x=>String(x.status||'')!=='已完成').length;
+        const routineRes = await api('getRoutinePageData',{userId:user.id,email:user.email,role:'staff'});
+        const routineCount = Number(routineRes?.summary?.pending||0) + Number(routineRes?.summary?.overdue||0);
+        const taskEl = qs('#taskCount');
+        const routineEl = qs('#routineCount');
+        taskEl.textContent = String(taskCount);
+        routineEl.textContent = String(routineCount);
+        taskEl.classList.toggle('zero', taskCount===0);
+        routineEl.classList.toggle('zero', routineCount===0);
+      }catch(e){
+        const taskEl = qs('#taskCount');
+        const routineEl = qs('#routineCount');
+        taskEl.textContent='0'; routineEl.textContent='0';
+        taskEl.classList.add('zero'); routineEl.classList.add('zero');
+      }
+    }
+  </script>
+</body>
+</html>

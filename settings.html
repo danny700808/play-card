@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>設定區首頁</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body onload="init()">
+  <div class="container">
+    <div class="card">
+      <div class="topbar">
+        <div class="header" style="margin:0">
+          <h1 class="title" style="margin:0">柚子員工系統｜設定區</h1>
+          <div class="welcome">歡迎 <span data-user-name></span></div>
+        </div>
+        <button class="btn secondary" style="width:auto;padding:10px 14px" onclick="logout()">登出</button>
+      </div>
+      <div class="muted">這一區只放設定與簽核，不顯示員工自己的操作頁。</div>
+    </div>
+    <div class="grid">
+      <a class="tile" href="leave.html"><strong>請假簽核</strong><span>查看待簽核請假單並直接同意 / 駁回</span></a>
+      <a class="tile" href="task.html"><strong>交辦事項設定</strong><span>建立交辦事項、查看已建立任務與調整設定</span></a>
+      <a class="tile" href="routine.html"><strong>定期事項設定</strong><span>建立固定週期工作、修改負責人與週期設定</span></a>
+    </div>
+  </div>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+  <script>
+    function init(){
+      fillHeader();
+      const user=requireLogin();
+      if(!user) return;
+      if(!user.showSettingsZone){location.href='dashboard.html';return;}
+      setPortalMode('settings');
+    }
+  </script>
+</body>
+</html>
