@@ -23,7 +23,7 @@
         </div>
         <a class="navlink" href="dashboard.html">回首頁</a>
       </div>
-      <div class="muted">請假原因放最上方；送出後 7 天內可修改或刪除。特休會直接視為整天。</div>
+      <div class="muted">請假原因放最上方；送出後 7 天內可修改或刪除。特休會直接視為整天。主管登入後可直接在本頁看到待簽核請假單。</div>
 
       <div class="field" id="fieldReason">
         <label for="reason">請假原因</label>
@@ -81,6 +81,17 @@
       <div id="localMsg" class="message local-message"></div>
     </div>
 
+
+
+    <div class="card hidden" id="approvalCard" data-if-admin>
+      <div class="topbar">
+        <h2 class="title" style="font-size:20px;margin:0">待簽核請假單</h2>
+        <div class="muted" id="approvalCountText">目前沒有待簽核請假單</div>
+      </div>
+      <div id="approvalMsg" class="message local-message"></div>
+      <div id="approvalList" class="list" style="margin-top:12px"></div>
+    </div>
+
     <div class="card">
       <h2 class="title" style="font-size:20px;margin-bottom:8px">本年度請假紀錄</h2>
       <div class="muted" id="yearText">只顯示今年資料。</div>
@@ -96,6 +107,7 @@
   <script src="app.js"></script>
   <script>
     let historyRows = [];
+    let approvalRows = [];
 
     function localDateInputValue(){
       const now = new Date();
@@ -169,6 +181,9 @@
       clearValidation();
       toggleHoursByReason();
     }
+    function leaveStatusTagClass(status){
+      return status === '待審核' ? 'pending' : (status === '已核准' ? 'approved' : (status === '已駁回' ? 'rejected' : ''));
+    }
     function formatLeaveText(row){
       return row.simpleText || ((row.reason === '特休') ? '特休（整天）' : `${row.reason}｜${row.hours}`);
     }
@@ -186,7 +201,7 @@
         <div class="item">
           <div class="top">
             <strong>${x.leaveDate}｜${formatLeaveText(x)}</strong>
-            <span class="tag ${String(x.status||'').toLowerCase()}">${x.status}</span>
+            <span class="tag ${leaveStatusTagClass(x.status)}">${x.status}</span>
           </div>
           ${x.note ? `<div class="muted">備註：${x.note}</div>` : ''}
           ${x.modifyCount ? `<div class="muted">已重新送審 ${x.modifyCount} 次</div>` : ''}
@@ -200,6 +215,49 @@
       qsa('[data-edit-id]').forEach(btn=>btn.onclick=()=>startEdit(btn.dataset.editId));
       qsa('[data-delete-id]').forEach(btn=>btn.onclick=()=>handleDelete(btn.dataset.deleteId));
     }
+
+function renderApprovalRows(rows){
+  approvalRows = rows || [];
+  qs('#approvalCountText').textContent = approvalRows.length ? `你有 ${approvalRows.length} 筆待簽核請假單` : '目前沒有待簽核請假單';
+  qs('#approvalList').innerHTML = approvalRows.map(x=>`
+    <div class="item">
+      <div class="top">
+        <strong>${x.name}｜${x.leaveDate}｜${x.simpleText}</strong>
+        <span class="tag pending">待審核</span>
+      </div>
+      <div class="muted">申請時間：${x.requestedAt || '—'}</div>
+      ${x.note ? `<div class="muted">備註：${x.note}</div>` : ''}
+      <div class="item-actions">
+        <button class="btn mini-btn" type="button" data-approve-id="${x.requestId}">同意</button>
+        <button class="btn secondary mini-btn" type="button" data-reject-id="${x.requestId}">駁回</button>
+      </div>
+    </div>
+  `).join('') || '<div class="muted">目前沒有待簽核請假單</div>';
+  qsa('[data-approve-id]').forEach(btn=>btn.onclick=()=>handleApproval(btn.dataset.approveId,'approve'));
+  qsa('[data-reject-id]').forEach(btn=>btn.onclick=()=>handleApproval(btn.dataset.rejectId,'reject'));
+}
+async function loadApprovalList(){
+  const user = requireLogin();
+  if(!user || user.role !== 'admin') return;
+  const r = await api('getPendingLeaveApprovals',{userId:user.id});
+  if(!r.ok){ setMsg(qs('#approvalMsg'), r.message || '待簽核資料讀取失敗', true); return; }
+  setMsg(qs('#approvalMsg'),'');
+  renderApprovalRows(r.rows || []);
+}
+async function handleApproval(requestId, decision){
+  const user = requireLogin();
+  if(!user || user.role !== 'admin') return;
+  const text = decision === 'approve' ? '同意' : '駁回';
+  if(!confirm(`確定要${text}這張請假單嗎？`)) return;
+  setMsg(qs('#approvalMsg'),'');
+  const r = await api('reviewLeaveRequest',{userId:user.id, requestId, decision});
+  setMsg(qs('#approvalMsg'), r.message || '', !r.ok);
+  if(r.ok){
+    await loadApprovalList();
+    await loadHistory();
+  }
+}
+
     async function loadHistory(){
       const user = requireLogin();
       if(!user) return;
@@ -289,6 +347,11 @@
       qs('#hours').addEventListener('change', clearValidation);
       qs('#submitBtn').onclick = submitLeave;
       qs('#cancelEditBtn').onclick = ()=>{ resetForm(); setLocalMsg(''); };
+      const user = requireLogin();
+      if(user && user.role === 'admin'){
+        qs('#approvalCard').classList.remove('hidden');
+        loadApprovalList();
+      }
       loadHistory();
     }
   </script>
