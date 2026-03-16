@@ -30,8 +30,15 @@ a{text-decoration:none;color:inherit} .container{max-width:760px;margin:0 auto;p
 }
 
 
-.clock-note-box{border:1px solid var(--line);background:#f8fbff;border-radius:14px;padding:12px 14px;margin-bottom:14px}
-.clock-note-title{font-size:16px;font-weight:800;margin-bottom:6px}
-.clock-action-row{display:flex;gap:8px;justify-content:flex-end;margin-top:10px;flex-wrap:wrap}
-.inline-btn{width:auto;min-width:96px;padding:10px 16px;font-size:14px;background:#dfe8f6;color:#203040}
-.clock-edit-box{margin-top:12px;padding:12px;border:1px dashed var(--line);border-radius:12px;background:#fafcff}
+.help-box{border:1px solid var(--line);background:#f8fbff;border-radius:14px;padding:12px 14px;margin-bottom:14px}
+.help-title{font-size:16px;font-weight:800;margin-bottom:6px}
+.local-message{margin-top:10px;margin-bottom:0}
+.supplement-box{border:1px solid var(--line);border-radius:16px;padding:14px;background:#fbfcfe;margin-bottom:14px}
+.field-error{font-size:13px;color:var(--danger);margin-top:6px;line-height:1.5;min-height:18px}
+.field.invalid input,.field.invalid select,.field.invalid textarea{border-color:var(--danger);background:#fff7f7}
+.btn-row-clock .btn{background:var(--brand);color:#fff}
+.btn-row-clock .btn.hidden{display:none}
+.clock-item .clock-line{margin-top:6px;line-height:1.6}
+.item-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.mini-btn{width:auto;padding:10px 16px;border-radius:12px}
+.modify-box{margin-top:12px;padding-top:12px;border-top:1px dashed var(--line)}

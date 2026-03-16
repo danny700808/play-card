@@ -1,14 +1,339 @@
-<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>打卡系統</title><link rel="stylesheet" href="style.css"></head><body onload="init()"><div class="container"><div class="card"><div class="topbar"><div><h1 class="title" style="margin:0">打卡系統</h1><div class="welcome">歡迎 <span data-user-name></span></div></div><a class="navlink" href="dashboard.html">回首頁</a></div><div class="clock-note-box"><div class="clock-note-title">打卡說明</div><div class="muted">請依照當天實際狀況進行打卡；若打錯打卡類型，可在下方打卡紀錄中直接按「修改」補上備註即可。</div></div><div class="timebox" id="nowBox"></div><div id="msg" class="message"></div><div class="field"><label>打卡方式</label><select id="clockType"><option value="標準打卡">標準打卡</option><option value="特殊打卡">特殊打卡</option><option value="補登打卡">補登打卡</option></select></div><div id="normalActionBox"><div class="btn-row"><button class="btn" id="clockInBtn">上班打卡</button><button class="btn secondary" id="clockOutBtn">下班打卡</button></div></div><div id="supplementBox" class="hidden"><div class="field"><label>補登日期</label><input type="date" id="supplementDate"></div><div class="field"><label>補登類型</label><select id="supplementAction"><option value="上班打卡">補上班打卡</option><option value="下班打卡">補下班打卡</option></select></div><div class="field"><label>原本應打卡時間</label><input type="time" id="supplementTime"></div><div class="field"><label>補登方式</label><select id="supplementClockType"><option value="標準打卡">標準打卡</option><option value="特殊打卡">特殊打卡</option></select></div><div class="field"><label>補登原因</label><textarea id="supplementReason" placeholder="例如：當時忙碌忘記打卡"></textarea></div><div class="field"><label>補充說明（選填）</label><textarea id="supplementNote" placeholder="有其他情況可補充在此"></textarea></div><button class="btn" id="supplementBtn">送出補登打卡</button></div></div><div class="card"><h2 class="title" style="font-size:20px">我的打卡紀錄</h2><div id="list" class="list"></div></div></div><script src="config.js"></script><script src="app.js"></script><script>
-function tick(){const d=new Date(); qs('#nowBox').textContent=d.toLocaleString('zh-TW',{hour12:false});}
-function escapeHtml(v){return String(v==null?'':v).replace(/[&<>"']/g,s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));}
-function formatLateText(row){ if(row.clockType==='特殊打卡') return '特殊打卡不顯示遲到'; if(Number(row.lateMinutes||0)>0) return '遲到 '+Number(row.lateMinutes||0)+' 分鐘'; return '正常'; }
-function renderCorrectionBox(row){ return `<div class="clock-edit-box hidden" id="editBox_${row.id}"><div class="field"><label>修改後打卡方式</label><select id="editType_${row.id}"><option value="標準打卡" ${row.clockType==='標準打卡'?'selected':''}>標準打卡</option><option value="特殊打卡" ${row.clockType==='特殊打卡'?'selected':''}>特殊打卡</option></select></div><div class="field"><label>修改備註</label><textarea id="editNote_${row.id}" placeholder="例如：原本按錯，應改為特殊打卡"></textarea></div><div class="btn-row"><button class="btn" onclick="submitCorrection('${row.id}')">送出修改</button><button class="btn secondary" onclick="toggleCorrection('${row.id}', false)">取消</button></div></div>`; }
-function renderRow(row){ const correctionTag=row.recordType==='修改紀錄'?'<span class="tag pending">修改紀錄</span>':''; const modifyBtn=(row.recordType==='原始紀錄' && !row.hasCorrection)?`<button class="btn secondary inline-btn" onclick="toggleCorrection('${row.id}', true)">修改</button>`:''; const correctionInfo=row.recordType==='修改紀錄'?`<div class="muted">原始紀錄：${escapeHtml(row.originalClockId||'')}｜改為：${escapeHtml(row.correctedClockType||row.clockType||'')}｜備註：${escapeHtml(row.correctionNote||'')}</div>`:''; const supplementInfo=row.isSupplement?`<div class="muted">補登原因：${escapeHtml(row.supplementReason||'')} ${row.supplementNote?('｜補充：'+escapeHtml(row.supplementNote)):''}</div>`:''; return `<div class="item"><div class="top"><div><strong>${escapeHtml(row.date)} ${escapeHtml(row.time)}</strong><div class="muted">${escapeHtml(row.actionName)}｜${escapeHtml(row.clockType)}｜${formatLateText(row)}</div></div><div>${correctionTag}<span class="tag">${escapeHtml(row.status||'正常')}</span></div></div>${correctionInfo}${supplementInfo}<div class="clock-action-row">${modifyBtn}</div>${row.recordType==='原始紀錄' ? renderCorrectionBox(row) : ''}</div>`; }
-async function loadHistory(){ const user=requireLogin(); const r=await api('getClockHistory',{userId:user.id}); const list=qs('#list'); list.innerHTML=(r.rows||[]).map(renderRow).join('')||'<div class="muted">目前沒有紀錄</div>'; }
-async function doClock(actionName){ const user=requireLogin(); const msg=qs('#msg'); const selected=qs('#clockType').value; if(selected==='補登打卡'){ setMsg(msg,'請填寫下方補登資料後再送出。',true); return; } setMsg(msg,'正在偵測公司 Wi‑Fi IP...'); const clientIp=await getPublicIp(); const r=await api('clock',{userId:user.id,clientIp,clockType:selected,actionName}); setMsg(msg,r.message,!r.ok); if(r.ok) loadHistory(); }
-async function submitSupplement(){ const user=requireLogin(); const msg=qs('#msg'); const r=await api('clock',{userId:user.id,isSupplement:'yes',clockType:qs('#supplementClockType').value,actionName:qs('#supplementAction').value,supplementDate:qs('#supplementDate').value,supplementTime:qs('#supplementTime').value,supplementReason:qs('#supplementReason').value,supplementNote:qs('#supplementNote').value}); setMsg(msg,r.message,!r.ok); if(r.ok){ qs('#supplementReason').value=''; qs('#supplementNote').value=''; loadHistory(); } }
-function toggleClockTypeUI(){ const isSupplement=qs('#clockType').value==='補登打卡'; qs('#supplementBox').classList.toggle('hidden', !isSupplement); qs('#normalActionBox').classList.toggle('hidden', isSupplement); }
-function toggleCorrection(id, show){ const box=qs('#editBox_'+id); if(box) box.classList.toggle('hidden', !show); }
-async function submitCorrection(id){ const user=requireLogin(); const note=qs('#editNote_'+id).value.trim(); const correctedClockType=qs('#editType_'+id).value; const msg=qs('#msg'); const r=await api('correctClock',{userId:user.id,clockId:id,correctedClockType,correctionNote:note}); setMsg(msg,r.message,!r.ok); if(r.ok) loadHistory(); }
-function init(){ fillHeader(); tick(); setInterval(tick,1000); const today=new Date(); const dateValue=today.toISOString().slice(0,10); const timeValue=('0'+today.getHours()).slice(-2)+':'+('0'+today.getMinutes()).slice(-2); qs('#supplementDate').value=dateValue; qs('#supplementTime').value=timeValue; qs('#clockType').onchange=toggleClockTypeUI; toggleClockTypeUI(); qs('#clockInBtn').onclick=()=>doClock('上班打卡'); qs('#clockOutBtn').onclick=()=>doClock('下班打卡'); qs('#supplementBtn').onclick=submitSupplement; loadHistory(); }
-</script></body></html>
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>打卡系統</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body onload="init()">
+  <div class="container">
+    <div class="card">
+      <div class="topbar">
+        <div>
+          <h1 class="title" style="margin:0">打卡系統</h1>
+          <div class="welcome">歡迎 <span data-user-name></span></div>
+        </div>
+        <a class="navlink" href="dashboard.html">回首頁</a>
+      </div>
+
+      <div class="timebox" id="nowBox"></div>
+
+      <div class="help-box">
+        <div class="help-title">打卡說明</div>
+        <div class="muted">請依照當天實際狀況進行打卡，若打錯卡類型，可在下方打卡紀錄按「修改」並補上備註。</div>
+        <div class="muted" id="specialHelp" style="margin-top:8px">特殊打卡適用情況：星期四特殊班、社團課、特殊外出、請假中需要來回進出、其他非一般正常上下班情況。</div>
+      </div>
+
+      <div class="field">
+        <label>打卡方式</label>
+        <select id="clockType">
+          <option value="標準打卡">標準打卡</option>
+          <option value="特殊打卡">特殊打卡</option>
+          <option value="補登打卡">補登打卡</option>
+        </select>
+      </div>
+
+      <div id="supplementBox" class="supplement-box hidden">
+        <div class="section-title">補登打卡</div>
+        <div class="grid">
+          <div class="field" id="fieldSupplementDate">
+            <label>補登日期</label>
+            <input type="date" id="supplementDate">
+            <div class="field-error" data-error-for="supplementDate"></div>
+          </div>
+          <div class="field" id="fieldSupplementTime">
+            <label>實際應打卡時間</label>
+            <input type="time" id="supplementTime">
+            <div class="field-error" data-error-for="supplementTime"></div>
+          </div>
+        </div>
+        <div class="grid">
+          <div class="field" id="fieldSupplementAction">
+            <label>補登類型</label>
+            <select id="supplementAction">
+              <option value="">請選擇</option>
+              <option value="上班打卡">補登上班打卡</option>
+              <option value="下班打卡">補登下班打卡</option>
+            </select>
+            <div class="field-error" data-error-for="supplementAction"></div>
+          </div>
+          <div class="field" id="fieldSupplementAsType">
+            <label>補登方式</label>
+            <select id="supplementAsType">
+              <option value="標準打卡">標準打卡</option>
+              <option value="特殊打卡">特殊打卡</option>
+            </select>
+          </div>
+        </div>
+        <div class="field" id="fieldSupplementReason">
+          <label>補登原因</label>
+          <textarea id="supplementReason" placeholder="請填寫補登原因"></textarea>
+          <div class="field-error" data-error-for="supplementReason"></div>
+        </div>
+        <div id="supplementMsg" class="message local-message"></div>
+        <div id="supplementProgress" class="progress-box hidden">
+          <div class="progress-head"><strong>補登資料送出中</strong><span id="supplementProgressText">0%</span></div>
+          <div class="progress-track"><div id="supplementProgressBar" class="progress-bar"></div></div>
+        </div>
+      </div>
+
+      <div id="mainMsg" class="message local-message"></div>
+      <div id="mainProgress" class="progress-box hidden">
+        <div class="progress-head"><strong id="mainProgressTitle">處理中</strong><span id="mainProgressText">0%</span></div>
+        <div class="progress-track"><div id="mainProgressBar" class="progress-bar"></div></div>
+      </div>
+
+      <div class="btn-row btn-row-clock">
+        <button class="btn" id="clockInBtn">上班打卡</button>
+        <button class="btn" id="clockOutBtn">下班打卡</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 class="title" style="font-size:20px">我的打卡紀錄</h2>
+      <div id="list" class="list"></div>
+    </div>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+  <script>
+    function tick(){
+      const d=new Date();
+      qs('#nowBox').textContent=d.toLocaleString('zh-TW',{hour12:false});
+    }
+
+    function toggleSupplementBox(){
+      const isSupplement = qs('#clockType').value === '補登打卡';
+      qs('#supplementBox').classList.toggle('hidden', !isSupplement);
+      qs('#specialHelp').style.display = qs('#clockType').value === '特殊打卡' ? 'block' : 'block';
+      qs('#clockInBtn').textContent = isSupplement ? '送出補登' : '上班打卡';
+      qs('#clockOutBtn').classList.toggle('hidden', isSupplement);
+      clearValidation();
+      setMsg(qs('#mainMsg'),'');
+    }
+
+    function clearValidation(){
+      qsa('.field.invalid').forEach(el=>el.classList.remove('invalid'));
+      qsa('.field-error').forEach(el=>el.textContent='');
+      setMsg(qs('#supplementMsg'),'');
+    }
+
+    function showFieldError(fieldId, text){
+      const field = qs('#field' + fieldId.charAt(0).toUpperCase() + fieldId.slice(1));
+      const err = qs('[data-error-for="' + fieldId + '"]');
+      if(field) field.classList.add('invalid');
+      if(err) err.textContent = text;
+    }
+
+    function focusField(sel){
+      const el = qs(sel);
+      if(!el) return;
+      el.scrollIntoView({behavior:'smooth', block:'center'});
+      try{ el.focus(); }catch(e){}
+    }
+
+    function startProgress(prefix, title){
+      const box = qs('#' + prefix + 'Progress');
+      const bar = qs('#' + prefix + 'ProgressBar');
+      const text = qs('#' + prefix + 'ProgressText');
+      const titleEl = qs('#' + prefix + 'ProgressTitle');
+      if(titleEl && title) titleEl.textContent = title;
+      box.classList.remove('hidden');
+      let value = 8;
+      bar.style.width = value + '%';
+      text.textContent = value + '%';
+      const timer = setInterval(()=>{
+        value = Math.min(value + (value < 70 ? 16 : 6), 90);
+        bar.style.width = value + '%';
+        text.textContent = value + '%';
+      }, 220);
+      return {
+        done(okText){
+          clearInterval(timer);
+          bar.style.width = '100%';
+          text.textContent = okText || '100%';
+          setTimeout(()=>box.classList.add('hidden'), 650);
+        },
+        fail(){
+          clearInterval(timer);
+          bar.style.width = '100%';
+          text.textContent = '未完成';
+          setTimeout(()=>box.classList.add('hidden'), 900);
+        }
+      };
+    }
+
+    function safeText(v){ return String(v == null ? '' : v); }
+
+    function renderHistoryRow(x){
+      const lateText = x.clockType === '特殊打卡' ? '' : (x.status === '遲到' ? '｜遲到 ' + (x.lateMinutes || 0) + ' 分鐘' : '');
+      const noteText = x.note ? `<div class="muted" style="margin-top:6px">備註：${safeText(x.note)}</div>` : '';
+      const originalText = x.originalRef ? `<div class="muted" style="margin-top:6px">原始紀錄：${safeText(x.originalRef)}</div>` : '';
+      const canModify = x.canModify ? `<button class="btn mini-btn js-open-modify" data-id="${x.id}" data-type="${x.clockType}" data-action="${x.actionName}">修改</button>` : '';
+      return `
+        <div class="item clock-item">
+          <div class="top">
+            <strong>${safeText(x.date)} ${safeText(x.time)}</strong>
+            <span class="tag">${safeText(x.statusLabel || x.status || '')}</span>
+          </div>
+          <div class="clock-line">${safeText(x.actionName)}｜${safeText(x.clockType)}${lateText}</div>
+          ${noteText}
+          ${originalText}
+          <div class="item-actions">${canModify}</div>
+          <div class="modify-box hidden" id="modify-${x.id}">
+            <div class="field">
+              <label>修改後打卡方式</label>
+              <select class="js-modify-type">
+                <option value="標準打卡" ${x.clockType==='標準打卡'?'selected':''}>標準打卡</option>
+                <option value="特殊打卡" ${x.clockType==='特殊打卡'?'selected':''}>特殊打卡</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>修改備註</label>
+              <textarea class="js-modify-note" placeholder="請填寫修改原因"></textarea>
+              <div class="field-error js-modify-error"></div>
+            </div>
+            <div class="message local-message js-modify-msg"></div>
+            <div class="progress-box hidden js-modify-progress">
+              <div class="progress-head"><strong>修改資料送出中</strong><span class="js-modify-progress-text">0%</span></div>
+              <div class="progress-track"><div class="progress-bar js-modify-progress-bar"></div></div>
+            </div>
+            <button class="btn js-save-modify" data-id="${x.id}">送出修改</button>
+          </div>
+        </div>`;
+    }
+
+    async function loadHistory(){
+      const user=requireLogin();
+      const r=await api('getClockHistory',{userId:user.id});
+      const list=qs('#list');
+      list.innerHTML=(r.rows||[]).map(renderHistoryRow).join('')||'<div class="muted">目前沒有紀錄</div>';
+      bindModifyActions();
+    }
+
+    function bindModifyActions(){
+      qsa('.js-open-modify').forEach(btn=>{
+        btn.onclick=()=>{
+          const box=qs('#modify-' + btn.dataset.id);
+          if(box) box.classList.toggle('hidden');
+        };
+      });
+      qsa('.js-save-modify').forEach(btn=>{
+        btn.onclick=()=>saveModify(btn.dataset.id, btn.closest('.modify-box'));
+      });
+    }
+
+    async function saveModify(recordId, box){
+      const user=requireLogin();
+      const type = box.querySelector('.js-modify-type').value;
+      const note = box.querySelector('.js-modify-note').value.trim();
+      const err = box.querySelector('.js-modify-error');
+      const msg = box.querySelector('.js-modify-msg');
+      err.textContent='';
+      setMsg(msg,'');
+      if(!note){
+        err.textContent='請填寫修改備註';
+        box.querySelector('.js-modify-note').focus();
+        return;
+      }
+      const progress = box.querySelector('.js-modify-progress');
+      const bar = box.querySelector('.js-modify-progress-bar');
+      const text = box.querySelector('.js-modify-progress-text');
+      progress.classList.remove('hidden');
+      let val=10;
+      bar.style.width=val+'%';
+      text.textContent=val+'%';
+      const timer=setInterval(()=>{ val=Math.min(val+(val<70?18:7),90); bar.style.width=val+'%'; text.textContent=val+'%'; },220);
+      try{
+        const r = await api('modifyClockRecord',{userId:user.id,recordId,newClockType:type,note});
+        clearInterval(timer);
+        bar.style.width='100%';
+        text.textContent='100%';
+        setMsg(msg, r.message, !r.ok);
+        if(r.ok){
+          await loadHistory();
+        } else {
+          setTimeout(()=>progress.classList.add('hidden'), 900);
+        }
+      }catch(e){
+        clearInterval(timer);
+        bar.style.width='100%';
+        text.textContent='未完成';
+        setMsg(msg, e.message || '修改失敗', true);
+        setTimeout(()=>progress.classList.add('hidden'), 900);
+      }
+    }
+
+    async function doClock(actionName){
+      const user=requireLogin();
+      const isSupplement = qs('#clockType').value === '補登打卡';
+      const msg = isSupplement ? qs('#supplementMsg') : qs('#mainMsg');
+      clearValidation();
+
+      let payload = { userId:user.id, actionName };
+      if(isSupplement){
+        const supplementDate = qs('#supplementDate').value;
+        const supplementTime = qs('#supplementTime').value;
+        const supplementAction = qs('#supplementAction').value;
+        const supplementReason = qs('#supplementReason').value.trim();
+        const supplementAsType = qs('#supplementAsType').value;
+        const missing=[];
+        if(!supplementDate) missing.push(['supplementDate','請選擇補登日期']);
+        if(!supplementTime) missing.push(['supplementTime','請選擇實際應打卡時間']);
+        if(!supplementAction) missing.push(['supplementAction','請選擇補登類型']);
+        if(!supplementReason) missing.push(['supplementReason','請填寫補登原因']);
+        if(missing.length){
+          missing.forEach(([id,text])=>showFieldError(id,text));
+          setMsg(msg, missing[0][1], true);
+          focusField('#' + missing[0][0]);
+          return;
+        }
+        payload = {
+          userId:user.id,
+          isSupplement:true,
+          actionName:supplementAction,
+          supplementDate,
+          supplementTime,
+          supplementReason,
+          supplementClockType:supplementAsType
+        };
+      } else {
+        payload.clockType = qs('#clockType').value;
+        setMsg(msg,'正在偵測公司 Wi‑Fi IP...');
+        payload.clientIp = await getPublicIp();
+      }
+
+      const progress = startProgress(isSupplement ? 'supplement' : 'main', isSupplement ? '補登資料送出中' : (actionName + '送出中'));
+      try{
+        const r = await api('clock', payload);
+        setMsg(msg, r.message, !r.ok);
+        if(r.ok){
+          progress.done();
+          await loadHistory();
+          if(isSupplement){
+            qs('#supplementReason').value='';
+          }
+        } else {
+          progress.fail();
+        }
+      }catch(e){
+        progress.fail();
+        setMsg(msg, e.message || '送出失敗', true);
+      }
+    }
+
+    function init(){
+      fillHeader();
+      tick();
+      setInterval(tick,1000);
+      qs('#clockType').onchange=toggleSupplementBox;
+      qs('#clockInBtn').onclick=()=>doClock('上班打卡');
+      qs('#clockOutBtn').onclick=()=>doClock('下班打卡');
+      toggleSupplementBox();
+      loadHistory();
+    }
+  </script>
+</body>
+</html>
