@@ -1,54 +1,14 @@
-<!doctype html>
-<html lang="zh-Hant">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>打卡系統</title>
-  <link rel="stylesheet" href="style.css">
-</head>
-<body onload="init()">
-  <div class="container">
-    <div class="card">
-      <div class="topbar">
-        <div>
-          <h1 class="title" style="margin:0">打卡系統</h1>
-          <div class="welcome">歡迎 <span data-user-name></span></div>
-        </div>
-        <a class="navlink" href="dashboard.html">回首頁</a>
-      </div>
-      <div id="msg" class="message"></div>
-      <div class="timebox" id="nowBox"></div>
-      <div class="field"><label>打卡方式</label><select id="clockType"><option value="一般打卡">一般打卡</option><option value="補登">補登</option></select></div>
-      <div class="btn-row"><button class="btn" id="clockInBtn">上班打卡</button><button class="btn secondary" id="clockOutBtn">下班打卡</button></div>
-    </div>
-
-    <div class="card">
-      <h2 class="title" style="font-size:20px">我的打卡紀錄</h2>
-      <div id="list" class="list"></div>
-    </div>
-  </div>
-
-  <script src="config.js"></script>
-  <script src="app.js"></script>
-  <script>
-    function tick(){const d=new Date(); qs('#nowBox').textContent=d.toLocaleString('zh-TW',{hour12:false});}
-    async function loadHistory(){
-      const user=requireLogin();
-      const r=await api('getClockHistory',{userId:user.id});
-      const list=qs('#list');
-      list.innerHTML=(r.rows||[]).map(x=>`<div class="item"><div class="top"><strong>${formatDateText(x.date)} ${formatTimeText(x.time)}</strong><span class="tag">${x.status||''}</span></div><div>${x.actionName}｜${x.clockType}</div><div class="muted">遲到：${formatLateDuration(x.lateMinutes||0)}</div></div>`).join('')||'<div class="muted">目前沒有紀錄</div>';
-    }
-    async function doClock(actionName){
-      const user=requireLogin();
-      const msg=qs('#msg');
-      setMsg(msg,'正在偵測公司 Wi‑Fi IP...');
-      const clientIp=await getPublicIp();
-      const clockType=qs('#clockType').value;
-      const r=await api('clock',{userId:user.id,clientIp,clockType,actionName});
-      setMsg(msg,r.message,!r.ok);
-      if(r.ok) loadHistory();
-    }
-    function init(){fillHeader(); tick(); setInterval(tick,1000); qs('#clockInBtn').onclick=()=>doClock('上班打卡'); qs('#clockOutBtn').onclick=()=>doClock('下班打卡'); loadHistory();}
-  </script>
-</body>
-</html>
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>打卡系統</title><link rel="stylesheet" href="style.css"></head><body onload="init()"><div class="container"><div class="card"><div class="topbar"><div><h1 class="title" style="margin:0">打卡系統</h1><div class="welcome">歡迎 <span data-user-name></span></div></div><a class="navlink" href="dashboard.html">回首頁</a></div><div class="clock-note-box"><div class="clock-note-title">打卡說明</div><div class="muted">請依照當天實際狀況進行打卡；若打錯打卡類型，可在下方打卡紀錄中直接按「修改」補上備註即可。</div></div><div class="timebox" id="nowBox"></div><div id="msg" class="message"></div><div class="field"><label>打卡方式</label><select id="clockType"><option value="標準打卡">標準打卡</option><option value="特殊打卡">特殊打卡</option><option value="補登打卡">補登打卡</option></select></div><div id="normalActionBox"><div class="btn-row"><button class="btn" id="clockInBtn">上班打卡</button><button class="btn secondary" id="clockOutBtn">下班打卡</button></div></div><div id="supplementBox" class="hidden"><div class="field"><label>補登日期</label><input type="date" id="supplementDate"></div><div class="field"><label>補登類型</label><select id="supplementAction"><option value="上班打卡">補上班打卡</option><option value="下班打卡">補下班打卡</option></select></div><div class="field"><label>原本應打卡時間</label><input type="time" id="supplementTime"></div><div class="field"><label>補登方式</label><select id="supplementClockType"><option value="標準打卡">標準打卡</option><option value="特殊打卡">特殊打卡</option></select></div><div class="field"><label>補登原因</label><textarea id="supplementReason" placeholder="例如：當時忙碌忘記打卡"></textarea></div><div class="field"><label>補充說明（選填）</label><textarea id="supplementNote" placeholder="有其他情況可補充在此"></textarea></div><button class="btn" id="supplementBtn">送出補登打卡</button></div></div><div class="card"><h2 class="title" style="font-size:20px">我的打卡紀錄</h2><div id="list" class="list"></div></div></div><script src="config.js"></script><script src="app.js"></script><script>
+function tick(){const d=new Date(); qs('#nowBox').textContent=d.toLocaleString('zh-TW',{hour12:false});}
+function escapeHtml(v){return String(v==null?'':v).replace(/[&<>"']/g,s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));}
+function formatLateText(row){ if(row.clockType==='特殊打卡') return '特殊打卡不顯示遲到'; if(Number(row.lateMinutes||0)>0) return '遲到 '+Number(row.lateMinutes||0)+' 分鐘'; return '正常'; }
+function renderCorrectionBox(row){ return `<div class="clock-edit-box hidden" id="editBox_${row.id}"><div class="field"><label>修改後打卡方式</label><select id="editType_${row.id}"><option value="標準打卡" ${row.clockType==='標準打卡'?'selected':''}>標準打卡</option><option value="特殊打卡" ${row.clockType==='特殊打卡'?'selected':''}>特殊打卡</option></select></div><div class="field"><label>修改備註</label><textarea id="editNote_${row.id}" placeholder="例如：原本按錯，應改為特殊打卡"></textarea></div><div class="btn-row"><button class="btn" onclick="submitCorrection('${row.id}')">送出修改</button><button class="btn secondary" onclick="toggleCorrection('${row.id}', false)">取消</button></div></div>`; }
+function renderRow(row){ const correctionTag=row.recordType==='修改紀錄'?'<span class="tag pending">修改紀錄</span>':''; const modifyBtn=(row.recordType==='原始紀錄' && !row.hasCorrection)?`<button class="btn secondary inline-btn" onclick="toggleCorrection('${row.id}', true)">修改</button>`:''; const correctionInfo=row.recordType==='修改紀錄'?`<div class="muted">原始紀錄：${escapeHtml(row.originalClockId||'')}｜改為：${escapeHtml(row.correctedClockType||row.clockType||'')}｜備註：${escapeHtml(row.correctionNote||'')}</div>`:''; const supplementInfo=row.isSupplement?`<div class="muted">補登原因：${escapeHtml(row.supplementReason||'')} ${row.supplementNote?('｜補充：'+escapeHtml(row.supplementNote)):''}</div>`:''; return `<div class="item"><div class="top"><div><strong>${escapeHtml(row.date)} ${escapeHtml(row.time)}</strong><div class="muted">${escapeHtml(row.actionName)}｜${escapeHtml(row.clockType)}｜${formatLateText(row)}</div></div><div>${correctionTag}<span class="tag">${escapeHtml(row.status||'正常')}</span></div></div>${correctionInfo}${supplementInfo}<div class="clock-action-row">${modifyBtn}</div>${row.recordType==='原始紀錄' ? renderCorrectionBox(row) : ''}</div>`; }
+async function loadHistory(){ const user=requireLogin(); const r=await api('getClockHistory',{userId:user.id}); const list=qs('#list'); list.innerHTML=(r.rows||[]).map(renderRow).join('')||'<div class="muted">目前沒有紀錄</div>'; }
+async function doClock(actionName){ const user=requireLogin(); const msg=qs('#msg'); const selected=qs('#clockType').value; if(selected==='補登打卡'){ setMsg(msg,'請填寫下方補登資料後再送出。',true); return; } setMsg(msg,'正在偵測公司 Wi‑Fi IP...'); const clientIp=await getPublicIp(); const r=await api('clock',{userId:user.id,clientIp,clockType:selected,actionName}); setMsg(msg,r.message,!r.ok); if(r.ok) loadHistory(); }
+async function submitSupplement(){ const user=requireLogin(); const msg=qs('#msg'); const r=await api('clock',{userId:user.id,isSupplement:'yes',clockType:qs('#supplementClockType').value,actionName:qs('#supplementAction').value,supplementDate:qs('#supplementDate').value,supplementTime:qs('#supplementTime').value,supplementReason:qs('#supplementReason').value,supplementNote:qs('#supplementNote').value}); setMsg(msg,r.message,!r.ok); if(r.ok){ qs('#supplementReason').value=''; qs('#supplementNote').value=''; loadHistory(); } }
+function toggleClockTypeUI(){ const isSupplement=qs('#clockType').value==='補登打卡'; qs('#supplementBox').classList.toggle('hidden', !isSupplement); qs('#normalActionBox').classList.toggle('hidden', isSupplement); }
+function toggleCorrection(id, show){ const box=qs('#editBox_'+id); if(box) box.classList.toggle('hidden', !show); }
+async function submitCorrection(id){ const user=requireLogin(); const note=qs('#editNote_'+id).value.trim(); const correctedClockType=qs('#editType_'+id).value; const msg=qs('#msg'); const r=await api('correctClock',{userId:user.id,clockId:id,correctedClockType,correctionNote:note}); setMsg(msg,r.message,!r.ok); if(r.ok) loadHistory(); }
+function init(){ fillHeader(); tick(); setInterval(tick,1000); const today=new Date(); const dateValue=today.toISOString().slice(0,10); const timeValue=('0'+today.getHours()).slice(-2)+':'+('0'+today.getMinutes()).slice(-2); qs('#supplementDate').value=dateValue; qs('#supplementTime').value=timeValue; qs('#clockType').onchange=toggleClockTypeUI; toggleClockTypeUI(); qs('#clockInBtn').onclick=()=>doClock('上班打卡'); qs('#clockOutBtn').onclick=()=>doClock('下班打卡'); qs('#supplementBtn').onclick=submitSupplement; loadHistory(); }
+</script></body></html>
