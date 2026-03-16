@@ -47,15 +47,6 @@
     <div id="staffBlock">
       <div class="card">
         <div class="section-title">我的定期事項</div>
-        <div class="help-box">
-          <div class="help-title">頁面說明</div>
-          <div class="muted">這裡只會顯示目前輪到你完成的定期事項。若今天已到期但還沒回報，會直接標成逾期，讓你比較容易補處理。</div>
-        </div>
-        <div class="summary-grid" id="routineSummaryWrap">
-          <div class="summary-card"><div class="muted">待完成</div><strong id="sumPending">0</strong></div>
-          <div class="summary-card"><div class="muted">已逾期</div><strong id="sumOverdue">0</strong></div>
-          <div class="summary-card"><div class="muted">本月已完成</div><strong id="sumCompleted">0</strong></div>
-        </div>
         <div id="myRoutineList" class="compact-list"></div>
       </div>
 
@@ -124,7 +115,7 @@
   <script>
     let currentUser = null;
     let routineAdminMode = false;
-    let pageData = {mine:[], history:[], summary:{pending:0,overdue:0,completed:0}, admin:{templates:[]}};
+    let pageData = {mine:[], history:[], admin:{templates:[]}};
     let employeeOptions = [];
 
     function applyRoutineMode(){
@@ -175,9 +166,8 @@
       const r=await api('getRoutinePageData',{userId:currentUser.id,email:currentUser.email,role:requestRole});
       if(!r.ok){ setMsg(qs('#msg'),r.message||'讀取失敗',true); return; }
       pageData=r;
-      if(routineAdminMode) renderAdmin(); else { renderSummary(); renderMine(); renderHistory(); }
+      if(routineAdminMode) renderAdmin(); else { renderMine(); renderHistory(); }
     }
-    function renderSummary(){ qs('#sumPending').textContent = pageData.summary?.pending || 0; qs('#sumOverdue').textContent = pageData.summary?.overdue || 0; qs('#sumCompleted').textContent = pageData.summary?.completed || 0; }
     function renderMine(){
       const rows=pageData.mine||[];
       qs('#myRoutineList').innerHTML = rows.map((x,idx)=>`<div class="item"><div class="item-head"><div><strong>${x.title}</strong><div class="muted">${x.cycleLabel}</div></div>${statusBadge(x.status)}</div><div style="margin-top:8px">${x.content||'未填寫說明'}</div><div class="item-foot">應完成日期：${x.dueDate}${x.remindTime?`　｜　提醒時間：${x.remindTime}`:''}${x.requirePhotoReturn==='是'?'　｜　需附照片':''}</div>${(x.status==='待完成'||x.status==='已逾期')?`<div class="complete-box"><div class="field"><label>完成備註（選填）</label><textarea id="note_${idx}" placeholder="有需要補充時再填寫"></textarea></div><div class="field"><label>完成照片${x.requirePhotoReturn==='是'?'（必填）':'（選填）'}</label><input id="photo_${idx}" type="file" accept=".jpg,.jpeg,.png"></div><div class="field"><label>完成錄音（選填）</label><input id="audio_${idx}" type="file" accept="audio/*"></div><button class="btn" onclick="completeItem(${idx})">回報完成</button><div id="progress_${idx}" class="progress-box hidden" style="margin-top:10px"><div class="progress-head"><strong>送出完成回報</strong><span id="progressPct_${idx}">0%</span></div><div class="progress-track"><div id="progressBar_${idx}" class="progress-bar"></div></div><div id="progressText_${idx}" class="attach-badge">準備送出...</div></div></div>`:`<div class="item-foot">完成時間：${x.completedAt||'已完成'}</div>`}</div>`).join('') || '<div class="muted">目前沒有輪到你處理的定期事項</div>';
