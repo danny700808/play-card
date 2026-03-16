@@ -25,20 +25,21 @@
     .hidden{display:none !important}
     .field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
     @media (max-width:560px){.summary-grid,.field-row{grid-template-columns:1fr}}
-  </style>
+  
+    .page-return-wrap{margin-bottom:16px}
+    .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
+</style>
 </head>
 <body onload="init()">
   <div class="container">
+    <div class="page-return-wrap"><a class="btn page-return-btn" id="routineHomeLink" href="dashboard.html">返回員工首頁</a></div>
     <div class="card">
       <div class="topbar">
         <div>
           <h1 class="title" id="routinePageTitle" style="margin:0">定期事項</h1>
           <div class="welcome">歡迎 <span data-user-name></span></div>
         </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
-          <a class="btn hidden" id="routinePortalLink" href="portal.html" style="width:auto;padding:10px 16px;text-decoration:none">返回入口</a>
-          <a class="btn" id="routineHomeLink" href="dashboard.html" style="width:auto;padding:10px 16px;text-decoration:none">返回員工首頁</a>
-        </div>
+        
       </div>
       <div id="msg" class="message"></div>
     </div>
@@ -133,7 +134,7 @@
       qs('#routinePageTitle').textContent = routineAdminMode ? '定期事項設定' : '定期事項';
       qs('#routineHomeLink').href = routineAdminMode ? 'settings.html' : 'dashboard.html';
       qs('#routineHomeLink').textContent = routineAdminMode ? '返回設定區首頁' : '返回員工首頁';
-      if(currentUser && currentUser.showSettingsZone){ qs('#routinePortalLink').classList.remove('hidden'); }
+      
     }
     function statusBadge(status){
       const cls = status==='待完成' ? 'todo' : (status==='已逾期' ? 'overdue' : (status==='停用' ? 'off' : ''));

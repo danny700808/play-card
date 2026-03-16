@@ -22,20 +22,21 @@
       .task-actions .btn,.task-audio-link .btn{width:100%}
       .task-del-wrap{margin-left:0;width:100%}
     }
-  </style>
+  
+    .page-return-wrap{margin-bottom:16px}
+    .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
+</style>
 </head>
 <body onload="init()">
   <div class="container">
+    <div class="page-return-wrap"><a class="btn page-return-btn" id="taskHomeLink" href="dashboard.html">返回員工首頁</a></div>
     <div class="card">
       <div class="topbar">
         <div>
           <h1 class="title" id="taskPageTitle" style="margin:0">交辦事項</h1>
           <div class="welcome">歡迎 <span data-user-name></span></div>
         </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
-          <a class="navlink hidden" id="taskPortalLink" href="portal.html">返回入口</a>
-          <a class="navlink" id="taskHomeLink" href="dashboard.html">員工首頁</a>
-        </div>
+        
       </div>
       <div id="msg" class="message"></div>
 
@@ -142,8 +143,8 @@
       qs('#staffBlock').style.display = taskAdminMode ? 'none' : '';
       qs('#taskPageTitle').textContent = taskAdminMode ? '交辦事項設定' : '交辦事項';
       qs('#taskHomeLink').href = taskAdminMode ? 'settings.html' : 'dashboard.html';
-      qs('#taskHomeLink').textContent = taskAdminMode ? '設定區首頁' : '員工首頁';
-      if(currentUser && currentUser.showSettingsZone){ qs('#taskPortalLink').classList.remove('hidden'); }
+      qs('#taskHomeLink').textContent = taskAdminMode ? '返回設定區首頁' : '返回員工首頁';
+      
     }
 
     function applyDueMode(mode){

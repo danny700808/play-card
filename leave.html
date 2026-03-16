@@ -11,20 +11,21 @@
     .summary-row{border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:#fff}
     .summary-row strong{display:block;font-size:15px;margin-bottom:4px}
     @media (max-width:560px){.summary-grid{grid-template-columns:1fr}}
-  </style>
+  
+    .page-return-wrap{margin-bottom:16px}
+    .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
+</style>
 </head>
 <body onload="init()">
   <div class="container">
+    <div class="page-return-wrap"><a class="btn page-return-btn" id="leaveHomeLink" href="dashboard.html">返回員工首頁</a></div>
     <div class="card">
       <div class="topbar">
         <div>
           <h1 class="title" id="leavePageTitle" style="margin:0">請假申請單</h1>
           <div class="welcome">歡迎 <span data-user-name></span></div>
         </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
-          <a class="btn hidden" id="leavePortalLink" href="portal.html" style="width:auto;padding:10px 16px;text-decoration:none">返回入口</a>
-          <a class="btn" id="leaveHomeLink" href="dashboard.html" style="width:auto;padding:10px 16px;text-decoration:none">返回員工首頁</a>
-        </div>
+        
       </div>
       <div id="pageHint" class="muted">請假原因放最上方；送出後 7 天內可修改或刪除。特休會直接視為整天。</div>
       <div id="pageMsg" class="message"></div>
@@ -67,7 +68,7 @@ function applyLeaveMode(){
   qs('#pageHint').textContent = leaveApprovalMode ? '這一頁只負責簽核員工送出的請假申請與修改後重送的請假單。' : '請假原因放最上方；送出後 7 天內可修改或刪除。特休會直接視為整天。';
   qs('#leaveHomeLink').href = leaveApprovalMode ? 'settings.html' : 'dashboard.html';
   qs('#leaveHomeLink').textContent = leaveApprovalMode ? '返回設定區首頁' : '返回員工首頁';
-  if(currentUser && currentUser.showSettingsZone){ qs('#leavePortalLink').classList.remove('hidden'); }
+  
 }
 function localDateInputValue(){ const now=new Date(); const tzOffset=now.getTimezoneOffset()*60000; return new Date(now.getTime()-tzOffset).toISOString().slice(0,10); }
 function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
