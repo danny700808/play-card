@@ -5,6 +5,14 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>打卡系統</title>
   <link rel="stylesheet" href="style.css">
+  <style>
+    .history-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+    .history-panel{margin-top:12px}
+    .history-panel.hidden{display:none}
+    .month-toggle-row{display:flex;gap:10px;flex-wrap:wrap}
+    .month-toggle-row .btn{width:auto;min-width:180px}
+    .section-note{margin-top:6px}
+  </style>
 </head>
 <body onload="init()">
   <div class="container">
@@ -21,8 +29,8 @@
 
       <div class="help-box">
         <div class="help-title">打卡說明</div>
-        <div class="muted">請依照當天實際狀況進行打卡，若打錯卡類型，可在下方打卡紀錄按「修改」並補上備註。</div>
-        <div class="muted" id="specialHelp" style="margin-top:8px">特殊打卡適用情況：星期四特殊班、社團課、特殊外出、請假中需要來回進出、其他非一般正常上下班情況。</div>
+        <div class="muted">首頁只顯示今天與昨天的可修改打卡紀錄；本月完整紀錄需點開後才會讀取，且僅供查看不可修改。每月 2 日凌晨會將上個月打卡紀錄匯出成 Excel 寄到員工信箱。</div>
+        <div class="muted section-note" id="specialHelp">特殊打卡適用情況：星期四特殊班、社團課、特殊外出、請假中需要來回進出、其他非一般正常上下班情況。</div>
       </div>
 
       <div class="field">
@@ -91,33 +99,56 @@
     </div>
 
     <div class="card">
-      <h2 class="title" style="font-size:20px">我的打卡紀錄</h2>
-      <div id="list" class="list"></div>
+      <div class="history-head">
+        <div>
+          <h2 class="title" style="font-size:20px;margin-bottom:4px">可修改打卡紀錄</h2>
+          <div class="muted">只顯示今天與昨天，這兩天內的原始紀錄才可修改。</div>
+        </div>
+      </div>
+      <div id="editableList" class="list"></div>
+    </div>
+
+    <div class="card">
+      <div class="history-head">
+        <div>
+          <h2 class="title" style="font-size:20px;margin-bottom:4px">本月完整紀錄</h2>
+          <div class="muted">預設不讀取資料，按下按鈕後才會載入。本區僅供查看，不可修改。</div>
+        </div>
+      </div>
+      <div class="month-toggle-row">
+        <button class="btn secondary" id="monthToggleBtn">查看本月紀錄</button>
+      </div>
+      <div id="monthPanel" class="history-panel hidden">
+        <div id="monthMsg" class="message local-message"></div>
+        <div id="monthList" class="list"></div>
+      </div>
     </div>
   </div>
 
   <script src="config.js"></script>
   <script src="app.js"></script>
   <script>
+    let monthLoaded = false;
+    let monthOpen = false;
+
     function tick(){
-      const d=new Date();
-      qs('#nowBox').textContent=d.toLocaleString('zh-TW',{hour12:false});
+      const d = new Date();
+      qs('#nowBox').textContent = d.toLocaleString('zh-TW', { hour12:false });
     }
 
     function toggleSupplementBox(){
       const isSupplement = qs('#clockType').value === '補登打卡';
       qs('#supplementBox').classList.toggle('hidden', !isSupplement);
-      qs('#specialHelp').style.display = qs('#clockType').value === '特殊打卡' ? 'block' : 'block';
       qs('#clockInBtn').textContent = isSupplement ? '送出補登' : '上班打卡';
       qs('#clockOutBtn').classList.toggle('hidden', isSupplement);
       clearValidation();
-      setMsg(qs('#mainMsg'),'');
+      setMsg(qs('#mainMsg'), '');
     }
 
     function clearValidation(){
-      qsa('.field.invalid').forEach(el=>el.classList.remove('invalid'));
-      qsa('.field-error').forEach(el=>el.textContent='');
-      setMsg(qs('#supplementMsg'),'');
+      qsa('.field.invalid').forEach(el => el.classList.remove('invalid'));
+      qsa('.field-error').forEach(el => el.textContent = '');
+      setMsg(qs('#supplementMsg'), '');
     }
 
     function showFieldError(fieldId, text){
@@ -130,8 +161,8 @@
     function focusField(sel){
       const el = qs(sel);
       if(!el) return;
-      el.scrollIntoView({behavior:'smooth', block:'center'});
-      try{ el.focus(); }catch(e){}
+      el.scrollIntoView({ behavior:'smooth', block:'center' });
+      try { el.focus(); } catch(e) {}
     }
 
     function startProgress(prefix, title){
@@ -144,7 +175,7 @@
       let value = 8;
       bar.style.width = value + '%';
       text.textContent = value + '%';
-      const timer = setInterval(()=>{
+      const timer = setInterval(() => {
         value = Math.min(value + (value < 70 ? 16 : 6), 90);
         bar.style.width = value + '%';
         text.textContent = value + '%';
@@ -154,40 +185,49 @@
           clearInterval(timer);
           bar.style.width = '100%';
           text.textContent = okText || '100%';
-          setTimeout(()=>box.classList.add('hidden'), 650);
+          setTimeout(() => box.classList.add('hidden'), 650);
         },
         fail(){
           clearInterval(timer);
           bar.style.width = '100%';
           text.textContent = '未完成';
-          setTimeout(()=>box.classList.add('hidden'), 900);
+          setTimeout(() => box.classList.add('hidden'), 900);
         }
       };
     }
 
-    function safeText(v){ return String(v == null ? '' : v); }
+    function escapeHtml(v){
+      return String(v == null ? '' : v)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
 
-    function renderHistoryRow(x){
+    function renderHistoryRow(x, readonly){
       const lateText = x.clockType === '特殊打卡' ? '' : (x.status === '遲到' ? '｜遲到 ' + (x.lateMinutes || 0) + ' 分鐘' : '');
-      const noteText = x.note ? `<div class="muted" style="margin-top:6px">備註：${safeText(x.note)}</div>` : '';
-      const originalText = x.originalRef ? `<div class="muted" style="margin-top:6px">原始紀錄：${safeText(x.originalRef)}</div>` : '';
-      const canModify = x.canModify ? `<button class="btn mini-btn js-open-modify" data-id="${x.id}" data-type="${x.clockType}" data-action="${x.actionName}">修改</button>` : '';
+      const noteText = x.note ? `<div class="muted" style="margin-top:6px">備註：${escapeHtml(x.note)}</div>` : '';
+      const originalText = x.originalRef ? `<div class="muted" style="margin-top:6px">原始紀錄：${escapeHtml(x.originalRef)}</div>` : '';
+      const canModify = (!readonly && x.canModify) ? `<button class="btn mini-btn js-open-modify" data-id="${escapeHtml(x.id)}">修改</button>` : '';
+      const readonlyText = readonly ? '<div class="muted" style="margin-top:8px">本區僅供查看，不可修改。</div>' : '';
       return `
         <div class="item clock-item">
           <div class="top">
-            <strong>${safeText(x.date)} ${safeText(x.time)}</strong>
-            <span class="tag">${safeText(x.statusLabel || x.status || '')}</span>
+            <strong>${escapeHtml(x.date)} ${escapeHtml(x.time)}</strong>
+            <span class="tag">${escapeHtml(x.statusLabel || x.status || '')}</span>
           </div>
-          <div class="clock-line">${safeText(x.actionName)}｜${safeText(x.clockType)}${lateText}</div>
+          <div class="clock-line">${escapeHtml(x.actionName)}｜${escapeHtml(x.clockType)}${lateText}</div>
           ${noteText}
           ${originalText}
+          ${readonlyText}
           <div class="item-actions">${canModify}</div>
-          <div class="modify-box hidden" id="modify-${x.id}">
+          <div class="modify-box hidden" id="modify-${escapeHtml(x.id)}">
             <div class="field">
               <label>修改後打卡方式</label>
               <select class="js-modify-type">
-                <option value="標準打卡" ${x.clockType==='標準打卡'?'selected':''}>標準打卡</option>
-                <option value="特殊打卡" ${x.clockType==='特殊打卡'?'selected':''}>特殊打卡</option>
+                <option value="標準打卡" ${x.clockType === '標準打卡' ? 'selected' : ''}>標準打卡</option>
+                <option value="特殊打卡" ${x.clockType === '特殊打卡' ? 'selected' : ''}>特殊打卡</option>
               </select>
             </div>
             <div class="field">
@@ -200,41 +240,58 @@
               <div class="progress-head"><strong>修改資料送出中</strong><span class="js-modify-progress-text">0%</span></div>
               <div class="progress-track"><div class="progress-bar js-modify-progress-bar"></div></div>
             </div>
-            <button class="btn js-save-modify" data-id="${x.id}">送出修改</button>
+            <button class="btn js-save-modify" data-id="${escapeHtml(x.id)}">送出修改</button>
           </div>
         </div>`;
     }
 
-    async function loadHistory(){
-      const user=requireLogin();
-      const r=await api('getClockHistory',{userId:user.id});
-      const list=qs('#list');
-      list.innerHTML=(r.rows||[]).map(renderHistoryRow).join('')||'<div class="muted">目前沒有紀錄</div>';
-      bindModifyActions();
+    function renderIntoList(targetSel, rows, readonly){
+      const list = qs(targetSel);
+      list.innerHTML = (rows || []).map(x => renderHistoryRow(x, readonly)).join('') || '<div class="muted">目前沒有紀錄</div>';
+      if(!readonly) bindModifyActions();
+    }
+
+    async function loadEditableHistory(){
+      const user = requireLogin();
+      if(!user) return;
+      const r = await api('getEditableClockHistory', { userId:user.id });
+      renderIntoList('#editableList', r.rows || [], false);
+    }
+
+    async function loadMonthHistory(forceReload = false){
+      const user = requireLogin();
+      if(!user) return;
+      if(monthLoaded && !forceReload) return;
+      setMsg(qs('#monthMsg'), '本月紀錄讀取中...');
+      const r = await api('getMonthClockHistory', { userId:user.id });
+      renderIntoList('#monthList', r.rows || [], true);
+      setMsg(qs('#monthMsg'), (r.rows || []).length ? '' : '本月目前沒有打卡紀錄');
+      monthLoaded = true;
     }
 
     function bindModifyActions(){
-      qsa('.js-open-modify').forEach(btn=>{
-        btn.onclick=()=>{
-          const box=qs('#modify-' + btn.dataset.id);
+      qsa('.js-open-modify').forEach(btn => {
+        btn.onclick = () => {
+          const box = qs('#modify-' + btn.dataset.id);
           if(box) box.classList.toggle('hidden');
         };
       });
-      qsa('.js-save-modify').forEach(btn=>{
-        btn.onclick=()=>saveModify(btn.dataset.id, btn.closest('.modify-box'));
+      qsa('.js-save-modify').forEach(btn => {
+        btn.onclick = () => saveModify(btn.dataset.id, btn.closest('.modify-box'));
       });
     }
 
     async function saveModify(recordId, box){
-      const user=requireLogin();
+      const user = requireLogin();
+      if(!user || !box) return;
       const type = box.querySelector('.js-modify-type').value;
       const note = box.querySelector('.js-modify-note').value.trim();
       const err = box.querySelector('.js-modify-error');
       const msg = box.querySelector('.js-modify-msg');
-      err.textContent='';
-      setMsg(msg,'');
+      err.textContent = '';
+      setMsg(msg, '');
       if(!note){
-        err.textContent='請填寫修改備註';
+        err.textContent = '請填寫修改備註';
         box.querySelector('.js-modify-note').focus();
         return;
       }
@@ -242,32 +299,45 @@
       const bar = box.querySelector('.js-modify-progress-bar');
       const text = box.querySelector('.js-modify-progress-text');
       progress.classList.remove('hidden');
-      let val=10;
-      bar.style.width=val+'%';
-      text.textContent=val+'%';
-      const timer=setInterval(()=>{ val=Math.min(val+(val<70?18:7),90); bar.style.width=val+'%'; text.textContent=val+'%'; },220);
-      try{
-        const r = await api('modifyClockRecord',{userId:user.id,recordId,newClockType:type,note});
+      let val = 10;
+      bar.style.width = val + '%';
+      text.textContent = val + '%';
+      const timer = setInterval(() => {
+        val = Math.min(val + (val < 70 ? 18 : 7), 90);
+        bar.style.width = val + '%';
+        text.textContent = val + '%';
+      }, 220);
+      try {
+        const r = await api('modifyClockRecord', { userId:user.id, recordId, newClockType:type, note });
         clearInterval(timer);
-        bar.style.width='100%';
-        text.textContent='100%';
+        bar.style.width = '100%';
+        text.textContent = '100%';
         setMsg(msg, r.message, !r.ok);
         if(r.ok){
-          await loadHistory();
+          await refreshHistoryViews();
         } else {
-          setTimeout(()=>progress.classList.add('hidden'), 900);
+          setTimeout(() => progress.classList.add('hidden'), 900);
         }
-      }catch(e){
+      } catch(e) {
         clearInterval(timer);
-        bar.style.width='100%';
-        text.textContent='未完成';
+        bar.style.width = '100%';
+        text.textContent = '未完成';
         setMsg(msg, e.message || '修改失敗', true);
-        setTimeout(()=>progress.classList.add('hidden'), 900);
+        setTimeout(() => progress.classList.add('hidden'), 900);
+      }
+    }
+
+    async function refreshHistoryViews(){
+      await loadEditableHistory();
+      if(monthOpen){
+        monthLoaded = false;
+        await loadMonthHistory(true);
       }
     }
 
     async function doClock(actionName){
-      const user=requireLogin();
+      const user = requireLogin();
+      if(!user) return;
       const isSupplement = qs('#clockType').value === '補登打卡';
       const msg = isSupplement ? qs('#supplementMsg') : qs('#mainMsg');
       clearValidation();
@@ -279,13 +349,13 @@
         const supplementAction = qs('#supplementAction').value;
         const supplementReason = qs('#supplementReason').value.trim();
         const supplementAsType = qs('#supplementAsType').value;
-        const missing=[];
-        if(!supplementDate) missing.push(['supplementDate','請選擇補登日期']);
-        if(!supplementTime) missing.push(['supplementTime','請選擇實際應打卡時間']);
-        if(!supplementAction) missing.push(['supplementAction','請選擇補登類型']);
-        if(!supplementReason) missing.push(['supplementReason','請填寫補登原因']);
+        const missing = [];
+        if(!supplementDate) missing.push(['supplementDate', '請選擇補登日期']);
+        if(!supplementTime) missing.push(['supplementTime', '請選擇實際應打卡時間']);
+        if(!supplementAction) missing.push(['supplementAction', '請選擇補登類型']);
+        if(!supplementReason) missing.push(['supplementReason', '請填寫補登原因']);
         if(missing.length){
-          missing.forEach(([id,text])=>showFieldError(id,text));
+          missing.forEach(([id, text]) => showFieldError(id, text));
           setMsg(msg, missing[0][1], true);
           focusField('#' + missing[0][0]);
           return;
@@ -301,38 +371,56 @@
         };
       } else {
         payload.clockType = qs('#clockType').value;
-        setMsg(msg,'正在偵測公司 Wi‑Fi IP...');
+        setMsg(msg, '正在偵測公司 Wi‑Fi IP...');
         payload.clientIp = await getPublicIp();
       }
 
       const progress = startProgress(isSupplement ? 'supplement' : 'main', isSupplement ? '補登資料送出中' : (actionName + '送出中'));
-      try{
+      try {
         const r = await api('clock', payload);
         setMsg(msg, r.message, !r.ok);
         if(r.ok){
           progress.done();
-          await loadHistory();
+          await refreshHistoryViews();
           if(isSupplement){
-            qs('#supplementReason').value='';
+            qs('#supplementReason').value = '';
           }
         } else {
           progress.fail();
         }
-      }catch(e){
+      } catch(e) {
         progress.fail();
         setMsg(msg, e.message || '送出失敗', true);
       }
     }
 
+    function bindMonthToggle(){
+      const btn = qs('#monthToggleBtn');
+      btn.onclick = async () => {
+        const panel = qs('#monthPanel');
+        monthOpen = !monthOpen;
+        panel.classList.toggle('hidden', !monthOpen);
+        btn.textContent = monthOpen ? '收合本月紀錄' : '查看本月紀錄';
+        if(monthOpen){
+          try {
+            await loadMonthHistory(false);
+          } catch(e) {
+            setMsg(qs('#monthMsg'), e.message || '讀取本月紀錄失敗', true);
+          }
+        }
+      };
+    }
+
     function init(){
       fillHeader();
       tick();
-      setInterval(tick,1000);
-      qs('#clockType').onchange=toggleSupplementBox;
-      qs('#clockInBtn').onclick=()=>doClock('上班打卡');
-      qs('#clockOutBtn').onclick=()=>doClock('下班打卡');
+      setInterval(tick, 1000);
+      qs('#clockType').onchange = toggleSupplementBox;
+      qs('#clockInBtn').onclick = () => doClock('上班打卡');
+      qs('#clockOutBtn').onclick = () => doClock('下班打卡');
       toggleSupplementBox();
-      loadHistory();
+      bindMonthToggle();
+      loadEditableHistory().catch(e => setMsg(qs('#mainMsg'), e.message || '載入打卡紀錄失敗', true));
     }
   </script>
 </body>
