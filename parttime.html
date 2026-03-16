@@ -10,6 +10,8 @@
     .summary-value{font-size:22px;font-weight:800;margin-top:4px}
     .inline-note{margin-top:6px}
     .month-badge{display:inline-block;padding:4px 10px;border-radius:999px;background:#eef7f2;color:#16533f;font-size:12px;font-weight:700}
+    .submit-area{margin-top:14px}
+    .submit-message{margin-top:10px}
   </style>
 </head>
 <body onload="init()">
@@ -21,16 +23,6 @@
           <div class="welcome">歡迎 <span data-user-name></span></div>
         </div>
         <a class="navlink" href="dashboard.html">回首頁</a>
-      </div>
-
-      <div id="msg" class="message"></div>
-
-      <div id="progressBox" class="progress-box hidden" aria-live="polite">
-        <div class="progress-head">
-          <strong>送出進度</strong>
-          <span id="progressText">0%</span>
-        </div>
-        <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
       </div>
 
       <div class="field" id="fieldWorkDate">
@@ -61,7 +53,7 @@
 
       <div class="field" id="fieldHalfHour">
         <label>額外增加 0.5 小時</label>
-        <div class="check-row"><label><input id="halfHour" type="checkbox"> 主管同意時再勾選這個半小時</label></div>
+        <div class="check-row"><label><input id="halfHour" type="checkbox"> 主管同意再執行</label></div>
         <div class="muted inline-note">有勾選才會以 0.5 小時一起計算。</div>
       </div>
 
@@ -71,7 +63,17 @@
         <div class="field-error" id="errorNote"></div>
       </div>
 
-      <button class="btn" id="submitBtn">送出時數</button>
+      <div class="submit-area" id="submitArea">
+        <button class="btn" id="submitBtn">送出時數</button>
+        <div id="progressBox" class="progress-box hidden" aria-live="polite">
+          <div class="progress-head">
+            <strong>送出進度</strong>
+            <span id="progressText">0%</span>
+          </div>
+          <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
+        </div>
+        <div id="submitMsg" class="message submit-message"></div>
+      </div>
     </div>
 
     <div class="card">
@@ -137,8 +139,8 @@
         errors.push('#hoursSelect');
       }
       if(errors.length){
-        setMsg(qs('#msg'),'請先完成必填欄位',true);
-        window.scrollTo({top:0,behavior:'smooth'});
+        setMsg(qs('#submitMsg'),'請先完成必填欄位',true);
+        qs('#submitArea').scrollIntoView({block:'center',behavior:'smooth'});
         const first = qs(errors[0]);
         if(first) first.focus();
         return false;
@@ -177,7 +179,7 @@
       };
       const btn = qs('#submitBtn');
       btn.disabled = true;
-      setMsg(qs('#msg'),'');
+      setMsg(qs('#submitMsg'),'');
       try {
         setProgress(10);
         await sleep(100);
@@ -188,7 +190,7 @@
         const r = await request;
         setProgress(85);
         await sleep(100);
-        setMsg(qs('#msg'), r.message, !r.ok);
+        setMsg(qs('#submitMsg'), r.message, !r.ok);
         if(r.ok){
           qs('#note').value = '';
           qs('#halfHour').checked = false;
@@ -198,7 +200,7 @@
           setProgress(100);
         } else {
           resetProgress();
-          window.scrollTo({top:0,behavior:'smooth'});
+          qs('#submitArea').scrollIntoView({block:'center',behavior:'smooth'});
           return;
         }
       } finally {
