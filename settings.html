@@ -1,39 +1,6 @@
-<!doctype html>
-<html lang="zh-Hant">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>設定區首頁</title>
-  <link rel="stylesheet" href="style.css">
-</head>
-<body onload="init()">
-  <div class="container">
-    <div class="card">
-      <div class="topbar">
-        <div class="header" style="margin:0">
-          <h1 class="title" style="margin:0">柚子員工系統｜設定區</h1>
-          <div class="welcome">歡迎 <span data-user-name></span></div>
-        </div>
-        <button class="btn secondary" style="width:auto;padding:10px 14px" onclick="logout()">登出</button>
-      </div>
-      <div class="muted">這一區只放設定與簽核，不顯示員工自己的操作頁。</div>
-    </div>
-    <div class="grid">
-      <a class="tile" href="leave.html"><strong>請假簽核</strong><span>查看待簽核請假單並直接同意 / 駁回</span></a>
-      <a class="tile" href="task.html"><strong>交辦事項設定</strong><span>建立交辦事項、查看已建立任務與調整設定</span></a>
-      <a class="tile" href="routine.html"><strong>定期事項設定</strong><span>建立固定週期工作、修改負責人與週期設定</span></a>
-    </div>
-  </div>
-  <script src="config.js"></script>
-  <script src="app.js"></script>
-  <script>
-    function init(){
-      fillHeader();
-      const user=requireLogin();
-      if(!user) return;
-      if(!user.showSettingsZone){location.href='dashboard.html';return;}
-      setPortalMode('settings');
-    }
-  </script>
-</body>
-</html>
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>設定區首頁</title><link rel="stylesheet" href="style.css"><style>.pending-row{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.pending-count{font-size:34px;font-weight:900;color:#1f7a5a;line-height:1}.approve-list{display:flex;flex-direction:column;gap:10px}.approve-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.approve-actions .btn{width:auto;min-width:120px}.hidden{display:none!important}@media (max-width:560px){.approve-actions .btn{width:100%}}</style></head><body onload="init()"><div class="container"><div class="card"><div class="topbar"><div class="header" style="margin:0"><h1 class="title" style="margin:0">柚子員工系統｜設定區</h1><div class="welcome">歡迎 <span data-user-name></span></div></div><div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end"><button class="btn secondary" style="width:auto;padding:10px 14px" onclick="logout()">登出</button></div></div><div class="muted">這一區只放設定與簽核，不顯示員工自己的操作頁。</div></div><div class="grid"><a class="tile" href="leave.html"><strong>請假簽核</strong><span>查看待簽核請假單並直接同意 / 駁回</span></a><a class="tile" href="task.html"><strong>交辦事項設定</strong><span>建立交辦事項、查看已建立任務與調整設定</span></a><a class="tile" href="routine.html"><strong>定期事項設定</strong><span>建立固定週期工作、修改負責人與週期設定</span></a><div class="tile count-tile"><div class="tile-text"><strong>註冊審核</strong><span>員工送出註冊申請後，會出現在這裡讓你審核是否啟用帳號</span></div><div class="pending-count" id="pendingRegCount">0</div></div></div><div class="card"><div class="pending-row"><div><h2 class="section-title" style="margin:0">待審核註冊</h2><div class="muted">這裡只負責確認新註冊的人是否為員工。</div></div><div class="pending-count" id="pendingRegCountLarge">0</div></div><div id="regMsg" class="message"></div><div id="pendingRegList" class="approve-list" style="margin-top:14px"></div></div></div><script src="config.js"></script><script src="app.js"></script><script>
+async function init(){fillHeader();const user=requireLogin();if(!user) return;if(!user.showSettingsZone){location.href='dashboard.html';return;}setPortalMode('settings');await loadPendingRegistrations();}
+async function loadPendingRegistrations(){const user=getUser();const box=qs('#pendingRegList');const msg=qs('#regMsg');setMsg(msg,'');box.innerHTML='<div class="muted">讀取中...</div>';try{const r=await api('getPendingRegistrations',{userId:user.id});if(!r.ok) throw new Error(r.message||'讀取失敗');const rows=r.rows||[];qs('#pendingRegCount').textContent=String(rows.length||0);qs('#pendingRegCountLarge').textContent=String(rows.length||0);if(!rows.length){box.innerHTML='<div class="item"><div class="muted">目前沒有待審核註冊申請</div></div>';return;}box.innerHTML=rows.map(x=>`<div class="item"><div class="top"><div><strong>${x.name||''}</strong><div class="muted">${x.email||''}</div></div><span class="tag pending">待審核</span></div><div class="task-note" style="margin-top:10px">身分證字號：${x.idNumber||'—'}<br>出生年月日：${x.birthDate||'—'}<br>緊急聯絡人：${x.emergencyContact||'—'}<br>緊急聯絡人電話：${x.emergencyPhone||'—'}<br>是否工讀生：${x.isPartTime?'是':'否'}<br>申請時間：${x.createdAt||'—'}</div><div class="approve-actions"><button class="btn" onclick="approveReg('${x.email}')">同意啟用</button><button class="btn secondary" onclick="rejectReg('${x.email}')">駁回</button></div></div>`).join('');}catch(err){box.innerHTML='';setMsg(msg,err.message||'讀取失敗',true);}}
+async function approveReg(email){const user=getUser();const r=await api('approveRegistrationApi',{userId:user.id,actorEmail:user.email,email:email});setMsg(qs('#regMsg'),r.message,!r.ok);if(r.ok) loadPendingRegistrations();}
+async function rejectReg(email){const user=getUser();const r=await api('rejectRegistrationApi',{userId:user.id,actorEmail:user.email,email:email});setMsg(qs('#regMsg'),r.message,!r.ok);if(r.ok) loadPendingRegistrations();}
+</script></body></html>

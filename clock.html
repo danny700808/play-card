@@ -12,21 +12,17 @@
     .month-toggle-row{display:flex;gap:10px;flex-wrap:wrap}
     .month-toggle-row .btn{width:auto;min-width:180px}
     .section-note{margin-top:6px}
-  
-    .page-return-wrap{margin-bottom:16px}
-    .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
-</style>
+  </style>
 </head>
 <body onload="init()">
   <div class="container">
-    <div class="page-return-wrap"><a class="btn page-return-btn" href="dashboard.html">返回員工首頁</a></div>
     <div class="card">
       <div class="topbar">
         <div>
           <h1 class="title" style="margin:0">打卡系統</h1>
           <div class="welcome">歡迎 <span data-user-name></span></div>
         </div>
-        
+        <a class="btn" href="dashboard.html" style="display:block;width:100%;text-decoration:none;text-align:center;margin-bottom:14px;padding:16px 18px;border-radius:14px">返回員工首頁</a>
       </div>
 
       <div class="timebox" id="nowBox"></div>
