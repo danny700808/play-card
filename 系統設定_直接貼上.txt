@@ -1,7 +1,0 @@
-請到「系統設定」工作表，新增或確認以下幾筆：
-
-任務附件資料夾ID	1ItItB7iwvMFb_yB6AmGRM125U13NJ0Zmm
-完成附件資料夾ID	1F_a6upVgAAzVyjm0_uDEShoev-SWAt-m
-允許圖片格式	jpg,jpeg,png
-允許錄音格式	mp3,m4a,wav,webm
-附件大小上限MB	30
