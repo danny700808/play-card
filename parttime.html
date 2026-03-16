@@ -20,7 +20,17 @@
           <h1 class="title" style="margin:0">工讀生時數登記</h1>
           <div class="welcome">歡迎 <span data-user-name></span></div>
         </div>
-        <a class="navlink" href="dashboard.html">回首頁</a>
+        <a class="btn" href="dashboard.html" style="width:auto;padding:10px 16px;text-decoration:none">返回員工首頁</a>
+      </div>
+
+      <div id="msg" class="message"></div>
+
+      <div id="progressBox" class="progress-box hidden" aria-live="polite">
+        <div class="progress-head">
+          <strong>送出進度</strong>
+          <span id="progressText">0%</span>
+        </div>
+        <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
       </div>
 
       <div class="field" id="fieldWorkDate">
@@ -52,34 +62,23 @@
       <div class="field" id="fieldHalfHour">
         <label>額外增加 0.5 小時</label>
         <div class="check-row"><label><input id="halfHour" type="checkbox"> 主管同意再執行</label></div>
-        <div class="muted inline-note">只有勾選時，才會把半小時一起算進去。</div>
+        <div class="muted inline-note">有勾選才會以 0.5 小時一起計算。</div>
       </div>
 
       <div class="field" id="fieldNote">
         <label for="note">備註</label>
         <textarea id="note" placeholder="有任何問題，可填寫在這裡"></textarea>
+        <div class="field-error" id="errorNote"></div>
       </div>
 
-      <input id="editingRecordId" type="hidden">
-      <div class="btn-row">
-        <button class="btn" id="submitBtn">送出時數</button>
-        <button class="btn secondary hidden" id="cancelEditBtn" type="button">取消修改</button>
-      </div>
-      <div id="progressBox" class="progress-box hidden" aria-live="polite" style="margin-top:12px">
-        <div class="progress-head">
-          <strong id="progressTitle">送出進度</strong>
-          <span id="progressText">0%</span>
-        </div>
-        <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
-      </div>
-      <div id="localMsg" class="message local-message"></div>
+      <button class="btn" id="submitBtn">送出時數</button>
     </div>
 
     <div class="card">
       <div class="topbar" style="margin-bottom:10px">
         <div>
           <h2 class="title" style="font-size:20px;margin:0">本月時數紀錄</h2>
-          <div class="muted">只顯示當月資料。只有今天與昨天的紀錄可修改或刪除。</div>
+          <div class="muted">只顯示當月資料，月份切換後前台不再顯示舊月份。</div>
         </div>
         <span id="monthBadge" class="month-badge"></span>
       </div>
@@ -94,8 +93,6 @@
   <script src="config.js"></script>
   <script src="app.js"></script>
   <script>
-    let historyRows = [];
-
     function localDateInputValue(){
       const now = new Date();
       const tzOffset = now.getTimezoneOffset() * 60000;
@@ -113,7 +110,7 @@
       return m ? `${m[1]}-${m[2]}` : ym;
     }
     function clearValidation(){
-      ['WorkDate','Hours'].forEach(name=>{
+      ['WorkDate','Hours','Note'].forEach(name=>{
         const field = qs('#field' + name);
         const err = qs('#error' + name);
         if(field) field.classList.remove('invalid');
@@ -126,30 +123,29 @@
       if(field) field.classList.add('invalid');
       if(err) err.textContent = message || '';
     }
-    function setLocalMsg(text, isError=false){
-      setMsg(qs('#localMsg'), text, isError);
-    }
     function validateForm(){
       clearValidation();
       const errors = [];
-      if(!qs('#workDate').value){
+      const workDate = qs('#workDate').value;
+      const hours = qs('#hoursSelect').value;
+      if(!workDate){
         setFieldInvalid('WorkDate','請先填寫日期');
         errors.push('#workDate');
       }
-      if(!qs('#hoursSelect').value){
+      if(!hours){
         setFieldInvalid('Hours','請先選擇時數');
         errors.push('#hoursSelect');
       }
       if(errors.length){
-        setLocalMsg('請先完成必填欄位', true);
+        setMsg(qs('#msg'),'請先完成必填欄位',true);
+        window.scrollTo({top:0,behavior:'smooth'});
         const first = qs(errors[0]);
         if(first) first.focus();
         return false;
       }
       return true;
     }
-    function setProgress(percent, title='送出進度'){
-      qs('#progressTitle').textContent = title;
+    function setProgress(percent){
       qs('#progressBox').classList.remove('hidden');
       qs('#progressBar').style.width = percent + '%';
       qs('#progressText').textContent = percent + '%';
@@ -157,83 +153,21 @@
     function resetProgress(){
       qs('#progressBar').style.width = '0%';
       qs('#progressText').textContent = '0%';
-      qs('#progressTitle').textContent = '送出進度';
       qs('#progressBox').classList.add('hidden');
-    }
-    function resetForm(){
-      qs('#editingRecordId').value = '';
-      qs('#workDate').value = localDateInputValue();
-      qs('#hoursSelect').value = '';
-      qs('#halfHour').checked = false;
-      qs('#note').value = '';
-      qs('#submitBtn').textContent = '送出時數';
-      qs('#cancelEditBtn').classList.add('hidden');
-      clearValidation();
-    }
-    function startEdit(id){
-      const row = historyRows.find(x => x.id === id);
-      if(!row) return;
-      qs('#editingRecordId').value = row.id;
-      qs('#workDate').value = row.date || '';
-      qs('#hoursSelect').value = String(row.hours || '');
-      qs('#halfHour').checked = Number(row.halfHour || 0) > 0;
-      qs('#note').value = row.note || '';
-      qs('#submitBtn').textContent = '更新時數';
-      qs('#cancelEditBtn').classList.remove('hidden');
-      setLocalMsg('你正在修改這筆時數紀錄');
-      window.scrollTo({top:0,behavior:'smooth'});
-    }
-    async function handleDelete(id){
-      const user = requireLogin();
-      if(!user) return;
-      if(!confirm('確定要刪除這筆時數紀錄嗎？')) return;
-      setLocalMsg('');
-      try {
-        setProgress(20, '刪除進度');
-        const r = await api('deleteParttime', { userId:user.id, recordId:id });
-        setProgress(100, '刪除進度');
-        setLocalMsg(r.message, !r.ok);
-        if(r.ok){
-          await loadHistory(r.monthText || '');
-          if(qs('#editingRecordId').value === id) resetForm();
-        }
-      } finally {
-        setTimeout(resetProgress, 500);
-      }
-    }
-    function renderHistory(rows){
-      historyRows = rows || [];
-      qs('#list').innerHTML = historyRows.map(x=>`
-        <div class="item">
-          <div class="top">
-            <strong>${x.date}</strong>
-            <span class="tag">${formatHoursLabel(x.totalHours)}</span>
-          </div>
-          ${x.note ? `<div class="muted">${x.note}</div>` : ''}
-          ${x.canEdit || x.canDelete ? `
-            <div class="item-actions">
-              ${x.canEdit ? `<button class="btn secondary mini-btn" type="button" data-edit-id="${x.id}">修改</button>` : ''}
-              ${x.canDelete ? `<button class="btn secondary mini-btn" type="button" data-delete-id="${x.id}">刪除</button>` : ''}
-            </div>` : ''}
-        </div>
-      `).join('') || '<div class="muted">本月目前沒有紀錄</div>';
-
-      qsa('[data-edit-id]').forEach(btn=>btn.onclick=()=>startEdit(btn.dataset.editId));
-      qsa('[data-delete-id]').forEach(btn=>btn.onclick=()=>handleDelete(btn.dataset.deleteId));
     }
     async function loadHistory(monthText=''){
       const user = requireLogin();
       if(!user) return;
       const r = await api('getParttimeHistory',{userId:user.id, monthText});
+      const rows = r.rows || [];
       qs('#monthBadge').textContent = monthLabel(r.monthText || '');
       qs('#monthTotal').textContent = formatHoursLabel(r.monthTotalHours || 0);
-      renderHistory(r.rows || []);
+      qs('#list').innerHTML = rows.map(x=>`<div class="item"><div class="top"><strong>${x.date}</strong><span class="tag">${formatHoursLabel(x.totalHours)}</span></div>${x.note?`<div class="muted">${x.note}</div>`:''}</div>`).join('') || '<div class="muted">本月目前沒有紀錄</div>';
     }
     async function submitParttime(){
       if(!validateForm()) return;
       const user = requireLogin();
       if(!user) return;
-      const editingId = qs('#editingRecordId').value;
       const payload = {
         userId: user.id,
         workDate: qs('#workDate').value,
@@ -242,36 +176,40 @@
         note: qs('#note').value.trim()
       };
       const btn = qs('#submitBtn');
-      const cancelBtn = qs('#cancelEditBtn');
       btn.disabled = true;
-      cancelBtn.disabled = true;
-      setLocalMsg('');
+      setMsg(qs('#msg'),'');
       try {
-        setProgress(10, editingId ? '更新進度' : '送出進度');
+        setProgress(10);
         await sleep(100);
-        setProgress(35, editingId ? '更新進度' : '送出進度');
-        const action = editingId ? 'modifyParttime' : 'parttime';
-        const request = api(action, Object.assign({}, payload, editingId ? {recordId: editingId} : {}));
+        setProgress(30);
+        const request = api('parttime', payload);
         await sleep(120);
-        setProgress(70, editingId ? '更新進度' : '送出進度');
+        setProgress(60);
         const r = await request;
-        setProgress(100, editingId ? '更新進度' : '送出進度');
-        setLocalMsg(r.message, !r.ok);
+        setProgress(85);
+        await sleep(100);
+        setMsg(qs('#msg'), r.message, !r.ok);
         if(r.ok){
-          resetForm();
+          qs('#note').value = '';
+          qs('#halfHour').checked = false;
+          qs('#hoursSelect').value = '';
+          qs('#workDate').value = localDateInputValue();
           await loadHistory(r.monthText || '');
+          setProgress(100);
+        } else {
+          resetProgress();
+          window.scrollTo({top:0,behavior:'smooth'});
+          return;
         }
       } finally {
         setTimeout(resetProgress, 500);
         btn.disabled = false;
-        cancelBtn.disabled = false;
       }
     }
     function init(){
       fillHeader();
-      resetForm();
+      qs('#workDate').value = localDateInputValue();
       qs('#submitBtn').onclick = submitParttime;
-      qs('#cancelEditBtn').onclick = ()=>{ resetForm(); setLocalMsg(''); };
       qs('#workDate').addEventListener('input', clearValidation);
       qs('#hoursSelect').addEventListener('change', clearValidation);
       loadHistory();
