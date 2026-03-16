@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>定期事項</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .routine-nav{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+    .routine-nav a{font-size:14px}
+    .summary-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px}
+    .summary-card{border:1px solid var(--line);border-radius:14px;padding:12px;background:#fbfdff}
+    .summary-card strong{display:block;font-size:22px;margin-top:6px}
+    .inline-checks{display:flex;flex-wrap:wrap;gap:10px}
+    .inline-checks label{display:flex;align-items:center;gap:6px;background:#fff;border:1px solid var(--line);border-radius:999px;padding:8px 12px;font-size:14px}
+    .mini-help{font-size:13px;color:var(--muted);margin-top:6px;line-height:1.7}
+    .item-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+    .item-foot{margin-top:10px;color:var(--muted);font-size:13px;line-height:1.7}
+    .inline-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+    .inline-actions .btn{width:auto;min-width:110px}
+    .status-badge{display:inline-block;padding:4px 10px;border-radius:999px;background:#eef7f2;color:#16533f;font-size:12px;font-weight:700}
+    .status-badge.todo{background:#fff6e5;color:#9a6700}
+    .status-badge.overdue{background:#fef0f0;color:#b42318}
+    .status-badge.off{background:#eef2f7;color:#5b6b7c}
+    .complete-box{margin-top:12px;padding-top:12px;border-top:1px dashed var(--line)}
+    .compact-list{display:flex;flex-direction:column;gap:10px}
+    .hidden{display:none !important}
+    .field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    @media (max-width:560px){.summary-grid,.field-row{grid-template-columns:1fr}}
+  </style>
+</head>
+<body onload="init()">
+  <div class="container">
+    <div class="card">
+      <div class="topbar">
+        <div>
+          <h1 class="title" style="margin:0">定期事項</h1>
+          <div class="welcome">歡迎 <span data-user-name></span></div>
+        </div>
+        <a class="navlink" href="dashboard.html">員工首頁</a>
+      </div>
+      <div id="msg" class="message"></div>
+
+      <div class="routine-nav" data-if-admin style="display:none">
+        <a class="navlink" href="task.html">交辦事項</a>
+        <a class="navlink" href="clock.html">打卡系統</a>
+        <a class="navlink" href="leave.html">請假系統</a>
+        <a class="navlink" href="parttime.html">工讀生時數</a>
+      </div>
+
+      <div class="summary-grid">
+        <div class="summary-card"><div class="muted">待完成</div><strong id="sumPending">0</strong></div>
+        <div class="summary-card"><div class="muted">已逾期</div><strong id="sumOverdue">0</strong></div>
+        <div class="summary-card"><div class="muted">本月已完成</div><strong id="sumCompleted">0</strong></div>
+      </div>
+
+      <div id="adminBlock" data-if-admin style="display:none">
+        <div class="section-title">新增 / 修改定期事項</div>
+        <div class="help-box">
+          <div class="help-title">主管設定方式</div>
+          <div class="muted">先建立一個固定要做的事項，再指定負責人、週期、提醒時間。之後員工只會看到分配給自己的定期事項，回報完成方式會跟交辦事項很接近。</div>
+        </div>
+        <input type="hidden" id="templateId">
+        <div class="field"><label>事項名稱</label><input id="routineTitle" placeholder="例如：每週垃圾清運、每月庫存盤點"></div>
+        <div class="field"><label>說明（選填）</label><textarea id="routineContent" placeholder="需要交代的細節可寫在這裡"></textarea></div>
+        <div class="field-row">
+          <div class="field"><label>負責人</label><select id="routineAssignee"><option value="">請選擇負責人</option></select></div>
+          <div class="field"><label>完成回報需求</label><select id="routinePhotoNeed"><option value="否">不強制照片</option><option value="是">完成時需附照片</option></select></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>週期類型</label><select id="routineCycleType" onchange="onCycleTypeChange()"><option value="daily">每天一次</option><option value="weekly">每週固定幾天</option><option value="monthly">每月固定日期</option></select></div>
+          <div class="field"><label>提醒時間</label><input id="routineRemindTime" type="time" value="09:00"></div>
+        </div>
+        <div id="weeklyBox" class="field">
+          <label>每週星期</label>
+          <div class="inline-checks">
+            <label><input type="checkbox" value="1" name="routineWeekday"> 週一</label>
+            <label><input type="checkbox" value="2" name="routineWeekday"> 週二</label>
+            <label><input type="checkbox" value="3" name="routineWeekday"> 週三</label>
+            <label><input type="checkbox" value="4" name="routineWeekday"> 週四</label>
+            <label><input type="checkbox" value="5" name="routineWeekday"> 週五</label>
+            <label><input type="checkbox" value="6" name="routineWeekday"> 週六</label>
+            <label><input type="checkbox" value="7" name="routineWeekday"> 週日</label>
+          </div>
+          <div class="mini-help">可以一次勾多天，系統會在對應日期提醒並列入待完成。</div>
+        </div>
+        <div id="monthlyBox" class="field hidden">
+          <label>每月幾號</label>
+          <select id="routineMonthDay"></select>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>開始日期</label><input id="routineStartDate" type="date"></div>
+          <div class="field"><label>結束日期（選填）</label><input id="routineEndDate" type="date"></div>
+        </div>
+        <div class="inline-actions">
+          <button class="btn" id="saveRoutineBtn" onclick="saveRoutineTemplate()">儲存定期事項</button>
+          <button class="btn secondary hidden" id="cancelEditBtn" onclick="resetRoutineForm()">取消修改</button>
+        </div>
+        <div id="saveProgressBox" class="progress-box hidden" style="margin-top:10px">
+          <div class="progress-head"><strong>儲存定期事項</strong><span id="saveProgressPct">0%</span></div>
+          <div class="progress-track"><div id="saveProgressBar" class="progress-bar"></div></div>
+          <div id="saveProgressText" class="attach-badge">準備送出...</div>
+        </div>
+
+        <hr style="border:none;border-top:1px solid #e5ebf1;margin:18px 0">
+        <div class="section-title">定期事項設定清單</div>
+        <div id="adminTemplateList" class="compact-list"></div>
+
+        <hr style="border:none;border-top:1px solid #e5ebf1;margin:18px 0">
+        <div class="section-title">本期待完成概況</div>
+        <div id="adminPendingList" class="compact-list"></div>
+      </div>
+
+      <div class="section-title">我的定期事項</div>
+      <div class="help-box">
+        <div class="help-title">頁面說明</div>
+        <div class="muted">這裡只會顯示目前輪到你完成的定期事項。若今天已到期但還沒回報，會直接標成逾期，讓你比較容易補處理。</div>
+      </div>
+      <div id="myRoutineList" class="compact-list"></div>
+
+      <hr style="border:none;border-top:1px solid #e5ebf1;margin:18px 0">
+      <div class="section-title">本月已完成紀錄</div>
+      <div id="routineHistory" class="compact-list"></div>
+    </div>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+  <script>
+    let currentUser = null;
+    let pageData = {mine:[], history:[], summary:{pending:0,overdue:0,completed:0}, admin:{templates:[], pendingAll:[]}};
+    let employeeOptions = [];
+
+    function statusBadge(status){
+      const cls = status==='待完成' ? 'todo' : (status==='已逾期' ? 'overdue' : (status==='停用' ? 'off' : ''));
+      return `<span class="status-badge ${cls}">${status}</span>`;
+    }
+    function cycleLabelText(type, value){
+      if(type==='daily') return '每天一次';
+      if(type==='weekly'){
+        const map={1:'週一',2:'週二',3:'週三',4:'週四',5:'週五',6:'週六',7:'週日'};
+        const labels=String(value||'').split(',').filter(Boolean).map(v=>map[Number(v)]||'').filter(Boolean);
+        return labels.length?('每週 '+labels.join('、')):'每週一次';
+      }
+      if(type==='monthly') return `每月 ${value||1} 號`;
+      return '未設定';
+    }
+    function fillMonthDays(){
+      const sel=qs('#routineMonthDay');
+      if(!sel) return;
+      sel.innerHTML = Array.from({length:31},(_,i)=>`<option value="${i+1}">${i+1} 號</option>`).join('');
+    }
+    function onCycleTypeChange(){
+      const type = qs('#routineCycleType').value;
+      qs('#weeklyBox').classList.toggle('hidden', type!=='weekly');
+      qs('#monthlyBox').classList.toggle('hidden', type!=='monthly');
+    }
+    function getWeekdaysValue(){
+      return qsa('input[name="routineWeekday"]:checked').map(x=>x.value).join(',');
+    }
+    function setWeekdaysValue(value=''){
+      const set = new Set(String(value).split(',').filter(Boolean));
+      qsa('input[name="routineWeekday"]').forEach(el=>el.checked=set.has(el.value));
+    }
+    function resetRoutineForm(){
+      qs('#templateId').value='';
+      qs('#routineTitle').value='';
+      qs('#routineContent').value='';
+      qs('#routineAssignee').value='';
+      qs('#routineCycleType').value='daily';
+      qs('#routineRemindTime').value='09:00';
+      qs('#routinePhotoNeed').value='否';
+      qs('#routineStartDate').value='';
+      qs('#routineEndDate').value='';
+      qs('#routineMonthDay').value='1';
+      setWeekdaysValue('');
+      qs('#saveRoutineBtn').textContent='儲存定期事項';
+      qs('#cancelEditBtn').classList.add('hidden');
+      onCycleTypeChange();
+    }
+    function fillEmployeeOptions(){
+      const sel=qs('#routineAssignee');
+      if(!sel) return;
+      sel.innerHTML = '<option value="">請選擇負責人</option>' + employeeOptions.map(x=>`<option value="${x.id}">${x.name}</option>`).join('');
+    }
+    async function init(){
+      fillHeader();
+      fillMonthDays();
+      onCycleTypeChange();
+      currentUser=requireLogin();
+      if(!currentUser) return;
+      if(currentUser.role==='admin'){
+        const emp=await api('getEmployeeOptions',{userId:currentUser.id});
+        employeeOptions = emp.rows||[];
+        fillEmployeeOptions();
+      }
+      await refreshPage();
+    }
+    async function refreshPage(){
+      const r=await api('getRoutinePageData',{userId:currentUser.id,email:currentUser.email,role:currentUser.role});
+      if(!r.ok){ setMsg(qs('#msg'),r.message||'讀取失敗',true); return; }
+      pageData=r;
+      renderSummary();
+      renderMine();
+      renderHistory();
+      if(currentUser.role==='admin') renderAdmin();
+    }
+    function renderSummary(){
+      qs('#sumPending').textContent = pageData.summary?.pending || 0;
+      qs('#sumOverdue').textContent = pageData.summary?.overdue || 0;
+      qs('#sumCompleted').textContent = pageData.summary?.completed || 0;
+    }
+    function renderMine(){
+      const el=qs('#myRoutineList');
+      const rows=pageData.mine||[];
+      el.innerHTML = rows.map((x,idx)=>`<div class="item"><div class="item-head"><div><strong>${x.title}</strong><div class="muted">${x.cycleLabel}</div></div>${statusBadge(x.status)}</div><div style="margin-top:8px">${x.content||'未填寫說明'}</div><div class="item-foot">應完成日期：${x.dueDate}${x.remindTime?`　｜　提醒時間：${x.remindTime}`:''}${x.requirePhotoReturn==='是'?'　｜　需附照片':''}</div>${(x.status==='待完成'||x.status==='已逾期')?`<div class="complete-box"><div class="field"><label>完成備註（選填）</label><textarea id="note_${idx}" placeholder="有需要補充時再填寫"></textarea></div><div class="field"><label>完成照片${x.requirePhotoReturn==='是'?'（必填）':'（選填）'}</label><input id="photo_${idx}" type="file" accept=".jpg,.jpeg,.png"></div><div class="field"><label>完成錄音（選填）</label><input id="audio_${idx}" type="file" accept="audio/*"></div><button class="btn" onclick="completeItem(${idx})">回報完成</button><div id="progress_${idx}" class="progress-box hidden" style="margin-top:10px"><div class="progress-head"><strong>送出完成回報</strong><span id="progressPct_${idx}">0%</span></div><div class="progress-track"><div id="progressBar_${idx}" class="progress-bar"></div></div><div id="progressText_${idx}" class="attach-badge">準備送出...</div></div></div>`:`<div class="item-foot">完成時間：${x.completedAt||'已完成'}</div>`}</div>`).join('') || '<div class="muted">目前沒有輪到你處理的定期事項</div>';
+    }
+    function renderHistory(){
+      const el=qs('#routineHistory');
+      const rows=pageData.history||[];
+      el.innerHTML = rows.map(x=>`<div class="item"><div class="item-head"><div><strong>${x.title}</strong><div class="muted">${x.dueDate||''}</div></div>${statusBadge('已完成')}</div><div style="margin-top:8px">${x.note||'未填寫備註'}</div><div class="item-foot">${x.completedAt?`完成時間：${x.completedAt}`:''}${x.photoUrl?`　｜　<a class="navlink" href="${imagePreviewUrl(x.photoUrl)}" target="_blank">查看照片</a>`:''}${x.audioUrl?`　｜　<a class="navlink" href="${audioOpenUrl(x.audioUrl)}" target="_blank">查看錄音</a>`:''}</div></div>`).join('') || `<div class="muted">${pageData.currentMonth||''} 目前還沒有完成紀錄</div>`;
+    }
+    function renderAdmin(){
+      const tplEl=qs('#adminTemplateList');
+      const pendingEl=qs('#adminPendingList');
+      const templates=pageData.admin?.templates||[];
+      tplEl.innerHTML = templates.map((x,idx)=>`<div class="item"><div class="item-head"><div><strong>${x.title}</strong><div class="muted">${x.assigneeName}　｜　${x.cycleLabel}</div></div>${statusBadge(x.status)}</div><div style="margin-top:8px">${x.content||'未填寫說明'}</div><div class="item-foot">開始：${x.startDate||'-'}${x.endDate?`　｜　結束：${x.endDate}`:''}${x.remindTime?`　｜　提醒：${x.remindTime}`:''}</div><div class="inline-actions"><button class="btn secondary" onclick="editTemplate(${idx})">修改</button><button class="btn secondary" onclick="toggleTemplate('${x.id}','${x.status==='啟用'?'停用':'啟用'}')">${x.status==='啟用'?'停用':'啟用'}</button></div></div>`).join('') || '<div class="muted">目前尚未建立任何定期事項</div>';
+      const pending = pageData.admin?.pendingAll||[];
+      pendingEl.innerHTML = pending.map(x=>`<div class="item"><div class="item-head"><div><strong>${x.title}</strong><div class="muted">${x.assigneeName}　｜　${x.cycleLabel}</div></div>${statusBadge(x.status)}</div><div class="item-foot">應完成日期：${x.dueDate}</div></div>`).join('') || '<div class="muted">目前沒有待完成的定期事項</div>';
+    }
+    function editTemplate(idx){
+      const x = pageData.admin.templates[idx];
+      qs('#templateId').value=x.id;
+      qs('#routineTitle').value=x.title||'';
+      qs('#routineContent').value=x.content||'';
+      qs('#routineAssignee').value=x.assigneeId||'';
+      qs('#routineCycleType').value=x.cycleType||'daily';
+      qs('#routineRemindTime').value=x.remindTime||'09:00';
+      qs('#routinePhotoNeed').value=x.requirePhotoReturn||'否';
+      qs('#routineStartDate').value=x.startDate||'';
+      qs('#routineEndDate').value=x.endDate||'';
+      if(x.cycleType==='weekly') setWeekdaysValue(x.cycleValue||'');
+      if(x.cycleType==='monthly') qs('#routineMonthDay').value=String(x.cycleValue||'1');
+      qs('#saveRoutineBtn').textContent='更新定期事項';
+      qs('#cancelEditBtn').classList.remove('hidden');
+      onCycleTypeChange();
+      window.scrollTo({top:0,behavior:'smooth'});
+    }
+    function updateProgress(prefix, pct, text){
+      const box=qs(`#${prefix}`); const bar=qs(`#${prefix.replace('progress','progressBar')}`) || qs(`#${prefix}Bar`);
+    }
+    function setInlineProgress(idx, pct, text){
+      const box=qs(`#progress_${idx}`); if(!box) return;
+      box.classList.remove('hidden');
+      qs(`#progressPct_${idx}`).textContent = `${pct}%`;
+      qs(`#progressBar_${idx}`).style.width = `${pct}%`;
+      qs(`#progressText_${idx}`).textContent = text;
+    }
+    function setSaveProgress(pct,text){
+      const box=qs('#saveProgressBox'); box.classList.remove('hidden');
+      qs('#saveProgressPct').textContent=`${pct}%`;
+      qs('#saveProgressBar').style.width=`${pct}%`;
+      qs('#saveProgressText').textContent=text;
+    }
+    async function saveRoutineTemplate(){
+      const cycleType=qs('#routineCycleType').value;
+      const payload={
+        userId:currentUser.id,
+        templateId:qs('#templateId').value,
+        title:qs('#routineTitle').value,
+        content:qs('#routineContent').value,
+        assigneeId:qs('#routineAssignee').value,
+        cycleType,
+        cycleValue: cycleType==='weekly' ? getWeekdaysValue() : (cycleType==='monthly' ? qs('#routineMonthDay').value : 'daily'),
+        remindTime:qs('#routineRemindTime').value,
+        startDate:qs('#routineStartDate').value,
+        endDate:qs('#routineEndDate').value,
+        requirePhotoReturn:qs('#routinePhotoNeed').value,
+        status:'啟用'
+      };
+      setSaveProgress(15,'檢查設定內容...');
+      const r=await api('saveRoutineTemplate',payload);
+      if(!r.ok){ setSaveProgress(100,r.message||'儲存失敗'); return; }
+      setSaveProgress(100,r.message||'儲存完成');
+      resetRoutineForm();
+      await refreshPage();
+    }
+    async function toggleTemplate(id,status){
+      const r=await api('toggleRoutineTemplate',{userId:currentUser.id,templateId:id,status});
+      if(!r.ok){ setMsg(qs('#msg'),r.message||'更新失敗',true); return; }
+      await refreshPage();
+    }
+    async function completeItem(idx){
+      const item = pageData.mine[idx];
+      const note = qs(`#note_${idx}`).value;
+      const photoFile = qs(`#photo_${idx}`).files[0];
+      const audioFile = qs(`#audio_${idx}`).files[0];
+      if(item.requirePhotoReturn==='是' && !photoFile){
+        setInlineProgress(idx,100,'這個事項完成時需要附照片');
+        return;
+      }
+      setInlineProgress(idx,15,'準備整理附件...');
+      let photo=''; let audio='';
+      if(photoFile){ setInlineProgress(idx,40,'處理完成照片中...'); photo = await compressImageToDataUrl(photoFile); }
+      if(audioFile){ setInlineProgress(idx,70,'處理錄音中...'); audio = await fileToDataUrl(audioFile); }
+      setInlineProgress(idx,85,'送出完成回報中...');
+      const r=await api('completeRoutineItem',{userId:currentUser.id,templateId:item.templateId,periodKey:item.periodKey,note,photo,audio});
+      if(!r.ok){ setInlineProgress(idx,100,r.message||'送出失敗'); return; }
+      setInlineProgress(idx,100,r.message||'已完成');
+      await refreshPage();
+    }
+  </script>
+</body>
+</html>
