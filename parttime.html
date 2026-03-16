@@ -5,6 +5,12 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>工讀生時數</title>
   <link rel="stylesheet" href="style.css">
+  <style>
+    .summary-box{border:1px solid var(--line);border-radius:14px;padding:12px 14px;background:#f8fbff;margin-top:12px}
+    .summary-value{font-size:22px;font-weight:800;margin-top:4px}
+    .inline-note{margin-top:6px}
+    .month-badge{display:inline-block;padding:4px 10px;border-radius:999px;background:#eef7f2;color:#16533f;font-size:12px;font-weight:700}
+  </style>
 </head>
 <body onload="init()">
   <div class="container">
@@ -16,52 +22,196 @@
         </div>
         <a class="navlink" href="dashboard.html">回首頁</a>
       </div>
+
       <div id="msg" class="message"></div>
-      <div class="field"><label>日期</label><input id="workDate" type="date"></div>
-      <div class="field">
-        <label>時數</label>
-        <div id="hoursRow" class="hours-chip-row"></div>
+
+      <div id="progressBox" class="progress-box hidden" aria-live="polite">
+        <div class="progress-head">
+          <strong>送出進度</strong>
+          <span id="progressText">0%</span>
+        </div>
+        <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
       </div>
-      <div class="field">
-        <label>半小時加時</label>
-        <div class="check-row"><label><input id="halfHour" type="checkbox"> 如果當天主管有同意增加半小時可以打勾</label></div>
+
+      <div class="field" id="fieldWorkDate">
+        <label for="workDate">日期</label>
+        <input id="workDate" type="date">
+        <div class="field-error" id="errorWorkDate"></div>
       </div>
-      <div class="field"><label>備註</label><textarea id="note" placeholder="有任何問題，請填寫在這邊"></textarea></div>
+
+      <div class="field" id="fieldHours">
+        <label for="hoursSelect">時數</label>
+        <select id="hoursSelect">
+          <option value="">請選擇時數</option>
+          <option value="1">1 小時</option>
+          <option value="2">2 小時</option>
+          <option value="3">3 小時</option>
+          <option value="4">4 小時</option>
+          <option value="5">5 小時</option>
+          <option value="6">6 小時</option>
+          <option value="7">7 小時</option>
+          <option value="8">8 小時</option>
+          <option value="9">9 小時</option>
+          <option value="10">10 小時</option>
+          <option value="11">11 小時</option>
+          <option value="12">12 小時</option>
+        </select>
+        <div class="field-error" id="errorHours"></div>
+      </div>
+
+      <div class="field" id="fieldHalfHour">
+        <label>額外增加 0.5 小時</label>
+        <div class="check-row"><label><input id="halfHour" type="checkbox"> 主管同意時再勾選這個半小時</label></div>
+        <div class="muted inline-note">有勾選才會以 0.5 小時一起計算。</div>
+      </div>
+
+      <div class="field" id="fieldNote">
+        <label for="note">備註</label>
+        <textarea id="note" placeholder="有任何問題，可填寫在這裡"></textarea>
+        <div class="field-error" id="errorNote"></div>
+      </div>
+
       <button class="btn" id="submitBtn">送出時數</button>
     </div>
+
     <div class="card">
-      <h2 class="title" style="font-size:20px">我的時數紀錄</h2>
+      <div class="topbar" style="margin-bottom:10px">
+        <div>
+          <h2 class="title" style="font-size:20px;margin:0">本月時數紀錄</h2>
+          <div class="muted">只顯示當月資料，月份切換後前台不再顯示舊月份。</div>
+        </div>
+        <span id="monthBadge" class="month-badge"></span>
+      </div>
       <div id="list" class="list"></div>
+      <div class="summary-box">
+        <div class="muted">這個月總計</div>
+        <div id="monthTotal" class="summary-value">0 小時</div>
+      </div>
     </div>
   </div>
+
   <script src="config.js"></script>
   <script src="app.js"></script>
   <script>
-    let selectedHours=1;
-    function fillHours(){
-      const wrap=qs('#hoursRow');
-      wrap.innerHTML='';
-      for(let i=1;i<=12;i++){
-        const label=document.createElement('label');
-        label.className='hour-chip';
-        label.innerHTML=`<input type="radio" name="ptHours" value="${i}" ${i===1?'checked':''}><span>${i} 小時</span>`;
-        wrap.appendChild(label);
-      }
-      qsa('input[name="ptHours"]').forEach(r=>r.onchange=()=>selectedHours=Number(r.value||1));
+    function localDateInputValue(){
+      const now = new Date();
+      const tzOffset = now.getTimezoneOffset() * 60000;
+      return new Date(now.getTime() - tzOffset).toISOString().slice(0,10);
     }
-    async function loadHistory(){
-      const user=requireLogin();
-      const r=await api('getParttimeHistory',{userId:user.id});
-      qs('#list').innerHTML=(r.rows||[]).map(x=>`<div class="item"><div class="top"><strong>${x.date}</strong><span class="tag">$${x.dailyPay}</span></div><div>${x.totalHours} 小時（含半小時 ${x.halfHour}）</div>${x.note?`<div class="muted">${x.note}</div>`:''}</div>`).join('')||'<div class="muted">目前沒有紀錄</div>';
+    function sleep(ms){ return new Promise(resolve=>setTimeout(resolve, ms)); }
+    function formatHoursLabel(v){
+      const n = Number(v || 0);
+      if (Math.abs(n - Math.round(n)) < 0.0001) return Math.round(n) + ' 小時';
+      return n.toFixed(1).replace(/\.0$/, '') + ' 小時';
+    }
+    function monthLabel(ym){
+      if(!ym) return '';
+      const m = String(ym).match(/^(\d{4})-(\d{2})$/);
+      return m ? `${m[1]}-${m[2]}` : ym;
+    }
+    function clearValidation(){
+      ['WorkDate','Hours','Note'].forEach(name=>{
+        const field = qs('#field' + name);
+        const err = qs('#error' + name);
+        if(field) field.classList.remove('invalid');
+        if(err) err.textContent = '';
+      });
+    }
+    function setFieldInvalid(name, message){
+      const field = qs('#field' + name);
+      const err = qs('#error' + name);
+      if(field) field.classList.add('invalid');
+      if(err) err.textContent = message || '';
+    }
+    function validateForm(){
+      clearValidation();
+      const errors = [];
+      const workDate = qs('#workDate').value;
+      const hours = qs('#hoursSelect').value;
+      if(!workDate){
+        setFieldInvalid('WorkDate','請先填寫日期');
+        errors.push('#workDate');
+      }
+      if(!hours){
+        setFieldInvalid('Hours','請先選擇時數');
+        errors.push('#hoursSelect');
+      }
+      if(errors.length){
+        setMsg(qs('#msg'),'請先完成必填欄位',true);
+        window.scrollTo({top:0,behavior:'smooth'});
+        const first = qs(errors[0]);
+        if(first) first.focus();
+        return false;
+      }
+      return true;
+    }
+    function setProgress(percent){
+      qs('#progressBox').classList.remove('hidden');
+      qs('#progressBar').style.width = percent + '%';
+      qs('#progressText').textContent = percent + '%';
+    }
+    function resetProgress(){
+      qs('#progressBar').style.width = '0%';
+      qs('#progressText').textContent = '0%';
+      qs('#progressBox').classList.add('hidden');
+    }
+    async function loadHistory(monthText=''){
+      const user = requireLogin();
+      if(!user) return;
+      const r = await api('getParttimeHistory',{userId:user.id, monthText});
+      const rows = r.rows || [];
+      qs('#monthBadge').textContent = monthLabel(r.monthText || '');
+      qs('#monthTotal').textContent = formatHoursLabel(r.monthTotalHours || 0);
+      qs('#list').innerHTML = rows.map(x=>`<div class="item"><div class="top"><strong>${x.date}</strong><span class="tag">${formatHoursLabel(x.totalHours)}</span></div>${x.note?`<div class="muted">${x.note}</div>`:''}</div>`).join('') || '<div class="muted">本月目前沒有紀錄</div>';
+    }
+    async function submitParttime(){
+      if(!validateForm()) return;
+      const user = requireLogin();
+      if(!user) return;
+      const payload = {
+        userId: user.id,
+        workDate: qs('#workDate').value,
+        hours: qs('#hoursSelect').value,
+        halfHour: qs('#halfHour').checked,
+        note: qs('#note').value.trim()
+      };
+      const btn = qs('#submitBtn');
+      btn.disabled = true;
+      setMsg(qs('#msg'),'');
+      try {
+        setProgress(10);
+        await sleep(100);
+        setProgress(30);
+        const request = api('parttime', payload);
+        await sleep(120);
+        setProgress(60);
+        const r = await request;
+        setProgress(85);
+        await sleep(100);
+        setMsg(qs('#msg'), r.message, !r.ok);
+        if(r.ok){
+          qs('#note').value = '';
+          qs('#halfHour').checked = false;
+          qs('#hoursSelect').value = '';
+          qs('#workDate').value = localDateInputValue();
+          await loadHistory(r.monthText || '');
+          setProgress(100);
+        } else {
+          resetProgress();
+          window.scrollTo({top:0,behavior:'smooth'});
+          return;
+        }
+      } finally {
+        setTimeout(resetProgress, 500);
+        btn.disabled = false;
+      }
     }
     function init(){
-      fillHeader(); fillHours(); qs('#workDate').value=new Date().toISOString().slice(0,10);
-      qs('#submitBtn').onclick=async()=>{
-        const user=requireLogin();
-        const r=await api('parttime',{userId:user.id,workDate:qs('#workDate').value,hours:selectedHours,halfHour:qs('#halfHour').checked,note:qs('#note').value.trim()});
-        setMsg(qs('#msg'),r.message,!r.ok);
-        if(r.ok){qs('#note').value=''; qs('#halfHour').checked=false; loadHistory();}
-      };
+      fillHeader();
+      qs('#workDate').value = localDateInputValue();
+      qs('#submitBtn').onclick = submitParttime;
+      qs('#workDate').addEventListener('input', clearValidation);
+      qs('#hoursSelect').addEventListener('change', clearValidation);
       loadHistory();
     }
   </script>
