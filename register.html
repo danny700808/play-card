@@ -5,6 +5,13 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>柚子員工系統｜註冊</title>
   <link rel="stylesheet" href="style.css">
+  <style>
+    .birth-select-row{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:10px}
+    .birth-select-row select{width:100%}
+    .field-error{display:none;margin-top:6px;color:#c62828;font-size:14px;font-weight:600}
+    .field.has-error input,.field.has-error select,.field.has-error .password-wrap{border-color:#e35d5b!important;box-shadow:0 0 0 2px rgba(227,93,91,.12)}
+    @media (max-width: 640px){.birth-select-row{grid-template-columns:1fr 1fr 1fr;gap:8px}}
+  </style>
 </head>
 <body>
   <div class="container">
@@ -14,17 +21,21 @@
         <p class="subtitle">送出後需等待主管審核</p>
       </div>
       <div id="msg" class="message"></div>
-      <div id="registerProgress" class="progress-wrap" style="display:none">
-        <div class="progress-bar"><div id="registerProgressBar" class="progress-fill"></div></div>
-        <div id="registerProgressText" class="progress-text">準備送出...</div>
-      </div>
 
-      <div class="field" id="field-name"><label>姓名</label><input id="name" placeholder="請輸入姓名"></div>
-      <div class="field" id="field-email"><label>Email</label><input id="email" type="email" placeholder="請輸入 Email"></div>
-      <div class="field" id="field-idNumber"><label>身分證字號</label><input id="idNumber" placeholder="請輸入身分證字號"></div>
-      <div class="field" id="field-birthDate"><label>出生年月日</label><input id="birthDate" type="text" inputmode="numeric" placeholder="例如 2003-02-13 或 2003/02/13"></div>
-      <div class="field" id="field-emergencyContact"><label>緊急聯絡人</label><input id="emergencyContact" placeholder="請輸入緊急聯絡人姓名"></div>
-      <div class="field" id="field-emergencyPhone"><label>緊急聯絡人電話</label><input id="emergencyPhone" placeholder="請輸入緊急聯絡人電話"></div>
+      <div class="field" id="field-name"><label>姓名</label><input id="name" placeholder="請輸入姓名"><div class="field-error"></div></div>
+      <div class="field" id="field-email"><label>Email</label><input id="email" type="email" placeholder="請輸入 Email"><div class="field-error"></div></div>
+      <div class="field" id="field-idNumber"><label>身分證字號</label><input id="idNumber" placeholder="請輸入身分證字號"><div class="field-error"></div></div>
+      <div class="field" id="field-birthDate">
+        <label>出生年月日</label>
+        <div class="birth-select-row">
+          <select id="birthYear"><option value="">年份</option></select>
+          <select id="birthMonth"><option value="">月份</option></select>
+          <select id="birthDay"><option value="">日期</option></select>
+        </div>
+        <div class="field-error"></div>
+      </div>
+      <div class="field" id="field-emergencyContact"><label>緊急聯絡人</label><input id="emergencyContact" placeholder="請輸入緊急聯絡人姓名"><div class="field-error"></div></div>
+      <div class="field" id="field-emergencyPhone"><label>緊急聯絡人電話</label><input id="emergencyPhone" inputmode="tel" placeholder="請輸入緊急聯絡人電話"><div class="field-error"></div></div>
 
       <div class="field" id="field-password">
         <label>密碼</label>
@@ -33,6 +44,7 @@
           <button type="button" class="eye" id="eyeBtn">👁</button>
         </div>
         <div class="muted">需為英文加數字，8 碼以上</div>
+        <div class="field-error"></div>
       </div>
 
       <div class="field" id="field-password2">
@@ -41,9 +53,10 @@
           <input id="password2" type="password" placeholder="請再次輸入密碼">
           <button type="button" class="eye" id="eyeBtn2">👁</button>
         </div>
+        <div class="field-error"></div>
       </div>
 
-      <div class="field" id="field-isPartTime"><label>是否為工讀生</label><select id="isPartTime"><option value="no">否</option><option value="yes">是</option></select></div>
+      <div class="field" id="field-isPartTime"><label>是否為工讀生</label><select id="isPartTime"><option value="no">否</option><option value="yes">是</option></select><div class="field-error"></div></div>
       <div class="btn-row"><a class="btn secondary center" href="index.html">回登入</a><button class="btn" id="registerBtn">送出註冊申請</button></div>
     </div>
   </div>
@@ -51,126 +64,115 @@
   <script src="app.js"></script>
   <script>
     const msg=qs('#msg');
-    const FIELD_LABELS={
-      name:'姓名', email:'Email', idNumber:'身分證字號', birthDate:'出生年月日',
-      emergencyContact:'緊急聯絡人', emergencyPhone:'緊急聯絡人電話',
-      password:'密碼', password2:'再次確認密碼', isPartTime:'是否為工讀生'
+    const fieldMap={
+      name:'#field-name',
+      email:'#field-email',
+      idNumber:'#field-idNumber',
+      birthDate:'#field-birthDate',
+      emergencyContact:'#field-emergencyContact',
+      emergencyPhone:'#field-emergencyPhone',
+      password:'#field-password',
+      password2:'#field-password2'
     };
-    function ensureErrorNode(fieldId){
-      const wrap=qs('#field-'+fieldId);
-      if(!wrap) return null;
-      let node=wrap.querySelector('.field-error');
-      if(!node){
-        node=document.createElement('div');
-        node.className='field-error';
-        wrap.appendChild(node);
+    function fillBirthOptions(){
+      const y=qs('#birthYear'), m=qs('#birthMonth'), d=qs('#birthDay');
+      const now=new Date().getFullYear();
+      for(let year=now; year>=1940; year--){
+        const opt=document.createElement('option');
+        opt.value=String(year); opt.textContent=String(year); y.appendChild(opt);
       }
-      return node;
-    }
-    function clearFieldError(fieldId){
-      const wrap=qs('#field-'+fieldId);
-      if(wrap) wrap.classList.remove('invalid');
-      const node=ensureErrorNode(fieldId);
-      if(node) node.textContent='';
-    }
-    function showFieldError(fieldId,text){
-      const wrap=qs('#field-'+fieldId);
-      const input=qs('#'+fieldId);
-      if(wrap) wrap.classList.add('invalid');
-      const node=ensureErrorNode(fieldId);
-      if(node) node.textContent=text||'';
-      if(input){
-        input.focus({preventScroll:true});
-        setTimeout(()=>input.scrollIntoView({behavior:'smooth',block:'center'}),60);
+      for(let month=1; month<=12; month++){
+        const v=String(month).padStart(2,'0');
+        const opt=document.createElement('option');
+        opt.value=v; opt.textContent=month+'月'; m.appendChild(opt);
       }
+      refreshBirthDays();
     }
-    function clearAllFieldErrors(){
-      Object.keys(FIELD_LABELS).forEach(clearFieldError);
-    }
-    function normalizeBirthDate(raw){
-      const v=String(raw||'').trim();
-      if(!v) return '';
-      const m=v.match(/^(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})$/);
-      if(m){
-        const y=m[1], mm=String(m[2]).padStart(2,'0'), dd=String(m[3]).padStart(2,'0');
-        return `${y}-${mm}-${dd}`;
+    function daysInMonth(year,month){ return new Date(Number(year), Number(month), 0).getDate(); }
+    function refreshBirthDays(){
+      const d=qs('#birthDay');
+      const y=qs('#birthYear').value; const m=qs('#birthMonth').value;
+      const prev=d.value;
+      d.innerHTML='<option value="">日期</option>';
+      const count=(y&&m)?daysInMonth(y,m):31;
+      for(let day=1; day<=count; day++){
+        const v=String(day).padStart(2,'0');
+        const opt=document.createElement('option');
+        opt.value=v; opt.textContent=day+'日'; d.appendChild(opt);
       }
-      const compact=v.match(/^(\d{4})(\d{2})(\d{2})$/);
-      if(compact) return `${compact[1]}-${compact[2]}-${compact[3]}`;
-      return '';
+      if(prev && Number(prev)<=count) d.value=prev;
     }
-    function validateRegisterPayload(payload){
-      const rules=[
-        ['name', !payload.name, '請填寫姓名'],
-        ['email', !payload.email, '請填寫 Email'],
-        ['idNumber', !payload.idNumber, '請填寫身分證字號'],
-        ['birthDate', !payload.birthDate, '請填寫出生年月日，格式例如 2003-02-13'],
-        ['emergencyContact', !payload.emergencyContact, '請填寫緊急聯絡人'],
-        ['emergencyPhone', !payload.emergencyPhone, '請填寫緊急聯絡人電話'],
-        ['password', !payload.password, '請填寫密碼'],
-        ['password2', !payload.password2, '請再次確認密碼']
-      ];
-      for(const [field, bad, text] of rules){ if(bad) return {field,text}; }
-      if(!isStrongPassword(payload.password)) return {field:'password', text:'密碼需為英文加數字，8 碼以上'};
-      if(payload.password!==payload.password2) return {field:'password2', text:'兩次密碼輸入不一致'};
+    function birthDateValue(){
+      const y=qs('#birthYear').value, m=qs('#birthMonth').value, d=qs('#birthDay').value;
+      return (y&&m&&d)?`${y}-${m}-${d}`:'';
+    }
+    function clearFieldErrors(){
+      Object.values(fieldMap).forEach(sel=>{
+        const el=qs(sel); if(!el) return;
+        el.classList.remove('has-error');
+        const e=el.querySelector('.field-error'); if(e){e.textContent=''; e.style.display='none';}
+      });
+    }
+    function showFieldError(key,text){
+      const wrap=qs(fieldMap[key]);
+      if(!wrap) return;
+      wrap.classList.add('has-error');
+      const e=wrap.querySelector('.field-error'); if(e){e.textContent=text; e.style.display='block';}
+      wrap.scrollIntoView({behavior:'smooth', block:'center'});
+      const focusEl=wrap.querySelector('input,select'); if(focusEl) focusEl.focus({preventScroll:true});
+    }
+    function validatePayload(payload){
+      if(!payload.name) return ['name','請填寫姓名'];
+      if(!payload.email) return ['email','請填寫 Email'];
+      if(!payload.idNumber) return ['idNumber','請填寫身分證字號'];
+      if(!payload.birthDate) return ['birthDate','請選擇出生年月日'];
+      if(!payload.emergencyContact) return ['emergencyContact','請填寫緊急聯絡人'];
+      if(!payload.emergencyPhone) return ['emergencyPhone','請填寫緊急聯絡人電話'];
+      if(!payload.password) return ['password','請填寫密碼'];
+      if(!payload.password2) return ['password2','請再次確認密碼'];
+      if(!isStrongPassword(payload.password)) return ['password','密碼需為英文加數字，8 碼以上'];
+      if(payload.password!==payload.password2) return ['password2','兩次密碼輸入不一致'];
       return null;
     }
+    fillBirthOptions();
+    qs('#birthYear').addEventListener('change', refreshBirthDays);
+    qs('#birthMonth').addEventListener('change', refreshBirthDays);
     qs('#eyeBtn').onclick=()=>togglePassword('#password',qs('#eyeBtn'));
     qs('#eyeBtn2').onclick=()=>togglePassword('#password2',qs('#eyeBtn2'));
-    ['name','email','idNumber','birthDate','emergencyContact','emergencyPhone','password','password2'].forEach(id=>{
-      const el=qs('#'+id);
-      if(el) el.addEventListener('input',()=>clearFieldError(id));
+    Object.entries(fieldMap).forEach(([key,sel])=>{
+      const wrap=qs(sel); if(!wrap) return;
+      wrap.querySelectorAll('input,select').forEach(el=>el.addEventListener('input',()=>{wrap.classList.remove('has-error');const e=wrap.querySelector('.field-error'); if(e){e.textContent=''; e.style.display='none';}}));
+      wrap.querySelectorAll('input,select').forEach(el=>el.addEventListener('change',()=>{wrap.classList.remove('has-error');const e=wrap.querySelector('.field-error'); if(e){e.textContent=''; e.style.display='none';}}));
     });
     qs('#registerBtn').onclick=async()=>{
+      clearFieldErrors();
       const btn=qs('#registerBtn');
-      const progressWrap=qs('#registerProgress');
-      const progressBar=qs('#registerProgressBar');
-      const progressText=qs('#registerProgressText');
-      let progressTimer=0;
-      const setProgress=(value,text)=>{
-        if(progressWrap) progressWrap.style.display='block';
-        if(progressBar) progressBar.style.width=Math.max(0, Math.min(100, value)) + '%';
-        if(progressText) progressText.textContent=text||'';
-      };
-      clearAllFieldErrors();
       const payload={
         name:qs('#name').value.trim(),
         email:qs('#email').value.trim(),
         idNumber:qs('#idNumber').value.trim(),
-        birthDate:normalizeBirthDate(qs('#birthDate').value),
+        birthDate:birthDateValue(),
         emergencyContact:qs('#emergencyContact').value.trim(),
         emergencyPhone:qs('#emergencyPhone').value.trim(),
         password:qs('#password').value.trim(),
         password2:qs('#password2').value.trim(),
         isPartTime:qs('#isPartTime').value
       };
-      const invalid=validateRegisterPayload(payload);
+      const invalid=validatePayload(payload);
       if(invalid){
-        setMsg(msg,invalid.text,true);
-        showFieldError(invalid.field, invalid.text);
+        setMsg(msg,invalid[1],true);
+        showFieldError(invalid[0], invalid[1]);
         return;
       }
       btn.disabled=true;btn.textContent='送出中...';setMsg(msg,'');
-      setProgress(10,'開始送出資料...');
-      progressTimer=setTimeout(()=>setProgress(35,'檢查資料中...'),250);
       try{
         const r=await api('register',payload);
-        clearTimeout(progressTimer);
-        if(r.ok){
-          setProgress(100,'申請已送出，等待主管審核...');
-          setMsg(msg,r.message || '註冊申請已送出，請等待主管審核。',false);
-          setTimeout(()=>location.href='index.html',1800);
-        }else{
-          setProgress(100,'送出失敗');
-          setMsg(msg,r.message||'送出失敗',true);
-        }
+        setMsg(msg,r.message,!r.ok);
+        if(r.ok) setTimeout(()=>location.href='index.html',1500);
       }catch(err){
-        clearTimeout(progressTimer);
-        setProgress(100,'送出失敗');
         setMsg(msg,err.message||'送出失敗',true);
       }finally{
         btn.disabled=false;btn.textContent='送出註冊申請';
-        if(progressWrap && msg.classList.contains('error')) setTimeout(()=>{progressWrap.style.display='none';},1200);
       }
     };
   </script>
