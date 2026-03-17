@@ -36,7 +36,7 @@
 
     <div class="home-grid">
       <a class="home-tile" href="clock.html"><div><strong>打卡系統</strong><span>上班 / 下班打卡與本月紀錄</span></div><div class="tile-count zero">&nbsp;</div></a>
-      <a class="home-tile" href="parttime.html"><div><strong>工讀生時數</strong><span>1～12 小時與半小時加時</span></div><div class="tile-count zero">&nbsp;</div></a>
+      <a class="home-tile" href="parttime.html" data-if-parttime><div><strong>工讀生時數</strong><span>1～12 小時與半小時加時</span></div><div class="tile-count zero">&nbsp;</div></a>
       <a class="home-tile" href="leave.html"><div><strong>請假系統</strong><span>請假申請與自己的請假紀錄</span></div><div class="tile-count zero">&nbsp;</div></a>
       <a class="home-tile" href="task.html"><div><strong>交辦事項</strong><span>查看任務、回報完成狀態</span></div><div class="tile-count" id="taskCount">0</div></a>
       <a class="home-tile" href="routine.html"><div><strong>定期事項</strong><span>固定週期工作與完成回報</span></div><div class="tile-count" id="routineCount">0</div></a>
@@ -45,45 +45,30 @@
   <script src="config.js"></script>
   <script src="app.js"></script>
   <script>
-    function setCount(el, value){
-      const n = Number(value || 0);
-      el.textContent = String(n);
-      el.classList.toggle('zero', n===0);
-    }
-    function applyCachedCounts(user){
-      try{
-        const cache = JSON.parse(localStorage.getItem('dashboardBadgeCache') || '{}');
-        if(cache.userId !== user.id) return;
-        setCount(qs('#taskCount'), cache.taskCount);
-        setCount(qs('#routineCount'), cache.routineCount);
-      }catch(e){}
-    }
     async function init(){
       fillHeader();
       const user=requireLogin();
       if(!user) return;
       setPortalMode('staff');
-      applyCachedCounts(user);
-      refreshHomeCounts(user);
+      await refreshHomeCounts(user);
     }
     async function refreshHomeCounts(user){
-      const taskEl = qs('#taskCount');
-      const routineEl = qs('#routineCount');
       try{
-        const res = await api('getDashboardBadgeCounts',{userId:user.id,email:user.email});
-        const taskCount = Number(res.taskCount || 0);
-        const routineCount = Number(res.routineCount || 0);
-        setCount(taskEl, taskCount);
-        setCount(routineEl, routineCount);
-        localStorage.setItem('dashboardBadgeCache', JSON.stringify({
-          userId: user.id,
-          taskCount: taskCount,
-          routineCount: routineCount,
-          at: Date.now()
-        }));
+        const taskRes = await api('getTasks',{userId:user.id,email:user.email,role:'staff'});
+        const taskCount = (taskRes.rows||[]).filter(x=>String(x.status||'')!=='已完成').length;
+        const routineRes = await api('getRoutinePageData',{userId:user.id,email:user.email,role:'staff'});
+        const routineCount = Number(routineRes?.summary?.pending||0) + Number(routineRes?.summary?.overdue||0);
+        const taskEl = qs('#taskCount');
+        const routineEl = qs('#routineCount');
+        taskEl.textContent = String(taskCount);
+        routineEl.textContent = String(routineCount);
+        taskEl.classList.toggle('zero', taskCount===0);
+        routineEl.classList.toggle('zero', routineCount===0);
       }catch(e){
-        if(!taskEl.textContent.trim()) setCount(taskEl, 0);
-        if(!routineEl.textContent.trim()) setCount(routineEl, 0);
+        const taskEl = qs('#taskCount');
+        const routineEl = qs('#routineCount');
+        taskEl.textContent='0'; routineEl.textContent='0';
+        taskEl.classList.add('zero'); routineEl.classList.add('zero');
       }
     }
   </script>
