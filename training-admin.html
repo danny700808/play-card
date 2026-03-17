@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>教育訓練設定</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .page-return-wrap{margin-bottom:16px}.page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;border-radius:16px;font-size:20px;font-weight:800}
+    .admin-grid{display:grid;grid-template-columns:1fr;gap:16px}
+    .training-links{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+    .training-links a{width:auto}
+    .status-pill{display:inline-block;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:800}
+    .status-on{background:#eef7f2;color:#16533f}.status-off{background:#eef1f5;color:#607080}
+    .compact-help{margin-top:8px}
+  </style>
+</head>
+<body onload="init()">
+  <div class="container">
+    <div class="page-return-wrap"><a class="btn page-return-btn" href="settings.html">返回設定區首頁</a></div>
+    <div class="card">
+      <div class="topbar">
+        <div>
+          <h1 class="title" style="margin:0">教育訓練設定</h1>
+          <div class="welcome">歡迎 <span data-user-name></span></div>
+        </div>
+      </div>
+      <div class="muted">第一版先支援：新增教材、上傳影片 / 文件 / 音檔、啟用 / 停用與編輯既有資料。</div>
+      <div id="msg" class="message"></div>
+      <div id="progressBox" class="progress-box hidden" aria-live="polite">
+        <div class="progress-head"><strong>上傳進度</strong><span id="progressText">0%</span></div>
+        <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 class="title" style="font-size:20px">新增 / 編輯教材</h2>
+      <div class="field"><label for="categoryId">教材分類</label><select id="categoryId"></select></div>
+      <div class="field"><label for="title">主題名稱</label><input id="title" type="text" placeholder="例如：蝦皮寄件完整流程"></div>
+      <div class="field"><label for="keywords">關鍵字</label><input id="keywords" type="text" placeholder="例如：蝦皮、寄件、包貨、出貨"></div>
+      <div class="field"><label for="description">內容說明</label><textarea id="description" placeholder="可放 SOP 文字重點，員工搜尋後會直接看到。"></textarea></div>
+      <div class="field"><label for="videoFile">上傳影片（選填）</label><input id="videoFile" type="file" accept="video/mp4,video/quicktime,video/webm"><div class="muted compact-help">建議 4 分鐘內短影片；系統會先嘗試縮小後再上傳。</div></div>
+      <div class="field"><label for="docFile">上傳文件（選填）</label><input id="docFile" type="file" accept="application/pdf,.pdf,.doc,.docx,text/plain"></div>
+      <div class="field"><label for="audioFile">上傳音檔（選填）</label><input id="audioFile" type="file" accept="audio/mpeg,audio/mp3,audio/mp4,audio/x-m4a,audio/wav,audio/x-wav,audio/webm,audio/ogg"></div>
+      <div class="field"><label for="sortOrder">排序</label><input id="sortOrder" type="number" min="1" step="1" placeholder="留空就自動排最後"></div>
+      <div class="field"><label>是否啟用</label><div class="radio-row"><label><input type="radio" name="enabled" value="是" checked>是</label><label><input type="radio" name="enabled" value="否">否</label></div></div>
+      <div class="btn-row"><button class="btn secondary" type="button" onclick="resetForm()">清空</button><button class="btn" id="saveBtn" type="button">儲存教材</button></div>
+      <input id="itemId" type="hidden">
+    </div>
+
+    <div class="card">
+      <div class="topbar" style="margin-bottom:10px"><h2 class="title" style="font-size:20px;margin:0">教材清單</h2><button class="btn secondary" style="width:auto;padding:10px 14px" onclick="loadAdminData()">重新整理</button></div>
+      <div id="adminList" class="list"></div>
+    </div>
+  </div>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+  <script>
+    let adminData={categories:[],items:[]};
+    function esc(s){return String(s||'').replace(/[&<>"]/g,function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]||m;});}
+    function setProgress(v){qs('#progressBox').classList.remove('hidden');qs('#progressBar').style.width=v+'%';qs('#progressText').textContent=v+'%';}
+    function resetProgress(){qs('#progressBar').style.width='0%';qs('#progressText').textContent='0%';qs('#progressBox').classList.add('hidden');}
+    function selectedEnabled(){ const el=document.querySelector('input[name="enabled"]:checked'); return el?el.value:'是'; }
+    function fillCategoryOptions(){
+      qs('#categoryId').innerHTML = '<option value="">請選擇分類</option>' + adminData.categories.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+    }
+    async function loadAdminData(){
+      const user=requireLogin(); if(!user) return;
+      const r=await api('getTrainingPageData',{userId:user.id,includeDisabled:true,adminMode:true});
+      if(!r.ok) throw new Error(r.message||'讀取失敗');
+      adminData={categories:r.categories||[],items:r.items||[]};
+      fillCategoryOptions(); renderAdminList();
+    }
+    function renderAdminList(){
+      const box=qs('#adminList');
+      box.innerHTML = adminData.items.length ? adminData.items.map(x=>`<div class="item"><div class="top"><div><strong>${esc(x.title)}</strong><div class="muted">${esc(x.categoryName)}</div></div><span class="status-pill ${x.enabled?'status-on':'status-off'}">${x.enabled?'啟用中':'已停用'}</span></div>${x.description?`<div class="muted" style="margin-top:8px">${esc(x.description)}</div>`:''}<div class="training-links">${x.videoUrl?`<a class="btn secondary mini-btn" href="${x.videoUrl}" target="_blank" rel="noopener">影片</a>`:''}${x.docUrl?`<a class="btn secondary mini-btn" href="${x.docUrl}" target="_blank" rel="noopener">文件</a>`:''}${x.audioUrl?`<a class="btn secondary mini-btn" href="${x.audioUrl}" target="_blank" rel="noopener">音檔</a>`:''}<button class="btn secondary mini-btn" type="button" onclick="editItem('${x.id}')">編輯</button><button class="btn mini-btn" type="button" onclick="toggleItem('${x.id}', ${x.enabled?'false':'true'})">${x.enabled?'停用':'啟用'}</button></div></div>`).join('') : '<div class="muted">目前還沒有教材</div>';
+    }
+    function editItem(id){
+      const x=adminData.items.find(r=>r.id===id); if(!x) return;
+      qs('#itemId').value=x.id||''; qs('#categoryId').value=x.categoryId||''; qs('#title').value=x.title||''; qs('#keywords').value=x.keywords||''; qs('#description').value=x.description||''; qs('#sortOrder').value=x.sortOrder||''; document.querySelector(`input[name="enabled"][value="${x.enabled?'是':'否'}"]`).checked=true; window.scrollTo({top:0,behavior:'smooth'});
+    }
+    function resetForm(){ ['itemId','title','keywords','description','sortOrder'].forEach(id=>qs('#'+id).value=''); qs('#categoryId').value=''; document.querySelector('input[name="enabled"][value="是"]').checked=true; ['videoFile','docFile','audioFile'].forEach(id=>qs('#'+id).value=''); }
+    async function toggleItem(id, enable){
+      const user=requireLogin(); if(!user) return;
+      const r=await api('toggleTrainingItem',{userId:user.id,itemId:id,enabled:enable});
+      setMsg(qs('#msg'), r.message||'', !r.ok); if(r.ok) loadAdminData();
+    }
+    async function saveItem(){
+      const user=requireLogin(); if(!user) return;
+      const title=qs('#title').value.trim(), categoryId=qs('#categoryId').value;
+      if(!categoryId || !title){ setMsg(qs('#msg'),'請先選擇分類並填寫主題名稱',true); return; }
+      const btn=qs('#saveBtn'); btn.disabled=true; setMsg(qs('#msg'),'');
+      try{
+        setProgress(10);
+        const videoFile=qs('#videoFile').files[0], docFile=qs('#docFile').files[0], audioFile=qs('#audioFile').files[0];
+        let videoData='', docData='', audioData='';
+        if(videoFile){ setProgress(20); qs('#progressText').textContent='影片處理中'; videoData=await compressVideoToDataUrl(videoFile); }
+        if(docFile){ setProgress(50); docData=await fileToDataUrl(docFile); }
+        if(audioFile){ setProgress(65); audioData=await fileToDataUrl(audioFile); }
+        const payload={ userId:user.id, itemId:qs('#itemId').value.trim(), categoryId, title, keywords:qs('#keywords').value.trim(), description:qs('#description').value.trim(), sortOrder:qs('#sortOrder').value.trim(), enabled:selectedEnabled(), videoData, docData, audioData };
+        setProgress(80);
+        const r=await api('saveTrainingItem', payload);
+        setProgress(100);
+        setMsg(qs('#msg'), r.message||'', !r.ok);
+        if(r.ok){ resetForm(); await loadAdminData(); }
+      }catch(e){ setMsg(qs('#msg'), e.message||String(e), true); }
+      finally{ setTimeout(resetProgress,600); btn.disabled=false; }
+    }
+    function init(){
+      fillHeader();
+      const user=requireLogin(); if(!user) return;
+      if(!user.showSettingsZone){ location.href='dashboard.html'; return; }
+      setPortalMode('settings');
+      qs('#saveBtn').onclick=saveItem;
+      loadAdminData().catch(e=>setMsg(qs('#msg'), e.message||String(e), true));
+    }
+  </script>
+</body>
+</html>

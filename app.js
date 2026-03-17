@@ -64,6 +64,106 @@ async function compressImagesToDataUrls(files, maxSize=1600, quality=0.75){
   }
   return out.filter(Boolean);
 }
+
+
+async function compressVideoToDataUrl(file, opts={}){
+  const options=Object.assign({
+    maxInputMB: 180,
+    fallbackPassThroughMB: 80,
+    maxWidth: 1280,
+    fps: 24,
+    videoBitsPerSecond: 1200000,
+    audioBitsPerSecond: 96000
+  }, opts||{});
+  if(!file) return '';
+  if(!file.type.startsWith('video/')) return await fileToDataUrl(file);
+  const sizeMB=file.size/1024/1024;
+  if(sizeMB>options.maxInputMB){
+    throw new Error('影片檔太大，請先在手機修剪到 4 分鐘內或降低畫質後再上傳');
+  }
+  const canRecord=!!(window.MediaRecorder && document.createElement('canvas').captureStream);
+  if(!canRecord){
+    if(sizeMB<=options.fallbackPassThroughMB) return await fileToDataUrl(file);
+    throw new Error('此裝置不支援影片自動壓縮，請先用手機修剪影片後再上傳');
+  }
+  const objectUrl=URL.createObjectURL(file);
+  const video=document.createElement('video');
+  video.preload='metadata';
+  video.muted=true;
+  video.playsInline=true;
+  video.src=objectUrl;
+  await new Promise((resolve,reject)=>{
+    video.onloadedmetadata=()=>resolve();
+    video.onerror=()=>reject(new Error('讀取影片失敗'));
+  });
+  const srcW=video.videoWidth||1280, srcH=video.videoHeight||720;
+  let targetW=srcW, targetH=srcH;
+  if(targetW>options.maxWidth){
+    targetH=Math.round(targetH*options.maxWidth/targetW);
+    targetW=options.maxWidth;
+  }
+  if(targetW%2) targetW-=1;
+  if(targetH%2) targetH-=1;
+  const canvas=document.createElement('canvas');
+  canvas.width=Math.max(2,targetW);
+  canvas.height=Math.max(2,targetH);
+  const ctx=canvas.getContext('2d');
+  const mimeCandidates=['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'];
+  const mimeType=mimeCandidates.find(t=>MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) || '';
+  const stream=canvas.captureStream(options.fps);
+  let audioStream=null, audioCtx=null, dest=null, source=null;
+  try{
+    if(video.captureStream){
+      audioStream=video.captureStream();
+    }else if(video.mozCaptureStream){
+      audioStream=video.mozCaptureStream();
+    }
+  }catch(e){}
+  if(audioStream && audioStream.getAudioTracks && audioStream.getAudioTracks().length && (window.AudioContext || window.webkitAudioContext)){
+    const Ctx=window.AudioContext || window.webkitAudioContext;
+    audioCtx=new Ctx();
+    source=audioCtx.createMediaStreamSource(audioStream);
+    dest=audioCtx.createMediaStreamDestination();
+    source.connect(dest);
+    dest.stream.getAudioTracks().forEach(t=>stream.addTrack(t));
+  }
+  const recorder=new MediaRecorder(stream, {
+    mimeType: mimeType || undefined,
+    videoBitsPerSecond: options.videoBitsPerSecond,
+    audioBitsPerSecond: options.audioBitsPerSecond
+  });
+  const chunks=[];
+  recorder.ondataavailable=e=>{ if(e.data && e.data.size) chunks.push(e.data); };
+  const drawFrame=()=>{
+    if(video.paused || video.ended) return;
+    try{ ctx.drawImage(video,0,0,canvas.width,canvas.height); }catch(e){}
+    requestAnimationFrame(drawFrame);
+  };
+  const donePromise=new Promise((resolve,reject)=>{
+    recorder.onerror=()=>reject(new Error('影片壓縮失敗'));
+    recorder.onstop=()=>{
+      try{ source && source.disconnect(); }catch(e){}
+      try{ dest && dest.disconnect && dest.disconnect(); }catch(e){}
+      try{ audioCtx && audioCtx.close && audioCtx.close(); }catch(e){}
+      const blob=new Blob(chunks,{type:recorder.mimeType || 'video/webm'});
+      const fr=new FileReader();
+      fr.onload=()=>resolve(String(fr.result||''));
+      fr.onerror=()=>reject(new Error('影片轉檔失敗'));
+      fr.readAsDataURL(blob);
+    };
+  });
+  recorder.start(1000);
+  await video.play();
+  drawFrame();
+  await new Promise((resolve,reject)=>{
+    video.onended=resolve;
+    video.onerror=()=>reject(new Error('影片播放失敗'));
+  });
+  try{ recorder.stop(); }catch(e){}
+  const result=await donePromise;
+  URL.revokeObjectURL(objectUrl);
+  return result || await fileToDataUrl(file);
+}
 function formatTaskStatusTag(status){
   const cls=status==='待處理'?'pending':(status==='已完成'?'done':'');
   return `<span class="tag ${cls}">${status}</span>`;
