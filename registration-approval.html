@@ -42,7 +42,8 @@
       const user=requireLogin(); if(!user) return;
       const r=await api('getPendingRegistrations',{userId:user.id});
       setMsg(qs('#pageMsg'), r.message || '', !r.ok);
-      rows = r.ok ? (r.list || []) : [];
+      rows = r.ok ? (r.rows || r.list || []) : [];
+      console.log('pending registrations response', r);
       render();
     }
     async function review(email, decision){
