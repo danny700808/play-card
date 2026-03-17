@@ -10,7 +10,7 @@
     .training-links{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
     .training-links a{width:auto}.status-pill{display:inline-block;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:800}
     .status-on{background:#eef7f2;color:#16533f}.status-off{background:#eef1f5;color:#607080}.compact-help{margin-top:8px}
-    .radio-inline{display:flex;align-items:center;gap:24px;flex-wrap:wrap}.radio-inline label{display:inline-flex;align-items:center;gap:8px;font-size:18px;font-weight:800}
+    .radio-inline{display:flex;align-items:center;gap:28px;flex-wrap:wrap}.radio-inline label{display:inline-flex;align-items:center;gap:10px;font-size:18px;font-weight:800;line-height:1}.radio-inline input{margin:0;width:24px;height:24px;flex:0 0 24px}
     .record-box{border:1px solid var(--line);border-radius:16px;padding:14px;background:#fbfcfe}
     .record-controls{display:flex;gap:10px;flex-wrap:wrap}.record-controls .btn{width:auto;padding:12px 16px}
     .record-status{margin-top:8px;font-size:14px;color:var(--muted)}
@@ -65,7 +65,7 @@
     </div>
 
     <div class="card">
-      <div class="topbar" style="margin-bottom:10px"><h2 class="title" style="font-size:20px;margin:0">教材清單</h2><button class="btn secondary" style="width:auto;padding:10px 14px" onclick="loadAdminData()">重新整理</button></div>
+      <div class="topbar" style="margin-bottom:10px"><h2 class="title" style="font-size:20px;margin:0">教材分類管理</h2><button class="btn secondary" style="width:auto;padding:10px 14px" onclick="loadAdminData()">重新整理</button></div>
       <div id="adminList" class="list"></div>
     </div>
   </div>
@@ -81,7 +81,7 @@
     function setProgress(v,label){ qs('#progressBox').classList.remove('hidden'); qs('#progressBar').style.width=v+'%'; qs('#progressText').textContent=(label?label+' ':'')+v+'%'; }
     function resetProgress(){ qs('#progressBar').style.width='0%'; qs('#progressText').textContent='0%'; qs('#progressBox').classList.add('hidden'); }
     function selectedEnabled(){ const el=document.querySelector('input[name="enabled"]:checked'); return el?el.value:'是'; }
-    function fillCategoryOptions(){ qs('#categoryId').innerHTML='<option value="">請選擇分類</option>'+adminData.categories.map(c=>`<option value="${c.id}">${c.name}</option>`).join(''); }
+    function fillCategoryOptions(){ const categories=adminData.categories||[]; qs('#categoryId').innerHTML='<option value="">請選擇分類</option>'+categories.map(c=>`<option value="${c.id}">${c.name}</option>`).join(''); if(!categories.length){ qs('#categoryId').innerHTML='<option value="">目前沒有分類，請先檢查教育訓練分類</option>'; } }
     async function loadAdminData(){
       const user=requireLogin(); if(!user) return;
       const r=await api('getTrainingPageData',{userId:user.id,includeDisabled:true,adminMode:true});
@@ -90,8 +90,14 @@
     }
     function renderAdminList(){
       const box=qs('#adminList');
-      box.innerHTML = adminData.items.length ? adminData.items.map(x=>`<div class="item"><div class="top"><div><strong>${esc(x.title)}</strong><div class="muted">${esc(x.categoryName)}</div></div><span class="status-pill ${x.enabled?'status-on':'status-off'}">${x.enabled?'啟用中':'已停用'}</span></div>${x.description?`<div class="muted" style="margin-top:8px">${esc(x.description)}</div>`:''}<div class="training-links">${linkButtons(x.videoUrl,'影片')}${linkButtons(x.docUrl,'文件 / 圖片')}${linkButtons(x.audioUrl,'錄音')}
-      <button class="btn secondary mini-btn" type="button" onclick="editItem('${x.id}')">編輯</button><button class="btn mini-btn" type="button" onclick="toggleItem('${x.id}', ${x.enabled?'false':'true'})">${x.enabled?'停用':'啟用'}</button></div></div>`).join('') : '<div class="muted">目前還沒有教材</div>';
+      const categories=adminData.categories||[];
+      const items=adminData.items||[];
+      if(!categories.length){ box.innerHTML='<div class="muted">目前沒有分類資料，請先檢查「教育訓練分類」工作表</div>'; return; }
+      box.innerHTML = categories.map(c=>{
+        const rows=items.filter(x=>x.categoryId===c.id);
+        const body = rows.length ? rows.map(x=>`<div class="item" style="margin-top:10px"><div class="top"><div><strong>${esc(x.title)}</strong><div class="muted">${esc(x.categoryName)}</div></div><span class="status-pill ${x.enabled?'status-on':'status-off'}">${x.enabled?'啟用中':'已停用'}</span></div>${x.description?`<div class="muted" style="margin-top:8px">${esc(x.description)}</div>`:''}<div class="training-links">${linkButtons(x.videoUrl,'影片')}${linkButtons(x.docUrl,'文件 / 圖片')}${linkButtons(x.audioUrl,'錄音')}<button class="btn secondary mini-btn" type="button" onclick="editItem('${x.id}')">編輯</button><button class="btn mini-btn" type="button" onclick="toggleItem('${x.id}', ${x.enabled?'false':'true'})">${x.enabled?'停用':'啟用'}</button></div></div>`).join('') : '<div class="muted" style="margin-top:10px">這一類目前沒有教材</div>';
+        return `<details class="item" ${rows.length?'':'open'}><summary class="top" style="cursor:pointer;list-style:none"><div><strong>${esc(c.name)}</strong><div class="muted">${esc(c.description||'')}</div></div><span class="tag">${rows.length} 筆</span></summary>${body}</details>`;
+      }).join('');
     }
     function editItem(id){ const x=adminData.items.find(r=>r.id===id); if(!x) return; qs('#itemId').value=x.id||''; qs('#categoryId').value=x.categoryId||''; qs('#title').value=x.title||''; qs('#keywords').value=x.keywords||''; qs('#description').value=x.description||''; qs('#sortOrder').value=x.sortOrder||''; document.querySelector(`input[name="enabled"][value="${x.enabled?'是':'否'}"]`).checked=true; window.scrollTo({top:0,behavior:'smooth'}); }
     function clearRecording(){ audioDataUrl=''; if(audioPreviewUrl){ URL.revokeObjectURL(audioPreviewUrl); audioPreviewUrl=''; } qs('#recordPreview').src=''; qs('#recordPreview').classList.add('hidden'); qs('#recordStatus').textContent='尚未錄音'; qs('#recordStatus').classList.remove('ok'); qs('#recordMeter').classList.add('hidden'); qsa('#recordMeter .rec-bar').forEach(b=>{ b.style.height='20px'; b.classList.remove('live'); }); }

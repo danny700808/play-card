@@ -61,7 +61,9 @@
     async function loadTraining(){ const user=requireLogin(); if(!user) return; const r=await api('getTrainingPageData',{userId:user.id}); if(!r.ok) throw new Error(r.message||'讀取失敗'); trainingData={categories:r.categories||[],items:r.items||[]}; renderCategories(); renderResults(); }
     function renderCategories(){
       const box=qs('#categoryList'); const allActive = activeCategory==='';
-      box.innerHTML=[`<button type="button" class="category-chip ${allActive?'active':''}" onclick="selectCategory('')"><strong>全部教材</strong><div class="muted">顯示所有啟用中的教材</div></button>`].concat(trainingData.categories.map(c=>`<button type="button" class="category-chip ${activeCategory===c.id?'active':''}" onclick="selectCategory('${c.id}')"><strong>${esc(c.name)}</strong><div class="muted">${esc(c.description||'')}</div></button>`)).join('');
+      const categories=(trainingData.categories||[]);
+      box.innerHTML=[`<button type="button" class="category-chip ${allActive?'active':''}" onclick="selectCategory('')"><strong>全部教材</strong><div class="muted">顯示所有啟用中的教材</div></button>`].concat(categories.map(c=>`<button type="button" class="category-chip ${activeCategory===c.id?'active':''}" onclick="selectCategory('${c.id}')"><strong>${esc(c.name)}</strong><div class="muted">${esc(c.description||'')}</div></button>`)).join('');
+      if(!categories.length){ box.innerHTML='<div class="empty-box">目前沒有分類資料，請先確認「教育訓練分類」工作表</div>'; }
     }
     function selectCategory(id){ activeCategory=id||''; renderCategories(); renderResults(true); }
     function filterItems(){ const kw=(qs('#keyword').value||'').trim().toLowerCase(); return trainingData.items.filter(x=>{ if(activeCategory && x.categoryId!==activeCategory) return false; if(!kw) return true; const hay=[x.title,x.categoryName,x.keywords,x.description].join(' ').toLowerCase(); return hay.includes(kw); }); }
