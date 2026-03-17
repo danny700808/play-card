@@ -14,6 +14,10 @@
         <p class="subtitle">送出後需等待主管審核</p>
       </div>
       <div id="msg" class="message"></div>
+      <div id="registerProgress" class="progress-wrap" style="display:none">
+        <div class="progress-bar"><div id="registerProgressBar" class="progress-fill"></div></div>
+        <div id="registerProgressText" class="progress-text">準備送出...</div>
+      </div>
 
       <div class="field"><label>姓名</label><input id="name" placeholder="請輸入姓名"></div>
       <div class="field"><label>Email</label><input id="email" type="email" placeholder="請輸入 Email"></div>
@@ -51,6 +55,15 @@
     qs('#eyeBtn2').onclick=()=>togglePassword('#password2',qs('#eyeBtn2'));
     qs('#registerBtn').onclick=async()=>{
       const btn=qs('#registerBtn');
+      const progressWrap=qs('#registerProgress');
+      const progressBar=qs('#registerProgressBar');
+      const progressText=qs('#registerProgressText');
+      let progressTimer=0;
+      const setProgress=(value,text)=>{
+        if(progressWrap) progressWrap.style.display='block';
+        if(progressBar) progressBar.style.width=Math.max(0, Math.min(100, value)) + '%';
+        if(progressText) progressText.textContent=text||'';
+      };
       const payload={
         name:qs('#name').value.trim(),
         email:qs('#email').value.trim(),
@@ -72,14 +85,26 @@
         setMsg(msg,'兩次密碼輸入不一致',true);return;
       }
       btn.disabled=true;btn.textContent='送出中...';setMsg(msg,'');
+      setProgress(10,'開始送出資料...');
+      progressTimer=setTimeout(()=>setProgress(35,'檢查資料中...'),250);
       try{
         const r=await api('register',payload);
-        setMsg(msg,r.message,!r.ok);
-        if(r.ok) setTimeout(()=>location.href='index.html',1500);
+        clearTimeout(progressTimer);
+        if(r.ok){
+          setProgress(100,'申請已送出，等待主管審核...');
+          setMsg(msg,r.message || '註冊申請已送出，請等待主管審核。',false);
+          setTimeout(()=>location.href='index.html',1800);
+        }else{
+          setProgress(100,'送出失敗');
+          setMsg(msg,r.message||'送出失敗',true);
+        }
       }catch(err){
+        clearTimeout(progressTimer);
+        setProgress(100,'送出失敗');
         setMsg(msg,err.message||'送出失敗',true);
       }finally{
         btn.disabled=false;btn.textContent='送出註冊申請';
+        if(progressWrap && msg.classList.contains('error')) setTimeout(()=>{progressWrap.style.display='none';},1200);
       }
     };
   </script>
