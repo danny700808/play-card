@@ -45,30 +45,45 @@
   <script src="config.js"></script>
   <script src="app.js"></script>
   <script>
+    function setCount(el, value){
+      const n = Number(value || 0);
+      el.textContent = String(n);
+      el.classList.toggle('zero', n===0);
+    }
+    function applyCachedCounts(user){
+      try{
+        const cache = JSON.parse(localStorage.getItem('dashboardBadgeCache') || '{}');
+        if(cache.userId !== user.id) return;
+        setCount(qs('#taskCount'), cache.taskCount);
+        setCount(qs('#routineCount'), cache.routineCount);
+      }catch(e){}
+    }
     async function init(){
       fillHeader();
       const user=requireLogin();
       if(!user) return;
       setPortalMode('staff');
-      await refreshHomeCounts(user);
+      applyCachedCounts(user);
+      refreshHomeCounts(user);
     }
     async function refreshHomeCounts(user){
+      const taskEl = qs('#taskCount');
+      const routineEl = qs('#routineCount');
       try{
-        const taskRes = await api('getTasks',{userId:user.id,email:user.email,role:'staff'});
-        const taskCount = (taskRes.rows||[]).filter(x=>String(x.status||'')!=='已完成').length;
-        const routineRes = await api('getRoutinePageData',{userId:user.id,email:user.email,role:'staff'});
-        const routineCount = Number(routineRes?.summary?.pending||0) + Number(routineRes?.summary?.overdue||0);
-        const taskEl = qs('#taskCount');
-        const routineEl = qs('#routineCount');
-        taskEl.textContent = String(taskCount);
-        routineEl.textContent = String(routineCount);
-        taskEl.classList.toggle('zero', taskCount===0);
-        routineEl.classList.toggle('zero', routineCount===0);
+        const res = await api('getDashboardBadgeCounts',{userId:user.id,email:user.email});
+        const taskCount = Number(res.taskCount || 0);
+        const routineCount = Number(res.routineCount || 0);
+        setCount(taskEl, taskCount);
+        setCount(routineEl, routineCount);
+        localStorage.setItem('dashboardBadgeCache', JSON.stringify({
+          userId: user.id,
+          taskCount: taskCount,
+          routineCount: routineCount,
+          at: Date.now()
+        }));
       }catch(e){
-        const taskEl = qs('#taskCount');
-        const routineEl = qs('#routineCount');
-        taskEl.textContent='0'; routineEl.textContent='0';
-        taskEl.classList.add('zero'); routineEl.classList.add('zero');
+        if(!taskEl.textContent.trim()) setCount(taskEl, 0);
+        if(!routineEl.textContent.trim()) setCount(routineEl, 0);
       }
     }
   </script>

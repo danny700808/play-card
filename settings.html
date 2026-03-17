@@ -5,6 +5,20 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>設定區首頁</title>
   <link rel="stylesheet" href="style.css">
+  <style>
+    .settings-grid{display:grid;grid-template-columns:1fr;gap:18px}
+    .settings-tile{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:28px 32px;border:1px solid var(--line);border-radius:28px;background:#fff;text-decoration:none;color:inherit;box-shadow:0 12px 30px rgba(15,23,42,.04)}
+    .settings-tile strong{display:block;font-size:26px;line-height:1.2;margin-bottom:8px}
+    .settings-tile span{display:block;color:var(--muted);font-size:18px;line-height:1.7}
+    .tile-count{min-width:96px;text-align:center;font-weight:900;font-size:42px;line-height:1;color:#1f7a5a}
+    .tile-count.zero{color:#b8c3cf}
+    @media (max-width:560px){
+      .settings-tile{padding:24px 22px;border-radius:22px}
+      .settings-tile strong{font-size:22px}
+      .settings-tile span{font-size:16px}
+      .tile-count{min-width:74px;font-size:38px}
+    }
+  </style>
 </head>
 <body onload="init()">
   <div class="container">
@@ -18,22 +32,55 @@
       </div>
       <div class="muted">這一區只放設定與簽核，不顯示員工自己的操作頁。</div>
     </div>
-    <div class="grid">
-      <a class="tile" href="registration-approval.html"><strong>註冊審核</strong><span>查看新註冊員工申請，直接同意或駁回</span></a>
-      <a class="tile" href="leave.html"><strong>請假簽核</strong><span>查看待簽核請假單並直接同意 / 駁回</span></a>
-      <a class="tile" href="task.html"><strong>交辦事項設定</strong><span>建立交辦事項、查看已建立任務與調整設定</span></a>
-      <a class="tile" href="routine.html"><strong>定期事項設定</strong><span>建立固定週期工作、修改負責人與週期設定</span></a>
+    <div class="settings-grid">
+      <a class="settings-tile" href="registration-approval.html"><div><strong>註冊審核</strong><span>查看新註冊員工申請，直接同意或駁回</span></div><div class="tile-count" id="registrationCount">0</div></a>
+      <a class="settings-tile" href="leave.html"><div><strong>請假簽核</strong><span>查看待簽核請假單並直接同意 / 駁回</span></div><div class="tile-count" id="leaveApprovalCount">0</div></a>
+      <a class="settings-tile" href="task.html"><div><strong>交辦事項設定</strong><span>建立交辦事項、查看已建立任務與調整設定</span></div><div class="tile-count zero">&nbsp;</div></a>
+      <a class="settings-tile" href="routine.html"><div><strong>定期事項設定</strong><span>建立固定週期工作、修改負責人與週期設定</span></div><div class="tile-count zero">&nbsp;</div></a>
     </div>
   </div>
   <script src="config.js"></script>
   <script src="app.js"></script>
   <script>
+    function setCount(el, value){
+      const n = Number(value || 0);
+      el.textContent = String(n);
+      el.classList.toggle('zero', n===0);
+    }
+    function applyCachedCounts(user){
+      try{
+        const cache = JSON.parse(localStorage.getItem('settingsBadgeCache') || '{}');
+        if(cache.userId !== user.id) return;
+        setCount(qs('#registrationCount'), cache.registrationCount);
+        setCount(qs('#leaveApprovalCount'), cache.leaveApprovalCount);
+      }catch(e){}
+    }
     function init(){
       fillHeader();
       const user=requireLogin();
       if(!user) return;
       if(!user.showSettingsZone){location.href='dashboard.html';return;}
       setPortalMode('settings');
+      applyCachedCounts(user);
+      refreshSettingsCounts(user);
+    }
+    async function refreshSettingsCounts(user){
+      try{
+        const res = await api('getSettingsBadgeCounts',{userId:user.id});
+        const registrationCount = Number(res.registrationCount || 0);
+        const leaveApprovalCount = Number(res.leaveApprovalCount || 0);
+        setCount(qs('#registrationCount'), registrationCount);
+        setCount(qs('#leaveApprovalCount'), leaveApprovalCount);
+        localStorage.setItem('settingsBadgeCache', JSON.stringify({
+          userId: user.id,
+          registrationCount: registrationCount,
+          leaveApprovalCount: leaveApprovalCount,
+          at: Date.now()
+        }));
+      }catch(e){
+        setCount(qs('#registrationCount'), 0);
+        setCount(qs('#leaveApprovalCount'), 0);
+      }
     }
   </script>
 </body>
