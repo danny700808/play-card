@@ -89,7 +89,8 @@ async function compressVideoToDataUrl(file, opts={}){
   const objectUrl=URL.createObjectURL(file);
   const video=document.createElement('video');
   video.preload='metadata';
-  video.muted=true;
+  video.muted=false;
+  video.volume=1;
   video.playsInline=true;
   video.src=objectUrl;
   await new Promise((resolve,reject)=>{
@@ -153,7 +154,13 @@ async function compressVideoToDataUrl(file, opts={}){
     };
   });
   recorder.start(1000);
-  await video.play();
+  try{ await video.play(); }catch(e){
+    try{ video.muted=true; await video.play(); }catch(e2){
+      URL.revokeObjectURL(objectUrl);
+      if(sizeMB<=options.fallbackPassThroughMB) return await fileToDataUrl(file);
+      throw new Error('影片播放失敗，請改用較短影片或稍後再試');
+    }
+  }
   drawFrame();
   await new Promise((resolve,reject)=>{
     video.onended=resolve;

@@ -12,10 +12,8 @@
     .category-chip{border:1px solid var(--line);border-radius:16px;padding:14px 16px;background:#fff;cursor:pointer}
     .category-chip.active{border-color:var(--brand);box-shadow:0 0 0 2px rgba(31,122,90,.12)}
     .training-item{border:1px solid var(--line);border-radius:16px;padding:16px;background:#fff}
-    .training-meta{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 10px}
-    .link-row{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}
-    .link-btn{width:auto;padding:10px 14px;border-radius:12px}
-    .empty-box{padding:18px;border:1px dashed var(--line);border-radius:16px;background:#fbfcfe;color:var(--muted);text-align:center}
+    .training-meta{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 10px}.link-row{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}
+    .link-btn{width:auto;padding:10px 14px;border-radius:12px}.empty-box{padding:18px;border:1px dashed var(--line);border-radius:16px;background:#fbfcfe;color:var(--muted);text-align:center}
     @media (max-width:560px){.category-grid,.search-box{grid-template-columns:1fr}}
   </style>
 </head>
@@ -40,64 +38,41 @@
       </div>
     </div>
 
-    <div class="card">
-      <h2 class="title" style="font-size:20px">五大類</h2>
-      <div id="categoryList" class="category-grid"></div>
+    <div class="card hidden" id="resultCard">
+      <div class="topbar" style="margin-bottom:10px"><h2 class="title" style="font-size:20px;margin:0">搜尋結果</h2><span class="tag" id="resultTag">全部</span></div>
+      <div id="resultList" class="list"></div>
     </div>
 
     <div class="card">
-      <div class="topbar" style="margin-bottom:10px">
-        <h2 class="title" style="font-size:20px;margin:0">教材列表</h2>
-        <span class="tag" id="resultTag">全部</span>
-      </div>
-      <div id="itemList" class="list"></div>
+      <h2 class="title" style="font-size:20px">五大類</h2>
+      <div id="categoryList" class="category-grid"></div>
     </div>
   </div>
   <script src="config.js"></script>
   <script src="app.js"></script>
   <script>
-    let trainingData={categories:[],items:[]};
-    let activeCategory='';
+    let trainingData={categories:[],items:[]}; let activeCategory='';
     function esc(s){return String(s||'').replace(/[&<>"]/g,function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]||m;});}
-    function nl2br(s){return esc(s).replace(/\n/g,'<br>');}
-    function resourceBtn(url,label){ return url ? `<a class="btn secondary link-btn" href="${url}" target="_blank" rel="noopener">${label}</a>` : ''; }
-    async function loadTraining(){
-      const user=requireLogin(); if(!user) return;
-      const r=await api('getTrainingPageData',{userId:user.id});
-      if(!r.ok) throw new Error(r.message||'讀取失敗');
-      trainingData={categories:r.categories||[],items:r.items||[]};
-      renderCategories();
-      renderItems();
-    }
+    function nl2br(s){return esc(s).replace(/
+/g,'<br>');}
+    function splitLinks(v){ return String(v||'').split(/
++/).map(s=>s.trim()).filter(Boolean); }
+    function resourceBtns(urls,label){ const arr=splitLinks(urls); return arr.map((u,i)=>`<a class="btn secondary link-btn" href="${u}" target="_blank" rel="noopener">${label}${arr.length>1?(' '+(i+1)):''}</a>`).join(''); }
+    async function loadTraining(){ const user=requireLogin(); if(!user) return; const r=await api('getTrainingPageData',{userId:user.id}); if(!r.ok) throw new Error(r.message||'讀取失敗'); trainingData={categories:r.categories||[],items:r.items||[]}; renderCategories(); renderResults(); }
     function renderCategories(){
-      const box=qs('#categoryList');
-      const allActive = activeCategory==='';
-      const html=[`<button type="button" class="category-chip ${allActive?'active':''}" onclick="selectCategory('')"><strong>全部教材</strong><div class="muted">顯示所有啟用中的教材</div></button>`].concat(trainingData.categories.map(c=>`<button type="button" class="category-chip ${activeCategory===c.id?'active':''}" onclick="selectCategory('${c.id}')"><strong>${esc(c.name)}</strong><div class="muted">${esc(c.description||'')}</div></button>`));
-      box.innerHTML=html.join('');
+      const box=qs('#categoryList'); const allActive = activeCategory==='';
+      box.innerHTML=[`<button type="button" class="category-chip ${allActive?'active':''}" onclick="selectCategory('')"><strong>全部教材</strong><div class="muted">顯示所有啟用中的教材</div></button>`].concat(trainingData.categories.map(c=>`<button type="button" class="category-chip ${activeCategory===c.id?'active':''}" onclick="selectCategory('${c.id}')"><strong>${esc(c.name)}</strong><div class="muted">${esc(c.description||'')}</div></button>`)).join('');
     }
-    function selectCategory(id){ activeCategory=id||''; renderCategories(); renderItems(); }
-    function filterItems(){
-      const kw=(qs('#keyword').value||'').trim().toLowerCase();
-      return trainingData.items.filter(x=>{
-        if(activeCategory && x.categoryId!==activeCategory) return false;
-        if(!kw) return true;
-        const hay=[x.title,x.categoryName,x.keywords,x.description].join(' ').toLowerCase();
-        return hay.includes(kw);
-      });
+    function selectCategory(id){ activeCategory=id||''; renderCategories(); renderResults(true); }
+    function filterItems(){ const kw=(qs('#keyword').value||'').trim().toLowerCase(); return trainingData.items.filter(x=>{ if(activeCategory && x.categoryId!==activeCategory) return false; if(!kw) return true; const hay=[x.title,x.categoryName,x.keywords,x.description].join(' ').toLowerCase(); return hay.includes(kw); }); }
+    function renderResults(forceShow=false){
+      const kw=(qs('#keyword').value||'').trim(); const rows=filterItems(); const show=!!kw || !!activeCategory || forceShow; const card=qs('#resultCard');
+      if(!show){ card.classList.add('hidden'); qs('#resultList').innerHTML=''; qs('#resultTag').textContent='全部'; return; }
+      card.classList.remove('hidden');
+      const categoryName = activeCategory ? ((trainingData.categories.find(x=>x.id===activeCategory)||{}).name||'') : '全部'; qs('#resultTag').textContent = kw ? ('搜尋') : (categoryName || '全部');
+      qs('#resultList').innerHTML = rows.length ? rows.map(x=>`<div class="training-item"><div class="top"><strong>${esc(x.title)}</strong><span class="tag">${esc(x.categoryName)}</span></div><div class="training-meta">${x.keywords?`<span class="attach-badge">關鍵字：${esc(x.keywords)}</span>`:''}${x.updatedAt?`<span class="attach-badge">更新：${esc(String(x.updatedAt).replace(/ GMT.*$/,''))}</span>`:''}</div>${x.description?`<div class="muted">${nl2br(x.description)}</div>`:''}<div class="link-row">${resourceBtns(x.videoUrl,'觀看影片')}${resourceBtns(x.docUrl,'查看文件 / 圖片')}${resourceBtns(x.audioUrl,'播放錄音')}</div></div>`).join('') : '<div class="empty-box">目前沒有符合條件的教材</div>';
     }
-    function renderItems(){
-      const rows=filterItems();
-      const categoryName = activeCategory ? ((trainingData.categories.find(x=>x.id===activeCategory)||{}).name||'') : '全部';
-      qs('#resultTag').textContent = categoryName || '全部';
-      qs('#itemList').innerHTML = rows.length ? rows.map(x=>`<div class="training-item"><div class="top"><strong>${esc(x.title)}</strong><span class="tag">${esc(x.categoryName)}</span></div><div class="training-meta">${x.keywords?`<span class="attach-badge">關鍵字：${esc(x.keywords)}</span>`:''}${x.updatedAt?`<span class="attach-badge">更新：${esc(x.updatedAt)}</span>`:''}</div>${x.description?`<div class="muted">${nl2br(x.description)}</div>`:''}<div class="link-row">${resourceBtn(x.videoUrl,'觀看影片')}${resourceBtn(x.docUrl,'查看文件')}${resourceBtn(x.audioUrl,'播放音檔')}</div></div>`).join('') : '<div class="empty-box">目前沒有符合條件的教材</div>';
-    }
-    function init(){
-      fillHeader();
-      requireLogin();
-      qs('#searchBtn').onclick=renderItems;
-      qs('#keyword').addEventListener('input', renderItems);
-      loadTraining().catch(e=>setMsg(qs('#msg'),e.message||String(e),true));
-    }
+    function init(){ fillHeader(); requireLogin(); qs('#searchBtn').onclick=()=>renderResults(true); qs('#keyword').addEventListener('input', ()=>renderResults(!!qs('#keyword').value.trim())); loadTraining().catch(e=>setMsg(qs('#msg'),e.message||String(e),true)); }
   </script>
 </body>
 </html>
