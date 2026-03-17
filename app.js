@@ -109,3 +109,19 @@ async function startRecorder(onDone, onLevel){
   rec.start(250);
   return rec;
 }
+
+
+function isStrongPassword(v){
+  const s=String(v||'');
+  return s.length>=8 && /[A-Za-z]/.test(s) && /\d/.test(s);
+}
+function normalizeBirthDate(v){
+  const s=String(v||'').trim();
+  if(!s) return '';
+  const m=s.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})$/);
+  if(!m) return s;
+  const y=m[1];
+  const mo=m[2].padStart(2,'0');
+  const d=m[3].padStart(2,'0');
+  return `${y}-${mo}-${d}`;
+}

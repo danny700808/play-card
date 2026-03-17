@@ -80,5 +80,8 @@ a{text-decoration:none;color:inherit} .container{max-width:760px;margin:0 auto;p
 /* routine staff page simplify */
 #staffBlock .section-title{margin-bottom:12px}
 
-
-.progress-wrap{margin:10px 0 16px}.progress-bar{height:10px;background:#e5e7eb;border-radius:999px;overflow:hidden}.progress-fill{height:100%;width:0;background:#2a8a62;transition:width .25s ease}.progress-text{margin-top:8px;color:#6b7280;font-size:14px}
+/* register page fix */
+.birth-select-row{display:grid;grid-template-columns:1.5fr 1fr 1fr;gap:10px}
+.progress-wrap{display:none;margin-bottom:12px}
+.progress-fill{height:100%;width:0;background:linear-gradient(90deg,var(--brand),#56b58b);border-radius:999px;transition:width .28s ease}
+@media (max-width:560px){.birth-select-row{grid-template-columns:1fr}}
