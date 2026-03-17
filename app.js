@@ -50,6 +50,16 @@ async function compressImageToDataUrl(file, maxSize=1280, quality=0.78){
     fr.readAsDataURL(file);
   });
 }
+
+async function compressImagesToDataUrls(files, maxSize=1600, quality=0.75){
+  const list=Array.from(files||[]).filter(Boolean);
+  if(!list.length) return [];
+  const out=[];
+  for(const file of list){
+    out.push(await compressImageToDataUrl(file, maxSize, quality));
+  }
+  return out.filter(Boolean);
+}
 function formatTaskStatusTag(status){
   const cls=status==='待處理'?'pending':(status==='已完成'?'done':'');
   return `<span class="tag ${cls}">${status}</span>`;

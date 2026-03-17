@@ -14,6 +14,9 @@
     .mini-help{font-size:13px;color:var(--muted);margin-top:6px;line-height:1.7}
     .item-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
     .item-foot{margin-top:10px;color:var(--muted);font-size:13px;line-height:1.7}
+    .routine-deadline{margin-top:12px;font-size:18px;font-weight:800;color:#203040;line-height:1.6}
+    .routine-deadline .deadline-label{color:#1f7a5a}
+    .routine-complete-btn{display:block;width:100%;min-height:56px;border-radius:16px;font-size:22px;font-weight:800}
     .inline-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
     .inline-actions .btn{width:auto;min-width:110px}
     .status-badge{display:inline-block;padding:4px 10px;border-radius:999px;background:#eef7f2;color:#16533f;font-size:12px;font-weight:700}
@@ -50,11 +53,7 @@
         <div id="myRoutineList" class="compact-list"></div>
       </div>
 
-      <div class="card">
-        <div class="section-title">本月已完成紀錄</div>
-        <div id="routineHistory" class="compact-list"></div>
-      </div>
-    </div>
+          </div>
 
     <div id="adminBlock" class="hidden">
       <div class="card">
@@ -166,16 +165,13 @@
       const r=await api('getRoutinePageData',{userId:currentUser.id,email:currentUser.email,role:requestRole});
       if(!r.ok){ setMsg(qs('#msg'),r.message||'讀取失敗',true); return; }
       pageData=r;
-      if(routineAdminMode) renderAdmin(); else { renderMine(); renderHistory(); }
+      if(routineAdminMode) renderAdmin(); else { renderMine(); }
     }
     function renderMine(){
       const rows=pageData.mine||[];
-      qs('#myRoutineList').innerHTML = rows.map((x,idx)=>`<div class="item"><div class="item-head"><div><strong>${x.title}</strong><div class="muted">${x.cycleLabel}</div></div>${statusBadge(x.status)}</div><div style="margin-top:8px">${x.content||'未填寫說明'}</div><div class="item-foot">應完成日期：${x.dueDate}${x.remindTime?`　｜　提醒時間：${x.remindTime}`:''}${x.requirePhotoReturn==='是'?'　｜　需附照片':''}</div>${(x.status==='待完成'||x.status==='已逾期')?`<div class="complete-box"><div class="field"><label>完成備註（選填）</label><textarea id="note_${idx}" placeholder="有需要補充時再填寫"></textarea></div><div class="field"><label>完成照片${x.requirePhotoReturn==='是'?'（必填）':'（選填）'}</label><input id="photo_${idx}" type="file" accept=".jpg,.jpeg,.png"></div><div class="field"><label>完成錄音（選填）</label><input id="audio_${idx}" type="file" accept="audio/*"></div><button class="btn" onclick="completeItem(${idx})">回報完成</button><div id="progress_${idx}" class="progress-box hidden" style="margin-top:10px"><div class="progress-head"><strong>送出完成回報</strong><span id="progressPct_${idx}">0%</span></div><div class="progress-track"><div id="progressBar_${idx}" class="progress-bar"></div></div><div id="progressText_${idx}" class="attach-badge">準備送出...</div></div></div>`:`<div class="item-foot">完成時間：${x.completedAt||'已完成'}</div>`}</div>`).join('') || '<div class="muted">目前沒有輪到你處理的定期事項</div>';
+      qs('#myRoutineList').innerHTML = rows.map((x,idx)=>`<div class="item"><div class="item-head"><div><strong>${x.title}</strong><div class="muted">${x.cycleLabel}</div></div>${statusBadge(x.status)}</div><div style="margin-top:8px">${x.content||'未填寫說明'}</div><div class="routine-deadline"><span class="deadline-label">應完成日期：</span>${x.dueDate}${x.requirePhotoReturn==='是'?'　｜　需附照片':''}</div>${(x.status==='待完成'||x.status==='已逾期')?`<div class="complete-box"><div class="field"><label>完成備註（選填）</label><textarea id="note_${idx}" placeholder="有需要補充時再填寫"></textarea></div><div class="field"><label>完成照片${x.requirePhotoReturn==='是'?'（必填）':'（選填）'}</label><input id="photo_${idx}" type="file" accept=".jpg,.jpeg,.png" multiple><div class="attach-badge">可一次上傳多張照片</div></div><button class="btn routine-complete-btn" onclick="completeItem(${idx})">任務完成</button><div id="progress_${idx}" class="progress-box hidden" style="margin-top:10px"><div class="progress-head"><strong>送出完成回報</strong><span id="progressPct_${idx}">0%</span></div><div class="progress-track"><div id="progressBar_${idx}" class="progress-bar"></div></div><div id="progressText_${idx}" class="attach-badge">準備送出...</div></div></div>`:`<div class="item-foot">完成時間：${x.completedAt||'已完成'}</div>`}</div>`).join('') || '<div class="muted">目前沒有輪到你處理的定期事項</div>';
     }
-    function renderHistory(){
-      const rows=pageData.history||[];
-      qs('#routineHistory').innerHTML = rows.map(x=>`<div class="item"><div class="item-head"><div><strong>${x.title}</strong><div class="muted">${x.dueDate||''}</div></div>${statusBadge('已完成')}</div><div style="margin-top:8px">${x.note||'未填寫備註'}</div><div class="item-foot">${x.completedAt?`完成時間：${x.completedAt}`:''}${x.photoUrl?`　｜　<a class="navlink" href="${imagePreviewUrl(x.photoUrl)}" target="_blank">查看照片</a>`:''}${x.audioUrl?`　｜　<a class="navlink" href="${audioOpenUrl(x.audioUrl)}" target="_blank">查看錄音</a>`:''}</div></div>`).join('') || `<div class="muted">${pageData.currentMonth||''} 目前還沒有完成紀錄</div>`;
-    }
+    function renderHistory(){}
     function renderAdmin(){
       const templates=pageData.admin?.templates||[];
       qs('#adminTemplateList').innerHTML = templates.map((x,idx)=>`<div class="item"><div class="item-head"><div><strong>${x.title}</strong><div class="muted">${x.assigneeName}　｜　${x.cycleLabel}</div></div>${statusBadge(x.status)}</div><div style="margin-top:8px">${x.content||'未填寫說明'}</div><div class="item-foot">開始：${x.startDate||'-'}${x.endDate?`　｜　結束：${x.endDate}`:''}${x.remindTime?`　｜　提醒：${x.remindTime}`:''}</div><div class="inline-actions"><button class="btn secondary" onclick="editTemplate(${idx})">修改</button><button class="btn secondary" onclick="toggleTemplate('${x.id}','${x.status==='啟用'?'停用':'啟用'}')">${x.status==='啟用'?'停用':'啟用'}</button></div></div>`).join('') || '<div class="muted">目前尚未建立任何定期事項</div>';
@@ -195,7 +191,7 @@
       setSaveProgress(100,r.message||'儲存完成'); resetRoutineForm(); await refreshPage();
     }
     async function toggleTemplate(id,status){ const r=await api('toggleRoutineTemplate',{userId:currentUser.id,templateId:id,status}); if(!r.ok){ setMsg(qs('#msg'),r.message||'更新失敗',true); return; } await refreshPage(); }
-    async function completeItem(idx){ const item=pageData.mine[idx]; const note=qs(`#note_${idx}`).value; const photoFile=qs(`#photo_${idx}`).files[0]; const audioFile=qs(`#audio_${idx}`).files[0]; if(item.requirePhotoReturn==='是' && !photoFile){ setInlineProgress(idx,100,'這個事項完成時需要附照片'); return; } setInlineProgress(idx,15,'準備整理附件...'); let photo=''; let audio=''; if(photoFile){ setInlineProgress(idx,40,'處理完成照片中...'); photo = await compressImageToDataUrl(photoFile); } if(audioFile){ setInlineProgress(idx,70,'處理錄音中...'); audio = await fileToDataUrl(audioFile); } setInlineProgress(idx,85,'送出完成回報中...'); const r=await api('completeRoutineItem',{userId:currentUser.id,templateId:item.templateId,periodKey:item.periodKey,note,photo,audio}); if(!r.ok){ setInlineProgress(idx,100,r.message||'送出失敗'); return; } setInlineProgress(idx,100,r.message||'已完成'); await refreshPage(); }
+    async function completeItem(idx){ const item=pageData.mine[idx]; const note=qs(`#note_${idx}`).value; const photoFiles=Array.from(qs(`#photo_${idx}`).files||[]); if(item.requirePhotoReturn==='是' && !photoFiles.length){ setInlineProgress(idx,100,'這個事項完成時需要附照片'); return; } setInlineProgress(idx,15,'準備整理附件...'); let photos=[]; if(photoFiles.length){ setInlineProgress(idx,55,'處理完成照片中...'); photos = await compressImagesToDataUrls(photoFiles,1600,0.75); } setInlineProgress(idx,85,'送出完成回報中...'); const r=await api('completeRoutineItem',{userId:currentUser.id,templateId:item.templateId,periodKey:item.periodKey,note,photos}); if(!r.ok){ setInlineProgress(idx,100,r.message||'送出失敗'); return; } setInlineProgress(idx,100,r.message||'已完成'); await refreshPage(); }
   </script>
 </body>
 </html>
