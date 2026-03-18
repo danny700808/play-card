@@ -30,7 +30,7 @@ function getDriveFileId(url){const m=String(url||'').match(/(?:file\/d\/|[?&]id=
 function imagePreviewUrl(url){const id=getDriveFileId(url);return id?('https://drive.google.com/thumbnail?id='+id+'&sz=w1200'):url;}
 function audioOpenUrl(url){const id=getDriveFileId(url);return id?('https://drive.google.com/file/d/'+id+'/view'):url;}
 function audioStreamUrl(url){const id=getDriveFileId(url);return id?('https://drive.google.com/uc?export=download&id='+id):url;}
-async function compressImageToDataUrl(file, maxSize=1280, quality=0.78){
+async function compressImageToDataUrl(file, maxSize=1280, quality=0.74){
   if(!file) return '';
   if(!file.type.startsWith('image/')) return await fileToDataUrl(file);
   return new Promise((resolve,reject)=>{
@@ -55,7 +55,7 @@ async function compressImageToDataUrl(file, maxSize=1280, quality=0.78){
   });
 }
 
-async function compressImagesToDataUrls(files, maxSize=1600, quality=0.75){
+async function compressImagesToDataUrls(files, maxSize=1280, quality=0.72){
   const list=Array.from(files||[]).filter(Boolean);
   if(!list.length) return [];
   const out=[];
@@ -68,12 +68,12 @@ async function compressImagesToDataUrls(files, maxSize=1600, quality=0.75){
 
 async function compressVideoToDataUrl(file, opts={}){
   const options=Object.assign({
-    maxInputMB: 180,
-    fallbackPassThroughMB: 80,
-    maxWidth: 1280,
-    fps: 24,
-    videoBitsPerSecond: 1200000,
-    audioBitsPerSecond: 96000
+    maxInputMB: 120,
+    fallbackPassThroughMB: 35,
+    maxWidth: 960,
+    fps: 20,
+    videoBitsPerSecond: 700000,
+    audioBitsPerSecond: 64000
   }, opts||{});
   if(!file) return '';
   if(!file.type.startsWith('video/')) return await fileToDataUrl(file);
