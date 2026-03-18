@@ -75,8 +75,26 @@
     let adminData={categories:[],items:[]};
     let audioRecorder=null, audioDataUrl='', audioPreviewUrl='';
     function esc(s){return String(s||'').replace(/[&<>"]/g,function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]||m;});}
-    function splitLinks(v){ return String(v||'').split(/\\n+/).map(s=>s.trim()).filter(Boolean); }
-    function linkButtons(urls,label){ return splitLinks(urls).map((u,i)=>`<a class="btn secondary mini-btn" href="${u}" target="_blank" rel="noopener">${label}${splitLinks(urls).length>1?(' '+(i+1)):''}</a>`).join(''); }
+    function splitLinks(v){ return String(v||'').split(/[
+]+/).map(s=>s.trim()).filter(Boolean); }
+    function extractDriveId(url){
+      const s = String(url || '').trim();
+      let m = s.match(/\/file\/d\/([A-Za-z0-9_-]+)/);
+      if (m) return m[1];
+      m = s.match(/[?&]id=([A-Za-z0-9_-]+)/);
+      if (m) return m[1];
+      m = s.match(/\/d\/([A-Za-z0-9_-]+)/);
+      if (m) return m[1];
+      return '';
+    }
+    function normalizeOpenUrl(url){
+      const id = extractDriveId(url);
+      return id ? `https://drive.google.com/file/d/${id}/view` : String(url || '').trim();
+    }
+    function linkButtons(urls,label){
+      const arr = splitLinks(urls);
+      return arr.map((u,i)=>`<a class="btn secondary mini-btn" href="${normalizeOpenUrl(u)}" target="_blank" rel="noopener">${label}${arr.length>1?(' '+(i+1)):''}</a>`).join('');
+    }
     function setProgress(v,label){ qs('#progressBox').classList.remove('hidden'); qs('#progressBar').style.width=v+'%'; qs('#progressText').textContent=(label?label+' ':'')+v+'%'; }
     function resetProgress(){ qs('#progressBar').style.width='0%'; qs('#progressText').textContent='0%'; qs('#progressBox').classList.add('hidden'); }
     function selectedEnabled(){ const el=document.querySelector('input[name="enabled"]:checked'); return el?el.value:'是'; }
