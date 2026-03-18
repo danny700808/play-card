@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>教育訓練</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .page-return-wrap{margin-bottom:16px}.page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;border-radius:16px;font-size:20px;font-weight:800}
+    .search-box{display:grid;grid-template-columns:1fr auto;gap:10px}
+    .category-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .category-chip{border:1px solid var(--line);border-radius:16px;padding:14px 16px;background:#fff;cursor:pointer}
+    .category-chip.active{border-color:var(--brand);box-shadow:0 0 0 2px rgba(31,122,90,.12)}
+    .training-item{border:1px solid var(--line);border-radius:16px;padding:16px;background:#fff}
+    .training-meta{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 10px}.link-row{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}
+    .link-btn{width:auto;padding:10px 14px;border-radius:12px}.empty-box{padding:18px;border:1px dashed var(--line);border-radius:16px;background:#fbfcfe;color:var(--muted);text-align:center}
+    @media (max-width:560px){.category-grid,.search-box{grid-template-columns:1fr}}
+  </style>
+</head>
+<body onload="init()">
+  <div class="container">
+    <div class="page-return-wrap"><a class="btn page-return-btn" id="trainingHomeLink" href="dashboard.html">返回員工首頁</a></div>
+    <div class="card">
+      <div class="topbar">
+        <div>
+          <h1 class="title" style="margin:0">教育訓練</h1>
+          <div class="welcome">歡迎 <span data-user-name></span></div>
+        </div>
+      </div>
+      <div class="muted">可直接搜尋關鍵字，或先點五大類後查看對應教材。</div>
+      <div id="msg" class="message"></div>
+      <div class="field" style="margin-top:14px">
+        <label for="keyword">搜尋教材</label>
+        <div class="search-box">
+          <input id="keyword" type="text" placeholder="例如：蝦皮、掃地、電鋼琴、庫存、記帳">
+          <button class="btn" id="searchBtn" style="width:auto;padding:12px 18px">搜尋</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card hidden" id="resultCard">
+      <div class="topbar" style="margin-bottom:10px"><h2 class="title" style="font-size:20px;margin:0">搜尋結果</h2><span class="tag" id="resultTag">全部</span></div>
+      <div id="resultList" class="list"></div>
+    </div>
+
+    <div class="card">
+      <h2 class="title" style="font-size:20px">五大類</h2>
+      <div id="categoryList" class="category-grid"></div>
+    </div>
+  </div>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+  <script>
+    let trainingData={categories:[],items:[]}; let activeCategory='';
+    function esc(s){return String(s||'').replace(/[&<>"]/g,function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]||m;});}
+    function nl2br(s){return esc(s).replace(/
+/g,'<br>');}
+    function splitLinks(v){ return String(v||'').split(/
++/).map(s=>s.trim()).filter(Boolean); }
+    function resourceBtns(urls,label){ const arr=splitLinks(urls); return arr.map((u,i)=>`<a class="btn secondary link-btn" href="${u}" target="_blank" rel="noopener">${label}${arr.length>1?(' '+(i+1)):''}</a>`).join(''); }
+    async function loadTraining(){ const user=requireLogin(); if(!user) return; const r=await api('getTrainingPageData',{userId:user.id}); if(!r.ok) throw new Error(r.message||'讀取失敗'); trainingData={categories:r.categories||[],items:r.items||[]}; renderCategories(); renderResults(); }
+    function renderCategories(){
+      const box=qs('#categoryList'); const allActive = activeCategory==='';
+      const categories=(trainingData.categories||[]);
+      box.innerHTML=[`<button type="button" class="category-chip ${allActive?'active':''}" onclick="selectCategory('')"><strong>全部教材</strong><div class="muted">顯示所有啟用中的教材</div></button>`].concat(categories.map(c=>`<button type="button" class="category-chip ${activeCategory===c.id?'active':''}" onclick="selectCategory('${c.id}')"><strong>${esc(c.name)}</strong><div class="muted">${esc(c.description||'')}</div></button>`)).join('');
+      if(!categories.length){ box.innerHTML='<div class="empty-box">目前沒有分類資料，請先確認「教育訓練分類」工作表</div>'; }
+    }
+    function selectCategory(id){ activeCategory=id||''; renderCategories(); renderResults(true); }
+    function filterItems(){ const kw=(qs('#keyword').value||'').trim().toLowerCase(); return trainingData.items.filter(x=>{ if(activeCategory && x.categoryId!==activeCategory) return false; if(!kw) return true; const hay=[x.title,x.categoryName,x.keywords,x.description].join(' ').toLowerCase(); return hay.includes(kw); }); }
+    function renderResults(forceShow=false){
+      const kw=(qs('#keyword').value||'').trim(); const rows=filterItems(); const show=!!kw || !!activeCategory || forceShow; const card=qs('#resultCard');
+      if(!show){ card.classList.add('hidden'); qs('#resultList').innerHTML=''; qs('#resultTag').textContent='全部'; return; }
+      card.classList.remove('hidden');
+      const categoryName = activeCategory ? ((trainingData.categories.find(x=>x.id===activeCategory)||{}).name||'') : '全部'; qs('#resultTag').textContent = kw ? ('搜尋') : (categoryName || '全部');
+      qs('#resultList').innerHTML = rows.length ? rows.map(x=>`<div class="training-item"><div class="top"><strong>${esc(x.title)}</strong><span class="tag">${esc(x.categoryName)}</span></div><div class="training-meta">${x.keywords?`<span class="attach-badge">關鍵字：${esc(x.keywords)}</span>`:''}${x.updatedAt?`<span class="attach-badge">更新：${esc(String(x.updatedAt).replace(/ GMT.*$/,''))}</span>`:''}</div>${x.description?`<div class="muted">${nl2br(x.description)}</div>`:''}<div class="link-row">${resourceBtns(x.videoUrl,'觀看影片')}${resourceBtns(x.docUrl,'查看文件 / 圖片')}${resourceBtns(x.audioUrl,'播放錄音')}</div></div>`).join('') : '<div class="empty-box">目前沒有符合條件的教材</div>';
+    }
+    function init(){ fillHeader(); requireLogin(); qs('#searchBtn').onclick=()=>renderResults(true); qs('#keyword').addEventListener('input', ()=>renderResults(!!qs('#keyword').value.trim())); loadTraining().catch(e=>setMsg(qs('#msg'),e.message||String(e),true)); }
+  </script>
+</body>
+</html>

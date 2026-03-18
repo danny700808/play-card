@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>教育訓練設定</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .page-return-wrap{margin-bottom:16px}.page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;border-radius:16px;font-size:20px;font-weight:800}
+    .training-links{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+    .training-links a{width:auto}.status-pill{display:inline-block;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:800}
+    .status-on{background:#eef7f2;color:#16533f}.status-off{background:#eef1f5;color:#607080}.compact-help{margin-top:8px}
+    .radio-inline{display:flex;align-items:center;gap:28px;flex-wrap:wrap}.radio-inline label{display:inline-flex;align-items:center;gap:10px;font-size:18px;font-weight:800;line-height:1}.radio-inline input{margin:0;width:24px;height:24px;flex:0 0 24px}
+    .record-box{border:1px solid var(--line);border-radius:16px;padding:14px;background:#fbfcfe}
+    .record-controls{display:flex;gap:10px;flex-wrap:wrap}.record-controls .btn{width:auto;padding:12px 16px}
+    .record-status{margin-top:8px;font-size:14px;color:var(--muted)}
+    .record-status.ok{color:#16533f;font-weight:700}
+    .progress-under-btn{margin-top:12px}
+  </style>
+</head>
+<body onload="init()">
+  <div class="container">
+    <div class="page-return-wrap"><a class="btn page-return-btn" href="settings.html">返回設定區首頁</a></div>
+    <div class="card">
+      <div class="topbar">
+        <div>
+          <h1 class="title" style="margin:0">教育訓練設定</h1>
+          <div class="welcome">歡迎 <span data-user-name></span></div>
+        </div>
+      </div>
+      <div class="muted">第一版支援：新增教材、上傳影片、上傳多張圖片/多文件、直接錄音、啟用/停用與編輯既有資料。</div>
+      <div id="msg" class="message"></div>
+    </div>
+
+    <div class="card">
+      <h2 class="title" style="font-size:20px">新增 / 編輯教材</h2>
+      <div class="field"><label for="categoryId">教材分類</label><select id="categoryId"></select></div>
+      <div class="field"><label for="title">主題名稱</label><input id="title" type="text" placeholder="例如：蝦皮寄件完整流程"></div>
+      <div class="field"><label for="keywords">關鍵字</label><input id="keywords" type="text" placeholder="例如：蝦皮、寄件、包貨、出貨"></div>
+      <div class="field"><label for="description">內容說明</label><textarea id="description" placeholder="可放 SOP 文字重點，員工搜尋後會直接看到。"></textarea></div>
+      <div class="field"><label for="videoFile">上傳影片（選填）</label><input id="videoFile" type="file" accept="video/mp4,video/quicktime,video/webm,video/*"><div class="muted compact-help">建議 4 分鐘內短影片；系統會先嘗試縮小後再上傳，並盡量保留聲音。</div></div>
+      <div class="field"><label for="docFile">上傳圖片 / 文件（選填）</label><input id="docFile" type="file" multiple accept="image/*,application/pdf,.pdf,.doc,.docx,text/plain,.txt,.xls,.xlsx,.ppt,.pptx"><div class="muted compact-help">可一次選多張圖片或多個文件；圖片會先縮小後再上傳。</div></div>
+      <div class="field"><label>錄音說明（選填）</label>
+        <div class="record-box">
+          <div class="record-controls">
+            <button class="btn secondary" type="button" id="recordBtn">開始錄音</button>
+            <button class="btn secondary" type="button" id="stopRecordBtn" disabled>停止錄音</button>
+            <button class="btn secondary" type="button" id="clearRecordBtn">清除錄音</button>
+          </div>
+          <div id="recordStatus" class="record-status">尚未錄音</div>
+          <div id="recordMeter" class="rec-meter hidden" aria-hidden="true">
+            <span class="rec-bar"></span><span class="rec-bar"></span><span class="rec-bar"></span><span class="rec-bar"></span><span class="rec-bar"></span><span class="rec-bar"></span><span class="rec-bar"></span><span class="rec-bar"></span>
+          </div>
+          <audio id="recordPreview" controls class="hidden" style="width:100%;margin-top:8px"></audio>
+        </div>
+      </div>
+      <div class="field"><label for="sortOrder">排序</label><input id="sortOrder" type="number" min="1" step="1" placeholder="留空就自動排最後"></div>
+      <div class="field"><label>是否啟用</label><div class="radio-inline"><label><input type="radio" name="enabled" value="是" checked>是</label><label><input type="radio" name="enabled" value="否">否</label></div></div>
+      <div class="btn-row"><button class="btn secondary" type="button" onclick="resetForm()">清空</button><button class="btn" id="saveBtn" type="button">儲存教材</button></div>
+      <div id="progressBox" class="progress-box progress-under-btn hidden" aria-live="polite">
+        <div class="progress-head"><strong>上傳進度</strong><span id="progressText">0%</span></div>
+        <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
+      </div>
+      <input id="itemId" type="hidden">
+    </div>
+
+    <div class="card">
+      <div class="topbar" style="margin-bottom:10px"><h2 class="title" style="font-size:20px;margin:0">教材分類管理</h2><button class="btn secondary" style="width:auto;padding:10px 14px" onclick="loadAdminData()">重新整理</button></div>
+      <div id="adminList" class="list"></div>
+    </div>
+  </div>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+  <script>
+    let adminData={categories:[],items:[]};
+    let audioRecorder=null, audioDataUrl='', audioPreviewUrl='';
+    function esc(s){return String(s||'').replace(/[&<>"]/g,function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]||m;});}
+    function splitLinks(v){ return String(v||'').split(/
++/).map(s=>s.trim()).filter(Boolean); }
+    function linkButtons(urls,label){ return splitLinks(urls).map((u,i)=>`<a class="btn secondary mini-btn" href="${u}" target="_blank" rel="noopener">${label}${splitLinks(urls).length>1?(' '+(i+1)):''}</a>`).join(''); }
+    function setProgress(v,label){ qs('#progressBox').classList.remove('hidden'); qs('#progressBar').style.width=v+'%'; qs('#progressText').textContent=(label?label+' ':'')+v+'%'; }
+    function resetProgress(){ qs('#progressBar').style.width='0%'; qs('#progressText').textContent='0%'; qs('#progressBox').classList.add('hidden'); }
+    function selectedEnabled(){ const el=document.querySelector('input[name="enabled"]:checked'); return el?el.value:'是'; }
+    function fillCategoryOptions(){ const categories=adminData.categories||[]; qs('#categoryId').innerHTML='<option value="">請選擇分類</option>'+categories.map(c=>`<option value="${c.id}">${c.name}</option>`).join(''); if(!categories.length){ qs('#categoryId').innerHTML='<option value="">目前沒有分類，請先檢查教育訓練分類</option>'; } }
+    async function loadAdminData(){
+      const user=requireLogin(); if(!user) return;
+      const r=await api('getTrainingPageData',{userId:user.id,includeDisabled:true,adminMode:true});
+      if(!r.ok) throw new Error(r.message||'讀取失敗');
+      adminData = {
+        categories: getFixedTrainingCategories(),
+        items: normalizeTrainingItems(r.items||[])
+      };
+      fillCategoryOptions(); renderAdminList();
+    }
+    function renderAdminList(){
+      const box=qs('#adminList');
+      const categories=adminData.categories||[];
+      const items=adminData.items||[];
+      if(!categories.length){ box.innerHTML='<div class="muted">目前沒有分類資料，請先檢查「教育訓練分類」工作表</div>'; return; }
+      box.innerHTML = categories.map(c=>{
+        const rows=items.filter(x=>x.categoryId===c.id);
+        const body = rows.length ? rows.map(x=>`<div class="item" style="margin-top:10px"><div class="top"><div><strong>${esc(x.title)}</strong><div class="muted">${esc(x.categoryName)}</div></div><span class="status-pill ${x.enabled?'status-on':'status-off'}">${x.enabled?'啟用中':'已停用'}</span></div>${x.description?`<div class="muted" style="margin-top:8px">${esc(x.description)}</div>`:''}<div class="training-links">${linkButtons(x.videoUrl,'影片')}${linkButtons(x.docUrl,'文件 / 圖片')}${linkButtons(x.audioUrl,'錄音')}<button class="btn secondary mini-btn" type="button" onclick="editItem('${x.id}')">編輯</button><button class="btn mini-btn" type="button" onclick="toggleItem('${x.id}', ${x.enabled?'false':'true'})">${x.enabled?'停用':'啟用'}</button></div></div>`).join('') : '<div class="muted" style="margin-top:10px">這一類目前沒有教材</div>';
+        return `<details class="item" ${rows.length?'':'open'}><summary class="top" style="cursor:pointer;list-style:none"><div><strong>${esc(c.name)}</strong><div class="muted">${esc(c.description||'')}</div></div><span class="tag">${rows.length} 筆</span></summary>${body}</details>`;
+      }).join('');
+    }
+    function editItem(id){ const x=adminData.items.find(r=>r.id===id); if(!x) return; qs('#itemId').value=x.id||''; qs('#categoryId').value=x.categoryId||''; qs('#title').value=x.title||''; qs('#keywords').value=x.keywords||''; qs('#description').value=x.description||''; qs('#sortOrder').value=x.sortOrder||''; document.querySelector(`input[name="enabled"][value="${x.enabled?'是':'否'}"]`).checked=true; window.scrollTo({top:0,behavior:'smooth'}); }
+    function clearRecording(){ audioDataUrl=''; if(audioPreviewUrl){ URL.revokeObjectURL(audioPreviewUrl); audioPreviewUrl=''; } qs('#recordPreview').src=''; qs('#recordPreview').classList.add('hidden'); qs('#recordStatus').textContent='尚未錄音'; qs('#recordStatus').classList.remove('ok'); qs('#recordMeter').classList.add('hidden'); qsa('#recordMeter .rec-bar').forEach(b=>{ b.style.height='20px'; b.classList.remove('live'); }); }
+    function resetForm(){ ['itemId','title','keywords','description','sortOrder'].forEach(id=>qs('#'+id).value=''); qs('#categoryId').value=''; document.querySelector('input[name="enabled"][value="是"]').checked=true; ['videoFile','docFile'].forEach(id=>qs('#'+id).value=''); clearRecording(); }
+    async function toggleItem(id, enable){ const user=requireLogin(); if(!user) return; const r=await api('toggleTrainingItem',{userId:user.id,itemId:id,enabled:enable}); setMsg(qs('#msg'), r.message||'', !r.ok); if(r.ok) loadAdminData(); }
+    async function processMixedFiles(fileList){
+      const files=Array.from(fileList||[]).filter(Boolean); const out=[]; let index=0;
+      for(const file of files){
+        index += 1;
+        if(String(file.type||'').startsWith('image/')) out.push(await compressImageToDataUrl(file,1600,0.76));
+        else out.push(await fileToDataUrl(file));
+        setProgress(Math.min(72, 30 + Math.round((index/files.length)*32)), '附件處理中');
+      }
+      return out.filter(Boolean);
+    }
+    async function saveItem(){
+      const user=requireLogin(); if(!user) return;
+      const title=qs('#title').value.trim(), categoryId=qs('#categoryId').value;
+      if(!categoryId || !title){ setMsg(qs('#msg'),'請先選擇分類並填寫主題名稱',true); return; }
+      const btn=qs('#saveBtn'); btn.disabled=true; setMsg(qs('#msg'),'');
+      try{
+        setProgress(8,'準備中');
+        const videoFile=qs('#videoFile').files[0], docFiles=qs('#docFile').files;
+        let videoData='', docDataList=[];
+        if(videoFile){ setProgress(18,'影片處理中'); videoData=await compressVideoToDataUrl(videoFile); }
+        if(docFiles && docFiles.length){ docDataList=await processMixedFiles(docFiles); }
+        if(audioDataUrl){ setProgress(78,'整理錄音'); }
+        const payload={ userId:user.id, itemId:qs('#itemId').value.trim(), categoryId, title, keywords:qs('#keywords').value.trim(), description:qs('#description').value.trim(), sortOrder:qs('#sortOrder').value.trim(), enabled:selectedEnabled(), videoData, docDataList, audioData:audioDataUrl };
+        setProgress(88,'上傳中');
+        const r=await api('saveTrainingItem', payload);
+        setProgress(100,'完成');
+        setMsg(qs('#msg'), r.message||'', !r.ok);
+        if(r.ok){ resetForm(); await loadAdminData(); }
+      }catch(e){ setMsg(qs('#msg'), e.message||String(e), true); }
+      finally{ setTimeout(resetProgress,900); btn.disabled=false; }
+    }
+    async function beginRecord(){
+      try{
+        clearRecording();
+        qs('#recordMeter').classList.remove('hidden');
+        qs('#recordStatus').textContent='錄音中...';
+        audioRecorder=await startRecorder(function(dataUrl){
+          audioDataUrl=dataUrl;
+          const mime=(dataUrl.match(/^data:([^;]+)/)||[])[1]||'audio/webm';
+          const bytes=atob((dataUrl.split(',')[1]||''));
+          const arr=new Uint8Array(bytes.length); for(let i=0;i<bytes.length;i++) arr[i]=bytes.charCodeAt(i);
+          const blob=new Blob([arr],{type:mime});
+          audioPreviewUrl=URL.createObjectURL(blob);
+          qs('#recordPreview').src=audioPreviewUrl; qs('#recordPreview').classList.remove('hidden');
+          qs('#recordStatus').textContent='錄音完成，可直接儲存教材'; qs('#recordStatus').classList.add('ok');
+          qsa('#recordMeter .rec-bar').forEach(b=>b.classList.remove('live'));
+          qs('#recordBtn').disabled=false; qs('#stopRecordBtn').disabled=true;
+        }, function(level){
+          const bars=qsa('#recordMeter .rec-bar');
+          bars.forEach((bar, idx)=>{ const base=18+(idx*3); const h=Math.max(18, Math.min(56, base + Math.round(level*42*((idx%2)?0.9:1.15)))); bar.style.height=h+'px'; bar.classList.add('live'); });
+        });
+        qs('#recordBtn').disabled=true; qs('#stopRecordBtn').disabled=false;
+      }catch(e){ clearRecording(); setMsg(qs('#msg'), e.message||String(e), true); }
+    }
+    function stopRecord(){ if(audioRecorder){ try{ audioRecorder.stop(); }catch(e){} audioRecorder=null; } }
+    function init(){
+      fillHeader(); const user=requireLogin(); if(!user) return; if(!user.showSettingsZone){ location.href='dashboard.html'; return; }
+      setPortalMode('settings'); qs('#saveBtn').onclick=saveItem; qs('#recordBtn').onclick=beginRecord; qs('#stopRecordBtn').onclick=stopRecord; qs('#clearRecordBtn').onclick=clearRecording;
+      loadAdminData().catch(e=>setMsg(qs('#msg'), e.message||String(e), true));
+    }
+  </script>
+</body>
+</html>
