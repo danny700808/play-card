@@ -107,27 +107,20 @@
     function setProgress(v,label){ qs('#progressBox').classList.remove('hidden'); qs('#progressBar').style.width=v+'%'; qs('#progressText').textContent=(label?label+' ':'')+v+'%'; }
     function resetProgress(){ qs('#progressBar').style.width='0%'; qs('#progressText').textContent='0%'; qs('#progressBox').classList.add('hidden'); }
     function selectedEnabled(){ const el=document.querySelector('input[name="enabled"]:checked'); return el?el.value:'是'; }
-    function fillCategoryOptions(){ const categories=adminData.categories||[]; qs('#categoryId').innerHTML='<option value="">請選擇分類</option>'+categories.map(c=>`<option value="${c.id}">${c.name}</option>`).join(''); if(!categories.length){ qs('#categoryId').innerHTML='<option value="">目前沒有分類，請先檢查教育訓練分類</option>'; } }
+    function fillCategoryOptions(){ const categories=getFixedTrainingCategories(); qs('#categoryId').innerHTML='<option value="">請選擇分類</option>'+categories.map(c=>`<option value="${c.id}">${c.name}</option>`).join(''); }
     async function loadAdminData(){
       const user=requireLogin(); if(!user) return;
       adminData.categories = getFixedTrainingCategories();
       fillCategoryOptions();
-      try{
-        const r=await api('getTrainingPageData',{userId:user.id,includeDisabled:true,adminMode:true});
-        if(!r.ok) throw new Error(r.message||'讀取失敗');
-        adminData.items = normalizeTrainingItems(r.items||[]);
-      }catch(e){
-        adminData.items = [];
-        setMsg(qs('#msg'), e.message||String(e), true);
-      }
-      fillCategoryOptions();
+      const r=await api('getTrainingPageData',{userId:user.id,includeDisabled:true,adminMode:true});
+      if(!r.ok) throw new Error(r.message||'讀取失敗');
+      adminData.items = normalizeTrainingItems(r.items||[]);
       renderAdminList();
     }
     function renderAdminList(){
       const box=qs('#adminList');
-      const categories=adminData.categories||[];
+      const categories=getFixedTrainingCategories();
       const items=adminData.items||[];
-      if(!categories.length){ box.innerHTML='<div class="muted">目前沒有分類資料，請先檢查「教育訓練分類」工作表</div>'; return; }
       box.innerHTML = categories.map(c=>{
         const rows=items.filter(x=>x.categoryId===c.id);
         const body = rows.length ? rows.map(x=>`<div class="item" style="margin-top:10px"><div class="top"><div><strong>${esc(x.title)}</strong><div class="muted">${esc(x.categoryName)}</div></div><span class="status-pill ${x.enabled?'status-on':'status-off'}">${x.enabled?'啟用中':'已停用'}</span></div>${x.description?`<div class="muted" style="margin-top:8px">${esc(x.description)}</div>`:''}<div class="training-links">${linkButtons(x.videoUrl,'影片')}${linkButtons(x.docUrl,'文件 / 圖片')}${linkButtons(x.audioUrl,'錄音')}<button class="btn secondary mini-btn" type="button" onclick="editItem('${x.id}')">編輯</button><button class="btn mini-btn" type="button" onclick="toggleItem('${x.id}', ${x.enabled?'false':'true'})">${x.enabled?'停用':'啟用'}</button></div></div>`).join('') : '<div class="muted" style="margin-top:10px">這一類目前沒有教材</div>';
@@ -195,6 +188,8 @@
     function stopRecord(){ if(audioRecorder){ try{ audioRecorder.stop(); }catch(e){} audioRecorder=null; } }
     function init(){
       fillHeader(); const user=requireLogin(); if(!user) return; if(!user.showSettingsZone){ location.href='dashboard.html'; return; }
+      adminData.categories = getFixedTrainingCategories();
+      fillCategoryOptions();
       setPortalMode('settings'); qs('#saveBtn').onclick=saveItem; qs('#recordBtn').onclick=beginRecord; qs('#stopRecordBtn').onclick=stopRecord; qs('#clearRecordBtn').onclick=clearRecording;
       loadAdminData().catch(e=>setMsg(qs('#msg'), e.message||String(e), true));
     }
