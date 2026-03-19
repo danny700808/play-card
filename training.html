@@ -27,7 +27,7 @@
           <div class="welcome">歡迎 <span data-user-name></span></div>
         </div>
       </div>
-      <div class="muted">可直接搜尋關鍵字，或先點五大類後查看對應教材。</div>
+      <div class="muted">可直接搜尋關鍵字，或先點五大類後查看對應教材。影片與錄音會直接開啟 Google Drive 播放，避免手機頁面內嵌播放失敗。</div>
       <div id="msg" class="message"></div>
       <div class="field" style="margin-top:14px">
         <label for="keyword">搜尋教材</label>
@@ -79,9 +79,11 @@
     }
 
     function esc(s){return String(s||'').replace(/[&<>"]/g,function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]||m;});}
-    function nl2br(s){return esc(s).replace(/\r?\n/g,'<br>');}
-    function splitLinks(v){ return String(v||'').split(/\r?\n+/).map(s=>s.trim()).filter(Boolean); }
-    function resourceBtns(urls,label){ const arr=splitLinks(urls); return arr.map((u,i)=>`<a class="btn secondary link-btn" href="${u}" target="_blank" rel="noopener">${label}${arr.length>1?(' '+(i+1)):''}</a>`).join(''); }
+    function nl2br(s){return esc(s).replace(/
+/g,'<br>');}
+    function splitLinks(v){ return String(v||'').split(/
++/).map(s=>s.trim()).filter(Boolean); }
+    function resourceBtns(urls,label,kind){ const arr=splitLinks(urls); return arr.map((u,i)=>{ const href=normalizeDriveOpenUrl(u, kind||'file'); const text=(kind==='video'||kind==='audio') ? ('前往雲端播放'+(arr.length>1?(' '+(i+1)):'')) : (label+(arr.length>1?(' '+(i+1)):'')); return `<a class="btn secondary link-btn" href="${href}" target="_blank" rel="noopener">${text}</a>`; }).join(''); }
     async function loadTraining(){
       const user=requireLogin(); if(!user) return;
       trainingData.categories = getFixedTrainingCategories();
@@ -103,7 +105,7 @@
       if(!show){ card.classList.add('hidden'); qs('#resultList').innerHTML=''; qs('#resultTag').textContent='全部'; return; }
       card.classList.remove('hidden');
       const categoryName = activeCategory ? ((trainingData.categories.find(x=>x.id===activeCategory)||{}).name||'') : '全部'; qs('#resultTag').textContent = kw ? ('搜尋') : (categoryName || '全部');
-      qs('#resultList').innerHTML = rows.length ? rows.map(x=>`<div class="training-item"><div class="top"><strong>${esc(x.title)}</strong><span class="tag">${esc(x.categoryName)}</span></div><div class="training-meta">${x.keywords?`<span class="attach-badge">關鍵字：${esc(x.keywords)}</span>`:''}${x.updatedAt?`<span class="attach-badge">更新：${esc(String(x.updatedAt).replace(/ GMT.*$/,''))}</span>`:''}</div>${x.description?`<div class="muted">${nl2br(x.description)}</div>`:''}<div class="link-row">${resourceBtns(x.videoUrl,'觀看影片')}${resourceBtns(x.docUrl,'查看文件 / 圖片')}${resourceBtns(x.audioUrl,'播放錄音')}</div></div>`).join('') : '<div class="empty-box">目前沒有符合條件的教材</div>';
+      qs('#resultList').innerHTML = rows.length ? rows.map(x=>`<div class="training-item"><div class="top"><strong>${esc(x.title)}</strong><span class="tag">${esc(x.categoryName)}</span></div><div class="training-meta">${x.keywords?`<span class="attach-badge">關鍵字：${esc(x.keywords)}</span>`:''}${x.updatedAt?`<span class="attach-badge">更新：${esc(String(x.updatedAt).replace(/ GMT.*$/,''))}</span>`:''}</div>${x.description?`<div class="muted">${nl2br(x.description)}</div>`:''}<div class="link-row">${resourceBtns(x.videoUrl,'觀看影片','video')}${resourceBtns(x.docUrl,'查看文件 / 圖片','image')}${resourceBtns(x.audioUrl,'播放錄音','audio')}</div></div>`).join('') : '<div class="empty-box">目前沒有符合條件的教材</div>';
     }
     function init(){
       fillHeader();
