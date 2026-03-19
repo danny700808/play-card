@@ -155,11 +155,14 @@
         setProgress(videoFile?78:90, videoFile?'建立文字教材':'上傳中');
         const r=await api('saveTrainingItem', payload);
         if(!r.ok) throw new Error(r.message||'文字教材建立失敗');
+        const resolvedItemId=await resolveTrainingItemId_(user, r.itemId || qs('#itemId').value.trim(), categoryId, title, qs('#description').value.trim());
+        if(resolvedItemId) qs('#itemId').value=resolvedItemId;
         let finalMessage=r.message||'教材已建立';
         if(videoFile){
+          if(!resolvedItemId) throw new Error('文字教材已建立，但暫時抓不到教材 ID，請先重新整理後再補傳影片');
           await uploadTrainingVideoInChunks(videoFile,{
             userId:user.id,
-            itemId:r.itemId,
+            itemId:resolvedItemId,
             onProgress:(pct,label)=>setProgress(pct,label)
           });
           finalMessage='教材已建立，影片已上傳完成。';
@@ -172,6 +175,26 @@
       }catch(e){ setMsg(qs('#msg'), e.message||String(e), true); }
       finally{ setTimeout(resetProgress,1200); btn.disabled=false; }
     }
+
+    async function resolveTrainingItemId_(user, fallbackId, categoryId, title, description){
+      const direct=sanitizeId_(fallbackId);
+      if(direct) return direct;
+      const res=await api('getTrainingPageData',{ userId:user.id, adminMode:true, includeDisabled:true });
+      const items=(res && (res.items || res.trainingItems)) || [];
+      const targetTitle=String(title||'').trim();
+      const targetCategory=String(categoryId||'').trim();
+      const targetDesc=String(description||'').trim();
+      const matched=items.filter(function(x){
+        return String(x.title||'').trim()===targetTitle &&
+          String(x.categoryId||'').trim()===targetCategory &&
+          String(x.description||'').trim()===targetDesc;
+      }).sort(function(a,b){
+        return String(b.updatedAt||'').localeCompare(String(a.updatedAt||''));
+      });
+      return matched.length ? sanitizeId_(matched[0].id) : '';
+    }
+    function sanitizeId_(v){ return String(v||'').trim(); }
+
     async function beginRecord(){
       try{
         clearRecording();
