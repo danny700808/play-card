@@ -52,13 +52,38 @@
   <script src="app.js"></script>
   <script>
     let trainingData={categories:[],items:[]}; let activeCategory='';
+
+    const FIXED_TRAINING_CATEGORIES = [
+      { id:'CAT001', name:'門市接待與銷售', sortOrder:1, enabled:true, description:'接待、詢問需求、成交與售後應對' },
+      { id:'CAT002', name:'商品與設備知識', sortOrder:2, enabled:true, description:'樂器、設備、配件與故障基礎知識' },
+      { id:'CAT003', name:'倉儲、庫存與出貨', sortOrder:3, enabled:true, description:'庫存位置、包貨、寄件、退換貨' },
+      { id:'CAT004', name:'門市環境與清潔維護', sortOrder:4, enabled:true, description:'清潔、整理、展示品保養與開收店檢查' },
+      { id:'CAT005', name:'行政與教學支援', sortOrder:5, enabled:true, description:'收款、記帳、課務、學生接待與行政協助' }
+    ];
+    function getFixedTrainingCategories(){
+      return FIXED_TRAINING_CATEGORIES.map(x => ({...x}));
+    }
+    function normalizeTrainingItems(items){
+      const cats = getFixedTrainingCategories();
+      const catMap = Object.fromEntries(cats.map(c => [c.id, c]));
+      return (items || []).map(x => {
+        const y = {...(x || {})};
+        const c = catMap[y.categoryId];
+        if (c) {
+          y.categoryName = c.name;
+          if (y.categorySortOrder === undefined || y.categorySortOrder === null || y.categorySortOrder === '') y.categorySortOrder = c.sortOrder;
+        }
+        return y;
+      });
+    }
+
     function esc(s){return String(s||'').replace(/[&<>"]/g,function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]||m;});}
     function nl2br(s){return esc(s).replace(/
 /g,'<br>');}
     function splitLinks(v){ return String(v||'').split(/
 +/).map(s=>s.trim()).filter(Boolean); }
     function resourceBtns(urls,label){ const arr=splitLinks(urls); return arr.map((u,i)=>`<a class="btn secondary link-btn" href="${u}" target="_blank" rel="noopener">${label}${arr.length>1?(' '+(i+1)):''}</a>`).join(''); }
-    async function loadTraining(){ const user=requireLogin(); if(!user) return; const r=await api('getTrainingPageData',{userId:user.id}); if(!r.ok) throw new Error(r.message||'讀取失敗'); trainingData={categories:r.categories||[],items:r.items||[]}; renderCategories(); renderResults(); }
+    async function loadTraining(){ const user=requireLogin(); if(!user) return; const r=await api('getTrainingPageData',{userId:user.id}); if(!r.ok) throw new Error(r.message||'讀取失敗'); trainingData={categories:getFixedTrainingCategories(),items:normalizeTrainingItems(r.items||[])}; renderCategories(); renderResults(); }
     function renderCategories(){
       const box=qs('#categoryList'); const allActive = activeCategory==='';
       const categories=(trainingData.categories||[]);
