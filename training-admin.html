@@ -146,20 +146,59 @@
       if(!categoryId || !title){ setMsg(qs('#msg'),'請先選擇分類並填寫主題名稱',true); return; }
       const btn=qs('#saveBtn'); btn.disabled=true; setMsg(qs('#msg'),'');
       try{
-        setProgress(8,'準備中');
+        const itemId=qs('#itemId').value.trim();
         const videoFile=qs('#videoFile').files[0], docFiles=qs('#docFile').files;
-        let videoData='', docDataList=[];
-        if(videoFile){ setProgress(18,'影片處理中'); videoData=await compressVideoToDataUrl(videoFile); }
-        if(docFiles && docFiles.length){ docDataList=await processMixedFiles(docFiles); }
-        if(audioDataUrl){ setProgress(78,'整理錄音'); }
-        const payload={ userId:user.id, itemId:qs('#itemId').value.trim(), categoryId, title, keywords:qs('#keywords').value.trim(), description:qs('#description').value.trim(), sortOrder:qs('#sortOrder').value.trim(), enabled:selectedEnabled(), videoData, docDataList, audioData:audioDataUrl };
-        setProgress(88,'上傳中');
-        const r=await api('saveTrainingItem', payload);
+        let docDataList=[];
+
+        setProgress(8,'建立文字中');
+        if(docFiles && docFiles.length){
+          setProgress(18,'整理圖片 / 文件');
+          docDataList=await processMixedFiles(docFiles);
+        }
+        if(audioDataUrl){ setProgress(72,'整理錄音'); }
+
+        const textPayload={
+          userId:user.id,
+          itemId,
+          categoryId,
+          title,
+          keywords:qs('#keywords').value.trim(),
+          description:qs('#description').value.trim(),
+          sortOrder:qs('#sortOrder').value.trim(),
+          enabled:selectedEnabled(),
+          docDataList,
+          audioData:audioDataUrl,
+          saveMode:'textOnly'
+        };
+        setProgress(82,'儲存文字中');
+        const textRes=await api('saveTrainingItem', textPayload);
+        if(!textRes.ok) throw new Error(textRes.message||'文字教材建立失敗');
+
+        const finalItemId=textRes.itemId || itemId;
+        let finalMessage=textRes.message||'教材已建立';
+
+        if(videoFile){
+          setProgress(88,'影片處理中');
+          const videoData=await compressVideoToDataUrl(videoFile);
+          setProgress(94,'影片上傳中');
+          const videoRes=await api('saveTrainingItem', {
+            userId:user.id,
+            itemId:finalItemId,
+            categoryId,
+            title,
+            saveMode:'videoOnly',
+            videoData
+          });
+          if(videoRes.ok) finalMessage=(textRes.message||'文字教材已建立') + ' ' + (videoRes.message||'影片已補上。');
+          else finalMessage=(textRes.message||'文字教材已建立') + ' 但影片上傳失敗：' + (videoRes.message||'請稍後再試');
+        }
+
         setProgress(100,'完成');
-        setMsg(qs('#msg'), r.message||'', !r.ok);
-        if(r.ok){ resetForm(); await loadAdminData(); }
+        setMsg(qs('#msg'), finalMessage, false);
+        resetForm();
+        await loadAdminData();
       }catch(e){ setMsg(qs('#msg'), e.message||String(e), true); }
-      finally{ setTimeout(resetProgress,900); btn.disabled=false; }
+      finally{ setTimeout(resetProgress,1200); btn.disabled=false; }
     }
     async function beginRecord(){
       try{
