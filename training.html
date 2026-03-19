@@ -8,15 +8,15 @@
   <style>
     .page-return-wrap{margin-bottom:16px}.page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;border-radius:16px;font-size:20px;font-weight:800}
     .search-box{display:grid;grid-template-columns:1fr auto;gap:10px}
-    .category-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-    .category-chip{border:1px solid var(--line);border-radius:16px;padding:14px 16px;background:#fff;cursor:pointer;text-align:left}
+    .category-grid{display:grid;grid-template-columns:1fr;gap:12px}
+    .category-chip{display:flex;justify-content:space-between;align-items:center;gap:12px;border:1px solid var(--line);border-radius:16px;padding:18px 18px;background:#fff;cursor:pointer;text-align:left}
+    .category-chip strong{display:block;font-size:18px;line-height:1.3}
     .category-chip.active{border-color:var(--brand);box-shadow:0 0 0 2px rgba(31,122,90,.12)}
-    .category-chip-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px}
-    .category-count{min-width:44px;padding:6px 10px;border-radius:999px;background:#eef6f1;color:var(--brand);font-weight:800;font-size:14px;line-height:1;text-align:center;white-space:nowrap}
+    .count-pill{display:inline-flex;align-items:center;justify-content:center;min-width:46px;padding:6px 12px;border-radius:999px;background:#eef7f2;color:#16533f;font-size:18px;font-weight:900;line-height:1}
     .training-item{border:1px solid var(--line);border-radius:16px;padding:16px;background:#fff}
     .training-meta{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 10px}.link-row{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}
     .link-btn{width:auto;padding:10px 14px;border-radius:12px}.empty-box{padding:18px;border:1px dashed var(--line);border-radius:16px;background:#fbfcfe;color:var(--muted);text-align:center}
-    @media (max-width:560px){.category-grid,.search-box{grid-template-columns:1fr}}
+    @media (max-width:560px){.search-box{grid-template-columns:1fr}.category-chip{padding:16px}}
   </style>
 </head>
 <body onload="init()">
@@ -53,7 +53,8 @@
   <script src="config.js"></script>
   <script src="app.js"></script>
   <script>
-    let trainingData={categories:[],items:[]}; let activeCategory='';
+    let trainingData={categories:[],items:[]};
+    let activeCategory='';
 
     const FIXED_TRAINING_CATEGORIES = [
       { id:'CAT001', name:'門市接待與銷售', sortOrder:1, enabled:true, description:'接待、詢問需求、成交與售後應對' },
@@ -63,35 +64,31 @@
       { id:'CAT005', name:'行政與教學支援', sortOrder:5, enabled:true, description:'收款、記帳、課務、學生接待與行政協助' }
     ];
     function getFixedTrainingCategories(){
-      return FIXED_TRAINING_CATEGORIES.map(x => ({...x}));
+      return FIXED_TRAINING_CATEGORIES.map(function(x){ return Object.assign({}, x); });
     }
     function normalizeTrainingItems(items){
-      const catMap = Object.fromEntries(getFixedTrainingCategories().map(c => [c.id, c]));
-      return (items || []).map(x => {
-        const y = {...(x || {})};
+      const catMap = Object.fromEntries(getFixedTrainingCategories().map(function(c){ return [c.id, c]; }));
+      return (items || []).map(function(x){
+        const y = Object.assign({}, x || {});
         const c = catMap[y.categoryId];
         if (c) {
           y.categoryName = c.name;
-          if (y.categorySortOrder === undefined || y.categorySortOrder === null || y.categorySortOrder === '') {
-            y.categorySortOrder = c.sortOrder;
-          }
+          if (y.categorySortOrder === undefined || y.categorySortOrder === null || y.categorySortOrder === '') y.categorySortOrder = c.sortOrder;
         }
         return y;
       });
     }
-    function getCategoryCount(categoryId){
-      return trainingData.items.filter(x => String(x.categoryId||'') === String(categoryId||'')).length;
-    }
-
-    function esc(s){return String(s||'').replace(/[&<>"]/g,function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]||m;});}
-    function nl2br(s){return esc(s).replace(/\n/g,'<br>');}
-    function splitLinks(v){ return String(v||'').split(/\n+/).map(s=>s.trim()).filter(Boolean); }
-    function resourceBtns(urls,label,kind){
+    function esc(s){ return String(s||'').replace(/[&<>"]/g,function(m){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m] || m; }); }
+    function nl2br(s){ return esc(s).replace(/
+/g,'<br>'); }
+    function splitLinks(v){ return String(v||'').split(/
++/).map(function(s){ return s.trim(); }).filter(Boolean); }
+    function resourceBtns(urls,label){
       const arr=splitLinks(urls);
-      return arr.map((u,i)=>{
-        const href=(kind==='video'?videoOpenUrl(u):(kind==='audio'?audioOpenUrl(u):u));
-        return `<a class="btn secondary link-btn" href="${href}" target="_blank" rel="noopener">${label}${arr.length>1?(' '+(i+1)):''}</a>`;
-      }).join('');
+      return arr.map(function(u,i){ return `<a class="btn secondary link-btn" href="${u}" target="_blank" rel="noopener">${label}${arr.length>1?(' '+(i+1)):''}</a>`; }).join('');
+    }
+    function countForCategory(categoryId){
+      return trainingData.items.filter(function(x){ return categoryId ? x.categoryId===categoryId : true; }).length;
     }
     async function loadTraining(){
       const user=requireLogin(); if(!user) return;
@@ -104,28 +101,47 @@
       renderResults();
     }
     function renderCategories(){
-      const box=qs('#categoryList'); const allActive = activeCategory==='';
+      const box=qs('#categoryList');
+      const allActive = activeCategory==='';
       const categories=getFixedTrainingCategories();
-      const totalCount = trainingData.items.length;
-      box.innerHTML=[`<button type="button" class="category-chip ${allActive?'active':''}" onclick="selectCategory('')"><div class="category-chip-head"><strong>全部教材</strong><span class="category-count">${totalCount}</span></div><div class="muted">顯示所有啟用中的教材</div></button>`].concat(categories.map(c=>`<button type="button" class="category-chip ${activeCategory===c.id?'active':''}" onclick="selectCategory('${c.id}')"><div class="category-chip-head"><strong>${esc(c.name)}</strong><span class="category-count">${getCategoryCount(c.id)}</span></div><div class="muted">${esc(c.description||'')}</div></button>`)).join('');
+      const cards=[`<button type="button" class="category-chip ${allActive?'active':''}" onclick="selectCategory('')"><div><strong>全部教材</strong><div class="muted">顯示所有啟用中的教材</div></div><span class="count-pill">${countForCategory('')}</span></button>`]
+        .concat(categories.map(function(c){
+          return `<button type="button" class="category-chip ${activeCategory===c.id?'active':''}" onclick="selectCategory('${c.id}')"><div><strong>${esc(c.name)}</strong><div class="muted">${esc(c.description||'')}</div></div><span class="count-pill">${countForCategory(c.id)}</span></button>`;
+        }));
+      box.innerHTML = cards.join('');
     }
     function selectCategory(id){ activeCategory=id||''; renderCategories(); renderResults(true); }
-    function filterItems(){ const kw=(qs('#keyword').value||'').trim().toLowerCase(); return trainingData.items.filter(x=>{ if(activeCategory && x.categoryId!==activeCategory) return false; if(!kw) return true; const hay=[x.title,x.categoryName,x.keywords,x.description].join(' ').toLowerCase(); return hay.includes(kw); }); }
-    function renderResults(forceShow=false){
-      const kw=(qs('#keyword').value||'').trim(); const rows=filterItems(); const show=!!kw || !!activeCategory || forceShow; const card=qs('#resultCard');
+    function filterItems(){
+      const kw=(qs('#keyword').value||'').trim().toLowerCase();
+      return trainingData.items.filter(function(x){
+        if(activeCategory && x.categoryId!==activeCategory) return false;
+        if(!kw) return true;
+        const hay=[x.title,x.categoryName,x.keywords,x.description].join(' ').toLowerCase();
+        return hay.includes(kw);
+      });
+    }
+    function renderResults(forceShow){
+      forceShow = !!forceShow;
+      const kw=(qs('#keyword').value||'').trim();
+      const rows=filterItems();
+      const show=!!kw || !!activeCategory || forceShow;
+      const card=qs('#resultCard');
       if(!show){ card.classList.add('hidden'); qs('#resultList').innerHTML=''; qs('#resultTag').textContent='全部'; return; }
       card.classList.remove('hidden');
-      const categoryName = activeCategory ? ((trainingData.categories.find(x=>x.id===activeCategory)||{}).name||'') : '全部'; qs('#resultTag').textContent = kw ? ('搜尋') : (categoryName || '全部');
-      qs('#resultList').innerHTML = rows.length ? rows.map(x=>`<div class="training-item"><div class="top"><strong>${esc(x.title)}</strong><span class="tag">${esc(x.categoryName)}</span></div><div class="training-meta">${x.keywords?`<span class="attach-badge">關鍵字：${esc(x.keywords)}</span>`:''}${x.updatedAt?`<span class="attach-badge">更新：${esc(String(x.updatedAt).replace(/ GMT.*$/,''))}</span>`:''}</div>${x.description?`<div class="muted">${nl2br(x.description)}</div>`:''}<div class="link-row">${resourceBtns(x.videoUrl,'影片說明','video')}${resourceBtns(x.docUrl,'查看文件 / 圖片','doc')}${resourceBtns(x.audioUrl,'音檔說明','audio')}</div></div>`).join('') : '<div class="empty-box">目前沒有符合條件的教材</div>';
+      const categoryName = activeCategory ? ((trainingData.categories.find(function(x){ return x.id===activeCategory; })||{}).name||'') : '全部';
+      qs('#resultTag').textContent = kw ? '搜尋' : (categoryName || '全部');
+      qs('#resultList').innerHTML = rows.length ? rows.map(function(x){
+        return `<div class="training-item"><div class="top"><strong>${esc(x.title)}</strong><span class="tag">${esc(x.categoryName)}</span></div><div class="training-meta">${x.keywords?`<span class="attach-badge">關鍵字：${esc(x.keywords)}</span>`:''}${x.updatedAt?`<span class="attach-badge">更新：${esc(String(x.updatedAt).replace(/ GMT.*$/,''))}</span>`:''}</div>${x.description?`<div class="muted">${nl2br(x.description)}</div>`:''}<div class="link-row">${resourceBtns(x.videoUrl,'影片說明')}${resourceBtns(x.docUrl,'查看文件 / 圖片')}${resourceBtns(x.audioUrl,'音檔說明')}</div></div>`;
+      }).join('') : '<div class="empty-box">目前沒有符合條件的教材</div>';
     }
     function init(){
       fillHeader();
       requireLogin();
       trainingData.categories = getFixedTrainingCategories();
       renderCategories();
-      qs('#searchBtn').onclick=()=>renderResults(true);
-      qs('#keyword').addEventListener('input', ()=>renderResults(!!qs('#keyword').value.trim()));
-      loadTraining().catch(e=>setMsg(qs('#msg'),e.message||String(e),true));
+      qs('#searchBtn').onclick=function(){ renderResults(true); };
+      qs('#keyword').addEventListener('input', function(){ renderResults(!!qs('#keyword').value.trim()); });
+      loadTraining().catch(function(e){ setMsg(qs('#msg'),e.message||String(e),true); });
     }
   </script>
 </body>

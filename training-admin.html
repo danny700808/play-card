@@ -8,14 +8,19 @@
   <style>
     .page-return-wrap{margin-bottom:16px}.page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;border-radius:16px;font-size:20px;font-weight:800}
     .training-links{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
-    .training-links a{width:auto}.status-pill{display:inline-block;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:800}
-    .status-on{background:#eef7f2;color:#16533f}.status-off{background:#eef1f5;color:#607080}.compact-help{margin-top:8px}
+    .training-links a,.training-links button{width:auto}
+    .status-pill{display:inline-block;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:800}
+    .status-on{background:#eef7f2;color:#16533f}.status-off{background:#eef1f5;color:#607080}
+    .compact-help{margin-top:8px}.compact-help.notice{color:#16533f;font-weight:700}
     .radio-inline{display:flex;align-items:center;gap:28px;flex-wrap:wrap}.radio-inline label{display:inline-flex;align-items:center;gap:10px;font-size:18px;font-weight:800;line-height:1}.radio-inline input{margin:0;width:24px;height:24px;flex:0 0 24px}
     .record-box{border:1px solid var(--line);border-radius:16px;padding:14px;background:#fbfcfe}
     .record-controls{display:flex;gap:10px;flex-wrap:wrap}.record-controls .btn{width:auto;padding:12px 16px}
-    .record-status{margin-top:8px;font-size:14px;color:var(--muted)}
-    .record-status.ok{color:#16533f;font-weight:700}
+    .record-status{margin-top:8px;font-size:14px;color:var(--muted)} .record-status.ok{color:#16533f;font-weight:700}
     .progress-under-btn{margin-top:12px}
+    .attach-panel{margin-top:18px;padding:16px;border:1px dashed var(--line);border-radius:16px;background:#fbfcfe}
+    .attach-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}.attach-actions .btn{width:auto;padding:12px 16px}
+    .mini-note{font-size:13px;color:var(--muted);line-height:1.7}
+    .attach-state{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
   </style>
 </head>
 <body onload="init()">
@@ -28,7 +33,7 @@
           <div class="welcome">歡迎 <span data-user-name></span></div>
         </div>
       </div>
-      <div class="muted">第一版支援：新增教材、上傳影片、上傳多張圖片/多文件、直接錄音、啟用/停用與編輯既有資料。</div>
+      <div class="muted">A 方案：先建立文字教材，再另外補上影片、圖片 / 文件與音檔。這樣手機比較穩，就算大檔案稍後才上傳也沒關係。</div>
       <div id="msg" class="message"></div>
     </div>
 
@@ -38,30 +43,41 @@
       <div class="field"><label for="title">主題名稱</label><input id="title" type="text" placeholder="例如：蝦皮寄件完整流程"></div>
       <div class="field"><label for="keywords">關鍵字</label><input id="keywords" type="text" placeholder="例如：蝦皮、寄件、包貨、出貨"></div>
       <div class="field"><label for="description">內容說明</label><textarea id="description" placeholder="可放 SOP 文字重點，員工搜尋後會直接看到。"></textarea></div>
-      <div class="field"><label for="videoFile">上傳影片（選填）</label><input id="videoFile" type="file" accept="video/mp4,video/quicktime,video/webm,video/*"><div class="muted compact-help">建議 4 分鐘內短影片；系統會先嘗試縮小後再上傳，並盡量保留聲音。</div></div>
-      <div class="field"><label for="docFile">上傳圖片 / 文件（選填）</label><input id="docFile" type="file" multiple accept="image/*,application/pdf,.pdf,.doc,.docx,text/plain,.txt,.xls,.xlsx,.ppt,.pptx"><div class="muted compact-help">可一次選多張圖片或多個文件；圖片會先縮小後再上傳。</div></div>
-      <div class="field"><label>錄音說明（選填）</label>
-        <div class="record-box">
-          <div class="record-controls">
-            <button class="btn secondary" type="button" id="recordBtn">開始錄音</button>
-            <button class="btn secondary" type="button" id="stopRecordBtn" disabled>停止錄音</button>
-            <button class="btn secondary" type="button" id="clearRecordBtn">清除錄音</button>
-          </div>
-          <div id="recordStatus" class="record-status">尚未錄音</div>
-          <div id="recordMeter" class="rec-meter hidden" aria-hidden="true">
-            <span class="rec-bar"></span><span class="rec-bar"></span><span class="rec-bar"></span><span class="rec-bar"></span><span class="rec-bar"></span><span class="rec-bar"></span><span class="rec-bar"></span><span class="rec-bar"></span>
-          </div>
-          <audio id="recordPreview" controls class="hidden" style="width:100%;margin-top:8px"></audio>
-        </div>
-      </div>
       <div class="field"><label for="sortOrder">排序</label><input id="sortOrder" type="number" min="1" step="1" placeholder="留空就自動排最後"></div>
       <div class="field"><label>是否啟用</label><div class="radio-inline"><label><input type="radio" name="enabled" value="是" checked>是</label><label><input type="radio" name="enabled" value="否">否</label></div></div>
-      <div class="btn-row"><button class="btn secondary" type="button" onclick="resetForm()">清空</button><button class="btn" id="saveBtn" type="button">儲存教材</button></div>
-      <div id="progressBox" class="progress-box progress-under-btn hidden" aria-live="polite">
-        <div class="progress-head"><strong>上傳進度</strong><span id="progressText">0%</span></div>
-        <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
-      </div>
+      <div class="btn-row"><button class="btn secondary" type="button" onclick="resetForm()">清空</button><button class="btn" id="saveBtn" type="button">先建立文字教材</button></div>
       <input id="itemId" type="hidden">
+
+      <div class="attach-panel">
+        <strong>第二步：補上附件</strong>
+        <div class="mini-note">先按上面的「先建立文字教材」，建立成功後才會有教材 ID。之後你可以慢慢補上影片、文件 / 圖片與音檔，不必一次上傳完。</div>
+        <div class="attach-state" id="attachState"></div>
+        <div class="field"><label for="videoFile">補上影片說明（選填）</label><input id="videoFile" type="file" accept="video/mp4,video/quicktime,video/webm,video/*"><div class="compact-help">影片會另外上傳，不會影響文字教材先建立。</div></div>
+        <div class="field"><label for="docFile">補上圖片 / 文件（選填）</label><input id="docFile" type="file" multiple accept="image/*,application/pdf,.pdf,.doc,.docx,text/plain,.txt,.xls,.xlsx,.ppt,.pptx"><div class="compact-help">可一次選多張圖片或多個文件。</div></div>
+        <div class="field"><label>補上音檔說明（選填）</label>
+          <div class="record-box">
+            <div class="record-controls">
+              <button class="btn secondary" type="button" id="recordBtn">開始錄音</button>
+              <button class="btn secondary" type="button" id="stopRecordBtn" disabled>停止錄音</button>
+              <button class="btn secondary" type="button" id="clearRecordBtn">清除錄音</button>
+            </div>
+            <div id="recordStatus" class="record-status">尚未錄音</div>
+            <div id="recordMeter" class="rec-meter hidden" aria-hidden="true">
+              <span class="rec-bar"></span><span class="rec-bar"></span><span class="rec-bar"></span><span class="rec-bar"></span><span class="rec-bar"></span><span class="rec-bar"></span><span class="rec-bar"></span><span class="rec-bar"></span>
+            </div>
+            <audio id="recordPreview" controls class="hidden" style="width:100%;margin-top:8px"></audio>
+          </div>
+        </div>
+        <div class="attach-actions">
+          <button class="btn secondary" type="button" id="uploadVideoBtn">補上影片</button>
+          <button class="btn secondary" type="button" id="uploadDocBtn">補上文件 / 圖片</button>
+          <button class="btn secondary" type="button" id="uploadAudioBtn">補上音檔</button>
+        </div>
+        <div id="progressBox" class="progress-box progress-under-btn hidden" aria-live="polite">
+          <div class="progress-head"><strong>附件上傳進度</strong><span id="progressText">0%</span></div>
+          <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
+        </div>
+      </div>
     </div>
 
     <div class="card">
@@ -73,6 +89,7 @@
   <script src="app.js"></script>
   <script>
     let adminData={categories:[],items:[]};
+    let audioRecorder=null, audioDataUrl='', audioPreviewUrl='';
 
     const FIXED_TRAINING_CATEGORIES = [
       { id:'CAT001', name:'門市接待與銷售', sortOrder:1, enabled:true, description:'接待、詢問需求、成交與售後應對' },
@@ -81,39 +98,40 @@
       { id:'CAT004', name:'門市環境與清潔維護', sortOrder:4, enabled:true, description:'清潔、整理、展示品保養與開收店檢查' },
       { id:'CAT005', name:'行政與教學支援', sortOrder:5, enabled:true, description:'收款、記帳、課務、學生接待與行政協助' }
     ];
-    function getFixedTrainingCategories(){
-      return FIXED_TRAINING_CATEGORIES.map(x => ({...x}));
-    }
+    function getFixedTrainingCategories(){ return FIXED_TRAINING_CATEGORIES.map(function(x){ return Object.assign({}, x); }); }
     function normalizeTrainingItems(items){
-      const catMap = Object.fromEntries(getFixedTrainingCategories().map(c => [c.id, c]));
-      return (items || []).map(x => {
-        const y = {...(x || {})};
+      const catMap = Object.fromEntries(getFixedTrainingCategories().map(function(c){ return [c.id, c]; }));
+      return (items || []).map(function(x){
+        const y = Object.assign({}, x || {});
         const c = catMap[y.categoryId];
         if (c) {
           y.categoryName = c.name;
-          if (y.categorySortOrder === undefined || y.categorySortOrder === null || y.categorySortOrder === '') {
-            y.categorySortOrder = c.sortOrder;
-          }
+          if (y.categorySortOrder === undefined || y.categorySortOrder === null || y.categorySortOrder === '') y.categorySortOrder = c.sortOrder;
         }
         return y;
       });
     }
-
-    let audioRecorder=null, audioDataUrl='', audioPreviewUrl='';
-    function esc(s){return String(s||'').replace(/[&<>"]/g,function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]||m;});}
-    function splitLinks(v){ return String(v||'').split(/\n+/).map(s=>s.trim()).filter(Boolean); }
-    function linkButtons(urls,label,kind){
-      const arr=splitLinks(urls);
-      return arr.map((u,i)=>{
-        const href=(kind==='video'?videoOpenUrl(u):(kind==='audio'?audioOpenUrl(u):u));
-        return `<a class="btn secondary mini-btn" href="${href}" target="_blank" rel="noopener">${label}${arr.length>1?(' '+(i+1)):''}</a>`;
-      }).join('');
-    }
+    function esc(s){ return String(s||'').replace(/[&<>"]/g,function(m){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m] || m; }); }
+    function splitLinks(v){ return String(v||'').split(/
++/).map(function(s){ return s.trim(); }).filter(Boolean); }
+    function linkButtons(urls,label){ const arr=splitLinks(urls); return arr.map(function(u,i){ return `<a class="btn secondary mini-btn" href="${u}" target="_blank" rel="noopener">${label}${arr.length>1?(' '+(i+1)):''}</a>`; }).join(''); }
     function setProgress(v,label){ qs('#progressBox').classList.remove('hidden'); qs('#progressBar').style.width=v+'%'; qs('#progressText').textContent=(label?label+' ':'')+v+'%'; }
     function resetProgress(){ qs('#progressBar').style.width='0%'; qs('#progressText').textContent='0%'; qs('#progressBox').classList.add('hidden'); }
     function selectedEnabled(){ const el=document.querySelector('input[name="enabled"]:checked'); return el?el.value:'是'; }
-    function fillCategoryOptions(){ const categories=getFixedTrainingCategories(); qs('#categoryId').innerHTML='<option value="">請選擇分類</option>'+categories.map(c=>`<option value="${c.id}">${c.name}</option>`).join(''); }
-    async function loadAdminData(){
+    function fillCategoryOptions(){ const categories=getFixedTrainingCategories(); qs('#categoryId').innerHTML='<option value="">請選擇分類</option>'+categories.map(function(c){ return `<option value="${c.id}">${c.name}</option>`; }).join(''); }
+    function currentItem(){ const id=qs('#itemId').value||''; return adminData.items.find(function(x){ return x.id===id; }) || null; }
+    function renderAttachState(){
+      const box=qs('#attachState');
+      const item=currentItem();
+      if(!item){ box.innerHTML='<span class="attach-badge">請先建立文字教材</span>'; return; }
+      box.innerHTML=[
+        `<span class="attach-badge">教材ID：${esc(item.id||'')}</span>`,
+        `<span class="attach-badge">影片：${splitLinks(item.videoUrl).length?('已上傳 '+splitLinks(item.videoUrl).length+' 個'): '尚未上傳'}</span>`,
+        `<span class="attach-badge">文件 / 圖片：${splitLinks(item.docUrl).length?('已上傳 '+splitLinks(item.docUrl).length+' 個'): '尚未上傳'}</span>`,
+        `<span class="attach-badge">音檔：${splitLinks(item.audioUrl).length?('已上傳 '+splitLinks(item.audioUrl).length+' 個'): '尚未上傳'}</span>`
+      ].join('');
+    }
+    async function loadAdminData(silent){
       const user=requireLogin(); if(!user) return;
       adminData.categories = getFixedTrainingCategories();
       fillCategoryOptions();
@@ -121,82 +139,168 @@
       if(!r.ok) throw new Error(r.message||'讀取失敗');
       adminData.items = normalizeTrainingItems(r.items||[]);
       renderAdminList();
+      renderAttachState();
+      if(!silent) setMsg(qs('#msg'),'資料已重新整理');
     }
     function renderAdminList(){
       const box=qs('#adminList');
       const categories=getFixedTrainingCategories();
       const items=adminData.items||[];
-      box.innerHTML = categories.map(c=>{
-        const rows=items.filter(x=>x.categoryId===c.id);
-        const body = rows.length ? rows.map(x=>`<div class="item" style="margin-top:10px"><div class="top"><div><strong>${esc(x.title)}</strong><div class="muted">${esc(x.categoryName)}</div></div><span class="status-pill ${x.enabled?'status-on':'status-off'}">${x.enabled?'啟用中':'已停用'}</span></div>${x.description?`<div class="muted" style="margin-top:8px">${esc(x.description)}</div>`:''}<div class="training-links">${linkButtons(x.videoUrl,'影片說明','video')}${linkButtons(x.docUrl,'文件 / 圖片','doc')}${linkButtons(x.audioUrl,'音檔說明','audio')}<button class="btn secondary mini-btn" type="button" onclick="editItem('${x.id}')">編輯</button><button class="btn mini-btn" type="button" onclick="toggleItem('${x.id}', ${x.enabled?'false':'true'})">${x.enabled?'停用':'啟用'}</button></div></div>`).join('') : '<div class="muted" style="margin-top:10px">這一類目前沒有教材</div>';
+      box.innerHTML = categories.map(function(c){
+        const rows=items.filter(function(x){ return x.categoryId===c.id; });
+        const body = rows.length ? rows.map(function(x){
+          return `<div class="item" style="margin-top:10px"><div class="top"><div><strong>${esc(x.title)}</strong><div class="muted">${esc(x.categoryName)}</div></div><span class="status-pill ${x.enabled?'status-on':'status-off'}">${x.enabled?'啟用中':'已停用'}</span></div>${x.description?`<div class="muted" style="margin-top:8px">${esc(x.description)}</div>`:''}<div class="training-links">${linkButtons(x.videoUrl,'影片說明')}${linkButtons(x.docUrl,'文件 / 圖片')}${linkButtons(x.audioUrl,'音檔說明')}<button class="btn secondary mini-btn" type="button" onclick="editItem('${x.id}')">編輯文字</button><button class="btn mini-btn" type="button" onclick="toggleItem('${x.id}', ${x.enabled?'false':'true'})">${x.enabled?'停用':'啟用'}</button></div></div>`;
+        }).join('') : '<div class="muted" style="margin-top:10px">這一類目前沒有教材</div>';
         return `<details class="item" ${rows.length?'':'open'}><summary class="top" style="cursor:pointer;list-style:none"><div><strong>${esc(c.name)}</strong><div class="muted">${esc(c.description||'')}</div></div><span class="tag">${rows.length} 筆</span></summary>${body}</details>`;
       }).join('');
     }
-    function editItem(id){ const x=adminData.items.find(r=>r.id===id); if(!x) return; qs('#itemId').value=x.id||''; qs('#categoryId').value=x.categoryId||''; qs('#title').value=x.title||''; qs('#keywords').value=x.keywords||''; qs('#description').value=x.description||''; qs('#sortOrder').value=x.sortOrder||''; document.querySelector(`input[name="enabled"][value="${x.enabled?'是':'否'}"]`).checked=true; window.scrollTo({top:0,behavior:'smooth'}); }
-    function clearRecording(){ audioDataUrl=''; if(audioPreviewUrl){ URL.revokeObjectURL(audioPreviewUrl); audioPreviewUrl=''; } qs('#recordPreview').src=''; qs('#recordPreview').classList.add('hidden'); qs('#recordStatus').textContent='尚未錄音'; qs('#recordStatus').classList.remove('ok'); qs('#recordMeter').classList.add('hidden'); qsa('#recordMeter .rec-bar').forEach(b=>{ b.style.height='20px'; b.classList.remove('live'); }); }
-    function resetForm(){ ['itemId','title','keywords','description','sortOrder'].forEach(id=>qs('#'+id).value=''); qs('#categoryId').value=''; document.querySelector('input[name="enabled"][value="是"]').checked=true; ['videoFile','docFile'].forEach(id=>qs('#'+id).value=''); clearRecording(); }
-    async function toggleItem(id, enable){ const user=requireLogin(); if(!user) return; const r=await api('toggleTrainingItem',{userId:user.id,itemId:id,enabled:enable}); setMsg(qs('#msg'), r.message||'', !r.ok); if(r.ok) loadAdminData(); }
-    async function processMixedFiles(fileList){
-      const files=Array.from(fileList||[]).filter(Boolean); const out=[]; let index=0;
-      for(const file of files){
-        index += 1;
-        if(String(file.type||'').startsWith('image/')) out.push(await compressImageToDataUrl(file,1600,0.76));
-        else out.push(await fileToDataUrl(file));
-        setProgress(Math.min(72, 30 + Math.round((index/files.length)*32)), '附件處理中');
-      }
-      return out.filter(Boolean);
+    function editItem(id){
+      const x=adminData.items.find(function(r){ return r.id===id; });
+      if(!x) return;
+      qs('#itemId').value=x.id||'';
+      qs('#categoryId').value=x.categoryId||'';
+      qs('#title').value=x.title||'';
+      qs('#keywords').value=x.keywords||'';
+      qs('#description').value=x.description||'';
+      qs('#sortOrder').value=x.sortOrder||'';
+      const radio=document.querySelector(`input[name="enabled"][value="${x.enabled?'是':'否'}"]`); if(radio) radio.checked=true;
+      renderAttachState();
+      window.scrollTo({top:0,behavior:'smooth'});
     }
-    async function saveItem(){
+    function clearRecording(){
+      audioDataUrl='';
+      if(audioPreviewUrl){ URL.revokeObjectURL(audioPreviewUrl); audioPreviewUrl=''; }
+      qs('#recordPreview').src='';
+      qs('#recordPreview').classList.add('hidden');
+      qs('#recordStatus').textContent='尚未錄音';
+      qs('#recordStatus').classList.remove('ok');
+      qs('#recordMeter').classList.add('hidden');
+    }
+    function resetForm(){
+      qs('#itemId').value=''; qs('#categoryId').value=''; qs('#title').value=''; qs('#keywords').value=''; qs('#description').value=''; qs('#sortOrder').value='';
+      document.querySelector('input[name="enabled"][value="是"]').checked=true;
+      qs('#videoFile').value=''; qs('#docFile').value=''; clearRecording(); resetProgress(); renderAttachState();
+    }
+    async function saveTextOnly(){
       const user=requireLogin(); if(!user) return;
-      const title=qs('#title').value.trim(), categoryId=qs('#categoryId').value;
-      if(!categoryId || !title){ setMsg(qs('#msg'),'請先選擇分類並填寫主題名稱',true); return; }
-      const btn=qs('#saveBtn'); btn.disabled=true; setMsg(qs('#msg'),'');
+      const payload={
+        userId:user.id,
+        itemId:qs('#itemId').value||'',
+        categoryId:qs('#categoryId').value,
+        title:(qs('#title').value||'').trim(),
+        keywords:(qs('#keywords').value||'').trim(),
+        description:(qs('#description').value||'').trim(),
+        sortOrder:qs('#sortOrder').value,
+        enabled:selectedEnabled(),
+        saveMode:'textOnly'
+      };
+      if(!payload.categoryId || !payload.title){ setMsg(qs('#msg'),'請先選擇教材分類並輸入主題名稱',true); return; }
+      const btn=qs('#saveBtn'); btn.disabled=true; resetProgress();
       try{
-        setProgress(8,'準備中');
-        const videoFile=qs('#videoFile').files[0], docFiles=qs('#docFile').files;
-        let videoData='', docDataList=[];
-        if(videoFile){ setProgress(18,'影片處理中'); videoData=await compressVideoToDataUrl(videoFile); }
-        if(docFiles && docFiles.length){ docDataList=await processMixedFiles(docFiles); }
-        if(audioDataUrl){ setProgress(78,'整理錄音'); }
-        const payload={ userId:user.id, itemId:qs('#itemId').value.trim(), categoryId, title, keywords:qs('#keywords').value.trim(), description:qs('#description').value.trim(), sortOrder:qs('#sortOrder').value.trim(), enabled:selectedEnabled(), videoData, docDataList, audioData:audioDataUrl };
-        setProgress(88,'上傳中');
-        const r=await api('saveTrainingItem', payload);
-        setProgress(100,'完成');
-        setMsg(qs('#msg'), r.message||'', !r.ok);
-        if(r.ok){ resetForm(); await loadAdminData(); }
-      }catch(e){ setMsg(qs('#msg'), e.message||String(e), true); }
-      finally{ setTimeout(resetProgress,900); btn.disabled=false; }
+        const r=await api('saveTrainingItem',payload);
+        if(!r.ok) throw new Error(r.message||'儲存失敗');
+        if(r.itemId) qs('#itemId').value=r.itemId;
+        setMsg(qs('#msg'), r.message || '文字教材已建立，可再補上附件');
+        await loadAdminData(true);
+        if(r.itemId) editItem(r.itemId);
+        else renderAttachState();
+      }catch(e){ setMsg(qs('#msg'),e.message||String(e),true); }
+      finally{ btn.disabled=false; }
     }
-    async function beginRecord(){
+    async function uploadCurrentAsset(kind){
+      const user=requireLogin(); if(!user) return;
+      const itemId=qs('#itemId').value||'';
+      if(!itemId){ setMsg(qs('#msg'),'請先建立文字教材，再補上附件。',true); return; }
+      const item=currentItem();
+      if(!item){ setMsg(qs('#msg'),'找不到目前教材，請先按重新整理。',true); return; }
+      const payload={userId:user.id,itemId:itemId,saveMode:kind};
+      if(kind==='videoOnly'){
+        const file=qs('#videoFile').files && qs('#videoFile').files[0];
+        if(!file){ setMsg(qs('#msg'),'請先選擇影片檔。',true); return; }
+        payload.videoData = await fileToDataUrl(file);
+      } else if(kind==='docsOnly'){
+        const files=Array.from(qs('#docFile').files||[]);
+        if(!files.length){ setMsg(qs('#msg'),'請先選擇文件或圖片。',true); return; }
+        payload.docDataList = [];
+        let index=0;
+        for(const f of files){
+          index += 1;
+          setProgress(Math.max(10, Math.round(index/files.length*70)), '處理文件');
+          payload.docDataList.push(await fileToDataUrl(f));
+        }
+      } else if(kind==='audioOnly'){
+        if(!audioDataUrl){ setMsg(qs('#msg'),'請先錄音。',true); return; }
+        payload.audioData = audioDataUrl;
+      }
+      setProgress(85,'上傳中');
+      try{
+        const r=await api('saveTrainingItem',payload);
+        if(!r.ok) throw new Error(r.message||'附件上傳失敗');
+        setProgress(100,'完成');
+        setMsg(qs('#msg'), r.message || '附件已補上');
+        if(kind==='videoOnly') qs('#videoFile').value='';
+        if(kind==='docsOnly') qs('#docFile').value='';
+        if(kind==='audioOnly') clearRecording();
+        await loadAdminData(true);
+        editItem(itemId);
+      }catch(e){ setMsg(qs('#msg'),e.message||String(e),true); }
+      finally{ setTimeout(resetProgress,600); }
+    }
+    async function toggleItem(id, enabled){
+      const user=requireLogin(); if(!user) return;
+      try{
+        const r=await api('toggleTrainingItem',{userId:user.id,itemId:id,enabled:enabled});
+        if(!r.ok) throw new Error(r.message||'更新失敗');
+        setMsg(qs('#msg'),r.message||'已更新');
+        await loadAdminData(true);
+        if((qs('#itemId').value||'')===id) editItem(id);
+      }catch(e){ setMsg(qs('#msg'),e.message||String(e),true); }
+    }
+    async function startRecord(){
       try{
         clearRecording();
-        qs('#recordMeter').classList.remove('hidden');
         qs('#recordStatus').textContent='錄音中...';
-        audioRecorder=await startRecorder(function(dataUrl){
-          audioDataUrl=dataUrl;
-          const mime=(dataUrl.match(/^data:([^;]+)/)||[])[1]||'audio/webm';
-          const bytes=atob((dataUrl.split(',')[1]||''));
-          const arr=new Uint8Array(bytes.length); for(let i=0;i<bytes.length;i++) arr[i]=bytes.charCodeAt(i);
-          const blob=new Blob([arr],{type:mime});
-          audioPreviewUrl=URL.createObjectURL(blob);
-          qs('#recordPreview').src=audioPreviewUrl; qs('#recordPreview').classList.remove('hidden');
-          qs('#recordStatus').textContent='錄音完成，可直接儲存教材'; qs('#recordStatus').classList.add('ok');
-          qsa('#recordMeter .rec-bar').forEach(b=>b.classList.remove('live'));
-          qs('#recordBtn').disabled=false; qs('#stopRecordBtn').disabled=true;
-        }, function(level){
-          const bars=qsa('#recordMeter .rec-bar');
-          bars.forEach((bar, idx)=>{ const base=18+(idx*3); const h=Math.max(18, Math.min(56, base + Math.round(level*42*((idx%2)?0.9:1.15)))); bar.style.height=h+'px'; bar.classList.add('live'); });
-        });
+        qs('#recordMeter').classList.remove('hidden');
         qs('#recordBtn').disabled=true; qs('#stopRecordBtn').disabled=false;
-      }catch(e){ clearRecording(); setMsg(qs('#msg'), e.message||String(e), true); }
+        audioRecorder = await startRecorder(function(dataUrl){
+          audioDataUrl=dataUrl||'';
+          qs('#recordBtn').disabled=false; qs('#stopRecordBtn').disabled=true;
+          qs('#recordMeter').classList.add('hidden');
+          if(audioDataUrl){
+            fetch(audioDataUrl).then(function(r){ return r.blob(); }).then(function(blob){
+              audioPreviewUrl=URL.createObjectURL(blob);
+              qs('#recordPreview').src=audioPreviewUrl;
+              qs('#recordPreview').classList.remove('hidden');
+              qs('#recordStatus').textContent='錄音完成，可補上到目前教材';
+              qs('#recordStatus').classList.add('ok');
+            });
+          }
+        }, function(level){
+          const meter=qs('#recordMeter');
+          meter.querySelectorAll('.rec-bar').forEach(function(bar,idx){
+            const active=(idx+1)/8 <= Math.max(0.12, level*1.4);
+            bar.classList.toggle('active',active);
+          });
+        });
+      }catch(e){
+        qs('#recordBtn').disabled=false; qs('#stopRecordBtn').disabled=true; qs('#recordMeter').classList.add('hidden');
+        setMsg(qs('#msg'),e.message||String(e),true);
+      }
     }
-    function stopRecord(){ if(audioRecorder){ try{ audioRecorder.stop(); }catch(e){} audioRecorder=null; } }
+    function stopRecord(){ if(audioRecorder && audioRecorder.state!=='inactive') audioRecorder.stop(); }
     function init(){
-      fillHeader(); const user=requireLogin(); if(!user) return; if(!user.showSettingsZone){ location.href='dashboard.html'; return; }
-      adminData.categories = getFixedTrainingCategories();
+      fillHeader();
+      requireLogin();
       fillCategoryOptions();
-      setPortalMode('settings'); qs('#saveBtn').onclick=saveItem; qs('#recordBtn').onclick=beginRecord; qs('#stopRecordBtn').onclick=stopRecord; qs('#clearRecordBtn').onclick=clearRecording;
-      loadAdminData().catch(e=>setMsg(qs('#msg'), e.message||String(e), true));
+      renderAttachState();
+      qs('#saveBtn').onclick=saveTextOnly;
+      qs('#uploadVideoBtn').onclick=function(){ uploadCurrentAsset('videoOnly'); };
+      qs('#uploadDocBtn').onclick=function(){ uploadCurrentAsset('docsOnly'); };
+      qs('#uploadAudioBtn').onclick=function(){ uploadCurrentAsset('audioOnly'); };
+      qs('#recordBtn').onclick=startRecord;
+      qs('#stopRecordBtn').onclick=stopRecord;
+      qs('#clearRecordBtn').onclick=clearRecording;
+      loadAdminData(true).catch(function(e){ setMsg(qs('#msg'),e.message||String(e),true); });
     }
   </script>
 </body>
