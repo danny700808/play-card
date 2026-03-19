@@ -100,71 +100,6 @@ async function compressVideoToDataUrl(file, opts={}){
   }
   return await fileToDataUrl(file);
 }
-
-function splitDataUrlForChunkUpload(dataUrl, chunkChars=350000){
-  const raw=String(dataUrl||'');
-  const m=raw.match(/^data:([^;]+);base64,(.*)$/i);
-  if(!m) throw new Error('影片格式解析失敗');
-  const mime=m[1]||'application/octet-stream';
-  const base64=m[2]||'';
-  const chunks=[];
-  for(let i=0;i<base64.length;i+=chunkChars){
-    chunks.push(base64.slice(i,i+chunkChars));
-  }
-  return { mime, chunks, totalChunks: chunks.length, base64Length: base64.length };
-}
-async function uploadTrainingVideoInChunks(file, opts={}){
-  const options=Object.assign({
-    userId:'', itemId:'', onProgress:null, chunkChars:350000, maxInputMB:120,
-    allowedTypes:['video/mp4','video/quicktime','video/webm']
-  }, opts||{});
-  if(!file) return { ok:true, skipped:true };
-  const sizeMB=file.size/1024/1024;
-  if(sizeMB>options.maxInputMB){
-    throw new Error('影片檔太大，請先縮短影片或降低畫質後再上傳');
-  }
-  const mime=String(file.type||'').toLowerCase();
-  if(options.allowedTypes.length && mime && !options.allowedTypes.includes(mime)){
-    throw new Error('目前影片格式不建議直接上傳，請先用手機存成 MP4 後再試');
-  }
-  options.onProgress && options.onProgress(0,'影片讀取中');
-  const dataUrl=await fileToDataUrl(file);
-  const parsed=splitDataUrlForChunkUpload(dataUrl, options.chunkChars);
-  options.onProgress && options.onProgress(8,'建立影片上傳工作');
-  const startRes=await api('startTrainingVideoUpload',{
-    userId:options.userId,
-    itemId:options.itemId,
-    fileName:file.name||('training_video_'+Date.now()),
-    mimeType:parsed.mime,
-    totalChunks:parsed.totalChunks,
-    fileSize:file.size||0
-  });
-  if(!startRes.ok) throw new Error(startRes.message||'影片上傳初始化失敗');
-  const sessionId=startRes.sessionId;
-  for(let i=0;i<parsed.chunks.length;i++){
-    const pct=8+Math.round(((i+1)/parsed.chunks.length)*82);
-    options.onProgress && options.onProgress(pct,'影片上傳中');
-    const chunkRes=await api('uploadTrainingVideoChunk',{
-      userId:options.userId,
-      itemId:options.itemId,
-      sessionId,
-      index:i,
-      totalChunks:parsed.totalChunks,
-      chunkBase64:parsed.chunks[i]
-    });
-    if(!chunkRes.ok) throw new Error(chunkRes.message||('影片分段上傳失敗（第'+(i+1)+'段）'));
-  }
-  options.onProgress && options.onProgress(94,'影片合併中');
-  const finishRes=await api('finishTrainingVideoUpload',{
-    userId:options.userId,
-    itemId:options.itemId,
-    sessionId
-  });
-  if(!finishRes.ok) throw new Error(finishRes.message||'影片寫入失敗');
-  options.onProgress && options.onProgress(100,'影片完成');
-  return finishRes;
-}
-
 function formatTaskStatusTag(status){
   const cls=status==='待處理'?'pending':(status==='已完成'?'done':'');
   return `<span class="tag ${cls}">${status}</span>`;
@@ -225,4 +160,96 @@ function normalizeBirthDate(v){
   const mo=m[2].padStart(2,'0');
   const d=m[3].padStart(2,'0');
   return `${y}-${mo}-${d}`;
+}
+
+
+async function ensureGoogleIdentityLoaded(){
+  if(window.google && window.google.accounts && window.google.accounts.oauth2) return;
+  await new Promise((resolve,reject)=>{
+    const existing=[...document.scripts].find(s=>String(s.src||'').includes('accounts.google.com/gsi/client'));
+    if(existing){
+      existing.addEventListener('load',()=>resolve(),{once:true});
+      existing.addEventListener('error',()=>reject(new Error('Google 身分驗證載入失敗')), {once:true});
+      if(window.google && window.google.accounts && window.google.accounts.oauth2) resolve();
+      return;
+    }
+    const s=document.createElement('script');
+    s.src='https://accounts.google.com/gsi/client';
+    s.async=true; s.defer=true;
+    s.onload=()=>resolve();
+    s.onerror=()=>reject(new Error('Google 身分驗證載入失敗'));
+    document.head.appendChild(s);
+  });
+}
+let __googleTokenClient=null;
+function getGoogleClientId(){
+  return String((window.APP_CONFIG && window.APP_CONFIG.GOOGLE_CLIENT_ID) || '').trim();
+}
+async function getGoogleAccessTokenInteractive(scope='https://www.googleapis.com/auth/drive.file'){
+  const clientId=getGoogleClientId();
+  if(!clientId){
+    throw new Error('尚未設定 GOOGLE_CLIENT_ID，請先依說明建立 Google OAuth Web Client 並填入 config.js');
+  }
+  await ensureGoogleIdentityLoaded();
+  return await new Promise((resolve,reject)=>{
+    try{
+      __googleTokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: clientId,
+        scope,
+        callback: (resp)=>{
+          if(resp && resp.access_token) resolve(resp.access_token);
+          else reject(new Error((resp&&resp.error)||'Google 授權失敗'));
+        }
+      });
+      __googleTokenClient.requestAccessToken({prompt:'consent'});
+    }catch(e){ reject(e); }
+  });
+}
+async function driveCreateResumableSession(file, folderId, accessToken){
+  const metadata={ name:file.name, mimeType:file.type || 'application/octet-stream' };
+  if(folderId) metadata.parents=[folderId];
+  const res=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name,webViewLink', {
+    method:'POST',
+    headers:{
+      'Authorization':'Bearer '+accessToken,
+      'Content-Type':'application/json; charset=UTF-8',
+      'X-Upload-Content-Type': file.type || 'application/octet-stream',
+      'X-Upload-Content-Length': String(file.size || 0)
+    },
+    body: JSON.stringify(metadata)
+  });
+  if(!res.ok){ throw new Error('建立 Google Drive 上傳工作失敗'); }
+  const uploadUrl=res.headers.get('Location');
+  if(!uploadUrl) throw new Error('Google Drive 沒有回傳上傳位置');
+  return uploadUrl;
+}
+async function driveUploadFileResumable(file, folderId, accessToken, onProgress){
+  const uploadUrl=await driveCreateResumableSession(file, folderId, accessToken);
+  const chunkSize=8 * 1024 * 1024;
+  let offset=0;
+  while(offset < file.size){
+    const end=Math.min(offset + chunkSize, file.size);
+    const chunk=file.slice(offset, end);
+    const res=await fetch(uploadUrl,{
+      method:'PUT',
+      headers:{
+        'Content-Length': String(end-offset),
+        'Content-Type': file.type || 'application/octet-stream',
+        'Content-Range': `bytes ${offset}-${end-1}/${file.size}`
+      },
+      body: chunk
+    });
+    if(!(res.ok || res.status===308)){
+      let msg='影片直傳 Google Drive 失敗';
+      try{ const t=await res.text(); if(t) msg += '：'+t; }catch(e){}
+      throw new Error(msg);
+    }
+    offset=end;
+    if(onProgress) onProgress(Math.min(100, Math.round(offset / file.size * 100)));
+    if(res.ok){
+      const data=await res.json();
+      return data;
+    }
+  }
+  throw new Error('影片直傳未完成');
 }

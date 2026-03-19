@@ -38,7 +38,7 @@
       <div class="field"><label for="title">主題名稱</label><input id="title" type="text" placeholder="例如：蝦皮寄件完整流程"></div>
       <div class="field"><label for="keywords">關鍵字</label><input id="keywords" type="text" placeholder="例如：蝦皮、寄件、包貨、出貨"></div>
       <div class="field"><label for="description">內容說明</label><textarea id="description" placeholder="可放 SOP 文字重點，員工搜尋後會直接看到。"></textarea></div>
-      <div class="field"><label for="videoFile">上傳影片（選填）</label><input id="videoFile" type="file" accept="video/mp4,video/quicktime,video/webm,video/*"><div class="muted compact-help">建議先用手機剪成短影片再上傳；這版改成原檔直傳，避免前端轉檔造成沒聲音或 Google 一直處理中。</div></div>
+      <div class="field"><label for="videoFile">上傳影片（選填）</label><input id="videoFile" type="file" accept="video/mp4,video/quicktime,video/webm,video/*"><div class="muted compact-help">大影片改成直接傳 Google Drive，不再走 Apps Script 分段搬運；第一次使用會跳出 Google 授權。</div></div>
       <div class="field"><label for="docFile">上傳圖片 / 文件（選填）</label><input id="docFile" type="file" multiple accept="image/*,application/pdf,.pdf,.doc,.docx,text/plain,.txt,.xls,.xlsx,.ppt,.pptx"><div class="muted compact-help">可一次選多張圖片或多個文件；圖片會先縮小後再上傳。</div></div>
       <div class="field"><label>錄音說明（選填）</label>
         <div class="record-box">
@@ -146,55 +146,39 @@
       if(!categoryId || !title){ setMsg(qs('#msg'),'請先選擇分類並填寫主題名稱',true); return; }
       const btn=qs('#saveBtn'); btn.disabled=true; setMsg(qs('#msg'),'');
       try{
-        setProgress(8,'準備中');
         const videoFile=qs('#videoFile').files[0], docFiles=qs('#docFile').files;
         let docDataList=[];
-        if(docFiles && docFiles.length){ docDataList=await processMixedFiles(docFiles); }
-        if(audioDataUrl){ setProgress(72,'整理錄音'); }
-        const payload={ userId:user.id, itemId:qs('#itemId').value.trim(), categoryId, title, keywords:qs('#keywords').value.trim(), description:qs('#description').value.trim(), sortOrder:qs('#sortOrder').value.trim(), enabled:selectedEnabled(), docDataList, audioData:audioDataUrl, saveMode:'textOnly' };
-        setProgress(videoFile?78:90, videoFile?'建立文字教材':'上傳中');
+        setProgress(8,'準備中');
+        if(docFiles && docFiles.length){ setProgress(22,'整理圖片 / 文件'); docDataList=await processMixedFiles(docFiles); }
+        if(audioDataUrl){ setProgress(34,'整理錄音'); }
+        const payload={ userId:user.id, itemId:qs('#itemId').value.trim(), categoryId, title, keywords:qs('#keywords').value.trim(), description:qs('#description').value.trim(), sortOrder:qs('#sortOrder').value.trim(), enabled:selectedEnabled(), docDataList, audioData:audioDataUrl };
+        setProgress(46,'建立文字教材');
         const r=await api('saveTrainingItem', payload);
-        if(!r.ok) throw new Error(r.message||'文字教材建立失敗');
-        const resolvedItemId=await resolveTrainingItemId_(user, r.itemId || qs('#itemId').value.trim(), categoryId, title, qs('#description').value.trim());
-        if(resolvedItemId) qs('#itemId').value=resolvedItemId;
-        let finalMessage=r.message||'教材已建立';
+        if(!r.ok){ throw new Error(r.message||'文字教材建立失敗'); }
+        const itemId=String(r.itemId || qs('#itemId').value || '').trim();
+        if(!itemId) throw new Error('教材已建立，但缺少 itemId');
         if(videoFile){
-          if(!resolvedItemId) throw new Error('文字教材已建立，但暫時抓不到教材 ID，請先重新整理後再補傳影片');
-          await uploadTrainingVideoInChunks(videoFile,{
-            userId:user.id,
-            itemId:resolvedItemId,
-            onProgress:(pct,label)=>setProgress(pct,label)
-          });
-          finalMessage='教材已建立，影片已上傳完成。';
+          const cfg=await api('getTrainingUploadConfig',{userId:user.id});
+          if(!cfg.ok) throw new Error(cfg.message||'無法取得影片上傳設定');
+          setProgress(56,'Google 授權');
+          const token=await getGoogleAccessTokenInteractive('https://www.googleapis.com/auth/drive.file');
+          setProgress(62,'影片直傳 Drive');
+          const uploadRes=await driveUploadFileResumable(videoFile, cfg.folderId, token, function(v){ setProgress(62 + Math.round(v*0.32), '影片上傳中'); });
+          if(!uploadRes || !uploadRes.id) throw new Error('影片已上傳，但沒有取得 Drive 檔案 ID');
+          setProgress(95,'回寫教材');
+          const a=await api('attachTrainingVideoFile',{ userId:user.id, itemId:itemId, fileId:uploadRes.id, fileName:uploadRes.name || videoFile.name, mimeType:videoFile.type || '' });
+          if(!a.ok) throw new Error(a.message||'影片已上傳，但回寫教材失敗');
+          setProgress(100,'完成');
+          setMsg(qs('#msg'), (r.message||'教材已建立。') + ' 影片也已直傳到 Google Drive。', false);
         }else{
           setProgress(100,'完成');
+          setMsg(qs('#msg'), r.message||'教材已建立。', false);
         }
-        setMsg(qs('#msg'), finalMessage, false);
         resetForm();
         await loadAdminData();
       }catch(e){ setMsg(qs('#msg'), e.message||String(e), true); }
       finally{ setTimeout(resetProgress,1200); btn.disabled=false; }
     }
-
-    async function resolveTrainingItemId_(user, fallbackId, categoryId, title, description){
-      const direct=sanitizeId_(fallbackId);
-      if(direct) return direct;
-      const res=await api('getTrainingPageData',{ userId:user.id, adminMode:true, includeDisabled:true });
-      const items=(res && (res.items || res.trainingItems)) || [];
-      const targetTitle=String(title||'').trim();
-      const targetCategory=String(categoryId||'').trim();
-      const targetDesc=String(description||'').trim();
-      const matched=items.filter(function(x){
-        return String(x.title||'').trim()===targetTitle &&
-          String(x.categoryId||'').trim()===targetCategory &&
-          String(x.description||'').trim()===targetDesc;
-      }).sort(function(a,b){
-        return String(b.updatedAt||'').localeCompare(String(a.updatedAt||''));
-      });
-      return matched.length ? sanitizeId_(matched[0].id) : '';
-    }
-    function sanitizeId_(v){ return String(v||'').trim(); }
-
     async function beginRecord(){
       try{
         clearRecording();
