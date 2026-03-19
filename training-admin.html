@@ -28,7 +28,7 @@
           <div class="welcome">歡迎 <span data-user-name></span></div>
         </div>
       </div>
-      <div class="muted">第一版支援：新增教材、上傳影片、上傳多張圖片/多文件、直接錄音、啟用/停用與編輯既有資料。影片與錄音按鈕會直接開啟 Google Drive 播放。</div>
+      <div class="muted">第一版支援：新增教材、上傳影片、上傳多張圖片/多文件、直接錄音、啟用/停用與編輯既有資料。</div>
       <div id="msg" class="message"></div>
     </div>
 
@@ -102,7 +102,13 @@
     let audioRecorder=null, audioDataUrl='', audioPreviewUrl='';
     function esc(s){return String(s||'').replace(/[&<>"]/g,function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]||m;});}
     function splitLinks(v){ return String(v||'').split(/\n+/).map(s=>s.trim()).filter(Boolean); }
-    function linkButtons(urls,label,kind){ const arr=splitLinks(urls); return arr.map((u,i)=>{ const href=normalizeDriveOpenUrl(u, kind||'file'); const text=(kind==='video'||kind==='audio') ? ('前往雲端播放'+(arr.length>1?(' '+(i+1)):'')) : (label+(arr.length>1?(' '+(i+1)):'')); return `<a class="btn secondary mini-btn" href="${href}" target="_blank" rel="noopener">${text}</a>`; }).join(''); }
+    function linkButtons(urls,label,kind){
+      const arr=splitLinks(urls);
+      return arr.map((u,i)=>{
+        const href=(kind==='video'?videoOpenUrl(u):(kind==='audio'?audioOpenUrl(u):u));
+        return `<a class="btn secondary mini-btn" href="${href}" target="_blank" rel="noopener">${label}${arr.length>1?(' '+(i+1)):''}</a>`;
+      }).join('');
+    }
     function setProgress(v,label){ qs('#progressBox').classList.remove('hidden'); qs('#progressBar').style.width=v+'%'; qs('#progressText').textContent=(label?label+' ':'')+v+'%'; }
     function resetProgress(){ qs('#progressBar').style.width='0%'; qs('#progressText').textContent='0%'; qs('#progressBox').classList.add('hidden'); }
     function selectedEnabled(){ const el=document.querySelector('input[name="enabled"]:checked'); return el?el.value:'是'; }
@@ -122,7 +128,7 @@
       const items=adminData.items||[];
       box.innerHTML = categories.map(c=>{
         const rows=items.filter(x=>x.categoryId===c.id);
-        const body = rows.length ? rows.map(x=>`<div class="item" style="margin-top:10px"><div class="top"><div><strong>${esc(x.title)}</strong><div class="muted">${esc(x.categoryName)}</div></div><span class="status-pill ${x.enabled?'status-on':'status-off'}">${x.enabled?'啟用中':'已停用'}</span></div>${x.description?`<div class="muted" style="margin-top:8px">${esc(x.description)}</div>`:''}<div class="training-links">${linkButtons(x.videoUrl,'影片','video')}${linkButtons(x.docUrl,'文件 / 圖片','image')}${linkButtons(x.audioUrl,'錄音','audio')}<button class="btn secondary mini-btn" type="button" onclick="editItem('${x.id}')">編輯</button><button class="btn mini-btn" type="button" onclick="toggleItem('${x.id}', ${x.enabled?'false':'true'})">${x.enabled?'停用':'啟用'}</button></div></div>`).join('') : '<div class="muted" style="margin-top:10px">這一類目前沒有教材</div>';
+        const body = rows.length ? rows.map(x=>`<div class="item" style="margin-top:10px"><div class="top"><div><strong>${esc(x.title)}</strong><div class="muted">${esc(x.categoryName)}</div></div><span class="status-pill ${x.enabled?'status-on':'status-off'}">${x.enabled?'啟用中':'已停用'}</span></div>${x.description?`<div class="muted" style="margin-top:8px">${esc(x.description)}</div>`:''}<div class="training-links">${linkButtons(x.videoUrl,'影片說明','video')}${linkButtons(x.docUrl,'文件 / 圖片','doc')}${linkButtons(x.audioUrl,'音檔說明','audio')}<button class="btn secondary mini-btn" type="button" onclick="editItem('${x.id}')">編輯</button><button class="btn mini-btn" type="button" onclick="toggleItem('${x.id}', ${x.enabled?'false':'true'})">${x.enabled?'停用':'啟用'}</button></div></div>`).join('') : '<div class="muted" style="margin-top:10px">這一類目前沒有教材</div>';
         return `<details class="item" ${rows.length?'':'open'}><summary class="top" style="cursor:pointer;list-style:none"><div><strong>${esc(c.name)}</strong><div class="muted">${esc(c.description||'')}</div></div><span class="tag">${rows.length} 筆</span></summary>${body}</details>`;
       }).join('');
     }

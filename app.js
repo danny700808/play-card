@@ -27,14 +27,12 @@ function saveLoginPref(email,password,remember=true){if(!remember){localStorage.
 function getSavedLogin(){try{return JSON.parse(localStorage.getItem('employeeSavedLogin')||'null')}catch(e){return null}}
 function applySavedLogin(emailSel='#email',passwordSel='#password',rememberSel='#rememberLogin'){const s=getSavedLogin();if(!s)return;const e=qs(emailSel),p=qs(passwordSel),r=qs(rememberSel);if(e)e.value=s.email||'';if(p)p.value=s.password||'';if(r)r.checked=!!s.remember;}
 function getDriveFileId(url){const m=String(url||'').match(/(?:file\/d\/|[?&]id=)([-_a-zA-Z0-9]+)/);return m?m[1]:'';}
-function isDriveUrl(url){return !!getDriveFileId(url);}
 function imagePreviewUrl(url){const id=getDriveFileId(url);return id?('https://drive.google.com/thumbnail?id='+id+'&sz=w1200'):url;}
-function driveFileViewUrl(url){const id=getDriveFileId(url);return id?('https://drive.google.com/file/d/'+id+'/view'):url;}
-function driveFilePreviewUrl(url){const id=getDriveFileId(url);return id?('https://drive.google.com/file/d/'+id+'/preview'):url;}
-function audioOpenUrl(url){return driveFileViewUrl(url);}
+function driveOpenUrl(url){const id=getDriveFileId(url);return id?('https://drive.google.com/file/d/'+id+'/view'):url;}
+function videoOpenUrl(url){return driveOpenUrl(url);}
+function audioOpenUrl(url){return driveOpenUrl(url);}
 function audioStreamUrl(url){const id=getDriveFileId(url);return id?('https://drive.google.com/uc?export=download&id='+id):url;}
-function mediaOpenUrl(url){return driveFileViewUrl(url);}
-function normalizeDriveOpenUrl(url, kind){const raw=String(url||'').trim(); if(!raw) return raw; const id=getDriveFileId(raw); if(!id) return raw; if(kind==='image') return raw; return driveFileViewUrl(raw);}
+function isAppleLikeBrowser(){const ua=navigator.userAgent||''; const isIOS=/iPhone|iPad|iPod/i.test(ua); const isSafari=/Safari/i.test(ua) && !/Chrome|CriOS|FxiOS|EdgiOS|OPiOS|DuckDuckGo/i.test(ua); return isIOS || isSafari;}
 async function compressImageToDataUrl(file, maxSize=1280, quality=0.78){
   if(!file) return '';
   if(!file.type.startsWith('image/')) return await fileToDataUrl(file);
@@ -85,6 +83,10 @@ async function compressVideoToDataUrl(file, opts={}){
   const sizeMB=file.size/1024/1024;
   if(sizeMB>options.maxInputMB){
     throw new Error('影片檔太大，請先在手機修剪到 4 分鐘內或降低畫質後再上傳');
+  }
+  if(isAppleLikeBrowser()){
+    if(sizeMB<=options.maxInputMB) return await fileToDataUrl(file);
+    throw new Error('iPhone / Safari 為避免影片有影像沒聲音，請先在手機修剪影片後再上傳');
   }
   const canRecord=!!(window.MediaRecorder && document.createElement('canvas').captureStream);
   if(!canRecord){
