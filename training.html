@@ -84,7 +84,21 @@
     function splitLinks(v){ return String(v||'').split(/
 +/).map(s=>s.trim()).filter(Boolean); }
     function resourceBtns(urls,label){ const arr=splitLinks(urls); return arr.map((u,i)=>`<a class="btn secondary link-btn" href="${u}" target="_blank" rel="noopener">${label}${arr.length>1?(' '+(i+1)):''}</a>`).join(''); }
-    async function loadTraining(){ const user=requireLogin(); if(!user) return; const r=await api('getTrainingPageData',{userId:user.id}); if(!r.ok) throw new Error(r.message||'讀取失敗'); trainingData={categories:getFixedTrainingCategories(),items:normalizeTrainingItems(r.items||[])}; renderCategories(); renderResults(); }
+    async function loadTraining(){
+      const user=requireLogin(); if(!user) return;
+      trainingData.categories = getFixedTrainingCategories();
+      renderCategories();
+      try{
+        const r=await api('getTrainingPageData',{userId:user.id});
+        if(!r.ok) throw new Error(r.message||'讀取失敗');
+        trainingData.items = normalizeTrainingItems(r.items||[]);
+      }catch(e){
+        trainingData.items = [];
+        setMsg(qs('#msg'), e.message||String(e), true);
+      }
+      renderCategories();
+      renderResults();
+    }
     function renderCategories(){
       const box=qs('#categoryList'); const allActive = activeCategory==='';
       const categories=(trainingData.categories||[]);
@@ -100,7 +114,7 @@
       const categoryName = activeCategory ? ((trainingData.categories.find(x=>x.id===activeCategory)||{}).name||'') : '全部'; qs('#resultTag').textContent = kw ? ('搜尋') : (categoryName || '全部');
       qs('#resultList').innerHTML = rows.length ? rows.map(x=>`<div class="training-item"><div class="top"><strong>${esc(x.title)}</strong><span class="tag">${esc(x.categoryName)}</span></div><div class="training-meta">${x.keywords?`<span class="attach-badge">關鍵字：${esc(x.keywords)}</span>`:''}${x.updatedAt?`<span class="attach-badge">更新：${esc(String(x.updatedAt).replace(/ GMT.*$/,''))}</span>`:''}</div>${x.description?`<div class="muted">${nl2br(x.description)}</div>`:''}<div class="link-row">${resourceBtns(x.videoUrl,'觀看影片')}${resourceBtns(x.docUrl,'查看文件 / 圖片')}${resourceBtns(x.audioUrl,'播放錄音')}</div></div>`).join('') : '<div class="empty-box">目前沒有符合條件的教材</div>';
     }
-    function init(){ fillHeader(); requireLogin(); qs('#searchBtn').onclick=()=>renderResults(true); qs('#keyword').addEventListener('input', ()=>renderResults(!!qs('#keyword').value.trim())); loadTraining().catch(e=>setMsg(qs('#msg'),e.message||String(e),true)); }
+    function init(){ fillHeader(); requireLogin(); qs('#searchBtn').onclick=()=>renderResults(true); qs('#keyword').addEventListener('input', ()=>renderResults(!!qs('#keyword').value.trim())); trainingData.categories=getFixedTrainingCategories(); renderCategories(); loadTraining(); }
   </script>
 </body>
 </html>

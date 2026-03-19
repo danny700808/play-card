@@ -110,9 +110,18 @@
     function fillCategoryOptions(){ const categories=adminData.categories||[]; qs('#categoryId').innerHTML='<option value="">請選擇分類</option>'+categories.map(c=>`<option value="${c.id}">${c.name}</option>`).join(''); if(!categories.length){ qs('#categoryId').innerHTML='<option value="">目前沒有分類，請先檢查教育訓練分類</option>'; } }
     async function loadAdminData(){
       const user=requireLogin(); if(!user) return;
-      const r=await api('getTrainingPageData',{userId:user.id,includeDisabled:true,adminMode:true});
-      if(!r.ok) throw new Error(r.message||'讀取失敗');
-      adminData={categories:getFixedTrainingCategories(),items:normalizeTrainingItems(r.items||[])}; fillCategoryOptions(); renderAdminList();
+      adminData.categories = getFixedTrainingCategories();
+      fillCategoryOptions();
+      try{
+        const r=await api('getTrainingPageData',{userId:user.id,includeDisabled:true,adminMode:true});
+        if(!r.ok) throw new Error(r.message||'讀取失敗');
+        adminData.items = normalizeTrainingItems(r.items||[]);
+      }catch(e){
+        adminData.items = [];
+        setMsg(qs('#msg'), e.message||String(e), true);
+      }
+      fillCategoryOptions();
+      renderAdminList();
     }
     function renderAdminList(){
       const box=qs('#adminList');
