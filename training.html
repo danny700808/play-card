@@ -64,14 +64,15 @@
       return FIXED_TRAINING_CATEGORIES.map(x => ({...x}));
     }
     function normalizeTrainingItems(items){
-      const cats = getFixedTrainingCategories();
-      const catMap = Object.fromEntries(cats.map(c => [c.id, c]));
+      const catMap = Object.fromEntries(getFixedTrainingCategories().map(c => [c.id, c]));
       return (items || []).map(x => {
         const y = {...(x || {})};
         const c = catMap[y.categoryId];
         if (c) {
           y.categoryName = c.name;
-          if (y.categorySortOrder === undefined || y.categorySortOrder === null || y.categorySortOrder === '') y.categorySortOrder = c.sortOrder;
+          if (y.categorySortOrder === undefined || y.categorySortOrder === null || y.categorySortOrder === '') {
+            y.categorySortOrder = c.sortOrder;
+          }
         }
         return y;
       });
