@@ -40,7 +40,7 @@
       <a class="home-tile" href="leave.html"><div><strong>請假系統</strong><span>請假申請與自己的請假紀錄</span></div><div class="tile-count zero">&nbsp;</div></a>
       <a class="home-tile" href="task.html"><div><strong>交辦事項</strong><span>查看任務、回報完成狀態</span></div><div class="tile-count" id="taskCount">0</div></a>
       <a class="home-tile" href="routine.html"><div><strong>定期事項</strong><span>固定週期工作與完成回報</span></div><div class="tile-count" id="routineCount">0</div></a>
-      <a class="home-tile" href="training.html"><div><strong>教育訓練</strong><span>五大類教材、影片、文件與音檔搜尋</span></div><div class="tile-count" id="trainingCount">0</div></a>
+      <a class="home-tile" href="training.html"><div><strong>教育訓練</strong><span>五大類教材、影片、文件與音檔搜尋</span></div><div class="tile-count zero">&nbsp;</div></a>
     </div>
   </div>
   <script src="config.js"></script>
@@ -59,23 +59,17 @@
         const taskCount = (taskRes.rows||[]).filter(x=>String(x.status||'')!=='已完成').length;
         const routineRes = await api('getRoutinePageData',{userId:user.id,email:user.email,role:'staff'});
         const routineCount = Number(routineRes?.summary?.pending||0) + Number(routineRes?.summary?.overdue||0);
-        const trainingRes = await api('getTrainingPageData',{userId:user.id});
-        const trainingCount = Array.isArray(trainingRes?.items) ? trainingRes.items.length : 0;
         const taskEl = qs('#taskCount');
         const routineEl = qs('#routineCount');
-        const trainingEl = qs('#trainingCount');
         taskEl.textContent = String(taskCount);
         routineEl.textContent = String(routineCount);
-        trainingEl.textContent = String(trainingCount);
         taskEl.classList.toggle('zero', taskCount===0);
         routineEl.classList.toggle('zero', routineCount===0);
-        trainingEl.classList.toggle('zero', trainingCount===0);
       }catch(e){
         const taskEl = qs('#taskCount');
         const routineEl = qs('#routineCount');
-        const trainingEl = qs('#trainingCount');
-        taskEl.textContent='0'; routineEl.textContent='0'; trainingEl.textContent='0';
-        taskEl.classList.add('zero'); routineEl.classList.add('zero'); trainingEl.classList.add('zero');
+        taskEl.textContent='0'; routineEl.textContent='0';
+        taskEl.classList.add('zero'); routineEl.classList.add('zero');
       }
     }
   </script>

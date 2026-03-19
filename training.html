@@ -9,8 +9,10 @@
     .page-return-wrap{margin-bottom:16px}.page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;border-radius:16px;font-size:20px;font-weight:800}
     .search-box{display:grid;grid-template-columns:1fr auto;gap:10px}
     .category-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-    .category-chip{border:1px solid var(--line);border-radius:16px;padding:14px 16px;background:#fff;cursor:pointer}
+    .category-chip{border:1px solid var(--line);border-radius:16px;padding:14px 16px;background:#fff;cursor:pointer;text-align:left}
     .category-chip.active{border-color:var(--brand);box-shadow:0 0 0 2px rgba(31,122,90,.12)}
+    .category-chip-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px}
+    .category-count{min-width:44px;padding:6px 10px;border-radius:999px;background:#eef6f1;color:var(--brand);font-weight:800;font-size:14px;line-height:1;text-align:center;white-space:nowrap}
     .training-item{border:1px solid var(--line);border-radius:16px;padding:16px;background:#fff}
     .training-meta{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 10px}.link-row{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}
     .link-btn{width:auto;padding:10px 14px;border-radius:12px}.empty-box{padding:18px;border:1px dashed var(--line);border-radius:16px;background:#fbfcfe;color:var(--muted);text-align:center}
@@ -77,6 +79,9 @@
         return y;
       });
     }
+    function getCategoryCount(categoryId){
+      return trainingData.items.filter(x => String(x.categoryId||'') === String(categoryId||'')).length;
+    }
 
     function esc(s){return String(s||'').replace(/[&<>"]/g,function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]||m;});}
     function nl2br(s){return esc(s).replace(/\n/g,'<br>');}
@@ -95,12 +100,14 @@
       const r=await api('getTrainingPageData',{userId:user.id});
       if(!r.ok) throw new Error(r.message||'讀取失敗');
       trainingData.items = normalizeTrainingItems(r.items||[]);
+      renderCategories();
       renderResults();
     }
     function renderCategories(){
       const box=qs('#categoryList'); const allActive = activeCategory==='';
       const categories=getFixedTrainingCategories();
-      box.innerHTML=[`<button type="button" class="category-chip ${allActive?'active':''}" onclick="selectCategory('')"><strong>全部教材</strong><div class="muted">顯示所有啟用中的教材</div></button>`].concat(categories.map(c=>`<button type="button" class="category-chip ${activeCategory===c.id?'active':''}" onclick="selectCategory('${c.id}')"><strong>${esc(c.name)}</strong><div class="muted">${esc(c.description||'')}</div></button>`)).join('');
+      const totalCount = trainingData.items.length;
+      box.innerHTML=[`<button type="button" class="category-chip ${allActive?'active':''}" onclick="selectCategory('')"><div class="category-chip-head"><strong>全部教材</strong><span class="category-count">${totalCount}</span></div><div class="muted">顯示所有啟用中的教材</div></button>`].concat(categories.map(c=>`<button type="button" class="category-chip ${activeCategory===c.id?'active':''}" onclick="selectCategory('${c.id}')"><div class="category-chip-head"><strong>${esc(c.name)}</strong><span class="category-count">${getCategoryCount(c.id)}</span></div><div class="muted">${esc(c.description||'')}</div></button>`)).join('');
     }
     function selectCategory(id){ activeCategory=id||''; renderCategories(); renderResults(true); }
     function filterItems(){ const kw=(qs('#keyword').value||'').trim().toLowerCase(); return trainingData.items.filter(x=>{ if(activeCategory && x.categoryId!==activeCategory) return false; if(!kw) return true; const hay=[x.title,x.categoryName,x.keywords,x.description].join(' ').toLowerCase(); return hay.includes(kw); }); }
