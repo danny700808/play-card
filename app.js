@@ -100,6 +100,71 @@ async function compressVideoToDataUrl(file, opts={}){
   }
   return await fileToDataUrl(file);
 }
+
+function splitDataUrlForChunkUpload(dataUrl, chunkChars=350000){
+  const raw=String(dataUrl||'');
+  const m=raw.match(/^data:([^;]+);base64,(.*)$/i);
+  if(!m) throw new Error('影片格式解析失敗');
+  const mime=m[1]||'application/octet-stream';
+  const base64=m[2]||'';
+  const chunks=[];
+  for(let i=0;i<base64.length;i+=chunkChars){
+    chunks.push(base64.slice(i,i+chunkChars));
+  }
+  return { mime, chunks, totalChunks: chunks.length, base64Length: base64.length };
+}
+async function uploadTrainingVideoInChunks(file, opts={}){
+  const options=Object.assign({
+    userId:'', itemId:'', onProgress:null, chunkChars:350000, maxInputMB:120,
+    allowedTypes:['video/mp4','video/quicktime','video/webm']
+  }, opts||{});
+  if(!file) return { ok:true, skipped:true };
+  const sizeMB=file.size/1024/1024;
+  if(sizeMB>options.maxInputMB){
+    throw new Error('影片檔太大，請先縮短影片或降低畫質後再上傳');
+  }
+  const mime=String(file.type||'').toLowerCase();
+  if(options.allowedTypes.length && mime && !options.allowedTypes.includes(mime)){
+    throw new Error('目前影片格式不建議直接上傳，請先用手機存成 MP4 後再試');
+  }
+  options.onProgress && options.onProgress(0,'影片讀取中');
+  const dataUrl=await fileToDataUrl(file);
+  const parsed=splitDataUrlForChunkUpload(dataUrl, options.chunkChars);
+  options.onProgress && options.onProgress(8,'建立影片上傳工作');
+  const startRes=await api('startTrainingVideoUpload',{
+    userId:options.userId,
+    itemId:options.itemId,
+    fileName:file.name||('training_video_'+Date.now()),
+    mimeType:parsed.mime,
+    totalChunks:parsed.totalChunks,
+    fileSize:file.size||0
+  });
+  if(!startRes.ok) throw new Error(startRes.message||'影片上傳初始化失敗');
+  const sessionId=startRes.sessionId;
+  for(let i=0;i<parsed.chunks.length;i++){
+    const pct=8+Math.round(((i+1)/parsed.chunks.length)*82);
+    options.onProgress && options.onProgress(pct,'影片上傳中');
+    const chunkRes=await api('uploadTrainingVideoChunk',{
+      userId:options.userId,
+      itemId:options.itemId,
+      sessionId,
+      index:i,
+      totalChunks:parsed.totalChunks,
+      chunkBase64:parsed.chunks[i]
+    });
+    if(!chunkRes.ok) throw new Error(chunkRes.message||('影片分段上傳失敗（第'+(i+1)+'段）'));
+  }
+  options.onProgress && options.onProgress(94,'影片合併中');
+  const finishRes=await api('finishTrainingVideoUpload',{
+    userId:options.userId,
+    itemId:options.itemId,
+    sessionId
+  });
+  if(!finishRes.ok) throw new Error(finishRes.message||'影片寫入失敗');
+  options.onProgress && options.onProgress(100,'影片完成');
+  return finishRes;
+}
+
 function formatTaskStatusTag(status){
   const cls=status==='待處理'?'pending':(status==='已完成'?'done':'');
   return `<span class="tag ${cls}">${status}</span>`;
