@@ -26,10 +26,27 @@ function redirectAfterLogin(user){saveUser(user); if(user && user.showSettingsZo
 function saveLoginPref(email,password,remember=true){if(!remember){localStorage.removeItem('employeeSavedLogin');return;}localStorage.setItem('employeeSavedLogin',JSON.stringify({email:email||'',password:password||'',remember:true}));}
 function getSavedLogin(){try{return JSON.parse(localStorage.getItem('employeeSavedLogin')||'null')}catch(e){return null}}
 function applySavedLogin(emailSel='#email',passwordSel='#password',rememberSel='#rememberLogin'){const s=getSavedLogin();if(!s)return;const e=qs(emailSel),p=qs(passwordSel),r=qs(rememberSel);if(e)e.value=s.email||'';if(p)p.value=s.password||'';if(r)r.checked=!!s.remember;}
-function getDriveFileId(url){const m=String(url||'').match(/(?:file\/d\/|[?&]id=)([-_a-zA-Z0-9]+)/);return m?m[1]:'';}
+function getDriveFileId(url){
+  const s=String(url||'').trim();
+  const m=s.match(/(?:file\/d\/|[?&]id=|\/d\/)([-_a-zA-Z0-9]{20,})/);
+  return m?m[1]:'';
+}
 function imagePreviewUrl(url){const id=getDriveFileId(url);return id?('https://drive.google.com/thumbnail?id='+id+'&sz=w1200'):url;}
-function audioOpenUrl(url){const id=getDriveFileId(url);return id?('https://drive.google.com/file/d/'+id+'/view'):url;}
-function audioStreamUrl(url){const id=getDriveFileId(url);return id?('https://drive.google.com/uc?export=download&id='+id):url;}
+function driveViewUrl(url){const id=getDriveFileId(url);return id?('https://drive.google.com/file/d/'+id+'/view?usp=drivesdk'):String(url||'');}
+function drivePreviewUrl(url){const id=getDriveFileId(url);return id?('https://drive.google.com/file/d/'+id+'/preview'):String(url||'');}
+function audioOpenUrl(url){return driveViewUrl(url);}
+function audioStreamUrl(url){const id=getDriveFileId(url);return id?('https://drive.google.com/uc?export=download&id='+id):String(url||'');}
+function openMediaInTopWindow(url){
+  const finalUrl=driveViewUrl(url);
+  if(!finalUrl) return;
+  try{
+    if(window.top && window.top!==window){
+      window.top.location.href=finalUrl;
+      return;
+    }
+  }catch(e){}
+  location.href=finalUrl;
+}
 async function compressImageToDataUrl(file, maxSize=1280, quality=0.78){
   if(!file) return '';
   if(!file.type.startsWith('image/')) return await fileToDataUrl(file);
@@ -70,21 +87,21 @@ async function compressVideoToDataUrl(file, opts={}){
   const options=Object.assign({
     maxInputMB: 180,
     fallbackPassThroughMB: 80,
-    maxWidth: 720,
-    fps: 20,
-    videoBitsPerSecond: 700000,
-    audioBitsPerSecond: 64000
+    maxWidth: 1280,
+    fps: 24,
+    videoBitsPerSecond: 1200000,
+    audioBitsPerSecond: 96000
   }, opts||{});
   if(!file) return '';
   if(!file.type.startsWith('video/')) return await fileToDataUrl(file);
   const sizeMB=file.size/1024/1024;
   if(sizeMB>options.maxInputMB){
-    throw new Error('影片檔太大，請先在手機修剪到 3 分鐘內或降低畫質到 720p 後再上傳');
+    throw new Error('影片檔太大，請先在手機修剪到 4 分鐘內或降低畫質後再上傳');
   }
   const canRecord=!!(window.MediaRecorder && document.createElement('canvas').captureStream);
   if(!canRecord){
     if(sizeMB<=options.fallbackPassThroughMB) return await fileToDataUrl(file);
-    throw new Error('此裝置不支援影片自動壓縮，請先用手機修剪影片到 720p 再上傳');
+    throw new Error('此裝置不支援影片自動壓縮，請先用手機修剪影片後再上傳');
   }
   const objectUrl=URL.createObjectURL(file);
   const video=document.createElement('video');

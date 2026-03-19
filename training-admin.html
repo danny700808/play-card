@@ -28,7 +28,7 @@
           <div class="welcome">歡迎 <span data-user-name></span></div>
         </div>
       </div>
-      <div class="muted">維持原本同一個設定介面；按一次儲存後，系統會先建立文字資料，再分段補上影片、圖片 / 文件與錄音。</div>
+      <div class="muted">第一版支援：新增教材、上傳影片、上傳多張圖片/多文件、直接錄音、啟用/停用與編輯既有資料。</div>
       <div id="msg" class="message"></div>
     </div>
 
@@ -38,7 +38,7 @@
       <div class="field"><label for="title">主題名稱</label><input id="title" type="text" placeholder="例如：蝦皮寄件完整流程"></div>
       <div class="field"><label for="keywords">關鍵字</label><input id="keywords" type="text" placeholder="例如：蝦皮、寄件、包貨、出貨"></div>
       <div class="field"><label for="description">內容說明</label><textarea id="description" placeholder="可放 SOP 文字重點，員工搜尋後會直接看到。"></textarea></div>
-      <div class="field"><label for="videoFile">上傳影片（選填）</label><input id="videoFile" type="file" accept="video/mp4,video/quicktime,video/webm,video/*"><div class="muted compact-help">建議 3 分鐘內短影片、720p 即可；系統會先建立文字，再另外嘗試上傳影片。</div></div>
+      <div class="field"><label for="videoFile">上傳影片（選填）</label><input id="videoFile" type="file" accept="video/mp4,video/quicktime,video/webm,video/*"><div class="muted compact-help">建議 4 分鐘內短影片；系統會先嘗試縮小後再上傳，並盡量保留聲音。</div></div>
       <div class="field"><label for="docFile">上傳圖片 / 文件（選填）</label><input id="docFile" type="file" multiple accept="image/*,application/pdf,.pdf,.doc,.docx,text/plain,.txt,.xls,.xlsx,.ppt,.pptx"><div class="muted compact-help">可一次選多張圖片或多個文件；圖片會先縮小後再上傳。</div></div>
       <div class="field"><label>錄音說明（選填）</label>
         <div class="record-box">
@@ -102,7 +102,7 @@
     let audioRecorder=null, audioDataUrl='', audioPreviewUrl='';
     function esc(s){return String(s||'').replace(/[&<>"]/g,function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]||m;});}
     function splitLinks(v){ return String(v||'').split(/\n+/).map(s=>s.trim()).filter(Boolean); }
-    function linkButtons(urls,label){ return splitLinks(urls).map((u,i)=>`<a class="btn secondary mini-btn" href="${u}" target="_blank" rel="noopener">${label}${splitLinks(urls).length>1?(' '+(i+1)):''}</a>`).join(''); }
+    function linkButtons(urls,label){ const arr=splitLinks(urls); return arr.map((u,i)=>`<button class="btn secondary mini-btn" type="button" onclick="openMediaInTopWindow('${u}')">${label}${arr.length>1?(' '+(i+1)):''}</button>`).join(''); }
     function setProgress(v,label){ qs('#progressBox').classList.remove('hidden'); qs('#progressBar').style.width=v+'%'; qs('#progressText').textContent=(label?label+' ':'')+v+'%'; }
     function resetProgress(){ qs('#progressBar').style.width='0%'; qs('#progressText').textContent='0%'; qs('#progressBox').classList.add('hidden'); }
     function selectedEnabled(){ const el=document.querySelector('input[name="enabled"]:checked'); return el?el.value:'是'; }
@@ -122,7 +122,7 @@
       const items=adminData.items||[];
       box.innerHTML = categories.map(c=>{
         const rows=items.filter(x=>x.categoryId===c.id);
-        const body = rows.length ? rows.map(x=>`<div class="item" style="margin-top:10px"><div class="top"><div><strong>${esc(x.title)}</strong><div class="muted">${esc(x.categoryName)}</div></div><span class="status-pill ${x.enabled?'status-on':'status-off'}">${x.enabled?'啟用中':'已停用'}</span></div>${x.description?`<div class="muted" style="margin-top:8px">${esc(x.description)}</div>`:''}<div class="training-links">${linkButtons(x.videoUrl,'影片說明')}${linkButtons(x.docUrl,'文件 / 圖片')}${linkButtons(x.audioUrl,'音檔說明')}<button class="btn secondary mini-btn" type="button" onclick="editItem('${x.id}')">編輯</button><button class="btn mini-btn" type="button" onclick="toggleItem('${x.id}', ${x.enabled?'false':'true'})">${x.enabled?'停用':'啟用'}</button></div></div>`).join('') : '<div class="muted" style="margin-top:10px">這一類目前沒有教材</div>';
+        const body = rows.length ? rows.map(x=>`<div class="item" style="margin-top:10px"><div class="top"><div><strong>${esc(x.title)}</strong><div class="muted">${esc(x.categoryName)}</div></div><span class="status-pill ${x.enabled?'status-on':'status-off'}">${x.enabled?'啟用中':'已停用'}</span></div>${x.description?`<div class="muted" style="margin-top:8px">${esc(x.description)}</div>`:''}<div class="training-links">${linkButtons(x.videoUrl,'影片')}${linkButtons(x.docUrl,'文件 / 圖片')}${linkButtons(x.audioUrl,'錄音')}<button class="btn secondary mini-btn" type="button" onclick="editItem('${x.id}')">編輯</button><button class="btn mini-btn" type="button" onclick="toggleItem('${x.id}', ${x.enabled?'false':'true'})">${x.enabled?'停用':'啟用'}</button></div></div>`).join('') : '<div class="muted" style="margin-top:10px">這一類目前沒有教材</div>';
         return `<details class="item" ${rows.length?'':'open'}><summary class="top" style="cursor:pointer;list-style:none"><div><strong>${esc(c.name)}</strong><div class="muted">${esc(c.description||'')}</div></div><span class="tag">${rows.length} 筆</span></summary>${body}</details>`;
       }).join('');
     }
@@ -148,36 +148,18 @@
       try{
         setProgress(8,'準備中');
         const videoFile=qs('#videoFile').files[0], docFiles=qs('#docFile').files;
-        let docDataList=[];
+        let videoData='', docDataList=[];
+        if(videoFile){ setProgress(18,'影片處理中'); videoData=await compressVideoToDataUrl(videoFile); }
         if(docFiles && docFiles.length){ docDataList=await processMixedFiles(docFiles); }
         if(audioDataUrl){ setProgress(78,'整理錄音'); }
-        const payload={ userId:user.id, itemId:qs('#itemId').value.trim(), categoryId, title, keywords:qs('#keywords').value.trim(), description:qs('#description').value.trim(), sortOrder:qs('#sortOrder').value.trim(), enabled:selectedEnabled(), docDataList, audioData:audioDataUrl };
-        setProgress(84,'建立文字資料');
+        const payload={ userId:user.id, itemId:qs('#itemId').value.trim(), categoryId, title, keywords:qs('#keywords').value.trim(), description:qs('#description').value.trim(), sortOrder:qs('#sortOrder').value.trim(), enabled:selectedEnabled(), videoData, docDataList, audioData:audioDataUrl };
+        setProgress(88,'上傳中');
         const r=await api('saveTrainingItem', payload);
-        if(!r.ok) throw new Error(r.message||'建立教材失敗');
-        const itemId = r.itemId || qs('#itemId').value.trim();
-        let finalMessage = r.message || '教材已建立。';
-        if(videoFile){
-          try{
-            setProgress(88,'影片處理中');
-            const videoData=await compressVideoToDataUrl(videoFile);
-            setProgress(94,'上傳影片');
-            const vr=await api('uploadTrainingVideo',{ userId:user.id, itemId, videoData });
-            if(vr.ok){
-              finalMessage = (r.message || '教材已建立。') + ' 影片也已上傳完成。';
-            }else{
-              finalMessage = (r.message || '教材已建立。') + ' 但影片上傳失敗：' + (vr.message || '請稍後補傳');
-            }
-          }catch(videoErr){
-            finalMessage = (r.message || '教材已建立。') + ' 但影片上傳失敗：' + (videoErr.message || String(videoErr));
-          }
-        }
         setProgress(100,'完成');
-        setMsg(qs('#msg'), finalMessage, false);
-        resetForm();
-        try{ await loadAdminData(); }catch(_e){}
+        setMsg(qs('#msg'), r.message||'', !r.ok);
+        if(r.ok){ resetForm(); await loadAdminData(); }
       }catch(e){ setMsg(qs('#msg'), e.message||String(e), true); }
-      finally{ setTimeout(resetProgress,1200); btn.disabled=false; }
+      finally{ setTimeout(resetProgress,900); btn.disabled=false; }
     }
     async function beginRecord(){
       try{
