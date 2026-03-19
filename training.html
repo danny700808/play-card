@@ -81,8 +81,7 @@
     function esc(s){ return String(s||'').replace(/[&<>"]/g,function(m){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m] || m; }); }
     function nl2br(s){ return esc(s).replace(/
 /g,'<br>'); }
-    function splitLinks(v){ return String(v||'').split(/
-+/).map(function(s){ return s.trim(); }).filter(Boolean); }
+    function splitLinks(v){ return String(v||'').split(/\n+/).map(function(s){ return s.trim(); }).filter(Boolean); }
     function resourceBtns(urls,label){
       const arr=splitLinks(urls);
       return arr.map(function(u,i){ return `<a class="btn secondary link-btn" href="${u}" target="_blank" rel="noopener">${label}${arr.length>1?(' '+(i+1)):''}</a>`; }).join('');
