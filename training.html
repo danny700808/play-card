@@ -79,10 +79,8 @@
     }
 
     function esc(s){return String(s||'').replace(/[&<>"]/g,function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]||m;});}
-    function nl2br(s){return esc(s).replace(/
-/g,'<br>');}
-    function splitLinks(v){ return String(v||'').split(/
-+/).map(s=>s.trim()).filter(Boolean); }
+    function nl2br(s){return esc(s).replace(/\r?\n/g,'<br>');}
+    function splitLinks(v){ return String(v||'').split(/\r?\n+/).map(s=>s.trim()).filter(Boolean); }
     function resourceBtns(urls,label){ const arr=splitLinks(urls); return arr.map((u,i)=>`<a class="btn secondary link-btn" href="${u}" target="_blank" rel="noopener">${label}${arr.length>1?(' '+(i+1)):''}</a>`).join(''); }
     async function loadTraining(){
       const user=requireLogin(); if(!user) return;
