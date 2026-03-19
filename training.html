@@ -79,8 +79,7 @@
       });
     }
     function esc(s){ return String(s||'').replace(/[&<>"]/g,function(m){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m] || m; }); }
-    function nl2br(s){ return esc(s).replace(/
-/g,'<br>'); }
+    function nl2br(s){ return esc(s).replace(/\n/g,'<br>'); }
     function splitLinks(v){ return String(v||'').split(/\n+/).map(function(s){ return s.trim(); }).filter(Boolean); }
     function resourceBtns(urls,label){
       const arr=splitLinks(urls);

@@ -33,7 +33,7 @@
           <div class="welcome">歡迎 <span data-user-name></span></div>
         </div>
       </div>
-      <div class="muted">A 方案：先建立文字教材，再另外補上影片、圖片 / 文件與音檔。這樣手機比較穩，就算大檔案稍後才上傳也沒關係。</div>
+      <div class="muted">維持原本同一個設定介面、同一次送出。按「儲存教材」後會先建立文字，再由系統背景慢慢補上影片、圖片 / 文件與音檔，五大類分類不另外改動。</div>
       <div id="msg" class="message"></div>
     </div>
 
@@ -45,16 +45,15 @@
       <div class="field"><label for="description">內容說明</label><textarea id="description" placeholder="可放 SOP 文字重點，員工搜尋後會直接看到。"></textarea></div>
       <div class="field"><label for="sortOrder">排序</label><input id="sortOrder" type="number" min="1" step="1" placeholder="留空就自動排最後"></div>
       <div class="field"><label>是否啟用</label><div class="radio-inline"><label><input type="radio" name="enabled" value="是" checked>是</label><label><input type="radio" name="enabled" value="否">否</label></div></div>
-      <div class="btn-row"><button class="btn secondary" type="button" onclick="resetForm()">清空</button><button class="btn" id="saveBtn" type="button">先建立文字教材</button></div>
       <input id="itemId" type="hidden">
 
       <div class="attach-panel">
-        <strong>第二步：補上附件</strong>
-        <div class="mini-note">先按上面的「先建立文字教材」，建立成功後才會有教材 ID。之後你可以慢慢補上影片、文件 / 圖片與音檔，不必一次上傳完。</div>
+        <strong>附件與說明素材</strong>
+        <div class="mini-note">可跟文字一起按一次送出。系統會先存文字，再在背景一個一個補上影片、圖片 / 文件與音檔。</div>
         <div class="attach-state" id="attachState"></div>
-        <div class="field"><label for="videoFile">補上影片說明（選填）</label><input id="videoFile" type="file" accept="video/mp4,video/quicktime,video/webm,video/*"><div class="compact-help">影片會另外上傳，不會影響文字教材先建立。</div></div>
-        <div class="field"><label for="docFile">補上圖片 / 文件（選填）</label><input id="docFile" type="file" multiple accept="image/*,application/pdf,.pdf,.doc,.docx,text/plain,.txt,.xls,.xlsx,.ppt,.pptx"><div class="compact-help">可一次選多張圖片或多個文件。</div></div>
-        <div class="field"><label>補上音檔說明（選填）</label>
+        <div class="field"><label for="videoFile">影片說明（選填）</label><input id="videoFile" type="file" accept="video/mp4,video/quicktime,video/webm,video/*"><div class="compact-help">有選影片的話，儲存後系統會在背景慢慢上傳。</div></div>
+        <div class="field"><label for="docFile">圖片 / 文件（選填）</label><input id="docFile" type="file" multiple accept="image/*,application/pdf,.pdf,.doc,.docx,text/plain,.txt,.xls,.xlsx,.ppt,.pptx"><div class="compact-help">可一次選多張圖片或多個文件。</div></div>
+        <div class="field"><label>音檔說明（選填）</label>
           <div class="record-box">
             <div class="record-controls">
               <button class="btn secondary" type="button" id="recordBtn">開始錄音</button>
@@ -69,15 +68,17 @@
           </div>
         </div>
         <div class="attach-actions">
-          <button class="btn secondary" type="button" id="uploadVideoBtn">補上影片</button>
-          <button class="btn secondary" type="button" id="uploadDocBtn">補上文件 / 圖片</button>
-          <button class="btn secondary" type="button" id="uploadAudioBtn">補上音檔</button>
+          <button class="btn secondary" type="button" id="uploadVideoBtn">之後只補影片</button>
+          <button class="btn secondary" type="button" id="uploadDocBtn">之後只補文件 / 圖片</button>
+          <button class="btn secondary" type="button" id="uploadAudioBtn">之後只補音檔</button>
         </div>
         <div id="progressBox" class="progress-box progress-under-btn hidden" aria-live="polite">
-          <div class="progress-head"><strong>附件上傳進度</strong><span id="progressText">0%</span></div>
+          <div class="progress-head"><strong>處理進度</strong><span id="progressText">0%</span></div>
           <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
         </div>
       </div>
+
+      <div class="btn-row"><button class="btn secondary" type="button" onclick="resetForm()">清空</button><button class="btn" id="saveBtn" type="button">儲存教材</button></div>
     </div>
 
     <div class="card">
@@ -117,18 +118,35 @@
     function setProgress(v,label){ qs('#progressBox').classList.remove('hidden'); qs('#progressBar').style.width=v+'%'; qs('#progressText').textContent=(label?label+' ':'')+v+'%'; }
     function resetProgress(){ qs('#progressBar').style.width='0%'; qs('#progressText').textContent='0%'; qs('#progressBox').classList.add('hidden'); }
     function selectedEnabled(){ const el=document.querySelector('input[name="enabled"]:checked'); return el?el.value:'是'; }
-    function fillCategoryOptions(){ const categories=getFixedTrainingCategories(); qs('#categoryId').innerHTML='<option value="">請選擇分類</option>'+categories.map(function(c){ return `<option value="${c.id}">${c.name}</option>`; }).join(''); }
+    function fillCategoryOptions(){
+      const categories=getFixedTrainingCategories();
+      qs('#categoryId').innerHTML='<option value="">請選擇分類</option>'+categories.map(function(c){ return `<option value="${c.id}">${c.name}</option>`; }).join('');
+    }
     function currentItem(){ const id=qs('#itemId').value||''; return adminData.items.find(function(x){ return x.id===id; }) || null; }
+    function getPendingAssetSummary(){
+      const parts=[];
+      const video=qs('#videoFile').files && qs('#videoFile').files[0];
+      const docs=Array.from(qs('#docFile').files||[]);
+      if(video) parts.push('待上傳影片 1 個');
+      if(docs.length) parts.push('待上傳文件 / 圖片 '+docs.length+' 個');
+      if(audioDataUrl) parts.push('待上傳音檔 1 個');
+      return parts;
+    }
     function renderAttachState(){
       const box=qs('#attachState');
       const item=currentItem();
-      if(!item){ box.innerHTML='<span class="attach-badge">請先建立文字教材</span>'; return; }
-      box.innerHTML=[
-        `<span class="attach-badge">教材ID：${esc(item.id||'')}</span>`,
-        `<span class="attach-badge">影片：${splitLinks(item.videoUrl).length?('已上傳 '+splitLinks(item.videoUrl).length+' 個'): '尚未上傳'}</span>`,
-        `<span class="attach-badge">文件 / 圖片：${splitLinks(item.docUrl).length?('已上傳 '+splitLinks(item.docUrl).length+' 個'): '尚未上傳'}</span>`,
-        `<span class="attach-badge">音檔：${splitLinks(item.audioUrl).length?('已上傳 '+splitLinks(item.audioUrl).length+' 個'): '尚未上傳'}</span>`
-      ].join('');
+      const pending=getPendingAssetSummary();
+      const rows=[];
+      if(item){
+        rows.push(`<span class="attach-badge">教材ID：${esc(item.id||'')}</span>`);
+        rows.push(`<span class="attach-badge">影片：${splitLinks(item.videoUrl).length?('已上傳 '+splitLinks(item.videoUrl).length+' 個'):'尚未上傳'}</span>`);
+        rows.push(`<span class="attach-badge">文件 / 圖片：${splitLinks(item.docUrl).length?('已上傳 '+splitLinks(item.docUrl).length+' 個'):'尚未上傳'}</span>`);
+        rows.push(`<span class="attach-badge">音檔：${splitLinks(item.audioUrl).length?('已上傳 '+splitLinks(item.audioUrl).length+' 個'):'尚未上傳'}</span>`);
+      } else {
+        rows.push('<span class="attach-badge">尚未建立教材</span>');
+      }
+      pending.forEach(function(text){ rows.push(`<span class="attach-badge">${esc(text)}</span>`); });
+      box.innerHTML = rows.join('');
     }
     async function loadAdminData(silent){
       const user=requireLogin(); if(!user) return;
@@ -148,7 +166,8 @@
       box.innerHTML = categories.map(function(c){
         const rows=items.filter(function(x){ return x.categoryId===c.id; });
         const body = rows.length ? rows.map(function(x){
-          return `<div class="item" style="margin-top:10px"><div class="top"><div><strong>${esc(x.title)}</strong><div class="muted">${esc(x.categoryName)}</div></div><span class="status-pill ${x.enabled?'status-on':'status-off'}">${x.enabled?'啟用中':'已停用'}</span></div>${x.description?`<div class="muted" style="margin-top:8px">${esc(x.description)}</div>`:''}<div class="training-links">${linkButtons(x.videoUrl,'影片說明')}${linkButtons(x.docUrl,'文件 / 圖片')}${linkButtons(x.audioUrl,'音檔說明')}<button class="btn secondary mini-btn" type="button" onclick="editItem('${x.id}')">編輯文字</button><button class="btn mini-btn" type="button" onclick="toggleItem('${x.id}', ${x.enabled?'false':'true'})">${x.enabled?'停用':'啟用'}</button></div></div>`;
+          const desc = x.description ? `<div class="muted" style="margin-top:8px">${esc(x.description)}</div>` : '';
+          return `<div class="item" style="margin-top:10px"><div class="top"><div><strong>${esc(x.title)}</strong><div class="muted">${esc(x.categoryName)}</div></div><span class="status-pill ${x.enabled?'status-on':'status-off'}">${x.enabled?'啟用中':'已停用'}</span></div>${desc}<div class="training-links">${linkButtons(x.videoUrl,'影片說明')}${linkButtons(x.docUrl,'文件 / 圖片')}${linkButtons(x.audioUrl,'音檔說明')}<button class="btn secondary mini-btn" type="button" onclick="editItem('${x.id}')">編輯</button><button class="btn mini-btn" type="button" onclick="toggleItem('${x.id}', ${x.enabled?'false':'true'})">${x.enabled?'停用':'啟用'}</button></div></div>`;
         }).join('') : '<div class="muted" style="margin-top:10px">這一類目前沒有教材</div>';
         return `<details class="item" ${rows.length?'':'open'}><summary class="top" style="cursor:pointer;list-style:none"><div><strong>${esc(c.name)}</strong><div class="muted">${esc(c.description||'')}</div></div><span class="tag">${rows.length} 筆</span></summary>${body}</details>`;
       }).join('');
@@ -162,7 +181,8 @@
       qs('#keywords').value=x.keywords||'';
       qs('#description').value=x.description||'';
       qs('#sortOrder').value=x.sortOrder||'';
-      const radio=document.querySelector(`input[name="enabled"][value="${x.enabled?'是':'否'}"]`); if(radio) radio.checked=true;
+      const radio=document.querySelector('input[name="enabled"][value="'+(x.enabled?'是':'否')+'"]');
+      if(radio) radio.checked=true;
       renderAttachState();
       window.scrollTo({top:0,behavior:'smooth'});
     }
@@ -174,76 +194,138 @@
       qs('#recordStatus').textContent='尚未錄音';
       qs('#recordStatus').classList.remove('ok');
       qs('#recordMeter').classList.add('hidden');
+      renderAttachState();
     }
     function resetForm(){
-      qs('#itemId').value=''; qs('#categoryId').value=''; qs('#title').value=''; qs('#keywords').value=''; qs('#description').value=''; qs('#sortOrder').value='';
-      document.querySelector('input[name="enabled"][value="是"]').checked=true;
-      qs('#videoFile').value=''; qs('#docFile').value=''; clearRecording(); resetProgress(); renderAttachState();
+      qs('#itemId').value='';
+      qs('#categoryId').value='';
+      qs('#title').value='';
+      qs('#keywords').value='';
+      qs('#description').value='';
+      qs('#sortOrder').value='';
+      const onRadio=document.querySelector('input[name="enabled"][value="是"]');
+      if(onRadio) onRadio.checked=true;
+      qs('#videoFile').value='';
+      qs('#docFile').value='';
+      clearRecording();
+      resetProgress();
+      renderAttachState();
     }
-    async function saveTextOnly(){
-      const user=requireLogin(); if(!user) return;
-      const payload={
-        userId:user.id,
-        itemId:qs('#itemId').value||'',
-        categoryId:qs('#categoryId').value,
+    function buildTextPayload(userId,itemIdOverride){
+      return {
+        userId:userId,
+        itemId:itemIdOverride || qs('#itemId').value || '',
+        categoryId:qs('#categoryId').value || '',
         title:(qs('#title').value||'').trim(),
         keywords:(qs('#keywords').value||'').trim(),
         description:(qs('#description').value||'').trim(),
-        sortOrder:qs('#sortOrder').value,
-        enabled:selectedEnabled(),
-        saveMode:'textOnly'
+        sortOrder:qs('#sortOrder').value || '',
+        enabled:selectedEnabled()
       };
-      if(!payload.categoryId || !payload.title){ setMsg(qs('#msg'),'請先選擇教材分類並輸入主題名稱',true); return; }
-      const btn=qs('#saveBtn'); btn.disabled=true; resetProgress();
+    }
+    async function saveTextOnly(user){
+      const payload=buildTextPayload(user.id, '');
+      payload.itemId = qs('#itemId').value || '';
+      payload.saveMode='textOnly';
+      if(!payload.categoryId || !payload.title){ throw new Error('請先選擇教材分類並輸入主題名稱'); }
+      const r=await api('saveTrainingItem',payload);
+      if(!r.ok) throw new Error(r.message||'儲存失敗');
+      const itemId = r.itemId || payload.itemId || '';
+      if(itemId) qs('#itemId').value=itemId;
+      return { response:r, itemId:itemId };
+    }
+    async function uploadAsset(kind, itemId, user){
+      const payload={ userId:user.id, itemId:itemId, saveMode:kind };
+      if(kind==='videoOnly'){
+        const file=qs('#videoFile').files && qs('#videoFile').files[0];
+        if(!file) return { skipped:true };
+        payload.videoData = await fileToDataUrl(file);
+      } else if(kind==='docsOnly'){
+        const files=Array.from(qs('#docFile').files||[]);
+        if(!files.length) return { skipped:true };
+        payload.docDataList=[];
+        for(const f of files){ payload.docDataList.push(await fileToDataUrl(f)); }
+      } else if(kind==='audioOnly'){
+        if(!audioDataUrl) return { skipped:true };
+        payload.audioData = audioDataUrl;
+      }
+      const r=await api('saveTrainingItem',payload);
+      if(!r.ok) throw new Error(r.message||'上傳失敗');
+      return r;
+    }
+    async function saveItemWithBackground(){
+      const user=requireLogin(); if(!user) return;
+      const btn=qs('#saveBtn');
+      btn.disabled=true;
+      resetProgress();
+      setMsg(qs('#msg'),'正在建立文字教材…');
       try{
-        const r=await api('saveTrainingItem',payload);
-        if(!r.ok) throw new Error(r.message||'儲存失敗');
-        if(r.itemId) qs('#itemId').value=r.itemId;
-        setMsg(qs('#msg'), r.message || '文字教材已建立，可再補上附件');
+        setProgress(15,'建立文字');
+        const first = await saveTextOnly(user);
+        const itemId = first.itemId;
+        const steps=[];
+        if(qs('#videoFile').files && qs('#videoFile').files[0]) steps.push({ kind:'videoOnly', label:'影片說明', percent:45 });
+        if((qs('#docFile').files||[]).length) steps.push({ kind:'docsOnly', label:'圖片 / 文件', percent:72 });
+        if(audioDataUrl) steps.push({ kind:'audioOnly', label:'音檔說明', percent:90 });
+
+        const done=['文字已建立'];
+        const failed=[];
+        for(const step of steps){
+          try{
+            setMsg(qs('#msg'),'文字已建立，正在背景上傳「'+step.label+'」…');
+            setProgress(step.percent, step.label+' 上傳中');
+            await uploadAsset(step.kind, itemId, user);
+            done.push(step.label+'完成');
+          }catch(e){
+            failed.push(step.label+'失敗：'+(e.message||String(e)));
+          }
+        }
+
+        setProgress(100,'完成');
         await loadAdminData(true);
-        if(r.itemId) editItem(r.itemId);
-        else renderAttachState();
-      }catch(e){ setMsg(qs('#msg'),e.message||String(e),true); }
-      finally{ btn.disabled=false; }
+        if(itemId) editItem(itemId);
+        if(steps.length){
+          if(failed.length){
+            setMsg(qs('#msg'), done.join('、')+'。'+failed.join('；'), true);
+          }else{
+            setMsg(qs('#msg'), done.join('、')+'，已全部完成。');
+            qs('#videoFile').value='';
+            qs('#docFile').value='';
+            clearRecording();
+          }
+        }else{
+          setMsg(qs('#msg'),'教材文字已建立。');
+        }
+      }catch(e){
+        setMsg(qs('#msg'),e.message||String(e),true);
+      }finally{
+        setTimeout(resetProgress, 900);
+        btn.disabled=false;
+        renderAttachState();
+      }
     }
     async function uploadCurrentAsset(kind){
       const user=requireLogin(); if(!user) return;
       const itemId=qs('#itemId').value||'';
-      if(!itemId){ setMsg(qs('#msg'),'請先建立文字教材，再補上附件。',true); return; }
-      const item=currentItem();
-      if(!item){ setMsg(qs('#msg'),'找不到目前教材，請先按重新整理。',true); return; }
-      const payload={userId:user.id,itemId:itemId,saveMode:kind};
-      if(kind==='videoOnly'){
-        const file=qs('#videoFile').files && qs('#videoFile').files[0];
-        if(!file){ setMsg(qs('#msg'),'請先選擇影片檔。',true); return; }
-        payload.videoData = await fileToDataUrl(file);
-      } else if(kind==='docsOnly'){
-        const files=Array.from(qs('#docFile').files||[]);
-        if(!files.length){ setMsg(qs('#msg'),'請先選擇文件或圖片。',true); return; }
-        payload.docDataList = [];
-        let index=0;
-        for(const f of files){
-          index += 1;
-          setProgress(Math.max(10, Math.round(index/files.length*70)), '處理文件');
-          payload.docDataList.push(await fileToDataUrl(f));
-        }
-      } else if(kind==='audioOnly'){
-        if(!audioDataUrl){ setMsg(qs('#msg'),'請先錄音。',true); return; }
-        payload.audioData = audioDataUrl;
-      }
-      setProgress(85,'上傳中');
+      if(!itemId){ setMsg(qs('#msg'),'請先建立文字教材，再單獨補上附件。',true); return; }
+      resetProgress();
       try{
-        const r=await api('saveTrainingItem',payload);
-        if(!r.ok) throw new Error(r.message||'附件上傳失敗');
+        if(kind==='videoOnly') setProgress(35,'影片上傳中');
+        if(kind==='docsOnly') setProgress(40,'文件處理中');
+        if(kind==='audioOnly') setProgress(45,'音檔上傳中');
+        await uploadAsset(kind, itemId, user);
         setProgress(100,'完成');
-        setMsg(qs('#msg'), r.message || '附件已補上');
+        await loadAdminData(true);
+        editItem(itemId);
         if(kind==='videoOnly') qs('#videoFile').value='';
         if(kind==='docsOnly') qs('#docFile').value='';
         if(kind==='audioOnly') clearRecording();
-        await loadAdminData(true);
-        editItem(itemId);
-      }catch(e){ setMsg(qs('#msg'),e.message||String(e),true); }
-      finally{ setTimeout(resetProgress,600); }
+        setMsg(qs('#msg'), '附件已更新。');
+      }catch(e){
+        setMsg(qs('#msg'),e.message||String(e),true);
+      }finally{
+        setTimeout(resetProgress, 700);
+      }
     }
     async function toggleItem(id, enabled){
       const user=requireLogin(); if(!user) return;
@@ -260,18 +342,21 @@
         clearRecording();
         qs('#recordStatus').textContent='錄音中...';
         qs('#recordMeter').classList.remove('hidden');
-        qs('#recordBtn').disabled=true; qs('#stopRecordBtn').disabled=false;
+        qs('#recordBtn').disabled=true;
+        qs('#stopRecordBtn').disabled=false;
         audioRecorder = await startRecorder(function(dataUrl){
           audioDataUrl=dataUrl||'';
-          qs('#recordBtn').disabled=false; qs('#stopRecordBtn').disabled=true;
+          qs('#recordBtn').disabled=false;
+          qs('#stopRecordBtn').disabled=true;
           qs('#recordMeter').classList.add('hidden');
           if(audioDataUrl){
             fetch(audioDataUrl).then(function(r){ return r.blob(); }).then(function(blob){
               audioPreviewUrl=URL.createObjectURL(blob);
               qs('#recordPreview').src=audioPreviewUrl;
               qs('#recordPreview').classList.remove('hidden');
-              qs('#recordStatus').textContent='錄音完成，可補上到目前教材';
+              qs('#recordStatus').textContent='錄音完成，儲存教材時會一起處理';
               qs('#recordStatus').classList.add('ok');
+              renderAttachState();
             });
           }
         }, function(level){
@@ -282,7 +367,9 @@
           });
         });
       }catch(e){
-        qs('#recordBtn').disabled=false; qs('#stopRecordBtn').disabled=true; qs('#recordMeter').classList.add('hidden');
+        qs('#recordBtn').disabled=false;
+        qs('#stopRecordBtn').disabled=true;
+        qs('#recordMeter').classList.add('hidden');
         setMsg(qs('#msg'),e.message||String(e),true);
       }
     }
@@ -292,14 +379,20 @@
       requireLogin();
       fillCategoryOptions();
       renderAttachState();
-      qs('#saveBtn').onclick=saveTextOnly;
+      qs('#saveBtn').onclick=saveItemWithBackground;
       qs('#uploadVideoBtn').onclick=function(){ uploadCurrentAsset('videoOnly'); };
       qs('#uploadDocBtn').onclick=function(){ uploadCurrentAsset('docsOnly'); };
       qs('#uploadAudioBtn').onclick=function(){ uploadCurrentAsset('audioOnly'); };
       qs('#recordBtn').onclick=startRecord;
       qs('#stopRecordBtn').onclick=stopRecord;
       qs('#clearRecordBtn').onclick=clearRecording;
-      loadAdminData(true).catch(function(e){ setMsg(qs('#msg'),e.message||String(e),true); });
+      qs('#videoFile').addEventListener('change', renderAttachState);
+      qs('#docFile').addEventListener('change', renderAttachState);
+      loadAdminData(true).catch(function(e){
+        fillCategoryOptions();
+        renderAttachState();
+        setMsg(qs('#msg'),e.message||String(e),true);
+      });
     }
   </script>
 </body>
