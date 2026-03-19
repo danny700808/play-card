@@ -70,21 +70,21 @@ async function compressVideoToDataUrl(file, opts={}){
   const options=Object.assign({
     maxInputMB: 180,
     fallbackPassThroughMB: 80,
-    maxWidth: 1280,
-    fps: 24,
-    videoBitsPerSecond: 1200000,
-    audioBitsPerSecond: 96000
+    maxWidth: 720,
+    fps: 20,
+    videoBitsPerSecond: 700000,
+    audioBitsPerSecond: 64000
   }, opts||{});
   if(!file) return '';
   if(!file.type.startsWith('video/')) return await fileToDataUrl(file);
   const sizeMB=file.size/1024/1024;
   if(sizeMB>options.maxInputMB){
-    throw new Error('影片檔太大，請先在手機修剪到 4 分鐘內或降低畫質後再上傳');
+    throw new Error('影片檔太大，請先在手機修剪到 3 分鐘內或降低畫質到 720p 後再上傳');
   }
   const canRecord=!!(window.MediaRecorder && document.createElement('canvas').captureStream);
   if(!canRecord){
     if(sizeMB<=options.fallbackPassThroughMB) return await fileToDataUrl(file);
-    throw new Error('此裝置不支援影片自動壓縮，請先用手機修剪影片後再上傳');
+    throw new Error('此裝置不支援影片自動壓縮，請先用手機修剪影片到 720p 再上傳');
   }
   const objectUrl=URL.createObjectURL(file);
   const video=document.createElement('video');
