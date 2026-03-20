@@ -101,6 +101,60 @@
     }
 
     let audioRecorder=null, audioDataUrl='', audioPreviewUrl='';
+
+    let editingMediaState = { video:null, docs:[], audio:null };
+    function resetEditingMediaState(){ editingMediaState = { video:null, docs:[], audio:null }; }
+    function splitMultiValue(v){ return String(v||'').split(/\n+/).map(s=>s.trim()).filter(Boolean); }
+    function buildDocAssets(item){
+      const urls = splitMultiValue(item && (item.docUrl || item.docUrls || item['文件連結'] || ''));
+      const publicIds = splitMultiValue(item && (item.docPublicIds || item['文件PublicIDs'] || ''));
+      return urls.map(function(url, idx){
+        return {
+          url:url,
+          publicId: publicIds[idx] || '',
+          name: '附件 ' + (idx + 1)
+        };
+      });
+    }
+    function removeExistingVideo(){ editingMediaState.video = null; renderExistingMedia(); }
+    function removeExistingAudio(){ editingMediaState.audio = null; clearRecording(); renderExistingMedia(); }
+    function removeExistingDoc(index){ editingMediaState.docs.splice(index,1); renderExistingMedia(); }
+    function renderExistingMedia(){
+      var videoBox = qs('#existingVideoBox');
+      var docsBox = qs('#existingDocsBox');
+      var audioBox = qs('#existingAudioBox');
+      if (editingMediaState.video && editingMediaState.video.url) {
+        videoBox.classList.remove('hidden');
+        videoBox.innerHTML = '<div><strong>目前影片</strong></div>' +
+          '<div class="row"><button class="btn secondary mini-btn" type="button" onclick="openMediaInTopWindow(\'' + esc(editingMediaState.video.url) + '\')">查看影片</button>' +
+          '<button class="btn secondary mini-btn mini-danger" type="button" onclick="removeExistingVideo()">刪除目前影片</button></div>' +
+          '<div class="name">' + esc(editingMediaState.video.url) + '</div>';
+      } else {
+        videoBox.classList.add('hidden');
+        videoBox.innerHTML = '';
+      }
+      if (editingMediaState.docs && editingMediaState.docs.length) {
+        docsBox.classList.remove('hidden');
+        docsBox.innerHTML = '<div><strong>目前圖片 / 文件</strong></div>' + editingMediaState.docs.map(function(doc, idx){
+          return '<div class="row"><button class="btn secondary mini-btn" type="button" onclick="openMediaInTopWindow(\'' + esc(doc.url) + '\')">查看檔案 ' + (idx + 1) + '</button>' +
+            '<button class="btn secondary mini-btn mini-danger" type="button" onclick="removeExistingDoc(' + idx + ')">刪除此檔</button></div>' +
+            '<div class="name">' + esc(doc.url) + '</div>';
+        }).join('');
+      } else {
+        docsBox.classList.add('hidden');
+        docsBox.innerHTML = '';
+      }
+      if (editingMediaState.audio && editingMediaState.audio.url) {
+        audioBox.classList.remove('hidden');
+        audioBox.innerHTML = '<div><strong>目前錄音</strong></div>' +
+          '<div class="row"><button class="btn secondary mini-btn" type="button" onclick="openMediaInTopWindow(\'' + esc(editingMediaState.audio.url) + '\')">播放錄音</button>' +
+          '<button class="btn secondary mini-btn mini-danger" type="button" onclick="removeExistingAudio()">刪除目前錄音</button></div>' +
+          '<div class="name">' + esc(editingMediaState.audio.url) + '</div>';
+      } else {
+        audioBox.classList.add('hidden');
+        audioBox.innerHTML = '';
+      }
+    }
     function esc(s){return String(s||'').replace(/[&<>"]/g,function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]||m;});}
     function splitLinks(v){ return String(v||'').split(/\n+/).map(s=>s.trim()).filter(Boolean); }
     function linkButtons(urls,label){ const arr=splitLinks(urls); return arr.map((u,i)=>`<button class="btn secondary mini-btn" type="button" onclick="openMediaInTopWindow('${u}')">${label}${arr.length>1?(' '+(i+1)):''}</button>`).join(''); }
@@ -127,9 +181,9 @@
         return `<details class="item" ${rows.length?'':'open'}><summary class="top" style="cursor:pointer;list-style:none"><div><strong>${esc(c.name)}</strong><div class="muted">${esc(c.description||'')}</div></div><span class="tag">${rows.length} 筆</span></summary>${body}</details>`;
       }).join('');
     }
-    function editItem(id){ const x=adminData.items.find(r=>r.id===id); if(!x) return; qs('#itemId').value=x.id||''; qs('#categoryId').value=x.categoryId||''; qs('#title').value=x.title||''; qs('#keywords').value=x.keywords||''; qs('#description').value=x.description||''; qs('#sortOrder').value=x.sortOrder||''; document.querySelector(`input[name="enabled"][value="${x.enabled?'是':'否'}"]`).checked=true; editingMediaState.video = x.videoUrl ? {url:x.videoUrl, publicId:x.videoPublicId||''} : null; editingMediaState.docs = buildDocAssets(x); editingMediaState.audio = x.audioUrl ? {url:x.audioUrl, publicId:x.audioPublicId||''} : null; renderExistingMedia(); window.scrollTo({top:0,behavior:'smooth'}); }
+    function editItem(id){ const x=adminData.items.find(r=>r.id===id); if(!x) return; resetEditingMediaState(); qs('#itemId').value=x.id||''; qs('#categoryId').value=x.categoryId||''; qs('#title').value=x.title||''; qs('#keywords').value=x.keywords||''; qs('#description').value=x.description||''; qs('#sortOrder').value=x.sortOrder||''; document.querySelector(`input[name="enabled"][value="${x.enabled?'是':'否'}"]`).checked=true; editingMediaState.video = x.videoUrl ? {url:x.videoUrl, publicId:x.videoPublicId||''} : null; editingMediaState.docs = buildDocAssets(x); editingMediaState.audio = x.audioUrl ? {url:x.audioUrl, publicId:x.audioPublicId||''} : null; renderExistingMedia(); window.scrollTo({top:0,behavior:'smooth'}); }
     function clearRecording(){ audioDataUrl=''; if(audioPreviewUrl){ URL.revokeObjectURL(audioPreviewUrl); audioPreviewUrl=''; } qs('#recordPreview').src=''; qs('#recordPreview').classList.add('hidden'); qs('#recordStatus').textContent='尚未錄音'; qs('#recordStatus').classList.remove('ok'); qs('#recordMeter').classList.add('hidden'); qsa('#recordMeter .rec-bar').forEach(b=>{ b.style.height='20px'; b.classList.remove('live'); }); }
-    function resetForm(){ ['itemId','title','keywords','description','sortOrder'].forEach(id=>qs('#'+id).value=''); qs('#categoryId').value=''; document.querySelector('input[name="enabled"][value="是"]').checked=true; ['videoFile','docFile'].forEach(id=>qs('#'+id).value=''); editingMediaState={video:null,docs:[],audio:null}; renderExistingMedia(); clearRecording(); }
+    function resetForm(){ ['itemId','title','keywords','description','sortOrder'].forEach(id=>qs('#'+id).value=''); qs('#categoryId').value=''; document.querySelector('input[name="enabled"][value="是"]').checked=true; ['videoFile','docFile'].forEach(id=>qs('#'+id).value=''); resetEditingMediaState(); renderExistingMedia(); clearRecording(); }
     async function toggleItem(id, enable){ const user=requireLogin(); if(!user) return; const r=await api('toggleTrainingItem',{userId:user.id,itemId:id,enabled:enable}); setMsg(qs('#msg'), r.message||'', !r.ok); if(r.ok) loadAdminData(); }
     async function uploadMixedFiles(fileList){
       const files=Array.from(fileList||[]).filter(Boolean);
@@ -211,6 +265,7 @@
       adminData.categories = getFixedTrainingCategories();
       fillCategoryOptions();
       setPortalMode('settings'); qs('#saveBtn').onclick=saveItem; qs('#recordBtn').onclick=beginRecord; qs('#stopRecordBtn').onclick=stopRecord; qs('#clearRecordBtn').onclick=clearRecording;
+      renderExistingMedia();
       loadAdminData().catch(e=>setMsg(qs('#msg'), e.message||String(e), true));
     }
   </script>
