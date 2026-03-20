@@ -534,10 +534,10 @@ function createTask_(data) {
   const row = new Array(meta.headers.length).fill('');
   const set = function (name, value) { if (meta.map[name] != null) row[meta.map[name]] = value; };
 
-  let imageInfo = { name: '', url: '' };
-  let audioInfo = { name: '', url: '' };
-  if (sanitize_(data.taskImage)) imageInfo = saveDataUrlToDrive_(data.taskImage, 'task_image_' + Date.now() + '.jpg', taskFolder_());
-  if (sanitize_(data.taskAudio)) audioInfo = saveDataUrlToDrive_(data.taskAudio, 'task_audio_' + Date.now() + '.webm', taskFolder_());
+  let imageInfo = { name: '', url: sanitize_(data.taskImageUrl || '') };
+  let audioInfo = { name: '', url: sanitize_(data.taskAudioUrl || '') };
+  if (!imageInfo.url && sanitize_(data.taskImage)) imageInfo = saveDataUrlToDrive_(data.taskImage, 'task_image_' + Date.now() + '.jpg', taskFolder_());
+  if (!audioInfo.url && sanitize_(data.taskAudio)) audioInfo = saveDataUrlToDrive_(data.taskAudio, 'task_audio_' + Date.now() + '.webm', taskFolder_());
 
   set('任務ID', uuid_('TSK_'));
   set('標題', title);
@@ -592,11 +592,14 @@ function completeTask_(data) {
     return { ok: false, message: '這筆任務不是指派給你的。' };
   }
 
+  const photoUrls = Array.isArray(data.photoUrls) ? data.photoUrls.map(function (x) { return sanitize_(x); }).filter(Boolean) : [];
   const photos = Array.isArray(data.photos) ? data.photos : [];
   const folder = taskFolder_();
-  const uploaded = photos.map(function (d, idx) {
-    return saveDataUrlToDrive_(d, 'task_' + taskId + '_' + (idx + 1) + '_' + Date.now() + '.jpg', folder);
-  });
+  const uploaded = photoUrls.length
+    ? photoUrls.map(function (url, idx) { return { name: 'cloudinary_task_' + (idx + 1), url: url }; })
+    : photos.map(function (d, idx) {
+        return saveDataUrlToDrive_(d, 'task_' + taskId + '_' + (idx + 1) + '_' + Date.now() + '.jpg', folder);
+      });
 
   if (taskMeta.map['狀態'] != null) taskMeta.sh.getRange(rowIndex, taskMeta.map['狀態'] + 1).setValue('已完成');
   if (taskMeta.map['完成時間'] != null) taskMeta.sh.getRange(rowIndex, taskMeta.map['完成時間'] + 1).setValue(now_());
@@ -718,15 +721,21 @@ function saveTrainingItem_(data) {
   const existing = rowIndex ? rowObjFromValues_(sh.getRange(rowIndex, 1, 1, meta.headers.length).getValues()[0], meta.headers) : {};
 
   const folder = getOrCreateRootFolder_('員工系統_教育訓練');
-  const video = sanitize_(data.videoData)
-    ? saveDataUrlToDrive_(data.videoData, 'training_video_' + Date.now(), folder).url
-    : (existing['影片連結'] || '');
-  const docs = Array.isArray(data.docDataList) && data.docDataList.length
-    ? data.docDataList.map(function (d, idx) { return saveDataUrlToDrive_(d, 'training_doc_' + Date.now() + '_' + (idx + 1), folder).url; }).join('\n')
-    : (existing['文件連結'] || '');
-  const audio = sanitize_(data.audioData)
-    ? saveDataUrlToDrive_(data.audioData, 'training_audio_' + Date.now(), folder).url
-    : (existing['音檔連結'] || '');
+  const video = sanitize_(data.videoUrl)
+    ? sanitize_(data.videoUrl)
+    : (sanitize_(data.videoData)
+      ? saveDataUrlToDrive_(data.videoData, 'training_video_' + Date.now(), folder).url
+      : (existing['影片連結'] || ''));
+  const docs = Array.isArray(data.docUrls) && data.docUrls.length
+    ? data.docUrls.map(function (x) { return sanitize_(x); }).filter(Boolean).join('\n')
+    : (Array.isArray(data.docDataList) && data.docDataList.length
+      ? data.docDataList.map(function (d, idx) { return saveDataUrlToDrive_(d, 'training_doc_' + Date.now() + '_' + (idx + 1), folder).url; }).join('\n')
+      : (existing['文件連結'] || ''));
+  const audio = sanitize_(data.audioUrl)
+    ? sanitize_(data.audioUrl)
+    : (sanitize_(data.audioData)
+      ? saveDataUrlToDrive_(data.audioData, 'training_audio_' + Date.now(), folder).url
+      : (existing['音檔連結'] || ''));
 
   const row = new Array(meta.headers.length).fill('');
   const set = function (name, value) { if (meta.map[name] != null) row[meta.map[name]] = value; };
@@ -747,7 +756,7 @@ function saveTrainingItem_(data) {
   if (rowIndex) sh.getRange(rowIndex, 1, 1, meta.headers.length).setValues([row]);
   else sh.appendRow(row);
 
-  return { ok: true, message: rowIndex ? '教材已更新。' : '教材已建立。' };
+  return { ok: true, itemId: itemId, message: rowIndex ? '教材已更新。' : '教材已建立。' };
 }
 
 function toggleTrainingItem_(data) {
