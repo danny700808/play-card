@@ -9,12 +9,19 @@
     .page-return-wrap{margin-bottom:16px}.page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;border-radius:16px;font-size:20px;font-weight:800}
     .search-box{display:grid;grid-template-columns:1fr auto;gap:10px}
     .category-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-    .category-chip{border:1px solid var(--line);border-radius:16px;padding:14px 16px;background:#fff;cursor:pointer}
+    .category-chip{position:relative;border:1px solid var(--line);border-radius:16px;padding:16px;background:#fff;cursor:pointer;text-align:left}
     .category-chip.active{border-color:var(--brand);box-shadow:0 0 0 2px rgba(31,122,90,.12)}
+    .category-chip strong{display:block;font-size:18px;line-height:1.35;margin-bottom:6px}
+    .category-count{position:absolute;top:14px;right:14px;min-width:34px;padding:4px 10px;border-radius:999px;background:#eef7f2;color:var(--brand);font-size:14px;font-weight:800;text-align:center}
     .training-item{border:1px solid var(--line);border-radius:16px;padding:16px;background:#fff}
-    .training-meta{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 10px}.link-row{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}
-    .link-btn{width:auto;padding:10px 14px;border-radius:12px}.empty-box{padding:18px;border:1px dashed var(--line);border-radius:16px;background:#fbfcfe;color:var(--muted);text-align:center}
-    @media (max-width:560px){.category-grid,.search-box{grid-template-columns:1fr}}
+    .training-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:10px}
+    .training-title-wrap{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+    .training-title-box{display:inline-block;padding:8px 12px;border-radius:12px;background:#eef7f2;color:#173a2c;font-size:30px;font-weight:900;line-height:1.15;border:1px solid #d7eadf}
+    .training-meta{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 10px}
+    .link-row{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}
+    .link-btn{width:auto;padding:8px 12px;border-radius:12px;font-size:14px;font-weight:800}
+    .empty-box{padding:18px;border:1px dashed var(--line);border-radius:16px;background:#fbfcfe;color:var(--muted);text-align:center}
+    @media (max-width:560px){.category-grid,.search-box{grid-template-columns:1fr}.training-title-box{font-size:24px}.category-chip strong{padding-right:56px}}
   </style>
 </head>
 <body onload="init()">
@@ -91,10 +98,14 @@
       trainingData.items = normalizeTrainingItems(r.items||[]);
       renderResults();
     }
+    function getCategoryCount(categoryId){
+      return (trainingData.items||[]).filter(x=>String(x.categoryId||'')===String(categoryId||'')).length;
+    }
     function renderCategories(){
       const box=qs('#categoryList'); const allActive = activeCategory==='';
       const categories=getFixedTrainingCategories();
-      box.innerHTML=[`<button type="button" class="category-chip ${allActive?'active':''}" onclick="selectCategory('')"><strong>全部教材</strong><div class="muted">顯示所有啟用中的教材</div></button>`].concat(categories.map(c=>`<button type="button" class="category-chip ${activeCategory===c.id?'active':''}" onclick="selectCategory('${c.id}')"><strong>${esc(c.name)}</strong><div class="muted">${esc(c.description||'')}</div></button>`)).join('');
+      const totalCount=(trainingData.items||[]).length;
+      box.innerHTML=[`<button type="button" class="category-chip ${allActive?'active':''}" onclick="selectCategory('')"><span class="category-count">${totalCount}</span><strong>全部教材</strong><div class="muted">顯示所有啟用中的教材</div></button>`].concat(categories.map(c=>`<button type="button" class="category-chip ${activeCategory===c.id?'active':''}" onclick="selectCategory('${c.id}')"><span class="category-count">${getCategoryCount(c.id)}</span><strong>${esc(c.name)}</strong><div class="muted">${esc(c.description||'')}</div></button>`)).join('');
     }
     function selectCategory(id){ activeCategory=id||''; renderCategories(); renderResults(true); }
     function filterItems(){ const kw=(qs('#keyword').value||'').trim().toLowerCase(); return trainingData.items.filter(x=>{ if(activeCategory && x.categoryId!==activeCategory) return false; if(!kw) return true; const hay=[x.title,x.categoryName,x.keywords,x.description].join(' ').toLowerCase(); return hay.includes(kw); }); }
@@ -103,7 +114,7 @@
       if(!show){ card.classList.add('hidden'); qs('#resultList').innerHTML=''; qs('#resultTag').textContent='全部'; return; }
       card.classList.remove('hidden');
       const categoryName = activeCategory ? ((trainingData.categories.find(x=>x.id===activeCategory)||{}).name||'') : '全部'; qs('#resultTag').textContent = kw ? ('搜尋') : (categoryName || '全部');
-      qs('#resultList').innerHTML = rows.length ? rows.map(x=>`<div class="training-item"><div class="top"><strong>${esc(x.title)}</strong><span class="tag">${esc(x.categoryName)}</span></div><div class="training-meta">${x.keywords?`<span class="attach-badge">關鍵字：${esc(x.keywords)}</span>`:''}${x.updatedAt?`<span class="attach-badge">更新：${esc(String(x.updatedAt).replace(/ GMT.*$/,''))}</span>`:''}</div>${x.description?`<div class="muted">${nl2br(x.description)}</div>`:''}<div class="link-row">${resourceBtns(x.videoUrl,'觀看影片')}${resourceBtns(x.docUrl,'查看文件 / 圖片')}${resourceBtns(x.audioUrl,'播放錄音')}</div></div>`).join('') : '<div class="empty-box">目前沒有符合條件的教材</div>';
+      qs('#resultList').innerHTML = rows.length ? rows.map(x=>`<div class="training-item"><div class="training-head"><div class="training-title-wrap"><span class="training-title-box">${esc(x.title)}</span><span class="tag">${esc(x.categoryName)}</span></div></div><div class="training-meta">${x.keywords?`<span class="attach-badge">關鍵字：${esc(x.keywords)}</span>`:''}${x.updatedAt?`<span class="attach-badge">更新：${esc(String(x.updatedAt).replace(/ GMT.*$/,''))}</span>`:''}</div>${x.description?`<div class="muted">${nl2br(x.description)}</div>`:''}<div class="link-row">${resourceBtns(x.videoUrl,'觀看影片')}${resourceBtns(x.docUrl,'查看文件 / 圖片')}${resourceBtns(x.audioUrl,'播放錄音')}</div></div>`).join('') : '<div class="empty-box">目前沒有符合條件的教材</div>';
     }
     function init(){
       fillHeader();
