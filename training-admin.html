@@ -16,6 +16,7 @@
     .record-status{margin-top:8px;font-size:14px;color:var(--muted)}
     .record-status.ok{color:#16533f;font-weight:700}
     .progress-under-btn{margin-top:12px}
+    .existing-media{margin-top:10px;padding:10px 12px;border:1px solid var(--line);border-radius:14px;background:#fbfcfe}.existing-media.hidden{display:none}.existing-media .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}.existing-media .name{font-size:14px;color:var(--muted);word-break:break-all}.mini-danger{background:#fff4f4;color:#b42318;border:1px solid #f0caca}
   </style>
 </head>
 <body onload="init()">
@@ -38,8 +39,8 @@
       <div class="field"><label for="title">主題名稱</label><input id="title" type="text" placeholder="例如：蝦皮寄件完整流程"></div>
       <div class="field"><label for="keywords">關鍵字</label><input id="keywords" type="text" placeholder="例如：蝦皮、寄件、包貨、出貨"></div>
       <div class="field"><label for="description">內容說明</label><textarea id="description" placeholder="可放 SOP 文字重點，員工搜尋後會直接看到。"></textarea></div>
-      <div class="field"><label for="videoFile">上傳影片（選填）</label><input id="videoFile" type="file" accept="video/mp4,video/quicktime,video/webm,video/*"><div class="muted compact-help">影片、圖片、錄音與文件都會直接上傳到 Cloudinary；大檔會自動分段上傳，讀取時再自動優化。</div></div>
-      <div class="field"><label for="docFile">上傳圖片 / 文件（選填）</label><input id="docFile" type="file" multiple accept="image/*,application/pdf,.pdf,.doc,.docx,text/plain,.txt,.xls,.xlsx,.ppt,.pptx"><div class="muted compact-help">可一次選多張圖片或多個文件；會直接上傳到 Cloudinary。</div></div>
+      <div class="field"><label for="videoFile">上傳影片（選填）</label><input id="videoFile" type="file" accept="video/mp4,video/quicktime,video/webm,video/*"><div id="existingVideoBox" class="existing-media hidden"></div><div class="muted compact-help">影片、圖片、錄音與文件都會直接上傳到 Cloudinary；大檔會自動分段上傳，讀取時再自動優化。</div></div>
+      <div class="field"><label for="docFile">上傳圖片 / 文件（選填）</label><input id="docFile" type="file" multiple accept="image/*,application/pdf,.pdf,.doc,.docx,text/plain,.txt,.xls,.xlsx,.ppt,.pptx"><div id="existingDocsBox" class="existing-media hidden"></div><div class="muted compact-help">可一次選多張圖片或多個文件；會直接上傳到 Cloudinary。</div></div>
       <div class="field"><label>錄音說明（選填）</label>
         <div class="record-box">
           <div class="record-controls">
@@ -51,7 +52,7 @@
           <div id="recordMeter" class="rec-meter hidden" aria-hidden="true">
             <span class="rec-bar"></span><span class="rec-bar"></span><span class="rec-bar"></span><span class="rec-bar"></span><span class="rec-bar"></span><span class="rec-bar"></span><span class="rec-bar"></span><span class="rec-bar"></span>
           </div>
-          <audio id="recordPreview" controls class="hidden" style="width:100%;margin-top:8px"></audio>
+          <audio id="recordPreview" controls class="hidden" style="width:100%;margin-top:8px"></audio><div id="existingAudioBox" class="existing-media hidden"></div>
         </div>
       </div>
       <div class="field"><label for="sortOrder">排序</label><input id="sortOrder" type="number" min="1" step="1" placeholder="留空就自動排最後"></div>
@@ -126,9 +127,9 @@
         return `<details class="item" ${rows.length?'':'open'}><summary class="top" style="cursor:pointer;list-style:none"><div><strong>${esc(c.name)}</strong><div class="muted">${esc(c.description||'')}</div></div><span class="tag">${rows.length} 筆</span></summary>${body}</details>`;
       }).join('');
     }
-    function editItem(id){ const x=adminData.items.find(r=>r.id===id); if(!x) return; qs('#itemId').value=x.id||''; qs('#categoryId').value=x.categoryId||''; qs('#title').value=x.title||''; qs('#keywords').value=x.keywords||''; qs('#description').value=x.description||''; qs('#sortOrder').value=x.sortOrder||''; document.querySelector(`input[name="enabled"][value="${x.enabled?'是':'否'}"]`).checked=true; window.scrollTo({top:0,behavior:'smooth'}); }
+    function editItem(id){ const x=adminData.items.find(r=>r.id===id); if(!x) return; qs('#itemId').value=x.id||''; qs('#categoryId').value=x.categoryId||''; qs('#title').value=x.title||''; qs('#keywords').value=x.keywords||''; qs('#description').value=x.description||''; qs('#sortOrder').value=x.sortOrder||''; document.querySelector(`input[name="enabled"][value="${x.enabled?'是':'否'}"]`).checked=true; editingMediaState.video = x.videoUrl ? {url:x.videoUrl, publicId:x.videoPublicId||''} : null; editingMediaState.docs = buildDocAssets(x); editingMediaState.audio = x.audioUrl ? {url:x.audioUrl, publicId:x.audioPublicId||''} : null; renderExistingMedia(); window.scrollTo({top:0,behavior:'smooth'}); }
     function clearRecording(){ audioDataUrl=''; if(audioPreviewUrl){ URL.revokeObjectURL(audioPreviewUrl); audioPreviewUrl=''; } qs('#recordPreview').src=''; qs('#recordPreview').classList.add('hidden'); qs('#recordStatus').textContent='尚未錄音'; qs('#recordStatus').classList.remove('ok'); qs('#recordMeter').classList.add('hidden'); qsa('#recordMeter .rec-bar').forEach(b=>{ b.style.height='20px'; b.classList.remove('live'); }); }
-    function resetForm(){ ['itemId','title','keywords','description','sortOrder'].forEach(id=>qs('#'+id).value=''); qs('#categoryId').value=''; document.querySelector('input[name="enabled"][value="是"]').checked=true; ['videoFile','docFile'].forEach(id=>qs('#'+id).value=''); clearRecording(); }
+    function resetForm(){ ['itemId','title','keywords','description','sortOrder'].forEach(id=>qs('#'+id).value=''); qs('#categoryId').value=''; document.querySelector('input[name="enabled"][value="是"]').checked=true; ['videoFile','docFile'].forEach(id=>qs('#'+id).value=''); editingMediaState={video:null,docs:[],audio:null}; renderExistingMedia(); clearRecording(); }
     async function toggleItem(id, enable){ const user=requireLogin(); if(!user) return; const r=await api('toggleTrainingItem',{userId:user.id,itemId:id,enabled:enable}); setMsg(qs('#msg'), r.message||'', !r.ok); if(r.ok) loadAdminData(); }
     async function uploadMixedFiles(fileList){
       const files=Array.from(fileList||[]).filter(Boolean);
@@ -170,7 +171,7 @@
           const videoRes=await uploadFileToCloudinary(videoFile,{folder:'training/video',onProgress:(ratio)=>setProgress(66 + Math.round(ratio*18), '影片分段上傳中')});
           videoAsset=cloudinaryAssetFromResponse(videoRes);
         }
-        const payload={ userId:user.id, itemId:qs('#itemId').value.trim(), categoryId, title, keywords:qs('#keywords').value.trim(), description:qs('#description').value.trim(), sortOrder:qs('#sortOrder').value.trim(), enabled:selectedEnabled(), docAssets, audioAsset, videoAsset };
+        const payload={ userId:user.id, itemId:qs('#itemId').value.trim(), categoryId, title, keywords:qs('#keywords').value.trim(), description:qs('#description').value.trim(), sortOrder:qs('#sortOrder').value.trim(), enabled:selectedEnabled(), docAssets, audioAsset, videoAsset, keepVideo:!!editingMediaState.video, keepAudio: !!(editingMediaState.audio && !audioAsset), keepDocUrls: editingMediaState.docs.map(x=>x.url) };
         setProgress(88,'寫入教材資料');
         const r=await api('saveTrainingItem', payload);
         if(!r.ok){ throw new Error(r.message||'文字教材建立失敗'); }
