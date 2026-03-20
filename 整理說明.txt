@@ -1,0 +1,11 @@
+這是整理過的乾淨版 ZIP。
+
+已處理：
+1. 以你另外上傳的 Code.gs.fixed 覆蓋成主要的 Code.gs
+2. 移除 ZIP 內重複檔名造成的解壓衝突
+3. 把 #Uxxxx 形式的中文檔名轉回正常中文檔名
+
+補充：
+- 我已另外檢查 Code.gs.fixed，純語法檢查通過
+- 原始 ZIP 內的 Code.gs 也沒有發現純語法錯誤
+- 兩者差異主要是 fixed 版少了一段 saveTrainingVideoLink_ 與對應 action，屬於整理版

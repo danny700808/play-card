@@ -1,0 +1,15 @@
+這次修正內容：
+1. 教材上傳影片新增 85MB 大小檢查。
+2. 超過 85MB 會直接顯示中文提示，不再等到上傳失敗才報錯。
+3. Cloudinary 失敗訊息改得更清楚。
+4. config.js 新增 CLOUDINARY_MAX_VIDEO_MB: 85。
+
+請覆蓋這三個檔案：
+- app.js
+- config.js
+- training-admin.html
+
+建議規則：
+- 影片格式：MP4 優先
+- 建議大小：85MB 內
+- iPhone 原始 MOV 若太大，先修剪或降低畫質後再上傳
