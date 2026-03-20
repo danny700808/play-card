@@ -25,6 +25,14 @@
   
     .page-return-wrap{margin-bottom:16px}
     .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
+
+    .task-remind-box{margin-top:10px;padding:10px 12px;border-radius:12px;background:#f7fafc;border:1px solid #e2e8f0}
+    .task-remind-box .label{font-size:13px;color:#526174;margin-bottom:6px;font-weight:700}
+    .task-remind-box .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    .task-remind-box select{min-width:140px}
+    .task-media-link{margin-top:10px}
+    .task-media-link .btn{width:auto}
+
 </style>
 </head>
 <body onload="init()">
@@ -182,21 +190,27 @@
     }
 
     function refreshRemindUi(){
-      const customBox = qs('#customRemindBox');
+      var customBox = qs('#customRemindBox');
       if(customBox) customBox.classList.toggle('hidden', reminderState.freq!=='自訂提醒');
-      const times=getRemindPreset(reminderState.freq);
-      reminderState.times=times.slice();
+      var times = [];
       if(reminderState.freq==='不提醒'){
+        reminderState.times = [];
         qs('#remindExplain').textContent='不提醒：這筆任務不會寄出到期提醒。';
         qs('#remindPlanBox').innerHTML='';
         return;
       }
       if(reminderState.freq==='自訂提醒'){
+        times = Array.from(document.querySelectorAll('.custom-remind:checked')).map(function(el){ return el.value; });
+        reminderState.times = times.slice();
         qs('#remindExplain').textContent='自訂提醒：只會依你勾選的時間寄出提醒。';
       }else{
+        times = getRemindPreset(reminderState.freq);
+        reminderState.times = times.slice();
         qs('#remindExplain').textContent='一般提醒：以下是通知員工的提醒時間。';
       }
-      qs('#remindPlanBox').innerHTML = times.map((time,idx)=>`<div>${idx+1}. ${time} 提醒一次</div>`).join('');
+      qs('#remindPlanBox').innerHTML = times.length
+        ? times.map(function(time,idx){ return '<div>'+(idx+1)+'. '+time+' 提醒一次</div>'; }).join('')
+        : '<div class="muted">目前沒有提醒時間</div>';
     }
 
     function parseRemindPlan(raw, freq){
@@ -209,7 +223,16 @@
     }
 
     function renderRemindSummary(task){
-      return '';
+      var creatorEnabled = String(task.remindEnabled || '').trim() || (task.remindFreq==='不提醒' ? '否' : '是');
+      var assigneeEnabled = String(task.assigneeRemindEnabled || '').trim() || creatorEnabled;
+      var plan = parseRemindPlan(task.assigneeRemindPlan || task.remindPlan || '', task.remindFreq || '一般提醒');
+      var lines = [];
+      lines.push('<div><strong>建立時提醒：</strong>' + (task.remindFreq || '一般提醒') + '</div>');
+      lines.push('<div><strong>提醒狀態：</strong>' + (assigneeEnabled==='否' ? '承辦人已關閉提醒' : '提醒開啟') + '</div>');
+      if(assigneeEnabled!=='否' && plan.times && plan.times.length){
+        lines.push('<div><strong>提醒時間：</strong>' + plan.times.join('、') + '</div>');
+      }
+      return '<div class="task-remind-box"><div class="label">提醒設定</div>' + lines.join('') + '</div>';
     }
 
 
@@ -233,9 +256,23 @@
       const imgUrl = imagePreviewUrl(x.taskImageUrl);
       const imageHtml = x.taskImageUrl ? `<div class="task-image-wrap"><a href="${imageOpenUrl}" target="_blank" rel="noopener"><img class="task-thumb" src="${imgUrl}" alt="任務圖片"></a></div>` : '';
       const audioHtml = x.taskAudioUrl ? `<div class="task-audio-link"><a class="btn secondary audio-open-btn" href="${audioOpenUrl(x.taskAudioUrl)}" target="_blank" rel="noopener">開啟語音檔案</a></div>` : '';
+      const videoHtml = x.taskVideoUrl ? `<div class="task-media-link"><a class="btn secondary" href="${audioOpenUrl(x.taskVideoUrl)}" target="_blank" rel="noopener">開啟任務影片</a></div>` : '';
+      const remindHtml = renderRemindSummary(x);
       const isMyAssignedTask = String(x.assigneeId||'')===String(currentUser.id||'') || String(x.assigneeEmail||'').toLowerCase()===String(currentUser.email||'').toLowerCase();
       const canComplete = x.status!=='已完成' && (!isAdmin || isMyAssignedTask);
       const proofNote = x.requirePhotoReturn==='是' ? `<div class="task-note warn">這筆任務需要回傳照片，沒有上傳照片就不能完成任務。</div>` : '';
+      const remindToggleBox = (!isAdmin && isMyAssignedTask && x.status!=='已完成') ? `
+        <div class="task-remind-box">
+          <div class="label">我的提醒</div>
+          <div class="row">
+            <select id="remindToggle_${x.id}">
+              <option value="是" ${(String(x.assigneeRemindEnabled||x.remindEnabled||'是')==='是'?'selected':'')}>提醒開啟</option>
+              <option value="否" ${(String(x.assigneeRemindEnabled||x.remindEnabled||'是')==='否'?'selected':'')}>不提醒</option>
+            </select>
+            <button class="btn secondary" style="width:auto" onclick="saveTaskRemindPrefs('${x.id}')">儲存提醒設定</button>
+          </div>
+          <div class="task-note">目前先做整筆任務的提醒開關；之後還可以再升級成單獨取消 24h / 6h / 1h / 到點提醒。</div>
+        </div>` : '';
       const completeBox = canComplete ? `
         ${proofNote}
         <div class="field" style="margin-top:10px"><textarea id="note_${x.id}" placeholder="問問題回報備注說明（選填）"></textarea></div>
@@ -254,12 +291,25 @@
           <div class="top"><strong>${x.title}</strong>${formatTaskStatusTag(x.status)}</div>
           ${x.content ? `<div>${x.content}</div>` : ''}
           ${imageHtml}
+          ${videoHtml}
           ${audioHtml}
           <div class="task-deadline">指派：${x.assigneeName||''}｜<span class="deadline-label">期限：${dueText}</span></div>
           <div class="muted">${proofText}</div>
+          ${remindHtml}
+          ${remindToggleBox}
           ${isAdmin?`<div class="muted">建立者：${x.createdByName||''}｜建立時間：${formatDisplayDateTime(x.createdAt||'')||''}</div>`:''}
           <div class="task-actions">${completeBox}${deleteBtn}</div>
         </div>`;
+    }
+
+    async function saveTaskRemindPrefs(taskId){
+      const user=requireLogin();
+      const sel=qs('#remindToggle_'+taskId);
+      if(!sel) return;
+      const enabled=sel.value || '是';
+      const r=await api('updateTaskReminderPrefs',{userId:user.id,taskId,enabled});
+      setMsg(qs('#msg'),r.message,!r.ok);
+      if(r.ok) setTimeout(loadTasks,220);
     }
 
     async function loadTasks(){
