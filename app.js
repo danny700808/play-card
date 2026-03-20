@@ -40,12 +40,12 @@ function dataUrlToFile(dataUrl, filename='upload.bin'){
 }
 function getCloudinaryConfig(){
   const cfg=window.APP_CONFIG||{};
-  const maxVideoMB=Number(cfg.CLOUDINARY_MAX_VIDEO_MB||85);
   return {
     cloudName:String(cfg.CLOUDINARY_CLOUD_NAME||'').trim(),
     uploadPreset:String(cfg.CLOUDINARY_UPLOAD_PRESET||'').trim(),
     rootFolder:String(cfg.CLOUDINARY_ROOT_FOLDER||'employee-system').trim() || 'employee-system',
-    maxVideoMB: !isNaN(maxVideoMB) && maxVideoMB>0 ? maxVideoMB : 85
+    chunkSizeMB:Number(cfg.CLOUDINARY_CHUNK_SIZE_MB||20) || 20,
+    maxVideoMB:Number(cfg.CLOUDINARY_SOFT_MAX_VIDEO_MB||0) || 0
   };
 }
 function sanitizeFolderSegment(value){
@@ -55,35 +55,82 @@ function guessExtensionByMime(mime=''){
   const map={'image/jpeg':'jpg','image/png':'png','image/webp':'webp','audio/webm':'webm','audio/mp4':'m4a','audio/mpeg':'mp3','video/mp4':'mp4','video/quicktime':'mov','video/webm':'webm','application/pdf':'pdf','text/plain':'txt'};
   return map[String(mime||'').toLowerCase()] || 'bin';
 }
-
-function fileSizeMB(bytes){ return Math.round((Number(bytes||0)/1024/1024)*10)/10; }
-function validateVideoFileForUpload(file, opts={}){
-  if(!file) return;
-  const cfg=getCloudinaryConfig();
-  const maxVideoMB=Number(opts.maxVideoMB||cfg.maxVideoMB||85);
-  const sizeMB=fileSizeMB(file.size);
-  const mime=String(file.type||'').toLowerCase();
-  const allowed = Array.isArray(opts.allowedTypes) && opts.allowedTypes.length
-    ? opts.allowedTypes
-    : ['video/mp4','video/quicktime','video/webm'];
-  if(allowed.length && mime && !allowed.includes(mime)){
-    throw new Error('目前建議上傳 MP4 影片；若是 iPhone 原始 MOV，請先修剪或轉成 MP4 再上傳。');
-  }
-  if(sizeMB>maxVideoMB){
-    throw new Error(`影片目前約 ${sizeMB} MB，已超過 ${maxVideoMB} MB 上限。請先修剪、降低畫質或轉成 MP4 後再上傳。`);
-  }
+function isCloudinaryUrl(url=''){
+  return /https?:\/\/res\.cloudinary\.com\//i.test(String(url||''));
+}
+function transformCloudinaryUrl(url='', transform=''){
+  const s=String(url||'').trim();
+  if(!isCloudinaryUrl(s) || !transform) return s;
+  return s.replace(/\/(image|video|raw)\/upload\//, function(m, rt){ return '/' + rt + '/upload/' + transform.replace(/^\/+|\/+$/g,'') + '/'; });
+}
+function optimizedVideoUrl(url=''){ return isCloudinaryUrl(url) ? transformCloudinaryUrl(url,'f_auto,q_auto') : String(url||''); }
+function optimizedImageUrl(url=''){ return isCloudinaryUrl(url) ? transformCloudinaryUrl(url,'f_auto,q_auto') : String(url||''); }
+function cloudinaryAssetFromResponse(res={}){
+  return {
+    url:String(res.secure_url||res.url||'').trim(),
+    publicId:String(res.public_id||'').trim(),
+    resourceType:String(res.resource_type||'').trim(),
+    format:String(res.format||'').trim(),
+    originalFilename:String(res.original_filename||res.display_name||res.public_id||'').trim(),
+    bytes:Number(res.bytes||0) || 0
+  };
 }
 async function uploadFileToCloudinary(file, opts={}){
   if(!file) throw new Error('沒有可上傳的檔案');
   const cfg=getCloudinaryConfig();
   if(!cfg.cloudName || !cfg.uploadPreset) throw new Error('Cloudinary 設定未完成');
   const folderParts=[cfg.rootFolder, sanitizeFolderSegment(opts.folder||'')].filter(Boolean);
+  const endpoint=`https://api.cloudinary.com/v1_1/${cfg.cloudName}/auto/upload`;
+  const chunkBytes=Math.max(5, Number(opts.chunkSizeMB||cfg.chunkSizeMB||20)) * 1024 * 1024;
+  const total=file.size||0;
+  const uploadId=`u_${Date.now()}_${Math.random().toString(36).slice(2,10)}`;
+  const maxVideoMB=Number(opts.softMaxVideoMB||cfg.maxVideoMB||0) || 0;
+  if(maxVideoMB && String(file.type||'').startsWith('video/') && total > maxVideoMB*1024*1024){
+    throw new Error(`影片較大（${(total/1024/1024).toFixed(1)}MB），請確認網路穩定後再上傳`);
+  }
+  async function sendChunk(start){
+    const end=Math.min(start+chunkBytes,total);
+    const form=new FormData();
+    form.append('file', file.slice(start,end), file.name||'upload.bin');
+    form.append('upload_preset', cfg.uploadPreset);
+    if(folderParts.length) form.append('folder', folderParts.join('/'));
+    if(opts.publicId) form.append('public_id', String(opts.publicId));
+    return await new Promise((resolve,reject)=>{
+      const xhr=new XMLHttpRequest();
+      xhr.open('POST', endpoint, true);
+      xhr.setRequestHeader('X-Unique-Upload-Id', uploadId);
+      xhr.setRequestHeader('Content-Range', `bytes ${start}-${end-1}/${total}`);
+      xhr.upload.onprogress=(evt)=>{
+        if(!opts.onProgress) return;
+        const local=evt.lengthComputable ? evt.loaded/(end-start) : 0;
+        const ratio=Math.max(0, Math.min(1, (start + ((end-start)*local))/total));
+        opts.onProgress(ratio, evt);
+      };
+      xhr.onerror=()=>reject(new Error('Cloudinary 上傳失敗，請檢查網路後再試'));
+      xhr.onload=()=>{
+        try{
+          const json=JSON.parse(xhr.responseText||'{}');
+          if(xhr.status>=200 && xhr.status<300){ resolve(json); return; }
+          reject(new Error(json.error?.message || 'Cloudinary 上傳失敗'));
+        }catch(err){ reject(new Error('Cloudinary 回傳格式錯誤')); }
+      };
+      xhr.send(form);
+    });
+  }
+  if(total && total>chunkBytes){
+    let start=0,last={};
+    while(start<total){
+      last=await sendChunk(start);
+      start=Math.min(start+chunkBytes,total);
+      if(opts.onProgress) opts.onProgress(Math.max(0, Math.min(1, start/total)), null);
+    }
+    return last;
+  }
   const form=new FormData();
   form.append('file', file);
   form.append('upload_preset', cfg.uploadPreset);
   if(folderParts.length) form.append('folder', folderParts.join('/'));
   if(opts.publicId) form.append('public_id', String(opts.publicId));
-  const endpoint=`https://api.cloudinary.com/v1_1/${cfg.cloudName}/auto/upload`;
   return await new Promise((resolve,reject)=>{
     const xhr=new XMLHttpRequest();
     xhr.open('POST', endpoint, true);
@@ -91,17 +138,13 @@ async function uploadFileToCloudinary(file, opts={}){
       if(!opts.onProgress || !evt.lengthComputable) return;
       opts.onProgress(Math.max(0, Math.min(1, evt.loaded/evt.total)), evt);
     };
-    xhr.onerror=()=>reject(new Error('Cloudinary 上傳失敗，請檢查網路或改用較小的 MP4 影片後再試'));
+    xhr.onerror=()=>reject(new Error('Cloudinary 上傳失敗，請檢查網路後再試'));
     xhr.onload=()=>{
       try{
         const json=JSON.parse(xhr.responseText||'{}');
         if(xhr.status>=200 && xhr.status<300 && json.secure_url){ resolve(json); return; }
-        if(xhr.status===413){ reject(new Error('影片檔案過大，請先修剪、降低畫質或轉成 MP4 後再上傳。')); return; }
-        const detail = json.error?.message || json.message || '';
-        reject(new Error(detail || 'Cloudinary 上傳失敗，請改用較小的 MP4 影片後再試'));
-      }catch(err){
-        reject(new Error(xhr.status===413 ? '影片檔案過大，請先修剪、降低畫質或轉成 MP4 後再上傳。' : 'Cloudinary 回傳格式錯誤'));
-      }
+        reject(new Error(json.error?.message || 'Cloudinary 上傳失敗'));
+      }catch(err){ reject(new Error('Cloudinary 回傳格式錯誤')); }
     };
     xhr.send(form);
   });
@@ -132,13 +175,13 @@ function getDriveFileId(url){
   const m=s.match(/(?:file\/d\/|[?&]id=|\/d\/)([-_a-zA-Z0-9]{20,})/);
   return m?m[1]:'';
 }
-function imagePreviewUrl(url){const id=getDriveFileId(url);return id?('https://drive.google.com/thumbnail?id='+id+'&sz=w1200'):url;}
-function driveViewUrl(url){const id=getDriveFileId(url);return id?('https://drive.google.com/file/d/'+id+'/view?usp=drivesdk'):String(url||'');}
-function drivePreviewUrl(url){const id=getDriveFileId(url);return id?('https://drive.google.com/file/d/'+id+'/preview'):String(url||'');}
-function audioOpenUrl(url){return driveViewUrl(url);}
-function audioStreamUrl(url){const id=getDriveFileId(url);return id?('https://drive.google.com/uc?export=download&id='+id):String(url||'');}
+function imagePreviewUrl(url){ if(isCloudinaryUrl(url)) return optimizedImageUrl(url); const id=getDriveFileId(url);return id?('https://drive.google.com/thumbnail?id='+id+'&sz=w1200'):url;}
+function driveViewUrl(url){ if(isCloudinaryUrl(url)) return optimizedVideoUrl(url); const id=getDriveFileId(url);return id?('https://drive.google.com/file/d/'+id+'/view?usp=drivesdk'):String(url||'');}
+function drivePreviewUrl(url){ if(isCloudinaryUrl(url)) return optimizedVideoUrl(url); const id=getDriveFileId(url);return id?('https://drive.google.com/file/d/'+id+'/preview'):String(url||'');}
+function audioOpenUrl(url){return isCloudinaryUrl(url) ? optimizedVideoUrl(url) : driveViewUrl(url);}
+function audioStreamUrl(url){ if(isCloudinaryUrl(url)) return optimizedVideoUrl(url); const id=getDriveFileId(url);return id?('https://drive.google.com/uc?export=download&id='+id):String(url||'');}
 function openMediaInTopWindow(url){
-  const finalUrl=driveViewUrl(url);
+  const finalUrl=isCloudinaryUrl(url) ? optimizedVideoUrl(url) : driveViewUrl(url);
   if(!finalUrl) return;
   try{
     if(window.top && window.top!==window){

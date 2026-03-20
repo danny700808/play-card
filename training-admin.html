@@ -38,7 +38,7 @@
       <div class="field"><label for="title">主題名稱</label><input id="title" type="text" placeholder="例如：蝦皮寄件完整流程"></div>
       <div class="field"><label for="keywords">關鍵字</label><input id="keywords" type="text" placeholder="例如：蝦皮、寄件、包貨、出貨"></div>
       <div class="field"><label for="description">內容說明</label><textarea id="description" placeholder="可放 SOP 文字重點，員工搜尋後會直接看到。"></textarea></div>
-      <div class="field"><label for="videoFile">上傳影片（選填）</label><input id="videoFile" type="file" accept="video/mp4,video/quicktime,video/webm,video/*"><div class="muted compact-help">影片會直接上傳到 Cloudinary，不再走 Google Drive 分段搬運。</div></div>
+      <div class="field"><label for="videoFile">上傳影片（選填）</label><input id="videoFile" type="file" accept="video/mp4,video/quicktime,video/webm,video/*"><div class="muted compact-help">影片、圖片、錄音與文件都會直接上傳到 Cloudinary；大檔會自動分段上傳，讀取時再自動優化。</div></div>
       <div class="field"><label for="docFile">上傳圖片 / 文件（選填）</label><input id="docFile" type="file" multiple accept="image/*,application/pdf,.pdf,.doc,.docx,text/plain,.txt,.xls,.xlsx,.ppt,.pptx"><div class="muted compact-help">可一次選多張圖片或多個文件；會直接上傳到 Cloudinary。</div></div>
       <div class="field"><label>錄音說明（選填）</label>
         <div class="record-box">
@@ -122,7 +122,7 @@
       const items=adminData.items||[];
       box.innerHTML = categories.map(c=>{
         const rows=items.filter(x=>x.categoryId===c.id);
-        const body = rows.length ? rows.map(x=>`<div class="item" style="margin-top:10px"><div class="top"><div><strong>${esc(x.title)}</strong><div class="muted">${esc(x.categoryName)}</div></div><span class="status-pill ${x.enabled?'status-on':'status-off'}">${x.enabled?'啟用中':'已停用'}</span></div>${x.description?`<div class="muted" style="margin-top:8px">${esc(x.description)}</div>`:''}<div class="training-links">${linkButtons(x.videoUrl,'影片')}${linkButtons(x.docUrl,'文件 / 圖片')}${linkButtons(x.audioUrl,'錄音')}<button class="btn secondary mini-btn" type="button" onclick="editItem('${x.id}')">編輯</button><button class="btn mini-btn" type="button" onclick="toggleItem('${x.id}', ${x.enabled?'false':'true'})">${x.enabled?'停用':'啟用'}</button></div></div>`).join('') : '<div class="muted" style="margin-top:10px">這一類目前沒有教材</div>';
+        const body = rows.length ? rows.map(x=>`<div class="item" style="margin-top:10px"><div class="top"><div><strong>${esc(x.title)}</strong><div class="muted">${esc(x.categoryName)}</div></div><span class="status-pill ${x.enabled?'status-on':'status-off'}">${x.enabled?'啟用中':'已停用'}</span></div>${x.description?`<div class="muted" style="margin-top:8px">${esc(x.description)}</div>`:''}<div class="training-links">${linkButtons(x.videoUrl,'影片')}${linkButtons(x.docUrl,'文件 / 圖片')}${linkButtons(x.audioUrl,'錄音')}<button class="btn secondary mini-btn" type="button" onclick="editItem('${x.id}')">編輯</button><button class="btn mini-btn" type="button" onclick="toggleItem('${x.id}', ${x.enabled?'false':'true'})">${x.enabled?'停用':'啟用'}</button><button class="btn secondary mini-btn" type="button" onclick="deleteItem('${x.id}','${esc(x.title)}')">刪除</button></div></div>`).join('') : '<div class="muted" style="margin-top:10px">這一類目前沒有教材</div>';
         return `<details class="item" ${rows.length?'':'open'}><summary class="top" style="cursor:pointer;list-style:none"><div><strong>${esc(c.name)}</strong><div class="muted">${esc(c.description||'')}</div></div><span class="tag">${rows.length} 筆</span></summary>${body}</details>`;
       }).join('');
     }
@@ -137,7 +137,15 @@
         folder:'training/docs',
         onProgress:(ratio)=>setProgress(20 + Math.round(ratio * 28), '圖片 / 文件上傳中')
       });
-      return results.map(x=>x.secure_url).filter(Boolean);
+      return results.map(cloudinaryAssetFromResponse).filter(x=>x.url);
+    }
+    async function deleteItem(id,title){
+      const user=requireLogin(); if(!user) return;
+      if(!confirm(`確定要刪除教材「${title||id}」嗎？
+若已設定 Cloudinary API key / secret，會一併刪除雲端檔案。`)) return;
+      const r=await api('deleteTrainingItem',{userId:user.id,itemId:id});
+      setMsg(qs('#msg'), r.message||'', !r.ok);
+      if(r.ok) loadAdminData();
     }
     async function saveItem(){
       const user=requireLogin(); if(!user) return;
@@ -146,34 +154,28 @@
       const btn=qs('#saveBtn'); btn.disabled=true; setMsg(qs('#msg'),'');
       try{
         const videoFile=qs('#videoFile').files[0], docFiles=qs('#docFile').files;
-        let docUrls=[], audioUrl='', videoUrl='';
+        let docAssets=[], audioAsset=null, videoAsset=null;
         setProgress(8,'準備中');
         if(docFiles && docFiles.length){
-          docUrls=await uploadMixedFiles(docFiles);
+          docAssets=await uploadMixedFiles(docFiles);
         }
         if(audioDataUrl){
           setProgress(52,'錄音上傳中');
           const audioFile=dataUrlToFile(audioDataUrl, 'training-audio.' + guessExtensionByMime((audioDataUrl.match(/^data:([^;]+)/)||[])[1]||''));
           const audioRes=await uploadFileToCloudinary(audioFile,{folder:'training/audio',onProgress:(ratio)=>setProgress(52 + Math.round(ratio*12), '錄音上傳中')});
-          audioUrl=audioRes.secure_url || '';
+          audioAsset=cloudinaryAssetFromResponse(audioRes);
         }
         if(videoFile){
-          validateVideoFileForUpload(videoFile, { maxVideoMB:getCloudinaryConfig().maxVideoMB });
           setProgress(66,'影片上傳中');
-          const videoRes=await uploadFileToCloudinary(videoFile,{folder:'training/video',onProgress:(ratio)=>setProgress(66 + Math.round(ratio*18), '影片上傳中')});
-          videoUrl=videoRes.secure_url || '';
+          const videoRes=await uploadFileToCloudinary(videoFile,{folder:'training/video',onProgress:(ratio)=>setProgress(66 + Math.round(ratio*18), '影片分段上傳中')});
+          videoAsset=cloudinaryAssetFromResponse(videoRes);
         }
-        const payload={ userId:user.id, itemId:qs('#itemId').value.trim(), categoryId, title, keywords:qs('#keywords').value.trim(), description:qs('#description').value.trim(), sortOrder:qs('#sortOrder').value.trim(), enabled:selectedEnabled(), docUrls, audioUrl };
+        const payload={ userId:user.id, itemId:qs('#itemId').value.trim(), categoryId, title, keywords:qs('#keywords').value.trim(), description:qs('#description').value.trim(), sortOrder:qs('#sortOrder').value.trim(), enabled:selectedEnabled(), docAssets, audioAsset, videoAsset };
         setProgress(88,'寫入教材資料');
         const r=await api('saveTrainingItem', payload);
         if(!r.ok){ throw new Error(r.message||'文字教材建立失敗'); }
-        const itemId=String(r.itemId || qs('#itemId').value || '').trim();
-        if(videoUrl){
-          const a=await api('saveTrainingVideoLink',{ userId:user.id, itemId:itemId, videoUrl });
-          if(!a.ok) throw new Error(a.message||'影片已上傳，但回寫教材失敗');
-        }
         setProgress(100,'完成');
-        setMsg(qs('#msg'), videoUrl ? '教材與影片已儲存到 Cloudinary。' : (r.message||'教材已建立。'), false);
+        setMsg(qs('#msg'), videoAsset ? '教材與影片已儲存到 Cloudinary。' : (r.message||'教材已建立。'), false);
         resetForm();
         await loadAdminData();
       }catch(e){ setMsg(qs('#msg'), e.message||String(e), true); }
