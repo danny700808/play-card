@@ -40,14 +40,7 @@
       </div>
       <div id="msg" class="message"></div>
 
-      <div id="adminBlock" data-if-admin style="display:none">
-        <div class="task-admin-nav">
-          <a class="navlink" href="settings.html">設定區首頁</a>
-          <a class="navlink" href="leave.html">請假簽核</a>
-          <a class="navlink" href="routine.html">定期事項設定</a>
-        </div>
-
-        <div class="section-title">快速建立交辦</div>
+      <div id="adminBlock" data-if-admin style="display:none">        <div class="section-title">快速建立交辦</div>
         <div class="field"><label>任務標題</label><input id="title" placeholder="請輸入任務標題"></div>
         <div class="field"><label>任務內容（選填）</label><textarea id="content" placeholder="需要補充時再填寫"></textarea></div>
         <div class="field"><label>指派員工</label><select id="assigneeId"><option value="">請選擇員工</option></select></div>
@@ -71,8 +64,13 @@
         </div>
 
         <div class="field">
-          <label>任務圖片（選填）</label>
-          <input id="taskImage" type="file" accept=".jpg,.jpeg,.png" multiple>
+          <label>任務圖片 / 文件（選填）</label>
+          <input id="taskImage" type="file" accept=".jpg,.jpeg,.png,.pdf,.doc,.docx" multiple>
+        </div>
+
+        <div class="field">
+          <label>任務影片（選填）</label>
+          <input id="taskVideo" type="file" accept="video/*">
         </div>
 
         <div class="field">
@@ -89,6 +87,11 @@
         </div>
 
         <div class="field">
+          <button type="button" class="btn secondary" id="clearAttachBtn">清除已選附件</button>
+          <div class="task-note">會一起清除圖片 / 文件、影片、錄音。</div>
+        </div>
+
+        <div class="field">
           <label>完成回報需求</label>
           <select id="requirePhotoReturn">
             <option value="否">不需要</option>
@@ -99,12 +102,18 @@
         <div class="field">
           <label>提醒頻率</label>
           <select id="remindFreq">
-            <option value="低提醒">低提醒</option>
+            <option value="不提醒">不提醒</option>
             <option value="一般提醒" selected>一般提醒</option>
-            <option value="高提醒">高提醒</option>
+            <option value="自訂提醒">自訂提醒</option>
           </select>
           <div class="remind-explain" id="remindExplain"></div>
           <div class="remind-plan-box" id="remindPlanBox"></div>
+          <div id="customRemindBox" class="task-note hidden">
+            <div><label><input type="checkbox" class="custom-remind" value="截止前 24 小時" checked> 截止前 24 小時</label></div>
+            <div><label><input type="checkbox" class="custom-remind" value="截止前 6 小時" checked> 截止前 6 小時</label></div>
+            <div><label><input type="checkbox" class="custom-remind" value="截止前 1 小時" checked> 截止前 1 小時</label></div>
+            <div><label><input type="checkbox" class="custom-remind" value="截止時間到時" checked> 截止時間到時</label></div>
+          </div>
         </div>
 
         <div id="createActionBox">
@@ -173,9 +182,20 @@
     }
 
     function refreshRemindUi(){
+      const customBox = qs('#customRemindBox');
+      if(customBox) customBox.classList.toggle('hidden', reminderState.freq!=='自訂提醒');
       const times=getRemindPreset(reminderState.freq);
       reminderState.times=times.slice();
-      qs('#remindExplain').textContent=`${reminderState.freq}：以下是通知員工的提醒時間。`;
+      if(reminderState.freq==='不提醒'){
+        qs('#remindExplain').textContent='不提醒：這筆任務不會寄出到期提醒。';
+        qs('#remindPlanBox').innerHTML='';
+        return;
+      }
+      if(reminderState.freq==='自訂提醒'){
+        qs('#remindExplain').textContent='自訂提醒：只會依你勾選的時間寄出提醒。';
+      }else{
+        qs('#remindExplain').textContent='一般提醒：以下是通知員工的提醒時間。';
+      }
       qs('#remindPlanBox').innerHTML = times.map((time,idx)=>`<div>${idx+1}. ${time} 提醒一次</div>`).join('');
     }
 
@@ -343,6 +363,8 @@
         initRecMeter();
         let recorder=null;
         qs('#remindFreq').onchange=(e)=>{reminderState={freq:e.target.value,times:[]}; refreshRemindUi();};
+        document.querySelectorAll('.custom-remind').forEach(function(el){ el.onchange=function(){ if((qs('#remindFreq')||{}).value==='自訂提醒'){ reminderState={freq:'自訂提醒',times:[]}; refreshRemindUi(); } }; });
+        qs('#clearAttachBtn').onclick=()=>{ qs('#taskImage').value=''; const videoEl=qs('#taskVideo'); if(videoEl) videoEl.value=''; taskAudio=''; qs('#recStatus').textContent='尚未錄音'; qs('#clearRecBtn').classList.add('hidden'); renderRecMeter(0); qs('#recMeter').classList.add('hidden'); };
         qs('#startRecBtn').onclick=async()=>{
           try{
             qs('#recMeter').classList.remove('hidden');
@@ -355,8 +377,9 @@
         qs('#createBtn').onclick=async()=>{
           const deadline=computeDeadline(dueMode);
           if(!qs('#title').value.trim() || !qs('#assigneeId').value){setMsg(qs('#msg'),'請先輸入標題並選擇員工',true);return;}
-          let taskImageAsset=null, taskAudioAsset=null;
+          let taskImageAsset=null, taskAudioAsset=null, taskVideoAsset=null;
           const f=qs('#taskImage').files[0];
+          const vf=qs('#taskVideo') ? qs('#taskVideo').files[0] : null;
           const btn=qs('#createBtn');
           const box=qs('#createProgressBox');
           btn.classList.add('hidden');
@@ -370,13 +393,17 @@
             const imageRes=await uploadFileToCloudinary(f,{folder:'tasks/assigned-image',onProgress:(ratio)=>setProgressUI('createProgress',25 + Math.round(ratio*20),'圖片上傳中...')});
             taskImageAsset=cloudinaryAssetFromResponse(imageRes);
           }
+          if(vf){
+            const videoRes=await uploadFileToCloudinary(vf,{folder:'tasks/assigned-video',onProgress:(ratio)=>setProgressUI('createProgress',45 + Math.round(ratio*15),'影片上傳中...')});
+            taskVideoAsset=cloudinaryAssetFromResponse(videoRes);
+          }
           if(taskAudio){
             const audioFile=dataUrlToFile(taskAudio,'task-audio.' + guessExtensionByMime((taskAudio.match(/^data:([^;]+)/)||[])[1]||''));
-            const audioRes=await uploadFileToCloudinary(audioFile,{folder:'tasks/assigned-audio',onProgress:(ratio)=>setProgressUI('createProgress',45 + Math.round(ratio*15),'錄音上傳中...')});
+            const audioRes=await uploadFileToCloudinary(audioFile,{folder:'tasks/assigned-audio',onProgress:(ratio)=>setProgressUI('createProgress',60 + Math.round(ratio*10),'錄音上傳中...')});
             taskAudioAsset=cloudinaryAssetFromResponse(audioRes);
           }
-          setProgressUI('createProgress',70,'寫入任務資料...');
-          const remindPlan = JSON.stringify({freq:reminderState.freq, times:reminderState.times||getRemindPreset(reminderState.freq)});
+          setProgressUI('createProgress',72,'寫入任務資料...');
+          const remindPlan = JSON.stringify({freq:reminderState.freq, times:reminderState.times||getRemindPreset(reminderState.freq), enabled: qs('#remindFreq').value!=='不提醒'});
           const r=await api('createTask',{
             creatorId:currentUser.id,
             title:qs('#title').value,
@@ -390,13 +417,14 @@
             remindFreq:qs('#remindFreq').value,
             remindPlan,
             taskImageAsset,
-            taskAudioAsset
+            taskAudioAsset,
+            taskVideoAsset
           });
           setProgressUI('createProgress',100,r.ok?'建立完成':'建立失敗');
           setMsg(qs('#msg'),r.message,!r.ok);
           setTimeout(()=>{btn.classList.remove('hidden'); box.classList.add('hidden');}, r.ok?700:1200);
           if(r.ok){
-            qs('#title').value=''; qs('#content').value=''; qs('#taskImage').value=''; taskAudio='';
+            qs('#title').value=''; qs('#content').value=''; qs('#taskImage').value=''; if(qs('#taskVideo')) qs('#taskVideo').value=''; taskAudio='';
             qs('#recStatus').textContent='尚未錄音'; qs('#clearRecBtn').classList.add('hidden');
             renderRecMeter(0); qs('#recMeter').classList.add('hidden');
             reminderState={freq:qs('#remindFreq').value,times:[]}; refreshRemindUi();
