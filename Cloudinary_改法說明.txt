@@ -1,0 +1,22 @@
+Cloudinary 改法（本包已改好）
+
+這次已修改：
+1. config.js
+2. app.js
+3. training-admin.html
+4. task.html
+5. Code.gs
+
+你要做的事：
+1. GitHub：把上面 4 個前端檔案覆蓋上去。
+2. Apps Script：把 Code.gs 全部覆蓋上去並重新部署。
+3. Cloudinary preset 需為：yuzu_unsigned
+4. Cloudinary cloud name 目前已寫成：dkwzybiw9
+
+這版改完後：
+- 教材區圖片 / 文件 / 錄音 / 影片 會直接上傳到 Cloudinary
+- 交辦事項建立時的圖片 / 錄音 會直接上傳到 Cloudinary
+- 員工完成任務上傳照片 會直接上傳到 Cloudinary
+- GAS 只負責記錄網址，不再搬大檔到 Google Drive
+
+這版原則上沒有動其他功能。

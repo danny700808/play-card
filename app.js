@@ -21,6 +21,83 @@ function setMsg(el, text, isError=false){if(!el) return; el.style.display=text?'
 function togglePassword(inputSel, btn){const input=qs(inputSel); const show=input.type==='password'; input.type=show?'text':'password'; btn.textContent=show?'🙈':'👁';}
 async function getPublicIp(){try{const r=await fetch('https://api.ipify.org?format=json'); const j=await r.json(); return j.ip||'';}catch(e){return '';}}
 async function fileToDataUrl(file){return new Promise((resolve,reject)=>{const r=new FileReader(); r.onload=()=>resolve(String(r.result||'')); r.onerror=reject; r.readAsDataURL(file);});}
+
+function dataUrlToBlob(dataUrl){
+  const raw=String(dataUrl||'');
+  if(!raw.startsWith('data:')) throw new Error('附件格式錯誤');
+  const parts=raw.split(',');
+  const meta=parts[0]||'';
+  const body=parts[1]||'';
+  const mime=((meta.match(/^data:([^;]+)/)||[])[1])||'application/octet-stream';
+  const bin=atob(body);
+  const arr=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
+  return new Blob([arr],{type:mime});
+}
+function dataUrlToFile(dataUrl, filename='upload.bin'){
+  const blob=dataUrlToBlob(dataUrl);
+  return new File([blob], filename, {type:blob.type || 'application/octet-stream'});
+}
+function getCloudinaryConfig(){
+  const cfg=window.APP_CONFIG||{};
+  return {
+    cloudName:String(cfg.CLOUDINARY_CLOUD_NAME||'').trim(),
+    uploadPreset:String(cfg.CLOUDINARY_UPLOAD_PRESET||'').trim(),
+    rootFolder:String(cfg.CLOUDINARY_ROOT_FOLDER||'employee-system').trim() || 'employee-system'
+  };
+}
+function sanitizeFolderSegment(value){
+  return String(value||'').trim().replace(/\+/g,'/').replace(/^\/+|\/+$/g,'').replace(/[^a-zA-Z0-9_\-/]/g,'-');
+}
+function guessExtensionByMime(mime=''){
+  const map={'image/jpeg':'jpg','image/png':'png','image/webp':'webp','audio/webm':'webm','audio/mp4':'m4a','audio/mpeg':'mp3','video/mp4':'mp4','video/quicktime':'mov','video/webm':'webm','application/pdf':'pdf','text/plain':'txt'};
+  return map[String(mime||'').toLowerCase()] || 'bin';
+}
+async function uploadFileToCloudinary(file, opts={}){
+  if(!file) throw new Error('沒有可上傳的檔案');
+  const cfg=getCloudinaryConfig();
+  if(!cfg.cloudName || !cfg.uploadPreset) throw new Error('Cloudinary 設定未完成');
+  const folderParts=[cfg.rootFolder, sanitizeFolderSegment(opts.folder||'')].filter(Boolean);
+  const form=new FormData();
+  form.append('file', file);
+  form.append('upload_preset', cfg.uploadPreset);
+  if(folderParts.length) form.append('folder', folderParts.join('/'));
+  if(opts.publicId) form.append('public_id', String(opts.publicId));
+  const endpoint=`https://api.cloudinary.com/v1_1/${cfg.cloudName}/auto/upload`;
+  return await new Promise((resolve,reject)=>{
+    const xhr=new XMLHttpRequest();
+    xhr.open('POST', endpoint, true);
+    xhr.upload.onprogress=(evt)=>{
+      if(!opts.onProgress || !evt.lengthComputable) return;
+      opts.onProgress(Math.max(0, Math.min(1, evt.loaded/evt.total)), evt);
+    };
+    xhr.onerror=()=>reject(new Error('Cloudinary 上傳失敗，請檢查網路後再試'));
+    xhr.onload=()=>{
+      try{
+        const json=JSON.parse(xhr.responseText||'{}');
+        if(xhr.status>=200 && xhr.status<300 && json.secure_url){ resolve(json); return; }
+        reject(new Error(json.error?.message || 'Cloudinary 上傳失敗'));
+      }catch(err){ reject(new Error('Cloudinary 回傳格式錯誤')); }
+    };
+    xhr.send(form);
+  });
+}
+async function uploadFilesToCloudinary(files, opts={}){
+  const list=Array.from(files||[]).filter(Boolean);
+  const results=[];
+  for(let i=0;i<list.length;i++){
+    const file=list[i];
+    const r=await uploadFileToCloudinary(file, Object.assign({}, opts, {
+      onProgress:(ratio, evt)=>{
+        if(typeof opts.onItemProgress==='function') opts.onItemProgress({index:i,total:list.length,ratio,file,event:evt});
+        if(typeof opts.onProgress==='function') opts.onProgress(((i+ratio)/list.length), {index:i,total:list.length,ratio,file,event:evt});
+      }
+    }));
+    results.push(r);
+    if(typeof opts.onProgress==='function') opts.onProgress((i+1)/list.length, {index:i,total:list.length,ratio:1,file});
+  }
+  return results;
+}
 function fillHeader(){const user=requireLogin(); if(!user) return; qsa('[data-user-name]').forEach(el=>el.textContent=user.name||'員工'); qsa('[data-if-parttime]').forEach(el=>el.style.display=user.isPartTime?'':'none'); qsa('[data-if-admin]').forEach(el=>el.style.display=user.role==='admin'?'':'none'); qsa('[data-if-staff-view]').forEach(el=>el.style.display=user.role==='admin'?'none':'');}
 function redirectAfterLogin(user){saveUser(user); if(user && user.showSettingsZone){setPortalMode('staff'); location.href='portal.html'; return;} location.href = user.role==='admin' ? 'task.html' : 'dashboard.html';}
 function saveLoginPref(email,password,remember=true){if(!remember){localStorage.removeItem('employeeSavedLogin');return;}localStorage.setItem('employeeSavedLogin',JSON.stringify({email:email||'',password:password||'',remember:true}));}

@@ -302,7 +302,7 @@
       const files=Array.from(qs('#photo_'+taskId).files||[]);
       if(requirePhoto && !files.length){setMsg(qs('#msg'),'這筆任務需要回傳照片，請先上傳照片再完成任務。',true); return;}
       let photos=[];
-      if(files.length) photos=await compressImagesToDataUrls(files,1600,0.75);
+      if(files.length) photos=await uploadFilesToCloudinary(files,{folder:'tasks/completed',onProgress:(ratio)=>setInlineProgress(taskId,40 + Math.round(ratio*35), '完成照片上傳中...')});
       const btn=btnEl||null;
       const progressBox=qs('#completeProgress_'+taskId);
       if(btn){btn.disabled=true; btn.classList.add('hidden');}
@@ -313,7 +313,7 @@
         {pct:60,text:'上傳中...',wait:260},
         {pct:85,text:'等待系統寫入...',wait:220}
       ]);
-      const r=await api('completeTask',{userId:user.id,taskId,note:qs('#note_'+taskId).value,photos});
+      const r=await api('completeTask',{userId:user.id,taskId,note:qs('#note_'+taskId).value,photoUrls:(photos||[]).map(x=>x.secure_url).filter(Boolean)});
       setProgressUI('complete_'+taskId,100,r.ok?'完成任務送出成功':'送出失敗');
       setMsg(qs('#msg'),r.message,!r.ok);
       setTimeout(()=>{ if(btn){btn.disabled=false; btn.classList.remove('hidden');} if(progressBox){progressBox.classList.add('hidden');} if(btn){btn.textContent='完成任務';}}, r.ok?700:1200);
@@ -355,7 +355,7 @@
         qs('#createBtn').onclick=async()=>{
           const deadline=computeDeadline(dueMode);
           if(!qs('#title').value.trim() || !qs('#assigneeId').value){setMsg(qs('#msg'),'請先輸入標題並選擇員工',true);return;}
-          let taskImage='';
+          let taskImageUrl='', taskAudioUrl='';
           const f=qs('#taskImage').files[0];
           const btn=qs('#createBtn');
           const box=qs('#createProgressBox');
@@ -363,11 +363,19 @@
           box.classList.remove('hidden');
           runFakeProgress('createProgress',[
             {pct:10,text:'檢查欄位中...',wait:180},
-            {pct:25,text:'整理圖片與錄音...',wait:220},
+            {pct:25,text:'準備附件...',wait:220},
             {pct:45,text:'準備送出資料...',wait:220}
           ]);
-          if(f){ setProgressUI('createProgress',35,'壓縮圖片中...'); taskImage=await compressImageToDataUrl(f,1280,0.78); }
-          setProgressUI('createProgress',60,'上傳中...');
+          if(f){
+            const imageRes=await uploadFileToCloudinary(f,{folder:'tasks/assigned-image',onProgress:(ratio)=>setProgressUI('createProgress',25 + Math.round(ratio*20),'圖片上傳中...')});
+            taskImageUrl=imageRes.secure_url||'';
+          }
+          if(taskAudio){
+            const audioFile=dataUrlToFile(taskAudio,'task-audio.' + guessExtensionByMime((taskAudio.match(/^data:([^;]+)/)||[])[1]||''));
+            const audioRes=await uploadFileToCloudinary(audioFile,{folder:'tasks/assigned-audio',onProgress:(ratio)=>setProgressUI('createProgress',45 + Math.round(ratio*15),'錄音上傳中...')});
+            taskAudioUrl=audioRes.secure_url||'';
+          }
+          setProgressUI('createProgress',70,'寫入任務資料...');
           const remindPlan = JSON.stringify({freq:reminderState.freq, times:reminderState.times||getRemindPreset(reminderState.freq)});
           const r=await api('createTask',{
             creatorId:currentUser.id,
@@ -381,8 +389,8 @@
             requirePhotoReturn:qs('#requirePhotoReturn').value,
             remindFreq:qs('#remindFreq').value,
             remindPlan,
-            taskImage,
-            taskAudio
+            taskImageUrl,
+            taskAudioUrl
           });
           setProgressUI('createProgress',100,r.ok?'建立完成':'建立失敗');
           setMsg(qs('#msg'),r.message,!r.ok);

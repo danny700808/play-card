@@ -38,8 +38,8 @@
       <div class="field"><label for="title">主題名稱</label><input id="title" type="text" placeholder="例如：蝦皮寄件完整流程"></div>
       <div class="field"><label for="keywords">關鍵字</label><input id="keywords" type="text" placeholder="例如：蝦皮、寄件、包貨、出貨"></div>
       <div class="field"><label for="description">內容說明</label><textarea id="description" placeholder="可放 SOP 文字重點，員工搜尋後會直接看到。"></textarea></div>
-      <div class="field"><label for="videoFile">上傳影片（選填）</label><input id="videoFile" type="file" accept="video/mp4,video/quicktime,video/webm,video/*"><div class="muted compact-help">大影片改成直接傳 Google Drive，不再走 Apps Script 分段搬運；第一次使用會跳出 Google 授權。</div></div>
-      <div class="field"><label for="docFile">上傳圖片 / 文件（選填）</label><input id="docFile" type="file" multiple accept="image/*,application/pdf,.pdf,.doc,.docx,text/plain,.txt,.xls,.xlsx,.ppt,.pptx"><div class="muted compact-help">可一次選多張圖片或多個文件；圖片會先縮小後再上傳。</div></div>
+      <div class="field"><label for="videoFile">上傳影片（選填）</label><input id="videoFile" type="file" accept="video/mp4,video/quicktime,video/webm,video/*"><div class="muted compact-help">影片會直接上傳到 Cloudinary，不再走 Google Drive 分段搬運。</div></div>
+      <div class="field"><label for="docFile">上傳圖片 / 文件（選填）</label><input id="docFile" type="file" multiple accept="image/*,application/pdf,.pdf,.doc,.docx,text/plain,.txt,.xls,.xlsx,.ppt,.pptx"><div class="muted compact-help">可一次選多張圖片或多個文件；會直接上傳到 Cloudinary。</div></div>
       <div class="field"><label>錄音說明（選填）</label>
         <div class="record-box">
           <div class="record-controls">
@@ -130,15 +130,14 @@
     function clearRecording(){ audioDataUrl=''; if(audioPreviewUrl){ URL.revokeObjectURL(audioPreviewUrl); audioPreviewUrl=''; } qs('#recordPreview').src=''; qs('#recordPreview').classList.add('hidden'); qs('#recordStatus').textContent='尚未錄音'; qs('#recordStatus').classList.remove('ok'); qs('#recordMeter').classList.add('hidden'); qsa('#recordMeter .rec-bar').forEach(b=>{ b.style.height='20px'; b.classList.remove('live'); }); }
     function resetForm(){ ['itemId','title','keywords','description','sortOrder'].forEach(id=>qs('#'+id).value=''); qs('#categoryId').value=''; document.querySelector('input[name="enabled"][value="是"]').checked=true; ['videoFile','docFile'].forEach(id=>qs('#'+id).value=''); clearRecording(); }
     async function toggleItem(id, enable){ const user=requireLogin(); if(!user) return; const r=await api('toggleTrainingItem',{userId:user.id,itemId:id,enabled:enable}); setMsg(qs('#msg'), r.message||'', !r.ok); if(r.ok) loadAdminData(); }
-    async function processMixedFiles(fileList){
-      const files=Array.from(fileList||[]).filter(Boolean); const out=[]; let index=0;
-      for(const file of files){
-        index += 1;
-        if(String(file.type||'').startsWith('image/')) out.push(await compressImageToDataUrl(file,1600,0.76));
-        else out.push(await fileToDataUrl(file));
-        setProgress(Math.min(72, 30 + Math.round((index/files.length)*32)), '附件處理中');
-      }
-      return out.filter(Boolean);
+    async function uploadMixedFiles(fileList){
+      const files=Array.from(fileList||[]).filter(Boolean);
+      if(!files.length) return [];
+      const results = await uploadFilesToCloudinary(files, {
+        folder:'training/docs',
+        onProgress:(ratio)=>setProgress(20 + Math.round(ratio * 28), '圖片 / 文件上傳中')
+      });
+      return results.map(x=>x.secure_url).filter(Boolean);
     }
     async function saveItem(){
       const user=requireLogin(); if(!user) return;
@@ -147,33 +146,33 @@
       const btn=qs('#saveBtn'); btn.disabled=true; setMsg(qs('#msg'),'');
       try{
         const videoFile=qs('#videoFile').files[0], docFiles=qs('#docFile').files;
-        let docDataList=[];
+        let docUrls=[], audioUrl='', videoUrl='';
         setProgress(8,'準備中');
-        if(docFiles && docFiles.length){ setProgress(22,'整理圖片 / 文件'); docDataList=await processMixedFiles(docFiles); }
-        if(audioDataUrl){ setProgress(34,'整理錄音'); }
-        const payload={ userId:user.id, itemId:qs('#itemId').value.trim(), categoryId, title, keywords:qs('#keywords').value.trim(), description:qs('#description').value.trim(), sortOrder:qs('#sortOrder').value.trim(), enabled:selectedEnabled(), docDataList, audioData:audioDataUrl };
-        setProgress(46,'建立文字教材');
+        if(docFiles && docFiles.length){
+          docUrls=await uploadMixedFiles(docFiles);
+        }
+        if(audioDataUrl){
+          setProgress(52,'錄音上傳中');
+          const audioFile=dataUrlToFile(audioDataUrl, 'training-audio.' + guessExtensionByMime((audioDataUrl.match(/^data:([^;]+)/)||[])[1]||''));
+          const audioRes=await uploadFileToCloudinary(audioFile,{folder:'training/audio',onProgress:(ratio)=>setProgress(52 + Math.round(ratio*12), '錄音上傳中')});
+          audioUrl=audioRes.secure_url || '';
+        }
+        if(videoFile){
+          setProgress(66,'影片上傳中');
+          const videoRes=await uploadFileToCloudinary(videoFile,{folder:'training/video',onProgress:(ratio)=>setProgress(66 + Math.round(ratio*18), '影片上傳中')});
+          videoUrl=videoRes.secure_url || '';
+        }
+        const payload={ userId:user.id, itemId:qs('#itemId').value.trim(), categoryId, title, keywords:qs('#keywords').value.trim(), description:qs('#description').value.trim(), sortOrder:qs('#sortOrder').value.trim(), enabled:selectedEnabled(), docUrls, audioUrl };
+        setProgress(88,'寫入教材資料');
         const r=await api('saveTrainingItem', payload);
         if(!r.ok){ throw new Error(r.message||'文字教材建立失敗'); }
         const itemId=String(r.itemId || qs('#itemId').value || '').trim();
-        if(!itemId) throw new Error('教材已建立，但缺少 itemId');
-        if(videoFile){
-          const cfg=await api('getTrainingUploadConfig',{userId:user.id});
-          if(!cfg.ok) throw new Error(cfg.message||'無法取得影片上傳設定');
-          setProgress(56,'Google 授權');
-          const token=await getGoogleAccessTokenInteractive('https://www.googleapis.com/auth/drive.file');
-          setProgress(62,'影片直傳 Drive');
-          const uploadRes=await driveUploadFileResumable(videoFile, cfg.folderId, token, function(v){ setProgress(62 + Math.round(v*0.32), '影片上傳中'); });
-          if(!uploadRes || !uploadRes.id) throw new Error('影片已上傳，但沒有取得 Drive 檔案 ID');
-          setProgress(95,'回寫教材');
-          const a=await api('attachTrainingVideoFile',{ userId:user.id, itemId:itemId, fileId:uploadRes.id, fileName:uploadRes.name || videoFile.name, mimeType:videoFile.type || '' });
+        if(videoUrl){
+          const a=await api('saveTrainingVideoLink',{ userId:user.id, itemId:itemId, videoUrl });
           if(!a.ok) throw new Error(a.message||'影片已上傳，但回寫教材失敗');
-          setProgress(100,'完成');
-          setMsg(qs('#msg'), (r.message||'教材已建立。') + ' 影片也已直傳到 Google Drive。', false);
-        }else{
-          setProgress(100,'完成');
-          setMsg(qs('#msg'), r.message||'教材已建立。', false);
         }
+        setProgress(100,'完成');
+        setMsg(qs('#msg'), videoUrl ? '教材與影片已儲存到 Cloudinary。' : (r.message||'教材已建立。'), false);
         resetForm();
         await loadAdminData();
       }catch(e){ setMsg(qs('#msg'), e.message||String(e), true); }
