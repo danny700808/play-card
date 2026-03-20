@@ -96,6 +96,7 @@
       const r=await api('getTrainingPageData',{userId:user.id});
       if(!r.ok) throw new Error(r.message||'讀取失敗');
       trainingData.items = normalizeTrainingItems(r.items||[]);
+      renderCategories();
       renderResults();
     }
     function getCategoryCount(categoryId){
