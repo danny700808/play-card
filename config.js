@@ -3,5 +3,6 @@ window.APP_CONFIG = {
   GOOGLE_CLIENT_ID: '1061451682971-664fkp8jnd3771srdrshujqalngnocla.apps.googleusercontent.com',
   CLOUDINARY_CLOUD_NAME: 'dkwzybiw9',
   CLOUDINARY_UPLOAD_PRESET: 'yuzu_unsigned',
-  CLOUDINARY_ROOT_FOLDER: 'employee-system'
+  CLOUDINARY_ROOT_FOLDER: 'employee-system',
+  CLOUDINARY_MAX_VIDEO_MB: 85
 };

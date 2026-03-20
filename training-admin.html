@@ -158,6 +158,7 @@
           audioUrl=audioRes.secure_url || '';
         }
         if(videoFile){
+          validateVideoFileForUpload(videoFile, { maxVideoMB:getCloudinaryConfig().maxVideoMB });
           setProgress(66,'影片上傳中');
           const videoRes=await uploadFileToCloudinary(videoFile,{folder:'training/video',onProgress:(ratio)=>setProgress(66 + Math.round(ratio*18), '影片上傳中')});
           videoUrl=videoRes.secure_url || '';

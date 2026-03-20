@@ -40,10 +40,12 @@ function dataUrlToFile(dataUrl, filename='upload.bin'){
 }
 function getCloudinaryConfig(){
   const cfg=window.APP_CONFIG||{};
+  const maxVideoMB=Number(cfg.CLOUDINARY_MAX_VIDEO_MB||85);
   return {
     cloudName:String(cfg.CLOUDINARY_CLOUD_NAME||'').trim(),
     uploadPreset:String(cfg.CLOUDINARY_UPLOAD_PRESET||'').trim(),
-    rootFolder:String(cfg.CLOUDINARY_ROOT_FOLDER||'employee-system').trim() || 'employee-system'
+    rootFolder:String(cfg.CLOUDINARY_ROOT_FOLDER||'employee-system').trim() || 'employee-system',
+    maxVideoMB: !isNaN(maxVideoMB) && maxVideoMB>0 ? maxVideoMB : 85
   };
 }
 function sanitizeFolderSegment(value){
@@ -52,6 +54,24 @@ function sanitizeFolderSegment(value){
 function guessExtensionByMime(mime=''){
   const map={'image/jpeg':'jpg','image/png':'png','image/webp':'webp','audio/webm':'webm','audio/mp4':'m4a','audio/mpeg':'mp3','video/mp4':'mp4','video/quicktime':'mov','video/webm':'webm','application/pdf':'pdf','text/plain':'txt'};
   return map[String(mime||'').toLowerCase()] || 'bin';
+}
+
+function fileSizeMB(bytes){ return Math.round((Number(bytes||0)/1024/1024)*10)/10; }
+function validateVideoFileForUpload(file, opts={}){
+  if(!file) return;
+  const cfg=getCloudinaryConfig();
+  const maxVideoMB=Number(opts.maxVideoMB||cfg.maxVideoMB||85);
+  const sizeMB=fileSizeMB(file.size);
+  const mime=String(file.type||'').toLowerCase();
+  const allowed = Array.isArray(opts.allowedTypes) && opts.allowedTypes.length
+    ? opts.allowedTypes
+    : ['video/mp4','video/quicktime','video/webm'];
+  if(allowed.length && mime && !allowed.includes(mime)){
+    throw new Error('目前建議上傳 MP4 影片；若是 iPhone 原始 MOV，請先修剪或轉成 MP4 再上傳。');
+  }
+  if(sizeMB>maxVideoMB){
+    throw new Error(`影片目前約 ${sizeMB} MB，已超過 ${maxVideoMB} MB 上限。請先修剪、降低畫質或轉成 MP4 後再上傳。`);
+  }
 }
 async function uploadFileToCloudinary(file, opts={}){
   if(!file) throw new Error('沒有可上傳的檔案');
@@ -71,13 +91,17 @@ async function uploadFileToCloudinary(file, opts={}){
       if(!opts.onProgress || !evt.lengthComputable) return;
       opts.onProgress(Math.max(0, Math.min(1, evt.loaded/evt.total)), evt);
     };
-    xhr.onerror=()=>reject(new Error('Cloudinary 上傳失敗，請檢查網路後再試'));
+    xhr.onerror=()=>reject(new Error('Cloudinary 上傳失敗，請檢查網路或改用較小的 MP4 影片後再試'));
     xhr.onload=()=>{
       try{
         const json=JSON.parse(xhr.responseText||'{}');
         if(xhr.status>=200 && xhr.status<300 && json.secure_url){ resolve(json); return; }
-        reject(new Error(json.error?.message || 'Cloudinary 上傳失敗'));
-      }catch(err){ reject(new Error('Cloudinary 回傳格式錯誤')); }
+        if(xhr.status===413){ reject(new Error('影片檔案過大，請先修剪、降低畫質或轉成 MP4 後再上傳。')); return; }
+        const detail = json.error?.message || json.message || '';
+        reject(new Error(detail || 'Cloudinary 上傳失敗，請改用較小的 MP4 影片後再試'));
+      }catch(err){
+        reject(new Error(xhr.status===413 ? '影片檔案過大，請先修剪、降低畫質或轉成 MP4 後再上傳。' : 'Cloudinary 回傳格式錯誤'));
+      }
     };
     xhr.send(form);
   });
