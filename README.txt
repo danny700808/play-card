@@ -1,16 +1,9 @@
-這包是打卡規則更新版。
+把這份 settings.html 覆蓋你原本的 settings.html。
 
-已調整：
-1. 固定 IP 125.229.190.123 才能正常打卡。
-2. 一天只允許一輪：上班 → 下班。
-3. 標準打卡才計算遲到；特殊打卡與補打卡不顯示遲到。
-4. 首頁可修改紀錄仍維持今天與昨天。
-5. 新增打卡提醒排程：標準班 12:00、工讀班 17:30。
-6. 星期一、公休、無班、整天請假不提醒；後半段請假仍提醒。
-7. 每月 2 號可執行 sendLastMonthClockReportsAndCleanup_() 寄送上月月報並刪除上月打卡資料。
+這版只做一件事：
+- 在設定區首頁新增「班表設定」卡片
+- 點下去會連到 schedule-admin.html
 
-請另外在 Apps Script 觸發器設定：
-- 每日時間驅動：sendScheduledClockReminders_
-- 每月 2 號時間驅動：sendLastMonthClockReportsAndCleanup_
-
-工讀生提醒是否發送，建議在員工資料新增「每週上班日」欄位，填入例如：二、三、五。若沒填，工讀生預設視為有班。
+前提：
+- 你前一包的 schedule-admin.html 已經放進網站資料夾
+- 你的 Code.gs 已經包含班表相關 API
