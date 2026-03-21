@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>班表設定</title>
   <style>
-    :root{--bg:#eef3ef;--card:#fff;--line:#d7e1db;--text:#18324a;--muted:#6a7a88;--green:#258257;--danger:#c0392b;--soft:#f6fbf7}
+    :root{--bg:#eef3ef;--card:#fff;--line:#d7e1db;--text:#18324a;--muted:#6a7a88;--green:#258257;--danger:#c0392b}
     *{box-sizing:border-box} body{margin:0;font-family:Arial,"Noto Sans TC",sans-serif;background:var(--bg);color:var(--text)}
     .page{max-width:900px;margin:0 auto;padding:20px}
     .card{background:var(--card);border:1px solid var(--line);border-radius:28px;padding:24px;margin-bottom:22px}
@@ -18,7 +18,6 @@
     input[type=text],input[type=date],select,textarea{width:100%;border:1px solid #cfd9d3;border-radius:18px;padding:16px 18px;font-size:18px;background:#fff;color:var(--text)}
     textarea{min-height:120px;resize:vertical}
     .day-card{border:1px solid var(--line);border-radius:24px;padding:18px;margin:14px 0}
-    .hint{background:#fff7ea;border:1px solid #f0c27c;color:#9c5c00;border-radius:18px;padding:16px 18px;line-height:1.7;margin-top:10px}
     .error,.success{border-radius:18px;padding:16px 18px;font-size:18px;font-weight:700;margin-top:16px;display:none}
     .error{background:#fdeceb;color:var(--danger);border:1px solid #f4b3ad}.success{background:#eaf8ef;color:var(--green);border:1px solid #b8dfc2}
     .list-item{border:1px solid var(--line);border-radius:20px;padding:16px;margin-top:12px;background:#fbfdfb}
@@ -29,6 +28,8 @@
     .hidden{display:none!important}
     @media (max-width:700px){.row,.row-3{grid-template-columns:1fr}.page{padding:14px}.card{padding:18px;border-radius:24px}}
   </style>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
 </head>
 <body>
   <div class="page">
@@ -122,7 +123,6 @@
   </div>
 
   <script>
-    const API_URL = (window.API_URL || window.parent?.API_URL || localStorage.getItem('apiUrl') || '').trim();
     const DAYS = ['星期一','星期二','星期三','星期四','星期五','星期六','星期日'];
     let state = { templates: [], employees: [], assignments: [], editingTemplateId: '', editingAssignId: '' };
 
@@ -130,29 +130,21 @@
     function showMsg(id, text, ok=false){ const n=el(id); if(!n)return; n.className = ok ? 'success' : 'error'; n.style.display='block'; n.textContent=text; }
     function hideMsg(id){ const n=el(id); if(!n)return; n.style.display='none'; n.textContent=''; }
 
-    function scheduleApiCall(action, payload={}) {
-      if (window.parent && typeof window.parent.api === 'function') {
-        return window.parent.api(action, payload);
+    async function scheduleApiCall(action, payload={}) {
+      if (typeof window.api === 'function') {
+        return await window.api(action, payload);
       }
-      if (window.parent && typeof window.parent.apiCall === 'function') {
-        return window.parent.apiCall(action, payload);
-      }
-      if (window.api && typeof window.api === 'function') {
-        return window.api(action, payload);
-      }
-      if (window.apiCall && typeof window.apiCall === 'function' && window.apiCall !== scheduleApiCall) {
-        return window.apiCall(action, payload);
-      }
-      if (!API_URL) throw new Error('找不到後端 API，請把此頁放回原系統中使用。');
-      return fetch(API_URL, {
+      const apiUrl = (window.APP_CONFIG && window.APP_CONFIG.API_URL) ? String(window.APP_CONFIG.API_URL).trim() : '';
+      if (!apiUrl) throw new Error('找不到後端 API，請確認 config.js 與 app.js 已載入。');
+      const res = await fetch(apiUrl, {
         method: 'POST',
         headers: {'Content-Type':'text/plain;charset=utf-8'},
-        body: JSON.stringify({action, ...payload})
-      }).then(async r => {
-        const data = await r.json().catch(()=>({ok:false,message:'後端回應格式錯誤'}));
-        if (!r.ok) throw new Error(data.message || '後端回應失敗');
-        return data;
+        body: JSON.stringify({ action, ...payload })
       });
+      const raw = await res.text();
+      let data;
+      try { data = JSON.parse(raw); } catch (e) { throw new Error(raw || '後端回傳格式錯誤'); }
+      return data;
     }
 
     function buildDays(){
@@ -266,8 +258,8 @@
       const current = sel.value;
       sel.innerHTML = '<option value="">請選擇員工</option>';
       state.employees.forEach(e => {
-        const id = e.employeeId || e['員工ID'] || '';
-        const name = e.name || e['姓名'] || e['員工姓名'] || '';
+        const id = e.employeeId || e.id || e['員工ID'] || '';
+        const name = e.name || e.employeeName || e['姓名'] || e['員工姓名'] || '';
         const op = document.createElement('option'); op.value=id; op.textContent = `${name}（${id}）`; sel.appendChild(op);
       });
       if (current) sel.value = current;
@@ -326,12 +318,14 @@
       el('assignNoEnd').value = a.noEnd || a['無期限'] || 'TRUE';
       el('assignEnabled').value = a.enabled || a['啟用'] || 'TRUE';
       el('assignNote').value = a.note || a['備註'] || '';
+      el('endDate').disabled = el('assignNoEnd').value === 'TRUE';
     }
 
     async function loadPage(){
       hideMsg('topError'); hideMsg('topSuccess'); hideMsg('templateMsg'); hideMsg('assignMsg');
       try {
-        const res = await scheduleApiCall('getScheduleSetupData', {});
+        const user = (typeof getUser === 'function' ? getUser() : null) || {};
+        const res = await scheduleApiCall('getScheduleSetupData', { userId: user.employeeId || user.id || '' });
         if (!res || res.ok === false) throw new Error(res?.message || '讀取失敗');
         state.templates = res.templates || [];
         state.employees = res.employees || [];
@@ -345,7 +339,9 @@
     async function saveTemplate(){
       hideMsg('templateMsg');
       try {
+        const user = (typeof getUser === 'function' ? getUser() : null) || {};
         const payload = collectTemplatePayload();
+        payload.userId = user.employeeId || user.id || '';
         if (!payload.templateName) throw new Error('請先輸入模板名稱');
         const res = await scheduleApiCall('saveScheduleTemplate', payload);
         if (!res || res.ok === false) throw new Error(res?.message || '儲存失敗');
@@ -360,7 +356,8 @@
     async function deleteTemplate(id){
       if (!confirm('確定要刪除這個班表模板嗎？')) return;
       try {
-        const res = await scheduleApiCall('deleteScheduleTemplate', { templateId:id });
+        const user = (typeof getUser === 'function' ? getUser() : null) || {};
+        const res = await scheduleApiCall('deleteScheduleTemplate', { templateId:id, userId: user.employeeId || user.id || '' });
         if (!res || res.ok === false) throw new Error(res?.message || '刪除失敗');
         showMsg('topSuccess','班表模板已刪除',true);
         await loadPage();
@@ -370,6 +367,7 @@
     async function saveAssign(){
       hideMsg('assignMsg');
       try {
+        const user = (typeof getUser === 'function' ? getUser() : null) || {};
         const payload = {
           assignId: state.editingAssignId || '',
           employeeId: el('employeeId').value,
@@ -378,7 +376,8 @@
           endDate: el('endDate').value,
           noEnd: el('assignNoEnd').value,
           enabled: el('assignEnabled').value,
-          note: el('assignNote').value.trim()
+          note: el('assignNote').value.trim(),
+          userId: user.employeeId || user.id || ''
         };
         if (!payload.employeeId) throw new Error('請先選擇員工');
         if (!payload.templateId) throw new Error('請先選擇班表模板');
@@ -388,6 +387,7 @@
         showMsg('topSuccess','員工套用班表已儲存',true);
         state.editingAssignId='';
         el('employeeId').value=''; el('assignTemplateId').value=''; el('startDate').value=''; el('endDate').value=''; el('assignNoEnd').value='TRUE'; el('assignEnabled').value='TRUE'; el('assignNote').value='';
+        el('endDate').disabled = true;
         await loadPage();
       } catch (e) { showMsg('assignMsg', String(e.message || e)); }
     }
@@ -395,7 +395,8 @@
     async function deleteAssign(id){
       if (!confirm('確定要刪除這筆員工套用班表嗎？')) return;
       try {
-        const res = await scheduleApiCall('deleteEmployeeSchedule', { assignId:id });
+        const user = (typeof getUser === 'function' ? getUser() : null) || {};
+        const res = await scheduleApiCall('deleteEmployeeSchedule', { assignId:id, userId: user.employeeId || user.id || '' });
         if (!res || res.ok === false) throw new Error(res?.message || '刪除失敗');
         showMsg('topSuccess','員工套用班表已刪除',true);
         await loadPage();
@@ -409,7 +410,7 @@
     el('saveTemplateBtn').addEventListener('click', saveTemplate);
     el('clearTemplateBtn').addEventListener('click', clearTemplateForm);
     el('saveAssignBtn').addEventListener('click', saveAssign);
-    el('newAssignBtn').addEventListener('click', ()=>{ state.editingAssignId=''; el('employeeId').value=''; el('assignTemplateId').value=''; el('startDate').value=''; el('endDate').value=''; el('assignNoEnd').value='TRUE'; el('assignEnabled').value='TRUE'; el('assignNote').value=''; });
+    el('newAssignBtn').addEventListener('click', ()=>{ state.editingAssignId=''; el('employeeId').value=''; el('assignTemplateId').value=''; el('startDate').value=''; el('endDate').value=''; el('assignNoEnd').value='TRUE'; el('assignEnabled').value='TRUE'; el('assignNote').value=''; el('endDate').disabled = true; });
     el('assignNoEnd').addEventListener('change', ()=>{ el('endDate').disabled = el('assignNoEnd').value === 'TRUE'; if (el('endDate').disabled) el('endDate').value=''; });
     el('endDate').disabled = true;
     loadPage();
