@@ -60,10 +60,10 @@
     .task-actions{display:block}
     .task-actions .complete-action-box,.task-actions .task-del-wrap{width:100%}
     .task-del-wrap{margin-top:12px}
-    .task-media-section{margin-top:12px}.task-media-section.audio-wide .task-player{width:100%}
+    .task-media-section{margin-top:12px}.task-media-section.audio-wide{margin-left:0;margin-right:0}.task-media-section.audio-wide .task-player{width:100% !important;min-width:100% !important;display:block}
     .task-media-title{font-size:13px;font-weight:800;color:#526174;margin:0 0 6px}
     .task-player{width:100%;border-radius:14px;background:#eef2f7;display:block}
-    audio.task-player{width:100%;height:56px;min-height:56px;background:transparent;border-radius:20px;display:block}
+    audio.task-player{width:100% !important;min-width:100% !important;height:60px;min-height:60px;background:transparent;border-radius:20px;display:block;margin:0}
     video.task-player{max-height:280px}
     .task-file-links{display:grid;grid-template-columns:1fr;gap:10px;margin-top:12px}
     .task-file-link{display:block;width:100%;padding:14px 16px;border-radius:16px;background:#e9edf3;color:#1f2937;text-decoration:none;font-weight:800}
@@ -356,7 +356,7 @@
       const disableDefault = !!(plan && plan.disableDefault);
       return `
         <div class="task-remind-box compact">
-          <div class="remind-inline-title">關閉預設提醒</div>
+          <div class="remind-inline-title">提醒設定</div>
           <label class="task-remind-disable-row"><input type="checkbox" class="task-remind-disable-default" data-task-id="${x.id}" onchange="autoSaveTaskRemindPrefs('${x.id}')" ${disableDefault?'checked':''}> <span>關閉預設提醒</span></label>
           <div class="task-remind-subtitle">增加自己想要提醒的時間</div>
           <div class="task-remind-options">
