@@ -49,6 +49,9 @@
     .task-remind-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:10px}
     .task-remind-options label{display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid #e2e8f0;border-radius:14px;background:#fff;cursor:pointer;font-size:16px;font-weight:700}
     .task-remind-options input{margin-top:0;width:24px;height:24px}
+    .task-remind-disable-row{display:flex;align-items:center;gap:10px;margin:4px 0 10px;font-size:18px;font-weight:800;color:#1e293b}
+    .task-remind-disable-row input{width:24px;height:24px}
+    .task-remind-subtitle{font-size:16px;font-weight:800;color:#475569;margin-bottom:10px}
     @media (max-width:560px){
       .task-media-grid{grid-template-columns:1fr}
     }
@@ -60,7 +63,7 @@
     .task-media-section{margin-top:12px}
     .task-media-title{font-size:13px;font-weight:800;color:#526174;margin:0 0 6px}
     .task-player{width:100%;border-radius:14px;background:#eef2f7;display:block}
-    audio.task-player{height:64px}
+    audio.task-player{height:192px;min-height:192px;background:#eef2f7;border-radius:20px}
     video.task-player{max-height:280px}
     .task-file-links{display:grid;grid-template-columns:1fr;gap:10px;margin-top:12px}
     .task-file-link{display:block;width:100%;padding:14px 16px;border-radius:16px;background:#e9edf3;color:#1f2937;text-decoration:none;font-weight:800}
@@ -350,9 +353,12 @@
       if(isAdmin || !isMyAssignedTask || x.status==='已完成') return '';
       const plan=parseRemindPlan(x.assigneeRemindPlan || x.remindPlan || '', x.remindFreq || '一般提醒');
       const selected=(Array.isArray(plan.times)?plan.times:[]).map(v=>String(v||''));
+      const disableDefault = !!(plan && plan.disableDefault);
       return `
         <div class="task-remind-box compact">
           <div class="remind-inline-title">提醒時間</div>
+          <label class="task-remind-disable-row"><input type="checkbox" class="task-remind-disable-default" data-task-id="${x.id}" onchange="autoSaveTaskRemindPrefs('${x.id}')" ${disableDefault?'checked':''}> <span>關閉預設提醒</span></label>
+          <div class="task-remind-subtitle">增加自己想要提醒的時間</div>
           <div class="task-remind-options">
             ${STAFF_REMIND_OPTIONS.map(opt=>`<label><input type="checkbox" class="task-remind-opt" data-task-id="${x.id}" value="${opt}" onchange="autoSaveTaskRemindPrefs('${x.id}')" ${selected.includes(opt)?'checked':''}> <span>${opt}</span></label>`).join('')}
           </div>
