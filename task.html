@@ -46,11 +46,11 @@
     .task-complete-fields .field{margin-top:10px}
     .task-complete-fields .field:first-child{margin-top:0}
     .task-complete-fields textarea{min-height:110px}
-    .task-remind-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}
-    .task-remind-options label{display:flex;align-items:flex-start;gap:8px;padding:10px 12px;border:1px solid #e2e8f0;border-radius:12px;background:#fff;cursor:pointer;font-size:14px}
-    .task-remind-options input{margin-top:2px}
+    .task-remind-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:10px}
+    .task-remind-options label{display:flex;align-items:center;gap:8px;padding:12px 14px;border:1px solid #e2e8f0;border-radius:14px;background:#fff;cursor:pointer;font-size:18px;font-weight:700}
+    .task-remind-options input{margin-top:0;width:24px;height:24px}
     @media (max-width:560px){
-      .task-media-grid,.task-remind-options{grid-template-columns:1fr}
+      .task-media-grid{grid-template-columns:1fr}
     }
 
 
@@ -69,13 +69,12 @@
     .task-admin-tab.active{background:#1f7a5a;color:#fff;border-color:#1f7a5a}
     .task-admin-tab small{display:block;font-size:13px;font-weight:700;opacity:.9;margin-top:4px}
     .recorder-inline{border:1px solid #e2e8f0;border-radius:16px;padding:12px;background:#fff}
-    .recorder-inline .recorder-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-    .recorder-inline .btn{width:auto;min-width:110px}
+    .recorder-inline .recorder-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;align-items:center}
+    .recorder-inline .btn{width:100%;min-width:0}
     .recorder-inline .status{font-size:13px;color:#526174;font-weight:700}
     .recorder-inline audio{margin-top:10px;width:100%}
     @media (max-width:560px){
       .task-admin-tabs{grid-template-columns:1fr}
-      .recorder-inline .btn{width:100%}
     }
 
 
@@ -89,11 +88,11 @@
     .task-dual-section.assignment{background:#eef6ff}
     .task-dual-section.completion{background:#f2fbf4}
     .task-zone-title{font-size:18px;font-weight:900;margin:0 0 10px;color:#17324a}
-    .task-zone-badge{display:inline-block;padding:6px 10px;border-radius:999px;font-size:12px;font-weight:800;margin-bottom:10px}
+    .task-zone-badge{display:inline-block;padding:6px 12px;border-radius:999px;font-size:14px;font-weight:900;margin-bottom:12px}
     .task-zone-badge.assignment{background:#dcecff;color:#23527c}
     .task-zone-badge.completion{background:#dff5e6;color:#1f7a5a}
-    .task-require-box{margin-top:12px;padding:12px 14px;border-radius:14px;border:1px solid #b7dcc3;background:#ffffff;font-size:14px;line-height:1.7;color:#1f5137;font-weight:700}
-    .task-deadline.emphasis{margin-top:0;padding:12px 14px;border-radius:16px;background:#fff;border:1px solid rgba(31,122,90,.18);box-shadow:0 1px 0 rgba(31,122,90,.04)}
+    .task-require-box{margin-top:12px;padding:14px 16px;border-radius:14px;border:1px solid #b7dcc3;background:#ffffff;font-size:16px;line-height:1.7;color:#1f5137;font-weight:800}
+    .task-deadline.emphasis{margin-top:0;padding:12px 14px;border-radius:16px;background:#fff;border:1px solid rgba(31,122,90,.18);box-shadow:0 1px 0 rgba(31,122,90,.04);font-size:22px;font-weight:900}
     .task-subgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
     .task-subgrid .field{margin-top:0 !important}
     .task-side-note{font-size:13px;color:#526174;margin-top:6px}
@@ -103,6 +102,11 @@
     .inline-status{margin-top:12px}
     .inline-status .message{margin-top:0}
     .task-complete-fields{background:rgba(255,255,255,.82)}
+    .recorder-inline .status{margin-top:8px;font-size:15px}
+    .task-complete-fields .field label{font-size:18px;font-weight:900}
+    .staff-task-head{padding-bottom:0}
+    .task-status-top{display:flex;justify-content:flex-end;margin:0 18px 0}
+
     @media (max-width:560px){
       .staff-task-title{font-size:21px}
       .task-subgrid{grid-template-columns:1fr}
@@ -345,7 +349,6 @@
       return `
         <div class="task-remind-box compact">
           <div class="remind-inline-title">提醒時間</div>
-          <div class="task-note">勾選後會自動套用，不需要另外按儲存。</div>
           <div class="task-remind-options">
             ${STAFF_REMIND_OPTIONS.map(opt=>`<label><input type="checkbox" class="task-remind-opt" data-task-id="${x.id}" value="${opt}" onchange="autoSaveTaskRemindPrefs('${x.id}')" ${selected.includes(opt)?'checked':''}> <span>${opt}</span></label>`).join('')}
           </div>
@@ -376,33 +379,30 @@
       const remindHtml = renderRemindSummary(x);
       const isMyAssignedTask = String(x.assigneeId||'')===String(currentUser.id||'') || String(x.assigneeEmail||'').toLowerCase()===String(currentUser.email||'').toLowerCase();
       const canComplete = x.status!=='已完成' && (!isAdmin || isMyAssignedTask);
-      const proofNote = needReport ? `<div class="task-require-box">此任務需要回報。完成時至少提供一種方式即可：圖片、影片、錄音、檔案或備註。</div>` : `<div class="task-require-box">此任務不強制回報，若有需要仍可補充圖片、影片、錄音、檔案或備註。</div>`;
+      const proofNote = needReport ? `<div class="task-require-box">此任務需要回報。完成時至少提供一種方式即可：圖片、影片、錄音或備註。</div>` : '';
       const remindToggleBox = renderStaffRemindBox(x, isAdmin, isMyAssignedTask);
       const completeBox = canComplete ? `
         <div class="task-dual-section completion">
           <div class="task-zone-badge completion">完成任務區</div>
-          <div class="task-zone-title">我要回覆的內容</div>
+          <div class="task-zone-title">完成任務</div>
           <div class="task-deadline emphasis"><span class="deadline-label">完成期限：</span>${dueText || '未設定'}</div>
           ${proofNote}
           ${remindToggleBox}
           <div class="task-complete-fields">
             <div class="task-subgrid">
-              <div class="field"><label>完成圖片</label><input id="photo_${x.id}" type="file" accept=".jpg,.jpeg,.png" multiple><div class="attach-badge">${needReport?'可上傳一張或多張':'有需要再補充即可'}</div></div>
+              <div class="field"><label>完成圖片</label><input id="photo_${x.id}" type="file" accept=".jpg,.jpeg,.png" multiple><div class="attach-badge">可上傳一張或多張</div></div>
               <div class="field"><label>完成影片</label><input id="video_${x.id}" type="file" accept="video/*"></div>
             </div>
-            <div class="task-subgrid">
-              <div class="field"><label>完成錄音</label>
-                <div class="recorder-inline">
-                  <div class="recorder-row">
-                    <button type="button" class="btn secondary" id="startCompleteRec_${x.id}" onclick="startCompleteRec('${x.id}')">開始錄音</button>
-                    <button type="button" class="btn secondary" id="stopCompleteRec_${x.id}" onclick="stopCompleteRec('${x.id}')" disabled>停止錄音</button>
-                    <button type="button" class="btn secondary hidden" id="clearCompleteRec_${x.id}" onclick="clearCompleteRec('${x.id}')">刪除錄音</button>
-                  </div>
-                  <div class="status" id="completeRecStatus_${x.id}">尚未錄音；裝置不支援時可改用右側上傳音檔。</div>
-                  <audio id="completeRecPreview_${x.id}" class="task-player hidden" controls preload="metadata"></audio>
+            <div class="field"><label>完成錄音</label>
+              <div class="recorder-inline">
+                <div class="recorder-row">
+                  <button type="button" class="btn secondary" id="startCompleteRec_${x.id}" onclick="startCompleteRec('${x.id}')">開始錄音</button>
+                  <button type="button" class="btn secondary" id="stopCompleteRec_${x.id}" onclick="stopCompleteRec('${x.id}')" disabled>停止錄音</button>
+                  <button type="button" class="btn secondary hidden" id="clearCompleteRec_${x.id}" onclick="clearCompleteRec('${x.id}')">刪除錄音</button>
                 </div>
+                <div class="status" id="completeRecStatus_${x.id}">尚未錄音</div>
+                <audio id="completeRecPreview_${x.id}" class="task-player hidden" controls preload="metadata"></audio>
               </div>
-              <div class="field"><label>完成檔案 / 上傳音檔</label><input id="file_${x.id}" type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar,.7z"><div class="field" style="margin-top:10px"><input id="audio_${x.id}" type="file" accept="audio/*"></div><div class="task-side-note">可上傳一般文件，或直接上傳已錄好的音檔。</div></div>
             </div>
             <div class="field"><label>完成備註（選填）</label><textarea id="note_${x.id}" placeholder="補充說明寫在這裡"></textarea></div>
           </div>
@@ -424,11 +424,8 @@
               <div class="top"><h3 class="staff-task-title">${x.title}</h3>${formatTaskStatusTag(x.status)}</div>
             </div>
             <div class="task-dual-section assignment">
-              <div class="task-zone-badge assignment">交辦任務區</div>
-              <div class="task-zone-title">主管交付給我的內容</div>
+              <div class="task-zone-badge assignment">交辦任務</div>
               ${x.content ? `<div class="staff-task-content">${x.content}</div>` : `<div class="staff-task-content muted">這筆任務沒有額外補充內容。</div>`}
-              <div class="task-deadline emphasis"><span class="deadline-label">完成期限：</span>${dueText || '未設定'}</div>
-              <div class="task-note">${proofText}</div>
               ${imageHtml}
               ${videoHtml}
               ${audioHtml}
@@ -503,7 +500,7 @@
       const preview=qs('#completeRecPreview_'+taskId), clearBtn=qs('#clearCompleteRec_'+taskId), status=qs('#completeRecStatus_'+taskId), fileInput=qs('#audio_'+taskId);
       if(preview){ preview.pause(); preview.removeAttribute('src'); preview.load(); preview.classList.add('hidden'); }
       if(clearBtn) clearBtn.classList.add('hidden');
-      if(status) status.textContent='尚未錄音；若裝置不支援可改用下方上傳音檔。';
+      if(status) status.textContent='尚未錄音';
       if(fileInput) fileInput.value='';
     }
 
@@ -593,22 +590,16 @@
       const inlineMsg=qs('#completeMsg_'+taskId) || qs('#msg');
       const photoFiles=Array.from(qs('#photo_'+taskId).files||[]);
       const videoFile=(qs('#video_'+taskId)||{}).files ? qs('#video_'+taskId).files[0] : null;
-      const docFile=(qs('#file_'+taskId)||{}).files ? qs('#file_'+taskId).files[0] : null;
-      const audioFile=(qs('#audio_'+taskId)||{}).files ? qs('#audio_'+taskId).files[0] : null;
       const noteValue=(qs('#note_'+taskId)||{}).value || '';
       const recordedAudioData = completeAudioDataMap[taskId] || '';
-      const hasAnyReply = !!(photoFiles.length || videoFile || docFile || audioFile || recordedAudioData || String(noteValue).trim());
+      const hasAnyReply = !!(photoFiles.length || videoFile || recordedAudioData || String(noteValue).trim());
       if(requirePhoto && !hasAnyReply){setMsg(inlineMsg,'此任務需要回報，請至少提供一種方式後再送出。',true); return;}
       let photoAssets=[], videoAsset=null, fileAsset=null, audioAsset=null;
       if(photoFiles.length){ const uploaded=await uploadFilesToCloudinary(photoFiles,{folder:'tasks/completed-photo',onProgress:(ratio)=>setInlineProgress(taskId,20 + Math.round(ratio*25), '完成照片上傳中...')}); photoAssets=(uploaded||[]).map(cloudinaryAssetFromResponse).filter(x=>x.url); }
       if(videoFile){ const uploaded=await uploadFileToCloudinary(videoFile,{folder:'tasks/completed-video',onProgress:(ratio)=>setInlineProgress(taskId,46 + Math.round(ratio*12), '完成影片上傳中...')}); videoAsset=cloudinaryAssetFromResponse(uploaded); }
-      if(docFile){ const uploaded=await uploadFileToCloudinary(docFile,{folder:'tasks/completed-file',onProgress:(ratio)=>setInlineProgress(taskId,60 + Math.round(ratio*10), '完成文件上傳中...')}); fileAsset=cloudinaryAssetFromResponse(uploaded); }
       if(recordedAudioData){
         const recFile=dataUrlToFile(recordedAudioData,'complete-audio.' + guessExtensionByMime((recordedAudioData.match(/^data:([^;]+)/)||[])[1]||'audio/webm'));
         const uploaded=await uploadFileToCloudinary(recFile,{folder:'tasks/completed-audio',onProgress:(ratio)=>setInlineProgress(taskId,72 + Math.round(ratio*8), '完成語音上傳中...')});
-        audioAsset=cloudinaryAssetFromResponse(uploaded);
-      }else if(audioFile){
-        const uploaded=await uploadFileToCloudinary(audioFile,{folder:'tasks/completed-audio',onProgress:(ratio)=>setInlineProgress(taskId,72 + Math.round(ratio*8), '完成語音上傳中...')});
         audioAsset=cloudinaryAssetFromResponse(uploaded);
       }
       const btn=btnEl||null;
