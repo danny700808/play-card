@@ -76,6 +76,30 @@
     .recorder-inline .btn{width:100%;min-width:0}
     .recorder-inline .status{font-size:13px;color:#526174;font-weight:700}
     .recorder-inline audio{margin-top:10px;width:100%;height:64px}
+
+    .task-admin-entry-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:10px 0 14px}
+    .task-admin-entry-card{border:1px solid #d8e1ea;background:#fff;border-radius:18px;padding:16px 14px;text-align:left;cursor:pointer}
+    .task-admin-entry-card strong{display:block;font-size:18px;font-weight:900;color:#17324a}
+    .task-admin-entry-card small{display:block;margin-top:6px;font-size:13px;color:#526174;font-weight:700}
+    .task-admin-panel{margin-top:10px;padding:14px;border-radius:18px;background:#f8fbff;border:1px solid #dbe5ee}
+    .task-admin-panel-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px}
+    .task-admin-close{width:auto;min-width:90px}
+    .task-history-filter{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end;margin-bottom:12px}
+    .task-history-actions .btn{width:auto;min-width:90px}
+    .task-summary-card{background:#fff;border:1px solid #dbe5ee;border-radius:18px;padding:14px 16px;margin-bottom:12px}
+    .task-summary-row{display:grid;grid-template-columns:100px 1fr;gap:8px;line-height:1.8;font-size:15px}
+    .task-summary-row .k{color:#64748b;font-weight:800}
+    .task-summary-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+    .task-summary-actions .btn{width:auto;min-width:110px}
+    .task-detail-wrap{margin-top:12px;padding-top:12px;border-top:1px dashed #d8e1ea}
+    .redo-box{margin-top:12px;padding:12px;border-radius:16px;background:#fff8e8;border:1px solid #f1d18a}
+    .redo-box .recorder-inline{margin-top:8px}
+    .redo-label{display:inline-block;padding:6px 12px;border-radius:999px;background:#fff3cd;color:#8a5a00;font-weight:900;font-size:13px;border:1px solid #f0df9b}
+    @media (max-width:560px){
+      .task-admin-entry-grid,.task-history-filter{grid-template-columns:1fr}
+      .task-summary-row{grid-template-columns:82px 1fr}
+    }
+
     @media (max-width:560px){
       .task-admin-tabs{grid-template-columns:1fr}
     }
@@ -221,12 +245,29 @@
         </div>
 
         <hr style="border:none;border-top:1px solid #e5ebf1;margin:18px 0">
-        <div class="section-title">已建立任務</div>
-        <div class="task-admin-tabs">
-          <button type="button" class="task-admin-tab active" id="adminTabPending" onclick="switchAdminTaskTab('pending')">未完成 <small id="adminPendingCount">0</small></button>
-          <button type="button" class="task-admin-tab" id="adminTabDone" onclick="switchAdminTaskTab('done')">已完成 <small id="adminDoneCount">0</small></button>
+        <div class="section-title">任務查詢</div>
+        <div class="task-admin-entry-grid">
+          <button type="button" class="task-admin-entry-card" id="recentTaskEntry" onclick="openAdminTaskPanel('recent')">
+            <strong>最近五天任務</strong>
+            <small id="recentTaskCount">0</small>
+          </button>
+          <button type="button" class="task-admin-entry-card" id="historyTaskEntry" onclick="openAdminTaskPanel('history')">
+            <strong>歷史任務</strong>
+            <small id="historyTaskCount">0</small>
+          </button>
         </div>
-        <div id="adminList" class="list"></div>
+        <div id="adminTaskPanel" class="task-admin-panel hidden">
+          <div class="task-admin-panel-head">
+            <div class="section-title" id="adminPanelTitle" style="margin:0">最近五天任務</div>
+            <button type="button" class="btn secondary task-admin-close" onclick="closeAdminTaskPanel()">收合</button>
+          </div>
+          <div id="adminHistoryFilters" class="task-history-filter hidden">
+            <div class="field"><label>開始日期</label><input type="date" id="historyStartDate"></div>
+            <div class="field"><label>結束日期</label><input type="date" id="historyEndDate"></div>
+            <div class="task-history-actions"><button type="button" class="btn secondary" onclick="renderAdminTaskPanel()">查詢</button></div>
+          </div>
+          <div id="adminList" class="list"></div>
+        </div>
       </div>
 
       <div id="staffBlock">
@@ -246,6 +287,7 @@
     let currentUser = null;
     let taskAdminMode = false;
     let currentAdminTaskTab = 'pending';
+    let currentAdminTaskPanel = '';
     const completeAudioDataMap = {};
     const completeRecorderMap = {};
 
@@ -378,6 +420,111 @@
       sel.innerHTML='<option value="">請選擇員工</option>' + (r.rows||[]).map(x=>`<option value="${x.id}">${x.name}</option>`).join('');
     }
 
+
+    function taskStatusText(status){
+      const s=String(status||'').trim();
+      if(!s) return '未完成';
+      return s;
+    }
+
+    function summarizeTaskDate(x){
+      return formatDisplayDateTime(x.createdAt||'').slice(0,10) || '';
+    }
+
+    function adminTaskRowMatchesHistory(x){
+      const start=(qs('#historyStartDate')||{}).value || '';
+      const end=(qs('#historyEndDate')||{}).value || '';
+      const d=summarizeTaskDate(x);
+      if(start && d<start) return false;
+      if(end && d>end) return false;
+      return true;
+    }
+
+    function renderAdminTaskDetail(x){
+      const mediaDoneImages = renderImageGallery(x.donePhotoUrls||[], x.donePhotoNames||[]);
+      const mediaDoneVideos = renderVideoPlayers(mediaPairs(x.doneVideoUrls||[], x.doneVideoNames||[]), '完成影片');
+      const mediaDoneAudios = renderAudioPlayers(mediaPairs(x.doneAudioUrls||[], x.doneAudioNames||[]), '完成錄音');
+      const mediaDoneFiles = renderMediaButtons(mediaPairs(x.doneFileUrls||[], x.doneFileNames||[]), '完成文件');
+      const redoAudio = renderAudioPlayers(mediaPairs(x.redoAudioUrls||[], x.redoAudioNames||[]), '需重新完成說明');
+      return `
+        <div class="task-detail-wrap" id="detail_${x.id}">
+          ${renderTaskRow(x,true,currentUser)}
+          ${x.doneAt || x.doneNote || mediaDoneImages || mediaDoneVideos || mediaDoneAudios || mediaDoneFiles ? `
+            <div class="task-summary-box" style="margin-top:12px">
+              <div class="task-zone-title">員工完成內容</div>
+              ${x.doneAt ? `<div class="muted">完成時間：${formatDisplayDateTime(x.doneAt)}</div>`:''}
+              ${x.doneNote ? `<div style="margin-top:8px;white-space:pre-wrap">${x.doneNote}</div>`:''}
+              ${mediaDoneImages}${mediaDoneVideos}${mediaDoneAudios}${mediaDoneFiles}
+            </div>` : '<div class="muted" style="margin-top:10px">目前還沒有完成回報。</div>'}
+          ${x.status==='已完成' ? `
+            <div class="redo-box">
+              <div class="redo-label">需重新完成</div>
+              <div class="task-side-note">如果這次回覆未達標準，可錄音說明後退回給員工。</div>
+              <div class="recorder-inline">
+                <div class="recorder-row">
+                  <button type="button" class="btn secondary" id="redoStart_${x.id}" onclick="startRedoRec('${x.id}')">開始錄音</button>
+                  <button type="button" class="btn secondary" id="redoStop_${x.id}" onclick="stopRedoRec('${x.id}')" disabled>停止錄音</button>
+                </div>
+                <div class="status" id="redoStatus_${x.id}">尚未錄音</div>
+                <audio id="redoPreview_${x.id}" class="task-player hidden" controls preload="metadata"></audio>
+                <button type="button" class="btn secondary hidden" style="margin-top:10px;width:100%" id="redoClear_${x.id}" onclick="clearRedoRec('${x.id}')">刪除錄音</button>
+                <button type="button" class="btn" style="margin-top:10px;width:100%" onclick="sendRedoTask('${x.id}')">送出需重新完成</button>
+              </div>
+            </div>` : ''}
+          ${x.status==='需重新完成' && redoAudio ? `<div class="task-summary-box" style="margin-top:12px"><div class="task-zone-title">需重新完成說明</div>${redoAudio}</div>`:''}
+        </div>`;
+    }
+
+    function renderAdminSummaryCard(x){
+      return `
+        <div class="task-summary-card" id="task_${x.id}">
+          <div class="task-summary-row"><div class="k">日期</div><div>${summarizeTaskDate(x)||'—'}</div></div>
+          <div class="task-summary-row"><div class="k">標題</div><div>${x.title||''}</div></div>
+          <div class="task-summary-row"><div class="k">負責人</div><div>${x.assigneeName||''}</div></div>
+          <div class="task-summary-row"><div class="k">狀態</div><div>${taskStatusText(x.status)}</div></div>
+          <div class="task-summary-actions">
+            <button type="button" class="btn secondary" onclick="toggleAdminTaskDetail('${x.id}')">查看</button>
+          </div>
+          <div class="hidden" id="detailWrap_${x.id}"></div>
+        </div>`;
+    }
+
+    function toggleAdminTaskDetail(taskId){
+      const box=qs('#detailWrap_'+taskId);
+      if(!box) return;
+      if(!box.classList.contains('hidden')){ box.classList.add('hidden'); box.innerHTML=''; return; }
+      const row=(window.__adminTaskRows||[]).find(x=>String(x.id)===String(taskId));
+      if(!row) return;
+      box.innerHTML=renderAdminTaskDetail(row);
+      box.classList.remove('hidden');
+    }
+
+    function openAdminTaskPanel(kind){
+      currentAdminTaskPanel = kind==='history' ? 'history' : 'recent';
+      const panel=qs('#adminTaskPanel'); if(panel) panel.classList.remove('hidden');
+      const filters=qs('#adminHistoryFilters'); if(filters) filters.classList.toggle('hidden', currentAdminTaskPanel!=='history');
+      const title=qs('#adminPanelTitle'); if(title) title.textContent=currentAdminTaskPanel==='history' ? '歷史任務' : '最近五天任務';
+      renderAdminTaskPanel();
+    }
+
+    function closeAdminTaskPanel(){
+      currentAdminTaskPanel='';
+      const panel=qs('#adminTaskPanel'); if(panel) panel.classList.add('hidden');
+    }
+
+    function renderAdminTaskPanel(){
+      const rows=(window.__adminTaskRows||[]).slice();
+      const now=new Date();
+      const fiveDaysAgo=new Date(now.getTime()-5*24*60*60*1000);
+      let target=[];
+      if(currentAdminTaskPanel==='history'){
+        target=rows.filter(x=>new Date((x.createdAt||'').replace(' ','T')) < fiveDaysAgo).filter(adminTaskRowMatchesHistory);
+      }else{
+        target=rows.filter(x=>new Date((x.createdAt||'').replace(' ','T')) >= fiveDaysAgo);
+      }
+      const list=qs('#adminList'); if(!list) return;
+      list.innerHTML=target.map(renderAdminSummaryCard).join('') || `<div class="muted">目前沒有${currentAdminTaskPanel==='history'?'歷史':'最近五天'}任務</div>`;
+    }
     function renderTaskRow(x, isAdmin, currentUser){
       const needReport = x.requirePhotoReturn==='是';
       const dueText = x.dueLabel || ((x.dueDate||'') + (x.dueTime?(' '+x.dueTime):''));
@@ -457,19 +604,50 @@
 
     function switchAdminTaskTab(tab){
       currentAdminTaskTab = tab==='done' ? 'done' : 'pending';
-      const p=qs('#adminTabPending'), d=qs('#adminTabDone');
-      if(p) p.classList.toggle('active', currentAdminTaskTab==='pending');
-      if(d) d.classList.toggle('active', currentAdminTaskTab==='done');
-      renderAdminTaskList(window.__adminTaskRows || []);
+      renderAdminTaskPanel();
     }
 
     function renderAdminTaskList(rows){
-      const pending = rows.filter(x=>x.status!=='已完成');
-      const done = rows.filter(x=>x.status==='已完成');
-      if(qs('#adminPendingCount')) qs('#adminPendingCount').textContent = String(pending.length);
-      if(qs('#adminDoneCount')) qs('#adminDoneCount').textContent = String(done.length);
-      const target = currentAdminTaskTab==='done' ? done : pending;
-      qs('#adminList').innerHTML = target.map(x=>renderTaskRow(x,true,currentUser)).join('') || `<div class="muted">目前沒有${currentAdminTaskTab==='done'?'已完成':'未完成'}任務</div>`;
+      window.__adminTaskRows = rows.slice();
+      const recent = rows.filter(x=>{ const d=new Date((x.createdAt||'').replace(' ','T')); return !isNaN(d) && d >= new Date(Date.now()-5*24*60*60*1000); });
+      if(qs('#recentTaskCount')) qs('#recentTaskCount').textContent = `${recent.length} 筆`;
+      if(qs('#historyTaskCount')) qs('#historyTaskCount').textContent = `${Math.max(0, rows.length-recent.length)} 筆`;
+      if(currentAdminTaskPanel) renderAdminTaskPanel();
+      else { const list=qs('#adminList'); if(list) list.innerHTML=''; }
+    }
+
+    const redoAudioDataMap = {};
+    const redoRecorderMap = {};
+
+    async function startRedoRec(taskId){
+      try{
+        const rec = await startRecorder((data)=>{
+          redoAudioDataMap[taskId]=data;
+          const preview=qs('#redoPreview_'+taskId);
+          if(preview){ preview.src=data; preview.classList.remove('hidden'); }
+          const status=qs('#redoStatus_'+taskId); if(status) status.textContent='已錄音，可送出需重新完成。';
+          const clearBtn=qs('#redoClear_'+taskId); if(clearBtn) clearBtn.classList.remove('hidden');
+          redoRecorderMap[taskId]=null;
+        });
+        redoRecorderMap[taskId]=rec;
+        const startBtn=qs('#redoStart_'+taskId), stopBtn=qs('#redoStop_'+taskId), status=qs('#redoStatus_'+taskId);
+        if(startBtn) startBtn.disabled=true;
+        if(stopBtn) stopBtn.disabled=false;
+        if(status) status.textContent='錄音中，請直接說話。';
+      }catch(e){ setMsg(qs('#msg'), e.message||String(e), true); }
+    }
+    function stopRedoRec(taskId){ const rec = redoRecorderMap[taskId]; if(rec){ try{rec.stop();}catch(e){} } const s=qs('#redoStart_'+taskId), t=qs('#redoStop_'+taskId); if(s) s.disabled=false; if(t) t.disabled=true; }
+    function clearRedoRec(taskId){ delete redoAudioDataMap[taskId]; const p=qs('#redoPreview_'+taskId), c=qs('#redoClear_'+taskId), st=qs('#redoStatus_'+taskId); if(p){ p.pause(); p.removeAttribute('src'); p.load(); p.classList.add('hidden'); } if(c) c.classList.add('hidden'); if(st) st.textContent='尚未錄音'; }
+    async function sendRedoTask(taskId){
+      const user=requireLogin();
+      const audioData = redoAudioDataMap[taskId] || '';
+      if(!audioData){ setMsg(qs('#msg'),'請先錄音說明後再送出。',true); return; }
+      const recFile=dataUrlToFile(audioData,'redo-audio.' + guessExtensionByMime((audioData.match(/^data:([^;]+)/)||[])[1]||'audio/webm'));
+      const uploaded=await uploadFileToCloudinary(recFile,{folder:'tasks/redo-audio'});
+      const redoAudioAsset=cloudinaryAssetFromResponse(uploaded);
+      const r=await api('markTaskRedo',{userId:user.id,taskId,redoAudioAsset});
+      setMsg(qs('#msg'),r.message,!r.ok);
+      if(r.ok){ delete redoAudioDataMap[taskId]; setTimeout(loadTasks,300); }
     }
 
     async function startCompleteRec(taskId){
