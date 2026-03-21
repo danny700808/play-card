@@ -400,6 +400,7 @@
     </div>
   </div>
 
+  <script src="app.js"></script>
   <script>
     const DAYS = [
       { key: 'monday', label: '星期一' },
@@ -440,6 +441,10 @@
             <label for="${day.key}Time">上班時間</label>
             <input id="${day.key}Time" type="time" />
           </div>
+          <div class="checkbox-line">
+            <input id="${day.key}AllowSpecial" type="checkbox" />
+            <label for="${day.key}AllowSpecial" style="font-weight:700">允許特殊打卡並存</label>
+          </div>
         </div>
       `).join('');
     }
@@ -450,39 +455,34 @@
     }
 
     async function callBackend(action, payload = {}) {
-      try {
-        if (typeof window !== 'undefined' && window.parent && window.parent !== window && typeof window.parent.api === 'function') {
-          return await window.parent.api(action, payload);
+      const directApi = (typeof api === 'function') ? api : null;
+      const windowApi = (typeof window !== 'undefined' && typeof window.api === 'function' && window.api !== callBackend) ? window.api : null;
+      const parentApi = (typeof window !== 'undefined' && window.parent && window.parent !== window && typeof window.parent.api === 'function') ? window.parent.api : null;
+      const fn = directApi || windowApi || parentApi;
+      if (fn) {
+        const res = await fn(action, payload);
+        if (res && typeof res === 'object' && res.ok === false) {
+          throw new Error(res.message || '後端處理失敗');
         }
-        if (typeof window !== 'undefined' && typeof window.api === 'function') {
-          return await window.api(action, payload);
-        }
-        if (typeof api === 'function') {
-          return await api(action, payload);
-        }
-        const apiBase = (typeof window !== 'undefined' && window.APP_CONFIG && window.APP_CONFIG.API_URL)
-          || (typeof window !== 'undefined' && window.API_BASE_URL)
-          || (typeof localStorage !== 'undefined' && localStorage.getItem('EMPLOYEE_SYSTEM_API_BASE'))
-          || '';
-        if (apiBase) {
-          const res = await fetch(apiBase, {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify(Object.assign({ action: action }, payload))
-          });
-          const raw = await res.text();
-          let json;
-          try { json = JSON.parse(raw); } catch (e) { throw new Error(raw || '後端回傳格式錯誤'); }
-          return json;
-        }
-        throw new Error('找不到後端 API，請把此頁放回原系統中使用。');
-      } catch (err) {
-        const msg = String(err && err.message ? err.message : err || '呼叫失敗');
-        if (/Maximum call stack size exceeded/i.test(msg)) {
-          throw new Error('班表頁呼叫後端時發生循環錯誤，請改用系統內建 api()。');
-        }
-        throw err;
+        return res || {};
       }
+      const apiBase = (typeof window !== 'undefined' && window.APP_CONFIG && window.APP_CONFIG.API_URL)
+        || (typeof window !== 'undefined' && window.API_BASE_URL)
+        || (typeof localStorage !== 'undefined' && localStorage.getItem('EMPLOYEE_SYSTEM_API_BASE'))
+        || '';
+      if (!apiBase) throw new Error('找不到後端 API，請把此頁放回原系統中使用。');
+      const res = await fetch(apiBase, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(Object.assign({ action: action }, payload))
+      });
+      const raw = await res.text();
+      let json;
+      try { json = JSON.parse(raw); } catch (e) { throw new Error(raw || '後端回傳格式錯誤'); }
+      if (json && typeof json === 'object' && json.ok === false) {
+        throw new Error(json.message || '後端處理失敗');
+      }
+      return json || {};
     }
 
     async function reloadPageData() {
@@ -549,7 +549,8 @@
               ${DAYS.map(day => {
                 const type = getTemplateDayValue(t, day, 'type') || '無班';
                 const time = getTemplateDayValue(t, day, 'time') || '';
-                return `<div><b>${day.label}：</b>${escapeHtml(type)}${time ? ` / ${escapeHtml(time)}` : ''}</div>`;
+                const allowSpecial = String(getTemplateDayValue(t, day, 'allowSpecial') || 'FALSE') === 'TRUE';
+                return `<div><b>${day.label}：</b>${escapeHtml(type)}${time ? ` / ${escapeHtml(time)}` : ''}${allowSpecial ? ' / 可選特殊打卡' : ''}</div>`;
               }).join('')}
             </div>
             <div class="actions">
@@ -606,9 +607,9 @@
         sunday: '星期日'
       };
       const zh = map[day.key];
-      return kind === 'type'
-        ? (template[`${day.key}Type`] || template[`${zh}類型`] || '')
-        : (template[`${day.key}StartTime`] || template[`${day.key}Time`] || template[`${zh}上班時間`] || '');
+      if (kind === 'type') return template[`${day.key}Type`] || template[`${zh}類型`] || '';
+      if (kind === 'time') return template[`${day.key}StartTime`] || template[`${day.key}Time`] || template[`${zh}上班時間`] || '';
+      return template[`${day.key}AllowSpecial`] || template[`${zh}允許特殊打卡`] || '';
     }
 
     function toggleDayTime(dayKey) {
@@ -628,6 +629,7 @@
       DAYS.forEach(day => {
         document.getElementById(`${day.key}Type`).value = '無班';
         document.getElementById(`${day.key}Time`).value = '';
+        document.getElementById(`${day.key}AllowSpecial`).checked = false;
         toggleDayTime(day.key);
       });
     }
@@ -657,22 +659,22 @@
         templateId: document.getElementById('templateId').value.trim(),
         templateName: document.getElementById('templateName').value.trim(),
         enabled: document.getElementById('templateEnabled').value,
-        note: document.getElementById('templateNote').value.trim(),
-        days: DAYS.map(day => ({
-          dayKey: day.key,
-          dayLabel: day.label,
-          type: document.getElementById(`${day.key}Type`).value,
-          startTime: document.getElementById(`${day.key}Time`).value
-        }))
+        note: document.getElementById('templateNote').value.trim()
       };
+      DAYS.forEach(day => {
+        const shortKey = ({monday:'mon',tuesday:'tue',wednesday:'wed',thursday:'thu',friday:'fri',saturday:'sat',sunday:'sun'})[day.key];
+        payload[`${shortKey}Type`] = document.getElementById(`${day.key}Type`).value;
+        payload[`${shortKey}Start`] = document.getElementById(`${day.key}Time`).value;
+        payload[`${shortKey}AllowSpecial`] = document.getElementById(`${day.key}AllowSpecial`).checked ? 'TRUE' : 'FALSE';
+      });
 
       if (!payload.templateName) {
         showStatus('templateStatus', '請先填寫模板名稱。', 'error');
         return;
       }
-      const invalidDay = payload.days.find(d => d.type === '標準打卡' && !d.startTime);
+      const invalidDay = DAYS.find(day => { const shortKey=({monday:'mon',tuesday:'tue',wednesday:'wed',thursday:'thu',friday:'fri',saturday:'sat',sunday:'sun'})[day.key]; return payload[`${shortKey}Type`] === '標準打卡' && !payload[`${shortKey}Start`]; });
       if (invalidDay) {
-        showStatus('templateStatus', `${invalidDay.dayLabel} 選了標準打卡，請填上班時間。`, 'error');
+        showStatus('templateStatus', `${invalidDay.label} 選了標準打卡，請填上班時間。`, 'error');
         return;
       }
 
@@ -736,6 +738,7 @@
       DAYS.forEach(day => {
         document.getElementById(`${day.key}Type`).value = getTemplateDayValue(t, day, 'type') || '無班';
         document.getElementById(`${day.key}Time`).value = getTemplateDayValue(t, day, 'time') || '';
+        document.getElementById(`${day.key}AllowSpecial`).checked = String(getTemplateDayValue(t, day, 'allowSpecial') || 'FALSE') === 'TRUE';
         toggleDayTime(day.key);
       });
       window.scrollTo({ top: 0, behavior: 'smooth' });
