@@ -53,6 +53,31 @@
       .task-media-grid,.task-remind-options{grid-template-columns:1fr}
     }
 
+
+    .task-actions{display:block}
+    .task-actions .complete-action-box,.task-actions .task-del-wrap{width:100%}
+    .task-del-wrap{margin-top:12px}
+    .task-media-section{margin-top:12px}
+    .task-media-title{font-size:13px;font-weight:800;color:#526174;margin:0 0 6px}
+    .task-player{width:100%;border-radius:14px;background:#eef2f7;display:block}
+    audio.task-player{height:46px}
+    video.task-player{max-height:280px}
+    .task-file-links{display:grid;grid-template-columns:1fr;gap:10px;margin-top:12px}
+    .task-file-link{display:block;width:100%;padding:14px 16px;border-radius:16px;background:#e9edf3;color:#1f2937;text-decoration:none;font-weight:800}
+    .task-admin-tabs{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0 14px}
+    .task-admin-tab{border:1px solid #d8e1ea;background:#fff;border-radius:16px;padding:12px 14px;font-size:18px;font-weight:800;cursor:pointer}
+    .task-admin-tab.active{background:#1f7a5a;color:#fff;border-color:#1f7a5a}
+    .task-admin-tab small{display:block;font-size:13px;font-weight:700;opacity:.9;margin-top:4px}
+    .recorder-inline{border:1px solid #e2e8f0;border-radius:16px;padding:12px;background:#fff}
+    .recorder-inline .recorder-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+    .recorder-inline .btn{width:auto;min-width:110px}
+    .recorder-inline .status{font-size:13px;color:#526174;font-weight:700}
+    .recorder-inline audio{margin-top:10px;width:100%}
+    @media (max-width:560px){
+      .task-admin-tabs{grid-template-columns:1fr}
+      .recorder-inline .btn{width:100%}
+    }
+
 </style>
 </head>
 <body onload="init()">
@@ -155,6 +180,10 @@
 
         <hr style="border:none;border-top:1px solid #e5ebf1;margin:18px 0">
         <div class="section-title">已建立任務</div>
+        <div class="task-admin-tabs">
+          <button type="button" class="task-admin-tab active" id="adminTabPending" onclick="switchAdminTaskTab('pending')">未完成 <small id="adminPendingCount">0</small></button>
+          <button type="button" class="task-admin-tab" id="adminTabDone" onclick="switchAdminTaskTab('done')">已完成 <small id="adminDoneCount">0</small></button>
+        </div>
         <div id="adminList" class="list"></div>
       </div>
 
@@ -174,6 +203,9 @@
     let reminderState = {freq:'一般提醒', times:[]};
     let currentUser = null;
     let taskAdminMode = false;
+    let currentAdminTaskTab = 'pending';
+    const completeAudioDataMap = {};
+    const completeRecorderMap = {};
 
     function applyTaskMode(){
       taskAdminMode = !!(currentUser && currentUser.role==='admin' && isSettingsMode());
@@ -260,9 +292,19 @@
       return `<div class="task-gallery cols-${cols}">${items.map(x=>`<a href="${audioOpenUrl(x.url)}" target="_blank" rel="noopener"><img src="${imagePreviewUrl(x.url)}" alt="${x.name||'任務圖片'}"></a>`).join('')}</div>`;
     }
 
+    function renderVideoPlayers(items,title){
+      if(!items.length) return '';
+      return `<div class="task-media-section"><div class="task-media-title">${title}</div>${items.map(x=>`<video class="task-player" controls playsinline preload="metadata" src="${optimizedVideoUrl(x.url)}"></video>`).join('')}</div>`;
+    }
+
+    function renderAudioPlayers(items,title){
+      if(!items.length) return '';
+      return `<div class="task-media-section"><div class="task-media-title">${title}</div>${items.map(x=>`<audio class="task-player" controls preload="metadata" src="${audioStreamUrl(x.url)}"></audio>`).join('')}</div>`;
+    }
+
     function renderMediaButtons(items,labelPrefix){
       if(!items.length) return '';
-      return `<div class="task-media-grid">${items.map((x,idx)=>`<a class="btn secondary" href="${audioOpenUrl(x.url)}" target="_blank" rel="noopener">${x.name||`${labelPrefix} ${idx+1}`}</a>`).join('')}</div>`;
+      return `<div class="task-media-section"><div class="task-media-title">${labelPrefix}</div><div class="task-file-links">${items.map((x,idx)=>`<a class="task-file-link" href="${audioOpenUrl(x.url)}" target="_blank" rel="noopener">${labelPrefix} ${idx+1}</a>`).join('')}</div></div>`;
     }
 
     function renderStaffRemindBox(x, isAdmin, isMyAssignedTask){
@@ -298,8 +340,8 @@
       const dueText = x.dueLabel || ((x.dueDate||'') + (x.dueTime?(' '+x.dueTime):''));
       const imageHtml = renderImageGallery(x.taskImageUrls||[], x.taskImageNames||[]);
       const fileHtml = renderMediaButtons(mediaPairs(x.taskFileUrls||[], x.taskFileNames||[]), '交辦文件');
-      const audioHtml = renderMediaButtons(mediaPairs(x.taskAudioUrls||[], x.taskAudioNames||[]), '交辦錄音');
-      const videoHtml = renderMediaButtons(mediaPairs(x.taskVideoUrls||[], x.taskVideoNames||[]), '交辦影片');
+      const audioHtml = renderAudioPlayers(mediaPairs(x.taskAudioUrls||[], x.taskAudioNames||[]), '交辦錄音');
+      const videoHtml = renderVideoPlayers(mediaPairs(x.taskVideoUrls||[], x.taskVideoNames||[]), '交辦影片');
       const remindHtml = renderRemindSummary(x);
       const isMyAssignedTask = String(x.assigneeId||'')===String(currentUser.id||'') || String(x.assigneeEmail||'').toLowerCase()===String(currentUser.email||'').toLowerCase();
       const canComplete = x.status!=='已完成' && (!isAdmin || isMyAssignedTask);
@@ -311,7 +353,18 @@
           <div class="field"><label>完成照片</label><input id="photo_${x.id}" type="file" accept=".jpg,.jpeg,.png" multiple><div class="attach-badge">${x.requirePhotoReturn==='是'?'可一次上傳多張完成照片':'有需要再補充多張照片即可'}</div></div>
           <div class="field"><label>完成影片（選填）</label><input id="video_${x.id}" type="file" accept="video/*"></div>
           <div class="field"><label>完成文件（選填）</label><input id="file_${x.id}" type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar,.7z"></div>
-          <div class="field"><label>完成語音（選填）</label><input id="audio_${x.id}" type="file" accept="audio/*"></div>
+          <div class="field"><label>完成語音（選填）</label>
+            <div class="recorder-inline">
+              <div class="recorder-row">
+                <button type="button" class="btn secondary" id="startCompleteRec_${x.id}" onclick="startCompleteRec('${x.id}')">開始錄音</button>
+                <button type="button" class="btn secondary" id="stopCompleteRec_${x.id}" onclick="stopCompleteRec('${x.id}')" disabled>停止錄音</button>
+                <button type="button" class="btn secondary hidden" id="clearCompleteRec_${x.id}" onclick="clearCompleteRec('${x.id}')">清除錄音</button>
+              </div>
+              <div class="status" id="completeRecStatus_${x.id}">尚未錄音；若裝置不支援可改用下方上傳音檔。</div>
+              <audio id="completeRecPreview_${x.id}" class="task-player hidden" controls preload="metadata"></audio>
+              <div class="field" style="margin-top:10px"><input id="audio_${x.id}" type="file" accept="audio/*"></div>
+            </div>
+          </div>
           <div class="field"><label>完成備註（選填）</label><textarea id="note_${x.id}" placeholder="補充說明寫在這裡"></textarea></div>
         </div>
         <div class="complete-action-box" id="completeWrap_${x.id}">
@@ -336,8 +389,61 @@
           ${remindHtml}
           ${remindToggleBox}
           ${isAdmin?`<div class="muted">建立者：${x.createdByName||''}｜建立時間：${formatDisplayDateTime(x.createdAt||'')||''}</div>`:''}
-          <div class="task-actions">${completeBox}${deleteBtn}</div>
+          ${completeBox}
+          ${deleteBtn}
         </div>`;
+    }
+
+    function switchAdminTaskTab(tab){
+      currentAdminTaskTab = tab==='done' ? 'done' : 'pending';
+      const p=qs('#adminTabPending'), d=qs('#adminTabDone');
+      if(p) p.classList.toggle('active', currentAdminTaskTab==='pending');
+      if(d) d.classList.toggle('active', currentAdminTaskTab==='done');
+      renderAdminTaskList(window.__adminTaskRows || []);
+    }
+
+    function renderAdminTaskList(rows){
+      const pending = rows.filter(x=>x.status!=='已完成');
+      const done = rows.filter(x=>x.status==='已完成');
+      if(qs('#adminPendingCount')) qs('#adminPendingCount').textContent = String(pending.length);
+      if(qs('#adminDoneCount')) qs('#adminDoneCount').textContent = String(done.length);
+      const target = currentAdminTaskTab==='done' ? done : pending;
+      qs('#adminList').innerHTML = target.map(x=>renderTaskRow(x,true,currentUser)).join('') || `<div class="muted">目前沒有${currentAdminTaskTab==='done'?'已完成':'未完成'}任務</div>`;
+    }
+
+    async function startCompleteRec(taskId){
+      try{
+        const rec = await startRecorder((data)=>{
+          completeAudioDataMap[taskId]=data;
+          const preview=qs('#completeRecPreview_'+taskId);
+          if(preview){ preview.src=data; preview.classList.remove('hidden'); }
+          const status=qs('#completeRecStatus_'+taskId); if(status) status.textContent='已錄音，可直接送出。';
+          const clearBtn=qs('#clearCompleteRec_'+taskId); if(clearBtn) clearBtn.classList.remove('hidden');
+          completeRecorderMap[taskId]=null;
+        });
+        completeRecorderMap[taskId]=rec;
+        const startBtn=qs('#startCompleteRec_'+taskId), stopBtn=qs('#stopCompleteRec_'+taskId), status=qs('#completeRecStatus_'+taskId);
+        if(startBtn) startBtn.disabled=true;
+        if(stopBtn) stopBtn.disabled=false;
+        if(status) status.textContent='錄音中，請直接說話。';
+      }catch(e){ setMsg(qs('#msg'), e.message||String(e), true); }
+    }
+
+    function stopCompleteRec(taskId){
+      const rec = completeRecorderMap[taskId];
+      if(rec){ try{ rec.stop(); }catch(e){} }
+      const startBtn=qs('#startCompleteRec_'+taskId), stopBtn=qs('#stopCompleteRec_'+taskId);
+      if(startBtn) startBtn.disabled=false;
+      if(stopBtn) stopBtn.disabled=true;
+    }
+
+    function clearCompleteRec(taskId){
+      delete completeAudioDataMap[taskId];
+      const preview=qs('#completeRecPreview_'+taskId), clearBtn=qs('#clearCompleteRec_'+taskId), status=qs('#completeRecStatus_'+taskId), fileInput=qs('#audio_'+taskId);
+      if(preview){ preview.pause(); preview.removeAttribute('src'); preview.load(); preview.classList.add('hidden'); }
+      if(clearBtn) clearBtn.classList.add('hidden');
+      if(status) status.textContent='尚未錄音；若裝置不支援可改用下方上傳音檔。';
+      if(fileInput) fileInput.value='';
     }
 
     async function saveTaskRemindPrefs(taskId){
@@ -356,7 +462,8 @@
       const r=await api('getTasks',{userId:user.id,email:user.email,role:requestRole});
       const rows=r.rows||[];
       if(taskAdminMode){
-        qs('#adminList').innerHTML = rows.map(x=>renderTaskRow(x,true,user)).join('') || '<div class="muted">目前沒有已建立任務</div>';
+        window.__adminTaskRows = rows.slice();
+        renderAdminTaskList(window.__adminTaskRows);
         qs('#staffBlock').style.display='none';
       }else{
         qs('#list').innerHTML = rows.filter(x=>x.status!=='已完成').map(x=>renderTaskRow(x,false,user)).join('') || '<div class="muted">目前沒有任務</div>';
@@ -421,12 +528,20 @@
       const videoFile=(qs('#video_'+taskId)||{}).files ? qs('#video_'+taskId).files[0] : null;
       const docFile=(qs('#file_'+taskId)||{}).files ? qs('#file_'+taskId).files[0] : null;
       const audioFile=(qs('#audio_'+taskId)||{}).files ? qs('#audio_'+taskId).files[0] : null;
+      const recordedAudioData = completeAudioDataMap[taskId] || '';
       if(requirePhoto && !photoFiles.length){setMsg(qs('#msg'),'這筆任務需要回傳照片，請先上傳照片再完成任務。',true); return;}
       let photoAssets=[], videoAsset=null, fileAsset=null, audioAsset=null;
       if(photoFiles.length){ const uploaded=await uploadFilesToCloudinary(photoFiles,{folder:'tasks/completed-photo',onProgress:(ratio)=>setInlineProgress(taskId,20 + Math.round(ratio*25), '完成照片上傳中...')}); photoAssets=(uploaded||[]).map(cloudinaryAssetFromResponse).filter(x=>x.url); }
       if(videoFile){ const uploaded=await uploadFileToCloudinary(videoFile,{folder:'tasks/completed-video',onProgress:(ratio)=>setInlineProgress(taskId,46 + Math.round(ratio*12), '完成影片上傳中...')}); videoAsset=cloudinaryAssetFromResponse(uploaded); }
       if(docFile){ const uploaded=await uploadFileToCloudinary(docFile,{folder:'tasks/completed-file',onProgress:(ratio)=>setInlineProgress(taskId,60 + Math.round(ratio*10), '完成文件上傳中...')}); fileAsset=cloudinaryAssetFromResponse(uploaded); }
-      if(audioFile){ const uploaded=await uploadFileToCloudinary(audioFile,{folder:'tasks/completed-audio',onProgress:(ratio)=>setInlineProgress(taskId,72 + Math.round(ratio*8), '完成語音上傳中...')}); audioAsset=cloudinaryAssetFromResponse(uploaded); }
+      if(recordedAudioData){
+        const recFile=dataUrlToFile(recordedAudioData,'complete-audio.' + guessExtensionByMime((recordedAudioData.match(/^data:([^;]+)/)||[])[1]||'audio/webm'));
+        const uploaded=await uploadFileToCloudinary(recFile,{folder:'tasks/completed-audio',onProgress:(ratio)=>setInlineProgress(taskId,72 + Math.round(ratio*8), '完成語音上傳中...')});
+        audioAsset=cloudinaryAssetFromResponse(uploaded);
+      }else if(audioFile){
+        const uploaded=await uploadFileToCloudinary(audioFile,{folder:'tasks/completed-audio',onProgress:(ratio)=>setInlineProgress(taskId,72 + Math.round(ratio*8), '完成語音上傳中...')});
+        audioAsset=cloudinaryAssetFromResponse(uploaded);
+      }
       const btn=btnEl||null;
       const progressBox=qs('#completeProgress_'+taskId);
       if(btn){btn.disabled=true; btn.classList.add('hidden');}
@@ -441,7 +556,7 @@
       setProgressUI('complete_'+taskId,100,r.ok?'完成任務送出成功':'送出失敗');
       setMsg(qs('#msg'),r.message,!r.ok);
       setTimeout(()=>{ if(btn){btn.disabled=false; btn.classList.remove('hidden');} if(progressBox){progressBox.classList.add('hidden');} if(btn){btn.textContent='完成任務';}}, r.ok?700:1200);
-      if(r.ok) setTimeout(loadTasks,450);
+      if(r.ok){ delete completeAudioDataMap[taskId]; setTimeout(loadTasks,450); }
     }
 
     async function deleteTask(taskId, title){
