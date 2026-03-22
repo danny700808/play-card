@@ -1,419 +1,144 @@
+# schedule-admin.html
+
+請把這一段整份覆蓋原本的 `schedule-admin.html`。
+
+```html
 <!DOCTYPE html>
-<html lang="zh-Hant">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>班表設定</title>
-  <style>
-    :root{--bg:#eef3ef;--card:#fff;--line:#d7e1db;--text:#18324a;--muted:#6a7a88;--green:#258257;--danger:#c0392b}
-    *{box-sizing:border-box} body{margin:0;font-family:Arial,"Noto Sans TC",sans-serif;background:var(--bg);color:var(--text)}
-    .page{max-width:900px;margin:0 auto;padding:20px}
-    .card{background:var(--card);border:1px solid var(--line);border-radius:28px;padding:24px;margin-bottom:22px}
-    h1,h2,h3{margin:0 0 12px} h1{font-size:28px} h2{font-size:24px} h3{font-size:20px}
-    p{margin:0 0 10px;line-height:1.7;color:var(--muted)}
-    .btn{border:none;border-radius:20px;padding:16px 24px;font-size:18px;font-weight:700;cursor:pointer}
-    .btn-primary{background:var(--green);color:#fff}.btn-secondary{background:#fff;color:var(--text);border:1px solid var(--line)}
-    .row{display:grid;grid-template-columns:1fr 1fr;gap:16px}.row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
-    label{display:block;font-size:18px;font-weight:700;margin:0 0 8px}
-    input[type=text],input[type=date],select,textarea{width:100%;border:1px solid #cfd9d3;border-radius:18px;padding:16px 18px;font-size:18px;background:#fff;color:var(--text)}
-    textarea{min-height:120px;resize:vertical}
-    .day-card{border:1px solid var(--line);border-radius:24px;padding:18px;margin:14px 0}
-    .error,.success{border-radius:18px;padding:16px 18px;font-size:18px;font-weight:700;margin-top:16px;display:none}
-    .error{background:#fdeceb;color:var(--danger);border:1px solid #f4b3ad}.success{background:#eaf8ef;color:var(--green);border:1px solid #b8dfc2}
-    .list-item{border:1px solid var(--line);border-radius:20px;padding:16px;margin-top:12px;background:#fbfdfb}
-    .list-top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
-    .small{font-size:15px;color:var(--muted)}
-    .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
-    .tag{display:inline-block;padding:6px 10px;border-radius:999px;background:#eef6f1;color:var(--green);font-size:14px;font-weight:700}
-    .hidden{display:none!important}
-    @media (max-width:700px){.row,.row-3{grid-template-columns:1fr}.page{padding:14px}.card{padding:18px;border-radius:24px}}
-  </style>
-  <script src="config.js"></script>
-  <script src="app.js"></script>
-</head>
-<body>
-  <div class="page">
-    <div class="card">
-      <h1>班表設定</h1>
-      <p>這裡只做兩件事：建立班表模板，還有把模板指定給員工。平常不用進 Sheet 手動改。</p>
-      <div id="topError" class="error"></div>
-      <div id="topSuccess" class="success"></div>
-    </div>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>班表設定</title>
+<style>
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Noto Sans TC","PingFang TC",sans-serif;background:#eef2f1;color:#16324f}.wrap{max-width:880px;margin:0 auto;padding:16px}.card{background:#fff;border:2px solid #d7e1df;border-radius:28px;padding:20px;margin-bottom:18px}h1,h2,h3,h4{margin:0 0 12px}label{display:block;font-weight:800;margin:14px 0 8px}input[type=text],input[type=date],input[type=time],select,textarea{width:100%;padding:16px 18px;border:2px solid #cfdad7;border-radius:22px;font-size:16px;box-sizing:border-box}textarea{min-height:100px}.row{display:grid;grid-template-columns:1fr 1fr;gap:14px}.day{border:2px solid #d7e1df;border-radius:24px;padding:18px;margin-top:12px}.btn{border:none;border-radius:18px;padding:14px 18px;font-size:16px;font-weight:800;cursor:pointer}.btn-primary{background:#2d8a61;color:#fff}.btn-secondary{background:#fff;color:#16324f;border:2px solid #d7e1df}.btn-danger{background:#fff;color:#b2392f;border:2px solid #efc5c0}.actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:16px}.notice{padding:16px 18px;border-radius:22px;font-weight:800;margin-top:16px}.error{background:#fdeceb;color:#b2392f;border:2px solid #f0c3bf}.ok{background:#e7f3ec;color:#2d8a61;border:2px solid #c6e6d5}.hidden{display:none!important}.checkbox{display:flex;align-items:center;gap:10px;font-weight:800;margin-top:14px}.list-item{border:2px solid #d7e1df;border-radius:22px;padding:16px;margin-top:12px}.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.toolbar .btn{padding:10px 14px;border-radius:14px;font-size:14px}@media (max-width:700px){.row{grid-template-columns:1fr}}
+</style></head><body><div class="wrap"><div class="card"><h2>班表模板</h2><p>標準打卡會顯示上班時間與下班時間；如果偶爾也要讓員工用特殊打卡，就勾選「允許特殊打卡並存」。</p><input type="hidden" id="templateId"><label>模板名稱</label><input type="text" id="templateName" placeholder="例如：一般員工標準班"><label>是否啟用</label><select id="templateEnabled"><option value="TRUE">啟用</option><option value="FALSE">停用</option></select><div id="daysWrap"></div><label>備註</label><textarea id="templateNote" placeholder="例如：星期一公休；其餘為標準班。"></textarea><div class="actions"><button class="btn btn-primary" onclick="saveTemplate()">儲存班表模板</button><button class="btn btn-secondary" onclick="resetTemplateForm()">清空表單</button></div><div id="templateMsg"></div></div><div class="card"><h2>已有班表模板</h2><div id="templateList"></div></div><div class="card"><h2>員工套用班表</h2><input type="hidden" id="assignmentId"><div class="actions"><button class="btn btn-secondary" onclick="newAssignment()">新增套用</button></div><label>員工</label><select id="employeeId"></select><label>班表模板</label><select id="assignmentTemplateId"></select><div class="row"><div><label>開始日期</label><input type="date" id="startDate"></div><div><label>結束日期</label><input type="date" id="endDate"></div></div><label class="checkbox"><input type="checkbox" id="isOpenEnded" onchange="toggleEndDate()"> 無期限</label><label>是否啟用</label><select id="assignmentEnabled"><option value="TRUE">啟用</option><option value="FALSE">停用</option></select><label>備註</label><textarea id="assignmentNote"></textarea><div class="actions"><button class="btn btn-primary" onclick="saveAssignment()">儲存套用</button><button class="btn btn-secondary" onclick="resetAssignmentForm()">清空表單</button></div><div id="assignmentMsg"></div><div id="assignmentList"></div></div></div><script>
+const DAYS=[["星期一","mon"],["星期二","tue"],["星期三","wed"],["星期四","thu"],["星期五","fri"],["星期六","sat"],["星期日","sun"]];
+function setMsg(id,msg,ok){document.getElementById(id).innerHTML=msg?'<div class="notice '+(ok?'ok':'error')+'">'+msg+'</div>':'';}
+function escapeHtml(s){return String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+function scheduleApiCall(action,payload){payload=payload||{};if(window.parent&&typeof window.parent.apiCall==='function') return window.parent.apiCall(action,payload);if(window.apiCall&&typeof window.apiCall==='function'&&window.apiCall!==scheduleApiCall) return window.apiCall(action,payload);throw new Error('找不到後端 API，請把此頁放回原系統中使用。');}
+function buildDays(){document.getElementById('daysWrap').innerHTML=DAYS.map(([label,key])=>`<div class="day"><h4>${label}</h4><label>打卡類型</label><select id="${key}_type" onchange="toggleDayTime('${key}')"><option value="無班">無班</option><option value="標準打卡">標準打卡</option><option value="特殊打卡">特殊打卡</option></select><div id="${key}_timeWrap" class="row hidden"><div><label>上班時間</label><input type="time" id="${key}_start" step="1800"></div><div><label>下班時間</label><input type="time" id="${key}_end" step="1800"></div></div><label class="checkbox"><input type="checkbox" id="${key}_allowSpecial"> 允許特殊打卡並存</label></div>`).join('');}
+function toggleDayTime(key){document.getElementById(key+'_timeWrap').classList.toggle('hidden',document.getElementById(key+'_type').value!=='標準打卡');}
+function resetTemplateForm(){document.getElementById('templateId').value='';document.getElementById('templateName').value='';document.getElementById('templateEnabled').value='TRUE';document.getElementById('templateNote').value='';DAYS.forEach(([_,k])=>{document.getElementById(k+'_type').value='無班';document.getElementById(k+'_start').value='';document.getElementById(k+'_end').value='';document.getElementById(k+'_allowSpecial').checked=false;toggleDayTime(k)});setMsg('templateMsg','');}
+function collectTemplatePayload(){const p={templateId:document.getElementById('templateId').value.trim(),templateName:document.getElementById('templateName').value.trim(),enabled:document.getElementById('templateEnabled').value,note:document.getElementById('templateNote').value.trim()};DAYS.forEach(([_,k])=>{p[k+'Type']=document.getElementById(k+'_type').value;p[k+'Start']=document.getElementById(k+'_start').value;p[k+'End']=document.getElementById(k+'_end').value;p[k+'AllowSpecial']=document.getElementById(k+'_allowSpecial').checked?'TRUE':'FALSE'});return p;}
+async function saveTemplate(){try{setMsg('templateMsg','');const p=collectTemplatePayload();if(!p.templateName)return setMsg('templateMsg','請先填寫模板名稱。');for(const [_,k] of DAYS){if(p[k+'Type']==='標準打卡'&&(!p[k+'Start']||!p[k+'End']))return setMsg('templateMsg','標準打卡必須選擇上班時間與下班時間。');}const res=await scheduleApiCall('saveScheduleTemplate',p);if(!res||!res.ok)throw new Error((res&&res.message)||'儲存失敗');setMsg('templateMsg','儲存成功。',true);resetTemplateForm();await loadSetup();}catch(err){setMsg('templateMsg',String(err.message||err));}}
+function renderTemplates(rows){const wrap=document.getElementById('templateList');if(!rows||!rows.length){wrap.innerHTML='<p>目前沒有模板。</p>';fillTemplateOptions([]);return;}wrap.innerHTML=rows.map(r=>`<div class="list-item"><strong>${escapeHtml(r['模板名稱'])}</strong><div>${escapeHtml(r['備註'])}</div><div class="toolbar"><button class="btn btn-secondary" onclick='editTemplate(${JSON.stringify(JSON.stringify(r))})'>編輯</button><button class="btn btn-danger" onclick='removeTemplate(${JSON.stringify(r['模板ID']||"")})'>刪除</button></div></div>`).join('');fillTemplateOptions(rows);}
+function editTemplate(j){const r=JSON.parse(JSON.parse(j));document.getElementById('templateId').value=r['模板ID']||'';document.getElementById('templateName').value=r['模板名稱']||'';document.getElementById('templateEnabled').value=r['啟用']||'TRUE';document.getElementById('templateNote').value=r['備註']||'';const map={mon:'一',tue:'二',wed:'三',thu:'四',fri:'五',sat:'六',sun:'日'};Object.keys(map).forEach(k=>{const z=map[k];document.getElementById(k+'_type').value=r['星期'+z+'類型']||'無班';document.getElementById(k+'_start').value=(r['星期'+z+'上班時間']||'').slice(0,5);document.getElementById(k+'_end').value=(r['星期'+z+'下班時間']||'').slice(0,5);document.getElementById(k+'_allowSpecial').checked=String(r['星期'+z+'允許特殊打卡']||'').toUpperCase()==='TRUE';toggleDayTime(k);});window.scrollTo({top:0,behavior:'smooth'});}
+async function removeTemplate(id){if(!id||!confirm('確定要刪除這個模板嗎？'))return;try{const res=await scheduleApiCall('deleteScheduleTemplate',{templateId:id});if(!res||!res.ok)throw new Error((res&&res.message)||'刪除失敗');await loadSetup();}catch(err){setMsg('templateMsg',String(err.message||err));}}
+function fillEmployees(rows){document.getElementById('employeeId').innerHTML='<option value="">請選擇員工</option>'+(rows||[]).map(r=>`<option value="${escapeHtml(r.id)}">${escapeHtml(r.name)}${r.email?'（'+escapeHtml(r.email)+'）':''}</option>`).join('');}
+function fillTemplateOptions(rows){document.getElementById('assignmentTemplateId').innerHTML='<option value="">請選擇班表模板</option>'+(rows||[]).map(r=>`<option value="${escapeHtml(r['模板ID']||'')}">${escapeHtml(r['模板名稱']||'')}</option>`).join('');}
+function toggleEndDate(){const cb=document.getElementById('isOpenEnded');const end=document.getElementById('endDate');end.disabled=cb.checked;if(cb.checked)end.value='';}
+function resetAssignmentForm(){document.getElementById('assignmentId').value='';document.getElementById('employeeId').value='';document.getElementById('assignmentTemplateId').value='';document.getElementById('startDate').value='';document.getElementById('endDate').value='';document.getElementById('isOpenEnded').checked=true;document.getElementById('assignmentEnabled').value='TRUE';document.getElementById('assignmentNote').value='';toggleEndDate();setMsg('assignmentMsg','');}
+function newAssignment(){resetAssignmentForm();}
+async function saveAssignment(){try{const p={assignmentId:document.getElementById('assignmentId').value.trim(),employeeId:document.getElementById('employeeId').value,templateId:document.getElementById('assignmentTemplateId').value,startDate:document.getElementById('startDate').value,endDate:document.getElementById('endDate').value,openEnded:document.getElementById('isOpenEnded').checked?'TRUE':'FALSE',enabled:document.getElementById('assignmentEnabled').value,note:document.getElementById('assignmentNote').value.trim()};if(!p.employeeId||!p.templateId||!p.startDate)return setMsg('assignmentMsg','請完成員工、班表模板、開始日期。');const res=await scheduleApiCall('saveEmployeeSchedule',p);if(!res||!res.ok)throw new Error((res&&res.message)||'儲存失敗');setMsg('assignmentMsg','儲存成功。',true);resetAssignmentForm();await loadSetup();}catch(err){setMsg('assignmentMsg',String(err.message||err));}}
+function renderAssignments(rows){const wrap=document.getElementById('assignmentList');wrap.innerHTML=!rows||!rows.length?'<p>目前沒有套用資料。</p>':rows.map(r=>`<div class="list-item"><strong>${escapeHtml(r['員工姓名'])}</strong><div>模板：${escapeHtml(r['模板名稱'])}</div><div class="toolbar"><button class="btn btn-secondary" onclick='editAssignment(${JSON.stringify(JSON.stringify(r))})'>編輯</button><button class="btn btn-danger" onclick='removeAssignment(${JSON.stringify(r['套用ID']||"")})'>刪除</button></div></div>`).join('');}
+function editAssignment(j){const r=JSON.parse(JSON.parse(j));document.getElementById('assignmentId').value=r['套用ID']||'';document.getElementById('employeeId').value=r['員工ID']||'';document.getElementById('assignmentTemplateId').value=r['模板ID']||'';document.getElementById('startDate').value=r['開始日期']||'';document.getElementById('endDate').value=r['結束日期']||'';document.getElementById('isOpenEnded').checked=String(r['無期限']||'').toUpperCase()==='TRUE';document.getElementById('assignmentEnabled').value=r['啟用']||'TRUE';document.getElementById('assignmentNote').value=r['備註']||'';toggleEndDate();}
+async function removeAssignment(id){if(!id||!confirm('確定要刪除這筆套用資料嗎？'))return;try{const res=await scheduleApiCall('deleteEmployeeSchedule',{assignmentId:id});if(!res||!res.ok)throw new Error((res&&res.message)||'刪除失敗');await loadSetup();}catch(err){setMsg('assignmentMsg',String(err.message||err));}}
+async function loadSetup(){try{const res=await scheduleApiCall('getScheduleSetupData',{});if(!res||!res.ok)throw new Error((res&&res.message)||'讀取失敗');renderTemplates(res.templates||[]);renderAssignments(res.assignments||[]);fillEmployees(res.employees||[]);}catch(err){setMsg('templateMsg',String(err.message||err));}}
+buildDays();resetTemplateForm();resetAssignmentForm();loadSetup();
+</script></body></html>
+```
 
-    <div class="card">
-      <h2>班表模板</h2>
-      <p>每天先選主班別；如果這一天平常是正常班，但偶爾也可能要讓員工用特殊打卡，就把「允許特殊打卡並存」打開。</p>
-      <div class="row">
-        <div>
-          <label for="templateName">模板名稱</label>
-          <input id="templateName" type="text" placeholder="例如：一般員工標準班" />
-        </div>
-        <div>
-          <label for="templateEnabled">是否啟用</label>
-          <select id="templateEnabled"><option value="TRUE">啟用</option><option value="FALSE">停用</option></select>
-        </div>
-      </div>
+# Code.gs
 
-      <div id="daysWrap"></div>
+請把這一段整份覆蓋原本的 `Code.gs`。
 
-      <label for="templateNote">備註</label>
-      <textarea id="templateNote" placeholder="例如：星期一公休；星期二到星期日是標準班。"></textarea>
+```javascript
+/**
+ * Code.gs：班表模板 + 員工套用班表 完整支援版
+ */
+var SHEETS = (typeof SHEETS !== 'undefined' && SHEETS) ? SHEETS : {};
+SHEETS.scheduleTemplates = SHEETS.scheduleTemplates || '班表模板';
+SHEETS.employeeSchedules = SHEETS.employeeSchedules || '員工套用班表';
 
-      <div class="actions">
-        <button class="btn btn-primary" id="saveTemplateBtn">儲存班表模板</button>
-        <button class="btn btn-secondary" id="clearTemplateBtn" type="button">清空表單</button>
-      </div>
-      <div id="templateMsg" class="error"></div>
-    </div>
+function _schedSheet_(name){var ss=SpreadsheetApp.getActiveSpreadsheet();var sh=ss.getSheetByName(name);if(!sh) throw new Error('找不到工作表：'+name);return sh;}
+function _schedMeta_(name){var sh=_schedSheet_(name);var headers=sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0];return {sh:sh,headers:headers};}
+function _schedObj_(row,headers){var o={};for(var i=0;i<headers.length;i++)o[String(headers[i]||'').trim()]=row[i];return o;}
+function _schedUuid_(p){return (p||'ID')+'_'+Utilities.getUuid().slice(0,8);}
+function _schedBool_(v){return String(v||'').toUpperCase()==='TRUE'||String(v||'')==='是';}
 
-    <div class="card">
-      <h2>已有班表模板</h2>
-      <p>按「編輯」會把資料帶回上面的表單。刪除前請先確認沒有員工仍在使用。</p>
-      <div id="templateList"></div>
-    </div>
+function getEmployeeOptions_(data){
+  var sh=_schedSheet_('員工資料'); var vals=sh.getDataRange().getValues(); var headers=vals[0]; var rows=[];
+  for(var i=1;i<vals.length;i++){
+    var obj=_schedObj_(vals[i],headers);
+    if(String(obj['帳號狀態']||'').trim().toLowerCase()!=='active') continue;
+    rows.push({id:obj['員工ID']||'',name:obj['姓名']||'',email:obj['Email']||'',isPartTime:String(obj['是否工讀生']||'').toLowerCase()==='yes'||obj['是否工讀生']==='是'});
+  }
+  return {ok:true,rows:rows,employees:rows};
+}
 
-    <div class="card">
-      <h2>員工套用班表</h2>
-      <p>指定某位員工從哪一天開始使用哪一個模板。結束日期可留空，再勾選「無期限」。</p>
-      <div class="actions"><button class="btn btn-secondary" type="button" id="newAssignBtn">新增套用</button></div>
-      <div class="row">
-        <div>
-          <label for="employeeId">員工</label>
-          <select id="employeeId"></select>
-        </div>
-        <div>
-          <label for="assignTemplateId">班表模板</label>
-          <select id="assignTemplateId"></select>
-        </div>
-      </div>
-      <div class="row">
-        <div>
-          <label for="startDate">開始日期</label>
-          <input id="startDate" type="date" />
-        </div>
-        <div>
-          <label for="endDate">結束日期</label>
-          <input id="endDate" type="date" />
-        </div>
-      </div>
-      <div class="row-3">
-        <div>
-          <label for="assignNoEnd">無期限</label>
-          <select id="assignNoEnd"><option value="TRUE">是</option><option value="FALSE">否</option></select>
-        </div>
-        <div>
-          <label for="assignEnabled">啟用</label>
-          <select id="assignEnabled"><option value="TRUE">啟用</option><option value="FALSE">停用</option></select>
-        </div>
-        <div>
-          <label for="assignNote">備註</label>
-          <input id="assignNote" type="text" placeholder="選填" />
-        </div>
-      </div>
-      <div class="actions">
-        <button class="btn btn-primary" id="saveAssignBtn">儲存員工套用班表</button>
-      </div>
-      <div id="assignMsg" class="error"></div>
-    </div>
+function getScheduleSetupData_(data){
+  var tmeta=_schedMeta_(SHEETS.scheduleTemplates), avals=_schedMeta_(SHEETS.employeeSchedules);
+  var templates=[], trows=tmeta.sh.getDataRange().getValues();
+  for(var i=1;i<trows.length;i++) templates.push(_schedObj_(trows[i],tmeta.headers));
+  var assignments=[], arows=avals.sh.getDataRange().getValues();
+  for(var j=1;j<arows.length;j++) assignments.push(_schedObj_(arows[j],avals.headers));
+  var emps=getEmployeeOptions_(data||{});
+  return {ok:true,templates:templates,assignments:assignments,employees:emps.rows||[]};
+}
 
-    <div class="card">
-      <h2>已套用班表</h2>
-      <div id="assignList"></div>
-    </div>
-  </div>
+function saveScheduleTemplate_(data){
+  data=data||{};
+  var meta=_schedMeta_(SHEETS.scheduleTemplates), sh=meta.sh, headers=meta.headers;
+  var id=String(data.templateId||'').trim()||_schedUuid_('TPL');
+  var rowMap={'模板ID':id,'模板名稱':data.templateName||'','啟用':data.enabled||'TRUE','備註':data.note||'','建立時間':Utilities.formatDate(new Date(),Session.getScriptTimeZone(),'yyyy-MM-dd HH:mm:ss')};
+  var maps={mon:'一',tue:'二',wed:'三',thu:'四',fri:'五',sat:'六',sun:'日'};
+  Object.keys(maps).forEach(function(k){var zh=maps[k];rowMap['星期'+zh+'類型']=data[k+'Type']||'無班';rowMap['星期'+zh+'上班時間']=data[k+'Start']||'';rowMap['星期'+zh+'下班時間']=data[k+'End']||'';rowMap['星期'+zh+'允許特殊打卡']=data[k+'AllowSpecial']||'FALSE';});
+  var out=headers.map(function(h){return rowMap[h]!==undefined?rowMap[h]:'';});
+  var values=sh.getDataRange().getValues(), found=-1;
+  for(var i=1;i<values.length;i++){if(String(values[i][0]||'').trim()===id){found=i+1;break;}}
+  if(found>0) sh.getRange(found,1,1,out.length).setValues([out]); else sh.appendRow(out);
+  return {ok:true,templateId:id};
+}
 
-  <script>
-    const DAYS = ['星期一','星期二','星期三','星期四','星期五','星期六','星期日'];
-    let state = { templates: [], employees: [], assignments: [], editingTemplateId: '', editingAssignId: '' };
+function deleteScheduleTemplate_(data){
+  var id=String((data||{}).templateId||'').trim(); if(!id) throw new Error('缺少 templateId');
+  var sh=_schedSheet_(SHEETS.scheduleTemplates), vals=sh.getDataRange().getValues();
+  for(var i=vals.length-1;i>=1;i--){if(String(vals[i][0]||'').trim()===id) sh.deleteRow(i+1);}return {ok:true};
+}
 
-    function el(id){ return document.getElementById(id); }
-    function showMsg(id, text, ok=false){ const n=el(id); if(!n)return; n.className = ok ? 'success' : 'error'; n.style.display='block'; n.textContent=text; }
-    function hideMsg(id){ const n=el(id); if(!n)return; n.style.display='none'; n.textContent=''; }
+function saveEmployeeSchedule_(data){
+  data=data||{};
+  var meta=_schedMeta_(SHEETS.employeeSchedules), sh=meta.sh, headers=meta.headers;
+  var id=String(data.assignmentId||'').trim()||_schedUuid_('ASN');
+  var empList=getEmployeeOptions_(data).rows||[], emp=null;
+  for(var i=0;i<empList.length;i++){ if(String(empList[i].id)===String(data.employeeId||'')){ emp=empList[i]; break; } }
+  var templateName=''; var tsh=_schedSheet_(SHEETS.scheduleTemplates), tvals=tsh.getDataRange().getValues();
+  for(var j=1;j<tvals.length;j++){ if(String(tvals[j][0]||'').trim()===String(data.templateId||'').trim()){ templateName=tvals[j][1]||''; break; } }
+  var rowMap={'套用ID':id,'員工ID':data.employeeId||'','員工姓名':emp?emp.name:'','模板ID':data.templateId||'','模板名稱':templateName,'開始日期':data.startDate||'','結束日期':data.endDate||'','無期限':data.openEnded||'FALSE','啟用':data.enabled||'TRUE','備註':data.note||'','建立時間':Utilities.formatDate(new Date(),Session.getScriptTimeZone(),'yyyy-MM-dd HH:mm:ss')};
+  var out=headers.map(function(h){return rowMap[h]!==undefined?rowMap[h]:'';});
+  var values=sh.getDataRange().getValues(), found=-1;
+  for(var k=1;k<values.length;k++){if(String(values[k][0]||'').trim()===id){found=k+1;break;}}
+  if(found>0) sh.getRange(found,1,1,out.length).setValues([out]); else sh.appendRow(out);
+  return {ok:true,assignmentId:id};
+}
 
-    async function scheduleApiCall(action, payload={}) {
-      if (typeof window.api === 'function') {
-        return await window.api(action, payload);
-      }
-      const apiUrl = (window.APP_CONFIG && window.APP_CONFIG.API_URL) ? String(window.APP_CONFIG.API_URL).trim() : '';
-      if (!apiUrl) throw new Error('找不到後端 API，請確認 config.js 與 app.js 已載入。');
-      const res = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {'Content-Type':'text/plain;charset=utf-8'},
-        body: JSON.stringify({ action, ...payload })
-      });
-      const raw = await res.text();
-      let data;
-      try { data = JSON.parse(raw); } catch (e) { throw new Error(raw || '後端回傳格式錯誤'); }
-      return data;
-    }
+function deleteEmployeeSchedule_(data){
+  var id=String((data||{}).assignmentId||'').trim(); if(!id) throw new Error('缺少 assignmentId');
+  var sh=_schedSheet_(SHEETS.employeeSchedules), vals=sh.getDataRange().getValues();
+  for(var i=vals.length-1;i>=1;i--){if(String(vals[i][0]||'').trim()===id) sh.deleteRow(i+1);}return {ok:true};
+}
 
-    function buildDays(){
-      const wrap = el('daysWrap');
-      wrap.innerHTML = '';
-      DAYS.forEach((day, idx) => {
-        const i = idx + 1;
-        wrap.insertAdjacentHTML('beforeend', `
-          <div class="day-card">
-            <h3>${day}</h3>
-            <div class="row">
-              <div>
-                <label for="dayType${i}">打卡類型</label>
-                <select id="dayType${i}">
-                  <option value="無班">無班</option>
-                  <option value="標準打卡">標準打卡</option>
-                  <option value="特殊打卡">特殊打卡</option>
-                </select>
-              </div>
-              <div class="timeWrap" id="timeWrap${i}">
-                <label for="dayTime${i}">上班時間</label>
-                <input id="dayTime${i}" type="text" placeholder="例如：12:30" />
-              </div>
-            </div>
-            <div style="margin-top:10px">
-              <label><input id="dayAllow${i}" type="checkbox" style="width:26px;height:26px;vertical-align:middle;margin-right:8px" /> 允許特殊打卡並存</label>
-            </div>
-          </div>`);
-        const sel = el(`dayType${i}`);
-        sel.addEventListener('change', ()=> toggleTime(i));
-        toggleTime(i);
-      });
-    }
+function getTodayScheduleForEmployee_(employeeId, whenDate){
+  var d=whenDate||new Date(), ymd=Utilities.formatDate(d,Session.getScriptTimeZone(),'yyyy-MM-dd');
+  var amap=_schedMeta_(SHEETS.employeeSchedules), arows=amap.sh.getDataRange().getValues(), active=null;
+  for(var i=1;i<arows.length;i++){
+    var r=_schedObj_(arows[i],amap.headers);
+    if(String(r['員工ID']||'')!==String(employeeId||'')) continue;
+    if(!_schedBool_(r['啟用'])) continue;
+    var start=String(r['開始日期']||''), end=String(r['結束日期']||''), openEnded=_schedBool_(r['無期限']);
+    if(start && ymd<start) continue;
+    if(!openEnded && end && ymd>end) continue;
+    active=r; break;
+  }
+  if(!active) return null;
+  var tmeta=_schedMeta_(SHEETS.scheduleTemplates), trows=tmeta.sh.getDataRange().getValues(), tpl=null;
+  for(var j=1;j<trows.length;j++){var t=_schedObj_(trows[j],tmeta.headers); if(String(t['模板ID']||'')===String(active['模板ID']||'')){tpl=t;break;}}
+  if(!tpl) return null;
+  var weekday=d.getDay(), zh=['日','一','二','三','四','五','六'][weekday];
+  return {templateId:tpl['模板ID']||'',templateName:tpl['模板名稱']||'',type:tpl['星期'+zh+'類型']||'無班',startTime:tpl['星期'+zh+'上班時間']||'',endTime:tpl['星期'+zh+'下班時間']||'',allowSpecial:_schedBool_(tpl['星期'+zh+'允許特殊打卡'])};
+}
+```
 
-    function toggleTime(i){
-      const type = el(`dayType${i}`).value;
-      el(`timeWrap${i}`).classList.toggle('hidden', type !== '標準打卡');
-      if (type !== '標準打卡') el(`dayTime${i}`).value = '';
-    }
+# 班表模板_A1.txt
 
-    function collectTemplatePayload(){
-      const payload = {
-        templateId: state.editingTemplateId || '',
-        templateName: el('templateName').value.trim(),
-        enabled: el('templateEnabled').value,
-        note: el('templateNote').value.trim()
-      };
-      DAYS.forEach((day, idx) => {
-        const i = idx + 1;
-        payload[`day${i}Type`] = el(`dayType${i}`).value;
-        payload[`day${i}Time`] = el(`dayTime${i}`).value.trim();
-        payload[`day${i}AllowSpecial`] = el(`dayAllow${i}`).checked ? 'TRUE' : 'FALSE';
-      });
-      return payload;
-    }
+請把 `班表模板` 這張表的 A1 換成下面這一行。
 
-    function clearTemplateForm(){
-      state.editingTemplateId = '';
-      el('templateName').value='';
-      el('templateEnabled').value='TRUE';
-      el('templateNote').value='';
-      DAYS.forEach((_, idx)=>{
-        const i=idx+1;
-        el(`dayType${i}`).value='無班';
-        el(`dayTime${i}`).value='';
-        el(`dayAllow${i}`).checked=false;
-        toggleTime(i);
-      });
-      hideMsg('templateMsg');
-    }
-
-    function renderTemplates(){
-      const box = el('templateList');
-      box.innerHTML = state.templates.length ? '' : '<p class="small">目前沒有班表模板。</p>';
-      state.templates.forEach(t => {
-        const item = document.createElement('div');
-        item.className = 'list-item';
-        item.innerHTML = `
-          <div class="list-top">
-            <div>
-              <div style="font-size:20px;font-weight:800">${escapeHtml(t.templateName || t['模板名稱'] || '')}</div>
-              <div class="small">${escapeHtml(t.note || t['備註'] || '')}</div>
-            </div>
-            <span class="tag">${(t.enabled || t['啟用'] || 'TRUE') === 'TRUE' ? '啟用' : '停用'}</span>
-          </div>
-          <div class="actions">
-            <button class="btn btn-secondary" data-edit="${escapeAttr(t.templateId || t['模板ID'] || '')}">編輯</button>
-            <button class="btn btn-secondary" data-del="${escapeAttr(t.templateId || t['模板ID'] || '')}">刪除</button>
-          </div>`;
-        box.appendChild(item);
-      });
-      box.querySelectorAll('[data-edit]').forEach(btn=>btn.onclick=()=>loadTemplateToForm(btn.dataset.edit));
-      box.querySelectorAll('[data-del]').forEach(btn=>btn.onclick=()=>deleteTemplate(btn.dataset.del));
-      fillTemplateSelect();
-    }
-
-    function fillTemplateSelect(){
-      const sel = el('assignTemplateId');
-      const current = sel.value;
-      sel.innerHTML = '<option value="">請選擇班表模板</option>';
-      state.templates.forEach(t => {
-        const id = t.templateId || t['模板ID'] || '';
-        const name = t.templateName || t['模板名稱'] || '';
-        const op = document.createElement('option'); op.value=id; op.textContent=name; sel.appendChild(op);
-      });
-      if (current) sel.value = current;
-    }
-
-    function fillEmployeeSelect(){
-      const sel = el('employeeId');
-      const current = sel.value;
-      sel.innerHTML = '<option value="">請選擇員工</option>';
-      state.employees.forEach(e => {
-        const id = e.employeeId || e.id || e['員工ID'] || '';
-        const name = e.name || e.employeeName || e['姓名'] || e['員工姓名'] || '';
-        const op = document.createElement('option'); op.value=id; op.textContent = `${name}（${id}）`; sel.appendChild(op);
-      });
-      if (current) sel.value = current;
-    }
-
-    function renderAssignments(){
-      const box = el('assignList');
-      box.innerHTML = state.assignments.length ? '' : '<p class="small">目前沒有員工套用班表。</p>';
-      state.assignments.forEach(a => {
-        const item = document.createElement('div');
-        item.className = 'list-item';
-        const status = (a.enabled || a['啟用'] || 'TRUE') === 'TRUE' ? '啟用' : '停用';
-        item.innerHTML = `
-          <div class="list-top">
-            <div>
-              <div style="font-size:20px;font-weight:800">${escapeHtml(a.employeeName || a['員工姓名'] || '')}</div>
-              <div class="small">${escapeHtml(a.templateName || a['模板名稱'] || '')}｜${escapeHtml(a.startDate || a['開始日期'] || '')} ~ ${a.noEnd === 'TRUE' || a['無期限'] === 'TRUE' ? '無期限' : escapeHtml(a.endDate || a['結束日期'] || '')}</div>
-            </div>
-            <span class="tag">${status}</span>
-          </div>
-          <div class="actions">
-            <button class="btn btn-secondary" data-aedit="${escapeAttr(a.assignId || a['套用ID'] || '')}">編輯</button>
-            <button class="btn btn-secondary" data-adel="${escapeAttr(a.assignId || a['套用ID'] || '')}">刪除</button>
-          </div>`;
-        box.appendChild(item);
-      });
-      box.querySelectorAll('[data-aedit]').forEach(btn=>btn.onclick=()=>loadAssignToForm(btn.dataset.aedit));
-      box.querySelectorAll('[data-adel]').forEach(btn=>btn.onclick=()=>deleteAssign(btn.dataset.adel));
-    }
-
-    function loadTemplateToForm(id){
-      const t = state.templates.find(x => (x.templateId || x['模板ID']) === id);
-      if (!t) return;
-      state.editingTemplateId = id;
-      el('templateName').value = t.templateName || t['模板名稱'] || '';
-      el('templateEnabled').value = t.enabled || t['啟用'] || 'TRUE';
-      el('templateNote').value = t.note || t['備註'] || '';
-      DAYS.forEach((_, idx)=>{
-        const i=idx+1;
-        el(`dayType${i}`).value = t[`day${i}Type`] || t[`${DAYS[idx]}類型`] || '無班';
-        el(`dayTime${i}`).value = t[`day${i}Time`] || t[`${DAYS[idx]}上班時間`] || '';
-        el(`dayAllow${i}`).checked = (t[`day${i}AllowSpecial`] || t[`${DAYS[idx]}允許特殊打卡`] || 'FALSE') === 'TRUE';
-        toggleTime(i);
-      });
-      window.scrollTo({top:0,behavior:'smooth'});
-    }
-
-    function loadAssignToForm(id){
-      const a = state.assignments.find(x => (x.assignId || x['套用ID']) === id);
-      if (!a) return;
-      state.editingAssignId = id;
-      el('employeeId').value = a.employeeId || a['員工ID'] || '';
-      el('assignTemplateId').value = a.templateId || a['模板ID'] || '';
-      el('startDate').value = a.startDate || a['開始日期'] || '';
-      el('endDate').value = a.endDate || a['結束日期'] || '';
-      el('assignNoEnd').value = a.noEnd || a['無期限'] || 'TRUE';
-      el('assignEnabled').value = a.enabled || a['啟用'] || 'TRUE';
-      el('assignNote').value = a.note || a['備註'] || '';
-      el('endDate').disabled = el('assignNoEnd').value === 'TRUE';
-    }
-
-    async function loadPage(){
-      hideMsg('topError'); hideMsg('topSuccess'); hideMsg('templateMsg'); hideMsg('assignMsg');
-      try {
-        const user = (typeof getUser === 'function' ? getUser() : null) || {};
-        const res = await scheduleApiCall('getScheduleSetupData', { userId: user.employeeId || user.id || '' });
-        if (!res || res.ok === false) throw new Error(res?.message || '讀取失敗');
-        state.templates = res.templates || [];
-        state.employees = res.employees || [];
-        state.assignments = res.assignments || [];
-        renderTemplates(); fillEmployeeSelect(); renderAssignments();
-      } catch (e) {
-        showMsg('topError', String(e.message || e));
-      }
-    }
-
-    async function saveTemplate(){
-      hideMsg('templateMsg');
-      try {
-        const user = (typeof getUser === 'function' ? getUser() : null) || {};
-        const payload = collectTemplatePayload();
-        payload.userId = user.employeeId || user.id || '';
-        if (!payload.templateName) throw new Error('請先輸入模板名稱');
-        const res = await scheduleApiCall('saveScheduleTemplate', payload);
-        if (!res || res.ok === false) throw new Error(res?.message || '儲存失敗');
-        showMsg('topSuccess','班表模板已儲存',true);
-        clearTemplateForm();
-        await loadPage();
-      } catch (e) {
-        showMsg('templateMsg', String(e.message || e));
-      }
-    }
-
-    async function deleteTemplate(id){
-      if (!confirm('確定要刪除這個班表模板嗎？')) return;
-      try {
-        const user = (typeof getUser === 'function' ? getUser() : null) || {};
-        const res = await scheduleApiCall('deleteScheduleTemplate', { templateId:id, userId: user.employeeId || user.id || '' });
-        if (!res || res.ok === false) throw new Error(res?.message || '刪除失敗');
-        showMsg('topSuccess','班表模板已刪除',true);
-        await loadPage();
-      } catch (e) { showMsg('topError', String(e.message || e)); }
-    }
-
-    async function saveAssign(){
-      hideMsg('assignMsg');
-      try {
-        const user = (typeof getUser === 'function' ? getUser() : null) || {};
-        const payload = {
-          assignId: state.editingAssignId || '',
-          employeeId: el('employeeId').value,
-          templateId: el('assignTemplateId').value,
-          startDate: el('startDate').value,
-          endDate: el('endDate').value,
-          noEnd: el('assignNoEnd').value,
-          enabled: el('assignEnabled').value,
-          note: el('assignNote').value.trim(),
-          userId: user.employeeId || user.id || ''
-        };
-        if (!payload.employeeId) throw new Error('請先選擇員工');
-        if (!payload.templateId) throw new Error('請先選擇班表模板');
-        if (!payload.startDate) throw new Error('請先選擇開始日期');
-        const res = await scheduleApiCall('saveEmployeeSchedule', payload);
-        if (!res || res.ok === false) throw new Error(res?.message || '儲存失敗');
-        showMsg('topSuccess','員工套用班表已儲存',true);
-        state.editingAssignId='';
-        el('employeeId').value=''; el('assignTemplateId').value=''; el('startDate').value=''; el('endDate').value=''; el('assignNoEnd').value='TRUE'; el('assignEnabled').value='TRUE'; el('assignNote').value='';
-        el('endDate').disabled = true;
-        await loadPage();
-      } catch (e) { showMsg('assignMsg', String(e.message || e)); }
-    }
-
-    async function deleteAssign(id){
-      if (!confirm('確定要刪除這筆員工套用班表嗎？')) return;
-      try {
-        const user = (typeof getUser === 'function' ? getUser() : null) || {};
-        const res = await scheduleApiCall('deleteEmployeeSchedule', { assignId:id, userId: user.employeeId || user.id || '' });
-        if (!res || res.ok === false) throw new Error(res?.message || '刪除失敗');
-        showMsg('topSuccess','員工套用班表已刪除',true);
-        await loadPage();
-      } catch (e) { showMsg('topError', String(e.message || e)); }
-    }
-
-    function escapeHtml(s){ return String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
-    function escapeAttr(s){ return escapeHtml(s); }
-
-    buildDays();
-    el('saveTemplateBtn').addEventListener('click', saveTemplate);
-    el('clearTemplateBtn').addEventListener('click', clearTemplateForm);
-    el('saveAssignBtn').addEventListener('click', saveAssign);
-    el('newAssignBtn').addEventListener('click', ()=>{ state.editingAssignId=''; el('employeeId').value=''; el('assignTemplateId').value=''; el('startDate').value=''; el('endDate').value=''; el('assignNoEnd').value='TRUE'; el('assignEnabled').value='TRUE'; el('assignNote').value=''; el('endDate').disabled = true; });
-    el('assignNoEnd').addEventListener('change', ()=>{ el('endDate').disabled = el('assignNoEnd').value === 'TRUE'; if (el('endDate').disabled) el('endDate').value=''; });
-    el('endDate').disabled = true;
-    loadPage();
-  </script>
-</body>
-</html>
+```txt
+模板ID	模板名稱	啟用	星期一類型	星期一上班時間	星期一下班時間	星期一允許特殊打卡	星期二類型	星期二上班時間	星期二下班時間	星期二允許特殊打卡	星期三類型	星期三上班時間	星期三下班時間	星期三允許特殊打卡	星期四類型	星期四上班時間	星期四下班時間	星期四允許特殊打卡	星期五類型	星期五上班時間	星期五下班時間	星期五允許特殊打卡	星期六類型	星期六上班時間	星期六下班時間	星期六允許特殊打卡	星期日類型	星期日上班時間	星期日下班時間	星期日允許特殊打卡	備註	建立時間
+```
