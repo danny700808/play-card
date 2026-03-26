@@ -268,141 +268,67 @@
         grid-template-columns: 1fr;
       }
     }
+  
+    .section-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:0 0 18px}
+    .section-tab{border:1px solid #d0d5dd;background:#fff;border-radius:16px;padding:14px 16px;cursor:pointer;text-align:left;transition:.2s}
+    .section-tab strong{display:block;font-size:16px;color:#111827;margin-bottom:4px}
+    .section-tab span{display:block;font-size:13px;color:#667085;line-height:1.5}
+    .section-tab.active{border-color:#16a34a;box-shadow:0 0 0 3px rgba(34,197,94,.12)}
+    .schedule-panel{display:none}
+    .schedule-panel.active{display:block}
+
   </style>
+
 </head>
 <body>
   <div class="page">
     <div class="hero">
       <h1>班表設定</h1>
-      <p>這一頁是給主管在設定區直接管理班表模板與員工套用班表，不需要手動進 Google Sheet 修改。</p>
+      <p>請先選擇你要處理的區塊，畫面一次只顯示一組內容，閱讀會更清楚。</p>
       <div class="top-actions">
         <button class="btn btn-secondary" type="button" onclick="reloadPageData()">重新整理資料</button>
       </div>
     </div>
 
-    <div class="grid">
-      <div>
-        <div class="card">
-          <div class="toolbar">
-            <div>
-              <h2 class="section-title">班表模板管理</h2>
-              <p class="section-desc">你可以直接新增、修改、刪除班表模板。只有 <b>標準打卡</b> 才需要同時填上班時間與下班時間；<b>特殊打卡</b> 與 <b>無班</b> 不需填時間。</p>
-            </div>
-            <div class="right">
-              <button class="btn btn-secondary" type="button" onclick="resetTemplateForm()">新增模板</button>
-            </div>
-          </div>
+    <div class="section-tabs">
+      <button class="section-tab active" type="button" data-panel-target="templatePanel" onclick="switchSchedulePanel('templatePanel')"><strong>班表模板管理</strong><span>新增模板、編輯模板、查看已建立班表</span></button>
+      <button class="section-tab" type="button" data-panel-target="assignmentPanel" onclick="switchSchedulePanel('assignmentPanel')"><strong>員工班表套用</strong><span>設定員工班表、查看員工目前班表</span></button>
+      <button class="section-tab" type="button" data-panel-target="singleDayPanel" onclick="switchSchedulePanel('singleDayPanel')"><strong>單日特別班表</strong><span>臨時加班、活動日、補班日單次開放打卡</span></button>
+    </div>
 
-          <form id="templateForm">
-            <input type="hidden" id="templateId" />
-            <div class="row">
-              <div class="field">
-                <label for="templateName">模板名稱</label>
-                <input id="templateName" type="text" placeholder="例如：一般員工標準班" required />
-              </div>
-              <div class="field">
-                <label for="templateEnabled">是否啟用</label>
-                <select id="templateEnabled">
-                  <option value="TRUE">啟用</option>
-                  <option value="FALSE">停用</option>
-                </select>
-              </div>
-            </div>
-
-            <div id="dayFields" class="row-3"></div>
-
-            <div class="field">
-              <label for="templateNote">備註</label>
-              <textarea id="templateNote" placeholder="例如：星期一公休；其他為標準班。"></textarea>
-            </div>
-
-            <div class="actions">
-              <button class="btn btn-primary" type="submit">儲存班表模板</button>
-              <button class="btn btn-ghost" type="button" onclick="resetTemplateForm()">清空表單</button>
-            </div>
-          </form>
-
-          <div id="templateStatus" class="status"></div>
-        </div>
-
-        <div class="card" style="margin-top:18px;">
-          <h2 class="section-title">既有班表模板</h2>
-          <p class="section-desc">下面會列出目前所有模板；按「編輯」會自動帶入上面的表單。</p>
-          <div id="templateList" class="template-list"></div>
-        </div>
+    <div id="templatePanel" class="schedule-panel active">
+      <div class="card">
+        <div class="toolbar"><div><h2 class="section-title">班表模板管理</h2><p class="section-desc">你可以直接新增、修改、刪除班表模板。只有 <b>標準打卡</b> 才需要同時填上班時間與下班時間；<b>特殊打卡</b> 與 <b>無班</b> 不需填時間。</p></div><div class="right"><button class="btn btn-secondary" type="button" onclick="resetTemplateForm()">新增模板</button></div></div>
+        <form id="templateForm"><input type="hidden" id="templateId" /><div class="row"><div class="field"><label for="templateName">模板名稱</label><input id="templateName" type="text" placeholder="例如：一般員工標準班" required /></div><div class="field"><label for="templateEnabled">是否啟用</label><select id="templateEnabled"><option value="TRUE">啟用</option><option value="FALSE">停用</option></select></div></div><div id="dayFields" class="row-3"></div><div class="field"><label for="templateNote">備註</label><textarea id="templateNote" placeholder="例如：星期一公休；其他為標準班。"></textarea></div><div class="actions"><button class="btn btn-primary" type="submit">儲存班表模板</button><button class="btn btn-ghost" type="button" onclick="resetTemplateForm()">清空表單</button></div></form>
+        <div id="templateStatus" class="status"></div>
       </div>
+      <div class="card" style="margin-top:18px;"><h2 class="section-title">已建立的班表模板</h2><p class="section-desc">下面會列出目前所有模板；按「編輯」會自動帶入上面的表單。</p><div id="templateList" class="template-list"></div></div>
+    </div>
 
-      <div>
-        <div class="card">
-          <div class="toolbar">
-            <div>
-              <h2 class="section-title">員工套用班表</h2>
-              <p class="section-desc">指定某位員工從哪一天開始使用哪一個模板。結束日期可以留空，再勾選「無期限」。</p>
-            </div>
-            <div class="right">
-              <button class="btn btn-secondary" type="button" onclick="resetAssignmentForm()">新增套用</button>
-            </div>
-          </div>
-
-          <form id="assignmentForm">
-            <input type="hidden" id="assignmentId" />
-            <div class="field">
-              <label for="employeeId">員工</label>
-              <select id="employeeId" required></select>
-            </div>
-            <div class="field">
-              <label for="assignTemplateId">班表模板</label>
-              <select id="assignTemplateId" required></select>
-            </div>
-            <div class="row">
-              <div class="field">
-                <label for="assignStartDate">開始日期</label>
-                <input id="assignStartDate" type="date" required />
-              </div>
-              <div class="field">
-                <label for="assignEndDate">結束日期</label>
-                <input id="assignEndDate" type="date" />
-              </div>
-            </div>
-            <label class="checkbox-line">
-              <input id="assignIndefinite" type="checkbox" onchange="toggleEndDate()" />
-              無期限
-            </label>
-            <div class="row">
-              <div class="field">
-                <label for="assignEnabled">是否啟用</label>
-                <select id="assignEnabled">
-                  <option value="TRUE">啟用</option>
-                  <option value="FALSE">停用</option>
-                </select>
-              </div>
-              <div class="field">
-                <label for="assignNote">備註</label>
-                <input id="assignNote" type="text" placeholder="例如：長期套用" />
-              </div>
-            </div>
-            <div class="actions">
-              <button class="btn btn-primary" type="submit">儲存員工套用班表</button>
-              <button class="btn btn-ghost" type="button" onclick="resetAssignmentForm()">清空表單</button>
-            </div>
-          </form>
-
-          <div class="notice">提醒：如果同一位員工同一天有兩筆都啟用中的班表套用資料，系統只會採用最晚建立的一筆。為了避免混亂，建議同時只保留一筆有效資料。</div>
-          <div id="assignmentStatus" class="status"></div>
-        </div>
-
-        <div class="card" style="margin-top:18px;">
-          <h2 class="section-title">目前員工套用中資料</h2>
-          <p class="section-desc">可直接編輯或刪除。無期限代表從開始日期之後會一直生效，除非你停用或另外再指定新模板。</p>
-          <div id="assignmentList" class="assignment-list"></div>
-        </div>
+    <div id="assignmentPanel" class="schedule-panel">
+      <div class="card">
+        <div class="toolbar"><div><h2 class="section-title">員工班表套用</h2><p class="section-desc">指定某位員工從哪一天開始使用哪一個模板。結束日期可以留空，再勾選「無期限」。</p></div><div class="right"><button class="btn btn-secondary" type="button" onclick="resetAssignmentForm()">新增套用</button></div></div>
+        <form id="assignmentForm"><input type="hidden" id="assignmentId" /><div class="field"><label for="employeeId">員工</label><select id="employeeId" required></select></div><div class="field"><label for="assignTemplateId">班表模板</label><select id="assignTemplateId" required></select></div><div class="row"><div class="field"><label for="assignStartDate">開始日期</label><input id="assignStartDate" type="date" required /></div><div class="field"><label for="assignEndDate">結束日期</label><input id="assignEndDate" type="date" /></div></div><label class="checkbox-line"><input id="assignIndefinite" type="checkbox" onchange="toggleEndDate()" />無期限</label><div class="row"><div class="field"><label for="assignEnabled">是否啟用</label><select id="assignEnabled"><option value="TRUE">啟用</option><option value="FALSE">停用</option></select></div><div class="field"><label for="assignNote">備註</label><input id="assignNote" type="text" placeholder="例如：長期套用" /></div></div><div class="actions"><button class="btn btn-primary" type="submit">儲存員工套用班表</button><button class="btn btn-ghost" type="button" onclick="resetAssignmentForm()">清空表單</button></div></form>
+        <div class="notice">提醒：如果同一位員工同一天有兩筆都啟用中的班表套用資料，系統只會採用最晚建立的一筆。為了避免混亂，建議同時只保留一筆有效資料。</div>
+        <div id="assignmentStatus" class="status"></div>
       </div>
+      <div class="card" style="margin-top:18px;"><h2 class="section-title">員工目前套用中的班表</h2><p class="section-desc">可直接編輯或刪除。無期限代表從開始日期之後會一直生效，除非你停用或另外再指定新模板。</p><div id="assignmentList" class="assignment-list"></div></div>
+    </div>
+
+    <div id="singleDayPanel" class="schedule-panel">
+      <div class="card">
+        <div class="toolbar"><div><h2 class="section-title">單日特別班表 / 單日開放打卡</h2><p class="section-desc">臨時加班、活動日、補班日可直接用這裡設定，只影響指定員工的指定那一天，優先權高於一般班表套用。</p></div><div class="right"><button class="btn btn-secondary" type="button" onclick="resetSingleDayForm()">新增單日特別班表</button></div></div>
+        <form id="singleDayForm"><input type="hidden" id="singleDayId" /><div class="field"><label for="singleDayEmployeeId">員工</label><select id="singleDayEmployeeId" required></select></div><div class="row"><div class="field"><label for="singleDayDate">日期</label><input id="singleDayDate" type="date" required /></div><div class="field"><label for="singleDayType">打卡類型</label><select id="singleDayType" onchange="toggleSingleDayTime()"><option value="標準打卡">標準打卡</option><option value="特殊打卡">特殊打卡</option><option value="無班">無班</option></select></div></div><div class="row" id="singleDayTimeRow"><div class="field"><label for="singleDayStartTime">上班時間</label><input id="singleDayStartTime" type="time" /></div><div class="field"><label for="singleDayEndTime">下班時間</label><input id="singleDayEndTime" type="time" /></div></div><label class="checkbox-line"><input id="singleDayAllowSpecial" type="checkbox" />當天允許「標準打卡＋特殊打卡」共用</label><div class="row"><div class="field"><label for="singleDayEnabled">是否啟用</label><select id="singleDayEnabled"><option value="TRUE">啟用</option><option value="FALSE">停用</option></select></div><div class="field"><label for="singleDayNote">備註</label><input id="singleDayNote" type="text" placeholder="例如：活動日臨時開放打卡" /></div></div><div class="actions"><button class="btn btn-primary" type="submit">儲存單日特別班表</button><button class="btn btn-ghost" type="button" onclick="resetSingleDayForm()">清空表單</button></div></form>
+        <div id="singleDayStatus" class="status"></div>
+      </div>
+      <div class="card" style="margin-top:18px;"><h2 class="section-title">已建立的單日特別班表</h2><p class="section-desc">這裡會列出目前所有單日開放打卡設定，可直接編輯或刪除。</p><div id="singleDayList" class="assignment-list"></div></div>
     </div>
   </div>
 
   <script src="config.js"></script>
   <script src="app.js"></script>
   <script>
+
     const DAYS = [
       { key: 'monday', label: '星期一' },
       { key: 'tuesday', label: '星期二' },
@@ -416,12 +342,14 @@
     let pageData = {
       templates: [],
       assignments: [],
+      singleDaySchedules: [],
       employees: []
     };
 
     document.addEventListener('DOMContentLoaded', () => {
       buildDayFields();
       bindForms();
+      toggleSingleDayTime();
       reloadPageData();
     });
 
@@ -457,6 +385,7 @@
     function bindForms() {
       document.getElementById('templateForm').addEventListener('submit', saveTemplate);
       document.getElementById('assignmentForm').addEventListener('submit', saveAssignment);
+      document.getElementById('singleDayForm').addEventListener('submit', saveSingleDay);
     }
 
     async function callBackend(action, payload = {}) {
@@ -502,10 +431,13 @@
         const res = await callBackend('getScheduleSetupData');
         pageData.templates = Array.isArray(res.templates) ? res.templates : [];
         pageData.assignments = Array.isArray(res.assignments) ? res.assignments : [];
+        pageData.singleDaySchedules = Array.isArray(res.singleDaySchedules) ? res.singleDaySchedules : [];
         pageData.employees = Array.isArray(res.employees) ? res.employees : [];
         renderTemplateList();
         renderAssignmentList();
+        renderSingleDayList();
         renderEmployeeOptions();
+        renderSingleDayEmployeeOptions();
         renderTemplateOptions();
       } catch (err) {
         showStatus('templateStatus', (err && err.message) || '讀取班表設定資料失敗', 'error');
@@ -514,6 +446,20 @@
 
     function renderEmployeeOptions() {
       const select = document.getElementById('employeeId');
+      const employees = pageData.employees;
+      if (!employees.length) {
+        select.innerHTML = '<option value="">目前沒有可用員工資料</option>';
+        return;
+      }
+      select.innerHTML = '<option value="">請選擇員工</option>' + employees.map(emp => {
+        const id = escapeHtml(emp.employeeId || emp.id || '');
+        const name = escapeHtml(emp.name || emp.employeeName || '未命名員工');
+        return `<option value="${id}">${name}（${id}）</option>`;
+      }).join('');
+    }
+
+    function renderSingleDayEmployeeOptions() {
+      const select = document.getElementById('singleDayEmployeeId');
       const employees = pageData.employees;
       if (!employees.length) {
         select.innerHTML = '<option value="">目前沒有可用員工資料</option>';
@@ -606,6 +552,23 @@
             </div>
           </div>
         `;
+      }).join('');
+    }
+
+    function renderSingleDayList() {
+      const wrap = document.getElementById('singleDayList');
+      if (!pageData.singleDaySchedules.length) {
+        wrap.innerHTML = '<div class="empty">目前還沒有單日特別班表。</div>';
+        return;
+      }
+      wrap.innerHTML = pageData.singleDaySchedules.map((a, index) => {
+        const enabled = String(a.enabled || a.啟用 || 'TRUE') !== 'FALSE';
+        const type = a.clockType || a['打卡類型'] || '標準打卡';
+        const start = a.startTime || a['上班時間'] || '';
+        const end = a.endTime || a['下班時間'] || '';
+        const allowSpecial = String(a.allowSpecial || a['允許特殊打卡'] || 'FALSE') === 'TRUE';
+        const extra = allowSpecial ? '｜可標準＋特殊共用' : '';
+        return `<div class="item"><div class="item-head"><div><h3>${escapeHtml(a.employeeName || a['員工姓名'] || '未命名員工')}</h3><div class="muted">日期：${escapeHtml(a.date || a['日期'] || '')}｜${escapeHtml(type)}${extra}</div></div><span class="pill ${enabled ? '' : 'off'}">${enabled ? '啟用中' : '已停用'}</span></div><div class="schedule-mini"><div><b>時間：</b>${start && end ? `${escapeHtml(start)} - ${escapeHtml(end)}` : '—'}</div><div><b>單日ID：</b>${escapeHtml(a.recordId || a['單日ID'] || '')}</div><div><b>備註：</b>${escapeHtml(a.note || a['備註'] || '')}</div></div><div class="actions"><button class="btn btn-secondary" type="button" onclick="editSingleDay(${index})">編輯</button><button class="btn btn-danger" type="button" onclick="deleteSingleDay('${'${'}escapeJs(a.recordId || a['單日ID'] || '')${'}'}')">刪除</button></div></div>`;
       }).join('');
     }
 
@@ -820,6 +783,95 @@
       }
     }
 
+    function switchSchedulePanel(panelId) {
+      document.querySelectorAll('.schedule-panel').forEach(el => el.classList.toggle('active', el.id === panelId));
+      document.querySelectorAll('.section-tab').forEach(el => el.classList.toggle('active', el.dataset.panelTarget === panelId));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function toggleSingleDayTime() {
+      const type = document.getElementById('singleDayType').value;
+      const row = document.getElementById('singleDayTimeRow');
+      const show = type === '標準打卡';
+      row.classList.toggle('hidden', !show);
+      if (!show) {
+        document.getElementById('singleDayStartTime').value = '';
+        document.getElementById('singleDayEndTime').value = '';
+      }
+    }
+
+    function resetSingleDayForm() {
+      document.getElementById('singleDayId').value = '';
+      document.getElementById('singleDayEmployeeId').value = '';
+      document.getElementById('singleDayDate').value = '';
+      document.getElementById('singleDayType').value = '標準打卡';
+      document.getElementById('singleDayStartTime').value = '';
+      document.getElementById('singleDayEndTime').value = '';
+      document.getElementById('singleDayAllowSpecial').checked = false;
+      document.getElementById('singleDayEnabled').value = 'TRUE';
+      document.getElementById('singleDayNote').value = '';
+      toggleSingleDayTime();
+    }
+
+    async function saveSingleDay(evt) {
+      evt.preventDefault();
+      const employeeId = document.getElementById('singleDayEmployeeId').value;
+      const employee = pageData.employees.find(e => String(e.employeeId || e.id || '') === String(employeeId));
+      const clockType = document.getElementById('singleDayType').value;
+      const payload = {
+        recordId: document.getElementById('singleDayId').value.trim(),
+        employeeId,
+        employeeName: employee ? (employee.name || employee.employeeName || '') : '',
+        date: document.getElementById('singleDayDate').value,
+        clockType,
+        startTime: document.getElementById('singleDayStartTime').value,
+        endTime: document.getElementById('singleDayEndTime').value,
+        allowSpecial: document.getElementById('singleDayAllowSpecial').checked,
+        enabled: document.getElementById('singleDayEnabled').value,
+        note: document.getElementById('singleDayNote').value.trim()
+      };
+      if (!payload.employeeId || !payload.date) { showStatus('singleDayStatus', '請先選員工並填日期。', 'error'); return; }
+      if (clockType === '標準打卡' && (!payload.startTime || !payload.endTime)) { showStatus('singleDayStatus', '標準打卡請填上班時間與下班時間。', 'error'); return; }
+      if (clockType === '標準打卡' && payload.endTime <= payload.startTime) { showStatus('singleDayStatus', '下班時間必須晚於上班時間。', 'error'); return; }
+      try {
+        await callBackend('saveSingleDaySchedule', payload);
+        showStatus('singleDayStatus', '單日特別班表已儲存。', 'success');
+        resetSingleDayForm();
+        await reloadPageData();
+      } catch (err) {
+        showStatus('singleDayStatus', err.message || '儲存單日特別班表失敗', 'error');
+      }
+    }
+
+    function editSingleDay(index) {
+      const a = pageData.singleDaySchedules[index];
+      if (!a) return;
+      document.getElementById('singleDayId').value = a.recordId || a['單日ID'] || '';
+      document.getElementById('singleDayEmployeeId').value = a.employeeId || a['員工ID'] || '';
+      document.getElementById('singleDayDate').value = a.date || a['日期'] || '';
+      document.getElementById('singleDayType').value = a.clockType || a['打卡類型'] || '標準打卡';
+      document.getElementById('singleDayStartTime').value = a.startTime || a['上班時間'] || '';
+      document.getElementById('singleDayEndTime').value = a.endTime || a['下班時間'] || '';
+      document.getElementById('singleDayAllowSpecial').checked = String(a.allowSpecial || a['允許特殊打卡'] || 'FALSE') === 'TRUE';
+      document.getElementById('singleDayEnabled').value = String(a.enabled || a['啟用'] || 'TRUE');
+      document.getElementById('singleDayNote').value = a.note || a['備註'] || '';
+      toggleSingleDayTime();
+      switchSchedulePanel('singleDayPanel');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    async function deleteSingleDay(recordId) {
+      if (!recordId) return;
+      if (!confirm('確定要刪除這筆單日特別班表嗎？')) return;
+      try {
+        await callBackend('deleteSingleDaySchedule', { recordId });
+        showStatus('singleDayStatus', '單日特別班表已刪除。', 'success');
+        await reloadPageData();
+      } catch (err) {
+        showStatus('singleDayStatus', err.message || '刪除單日特別班表失敗', 'error');
+      }
+    }
+
     function showStatus(id, message, type, show = true) {
       const el = document.getElementById(id);
       el.textContent = message || '';
@@ -838,6 +890,7 @@
     function escapeJs(str) {
       return String(str || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
     }
+  
   </script>
 </body>
 </html>
