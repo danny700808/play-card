@@ -440,6 +440,10 @@
             <label for="${day.key}Time">上班時間</label>
             <input id="${day.key}Time" type="time" />
           </div>
+          <label class="checkbox-line" style="margin-top:8px;">
+            <input id="${day.key}AllowSpecial" type="checkbox" />
+            當天允許「標準打卡＋特殊打卡」共用
+          </label>
         </div>
       `).join('');
     }
@@ -456,6 +460,9 @@
       }
       if (typeof window !== 'undefined' && window.parent && window.parent !== window && typeof window.parent.apiCall === 'function') {
         return await window.parent.apiCall(action, payload);
+      }
+      if (typeof api === 'function') {
+        return await api(action, payload);
       }
       if (typeof api !== 'undefined' && api && typeof api.post === 'function') {
         return await api.post(action, payload);
@@ -546,7 +553,9 @@
               ${DAYS.map(day => {
                 const type = getTemplateDayValue(t, day, 'type') || '無班';
                 const time = getTemplateDayValue(t, day, 'time') || '';
-                return `<div><b>${day.label}：</b>${escapeHtml(type)}${time ? ` / ${escapeHtml(time)}` : ''}</div>`;
+                const allowSpecial = !!getTemplateDayValue(t, day, 'allowSpecial');
+                const extra = allowSpecial ? ' / 可標準＋特殊共用' : '';
+                return `<div><b>${day.label}：</b>${escapeHtml(type)}${time ? ` / ${escapeHtml(time)}` : ''}${extra}</div>`;
               }).join('')}
             </div>
             <div class="actions">
@@ -603,9 +612,13 @@
         sunday: '星期日'
       };
       const zh = map[day.key];
-      return kind === 'type'
-        ? (template[`${day.key}Type`] || template[`${zh}類型`] || '')
-        : (template[`${day.key}StartTime`] || template[`${day.key}Time`] || template[`${zh}上班時間`] || '');
+      if (kind === 'type') return template[`${day.key}Type`] || template[`${zh}類型`] || '';
+      if (kind === 'time') return template[`${day.key}StartTime`] || template[`${day.key}Time`] || template[`${zh}上班時間`] || '';
+      if (kind === 'allowSpecial') {
+        const raw = template[`${day.key}AllowSpecial`] != null ? template[`${day.key}AllowSpecial`] : template[`${zh}允許特殊打卡`];
+        return String(raw || '').toUpperCase() === 'TRUE' || raw === true || raw === 'true';
+      }
+      return '';
     }
 
     function toggleDayTime(dayKey) {
@@ -625,6 +638,7 @@
       DAYS.forEach(day => {
         document.getElementById(`${day.key}Type`).value = '無班';
         document.getElementById(`${day.key}Time`).value = '';
+        document.getElementById(`${day.key}AllowSpecial`).checked = false;
         toggleDayTime(day.key);
       });
     }
@@ -659,7 +673,8 @@
           dayKey: day.key,
           dayLabel: day.label,
           type: document.getElementById(`${day.key}Type`).value,
-          startTime: document.getElementById(`${day.key}Time`).value
+          startTime: document.getElementById(`${day.key}Time`).value,
+          allowSpecial: document.getElementById(`${day.key}AllowSpecial`).checked
         }))
       };
 
@@ -737,6 +752,7 @@
       DAYS.forEach(day => {
         document.getElementById(`${day.key}Type`).value = getTemplateDayValue(t, day, 'type') || '無班';
         document.getElementById(`${day.key}Time`).value = getTemplateDayValue(t, day, 'time') || '';
+        document.getElementById(`${day.key}AllowSpecial`).checked = !!getTemplateDayValue(t, day, 'allowSpecial');
         toggleDayTime(day.key);
       });
       window.scrollTo({ top: 0, behavior: 'smooth' });
