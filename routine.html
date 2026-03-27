@@ -9,7 +9,8 @@
     .page-return-wrap{margin-bottom:16px}
     .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
     .group-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:12px}
-    .group-card{border:1px solid var(--line);border-radius:18px;padding:18px;background:#fbfdff;cursor:pointer}
+    .group-card{border:1px solid var(--line);border-radius:18px;padding:18px;background:#fbfdff;cursor:pointer;transition:.18s ease}
+    .group-card.active{border-color:#1f7a5a;box-shadow:0 0 0 2px rgba(31,122,90,.12) inset;background:#f4fbf8}
     .group-card .title{font-size:20px;font-weight:900;margin-bottom:6px}
     .group-card .meta{font-size:13px;color:var(--muted);line-height:1.7}
     .group-card.reassign{background:#fff7f7;border-color:#f4c7c7}
@@ -183,6 +184,10 @@
 
     function esc(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 
+    function showRoutineNotice(message, isError=false){
+      setMsg(qs('#msg'), message || '', !!isError);
+    }
+
     function parseRoutineRemindPlan(raw, enabled){
       try{
         const obj=JSON.parse(raw||'');
@@ -350,30 +355,49 @@
       updateFormMode();
     }
 
+    function getCurrentSectionKey() {
+      return activeSectionKey || (qs('#routineSectionType') ? qs('#routineSectionType').value : '') || 'daily';
+    }
+
     function updateFormMode() {
-      const isReassign = activeSectionKey === 'reassign';
-      qs('#routineFormCard').classList.toggle('hidden', !activeSectionKey || isReassign);
-      qs('#weeklyBox').classList.toggle('hidden', activeSectionKey !== 'weekly');
-      qs('#monthlyBox').classList.toggle('hidden', activeSectionKey !== 'monthly');
-      qs('#longBox').classList.toggle('hidden', activeSectionKey !== 'long');
-      qs('#longIntervalWrap').classList.toggle('hidden', activeSectionKey !== 'long');
-      qs('#listTitle').textContent = activeSectionKey === 'reassign' ? '待重新指派事項' : '這一區的事項';
+      const sectionKey = getCurrentSectionKey();
+      const isReassign = sectionKey === 'reassign';
+      qs('#routineFormCard').classList.toggle('hidden', isReassign);
+      qs('#weeklyBox').classList.toggle('hidden', sectionKey !== 'weekly');
+      qs('#monthlyBox').classList.toggle('hidden', sectionKey !== 'monthly');
+      qs('#longBox').classList.toggle('hidden', sectionKey !== 'long');
+      qs('#longIntervalWrap').classList.toggle('hidden', sectionKey !== 'long');
+      qs('#listTitle').textContent = sectionKey === 'reassign' ? '待重新指派事項' : `${getSectionLabel(sectionKey)}摘要`;
+    }
+
+    function renderSectionDetail() {
+      const box = qs('#selectedSectionBox');
+      if (!box) return;
+      if (!activeSectionKey) {
+        box.classList.add('hidden');
+        return;
+      }
+      box.classList.remove('hidden');
+      updateFormMode();
+      renderAdminList();
     }
 
     function openSection(key) {
-      activeSectionKey = key;
-      qs('#routineMenuCard').classList.add('hidden');
-      qs('#routineDetailCard').classList.remove('hidden');
-      qs('#detailTitle').textContent = getSectionLabel(key);
-      qs('#detailSubtitle').textContent = key === 'reassign' ? '這裡只顯示目前沒有人承接的定期事項。' : '這裡只顯示這一區自己的內容。';
+      activeSectionKey = key || 'daily';
+      if (qs('#routineSectionType')) qs('#routineSectionType').value = activeSectionKey;
       updateFormMode();
-      renderAdminList();
-      resetRoutineForm();
+      renderMenu();
+      renderSectionDetail();
+      const box = qs('#selectedSectionBox');
+      if (box) {
+        setTimeout(()=>{ try{ box.scrollIntoView({behavior:'smooth', block:'start'}); }catch(e){} }, 30);
+      }
     }
 
     function backToMenu() {
       activeSectionKey = '';
-      qs('#selectedSectionBox').classList.add('hidden');
+      renderMenu();
+      renderSectionDetail();
       resetRoutineForm();
     }
 
@@ -383,7 +407,8 @@
         let count = 0;
         if (sec.key === 'reassign') count = Number(summary.needReassignTotal || 0);
         else count = Number(((summary[sec.key] || {}).total) || 0);
-        return `<div class="group-card ${sec.isReassign ? 'reassign' : ''}" onclick="openSection('${sec.key}')">
+        const activeClass = activeSectionKey === sec.key ? ' active' : '';
+        return `<div class="group-card ${sec.isReassign ? 'reassign' : ''}${activeClass}" onclick="openSection('${sec.key}')">
           <div class="title">${sec.label}</div>
           <div class="meta">目前 ${count} 筆${sec.key==='reassign' ? '｜未指定人員' : ''}</div>
         </div>`;
@@ -533,7 +558,7 @@
       payload.videoAssets = await collectRoutineAssets('routineVideoFiles','video',42,72);
       payload.audioAssets = [];
       if(routineRecordedAsset){
-        setProgressUI('saveProgress',78,'錄音上傳中...');
+        setSaveProgress(78,'錄音上傳中...');
         payload.audioAssets = [routineRecordedAsset];
       }
       setSaveProgress(92,'寫入固定事項資料中...');
@@ -620,6 +645,14 @@ function clearRoutineRecording(){
       if(!startBtn || !stopBtn || !clearBtn || !preview || !status) return;
       startBtn.onclick = async ()=>{
         try{
+          if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+            showRoutineNotice('目前瀏覽器不支援錄音權限。', true);
+            return;
+          }
+          if(typeof MediaRecorder === 'undefined'){
+            showRoutineNotice('目前裝置不支援 MediaRecorder 錄音。', true);
+            return;
+          }
           clearRoutineRecording();
           routineMediaStream = await navigator.mediaDevices.getUserMedia({audio:true});
           const chunks = [];
@@ -640,7 +673,7 @@ function clearRoutineRecording(){
             }catch(err){
               routineRecordedAsset = null;
               status.textContent = '錄音已完成，但上傳失敗';
-              showToast(err && err.message ? err.message : '錄音上傳失敗');
+              showRoutineNotice(err && err.message ? err.message : '錄音上傳失敗', true);
             }
           };
           routineRecorder.start();
@@ -648,7 +681,7 @@ function clearRoutineRecording(){
           stopBtn.disabled = false;
           status.textContent = '錄音中，請直接說話';
         }catch(err){
-          showToast(err && err.message ? err.message : '無法啟用錄音');
+          showRoutineNotice(err && err.message ? err.message : '無法啟用錄音', true);
         }
       };
       stopBtn.onclick = ()=>{
@@ -667,6 +700,7 @@ function clearRoutineRecording(){
       if (!r.ok) { setMsg(qs('#msg'), r.message || '讀取失敗', true); return; }
       pageData = r;
       if (routineAdminMode) {
+        if (!activeSectionKey && qs('#routineSectionType')) activeSectionKey = qs('#routineSectionType').value || 'daily';
         renderMenu();
         renderSectionDetail();
       } else {
@@ -682,10 +716,21 @@ function clearRoutineRecording(){
       targetTemplateId = new URLSearchParams(location.search).get('templateId') || '';
       applyRoutineMode();
       togglePermanent();
+      const sectionSelect = qs('#routineSectionType');
+      if (sectionSelect) {
+        sectionSelect.onchange = () => {
+          activeSectionKey = sectionSelect.value || 'daily';
+          updateFormMode();
+          renderMenu();
+          renderSectionDetail();
+        };
+      }
       if (routineAdminMode) {
         const emp = await api('getEmployeeOptions', { userId: currentUser.id });
         employeeOptions = emp.rows || [];
         fillEmployeeOptions();
+        activeSectionKey = sectionSelect ? (sectionSelect.value || 'daily') : 'daily';
+        await setupRoutineRecorder();
       }
       await refreshPage();
     }
