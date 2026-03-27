@@ -46,6 +46,12 @@
     .task-remind-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;background:#eef7f2;font-size:13px}
     .task-remind-chip button{border:0;background:transparent;font-size:14px;cursor:pointer}
     .task-highlight{box-shadow:0 0 0 2px #1f7a5a inset}
+    .task-media-title{font-size:14px;font-weight:800;margin:12px 0 8px}
+    .task-file-links{display:flex;flex-wrap:wrap;gap:8px}
+    .task-file-link{display:inline-flex;align-items:center;padding:8px 12px;border-radius:999px;background:#eef7f2;color:#16533f;text-decoration:none;font-size:13px;font-weight:700}
+    .task-player{width:100%;margin-top:8px;border-radius:12px}
+    .task-gallery{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:8px}
+    .task-gallery img{width:100%;display:block;border-radius:12px}
     @media (max-width:560px){.group-grid,.field-row{grid-template-columns:1fr}}
   </style>
 </head>
@@ -94,26 +100,17 @@
         <div class="card" id="routineFormCard">
           <div class="section-title">新增 / 修改事項</div>
           <input type="hidden" id="templateId">
-          <div class="field"><label>目前區塊</label><input id="groupLabelInput" disabled></div>
           <div class="field"><label>事項名稱</label><input id="routineTitle" placeholder="例如：開店巡檢、每月庫存盤點"></div>
           <div class="field"><label>說明（選填）</label><textarea id="routineContent" placeholder="需要交代的細節可寫在這裡"></textarea></div>
 
           <div class="field-row">
-            <div class="field">
-              <label>負責人（可先不指派）</label>
-              <select id="routineAssignee"><option value="">暫時不指派</option></select>
-              <div class="mini-help">若先不指派，這筆會進到待重新指派。</div>
-            </div>
-            <div class="field">
-              <label>完成回報需求</label>
-              <select id="routinePhotoNeed"><option value="否">不強制照片</option><option value="是">完成時需附照片</option></select>
-            </div>
+            <div class="field"><label>完成回報需求</label><select id="routinePhotoNeed"><option value="否">不強制照片</option><option value="是">完成時需附照片</option></select></div>
+            <div class="field"><label>提醒時間</label><input id="routineRemindTime" type="time" value="09:00"></div>
           </div>
 
-          <div class="field-row">
-            <div class="field"><label>提醒時間</label><input id="routineRemindTime" type="time" value="09:00"></div>
-            <div class="field" id="longIntervalWrap"><label>每幾個月一次</label><input id="routineLongInterval" type="number" min="2" step="1" value="2"></div>
-          </div>
+          <div class="field"><label>說明圖片（選填）</label><input id="routineImageFiles" type="file" accept=".jpg,.jpeg,.png,.webp" multiple><div class="mini-help">可上傳示意圖片給員工查看。</div></div>
+          <div class="field"><label>說明影片（選填）</label><input id="routineVideoFiles" type="file" accept="video/*" multiple></div>
+          <div class="field"><label>說明錄音（選填）</label><input id="routineAudioFiles" type="file" accept="audio/*" multiple></div>
 
           <div id="weeklyBox" class="field hidden">
             <label>每週星期</label>
@@ -130,6 +127,7 @@
 
           <div id="monthlyBox" class="field hidden"><label>每月幾號</label><select id="routineMonthDay"></select></div>
           <div id="longBox" class="field hidden"><label>超過一個月週期的固定日期</label><select id="routineLongMonthDay"></select></div>
+          <div class="field hidden" id="longIntervalWrap"><label>每幾個月一次</label><input id="routineLongInterval" type="number" min="2" step="1" value="2"></div>
 
           <div class="field-row">
             <div class="field"><label>開始日期</label><input id="routineStartDate" type="date"></div>
@@ -137,10 +135,17 @@
           </div>
           <div class="field"><label><input id="routinePermanent" type="checkbox" onchange="togglePermanent()"> 永久有效（勾選後不限制結束日期）</label></div>
 
+          <div class="field">
+            <label>負責人（可先不指派）</label>
+            <select id="routineAssignee"><option value="">暫時不指派</option></select>
+            <div class="mini-help">若先不指派，這筆會進到待重新指派。</div>
+          </div>
+
           <div class="inline-actions">
             <button class="btn" id="saveRoutineBtn" onclick="saveRoutineTemplate()">儲存定期事項</button>
             <button class="btn secondary hidden" id="cancelEditBtn" onclick="resetRoutineForm()">取消修改</button>
           </div>
+          <div id="saveProgressBox" class="progress-box hidden" style="margin-top:10px"><div class="progress-head"><strong>儲存定期事項</strong><span id="saveProgressPct">0%</span></div><div class="progress-track"><div id="saveProgressBar" class="progress-bar"></div></div><div id="saveProgressText" class="attach-badge">準備送出...</div></div>
         </div>
 
         <div class="card">
@@ -232,6 +237,41 @@
       renderMine();
     }
 
+    function renderImageGallery(items){
+      const list=Array.isArray(items)?items.filter(x=>x&&x.url):[];
+      if(!list.length) return '';
+      return `<div><div class="task-media-title">說明圖片</div><div class="task-gallery">${list.map(x=>`<a href="${x.url}" target="_blank" rel="noopener"><img src="${x.url}" alt="${esc(x.name||'圖片')}"></a>`).join('')}</div></div>`;
+    }
+
+    function renderVideoPlayers(items){
+      const list=Array.isArray(items)?items.filter(x=>x&&x.url):[];
+      if(!list.length) return '';
+      return `<div><div class="task-media-title">說明影片</div>${list.map(x=>`<video class="task-player" controls playsinline preload="metadata" src="${x.url}"></video>`).join('')}</div>`;
+    }
+
+    function renderAudioPlayers(items){
+      const list=Array.isArray(items)?items.filter(x=>x&&x.url):[];
+      if(!list.length) return '';
+      return `<div><div class="task-media-title">說明錄音</div>${list.map(x=>`<audio class="task-player" controls preload="metadata" src="${x.url}"></audio>`).join('')}</div>`;
+    }
+
+    async function collectRoutineAssets(fileInputId, kind){
+      const input=qs('#'+fileInputId); const files=Array.from((input&&input.files)||[]); if(!files.length) return [];
+      if(kind==='image'){
+        const urls=await compressImagesToDataUrls(files,1600,0.75);
+        return urls.map((url,idx)=>({name:files[idx].name||`圖片 ${idx+1}`, url})).filter(x=>x.url);
+      }
+      if(kind==='video'){
+        const out=[]; for(const f of files){ out.push({name:f.name||'影片', url:await compressVideoToDataUrl(f)}); } return out.filter(x=>x.url);
+      }
+      const out=[]; for(const f of files){ out.push({name:f.name||'附件', url:await fileToDataUrl(f)}); } return out.filter(x=>x.url);
+    }
+
+    function setSaveProgress(pct,text){
+      const box=qs('#saveProgressBox'); box.classList.remove('hidden');
+      qs('#saveProgressPct').textContent=`${pct}%`; qs('#saveProgressBar').style.width=`${pct}%`; qs('#saveProgressText').textContent=text;
+    }
+
     function applyRoutineMode() {
       routineAdminMode = !!(currentUser && currentUser.role === 'admin' && isSettingsMode());
       qs('#adminBlock').classList.toggle('hidden', !routineAdminMode);
@@ -285,6 +325,8 @@
       qs('#routineMonthDay').value = '1';
       qs('#routineLongMonthDay').value = '1';
       setWeekdaysValue('');
+      ['routineImageFiles','routineVideoFiles','routineAudioFiles'].forEach(id=>{ const el=qs('#'+id); if(el) el.value=''; });
+      qs('#saveProgressBox').classList.add('hidden');
       qs('#saveRoutineBtn').textContent = '儲存定期事項';
       qs('#cancelEditBtn').classList.add('hidden');
       updateFormMode();
@@ -293,7 +335,6 @@
     function updateFormMode() {
       const isReassign = activeSectionKey === 'reassign';
       qs('#routineFormCard').classList.toggle('hidden', !activeSectionKey || isReassign);
-      qs('#groupLabelInput').value = activeSectionKey ? getSectionLabel(activeSectionKey) : '';
       qs('#weeklyBox').classList.toggle('hidden', activeSectionKey !== 'weekly');
       qs('#monthlyBox').classList.toggle('hidden', activeSectionKey !== 'monthly');
       qs('#longBox').classList.toggle('hidden', activeSectionKey !== 'long');
@@ -387,6 +428,9 @@
           </div>
           <div style="margin-top:8px">${x.content || '未填寫說明'}</div>
           <div class="routine-deadline"><span class="deadline-label">應完成日期：</span>${x.dueDate}${x.requirePhotoReturn==='是' ? '　｜　需附照片' : ''}</div>
+          ${renderImageGallery(x.imageAssets||[])}
+          ${renderVideoPlayers(x.videoAssets||[])}
+          ${renderAudioPlayers(x.audioAssets||[])}
           ${renderRoutineRemindBox(x)}
           ${x.status==='待完成' || x.status==='已逾期' ? `
             <div class="complete-box">
@@ -465,10 +509,19 @@
         setMsg(qs('#msg'), '待重新指派區只用來重新指派既有事項。', true);
         return;
       }
+      setSaveProgress(10,'檢查資料...');
       const payload = buildSavePayload();
+      setSaveProgress(35,'整理圖片中...');
+      payload.imageAssets = await collectRoutineAssets('routineImageFiles','image');
+      setSaveProgress(55,'整理影片中...');
+      payload.videoAssets = await collectRoutineAssets('routineVideoFiles','video');
+      setSaveProgress(75,'整理錄音中...');
+      payload.audioAssets = await collectRoutineAssets('routineAudioFiles','audio');
+      setSaveProgress(90,'送出中...');
       const r = await api('saveRoutineTemplate', payload);
-      if (!r.ok) { setMsg(qs('#msg'), r.message || '儲存失敗', true); return; }
+      if (!r.ok) { setMsg(qs('#msg'), r.message || '儲存失敗', true); setSaveProgress(100,r.message||'儲存失敗'); return; }
       setMsg(qs('#msg'), r.message || '儲存完成');
+      setSaveProgress(100,r.message||'儲存完成');
       const keepSection = activeSectionKey;
       await refreshPage();
       if (keepSection) openSection(keepSection);
