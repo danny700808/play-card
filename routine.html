@@ -79,17 +79,6 @@
 
     <div id="adminBlock" class="hidden">
       <div id="routineDetailCard">
-        <div class="card">
-          <div class="detail-head">
-            <div>
-              <div class="detail-title" id="detailTitle">每天要做的</div>
-              <div class="section-subtitle" id="detailSubtitle">只顯示這一區自己的內容。</div>
-            </div>
-            <div class="inline-actions" style="margin-top:0">
-              <button class="btn secondary" onclick="backToMenu()">返回區塊首頁</button>
-            </div>
-          </div>
-        </div>
 
         <div class="card" id="routineFormCard">
           <div class="section-title">新增 / 修改事項</div>
@@ -154,9 +143,14 @@
         </div>
 
         <div class="card">
-          <div class="section-title" id="listTitle">這一區的事項</div>
-          <div class="section-subtitle">只顯示目前這一區的固定任務。</div>
-          <div id="adminTemplateList" class="compact-list" style="margin-top:12px"></div>
+          <div class="section-title">固定事項區塊</div>
+          <div class="section-subtitle">下面顯示每天 / 每週 / 每月 / 超過一個月 / 待重新指派的區塊摘要。</div>
+          <div id="routineMenuGrid" class="group-grid" style="margin-top:12px"></div>
+          <div id="selectedSectionBox" class="hidden" style="margin-top:16px">
+            <div class="section-title" id="listTitle">這一區的事項</div>
+            <div class="section-subtitle">先顯示簡單任務，點查看再看完整內容。</div>
+            <div id="adminTemplateList" class="compact-list" style="margin-top:12px"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -379,8 +373,7 @@
 
     function backToMenu() {
       activeSectionKey = '';
-      qs('#routineMenuCard').classList.remove('hidden');
-      qs('#routineDetailCard').classList.add('hidden');
+      qs('#selectedSectionBox').classList.add('hidden');
       resetRoutineForm();
     }
 
@@ -392,7 +385,7 @@
         else count = Number(((summary[sec.key] || {}).total) || 0);
         return `<div class="group-card ${sec.isReassign ? 'reassign' : ''}" onclick="openSection('${sec.key}')">
           <div class="title">${sec.label}</div>
-          <div class="meta">目前 ${count} 筆</div>
+          <div class="meta">目前 ${count} 筆${sec.key==='reassign' ? '｜未指定人員' : ''}</div>
         </div>`;
       }).join('');
     }
@@ -675,7 +668,7 @@ function clearRoutineRecording(){
       pageData = r;
       if (routineAdminMode) {
         renderMenu();
-        if (activeSectionKey) openSection(activeSectionKey);
+        renderSectionDetail();
       } else {
         renderMine();
       }
