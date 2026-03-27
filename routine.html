@@ -255,16 +255,28 @@
       return `<div><div class="task-media-title">說明錄音</div>${list.map(x=>`<audio class="task-player" controls preload="metadata" src="${x.url}"></audio>`).join('')}</div>`;
     }
 
-    async function collectRoutineAssets(fileInputId, kind){
-      const input=qs('#'+fileInputId); const files=Array.from((input&&input.files)||[]); if(!files.length) return [];
-      if(kind==='image'){
-        const urls=await compressImagesToDataUrls(files,1600,0.75);
-        return urls.map((url,idx)=>({name:files[idx].name||`圖片 ${idx+1}`, url})).filter(x=>x.url);
+    async function collectRoutineAssets(fileInputId, kind, progressStart=0, progressEnd=100){
+      const input=qs('#'+fileInputId);
+      const files=Array.from((input&&input.files)||[]);
+      if(!files.length) return [];
+      const folderMap={image:'routine/images',video:'routine/videos',audio:'routine/audios',file:'routine/files'};
+      const labelMap={image:'圖片',video:'影片',audio:'錄音',file:'附件'};
+      const out=[];
+      for(let i=0;i<files.length;i++){
+        const file=files[i];
+        const base = progressStart + ((progressEnd-progressStart) * (i/files.length));
+        setSaveProgress(Math.round(base), `上傳${labelMap[kind]||'附件'} ${i+1}/${files.length}...`);
+        const uploaded=await uploadFileToCloudinary(file,{
+          folder: folderMap[kind]||'routine/files',
+          onProgress:(ratio)=>{
+            const pct = progressStart + ((progressEnd-progressStart) * ((i + ratio)/files.length));
+            setSaveProgress(Math.round(pct), `上傳${labelMap[kind]||'附件'} ${i+1}/${files.length}...`);
+          }
+        });
+        const asset=cloudinaryAssetFromResponse(uploaded||{});
+        if(asset && asset.url) out.push({name:file.name||asset.originalFilename||`${labelMap[kind]||'附件'} ${i+1}`, url:asset.url});
       }
-      if(kind==='video'){
-        const out=[]; for(const f of files){ out.push({name:f.name||'影片', url:await compressVideoToDataUrl(f)}); } return out.filter(x=>x.url);
-      }
-      const out=[]; for(const f of files){ out.push({name:f.name||'附件', url:await fileToDataUrl(f)}); } return out.filter(x=>x.url);
+      return out;
     }
 
     function setSaveProgress(pct,text){
@@ -509,15 +521,12 @@
         setMsg(qs('#msg'), '待重新指派區只用來重新指派既有事項。', true);
         return;
       }
-      setSaveProgress(10,'檢查資料...');
+      setSaveProgress(8,'檢查資料...');
       const payload = buildSavePayload();
-      setSaveProgress(35,'整理圖片中...');
-      payload.imageAssets = await collectRoutineAssets('routineImageFiles','image');
-      setSaveProgress(55,'整理影片中...');
-      payload.videoAssets = await collectRoutineAssets('routineVideoFiles','video');
-      setSaveProgress(75,'整理錄音中...');
-      payload.audioAssets = await collectRoutineAssets('routineAudioFiles','audio');
-      setSaveProgress(90,'送出中...');
+      payload.imageAssets = await collectRoutineAssets('routineImageFiles','image',12,42);
+      payload.videoAssets = await collectRoutineAssets('routineVideoFiles','video',42,72);
+      payload.audioAssets = await collectRoutineAssets('routineAudioFiles','audio',72,88);
+      setSaveProgress(92,'寫入固定事項資料中...');
       const r = await api('saveRoutineTemplate', payload);
       if (!r.ok) { setMsg(qs('#msg'), r.message || '儲存失敗', true); setSaveProgress(100,r.message||'儲存失敗'); return; }
       setMsg(qs('#msg'), r.message || '儲存完成');
