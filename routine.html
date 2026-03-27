@@ -8,23 +8,18 @@
   <style>
     .page-return-wrap{margin-bottom:16px}
     .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
-    .summary-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:12px}
-    .summary-card,.group-card{border:1px solid var(--line);border-radius:16px;padding:14px;background:#fbfdff}
-    .summary-card .num{display:block;font-size:28px;font-weight:900;margin-top:6px}
-    .summary-card.warn{background:#fff6f6;border-color:#f5c2c7}
-    .summary-card .muted{font-size:13px}
-    .group-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:12px}
-    .group-card{cursor:pointer;transition:.15s transform,.15s border-color,.15s background}
-    .group-card.active{border-color:#1f7a5a;background:#eef7f2}
-    .group-card .title{font-size:18px;font-weight:900;margin-bottom:6px}
+    .group-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:12px}
+    .group-card{border:1px solid var(--line);border-radius:18px;padding:18px;background:#fbfdff;cursor:pointer}
+    .group-card .title{font-size:20px;font-weight:900;margin-bottom:6px}
     .group-card .meta{font-size:13px;color:var(--muted);line-height:1.7}
+    .group-card.reassign{background:#fff7f7;border-color:#f4c7c7}
+    .hidden{display:none!important}
     .field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
     .inline-checks{display:flex;flex-wrap:wrap;gap:10px}
     .inline-checks label{display:flex;align-items:center;gap:6px;background:#fff;border:1px solid var(--line);border-radius:999px;padding:8px 12px;font-size:14px}
     .inline-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
     .inline-actions .btn{width:auto;min-width:110px}
     .compact-list{display:flex;flex-direction:column;gap:10px}
-    .hidden{display:none!important}
     .tag{display:inline-block;padding:5px 10px;border-radius:999px;font-size:12px;font-weight:800}
     .tag.on{background:#eef7f2;color:#16533f}
     .tag.off{background:#eef2f7;color:#5b6b7c}
@@ -34,7 +29,6 @@
     .item-top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
     .item-meta{color:var(--muted);font-size:13px;line-height:1.7;margin-top:8px}
     .item-note-warn{margin-top:10px;padding:10px 12px;border-radius:12px;background:#fff4f4;border:1px solid #f5c2c7;color:#b42318;font-size:14px;font-weight:700}
-    .reassign-select-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
     .empty-box{padding:18px;border:1px dashed var(--line);border-radius:14px;color:var(--muted);text-align:center}
     .mini-help{font-size:13px;color:var(--muted);margin-top:6px;line-height:1.7}
     .section-subtitle{font-size:13px;color:var(--muted);margin-top:4px;line-height:1.7}
@@ -42,8 +36,9 @@
     .routine-deadline .deadline-label{color:#1f7a5a}
     .routine-complete-btn{display:block;width:100%;min-height:56px;border-radius:16px;font-size:22px;font-weight:800}
     .complete-box{margin-top:12px;padding-top:12px;border-top:1px dashed var(--line)}
-    @media (max-width:960px){.summary-grid{grid-template-columns:repeat(2,1fr)}.group-grid{grid-template-columns:repeat(2,1fr)}}
-    @media (max-width:560px){.summary-grid,.group-grid,.field-row{grid-template-columns:1fr}}
+    .detail-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+    .detail-title{font-size:22px;font-weight:900}
+    @media (max-width:560px){.group-grid,.field-row{grid-template-columns:1fr}}
   </style>
 </head>
 <body onload="init()">
@@ -69,71 +64,82 @@
     </div>
 
     <div id="adminBlock" class="hidden">
-      <div class="card">
-        <div class="section-title">定期事項設定</div>
-        <div class="section-subtitle">已改成四個區塊管理：每天、每週、每月、超過一個月。若原本負責人離職或停用，會自動顯示待重新指派。</div>
-        <div id="routineSummary" class="summary-grid"></div>
-        <div id="routineGroups" class="group-grid"></div>
+      <div id="routineMenuCard" class="card">
+        <div class="section-title">定期事項</div>
+        <div class="section-subtitle">先選一個區塊，再進去新增、修改或查看該區的固定任務。</div>
+        <div id="routineMenuGrid" class="group-grid"></div>
       </div>
 
-      <div class="card">
-        <div class="section-title">新增 / 修改定期事項</div>
-        <div class="section-subtitle">先選上面的區塊，再設定對應的循環規則。</div>
-        <input type="hidden" id="templateId">
-
-        <div class="field"><label>目前編輯區塊</label><input id="groupLabelInput" disabled></div>
-        <div class="field"><label>事項名稱</label><input id="routineTitle" placeholder="例如：開店巡檢、每月庫存盤點"></div>
-        <div class="field"><label>說明（選填）</label><textarea id="routineContent" placeholder="需要交代的細節可寫在這裡"></textarea></div>
-
-        <div class="field-row">
-          <div class="field">
-            <label>負責人（可先不指派）</label>
-            <select id="routineAssignee"><option value="">暫時不指派</option></select>
-            <div class="mini-help">若先不指派，這筆會自動顯示為待重新指派。</div>
-          </div>
-          <div class="field">
-            <label>完成回報需求</label>
-            <select id="routinePhotoNeed"><option value="否">不強制照片</option><option value="是">完成時需附照片</option></select>
+      <div id="routineDetailCard" class="hidden">
+        <div class="card">
+          <div class="detail-head">
+            <div>
+              <div class="detail-title" id="detailTitle">每天要做的</div>
+              <div class="section-subtitle" id="detailSubtitle">只顯示這一區自己的內容。</div>
+            </div>
+            <div class="inline-actions" style="margin-top:0">
+              <button class="btn secondary" onclick="backToMenu()">返回區塊首頁</button>
+            </div>
           </div>
         </div>
 
-        <div class="field-row">
-          <div class="field"><label>提醒時間</label><input id="routineRemindTime" type="time" value="09:00"></div>
-          <div class="field"><label>每幾個月一次</label><input id="routineLongInterval" type="number" min="2" step="1" value="2"></div>
-        </div>
+        <div class="card" id="routineFormCard">
+          <div class="section-title">新增 / 修改事項</div>
+          <input type="hidden" id="templateId">
+          <div class="field"><label>目前區塊</label><input id="groupLabelInput" disabled></div>
+          <div class="field"><label>事項名稱</label><input id="routineTitle" placeholder="例如：開店巡檢、每月庫存盤點"></div>
+          <div class="field"><label>說明（選填）</label><textarea id="routineContent" placeholder="需要交代的細節可寫在這裡"></textarea></div>
 
-        <div id="weeklyBox" class="field hidden">
-          <label>每週星期</label>
-          <div class="inline-checks">
-            <label><input type="checkbox" value="1" name="routineWeekday"> 週一</label>
-            <label><input type="checkbox" value="2" name="routineWeekday"> 週二</label>
-            <label><input type="checkbox" value="3" name="routineWeekday"> 週三</label>
-            <label><input type="checkbox" value="4" name="routineWeekday"> 週四</label>
-            <label><input type="checkbox" value="5" name="routineWeekday"> 週五</label>
-            <label><input type="checkbox" value="6" name="routineWeekday"> 週六</label>
-            <label><input type="checkbox" value="7" name="routineWeekday"> 週日</label>
+          <div class="field-row">
+            <div class="field">
+              <label>負責人（可先不指派）</label>
+              <select id="routineAssignee"><option value="">暫時不指派</option></select>
+              <div class="mini-help">若先不指派，這筆會進到待重新指派。</div>
+            </div>
+            <div class="field">
+              <label>完成回報需求</label>
+              <select id="routinePhotoNeed"><option value="否">不強制照片</option><option value="是">完成時需附照片</option></select>
+            </div>
+          </div>
+
+          <div class="field-row">
+            <div class="field"><label>提醒時間</label><input id="routineRemindTime" type="time" value="09:00"></div>
+            <div class="field" id="longIntervalWrap"><label>每幾個月一次</label><input id="routineLongInterval" type="number" min="2" step="1" value="2"></div>
+          </div>
+
+          <div id="weeklyBox" class="field hidden">
+            <label>每週星期</label>
+            <div class="inline-checks">
+              <label><input type="checkbox" value="1" name="routineWeekday"> 週一</label>
+              <label><input type="checkbox" value="2" name="routineWeekday"> 週二</label>
+              <label><input type="checkbox" value="3" name="routineWeekday"> 週三</label>
+              <label><input type="checkbox" value="4" name="routineWeekday"> 週四</label>
+              <label><input type="checkbox" value="5" name="routineWeekday"> 週五</label>
+              <label><input type="checkbox" value="6" name="routineWeekday"> 週六</label>
+              <label><input type="checkbox" value="7" name="routineWeekday"> 週日</label>
+            </div>
+          </div>
+
+          <div id="monthlyBox" class="field hidden"><label>每月幾號</label><select id="routineMonthDay"></select></div>
+          <div id="longBox" class="field hidden"><label>超過一個月週期的固定日期</label><select id="routineLongMonthDay"></select></div>
+
+          <div class="field-row">
+            <div class="field"><label>開始日期</label><input id="routineStartDate" type="date"></div>
+            <div class="field"><label>結束日期</label><input id="routineEndDate" type="date"></div>
+          </div>
+          <div class="field"><label><input id="routinePermanent" type="checkbox" onchange="togglePermanent()"> 永久有效（勾選後不限制結束日期）</label></div>
+
+          <div class="inline-actions">
+            <button class="btn" id="saveRoutineBtn" onclick="saveRoutineTemplate()">儲存定期事項</button>
+            <button class="btn secondary hidden" id="cancelEditBtn" onclick="resetRoutineForm()">取消修改</button>
           </div>
         </div>
 
-        <div id="monthlyBox" class="field hidden"><label>每月幾號</label><select id="routineMonthDay"></select></div>
-        <div id="longBox" class="field hidden"><label>超過一個月週期的固定日期</label><select id="routineLongMonthDay"></select></div>
-
-        <div class="field-row">
-          <div class="field"><label>開始日期</label><input id="routineStartDate" type="date"></div>
-          <div class="field"><label>結束日期</label><input id="routineEndDate" type="date"></div>
+        <div class="card">
+          <div class="section-title" id="listTitle">這一區的事項</div>
+          <div class="section-subtitle">只顯示目前這一區的固定任務。</div>
+          <div id="adminTemplateList" class="compact-list" style="margin-top:12px"></div>
         </div>
-        <div class="field"><label><input id="routinePermanent" type="checkbox" onchange="togglePermanent()"> 永久有效（勾選後不限制結束日期）</label></div>
-
-        <div class="inline-actions">
-          <button class="btn" id="saveRoutineBtn" onclick="saveRoutineTemplate()">儲存定期事項</button>
-          <button class="btn secondary hidden" id="cancelEditBtn" onclick="resetRoutineForm()">取消修改</button>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="section-title">目前區塊的已設定事項</div>
-        <div class="section-subtitle">只顯示目前所選區塊的事項；待重新指派會用紅色提醒。</div>
-        <div id="adminTemplateList" class="compact-list" style="margin-top:12px"></div>
       </div>
     </div>
   </div>
@@ -145,12 +151,14 @@
     let routineAdminMode = false;
     let pageData = { mine: [], admin: { templates: [], summary: {} } };
     let employeeOptions = [];
-    let activeGroupKey = 'daily';
-    const GROUPS = [
-      { key: 'daily', label: '每天要做的' },
-      { key: 'weekly', label: '每週要做的' },
-      { key: 'monthly', label: '每月要做的' },
-      { key: 'long', label: '超過一個月要做的' }
+    let activeSectionKey = '';
+
+    const SECTIONS = [
+      { key: 'daily', label: '每天要做的', isReassign: false },
+      { key: 'weekly', label: '每週要做的', isReassign: false },
+      { key: 'monthly', label: '每個月要做的', isReassign: false },
+      { key: 'long', label: '超過一個月', isReassign: false },
+      { key: 'reassign', label: '待重新指派', isReassign: true }
     ];
 
     function applyRoutineMode() {
@@ -168,25 +176,8 @@
       qs('#routineLongMonthDay').innerHTML = html;
     }
 
-    function getGroupLabel(key) {
-      return (GROUPS.find(x => x.key === key) || GROUPS[0]).label;
-    }
-
-    function selectGroup(key) {
-      activeGroupKey = key;
-      qsa('[data-group-key]').forEach(el => el.classList.toggle('active', el.dataset.groupKey === key));
-      qs('#groupLabelInput').value = getGroupLabel(key);
-      qs('#weeklyBox').classList.toggle('hidden', key !== 'weekly');
-      qs('#monthlyBox').classList.toggle('hidden', key !== 'monthly');
-      qs('#longBox').classList.toggle('hidden', key !== 'long');
-      qs('#routineLongInterval').closest('.field').classList.toggle('hidden', key !== 'long');
-      renderAdminList();
-    }
-
-    function togglePermanent() {
-      const checked = qs('#routinePermanent').checked;
-      qs('#routineEndDate').disabled = checked;
-      if (checked) qs('#routineEndDate').value = '';
+    function getSectionLabel(key) {
+      return (SECTIONS.find(x => x.key === key) || SECTIONS[0]).label;
     }
 
     function getWeekdaysValue() {
@@ -196,6 +187,12 @@
     function setWeekdaysValue(value = '') {
       const set = new Set(String(value || '').split(',').filter(Boolean));
       qsa('input[name="routineWeekday"]').forEach(el => el.checked = set.has(el.value));
+    }
+
+    function togglePermanent() {
+      const checked = qs('#routinePermanent').checked;
+      qs('#routineEndDate').disabled = checked;
+      if (checked) qs('#routineEndDate').value = '';
     }
 
     function fillEmployeeOptions() {
@@ -219,14 +216,52 @@
       setWeekdaysValue('');
       qs('#saveRoutineBtn').textContent = '儲存定期事項';
       qs('#cancelEditBtn').classList.add('hidden');
-      selectGroup(activeGroupKey);
+      updateFormMode();
     }
 
-    function summaryItemHtml(title, num, desc, extraClass='') {
-      return `<div class="summary-card ${extraClass}"><div>${title}</div><span class="num">${num}</span><div class="muted">${desc}</div></div>`;
+    function updateFormMode() {
+      const isReassign = activeSectionKey === 'reassign';
+      qs('#routineFormCard').classList.toggle('hidden', !activeSectionKey || isReassign);
+      qs('#groupLabelInput').value = activeSectionKey ? getSectionLabel(activeSectionKey) : '';
+      qs('#weeklyBox').classList.toggle('hidden', activeSectionKey !== 'weekly');
+      qs('#monthlyBox').classList.toggle('hidden', activeSectionKey !== 'monthly');
+      qs('#longBox').classList.toggle('hidden', activeSectionKey !== 'long');
+      qs('#longIntervalWrap').classList.toggle('hidden', activeSectionKey !== 'long');
+      qs('#listTitle').textContent = activeSectionKey === 'reassign' ? '待重新指派事項' : '這一區的事項';
     }
 
-    function routineStatusTags(x) {
+    function openSection(key) {
+      activeSectionKey = key;
+      qs('#routineMenuCard').classList.add('hidden');
+      qs('#routineDetailCard').classList.remove('hidden');
+      qs('#detailTitle').textContent = getSectionLabel(key);
+      qs('#detailSubtitle').textContent = key === 'reassign' ? '這裡只顯示目前沒有人承接的定期事項。' : '這裡只顯示這一區自己的內容。';
+      updateFormMode();
+      renderAdminList();
+      resetRoutineForm();
+    }
+
+    function backToMenu() {
+      activeSectionKey = '';
+      qs('#routineMenuCard').classList.remove('hidden');
+      qs('#routineDetailCard').classList.add('hidden');
+      resetRoutineForm();
+    }
+
+    function renderMenu() {
+      const summary = pageData.admin?.summary || {};
+      qs('#routineMenuGrid').innerHTML = SECTIONS.map(sec => {
+        let count = 0;
+        if (sec.key === 'reassign') count = Number(summary.needReassignTotal || 0);
+        else count = Number(((summary[sec.key] || {}).total) || 0);
+        return `<div class="group-card ${sec.isReassign ? 'reassign' : ''}" onclick="openSection('${sec.key}')">
+          <div class="title">${sec.label}</div>
+          <div class="meta">目前 ${count} 筆</div>
+        </div>`;
+      }).join('');
+    }
+
+    function statusTags(x) {
       const tags = [];
       tags.push(`<span class="tag ${x.status === '啟用' ? 'on' : 'off'}">${x.status}</span>`);
       if (x.needsReassign) tags.push('<span class="tag reassign">待重新指派</span>');
@@ -238,50 +273,33 @@
       return `<span class="tag ${cls}">${status}</span>`;
     }
 
-    function renderAdminSummary() {
-      const s = pageData.admin?.summary || {};
-      qs('#routineSummary').innerHTML = [
-        summaryItemHtml('全部固定任務', GROUPS.reduce((sum, g) => sum + Number((s[g.key] || {}).total || 0), 0), '四個區塊合計'),
-        summaryItemHtml('每天', (s.daily || {}).total || 0, `待重新指派 ${(s.daily || {}).needReassign || 0} 筆`),
-        summaryItemHtml('每週', (s.weekly || {}).total || 0, `待重新指派 ${(s.weekly || {}).needReassign || 0} 筆`),
-        summaryItemHtml('每月', (s.monthly || {}).total || 0, `待重新指派 ${(s.monthly || {}).needReassign || 0} 筆`),
-        summaryItemHtml('待重新指派', s.needReassignTotal || 0, '原負責人離職、停用或尚未指派', (s.needReassignTotal || 0) ? 'warn' : '')
-      ].join('');
-    }
-
-    function renderGroupCards() {
-      const s = pageData.admin?.summary || {};
-      qs('#routineGroups').innerHTML = GROUPS.map(g => {
-        const info = s[g.key] || {};
-        return `<div class="group-card ${activeGroupKey===g.key?'active':''}" data-group-key="${g.key}" onclick="selectGroup('${g.key}')">
-          <div class="title">${g.label}</div>
-          <div class="meta">共 ${info.total || 0} 筆</div>
-          <div class="meta">待重新指派 ${info.needReassign || 0} 筆</div>
-        </div>`;
-      }).join('');
+    function getAdminRowsForCurrentSection() {
+      const rows = pageData.admin?.templates || [];
+      if (activeSectionKey === 'reassign') return rows.filter(x => x.needsReassign);
+      return rows.filter(x => x.groupKey === activeSectionKey);
     }
 
     function renderAdminList() {
-      const rows = (pageData.admin?.templates || []).filter(x => x.groupKey === activeGroupKey);
-      qs('#adminTemplateList').innerHTML = rows.length ? rows.map((x, idx) => `
+      const rows = getAdminRowsForCurrentSection();
+      qs('#adminTemplateList').innerHTML = rows.length ? rows.map(x => `
         <div class="item">
           <div class="item-top">
             <div>
               <strong>${x.title}</strong>
               <div class="item-meta">${x.cycleLabel}　｜　${x.assigneeName || '尚未指派'}</div>
             </div>
-            <div>${routineStatusTags(x)}</div>
+            <div>${statusTags(x)}</div>
           </div>
           <div style="margin-top:8px">${x.content || '未填寫說明'}</div>
           <div class="item-meta">開始：${x.startDate || '-'}${x.isPermanent ? '　｜　永久有效' : (x.endDate ? `　｜　結束：${x.endDate}` : '')}${x.remindTime ? `　｜　提醒：${x.remindTime}` : ''}</div>
-          ${x.needsReassign ? `<div class="item-note-warn">這筆固定任務目前沒有人承接，請重新指派。</div>` : ''}
+          ${x.needsReassign ? `<div class="item-note-warn">這筆目前沒有人承接，請重新指派。</div>` : ''}
           <div class="inline-actions">
             <button class="btn secondary" onclick="editTemplate('${x.id}')">修改</button>
             <button class="btn secondary" onclick="toggleTemplate('${x.id}','${x.status==='啟用'?'停用':'啟用'}')">${x.status==='啟用'?'停用':'啟用'}</button>
             <button class="btn secondary" onclick="deleteTemplate('${x.id}')">刪除</button>
           </div>
         </div>
-      `).join('') : '<div class="empty-box">目前這個區塊還沒有任何固定任務。</div>';
+      `).join('') : '<div class="empty-box">目前這一區沒有任何定期事項。</div>';
     }
 
     function renderMine() {
@@ -311,6 +329,8 @@
     function editTemplate(id) {
       const x = (pageData.admin?.templates || []).find(item => item.id === id);
       if (!x) return;
+      if (x.needsReassign) openSection('reassign');
+      else openSection(x.groupKey || 'daily');
       qs('#templateId').value = x.id || '';
       qs('#routineTitle').value = x.title || '';
       qs('#routineContent').value = x.content || '';
@@ -321,14 +341,13 @@
       qs('#routineEndDate').value = x.endDate || '';
       qs('#routinePermanent').checked = !!x.isPermanent;
       togglePermanent();
+      qs('#routineLongInterval').value = String(x.cycleInterval || 2);
       setWeekdaysValue('');
       qs('#routineMonthDay').value = '1';
       qs('#routineLongMonthDay').value = '1';
-      qs('#routineLongInterval').value = String(x.cycleInterval || 2);
       if (x.groupKey === 'weekly') setWeekdaysValue(x.cycleValue || '');
       if (x.groupKey === 'monthly') qs('#routineMonthDay').value = String(x.cycleValue || '1');
       if (x.groupKey === 'long') qs('#routineLongMonthDay').value = String(x.cycleValue || '1');
-      selectGroup(x.groupKey || 'daily');
       qs('#saveRoutineBtn').textContent = '更新定期事項';
       qs('#cancelEditBtn').classList.remove('hidden');
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -338,13 +357,13 @@
       let cycleType = 'daily';
       let cycleValue = 'daily';
       let cycleInterval = 1;
-      if (activeGroupKey === 'weekly') {
+      if (activeSectionKey === 'weekly') {
         cycleType = 'weekly';
         cycleValue = getWeekdaysValue();
-      } else if (activeGroupKey === 'monthly') {
+      } else if (activeSectionKey === 'monthly') {
         cycleType = 'monthly';
         cycleValue = qs('#routineMonthDay').value;
-      } else if (activeGroupKey === 'long') {
+      } else if (activeSectionKey === 'long') {
         cycleType = 'monthly';
         cycleValue = qs('#routineLongMonthDay').value;
         cycleInterval = Math.max(2, Number(qs('#routineLongInterval').value || 2) || 2);
@@ -368,18 +387,25 @@
     }
 
     async function saveRoutineTemplate() {
+      if (activeSectionKey === 'reassign') {
+        setMsg(qs('#msg'), '待重新指派區只用來重新指派既有事項。', true);
+        return;
+      }
       const payload = buildSavePayload();
       const r = await api('saveRoutineTemplate', payload);
       if (!r.ok) { setMsg(qs('#msg'), r.message || '儲存失敗', true); return; }
       setMsg(qs('#msg'), r.message || '儲存完成');
-      resetRoutineForm();
+      const keepSection = activeSectionKey;
       await refreshPage();
+      if (keepSection) openSection(keepSection);
+      resetRoutineForm();
     }
 
     async function toggleTemplate(id, status) {
       const r = await api('toggleRoutineTemplate', { userId: currentUser.id, templateId: id, status });
       if (!r.ok) { setMsg(qs('#msg'), r.message || '更新失敗', true); return; }
       await refreshPage();
+      if (activeSectionKey) openSection(activeSectionKey);
     }
 
     async function deleteTemplate(id) {
@@ -388,6 +414,7 @@
       if (!r.ok) { setMsg(qs('#msg'), r.message || '刪除失敗', true); return; }
       setMsg(qs('#msg'), r.message || '已刪除');
       await refreshPage();
+      if (activeSectionKey) openSection(activeSectionKey);
     }
 
     function setInlineProgress(idx, pct, text) {
@@ -425,9 +452,8 @@
       if (!r.ok) { setMsg(qs('#msg'), r.message || '讀取失敗', true); return; }
       pageData = r;
       if (routineAdminMode) {
-        renderAdminSummary();
-        renderGroupCards();
-        renderAdminList();
+        renderMenu();
+        if (activeSectionKey) openSection(activeSectionKey);
       } else {
         renderMine();
       }
@@ -439,7 +465,6 @@
       currentUser = requireLogin();
       if (!currentUser) return;
       applyRoutineMode();
-      selectGroup('daily');
       togglePermanent();
       if (routineAdminMode) {
         const emp = await api('getEmployeeOptions', { userId: currentUser.id });
