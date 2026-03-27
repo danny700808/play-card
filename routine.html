@@ -38,6 +38,14 @@
     .complete-box{margin-top:12px;padding-top:12px;border-top:1px dashed var(--line)}
     .detail-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
     .detail-title{font-size:22px;font-weight:900}
+
+    .task-remind-box{margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:14px;background:#fbfdff}
+    .task-remind-title{font-size:14px;font-weight:800;margin-bottom:8px}
+    .task-remind-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px}
+    .task-remind-times{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+    .task-remind-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;background:#eef7f2;font-size:13px}
+    .task-remind-chip button{border:0;background:transparent;font-size:14px;cursor:pointer}
+    .task-highlight{box-shadow:0 0 0 2px #1f7a5a inset}
     @media (max-width:560px){.group-grid,.field-row{grid-template-columns:1fr}}
   </style>
 </head>
@@ -152,6 +160,8 @@
     let pageData = { mine: [], admin: { templates: [], summary: {} } };
     let employeeOptions = [];
     let activeSectionKey = '';
+    let targetTemplateId = '';
+    const routineRemindState = {};
 
     const SECTIONS = [
       { key: 'daily', label: '每天要做的', isReassign: false },
@@ -160,6 +170,67 @@
       { key: 'long', label: '超過一個月', isReassign: false },
       { key: 'reassign', label: '待重新指派', isReassign: true }
     ];
+
+
+    function esc(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+    function parseRoutineRemindPlan(raw, enabled){
+      try{
+        const obj=JSON.parse(raw||'');
+        return {times:Array.isArray(obj.times)?obj.times.map(x=>String(x||'')).filter(Boolean):[], disableDefault:!!obj.disableDefault, enabled: enabled!==false};
+      }catch(e){}
+      return {times:[], disableDefault:false, enabled: enabled!==false};
+    }
+
+    function loadRoutineRemindStateFromRows(rows){
+      (rows||[]).forEach(x=>{
+        const state=parseRoutineRemindPlan(x.assigneeRemindPlan||'', x.assigneeRemindEnabled!==false);
+        routineRemindState[x.templateId]={times:[...(state.times||[])], disableDefault:!!state.disableDefault};
+      });
+    }
+
+    function renderRoutineRemindBox(x){
+      const state=routineRemindState[x.templateId] || {times:[], disableDefault:false};
+      return `
+        <div class="task-remind-box" id="routineRemindBox_${x.templateId}">
+          <div class="task-remind-title">提醒設定</div>
+          <label><input type="checkbox" ${state.disableDefault?'checked':''} onchange="toggleRoutineDefaultRemind('${x.templateId}', this.checked)"> 關閉預設提醒</label>
+          <div class="task-remind-row">
+            <input type="time" id="customRemindTime_${x.templateId}">
+            <button class="btn secondary" type="button" onclick="addRoutineRemindTime('${x.templateId}')">新增自己的提醒時間</button>
+          </div>
+          <div class="task-remind-times">${(state.times||[]).length ? state.times.map(t=>`<span class="task-remind-chip">${esc(t)} <button type="button" onclick="removeRoutineRemindTime('${x.templateId}','${t}')">×</button></span>`).join('') : '<span class="mini-help">目前沒有自訂提醒時間</span>'}</div>
+        </div>`;
+    }
+
+    async function saveRoutineRemindPrefs(templateId){
+      const state=routineRemindState[templateId] || {times:[], disableDefault:false};
+      await api('updateRoutineReminderPrefs', { userId: currentUser.id, templateId, enabled:'是', plan: JSON.stringify({ times: state.times || [], disableDefault: !!state.disableDefault }) });
+    }
+
+    async function toggleRoutineDefaultRemind(templateId, checked){
+      routineRemindState[templateId]=routineRemindState[templateId]||{times:[],disableDefault:false};
+      routineRemindState[templateId].disableDefault=!!checked;
+      await saveRoutineRemindPrefs(templateId);
+    }
+
+    async function addRoutineRemindTime(templateId){
+      const input=qs(`#customRemindTime_${templateId}`);
+      const time=(input&&input.value)||'';
+      if(!time) return;
+      const state=routineRemindState[templateId]=routineRemindState[templateId]||{times:[],disableDefault:false};
+      if(!state.times.includes(time)) state.times.push(time);
+      state.times.sort();
+      await saveRoutineRemindPrefs(templateId);
+      renderMine();
+    }
+
+    async function removeRoutineRemindTime(templateId, time){
+      const state=routineRemindState[templateId]=routineRemindState[templateId]||{times:[],disableDefault:false};
+      state.times=(state.times||[]).filter(x=>x!==time);
+      await saveRoutineRemindPrefs(templateId);
+      renderMine();
+    }
 
     function applyRoutineMode() {
       routineAdminMode = !!(currentUser && currentUser.role === 'admin' && isSettingsMode());
@@ -304,8 +375,9 @@
 
     function renderMine() {
       const rows = pageData.mine || [];
+      loadRoutineRemindStateFromRows(rows);
       qs('#myRoutineList').innerHTML = rows.length ? rows.map((x, idx) => `
-        <div class="item">
+        <div class="item ${x.templateId===targetTemplateId?'task-highlight':''}" id="routineItem_${x.templateId}">
           <div class="item-top">
             <div>
               <strong>${x.title}</strong>
@@ -315,6 +387,7 @@
           </div>
           <div style="margin-top:8px">${x.content || '未填寫說明'}</div>
           <div class="routine-deadline"><span class="deadline-label">應完成日期：</span>${x.dueDate}${x.requirePhotoReturn==='是' ? '　｜　需附照片' : ''}</div>
+          ${renderRoutineRemindBox(x)}
           ${x.status==='待完成' || x.status==='已逾期' ? `
             <div class="complete-box">
               <div class="field"><label>完成備註（選填）</label><textarea id="note_${idx}" placeholder="有需要補充時再填寫"></textarea></div>
@@ -324,6 +397,7 @@
             </div>` : `<div class="item-meta">完成時間：${x.completedAt || '已完成'}</div>`}
         </div>
       `).join('') : '<div class="empty-box">目前沒有輪到你處理的定期事項。</div>';
+      if(targetTemplateId){ const el=qs('#routineItem_' + targetTemplateId); if(el){ setTimeout(()=>{ try{ el.scrollIntoView({behavior:'smooth', block:'center'}); }catch(e){} }, 60); } }
     }
 
     function editTemplate(id) {
@@ -464,6 +538,7 @@
       fillMonthDays();
       currentUser = requireLogin();
       if (!currentUser) return;
+      targetTemplateId = new URLSearchParams(location.search).get('templateId') || '';
       applyRoutineMode();
       togglePermanent();
       if (routineAdminMode) {
