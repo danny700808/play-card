@@ -78,13 +78,7 @@
     </div>
 
     <div id="adminBlock" class="hidden">
-      <div id="routineMenuCard" class="card">
-        <div class="section-title">定期事項</div>
-        <div class="section-subtitle">先選一個區塊，再進去新增、修改或查看該區的固定任務。</div>
-        <div id="routineMenuGrid" class="group-grid"></div>
-      </div>
-
-      <div id="routineDetailCard" class="hidden">
+      <div id="routineDetailCard">
         <div class="card">
           <div class="detail-head">
             <div>
@@ -102,6 +96,7 @@
           <input type="hidden" id="templateId">
           <div class="field"><label>事項名稱</label><input id="routineTitle" placeholder="例如：開店巡檢、每月庫存盤點"></div>
           <div class="field"><label>說明（選填）</label><textarea id="routineContent" placeholder="需要交代的細節可寫在這裡"></textarea></div>
+          <div class="field"><label>放入哪一個區塊</label><select id="routineSectionType"><option value="daily">每天要做的</option><option value="weekly">每週要做的</option><option value="monthly">每個月要做的</option><option value="long">超過一個月</option><option value="reassign">待重新指派</option></select></div>
 
           <div class="field-row">
             <div class="field"><label>完成回報需求</label><select id="routinePhotoNeed"><option value="否">不強制照片</option><option value="是">完成時需附照片</option></select></div>
@@ -340,6 +335,7 @@
       qs('#routinePhotoNeed').value = '否';
       qs('#routineRemindTime').value = '09:00';
       qs('#routineLongInterval').value = '2';
+      qs('#routineSectionType').value = activeSectionKey || 'daily';
       qs('#routineStartDate').value = '';
       qs('#routineEndDate').value = '';
       qs('#routinePermanent').checked = false;
@@ -487,6 +483,7 @@
       qs('#routineMonthDay').value = '1';
       qs('#routineLongMonthDay').value = '1';
       if (x.groupKey === 'weekly') setWeekdaysValue(x.cycleValue || '');
+      qs('#routineSectionType').value = x.groupKey || 'daily';
       if (x.groupKey === 'monthly') qs('#routineMonthDay').value = String(x.cycleValue || '1');
       if (x.groupKey === 'long') qs('#routineLongMonthDay').value = String(x.cycleValue || '1');
       qs('#saveRoutineBtn').textContent = '更新定期事項';
