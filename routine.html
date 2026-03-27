@@ -85,7 +85,9 @@
               <div class="detail-title" id="detailTitle">每天要做的</div>
               <div class="section-subtitle" id="detailSubtitle">只顯示這一區自己的內容。</div>
             </div>
-            
+            <div class="inline-actions" style="margin-top:0">
+              <button class="btn secondary" onclick="backToMenu()">返回區塊首頁</button>
+            </div>
           </div>
         </div>
 
@@ -103,7 +105,17 @@
 
           <div class="field"><label>說明圖片（選填）</label><input id="routineImageFiles" type="file" accept=".jpg,.jpeg,.png,.webp" multiple><div class="mini-help">可上傳示意圖片給員工查看。</div></div>
           <div class="field"><label>說明影片（選填）</label><input id="routineVideoFiles" type="file" accept="video/*" multiple></div>
-          <div class="field"><label>說明錄音（選填）</label><input id="routineAudioFiles" type="file" accept="audio/*" multiple></div>
+          <div class="field"><label>任務錄音（選填）</label>
+            <div class="attach-tools">
+              <div class="task-actions">
+                <button type="button" class="btn secondary" style="width:auto" id="routineStartRecBtn">開始錄音</button>
+                <button type="button" class="btn secondary" style="width:auto" id="routineStopRecBtn" disabled>完成錄音</button>
+                <button type="button" class="btn secondary hidden" style="width:auto" id="routineClearRecBtn">刪除錄音</button>
+              </div>
+            </div>
+            <div class="attach-badge" id="routineRecStatus">尚未錄音</div>
+            <audio id="routineRecPreview" class="task-player hidden" controls></audio>
+          </div>
 
           <div id="weeklyBox" class="field hidden">
             <label>每週星期</label>
@@ -135,7 +147,7 @@
           </div>
 
           <div class="inline-actions">
-            <button class="btn full" id="saveRoutineBtn" onclick="saveRoutineTemplate()">儲存定期事項</button>
+            <button class="btn" id="saveRoutineBtn" onclick="saveRoutineTemplate()">儲存定期事項</button>
             <button class="btn secondary hidden" id="cancelEditBtn" onclick="resetRoutineForm()">取消修改</button>
           </div>
           <div id="saveProgressBox" class="progress-box hidden" style="margin-top:10px"><div class="progress-head"><strong>儲存定期事項</strong><span id="saveProgressPct">0%</span></div><div class="progress-track"><div id="saveProgressBar" class="progress-bar"></div></div><div id="saveProgressText" class="attach-badge">準備送出...</div></div>
@@ -146,12 +158,6 @@
           <div class="section-subtitle">只顯示目前這一區的固定任務。</div>
           <div id="adminTemplateList" class="compact-list" style="margin-top:12px"></div>
         </div>
-      </div>
-
-      <div class="card routine-below-menu">
-        <div class="section-title">各區固定事項</div>
-        <div class="section-subtitle">設定完後，下面可查看各區已建立的固定事項。</div>
-        <div id="routineMenuGrid" class="group-grid"></div>
       </div>
     </div>
   </div>
@@ -166,6 +172,11 @@
     let activeSectionKey = '';
     let targetTemplateId = '';
     const routineRemindState = {};
+    let routineRecorder = null;
+    let routineMediaStream = null;
+    let routineRecordedBlob = null;
+    let routineRecordedUrl = '';
+    let routineRecordedAsset = null;
 
     const SECTIONS = [
       { key: 'daily', label: '每天要做的', isReassign: false },
@@ -329,7 +340,7 @@
       qs('#routinePhotoNeed').value = '否';
       qs('#routineRemindTime').value = '09:00';
       qs('#routineLongInterval').value = '2';
-      if(qs('#routineSectionType')) qs('#routineSectionType').value = activeSectionKey || 'daily';
+      qs('#routineSectionType').value = activeSectionKey || 'daily';
       qs('#routineStartDate').value = '';
       qs('#routineEndDate').value = '';
       qs('#routinePermanent').checked = false;
@@ -337,7 +348,8 @@
       qs('#routineMonthDay').value = '1';
       qs('#routineLongMonthDay').value = '1';
       setWeekdaysValue('');
-      ['routineImageFiles','routineVideoFiles','routineAudioFiles'].forEach(id=>{ const el=qs('#'+id); if(el) el.value=''; });
+      ['routineImageFiles','routineVideoFiles'].forEach(id=>{ const el=qs('#'+id); if(el) el.value=''; });
+      clearRoutineRecording();
       qs('#saveProgressBox').classList.add('hidden');
       qs('#saveRoutineBtn').textContent = '儲存定期事項';
       qs('#cancelEditBtn').classList.add('hidden');
@@ -476,7 +488,7 @@
       qs('#routineMonthDay').value = '1';
       qs('#routineLongMonthDay').value = '1';
       if (x.groupKey === 'weekly') setWeekdaysValue(x.cycleValue || '');
-      if(qs('#routineSectionType')) qs('#routineSectionType').value = x.groupKey || 'daily';
+      qs('#routineSectionType').value = x.groupKey || 'daily';
       if (x.groupKey === 'monthly') qs('#routineMonthDay').value = String(x.cycleValue || '1');
       if (x.groupKey === 'long') qs('#routineLongMonthDay').value = String(x.cycleValue || '1');
       qs('#saveRoutineBtn').textContent = '更新定期事項';
@@ -526,13 +538,18 @@
       const payload = buildSavePayload();
       payload.imageAssets = await collectRoutineAssets('routineImageFiles','image',12,42);
       payload.videoAssets = await collectRoutineAssets('routineVideoFiles','video',42,72);
-      payload.audioAssets = await collectRoutineAssets('routineAudioFiles','audio',72,88);
+      payload.audioAssets = [];
+      if(routineRecordedAsset){
+        setProgressUI('saveProgress',78,'錄音上傳中...');
+        payload.audioAssets = [routineRecordedAsset];
+      }
       setSaveProgress(92,'寫入固定事項資料中...');
       const r = await api('saveRoutineTemplate', payload);
       if (!r.ok) { setMsg(qs('#msg'), r.message || '儲存失敗', true); setSaveProgress(100,r.message||'儲存失敗'); return; }
       setMsg(qs('#msg'), r.message || '儲存完成');
       setSaveProgress(100,r.message||'儲存完成');
       const keepSection = activeSectionKey;
+      await setupRoutineRecorder();
       await refreshPage();
       if (keepSection) openSection(keepSection);
       resetRoutineForm();
@@ -581,6 +598,74 @@
       if (!r.ok) { setInlineProgress(idx, 100, r.message || '送出失敗'); return; }
       setInlineProgress(idx, 100, r.message || '已完成');
       await refreshPage();
+    }
+
+
+function clearRoutineRecording(){
+      try{ if(routineRecorder && routineRecorder.state !== 'inactive') routineRecorder.stop(); }catch(e){}
+      routineRecorder = null;
+      if(routineMediaStream){ try{ routineMediaStream.getTracks().forEach(t=>t.stop()); }catch(e){} }
+      routineMediaStream = null;
+      routineRecordedBlob = null;
+      routineRecordedAsset = null;
+      if(routineRecordedUrl){ try{ URL.revokeObjectURL(routineRecordedUrl); }catch(e){} }
+      routineRecordedUrl = '';
+      const preview = qs('#routineRecPreview');
+      if(preview){ preview.pause(); preview.removeAttribute('src'); preview.classList.add('hidden'); preview.load?.(); }
+      const status = qs('#routineRecStatus'); if(status) status.textContent='尚未錄音';
+      const startBtn = qs('#routineStartRecBtn'); if(startBtn) startBtn.disabled=false;
+      const stopBtn = qs('#routineStopRecBtn'); if(stopBtn) stopBtn.disabled=true;
+      const clearBtn = qs('#routineClearRecBtn'); if(clearBtn) clearBtn.classList.add('hidden');
+    }
+
+    async function setupRoutineRecorder(){
+      const startBtn = qs('#routineStartRecBtn');
+      const stopBtn = qs('#routineStopRecBtn');
+      const clearBtn = qs('#routineClearRecBtn');
+      const preview = qs('#routineRecPreview');
+      const status = qs('#routineRecStatus');
+      if(!startBtn || !stopBtn || !clearBtn || !preview || !status) return;
+      startBtn.onclick = async ()=>{
+        try{
+          clearRoutineRecording();
+          routineMediaStream = await navigator.mediaDevices.getUserMedia({audio:true});
+          const chunks = [];
+          routineRecorder = new MediaRecorder(routineMediaStream);
+          routineRecorder.ondataavailable = e=>{ if(e.data && e.data.size) chunks.push(e.data); };
+          routineRecorder.onstop = async ()=>{
+            routineRecordedBlob = new Blob(chunks, {type: (routineRecorder && routineRecorder.mimeType) || 'audio/webm'});
+            routineRecordedUrl = URL.createObjectURL(routineRecordedBlob);
+            preview.src = routineRecordedUrl;
+            preview.classList.remove('hidden');
+            clearBtn.classList.remove('hidden');
+            status.textContent = '已錄音，儲存時會自動上傳';
+            try{
+              const file = new File([routineRecordedBlob], 'routine-audio.webm', {type:routineRecordedBlob.type || 'audio/webm'});
+              const uploaded = await uploadFileToCloudinary(file,{folder:'routine/assigned-audio'});
+              routineRecordedAsset = cloudinaryAssetFromResponse(uploaded);
+              status.textContent = '錄音完成';
+            }catch(err){
+              routineRecordedAsset = null;
+              status.textContent = '錄音已完成，但上傳失敗';
+              showToast(err && err.message ? err.message : '錄音上傳失敗');
+            }
+          };
+          routineRecorder.start();
+          startBtn.disabled = true;
+          stopBtn.disabled = false;
+          status.textContent = '錄音中，請直接說話';
+        }catch(err){
+          showToast(err && err.message ? err.message : '無法啟用錄音');
+        }
+      };
+      stopBtn.onclick = ()=>{
+        if(routineRecorder && routineRecorder.state !== 'inactive') routineRecorder.stop();
+        if(routineMediaStream){ try{ routineMediaStream.getTracks().forEach(t=>t.stop()); }catch(e){} }
+        routineMediaStream = null;
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+      };
+      clearBtn.onclick = ()=> clearRoutineRecording();
     }
 
     async function refreshPage() {
