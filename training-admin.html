@@ -75,18 +75,21 @@
   <script>
     let adminData={categories:[],items:[]};
 
-    const FIXED_TRAINING_CATEGORIES = [
+    const DEFAULT_TRAINING_CATEGORIES = [
       { id:'CAT001', name:'門市接待與銷售', sortOrder:1, enabled:true, description:'接待、詢問需求、成交與售後應對' },
       { id:'CAT002', name:'商品與設備知識', sortOrder:2, enabled:true, description:'樂器、設備、配件與故障基礎知識' },
       { id:'CAT003', name:'倉儲、庫存與出貨', sortOrder:3, enabled:true, description:'庫存位置、包貨、寄件、退換貨' },
       { id:'CAT004', name:'門市環境與清潔維護', sortOrder:4, enabled:true, description:'清潔、整理、展示品保養與開收店檢查' },
       { id:'CAT005', name:'行政與教學支援', sortOrder:5, enabled:true, description:'收款、記帳、課務、學生接待與行政協助' }
     ];
-    function getFixedTrainingCategories(){
-      return FIXED_TRAINING_CATEGORIES.map(x => ({...x}));
+    function getDefaultTrainingCategories(){
+      return DEFAULT_TRAINING_CATEGORIES.map(x => ({...x}));
     }
-    function normalizeTrainingItems(items){
-      const catMap = Object.fromEntries(getFixedTrainingCategories().map(c => [c.id, c]));
+    function getCurrentTrainingCategories(){
+      return (adminData.categories && adminData.categories.length ? adminData.categories : getDefaultTrainingCategories()).map(x => ({...x}));
+    }
+    function normalizeTrainingItems(items, categories){
+      const catMap = Object.fromEntries((categories || getCurrentTrainingCategories()).map(c => [c.id, c]));
       return (items || []).map(x => {
         const y = {...(x || {})};
         const c = catMap[y.categoryId];
@@ -161,19 +164,20 @@
     function setProgress(v,label){ qs('#progressBox').classList.remove('hidden'); qs('#progressBar').style.width=v+'%'; qs('#progressText').textContent=(label?label+' ':'')+v+'%'; }
     function resetProgress(){ qs('#progressBar').style.width='0%'; qs('#progressText').textContent='0%'; qs('#progressBox').classList.add('hidden'); }
     function selectedEnabled(){ const el=document.querySelector('input[name="enabled"]:checked'); return el?el.value:'是'; }
-    function fillCategoryOptions(){ const categories=getFixedTrainingCategories(); qs('#categoryId').innerHTML='<option value="">請選擇分類</option>'+categories.map(c=>`<option value="${c.id}">${c.name}</option>`).join(''); }
+    function fillCategoryOptions(){ const categories=getCurrentTrainingCategories(); qs('#categoryId').innerHTML='<option value="">請選擇分類</option>'+categories.map(c=>`<option value="${c.id}">${c.name}</option>`).join(''); }
     async function loadAdminData(){
       const user=requireLogin(); if(!user) return;
-      adminData.categories = getFixedTrainingCategories();
+      adminData.categories = getDefaultTrainingCategories();
       fillCategoryOptions();
       const r=await api('getTrainingPageData',{userId:user.id,includeDisabled:true,adminMode:true});
       if(!r.ok) throw new Error(r.message||'讀取失敗');
-      adminData.items = normalizeTrainingItems(r.items||[]);
+      adminData.categories = Array.isArray(r.categories) && r.categories.length ? r.categories : getDefaultTrainingCategories();
+      adminData.items = normalizeTrainingItems(r.items||[], adminData.categories);
       renderAdminList();
     }
     function renderAdminList(){
       const box=qs('#adminList');
-      const categories=getFixedTrainingCategories();
+      const categories=getCurrentTrainingCategories();
       const items=adminData.items||[];
       box.innerHTML = categories.map(c=>{
         const rows=items.filter(x=>x.categoryId===c.id);
@@ -262,7 +266,7 @@
     function stopRecord(){ if(audioRecorder){ try{ audioRecorder.stop(); }catch(e){} audioRecorder=null; } }
     function init(){
       fillHeader(); const user=requireLogin(); if(!user) return; if(!user.showSettingsZone){ location.href='dashboard.html'; return; }
-      adminData.categories = getFixedTrainingCategories();
+      adminData.categories = getDefaultTrainingCategories();
       fillCategoryOptions();
       setPortalMode('settings'); qs('#saveBtn').onclick=saveItem; qs('#recordBtn').onclick=beginRecord; qs('#stopRecordBtn').onclick=stopRecord; qs('#clearRecordBtn').onclick=clearRecording;
       renderExistingMedia();

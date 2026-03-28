@@ -60,18 +60,21 @@
   <script>
     let trainingData={categories:[],items:[]}; let activeCategory='';
 
-    const FIXED_TRAINING_CATEGORIES = [
+    const DEFAULT_TRAINING_CATEGORIES = [
       { id:'CAT001', name:'門市接待與銷售', sortOrder:1, enabled:true, description:'接待、詢問需求、成交與售後應對' },
       { id:'CAT002', name:'商品與設備知識', sortOrder:2, enabled:true, description:'樂器、設備、配件與故障基礎知識' },
       { id:'CAT003', name:'倉儲、庫存與出貨', sortOrder:3, enabled:true, description:'庫存位置、包貨、寄件、退換貨' },
       { id:'CAT004', name:'門市環境與清潔維護', sortOrder:4, enabled:true, description:'清潔、整理、展示品保養與開收店檢查' },
       { id:'CAT005', name:'行政與教學支援', sortOrder:5, enabled:true, description:'收款、記帳、課務、學生接待與行政協助' }
     ];
-    function getFixedTrainingCategories(){
-      return FIXED_TRAINING_CATEGORIES.map(x => ({...x}));
+    function getDefaultTrainingCategories(){
+      return DEFAULT_TRAINING_CATEGORIES.map(x => ({...x}));
     }
-    function normalizeTrainingItems(items){
-      const catMap = Object.fromEntries(getFixedTrainingCategories().map(c => [c.id, c]));
+    function getCurrentTrainingCategories(){
+      return (trainingData.categories && trainingData.categories.length ? trainingData.categories : getDefaultTrainingCategories()).map(x => ({...x}));
+    }
+    function normalizeTrainingItems(items, categories){
+      const catMap = Object.fromEntries((categories || getCurrentTrainingCategories()).map(c => [c.id, c]));
       return (items || []).map(x => {
         const y = {...(x || {})};
         const c = catMap[y.categoryId];
@@ -91,11 +94,12 @@
     function resourceBtns(urls,label){ const arr=splitLinks(urls); return arr.map((u,i)=>`<button type="button" class="btn secondary link-btn" onclick="openMediaInTopWindow('${u}')">${label}${arr.length>1?(' '+(i+1)):''}</button>`).join(''); }
     async function loadTraining(){
       const user=requireLogin(); if(!user) return;
-      trainingData.categories = getFixedTrainingCategories();
+      trainingData.categories = getDefaultTrainingCategories();
       renderCategories();
       const r=await api('getTrainingPageData',{userId:user.id});
       if(!r.ok) throw new Error(r.message||'讀取失敗');
-      trainingData.items = normalizeTrainingItems(r.items||[]);
+      trainingData.categories = Array.isArray(r.categories) && r.categories.length ? r.categories : getDefaultTrainingCategories();
+      trainingData.items = normalizeTrainingItems(r.items||[], trainingData.categories);
       renderCategories();
       renderResults();
     }
@@ -104,7 +108,7 @@
     }
     function renderCategories(){
       const box=qs('#categoryList'); const allActive = activeCategory==='';
-      const categories=getFixedTrainingCategories();
+      const categories=getCurrentTrainingCategories();
       const totalCount=(trainingData.items||[]).length;
       box.innerHTML=[`<button type="button" class="category-chip ${allActive?'active':''}" onclick="selectCategory('')"><span class="category-count">${totalCount}</span><strong>全部教材</strong><div class="muted">顯示所有啟用中的教材</div></button>`].concat(categories.map(c=>`<button type="button" class="category-chip ${activeCategory===c.id?'active':''}" onclick="selectCategory('${c.id}')"><span class="category-count">${getCategoryCount(c.id)}</span><strong>${esc(c.name)}</strong><div class="muted">${esc(c.description||'')}</div></button>`)).join('');
     }
@@ -120,7 +124,7 @@
     function init(){
       fillHeader();
       requireLogin();
-      trainingData.categories = getFixedTrainingCategories();
+      trainingData.categories = getDefaultTrainingCategories();
       renderCategories();
       qs('#searchBtn').onclick=()=>renderResults(true);
       qs('#keyword').addEventListener('input', ()=>renderResults(!!qs('#keyword').value.trim()));

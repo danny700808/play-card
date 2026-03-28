@@ -7,6 +7,7 @@ function setPortalMode(mode){localStorage.setItem('employeePortalMode', mode==='
 function getPortalMode(){return localStorage.getItem('employeePortalMode')||'staff'}
 function clearPortalMode(){localStorage.removeItem('employeePortalMode')}
 function hasSettingsZoneAccess(user=getUser()){return !!(user && user.showSettingsZone)}
+function isManager(user=getUser()){return !!(user && (user.showSettingsZone || String(user.role||'').toLowerCase()==='admin'))}
 function isSettingsMode(){return hasSettingsZoneAccess() && getPortalMode()==='settings'}
 function modeHomeHref(){return isSettingsMode() ? 'settings.html' : 'dashboard.html'}
 function getUser(){try{return JSON.parse(localStorage.getItem('employeeUser')||'null')}catch(e){return null}}
@@ -165,7 +166,7 @@ async function uploadFilesToCloudinary(files, opts={}){
   }
   return results;
 }
-function fillHeader(){const user=requireLogin(); if(!user) return; qsa('[data-user-name]').forEach(el=>el.textContent=user.name||'員工'); qsa('[data-if-parttime]').forEach(el=>el.style.display=user.isPartTime?'':'none'); qsa('[data-if-admin]').forEach(el=>el.style.display=user.role==='admin'?'':'none'); qsa('[data-if-staff-view]').forEach(el=>el.style.display=user.role==='admin'?'none':'');}
+function fillHeader(){const user=requireLogin(); if(!user) return; const manager=isManager(user); qsa('[data-user-name]').forEach(el=>el.textContent=user.name||'員工'); qsa('[data-if-parttime]').forEach(el=>el.style.display=user.isPartTime?'':'none'); qsa('[data-if-admin]').forEach(el=>el.style.display=manager?'':'none'); qsa('[data-if-staff-view]').forEach(el=>el.style.display=manager?'none':'');}
 function redirectAfterLogin(user){saveUser(user); if(user && user.showSettingsZone){setPortalMode('staff'); location.href='portal.html'; return;} location.href = user.role==='admin' ? 'task.html' : 'dashboard.html';}
 function saveLoginPref(email,password,remember=true){if(!remember){localStorage.removeItem('employeeSavedLogin');return;}localStorage.setItem('employeeSavedLogin',JSON.stringify({email:email||'',password:password||'',remember:true}));}
 function getSavedLogin(){try{return JSON.parse(localStorage.getItem('employeeSavedLogin')||'null')}catch(e){return null}}

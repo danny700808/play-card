@@ -61,7 +61,7 @@
 <script>
 let historyRows=[]; let approvalRows=[]; let currentUser=null; let leaveApprovalMode=false;
 function applyLeaveMode(){
-  leaveApprovalMode = !!(currentUser && currentUser.role==='admin' && isSettingsMode());
+  leaveApprovalMode = !!(currentUser && isManager(currentUser) && isSettingsMode());
   qs('#staffBlock').classList.toggle('hidden', leaveApprovalMode);
   qs('#approvalCard').classList.toggle('hidden', !leaveApprovalMode);
   qs('#leavePageTitle').textContent = leaveApprovalMode ? '請假簽核' : '請假申請單';

@@ -346,7 +346,16 @@
       employees: []
     };
 
+    let currentUser = null;
+
     document.addEventListener('DOMContentLoaded', () => {
+      currentUser = requireLogin();
+      if (!currentUser) return;
+      if (!isManager(currentUser) || !currentUser.showSettingsZone) {
+        location.href = 'dashboard.html';
+        return;
+      }
+      setPortalMode('settings');
       buildDayFields();
       bindForms();
       toggleSingleDayTime();
@@ -389,25 +398,30 @@
     }
 
     async function callBackend(action, payload = {}) {
+      const user = currentUser || requireLogin();
+      if (!user) throw new Error('請先登入');
+      const managerOk = isManager(user) && !!user.showSettingsZone;
+      if (!managerOk) throw new Error('你沒有權限進入班表設定');
+      const finalPayload = Object.assign({ userId: user.id }, payload || {});
       const inheritedApi = (typeof window !== 'undefined' && typeof window.apiCall === 'function' && window.apiCall !== callBackend) ? window.apiCall : null;
       if (inheritedApi) {
-        return await inheritedApi(action, payload);
+        return await inheritedApi(action, finalPayload);
       }
       if (typeof window !== 'undefined' && window.parent && window.parent !== window && typeof window.parent.apiCall === 'function') {
-        return await window.parent.apiCall(action, payload);
+        return await window.parent.apiCall(action, finalPayload);
       }
       if (typeof api === 'function') {
-        return await api(action, payload);
+        return await api(action, finalPayload);
       }
       if (typeof api !== 'undefined' && api && typeof api.post === 'function') {
-        return await api.post(action, payload);
+        return await api.post(action, finalPayload);
       }
       if (typeof google !== 'undefined' && google.script && google.script.run && typeof google.script.run.doPostProxy === 'function') {
         return await new Promise((resolve, reject) => {
           google.script.run
             .withSuccessHandler(resolve)
             .withFailureHandler(function(err){ reject(new Error(err && err.message ? err.message : 'GAS 呼叫失敗')); })
-            .doPostProxy(Object.assign({ action: action }, payload));
+            .doPostProxy(Object.assign({ action: action }, finalPayload));
         });
       }
       const apiBase = (typeof window !== 'undefined' && (window.API_BASE_URL || localStorage.getItem('EMPLOYEE_SYSTEM_API_BASE'))) || '';
@@ -415,7 +429,7 @@
         const res = await fetch(apiBase, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify(Object.assign({ action: action }, payload))
+          body: JSON.stringify(Object.assign({ action: action }, finalPayload))
         });
         const json = await res.json();
         if (!json.ok) throw new Error(json.message || '後端回傳失敗');
@@ -568,7 +582,7 @@
         const end = a.endTime || a['下班時間'] || '';
         const allowSpecial = String(a.allowSpecial || a['允許特殊打卡'] || 'FALSE') === 'TRUE';
         const extra = allowSpecial ? '｜可標準＋特殊共用' : '';
-        return `<div class="item"><div class="item-head"><div><h3>${escapeHtml(a.employeeName || a['員工姓名'] || '未命名員工')}</h3><div class="muted">日期：${escapeHtml(a.date || a['日期'] || '')}｜${escapeHtml(type)}${extra}</div></div><span class="pill ${enabled ? '' : 'off'}">${enabled ? '啟用中' : '已停用'}</span></div><div class="schedule-mini"><div><b>時間：</b>${start && end ? `${escapeHtml(start)} - ${escapeHtml(end)}` : '—'}</div><div><b>單日ID：</b>${escapeHtml(a.recordId || a['單日ID'] || '')}</div><div><b>備註：</b>${escapeHtml(a.note || a['備註'] || '')}</div></div><div class="actions"><button class="btn btn-secondary" type="button" onclick="editSingleDay(${index})">編輯</button><button class="btn btn-danger" type="button" onclick="deleteSingleDay('${'${'}escapeJs(a.recordId || a['單日ID'] || '')${'}'}')">刪除</button></div></div>`;
+        return `<div class="item"><div class="item-head"><div><h3>${escapeHtml(a.employeeName || a['員工姓名'] || '未命名員工')}</h3><div class="muted">日期：${escapeHtml(a.date || a['日期'] || '')}｜${escapeHtml(type)}${extra}</div></div><span class="pill ${enabled ? '' : 'off'}">${enabled ? '啟用中' : '已停用'}</span></div><div class="schedule-mini"><div><b>時間：</b>${start && end ? `${escapeHtml(start)} - ${escapeHtml(end)}` : '—'}</div><div><b>單日ID：</b>${escapeHtml(a.recordId || a['單日ID'] || '')}</div><div><b>備註：</b>${escapeHtml(a.note || a['備註'] || '')}</div></div><div class="actions"><button class="btn btn-secondary" type="button" onclick="editSingleDay(${index})">編輯</button><button class="btn btn-danger" type="button" onclick="deleteSingleDay('${escapeJs(a.recordId || a['單日ID'] || '')}')">刪除</button></div></div>`;
       }).join('');
     }
 

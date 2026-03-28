@@ -304,7 +304,7 @@
     }
 
     function applyRoutineMode() {
-      routineAdminMode = !!(currentUser && currentUser.role === 'admin' && isSettingsMode());
+      routineAdminMode = !!(currentUser && isManager(currentUser) && isSettingsMode());
       qs('#adminBlock').classList.toggle('hidden', !routineAdminMode);
       qs('#staffBlock').classList.toggle('hidden', routineAdminMode);
       qs('#routinePageTitle').textContent = routineAdminMode ? '定期事項設定' : '定期事項';

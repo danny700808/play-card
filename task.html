@@ -292,7 +292,7 @@
     const completeRecorderMap = {};
 
     function applyTaskMode(){
-      taskAdminMode = !!(currentUser && currentUser.role==='admin' && isSettingsMode());
+      taskAdminMode = !!(currentUser && isManager(currentUser) && isSettingsMode());
       qs('#adminBlock').style.display = taskAdminMode ? '' : 'none';
       qs('#staffBlock').style.display = taskAdminMode ? 'none' : '';
       qs('#taskPageTitle').textContent = taskAdminMode ? '交辦事項設定' : '交辦事項';
@@ -415,7 +415,7 @@
     }
 
     async function loadAssignees(){
-      const r=await api('getEmployeeOptions', {});
+      const r=await api('getEmployeeOptions', { userId: currentUser.id });
       const sel=qs('#assigneeId');
       sel.innerHTML='<option value="">請選擇員工</option>' + (r.rows||[]).map(x=>`<option value="${x.id}">${x.name}</option>`).join('');
     }
