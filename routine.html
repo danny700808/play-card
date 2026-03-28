@@ -729,6 +729,7 @@ function clearRoutineRecording(){
       fillMonthDays();
       currentUser = requireLogin();
       if (!currentUser) return;
+      if (!routineAdminMode && !guardFeatureAccess('routine', currentUser)) return;
       targetTemplateId = new URLSearchParams(location.search).get('templateId') || '';
       applyRoutineMode();
       togglePermanent();

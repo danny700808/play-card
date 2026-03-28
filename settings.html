@@ -23,8 +23,8 @@
       <div class="muted">這一區只放設定與簽核，不顯示員工自己的操作頁。</div>
     </div>
     <div class="grid">
-      <a class="tile" href="registration-approval.html"><strong>註冊審核</strong><span>查看新註冊員工申請，直接同意或駁回</span></a>
-      <a class="tile" href="leave.html"><strong>請假簽核</strong><span>查看待簽核請假單並直接同意 / 駁回</span></a>
+      <a class="tile" href="registration-approval.html"><div class="tile-top"><strong>註冊審核</strong><span class="tile-badge hidden" id="badgeRegister">0</span></div><span>查看新註冊員工申請，直接同意或駁回</span></a>
+      <a class="tile" href="leave.html"><div class="tile-top"><strong>請假簽核</strong><span class="tile-badge hidden" id="badgeLeave">0</span></div><span>查看待簽核請假單並直接同意 / 駁回</span></a>
       <a class="tile" href="task.html"><strong>交辦事項設定</strong><span>建立交辦事項、查看已建立任務與調整設定</span></a>
       <a class="tile" href="routine.html"><strong>定期事項設定</strong><span>建立固定週期工作、修改負責人與週期設定</span></a>
       <a class="tile" href="training-admin.html"><strong>教育訓練設定</strong><span>新增教材、上傳影片 / 文件 / 音檔與控制是否啟用</span></a>
@@ -34,6 +34,17 @@
   <script src="config.js"></script>
   <script src="app.js"></script>
   <script>
+    async function refreshBadges(user){
+      try{
+        const r = await api('getPendingCounts',{userId:user.id});
+        const reg = Number(r.registrationCount||0);
+        const leave = Number(r.leaveCount||0);
+        const regEl = qs('#badgeRegister');
+        const leaveEl = qs('#badgeLeave');
+        if(regEl){ regEl.textContent=String(reg); regEl.classList.toggle('hidden', reg<=0); }
+        if(leaveEl){ leaveEl.textContent=String(leave); leaveEl.classList.toggle('hidden', leave<=0); }
+      }catch(e){}
+    }
     function init(){
       fillHeader();
       const user=requireLogin();
@@ -41,6 +52,7 @@
       if(!user.showSettingsZone){location.href='dashboard.html';return;}
       document.body.classList.add('has-settings-zone');
       setPortalMode('settings');
+      refreshBadges(user);
     }
   </script>
 </body>

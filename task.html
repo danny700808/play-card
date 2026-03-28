@@ -144,6 +144,9 @@
       .task-dual-section{padding:14px}
     }
 
+
+    .assignee-group-box{margin-bottom:14px}
+
 </style>
 </head>
 <body onload="init()">
@@ -162,7 +165,29 @@
       <div id="adminBlock" data-if-admin style="display:none">        <div class="section-title">快速建立交辦</div>
         <div class="field"><label>任務標題</label><input id="title" placeholder="請輸入任務標題"></div>
         <div class="field"><label>任務內容（選填）</label><textarea id="content" placeholder="需要補充時再填寫"></textarea></div>
-        <div class="field"><label>指派員工</label><select id="assigneeId"><option value="">請選擇員工</option></select></div>
+        <div class="assignee-group-box">
+          <label style="display:block;font-size:14px;font-weight:700;margin-bottom:10px">交辦對象</label>
+          <div class="assignee-group-tabs">
+            <label><input type="radio" name="assigneeGroup" value="staff" checked> <span>專職員工</span></label>
+            <label><input type="radio" name="assigneeGroup" value="parttime"> <span>工讀生</span></label>
+            <label><input type="radio" name="assigneeGroup" value="external"> <span>外聘老師</span></label>
+          </div>
+          <div id="staffAssigneeBox" class="field" style="margin-bottom:0">
+            <label>選擇專職員工</label>
+            <select id="assigneeId"><option value="">請選擇專職員工</option></select>
+          </div>
+          <div id="parttimeAssigneeBox" class="field hidden" style="margin-bottom:0">
+            <label>選擇工讀生</label>
+            <select id="parttimeAssigneeId"><option value="">請選擇工讀生</option></select>
+          </div>
+          <div id="externalAssigneeBox" class="teacher-pick-box hidden">
+            <div class="teacher-select-row">
+              <label style="margin:0;display:flex;align-items:center;gap:8px"><input type="checkbox" id="selectAllExternalTeachers"> <span>全部外聘老師</span></label>
+              <span class="muted">可全選，也可單獨勾選幾位老師</span>
+            </div>
+            <div id="externalTeacherList" class="teacher-check-grid"></div>
+          </div>
+        </div>
 
         <div class="field">
           <label>時間選擇</label>
@@ -290,6 +315,7 @@
     let currentAdminTaskPanel = '';
     const completeAudioDataMap = {};
     const completeRecorderMap = {};
+    let assigneeOptions = [];
 
     function applyTaskMode(){
       taskAdminMode = !!(currentUser && isManager(currentUser) && isSettingsMode());
@@ -414,10 +440,45 @@
       return iso;
     }
 
+    function groupedAssignees(){
+      const groups = { staff: [], parttime: [], external: [] };
+      (assigneeOptions||[]).forEach(x=>{
+        const key = String(x.groupKey || x.identityType || '').trim() || 'staff';
+        if(!groups[key]) groups[key] = [];
+        groups[key].push(x);
+      });
+      return groups;
+    }
+    function renderAssigneeTargets(){
+      const groups = groupedAssignees();
+      const selectedGroup = (document.querySelector('input[name="assigneeGroup"]:checked')||{}).value || 'staff';
+      const staffSel = qs('#assigneeId');
+      const partSel = qs('#parttimeAssigneeId');
+      if(staffSel) staffSel.innerHTML = '<option value="">請選擇專職員工</option>' + (groups.staff||[]).map(x=>`<option value="${x.id}">${x.name}</option>`).join('');
+      if(partSel) partSel.innerHTML = '<option value="">請選擇工讀生</option>' + (groups.parttime||[]).map(x=>`<option value="${x.id}">${x.name}</option>`).join('');
+      const extList = qs('#externalTeacherList');
+      if(extList) extList.innerHTML = (groups.external||[]).map(x=>`<label><input type="checkbox" class="external-teacher-check" value="${x.id}"> <span>${x.name}</span></label>`).join('') || '<div class="muted">目前沒有外聘老師名單</div>';
+      qs('#staffAssigneeBox')?.classList.toggle('hidden', selectedGroup!=='staff');
+      qs('#parttimeAssigneeBox')?.classList.toggle('hidden', selectedGroup!=='parttime');
+      qs('#externalAssigneeBox')?.classList.toggle('hidden', selectedGroup!=='external');
+      const selectAll = qs('#selectAllExternalTeachers');
+      if(selectAll){
+        selectAll.checked = false;
+        selectAll.onchange = () => {
+          document.querySelectorAll('.external-teacher-check').forEach(el=>{ el.checked = selectAll.checked; });
+        };
+      }
+    }
+    function getSelectedAssigneeIds(){
+      const selectedGroup = (document.querySelector('input[name="assigneeGroup"]:checked')||{}).value || 'staff';
+      if(selectedGroup==='staff') return qs('#assigneeId')?.value ? [qs('#assigneeId').value] : [];
+      if(selectedGroup==='parttime') return qs('#parttimeAssigneeId')?.value ? [qs('#parttimeAssigneeId').value] : [];
+      return Array.from(document.querySelectorAll('.external-teacher-check:checked')).map(el=>el.value).filter(Boolean);
+    }
     async function loadAssignees(){
       const r=await api('getEmployeeOptions', { userId: currentUser.id });
-      const sel=qs('#assigneeId');
-      sel.innerHTML='<option value="">請選擇員工</option>' + (r.rows||[]).map(x=>`<option value="${x.id}">${x.name}</option>`).join('');
+      assigneeOptions = (r.rows||[]);
+      renderAssigneeTargets();
     }
 
 
@@ -820,6 +881,7 @@
       applyTaskMode();
       if(taskAdminMode){
         await loadAssignees();
+        document.querySelectorAll('input[name="assigneeGroup"]').forEach(el=>{ el.onchange=renderAssigneeTargets; });
         initRecMeter();
         let recorder=null;
         qs('#remindFreq').onchange=(e)=>{reminderState={freq:e.target.value,times:[]}; refreshRemindUi();};
@@ -836,7 +898,7 @@
         qs('#clearRecBtn').onclick=()=>{taskAudio='';qs('#recStatus').textContent='尚未錄音';qs('#clearRecBtn').classList.add('hidden');renderRecMeter(0);qs('#recMeter').classList.add('hidden');};
         qs('#createBtn').onclick=async()=>{
           const deadline=computeDeadline(dueMode);
-          if(!qs('#title').value.trim() || !qs('#assigneeId').value){setMsg(qs('#msg'),'請先輸入標題並選擇員工',true);return;}
+          const assigneeIds=getSelectedAssigneeIds(); if(!qs('#title').value.trim() || !assigneeIds.length){setMsg(qs('#msg'),'請先輸入標題並選擇交辦對象',true);return;}
           let taskImageAssets=[], taskFileAssets=[], taskAudioAsset=null, taskVideoAsset=null;
           const allTaskFiles=Array.from(qs('#taskImage').files||[]);
           const imageFiles=allTaskFiles.filter(file=>String(file.type||'').startsWith('image/'));
@@ -870,31 +932,42 @@
           }
           setProgressUI('createProgress',72,'寫入任務資料...');
           const remindPlan = JSON.stringify({freq:reminderState.freq, times:reminderState.times||getRemindPreset(reminderState.freq), enabled: qs('#remindFreq').value!=='不提醒'});
-          const r=await api('createTask',{
-            creatorId:currentUser.id,
-            title:qs('#title').value,
-            content:qs('#content').value,
-            assigneeId:qs('#assigneeId').value,
-            dueMode,
-            dueLabel:deadline.dueLabel,
-            dueDate:deadline.dueDate,
-            dueTime:deadline.dueTime,
-            requirePhotoReturn:qs('#requirePhotoReturn').value,
-            remindFreq:qs('#remindFreq').value,
-            remindPlan,
-            taskImageAssets,
-            taskFileAssets,
-            taskAudioAsset,
-            taskVideoAsset
-          });
-          setProgressUI('createProgress',100,r.ok?'建立完成':'建立失敗');
-          setMsg(qs('#msg'),r.message,!r.ok);
-          setTimeout(()=>{btn.classList.remove('hidden'); box.classList.add('hidden');}, r.ok?700:1200);
-          if(r.ok){
+          let allOk = true;
+          let lastMessage = '';
+          for(let i=0;i<assigneeIds.length;i++){
+            setProgressUI('createProgress',72 + Math.round(((i)/Math.max(1,assigneeIds.length))*24), assigneeIds.length>1 ? `建立第 ${i+1}/${assigneeIds.length} 筆交辦...` : '寫入任務資料...');
+            const r=await api('createTask',{
+              creatorId:currentUser.id,
+              title:qs('#title').value,
+              content:qs('#content').value,
+              assigneeId:assigneeIds[i],
+              dueMode,
+              dueLabel:deadline.dueLabel,
+              dueDate:deadline.dueDate,
+              dueTime:deadline.dueTime,
+              requirePhotoReturn:qs('#requirePhotoReturn').value,
+              remindFreq:qs('#remindFreq').value,
+              remindPlan,
+              taskImageAssets,
+              taskFileAssets,
+              taskAudioAsset,
+              taskVideoAsset
+            });
+            allOk = allOk && !!r.ok;
+            lastMessage = r.message || lastMessage;
+            if(!r.ok) break;
+          }
+          const finalMessage = assigneeIds.length>1 && allOk ? `已建立 ${assigneeIds.length} 筆交辦事項。` : (lastMessage || (allOk ? '建立完成' : '建立失敗'));
+          setProgressUI('createProgress',100,allOk?'建立完成':'建立失敗');
+          setMsg(qs('#msg'),finalMessage,!allOk);
+          setTimeout(()=>{btn.classList.remove('hidden'); box.classList.add('hidden');}, allOk?700:1200);
+          if(allOk){
             qs('#title').value=''; qs('#content').value=''; qs('#taskImage').value=''; if(qs('#taskVideo')) qs('#taskVideo').value=''; taskAudio='';
             qs('#recStatus').textContent='尚未錄音'; qs('#clearRecBtn').classList.add('hidden');
             renderRecMeter(0); qs('#recMeter').classList.add('hidden');
             reminderState={freq:qs('#remindFreq').value,times:[]}; refreshRemindUi();
+            document.querySelectorAll('input[name="assigneeGroup"]').forEach((el,idx)=>{ el.checked = idx===0; });
+            renderAssigneeTargets();
             applyDueMode('today');
             setTimeout(loadTasks,450);
           }

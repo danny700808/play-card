@@ -123,7 +123,7 @@
     }
     function init(){
       fillHeader();
-      requireLogin();
+      const user=requireLogin(); if(!user) return; if(!guardFeatureAccess('training', user)) return;
       trainingData.categories = getDefaultTrainingCategories();
       renderCategories();
       qs('#searchBtn').onclick=()=>renderResults(true);

@@ -417,6 +417,7 @@
 
     function init(){
       fillHeader();
+      const user=requireLogin(); if(!user) return; if(!guardFeatureAccess('clock', user)) return;
       tick();
       setInterval(tick, 1000);
       qs('#clockType').onchange = toggleSupplementBox;

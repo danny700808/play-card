@@ -212,6 +212,7 @@
     }
     function init(){
       fillHeader();
+      const user=requireLogin(); if(!user) return; if(!guardFeatureAccess('parttime', user)) return;
       qs('#workDate').value = localDateInputValue();
       qs('#submitBtn').onclick = submitParttime;
       qs('#workDate').addEventListener('input', clearValidation);

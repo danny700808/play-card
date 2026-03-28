@@ -39,24 +39,33 @@
       </div>
     </div>
 
-    <div class="home-grid">
-      <a class="home-tile" href="clock.html"><div><strong>打卡系統</strong><span>上班 / 下班打卡與本月紀錄</span></div><div class="tile-count zero">&nbsp;</div></a>
-      <a class="home-tile" href="parttime.html"><div><strong>工讀生時數</strong><span>1～12 小時與半小時加時</span></div><div class="tile-count zero">&nbsp;</div></a>
-      <a class="home-tile" href="leave.html"><div><strong>請假系統</strong><span>請假申請與自己的請假紀錄</span></div><div class="tile-count zero">&nbsp;</div></a>
-      <a class="home-tile" href="task.html"><div><strong>交辦事項</strong><span>查看任務、回報完成狀態</span></div><div class="tile-count" id="taskCount">0</div></a>
-      <a class="home-tile" href="routine.html"><div><strong>定期事項</strong><span>固定週期工作與完成回報</span></div><div class="tile-count" id="routineCount">0</div></a>
-      <a class="home-tile" href="training.html"><div><strong>教育訓練</strong><span>五大類教材、影片、文件與音檔搜尋</span></div><div class="tile-count zero">&nbsp;</div></a>
-    </div>
+    <div class="home-grid" id="homeGrid"></div>
   </div>
   <script src="config.js"></script>
   <script src="app.js"></script>
   <script>
+
+    function buildHomeTiles(user){
+      const type = identityTypeOf(user);
+      const tiles = [
+        { key:'clock', href:'clock.html', title:'打卡系統', desc:'上班 / 下班打卡與本月紀錄', countId:'', show:type==='staff'||type==='parttime' },
+        { key:'parttime', href:'parttime.html', title:'工讀生時數', desc:'1～12 小時與半小時加時', countId:'', show:type==='parttime' },
+        { key:'leave', href:'leave.html', title:'請假系統', desc:'請假申請與自己的請假紀錄', countId:'', show:type==='staff'||type==='parttime' },
+        { key:'task', href:'task.html', title:'交辦事項', desc:'查看任務、回報完成狀態', countId:'taskCount', show:true },
+        { key:'routine', href:'routine.html', title:'定期事項', desc:'固定週期工作與完成回報', countId:'routineCount', show:type==='staff'||type==='parttime' },
+        { key:'training', href:'training.html', title:'教育訓練', desc:'教材、影片、文件與音檔搜尋', countId:'', show:type==='staff'||type==='parttime' }
+      ].filter(x=>x.show);
+      return tiles.map(x=>`<a class="home-tile" href="${x.href}"><div><strong>${x.title}</strong><span>${x.desc}</span></div><div class="tile-count ${x.countId?'':'zero'}" ${x.countId?`id="${x.countId}"`:''}>${x.countId?'0':'&nbsp;'}</div></a>`).join('');
+    }
+
     async function init(){
       fillHeader();
       const user=requireLogin();
       if(!user) return;
+      if(isExternalTeacher(user)){ location.href='task.html'; return; }
       if(user.showSettingsZone) document.body.classList.add('has-settings-zone');
       setPortalMode('staff');
+      qs('#homeGrid').innerHTML = buildHomeTiles(user);
       await refreshHomeCounts(user);
     }
     async function refreshHomeCounts(user){
