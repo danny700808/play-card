@@ -39,6 +39,10 @@
     .complete-box{margin-top:12px;padding-top:12px;border-top:1px dashed var(--line)}
     .detail-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
     .detail-title{font-size:22px;font-weight:900}
+    .rec-live{display:inline-flex;align-items:center;gap:8px;margin-top:10px;padding:8px 12px;border-radius:999px;background:#fff4f4;color:#b42318;font-weight:800;font-size:13px}
+    .rec-live.hidden{display:none!important}
+    .rec-live-dot{width:10px;height:10px;border-radius:50%;background:#ef4444;animation:recPulse 1s infinite}
+    @keyframes recPulse{0%{transform:scale(.9);opacity:.5}50%{transform:scale(1.2);opacity:1}100%{transform:scale(.9);opacity:.5}}
 
     .task-remind-box{margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:14px;background:#fbfdff}
     .task-remind-title{font-size:14px;font-weight:800;margin-bottom:8px}
@@ -53,16 +57,6 @@
     .task-player{width:100%;margin-top:8px;border-radius:12px}
     .task-gallery{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:8px}
     .task-gallery img{width:100%;display:block;border-radius:12px}
-    .routine-summary-card{padding:14px 16px;border:1px solid var(--line);border-radius:16px;background:#fff}
-    .routine-summary-card .summary-title{font-size:18px;font-weight:900}
-    .routine-summary-card .summary-meta{font-size:13px;color:var(--muted);margin-top:6px;line-height:1.6}
-    .routine-summary-card .summary-note{margin-top:8px;font-size:14px;color:#243447;line-height:1.7;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-    .existing-asset-list{display:flex;flex-direction:column;gap:8px;margin-top:8px}
-    .existing-asset-item{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#fff}
-    .existing-asset-item a{color:#16533f;text-decoration:none;font-weight:700;word-break:break-all}
-    .detail-view{margin-top:14px}
-    .detail-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
-    .detail-section-title{font-size:15px;font-weight:900;margin-top:14px}
     @media (max-width:560px){.group-grid,.field-row{grid-template-columns:1fr}}
   </style>
 </head>
@@ -94,17 +88,16 @@
         <div class="card" id="routineFormCard">
           <div class="section-title">新增 / 修改事項</div>
           <input type="hidden" id="templateId">
+          <div class="field"><label>放入哪一個區塊</label><select id="routineSectionType"><option value="daily">每天要做的</option><option value="weekly">每週要做的</option><option value="monthly">每個月要做的</option><option value="long">超過一個月</option><option value="reassign">待重新指派</option></select></div>
           <div class="field"><label>事項名稱</label><input id="routineTitle" placeholder="例如：開店巡檢、每月庫存盤點"></div>
           <div class="field"><label>說明（選填）</label><textarea id="routineContent" placeholder="需要交代的細節可寫在這裡"></textarea></div>
-          <div class="field"><label>放入哪一個區塊</label><select id="routineSectionType"><option value="daily">每天要做的</option><option value="weekly">每週要做的</option><option value="monthly">每個月要做的</option><option value="long">超過一個月</option><option value="reassign">待重新指派</option></select></div>
 
-          <div class="field-row">
-            <div class="field"><label>完成回報需求</label><select id="routinePhotoNeed"><option value="否">不強制照片</option><option value="是">完成時需附照片</option></select></div>
-            <div class="field"><label>提醒時間</label><input id="routineRemindTime" type="time" value="09:00"></div>
+          <div class="field">
+            <label>完成回報需求</label><select id="routinePhotoNeed"><option value="否">不強制照片</option><option value="是">完成時需附照片</option></select>
           </div>
 
-          <div class="field"><label>說明圖片（選填）</label><input id="routineImageFiles" type="file" accept=".jpg,.jpeg,.png,.webp" multiple><div class="mini-help">可上傳示意圖片給員工查看。</div><div id="routineExistingImageList" class="existing-asset-list"></div></div>
-          <div class="field"><label>說明影片（選填）</label><input id="routineVideoFiles" type="file" accept="video/*" multiple><div id="routineExistingVideoList" class="existing-asset-list"></div></div>
+          <div class="field"><label>說明圖片（選填）</label><input id="routineImageFiles" type="file" accept=".jpg,.jpeg,.png,.webp" multiple><div class="mini-help">可上傳示意圖片給員工查看。</div></div>
+          <div class="field"><label>說明影片（選填）</label><input id="routineVideoFiles" type="file" accept="video/*" multiple></div>
           <div class="field"><label>任務錄音（選填）</label>
             <div class="attach-tools">
               <div class="task-actions">
@@ -114,7 +107,8 @@
               </div>
             </div>
             <div class="attach-badge" id="routineRecStatus">尚未錄音</div>
-            <audio id="routineRecPreview" class="task-player hidden" controls></audio><div id="routineExistingAudioList" class="existing-asset-list"></div>
+            <div id="routineRecLive" class="rec-live hidden"><span class="rec-live-dot"></span><span>錄音中</span></div>
+            <audio id="routineRecPreview" class="task-player hidden" controls></audio>
           </div>
 
           <div id="weeklyBox" class="field hidden">
@@ -146,6 +140,12 @@
             <div class="mini-help">若先不指派，這筆會進到待重新指派。</div>
           </div>
 
+          <div class="field">
+            <label>提醒時間（可保留在下方）</label>
+            <input id="routineRemindTime" type="time" value="09:00">
+            <div class="mini-help">每天事件也會持續存在，這裡只是額外提醒時間。</div>
+          </div>
+
           <div class="inline-actions">
             <button class="btn" id="saveRoutineBtn" onclick="saveRoutineTemplate()">儲存定期事項</button>
             <button class="btn secondary hidden" id="cancelEditBtn" onclick="resetRoutineForm()">取消修改</button>
@@ -159,9 +159,8 @@
           <div id="routineMenuGrid" class="group-grid" style="margin-top:12px"></div>
           <div id="selectedSectionBox" class="hidden" style="margin-top:16px">
             <div class="section-title" id="listTitle">這一區的事項</div>
-            <div class="section-subtitle">這裡先顯示摘要列表，點「詳情」再看完整內容。</div>
+            <div class="section-subtitle">先顯示簡單任務，點查看再看完整內容。</div>
             <div id="adminTemplateList" class="compact-list" style="margin-top:12px"></div>
-            <div id="routineDetailView" class="detail-view hidden"></div>
           </div>
         </div>
       </div>
@@ -183,8 +182,6 @@
     let routineRecordedBlob = null;
     let routineRecordedUrl = '';
     let routineRecordedAsset = null;
-    let activeDetailTemplateId = '';
-    let routineExistingAssets = { image: [], video: [], audio: [], file: [] };
 
     const SECTIONS = [
       { key: 'daily', label: '每天要做的', isReassign: false },
@@ -277,69 +274,6 @@
       return `<div><div class="task-media-title">說明錄音</div>${list.map(x=>`<audio class="task-player" controls preload="metadata" src="${x.url}"></audio>`).join('')}</div>`;
     }
 
-    function cloneAssetList(list){
-      return Array.isArray(list) ? list.filter(x=>x&&x.url).map(x=>({name:x.name||'', url:x.url||''})) : [];
-    }
-
-    function resetRoutineExistingAssets(){
-      routineExistingAssets = { image: [], video: [], audio: [], file: [] };
-      renderRoutineExistingAssets();
-    }
-
-    function renderExistingAssetRow(kind, item, idx){
-      const label = esc(item.name || item.url || (kind + ' ' + (idx + 1)));
-      return `<div class="existing-asset-item"><a href="${esc(item.url)}" target="_blank" rel="noopener">${label}</a><button type="button" class="btn secondary" onclick="removeRoutineExistingAsset('${kind}', ${idx})">移除</button></div>`;
-    }
-
-    function renderRoutineExistingAssets(){
-      const imageWrap = qs('#routineExistingImageList');
-      const videoWrap = qs('#routineExistingVideoList');
-      const audioWrap = qs('#routineExistingAudioList');
-      if (imageWrap) imageWrap.innerHTML = routineExistingAssets.image.length ? `<div class="mini-help">目前已存在的圖片</div>${routineExistingAssets.image.map((item, idx)=>renderExistingAssetRow('image', item, idx)).join('')}` : '';
-      if (videoWrap) videoWrap.innerHTML = routineExistingAssets.video.length ? `<div class="mini-help">目前已存在的影片</div>${routineExistingAssets.video.map((item, idx)=>renderExistingAssetRow('video', item, idx)).join('')}` : '';
-      if (audioWrap) audioWrap.innerHTML = routineExistingAssets.audio.length ? `<div class="mini-help">目前已存在的錄音</div>${routineExistingAssets.audio.map((item, idx)=>renderExistingAssetRow('audio', item, idx)).join('')}` : '';
-    }
-
-    function removeRoutineExistingAsset(kind, idx){
-      if (!routineExistingAssets[kind]) return;
-      routineExistingAssets[kind] = routineExistingAssets[kind].filter((_, i)=>i!==idx);
-      renderRoutineExistingAssets();
-    }
-
-    function hideRoutineDetail(){
-      activeDetailTemplateId = '';
-      const box = qs('#routineDetailView');
-      if (box) {
-        box.classList.add('hidden');
-        box.innerHTML = '';
-      }
-    }
-
-    function showRoutineDetail(id){
-      const x = (pageData.admin?.templates || []).find(item => item.id === id);
-      if (!x) return;
-      activeDetailTemplateId = id;
-      const box = qs('#routineDetailView');
-      if (!box) return;
-      box.classList.remove('hidden');
-      box.innerHTML = `
-        <div class="card">
-          <div class="section-title">${esc(x.title || '')}</div>
-          <div class="section-subtitle">${esc(x.groupLabel || '')}｜${esc(x.cycleLabel || '')}｜${esc(x.assigneeName || '尚未指派')}</div>
-          <div class="detail-section-title">內容說明</div>
-          <div style="margin-top:8px;line-height:1.8">${esc(x.content || '未填寫說明')}</div>
-          ${renderImageGallery(x.imageAssets || [])}
-          ${renderVideoPlayers(x.videoAssets || [])}
-          ${renderAudioPlayers(x.audioAssets || [])}
-          <div class="detail-actions">
-            <button class="btn secondary" type="button" onclick="hideRoutineDetail()">返回摘要</button>
-            <button class="btn" type="button" onclick="editTemplate('${x.id}')">修改這筆</button>
-          </div>
-        </div>
-      `;
-      setTimeout(()=>{ try{ box.scrollIntoView({behavior:'smooth', block:'start'}); }catch(e){} }, 30);
-    }
-
     async function collectRoutineAssets(fileInputId, kind, progressStart=0, progressEnd=100){
       const input=qs('#'+fileInputId);
       const files=Array.from((input&&input.files)||[]);
@@ -424,9 +358,7 @@
       qs('#routineLongMonthDay').value = '1';
       setWeekdaysValue('');
       ['routineImageFiles','routineVideoFiles'].forEach(id=>{ const el=qs('#'+id); if(el) el.value=''; });
-      resetRoutineExistingAssets();
       clearRoutineRecording();
-      hideRoutineDetail();
       qs('#saveProgressBox').classList.add('hidden');
       qs('#saveRoutineBtn').textContent = '儲存定期事項';
       qs('#cancelEditBtn').classList.add('hidden');
@@ -456,7 +388,6 @@
         return;
       }
       box.classList.remove('hidden');
-      hideRoutineDetail();
       updateFormMode();
       renderAdminList();
     }
@@ -515,20 +446,21 @@
     function renderAdminList() {
       const rows = getAdminRowsForCurrentSection();
       qs('#adminTemplateList').innerHTML = rows.length ? rows.map(x => `
-        <div class="routine-summary-card ${activeDetailTemplateId===x.id?'task-highlight':''}">
+        <div class="item">
           <div class="item-top">
             <div>
-              <div class="summary-title">${esc(x.title || '')}</div>
-              <div class="summary-meta">${esc(x.cycleLabel || '')}｜${esc(x.assigneeName || '尚未指派')}｜${esc(x.status || '')}</div>
+              <strong>${x.title}</strong>
+              <div class="item-meta">${x.cycleLabel}　｜　${x.assigneeName || '尚未指派'}</div>
             </div>
             <div>${statusTags(x)}</div>
           </div>
-          <div class="summary-note">${esc(x.content || '未填寫說明')}</div>
-          <div class="detail-actions">
-            <button class="btn secondary" type="button" onclick="showRoutineDetail('${x.id}')">詳情</button>
-            <button class="btn secondary" type="button" onclick="editTemplate('${x.id}')">修改</button>
-            <button class="btn secondary" type="button" onclick="toggleTemplate('${x.id}','${x.status==='啟用'?'停用':'啟用'}')">${x.status==='啟用'?'停用':'啟用'}</button>
-            <button class="btn secondary" type="button" onclick="deleteTemplate('${x.id}')">刪除</button>
+          <div style="margin-top:8px">${x.content || '未填寫說明'}</div>
+          <div class="item-meta">開始：${x.startDate || '-'}${x.isPermanent ? '　｜　永久有效' : (x.endDate ? `　｜　結束：${x.endDate}` : '')}${x.remindTime ? `　｜　提醒：${x.remindTime}` : ''}</div>
+          ${x.needsReassign ? `<div class="item-note-warn">這筆目前沒有人承接，請重新指派。</div>` : ''}
+          <div class="inline-actions">
+            <button class="btn secondary" onclick="editTemplate('${x.id}')">修改</button>
+            <button class="btn secondary" onclick="toggleTemplate('${x.id}','${x.status==='啟用'?'停用':'啟用'}')">${x.status==='啟用'?'停用':'啟用'}</button>
+            <button class="btn secondary" onclick="deleteTemplate('${x.id}')">刪除</button>
           </div>
         </div>
       `).join('') : '<div class="empty-box">目前這一區沒有任何定期事項。</div>';
@@ -587,13 +519,6 @@
       qs('#routineSectionType').value = x.groupKey || 'daily';
       if (x.groupKey === 'monthly') qs('#routineMonthDay').value = String(x.cycleValue || '1');
       if (x.groupKey === 'long') qs('#routineLongMonthDay').value = String(x.cycleValue || '1');
-      routineExistingAssets = {
-        image: cloneAssetList(x.imageAssets),
-        video: cloneAssetList(x.videoAssets),
-        audio: cloneAssetList(x.audioAssets),
-        file: cloneAssetList(x.fileAssets)
-      };
-      renderRoutineExistingAssets();
       qs('#saveRoutineBtn').textContent = '更新定期事項';
       qs('#cancelEditBtn').classList.remove('hidden');
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -639,17 +564,13 @@
       }
       setSaveProgress(8,'檢查資料...');
       const payload = buildSavePayload();
-      const newImageAssets = await collectRoutineAssets('routineImageFiles','image',12,42);
-      const newVideoAssets = await collectRoutineAssets('routineVideoFiles','video',42,72);
-      const newAudioAssets = [];
+      payload.imageAssets = await collectRoutineAssets('routineImageFiles','image',12,42);
+      payload.videoAssets = await collectRoutineAssets('routineVideoFiles','video',42,72);
+      payload.audioAssets = [];
       if(routineRecordedAsset){
         setSaveProgress(78,'錄音上傳中...');
-        newAudioAssets.push(routineRecordedAsset);
+        payload.audioAssets = [routineRecordedAsset];
       }
-      payload.imageAssets = cloneAssetList(routineExistingAssets.image).concat(newImageAssets);
-      payload.videoAssets = cloneAssetList(routineExistingAssets.video).concat(newVideoAssets);
-      payload.audioAssets = cloneAssetList(routineExistingAssets.audio).concat(newAudioAssets);
-      payload.fileAssets = cloneAssetList(routineExistingAssets.file);
       setSaveProgress(92,'寫入固定事項資料中...');
       const r = await api('saveRoutineTemplate', payload);
       if (!r.ok) { setMsg(qs('#msg'), r.message || '儲存失敗', true); setSaveProgress(100,r.message||'儲存失敗'); return; }
@@ -720,6 +641,7 @@ function clearRoutineRecording(){
       const preview = qs('#routineRecPreview');
       if(preview){ preview.pause(); preview.removeAttribute('src'); preview.classList.add('hidden'); preview.load?.(); }
       const status = qs('#routineRecStatus'); if(status) status.textContent='尚未錄音';
+      const live = qs('#routineRecLive'); if(live) live.classList.add('hidden');
       const startBtn = qs('#routineStartRecBtn'); if(startBtn) startBtn.disabled=false;
       const stopBtn = qs('#routineStopRecBtn'); if(stopBtn) stopBtn.disabled=true;
       const clearBtn = qs('#routineClearRecBtn'); if(clearBtn) clearBtn.classList.add('hidden');
@@ -731,6 +653,7 @@ function clearRoutineRecording(){
       const clearBtn = qs('#routineClearRecBtn');
       const preview = qs('#routineRecPreview');
       const status = qs('#routineRecStatus');
+      const live = qs('#routineRecLive');
       if(!startBtn || !stopBtn || !clearBtn || !preview || !status) return;
       startBtn.onclick = async ()=>{
         try{
@@ -758,9 +681,11 @@ function clearRoutineRecording(){
               const file = new File([routineRecordedBlob], 'routine-audio.webm', {type:routineRecordedBlob.type || 'audio/webm'});
               const uploaded = await uploadFileToCloudinary(file,{folder:'routine/assigned-audio'});
               routineRecordedAsset = cloudinaryAssetFromResponse(uploaded);
+              if(live) live.classList.add('hidden');
               status.textContent = '錄音完成';
             }catch(err){
               routineRecordedAsset = null;
+              if(live) live.classList.add('hidden');
               status.textContent = '錄音已完成，但上傳失敗';
               showRoutineNotice(err && err.message ? err.message : '錄音上傳失敗', true);
             }
@@ -768,6 +693,7 @@ function clearRoutineRecording(){
           routineRecorder.start();
           startBtn.disabled = true;
           stopBtn.disabled = false;
+          if(live) live.classList.remove('hidden');
           status.textContent = '錄音中，請直接說話';
         }catch(err){
           showRoutineNotice(err && err.message ? err.message : '無法啟用錄音', true);
@@ -777,6 +703,7 @@ function clearRoutineRecording(){
         if(routineRecorder && routineRecorder.state !== 'inactive') routineRecorder.stop();
         if(routineMediaStream){ try{ routineMediaStream.getTracks().forEach(t=>t.stop()); }catch(e){} }
         routineMediaStream = null;
+        if(live) live.classList.add('hidden');
         startBtn.disabled = false;
         stopBtn.disabled = true;
       };
@@ -819,7 +746,6 @@ function clearRoutineRecording(){
         employeeOptions = emp.rows || [];
         fillEmployeeOptions();
         activeSectionKey = sectionSelect ? (sectionSelect.value || 'daily') : 'daily';
-        renderMenu();
         await setupRoutineRecorder();
       }
       await refreshPage();
