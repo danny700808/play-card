@@ -86,6 +86,23 @@
           <button class="btn" id="registerBtn" type="submit">送出註冊申請</button>
         </div>
       </form>
+
+      <div id="lineGuideBox" class="card hidden" style="margin-top:16px;background:#f8fbff;border:1px solid #d8e7ff">
+        <div class="header" style="margin-bottom:8px">
+          <h2 class="title" style="font-size:20px;margin-bottom:6px">註冊完成後請綁定官方 LINE</h2>
+          <div class="muted">加入好友後，傳送下面這段綁定指令，之後才能收到 LINE 提醒。</div>
+        </div>
+        <div class="field">
+          <label>綁定指令</label>
+          <input id="lineBindingText" readonly value="綁定">
+        </div>
+        <div class="btn-row">
+          <a id="lineJoinBtn" class="btn hidden" target="_blank" rel="noopener">加入官方 LINE</a>
+          <button id="copyLineBindingBtn" type="button" class="btn secondary hidden">複製綁定指令</button>
+          <a href="index.html" class="btn secondary">回登入頁</a>
+        </div>
+        <div id="lineGuideMsg" class="message"></div>
+      </div>
     </div>
   </div>
 
@@ -98,6 +115,12 @@
     const progressBar = qs('#registerProgressBar');
     const progressText = qs('#registerProgressText');
     const registerBtn = qs('#registerBtn');
+    const lineGuideBox = qs('#lineGuideBox');
+    const lineJoinBtn = qs('#lineJoinBtn');
+    const lineBindingText = qs('#lineBindingText');
+    const copyLineBindingBtn = qs('#copyLineBindingBtn');
+    const lineGuideMsg = qs('#lineGuideMsg');
+    let publicLinks = null;
     const fieldMap = {
       name: '#field-name',
       email: '#field-email',
@@ -177,6 +200,23 @@
       const target = wrap.querySelector('input,select');
       if(target) target.focus({preventScroll:true});
     }
+    async function loadPublicLinks(){
+      try{
+        publicLinks = await api('getPublicSystemLinks', {});
+        const joinUrl = (publicLinks && publicLinks.lineAddFriendUrl) || '';
+        if(joinUrl){
+          lineJoinBtn.href = joinUrl;
+          lineJoinBtn.classList.remove('hidden');
+        }
+      }catch(err){ publicLinks = null; }
+    }
+    function showLineGuide(email){
+      lineGuideBox.classList.remove('hidden');
+      lineBindingText.value = `綁定 ${email || ''}`.trim();
+      copyLineBindingBtn.classList.remove('hidden');
+      setMsg(lineGuideMsg, '請先加入官方 LINE，再傳送上方綁定指令。');
+      lineGuideBox.scrollIntoView({behavior:'smooth', block:'center'});
+    }
     function clearSingleFieldError(key){
       const wrap = qs(fieldMap[key]);
       if(!wrap) return;
@@ -196,6 +236,15 @@
     }
 
     fillBirthOptions();
+    loadPublicLinks();
+    copyLineBindingBtn.onclick = async () => {
+      try{
+        await navigator.clipboard.writeText(lineBindingText.value || '');
+        setMsg(lineGuideMsg, '綁定指令已複製，請到 LINE 貼上送出。');
+      }catch(err){
+        setMsg(lineGuideMsg, '複製失敗，請手動複製綁定指令。', true);
+      }
+    };
     qs('#birthYear').addEventListener('change', () => { refreshBirthDays(); clearSingleFieldError('birthDate'); });
     qs('#birthMonth').addEventListener('change', () => { refreshBirthDays(); clearSingleFieldError('birthDate'); });
     qs('#birthDay').addEventListener('change', () => clearSingleFieldError('birthDate'));
@@ -237,7 +286,7 @@
         if(r && r.ok){
           setProgress(100, '申請已送出，等待主管審核...');
           setMsg(msg, r.message || '註冊申請已送出，請等待主管審核。');
-          setTimeout(() => { location.href = 'index.html'; }, 1800);
+          showLineGuide(payload.email);
         } else {
           hideProgress();
           setMsg(msg, (r && r.message) || '送出失敗', true);
