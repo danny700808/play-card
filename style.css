@@ -85,28 +85,3 @@ a{text-decoration:none;color:inherit} .container{max-width:760px;margin:0 auto;p
 .progress-wrap{display:none;margin-bottom:12px}
 .progress-fill{height:100%;width:0;background:linear-gradient(90deg,var(--brand),#56b58b);border-radius:999px;transition:width .28s ease}
 @media (max-width:560px){.birth-select-row{grid-template-columns:1fr}}
-
-
-.login-system-names{display:flex;flex-direction:column;gap:4px;align-items:center;margin-bottom:4px}
-.login-system-names .title{margin-bottom:0}
-.login-system-subtitle{font-size:18px;font-weight:800;color:var(--brand)}
-.login-main-btn{min-height:58px}
-.login-secondary-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.login-secondary-row .btn,.login-secondary-row .btn-link,.login-secondary-row .btn.secondary{width:100%;min-height:52px}
-.confirm-box{margin-top:12px;padding:14px 16px;border:1px solid #f0d18a;background:#fff9ec;border-radius:16px}
-.confirm-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
-.confirm-actions .btn{width:auto;min-width:120px}
-.tile-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
-.tile-badge{display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:28px;padding:0 10px;border-radius:999px;background:#1f7a5a;color:#fff;font-size:14px;font-weight:900}
-.identity-hint{font-size:13px;color:var(--muted);margin-top:4px}
-.assignee-group-box{border:1px solid var(--line);border-radius:16px;padding:14px;background:#fbfcfe;margin-bottom:14px}
-.assignee-group-tabs{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
-.assignee-group-tabs label{display:flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid var(--line);border-radius:999px;background:#fff;font-weight:700;cursor:pointer}
-.teacher-pick-box{border:1px dashed var(--line);border-radius:14px;padding:12px;background:#fff}
-.teacher-check-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:10px}
-.teacher-check-grid label{display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#fbfcfe}
-.teacher-select-row{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
-@media (max-width:560px){
-  .login-secondary-row{grid-template-columns:1fr}
-  .teacher-check-grid{grid-template-columns:1fr}
-}

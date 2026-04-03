@@ -304,7 +304,7 @@
     }
 
     function applyRoutineMode() {
-      routineAdminMode = !!(currentUser && isManager(currentUser) && isSettingsMode());
+      routineAdminMode = !!(currentUser && currentUser.role === 'admin' && isSettingsMode());
       qs('#adminBlock').classList.toggle('hidden', !routineAdminMode);
       qs('#staffBlock').classList.toggle('hidden', routineAdminMode);
       qs('#routinePageTitle').textContent = routineAdminMode ? '定期事項設定' : '定期事項';
@@ -729,7 +729,6 @@ function clearRoutineRecording(){
       fillMonthDays();
       currentUser = requireLogin();
       if (!currentUser) return;
-      if (!routineAdminMode && !guardFeatureAccess('routine', currentUser)) return;
       targetTemplateId = new URLSearchParams(location.search).get('templateId') || '';
       applyRoutineMode();
       togglePermanent();
