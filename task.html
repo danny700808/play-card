@@ -151,6 +151,28 @@
 </head>
 <body onload="init()">
   <div class="container">
+    <div id="taskLineJoinBanner" class="card" style="display:none;background:#f8fbff;border:1px solid #d8e7ff">
+      <div class="header" style="margin-bottom:6px">
+        <h2 class="title" style="font-size:22px;margin-bottom:6px">想更即時收到提醒嗎？</h2>
+        <div class="muted">你可以選擇加入 LINE 官方。</div>
+      </div>
+      <div class="btn-row">
+        <a id="taskLineJoinBannerBtn" class="btn hidden" target="_blank" rel="noopener">立即加入 LINE</a>
+      </div>
+    </div>
+
+    <div id="taskLineJoinModal" class="hidden" style="position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:60;padding:18px;align-items:center;justify-content:center">
+      <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:24px;padding:24px;box-shadow:0 20px 50px rgba(0,0,0,.18)">
+        <div class="header" style="margin-bottom:8px">
+          <h2 class="title" style="font-size:28px;margin-bottom:8px">想更即時收到提醒嗎？</h2>
+          <div class="muted" style="font-size:17px;line-height:1.9">你可以選擇加入 LINE 官方。</div>
+        </div>
+        <div class="btn-row">
+          <a id="taskLineJoinModalBtn" class="btn hidden" target="_blank" rel="noopener">立即加入 LINE</a>
+          <button id="taskLineJoinLaterBtn" type="button" class="btn secondary">稍後再說</button>
+        </div>
+      </div>
+    </div>
     <div class="page-return-wrap"><a class="btn page-return-btn" id="taskHomeLink" href="dashboard.html">返回員工首頁</a></div>
     <div class="card">
       <div class="topbar">
@@ -871,6 +893,27 @@
       const r=await api('deleteTask',{userId:user.id,taskId});
       setMsg(qs('#msg'),r.message,!r.ok);
       if(r.ok) setTimeout(loadTasks,220);
+    }
+
+    async function initLineJoinUi(user){
+      if(!shouldShowLineJoin(user)) return;
+      try{
+        const links = await api('getPublicSystemLinks', {});
+        const joinUrl = links && links.lineAddFriendUrl;
+        if(joinUrl){
+          qs('#taskLineJoinBannerBtn').href = joinUrl;
+          qs('#taskLineJoinModalBtn').href = joinUrl;
+          qs('#taskLineJoinBannerBtn').classList.remove('hidden');
+          qs('#taskLineJoinModalBtn').classList.remove('hidden');
+        }
+      }catch(err){}
+      qs('#taskLineJoinBanner').style.display='';
+      if(consumePostLoginLinePrompt(user)){
+        const modal = qs('#taskLineJoinModal');
+        modal.classList.remove('hidden');
+        modal.style.display='flex';
+      }
+      qs('#taskLineJoinLaterBtn').onclick = ()=>{ const modal = qs('#taskLineJoinModal'); modal.classList.add('hidden'); modal.style.display='none'; };
     }
 
     async function init(){

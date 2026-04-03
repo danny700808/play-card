@@ -49,7 +49,16 @@
           </div>
         </div>
       </div>
-    </div>
+    
+      <div id="loginLineInvite" class="card" style="margin-top:14px;background:#f8fbff;border:1px solid #d8e7ff">
+        <div class="header" style="margin-bottom:6px">
+          <h2 class="title" style="font-size:20px;margin-bottom:6px">想更即時收到提醒嗎？</h2>
+          <div class="muted">你可以選擇加入 LINE 官方。</div>
+        </div>
+        <div class="btn-row">
+          <a id="loginLineJoinBtn" class="btn hidden" target="_blank" rel="noopener">立即加入 LINE</a>
+        </div>
+      </div>
   </div>
 
   <script src="config.js"></script>
@@ -80,6 +89,19 @@
       }
     };
     const forgotConfirmBox = qs('#forgotConfirmBox');
+    async function loadLoginLineInvite(){
+      try{
+        const r = await api('getPublicSystemLinks', {});
+        const joinUrl = r && r.lineAddFriendUrl;
+        if(joinUrl){
+          qs('#loginLineJoinBtn').href = joinUrl;
+          qs('#loginLineJoinBtn').classList.remove('hidden');
+        } else {
+          qs('#loginLineInvite').style.display='none';
+        }
+      }catch(err){ qs('#loginLineInvite').style.display='none'; }
+    }
+    loadLoginLineInvite();
     qs('#forgotBtn').onclick = () => {
       const email = qs('#email').value.trim();
       if (!email) {

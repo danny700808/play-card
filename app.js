@@ -14,6 +14,13 @@ function isPartTimeUser(user=getUser()){return identityTypeOf(user)==='parttime'
 function isExternalTeacher(user=getUser()){return identityTypeOf(user)==='external'}
 function canUseFeature(feature,user=getUser()){const type=identityTypeOf(user); if(!user) return false; if(feature==='dashboard') return type!=='external'; if(feature==='clock') return type==='staff' || type==='parttime'; if(feature==='parttime') return type==='parttime'; if(feature==='leave') return type==='staff' || type==='parttime'; if(feature==='routine') return type==='staff' || type==='parttime'; if(feature==='training') return type==='staff' || type==='parttime'; if(feature==='task') return true; return true;}
 function guardFeatureAccess(feature,user=getUser()){if(canUseFeature(feature,user)) return true; location.href=isExternalTeacher(user)?'task.html':'dashboard.html'; return false;}
+
+function hasLineBinding(user=getUser()){return !!String((user&&user.lineUserId)||'').trim()}
+function lineNotifyEnabled(user=getUser()){const raw=String((user&&user.lineNotifyEnabled)||'').trim().toLowerCase(); return raw==='是'||raw==='yes'||raw==='true'||raw==='1'}
+function shouldShowLineJoin(user=getUser()){return !!user && !hasLineBinding(user)}
+function postLoginLinePromptKey(user=getUser()){return 'employeePostLoginLinePrompt:' + String((user&&user.id)||'guest')}
+function consumePostLoginLinePrompt(user=getUser()){const key=postLoginLinePromptKey(user); const val=localStorage.getItem(key)==='1'; localStorage.removeItem(key); return val;}
+function markPostLoginLinePrompt(user=getUser()){localStorage.setItem(postLoginLinePromptKey(user),'1')}
 function isSettingsMode(){return hasSettingsZoneAccess() && getPortalMode()==='settings'}
 function modeHomeHref(){return isSettingsMode() ? 'settings.html' : 'dashboard.html'}
 function getUser(){try{return JSON.parse(localStorage.getItem('employeeUser')||'null')}catch(e){return null}}
@@ -173,7 +180,7 @@ async function uploadFilesToCloudinary(files, opts={}){
   return results;
 }
 function fillHeader(){const user=requireLogin(); if(!user) return; const manager=isManager(user); qsa('[data-user-name]').forEach(el=>el.textContent=user.name||'員工'); qsa('[data-if-parttime]').forEach(el=>el.style.display=isPartTimeUser(user)?'':'none'); qsa('[data-if-admin]').forEach(el=>el.style.display=manager?'':'none'); qsa('[data-if-staff-view]').forEach(el=>el.style.display=manager?'none':'');}
-function redirectAfterLogin(user){saveUser(user); if(user && user.showSettingsZone){setPortalMode('staff'); location.href='portal.html'; return;} if(isExternalTeacher(user)){ location.href='task.html'; return; } location.href='dashboard.html';}
+function redirectAfterLogin(user){saveUser(user); markPostLoginLinePrompt(user); if(user && user.showSettingsZone){setPortalMode('staff'); location.href='portal.html'; return;} if(isExternalTeacher(user)){ location.href='task.html'; return; } location.href='dashboard.html';}
 function saveLoginPref(email,password,remember=true){if(!remember){localStorage.removeItem('employeeSavedLogin');return;}localStorage.setItem('employeeSavedLogin',JSON.stringify({email:email||'',password:password||'',remember:true}));}
 function getSavedLogin(){try{return JSON.parse(localStorage.getItem('employeeSavedLogin')||'null')}catch(e){return null}}
 function applySavedLogin(emailSel='#email',passwordSel='#password',rememberSel='#rememberLogin'){const s=getSavedLogin();if(!s)return;const e=qs(emailSel),p=qs(passwordSel),r=qs(rememberSel);if(e)e.value=s.email||'';if(p)p.value=s.password||'';if(r)r.checked=!!s.remember;}
