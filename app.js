@@ -7,6 +7,13 @@ function setPortalMode(mode){localStorage.setItem('employeePortalMode', mode==='
 function getPortalMode(){return localStorage.getItem('employeePortalMode')||'staff'}
 function clearPortalMode(){localStorage.removeItem('employeePortalMode')}
 function hasSettingsZoneAccess(user=getUser()){return !!(user && user.showSettingsZone)}
+function isManager(user=getUser()){return !!(user && (user.showSettingsZone || String(user.role||'').toLowerCase()==='admin'))}
+function identityTypeOf(user=getUser()){const raw=String((user&&user.identityType)||'').trim().toLowerCase(); if(raw==='parttime'||raw==='staff'||raw==='external') return raw; return user&&user.isPartTime?'parttime':'staff'}
+function identityLabelOf(user=getUser()){const type=identityTypeOf(user); return type==='parttime'?'工讀生':(type==='external'?'外聘老師':'專職員工')}
+function isPartTimeUser(user=getUser()){return identityTypeOf(user)==='parttime'}
+function isExternalTeacher(user=getUser()){return identityTypeOf(user)==='external'}
+function canUseFeature(feature,user=getUser()){const type=identityTypeOf(user); if(!user) return false; if(feature==='dashboard') return type!=='external'; if(feature==='clock') return type==='staff' || type==='parttime'; if(feature==='parttime') return type==='parttime'; if(feature==='leave') return type==='staff' || type==='parttime'; if(feature==='routine') return type==='staff' || type==='parttime'; if(feature==='training') return type==='staff' || type==='parttime'; if(feature==='task') return true; return true;}
+function guardFeatureAccess(feature,user=getUser()){if(canUseFeature(feature,user)) return true; location.href=isExternalTeacher(user)?'task.html':'dashboard.html'; return false;}
 function isSettingsMode(){return hasSettingsZoneAccess() && getPortalMode()==='settings'}
 function modeHomeHref(){return isSettingsMode() ? 'settings.html' : 'dashboard.html'}
 function getUser(){try{return JSON.parse(localStorage.getItem('employeeUser')||'null')}catch(e){return null}}
@@ -21,41 +28,6 @@ function setMsg(el, text, isError=false){if(!el) return; el.style.display=text?'
 function togglePassword(inputSel, btn){const input=qs(inputSel); const show=input.type==='password'; input.type=show?'text':'password'; btn.textContent=show?'🙈':'👁';}
 async function getPublicIp(){try{const r=await fetch('https://api.ipify.org?format=json'); const j=await r.json(); return j.ip||'';}catch(e){return '';}}
 async function fileToDataUrl(file){return new Promise((resolve,reject)=>{const r=new FileReader(); r.onload=()=>resolve(String(r.result||'')); r.onerror=reject; r.readAsDataURL(file);});}
-
-let __publicSystemLinksCache=null;
-async function getPublicSystemLinks(){
-  if(__publicSystemLinksCache) return __publicSystemLinksCache;
-  try{
-    const r = await api('getPublicSystemLinks', {});
-    __publicSystemLinksCache = r || {ok:false};
-    return __publicSystemLinksCache;
-  }catch(err){
-    return {ok:false};
-  }
-}
-function lineBindTextForUser(user){
-  const email = (user && user.email) ? String(user.email).trim() : '';
-  return email ? `綁定 ${email}` : '綁定 你的Email';
-}
-function renderLineBindCard(container, user, links){
-  if(!container) return;
-  const addUrl = String((links && links.lineAddFriendUrl) || '').trim();
-  const bindText = lineBindTextForUser(user);
-  container.innerHTML = `<div class="card" style="margin-top:16px;border:1px dashed #9dd3b8;background:#f7fffb">
-    <div class="header" style="margin-bottom:8px"><h2 class="title" style="font-size:22px">想更即時收到提醒嗎？</h2><p class="subtitle" style="margin-top:6px">你可以選擇加入 LINE 官方。</p></div>
-    <div style="font-size:15px;color:var(--muted);line-height:1.8">加入後，請到官方 LINE 傳送：<br><strong style="color:#1f7a5a">${bindText}</strong></div>
-    <div class="btn-row" style="margin-top:14px;justify-content:flex-start;gap:10px;flex-wrap:wrap">
-      ${addUrl ? `<a class="btn" href="${addUrl}" target="_blank" rel="noopener">立即加入 LINE</a>` : ''}
-      <button class="btn secondary" type="button" data-copy-line-bind>複製綁定指令</button>
-    </div>
-  </div>`;
-  const copyBtn = container.querySelector('[data-copy-line-bind]');
-  if(copyBtn){
-    copyBtn.onclick = async ()=>{
-      try{ await navigator.clipboard.writeText(bindText); copyBtn.textContent='已複製'; setTimeout(()=>copyBtn.textContent='複製綁定指令',1500);}catch(e){ alert(bindText); }
-    };
-  }
-}
 
 function dataUrlToBlob(dataUrl){
   const raw=String(dataUrl||'');
@@ -200,8 +172,82 @@ async function uploadFilesToCloudinary(files, opts={}){
   }
   return results;
 }
-function fillHeader(){const user=requireLogin(); if(!user) return; qsa('[data-user-name]').forEach(el=>el.textContent=user.name||'員工'); qsa('[data-if-parttime]').forEach(el=>el.style.display=user.isPartTime?'':'none'); qsa('[data-if-admin]').forEach(el=>el.style.display=user.role==='admin'?'':'none'); qsa('[data-if-staff-view]').forEach(el=>el.style.display=user.role==='admin'?'none':'');}
-function redirectAfterLogin(user){saveUser(user); if(user && user.showSettingsZone){setPortalMode('staff'); location.href='portal.html'; return;} location.href = user.role==='admin' ? 'task.html' : 'dashboard.html';}
+
+function isLineBound(user=getUser()){
+  if(!user) return false;
+  return !!(String(user.lineUserId||'').trim() && (String(user.lineNotifyEnabled||'').trim()==='是' || user.lineNotifyEnabled===true));
+}
+let __lineBindLinksCache=null;
+async function getPublicSystemLinksCached(){
+  if(__lineBindLinksCache) return __lineBindLinksCache;
+  try{
+    const r=await api('getPublicSystemLinks',{});
+    __lineBindLinksCache={
+      lineAddFriendUrl:String(r.lineAddFriendUrl||'').trim(),
+      lineBotBasicId:String(r.lineBotBasicId||'').trim()
+    };
+  }catch(e){
+    __lineBindLinksCache={lineAddFriendUrl:String((window.APP_CONFIG&&window.APP_CONFIG.LINE_ADD_FRIEND_URL)||'').trim(),lineBotBasicId:''};
+  }
+  return __lineBindLinksCache;
+}
+function ensureLineBindPromptStyle_(){
+  if(document.getElementById('lineBindPromptStyle')) return;
+  const s=document.createElement('style');
+  s.id='lineBindPromptStyle';
+  s.textContent=`
+  .line-bind-card{margin-top:18px;padding:24px;border:2px dashed #b9dfcf;border-radius:28px;background:#f5fbf7}
+  .line-bind-card h3{margin:0 0 12px;font-size:28px;line-height:1.25;color:#17324a}
+  .line-bind-card p{margin:0;color:#607086;font-size:18px;line-height:1.9}
+  .line-bind-steps{margin:16px 0 0;padding:0;list-style:none;display:grid;gap:10px}
+  .line-bind-steps li{display:flex;gap:10px;align-items:flex-start;color:#3f556d;font-size:18px;line-height:1.8}
+  .line-bind-step-no{width:30px;height:30px;border-radius:999px;background:#1f7a5a;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:900;font-size:16px;flex:0 0 30px;margin-top:2px}
+  .line-bind-command{margin-top:12px;padding:16px 18px;border-radius:18px;background:#ecf7f1;color:#1f7a5a;font-size:22px;font-weight:900;word-break:break-all}
+  .line-bind-actions{display:grid;grid-template-columns:1fr;gap:12px;margin-top:16px}
+  .line-bind-note{margin-top:12px;color:#66788c;font-size:15px;line-height:1.8}
+  @media (max-width:560px){.line-bind-card{padding:20px;border-radius:22px}.line-bind-card h3{font-size:24px}.line-bind-card p,.line-bind-steps li{font-size:16px}.line-bind-command{font-size:18px}}
+  `;
+  document.head.appendChild(s);
+}
+async function renderLineBindPrompt_(){
+  const user=getUser();
+  if(!user) return;
+  const existing=document.getElementById('lineBindPromptCard');
+  if(existing) existing.remove();
+  if(isLineBound(user)) return;
+  const container=document.querySelector('.container');
+  if(!container) return;
+  ensureLineBindPromptStyle_();
+  const links=await getPublicSystemLinksCached();
+  const wrap=document.createElement('div');
+  wrap.className='card line-bind-card';
+  wrap.id='lineBindPromptCard';
+  const email=String(user.email||'').trim();
+  const cmd=`柚子綁定 ${email}`;
+  wrap.innerHTML=`
+    <h3>想更即時收到提醒嗎？</h3>
+    <p>不綁定 LINE 也可以透過 Email 接收訊息。</p>
+    <ol class="line-bind-steps">
+      <li><span class="line-bind-step-no">1</span><div>先加入柚子樂器官方 LINE。</div></li>
+      <li><span class="line-bind-step-no">2</span><div>加入後，到官方 LINE 的訊息欄輸入下面這段文字完成綁定。</div></li>
+    </ol>
+    <div class="line-bind-command">${cmd}</div>
+    <div class="line-bind-actions">
+      <a class="btn" id="lineBindJoinBtn" href="${links.lineAddFriendUrl||'#'}" target="_blank" rel="noopener">立即加入 LINE</a>
+      <button class="btn secondary" type="button" id="copyLineBindCmdBtn">複製綁定指令</button>
+    </div>
+    <div class="line-bind-note">你也可以先複製上面的文字，加入官方 LINE 後直接貼上即可完成綁定。</div>
+  `;
+  container.appendChild(wrap);
+  const joinBtn=wrap.querySelector('#lineBindJoinBtn');
+  if(!links.lineAddFriendUrl){ joinBtn.style.display='none'; }
+  wrap.querySelector('#copyLineBindCmdBtn').onclick=async()=>{
+    try{ await navigator.clipboard.writeText(cmd); wrap.querySelector('#copyLineBindCmdBtn').textContent='已複製'; setTimeout(()=>{const b=wrap.querySelector('#copyLineBindCmdBtn'); if(b) b.textContent='複製綁定指令';},1600);}catch(e){ alert('複製失敗，請手動複製：\n'+cmd); }
+  };
+}
+
+function fillHeader(){const user=requireLogin(); if(!user) return; const manager=isManager(user); qsa('[data-user-name]').forEach(el=>el.textContent=user.name||'員工'); qsa('[data-if-parttime]').forEach(el=>el.style.display=isPartTimeUser(user)?'':'none'); qsa('[data-if-admin]').forEach(el=>el.style.display=manager?'':'none'); qsa('[data-if-staff-view]').forEach(el=>el.style.display=manager?'none':''); setTimeout(()=>{renderLineBindPrompt_();},0);}
+function redirectAfterLogin(user){saveUser(user); if(user && user.showSettingsZone){setPortalMode('staff'); location.href='portal.html'; return;} if(isExternalTeacher(user)){ location.href='task.html'; return; } location.href='dashboard.html';}
 function saveLoginPref(email,password,remember=true){if(!remember){localStorage.removeItem('employeeSavedLogin');return;}localStorage.setItem('employeeSavedLogin',JSON.stringify({email:email||'',password:password||'',remember:true}));}
 function getSavedLogin(){try{return JSON.parse(localStorage.getItem('employeeSavedLogin')||'null')}catch(e){return null}}
 function applySavedLogin(emailSel='#email',passwordSel='#password',rememberSel='#rememberLogin'){const s=getSavedLogin();if(!s)return;const e=qs(emailSel),p=qs(passwordSel),r=qs(rememberSel);if(e)e.value=s.email||'';if(p)p.value=s.password||'';if(r)r.checked=!!s.remember;}
