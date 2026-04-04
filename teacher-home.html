@@ -2,356 +2,252 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>外聘老師首頁</title>
+  <link rel="stylesheet" href="style.css">
   <style>
-    :root{
-      --bg:#f3f6fb;
-      --card:#ffffff;
-      --text:#183153;
-      --muted:#6b7280;
-      --line:#d8e1ee;
-      --primary:#1f4f8f;
-      --primary-soft:#eaf2ff;
-      --danger:#c0392b;
-      --danger-bg:#fff3f1;
-      --shadow:0 10px 30px rgba(15,23,42,.08);
-      --radius:22px;
-    }
-    *{box-sizing:border-box}
-    body{
-      margin:0;
-      font-family:Arial,"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;
-      background:var(--bg);
-      color:var(--text);
-    }
-    .wrap{max-width:1200px;margin:0 auto;padding:24px 16px 40px}
-    .hero{
-      background:var(--card);
-      border:1px solid var(--line);
-      border-radius:30px;
-      box-shadow:var(--shadow);
-      padding:26px 22px;
-      margin-bottom:18px;
-    }
-    .hero h1{
-      margin:0 0 8px;
-      font-size:clamp(30px,6vw,52px);
-      line-height:1.1;
-      color:#17396b;
-      font-weight:900;
-      letter-spacing:.02em;
-    }
-    .sub{color:var(--muted);font-size:18px;margin:0 0 18px}
-    .row{display:flex;flex-wrap:wrap;gap:12px}
-    .btn{
-      appearance:none;border:none;border-radius:18px;background:#e9eef6;color:#17396b;
-      font-weight:900;font-size:16px;padding:14px 22px;cursor:pointer;
-    }
-    .btn.primary{background:var(--primary);color:#fff}
-    .banner{
-      background:var(--danger-bg);color:var(--danger);border:2px solid #f3c1bb;border-radius:24px;
-      padding:20px 18px;font-size:18px;margin-bottom:18px;display:none;white-space:pre-wrap;
-    }
-    .grid{display:grid;gap:18px;grid-template-columns:1fr 1.15fr;align-items:start}
-    .stack{display:flex;flex-direction:column;gap:18px}
-    .card{
-      background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
-      box-shadow:var(--shadow);padding:20px 18px;
-    }
-    .card h2{margin:0 0 10px;font-size:28px;color:#17396b;font-weight:900}
-    .small{color:var(--muted);font-size:14px;margin-bottom:12px}
-    .empty{color:var(--muted);line-height:1.8}
-    .list{display:flex;flex-direction:column;gap:10px}
-    .item{border:1px solid #e7edf7;background:#fbfdff;border-radius:16px;padding:12px}
-    .item-title{font-weight:900;color:#16335d;margin:0 0 6px;line-height:1.5}
-    .item-meta{font-size:13px;color:var(--muted);line-height:1.7;white-space:pre-wrap}
-    .todo-badge{
-      display:inline-block;font-size:12px;font-weight:800;color:#2457a6;background:var(--primary-soft);
-      border-radius:999px;padding:5px 10px;margin-bottom:8px;
-    }
-    .contract-box{
-      border:1px dashed #b8cae8;background:#f8fbff;border-radius:18px;padding:14px;line-height:1.8;margin-bottom:14px;
-    }
-    .actions{margin-top:14px;display:flex;flex-wrap:wrap;gap:10px}
-    .link-btn{
-      display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:10px 14px;
-      border-radius:14px;text-decoration:none;font-weight:900;background:#e9eef6;color:#17396b;
-    }
-    .link-btn.primary{background:var(--primary);color:#fff}
-    .contract-body-wrap{
-      margin-top:14px;border:1px solid #dbe5f2;border-radius:18px;background:#fff;padding:18px;
-      max-height:none;overflow:auto;
-    }
-    .contract-body-wrap .contract-html{line-height:1.95;color:#1f2937}
-    .contract-body-wrap .contract-html h1,
-    .contract-body-wrap .contract-html h2,
-    .contract-body-wrap .contract-html h3{color:#17396b;margin-top:0}
-    .contract-body-wrap .contract-html table{width:100%;border-collapse:collapse}
-    .contract-body-wrap .contract-html td,
-    .contract-body-wrap .contract-html th{border:1px solid #dbe5f2;padding:8px}
-    .contract-body-wrap .contract-html img{max-width:100%;height:auto}
-    @media (max-width:980px){
-      .grid{grid-template-columns:1fr}
+    .hero{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+    .hero .title{margin:0}
+    .summary-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+    .summary-card{background:#fff;border:1px solid var(--line);border-radius:26px;padding:22px;box-shadow:0 12px 30px rgba(15,23,42,.04);display:flex;flex-direction:column;gap:12px}
+    .summary-top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+    .summary-title{font-size:28px;font-weight:900;color:#163252}
+    .summary-num{font-size:46px;font-weight:900;line-height:1;color:#1f7a5a}
+    .summary-sub{color:var(--muted);font-size:16px;line-height:1.7}
+    .pill{display:inline-flex;align-items:center;justify-content:center;min-width:36px;padding:6px 12px;border-radius:999px;font-size:14px;font-weight:900;background:#e9f2ff;color:#315b8a}
+    .panel{display:none;margin-top:18px}
+    .panel.show{display:block}
+    .panel-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+    .list{display:grid;gap:12px}
+    .item{background:#fff;border:1px solid var(--line);border-radius:22px;padding:18px;box-shadow:0 12px 30px rgba(15,23,42,.04)}
+    .item h3{margin:0 0 8px;font-size:22px;color:#163252}
+    .item .meta{color:var(--muted);font-size:14px;margin-bottom:8px}
+    .badge{display:inline-block;padding:6px 12px;border-radius:999px;font-size:13px;font-weight:900;background:#eef4fb;color:#315b8a;margin-bottom:10px}
+    .empty{background:#fff;border:1px dashed var(--line);border-radius:18px;padding:16px;color:var(--muted)}
+    .contract-body{background:#fff;border:1px solid var(--line);border-radius:22px;padding:20px;box-shadow:0 12px 30px rgba(15,23,42,.04)}
+    .contract-meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:14px}
+    .contract-meta .box{background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:12px}
+    .contract-meta .label{font-size:12px;color:#64748b;font-weight:800;margin-bottom:4px}
+    .contract-meta .value{font-size:15px;font-weight:800;color:#0f172a}
+    .contract-html{line-height:1.9;color:#1f2937}
+    .media-list{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+    .media-list a{display:inline-flex;text-decoration:none;background:#eef2f7;color:#23384f;border-radius:12px;padding:8px 12px;font-weight:800;font-size:14px}
+    @media (max-width:900px){
+      .summary-grid{grid-template-columns:1fr}
+      .contract-meta{grid-template-columns:1fr}
     }
   </style>
 </head>
-<body>
-  <div class="wrap">
-    <section class="hero">
-      <h1>外聘老師首頁</h1>
-      <p class="sub" id="heroSub">讀取中...</p>
-      <div class="row">
-        <button class="btn" id="reloadBtn" type="button">重新整理</button>
-        <button class="btn" id="logoutBtn" type="button">登出</button>
+<body onload="initTeacherHome()">
+  <div class="container">
+    <div class="card">
+      <div class="hero">
+        <div class="header" style="margin:0">
+          <h1 class="title">外聘老師首頁</h1>
+          <div class="welcome">歡迎 <span data-user-name></span></div>
+          <div class="muted" id="teacherSubText">讀取中...</div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <a class="btn secondary" href="announcements.html" style="width:auto;padding:10px 14px">公告列表</a>
+          <a class="btn secondary" href="contract.html" id="contractPageLink" style="width:auto;padding:10px 14px">完整合約頁</a>
+          <button class="btn secondary" style="width:auto;padding:10px 14px" onclick="loadHome()">重新整理</button>
+          <button class="btn secondary" style="width:auto;padding:10px 14px" onclick="logout()">登出</button>
+        </div>
       </div>
+      <div id="msg" class="message"></div>
+    </div>
+
+    <div class="summary-grid" id="summaryGrid">
+      <section class="summary-card">
+        <div class="summary-top">
+          <div class="summary-title">公告</div>
+          <div class="pill" id="announcementBadge">0</div>
+        </div>
+        <div class="summary-num" id="announcementNum">0</div>
+        <div class="summary-sub">最新日期：<span id="announcementDate">-</span></div>
+        <button class="btn secondary" style="width:auto" onclick="togglePanel('announcementsPanel')">展開公告</button>
+      </section>
+
+      <section class="summary-card">
+        <div class="summary-top">
+          <div class="summary-title">代辦事項</div>
+          <div class="pill" id="todoBadge">0</div>
+        </div>
+        <div class="summary-num" id="todoNum">0</div>
+        <div class="summary-sub">交辦：<span id="todoTaskCount">0</span>　合約：<span id="todoContractCount">0</span></div>
+        <button class="btn secondary" style="width:auto" onclick="togglePanel('todoPanel')">展開代辦</button>
+      </section>
+
+      <section class="summary-card">
+        <div class="summary-top">
+          <div class="summary-title">合約</div>
+          <div class="pill" id="contractBadge">-</div>
+        </div>
+        <div class="summary-num" id="contractYearText">-</div>
+        <div class="summary-sub" id="contractPeriodText">-</div>
+        <button class="btn secondary" style="width:auto" onclick="togglePanel('contractPanel')">展開合約</button>
+      </section>
+    </div>
+
+    <section class="panel" id="announcementsPanel">
+      <div class="panel-head">
+        <h2 class="title" style="margin:0">公告</h2>
+        <a class="btn secondary" href="announcements.html" style="width:auto;padding:10px 14px">前往完整公告列表</a>
+      </div>
+      <div class="list" id="announcementList"></div>
     </section>
 
-    <div class="banner" id="errorBox"></div>
-
-    <section class="grid">
-      <div class="stack">
-        <article class="card">
-          <h2>公告</h2>
-          <div class="small">提供給外聘老師的重要公告</div>
-          <div id="announcementList" class="list"><div class="empty">讀取中...</div></div>
-        </article>
-
-        <article class="card">
-          <h2>代辦事項</h2>
-          <div class="small">待處理摘要</div>
-          <div id="todoList" class="list"><div class="empty">讀取中...</div></div>
-        </article>
+    <section class="panel" id="todoPanel">
+      <div class="panel-head">
+        <h2 class="title" style="margin:0">代辦事項</h2>
       </div>
+      <div class="list" id="todoList"></div>
+    </section>
 
-      <article class="card">
-        <h2>合約</h2>
-        <div class="small">這裡直接顯示正式合約內容，不再用 iframe 載入</div>
-        <div id="contractBox" class="contract-box">讀取中...</div>
-        <div class="actions" id="contractActions"></div>
-        <div class="contract-body-wrap">
-          <div id="contractBody" class="contract-html">讀取中...</div>
+    <section class="panel" id="contractPanel">
+      <div class="panel-head">
+        <h2 class="title" style="margin:0">合約</h2>
+        <a class="btn" href="contract.html" id="contractOpenBtn" style="width:auto;padding:10px 14px">前往簽署 / 查看</a>
+      </div>
+      <div class="contract-body">
+        <div class="contract-meta">
+          <div class="box"><div class="label">狀態</div><div class="value" id="contractStatusText">-</div></div>
+          <div class="box"><div class="label">年度</div><div class="value" id="contractYearMeta">-</div></div>
+          <div class="box"><div class="label">期間</div><div class="value" id="contractPeriodMeta">-</div></div>
+          <div class="box"><div class="label">PDF</div><div class="value" id="contractPdfMeta">尚未簽署</div></div>
         </div>
-      </article>
+        <div class="contract-html" id="contractHtmlBox">尚未讀取合約內容。</div>
+      </div>
     </section>
   </div>
 
   <script src="config.js"></script>
+  <script src="app.js"></script>
   <script>
-    function qs(name){
-      return new URLSearchParams(location.search).get(name) || '';
+    let currentUser=null;
+    let loadedFlags={ announcements:false, todo:false, contract:false };
+
+    function mediaLinksHtml(list){
+      list = Array.isArray(list)?list:[];
+      if(!list.length) return '';
+      return `<div class="media-list">${list.map(x=>`<a href="${x.url||'#'}" target="_blank">${x.name||'附件'}</a>`).join('')}</div>`;
     }
 
-    function showError(msg){
-      const box = document.getElementById('errorBox');
-      box.style.display = 'block';
-      box.textContent = msg || '發生錯誤';
+    function announcementCardHtml(row){
+      return `
+        <article class="item">
+          <div class="badge">${row.category||'公告'}｜${row.audienceLabel||''}</div>
+          <h3>${row.title||'未命名公告'}</h3>
+          <div class="meta">${row.publishDate||''}</div>
+          <div>${(row.summary||row.content||'').replace(/\n/g,'<br>')}</div>
+          ${mediaLinksHtml([...(row.imageAssets||[]), ...(row.videoAssets||[]), ...(row.audioAssets||[]), ...(row.fileAssets||[])])}
+        </article>`;
     }
 
-    function hideError(){
-      const box = document.getElementById('errorBox');
-      box.style.display = 'none';
-      box.textContent = '';
+    function todoCardHtml(row){
+      return `
+        <article class="item">
+          <div class="badge">${row.status||''}</div>
+          <h3>${row.title||''}</h3>
+          <div>${row.description||''}</div>
+        </article>`;
     }
 
-    function getStoredUser(){
+    function togglePanel(id){
+      const el=document.getElementById(id);
+      const show=!el.classList.contains('show');
+      document.querySelectorAll('.panel').forEach(x=>x.classList.remove('show'));
+      if(show) el.classList.add('show');
+      if(show){
+        if(id==='announcementsPanel' && !loadedFlags.announcements) loadAnnouncements();
+        if(id==='todoPanel' && !loadedFlags.todo) loadTodo();
+        if(id==='contractPanel' && !loadedFlags.contract) loadContract();
+      }
+    }
+
+    async function loadAnnouncements(){
       try{
-        return JSON.parse(localStorage.getItem('employeeUser') || 'null');
-      }catch(err){
-        return null;
+        const res=await api('getTeacherAnnouncements',{userId:currentUser.id});
+        if(!res.ok) throw new Error(res.message||'讀取公告失敗');
+        const rows=res.rows||[];
+        document.getElementById('announcementList').innerHTML = rows.length ? rows.map(announcementCardHtml).join('') : '<div class="empty">目前沒有公告</div>';
+        loadedFlags.announcements=true;
+      }catch(e){
+        document.getElementById('announcementList').innerHTML = `<div class="empty">${e.message||'讀取失敗'}</div>`;
       }
     }
 
-    function getUserId(){
-      const storedUser = getStoredUser();
-      return qs('userId')
-        || localStorage.getItem('employeeUserId')
-        || localStorage.getItem('teacherUserId')
-        || (storedUser && storedUser.id)
-        || '';
-    }
-
-    const API_BASE = window.API_BASE
-      || (window.APP_CONFIG && window.APP_CONFIG.API_URL)
-      || localStorage.getItem('employeeApiBaseUrl')
-      || '';
-
-    const userId = getUserId();
-
-    function postAction(action, payload){
-      return fetch(API_BASE, {
-        method:'POST',
-        headers:{'Content-Type':'text/plain;charset=utf-8'},
-        body: JSON.stringify(Object.assign({ action }, payload || {}))
-      }).then(async r => {
-        const text = await r.text();
-        try{ return JSON.parse(text); }catch(err){ throw new Error(text || '伺服器回傳格式錯誤'); }
-      });
-    }
-
-    function escapeHtml(str){
-      return String(str == null ? '' : str)
-        .replace(/&/g,'&amp;')
-        .replace(/</g,'&lt;')
-        .replace(/>/g,'&gt;')
-        .replace(/"/g,'&quot;')
-        .replace(/'/g,'&#39;');
-    }
-
-    function nl2br(str){
-      return escapeHtml(str).replace(/\n/g,'<br>');
-    }
-
-    function renderAnnouncements(list){
-      const el = document.getElementById('announcementList');
-      if(!Array.isArray(list) || !list.length){
-        el.innerHTML = '<div class="empty">目前沒有公告</div>';
-        return;
-      }
-      el.innerHTML = list.map(item => {
-        const title = item.title || item.subject || '未命名公告';
-        const dateText = item.dateText || item.publishDate || item.createdAt || '';
-        const content = item.content || item.summary || item.description || '';
-        return `
-          <div class="item">
-            <div class="item-title">${escapeHtml(title)}</div>
-            <div class="item-meta">${escapeHtml(dateText)}</div>
-            <div class="item-meta">${escapeHtml(content)}</div>
-          </div>
-        `;
-      }).join('');
-    }
-
-    function renderTodos(list){
-      const el = document.getElementById('todoList');
-      if(!Array.isArray(list) || !list.length){
-        el.innerHTML = '<div class="empty">目前沒有待辦事項</div>';
-        return;
-      }
-      el.innerHTML = list.map(item => {
-        const badge = item.typeLabel || item.type || item.key || '待辦';
-        const title = item.title || item.name || '未命名項目';
-        const desc = item.description || item.message || item.status || '';
-        const count = (item.count != null && item.count !== '') ? `（${item.count}）` : '';
-        return `
-          <div class="item">
-            <div class="todo-badge">${escapeHtml(badge)}</div>
-            <div class="item-title">${escapeHtml(title)}${escapeHtml(count)}</div>
-            <div class="item-meta">${escapeHtml(desc)}</div>
-          </div>
-        `;
-      }).join('');
-    }
-
-    function renderContract(contract, record){
-      const box = document.getElementById('contractBox');
-      const body = document.getElementById('contractBody');
-      const actions = document.getElementById('contractActions');
-      actions.innerHTML = '';
-
-      const signUrlBase = (contract && (contract.signUrl || contract.contractUrl)) || 'contract.html';
-      const signUrl = signUrlBase + (signUrlBase.includes('?') ? '&' : '?') + 'userId=' + encodeURIComponent(userId);
-      const statusText = (record && record.status) || (contract && contract.statusText) || '未設定';
-      const yearText = (contract && (contract.year || contract.contractYear)) || '未設定';
-      const periodText = contract && (contract.periodText || ((contract.startDate || '') + ' ～ ' + (contract.endDate || '')));
-      const contractName = (contract && contract.contractName) || '外聘老師年度委任契約';
-
-      box.innerHTML = `
-        <div><strong>合約名稱：</strong>${escapeHtml(contractName)}</div>
-        <div><strong>狀態：</strong>${escapeHtml(statusText)}</div>
-        <div><strong>年度：</strong>${escapeHtml(yearText)}</div>
-        <div><strong>合約期間：</strong>${escapeHtml(periodText || '未設定')}</div>
-        <div><strong>簽署時間：</strong>${escapeHtml((record && ((record.signDate || '') + ' ' + (record.signTime || '')).trim()) || '尚未簽署')}</div>
-      `;
-
-      const openLink = document.createElement('a');
-      openLink.className = 'link-btn primary';
-      openLink.href = signUrl;
-      openLink.textContent = '開啟完整合約頁';
-      actions.appendChild(openLink);
-
-      if(record && record.pdfUrl){
-        const pdfLink = document.createElement('a');
-        pdfLink.className = 'link-btn';
-        pdfLink.href = record.pdfUrl;
-        pdfLink.target = '_blank';
-        pdfLink.rel = 'noopener';
-        pdfLink.textContent = '查看已簽 PDF';
-        actions.appendChild(pdfLink);
-      }
-
-      if(contract && contract.contractHtml){
-        body.innerHTML = contract.contractHtml;
-      }else if(contract && contract.contractText){
-        body.innerHTML = nl2br(contract.contractText);
-      }else{
-        body.innerHTML = '<div class="empty">目前尚未設定合約內容</div>';
+    async function loadTodo(){
+      try{
+        const res=await api('getTeacherTodoSummary',{userId:currentUser.id});
+        if(!res.ok) throw new Error(res.message||'讀取代辦失敗');
+        const rows=res.rows||[];
+        document.getElementById('todoList').innerHTML = rows.length ? rows.map(todoCardHtml).join('') : '<div class="empty">目前沒有代辦事項</div>';
+        loadedFlags.todo=true;
+      }catch(e){
+        document.getElementById('todoList').innerHTML = `<div class="empty">${e.message||'讀取失敗'}</div>`;
       }
     }
 
-    async function loadContractOnly(){
-      const res = await postAction('getTeacherContractStatus', { userId });
-      if(!res || !res.ok) throw new Error((res && res.message) || '讀取合約失敗');
-      renderContract(res.contract || null, res.record || null);
-      return res;
+    async function loadContract(){
+      try{
+        const res=await api('getTeacherContractStatus',{userId:currentUser.id});
+        if(!res.ok) throw new Error(res.message||'讀取合約失敗');
+        const contract=res.contract||{};
+        const record=res.record||null;
+        document.getElementById('contractStatusText').textContent = res.signed ? '已簽署' : '尚未簽署';
+        document.getElementById('contractYearMeta').textContent = contract.year || '-';
+        document.getElementById('contractPeriodMeta').textContent = [contract.startDate||'', contract.endDate||''].filter(Boolean).join(' ～ ') || '-';
+        document.getElementById('contractPdfMeta').innerHTML = record && record.pdfUrl ? `<a href="${record.pdfUrl}" target="_blank">查看已簽 PDF</a>` : '尚未簽署';
+        document.getElementById('contractHtmlBox').innerHTML = contract.contractHtml || (contract.contractText||'尚未設定合約');
+        loadedFlags.contract=true;
+      }catch(e){
+        document.getElementById('contractHtmlBox').innerHTML = `<div class="empty">${e.message||'讀取失敗'}</div>`;
+      }
     }
 
     async function loadHome(){
-      hideError();
-
-      if(!userId){
-        showError('缺少 userId，請從系統入口重新開啟。');
-        return;
-      }
-      if(!API_BASE){
-        showError('缺少 API_BASE');
-        return;
-      }
-
       try{
-        const result = await postAction('getTeacherHomeData', { userId });
-        if(!result || !result.ok){
-          throw new Error((result && result.message) || '讀取失敗');
-        }
+        const res=await api('getTeacherHomeData',{userId:currentUser.id});
+        if(!res.ok) throw new Error(res.message||'讀取首頁失敗');
+        const teacher=res.teacher||{};
+        const cards=res.cards||{};
+        document.getElementById('teacherSubText').textContent = `${teacher.name||''} ${teacher.email||''}`.trim() || '外聘老師專區';
 
-        const user = result.user || result.teacher || {};
-        const announcements = result.announcements || result.latestAnnouncements || [];
-        const todos = result.todos || result.todoSummary || [];
-        const contract = result.contract || null;
-        const record = result.record || null;
+        const a=cards.announcements||{};
+        const t=cards.todos||{};
+        const c=cards.contract||{};
+        document.getElementById('announcementNum').textContent = String(a.total||0);
+        document.getElementById('announcementBadge').textContent = String(a.unreadCount||0);
+        document.getElementById('announcementDate').textContent = a.latestDate||'-';
 
-        document.getElementById('heroSub').textContent = user.name ? (user.name + ' 老師您好') : '外聘老師您好';
-        renderAnnouncements(announcements);
-        renderTodos(todos);
+        document.getElementById('todoNum').textContent = String(t.total||0);
+        document.getElementById('todoBadge').textContent = String(t.total||0);
+        document.getElementById('todoTaskCount').textContent = String(t.pendingTaskCount||0);
+        document.getElementById('todoContractCount').textContent = String(t.pendingContractCount||0);
 
-        if(contract && (contract.contractHtml || contract.contractText)){
-          renderContract(contract, record);
-        }else{
-          await loadContractOnly();
-        }
-      }catch(err){
-        try{
-          document.getElementById('heroSub').textContent = '外聘老師您好';
-          renderAnnouncements([]);
-          renderTodos([]);
-          await loadContractOnly();
-          showError('首頁其他資料讀取失敗，但合約已單獨載入：' + (err && err.message ? err.message : String(err)));
-        }catch(innerErr){
-          showError(innerErr && innerErr.message ? innerErr.message : String(innerErr));
-        }
+        document.getElementById('contractBadge').textContent = c.signed ? '已簽' : '待簽';
+        document.getElementById('contractYearText').textContent = c.year || '-';
+        document.getElementById('contractPeriodText').textContent = c.periodText || c.statusText || '-';
+        document.getElementById('contractPageLink').href = `contract.html?userId=${encodeURIComponent(currentUser.id)}`;
+        document.getElementById('contractOpenBtn').href = `contract.html?userId=${encodeURIComponent(currentUser.id)}`;
+
+        setMsg(qs('#msg'),'');
+        loadedFlags={ announcements:false, todo:false, contract:false };
+        document.querySelectorAll('.panel').forEach(x=>x.classList.remove('show'));
+      }catch(e){
+        setMsg(qs('#msg'),e.message||'讀取失敗',true);
       }
     }
 
-    document.getElementById('reloadBtn').addEventListener('click', loadHome);
-
-    document.getElementById('logoutBtn').addEventListener('click', function(){
-      localStorage.removeItem('employeeUser');
-      localStorage.removeItem('employeeUserId');
-      localStorage.removeItem('teacherUserId');
-      location.href = 'index.html';
-    });
-
-    loadHome();
+    function initTeacherHome(){
+      fillHeader();
+      currentUser=requireLogin();
+      if(!currentUser) return;
+      if(!isExternalTeacher(currentUser)){ location.href='dashboard.html'; return; }
+      setPortalMode('staff');
+      loadHome();
+    }
   </script>
 </body>
 </html>

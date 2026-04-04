@@ -2,7 +2,7 @@
 const API_URL = window.APP_CONFIG.API_URL;
 function qs(s){return document.querySelector(s)}
 function qsa(s){return Array.from(document.querySelectorAll(s))}
-function saveUser(user){localStorage.setItem('employeeUser', JSON.stringify(user)); if(user&&user.id){localStorage.setItem('employeeUserId', user.id)} else {localStorage.removeItem('employeeUserId')}}
+function saveUser(user){localStorage.setItem('employeeUser', JSON.stringify(user))}
 function setPortalMode(mode){localStorage.setItem('employeePortalMode', mode==='settings'?'settings':'staff')}
 function getPortalMode(){return localStorage.getItem('employeePortalMode')||'staff'}
 function clearPortalMode(){localStorage.removeItem('employeePortalMode')}
@@ -13,12 +13,12 @@ function identityLabelOf(user=getUser()){const type=identityTypeOf(user); return
 function isPartTimeUser(user=getUser()){return identityTypeOf(user)==='parttime'}
 function isExternalTeacher(user=getUser()){return identityTypeOf(user)==='external'}
 function canUseFeature(feature,user=getUser()){const type=identityTypeOf(user); if(!user) return false; if(feature==='dashboard') return type!=='external'; if(feature==='clock') return type==='staff' || type==='parttime'; if(feature==='parttime') return type==='parttime'; if(feature==='leave') return type==='staff' || type==='parttime'; if(feature==='routine') return type==='staff' || type==='parttime'; if(feature==='training') return type==='staff' || type==='parttime'; if(feature==='task') return true; if(feature==='contract') return type==='external'; if(feature==='contractAdmin') return !!(user && (user.showSettingsZone || String(user.role||'').toLowerCase()==='admin')); return true;}
-function guardFeatureAccess(feature,user=getUser()){if(canUseFeature(feature,user)) return true; location.href=isExternalTeacher(user)?'teacher-home.html':'dashboard.html'; return false;}
+function guardFeatureAccess(feature,user=getUser()){if(canUseFeature(feature,user)) return true; location.href=isExternalTeacher(user)?'task.html':'dashboard.html'; return false;}
 function isSettingsMode(){return hasSettingsZoneAccess() && getPortalMode()==='settings'}
 function modeHomeHref(){return isSettingsMode() ? 'settings.html' : 'dashboard.html'}
 function getUser(){try{return JSON.parse(localStorage.getItem('employeeUser')||'null')}catch(e){return null}}
-function logout(){localStorage.removeItem('employeeUser'); localStorage.removeItem('employeeUserId'); localStorage.removeItem('teacherUserId'); clearPortalMode(); location.href='index.html'}
-function currentFeatureKey(){const path=String((location&&location.pathname)||'').split('/').pop().toLowerCase(); if(path==='dashboard.html') return 'dashboard'; if(path==='teacher-home.html') return 'teacherHome'; if(path==='clock.html') return 'clock'; if(path==='parttime.html') return 'parttime'; if(path==='leave.html') return 'leave'; if(path==='task.html') return 'task'; if(path==='routine.html') return 'routine'; if(path==='training.html') return 'training'; if(path==='contract.html') return 'contract'; if(path==='contract-admin.html') return 'contractAdmin'; if(path==='settings.html') return 'settings'; return '';}
+function logout(){localStorage.removeItem('employeeUser'); clearPortalMode(); location.href='index.html'}
+function currentFeatureKey(){const path=String((location&&location.pathname)||'').split('/').pop().toLowerCase(); if(path==='dashboard.html') return 'dashboard'; if(path==='clock.html') return 'clock'; if(path==='parttime.html') return 'parttime'; if(path==='leave.html') return 'leave'; if(path==='task.html') return 'task'; if(path==='routine.html') return 'routine'; if(path==='training.html') return 'training'; if(path==='contract.html') return 'contract'; if(path==='contract-admin.html') return 'contractAdmin'; if(path==='settings.html') return 'settings'; return '';}
 function requireLogin(){const user=getUser(); if(!user){location.href='index.html'; return null;} const feature=currentFeatureKey(); if(feature==='contract' && !isExternalTeacher(user)){location.href='dashboard.html'; return null;} if(feature==='contractAdmin' && !isManager(user)){location.href='dashboard.html'; return null;} if(feature && feature!=='contract' && feature!=='contractAdmin' && feature!=='settings' && !guardFeatureAccess(feature,user)) return null; return user;}
 async function api(action, payload={}){
   const res=await fetch(API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action,...payload})});
@@ -349,7 +349,7 @@ function shouldShowTeacherContractCard(res){
 }
 
 function fillHeader(){const user=requireLogin(); if(!user) return; const manager=isManager(user); qsa('[data-user-name]').forEach(el=>el.textContent=user.name||'員工'); qsa('[data-if-parttime]').forEach(el=>el.style.display=isPartTimeUser(user)?'':'none'); qsa('[data-if-admin]').forEach(el=>el.style.display=manager?'':'none'); qsa('[data-if-staff-view]').forEach(el=>el.style.display=manager?'none':''); setTimeout(()=>{renderLineBindPrompt_();},0);}
-function redirectAfterLogin(user){saveUser(user); if(user && user.showSettingsZone){setPortalMode('staff'); location.href='portal.html'; return;} if(isExternalTeacher(user)){ location.href='teacher-home.html'; return; } location.href='dashboard.html';}
+function redirectAfterLogin(user){saveUser(user); if(user && user.showSettingsZone){setPortalMode('staff'); location.href='portal.html'; return;} if(isExternalTeacher(user)){ location.href='task.html'; return; } location.href='dashboard.html';}
 function saveLoginPref(email,password,remember=true){if(!remember){localStorage.removeItem('employeeSavedLogin');return;}localStorage.setItem('employeeSavedLogin',JSON.stringify({email:email||'',password:password||'',remember:true}));}
 function getSavedLogin(){try{return JSON.parse(localStorage.getItem('employeeSavedLogin')||'null')}catch(e){return null}}
 function applySavedLogin(emailSel='#email',passwordSel='#password',rememberSel='#rememberLogin'){const s=getSavedLogin();if(!s)return;const e=qs(emailSel),p=qs(passwordSel),r=qs(rememberSel);if(e)e.value=s.email||'';if(p)p.value=s.password||'';if(r)r.checked=!!s.remember;}
@@ -579,4 +579,62 @@ async function driveUploadFileResumable(file, folderId, accessToken, onProgress)
     }
   }
   throw new Error('影片直傳未完成');
+}
+// ===== 公告系統 / 外聘老師首頁補丁：直接追加到 app.js 最後面 =====
+function saveUser(user){
+  localStorage.setItem('employeeUser', JSON.stringify(user));
+  if(user && user.id){
+    localStorage.setItem('employeeUserId', user.id);
+  }else{
+    localStorage.removeItem('employeeUserId');
+  }
+  if(typeof API_URL !== 'undefined' && API_URL){
+    localStorage.setItem('employeeApiBaseUrl', API_URL);
+  }
+}
+function currentFeatureKey(){
+  const path=String((location&&location.pathname)||'').split('/').pop().toLowerCase();
+  if(path==='dashboard.html') return 'dashboard';
+  if(path==='clock.html') return 'clock';
+  if(path==='parttime.html') return 'parttime';
+  if(path==='leave.html') return 'leave';
+  if(path==='task.html') return 'task';
+  if(path==='routine.html') return 'routine';
+  if(path==='training.html') return 'training';
+  if(path==='contract.html') return 'contract';
+  if(path==='contract-admin.html') return 'contractAdmin';
+  if(path==='settings.html') return 'settings';
+  if(path==='teacher-home.html') return 'teacherHome';
+  if(path==='announcements.html') return 'announcements';
+  if(path==='announcement-admin.html') return 'announcementAdmin';
+  return '';
+}
+function guardFeatureAccess(feature,user=getUser()){
+  if(canUseFeature(feature,user)) return true;
+  location.href=isExternalTeacher(user)?'teacher-home.html':'dashboard.html';
+  return false;
+}
+function requireLogin(){
+  const user=getUser();
+  if(!user){location.href='index.html'; return null;}
+  const feature=currentFeatureKey();
+  if(feature==='contract' && !isExternalTeacher(user)){location.href='dashboard.html'; return null;}
+  if((feature==='contractAdmin' || feature==='announcementAdmin' || feature==='settings') && !isManager(user)){location.href='dashboard.html'; return null;}
+  if(feature==='teacherHome' && !isExternalTeacher(user)){location.href='dashboard.html'; return null;}
+  if(feature==='announcements'){ return user; }
+  if(feature && !['contract','contractAdmin','announcementAdmin','settings','teacherHome','announcements'].includes(feature) && !guardFeatureAccess(feature,user)) return null;
+  return user;
+}
+function redirectAfterLogin(user){
+  saveUser(user);
+  if(user && user.showSettingsZone){
+    setPortalMode('staff');
+    location.href='portal.html';
+    return;
+  }
+  if(isExternalTeacher(user)){
+    location.href='teacher-home.html';
+    return;
+  }
+  location.href='dashboard.html';
 }
