@@ -350,6 +350,10 @@
       buildDayFields();
       bindForms();
       toggleSingleDayTime();
+      const userId = getCurrentUserId();
+      if (!userId) {
+        showStatus('templateStatus', '尚未取得主管登入資訊，請由員工系統設定區進入本頁。', 'error');
+      }
       reloadPageData();
     });
 
@@ -388,7 +392,35 @@
       document.getElementById('singleDayForm').addEventListener('submit', saveSingleDay);
     }
 
+
+    function getStoredUser() {
+      try {
+        const raw = localStorage.getItem('employeeUser') || sessionStorage.getItem('employeeUser') || '';
+        if (!raw) return null;
+        const user = JSON.parse(raw);
+        return user && typeof user === 'object' ? user : null;
+      } catch (err) {
+        return null;
+      }
+    }
+
+    function getCurrentUserId() {
+      const user = getStoredUser();
+      return String(
+        (user && (user.id || user.userId || user.employeeId)) ||
+        localStorage.getItem('employeeUserId') ||
+        sessionStorage.getItem('employeeUserId') ||
+        ''
+      ).trim();
+    }
+
+    function withAdminUser(payload) {
+      const userId = getCurrentUserId();
+      return Object.assign({}, payload || {}, userId ? { userId } : {});
+    }
+
     async function callBackend(action, payload = {}) {
+      payload = withAdminUser(payload);
       const inheritedApi = (typeof window !== 'undefined' && typeof window.apiCall === 'function' && window.apiCall !== callBackend) ? window.apiCall : null;
       if (inheritedApi) {
         return await inheritedApi(action, payload);
@@ -427,6 +459,13 @@
     async function reloadPageData() {
       showStatus('templateStatus', '', 'success', false);
       showStatus('assignmentStatus', '', 'success', false);
+      showStatus('singleDayStatus', '', 'success', false);
+      if (!getCurrentUserId()) {
+        showStatus('templateStatus', '目前抓不到管理者登入資料，請先回到員工系統重新登入後，再進入班表設定。', 'error');
+        renderEmployeeOptions();
+        renderSingleDayEmployeeOptions();
+        return;
+      }
       try {
         const res = await callBackend('getScheduleSetupData');
         pageData.templates = Array.isArray(res.templates) ? res.templates : [];
@@ -448,12 +487,12 @@
       const select = document.getElementById('employeeId');
       const employees = pageData.employees;
       if (!employees.length) {
-        select.innerHTML = '<option value="">目前沒有可用員工資料</option>';
+        select.innerHTML = '<option value="">目前沒有可用員工資料，請先確認你已用主管帳號登入</option>';
         return;
       }
       select.innerHTML = '<option value="">請選擇員工</option>' + employees.map(emp => {
-        const id = escapeHtml(emp.employeeId || emp.id || '');
-        const name = escapeHtml(emp.name || emp.employeeName || '未命名員工');
+        const id = escapeHtml(emp.employeeId || '');
+        const name = escapeHtml(emp.employeeName || emp.name || '未命名員工');
         return `<option value="${id}">${name}（${id}）</option>`;
       }).join('');
     }
@@ -462,12 +501,12 @@
       const select = document.getElementById('singleDayEmployeeId');
       const employees = pageData.employees;
       if (!employees.length) {
-        select.innerHTML = '<option value="">目前沒有可用員工資料</option>';
+        select.innerHTML = '<option value="">目前沒有可用員工資料，請先確認你已用主管帳號登入</option>';
         return;
       }
       select.innerHTML = '<option value="">請選擇員工</option>' + employees.map(emp => {
-        const id = escapeHtml(emp.employeeId || emp.id || '');
-        const name = escapeHtml(emp.name || emp.employeeName || '未命名員工');
+        const id = escapeHtml(emp.employeeId || '');
+        const name = escapeHtml(emp.employeeName || emp.name || '未命名員工');
         return `<option value="${id}">${name}（${id}）</option>`;
       }).join('');
     }
@@ -686,7 +725,7 @@
     async function saveAssignment(evt) {
       evt.preventDefault();
       const employeeId = document.getElementById('employeeId').value;
-      const employee = pageData.employees.find(e => String(e.employeeId || e.id || '') === String(employeeId));
+      const employee = pageData.employees.find(e => String(e.employeeId || '') === String(employeeId));
       const templateId = document.getElementById('assignTemplateId').value;
       const template = pageData.templates.find(t => String(t.templateId || t.模板ID || '') === String(templateId));
       const indefinite = document.getElementById('assignIndefinite').checked;
@@ -816,7 +855,7 @@
     async function saveSingleDay(evt) {
       evt.preventDefault();
       const employeeId = document.getElementById('singleDayEmployeeId').value;
-      const employee = pageData.employees.find(e => String(e.employeeId || e.id || '') === String(employeeId));
+      const employee = pageData.employees.find(e => String(e.employeeId || '') === String(employeeId));
       const clockType = document.getElementById('singleDayType').value;
       const payload = {
         recordId: document.getElementById('singleDayId').value.trim(),
