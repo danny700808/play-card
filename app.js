@@ -2,7 +2,7 @@
 const API_URL = window.APP_CONFIG.API_URL;
 function qs(s){return document.querySelector(s)}
 function qsa(s){return Array.from(document.querySelectorAll(s))}
-function saveUser(user){localStorage.setItem('employeeUser', JSON.stringify(user))}
+function saveUser(user){localStorage.setItem('employeeUser', JSON.stringify(user)); if(user&&user.id){localStorage.setItem('employeeUserId', user.id)} else {localStorage.removeItem('employeeUserId')}}
 function setPortalMode(mode){localStorage.setItem('employeePortalMode', mode==='settings'?'settings':'staff')}
 function getPortalMode(){return localStorage.getItem('employeePortalMode')||'staff'}
 function clearPortalMode(){localStorage.removeItem('employeePortalMode')}
@@ -17,7 +17,7 @@ function guardFeatureAccess(feature,user=getUser()){if(canUseFeature(feature,use
 function isSettingsMode(){return hasSettingsZoneAccess() && getPortalMode()==='settings'}
 function modeHomeHref(){return isSettingsMode() ? 'settings.html' : 'dashboard.html'}
 function getUser(){try{return JSON.parse(localStorage.getItem('employeeUser')||'null')}catch(e){return null}}
-function logout(){localStorage.removeItem('employeeUser'); clearPortalMode(); location.href='index.html'}
+function logout(){localStorage.removeItem('employeeUser'); localStorage.removeItem('employeeUserId'); localStorage.removeItem('teacherUserId'); clearPortalMode(); location.href='index.html'}
 function currentFeatureKey(){const path=String((location&&location.pathname)||'').split('/').pop().toLowerCase(); if(path==='dashboard.html') return 'dashboard'; if(path==='teacher-home.html') return 'teacherHome'; if(path==='clock.html') return 'clock'; if(path==='parttime.html') return 'parttime'; if(path==='leave.html') return 'leave'; if(path==='task.html') return 'task'; if(path==='routine.html') return 'routine'; if(path==='training.html') return 'training'; if(path==='contract.html') return 'contract'; if(path==='contract-admin.html') return 'contractAdmin'; if(path==='settings.html') return 'settings'; return '';}
 function requireLogin(){const user=getUser(); if(!user){location.href='index.html'; return null;} const feature=currentFeatureKey(); if(feature==='contract' && !isExternalTeacher(user)){location.href='dashboard.html'; return null;} if(feature==='contractAdmin' && !isManager(user)){location.href='dashboard.html'; return null;} if(feature && feature!=='contract' && feature!=='contractAdmin' && feature!=='settings' && !guardFeatureAccess(feature,user)) return null; return user;}
 async function api(action, payload={}){
