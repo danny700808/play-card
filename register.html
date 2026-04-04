@@ -8,6 +8,7 @@
   <style>
     .register-card{max-width:640px;margin:18px auto}
     .birth-select-row{display:grid;grid-template-columns:1.5fr 1fr 1fr;gap:10px}
+    .required-mark{display:inline-block;margin-left:6px;color:#dc2626;font-weight:800;line-height:1}
     @media (max-width:560px){.birth-select-row{grid-template-columns:1fr}.register-card{margin:8px auto}}
   </style>
 </head>
@@ -24,25 +25,25 @@
 
       <form id="registerForm" novalidate>
         <div class="field" id="field-name">
-          <label for="name">姓名</label>
+          <label for="name">姓名<span class="required-mark" aria-hidden="true">*</span></label>
           <input id="name" name="name" autocomplete="name" placeholder="請輸入姓名">
           <div class="field-error"></div>
         </div>
 
         <div class="field" id="field-email">
-          <label for="email">Email</label>
+          <label for="email">Email<span class="required-mark" aria-hidden="true">*</span></label>
           <input id="email" name="email" type="email" inputmode="email" autocomplete="email" placeholder="請輸入 Email">
           <div class="field-error"></div>
         </div>
 
         <div class="field" id="field-idNumber">
-          <label for="idNumber">身分證字號</label>
+          <label for="idNumber">身分證字號<span class="required-mark" aria-hidden="true">*</span></label>
           <input id="idNumber" name="idNumber" autocapitalize="characters" placeholder="請輸入身分證字號">
           <div class="field-error"></div>
         </div>
 
         <div class="field" id="field-birthDate">
-          <label>出生年月日</label>
+          <label>出生年月日<span class="required-mark" aria-hidden="true">*</span></label>
           <div class="birth-select-row">
             <select id="birthYear" name="birthYear" aria-label="出生年份"><option value="">年份</option></select>
             <select id="birthMonth" name="birthMonth" aria-label="出生月份"><option value="">月份</option></select>
@@ -64,7 +65,7 @@
         </div>
 
         <div class="field" id="field-identityType">
-          <label for="identityType">身分類型</label>
+          <label for="identityType">身分類型<span class="required-mark" aria-hidden="true">*</span></label>
           <select id="identityType" name="identityType">
             <option value="">請選擇身分類型</option>
             <option value="staff">專職員工</option>
