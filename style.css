@@ -14,10 +14,6 @@ a{text-decoration:none;color:inherit} .container{max-width:760px;margin:0 auto;p
 .task-admin-nav{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
 .task-admin-nav a{font-size:14px}
 
-.progress-box{border:1px solid #d7e3db;background:#f6fbf8;border-radius:14px;padding:12px 14px;margin-top:2px}
-.progress-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px}
-.progress-track{height:12px;background:#e4e9ef;border-radius:999px;overflow:hidden}
-.progress-bar{height:100%;width:0;background:linear-gradient(90deg,var(--brand),#56b58b);border-radius:999px;transition:width .28s ease}
 .rec-meter{display:flex;align-items:flex-end;gap:6px;min-height:58px;margin:12px 0 8px}
 .rec-bar{display:block;width:10px;border-radius:999px;background:#cbd8e5;height:20px;transition:height .12s ease, background-color .12s ease}
 .rec-bar.live{background:#4da97f}
@@ -82,6 +78,13 @@ a{text-decoration:none;color:inherit} .container{max-width:760px;margin:0 auto;p
 
 /* register page fix */
 .birth-select-row{display:grid;grid-template-columns:1.5fr 1fr 1fr;gap:10px}
-.progress-wrap{display:none;margin-bottom:12px}
-.progress-fill{height:100%;width:0;background:linear-gradient(90deg,var(--brand),#56b58b);border-radius:999px;transition:width .28s ease}
 @media (max-width:560px){.birth-select-row{grid-template-columns:1fr}}
+
+
+.btn.btn-progress{position:relative;overflow:hidden;isolation:isolate}
+.btn.btn-progress .btn-progress-fill{position:absolute;inset:0 auto 0 0;width:0%;background:linear-gradient(90deg,rgba(255,255,255,.18),rgba(255,255,255,.30));border-radius:inherit;transition:width .22s ease;z-index:0}
+.btn.btn-progress .btn-progress-label{position:relative;z-index:1;display:inline-flex;align-items:center;justify-content:center;width:100%}
+.btn.btn-progress.is-loading{cursor:progress;opacity:1}
+.btn.btn-progress.is-success .btn-progress-fill{background:linear-gradient(90deg,rgba(255,255,255,.10),rgba(255,255,255,.24))}
+.btn.btn-progress.is-error .btn-progress-fill{background:linear-gradient(90deg,rgba(255,255,255,.12),rgba(255,255,255,.20))}
+.btn.btn-progress:disabled{opacity:1}

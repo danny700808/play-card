@@ -35,8 +35,8 @@
     function render(){
       qs('#countText').textContent = rows.length ? `目前有 ${rows.length} 筆待審核註冊` : '目前沒有待審核註冊';
       qs('#list').innerHTML = rows.map(x=>`<div class="item"><div class="top"><strong>${x.name || '未命名'}｜${x.email || ''}</strong><span class="tag pending">待審核</span></div><div class="muted">員工ID：${x.id || '—'}</div><div class="muted">身分類型：${x.identityLabel || '未設定'}</div>${x.idNumber ? `<div class="muted">身分證字號：${x.idNumber}</div>` : ''}${x.birthDate ? `<div class="muted">出生年月日：${x.birthDate}</div>` : ''}${x.emergencyContact ? `<div class="muted">緊急聯絡人：${x.emergencyContact}</div>` : ''}${x.emergencyPhone ? `<div class="muted">緊急聯絡人電話：${x.emergencyPhone}</div>` : ''}${x.createdAt ? `<div class="muted">建立時間：${x.createdAt}</div>` : ''}<div class="item-actions"><button class="btn mini-btn" type="button" data-approve="${x.email}">同意註冊</button><button class="btn secondary mini-btn" type="button" data-reject="${x.email}">駁回註冊</button></div></div>`).join('') || '<div class="muted">目前沒有待審核註冊</div>';
-      qsa('[data-approve]').forEach(btn=>btn.onclick=()=>review(btn.dataset.approve,'approve'));
-      qsa('[data-reject]').forEach(btn=>btn.onclick=()=>review(btn.dataset.reject,'reject'));
+      qsa('[data-approve]').forEach(btn=>btn.onclick=()=>review(btn.dataset.approve,'approve',btn));
+      qsa('[data-reject]').forEach(btn=>btn.onclick=()=>review(btn.dataset.reject,'reject',btn));
     }
     async function loadRows(){
       const user=requireLogin(); if(!user) return;
@@ -46,14 +46,18 @@
       console.log('pending registrations response', r);
       render();
     }
-    async function review(email, decision){
+    async function review(email, decision, btn){
       const user=requireLogin(); if(!user) return;
       const action = decision==='approve' ? 'approveRegistrationApi' : 'rejectRegistrationApi';
       const text = decision==='approve' ? '同意' : '駁回';
       if(!confirm(`確定要${text}這位員工的註冊申請嗎？`)) return;
-      const r = await api(action,{userId:user.id,email});
-      setMsg(qs('#pageMsg'), r.message || '', !r.ok);
-      if(r.ok) loadRows();
+      const progress = btn ? startActionButtonProgress(btn, { label: text==='同意' ? '處理中' : '處理中', maxPct:82 }) : null;
+      try{
+        const r = await api(action,{userId:user.id,email});
+        setMsg(qs('#pageMsg'), r.message || '', !r.ok);
+        if(r.ok){ if(progress) progress.done(text==='同意' ? '已同意' : '已駁回', 500, true); loadRows(); }
+        else if(progress){ progress.fail(text==='同意' ? '同意失敗' : '駁回失敗'); }
+      }catch(e){ if(progress) progress.fail(text==='同意' ? '同意失敗' : '駁回失敗'); throw e; }
     }
     function init(){
       fillHeader();

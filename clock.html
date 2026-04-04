@@ -84,18 +84,9 @@
           <div class="field-error" data-error-for="supplementReason"></div>
         </div>
         <div id="supplementMsg" class="message local-message"></div>
-        <div id="supplementProgress" class="progress-box hidden">
-          <div class="progress-head"><strong>補登資料送出中</strong><span id="supplementProgressText">0%</span></div>
-          <div class="progress-track"><div id="supplementProgressBar" class="progress-bar"></div></div>
-        </div>
       </div>
 
       <div id="mainMsg" class="message local-message"></div>
-      <div id="mainProgress" class="progress-box hidden">
-        <div class="progress-head"><strong id="mainProgressTitle">處理中</strong><span id="mainProgressText">0%</span></div>
-        <div class="progress-track"><div id="mainProgressBar" class="progress-bar"></div></div>
-      </div>
-
       <div class="btn-row btn-row-clock">
         <button class="btn" id="clockInBtn">上班打卡</button>
         <button class="btn" id="clockOutBtn">下班打卡</button>
@@ -143,7 +134,8 @@
     function toggleSupplementBox(){
       const isSupplement = qs('#clockType').value === '補登打卡';
       qs('#supplementBox').classList.toggle('hidden', !isSupplement);
-      qs('#clockInBtn').textContent = isSupplement ? '送出補登' : '上班打卡';
+      setActionButtonIdle(qs('#clockInBtn'), isSupplement ? '送出補登' : '上班打卡');
+      setActionButtonIdle(qs('#clockOutBtn'), '下班打卡');
       qs('#clockOutBtn').classList.toggle('hidden', isSupplement);
       clearValidation();
       setMsg(qs('#mainMsg'), '');
@@ -167,37 +159,6 @@
       if(!el) return;
       el.scrollIntoView({ behavior:'smooth', block:'center' });
       try { el.focus(); } catch(e) {}
-    }
-
-    function startProgress(prefix, title){
-      const box = qs('#' + prefix + 'Progress');
-      const bar = qs('#' + prefix + 'ProgressBar');
-      const text = qs('#' + prefix + 'ProgressText');
-      const titleEl = qs('#' + prefix + 'ProgressTitle');
-      if(titleEl && title) titleEl.textContent = title;
-      box.classList.remove('hidden');
-      let value = 8;
-      bar.style.width = value + '%';
-      text.textContent = value + '%';
-      const timer = setInterval(() => {
-        value = Math.min(value + (value < 70 ? 16 : 6), 90);
-        bar.style.width = value + '%';
-        text.textContent = value + '%';
-      }, 220);
-      return {
-        done(okText){
-          clearInterval(timer);
-          bar.style.width = '100%';
-          text.textContent = okText || '100%';
-          setTimeout(() => box.classList.add('hidden'), 650);
-        },
-        fail(){
-          clearInterval(timer);
-          bar.style.width = '100%';
-          text.textContent = '未完成';
-          setTimeout(() => box.classList.add('hidden'), 900);
-        }
-      };
     }
 
     function escapeHtml(v){
@@ -239,12 +200,7 @@
               <textarea class="js-modify-note" placeholder="請填寫修改原因"></textarea>
               <div class="field-error js-modify-error"></div>
             </div>
-            <div class="message local-message js-modify-msg"></div>
-            <div class="progress-box hidden js-modify-progress">
-              <div class="progress-head"><strong>修改資料送出中</strong><span class="js-modify-progress-text">0%</span></div>
-              <div class="progress-track"><div class="progress-bar js-modify-progress-bar"></div></div>
-            </div>
-            <button class="btn js-save-modify" data-id="${escapeHtml(x.id)}">送出修改</button>
+            <div class="message local-message js-modify-msg"></div>            <button class="btn js-save-modify" data-id="${escapeHtml(x.id)}">送出修改</button>
           </div>
         </div>`;
     }
@@ -281,11 +237,11 @@
         };
       });
       qsa('.js-save-modify').forEach(btn => {
-        btn.onclick = () => saveModify(btn.dataset.id, btn.closest('.modify-box'));
+        btn.onclick = () => saveModify(btn.dataset.id, btn.closest('.modify-box'), btn);
       });
     }
 
-    async function saveModify(recordId, box){
+    async function saveModify(recordId, box, btn){
       const user = requireLogin();
       if(!user || !box) return;
       const type = box.querySelector('.js-modify-type').value;
@@ -299,35 +255,19 @@
         box.querySelector('.js-modify-note').focus();
         return;
       }
-      const progress = box.querySelector('.js-modify-progress');
-      const bar = box.querySelector('.js-modify-progress-bar');
-      const text = box.querySelector('.js-modify-progress-text');
-      progress.classList.remove('hidden');
-      let val = 10;
-      bar.style.width = val + '%';
-      text.textContent = val + '%';
-      const timer = setInterval(() => {
-        val = Math.min(val + (val < 70 ? 18 : 7), 90);
-        bar.style.width = val + '%';
-        text.textContent = val + '%';
-      }, 220);
+      const progress = btn ? startActionButtonProgress(btn, { label:'修改中', maxPct:82 }) : null;
       try {
         const r = await api('modifyClockRecord', { userId:user.id, recordId, newClockType:type, note });
-        clearInterval(timer);
-        bar.style.width = '100%';
-        text.textContent = '100%';
         setMsg(msg, r.message, !r.ok);
         if(r.ok){
+          if(progress) progress.done('修改完成');
           await refreshHistoryViews();
-        } else {
-          setTimeout(() => progress.classList.add('hidden'), 900);
+        } else if(progress){
+          progress.fail('修改失敗');
         }
       } catch(e) {
-        clearInterval(timer);
-        bar.style.width = '100%';
-        text.textContent = '未完成';
+        if(progress) progress.fail('修改失敗');
         setMsg(msg, e.message || '修改失敗', true);
-        setTimeout(() => progress.classList.add('hidden'), 900);
       }
     }
 
@@ -379,21 +319,22 @@
         payload.clientIp = await getPublicIp();
       }
 
-      const progress = startProgress(isSupplement ? 'supplement' : 'main', isSupplement ? '補登資料送出中' : (actionName + '送出中'));
+      const actionBtn = isSupplement ? qs('#clockInBtn') : (actionName === '下班打卡' ? qs('#clockOutBtn') : qs('#clockInBtn'));
+      const progress = startActionButtonProgress(actionBtn, { label: isSupplement ? '送出補登中' : (actionName === '下班打卡' ? '下班打卡中' : '上班打卡中') });
       try {
         const r = await api('clock', payload);
         setMsg(msg, r.message, !r.ok);
         if(r.ok){
-          progress.done();
+          progress.done(isSupplement ? '補登完成' : '打卡完成');
           await refreshHistoryViews();
           if(isSupplement){
             qs('#supplementReason').value = '';
           }
         } else {
-          progress.fail();
+          progress.fail(isSupplement ? '補登失敗' : '打卡失敗');
         }
       } catch(e) {
-        progress.fail();
+        progress.fail(isSupplement ? '補登失敗' : '打卡失敗');
         setMsg(msg, e.message || '送出失敗', true);
       }
     }

@@ -237,11 +237,6 @@
 
         <div id="createActionBox">
           <button class="btn" id="createBtn">建立交辦事項</button>
-          <div id="createProgressBox" class="progress-box hidden">
-            <div class="progress-head"><strong id="createProgressTitle">建立交辦事項</strong><span id="createProgressPct">0%</span></div>
-            <div class="progress-track"><div id="createProgressBar" class="progress-bar"></div></div>
-            <div id="createProgressText" class="attach-badge">準備送出...</div>
-          </div>
         </div>
 
         <hr style="border:none;border-top:1px solid #e5ebf1;margin:18px 0">
@@ -290,6 +285,7 @@
     let currentAdminTaskPanel = '';
     const completeAudioDataMap = {};
     const completeRecorderMap = {};
+    const taskButtonProgressMap = {};
 
     function applyTaskMode(){
       taskAdminMode = !!(currentUser && currentUser.role==='admin' && isSettingsMode());
@@ -562,11 +558,6 @@
           </div>
           <div class="complete-action-box" id="completeWrap_${x.id}">
             <button class="btn complete-primary" onclick="completeTask('${x.id}', this)">完成任務</button>
-            <div class="progress-box hidden" id="completeProgress_${x.id}">
-              <div class="progress-head"><strong>完成任務送出中</strong><span id="complete_${x.id}Pct">0%</span></div>
-              <div class="progress-track"><div id="complete_${x.id}Bar" class="progress-bar"></div></div>
-              <div id="complete_${x.id}Text" class="attach-badge">準備送出...</div>
-            </div>
             <div class="inline-status"><div id="completeMsg_${x.id}" class="message"></div></div>
           </div>
         </div>` : '';
@@ -719,29 +710,13 @@
       }
     }
 
-    function setProgressUI(prefix,pct,text,title){
-      const pctEl=qs(`#${prefix}Pct`), barEl=qs(`#${prefix}Bar`), txtEl=qs(`#${prefix}Text`), titleEl=qs(`#${prefix}Title`);
-      if(pctEl) pctEl.textContent=`${pct}%`;
-      if(barEl) barEl.style.width=`${pct}%`;
-      if(txtEl) txtEl.textContent=text||'';
-      if(titleEl && title) titleEl.textContent=title;
-    }
-
-
-    function setInlineProgress(taskId, pct, text){
-      const box=qs(`#completeProgress_${taskId}`); if(!box) return;
-      box.classList.remove('hidden');
-      const pctEl=qs(`#complete_${taskId}Pct`), barEl=qs(`#complete_${taskId}Bar`), txtEl=qs(`#complete_${taskId}Text`);
-      if(pctEl) pctEl.textContent=`${pct}%`;
-      if(barEl) barEl.style.width=`${pct}%`;
-      if(txtEl) txtEl.textContent=text||'';
-    }
-
-    async function runFakeProgress(prefix, steps){
-      for(const step of steps){
-        setProgressUI(prefix, step.pct, step.text, step.title);
-        await new Promise(r=>setTimeout(r, step.wait||220));
-      }
+    function getTaskButtonProgress(key, btn, label){
+      if(!btn) return null;
+      const existing = taskButtonProgressMap[key];
+      if(existing && existing.button === btn) return existing;
+      const progress = startActionButtonProgress(btn, { label: label || '處理中', auto:false });
+      taskButtonProgressMap[key] = progress;
+      return progress;
     }
 
     function renderRecMeter(level=0){
@@ -776,28 +751,25 @@
       const hasAnyReply = !!(photoFiles.length || videoFile || recordedAudioData || String(noteValue).trim());
       if(requirePhoto && !hasAnyReply){setMsg(inlineMsg,'此任務需要回報，請至少提供一種方式後再送出。',true); return;}
       let photoAssets=[], videoAsset=null, fileAsset=null, audioAsset=null;
-      if(photoFiles.length){ const uploaded=await uploadFilesToCloudinary(photoFiles,{folder:'tasks/completed-photo',onProgress:(ratio)=>setInlineProgress(taskId,20 + Math.round(ratio*25), '完成照片上傳中...')}); photoAssets=(uploaded||[]).map(cloudinaryAssetFromResponse).filter(x=>x.url); }
-      if(videoFile){ const uploaded=await uploadFileToCloudinary(videoFile,{folder:'tasks/completed-video',onProgress:(ratio)=>setInlineProgress(taskId,46 + Math.round(ratio*12), '完成影片上傳中...')}); videoAsset=cloudinaryAssetFromResponse(uploaded); }
-      if(recordedAudioData){
-        const recFile=dataUrlToFile(recordedAudioData,'complete-audio.' + guessExtensionByMime((recordedAudioData.match(/^data:([^;]+)/)||[])[1]||'audio/webm'));
-        const uploaded=await uploadFileToCloudinary(recFile,{folder:'tasks/completed-audio',onProgress:(ratio)=>setInlineProgress(taskId,72 + Math.round(ratio*8), '完成語音上傳中...')});
-        audioAsset=cloudinaryAssetFromResponse(uploaded);
+      const progress = getTaskButtonProgress('complete_'+taskId, btnEl, '完成任務送出中');
+      try {
+        progress.set(10, '檢查完成資料');
+        if(photoFiles.length){ const uploaded=await uploadFilesToCloudinary(photoFiles,{folder:'tasks/completed-photo',onProgress:(ratio)=>progress.set(20 + Math.round(ratio*25), '完成照片上傳中')}); photoAssets=(uploaded||[]).map(cloudinaryAssetFromResponse).filter(x=>x.url); }
+        if(videoFile){ const uploaded=await uploadFileToCloudinary(videoFile,{folder:'tasks/completed-video',onProgress:(ratio)=>progress.set(46 + Math.round(ratio*12), '完成影片上傳中')}); videoAsset=cloudinaryAssetFromResponse(uploaded); }
+        if(recordedAudioData){
+          const recFile=dataUrlToFile(recordedAudioData,'complete-audio.' + guessExtensionByMime((recordedAudioData.match(/^data:([^;]+)/)||[])[1]||'audio/webm'));
+          const uploaded=await uploadFileToCloudinary(recFile,{folder:'tasks/completed-audio',onProgress:(ratio)=>progress.set(72 + Math.round(ratio*8), '完成語音上傳中')});
+          audioAsset=cloudinaryAssetFromResponse(uploaded);
+        }
+        progress.set(85, '等待系統寫入');
+        const r=await api('completeTask',{userId:user.id,taskId,note:noteValue,photoAssets,videoAsset,fileAsset,audioAsset});
+        setMsg(qs('#msg'),r.message,!r.ok);
+        if(r.ok){ progress.done('完成任務'); delete completeAudioDataMap[taskId]; setTimeout(loadTasks,450); }
+        else { progress.fail('送出失敗'); }
+      } catch (e) {
+        progress.fail('送出失敗');
+        setMsg(inlineMsg, e.message || '送出失敗', true);
       }
-      const btn=btnEl||null;
-      const progressBox=qs('#completeProgress_'+taskId);
-      if(btn){btn.disabled=true; btn.classList.add('hidden');}
-      if(progressBox){progressBox.classList.remove('hidden');}
-      runFakeProgress('complete_'+taskId,[
-        {pct:10,text:'檢查資料中...',wait:180},
-        {pct:30,text:'整理完成內容...',wait:220},
-        {pct:55,text:'上傳附件中...',wait:260},
-        {pct:85,text:'等待系統寫入...',wait:220}
-      ]);
-      const r=await api('completeTask',{userId:user.id,taskId,note:noteValue,photoAssets,videoAsset,fileAsset,audioAsset});
-      setProgressUI('complete_'+taskId,100,r.ok?'完成任務送出成功':'送出失敗');
-      setMsg(qs('#msg'),r.message,!r.ok);
-      setTimeout(()=>{ if(btn){btn.disabled=false; btn.classList.remove('hidden');} if(progressBox){progressBox.classList.add('hidden');} if(btn){btn.textContent='完成任務';}}, r.ok?700:1200);
-      if(r.ok){ delete completeAudioDataMap[taskId]; setTimeout(loadTasks,450); }
     }
 
     async function deleteTask(taskId, title){
@@ -843,60 +815,62 @@
           const docFiles=allTaskFiles.filter(file=>!String(file.type||'').startsWith('image/'));
           const vf=qs('#taskVideo') ? qs('#taskVideo').files[0] : null;
           const btn=qs('#createBtn');
-          const box=qs('#createProgressBox');
-          btn.classList.add('hidden');
-          box.classList.remove('hidden');
-          runFakeProgress('createProgress',[
-            {pct:10,text:'檢查欄位中...',wait:180},
-            {pct:25,text:'準備附件...',wait:220},
-            {pct:45,text:'準備送出資料...',wait:220}
-          ]);
-          if(imageFiles.length){
-            const imageRes=await uploadFilesToCloudinary(imageFiles,{folder:'tasks/assigned-image',onProgress:(ratio)=>setProgressUI('createProgress',25 + Math.round(ratio*18),'圖片上傳中...')});
-            taskImageAssets=(imageRes||[]).map(cloudinaryAssetFromResponse).filter(x=>x.url);
-          }
-          if(docFiles.length){
-            const docRes=await uploadFilesToCloudinary(docFiles,{folder:'tasks/assigned-file',onProgress:(ratio)=>setProgressUI('createProgress',43 + Math.round(ratio*10),'文件上傳中...')});
-            taskFileAssets=(docRes||[]).map(cloudinaryAssetFromResponse).filter(x=>x.url);
-          }
-          if(vf){
-            const videoRes=await uploadFileToCloudinary(vf,{folder:'tasks/assigned-video',onProgress:(ratio)=>setProgressUI('createProgress',45 + Math.round(ratio*15),'影片上傳中...')});
-            taskVideoAsset=cloudinaryAssetFromResponse(videoRes);
-          }
-          if(taskAudio){
-            const audioFile=dataUrlToFile(taskAudio,'task-audio.' + guessExtensionByMime((taskAudio.match(/^data:([^;]+)/)||[])[1]||''));
-            const audioRes=await uploadFileToCloudinary(audioFile,{folder:'tasks/assigned-audio',onProgress:(ratio)=>setProgressUI('createProgress',60 + Math.round(ratio*10),'錄音上傳中...')});
-            taskAudioAsset=cloudinaryAssetFromResponse(audioRes);
-          }
-          setProgressUI('createProgress',72,'寫入任務資料...');
-          const remindPlan = JSON.stringify({freq:reminderState.freq, times:reminderState.times||getRemindPreset(reminderState.freq), enabled: qs('#remindFreq').value!=='不提醒'});
-          const r=await api('createTask',{
-            creatorId:currentUser.id,
-            title:qs('#title').value,
-            content:qs('#content').value,
-            assigneeId:qs('#assigneeId').value,
-            dueMode,
-            dueLabel:deadline.dueLabel,
-            dueDate:deadline.dueDate,
-            dueTime:deadline.dueTime,
-            requirePhotoReturn:qs('#requirePhotoReturn').value,
-            remindFreq:qs('#remindFreq').value,
-            remindPlan,
-            taskImageAssets,
-            taskFileAssets,
-            taskAudioAsset,
-            taskVideoAsset
-          });
-          setProgressUI('createProgress',100,r.ok?'建立完成':'建立失敗');
-          setMsg(qs('#msg'),r.message,!r.ok);
-          setTimeout(()=>{btn.classList.remove('hidden'); box.classList.add('hidden');}, r.ok?700:1200);
-          if(r.ok){
-            qs('#title').value=''; qs('#content').value=''; qs('#taskImage').value=''; if(qs('#taskVideo')) qs('#taskVideo').value=''; taskAudio='';
-            qs('#recStatus').textContent='尚未錄音'; qs('#clearRecBtn').classList.add('hidden');
-            renderRecMeter(0); qs('#recMeter').classList.add('hidden');
-            reminderState={freq:qs('#remindFreq').value,times:[]}; refreshRemindUi();
-            applyDueMode('today');
-            setTimeout(loadTasks,450);
+          const progress = getTaskButtonProgress('create', btn, '建立交辦事項中');
+          try {
+            progress.set(10, '檢查欄位中');
+            progress.set(25, '準備附件');
+            progress.set(45, '準備送出資料');
+            if(imageFiles.length){
+              const imageRes=await uploadFilesToCloudinary(imageFiles,{folder:'tasks/assigned-image',onProgress:(ratio)=>progress.set(25 + Math.round(ratio*18),'圖片上傳中')});
+              taskImageAssets=(imageRes||[]).map(cloudinaryAssetFromResponse).filter(x=>x.url);
+            }
+            if(docFiles.length){
+              const docRes=await uploadFilesToCloudinary(docFiles,{folder:'tasks/assigned-file',onProgress:(ratio)=>progress.set(43 + Math.round(ratio*10),'文件上傳中')});
+              taskFileAssets=(docRes||[]).map(cloudinaryAssetFromResponse).filter(x=>x.url);
+            }
+            if(vf){
+              const videoRes=await uploadFileToCloudinary(vf,{folder:'tasks/assigned-video',onProgress:(ratio)=>progress.set(45 + Math.round(ratio*15),'影片上傳中')});
+              taskVideoAsset=cloudinaryAssetFromResponse(videoRes);
+            }
+            if(taskAudio){
+              const audioFile=dataUrlToFile(taskAudio,'task-audio.' + guessExtensionByMime((taskAudio.match(/^data:([^;]+)/)||[])[1]||''));
+              const audioRes=await uploadFileToCloudinary(audioFile,{folder:'tasks/assigned-audio',onProgress:(ratio)=>progress.set(60 + Math.round(ratio*10),'錄音上傳中')});
+              taskAudioAsset=cloudinaryAssetFromResponse(audioRes);
+            }
+            progress.set(72,'寫入任務資料');
+            const remindPlan = JSON.stringify({freq:reminderState.freq, times:reminderState.times||getRemindPreset(reminderState.freq), enabled: qs('#remindFreq').value!=='不提醒'});
+            const r=await api('createTask',{
+              creatorId:currentUser.id,
+              title:qs('#title').value,
+              content:qs('#content').value,
+              assigneeId:qs('#assigneeId').value,
+              dueMode,
+              dueLabel:deadline.dueLabel,
+              dueDate:deadline.dueDate,
+              dueTime:deadline.dueTime,
+              requirePhotoReturn:qs('#requirePhotoReturn').value,
+              remindFreq:qs('#remindFreq').value,
+              remindPlan,
+              taskImageAssets,
+              taskFileAssets,
+              taskAudioAsset,
+              taskVideoAsset
+            });
+            setMsg(qs('#msg'),r.message,!r.ok);
+            if(r.ok){
+              progress.done('建立完成');
+              qs('#title').value=''; qs('#content').value=''; qs('#taskImage').value=''; if(qs('#taskVideo')) qs('#taskVideo').value=''; taskAudio='';
+              qs('#recStatus').textContent='尚未錄音'; qs('#clearRecBtn').classList.add('hidden');
+              renderRecMeter(0); qs('#recMeter').classList.add('hidden');
+              reminderState={freq:qs('#remindFreq').value,times:[]}; refreshRemindUi();
+              applyDueMode('today');
+              setTimeout(loadTasks,450);
+            } else {
+              progress.fail('建立失敗');
+            }
+          } catch (e) {
+            progress.fail('建立失敗');
+            setMsg(qs('#msg'), e.message || '建立失敗', true);
           }
         };
       }

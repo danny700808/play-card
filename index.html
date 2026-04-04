@@ -60,8 +60,7 @@
     qs('#eyeBtn').onclick = () => togglePassword('#password', qs('#eyeBtn'));
     qs('#loginBtn').onclick = async () => {
       const btn = qs('#loginBtn');
-      btn.disabled = true;
-      btn.textContent = '登入中...';
+      const progress = startActionButtonProgress(btn, { label:'登入中' });
       setMsg(msg, '');
       try {
         const r = await api('login', {
@@ -72,11 +71,14 @@
         if (r.ok) {
           saveLoginPref(qs('#email').value.trim(), qs('#password').value.trim(), qs('#rememberLogin').checked);
           setMsg(msg, '登入成功，正在進入系統...');
-          setTimeout(() => redirectAfterLogin(r.user), 500);
+          progress.done('登入成功', 400, true);
+          setTimeout(() => redirectAfterLogin(r.user), 450);
+        } else {
+          progress.fail('登入失敗');
         }
-      } finally {
-        btn.disabled = false;
-        btn.textContent = '登入';
+      } catch (e) {
+        progress.fail('登入失敗');
+        throw e;
       }
     };
     const forgotConfirmBox = qs('#forgotConfirmBox');
@@ -100,15 +102,19 @@
         return;
       }
       const btn = qs('#forgotConfirmBtn');
-      btn.disabled = true;
-      btn.textContent = '寄送中...';
+      const progress = startActionButtonProgress(btn, { label:'寄送中' });
       try {
         const r = await api('forgotPassword', { email });
         setMsg(msg, r.message, !r.ok);
-        if (r.ok) forgotConfirmBox.classList.add('hidden');
-      } finally {
-        btn.disabled = false;
-        btn.textContent = '確認重設密碼';
+        if (r.ok) {
+          forgotConfirmBox.classList.add('hidden');
+          progress.done('已寄出');
+        } else {
+          progress.fail('寄送失敗');
+        }
+      } catch (e) {
+        progress.fail('寄送失敗');
+        throw e;
       }
     };
   </script>

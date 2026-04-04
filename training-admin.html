@@ -15,7 +15,6 @@
     .record-controls{display:flex;gap:10px;flex-wrap:wrap}.record-controls .btn{width:auto;padding:12px 16px}
     .record-status{margin-top:8px;font-size:14px;color:var(--muted)}
     .record-status.ok{color:#16533f;font-weight:700}
-    .progress-under-btn{margin-top:12px}
     .existing-media{margin-top:10px;padding:10px 12px;border:1px solid var(--line);border-radius:14px;background:#fbfcfe}.existing-media.hidden{display:none}.existing-media .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}.existing-media .name{font-size:14px;color:var(--muted);word-break:break-all}.mini-danger{background:#fff4f4;color:#b42318;border:1px solid #f0caca}
   </style>
 </head>
@@ -57,12 +56,7 @@
       </div>
       <div class="field"><label for="sortOrder">排序</label><input id="sortOrder" type="number" min="1" step="1" placeholder="留空就自動排最後"></div>
       <div class="field"><label>是否啟用</label><div class="radio-inline"><label><input type="radio" name="enabled" value="是" checked>是</label><label><input type="radio" name="enabled" value="否">否</label></div></div>
-      <div class="btn-row"><button class="btn secondary" type="button" onclick="resetForm()">清空</button><button class="btn" id="saveBtn" type="button">儲存教材</button></div>
-      <div id="progressBox" class="progress-box progress-under-btn hidden" aria-live="polite">
-        <div class="progress-head"><strong>上傳進度</strong><span id="progressText">0%</span></div>
-        <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
-      </div>
-      <input id="itemId" type="hidden">
+      <div class="btn-row"><button class="btn secondary" type="button" onclick="resetForm()">清空</button><button class="btn" id="saveBtn" type="button">儲存教材</button></div>      <input id="itemId" type="hidden">
     </div>
 
     <div class="card">
@@ -158,8 +152,9 @@
     function esc(s){return String(s||'').replace(/[&<>"]/g,function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]||m;});}
     function splitLinks(v){ return String(v||'').split(/\n+/).map(s=>s.trim()).filter(Boolean); }
     function linkButtons(urls,label){ const arr=splitLinks(urls); return arr.map((u,i)=>`<button class="btn secondary mini-btn" type="button" onclick="openMediaInTopWindow('${u}')">${label}${arr.length>1?(' '+(i+1)):''}</button>`).join(''); }
-    function setProgress(v,label){ qs('#progressBox').classList.remove('hidden'); qs('#progressBar').style.width=v+'%'; qs('#progressText').textContent=(label?label+' ':'')+v+'%'; }
-    function resetProgress(){ qs('#progressBar').style.width='0%'; qs('#progressText').textContent='0%'; qs('#progressBox').classList.add('hidden'); }
+    let saveProgressController = null;
+    function setProgress(v,label){ if(!saveProgressController) saveProgressController = startActionButtonProgress(qs('#saveBtn'), { label:'儲存中', auto:false }); saveProgressController.set(v, label||'儲存中'); }
+    function resetProgress(){ if(saveProgressController){ saveProgressController.reset('儲存教材'); saveProgressController = null; } else { setActionButtonIdle(qs('#saveBtn'),'儲存教材'); } }
     function selectedEnabled(){ const el=document.querySelector('input[name="enabled"]:checked'); return el?el.value:'是'; }
     function fillCategoryOptions(){ const categories=getFixedTrainingCategories(); qs('#categoryId').innerHTML='<option value="">請選擇分類</option>'+categories.map(c=>`<option value="${c.id}">${c.name}</option>`).join(''); }
     async function loadAdminData(){
@@ -206,7 +201,7 @@
       const user=requireLogin(); if(!user) return;
       const title=qs('#title').value.trim(), categoryId=qs('#categoryId').value;
       if(!categoryId || !title){ setMsg(qs('#msg'),'請先選擇分類並填寫主題名稱',true); return; }
-      const btn=qs('#saveBtn'); btn.disabled=true; setMsg(qs('#msg'),'');
+      const btn=qs('#saveBtn'); saveProgressController = startActionButtonProgress(btn, { label:'儲存中', auto:false }); setMsg(qs('#msg'),'');
       try{
         const videoFile=qs('#videoFile').files[0], docFiles=qs('#docFile').files;
         let docAssets=[], audioAsset=null, videoAsset=null;
@@ -231,10 +226,11 @@
         if(!r.ok){ throw new Error(r.message||'文字教材建立失敗'); }
         setProgress(100,'完成');
         setMsg(qs('#msg'), videoAsset ? '教材與影片已儲存到 Cloudinary。' : (r.message||'教材已建立。'), false);
+        if(saveProgressController) saveProgressController.done('儲存完成');
         resetForm();
         await loadAdminData();
-      }catch(e){ setMsg(qs('#msg'), e.message||String(e), true); }
-      finally{ setTimeout(resetProgress,1200); btn.disabled=false; }
+      }catch(e){ if(saveProgressController) saveProgressController.fail('儲存失敗'); setMsg(qs('#msg'), e.message||String(e), true); }
+      finally{ if(saveProgressController && saveProgressController.button && saveProgressController.button.classList.contains('is-loading')) setTimeout(resetProgress,1200); }
     }
     async function beginRecord(){
       try{

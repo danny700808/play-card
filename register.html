@@ -8,10 +8,6 @@
   <style>
     .register-card{max-width:640px;margin:18px auto}
     .birth-select-row{display:grid;grid-template-columns:1.5fr 1fr 1fr;gap:10px}
-    .progress-wrap{display:none;margin-bottom:12px}
-    .progress-bar{height:12px;background:#e4e9ef;border-radius:999px;overflow:hidden}
-    .progress-fill{height:100%;width:0;background:linear-gradient(90deg,var(--brand),#56b58b);border-radius:999px;transition:width .28s ease}
-    .progress-text{margin-top:8px;font-size:14px;color:var(--muted)}
     @media (max-width:560px){.birth-select-row{grid-template-columns:1fr}.register-card{margin:8px auto}}
   </style>
 </head>
@@ -25,10 +21,6 @@
 
       <div id="msg" class="message"></div>
       <div id="registerResult" style="display:none"></div>
-      <div id="registerProgress" class="progress-wrap">
-        <div class="progress-bar"><div id="registerProgressBar" class="progress-fill"></div></div>
-        <div id="registerProgressText" class="progress-text">準備送出...</div>
-      </div>
 
       <form id="registerForm" novalidate>
         <div class="field" id="field-name">
@@ -95,9 +87,6 @@
   <script>
     const form = qs('#registerForm');
     const msg = qs('#msg');
-    const progressWrap = qs('#registerProgress');
-    const progressBar = qs('#registerProgressBar');
-    const progressText = qs('#registerProgressText');
     const registerBtn = qs('#registerBtn');
     const registerResult = qs('#registerResult');
     const fieldMap = {
@@ -109,17 +98,6 @@
       emergencyPhone: '#field-emergencyPhone',
       identityType: '#field-identityType',
     };
-
-    function setProgress(value, text) {
-      progressWrap.style.display = 'block';
-      progressBar.style.width = Math.max(0, Math.min(100, value)) + '%';
-      progressText.textContent = text || '';
-    }
-    function hideProgress() {
-      progressWrap.style.display = 'none';
-      progressBar.style.width = '0%';
-      progressText.textContent = '準備送出...';
-    }
     function fillBirthOptions(){
       const y = qs('#birthYear');
       const m = qs('#birthMonth');
@@ -221,36 +199,31 @@
 
       const invalid = validatePayload(payload);
       if(invalid){
-        hideProgress();
         showFieldError(invalid[0], invalid[1]);
         return;
       }
 
-      registerBtn.disabled = true;
-      registerBtn.textContent = '送出中...';
-      setProgress(10, '開始送出資料...');
-      const t1 = setTimeout(() => setProgress(35, '檢查資料中...'), 250);
-      const t2 = setTimeout(() => setProgress(65, '正在建立註冊申請...'), 700);
+      const progress = startActionButtonProgress(registerBtn, { label:'送出中' });
+      progress.set(10, '開始送出資料');
+      const t1 = setTimeout(() => progress.set(35, '檢查資料中'), 250);
+      const t2 = setTimeout(() => progress.set(65, '建立註冊申請中'), 700);
       try{
         const r = await api('register', payload);
         clearTimeout(t1); clearTimeout(t2);
         if(r && r.ok){
           form.style.display='none';
-          setProgress(100, '申請已送出，等待主管審核...');
+          progress.done('申請已送出', 1200, true);
           setMsg(msg, '');
           registerResult.style.display='block';
           registerResult.innerHTML = `<div class="card" style="margin-top:8px;background:#f7fffb;border:1px solid #c9ead8"><div class="header"><h2 class="title" style="font-size:28px">註冊申請已送出</h2><p class="subtitle" style="font-size:16px;line-height:1.9">目前狀態：待主管審核<br>系統會寄 Email 通知到你的信箱。<br>主管審核通過後，系統會再寄送初始密碼給你。</p></div><div class="btn-row" style="justify-content:flex-start"><a class="btn" href="index.html">回登入頁</a></div></div>`;
         } else {
-          hideProgress();
+          progress.fail((r && r.message) || '送出失敗');
           setMsg(msg, (r && r.message) || '送出失敗', true);
         }
       }catch(err){
         clearTimeout(t1); clearTimeout(t2);
-        hideProgress();
+        progress.fail('送出失敗');
         setMsg(msg, err.message || '送出失敗', true);
-      }finally{
-        registerBtn.disabled = false;
-        registerBtn.textContent = '送出註冊申請';
       }
     });
   </script>

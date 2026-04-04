@@ -29,13 +29,6 @@
 
       <div id="msg" class="message"></div>
 
-      <div id="progressBox" class="progress-box hidden" aria-live="polite">
-        <div class="progress-head">
-          <strong>送出進度</strong>
-          <span id="progressText">0%</span>
-        </div>
-        <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
-      </div>
 
       <div class="field" id="fieldWorkDate">
         <label for="workDate">日期</label>
@@ -148,18 +141,7 @@
         return false;
       }
       return true;
-    }
-    function setProgress(percent){
-      qs('#progressBox').classList.remove('hidden');
-      qs('#progressBar').style.width = percent + '%';
-      qs('#progressText').textContent = percent + '%';
-    }
-    function resetProgress(){
-      qs('#progressBar').style.width = '0%';
-      qs('#progressText').textContent = '0%';
-      qs('#progressBox').classList.add('hidden');
-    }
-    async function loadHistory(monthText=''){
+    }    async function loadHistory(monthText=''){
       const user = requireLogin();
       if(!user) return;
       const r = await api('getParttimeHistory',{userId:user.id, monthText});
@@ -180,17 +162,17 @@
         note: qs('#note').value.trim()
       };
       const btn = qs('#submitBtn');
-      btn.disabled = true;
+      const progress = startActionButtonProgress(btn, { label:'送出中' });
       setMsg(qs('#msg'),'');
       try {
-        setProgress(10);
+        progress.set(10, '檢查資料中');
         await sleep(100);
-        setProgress(30);
+        progress.set(30, '整理時數資料');
         const request = api('parttime', payload);
         await sleep(120);
-        setProgress(60);
+        progress.set(60, '送出時數資料');
         const r = await request;
-        setProgress(85);
+        progress.set(85, r.ok ? '更新畫面中' : '等待系統回應');
         await sleep(100);
         setMsg(qs('#msg'), r.message, !r.ok);
         if(r.ok){
@@ -199,15 +181,15 @@
           qs('#hoursSelect').value = '';
           qs('#workDate').value = localDateInputValue();
           await loadHistory(r.monthText || '');
-          setProgress(100);
+          progress.done('送出成功');
         } else {
-          resetProgress();
+          progress.fail('送出失敗');
           window.scrollTo({top:0,behavior:'smooth'});
           return;
         }
-      } finally {
-        setTimeout(resetProgress, 500);
-        btn.disabled = false;
+      } catch (e) {
+        progress.fail('送出失敗');
+        throw e;
       }
     }
     function init(){

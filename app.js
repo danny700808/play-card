@@ -246,6 +246,99 @@ async function renderLineBindPrompt_(){
   };
 }
 
+
+const __btnProgressMap=new WeakMap();
+function ensureActionButton(btn){
+  if(!btn) return null;
+  if(btn.dataset.progressReady==='1') return {fill:btn.querySelector('.btn-progress-fill'),label:btn.querySelector('.btn-progress-label')};
+  const idleText=(btn.dataset.idleText||btn.textContent||'').trim()||'送出';
+  btn.dataset.idleText=idleText;
+  btn.classList.add('btn-progress');
+  btn.textContent='';
+  const fill=document.createElement('span');
+  fill.className='btn-progress-fill';
+  const label=document.createElement('span');
+  label.className='btn-progress-label';
+  label.textContent=idleText;
+  btn.appendChild(fill);
+  btn.appendChild(label);
+  btn.dataset.progressReady='1';
+  return {fill,label};
+}
+function setActionButtonIdle(btn, text){
+  if(!btn) return;
+  const nodes=ensureActionButton(btn);
+  const idle=(text||btn.dataset.idleText||nodes.label.textContent||'').trim()||'送出';
+  if(text) btn.dataset.idleText=idle;
+  btn.disabled=false;
+  btn.classList.remove('is-loading','is-success','is-error');
+  nodes.fill.style.width='0%';
+  nodes.label.textContent=idle;
+  const existing=__btnProgressMap.get(btn);
+  if(existing&&existing.timer) clearInterval(existing.timer);
+  __btnProgressMap.delete(btn);
+}
+function startActionButtonProgress(btn, options={}){
+  const nodes=ensureActionButton(btn);
+  const existing=__btnProgressMap.get(btn);
+  if(existing&&existing.timer) clearInterval(existing.timer);
+  const state={
+    pct:Math.max(0,Math.min(100,Number(options.startPct!=null?options.startPct:8)||0)),
+    maxPct:Math.max(0,Math.min(95,Number(options.maxPct!=null?options.maxPct:88)||88)),
+    label:String(options.label||'處理中').trim()||'處理中',
+    formatter:typeof options.formatter==='function'?options.formatter:null
+  };
+  const render=()=>{
+    nodes.fill.style.width=`${Math.max(0,Math.min(100,state.pct))}%`;
+    nodes.label.textContent=state.formatter ? state.formatter(Math.round(state.pct), state.label) : `${state.label} ${Math.round(state.pct)}%`;
+  };
+  btn.disabled=true;
+  btn.classList.add('is-loading');
+  btn.classList.remove('is-success','is-error');
+  render();
+  let timer=null;
+  if(options.auto!==false){
+    timer=setInterval(()=>{
+      if(state.pct>=state.maxPct) return;
+      const step=state.pct<35?8:(state.pct<65?5:2);
+      state.pct=Math.min(state.maxPct, state.pct+step);
+      render();
+    }, Number(options.interval||180));
+  }
+  __btnProgressMap.set(btn,{timer,state,nodes,render});
+  return {
+    button:btn,
+    set(percent,label){
+      if(label!=null) state.label=String(label||state.label);
+      state.pct=Math.max(0,Math.min(100,Number(percent)||0));
+      render();
+    },
+    done(text='已完成', holdMs=900, keepDisabled=false){
+      const current=__btnProgressMap.get(btn); if(current&&current.timer) clearInterval(current.timer);
+      state.pct=100;
+      btn.classList.remove('is-loading','is-error');
+      btn.classList.add('is-success');
+      nodes.fill.style.width='100%';
+      nodes.label.textContent=`✓ ${text}`;
+      btn.disabled=!!keepDisabled;
+      if(!keepDisabled){
+        setTimeout(()=>setActionButtonIdle(btn), holdMs);
+      }
+    },
+    fail(text='送出失敗', holdMs=1300){
+      const current=__btnProgressMap.get(btn); if(current&&current.timer) clearInterval(current.timer);
+      state.pct=100;
+      btn.classList.remove('is-loading','is-success');
+      btn.classList.add('is-error');
+      nodes.fill.style.width='100%';
+      nodes.label.textContent=text;
+      btn.disabled=false;
+      setTimeout(()=>setActionButtonIdle(btn), holdMs);
+    },
+    reset(text){ setActionButtonIdle(btn, text); }
+  };
+}
+
 function fillHeader(){const user=requireLogin(); if(!user) return; const manager=isManager(user); qsa('[data-user-name]').forEach(el=>el.textContent=user.name||'員工'); qsa('[data-if-parttime]').forEach(el=>el.style.display=isPartTimeUser(user)?'':'none'); qsa('[data-if-admin]').forEach(el=>el.style.display=manager?'':'none'); qsa('[data-if-staff-view]').forEach(el=>el.style.display=manager?'none':''); setTimeout(()=>{renderLineBindPrompt_();},0);}
 function redirectAfterLogin(user){saveUser(user); if(user && user.showSettingsZone){setPortalMode('staff'); location.href='portal.html'; return;} if(isExternalTeacher(user)){ location.href='task.html'; return; } location.href='dashboard.html';}
 function saveLoginPref(email,password,remember=true){if(!remember){localStorage.removeItem('employeeSavedLogin');return;}localStorage.setItem('employeeSavedLogin',JSON.stringify({email:email||'',password:password||'',remember:true}));}
