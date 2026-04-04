@@ -14,11 +14,12 @@ function isPartTimeUser(user=getUser()){return identityTypeOf(user)==='parttime'
 function isExternalTeacher(user=getUser()){return identityTypeOf(user)==='external'}
 function canUseFeature(feature,user=getUser()){const type=identityTypeOf(user); if(!user) return false; if(feature==='dashboard') return type!=='external'; if(feature==='clock') return type==='staff' || type==='parttime'; if(feature==='parttime') return type==='parttime'; if(feature==='leave') return type==='staff' || type==='parttime'; if(feature==='routine') return type==='staff' || type==='parttime'; if(feature==='training') return type==='staff' || type==='parttime'; if(feature==='task') return true; return true;}
 function guardFeatureAccess(feature,user=getUser()){if(canUseFeature(feature,user)) return true; location.href=isExternalTeacher(user)?'task.html':'dashboard.html'; return false;}
+function currentFeatureKey(){const path=String((location&&location.pathname)||'').split('/').pop().toLowerCase(); if(path==='dashboard.html') return 'dashboard'; if(path==='clock.html') return 'clock'; if(path==='parttime.html') return 'parttime'; if(path==='leave.html') return 'leave'; if(path==='task.html') return 'task'; if(path==='routine.html') return 'routine'; if(path==='training.html') return 'training'; return '';}
 function isSettingsMode(){return hasSettingsZoneAccess() && getPortalMode()==='settings'}
 function modeHomeHref(){return isSettingsMode() ? 'settings.html' : 'dashboard.html'}
 function getUser(){try{return JSON.parse(localStorage.getItem('employeeUser')||'null')}catch(e){return null}}
 function logout(){localStorage.removeItem('employeeUser'); clearPortalMode(); location.href='index.html'}
-function requireLogin(){const user=getUser(); if(!user){location.href='index.html'; return null;} return user;}
+function requireLogin(){const user=getUser(); if(!user){location.href='index.html'; return null;} const feature=currentFeatureKey(); if(feature && !guardFeatureAccess(feature,user)) return null; return user;}
 async function api(action, payload={}){
   const res=await fetch(API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action,...payload})});
   const raw=await res.text();
