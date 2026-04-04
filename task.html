@@ -303,8 +303,9 @@
       qs('#adminBlock').style.display = taskAdminMode ? '' : 'none';
       qs('#staffBlock').style.display = taskAdminMode ? 'none' : '';
       qs('#taskPageTitle').textContent = taskAdminMode ? '交辦事項設定' : '交辦事項';
-      qs('#taskHomeLink').href = taskAdminMode ? 'settings.html' : 'dashboard.html';
-      qs('#taskHomeLink').textContent = taskAdminMode ? '返回設定區首頁' : '返回員工首頁';
+      const teacherMode = !!(currentUser && isExternalTeacher(currentUser));
+      qs('#taskHomeLink').href = taskAdminMode ? 'settings.html' : (teacherMode ? 'teacher-home.html' : 'dashboard.html');
+      qs('#taskHomeLink').textContent = taskAdminMode ? '返回設定區首頁' : (teacherMode ? '返回老師首頁' : '返回員工首頁');
       
     }
 

@@ -263,8 +263,8 @@
 
     function getOpenTargets(){
       return {
-        announcement: localStorage.getItem('teacherAnnouncementPageUrl') || 'teacher-announcements.html',
-        todo: localStorage.getItem('teacherTodoPageUrl') || 'teacher-todo.html',
+        announcement: localStorage.getItem('teacherAnnouncementPageUrl') || '#announcements',
+        todo: localStorage.getItem('teacherTodoPageUrl') || '#todos',
         contract: localStorage.getItem('teacherContractPageUrl') || 'contract.html'
       };
     }
@@ -360,6 +360,14 @@
       const userId = getUserId();
       const base = target || '';
       if(!base) return;
+      if(base === '#announcements'){
+        document.getElementById('announcementSection').scrollIntoView({ behavior:'smooth', block:'start' });
+        return;
+      }
+      if(base === '#todos'){
+        document.getElementById('todoSection').scrollIntoView({ behavior:'smooth', block:'start' });
+        return;
+      }
       const url = new URL(base, window.location.href);
       if(userId) url.searchParams.set('userId', userId);
       window.location.href = url.toString();
