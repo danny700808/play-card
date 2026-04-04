@@ -257,8 +257,17 @@
       return url.searchParams.get(name) || '';
     }
 
+    function getStoredUser(){
+      try{
+        return JSON.parse(localStorage.getItem('employeeUser') || 'null');
+      }catch(err){
+        return null;
+      }
+    }
+
     function getUserId(){
-      return qs('userId') || localStorage.getItem('employeeUserId') || localStorage.getItem('teacherUserId') || '';
+      const storedUser = getStoredUser();
+      return qs('userId') || localStorage.getItem('employeeUserId') || localStorage.getItem('teacherUserId') || (storedUser && storedUser.id) || '';
     }
 
     function getOpenTargets(){
@@ -377,7 +386,8 @@
     document.getElementById('logoutBtn').addEventListener('click', function(){
       localStorage.removeItem('teacherUserId');
       localStorage.removeItem('employeeUserId');
-      alert('已登出');
+      localStorage.removeItem('employeeUser');
+      window.location.href = 'index.html';
     });
 
     document.getElementById('openAnnouncementBtn').addEventListener('click', function(){
