@@ -159,6 +159,17 @@
       </div>
       <div id="msg" class="message"></div>
 
+      <div id="teacherContractBanner" class="card hidden" style="margin-top:14px;border:1px solid #f5d08a;background:#fff8e8">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
+          <div>
+            <div style="font-size:20px;font-weight:900;color:#7c4a03">年度合約簽署</div>
+            <div class="muted" id="teacherContractBannerText">讀取中…</div>
+          </div>
+          <a class="btn" href="contract.html" style="width:auto;padding:10px 16px">前往簽署</a>
+        </div>
+      </div>
+
+
       <div id="adminBlock" data-if-admin style="display:none">        <div class="section-title">快速建立交辦</div>
         <div class="field"><label>任務標題</label><input id="title" placeholder="請輸入任務標題"></div>
         <div class="field"><label>任務內容（選填）</label><textarea id="content" placeholder="需要補充時再填寫"></textarea></div>
@@ -781,6 +792,30 @@
       if(r.ok) setTimeout(loadTasks,220);
     }
 
+
+    async function loadTeacherContractBanner(){
+      if(!currentUser || !isExternalTeacher(currentUser)) return;
+      const box=qs('#teacherContractBanner');
+      const text=qs('#teacherContractBannerText');
+      if(!box || !text) return;
+      try{
+        const r=await getTeacherContractStatus({userId:currentUser.id,email:currentUser.email});
+        if(shouldShowTeacherContractCard(r)){
+          box.classList.remove('hidden');
+          text.textContent=`${r.contract?.year||''} 年度契約尚未簽署，請先完成簽約。`;
+        }else if(r && r.ok && r.signed){
+          box.classList.add('hidden');
+        }else{
+          box.classList.remove('hidden');
+          text.textContent='目前尚未完成年度合約資料設定。';
+        }
+      }catch(e){
+        box.classList.remove('hidden');
+        text.textContent='目前無法讀取合約狀態，請稍後再試。';
+      }
+    }
+
+
     async function init(){
       fillHeader();
       applyDueMode('today');
@@ -875,6 +910,7 @@
         };
       }
       loadTasks();
+      loadTeacherContractBanner();
     }
   </script>
 </body>
