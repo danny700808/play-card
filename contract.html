@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>外聘老師年度契約</title>
+  <title>外聘老師正式線上簽署</title>
   <link rel="stylesheet" href="style.css">
   <style>
     .contract-shell{display:grid;gap:16px}
@@ -23,7 +23,7 @@
     .field input,.field textarea{width:100%;padding:12px 14px;border:1px solid #cbd5e1;border-radius:14px;font-size:16px;background:#fff}
     .field textarea{min-height:96px;resize:vertical}
     .sign-wrap{border:1px dashed #94a3b8;border-radius:16px;padding:12px;background:#fff}
-    .sign-box{display:block;width:100%;height:220px;border:1px solid #cbd5e1;border-radius:12px;background:#fff;touch-action:none}
+    .sign-box{width:100%;height:220px;border:1px solid #cbd5e1;border-radius:12px;background:#fff;touch-action:none}
     .contract-check{display:flex;gap:10px;align-items:flex-start;background:#f8fafc;border:1px solid #e2e8f0;border-radius:16px;padding:14px}
     .contract-check input{width:22px;height:22px;margin-top:2px}
     .preview-actions,.sign-actions,.submit-actions{display:flex;gap:10px;flex-wrap:wrap}
@@ -51,7 +51,7 @@
     <div class="card">
       <div class="topbar">
         <div class="header" style="margin:0">
-          <h1 class="title" style="margin:0">外聘老師年度契約</h1>
+          <h1 class="title" style="margin:0">外聘老師正式線上簽署</h1>
           <div class="welcome">歡迎 <span data-user-name></span></div>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
@@ -59,7 +59,7 @@
           <button class="btn secondary" style="width:auto;padding:10px 14px" onclick="logout()">登出</button>
         </div>
       </div>
-      <div class="muted">請確認資料正確後再送出。送出後系統會產生正式 PDF 並寄送到你的 Email。</div>
+      <div class="muted">請直接閱讀完整正式合約，填寫乙方資料並手寫簽名。送出後系統會把資料與簽名回填到正式契約模板，產出正式 PDF 並寄送到你的 Email。</div>
     </div>
 
     <div class="contract-shell">
@@ -81,8 +81,8 @@
       </div>
 
       <div class="contract-card">
-        <h3 style="margin:0 0 12px">契約內容</h3>
-        <div class="contract-body" id="contractBody">讀取契約內容中…</div>
+        <h3 style="margin:0 0 12px">正式契約內容</h3>
+        <div class="contract-body" id="contractBody">讀取正式契約內容中…</div>
       </div>
 
       <div class="contract-card" id="contractFormCard">
@@ -100,6 +100,10 @@
             <div class="field">
               <label>身分證字號 <span class="required">*</span></label>
               <input id="teacherIdNumber" placeholder="請輸入身分證字號">
+            </div>
+            <div class="field">
+              <label>授課項目 / 科目 <span class="required">*</span></label>
+              <input id="teacherCourse" placeholder="例如：鋼琴 / 爵士鼓 / 吉他">
             </div>
             <div class="field">
               <label>簽署日期 <span class="required">*</span></label>
@@ -144,11 +148,12 @@
           <div class="preview-row"><strong>地址：</strong><span id="previewPartyAddress"></span></div>
           <div class="preview-row"><strong>乙方姓名：</strong><span id="previewTeacherName"></span></div>
           <div class="preview-row"><strong>身分證字號：</strong><span id="previewTeacherIdNumber"></span></div>
+          <div class="preview-row"><strong>授課項目 / 科目：</strong><span id="previewTeacherCourse"></span></div>
           <div class="preview-row"><strong>地址：</strong><span id="previewTeacherAddress"></span></div>
           <div class="preview-row"><strong>Email：</strong><span id="previewTeacherEmail"></span></div>
           <div class="preview-row"><strong>契約期間：</strong><span id="previewPeriod"></span></div>
           <div class="preview-row"><strong>簽署日期：</strong><span id="previewSignDate"></span></div>
-          <div class="preview-row" id="previewBody" style="margin-top:18px;white-space:pre-wrap"></div>
+          <div class="preview-row" id="previewBody" style="margin-top:18px;white-space:normal"></div>
           <div class="preview-sign-area">
             <div class="stamp-box">
               <div style="font-weight:900;margin-bottom:10px">甲方用印</div>
@@ -202,6 +207,66 @@
       return escapeHtml(text).replace(/\n/g,'<br>');
     }
 
+
+    function stripHtml(html){
+      const div=document.createElement('div');
+      div.innerHTML=String(html||'');
+      return (div.textContent||div.innerText||'').trim();
+    }
+
+    function toRocDateParts(value){
+      if(!value) return { rocYear:'', month:'', day:'' };
+      const d=new Date(value+'T00:00:00');
+      if(Number.isNaN(d.getTime())) return { rocYear:'', month:'', day:'' };
+      return {
+        rocYear:String(d.getFullYear()-1911),
+        month:String(d.getMonth()+1),
+        day:String(d.getDate())
+      };
+    }
+
+    function getFormPayload(){
+      const signDate=qs('#signDate').value.trim();
+      const roc=toRocDateParts(signDate);
+      return {
+        teacherName: qs('#teacherName').value.trim(),
+        email: qs('#teacherEmail').value.trim(),
+        idNumber: qs('#teacherIdNumber').value.trim(),
+        teacherCourse: qs('#teacherCourse').value.trim(),
+        address: qs('#teacherAddress').value.trim(),
+        signDate,
+        rocYear: roc.rocYear,
+        rocMonth: roc.month,
+        rocDay: roc.day
+      };
+    }
+
+    function renderContractTemplate(templateHtml,payload){
+      let html=String(templateHtml||'');
+      const map={
+        teacherName: payload.teacherName||'＿＿＿＿＿＿＿＿',
+        email: payload.email||'',
+        idNumber: payload.idNumber||'＿＿＿＿＿＿＿＿',
+        teacherAddress: payload.address||'＿＿＿＿＿＿＿＿',
+        address: payload.address||'＿＿＿＿＿＿＿＿',
+        teacherCourse: payload.teacherCourse||'＿＿＿＿＿＿＿＿',
+        signDate: payload.signDate||'',
+        signYear: payload.rocYear||'　',
+        signMonth: payload.rocMonth||'　',
+        signDay: payload.rocDay||'　',
+        partyAName: contractData ? (contractData.partyAName||'') : '',
+        partyAOwner: contractData ? (contractData.partyAOwner||'') : '',
+        partyAAddress: contractData ? (contractData.partyAAddress||'') : '',
+        startDate: contractData ? (contractData.startDate||'') : '',
+        endDate: contractData ? (contractData.endDate||'') : ''
+      };
+      Object.keys(map).forEach(key=>{
+        const val=String(map[key]||'');
+        html=html.replace(new RegExp('{{\\s*'+key+'\\s*}}','g'), escapeHtml(val));
+      });
+      return html;
+    }
+
     function fitCanvas(){
       if(!signCanvas) return;
       const ratio=Math.max(window.devicePixelRatio||1,1);
@@ -246,10 +311,9 @@
     }
 
     function endSign(e){
-      if(!drawing) return;
       drawing=false;
       lastPoint=null;
-      if(e && typeof e.preventDefault==='function') e.preventDefault();
+      if(e) e.preventDefault();
     }
 
     function clearSignature(){
@@ -274,7 +338,7 @@
       qs('#metaPeriod').textContent=period;
       qs('#metaPartyA').textContent=partyA;
       qs('#metaOwner').textContent=owner;
-      qs('#contractBody').innerHTML=(contractData&&contractData.contractHtml) ? contractData.contractHtml : '目前尚未設定契約內容。';
+      qs('#contractBody').innerHTML=(contractData&&contractData.contractHtml) ? contractData.contractHtml : '目前尚未設定正式契約內容。';
     }
 
     function setSignedView(record){
@@ -300,6 +364,7 @@
       const name=qs('#teacherName').value.trim();
       const email=qs('#teacherEmail').value.trim();
       const idNumber=qs('#teacherIdNumber').value.trim();
+      const teacherCourse=qs('#teacherCourse').value.trim();
       const address=qs('#teacherAddress').value.trim();
       const signDate=qs('#signDate').value.trim();
       const agree=qs('#agreeContract').checked;
@@ -308,9 +373,10 @@
       if(!name) return '請輸入姓名';
       if(!email) return '請輸入 Email';
       if(!idNumber) return '請輸入身分證字號';
+      if(!teacherCourse) return '請輸入授課項目 / 科目';
       if(!address) return '請輸入地址';
       if(!signDate) return '請選擇簽署日期';
-      if(!agree) return '請先勾選同意契約內容';
+      if(!agree) return '請先勾選同意正式契約內容';
       if(!signature) return '請先完成手寫簽名';
       return '';
     }
@@ -321,6 +387,7 @@
         teacherName: qs('#teacherName').value.trim(),
         email: qs('#teacherEmail').value.trim(),
         idNumber: qs('#teacherIdNumber').value.trim(),
+        teacherCourse: qs('#teacherCourse').value.trim(),
         address: qs('#teacherAddress').value.trim(),
         signDate: qs('#signDate').value.trim(),
         agree: qs('#agreeContract').checked,
@@ -344,11 +411,12 @@
       qs('#previewPartyAddress').textContent=partyAddress;
       qs('#previewTeacherName').textContent=payload.teacherName;
       qs('#previewTeacherIdNumber').textContent=payload.idNumber;
+      qs('#previewTeacherCourse').textContent=payload.teacherCourse;
       qs('#previewTeacherAddress').textContent=payload.address;
       qs('#previewTeacherEmail').textContent=payload.email;
       qs('#previewPeriod').textContent=period;
       qs('#previewSignDate').textContent=payload.signDate;
-      qs('#previewBody').innerHTML=(contractData&&contractData.contractText)?nl2br(contractData.contractText):'';
+      qs('#previewBody').innerHTML=renderContractTemplate((contractData&&contractData.contractHtml)||'', getFormPayload());
 
       const schoolStamp=qs('#previewSchoolStamp');
       const ownerStamp=qs('#previewOwnerStamp');
@@ -402,9 +470,7 @@
       window.addEventListener('mouseup', endSign);
       signCanvas.addEventListener('touchstart', startSign, {passive:false});
       signCanvas.addEventListener('touchmove', moveSign, {passive:false});
-      signCanvas.addEventListener('touchend', endSign, {passive:false});
-      signCanvas.addEventListener('touchcancel', endSign, {passive:false});
-      window.addEventListener('mouseup', endSign);
+      window.addEventListener('touchend', endSign, {passive:false});
 
       prefillUser();
 
