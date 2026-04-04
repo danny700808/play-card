@@ -15,7 +15,7 @@
       --primary-soft:#eaf2ff;
       --danger:#c0392b;
       --danger-bg:#fff3f1;
-      --shadow:0 10px 30px rgba(15, 23, 42, .08);
+      --shadow:0 10px 30px rgba(15,23,42,.08);
       --radius:22px;
     }
     *{box-sizing:border-box}
@@ -25,11 +25,7 @@
       background:var(--bg);
       color:var(--text);
     }
-    .wrap{
-      max-width:1200px;
-      margin:0 auto;
-      padding:24px 16px 40px;
-    }
+    .wrap{max-width:1200px;margin:0 auto;padding:24px 16px 40px}
     .hero{
       background:var(--card);
       border:1px solid var(--line);
@@ -46,155 +42,57 @@
       font-weight:900;
       letter-spacing:.02em;
     }
-    .sub{
-      color:var(--muted);
-      font-size:18px;
-      margin:0 0 18px;
-    }
-    .row{
-      display:flex;
-      flex-wrap:wrap;
-      gap:12px;
-    }
+    .sub{color:var(--muted);font-size:18px;margin:0 0 18px}
+    .row{display:flex;flex-wrap:wrap;gap:12px}
     .btn{
-      appearance:none;
-      border:none;
-      border-radius:18px;
-      background:#e9eef6;
-      color:#17396b;
-      font-weight:900;
-      font-size:16px;
-      padding:14px 22px;
-      cursor:pointer;
+      appearance:none;border:none;border-radius:18px;background:#e9eef6;color:#17396b;
+      font-weight:900;font-size:16px;padding:14px 22px;cursor:pointer;
     }
-    .btn.primary{
-      background:var(--primary);
-      color:#fff;
-    }
+    .btn.primary{background:var(--primary);color:#fff}
     .banner{
-      background:var(--danger-bg);
-      color:var(--danger);
-      border:2px solid #f3c1bb;
-      border-radius:24px;
-      padding:20px 18px;
-      font-size:18px;
-      margin-bottom:18px;
-      display:none;
-      white-space:pre-wrap;
+      background:var(--danger-bg);color:var(--danger);border:2px solid #f3c1bb;border-radius:24px;
+      padding:20px 18px;font-size:18px;margin-bottom:18px;display:none;white-space:pre-wrap;
     }
-    .grid{
-      display:grid;
-      gap:18px;
-      grid-template-columns:1fr 1fr;
-      align-items:start;
-    }
-    .stack{
-      display:flex;
-      flex-direction:column;
-      gap:18px;
-    }
+    .grid{display:grid;gap:18px;grid-template-columns:1fr 1.15fr;align-items:start}
+    .stack{display:flex;flex-direction:column;gap:18px}
     .card{
-      background:var(--card);
-      border:1px solid var(--line);
-      border-radius:var(--radius);
-      box-shadow:var(--shadow);
-      padding:20px 18px;
+      background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+      box-shadow:var(--shadow);padding:20px 18px;
     }
-    .card h2{
-      margin:0 0 10px;
-      font-size:28px;
-      color:#17396b;
-      font-weight:900;
-    }
-    .card .small{
-      color:var(--muted);
-      font-size:14px;
-      margin-bottom:12px;
-    }
-    .empty{
-      color:var(--muted);
-      line-height:1.8;
-    }
-    .list{
-      display:flex;
-      flex-direction:column;
-      gap:10px;
-    }
-    .item{
-      border:1px solid #e7edf7;
-      background:#fbfdff;
-      border-radius:16px;
-      padding:12px 12px;
-    }
-    .item-title{
-      font-weight:900;
-      color:#16335d;
-      margin:0 0 6px;
-      line-height:1.5;
-    }
-    .item-meta{
-      font-size:13px;
-      color:var(--muted);
-      line-height:1.6;
-      white-space:pre-wrap;
-    }
+    .card h2{margin:0 0 10px;font-size:28px;color:#17396b;font-weight:900}
+    .small{color:var(--muted);font-size:14px;margin-bottom:12px}
+    .empty{color:var(--muted);line-height:1.8}
+    .list{display:flex;flex-direction:column;gap:10px}
+    .item{border:1px solid #e7edf7;background:#fbfdff;border-radius:16px;padding:12px}
+    .item-title{font-weight:900;color:#16335d;margin:0 0 6px;line-height:1.5}
+    .item-meta{font-size:13px;color:var(--muted);line-height:1.7;white-space:pre-wrap}
     .todo-badge{
-      display:inline-block;
-      font-size:12px;
-      font-weight:800;
-      color:#2457a6;
-      background:var(--primary-soft);
-      border-radius:999px;
-      padding:5px 10px;
-      margin-bottom:8px;
+      display:inline-block;font-size:12px;font-weight:800;color:#2457a6;background:var(--primary-soft);
+      border-radius:999px;padding:5px 10px;margin-bottom:8px;
     }
     .contract-box{
-      border:1px dashed #b8cae8;
-      background:#f8fbff;
-      border-radius:18px;
-      padding:14px;
-      line-height:1.8;
-      margin-bottom:14px;
+      border:1px dashed #b8cae8;background:#f8fbff;border-radius:18px;padding:14px;line-height:1.8;margin-bottom:14px;
     }
-    .actions{
-      margin-top:14px;
-      display:flex;
-      flex-wrap:wrap;
-      gap:10px;
-    }
+    .actions{margin-top:14px;display:flex;flex-wrap:wrap;gap:10px}
     .link-btn{
-      display:inline-flex;
-      align-items:center;
-      justify-content:center;
-      min-height:44px;
-      padding:10px 14px;
-      border-radius:14px;
-      text-decoration:none;
-      font-weight:900;
-      background:#e9eef6;
-      color:#17396b;
+      display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:10px 14px;
+      border-radius:14px;text-decoration:none;font-weight:900;background:#e9eef6;color:#17396b;
     }
-    .link-btn.primary{
-      background:var(--primary);
-      color:#fff;
+    .link-btn.primary{background:var(--primary);color:#fff}
+    .contract-body-wrap{
+      margin-top:14px;border:1px solid #dbe5f2;border-radius:18px;background:#fff;padding:18px;
+      max-height:none;overflow:auto;
     }
-    .contract-embed-wrap{
-      margin-top:14px;
-      border:1px solid #dbe5f2;
-      border-radius:18px;
-      overflow:hidden;
-      background:#fff;
-    }
-    .contract-embed{
-      width:100%;
-      min-height:980px;
-      border:0;
-      display:block;
-      background:#fff;
-    }
+    .contract-body-wrap .contract-html{line-height:1.95;color:#1f2937}
+    .contract-body-wrap .contract-html h1,
+    .contract-body-wrap .contract-html h2,
+    .contract-body-wrap .contract-html h3{color:#17396b;margin-top:0}
+    .contract-body-wrap .contract-html table{width:100%;border-collapse:collapse}
+    .contract-body-wrap .contract-html td,
+    .contract-body-wrap .contract-html th{border:1px solid #dbe5f2;padding:8px}
+    .contract-body-wrap .contract-html img{max-width:100%;height:auto}
     @media (max-width:980px){
       .grid{grid-template-columns:1fr}
-      .contract-embed{min-height:820px}
     }
   </style>
 </head>
@@ -216,29 +114,23 @@
         <article class="card">
           <h2>公告</h2>
           <div class="small">提供給外聘老師的重要公告</div>
-          <div id="announcementList" class="list">
-            <div class="empty">讀取中...</div>
-          </div>
+          <div id="announcementList" class="list"><div class="empty">讀取中...</div></div>
         </article>
 
         <article class="card">
           <h2>代辦事項</h2>
           <div class="small">待處理摘要</div>
-          <div id="todoList" class="list">
-            <div class="empty">讀取中...</div>
-          </div>
+          <div id="todoList" class="list"><div class="empty">讀取中...</div></div>
         </article>
       </div>
 
       <article class="card">
         <h2>合約</h2>
-        <div class="small">這裡直接顯示你要簽署的正式合約</div>
-
+        <div class="small">這裡直接顯示正式合約內容，不再用 iframe 載入</div>
         <div id="contractBox" class="contract-box">讀取中...</div>
         <div class="actions" id="contractActions"></div>
-
-        <div class="contract-embed-wrap">
-          <iframe id="contractFrame" class="contract-embed" src="about:blank"></iframe>
+        <div class="contract-body-wrap">
+          <div id="contractBody" class="contract-html">讀取中...</div>
         </div>
       </article>
     </section>
@@ -291,7 +183,10 @@
         method:'POST',
         headers:{'Content-Type':'text/plain;charset=utf-8'},
         body: JSON.stringify(Object.assign({ action }, payload || {}))
-      }).then(r => r.json());
+      }).then(async r => {
+        const text = await r.text();
+        try{ return JSON.parse(text); }catch(err){ throw new Error(text || '伺服器回傳格式錯誤'); }
+      });
     }
 
     function escapeHtml(str){
@@ -303,19 +198,28 @@
         .replace(/'/g,'&#39;');
     }
 
+    function nl2br(str){
+      return escapeHtml(str).replace(/\n/g,'<br>');
+    }
+
     function renderAnnouncements(list){
       const el = document.getElementById('announcementList');
       if(!Array.isArray(list) || !list.length){
         el.innerHTML = '<div class="empty">目前沒有公告</div>';
         return;
       }
-      el.innerHTML = list.map(item => `
-        <div class="item">
-          <div class="item-title">${escapeHtml(item.title || '未命名公告')}</div>
-          <div class="item-meta">${escapeHtml(item.dateText || item.publishDate || '')}</div>
-          <div class="item-meta">${escapeHtml(item.content || '')}</div>
-        </div>
-      `).join('');
+      el.innerHTML = list.map(item => {
+        const title = item.title || item.subject || '未命名公告';
+        const dateText = item.dateText || item.publishDate || item.createdAt || '';
+        const content = item.content || item.summary || item.description || '';
+        return `
+          <div class="item">
+            <div class="item-title">${escapeHtml(title)}</div>
+            <div class="item-meta">${escapeHtml(dateText)}</div>
+            <div class="item-meta">${escapeHtml(content)}</div>
+          </div>
+        `;
+      }).join('');
     }
 
     function renderTodos(list){
@@ -324,43 +228,41 @@
         el.innerHTML = '<div class="empty">目前沒有待辦事項</div>';
         return;
       }
-      el.innerHTML = list.map(item => `
-        <div class="item">
-          <div class="todo-badge">${escapeHtml(item.typeLabel || item.type || '待辦')}</div>
-          <div class="item-title">${escapeHtml(item.title || '未命名項目')}</div>
-          <div class="item-meta">${escapeHtml(item.description || item.message || '')}</div>
-        </div>
-      `).join('');
+      el.innerHTML = list.map(item => {
+        const badge = item.typeLabel || item.type || item.key || '待辦';
+        const title = item.title || item.name || '未命名項目';
+        const desc = item.description || item.message || item.status || '';
+        const count = (item.count != null && item.count !== '') ? `（${item.count}）` : '';
+        return `
+          <div class="item">
+            <div class="todo-badge">${escapeHtml(badge)}</div>
+            <div class="item-title">${escapeHtml(title)}${escapeHtml(count)}</div>
+            <div class="item-meta">${escapeHtml(desc)}</div>
+          </div>
+        `;
+      }).join('');
     }
 
-    function renderContract(contract){
+    function renderContract(contract, record){
       const box = document.getElementById('contractBox');
+      const body = document.getElementById('contractBody');
       const actions = document.getElementById('contractActions');
-      const frame = document.getElementById('contractFrame');
       actions.innerHTML = '';
 
       const signUrlBase = (contract && (contract.signUrl || contract.contractUrl)) || 'contract.html';
       const signUrl = signUrlBase + (signUrlBase.includes('?') ? '&' : '?') + 'userId=' + encodeURIComponent(userId);
+      const statusText = (record && record.status) || (contract && contract.statusText) || '未設定';
+      const yearText = (contract && (contract.year || contract.contractYear)) || '未設定';
+      const periodText = contract && (contract.periodText || ((contract.startDate || '') + ' ～ ' + (contract.endDate || '')));
+      const contractName = (contract && contract.contractName) || '外聘老師年度委任契約';
 
-      if(!contract){
-        box.innerHTML = `
-          <div><strong>狀態：</strong>目前查無合約資料</div>
-          <div><strong>說明：</strong>但仍可先嘗試開啟既有合約頁面</div>
-        `;
-        frame.src = signUrl;
-      } else {
-        const statusText = contract.statusText || contract.status || '未設定';
-        const schoolYear = contract.schoolYear || contract.contractYear || '';
-        const signedAt = contract.signedAt || '';
-
-        box.innerHTML = `
-          <div><strong>狀態：</strong>${escapeHtml(statusText)}</div>
-          <div><strong>年度：</strong>${escapeHtml(schoolYear || '未設定')}</div>
-          <div><strong>簽署時間：</strong>${escapeHtml(signedAt || '尚未簽署')}</div>
-          <div><strong>說明：</strong>下方直接顯示正式合約內容</div>
-        `;
-        frame.src = signUrl;
-      }
+      box.innerHTML = `
+        <div><strong>合約名稱：</strong>${escapeHtml(contractName)}</div>
+        <div><strong>狀態：</strong>${escapeHtml(statusText)}</div>
+        <div><strong>年度：</strong>${escapeHtml(yearText)}</div>
+        <div><strong>合約期間：</strong>${escapeHtml(periodText || '未設定')}</div>
+        <div><strong>簽署時間：</strong>${escapeHtml((record && ((record.signDate || '') + ' ' + (record.signTime || '')).trim()) || '尚未簽署')}</div>
+      `;
 
       const openLink = document.createElement('a');
       openLink.className = 'link-btn primary';
@@ -368,15 +270,30 @@
       openLink.textContent = '開啟完整合約頁';
       actions.appendChild(openLink);
 
-      if(contract && contract.pdfUrl){
+      if(record && record.pdfUrl){
         const pdfLink = document.createElement('a');
         pdfLink.className = 'link-btn';
-        pdfLink.href = contract.pdfUrl;
+        pdfLink.href = record.pdfUrl;
         pdfLink.target = '_blank';
         pdfLink.rel = 'noopener';
         pdfLink.textContent = '查看已簽 PDF';
         actions.appendChild(pdfLink);
       }
+
+      if(contract && contract.contractHtml){
+        body.innerHTML = contract.contractHtml;
+      }else if(contract && contract.contractText){
+        body.innerHTML = nl2br(contract.contractText);
+      }else{
+        body.innerHTML = '<div class="empty">目前尚未設定合約內容</div>';
+      }
+    }
+
+    async function loadContractOnly(){
+      const res = await postAction('getTeacherContractStatus', { userId });
+      if(!res || !res.ok) throw new Error((res && res.message) || '讀取合約失敗');
+      renderContract(res.contract || null, res.record || null);
+      return res;
     }
 
     async function loadHome(){
@@ -397,19 +314,31 @@
           throw new Error((result && result.message) || '讀取失敗');
         }
 
-        const user = result.user || {};
-        const announcements = result.announcements || [];
-        const todos = result.todos || [];
+        const user = result.user || result.teacher || {};
+        const announcements = result.announcements || result.latestAnnouncements || [];
+        const todos = result.todos || result.todoSummary || [];
         const contract = result.contract || null;
+        const record = result.record || null;
 
-        document.getElementById('heroSub').textContent =
-          (user.name ? `${user.name} 老師您好` : '外聘老師您好');
-
+        document.getElementById('heroSub').textContent = user.name ? (user.name + ' 老師您好') : '外聘老師您好';
         renderAnnouncements(announcements);
         renderTodos(todos);
-        renderContract(contract);
+
+        if(contract && (contract.contractHtml || contract.contractText)){
+          renderContract(contract, record);
+        }else{
+          await loadContractOnly();
+        }
       }catch(err){
-        showError(err && err.message ? err.message : String(err));
+        try{
+          document.getElementById('heroSub').textContent = '外聘老師您好';
+          renderAnnouncements([]);
+          renderTodos([]);
+          await loadContractOnly();
+          showError('首頁其他資料讀取失敗，但合約已單獨載入：' + (err && err.message ? err.message : String(err)));
+        }catch(innerErr){
+          showError(innerErr && innerErr.message ? innerErr.message : String(innerErr));
+        }
       }
     }
 
