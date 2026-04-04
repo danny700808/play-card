@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>外聘老師合約管理</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:end}
+    .toolbar .field{flex:1;min-width:180px}
+    .contract-admin-list{display:grid;gap:14px;margin-top:18px}
+    .contract-admin-card{background:#fff;border:1px solid #e2e8f0;border-radius:18px;padding:16px}
+    .contract-admin-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}
+    .contract-admin-title{margin:0;font-size:22px;font-weight:900}
+    .badge{display:inline-block;padding:6px 12px;border-radius:999px;font-size:13px;font-weight:900}
+    .badge.pending{background:#fff7ed;color:#9a3412}
+    .badge.done{background:#ecfdf5;color:#166534}
+    .meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:12px}
+    .meta .item{background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:10px}
+    .meta .label{font-size:12px;color:#64748b;font-weight:800}
+    .meta .value{font-size:15px;font-weight:800;word-break:break-word}
+    .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+    @media (max-width:700px){.meta{grid-template-columns:1fr}}
+  </style>
+</head>
+<body onload="init()">
+  <div class="container">
+    <div class="page-return-wrap"><a class="btn page-return-btn" href="settings.html">返回設定區首頁</a></div>
+    <div class="card">
+      <div class="topbar">
+        <div>
+          <h1 class="title" style="margin:0">外聘老師合約管理</h1>
+          <div class="welcome">歡迎 <span data-user-name></span></div>
+        </div>
+        <button class="btn secondary" style="width:auto;padding:10px 14px" onclick="logout()">登出</button>
+      </div>
+      <div class="toolbar">
+        <div class="field">
+          <label>年度</label>
+          <input id="yearInput" type="number" min="2024" max="2100">
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn" style="width:auto" onclick="loadList()">查詢</button>
+        </div>
+      </div>
+      <div id="msg" class="message"></div>
+      <div id="list" class="contract-admin-list"></div>
+    </div>
+  </div>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+  <script>
+    let currentUser=null;
+    function rowHtml(row){
+      const signed = String(row.status||'').indexOf('已簽')>=0;
+      return `
+        <div class="contract-admin-card">
+          <div class="contract-admin-head">
+            <div>
+              <h3 class="contract-admin-title">${row.teacherName||'未命名老師'}</h3>
+              <div class="muted">${row.email||''}</div>
+            </div>
+            <span class="badge ${signed?'done':'pending'}">${signed?'已簽署':'待簽署'}</span>
+          </div>
+          <div class="meta">
+            <div class="item"><div class="label">年度</div><div class="value">${row.year||''}</div></div>
+            <div class="item"><div class="label">簽署時間</div><div class="value">${row.signDate||''} ${row.signTime||''}</div></div>
+            <div class="item"><div class="label">身分證字號</div><div class="value">${row.idNumber||''}</div></div>
+            <div class="item"><div class="label">地址</div><div class="value">${row.address||''}</div></div>
+          </div>
+          <div class="actions">
+            ${row.pdfUrl?`<a class="btn secondary" style="width:auto" href="${row.pdfUrl}" target="_blank">查看 PDF</a>`:''}
+            ${row.signatureUrl?`<a class="btn secondary" style="width:auto" href="${row.signatureUrl}" target="_blank">查看簽名</a>`:''}
+            ${signed?`<button class="btn secondary" style="width:auto" onclick="resend('${row.recordId}')">重寄 PDF</button>`:''}
+          </div>
+        </div>
+      `;
+    }
+    async function resend(recordId){
+      try{
+        const r=await api('resendTeacherContractPdf',{userId:currentUser.id,recordId});
+        setMsg(qs('#msg'),r.message,!r.ok);
+      }catch(e){ setMsg(qs('#msg'),e.message||'重寄失敗',true); }
+    }
+    async function loadList(){
+      const year=qs('#yearInput').value||String(new Date().getFullYear());
+      try{
+        const r=await api('getTeacherContractAdminList',{userId:currentUser.id,year});
+        if(!r.ok) throw new Error(r.message||'讀取失敗');
+        qs('#list').innerHTML=(r.rows||[]).map(rowHtml).join('') || '<div class="muted">目前沒有資料</div>';
+      }catch(e){
+        setMsg(qs('#msg'),e.message||'讀取失敗',true);
+      }
+    }
+    function init(){
+      fillHeader();
+      currentUser=requireLogin();
+      if(!currentUser) return;
+      if(!isManager(currentUser)){location.href='dashboard.html'; return;}
+      qs('#yearInput').value=String(new Date().getFullYear());
+      loadList();
+    }
+  </script>
+</body>
+</html>
