@@ -71,11 +71,13 @@
           <div class="field-error"></div>
         </div>
 
-        <div class="field" id="field-isPartTime">
-          <label for="isPartTime">是否為工讀生</label>
-          <select id="isPartTime" name="isPartTime">
-            <option value="no">否</option>
-            <option value="yes">是</option>
+        <div class="field" id="field-identityType">
+          <label for="identityType">身分類型</label>
+          <select id="identityType" name="identityType">
+            <option value="">請選擇身分類型</option>
+            <option value="staff">專職員工</option>
+            <option value="parttime">工讀生</option>
+            <option value="external">外聘老師</option>
           </select>
           <div class="field-error"></div>
         </div>
@@ -105,6 +107,7 @@
       birthDate: '#field-birthDate',
       emergencyContact: '#field-emergencyContact',
       emergencyPhone: '#field-emergencyPhone',
+      identityType: '#field-identityType',
     };
 
     function setProgress(value, text) {
@@ -188,8 +191,7 @@
       if(!payload.email) return ['email','請填寫 Email'];
       if(!payload.idNumber) return ['idNumber','請填寫身分證字號'];
       if(!payload.birthDate) return ['birthDate','請選擇出生年月日'];
-      if(!payload.emergencyContact) return ['emergencyContact','請填寫緊急聯絡人'];
-      if(!payload.emergencyPhone) return ['emergencyPhone','請填寫緊急聯絡人電話'];
+      if(!payload.identityType) return ['identityType','請選擇身分類型'];
       return null;
     }
 
@@ -197,7 +199,7 @@
     qs('#birthYear').addEventListener('change', () => { refreshBirthDays(); clearSingleFieldError('birthDate'); });
     qs('#birthMonth').addEventListener('change', () => { refreshBirthDays(); clearSingleFieldError('birthDate'); });
     qs('#birthDay').addEventListener('change', () => clearSingleFieldError('birthDate'));
-    ['name','email','idNumber','emergencyContact','emergencyPhone'].forEach(id => {
+    ['name','email','idNumber','emergencyContact','emergencyPhone','identityType'].forEach(id => {
       const el = qs('#' + id);
       el.addEventListener('input', () => clearSingleFieldError(id));
       el.addEventListener('change', () => clearSingleFieldError(id));
@@ -214,7 +216,7 @@
         birthDate: birthDateValue(),
         emergencyContact: qs('#emergencyContact').value.trim(),
         emergencyPhone: qs('#emergencyPhone').value.trim(),
-        isPartTime: qs('#isPartTime').value
+        identityType: qs('#identityType').value
       };
 
       const invalid = validatePayload(payload);
