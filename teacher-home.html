@@ -26,7 +26,7 @@
       color:var(--text);
     }
     .wrap{
-      max-width:980px;
+      max-width:1200px;
       margin:0 auto;
       padding:24px 16px 40px;
     }
@@ -85,7 +85,13 @@
     .grid{
       display:grid;
       gap:18px;
-      grid-template-columns:repeat(3,minmax(0,1fr));
+      grid-template-columns:1fr 1fr;
+      align-items:start;
+    }
+    .stack{
+      display:flex;
+      flex-direction:column;
+      gap:18px;
     }
     .card{
       background:var(--card);
@@ -93,7 +99,6 @@
       border-radius:var(--radius);
       box-shadow:var(--shadow);
       padding:20px 18px;
-      min-height:220px;
     }
     .card h2{
       margin:0 0 10px;
@@ -131,6 +136,7 @@
       font-size:13px;
       color:var(--muted);
       line-height:1.6;
+      white-space:pre-wrap;
     }
     .todo-badge{
       display:inline-block;
@@ -148,6 +154,7 @@
       border-radius:18px;
       padding:14px;
       line-height:1.8;
+      margin-bottom:14px;
     }
     .actions{
       margin-top:14px;
@@ -171,9 +178,23 @@
       background:var(--primary);
       color:#fff;
     }
-    @media (max-width:900px){
+    .contract-embed-wrap{
+      margin-top:14px;
+      border:1px solid #dbe5f2;
+      border-radius:18px;
+      overflow:hidden;
+      background:#fff;
+    }
+    .contract-embed{
+      width:100%;
+      min-height:980px;
+      border:0;
+      display:block;
+      background:#fff;
+    }
+    @media (max-width:980px){
       .grid{grid-template-columns:1fr}
-      .card{min-height:auto}
+      .contract-embed{min-height:820px}
     }
   </style>
 </head>
@@ -191,27 +212,34 @@
     <div class="banner" id="errorBox"></div>
 
     <section class="grid">
-      <article class="card">
-        <h2>公告</h2>
-        <div class="small">提供給外聘老師的重要公告</div>
-        <div id="announcementList" class="list">
-          <div class="empty">讀取中...</div>
-        </div>
-      </article>
+      <div class="stack">
+        <article class="card">
+          <h2>公告</h2>
+          <div class="small">提供給外聘老師的重要公告</div>
+          <div id="announcementList" class="list">
+            <div class="empty">讀取中...</div>
+          </div>
+        </article>
 
-      <article class="card">
-        <h2>代辦事項</h2>
-        <div class="small">待處理摘要</div>
-        <div id="todoList" class="list">
-          <div class="empty">讀取中...</div>
-        </div>
-      </article>
+        <article class="card">
+          <h2>代辦事項</h2>
+          <div class="small">待處理摘要</div>
+          <div id="todoList" class="list">
+            <div class="empty">讀取中...</div>
+          </div>
+        </article>
+      </div>
 
       <article class="card">
         <h2>合約</h2>
-        <div class="small">年度簽約狀態</div>
+        <div class="small">這裡直接顯示你要簽署的正式合約</div>
+
         <div id="contractBox" class="contract-box">讀取中...</div>
         <div class="actions" id="contractActions"></div>
+
+        <div class="contract-embed-wrap">
+          <iframe id="contractFrame" class="contract-embed" src="about:blank"></iframe>
+        </div>
       </article>
     </section>
   </div>
@@ -308,38 +336,45 @@
     function renderContract(contract){
       const box = document.getElementById('contractBox');
       const actions = document.getElementById('contractActions');
+      const frame = document.getElementById('contractFrame');
       actions.innerHTML = '';
 
+      const signUrlBase = (contract && (contract.signUrl || contract.contractUrl)) || 'contract.html';
+      const signUrl = signUrlBase + (signUrlBase.includes('?') ? '&' : '?') + 'userId=' + encodeURIComponent(userId);
+
       if(!contract){
-        box.textContent = '目前查無合約資料';
-        return;
+        box.innerHTML = `
+          <div><strong>狀態：</strong>目前查無合約資料</div>
+          <div><strong>說明：</strong>但仍可先嘗試開啟既有合約頁面</div>
+        `;
+        frame.src = signUrl;
+      } else {
+        const statusText = contract.statusText || contract.status || '未設定';
+        const schoolYear = contract.schoolYear || contract.contractYear || '';
+        const signedAt = contract.signedAt || '';
+
+        box.innerHTML = `
+          <div><strong>狀態：</strong>${escapeHtml(statusText)}</div>
+          <div><strong>年度：</strong>${escapeHtml(schoolYear || '未設定')}</div>
+          <div><strong>簽署時間：</strong>${escapeHtml(signedAt || '尚未簽署')}</div>
+          <div><strong>說明：</strong>下方直接顯示正式合約內容</div>
+        `;
+        frame.src = signUrl;
       }
 
-      const statusText = contract.statusText || contract.status || '未設定';
-      const schoolYear = contract.schoolYear || contract.contractYear || '';
-      const signedAt = contract.signedAt || '';
-      const signUrl = contract.signUrl || contract.contractUrl || 'contract.html';
-      const pdfUrl = contract.pdfUrl || '';
+      const openLink = document.createElement('a');
+      openLink.className = 'link-btn primary';
+      openLink.href = signUrl;
+      openLink.textContent = '開啟完整合約頁';
+      actions.appendChild(openLink);
 
-      box.innerHTML = `
-        <div><strong>狀態：</strong>${escapeHtml(statusText)}</div>
-        <div><strong>年度：</strong>${escapeHtml(schoolYear || '未設定')}</div>
-        <div><strong>簽署時間：</strong>${escapeHtml(signedAt || '尚未簽署')}</div>
-      `;
-
-      const signLink = document.createElement('a');
-      signLink.className = 'link-btn primary';
-      signLink.href = `${signUrl}${signUrl.includes('?') ? '&' : '?'}userId=${encodeURIComponent(userId)}`;
-      signLink.textContent = /已簽/i.test(statusText) ? '查看合約' : '前往簽約';
-      actions.appendChild(signLink);
-
-      if(pdfUrl){
+      if(contract && contract.pdfUrl){
         const pdfLink = document.createElement('a');
         pdfLink.className = 'link-btn';
-        pdfLink.href = pdfUrl;
+        pdfLink.href = contract.pdfUrl;
         pdfLink.target = '_blank';
         pdfLink.rel = 'noopener';
-        pdfLink.textContent = '開啟 PDF';
+        pdfLink.textContent = '查看已簽 PDF';
         actions.appendChild(pdfLink);
       }
     }
