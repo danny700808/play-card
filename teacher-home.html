@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>外聘老師首頁</title>
+  <style>
+    :root{
+      --bg:#f5f7fb;
+      --card:#ffffff;
+      --line:#d9e2ef;
+      --text:#1f2f46;
+      --sub:#6b7280;
+      --green:#1f8a5b;
+      --green-weak:#e9f7f0;
+      --blue:#315b8a;
+      --blue-weak:#eef4fb;
+      --orange:#b86b00;
+      --orange-weak:#fff4e8;
+      --danger:#b42318;
+      --shadow:0 12px 34px rgba(25, 46, 89, .08);
+      --radius:22px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      background:var(--bg);
+      color:var(--text);
+      font-family:Arial,"Noto Sans TC",sans-serif;
+      line-height:1.6;
+    }
+    .page{
+      max-width:900px;
+      margin:0 auto;
+      padding:20px 16px 32px;
+    }
+    .hero{
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:28px;
+      box-shadow:var(--shadow);
+      padding:22px 20px;
+      display:flex;
+      flex-wrap:wrap;
+      gap:14px;
+      justify-content:space-between;
+      align-items:flex-start;
+    }
+    .hero h1{
+      margin:0 0 6px;
+      font-size:32px;
+      line-height:1.2;
+      color:#1d3557;
+    }
+    .hero .meta{color:var(--sub);font-size:16px}
+    .hero-actions{display:flex;gap:10px;flex-wrap:wrap}
+    .btn{
+      border:none;
+      border-radius:16px;
+      padding:12px 18px;
+      font-size:18px;
+      font-weight:800;
+      cursor:pointer;
+    }
+    .btn-primary{background:var(--green);color:#fff}
+    .btn-secondary{background:#eef2f7;color:#23384f}
+    .section{margin-top:20px}
+    .section-title{
+      margin:0 0 12px;
+      font-size:24px;
+      font-weight:900;
+      color:#1d3557;
+    }
+    .grid-3{
+      display:grid;
+      grid-template-columns:repeat(3,minmax(0,1fr));
+      gap:14px;
+    }
+    .home-card{
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:24px;
+      box-shadow:var(--shadow);
+      padding:18px;
+      min-height:220px;
+      display:flex;
+      flex-direction:column;
+      justify-content:space-between;
+      gap:14px;
+    }
+    .home-card h2{
+      margin:0;
+      font-size:24px;
+      color:#1d3557;
+    }
+    .badge{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      min-width:42px;
+      padding:6px 12px;
+      border-radius:999px;
+      font-size:15px;
+      font-weight:800;
+    }
+    .badge-green{background:var(--green-weak);color:var(--green)}
+    .badge-blue{background:var(--blue-weak);color:var(--blue)}
+    .badge-orange{background:var(--orange-weak);color:var(--orange)}
+    .metric{font-size:38px;font-weight:900;line-height:1;color:#19324d}
+    .muted{color:var(--sub)}
+    .subline{font-size:15px;color:var(--sub)}
+    .card-button{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      width:100%;
+      border-radius:16px;
+      padding:13px 16px;
+      font-size:18px;
+      font-weight:900;
+      border:none;
+      cursor:pointer;
+    }
+    .card-button.green{background:var(--green);color:#fff}
+    .card-button.blue{background:#e9f0f9;color:#24486f}
+    .card-button.orange{background:#fff1df;color:#a35a00}
+    .list{
+      display:grid;
+      gap:12px;
+    }
+    .notice-card{
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:22px;
+      box-shadow:var(--shadow);
+      padding:18px;
+    }
+    .notice-top{
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      gap:12px;
+      margin-bottom:8px;
+    }
+    .notice-title{font-size:22px;font-weight:900;color:#1d3557;margin:0}
+    .notice-date{font-size:15px;color:var(--sub);white-space:nowrap}
+    .notice-tag{
+      display:inline-block;
+      padding:6px 12px;
+      border-radius:999px;
+      font-size:14px;
+      font-weight:800;
+      background:#edf3fb;
+      color:#315b8a;
+      margin-bottom:10px;
+    }
+    .notice-summary{font-size:17px;color:#334155;white-space:pre-wrap}
+    .todo-box{
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:22px;
+      box-shadow:var(--shadow);
+      padding:18px;
+    }
+    .todo-item{
+      padding:14px 0;
+      border-bottom:1px dashed #d9e2ef;
+      font-size:18px;
+    }
+    .todo-item:last-child{border-bottom:none;padding-bottom:0}
+    .loading,.error{
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:18px;
+      padding:18px;
+      color:var(--sub);
+    }
+    .error{color:var(--danger);border-color:#f0c9c5;background:#fff5f5}
+    .hidden{display:none!important}
+    @media (max-width: 860px){
+      .grid-3{grid-template-columns:1fr}
+      .hero h1{font-size:28px}
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <section class="hero">
+      <div>
+        <h1>外聘老師首頁</h1>
+        <div class="meta" id="teacherInfo">讀取中...</div>
+      </div>
+      <div class="hero-actions">
+        <button class="btn btn-secondary" type="button" id="refreshBtn">重新整理</button>
+        <button class="btn btn-secondary" type="button" id="logoutBtn">登出</button>
+      </div>
+    </section>
+
+    <div class="section">
+      <div id="statusBox" class="loading">正在讀取首頁資料...</div>
+    </div>
+
+    <section class="section hidden" id="cardsSection">
+      <h2 class="section-title">老師專區</h2>
+      <div class="grid-3">
+        <article class="home-card">
+          <div>
+            <div class="badge badge-blue">公告</div>
+            <h2>公告</h2>
+            <div class="metric" id="announcementCount">0</div>
+            <div class="subline">最新日期：<span id="announcementLatestDate">-</span></div>
+            <div class="subline">未讀公告：<span id="announcementUnreadCount">0</span> 則</div>
+          </div>
+          <button class="card-button blue" type="button" id="openAnnouncementBtn">查看公告</button>
+        </article>
+
+        <article class="home-card">
+          <div>
+            <div class="badge badge-orange">代辦事項</div>
+            <h2>代辦事項</h2>
+            <div class="metric" id="todoCount">0</div>
+            <div class="subline">交辦事項：<span id="todoTaskCount">0</span> 件</div>
+            <div class="subline">待簽合約：<span id="todoContractCount">0</span> 件</div>
+          </div>
+          <button class="card-button orange" type="button" id="openTodoBtn">查看代辦</button>
+        </article>
+
+        <article class="home-card">
+          <div>
+            <div class="badge badge-green">合約</div>
+            <h2>合約</h2>
+            <div class="metric" id="contractStatus">-</div>
+            <div class="subline">合約期間：<span id="contractPeriod">-</span></div>
+            <div class="subline">年度：<span id="contractYear">-</span></div>
+          </div>
+          <button class="card-button green" type="button" id="openContractBtn">查看合約</button>
+        </article>
+      </div>
+    </section>
+
+    <section class="section hidden" id="todoSection">
+      <h2 class="section-title">代辦摘要</h2>
+      <div class="todo-box" id="todoSummaryBox"></div>
+    </section>
+
+    <section class="section hidden" id="announcementSection">
+      <h2 class="section-title">最新公告</h2>
+      <div class="list" id="announcementList"></div>
+    </section>
+  </div>
+
+  <script>
+    const API_BASE = window.API_BASE || localStorage.getItem('employeeApiBaseUrl') || '';
+
+    function qs(name){
+      const url = new URL(window.location.href);
+      return url.searchParams.get(name) || '';
+    }
+
+    function getUserId(){
+      return qs('userId') || localStorage.getItem('employeeUserId') || localStorage.getItem('teacherUserId') || '';
+    }
+
+    function getOpenTargets(){
+      return {
+        announcement: localStorage.getItem('teacherAnnouncementPageUrl') || 'teacher-announcements.html',
+        todo: localStorage.getItem('teacherTodoPageUrl') || 'teacher-todo.html',
+        contract: localStorage.getItem('teacherContractPageUrl') || 'contract.html'
+      };
+    }
+
+    function setStatus(message, isError){
+      const box = document.getElementById('statusBox');
+      box.textContent = message || '';
+      box.className = isError ? 'error' : 'loading';
+    }
+
+    async function postJson(action, payload){
+      if(!API_BASE) throw new Error('缺少 API_BASE');
+      const res = await fetch(API_BASE, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(Object.assign({ action }, payload || {}))
+      });
+      const json = await res.json();
+      if(!json.ok) throw new Error(json.message || '讀取失敗');
+      return json;
+    }
+
+    function escapeHtml(text){
+      return String(text || '')
+        .replace(/&/g,'&amp;')
+        .replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;')
+        .replace(/'/g,'&#39;');
+    }
+
+    function renderHome(data){
+      document.getElementById('teacherInfo').textContent = `${data.teacher.name || ''}｜${data.teacher.email || ''}`;
+
+      const cards = data.cards || {};
+      const announcements = cards.announcements || {};
+      const todos = cards.todos || {};
+      const contract = cards.contract || {};
+
+      document.getElementById('announcementCount').textContent = announcements.total || 0;
+      document.getElementById('announcementLatestDate').textContent = announcements.latestDate || '-';
+      document.getElementById('announcementUnreadCount').textContent = announcements.unreadCount || 0;
+
+      document.getElementById('todoCount').textContent = todos.total || 0;
+      document.getElementById('todoTaskCount').textContent = todos.pendingTaskCount || 0;
+      document.getElementById('todoContractCount').textContent = todos.pendingContractCount || 0;
+
+      document.getElementById('contractStatus').textContent = contract.statusText || '-';
+      document.getElementById('contractPeriod').textContent = contract.periodText || '-';
+      document.getElementById('contractYear').textContent = contract.year || '-';
+
+      const todoSummary = Array.isArray(data.todoSummary) ? data.todoSummary : [];
+      document.getElementById('todoSummaryBox').innerHTML = todoSummary.length
+        ? todoSummary.map(item => `<div class="todo-item">${escapeHtml(item)}</div>`).join('')
+        : '<div class="todo-item">目前沒有待處理事項</div>';
+
+      const notices = Array.isArray(data.latestAnnouncements) ? data.latestAnnouncements : [];
+      document.getElementById('announcementList').innerHTML = notices.length
+        ? notices.map(item => `
+          <article class="notice-card">
+            <div class="notice-tag">${escapeHtml(item.category || '公告')}</div>
+            <div class="notice-top">
+              <h3 class="notice-title">${escapeHtml(item.title || '')}</h3>
+              <div class="notice-date">${escapeHtml(item.publishDate || '')}</div>
+            </div>
+            <div class="notice-summary">${escapeHtml(item.summary || '')}</div>
+          </article>
+        `).join('')
+        : '<div class="notice-card">目前沒有公告</div>';
+
+      document.getElementById('cardsSection').classList.remove('hidden');
+      document.getElementById('todoSection').classList.remove('hidden');
+      document.getElementById('announcementSection').classList.remove('hidden');
+      document.getElementById('statusBox').classList.add('hidden');
+    }
+
+    async function loadHome(){
+      const userId = getUserId();
+      if(!userId){
+        setStatus('缺少 userId，請從系統入口重新開啟。', true);
+        return;
+      }
+      try{
+        setStatus('正在讀取首頁資料...', false);
+        const data = await postJson('getTeacherHomeData', { userId });
+        renderHome(data);
+      }catch(err){
+        setStatus(err.message || '讀取失敗', true);
+      }
+    }
+
+    function openPage(target){
+      const userId = getUserId();
+      const base = target || '';
+      if(!base) return;
+      const url = new URL(base, window.location.href);
+      if(userId) url.searchParams.set('userId', userId);
+      window.location.href = url.toString();
+    }
+
+    document.getElementById('refreshBtn').addEventListener('click', loadHome);
+    document.getElementById('logoutBtn').addEventListener('click', function(){
+      localStorage.removeItem('teacherUserId');
+      localStorage.removeItem('employeeUserId');
+      alert('已登出');
+    });
+
+    document.getElementById('openAnnouncementBtn').addEventListener('click', function(){
+      openPage(getOpenTargets().announcement);
+    });
+    document.getElementById('openTodoBtn').addEventListener('click', function(){
+      openPage(getOpenTargets().todo);
+    });
+    document.getElementById('openContractBtn').addEventListener('click', function(){
+      openPage(getOpenTargets().contract);
+    });
+
+    loadHome();
+  </script>
+</body>
+</html>
