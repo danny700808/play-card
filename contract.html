@@ -24,7 +24,14 @@
     .field input,.field textarea{width:100%;padding:12px 14px;border:1px solid #cbd5e1;border-radius:14px;font-size:16px;background:#fff}
     .field textarea{min-height:96px;resize:vertical}
     .sign-wrap{border:1px dashed #94a3b8;border-radius:16px;padding:12px;background:#fff}
-    .sign-box{width:100%;height:220px;border:1px solid #cbd5e1;border-radius:12px;background:#fff;touch-action:none;display:block}
+    .sign-trigger{display:grid;gap:10px}
+    .sign-box{width:100%;height:160px;border:1px solid #cbd5e1;border-radius:12px;background:#fff;touch-action:none;display:block}
+    .sign-hint{font-size:14px;color:#64748b}
+    .sign-modal{position:fixed;inset:0;background:rgba(15,23,42,.62);display:none;align-items:center;justify-content:center;padding:18px;z-index:9999}
+    .sign-modal.show{display:flex}
+    .sign-modal-card{width:min(920px,100%);max-height:92vh;overflow:auto;background:#fff;border-radius:22px;padding:18px;box-shadow:0 20px 60px rgba(0,0,0,.22)}
+    .sign-modal-head{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+    .sign-modal-box{width:100%;height:min(58vh,420px);border:1px solid #cbd5e1;border-radius:16px;background:#fff;touch-action:none;display:block}
     .contract-check{display:flex;gap:10px;align-items:flex-start;background:#f8fafc;border:1px solid #e2e8f0;border-radius:16px;padding:14px}
     .contract-check input{width:22px;height:22px;margin-top:2px}
     .preview-actions,.sign-actions,.submit-actions{display:flex;gap:10px;flex-wrap:wrap}
@@ -42,7 +49,9 @@
       .contract-meta,.contract-grid,.preview-sign-area{grid-template-columns:1fr}
       .contract-title{font-size:24px}
       .preview-paper{padding:18px}
-      .sign-box{height:180px}
+      .sign-box{height:130px}
+      .sign-modal-card{padding:14px}
+      .sign-modal-box{height:54vh}
     }
   </style>
 </head>
@@ -103,23 +112,27 @@
             </div>
             <div class="field">
               <label>授課項目 / 科目 <span class="required">*</span></label>
-              <input id="teacherCourse" placeholder="例如：鋼琴 / 爵士鼓 / 吉他">
+              <input id="teacherCourse" placeholder="若有兩個項目，請一起填入，例如：鋼琴、爵士鼓">
             </div>
             <div class="field">
               <label>簽署日期 <span class="required">*</span></label>
               <input id="signDate" type="date">
             </div>
-            <div class="field full">
+            <div class="field">
               <label>地址 <span class="required">*</span></label>
-              <textarea id="teacherAddress" placeholder="請輸入完整地址"></textarea>
+              <input id="teacherAddress" placeholder="請輸入地址">
             </div>
           </div>
 
           <div class="field">
             <label>手寫簽名 <span class="required">*</span></label>
             <div class="sign-wrap">
-              <canvas id="signCanvas" class="sign-box"></canvas>
+              <div class="sign-trigger">
+                <canvas id="signCanvas" class="sign-box" onclick="openSignModal()"></canvas>
+                <div class="sign-hint">點一下簽名區，會開啟較大的固定簽名框，簽完再按「完成簽名」。</div>
+              </div>
               <div class="sign-actions" style="margin-top:10px">
+                <button type="button" class="btn secondary" style="width:auto" onclick="openSignModal()">開始簽名 / 放大簽名</button>
                 <button type="button" class="btn secondary" style="width:auto" onclick="clearSignature()">清除簽名</button>
               </div>
             </div>
@@ -166,6 +179,24 @@
     </div>
   </div>
 
+
+  <div class="sign-modal" id="signModal">
+    <div class="sign-modal-card">
+      <div class="sign-modal-head">
+        <div>
+          <div style="font-size:22px;font-weight:900;color:#0f172a">請在大框內簽名</div>
+          <div class="muted">建議橫放手機簽名會更穩。簽完按「完成簽名」即可帶回表單。</div>
+        </div>
+        <button type="button" class="btn secondary" style="width:auto;padding:10px 14px" onclick="closeSignModal()">關閉</button>
+      </div>
+      <canvas id="signModalCanvas" class="sign-modal-box"></canvas>
+      <div class="sign-actions" style="margin-top:12px">
+        <button type="button" class="btn secondary" style="width:auto" onclick="clearModalSignature()">清除重簽</button>
+        <button type="button" class="btn" style="width:auto" onclick="applyModalSignature()">完成簽名</button>
+      </div>
+    </div>
+  </div>
+
   <script src="config.js"></script>
   <script src="app.js"></script>
   <script>
@@ -173,6 +204,8 @@
     let contractData=null;
     let signCanvas=null;
     let signCtx=null;
+    let signModalCanvas=null;
+    let signModalCtx=null;
     let drawing=false;
     let pointerId=null;
     let lastPoint=null;
@@ -194,67 +227,129 @@
         .replace(/'/g,'&#39;');
     }
 
-    function fitCanvas(){
-      if(!signCanvas) return;
+    function setupCanvas(canvas){
+      if(!canvas) return null;
       const ratio=Math.max(window.devicePixelRatio||1,1);
-      const rect=signCanvas.getBoundingClientRect();
-      const oldData=(signCanvas.width && signCanvas.height) ? signCanvas.toDataURL('image/png') : '';
-      signCanvas.width=Math.floor(rect.width*ratio);
-      signCanvas.height=Math.floor(rect.height*ratio);
-      signCtx=signCanvas.getContext('2d');
-      signCtx.setTransform(1,0,0,1,0,0);
-      signCtx.scale(ratio, ratio);
-      signCtx.lineWidth=2.4;
-      signCtx.lineCap='round';
-      signCtx.lineJoin='round';
-      signCtx.strokeStyle='#111827';
+      const rect=canvas.getBoundingClientRect();
+      const oldData=(canvas.width && canvas.height) ? canvas.toDataURL('image/png') : '';
+      canvas.width=Math.max(1, Math.floor(rect.width*ratio));
+      canvas.height=Math.max(1, Math.floor(rect.height*ratio));
+      const ctx=canvas.getContext('2d');
+      ctx.setTransform(1,0,0,1,0,0);
+      ctx.scale(ratio, ratio);
+      ctx.lineWidth=2.4;
+      ctx.lineCap='round';
+      ctx.lineJoin='round';
+      ctx.strokeStyle='#111827';
       if(oldData && oldData !== 'data:,'){
         const img=new Image();
-        img.onload=()=>signCtx.drawImage(img,0,0,rect.width,rect.height);
+        img.onload=()=>ctx.drawImage(img,0,0,rect.width,rect.height);
         img.src=oldData;
       }
+      return ctx;
     }
 
-    function pointFromEvent(e){
-      const rect=signCanvas.getBoundingClientRect();
+    function fitCanvas(){
+      signCtx=setupCanvas(signCanvas);
+    }
+
+    function fitModalCanvas(){
+      signModalCtx=setupCanvas(signModalCanvas);
+    }
+
+    function pointFromEvent(e, canvas){
+      const rect=canvas.getBoundingClientRect();
       return { x: e.clientX-rect.left, y: e.clientY-rect.top };
+    }
+
+    function activeCanvas(){
+      if(qs('#signModal') && qs('#signModal').classList.contains('show')) return { canvas: signModalCanvas, ctx: signModalCtx };
+      return { canvas: signCanvas, ctx: signCtx };
     }
 
     function startSign(e){
       if(e.pointerType==='mouse' && e.button!==0) return;
+      const target=activeCanvas();
+      if(!target.canvas || e.currentTarget!==target.canvas) return;
       drawing=true;
       pointerId=e.pointerId;
-      lastPoint=pointFromEvent(e);
-      if(signCanvas.setPointerCapture){
-        try{ signCanvas.setPointerCapture(e.pointerId); }catch(err){}
+      lastPoint=pointFromEvent(e, target.canvas);
+      if(target.canvas.setPointerCapture){
+        try{ target.canvas.setPointerCapture(e.pointerId); }catch(err){}
       }
       e.preventDefault();
     }
 
     function moveSign(e){
       if(!drawing) return;
+      const target=activeCanvas();
+      if(!target.canvas || !target.ctx) return;
       if(pointerId!==null && e.pointerId!==pointerId) return;
-      const p=pointFromEvent(e);
-      signCtx.beginPath();
-      signCtx.moveTo(lastPoint.x,lastPoint.y);
-      signCtx.lineTo(p.x,p.y);
-      signCtx.stroke();
+      if(e.currentTarget!==target.canvas) return;
+      const p=pointFromEvent(e, target.canvas);
+      target.ctx.beginPath();
+      target.ctx.moveTo(lastPoint.x,lastPoint.y);
+      target.ctx.lineTo(p.x,p.y);
+      target.ctx.stroke();
       lastPoint=p;
       e.preventDefault();
     }
 
     function endSign(e){
+      const target=activeCanvas();
       if(pointerId!==null && e && e.pointerId!==pointerId) return;
       drawing=false;
       lastPoint=null;
-      if(signCanvas && signCanvas.releasePointerCapture && pointerId!==null){
-        try{ signCanvas.releasePointerCapture(pointerId); }catch(err){}
+      if(target.canvas && target.canvas.releasePointerCapture && pointerId!==null){
+        try{ target.canvas.releasePointerCapture(pointerId); }catch(err){}
       }
       pointerId=null;
       if(e) e.preventDefault();
     }
 
+    function copyCanvas(fromCanvas, toCanvas){
+      if(!fromCanvas || !toCanvas) return;
+      const data=fromCanvas.toDataURL('image/png');
+      const ctx=toCanvas===signCanvas ? signCtx : signModalCtx;
+      if(!ctx) return;
+      ctx.clearRect(0,0,toCanvas.width,toCanvas.height);
+      if(data === 'data:,') return;
+      const img=new Image();
+      img.onload=()=>{
+        const rect=toCanvas.getBoundingClientRect();
+        ctx.drawImage(img,0,0,rect.width,rect.height);
+      };
+      img.src=data;
+    }
+
+    function openSignModal(){
+      const modal=qs('#signModal');
+      modal.classList.add('show');
+      document.body.style.overflow='hidden';
+      setTimeout(()=>{
+        fitModalCanvas();
+        copyCanvas(signCanvas, signModalCanvas);
+      }, 20);
+    }
+
+    function closeSignModal(){
+      qs('#signModal').classList.remove('show');
+      document.body.style.overflow='';
+      endSign();
+    }
+
+    function clearModalSignature(){
+      if(!signModalCanvas || !signModalCtx) return;
+      signModalCtx.clearRect(0,0,signModalCanvas.width,signModalCanvas.height);
+    }
+
+    function applyModalSignature(){
+      copyCanvas(signModalCanvas, signCanvas);
+      closeSignModal();
+    }
+
     function clearSignature(){
+
       if(!signCanvas || !signCtx) return;
       signCtx.clearRect(0,0,signCanvas.width,signCanvas.height);
     }
@@ -411,13 +506,20 @@
       if(!isExternalTeacher(currentUser)){ location.href='dashboard.html'; return; }
 
       signCanvas=qs('#signCanvas');
+      signModalCanvas=qs('#signModalCanvas');
       fitCanvas();
-      window.addEventListener('resize', fitCanvas);
-      signCanvas.addEventListener('pointerdown', startSign);
-      signCanvas.addEventListener('pointermove', moveSign);
-      signCanvas.addEventListener('pointerup', endSign);
-      signCanvas.addEventListener('pointerleave', endSign);
-      signCanvas.addEventListener('pointercancel', endSign);
+      window.addEventListener('resize', ()=>{
+        fitCanvas();
+        if(qs('#signModal').classList.contains('show')) fitModalCanvas();
+      });
+      [signCanvas, signModalCanvas].forEach(canvas=>{
+        if(!canvas) return;
+        canvas.addEventListener('pointerdown', startSign);
+        canvas.addEventListener('pointermove', moveSign);
+        canvas.addEventListener('pointerup', endSign);
+        canvas.addEventListener('pointerleave', endSign);
+        canvas.addEventListener('pointercancel', endSign);
+      });
 
       prefillUser();
 
@@ -437,6 +539,13 @@
         qs('#contractBody').textContent=e.message||'讀取失敗';
       }
     }
+
+    document.addEventListener('keydown', (e)=>{
+      if(e.key==='Escape' && qs('#signModal') && qs('#signModal').classList.contains('show')){
+        closeSignModal();
+      }
+    });
+
   </script>
 </body>
 </html>
