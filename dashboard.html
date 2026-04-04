@@ -41,32 +41,47 @@
 
     <div id="lineBindArea"></div>
 
-    <div class="home-grid">
-      <a class="home-tile" href="clock.html"><div><strong>打卡系統</strong><span>上班 / 下班打卡與本月紀錄</span></div><div class="tile-count zero">&nbsp;</div></a>
-      <a class="home-tile" href="parttime.html"><div><strong>工讀生時數</strong><span>1～12 小時與半小時加時</span></div><div class="tile-count zero">&nbsp;</div></a>
-      <a class="home-tile" href="leave.html"><div><strong>請假系統</strong><span>請假申請與自己的請假紀錄</span></div><div class="tile-count zero">&nbsp;</div></a>
-      <a class="home-tile" href="task.html"><div><strong>交辦事項</strong><span>查看任務、回報完成狀態</span></div><div class="tile-count" id="taskCount">0</div></a>
-      <a class="home-tile" href="routine.html"><div><strong>定期事項</strong><span>固定週期工作與完成回報</span></div><div class="tile-count" id="routineCount">0</div></a>
-      <a class="home-tile" href="training.html"><div><strong>教育訓練</strong><span>五大類教材、影片、文件與音檔搜尋</span></div><div class="tile-count zero">&nbsp;</div></a>
+    <div class="home-grid" id="homeGrid">
+      <a class="home-tile" data-feature="clock" href="clock.html"><div><strong>打卡系統</strong><span>上班 / 下班打卡與本月紀錄</span></div><div class="tile-count zero">&nbsp;</div></a>
+      <a class="home-tile" data-feature="parttime" href="parttime.html"><div><strong>工讀生時數</strong><span>1～12 小時與半小時加時</span></div><div class="tile-count zero">&nbsp;</div></a>
+      <a class="home-tile" data-feature="leave" href="leave.html"><div><strong>請假系統</strong><span>請假申請與自己的請假紀錄</span></div><div class="tile-count zero">&nbsp;</div></a>
+      <a class="home-tile" data-feature="task" href="task.html"><div><strong>交辦事項</strong><span>查看任務、回報完成狀態</span></div><div class="tile-count" id="taskCount">0</div></a>
+      <a class="home-tile" data-feature="routine" href="routine.html"><div><strong>定期事項</strong><span>固定週期工作與完成回報</span></div><div class="tile-count" id="routineCount">0</div></a>
+      <a class="home-tile" data-feature="training" href="training.html"><div><strong>教育訓練</strong><span>五大類教材、影片、文件與音檔搜尋</span></div><div class="tile-count zero">&nbsp;</div></a>
     </div>
   </div>
   <script src="config.js"></script>
   <script src="app.js"></script>
   <script>
+    function renderHomeTiles(user){
+      qsa('#homeGrid [data-feature]').forEach(tile=>{
+        const feature = tile.dataset.feature || '';
+        tile.style.display = canUseFeature(feature, user) ? '' : 'none';
+      });
+    }
+
     async function init(){
       fillHeader();
       const user=requireLogin();
       if(!user) return;
+      if(!guardFeatureAccess('dashboard', user)) return;
       if(user.showSettingsZone) document.body.classList.add('has-settings-zone');
       setPortalMode('staff');
+      renderHomeTiles(user);
       await refreshHomeCounts(user);
-      if(!user.lineUserId){ const links = await getPublicSystemLinks(); renderLineBindCard(qs('#lineBindArea'), user, links); }
+      if(!user.lineUserId){
+        const links = await getPublicSystemLinks();
+        renderLineBindCard(qs('#lineBindArea'), user, links);
+      }
     }
+
     async function refreshHomeCounts(user){
       try{
         const taskRes = await api('getTasks',{userId:user.id,email:user.email,role:'staff'});
         const taskCount = (taskRes.rows||[]).filter(x=>String(x.status||'')!=='已完成').length;
-        const routineRes = await api('getRoutinePageData',{userId:user.id,email:user.email,role:'staff'});
+        const routineRes = canUseFeature('routine', user)
+          ? await api('getRoutinePageData',{userId:user.id,email:user.email,role:'staff'})
+          : { summary:{ pending:0, overdue:0 } };
         const routineCount = Number(routineRes?.summary?.pending||0) + Number(routineRes?.summary?.overdue||0);
         const taskEl = qs('#taskCount');
         const routineEl = qs('#routineCount');
@@ -77,8 +92,10 @@
       }catch(e){
         const taskEl = qs('#taskCount');
         const routineEl = qs('#routineCount');
-        taskEl.textContent='0'; routineEl.textContent='0';
-        taskEl.classList.add('zero'); routineEl.classList.add('zero');
+        taskEl.textContent='0';
+        routineEl.textContent='0';
+        taskEl.classList.add('zero');
+        routineEl.classList.add('zero');
       }
     }
   </script>
