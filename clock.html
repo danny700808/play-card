@@ -7,34 +7,50 @@
   <link rel="stylesheet" href="style.css">
   <style>
     .history-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
-    .history-panel{margin-top:12px}
-    .history-panel.hidden{display:none}
-    .month-toggle-row{display:flex;gap:10px;flex-wrap:wrap}
-    .month-toggle-row .btn{width:auto;min-width:180px}
     .section-note{margin-top:6px}
-  
     .page-return-wrap{margin-bottom:16px}
     .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
-</style>
+    .help-box ol{margin:8px 0 0 20px;padding:0}
+    .help-box li{margin:8px 0;line-height:1.7}
+    .search-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .range-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}
+    .clock-item .clock-line{margin-top:4px}
+    .clock-item .item-actions{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap}
+    .correction-box{margin-top:12px;padding:12px;border:1px solid #e5e7eb;border-radius:14px;background:#fafafa}
+    .correction-box.hidden{display:none}
+    .helper-inline{font-size:13px;color:#6b7280;margin-top:4px}
+    .tag.subtle{background:#ecfdf3;color:#166534}
+    @media (max-width: 640px){
+      .search-grid{grid-template-columns:1fr}
+    }
+  </style>
 </head>
 <body onload="init()">
   <div class="container">
     <div class="page-return-wrap"><a class="btn page-return-btn" href="dashboard.html">返回員工首頁</a></div>
+
     <div class="card">
       <div class="topbar">
         <div>
           <h1 class="title" style="margin:0">打卡系統</h1>
           <div class="welcome">歡迎 <span data-user-name></span></div>
         </div>
-        
       </div>
 
       <div class="timebox" id="nowBox"></div>
 
       <div class="help-box">
-        <div class="help-title">打卡說明</div>
-        <div class="muted">首頁只顯示今天與昨天的可修改打卡紀錄；本月完整紀錄需點開後才會讀取，且僅供查看不可修改。每月 2 日凌晨會將上個月打卡紀錄匯出成 Excel 寄到員工信箱。</div>
-        <div class="muted section-note" id="specialHelp">特殊打卡適用情況：星期四特殊班、社團課、特殊外出、請假中需要來回進出、其他非一般正常上下班情況。</div>
+        <div class="help-title">打卡注意事項</div>
+        <ol class="muted">
+          <li>打卡前請先連接公司指定 Wi‑Fi：<strong>YOUZI</strong>，密碼：<strong>123456789</strong>。</li>
+          <li>只有連接公司指定網路並符合打卡條件時，才可完成打卡。</li>
+          <li>請於實際上班與下班時間完成打卡，並自行確認是否打卡成功。</li>
+          <li>若有忘記打卡、打錯時間或打錯類型，請儘快於系統內提出補登／修正申請，並填寫正確時間與原因說明。</li>
+          <li>補登／修正申請送出後，需經主管確認後才會正式生效。</li>
+          <li>打卡紀錄可使用區間搜尋查詢，最多可查詢 70 天內的資料。</li>
+        </ol>
+        <div class="muted section-note">提醒規則：有班日上班前 20 分鐘提醒，下班時間點到提醒；若當天已打卡、整天請假、特休、無班或不需打卡，系統不會再提醒。</div>
+        <div class="muted section-note">特殊打卡適用情況：社團課、特殊外出、請假中需要來回進出、其他非一般正常上下班情況。</div>
       </div>
 
       <div class="field">
@@ -42,36 +58,36 @@
         <select id="clockType">
           <option value="標準打卡">標準打卡</option>
           <option value="特殊打卡">特殊打卡</option>
-          <option value="補登打卡">補登打卡</option>
+          <option value="補登打卡">補登／修正申請</option>
         </select>
       </div>
 
       <div id="supplementBox" class="supplement-box hidden">
-        <div class="section-title">補登打卡</div>
+        <div class="section-title">補登／修正申請</div>
         <div class="grid">
           <div class="field" id="fieldSupplementDate">
-            <label>補登日期</label>
+            <label>修正日期</label>
             <input type="date" id="supplementDate">
             <div class="field-error" data-error-for="supplementDate"></div>
           </div>
           <div class="field" id="fieldSupplementTime">
-            <label>實際應打卡時間</label>
+            <label>正確打卡時間</label>
             <input type="time" id="supplementTime">
             <div class="field-error" data-error-for="supplementTime"></div>
           </div>
         </div>
         <div class="grid">
           <div class="field" id="fieldSupplementAction">
-            <label>補登類型</label>
+            <label>修正動作</label>
             <select id="supplementAction">
               <option value="">請選擇</option>
-              <option value="上班打卡">補登上班打卡</option>
-              <option value="下班打卡">補登下班打卡</option>
+              <option value="上班打卡">上班打卡</option>
+              <option value="下班打卡">下班打卡</option>
             </select>
             <div class="field-error" data-error-for="supplementAction"></div>
           </div>
           <div class="field" id="fieldSupplementAsType">
-            <label>補登方式</label>
+            <label>修正方式</label>
             <select id="supplementAsType">
               <option value="標準打卡">標準打卡</option>
               <option value="特殊打卡">特殊打卡</option>
@@ -79,9 +95,10 @@
           </div>
         </div>
         <div class="field" id="fieldSupplementReason">
-          <label>補登原因</label>
-          <textarea id="supplementReason" placeholder="請填寫補登原因"></textarea>
+          <label>修正原因</label>
+          <textarea id="supplementReason" placeholder="請填寫補登／修正原因"></textarea>
           <div class="field-error" data-error-for="supplementReason"></div>
+          <div class="helper-inline">送出後需主管確認，核准後才會正式生效。</div>
         </div>
         <div id="supplementMsg" class="message local-message"></div>
       </div>
@@ -96,8 +113,8 @@
     <div class="card">
       <div class="history-head">
         <div>
-          <h2 class="title" style="font-size:20px;margin-bottom:4px">可修改打卡紀錄</h2>
-          <div class="muted">只顯示今天與昨天，這兩天內的原始紀錄才可修改。</div>
+          <h2 class="title" style="font-size:20px;margin-bottom:4px">今日／昨日打卡紀錄</h2>
+          <div class="muted">若打錯時間、打錯上／下班或忘記打卡，請用「提出補登修正」送出申請，經主管確認後才會正式覆蓋顯示。</div>
         </div>
       </div>
       <div id="editableList" class="list"></div>
@@ -106,26 +123,33 @@
     <div class="card">
       <div class="history-head">
         <div>
-          <h2 class="title" style="font-size:20px;margin-bottom:4px">本月完整紀錄</h2>
-          <div class="muted">預設不讀取資料，按下按鈕後才會載入。本區僅供查看，不可修改。</div>
+          <h2 class="title" style="font-size:20px;margin-bottom:4px">區間搜尋打卡紀錄</h2>
+          <div class="muted">可查詢指定區間內的正式打卡紀錄，單次最多 70 天。</div>
         </div>
       </div>
-      <div class="month-toggle-row">
-        <button class="btn secondary" id="monthToggleBtn">查看本月紀錄</button>
+      <div class="search-grid">
+        <div class="field" id="fieldRangeStart">
+          <label>開始日期</label>
+          <input type="date" id="rangeStart">
+          <div class="field-error" data-error-for="rangeStart"></div>
+        </div>
+        <div class="field" id="fieldRangeEnd">
+          <label>結束日期</label>
+          <input type="date" id="rangeEnd">
+          <div class="field-error" data-error-for="rangeEnd"></div>
+        </div>
       </div>
-      <div id="monthPanel" class="history-panel hidden">
-        <div id="monthMsg" class="message local-message"></div>
-        <div id="monthList" class="list"></div>
+      <div class="range-actions">
+        <button class="btn" id="rangeSearchBtn">搜尋打卡紀錄</button>
       </div>
+      <div id="rangeMsg" class="message local-message"></div>
+      <div id="rangeList" class="list"></div>
     </div>
   </div>
 
   <script src="config.js"></script>
   <script src="app.js"></script>
   <script>
-    let monthLoaded = false;
-    let monthOpen = false;
-
     function tick(){
       const d = new Date();
       qs('#nowBox').textContent = d.toLocaleString('zh-TW', { hour12:false });
@@ -134,17 +158,17 @@
     function toggleSupplementBox(){
       const isSupplement = qs('#clockType').value === '補登打卡';
       qs('#supplementBox').classList.toggle('hidden', !isSupplement);
-      setActionButtonIdle(qs('#clockInBtn'), isSupplement ? '送出補登' : '上班打卡');
-      setActionButtonIdle(qs('#clockOutBtn'), '下班打卡');
+      setActionButtonIdle(qs('#clockInBtn'), isSupplement ? '送出補登修正' : '上班打卡');
       qs('#clockOutBtn').classList.toggle('hidden', isSupplement);
+      if(!isSupplement) setActionButtonIdle(qs('#clockOutBtn'), '下班打卡');
       clearValidation();
       setMsg(qs('#mainMsg'), '');
+      setMsg(qs('#supplementMsg'), '');
     }
 
     function clearValidation(){
       qsa('.field.invalid').forEach(el => el.classList.remove('invalid'));
       qsa('.field-error').forEach(el => el.textContent = '');
-      setMsg(qs('#supplementMsg'), '');
     }
 
     function showFieldError(fieldId, text){
@@ -174,33 +198,53 @@
       const lateText = x.clockType === '特殊打卡' ? '' : (x.status === '遲到' ? '｜遲到 ' + (x.lateMinutes || 0) + ' 分鐘' : '');
       const noteText = x.note ? `<div class="muted" style="margin-top:6px">備註：${escapeHtml(x.note)}</div>` : '';
       const originalText = x.originalRef ? `<div class="muted" style="margin-top:6px">原始紀錄：${escapeHtml(x.originalRef)}</div>` : '';
-      const canModify = (!readonly && x.canModify) ? `<button class="btn mini-btn js-open-modify" data-id="${escapeHtml(x.id)}">修改</button>` : '';
-      const readonlyText = readonly ? '<div class="muted" style="margin-top:8px">本區僅供查看，不可修改。</div>' : '';
+      const correctionText = x.status === '補打卡' ? '<div class="muted" style="margin-top:6px">此筆為補登／修正核准後的正式紀錄。</div>' : '';
+      const canFix = (!readonly && x.canModify) ? `<button class="btn mini-btn js-open-correction" data-id="${escapeHtml(x.id)}" data-date="${escapeHtml(x.date)}" data-time="${escapeHtml((x.time || '').slice(0,5))}" data-action="${escapeHtml(x.actionName)}" data-clocktype="${escapeHtml(x.clockType)}">提出補登修正</button>` : '';
       return `
         <div class="item clock-item">
           <div class="top">
             <strong>${escapeHtml(x.date)} ${escapeHtml(x.time)}</strong>
-            <span class="tag">${escapeHtml(x.statusLabel || x.status || '')}</span>
+            <span class="tag ${x.status === '補打卡' ? 'subtle' : ''}">${escapeHtml(x.statusLabel || x.status || '')}</span>
           </div>
           <div class="clock-line">${escapeHtml(x.actionName)}｜${escapeHtml(x.clockType)}${lateText}</div>
           ${noteText}
           ${originalText}
-          ${readonlyText}
-          <div class="item-actions">${canModify}</div>
-          <div class="modify-box hidden" id="modify-${escapeHtml(x.id)}">
-            <div class="field">
-              <label>修改後打卡方式</label>
-              <select class="js-modify-type">
-                <option value="標準打卡" ${x.clockType === '標準打卡' ? 'selected' : ''}>標準打卡</option>
-                <option value="特殊打卡" ${x.clockType === '特殊打卡' ? 'selected' : ''}>特殊打卡</option>
-              </select>
+          ${correctionText}
+          <div class="item-actions">${canFix}</div>
+          <div class="correction-box hidden" id="correction-${escapeHtml(x.id)}">
+            <div class="grid">
+              <div class="field">
+                <label>修正日期</label>
+                <input type="date" class="js-correct-date" value="${escapeHtml(x.date)}">
+              </div>
+              <div class="field">
+                <label>正確打卡時間</label>
+                <input type="time" class="js-correct-time" value="${escapeHtml((x.time || '').slice(0,5))}">
+              </div>
+            </div>
+            <div class="grid">
+              <div class="field">
+                <label>修正動作</label>
+                <select class="js-correct-action">
+                  <option value="上班打卡" ${x.actionName === '上班打卡' ? 'selected' : ''}>上班打卡</option>
+                  <option value="下班打卡" ${x.actionName === '下班打卡' ? 'selected' : ''}>下班打卡</option>
+                </select>
+              </div>
+              <div class="field">
+                <label>修正方式</label>
+                <select class="js-correct-type">
+                  <option value="標準打卡" ${x.clockType === '標準打卡' ? 'selected' : ''}>標準打卡</option>
+                  <option value="特殊打卡" ${x.clockType === '特殊打卡' ? 'selected' : ''}>特殊打卡</option>
+                </select>
+              </div>
             </div>
             <div class="field">
-              <label>修改備註</label>
-              <textarea class="js-modify-note" placeholder="請填寫修改原因"></textarea>
-              <div class="field-error js-modify-error"></div>
+              <label>修正原因</label>
+              <textarea class="js-correct-reason" placeholder="請填寫修正原因"></textarea>
+              <div class="field-error js-correct-error"></div>
             </div>
-            <div class="message local-message js-modify-msg"></div>            <button class="btn js-save-modify" data-id="${escapeHtml(x.id)}">送出修改</button>
+            <div class="message local-message js-correct-msg"></div>
+            <button class="btn js-submit-correction" data-id="${escapeHtml(x.id)}">送出補登修正</button>
           </div>
         </div>`;
     }
@@ -208,7 +252,7 @@
     function renderIntoList(targetSel, rows, readonly){
       const list = qs(targetSel);
       list.innerHTML = (rows || []).map(x => renderHistoryRow(x, readonly)).join('') || '<div class="muted">目前沒有紀錄</div>';
-      if(!readonly) bindModifyActions();
+      if(!readonly) bindCorrectionActions();
     }
 
     async function loadEditableHistory(){
@@ -218,64 +262,74 @@
       renderIntoList('#editableList', r.rows || [], false);
     }
 
-    async function loadMonthHistory(forceReload = false){
+    async function searchRange(){
+      clearValidation();
       const user = requireLogin();
       if(!user) return;
-      if(monthLoaded && !forceReload) return;
-      setMsg(qs('#monthMsg'), '本月紀錄讀取中...');
-      const r = await api('getMonthClockHistory', { userId:user.id });
-      renderIntoList('#monthList', r.rows || [], true);
-      setMsg(qs('#monthMsg'), (r.rows || []).length ? '' : '本月目前沒有打卡紀錄');
-      monthLoaded = true;
+      const startDate = qs('#rangeStart').value;
+      const endDate = qs('#rangeEnd').value;
+      if(!startDate){ showFieldError('rangeStart', '請選擇開始日期'); focusField('#rangeStart'); return; }
+      if(!endDate){ showFieldError('rangeEnd', '請選擇結束日期'); focusField('#rangeEnd'); return; }
+      const start = new Date(startDate + 'T00:00:00');
+      const end = new Date(endDate + 'T00:00:00');
+      const diffDays = Math.floor((end - start) / 86400000) + 1;
+      if(end < start){ showFieldError('rangeEnd', '結束日期不能早於開始日期'); focusField('#rangeEnd'); return; }
+      if(diffDays > 70){ showFieldError('rangeEnd', '區間搜尋最多可查詢 70 天內的資料'); focusField('#rangeEnd'); return; }
+      const btn = qs('#rangeSearchBtn');
+      const progress = startActionButtonProgress(btn, { label:'搜尋中', maxPct:80 });
+      try {
+        const r = await api('getClockHistoryRange', { userId:user.id, startDate, endDate });
+        setMsg(qs('#rangeMsg'), r.message || ((r.rows || []).length ? '' : '這段期間沒有打卡紀錄'), !r.ok);
+        renderIntoList('#rangeList', r.rows || [], true);
+        if(r.ok) progress.done('搜尋完成'); else progress.fail('搜尋失敗');
+      } catch(e) {
+        progress.fail('搜尋失敗');
+        setMsg(qs('#rangeMsg'), e.message || '搜尋失敗', true);
+      }
     }
 
-    function bindModifyActions(){
-      qsa('.js-open-modify').forEach(btn => {
+    function bindCorrectionActions(){
+      qsa('.js-open-correction').forEach(btn => {
         btn.onclick = () => {
-          const box = qs('#modify-' + btn.dataset.id);
+          const box = qs('#correction-' + btn.dataset.id);
           if(box) box.classList.toggle('hidden');
         };
       });
-      qsa('.js-save-modify').forEach(btn => {
-        btn.onclick = () => saveModify(btn.dataset.id, btn.closest('.modify-box'), btn);
+      qsa('.js-submit-correction').forEach(btn => {
+        btn.onclick = () => submitInlineCorrection(btn.dataset.id, btn.closest('.correction-box'), btn);
       });
     }
 
-    async function saveModify(recordId, box, btn){
+    async function submitInlineCorrection(recordId, box, btn){
       const user = requireLogin();
       if(!user || !box) return;
-      const type = box.querySelector('.js-modify-type').value;
-      const note = box.querySelector('.js-modify-note').value.trim();
-      const err = box.querySelector('.js-modify-error');
-      const msg = box.querySelector('.js-modify-msg');
+      const correctDate = box.querySelector('.js-correct-date').value;
+      const correctTime = box.querySelector('.js-correct-time').value;
+      const correctAction = box.querySelector('.js-correct-action').value;
+      const correctionType = box.querySelector('.js-correct-type').value;
+      const reason = box.querySelector('.js-correct-reason').value.trim();
+      const err = box.querySelector('.js-correct-error');
+      const msg = box.querySelector('.js-correct-msg');
       err.textContent = '';
       setMsg(msg, '');
-      if(!note){
-        err.textContent = '請填寫修改備註';
-        box.querySelector('.js-modify-note').focus();
+      if(!correctDate || !correctTime || !reason){
+        err.textContent = '請完整填寫修正日期、時間與原因';
         return;
       }
-      const progress = btn ? startActionButtonProgress(btn, { label:'修改中', maxPct:82 }) : null;
+      const progress = startActionButtonProgress(btn, { label:'送出中', maxPct:82 });
       try {
-        const r = await api('modifyClockRecord', { userId:user.id, recordId, newClockType:type, note });
+        const r = await api('submitClockCorrection', { userId:user.id, originalRecordId:recordId, correctDate, correctTime, correctAction, correctionType, reason });
         setMsg(msg, r.message, !r.ok);
         if(r.ok){
-          if(progress) progress.done('修改完成');
-          await refreshHistoryViews();
-        } else if(progress){
-          progress.fail('修改失敗');
+          progress.done('已送出');
+          box.querySelector('.js-correct-reason').value = '';
+          await loadEditableHistory();
+        } else {
+          progress.fail('送出失敗');
         }
       } catch(e) {
-        if(progress) progress.fail('修改失敗');
-        setMsg(msg, e.message || '修改失敗', true);
-      }
-    }
-
-    async function refreshHistoryViews(){
-      await loadEditableHistory();
-      if(monthOpen){
-        monthLoaded = false;
-        await loadMonthHistory(true);
+        progress.fail('送出失敗');
+        setMsg(msg, e.message || '送出失敗', true);
       }
     }
 
@@ -286,7 +340,6 @@
       const msg = isSupplement ? qs('#supplementMsg') : qs('#mainMsg');
       clearValidation();
 
-      let payload = { userId:user.id, actionName };
       if(isSupplement){
         const supplementDate = qs('#supplementDate').value;
         const supplementTime = qs('#supplementTime').value;
@@ -294,66 +347,60 @@
         const supplementReason = qs('#supplementReason').value.trim();
         const supplementAsType = qs('#supplementAsType').value;
         const missing = [];
-        if(!supplementDate) missing.push(['supplementDate', '請選擇補登日期']);
-        if(!supplementTime) missing.push(['supplementTime', '請選擇實際應打卡時間']);
-        if(!supplementAction) missing.push(['supplementAction', '請選擇補登類型']);
-        if(!supplementReason) missing.push(['supplementReason', '請填寫補登原因']);
+        if(!supplementDate) missing.push(['supplementDate', '請選擇修正日期']);
+        if(!supplementTime) missing.push(['supplementTime', '請選擇正確打卡時間']);
+        if(!supplementAction) missing.push(['supplementAction', '請選擇修正動作']);
+        if(!supplementReason) missing.push(['supplementReason', '請填寫修正原因']);
         if(missing.length){
           missing.forEach(([id, text]) => showFieldError(id, text));
           setMsg(msg, missing[0][1], true);
           focusField('#' + missing[0][0]);
           return;
         }
-        payload = {
-          userId:user.id,
-          isSupplement:true,
-          actionName:supplementAction,
-          supplementDate,
-          supplementTime,
-          supplementReason,
-          supplementClockType:supplementAsType
-        };
-      } else {
-        payload.clockType = qs('#clockType').value;
-        setMsg(msg, '正在偵測公司 Wi‑Fi IP...');
-        payload.clientIp = await getPublicIp();
+        const progress = startActionButtonProgress(qs('#clockInBtn'), { label:'送出補登修正中' });
+        try {
+          const r = await api('submitClockCorrection', { userId:user.id, correctDate:supplementDate, correctTime:supplementTime, correctAction:supplementAction, correctionType:supplementAsType, reason:supplementReason });
+          setMsg(msg, r.message, !r.ok);
+          if(r.ok){
+            progress.done('已送出');
+            qs('#supplementReason').value = '';
+            await loadEditableHistory();
+          } else {
+            progress.fail('送出失敗');
+          }
+        } catch(e) {
+          progress.fail('送出失敗');
+          setMsg(msg, e.message || '送出失敗', true);
+        }
+        return;
       }
 
-      const actionBtn = isSupplement ? qs('#clockInBtn') : (actionName === '下班打卡' ? qs('#clockOutBtn') : qs('#clockInBtn'));
-      const progress = startActionButtonProgress(actionBtn, { label: isSupplement ? '送出補登中' : (actionName === '下班打卡' ? '下班打卡中' : '上班打卡中') });
+      let payload = { userId:user.id, actionName, clockType:qs('#clockType').value };
+      setMsg(msg, '正在偵測公司 Wi‑Fi IP...');
+      payload.clientIp = await getPublicIp();
+      const actionBtn = actionName === '下班打卡' ? qs('#clockOutBtn') : qs('#clockInBtn');
+      const progress = startActionButtonProgress(actionBtn, { label: actionName === '下班打卡' ? '下班打卡中' : '上班打卡中' });
       try {
         const r = await api('clock', payload);
         setMsg(msg, r.message, !r.ok);
         if(r.ok){
-          progress.done(isSupplement ? '補登完成' : '打卡完成');
-          await refreshHistoryViews();
-          if(isSupplement){
-            qs('#supplementReason').value = '';
-          }
+          progress.done('打卡完成');
+          await loadEditableHistory();
         } else {
-          progress.fail(isSupplement ? '補登失敗' : '打卡失敗');
+          progress.fail('打卡失敗');
         }
       } catch(e) {
-        progress.fail(isSupplement ? '補登失敗' : '打卡失敗');
+        progress.fail('打卡失敗');
         setMsg(msg, e.message || '送出失敗', true);
       }
     }
 
-    function bindMonthToggle(){
-      const btn = qs('#monthToggleBtn');
-      btn.onclick = async () => {
-        const panel = qs('#monthPanel');
-        monthOpen = !monthOpen;
-        panel.classList.toggle('hidden', !monthOpen);
-        btn.textContent = monthOpen ? '收合本月紀錄' : '查看本月紀錄';
-        if(monthOpen){
-          try {
-            await loadMonthHistory(false);
-          } catch(e) {
-            setMsg(qs('#monthMsg'), e.message || '讀取本月紀錄失敗', true);
-          }
-        }
-      };
+    function initRangeDefault(){
+      const end = new Date();
+      const start = new Date();
+      start.setDate(end.getDate() - 29);
+      qs('#rangeStart').value = start.toISOString().slice(0,10);
+      qs('#rangeEnd').value = end.toISOString().slice(0,10);
     }
 
     function init(){
@@ -363,8 +410,9 @@
       qs('#clockType').onchange = toggleSupplementBox;
       qs('#clockInBtn').onclick = () => doClock('上班打卡');
       qs('#clockOutBtn').onclick = () => doClock('下班打卡');
+      qs('#rangeSearchBtn').onclick = () => searchRange();
+      initRangeDefault();
       toggleSupplementBox();
-      bindMonthToggle();
       loadEditableHistory().catch(e => setMsg(qs('#mainMsg'), e.message || '載入打卡紀錄失敗', true));
     }
   </script>
