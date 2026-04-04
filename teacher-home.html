@@ -1,260 +1,237 @@
 <!doctype html>
 <html lang="zh-Hant">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>外聘老師首頁</title>
   <style>
     :root{
-      --bg:#f5f7fb;
+      --bg:#f3f6fb;
       --card:#ffffff;
-      --line:#d9e2ef;
-      --text:#1f2f46;
-      --sub:#6b7280;
-      --green:#1f8a5b;
-      --green-weak:#e9f7f0;
-      --blue:#315b8a;
-      --blue-weak:#eef4fb;
-      --orange:#b86b00;
-      --orange-weak:#fff4e8;
-      --danger:#b42318;
-      --shadow:0 12px 34px rgba(25, 46, 89, .08);
+      --text:#183153;
+      --muted:#6b7280;
+      --line:#d8e1ee;
+      --primary:#1f4f8f;
+      --primary-soft:#eaf2ff;
+      --danger:#c0392b;
+      --danger-bg:#fff3f1;
+      --shadow:0 10px 30px rgba(15, 23, 42, .08);
       --radius:22px;
     }
     *{box-sizing:border-box}
     body{
       margin:0;
+      font-family:Arial,"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;
       background:var(--bg);
       color:var(--text);
-      font-family:Arial,"Noto Sans TC",sans-serif;
-      line-height:1.6;
     }
-    .page{
-      max-width:900px;
+    .wrap{
+      max-width:980px;
       margin:0 auto;
-      padding:20px 16px 32px;
+      padding:24px 16px 40px;
     }
     .hero{
       background:var(--card);
       border:1px solid var(--line);
-      border-radius:28px;
+      border-radius:30px;
       box-shadow:var(--shadow);
-      padding:22px 20px;
-      display:flex;
-      flex-wrap:wrap;
-      gap:14px;
-      justify-content:space-between;
-      align-items:flex-start;
+      padding:26px 22px;
+      margin-bottom:18px;
     }
     .hero h1{
-      margin:0 0 6px;
-      font-size:32px;
-      line-height:1.2;
-      color:#1d3557;
+      margin:0 0 8px;
+      font-size:clamp(30px,6vw,52px);
+      line-height:1.1;
+      color:#17396b;
+      font-weight:900;
+      letter-spacing:.02em;
     }
-    .hero .meta{color:var(--sub);font-size:16px}
-    .hero-actions{display:flex;gap:10px;flex-wrap:wrap}
-    .btn{
-      border:none;
-      border-radius:16px;
-      padding:12px 18px;
+    .sub{
+      color:var(--muted);
       font-size:18px;
-      font-weight:800;
+      margin:0 0 18px;
+    }
+    .row{
+      display:flex;
+      flex-wrap:wrap;
+      gap:12px;
+    }
+    .btn{
+      appearance:none;
+      border:none;
+      border-radius:18px;
+      background:#e9eef6;
+      color:#17396b;
+      font-weight:900;
+      font-size:16px;
+      padding:14px 22px;
       cursor:pointer;
     }
-    .btn-primary{background:var(--green);color:#fff}
-    .btn-secondary{background:#eef2f7;color:#23384f}
-    .section{margin-top:20px}
-    .section-title{
-      margin:0 0 12px;
-      font-size:24px;
-      font-weight:900;
-      color:#1d3557;
+    .btn.primary{
+      background:var(--primary);
+      color:#fff;
     }
-    .grid-3{
+    .banner{
+      background:var(--danger-bg);
+      color:var(--danger);
+      border:2px solid #f3c1bb;
+      border-radius:24px;
+      padding:20px 18px;
+      font-size:18px;
+      margin-bottom:18px;
+      display:none;
+      white-space:pre-wrap;
+    }
+    .grid{
       display:grid;
+      gap:18px;
       grid-template-columns:repeat(3,minmax(0,1fr));
-      gap:14px;
     }
-    .home-card{
+    .card{
       background:var(--card);
       border:1px solid var(--line);
-      border-radius:24px;
+      border-radius:var(--radius);
       box-shadow:var(--shadow);
-      padding:18px;
+      padding:20px 18px;
       min-height:220px;
+    }
+    .card h2{
+      margin:0 0 10px;
+      font-size:28px;
+      color:#17396b;
+      font-weight:900;
+    }
+    .card .small{
+      color:var(--muted);
+      font-size:14px;
+      margin-bottom:12px;
+    }
+    .empty{
+      color:var(--muted);
+      line-height:1.8;
+    }
+    .list{
       display:flex;
       flex-direction:column;
-      justify-content:space-between;
-      gap:14px;
+      gap:10px;
     }
-    .home-card h2{
-      margin:0;
-      font-size:24px;
-      color:#1d3557;
-    }
-    .badge{
-      display:inline-flex;
-      align-items:center;
-      justify-content:center;
-      min-width:42px;
-      padding:6px 12px;
-      border-radius:999px;
-      font-size:15px;
-      font-weight:800;
-    }
-    .badge-green{background:var(--green-weak);color:var(--green)}
-    .badge-blue{background:var(--blue-weak);color:var(--blue)}
-    .badge-orange{background:var(--orange-weak);color:var(--orange)}
-    .metric{font-size:38px;font-weight:900;line-height:1;color:#19324d}
-    .muted{color:var(--sub)}
-    .subline{font-size:15px;color:var(--sub)}
-    .card-button{
-      display:inline-flex;
-      align-items:center;
-      justify-content:center;
-      width:100%;
+    .item{
+      border:1px solid #e7edf7;
+      background:#fbfdff;
       border-radius:16px;
-      padding:13px 16px;
-      font-size:18px;
+      padding:12px 12px;
+    }
+    .item-title{
       font-weight:900;
-      border:none;
-      cursor:pointer;
+      color:#16335d;
+      margin:0 0 6px;
+      line-height:1.5;
     }
-    .card-button.green{background:var(--green);color:#fff}
-    .card-button.blue{background:#e9f0f9;color:#24486f}
-    .card-button.orange{background:#fff1df;color:#a35a00}
-    .list{
-      display:grid;
-      gap:12px;
+    .item-meta{
+      font-size:13px;
+      color:var(--muted);
+      line-height:1.6;
     }
-    .notice-card{
-      background:var(--card);
-      border:1px solid var(--line);
-      border-radius:22px;
-      box-shadow:var(--shadow);
-      padding:18px;
-    }
-    .notice-top{
-      display:flex;
-      justify-content:space-between;
-      align-items:flex-start;
-      gap:12px;
+    .todo-badge{
+      display:inline-block;
+      font-size:12px;
+      font-weight:800;
+      color:#2457a6;
+      background:var(--primary-soft);
+      border-radius:999px;
+      padding:5px 10px;
       margin-bottom:8px;
     }
-    .notice-title{font-size:22px;font-weight:900;color:#1d3557;margin:0}
-    .notice-date{font-size:15px;color:var(--sub);white-space:nowrap}
-    .notice-tag{
-      display:inline-block;
-      padding:6px 12px;
-      border-radius:999px;
-      font-size:14px;
-      font-weight:800;
-      background:#edf3fb;
-      color:#315b8a;
-      margin-bottom:10px;
-    }
-    .notice-summary{font-size:17px;color:#334155;white-space:pre-wrap}
-    .todo-box{
-      background:var(--card);
-      border:1px solid var(--line);
-      border-radius:22px;
-      box-shadow:var(--shadow);
-      padding:18px;
-    }
-    .todo-item{
-      padding:14px 0;
-      border-bottom:1px dashed #d9e2ef;
-      font-size:18px;
-    }
-    .todo-item:last-child{border-bottom:none;padding-bottom:0}
-    .loading,.error{
-      background:var(--card);
-      border:1px solid var(--line);
+    .contract-box{
+      border:1px dashed #b8cae8;
+      background:#f8fbff;
       border-radius:18px;
-      padding:18px;
-      color:var(--sub);
+      padding:14px;
+      line-height:1.8;
     }
-    .error{color:var(--danger);border-color:#f0c9c5;background:#fff5f5}
-    .hidden{display:none!important}
-    @media (max-width: 860px){
-      .grid-3{grid-template-columns:1fr}
-      .hero h1{font-size:28px}
+    .actions{
+      margin-top:14px;
+      display:flex;
+      flex-wrap:wrap;
+      gap:10px;
+    }
+    .link-btn{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      min-height:44px;
+      padding:10px 14px;
+      border-radius:14px;
+      text-decoration:none;
+      font-weight:900;
+      background:#e9eef6;
+      color:#17396b;
+    }
+    .link-btn.primary{
+      background:var(--primary);
+      color:#fff;
+    }
+    @media (max-width:900px){
+      .grid{grid-template-columns:1fr}
+      .card{min-height:auto}
     }
   </style>
 </head>
 <body>
-  <div class="page">
+  <div class="wrap">
     <section class="hero">
-      <div>
-        <h1>外聘老師首頁</h1>
-        <div class="meta" id="teacherInfo">讀取中...</div>
-      </div>
-      <div class="hero-actions">
-        <button class="btn btn-secondary" type="button" id="refreshBtn">重新整理</button>
-        <button class="btn btn-secondary" type="button" id="logoutBtn">登出</button>
+      <h1>外聘老師首頁</h1>
+      <p class="sub" id="heroSub">讀取中...</p>
+      <div class="row">
+        <button class="btn" id="reloadBtn" type="button">重新整理</button>
+        <button class="btn" id="logoutBtn" type="button">登出</button>
       </div>
     </section>
 
-    <div class="section">
-      <div id="statusBox" class="loading">正在讀取首頁資料...</div>
-    </div>
+    <div class="banner" id="errorBox"></div>
 
-    <section class="section hidden" id="cardsSection">
-      <h2 class="section-title">老師專區</h2>
-      <div class="grid-3">
-        <article class="home-card">
-          <div>
-            <div class="badge badge-blue">公告</div>
-            <h2>公告</h2>
-            <div class="metric" id="announcementCount">0</div>
-            <div class="subline">最新日期：<span id="announcementLatestDate">-</span></div>
-            <div class="subline">未讀公告：<span id="announcementUnreadCount">0</span> 則</div>
-          </div>
-          <button class="card-button blue" type="button" id="openAnnouncementBtn">查看公告</button>
-        </article>
+    <section class="grid">
+      <article class="card">
+        <h2>公告</h2>
+        <div class="small">提供給外聘老師的重要公告</div>
+        <div id="announcementList" class="list">
+          <div class="empty">讀取中...</div>
+        </div>
+      </article>
 
-        <article class="home-card">
-          <div>
-            <div class="badge badge-orange">代辦事項</div>
-            <h2>代辦事項</h2>
-            <div class="metric" id="todoCount">0</div>
-            <div class="subline">交辦事項：<span id="todoTaskCount">0</span> 件</div>
-            <div class="subline">待簽合約：<span id="todoContractCount">0</span> 件</div>
-          </div>
-          <button class="card-button orange" type="button" id="openTodoBtn">查看代辦</button>
-        </article>
+      <article class="card">
+        <h2>代辦事項</h2>
+        <div class="small">待處理摘要</div>
+        <div id="todoList" class="list">
+          <div class="empty">讀取中...</div>
+        </div>
+      </article>
 
-        <article class="home-card">
-          <div>
-            <div class="badge badge-green">合約</div>
-            <h2>合約</h2>
-            <div class="metric" id="contractStatus">-</div>
-            <div class="subline">合約期間：<span id="contractPeriod">-</span></div>
-            <div class="subline">年度：<span id="contractYear">-</span></div>
-          </div>
-          <button class="card-button green" type="button" id="openContractBtn">查看合約</button>
-        </article>
-      </div>
-    </section>
-
-    <section class="section hidden" id="todoSection">
-      <h2 class="section-title">代辦摘要</h2>
-      <div class="todo-box" id="todoSummaryBox"></div>
-    </section>
-
-    <section class="section hidden" id="announcementSection">
-      <h2 class="section-title">最新公告</h2>
-      <div class="list" id="announcementList"></div>
+      <article class="card">
+        <h2>合約</h2>
+        <div class="small">年度簽約狀態</div>
+        <div id="contractBox" class="contract-box">讀取中...</div>
+        <div class="actions" id="contractActions"></div>
+      </article>
     </section>
   </div>
 
+  <script src="config.js"></script>
   <script>
-    const API_BASE = window.API_BASE || localStorage.getItem('employeeApiBaseUrl') || '';
-
     function qs(name){
-      const url = new URL(window.location.href);
-      return url.searchParams.get(name) || '';
+      return new URLSearchParams(location.search).get(name) || '';
+    }
+
+    function showError(msg){
+      const box = document.getElementById('errorBox');
+      box.style.display = 'block';
+      box.textContent = msg || '發生錯誤';
+    }
+
+    function hideError(){
+      const box = document.getElementById('errorBox');
+      box.style.display = 'none';
+      box.textContent = '';
     }
 
     function getStoredUser(){
@@ -267,37 +244,30 @@
 
     function getUserId(){
       const storedUser = getStoredUser();
-      return qs('userId') || localStorage.getItem('employeeUserId') || localStorage.getItem('teacherUserId') || (storedUser && storedUser.id) || '';
+      return qs('userId')
+        || localStorage.getItem('employeeUserId')
+        || localStorage.getItem('teacherUserId')
+        || (storedUser && storedUser.id)
+        || '';
     }
 
-    function getOpenTargets(){
-      return {
-        announcement: localStorage.getItem('teacherAnnouncementPageUrl') || '#announcements',
-        todo: localStorage.getItem('teacherTodoPageUrl') || '#todos',
-        contract: localStorage.getItem('teacherContractPageUrl') || 'contract.html'
-      };
-    }
+    const API_BASE = window.API_BASE
+      || (window.APP_CONFIG && window.APP_CONFIG.API_URL)
+      || localStorage.getItem('employeeApiBaseUrl')
+      || '';
 
-    function setStatus(message, isError){
-      const box = document.getElementById('statusBox');
-      box.textContent = message || '';
-      box.className = isError ? 'error' : 'loading';
-    }
+    const userId = getUserId();
 
-    async function postJson(action, payload){
-      if(!API_BASE) throw new Error('缺少 API_BASE');
-      const res = await fetch(API_BASE, {
+    function postAction(action, payload){
+      return fetch(API_BASE, {
         method:'POST',
-        headers:{'Content-Type':'application/json'},
+        headers:{'Content-Type':'text/plain;charset=utf-8'},
         body: JSON.stringify(Object.assign({ action }, payload || {}))
-      });
-      const json = await res.json();
-      if(!json.ok) throw new Error(json.message || '讀取失敗');
-      return json;
+      }).then(r => r.json());
     }
 
-    function escapeHtml(text){
-      return String(text || '')
+    function escapeHtml(str){
+      return String(str == null ? '' : str)
         .replace(/&/g,'&amp;')
         .replace(/</g,'&lt;')
         .replace(/>/g,'&gt;')
@@ -305,99 +275,116 @@
         .replace(/'/g,'&#39;');
     }
 
-    function renderHome(data){
-      document.getElementById('teacherInfo').textContent = `${data.teacher.name || ''}｜${data.teacher.email || ''}`;
+    function renderAnnouncements(list){
+      const el = document.getElementById('announcementList');
+      if(!Array.isArray(list) || !list.length){
+        el.innerHTML = '<div class="empty">目前沒有公告</div>';
+        return;
+      }
+      el.innerHTML = list.map(item => `
+        <div class="item">
+          <div class="item-title">${escapeHtml(item.title || '未命名公告')}</div>
+          <div class="item-meta">${escapeHtml(item.dateText || item.publishDate || '')}</div>
+          <div class="item-meta">${escapeHtml(item.content || '')}</div>
+        </div>
+      `).join('');
+    }
 
-      const cards = data.cards || {};
-      const announcements = cards.announcements || {};
-      const todos = cards.todos || {};
-      const contract = cards.contract || {};
+    function renderTodos(list){
+      const el = document.getElementById('todoList');
+      if(!Array.isArray(list) || !list.length){
+        el.innerHTML = '<div class="empty">目前沒有待辦事項</div>';
+        return;
+      }
+      el.innerHTML = list.map(item => `
+        <div class="item">
+          <div class="todo-badge">${escapeHtml(item.typeLabel || item.type || '待辦')}</div>
+          <div class="item-title">${escapeHtml(item.title || '未命名項目')}</div>
+          <div class="item-meta">${escapeHtml(item.description || item.message || '')}</div>
+        </div>
+      `).join('');
+    }
 
-      document.getElementById('announcementCount').textContent = announcements.total || 0;
-      document.getElementById('announcementLatestDate').textContent = announcements.latestDate || '-';
-      document.getElementById('announcementUnreadCount').textContent = announcements.unreadCount || 0;
+    function renderContract(contract){
+      const box = document.getElementById('contractBox');
+      const actions = document.getElementById('contractActions');
+      actions.innerHTML = '';
 
-      document.getElementById('todoCount').textContent = todos.total || 0;
-      document.getElementById('todoTaskCount').textContent = todos.pendingTaskCount || 0;
-      document.getElementById('todoContractCount').textContent = todos.pendingContractCount || 0;
+      if(!contract){
+        box.textContent = '目前查無合約資料';
+        return;
+      }
 
-      document.getElementById('contractStatus').textContent = contract.statusText || '-';
-      document.getElementById('contractPeriod').textContent = contract.periodText || '-';
-      document.getElementById('contractYear').textContent = contract.year || '-';
+      const statusText = contract.statusText || contract.status || '未設定';
+      const schoolYear = contract.schoolYear || contract.contractYear || '';
+      const signedAt = contract.signedAt || '';
+      const signUrl = contract.signUrl || contract.contractUrl || 'contract.html';
+      const pdfUrl = contract.pdfUrl || '';
 
-      const todoSummary = Array.isArray(data.todoSummary) ? data.todoSummary : [];
-      document.getElementById('todoSummaryBox').innerHTML = todoSummary.length
-        ? todoSummary.map(item => `<div class="todo-item">${escapeHtml(item)}</div>`).join('')
-        : '<div class="todo-item">目前沒有待處理事項</div>';
+      box.innerHTML = `
+        <div><strong>狀態：</strong>${escapeHtml(statusText)}</div>
+        <div><strong>年度：</strong>${escapeHtml(schoolYear || '未設定')}</div>
+        <div><strong>簽署時間：</strong>${escapeHtml(signedAt || '尚未簽署')}</div>
+      `;
 
-      const notices = Array.isArray(data.latestAnnouncements) ? data.latestAnnouncements : [];
-      document.getElementById('announcementList').innerHTML = notices.length
-        ? notices.map(item => `
-          <article class="notice-card">
-            <div class="notice-tag">${escapeHtml(item.category || '公告')}</div>
-            <div class="notice-top">
-              <h3 class="notice-title">${escapeHtml(item.title || '')}</h3>
-              <div class="notice-date">${escapeHtml(item.publishDate || '')}</div>
-            </div>
-            <div class="notice-summary">${escapeHtml(item.summary || '')}</div>
-          </article>
-        `).join('')
-        : '<div class="notice-card">目前沒有公告</div>';
+      const signLink = document.createElement('a');
+      signLink.className = 'link-btn primary';
+      signLink.href = `${signUrl}${signUrl.includes('?') ? '&' : '?'}userId=${encodeURIComponent(userId)}`;
+      signLink.textContent = /已簽/i.test(statusText) ? '查看合約' : '前往簽約';
+      actions.appendChild(signLink);
 
-      document.getElementById('cardsSection').classList.remove('hidden');
-      document.getElementById('todoSection').classList.remove('hidden');
-      document.getElementById('announcementSection').classList.remove('hidden');
-      document.getElementById('statusBox').classList.add('hidden');
+      if(pdfUrl){
+        const pdfLink = document.createElement('a');
+        pdfLink.className = 'link-btn';
+        pdfLink.href = pdfUrl;
+        pdfLink.target = '_blank';
+        pdfLink.rel = 'noopener';
+        pdfLink.textContent = '開啟 PDF';
+        actions.appendChild(pdfLink);
+      }
     }
 
     async function loadHome(){
-      const userId = getUserId();
+      hideError();
+
       if(!userId){
-        setStatus('缺少 userId，請從系統入口重新開啟。', true);
+        showError('缺少 userId，請從系統入口重新開啟。');
         return;
       }
+      if(!API_BASE){
+        showError('缺少 API_BASE');
+        return;
+      }
+
       try{
-        setStatus('正在讀取首頁資料...', false);
-        const data = await postJson('getTeacherHomeData', { userId });
-        renderHome(data);
+        const result = await postAction('getTeacherHomeData', { userId });
+        if(!result || !result.ok){
+          throw new Error((result && result.message) || '讀取失敗');
+        }
+
+        const user = result.user || {};
+        const announcements = result.announcements || [];
+        const todos = result.todos || [];
+        const contract = result.contract || null;
+
+        document.getElementById('heroSub').textContent =
+          (user.name ? `${user.name} 老師您好` : '外聘老師您好');
+
+        renderAnnouncements(announcements);
+        renderTodos(todos);
+        renderContract(contract);
       }catch(err){
-        setStatus(err.message || '讀取失敗', true);
+        showError(err && err.message ? err.message : String(err));
       }
     }
 
-    function openPage(target){
-      const userId = getUserId();
-      const base = target || '';
-      if(!base) return;
-      if(base === '#announcements'){
-        document.getElementById('announcementSection').scrollIntoView({ behavior:'smooth', block:'start' });
-        return;
-      }
-      if(base === '#todos'){
-        document.getElementById('todoSection').scrollIntoView({ behavior:'smooth', block:'start' });
-        return;
-      }
-      const url = new URL(base, window.location.href);
-      if(userId) url.searchParams.set('userId', userId);
-      window.location.href = url.toString();
-    }
+    document.getElementById('reloadBtn').addEventListener('click', loadHome);
 
-    document.getElementById('refreshBtn').addEventListener('click', loadHome);
     document.getElementById('logoutBtn').addEventListener('click', function(){
-      localStorage.removeItem('teacherUserId');
-      localStorage.removeItem('employeeUserId');
       localStorage.removeItem('employeeUser');
-      window.location.href = 'index.html';
-    });
-
-    document.getElementById('openAnnouncementBtn').addEventListener('click', function(){
-      openPage(getOpenTargets().announcement);
-    });
-    document.getElementById('openTodoBtn').addEventListener('click', function(){
-      openPage(getOpenTargets().todo);
-    });
-    document.getElementById('openContractBtn').addEventListener('click', function(){
-      openPage(getOpenTargets().contract);
+      localStorage.removeItem('employeeUserId');
+      localStorage.removeItem('teacherUserId');
+      location.href = 'index.html';
     });
 
     loadHome();
