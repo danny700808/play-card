@@ -300,12 +300,12 @@
     }
 
     function applyRoutineMode() {
-      routineAdminMode = !!(currentUser && currentUser.role === 'admin' && isSettingsMode());
+      routineAdminMode = !!(currentUser && hasSettingsZoneAccess(currentUser) && isSettingsMode());
       qs('#adminBlock').classList.toggle('hidden', !routineAdminMode);
       qs('#staffBlock').classList.toggle('hidden', routineAdminMode);
       qs('#routinePageTitle').textContent = routineAdminMode ? '定期事項設定' : '定期事項';
       qs('#routineHomeLink').href = routineAdminMode ? 'settings.html' : 'dashboard.html';
-      qs('#routineHomeLink').textContent = routineAdminMode ? '返回設定區首頁' : '返回員工首頁';
+      qs('#routineHomeLink').textContent = routineAdminMode ? '返回管理首頁' : '返回員工首頁';
     }
 
     function fillMonthDays() {

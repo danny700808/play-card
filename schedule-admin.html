@@ -350,9 +350,14 @@
       buildDayFields();
       bindForms();
       toggleSingleDayTime();
+      const currentUser = (typeof getUser === 'function') ? getUser() : null;
+      if (currentUser && typeof hasSettingsZoneAccess === 'function' && !hasSettingsZoneAccess(currentUser)) {
+        window.location.href = 'dashboard.html';
+        return;
+      }
       const userId = getCurrentUserId();
       if (!userId) {
-        showStatus('templateStatus', '尚未取得主管登入資訊，請由員工系統設定區進入本頁。', 'error');
+        showStatus('templateStatus', '尚未取得主管登入資訊，請由員工系統管理區進入本頁。', 'error');
       }
       reloadPageData();
     });
@@ -395,7 +400,7 @@
 
     function getStoredUser() {
       try {
-        const raw = localStorage.getItem('employeeUser') || sessionStorage.getItem('employeeUser') || '';
+        const raw = localStorage.getItem('employeeUser') || '';
         if (!raw) return null;
         const user = JSON.parse(raw);
         return user && typeof user === 'object' ? user : null;
@@ -409,7 +414,6 @@
       return String(
         (user && (user.id || user.userId || user.employeeId)) ||
         localStorage.getItem('employeeUserId') ||
-        sessionStorage.getItem('employeeUserId') ||
         ''
       ).trim();
     }
@@ -442,7 +446,7 @@
             .doPostProxy(Object.assign({ action: action }, payload));
         });
       }
-      const apiBase = (typeof window !== 'undefined' && (window.API_BASE_URL || localStorage.getItem('EMPLOYEE_SYSTEM_API_BASE'))) || '';
+      const apiBase = (typeof getApiUrl === 'function' && getApiUrl()) || (typeof window !== 'undefined' && (window.API_BASE_URL || localStorage.getItem('EMPLOYEE_SYSTEM_API_BASE'))) || '';
       if (apiBase) {
         const res = await fetch(apiBase, {
           method: 'POST',
@@ -453,7 +457,7 @@
         if (!json.ok) throw new Error(json.message || '後端回傳失敗');
         return json;
       }
-      throw new Error('班表頁尚未接到後端 API，請把此頁放回原系統中使用，或設定 API_BASE_URL。');
+      throw new Error('班表頁尚未接到後端 API，請先確認 config.js 內的 API_URL 是否正確。');
     }
 
     async function reloadPageData() {

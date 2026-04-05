@@ -165,7 +165,7 @@
             <div style="font-size:20px;font-weight:900;color:#7c4a03">年度合約簽署</div>
             <div class="muted" id="teacherContractBannerText">讀取中…</div>
           </div>
-          <a class="btn" href="contract.html" style="width:auto;padding:10px 16px">前往簽署</a>
+          <a class="btn" href="contract.html?source=todo" style="width:auto;padding:10px 16px">前往簽署</a>
         </div>
       </div>
 
@@ -299,12 +299,12 @@
     const taskButtonProgressMap = {};
 
     function applyTaskMode(){
-      taskAdminMode = !!(currentUser && currentUser.role==='admin' && isSettingsMode());
+      taskAdminMode = !!(currentUser && hasSettingsZoneAccess(currentUser) && isSettingsMode());
       qs('#adminBlock').style.display = taskAdminMode ? '' : 'none';
       qs('#staffBlock').style.display = taskAdminMode ? 'none' : '';
       qs('#taskPageTitle').textContent = taskAdminMode ? '交辦事項設定' : '交辦事項';
       qs('#taskHomeLink').href = taskAdminMode ? 'settings.html' : 'dashboard.html';
-      qs('#taskHomeLink').textContent = taskAdminMode ? '返回設定區首頁' : '返回員工首頁';
+      qs('#taskHomeLink').textContent = taskAdminMode ? '返回管理首頁' : '返回員工首頁';
       
     }
 

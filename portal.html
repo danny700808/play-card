@@ -3,424 +3,60 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>外聘老師年度契約</title>
+  <title>系統入口</title>
   <link rel="stylesheet" href="style.css">
   <style>
-    .contract-shell{display:grid;gap:16px}
-    .contract-card{background:#fff;border:1px solid #e2e8f0;border-radius:20px;padding:18px}
-    .contract-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}
-    .contract-title{margin:0;font-size:28px;font-weight:900}
-    .contract-meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:14px}
-    .contract-meta .item{background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:12px}
-    .contract-meta .label{font-size:12px;color:#64748b;font-weight:800;margin-bottom:4px}
-    .contract-meta .value{font-size:16px;font-weight:800;color:#0f172a;word-break:break-word}
-    .contract-body{line-height:1.9;color:#1f2937;white-space:pre-wrap}
-    .contract-form{display:grid;gap:12px}
-    .contract-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-    .contract-grid .full{grid-column:1 / -1}
-    .field label{display:block;font-size:14px;font-weight:800;color:#334155;margin-bottom:6px}
-    .field .required{color:#dc2626}
-    .field input,.field textarea{width:100%;padding:12px 14px;border:1px solid #cbd5e1;border-radius:14px;font-size:16px;background:#fff}
-    .field textarea{min-height:96px;resize:vertical}
-    .sign-wrap{border:1px dashed #94a3b8;border-radius:16px;padding:12px;background:#fff;display:grid;gap:10px}
-    .sign-box{width:100%;height:220px;border:1px solid #cbd5e1;border-radius:12px;background:#fff;touch-action:none;display:block}
-    .contract-check{display:flex;gap:10px;align-items:flex-start;background:#f8fafc;border:1px solid #e2e8f0;border-radius:16px;padding:14px}
-    .contract-check input{width:22px;height:22px;margin-top:2px}
-    .preview-actions,.sign-actions,.submit-actions{display:flex;gap:10px;flex-wrap:wrap}
-    .sign-actions{margin-top:0}
-    .preview-pane{display:none}
-    .preview-pane.show{display:block}
-    .preview-paper{background:#fff;border:1px solid #cbd5e1;border-radius:18px;padding:24px}
-    .preview-doc-title{font-size:24px;font-weight:900;text-align:center;margin:0 0 18px}
-    .preview-row{margin:8px 0;line-height:1.9}
-    .preview-sign-area{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin-top:24px;align-items:end}
-    .stamp-box,.teacher-sign-box{min-height:120px;border-top:1px solid #cbd5e1;padding-top:10px}
-    .stamp-stack{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
-    .stamp-stack img{max-height:90px;max-width:160px;object-fit:contain}
-    .teacher-sign-box img{max-height:110px;max-width:100%;object-fit:contain}
-    .muted-box{font-size:14px;color:#64748b;background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:12px}
-    @media (max-width:700px){
-      .contract-meta,.contract-grid,.preview-sign-area{grid-template-columns:1fr}
-      .contract-title{font-size:24px}
-      .preview-paper{padding:18px}
-      .sign-box{height:180px}
-    }
+    .portal-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+    .portal-card{display:block;padding:26px;border:1px solid var(--line);border-radius:28px;background:#fff;text-decoration:none;color:inherit;box-shadow:0 12px 30px rgba(15,23,42,.04)}
+    .portal-card h2{margin:0 0 10px;font-size:28px}
+    .portal-card p{margin:0;color:var(--muted);font-size:17px;line-height:1.8}
+    .portal-tag{display:inline-flex;align-items:center;justify-content:center;min-width:72px;padding:6px 12px;border-radius:999px;background:#eef6f1;color:#1f7a5a;font-size:14px;font-weight:800;margin-bottom:14px}
+    .portal-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
+    @media (max-width:700px){.portal-grid{grid-template-columns:1fr}.portal-card h2{font-size:24px}}
   </style>
 </head>
-<body onload="initContractPage()">
+<body onload="init()">
   <div class="container">
     <div class="card">
       <div class="topbar">
         <div class="header" style="margin:0">
-          <h1 class="title" style="margin:0">外聘老師年度契約</h1>
+          <h1 class="title" style="margin:0">系統入口</h1>
           <div class="welcome">歡迎 <span data-user-name></span></div>
         </div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap">
-          <a class="btn secondary" id="backBtn" href="task.html" style="width:auto;padding:10px 14px">回上一頁</a>
-          <button class="btn secondary" style="width:auto;padding:10px 14px" onclick="logout()">登出</button>
+        <div class="portal-actions">
+          <button class="btn secondary" type="button" onclick="logout()" style="width:auto;padding:10px 14px">登出</button>
         </div>
       </div>
-      <div class="muted">請確認資料正確後再送出。送出後系統會產生正式 PDF 並寄送到你的 Email。</div>
+      <div class="muted">請選擇你要前往的首頁入口。</div>
     </div>
 
-    <div class="contract-shell">
-      <div class="contract-card">
-        <div class="contract-head">
-          <div>
-            <h2 class="contract-title" id="contractName">外聘老師年度委任契約</h2>
-            <div class="muted" id="contractStatusText">讀取中…</div>
-          </div>
-          <div class="muted-box" id="signedSummaryBox" style="display:none"></div>
-        </div>
-
-        <div class="contract-meta" id="contractMeta">
-          <div class="item"><div class="label">契約年度</div><div class="value" id="metaYear">-</div></div>
-          <div class="item"><div class="label">契約期間</div><div class="value" id="metaPeriod">-</div></div>
-          <div class="item"><div class="label">甲方名稱</div><div class="value" id="metaPartyA">-</div></div>
-          <div class="item"><div class="label">甲方代表人</div><div class="value" id="metaOwner">-</div></div>
-        </div>
-      </div>
-
-      <div class="contract-card">
-        <h3 style="margin:0 0 12px">契約內容</h3>
-        <div class="contract-body" id="contractBody">讀取契約內容中…</div>
-      </div>
-
-      <div class="contract-card" id="contractFormCard">
-        <h3 style="margin:0 0 12px">簽署資料</h3>
-        <div class="contract-form">
-          <div class="contract-grid">
-            <div class="field">
-              <label>姓名 <span class="required">*</span></label>
-              <input id="teacherName" placeholder="請輸入姓名">
-            </div>
-            <div class="field">
-              <label>Email <span class="required">*</span></label>
-              <input id="teacherEmail" type="email" placeholder="請輸入 Email">
-            </div>
-            <div class="field">
-              <label>身分證字號 <span class="required">*</span></label>
-              <input id="teacherIdNumber" placeholder="請輸入身分證字號">
-            </div>
-            <div class="field">
-              <label>簽署日期 <span class="required">*</span></label>
-              <input id="signDate" type="date">
-            </div>
-            <div class="field full">
-              <label>地址 <span class="required">*</span></label>
-              <textarea id="teacherAddress" placeholder="請輸入完整地址"></textarea>
-            </div>
-          </div>
-
-          <div class="field">
-            <label>手寫簽名 <span class="required">*</span></label>
-            <div class="sign-wrap">
-              <canvas id="signCanvas" class="sign-box"></canvas>
-              <div class="sign-actions">
-                <button type="button" class="btn secondary" style="width:auto;padding:10px 16px" onclick="clearSignature()">清除簽名</button>
-              </div>
-            </div>
-          </div>
-
-          <div class="contract-check">
-            <input type="checkbox" id="agreeContract">
-            <div>
-              <div style="font-weight:900;color:#0f172a">本人已詳閱並同意本委任契約全部內容，並同意以電子方式完成簽署。</div>
-              <div class="muted" style="margin-top:4px">未勾選同意條款時，系統不會允許正式送出。</div>
-            </div>
-          </div>
-
-          <div class="preview-actions">
-            <button type="button" class="btn" onclick="showPreview()">預覽確認</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="contract-card preview-pane" id="previewPane">
-        <h3 style="margin:0 0 12px">送出前預覽</h3>
-        <div class="preview-paper">
-          <div class="preview-doc-title" id="previewTitle">外聘老師年度委任契約</div>
-          <div class="preview-row"><strong>甲方：</strong><span id="previewPartyA"></span></div>
-          <div class="preview-row"><strong>代表人：</strong><span id="previewOwner"></span></div>
-          <div class="preview-row"><strong>地址：</strong><span id="previewPartyAddress"></span></div>
-          <div class="preview-row"><strong>乙方姓名：</strong><span id="previewTeacherName"></span></div>
-          <div class="preview-row"><strong>身分證字號：</strong><span id="previewTeacherIdNumber"></span></div>
-          <div class="preview-row"><strong>地址：</strong><span id="previewTeacherAddress"></span></div>
-          <div class="preview-row"><strong>Email：</strong><span id="previewTeacherEmail"></span></div>
-          <div class="preview-row"><strong>契約期間：</strong><span id="previewPeriod"></span></div>
-          <div class="preview-row"><strong>簽署日期：</strong><span id="previewSignDate"></span></div>
-          <div class="preview-row" id="previewBody" style="margin-top:18px;white-space:pre-wrap"></div>
-          <div class="preview-sign-area">
-            <div class="stamp-box">
-              <div style="font-weight:900;margin-bottom:10px">甲方用印</div>
-              <div class="stamp-stack">
-                <img id="previewSchoolStamp" alt="補習班章" style="display:none">
-                <img id="previewOwnerStamp" alt="負責人章" style="display:none">
-              </div>
-            </div>
-            <div class="teacher-sign-box">
-              <div style="font-weight:900;margin-bottom:10px">乙方簽名</div>
-              <img id="previewSignature" alt="老師簽名">
-            </div>
-          </div>
-        </div>
-        <div class="submit-actions" style="margin-top:14px">
-          <button type="button" class="btn secondary" onclick="hidePreview()">返回修改</button>
-          <button type="button" class="btn" id="submitBtn" onclick="submitContract()">正式送出</button>
-        </div>
-      </div>
+    <div class="portal-grid">
+      <a class="portal-card" id="staffCard" href="dashboard.html">
+        <div class="portal-tag">員工區</div>
+        <h2>員工首頁</h2>
+        <p>打卡、請假、交辦事項、定期事項與教育訓練都從這裡進入。</p>
+      </a>
+      <a class="portal-card" id="settingsCard" href="settings.html">
+        <div class="portal-tag">設定區</div>
+        <h2>管理首頁</h2>
+        <p>註冊審核、請假簽核、教育訓練、班表與外聘老師合約管理都在這裡。</p>
+      </a>
     </div>
   </div>
-
   <script src="config.js"></script>
   <script src="app.js"></script>
   <script>
-    let currentUser=null;
-    let contractData=null;
-    let signCanvas=null;
-    let signCtx=null;
-    let drawing=false;
-    let lastPoint=null;
-
-    function todayStr(){
-      const d=new Date();
-      const y=d.getFullYear();
-      const m=String(d.getMonth()+1).padStart(2,'0');
-      const day=String(d.getDate()).padStart(2,'0');
-      return `${y}-${m}-${day}`;
-    }
-
-    function escapeHtml(text){
-      return String(text||'')
-        .replace(/&/g,'&amp;')
-        .replace(/</g,'&lt;')
-        .replace(/>/g,'&gt;')
-        .replace(/"/g,'&quot;')
-        .replace(/'/g,'&#39;');
-    }
-
-    function nl2br(text){
-      return escapeHtml(text).replace(/\n/g,'<br>');
-    }
-
-    function fitCanvas(){
-      if(!signCanvas) return;
-      const ratio=Math.max(window.devicePixelRatio||1,1);
-      const rect=signCanvas.getBoundingClientRect();
-      const oldData=signCanvas.toDataURL('image/png');
-      signCanvas.width=Math.floor(rect.width*ratio);
-      signCanvas.height=Math.floor(rect.height*ratio);
-      signCtx=signCanvas.getContext('2d');
-      signCtx.scale(ratio, ratio);
-      signCtx.lineWidth=2.4;
-      signCtx.lineCap='round';
-      signCtx.lineJoin='round';
-      signCtx.strokeStyle='#111827';
-      if(oldData && oldData !== 'data:,'){
-        const img=new Image();
-        img.onload=()=>signCtx.drawImage(img,0,0,rect.width,rect.height);
-        img.src=oldData;
-      }
-    }
-
-    function pointFromEvent(e){
-      const rect=signCanvas.getBoundingClientRect();
-      const source=e.touches&&e.touches[0]?e.touches[0]:e;
-      return { x: source.clientX-rect.left, y: source.clientY-rect.top };
-    }
-
-    function startSign(e){
-      drawing=true;
-      lastPoint=pointFromEvent(e);
-      e.preventDefault();
-    }
-
-    function moveSign(e){
-      if(!drawing) return;
-      const p=pointFromEvent(e);
-      signCtx.beginPath();
-      signCtx.moveTo(lastPoint.x,lastPoint.y);
-      signCtx.lineTo(p.x,p.y);
-      signCtx.stroke();
-      lastPoint=p;
-      e.preventDefault();
-    }
-
-    function endSign(e){
-      drawing=false;
-      lastPoint=null;
-      if(e) e.preventDefault();
-    }
-
-    function clearSignature(){
-      if(!signCanvas || !signCtx) return;
-      signCtx.clearRect(0,0,signCanvas.width,signCanvas.height);
-    }
-
-    function getSignatureDataUrl(){
-      const url=signCanvas.toDataURL('image/png');
-      return url==='data:,' ? '' : url;
-    }
-
-    function fillContractBase(){
-      const title=(contractData&&contractData.contractName)||'外聘老師年度委任契約';
-      const year=(contractData&&contractData.year)||new Date().getFullYear();
-      const partyA=(contractData&&contractData.partyAName)||'台中市私立凱立音樂短期補習班';
-      const owner=(contractData&&contractData.partyAOwner)||'黃銘廷';
-      const partyAddress=(contractData&&contractData.partyAAddress)||'台中市豐原區圓環東路347號';
-      const period=`${contractData?.startDate||''} ～ ${contractData?.endDate||''}`;
-      qs('#contractName').textContent=title;
-      qs('#metaYear').textContent=year;
-      qs('#metaPeriod').textContent=period;
-      qs('#metaPartyA').textContent=partyA;
-      qs('#metaOwner').textContent=owner;
-      qs('#contractBody').innerHTML=(contractData&&contractData.contractHtml) ? contractData.contractHtml : '目前尚未設定契約內容。';
-    }
-
-    function setSignedView(record){
-      qs('#contractStatusText').textContent='本年度已完成簽署';
-      const box=qs('#signedSummaryBox');
-      box.style.display='block';
-      box.innerHTML=`<div style="font-weight:900;color:#1f7a5a;margin-bottom:6px">本年度已簽署完成</div>
-        <div>簽署時間：${escapeHtml(record.signDate||'')} ${escapeHtml(record.signTime||'')}</div>
-        <div>狀態：${escapeHtml(record.status||'已簽署')}</div>
-        ${record.pdfUrl?`<div style="margin-top:8px"><a href="${record.pdfUrl}" target="_blank" style="color:#1f7a5a;font-weight:800;text-decoration:none">查看 PDF</a></div>`:''}`;
-      qs('#contractFormCard').style.display='none';
-      qs('#previewPane').classList.remove('show');
-    }
-
-    function prefillUser(){
-      if(!currentUser) return;
-      qs('#teacherName').value=currentUser.name||'';
-      qs('#teacherEmail').value=currentUser.email||'';
-      qs('#signDate').value=todayStr();
-    }
-
-    function validateForm(){
-      const name=qs('#teacherName').value.trim();
-      const email=qs('#teacherEmail').value.trim();
-      const idNumber=qs('#teacherIdNumber').value.trim();
-      const address=qs('#teacherAddress').value.trim();
-      const signDate=qs('#signDate').value.trim();
-      const agree=qs('#agreeContract').checked;
-      const signature=getSignatureDataUrl();
-
-      if(!name) return '請輸入姓名';
-      if(!email) return '請輸入 Email';
-      if(!idNumber) return '請輸入身分證字號';
-      if(!address) return '請輸入地址';
-      if(!signDate) return '請選擇簽署日期';
-      if(!agree) return '請先勾選同意契約內容';
-      if(!signature) return '請先完成手寫簽名';
-      return '';
-    }
-
-    function buildPayload(){
-      return {
-        userId: currentUser.id,
-        teacherName: qs('#teacherName').value.trim(),
-        email: qs('#teacherEmail').value.trim(),
-        idNumber: qs('#teacherIdNumber').value.trim(),
-        address: qs('#teacherAddress').value.trim(),
-        signDate: qs('#signDate').value.trim(),
-        agree: qs('#agreeContract').checked,
-        signatureDataUrl: getSignatureDataUrl()
-      };
-    }
-
-    function showPreview(){
-      const err=validateForm();
-      if(err){ alert(err); return; }
-      const payload=buildPayload();
-      const partyA=(contractData&&contractData.partyAName)||'台中市私立凱立音樂短期補習班';
-      const owner=(contractData&&contractData.partyAOwner)||'黃銘廷';
-      const partyAddress=(contractData&&contractData.partyAAddress)||'台中市豐原區圓環東路347號';
-      const title=(contractData&&contractData.contractName)||'外聘老師年度委任契約';
-      const period=`${contractData?.startDate||''} ～ ${contractData?.endDate||''}`;
-
-      qs('#previewTitle').textContent=title;
-      qs('#previewPartyA').textContent=partyA;
-      qs('#previewOwner').textContent=owner;
-      qs('#previewPartyAddress').textContent=partyAddress;
-      qs('#previewTeacherName').textContent=payload.teacherName;
-      qs('#previewTeacherIdNumber').textContent=payload.idNumber;
-      qs('#previewTeacherAddress').textContent=payload.address;
-      qs('#previewTeacherEmail').textContent=payload.email;
-      qs('#previewPeriod').textContent=period;
-      qs('#previewSignDate').textContent=payload.signDate;
-      qs('#previewBody').innerHTML=(contractData&&contractData.contractText)?nl2br(contractData.contractText):'';
-
-      const schoolStamp=qs('#previewSchoolStamp');
-      const ownerStamp=qs('#previewOwnerStamp');
-      const schoolUrl=contractData&&contractData.schoolStampUrl;
-      const ownerUrl=contractData&&contractData.ownerStampUrl;
-      schoolStamp.style.display=schoolUrl?'inline-block':'none';
-      ownerStamp.style.display=ownerUrl?'inline-block':'none';
-      if(schoolUrl) schoolStamp.src=schoolUrl;
-      if(ownerUrl) ownerStamp.src=ownerUrl;
-      qs('#previewSignature').src=payload.signatureDataUrl;
-
-      qs('#previewPane').classList.add('show');
-      qs('#previewPane').scrollIntoView({behavior:'smooth',block:'start'});
-    }
-
-    function hidePreview(){
-      qs('#previewPane').classList.remove('show');
-    }
-
-    async function submitContract(){
-      const err=validateForm();
-      if(err){ alert(err); return; }
-      const btn=qs('#submitBtn');
-      btn.disabled=true;
-      btn.textContent='送出中…';
-      try{
-        const payload=buildPayload();
-        const res=await api('submitTeacherContractSignature', payload);
-        if(!res.ok) throw new Error(res.message||'送出失敗');
-        alert(res.message||'簽署完成，系統已寄送 PDF 到你的信箱。');
-        location.reload();
-      }catch(e){
-        alert(e.message||'送出失敗');
-      }finally{
-        btn.disabled=false;
-        btn.textContent='正式送出';
-      }
-    }
-
-    async function initContractPage(){
+    function init(){
       fillHeader();
-      currentUser=requireLogin();
-      if(!currentUser) return;
-      if(!isExternalTeacher(currentUser)){ location.href='dashboard.html'; return; }
-
-      signCanvas=qs('#signCanvas');
-      fitCanvas();
-      window.addEventListener('resize', fitCanvas);
-      signCanvas.addEventListener('mousedown', startSign);
-      signCanvas.addEventListener('mousemove', moveSign);
-      window.addEventListener('mouseup', endSign);
-      signCanvas.addEventListener('touchstart', startSign, {passive:false});
-      signCanvas.addEventListener('touchmove', moveSign, {passive:false});
-      window.addEventListener('touchend', endSign, {passive:false});
-
-      prefillUser();
-
-      try{
-        const res=await api('getTeacherContractStatus', { userId: currentUser.id, email: currentUser.email });
-        if(!res.ok) throw new Error(res.message||'讀取契約失敗');
-        contractData=res.contract||{};
-        fillContractBase();
-
-        if(res.signed && res.record){
-          setSignedView(res.record);
-        }else{
-          qs('#contractStatusText').textContent='本年度尚未簽署，請完成下方資料並送出。';
-        }
-      }catch(e){
-        qs('#contractStatusText').textContent='讀取契約資料失敗';
-        qs('#contractBody').textContent=e.message||'讀取失敗';
+      const user=requireLogin();
+      if(!user) return;
+      if(isExternalTeacher(user)){ location.href='teacher-home.html'; return; }
+      const settingsCard = qs('#settingsCard');
+      if(!hasSettingsZoneAccess(user)){
+        settingsCard.style.display='none';
       }
+      const mode=getPortalMode();
+      if(mode==='settings' && hasSettingsZoneAccess(user)) settingsCard.focus && settingsCard.focus();
     }
   </script>
 </body>

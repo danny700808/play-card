@@ -201,7 +201,7 @@
     </div>
 
     <section class="section hidden" id="cardsSection">
-      <h2 class="section-title">老師專區</h2>
+      <h2 class="section-title">老師首頁入口</h2>
       <div class="grid-3">
         <article class="home-card">
           <div>
@@ -211,7 +211,7 @@
             <div class="subline">最新日期：<span id="announcementLatestDate">-</span></div>
             <div class="subline">未讀公告：<span id="announcementUnreadCount">0</span> 則</div>
           </div>
-          <button class="card-button blue" type="button" id="openAnnouncementBtn">查看公告</button>
+          <button class="card-button blue" type="button" id="openAnnouncementBtn">前往公告區</button>
         </article>
 
         <article class="home-card">
@@ -222,7 +222,7 @@
             <div class="subline">交辦事項：<span id="todoTaskCount">0</span> 件</div>
             <div class="subline">待簽合約：<span id="todoContractCount">0</span> 件</div>
           </div>
-          <button class="card-button orange" type="button" id="openTodoBtn">查看代辦</button>
+          <button class="card-button orange" type="button" id="openTodoBtn">前往代辦區</button>
         </article>
 
         <article class="home-card">
@@ -233,7 +233,7 @@
             <div class="subline">合約期間：<span id="contractPeriod">-</span></div>
             <div class="subline">年度：<span id="contractYear">-</span></div>
           </div>
-          <button class="card-button green" type="button" id="openContractBtn">查看合約</button>
+          <button class="card-button green" type="button" id="openContractBtn">前往合約區</button>
         </article>
       </div>
     </section>
@@ -249,22 +249,27 @@
     </section>
   </div>
 
+  <script src="config.js"></script>
+  <script src="app.js"></script>
   <script>
-    const API_BASE = window.API_BASE || localStorage.getItem('employeeApiBaseUrl') || '';
-
-    function qs(name){
+    function queryParam(name){
       const url = new URL(window.location.href);
       return url.searchParams.get(name) || '';
     }
 
+    function getTeacherUser(){
+      return (typeof getUser === 'function') ? getUser() : null;
+    }
+
     function getUserId(){
-      return qs('userId') || localStorage.getItem('employeeUserId') || localStorage.getItem('teacherUserId') || '';
+      const user = getTeacherUser();
+      return queryParam('userId') || (user && (user.id || user.userId || user.employeeId)) || localStorage.getItem('employeeUserId') || '';
     }
 
     function getOpenTargets(){
       return {
-        announcement: localStorage.getItem('teacherAnnouncementPageUrl') || 'teacher-announcements.html',
-        todo: localStorage.getItem('teacherTodoPageUrl') || 'teacher-todo.html',
+        announcement: localStorage.getItem('teacherAnnouncementPageUrl') || 'announcements.html',
+        todo: localStorage.getItem('teacherTodoPageUrl') || 'task.html',
         contract: localStorage.getItem('teacherContractPageUrl') || 'contract.html'
       };
     }
@@ -273,13 +278,20 @@
       const box = document.getElementById('statusBox');
       box.textContent = message || '';
       box.className = isError ? 'error' : 'loading';
+      box.classList.remove('hidden');
     }
 
     async function postJson(action, payload){
-      if(!API_BASE) throw new Error('缺少 API_BASE');
-      const res = await fetch(API_BASE, {
+      if (typeof api === 'function') {
+        const json = await api(action, payload || {});
+        if(!json.ok) throw new Error(json.message || '讀取失敗');
+        return json;
+      }
+      const apiBase = (typeof getApiUrl === 'function' && getApiUrl()) || '';
+      if(!apiBase) throw new Error('尚未設定 API 網址');
+      const res = await fetch(apiBase, {
         method:'POST',
-        headers:{'Content-Type':'application/json'},
+        headers:{'Content-Type':'text/plain;charset=utf-8'},
         body: JSON.stringify(Object.assign({ action }, payload || {}))
       });
       const json = await res.json();
@@ -297,7 +309,8 @@
     }
 
     function renderHome(data){
-      document.getElementById('teacherInfo').textContent = `${data.teacher.name || ''}｜${data.teacher.email || ''}`;
+      const currentUser = getTeacherUser();
+      document.getElementById('teacherInfo').textContent = `${(data.teacher&&data.teacher.name) || (currentUser&&currentUser.name) || ''}｜${(data.teacher&&data.teacher.email) || (currentUser&&currentUser.email) || ''}`;
 
       const cards = data.cards || {};
       const announcements = cards.announcements || {};
@@ -342,6 +355,11 @@
     }
 
     async function loadHome(){
+      const currentUser = getTeacherUser();
+      if (currentUser && typeof isExternalTeacher === 'function' && !isExternalTeacher(currentUser)) {
+        window.location.href = 'dashboard.html';
+        return;
+      }
       const userId = getUserId();
       if(!userId){
         setStatus('缺少 userId，請從系統入口重新開啟。', true);
@@ -362,14 +380,19 @@
       if(!base) return;
       const url = new URL(base, window.location.href);
       if(userId) url.searchParams.set('userId', userId);
+      if(base.indexOf('contract.html')>=0) url.searchParams.set('source','home');
       window.location.href = url.toString();
     }
 
     document.getElementById('refreshBtn').addEventListener('click', loadHome);
     document.getElementById('logoutBtn').addEventListener('click', function(){
-      localStorage.removeItem('teacherUserId');
+      if (typeof logout === 'function') {
+        logout();
+        return;
+      }
+      localStorage.removeItem('employeeUser');
       localStorage.removeItem('employeeUserId');
-      alert('已登出');
+      window.location.href = 'index.html';
     });
 
     document.getElementById('openAnnouncementBtn').addEventListener('click', function(){

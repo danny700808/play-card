@@ -75,7 +75,8 @@
       fillHeader();
       currentUser=requireLogin();
       if(!currentUser) return;
-      qs('#backBtn').href = isExternalTeacher(currentUser)?'teacher-home.html':'dashboard.html';
+      qs('#backBtn').href = userHomeHref(currentUser);
+      qs('#backBtn').textContent = userHomeLabel(currentUser);
       loadAnnouncements();
     }
   </script>

@@ -60,13 +60,13 @@
 <script>
 let historyRows=[]; let approvalRows=[]; let currentUser=null; let leaveApprovalMode=false;
 function applyLeaveMode(){
-  leaveApprovalMode = !!(currentUser && currentUser.role==='admin' && isSettingsMode());
+  leaveApprovalMode = !!(currentUser && hasSettingsZoneAccess(currentUser) && isSettingsMode());
   qs('#staffBlock').classList.toggle('hidden', leaveApprovalMode);
   qs('#approvalCard').classList.toggle('hidden', !leaveApprovalMode);
   qs('#leavePageTitle').textContent = leaveApprovalMode ? '請假簽核' : '請假申請單';
   qs('#pageHint').textContent = leaveApprovalMode ? '這一頁只負責簽核員工送出的請假申請與修改後重送的請假單。' : '請假原因放最上方；送出後 7 天內可修改或刪除。特休會直接視為整天。';
   qs('#leaveHomeLink').href = leaveApprovalMode ? 'settings.html' : 'dashboard.html';
-  qs('#leaveHomeLink').textContent = leaveApprovalMode ? '返回設定區首頁' : '返回員工首頁';
+  qs('#leaveHomeLink').textContent = leaveApprovalMode ? '返回管理首頁' : '返回員工首頁';
   
 }
 function localDateInputValue(){ const now=new Date(); const tzOffset=now.getTimezoneOffset()*60000; return new Date(now.getTime()-tzOffset).toISOString().slice(0,10); }

@@ -70,7 +70,7 @@
           <div class="welcome">歡迎 <span data-user-name></span></div>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
-          <a class="btn secondary" id="backBtn" href="task.html" style="width:auto;padding:10px 14px">回上一頁</a>
+          <a class="btn secondary" id="backBtn" href="task.html" style="width:auto;padding:10px 14px">返回老師首頁</a>
           <button class="btn secondary" style="width:auto;padding:10px 14px" onclick="logout()">登出</button>
         </div>
       </div>
@@ -480,6 +480,20 @@
       qs('#previewPane').scrollIntoView({behavior:'smooth',block:'start'});
     }
 
+
+    function resolveBackLink(){
+      var source = new URL(window.location.href).searchParams.get('source') || '';
+      var backBtn = qs('#backBtn');
+      if(!backBtn) return;
+      if(source === 'todo'){
+        backBtn.href = 'task.html';
+        backBtn.textContent = '返回代辦頁';
+        return;
+      }
+      backBtn.href = teacherHomeHref();
+      backBtn.textContent = '返回老師首頁';
+    }
+
     function hidePreview(){
       qs('#previewPane').classList.remove('show');
     }
@@ -528,6 +542,7 @@
         modal.addEventListener('touchmove', function(e){ e.preventDefault(); }, { passive:false });
       }
 
+      resolveBackLink();
       prefillUser();
 
       try{
