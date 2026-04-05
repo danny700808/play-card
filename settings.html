@@ -5,18 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>設定區首頁</title>
   <link rel="stylesheet" href="style.css">
-  <style>
-    .switch-zone{display:none;text-decoration:none}
-    body.has-settings-zone .switch-zone{display:inline-flex}
-    .tile{position:relative}
-    .tile-badge{
-      position:absolute;right:18px;top:18px;min-width:32px;height:32px;padding:0 10px;
-      border-radius:999px;background:#1f7a5a;color:#fff;display:none;align-items:center;
-      justify-content:center;font-weight:800;font-size:15px;line-height:1;box-shadow:0 8px 20px rgba(31,122,90,.22)
-    }
-    .tile-badge.zero{display:none !important}
-    .tile.has-badge .tile-badge{display:inline-flex}
-  </style>
+  <style>.switch-zone{display:none;text-decoration:none} body.has-settings-zone .switch-zone{display:inline-flex}</style>
 </head>
 <body onload="init()">
   <div class="container">
@@ -27,71 +16,32 @@
           <div class="welcome">歡迎 <span data-user-name></span></div>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
-          <a class="btn secondary switch-zone" id="settingsPortalLink" href="dashboard.html" style="width:auto;padding:10px 14px">切換到員工介面</a>
+          <a class="btn secondary switch-zone" id="settingsPortalLink" href="portal.html" style="width:auto;padding:10px 14px">切換區域</a>
           <button class="btn secondary" style="width:auto;padding:10px 14px" onclick="logout()">登出</button>
         </div>
       </div>
-    </div>
-
-    <div class="grid" id="settingsGrid">
-      <a class="tile" id="tileRegistration" href="registration-approval.html"><strong>註冊審核</strong><span>查看新註冊員工申請，直接同意或駁回</span><em class="tile-badge" id="badgeRegistration">0</em></a>
-      <a class="tile" id="tileLeave" href="leave.html"><strong>請假簽核</strong><span>查看待簽核請假單並直接同意 / 駁回</span><em class="tile-badge" id="badgeLeave">0</em></a>
-      <a class="tile" id="tileTask" href="task.html"><strong>交辦事項設定</strong><span>建立交辦事項、查看已建立任務與調整設定</span><em class="tile-badge" id="badgeTask">0</em></a>
-      <a class="tile" id="tileRoutine" href="routine.html"><strong>定期事項設定</strong><span>建立固定週期工作、修改負責人與週期設定</span></a>
-      <a class="tile" id="tileTraining" href="training-admin.html"><strong>教育訓練設定</strong><span>新增教材、上傳影片 / 文件 / 音檔與控制是否啟用</span></a>
-      <a class="tile" id="tileAnnouncement" href="announcement-admin.html"><strong>公告管理</strong><span>建立公告、選擇發給員工 / 外聘老師 / 全部，並可附加圖片、影片、錄音與文件</span><em class="tile-badge" id="badgeAnnouncement">0</em></a>
+          </div>
+    <div class="grid">
+      <a class="tile" href="registration-approval.html"><strong>註冊審核</strong><span>查看新註冊員工申請，直接同意或駁回</span></a>
+      <a class="tile" href="leave.html"><strong>請假簽核</strong><span>查看待簽核請假單並直接同意 / 駁回</span></a>
+      <a class="tile" href="task.html"><strong>交辦事項設定</strong><span>建立交辦事項、查看已建立任務與調整設定</span></a>
+      <a class="tile" href="routine.html"><strong>定期事項設定</strong><span>建立固定週期工作、修改負責人與週期設定</span></a>
+      <a class="tile" href="training-admin.html"><strong>教育訓練設定</strong><span>新增教材、上傳影片 / 文件 / 音檔與控制是否啟用</span></a>
       <a class="tile" href="schedule-admin.html"><strong>班表設定</strong><span>建立班表模板、指定員工套用班表、管理起訖日與無期限</span></a>
-      <a class="tile" id="tileContract" href="contract-admin.html"><strong>外聘老師合約管理</strong><span>查看年度簽署狀態、合約資料、PDF 與重寄紀錄</span><em class="tile-badge" id="badgeContract">0</em></a>
+      <a class="tile" href="contract-admin.html"><strong>外聘老師合約管理</strong><span>查看年度簽署狀態、合約資料、PDF 與重寄紀錄</span></a>
+
     </div>
   </div>
   <script src="config.js"></script>
   <script src="app.js"></script>
   <script>
-    function canAccessSettingsZone(user){
-      return !!(user && (user.showSettingsZone || String(user.role||'').toLowerCase()==='admin'));
-    }
-    function setBadge(id, count){
-      const el = document.getElementById(id);
-      if(!el) return;
-      const n = Number(count||0)||0;
-      el.textContent = String(n);
-      el.classList.toggle('zero', n===0);
-      const tile = el.closest('.tile');
-      if(tile) tile.classList.toggle('has-badge', n>0);
-    }
-    async function init(){
+    function init(){
       fillHeader();
       const user=requireLogin();
       if(!user) return;
-      if(!canAccessSettingsZone(user)){location.href='dashboard.html';return;}
+      if(!hasSettingsZoneAccess(user)){location.href='dashboard.html';return;}
       document.body.classList.add('has-settings-zone');
       setPortalMode('settings');
-      try{
-        const pending = await api('getPendingCounts',{userId:user.id});
-        setBadge('badgeRegistration', pending.registrationCount||0);
-        setBadge('badgeLeave', pending.leaveCount||0);
-      }catch(e){
-        setBadge('badgeRegistration',0);
-        setBadge('badgeLeave',0);
-      }
-      try{
-        const taskRes = await api('getTasks',{userId:user.id,role:'admin'});
-        const rows = taskRes.rows||[];
-        const count = rows.filter(x=>String(x.status||'')!=='已完成').length;
-        setBadge('badgeTask', count);
-      }catch(e){ setBadge('badgeTask',0); }
-      try{
-        const annRes = await api('getAnnouncementAdminList',{userId:user.id});
-        const rows = annRes.rows||[];
-        const count = rows.filter(x=>String(x.enabled||x.isPublished||x.status||'').toLowerCase()!=='true' && String(x.status||'')!=='已發布').length;
-        setBadge('badgeAnnouncement', count);
-      }catch(e){ setBadge('badgeAnnouncement',0); }
-      try{
-        const contractRes = await api('getTeacherContractAdminList',{userId:user.id});
-        const rows = contractRes.rows||[];
-        const count = rows.filter(x=>String(x.status||'').indexOf('待')>=0 || String(x.status||'').indexOf('未')>=0).length;
-        setBadge('badgeContract', count);
-      }catch(e){ setBadge('badgeContract',0); }
     }
   </script>
 </body>
