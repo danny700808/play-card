@@ -1,253 +1,388 @@
 <!doctype html>
 <html lang="zh-Hant">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>外聘老師首頁</title>
-  <link rel="stylesheet" href="style.css">
   <style>
-    .hero{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
-    .hero .title{margin:0}
-    .summary-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
-    .summary-card{background:#fff;border:1px solid var(--line);border-radius:26px;padding:22px;box-shadow:0 12px 30px rgba(15,23,42,.04);display:flex;flex-direction:column;gap:12px}
-    .summary-top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
-    .summary-title{font-size:28px;font-weight:900;color:#163252}
-    .summary-num{font-size:46px;font-weight:900;line-height:1;color:#1f7a5a}
-    .summary-sub{color:var(--muted);font-size:16px;line-height:1.7}
-    .pill{display:inline-flex;align-items:center;justify-content:center;min-width:36px;padding:6px 12px;border-radius:999px;font-size:14px;font-weight:900;background:#e9f2ff;color:#315b8a}
-    .panel{display:none;margin-top:18px}
-    .panel.show{display:block}
-    .panel-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
-    .list{display:grid;gap:12px}
-    .item{background:#fff;border:1px solid var(--line);border-radius:22px;padding:18px;box-shadow:0 12px 30px rgba(15,23,42,.04)}
-    .item h3{margin:0 0 8px;font-size:22px;color:#163252}
-    .item .meta{color:var(--muted);font-size:14px;margin-bottom:8px}
-    .badge{display:inline-block;padding:6px 12px;border-radius:999px;font-size:13px;font-weight:900;background:#eef4fb;color:#315b8a;margin-bottom:10px}
-    .empty{background:#fff;border:1px dashed var(--line);border-radius:18px;padding:16px;color:var(--muted)}
-    .contract-body{background:#fff;border:1px solid var(--line);border-radius:22px;padding:20px;box-shadow:0 12px 30px rgba(15,23,42,.04)}
-    .contract-meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:14px}
-    .contract-meta .box{background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:12px}
-    .contract-meta .label{font-size:12px;color:#64748b;font-weight:800;margin-bottom:4px}
-    .contract-meta .value{font-size:15px;font-weight:800;color:#0f172a}
-    .contract-html{line-height:1.9;color:#1f2937}
-    .media-list{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
-    .media-list a{display:inline-flex;text-decoration:none;background:#eef2f7;color:#23384f;border-radius:12px;padding:8px 12px;font-weight:800;font-size:14px}
-    @media (max-width:900px){
-      .summary-grid{grid-template-columns:1fr}
-      .contract-meta{grid-template-columns:1fr}
+    :root{
+      --bg:#f5f7fb;
+      --card:#ffffff;
+      --line:#d9e2ef;
+      --text:#1f2f46;
+      --sub:#6b7280;
+      --green:#1f8a5b;
+      --green-weak:#e9f7f0;
+      --blue:#315b8a;
+      --blue-weak:#eef4fb;
+      --orange:#b86b00;
+      --orange-weak:#fff4e8;
+      --danger:#b42318;
+      --shadow:0 12px 34px rgba(25, 46, 89, .08);
+      --radius:22px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      background:var(--bg);
+      color:var(--text);
+      font-family:Arial,"Noto Sans TC",sans-serif;
+      line-height:1.6;
+    }
+    .page{
+      max-width:900px;
+      margin:0 auto;
+      padding:20px 16px 32px;
+    }
+    .hero{
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:28px;
+      box-shadow:var(--shadow);
+      padding:22px 20px;
+      display:flex;
+      flex-wrap:wrap;
+      gap:14px;
+      justify-content:space-between;
+      align-items:flex-start;
+    }
+    .hero h1{
+      margin:0 0 6px;
+      font-size:32px;
+      line-height:1.2;
+      color:#1d3557;
+    }
+    .hero .meta{color:var(--sub);font-size:16px}
+    .hero-actions{display:flex;gap:10px;flex-wrap:wrap}
+    .btn{
+      border:none;
+      border-radius:16px;
+      padding:12px 18px;
+      font-size:18px;
+      font-weight:800;
+      cursor:pointer;
+    }
+    .btn-primary{background:var(--green);color:#fff}
+    .btn-secondary{background:#eef2f7;color:#23384f}
+    .section{margin-top:20px}
+    .section-title{
+      margin:0 0 12px;
+      font-size:24px;
+      font-weight:900;
+      color:#1d3557;
+    }
+    .grid-3{
+      display:grid;
+      grid-template-columns:repeat(3,minmax(0,1fr));
+      gap:14px;
+    }
+    .home-card{
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:24px;
+      box-shadow:var(--shadow);
+      padding:18px;
+      min-height:220px;
+      display:flex;
+      flex-direction:column;
+      justify-content:space-between;
+      gap:14px;
+    }
+    .home-card h2{
+      margin:0;
+      font-size:24px;
+      color:#1d3557;
+    }
+    .badge{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      min-width:42px;
+      padding:6px 12px;
+      border-radius:999px;
+      font-size:15px;
+      font-weight:800;
+    }
+    .badge-green{background:var(--green-weak);color:var(--green)}
+    .badge-blue{background:var(--blue-weak);color:var(--blue)}
+    .badge-orange{background:var(--orange-weak);color:var(--orange)}
+    .metric{font-size:38px;font-weight:900;line-height:1;color:#19324d}
+    .muted{color:var(--sub)}
+    .subline{font-size:15px;color:var(--sub)}
+    .card-button{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      width:100%;
+      border-radius:16px;
+      padding:13px 16px;
+      font-size:18px;
+      font-weight:900;
+      border:none;
+      cursor:pointer;
+    }
+    .card-button.green{background:var(--green);color:#fff}
+    .card-button.blue{background:#e9f0f9;color:#24486f}
+    .card-button.orange{background:#fff1df;color:#a35a00}
+    .list{
+      display:grid;
+      gap:12px;
+    }
+    .notice-card{
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:22px;
+      box-shadow:var(--shadow);
+      padding:18px;
+    }
+    .notice-top{
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      gap:12px;
+      margin-bottom:8px;
+    }
+    .notice-title{font-size:22px;font-weight:900;color:#1d3557;margin:0}
+    .notice-date{font-size:15px;color:var(--sub);white-space:nowrap}
+    .notice-tag{
+      display:inline-block;
+      padding:6px 12px;
+      border-radius:999px;
+      font-size:14px;
+      font-weight:800;
+      background:#edf3fb;
+      color:#315b8a;
+      margin-bottom:10px;
+    }
+    .notice-summary{font-size:17px;color:#334155;white-space:pre-wrap}
+    .todo-box{
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:22px;
+      box-shadow:var(--shadow);
+      padding:18px;
+    }
+    .todo-item{
+      padding:14px 0;
+      border-bottom:1px dashed #d9e2ef;
+      font-size:18px;
+    }
+    .todo-item:last-child{border-bottom:none;padding-bottom:0}
+    .loading,.error{
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:18px;
+      padding:18px;
+      color:var(--sub);
+    }
+    .error{color:var(--danger);border-color:#f0c9c5;background:#fff5f5}
+    .hidden{display:none!important}
+    @media (max-width: 860px){
+      .grid-3{grid-template-columns:1fr}
+      .hero h1{font-size:28px}
     }
   </style>
 </head>
-<body onload="initTeacherHome()">
-  <div class="container">
-    <div class="card">
-      <div class="hero">
-        <div class="header" style="margin:0">
-          <h1 class="title">外聘老師首頁</h1>
-          <div class="welcome">歡迎 <span data-user-name></span></div>
-          <div class="muted" id="teacherSubText">讀取中...</div>
-        </div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap">
-          <a class="btn secondary" href="announcements.html" style="width:auto;padding:10px 14px">公告列表</a>
-          <a class="btn secondary" href="contract.html" id="contractPageLink" style="width:auto;padding:10px 14px">完整合約頁</a>
-          <button class="btn secondary" style="width:auto;padding:10px 14px" onclick="loadHome()">重新整理</button>
-          <button class="btn secondary" style="width:auto;padding:10px 14px" onclick="logout()">登出</button>
-        </div>
+<body>
+  <div class="page">
+    <section class="hero">
+      <div>
+        <h1>外聘老師首頁</h1>
+        <div class="meta" id="teacherInfo">讀取中...</div>
       </div>
-      <div id="msg" class="message"></div>
+      <div class="hero-actions">
+        <button class="btn btn-secondary" type="button" id="refreshBtn">重新整理</button>
+        <button class="btn btn-secondary" type="button" id="logoutBtn">登出</button>
+      </div>
+    </section>
+
+    <div class="section">
+      <div id="statusBox" class="loading">正在讀取首頁資料...</div>
     </div>
 
-    <div class="summary-grid" id="summaryGrid">
-      <section class="summary-card">
-        <div class="summary-top">
-          <div class="summary-title">公告</div>
-          <div class="pill" id="announcementBadge">0</div>
-        </div>
-        <div class="summary-num" id="announcementNum">0</div>
-        <div class="summary-sub">最新日期：<span id="announcementDate">-</span></div>
-        <button class="btn secondary" style="width:auto" onclick="togglePanel('announcementsPanel')">展開公告</button>
-      </section>
+    <section class="section hidden" id="cardsSection">
+      <h2 class="section-title">老師專區</h2>
+      <div class="grid-3">
+        <article class="home-card">
+          <div>
+            <div class="badge badge-blue">公告</div>
+            <h2>公告</h2>
+            <div class="metric" id="announcementCount">0</div>
+            <div class="subline">最新日期：<span id="announcementLatestDate">-</span></div>
+            <div class="subline">未讀公告：<span id="announcementUnreadCount">0</span> 則</div>
+          </div>
+          <button class="card-button blue" type="button" id="openAnnouncementBtn">查看公告</button>
+        </article>
 
-      <section class="summary-card">
-        <div class="summary-top">
-          <div class="summary-title">代辦事項</div>
-          <div class="pill" id="todoBadge">0</div>
-        </div>
-        <div class="summary-num" id="todoNum">0</div>
-        <div class="summary-sub">交辦：<span id="todoTaskCount">0</span>　合約：<span id="todoContractCount">0</span></div>
-        <button class="btn secondary" style="width:auto" onclick="togglePanel('todoPanel')">展開代辦</button>
-      </section>
+        <article class="home-card">
+          <div>
+            <div class="badge badge-orange">代辦事項</div>
+            <h2>代辦事項</h2>
+            <div class="metric" id="todoCount">0</div>
+            <div class="subline">交辦事項：<span id="todoTaskCount">0</span> 件</div>
+            <div class="subline">待簽合約：<span id="todoContractCount">0</span> 件</div>
+          </div>
+          <button class="card-button orange" type="button" id="openTodoBtn">查看代辦</button>
+        </article>
 
-      <section class="summary-card">
-        <div class="summary-top">
-          <div class="summary-title">合約</div>
-          <div class="pill" id="contractBadge">-</div>
-        </div>
-        <div class="summary-num" id="contractYearText">-</div>
-        <div class="summary-sub" id="contractPeriodText">-</div>
-        <button class="btn secondary" style="width:auto" onclick="togglePanel('contractPanel')">展開合約</button>
-      </section>
-    </div>
-
-    <section class="panel" id="announcementsPanel">
-      <div class="panel-head">
-        <h2 class="title" style="margin:0">公告</h2>
-        <a class="btn secondary" href="announcements.html" style="width:auto;padding:10px 14px">前往完整公告列表</a>
+        <article class="home-card">
+          <div>
+            <div class="badge badge-green">合約</div>
+            <h2>合約</h2>
+            <div class="metric" id="contractStatus">-</div>
+            <div class="subline">合約期間：<span id="contractPeriod">-</span></div>
+            <div class="subline">年度：<span id="contractYear">-</span></div>
+          </div>
+          <button class="card-button green" type="button" id="openContractBtn">查看合約</button>
+        </article>
       </div>
+    </section>
+
+    <section class="section hidden" id="todoSection">
+      <h2 class="section-title">代辦摘要</h2>
+      <div class="todo-box" id="todoSummaryBox"></div>
+    </section>
+
+    <section class="section hidden" id="announcementSection">
+      <h2 class="section-title">最新公告</h2>
       <div class="list" id="announcementList"></div>
-    </section>
-
-    <section class="panel" id="todoPanel">
-      <div class="panel-head">
-        <h2 class="title" style="margin:0">代辦事項</h2>
-      </div>
-      <div class="list" id="todoList"></div>
-    </section>
-
-    <section class="panel" id="contractPanel">
-      <div class="panel-head">
-        <h2 class="title" style="margin:0">合約</h2>
-        <a class="btn" href="contract.html" id="contractOpenBtn" style="width:auto;padding:10px 14px">前往簽署 / 查看</a>
-      </div>
-      <div class="contract-body">
-        <div class="contract-meta">
-          <div class="box"><div class="label">狀態</div><div class="value" id="contractStatusText">-</div></div>
-          <div class="box"><div class="label">年度</div><div class="value" id="contractYearMeta">-</div></div>
-          <div class="box"><div class="label">期間</div><div class="value" id="contractPeriodMeta">-</div></div>
-          <div class="box"><div class="label">PDF</div><div class="value" id="contractPdfMeta">尚未簽署</div></div>
-        </div>
-        <div class="contract-html" id="contractHtmlBox">尚未讀取合約內容。</div>
-      </div>
     </section>
   </div>
 
-  <script src="config.js"></script>
-  <script src="app.js"></script>
   <script>
-    let currentUser=null;
-    let loadedFlags={ announcements:false, todo:false, contract:false };
+    const API_BASE = window.API_BASE || localStorage.getItem('employeeApiBaseUrl') || '';
 
-    function mediaLinksHtml(list){
-      list = Array.isArray(list)?list:[];
-      if(!list.length) return '';
-      return `<div class="media-list">${list.map(x=>`<a href="${x.url||'#'}" target="_blank">${x.name||'附件'}</a>`).join('')}</div>`;
+    function qs(name){
+      const url = new URL(window.location.href);
+      return url.searchParams.get(name) || '';
     }
 
-    function announcementCardHtml(row){
-      return `
-        <article class="item">
-          <div class="badge">${row.category||'公告'}｜${row.audienceLabel||''}</div>
-          <h3>${row.title||'未命名公告'}</h3>
-          <div class="meta">${row.publishDate||''}</div>
-          <div>${(row.summary||row.content||'').replace(/\n/g,'<br>')}</div>
-          ${mediaLinksHtml([...(row.imageAssets||[]), ...(row.videoAssets||[]), ...(row.audioAssets||[]), ...(row.fileAssets||[])])}
-        </article>`;
+    function getUserId(){
+      return qs('userId') || localStorage.getItem('employeeUserId') || localStorage.getItem('teacherUserId') || '';
     }
 
-    function todoCardHtml(row){
-      return `
-        <article class="item">
-          <div class="badge">${row.status||''}</div>
-          <h3>${row.title||''}</h3>
-          <div>${row.description||''}</div>
-        </article>`;
+    function getOpenTargets(){
+      return {
+        announcement: localStorage.getItem('teacherAnnouncementPageUrl') || 'teacher-announcements.html',
+        todo: localStorage.getItem('teacherTodoPageUrl') || 'teacher-todo.html',
+        contract: localStorage.getItem('teacherContractPageUrl') || 'contract.html'
+      };
     }
 
-    function togglePanel(id){
-      const el=document.getElementById(id);
-      const show=!el.classList.contains('show');
-      document.querySelectorAll('.panel').forEach(x=>x.classList.remove('show'));
-      if(show) el.classList.add('show');
-      if(show){
-        if(id==='announcementsPanel' && !loadedFlags.announcements) loadAnnouncements();
-        if(id==='todoPanel' && !loadedFlags.todo) loadTodo();
-        if(id==='contractPanel' && !loadedFlags.contract) loadContract();
-      }
+    function setStatus(message, isError){
+      const box = document.getElementById('statusBox');
+      box.textContent = message || '';
+      box.className = isError ? 'error' : 'loading';
     }
 
-    async function loadAnnouncements(){
-      try{
-        const res=await api('getTeacherAnnouncements',{userId:currentUser.id});
-        if(!res.ok) throw new Error(res.message||'讀取公告失敗');
-        const rows=res.rows||[];
-        document.getElementById('announcementList').innerHTML = rows.length ? rows.map(announcementCardHtml).join('') : '<div class="empty">目前沒有公告</div>';
-        loadedFlags.announcements=true;
-      }catch(e){
-        document.getElementById('announcementList').innerHTML = `<div class="empty">${e.message||'讀取失敗'}</div>`;
-      }
+    async function postJson(action, payload){
+      if(!API_BASE) throw new Error('缺少 API_BASE');
+      const res = await fetch(API_BASE, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(Object.assign({ action }, payload || {}))
+      });
+      const json = await res.json();
+      if(!json.ok) throw new Error(json.message || '讀取失敗');
+      return json;
     }
 
-    async function loadTodo(){
-      try{
-        const res=await api('getTeacherTodoSummary',{userId:currentUser.id});
-        if(!res.ok) throw new Error(res.message||'讀取代辦失敗');
-        const rows=res.rows||[];
-        document.getElementById('todoList').innerHTML = rows.length ? rows.map(todoCardHtml).join('') : '<div class="empty">目前沒有代辦事項</div>';
-        loadedFlags.todo=true;
-      }catch(e){
-        document.getElementById('todoList').innerHTML = `<div class="empty">${e.message||'讀取失敗'}</div>`;
-      }
+    function escapeHtml(text){
+      return String(text || '')
+        .replace(/&/g,'&amp;')
+        .replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;')
+        .replace(/'/g,'&#39;');
     }
 
-    async function loadContract(){
-      try{
-        const res=await api('getTeacherContractStatus',{userId:currentUser.id});
-        if(!res.ok) throw new Error(res.message||'讀取合約失敗');
-        const contract=res.contract||{};
-        const record=res.record||null;
-        document.getElementById('contractStatusText').textContent = res.signed ? '已簽署' : '尚未簽署';
-        document.getElementById('contractYearMeta').textContent = contract.year || '-';
-        document.getElementById('contractPeriodMeta').textContent = [contract.startDate||'', contract.endDate||''].filter(Boolean).join(' ～ ') || '-';
-        document.getElementById('contractPdfMeta').innerHTML = record && record.pdfUrl ? `<a href="${record.pdfUrl}" target="_blank">查看已簽 PDF</a>` : '尚未簽署';
-        document.getElementById('contractHtmlBox').innerHTML = contract.contractHtml || (contract.contractText||'尚未設定合約');
-        loadedFlags.contract=true;
-      }catch(e){
-        document.getElementById('contractHtmlBox').innerHTML = `<div class="empty">${e.message||'讀取失敗'}</div>`;
-      }
+    function renderHome(data){
+      document.getElementById('teacherInfo').textContent = `${data.teacher.name || ''}｜${data.teacher.email || ''}`;
+
+      const cards = data.cards || {};
+      const announcements = cards.announcements || {};
+      const todos = cards.todos || {};
+      const contract = cards.contract || {};
+
+      document.getElementById('announcementCount').textContent = announcements.total || 0;
+      document.getElementById('announcementLatestDate').textContent = announcements.latestDate || '-';
+      document.getElementById('announcementUnreadCount').textContent = announcements.unreadCount || 0;
+
+      document.getElementById('todoCount').textContent = todos.total || 0;
+      document.getElementById('todoTaskCount').textContent = todos.pendingTaskCount || 0;
+      document.getElementById('todoContractCount').textContent = todos.pendingContractCount || 0;
+
+      document.getElementById('contractStatus').textContent = contract.statusText || '-';
+      document.getElementById('contractPeriod').textContent = contract.periodText || '-';
+      document.getElementById('contractYear').textContent = contract.year || '-';
+
+      const todoSummary = Array.isArray(data.todoSummary) ? data.todoSummary : [];
+      document.getElementById('todoSummaryBox').innerHTML = todoSummary.length
+        ? todoSummary.map(item => `<div class="todo-item">${escapeHtml(item)}</div>`).join('')
+        : '<div class="todo-item">目前沒有待處理事項</div>';
+
+      const notices = Array.isArray(data.latestAnnouncements) ? data.latestAnnouncements : [];
+      document.getElementById('announcementList').innerHTML = notices.length
+        ? notices.map(item => `
+          <article class="notice-card">
+            <div class="notice-tag">${escapeHtml(item.category || '公告')}</div>
+            <div class="notice-top">
+              <h3 class="notice-title">${escapeHtml(item.title || '')}</h3>
+              <div class="notice-date">${escapeHtml(item.publishDate || '')}</div>
+            </div>
+            <div class="notice-summary">${escapeHtml(item.summary || '')}</div>
+          </article>
+        `).join('')
+        : '<div class="notice-card">目前沒有公告</div>';
+
+      document.getElementById('cardsSection').classList.remove('hidden');
+      document.getElementById('todoSection').classList.remove('hidden');
+      document.getElementById('announcementSection').classList.remove('hidden');
+      document.getElementById('statusBox').classList.add('hidden');
     }
 
     async function loadHome(){
+      const userId = getUserId();
+      if(!userId){
+        setStatus('缺少 userId，請從系統入口重新開啟。', true);
+        return;
+      }
       try{
-        const res=await api('getTeacherHomeData',{userId:currentUser.id});
-        if(!res.ok) throw new Error(res.message||'讀取首頁失敗');
-        const teacher=res.teacher||{};
-        const cards=res.cards||{};
-        document.getElementById('teacherSubText').textContent = `${teacher.name||''} ${teacher.email||''}`.trim() || '外聘老師專區';
-
-        const a=cards.announcements||{};
-        const t=cards.todos||{};
-        const c=cards.contract||{};
-        document.getElementById('announcementNum').textContent = String(a.total||0);
-        document.getElementById('announcementBadge').textContent = String(a.unreadCount||0);
-        document.getElementById('announcementDate').textContent = a.latestDate||'-';
-
-        document.getElementById('todoNum').textContent = String(t.total||0);
-        document.getElementById('todoBadge').textContent = String(t.total||0);
-        document.getElementById('todoTaskCount').textContent = String(t.pendingTaskCount||0);
-        document.getElementById('todoContractCount').textContent = String(t.pendingContractCount||0);
-
-        document.getElementById('contractBadge').textContent = c.signed ? '已簽' : '待簽';
-        document.getElementById('contractYearText').textContent = c.year || '-';
-        document.getElementById('contractPeriodText').textContent = c.periodText || c.statusText || '-';
-        document.getElementById('contractPageLink').href = `contract.html?userId=${encodeURIComponent(currentUser.id)}`;
-        document.getElementById('contractOpenBtn').href = `contract.html?userId=${encodeURIComponent(currentUser.id)}`;
-
-        setMsg(qs('#msg'),'');
-        loadedFlags={ announcements:false, todo:false, contract:false };
-        document.querySelectorAll('.panel').forEach(x=>x.classList.remove('show'));
-      }catch(e){
-        setMsg(qs('#msg'),e.message||'讀取失敗',true);
+        setStatus('正在讀取首頁資料...', false);
+        const data = await postJson('getTeacherHomeData', { userId });
+        renderHome(data);
+      }catch(err){
+        setStatus(err.message || '讀取失敗', true);
       }
     }
 
-    function initTeacherHome(){
-      fillHeader();
-      currentUser=requireLogin();
-      if(!currentUser) return;
-      if(!isExternalTeacher(currentUser)){ location.href='dashboard.html'; return; }
-      setPortalMode('staff');
-      loadHome();
+    function openPage(target){
+      const userId = getUserId();
+      const base = target || '';
+      if(!base) return;
+      const url = new URL(base, window.location.href);
+      if(userId) url.searchParams.set('userId', userId);
+      window.location.href = url.toString();
     }
+
+    document.getElementById('refreshBtn').addEventListener('click', loadHome);
+    document.getElementById('logoutBtn').addEventListener('click', function(){
+      localStorage.removeItem('teacherUserId');
+      localStorage.removeItem('employeeUserId');
+      alert('已登出');
+    });
+
+    document.getElementById('openAnnouncementBtn').addEventListener('click', function(){
+      openPage(getOpenTargets().announcement);
+    });
+    document.getElementById('openTodoBtn').addEventListener('click', function(){
+      openPage(getOpenTargets().todo);
+    });
+    document.getElementById('openContractBtn').addEventListener('click', function(){
+      openPage(getOpenTargets().contract);
+    });
+
+    loadHome();
   </script>
 </body>
 </html>
