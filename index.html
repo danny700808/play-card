@@ -5,228 +5,37 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>柚子樂器系統｜登入</title>
   <link rel="stylesheet" href="style.css">
-  <style>
-    .auth-sub-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
-    .auth-panel{margin-top:6px}
-    .auth-panel.hidden{display:none}
-    .auth-note{margin-top:8px;padding:10px 12px;border-radius:14px;background:#f3f7f4;color:#355f4a;font-size:14px;line-height:1.7}
-    .auth-back-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
-    .password-rule{margin-top:6px;font-size:13px;line-height:1.7;color:#6b7280}
-  </style>
 </head>
-<body>
-  <div class="container">
-    <div class="card login-card">
-      <div class="header login-header">
-        <div class="login-system-names">
-          <h1 class="title center">柚子樂器系統</h1>
-          <div class="login-system-subtitle">外聘老師系統</div>
-        </div>
+<body onload="initLoginPage()">
+  <div class="container auth-shell">
+    <div class="card auth-card">
+      <div class="header auth-header">
+        <h1 class="title auth-title">柚子樂器系統</h1>
       </div>
 
-      <div id="msg" class="message"></div>
+      <label class="field-label" for="loginEmail">Email</label>
+      <input id="loginEmail" class="input" type="email" autocomplete="username" placeholder="請輸入 Email">
 
-      <div id="loginPanel" class="auth-panel">
-        <div class="field">
-          <label>Email</label>
-          <input id="email" type="email" placeholder="請輸入 Email">
-        </div>
-
-        <div class="field">
-          <label>密碼</label>
-          <div class="password-wrap">
-            <input id="password" type="password" placeholder="請輸入密碼">
-            <button type="button" class="eye" id="eyeBtn">👁</button>
-          </div>
-        </div>
-
-        <div class="remember-row">
-          <label class="remember-label"><input id="rememberLogin" type="checkbox" checked> <span>記住帳號密碼</span></label>
-        </div>
-
-        <div class="login-actions-stack">
-          <button class="btn login-main-btn" id="loginBtn">登入</button>
-          <div class="auth-sub-actions">
-            <button class="btn secondary" id="forgotBtn" type="button">忘記密碼</button>
-            <button class="btn secondary" id="resetBtn" type="button">重設密碼</button>
-          </div>
-          <a href="register.html" class="btn btn-link" style="margin-top:12px">前往註冊</a>
-        </div>
+      <label class="field-label" for="loginPassword">密碼</label>
+      <div class="password-wrap">
+        <input id="loginPassword" class="input" type="password" autocomplete="current-password" placeholder="請輸入密碼">
+        <button type="button" class="eye-btn" onclick="togglePassword('loginPassword', this)">👁</button>
       </div>
 
-      <div id="forgotPanel" class="auth-panel hidden">
-        <div class="field">
-          <label>Email</label>
-          <input id="forgotEmail" type="email" placeholder="請輸入已註冊 Email">
-        </div>
-        <div class="auth-note">系統會重新產生一組暫時密碼並寄送到你的 Email，收到後可用該密碼重新登入。</div>
-        <div class="login-actions-stack">
-          <button class="btn login-main-btn" id="forgotSubmitBtn" type="button">寄送暫時密碼</button>
-          <div class="auth-back-row">
-            <button class="btn secondary" id="backToLoginFromForgot" type="button">返回登入</button>
-          </div>
-        </div>
+      <label class="remember-row"><input id="rememberMe" type="checkbox"> <span>記住帳號密碼</span></label>
+
+      <button class="btn primary" onclick="login()">登入</button>
+
+      <div class="btn-row two">
+        <button class="btn secondary" onclick="goForgotPassword()">忘記密碼</button>
+        <button class="btn secondary" onclick="goChangePassword()">重設密碼</button>
       </div>
 
-      <div id="resetPanel" class="auth-panel hidden">
-        <div class="field">
-          <label>Email</label>
-          <input id="resetEmail" type="email" placeholder="請輸入已註冊 Email">
-        </div>
-        <div class="field">
-          <label>原密碼</label>
-          <div class="password-wrap">
-            <input id="resetOldPassword" type="password" placeholder="請輸入目前密碼">
-            <button type="button" class="eye" id="resetOldEyeBtn">👁</button>
-          </div>
-        </div>
-        <div class="field">
-          <label>新密碼</label>
-          <div class="password-wrap">
-            <input id="resetNewPassword" type="password" placeholder="請輸入新密碼">
-            <button type="button" class="eye" id="resetNewEyeBtn">👁</button>
-          </div>
-          <div class="password-rule">密碼至少 8 碼，需包含英文大寫、英文小寫與數字。</div>
-        </div>
-        <div class="field">
-          <label>確認新密碼</label>
-          <div class="password-wrap">
-            <input id="resetConfirmPassword" type="password" placeholder="請再次輸入新密碼">
-            <button type="button" class="eye" id="resetConfirmEyeBtn">👁</button>
-          </div>
-        </div>
-        <div class="login-actions-stack">
-          <button class="btn login-main-btn" id="resetSubmitBtn" type="button">確認重設密碼</button>
-          <div class="auth-back-row">
-            <button class="btn secondary" id="backToLoginFromReset" type="button">返回登入</button>
-          </div>
-        </div>
-      </div>
+      <button class="btn primary" onclick="goRegister()">前往註冊</button>
+      <div id="message" class="message" style="display:none"></div>
     </div>
   </div>
-
   <script src="config.js"></script>
   <script src="app.js"></script>
-  <script>
-    const msg = qs('#msg');
-    const panels = {
-      login: qs('#loginPanel'),
-      forgot: qs('#forgotPanel'),
-      reset: qs('#resetPanel')
-    };
-
-    applySavedLogin();
-    qs('#eyeBtn').onclick = () => togglePassword('#password', qs('#eyeBtn'));
-    qs('#resetOldEyeBtn').onclick = () => togglePassword('#resetOldPassword', qs('#resetOldEyeBtn'));
-    qs('#resetNewEyeBtn').onclick = () => togglePassword('#resetNewPassword', qs('#resetNewEyeBtn'));
-    qs('#resetConfirmEyeBtn').onclick = () => togglePassword('#resetConfirmPassword', qs('#resetConfirmEyeBtn'));
-
-    function fillSharedEmail(value){
-      const v = (value || '').trim();
-      if (!v) return;
-      ['#email','#forgotEmail','#resetEmail'].forEach(sel => {
-        const el = qs(sel);
-        if (el) el.value = v;
-      });
-    }
-
-    function setAuthMode(mode){
-      Object.keys(panels).forEach(key => panels[key].classList.toggle('hidden', key !== mode));
-      setMsg(msg, '');
-      if (mode === 'forgot') {
-        fillSharedEmail(qs('#email').value || qs('#resetEmail').value);
-        qs('#forgotEmail').focus();
-      } else if (mode === 'reset') {
-        fillSharedEmail(qs('#email').value || qs('#forgotEmail').value);
-        qs('#resetEmail').focus();
-      } else {
-        fillSharedEmail(qs('#forgotEmail').value || qs('#resetEmail').value || qs('#email').value);
-        qs('#email').focus();
-      }
-    }
-
-    qs('#loginBtn').onclick = async () => {
-      const btn = qs('#loginBtn');
-      const progress = startActionButtonProgress(btn, { label:'登入中' });
-      setMsg(msg, '');
-      try {
-        const r = await api('login', {
-          email: qs('#email').value.trim(),
-          password: qs('#password').value.trim()
-        });
-        setMsg(msg, r.message, !r.ok);
-        if (r.ok) {
-          saveLoginPref(qs('#email').value.trim(), qs('#password').value.trim(), qs('#rememberLogin').checked);
-          setMsg(msg, '登入成功，正在進入系統...');
-          progress.done('登入成功', 400, true);
-          setTimeout(() => redirectAfterLogin(r.user), 450);
-        } else {
-          progress.fail('登入失敗');
-        }
-      } catch (e) {
-        progress.fail('登入失敗');
-        throw e;
-      }
-    };
-
-    qs('#forgotBtn').onclick = () => setAuthMode('forgot');
-    qs('#resetBtn').onclick = () => setAuthMode('reset');
-    qs('#backToLoginFromForgot').onclick = () => setAuthMode('login');
-    qs('#backToLoginFromReset').onclick = () => setAuthMode('login');
-
-    qs('#forgotSubmitBtn').onclick = async () => {
-      const email = qs('#forgotEmail').value.trim();
-      if (!email) {
-        setMsg(msg, '請先輸入 Email。', true);
-        qs('#forgotEmail').focus();
-        return;
-      }
-      fillSharedEmail(email);
-      const btn = qs('#forgotSubmitBtn');
-      const progress = startActionButtonProgress(btn, { label:'寄送中' });
-      try {
-        const r = await api('forgotPassword', { email });
-        setMsg(msg, r.message, !r.ok);
-        if (r.ok) {
-          progress.done('已寄出');
-        } else {
-          progress.fail('寄送失敗');
-        }
-      } catch (e) {
-        progress.fail('寄送失敗');
-        throw e;
-      }
-    };
-
-    qs('#resetSubmitBtn').onclick = async () => {
-      const email = qs('#resetEmail').value.trim();
-      const oldPassword = qs('#resetOldPassword').value.trim();
-      const newPassword = qs('#resetNewPassword').value.trim();
-      const confirmPassword = qs('#resetConfirmPassword').value.trim();
-      if (!email || !oldPassword || !newPassword || !confirmPassword) {
-        setMsg(msg, '請完整填寫 Email、原密碼與兩次新密碼。', true);
-        return;
-      }
-      fillSharedEmail(email);
-      const btn = qs('#resetSubmitBtn');
-      const progress = startActionButtonProgress(btn, { label:'更新中' });
-      try {
-        const r = await api('changePassword', { email, oldPassword, newPassword, confirmPassword });
-        setMsg(msg, r.message, !r.ok);
-        if (r.ok) {
-          qs('#password').value = '';
-          qs('#resetOldPassword').value = '';
-          qs('#resetNewPassword').value = '';
-          qs('#resetConfirmPassword').value = '';
-          progress.done('更新完成');
-        } else {
-          progress.fail('更新失敗');
-        }
-      } catch (e) {
-        progress.fail('更新失敗');
-        throw e;
-      }
-    };
-  </script>
 </body>
 </html>
