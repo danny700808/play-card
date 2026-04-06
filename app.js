@@ -219,14 +219,28 @@ function ensureLineBindPromptStyle_(){
   `;
   document.head.appendChild(s);
 }
-async function renderLineBindPrompt_(){
+async function setLineNotifyPreference_(enabled, clearBinding){
+  const user=getUser();
+  if(!user || !user.id) throw new Error('找不到登入資料，請重新登入');
+  const res=await api('setLineNotifyPreference',{
+    userId:user.id,
+    enabled:enabled ? '是' : '否',
+    clearBinding:clearBinding ? '是' : '否'
+  });
+  if(!res.ok) throw new Error(res.message || '儲存 LINE 設定失敗');
+  if(res.user) saveUser(res.user);
+  return res;
+}
+async function renderLineBindPrompt_(targetSelector){
   const user=getUser();
   if(!user) return;
   const existing=document.getElementById('lineBindPromptCard');
   if(existing) existing.remove();
-  if(isLineBound(user)) return;
-  const container=document.querySelector('.container');
-  if(!container) return;
+  const target=(typeof targetSelector==='string' && document.querySelector(targetSelector))
+    || document.getElementById('lineBindArea')
+    || document.querySelector('.page')
+    || document.querySelector('.container');
+  if(!target) return;
   ensureLineBindPromptStyle_();
   const links=await getPublicSystemLinksCached();
   const wrap=document.createElement('div');
@@ -234,27 +248,81 @@ async function renderLineBindPrompt_(){
   wrap.id='lineBindPromptCard';
   const email=String(user.email||'').trim();
   const cmd=`柚子綁定 ${email}`;
+  const hasLineId=!!String(user.lineUserId||'').trim();
+  const notifyOn=String(user.lineNotifyEnabled||'').trim()==='是' || user.lineNotifyEnabled===true;
+
+  if(!hasLineId){
+    wrap.innerHTML=`
+      <h3>想更即時收到提醒嗎？</h3>
+      <p>你可以先加入柚子樂器官方 LINE，再把下面這段文字貼到 LINE 訊息欄完成綁定。綁定後就能用 LINE 收提醒。</p>
+      <ol class="line-bind-steps">
+        <li><span class="line-bind-step-no">1</span><div>先加入柚子樂器官方 LINE。</div></li>
+        <li><span class="line-bind-step-no">2</span><div>加入後，到官方 LINE 的訊息欄輸入下面這段文字完成綁定。</div></li>
+      </ol>
+      <div class="line-bind-command">${cmd}</div>
+      <div class="line-bind-actions">
+        <a class="btn" id="lineBindJoinBtn" href="${links.lineAddFriendUrl||'#'}" target="_blank" rel="noopener">立即加入 LINE</a>
+        <button class="btn secondary" type="button" id="copyLineBindCmdBtn">一鍵複製綁定文字</button>
+      </div>
+      <div class="line-bind-note">加入官方 LINE 後，把上面這段文字直接貼上送出即可完成綁定。</div>
+    `;
+    target.appendChild(wrap);
+    const joinBtn=wrap.querySelector('#lineBindJoinBtn');
+    if(!links.lineAddFriendUrl) joinBtn.style.display='none';
+    wrap.querySelector('#copyLineBindCmdBtn').onclick=async()=>{
+      try{ await navigator.clipboard.writeText(cmd); wrap.querySelector('#copyLineBindCmdBtn').textContent='已複製'; setTimeout(()=>{const b=wrap.querySelector('#copyLineBindCmdBtn'); if(b) b.textContent='一鍵複製綁定文字';},1600);}catch(e){ alert('複製失敗，請手動複製：
+'+cmd); }
+    };
+    return;
+  }
+
   wrap.innerHTML=`
-    <h3>想更即時收到提醒嗎？</h3>
-    <p>不綁定 LINE 也可以透過 Email 接收訊息。</p>
-    <ol class="line-bind-steps">
-      <li><span class="line-bind-step-no">1</span><div>先加入柚子樂器官方 LINE。</div></li>
-      <li><span class="line-bind-step-no">2</span><div>加入後，到官方 LINE 的訊息欄輸入下面這段文字完成綁定。</div></li>
-    </ol>
-    <div class="line-bind-command">${cmd}</div>
+    <h3>${notifyOn ? '你已完成 LINE 綁定' : '你已綁定 LINE，但目前提醒已關閉'}</h3>
+    <p>${notifyOn ? '目前 LINE 提醒已開啟；如果之後不需要，可直接在這裡取消。' : '你可以隨時重新開啟 LINE 提醒，不需要重新綁定。'}</p>
+    <div class="line-bind-command">${notifyOn ? '目前狀態：LINE 提醒已開啟' : '目前狀態：LINE 提醒已關閉'}</div>
     <div class="line-bind-actions">
-      <a class="btn" id="lineBindJoinBtn" href="${links.lineAddFriendUrl||'#'}" target="_blank" rel="noopener">立即加入 LINE</a>
-      <button class="btn secondary" type="button" id="copyLineBindCmdBtn">複製綁定指令</button>
+      <button class="btn ${notifyOn ? 'secondary' : ''}" type="button" id="toggleLineNotifyBtn">${notifyOn ? '取消 LINE 提醒' : '重新開啟 LINE 提醒'}</button>
+      <button class="btn secondary" type="button" id="unbindLineBtn">解除 LINE 綁定</button>
     </div>
-    <div class="line-bind-note">你也可以先複製上面的文字，加入官方 LINE 後直接貼上即可完成綁定。</div>
+    <div class="line-bind-note">取消提醒後，不會再透過 LINE 收到通知；解除綁定會清除目前的 LINE 連結資料。</div>
   `;
-  container.appendChild(wrap);
-  const joinBtn=wrap.querySelector('#lineBindJoinBtn');
-  if(!links.lineAddFriendUrl){ joinBtn.style.display='none'; }
-  wrap.querySelector('#copyLineBindCmdBtn').onclick=async()=>{
-    try{ await navigator.clipboard.writeText(cmd); wrap.querySelector('#copyLineBindCmdBtn').textContent='已複製'; setTimeout(()=>{const b=wrap.querySelector('#copyLineBindCmdBtn'); if(b) b.textContent='複製綁定指令';},1600);}catch(e){ alert('複製失敗，請手動複製：\n'+cmd); }
+  target.appendChild(wrap);
+  const toggleBtn=wrap.querySelector('#toggleLineNotifyBtn');
+  const unbindBtn=wrap.querySelector('#unbindLineBtn');
+  toggleBtn.onclick=async()=>{
+    const wantEnable=!notifyOn;
+    const text=wantEnable ? '確定要重新開啟 LINE 提醒嗎？' : '確定要取消 LINE 提醒嗎？';
+    if(!window.confirm(text)) return;
+    const progress=startActionButtonProgress(toggleBtn,{label:wantEnable?'儲存中':'處理中',maxPct:86});
+    if(unbindBtn) unbindBtn.disabled=true;
+    try{
+      progress.set(18, wantEnable ? '更新 LINE 提醒設定' : '關閉 LINE 提醒中');
+      await setLineNotifyPreference_(wantEnable,false);
+      progress.done(wantEnable ? '已開啟' : '已關閉', 450, true);
+      await renderLineBindPrompt_(targetSelector);
+    }catch(e){
+      progress.fail('儲存失敗');
+      alert(e.message || '儲存失敗');
+      if(unbindBtn) unbindBtn.disabled=false;
+    }
+  };
+  unbindBtn.onclick=async()=>{
+    if(!window.confirm('確定要解除 LINE 綁定嗎？解除後若要再用 LINE 提醒，需要重新綁定一次。')) return;
+    const progress=startActionButtonProgress(unbindBtn,{label:'解除中',maxPct:86});
+    if(toggleBtn) toggleBtn.disabled=true;
+    try{
+      progress.set(18,'清除 LINE 綁定資料');
+      await setLineNotifyPreference_(false,true);
+      progress.done('已解除', 450, true);
+      await renderLineBindPrompt_(targetSelector);
+    }catch(e){
+      progress.fail('解除失敗');
+      alert(e.message || '解除綁定失敗');
+      if(toggleBtn) toggleBtn.disabled=false;
+    }
   };
 }
+
 
 
 const __btnProgressMap=new WeakMap();

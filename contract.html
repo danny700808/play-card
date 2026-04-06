@@ -502,19 +502,22 @@
       const err=validateForm();
       if(err){ alert(err); return; }
       const btn=qs('#submitBtn');
-      btn.disabled=true;
-      btn.textContent='送出中…';
+      const progress=startActionButtonProgress(btn,{label:'送出中',auto:false});
       try{
+        progress.set(10,'檢查簽署資料');
         const payload=buildPayload();
-        const res=await api('submitTeacherContractSignature', payload);
+        progress.set(34,'整理合約資料');
+        const request=api('submitTeacherContractSignature', payload);
+        await sleep(120);
+        progress.set(72,'建立合約 PDF');
+        const res=await request;
         if(!res.ok) throw new Error(res.message||'送出失敗');
+        progress.done('送出成功');
         alert(res.message||'簽署完成，系統已寄送 PDF 到你的信箱。');
         location.reload();
       }catch(e){
+        progress.fail('送出失敗');
         alert(e.message||'送出失敗');
-      }finally{
-        btn.disabled=false;
-        btn.textContent='正式送出';
       }
     }
 

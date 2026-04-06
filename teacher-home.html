@@ -6,180 +6,48 @@
   <title>外聘老師首頁</title>
   <style>
     :root{
-      --bg:#f5f7fb;
+      --bg:#eef2f6;
       --card:#ffffff;
       --line:#d9e2ef;
-      --text:#1f2f46;
-      --sub:#6b7280;
-      --green:#1f8a5b;
-      --green-weak:#e9f7f0;
-      --blue:#315b8a;
-      --blue-weak:#eef4fb;
-      --orange:#b86b00;
-      --orange-weak:#fff4e8;
+      --text:#22364d;
+      --muted:#70829a;
+      --soft:#f2f5f9;
+      --accent:#1f7a5a;
       --danger:#b42318;
-      --shadow:0 12px 34px rgba(25, 46, 89, .08);
-      --radius:22px;
+      --shadow:0 10px 28px rgba(25,46,89,.06);
+      --radius:30px;
     }
     *{box-sizing:border-box}
-    body{
-      margin:0;
-      background:var(--bg);
-      color:var(--text);
-      font-family:Arial,"Noto Sans TC",sans-serif;
-      line-height:1.6;
-    }
-    .page{
-      max-width:900px;
-      margin:0 auto;
-      padding:20px 16px 32px;
-    }
-    .hero{
-      background:var(--card);
-      border:1px solid var(--line);
-      border-radius:28px;
-      box-shadow:var(--shadow);
-      padding:22px 20px;
-      display:flex;
-      flex-wrap:wrap;
-      gap:14px;
-      justify-content:space-between;
-      align-items:flex-start;
-    }
-    .hero h1{
-      margin:0 0 6px;
-      font-size:32px;
-      line-height:1.2;
-      color:#1d3557;
-    }
-    .hero .meta{color:var(--sub);font-size:16px}
-    .hero-actions{display:flex;gap:10px;flex-wrap:wrap}
-    .btn{
-      border:none;
-      border-radius:16px;
-      padding:12px 18px;
-      font-size:18px;
-      font-weight:800;
-      cursor:pointer;
-    }
-    .btn-primary{background:var(--green);color:#fff}
-    .btn-secondary{background:#eef2f7;color:#23384f}
-    .section{margin-top:20px}
-    .section-title{
-      margin:0 0 12px;
-      font-size:24px;
-      font-weight:900;
-      color:#1d3557;
-    }
-    .grid-3{
-      display:grid;
-      grid-template-columns:repeat(3,minmax(0,1fr));
-      gap:14px;
-    }
-    .home-card{
-      background:var(--card);
-      border:1px solid var(--line);
-      border-radius:24px;
-      box-shadow:var(--shadow);
-      padding:18px;
-      min-height:220px;
-      display:flex;
-      flex-direction:column;
-      justify-content:space-between;
-      gap:14px;
-    }
-    .home-card h2{
-      margin:0;
-      font-size:24px;
-      color:#1d3557;
-    }
-    .badge{
-      display:inline-flex;
-      align-items:center;
-      justify-content:center;
-      min-width:42px;
-      padding:6px 12px;
-      border-radius:999px;
-      font-size:15px;
-      font-weight:800;
-    }
-    .badge-green{background:var(--green-weak);color:var(--green)}
-    .badge-blue{background:var(--blue-weak);color:var(--blue)}
-    .badge-orange{background:var(--orange-weak);color:var(--orange)}
-    .metric{font-size:38px;font-weight:900;line-height:1;color:#19324d}
-    .muted{color:var(--sub)}
-    .subline{font-size:15px;color:var(--sub)}
-    .card-button{
-      display:inline-flex;
-      align-items:center;
-      justify-content:center;
-      width:100%;
-      border-radius:16px;
-      padding:13px 16px;
-      font-size:18px;
-      font-weight:900;
-      border:none;
-      cursor:pointer;
-    }
-    .card-button.green{background:var(--green);color:#fff}
-    .card-button.blue{background:#e9f0f9;color:#24486f}
-    .card-button.orange{background:#fff1df;color:#a35a00}
-    .list{
-      display:grid;
-      gap:12px;
-    }
-    .notice-card{
-      background:var(--card);
-      border:1px solid var(--line);
-      border-radius:22px;
-      box-shadow:var(--shadow);
-      padding:18px;
-    }
-    .notice-top{
-      display:flex;
-      justify-content:space-between;
-      align-items:flex-start;
-      gap:12px;
-      margin-bottom:8px;
-    }
-    .notice-title{font-size:22px;font-weight:900;color:#1d3557;margin:0}
-    .notice-date{font-size:15px;color:var(--sub);white-space:nowrap}
-    .notice-tag{
-      display:inline-block;
-      padding:6px 12px;
-      border-radius:999px;
-      font-size:14px;
-      font-weight:800;
-      background:#edf3fb;
-      color:#315b8a;
-      margin-bottom:10px;
-    }
-    .notice-summary{font-size:17px;color:#334155;white-space:pre-wrap}
-    .todo-box{
-      background:var(--card);
-      border:1px solid var(--line);
-      border-radius:22px;
-      box-shadow:var(--shadow);
-      padding:18px;
-    }
-    .todo-item{
-      padding:14px 0;
-      border-bottom:1px dashed #d9e2ef;
-      font-size:18px;
-    }
-    .todo-item:last-child{border-bottom:none;padding-bottom:0}
-    .loading,.error{
-      background:var(--card);
-      border:1px solid var(--line);
-      border-radius:18px;
-      padding:18px;
-      color:var(--sub);
-    }
-    .error{color:var(--danger);border-color:#f0c9c5;background:#fff5f5}
-    .hidden{display:none!important}
-    @media (max-width: 860px){
-      .grid-3{grid-template-columns:1fr}
-      .hero h1{font-size:28px}
+    body{margin:0;background:var(--bg);color:var(--text);font-family:Arial,"Noto Sans TC",sans-serif}
+    .page{max-width:760px;margin:0 auto;padding:18px 16px 36px}
+    .hero{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;background:var(--card);border:1px solid var(--line);border-radius:30px;padding:24px 22px;box-shadow:var(--shadow)}
+    .hero h1{margin:0;font-size:28px;line-height:1.25;color:#18314a;font-weight:900}
+    .welcome{margin-top:8px;font-size:17px;font-weight:800;color:#24384f}
+    .meta{margin-top:2px;font-size:14px;color:var(--muted)}
+    .btn{border:none;border-radius:18px;padding:14px 18px;font-size:18px;font-weight:900;cursor:pointer;background:#e9eef5;color:#24384f}
+    .btn:disabled{opacity:.55;cursor:default}
+    .section{margin-top:18px}
+    .status{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:14px 16px;color:var(--muted)}
+    .status.error{color:var(--danger);border-color:#efc8c8;background:#fff6f6}
+    .cards{display:grid;gap:18px}
+    .entry-card{display:flex;justify-content:space-between;align-items:center;gap:14px;text-decoration:none;color:inherit;background:var(--card);border:1px solid var(--line);border-radius:30px;padding:26px 30px;box-shadow:var(--shadow);min-height:132px;cursor:pointer}
+    .entry-card:hover{transform:translateY(-1px)}
+    .entry-title{font-size:28px;line-height:1.2;font-weight:900;color:#18314a;margin:0 0 14px}
+    .entry-desc{font-size:18px;line-height:1.7;color:var(--muted)}
+    .entry-count{min-width:72px;text-align:center;font-size:54px;line-height:1;font-weight:900;color:#bcc6d4}
+    .entry-count.done{font-size:20px;color:var(--accent);background:#ecf7f1;border-radius:999px;padding:12px 16px;min-width:92px}
+    .line-slot{margin-top:18px}
+    .line-inline-note{margin-top:12px;font-size:14px;color:var(--muted);line-height:1.7}
+    @media (max-width:640px){
+      .page{padding:14px 12px 28px}
+      .hero{padding:20px 18px;border-radius:24px}
+      .hero h1{font-size:24px}
+      .btn{padding:12px 16px;font-size:17px}
+      .entry-card{padding:24px 22px;min-height:122px;border-radius:26px}
+      .entry-title{font-size:24px;margin-bottom:10px}
+      .entry-desc{font-size:16px}
+      .entry-count{font-size:46px;min-width:58px}
+      .entry-count.done{font-size:18px;min-width:84px}
     }
   </style>
 </head>
@@ -187,224 +55,141 @@
   <div class="page">
     <section class="hero">
       <div>
-        <h1>外聘老師首頁</h1>
-        <div class="meta" id="teacherInfo">讀取中...</div>
+        <h1>柚子員工系統｜外聘老師首頁</h1>
+        <div class="welcome" id="teacherName">讀取中...</div>
+        <div class="meta" id="teacherMeta"></div>
       </div>
-      <div class="hero-actions">
-        <button class="btn btn-secondary" type="button" id="refreshBtn">重新整理</button>
-        <button class="btn btn-secondary" type="button" id="logoutBtn">登出</button>
-      </div>
-    </section>
-
-    <div class="section">
-      <div id="statusBox" class="loading">正在讀取首頁資料...</div>
-    </div>
-
-    <section class="section hidden" id="cardsSection">
-      <h2 class="section-title">老師首頁入口</h2>
-      <div class="grid-3">
-        <article class="home-card">
-          <div>
-            <div class="badge badge-blue">公告</div>
-            <h2>公告</h2>
-            <div class="metric" id="announcementCount">0</div>
-            <div class="subline">最新日期：<span id="announcementLatestDate">-</span></div>
-            <div class="subline">未讀公告：<span id="announcementUnreadCount">0</span> 則</div>
-          </div>
-          <button class="card-button blue" type="button" id="openAnnouncementBtn">前往公告區</button>
-        </article>
-
-        <article class="home-card">
-          <div>
-            <div class="badge badge-orange">代辦事項</div>
-            <h2>代辦事項</h2>
-            <div class="metric" id="todoCount">0</div>
-            <div class="subline">交辦事項：<span id="todoTaskCount">0</span> 件</div>
-            <div class="subline">待簽合約：<span id="todoContractCount">0</span> 件</div>
-          </div>
-          <button class="card-button orange" type="button" id="openTodoBtn">前往代辦區</button>
-        </article>
-
-        <article class="home-card">
-          <div>
-            <div class="badge badge-green">合約</div>
-            <h2>合約</h2>
-            <div class="metric" id="contractStatus">-</div>
-            <div class="subline">合約期間：<span id="contractPeriod">-</span></div>
-            <div class="subline">年度：<span id="contractYear">-</span></div>
-          </div>
-          <button class="card-button green" type="button" id="openContractBtn">前往合約區</button>
-        </article>
+      <div>
+        <button class="btn" type="button" id="logoutBtn">登出</button>
       </div>
     </section>
 
-    <section class="section hidden" id="todoSection">
-      <h2 class="section-title">代辦摘要</h2>
-      <div class="todo-box" id="todoSummaryBox"></div>
+    <div class="line-slot" id="lineBindArea"></div>
+
+    <section class="section" id="statusSection">
+      <div class="status" id="statusBox">正在讀取首頁資料...</div>
     </section>
 
-    <section class="section hidden" id="announcementSection">
-      <h2 class="section-title">最新公告</h2>
-      <div class="list" id="announcementList"></div>
+    <section class="section cards" id="cardsSection" hidden>
+      <button class="entry-card" type="button" id="openAnnouncementBtn">
+        <div>
+          <div class="entry-title">公告</div>
+          <div class="entry-desc">查看最新公告與通知</div>
+        </div>
+        <div class="entry-count" id="announcementCount">0</div>
+      </button>
+
+      <button class="entry-card" type="button" id="openTodoBtn">
+        <div>
+          <div class="entry-title">交辦事項</div>
+          <div class="entry-desc">查看待處理事項與回報狀態</div>
+        </div>
+        <div class="entry-count" id="todoCount">0</div>
+      </button>
+
+      <button class="entry-card" type="button" id="openContractBtn">
+        <div>
+          <div class="entry-title">合約</div>
+          <div class="entry-desc">查看合約內容與簽署狀態</div>
+        </div>
+        <div class="entry-count" id="contractCount">0</div>
+      </button>
     </section>
   </div>
 
   <script src="config.js"></script>
   <script src="app.js"></script>
   <script>
-    function queryParam(name){
-      const url = new URL(window.location.href);
-      return url.searchParams.get(name) || '';
-    }
-
     function getTeacherUser(){
       return (typeof getUser === 'function') ? getUser() : null;
     }
-
     function getUserId(){
       const user = getTeacherUser();
-      return queryParam('userId') || (user && (user.id || user.userId || user.employeeId)) || localStorage.getItem('employeeUserId') || '';
+      return (user && (user.id || user.userId || user.employeeId)) || localStorage.getItem('employeeUserId') || '';
     }
-
     function getOpenTargets(){
       return {
-        announcement: localStorage.getItem('teacherAnnouncementPageUrl') || 'announcements.html',
-        todo: localStorage.getItem('teacherTodoPageUrl') || 'task.html',
-        contract: localStorage.getItem('teacherContractPageUrl') || 'contract.html'
+        announcement: 'announcements.html',
+        todo: 'task.html',
+        contract: 'contract.html'
       };
     }
-
     function setStatus(message, isError){
-      const box = document.getElementById('statusBox');
-      box.textContent = message || '';
-      box.className = isError ? 'error' : 'loading';
-      box.classList.remove('hidden');
+      const box=document.getElementById('statusBox');
+      box.textContent=message||'';
+      box.className=isError ? 'status error' : 'status';
+      document.getElementById('statusSection').hidden=!message;
     }
-
-    async function postJson(action, payload){
-      if (typeof api === 'function') {
-        const json = await api(action, payload || {});
-        if(!json.ok) throw new Error(json.message || '讀取失敗');
-        return json;
-      }
-      const apiBase = (typeof getApiUrl === 'function' && getApiUrl()) || '';
-      if(!apiBase) throw new Error('尚未設定 API 網址');
-      const res = await fetch(apiBase, {
-        method:'POST',
-        headers:{'Content-Type':'text/plain;charset=utf-8'},
-        body: JSON.stringify(Object.assign({ action }, payload || {}))
-      });
-      const json = await res.json();
+    async function postJson(action,payload){
+      const json=await api(action,payload||{});
       if(!json.ok) throw new Error(json.message || '讀取失敗');
       return json;
     }
-
-    function escapeHtml(text){
-      return String(text || '')
-        .replace(/&/g,'&amp;')
-        .replace(/</g,'&lt;')
-        .replace(/>/g,'&gt;')
-        .replace(/"/g,'&quot;')
-        .replace(/'/g,'&#39;');
+    function setCount(id, value, doneText){
+      const el=document.getElementById(id);
+      const n=Number(value||0)||0;
+      if(doneText && n<=0){
+        el.textContent=doneText;
+        el.classList.add('done');
+      }else{
+        el.textContent=String(n);
+        el.classList.remove('done');
+      }
     }
-
     function renderHome(data){
-      const currentUser = getTeacherUser();
-      document.getElementById('teacherInfo').textContent = `${(data.teacher&&data.teacher.name) || (currentUser&&currentUser.name) || ''}｜${(data.teacher&&data.teacher.email) || (currentUser&&currentUser.email) || ''}`;
+      const user=getTeacherUser()||{};
+      const teacher=(data&&data.teacher)||{};
+      document.getElementById('teacherName').textContent='歡迎 ' + (teacher.name || user.name || '老師');
+      document.getElementById('teacherMeta').textContent=(teacher.email || user.email || '');
 
-      const cards = data.cards || {};
-      const announcements = cards.announcements || {};
-      const todos = cards.todos || {};
-      const contract = cards.contract || {};
+      const cards=(data&&data.cards)||{};
+      const ann=cards.announcements||{};
+      const todo=cards.todos||{};
+      const contract=cards.contract||{};
 
-      document.getElementById('announcementCount').textContent = announcements.total || 0;
-      document.getElementById('announcementLatestDate').textContent = announcements.latestDate || '-';
-      document.getElementById('announcementUnreadCount').textContent = announcements.unreadCount || 0;
+      setCount('announcementCount', ann.unreadCount || ann.total || 0, '完成');
+      setCount('todoCount', todo.total || 0, '完成');
+      setCount('contractCount', contract.pendingCount || (contract.signed ? 0 : 1), contract.signed ? '完成' : '1');
 
-      document.getElementById('todoCount').textContent = todos.total || 0;
-      document.getElementById('todoTaskCount').textContent = todos.pendingTaskCount || 0;
-      document.getElementById('todoContractCount').textContent = todos.pendingContractCount || 0;
-
-      document.getElementById('contractStatus').textContent = contract.statusText || '-';
-      document.getElementById('contractPeriod').textContent = contract.periodText || '-';
-      document.getElementById('contractYear').textContent = contract.year || '-';
-
-      const todoSummary = Array.isArray(data.todoSummary) ? data.todoSummary : [];
-      document.getElementById('todoSummaryBox').innerHTML = todoSummary.length
-        ? todoSummary.map(item => `<div class="todo-item">${escapeHtml(item)}</div>`).join('')
-        : '<div class="todo-item">目前沒有待處理事項</div>';
-
-      const notices = Array.isArray(data.latestAnnouncements) ? data.latestAnnouncements : [];
-      document.getElementById('announcementList').innerHTML = notices.length
-        ? notices.map(item => `
-          <article class="notice-card">
-            <div class="notice-tag">${escapeHtml(item.category || '公告')}</div>
-            <div class="notice-top">
-              <h3 class="notice-title">${escapeHtml(item.title || '')}</h3>
-              <div class="notice-date">${escapeHtml(item.publishDate || '')}</div>
-            </div>
-            <div class="notice-summary">${escapeHtml(item.summary || '')}</div>
-          </article>
-        `).join('')
-        : '<div class="notice-card">目前沒有公告</div>';
-
-      document.getElementById('cardsSection').classList.remove('hidden');
-      document.getElementById('todoSection').classList.remove('hidden');
-      document.getElementById('announcementSection').classList.remove('hidden');
-      document.getElementById('statusBox').classList.add('hidden');
+      document.getElementById('cardsSection').hidden=false;
+      setStatus('', false);
     }
-
     async function loadHome(){
-      const currentUser = getTeacherUser();
-      if (currentUser && typeof isExternalTeacher === 'function' && !isExternalTeacher(currentUser)) {
-        window.location.href = 'dashboard.html';
+      const user=getTeacherUser();
+      if (user && typeof isExternalTeacher === 'function' && !isExternalTeacher(user)) {
+        window.location.href='dashboard.html';
         return;
       }
-      const userId = getUserId();
+      const userId=getUserId();
       if(!userId){
-        setStatus('缺少 userId，請從系統入口重新開啟。', true);
+        setStatus('缺少 userId，請重新登入。', true);
         return;
       }
       try{
+        await renderLineBindPrompt_('#lineBindArea');
         setStatus('正在讀取首頁資料...', false);
-        const data = await postJson('getTeacherHomeData', { userId });
+        const data=await postJson('getTeacherHomeData', { userId });
         renderHome(data);
       }catch(err){
         setStatus(err.message || '讀取失敗', true);
       }
     }
-
     function openPage(target){
-      const userId = getUserId();
-      const base = target || '';
-      if(!base) return;
-      const url = new URL(base, window.location.href);
+      const userId=getUserId();
+      const url=new URL(target, window.location.href);
       if(userId) url.searchParams.set('userId', userId);
-      if(base.indexOf('contract.html')>=0) url.searchParams.set('source','home');
-      window.location.href = url.toString();
+      if(target.indexOf('contract.html')>=0) url.searchParams.set('source','home');
+      window.location.href=url.toString();
     }
-
-    document.getElementById('refreshBtn').addEventListener('click', loadHome);
     document.getElementById('logoutBtn').addEventListener('click', function(){
-      if (typeof logout === 'function') {
-        logout();
-        return;
-      }
+      if(typeof logout==='function'){ logout(); return; }
       localStorage.removeItem('employeeUser');
       localStorage.removeItem('employeeUserId');
-      window.location.href = 'index.html';
+      window.location.href='index.html';
     });
-
-    document.getElementById('openAnnouncementBtn').addEventListener('click', function(){
-      openPage(getOpenTargets().announcement);
-    });
-    document.getElementById('openTodoBtn').addEventListener('click', function(){
-      openPage(getOpenTargets().todo);
-    });
-    document.getElementById('openContractBtn').addEventListener('click', function(){
-      openPage(getOpenTargets().contract);
-    });
-
+    document.getElementById('openAnnouncementBtn').addEventListener('click', function(){ openPage(getOpenTargets().announcement); });
+    document.getElementById('openTodoBtn').addEventListener('click', function(){ openPage(getOpenTargets().todo); });
+    document.getElementById('openContractBtn').addEventListener('click', function(){ openPage(getOpenTargets().contract); });
     loadHome();
   </script>
 </body>

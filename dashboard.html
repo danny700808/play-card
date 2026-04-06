@@ -69,10 +69,7 @@
       setPortalMode('staff');
       renderHomeTiles(user);
       await refreshHomeCounts(user);
-      if(!user.lineUserId){
-        const links = await getPublicSystemLinks();
-        renderLineBindCard(qs('#lineBindArea'), user, links);
-      }
+      await renderLineBindPrompt_('#lineBindArea');
     }
 
     async function refreshHomeCounts(user){
