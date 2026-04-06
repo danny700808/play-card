@@ -293,32 +293,28 @@ async function renderLineBindPrompt_(targetSelector){
     const wantEnable=!notifyOn;
     const text=wantEnable ? '確定要重新開啟 LINE 提醒嗎？' : '確定要取消 LINE 提醒嗎？';
     if(!window.confirm(text)) return;
-    const progress=startActionButtonProgress(toggleBtn,{label:wantEnable?'儲存中':'處理中',maxPct:86});
-    if(unbindBtn) unbindBtn.disabled=true;
     try{
-      progress.set(18, wantEnable ? '更新 LINE 提醒設定' : '關閉 LINE 提醒中');
+      toggleBtn.disabled=true;
+      toggleBtn.textContent='儲存中...';
       await setLineNotifyPreference_(wantEnable,false);
-      progress.done(wantEnable ? '已開啟' : '已關閉', 450, true);
       await renderLineBindPrompt_(targetSelector);
     }catch(e){
-      progress.fail('儲存失敗');
       alert(e.message || '儲存失敗');
-      if(unbindBtn) unbindBtn.disabled=false;
+      toggleBtn.disabled=false;
+      toggleBtn.textContent=wantEnable ? '重新開啟 LINE 提醒' : '取消 LINE 提醒';
     }
   };
   unbindBtn.onclick=async()=>{
     if(!window.confirm('確定要解除 LINE 綁定嗎？解除後若要再用 LINE 提醒，需要重新綁定一次。')) return;
-    const progress=startActionButtonProgress(unbindBtn,{label:'解除中',maxPct:86});
-    if(toggleBtn) toggleBtn.disabled=true;
     try{
-      progress.set(18,'清除 LINE 綁定資料');
+      unbindBtn.disabled=true;
+      unbindBtn.textContent='處理中...';
       await setLineNotifyPreference_(false,true);
-      progress.done('已解除', 450, true);
       await renderLineBindPrompt_(targetSelector);
     }catch(e){
-      progress.fail('解除失敗');
       alert(e.message || '解除綁定失敗');
-      if(toggleBtn) toggleBtn.disabled=false;
+      unbindBtn.disabled=false;
+      unbindBtn.textContent='解除 LINE 綁定';
     }
   };
 }

@@ -94,6 +94,14 @@
         </div>
         <div class="entry-count" id="contractCount">0</div>
       </button>
+
+      <button class="entry-card" type="button" id="openGoodsBtn">
+        <div>
+          <div class="entry-title">拿貨 / 詢價</div>
+          <div class="entry-desc">快速搜尋商品、查看老師價並確認庫存</div>
+        </div>
+        <div class="entry-count" id="goodsCount">0</div>
+      </button>
     </section>
   </div>
 
@@ -111,7 +119,8 @@
       return {
         announcement: 'announcements.html',
         todo: 'task.html',
-        contract: 'contract.html'
+        contract: 'contract.html',
+        goods: 'teacher-goods.html'
       };
     }
     function setStatus(message, isError){
@@ -146,10 +155,12 @@
       const ann=cards.announcements||{};
       const todo=cards.todos||{};
       const contract=cards.contract||{};
+      const goods=cards.goods||{};
 
       setCount('announcementCount', ann.unreadCount || ann.total || 0, '完成');
       setCount('todoCount', todo.total || 0, '完成');
       setCount('contractCount', contract.pendingCount || (contract.signed ? 0 : 1), contract.signed ? '完成' : '1');
+      setCount('goodsCount', goods.newItemCount || goods.openInquiryCount || goods.total || 0, '完成');
 
       document.getElementById('cardsSection').hidden=false;
       setStatus('', false);
@@ -190,6 +201,7 @@
     document.getElementById('openAnnouncementBtn').addEventListener('click', function(){ openPage(getOpenTargets().announcement); });
     document.getElementById('openTodoBtn').addEventListener('click', function(){ openPage(getOpenTargets().todo); });
     document.getElementById('openContractBtn').addEventListener('click', function(){ openPage(getOpenTargets().contract); });
+    document.getElementById('openGoodsBtn').addEventListener('click', function(){ openPage(getOpenTargets().goods); });
     loadHome();
   </script>
 </body>
