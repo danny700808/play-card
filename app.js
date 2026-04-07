@@ -270,8 +270,7 @@ async function renderLineBindPrompt_(targetSelector){
     const joinBtn=wrap.querySelector('#lineBindJoinBtn');
     if(!links.lineAddFriendUrl) joinBtn.style.display='none';
     wrap.querySelector('#copyLineBindCmdBtn').onclick=async()=>{
-      try{ await navigator.clipboard.writeText(cmd); wrap.querySelector('#copyLineBindCmdBtn').textContent='已複製'; setTimeout(()=>{const b=wrap.querySelector('#copyLineBindCmdBtn'); if(b) b.textContent='一鍵複製綁定文字';},1600);}catch(e){ alert('複製失敗，請手動複製：
-'+cmd); }
+      try{ await navigator.clipboard.writeText(cmd); wrap.querySelector('#copyLineBindCmdBtn').textContent='已複製'; setTimeout(()=>{const b=wrap.querySelector('#copyLineBindCmdBtn'); if(b) b.textContent='一鍵複製綁定文字';},1600);}catch(e){ alert('複製失敗，請手動複製：\n'+cmd); }
     };
     return;
   }
