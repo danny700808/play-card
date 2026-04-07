@@ -88,7 +88,3 @@ a{text-decoration:none;color:inherit} .container{max-width:760px;margin:0 auto;p
 .btn.btn-progress.is-success .btn-progress-fill{background:linear-gradient(90deg,rgba(255,255,255,.10),rgba(255,255,255,.24))}
 .btn.btn-progress.is-error .btn-progress-fill{background:linear-gradient(90deg,rgba(255,255,255,.12),rgba(255,255,255,.20))}
 .btn.btn-progress:disabled{opacity:1}
-
-
-/* teacher goods compact ui */
-.upload-shell input[type="file"]{display:none}

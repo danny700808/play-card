@@ -206,17 +206,26 @@ function ensureLineBindPromptStyle_(){
   const s=document.createElement('style');
   s.id='lineBindPromptStyle';
   s.textContent=`
-  .line-bind-card{margin-top:18px;padding:24px;border:2px dashed #b9dfcf;border-radius:28px;background:#f5fbf7}
-  .line-bind-card h3{margin:0 0 12px;font-size:28px;line-height:1.25;color:#17324a}
-  .line-bind-card p{margin:0;color:#607086;font-size:18px;line-height:1.9}
-  .line-bind-steps{margin:16px 0 0;padding:0;list-style:none;display:grid;gap:10px}
-  .line-bind-steps li{display:flex;gap:10px;align-items:flex-start;color:#3f556d;font-size:18px;line-height:1.8}
-  .line-bind-step-no{width:30px;height:30px;border-radius:999px;background:#1f7a5a;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:900;font-size:16px;flex:0 0 30px;margin-top:2px}
-  .line-bind-command{margin-top:12px;padding:16px 18px;border-radius:18px;background:#ecf7f1;color:#1f7a5a;font-size:22px;font-weight:900;word-break:break-all}
-  .line-bind-actions{display:grid;grid-template-columns:1fr;gap:12px;margin-top:16px}
-  .line-bind-note{margin-top:12px;color:#66788c;font-size:15px;line-height:1.8}
-  @media (max-width:560px){.line-bind-card{padding:20px;border-radius:22px}.line-bind-card h3{font-size:24px}.line-bind-card p,.line-bind-steps li{font-size:16px}.line-bind-command{font-size:18px}}
-  `;
+  .line-bind-card{margin-top:10px;padding:10px 12px;border:1px solid #d7e7df;border-radius:18px;background:#f8fcfa}
+  .line-bind-card h3{margin:0;font-size:15px;line-height:1.2;color:#17324a}
+  .line-bind-card p{margin:0;color:#607086;font-size:13px;line-height:1.45}
+  .line-bind-actions,.line-bind-compact-actions{display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap;margin-top:0}
+  .line-bind-actions .btn,.line-bind-compact-actions .btn{width:auto;min-height:34px;padding:7px 12px;font-size:13px;border-radius:999px}
+  .line-bind-note,.line-bind-compact-note{display:none}
+  .line-bind-compact-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+  .line-bind-chip{display:inline-flex;align-items:center;justify-content:center;padding:5px 10px;border-radius:999px;background:#ecf7f1;color:#1f7a5a;font-size:12px;font-weight:900;white-space:nowrap}
+  .line-bind-chip.off{background:#eef2ff;color:#475569}
+  .line-bind-mini{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+  .line-bind-mini-left{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .line-bind-mini-label{font-size:12px;font-weight:900;color:#17324a;letter-spacing:.02em}
+  .line-bind-mini-text{font-size:13px;color:#607086}
+  @media (max-width:640px){
+    .line-bind-card{padding:9px 10px;border-radius:16px}
+    .line-bind-mini{align-items:flex-start}
+    .line-bind-actions,.line-bind-compact-actions{justify-content:flex-start}
+    .line-bind-actions .btn,.line-bind-compact-actions .btn{min-height:32px;padding:6px 10px;font-size:12px}
+  }
+`;
   document.head.appendChild(s);
 }
 async function setLineNotifyPreference_(enabled, clearBinding){
@@ -253,39 +262,39 @@ async function renderLineBindPrompt_(targetSelector){
 
   if(!hasLineId){
     wrap.innerHTML=`
-      <h3>想更即時收到提醒嗎？</h3>
-      <p>你可以先加入柚子樂器官方 LINE，再把下面這段文字貼到 LINE 訊息欄完成綁定。綁定後就能用 LINE 收提醒。</p>
-      <ol class="line-bind-steps">
-        <li><span class="line-bind-step-no">1</span><div>先加入柚子樂器官方 LINE。</div></li>
-        <li><span class="line-bind-step-no">2</span><div>加入後，到官方 LINE 的訊息欄輸入下面這段文字完成綁定。</div></li>
-      </ol>
-      <div class="line-bind-command">${cmd}</div>
-      <div class="line-bind-actions">
-        <a class="btn" id="lineBindJoinBtn" href="${links.lineAddFriendUrl||'#'}" target="_blank" rel="noopener">立即加入 LINE</a>
-        <button class="btn secondary" type="button" id="copyLineBindCmdBtn">一鍵複製綁定文字</button>
-      </div>
-      <div class="line-bind-note">加入官方 LINE 後，把上面這段文字直接貼上送出即可完成綁定。</div>
-    `;
-    target.appendChild(wrap);
+      <div class="line-bind-mini">
+        <div class="line-bind-mini-left">
+          <div class="line-bind-mini-label">LINE 通知</div>
+          <span class="line-bind-chip off">尚未綁定</span>
+          <div class="line-bind-mini-text">先加好友並傳送綁定文字即可。</div>
+        </div>
+        <div class="line-bind-actions">
+          <a class="btn" id="lineBindJoinBtn" href="${links.lineAddFriendUrl||'#'}" target="_blank" rel="noopener">前往綁定</a>
+          <button class="btn secondary" type="button" id="copyLineBindCmdBtn">複製文字</button>
+        </div>
+      </div>`;
     const joinBtn=wrap.querySelector('#lineBindJoinBtn');
     if(!links.lineAddFriendUrl) joinBtn.style.display='none';
     wrap.querySelector('#copyLineBindCmdBtn').onclick=async()=>{
-      try{ await navigator.clipboard.writeText(cmd); wrap.querySelector('#copyLineBindCmdBtn').textContent='已複製'; setTimeout(()=>{const b=wrap.querySelector('#copyLineBindCmdBtn'); if(b) b.textContent='一鍵複製綁定文字';},1600);}catch(e){ alert('複製失敗，請手動複製：\n'+cmd); }
+      try{ await navigator.clipboard.writeText(cmd); wrap.querySelector('#copyLineBindCmdBtn').textContent='已複製'; setTimeout(()=>{const b=wrap.querySelector('#copyLineBindCmdBtn'); if(b) b.textContent='複製文字';},1600);}catch(e){ alert('複製失敗，請手動複製：\n'+cmd); }
     };
+    host.prepend(wrap);
     return;
   }
 
+  wrap.classList.add('line-bind-compact-card');
   wrap.innerHTML=`
-    <h3>${notifyOn ? '你已完成 LINE 綁定' : '你已綁定 LINE，但目前提醒已關閉'}</h3>
-    <p>${notifyOn ? '目前 LINE 提醒已開啟；如果之後不需要，可直接在這裡取消。' : '你可以隨時重新開啟 LINE 提醒，不需要重新綁定。'}</p>
-    <div class="line-bind-command">${notifyOn ? '目前狀態：LINE 提醒已開啟' : '目前狀態：LINE 提醒已關閉'}</div>
-    <div class="line-bind-actions">
-      <button class="btn ${notifyOn ? 'secondary' : ''}" type="button" id="toggleLineNotifyBtn">${notifyOn ? '取消 LINE 提醒' : '重新開啟 LINE 提醒'}</button>
-      <button class="btn secondary" type="button" id="unbindLineBtn">解除 LINE 綁定</button>
-    </div>
-    <div class="line-bind-note">取消提醒後，不會再透過 LINE 收到通知；解除綁定會清除目前的 LINE 連結資料。</div>
-  `;
-  target.appendChild(wrap);
+    <div class="line-bind-mini">
+      <div class="line-bind-mini-left">
+        <div class="line-bind-mini-label">LINE 通知</div>
+        <span class="line-bind-chip ${notifyOn ? '' : 'off'}">${notifyOn ? '已綁定｜提醒開啟' : '已綁定｜提醒關閉'}</span>
+      </div>
+      <div class="line-bind-compact-actions">
+        <button class="btn ${notifyOn ? 'secondary' : ''}" type="button" id="toggleLineNotifyBtn">${notifyOn ? '取消提醒' : '開啟提醒'}</button>
+        <button class="btn secondary" type="button" id="unbindLineBtn">解除綁定</button>
+      </div>
+    </div>`;
+  host.prepend(wrap);
   const toggleBtn=wrap.querySelector('#toggleLineNotifyBtn');
   const unbindBtn=wrap.querySelector('#unbindLineBtn');
   toggleBtn.onclick=async()=>{

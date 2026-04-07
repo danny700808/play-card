@@ -15,6 +15,8 @@
     .badge{display:inline-block;padding:6px 12px;border-radius:999px;font-size:13px;font-weight:900}
     .badge.pending{background:#fff7ed;color:#9a3412}
     .badge.done{background:#ecfdf5;color:#166534}
+    .badge.review{background:#eff6ff;color:#1d4ed8}
+    .badge.reject{background:#fef2f2;color:#b42318}
     .meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:12px}
     .meta .item{background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:10px}
     .meta .label{font-size:12px;color:#64748b;font-weight:800}
@@ -52,7 +54,10 @@
   <script>
     let currentUser=null;
     function rowHtml(row){
-      const signed = String(row.status||'').indexOf('已簽')>=0;
+      const status=String(row.status||'待簽署');
+      const signed=status.indexOf('已簽')>=0 || status.indexOf('已核准')>=0;
+      const pending=status.indexOf('待')>=0;
+      const rejected=status.indexOf('駁回')>=0;
       return `
         <div class="contract-admin-card">
           <div class="contract-admin-head">
@@ -60,7 +65,7 @@
               <h3 class="contract-admin-title">${row.teacherName||'未命名老師'}</h3>
               <div class="muted">${row.email||''}</div>
             </div>
-            <span class="badge ${signed?'done':'pending'}">${signed?'已簽署':'待簽署'}</span>
+            <span class="badge ${signed?'done':(pending?'review':(rejected?'reject':'pending'))}">${signed?'已簽約':(pending?'待審核':(rejected?'已駁回':'待簽署'))}</span>
           </div>
           <div class="meta">
             <div class="item"><div class="label">年度</div><div class="value">${row.year||''}</div></div>
@@ -71,11 +76,30 @@
           <div class="actions">
             ${row.pdfUrl?`<a class="btn secondary" style="width:auto" href="${row.pdfUrl}" target="_blank">查看 PDF</a>`:''}
             ${row.signatureUrl?`<a class="btn secondary" style="width:auto" href="${row.signatureUrl}" target="_blank">查看簽名</a>`:''}
-            ${signed?`<button class="btn secondary" style="width:auto" onclick="resend('${row.recordId}')">重寄 PDF</button>`:''}
+            ${pending?`<button class="btn" style="width:auto" onclick="approve('${row.recordId}')">主管同意</button><button class="btn secondary" style="width:auto" onclick="rejectContract('${row.recordId}')">駁回</button>`:''}${signed?`<button class="btn secondary" style="width:auto" onclick="resend('${row.recordId}')">重寄 PDF</button>`:''}
           </div>
         </div>
       `;
     }
+
+    async function approve(recordId){
+      if(!window.confirm('確定要同意這份合約嗎？同意後會產生正式 PDF，老師端會顯示已簽約。')) return;
+      try{
+        const r=await api('approveTeacherContract',{userId:currentUser.id,recordId});
+        setMsg(qs('#msg'),r.message,!r.ok);
+        if(r.ok) loadList();
+      }catch(e){ setMsg(qs('#msg'),e.message||'處理失敗',true); }
+    }
+    async function rejectContract(recordId){
+      const reason=window.prompt('請輸入駁回原因');
+      if(reason===null) return;
+      try{
+        const r=await api('rejectTeacherContract',{userId:currentUser.id,recordId,rejectReason:reason});
+        setMsg(qs('#msg'),r.message,!r.ok);
+        if(r.ok) loadList();
+      }catch(e){ setMsg(qs('#msg'),e.message||'處理失敗',true); }
+    }
+
     async function resend(recordId){
       try{
         const r=await api('resendTeacherContractPdf',{userId:currentUser.id,recordId});
