@@ -358,7 +358,7 @@ function startActionButtonProgress(btn, options={}){
   const state={
     pct:Math.max(0,Math.min(100,Number(options.startPct!=null?options.startPct:8)||0)),
     maxPct:Math.max(0,Math.min(95,Number(options.maxPct!=null?options.maxPct:88)||88)),
-    label:String(options.label||'處理中').trim()||'處理中',
+    label:String(options.label||options.text||'處理中').trim()||'處理中',
     formatter:typeof options.formatter==='function'?options.formatter:null
   };
   const render=()=>{
@@ -410,6 +410,16 @@ function startActionButtonProgress(btn, options={}){
     },
     reset(text){ setActionButtonIdle(btn, text); }
   };
+}
+function finishActionButtonSuccess(btn, text='已完成', holdMs=900, keepDisabled=false){
+  const ctl=startActionButtonProgress(btn,{auto:false,label:text,startPct:100,maxPct:100});
+  ctl.done(text, holdMs, keepDisabled);
+  return ctl;
+}
+function finishActionButtonError(btn, text='送出失敗', holdMs=1300){
+  const ctl=startActionButtonProgress(btn,{auto:false,label:text,startPct:100,maxPct:100});
+  ctl.fail(text, holdMs);
+  return ctl;
 }
 
 
