@@ -55,7 +55,7 @@
   <div class="page">
     <section class="hero">
       <div>
-        <h1>柚子員工系統｜外聘老師首頁</h1>
+        <h1>外聘老師首頁</h1>
         <div class="welcome" id="teacherName">讀取中...</div>
         <div class="meta" id="teacherMeta"></div>
       </div>
@@ -64,7 +64,6 @@
       </div>
     </section>
 
-    <div class="line-slot" id="lineBindArea"></div>
 
     <section class="section" id="statusSection">
       <div class="status" id="statusBox">正在讀取首頁資料...</div>
@@ -177,7 +176,6 @@
         return;
       }
       try{
-        await renderLineBindPrompt_('#lineBindArea');
         setStatus('正在讀取首頁資料...', false);
         const data=await postJson('getTeacherHomeData', { userId });
         renderHome(data);
