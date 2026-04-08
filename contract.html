@@ -378,26 +378,13 @@
     }
 
     function setSignedView(record){
-      qs('#contractStatusText').textContent='本年度已完成簽約';
+      qs('#contractStatusText').textContent='本年度已完成簽署';
       const box=qs('#signedSummaryBox');
       box.style.display='block';
-      box.innerHTML=`<div style="font-weight:900;color:#1f7a5a;margin-bottom:6px">本年度已簽約完成</div>
+      box.innerHTML=`<div style="font-weight:900;color:#1f7a5a;margin-bottom:6px">本年度已簽署完成</div>
         <div>簽署時間：${escapeHtml(record.signDate||'')} ${escapeHtml(record.signTime||'')}</div>
-        <div>狀態：${escapeHtml(record.status||'已簽約')}</div>
-        ${record.pdfUrl?`<div style="margin-top:8px"><a href="${record.pdfUrl}" target="_blank" style="color:#1f7a5a;font-weight:800;text-decoration:none">查看已簽 PDF</a></div>`:''}
-        <div style="margin-top:8px;color:#64748b">下一次簽約開放時間：${escapeHtml(record.nextOpenDate||'明年 1/1')}</div>`;
-      qs('#contractFormCard').style.display='none';
-      qs('#previewPane').classList.remove('show');
-    }
-
-    function setPendingView(record){
-      qs('#contractStatusText').textContent='本年度合約已送出，等待主管確認。';
-      const box=qs('#signedSummaryBox');
-      box.style.display='block';
-      box.innerHTML=`<div style="font-weight:900;color:#c2410c;margin-bottom:6px">合約已送出，待主管確認</div>
-        <div>送出時間：${escapeHtml(record.signDate||'')} ${escapeHtml(record.signTime||'')}</div>
-        <div>狀態：${escapeHtml(record.status||'待主管確認')}</div>
-        <div style="margin-top:8px;color:#64748b">主管同意後，這裡才會顯示已簽約與正式 PDF。</div>`;
+        <div>狀態：${escapeHtml(record.status||'已簽署')}</div>
+        ${record.pdfUrl?`<div style="margin-top:8px"><a href="${record.pdfUrl}" target="_blank" style="color:#1f7a5a;font-weight:800;text-decoration:none">查看 PDF</a></div>`:''}`;
       qs('#contractFormCard').style.display='none';
       qs('#previewPane').classList.remove('show');
     }
@@ -515,18 +502,19 @@
       const err=validateForm();
       if(err){ alert(err); return; }
       const btn=qs('#submitBtn');
-      const idleText=(btn.textContent||'正式送出').trim()||'正式送出';
+      btn.disabled=true;
+      btn.textContent='送出中…';
       try{
-        startActionButtonProgress(btn,{label:'PDF 產生中',startPct:10,maxPct:86});
         const payload=buildPayload();
         const res=await api('submitTeacherContractSignature', payload);
         if(!res.ok) throw new Error(res.message||'送出失敗');
-        finishActionButtonSuccess(btn,'已送出');
-        alert(res.message||'已送出，等待主管確認。');
+        alert(res.message||'簽署完成，系統已寄送 PDF 到你的信箱。');
         location.reload();
       }catch(e){
-        finishActionButtonError(btn,e.message||'送出失敗');
-        setTimeout(()=>{ setActionButtonIdle(btn,idleText); },1400);
+        alert(e.message||'送出失敗');
+      }finally{
+        btn.disabled=false;
+        btn.textContent='正式送出';
       }
     }
 
@@ -563,21 +551,10 @@
         contractData=res.contract||{};
         fillContractBase();
 
-        if(res.record && res.signed){
+        if(res.signed && res.record){
           setSignedView(res.record);
-        }else if(res.record && res.pendingApproval){
-          setPendingView(res.record);
-        }else if(res.record && String(res.record.status||'').indexOf('已駁回')>=0){
-          qs('#contractStatusText').textContent='前一次送出的合約未通過，請修正後重新送出。';
-          const box=qs('#signedSummaryBox');
-          box.style.display='block';
-          box.innerHTML=`<div style="font-weight:900;color:#b42318;margin-bottom:6px">上次送出的合約未通過</div>
-            <div>狀態：${escapeHtml(res.record.status||'已駁回')}</div>
-            <div style="margin-top:8px;color:#64748b">${escapeHtml(res.record.rejectReason||'請確認資料後重新送出。')}</div>`;
-          qs('#contractFormCard').style.display='block';
         }else{
           qs('#contractStatusText').textContent='本年度尚未簽署，請先閱讀契約，再完成下方資料並送出。';
-          qs('#contractFormCard').style.display='block';
         }
       }catch(e){
         qs('#contractStatusText').textContent='讀取契約資料失敗';
