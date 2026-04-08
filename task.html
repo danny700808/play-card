@@ -422,9 +422,7 @@
     }
 
     async function loadAssignees(){
-      const user=requireLogin();
-      if(!user) return;
-      const r=await api('getEmployeeOptions', { userId:user.id });
+      const r=await api('getEmployeeOptions', {});
       const sel=qs('#assigneeId');
       sel.innerHTML='<option value="">請選擇員工</option>' + (r.rows||[]).map(x=>`<option value="${x.id}">${x.name}</option>`).join('');
     }
