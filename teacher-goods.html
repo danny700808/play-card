@@ -11,7 +11,7 @@
     .seg{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}
     .seg button{width:auto;padding:10px 18px;border-radius:999px}
     .goods-list{display:grid;gap:14px}
-    .goods-card{border:1px solid var(--line);border-radius:22px;background:#fff;padding:16px;display:grid;grid-template-columns:90px 1fr;gap:14px}
+    .goods-card{border:1px solid var(--line);border-radius:24px;background:#fff;padding:16px;display:grid;grid-template-columns:90px 1fr;gap:14px;align-items:start}
     .goods-image{width:90px;height:90px;border-radius:18px;overflow:hidden;background:#f2f5f9;display:flex;align-items:center;justify-content:center;color:#8aa}
     .goods-image img{width:100%;height:100%;object-fit:cover}
     .price-row{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0}
@@ -20,13 +20,14 @@
     .goods-meta{font-size:14px;color:#6a7a91;line-height:1.8}
     .goods-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
     .goods-actions .btn{width:auto;padding:10px 16px}
-    .goods-form{display:none;margin-top:12px;padding:14px;border-radius:18px;background:#f6f8fb;border:1px solid #dfe7f1}
+    .goods-form{display:none;margin-top:14px;padding:16px;border-radius:22px;background:#f6f8fb;border:1px solid #dfe7f1}.goods-form .row{margin-bottom:12px}.goods-form .row:last-child{margin-bottom:0}.goods-form label{display:block;font-size:14px;font-weight:800;margin-bottom:8px}.goods-form input,.goods-form textarea{width:100%;padding:12px 14px;border:1px solid #cfd8e3;border-radius:16px;background:#fff;font-size:16px}.goods-form textarea{min-height:90px;resize:vertical}.goods-form .goods-actions{margin-top:14px}
     .goods-form.show{display:block}
     .inquiry-list{display:grid;gap:12px}
     .inq-card{border:1px solid var(--line);border-radius:18px;background:#fff;padding:14px}
     .badge{display:inline-flex;padding:6px 10px;border-radius:999px;background:#eef2f6;color:#42556d;font-size:13px;font-weight:800}
     .badge.wait{background:#fff5e6;color:#9a5b00}
     .badge.done{background:#ecf7f1;color:#1f7a5a}
+  @media (max-width:560px){.goods-card{grid-template-columns:1fr}.goods-image{width:100px;height:100px}.goods-form{padding:14px;border-radius:20px}.goods-actions .btn{width:100%}}
   </style>
 </head>
 <body onload="initPage()">
@@ -110,7 +111,7 @@ function renderGoods(rows){
         </div>
         <div class="goods-form" id="goodsForm_${idx}">
           <div class="row"><label>需求數量</label><input id="qty_${idx}" type="number" min="1" step="1" placeholder="例如：1"></div>
-          <div class="row"><label>希望時間</label><input id="needBy_${idx}" type="text" placeholder="例如：下週二前 / 4/10 之前"></div>
+          <div class="row"><label>預計想拿貨的時間</label><input id="needBy_${idx}" type="date" placeholder="選擇日期"></div>
           <div class="row"><label>備註</label><textarea id="remark_${idx}" placeholder="例如：想先確認有沒有現貨、是否可先留貨"></textarea></div>
           <div class="goods-actions">
             <button class="btn" type="button" id="submitBtn_${idx}" onclick="submitInquiry(${idx})">送出詢價</button>
@@ -158,7 +159,7 @@ function renderInquiries(rows){
       <div><div style="font-size:20px;font-weight:900;color:#18314a">${row.itemName||''}</div><div class="goods-meta">送出時間：${row.createdAt||''}</div></div>
       ${statusBadge(row.status)}
     </div>
-    <div class="goods-meta" style="margin-top:8px">需求數量：${row.quantity||'-'} ｜ 希望時間：${row.needBy||'-'}</div>
+    <div class="goods-meta" style="margin-top:8px">需求數量：${row.quantity||'-'} ｜ 預計想拿貨的時間：${row.needBy||'-'}</div>
     ${row.note?`<div class="goods-meta">老師備註：${row.note}</div>`:''}
     ${row.replySummary?`<div style="margin-top:10px;padding:12px;border-radius:14px;background:#f6f8fb"><strong>管理端回覆</strong><div class="goods-meta" style="margin-top:6px;white-space:pre-wrap">${row.replySummary}</div></div>`:''}
   </div>`).join('');
