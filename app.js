@@ -21,12 +21,40 @@ function staffHomeHref(){return 'dashboard.html'}
 function teacherHomeHref(){return 'teacher-home.html'}
 function userHomeHref(user=getUser()){if(isExternalTeacher(user)) return teacherHomeHref(); return isManager(user)&&isSettingsMode() ? settingsHomeHref() : staffHomeHref()}
 function userHomeLabel(user=getUser()){if(isExternalTeacher(user)) return '返回老師首頁'; return isManager(user)&&isSettingsMode() ? '返回管理首頁' : '返回員工首頁'}
+function userHomeHeading(user=getUser()){
+  if(isExternalTeacher(user)) return '外聘老師首頁';
+  if(isPartTimeUser(user)) return '工讀首頁';
+  if(isManager(user)&&isSettingsMode()) return '管理首頁';
+  return '員工首頁';
+}
+function applyCurrentHomeTitle_(user=getUser()){
+  if(!user) return;
+  const path=String((location&&location.pathname)||'').split('/').pop().toLowerCase();
+  const titleText=userHomeHeading(user);
+  if(path==='dashboard.html'){
+    const el=document.querySelector('.header .title');
+    if(el) el.textContent=titleText;
+    document.title=titleText;
+    return;
+  }
+  if(path==='teacher-home.html'){
+    const el=document.querySelector('.hero h1');
+    if(el) el.textContent=titleText;
+    document.title=titleText;
+    return;
+  }
+  if(path==='settings.html'){
+    const el=document.querySelector('.header .title');
+    if(el) el.textContent=titleText;
+    document.title=titleText;
+  }
+}
 function portalSwitchLabel(user=getUser()){return hasSettingsZoneAccess(user) ? '切換入口' : '系統入口'}
 function getUser(){try{return JSON.parse(localStorage.getItem('employeeUser')||'null')}catch(e){return null}}
 function getApiUrl(){return API_URL}
 function logout(){localStorage.removeItem('employeeUser'); localStorage.removeItem('employeeUserId'); clearPortalMode(); location.href='index.html'}
 function currentFeatureKey(){const path=String((location&&location.pathname)||'').split('/').pop().toLowerCase(); if(path==='dashboard.html') return 'dashboard'; if(path==='clock.html') return 'clock'; if(path==='parttime.html') return 'parttime'; if(path==='leave.html') return 'leave'; if(path==='task.html') return 'task'; if(path==='routine.html') return 'routine'; if(path==='training.html') return 'training'; if(path==='contract.html') return 'contract'; if(path==='contract-admin.html') return 'contractAdmin'; if(path==='settings.html') return 'settings'; return '';}
-function requireLogin(){const user=getUser(); if(!user){location.href='index.html'; return null;} const feature=currentFeatureKey(); if(feature==='contract' && !isExternalTeacher(user)){location.href='dashboard.html'; return null;} if(feature==='contractAdmin' && !isManager(user)){location.href='dashboard.html'; return null;} if(feature && feature!=='contract' && feature!=='contractAdmin' && feature!=='settings' && !guardFeatureAccess(feature,user)) return null; return user;}
+function requireLogin(){const user=getUser(); if(!user){location.href='index.html'; return null;} const feature=currentFeatureKey(); if(feature==='contract' && !isExternalTeacher(user)){location.href='dashboard.html'; return null;} if(feature==='contractAdmin' && !isManager(user)){location.href='dashboard.html'; return null;} if(feature && feature!=='contract' && feature!=='contractAdmin' && feature!=='settings' && !guardFeatureAccess(feature,user)) return null; try{applyCurrentHomeTitle_(user);}catch(e){} return user;}
 async function api(action, payload={}){
   const apiUrl=getApiUrl();
   if(!apiUrl) throw new Error('尚未設定 API 網址');
@@ -36,20 +64,7 @@ async function api(action, payload={}){
 }
 function setMsg(el, text, isError=false){if(!el) return; el.style.display=text?'block':'none'; el.textContent=text||''; el.classList.toggle('error',!!isError)}
 function togglePassword(inputSel, btn){const input=qs(inputSel); const show=input.type==='password'; input.type=show?'text':'password'; btn.textContent=show?'🙈':'👁';}
-async function getPublicIp(){
-  const sources=[
-    async()=>{const r=await fetch('https://api.ipify.org?format=json'); const j=await r.json(); return j.ip||'';},
-    async()=>{const r=await fetch('https://ipinfo.io/json'); const j=await r.json(); return j.ip||'';},
-    async()=>{const r=await fetch('https://api64.ipify.org?format=json'); const j=await r.json(); return j.ip||'';}
-  ];
-  for(const fn of sources){
-    try{
-      const ip=String(await fn()||'').trim();
-      if(ip) return ip;
-    }catch(e){}
-  }
-  return '';
-}
+async function getPublicIp(){try{const r=await fetch('https://api.ipify.org?format=json'); const j=await r.json(); return j.ip||'';}catch(e){return '';}}
 async function fileToDataUrl(file){return new Promise((resolve,reject)=>{const r=new FileReader(); r.onload=()=>resolve(String(r.result||'')); r.onerror=reject; r.readAsDataURL(file);});}
 
 function dataUrlToBlob(dataUrl){
