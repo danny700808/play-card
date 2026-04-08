@@ -65,6 +65,8 @@
     </section>
 
 
+    <div id="lineBindArea" class="line-slot"></div>
+
     <section class="section" id="statusSection">
       <div class="status" id="statusBox">正在讀取首頁資料...</div>
     </section>
@@ -179,6 +181,7 @@
         setStatus('正在讀取首頁資料...', false);
         const data=await postJson('getTeacherHomeData', { userId });
         renderHome(data);
+        if(typeof renderLineBindPrompt_==='function') await renderLineBindPrompt_('#lineBindArea');
       }catch(err){
         setStatus(err.message || '讀取失敗', true);
       }

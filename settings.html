@@ -21,6 +21,7 @@
         </div>
       </div>
           </div>
+    <div id="lineBindArea" style="margin:16px 0"></div>
     <div class="grid">
       <a class="tile" href="registration-approval.html"><strong>註冊審核</strong><span>查看新註冊員工申請，直接同意或駁回</span></a>
       <a class="tile" href="leave.html"><strong>請假簽核</strong><span>查看待簽核請假單並直接同意 / 駁回</span></a>
@@ -36,13 +37,14 @@
   <script src="config.js"></script>
   <script src="app.js"></script>
   <script>
-    function init(){
+    async function init(){
       fillHeader();
       const user=requireLogin();
       if(!user) return;
       if(!hasSettingsZoneAccess(user)){location.href='dashboard.html';return;}
       document.body.classList.add('has-settings-zone');
       setPortalMode('settings');
+      if(typeof renderLineBindPrompt_==='function') await renderLineBindPrompt_('#lineBindArea');
     }
   </script>
 </body>

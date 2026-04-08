@@ -249,7 +249,7 @@ async function renderLineBindPrompt_(targetSelector){
   const user=getUser();
   if(!user) return;
   const path=(location.pathname.split('/').pop()||'').toLowerCase();
-  if(path && path !== 'dashboard.html') return;
+  if(path && !['dashboard.html','teacher-home.html','settings.html'].includes(path)) return;
   const existing=document.getElementById('lineBindPromptCard');
   if(existing) existing.remove();
   const target=(typeof targetSelector==='string' && document.querySelector(targetSelector))
