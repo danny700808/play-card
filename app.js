@@ -36,7 +36,20 @@ async function api(action, payload={}){
 }
 function setMsg(el, text, isError=false){if(!el) return; el.style.display=text?'block':'none'; el.textContent=text||''; el.classList.toggle('error',!!isError)}
 function togglePassword(inputSel, btn){const input=qs(inputSel); const show=input.type==='password'; input.type=show?'text':'password'; btn.textContent=show?'🙈':'👁';}
-async function getPublicIp(){try{const r=await fetch('https://api.ipify.org?format=json'); const j=await r.json(); return j.ip||'';}catch(e){return '';}}
+async function getPublicIp(){
+  const sources=[
+    async()=>{const r=await fetch('https://api.ipify.org?format=json'); const j=await r.json(); return j.ip||'';},
+    async()=>{const r=await fetch('https://ipinfo.io/json'); const j=await r.json(); return j.ip||'';},
+    async()=>{const r=await fetch('https://api64.ipify.org?format=json'); const j=await r.json(); return j.ip||'';}
+  ];
+  for(const fn of sources){
+    try{
+      const ip=String(await fn()||'').trim();
+      if(ip) return ip;
+    }catch(e){}
+  }
+  return '';
+}
 async function fileToDataUrl(file){return new Promise((resolve,reject)=>{const r=new FileReader(); r.onload=()=>resolve(String(r.result||'')); r.onerror=reject; r.readAsDataURL(file);});}
 
 function dataUrlToBlob(dataUrl){
