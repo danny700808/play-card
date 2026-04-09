@@ -69,7 +69,9 @@
       setPortalMode('staff');
       renderHomeTiles(user);
       await refreshHomeCounts(user);
-      await renderLineBindPrompt_('#lineBindArea');
+      Promise.resolve().then(function(){
+        if(typeof renderLineBindPrompt_==='function') return renderLineBindPrompt_('#lineBindArea');
+      }).catch(function(){});
     }
 
     async function refreshHomeCounts(user){

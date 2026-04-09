@@ -148,20 +148,18 @@
     }
     function renderHome(data){
       const user=getTeacherUser()||{};
-      const teacher=(data&&data.teacher)||{};
-      document.getElementById('teacherName').textContent='歡迎 ' + (teacher.name || user.name || '老師');
-      document.getElementById('teacherMeta').textContent=(teacher.email || user.email || '');
+      const profile=(data&&data.profile)||{};
+      document.getElementById('teacherName').textContent='歡迎 ' + (profile.name || user.name || '老師');
+      document.getElementById('teacherMeta').textContent=(profile.email || user.email || '');
 
-      const cards=(data&&data.cards)||{};
-      const ann=cards.announcements||{};
-      const todo=cards.todos||{};
-      const contract=cards.contract||{};
-      const goods=cards.goods||{};
+      const counts=(data&&data.counts)||{};
+      const contract=(data&&data.contract)||{};
+      const goods=(data&&data.goods)||{};
 
-      setCount('announcementCount', ann.unreadCount || ann.total || 0, '完成');
-      setCount('todoCount', todo.total || 0, '完成');
+      setCount('announcementCount', counts.announcements || 0, '完成');
+      setCount('todoCount', counts.tasks || 0, '完成');
       setCount('contractCount', contract.pendingCount || (contract.signed ? 0 : 1), contract.signed ? '完成' : '1');
-      setCount('goodsCount', goods.newItemCount || goods.openInquiryCount || goods.total || 0, '完成');
+      setCount('goodsCount', goods.openInquiryCount || goods.newItemCount || goods.total || 0, '完成');
 
       document.getElementById('cardsSection').hidden=false;
       setStatus('', false);
@@ -179,9 +177,11 @@
       }
       try{
         setStatus('正在讀取首頁資料...', false);
-        const data=await postJson('getTeacherHomeData', { userId });
+        const data=await postJson('getDashboardSummary', { userId, role:'external' });
         renderHome(data);
-        if(typeof renderLineBindPrompt_==='function') await renderLineBindPrompt_('#lineBindArea');
+        Promise.resolve().then(function(){
+          if(typeof renderLineBindPrompt_==='function') return renderLineBindPrompt_('#lineBindArea');
+        }).catch(function(){});
       }catch(err){
         setStatus(err.message || '讀取失敗', true);
       }
