@@ -422,9 +422,29 @@
     }
 
     async function loadAssignees(){
-      const r=await api('getEmployeeOptions', {});
       const sel=qs('#assigneeId');
-      sel.innerHTML='<option value="">請選擇員工</option>' + (r.rows||[]).map(x=>`<option value="${x.id}">${x.name}</option>`).join('');
+      if(!sel) return;
+      if(!currentUser || !currentUser.id){
+        sel.innerHTML='<option value="">請先重新登入</option>';
+        return;
+      }
+      try{
+        const r=await api('getEmployeeOptions', { userId: currentUser.id });
+        const rows=Array.isArray(r.rows) ? r.rows : [];
+        if(!r.ok){
+          sel.innerHTML='<option value="">讀取員工失敗</option>';
+          setMsg(qs('#taskMsg')||qs('#msg'), r.message || '讀取員工失敗', true);
+          return;
+        }
+        if(!rows.length){
+          sel.innerHTML='<option value="">目前沒有可指派員工</option>';
+          return;
+        }
+        sel.innerHTML='<option value="">請選擇員工</option>' + rows.map(x=>`<option value="${x.id}">${x.name}</option>`).join('');
+      }catch(err){
+        sel.innerHTML='<option value="">讀取員工失敗</option>';
+        setMsg(qs('#taskMsg')||qs('#msg'), err.message || '讀取員工失敗', true);
+      }
     }
 
 
