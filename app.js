@@ -223,6 +223,12 @@ function ensureLineBindPromptStyle_(){
   .line-bind-guide-text{font-size:12px;color:#5f7086;line-height:1.6}
   .line-bind-guide-code{margin-top:8px;padding:10px 12px;border-radius:14px;background:#fff;border:1px solid #d9e2ef;font-size:13px;font-weight:800;color:#18314a;word-break:break-all}
   .line-bind-guide-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+  .line-bind-mini.loading .line-bind-mini-status,
+  .line-bind-mini.loading .line-bind-mini-hint{color:#8ea0b3}
+  .line-bind-skeleton{display:inline-flex;align-items:center;gap:8px}
+  .line-bind-skeleton-dot{width:8px;height:8px;border-radius:999px;background:#d9e2ef;animation:linePulse 1.1s ease-in-out infinite}
+  .line-bind-skeleton-bar{width:78px;height:10px;border-radius:999px;background:#eef2f7;display:inline-block}
+  @keyframes linePulse{0%,100%{opacity:.35;transform:scale(.94)}50%{opacity:1;transform:scale(1)}}
   @media (max-width:560px){
     .line-bind-mini{padding:10px 12px;border-radius:18px;gap:10px}
     .line-bind-mini-title{font-size:13px}
@@ -245,6 +251,7 @@ async function setLineNotifyPreference_(enabled, clearBinding){
   if(res.user) saveUser(res.user);
   return res;
 }
+
 async function renderLineBindPrompt_(targetSelector){
   const user=getUser();
   if(!user) return;
@@ -258,14 +265,47 @@ async function renderLineBindPrompt_(targetSelector){
     || document.querySelector('.container');
   if(!target) return;
   ensureLineBindPromptStyle_();
-  const links=await getPublicSystemLinksCached();
+
   const wrap=document.createElement('div');
-  wrap.className='line-bind-mini';
+  wrap.className='line-bind-mini loading';
   wrap.id='lineBindPromptCard';
+  wrap.innerHTML=`
+    <div class="line-bind-mini-left">
+      <div class="line-bind-mini-title">LINE 通知設定</div>
+      <div class="line-bind-mini-status">
+        <span class="line-bind-skeleton"><span class="line-bind-skeleton-dot"></span><span class="line-bind-skeleton-bar"></span></span>
+      </div>
+      <div class="line-bind-mini-hint">首頁先固定顯示，操作時再顯示進度。</div>
+      <div class="line-bind-guide" id="lineBindGuideBox" hidden>
+        <div class="line-bind-guide-title">綁定教學</div>
+        <div class="line-bind-guide-text">1. 先加入柚子樂器官方 LINE 好友。</div>
+        <div class="line-bind-guide-text">2. 複製下面這段綁定文字。</div>
+        <div class="line-bind-guide-text">3. 到官方 LINE 聊天視窗貼上並送出，即可完成綁定。</div>
+        <div class="line-bind-guide-code" id="lineBindGuideCode"></div>
+        <div class="line-bind-guide-actions" id="lineBindGuideActions">
+          <button class="btn secondary" type="button" id="copyLineBindGuideBtn">複製綁定文字</button>
+        </div>
+      </div>
+    </div>
+    <div class="line-bind-mini-actions" id="lineBindActions">
+      <button class="btn secondary" type="button" disabled>讀取中...</button>
+    </div>
+  `;
+  target.appendChild(wrap);
+
   const email=String(user.email||'').trim();
   const cmd=`柚子綁定 ${email}`;
   const hasLineId=!!String(user.lineUserId||'').trim();
   const notifyOn=String(user.lineNotifyEnabled||'').trim()==='是' || user.lineNotifyEnabled===true;
+
+  const statusEl=wrap.querySelector('.line-bind-mini-status');
+  const hintEl=wrap.querySelector('.line-bind-mini-hint');
+  const actionsEl=wrap.querySelector('#lineBindActions');
+  const guideBox=wrap.querySelector('#lineBindGuideBox');
+  const guideCode=wrap.querySelector('#lineBindGuideCode');
+  const copyGuideBtn=wrap.querySelector('#copyLineBindGuideBtn');
+  const guideActions=wrap.querySelector('#lineBindGuideActions');
+  if(guideCode) guideCode.textContent=cmd;
 
   let statusHtml='';
   let hint='';
@@ -278,46 +318,32 @@ async function renderLineBindPrompt_(targetSelector){
   }else if(notifyOn){
     statusHtml='已綁定｜<span class="on">提醒開啟</span>';
     hint='可直接取消提醒，不需要再收時再解除綁定即可。';
-    actionsHtml=`
-      <button class="btn secondary" type="button" id="toggleLineNotifyBtn">取消提醒</button>
-      <button class="btn secondary" type="button" id="unbindLineBtn">解除綁定</button>
-    `;
+    actionsHtml=`<button class="btn secondary" type="button" id="toggleLineNotifyBtn">取消提醒</button><button class="btn secondary" type="button" id="unbindLineBtn">解除綁定</button>`;
   }else{
     statusHtml='已綁定｜<span class="off">提醒關閉</span>';
     hint='LINE 仍已綁定，需要時可重新開啟提醒。';
-    actionsHtml=`
-      <button class="btn" type="button" id="toggleLineNotifyBtn">開啟提醒</button>
-      <button class="btn secondary" type="button" id="unbindLineBtn">解除綁定</button>
-    `;
+    actionsHtml=`<button class="btn" type="button" id="toggleLineNotifyBtn">開啟提醒</button><button class="btn secondary" type="button" id="unbindLineBtn">解除綁定</button>`;
   }
 
-  wrap.innerHTML=`
-    <div class="line-bind-mini-left">
-      <div class="line-bind-mini-title">LINE 通知設定</div>
-      <div class="line-bind-mini-status">${statusHtml}</div>
-      <div class="line-bind-mini-hint">${hint}</div>
-      <div class="line-bind-guide" id="lineBindGuideBox" hidden>
-        <div class="line-bind-guide-title">綁定教學</div>
-        <div class="line-bind-guide-text">1. 先加入柚子樂器官方 LINE 好友。</div>
-        <div class="line-bind-guide-text">2. 複製下面這段文字。</div>
-        <div class="line-bind-guide-text">3. 到官方 LINE 留言板貼上並送出，就完成綁定。</div>
-        <div class="line-bind-guide-code" id="lineBindGuideCode"></div>
-        <div class="line-bind-guide-actions">
-          ${links.lineAddFriendUrl ? `<a class="btn" href="${links.lineAddFriendUrl}" target="_blank" rel="noopener">加入官方 LINE</a>` : ''}
-          <button class="btn secondary" type="button" id="copyLineBindGuideBtn">複製綁定文字</button>
-        </div>
-      </div>
-    </div>
-    <div class="line-bind-mini-actions">${actionsHtml}</div>
-  `;
-  target.appendChild(wrap);
+  statusEl.innerHTML=statusHtml;
+  hintEl.textContent=hint;
+  actionsEl.innerHTML=actionsHtml;
+  wrap.classList.remove('loading');
+
+  try{
+    const links=await getPublicSystemLinksCached();
+    if(guideActions && links && links.lineAddFriendUrl){
+      const a=document.createElement('a');
+      a.className='btn';
+      a.href=links.lineAddFriendUrl;
+      a.target='_blank';
+      a.rel='noopener';
+      a.textContent='加入官方 LINE';
+      guideActions.insertBefore(a, copyGuideBtn);
+    }
+  }catch(e){}
 
   const guideBtn=wrap.querySelector('#showLineBindGuideBtn');
-  const guideBox=wrap.querySelector('#lineBindGuideBox');
-  const guideCode=wrap.querySelector('#lineBindGuideCode');
-  const copyGuideBtn=wrap.querySelector('#copyLineBindGuideBtn');
-  if(guideCode) guideCode.textContent=cmd;
-
   if(guideBtn && guideBox){
     guideBtn.onclick=()=>{
       guideBox.hidden=false;
@@ -328,11 +354,13 @@ async function renderLineBindPrompt_(targetSelector){
   if(copyGuideBtn){
     copyGuideBtn.onclick=async()=>{
       try{
+        const progress=startActionButtonProgress(copyGuideBtn,{label:'複製中',startPct:12,maxPct:76,interval:120});
         await navigator.clipboard.writeText(cmd);
-        copyGuideBtn.textContent='已複製';
-        setTimeout(()=>{ if(document.body.contains(copyGuideBtn)) copyGuideBtn.textContent='複製綁定文字'; },1600);
+        progress.done('已複製',900);
       }catch(e){
-        alert('複製失敗，請手動複製：\n'+cmd);
+        finishActionButtonError(copyGuideBtn,'複製失敗',1400);
+        alert('複製失敗，請手動複製：
+'+cmd);
       }
     };
   }
@@ -343,15 +371,13 @@ async function renderLineBindPrompt_(targetSelector){
       const wantEnable=!notifyOn;
       const text=wantEnable ? '確定要開啟 LINE 提醒嗎？' : '確定要取消 LINE 提醒嗎？';
       if(!window.confirm(text)) return;
+      const progress=startActionButtonProgress(toggleBtn,{label:'處理中',startPct:10,maxPct:84,interval:140});
       try{
-        toggleBtn.disabled=true;
-        toggleBtn.textContent='處理中...';
         await setLineNotifyPreference_(wantEnable,false);
+        progress.set(96,'更新中');
         await renderLineBindPrompt_(targetSelector);
       }catch(e){
-        alert(e.message || '儲存失敗');
-        toggleBtn.disabled=false;
-        toggleBtn.textContent=wantEnable ? '開啟提醒' : '取消提醒';
+        progress.fail(e.message || '儲存失敗',1400);
       }
     };
   }
@@ -360,19 +386,18 @@ async function renderLineBindPrompt_(targetSelector){
   if(unbindBtn){
     unbindBtn.onclick=async()=>{
       if(!window.confirm('確定要解除 LINE 綁定嗎？解除後首頁仍會保留綁定入口。')) return;
+      const progress=startActionButtonProgress(unbindBtn,{label:'解除中',startPct:10,maxPct:84,interval:140});
       try{
-        unbindBtn.disabled=true;
-        unbindBtn.textContent='處理中...';
         await setLineNotifyPreference_(false,true);
+        progress.set(96,'更新中');
         await renderLineBindPrompt_(targetSelector);
       }catch(e){
-        alert(e.message || '解除失敗');
-        unbindBtn.disabled=false;
-        unbindBtn.textContent='解除綁定';
+        progress.fail(e.message || '解除失敗',1400);
       }
     };
   }
 }
+
 
 const __btnProgressMap=new WeakMap();
 function ensureActionButton(btn){
@@ -427,10 +452,11 @@ function startActionButtonProgress(btn, options={}){
   if(options.auto!==false){
     timer=setInterval(()=>{
       if(state.pct>=state.maxPct) return;
-      const step=state.pct<35?8:(state.pct<65?5:2);
+      const remain=Math.max(0, state.maxPct-state.pct);
+      const step=Math.max(state.pct<25 ? 4 : (state.pct<55 ? 3 : 1), Math.ceil(remain*(state.pct<60 ? 0.16 : 0.08)));
       state.pct=Math.min(state.maxPct, state.pct+step);
       render();
-    }, Number(options.interval||180));
+    }, Number(options.interval||140));
   }
   __btnProgressMap.set(btn,{timer,state,nodes,render});
   return {

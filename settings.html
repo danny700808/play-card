@@ -44,7 +44,7 @@
       if(!hasSettingsZoneAccess(user)){location.href='dashboard.html';return;}
       document.body.classList.add('has-settings-zone');
       setPortalMode('settings');
-      if(typeof renderLineBindPrompt_==='function') await renderLineBindPrompt_('#lineBindArea');
+      if(typeof renderLineBindPrompt_==='function') renderLineBindPrompt_('#lineBindArea');
     }
   </script>
 </body>

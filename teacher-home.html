@@ -67,11 +67,11 @@
 
     <div id="lineBindArea" class="line-slot"></div>
 
-    <section class="section" id="statusSection">
-      <div class="status" id="statusBox">正在讀取首頁資料...</div>
+    <section class="section" id="statusSection" hidden>
+      <div class="status" id="statusBox"></div>
     </section>
 
-    <section class="section cards" id="cardsSection" hidden>
+    <section class="section cards" id="cardsSection">
       <button class="entry-card" type="button" id="openAnnouncementBtn">
         <div>
           <div class="entry-title">公告</div>
@@ -161,7 +161,6 @@
       setCount('contractCount', contract.pendingCount || (contract.signed ? 0 : 1), contract.signed ? '完成' : '1');
       setCount('goodsCount', goods.openInquiryCount || goods.newItemCount || goods.total || 0, '完成');
 
-      document.getElementById('cardsSection').hidden=false;
       setStatus('', false);
     }
     async function loadHome(){
@@ -175,13 +174,12 @@
         setStatus('缺少 userId，請重新登入。', true);
         return;
       }
+      Promise.resolve().then(function(){
+        if(typeof renderLineBindPrompt_==='function') return renderLineBindPrompt_('#lineBindArea');
+      }).catch(function(){});
       try{
-        setStatus('正在讀取首頁資料...', false);
         const data=await postJson('getDashboardSummary', { userId, role:'external' });
         renderHome(data);
-        Promise.resolve().then(function(){
-          if(typeof renderLineBindPrompt_==='function') return renderLineBindPrompt_('#lineBindArea');
-        }).catch(function(){});
       }catch(err){
         setStatus(err.message || '讀取失敗', true);
       }

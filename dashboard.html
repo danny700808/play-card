@@ -68,10 +68,10 @@
       if(hasSettingsZoneAccess(user)) document.body.classList.add('has-settings-zone');
       setPortalMode('staff');
       renderHomeTiles(user);
-      await refreshHomeCounts(user);
       Promise.resolve().then(function(){
         if(typeof renderLineBindPrompt_==='function') return renderLineBindPrompt_('#lineBindArea');
       }).catch(function(){});
+      refreshHomeCounts(user);
     }
 
     async function refreshHomeCounts(user){
