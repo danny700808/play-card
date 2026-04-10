@@ -359,8 +359,7 @@ async function renderLineBindPrompt_(targetSelector){
         progress.done('已複製',900);
       }catch(e){
         finishActionButtonError(copyGuideBtn,'複製失敗',1400);
-        alert('複製失敗，請手動複製：
-'+cmd);
+        alert('複製失敗，請手動複製：\n'+cmd);
       }
     };
   }
