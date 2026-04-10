@@ -27,12 +27,156 @@ function getApiUrl(){return API_URL}
 function logout(){localStorage.removeItem('employeeUser'); localStorage.removeItem('employeeUserId'); clearPortalMode(); location.href='index.html'}
 function currentFeatureKey(){const path=String((location&&location.pathname)||'').split('/').pop().toLowerCase(); if(path==='dashboard.html') return 'dashboard'; if(path==='clock.html') return 'clock'; if(path==='parttime.html') return 'parttime'; if(path==='leave.html') return 'leave'; if(path==='task.html') return 'task'; if(path==='routine.html') return 'routine'; if(path==='training.html') return 'training'; if(path==='contract.html') return 'contract'; if(path==='contract-admin.html') return 'contractAdmin'; if(path==='settings.html') return 'settings'; return '';}
 function requireLogin(){const user=getUser(); if(!user){location.href='index.html'; return null;} const feature=currentFeatureKey(); if(feature==='contract' && !isExternalTeacher(user)){location.href='dashboard.html'; return null;} if(feature==='contractAdmin' && !isManager(user)){location.href='dashboard.html'; return null;} if(feature && feature!=='contract' && feature!=='contractAdmin' && feature!=='settings' && !guardFeatureAccess(feature,user)) return null; return user;}
-async function api(action, payload={}){
+
+const __globalLoadingState={count:0,pct:0,label:'讀取中',timer:null,overlay:null,box:null,fill:null,labelEl:null,hideTimer:null};
+function ensureGlobalLoadingOverlay(){
+  if(__globalLoadingState.overlay) return __globalLoadingState.overlay;
+  if(!document||!document.body) return null;
+  if(!document.getElementById('globalLoadingStyle')){
+    const style=document.createElement('style');
+    style.id='globalLoadingStyle';
+    style.textContent=`
+      .global-loading-overlay{position:fixed;inset:0;background:rgba(15,23,42,.16);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;z-index:9999;opacity:0;pointer-events:none;transition:opacity .18s ease}
+      .global-loading-overlay.show{opacity:1;pointer-events:auto}
+      .global-loading-box{width:min(92vw,380px);background:#fff;border:1px solid rgba(15,23,42,.06);border-radius:18px;box-shadow:0 20px 50px rgba(15,23,42,.18);padding:18px 18px 16px}
+      .global-loading-title{font-size:14px;color:#5b6b80;margin-bottom:10px;letter-spacing:.02em}
+      .global-loading-track{height:12px;background:#edf2f7;border-radius:999px;overflow:hidden}
+      .global-loading-fill{height:100%;width:0%;background:linear-gradient(90deg,#1f7a5a,#2aa773);transition:width .22s ease}
+      .global-loading-text{margin-top:10px;font-size:15px;font-weight:700;color:#16324f;display:flex;justify-content:space-between;gap:10px}
+      body.global-loading-active{cursor:progress}
+    `;
+    document.head.appendChild(style);
+  }
+  const overlay=document.createElement('div');
+  overlay.className='global-loading-overlay';
+  overlay.innerHTML=`<div class="global-loading-box"><div class="global-loading-title">系統處理中</div><div class="global-loading-track"><div class="global-loading-fill"></div></div><div class="global-loading-text"><span class="global-loading-label">讀取中</span><span class="global-loading-pct">0%</span></div></div>`;
+  document.body.appendChild(overlay);
+  __globalLoadingState.overlay=overlay;
+  __globalLoadingState.box=overlay.querySelector('.global-loading-box');
+  __globalLoadingState.fill=overlay.querySelector('.global-loading-fill');
+  __globalLoadingState.labelEl=overlay.querySelector('.global-loading-label');
+  __globalLoadingState.pctEl=overlay.querySelector('.global-loading-pct');
+  return overlay;
+}
+function renderGlobalLoading(){
+  const overlay=ensureGlobalLoadingOverlay();
+  if(!overlay) return;
+  __globalLoadingState.fill.style.width=`${Math.max(0,Math.min(100,__globalLoadingState.pct||0))}%`;
+  __globalLoadingState.labelEl.textContent=String(__globalLoadingState.label||'讀取中');
+  __globalLoadingState.pctEl.textContent=`${Math.round(Math.max(0,Math.min(100,__globalLoadingState.pct||0)))}%`;
+}
+function setGlobalLoadingStep(percent,label){
+  ensureGlobalLoadingOverlay();
+  if(label!=null) __globalLoadingState.label=String(label||__globalLoadingState.label||'讀取中');
+  __globalLoadingState.pct=Math.max(__globalLoadingState.pct||0, Math.max(0,Math.min(100,Number(percent)||0)));
+  renderGlobalLoading();
+}
+function stopGlobalLoadingTimer(){
+  if(__globalLoadingState.timer){ clearInterval(__globalLoadingState.timer); __globalLoadingState.timer=null; }
+}
+function scheduleGlobalLoadingHide(holdMs=180){
+  clearTimeout(__globalLoadingState.hideTimer);
+  __globalLoadingState.hideTimer=setTimeout(()=>{
+    if(__globalLoadingState.count>0) return;
+    stopGlobalLoadingTimer();
+    if(__globalLoadingState.overlay) __globalLoadingState.overlay.classList.remove('show');
+    if(document&&document.body) document.body.classList.remove('global-loading-active');
+    __globalLoadingState.pct=0;
+    __globalLoadingState.label='';
+    renderGlobalLoading();
+  }, Math.max(0, Number(holdMs)||0));
+}
+function beginGlobalLoading(label='讀取中'){
+  ensureGlobalLoadingOverlay();
+  clearTimeout(__globalLoadingState.hideTimer);
+  __globalLoadingState.count += 1;
+  if(document&&document.body) document.body.classList.add('global-loading-active');
+  if(__globalLoadingState.overlay) __globalLoadingState.overlay.classList.add('show');
+  __globalLoadingState.pct=Math.max(__globalLoadingState.count>1 ? (__globalLoadingState.pct||0) : 0, 6);
+  __globalLoadingState.label=String(label||'讀取中');
+  renderGlobalLoading();
+  if(!__globalLoadingState.timer){
+    __globalLoadingState.timer=setInterval(()=>{
+      if(__globalLoadingState.count<=0) return;
+      const pct=Number(__globalLoadingState.pct||0);
+      let inc=0;
+      if(pct<18) inc=2;
+      else if(pct<36) inc=1.4;
+      else if(pct<56) inc=1;
+      else if(pct<72) inc=0.6;
+      else if(pct<82) inc=0.24;
+      __globalLoadingState.pct=Math.min(82, pct+inc);
+      renderGlobalLoading();
+    }, 170);
+  }
+  let closed=false;
+  return {
+    set(percent,text){ if(closed) return; setGlobalLoadingStep(percent,text); },
+    done(text='處理完成', holdMs=220){
+      if(closed) return; closed=true;
+      __globalLoadingState.count=Math.max(0, (__globalLoadingState.count||1)-1);
+      __globalLoadingState.label=String(text||'處理完成');
+      __globalLoadingState.pct=100;
+      renderGlobalLoading();
+      if(__globalLoadingState.count<=0) scheduleGlobalLoadingHide(holdMs);
+    },
+    fail(text='處理失敗', holdMs=320){
+      if(closed) return; closed=true;
+      __globalLoadingState.count=Math.max(0, (__globalLoadingState.count||1)-1);
+      __globalLoadingState.label=String(text||'處理失敗');
+      __globalLoadingState.pct=100;
+      renderGlobalLoading();
+      if(__globalLoadingState.count<=0) scheduleGlobalLoadingHide(holdMs);
+    }
+  };
+}
+async function withGlobalLoading(label, runner, failText='處理失敗'){
+  const loading=beginGlobalLoading(label||'讀取中');
+  try{
+    const result=await runner(loading);
+    loading.done('完成');
+    return result;
+  }catch(err){
+    loading.fail(failText||'處理失敗');
+    throw err;
+  }
+}
+function apiActionLabel(action=''){
+  const map={
+    login:'登入驗證中', forgotPassword:'寄送暫時密碼中', changePassword:'更新密碼中', register:'送出註冊資料中',
+    clock:'打卡送出中', submitClockCorrection:'送出打卡修正中', getClockHistoryRange:'查詢打卡紀錄中', getEditableClockHistory:'載入打卡紀錄中', getMonthClockHistory:'載入本月紀錄中',
+    leaveRequest:'送出請假申請中', modifyLeaveRequest:'更新請假申請中', deleteLeaveRequest:'刪除請假申請中', getLeaveHistory:'讀取請假紀錄中', getPendingLeaveApprovals:'讀取待簽核資料中', reviewLeaveRequest:'處理請假簽核中',
+    parttime:'送出工讀時數中', getParttimeHistory:'讀取工讀時數中',
+    getDashboardSummary:'讀取首頁資料中', getAnnouncements:'讀取公告中', getAnnouncementAdminList:'讀取公告管理資料中', saveAnnouncement:'儲存公告中', deleteAnnouncement:'刪除公告中', toggleAnnouncement:'更新公告狀態中',
+    getTasks:'讀取交辦事項中', createTask:'建立交辦事項中', completeTask:'送出完成回報中', deleteTask:'刪除交辦事項中', markTaskRedo:'退回重新完成中', updateTaskReminderPrefs:'更新提醒設定中',
+    getRoutinePageData:'讀取定期事項中', saveRoutineTemplate:'儲存定期事項中', deleteRoutineTemplate:'刪除定期事項中', toggleRoutineTemplate:'更新定期事項狀態中', completeRoutineItem:'送出完成回報中', updateRoutineReminderPrefs:'更新提醒設定中',
+    getTrainingPageData:'讀取教育訓練中', saveTrainingItem:'儲存教材中', deleteTrainingItem:'刪除教材中', toggleTrainingItem:'更新教材狀態中',
+    getTeacherContractStatus:'讀取合約資料中', submitTeacherContractSignature:'送出簽約資料中', getTeacherContractAdminList:'讀取簽約紀錄中', resendTeacherContractPdf:'補寄合約中',
+    getTeacherGoodsList:'讀取商品資料中', getTeacherGoodsInquiries:'讀取詢價紀錄中', submitTeacherGoodsInquiry:'送出詢價中', getTeacherGoodsAdminData:'讀取老師商品管理資料中', saveTeacherGoodsItem:'儲存商品中', deleteTeacherGoodsItem:'刪除商品中', getTeacherGoodsInquiryAdminList:'讀取詢價管理中', replyTeacherGoodsInquiry:'儲存詢價回覆中',
+    getPendingRegistrations:'讀取待審核註冊中', approveRegistrationApi:'核准註冊中', rejectRegistrationApi:'駁回註冊中',
+    getPublicSystemLinks:'讀取系統設定中', setLineNotifyPreference:'更新 LINE 提醒中', getEmployeeOptions:'讀取員工名單中'
+  };
+  return map[String(action||'').trim()] || '系統處理中';
+}
+async function api(action, payload={}, options={}){
   const apiUrl=getApiUrl();
   if(!apiUrl) throw new Error('尚未設定 API 網址');
-  const res=await fetch(apiUrl,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action,...payload})});
-  const raw=await res.text();
-  try{return JSON.parse(raw);}catch(e){throw new Error(raw || '伺服器回傳格式錯誤');}
+  const loading=(options&&options.silentLoading) ? null : beginGlobalLoading((options&&options.loadingText) || apiActionLabel(action));
+  try{
+    if(loading) loading.set(12,'建立連線');
+    const res=await fetch(apiUrl,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action,...payload})});
+    if(loading) loading.set(68,'等待系統回應');
+    const raw=await res.text();
+    if(loading) loading.set(86,'整理結果');
+    let json;
+    try{ json=JSON.parse(raw); }
+    catch(e){ throw new Error(raw || '伺服器回傳格式錯誤'); }
+    if(loading) loading.done(json&&json.ok===false ? (json.message||'處理完成') : '處理完成');
+    return json;
+  }catch(err){
+    if(loading) loading.fail('處理失敗');
+    throw err;
+  }
 }
 function setMsg(el, text, isError=false){if(!el) return; el.style.display=text?'block':'none'; el.textContent=text||''; el.classList.toggle('error',!!isError)}
 function togglePassword(inputSel, btn){const input=qs(inputSel); const show=input.type==='password'; input.type=show?'text':'password'; btn.textContent=show?'🙈':'👁';}
@@ -434,8 +578,8 @@ function startActionButtonProgress(btn, options={}){
   const existing=__btnProgressMap.get(btn);
   if(existing&&existing.timer) clearInterval(existing.timer);
   const state={
-    pct:Math.max(0,Math.min(100,Number(options.startPct!=null?options.startPct:8)||0)),
-    maxPct:Math.max(0,Math.min(95,Number(options.maxPct!=null?options.maxPct:88)||88)),
+    pct:Math.max(0,Math.min(100,Number(options.startPct!=null?options.startPct:6)||0)),
+    maxPct:Math.max(0,Math.min(95,Number(options.maxPct!=null?options.maxPct:78)||78)),
     label:String(options.label||options.text||'處理中').trim()||'處理中',
     formatter:typeof options.formatter==='function'?options.formatter:null
   };
@@ -452,10 +596,15 @@ function startActionButtonProgress(btn, options={}){
     timer=setInterval(()=>{
       if(state.pct>=state.maxPct) return;
       const remain=Math.max(0, state.maxPct-state.pct);
-      const step=Math.max(state.pct<25 ? 4 : (state.pct<55 ? 3 : 1), Math.ceil(remain*(state.pct<60 ? 0.16 : 0.08)));
-      state.pct=Math.min(state.maxPct, state.pct+step);
+      let step=0;
+      if(state.pct<18) step=1.8;
+      else if(state.pct<36) step=1.3;
+      else if(state.pct<56) step=0.9;
+      else if(state.pct<70) step=0.55;
+      else step=0.2;
+      state.pct=Math.min(state.maxPct, state.pct+Math.min(remain, step));
       render();
-    }, Number(options.interval||140));
+    }, Number(options.interval||180));
   }
   __btnProgressMap.set(btn,{timer,state,nodes,render});
   return {
