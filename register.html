@@ -52,6 +52,19 @@
           <div class="field-error"></div>
         </div>
 
+        
+        <div class="field" id="field-mobile">
+          <label for="mobile">行動電話</label>
+          <input id="mobile" name="mobile" inputmode="tel" autocomplete="tel-national" placeholder="請輸入行動電話">
+          <div class="field-error"></div>
+        </div>
+
+        <div class="field" id="field-address">
+          <label for="address">聯絡地址</label>
+          <input id="address" name="address" autocomplete="street-address" placeholder="請輸入聯絡地址">
+          <div class="field-error"></div>
+        </div>
+
         <div class="field" id="field-emergencyContact">
           <label for="emergencyContact">緊急聯絡人</label>
           <input id="emergencyContact" name="emergencyContact" placeholder="請輸入緊急聯絡人姓名">
@@ -95,6 +108,8 @@
       email: '#field-email',
       idNumber: '#field-idNumber',
       birthDate: '#field-birthDate',
+      mobile: '#field-mobile',
+      address: '#field-address',
       emergencyContact: '#field-emergencyContact',
       emergencyPhone: '#field-emergencyPhone',
       identityType: '#field-identityType',
@@ -178,7 +193,7 @@
     qs('#birthYear').addEventListener('change', () => { refreshBirthDays(); clearSingleFieldError('birthDate'); });
     qs('#birthMonth').addEventListener('change', () => { refreshBirthDays(); clearSingleFieldError('birthDate'); });
     qs('#birthDay').addEventListener('change', () => clearSingleFieldError('birthDate'));
-    ['name','email','idNumber','emergencyContact','emergencyPhone','identityType'].forEach(id => {
+    ['name','email','idNumber','mobile','address','emergencyContact','emergencyPhone','identityType'].forEach(id => {
       const el = qs('#' + id);
       el.addEventListener('input', () => clearSingleFieldError(id));
       el.addEventListener('change', () => clearSingleFieldError(id));
@@ -193,6 +208,8 @@
         email: qs('#email').value.trim(),
         idNumber: qs('#idNumber').value.trim().toUpperCase(),
         birthDate: birthDateValue(),
+        mobile: qs('#mobile').value.trim(),
+        address: qs('#address').value.trim(),
         emergencyContact: qs('#emergencyContact').value.trim(),
         emergencyPhone: qs('#emergencyPhone').value.trim(),
         identityType: qs('#identityType').value
@@ -206,11 +223,13 @@
 
       const progress = startActionButtonProgress(registerBtn, { label:'送出中' });
       progress.set(10, '開始送出資料');
-      const t1 = setTimeout(() => progress.set(35, '檢查資料中'), 250);
-      const t2 = setTimeout(() => progress.set(65, '建立註冊申請中'), 700);
+      const t1 = setTimeout(() => progress.set(18, '檢查資料中'), 250);
+      const t2 = setTimeout(() => progress.set(38, '建立註冊申請中'), 900);
+      const t3 = setTimeout(() => progress.set(58, '等待審核流程建立'), 1700);
+      const t4 = setTimeout(() => progress.set(76, '整理送出結果'), 2800);
       try{
         const r = await api('register', payload);
-        clearTimeout(t1); clearTimeout(t2);
+        clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4);
         if(r && r.ok){
           form.style.display='none';
           progress.done('申請已送出', 1200, true);
@@ -222,7 +241,7 @@
           setMsg(msg, (r && r.message) || '送出失敗', true);
         }
       }catch(err){
-        clearTimeout(t1); clearTimeout(t2);
+        clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4);
         progress.fail('送出失敗');
         setMsg(msg, err.message || '送出失敗', true);
       }
