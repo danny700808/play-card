@@ -28,106 +28,18 @@ function logout(){localStorage.removeItem('employeeUser'); localStorage.removeIt
 function currentFeatureKey(){const path=String((location&&location.pathname)||'').split('/').pop().toLowerCase(); if(path==='dashboard.html') return 'dashboard'; if(path==='clock.html') return 'clock'; if(path==='parttime.html') return 'parttime'; if(path==='leave.html') return 'leave'; if(path==='task.html') return 'task'; if(path==='routine.html') return 'routine'; if(path==='training.html') return 'training'; if(path==='contract.html') return 'contract'; if(path==='contract-admin.html') return 'contractAdmin'; if(path==='settings.html') return 'settings'; return '';}
 function requireLogin(){const user=getUser(); if(!user){location.href='index.html'; return null;} const feature=currentFeatureKey(); if(feature==='contract' && !isExternalTeacher(user)){location.href='dashboard.html'; return null;} if(feature==='contractAdmin' && !isManager(user)){location.href='dashboard.html'; return null;} if(feature && feature!=='contract' && feature!=='contractAdmin' && feature!=='settings' && !guardFeatureAccess(feature,user)) return null; return user;}
 
-const __globalLoadingState={count:0,pct:0,label:'讀取中',timer:null,overlay:null,box:null,fill:null,labelEl:null,hideTimer:null};
-function ensureGlobalLoadingOverlay(){
-  if(__globalLoadingState.overlay) return __globalLoadingState.overlay;
-  if(!document||!document.body) return null;
-  if(!document.getElementById('globalLoadingStyle')){
-    const style=document.createElement('style');
-    style.id='globalLoadingStyle';
-    style.textContent=`
-      .global-loading-overlay{position:fixed;inset:0;background:rgba(15,23,42,.16);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;z-index:9999;opacity:0;pointer-events:none;transition:opacity .18s ease}
-      .global-loading-overlay.show{opacity:1;pointer-events:auto}
-      .global-loading-box{width:min(92vw,380px);background:#fff;border:1px solid rgba(15,23,42,.06);border-radius:18px;box-shadow:0 20px 50px rgba(15,23,42,.18);padding:18px 18px 16px}
-      .global-loading-title{font-size:14px;color:#5b6b80;margin-bottom:10px;letter-spacing:.02em}
-      .global-loading-track{height:12px;background:#edf2f7;border-radius:999px;overflow:hidden}
-      .global-loading-fill{height:100%;width:0%;background:linear-gradient(90deg,#1f7a5a,#2aa773);transition:width .22s ease}
-      .global-loading-text{margin-top:10px;font-size:15px;font-weight:700;color:#16324f;display:flex;justify-content:space-between;gap:10px}
-      body.global-loading-active{cursor:progress}
-    `;
-    document.head.appendChild(style);
-  }
-  const overlay=document.createElement('div');
-  overlay.className='global-loading-overlay';
-  overlay.innerHTML=`<div class="global-loading-box"><div class="global-loading-title">系統處理中</div><div class="global-loading-track"><div class="global-loading-fill"></div></div><div class="global-loading-text"><span class="global-loading-label">讀取中</span><span class="global-loading-pct">0%</span></div></div>`;
-  document.body.appendChild(overlay);
-  __globalLoadingState.overlay=overlay;
-  __globalLoadingState.box=overlay.querySelector('.global-loading-box');
-  __globalLoadingState.fill=overlay.querySelector('.global-loading-fill');
-  __globalLoadingState.labelEl=overlay.querySelector('.global-loading-label');
-  __globalLoadingState.pctEl=overlay.querySelector('.global-loading-pct');
-  return overlay;
-}
-function renderGlobalLoading(){
-  const overlay=ensureGlobalLoadingOverlay();
-  if(!overlay) return;
-  __globalLoadingState.fill.style.width=`${Math.max(0,Math.min(100,__globalLoadingState.pct||0))}%`;
-  __globalLoadingState.labelEl.textContent=String(__globalLoadingState.label||'讀取中');
-  __globalLoadingState.pctEl.textContent=`${Math.round(Math.max(0,Math.min(100,__globalLoadingState.pct||0)))}%`;
-}
-function setGlobalLoadingStep(percent,label){
-  ensureGlobalLoadingOverlay();
-  if(label!=null) __globalLoadingState.label=String(label||__globalLoadingState.label||'讀取中');
-  __globalLoadingState.pct=Math.max(__globalLoadingState.pct||0, Math.max(0,Math.min(100,Number(percent)||0)));
-  renderGlobalLoading();
-}
-function stopGlobalLoadingTimer(){
-  if(__globalLoadingState.timer){ clearInterval(__globalLoadingState.timer); __globalLoadingState.timer=null; }
-}
-function scheduleGlobalLoadingHide(holdMs=180){
-  clearTimeout(__globalLoadingState.hideTimer);
-  __globalLoadingState.hideTimer=setTimeout(()=>{
-    if(__globalLoadingState.count>0) return;
-    stopGlobalLoadingTimer();
-    if(__globalLoadingState.overlay) __globalLoadingState.overlay.classList.remove('show');
-    if(document&&document.body) document.body.classList.remove('global-loading-active');
-    __globalLoadingState.pct=0;
-    __globalLoadingState.label='';
-    renderGlobalLoading();
-  }, Math.max(0, Number(holdMs)||0));
-}
+const __globalLoadingState={count:0,pct:0,label:'讀取中',timer:null,overlay:null,box:null,fill:null,labelEl:null,hideTimer:null,pctEl:null};
+function ensureGlobalLoadingOverlay(){ return null; }
+function renderGlobalLoading(){ return null; }
+function setGlobalLoadingStep(percent,label){ return null; }
+function stopGlobalLoadingTimer(){ return null; }
+function scheduleGlobalLoadingHide(holdMs=0){ return null; }
 function beginGlobalLoading(label='讀取中'){
-  ensureGlobalLoadingOverlay();
-  clearTimeout(__globalLoadingState.hideTimer);
-  __globalLoadingState.count += 1;
-  if(document&&document.body) document.body.classList.add('global-loading-active');
-  if(__globalLoadingState.overlay) __globalLoadingState.overlay.classList.add('show');
-  __globalLoadingState.pct=Math.max(__globalLoadingState.count>1 ? (__globalLoadingState.pct||0) : 0, 6);
-  __globalLoadingState.label=String(label||'讀取中');
-  renderGlobalLoading();
-  if(!__globalLoadingState.timer){
-    __globalLoadingState.timer=setInterval(()=>{
-      if(__globalLoadingState.count<=0) return;
-      const pct=Number(__globalLoadingState.pct||0);
-      let inc=0;
-      if(pct<18) inc=2;
-      else if(pct<36) inc=1.4;
-      else if(pct<56) inc=1;
-      else if(pct<72) inc=0.6;
-      else if(pct<82) inc=0.24;
-      __globalLoadingState.pct=Math.min(82, pct+inc);
-      renderGlobalLoading();
-    }, 170);
-  }
   let closed=false;
   return {
-    set(percent,text){ if(closed) return; setGlobalLoadingStep(percent,text); },
-    done(text='處理完成', holdMs=220){
-      if(closed) return; closed=true;
-      __globalLoadingState.count=Math.max(0, (__globalLoadingState.count||1)-1);
-      __globalLoadingState.label=String(text||'處理完成');
-      __globalLoadingState.pct=100;
-      renderGlobalLoading();
-      if(__globalLoadingState.count<=0) scheduleGlobalLoadingHide(holdMs);
-    },
-    fail(text='處理失敗', holdMs=320){
-      if(closed) return; closed=true;
-      __globalLoadingState.count=Math.max(0, (__globalLoadingState.count||1)-1);
-      __globalLoadingState.label=String(text||'處理失敗');
-      __globalLoadingState.pct=100;
-      renderGlobalLoading();
-      if(__globalLoadingState.count<=0) scheduleGlobalLoadingHide(holdMs);
-    }
+    set(percent,text){ if(closed) return; },
+    done(text='處理完成', holdMs=0){ if(closed) return; closed=true; },
+    fail(text='處理失敗', holdMs=0){ if(closed) return; closed=true; }
   };
 }
 async function withGlobalLoading(label, runner, failText='處理失敗'){
@@ -161,22 +73,12 @@ function apiActionLabel(action=''){
 async function api(action, payload={}, options={}){
   const apiUrl=getApiUrl();
   if(!apiUrl) throw new Error('尚未設定 API 網址');
-  const loading=(options&&options.silentLoading) ? null : beginGlobalLoading((options&&options.loadingText) || apiActionLabel(action));
-  try{
-    if(loading) loading.set(12,'建立連線');
-    const res=await fetch(apiUrl,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action,...payload})});
-    if(loading) loading.set(68,'等待系統回應');
-    const raw=await res.text();
-    if(loading) loading.set(86,'整理結果');
-    let json;
-    try{ json=JSON.parse(raw); }
-    catch(e){ throw new Error(raw || '伺服器回傳格式錯誤'); }
-    if(loading) loading.done(json&&json.ok===false ? (json.message||'處理完成') : '處理完成');
-    return json;
-  }catch(err){
-    if(loading) loading.fail('處理失敗');
-    throw err;
-  }
+  const res=await fetch(apiUrl,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action,...payload})});
+  const raw=await res.text();
+  let json;
+  try{ json=JSON.parse(raw); }
+  catch(e){ throw new Error(raw || '伺服器回傳格式錯誤'); }
+  return json;
 }
 function setMsg(el, text, isError=false){if(!el) return; el.style.display=text?'block':'none'; el.textContent=text||''; el.classList.toggle('error',!!isError)}
 function togglePassword(inputSel, btn){const input=qs(inputSel); const show=input.type==='password'; input.type=show?'text':'password'; btn.textContent=show?'🙈':'👁';}
@@ -597,14 +499,14 @@ function startActionButtonProgress(btn, options={}){
       if(state.pct>=state.maxPct) return;
       const remain=Math.max(0, state.maxPct-state.pct);
       let step=0;
-      if(state.pct<18) step=3.6;
-      else if(state.pct<36) step=2.6;
-      else if(state.pct<56) step=1.8;
-      else if(state.pct<70) step=1.1;
-      else step=0.4;
+      if(state.pct<18) step=1.8;
+      else if(state.pct<36) step=1.3;
+      else if(state.pct<56) step=0.9;
+      else if(state.pct<70) step=0.55;
+      else step=0.2;
       state.pct=Math.min(state.maxPct, state.pct+Math.min(remain, step));
       render();
-    }, Number(options.interval||90));
+    }, Number(options.interval||180));
   }
   __btnProgressMap.set(btn,{timer,state,nodes,render});
   return {
