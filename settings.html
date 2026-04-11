@@ -5,17 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>管理首頁</title>
   <link rel="stylesheet" href="style.css">
-  <style>
-    .switch-zone{display:none;text-decoration:none}
-    body.has-settings-zone .switch-zone{display:inline-flex}
-    .tile{position:relative}
-    .tile-badge{
-      position:absolute;top:12px;right:12px;min-width:28px;height:28px;padding:0 8px;
-      border-radius:999px;background:#d92d20;color:#fff;font-size:14px;font-weight:900;
-      display:none;align-items:center;justify-content:center;box-shadow:0 8px 18px rgba(217,45,32,.18)
-    }
-    .tile.has-badge .tile-badge{display:inline-flex}
-    </style>
+  <style>.switch-zone{display:none;text-decoration:none} body.has-settings-zone .switch-zone{display:inline-flex}</style>
 </head>
 <body onload="init()">
   <div class="container">
@@ -33,41 +23,20 @@
           </div>
     <div id="lineBindArea" style="margin:16px 0"></div>
     <div class="grid">
-      <a class="tile" href="registration-approval.html" data-badge-key="registrations"><span class="tile-badge" data-badge="registrations">0</span><strong>註冊審核</strong><span>查看新註冊員工申請，直接同意或駁回</span></a>
-      <a class="tile" href="leave.html" data-badge-key="leave"><span class="tile-badge" data-badge="leave">0</span><strong>請假簽核</strong><span>查看待簽核請假單並直接同意 / 駁回</span></a>
-      <a class="tile" href="task.html" data-badge-key="taskReply"><span class="tile-badge" data-badge="taskReply">0</span><strong>交辦事項管理</strong><span>建立交辦事項、查看已建立任務與調整設定</span></a>
+      <a class="tile" href="registration-approval.html"><strong>註冊審核</strong><span>查看新註冊員工申請，直接同意或駁回</span></a>
+      <a class="tile" href="leave.html"><strong>請假簽核</strong><span>查看待簽核請假單並直接同意 / 駁回</span></a>
+      <a class="tile" href="task.html"><strong>交辦事項管理</strong><span>建立交辦事項、查看已建立任務與調整設定</span></a>
       <a class="tile" href="routine.html"><strong>定期事項管理</strong><span>建立固定週期工作、修改負責人與週期設定</span></a>
       <a class="tile" href="training-admin.html"><strong>教育訓練管理</strong><span>新增教材、上傳影片 / 文件 / 音檔與控制是否啟用</span></a>
-      <a class="tile" href="schedule-admin.html" data-badge-key="clockCorrection"><span class="tile-badge" data-badge="clockCorrection">0</span><strong>班表管理 / 打卡修正</strong><span>建立班表模板、指定員工套用班表，也可留意待審打卡修正</span></a>
-      <a class="tile" href="contract-admin.html" data-badge-key="contract"><span class="tile-badge" data-badge="contract">0</span><strong>外聘老師合約管理</strong><span>查看年度簽署狀態、合約資料、PDF 與重寄紀錄</span></a>
-      <a class="tile" href="teacher-goods-admin.html" data-badge-key="goodsInquiry"><span class="tile-badge" data-badge="goodsInquiry">0</span><strong>外聘老師拿貨管理</strong><span>依老師設定商品、老師價格、圖片，並回覆詢價 / 庫存需求</span></a>
+      <a class="tile" href="schedule-admin.html"><strong>班表管理</strong><span>建立班表模板、指定員工套用班表、管理起訖日與無期限</span></a>
+      <a class="tile" href="contract-admin.html"><strong>外聘老師合約管理</strong><span>查看年度簽署狀態、合約資料、PDF 與重寄紀錄</span></a>
+      <a class="tile" href="teacher-goods-admin.html"><strong>外聘老師拿貨管理</strong><span>依老師設定商品、老師價格、圖片，並回覆詢價 / 庫存需求</span></a>
+
     </div>
   </div>
   <script src="config.js?v=20260410c"></script>
   <script src="app.js?v=20260410c"></script>
   <script>
-    function applyBadge(key, count){
-      const n = Number(count||0)||0;
-      const badge = document.querySelector('[data-badge="'+key+'"]');
-      const tile = document.querySelector('[data-badge-key="'+key+'"]');
-      if(!badge || !tile) return;
-      badge.textContent = n > 99 ? '99+' : String(n);
-      tile.classList.toggle('has-badge', n > 0);
-    }
-    async function refreshAdminBadges(user){
-      try{
-        const res = await api('getAdminBadgeCounts',{userId:user.id});
-        const counts = (res && res.counts) || {};
-        applyBadge('registrations', counts.registrations);
-        applyBadge('leave', counts.leave);
-        applyBadge('taskReply', counts.taskReply);
-        applyBadge('clockCorrection', counts.clockCorrection);
-        applyBadge('contract', counts.contract);
-        applyBadge('goodsInquiry', counts.goodsInquiry);
-      }catch(e){
-        ['registrations','leave','taskReply','clockCorrection','contract','goodsInquiry'].forEach(key=>applyBadge(key, 0));
-      }
-    }
     async function init(){
       fillHeader();
       const user=requireLogin();
@@ -76,7 +45,6 @@
       document.body.classList.add('has-settings-zone');
       setPortalMode('settings');
       if(typeof renderLineBindPrompt_==='function') renderLineBindPrompt_('#lineBindArea');
-      refreshAdminBadges(user);
     }
   </script>
 </body>

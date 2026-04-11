@@ -52,15 +52,14 @@
           <div class="field-error"></div>
         </div>
 
-        
         <div class="field" id="field-mobile">
-          <label for="mobile">行動電話</label>
-          <input id="mobile" name="mobile" inputmode="tel" autocomplete="tel-national" placeholder="請輸入行動電話">
+          <label for="mobile">行動電話<span class="required-mark" aria-hidden="true">*</span></label>
+          <input id="mobile" name="mobile" inputmode="tel" autocomplete="tel" placeholder="請輸入行動電話">
           <div class="field-error"></div>
         </div>
 
         <div class="field" id="field-address">
-          <label for="address">聯絡地址</label>
+          <label for="address">聯絡地址<span class="required-mark" aria-hidden="true">*</span></label>
           <input id="address" name="address" autocomplete="street-address" placeholder="請輸入聯絡地址">
           <div class="field-error"></div>
         </div>
@@ -72,7 +71,7 @@
         </div>
 
         <div class="field" id="field-emergencyPhone">
-          <label for="emergencyPhone">緊急聯絡人電話</label>
+          <label for="emergencyPhone">緊急聯絡人電話<span class="required-mark" aria-hidden="true">*</span></label>
           <input id="emergencyPhone" name="emergencyPhone" inputmode="tel" autocomplete="tel" placeholder="請輸入緊急聯絡人電話">
           <div class="field-error"></div>
         </div>
@@ -185,6 +184,9 @@
       if(!payload.email) return ['email','請填寫 Email'];
       if(!payload.idNumber) return ['idNumber','請填寫身分證字號'];
       if(!payload.birthDate) return ['birthDate','請選擇出生年月日'];
+      if(!payload.mobile) return ['mobile','請填寫行動電話'];
+      if(!payload.address) return ['address','請填寫聯絡地址'];
+      if(!payload.emergencyPhone) return ['emergencyPhone','請填寫緊急聯絡人電話'];
       if(!payload.identityType) return ['identityType','請選擇身分類型'];
       return null;
     }
@@ -223,13 +225,11 @@
 
       const progress = startActionButtonProgress(registerBtn, { label:'送出中' });
       progress.set(10, '開始送出資料');
-      const t1 = setTimeout(() => progress.set(18, '檢查資料中'), 250);
-      const t2 = setTimeout(() => progress.set(38, '建立註冊申請中'), 900);
-      const t3 = setTimeout(() => progress.set(58, '等待審核流程建立'), 1700);
-      const t4 = setTimeout(() => progress.set(76, '整理送出結果'), 2800);
+      const t1 = setTimeout(() => progress.set(35, '檢查資料中'), 250);
+      const t2 = setTimeout(() => progress.set(65, '建立註冊申請中'), 700);
       try{
         const r = await api('register', payload);
-        clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4);
+        clearTimeout(t1); clearTimeout(t2);
         if(r && r.ok){
           form.style.display='none';
           progress.done('申請已送出', 1200, true);
@@ -241,7 +241,7 @@
           setMsg(msg, (r && r.message) || '送出失敗', true);
         }
       }catch(err){
-        clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4);
+        clearTimeout(t1); clearTimeout(t2);
         progress.fail('送出失敗');
         setMsg(msg, err.message || '送出失敗', true);
       }

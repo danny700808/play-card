@@ -156,7 +156,7 @@
 
     qs('#loginBtn').onclick = async () => {
       const btn = qs('#loginBtn');
-      const progress = startActionButtonProgress(btn, { label:'登入中' });
+      const progress = startActionButtonProgress(btn, { label:'登入中', startPct:20, maxPct:80, steps:[20,40,60,80], interval:180 });
       setMsg(msg, '');
       try {
         const r = await api('login', {

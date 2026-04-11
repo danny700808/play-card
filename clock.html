@@ -276,7 +276,7 @@
       if(end < start){ showFieldError('rangeEnd', '結束日期不能早於開始日期'); focusField('#rangeEnd'); return; }
       if(diffDays > 70){ showFieldError('rangeEnd', '區間搜尋最多可查詢 70 天內的資料'); focusField('#rangeEnd'); return; }
       const btn = qs('#rangeSearchBtn');
-      const progress = startActionButtonProgress(btn, { label:'搜尋中', maxPct:80 });
+      const progress = startActionButtonProgress(btn, { label:'搜尋中', startPct:20, maxPct:80, steps:[20,40,60,80], interval:160 });
       try {
         const r = await api('getClockHistoryRange', { userId:user.id, startDate, endDate });
         setMsg(qs('#rangeMsg'), r.message || ((r.rows || []).length ? '' : '這段期間沒有打卡紀錄'), !r.ok);
@@ -316,7 +316,7 @@
         err.textContent = '請完整填寫修正日期、時間與原因';
         return;
       }
-      const progress = startActionButtonProgress(btn, { label:'送出中', maxPct:82 });
+      const progress = startActionButtonProgress(btn, { label:'送出中', startPct:20, maxPct:80, steps:[20,40,60,80], interval:160 });
       try {
         const r = await api('submitClockCorrection', { userId:user.id, originalRecordId:recordId, correctDate, correctTime, correctAction, correctionType, reason });
         setMsg(msg, r.message, !r.ok);
@@ -357,14 +357,14 @@
           focusField('#' + missing[0][0]);
           return;
         }
-        const progress = startActionButtonProgress(qs('#clockInBtn'), { label:'送出補登修正中' });
+        const progress = startActionButtonProgress(qs('#clockInBtn'), { label:'送出補登修正中', startPct:20, maxPct:80, steps:[20,40,60,80], interval:170 });
         try {
           const r = await api('submitClockCorrection', { userId:user.id, correctDate:supplementDate, correctTime:supplementTime, correctAction:supplementAction, correctionType:supplementAsType, reason:supplementReason });
           setMsg(msg, r.message, !r.ok);
           if(r.ok){
             progress.done('已送出');
             qs('#supplementReason').value = '';
-            await loadEditableHistory();
+            try { await loadEditableHistory(); } catch(refreshErr) { setMsg(msg, '申請已送出，但重新整理紀錄失敗，請稍後手動刷新。', false); }
           } else {
             progress.fail('送出失敗');
           }
@@ -378,14 +378,19 @@
       let payload = { userId:user.id, actionName, clockType:qs('#clockType').value };
       setMsg(msg, '正在偵測公司 Wi‑Fi IP...');
       payload.clientIp = await getPublicIp();
+      if(payload.clientIp){
+        setMsg(msg, '目前偵測外網 IP：' + payload.clientIp);
+      } else {
+        setMsg(msg, '目前無法取得外網 IP，請確認網路後再試。', true);
+      }
       const actionBtn = actionName === '下班打卡' ? qs('#clockOutBtn') : qs('#clockInBtn');
-      const progress = startActionButtonProgress(actionBtn, { label: actionName === '下班打卡' ? '下班打卡中' : '上班打卡中' });
+      const progress = startActionButtonProgress(actionBtn, { label: actionName === '下班打卡' ? '下班打卡中' : '上班打卡中', startPct:20, maxPct:80, steps:[20,40,60,80], interval:170 });
       try {
         const r = await api('clock', payload);
         setMsg(msg, r.message, !r.ok);
         if(r.ok){
           progress.done('打卡完成');
-          await loadEditableHistory();
+          try { await loadEditableHistory(); } catch(refreshErr) { setMsg(msg, '打卡成功，但重新整理紀錄失敗，請稍後手動刷新。', false); }
         } else {
           progress.fail('打卡失敗');
         }
