@@ -8,6 +8,15 @@
   <style>
     .page-return-wrap{margin-bottom:16px}
     .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
+    .intro-grid{display:grid;grid-template-columns:1.15fr .85fr;gap:14px;margin-top:14px}
+    .guide-card,.legend-card,.sheet-guide,.header-guide{border:1px solid #dce7f3;border-radius:16px;background:#f8fbff}
+    .guide-card,.legend-card{padding:14px 16px}
+    .guide-card h2,.legend-card h2,.sheet-guide h3{margin:0 0 8px;font-size:18px;color:#18314a}
+    .guide-card p,.legend-card p,.sheet-guide p{margin:0 0 8px;line-height:1.75;color:#43556c}
+    .guide-card ul,.legend-card ul,.sheet-guide ul{margin:8px 0 0 18px;color:#43556c;line-height:1.75}
+    .legend-grid{display:grid;grid-template-columns:1fr;gap:10px}
+    .legend-chip{display:flex;gap:10px;align-items:flex-start;background:#fff;border:1px solid #e4edf7;border-radius:14px;padding:10px 12px}
+    .legend-no{min-width:28px;height:28px;border-radius:999px;background:#18314a;color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center}
     .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;margin-top:14px}
     .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
     .tab-btn{width:auto;padding:10px 14px;border-radius:14px;border:1px solid var(--line);background:#fff;font-weight:800;cursor:pointer}
@@ -16,20 +25,31 @@
     .sheet-panel.active{display:block}
     .sheet-head{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;margin-bottom:10px}
     .sheet-head h2{margin:0;font-size:20px}
+    .sheet-guide{padding:14px 16px;margin-bottom:12px}
     .table-wrap{overflow:auto;border:1px solid var(--line);border-radius:16px;background:#fff}
     table.policy-table{width:max-content;min-width:100%;border-collapse:collapse}
     .policy-table th,.policy-table td{border-bottom:1px solid #e7edf5;border-right:1px solid #eef2f7;padding:10px;vertical-align:top;background:#fff}
-    .policy-table th{position:sticky;top:0;background:#f8fbff;font-size:13px;z-index:1;white-space:nowrap}
+    .policy-table th{position:sticky;top:0;background:#f8fbff;font-size:13px;z-index:1;white-space:nowrap;min-width:120px}
     .policy-table td:last-child,.policy-table th:last-child{border-right:none}
-    .policy-table input,.policy-table textarea{width:100%;min-width:110px;border:1px solid #d7e1ec;border-radius:10px;padding:8px 10px;font-size:14px;background:#fff;box-sizing:border-box}
-    .policy-table textarea{min-height:42px;resize:vertical}
+    .th-main{font-weight:800;color:#18314a}
+    .th-help{display:block;margin-top:6px;font-size:12px;font-weight:500;white-space:normal;color:#5d7088;line-height:1.6}
+    .policy-table input,.policy-table textarea,.policy-table select{width:100%;min-width:110px;border:1px solid #d7e1ec;border-radius:10px;padding:8px 10px;font-size:14px;background:#fff;box-sizing:border-box}
+    .policy-table textarea{min-height:46px;resize:vertical}
     .mini{width:auto;padding:9px 12px;border-radius:12px;font-size:14px}
     .hint-box{margin-top:12px;padding:12px 14px;border:1px solid #dce7f3;border-radius:14px;background:#f8fbff;color:#4b5d73;line-height:1.7}
     .muted strong{color:#18314a}
+    .header-guide{margin-top:12px;padding:12px 14px}
+    .header-guide h4{margin:0 0 6px;font-size:15px;color:#18314a}
+    .header-guide-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+    .header-guide-item{background:#fff;border:1px solid #e4edf7;border-radius:12px;padding:10px 12px}
+    .header-guide-item strong{display:block;margin-bottom:4px;color:#18314a}
+    @media (max-width:780px){
+      .intro-grid,.header-guide-list{grid-template-columns:1fr}
+    }
     @media (max-width:640px){
       .tab-btn,.mini{font-size:13px}
       .policy-table th,.policy-table td{padding:8px}
-      .policy-table input,.policy-table textarea{font-size:13px;min-width:92px}
+      .policy-table input,.policy-table textarea,.policy-table select{font-size:13px;min-width:92px}
     }
   </style>
 </head>
@@ -47,37 +67,74 @@
           <button class="btn" type="button" id="saveBtn">儲存全部設定</button>
         </div>
       </div>
-      <div class="muted">這裡可以直接維護假別規則、特休年資、喪假親屬、年度假日摘要與全域設定。儲存後會直接回寫到 Google Sheet。</div>
+      <div class="muted">這一頁會把 <strong>法定標準</strong>、<strong>公司採用</strong>、<strong>公司是否放寬</strong> 分開顯示。若公司欄位沒有填，原則上就回到法定標準。</div>
+      <div class="intro-grid">
+        <section class="guide-card" id="pageIntroCard"></section>
+        <section class="legend-card">
+          <h2>你填寫時照這個順序就好</h2>
+          <div class="legend-grid">
+            <div class="legend-chip"><div class="legend-no">1</div><div><strong>先看法定標準</strong><br>先確認法令最低標準與白話說明。</div></div>
+            <div class="legend-chip"><div class="legend-no">2</div><div><strong>再看公司採用</strong><br>公司如果沒有特別自訂，就直接寫「同法定標準」。</div></div>
+            <div class="legend-chip"><div class="legend-no">3</div><div><strong>最後才填放寬</strong><br>只有公司要做得更優，才填公司放寬欄位。</div></div>
+          </div>
+        </section>
+      </div>
       <div id="pageMsg" class="message local-message"></div>
       <div class="tabs" id="tabs"></div>
       <div id="panels"></div>
       <div class="hint-box">
-        <strong>目前這版前端已接上：</strong><br>
-        1. 管理端可直接讀寫五張制度表。<br>
-        2. 員工請假頁會改成讀這裡的假別清單與提示。<br>
-        3. 若你主 GS 的 doPost 還沒補分流，這頁會讀不到資料；把我一起給你的 GS 補丁貼上後即可使用。
+        <strong>設定提醒：</strong><br>
+        1. 特休請一定搭配員工資料的「到職日」與全域設定的「特休制度別」一起看。<br>
+        2. 這一頁的法定文字是給你判斷標準，不代表你每一列都一定要全改。<br>
+        3. 公司沒有另外填寫時，預設就以法定標準為主。
       </div>
     </div>
   </div>
-  <script src="config.js?v=20260411a"></script>
-  <script src="app.js?v=20260411a"></script>
+  <script src="config.js?v=20260412a"></script>
+  <script src="app.js?v=20260412a"></script>
   <script>
     let currentUser=null;
     let currentBundle={};
+    let currentGuides={tabs:{},headerHelp:{}};
     const TAB_ORDER=['leaveTypes','annualLeave','bereavement','holidaySummary','globalRules'];
 
     function setPageMsg(text,isError=false){ setMsg(qs('#pageMsg'), text, isError); }
     function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"]/g, ch=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[ch])); }
     function getBundleKeys(bundle){ return TAB_ORDER.filter(k=>bundle&&bundle[k]).concat(Object.keys(bundle||{}).filter(k=>TAB_ORDER.indexOf(k)<0)); }
+    function pageIntroHtml(){
+      const intro=currentGuides.pageIntro||{};
+      const lines=Array.isArray(intro.lines)?intro.lines:[];
+      return `<h2>${escapeHtml(intro.title||'假勤制度設定說明')}</h2><p>${lines.map(escapeHtml).join('</p><p>')}</p>`;
+    }
     function renderTabs(bundle){
       const keys=getBundleKeys(bundle);
       qs('#tabs').innerHTML=keys.map((key,idx)=>`<button type="button" class="tab-btn ${idx===0?'active':''}" data-tab="${key}">${escapeHtml(bundle[key].name||key)}</button>`).join('');
       qsa('.tab-btn').forEach(btn=>btn.onclick=()=>activateTab(btn.dataset.tab));
+      qs('#pageIntroCard').innerHTML=pageIntroHtml();
     }
-    function cellInputHtml(value, rowIndex, colIndex, isLong){
+    function headerHtml(h){
+      const help=(currentGuides.headerHelp||{})[h]||'';
+      return `<span class="th-main">${escapeHtml(h)}</span>${help?`<span class="th-help">${escapeHtml(help)}</span>`:''}`;
+    }
+    function cellInputHtml(value, rowIndex, colIndex, header){
       const safe=escapeHtml(value);
+      const isLong=/說明|備註|摘要|內文|顯示/.test(header||'');
+      if(/是否/.test(header||'') && !/顯示/.test(header||'')){
+        const options=['','是','否'];
+        return `<select data-row="${rowIndex}" data-col="${colIndex}">${options.map(x=>`<option value="${escapeHtml(x)}" ${String(value||'')===x?'selected':''}>${escapeHtml(x||'請選擇')}</option>`).join('')}</select>`;
+      }
       if(isLong) return `<textarea data-row="${rowIndex}" data-col="${colIndex}">${safe}</textarea>`;
       return `<input type="text" value="${safe}" data-row="${rowIndex}" data-col="${colIndex}">`;
+    }
+    function tabGuideHtml(key){
+      const guide=(currentGuides.tabs||{})[key]||{};
+      const bullets=Array.isArray(guide.bullets)?guide.bullets:[];
+      return `<div class="sheet-guide"><h3>${escapeHtml(guide.title||'填寫說明')}</h3><p>${escapeHtml(guide.intro||'')}</p>${bullets.length?`<ul>${bullets.map(x=>`<li>${escapeHtml(x)}</li>`).join('')}</ul>`:''}</div>`;
+    }
+    function headerGuideHtml(headers){
+      const items=headers.filter(h=>(currentGuides.headerHelp||{})[h]).map(h=>`<div class="header-guide-item"><strong>${escapeHtml(h)}</strong><div>${escapeHtml((currentGuides.headerHelp||{})[h])}</div></div>`).join('');
+      if(!items) return '';
+      return `<div class="header-guide"><h4>欄位說明</h4><div class="header-guide-list">${items}</div></div>`;
     }
     function renderPanels(bundle){
       const keys=getBundleKeys(bundle);
@@ -85,8 +142,9 @@
         const part=bundle[key]||{};
         const headers=Array.isArray(part.headers)?part.headers:[];
         const rows=Array.isArray(part.rows)?part.rows:[];
-        const body=rows.map((row,rowIndex)=>`<tr>${headers.map((h,colIndex)=>`<td>${cellInputHtml((row&&row[colIndex])||'', rowIndex, colIndex, /說明|備註|摘要|內文/.test(h))}</td>`).join('')}<td><button class="btn secondary mini" type="button" data-delete-row="${key}" data-row-index="${rowIndex}">刪除</button></td></tr>`).join('');
+        const body=rows.map((row,rowIndex)=>`<tr>${headers.map((h,colIndex)=>`<td>${cellInputHtml((row&&row[colIndex])||'', rowIndex, colIndex, h)}</td>`).join('')}<td><button class="btn secondary mini" type="button" data-delete-row="${key}" data-row-index="${rowIndex}">刪除</button></td></tr>`).join('');
         return `<section class="sheet-panel ${idx===0?'active':''}" data-panel="${key}">
+          ${tabGuideHtml(key)}
           <div class="sheet-head">
             <div>
               <h2>${escapeHtml(part.name||key)}</h2>
@@ -96,10 +154,11 @@
           </div>
           <div class="table-wrap">
             <table class="policy-table">
-              <thead><tr>${headers.map(h=>`<th>${escapeHtml(h)}</th>`).join('')}<th>操作</th></tr></thead>
-              <tbody>${body || `<tr class="empty-row">${headers.map((h,colIndex)=>`<td>${cellInputHtml('',0,colIndex,/說明|備註|摘要|內文/.test(h))}</td>`).join('')}<td><button class="btn secondary mini" type="button" data-delete-row="${key}" data-row-index="0">刪除</button></td></tr>`}</tbody>
+              <thead><tr>${headers.map(h=>`<th>${headerHtml(h)}</th>`).join('')}<th>操作</th></tr></thead>
+              <tbody>${body || `<tr class="empty-row">${headers.map((h,colIndex)=>`<td>${cellInputHtml('',0,colIndex,h)}</td>`).join('')}<td><button class="btn secondary mini" type="button" data-delete-row="${key}" data-row-index="0">刪除</button></td></tr>`}</tbody>
             </table>
           </div>
+          ${headerGuideHtml(headers)}
         </section>`;
       }).join('');
       qsa('[data-add-row]').forEach(btn=>btn.onclick=()=>addRow(btn.dataset.addRow));
@@ -117,12 +176,9 @@
     }
     function addRow(key){
       const part=ensurePart(key);
-      part.rows.push(part.headers.map(()=>''));
+      part.rows.push(part.headers.map(() => ''));
       renderPanels(currentBundle);
       activateTab(key);
-      const panel=qs(`.sheet-panel[data-panel="${key}"]`);
-      const inputs=panel?qsa(`.sheet-panel[data-panel="${key}"] tbody tr:last-child input, .sheet-panel[data-panel="${key}"] tbody tr:last-child textarea`):[];
-      if(inputs[0]) inputs[0].focus();
     }
     function deleteRow(key,rowIndex){
       const part=ensurePart(key);
@@ -155,6 +211,7 @@
       const r=await api(action,{userId:currentUser.id});
       if(!r.ok) throw new Error(r.message||'讀取制度設定失敗');
       currentBundle=r.bundle||{};
+      currentGuides=r.guides||{tabs:{},headerHelp:{}};
       renderTabs(currentBundle);
       renderPanels(currentBundle);
     }
@@ -183,7 +240,7 @@
           btn.disabled=true; btn.textContent='儲存中';
           const r=await api('saveLeavePolicySettings',{userId:currentUser.id,bundle:currentBundle});
           setPageMsg(r.message||'', !r.ok);
-          if(r.ok){ currentBundle=r.bundle||currentBundle; renderTabs(currentBundle); renderPanels(currentBundle); }
+          if(r.ok){ currentBundle=r.bundle||currentBundle; currentGuides=r.guides||currentGuides; renderTabs(currentBundle); renderPanels(currentBundle); }
           btn.disabled=false; btn.textContent='儲存全部設定';
         }catch(err){
           const btn=qs('#saveBtn'); if(btn){ btn.disabled=false; btn.textContent='儲存全部設定'; }
