@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>假勤制度設定</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .page-return-wrap{margin-bottom:16px}
+    .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
+    .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;margin-top:14px}
+    .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
+    .tab-btn{width:auto;padding:10px 14px;border-radius:14px;border:1px solid var(--line);background:#fff;font-weight:800;cursor:pointer}
+    .tab-btn.active{background:#18314a;color:#fff;border-color:#18314a}
+    .sheet-panel{display:none;margin-top:14px}
+    .sheet-panel.active{display:block}
+    .sheet-head{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;margin-bottom:10px}
+    .sheet-head h2{margin:0;font-size:20px}
+    .table-wrap{overflow:auto;border:1px solid var(--line);border-radius:16px;background:#fff}
+    table.policy-table{width:max-content;min-width:100%;border-collapse:collapse}
+    .policy-table th,.policy-table td{border-bottom:1px solid #e7edf5;border-right:1px solid #eef2f7;padding:10px;vertical-align:top;background:#fff}
+    .policy-table th{position:sticky;top:0;background:#f8fbff;font-size:13px;z-index:1;white-space:nowrap}
+    .policy-table td:last-child,.policy-table th:last-child{border-right:none}
+    .policy-table input,.policy-table textarea{width:100%;min-width:110px;border:1px solid #d7e1ec;border-radius:10px;padding:8px 10px;font-size:14px;background:#fff;box-sizing:border-box}
+    .policy-table textarea{min-height:42px;resize:vertical}
+    .mini{width:auto;padding:9px 12px;border-radius:12px;font-size:14px}
+    .hint-box{margin-top:12px;padding:12px 14px;border:1px solid #dce7f3;border-radius:14px;background:#f8fbff;color:#4b5d73;line-height:1.7}
+    .muted strong{color:#18314a}
+    @media (max-width:640px){
+      .tab-btn,.mini{font-size:13px}
+      .policy-table th,.policy-table td{padding:8px}
+      .policy-table input,.policy-table textarea{font-size:13px;min-width:92px}
+    }
+  </style>
+</head>
+<body onload="init()">
+  <div class="container">
+    <div class="page-return-wrap"><a class="btn page-return-btn" href="settings.html">返回管理首頁</a></div>
+    <div class="card">
+      <div class="topbar">
+        <div>
+          <h1 class="title" style="margin:0">假勤制度設定</h1>
+          <div class="welcome">歡迎 <span data-user-name></span></div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn secondary" type="button" id="reloadBtn">重新讀取</button>
+          <button class="btn" type="button" id="saveBtn">儲存全部設定</button>
+        </div>
+      </div>
+      <div class="muted">這裡可以直接維護假別規則、特休年資、喪假親屬、年度假日摘要與全域設定。儲存後會直接回寫到 Google Sheet。</div>
+      <div id="pageMsg" class="message local-message"></div>
+      <div class="tabs" id="tabs"></div>
+      <div id="panels"></div>
+      <div class="hint-box">
+        <strong>目前這版前端已接上：</strong><br>
+        1. 管理端可直接讀寫五張制度表。<br>
+        2. 員工請假頁會改成讀這裡的假別清單與提示。<br>
+        3. 若你主 GS 的 doPost 還沒補分流，這頁會讀不到資料；把我一起給你的 GS 補丁貼上後即可使用。
+      </div>
+    </div>
+  </div>
+  <script src="config.js?v=20260411a"></script>
+  <script src="app.js?v=20260411a"></script>
+  <script>
+    let currentUser=null;
+    let currentBundle={};
+    const TAB_ORDER=['leaveTypes','annualLeave','bereavement','holidaySummary','globalRules'];
+
+    function setPageMsg(text,isError=false){ setMsg(qs('#pageMsg'), text, isError); }
+    function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"]/g, ch=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[ch])); }
+    function getBundleKeys(bundle){ return TAB_ORDER.filter(k=>bundle&&bundle[k]).concat(Object.keys(bundle||{}).filter(k=>TAB_ORDER.indexOf(k)<0)); }
+    function renderTabs(bundle){
+      const keys=getBundleKeys(bundle);
+      qs('#tabs').innerHTML=keys.map((key,idx)=>`<button type="button" class="tab-btn ${idx===0?'active':''}" data-tab="${key}">${escapeHtml(bundle[key].name||key)}</button>`).join('');
+      qsa('.tab-btn').forEach(btn=>btn.onclick=()=>activateTab(btn.dataset.tab));
+    }
+    function cellInputHtml(value, rowIndex, colIndex, isLong){
+      const safe=escapeHtml(value);
+      if(isLong) return `<textarea data-row="${rowIndex}" data-col="${colIndex}">${safe}</textarea>`;
+      return `<input type="text" value="${safe}" data-row="${rowIndex}" data-col="${colIndex}">`;
+    }
+    function renderPanels(bundle){
+      const keys=getBundleKeys(bundle);
+      qs('#panels').innerHTML=keys.map((key,idx)=>{
+        const part=bundle[key]||{};
+        const headers=Array.isArray(part.headers)?part.headers:[];
+        const rows=Array.isArray(part.rows)?part.rows:[];
+        const body=rows.map((row,rowIndex)=>`<tr>${headers.map((h,colIndex)=>`<td>${cellInputHtml((row&&row[colIndex])||'', rowIndex, colIndex, /說明|備註|摘要|內文/.test(h))}</td>`).join('')}<td><button class="btn secondary mini" type="button" data-delete-row="${key}" data-row-index="${rowIndex}">刪除</button></td></tr>`).join('');
+        return `<section class="sheet-panel ${idx===0?'active':''}" data-panel="${key}">
+          <div class="sheet-head">
+            <div>
+              <h2>${escapeHtml(part.name||key)}</h2>
+              <div class="muted">共 ${rows.length} 筆資料</div>
+            </div>
+            <button class="btn secondary mini" type="button" data-add-row="${key}">新增一列</button>
+          </div>
+          <div class="table-wrap">
+            <table class="policy-table">
+              <thead><tr>${headers.map(h=>`<th>${escapeHtml(h)}</th>`).join('')}<th>操作</th></tr></thead>
+              <tbody>${body || `<tr class="empty-row">${headers.map((h,colIndex)=>`<td>${cellInputHtml('',0,colIndex,/說明|備註|摘要|內文/.test(h))}</td>`).join('')}<td><button class="btn secondary mini" type="button" data-delete-row="${key}" data-row-index="0">刪除</button></td></tr>`}</tbody>
+            </table>
+          </div>
+        </section>`;
+      }).join('');
+      qsa('[data-add-row]').forEach(btn=>btn.onclick=()=>addRow(btn.dataset.addRow));
+      qsa('[data-delete-row]').forEach(btn=>btn.onclick=()=>deleteRow(btn.dataset.deleteRow, Number(btn.dataset.rowIndex||0)));
+    }
+    function activateTab(key){
+      qsa('.tab-btn').forEach(btn=>btn.classList.toggle('active', btn.dataset.tab===key));
+      qsa('.sheet-panel').forEach(panel=>panel.classList.toggle('active', panel.dataset.panel===key));
+    }
+    function ensurePart(key){
+      if(!currentBundle[key]) currentBundle[key]={name:key,headers:[],rows:[]};
+      currentBundle[key].headers=Array.isArray(currentBundle[key].headers)?currentBundle[key].headers:[];
+      currentBundle[key].rows=Array.isArray(currentBundle[key].rows)?currentBundle[key].rows:[];
+      return currentBundle[key];
+    }
+    function addRow(key){
+      const part=ensurePart(key);
+      part.rows.push(part.headers.map(()=>''));
+      renderPanels(currentBundle);
+      activateTab(key);
+      const panel=qs(`.sheet-panel[data-panel="${key}"]`);
+      const inputs=panel?qsa(`.sheet-panel[data-panel="${key}"] tbody tr:last-child input, .sheet-panel[data-panel="${key}"] tbody tr:last-child textarea`):[];
+      if(inputs[0]) inputs[0].focus();
+    }
+    function deleteRow(key,rowIndex){
+      const part=ensurePart(key);
+      if(!part.rows.length) return;
+      part.rows.splice(rowIndex,1);
+      renderPanels(currentBundle);
+      activateTab(key);
+    }
+    function collectBundleFromDom(){
+      const keys=getBundleKeys(currentBundle);
+      keys.forEach(key=>{
+        const part=ensurePart(key);
+        const panel=qs(`.sheet-panel[data-panel="${key}"]`);
+        if(!panel) return;
+        const rows=[];
+        panel.querySelectorAll('tbody tr').forEach(tr=>{
+          const row=part.headers.map((h,colIndex)=>{
+            const el=tr.querySelector(`[data-col="${colIndex}"]`);
+            return el ? String(el.value||'').trim() : '';
+          });
+          if(row.some(v=>String(v).trim()!=='')) rows.push(row);
+        });
+        part.rows=rows;
+      });
+      return currentBundle;
+    }
+    async function loadBundle(seedIfNeeded){
+      setPageMsg('');
+      const action=seedIfNeeded?'initLeavePolicySettings':'getLeavePolicySettingsAdmin';
+      const r=await api(action,{userId:currentUser.id});
+      if(!r.ok) throw new Error(r.message||'讀取制度設定失敗');
+      currentBundle=r.bundle||{};
+      renderTabs(currentBundle);
+      renderPanels(currentBundle);
+    }
+    async function init(){
+      fillHeader();
+      currentUser=requireLogin();
+      if(!currentUser) return;
+      if(!hasSettingsZoneAccess(currentUser)){ location.href='dashboard.html'; return; }
+      try{
+        await loadBundle(false);
+      }catch(err){
+        try{
+          await loadBundle(true);
+          setPageMsg('假勤制度設定表已自動建立完成');
+        }catch(e2){
+          setPageMsg(e2.message||String(e2), true);
+        }
+      }
+      qs('#reloadBtn').onclick=async()=>{
+        try{ await loadBundle(false); setPageMsg('已重新讀取最新設定'); }catch(err){ setPageMsg(err.message||String(err), true); }
+      };
+      qs('#saveBtn').onclick=async()=>{
+        try{
+          collectBundleFromDom();
+          const btn=qs('#saveBtn');
+          btn.disabled=true; btn.textContent='儲存中';
+          const r=await api('saveLeavePolicySettings',{userId:currentUser.id,bundle:currentBundle});
+          setPageMsg(r.message||'', !r.ok);
+          if(r.ok){ currentBundle=r.bundle||currentBundle; renderTabs(currentBundle); renderPanels(currentBundle); }
+          btn.disabled=false; btn.textContent='儲存全部設定';
+        }catch(err){
+          const btn=qs('#saveBtn'); if(btn){ btn.disabled=false; btn.textContent='儲存全部設定'; }
+          setPageMsg(err.message||String(err), true);
+        }
+      };
+    }
+  </script>
+</body>
+</html>
