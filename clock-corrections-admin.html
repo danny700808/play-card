@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>打卡修正審核</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body onload="init()">
+  <div class="container">
+    <div class="card">
+      <div class="topbar">
+        <div class="header" style="margin:0">
+          <h1 class="title" style="margin:0">打卡修正審核</h1>
+          <div class="welcome">歡迎 <span data-user-name></span></div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <a class="btn secondary" href="settings.html" style="width:auto;padding:10px 14px">返回管理首頁</a>
+          <button class="btn secondary" style="width:auto;padding:10px 14px" onclick="loadRows()">重新整理</button>
+        </div>
+      </div>
+      <div id="msg" class="hint" style="margin-top:12px"></div>
+      <div id="list" style="display:grid;gap:14px;margin-top:18px"></div>
+    </div>
+  </div>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+  <script>
+    let currentUser=null;
+    function rowCard(r){
+      return `
+        <div class="card" style="margin:0;padding:16px;border:1px solid #e5e7eb">
+          <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap">
+            <div>
+              <div style="font-weight:800;font-size:18px">${escapeHtml(r.name||'')}</div>
+              <div class="hint">${escapeHtml(r.email||'')}</div>
+            </div>
+            <div class="status pending">待審核</div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:14px">
+            <div><strong>日期：</strong>${escapeHtml(r.correctDate||'')}</div>
+            <div><strong>時間：</strong>${escapeHtml(r.correctTime||'')}</div>
+            <div><strong>動作：</strong>${escapeHtml(r.correctAction||'')}</div>
+            <div><strong>方式：</strong>${escapeHtml(r.correctionType||'')}</div>
+          </div>
+          ${r.originalRecordId?`<div style="margin-top:8px"><strong>原始紀錄ID：</strong>${escapeHtml(r.originalRecordId)}</div>`:''}
+          <div style="margin-top:10px"><strong>原因：</strong><br>${escapeHtml(r.reason||'')}</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px">
+            <button class="btn" onclick="approve('${r.requestId}')">同意</button>
+            <button class="btn secondary" onclick="rejectOne('${r.requestId}')">駁回</button>
+          </div>
+        </div>`;
+    }
+    async function init(){
+      fillHeader();
+      currentUser=requireLogin();
+      if(!currentUser) return;
+      if(!hasSettingsZoneAccess(currentUser)){ location.href='dashboard.html'; return; }
+      await loadRows();
+    }
+    async function loadRows(){
+      const msg=qs('#msg');
+      const list=qs('#list');
+      msg.textContent='讀取中...';
+      list.innerHTML='';
+      try{
+        const r=await api('getPendingClockCorrections',{userId:currentUser.id});
+        const rows=Array.isArray(r.rows)?r.rows:[];
+        if(!rows.length){ msg.textContent='目前沒有待審核打卡修正。'; return; }
+        msg.textContent=`目前共有 ${rows.length} 筆待審核打卡修正。`;
+        list.innerHTML=rows.map(rowCard).join('');
+      }catch(err){
+        msg.textContent=err.message||'讀取失敗';
+      }
+    }
+    async function approve(requestId){
+      if(!confirm('確定同意這筆打卡修正？')) return;
+      try{
+        await api('approveClockCorrectionApi',{userId:currentUser.id,requestId});
+        alert('已同意');
+        loadRows();
+      }catch(err){ alert(err.message||'同意失敗'); }
+    }
+    async function rejectOne(requestId){
+      const rejectReason=prompt('請輸入駁回理由');
+      if(rejectReason===null) return;
+      try{
+        await api('rejectClockCorrectionApi',{userId:currentUser.id,requestId,rejectReason});
+        alert('已駁回');
+        loadRows();
+      }catch(err){ alert(err.message||'駁回失敗'); }
+    }
+    function escapeHtml(v){return String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+  </script>
+</body>
+</html>
