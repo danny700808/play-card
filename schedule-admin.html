@@ -686,7 +686,10 @@
 
     async function saveTemplate(evt) {
       evt.preventDefault();
-      const submitBtn = (evt && evt.submitter) || document.querySelector('#templateForm button[type="submit"]');
+      const submitBtn = evt && evt.submitter ? evt.submitter : document.querySelector('#templateForm button[type="submit"]');
+      const progress = startSubmitProgress(submitBtn, '儲存中');
+      const submitBtn = evt && evt.submitter ? evt.submitter : document.querySelector('#templateForm button[type="submit"]');
+      const progress = startSubmitProgress(submitBtn, '儲存中');
       const payload = {
         templateId: document.getElementById('templateId').value.trim(),
         templateName: document.getElementById('templateName').value.trim(),
@@ -703,36 +706,45 @@
       };
 
       if (!payload.templateName) {
+        if (progress) progress.fail('請先填寫', 900);
+        if (progress) progress.fail('請先填寫', 900);
         showStatus('templateStatus', '請先填寫模板名稱。', 'error');
         return;
       }
       const invalidDay = payload.days.find(d => d.type === '標準打卡' && (!d.startTime || !d.endTime));
       if (invalidDay) {
+        if (progress) progress.fail('資料不完整', 900);
+        if (progress) progress.fail('資料不完整', 900);
         showStatus('templateStatus', `${invalidDay.dayLabel} 選了標準打卡，請填上班時間與下班時間。`, 'error');
         return;
       }
       const invalidEndDay = payload.days.find(d => d.type === '標準打卡' && d.endTime <= d.startTime);
       if (invalidEndDay) {
+        if (progress) progress.fail('時間錯誤', 900);
+        if (progress) progress.fail('時間錯誤', 900);
         showStatus('templateStatus', `${invalidEndDay.dayLabel} 的下班時間必須晚於上班時間。`, 'error');
         return;
       }
 
-      const progress = submitBtn ? startActionButtonProgress(submitBtn, { label:'儲存中', startPct:20, maxPct:80, steps:[20,40,60,80], interval:170 }) : null;
       try {
         await callBackend('saveScheduleTemplate', payload);
-        if(progress) progress.done('儲存完成');
+        if (progress) progress.done('已儲存');
         showStatus('templateStatus', '班表模板已儲存。', 'success');
         resetTemplateForm();
         await reloadPageData();
       } catch (err) {
-        if(progress) progress.fail('儲存失敗');
+        if (progress) progress.fail('儲存失敗');
+        if (progress) progress.fail('儲存失敗');
         showStatus('templateStatus', err.message || '儲存班表模板失敗', 'error');
       }
     }
 
     async function saveAssignment(evt) {
       evt.preventDefault();
-      const submitBtn = (evt && evt.submitter) || document.querySelector('#assignmentForm button[type="submit"]');
+      const submitBtn = evt && evt.submitter ? evt.submitter : document.querySelector('#assignmentForm button[type="submit"]');
+      const progress = startSubmitProgress(submitBtn, '儲存中');
+      const submitBtn = evt && evt.submitter ? evt.submitter : document.querySelector('#assignmentForm button[type="submit"]');
+      const progress = startSubmitProgress(submitBtn, '儲存中');
       const employeeId = document.getElementById('employeeId').value;
       const employee = pageData.employees.find(e => String(e.employeeId || '') === String(employeeId));
       const templateId = document.getElementById('assignTemplateId').value;
@@ -761,19 +773,20 @@
         return;
       }
       if (!indefinite && payload.endDate < payload.startDate) {
+        if (progress) progress.fail('日期錯誤', 900);
         showStatus('assignmentStatus', '結束日期不能早於開始日期。', 'error');
         return;
       }
 
-      const progress = submitBtn ? startActionButtonProgress(submitBtn, { label:'儲存中', startPct:20, maxPct:80, steps:[20,40,60,80], interval:170 }) : null;
       try {
         await callBackend('saveEmployeeSchedule', payload);
-        if(progress) progress.done('儲存完成');
+        if (progress) progress.done('已儲存');
         showStatus('assignmentStatus', '員工套用班表已儲存。', 'success');
         resetAssignmentForm();
         await reloadPageData();
       } catch (err) {
-        if(progress) progress.fail('儲存失敗');
+        if (progress) progress.fail('儲存失敗');
+        if (progress) progress.fail('儲存失敗');
         showStatus('assignmentStatus', err.message || '儲存員工套用班表失敗', 'error');
       }
     }
@@ -866,7 +879,10 @@
 
     async function saveSingleDay(evt) {
       evt.preventDefault();
-      const submitBtn = (evt && evt.submitter) || document.querySelector('#singleDayForm button[type="submit"]');
+      const submitBtn = evt && evt.submitter ? evt.submitter : document.querySelector('#singleDayForm button[type="submit"]');
+      const progress = startSubmitProgress(submitBtn, '儲存中');
+      const submitBtn = evt && evt.submitter ? evt.submitter : document.querySelector('#singleDayForm button[type="submit"]');
+      const progress = startSubmitProgress(submitBtn, '儲存中');
       const employeeId = document.getElementById('singleDayEmployeeId').value;
       const employee = pageData.employees.find(e => String(e.employeeId || '') === String(employeeId));
       const clockType = document.getElementById('singleDayType').value;
@@ -882,18 +898,18 @@
         enabled: document.getElementById('singleDayEnabled').value,
         note: document.getElementById('singleDayNote').value.trim()
       };
-      if (!payload.employeeId || !payload.date) { showStatus('singleDayStatus', '請先選員工並填日期。', 'error'); return; }
-      if (clockType === '標準打卡' && (!payload.startTime || !payload.endTime)) { showStatus('singleDayStatus', '標準打卡請填上班時間與下班時間。', 'error'); return; }
-      if (clockType === '標準打卡' && payload.endTime <= payload.startTime) { showStatus('singleDayStatus', '下班時間必須晚於上班時間。', 'error'); return; }
-      const progress = submitBtn ? startActionButtonProgress(submitBtn, { label:'儲存中', startPct:20, maxPct:80, steps:[20,40,60,80], interval:170 }) : null;
+      if (!payload.employeeId || !payload.date) { if (progress) progress.fail('資料不完整', 900); showStatus('singleDayStatus', '請先選員工並填日期。', 'error'); return; }
+      if (clockType === '標準打卡' && (!payload.startTime || !payload.endTime)) { if (progress) progress.fail('資料不完整', 900); showStatus('singleDayStatus', '標準打卡請填上班時間與下班時間。', 'error'); return; }
+      if (clockType === '標準打卡' && payload.endTime <= payload.startTime) { if (progress) progress.fail('時間錯誤', 900); showStatus('singleDayStatus', '下班時間必須晚於上班時間。', 'error'); return; }
       try {
         await callBackend('saveSingleDaySchedule', payload);
-        if(progress) progress.done('儲存完成');
+        if (progress) progress.done('已儲存');
         showStatus('singleDayStatus', '單日特別班表已儲存。', 'success');
         resetSingleDayForm();
         await reloadPageData();
       } catch (err) {
-        if(progress) progress.fail('儲存失敗');
+        if (progress) progress.fail('儲存失敗');
+        if (progress) progress.fail('儲存失敗');
         showStatus('singleDayStatus', err.message || '儲存單日特別班表失敗', 'error');
       }
     }
@@ -925,6 +941,12 @@
       } catch (err) {
         showStatus('singleDayStatus', err.message || '刪除單日特別班表失敗', 'error');
       }
+    }
+
+
+    function startSubmitProgress(btn, label) {
+      if (!btn || typeof startActionButtonProgress !== 'function') return null;
+      return startActionButtonProgress(btn, { label: label || '儲存中', sequence:[20,40,60,80], interval:220 });
     }
 
     function showStatus(id, message, type, show = true) {

@@ -36,23 +36,7 @@ async function api(action, payload={}){
 }
 function setMsg(el, text, isError=false){if(!el) return; el.style.display=text?'block':'none'; el.textContent=text||''; el.classList.toggle('error',!!isError)}
 function togglePassword(inputSel, btn){const input=qs(inputSel); const show=input.type==='password'; input.type=show?'text':'password'; btn.textContent=show?'🙈':'👁';}
-async function getPublicIp(){
-  const sources=[
-    {url:'https://api.ipify.org?format=json', pick:(j)=>j&&j.ip},
-    {url:'https://ipv4.jsonip.com', pick:(j)=>j&&j.ip},
-    {url:'https://api64.ipify.org?format=json', pick:(j)=>j&&j.ip}
-  ];
-  for(const src of sources){
-    try{
-      const r=await fetch(src.url,{cache:'no-store'});
-      if(!r.ok) continue;
-      const j=await r.json();
-      const ip=String(src.pick(j)||'').trim();
-      if(ip) return ip;
-    }catch(e){}
-  }
-  return '';
-}
+async function getPublicIp(){try{const r=await fetch('https://api.ipify.org?format=json'); const j=await r.json(); return j.ip||'';}catch(e){return '';}}
 async function fileToDataUrl(file){return new Promise((resolve,reject)=>{const r=new FileReader(); r.onload=()=>resolve(String(r.result||'')); r.onerror=reject; r.readAsDataURL(file);});}
 
 function dataUrlToBlob(dataUrl){
@@ -449,15 +433,22 @@ function startActionButtonProgress(btn, options={}){
   const nodes=ensureActionButton(btn);
   const existing=__btnProgressMap.get(btn);
   if(existing&&existing.timer) clearInterval(existing.timer);
-  const steps=Array.isArray(options.steps)?options.steps.map(x=>Math.max(0,Math.min(95,Number(x)||0))).filter((x,i,a)=>i===0||x>a[i-1]):null;
+  const rawSequence=Array.isArray(options.sequence)&&options.sequence.length
+    ? options.sequence
+    : (options.fixedSteps===false ? null : [20,40,60,80]);
+  const sequence=(rawSequence||[])
+    .map(v=>Math.max(0,Math.min(95,Number(v)||0)))
+    .filter((v,i,arr)=>i===0||v>arr[i-1]);
+  const startPct=Math.max(0,Math.min(100,Number(options.startPct!=null?options.startPct:(sequence[0]||8))||0));
   const state={
-    pct:Math.max(0,Math.min(100,Number(options.startPct!=null?options.startPct:(steps&&steps.length?steps[0]:8))||0)),
-    maxPct:Math.max(0,Math.min(95,Number(options.maxPct!=null?options.maxPct:(steps&&steps.length?steps[steps.length-1]:88))||88)),
+    pct:startPct,
+    maxPct:Math.max(0,Math.min(95,Number(options.maxPct!=null?options.maxPct:(sequence.length?sequence[sequence.length-1]:88))||88)),
     label:String(options.label||options.text||'處理中').trim()||'處理中',
     formatter:typeof options.formatter==='function'?options.formatter:null,
-    steps:steps,
-    stepIndex:steps&&steps.length?1:0
+    sequence:sequence,
+    stepIndex:0
   };
+  while(state.stepIndex<state.sequence.length && state.sequence[state.stepIndex] <= state.pct){ state.stepIndex++; }
   const render=()=>{
     nodes.fill.style.width=`${Math.max(0,Math.min(100,state.pct))}%`;
     nodes.label.textContent=state.formatter ? state.formatter(Math.round(state.pct), state.label) : `${state.label} ${Math.round(state.pct)}%`;
@@ -469,9 +460,10 @@ function startActionButtonProgress(btn, options={}){
   let timer=null;
   if(options.auto!==false){
     timer=setInterval(()=>{
-      if(state.steps&&state.steps.length){
-        if(state.stepIndex>=state.steps.length) return;
-        state.pct=state.steps[state.stepIndex++];
+      if(state.sequence.length){
+        if(state.stepIndex>=state.sequence.length) return;
+        state.pct=Math.min(state.maxPct, state.sequence[state.stepIndex]);
+        state.stepIndex+=1;
         render();
         return;
       }
@@ -480,7 +472,7 @@ function startActionButtonProgress(btn, options={}){
       const step=Math.max(state.pct<25 ? 4 : (state.pct<55 ? 3 : 1), Math.ceil(remain*(state.pct<60 ? 0.16 : 0.08)));
       state.pct=Math.min(state.maxPct, state.pct+step);
       render();
-    }, Number(options.interval||140));
+    }, Number(options.interval||220));
   }
   __btnProgressMap.set(btn,{timer,state,nodes,render});
   return {

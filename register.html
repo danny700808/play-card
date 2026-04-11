@@ -52,20 +52,20 @@
           <div class="field-error"></div>
         </div>
 
-        <div class="field" id="field-mobile">
-          <label for="mobile">行動電話<span class="required-mark" aria-hidden="true">*</span></label>
-          <input id="mobile" name="mobile" inputmode="tel" autocomplete="tel" placeholder="請輸入行動電話">
+        <div class="field" id="field-mobilePhone">
+          <label for="mobilePhone">行動電話<span class="required-mark" aria-hidden="true">*</span></label>
+          <input id="mobilePhone" name="mobilePhone" inputmode="tel" autocomplete="tel" placeholder="請輸入行動電話">
           <div class="field-error"></div>
         </div>
 
-        <div class="field" id="field-address">
-          <label for="address">聯絡地址<span class="required-mark" aria-hidden="true">*</span></label>
-          <input id="address" name="address" autocomplete="street-address" placeholder="請輸入聯絡地址">
+        <div class="field" id="field-contactAddress">
+          <label for="contactAddress">聯絡地址<span class="required-mark" aria-hidden="true">*</span></label>
+          <input id="contactAddress" name="contactAddress" autocomplete="street-address" placeholder="請輸入聯絡地址">
           <div class="field-error"></div>
         </div>
 
         <div class="field" id="field-emergencyContact">
-          <label for="emergencyContact">緊急聯絡人</label>
+          <label for="emergencyContact">緊急聯絡人<span class="required-mark" aria-hidden="true">*</span></label>
           <input id="emergencyContact" name="emergencyContact" placeholder="請輸入緊急聯絡人姓名">
           <div class="field-error"></div>
         </div>
@@ -107,8 +107,8 @@
       email: '#field-email',
       idNumber: '#field-idNumber',
       birthDate: '#field-birthDate',
-      mobile: '#field-mobile',
-      address: '#field-address',
+      mobilePhone: '#field-mobilePhone',
+      contactAddress: '#field-contactAddress',
       emergencyContact: '#field-emergencyContact',
       emergencyPhone: '#field-emergencyPhone',
       identityType: '#field-identityType',
@@ -184,8 +184,9 @@
       if(!payload.email) return ['email','請填寫 Email'];
       if(!payload.idNumber) return ['idNumber','請填寫身分證字號'];
       if(!payload.birthDate) return ['birthDate','請選擇出生年月日'];
-      if(!payload.mobile) return ['mobile','請填寫行動電話'];
-      if(!payload.address) return ['address','請填寫聯絡地址'];
+      if(!payload.mobilePhone) return ['mobilePhone','請填寫行動電話'];
+      if(!payload.contactAddress) return ['contactAddress','請填寫聯絡地址'];
+      if(!payload.emergencyContact) return ['emergencyContact','請填寫緊急聯絡人'];
       if(!payload.emergencyPhone) return ['emergencyPhone','請填寫緊急聯絡人電話'];
       if(!payload.identityType) return ['identityType','請選擇身分類型'];
       return null;
@@ -195,7 +196,7 @@
     qs('#birthYear').addEventListener('change', () => { refreshBirthDays(); clearSingleFieldError('birthDate'); });
     qs('#birthMonth').addEventListener('change', () => { refreshBirthDays(); clearSingleFieldError('birthDate'); });
     qs('#birthDay').addEventListener('change', () => clearSingleFieldError('birthDate'));
-    ['name','email','idNumber','mobile','address','emergencyContact','emergencyPhone','identityType'].forEach(id => {
+    ['name','email','idNumber','mobilePhone','contactAddress','emergencyContact','emergencyPhone','identityType'].forEach(id => {
       const el = qs('#' + id);
       el.addEventListener('input', () => clearSingleFieldError(id));
       el.addEventListener('change', () => clearSingleFieldError(id));
@@ -210,8 +211,8 @@
         email: qs('#email').value.trim(),
         idNumber: qs('#idNumber').value.trim().toUpperCase(),
         birthDate: birthDateValue(),
-        mobile: qs('#mobile').value.trim(),
-        address: qs('#address').value.trim(),
+        mobilePhone: qs('#mobilePhone').value.trim(),
+        contactAddress: qs('#contactAddress').value.trim(),
         emergencyContact: qs('#emergencyContact').value.trim(),
         emergencyPhone: qs('#emergencyPhone').value.trim(),
         identityType: qs('#identityType').value
