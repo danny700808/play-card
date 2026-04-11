@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>個人資料</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .profile-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+    .stat-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+    .stat-card{border:1px solid var(--line);border-radius:18px;padding:16px;background:#fff}
+    .stat-card strong{display:block;font-size:26px;color:var(--brand);margin-top:6px}
+    .readonly-box{border:1px solid var(--line);border-radius:14px;padding:12px 14px;background:#f8fbff;line-height:1.8}
+    .readonly-label{font-size:13px;color:var(--muted)}
+    .readonly-value{font-size:16px;font-weight:700;color:var(--text)}
+    .readonly-stack{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    @media (max-width:560px){.stat-grid,.readonly-stack{grid-template-columns:1fr}}
+  </style>
+</head>
+<body onload="init()">
+  <div class="container">
+    <div class="topbar">
+      <a class="navlink" href="dashboard.html">← 返回員工首頁</a>
+    </div>
+
+    <div class="card">
+      <div class="profile-head">
+        <div class="header" style="margin:0">
+          <h1 class="title">個人資料</h1>
+          <div class="welcome">歡迎 <span data-user-name></span></div>
+        </div>
+        <button class="btn secondary" style="width:auto;padding:10px 14px" onclick="logout()">登出</button>
+      </div>
+      <div class="message" id="msg"></div>
+      <div class="muted">首頁不預先展開資料；點進來才讀取。電話、地址、Email 修改後會先送主管審核，核准後才正式更新。</div>
+    </div>
+
+    <div class="card">
+      <div class="section-title">特休摘要</div>
+      <div class="stat-grid">
+        <div class="stat-card"><div class="readonly-label">年度可用天數</div><strong id="leaveTotal">0</strong></div>
+        <div class="stat-card"><div class="readonly-label">已使用</div><strong id="leaveUsed">0</strong></div>
+        <div class="stat-card"><div class="readonly-label">剩餘天數</div><strong id="leaveRemain">0</strong></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-title">查看資料</div>
+      <div class="readonly-stack">
+        <div class="readonly-box"><div class="readonly-label">姓名</div><div class="readonly-value" id="viewName">-</div></div>
+        <div class="readonly-box"><div class="readonly-label">出生年月日</div><div class="readonly-value" id="viewBirth">-</div></div>
+        <div class="readonly-box"><div class="readonly-label">身分證字號</div><div class="readonly-value" id="viewIdMasked">-</div></div>
+        <div class="readonly-box"><div class="readonly-label">緊急聯絡人</div><div class="readonly-value" id="viewEmergency">-</div></div>
+        <div class="readonly-box"><div class="readonly-label">緊急聯絡人電話</div><div class="readonly-value" id="viewEmergencyPhone">-</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-title">申請修改資料</div>
+      <div class="field"><label>行動電話</label><input id="mobilePhone" placeholder="請輸入行動電話"></div>
+      <div class="field"><label>聯絡地址</label><input id="address" placeholder="請輸入聯絡地址"></div>
+      <div class="field"><label>Email</label><input id="email" type="email" placeholder="請輸入 Email"></div>
+      <div class="btn-row">
+        <button class="btn secondary" type="button" onclick="loadProfile()">重新讀取</button>
+        <button class="btn" type="button" onclick="submitProfileChange()">送出修改申請</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+  <script>
+    async function init(){
+      fillHeader();
+      const user=requireLogin();
+      if(!user) return;
+      await loadProfile();
+    }
+
+    async function loadProfile(){
+      const user=requireLogin();
+      if(!user) return;
+      const msg=qs('#msg');
+      setMsg(msg,'讀取中…',false);
+      try{
+        const res=await api('getMyProfile',{userId:user.id});
+        if(!res||res.ok===false) throw new Error(res&&res.message||'讀取失敗');
+        const p=res.profile||{};
+        qs('#viewName').textContent=p.name||'-';
+        qs('#viewBirth').textContent=p.birthDate||'-';
+        qs('#viewIdMasked').textContent=p.idNumberMasked||'-';
+        qs('#viewEmergency').textContent=p.emergencyContact||'-';
+        qs('#viewEmergencyPhone').textContent=p.emergencyPhone||'-';
+        qs('#mobilePhone').value=p.mobilePhone||'';
+        qs('#address').value=p.address||'';
+        qs('#email').value=p.email||'';
+        qs('#leaveTotal').textContent=String(p.annualLeaveTotal||0);
+        qs('#leaveUsed').textContent=String(p.annualLeaveUsed||0);
+        qs('#leaveRemain').textContent=String(p.annualLeaveRemaining||0);
+        setMsg(msg,'',false);
+      }catch(err){
+        setMsg(msg,err.message||String(err),true);
+      }
+    }
+
+    async function submitProfileChange(){
+      const user=requireLogin();
+      if(!user) return;
+      const msg=qs('#msg');
+      try{
+        setMsg(msg,'送出中…',false);
+        const res=await api('submitProfileChangeRequest',{
+          userId:user.id,
+          mobilePhone:qs('#mobilePhone').value.trim(),
+          address:qs('#address').value.trim(),
+          email:qs('#email').value.trim()
+        });
+        if(!res||res.ok===false) throw new Error(res&&res.message||'送出失敗');
+        setMsg(msg,res.message||'已送出修改申請。',false);
+      }catch(err){
+        setMsg(msg,err.message||String(err),true);
+      }
+    }
+  </script>
+</body>
+</html>
