@@ -87,6 +87,12 @@
           <div class="field-error"></div>
         </div>
 
+        <div class="field" id="field-hireDate" style="display:none">
+          <label for="hireDate">到職日<span class="required-mark" aria-hidden="true">*</span></label>
+          <input id="hireDate" name="hireDate" type="date">
+          <div class="field-error"></div>
+        </div>
+
         <div class="btn-row">
           <a class="btn secondary center" href="index.html">回登入</a>
           <button class="btn" id="registerBtn" type="submit">送出註冊申請</button>
@@ -112,6 +118,7 @@
       emergencyContact: '#field-emergencyContact',
       emergencyPhone: '#field-emergencyPhone',
       identityType: '#field-identityType',
+      hireDate: '#field-hireDate',
     };
     function fillBirthOptions(){
       const y = qs('#birthYear');
@@ -179,6 +186,19 @@
       const node = wrap.querySelector('.field-error');
       if(node) node.textContent = '';
     }
+
+    function toggleHireDateField(){
+      const type = qs('#identityType').value;
+      const wrap = qs('#field-hireDate');
+      const input = qs('#hireDate');
+      const need = type === 'staff';
+      wrap.style.display = need ? '' : 'none';
+      if(!need){
+        input.value = '';
+        clearSingleFieldError('hireDate');
+      }
+    }
+
     function validatePayload(payload){
       if(!payload.name) return ['name','請填寫姓名'];
       if(!payload.email) return ['email','請填寫 Email'];
@@ -189,17 +209,20 @@
       if(!payload.emergencyContact) return ['emergencyContact','請填寫緊急聯絡人'];
       if(!payload.emergencyPhone) return ['emergencyPhone','請填寫緊急聯絡人電話'];
       if(!payload.identityType) return ['identityType','請選擇身分類型'];
+      if(payload.identityType === 'staff' && !payload.hireDate) return ['hireDate','專職員工請填寫到職日'];
       return null;
     }
 
     fillBirthOptions();
+    toggleHireDateField();
     qs('#birthYear').addEventListener('change', () => { refreshBirthDays(); clearSingleFieldError('birthDate'); });
     qs('#birthMonth').addEventListener('change', () => { refreshBirthDays(); clearSingleFieldError('birthDate'); });
     qs('#birthDay').addEventListener('change', () => clearSingleFieldError('birthDate'));
-    ['name','email','idNumber','mobilePhone','contactAddress','emergencyContact','emergencyPhone','identityType'].forEach(id => {
+    ['name','email','idNumber','mobilePhone','contactAddress','emergencyContact','emergencyPhone','identityType','hireDate'].forEach(id => {
       const el = qs('#' + id);
+      if(!el) return;
       el.addEventListener('input', () => clearSingleFieldError(id));
-      el.addEventListener('change', () => clearSingleFieldError(id));
+      el.addEventListener('change', () => { clearSingleFieldError(id); if(id==='identityType') toggleHireDateField(); });
     });
 
     form.addEventListener('submit', async (e) => {
@@ -215,7 +238,8 @@
         contactAddress: qs('#contactAddress').value.trim(),
         emergencyContact: qs('#emergencyContact').value.trim(),
         emergencyPhone: qs('#emergencyPhone').value.trim(),
-        identityType: qs('#identityType').value
+        identityType: qs('#identityType').value,
+        hireDate: qs('#hireDate').value
       };
 
       const invalid = validatePayload(payload);
