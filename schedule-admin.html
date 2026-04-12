@@ -688,8 +688,6 @@
       evt.preventDefault();
       const submitBtn = evt && evt.submitter ? evt.submitter : document.querySelector('#templateForm button[type="submit"]');
       const progress = startSubmitProgress(submitBtn, '儲存中');
-      const submitBtn = evt && evt.submitter ? evt.submitter : document.querySelector('#templateForm button[type="submit"]');
-      const progress = startSubmitProgress(submitBtn, '儲存中');
       const payload = {
         templateId: document.getElementById('templateId').value.trim(),
         templateName: document.getElementById('templateName').value.trim(),
@@ -741,8 +739,6 @@
 
     async function saveAssignment(evt) {
       evt.preventDefault();
-      const submitBtn = evt && evt.submitter ? evt.submitter : document.querySelector('#assignmentForm button[type="submit"]');
-      const progress = startSubmitProgress(submitBtn, '儲存中');
       const submitBtn = evt && evt.submitter ? evt.submitter : document.querySelector('#assignmentForm button[type="submit"]');
       const progress = startSubmitProgress(submitBtn, '儲存中');
       const employeeId = document.getElementById('employeeId').value;
@@ -879,8 +875,6 @@
 
     async function saveSingleDay(evt) {
       evt.preventDefault();
-      const submitBtn = evt && evt.submitter ? evt.submitter : document.querySelector('#singleDayForm button[type="submit"]');
-      const progress = startSubmitProgress(submitBtn, '儲存中');
       const submitBtn = evt && evt.submitter ? evt.submitter : document.querySelector('#singleDayForm button[type="submit"]');
       const progress = startSubmitProgress(submitBtn, '儲存中');
       const employeeId = document.getElementById('singleDayEmployeeId').value;
