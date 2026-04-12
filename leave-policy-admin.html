@@ -6,34 +6,38 @@
   <title>假勤制度設定</title>
   <link rel="stylesheet" href="style.css">
   <style>
-    .page-return-wrap{margin-bottom:16px}
-    .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
-    .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;margin-top:14px}
-    .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
-    .tab-btn{width:auto;padding:10px 14px;border-radius:14px;border:1px solid var(--line);background:#fff;font-weight:800;cursor:pointer}
+    .page-return-wrap{margin-bottom:14px}
+    .page-return-btn{display:block;width:100%;padding:14px 16px;text-align:center;text-decoration:none;border-radius:14px;font-size:18px;font-weight:800}
+    .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-top:14px}
+    .tab-btn{width:auto;padding:8px 10px;border-radius:12px;border:1px solid var(--line);background:#fff;font-weight:800;cursor:pointer;font-size:13px}
     .tab-btn.active{background:#18314a;color:#fff;border-color:#18314a}
-    .sheet-panel{display:none;margin-top:14px}
+    .sheet-panel{display:none;margin-top:12px}
     .sheet-panel.active{display:block}
-    .sheet-head{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;margin-bottom:10px}
-    .sheet-head h2{margin:0;font-size:20px}
-    .sheet-desc{margin-top:6px;color:#6b7c93;line-height:1.7}
-    .table-wrap{overflow:auto;border:1px solid var(--line);border-radius:16px;background:#fff}
+    .sheet-head{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;margin-bottom:8px}
+    .sheet-head h2{margin:0;font-size:18px}
+    .sheet-desc{margin-top:4px;color:#6b7c93;line-height:1.6;font-size:13px}
+    .table-wrap{overflow:auto;border:1px solid var(--line);border-radius:14px;background:#fff}
     table.policy-table{width:max-content;min-width:100%;border-collapse:collapse}
-    .policy-table th,.policy-table td{border-bottom:1px solid #e7edf5;border-right:1px solid #eef2f7;padding:10px;vertical-align:top;background:#fff}
-    .policy-table th{position:sticky;top:0;background:#f8fbff;font-size:13px;z-index:1;white-space:nowrap}
+    .policy-table th,.policy-table td{border-bottom:1px solid #e7edf5;border-right:1px solid #eef2f7;padding:6px;vertical-align:top;background:#fff}
+    .policy-table th{position:sticky;top:0;background:#f8fbff;font-size:12px;z-index:1;white-space:nowrap}
     .policy-table td:last-child,.policy-table th:last-child{border-right:none}
-    .policy-table input,.policy-table textarea{width:100%;min-width:110px;border:1px solid #d7e1ec;border-radius:10px;padding:8px 10px;font-size:14px;background:#fff;box-sizing:border-box}
-    .policy-table textarea{min-height:42px;resize:vertical}
-    .mini{width:auto;padding:9px 12px;border-radius:12px;font-size:14px}
-    .hint-box{margin-top:12px;padding:12px 14px;border:1px solid #dce7f3;border-radius:14px;background:#f8fbff;color:#4b5d73;line-height:1.7}
-    .section-note{margin-top:14px;padding:14px 16px;border-radius:14px;background:#fff7e8;border:1px solid #f7d9a1;color:#6f4e0c;line-height:1.8}
-    .chip-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
-    .chip{display:inline-block;padding:7px 10px;border-radius:999px;background:#f3f7fb;border:1px solid #dfe8f2;font-size:13px;color:#2f4256;font-weight:700}
-    .muted strong{color:#18314a}
+    .policy-table input,.policy-table textarea,.policy-table select{width:100%;min-width:72px;border:1px solid #d7e1ec;border-radius:8px;padding:6px 8px;font-size:12px;background:#fff;box-sizing:border-box}
+    .policy-table textarea{min-height:38px;resize:vertical;min-width:120px}
+    .policy-table .wide textarea{min-width:170px}
+    .policy-table .code input{min-width:88px}
+    .policy-table .name input{min-width:82px}
+    .policy-table .num input{min-width:58px;max-width:74px;text-align:center}
+    .mini{width:auto;padding:7px 10px;border-radius:10px;font-size:12px}
+    .chip-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+    .chip{display:inline-block;padding:6px 9px;border-radius:999px;background:#f3f7fb;border:1px solid #dfe8f2;font-size:12px;color:#2f4256;font-weight:700}
+    .section-note{margin-top:12px;padding:12px 14px;border-radius:14px;background:#fff7e8;border:1px solid #f7d9a1;color:#6f4e0c;line-height:1.7;font-size:13px}
+    .compact-note{margin-top:10px;padding:10px 12px;border-radius:12px;background:#f8fbff;border:1px solid #dce7f3;color:#4b5d73;line-height:1.7;font-size:13px}
     @media (max-width:640px){
-      .tab-btn,.mini{font-size:13px}
-      .policy-table th,.policy-table td{padding:8px}
-      .policy-table input,.policy-table textarea{font-size:13px;min-width:92px}
+      .page-return-btn{padding:12px 14px;font-size:16px}
+      .policy-table th,.policy-table td{padding:4px}
+      .policy-table input,.policy-table textarea,.policy-table select{font-size:11px;padding:5px 6px;min-width:64px}
+      .policy-table textarea{min-width:120px;min-height:34px}
+      .tab-btn,.mini{font-size:12px}
     }
   </style>
 </head>
@@ -46,77 +50,115 @@
           <h1 class="title" style="margin:0">假勤制度設定</h1>
           <div class="welcome">歡迎 <span data-user-name></span></div>
         </div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn secondary" type="button" id="reloadBtn">重新讀取</button>
           <button class="btn" type="button" id="saveBtn">儲存全部設定</button>
         </div>
       </div>
 
-      <div class="muted">
-        這一版已改成新版說法。你看到的內容會以「制度、級距、申請規則」為主，不再顯示舊版「年度假日摘要設定」那種舊命名。
+      <div class="compact-note">
+        這版已把你常用的選項改成下拉選單，手機欄位也再縮小。<br>
+        「請假申請規則」已改成你要的邏輯：可預期假原則提前申請，臨時假改成知悉後儘速通知。
       </div>
       <div id="pageMsg" class="message local-message"></div>
 
       <div class="chip-row">
-        <span class="chip">管理者帳號可直接進入</span>
-        <span class="chip">制度先綁人，再影響班表與請假</span>
-        <span class="chip">舊版頁面請直接覆蓋刪除</span>
+        <span class="chip">婚假 / 喪假可做事件制</span>
+        <span class="chip">低於法定標準會擋下</span>
+        <span class="chip">手機版已縮窄欄位</span>
       </div>
 
       <div class="tabs" id="tabs"></div>
       <div id="panels"></div>
 
       <div class="section-note">
-        <strong>目前頁面定位：</strong><br>
-        1. 假別規則設定：維護各種假別與基本規則。<br>
-        2. 特休週年級距設定：依到職日與年資計算特休。<br>
-        3. 喪假關係設定：依親屬別帶出喪假天數。<br>
-        4. 請假申請規則：放最低標準、公司目前設定、是否需提前申請與證明。<br>
-        5. 其他制度備註：先保留給全域制度說明與轉換期間使用。
+        <strong>這次已整理成五區：</strong><br>
+        1. 假別規則設定：假別本身的額度、附件、半天/小時等。<br>
+        2. 特休週年級距設定：年資到幾個月有幾天。<br>
+        3. 喪假關係設定：親屬別對應 3/6/8 日。<br>
+        4. 請假申請規則：哪些原則 7 天前、哪些屬知悉後儘速。<br>
+        5. 制度備註與全域設定：保留公司自己的補充說明。
       </div>
     </div>
   </div>
 
-  <script src="config.js?v=20260412b"></script>
-  <script src="app.js?v=20260412b"></script>
+  <script src="config.js?v=20260412c"></script>
+  <script src="app.js?v=20260412c"></script>
   <script>
     let currentUser=null;
     let currentBundle={};
 
     const TAB_META = {
-      leaveTypes: {
-        title: '假別規則設定',
-        desc: '這裡維護各種假別，例如特休、婚假、喪假、病假、生理假、家庭照顧假等。請在這裡填寫勞動部最低標準與公司目前設定。'
-      },
+      leaveTypes: { title: '假別規則設定', desc: '設定各假別是否啟用、支薪方式、額度、是否需要附件與是否可半天/小時。' },
+      annualLeave: { title: '特休週年級距設定', desc: '依到職年資設定特休日數；低於法定標準時，系統會禁止儲存。' },
+      bereavement: { title: '喪假關係設定', desc: '依關係別設定喪假天數；低於法定 3/6/8 日時，系統會禁止儲存。' },
+      holidaySummary: { title: '請假申請規則', desc: '可預期假別可設固定提前天數；病假、喪假等臨時性假別建議用「知悉後儘速」。' },
+      globalRules: { title: '制度備註與全域設定', desc: '保留給制度說明、是否遞延、通知與其他全域設定。' }
+    };
+    const TAB_ORDER=['leaveTypes','annualLeave','bereavement','holidaySummary','globalRules'];
+
+    const SELECT_RULES = {
+      '啟用': ['是','否'],
+      '可跨日': ['是','否'],
+      '可半天': ['是','否'],
+      '可小時': ['是','否'],
+      '需附件': ['是','否'],
+      '需證明文件': ['是','否'],
+      '需主管審核': ['是','否'],
+      '例假日與國定假日是否計入假期': ['是','否'],
+      '支薪方式': ['全薪','半薪','無薪','依原假別規則','依性平法','公司自訂'],
+      '扣抵類型': ['扣特休','獨立額度','不扣','併入事假'],
+      '全勤影響方式': ['不影響','影響','依比例'],
+      '適用身分': ['全部','專職','工讀','外聘老師','專職,工讀','專職,工讀,外聘老師'],
+      '申請期限類型': ['固定提前','知悉後儘速','主管個案核准'],
+      '是否允許臨時申請': ['是','否'],
+      '證明文件規則': ['免附','建議附','必要時補證明','建議附結婚證明','建議附訃聞或證明','依實際需要附通知'],
+      '請假年度制度': ['曆年制','週年制','自訂年度']
+    };
+    const MIN_MAP = {
+      marriage_leave: { minDays: 8, label: '婚假法定最低 8 日' },
+      bereavement: { '父母':8,'養父母':8,'繼父母':8,'配偶':8,'祖父母':6,'子女':6,'配偶之父母':6,'配偶之養父母':6,'配偶之繼父母':6,'曾祖父母':3,'兄弟姊妹':3,'配偶之祖父母':3 },
       annualLeave: {
-        title: '特休週年級距設定',
-        desc: '這裡不是一般摘要表，而是依到職日計算特休的級距表。請用「滿多久＝幾天」的方式維護。'
-      },
-      bereavement: {
-        title: '喪假關係設定',
-        desc: '這裡是喪假親屬別與天數對照表。員工請喪假時，之後會依這張表自動帶出可請天數。'
-      },
-      holidaySummary: {
-        title: '請假申請規則',
-        desc: '這一頁先用來承接新版請假申請規則，例如是否需提前申請、是否需證明、最少提前天數、是否限制請畢期間。'
-      },
-      globalRules: {
-        title: '制度備註與全域設定',
-        desc: '這一頁先保留給制度轉換期使用。可放全域備註、補休邏輯說明、國定假日重疊處理方式等。'
+        '6-11':3,'12-23':7,'24-35':10,'36-59':14,'60-119':15,'120-131':16,'132-143':17,'144-155':18,'156-167':19,'168-179':20,'180-191':21,'192-203':22,'204-215':23,'216-227':24,'228-239':25,'240-251':26,'252-263':27,'264-275':28,'276-287':29,'288-9999':30
       }
     };
 
-    const TAB_ORDER=['leaveTypes','annualLeave','bereavement','holidaySummary','globalRules'];
-
-    function setPageMsg(text,isError=false){ setMsg(qs('#pageMsg'), text, isError); }
+    function qs(sel){ return document.querySelector(sel); }
+    function qsa(sel){ return Array.from(document.querySelectorAll(sel)); }
+    function setPageMsg(text,isError){ setMsg(qs('#pageMsg'), text, !!isError); }
     function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"]/g, ch=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[ch])); }
     function getBundleKeys(bundle){ return TAB_ORDER.filter(k=>bundle&&bundle[k]).concat(Object.keys(bundle||{}).filter(k=>TAB_ORDER.indexOf(k)<0)); }
+    function getTabTitle(key, part){ return (TAB_META[key] && TAB_META[key].title) || (part && part.name) || key; }
+    function getTabDesc(key){ return (TAB_META[key] && TAB_META[key].desc) || ''; }
 
-    function getTabTitle(key, part){
-      return (TAB_META[key] && TAB_META[key].title) || (part && part.name) || key;
+    function getSelectOptionsByHeader(header){
+      const key=String(header||'').trim();
+      if(SELECT_RULES[key]) return SELECT_RULES[key];
+      if(/^(啟用|是否)/.test(key)) return ['是','否'];
+      if(/(需附件|需證明|需主管審核|可跨日|可半天|可小時|是否計入假期)$/.test(key)) return ['是','否'];
+      return null;
     }
-    function getTabDesc(key){
-      return (TAB_META[key] && TAB_META[key].desc) || '';
+    function isWideHeader(h){ return /說明|備註|標準|規則|期間/.test(h); }
+    function isNumHeader(h){ return /天數|月數|排序/.test(h); }
+    function getCellClass(h){
+      if(/代碼/.test(h)) return 'code';
+      if(/名稱|親屬別/.test(h)) return 'name';
+      if(isNumHeader(h)) return 'num';
+      if(isWideHeader(h)) return 'wide';
+      return '';
+    }
+    function buildSelectHtml(options, value, rowIndex, colIndex){
+      const current=String(value==null?'':value).trim();
+      const opts=['<option value="">請選擇</option>'].concat(options.map(opt=>`<option value="${escapeHtml(opt)}" ${current===String(opt)?'selected':''}>${escapeHtml(opt)}</option>`));
+      if(current && !options.includes(current)) opts.push(`<option value="${escapeHtml(current)}" selected>${escapeHtml(current)}</option>`);
+      return `<select data-row="${rowIndex}" data-col="${colIndex}">${opts.join('')}</select>`;
+    }
+    function cellInputHtml(header, value, rowIndex, colIndex){
+      const options=getSelectOptionsByHeader(header);
+      const safe=escapeHtml(value);
+      if(options) return buildSelectHtml(options, value, rowIndex, colIndex);
+      if(isWideHeader(header)) return `<textarea data-row="${rowIndex}" data-col="${colIndex}">${safe}</textarea>`;
+      return `<input type="${isNumHeader(header)?'number':'text'}" value="${safe}" data-row="${rowIndex}" data-col="${colIndex}">`;
     }
 
     function renderTabs(bundle){
@@ -125,32 +167,26 @@
       qsa('.tab-btn').forEach(btn=>btn.onclick=()=>activateTab(btn.dataset.tab));
     }
 
-    function cellInputHtml(value, rowIndex, colIndex, isLong){
-      const safe=escapeHtml(value);
-      if(isLong) return `<textarea data-row="${rowIndex}" data-col="${colIndex}">${safe}</textarea>`;
-      return `<input type="text" value="${safe}" data-row="${rowIndex}" data-col="${colIndex}">`;
-    }
-
     function renderPanels(bundle){
       const keys=getBundleKeys(bundle);
       qs('#panels').innerHTML=keys.map((key,idx)=>{
         const part=bundle[key]||{};
         const headers=Array.isArray(part.headers)?part.headers:[];
         const rows=Array.isArray(part.rows)?part.rows:[];
-        const body=rows.map((row,rowIndex)=>`<tr>${headers.map((h,colIndex)=>`<td>${cellInputHtml((row&&row[colIndex])||'', rowIndex, colIndex, /說明|備註|摘要|內文|標準|提示/.test(h))}</td>`).join('')}<td><button class="btn secondary mini" type="button" data-delete-row="${key}" data-row-index="${rowIndex}">刪除</button></td></tr>`).join('');
+        const body=rows.map((row,rowIndex)=>`<tr>${headers.map((h,colIndex)=>`<td class="${getCellClass(h)}">${cellInputHtml(h,(row&&row[colIndex])||'',rowIndex,colIndex)}</td>`).join('')}<td><button class="btn secondary mini" type="button" data-delete-row="${key}" data-row-index="${rowIndex}">刪除</button></td></tr>`).join('');
         return `<section class="sheet-panel ${idx===0?'active':''}" data-panel="${key}">
           <div class="sheet-head">
             <div>
               <h2>${escapeHtml(getTabTitle(key, part))}</h2>
               <div class="sheet-desc">${escapeHtml(getTabDesc(key))}</div>
-              <div class="muted" style="margin-top:6px">共 ${rows.length} 筆資料</div>
+              <div class="muted" style="margin-top:4px">共 ${rows.length} 筆資料</div>
             </div>
             <button class="btn secondary mini" type="button" data-add-row="${key}">新增一列</button>
           </div>
           <div class="table-wrap">
             <table class="policy-table">
               <thead><tr>${headers.map(h=>`<th>${escapeHtml(h)}</th>`).join('')}<th>操作</th></tr></thead>
-              <tbody>${body || `<tr class="empty-row">${headers.map((h,colIndex)=>`<td>${cellInputHtml('',0,colIndex,/說明|備註|摘要|內文|標準|提示/.test(h))}</td>`).join('')}<td><button class="btn secondary mini" type="button" data-delete-row="${key}" data-row-index="0">刪除</button></td></tr>`}</tbody>
+              <tbody>${body || `<tr>${headers.map((h,colIndex)=>`<td class="${getCellClass(h)}">${cellInputHtml(h,'',0,colIndex)}</td>`).join('')}<td><button class="btn secondary mini" type="button" data-delete-row="${key}" data-row-index="0">刪除</button></td></tr>`}</tbody>
             </table>
           </div>
         </section>`;
@@ -170,17 +206,12 @@
       currentBundle[key].rows=Array.isArray(currentBundle[key].rows)?currentBundle[key].rows:[];
       return currentBundle[key];
     }
-
     function addRow(key){
       const part=ensurePart(key);
       part.rows.push(part.headers.map(()=>''));
       renderPanels(currentBundle);
       activateTab(key);
-      const panel=qs(`.sheet-panel[data-panel="${key}"]`);
-      const inputs=panel?qsa(`.sheet-panel[data-panel="${key}"] tbody tr:last-child input, .sheet-panel[data-panel="${key}"] tbody tr:last-child textarea`):[];
-      if(inputs[0]) inputs[0].focus();
     }
-
     function deleteRow(key,rowIndex){
       const part=ensurePart(key);
       if(!part.rows.length) return;
@@ -188,7 +219,6 @@
       renderPanels(currentBundle);
       activateTab(key);
     }
-
     function collectBundleFromDom(){
       const keys=getBundleKeys(currentBundle);
       keys.forEach(key=>{
@@ -206,6 +236,38 @@
         part.rows=rows;
       });
       return currentBundle;
+    }
+
+    function validateBundle(bundle){
+      const annual=((bundle.annualLeave||{}).rows)||[];
+      annual.forEach(row=>{
+        const key=`${row[0]||''}-${row[1]||''}`;
+        const min=MIN_MAP.annualLeave[key];
+        const days=Number(row[2]||0)||0;
+        if(min!=null && days<min) throw new Error(`特休級距 ${key} 不可低於法定最低 ${min} 日`);
+      });
+      const bereavement=((bundle.bereavement||{}).rows)||[];
+      bereavement.forEach(row=>{
+        const relation=String(row[0]||'').trim();
+        const min=MIN_MAP.bereavement[relation];
+        const days=Number(row[1]||0)||0;
+        if(min!=null && days<min) throw new Error(`喪假「${relation}」不可低於法定最低 ${min} 日`);
+      });
+      const leaveTypes=((bundle.leaveTypes||{}).rows)||[];
+      leaveTypes.forEach(row=>{
+        if(String(row[0]||'').trim()==='marriage_leave'){
+          const days=Number(row[7]||0)||0;
+          if(days<MIN_MAP.marriage_leave.minDays) throw new Error('婚假不可低於法定最低 8 日');
+        }
+      });
+      const requestRules=((bundle.holidaySummary||{}).rows)||[];
+      requestRules.forEach(row=>{
+        const name=String(row[1]||'請假規則').trim();
+        const type=String(row[4]||'').trim();
+        const minAdvance=String(row[5]||'').trim();
+        if(type==='固定提前' && !minAdvance) throw new Error(`${name} 已設定固定提前，請填最少提前天數`);
+        if(minAdvance && (Number(minAdvance)<0 || Number.isNaN(Number(minAdvance)))) throw new Error(`${name} 的最少提前天數格式不正確`);
+      });
     }
 
     async function loadBundle(seedIfNeeded){
@@ -237,17 +299,22 @@
         try{ await loadBundle(false); setPageMsg('已重新讀取最新設定'); }catch(err){ setPageMsg(err.message||String(err), true); }
       };
       qs('#saveBtn').onclick=async()=>{
+        const btn=qs('#saveBtn');
         try{
           collectBundleFromDom();
-          const btn=qs('#saveBtn');
+          validateBundle(currentBundle);
           btn.disabled=true; btn.textContent='儲存中';
           const r=await api('saveLeavePolicySettings',{userId:currentUser.id,bundle:currentBundle});
           setPageMsg(r.message||'', !r.ok);
-          if(r.ok){ currentBundle=r.bundle||currentBundle; renderTabs(currentBundle); renderPanels(currentBundle); }
-          btn.disabled=false; btn.textContent='儲存全部設定';
+          if(r.ok){
+            currentBundle=r.bundle||currentBundle;
+            renderTabs(currentBundle);
+            renderPanels(currentBundle);
+          }
         }catch(err){
-          const btn=qs('#saveBtn'); if(btn){ btn.disabled=false; btn.textContent='儲存全部設定'; }
           setPageMsg(err.message||String(err), true);
+        }finally{
+          btn.disabled=false; btn.textContent='儲存全部設定';
         }
       };
     }

@@ -64,7 +64,7 @@
 <script src="config.js?v=20260410c"></script><script src="app.js?v=20260410c"></script>
 <script>
 let historyRows=[]; let approvalRows=[]; let currentUser=null; let leaveApprovalMode=false;
-let leavePolicyBundle=null; let leaveTypeHeaders=[]; let leaveTypeRows=[]; let leaveTypeMap={};
+let leavePolicyBundle=null; let leaveTypeHeaders=[]; let leaveTypeRows=[]; let leaveTypeMap={}; let leaveRuleHeaders=[]; let leaveRuleRows=[]; let leaveRuleMap={};
 const leaveFallbackTypes=[
   {name:'事假', canHalf:true, canHour:true, attachmentRule:'optional', note:'一般事假', identityText:'全部'},
   {name:'病假', canHalf:true, canHour:true, attachmentRule:'optional', note:'一般病假', identityText:'全部'},
@@ -91,7 +91,9 @@ function buildLeavePolicyMaps(bundle){
   leavePolicyBundle=bundle||null;
   leaveTypeHeaders=((bundle&&bundle.leaveTypes&&bundle.leaveTypes.headers)||[]).map(x=>String(x||''));
   leaveTypeRows=Array.isArray(bundle&&bundle.leaveTypes&&bundle.leaveTypes.rows)?bundle.leaveTypes.rows:[];
-  leaveTypeMap={};
+  leaveRuleHeaders=((bundle&&bundle.holidaySummary&&bundle.holidaySummary.headers)||[]).map(x=>String(x||''));
+  leaveRuleRows=Array.isArray(bundle&&bundle.holidaySummary&&bundle.holidaySummary.rows)?bundle.holidaySummary.rows:[];
+  leaveTypeMap={}; leaveRuleMap={};
   const enabled=[];
   const idxName=policyHeaderIndex('假別名稱');
   const idxEnabled=policyHeaderIndex('啟用');
@@ -102,6 +104,25 @@ function buildLeavePolicyMaps(bundle){
   const idxProof=policyHeaderIndex('需證明文件');
   const idxPay=policyHeaderIndex('支薪方式');
   const idxNote=policyHeaderIndex('說明');
+  const ruleNameIdx=leaveRuleHeaders.indexOf('假別名稱');
+  const ruleTypeIdx=leaveRuleHeaders.indexOf('申請期限類型');
+  const ruleAdvanceIdx=leaveRuleHeaders.indexOf('最少提前天數');
+  const ruleTempIdx=leaveRuleHeaders.indexOf('是否允許臨時申請');
+  const ruleDeadlineIdx=leaveRuleHeaders.indexOf('請畢期限說明');
+  const ruleProofIdx=leaveRuleHeaders.indexOf('證明文件規則');
+  const ruleNoteIdx=leaveRuleHeaders.indexOf('備註');
+  leaveRuleRows.forEach(row=>{
+    const name=String((row&&row[ruleNameIdx])||'').trim();
+    if(!name) return;
+    leaveRuleMap[name]={
+      requestType:String((row&&row[ruleTypeIdx])||'').trim(),
+      minAdvance:String((row&&row[ruleAdvanceIdx])||'').trim(),
+      allowTemp:String((row&&row[ruleTempIdx])||'').trim(),
+      deadlineText:String((row&&row[ruleDeadlineIdx])||'').trim(),
+      proofText:String((row&&row[ruleProofIdx])||'').trim(),
+      note:String((row&&row[ruleNoteIdx])||'').trim()
+    };
+  });
   const identity=identityLabelOf(currentUser);
   const fallbackIdentity=identityTypeOf(currentUser)==='parttime'?'工讀':'專職';
   leaveTypeRows.forEach(row=>{
@@ -147,15 +168,21 @@ function renderPolicyHint(meta){
     fileHint.textContent='可上傳 jpg、png、pdf、doc、docx，單檔上限 30MB。';
     return;
   }
+  const rule=leaveRuleMap[meta.name]||null;
   const chips=[];
   chips.push(`<span class="policy-chip">${escapeHtml(meta.identityText||'全部身分')}</span>`);
   if(meta.payText) chips.push(`<span class="policy-chip">${escapeHtml(meta.payText)}</span>`);
   chips.push(`<span class="policy-chip">${meta.attachmentRule==='required'?'需附件 / 證明':'附件可選填'}</span>`);
   chips.push(`<span class="policy-chip">${(!meta.canHalf && !meta.canHour)?'整天為主':'可半天 / 小時'}</span>`);
+  if(rule&&rule.requestType) chips.push(`<span class="policy-chip">${escapeHtml(rule.requestType)}${rule.minAdvance?('｜'+escapeHtml(rule.minAdvance)+'天'):''}</span>`);
+  if(rule&&rule.allowTemp) chips.push(`<span class="policy-chip">${escapeHtml(rule.allowTemp==='是'?'允許臨時申請':'不建議臨時申請')}</span>`);
+  const lines=[meta.note || '請依公司假勤制度送出，若需要佐證請記得一起上傳。'];
+  if(rule&&rule.deadlineText) lines.push('請畢期限：'+rule.deadlineText);
+  if(rule&&rule.note) lines.push('申請提醒：'+rule.note);
   box.classList.remove('hidden');
-  box.innerHTML=`<strong>${escapeHtml(meta.name)} 申請提示</strong><div>${escapeHtml(meta.note || '請依公司假勤制度送出，若需要佐證請記得一起上傳。')}</div><div class="policy-meta">${chips.join('')}</div>`;
+  box.innerHTML=`<strong>${escapeHtml(meta.name)} 申請提示</strong><div>${lines.map(x=>escapeHtml(x)).join('<br>')}</div><div class="policy-meta">${chips.join('')}</div>`;
   label.textContent=meta.attachmentRule==='required'?'附件（建議必附）':'附件（選填）';
-  fileHint.textContent=meta.attachmentRule==='required'?'這個假別建議一起附上證明文件，避免主管退件。':'可上傳 jpg、png、pdf、doc、docx，單檔上限 30MB。';
+  fileHint.textContent=(rule&&rule.proofText) ? rule.proofText : (meta.attachmentRule==='required'?'這個假別建議一起附上證明文件，避免主管退件。':'可上傳 jpg、png、pdf、doc、docx，單檔上限 30MB。');
 }
 function toggleHoursByReason(){
   const meta=getSelectedLeaveMeta();
