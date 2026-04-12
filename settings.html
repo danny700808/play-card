@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>管理首頁</title>
   <link rel="stylesheet" href="style.css">
-  <style>.switch-zone{display:none;text-decoration:none} body.has-settings-zone .switch-zone{display:inline-flex}.tile strong{display:flex;align-items:center;gap:8px;justify-content:space-between}.badge{display:inline-flex;min-width:22px;height:22px;padding:0 6px;border-radius:999px;background:#dc2626;color:#fff;font-size:12px;align-items:center;justify-content:center;font-weight:800}.badge:empty{display:none}</style>
+  <style>.tile strong{display:flex;align-items:center;gap:8px;justify-content:space-between}.badge{display:inline-flex;min-width:22px;height:22px;padding:0 6px;border-radius:999px;background:#dc2626;color:#fff;font-size:12px;align-items:center;justify-content:center;font-weight:800}.badge:empty{display:none}</style>
 </head>
 <body onload="init()">
   <div class="container">
@@ -16,7 +16,6 @@
           <div class="welcome">歡迎 <span data-user-name></span></div>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
-          <a class="btn secondary switch-zone" id="settingsPortalLink" href="portal.html" style="width:auto;padding:10px 14px">切換入口</a>
           <button class="btn secondary" style="width:auto;padding:10px 14px" onclick="logout()">登出</button>
         </div>
       </div>
@@ -44,7 +43,6 @@
       const user=requireLogin();
       if(!user) return;
       if(!hasSettingsZoneAccess(user)){location.href='dashboard.html';return;}
-      document.body.classList.add('has-settings-zone');
       setPortalMode('settings');
       if(typeof renderLineBindPrompt_==='function') renderLineBindPrompt_('#lineBindArea');
       loadBadges(user);
