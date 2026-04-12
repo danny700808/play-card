@@ -16,6 +16,7 @@
     .sheet-panel.active{display:block}
     .sheet-head{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;margin-bottom:10px}
     .sheet-head h2{margin:0;font-size:20px}
+    .sheet-desc{margin-top:6px;color:#6b7c93;line-height:1.7}
     .table-wrap{overflow:auto;border:1px solid var(--line);border-radius:16px;background:#fff}
     table.policy-table{width:max-content;min-width:100%;border-collapse:collapse}
     .policy-table th,.policy-table td{border-bottom:1px solid #e7edf5;border-right:1px solid #eef2f7;padding:10px;vertical-align:top;background:#fff}
@@ -25,6 +26,9 @@
     .policy-table textarea{min-height:42px;resize:vertical}
     .mini{width:auto;padding:9px 12px;border-radius:12px;font-size:14px}
     .hint-box{margin-top:12px;padding:12px 14px;border:1px solid #dce7f3;border-radius:14px;background:#f8fbff;color:#4b5d73;line-height:1.7}
+    .section-note{margin-top:14px;padding:14px 16px;border-radius:14px;background:#fff7e8;border:1px solid #f7d9a1;color:#6f4e0c;line-height:1.8}
+    .chip-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+    .chip{display:inline-block;padding:7px 10px;border-radius:999px;background:#f3f7fb;border:1px solid #dfe8f2;font-size:13px;color:#2f4256;font-weight:700}
     .muted strong{color:#18314a}
     @media (max-width:640px){
       .tab-btn,.mini{font-size:13px}
@@ -47,57 +51,106 @@
           <button class="btn" type="button" id="saveBtn">儲存全部設定</button>
         </div>
       </div>
-      <div class="muted">這裡可以直接維護假別規則、特休週年級距、喪假親屬與申請規則。儲存後會直接回寫到 Google Sheet。</div>
+
+      <div class="muted">
+        這一版已改成新版說法。你看到的內容會以「制度、級距、申請規則」為主，不再顯示舊版「年度假日摘要設定」那種舊命名。
+      </div>
       <div id="pageMsg" class="message local-message"></div>
+
+      <div class="chip-row">
+        <span class="chip">管理者帳號可直接進入</span>
+        <span class="chip">制度先綁人，再影響班表與請假</span>
+        <span class="chip">舊版頁面請直接覆蓋刪除</span>
+      </div>
+
       <div class="tabs" id="tabs"></div>
       <div id="panels"></div>
-      <div class="hint-box">
-        <strong>目前這版設定重點：</strong><br>
-        1. 管理者帳號可直接進入這裡，不需要再切換員工入口。<br>
-        2. 這裡維護的是後台制度表，後續會供請假、排班與補休規則共用。<br>
-        3. 若你剛更新完整 GS，請先重新讀取一次，再開始調整制度內容。
+
+      <div class="section-note">
+        <strong>目前頁面定位：</strong><br>
+        1. 假別規則設定：維護各種假別與基本規則。<br>
+        2. 特休週年級距設定：依到職日與年資計算特休。<br>
+        3. 喪假關係設定：依親屬別帶出喪假天數。<br>
+        4. 請假申請規則：放最低標準、公司目前設定、是否需提前申請與證明。<br>
+        5. 其他制度備註：先保留給全域制度說明與轉換期間使用。
       </div>
     </div>
   </div>
-  <script src="config.js?v=20260411a"></script>
-  <script src="app.js?v=20260411a"></script>
+
+  <script src="config.js?v=20260412b"></script>
+  <script src="app.js?v=20260412b"></script>
   <script>
     let currentUser=null;
     let currentBundle={};
+
+    const TAB_META = {
+      leaveTypes: {
+        title: '假別規則設定',
+        desc: '這裡維護各種假別，例如特休、婚假、喪假、病假、生理假、家庭照顧假等。請在這裡填寫勞動部最低標準與公司目前設定。'
+      },
+      annualLeave: {
+        title: '特休週年級距設定',
+        desc: '這裡不是一般摘要表，而是依到職日計算特休的級距表。請用「滿多久＝幾天」的方式維護。'
+      },
+      bereavement: {
+        title: '喪假關係設定',
+        desc: '這裡是喪假親屬別與天數對照表。員工請喪假時，之後會依這張表自動帶出可請天數。'
+      },
+      holidaySummary: {
+        title: '請假申請規則',
+        desc: '這一頁先用來承接新版請假申請規則，例如是否需提前申請、是否需證明、最少提前天數、是否限制請畢期間。'
+      },
+      globalRules: {
+        title: '制度備註與全域設定',
+        desc: '這一頁先保留給制度轉換期使用。可放全域備註、補休邏輯說明、國定假日重疊處理方式等。'
+      }
+    };
+
     const TAB_ORDER=['leaveTypes','annualLeave','bereavement','holidaySummary','globalRules'];
 
     function setPageMsg(text,isError=false){ setMsg(qs('#pageMsg'), text, isError); }
     function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"]/g, ch=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[ch])); }
     function getBundleKeys(bundle){ return TAB_ORDER.filter(k=>bundle&&bundle[k]).concat(Object.keys(bundle||{}).filter(k=>TAB_ORDER.indexOf(k)<0)); }
+
+    function getTabTitle(key, part){
+      return (TAB_META[key] && TAB_META[key].title) || (part && part.name) || key;
+    }
+    function getTabDesc(key){
+      return (TAB_META[key] && TAB_META[key].desc) || '';
+    }
+
     function renderTabs(bundle){
       const keys=getBundleKeys(bundle);
-      qs('#tabs').innerHTML=keys.map((key,idx)=>`<button type="button" class="tab-btn ${idx===0?'active':''}" data-tab="${key}">${escapeHtml(bundle[key].name||key)}</button>`).join('');
+      qs('#tabs').innerHTML=keys.map((key,idx)=>`<button type="button" class="tab-btn ${idx===0?'active':''}" data-tab="${key}">${escapeHtml(getTabTitle(key,bundle[key]))}</button>`).join('');
       qsa('.tab-btn').forEach(btn=>btn.onclick=()=>activateTab(btn.dataset.tab));
     }
+
     function cellInputHtml(value, rowIndex, colIndex, isLong){
       const safe=escapeHtml(value);
       if(isLong) return `<textarea data-row="${rowIndex}" data-col="${colIndex}">${safe}</textarea>`;
       return `<input type="text" value="${safe}" data-row="${rowIndex}" data-col="${colIndex}">`;
     }
+
     function renderPanels(bundle){
       const keys=getBundleKeys(bundle);
       qs('#panels').innerHTML=keys.map((key,idx)=>{
         const part=bundle[key]||{};
         const headers=Array.isArray(part.headers)?part.headers:[];
         const rows=Array.isArray(part.rows)?part.rows:[];
-        const body=rows.map((row,rowIndex)=>`<tr>${headers.map((h,colIndex)=>`<td>${cellInputHtml((row&&row[colIndex])||'', rowIndex, colIndex, /說明|備註|摘要|內文/.test(h))}</td>`).join('')}<td><button class="btn secondary mini" type="button" data-delete-row="${key}" data-row-index="${rowIndex}">刪除</button></td></tr>`).join('');
+        const body=rows.map((row,rowIndex)=>`<tr>${headers.map((h,colIndex)=>`<td>${cellInputHtml((row&&row[colIndex])||'', rowIndex, colIndex, /說明|備註|摘要|內文|標準|提示/.test(h))}</td>`).join('')}<td><button class="btn secondary mini" type="button" data-delete-row="${key}" data-row-index="${rowIndex}">刪除</button></td></tr>`).join('');
         return `<section class="sheet-panel ${idx===0?'active':''}" data-panel="${key}">
           <div class="sheet-head">
             <div>
-              <h2>${escapeHtml(part.name||key)}</h2>
-              <div class="muted">共 ${rows.length} 筆資料</div>
+              <h2>${escapeHtml(getTabTitle(key, part))}</h2>
+              <div class="sheet-desc">${escapeHtml(getTabDesc(key))}</div>
+              <div class="muted" style="margin-top:6px">共 ${rows.length} 筆資料</div>
             </div>
             <button class="btn secondary mini" type="button" data-add-row="${key}">新增一列</button>
           </div>
           <div class="table-wrap">
             <table class="policy-table">
               <thead><tr>${headers.map(h=>`<th>${escapeHtml(h)}</th>`).join('')}<th>操作</th></tr></thead>
-              <tbody>${body || `<tr class="empty-row">${headers.map((h,colIndex)=>`<td>${cellInputHtml('',0,colIndex,/說明|備註|摘要|內文/.test(h))}</td>`).join('')}<td><button class="btn secondary mini" type="button" data-delete-row="${key}" data-row-index="0">刪除</button></td></tr>`}</tbody>
+              <tbody>${body || `<tr class="empty-row">${headers.map((h,colIndex)=>`<td>${cellInputHtml('',0,colIndex,/說明|備註|摘要|內文|標準|提示/.test(h))}</td>`).join('')}<td><button class="btn secondary mini" type="button" data-delete-row="${key}" data-row-index="0">刪除</button></td></tr>`}</tbody>
             </table>
           </div>
         </section>`;
@@ -105,16 +158,19 @@
       qsa('[data-add-row]').forEach(btn=>btn.onclick=()=>addRow(btn.dataset.addRow));
       qsa('[data-delete-row]').forEach(btn=>btn.onclick=()=>deleteRow(btn.dataset.deleteRow, Number(btn.dataset.rowIndex||0)));
     }
+
     function activateTab(key){
       qsa('.tab-btn').forEach(btn=>btn.classList.toggle('active', btn.dataset.tab===key));
       qsa('.sheet-panel').forEach(panel=>panel.classList.toggle('active', panel.dataset.panel===key));
     }
+
     function ensurePart(key){
       if(!currentBundle[key]) currentBundle[key]={name:key,headers:[],rows:[]};
       currentBundle[key].headers=Array.isArray(currentBundle[key].headers)?currentBundle[key].headers:[];
       currentBundle[key].rows=Array.isArray(currentBundle[key].rows)?currentBundle[key].rows:[];
       return currentBundle[key];
     }
+
     function addRow(key){
       const part=ensurePart(key);
       part.rows.push(part.headers.map(()=>''));
@@ -124,6 +180,7 @@
       const inputs=panel?qsa(`.sheet-panel[data-panel="${key}"] tbody tr:last-child input, .sheet-panel[data-panel="${key}"] tbody tr:last-child textarea`):[];
       if(inputs[0]) inputs[0].focus();
     }
+
     function deleteRow(key,rowIndex){
       const part=ensurePart(key);
       if(!part.rows.length) return;
@@ -131,6 +188,7 @@
       renderPanels(currentBundle);
       activateTab(key);
     }
+
     function collectBundleFromDom(){
       const keys=getBundleKeys(currentBundle);
       keys.forEach(key=>{
@@ -149,6 +207,7 @@
       });
       return currentBundle;
     }
+
     async function loadBundle(seedIfNeeded){
       setPageMsg('');
       const action=seedIfNeeded?'initLeavePolicySettings':'getLeavePolicySettingsAdmin';
@@ -158,6 +217,7 @@
       renderTabs(currentBundle);
       renderPanels(currentBundle);
     }
+
     async function init(){
       fillHeader();
       currentUser=requireLogin();
@@ -168,7 +228,7 @@
       }catch(err){
         try{
           await loadBundle(true);
-          setPageMsg('假勤制度設定表已自動建立完成');
+          setPageMsg('已自動建立制度表，現在可直接開始維護新版假勤資料。');
         }catch(e2){
           setPageMsg(e2.message||String(e2), true);
         }
