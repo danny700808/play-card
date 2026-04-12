@@ -64,7 +64,7 @@
 <script src="config.js?v=20260410c"></script><script src="app.js?v=20260410c"></script>
 <script>
 let historyRows=[]; let approvalRows=[]; let currentUser=null; let leaveApprovalMode=false;
-let leavePolicyBundle=null; let leaveTypeHeaders=[]; let leaveTypeRows=[]; let leaveTypeMap={}; let leaveGuides={};
+let leavePolicyBundle=null; let leaveTypeHeaders=[]; let leaveTypeRows=[]; let leaveTypeMap={};
 const leaveFallbackTypes=[
   {name:'事假', canHalf:true, canHour:true, attachmentRule:'optional', note:'一般事假', identityText:'全部'},
   {name:'病假', canHalf:true, canHour:true, attachmentRule:'optional', note:'一般病假', identityText:'全部'},
@@ -87,10 +87,8 @@ function clearValidation(){ ['Reason','LeaveDate','Hours'].forEach(name=>{ const
 function setFieldInvalid(name, message){ const field=qs('#field'+name); const err=qs('#error'+name); if(field) field.classList.add('invalid'); if(err) err.textContent=message||''; }
 function setLocalMsg(text,isError=false){ setMsg(qs('#localMsg'), text, isError); }
 function policyHeaderIndex(name){ return leaveTypeHeaders.indexOf(name); }
-function policyCell(row, name){ const idx=policyHeaderIndex(name); return idx>=0 && row ? String(row[idx]||'').trim() : ''; }
-function buildLeavePolicyMaps(bundle, guides){
+function buildLeavePolicyMaps(bundle){
   leavePolicyBundle=bundle||null;
-  leaveGuides=guides||{};
   leaveTypeHeaders=((bundle&&bundle.leaveTypes&&bundle.leaveTypes.headers)||[]).map(x=>String(x||''));
   leaveTypeRows=Array.isArray(bundle&&bundle.leaveTypes&&bundle.leaveTypes.rows)?bundle.leaveTypes.rows:[];
   leaveTypeMap={};
@@ -123,12 +121,7 @@ function buildLeavePolicyMaps(bundle, guides){
       attachmentRule:(String((row&&row[idxAttachment])||'').trim()==='是' || String((row&&row[idxProof])||'').trim()==='是') ? 'required' : 'optional',
       payText:String((row&&row[idxPay])||'').trim(),
       note:String((row&&row[idxNote])||'').trim(),
-      identityText:rawIdentity || '全部',
-      legalText: policyCell(row,'法定最低標準') || policyCell(row,'法定基準'),
-      companyRule: policyCell(row,'公司採用規則'),
-      relaxed: policyCell(row,'公司是否放寬'),
-      relaxedRule: policyCell(row,'公司放寬規則'),
-      employeeText: policyCell(row,'員工顯示說明')
+      identityText:rawIdentity || '全部'
     };
     leaveTypeMap[name]=meta;
     enabled.push(meta);
@@ -159,12 +152,8 @@ function renderPolicyHint(meta){
   if(meta.payText) chips.push(`<span class="policy-chip">${escapeHtml(meta.payText)}</span>`);
   chips.push(`<span class="policy-chip">${meta.attachmentRule==='required'?'需附件 / 證明':'附件可選填'}</span>`);
   chips.push(`<span class="policy-chip">${(!meta.canHalf && !meta.canHour)?'整天為主':'可半天 / 小時'}</span>`);
-  const legal=meta.legalText ? `<div><strong>法定標準</strong>${escapeHtml(meta.legalText)}</div>` : '';
-  const company=meta.companyRule ? `<div style="margin-top:6px"><strong>公司採用</strong>${escapeHtml(meta.companyRule)}</div>` : '';
-  const relaxed=meta.relaxed==='是' && meta.relaxedRule ? `<div style="margin-top:6px"><strong>公司放寬</strong>${escapeHtml(meta.relaxedRule)}</div>` : '';
-  const employee=meta.employeeText ? `<div style="margin-top:6px"><strong>申請提醒</strong>${escapeHtml(meta.employeeText)}</div>` : `<div style="margin-top:6px"><strong>申請提醒</strong>${escapeHtml(meta.note || '請依公司假勤制度送出，若需要佐證請記得一起上傳。')}</div>`;
   box.classList.remove('hidden');
-  box.innerHTML=`<strong>${escapeHtml(meta.name)} 申請提示</strong>${legal}${company}${relaxed}${employee}<div class="policy-meta">${chips.join('')}</div>`;
+  box.innerHTML=`<strong>${escapeHtml(meta.name)} 申請提示</strong><div>${escapeHtml(meta.note || '請依公司假勤制度送出，若需要佐證請記得一起上傳。')}</div><div class="policy-meta">${chips.join('')}</div>`;
   label.textContent=meta.attachmentRule==='required'?'附件（建議必附）':'附件（選填）';
   fileHint.textContent=meta.attachmentRule==='required'?'這個假別建議一起附上證明文件，避免主管退件。':'可上傳 jpg、png、pdf、doc、docx，單檔上限 30MB。';
 }
@@ -209,7 +198,7 @@ async function loadLeavePolicyBundle(){
     const r=await api('getLeavePolicyPublicBundle',{userId:currentUser.id});
     if(r&&r.ok&&r.bundle){ buildLeavePolicyMaps(r.bundle); renderReasonOptions(qs('#reason').value||''); toggleHoursByReason(); return; }
   }catch(err){}
-  buildLeavePolicyMaps(null, null);
+  buildLeavePolicyMaps(null);
   renderReasonOptions(qs('#reason').value||'');
   toggleHoursByReason();
 }
@@ -217,7 +206,7 @@ async function init(){
   fillHeader();
   currentUser=requireLogin();
   if(!currentUser) return;
-  buildLeavePolicyMaps(null, null);
+  buildLeavePolicyMaps(null);
   resetForm();
   qs('#reason').addEventListener('change', ()=>{ clearValidation(); toggleHoursByReason(); });
   qs('#leaveDate').addEventListener('input', clearValidation);
