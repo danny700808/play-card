@@ -325,8 +325,8 @@
     </div>
   </div>
 
-  <script src="config.js?v=20260410c"></script>
-  <script src="app.js?v=20260410c"></script>
+  <script src="config.js?v=20260412a"></script>
+  <script src="app.js?v=20260412a"></script>
   <script>
 
     const DAYS = [
@@ -611,7 +611,7 @@
         const end = a.endTime || a['下班時間'] || '';
         const allowSpecial = String(a.allowSpecial || a['允許特殊打卡'] || 'FALSE') === 'TRUE';
         const extra = allowSpecial ? '｜可標準＋特殊共用' : '';
-        return `<div class="item"><div class="item-head"><div><h3>${escapeHtml(a.employeeName || a['員工姓名'] || '未命名員工')}</h3><div class="muted">日期：${escapeHtml(a.date || a['日期'] || '')}｜${escapeHtml(type)}${extra}</div></div><span class="pill ${enabled ? '' : 'off'}">${enabled ? '啟用中' : '已停用'}</span></div><div class="schedule-mini"><div><b>時間：</b>${start && end ? `${escapeHtml(start)} - ${escapeHtml(end)}` : '—'}</div><div><b>單日ID：</b>${escapeHtml(a.recordId || a['單日ID'] || '')}</div><div><b>備註：</b>${escapeHtml(a.note || a['備註'] || '')}</div></div><div class="actions"><button class="btn btn-secondary" type="button" onclick="editSingleDay(${index})">編輯</button><button class="btn btn-danger" type="button" onclick="deleteSingleDay('${'${'}escapeJs(a.recordId || a['單日ID'] || '')${'}'}')">刪除</button></div></div>`;
+        return `<div class="item"><div class="item-head"><div><h3>${escapeHtml(a.employeeName || a['員工姓名'] || '未命名員工')}</h3><div class="muted">日期：${escapeHtml(a.date || a['日期'] || '')}｜${escapeHtml(type)}${extra}</div></div><span class="pill ${enabled ? '' : 'off'}">${enabled ? '啟用中' : '已停用'}</span></div><div class="schedule-mini"><div><b>時間：</b>${start && end ? `${escapeHtml(start)} - ${escapeHtml(end)}` : '—'}</div><div><b>單日ID：</b>${escapeHtml(a.recordId || a['單日ID'] || '')}</div><div><b>備註：</b>${escapeHtml(a.note || a['備註'] || '')}</div></div><div class="actions"><button class="btn btn-secondary" type="button" onclick="editSingleDay(${index})">編輯</button><button class="btn btn-danger" type="button" onclick="deleteSingleDay('${escapeJs(a.recordId || a['單日ID'] || '')}')">刪除</button></div></div>`;
       }).join('');
     }
 
@@ -688,8 +688,6 @@
       evt.preventDefault();
       const submitBtn = evt && evt.submitter ? evt.submitter : document.querySelector('#templateForm button[type="submit"]');
       const progress = startSubmitProgress(submitBtn, '儲存中');
-      const submitBtn = evt && evt.submitter ? evt.submitter : document.querySelector('#templateForm button[type="submit"]');
-      const progress = startSubmitProgress(submitBtn, '儲存中');
       const payload = {
         templateId: document.getElementById('templateId').value.trim(),
         templateName: document.getElementById('templateName').value.trim(),
@@ -707,20 +705,17 @@
 
       if (!payload.templateName) {
         if (progress) progress.fail('請先填寫', 900);
-        if (progress) progress.fail('請先填寫', 900);
         showStatus('templateStatus', '請先填寫模板名稱。', 'error');
         return;
       }
       const invalidDay = payload.days.find(d => d.type === '標準打卡' && (!d.startTime || !d.endTime));
       if (invalidDay) {
         if (progress) progress.fail('資料不完整', 900);
-        if (progress) progress.fail('資料不完整', 900);
         showStatus('templateStatus', `${invalidDay.dayLabel} 選了標準打卡，請填上班時間與下班時間。`, 'error');
         return;
       }
       const invalidEndDay = payload.days.find(d => d.type === '標準打卡' && d.endTime <= d.startTime);
       if (invalidEndDay) {
-        if (progress) progress.fail('時間錯誤', 900);
         if (progress) progress.fail('時間錯誤', 900);
         showStatus('templateStatus', `${invalidEndDay.dayLabel} 的下班時間必須晚於上班時間。`, 'error');
         return;
@@ -734,15 +729,12 @@
         await reloadPageData();
       } catch (err) {
         if (progress) progress.fail('儲存失敗');
-        if (progress) progress.fail('儲存失敗');
         showStatus('templateStatus', err.message || '儲存班表模板失敗', 'error');
       }
     }
 
     async function saveAssignment(evt) {
       evt.preventDefault();
-      const submitBtn = evt && evt.submitter ? evt.submitter : document.querySelector('#assignmentForm button[type="submit"]');
-      const progress = startSubmitProgress(submitBtn, '儲存中');
       const submitBtn = evt && evt.submitter ? evt.submitter : document.querySelector('#assignmentForm button[type="submit"]');
       const progress = startSubmitProgress(submitBtn, '儲存中');
       const employeeId = document.getElementById('employeeId').value;
@@ -786,7 +778,6 @@
         await reloadPageData();
       } catch (err) {
         if (progress) progress.fail('儲存失敗');
-        if (progress) progress.fail('儲存失敗');
         showStatus('assignmentStatus', err.message || '儲存員工套用班表失敗', 'error');
       }
     }
@@ -805,6 +796,7 @@
         document.getElementById(`${day.key}AllowSpecial`).checked = !!getTemplateDayValue(t, day, 'allowSpecial');
         toggleDayTime(day.key);
       });
+      switchSchedulePanel('templatePanel');
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
@@ -820,7 +812,8 @@
       document.getElementById('assignEnabled').value = String(a.enabled || a.啟用 || 'TRUE');
       document.getElementById('assignNote').value = a.note || a.備註 || '';
       toggleEndDate();
-      window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+      switchSchedulePanel('assignmentPanel');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
     async function deleteTemplate(templateId) {
@@ -881,8 +874,6 @@
       evt.preventDefault();
       const submitBtn = evt && evt.submitter ? evt.submitter : document.querySelector('#singleDayForm button[type="submit"]');
       const progress = startSubmitProgress(submitBtn, '儲存中');
-      const submitBtn = evt && evt.submitter ? evt.submitter : document.querySelector('#singleDayForm button[type="submit"]');
-      const progress = startSubmitProgress(submitBtn, '儲存中');
       const employeeId = document.getElementById('singleDayEmployeeId').value;
       const employee = pageData.employees.find(e => String(e.employeeId || '') === String(employeeId));
       const clockType = document.getElementById('singleDayType').value;
@@ -908,7 +899,6 @@
         resetSingleDayForm();
         await reloadPageData();
       } catch (err) {
-        if (progress) progress.fail('儲存失敗');
         if (progress) progress.fail('儲存失敗');
         showStatus('singleDayStatus', err.message || '儲存單日特別班表失敗', 'error');
       }
