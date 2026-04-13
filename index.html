@@ -104,8 +104,8 @@
     </div>
   </div>
 
-  <script src="config.js?v=20260410c"></script>
-  <script src="app.js?v=20260410c"></script>
+  <script src="config.js?v=20260413fix1"></script>
+  <script src="app.js?v=20260413fix1"></script>
   <script>
     const msg = qs('#msg');
     const panels = {
@@ -118,6 +118,11 @@
 
     window.addEventListener('error', (event) => {
       if (event && event.message) setMsg(msg, '前端錯誤：' + event.message, true);
+    });
+    window.addEventListener('unhandledrejection', (event) => {
+      const reason = event && event.reason;
+      const text = (reason && (reason.message || String(reason))) || 'Load failed';
+      setMsg(msg, '載入失敗：' + text, true);
     });
     ['#email','#password'].forEach(sel => {
       const el = qs(sel);
