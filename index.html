@@ -104,8 +104,8 @@
     </div>
   </div>
 
-  <script src="config.js?v=20260413fix1"></script>
-  <script src="app.js?v=20260413fix1"></script>
+  <script src="config.js?v=20260413loginfix1"></script>
+  <script src="app.js?v=20260413loginfix1"></script>
   <script>
     const msg = qs('#msg');
     const panels = {
@@ -116,14 +116,39 @@
 
     applySavedLogin();
 
+    function describeWindowError(event){
+      if (!event) return '前端載入失敗';
+      const target = event.target;
+      if (target && target !== window) {
+        const src = target.src || target.href || target.currentSrc || '';
+        const tag = (target.tagName || 'RESOURCE').toUpperCase();
+        return '前端資源載入失敗：' + tag + (src ? ('\n' + src) : '');
+      }
+      if (event && event.message) return '前端錯誤：' + event.message;
+      return '前端載入失敗';
+    }
+
     window.addEventListener('error', (event) => {
-      if (event && event.message) setMsg(msg, '前端錯誤：' + event.message, true);
-    });
+      setMsg(msg, describeWindowError(event), true);
+    }, true);
+
     window.addEventListener('unhandledrejection', (event) => {
       const reason = event && event.reason;
-      const text = (reason && (reason.message || String(reason))) || 'Load failed';
-      setMsg(msg, '載入失敗：' + text, true);
+      const text = (reason && (reason.message || String(reason))) || '前端 Promise 執行失敗';
+      setMsg(msg, '前端錯誤：' + text, true);
     });
+
+    (async function initLoginPage(){
+      try {
+        if (!getApiUrl()) {
+          setMsg(msg, '尚未設定 API 網址，請先確認 config.js。', true);
+          return;
+        }
+        await api('getPublicSystemLinks', {});
+      } catch (e) {
+        setMsg(msg, '系統連線失敗：' + (e && e.message ? e.message : '無法連到後端 API'), true);
+      }
+    })();
     ['#email','#password'].forEach(sel => {
       const el = qs(sel);
       if (el) el.addEventListener('keydown', (e) => {

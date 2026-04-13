@@ -30,10 +30,23 @@ function requireLogin(){const user=getUser(); if(!user){location.href='index.htm
 async function api(action, payload={}){
   const apiUrl=getApiUrl();
   if(!apiUrl) throw new Error('尚未設定 API 網址');
-  const res=await fetch(apiUrl,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action,...payload})});
+  let res;
+  try{
+    res=await fetch(apiUrl,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action,...payload})});
+  }catch(err){
+    throw new Error('API 連線失敗，請確認 Apps Script Web App 可正常開啟。原始錯誤：'+(err&&err.message?err.message:String(err||'')));
+  }
   const raw=await res.text();
-  try{return JSON.parse(raw);}catch(e){throw new Error(raw || '伺服器回傳格式錯誤');}
+  if(!res.ok){
+    throw new Error('API 回應失敗（HTTP '+res.status+'）。'+(raw?(' 內容：'+raw):''));
+  }
+  try{
+    return JSON.parse(raw);
+  }catch(e){
+    throw new Error(raw || '伺服器回傳格式錯誤');
+  }
 }
+
 function setMsg(el, text, isError=false){if(!el) return; el.style.display=text?'block':'none'; el.textContent=text||''; el.classList.toggle('error',!!isError)}
 function togglePassword(inputSel, btn){const input=qs(inputSel); const show=input.type==='password'; input.type=show?'text':'password'; btn.textContent=show?'🙈':'👁';}
 async function getPublicIp(){try{const r=await fetch('https://api.ipify.org?format=json'); const j=await r.json(); return j.ip||'';}catch(e){return '';}}
