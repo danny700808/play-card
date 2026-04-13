@@ -64,8 +64,8 @@
       <div id="adminList" class="list"></div>
     </div>
   </div>
-  <script src="config.js?v=20260413fix1"></script>
-  <script src="app.js?v=20260413fix1"></script>
+  <script src="config.js?v=20260413clean1"></script>
+  <script src="app.js?v=20260413clean1"></script>
   <script>
     let adminData={categories:[],items:[]};
 
@@ -156,7 +156,7 @@
     function setProgress(v,label){ if(!saveProgressController) saveProgressController = startActionButtonProgress(qs('#saveBtn'), { label:'儲存中', auto:false }); saveProgressController.set(v, label||'儲存中'); }
     function resetProgress(){ if(saveProgressController){ saveProgressController.reset('儲存教材'); saveProgressController = null; } else { setActionButtonIdle(qs('#saveBtn'),'儲存教材'); } }
     function selectedEnabled(){ const el=document.querySelector('input[name="enabled"]:checked'); return el?el.value:'是'; }
-    function fillCategoryOptions(){ const categories=getFixedTrainingCategories(); qs('#categoryId').innerHTML='<option value="">請選擇分類</option>'+categories.map(c=>`<option value="${c.id}">${c.name}</option>`).join(''); }
+    function fillCategoryOptions(){ const categories=getFixedTrainingCategories(); qs('#categoryId').innerHTML='<option value="">載入分類中...</option>'+categories.map(c=>`<option value="${c.id}">${c.name}</option>`).join(''); }
     async function loadAdminData(){
       const user=requireLogin(); if(!user) return;
       adminData.categories = getFixedTrainingCategories();

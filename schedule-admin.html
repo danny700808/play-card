@@ -325,8 +325,8 @@
     </div>
   </div>
 
-  <script src="config.js?v=20260413fix1"></script>
-  <script src="app.js?v=20260413fix1"></script>
+  <script src="config.js?v=20260413clean1"></script>
+  <script src="app.js?v=20260413clean1"></script>
   <script>
 
     const DAYS = [
@@ -494,7 +494,7 @@
         select.innerHTML = '<option value="">目前沒有可用員工資料，請先確認你已用主管帳號登入</option>';
         return;
       }
-      select.innerHTML = '<option value="">請選擇員工</option>' + employees.map(emp => {
+      select.innerHTML = '<option value="">載入員工完成，請選擇</option>' + employees.map(emp => {
         const id = escapeHtml(emp.employeeId || '');
         const name = escapeHtml(emp.employeeName || emp.name || '未命名員工');
         return `<option value="${id}">${name}（${id}）</option>`;
@@ -508,7 +508,7 @@
         select.innerHTML = '<option value="">目前沒有可用員工資料，請先確認你已用主管帳號登入</option>';
         return;
       }
-      select.innerHTML = '<option value="">請選擇員工</option>' + employees.map(emp => {
+      select.innerHTML = '<option value="">載入員工完成，請選擇</option>' + employees.map(emp => {
         const id = escapeHtml(emp.employeeId || '');
         const name = escapeHtml(emp.employeeName || emp.name || '未命名員工');
         return `<option value="${id}">${name}（${id}）</option>`;
@@ -518,7 +518,7 @@
     function renderTemplateOptions() {
       const select = document.getElementById('assignTemplateId');
       const enabledTemplates = pageData.templates.filter(t => String(t.enabled || t.啟用 || 'TRUE') !== 'FALSE');
-      select.innerHTML = '<option value="">請選擇班表模板</option>' + enabledTemplates.map(t => {
+      select.innerHTML = '<option value="">載入模板完成，請選擇</option>' + enabledTemplates.map(t => {
         const id = escapeHtml(t.templateId || t.模板ID || '');
         const name = escapeHtml(t.templateName || t.模板名稱 || '未命名模板');
         return `<option value="${id}">${name}</option>`;

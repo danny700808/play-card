@@ -39,7 +39,7 @@
       <div class="card">
         <div class="field" id="fieldReason">
           <label for="reason">請假原因</label>
-          <select id="reason"><option value="">請選擇請假原因</option><option value="事假">事假</option><option value="病假">病假</option><option value="特休">特休</option><option value="其他">其他</option></select>
+          <select id="reason"><option value="">載入假別中...</option></select>
           <div class="field-error" id="errorReason"></div>
         </div>
         <div id="leavePolicyHint" class="policy-card hidden"></div>
@@ -61,7 +61,7 @@
       <div id="approvalList" class="list" style="margin-top:12px"></div>
     </div>
   </div>
-<script src="config.js?v=20260413fix1"></script><script src="app.js?v=20260413fix1"></script>
+<script src="config.js?v=20260413clean1"></script><script src="app.js?v=20260413clean1"></script>
 <script>
 let historyRows=[]; let approvalRows=[]; let currentUser=null; let leaveApprovalMode=false;
 let leavePolicyBundle=null; let leaveTypeHeaders=[]; let leaveTypeRows=[]; let leaveTypeMap={}; let leaveRuleHeaders=[]; let leaveRuleRows=[]; let leaveRuleMap={};
