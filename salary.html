@@ -18,8 +18,8 @@
     <div class="card">
       <div class="header" style="margin:0"><h1 class="title">薪資與投保資訊</h1><div class="welcome">歡迎 <span data-user-name></span></div></div>
       <div id="pageMsg" class="message"></div>
-      <div id="progressShell" class="progress-shell"><div class="progress-track"><div id="progressBar" class="progress-bar"></div></div><div id="progressText" class="progress-text">讀取中…</div></div>
-      <div class="muted">這裡顯示個人薪資與勞健保資訊。專職顯示本薪、加給、津貼；工讀顯示時薪。勞健保自付額依目前投保設定顯示。</div>
+      <div style="margin-top:12px"><button id="loadBtn" class="btn" style="width:auto;padding:10px 16px" disabled>讀取薪資資訊 0%</button></div>
+      <div class="muted">這裡顯示個人薪資與投保資訊。上方顯示級距與狀態，下方顯示自付額，不重複顯示說明。</div>
     </div>
     <div class="card">
       <div class="section-title">摘要</div>
@@ -36,43 +36,46 @@
         <div class="info-card"><div class="label">職務加給</div><div class="value" id="jobAllowance">-</div></div>
         <div class="info-card"><div class="label">津貼</div><div class="value" id="otherAllowance">-</div></div>
         <div class="info-card"><div class="label">勞保級距</div><div class="value" id="laborPlan">-</div></div>
-        <div class="info-card"><div class="label">健保狀態</div><div class="value" id="healthStatus">-</div></div>
-        <div class="info-card"><div class="label">勞保投保薪資 / 自付額</div><div class="value" id="laborSalary">-</div></div>
-        <div class="info-card"><div class="label">健保投保金額 / 自付額</div><div class="value" id="healthSalary">-</div></div>
         <div class="info-card"><div class="label">勞保狀態</div><div class="value" id="laborStatus">-</div></div>
-        <div class="info-card"><div class="label">健保說明</div><div class="value" id="healthPlan">-</div></div>
+        <div class="info-card"><div class="label">勞保自付額</div><div class="value" id="laborSalary">-</div></div>
+        <div class="info-card"><div class="label">健保狀態</div><div class="value" id="healthStatus">-</div></div>
+        <div class="info-card"><div class="label">健保自付額</div><div class="value" id="healthSalary">-</div></div>
+        <div class="info-card"><div class="label">生效日期</div><div class="value" id="salaryEffectiveDateInfo">-</div></div>
         <div class="info-card" style="grid-column:1/-1"><div class="label">備註</div><div class="value" id="salaryNote">-</div></div>
       </div>
+    </div>
+  </div>
     </div>
   </div>
   <script src="config.js?v=20260414clean3"></script>
   <script src="app.js?v=20260414clean3"></script>
   <script>
-    function setProgress(pct, text){ const shell=qs('#progressShell'); const bar=qs('#progressBar'); const txt=qs('#progressText'); shell.style.display='block'; bar.style.width=(pct||0)+'%'; txt.textContent=text||'讀取中…'; }
-    function hideProgress(){ qs('#progressShell').style.display='none'; }
+    
+    function setLoadBtn(pct, text){ const btn=qs('#loadBtn'); if(!btn) return; btn.textContent=`${text||'讀取薪資資訊'} ${pct||0}%`; btn.disabled=true; }
+    function resetLoadBtn(text){ const btn=qs('#loadBtn'); if(!btn) return; btn.textContent=text||'讀取完成'; btn.disabled=false; }
     async function init(){
       fillHeader(); const user=requireLogin(); if(!user) return;
-      setProgress(16,'讀取薪資與投保資訊');
+      setLoadBtn(10,'讀取薪資資訊');
       try{
         const res=await api('getMySalaryInfo',{userId:user.id}); if(!res||res.ok===false) throw new Error(res&&res.message||'讀取失敗');
-        setProgress(84,'整理顯示內容');
+        setLoadBtn(70,'整理資料');
         const info=res.info||{};
         qs('#displayTypeName').textContent=info.displayTypeName||'-';
         qs('#baseOrHourly').textContent=info.baseOrHourlyText||'-';
         qs('#jobAllowance').textContent=info.jobAllowanceText||'-';
         qs('#otherAllowance').textContent=info.allowanceText||'-';
         qs('#laborPlan').textContent=info.laborPlanName||'-';
-        qs('#healthPlan').textContent=info.healthPlanName||'-';
         qs('#laborStatus').textContent=info.laborStatus||'-';
         qs('#healthStatus').textContent=info.healthStatus||'-';
-        qs('#laborSalary').textContent=info.laborSalaryText||'-';
-        qs('#healthSalary').textContent=info.healthSalaryText||'-';
+        qs('#laborSalary').textContent=info.laborSelfPayText||info.laborSalaryText||'-';
+        qs('#healthSalary').textContent=info.healthSelfPayText||info.healthSalaryText||'-';
         qs('#salaryEffectiveDate').textContent=info.effectiveDate||'-';
+        qs('#salaryEffectiveDateInfo').textContent=info.effectiveDate||'-';
         qs('#salaryNote').textContent=info.note||'-';
         qs('#mainAmountLabel').textContent=info.mainAmountLabel||'主要薪資';
         qs('#mainAmountValue').textContent=info.mainAmountText||'-';
-        hideProgress();
-      }catch(err){ setMsg(qs('#pageMsg'), err.message||String(err), true); hideProgress(); }
+        setLoadBtn(100,'讀取完成');
+      }catch(err){ setMsg(qs('#pageMsg'), err.message||String(err), true); resetLoadBtn('讀取失敗，請重試'); }
     }
   </script>
 </body>

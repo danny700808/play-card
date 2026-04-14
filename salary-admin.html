@@ -20,7 +20,7 @@
     <div class="card">
       <div class="header" style="margin:0"><h1 class="title">薪資與投保設定</h1><div class="welcome">歡迎 <span data-user-name></span></div></div>
       <div id="pageMsg" class="message"></div>
-      <div id="progressShell" class="progress-shell"><div class="progress-track"><div id="progressBar" class="progress-bar"></div></div><div id="progressText" class="progress-text">讀取中…</div></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px"><button id="loadSetupBtn" class="btn" style="width:auto;padding:10px 16px">讀取薪資設定</button><button id="saveBtn" class="btn" style="width:auto;padding:10px 16px">儲存設定</button></div>
       <div class="muted">專職員工改成直接輸入本薪；職務加給與津貼採「有 / 無 + 金額」；工讀生直接輸入時薪。勞保級距使用官方投保薪資與員工自付額顯示。</div>
     </div>
     <div class="admin-grid">
@@ -39,6 +39,10 @@
             <label>職務加給</label>
             <div class="field-inline-grid">
               <select id="jobAllowanceEnabled"><option value="無">無</option><option value="有">有</option></select>
+              <input id="jobAllowanceName" placeholder="輸入職務加給名稱" disabled>
+            </div>
+            <div class="field-inline-grid" style="margin-top:10px">
+              <span class="muted">職務加給金額</span>
               <input id="jobAllowanceAmount" type="number" min="0" step="1" placeholder="輸入職務加給金額" disabled>
             </div>
           </div>
@@ -46,6 +50,10 @@
             <label>津貼</label>
             <div class="field-inline-grid">
               <select id="allowanceEnabled"><option value="無">無</option><option value="有">有</option></select>
+              <input id="allowanceName" placeholder="輸入津貼名稱" disabled>
+            </div>
+            <div class="field-inline-grid" style="margin-top:10px">
+              <span class="muted">津貼金額</span>
               <input id="allowanceAmount" type="number" min="0" step="1" placeholder="輸入津貼金額" disabled>
             </div>
           </div>
@@ -64,9 +72,10 @@
   <script src="config.js?v=20260414clean3"></script>
   <script src="app.js?v=20260414clean3"></script>
   <script>
+    
     let setup=null; let selectedId=''; let selectedMap={};
-    function setProgress(pct, text){const shell=qs('#progressShell'),bar=qs('#progressBar'),txt=qs('#progressText'); shell.style.display='block'; bar.style.width=(pct||0)+'%'; txt.textContent=text||'讀取中…';}
-    function hideProgress(){qs('#progressShell').style.display='none';}
+    function setButtonProgress(id, pct, label){ const btn=qs('#'+id); if(!btn) return; btn.textContent=`${label} ${pct}%`; btn.disabled=true; }
+    function resetButton(id, label, disabled=false){ const btn=qs('#'+id); if(!btn) return; btn.textContent=label; btn.disabled=disabled; }
     function fillSelect(id, items, value, placeholder='請選擇'){ const el=qs('#'+id); const list=Array.isArray(items)?items:[]; el.innerHTML='<option value="">'+placeholder+'</option>'+list.map(x=>'<option value="'+String(x.code||'')+'">'+String(x.name||'')+'</option>').join(''); el.value=value||''; }
     function currentEmployee(){ return selectedMap[selectedId]||null; }
     function getLaborMeta(){ const code=qs('#laborPlan').value; const list=(setup&&setup.laborPlans)||[]; return list.find(x=>String(x.code||'')===String(code||''))||null; }
@@ -75,7 +84,7 @@
       const laborText=labor ? `投保薪資：${String(labor.salaryText||'-')}｜勞保自付：${String(labor.selfPayText||'-')}` : '選擇級距後，這裡會顯示投保薪資與勞保自付額。';
       qs('#laborPlanHint').textContent=laborText;
       const healthStatus=qs('#healthStatus').value;
-      const healthText=(healthStatus==='在保' && labor) ? `健保投保金額：${String(labor.salaryText||'-')}｜健保自付：${String(labor.healthSelfPayText||'-')}` : '健保自付額會依勞保所選投保薪資顯示；若未保則顯示 0 元。';
+      const healthText=(healthStatus==='在保' && labor) ? `健保自付：${String(labor.healthSelfPayText||'-')}` : '健保若為在保，會依投保金額顯示健保自付額。';
       qs('#healthHint').textContent=healthText;
     }
     function renderEmployeeList(){
@@ -94,9 +103,9 @@
     }
     function updateAllowanceInputs(){
       const jobOn=qs('#jobAllowanceEnabled').value==='有';
-      qs('#jobAllowanceAmount').disabled=!jobOn; if(!jobOn) qs('#jobAllowanceAmount').value='';
+      qs('#jobAllowanceName').disabled=!jobOn; qs('#jobAllowanceAmount').disabled=!jobOn; if(!jobOn){ qs('#jobAllowanceName').value=''; qs('#jobAllowanceAmount').value=''; }
       const allOn=qs('#allowanceEnabled').value==='有';
-      qs('#allowanceAmount').disabled=!allOn; if(!allOn) qs('#allowanceAmount').value='';
+      qs('#allowanceName').disabled=!allOn; qs('#allowanceAmount').disabled=!allOn; if(!allOn){ qs('#allowanceName').value=''; qs('#allowanceAmount').value=''; }
     }
     function selectEmployee(id){
       selectedId=id; const emp=currentEmployee(); const e=(setup.employeeConfigMap||{})[id]||{};
@@ -107,8 +116,10 @@
       fillSelect('salaryDisplayType', setup.salaryDisplayTypes, e.salaryDisplayType, '請選擇顯示方案');
       qs('#baseSalary').value=e.baseSalary||'';
       qs('#jobAllowanceEnabled').value=e.jobAllowanceEnabled||'無';
+      qs('#jobAllowanceName').value=e.jobAllowanceName||'';
       qs('#jobAllowanceAmount').value=e.jobAllowanceAmount||'';
       qs('#allowanceEnabled').value=e.allowanceEnabled||'無';
+      qs('#allowanceName').value=e.allowanceName||'';
       qs('#allowanceAmount').value=e.allowanceAmount||'';
       qs('#hourlyRate').value=e.hourlyRate||'';
       fillSelect('laborPlan', setup.laborPlans, e.laborPlan, '請選擇勞保級距');
@@ -116,35 +127,34 @@
       qs('#healthStatus').value=e.healthStatus||'在保';
       qs('#salaryEffectiveDate').value=e.effectiveDate||'';
       qs('#salaryNote').value=e.note||'';
-      updateAllowanceInputs();
-      updateInsuranceHints();
-      renderEmployeeList();
+      updateAllowanceInputs(); updateInsuranceHints(); renderEmployeeList();
     }
-    async function loadSetup(){
+    async function loadSetup(btn){
       const user=requireLogin(); if(!user) return;
-      setProgress(15,'讀取薪資設定、員工資料與勞保級距');
+      setButtonProgress('loadSetupBtn',10,'讀取薪資設定');
       const res=await api('getSalarySetupOptions',{userId:user.id});
       if(!res||res.ok===false) throw new Error(res&&res.message||'讀取失敗');
       setup=res; selectedMap={}; (setup.employees||[]).forEach(x=>selectedMap[x.id]=x);
-      setProgress(85,'整理欄位與下拉選單'); renderEmployeeList(); hideProgress();
+      setButtonProgress('loadSetupBtn',70,'整理資料'); renderEmployeeList();
+      setButtonProgress('loadSetupBtn',100,'讀取完成');
+      setTimeout(()=>resetButton('loadSetupBtn','重新讀取薪資設定'),400);
     }
     async function saveConfig(){
       const user=requireLogin(); const emp=currentEmployee(); if(!user||!emp) return;
-      setMsg(qs('#pageMsg'),''); setProgress(18,'檢查資料');
-      const payload={
-        userId:user.id, employeeId:emp.id, salaryDisplayType:qs('#salaryDisplayType').value,
-        baseSalary:qs('#baseSalary').value, jobAllowanceEnabled:qs('#jobAllowanceEnabled').value, jobAllowanceAmount:qs('#jobAllowanceAmount').value,
-        allowanceEnabled:qs('#allowanceEnabled').value, allowanceAmount:qs('#allowanceAmount').value, hourlyRate:qs('#hourlyRate').value,
+      setMsg(qs('#pageMsg'),''); setButtonProgress('saveBtn',10,'儲存設定');
+      const payload={ userId:user.id, employeeId:emp.id, salaryDisplayType:qs('#salaryDisplayType').value,
+        baseSalary:qs('#baseSalary').value, jobAllowanceEnabled:qs('#jobAllowanceEnabled').value, jobAllowanceName:qs('#jobAllowanceName').value, jobAllowanceAmount:qs('#jobAllowanceAmount').value,
+        allowanceEnabled:qs('#allowanceEnabled').value, allowanceName:qs('#allowanceName').value, allowanceAmount:qs('#allowanceAmount').value, hourlyRate:qs('#hourlyRate').value,
         laborPlan:qs('#laborPlan').value, laborStatus:qs('#laborStatus').value, healthStatus:qs('#healthStatus').value,
-        effectiveDate:qs('#salaryEffectiveDate').value, note:qs('#salaryNote').value.trim()
-      };
+        effectiveDate:qs('#salaryEffectiveDate').value, note:qs('#salaryNote').value.trim() };
       try{
+        setButtonProgress('saveBtn',45,'儲存設定');
         const res=await api('saveEmployeeSalaryConfig',payload); if(!res||res.ok===false) throw new Error(res&&res.message||'儲存失敗');
-        setProgress(88,'更新完成'); setMsg(qs('#pageMsg'),res.message||'已儲存設定');
+        setButtonProgress('saveBtn',100,'儲存完成'); setMsg(qs('#pageMsg'),res.message||'已儲存設定');
         setup.employeeConfigMap=setup.employeeConfigMap||{};
-        setup.employeeConfigMap[emp.id]={ salaryDisplayType:payload.salaryDisplayType, baseSalary:payload.baseSalary, jobAllowanceEnabled:payload.jobAllowanceEnabled, jobAllowanceAmount:payload.jobAllowanceAmount, allowanceEnabled:payload.allowanceEnabled, allowanceAmount:payload.allowanceAmount, hourlyRate:payload.hourlyRate, laborPlan:payload.laborPlan, laborStatus:payload.laborStatus, healthStatus:payload.healthStatus, effectiveDate:payload.effectiveDate, note:payload.note };
-        hideProgress(); updateInsuranceHints();
-      }catch(err){ hideProgress(); setMsg(qs('#pageMsg'),err.message||String(err),true); }
+        setup.employeeConfigMap[emp.id]={ salaryDisplayType:payload.salaryDisplayType, baseSalary:payload.baseSalary, jobAllowanceEnabled:payload.jobAllowanceEnabled, jobAllowanceName:payload.jobAllowanceName, jobAllowanceAmount:payload.jobAllowanceAmount, allowanceEnabled:payload.allowanceEnabled, allowanceName:payload.allowanceName, allowanceAmount:payload.allowanceAmount, hourlyRate:payload.hourlyRate, laborPlan:payload.laborPlan, laborStatus:payload.laborStatus, healthStatus:payload.healthStatus, effectiveDate:payload.effectiveDate, note:payload.note };
+        updateInsuranceHints(); setTimeout(()=>resetButton('saveBtn','儲存設定'),500);
+      }catch(err){ resetButton('saveBtn','儲存設定'); setMsg(qs('#pageMsg'),err.message||String(err),true); }
     }
     async function init(){
       fillHeader(); const user=requireLogin(); if(!user) return; if(!isManager(user)){ location.href='dashboard.html'; return; }
@@ -154,7 +164,8 @@
       qs('#laborPlan').addEventListener('change', updateInsuranceHints);
       qs('#healthStatus').addEventListener('change', updateInsuranceHints);
       qs('#saveBtn').onclick=saveConfig;
-      try{ await loadSetup(); }catch(err){ hideProgress(); setMsg(qs('#pageMsg'),err.message||String(err),true); }
+      qs('#loadSetupBtn').onclick=()=>loadSetup(qs('#loadSetupBtn'));
+      try{ await loadSetup(); }catch(err){ resetButton('loadSetupBtn','重新讀取薪資設定'); setMsg(qs('#pageMsg'),err.message||String(err),true); }
     }
   </script>
 </body>
