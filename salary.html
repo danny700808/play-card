@@ -6,18 +6,9 @@
   <title>薪資與投保資訊</title>
   <link rel="stylesheet" href="style.css">
   <style>
-    .progress-shell{margin:12px 0 16px;display:none}
-    .progress-track{height:16px;background:#d7efe0;border-radius:999px;overflow:hidden}
-    .progress-bar{height:100%;width:0;background:#1f7a5a;transition:width .25s ease}
-    .progress-text{margin-top:8px;color:#1f7a5a;font-weight:800}
-    .summary-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-    .summary-box{border:1px solid var(--line);border-radius:14px;padding:14px;background:#f8fbff}
-    .summary-box .label{font-size:13px;color:var(--muted)}
-    .summary-box .value{font-size:22px;font-weight:800;color:var(--brand);margin-top:6px}
-    .info-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-    .info-card{border:1px solid var(--line);border-radius:14px;padding:14px;background:#fff}
-    .info-card .label{font-size:13px;color:var(--muted)}
-    .info-card .value{font-size:16px;font-weight:700;margin-top:6px}
+    .progress-shell{margin:12px 0 16px;display:none}.progress-track{height:16px;background:#d7efe0;border-radius:999px;overflow:hidden}.progress-bar{height:100%;width:0;background:#1f7a5a;transition:width .25s ease}.progress-text{margin-top:8px;color:#1f7a5a;font-weight:800}
+    .summary-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.summary-box{border:1px solid var(--line);border-radius:14px;padding:14px;background:#f8fbff}.summary-box .label{font-size:13px;color:var(--muted)}.summary-box .value{font-size:22px;font-weight:800;color:var(--brand);margin-top:6px}
+    .info-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.info-card{border:1px solid var(--line);border-radius:14px;padding:14px;background:#fff}.info-card .label{font-size:13px;color:var(--muted)}.info-card .value{font-size:16px;font-weight:700;margin-top:6px}
     @media (max-width:560px){.summary-grid,.info-grid{grid-template-columns:1fr}}
   </style>
 </head>
@@ -28,7 +19,7 @@
       <div class="header" style="margin:0"><h1 class="title">薪資與投保資訊</h1><div class="welcome">歡迎 <span data-user-name></span></div></div>
       <div id="pageMsg" class="message"></div>
       <div id="progressShell" class="progress-shell"><div class="progress-track"><div id="progressBar" class="progress-bar"></div></div><div id="progressText" class="progress-text">讀取中…</div></div>
-      <div class="muted">這裡顯示個人薪資方案與勞健保投保資訊。員工端只顯示結果，不顯示公司負擔細節。</div>
+      <div class="muted">這裡顯示個人薪資與勞健保資訊。專職顯示本薪、加給、津貼；工讀顯示時薪。勞健保自付額依目前投保設定顯示。</div>
     </div>
     <div class="card">
       <div class="section-title">摘要</div>
@@ -44,33 +35,27 @@
         <div class="info-card"><div class="label">本薪 / 時薪</div><div class="value" id="baseOrHourly">-</div></div>
         <div class="info-card"><div class="label">職務加給</div><div class="value" id="jobAllowance">-</div></div>
         <div class="info-card"><div class="label">津貼</div><div class="value" id="otherAllowance">-</div></div>
-        <div class="info-card"><div class="label">勞保方案</div><div class="value" id="laborPlan">-</div></div>
-        <div class="info-card"><div class="label">健保方案</div><div class="value" id="healthPlan">-</div></div>
-        <div class="info-card"><div class="label">勞保狀態</div><div class="value" id="laborStatus">-</div></div>
+        <div class="info-card"><div class="label">勞保級距</div><div class="value" id="laborPlan">-</div></div>
         <div class="info-card"><div class="label">健保狀態</div><div class="value" id="healthStatus">-</div></div>
-        <div class="info-card"><div class="label">勞保投保薪資</div><div class="value" id="laborSalary">-</div></div>
-        <div class="info-card"><div class="label">健保投保薪資</div><div class="value" id="healthSalary">-</div></div>
+        <div class="info-card"><div class="label">勞保投保薪資 / 自付額</div><div class="value" id="laborSalary">-</div></div>
+        <div class="info-card"><div class="label">健保投保金額 / 自付額</div><div class="value" id="healthSalary">-</div></div>
+        <div class="info-card"><div class="label">勞保狀態</div><div class="value" id="laborStatus">-</div></div>
+        <div class="info-card"><div class="label">健保說明</div><div class="value" id="healthPlan">-</div></div>
         <div class="info-card" style="grid-column:1/-1"><div class="label">備註</div><div class="value" id="salaryNote">-</div></div>
       </div>
     </div>
   </div>
-  <script src="config.js?v=20260414salary1"></script>
-  <script src="app.js?v=20260414salary1"></script>
+  <script src="config.js?v=20260414salary2"></script>
+  <script src="app.js?v=20260414salary2"></script>
   <script>
-    function setProgress(pct, text){
-      const shell=qs('#progressShell'); const bar=qs('#progressBar'); const txt=qs('#progressText');
-      shell.style.display='block'; bar.style.width=(pct||0)+'%'; txt.textContent=text||'讀取中…';
-    }
+    function setProgress(pct, text){ const shell=qs('#progressShell'); const bar=qs('#progressBar'); const txt=qs('#progressText'); shell.style.display='block'; bar.style.width=(pct||0)+'%'; txt.textContent=text||'讀取中…'; }
     function hideProgress(){ qs('#progressShell').style.display='none'; }
-    function money(v){ if(v==null||v==='') return '-'; const n=Number(v); return isNaN(n)?String(v):('$'+n.toLocaleString('zh-TW')); }
     async function init(){
-      fillHeader();
-      const user=requireLogin(); if(!user) return;
-      setProgress(15,'讀取薪資與投保資訊');
+      fillHeader(); const user=requireLogin(); if(!user) return;
+      setProgress(16,'讀取薪資與投保資訊');
       try{
-        const res=await api('getMySalaryInfo',{userId:user.id});
-        if(!res||res.ok===false) throw new Error(res&&res.message||'讀取失敗');
-        setProgress(82,'整理顯示內容');
+        const res=await api('getMySalaryInfo',{userId:user.id}); if(!res||res.ok===false) throw new Error(res&&res.message||'讀取失敗');
+        setProgress(84,'整理顯示內容');
         const info=res.info||{};
         qs('#displayTypeName').textContent=info.displayTypeName||'-';
         qs('#baseOrHourly').textContent=info.baseOrHourlyText||'-';
@@ -80,8 +65,8 @@
         qs('#healthPlan').textContent=info.healthPlanName||'-';
         qs('#laborStatus').textContent=info.laborStatus||'-';
         qs('#healthStatus').textContent=info.healthStatus||'-';
-        qs('#laborSalary').textContent=money(info.laborSalary);
-        qs('#healthSalary').textContent=money(info.healthSalary);
+        qs('#laborSalary').textContent=info.laborSalaryText||'-';
+        qs('#healthSalary').textContent=info.healthSalaryText||'-';
         qs('#salaryEffectiveDate').textContent=info.effectiveDate||'-';
         qs('#salaryNote').textContent=info.note||'-';
         qs('#mainAmountLabel').textContent=info.mainAmountLabel||'主要薪資';

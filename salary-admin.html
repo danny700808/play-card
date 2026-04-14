@@ -8,7 +8,10 @@
   <style>
     .progress-shell{margin:12px 0 16px;display:none}.progress-track{height:16px;background:#d7efe0;border-radius:999px;overflow:hidden}.progress-bar{height:100%;width:0;background:#1f7a5a;transition:width .25s ease}.progress-text{margin-top:8px;color:#1f7a5a;font-weight:800}
     .admin-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:14px}.info-mini{font-size:13px;color:var(--muted);margin-top:6px}.card-list .item{cursor:pointer}.card-list .item.active{border-color:var(--brand);box-shadow:0 0 0 2px rgba(31,122,90,.08)}
-    @media (max-width:860px){.admin-grid{grid-template-columns:1fr}}
+    .field-inline-grid{display:grid;grid-template-columns:140px 1fr;gap:10px;align-items:end}
+    .hint-box{margin-top:8px;padding:10px 12px;border:1px solid #dbe7f4;border-radius:14px;background:#f8fbff;color:#37506a;font-size:13px;line-height:1.7}
+    @media (max-width:860px){.admin-grid{grid-template-columns:1fr}} 
+    @media (max-width:560px){.field-inline-grid{grid-template-columns:1fr}}
   </style>
 </head>
 <body onload="init()">
@@ -18,7 +21,7 @@
       <div class="header" style="margin:0"><h1 class="title">薪資與投保設定</h1><div class="welcome">歡迎 <span data-user-name></span></div></div>
       <div id="pageMsg" class="message"></div>
       <div id="progressShell" class="progress-shell"><div class="progress-track"><div id="progressBar" class="progress-bar"></div></div><div id="progressText" class="progress-text">讀取中…</div></div>
-      <div class="muted">後台用下拉選單控制每位員工 / 工讀生的顯示方案與投保方案，避免手打文字造成前台對應混亂。</div>
+      <div class="muted">專職員工改成直接輸入本薪；職務加給與津貼採「有 / 無 + 金額」；工讀生直接輸入時薪。勞保級距使用官方投保薪資與員工自付額顯示。</div>
     </div>
     <div class="admin-grid">
       <div class="card">
@@ -31,44 +34,128 @@
         <div class="muted" id="selectedHint">請先從左側選擇員工。</div>
         <div id="formWrap" class="hidden">
           <div class="field"><label>薪資顯示類型</label><select id="salaryDisplayType"></select></div>
-          <div class="field"><label>本薪方案</label><select id="basePlan"></select></div>
-          <div class="field"><label>職務加給方案</label><select id="jobAllowancePlan"></select></div>
-          <div class="field"><label>津貼方案</label><select id="allowancePlan"></select></div>
-          <div class="field"><label>時薪方案</label><select id="hourlyPlan"></select></div>
-          <div class="field"><label>勞保方案</label><select id="laborPlan"></select></div>
-          <div class="field"><label>健保方案</label><select id="healthPlan"></select></div>
+          <div class="field" id="fieldBaseSalary"><label>本薪</label><input id="baseSalary" type="number" min="0" step="1" placeholder="直接輸入本薪金額"></div>
+          <div class="field" id="fieldJobAllowanceWrap">
+            <label>職務加給</label>
+            <div class="field-inline-grid">
+              <select id="jobAllowanceEnabled"><option value="無">無</option><option value="有">有</option></select>
+              <input id="jobAllowanceAmount" type="number" min="0" step="1" placeholder="輸入職務加給金額" disabled>
+            </div>
+          </div>
+          <div class="field" id="fieldAllowanceWrap">
+            <label>津貼</label>
+            <div class="field-inline-grid">
+              <select id="allowanceEnabled"><option value="無">無</option><option value="有">有</option></select>
+              <input id="allowanceAmount" type="number" min="0" step="1" placeholder="輸入津貼金額" disabled>
+            </div>
+          </div>
+          <div class="field" id="fieldHourlyRate"><label>時薪</label><input id="hourlyRate" type="number" min="0" step="1" placeholder="直接輸入時薪"></div>
+          <div class="field"><label>勞保級距</label><select id="laborPlan"></select><div id="laborPlanHint" class="hint-box">選擇級距後，這裡會顯示投保薪資與勞保自付額。</div></div>
           <div class="field"><label>勞保狀態</label><select id="laborStatus"><option value="在保">在保</option><option value="未保">未保</option><option value="暫停">暫停</option></select></div>
-          <div class="field"><label>健保狀態</label><select id="healthStatus"><option value="在保">在保</option><option value="未保">未保</option><option value="暫停">暫停</option></select></div>
+          <div class="field"><label>健保狀態</label><select id="healthStatus"><option value="在保">在保</option><option value="未保">未保</option><option value="暫停">暫停</option></select><div id="healthHint" class="hint-box">健保自付額會依勞保所選投保薪資顯示；若未保則顯示 0 元。</div></div>
           <div class="field"><label>薪資生效日</label><input id="salaryEffectiveDate" type="date"></div>
           <div class="field"><label>薪資備註</label><textarea id="salaryNote" placeholder="例如：試用期方案 / 兼職轉正職等"></textarea></div>
           <div class="btn-row"><button class="btn" type="button" id="saveBtn">儲存設定</button></div>
-          <div class="info-mini">專職員工通常用本薪 / 加給 / 津貼；工讀生通常用時薪方案。沒用到的欄位可保留空白。</div>
+          <div class="info-mini">專職員工顯示本薪、加給、津貼；工讀生顯示時薪。讀取完成前不開放操作。</div>
         </div>
       </div>
     </div>
   </div>
-  <script src="config.js?v=20260414salary1"></script>
-  <script src="app.js?v=20260414salary1"></script>
+  <script src="config.js?v=20260414salary2"></script>
+  <script src="app.js?v=20260414salary2"></script>
   <script>
     let setup=null; let selectedId=''; let selectedMap={};
     function setProgress(pct, text){const shell=qs('#progressShell'),bar=qs('#progressBar'),txt=qs('#progressText'); shell.style.display='block'; bar.style.width=(pct||0)+'%'; txt.textContent=text||'讀取中…';}
     function hideProgress(){qs('#progressShell').style.display='none';}
     function fillSelect(id, items, value, placeholder='請選擇'){ const el=qs('#'+id); const list=Array.isArray(items)?items:[]; el.innerHTML='<option value="">'+placeholder+'</option>'+list.map(x=>'<option value="'+String(x.code||'')+'">'+String(x.name||'')+'</option>').join(''); el.value=value||''; }
     function currentEmployee(){ return selectedMap[selectedId]||null; }
+    function getLaborMeta(){ const code=qs('#laborPlan').value; const list=(setup&&setup.laborPlans)||[]; return list.find(x=>String(x.code||'')===String(code||''))||null; }
+    function updateInsuranceHints(){
+      const labor=getLaborMeta();
+      const laborText=labor ? `投保薪資：${String(labor.salaryText||'-')}｜勞保自付：${String(labor.selfPayText||'-')}` : '選擇級距後，這裡會顯示投保薪資與勞保自付額。';
+      qs('#laborPlanHint').textContent=laborText;
+      const healthStatus=qs('#healthStatus').value;
+      const healthText=(healthStatus==='在保' && labor) ? `健保投保金額：${String(labor.salaryText||'-')}｜健保自付：${String(labor.healthSelfPayText||'-')}` : '健保自付額會依勞保所選投保薪資顯示；若未保則顯示 0 元。';
+      qs('#healthHint').textContent=healthText;
+    }
     function renderEmployeeList(){
       const keyword=(qs('#keyword').value||'').trim().toLowerCase();
       const rows=(setup&&setup.employees||[]).filter(x=>!keyword || String(x.name||'').toLowerCase().includes(keyword) || String(x.email||'').toLowerCase().includes(keyword));
       const html=rows.map(x=>`<div class="item ${selectedId===x.id?'active':''}" data-id="${x.id}"><div class="top"><strong>${x.name}</strong><span class="tag">${x.identityLabel||''}</span></div><div class="muted">${x.email||''}</div></div>`).join('')||'<div class="muted">查無符合資料</div>';
       qs('#employeeList').innerHTML=html; qsa('#employeeList [data-id]').forEach(el=>el.onclick=()=>selectEmployee(el.dataset.id));
     }
-    function applyIdentityVisibility(emp){ const type=String((emp&&emp.identityType)||''); qs('#basePlan').closest('.field').classList.toggle('hidden', type==='parttime'); qs('#jobAllowancePlan').closest('.field').classList.toggle('hidden', type==='parttime'); qs('#allowancePlan').closest('.field').classList.toggle('hidden', type==='parttime'); qs('#hourlyPlan').closest('.field').classList.toggle('hidden', type!=='parttime'); }
-    function selectEmployee(id){ selectedId=id; const emp=currentEmployee(); const e=(setup.employeeConfigMap||{})[id]||{}; qs('#selectedHint').textContent=emp?('目前設定：'+emp.name+'｜'+(emp.identityLabel||'')):'請先從左側選擇員工。'; qs('#formWrap').classList.toggle('hidden', !emp); if(!emp){renderEmployeeList(); return;} applyIdentityVisibility(emp); fillSelect('salaryDisplayType', setup.salaryDisplayTypes, e.salaryDisplayType, '請選擇顯示方案'); fillSelect('basePlan', setup.basePlans, e.basePlan, '請選擇本薪方案'); fillSelect('jobAllowancePlan', setup.jobAllowancePlans, e.jobAllowancePlan, '請選擇職務加給'); fillSelect('allowancePlan', setup.allowancePlans, e.allowancePlan, '請選擇津貼方案'); fillSelect('hourlyPlan', setup.hourlyPlans, e.hourlyPlan, '請選擇時薪方案'); fillSelect('laborPlan', setup.laborPlans, e.laborPlan, '請選擇勞保方案'); fillSelect('healthPlan', setup.healthPlans, e.healthPlan, '請選擇健保方案'); qs('#laborStatus').value=e.laborStatus||'在保'; qs('#healthStatus').value=e.healthStatus||'在保'; qs('#salaryEffectiveDate').value=e.effectiveDate||''; qs('#salaryNote').value=e.note||''; renderEmployeeList(); }
-    async function loadSetup(){ const user=requireLogin(); if(!user) return; setProgress(15,'讀取薪資方案與員工資料'); const res=await api('getSalarySetupOptions',{userId:user.id}); if(!res||res.ok===false) throw new Error(res&&res.message||'讀取失敗'); setup=res; selectedMap={}; (setup.employees||[]).forEach(x=>selectedMap[x.id]=x); setProgress(78,'整理下拉選單'); renderEmployeeList(); hideProgress(); }
-    async function saveConfig(){ const user=requireLogin(); const emp=currentEmployee(); if(!user||!emp) return; setMsg(qs('#pageMsg'),''); setProgress(18,'檢查資料'); const payload={ userId:user.id, employeeId:emp.id, salaryDisplayType:qs('#salaryDisplayType').value, basePlan:qs('#basePlan').value, jobAllowancePlan:qs('#jobAllowancePlan').value, allowancePlan:qs('#allowancePlan').value, hourlyPlan:qs('#hourlyPlan').value, laborPlan:qs('#laborPlan').value, healthPlan:qs('#healthPlan').value, laborStatus:qs('#laborStatus').value, healthStatus:qs('#healthStatus').value, effectiveDate:qs('#salaryEffectiveDate').value, note:qs('#salaryNote').value.trim() };
-      try{ const res=await api('saveEmployeeSalaryConfig',payload); if(!res||res.ok===false) throw new Error(res&&res.message||'儲存失敗'); setProgress(88,'更新完成'); setMsg(qs('#pageMsg'),res.message||'已儲存設定'); setup.employeeConfigMap=setup.employeeConfigMap||{}; setup.employeeConfigMap[emp.id]={ salaryDisplayType:payload.salaryDisplayType, basePlan:payload.basePlan, jobAllowancePlan:payload.jobAllowancePlan, allowancePlan:payload.allowancePlan, hourlyPlan:payload.hourlyPlan, laborPlan:payload.laborPlan, healthPlan:payload.healthPlan, laborStatus:payload.laborStatus, healthStatus:payload.healthStatus, effectiveDate:payload.effectiveDate, note:payload.note }; hideProgress(); }
-      catch(err){ hideProgress(); setMsg(qs('#pageMsg'),err.message||String(err),true); }
+    function applyIdentityVisibility(emp){
+      const type=String((emp&&emp.identityType)||'');
+      const isParttime=(type==='parttime');
+      qs('#fieldBaseSalary').classList.toggle('hidden', isParttime);
+      qs('#fieldJobAllowanceWrap').classList.toggle('hidden', isParttime);
+      qs('#fieldAllowanceWrap').classList.toggle('hidden', isParttime);
+      qs('#fieldHourlyRate').classList.toggle('hidden', !isParttime);
     }
-    async function init(){ fillHeader(); const user=requireLogin(); if(!user) return; if(!isManager(user)){ location.href='dashboard.html'; return; } qs('#keyword').addEventListener('input', renderEmployeeList); qs('#saveBtn').onclick=saveConfig; try{ await loadSetup(); }catch(err){ hideProgress(); setMsg(qs('#pageMsg'),err.message||String(err),true); } }
+    function updateAllowanceInputs(){
+      const jobOn=qs('#jobAllowanceEnabled').value==='有';
+      qs('#jobAllowanceAmount').disabled=!jobOn; if(!jobOn) qs('#jobAllowanceAmount').value='';
+      const allOn=qs('#allowanceEnabled').value==='有';
+      qs('#allowanceAmount').disabled=!allOn; if(!allOn) qs('#allowanceAmount').value='';
+    }
+    function selectEmployee(id){
+      selectedId=id; const emp=currentEmployee(); const e=(setup.employeeConfigMap||{})[id]||{};
+      qs('#selectedHint').textContent=emp?('目前設定：'+emp.name+'｜'+(emp.identityLabel||'')):'請先從左側選擇員工。';
+      qs('#formWrap').classList.toggle('hidden', !emp);
+      if(!emp){renderEmployeeList(); return;}
+      applyIdentityVisibility(emp);
+      fillSelect('salaryDisplayType', setup.salaryDisplayTypes, e.salaryDisplayType, '請選擇顯示方案');
+      qs('#baseSalary').value=e.baseSalary||'';
+      qs('#jobAllowanceEnabled').value=e.jobAllowanceEnabled||'無';
+      qs('#jobAllowanceAmount').value=e.jobAllowanceAmount||'';
+      qs('#allowanceEnabled').value=e.allowanceEnabled||'無';
+      qs('#allowanceAmount').value=e.allowanceAmount||'';
+      qs('#hourlyRate').value=e.hourlyRate||'';
+      fillSelect('laborPlan', setup.laborPlans, e.laborPlan, '請選擇勞保級距');
+      qs('#laborStatus').value=e.laborStatus||'在保';
+      qs('#healthStatus').value=e.healthStatus||'在保';
+      qs('#salaryEffectiveDate').value=e.effectiveDate||'';
+      qs('#salaryNote').value=e.note||'';
+      updateAllowanceInputs();
+      updateInsuranceHints();
+      renderEmployeeList();
+    }
+    async function loadSetup(){
+      const user=requireLogin(); if(!user) return;
+      setProgress(15,'讀取薪資設定、員工資料與勞保級距');
+      const res=await api('getSalarySetupOptions',{userId:user.id});
+      if(!res||res.ok===false) throw new Error(res&&res.message||'讀取失敗');
+      setup=res; selectedMap={}; (setup.employees||[]).forEach(x=>selectedMap[x.id]=x);
+      setProgress(85,'整理欄位與下拉選單'); renderEmployeeList(); hideProgress();
+    }
+    async function saveConfig(){
+      const user=requireLogin(); const emp=currentEmployee(); if(!user||!emp) return;
+      setMsg(qs('#pageMsg'),''); setProgress(18,'檢查資料');
+      const payload={
+        userId:user.id, employeeId:emp.id, salaryDisplayType:qs('#salaryDisplayType').value,
+        baseSalary:qs('#baseSalary').value, jobAllowanceEnabled:qs('#jobAllowanceEnabled').value, jobAllowanceAmount:qs('#jobAllowanceAmount').value,
+        allowanceEnabled:qs('#allowanceEnabled').value, allowanceAmount:qs('#allowanceAmount').value, hourlyRate:qs('#hourlyRate').value,
+        laborPlan:qs('#laborPlan').value, laborStatus:qs('#laborStatus').value, healthStatus:qs('#healthStatus').value,
+        effectiveDate:qs('#salaryEffectiveDate').value, note:qs('#salaryNote').value.trim()
+      };
+      try{
+        const res=await api('saveEmployeeSalaryConfig',payload); if(!res||res.ok===false) throw new Error(res&&res.message||'儲存失敗');
+        setProgress(88,'更新完成'); setMsg(qs('#pageMsg'),res.message||'已儲存設定');
+        setup.employeeConfigMap=setup.employeeConfigMap||{};
+        setup.employeeConfigMap[emp.id]={ salaryDisplayType:payload.salaryDisplayType, baseSalary:payload.baseSalary, jobAllowanceEnabled:payload.jobAllowanceEnabled, jobAllowanceAmount:payload.jobAllowanceAmount, allowanceEnabled:payload.allowanceEnabled, allowanceAmount:payload.allowanceAmount, hourlyRate:payload.hourlyRate, laborPlan:payload.laborPlan, laborStatus:payload.laborStatus, healthStatus:payload.healthStatus, effectiveDate:payload.effectiveDate, note:payload.note };
+        hideProgress(); updateInsuranceHints();
+      }catch(err){ hideProgress(); setMsg(qs('#pageMsg'),err.message||String(err),true); }
+    }
+    async function init(){
+      fillHeader(); const user=requireLogin(); if(!user) return; if(!isManager(user)){ location.href='dashboard.html'; return; }
+      qs('#keyword').addEventListener('input', renderEmployeeList);
+      qs('#jobAllowanceEnabled').addEventListener('change', updateAllowanceInputs);
+      qs('#allowanceEnabled').addEventListener('change', updateAllowanceInputs);
+      qs('#laborPlan').addEventListener('change', updateInsuranceHints);
+      qs('#healthStatus').addEventListener('change', updateInsuranceHints);
+      qs('#saveBtn').onclick=saveConfig;
+      try{ await loadSetup(); }catch(err){ hideProgress(); setMsg(qs('#pageMsg'),err.message||String(err),true); }
+    }
   </script>
 </body>
 </html>
