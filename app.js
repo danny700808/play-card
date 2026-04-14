@@ -34,18 +34,24 @@ async function api(action, payload={}){
   try{
     res=await fetch(apiUrl,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action,...payload})});
   }catch(err){
-    throw new Error('API 連線失敗，請確認 Apps Script Web App 可正常開啟。原始錯誤：'+(err&&err.message?err.message:String(err||'')));
+    throw new Error('連線失敗：' + (err&&err.message ? err.message : '無法連到系統 API'));
   }
   const raw=await res.text();
   if(!res.ok){
-    throw new Error('API 回應失敗（HTTP '+res.status+'）。'+(raw?(' 內容：'+raw):''));
+    throw new Error(`伺服器連線失敗（HTTP ${res.status}）${raw ? '：'+raw : ''}`);
   }
-  try{
-    return JSON.parse(raw);
-  }catch(e){
-    throw new Error(raw || '伺服器回傳格式錯誤');
-  }
+  try{return JSON.parse(raw);}catch(e){throw new Error(raw || '伺服器回傳格式錯誤');}
 }
+function setPageLoadingState(root, loading, text='', pct=0){
+  if(!root) return;
+  root.classList.toggle('is-loading', !!loading);
+  const bar=root.querySelector('[data-page-progress-bar]');
+  const label=root.querySelector('[data-page-progress-label]');
+  if(bar) bar.style.width=`${Math.max(0,Math.min(100,Number(pct)||0))}%`;
+  if(label) label.textContent=text||'';
+}
+function setPageLoadingDone(root, text='讀取完成'){ setPageLoadingState(root,false,text,100); setTimeout(()=>{ if(root){ const label=root.querySelector('[data-page-progress-label]'); const bar=root.querySelector('[data-page-progress-bar]'); if(label) label.textContent=''; if(bar) bar.style.width='0%'; } }, 700); }
+function setPageLoadingError(root, text='讀取失敗'){ setPageLoadingState(root,false,text,100); if(root) root.classList.add('is-error'); }
 
 function setMsg(el, text, isError=false){if(!el) return; el.style.display=text?'block':'none'; el.textContent=text||''; el.classList.toggle('error',!!isError)}
 function togglePassword(inputSel, btn){const input=qs(inputSel); const show=input.type==='password'; input.type=show?'text':'password'; btn.textContent=show?'🙈':'👁';}
