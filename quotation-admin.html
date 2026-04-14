@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>估價單管理</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .layout{display:grid;grid-template-columns:minmax(340px,420px) minmax(0,1fr);gap:16px}
+    .subcard{background:#fff;border:1px solid #e2e8f0;border-radius:18px;padding:16px}
+    .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .items-wrap{display:grid;gap:10px}
+    .item-card{border:1px solid #d9e0e6;border-radius:14px;padding:12px;background:#fafbfc}
+    .mini-actions{display:flex;gap:8px;flex-wrap:wrap}
+    .mini-actions .btn{width:auto;padding:10px 14px}
+    .list-cards{display:grid;gap:12px}
+    .list-card{border:1px solid #d9e0e6;border-radius:16px;padding:14px;background:#fff}
+    .list-card-top{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start}
+    .muted-sm{font-size:12px;color:#6b7b8c;line-height:1.6}
+    .quote-preview{background:#f8fafc;border:1px solid #e2e8f0;border-radius:18px;padding:18px;position:sticky;top:16px}
+    .quote-title{text-align:center;font-size:30px;font-weight:800;letter-spacing:6px;margin:4px 0 0}
+    .meta-line{display:flex;justify-content:center;gap:24px;flex-wrap:wrap;margin:14px 0 0;font-size:14px;font-weight:700}
+    .top-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:18px}
+    .info-box{border:1px solid #94a3b8;border-radius:14px;overflow:hidden;background:#fff}
+    .info-box .hd{background:#f8fafc;padding:8px 10px;font-weight:800;border-bottom:1px solid #cbd5e1}
+    .info-box .bd{padding:10px 12px;font-size:13px;line-height:1.8;white-space:pre-wrap;word-break:break-word}
+    .quote-table{width:100%;border-collapse:collapse;margin-top:18px;font-size:12px;background:#fff}
+    .quote-table th,.quote-table td{border:1px solid #94a3b8;padding:6px;vertical-align:top}
+    .quote-table th{background:#f8fafc}
+    .text-right{text-align:right}.text-center{text-align:center}
+    .remark-box{border:1px solid #94a3b8;border-radius:14px;overflow:hidden;margin-top:18px;background:#fff}
+    .remark-box .hd{background:#f8fafc;padding:8px 10px;font-weight:800;border-bottom:1px solid #cbd5e1}
+    .remark-box .bd{padding:10px 12px;min-height:72px;white-space:pre-wrap;line-height:1.8;font-size:13px}
+    .totals{width:min(100%,340px);margin-left:auto;margin-top:18px;border:1px solid #94a3b8;border-radius:14px;overflow:hidden;background:#fff}
+    .totals-row{display:flex;justify-content:space-between;gap:10px;padding:10px 12px;border-bottom:1px solid #cbd5e1;font-size:14px}
+    .totals-row:last-child{border-bottom:none;font-size:16px;font-weight:900}
+    .send-box{margin-top:14px;padding:12px;border:1px dashed #cbd5e1;border-radius:14px;background:#fbfdff}
+    .send-box .title-mini{font-size:15px;font-weight:900;margin-bottom:8px}
+    .empty-box{padding:16px;border:1px dashed #cbd5e1;border-radius:14px;color:#64748b;background:#fbfdff}
+    @media (max-width: 980px){.layout{grid-template-columns:1fr}.quote-preview{position:static}.top-grid,.row2{grid-template-columns:1fr}}
+  </style>
+</head>
+<body onload="initPage()">
+  <div class="container" style="max-width:1400px">
+    <div class="page-return-wrap"><a class="btn page-return-btn" href="settings.html">返回管理首頁</a></div>
+    <div class="card">
+      <div class="topbar">
+        <div>
+          <h1 class="title" style="margin:0">估價單管理</h1>
+          <div class="welcome">歡迎 <span data-user-name></span></div>
+        </div>
+        <button class="btn secondary" style="width:auto;padding:10px 14px" onclick="logout()">登出</button>
+      </div>
+      <div class="layout">
+        <div>
+          <div class="subcard">
+            <div class="row2">
+              <div class="field">
+                <label>估價單編號</label>
+                <input id="quoteNo" placeholder="例如：Q-20260414-001">
+              </div>
+              <div class="field">
+                <label>開單日期</label>
+                <input id="quoteDate" type="date">
+              </div>
+            </div>
+            <div class="field">
+              <label>客戶名稱</label>
+              <input id="customerTitle" placeholder="請輸入客戶名稱">
+            </div>
+            <div class="row2">
+              <div class="field"><label>客戶統編</label><input id="customerTaxId"></div>
+              <div class="field"><label>聯絡人</label><input id="customerContact"></div>
+            </div>
+            <div class="row2">
+              <div class="field"><label>電話</label><input id="customerPhone"></div>
+              <div class="field"><label>Email</label><input id="customerEmail" type="email"></div>
+            </div>
+            <div class="field"><label>地址</label><input id="customerAddress"></div>
+            <div class="row2">
+              <div class="field">
+                <label>營業稅模式</label>
+                <select id="taxMode">
+                  <option value="inclusive">內含稅</option>
+                  <option value="exclusive">外加稅</option>
+                </select>
+              </div>
+              <div class="field"><label>稅率</label><input id="taxRate" type="number" value="5"></div>
+            </div>
+            <div class="field"><label>備註</label><textarea id="remark" placeholder="可輸入付款條件、交期、保固說明等"></textarea></div>
+
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin:16px 0 10px">
+              <h2 class="section-title" style="margin:0">品項明細</h2>
+              <button class="btn" style="width:auto;padding:10px 14px" type="button" onclick="addItem()">＋ 新增一列品項</button>
+            </div>
+            <div id="items" class="items-wrap"></div>
+
+            <div class="mini-actions" style="margin-top:16px">
+              <button class="btn" type="button" onclick="saveQuotation()">儲存估價單</button>
+              <button class="btn secondary" type="button" onclick="resetForm(true)">新增空白估價單</button>
+              <button class="btn secondary" type="button" onclick="createPdfOnly()">產生 PDF</button>
+            </div>
+
+            <div class="send-box">
+              <div class="title-mini">寄送估價單 PDF</div>
+              <div class="row2">
+                <div class="field"><label>收件人 Email</label><input id="sendEmailTo" type="email" placeholder="客戶信箱"></div>
+                <div class="field"><label>副本 CC（選填）</label><input id="sendEmailCc" placeholder="多個以逗號分隔"></div>
+              </div>
+              <div class="field"><label>主旨</label><input id="sendSubject"></div>
+              <div class="field"><label>信件內容</label><textarea id="sendBody"></textarea></div>
+              <button class="btn" type="button" onclick="sendQuotationEmail()">寄送 PDF 到信箱</button>
+            </div>
+
+            <div id="msg" class="message"></div>
+          </div>
+
+          <div class="subcard" style="margin-top:16px">
+            <h2 class="section-title">估價單紀錄</h2>
+            <div id="historyList" class="list-cards"></div>
+          </div>
+        </div>
+
+        <div>
+          <div class="quote-preview">
+            <div class="quote-title">估價單</div>
+            <div class="meta-line">
+              <div>估價單編號：<span id="pvQuoteNo"></span></div>
+              <div>開單日期：<span id="pvQuoteDate"></span></div>
+            </div>
+            <div class="top-grid">
+              <div class="info-box">
+                <div class="hd">廠商資料</div>
+                <div class="bd" id="vendorBox"></div>
+              </div>
+              <div class="info-box">
+                <div class="hd">客戶資料</div>
+                <div class="bd">名稱：<span id="pvCustomerTitle"></span>
+統編：<span id="pvCustomerTaxId"></span>
+聯絡人：<span id="pvCustomerContact"></span>
+電話：<span id="pvCustomerPhone"></span>
+Email：<span id="pvCustomerEmail"></span>
+地址：<span id="pvCustomerAddress"></span></div>
+              </div>
+            </div>
+
+            <table class="quote-table">
+              <thead>
+                <tr>
+                  <th style="width:14%">分類</th>
+                  <th style="width:18%">品項</th>
+                  <th>規格</th>
+                  <th style="width:9%">單位</th>
+                  <th style="width:9%">數量</th>
+                  <th style="width:14%">單價</th>
+                  <th style="width:16%">小計</th>
+                </tr>
+              </thead>
+              <tbody id="pvItems"></tbody>
+            </table>
+
+            <div class="remark-box">
+              <div class="hd">備註</div>
+              <div class="bd" id="pvRemark"></div>
+            </div>
+
+            <div class="totals">
+              <div class="totals-row"><span id="pvSubtotalLabel">未稅金額</span><strong id="pvSubtotal"></strong></div>
+              <div class="totals-row"><span id="pvTaxLabel">營業稅</span><strong id="pvTax"></strong></div>
+              <div class="totals-row"><span id="pvTotalLabel">含稅總計</span><strong id="pvTotal"></strong></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="config.js?v=20260414quotation1"></script>
+  <script src="app.js?v=20260414quotation1"></script>
+  <script>
+    let currentUser=null;
+    let editingQuotationId='';
+    let quotationRows=[];
+    const vendorText=`名稱：尚品樂器行（對外名稱：柚子樂器）\n統編：99680937\n電話：04-25227893\nEmail：danny700808@gmail.com\n地址：台中市豐原區圓環東路347號四樓\n銀行：台新銀行 812 逢甲分行\n戶名：尚品樂器行黃銘廷\n帳號：20510100004001`;
+
+    function todayStr(){const d=new Date();const y=d.getFullYear();const m=String(d.getMonth()+1).padStart(2,'0');const day=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${day}`;}
+    function money(n){return Number(n||0).toLocaleString('zh-TW');}
+    function setLocalMsg(text,isError=false){setMsg(qs('#msg'),text,isError)}
+    function itemHtml(item={section:'',name:'',spec:'',unit:'組',qty:1,price:0}){
+      return `
+        <div class="item-card">
+          <div class="row2">
+            <div class="field"><label>分類</label><input class="item-section" value="${escapeHtml(item.section||'')}"></div>
+            <div class="field"><label>品項</label><input class="item-name" value="${escapeHtml(item.name||'')}"></div>
+          </div>
+          <div class="field"><label>規格</label><input class="item-spec" value="${escapeHtml(item.spec||'')}"></div>
+          <div class="row2">
+            <div class="field"><label>單位</label><input class="item-unit" value="${escapeHtml(item.unit||'組')}"></div>
+            <div class="field"><label>數量</label><input class="item-qty" type="number" min="0" step="1" value="${Number(item.qty||1)}"></div>
+          </div>
+          <div class="row2">
+            <div class="field"><label>單價</label><input class="item-price" type="number" min="0" step="1" value="${Number(item.price||0)}"></div>
+            <div class="field"><label>&nbsp;</label><button class="btn secondary" style="width:100%" type="button" onclick="removeItem(this)">刪除這一列</button></div>
+          </div>
+        </div>`;
+    }
+    function escapeHtml(v=''){return String(v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+    function addItem(item){ qs('#items').insertAdjacentHTML('beforeend', itemHtml(item)); bindItemEvents(); renderPreview(); }
+    function removeItem(btn){ const card=btn.closest('.item-card'); if(card) card.remove(); renderPreview(); }
+    function bindItemEvents(){ qsa('#items input').forEach(el=>{ el.oninput=renderPreview; }); }
+    function getItems(){ return qsa('#items .item-card').map((card,idx)=>({ sort:idx+1, section:card.querySelector('.item-section').value.trim(), name:card.querySelector('.item-name').value.trim(), spec:card.querySelector('.item-spec').value.trim(), unit:card.querySelector('.item-unit').value.trim(), qty:Number(card.querySelector('.item-qty').value||0), price:Number(card.querySelector('.item-price').value||0) })); }
+    function currentPayload(){
+      const items=getItems();
+      return {
+        quotationId: editingQuotationId,
+        quoteNo: qs('#quoteNo').value.trim(),
+        quoteDate: qs('#quoteDate').value || todayStr(),
+        customerTitle: qs('#customerTitle').value.trim(),
+        customerTaxId: qs('#customerTaxId').value.trim(),
+        customerContact: qs('#customerContact').value.trim(),
+        customerPhone: qs('#customerPhone').value.trim(),
+        customerEmail: qs('#customerEmail').value.trim(),
+        customerAddress: qs('#customerAddress').value.trim(),
+        taxMode: qs('#taxMode').value,
+        taxRate: Number(qs('#taxRate').value||5),
+        remark: qs('#remark').value.trim(),
+        items
+      };
+    }
+    function calcTotals(items, taxMode, taxRate){
+      let raw=0; items.forEach(item=>raw += (Number(item.qty||0)*Number(item.price||0)));
+      let subtotal=0,tax=0,total=0;
+      if(String(taxMode)==='inclusive'){ total=raw; subtotal=Math.round(total/(1+taxRate/100)); tax=total-subtotal; }
+      else { subtotal=raw; tax=Math.round(subtotal*taxRate/100); total=subtotal+tax; }
+      return {raw,subtotal,tax,total};
+    }
+    function renderPreview(){
+      const data=currentPayload();
+      const totals=calcTotals(data.items,data.taxMode,data.taxRate);
+      qs('#vendorBox').textContent=vendorText;
+      qs('#pvQuoteNo').textContent=data.quoteNo||'—';
+      qs('#pvQuoteDate').textContent=data.quoteDate||'—';
+      qs('#pvCustomerTitle').textContent=data.customerTitle||'';
+      qs('#pvCustomerTaxId').textContent=data.customerTaxId||'';
+      qs('#pvCustomerContact').textContent=data.customerContact||'';
+      qs('#pvCustomerPhone').textContent=data.customerPhone||'';
+      qs('#pvCustomerEmail').textContent=data.customerEmail||'';
+      qs('#pvCustomerAddress').textContent=data.customerAddress||'';
+      qs('#pvRemark').textContent=data.remark||'';
+      qs('#pvTaxLabel').textContent=`營業稅 (${data.taxRate||5}%，${data.taxMode==='inclusive'?'內含':'外加'})`;
+      qs('#pvSubtotal').textContent=money(totals.subtotal);
+      qs('#pvTax').textContent=money(totals.tax);
+      qs('#pvTotal').textContent=money(totals.total);
+      const tbody=qs('#pvItems'); tbody.innerHTML='';
+      if(!data.items.length){ tbody.innerHTML='<tr><td colspan="7" class="text-center">尚未加入品項</td></tr>'; return; }
+      data.items.forEach(item=>{
+        const tr=document.createElement('tr');
+        const lineTotal=Number(item.qty||0)*Number(item.price||0);
+        tr.innerHTML=`<td>${escapeHtml(item.section||'')}</td><td>${escapeHtml(item.name||'')}</td><td>${escapeHtml(item.spec||'')}</td><td class="text-center">${escapeHtml(item.unit||'')}</td><td class="text-center">${Number(item.qty||0)}</td><td class="text-right">${money(item.price)}</td><td class="text-right">${money(lineTotal)}</td>`;
+        tbody.appendChild(tr);
+      });
+    }
+    function resetForm(withDefaults=false){
+      editingQuotationId='';
+      qs('#quoteNo').value='';
+      qs('#quoteDate').value=todayStr();
+      qs('#customerTitle').value='';
+      qs('#customerTaxId').value='';
+      qs('#customerContact').value='';
+      qs('#customerPhone').value='';
+      qs('#customerEmail').value='';
+      qs('#customerAddress').value='';
+      qs('#taxMode').value='inclusive';
+      qs('#taxRate').value='5';
+      qs('#remark').value='';
+      qs('#sendEmailTo').value='';
+      qs('#sendEmailCc').value='';
+      qs('#sendSubject').value='';
+      qs('#sendBody').value='';
+      qs('#items').innerHTML='';
+      if(withDefaults!==false){ addItem({section:'音響設備',name:'主喇叭',spec:'12 吋主動式喇叭',unit:'組',qty:2,price:3500}); addItem({section:'音響設備',name:'無線麥克風',spec:'手握式',unit:'支',qty:2,price:800}); }
+      renderPreview();
+      setLocalMsg('');
+    }
+    function fillForm(data){
+      editingQuotationId=data.quotationId||'';
+      qs('#quoteNo').value=data.quoteNo||'';
+      qs('#quoteDate').value=data.quoteDate||todayStr();
+      qs('#customerTitle').value=data.customerTitle||'';
+      qs('#customerTaxId').value=data.customerTaxId||'';
+      qs('#customerContact').value=data.customerContact||'';
+      qs('#customerPhone').value=data.customerPhone||'';
+      qs('#customerEmail').value=data.customerEmail||'';
+      qs('#customerAddress').value=data.customerAddress||'';
+      qs('#taxMode').value=data.taxMode||'inclusive';
+      qs('#taxRate').value=Number(data.taxRate||5);
+      qs('#remark').value=data.remark||'';
+      qs('#sendEmailTo').value=data.customerEmail||'';
+      qs('#sendSubject').value=`估價單 ${data.quoteNo||''}`.trim();
+      qs('#sendBody').value=`您好，\n\n附件為本次估價單 PDF，請查收。\n若內容需要調整，請直接回信告知，謝謝。\n\n柚子樂器`;
+      qs('#items').innerHTML='';
+      (data.items||[]).forEach(addItem);
+      if(!(data.items||[]).length) addItem();
+      renderPreview();
+      window.scrollTo({top:0,behavior:'smooth'});
+    }
+    function historyCard(row){
+      const pdfLink=row.pdfUrl ? `<a class="btn secondary" style="width:auto;padding:10px 14px" href="${row.pdfUrl}" target="_blank">開啟 PDF</a>` : '';
+      return `<div class="list-card"><div class="list-card-top"><div><div style="font-size:18px;font-weight:900">${escapeHtml(row.quoteNo||'未編號')}</div><div class="muted-sm">${escapeHtml(row.customerTitle||'未填客戶')}｜${escapeHtml(row.quoteDate||'')}</div><div class="muted-sm">總額：${money(row.totalAmount||0)}｜${escapeHtml(row.sendStatus||'未寄送')}</div></div><div class="mini-actions"><button class="btn secondary" style="width:auto;padding:10px 14px" onclick="editQuotation('${row.quotationId}')">編輯</button><button class="btn secondary" style="width:auto;padding:10px 14px" onclick="createPdfForId('${row.quotationId}')">更新 PDF</button>${pdfLink}<button class="btn secondary" style="width:auto;padding:10px 14px" onclick="sendQuotationForId('${row.quotationId}')">重寄信件</button></div></div></div>`;
+    }
+    async function loadHistory(){
+      try{
+        const r=await api('getQuotationList',{userId:currentUser.id});
+        if(!r.ok) throw new Error(r.message||'讀取估價單失敗');
+        quotationRows=r.rows||[];
+        qs('#historyList').innerHTML=quotationRows.length ? quotationRows.map(historyCard).join('') : '<div class="empty-box">目前還沒有估價單紀錄</div>';
+      }catch(err){ setLocalMsg(err.message||'讀取估價單失敗',true); }
+    }
+    async function editQuotation(id){
+      try{
+        const r=await api('getQuotationDetail',{userId:currentUser.id,quotationId:id});
+        if(!r.ok) throw new Error(r.message||'讀取估價單失敗');
+        fillForm(r.quotation||{});
+        setLocalMsg('已載入估價單，可直接修改後再儲存。');
+      }catch(err){ setLocalMsg(err.message||'載入失敗',true); }
+    }
+    async function saveQuotation(){
+      try{
+        const payload=currentPayload();
+        if(!payload.customerTitle) throw new Error('請先輸入客戶名稱');
+        if(!payload.items.length) throw new Error('請至少新增一列品項');
+        const r=await api('saveQuotation',Object.assign({userId:currentUser.id},payload));
+        if(!r.ok) throw new Error(r.message||'儲存失敗');
+        editingQuotationId=r.quotationId||editingQuotationId;
+        if(r.quoteNo && !qs('#quoteNo').value) qs('#quoteNo').value=r.quoteNo;
+        setLocalMsg(r.message||'已儲存估價單');
+        await loadHistory();
+      }catch(err){ setLocalMsg(err.message||'儲存失敗',true); }
+    }
+    async function createPdfOnly(){
+      try{
+        await saveQuotation();
+        if(!editingQuotationId) throw new Error('請先儲存估價單');
+        const r=await api('createQuotationPdf',{userId:currentUser.id,quotationId:editingQuotationId});
+        if(!r.ok) throw new Error(r.message||'產生 PDF 失敗');
+        setLocalMsg(`PDF 已建立：${r.pdfName||''}`);
+        await loadHistory();
+      }catch(err){ setLocalMsg(err.message||'產生 PDF 失敗',true); }
+    }
+    async function createPdfForId(id){ editingQuotationId=id; await createPdfOnly(); }
+    async function sendQuotationEmail(){
+      try{
+        await saveQuotation();
+        if(!editingQuotationId) throw new Error('請先儲存估價單');
+        const to=qs('#sendEmailTo').value.trim();
+        if(!to) throw new Error('請先輸入收件人 Email');
+        const r=await api('sendQuotationEmail',{userId:currentUser.id,quotationId:editingQuotationId,to,cc:qs('#sendEmailCc').value.trim(),subject:qs('#sendSubject').value.trim(),body:qs('#sendBody').value.trim()});
+        if(!r.ok) throw new Error(r.message||'寄送失敗');
+        setLocalMsg(r.message||'估價單已寄出');
+        await loadHistory();
+      }catch(err){ setLocalMsg(err.message||'寄送失敗',true); }
+    }
+    async function sendQuotationForId(id){
+      await editQuotation(id);
+      await sendQuotationEmail();
+    }
+    async function initPage(){
+      fillHeader();
+      currentUser=requireLogin();
+      if(!currentUser) return;
+      if(!isManager(currentUser)){ location.href='dashboard.html'; return; }
+      document.getElementById('vendorBox').textContent=vendorText;
+      resetForm(true);
+      ['quoteNo','quoteDate','customerTitle','customerTaxId','customerContact','customerPhone','customerEmail','customerAddress','remark','taxMode','taxRate'].forEach(id=>qs('#'+id).addEventListener('input',renderPreview));
+      qs('#taxMode').addEventListener('change',renderPreview);
+      qs('#quoteDate').value=todayStr();
+      await loadHistory();
+    }
+  </script>
+</body>
+</html>
