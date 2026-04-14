@@ -40,8 +40,7 @@
         <div class="info-card"><div class="label">勞保自付額</div><div class="value" id="laborSalary">-</div></div>
         <div class="info-card"><div class="label">健保狀態</div><div class="value" id="healthStatus">-</div></div>
         <div class="info-card"><div class="label">健保自付額</div><div class="value" id="healthSalary">-</div></div>
-        <div class="info-card"><div class="label">生效日期</div><div class="value" id="salaryEffectiveDateInfo">-</div></div>
-        <div class="info-card" style="grid-column:1/-1"><div class="label">備註</div><div class="value" id="salaryNote">-</div></div>
+                <div class="info-card" style="grid-column:1/-1"><div class="label">備註</div><div class="value" id="salaryNote">-</div></div>
       </div>
     </div>
   </div>
@@ -70,7 +69,6 @@
         qs('#laborSalary').textContent=info.laborSelfPayText||info.laborSalaryText||'-';
         qs('#healthSalary').textContent=info.healthSelfPayText||info.healthSalaryText||'-';
         qs('#salaryEffectiveDate').textContent=info.effectiveDate||'-';
-        qs('#salaryEffectiveDateInfo').textContent=info.effectiveDate||'-';
         qs('#salaryNote').textContent=info.note||'-';
         qs('#mainAmountLabel').textContent=info.mainAmountLabel||'主要薪資';
         qs('#mainAmountValue').textContent=info.mainAmountText||'-';
