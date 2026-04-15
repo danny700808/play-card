@@ -132,7 +132,7 @@
               <button id="saveBtn" class="btn" type="button" onclick="saveQuotation()">儲存估價單</button>
               <button class="btn secondary" type="button" onclick="resetForm(true)">新增空白估價單</button>
               <button id="createPdfBtn" class="btn secondary" type="button" onclick="createPdfOnly()">產生 PDF</button>
-              <button id="printBtn" class="btn secondary" type="button" onclick="printQuotation()">直接列印</button>
+              <button id="printBtn" class="btn secondary" type="button" onclick="printQuotation()">列印 PDF</button>
             </div>
 
             <div class="send-box">
@@ -474,9 +474,26 @@ Email：<span id="pvCustomerEmail"></span>
       await editQuotation(id);
       await sendQuotationEmail();
     }
-    function printQuotation(){
-      const done=setButtonBusy('printBtn','列印準備中…');
-      setTimeout(()=>{ window.print(); done(); }, 120);
+    async function printQuotation(){
+      const done=setButtonBusy('printBtn','準備列印 PDF…');
+      try{
+        await saveQuotation(false);
+        if(!editingQuotationId) throw new Error('請先儲存估價單');
+        const detail=await api('getQuotationDetail',{userId:currentUser.id,quotationId:editingQuotationId});
+        if(!detail.ok) throw new Error(detail.message||'讀取估價單失敗');
+        let pdfUrl=((detail.quotation||{}).pdfUrl||'').trim();
+        if(!pdfUrl){
+          const created=await api('createQuotationPdf',{userId:currentUser.id,quotationId:editingQuotationId});
+          if(!created.ok) throw new Error(created.message||'產生 PDF 失敗');
+          pdfUrl=(created.pdfUrl||'').trim();
+        }
+        if(!pdfUrl) throw new Error('目前找不到可列印的 PDF。');
+        const win=window.open(pdfUrl,'_blank');
+        if(!win) throw new Error('瀏覽器擋住了新視窗，請允許彈出視窗後再試一次。');
+        setLocalMsg('已開啟正式 PDF，請直接在新分頁列印。');
+        await loadHistory();
+      }catch(err){ setLocalMsg(err.message||'列印 PDF 失敗',true); }
+      finally{ done(); }
     }
     async function initPage(){
 
