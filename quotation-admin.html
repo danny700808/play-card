@@ -96,9 +96,9 @@
             <div id="items" class="items-wrap"></div>
 
             <div class="mini-actions" style="margin-top:16px">
-              <button class="btn" type="button" onclick="saveQuotation()">儲存估價單</button>
+              <button id="saveQuotationBtn" class="btn" type="button" onclick="saveQuotation(this)">儲存估價單</button>
               <button class="btn secondary" type="button" onclick="resetForm(true)">新增空白估價單</button>
-              <button class="btn secondary" type="button" onclick="createPdfOnly()">產生 PDF</button>
+              <button id="createPdfBtn" class="btn secondary" type="button" onclick="createPdfOnly(this)">產生 PDF</button>
             </div>
 
             <div class="send-box">
@@ -109,7 +109,7 @@
               </div>
               <div class="field"><label>主旨</label><input id="sendSubject"></div>
               <div class="field"><label>信件內容</label><textarea id="sendBody"></textarea></div>
-              <button class="btn" type="button" onclick="sendQuotationEmail()">寄送 PDF 到信箱</button>
+              <button id="sendPdfBtn" class="btn" type="button" onclick="sendQuotationEmail(this)">寄送 PDF 到信箱</button>
             </div>
 
             <div id="msg" class="message"></div>
@@ -185,6 +185,8 @@ Email：<span id="pvCustomerEmail"></span>
     function todayStr(){const d=new Date();const y=d.getFullYear();const m=String(d.getMonth()+1).padStart(2,'0');const day=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${day}`;}
     function money(n){return Number(n||0).toLocaleString('zh-TW');}
     function setLocalMsg(text,isError=false){setMsg(qs('#msg'),text,isError)}
+    function setActionButtonState(btn,text){ if(!btn) return; if(!btn.dataset.originalText) btn.dataset.originalText=btn.textContent; btn.disabled=true; btn.textContent=text; }
+    function resetActionButtonState(btn){ if(!btn) return; btn.disabled=false; btn.textContent=btn.dataset.originalText||btn.textContent; }
     function itemHtml(item={section:'',name:'',spec:'',unit:'組',qty:1,price:0}){
       return `
         <div class="item-card">
@@ -305,7 +307,7 @@ Email：<span id="pvCustomerEmail"></span>
     }
     function historyCard(row){
       const pdfLink=row.pdfUrl ? `<a class="btn secondary" style="width:auto;padding:10px 14px" href="${row.pdfUrl}" target="_blank">開啟 PDF</a>` : '';
-      return `<div class="list-card"><div class="list-card-top"><div><div style="font-size:18px;font-weight:900">${escapeHtml(row.quoteNo||'未編號')}</div><div class="muted-sm">${escapeHtml(row.customerTitle||'未填客戶')}｜${escapeHtml(row.quoteDate||'')}</div><div class="muted-sm">總額：${money(row.totalAmount||0)}｜${escapeHtml(row.sendStatus||'未寄送')}</div></div><div class="mini-actions"><button class="btn secondary" style="width:auto;padding:10px 14px" onclick="editQuotation('${row.quotationId}')">編輯</button><button class="btn secondary" style="width:auto;padding:10px 14px" onclick="createPdfForId('${row.quotationId}')">更新 PDF</button>${pdfLink}<button class="btn secondary" style="width:auto;padding:10px 14px" onclick="sendQuotationForId('${row.quotationId}')">重寄信件</button></div></div></div>`;
+      return `<div class="list-card"><div class="list-card-top"><div><div style="font-size:18px;font-weight:900">${escapeHtml(row.quoteNo||'未編號')}</div><div class="muted-sm">${escapeHtml(row.customerTitle||'未填客戶')}｜${escapeHtml(row.quoteDate||'')}</div><div class="muted-sm">總額：${money(row.totalAmount||0)}｜${escapeHtml(row.sendStatus||'未寄送')}</div></div><div class="mini-actions"><button class="btn secondary" style="width:auto;padding:10px 14px" onclick="editQuotation('${row.quotationId}')">編輯</button><button class="btn secondary" style="width:auto;padding:10px 14px" onclick="createPdfForId('${row.quotationId}', this)">更新 PDF</button>${pdfLink}<button class="btn secondary" style="width:auto;padding:10px 14px" onclick="sendQuotationForId('${row.quotationId}', this)">重寄信件</button></div></div></div>`;
     }
     async function loadHistory(){
       try{
@@ -323,45 +325,68 @@ Email：<span id="pvCustomerEmail"></span>
         setLocalMsg('已載入估價單，可直接修改後再儲存。');
       }catch(err){ setLocalMsg(err.message||'載入失敗',true); }
     }
-    async function saveQuotation(){
+    async function saveQuotation(triggerBtn, keepState){
+      const btn=triggerBtn||qs('#saveQuotationBtn');
       try{
+        setActionButtonState(btn,'檢查資料中…');
         const payload=currentPayload();
         if(!payload.customerTitle) throw new Error('請先輸入客戶名稱');
         if(!payload.items.length) throw new Error('請至少新增一列品項');
+        setActionButtonState(btn,'儲存估價單中…');
         const r=await api('saveQuotation',Object.assign({userId:currentUser.id},payload));
         if(!r.ok) throw new Error(r.message||'儲存失敗');
         editingQuotationId=r.quotationId||editingQuotationId;
         if(r.quoteNo && !qs('#quoteNo').value) qs('#quoteNo').value=r.quoteNo;
+        setActionButtonState(btn,'儲存完成');
         setLocalMsg(r.message||'已儲存估價單');
         await loadHistory();
-      }catch(err){ setLocalMsg(err.message||'儲存失敗',true); }
+        return r;
+      }catch(err){
+        setLocalMsg(err.message||'儲存失敗',true);
+        throw err;
+      }finally{
+        if(!keepState) setTimeout(()=>resetActionButtonState(btn),700);
+      }
     }
-    async function createPdfOnly(){
+    async function createPdfOnly(triggerBtn){
+      const btn=triggerBtn||qs('#createPdfBtn');
       try{
-        await saveQuotation();
+        setActionButtonState(btn,'儲存估價單中…');
+        await saveQuotation(btn, true);
         if(!editingQuotationId) throw new Error('請先儲存估價單');
+        setActionButtonState(btn,'產生 PDF 中…');
         const r=await api('createQuotationPdf',{userId:currentUser.id,quotationId:editingQuotationId});
         if(!r.ok) throw new Error(r.message||'產生 PDF 失敗');
+        setActionButtonState(btn,'PDF 完成');
         setLocalMsg(`PDF 已建立：${r.pdfName||''}`);
         await loadHistory();
-      }catch(err){ setLocalMsg(err.message||'產生 PDF 失敗',true); }
+        return r;
+      }catch(err){ setLocalMsg(err.message||'產生 PDF 失敗',true); throw err; }
+      finally{ setTimeout(()=>resetActionButtonState(btn),700); }
     }
-    async function createPdfForId(id){ editingQuotationId=id; await createPdfOnly(); }
-    async function sendQuotationEmail(){
+    async function createPdfForId(id, triggerBtn){ editingQuotationId=id; await createPdfOnly(triggerBtn); }
+    async function sendQuotationEmail(triggerBtn){
+      const btn=triggerBtn||qs('#sendPdfBtn');
       try{
-        await saveQuotation();
+        setActionButtonState(btn,'儲存估價單中…');
+        await saveQuotation(btn, true);
         if(!editingQuotationId) throw new Error('請先儲存估價單');
         const to=qs('#sendEmailTo').value.trim();
         if(!to) throw new Error('請先輸入收件人 Email');
+        setActionButtonState(btn,'產生 PDF 中…');
+        setActionButtonState(btn,'寄送信件中…');
         const r=await api('sendQuotationEmail',{userId:currentUser.id,quotationId:editingQuotationId,to,cc:qs('#sendEmailCc').value.trim(),subject:qs('#sendSubject').value.trim(),body:qs('#sendBody').value.trim()});
         if(!r.ok) throw new Error(r.message||'寄送失敗');
+        setActionButtonState(btn,'寄送完成');
         setLocalMsg(r.message||'估價單已寄出');
         await loadHistory();
-      }catch(err){ setLocalMsg(err.message||'寄送失敗',true); }
+        return r;
+      }catch(err){ setLocalMsg(err.message||'寄送失敗',true); throw err; }
+      finally{ setTimeout(()=>resetActionButtonState(btn),700); }
     }
-    async function sendQuotationForId(id){
+    async function sendQuotationForId(id, triggerBtn){
       await editQuotation(id);
-      await sendQuotationEmail();
+      await sendQuotationEmail(triggerBtn);
     }
     async function initPage(){
       fillHeader();
