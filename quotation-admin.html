@@ -24,10 +24,10 @@
     .list-card-top{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start}
     .muted-sm{font-size:12px;color:#6b7b8c;line-height:1.6}
     .quote-preview{background:#fff;border:1px solid #e2e8f0;border-radius:18px;padding:20px;position:sticky;top:16px}
-    .quote-headline{display:flex;justify-content:flex-end;align-items:flex-end;gap:12px;border-bottom:1px solid #cbd5e1;padding-bottom:10px}
-        .quote-no-line{font-size:14px;font-weight:800}
-    .quote-title{text-align:center;font-size:38px;font-weight:900;letter-spacing:8px;margin:20px 0}
-    .top-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .quote-headline{display:flex;justify-content:flex-end;align-items:flex-end;gap:12px;padding-bottom:2px}
+    .quote-no-line{font-size:14px;font-weight:800}
+    .quote-title{text-align:center;font-size:38px;font-weight:900;letter-spacing:8px;margin:10px 0 14px}
+    .top-grid{display:grid;grid-template-columns:39fr 61fr;gap:12px}
     .info-box{border:1px solid #94a3b8;border-radius:14px;overflow:hidden;background:#fff}
     .info-box .hd{background:#f8fafc;padding:8px 10px;font-weight:800;border-bottom:1px solid #cbd5e1}
     .info-box .bd{padding:10px 12px;font-size:13px;line-height:1.8;white-space:pre-wrap;word-break:break-word}
@@ -35,7 +35,7 @@
     .quote-table th,.quote-table td{border:1px solid #94a3b8;padding:6px;vertical-align:top}
     .quote-table th{background:#f8fafc}
     .text-right{text-align:right}.text-center{text-align:center}
-    .bottom-wrap{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:14px;margin-top:18px;align-items:start}
+    .bottom-wrap{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:18px;align-items:start}
     .remark-box{border:1px solid #94a3b8;border-radius:14px;overflow:hidden;background:#fff}
     .remark-box .hd{background:#f8fafc;padding:8px 10px;font-weight:800;border-bottom:1px solid #cbd5e1}
     .remark-box .bd{padding:10px 12px;min-height:82px;white-space:pre-wrap;line-height:1.8;font-size:13px}
@@ -43,11 +43,11 @@
     .totals-row{display:flex;justify-content:space-between;gap:10px;padding:10px 12px;border-bottom:1px solid #cbd5e1;font-size:14px}
     .totals-row:last-child{border-bottom:none;font-size:16px;font-weight:900}
     .signature-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:16px}
-    .signature-box{border:1px solid #94a3b8;border-radius:14px;overflow:hidden;background:#fff;min-height:180px}
+    .signature-box{border:1px solid #94a3b8;border-radius:14px;overflow:hidden;background:#fff;min-height:206px}
     .signature-box .hd{background:#f8fafc;padding:8px 10px;font-weight:800;border-bottom:1px solid #cbd5e1;text-align:center}
-    .signature-box .bd{position:relative;padding:14px;min-height:140px}
-    .stamp-blue{position:absolute;left:16px;bottom:20px;width:151px;height:132px;object-fit:contain}
-    .stamp-red{position:absolute;left:170px;bottom:30px;width:57px;height:57px;object-fit:contain}
+    .signature-box .bd{position:relative;padding:14px;min-height:166px}
+    .stamp-blue{position:absolute;left:14px;bottom:34px;width:4cm;height:3.5cm;object-fit:contain}
+    .stamp-red{position:absolute;left:170px;bottom:56px;width:1.5cm;height:1.5cm;object-fit:contain}
     .sign-line{position:absolute;left:24px;right:24px;bottom:18px;border-top:1px solid #64748b}
     .send-box{margin-top:14px;padding:12px;border:1px dashed #cbd5e1;border-radius:14px;background:#fbfdff}
     .send-box .title-mini{font-size:15px;font-weight:900;margin-bottom:8px}
@@ -59,7 +59,7 @@
       .container{max-width:none!important;padding:0!important}
       .card{box-shadow:none!important;border:none!important;padding:0!important}
       .layout{grid-template-columns:1fr!important}
-      .quote-preview{position:static;border:none;padding:0 6mm 0 4mm}
+      .quote-preview{position:static;border:none;padding:0}
       .quote-headline,.quote-table,.info-box,.remark-box,.totals,.signature-box{break-inside:avoid}
     }
     @media (max-width: 980px){
