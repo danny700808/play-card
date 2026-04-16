@@ -23,81 +23,52 @@
     .list-card{border:1px solid #d9e0e6;border-radius:14px;padding:14px;background:#fff}
     .list-card-top{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start}
     .muted-sm{font-size:12px;color:#6b7b8c;line-height:1.6}
-    .quote-preview{background:#fff;border:1px solid #e2e8f0;border-radius:18px;padding:16px;position:sticky;top:16px}
-    .quote-headline{display:none}
-    .quote-title{text-align:center;font-size:38px;font-weight:900;letter-spacing:8px;margin:6px 0 14px}
+    .quote-preview{background:#fff;border:1px solid #e2e8f0;border-radius:18px;padding:6mm;position:sticky;top:16px}
+    .quote-title{text-align:center;font-size:30px;font-weight:900;letter-spacing:4px;margin:0 0 12px}
     .top-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
     .info-box{border:1px solid #94a3b8;border-radius:14px;overflow:hidden;background:#fff}
     .info-box .hd{background:#f8fafc;padding:8px 10px;font-weight:800;border-bottom:1px solid #cbd5e1}
-    .info-box .bd{padding:10px 12px;font-size:13px;line-height:1.8;white-space:pre-wrap;word-break:break-word}
+    .info-box .bd{padding:10px 12px;font-size:13px;line-height:1.8;white-space:pre-wrap;word-break:break-word;min-height:112px}
     .quote-table{width:100%;border-collapse:collapse;margin-top:0;font-size:12px;background:#fff}
     .quote-table th,.quote-table td{border:1px solid #94a3b8;padding:6px;vertical-align:top}
     .quote-table th{background:#f8fafc}
     .text-right{text-align:right}.text-center{text-align:center}
-    .bottom-wrap{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:16px;align-items:stretch}
+    .bottom-wrap{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px;align-items:stretch}
     .remark-box{border:1px solid #94a3b8;border-radius:14px;overflow:hidden;background:#fff}
     .remark-box .hd{background:#f8fafc;padding:8px 10px;font-weight:800;border-bottom:1px solid #cbd5e1}
-    .remark-box .bd{padding:10px 12px;min-height:82px;white-space:pre-wrap;line-height:1.8;font-size:13px}
+    .remark-box .bd{padding:10px 12px;min-height:86px;white-space:pre-wrap;line-height:1.8;font-size:13px}
     .totals{border:1px solid #94a3b8;border-radius:14px;overflow:hidden;background:#fff}
     .totals-row{display:flex;justify-content:space-between;gap:10px;padding:10px 12px;border-bottom:1px solid #cbd5e1;font-size:14px}
     .totals-row:last-child{border-bottom:none;font-size:16px;font-weight:900}
     .signature-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:16px}
-    .signature-box{border:1px solid #94a3b8;border-radius:14px;overflow:hidden;background:#fff;min-height:190px}
+    .signature-box{border:1px solid #94a3b8;border-radius:14px;overflow:hidden;background:#fff;min-height:196px}
     .signature-box .hd{background:#f8fafc;padding:8px 10px;font-weight:800;border-bottom:1px solid #cbd5e1;text-align:center}
-    .signature-box .bd{position:relative;padding:14px;min-height:150px}
-    .stamp-blue{position:absolute;left:16px;bottom:20px;width:151px;height:132px;object-fit:contain}
-    .stamp-red{position:absolute;left:170px;bottom:30px;width:57px;height:57px;object-fit:contain}
+    .signature-box .bd{position:relative;padding:14px;min-height:156px}
+    .stamp-blue{position:absolute;left:12px;bottom:22px;width:151px;height:132px;object-fit:contain}
+    .stamp-red{position:absolute;left:168px;bottom:42px;width:57px;height:57px;object-fit:contain}
     .sign-line{position:absolute;left:24px;right:24px;bottom:18px;border-top:1px solid #64748b}
     .send-box{margin-top:14px;padding:12px;border:1px dashed #cbd5e1;border-radius:14px;background:#fbfdff}
     .send-box .title-mini{font-size:15px;font-weight:900;margin-bottom:8px}
     .empty-box{padding:16px;border:1px dashed #cbd5e1;border-radius:14px;color:#64748b;background:#fbfdff}
     .btn.is-busy{opacity:.8;pointer-events:none}
     @media print{
-      html,body{
-        background:#fff !important;
-        margin:0 !important;
-        padding:0 !important;
-      }
-      body *{
-        visibility:hidden !important;
-      }
-      #printArea, #printArea *{
-        visibility:visible !important;
-      }
-      #printArea{
-        position:fixed !important;
-        left:0 !important;
-        top:0 !important;
-        width:calc(210mm - 16mm) !important;
-        min-height:calc(297mm - 16mm) !important;
-        margin:0 !important;
-        padding:0 !important;
-        border:none !important;
-        box-shadow:none !important;
-        background:#fff !important;
-      }
-      .top-grid,.bottom-wrap,.signature-grid{
-        grid-template-columns:1fr 1fr !important;
-      }
-      .quote-title,.quote-table,.info-box,.remark-box,.totals,.signature-box{
-        break-inside:avoid;
-      }
-      @page{
-        size:A4 portrait;
-        margin:8mm;
-      }
-    }
-      .quote-headline,.quote-table,.info-box,.remark-box,.totals,.signature-box{break-inside:avoid}
-      @page{size:A4 portrait;margin:8mm}
+      html,body{margin:0 !important;padding:0 !important;background:#fff !important}
+      body *{visibility:hidden !important}
+      #printArea,#printArea *{visibility:visible !important}
+      #printArea{position:fixed !important;left:8mm !important;top:8mm !important;width:194mm !important;min-height:281mm !important;margin:0 !important;padding:0 !important;border:none !important;box-shadow:none !important;background:#fff !important;border-radius:0 !important}
+      .top-grid,.bottom-wrap,.signature-grid{grid-template-columns:1fr 1fr !important}
+      .quote-title,.quote-table,.info-box,.remark-box,.totals,.signature-box{break-inside:avoid !important}
+      .page-return-wrap,.topbar,.subcard,.send-box,.mini-actions{display:none !important}
+      @page{size:A4 portrait;margin:0}
     }
     @media (max-width: 980px){
       .layout{grid-template-columns:1fr}
       .quote-preview{position:static}
-      .row2{grid-template-columns:1fr}
+      .top-grid,.row2,.bottom-wrap,.signature-grid{grid-template-columns:1fr}
       .stamp-blue{width:136px;height:119px}
-      .stamp-red{left:156px}
+      .stamp-red{left:150px;bottom:40px}
     }
-  </style>
+</style>
 
 </head>
 <body onload="initPage()">
@@ -158,19 +129,19 @@
             <div class="mini-actions" style="margin-top:16px">
               <button id="saveBtn" class="btn" type="button" onclick="saveQuotation()">儲存估價單</button>
               <button class="btn secondary" type="button" onclick="resetForm(true)">新增空白估價單</button>
-              <button id="createPdfBtn" class="btn secondary" type="button" onclick="createPdfOnly()">產生 PDF</button>
-              <button id="printBtn" class="btn secondary" type="button" onclick="printQuotation()">列印 / 另存 PDF</button>
+              <button id="savePdfBtn" class="btn secondary" type="button" onclick="savePdfOnly()">儲存 PDF</button>
+              <button id="printBtn" class="btn secondary" type="button" onclick="printQuotation()">列印</button>
             </div>
 
             <div class="send-box">
-              <div class="title-mini">寄送估價單 PDF</div>
+              <div class="title-mini">寄送估價單</div>
               <div class="row2">
                 <div class="field"><label>收件人 Email</label><input id="sendEmailTo" type="email" placeholder="客戶信箱"></div>
                 <div class="field"><label>副本 CC（選填）</label><input id="sendEmailCc" placeholder="多個以逗號分隔"></div>
               </div>
               <div class="field"><label>主旨</label><input id="sendSubject"></div>
               <div class="field"><label>信件內容</label><textarea id="sendBody"></textarea></div>
-              <button id="sendBtn" class="btn" type="button" onclick="sendQuotationEmail()">寄送 PDF 到信箱</button>
+              <button id="sendBtn" class="btn" type="button" onclick="sendQuotationEmail()">寄送估價單到信箱</button>
             </div>
 
             <div id="msg" class="message"></div>
@@ -251,6 +222,8 @@ Email：<span id="pvCustomerEmail"></span>
       </div>
     </div>
   </div>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script src="config.js?v=20260414quotation1"></script>
   <script src="app.js?v=20260414quotation1"></script>
   <script>
@@ -380,6 +353,42 @@ Email：<span id="pvCustomerEmail"></span>
       window.scrollTo({top:0,behavior:'smooth'});
     }
     
+
+    async function ensurePdfLibs_(){
+      if(!(window.html2canvas && window.jspdf && window.jspdf.jsPDF)) throw new Error('PDF 套件載入失敗，請確認網路後重整頁面再試。');
+    }
+    function buildPdfFileName_(payload){
+      const date=(payload.quoteDate||todayStr()).replace(/-/g,'');
+      const customer=(payload.customerTitle||'估價單').replace(/[\/:*?"<>|]/g,'_');
+      return `估價單_${date}_${customer}.pdf`;
+    }
+    async function buildPreviewPdfBlob_(){
+      await ensurePdfLibs_();
+      renderPreview();
+      const target=qs('#printArea');
+      if(!target) throw new Error('找不到估價單預覽區');
+      const canvas=await window.html2canvas(target,{scale:2,useCORS:true,backgroundColor:'#ffffff'});
+      const img=canvas.toDataURL('image/jpeg',0.98);
+      const { jsPDF } = window.jspdf;
+      const pdf=new jsPDF({orientation:'p',unit:'mm',format:'a4'});
+      const pageW=210, pageH=297, margin=8;
+      const usableW=pageW-margin*2, usableH=pageH-margin*2;
+      const imgW=canvas.width, imgH=canvas.height;
+      const ratio=Math.min(usableW/imgW, usableH/imgH);
+      const renderW=imgW*ratio, renderH=imgH*ratio;
+      pdf.addImage(img,'JPEG',margin,margin,renderW,renderH);
+      return pdf.output('blob');
+    }
+    async function blobToBase64_(blob){
+      const buf=await blob.arrayBuffer();
+      let binary='';
+      const bytes=new Uint8Array(buf);
+      const chunk=0x8000;
+      for(let i=0;i<bytes.length;i+=chunk){
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i+chunk));
+      }
+      return btoa(binary);
+    }
     function historyCard(row){
       return `<div class="list-card"><div class="list-card-top"><div><div style="font-size:18px;font-weight:900">${escapeHtml(row.quoteNo||'未編號')}</div><div class="muted-sm">${escapeHtml(row.customerTitle||'未填客戶')}｜${escapeHtml(row.quoteDate||'')}</div><div class="muted-sm">總額：${money(row.totalAmount||0)}｜${escapeHtml(row.sendStatus||'未寄送')}</div></div><div class="mini-actions"><button class="btn secondary" style="width:auto;padding:10px 14px" onclick="previewQuotation('${row.quotationId}')">預覽</button><button class="btn secondary" style="width:auto;padding:10px 14px" onclick="editQuotation('${row.quotationId}')">編輯</button><button class="btn secondary" style="width:auto;padding:10px 14px" onclick="copyQuotation('${row.quotationId}')">複製</button></div></div></div>`;
     }
@@ -465,27 +474,52 @@ Email：<span id="pvCustomerEmail"></span>
         throw err;
       }finally{ done(); }
     }
-    async function createPdfOnly(){
-      const done=setButtonBusy('createPdfBtn','產生 PDF 中…');
+    async function savePdfOnly(){
+      const done=setButtonBusy('savePdfBtn','儲存 PDF 中…');
       try{
-        await saveQuotation(false);
-        if(!editingQuotationId) throw new Error('請先儲存估價單');
-        const r=await api('createQuotationPdf',{userId:currentUser.id,quotationId:editingQuotationId});
-        if(!r.ok) throw new Error(r.message||'產生 PDF 失敗');
-        setLocalMsg(`PDF 已建立：${r.pdfName||''}`);
-        await loadHistory();
-      }catch(err){ setLocalMsg(err.message||'產生 PDF 失敗',true); }
+        const saved=await saveQuotation(false);
+        const payload=currentPayload();
+        if(saved && saved.quoteNo && !payload.quoteNo) payload.quoteNo=saved.quoteNo;
+        const blob=await buildPreviewPdfBlob_();
+        const name=buildPdfFileName_(payload);
+        const url=URL.createObjectURL(blob);
+        const a=document.createElement('a');
+        a.href=url;
+        a.download=name;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(()=>URL.revokeObjectURL(url), 3000);
+        setLocalMsg('PDF 已準備下載。');
+      }catch(err){ setLocalMsg(err.message||'儲存 PDF 失敗',true); }
       finally{ done(); }
     }
-    async function createPdfForId(id){ editingQuotationId=id; await createPdfOnly(); }
+    async function createPdfOnly(){
+      return savePdfOnly();
+    }
+    async function createPdfForId(id){ editingQuotationId=id; await savePdfOnly(); }
     async function sendQuotationEmail(){
       const done=setButtonBusy('sendBtn','寄送中…');
       try{
-        await saveQuotation(false);
+        const saved=await saveQuotation(false);
         if(!editingQuotationId) throw new Error('請先儲存估價單');
         const to=qs('#sendEmailTo').value.trim();
         if(!to) throw new Error('請先輸入收件人 Email');
-        const r=await api('sendQuotationEmail',{userId:currentUser.id,quotationId:editingQuotationId,to,cc:qs('#sendEmailCc').value.trim(),subject:qs('#sendSubject').value.trim(),body:qs('#sendBody').value.trim()});
+        const payload=currentPayload();
+        if(saved && saved.quoteNo && !payload.quoteNo) payload.quoteNo=saved.quoteNo;
+        const blob=await buildPreviewPdfBlob_();
+        const pdfBase64=await blobToBase64_(blob);
+        const pdfName=buildPdfFileName_(payload);
+        const r=await api('sendQuotationEmail',{
+          userId:currentUser.id,
+          quotationId:editingQuotationId,
+          to,
+          cc:qs('#sendEmailCc').value.trim(),
+          subject:qs('#sendSubject').value.trim(),
+          body:qs('#sendBody').value.trim(),
+          pdfBase64,
+          pdfName
+        });
         if(!r.ok) throw new Error(r.message||'寄送失敗');
         setLocalMsg(r.message||'估價單已寄出');
         await loadHistory();
@@ -502,7 +536,7 @@ Email：<span id="pvCustomerEmail"></span>
         await saveQuotation(false);
         renderPreview();
         window.print();
-        setLocalMsg('已開啟目前預覽版型的列印畫面。');
+        setLocalMsg('已開啟列印視窗。');
       }catch(err){ setLocalMsg(err.message||'列印失敗',true); }
       finally{ done(); }
     }
