@@ -58,21 +58,12 @@
       box-sizing:border-box;
       font-family:Arial,"Noto Sans TC",sans-serif;
     }
-    .quote-meta{
-      display:flex;
-      justify-content:flex-end;
-      align-items:flex-start;
-      min-height:0;
-      margin-bottom:1mm;
-      font-size:9pt;
-      font-weight:800;
-    }
     .quote-title{
       text-align:center;
       font-size:22pt;
       font-weight:900;
       letter-spacing:3pt;
-      margin:0 0 3mm;
+      margin:0 0 4mm;
     }
     .quote-top{
       display:grid;
@@ -206,6 +197,7 @@
       size:A4 portrait;
       margin:0;
     }
+    @page{size:A4 portrait;margin:0}
     @media print{
       html,body{
         background:#fff !important;
@@ -214,6 +206,23 @@
         width:210mm !important;
         height:297mm !important;
       }
+      body *{visibility:hidden !important}
+      #printArea,#printArea *{visibility:visible !important}
+      .preview-hint{display:none !important}
+      #printArea{
+        position:fixed !important;
+        left:0 !important;
+        top:0 !important;
+        width:210mm !important;
+        height:297mm !important;
+        margin:0 !important;
+        padding:6mm !important;
+        box-sizing:border-box !important;
+        box-shadow:none !important;
+        border:none !important;
+        background:#fff !important;
+      }
+    }
       body *{visibility:hidden !important}
       .preview-stage,.preview-stage *,.quote-sheet,.quote-sheet *{visibility:visible !important}
       .preview-stage{
@@ -336,7 +345,6 @@
           <div class="preview-hint">右側預覽就是列印／另存 PDF 的版型。</div>
 
           <div class="quote-sheet" id="printArea">
-            <div class="quote-meta">單號：<span id="pvQuoteNo">—</span></div>
             <div class="quote-title">估價單</div>
 
             <div class="quote-top">
@@ -515,7 +523,6 @@ Email：<span id="pvCustomerEmail"></span>
       const totals = calcTotals(data.items, data.taxMode, data.taxRate);
 
       qs('#vendorBox').textContent = vendorText;
-      qs('#pvQuoteNo').textContent = data.quoteNo || '—';
       qs('#pvQuoteDate').textContent = data.quoteDate || '—';
       qs('#pvCustomerTitle').textContent = data.customerTitle || '';
       qs('#pvCustomerTaxId').textContent = data.customerTaxId || '';
