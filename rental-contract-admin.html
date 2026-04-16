@@ -77,6 +77,23 @@
         overflow:hidden!important;
         page-break-after:auto!important;
       }
+      /* 關鍵：列印時強制跟右邊預覽一樣維持左右並排 */
+      .contract-box-grid,
+      .party-grid,
+      .signature-grid,
+      .row2,
+      .row3{
+        display:grid!important;
+      }
+      .contract-box-grid,
+      .party-grid,
+      .signature-grid,
+      .row2{
+        grid-template-columns:1fr 1fr!important;
+      }
+      .row3{
+        grid-template-columns:1fr 1fr 1fr!important;
+      }
       .page-return-wrap,.topbar,.subcard:first-child,.muted-tip{
         display:none!important;
       }
@@ -106,7 +123,7 @@
       <div class="layout">
         <div>
           <div class="subcard">
-            <div class="muted-tip" style="margin-bottom:12px">這個頁面的操作方式比照估價單：左邊填寫、右邊即時預覽；列印與另存 PDF 都直接使用右邊同一個版型。</div>
+            <div class="muted-tip" style="margin-bottom:12px">這個頁面的操作方式比照估價單：左邊填寫、右邊即時預覽；列印與另存 PDF 都直接使用右邊同一個版型，甲乙方資料與簽章在輸出時維持左右並排。</div>
             <div class="field"><label>契約書標題</label><input id="contractTitle" value="設備租賃契約書"></div>
             <div class="row2">
               <div class="field"><label>甲方名稱</label><input id="partyAName" value="晟瑞科技股份有限公司"></div>
