@@ -40,13 +40,50 @@
     .muted-tip{font-size:12px;color:#64748b;line-height:1.7}
     .print-only{display:none}
     @media print{
-      html,body{margin:0!important;padding:0!important;background:#fff!important}
-      body *{visibility:hidden!important}
-      #printArea,#printArea *{visibility:visible!important}
-      #printArea{position:absolute!important;left:0!important;top:0!important;width:100%!important}
-      .contract-sheet{box-shadow:none!important;border:none!important;border-radius:0!important;margin:0 auto!important;page-break-after:auto!important}
-      .page-return-wrap,.topbar,.subcard:first-child,.muted-tip{display:none!important}
-      @page{size:A4 portrait;margin:0}
+      html,body{
+        margin:0!important;
+        padding:0!important;
+        background:#fff!important;
+      }
+      body *{
+        visibility:hidden!important;
+      }
+      #printArea,#printArea *{
+        visibility:visible!important;
+      }
+      #printArea{
+        position:fixed!important;
+        left:0!important;
+        top:0!important;
+        width:210mm!important;
+        height:297mm!important;
+        margin:0!important;
+        padding:0!important;
+        background:#fff!important;
+        overflow:hidden!important;
+      }
+      .contract-preview-stage{
+        display:block!important;
+        width:210mm!important;
+      }
+      .contract-sheet{
+        width:210mm!important;
+        min-height:297mm!important;
+        box-shadow:none!important;
+        border:none!important;
+        border-radius:0!important;
+        margin:0!important;
+        padding:9mm!important;
+        overflow:hidden!important;
+        page-break-after:auto!important;
+      }
+      .page-return-wrap,.topbar,.subcard:first-child,.muted-tip{
+        display:none!important;
+      }
+      @page{
+        size:A4 portrait;
+        margin:0;
+      }
     }
     @media (max-width:1180px){
       .layout{grid-template-columns:1fr}
@@ -69,7 +106,7 @@
       <div class="layout">
         <div>
           <div class="subcard">
-            <div class="muted-tip" style="margin-bottom:12px">這個頁面的操作方式比照估價單：左邊填寫、右邊即時預覽，列印直接使用右邊同版型。</div>
+            <div class="muted-tip" style="margin-bottom:12px">這個頁面的操作方式比照估價單：左邊填寫、右邊即時預覽；列印與另存 PDF 都直接使用右邊同一個版型。</div>
             <div class="field"><label>契約書標題</label><input id="contractTitle" value="設備租賃契約書"></div>
             <div class="row2">
               <div class="field"><label>甲方名稱</label><input id="partyAName" value="晟瑞科技股份有限公司"></div>
@@ -108,7 +145,8 @@
               <div class="field"><label>乙方負責人</label><input id="partyBOwner" value="黃銘廷"></div>
             </div>
             <div class="mini-actions" style="margin-top:16px">
-              <button class="btn" type="button" onclick="window.print()">列印</button>
+              <button class="btn" type="button" onclick="printContract()">列印</button>
+              <button class="btn secondary" type="button" onclick="savePdf()">另存 PDF</button>
               <button class="btn secondary" type="button" onclick="resetForm()">恢復預設內容</button>
             </div>
           </div>
@@ -230,6 +268,9 @@
     function resetForm(){
       Object.keys(defaultValues).forEach(id=>{ if(qs('#'+id)) qs('#'+id).value = defaultValues[id]; });
       renderPreview();
+    }
+    function printContract(){
+      window.print();
     }
     function savePdf(){
       window.print();
