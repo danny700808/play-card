@@ -6,96 +6,59 @@
   <title>合約管理</title>
   <link rel="stylesheet" href="style.css">
   <style>
-    :root{
-      --line:#cbd5e1;
-      --text:#0f172a;
-      --muted:#475569;
-      --soft:#f8fafc;
-    }
-    .page-wrap{max-width:1500px;margin:0 auto}
-    .layout{display:grid;grid-template-columns:420px minmax(0,1fr);gap:18px;align-items:start}
-    .editor-card,.preview-card{background:#fff;border:1px solid #e2e8f0;border-radius:18px;box-shadow:0 8px 24px rgba(15,23,42,.05)}
-    .editor-card{padding:18px;position:sticky;top:16px}
-    .preview-card{padding:14px}
-    .section-title{font-size:16px;font-weight:900;margin:0 0 10px}
-    .editor-group{margin-bottom:14px}
-    .editor-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-    .editor-group label{display:block;font-size:13px;font-weight:800;color:#334155;margin-bottom:6px}
-    .editor-group input,.editor-group textarea{
-      width:100%;border:1px solid #cbd5e1;border-radius:12px;padding:10px 12px;
-      font-size:14px;line-height:1.5;background:#fff;color:#0f172a
-    }
-    .editor-group textarea{min-height:72px;resize:vertical}
-    .hint{font-size:12px;color:#64748b;line-height:1.7;margin-top:4px}
-    .sheet{
-      width:210mm; min-height:297mm; margin:0 auto; background:#fff; color:var(--text);
-      border:1px solid #e2e8f0; box-shadow:0 16px 40px rgba(15,23,42,.08);
-      padding:8mm; box-sizing:border-box; overflow:hidden;
-    }
-    .sheet-title{font-size:24px;font-weight:900;letter-spacing:2px;text-align:center;margin:0 0 8px}
-    .intro{font-size:12px;line-height:1.5;margin-bottom:10px}
-    .block{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff}
-    .block-hd{padding:6px 10px;background:var(--soft);font-size:12px;font-weight:900;border-bottom:1px solid var(--line)}
-    .block-bd{padding:8px 10px}
-    .top-grid,.bottom-grid,.sign-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-    .info-lines{font-size:11.5px;line-height:1.5}
-    .row-line{margin-bottom:2px}
-    .eq-grid{display:grid;grid-template-columns:1.25fr 1fr 1fr;gap:10px;margin:8px 0}
-    .eq-box{border:1px solid var(--line);border-radius:12px;padding:8px 10px;font-size:11.5px;line-height:1.45;min-height:40px}
-    .clauses{margin:8px 0}
-    .clause-item{font-size:11.5px;line-height:1.5;margin:0 0 6px}
-    .party-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px}
-    .party-box{border:1px solid var(--line);border-radius:12px;overflow:hidden}
-    .party-hd{padding:6px 10px;background:var(--soft);font-size:12px;font-weight:900;border-bottom:1px solid var(--line)}
-    .party-bd{padding:8px 10px;font-size:11.5px;line-height:1.5}
-    .sign-grid{margin-top:8px}
-    .sign-box{border:1px solid var(--line);border-radius:12px;overflow:hidden;min-height:150px}
-    .sign-hd{padding:6px 10px;background:var(--soft);font-size:12px;font-weight:900;border-bottom:1px solid var(--line);text-align:center}
-    .sign-bd{padding:8px 10px;min-height:112px;position:relative}
-    .stamp-big{height:35mm;display:block}
-    .stamp-small{height:15mm;display:block;position:absolute;left:34mm;top:34px}
-    .sign-line{position:absolute;left:10px;right:10px;bottom:10px;border-top:1px solid #94a3b8}
-    .date-line{text-align:center;font-size:12px;margin-top:10px}
-    .preview-note{font-size:12px;color:#64748b;line-height:1.7;margin-bottom:10px}
-    .mini-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
-    @media (max-width:1180px){
-      .layout{grid-template-columns:1fr}
-      .editor-card{position:static}
-      .preview-card{overflow:auto}
-      .sheet{transform-origin:top center}
-    }
+    .layout{display:grid;grid-template-columns:minmax(360px,430px) minmax(0,1fr);gap:16px}
+    .subcard{background:#fff;border:1px solid #e2e8f0;border-radius:18px;padding:16px}
+    .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+    .mini-actions{display:flex;gap:8px;flex-wrap:wrap}
+    .mini-actions .btn{width:auto;padding:10px 14px}
+    .contract-preview-stage{display:block}
+    .contract-sheet{background:#fff;border:1px solid #e2e8f0;border-radius:18px;padding:9mm;box-shadow:0 8px 24px rgba(15,23,42,.06);width:210mm;min-height:297mm;margin:0 auto;box-sizing:border-box;overflow:hidden}
+    .contract-title{text-align:center;font-size:24px;font-weight:900;letter-spacing:4px;margin:2mm 0 4mm}
+    .contract-intro{font-size:13px;line-height:1.9;white-space:pre-wrap;margin-bottom:4mm}
+    .contract-section-title{font-size:14px;font-weight:900;margin:0 0 2mm}
+    .contract-box-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 0 4mm}
+    .contract-box{border:1px solid #94a3b8;border-radius:14px;overflow:hidden;background:#fff}
+    .contract-box .hd{background:#f8fafc;padding:8px 10px;font-weight:800;border-bottom:1px solid #cbd5e1}
+    .contract-box .bd{padding:10px 12px;font-size:13px;line-height:1.8;white-space:pre-wrap;word-break:break-word;min-height:76px}
+    .contract-table{width:100%;border-collapse:collapse;margin:0 0 4mm;font-size:12px;background:#fff}
+    .contract-table th,.contract-table td{border:1px solid #94a3b8;padding:7px;vertical-align:top}
+    .contract-table th{background:#f8fafc;text-align:center}
+    .clause-list{display:grid;gap:3mm;margin-top:2mm}
+    .clause-item{font-size:13px;line-height:1.9}
+    .party-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:4mm}
+    .party-card{border:1px solid #94a3b8;border-radius:14px;overflow:hidden;background:#fff}
+    .party-card .hd{background:#f8fafc;padding:8px 10px;font-weight:800;border-bottom:1px solid #cbd5e1;text-align:center}
+    .party-card .bd{padding:10px 12px;line-height:1.7;font-size:12.5px;white-space:pre-wrap}
+    .signature-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:4mm}
+    .signature-box{border:1px solid #94a3b8;border-radius:14px;overflow:hidden;background:#fff;min-height:56mm}
+    .signature-box .hd{background:#f8fafc;padding:8px 10px;font-weight:800;border-bottom:1px solid #cbd5e1;text-align:center}
+    .signature-box .bd{position:relative;padding:12px;min-height:46mm}
+    .stamp-blue{position:absolute;left:8mm;bottom:8mm;width:40mm;height:35mm;object-fit:contain}
+    .stamp-red{position:absolute;left:52mm;bottom:16mm;width:15mm;height:15mm;object-fit:contain}
+    .sign-line{position:absolute;left:10mm;right:10mm;bottom:6mm;border-top:1px solid #64748b}
+    .muted-tip{font-size:12px;color:#64748b;line-height:1.7}
+    .print-only{display:none}
     @media print{
       html,body{margin:0!important;padding:0!important;background:#fff!important}
       body *{visibility:hidden!important}
       #printArea,#printArea *{visibility:visible!important}
-      #printArea{
-        position:fixed!important;left:0!important;top:0!important;
-        width:210mm!important;height:297mm!important;margin:0!important;
-        padding:8mm!important;border:none!important;box-shadow:none!important;
-        background:#fff!important;overflow:hidden!important
-      }
-      .page-return-wrap,.topbar,.editor-card,.mini-actions,.preview-note{display:none!important}
-      .sheet{border:none!important;box-shadow:none!important;margin:0!important;padding:0!important;min-height:auto!important}
+      #printArea{position:absolute!important;left:0!important;top:0!important;width:100%!important}
+      .contract-sheet{box-shadow:none!important;border:none!important;border-radius:0!important;margin:0 auto!important;page-break-after:auto!important}
+      .page-return-wrap,.topbar,.subcard:first-child,.muted-tip{display:none!important}
       @page{size:A4 portrait;margin:0}
     }
-      body *{visibility:hidden!important}
-      #printArea,#printArea *{visibility:visible!important}
-      #printArea{
-        position:fixed!important;left:0!important;top:0!important;
-        width:210mm!important;height:297mm!important;margin:0!important;
-        padding:8mm!important;border:none!important;box-shadow:none!important;
-        background:#fff!important;overflow:hidden!important
-      }
-      .page-return-wrap,.topbar,.editor-card,.mini-actions,.preview-note{display:none!important}
-      .sheet{border:none!important;box-shadow:none!important;margin:0!important;padding:0!important;min-height:auto!important}
-      @page{size:A4 portrait;margin:0}
+    @media (max-width:1180px){
+      .layout{grid-template-columns:1fr}
+      .contract-sheet{width:100%;min-height:auto;padding:16px}
+      .contract-box-grid,.party-grid,.signature-grid,.row2,.row3{grid-template-columns:1fr}
     }
   </style>
 </head>
 <body onload="initPage()">
-  <div class="container">
-    <div class="page-return-wrap"><a class="btn page-return-btn" href="quotation-contract-hub.html">返回估價單合約單</a></div>
-    <div class="card page-wrap">
+  <div class="container" style="max-width:1400px">
+    <div class="page-return-wrap"><a class="btn page-return-btn" href="quotation-contract-hub.html">返回管理首頁</a></div>
+    <div class="card">
       <div class="topbar">
         <div>
           <h1 class="title" style="margin:0">合約管理</h1>
@@ -103,333 +66,185 @@
         </div>
         <button class="btn secondary" style="width:auto;padding:10px 14px" onclick="logout()">登出</button>
       </div>
-
       <div class="layout">
-        <div class="editor-card">
-          <div class="section-title">左邊填寫</div>
-
-          <div class="editor-group">
-            <label>契約名稱</label>
-            <input id="fTitle" value="設備租賃契約書" oninput="renderPreview()">
-          </div>
-
-          <div class="editor-grid">
-            <div class="editor-group">
-              <label>甲方名稱</label>
-              <input id="fPartyA" value="晟瑞科技股份有限公司" oninput="renderPreview()">
+        <div>
+          <div class="subcard">
+            <div class="muted-tip" style="margin-bottom:12px">這個頁面的操作方式比照估價單：左邊填寫、右邊即時預覽，列印直接使用右邊同版型。</div>
+            <div class="field"><label>契約書標題</label><input id="contractTitle" value="設備租賃契約書"></div>
+            <div class="row2">
+              <div class="field"><label>甲方名稱</label><input id="partyAName" value="晟瑞科技股份有限公司"></div>
+              <div class="field"><label>乙方名稱</label><input id="partyBName" value="尚品樂器行"></div>
             </div>
-            <div class="editor-group">
-              <label>乙方名稱</label>
-              <input id="fPartyB" value="尚品樂器行" oninput="renderPreview()">
+            <div class="field"><label>租賃設備和型號</label><input id="equipmentName" value="金嗓 super S600"></div>
+            <div class="row3">
+              <div class="field"><label>租賃天數</label><input id="rentDays" type="number" min="1" value="3"></div>
+              <div class="field"><label>租賃開始日期</label><input id="startDate" type="date"></div>
+              <div class="field"><label>合約日期</label><input id="contractDate" type="date"></div>
             </div>
-          </div>
-
-          <div class="editor-grid">
-            <div class="editor-group">
-              <label>設備與型號</label>
-              <input id="fEquipment" value="金嗓 super s600" oninput="renderPreview()">
+            <div class="row2">
+              <div class="field"><label>租賃費用</label><input id="rentFee" type="number" min="0" value="1050"></div>
+              <div class="field"><label>運費</label><input id="shippingFee" type="number" min="0" value="0"></div>
             </div>
-            <div class="editor-group">
-              <label>租賃天數</label>
-              <input id="fDays" value="3 天" oninput="renderPreview()">
+            <div class="field"><label>乙方提供設備內容</label><textarea id="includedItems">卡拉 OK 主機 + 攜帶袋子 + 無線麥克風 2 支\n電源線</textarea></div>
+            <div class="field"><label>第一條條款</label><textarea id="clause4">租約使用開始，全數不退款。</textarea></div>
+            <div class="field"><label>第二條條款</label><textarea id="clause5">因設備老舊或電腦相關線材磨損造成損壞，公司全吸收；但因人為破壞須賠償，破壞判斷依原廠認定。</textarea></div>
+            <div class="field"><label>第三條條款</label><textarea id="clause6">如雙方發生有關事項之爭議或訴訟，雙方以臺中地方法院為第一審管轄法院。</textarea></div>
+            <div class="field"><label>第四條條款</label><textarea id="clause7">本契約壹式貳份，雙方各執乙份為憑。</textarea></div>
+            <div style="margin:16px 0 10px"><h2 class="section-title" style="margin:0">雙方資料</h2></div>
+            <div class="row2">
+              <div class="field"><label>甲方統編</label><input id="partyATaxId" value="82784058"></div>
+              <div class="field"><label>乙方統編</label><input id="partyBTaxId" value="99680937"></div>
             </div>
-          </div>
-
-          <div class="editor-grid">
-            <div class="editor-group">
-              <label>租賃開始時間</label>
-              <input id="fStart" value="114年12月24日" oninput="renderPreview()">
+            <div class="row2">
+              <div class="field"><label>甲方電話</label><input id="partyAPhone" value="04-2533-2296 分機109"></div>
+              <div class="field"><label>乙方電話</label><input id="partyBPhone" value="04-25227893"></div>
             </div>
-            <div class="editor-group">
-              <label>合約日期</label>
-              <input id="fContractDate" value="中華民國115年4月16日" oninput="renderPreview()">
+            <div class="row2">
+              <div class="field"><label>甲方地址</label><input id="partyAAddress" value="427 台中市潭子區中山路三段486號"></div>
+              <div class="field"><label>乙方地址</label><input id="partyBAddress" value="台中市豐原區圓環東路347號4樓"></div>
             </div>
-          </div>
-
-          <div class="editor-grid">
-            <div class="editor-group">
-              <label>租賃費用</label>
-              <input id="fFee" value="1050 元" oninput="renderPreview()">
+            <div class="row2">
+              <div class="field"><label>甲方代表人（選填）</label><input id="partyAOwner" value=""></div>
+              <div class="field"><label>乙方負責人</label><input id="partyBOwner" value="黃銘廷"></div>
             </div>
-            <div class="editor-group">
-              <label>運費</label>
-              <input id="fShipping" value="0 元" oninput="renderPreview()">
+            <div class="mini-actions" style="margin-top:16px">
+              <button class="btn" type="button" onclick="window.print()">列印</button>
+              <button class="btn secondary" type="button" onclick="resetForm()">恢復預設內容</button>
             </div>
-          </div>
-
-          <div class="editor-group">
-            <label>乙方提供設備內容</label>
-            <textarea id="fIncludes" oninput="renderPreview()">卡拉OK主機 + 攜帶袋子 + 無線麥克風 2 支
-電源線</textarea>
-          </div>
-
-          <div class="editor-group">
-            <label>第一條條款</label>
-            <textarea id="fClause1" oninput="renderPreview()">租約使用開始後，全數不退款。</textarea>
-          </div>
-          <div class="editor-group">
-            <label>第二條條款</label>
-            <textarea id="fClause2" oninput="renderPreview()">因設備老舊或電腦相關線材磨損造成損壞，公司全數吸收。</textarea>
-          </div>
-          <div class="editor-group">
-            <label>第三條條款</label>
-            <textarea id="fClause3" oninput="renderPreview()">但因人為破壞須賠償，破壞判斷依原廠認定。</textarea>
-          </div>
-          <div class="editor-group">
-            <label>第四條條款</label>
-            <textarea id="fClause4" oninput="renderPreview()">如雙方發生爭議或訴訟，以臺中地方法院為第一審管轄法院。本契約壹式貳份，雙方各執乙份為憑。</textarea>
-          </div>
-
-          <div class="section-title" style="margin-top:8px">甲乙方資料</div>
-          <div class="editor-group"><label>甲方統編</label><input id="fATax" value="82784058" oninput="renderPreview()"></div>
-          <div class="editor-group"><label>甲方地址</label><input id="fAAddress" value="427 台中市潭子區中山路三段486號" oninput="renderPreview()"></div>
-          <div class="editor-group"><label>甲方電話</label><input id="fAPhone" value="04-2533-2296 分機109" oninput="renderPreview()"></div>
-
-          <div class="editor-group"><label>乙方公司名稱</label><input id="fBCompany" value="尚品樂器行" oninput="renderPreview()"></div>
-          <div class="editor-group"><label>乙方負責人</label><input id="fBOwner" value="黃銘廷" oninput="renderPreview()"></div>
-          <div class="editor-group"><label>乙方地址</label><input id="fBAddress" value="台中市豐原區圓環東路347號4樓" oninput="renderPreview()"></div>
-          <div class="editor-group"><label>乙方電話</label><input id="fBPhone" value="04-25227893" oninput="renderPreview()"></div>
-          <div class="editor-group"><label>乙方統編</label><input id="fBTax" value="99680937" oninput="renderPreview()"></div>
-
-          <div class="hint">左邊填什麼，右邊就同步顯示什麼。列印時只會列印右邊這張合約。</div>
-          <div class="mini-actions">
-            <button class="btn" onclick="window.print()">列印</button>
-            <button class="btn secondary" onclick="savePdf()">另存 PDF</button>
           </div>
         </div>
-
-        <div class="preview-card">
-          <div class="preview-note">右邊預覽就是最後列印 / 另存 PDF 的版型。</div>
-
-          <div id="printArea">
-            <div class="sheet">
-              <div class="sheet-title" id="pvTitle">設備租賃契約書</div>
-
-              <div class="intro">
-                立契約書人 <span id="pvPartyA">晟瑞科技股份有限公司</span>（以下簡稱甲方）<br>
-                立契約書人 <span id="pvPartyB">尚品樂器行</span>（以下簡稱乙方）<br>
-                甲方向乙方租賃設備，簽訂契約條款如下：
+        <div id="printArea">
+          <div class="contract-preview-stage">
+            <section class="contract-sheet">
+              <div class="contract-title" id="pvContractTitle">設備租賃契約書</div>
+              <div class="contract-intro" id="pvIntro"></div>
+              <table class="contract-table">
+                <tr><th style="width:28%">租賃設備和型號</th><td id="pvEquipment"></td></tr>
+                <tr><th>租賃期間</th><td id="pvRentTerm"></td></tr>
+                <tr><th>租賃費用</th><td id="pvFee"></td></tr>
+                <tr><th>乙方提供設備包括</th><td id="pvIncluded"></td></tr>
+              </table>
+              <div class="clause-list">
+                <div class="clause-item"><strong>第一條：</strong><span id="pvClause4"></span></div>
+                <div class="clause-item"><strong>第二條：</strong><span id="pvClause5"></span></div>
+                <div class="clause-item"><strong>第三條：</strong><span id="pvClause6"></span></div>
+                <div class="clause-item"><strong>第四條：</strong><span id="pvClause7"></span></div>
               </div>
-
-              <div class="eq-grid">
-                <div class="eq-box"><strong>租賃設備與型號：</strong><span id="pvEquipment">金嗓 super s600</span></div>
-                <div class="eq-box"><strong>租賃期間：</strong><span id="pvDays">3 天</span></div>
-                <div class="eq-box"><strong>租賃開始時間：</strong><span id="pvStart">114年12月24日</span></div>
-              </div>
-
-              <div class="eq-grid" style="grid-template-columns:1fr 1fr 1.4fr">
-                <div class="eq-box"><strong>租賃費用：</strong><span id="pvFee">1050 元</span></div>
-                <div class="eq-box"><strong>運費：</strong><span id="pvShipping">0 元</span></div>
-                <div class="eq-box"><strong>乙方提供設備：</strong><span id="pvIncludes">卡拉OK主機 + 攜帶袋子 + 無線麥克風 2 支<br>電源線</span></div>
-              </div>
-
-              <div class="clauses">
-                <div class="clause-item"><strong>第一條：</strong><span id="pvClause1">租約使用開始後，全數不退款。</span></div>
-                <div class="clause-item"><strong>第二條：</strong><span id="pvClause2">因設備老舊或電腦相關線材磨損造成損壞，公司全數吸收。</span></div>
-                <div class="clause-item"><strong>第三條：</strong><span id="pvClause3">但因人為破壞須賠償，破壞判斷依原廠認定。</span></div>
-                <div class="clause-item"><strong>第四條：</strong><span id="pvClause4">如雙方發生爭議或訴訟，以臺中地方法院為第一審管轄法院。本契約壹式貳份，雙方各執乙份為憑。</span></div>
-              </div>
-
+              <div class="contract-section-title" style="margin-top:4mm">立約人資料</div>
               <div class="party-grid">
-                <div class="party-box">
-                  <div class="party-hd">甲方資料</div>
-                  <div class="party-bd">
-                    <div class="row-line">公司名稱：<span id="pvACompany">晟瑞科技股份有限公司</span></div>
-                    <div class="row-line">統一編號：<span id="pvATax">82784058</span></div>
-                    <div class="row-line">地址：<span id="pvAAddress">427 台中市潭子區中山路三段486號</span></div>
-                    <div class="row-line">電話：<span id="pvAPhone">04-2533-2296 分機109</span></div>
-                  </div>
+                <div class="party-card">
+                  <div class="hd">甲方</div>
+                  <div class="bd" id="pvPartyA"></div>
                 </div>
-                <div class="party-box">
-                  <div class="party-hd">乙方資料</div>
-                  <div class="party-bd">
-                    <div class="row-line">公司名稱：<span id="pvBCompany">尚品樂器行</span></div>
-                    <div class="row-line">負責人：<span id="pvBOwner">黃銘廷</span></div>
-                    <div class="row-line">地址：<span id="pvBAddress">台中市豐原區圓環東路347號4樓</span></div>
-                    <div class="row-line">電話：<span id="pvBPhone">04-25227893</span></div>
-                    <div class="row-line">統一編號：<span id="pvBTax">99680937</span></div>
-                  </div>
+                <div class="party-card">
+                  <div class="hd">乙方</div>
+                  <div class="bd" id="pvPartyB"></div>
                 </div>
               </div>
-
-              <div class="sign-grid">
-                <div class="sign-box">
-                  <div class="sign-hd">甲方簽章</div>
-                  <div class="sign-bd">
+              <div class="signature-grid">
+                <div class="signature-box">
+                  <div class="hd">甲方簽章</div>
+                  <div class="bd">
                     <div class="sign-line"></div>
                   </div>
                 </div>
-                <div class="sign-box">
-                  <div class="sign-hd">乙方簽章</div>
-                  <div class="sign-bd">
-                    <img src="blue_stamp_transparent.png" class="stamp-big" alt="大章">
-                    <img src="red_stamp_transparent.png" class="stamp-small" alt="小章">
+                <div class="signature-box">
+                  <div class="hd">乙方簽章</div>
+                  <div class="bd">
+                    <img class="stamp-blue" src="blue_stamp_transparent.png" alt="公司章" onerror="this.style.display='none'">
+                    <img class="stamp-red" src="red_stamp_transparent.png" alt="負責人章" onerror="this.style.display='none'">
                     <div class="sign-line"></div>
                   </div>
                 </div>
               </div>
-
-              <div class="date-line" id="pvContractDate">中華民國115年4月16日</div>
-            </div>
+              <div class="contract-intro" style="text-align:center;margin-top:4mm;margin-bottom:0" id="pvContractDate"></div>
+            </section>
           </div>
         </div>
-      </div>
-
-      <div class="editor-card" style="margin-top:16px;position:static">
-        <div class="section-title">合約歷史資料</div>
-        <div class="hint" style="margin-bottom:10px">依年份查看，列表只顯示甲方立約人名稱。可直接載入，或複製成一份新表單。</div>
-        <div id="historyWrap"></div>
       </div>
     </div>
-
-    <script src="config.js"></script>
-    <script src="app.js"></script>
-    <script>
-      let currentUser=null;
-      let contractHistoryCache=[];
-
-      function initPage(){
-        fillHeader();
-        currentUser=requireLogin();
-        if(!currentUser) return;
-        if(!isManager(currentUser)){ location.href='dashboard.html'; return; }
-        renderPreview();
-        loadContractHistory();
-      }
-      function v(id){ return (document.getElementById(id)?.value || '').trim(); }
-      function setHtml(id, value){
-        const el = document.getElementById(id);
-        if(!el) return;
-        el.innerHTML = String(value || '').replace(/\n/g,'<br>');
-      }
-      function setText(id, value){
-        const el = document.getElementById(id);
-        if(!el) return;
-        el.textContent = value || '';
-      }
-      function getFormData(){
-        return {
-          title:v('fTitle'),
-          partyA:v('fPartyA'),
-          partyB:v('fPartyB'),
-          equipment:v('fEquipment'),
-          days:v('fDays'),
-          start:v('fStart'),
-          contractDate:v('fContractDate'),
-          fee:v('fFee'),
-          shipping:v('fShipping'),
-          includes:v('fIncludes'),
-          clause1:v('fClause1'),
-          clause2:v('fClause2'),
-          clause3:v('fClause3'),
-          clause4:v('fClause4'),
-          aTax:v('fATax'),
-          aAddress:v('fAAddress'),
-          aPhone:v('fAPhone'),
-          bCompany:v('fBCompany'),
-          bOwner:v('fBOwner'),
-          bAddress:v('fBAddress'),
-          bPhone:v('fBPhone'),
-          bTax:v('fBTax')
-        };
-      }
-      function applyFormData(d){
-        if(!d) return;
-        const mapping = {
-          fTitle:'title', fPartyA:'partyA', fPartyB:'partyB', fEquipment:'equipment', fDays:'days',
-          fStart:'start', fContractDate:'contractDate', fFee:'fee', fShipping:'shipping', fIncludes:'includes',
-          fClause1:'clause1', fClause2:'clause2', fClause3:'clause3', fClause4:'clause4',
-          fATax:'aTax', fAAddress:'aAddress', fAPhone:'aPhone',
-          fBCompany:'bCompany', fBOwner:'bOwner', fBAddress:'bAddress', fBPhone:'bPhone', fBTax:'bTax'
-        };
-        Object.keys(mapping).forEach(function(id){
-          const el = document.getElementById(id);
-          if(el && d[mapping[id]] != null) el.value = d[mapping[id]];
-        });
-        renderPreview();
-      }
-      function renderPreview(){
-        setText('pvTitle', v('fTitle'));
-        setText('pvPartyA', v('fPartyA'));
-        setText('pvPartyB', v('fPartyB'));
-        setText('pvEquipment', v('fEquipment'));
-        setText('pvDays', v('fDays'));
-        setText('pvStart', v('fStart'));
-        setText('pvFee', v('fFee'));
-        setText('pvShipping', v('fShipping'));
-        setHtml('pvIncludes', v('fIncludes'));
-        setText('pvClause1', v('fClause1'));
-        setText('pvClause2', v('fClause2'));
-        setText('pvClause3', v('fClause3'));
-        setText('pvClause4', v('fClause4'));
-        setText('pvACompany', v('fPartyA'));
-        setText('pvATax', v('fATax'));
-        setText('pvAAddress', v('fAAddress'));
-        setText('pvAPhone', v('fAPhone'));
-        setText('pvBCompany', v('fBCompany'));
-        setText('pvBOwner', v('fBOwner'));
-        setText('pvBAddress', v('fBAddress'));
-        setText('pvBPhone', v('fBPhone'));
-        setText('pvBTax', v('fBTax'));
-        setText('pvContractDate', v('fContractDate'));
-      }
-      function savePdf(){
-        window.print();
-      }
-      async function loadContractHistory(){
-        if(!window.api || !currentUser) return;
-        try{
-          const res = await api('getRentalContracts',{userId:currentUser.id});
-          if(!res || !res.ok) return;
-          contractHistoryCache = res.rows || [];
-          renderHistory(contractHistoryCache);
-        }catch(err){ console.warn(err); }
-      }
-      function renderHistory(rows){
-        const wrap = document.getElementById('historyWrap');
-        if(!wrap) return;
-        if(!rows || !rows.length){
-          wrap.innerHTML = '<div class="hint">目前還沒有合約資料。</div>';
-          return;
-        }
-        const groups = {};
-        rows.forEach(r=>{
-          const y = String(r.year || '');
-          if(!groups[y]) groups[y]=[];
-          groups[y].push(r);
-        });
-        const years = Object.keys(groups).sort((a,b)=>b.localeCompare(a));
-        wrap.innerHTML = years.map(y=>{
-          const items = groups[y].map(r=>`
-            <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;background:#fff;margin-bottom:8px">
-              <div style="font-size:14px;font-weight:800">${r.partyA || '未命名甲方'}</div>
-              <div style="display:flex;gap:8px;flex-wrap:wrap">
-                <button class="btn secondary" type="button" onclick="loadContractFromHistory('${r.contractId}')">載入</button>
-                <button class="btn secondary" type="button" onclick="duplicateContractFromHistory('${r.contractId}')">複製表單</button>
-              </div>
-            </div>
-          `).join('');
-          return `
-            <div style="margin-bottom:14px">
-              <div style="font-size:15px;font-weight:900;margin-bottom:8px">${y}</div>
-              ${items}
-            </div>
-          `;
-        }).join('');
-      }
-      function loadContractFromHistory(id){
-        const row = contractHistoryCache.find(r=>String(r.contractId)===String(id));
-        if(!row) return;
-        applyFormData(row.formData || row);
-      }
-      function duplicateContractFromHistory(id){
-        const row = contractHistoryCache.find(r=>String(r.contractId)===String(id));
-        if(!row) return;
-        const data = Object.assign({}, row.formData || row);
-        delete data.contractId;
-        applyFormData(data);
-      }
-    </script>
   </div>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+  <script>
+    let currentUser = null;
+    const defaultValues = {};
+    function qs(sel){ return document.querySelector(sel); }
+    function todayStr(){ const d=new Date(); const y=d.getFullYear(); const m=String(d.getMonth()+1).padStart(2,'0'); const day=String(d.getDate()).padStart(2,'0'); return `${y}-${m}-${day}`; }
+    function toRocDate(dateStr){
+      if(!dateStr) return '中華民國　　　年　　月　　日';
+      const d = new Date(dateStr + 'T00:00:00');
+      if(String(d)==='Invalid Date') return dateStr;
+      const y = d.getFullYear() - 1911;
+      return `中華民國 ${y} 年 ${d.getMonth()+1} 月 ${d.getDate()} 日`;
+    }
+    function money(v){ return Number(v||0).toLocaleString('zh-TW'); }
+    function readValues(){
+      return {
+        contractTitle: qs('#contractTitle').value.trim(),
+        partyAName: qs('#partyAName').value.trim(),
+        partyBName: qs('#partyBName').value.trim(),
+        equipmentName: qs('#equipmentName').value.trim(),
+        rentDays: qs('#rentDays').value.trim(),
+        startDate: qs('#startDate').value.trim(),
+        contractDate: qs('#contractDate').value.trim(),
+        rentFee: qs('#rentFee').value.trim(),
+        shippingFee: qs('#shippingFee').value.trim(),
+        includedItems: qs('#includedItems').value.trim(),
+        clause4: qs('#clause4').value.trim(),
+        clause5: qs('#clause5').value.trim(),
+        clause6: qs('#clause6').value.trim(),
+        clause7: qs('#clause7').value.trim(),
+        partyATaxId: qs('#partyATaxId').value.trim(),
+        partyBTaxId: qs('#partyBTaxId').value.trim(),
+        partyAPhone: qs('#partyAPhone').value.trim(),
+        partyBPhone: qs('#partyBPhone').value.trim(),
+        partyAAddress: qs('#partyAAddress').value.trim(),
+        partyBAddress: qs('#partyBAddress').value.trim(),
+        partyAOwner: qs('#partyAOwner').value.trim(),
+        partyBOwner: qs('#partyBOwner').value.trim()
+      };
+    }
+    function renderPreview(){
+      const v = readValues();
+      qs('#pvContractTitle').textContent = v.contractTitle || '設備租賃契約書';
+      qs('#pvIntro').textContent = `立契約書人 ${v.partyAName || '甲方'}（以下簡稱甲方）\n立契約書人 ${v.partyBName || '乙方'}（以下簡稱乙方）\n\n甲方向乙方租賃設備，簽訂契約條款如下：`;
+      qs('#pvEquipment').textContent = v.equipmentName || '—';
+      qs('#pvRentTerm').textContent = `租賃期間為 ${v.rentDays || '—'} 天，租賃開始時間 ${toRocDate(v.startDate)}`;
+      qs('#pvFee').textContent = `租賃費用 ${money(v.rentFee)} 元，運費 ${money(v.shippingFee)} 元`;
+      qs('#pvIncluded').textContent = v.includedItems || '—';
+      qs('#pvClause4').textContent = v.clause4 || '—';
+      qs('#pvClause5').textContent = v.clause5 || '—';
+      qs('#pvClause6').textContent = v.clause6 || '—';
+      qs('#pvClause7').textContent = v.clause7 || '—';
+      qs('#pvPartyA').textContent = `公司名稱：${v.partyAName || ''}\n${v.partyAOwner ? '負 責 人：' + v.partyAOwner + '\n' : ''}統一編號：${v.partyATaxId || ''}\n地址：${v.partyAAddress || ''}\n聯絡電話：${v.partyAPhone || ''}`;
+      qs('#pvPartyB').textContent = `公司名稱：${v.partyBName || ''}\n負 責 人：${v.partyBOwner || ''}\n統一編號：${v.partyBTaxId || ''}\n地址：${v.partyBAddress || ''}\n聯絡電話：${v.partyBPhone || ''}`;
+      qs('#pvContractDate').textContent = toRocDate(v.contractDate);
+    }
+    function bindInputs(){
+      document.querySelectorAll('input, textarea').forEach(el=>{
+        el.addEventListener('input', renderPreview);
+        el.addEventListener('change', renderPreview);
+      });
+    }
+    function resetForm(){
+      Object.keys(defaultValues).forEach(id=>{ if(qs('#'+id)) qs('#'+id).value = defaultValues[id]; });
+      renderPreview();
+    }
+    function savePdf(){
+      window.print();
+    }
+    function initPage(){
+      fillHeader();
+      currentUser = requireLogin();
+      if(!currentUser) return;
+      if(!isManager(currentUser)){ location.href='dashboard.html'; return; }
+      if(!qs('#startDate').value) qs('#startDate').value = todayStr();
+      if(!qs('#contractDate').value) qs('#contractDate').value = todayStr();
+      document.querySelectorAll('input, textarea').forEach(el=> defaultValues[el.id] = el.value);
+      bindInputs();
+      renderPreview();
+    }
+  </script>
 </body>
 </html>
