@@ -278,16 +278,20 @@
       qs('#pvClause5').textContent = v.clause5 || '—';
       qs('#pvClause6').textContent = v.clause6 || '—';
       qs('#pvClause7').textContent = v.clause7 || '—';
-      qs('#pvPartyA').textContent = `公司名稱：${v.partyAName || ''}
-${v.partyAOwner ? '負 責 人：' + v.partyAOwner + '
-' : ''}統一編號：${v.partyATaxId || ''}
-地址：${v.partyAAddress || ''}
-聯絡電話：${v.partyAPhone || ''}`;
-      qs('#pvPartyB').textContent = `公司名稱：${v.partyBName || ''}
-負 責 人：${v.partyBOwner || ''}
-統一編號：${v.partyBTaxId || ''}
-地址：${v.partyBAddress || ''}
-聯絡電話：${v.partyBPhone || ''}`;
+      qs('#pvPartyA').textContent = [
+        `公司名稱：${v.partyAName || ''}`,
+        v.partyAOwner ? `負 責 人：${v.partyAOwner}` : '',
+        `統一編號：${v.partyATaxId || ''}`,
+        `地址：${v.partyAAddress || ''}`,
+        `聯絡電話：${v.partyAPhone || ''}`
+      ].filter(Boolean).join('\n');
+      qs('#pvPartyB').textContent = [
+        `公司名稱：${v.partyBName || ''}`,
+        `負 責 人：${v.partyBOwner || ''}`,
+        `統一編號：${v.partyBTaxId || ''}`,
+        `地址：${v.partyBAddress || ''}`,
+        `聯絡電話：${v.partyBPhone || ''}`
+      ].filter(Boolean).join('\n');
       qs('#pvContractDate').textContent = toRocDate(v.contractDate);
       if(!qs('#emailSubject').dataset.touched){
         qs('#emailSubject').value = `${v.partyAName || '甲方'}｜設備租賃契約書`;
