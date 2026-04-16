@@ -57,14 +57,14 @@
           <div class="field-error" id="errorReason"></div>
         </div>
         <div id="leavePolicyHint" class="policy-card hidden"></div>
-        <div class="field hidden" id="fieldEventChoice"><label for="eventChoice">事件延續</label><select id="eventChoice" disabled><option value="">請先選擇婚假或喪假</option></select><div class="field-error" id="errorEventChoice"></div><div class="muted" id="eventChoiceHintText">若這次是延續上一次事件，請直接沿用；不是同一事件再建立新事件。</div></div>
+        <div class="field hidden" id="fieldEventChoice"><label for="eventChoice">事件延續</label><select id="eventChoice" disabled><option value="">請先選擇婚假或喪假</option></select><div class="field-error" id="errorEventChoice"></div><div class="muted" id="eventChoiceHintText">若這次是延續上一次事件，請直接沿用；只有不是同一事件時才建立新的婚假／喪假事件。</div></div>
         <div class="event-box hidden" id="eventContextBox"></div>
         <div class="field hidden" id="fieldBereavementRelation"><label for="bereavementRelation">喪假關係人</label><select id="bereavementRelation" disabled><option value="">請先讀取關係資料</option></select><div class="field-error" id="errorBereavementRelation"></div><div class="muted" id="bereavementHintText">選擇關係人後，系統會顯示目前設定的喪假天數。</div></div>
         <div class="field" id="fieldLeaveDate"><label for="leaveDate">請假日期</label><input id="leaveDate" type="date"><div class="field-error" id="errorLeaveDate"></div></div>
         <div class="field" id="fieldHours"><label for="hours">請假時數</label><select id="hours" disabled><option value="">讀取時數選項中...</option></select><div class="field-error" id="errorHours"></div></div>
         <div id="specialLeaveHint" class="muted hidden" style="margin-top:-6px;margin-bottom:14px">特休會直接視為整天，不需要另外選擇時數。</div>
         <div class="field" id="fieldNote"><label for="note">備註</label><textarea id="note" placeholder="有任何問題請填寫在這裡"></textarea></div>
-        <div class="field" id="fieldFile"><label for="file" id="fileLabel">附件（選填）</label><input id="file" type="file" accept=".jpg,.jpeg,.png,.pdf,.doc,.docx"><div class="muted" id="fileHintText">可上傳 jpg、png、pdf、doc、docx，單檔上限 30MB。</div></div>
+        <div class="field" id="fieldFile"><label for="file" id="fileLabel">附件（選填）</label><input id="file" type="file" accept=".jpg,.jpeg,.png,.pdf,.doc,.docx"><div class="muted" id="fileHintText">可上傳 jpg、png、pdf、doc、docx，單檔上限 30MB。婚假／喪假／病假可先送出，核准後可再補證明。</div></div>
         <input id="editingRequestId" type="hidden">
         <div class="btn-row"><button class="btn" id="submitBtn">送出請假申請</button><button class="btn secondary hidden" type="button" id="cancelEditBtn">取消修改</button></div>
                 <div id="localMsg" class="message local-message"></div>
@@ -460,7 +460,7 @@ function renderPolicyHint(meta){
     box.classList.add('hidden');
     box.innerHTML = '';
     label.textContent = '附件（選填）';
-    fileHint.textContent = '可上傳 jpg、png、pdf、doc、docx，單檔上限 30MB。';
+    fileHint.textContent = '可上傳 jpg、png、pdf、doc、docx，單檔上限 30MB。婚假／喪假／病假可先送出，核准後可再補證明。';
     return;
   }
   const rule = leaveRuleMap[meta.name] || null;
@@ -479,7 +479,7 @@ function renderPolicyHint(meta){
   label.textContent = meta.attachmentRule === 'required' ? '附件（建議必附）' : '附件（選填）';
   fileHint.textContent = (rule && rule.proofText)
     ? rule.proofText
-    : (meta.attachmentRule === 'required' ? '這個假別建議一起附上證明文件，避免主管退件。' : '可上傳 jpg、png、pdf、doc、docx，單檔上限 30MB。');
+    : (meta.attachmentRule === 'required' ? '這個假別建議一起附上證明文件，避免主管退件。' : '可上傳 jpg、png、pdf、doc、docx，單檔上限 30MB。婚假／喪假／病假可先送出，核准後可再補證明。');
 }
 function toggleBereavementRelation(){
   const reason = qs('#reason') ? qs('#reason').value : '';
