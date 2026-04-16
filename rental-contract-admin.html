@@ -39,6 +39,13 @@
     .sign-line{position:absolute;left:10mm;right:10mm;bottom:6mm;border-top:1px solid #64748b}
     .muted-tip{font-size:12px;color:#64748b;line-height:1.7}
     .print-only{display:none}
+
+    .history-card,.email-card{margin-top:14px}
+    .history-year{font-size:15px;font-weight:900;margin:0 0 8px}
+    .history-item{display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid #e2e8f0;border-radius:14px;padding:10px 12px;background:#fff;margin-bottom:8px}
+    .history-item-title{font-size:14px;font-weight:800;line-height:1.5}
+    .history-item-actions{display:flex;gap:8px;flex-wrap:wrap}
+
     @media print{
       html,body{margin:0!important;padding:0!important;background:#fff!important}
       body *{visibility:hidden!important}
@@ -56,19 +63,12 @@
         margin:0 auto!important;
         page-break-after:auto!important;
       }
-      .page-return-wrap,.topbar,.subcard:first-child,.muted-tip{display:none!important}
-      /* 關鍵：列印與另存 PDF 時維持跟右邊預覽相同的左右並排 */
-      .contract-box-grid,.party-grid,.signature-grid,.row2{
-        display:grid!important;
-        grid-template-columns:1fr 1fr!important;
-      }
-      .row3{
-        display:grid!important;
-        grid-template-columns:1fr 1fr 1fr!important;
-      }
+      .page-return-wrap,.topbar,.subcard:first-child,.email-card,.history-card,.muted-tip{display:none!important}
+      .contract-box-grid,.party-grid,.signature-grid,.row2{display:grid!important;grid-template-columns:1fr 1fr!important}
+      .row3{display:grid!important;grid-template-columns:1fr 1fr 1fr!important}
       @page{size:A4 portrait;margin:0}
     }
-    @media screen and (max-width:1180px){
+    @media (max-width:1180px){
       .layout{grid-template-columns:1fr}
       .contract-sheet{width:100%;min-height:auto;padding:16px}
       .contract-box-grid,.party-grid,.signature-grid,.row2,.row3{grid-template-columns:1fr}
@@ -89,7 +89,8 @@
       <div class="layout">
         <div>
           <div class="subcard">
-            <div class="muted-tip" style="margin-bottom:12px">這個頁面的操作方式比照估價單：左邊填寫、右邊即時預覽；列印與另存 PDF 都直接使用右邊這一份版型。</div>
+            <input id="contractId" type="hidden" value="">
+            <div class="muted-tip" style="margin-bottom:12px">這個頁面的操作方式比照估價單：左邊填寫、右邊即時預覽；右邊預覽 = 列印 = 另存 PDF。</div>
             <div class="field"><label>契約書標題</label><input id="contractTitle" value="設備租賃契約書"></div>
             <div class="row2">
               <div class="field"><label>甲方名稱</label><input id="partyAName" value="晟瑞科技股份有限公司"></div>
@@ -130,8 +131,30 @@
             <div class="mini-actions" style="margin-top:16px">
               <button class="btn" type="button" onclick="printContract()">列印</button>
               <button class="btn secondary" type="button" onclick="savePdf()">另存 PDF</button>
-              <button class="btn secondary" type="button" onclick="resetForm()">恢復預設內容</button>
+              <button class="btn secondary" type="button" onclick="saveContract()">儲存合約</button>
+              <button class="btn secondary" type="button" onclick="newBlankContract()">新增空白合約</button>
             </div>
+          </div>
+
+          <div class="subcard email-card">
+            <div class="section-title" style="margin:0 0 10px">寄送 Email</div>
+            <div class="row2">
+              <div class="field"><label>收件人 Email</label><input id="emailTo" type="email" placeholder="example@example.com"></div>
+              <div class="field"><label>副本 CC（選填）</label><input id="emailCc" type="email" placeholder=""></div>
+            </div>
+            <div class="field"><label>信件主旨</label><input id="emailSubject" value="設備租賃契約書"></div>
+            <div class="field"><label>信件內容</label><textarea id="emailBody">您好，
+附件為本次設備租賃契約書 PDF，請查收。
+如內容需要調整，請直接回信告知，謝謝。</textarea></div>
+            <div class="mini-actions" style="margin-top:12px">
+              <button class="btn" type="button" onclick="sendContractEmail()">寄送合約</button>
+            </div>
+          </div>
+
+          <div class="subcard history-card">
+            <div class="section-title" style="margin:0 0 10px">歷史資料</div>
+            <div class="muted-tip" style="margin-bottom:10px">依年份分類顯示，列表先顯示甲方公司名稱與租賃設備名稱。</div>
+            <div id="historyWrap"><div class="muted-tip">目前還沒有合約資料。</div></div>
           </div>
         </div>
         <div id="printArea">
@@ -185,11 +208,15 @@
       </div>
     </div>
   </div>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script src="config.js"></script>
   <script src="app.js"></script>
+  
   <script>
     let currentUser = null;
     const defaultValues = {};
+    let historyRows = [];
     function qs(sel){ return document.querySelector(sel); }
     function todayStr(){ const d=new Date(); const y=d.getFullYear(); const m=String(d.getMonth()+1).padStart(2,'0'); const day=String(d.getDate()).padStart(2,'0'); return `${y}-${m}-${day}`; }
     function toRocDate(dateStr){
@@ -202,6 +229,7 @@
     function money(v){ return Number(v||0).toLocaleString('zh-TW'); }
     function readValues(){
       return {
+        contractId: qs('#contractId').value.trim(),
         contractTitle: qs('#contractTitle').value.trim(),
         partyAName: qs('#partyAName').value.trim(),
         partyBName: qs('#partyBName').value.trim(),
@@ -226,10 +254,22 @@
         partyBOwner: qs('#partyBOwner').value.trim()
       };
     }
+    function applyValues(v, asNew){
+      if(!v) return;
+      const ids = ['contractTitle','partyAName','partyBName','equipmentName','rentDays','startDate','contractDate','rentFee','shippingFee','includedItems','clause4','clause5','clause6','clause7','partyATaxId','partyBTaxId','partyAPhone','partyBPhone','partyAAddress','partyBAddress','partyAOwner','partyBOwner'];
+      ids.forEach(id=>{
+        if(v[id] != null && qs('#'+id)) qs('#'+id).value = v[id];
+      });
+      qs('#contractId').value = asNew ? '' : (v.contractId || '');
+      renderPreview();
+    }
     function renderPreview(){
       const v = readValues();
       qs('#pvContractTitle').textContent = v.contractTitle || '設備租賃契約書';
-      qs('#pvIntro').textContent = `立契約書人 ${v.partyAName || '甲方'}（以下簡稱甲方）\n立契約書人 ${v.partyBName || '乙方'}（以下簡稱乙方）\n\n甲方向乙方租賃設備，簽訂契約條款如下：`;
+      qs('#pvIntro').textContent = `立契約書人 ${v.partyAName || '甲方'}（以下簡稱甲方）
+立契約書人 ${v.partyBName || '乙方'}（以下簡稱乙方）
+
+甲方向乙方租賃設備，簽訂契約條款如下：`;
       qs('#pvEquipment').textContent = v.equipmentName || '—';
       qs('#pvRentTerm').textContent = `租賃期間為 ${v.rentDays || '—'} 天，租賃開始時間 ${toRocDate(v.startDate)}`;
       qs('#pvFee').textContent = `租賃費用 ${money(v.rentFee)} 元，運費 ${money(v.shippingFee)} 元`;
@@ -238,25 +278,159 @@
       qs('#pvClause5').textContent = v.clause5 || '—';
       qs('#pvClause6').textContent = v.clause6 || '—';
       qs('#pvClause7').textContent = v.clause7 || '—';
-      qs('#pvPartyA').textContent = `公司名稱：${v.partyAName || ''}\n${v.partyAOwner ? '負 責 人：' + v.partyAOwner + '\n' : ''}統一編號：${v.partyATaxId || ''}\n地址：${v.partyAAddress || ''}\n聯絡電話：${v.partyAPhone || ''}`;
-      qs('#pvPartyB').textContent = `公司名稱：${v.partyBName || ''}\n負 責 人：${v.partyBOwner || ''}\n統一編號：${v.partyBTaxId || ''}\n地址：${v.partyBAddress || ''}\n聯絡電話：${v.partyBPhone || ''}`;
+      qs('#pvPartyA').textContent = `公司名稱：${v.partyAName || ''}
+${v.partyAOwner ? '負 責 人：' + v.partyAOwner + '
+' : ''}統一編號：${v.partyATaxId || ''}
+地址：${v.partyAAddress || ''}
+聯絡電話：${v.partyAPhone || ''}`;
+      qs('#pvPartyB').textContent = `公司名稱：${v.partyBName || ''}
+負 責 人：${v.partyBOwner || ''}
+統一編號：${v.partyBTaxId || ''}
+地址：${v.partyBAddress || ''}
+聯絡電話：${v.partyBPhone || ''}`;
       qs('#pvContractDate').textContent = toRocDate(v.contractDate);
+      if(!qs('#emailSubject').dataset.touched){
+        qs('#emailSubject').value = `${v.partyAName || '甲方'}｜設備租賃契約書`;
+      }
     }
     function bindInputs(){
       document.querySelectorAll('input, textarea').forEach(el=>{
-        el.addEventListener('input', renderPreview);
-        el.addEventListener('change', renderPreview);
+        if(el.id !== 'emailSubject' && el.id !== 'emailBody' && el.id !== 'emailTo' && el.id !== 'emailCc'){
+          el.addEventListener('input', renderPreview);
+          el.addEventListener('change', renderPreview);
+        }
       });
+      qs('#emailSubject').addEventListener('input', ()=>{ qs('#emailSubject').dataset.touched='1'; });
     }
-    function resetForm(){
+    function resetFormToDefaults(){
       Object.keys(defaultValues).forEach(id=>{ if(qs('#'+id)) qs('#'+id).value = defaultValues[id]; });
+      qs('#contractId').value = '';
+      delete qs('#emailSubject').dataset.touched;
       renderPreview();
     }
-    function printContract(){
+    function newBlankContract(){
+      resetFormToDefaults();
+      setLocalMsg && setLocalMsg('已建立新的空白合約。');
+    }
+    async function saveContract(silent){
+      if(!currentUser) return { ok:false, message:'尚未登入' };
+      const payload = readValues();
+      const res = await api('saveRentalContract', { userId: currentUser.id, formData: payload, contractId: payload.contractId || '' });
+      if(res && res.ok){
+        qs('#contractId').value = res.contractId || '';
+        await loadHistory();
+        if(!silent && window.setLocalMsg) setLocalMsg('合約已儲存。');
+      }else if(!silent && window.setLocalMsg){
+        setLocalMsg((res && res.message) || '合約儲存失敗', true);
+      }
+      return res;
+    }
+    async function buildPdfBlob(){
+      const target = document.querySelector('#printArea .contract-sheet');
+      const canvas = await html2canvas(target, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+      const imgData = canvas.toDataURL('image/png');
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      pdf.addImage(imgData, 'PNG', 0, 0, 210, 297, undefined, 'FAST');
+      const blob = pdf.output('blob');
+      return { pdf, blob };
+    }
+    function buildFileName(){
+      const v = readValues();
+      const name = [v.partyAName || '合約', v.equipmentName || '設備'].join('_').replace(/[\/:*?"<>|]/g,'_');
+      return `${name}.pdf`;
+    }
+    async function printContract(){
       window.print();
     }
-    function savePdf(){
-      window.print();
+    async function savePdf(){
+      try{
+        const saved = await saveContract(true);
+        const { pdf } = await buildPdfBlob();
+        pdf.save(buildFileName());
+        if(window.setLocalMsg) setLocalMsg('PDF 已開始下載。');
+      }catch(err){
+        if(window.setLocalMsg) setLocalMsg(err.message || 'PDF 下載失敗', true);
+      }
+    }
+    async function sendContractEmail(){
+      try{
+        const to = qs('#emailTo').value.trim();
+        if(!to) throw new Error('請填寫收件人 Email。');
+        const saved = await saveContract(true);
+        const { blob } = await buildPdfBlob();
+        const base64 = await new Promise((resolve,reject)=>{
+          const fr = new FileReader();
+          fr.onload = ()=> resolve(String(fr.result).split(',')[1] || '');
+          fr.onerror = reject;
+          fr.readAsDataURL(blob);
+        });
+        const res = await api('sendRentalContractEmail', {
+          userId: currentUser.id,
+          contractId: qs('#contractId').value.trim(),
+          formData: readValues(),
+          to: to,
+          cc: qs('#emailCc').value.trim(),
+          subject: qs('#emailSubject').value.trim(),
+          body: qs('#emailBody').value.trim(),
+          pdfBase64: base64,
+          pdfName: buildFileName()
+        });
+        if(!res || !res.ok) throw new Error((res && res.message) || '寄送失敗');
+        await loadHistory();
+        if(window.setLocalMsg) setLocalMsg('合約已寄送到信箱。');
+      }catch(err){
+        if(window.setLocalMsg) setLocalMsg(err.message || '寄送失敗', true);
+      }
+    }
+    async function loadHistory(){
+      try{
+        const res = await api('getRentalContracts', { userId: currentUser.id });
+        historyRows = (res && res.ok && Array.isArray(res.rows)) ? res.rows : [];
+        renderHistory();
+      }catch(err){
+        console.warn(err);
+      }
+    }
+    function renderHistory(){
+      const wrap = qs('#historyWrap');
+      if(!historyRows.length){
+        wrap.innerHTML = '<div class="muted-tip">目前還沒有合約資料。</div>';
+        return;
+      }
+      const groups = {};
+      historyRows.forEach(row=>{
+        const year = String(row.year || '');
+        (groups[year] ||= []).push(row);
+      });
+      const years = Object.keys(groups).sort((a,b)=> b.localeCompare(a));
+      wrap.innerHTML = years.map(year=>{
+        const items = groups[year].map(row=>`
+          <div class="history-item">
+            <div class="history-item-title">${escapeHtml(row.partyAName || '未命名甲方')}｜${escapeHtml(row.equipmentName || '未填設備')}</div>
+            <div class="history-item-actions">
+              <button class="btn secondary" type="button" onclick="loadContractHistoryItem('${row.contractId}')">載入</button>
+              <button class="btn secondary" type="button" onclick="duplicateContractHistoryItem('${row.contractId}')">複製表單</button>
+            </div>
+          </div>
+        `).join('');
+        return `<div style="margin-bottom:14px"><div class="history-year">${year}</div>${items}</div>`;
+      }).join('');
+    }
+    function escapeHtml(s){
+      return String(s || '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+    }
+    function loadContractHistoryItem(id){
+      const row = historyRows.find(r=> String(r.contractId||'') === String(id));
+      if(!row) return;
+      applyValues(row.formData || row, false);
+      if(window.setLocalMsg) setLocalMsg('已載入歷史合約。');
+    }
+    function duplicateContractHistoryItem(id){
+      const row = historyRows.find(r=> String(r.contractId||'') === String(id));
+      if(!row) return;
+      applyValues(row.formData || row, true);
+      if(window.setLocalMsg) setLocalMsg('已複製成新的空白表單，可另行儲存。');
     }
     function initPage(){
       fillHeader();
@@ -265,9 +439,10 @@
       if(!isManager(currentUser)){ location.href='dashboard.html'; return; }
       if(!qs('#startDate').value) qs('#startDate').value = todayStr();
       if(!qs('#contractDate').value) qs('#contractDate').value = todayStr();
-      document.querySelectorAll('input, textarea').forEach(el=> defaultValues[el.id] = el.value);
+      document.querySelectorAll('input, textarea').forEach(el=>{ if(el.id) defaultValues[el.id] = el.value; });
       bindInputs();
       renderPreview();
+      loadHistory();
     }
   </script>
 </body>
