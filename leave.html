@@ -69,14 +69,14 @@
         <div class="btn-row"><button class="btn" id="submitBtn">送出請假申請</button><button class="btn secondary hidden" type="button" id="cancelEditBtn">取消修改</button></div>
                 <div id="localMsg" class="message local-message"></div>
       </div>
-      <div class="card" id="leaveHistoryCard"><h2 class="title" style="font-size:20px;margin-bottom:8px">本年度請假紀錄</h2><div class="muted" id="yearText">只顯示今年資料。</div><div id="list" class="list" style="margin-top:12px"></div><div class="summary-box"><div class="help-title">目前假期摘要</div><div class="summary-grid" id="summaryGrid"></div></div></div>
-      <div class="card" id="leaveOverviewCard">
-        <h2 class="title" style="font-size:20px;margin-bottom:8px">個人假期總覽</h2>
-        <div class="muted" id="leaveOverviewIntro">只顯示和你目前有關的假期資料，未曾使用的婚假、喪假不會另外跳出。</div>
-        <div class="summary-box" id="leaveOverviewMetaWrap"><div class="help-title">個人假期總覽</div><div class="summary-grid" id="leaveOverviewMeta"></div></div>
-        <div class="summary-box" id="leaveOverviewUsageWrap"><div class="help-title">目前可用 / 已使用的假期</div><div class="summary-grid" id="leaveOverviewUsage"></div></div>
-        <div class="policy-card" id="leaveOverviewNotice"></div>
+      <div class="card" id="leaveSimpleInfoCard">
+        <h2 class="title" style="font-size:20px;margin-bottom:8px">我的請假資訊</h2>
+        <div class="muted" id="leaveSimpleIntro">只保留到職日、特休與事件型假別剩餘資訊。</div>
+        <div class="summary-box" id="leaveSimpleMetaWrap"><div class="help-title">基本資訊</div><div class="summary-grid" id="leaveSimpleMeta"></div></div>
+        <div class="summary-box" id="leaveSimpleUsageWrap"><div class="help-title">目前可用的假期</div><div class="summary-grid" id="leaveSimpleUsage"></div></div>
+        <div class="policy-card hidden" id="leaveSimpleNotice"></div>
       </div>
+      <div class="card" id="leaveHistoryCard"><h2 class="title" style="font-size:20px;margin-bottom:8px">本年度請假紀錄</h2><div class="muted" id="yearText">只顯示今年資料。</div><div id="list" class="list" style="margin-top:12px"></div></div>
     </div>
 
     <div class="card hidden" id="approvalCard">
@@ -114,7 +114,7 @@ function applyLeaveMode(){
   qs('#leavePageTitle').textContent = leaveApprovalMode ? '請假簽核' : '請假申請單';
   qs('#pageHint').textContent = leaveApprovalMode
     ? '這一頁只負責簽核員工送出的請假申請與修改後重送的請假單。'
-    : '此頁只使用新的請假邏輯與制度設定，不再使用舊版備用假別。';
+    : '此頁只保留新的請假邏輯，不再顯示舊版重複假期摘要。';
   qs('#leaveHomeLink').href = leaveApprovalMode ? 'settings.html' : 'dashboard.html';
   qs('#leaveHomeLink').textContent = leaveApprovalMode ? '返回管理首頁' : '返回員工首頁';
 }
@@ -352,7 +352,7 @@ function renderEventContext(meta){
     return;
   }
   box.classList.remove('hidden');
-  box.innerHTML = `<strong>這次會建立新事件</strong><div class="muted">若不是延續上一次${escapeHtml(meta.reason || '')}，就會用新的事件送出。</div>`;
+  box.innerHTML = `<strong>這次會建立新的婚假／喪假事件</strong><div class="muted">若不是延續上一次${escapeHtml(meta.reason || '')}，就會用新的事件送出。</div>`;
 }
 function renderEventChoiceForReason(selectedValue){
   const field = qs('#fieldEventChoice');
@@ -385,7 +385,7 @@ function renderEventChoiceForReason(selectedValue){
   select.innerHTML = options.join('');
   select.value = selectedValue || `continue:${candidates[0].eventId}`;
   if(!select.value) select.value = `continue:${candidates[0].eventId}`;
-  hint.textContent = `若這次是延續上一次${reason}，系統會先幫你帶到同一事件；只有不是同一事件時才建立新的。`;
+  hint.textContent = `若這次和上一次${reason}是同一件事，請優先選擇延續上一次事件；只有不是同一件事時才建立新的。`;
   renderEventContext(selectedEventChoiceMeta());
 }
 
@@ -585,20 +585,7 @@ function renderHistory(rows){
   qsa('[data-delete-id]').forEach(btn => btn.onclick = () => handleDelete(btn.dataset.deleteId));
 }
 function renderSummaryCards(cards){
-  const el = qs('#summaryGrid');
-  if(!el) return;
-  const list = Array.isArray(cards) ? cards : [];
-  if(!list.length){
-    el.innerHTML = '<div class="empty-box">目前沒有可顯示的假期摘要。</div>';
-    return;
-  }
-  el.innerHTML = list.map(item => `
-    <div class="summary-row">
-      <strong>${escapeHtml(item.title || '')}</strong>
-      <div>${escapeHtml(item.valueText || '')}</div>
-      ${item.detail ? `<div class="muted" style="margin-top:4px">${escapeHtml(item.detail)}</div>` : ''}
-    </div>
-  `).join('');
+  return;
 }
 function renderApprovalRows(rows){
   approvalRows = rows || [];
@@ -677,81 +664,65 @@ function computeUsageGroups(rows){
     .map(item => Object.assign({}, item, { value: normalizeDisplayNumber(item.value, item.unit) }));
 }
 function buildOverview(profile, historyData, bundle){
-  const rows = historyData && Array.isArray(historyData.rows) ? historyData.rows : [];
   const eventCandidates = historyData && Array.isArray(historyData.eventCandidates) ? historyData.eventCandidates : [];
   const annual = computeAnnualEntitlement(profile, bundle);
-  const usageGroups = computeUsageGroups(rows).filter(item => item.baseReason !== '婚假' && item.baseReason !== '喪假');
-  const metaCards = [];
+  const metaCards = [{
+    title:'到職與特休',
+    lines:[
+      `到職日：${annual.hireDate || '未設定'}`,
+      `在職時間：${annual.tenureText || '尚未計算'}`,
+      `年度可用特休：${formatAmountText(annual.total, 'days')}`,
+      `已使用特休：${formatAmountText(annual.used, 'days')}`,
+      `剩餘特休：${formatAmountText(annual.remaining, 'days')}`
+    ]
+  }];
+
   const usageCards = [];
-  const notices = [];
-
-  const overviewLines = [];
-  overviewLines.push(`到職日：${annual.hireDate || '未設定'}`);
-  overviewLines.push(`在職時間：${annual.tenureText || '尚未計算'}`);
-  overviewLines.push(`特休制度：${(profile && profile.annualLeaveSystem) || '未設定'}`);
-  overviewLines.push(`本年度可用特休：${formatAmountText(annual.total, 'days')}`);
-  metaCards.push({ title:'個人假期總覽', lines:overviewLines });
-
-  usageCards.push({
-    title:'特休',
-    valueText:`剩餘 ${formatAmountText(annual.remaining, 'days')}`,
-    detail:`已使用 ${formatAmountText(annual.used, 'days')}｜本年度可用 ${formatAmountText(annual.total, 'days')}`
-  });
-
   eventCandidates.forEach(item => {
     usageCards.push({
-      title:item.title || item.label || item.reason || '',
-      valueText:`剩餘 ${formatAmountText(item.remainingDays, 'days')}`,
-      detail:`已使用 ${formatAmountText(item.usedDays, 'days')}｜總額 ${formatAmountText(item.totalDays, 'days')}`
+      title: item.title || item.label || item.reason || '',
+      valueText: `剩餘 ${formatAmountText(item.remainingDays, 'days')}`,
+      detail: `已使用 ${formatAmountText(item.usedDays, 'days')}｜總額 ${formatAmountText(item.totalDays, 'days')}`
     });
   });
 
-  usageGroups.forEach(item => {
-    usageCards.push({
-      title:item.title,
-      valueText:`已使用 ${formatAmountText(item.value, item.unit)}`,
-      detail:''
-    });
-  });
-
+  const notices = [];
   if(eventCandidates.length){
-    notices.push('婚假／喪假若有延續同一事件，系統會先以延續上一次事件為主。');
+    notices.push('婚假 / 喪假若屬延續同一事件，送出前請先確認是否沿用上一次事件。');
   }
+  notices.push('病假、婚假、喪假等需要證明的假別，可先送件；主管核准後若仍缺證明，系統會再通知補件。');
 
   return { annual, metaCards, usageCards, notices };
 }
 function renderLeaveOverview(overview){
   leaveOverviewData = overview || null;
-  const card = qs('#leaveOverviewCard');
-  const metaEl = qs('#leaveOverviewMeta');
-  const usageEl = qs('#leaveOverviewUsage');
-  const noteEl = qs('#leaveOverviewNotice');
-  const introEl = qs('#leaveOverviewIntro');
+  const card = qs('#leaveSimpleInfoCard');
+  const metaEl = qs('#leaveSimpleMeta');
+  const usageEl = qs('#leaveSimpleUsage');
+  const noteEl = qs('#leaveSimpleNotice');
+  const introEl = qs('#leaveSimpleIntro');
   if(!card || !metaEl || !usageEl || !noteEl || !introEl) return;
   if(!overview){
     card.classList.add('hidden');
-    renderSummaryCards([]);
     return;
   }
   card.classList.remove('hidden');
-  introEl.textContent = '只顯示目前和你有關的假期資料，未曾使用的婚假、喪假不會另外跳出。';
-  metaEl.innerHTML = (overview.metaCards || []).length
-    ? overview.metaCards.map(item => `
-        <div class="summary-row">
-          <strong>${escapeHtml(item.title || '')}</strong>
-          <div class="overview-note">${(item.lines || []).map(line => `<div>${escapeHtml(line)}</div>`).join('')}</div>
-        </div>
-      `).join('')
-    : '<div class="empty-box">目前沒有可顯示的個人假期資料。</div>';
+  introEl.textContent = '只顯示到職日、特休與目前進行中的事件型假別資訊。';
+  metaEl.innerHTML = (overview.metaCards || []).map(item => `
+    <div class="summary-row">
+      <strong>${escapeHtml(item.title || '')}</strong>
+      <div class="overview-note">${(item.lines || []).map(line => `<div>${escapeHtml(line)}</div>`).join('')}</div>
+    </div>
+  `).join('') || '<div class="empty-box">目前沒有可顯示的基本資訊。</div>';
   usageEl.innerHTML = (overview.usageCards || []).length
     ? overview.usageCards.map(item => `
-        <div class="summary-row">
-          <strong>${escapeHtml(item.title || '')}</strong>
-          <div>${escapeHtml(item.valueText || '')}</div>
-          ${item.detail ? `<div class="muted" style="margin-top:4px">${escapeHtml(item.detail)}</div>` : ''}
-        </div>
-      `).join('')
-    : '<div class="empty-box">目前沒有需要顯示的假期項目。未曾使用的婚假、喪假等假別不會顯示。</div>';
+      <div class="summary-row">
+        <strong>${escapeHtml(item.title || '')}</strong>
+        <div>${escapeHtml(item.valueText || '')}</div>
+        ${item.detail ? `<div class="muted" style="margin-top:4px">${escapeHtml(item.detail)}</div>` : ''}
+      </div>
+    `).join('')
+    : '<div class="empty-box">目前沒有婚假 / 喪假等進行中的事件型假別。</div>';
   if((overview.notices || []).length){
     noteEl.classList.remove('hidden');
     noteEl.innerHTML = `<div class="overview-note">${overview.notices.map(line => `<div>${escapeHtml(line)}</div>`).join('')}</div>`;
@@ -759,7 +730,6 @@ function renderLeaveOverview(overview){
     noteEl.classList.add('hidden');
     noteEl.innerHTML = '';
   }
-  renderSummaryCards(overview.usageCards || []);
 }
 async function loadStaffData(){
   const user = requireLogin();
