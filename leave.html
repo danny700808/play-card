@@ -964,49 +964,71 @@ async function loadStaffData(){
   setPageProgress('整理請假資料中 45%', 45);
 
   void (async () => {
-    const [historyRes, profileRes] = await Promise.all([
-      apiSafe('getLeaveHistory', { userId:user.id }, 10000, '請假紀錄讀取逾時'),
-      apiSafe('getMyProfile', { userId:user.id }, 10000, '個人資料讀取逾時')
-    ]);
-
     const warnings = [];
+    try{
+      const [historyRes, profileRes] = await Promise.all([
+        apiSafe('getLeaveHistory', { userId:user.id }, 10000, '請假紀錄讀取逾時'),
+        apiSafe('getMyProfile', { userId:user.id }, 10000, '個人資料讀取逾時')
+      ]);
 
-    if(historyRes && historyRes.ok){
-      leaveEventCandidates = Array.isArray(historyRes.eventCandidates) ? historyRes.eventCandidates : [];
-      leaveEventCandidateMap = {};
-      leaveEventCandidates.forEach(item => { leaveEventCandidateMap[item.eventId] = item; });
-      qs('#yearText').textContent = `${historyRes.year || ''} 年度資料`;
-      renderHistory(historyRes.rows || []);
-    }else{
+      if(historyRes && historyRes.ok){
+        leaveEventCandidates = Array.isArray(historyRes.eventCandidates) ? historyRes.eventCandidates : [];
+        leaveEventCandidateMap = {};
+        leaveEventCandidates.forEach(item => { if(item && item.eventId) leaveEventCandidateMap[item.eventId] = item; });
+        qs('#yearText').textContent = `${historyRes.year || ''} 年度資料`;
+        renderHistory(Array.isArray(historyRes.rows) ? historyRes.rows : []);
+      }else{
+        leaveEventCandidates = [];
+        leaveEventCandidateMap = {};
+        qs('#yearText').textContent = '本年度資料讀取失敗';
+        renderHistory([]);
+        warnings.push('請假紀錄：' + ((historyRes && historyRes.message) || '讀取失敗'));
+      }
+
+      renderEventChoiceForReason(qs('#eventChoice') ? qs('#eventChoice').value : '');
+      toggleBereavementRelation();
+
+      currentProfile = profileRes && profileRes.ok ? (profileRes.profile || null) : null;
+      if(!profileRes || !profileRes.ok){
+        warnings.push('個人資料：' + ((profileRes && profileRes.message) || '讀取失敗'));
+      }
+
+      try{
+        const overview = buildOverview(currentProfile || {}, (historyRes && historyRes.ok ? historyRes : { rows:[], eventCandidates:[] }), policyRes && policyRes.ok ? policyRes.bundle : null);
+        renderLeaveOverview(overview);
+      }catch(renderErr){
+        console.error('leave overview render failed', renderErr);
+        warnings.push('頁面整理：' + ((renderErr && renderErr.message) || '顯示失敗'));
+        renderLeaveOverview(buildOverview({}, { rows:[], eventCandidates:[] }, policyRes && policyRes.ok ? policyRes.bundle : null));
+      }
+    }catch(err){
+      console.error('leave page background load failed', err);
+      warnings.push('背景載入：' + ((err && err.message) || '未知錯誤'));
       leaveEventCandidates = [];
       leaveEventCandidateMap = {};
       qs('#yearText').textContent = '本年度資料讀取失敗';
       renderHistory([]);
-      warnings.push((historyRes && historyRes.message) || '請假紀錄讀取失敗。');
-    }
-
-    renderEventChoiceForReason(qs('#eventChoice') ? qs('#eventChoice').value : '');
-    toggleBereavementRelation();
-
-    currentProfile = profileRes && profileRes.ok ? (profileRes.profile || null) : null;
-    if(!profileRes || !profileRes.ok){
-      warnings.push((profileRes && profileRes.message) || '個人資料讀取失敗。');
-    }
-
-    const overview = buildOverview(currentProfile || {}, (historyRes && historyRes.ok ? historyRes : { rows:[], eventCandidates:[] }), policyRes && policyRes.ok ? policyRes.bundle : null);
-    renderLeaveOverview(overview);
-
-    if(policyReady){
-      if(warnings.length){
-        setLocalMsg(warnings.join('；'), true);
-      }
-      setPageProgressDone('請假資料讀取完成');
-    }else{
-      if(warnings.length){
+      try{
+        renderLeaveOverview(buildOverview({}, { rows:[], eventCandidates:[] }, policyRes && policyRes.ok ? policyRes.bundle : null));
+      }catch(_ignore){}
+    }finally{
+      if(policyReady){
+        if(warnings.length){
+          setLocalMsg(warnings.join('；'), true);
+          setPageProgressDone('請假頁已開啟（部分資料未完成）');
+        }else{
+          setLocalMsg('', false);
+          setPageProgressDone('請假資料讀取完成');
+        }
+      }else{
         const base = (policyRes && policyRes.message) || '請假設定尚未完成';
-        setLocalMsg([base].concat(warnings).join('；'), true);
+        if(warnings.length){
+          setLocalMsg([base].concat(warnings).join('；'), true);
+        }else{
+          setLocalMsg(base, true);
+        }
+        setPageProgressError('請假設定尚未完成');
       }
-      setPageProgressError('請假設定尚未完成');
     }
   })();
 }
