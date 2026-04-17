@@ -141,6 +141,21 @@ function localDateInputValue(){
   return new Date(now.getTime() - tzOffset).toISOString().slice(0,10);
 }
 function sleep(ms){ return new Promise(resolve => setTimeout(resolve, ms)); }
+function withTimeout(promise, ms, message){
+  const timeoutMs = Math.max(1000, Number(ms || 0) || 0);
+  if(!timeoutMs) return promise;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(message || '讀取逾時')), timeoutMs))
+  ]);
+}
+async function apiSafe(action, payload={}, timeoutMs=10000, fallbackMessage='讀取失敗'){
+  try{
+    return await withTimeout(api(action, payload), timeoutMs, fallbackMessage);
+  }catch(err){
+    return { ok:false, message:(err && err.message) ? err.message : fallbackMessage };
+  }
+}
 function escapeHtml(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, ch => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[ch])); }
 function clearValidation(){
   ['Reason','EventChoice','BereavementRelation','Segments'].forEach(name => {
@@ -910,15 +925,9 @@ async function loadStaffData(){
   setLeaveFormEnabled(false);
   setPageProgress('讀取請假設定中 15%', 15);
 
-  const policyPromise = api('getLeavePolicyPublicBundle', { userId:user.id }).catch(err => ({ ok:false, message: err && err.message ? err.message : '請假制度讀取失敗' }));
-  const historyPromise = api('getLeaveHistory', { userId:user.id }).catch(err => ({ ok:false, message: err && err.message ? err.message : '請假紀錄讀取失敗' }));
-  const profilePromise = api('getMyProfile', { userId:user.id }).catch(err => ({ ok:false, message: err && err.message ? err.message : '個人資料讀取失敗' }));
-
-  await sleep(80);
-  setPageProgress('整理請假資料中 45%', 45);
-  const [policyRes, historyRes, profileRes] = await Promise.all([policyPromise, historyPromise, profilePromise]);
-
+  const policyRes = await apiSafe('getLeavePolicyPublicBundle', { userId:user.id }, 12000, '請假制度讀取逾時');
   let policyReady = false;
+
   if(policyRes && policyRes.ok && policyRes.bundle){
     buildLeavePolicyMaps(policyRes.bundle);
     renderReasonOptions('');
@@ -927,6 +936,7 @@ async function loadStaffData(){
     policyReady = availableLeaveTypes().length > 0;
     if(policyReady){
       setLeaveFormEnabled(true);
+      setLocalMsg('', false);
     }else{
       setLocalMsg('目前沒有可用假別，請先到主管設定區完成假勤制度。', true);
       setLeaveFormEnabled(false);
@@ -941,32 +951,64 @@ async function loadStaffData(){
     setLeaveFormEnabled(false);
   }
 
-  if(historyRes && historyRes.ok){
-    leaveEventCandidates = Array.isArray(historyRes.eventCandidates) ? historyRes.eventCandidates : [];
-    leaveEventCandidateMap = {};
-    leaveEventCandidates.forEach(item => { leaveEventCandidateMap[item.eventId] = item; });
-    qs('#yearText').textContent = `${historyRes.year || ''} 年度資料`;
-    renderHistory(historyRes.rows || []);
-  }else{
-    leaveEventCandidates = [];
-    leaveEventCandidateMap = {};
-    qs('#yearText').textContent = '本年度資料讀取失敗';
-    renderHistory([]);
-    setLocalMsg((historyRes && historyRes.message) || '請假紀錄讀取失敗。', true);
-  }
-
+  leaveEventCandidates = [];
+  leaveEventCandidateMap = {};
+  qs('#yearText').textContent = '讀取年度資料中…';
+  renderHistory([]);
   renderEventChoiceForReason(qs('#eventChoice') ? qs('#eventChoice').value : '');
   toggleBereavementRelation();
 
-  currentProfile = profileRes && profileRes.ok ? (profileRes.profile || null) : null;
-  const overview = buildOverview(currentProfile || {}, (historyRes && historyRes.ok ? historyRes : { rows:[], eventCandidates:[] }), policyRes && policyRes.ok ? policyRes.bundle : null);
-  renderLeaveOverview(overview);
+  currentProfile = null;
+  renderLeaveOverview(buildOverview({}, { rows:[], eventCandidates:[] }, policyRes && policyRes.ok ? policyRes.bundle : null));
 
-  if(policyReady){
-    setPageProgressDone('請假資料讀取完成');
-  }else{
-    setPageProgressError('請假設定尚未完成');
-  }
+  setPageProgress('整理請假資料中 45%', 45);
+
+  void (async () => {
+    const [historyRes, profileRes] = await Promise.all([
+      apiSafe('getLeaveHistory', { userId:user.id }, 10000, '請假紀錄讀取逾時'),
+      apiSafe('getMyProfile', { userId:user.id }, 10000, '個人資料讀取逾時')
+    ]);
+
+    const warnings = [];
+
+    if(historyRes && historyRes.ok){
+      leaveEventCandidates = Array.isArray(historyRes.eventCandidates) ? historyRes.eventCandidates : [];
+      leaveEventCandidateMap = {};
+      leaveEventCandidates.forEach(item => { leaveEventCandidateMap[item.eventId] = item; });
+      qs('#yearText').textContent = `${historyRes.year || ''} 年度資料`;
+      renderHistory(historyRes.rows || []);
+    }else{
+      leaveEventCandidates = [];
+      leaveEventCandidateMap = {};
+      qs('#yearText').textContent = '本年度資料讀取失敗';
+      renderHistory([]);
+      warnings.push((historyRes && historyRes.message) || '請假紀錄讀取失敗。');
+    }
+
+    renderEventChoiceForReason(qs('#eventChoice') ? qs('#eventChoice').value : '');
+    toggleBereavementRelation();
+
+    currentProfile = profileRes && profileRes.ok ? (profileRes.profile || null) : null;
+    if(!profileRes || !profileRes.ok){
+      warnings.push((profileRes && profileRes.message) || '個人資料讀取失敗。');
+    }
+
+    const overview = buildOverview(currentProfile || {}, (historyRes && historyRes.ok ? historyRes : { rows:[], eventCandidates:[] }), policyRes && policyRes.ok ? policyRes.bundle : null);
+    renderLeaveOverview(overview);
+
+    if(policyReady){
+      if(warnings.length){
+        setLocalMsg(warnings.join('；'), true);
+      }
+      setPageProgressDone('請假資料讀取完成');
+    }else{
+      if(warnings.length){
+        const base = (policyRes && policyRes.message) || '請假設定尚未完成';
+        setLocalMsg([base].concat(warnings).join('；'), true);
+      }
+      setPageProgressError('請假設定尚未完成');
+    }
+  })();
 }
 function startEdit(requestId){
   const row = historyRows.find(item => item.requestId === requestId);
