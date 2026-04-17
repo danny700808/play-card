@@ -57,20 +57,12 @@
           <div class="field-error" id="errorReason"></div>
         </div>
         <div id="leavePolicyHint" class="policy-card hidden"></div>
-        <div class="field hidden" id="fieldEventChoice"><label for="eventChoice">事件延續</label><select id="eventChoice" disabled><option value="">請先選擇婚假或喪假</option></select><div class="field-error" id="errorEventChoice"></div><div class="muted" id="eventChoiceHintText">若這次是延續上一次事件，請直接沿用；只有不是同一事件時才建立新的婚假／喪假事件。</div></div>
+        <div class="field hidden" id="fieldEventChoice"><label for="eventChoice">事件延續</label><select id="eventChoice" disabled><option value="">請先選擇婚假或喪假</option></select><div class="field-error" id="errorEventChoice"></div><div class="muted" id="eventChoiceHintText">若這次和上一次是同一事件，請選擇延續上一次；不是同一事件時再改選建立新事件。</div></div>
         <div class="event-box hidden" id="eventContextBox"></div>
         <div class="field hidden" id="fieldBereavementRelation"><label for="bereavementRelation">喪假關係人</label><select id="bereavementRelation" disabled><option value="">請先讀取關係資料</option></select><div class="field-error" id="errorBereavementRelation"></div><div class="muted" id="bereavementHintText">選擇關係人後，系統會顯示目前設定的喪假天數。</div></div>
         <div class="field" id="fieldLeaveDate"><label for="leaveDate">請假日期</label><input id="leaveDate" type="date"><div class="field-error" id="errorLeaveDate"></div></div>
-        <div class="summary-box hidden" id="leaveDateContextBox"></div>
-        <div class="row" id="fieldTimeRange">
-          <div class="field" id="fieldStartTime"><label for="startTime">請假開始時間</label><input id="startTime" type="time"><div class="field-error" id="errorStartTime"></div></div>
-          <div class="field" id="fieldEndTime"><label for="endTime">請假結束時間</label><input id="endTime" type="time"><div class="field-error" id="errorEndTime"></div></div>
-        </div>
-        <div class="btn-row" style="justify-content:flex-start;margin-top:-4px">
-          <button class="btn secondary mini-btn" type="button" id="fillScheduleBtn">套用當天班表整段時間</button>
-        </div>
-        <div class="field hidden" id="fieldComputedHours"><label for="computedHours">本次請假時數</label><input id="computedHours" type="text" readonly><div class="muted" id="computedHoursHint">系統會依照你選擇的時間自動計算。</div></div>
-        <div id="specialLeaveHint" class="muted hidden" style="margin-top:-6px;margin-bottom:14px">這個假別仍可依班表時間自訂請假區間；若要整段請假可直接按「套用當天班表整段時間」。</div>
+        <div class="field" id="fieldHours"><label for="hours">請假時數</label><select id="hours" disabled><option value="">讀取時數選項中...</option></select><div class="field-error" id="errorHours"></div></div>
+        <div id="specialLeaveHint" class="muted hidden" style="margin-top:-6px;margin-bottom:14px">特休會直接視為整天，不需要另外選擇時數。</div>
         <div class="field" id="fieldNote"><label for="note">備註</label><textarea id="note" placeholder="有任何問題請填寫在這裡"></textarea></div>
         <div class="field" id="fieldFile"><label for="file" id="fileLabel">附件（選填）</label><input id="file" type="file" accept=".jpg,.jpeg,.png,.pdf,.doc,.docx"><div class="muted" id="fileHintText">可上傳 jpg、png、pdf、doc、docx，單檔上限 30MB。婚假／喪假／病假可先送出，核准後可再補證明。</div></div>
         <input id="editingRequestId" type="hidden">
@@ -111,7 +103,6 @@ let leaveOverviewData = null;
 let currentProfile = null;
 let leaveEventCandidates = [];
 let leaveEventCandidateMap = {};
-let currentLeaveDateContext = null;
 
 function applyLeaveMode(){
   leaveApprovalMode = !!(currentUser && hasSettingsZoneAccess(currentUser) && isSettingsMode());
@@ -169,4 +160,720 @@ function setPageProgressState(text, pct, mode){
   if(mode === 'error'){
     root.classList.add('is-error','has-text');
     if(bar) bar.style.width = '100%';
-    if(label) label.textContent 
+    if(label) label.textContent = text || '讀取失敗';
+    return;
+  }
+  root.classList.add('is-loading','has-text');
+  if(bar) bar.style.width = Math.max(0, Math.min(100, Number(pct || 0))) + '%';
+  if(label) label.textContent = text || '';
+}
+function setPageProgress(text, pct){ setPageProgressState(text, pct, 'loading'); }
+function setPageProgressDone(text){
+  setPageProgressState(text || '讀取完成', 100, 'done');
+  const root = qs('#pageProgress');
+  setTimeout(() => { if(root) root.classList.remove('is-loading','has-text'); }, 900);
+}
+function setPageProgressError(text){ setPageProgressState(text || '讀取失敗', 100, 'error'); }
+
+function normalizeDisplayNumber(value, unit){
+  let n = Number(value || 0) || 0;
+  if(unit === 'days'){
+    n = Math.round(n * 10) / 10;
+    if(Math.abs(n - Math.round(n)) < 0.001) n = Math.round(n);
+    return n;
+  }
+  return Math.round(n);
+}
+function formatAmountText(value, unit){
+  const normalized = normalizeDisplayNumber(value, unit);
+  return unit === 'days' ? `${normalized} 天` : `${normalized} 小時`;
+}
+function computeTenureText(hireDateText){
+  const text = String(hireDateText || '').trim();
+  if(!text) return '';
+  const hireDate = new Date(text + 'T00:00:00');
+  if(String(hireDate) === 'Invalid Date') return '';
+  const today = new Date();
+  let months = (today.getFullYear() - hireDate.getFullYear()) * 12 + (today.getMonth() - hireDate.getMonth());
+  if(today.getDate() < hireDate.getDate()) months -= 1;
+  months = Math.max(0, months);
+  const years = Math.floor(months / 12);
+  const remainMonths = months % 12;
+  if(years > 0 && remainMonths > 0) return `${years} 年 ${remainMonths} 個月`;
+  if(years > 0) return `${years} 年`;
+  return `${remainMonths} 個月`;
+}
+function computeAnnualEntitlement(profile, bundle){
+  const hireDate = String((profile && profile.hireDate) || '').trim();
+  const annualRows = Array.isArray(bundle && bundle.annualLeave && bundle.annualLeave.rows) ? bundle.annualLeave.rows : [];
+  let months = null;
+  let matched = null;
+  if(hireDate){
+    const hire = new Date(hireDate + 'T00:00:00');
+    if(String(hire) !== 'Invalid Date'){
+      const today = new Date();
+      months = (today.getFullYear() - hire.getFullYear()) * 12 + (today.getMonth() - hire.getMonth());
+      if(today.getDate() < hire.getDate()) months -= 1;
+      months = Math.max(0, months);
+      matched = annualRows.find(row => {
+        const start = Number(row && row[0]);
+        const end = Number(row && row[1]);
+        return !Number.isNaN(start) && !Number.isNaN(end) && months >= start && months <= end;
+      }) || null;
+    }
+  }
+  function fallbackAnnualDays(m){
+    if(m == null || m < 6) return 0;
+    if(m < 12) return 3;
+    if(m < 24) return 7;
+    if(m < 36) return 10;
+    if(m < 60) return 14;
+    if(m < 120) return 15;
+    const y = Math.floor(m / 12);
+    return Math.min(15 + Math.max(0, y - 10), 30);
+  }
+  let total = Number((profile && profile.annualLeaveTotal) || 0) || 0;
+  const used = Number((profile && profile.annualLeaveUsed) || 0) || 0;
+  let remaining = Number((profile && profile.annualLeaveRemaining) || 0) || 0;
+  const inferredDays = matched ? (Number(matched[2]) || 0) : fallbackAnnualDays(months);
+  // 若員工資料還沒回寫年度特休，直接用到職日推算值
+  if(inferredDays > total) total = inferredDays;
+  remaining = Math.max((remaining || 0), Math.max(total - used, 0));
+  const matchedText = matched ? `${matched[0]}～${matched[1]} 個月可有 ${matched[2]} 天` : '';
+  return { hireDate, months, total, used, remaining, matchedText, tenureText: computeTenureText(hireDate) };
+}
+function policyHeaderIndex(name){ return leaveTypeHeaders.indexOf(name); }
+function buildLeavePolicyMaps(bundle){
+  leavePolicyBundle = bundle || null;
+  leaveTypeHeaders = ((bundle && bundle.leaveTypes && bundle.leaveTypes.headers) || []).map(x => String(x || ''));
+  leaveTypeRows = Array.isArray(bundle && bundle.leaveTypes && bundle.leaveTypes.rows) ? bundle.leaveTypes.rows : [];
+  leaveRuleHeaders = ((bundle && bundle.holidaySummary && bundle.holidaySummary.headers) || []).map(x => String(x || ''));
+  leaveRuleRows = Array.isArray(bundle && bundle.holidaySummary && bundle.holidaySummary.rows) ? bundle.holidaySummary.rows : [];
+  bereavementRows = [];
+  bereavementMap = {};
+  leaveTypeMap = {};
+  leaveRuleMap = {};
+
+  const rawBereavementRows = Array.isArray(bundle && bundle.bereavement && bundle.bereavement.rows) ? bundle.bereavement.rows : [];
+  rawBereavementRows.forEach(row => {
+    const relation = String((row && row[0]) || '').trim();
+    const days = String((row && row[1]) || '').trim();
+    if(!relation) return;
+    const item = { relation, days };
+    bereavementRows.push(item);
+    bereavementMap[relation] = item;
+  });
+
+  const ruleNameIdx = leaveRuleHeaders.indexOf('假別名稱');
+  const ruleTypeIdx = leaveRuleHeaders.indexOf('申請期限類型');
+  const ruleAdvanceIdx = leaveRuleHeaders.indexOf('最少提前天數');
+  const ruleTempIdx = leaveRuleHeaders.indexOf('是否允許臨時申請');
+  const ruleDeadlineIdx = leaveRuleHeaders.indexOf('請畢期限說明');
+  const ruleProofIdx = leaveRuleHeaders.indexOf('證明文件規則');
+  const ruleNoteIdx = leaveRuleHeaders.indexOf('備註');
+  leaveRuleRows.forEach(row => {
+    const name = String((row && row[ruleNameIdx]) || '').trim();
+    if(!name) return;
+    leaveRuleMap[name] = {
+      requestType: String((row && row[ruleTypeIdx]) || '').trim(),
+      minAdvance: String((row && row[ruleAdvanceIdx]) || '').trim(),
+      allowTemp: String((row && row[ruleTempIdx]) || '').trim(),
+      deadlineText: String((row && row[ruleDeadlineIdx]) || '').trim(),
+      proofText: String((row && row[ruleProofIdx]) || '').trim(),
+      note: String((row && row[ruleNoteIdx]) || '').trim()
+    };
+  });
+
+  const idxName = policyHeaderIndex('假別名稱');
+  const idxEnabled = policyHeaderIndex('啟用');
+  const idxIdentity = policyHeaderIndex('適用身分');
+  const idxCanHalf = policyHeaderIndex('可半天');
+  const idxCanHour = policyHeaderIndex('可小時');
+  const idxAttachment = policyHeaderIndex('需附件');
+  const idxProof = policyHeaderIndex('需證明文件');
+  const idxPay = policyHeaderIndex('支薪方式');
+  const idxNote = policyHeaderIndex('說明');
+  const identity = identityLabelOf(currentUser);
+  const fallbackIdentity = identityTypeOf(currentUser) === 'parttime' ? '工讀' : '專職';
+
+  leaveTypeRows.forEach(row => {
+    const name = String((row && row[idxName]) || '').trim();
+    if(!name) return;
+    const enabledFlag = String((row && row[idxEnabled]) || '').trim() || '是';
+    if(enabledFlag !== '是') return;
+    const rawIdentity = String((row && row[idxIdentity]) || '').trim();
+    if(rawIdentity && rawIdentity !== 'all'){
+      const allow = rawIdentity.indexOf(identity) >= 0 || rawIdentity.indexOf(fallbackIdentity) >= 0 || rawIdentity.indexOf('全部') >= 0;
+      if(!allow) return;
+    }
+    leaveTypeMap[name] = {
+      name,
+      canHalf: String((row && row[idxCanHalf]) || '').trim() === '是',
+      canHour: String((row && row[idxCanHour]) || '').trim() === '是',
+      attachmentRule: (String((row && row[idxAttachment]) || '').trim() === '是' || String((row && row[idxProof]) || '').trim() === '是') ? 'required' : 'optional',
+      payText: String((row && row[idxPay]) || '').trim(),
+      note: String((row && row[idxNote]) || '').trim(),
+      identityText: rawIdentity || '全部'
+    };
+  });
+}
+function availableLeaveTypes(){ return Object.values(leaveTypeMap || {}); }
+function getSelectedLeaveMeta(){
+  const name = qs('#reason') ? qs('#reason').value : '';
+  return name ? (leaveTypeMap[name] || null) : null;
+}
+function renderReasonLoading(){
+  const el = qs('#reason');
+  if(!el) return;
+  el.innerHTML = '<option value="">讀取假別中...</option>';
+  el.value = '';
+  el.disabled = true;
+}
+
+function getSpecialEventCandidates(reason){
+  const target = String(reason || '').trim();
+  return (leaveEventCandidates || []).filter(item => String(item.reason || '').trim() === target);
+}
+function selectedEventChoiceMeta(){
+  const reason = qs('#reason') ? qs('#reason').value : '';
+  const value = qs('#eventChoice') ? qs('#eventChoice').value : '';
+  if(!value) return { mode:'', reason, candidate:null };
+  if(value === 'new') return { mode:'new', reason, candidate:null };
+  const match = value.match(/^continue:(.+)$/);
+  if(!match) return { mode:'', reason, candidate:null };
+  return { mode:'continue', reason, candidate: leaveEventCandidateMap[match[1]] || null };
+}
+function renderEventContext(meta){
+  const box = qs('#eventContextBox');
+  if(!box) return;
+  box.classList.add('hidden');
+  box.innerHTML = '';
+  if(!meta || meta.mode !== 'continue' || !meta.candidate) return;
+  const c = meta.candidate;
+  box.classList.remove('hidden');
+  box.innerHTML = `<strong>目前先以延續上一次事件處理</strong><div>${escapeHtml(c.title || c.label || meta.reason || '')}</div><div class="muted">已請 ${escapeHtml(String(c.usedDays || 0))} 天｜剩餘 ${escapeHtml(String(c.remainingDays || 0))} 天</div>`;
+}
+function renderEventChoiceForReason(selectedValue){
+  const field = qs('#fieldEventChoice');
+  const select = qs('#eventChoice');
+  const hint = qs('#eventChoiceHintText');
+  if(!field || !select || !hint) return;
+  const reason = qs('#reason') ? qs('#reason').value : '';
+  const special = reason === '婚假' || reason === '喪假';
+  if(!special){
+    field.classList.add('hidden');
+    select.innerHTML = '<option value="">請先選擇婚假或喪假</option>';
+    select.value = '';
+    select.disabled = true;
+    renderEventContext(null);
+    return;
+  }
+  const candidates = getSpecialEventCandidates(reason);
+  if(!candidates.length){
+    field.classList.add('hidden');
+    select.innerHTML = '<option value="new">建立新事件</option>';
+    select.value = 'new';
+    select.disabled = true;
+    renderEventContext(null);
+    return;
+  }
+  field.classList.remove('hidden');
+  select.disabled = false;
+  const options = candidates.map(item => `<option value="continue:${escapeHtml(item.eventId)}">延續上一次｜${escapeHtml(item.displayText || item.title || item.label || reason)}</option>`);
+  options.push('<option value="new">不是同一事件，建立新事件</option>');
+  select.innerHTML = options.join('');
+  select.value = selectedValue || `continue:${candidates[0].eventId}`;
+  if(!select.value) select.value = `continue:${candidates[0].eventId}`;
+  hint.textContent = `若這次和上一次${reason}是同一件事，請選擇延續上一次；不是同一件事時再改選建立新事件。`;
+  renderEventContext(selectedEventChoiceMeta());
+}
+
+function renderReasonOptions(selected){
+  const el = qs('#reason');
+  if(!el) return;
+  const list = availableLeaveTypes();
+  if(!list.length){
+    el.innerHTML = '<option value="">目前沒有可用假別，請先到設定區完成假勤制度</option>';
+    el.value = '';
+    el.disabled = true;
+    return;
+  }
+  el.innerHTML = ['<option value="">請選擇請假原因</option>']
+    .concat(list.map(item => `<option value="${escapeHtml(item.name)}">${escapeHtml(item.name)}</option>`))
+    .join('');
+  el.disabled = false;
+  if(selected) el.value = selected;
+}
+function renderHoursLoading(){
+  const el = qs('#hours');
+  if(!el) return;
+  el.innerHTML = '<option value="">讀取時數選項中...</option>';
+  el.value = '';
+  el.disabled = true;
+}
+function renderHoursOptions(meta, selected){
+  const el = qs('#hours');
+  if(!el) return;
+  if(!meta){
+    el.innerHTML = '<option value="">請先選擇請假原因</option>';
+    el.value = '';
+    el.disabled = true;
+    return;
+  }
+  let options = [];
+  if(meta.canHour){
+    options = [1,2,3,4,5,6,7,8].map(h => `<option value="${h}">${h} 小時</option>`);
+  }else if(meta.canHalf){
+    options = ['<option value="4">4 小時</option>','<option value="8">8 小時</option>'];
+  }else{
+    options = ['<option value="8">8 小時</option>'];
+  }
+  el.innerHTML = ['<option value="">請選擇請假時數</option>'].concat(options).join('');
+  el.disabled = false;
+  if(selected != null && selected !== '') el.value = String(selected);
+}
+function renderBereavementOptions(selected){
+  const el = qs('#bereavementRelation');
+  if(!el) return;
+  if(!bereavementRows.length){
+    el.innerHTML = '<option value="">目前沒有喪假關係設定</option>';
+    el.disabled = true;
+    return;
+  }
+  el.innerHTML = ['<option value="">請選擇關係人</option>']
+    .concat(bereavementRows.map(item => `<option value="${escapeHtml(item.relation)}">${escapeHtml(item.relation)}${item.days ? `（${escapeHtml(String(item.days))}天）` : ''}</option>`))
+    .join('');
+  el.disabled = false;
+  if(selected) el.value = selected;
+}
+function getSelectedBereavementMeta(){
+  const key = qs('#bereavementRelation') ? qs('#bereavementRelation').value : '';
+  return key ? (bereavementMap[key] || null) : null;
+}
+function renderPolicyHint(meta){
+  const box = qs('#leavePolicyHint');
+  const label = qs('#fileLabel');
+  const fileHint = qs('#fileHintText');
+  if(!box || !label || !fileHint) return;
+  if(!meta){
+    box.classList.add('hidden');
+    box.innerHTML = '';
+    label.textContent = '附件（選填）';
+    fileHint.textContent = '可上傳 jpg、png、pdf、doc、docx，單檔上限 30MB。婚假／喪假／病假可先送出，核准後可再補證明。';
+    return;
+  }
+  const rule = leaveRuleMap[meta.name] || null;
+  const chips = [];
+  chips.push(`<span class="policy-chip">${escapeHtml(meta.identityText || '全部身分')}</span>`);
+  if(meta.payText) chips.push(`<span class="policy-chip">${escapeHtml(meta.payText)}</span>`);
+  chips.push(`<span class="policy-chip">${meta.attachmentRule === 'required' ? '需附件 / 證明' : '附件可選填'}</span>`);
+  chips.push(`<span class="policy-chip">${(!meta.canHalf && !meta.canHour) ? '整天為主' : '可半天 / 小時'}</span>`);
+  if(rule && rule.requestType) chips.push(`<span class="policy-chip">${escapeHtml(rule.requestType)}${rule.minAdvance ? ('｜' + escapeHtml(rule.minAdvance) + '天') : ''}</span>`);
+  if(rule && rule.allowTemp) chips.push(`<span class="policy-chip">${escapeHtml(rule.allowTemp === '是' ? '允許臨時申請' : '不建議臨時申請')}</span>`);
+  const lines = [meta.note || '請依公司最新假勤制度送出申請。'];
+  if(rule && rule.deadlineText) lines.push('請畢期限：' + rule.deadlineText);
+  if(rule && rule.note) lines.push('申請提醒：' + rule.note);
+  box.classList.remove('hidden');
+  box.innerHTML = `<strong>${escapeHtml(meta.name)} 申請提示</strong><div>${lines.map(x => escapeHtml(x)).join('<br>')}</div><div class="policy-meta">${chips.join('')}</div>`;
+  label.textContent = meta.attachmentRule === 'required' ? '附件（建議必附）' : '附件（選填）';
+  fileHint.textContent = (rule && rule.proofText)
+    ? rule.proofText
+    : (meta.attachmentRule === 'required' ? '這個假別建議一起附上證明文件，避免主管退件。' : '可上傳 jpg、png、pdf、doc、docx，單檔上限 30MB。婚假／喪假／病假可先送出，核准後可再補證明。');
+}
+function toggleBereavementRelation(){
+  const reason = qs('#reason') ? qs('#reason').value : '';
+  const meta = selectedEventChoiceMeta();
+  const showReason = reason === '喪假';
+  const needRelation = showReason && meta.mode !== 'continue';
+  const field = qs('#fieldBereavementRelation');
+  if(field) field.classList.toggle('hidden', !needRelation);
+  if(needRelation){
+    renderBereavementOptions(qs('#bereavementRelation') ? qs('#bereavementRelation').value : '');
+    const selected = getSelectedBereavementMeta();
+    qs('#bereavementHintText').textContent = selected && selected.days
+      ? `目前設定：${selected.relation} 可請 ${selected.days} 天喪假。`
+      : '請先選擇關係人。';
+  }else if(qs('#bereavementRelation')){
+    if(meta.mode === 'continue' && meta.candidate && meta.candidate.relation){
+      qs('#bereavementRelation').value = meta.candidate.relation;
+      qs('#bereavementHintText').textContent = `目前延續上一次事件：${meta.candidate.relation}。`;
+    }else{
+      qs('#bereavementRelation').value = '';
+      qs('#bereavementHintText').textContent = '選擇關係人後，系統會顯示目前設定的喪假天數。';
+    }
+  }
+  renderEventContext(meta.mode ? meta : null);
+}
+function toggleHoursByReason(){
+  const meta = getSelectedLeaveMeta();
+  const fullDayOnly = !!(meta && !meta.canHalf && !meta.canHour);
+  const currentValue = qs('#hours') ? qs('#hours').value : '';
+  renderHoursOptions(meta, fullDayOnly ? '8' : currentValue);
+  qs('#fieldHours').classList.toggle('hidden', fullDayOnly);
+  qs('#specialLeaveHint').classList.toggle('hidden', !fullDayOnly);
+  qs('#specialLeaveHint').textContent = meta
+    ? `${meta.name} 目前設定為整天為主，不需要另外選擇時數。`
+    : '此假別會直接視為整天，不需要另外選擇時數。';
+  if(fullDayOnly && qs('#hours')) qs('#hours').value = '8';
+  renderPolicyHint(meta);
+  renderEventChoiceForReason();
+  toggleBereavementRelation();
+}
+function validateForm(){
+  clearValidation();
+  const reason = qs('#reason').value;
+  const leaveDate = qs('#leaveDate').value;
+  const meta = getSelectedLeaveMeta();
+  const fullDayOnly = !!(meta && !meta.canHalf && !meta.canHour);
+  const hours = fullDayOnly ? '8' : qs('#hours').value;
+  const errors = [];
+  if(!reason){ setFieldInvalid('Reason','請先選擇請假原因'); errors.push('#reason'); }
+  const eventMeta = selectedEventChoiceMeta();
+  if(reason === '喪假' && eventMeta.mode !== 'continue' && !(qs('#bereavementRelation') && qs('#bereavementRelation').value)){ setFieldInvalid('BereavementRelation','請先選擇喪假關係人'); errors.push('#bereavementRelation'); }
+  if(!leaveDate){ setFieldInvalid('LeaveDate','請先選擇請假日期'); errors.push('#leaveDate'); }
+  if(!fullDayOnly && !hours){ setFieldInvalid('Hours','請先選擇請假時數'); errors.push('#hours'); }
+  if(errors.length){
+    setLocalMsg('請先完成必填欄位', true);
+    const first = qs(errors[0]);
+    if(first) first.focus();
+    return false;
+  }
+  setLocalMsg('');
+  return true;
+}
+function resetForm(options={}){
+  const keepOptions = options.keepOptions !== false;
+  const preserveLocalMsg = !!options.preserveLocalMsg;
+  if(!preserveLocalMsg) setLocalMsg('');
+  clearValidation();
+  if(keepOptions){
+    renderReasonOptions('');
+    renderHoursOptions(null, '');
+  }else{
+    renderReasonLoading();
+    renderHoursLoading();
+  }
+  renderPolicyHint(null);
+  renderEventChoiceForReason('');
+  renderBereavementOptions('');
+  toggleBereavementRelation();
+  qs('#leaveDate').value = localDateInputValue();
+  if(qs('#note')) qs('#note').value = '';
+  if(qs('#file')) qs('#file').value = '';
+  if(qs('#editingRequestId')) qs('#editingRequestId').value = '';
+  setActionButtonIdle(qs('#submitBtn'), '送出請假申請');
+  qs('#cancelEditBtn').classList.add('hidden');
+}
+function leaveStatusTagClass(status){
+  return status === '待審核' ? 'pending' : (status === '已核准' ? 'approved' : (status === '已駁回' ? 'rejected' : ''));
+}
+function formatLeaveText(row){
+  return row.simpleText || ((row.reason === '特休') ? '特休（整天）' : `${row.reason}｜${row.hours}`);
+}
+function renderHistory(rows){
+  historyRows = rows || [];
+  qs('#list').innerHTML = historyRows.map(x => `
+    <div class="item">
+      <div class="top"><strong>${escapeHtml(x.leaveDate)}｜${escapeHtml(formatLeaveText(x))}</strong><span class="tag ${leaveStatusTagClass(x.status)}">${escapeHtml(x.status)}</span></div>
+      ${x.note ? `<div class="muted">備註：${escapeHtml(x.note)}</div>` : ''}
+      ${x.modifyCount ? `<div class="muted">已重新送審 ${escapeHtml(String(x.modifyCount))} 次</div>` : ''}
+      ${x.canEdit || x.canDelete ? `<div class="item-actions">${x.canEdit ? `<button class="btn secondary mini-btn" type="button" data-edit-id="${escapeHtml(x.requestId)}">修改</button>` : ''}${x.canDelete ? `<button class="btn secondary mini-btn" type="button" data-delete-id="${escapeHtml(x.requestId)}">刪除</button>` : ''}</div>` : ''}
+    </div>
+  `).join('') || '<div class="muted">本年度目前沒有請假紀錄</div>';
+  qsa('[data-edit-id]').forEach(btn => btn.onclick = () => startEdit(btn.dataset.editId));
+  qsa('[data-delete-id]').forEach(btn => btn.onclick = () => handleDelete(btn.dataset.deleteId));
+}
+function renderSummaryCards(cards){
+  return;
+}
+function renderApprovalRows(rows){
+  approvalRows = rows || [];
+  qs('#approvalCountText').textContent = approvalRows.length ? `你有 ${approvalRows.length} 筆待簽核請假單` : '目前沒有待簽核請假單';
+  qs('#approvalList').innerHTML = approvalRows.map(x => `
+    <div class="item">
+      <div class="top"><strong>${escapeHtml(x.name)}｜${escapeHtml(x.leaveDate)}｜${escapeHtml(x.simpleText)}</strong><span class="tag pending">待審核</span></div>
+      <div class="muted">申請時間：${escapeHtml(x.requestedAt || x.createdAt || '—')}</div>
+      ${x.note ? `<div class="muted">備註：${escapeHtml(x.note)}</div>` : ''}
+      <div class="item-actions">
+        <button class="btn mini-btn" type="button" data-approve-id="${escapeHtml(x.requestId)}">同意</button>
+        <button class="btn secondary mini-btn" type="button" data-reject-id="${escapeHtml(x.requestId)}">駁回</button>
+      </div>
+    </div>
+  `).join('') || '<div class="muted">目前沒有待簽核請假單</div>';
+  qsa('[data-approve-id]').forEach(btn => btn.onclick = () => handleApproval(btn.dataset.approveId, 'approve', btn));
+  qsa('[data-reject-id]').forEach(btn => btn.onclick = () => handleApproval(btn.dataset.rejectId, 'reject', btn));
+}
+async function loadApprovalList(){
+  const user = requireLogin();
+  if(!user || !leaveApprovalMode) return;
+  const r = await api('getPendingLeaveApprovals', { userId:user.id });
+  if(!r.ok){
+    setMsg(qs('#approvalMsg'), r.message || '待簽核資料讀取失敗', true);
+    return;
+  }
+  setMsg(qs('#approvalMsg'), '');
+  renderApprovalRows(r.rows || []);
+}
+async function handleApproval(requestId, decision, btn){
+  const user = requireLogin();
+  if(!user || !leaveApprovalMode) return;
+  const text = decision === 'approve' ? '同意' : '駁回';
+  if(!confirm(`確定要${text}這張請假單嗎？`)) return;
+  setMsg(qs('#approvalMsg'), '');
+  const progress = btn ? startActionButtonProgress(btn, { label:text === '同意' ? '簽核中' : '處理中', maxPct:82 }) : null;
+  try{
+    const r = await api('reviewLeaveRequest', { userId:user.id, requestId, decision });
+    setMsg(qs('#approvalMsg'), r.message || '', !r.ok);
+    if(r.ok){
+      if(progress) progress.done(text === '同意' ? '已同意' : '已駁回', 500, true);
+      await loadApprovalList();
+    }else if(progress){
+      progress.fail(text === '同意' ? '簽核失敗' : '處理失敗');
+    }
+  }catch(err){
+    if(progress) progress.fail(text === '同意' ? '簽核失敗' : '處理失敗');
+    throw err;
+  }
+}
+function computeUsageGroups(rows){
+  const approvedRows = (rows || []).filter(row => String(row.status || '') === '已核准');
+  const map = {};
+  approvedRows.forEach(row => {
+    const baseReason = String(row.reason || row.leaveCode || '其他').trim() || '其他';
+    if(baseReason === '特休') return;
+    const relation = String(row.bereavementRelation || '').trim();
+    const key = baseReason === '喪假' && relation ? `喪假:${relation}` : baseReason;
+    const title = baseReason === '喪假' && relation ? `喪假（${relation}）` : baseReason;
+    const unit = (baseReason === '婚假' || baseReason === '喪假') ? 'days' : 'hours';
+    if(!map[key]){
+      map[key] = { key, title, baseReason, unit, value:0 };
+    }
+    const add = Number(row.hours || 0) || 0;
+    map[key].value += (unit === 'days' ? add / 8 : add);
+  });
+  const order = { '事假':1, '病假':2, '婚假':3, '喪假':4, '公假':5, '補休':6, '家庭照顧假':7, '生理假':8, '公傷病假':9, '其他':99 };
+  return Object.values(map)
+    .filter(item => item.value > 0)
+    .sort((a, b) => {
+      const oa = order[a.baseReason] || 90;
+      const ob = order[b.baseReason] || 90;
+      if(oa !== ob) return oa - ob;
+      return String(a.title || '').localeCompare(String(b.title || ''), 'zh-Hant');
+    })
+    .map(item => Object.assign({}, item, { value: normalizeDisplayNumber(item.value, item.unit) }));
+}
+function buildOverview(profile, historyData, bundle){
+  const annual = computeAnnualEntitlement(profile, bundle);
+  const metaCards = [{
+    title:'到職與特休',
+    lines:[
+      `到職日：${annual.hireDate || '未設定'}`,
+      `在職時間：${annual.tenureText || '尚未計算'}`,
+      `年度可用特休：${formatAmountText(annual.total, 'days')}`,
+      `已使用特休：${formatAmountText(annual.used, 'days')}`,
+      `剩餘特休：${formatAmountText(annual.remaining, 'days')}`
+    ]
+  }];
+  return { annual, metaCards, usageCards: [], notices: [] };
+}
+function renderLeaveOverview(overview){
+  leaveOverviewData = overview || null;
+  const card = qs('#leaveSimpleInfoCard');
+  const metaEl = qs('#leaveSimpleMeta');
+  const usageWrap = qs('#leaveSimpleUsageWrap');
+  const noticeEl = qs('#leaveSimpleNotice');
+  const introEl = qs('#leaveSimpleIntro');
+  if(!card || !metaEl) return;
+  if(!overview){
+    card.classList.add('hidden');
+    return;
+  }
+  card.classList.remove('hidden');
+  if(introEl) introEl.remove();
+  if(usageWrap) usageWrap.remove();
+  if(noticeEl) noticeEl.remove();
+  metaEl.innerHTML = (overview.metaCards || []).map(item => `
+    <div class="summary-row">
+      <strong>${escapeHtml(item.title || '')}</strong>
+      <div class="overview-note">${(item.lines || []).map(line => `<div>${escapeHtml(line)}</div>`).join('')}</div>
+    </div>
+  `).join('') || '<div class="empty-box">目前沒有可顯示的基本資訊。</div>';
+}
+async function loadStaffData(){
+  const user = requireLogin();
+  if(!user || leaveApprovalMode) return;
+  setLeaveFormEnabled(false);
+  setPageProgress('讀取請假設定中 15%', 15);
+
+  const policyPromise = api('getLeavePolicyPublicBundle', { userId:user.id }).catch(err => ({ ok:false, message: err && err.message ? err.message : '請假制度讀取失敗' }));
+  const historyPromise = api('getLeaveHistory', { userId:user.id }).catch(err => ({ ok:false, message: err && err.message ? err.message : '請假紀錄讀取失敗' }));
+  const profilePromise = api('getMyProfile', { userId:user.id }).catch(err => ({ ok:false, message: err && err.message ? err.message : '個人資料讀取失敗' }));
+
+  await sleep(80);
+  setPageProgress('整理請假資料中 45%', 45);
+  const [policyRes, historyRes, profileRes] = await Promise.all([policyPromise, historyPromise, profilePromise]);
+
+  let policyReady = false;
+  if(policyRes && policyRes.ok && policyRes.bundle){
+    buildLeavePolicyMaps(policyRes.bundle);
+    renderReasonOptions('');
+    renderBereavementOptions('');
+    toggleHoursByReason();
+    policyReady = availableLeaveTypes().length > 0;
+    if(policyReady){
+      setLeaveFormEnabled(true);
+    }else{
+      setLocalMsg('目前沒有可用假別，請先到主管設定區完成假勤制度。', true);
+      setLeaveFormEnabled(false);
+    }
+  }else{
+    buildLeavePolicyMaps(null);
+    renderReasonOptions('');
+    renderBereavementOptions('');
+    renderHoursOptions(null, '');
+    renderPolicyHint(null);
+    setLocalMsg((policyRes && policyRes.message) || '請假制度讀取失敗，請先確認主管設定。', true);
+    setLeaveFormEnabled(false);
+  }
+
+  if(historyRes && historyRes.ok){
+    leaveEventCandidates = Array.isArray(historyRes.eventCandidates) ? historyRes.eventCandidates : [];
+    leaveEventCandidateMap = {};
+    leaveEventCandidates.forEach(item => { leaveEventCandidateMap[item.eventId] = item; });
+    qs('#yearText').textContent = `${historyRes.year || ''} 年度資料`;
+    renderHistory(historyRes.rows || []);
+  }else{
+    leaveEventCandidates = [];
+    leaveEventCandidateMap = {};
+    qs('#yearText').textContent = '本年度資料讀取失敗';
+    renderHistory([]);
+    setLocalMsg((historyRes && historyRes.message) || '請假紀錄讀取失敗。', true);
+  }
+
+  renderEventChoiceForReason(qs('#eventChoice') ? qs('#eventChoice').value : '');
+  toggleBereavementRelation();
+
+  currentProfile = profileRes && profileRes.ok ? (profileRes.profile || null) : null;
+  const overview = buildOverview(currentProfile || {}, (historyRes && historyRes.ok ? historyRes : { rows:[], eventCandidates:[] }), policyRes && policyRes.ok ? policyRes.bundle : null);
+  renderLeaveOverview(overview);
+
+  if(policyReady){
+    setPageProgressDone('請假資料讀取完成');
+  }else{
+    setPageProgressError('請假設定尚未完成');
+  }
+}
+function startEdit(requestId){
+  const row = historyRows.find(item => item.requestId === requestId);
+  if(!row) return;
+  qs('#editingRequestId').value = row.requestId;
+  renderReasonOptions(row.reason || '');
+  qs('#reason').value = row.reason || '';
+  toggleHoursByReason();
+  const eventChoiceValue = row.eventId ? `continue:${row.eventId}` : (row.reason === '婚假' || row.reason === '喪假' ? 'new' : '');
+  renderEventChoiceForReason(eventChoiceValue);
+  if(qs('#bereavementRelation')) qs('#bereavementRelation').value = row.bereavementRelation || '';
+  toggleBereavementRelation();
+  qs('#leaveDate').value = row.leaveDate || '';
+  const meta = getSelectedLeaveMeta();
+  const fullDayOnly = !!(meta && !meta.canHalf && !meta.canHour);
+  if(!fullDayOnly && qs('#hours')){
+    qs('#hours').value = String(Math.max(1, Math.ceil(Number(row.hours || 0) || 0)));
+  }
+  qs('#note').value = row.note || '';
+  qs('#file').value = '';
+  setActionButtonIdle(qs('#submitBtn'), '更新請假申請');
+  qs('#cancelEditBtn').classList.remove('hidden');
+  setLocalMsg('你正在修改這張請假申請');
+  window.scrollTo({ top:0, behavior:'smooth' });
+}
+async function handleDelete(requestId){
+  const user = requireLogin();
+  if(!user) return;
+  if(!confirm('確定要刪除這張請假申請嗎？')) return;
+  setLocalMsg('');
+  const r = await api('deleteLeaveRequest', { userId:user.id, requestId });
+  setLocalMsg(r.message, !r.ok);
+  if(r.ok){
+    if(qs('#editingRequestId').value === requestId) resetForm({ keepOptions:true, preserveLocalMsg:true });
+    await loadStaffData();
+  }
+}
+async function submitLeave(){
+  if(!leavePageReady){
+    setLocalMsg('資料尚未讀取完成，請稍候。', true);
+    return;
+  }
+  if(!validateForm()) return;
+  const user = requireLogin();
+  if(!user) return;
+  const file = qs('#file').files[0];
+  const editingId = qs('#editingRequestId').value;
+  const meta = getSelectedLeaveMeta();
+  const fullDayOnly = !!(meta && !meta.canHalf && !meta.canHour);
+  const eventMeta = selectedEventChoiceMeta();
+  const relation = qs('#reason').value === '喪假'
+    ? (eventMeta.mode === 'continue' && eventMeta.candidate ? (eventMeta.candidate.relation || '') : (qs('#bereavementRelation').value || ''))
+    : '';
+  const payload = {
+    userId:user.id,
+    reason:qs('#reason').value,
+    leaveDate:qs('#leaveDate').value,
+    hours:fullDayOnly ? 8 : Number(qs('#hours').value || 0),
+    note:qs('#note').value.trim(),
+    bereavementRelation: relation,
+    eventMode: eventMeta.mode || '',
+    eventId: eventMeta.candidate ? eventMeta.candidate.eventId : ''
+  };
+  if(file) payload.attachment = await fileToDataUrl(file);
+  const btn = qs('#submitBtn');
+  const cancelBtn = qs('#cancelEditBtn');
+  const progress = startActionButtonProgress(btn, { label:editingId ? '更新中' : '送出中' });
+  cancelBtn.disabled = true;
+  setLocalMsg('');
+  try{
+    progress.set(10, '檢查請假資料');
+    await sleep(100);
+    progress.set(35, editingId ? '整理修改內容' : '整理請假內容');
+    const action = editingId ? 'modifyLeaveRequest' : 'leaveRequest';
+    const request = api(action, Object.assign({}, payload, editingId ? { requestId:editingId } : {}));
+    await sleep(120);
+    progress.set(70, editingId ? '更新請假申請' : '送出請假申請');
+    const r = await request;
+    setLocalMsg(r.message, !r.ok);
+    if(r.ok){
+      resetForm({ keepOptions:true, preserveLocalMsg:true });
+      await loadStaffData();
+      progress.done(editingId ? '更新成功' : '送出成功');
+    }else{
+      progress.fail(editingId ? '更新失敗' : '送出失敗');
+    }
+  }catch(err){
+    progress.fail(editingId ? '更新失敗' : '送出失敗');
+    throw err;
+  }finally{
+    cancelBtn.disabled = false;
+  }
+}
+async function init(){
+  fillHeader();
+  currentUser = requireLogin();
+  if(!currentUser) return;
+  resetForm({ keepOptions:false });
+  qs('#reason').addEventListener('change', () => { clearValidation(); toggleHoursByReason(); });
+  if(qs('#eventChoice')) qs('#eventChoice').addEventListener('change', () => { clearValidation(); toggleBereavementRelation(); });
+  if(qs('#bereavementRelation')) qs('#bereavementRelation').addEventListener('change', () => { clearValidation(); toggleBereavementRelation(); });
+  qs('#leaveDate').addEventListener('input', clearValidation);
+  qs('#hours').addEventListener('change', clearValidation);
+  qs('#submitBtn').onclick = submitLeave;
+  qs('#cancelEditBtn').onclick = () => { resetForm({ keepOptions:true }); };
+  applyLeaveMode();
+  if(leaveApprovalMode){
+    setPageProgress('讀取簽核資料中 35%', 35);
+    await loadApprovalList();
+    setPageProgressDone('簽核資料讀取完成');
+  }else{
+    await loadStaffData();
+  }
+}
+</script></body></html>
