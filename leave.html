@@ -436,7 +436,7 @@ function computeTenureText(hireDateText){
   if(years > 0) return `${years} 年`;
   return `${remainMonths} 個月`;
 }
-function computeAnnualEntitlement(profile, bundle){
+function computeAnnualEntitlement(profile, bundle, historyData){
   const hireDate = String((profile && profile.hireDate) || '').trim();
   const annualRows = Array.isArray(bundle && bundle.annualLeave && bundle.annualLeave.rows) ? bundle.annualLeave.rows : [];
   let months = null;
