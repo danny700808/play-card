@@ -923,7 +923,7 @@ async function loadStaffData(){
   const user = requireLogin();
   if(!user || leaveApprovalMode) return;
   setLeaveFormEnabled(false);
-  setPageProgress('讀取請假設定中 15%', 15);
+  setPageProgress('讀取請假設定中…', 18);
 
   const policyRes = await apiSafe('getLeavePolicyPublicBundle', { userId:user.id }, 12000, '請假制度讀取逾時');
   let policyReady = false;
@@ -937,9 +937,11 @@ async function loadStaffData(){
     if(policyReady){
       setLeaveFormEnabled(true);
       setLocalMsg('', false);
+      setPageProgressDone('請假表單已開啟');
     }else{
       setLocalMsg('目前沒有可用假別，請先到主管設定區完成假勤制度。', true);
       setLeaveFormEnabled(false);
+      setPageProgressError('請假設定尚未完成');
     }
   }else{
     buildLeavePolicyMaps(null);
@@ -949,19 +951,22 @@ async function loadStaffData(){
     renderPolicyHint(null);
     setLocalMsg((policyRes && policyRes.message) || '請假制度讀取失敗，請先確認主管設定。', true);
     setLeaveFormEnabled(false);
+    setPageProgressError('請假設定讀取失敗');
   }
 
   leaveEventCandidates = [];
   leaveEventCandidateMap = {};
-  qs('#yearText').textContent = '讀取年度資料中…';
+  qs('#yearText').textContent = '載入請假紀錄中…';
   renderHistory([]);
   renderEventChoiceForReason(qs('#eventChoice') ? qs('#eventChoice').value : '');
   toggleBereavementRelation();
 
   currentProfile = null;
-  renderLeaveOverview(buildOverview({}, { rows:[], eventCandidates:[] }, policyRes && policyRes.ok ? policyRes.bundle : null));
+  try{
+    renderLeaveOverview(buildOverview({}, { rows:[], eventCandidates:[] }, policyRes && policyRes.ok ? policyRes.bundle : null));
+  }catch(_ignore){}
 
-  setPageProgress('整理請假資料中 45%', 45);
+  if(!policyReady) return;
 
   void (async () => {
     const warnings = [];
@@ -999,7 +1004,6 @@ async function loadStaffData(){
       }catch(renderErr){
         console.error('leave overview render failed', renderErr);
         warnings.push('頁面整理：' + ((renderErr && renderErr.message) || '顯示失敗'));
-        renderLeaveOverview(buildOverview({}, { rows:[], eventCandidates:[] }, policyRes && policyRes.ok ? policyRes.bundle : null));
       }
     }catch(err){
       console.error('leave page background load failed', err);
@@ -1008,26 +1012,11 @@ async function loadStaffData(){
       leaveEventCandidateMap = {};
       qs('#yearText').textContent = '本年度資料讀取失敗';
       renderHistory([]);
-      try{
-        renderLeaveOverview(buildOverview({}, { rows:[], eventCandidates:[] }, policyRes && policyRes.ok ? policyRes.bundle : null));
-      }catch(_ignore){}
     }finally{
-      if(policyReady){
-        if(warnings.length){
-          setLocalMsg(warnings.join('；'), true);
-          setPageProgressDone('請假頁已開啟（部分資料未完成）');
-        }else{
-          setLocalMsg('', false);
-          setPageProgressDone('請假資料讀取完成');
-        }
+      if(warnings.length){
+        setLocalMsg(warnings.join('；'), true);
       }else{
-        const base = (policyRes && policyRes.message) || '請假設定尚未完成';
-        if(warnings.length){
-          setLocalMsg([base].concat(warnings).join('；'), true);
-        }else{
-          setLocalMsg(base, true);
-        }
-        setPageProgressError('請假設定尚未完成');
+        setLocalMsg('', false);
       }
     }
   })();
