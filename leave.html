@@ -393,7 +393,16 @@ function normalizeDisplayNumber(value, unit){
   }
   return Math.round(n);
 }
+function splitHoursToDayHourParts(totalHours){
+  const hours = Math.max(0, Math.round(Number(totalHours || 0)));
+  return { days: Math.floor(hours / 8), hours: hours % 8 };
+}
+function formatDayHourText(totalHours){
+  const parts = splitHoursToDayHourParts(totalHours);
+  return `${parts.days} 天 ${parts.hours} 小時`;
+}
 function formatAmountText(value, unit){
+  if(unit === 'days_hours') return formatDayHourText(value);
   const normalized = normalizeDisplayNumber(value, unit);
   return unit === 'days' ? `${normalized} 天` : `${normalized} 小時`;
 }
@@ -441,15 +450,21 @@ function computeAnnualEntitlement(profile, bundle){
     const y = Math.floor(m / 12);
     return Math.min(15 + Math.max(0, y - 10), 30);
   }
-  let total = Number((profile && profile.annualLeaveTotal) || 0) || 0;
-  const used = Number((profile && profile.annualLeaveUsed) || 0) || 0;
-  let remaining = Number((profile && profile.annualLeaveRemaining) || 0) || 0;
+  let totalDays = Number((profile && profile.annualLeaveTotal) || 0) || 0;
   const inferredDays = matched ? (Number(matched[2]) || 0) : fallbackAnnualDays(months);
-  // 若員工資料還沒回寫年度特休，直接用到職日推算值
-  if(inferredDays > total) total = inferredDays;
-  remaining = Math.max((remaining || 0), Math.max(total - used, 0));
+  if(inferredDays > totalDays) totalDays = inferredDays;
+  let totalHours = Math.max(0, Math.round(totalDays * 8));
+  const profileUsedHours = Math.max(0, Math.round((Number((profile && profile.annualLeaveUsed) || 0) || 0) * 8));
+  const profileRemainingHours = Math.max(0, Math.round((Number((profile && profile.annualLeaveRemaining) || 0) || 0) * 8));
+  const historyRows = Array.isArray(historyData && historyData.rows) ? historyData.rows : [];
+  const historyUsedHours = historyRows
+    .filter(row => String(row.status || '') === '已核准' && String(row.reason || row.leaveCode || '').trim() === '特休')
+    .reduce((sum, row) => sum + (Number(row.hours || 0) || 0), 0);
+  const usedHours = historyUsedHours > 0 ? Math.round(historyUsedHours) : profileUsedHours;
+  let remainingHours = Math.max(totalHours - usedHours, 0);
+  if(!historyUsedHours && profileRemainingHours > remainingHours) remainingHours = profileRemainingHours;
   const matchedText = matched ? `${matched[0]}～${matched[1]} 個月可有 ${matched[2]} 天` : '';
-  return { hireDate, months, total, used, remaining, matchedText, tenureText: computeTenureText(hireDate) };
+  return { hireDate, months, totalDays, totalHours, usedHours, remainingHours, matchedText, tenureText: computeTenureText(hireDate) };
 }
 function policyHeaderIndex(name){ return leaveTypeHeaders.indexOf(name); }
 function buildLeavePolicyMaps(bundle){
@@ -853,15 +868,15 @@ function computeUsageGroups(rows){
     .map(item => Object.assign({}, item, { value: normalizeDisplayNumber(item.value, item.unit) }));
 }
 function buildOverview(profile, historyData, bundle){
-  const annual = computeAnnualEntitlement(profile, bundle);
+  const annual = computeAnnualEntitlement(profile, bundle, historyData);
   const metaCards = [{
     title:'到職與特休',
     lines:[
       `到職日：${annual.hireDate || '未設定'}`,
       `在職時間：${annual.tenureText || '尚未計算'}`,
-      `年度可用特休：${formatAmountText(annual.total, 'days')}`,
-      `已使用特休：${formatAmountText(annual.used, 'days')}`,
-      `剩餘特休：${formatAmountText(annual.remaining, 'days')}`
+      `年度可用特休：${formatAmountText(annual.totalHours, 'days_hours')}`,
+      `已使用特休：${formatAmountText(annual.usedHours, 'days_hours')}`,
+      `剩餘特休：${formatAmountText(annual.remainingHours, 'days_hours')}`
     ]
   }];
   return { annual, metaCards, usageCards: [], notices: [] };
