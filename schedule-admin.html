@@ -298,7 +298,7 @@
 
     <div id="templatePanel" class="schedule-panel active">
       <div class="card">
-        <div class="toolbar"><div><h2 class="section-title">班表模板管理</h2><p class="section-desc">你可以直接新增、修改、刪除班表模板。只有 <b>標準打卡</b> 才需要同時填上班時間與下班時間；<b>特殊打卡</b> 與 <b>無班</b> 不需填時間。</p></div><div class="right"><button class="btn btn-secondary" type="button" onclick="resetTemplateForm()">新增模板</button></div></div>
+        <div class="toolbar"><div><h2 class="section-title">班表模板管理</h2><p class="section-desc">你可以直接新增、修改、刪除班表模板。只有 <b>標準打卡</b> 才需要同時填上班時間與下班時間；<b>特殊打卡</b>、<b>無班</b>、<b>休息日（可依法協商出勤）</b>、<b>例假日（原則不得出勤）</b> 都不需填時間。</p></div><div class="right"><button class="btn btn-secondary" type="button" onclick="resetTemplateForm()">新增模板</button></div></div>
         <form id="templateForm"><input type="hidden" id="templateId" /><div class="row"><div class="field"><label for="templateName">模板名稱</label><input id="templateName" type="text" placeholder="例如：一般員工標準班" required /></div><div class="field"><label for="templateEnabled">是否啟用</label><select id="templateEnabled"><option value="TRUE">啟用</option><option value="FALSE">停用</option></select></div></div><div id="dayFields" class="row-3"></div><div class="field"><label for="templateNote">備註</label><textarea id="templateNote" placeholder="例如：星期一公休；其他為標準班。"></textarea></div><div class="actions"><button class="btn btn-primary" type="submit">儲存班表模板</button><button class="btn btn-ghost" type="button" onclick="resetTemplateForm()">清空表單</button></div></form>
         <div id="templateStatus" class="status"></div>
       </div>
@@ -317,8 +317,8 @@
 
     <div id="singleDayPanel" class="schedule-panel">
       <div class="card">
-        <div class="toolbar"><div><h2 class="section-title">單日特別班表 / 單日開放打卡</h2><p class="section-desc">臨時加班、活動日、補班日可直接用這裡設定，只影響指定員工的指定那一天，優先權高於一般班表套用。</p></div><div class="right"><button class="btn btn-secondary" type="button" onclick="resetSingleDayForm()">新增單日特別班表</button></div></div>
-        <form id="singleDayForm"><input type="hidden" id="singleDayId" /><div class="field"><label for="singleDayEmployeeId">員工</label><select id="singleDayEmployeeId" required></select></div><div class="row"><div class="field"><label for="singleDayDate">日期</label><input id="singleDayDate" type="date" required /></div><div class="field"><label for="singleDayType">打卡類型</label><select id="singleDayType" onchange="toggleSingleDayTime()"><option value="標準打卡">標準打卡</option><option value="特殊打卡">特殊打卡</option><option value="無班">無班</option></select></div></div><div class="row" id="singleDayTimeRow"><div class="field"><label for="singleDayStartTime">上班時間</label><input id="singleDayStartTime" type="time" /></div><div class="field"><label for="singleDayEndTime">下班時間</label><input id="singleDayEndTime" type="time" /></div></div><label class="checkbox-line"><input id="singleDayAllowSpecial" type="checkbox" />當天允許「標準打卡＋特殊打卡」共用</label><div class="row"><div class="field"><label for="singleDayEnabled">是否啟用</label><select id="singleDayEnabled"><option value="TRUE">啟用</option><option value="FALSE">停用</option></select></div><div class="field"><label for="singleDayNote">備註</label><input id="singleDayNote" type="text" placeholder="例如：活動日臨時開放打卡" /></div></div><div class="actions"><button class="btn btn-primary" type="submit">儲存單日特別班表</button><button class="btn btn-ghost" type="button" onclick="resetSingleDayForm()">清空表單</button></div></form>
+        <div class="toolbar"><div><h2 class="section-title">單日特別班表 / 單日開放打卡</h2><p class="section-desc">臨時加班、活動日、補班日可直接用這裡設定，只影響指定員工的指定那一天，優先權高於一般班表套用；也可直接標註該日為休息日或例假日。</p></div><div class="right"><button class="btn btn-secondary" type="button" onclick="resetSingleDayForm()">新增單日特別班表</button></div></div>
+        <form id="singleDayForm"><input type="hidden" id="singleDayId" /><div class="field"><label for="singleDayEmployeeId">員工</label><select id="singleDayEmployeeId" required></select></div><div class="row"><div class="field"><label for="singleDayDate">日期</label><input id="singleDayDate" type="date" required /></div><div class="field"><label for="singleDayType">班別 / 日別類型</label><select id="singleDayType" onchange="toggleSingleDayTime()"><option value="標準打卡">標準打卡</option><option value="特殊打卡">特殊打卡</option><option value="無班">無班</option><option value="休息日">休息日（可依法協商出勤）</option><option value="例假日">例假日（原則不得出勤）</option></select></div></div><div class="row" id="singleDayTimeRow"><div class="field"><label for="singleDayStartTime">上班時間</label><input id="singleDayStartTime" type="time" /></div><div class="field"><label for="singleDayEndTime">下班時間</label><input id="singleDayEndTime" type="time" /></div></div><label class="checkbox-line"><input id="singleDayAllowSpecial" type="checkbox" />當天允許「標準打卡＋特殊打卡」共用</label><div class="row"><div class="field"><label for="singleDayEnabled">是否啟用</label><select id="singleDayEnabled"><option value="TRUE">啟用</option><option value="FALSE">停用</option></select></div><div class="field"><label for="singleDayNote">備註</label><input id="singleDayNote" type="text" placeholder="例如：活動日臨時開放打卡" /></div></div><div class="actions"><button class="btn btn-primary" type="submit">儲存單日特別班表</button><button class="btn btn-ghost" type="button" onclick="resetSingleDayForm()">清空表單</button></div></form>
         <div id="singleDayStatus" class="status"></div>
       </div>
       <div class="card" style="margin-top:18px;"><h2 class="section-title">已建立的單日特別班表</h2><p class="section-desc">這裡會列出目前所有單日開放打卡設定，可直接編輯或刪除。</p><div id="singleDayList" class="assignment-list"></div></div>
@@ -368,11 +368,13 @@
         <div class="day-card">
           <div class="day-title">${day.label}</div>
           <div class="field">
-            <label for="${day.key}Type">打卡類型</label>
+            <label for="${day.key}Type">班別 / 日別類型</label>
             <select id="${day.key}Type" onchange="toggleDayTime('${day.key}')">
               <option value="無班">無班</option>
               <option value="標準打卡">標準打卡</option>
               <option value="特殊打卡">特殊打卡</option>
+              <option value="休息日">休息日（可依法協商出勤）</option>
+              <option value="例假日">例假日（原則不得出勤）</option>
             </select>
           </div>
           <div class="field hidden" id="${day.key}TimeWrap">
@@ -387,6 +389,7 @@
             <input id="${day.key}AllowSpecial" type="checkbox" />
             當天允許「標準打卡＋特殊打卡」共用
           </label>
+          <div class="muted" style="margin-top:6px;font-size:12px;">休息日：可依法協商出勤；例假日：原則不得出勤。</div>
         </div>
       `).join('');
     }
