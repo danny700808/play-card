@@ -1316,4 +1316,670 @@ async function init(){
   }
 }
 
-</script></body></html>
+
+<script>
+/* 2026-04-17 請假多區段版（同一張假單可新增區段） */
+(function(){
+  const _oldInit = init;
+  const _oldResetForm = resetForm;
+  const _oldSetLeaveFormEnabled = setLeaveFormEnabled;
+  let segmentPreviewTimer = null;
+  let segmentPreviewSeq = 0;
+
+  function injectSegmentStyles(){
+    if(document.getElementById('leaveSegmentStylePatch')) return;
+    const style = document.createElement('style');
+    style.id = 'leaveSegmentStylePatch';
+    style.textContent = `
+      .segment-stack{display:flex;flex-direction:column;gap:12px;margin-top:10px}
+      .segment-card{border:1px solid var(--line);border-radius:14px;padding:12px;background:#fff}
+      .segment-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+      .segment-head strong{font-size:15px}
+      .segment-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+      .segment-grid-3{display:grid;grid-template-columns:1.2fr .9fr .9fr;gap:10px}
+      .segment-mode-help{margin-top:4px;margin-bottom:10px;color:#6b7280;font-size:13px;line-height:1.6}
+      .segment-result{margin-top:10px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:#f8fbff;line-height:1.7}
+      .segment-result.is-error{background:#fff6f5;border-color:#f2c1bb;color:#b42318}
+      .segment-result.is-ok{background:#f3fbf6;border-color:#cde8d6;color:#1f5134}
+      .segment-summary-title{font-weight:800;margin-bottom:8px}
+      .segment-summary-lines{line-height:1.8}
+      .segment-actions{display:flex;justify-content:flex-start;gap:8px;flex-wrap:wrap;margin-top:10px}
+      .segment-pill{display:inline-flex;align-items:center;padding:5px 10px;border:1px solid #dbe7f4;border-radius:999px;background:#fff;color:#37506a;font-size:12px;font-weight:700;margin-right:6px}
+      .hidden-important{display:none !important}
+      @media (max-width:560px){
+        .segment-grid-2,.segment-grid-3{grid-template-columns:1fr}
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function hideLegacyLeaveFields(){
+    ['fieldLeaveDate','fieldTimeRange','fieldComputedHours','fieldHours','specialLeaveHint'].forEach(id => {
+      const el = qs('#' + id);
+      if(el) el.classList.add('hidden-important');
+    });
+    const legacyCtx = qs('#leaveDateContextBox');
+    if(legacyCtx) legacyCtx.classList.add('hidden-important');
+    const fillBtn = qs('#fillScheduleBtn');
+    if(fillBtn && fillBtn.parentElement) fillBtn.parentElement.classList.add('hidden-important');
+    const leaveDateEl = qs('#leaveDate');
+    const startEl = qs('#startTime');
+    const endEl = qs('#endTime');
+    if(leaveDateEl) leaveDateEl.disabled = true;
+    if(startEl) startEl.disabled = true;
+    if(endEl) endEl.disabled = true;
+  }
+
+  function ensureSegmentUi(){
+    injectSegmentStyles();
+    hideLegacyLeaveFields();
+    if(qs('#fieldLeaveSegments')) return;
+    const noteField = qs('#fieldNote');
+    if(!noteField || !noteField.parentNode) return;
+    const wrap = document.createElement('div');
+    wrap.innerHTML = `
+      <div class="field" id="fieldLeaveSegments">
+        <label>請假區段</label>
+        <div class="muted">同一張假單可以新增多個區段。每一段都會先和你的班表比對；只要其中一段不可請，整張假單就不能送出。</div>
+        <div id="segmentList" class="segment-stack"></div>
+        <div class="segment-actions">
+          <button class="btn secondary mini-btn" type="button" id="addSegmentBtn">＋新增請假區段</button>
+        </div>
+        <div class="field-error" id="errorLeaveSegments"></div>
+      </div>
+      <div class="summary-box hidden" id="segmentSummaryBox"></div>
+    `;
+    noteField.parentNode.insertBefore(wrap, noteField);
+    const addBtn = qs('#addSegmentBtn');
+    if(addBtn) addBtn.onclick = () => {
+      createLeaveSegmentCard(null, true);
+      scheduleSegmentsPreview();
+    };
+  }
+
+  function leaveFormatDaysHours(hours){
+    const total = Math.round((Number(hours || 0) || 0) * 10) / 10;
+    const days = Math.floor(total / 8);
+    const rest = Math.round((total - days * 8) * 10) / 10;
+    const parts = [];
+    if(days > 0) parts.push(`${days} 天`);
+    if(rest > 0) parts.push(`${Number.isInteger(rest) ? rest : rest.toFixed(1)} 小時`);
+    if(!parts.length) parts.push('0 小時');
+    return parts.join(' ');
+  }
+
+  function iterateDateKeys(startKey, endKey){
+    const start = String(startKey || '').trim();
+    const end = String(endKey || '').trim();
+    if(!start || !end) return [];
+    const s = new Date(start + 'T00:00:00');
+    const e = new Date(end + 'T00:00:00');
+    if(String(s) === 'Invalid Date' || String(e) === 'Invalid Date' || e < s) return [];
+    const out = [];
+    let cur = new Date(s);
+    while(cur <= e){
+      out.push(new Date(cur.getTime() - cur.getTimezoneOffset() * 60000).toISOString().slice(0,10));
+      cur.setDate(cur.getDate() + 1);
+    }
+    return out;
+  }
+
+  function clearSegmentFieldError(){
+    const field = qs('#fieldLeaveSegments');
+    const err = qs('#errorLeaveSegments');
+    if(field) field.classList.remove('invalid');
+    if(err) err.textContent = '';
+  }
+
+  function setSegmentFieldError(message){
+    const field = qs('#fieldLeaveSegments');
+    const err = qs('#errorLeaveSegments');
+    if(field) field.classList.add('invalid');
+    if(err) err.textContent = message || '';
+  }
+
+  function buildSegmentCardHtml(index, data){
+    const mode = data && data.mode === 'custom' ? 'custom' : 'schedule';
+    const startDate = escapeHtml(data && (data.startDate || data.leaveDate) || '');
+    const endDate = escapeHtml(data && (data.endDate || data.leaveDate) || '');
+    const leaveDate = escapeHtml(data && (data.leaveDate || data.startDate) || '');
+    const startTime = escapeHtml(data && data.startTime || '');
+    const endTime = escapeHtml(data && data.endTime || '');
+    return `
+      <div class="segment-card" data-segment-card data-segment-index="${index}">
+        <div class="segment-head">
+          <strong>區段 ${index + 1}</strong>
+          <button class="btn secondary mini-btn" type="button" data-remove-segment>刪除此區段</button>
+        </div>
+        <div class="field">
+          <label>區段類型</label>
+          <select data-segment-mode>
+            <option value="schedule" ${mode === 'schedule' ? 'selected' : ''}>依班表整段請假</option>
+            <option value="custom" ${mode === 'custom' ? 'selected' : ''}>自訂時間請假</option>
+          </select>
+          <div class="segment-mode-help" data-segment-mode-help>${mode === 'schedule' ? '這一段會依照你每天的班表整段計算。' : '這一段只會套用單日，時間必須完全落在班表內。'}</div>
+        </div>
+        <div data-mode-schedule ${mode === 'schedule' ? '' : 'class="hidden"'}>
+          <div class="segment-grid-2">
+            <div class="field"><label>開始日期</label><input type="date" data-segment-start-date value="${startDate}"></div>
+            <div class="field"><label>結束日期</label><input type="date" data-segment-end-date value="${endDate}"></div>
+          </div>
+        </div>
+        <div data-mode-custom ${mode === 'custom' ? '' : 'class="hidden"'}>
+          <div class="segment-grid-3">
+            <div class="field"><label>請假日期</label><input type="date" data-segment-date value="${leaveDate}"></div>
+            <div class="field"><label>開始時間</label><input type="time" data-segment-start-time value="${startTime}"></div>
+            <div class="field"><label>結束時間</label><input type="time" data-segment-end-time value="${endTime}"></div>
+          </div>
+          <div class="segment-actions"><button class="btn secondary mini-btn" type="button" data-fill-custom-schedule>套用當天班表整段時間</button></div>
+        </div>
+        <div class="segment-result" data-segment-result>請先選擇區段內容。</div>
+      </div>
+    `;
+  }
+
+  function getSegmentCards(){
+    return qsa('[data-segment-card]');
+  }
+
+  function refreshSegmentIndexLabels(){
+    getSegmentCards().forEach((card, idx) => {
+      card.dataset.segmentIndex = String(idx);
+      const title = card.querySelector('.segment-head strong');
+      if(title) title.textContent = `區段 ${idx + 1}`;
+      const removeBtn = card.querySelector('[data-remove-segment]');
+      if(removeBtn) removeBtn.classList.toggle('hidden', getSegmentCards().length <= 1);
+    });
+  }
+
+  function createLeaveSegmentCard(data, append){
+    ensureSegmentUi();
+    const list = qs('#segmentList');
+    if(!list) return null;
+    const index = getSegmentCards().length;
+    const holder = document.createElement('div');
+    holder.innerHTML = buildSegmentCardHtml(index, data || {});
+    const card = holder.firstElementChild;
+    if(!card) return null;
+    list.appendChild(card);
+    bindSegmentCard(card);
+    refreshSegmentIndexLabels();
+    return card;
+  }
+
+  function segmentCardMode(card){
+    const el = card ? card.querySelector('[data-segment-mode]') : null;
+    return el ? el.value : 'schedule';
+  }
+
+  function bindSegmentCard(card){
+    if(!card) return;
+    const modeEl = card.querySelector('[data-segment-mode]');
+    const removeBtn = card.querySelector('[data-remove-segment]');
+    const fillBtn = card.querySelector('[data-fill-custom-schedule]');
+    const trigger = () => scheduleSegmentsPreview();
+    if(modeEl){
+      modeEl.addEventListener('change', () => {
+        const mode = modeEl.value;
+        const scheduleBox = card.querySelector('[data-mode-schedule]');
+        const customBox = card.querySelector('[data-mode-custom]');
+        if(scheduleBox) scheduleBox.classList.toggle('hidden', mode !== 'schedule');
+        if(customBox) customBox.classList.toggle('hidden', mode !== 'custom');
+        const help = card.querySelector('[data-segment-mode-help]');
+        if(help) help.textContent = mode === 'schedule' ? '這一段會依照你每天的班表整段計算。' : '這一段只會套用單日，時間必須完全落在班表內。';
+        trigger();
+      });
+    }
+    if(removeBtn){
+      removeBtn.addEventListener('click', () => {
+        if(getSegmentCards().length <= 1) return;
+        card.remove();
+        refreshSegmentIndexLabels();
+        scheduleSegmentsPreview();
+      });
+    }
+    if(fillBtn){
+      fillBtn.addEventListener('click', async () => {
+        const user = requireLogin();
+        const dateEl = card.querySelector('[data-segment-date]');
+        if(!user || !dateEl || !dateEl.value) {
+          setLocalMsg('請先選擇日期，再套用班表整段時間。', true);
+          return;
+        }
+        const reason = qs('#reason') ? qs('#reason').value : '';
+        const res = await api('getLeaveDateContext', {
+          userId:user.id,
+          leaveDate:dateEl.value,
+          reason,
+          requestId: qs('#editingRequestId') ? qs('#editingRequestId').value : ''
+        });
+        if(res && res.ok && res.context && res.context.canLeave && res.context.shiftStart && res.context.shiftEnd){
+          const s = card.querySelector('[data-segment-start-time]');
+          const e = card.querySelector('[data-segment-end-time]');
+          if(s) s.value = normalizeTimeText(res.context.shiftStart);
+          if(e) e.value = normalizeTimeText(res.context.shiftEnd);
+          trigger();
+        }else{
+          setLocalMsg((res && res.message) || (res && res.context && res.context.blockedReason) || '這一天目前不能套用班表整段時間。', true);
+        }
+      });
+    }
+    qsa('input,select', card).forEach(el => el.addEventListener('input', trigger));
+    qsa('input,select', card).forEach(el => el.addEventListener('change', trigger));
+  }
+
+  async function previewScheduleSegment(user, card, reason, requestId){
+    const startDate = card.querySelector('[data-segment-start-date]') ? card.querySelector('[data-segment-start-date]').value : '';
+    const endDate = card.querySelector('[data-segment-end-date]') ? card.querySelector('[data-segment-end-date]').value : '';
+    if(!startDate || !endDate){
+      return { ok:false, message:'請先選擇開始日期與結束日期。' };
+    }
+    const dates = iterateDateKeys(startDate, endDate);
+    if(!dates.length) return { ok:false, message:'請確認結束日期不能早於開始日期。' };
+    const expanded = [];
+    const lines = [];
+    let totalHours = 0;
+    for(const dateKey of dates){
+      const res = await api('getLeaveDateContext', { userId:user.id, leaveDate:dateKey, reason, requestId });
+      const ctx = res && res.ok ? (res.context || null) : null;
+      if(!ctx || !ctx.canLeave){
+        return { ok:false, message:(ctx && ctx.blockedReason) || (res && res.message) || `${dateKey} 目前不能請假。` };
+      }
+      const startTime = normalizeTimeText(ctx.shiftStart || '');
+      const endTime = normalizeTimeText(ctx.shiftEnd || '');
+      if(!startTime || !endTime){
+        return { ok:false, message:`${dateKey} 班表沒有完整上下班時間，不能請整段假。` };
+      }
+      const startMin = timeTextToMinutes(startTime);
+      const endMin = timeTextToMinutes(endTime);
+      const hours = Math.round(((endMin - startMin) / 60) * 10) / 10;
+      totalHours += hours;
+      expanded.push({ date:dateKey, startTime, endTime, startMin, endMin, hours });
+      lines.push(`${dateKey}｜${startTime}-${endTime}｜${leaveFormatDaysHours(hours)}`);
+    }
+    return {
+      ok:true,
+      mode:'schedule',
+      startDate,
+      endDate,
+      totalHours:Math.round(totalHours * 10) / 10,
+      summaryText:`${startDate}${startDate !== endDate ? '～' + endDate : ''}｜依班表整段`,
+      breakdownLines:lines,
+      expanded
+    };
+  }
+
+  async function previewCustomSegment(user, card, reason, requestId){
+    const leaveDate = card.querySelector('[data-segment-date]') ? card.querySelector('[data-segment-date]').value : '';
+    const startTime = normalizeTimeText(card.querySelector('[data-segment-start-time]') ? card.querySelector('[data-segment-start-time]').value : '');
+    const endTime = normalizeTimeText(card.querySelector('[data-segment-end-time]') ? card.querySelector('[data-segment-end-time]').value : '');
+    if(!leaveDate || !startTime || !endTime){
+      return { ok:false, message:'請先選擇日期、開始時間與結束時間。' };
+    }
+    const res = await api('getLeaveDateContext', { userId:user.id, leaveDate, reason, requestId });
+    const ctx = res && res.ok ? (res.context || null) : null;
+    if(!ctx || !ctx.canLeave){
+      return { ok:false, message:(ctx && ctx.blockedReason) || (res && res.message) || '這一天目前不能請假。' };
+    }
+    const shiftStart = normalizeTimeText(ctx.shiftStart || '');
+    const shiftEnd = normalizeTimeText(ctx.shiftEnd || '');
+    const startMin = timeTextToMinutes(startTime);
+    const endMin = timeTextToMinutes(endTime);
+    const shiftStartMin = timeTextToMinutes(shiftStart);
+    const shiftEndMin = timeTextToMinutes(shiftEnd);
+    if(endMin <= startMin){
+      return { ok:false, message:'請確認結束時間必須晚於開始時間。' };
+    }
+    if(startMin < shiftStartMin || endMin > shiftEndMin){
+      return { ok:false, message:`請假時間必須落在當天班表 ${shiftStart}-${shiftEnd} 內。` };
+    }
+    const hours = Math.round(((endMin - startMin) / 60) * 10) / 10;
+    return {
+      ok:true,
+      mode:'custom',
+      leaveDate,
+      startDate:leaveDate,
+      endDate:leaveDate,
+      startTime,
+      endTime,
+      totalHours:hours,
+      summaryText:`${leaveDate}｜${startTime}-${endTime}`,
+      breakdownLines:[`${leaveDate}｜${startTime}-${endTime}｜${leaveFormatDaysHours(hours)}`],
+      expanded:[{ date:leaveDate, startTime, endTime, startMin, endMin, hours }]
+    };
+  }
+
+  function renderSegmentResult(card, result){
+    const box = card ? card.querySelector('[data-segment-result]') : null;
+    if(!box) return;
+    if(!result || !result.ok){
+      box.classList.remove('is-ok');
+      box.classList.add('is-error');
+      box.innerHTML = escapeHtml(result && result.message ? result.message : '請先填寫此區段。');
+      return;
+    }
+    box.classList.remove('is-error');
+    box.classList.add('is-ok');
+    box.innerHTML = `<div><strong>${escapeHtml(result.summaryText || '')}</strong></div><div class="muted">${(result.breakdownLines || []).map(line => `<div>${escapeHtml(line)}</div>`).join('')}</div><div style="margin-top:6px">本區段合計：<strong>${escapeHtml(leaveFormatDaysHours(result.totalHours || 0))}</strong></div>`;
+  }
+
+  function checkSegmentOverlap(previews){
+    const map = {};
+    previews.forEach((item, idx) => {
+      (item.expanded || []).forEach(part => {
+        const key = part.date;
+        if(!map[key]) map[key] = [];
+        map[key].push({ startMin:part.startMin, endMin:part.endMin, index:idx, summary:item.summaryText || '' });
+      });
+    });
+    const messages = [];
+    Object.keys(map).forEach(dateKey => {
+      const list = map[dateKey].slice().sort((a,b) => a.startMin - b.startMin);
+      for(let i=1;i<list.length;i++){
+        if(list[i].startMin < list[i-1].endMin){
+          messages.push(`${dateKey} 的區段時間彼此重疊，請調整後再送出。`);
+          break;
+        }
+      }
+    });
+    return { ok: !messages.length, message: messages[0] || '' };
+  }
+
+  async function previewAllSegments(showMessage){
+    ensureSegmentUi();
+    clearSegmentFieldError();
+    const user = requireLogin();
+    const reason = qs('#reason') ? qs('#reason').value : '';
+    const requestId = qs('#editingRequestId') ? qs('#editingRequestId').value : '';
+    const cards = getSegmentCards();
+    if(!cards.length){
+      setSegmentFieldError('請至少新增一個請假區段。');
+      return { ok:false, message:'請至少新增一個請假區段。' };
+    }
+    if(!user || !reason){
+      cards.forEach(card => renderSegmentResult(card, { ok:false, message:'請先選擇假別。' }));
+      return { ok:false, message:'請先選擇假別。' };
+    }
+    const seq = ++segmentPreviewSeq;
+    const previews = [];
+    for(const card of cards){
+      const mode = segmentCardMode(card);
+      const result = mode === 'custom'
+        ? await previewCustomSegment(user, card, reason, requestId)
+        : await previewScheduleSegment(user, card, reason, requestId);
+      if(seq !== segmentPreviewSeq) return { ok:false, message:'preview-cancelled' };
+      renderSegmentResult(card, result);
+      if(!result.ok){
+        if(showMessage) setLocalMsg(result.message || '請假區段設定不完整。', true);
+        setSegmentFieldError(result.message || '請假區段設定不完整。');
+        return result;
+      }
+      previews.push(result);
+    }
+    const overlap = checkSegmentOverlap(previews);
+    if(!overlap.ok){
+      if(showMessage) setLocalMsg(overlap.message, true);
+      setSegmentFieldError(overlap.message);
+      return { ok:false, message:overlap.message };
+    }
+    const totalHours = Math.round(previews.reduce((sum, item) => sum + (Number(item.totalHours || 0) || 0), 0) * 10) / 10;
+    renderSegmentSummaryBox(previews, totalHours);
+    return { ok:true, previews, totalHours };
+  }
+
+  function renderSegmentSummaryBox(previews, totalHours){
+    const box = qs('#segmentSummaryBox');
+    if(!box) return;
+    if(!previews || !previews.length){
+      box.classList.add('hidden');
+      box.innerHTML = '';
+      return;
+    }
+    box.classList.remove('hidden');
+    box.innerHTML = `
+      <div class="segment-summary-title">本次請假摘要</div>
+      <div class="segment-summary-lines">
+        ${(previews || []).map((item, idx) => `<div><span class="segment-pill">區段 ${idx + 1}</span>${escapeHtml(item.summaryText || '')}｜${escapeHtml(leaveFormatDaysHours(item.totalHours || 0))}</div>`).join('')}
+      </div>
+      <div style="margin-top:8px"><strong>合計：${escapeHtml(leaveFormatDaysHours(totalHours || 0))}</strong></div>
+    `;
+  }
+
+  function scheduleSegmentsPreview(){
+    if(segmentPreviewTimer) clearTimeout(segmentPreviewTimer);
+    segmentPreviewTimer = setTimeout(() => {
+      previewAllSegments(false).catch(() => {});
+    }, 260);
+  }
+
+  function collectSegmentPayload(){
+    return getSegmentCards().map(card => {
+      const mode = segmentCardMode(card);
+      if(mode === 'custom'){
+        return {
+          mode:'custom',
+          leaveDate: card.querySelector('[data-segment-date]') ? card.querySelector('[data-segment-date]').value : '',
+          startTime: normalizeTimeText(card.querySelector('[data-segment-start-time]') ? card.querySelector('[data-segment-start-time]').value : ''),
+          endTime: normalizeTimeText(card.querySelector('[data-segment-end-time]') ? card.querySelector('[data-segment-end-time]').value : '')
+        };
+      }
+      return {
+        mode:'schedule',
+        startDate: card.querySelector('[data-segment-start-date]') ? card.querySelector('[data-segment-start-date]').value : '',
+        endDate: card.querySelector('[data-segment-end-date]') ? card.querySelector('[data-segment-end-date]').value : ''
+      };
+    });
+  }
+
+  function buildEditSegments(row){
+    const segments = Array.isArray(row && row.segments) ? row.segments : [];
+    if(segments.length) return segments;
+    if(row && row.leaveDate && row.startTime && row.endTime){
+      return [{ mode:'custom', leaveDate:row.leaveDate, startTime:normalizeTimeText(row.startTime), endTime:normalizeTimeText(row.endTime) }];
+    }
+    if(row && row.startDate && row.endDate){
+      return [{ mode:'schedule', startDate:row.startDate, endDate:row.endDate }];
+    }
+    return [{ mode:'schedule' }];
+  }
+
+  renderEventContext = function(meta){
+    const box = qs('#eventContextBox');
+    if(!box) return;
+    if(!meta || !meta.mode){
+      box.classList.add('hidden');
+      box.innerHTML = '';
+      return;
+    }
+    if(meta.mode === 'continue' && meta.candidate){
+      const c = meta.candidate;
+      box.classList.remove('hidden');
+      box.innerHTML = `<strong>這次會延續上一次事件</strong><div>${escapeHtml(c.title || c.label || meta.reason || '')}</div><div class="muted">已請 ${escapeHtml(String(c.usedDays || 0))} 天｜剩餘 ${escapeHtml(String(c.remainingDays || 0))} 天</div>`;
+      return;
+    }
+    box.classList.add('hidden');
+    box.innerHTML = '';
+  };
+
+  renderEventChoiceForReason = function(selectedValue){
+    const field = qs('#fieldEventChoice');
+    const select = qs('#eventChoice');
+    const hint = qs('#eventChoiceHintText');
+    if(!field || !select || !hint) return;
+    const reason = qs('#reason') ? qs('#reason').value : '';
+    const special = reason === '婚假' || reason === '喪假';
+    if(!special){
+      field.classList.add('hidden');
+      select.innerHTML = '<option value="">請先選擇婚假或喪假</option>';
+      select.value = '';
+      select.disabled = true;
+      renderEventContext(null);
+      return;
+    }
+    const candidates = getSpecialEventCandidates(reason);
+    if(!candidates.length){
+      field.classList.add('hidden');
+      select.innerHTML = '<option value="new">建立新事件</option>';
+      select.value = 'new';
+      select.disabled = true;
+      renderEventContext(null);
+      return;
+    }
+    field.classList.remove('hidden');
+    select.disabled = false;
+    const options = candidates.map(item => `<option value="continue:${escapeHtml(item.eventId)}">延續上一次｜${escapeHtml(item.displayText || item.title || item.label || reason)}</option>`);
+    options.push('<option value="new">建立新的事件</option>');
+    select.innerHTML = options.join('');
+    select.value = selectedValue || `continue:${candidates[0].eventId}`;
+    hint.textContent = `系統偵測到你有可延續的${reason}事件，請確認這次是否要沿用上一次事件。`;
+    renderEventContext(selectedEventChoiceMeta());
+  };
+
+  toggleHoursByReason = function(){
+    const meta = getSelectedLeaveMeta();
+    renderPolicyHint(meta);
+    renderEventChoiceForReason();
+    toggleBereavementRelation();
+    scheduleSegmentsPreview();
+  };
+
+  setLeaveFormEnabled = function(enabled){
+    _oldSetLeaveFormEnabled(enabled);
+    ensureSegmentUi();
+    qsa('#fieldLeaveSegments input, #fieldLeaveSegments select, #fieldLeaveSegments button').forEach(el => {
+      el.disabled = !enabled;
+    });
+    const file = qs('#file');
+    if(file) file.disabled = !enabled;
+  };
+
+  validateForm = function(){
+    clearValidation();
+    clearSegmentFieldError();
+    const reason = qs('#reason') ? qs('#reason').value : '';
+    const errors = [];
+    if(!reason){ setFieldInvalid('Reason','請先選擇請假原因'); errors.push('#reason'); }
+    const eventMeta = selectedEventChoiceMeta();
+    if(reason === '喪假' && eventMeta.mode !== 'continue' && !(qs('#bereavementRelation') && qs('#bereavementRelation').value)){
+      setFieldInvalid('BereavementRelation','請先選擇喪假關係人');
+      errors.push('#bereavementRelation');
+    }
+    if(!getSegmentCards().length){
+      setSegmentFieldError('請至少新增一個請假區段。');
+      errors.push('#fieldLeaveSegments');
+    }
+    if(errors.length){
+      const target = document.querySelector(errors[0]);
+      if(target) target.focus();
+      return false;
+    }
+    return true;
+  };
+
+  resetForm = function(options={}){
+    _oldResetForm(options || {});
+    ensureSegmentUi();
+    const list = qs('#segmentList');
+    if(list) list.innerHTML = '';
+    createLeaveSegmentCard({ mode:'schedule' }, false);
+    renderSegmentSummaryBox([], 0);
+    clearSegmentFieldError();
+    hideLegacyLeaveFields();
+    if(!options || !options.preserveLocalMsg) setLocalMsg('');
+  };
+
+  startEdit = function(requestId){
+    const row = historyRows.find(item => item.requestId === requestId);
+    if(!row) return;
+    ensureSegmentUi();
+    qs('#editingRequestId').value = row.requestId;
+    renderReasonOptions(row.reason || '');
+    qs('#reason').value = row.reason || '';
+    renderEventChoiceForReason(row.eventMode === 'continue' && row.eventId ? `continue:${row.eventId}` : 'new');
+    if(qs('#bereavementRelation')) qs('#bereavementRelation').value = row.bereavementRelation || '';
+    toggleBereavementRelation();
+    const list = qs('#segmentList');
+    if(list) list.innerHTML = '';
+    buildEditSegments(row).forEach(seg => createLeaveSegmentCard(seg, true));
+    refreshSegmentIndexLabels();
+    qs('#note').value = row.note || '';
+    qs('#file').value = '';
+    setActionButtonIdle(qs('#submitBtn'), '更新請假申請');
+    qs('#cancelEditBtn').classList.remove('hidden');
+    setLocalMsg('你正在修改這張請假申請');
+    scheduleSegmentsPreview();
+    window.scrollTo({ top:0, behavior:'smooth' });
+  };
+
+  submitLeave = async function(){
+    if(!leavePageReady){
+      setLocalMsg('資料尚未讀取完成，請稍候。', true);
+      return;
+    }
+    if(!validateForm()) return;
+    const preview = await previewAllSegments(true);
+    if(!preview || !preview.ok) return;
+    const user = requireLogin();
+    if(!user) return;
+    const file = qs('#file').files[0];
+    const editingId = qs('#editingRequestId').value;
+    const eventMeta = selectedEventChoiceMeta();
+    const relation = qs('#reason').value === '喪假'
+      ? (eventMeta.mode === 'continue' && eventMeta.candidate ? (eventMeta.candidate.relation || '') : (qs('#bereavementRelation').value || ''))
+      : '';
+    const payload = {
+      userId:user.id,
+      reason:qs('#reason').value,
+      note:qs('#note').value.trim(),
+      bereavementRelation: relation,
+      eventMode: eventMeta.mode || '',
+      eventId: eventMeta.candidate ? eventMeta.candidate.eventId : '',
+      segments: collectSegmentPayload()
+    };
+    if(file) payload.attachment = await fileToDataUrl(file);
+    const btn = qs('#submitBtn');
+    const cancelBtn = qs('#cancelEditBtn');
+    const progress = startActionButtonProgress(btn, { label:editingId ? '更新中' : '送出中' });
+    cancelBtn.disabled = true;
+    setLocalMsg('');
+    try{
+      progress.set(10, '檢查請假區段');
+      await sleep(80);
+      progress.set(35, editingId ? '整理修改內容' : '整理請假內容');
+      const action = editingId ? 'modifyLeaveRequest' : 'leaveRequest';
+      const request = api(action, Object.assign({}, payload, editingId ? { requestId:editingId } : {}));
+      await sleep(120);
+      progress.set(70, editingId ? '更新請假申請' : '送出請假申請');
+      const r = await request;
+      setLocalMsg(r.message, !r.ok);
+      if(r.ok){
+        resetForm({ keepOptions:true, preserveLocalMsg:true });
+        await loadStaffData();
+        progress.done(editingId ? '更新成功' : '送出成功');
+      }else{
+        progress.fail(editingId ? '更新失敗' : '送出失敗');
+      }
+    }catch(err){
+      progress.fail(editingId ? '更新失敗' : '送出失敗');
+      throw err;
+    }finally{
+      cancelBtn.disabled = false;
+    }
+  };
+
+  init = async function(){
+    ensureSegmentUi();
+    hideLegacyLeaveFields();
+    await _oldInit();
+    ensureSegmentUi();
+    hideLegacyLeaveFields();
+    if(qs('#submitBtn')) qs('#submitBtn').onclick = submitLeave;
+    if(qs('#cancelEditBtn')) qs('#cancelEditBtn').onclick = () => { resetForm({ keepOptions:true }); scheduleSegmentsPreview(); };
+    if(!getSegmentCards().length) createLeaveSegmentCard({ mode:'schedule' }, false);
+    refreshSegmentIndexLabels();
+    scheduleSegmentsPreview();
+  };
+})();
+</script>
+
+</body></html>
