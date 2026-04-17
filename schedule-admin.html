@@ -611,7 +611,7 @@
         const end = a.endTime || a['下班時間'] || '';
         const allowSpecial = String(a.allowSpecial || a['允許特殊打卡'] || 'FALSE') === 'TRUE';
         const extra = allowSpecial ? '｜可標準＋特殊共用' : '';
-        return `<div class="item"><div class="item-head"><div><h3>${escapeHtml(a.employeeName || a['員工姓名'] || '未命名員工')}</h3><div class="muted">日期：${escapeHtml(a.date || a['日期'] || '')}｜${escapeHtml(type)}${extra}</div></div><span class="pill ${enabled ? '' : 'off'}">${enabled ? '啟用中' : '已停用'}</span></div><div class="schedule-mini"><div><b>時間：</b>${start && end ? `${escapeHtml(start)} - ${escapeHtml(end)}` : '—'}</div><div><b>單日ID：</b>${escapeHtml(a.recordId || a['單日ID'] || '')}</div><div><b>備註：</b>${escapeHtml(a.note || a['備註'] || '')}</div></div><div class="actions"><button class="btn btn-secondary" type="button" onclick="editSingleDay(${index})">編輯</button><button class="btn btn-danger" type="button" onclick="deleteSingleDay('${'${'}escapeJs(a.recordId || a['單日ID'] || '')${'}'}')">刪除</button></div></div>`;
+        return `<div class="item"><div class="item-head"><div><h3>${escapeHtml(a.employeeName || a['員工姓名'] || '未命名員工')}</h3><div class="muted">日期：${escapeHtml(a.date || a['日期'] || '')}｜${escapeHtml(type)}${extra}</div></div><span class="pill ${enabled ? '' : 'off'}">${enabled ? '啟用中' : '已停用'}</span></div><div class="schedule-mini"><div><b>時間：</b>${start && end ? `${escapeHtml(start)} - ${escapeHtml(end)}` : '—'}</div><div><b>單日ID：</b>${escapeHtml(a.recordId || a['單日ID'] || '')}</div><div><b>備註：</b>${escapeHtml(a.note || a['備註'] || '')}</div></div><div class="actions"><button class="btn btn-secondary" type="button" onclick="editSingleDay(${index})">編輯</button><button class="btn btn-danger" type="button" onclick="deleteSingleDay('${escapeJs(a.recordId || a['單日ID'] || '')}')">刪除</button></div></div>`;
       }).join('');
     }
 
@@ -688,8 +688,6 @@
       evt.preventDefault();
       const submitBtn = evt && evt.submitter ? evt.submitter : document.querySelector('#templateForm button[type="submit"]');
       const progress = startSubmitProgress(submitBtn, '儲存中');
-      const submitBtn = evt && evt.submitter ? evt.submitter : document.querySelector('#templateForm button[type="submit"]');
-      const progress = startSubmitProgress(submitBtn, '儲存中');
       const payload = {
         templateId: document.getElementById('templateId').value.trim(),
         templateName: document.getElementById('templateName').value.trim(),
@@ -741,8 +739,6 @@
 
     async function saveAssignment(evt) {
       evt.preventDefault();
-      const submitBtn = evt && evt.submitter ? evt.submitter : document.querySelector('#assignmentForm button[type="submit"]');
-      const progress = startSubmitProgress(submitBtn, '儲存中');
       const submitBtn = evt && evt.submitter ? evt.submitter : document.querySelector('#assignmentForm button[type="submit"]');
       const progress = startSubmitProgress(submitBtn, '儲存中');
       const employeeId = document.getElementById('employeeId').value;
@@ -879,8 +875,6 @@
 
     async function saveSingleDay(evt) {
       evt.preventDefault();
-      const submitBtn = evt && evt.submitter ? evt.submitter : document.querySelector('#singleDayForm button[type="submit"]');
-      const progress = startSubmitProgress(submitBtn, '儲存中');
       const submitBtn = evt && evt.submitter ? evt.submitter : document.querySelector('#singleDayForm button[type="submit"]');
       const progress = startSubmitProgress(submitBtn, '儲存中');
       const employeeId = document.getElementById('singleDayEmployeeId').value;
