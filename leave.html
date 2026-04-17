@@ -164,7 +164,7 @@ function createDefaultSegment(mode){
   return { id: nextLeaveSegmentId(), mode: mode || 'schedule', startDate: today, endDate: today, leaveDate: today, startTime: '', endTime: '', contextHtml: '', contextError: false };
 }
 function getSegmentStateById(id){ return leaveSegmentsState.find(item => item.id === id) || null; }
-function leaveMetaAllowsCustom(meta){ return !!(meta && (meta.canHalf || meta.canHour)); }
+function leaveMetaAllowsCustom(meta){ return !!meta; }
 function normalizeSegmentModesByReason(){
   const meta = getSelectedLeaveMeta();
   const allowCustom = leaveMetaAllowsCustom(meta);
@@ -560,7 +560,7 @@ function renderEventContext(meta){
   if(!meta || meta.mode !== 'continue' || !meta.candidate) return;
   const c = meta.candidate;
   box.classList.remove('hidden');
-  box.innerHTML = `<strong>目前先以延續上一次事件處理</strong><div>${escapeHtml(c.title || c.label || meta.reason || '')}</div><div class="muted">已請 ${escapeHtml(String(c.usedDays || 0))} 天｜剩餘 ${escapeHtml(String(c.remainingDays || 0))} 天</div>`;
+  box.innerHTML = `<strong>目前先以延續上一次事件處理</strong><div>${escapeHtml(c.title || c.label || meta.reason || '')}</div><div class="muted">已請 ${escapeHtml(String(c.usedDisplayText || c.usedDays || '0 天'))}｜剩餘 ${escapeHtml(String(c.remainingDisplayText || c.remainingDays || '0 天'))}</div>`;
 }
 function renderEventChoiceForReason(selectedValue){
   const field = qs('#fieldEventChoice');
@@ -629,14 +629,7 @@ function renderHoursOptions(meta, selected){
     el.disabled = true;
     return;
   }
-  let options = [];
-  if(meta.canHour){
-    options = [1,2,3,4,5,6,7,8].map(h => `<option value="${h}">${h} 小時</option>`);
-  }else if(meta.canHalf){
-    options = ['<option value="4">4 小時</option>','<option value="8">8 小時</option>'];
-  }else{
-    options = ['<option value="8">8 小時</option>'];
-  }
+  const options = [1,2,3,4,5,6,7,8].map(h => `<option value="${h}">${h} 小時</option>`);
   el.innerHTML = ['<option value="">請選擇請假時數</option>'].concat(options).join('');
   el.disabled = false;
   if(selected != null && selected !== '') el.value = String(selected);
@@ -676,7 +669,6 @@ function renderPolicyHint(meta){
   chips.push(`<span class="policy-chip">${escapeHtml(meta.identityText || '全部身分')}</span>`);
   if(meta.payText) chips.push(`<span class="policy-chip">${escapeHtml(meta.payText)}</span>`);
   chips.push(`<span class="policy-chip">${meta.attachmentRule === 'required' ? '需附件 / 證明' : '附件可選填'}</span>`);
-  chips.push(`<span class="policy-chip">${(!meta.canHalf && !meta.canHour) ? '整天為主' : '可半天 / 小時'}</span>`);
   if(rule && rule.requestType) chips.push(`<span class="policy-chip">${escapeHtml(rule.requestType)}${rule.minAdvance ? ('｜' + escapeHtml(rule.minAdvance) + '天') : ''}</span>`);
   if(rule && rule.allowTemp) chips.push(`<span class="policy-chip">${escapeHtml(rule.allowTemp === '是' ? '允許臨時申請' : '不建議臨時申請')}</span>`);
   const lines = [meta.note || '請依公司最新假勤制度送出申請。'];
