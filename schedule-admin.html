@@ -298,7 +298,7 @@
 
     <div id="templatePanel" class="schedule-panel active">
       <div class="card">
-        <div class="toolbar"><div><h2 class="section-title">班表模板管理</h2><p class="section-desc">你可以直接新增、修改、刪除班表模板。只有 <b>標準打卡</b> 才需要同時填上班時間與下班時間；<b>特殊打卡</b>、<b>無班</b>、<b>休息日（可依法協商出勤）</b>、<b>例假日（原則不得出勤）</b> 都不需填時間。</p></div><div class="right"><button class="btn btn-secondary" type="button" onclick="resetTemplateForm()">新增模板</button></div></div>
+        <div class="toolbar"><div><h2 class="section-title">班表模板管理</h2><p class="section-desc">你可以直接新增、修改、刪除班表模板。只有 <b>標準打卡</b> 才需要同時填上班時間與下班時間；<b>無班</b>、<b>休息日（可依法協商出勤）</b>、<b>例假日（原則不得出勤）</b> 都不需填時間。當連續工作超過 4 小時時，系統會自動在模板摘要中顯示 30 分鐘休息時間。</p></div><div class="right"><button class="btn btn-secondary" type="button" onclick="resetTemplateForm()">新增模板</button></div></div>
         <form id="templateForm"><input type="hidden" id="templateId" /><div class="row"><div class="field"><label for="templateName">模板名稱</label><input id="templateName" type="text" placeholder="例如：一般員工標準班" required /></div><div class="field"><label for="templateEnabled">是否啟用</label><select id="templateEnabled"><option value="TRUE">啟用</option><option value="FALSE">停用</option></select></div></div><div id="dayFields" class="row-3"></div><div class="field"><label for="templateNote">備註</label><textarea id="templateNote" placeholder="例如：星期一公休；其他為標準班。"></textarea></div><div class="actions"><button class="btn btn-primary" type="submit">儲存班表模板</button><button class="btn btn-ghost" type="button" onclick="resetTemplateForm()">清空表單</button></div></form>
         <div id="templateStatus" class="status"></div>
       </div>
@@ -317,8 +317,8 @@
 
     <div id="singleDayPanel" class="schedule-panel">
       <div class="card">
-        <div class="toolbar"><div><h2 class="section-title">單日特別班表 / 單日開放打卡</h2><p class="section-desc">臨時加班、活動日、補班日可直接用這裡設定，只影響指定員工的指定那一天，優先權高於一般班表套用；也可直接標註該日為休息日或例假日。</p></div><div class="right"><button class="btn btn-secondary" type="button" onclick="resetSingleDayForm()">新增單日特別班表</button></div></div>
-        <form id="singleDayForm"><input type="hidden" id="singleDayId" /><div class="field"><label for="singleDayEmployeeId">員工</label><select id="singleDayEmployeeId" required></select></div><div class="row"><div class="field"><label for="singleDayDate">日期</label><input id="singleDayDate" type="date" required /></div><div class="field"><label for="singleDayType">班別 / 日別類型</label><select id="singleDayType" onchange="toggleSingleDayTime()"><option value="標準打卡">標準打卡</option><option value="特殊打卡">特殊打卡</option><option value="無班">無班</option><option value="休息日">休息日（可依法協商出勤）</option><option value="例假日">例假日（原則不得出勤）</option></select></div></div><div class="row" id="singleDayTimeRow"><div class="field"><label for="singleDayStartTime">上班時間</label><input id="singleDayStartTime" type="time" /></div><div class="field"><label for="singleDayEndTime">下班時間</label><input id="singleDayEndTime" type="time" /></div></div><label class="checkbox-line"><input id="singleDayAllowSpecial" type="checkbox" />當天允許「標準打卡＋特殊打卡」共用</label><div class="row"><div class="field"><label for="singleDayEnabled">是否啟用</label><select id="singleDayEnabled"><option value="TRUE">啟用</option><option value="FALSE">停用</option></select></div><div class="field"><label for="singleDayNote">備註</label><input id="singleDayNote" type="text" placeholder="例如：活動日臨時開放打卡" /></div></div><div class="actions"><button class="btn btn-primary" type="submit">儲存單日特別班表</button><button class="btn btn-ghost" type="button" onclick="resetSingleDayForm()">清空表單</button></div></form>
+        <div class="toolbar"><div><h2 class="section-title">單日特別班表 / 單日開放打卡</h2><p class="section-desc">臨時加班、活動日、補班日可直接用這裡設定，只影響指定員工的指定那一天，優先權高於一般班表套用；也可直接標註該日為休息日或例假日。若標準打卡連續超過 4 小時，列表摘要會自動顯示休息時間。</p></div><div class="right"><button class="btn btn-secondary" type="button" onclick="resetSingleDayForm()">新增單日特別班表</button></div></div>
+        <form id="singleDayForm"><input type="hidden" id="singleDayId" /><div class="field"><label for="singleDayEmployeeId">員工</label><select id="singleDayEmployeeId" required></select></div><div class="row"><div class="field"><label for="singleDayDate">日期</label><input id="singleDayDate" type="date" required /></div><div class="field"><label for="singleDayType">班別 / 日別類型</label><select id="singleDayType" onchange="toggleSingleDayTime()"><option value="標準打卡">標準打卡</option><option value="特殊打卡">特殊打卡</option><option value="無班">無班</option><option value="休息日">休息日（可依法協商出勤）</option><option value="例假日">例假日（原則不得出勤）</option></select></div></div><div class="row" id="singleDayTimeRow"><div class="field"><label for="singleDayStartTime">上班時間</label><input id="singleDayStartTime" type="time" /></div><div class="field"><label for="singleDayEndTime">下班時間</label><input id="singleDayEndTime" type="time" /></div></div><div id="singleDayRestPreview" class="muted" style="margin-top:-6px;margin-bottom:8px;font-size:12px;"></div><label class="checkbox-line"><input id="singleDayAllowSpecial" type="checkbox" />當天允許「標準打卡＋特殊打卡」共用</label><div class="row"><div class="field"><label for="singleDayEnabled">是否啟用</label><select id="singleDayEnabled"><option value="TRUE">啟用</option><option value="FALSE">停用</option></select></div><div class="field"><label for="singleDayNote">備註</label><input id="singleDayNote" type="text" placeholder="例如：活動日臨時開放打卡" /></div></div><div class="actions"><button class="btn btn-primary" type="submit">儲存單日特別班表</button><button class="btn btn-ghost" type="button" onclick="resetSingleDayForm()">清空表單</button></div></form>
         <div id="singleDayStatus" class="status"></div>
       </div>
       <div class="card" style="margin-top:18px;"><h2 class="section-title">已建立的單日特別班表</h2><p class="section-desc">這裡會列出目前所有單日開放打卡設定，可直接編輯或刪除。</p><div id="singleDayList" class="assignment-list"></div></div>
@@ -339,6 +339,117 @@
       { key: 'sunday', label: '星期日' }
     ];
 
+
+    const SHIFT_TYPE_OPTIONS = [
+      { value: '標準打卡', label: '標準打卡' },
+      { value: '無班', label: '無班' },
+      { value: '休息日', label: '休息日（可依法協商出勤）' },
+      { value: '例假日', label: '例假日（原則不得出勤）' }
+    ];
+
+    function requiresShiftTime(type) {
+      return String(type || '') === '標準打卡';
+    }
+
+    function getShiftTypeOptionsHtml(selectedValue) {
+      const current = String(selectedValue || '無班');
+      return SHIFT_TYPE_OPTIONS.map(opt => `<option value="${escapeHtml(opt.value)}"${opt.value === current ? ' selected' : ''}>${escapeHtml(opt.label)}</option>`).join('');
+    }
+
+    function timeToMinutes(text) {
+      const raw = String(text || '').trim();
+      const match = raw.match(/^(\d{2}):(\d{2})$/);
+      if (!match) return NaN;
+      return Number(match[1]) * 60 + Number(match[2]);
+    }
+
+    function minutesToTime(totalMinutes) {
+      const n = Number(totalMinutes || 0) || 0;
+      const h = Math.floor(n / 60);
+      const m = n % 60;
+      return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    }
+
+    function calculateAutoRestBreaks(startTime, endTime, type) {
+      if (!requiresShiftTime(type)) return { ok: true, breaks: [] };
+      const start = timeToMinutes(startTime);
+      const end = timeToMinutes(endTime);
+      if (!(start >= 0) || !(end >= 0) || end <= start) return { ok: false, message: '請確認上班時間與下班時間。', breaks: [] };
+      const breaks = [];
+      let cursor = start;
+      while ((end - cursor) > 240) {
+        if ((end - cursor) < 270) {
+          return {
+            ok: false,
+            message: '只要超過連續 4 小時，就至少要保留 30 分鐘休息時間；請把下班時間再往後調整，或改成 4 小時內。',
+            breaks
+          };
+        }
+        const breakStart = cursor + 240;
+        const breakEnd = breakStart + 30;
+        breaks.push({ start: minutesToTime(breakStart), end: minutesToTime(breakEnd) });
+        cursor = breakEnd;
+      }
+      return { ok: true, breaks };
+    }
+
+    function formatBreakSummary(breaks) {
+      const rows = Array.isArray(breaks) ? breaks : [];
+      if (!rows.length) return '無自動休息時間';
+      return rows.map((item, idx) => `休息 ${idx + 1}：${item.start}-${item.end}`).join('｜');
+    }
+
+    function formatDaySummary(type, startTime, endTime, allowSpecial) {
+      const currentType = String(type || '無班');
+      const extras = [];
+      if (allowSpecial) extras.push('可標準＋特殊共用');
+      if (!requiresShiftTime(currentType)) {
+        if (extras.length) return `${currentType}｜${extras.join('｜')}`;
+        return currentType;
+      }
+      const breakRes = calculateAutoRestBreaks(startTime, endTime, currentType);
+      const bits = [`${currentType}｜${startTime}-${endTime}`];
+      if (breakRes.ok && breakRes.breaks.length) bits.push(formatBreakSummary(breakRes.breaks));
+      if (extras.length) bits.push(extras.join('｜'));
+      return bits.join('｜');
+    }
+
+    function updateDayRestPreview(dayKey) {
+      const preview = document.getElementById(`${dayKey}RestPreview`);
+      if (!preview) return;
+      const type = document.getElementById(`${dayKey}Type`).value;
+      const startTime = document.getElementById(`${dayKey}Time`).value;
+      const endTime = document.getElementById(`${dayKey}EndTime`).value;
+      if (!requiresShiftTime(type)) {
+        preview.textContent = type === '休息日' ? '休息日：可依法協商出勤。' : (type === '例假日' ? '例假日：原則不得出勤。' : '這一天不需設定上下班時間。');
+        return;
+      }
+      if (!startTime || !endTime) {
+        preview.textContent = '請先填上班時間與下班時間。';
+        return;
+      }
+      const breakRes = calculateAutoRestBreaks(startTime, endTime, type);
+      preview.textContent = breakRes.ok ? formatBreakSummary(breakRes.breaks) : breakRes.message;
+    }
+
+    function updateSingleDayRestPreview() {
+      const preview = document.getElementById('singleDayRestPreview');
+      if (!preview) return;
+      const type = document.getElementById('singleDayType').value;
+      const startTime = document.getElementById('singleDayStartTime').value;
+      const endTime = document.getElementById('singleDayEndTime').value;
+      if (!requiresShiftTime(type)) {
+        preview.textContent = type === '休息日' ? '休息日：可依法協商出勤。' : (type === '例假日' ? '例假日：原則不得出勤。' : '這一天不需設定上下班時間。');
+        return;
+      }
+      if (!startTime || !endTime) {
+        preview.textContent = '請先填上班時間與下班時間。';
+        return;
+      }
+      const breakRes = calculateAutoRestBreaks(startTime, endTime, type);
+      preview.textContent = breakRes.ok ? formatBreakSummary(breakRes.breaks) : breakRes.message;
+    }
+
     let pageData = {
       templates: [],
       assignments: [],
@@ -350,6 +461,7 @@
       buildDayFields();
       bindForms();
       toggleSingleDayTime();
+      updateSingleDayRestPreview();
       const currentUser = (typeof getUser === 'function') ? getUser() : null;
       if (currentUser && typeof hasSettingsZoneAccess === 'function' && !hasSettingsZoneAccess(currentUser)) {
         window.location.href = 'dashboard.html';
@@ -362,37 +474,35 @@
       reloadPageData();
     });
 
-    function buildDayFields() {
-      const wrap = document.getElementById('dayFields');
-      wrap.innerHTML = DAYS.map(day => `
-        <div class="day-card">
-          <div class="day-title">${day.label}</div>
-          <div class="field">
-            <label for="${day.key}Type">班別 / 日別類型</label>
-            <select id="${day.key}Type" onchange="toggleDayTime('${day.key}')">
-              <option value="無班">無班</option>
-              <option value="標準打卡">標準打卡</option>
-              <option value="特殊打卡">特殊打卡</option>
-              <option value="休息日">休息日（可依法協商出勤）</option>
-              <option value="例假日">例假日（原則不得出勤）</option>
-            </select>
-          </div>
-          <div class="field hidden" id="${day.key}TimeWrap">
-            <label for="${day.key}Time">上班時間</label>
-            <input id="${day.key}Time" type="time" />
-          </div>
-          <div class="field hidden" id="${day.key}EndTimeWrap">
-            <label for="${day.key}EndTime">下班時間</label>
-            <input id="${day.key}EndTime" type="time" />
-          </div>
-          <label class="checkbox-line" style="margin-top:8px;">
-            <input id="${day.key}AllowSpecial" type="checkbox" />
-            當天允許「標準打卡＋特殊打卡」共用
-          </label>
-          <div class="muted" style="margin-top:6px;font-size:12px;">休息日：可依法協商出勤；例假日：原則不得出勤。</div>
-        </div>
-      `).join('');
-    }
+    
+function buildDayFields() {
+  const wrap = document.getElementById('dayFields');
+  wrap.innerHTML = DAYS.map(day => `
+    <div class="day-card">
+      <div class="day-title">${day.label}</div>
+      <div class="field">
+        <label for="${day.key}Type">班別 / 日別類型</label>
+        <select id="${day.key}Type" onchange="toggleDayTime('${day.key}')">
+          ${getShiftTypeOptionsHtml('無班')}
+        </select>
+      </div>
+      <div class="field hidden" id="${day.key}TimeWrap">
+        <label for="${day.key}Time">上班時間</label>
+        <input id="${day.key}Time" type="time" onchange="updateDayRestPreview('${day.key}')" />
+      </div>
+      <div class="field hidden" id="${day.key}EndTimeWrap">
+        <label for="${day.key}EndTime">下班時間</label>
+        <input id="${day.key}EndTime" type="time" onchange="updateDayRestPreview('${day.key}')" />
+      </div>
+      <label class="checkbox-line" style="margin-top:8px;">
+        <input id="${day.key}AllowSpecial" type="checkbox" />
+        當天允許「標準打卡＋特殊打卡」共用
+      </label>
+      <div id="${day.key}RestPreview" class="muted" style="margin-top:6px;font-size:12px;">這一天不需設定上下班時間。</div>
+    </div>
+  `).join('');
+}
+
 
     function bindForms() {
       document.getElementById('templateForm').addEventListener('submit', saveTemplate);
@@ -553,9 +663,7 @@
                 const startTime = getTemplateDayValue(t, day, 'time') || '';
                 const endTime = getTemplateDayValue(t, day, 'endTime') || '';
                 const allowSpecial = !!getTemplateDayValue(t, day, 'allowSpecial');
-                const timeText = startTime && endTime ? ` / ${escapeHtml(startTime)} - ${escapeHtml(endTime)}` : '';
-                const extra = allowSpecial ? ' / 可標準＋特殊共用' : '';
-                return `<div><b>${day.label}：</b>${escapeHtml(type)}${timeText}${extra}</div>`;
+                return `<div><b>${day.label}：</b>${escapeHtml(formatDaySummary(type, startTime, endTime, allowSpecial))}</div>`;
               }).join('')}
             </div>
             <div class="actions">
@@ -614,7 +722,8 @@
         const end = a.endTime || a['下班時間'] || '';
         const allowSpecial = String(a.allowSpecial || a['允許特殊打卡'] || 'FALSE') === 'TRUE';
         const extra = allowSpecial ? '｜可標準＋特殊共用' : '';
-        return `<div class="item"><div class="item-head"><div><h3>${escapeHtml(a.employeeName || a['員工姓名'] || '未命名員工')}</h3><div class="muted">日期：${escapeHtml(a.date || a['日期'] || '')}｜${escapeHtml(type)}${extra}</div></div><span class="pill ${enabled ? '' : 'off'}">${enabled ? '啟用中' : '已停用'}</span></div><div class="schedule-mini"><div><b>時間：</b>${start && end ? `${escapeHtml(start)} - ${escapeHtml(end)}` : '—'}</div><div><b>單日ID：</b>${escapeHtml(a.recordId || a['單日ID'] || '')}</div><div><b>備註：</b>${escapeHtml(a.note || a['備註'] || '')}</div></div><div class="actions"><button class="btn btn-secondary" type="button" onclick="editSingleDay(${index})">編輯</button><button class="btn btn-danger" type="button" onclick="deleteSingleDay('${escapeJs(a.recordId || a['單日ID'] || '')}')">刪除</button></div></div>`;
+        const summary = formatDaySummary(type, start, end, allowSpecial);
+        return `<div class="item"><div class="item-head"><div><h3>${escapeHtml(a.employeeName || a['員工姓名'] || '未命名員工')}</h3><div class="muted">日期：${escapeHtml(a.date || a['日期'] || '')}</div></div><span class="pill ${enabled ? '' : 'off'}">${enabled ? '啟用中' : '已停用'}</span></div><div class="schedule-mini"><div><b>班表摘要：</b>${escapeHtml(summary)}</div><div><b>單日ID：</b>${escapeHtml(a.recordId || a['單日ID'] || '')}</div><div><b>備註：</b>${escapeHtml(a.note || a['備註'] || '')}</div></div><div class="actions"><button class="btn btn-secondary" type="button" onclick="editSingleDay(${index})">編輯</button><button class="btn btn-danger" type="button" onclick="deleteSingleDay('${escapeJs(a.recordId || a['單日ID'] || '')}')">刪除</button></div></div>`;
       }).join('');
     }
 
@@ -645,13 +754,14 @@
       const endWrap = document.getElementById(`${dayKey}EndTimeWrap`);
       const startInput = document.getElementById(`${dayKey}Time`);
       const endInput = document.getElementById(`${dayKey}EndTime`);
-      const show = type === '標準打卡';
+      const show = requiresShiftTime(type);
       startWrap.classList.toggle('hidden', !show);
       endWrap.classList.toggle('hidden', !show);
       if (!show) {
         startInput.value = '';
         endInput.value = '';
       }
+      updateDayRestPreview(dayKey);
     }
 
     function resetTemplateForm() {
@@ -665,6 +775,7 @@
         document.getElementById(`${day.key}EndTime`).value = '';
         document.getElementById(`${day.key}AllowSpecial`).checked = false;
         toggleDayTime(day.key);
+        updateDayRestPreview(day.key);
       });
     }
 
@@ -803,6 +914,7 @@
         document.getElementById(`${day.key}EndTime`).value = getTemplateDayValue(t, day, 'endTime') || '';
         document.getElementById(`${day.key}AllowSpecial`).checked = !!getTemplateDayValue(t, day, 'allowSpecial');
         toggleDayTime(day.key);
+        updateDayRestPreview(day.key);
       });
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
@@ -855,12 +967,13 @@
     function toggleSingleDayTime() {
       const type = document.getElementById('singleDayType').value;
       const row = document.getElementById('singleDayTimeRow');
-      const show = type === '標準打卡';
+      const show = requiresShiftTime(type);
       row.classList.toggle('hidden', !show);
       if (!show) {
         document.getElementById('singleDayStartTime').value = '';
         document.getElementById('singleDayEndTime').value = '';
       }
+      updateSingleDayRestPreview();
     }
 
     function resetSingleDayForm() {
@@ -874,6 +987,7 @@
       document.getElementById('singleDayEnabled').value = 'TRUE';
       document.getElementById('singleDayNote').value = '';
       toggleSingleDayTime();
+      updateSingleDayRestPreview();
     }
 
     async function saveSingleDay(evt) {
@@ -897,7 +1011,11 @@
       };
       if (!payload.employeeId || !payload.date) { if (progress) progress.fail('資料不完整', 900); showStatus('singleDayStatus', '請先選員工並填日期。', 'error'); return; }
       if (clockType === '標準打卡' && (!payload.startTime || !payload.endTime)) { if (progress) progress.fail('資料不完整', 900); showStatus('singleDayStatus', '標準打卡請填上班時間與下班時間。', 'error'); return; }
-      if (clockType === '標準打卡' && payload.endTime <= payload.startTime) { if (progress) progress.fail('時間錯誤', 900); showStatus('singleDayStatus', '下班時間必須晚於上班時間。', 'error'); return; }
+      if (requiresShiftTime(clockType) && payload.endTime <= payload.startTime) { if (progress) progress.fail('時間錯誤', 900); showStatus('singleDayStatus', '下班時間必須晚於上班時間。', 'error'); return; }
+      if (requiresShiftTime(clockType)) {
+        const breakCheck = calculateAutoRestBreaks(payload.startTime, payload.endTime, clockType);
+        if (!breakCheck.ok) { if (progress) progress.fail('休息時間錯誤', 900); showStatus('singleDayStatus', breakCheck.message, 'error'); return; }
+      }
       try {
         await callBackend('saveSingleDaySchedule', payload);
         if (progress) progress.done('已儲存');
@@ -924,6 +1042,7 @@
       document.getElementById('singleDayEnabled').value = String(a.enabled || a['啟用'] || 'TRUE');
       document.getElementById('singleDayNote').value = a.note || a['備註'] || '';
       toggleSingleDayTime();
+      updateSingleDayRestPreview();
       switchSchedulePanel('singleDayPanel');
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
