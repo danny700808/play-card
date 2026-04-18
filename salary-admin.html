@@ -125,6 +125,12 @@
             <div id="laborPlanHint" class="hint-box">選擇級距後，這裡會顯示投保薪資與勞保自付額。</div>
           </div>
 
+          <div class="field">
+            <label>健保級距</label>
+            <select id="healthPlan"></select>
+            <div id="healthPlanHint" class="hint-box">選擇級距後，這裡會顯示投保金額與健保本人自付額。</div>
+          </div>
+
           <div class="field-inline-grid">
             <div class="field">
               <label>勞保狀態</label>
@@ -232,6 +238,11 @@
     function getLaborMeta(){
       const code = qs('#laborPlan').value;
       const list = (setup && setup.laborPlans) || [];
+      return list.find(x => String(x.code || '') === String(code || '')) || null;
+    }
+    function getHealthMeta(){
+      const code = qs('#healthPlan').value;
+      const list = (setup && setup.healthPlans) || [];
       return list.find(x => String(x.code || '') === String(code || '')) || null;
     }
     function getPendingReasons(row){
@@ -359,11 +370,14 @@
     }
     function updateInsuranceHints(){
       const labor = getLaborMeta();
+      const health = getHealthMeta();
       const laborStatus = qs('#laborStatus').value;
       const healthStatus = qs('#healthStatus').value;
       const laborText = labor ? `投保薪資：${String(labor.salaryText || '-')}｜勞保自付：${String(labor.selfPayText || '-')}` : '選擇級距後，這裡會顯示投保薪資與勞保自付額。';
       qs('#laborPlanHint').textContent = laborText;
-      qs('#healthHint').textContent = (healthStatus === '在保' && labor) ? `健保自付：${String(labor.healthSelfPayText || '-')}` : '健保若為在保，會依投保金額顯示健保自付額。';
+      const healthPlanText = health ? `投保金額：${String(health.salaryText || '-')}｜健保本人自付：${String(health.selfPayText || '-')}` : '選擇級距後，這裡會顯示投保金額與健保本人自付額。';
+      qs('#healthPlanHint').textContent = healthPlanText;
+      qs('#healthHint').textContent = (healthStatus === '在保' && health) ? `健保本人自付：${String(health.selfPayText || '-')}` : '健保若為在保，請另外選擇健保級距。';
       const base = getRetirementBase();
       const employer = Math.round(base * 0.06);
       const selfEnabled = qs('#laborRetirementSelfEnabled').value === '是';
@@ -404,6 +418,7 @@
       qs('#isParttimePartial').value = cfg.isPartialHours || '否';
       qs('#averageSalary').value = cfg.averageSalary || '';
       fillSelect('laborPlan', setup.laborPlans, cfg.laborPlan, '請選擇勞保級距');
+      fillSelect('healthPlan', setup.healthPlans, cfg.healthPlan, '請選擇健保級距');
       qs('#laborStatus').value = cfg.laborStatus || '';
       qs('#healthStatus').value = cfg.healthStatus || '';
       qs('#laborRetirementSelfEnabled').value = cfg.selfRetirementEnabled || '否';
@@ -425,6 +440,7 @@
         isPartialHours: qs('#isParttimePartial').value,
         averageSalary: qs('#averageSalary').value,
         laborPlan: qs('#laborPlan').value,
+        healthPlan: qs('#healthPlan').value,
         laborStatus: qs('#laborStatus').value,
         healthStatus: qs('#healthStatus').value,
         selfRetirementEnabled: qs('#laborRetirementSelfEnabled').value,
@@ -441,7 +457,8 @@
       if(emp.identityType === 'parttime' && !(Number(payload.averageSalary || 0) > 0)) return '工讀生請先填寫目前申報月平均薪資總額。';
       if(!payload.laborStatus) return '請先選擇勞保狀態。';
       if(!payload.healthStatus) return '請先選擇健保狀態。';
-      if((payload.laborStatus === '在保' || payload.healthStatus === '在保') && !payload.laborPlan) return '勞保或健保為在保時，請選擇勞保級距。';
+      if(payload.laborStatus === '在保' && !payload.laborPlan) return '勞保為在保時，請選擇勞保級距。';
+      if(payload.healthStatus === '在保' && !payload.healthPlan) return '健保為在保時，請選擇健保級距。';
       if(payload.selfRetirementEnabled === '是' && !payload.selfRetirementRate) return '已開啟勞退自提時，請選擇自提比率。';
       return '';
     }
@@ -452,7 +469,8 @@
       if(emp.identityType === 'parttime' && !(Number(payload.averageSalary || 0) > 0)) reasons.push('未設定目前申報月平均薪資總額');
       if(!payload.laborStatus) reasons.push('未設定勞保狀態');
       if(!payload.healthStatus) reasons.push('未設定健保狀態');
-      if((payload.laborStatus === '在保' || payload.healthStatus === '在保') && !payload.laborPlan) reasons.push('在保但未設定勞保級距');
+      if(payload.laborStatus === '在保' && !payload.laborPlan) reasons.push('勞保在保但未設定勞保級距');
+      if(payload.healthStatus === '在保' && !payload.healthPlan) reasons.push('健保在保但未設定健保級距');
       const isParttime = emp.identityType === 'parttime';
       setup.employeeConfigMap[emp.id] = {
         salaryDisplayType: isParttime ? 'PARTTIME_DIRECT' : 'STAFF_DIRECT',
@@ -461,6 +479,7 @@
         isPartialHours: isParttime ? (payload.isPartialHours || '否') : '否',
         averageSalary: isParttime ? (Number(payload.averageSalary || 0) || 0) : 0,
         laborPlan: payload.laborPlan || '',
+        healthPlan: payload.healthPlan || '',
         laborStatus: payload.laborStatus || '',
         healthStatus: payload.healthStatus || '',
         selfRetirementEnabled: payload.selfRetirementEnabled || '否',
@@ -487,10 +506,12 @@
         const safeConfigMap = {};
         safeEmployees.forEach(x => { safeConfigMap[x.id] = (res.employeeConfigMap && res.employeeConfigMap[x.id]) || {}; });
         const safeLaborPlans = (res.laborPlans || []).slice().sort((a, b) => (Number(a.salary || 0) || 0) - (Number(b.salary || 0) || 0));
+        const safeHealthPlans = (res.healthPlans || []).slice().sort((a, b) => (Number(a.salary || 0) || 0) - (Number(b.salary || 0) || 0));
         setup = Object.assign({}, res, {
           employees: safeEmployees,
           employeeConfigMap: safeConfigMap,
-          laborPlans: safeLaborPlans
+          laborPlans: safeLaborPlans,
+          healthPlans: safeHealthPlans
         });
         selectedMap = {};
         (setup.employees || []).forEach(x => selectedMap[x.id] = x);
@@ -551,7 +572,7 @@
       qs('#saveBottomBtn').onclick = saveConfig;
       qs('#addJobAllowanceBtn').onclick = addJobAllowance;
       qs('#addAllowanceBtn').onclick = addAllowance;
-      ['#baseSalary','#hourlyRate','#averageSalary','#laborPlan','#laborStatus','#healthStatus','#isParttimePartial','#laborRetirementSelfRate'].forEach(sel => {
+      ['#baseSalary','#hourlyRate','#averageSalary','#laborPlan','#healthPlan','#laborStatus','#healthStatus','#isParttimePartial','#laborRetirementSelfRate'].forEach(sel => {
         const el = qs(sel);
         if(el) el.addEventListener('input', updateInsuranceHints);
         if(el) el.addEventListener('change', updateInsuranceHints);
