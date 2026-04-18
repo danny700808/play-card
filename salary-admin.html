@@ -55,9 +55,7 @@
       <div class="summary-row">
         <div class="summary-chip warn">未完成 <span id="pendingCountText">0</span> 人</div>
         <div class="summary-chip">已完成 <span id="doneCountText">0</span> 人</div>
-        <div class="summary-chip">目前只顯示專職與工讀生</div>
       </div>
-      <div class="small-note">外聘老師不會出現在這個頁面。點選員工後，系統會依身分類型自動切換欄位：專職只顯示本薪；工讀只顯示時薪、是否部分工時與目前申報月平均薪資總額。職務加給與津貼可用「＋新增」加入多筆。</div>
     </div>
 
     <div class="admin-grid">
@@ -422,7 +420,6 @@
       return {
         userId: requireLogin().id,
         employeeId: emp.id,
-        salaryDisplayType: emp.identityType === 'parttime' ? 'PARTTIME_DIRECT' : 'STAFF_DIRECT',
         baseSalary: qs('#baseSalary').value,
         hourlyRate: qs('#hourlyRate').value,
         isPartialHours: qs('#isParttimePartial').value,
@@ -456,12 +453,13 @@
       if(!payload.laborStatus) reasons.push('未設定勞保狀態');
       if(!payload.healthStatus) reasons.push('未設定健保狀態');
       if((payload.laborStatus === '在保' || payload.healthStatus === '在保') && !payload.laborPlan) reasons.push('在保但未設定勞保級距');
+      const isParttime = emp.identityType === 'parttime';
       setup.employeeConfigMap[emp.id] = {
-        salaryDisplayType: payload.salaryDisplayType,
-        baseSalary: Number(payload.baseSalary || 0) || 0,
-        hourlyRate: Number(payload.hourlyRate || 0) || 0,
-        isPartialHours: payload.isPartialHours || '否',
-        averageSalary: Number(payload.averageSalary || 0) || 0,
+        salaryDisplayType: isParttime ? 'PARTTIME_DIRECT' : 'STAFF_DIRECT',
+        baseSalary: isParttime ? 0 : (Number(payload.baseSalary || 0) || 0),
+        hourlyRate: isParttime ? (Number(payload.hourlyRate || 0) || 0) : 0,
+        isPartialHours: isParttime ? (payload.isPartialHours || '否') : '否',
+        averageSalary: isParttime ? (Number(payload.averageSalary || 0) || 0) : 0,
         laborPlan: payload.laborPlan || '',
         laborStatus: payload.laborStatus || '',
         healthStatus: payload.healthStatus || '',
