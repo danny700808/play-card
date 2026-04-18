@@ -74,7 +74,7 @@
           <button class="btn secondary" style="width:auto;padding:10px 14px" onclick="logout()">登出</button>
         </div>
       </div>
-      <div class="muted">合約閱讀區先顯示提示文字。按下「預覽確認」後，系統會把你填寫的資料正式帶入，再送出產生 PDF。</div>
+      <div class="muted">請先閱讀完整契約內容，再填寫簽署資料與手寫簽名。</div>
     </div>
 
     <div class="contract-shell">
@@ -374,7 +374,8 @@
       qs('#metaPeriod').textContent=period;
       qs('#metaPartyA').textContent=partyA;
       qs('#metaOwner').textContent=owner;
-      qs('#contractBody').innerHTML=(contractData&&contractData.contractHtml) ? contractData.contractHtml : '目前尚未設定契約內容。';
+      const html=(contractData&& (contractData.contractHtml || contractData.contractContent || contractData.contractTemplateHtml)) || '';
+      qs('#contractBody').innerHTML=html || '目前尚未設定契約內容。';
     }
 
     function setSignedView(record){
@@ -549,6 +550,8 @@
         const res=await api('getTeacherContractStatus', { userId: currentUser.id, email: currentUser.email });
         if(!res.ok) throw new Error(res.message||'讀取契約失敗');
         contractData=res.contract||{};
+        if(!contractData.contractHtml && res.contractContent) contractData.contractHtml=res.contractContent;
+        if(!contractData.contractTemplateHtml && contractData.contractHtml) contractData.contractTemplateHtml=contractData.contractHtml;
         fillContractBase();
 
         if(res.signed && res.record){
