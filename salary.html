@@ -15,6 +15,7 @@
     .info-card .label{font-size:13px;color:var(--muted)}
     .info-card .value{font-size:16px;font-weight:700;margin-top:6px;white-space:pre-wrap}
     .hidden{display:none!important}
+    .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:12px}
     @media (max-width:560px){.summary-grid,.info-grid{grid-template-columns:1fr}}
   </style>
 </head>
@@ -24,6 +25,9 @@
     <div class="card">
       <div class="header" style="margin:0"><h1 class="title">薪資與投保資訊</h1><div class="welcome">歡迎 <span data-user-name></span></div></div>
       <div id="pageMsg" class="message"></div>
+      <div class="toolbar">
+        <button id="reloadBtn" class="btn" type="button" style="width:auto;padding:10px 16px">重新讀取</button>
+      </div>
     </div>
     <div class="card">
       <div class="section-title">摘要</div>
@@ -54,8 +58,8 @@
       </div>
     </div>
   </div>
-  <script src="config.js?v=20260418salary3"></script>
-  <script src="app.js?v=20260418salary3"></script>
+  <script src="config.js?v=20260418salary4"></script>
+  <script src="app.js?v=20260418salary4"></script>
   <script>
     function toggleByIdentity(identityType){
       const isParttime = identityType === 'parttime';
@@ -64,12 +68,30 @@
       qs('#cardPartialHours').classList.toggle('hidden', !isParttime);
       qs('#cardAverageSalary').classList.toggle('hidden', !isParttime);
     }
-    async function init(){
-      fillHeader();
+    function setReloading(loading){
+      const btn = qs('#reloadBtn');
+      if(!btn) return;
+      btn.disabled = !!loading;
+      btn.textContent = loading ? '讀取中...' : '重新讀取';
+    }
+    async function callSalaryApi(payload){
+      const apiUrl = (typeof getApiUrl === 'function' ? getApiUrl() : String((window.APP_CONFIG && window.APP_CONFIG.API_URL) || window.API_URL || '').trim());
+      if(!apiUrl) throw new Error('尚未設定 API 網址');
+      const res = await fetch(apiUrl, {
+        method:'POST',
+        headers:{'Content-Type':'text/plain;charset=utf-8'},
+        body: JSON.stringify(payload)
+      });
+      const raw = await res.text();
+      try{ return JSON.parse(raw); }catch(e){ throw new Error(raw || '伺服器回傳格式錯誤'); }
+    }
+    async function loadSalaryInfo(){
       const user = requireLogin();
       if(!user) return;
+      setReloading(true);
+      setMsg(qs('#pageMsg'), '');
       try{
-        const res = await api('getMySalaryInfo', { userId: user.id });
+        const res = await callSalaryApi({ action:'getMySalaryInfo', userId: user.id });
         if(!res || res.ok === false) throw new Error((res && res.message) || '讀取失敗');
         const info = res.info || {};
         toggleByIdentity(info.identityType || user.identityType || 'staff');
@@ -93,8 +115,23 @@
         qs('#salaryEffectiveDateInfo').textContent = info.effectiveDate || '-';
         qs('#salaryNote').textContent = info.note || '-';
       }catch(err){
-        setMsg(qs('#pageMsg'), err.message || String(err), true);
+        const msg = (err && err.message) ? String(err.message) : String(err || '');
+        if(msg === 'Failed to fetch'){
+          setMsg(qs('#pageMsg'), '員工薪資頁目前連不到 Web App。請重新部署 Apps Script，並確認前端 config.js 的 API URL 仍是最新版本後再重整。', true);
+        }else{
+          setMsg(qs('#pageMsg'), msg, true);
+        }
+      }finally{
+        setReloading(false);
       }
+    }
+    async function init(){
+      fillHeader();
+      const user = requireLogin();
+      if(!user) return;
+      const btn = qs('#reloadBtn');
+      if(btn) btn.addEventListener('click', loadSalaryInfo);
+      await loadSalaryInfo();
     }
   </script>
 </body>
