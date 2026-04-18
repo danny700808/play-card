@@ -227,6 +227,10 @@
       return raw;
     }
 
+    function escapeAttr(text){
+      return escapeHtml(text);
+    }
+
     function escapeHtml(text){
       return String(text||'')
         .replace(/&/g,'&amp;')
