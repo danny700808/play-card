@@ -1013,15 +1013,23 @@ function buildEmployeeLeaveDigestCard(profile, historyData){
 
 function buildOverview(profile, historyData, bundle){
   const annual = computeAnnualEntitlement(profile, bundle, historyData);
+  const summary = summarizeLeaveRows((historyData && historyData.rows) || []);
+  const lines = [
+    `到職日：${annual.hireDate || '未設定'}`,
+    `在職時間：${annual.tenureText || '尚未計算'}`,
+    `年度可用特休：${formatAmountText(annual.totalHours, 'days_hours')}`,
+    `已使用特休：${formatAmountText(annual.usedHours, 'days_hours')}`,
+    `剩餘特休：${formatAmountText(annual.remainingHours, 'days_hours')}`
+  ];
+  if(summary.approvedLines.length){
+    lines.push(...summary.approvedLines);
+  }
+  if(summary.pendingLines.length){
+    lines.push(...summary.pendingLines);
+  }
   const metaCards = [{
-    title:'到職與特休',
-    lines:[
-      `到職日：${annual.hireDate || '未設定'}`,
-      `在職時間：${annual.tenureText || '尚未計算'}`,
-      `年度可用特休：${formatAmountText(annual.totalHours, 'days_hours')}`,
-      `已使用特休：${formatAmountText(annual.usedHours, 'days_hours')}`,
-      `剩餘特休：${formatAmountText(annual.remainingHours, 'days_hours')}`
-    ]
+    title:'到職、特休與請假摘要',
+    lines
   }];
   return { annual, metaCards, usageCards: [], notices: [] };
 }
