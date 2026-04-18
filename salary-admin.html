@@ -68,7 +68,7 @@
           <button type="button" class="chip-btn" data-status-filter="done">已完成</button>
         </div>
         <div class="filter-row">
-          <button type="button" class="chip-btn active" data-type-filter="all">全部身分</button>
+          <button type="button" class="chip-btn active" data-type-filter="all">全部（專職＋工讀）</button>
           <button type="button" class="chip-btn" data-type-filter="staff">專職</button>
           <button type="button" class="chip-btn" data-type-filter="parttime">工讀</button>
         </div>
@@ -483,7 +483,15 @@
       try{
         const res = await api('getSalarySetupOptions', { userId: user.id });
         if(!res || res.ok === false) throw new Error((res && res.message) || '讀取失敗');
-        setup = res;
+        const safeEmployees = (res.employees || []).filter(x => ['staff','parttime'].includes(String(x.identityType || '')));
+        const safeConfigMap = {};
+        safeEmployees.forEach(x => { safeConfigMap[x.id] = (res.employeeConfigMap && res.employeeConfigMap[x.id]) || {}; });
+        const safeLaborPlans = (res.laborPlans || []).slice().sort((a, b) => (Number(a.salary || 0) || 0) - (Number(b.salary || 0) || 0));
+        setup = Object.assign({}, res, {
+          employees: safeEmployees,
+          employeeConfigMap: safeConfigMap,
+          laborPlans: safeLaborPlans
+        });
         selectedMap = {};
         (setup.employees || []).forEach(x => selectedMap[x.id] = x);
         renderSummary();
