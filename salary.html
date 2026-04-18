@@ -19,7 +19,7 @@
       <div class="header" style="margin:0"><h1 class="title">薪資與投保資訊</h1><div class="welcome">歡迎 <span data-user-name></span></div></div>
       <div id="pageMsg" class="message"></div>
       <div style="margin-top:12px"><button id="loadBtn" class="btn" style="width:auto;padding:10px 16px" disabled>讀取薪資資訊 0%</button></div>
-      <div class="muted">這裡顯示個人薪資與投保資訊。上方顯示級距與狀態，下方顯示自付額，不重複顯示說明。</div>
+      <div class="muted">工讀生主顯示平均申報薪資；專職保留本薪，並額外顯示勞退雇主提撥 6% 與自提資訊。</div>
     </div>
     <div class="card">
       <div class="section-title">摘要</div>
@@ -35,11 +35,15 @@
         <div class="info-card"><div class="label">本薪 / 時薪</div><div class="value" id="baseOrHourly">-</div></div>
         <div class="info-card"><div class="label">職務加給</div><div class="value" id="jobAllowance">-</div></div>
         <div class="info-card"><div class="label">津貼</div><div class="value" id="otherAllowance">-</div></div>
+        <div class="info-card"><div class="label">平均申報薪資</div><div class="value" id="averageMonthlySalary">-</div></div>
         <div class="info-card"><div class="label">勞保級距</div><div class="value" id="laborPlan">-</div></div>
         <div class="info-card"><div class="label">勞保狀態</div><div class="value" id="laborStatus">-</div></div>
-        <div class="info-card"><div class="label">勞保自付額</div><div class="value" id="laborSalary">-</div></div>
+        <div class="info-card"><div class="label">勞保投保薪資 / 自付額</div><div class="value" id="laborSalary">-</div></div>
         <div class="info-card"><div class="label">健保狀態</div><div class="value" id="healthStatus">-</div></div>
         <div class="info-card"><div class="label">健保自付額</div><div class="value" id="healthSalary">-</div></div>
+        <div class="info-card"><div class="label">勞退月提繳工資</div><div class="value" id="retirementBase">-</div></div>
+        <div class="info-card"><div class="label">雇主提撥勞退 6%</div><div class="value" id="retirementEmployer">-</div></div>
+        <div class="info-card"><div class="label">員工自提</div><div class="value" id="retirementSelf">-</div></div>
         <div class="info-card"><div class="label">生效日期</div><div class="value" id="salaryEffectiveDateInfo">-</div></div>
         <div class="info-card" style="grid-column:1/-1"><div class="label">備註</div><div class="value" id="salaryNote">-</div></div>
       </div>
@@ -61,6 +65,7 @@
         setLoadBtn(70,'整理資料');
         const info=res.info||{};
         qs('#displayTypeName').textContent=info.displayTypeName||'-';
+        qs('#averageMonthlySalary').textContent=info.averageMonthlySalaryText||'-';
         qs('#baseOrHourly').textContent=info.baseOrHourlyText||'-';
         qs('#jobAllowance').textContent=info.jobAllowanceText||'-';
         qs('#otherAllowance').textContent=info.allowanceText||'-';
@@ -69,6 +74,9 @@
         qs('#healthStatus').textContent=info.healthStatus||'-';
         qs('#laborSalary').textContent=info.laborSelfPayText||info.laborSalaryText||'-';
         qs('#healthSalary').textContent=info.healthSelfPayText||info.healthSalaryText||'-';
+        qs('#retirementBase').textContent=info.retirementBaseText||'-';
+        qs('#retirementEmployer').textContent=info.retirementEmployerText||'-';
+        qs('#retirementSelf').textContent=info.retirementSelfText||'-';
         qs('#salaryEffectiveDate').textContent=info.effectiveDate||'-';
         qs('#salaryEffectiveDateInfo').textContent=info.effectiveDate||'-';
         qs('#salaryNote').textContent=info.note||'-';

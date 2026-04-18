@@ -21,7 +21,7 @@
       <div class="header" style="margin:0"><h1 class="title">薪資與投保設定</h1><div class="welcome">歡迎 <span data-user-name></span></div></div>
       <div id="pageMsg" class="message"></div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px"><button id="loadSetupBtn" class="btn" style="width:auto;padding:10px 16px">讀取薪資設定</button><button id="saveBtn" class="btn" style="width:auto;padding:10px 16px">儲存設定</button></div>
-      <div class="muted">專職員工改成直接輸入本薪；職務加給與津貼採「有 / 無 + 金額」；工讀生直接輸入時薪。勞保級距使用官方投保薪資與員工自付額顯示。</div>
+      <div class="muted">專職員工可設定本薪與申報薪資；工讀生以平均申報薪資為主，並可設定是否部分工時。勞退會顯示雇主提撥 6%，也可設定員工自提 1%～6%。</div>
     </div>
     <div class="admin-grid">
       <div class="card">
@@ -58,13 +58,16 @@
             </div>
           </div>
           <div class="field" id="fieldHourlyRate"><label>時薪</label><input id="hourlyRate" type="number" min="0" step="1" placeholder="直接輸入時薪"></div>
+          <div class="field" id="fieldParttimePartial"><label>是否部分工時</label><select id="isParttimePartial"><option value="否">否</option><option value="是">是</option></select></div>
+          <div class="field"><label>目前申報月平均薪資總額</label><input id="averageMonthlySalary" type="number" min="0" step="1" placeholder="工讀生請填平均申報薪資，專職也可填申報金額"></div>
           <div class="field"><label>勞保級距</label><select id="laborPlan"></select><div id="laborPlanHint" class="hint-box">選擇級距後，這裡會顯示投保薪資與勞保自付額。</div></div>
           <div class="field"><label>勞保狀態</label><select id="laborStatus"><option value="在保">在保</option><option value="未保">未保</option><option value="暫停">暫停</option></select></div>
           <div class="field"><label>健保狀態</label><select id="healthStatus"><option value="在保">在保</option><option value="未保">未保</option><option value="暫停">暫停</option></select><div id="healthHint" class="hint-box">健保自付額會依勞保所選投保薪資顯示；若未保則顯示 0 元。</div></div>
+          <div class="field"><label>勞退自提</label><div class="field-inline-grid"><select id="laborRetirementSelfEnabled"><option value="否">否</option><option value="是">是</option></select><select id="laborRetirementSelfRate" disabled><option value="">請選擇自提比率</option><option value="1">1%</option><option value="2">2%</option><option value="3">3%</option><option value="4">4%</option><option value="5">5%</option><option value="6">6%</option></select></div><div id="retirementHint" class="hint-box">會依勞退月提繳工資自動計算雇主提撥 6% 與自提金額。</div></div>
           <div class="field"><label>薪資生效日</label><input id="salaryEffectiveDate" type="date"></div>
           <div class="field"><label>薪資備註</label><textarea id="salaryNote" placeholder="例如：試用期方案 / 兼職轉正職等"></textarea></div>
           <div class="btn-row"><button class="btn" type="button" id="saveBtn">儲存設定</button></div>
-          <div class="info-mini">專職員工顯示本薪、加給、津貼；工讀生顯示時薪。讀取完成前不開放操作。</div>
+          <div class="info-mini">專職顯示本薪與勞退資訊；工讀生主顯示平均申報薪資與勞退資訊。讀取完成前不開放操作。</div>
         </div>
       </div>
     </div>
@@ -79,6 +82,20 @@
     function fillSelect(id, items, value, placeholder='請選擇'){ const el=qs('#'+id); const list=Array.isArray(items)?items:[]; el.innerHTML='<option value="">'+placeholder+'</option>'+list.map(x=>'<option value="'+String(x.code||'')+'">'+String(x.name||'')+'</option>').join(''); el.value=value||''; }
     function currentEmployee(){ return selectedMap[selectedId]||null; }
     function getLaborMeta(){ const code=qs('#laborPlan').value; const list=(setup&&setup.laborPlans)||[]; return list.find(x=>String(x.code||'')===String(code||''))||null; }
+    function moneyText(n){ const v=Number(n||0)||0; return '$'+v.toLocaleString('zh-TW'); }
+    function updateRetirementInputs(){
+      const on=qs('#laborRetirementSelfEnabled').value==='是';
+      qs('#laborRetirementSelfRate').disabled=!on;
+      if(!on) qs('#laborRetirementSelfRate').value='';
+    }
+    function retirementBaseSalary(){
+      const emp=currentEmployee();
+      const avg=Number(qs('#averageMonthlySalary').value||0)||0;
+      const labor=getLaborMeta();
+      let base=avg||Number((labor&&labor.salary)||0)||0;
+      if(emp && emp.identityType==='parttime' && qs('#isParttimePartial').value==='是' && base>0 && base<11100) base=11100;
+      return base;
+    }
     function updateInsuranceHints(){
       const labor=getLaborMeta();
       const laborText=labor ? `投保薪資：${String(labor.salaryText||'-')}｜勞保自付：${String(labor.selfPayText||'-')}` : '選擇級距後，這裡會顯示投保薪資與勞保自付額。';
@@ -86,6 +103,17 @@
       const healthStatus=qs('#healthStatus').value;
       const healthText=(healthStatus==='在保' && labor) ? `健保自付：${String(labor.healthSelfPayText||'-')}` : '健保若為在保，會依投保金額顯示健保自付額。';
       qs('#healthHint').textContent=healthText;
+      const base=retirementBaseSalary();
+      const employer=Math.round(base*0.06);
+      const selfEnabled=qs('#laborRetirementSelfEnabled').value==='是';
+      const rate=Number(qs('#laborRetirementSelfRate').value||0)||0;
+      const selfAmount=selfEnabled ? Math.round(base*rate/100) : 0;
+      let extra='';
+      if(base>0){
+        extra=`｜勞退月提繳工資：${moneyText(base)}｜雇主提撥6%：${moneyText(employer)}`;
+        if(selfEnabled && rate>0) extra+=`｜自提${rate}%：${moneyText(selfAmount)}`;
+      }
+      qs('#retirementHint').textContent=base>0 ? ('會依勞退月提繳工資自動計算。'+extra) : '會依勞退月提繳工資自動計算雇主提撥 6% 與自提金額。';
     }
     function renderEmployeeList(){
       const keyword=(qs('#keyword').value||'').trim().toLowerCase();
@@ -100,6 +128,7 @@
       qs('#fieldJobAllowanceWrap').classList.toggle('hidden', isParttime);
       qs('#fieldAllowanceWrap').classList.toggle('hidden', isParttime);
       qs('#fieldHourlyRate').classList.toggle('hidden', !isParttime);
+      qs('#fieldParttimePartial').classList.toggle('hidden', !isParttime);
     }
     function updateAllowanceInputs(){
       const jobOn=qs('#jobAllowanceEnabled').value==='有';
@@ -122,12 +151,16 @@
       qs('#allowanceName').value=e.allowanceName||'';
       qs('#allowanceAmount').value=e.allowanceAmount||'';
       qs('#hourlyRate').value=e.hourlyRate||'';
+      qs('#isParttimePartial').value=e.isParttimePartial||'否';
+      qs('#averageMonthlySalary').value=e.averageMonthlySalary||'';
       fillSelect('laborPlan', setup.laborPlans, e.laborPlan, '請選擇勞保級距');
       qs('#laborStatus').value=e.laborStatus||'在保';
       qs('#healthStatus').value=e.healthStatus||'在保';
+      qs('#laborRetirementSelfEnabled').value=e.laborRetirementSelfEnabled||'否';
+      qs('#laborRetirementSelfRate').value=e.laborRetirementSelfRate||'';
       qs('#salaryEffectiveDate').value=e.effectiveDate||'';
       qs('#salaryNote').value=e.note||'';
-      updateAllowanceInputs(); updateInsuranceHints(); renderEmployeeList();
+      updateAllowanceInputs(); updateRetirementInputs(); updateInsuranceHints(); renderEmployeeList();
     }
     async function loadSetup(btn){
       const user=requireLogin(); if(!user) return;
@@ -145,14 +178,16 @@
       const payload={ userId:user.id, employeeId:emp.id, salaryDisplayType:qs('#salaryDisplayType').value,
         baseSalary:qs('#baseSalary').value, jobAllowanceEnabled:qs('#jobAllowanceEnabled').value, jobAllowanceName:qs('#jobAllowanceName').value, jobAllowanceAmount:qs('#jobAllowanceAmount').value,
         allowanceEnabled:qs('#allowanceEnabled').value, allowanceName:qs('#allowanceName').value, allowanceAmount:qs('#allowanceAmount').value, hourlyRate:qs('#hourlyRate').value,
+        isParttimePartial:qs('#isParttimePartial').value, averageMonthlySalary:qs('#averageMonthlySalary').value,
         laborPlan:qs('#laborPlan').value, laborStatus:qs('#laborStatus').value, healthStatus:qs('#healthStatus').value,
+        laborRetirementSelfEnabled:qs('#laborRetirementSelfEnabled').value, laborRetirementSelfRate:qs('#laborRetirementSelfRate').value,
         effectiveDate:qs('#salaryEffectiveDate').value, note:qs('#salaryNote').value.trim() };
       try{
         setButtonProgress('saveBtn',45,'儲存設定');
         const res=await api('saveEmployeeSalaryConfig',payload); if(!res||res.ok===false) throw new Error(res&&res.message||'儲存失敗');
         setButtonProgress('saveBtn',100,'儲存完成'); setMsg(qs('#pageMsg'),res.message||'已儲存設定');
         setup.employeeConfigMap=setup.employeeConfigMap||{};
-        setup.employeeConfigMap[emp.id]={ salaryDisplayType:payload.salaryDisplayType, baseSalary:payload.baseSalary, jobAllowanceEnabled:payload.jobAllowanceEnabled, jobAllowanceName:payload.jobAllowanceName, jobAllowanceAmount:payload.jobAllowanceAmount, allowanceEnabled:payload.allowanceEnabled, allowanceName:payload.allowanceName, allowanceAmount:payload.allowanceAmount, hourlyRate:payload.hourlyRate, laborPlan:payload.laborPlan, laborStatus:payload.laborStatus, healthStatus:payload.healthStatus, effectiveDate:payload.effectiveDate, note:payload.note };
+        setup.employeeConfigMap[emp.id]={ salaryDisplayType:payload.salaryDisplayType, baseSalary:payload.baseSalary, jobAllowanceEnabled:payload.jobAllowanceEnabled, jobAllowanceName:payload.jobAllowanceName, jobAllowanceAmount:payload.jobAllowanceAmount, allowanceEnabled:payload.allowanceEnabled, allowanceName:payload.allowanceName, allowanceAmount:payload.allowanceAmount, hourlyRate:payload.hourlyRate, isParttimePartial:payload.isParttimePartial, averageMonthlySalary:payload.averageMonthlySalary, laborPlan:payload.laborPlan, laborStatus:payload.laborStatus, healthStatus:payload.healthStatus, laborRetirementSelfEnabled:payload.laborRetirementSelfEnabled, laborRetirementSelfRate:payload.laborRetirementSelfRate, effectiveDate:payload.effectiveDate, note:payload.note };
         updateInsuranceHints(); setTimeout(()=>resetButton('saveBtn','儲存設定'),500);
       }catch(err){ resetButton('saveBtn','儲存設定'); setMsg(qs('#pageMsg'),err.message||String(err),true); }
     }
@@ -163,6 +198,10 @@
       qs('#allowanceEnabled').addEventListener('change', updateAllowanceInputs);
       qs('#laborPlan').addEventListener('change', updateInsuranceHints);
       qs('#healthStatus').addEventListener('change', updateInsuranceHints);
+      qs('#averageMonthlySalary').addEventListener('input', updateInsuranceHints);
+      qs('#isParttimePartial').addEventListener('change', updateInsuranceHints);
+      qs('#laborRetirementSelfEnabled').addEventListener('change', ()=>{ updateRetirementInputs(); updateInsuranceHints(); });
+      qs('#laborRetirementSelfRate').addEventListener('change', updateInsuranceHints);
       qs('#saveBtn').onclick=saveConfig;
       qs('#loadSetupBtn').onclick=()=>loadSetup(qs('#loadSetupBtn'));
       try{ await loadSetup(); }catch(err){ resetButton('loadSetupBtn','重新讀取薪資設定'); setMsg(qs('#pageMsg'),err.message||String(err),true); }
