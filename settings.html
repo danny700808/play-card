@@ -32,13 +32,13 @@
       <a class="tile" href="contract-admin.html"><strong>外聘老師合約管理 <span class="badge" id="badge-contract"></span></strong><span>查看年度簽署狀態、合約資料、PDF 與重寄紀錄</span></a>
       <a class="tile" href="teacher-goods-admin.html"><strong>外聘老師拿貨管理 <span class="badge" id="badge-goods"></span></strong><span>依老師設定商品、老師價格、圖片，並回覆詢價 / 庫存需求</span></a>
       <a class="tile" href="leave-policy-admin.html"><strong>假勤制度設定</strong><span>管理假別、特休年資、喪假關係、年度假日摘要與全域請假規則</span></a>
-      <a class="tile" href="salary-admin.html"><strong>薪資與投保設定</strong><span>直接輸入專職薪資，工讀輸入時薪，勞保級距與自付額一併顯示</span></a>
+      <a class="tile" href="salary-admin.html"><strong>薪資與投保設定 <span class="badge" id="badge-salary"></span></strong><span>只顯示專職與工讀，未完成設定人數會直接提醒你</span></a>
       <a class="tile" href="quotation-contract-hub.html"><strong>估價單合約單</strong><span>先選擇估價單或合約，再進入對應模式進行填寫、預覽與列印</span></a>
 
     </div>
   </div>
-  <script src="config.js?v=20260414clean3"></script>
-  <script src="app.js?v=20260414clean3"></script>
+  <script src="config.js?v=20260418salary2"></script>
+  <script src="app.js?v=20260418salary2"></script>
   <script>
     async function init(){
       fillHeader();
@@ -58,6 +58,7 @@
         setBadge('badge-task', r.taskCount);
         setBadge('badge-contract', r.contractCount);
         setBadge('badge-goods', r.goodsInquiryCount);
+        setBadge('badge-salary', r.salaryCount);
       }catch(err){}
     }
     function setBadge(id, count){
