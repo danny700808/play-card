@@ -46,11 +46,18 @@
     .preview-pane.show{display:block}
     .preview-paper{background:#fff;border:1px solid #cbd5e1;border-radius:18px;padding:24px}
     .preview-doc-title{font-size:24px;font-weight:900;text-align:center;margin:0 0 18px}
-    .preview-sign-area{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin-top:24px;align-items:end}
-    .stamp-box,.teacher-sign-box{min-height:120px;border-top:1px solid #cbd5e1;padding-top:10px}
-    .stamp-stack{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
-    .stamp-stack img{max-height:90px;max-width:160px;object-fit:contain}
-    .teacher-sign-box img{max-height:110px;max-width:100%;object-fit:contain}
+    .preview-sign-area{display:grid;grid-template-columns:1fr 1fr;gap:28px;margin-top:24px;align-items:start}
+    .preview-sign-col{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;min-height:120px}
+    .preview-sign-title{font-size:18px;font-weight:900;white-space:nowrap;padding-top:8px}
+    .stamp-stack{display:flex;flex-direction:column;gap:10px;align-items:center}
+    .stamp-box,.teacher-sign-box{display:flex;align-items:center;justify-content:center;overflow:hidden;border:1px solid #cbd5e1;border-radius:12px;background:#fff}
+    .stamp-box{min-height:auto}
+    .stamp-box.large{width:3.2cm;height:3.2cm}
+    .stamp-box.small{width:2.2cm;height:2.2cm}
+    .stamp-stack img{max-width:100%;max-height:100%;object-fit:contain}
+    .teacher-sign-box{width:4.4cm;height:2.8cm;background:#fafafa}
+    .teacher-sign-box img{max-height:100%;max-width:100%;object-fit:contain}
+    .preview-date{margin-top:18px;text-align:center;font-size:15px;line-height:1.9}
     .muted-box{font-size:14px;color:#64748b;background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:12px}
     @media (max-width:700px){
       .contract-meta,.contract-grid,.preview-sign-area{grid-template-columns:1fr}
@@ -74,7 +81,7 @@
           <button class="btn secondary" style="width:auto;padding:10px 14px" onclick="logout()">登出</button>
         </div>
       </div>
-      <div class="muted">合約閱讀區先顯示提示文字。按下「預覽確認」後，系統會把你填寫的資料正式帶入，再送出產生 PDF。</div>
+      <div class="muted">請先確認合約內容與簽署資料，預覽後再正式送出。</div>
     </div>
 
     <div class="contract-shell">
@@ -164,18 +171,21 @@
           <div class="preview-doc-title" id="previewTitle">外聘老師年度委任契約</div>
           <div id="previewBody" class="contract-body"></div>
           <div class="preview-sign-area">
-            <div class="stamp-box">
-              <div style="font-weight:900;margin-bottom:10px">甲方用印</div>
+            <div class="preview-sign-col">
+              <div class="preview-sign-title">甲方簽署</div>
               <div class="stamp-stack">
-                <img id="previewSchoolStamp" alt="補習班章" style="display:none">
-                <img id="previewOwnerStamp" alt="負責人章" style="display:none">
+                <div class="stamp-box large"><img id="previewSchoolStamp" alt="補習班章" style="display:none"></div>
+                <div class="stamp-box small"><img id="previewOwnerStamp" alt="負責人章" style="display:none"></div>
               </div>
             </div>
-            <div class="teacher-sign-box">
-              <div style="font-weight:900;margin-bottom:10px">乙方簽名</div>
-              <img id="previewSignature" alt="老師簽名">
+            <div class="preview-sign-col">
+              <div class="preview-sign-title">乙方簽署</div>
+              <div class="teacher-sign-box">
+                <img id="previewSignature" alt="老師簽名">
+              </div>
             </div>
           </div>
+          <div class="preview-date">中華民國<span style="color:#2563eb;font-weight:900">【簽署民國年】</span>年 <span style="color:#2563eb;font-weight:900">【簽署月】</span>月 <span style="color:#2563eb;font-weight:900">【簽署日】</span>日</div>
         </div>
         <div class="submit-actions" style="margin-top:14px">
           <button type="button" class="btn secondary" onclick="hidePreview()">返回修改</button>
