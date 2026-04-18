@@ -18,9 +18,24 @@
     .muted-box{font-size:14px;color:#64748b;background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:12px;line-height:1.8}
     .token-wrap{display:flex;gap:8px;flex-wrap:wrap}
     .token{display:inline-flex;align-items:center;padding:7px 12px;border-radius:999px;background:#eff6ff;color:#1d4ed8;font-weight:800;font-size:13px;cursor:pointer;border:1px solid #bfdbfe}
-    .preview{background:#fff;border:1px solid #cbd5e1;border-radius:16px;padding:18px;line-height:1.9}
-    .preview .token-mark{color:#2563eb;font-weight:900}
     .section-title{font-size:22px;font-weight:900;margin:0 0 12px}
+
+    .paper-stage{display:flex;justify-content:center;padding:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:18px}
+    .paper{width:210mm;min-height:297mm;background:#fff;box-shadow:0 10px 30px rgba(15,23,42,.12);position:relative;padding:20mm 18mm 24mm 18mm;color:#111827}
+    .paper h1{margin:0 0 14px;font-size:28px;text-align:center;font-weight:900;letter-spacing:2px}
+    .paper-meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 18px;margin-bottom:18px;font-size:15px}
+    .paper-meta strong{font-weight:900}
+    .paper-body{font-size:16px;line-height:1.9;white-space:pre-wrap;word-break:break-word;min-height:140mm}
+    .paper-body .token-mark{color:#2563eb;font-weight:900}
+    .paper-footer{display:grid;grid-template-columns:1fr 1fr;gap:26px;margin-top:24px;align-items:end}
+    .sign-block{position:relative;min-height:120px;border-top:1px solid #cbd5e1;padding-top:12px}
+    .sign-title{font-weight:900;margin-bottom:8px}
+    .sign-line{font-size:15px;line-height:1.9}
+    .seal-school,.seal-owner{position:absolute;opacity:.88;pointer-events:none}
+    .seal-school{width:3cm;height:3cm;right:16px;bottom:12px;object-fit:contain}
+    .seal-owner{width:2cm;height:2cm;right:26px;bottom:18px;object-fit:contain}
+    .paper-note{margin-top:10px;font-size:13px;color:#64748b}
+
     .contract-admin-list{display:grid;gap:14px;margin-top:18px}
     .contract-admin-card{background:#fff;border:1px solid #e2e8f0;border-radius:18px;padding:16px}
     .contract-admin-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}
@@ -33,7 +48,12 @@
     .meta .label{font-size:12px;color:#64748b;font-weight:800}
     .meta .value{font-size:15px;font-weight:800;word-break:break-word}
     .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
-    @media (max-width:700px){.editor-grid,.meta{grid-template-columns:1fr}}
+    @media (max-width:1100px){
+      .paper-stage{overflow:auto}
+      .paper{transform-origin:top center; width:min(210mm,100%); min-height:auto; padding:20px 18px 24px}
+      .paper-footer{grid-template-columns:1fr}
+    }
+    @media (max-width:700px){.editor-grid,.meta,.paper-meta{grid-template-columns:1fr}}
   </style>
 </head>
 <body onload="init()">
@@ -110,7 +130,7 @@
 
       <div class="editor-card">
         <h2 class="section-title">契約內容</h2>
-        <div class="muted-box" style="margin-bottom:12px">這裡直接編輯一般文字即可，不需要自己寫 HTML。下方藍色標記是系統自動帶入的欄位，點一下就會插入到游標位置。</div>
+        <div class="muted-box" style="margin-bottom:12px">這裡直接編輯一般文字即可，不需要自己寫 HTML。點下方藍色標記可以直接插入到游標位置。右下方會直接顯示章的位置，不用另外切到預覽區。</div>
         <div class="token-wrap" id="tokenWrap"></div>
         <div class="field full" style="margin-top:12px">
           <label>契約內容（純文字）</label>
@@ -119,9 +139,10 @@
       </div>
 
       <div class="editor-card">
-        <h2 class="section-title">版面預覽</h2>
-        <div class="muted-box" style="margin-bottom:12px">藍色字樣代表系統會自動帶入的內容，例如老師姓名、身分證字號、簽署日期等。</div>
-        <div id="previewBox" class="preview"></div>
+        <h2 class="section-title">合約版面（直接顯示章）</h2>
+        <div class="paper-stage">
+          <div class="paper" id="paperBox"></div>
+        </div>
       </div>
 
       <div class="list-card">
@@ -154,19 +175,60 @@
       const pos=start+token.length;
       el.focus();
       el.setSelectionRange(pos,pos);
-      renderPreview();
+      renderPaper();
     }
     function buildTokenButtons(){
       qs('#tokenWrap').innerHTML=TOKENS.map(t=>`<button type="button" class="token" onclick="insertToken('${escapeAttr(t)}')">${escapeHtml(t)}</button>`).join('');
     }
-    function textToPreviewHtml(text){
+    function tokenMarkHtml(text){
       let safe=escapeHtml(text||'');
       safe=safe.replace(/【([^】]+)】/g,'<span class="token-mark">【$1】</span>');
       safe=safe.replace(/\n/g,'<br>');
       return safe;
     }
-    function renderPreview(){
-      qs('#previewBox').innerHTML=textToPreviewHtml(qs('#contractText').value||'');
+    function toDisplayUrl(raw){
+      const v = String(raw||'').trim();
+      if(!v) return '';
+      if(/^https?:\/\//i.test(v)) return v;
+      return v;
+    }
+    function renderPaper(){
+      const contractName = qs('#contractName').value.trim() || '委任契約書';
+      const partyAName = qs('#partyAName').value.trim() || '【甲方名稱】';
+      const partyAOwner = qs('#partyAOwner').value.trim() || '【甲方代表人】';
+      const partyAAddress = qs('#partyAAddress').value.trim() || '【甲方地址】';
+      const startDate = qs('#startDate').value.trim() || '【合約開始日期】';
+      const endDate = qs('#endDate').value.trim() || '【合約結束日期】';
+      const schoolStampUrl = toDisplayUrl(qs('#schoolStampUrl').value.trim() || 'blue_stamp_transparent.png');
+      const ownerStampUrl = toDisplayUrl(qs('#ownerStampUrl').value.trim() || 'red_stamp_transparent.png');
+      const bodyHtml = tokenMarkHtml(qs('#contractText').value || '');
+      qs('#paperBox').innerHTML = `
+        <h1>${escapeHtml(contractName)}</h1>
+        <div class="paper-meta">
+          <div><strong>甲方：</strong>${escapeHtml(partyAName)}</div>
+          <div><strong>甲方代表人：</strong>${escapeHtml(partyAOwner)}</div>
+          <div><strong>甲方地址：</strong>${escapeHtml(partyAAddress)}</div>
+          <div><strong>契約期間：</strong>${escapeHtml(startDate)} ～ ${escapeHtml(endDate)}</div>
+        </div>
+        <div class="paper-body">${bodyHtml}</div>
+        <div class="paper-footer">
+          <div class="sign-block">
+            <div class="sign-title">甲方簽署區</div>
+            <div class="sign-line">甲方名稱：${escapeHtml(partyAName)}</div>
+            <div class="sign-line">甲方代表人：${escapeHtml(partyAOwner)}</div>
+            ${schoolStampUrl ? `<img class="seal-school" src="${escapeAttr(schoolStampUrl)}" alt="補習班章">` : ''}
+            ${ownerStampUrl ? `<img class="seal-owner" src="${escapeAttr(ownerStampUrl)}" alt="負責人章">` : ''}
+          </div>
+          <div class="sign-block">
+            <div class="sign-title">乙方簽署區</div>
+            <div class="sign-line">乙方姓名：<span class="token-mark">【老師姓名】</span></div>
+            <div class="sign-line">身分證字號：<span class="token-mark">【身分證字號】</span></div>
+            <div class="sign-line">地址：<span class="token-mark">【地址】</span></div>
+            <div class="sign-line">簽署日期：<span class="token-mark">【簽署民國年】</span>年 <span class="token-mark">【簽署月】</span>月 <span class="token-mark">【簽署日】</span>日</div>
+          </div>
+        </div>
+        <div class="paper-note">這裡看到的章位置就是管理端編輯時的實際顯示位置。</div>
+      `;
     }
     function applySetting(setting){
       currentSettingId=setting.settingId||'';
@@ -180,7 +242,7 @@
       qs('#schoolStampUrl').value=setting.schoolStampUrl||'blue_stamp_transparent.png';
       qs('#ownerStampUrl').value=setting.ownerStampUrl||'red_stamp_transparent.png';
       qs('#contractText').value=setting.contractText||'';
-      renderPreview();
+      renderPaper();
     }
     async function loadConfig(){
       const year=qs('#yearInput').value||String(new Date().getFullYear());
@@ -255,6 +317,10 @@
         qs('#list').innerHTML=(r.rows||[]).map(rowHtml).join('') || '<div class="muted">目前沒有資料</div>';
       }catch(e){ setMsg(qs('#msg'),e.message||'讀取失敗',true); }
     }
+    function bindLiveRender(){
+      ['contractName','partyAName','partyAOwner','partyATaxId','partyAAddress','startDate','endDate','schoolStampUrl','ownerStampUrl','contractText']
+        .forEach(id=>{ const el=qs('#'+id); if(el){ el.addEventListener('input',renderPaper); el.addEventListener('change',renderPaper); } });
+    }
     function init(){
       fillHeader();
       buildTokenButtons();
@@ -262,7 +328,8 @@
       if(!currentUser) return;
       if(!isManager(currentUser)){location.href='dashboard.html'; return;}
       qs('#yearInput').value=String(new Date().getFullYear());
-      qs('#contractText').addEventListener('input',renderPreview);
+      bindLiveRender();
+      renderPaper();
       loadConfig();
     }
   </script>
