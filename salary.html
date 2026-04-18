@@ -45,13 +45,10 @@
         <div class="info-card hidden" id="cardAverageSalary"><div class="label">目前申報月平均薪資總額</div><div class="value" id="parttimeAverageSalary">-</div></div>
         <div class="info-card"><div class="label">職務加給</div><div class="value" id="jobAllowance">-</div></div>
         <div class="info-card"><div class="label">津貼</div><div class="value" id="otherAllowance">-</div></div>
-        <div class="info-card"><div class="label">勞保級距</div><div class="value" id="laborPlan">-</div></div>
         <div class="info-card"><div class="label">勞保狀態</div><div class="value" id="laborStatus">-</div></div>
         <div class="info-card"><div class="label">勞保投保薪資 / 自付額</div><div class="value" id="laborSalary">-</div></div>
-        <div class="info-card"><div class="label">健保級距</div><div class="value" id="healthPlan">-</div></div>
         <div class="info-card"><div class="label">健保狀態</div><div class="value" id="healthStatus">-</div></div>
         <div class="info-card"><div class="label">健保投保金額 / 本人自付額</div><div class="value" id="healthSalary">-</div></div>
-        <div class="info-card"><div class="label">勞退月提繳工資</div><div class="value" id="retirementBase">-</div></div>
         <div class="info-card"><div class="label">雇主提撥勞退 6%</div><div class="value" id="retirementEmployer">-</div></div>
         <div class="info-card"><div class="label">勞退自提</div><div class="value" id="retirementSelf">-</div></div>
         <div class="info-card"><div class="label">生效日期</div><div class="value" id="salaryEffectiveDateInfo">-</div></div>
@@ -104,13 +101,10 @@
         qs('#parttimeAverageSalary').textContent = info.parttimeAverageSalaryText || '-';
         qs('#jobAllowance').textContent = info.jobAllowanceText || '-';
         qs('#otherAllowance').textContent = info.allowanceText || '-';
-        qs('#laborPlan').textContent = info.laborPlanName || '-';
         qs('#laborStatus').textContent = info.laborStatus || '-';
         qs('#laborSalary').textContent = (info.laborSalaryText || '-') + '｜自付 ' + (info.laborSelfPayText || '-');
-        qs('#healthPlan').textContent = info.healthPlanName || '-';
         qs('#healthStatus').textContent = info.healthStatus || '-';
         qs('#healthSalary').textContent = (info.healthSalaryText || '-') + '｜自付 ' + (info.healthSelfPayText || '-');
-        qs('#retirementBase').textContent = info.retirementBaseText || '-';
         qs('#retirementEmployer').textContent = info.retirementEmployerText || '-';
         qs('#retirementSelf').textContent = info.selfRetirementText || '-';
         qs('#salaryEffectiveDate').textContent = info.effectiveDate || '-';
