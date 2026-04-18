@@ -408,13 +408,12 @@
     }
 
     function setSignedView(record){
-      qs('#contractStatusText').textContent='本年度已完成簽署';
-      const box=qs('#signedSummaryBox');
-      box.style.display='block';
-      box.innerHTML=`<div style="font-weight:900;color:#1f7a5a;margin-bottom:6px">本年度已簽署完成</div>
+      const body=qs('#contractBody');
+      const statusHtml = `<div class="muted-box" style="margin-bottom:14px"><div style="font-weight:900;color:#1f7a5a;margin-bottom:6px">本年度已簽署完成</div>
         <div>簽署時間：${escapeHtml(record.signDate||'')} ${escapeHtml(record.signTime||'')}</div>
         <div>狀態：${escapeHtml(record.status||'已簽署')}</div>
-        ${record.pdfUrl?`<div style="margin-top:8px"><a href="${record.pdfUrl}" target="_blank" style="color:#1f7a5a;font-weight:800;text-decoration:none">查看 PDF</a></div>`:''}`;
+        ${record.pdfUrl?`<div style="margin-top:8px"><a href="${record.pdfUrl}" target="_blank" style="color:#1f7a5a;font-weight:800;text-decoration:none">查看 PDF</a></div>`:''}</div>`;
+      if(body) body.insertAdjacentHTML('afterbegin', statusHtml);
       qs('#contractFormCard').style.display='none';
       qs('#previewPane').classList.remove('show');
     }
@@ -500,9 +499,7 @@
       const err=validateForm();
       if(err){ alert(err); return; }
       const payload=buildPayload();
-      const title=(contractData&&contractData.contractName)||'外聘老師年度委任契約';
-      qs('#previewTitle').textContent=title;
-      qs('#previewBody').innerHTML=renderPreviewHtml(contractData?.contractTemplateHtml || '', payload);
+      qs('#previewBody').innerHTML=renderPreviewHtml(contractData?.contractTemplateHtml || contractData?.contractHtml || '', payload);
 
       const schoolStamp=qs('#previewSchoolStamp');
       const ownerStamp=qs('#previewOwnerStamp');
@@ -595,11 +592,8 @@
 
         if(res.signed && res.record){
           setSignedView(res.record);
-        }else{
-          qs('#contractStatusText').textContent='本年度尚未簽署，請先閱讀契約，再完成下方資料並送出。';
         }
       }catch(e){
-        qs('#contractStatusText').textContent='讀取契約資料失敗';
         qs('#contractBody').textContent=e.message||'讀取失敗';
       }
     }
