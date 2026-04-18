@@ -157,6 +157,30 @@ async function apiSafe(action, payload={}, timeoutMs=10000, fallbackMessage='讀
   }
 }
 function escapeHtml(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, ch => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[ch])); }
+function leaveQuery(){ return new URLSearchParams(location.search || ''); }
+function bootstrapLeaveUserFromQuery(){
+  try{
+    const q = leaveQuery();
+    const qUserId = String(q.get('userId') || '').trim();
+    if(!qUserId) return;
+    const entry = String(q.get('entry') || '').trim();
+    const qName = String(q.get('userName') || q.get('name') || '').trim();
+    const existing = getUser();
+    const isApproval = entry === 'approval';
+    if(existing && String(existing.id || '') === qUserId){
+      if(isApproval) setPortalMode('settings');
+      return;
+    }
+    const tempUser = isApproval
+      ? { id:qUserId, name:qName || '管理者', role:'admin', showSettingsZone:true, showApprovalZone:true }
+      : { id:qUserId, name:qName || '員工', role:'staff', showSettingsZone:false, showApprovalZone:false };
+    saveUser(tempUser);
+    setPortalMode(isApproval ? 'settings' : 'staff');
+  }catch(err){}
+}
+function consumeDeepLinkRequestId(){
+  try{ return String(leaveQuery().get('requestId') || '').trim(); }catch(err){ return ''; }
+}
 function clearValidation(){
   ['Reason','EventChoice','BereavementRelation','Segments'].forEach(name => {
     const field = qs('#field' + name);
@@ -1115,6 +1139,7 @@ async function submitLeave(){
   }
 }
 async function init(){
+  bootstrapLeaveUserFromQuery();
   fillHeader();
   currentUser = requireLogin();
   if(!currentUser) return;
