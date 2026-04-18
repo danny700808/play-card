@@ -6,9 +6,15 @@
   <title>薪資與投保資訊</title>
   <link rel="stylesheet" href="style.css">
   <style>
-    .progress-shell{margin:12px 0 16px;display:none}.progress-track{height:16px;background:#d7efe0;border-radius:999px;overflow:hidden}.progress-bar{height:100%;width:0;background:#1f7a5a;transition:width .25s ease}.progress-text{margin-top:8px;color:#1f7a5a;font-weight:800}
-    .summary-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.summary-box{border:1px solid var(--line);border-radius:14px;padding:14px;background:#f8fbff}.summary-box .label{font-size:13px;color:var(--muted)}.summary-box .value{font-size:22px;font-weight:800;color:var(--brand);margin-top:6px}
-    .info-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.info-card{border:1px solid var(--line);border-radius:14px;padding:14px;background:#fff}.info-card .label{font-size:13px;color:var(--muted)}.info-card .value{font-size:16px;font-weight:700;margin-top:6px}
+    .summary-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+    .summary-box{border:1px solid var(--line);border-radius:14px;padding:14px;background:#f8fbff}
+    .summary-box .label{font-size:13px;color:var(--muted)}
+    .summary-box .value{font-size:22px;font-weight:800;color:var(--brand);margin-top:6px}
+    .info-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+    .info-card{border:1px solid var(--line);border-radius:14px;padding:14px;background:#fff}
+    .info-card .label{font-size:13px;color:var(--muted)}
+    .info-card .value{font-size:16px;font-weight:700;margin-top:6px;white-space:pre-wrap}
+    .hidden{display:none!important}
     @media (max-width:560px){.summary-grid,.info-grid{grid-template-columns:1fr}}
   </style>
 </head>
@@ -18,8 +24,6 @@
     <div class="card">
       <div class="header" style="margin:0"><h1 class="title">薪資與投保資訊</h1><div class="welcome">歡迎 <span data-user-name></span></div></div>
       <div id="pageMsg" class="message"></div>
-      <div style="margin-top:12px"><button id="loadBtn" class="btn" style="width:auto;padding:10px 16px" disabled>讀取薪資資訊 0%</button></div>
-      <div class="muted">工讀生主顯示平均申報薪資；專職保留本薪，並額外顯示勞退雇主提撥 6% 與自提資訊。</div>
     </div>
     <div class="card">
       <div class="section-title">摘要</div>
@@ -31,11 +35,12 @@
     <div class="card">
       <div class="section-title">查看資訊</div>
       <div class="info-grid">
-        <div class="info-card"><div class="label">顯示方案</div><div class="value" id="displayTypeName">-</div></div>
-        <div class="info-card"><div class="label">本薪 / 時薪</div><div class="value" id="baseOrHourly">-</div></div>
+        <div class="info-card" id="cardStaffBase"><div class="label">本薪</div><div class="value" id="staffBaseSalary">-</div></div>
+        <div class="info-card hidden" id="cardHourlyRate"><div class="label">時薪</div><div class="value" id="parttimeHourlyRate">-</div></div>
+        <div class="info-card hidden" id="cardPartialHours"><div class="label">是否部分工時</div><div class="value" id="parttimePartialHours">-</div></div>
+        <div class="info-card hidden" id="cardAverageSalary"><div class="label">目前申報月平均薪資總額</div><div class="value" id="parttimeAverageSalary">-</div></div>
         <div class="info-card"><div class="label">職務加給</div><div class="value" id="jobAllowance">-</div></div>
         <div class="info-card"><div class="label">津貼</div><div class="value" id="otherAllowance">-</div></div>
-        <div class="info-card"><div class="label">平均申報薪資</div><div class="value" id="averageMonthlySalary">-</div></div>
         <div class="info-card"><div class="label">勞保級距</div><div class="value" id="laborPlan">-</div></div>
         <div class="info-card"><div class="label">勞保狀態</div><div class="value" id="laborStatus">-</div></div>
         <div class="info-card"><div class="label">勞保投保薪資 / 自付額</div><div class="value" id="laborSalary">-</div></div>
@@ -43,47 +48,53 @@
         <div class="info-card"><div class="label">健保自付額</div><div class="value" id="healthSalary">-</div></div>
         <div class="info-card"><div class="label">勞退月提繳工資</div><div class="value" id="retirementBase">-</div></div>
         <div class="info-card"><div class="label">雇主提撥勞退 6%</div><div class="value" id="retirementEmployer">-</div></div>
-        <div class="info-card"><div class="label">員工自提</div><div class="value" id="retirementSelf">-</div></div>
+        <div class="info-card"><div class="label">勞退自提</div><div class="value" id="retirementSelf">-</div></div>
         <div class="info-card"><div class="label">生效日期</div><div class="value" id="salaryEffectiveDateInfo">-</div></div>
         <div class="info-card" style="grid-column:1/-1"><div class="label">備註</div><div class="value" id="salaryNote">-</div></div>
       </div>
     </div>
   </div>
-    </div>
-  </div>
-  <script src="config.js?v=20260414clean3"></script>
-  <script src="app.js?v=20260414clean3"></script>
+  <script src="config.js?v=20260418salary3"></script>
+  <script src="app.js?v=20260418salary3"></script>
   <script>
-    
-    function setLoadBtn(pct, text){ const btn=qs('#loadBtn'); if(!btn) return; btn.textContent=`${text||'讀取薪資資訊'} ${pct||0}%`; btn.disabled=true; }
-    function resetLoadBtn(text){ const btn=qs('#loadBtn'); if(!btn) return; btn.textContent=text||'讀取完成'; btn.disabled=false; }
+    function toggleByIdentity(identityType){
+      const isParttime = identityType === 'parttime';
+      qs('#cardStaffBase').classList.toggle('hidden', isParttime);
+      qs('#cardHourlyRate').classList.toggle('hidden', !isParttime);
+      qs('#cardPartialHours').classList.toggle('hidden', !isParttime);
+      qs('#cardAverageSalary').classList.toggle('hidden', !isParttime);
+    }
     async function init(){
-      fillHeader(); const user=requireLogin(); if(!user) return;
-      setLoadBtn(10,'讀取薪資資訊');
+      fillHeader();
+      const user = requireLogin();
+      if(!user) return;
       try{
-        const res=await api('getMySalaryInfo',{userId:user.id}); if(!res||res.ok===false) throw new Error(res&&res.message||'讀取失敗');
-        setLoadBtn(70,'整理資料');
-        const info=res.info||{};
-        qs('#displayTypeName').textContent=info.displayTypeName||'-';
-        qs('#averageMonthlySalary').textContent=info.averageMonthlySalaryText||'-';
-        qs('#baseOrHourly').textContent=info.baseOrHourlyText||'-';
-        qs('#jobAllowance').textContent=info.jobAllowanceText||'-';
-        qs('#otherAllowance').textContent=info.allowanceText||'-';
-        qs('#laborPlan').textContent=info.laborPlanName||'-';
-        qs('#laborStatus').textContent=info.laborStatus||'-';
-        qs('#healthStatus').textContent=info.healthStatus||'-';
-        qs('#laborSalary').textContent=info.laborSelfPayText||info.laborSalaryText||'-';
-        qs('#healthSalary').textContent=info.healthSelfPayText||info.healthSalaryText||'-';
-        qs('#retirementBase').textContent=info.retirementBaseText||'-';
-        qs('#retirementEmployer').textContent=info.retirementEmployerText||'-';
-        qs('#retirementSelf').textContent=info.retirementSelfText||'-';
-        qs('#salaryEffectiveDate').textContent=info.effectiveDate||'-';
-        qs('#salaryEffectiveDateInfo').textContent=info.effectiveDate||'-';
-        qs('#salaryNote').textContent=info.note||'-';
-        qs('#mainAmountLabel').textContent=info.mainAmountLabel||'主要薪資';
-        qs('#mainAmountValue').textContent=info.mainAmountText||'-';
-        setLoadBtn(100,'讀取完成');
-      }catch(err){ setMsg(qs('#pageMsg'), err.message||String(err), true); resetLoadBtn('讀取失敗，請重試'); }
+        const res = await api('getMySalaryInfo', { userId: user.id });
+        if(!res || res.ok === false) throw new Error((res && res.message) || '讀取失敗');
+        const info = res.info || {};
+        toggleByIdentity(info.identityType || user.identityType || 'staff');
+        qs('#mainAmountLabel').textContent = info.mainAmountLabel || '主要薪資';
+        qs('#mainAmountValue').textContent = info.mainAmountText || '-';
+        qs('#staffBaseSalary').textContent = info.staffBaseSalaryText || '-';
+        qs('#parttimeHourlyRate').textContent = info.parttimeHourlyRateText || '-';
+        qs('#parttimePartialHours').textContent = info.parttimePartialHoursText || '-';
+        qs('#parttimeAverageSalary').textContent = info.parttimeAverageSalaryText || '-';
+        qs('#jobAllowance').textContent = info.jobAllowanceText || '-';
+        qs('#otherAllowance').textContent = info.allowanceText || '-';
+        qs('#laborPlan').textContent = info.laborPlanName || '-';
+        qs('#laborStatus').textContent = info.laborStatus || '-';
+        qs('#laborSalary').textContent = (info.laborSalaryText || '-') + '｜自付 ' + (info.laborSelfPayText || '-');
+        qs('#healthStatus').textContent = info.healthStatus || '-';
+        qs('#healthSalary').textContent = info.healthSelfPayText || '-';
+        qs('#retirementBase').textContent = info.retirementBaseText || '-';
+        qs('#retirementEmployer').textContent = info.retirementEmployerText || '-';
+        qs('#retirementSelf').textContent = info.selfRetirementText || '-';
+        qs('#salaryEffectiveDate').textContent = info.effectiveDate || '-';
+        qs('#salaryEffectiveDateInfo').textContent = info.effectiveDate || '-';
+        qs('#salaryNote').textContent = info.note || '-';
+      }catch(err){
+        setMsg(qs('#pageMsg'), err.message || String(err), true);
+      }
     }
   </script>
 </body>
