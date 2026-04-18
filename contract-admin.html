@@ -27,13 +27,16 @@
     .paper-meta strong{font-weight:900}
     .paper-body{font-size:16px;line-height:1.9;white-space:pre-wrap;word-break:break-word;min-height:140mm}
     .paper-body .token-mark{color:#2563eb;font-weight:900}
-    .paper-footer{display:grid;grid-template-columns:1fr 1fr;gap:26px;margin-top:24px;align-items:end}
-    .sign-block{position:relative;min-height:120px;border-top:1px solid #cbd5e1;padding-top:12px}
-    .sign-title{font-weight:900;margin-bottom:8px}
-    .sign-line{font-size:15px;line-height:1.9}
-    .seal-school,.seal-owner{position:absolute;opacity:.88;pointer-events:none}
-    .seal-school{width:3cm;height:3cm;right:16px;bottom:12px;object-fit:contain}
-    .seal-owner{width:2cm;height:2cm;right:26px;bottom:18px;object-fit:contain}
+    .paper-footer{display:grid;grid-template-columns:1fr 1fr;gap:26px;margin-top:24px;align-items:start}
+    .party-block{display:grid;grid-template-columns:minmax(0,1fr) 120px;gap:16px;align-items:start}
+    .teacher-block{display:grid;grid-template-columns:minmax(0,1fr) 150px;gap:16px;align-items:start}
+    .party-lines,.teacher-lines{font-size:15px;line-height:1.9}
+    .stamp-stack{display:flex;flex-direction:column;gap:10px;align-items:center;justify-content:flex-start}
+    .stamp-box,.signature-box{border:1px solid #cbd5e1;border-radius:12px;background:#fff;display:flex;align-items:center;justify-content:center;overflow:hidden}
+    .stamp-box.large{width:3.4cm;height:3.4cm}
+    .stamp-box.small{width:2.4cm;height:2.4cm}
+    .signature-box{width:4.4cm;height:2.8cm;background:#fafafa;color:#94a3b8;font-size:13px}
+    .seal-school,.seal-owner{max-width:100%;max-height:100%;object-fit:contain;opacity:.9;pointer-events:none}
     .paper-note{margin-top:10px;font-size:13px;color:#64748b}
 
     .contract-admin-list{display:grid;gap:14px;margin-top:18px}
@@ -212,19 +215,25 @@
         </div>
         <div class="paper-body">${bodyHtml}</div>
         <div class="paper-footer">
-          <div class="sign-block">
-            <div class="sign-title">甲方簽署區</div>
-            <div class="sign-line">甲方名稱：${escapeHtml(partyAName)}</div>
-            <div class="sign-line">甲方代表人：${escapeHtml(partyAOwner)}</div>
-            ${schoolStampUrl ? `<img class="seal-school" src="${escapeAttr(schoolStampUrl)}" alt="補習班章">` : ''}
-            ${ownerStampUrl ? `<img class="seal-owner" src="${escapeAttr(ownerStampUrl)}" alt="負責人章">` : ''}
+          <div class="party-block">
+            <div class="party-lines">
+              <div>甲方名稱：${escapeHtml(partyAName)}</div>
+              <div>甲方代表人：${escapeHtml(partyAOwner)}</div>
+              <div>甲方地址：${escapeHtml(partyAAddress)}</div>
+            </div>
+            <div class="stamp-stack">
+              <div class="stamp-box large">${schoolStampUrl ? `<img class="seal-school" src="${escapeAttr(schoolStampUrl)}" alt="補習班章">` : ''}</div>
+              <div class="stamp-box small">${ownerStampUrl ? `<img class="seal-owner" src="${escapeAttr(ownerStampUrl)}" alt="負責人章">` : ''}</div>
+            </div>
           </div>
-          <div class="sign-block">
-            <div class="sign-title">乙方簽署區</div>
-            <div class="sign-line">乙方姓名：<span class="token-mark">【老師姓名】</span></div>
-            <div class="sign-line">身分證字號：<span class="token-mark">【身分證字號】</span></div>
-            <div class="sign-line">地址：<span class="token-mark">【地址】</span></div>
-            <div class="sign-line">簽署日期：<span class="token-mark">【簽署民國年】</span>年 <span class="token-mark">【簽署月】</span>月 <span class="token-mark">【簽署日】</span>日</div>
+          <div class="teacher-block">
+            <div class="teacher-lines">
+              <div>乙方姓名：<span class="token-mark">【老師姓名】</span></div>
+              <div>身分證字號：<span class="token-mark">【身分證字號】</span></div>
+              <div>地址：<span class="token-mark">【地址】</span></div>
+              <div>簽署日期：<span class="token-mark">【簽署民國年】</span>年 <span class="token-mark">【簽署月】</span>月 <span class="token-mark">【簽署日】</span>日</div>
+            </div>
+            <div class="signature-box">老師簽名位置</div>
           </div>
         </div>
         <div class="paper-note">這裡看到的章位置就是管理端編輯時的實際顯示位置。</div>
