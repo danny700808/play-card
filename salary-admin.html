@@ -216,6 +216,15 @@
       const v = Number(n || 0) || 0;
       return '$' + v.toLocaleString('zh-TW');
     }
+
+    function escapeHtml(value){
+      return String(value == null ? '' : value)
+        .replace(/&/g,'&amp;')
+        .replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;')
+        .replace(/'/g,'&#39;');
+    }
     function currentEmployee(){
       return selectedMap[selectedId] || null;
     }
