@@ -98,6 +98,11 @@
       <div id="approvalMsg" class="message local-message"></div>
       <div id="approvalList" class="list" style="margin-top:12px"></div>
     </div>
+    <div class="card hidden" id="approvalRecordCard">
+      <div class="topbar"><h2 class="title" style="font-size:20px;margin:0">員工請假紀錄</h2><div class="muted" id="approvalRecordCountText">讀取中…</div></div>
+      <div id="approvalRecordMsg" class="message local-message"></div>
+      <div id="approvalRecordList" class="list" style="margin-top:12px"></div>
+    </div>
   </div>
 <script src="config.js?v=20260414clean3"></script><script src="app.js?v=20260414clean3"></script>
 
@@ -127,6 +132,7 @@ function applyLeaveMode(){
   leaveApprovalMode = !!(currentUser && hasSettingsZoneAccess(currentUser) && isSettingsMode());
   qs('#staffBlock').classList.toggle('hidden', leaveApprovalMode);
   qs('#approvalCard').classList.toggle('hidden', !leaveApprovalMode);
+  qs('#approvalRecordCard').classList.toggle('hidden', !leaveApprovalMode);
   qs('#leavePageTitle').textContent = leaveApprovalMode ? '請假簽核' : '請假申請單';
   qs('#pageHint').textContent = leaveApprovalMode
     ? '這一頁只負責簽核員工送出的請假申請與修改後重送的請假單。'
@@ -847,6 +853,55 @@ function renderApprovalRows(rows){
   qsa('[data-approve-id]').forEach(btn => btn.onclick = () => handleApproval(btn.dataset.approveId, 'approve', btn));
   qsa('[data-reject-id]').forEach(btn => btn.onclick = () => handleApproval(btn.dataset.rejectId, 'reject', btn));
 }
+
+function renderApprovalRecordRows(rows){
+  const list = Array.isArray(rows) ? rows : [];
+  qs('#approvalRecordCountText').textContent = list.length ? `共 ${list.length} 位員工` : '目前沒有可顯示資料';
+  qs('#approvalRecordList').innerHTML = list.map(item => `
+    <div class="item">
+      <div class="top"><strong>${escapeHtml(item.name || '')}</strong><span class="tag info">${escapeHtml(item.identityLabel || '')}</span></div>
+      ${(item.lines || []).map(line => `<div class="muted">${escapeHtml(line)}</div>`).join('')}
+    </div>
+  `).join('') || '<div class="muted">目前沒有可顯示資料</div>';
+}
+
+async function loadApprovalRecords(){
+  const user = requireLogin();
+  if(!user || !leaveApprovalMode) return;
+  setMsg(qs('#approvalRecordMsg'), '');
+  qs('#approvalRecordCountText').textContent = '讀取中…';
+  try{
+    const empRes = await api('getEmployeeOptions', { userId:user.id });
+    if(!empRes.ok){
+      setMsg(qs('#approvalRecordMsg'), empRes.message || '員工資料讀取失敗', true);
+      qs('#approvalRecordCountText').textContent = '讀取失敗';
+      return;
+    }
+    const employees = (empRes.rows || []).filter(item => ['staff','parttime'].includes(String(item.identityType || '')));
+    const results = [];
+    for(const emp of employees){
+      try{
+        const [profileRes, historyRes] = await Promise.all([
+          api('getMyProfile', { userId: emp.id || emp.employeeId }),
+          api('getLeaveHistory', { userId: emp.id || emp.employeeId })
+        ]);
+        if(profileRes.ok && historyRes.ok){
+          results.push({
+            employeeId: emp.id || emp.employeeId || '',
+            name: emp.name || emp.employeeName || '',
+            identityLabel: emp.identityLabel || '',
+            lines: buildEmployeeLeaveDigestCard(profileRes.profile || {}, historyRes || {})
+          });
+        }
+      }catch(_err){}
+    }
+    renderApprovalRecordRows(results);
+  }catch(err){
+    setMsg(qs('#approvalRecordMsg'), (err && err.message) || '員工請假紀錄讀取失敗', true);
+    qs('#approvalRecordCountText').textContent = '讀取失敗';
+  }
+}
+
 async function loadApprovalList(){
   const user = requireLogin();
   if(!user || !leaveApprovalMode) return;
@@ -870,7 +925,7 @@ async function handleApproval(requestId, decision, btn){
     setMsg(qs('#approvalMsg'), r.message || '', !r.ok);
     if(r.ok){
       if(progress) progress.done(text === '同意' ? '已同意' : '已駁回', 500, true);
-      await loadApprovalList();
+      await Promise.all([loadApprovalList(), loadApprovalRecords()]);
     }else if(progress){
       progress.fail(text === '同意' ? '簽核失敗' : '處理失敗');
     }
@@ -906,6 +961,56 @@ function computeUsageGroups(rows){
     })
     .map(item => Object.assign({}, item, { value: normalizeDisplayNumber(item.value, item.unit) }));
 }
+
+function summarizeLeaveRows(rows){
+  const approvedRows = (rows || []).filter(row => String(row.status || '') === '已核准');
+  const pendingRows = (rows || []).filter(row => String(row.status || '') === '待審核');
+  const buildMap = (sourceRows, statusText) => {
+    const map = {};
+    sourceRows.forEach(row => {
+      const baseReason = String(row.reason || row.leaveCode || '其他').trim() || '其他';
+      const relation = String(row.bereavementRelation || '').trim();
+      const key = baseReason === '喪假' && relation ? `喪假:${relation}` : baseReason;
+      const title = baseReason === '喪假' && relation ? `喪假（${relation}）` : baseReason;
+      if(!map[key]){
+        map[key] = { key, title, hours:0, dates:[], statusText };
+      }
+      map[key].hours += Number(row.hours || 0) || 0;
+      const start = String(row.startDate || row.leaveDate || '').trim();
+      const end = String(row.endDate || '').trim();
+      const dateText = start && end && end !== start ? `${start}～${end}` : (start || end || '');
+      if(dateText && map[key].dates.indexOf(dateText) === -1) map[key].dates.push(dateText);
+    });
+    return Object.values(map).map(item => {
+      const datePreview = item.dates.slice(0, 4).join('、');
+      const extra = item.dates.length > 4 ? `等 ${item.dates.length} 筆` : '';
+      return `${item.title}：${formatAmountText(item.hours, 'days_hours')}（${item.statusText}${datePreview ? '｜' + datePreview : ''}${extra ? '｜' + extra : ''}）`;
+    });
+  };
+  return {
+    approvedLines: buildMap(approvedRows, '已核准'),
+    pendingLines: buildMap(pendingRows, '待審核')
+  };
+}
+
+function buildEmployeeLeaveDigestCard(profile, historyData){
+  const rows = Array.isArray(historyData && historyData.rows) ? historyData.rows : [];
+  const summary = summarizeLeaveRows(rows);
+  const lines = [
+    `到職日：${profile && profile.hireDate ? profile.hireDate : '未設定'}`,
+    `年度可用特休：${formatAmountText(profile && profile.annualLeaveTotalHours, 'days_hours')}`,
+    `已使用特休：${formatAmountText(profile && profile.annualLeaveUsedHours, 'days_hours')}`,
+    `剩餘特休：${formatAmountText(profile && profile.annualLeaveRemainingHours, 'days_hours')}`
+  ];
+  if(summary.approvedLines.length){
+    lines.push(...summary.approvedLines);
+  }
+  if(summary.pendingLines.length){
+    lines.push(...summary.pendingLines);
+  }
+  return lines;
+}
+
 function buildOverview(profile, historyData, bundle){
   const annual = computeAnnualEntitlement(profile, bundle, historyData);
   const metaCards = [{
