@@ -159,6 +159,12 @@
       return String(text||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
     }
     function escapeAttr(text){ return escapeHtml(text); }
+    function toDisplayUrl(url){
+      const raw = String(url || '').trim();
+      if(!raw) return '';
+      if(/^https?:\/\//i.test(raw) || raw.startsWith('data:')) return raw;
+      return raw;
+    }
     function insertToken(token){
       const el=qs('#contractText');
       const start=el.selectionStart||0;
