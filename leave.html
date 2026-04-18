@@ -871,31 +871,13 @@ async function loadApprovalRecords(){
   setMsg(qs('#approvalRecordMsg'), '');
   qs('#approvalRecordCountText').textContent = '讀取中…';
   try{
-    const empRes = await api('getEmployeeOptions', { userId:user.id });
-    if(!empRes.ok){
-      setMsg(qs('#approvalRecordMsg'), empRes.message || '員工資料讀取失敗', true);
+    const res = await api('getAdminLeaveEmployeeSummary', { userId:user.id });
+    if(!res.ok){
+      setMsg(qs('#approvalRecordMsg'), res.message || '員工請假紀錄讀取失敗', true);
       qs('#approvalRecordCountText').textContent = '讀取失敗';
       return;
     }
-    const employees = (empRes.rows || []).filter(item => ['staff','parttime'].includes(String(item.identityType || '')));
-    const results = [];
-    for(const emp of employees){
-      try{
-        const [profileRes, historyRes] = await Promise.all([
-          api('getMyProfile', { userId: emp.id || emp.employeeId }),
-          api('getLeaveHistory', { userId: emp.id || emp.employeeId })
-        ]);
-        if(profileRes.ok && historyRes.ok){
-          results.push({
-            employeeId: emp.id || emp.employeeId || '',
-            name: emp.name || emp.employeeName || '',
-            identityLabel: emp.identityLabel || '',
-            lines: buildEmployeeLeaveDigestCard(profileRes.profile || {}, historyRes || {})
-          });
-        }
-      }catch(_err){}
-    }
-    renderApprovalRecordRows(results);
+    renderApprovalRecordRows(Array.isArray(res.rows) ? res.rows : []);
   }catch(err){
     setMsg(qs('#approvalRecordMsg'), (err && err.message) || '員工請假紀錄讀取失敗', true);
     qs('#approvalRecordCountText').textContent = '讀取失敗';
@@ -1271,7 +1253,7 @@ async function init(){
   applyLeaveMode();
   if(leaveApprovalMode){
     setPageProgress('讀取簽核資料中 35%', 35);
-    await loadApprovalList();
+    await Promise.all([loadApprovalList(), loadApprovalRecords()]);
     setPageProgressDone('簽核資料讀取完成');
   }else{
     await loadStaffData();
