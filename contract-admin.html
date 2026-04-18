@@ -18,25 +18,23 @@
     .muted-box{font-size:14px;color:#64748b;background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:12px;line-height:1.8}
     .token-wrap{display:flex;gap:8px;flex-wrap:wrap}
     .token{display:inline-flex;align-items:center;padding:7px 12px;border-radius:999px;background:#eff6ff;color:#1d4ed8;font-weight:800;font-size:13px;cursor:pointer;border:1px solid #bfdbfe}
+    .preview{background:#fff;border:1px solid #cbd5e1;border-radius:16px;padding:18px;line-height:1.9}
+    .preview .token-mark{color:#2563eb;font-weight:900}
+    .preview-paper{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:22px;box-shadow:0 6px 20px rgba(15,23,42,.05)}
+    .preview-title{font-size:24px;font-weight:900;text-align:center;margin:0 0 16px}
+    .preview-meta{font-size:15px;line-height:1.9;margin-bottom:16px}
+    .preview-body{font-size:15px;line-height:1.95;white-space:normal;word-break:break-word}
+    .preview-sign-row{display:grid;grid-template-columns:1fr 1fr;gap:28px;align-items:start;margin-top:24px}
+    .preview-sign-col{display:flex;align-items:flex-start;justify-content:space-between;gap:18px}
+    .preview-sign-title{font-size:18px;font-weight:900;white-space:nowrap;padding-top:8px}
+    .preview-stamp-stack{display:flex;flex-direction:column;gap:10px;align-items:center}
+    .preview-stamp-box,.preview-signature-box{border:1px solid #cbd5e1;border-radius:12px;background:#fff;display:flex;align-items:center;justify-content:center;overflow:hidden}
+    .preview-stamp-box.large{width:3.2cm;height:3.2cm}
+    .preview-stamp-box.small{width:2.2cm;height:2.2cm}
+    .preview-signature-box{width:4.4cm;height:2.8cm;background:#fafafa;color:#94a3b8;font-size:13px}
+    .preview-stamp-box img{max-width:100%;max-height:100%;object-fit:contain;opacity:.92}
+    .preview-date{margin-top:18px;text-align:center;font-size:15px;line-height:1.9}
     .section-title{font-size:22px;font-weight:900;margin:0 0 12px}
-
-    .paper-stage{display:flex;justify-content:center;padding:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:18px}
-    .paper{width:210mm;min-height:297mm;background:#fff;box-shadow:0 10px 30px rgba(15,23,42,.12);position:relative;padding:20mm 18mm 24mm 18mm;color:#111827}
-    .paper h1{margin:0 0 14px;font-size:28px;text-align:center;font-weight:900;letter-spacing:2px}
-    .paper-meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 18px;margin-bottom:18px;font-size:15px}
-    .paper-meta strong{font-weight:900}
-    .paper-body{font-size:16px;line-height:1.9;white-space:pre-wrap;word-break:break-word;min-height:140mm}
-    .paper-body .token-mark{color:#2563eb;font-weight:900}
-    .paper-footer{display:grid;grid-template-columns:1fr 1fr;gap:32px;margin-top:28px;align-items:start}
-    .party-sign{display:flex;align-items:center;justify-content:space-between;gap:18px;min-height:120px}
-    .sign-title{font-weight:900;font-size:18px;color:#111827;white-space:nowrap}
-    .stamp-stack{display:flex;flex-direction:column;gap:10px;align-items:center}
-    .stamp-box,.signature-box{border:1px solid #cbd5e1;border-radius:12px;background:#fff;display:flex;align-items:center;justify-content:center;overflow:hidden}
-    .stamp-box.large{width:3.2cm;height:3.2cm}
-    .stamp-box.small{width:2.2cm;height:2.2cm}
-    .signature-box{width:4.4cm;height:2.8cm;background:#fafafa;color:#94a3b8;font-size:13px}
-    .seal-school,.seal-owner{max-width:100%;max-height:100%;object-fit:contain;opacity:.9;pointer-events:none}
-
     .contract-admin-list{display:grid;gap:14px;margin-top:18px}
     .contract-admin-card{background:#fff;border:1px solid #e2e8f0;border-radius:18px;padding:16px}
     .contract-admin-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}
@@ -49,12 +47,7 @@
     .meta .label{font-size:12px;color:#64748b;font-weight:800}
     .meta .value{font-size:15px;font-weight:800;word-break:break-word}
     .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
-    @media (max-width:1100px){
-      .paper-stage{overflow:auto}
-      .paper{transform-origin:top center; width:min(210mm,100%); min-height:auto; padding:20px 18px 24px}
-      .paper-footer{grid-template-columns:1fr}
-    }
-    @media (max-width:700px){.editor-grid,.meta,.paper-meta{grid-template-columns:1fr}}
+    @media (max-width:700px){.editor-grid,.meta{grid-template-columns:1fr}}
   </style>
 </head>
 <body onload="init()">
@@ -131,7 +124,7 @@
 
       <div class="editor-card">
         <h2 class="section-title">契約內容</h2>
-        <div class="muted-box" style="margin-bottom:12px">這裡直接編輯一般文字即可，不需要自己寫 HTML。點下方藍色標記可以直接插入到游標位置。右下方會直接顯示章的位置，不用另外切到預覽區。</div>
+        <div class="muted-box" style="margin-bottom:12px">這裡直接編輯一般文字即可，不需要自己寫 HTML。下方藍色標記是系統自動帶入的欄位，點一下就會插入到游標位置。</div>
         <div class="token-wrap" id="tokenWrap"></div>
         <div class="field full" style="margin-top:12px">
           <label>契約內容（純文字）</label>
@@ -140,10 +133,9 @@
       </div>
 
       <div class="editor-card">
-        <h2 class="section-title">合約版面（直接顯示章）</h2>
-        <div class="paper-stage">
-          <div class="paper" id="paperBox"></div>
-        </div>
+        <h2 class="section-title">版面預覽</h2>
+        <div class="muted-box" style="margin-bottom:12px">藍色字樣代表系統會自動帶入的內容，例如老師姓名、身分證字號、簽署日期等。</div>
+        <div id="previewBox" class="preview"></div>
       </div>
 
       <div class="list-card">
@@ -176,24 +168,18 @@
       const pos=start+token.length;
       el.focus();
       el.setSelectionRange(pos,pos);
-      renderPaper();
+      renderPreview();
     }
     function buildTokenButtons(){
       qs('#tokenWrap').innerHTML=TOKENS.map(t=>`<button type="button" class="token" onclick="insertToken('${escapeAttr(t)}')">${escapeHtml(t)}</button>`).join('');
     }
-    function tokenMarkHtml(text){
+    function textToPreviewHtml(text){
       let safe=escapeHtml(text||'');
       safe=safe.replace(/【([^】]+)】/g,'<span class="token-mark">【$1】</span>');
       safe=safe.replace(/\n/g,'<br>');
       return safe;
     }
-    function toDisplayUrl(raw){
-      const v = String(raw||'').trim();
-      if(!v) return '';
-      if(/^https?:\/\//i.test(v)) return v;
-      return v;
-    }
-    function renderPaper(){
+    function renderPreview(){
       const contractName = qs('#contractName').value.trim() || '委任契約書';
       const partyAName = qs('#partyAName').value.trim() || '【甲方名稱】';
       const partyAOwner = qs('#partyAOwner').value.trim() || '【甲方代表人】';
@@ -202,31 +188,105 @@
       const endDate = qs('#endDate').value.trim() || '【合約結束日期】';
       const schoolStampUrl = toDisplayUrl(qs('#schoolStampUrl').value.trim() || 'blue_stamp_transparent.png');
       const ownerStampUrl = toDisplayUrl(qs('#ownerStampUrl').value.trim() || 'red_stamp_transparent.png');
-      const bodyHtml = tokenMarkHtml(qs('#contractText').value || '');
-      qs('#paperBox').innerHTML = `
-        <h1>${escapeHtml(contractName)}</h1>
-        <div class="paper-meta">
-          <div><strong>甲方：</strong>${escapeHtml(partyAName)}</div>
-          <div><strong>甲方代表人：</strong>${escapeHtml(partyAOwner)}</div>
-          <div><strong>甲方地址：</strong>${escapeHtml(partyAAddress)}</div>
-          <div><strong>契約期間：</strong>${escapeHtml(startDate)} ～ ${escapeHtml(endDate)}</div>
-        </div>
-        <div class="paper-body">${bodyHtml}</div>
-        <div class="paper-footer">
-          <div class="party-sign">
-            <div class="sign-title">甲方簽署</div>
-            <div class="stamp-stack">
-              <div class="stamp-box large">${schoolStampUrl ? `<img class="seal-school" src="${escapeAttr(schoolStampUrl)}" alt="補習班章">` : ''}</div>
-              <div class="stamp-box small">${ownerStampUrl ? `<img class="seal-owner" src="${escapeAttr(ownerStampUrl)}" alt="負責人章">` : ''}</div>
+      const bodyHtml = textToPreviewHtml(qs('#contractText').value || '');
+      qs('#previewBox').innerHTML = `
+        <div class="preview-paper">
+          <h3 class="preview-title">${escapeHtml(contractName)}</h3>
+          <div class="preview-meta">
+            <div><strong>甲方：</strong>${escapeHtml(partyAName)}</div>
+            <div><strong>甲方代表人：</strong>${escapeHtml(partyAOwner)}</div>
+            <div><strong>甲方地址：</strong>${escapeHtml(partyAAddress)}</div>
+            <div><strong>契約期間：</strong>${escapeHtml(startDate)} ～ ${escapeHtml(endDate)}</div>
+          </div>
+          <div class="preview-body">${bodyHtml}</div>
+          <div class="preview-sign-row">
+            <div class="preview-sign-col">
+              <div class="preview-sign-title">甲方簽署</div>
+              <div class="preview-stamp-stack">
+                <div class="preview-stamp-box large">${schoolStampUrl ? `<img src="${escapeAttr(schoolStampUrl)}" alt="補習班章">` : ''}</div>
+                <div class="preview-stamp-box small">${ownerStampUrl ? `<img src="${escapeAttr(ownerStampUrl)}" alt="負責人章">` : ''}</div>
+              </div>
+            </div>
+            <div class="preview-sign-col">
+              <div class="preview-sign-title">乙方簽署</div>
+              <div class="preview-signature-box">老師簽名位置</div>
             </div>
           </div>
-          <div class="party-sign">
-            <div class="sign-title">乙方簽署</div>
-            <div class="signature-box">老師簽名位置</div>
+          <div class="preview-date">中華民國<span class="token-mark">【簽署民國年】</span>年 <span class="token-mark">【簽署月】</span>月 <span class="token-mark">【簽署日】</span>日</div>
+        </div>`;
+    }
+    function applySetting(setting){
+      currentSettingId=setting.settingId||'';
+      qs('#contractName').value=setting.contractName||'';
+      qs('#partyAName').value=setting.partyAName||'';
+      qs('#partyAOwner').value=setting.partyAOwner||'';
+      qs('#partyATaxId').value=setting.partyATaxId||'';
+      qs('#partyAAddress').value=setting.partyAAddress||'';
+      qs('#startDate').value=setting.startDate||'';
+      qs('#endDate').value=setting.endDate||'';
+      qs('#schoolStampUrl').value=setting.schoolStampUrl||'blue_stamp_transparent.png';
+      qs('#ownerStampUrl').value=setting.ownerStampUrl||'red_stamp_transparent.png';
+      qs('#contractText').value=setting.contractText||'';
+      renderPreview();
+    }
+    async function loadConfig(){
+      const year=qs('#yearInput').value||String(new Date().getFullYear());
+      try{
+        const r=await api('getTeacherContractAdminConfig',{userId:currentUser.id,year});
+        if(!r.ok) throw new Error(r.message||'讀取設定失敗');
+        applySetting(r.setting||{});
+        setMsg(qs('#msg'),'合約設定已讀取',false);
+        loadList();
+      }catch(e){ setMsg(qs('#msg'),e.message||'讀取失敗',true); }
+    }
+    async function saveSetting(){
+      const payload={
+        userId:currentUser.id,
+        settingId:currentSettingId,
+        year:qs('#yearInput').value||String(new Date().getFullYear()),
+        contractName:qs('#contractName').value.trim(),
+        partyAName:qs('#partyAName').value.trim(),
+        partyATaxId:qs('#partyATaxId').value.trim(),
+        partyAOwner:qs('#partyAOwner').value.trim(),
+        partyAAddress:qs('#partyAAddress').value.trim(),
+        startDate:qs('#startDate').value.trim(),
+        endDate:qs('#endDate').value.trim(),
+        schoolStampUrl:qs('#schoolStampUrl').value.trim(),
+        ownerStampUrl:qs('#ownerStampUrl').value.trim(),
+        contractText:qs('#contractText').value.trim(),
+        enabled:true
+      };
+      try{
+        const r=await api('saveTeacherContractSetting',payload);
+        if(!r.ok) throw new Error(r.message||'儲存失敗');
+        currentSettingId=r.settingId||currentSettingId;
+        setMsg(qs('#msg'),r.message||'已儲存',false);
+        loadConfig();
+      }catch(e){ setMsg(qs('#msg'),e.message||'儲存失敗',true); }
+    }
+    function rowHtml(row){
+      const signed = String(row.status||'').indexOf('已簽')>=0;
+      return `
+        <div class="contract-admin-card">
+          <div class="contract-admin-head">
+            <div>
+              <h3 class="contract-admin-title">${escapeHtml(row.teacherName||'未命名老師')}</h3>
+              <div class="muted">${escapeHtml(row.email||'')}</div>
+            </div>
+            <span class="badge ${signed?'done':'pending'}">${signed?'已簽署':'待簽署'}</span>
           </div>
-        </div>
-        <div style="margin-top:18px;font-size:15px;line-height:1.9">中華民國<span class="token-mark">【簽署民國年】</span>年 <span class="token-mark">【簽署月】</span>月 <span class="token-mark">【簽署日】</span>日</div>
-      `;
+          <div class="meta">
+            <div class="item"><div class="label">年度</div><div class="value">${escapeHtml(row.year||'')}</div></div>
+            <div class="item"><div class="label">簽署時間</div><div class="value">${escapeHtml((row.signDate||'')+' '+(row.signTime||''))}</div></div>
+            <div class="item"><div class="label">身分證字號</div><div class="value">${escapeHtml(row.idNumber||'')}</div></div>
+            <div class="item"><div class="label">地址</div><div class="value">${escapeHtml(row.address||'')}</div></div>
+          </div>
+          <div class="actions">
+            ${row.pdfUrl?`<a class="btn secondary" style="width:auto" href="${row.pdfUrl}" target="_blank">查看 PDF</a>`:''}
+            ${row.signatureUrl?`<a class="btn secondary" style="width:auto" href="${row.signatureUrl}" target="_blank">查看簽名</a>`:''}
+            ${signed?`<button class="btn secondary" style="width:auto" onclick="resend('${escapeAttr(row.recordId||'')}')">重寄 PDF</button>`:''}
+          </div>
+        </div>`;
     }
     async function resend(recordId){
       try{
@@ -242,10 +302,6 @@
         qs('#list').innerHTML=(r.rows||[]).map(rowHtml).join('') || '<div class="muted">目前沒有資料</div>';
       }catch(e){ setMsg(qs('#msg'),e.message||'讀取失敗',true); }
     }
-    function bindLiveRender(){
-      ['contractName','partyAName','partyAOwner','partyATaxId','partyAAddress','startDate','endDate','schoolStampUrl','ownerStampUrl','contractText']
-        .forEach(id=>{ const el=qs('#'+id); if(el){ el.addEventListener('input',renderPaper); el.addEventListener('change',renderPaper); } });
-    }
     function init(){
       fillHeader();
       buildTokenButtons();
@@ -253,8 +309,7 @@
       if(!currentUser) return;
       if(!isManager(currentUser)){location.href='dashboard.html'; return;}
       qs('#yearInput').value=String(new Date().getFullYear());
-      bindLiveRender();
-      renderPaper();
+      qs('#contractText').addEventListener('input',renderPreview);
       loadConfig();
     }
   </script>
