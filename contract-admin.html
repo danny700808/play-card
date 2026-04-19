@@ -22,17 +22,16 @@
     .preview-meta{font-size:14px;line-height:1.9;margin-bottom:12px}
     .preview-body{font-size:14px;line-height:1.82;color:#1f2937;white-space:normal;word-break:break-word}
     .token-mark{color:#2563eb;font-weight:900}
-    .preview-party-grid{display:grid;grid-template-columns:1fr;gap:18px;margin-top:18px;align-items:start}
-    .preview-party-card{padding-top:0;min-height:auto}
-    .preview-party-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:18px}
-    .preview-party-info{min-width:0;font-size:14px;line-height:1.95}
-    .preview-party-info div{word-break:break-word}
-    .preview-party-stamps{display:flex;align-items:center;justify-content:flex-start;gap:10px;flex:0 0 auto;min-width:4.9cm}
+    .preview-exec-block{margin-top:22px}
+    .preview-exec-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:18px;padding:8px 0}
+    .preview-exec-info{min-width:0;font-size:14px;line-height:2.05}
+    .preview-exec-info div{word-break:break-word}
+    .preview-exec-side{display:flex;align-items:center;justify-content:flex-start;gap:10px;flex:0 0 auto;min-width:5.1cm}
     .preview-stamp-box,.preview-signature-box{display:flex;align-items:center;justify-content:center;overflow:visible;background:#fff;flex:0 0 auto}
     .preview-stamp-box.large{width:3cm;height:3cm}
     .preview-stamp-box.small{width:1.8cm;height:1.8cm}
     .preview-stamp-box img{display:block;max-width:100%;max-height:100%;object-fit:contain}
-    .preview-signature-box{width:4.5cm;height:2.6cm;border:1px solid #cbd5e1;border-radius:12px;background:#fafafa;color:#94a3b8;font-size:13px}
+    .preview-signature-box{width:4.6cm;height:2.7cm;border:1px solid #cbd5e1;border-radius:12px;background:#fafafa;color:#94a3b8;font-size:13px}
     .preview-signature-box img{display:block;max-width:100%;max-height:100%;object-fit:contain}
     .preview-date{margin-top:18px;text-align:center;font-size:14px;line-height:1.9}
     .contract-admin-list{display:grid;gap:12px}
@@ -65,8 +64,8 @@
     }
     @media (max-width:700px){
       .row2,.meta{grid-template-columns:1fr}
-      .preview-party-row{grid-template-columns:1fr;align-items:start}
-      .preview-party-stamps{min-width:0}
+      .preview-exec-row{grid-template-columns:1fr;align-items:start}
+      .preview-exec-side{min-width:0}
       .preview-page{padding:8mm}
     }
   </style>
@@ -257,7 +256,7 @@
           .preview-stamp-box.large{width:3cm;height:3cm;}
           .preview-stamp-box.small{width:1.8cm;height:1.8cm;}
           .preview-stamp-box img{display:block;max-width:100%;max-height:100%;object-fit:contain;}
-          .preview-signature-box{width:4.5cm;height:2.6cm;border:1px solid #cbd5e1;border-radius:12px;background:#fafafa;color:#94a3b8;font-size:13px;}
+          .preview-signature-box{width:4.6cm;height:2.7cm;border:1px solid #cbd5e1;border-radius:12px;background:#fafafa;color:#94a3b8;font-size:13px;}
           .preview-signature-box img{display:block;max-width:100%;max-height:100%;object-fit:contain;}
           .preview-date{margin-top:18px;text-align:center;font-size:14px;line-height:1.9;}
           @media print{
@@ -305,31 +304,26 @@
           </div>
           <div class="preview-page">
             <div class="preview-body">${page2Html}</div>
-            <div class="preview-party-grid">
-              <div class="preview-party-card">
-                <div class="preview-party-row">
-                  <div class="preview-party-info">
-                    <div>立契約書人</div>
-                    <div><strong>甲　方：</strong>${textToPreviewHtml('【甲方名稱】')}</div>
-                    <div><strong>代表人：</strong>${textToPreviewHtml('【甲方代表人】')}</div>
-                    <div><strong>地　址：</strong>${textToPreviewHtml('【甲方地址】')}</div>
-                  </div>
-                  <div class="preview-party-stamps">
-                    <div class="preview-stamp-box large">${schoolStampUrl ? `<img src="${escapeAttr(schoolStampUrl)}" alt="補習班章">` : ''}</div>
-                    <div class="preview-stamp-box small">${ownerStampUrl ? `<img src="${escapeAttr(ownerStampUrl)}" alt="負責人章">` : ''}</div>
-                  </div>
+            <div class="preview-exec-block">
+              <div class="preview-exec-row">
+                <div class="preview-exec-info">
+                  <div><strong>甲　方：</strong>${textToPreviewHtml('【甲方名稱】')}</div>
+                  <div><strong>代表人：</strong>${textToPreviewHtml('【甲方代表人】')}</div>
+                  <div><strong>地　址：</strong>${textToPreviewHtml('【甲方地址】')}</div>
+                </div>
+                <div class="preview-exec-side">
+                  <div class="preview-stamp-box large">${schoolStampUrl ? `<img src="${escapeAttr(schoolStampUrl)}" alt="補習班章">` : ''}</div>
+                  <div class="preview-stamp-box small">${ownerStampUrl ? `<img src="${escapeAttr(ownerStampUrl)}" alt="負責人章">` : ''}</div>
                 </div>
               </div>
-              <div class="preview-party-card">
-                <div class="preview-party-row">
-                  <div class="preview-party-info">
-                    <div><strong>乙　方：</strong>${textToPreviewHtml('【老師姓名】')}</div>
-                    <div><strong>身分證號碼：</strong>${textToPreviewHtml('【身分證字號】')}</div>
-                    <div><strong>地　址：</strong>${textToPreviewHtml('【地址】')}</div>
-                  </div>
-                  <div class="preview-party-stamps">
-                    <div class="preview-signature-box">老師簽名位置</div>
-                  </div>
+              <div class="preview-exec-row">
+                <div class="preview-exec-info">
+                  <div><strong>乙　方：</strong>${textToPreviewHtml('【老師姓名】')}</div>
+                  <div><strong>身分證字號：</strong>${textToPreviewHtml('【身分證字號】')}</div>
+                  <div><strong>地　址：</strong>${textToPreviewHtml('【地址】')}</div>
+                </div>
+                <div class="preview-exec-side">
+                  <div class="preview-signature-box">老師簽名位置</div>
                 </div>
               </div>
             </div>
