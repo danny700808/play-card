@@ -13,6 +13,11 @@
   
     .page-return-wrap{margin-bottom:16px}
     .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
+    .date-status-box{border:1px solid var(--line);border-radius:14px;padding:12px 14px;background:#f8fbff;margin-top:10px}
+    .date-status-title{font-size:12px;color:var(--muted);font-weight:700}
+    .date-status-main{font-size:18px;font-weight:800;margin-top:4px}
+    .date-status-main.ok{color:#16533f}
+    .date-status-main.bad{color:#b42318}
 </style>
 </head>
 <body onload="init()">
@@ -34,6 +39,11 @@
         <label for="workDate">日期</label>
         <input id="workDate" type="date">
         <div class="field-error" id="errorWorkDate"></div>
+        <div id="dateStatusBox" class="date-status-box" style="display:none">
+          <div class="date-status-title">當日班表狀態</div>
+          <div id="dateStatusMain" class="date-status-main"></div>
+          <div id="dateStatusNote" class="muted inline-note"></div>
+        </div>
       </div>
 
       <div class="field" id="fieldHours">
@@ -98,6 +108,7 @@
     function sleep(ms){ return new Promise(resolve=>setTimeout(resolve, ms)); }
     function formatHoursLabel(v){
       const n = Number(v || 0);
+      if(!Number.isFinite(n) || n < 0) return '0 小時';
       if (Math.abs(n - Math.round(n)) < 0.0001) return Math.round(n) + ' 小時';
       return n.toFixed(1).replace(/\.0$/, '') + ' 小時';
     }
@@ -114,11 +125,46 @@
         if(err) err.textContent = '';
       });
     }
+    let currentDateContext = null;
     function setFieldInvalid(name, message){
       const field = qs('#field' + name);
       const err = qs('#error' + name);
       if(field) field.classList.add('invalid');
       if(err) err.textContent = message || '';
+    }
+    function renderDateContext(ctx){
+      currentDateContext = ctx || null;
+      const box = qs('#dateStatusBox');
+      const main = qs('#dateStatusMain');
+      const note = qs('#dateStatusNote');
+      const btn = qs('#submitBtn');
+      if(!ctx || !ctx.workDate){
+        if(box) box.style.display = 'none';
+        if(btn) btn.disabled = false;
+        return;
+      }
+      if(box) box.style.display = '';
+      if(main){
+        main.textContent = ctx.canRegister ? `${ctx.statusLabel}｜${ctx.scheduleLabel || ''}` : `${ctx.statusLabel}｜${ctx.scheduleLabel || '無班'}`;
+        main.className = 'date-status-main ' + (ctx.canRegister ? 'ok' : 'bad');
+      }
+      if(note) note.textContent = ctx.canRegister ? (ctx.helperText || '今天有排班，可以登記工讀時數。') : (ctx.blockedReason || '這一天沒有班，不能登記工讀時數。');
+      if(btn) btn.disabled = !!(ctx && !ctx.canRegister);
+    }
+    async function loadDateContext(){
+      const user = requireLogin();
+      if(!user) return;
+      const workDate = qs('#workDate').value;
+      if(!workDate){
+        renderDateContext(null);
+        return;
+      }
+      try{
+        const r = await api('getParttimeDateContext',{ userId:user.id, workDate });
+        renderDateContext(r.context || null);
+      }catch(e){
+        renderDateContext(null);
+      }
     }
     function validateForm(){
       clearValidation();
@@ -140,8 +186,14 @@
         if(first) first.focus();
         return false;
       }
+      if(currentDateContext && !currentDateContext.canRegister){
+        setMsg(qs('#msg'), currentDateContext.blockedReason || '這一天沒有班，不能登記工讀時數。', true);
+        window.scrollTo({top:0,behavior:'smooth'});
+        return false;
+      }
       return true;
-    }    async function loadHistory(monthText=''){
+    }
+    async function loadHistory(monthText=''){
       const user = requireLogin();
       if(!user) return;
       const r = await api('getParttimeHistory',{userId:user.id, monthText});
@@ -181,6 +233,7 @@
           qs('#hoursSelect').value = '';
           qs('#workDate').value = localDateInputValue();
           await loadHistory(r.monthText || '');
+          await loadDateContext();
           progress.done('送出成功');
         } else {
           progress.fail('送出失敗');
@@ -196,9 +249,11 @@
       fillHeader();
       qs('#workDate').value = localDateInputValue();
       qs('#submitBtn').onclick = submitParttime;
-      qs('#workDate').addEventListener('input', clearValidation);
+      qs('#workDate').addEventListener('input', async ()=>{ clearValidation(); await loadDateContext(); });
+      qs('#workDate').addEventListener('change', async ()=>{ clearValidation(); await loadDateContext(); });
       qs('#hoursSelect').addEventListener('change', clearValidation);
       loadHistory();
+      loadDateContext();
     }
   </script>
 </body>
