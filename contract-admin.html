@@ -22,16 +22,19 @@
     .preview-meta{font-size:14px;line-height:1.9;margin-bottom:12px}
     .preview-body{font-size:14px;line-height:1.82;color:#1f2937;white-space:normal;word-break:break-word}
     .token-mark{color:#2563eb;font-weight:900}
-    .preview-sign-row{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:20px;align-items:start}
-    .preview-sign-col{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
-    .preview-sign-title{font-size:18px;font-weight:900;white-space:nowrap;padding-top:6px}
-    .preview-stamp-stack{display:flex;flex-direction:column;gap:10px;align-items:center}
-    .preview-stamp-box,.preview-signature-box{display:flex;align-items:center;justify-content:center;overflow:visible;background:#fff}
-    .preview-stamp-box.large{width:3cm;height:3cm}
-    .preview-stamp-box.small{width:2cm;height:2cm}
+    .preview-party-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:18px;align-items:end}
+    .preview-party-card{border-top:1px solid #cbd5e1;padding-top:12px;min-height:108px}
+    .preview-party-row{display:flex;align-items:flex-end;justify-content:space-between;gap:12px}
+    .preview-party-row.party-b{justify-content:flex-start}
+    .preview-party-info{flex:1;min-width:0;font-size:14px;line-height:1.9}
+    .preview-party-info div{word-break:break-word}
+    .preview-party-stamps{display:flex;align-items:flex-end;gap:8px;flex:0 0 auto}
+    .preview-stamp-box,.preview-signature-box{display:flex;align-items:center;justify-content:center;overflow:visible;background:#fff;flex:0 0 auto}
+    .preview-stamp-box.large{width:2.8cm;height:2.8cm}
+    .preview-stamp-box.small{width:1.7cm;height:1.7cm}
     .preview-stamp-box img{display:block;max-width:100%;max-height:100%;object-fit:contain}
-    .preview-signature-box{width:4.2cm;height:2.7cm;border:1px solid #cbd5e1;border-radius:12px;background:#fafafa;color:#94a3b8;font-size:13px}
-    .preview-date{margin-top:18px;text-align:center;font-size:14px;line-height:1.9}
+    .preview-signature-box{width:4.1cm;height:2.3cm;border:1px solid #cbd5e1;border-radius:12px;background:#fafafa;color:#94a3b8;font-size:13px}
+    .preview-date{margin-top:14px;text-align:center;font-size:14px;line-height:1.9}
     .contract-admin-list{display:grid;gap:12px}
     .contract-admin-card{border:1px solid #d9e0e6;border-radius:14px;padding:14px;background:#fff}
     .contract-admin-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}
@@ -61,8 +64,7 @@
       .preview-panel{position:static}
     }
     @media (max-width:700px){
-      .row2,.meta,.preview-sign-row{grid-template-columns:1fr}
-      .preview-sign-col{justify-content:flex-start}
+      .row2,.meta,.preview-party-grid{grid-template-columns:1fr}
       .preview-page{padding:8mm}
     }
   </style>
@@ -243,16 +245,19 @@
           .preview-meta{font-size:14px;line-height:1.9;margin-bottom:12px;}
           .preview-body{font-size:14px;line-height:1.82;color:#1f2937;white-space:normal;word-break:break-word;}
           .token-mark{color:#2563eb;font-weight:900;}
-          .preview-sign-row{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:20px;align-items:start;}
-          .preview-sign-col{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;}
-          .preview-sign-title{font-size:18px;font-weight:900;white-space:nowrap;padding-top:6px;}
-          .preview-stamp-stack{display:flex;flex-direction:column;gap:10px;align-items:center;}
-          .preview-stamp-box,.preview-signature-box{display:flex;align-items:center;justify-content:center;overflow:visible;background:#fff;}
-          .preview-stamp-box.large{width:3cm;height:3cm;}
-          .preview-stamp-box.small{width:2cm;height:2cm;}
+          .preview-party-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:18px;align-items:end;}
+          .preview-party-card{border-top:1px solid #cbd5e1;padding-top:12px;min-height:108px;}
+          .preview-party-row{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;}
+          .preview-party-row.party-b{justify-content:flex-start;}
+          .preview-party-info{flex:1;min-width:0;font-size:14px;line-height:1.9;}
+          .preview-party-info div{word-break:break-word;}
+          .preview-party-stamps{display:flex;align-items:flex-end;gap:8px;flex:0 0 auto;}
+          .preview-stamp-box,.preview-signature-box{display:flex;align-items:center;justify-content:center;overflow:visible;background:#fff;flex:0 0 auto;}
+          .preview-stamp-box.large{width:2.8cm;height:2.8cm;}
+          .preview-stamp-box.small{width:1.7cm;height:1.7cm;}
           .preview-stamp-box img{display:block;max-width:100%;max-height:100%;object-fit:contain;}
-          .preview-signature-box{width:4.2cm;height:2.7cm;border:1px solid #cbd5e1;border-radius:12px;background:#fafafa;color:#94a3b8;font-size:13px;}
-          .preview-date{margin-top:18px;text-align:center;font-size:14px;line-height:1.9;}
+          .preview-signature-box{width:4.1cm;height:2.3cm;border:1px solid #cbd5e1;border-radius:12px;background:#fafafa;color:#94a3b8;font-size:13px;}
+          .preview-date{margin-top:14px;text-align:center;font-size:14px;line-height:1.9;}
           @media print{
             html,body{background:#fff;}
             .preview-page{margin:0;padding:12mm 11mm;}
@@ -298,17 +303,31 @@
           </div>
           <div class="preview-page">
             <div class="preview-body">${page2Html}</div>
-            <div class="preview-sign-row">
-              <div class="preview-sign-col">
-                <div class="preview-sign-title">甲方簽署</div>
-                <div class="preview-stamp-stack">
-                  <div class="preview-stamp-box large">${schoolStampUrl ? `<img src="${escapeAttr(schoolStampUrl)}" alt="補習班章">` : ''}</div>
-                  <div class="preview-stamp-box small">${ownerStampUrl ? `<img src="${escapeAttr(ownerStampUrl)}" alt="負責人章">` : ''}</div>
+            <div class="preview-party-grid">
+              <div class="preview-party-card">
+                <div class="preview-party-row">
+                  <div class="preview-party-info">
+                    <div><strong>立契約書人：甲方</strong></div>
+                    <div>${escapeHtml(partyAName)}</div>
+                    <div>代表人：${escapeHtml(partyAOwner)}</div>
+                    <div>地址：${escapeHtml(partyAAddress)}</div>
+                  </div>
+                  <div class="preview-party-stamps">
+                    <div class="preview-stamp-box large">${schoolStampUrl ? `<img src="${escapeAttr(schoolStampUrl)}" alt="補習班章">` : ''}</div>
+                    <div class="preview-stamp-box small">${ownerStampUrl ? `<img src="${escapeAttr(ownerStampUrl)}" alt="負責人章">` : ''}</div>
+                  </div>
                 </div>
               </div>
-              <div class="preview-sign-col">
-                <div class="preview-sign-title">乙方簽署</div>
-                <div class="preview-signature-box">老師簽名位置</div>
+              <div class="preview-party-card">
+                <div class="preview-party-row party-b">
+                  <div class="preview-signature-box">老師簽名位置</div>
+                  <div class="preview-party-info">
+                    <div><strong>立契約書人：乙方</strong></div>
+                    <div>${textToPreviewHtml('【老師姓名】')}</div>
+                    <div>身分證字號：${textToPreviewHtml('【身分證字號】')}</div>
+                    <div>地址：${textToPreviewHtml('【地址】')}</div>
+                  </div>
+                </div>
               </div>
             </div>
             <div class="preview-date">中華民國<span class="token-mark">【簽署民國年】</span>年 <span class="token-mark">【簽署月】</span>月 <span class="token-mark">【簽署日】</span>日</div>
