@@ -529,6 +529,9 @@
       if(ownerUrl) ownerStamp.src=ownerUrl;
       qs('#previewSignature').src=payload.signatureDataUrl;
 
+      const savePdfBtn = qs('#savePdfBtn');
+      if(savePdfBtn) savePdfBtn.style.display='inline-flex';
+
       qs('#previewPane').classList.add('show');
       qs('#previewPane').scrollIntoView({behavior:'smooth',block:'start'});
     }
@@ -549,6 +552,12 @@
 
     function hidePreview(){
       qs('#previewPane').classList.remove('show');
+      const savePdfBtn = qs('#savePdfBtn');
+      if(savePdfBtn) savePdfBtn.style.display='none';
+    }
+
+    function saveContractPdf(){
+      window.print();
     }
 
     async function submitContract(){
