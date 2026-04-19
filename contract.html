@@ -7,6 +7,13 @@
   <link rel="stylesheet" href="style.css">
   <style>
     .contract-shell{display:grid;grid-template-columns:minmax(360px,430px) minmax(760px,1fr);gap:18px;align-items:start}
+    .container{max-width:1360px !important;margin:0 auto !important;padding:24px 18px 40px !important}
+    .container > .card:first-child{margin-bottom:18px}
+    .contract-shell{grid-template-columns:minmax(360px,400px) minmax(0,860px);justify-content:center;gap:22px}
+    .contract-shell > .contract-card:first-child{width:100%;min-width:0}
+    #contractFormCard{width:100%;min-width:0}
+    .preview-shell{justify-items:center}
+    .preview-page{width:min(210mm,100%);max-width:100%}
     .contract-card{background:#fff;border:1px solid #e2e8f0;border-radius:20px;padding:18px}
     .contract-head,.contract-meta{display:none}
     .contract-title{margin:0;font-size:28px;font-weight:900}
@@ -33,7 +40,7 @@
     .contract-paper-date,.preview-date{margin-top:18px;text-align:center;font-size:14px;line-height:1.9}
     .contract-shell > .contract-card:first-child{grid-column:2;grid-row:1 / span 2;position:sticky;top:14px;max-height:calc(100vh - 24px);overflow:auto}
     #contractFormCard{grid-column:1}
-    @media (max-width:1200px){.contract-shell{grid-template-columns:1fr}.contract-shell > .contract-card:first-child{grid-column:1;grid-row:auto;position:static;max-height:none;overflow:visible}#contractFormCard{grid-column:1}.preview-shell{justify-items:stretch}.contract-page,.preview-page{width:auto;max-width:100%;min-width:0}}
+    @media (max-width:1200px){.container{max-width:100% !important;padding:16px !important}.contract-shell{grid-template-columns:1fr;justify-content:stretch}.contract-shell > .contract-card:first-child{grid-column:1;grid-row:auto;position:static;max-height:none;overflow:visible}#contractFormCard{grid-column:1}.preview-shell{justify-items:stretch}.contract-page,.preview-page{width:auto;max-width:100%;min-width:0}}
     .contract-form{display:grid;gap:12px}
     .contract-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
     .contract-grid .full{grid-column:1 / -1}
@@ -80,6 +87,20 @@
       .sign-box{height:min(52vh,360px)}
       .preview-inline-side{min-width:0}
       .contract-page,.preview-page{padding:8mm;width:auto;max-width:100%;min-width:0}
+    }
+  
+    /* ratio fix */
+    .container{max-width:1360px !important;margin:0 auto !important;padding:24px 18px 40px !important}
+    .container > .card:first-child{margin-bottom:18px}
+    .contract-shell{grid-template-columns:minmax(360px,400px) minmax(0,860px) !important;justify-content:center !important;gap:22px !important}
+    .contract-shell > .contract-card:first-child{width:100%;min-width:0}
+    #contractFormCard{width:100%;min-width:0}
+    .preview-shell{justify-items:center !important}
+    .contract-page,.preview-page{width:min(210mm,100%) !important;max-width:100% !important}
+    @media (max-width:1200px){
+      .container{max-width:100% !important;padding:16px !important}
+      .contract-shell{grid-template-columns:1fr !important;justify-content:stretch !important}
+      .contract-page,.preview-page{width:auto !important;max-width:100% !important;min-width:0 !important}
     }
   </style>
 </head>
@@ -591,7 +612,21 @@
             .preview-page{margin:0;padding:12mm 11mm;}
             @page{size:A4 portrait;margin:0;}
           }
-        </style>`;
+        
+    /* ratio fix */
+    .container{max-width:1360px !important;margin:0 auto !important;padding:24px 18px 40px !important}
+    .container > .card:first-child{margin-bottom:18px}
+    .contract-shell{grid-template-columns:minmax(360px,400px) minmax(0,860px) !important;justify-content:center !important;gap:22px !important}
+    .contract-shell > .contract-card:first-child{width:100%;min-width:0}
+    #contractFormCard{width:100%;min-width:0}
+    .preview-shell{justify-items:center !important}
+    .contract-page,.preview-page{width:min(210mm,100%) !important;max-width:100% !important}
+    @media (max-width:1200px){
+      .container{max-width:100% !important;padding:16px !important}
+      .contract-shell{grid-template-columns:1fr !important;justify-content:stretch !important}
+      .contract-page,.preview-page{width:auto !important;max-width:100% !important;min-width:0 !important}
+    }
+  </style>`;
       printWindow.document.open();
       printWindow.document.write(`<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><title>外聘老師合約 PDF</title>${styleHtml}</head><body>${contractBody.innerHTML}</body></html>`);
       printWindow.document.close();
