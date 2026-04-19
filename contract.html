@@ -6,12 +6,14 @@
   <title>外聘老師正式線上簽署</title>
   <link rel="stylesheet" href="style.css">
   <style>
-    .contract-shell{display:grid;gap:16px}
+    .contract-shell{display:grid;grid-template-columns:minmax(360px,430px) minmax(0,1fr);gap:18px;align-items:start}
     .contract-card{background:#fff;border:1px solid #e2e8f0;border-radius:20px;padding:18px}
     .contract-head,.contract-meta{display:none}
     .contract-title{margin:0;font-size:28px;font-weight:900}
     .contract-body{line-height:1.9;color:#1f2937}
     .contract-body div{margin-bottom:2px}
+    .contract-pages{display:grid;gap:16px}
+    .contract-page{background:#fff;border:1px solid #cbd5e1;border-radius:18px;padding:14mm 12mm 16mm;min-height:297mm;box-sizing:border-box}
     .contract-paper{background:#fff;border:1px solid #cbd5e1;border-radius:18px;padding:24px}
     .contract-paper-title{font-size:24px;font-weight:900;text-align:center;margin:0 0 18px}
     .contract-paper-meta{font-size:15px;line-height:1.9;margin-bottom:16px}
@@ -29,19 +31,11 @@
     .teacher-sign-box{width:4.4cm;height:2.8cm;background:#fafafa;color:#94a3b8;font-size:13px}
     .teacher-sign-box img{max-width:100%;max-height:100%;object-fit:contain}
     .contract-paper-date{margin-top:18px;text-align:center;font-size:15px;line-height:1.9}
-
-    @page{size:A4 portrait;margin:0}
-    @media print{
-      body{background:#fff}
-      .hero-card,.topbar,.form-card,.muted,.contract-card:not(.paper-print),#previewPane>.submit-actions{display:none !important}
-      .app-shell,.contract-shell{max-width:none;padding:0;margin:0}
-      #previewPane{display:block !important}
-      #previewPane.paper-print{background:transparent;border:none;box-shadow:none;padding:0}
-      #previewPane .preview-paper{width:210mm !important;min-height:auto;margin:0 auto;border:none;border-radius:0;box-shadow:none;padding:16mm 14mm 18mm;box-sizing:border-box}
-      #previewPane .preview-paper *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
-      #previewPane .preview-sign-wrap{break-inside:avoid;page-break-inside:avoid}
-      #previewPane .page-seam{display:flex !important}
-    }
+    .contract-shell > .contract-card:first-child{grid-column:2;grid-row:1 / span 2;position:sticky;top:14px;max-height:calc(100vh - 24px);overflow:auto}
+    #contractFormCard{grid-column:1}
+    #previewPane{grid-column:1}
+    #previewPane.show{display:block}
+    @media (max-width:1200px){.contract-shell{grid-template-columns:1fr}.contract-shell > .contract-card:first-child{grid-column:1;grid-row:auto;position:static;max-height:none;overflow:visible}#contractFormCard,#previewPane{grid-column:1}}
     .contract-form{display:grid;gap:12px}
     .contract-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
     .contract-grid .full{grid-column:1 / -1}
@@ -70,33 +64,13 @@
     .preview-actions,.sign-actions,.submit-actions{display:flex;gap:10px;flex-wrap:wrap}
     .preview-pane{display:none}
     .preview-pane.show{display:block}
-    .preview-paper{position:relative;background:#fff;border:1px solid #cbd5e1;border-radius:18px;padding:16mm 14mm 18mm;width:210mm;max-width:100%;min-height:297mm;box-sizing:border-box;margin:0 auto}
-    .preview-doc-title{font-size:24px;font-weight:900;text-align:center;margin:0 0 10px}
-    .preview-sign-wrap{margin-top:24px;break-inside:avoid;page-break-inside:avoid}
-    .preview-sign-area{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px;align-items:start}
-    .preview-sign-col{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;min-height:120px}
-    .preview-sign-title{font-size:18px;font-weight:900;white-space:nowrap;padding-top:8px}
-    .stamp-box,.teacher-sign-box{display:flex;align-items:center;justify-content:center;overflow:visible;border:1px solid #cbd5e1;border-radius:12px;background:#fff}
-    .stamp-box.large{width:3.1cm;height:3.1cm;border:none;background:transparent}
-    .stamp-box.small{width:2.1cm;height:2.1cm;border:none;background:transparent}
-    .stamp-stack{display:flex;flex-direction:column;gap:10px;align-items:center}
-    .stamp-stack img{max-width:100%;max-height:100%;object-fit:contain;display:block}
-    .stamp-box.large img{width:3cm;height:3cm}
-    .stamp-box.small img{width:2cm;height:2cm}
-    .teacher-sign-box{width:4.4cm;height:2.8cm;background:#fafafa}
-    .teacher-sign-box img{max-height:100%;max-width:100%;object-fit:contain}
-    .preview-date{margin-top:18px;text-align:center;font-size:15px;line-height:1.9}
-    .page-seam{position:absolute;display:none;flex-direction:column;gap:5px;align-items:center;opacity:.8;pointer-events:none;z-index:3}
-    .page-seam.right{right:-9px}
-    .page-seam.left{left:-9px}
-    .page-seam img.school{width:1.45cm;height:1.45cm;object-fit:contain}
-    .page-seam img.owner{width:0.95cm;height:0.95cm;object-fit:contain}
-    .page-seam.seam-1{top:148.5mm;transform:translateY(-50%)}
-    .page-seam.seam-2-left{top:445.5mm;transform:translateY(-50%)}
-    .page-seam.seam-2-right{top:445.5mm;transform:translateY(-50%)}
-    .page-seam.seam-3{top:742.5mm;transform:translateY(-50%)}
-    .submit-actions #savePdfBtn,.submit-actions #submitBtn{background:#16a34a;border-color:#16a34a;color:#fff}
-    .submit-actions #savePdfBtn:hover,.submit-actions #submitBtn:hover{filter:brightness(.95)}
+    .preview-paper{background:#fff;border:1px solid #cbd5e1;border-radius:18px;padding:24px}
+    .preview-doc-title{font-size:24px;font-weight:900;text-align:center;margin:0 0 18px}
+    .preview-sign-area{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin-top:24px;align-items:end}
+    .stamp-box,.teacher-sign-box{min-height:120px;border-top:1px solid #cbd5e1;padding-top:10px}
+    .stamp-stack{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+    .stamp-stack img{max-height:90px;max-width:160px;object-fit:contain}
+    .teacher-sign-box img{max-height:110px;max-width:100%;object-fit:contain}
     .muted-box{font-size:14px;color:#64748b;background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:12px}
     @media (max-width:700px){
       .contract-meta,.contract-grid,.preview-sign-area{grid-template-columns:1fr}
@@ -186,36 +160,30 @@
         </div>
       </div>
 
-      <div class="contract-card preview-pane paper-print" id="previewPane">
+      <div class="contract-card preview-pane" id="previewPane">
+        <h3 style="margin:0 0 12px">送出前預覽</h3>
         <div class="preview-paper">
           <div class="preview-doc-title" id="previewTitle">外聘老師年度委任契約</div>
           <div id="previewBody" class="contract-body"></div>
-          <div class="preview-sign-wrap">
-            <div class="preview-sign-area">
-              <div class="preview-sign-col">
-                <div class="preview-sign-title">甲方簽署</div>
-                <div class="stamp-stack">
-                  <div class="stamp-box large"><img id="previewSchoolStamp" alt="補習班章" style="display:none"></div>
-                  <div class="stamp-box small"><img id="previewOwnerStamp" alt="負責人章" style="display:none"></div>
-                </div>
-              </div>
-              <div class="preview-sign-col">
-                <div class="preview-sign-title">乙方簽署</div>
-                <div class="teacher-sign-box">
-                  <img id="previewSignature" alt="老師簽名">
-                </div>
+          <div class="preview-sign-area">
+            <div class="preview-sign-col">
+              <div class="preview-sign-title">甲方簽署</div>
+              <div class="stamp-stack">
+                <div class="stamp-box large"><img id="previewSchoolStamp" alt="補習班章" style="display:none"></div>
+                <div class="stamp-box small"><img id="previewOwnerStamp" alt="負責人章" style="display:none"></div>
               </div>
             </div>
-            <div class="preview-date">中華民國<span style="color:#2563eb;font-weight:900">【簽署民國年】</span>年 <span style="color:#2563eb;font-weight:900">【簽署月】</span>月 <span style="color:#2563eb;font-weight:900">【簽署日】</span>日</div>
+            <div class="preview-sign-col">
+              <div class="preview-sign-title">乙方簽署</div>
+              <div class="teacher-sign-box">
+                <img id="previewSignature" alt="老師簽名">
+              </div>
+            </div>
           </div>
-          <div class="page-seam right seam-1"><img id="seamSchool1" class="school" alt=""><img id="seamOwner1" class="owner" alt=""></div>
-          <div class="page-seam left seam-2-left"><img id="seamSchool2L" class="school" alt=""><img id="seamOwner2L" class="owner" alt=""></div>
-          <div class="page-seam right seam-2-right"><img id="seamSchool2R" class="school" alt=""><img id="seamOwner2R" class="owner" alt=""></div>
-          <div class="page-seam left seam-3"><img id="seamSchool3" class="school" alt=""><img id="seamOwner3" class="owner" alt=""></div>
+          <div class="preview-date">中華民國<span style="color:#2563eb;font-weight:900">【簽署民國年】</span>年 <span style="color:#2563eb;font-weight:900">【簽署月】</span>月 <span style="color:#2563eb;font-weight:900">【簽署日】</span>日</div>
         </div>
         <div class="submit-actions" style="margin-top:14px">
           <button type="button" class="btn secondary" onclick="hidePreview()">返回修改</button>
-          <button type="button" class="btn secondary" id="savePdfBtn" onclick="saveContractPdf()" style="display:none">另存 PDF</button>
           <button type="button" class="btn" id="submitBtn" onclick="submitContract()">正式送出</button>
         </div>
       </div>
@@ -411,6 +379,35 @@
       closeSignModal();
     }
 
+    function fillTemplateText(templateHtml,payload){
+      const map=buildPreviewMap(payload);
+      let text=String(templateHtml||'');
+      text=text.replace(/<br\s*\/?\s*>/gi,'\n');
+      text=text.replace(/<\/div>\s*<div>/gi,'\n');
+      text=text.replace(/<[^>]+>/g,'');
+      text=text.replace(/【([^】]+)】/g, (_, key)=>String(map[key]||''));
+      text=text.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key)=>{
+        const legacy={partyAName:'甲方名稱',partyAOwner:'甲方代表人',partyAAddress:'甲方地址',teacherName:'老師姓名',teacherCourse:'授課項目',idNumber:'身分證字號',teacherAddress:'地址',startDate:'合約開始日期',endDate:'合約結束日期',signYear:'簽署西元年',signMonth:'簽署月',signDay:'簽署日'};
+        return String(map[legacy[key]||key]||'');
+      });
+      return text;
+    }
+    function textBlockToHtml(text){
+      return escapeHtml(String(text||'')).replace(/\n/g,'<br>');
+    }
+    function splitContractText(text){
+      const lines=String(text||'').replace(/\r/g,'').split('\n');
+      const p1=[]; const p2=[]; let units=0; const limit=44;
+      lines.forEach(line=>{
+        const cost=Math.max(1, Math.ceil((line || '').length / 22));
+        if(units + cost <= limit || !p1.length){
+          p1.push(line); units += cost;
+        }else{
+          p2.push(line);
+        }
+      });
+      return [p1.join('\n'), p2.join('\n')];
+    }
     function renderContractPaper(showSignature){
       const payload=buildPayload();
       const title=(contractData&&contractData.contractName)||'外聘老師年度委任契約';
@@ -420,32 +417,38 @@
       const period=`${contractData?.startDate||''} ～ ${contractData?.endDate||''}`;
       const schoolStampUrl=toDisplayUrl((contractData&&contractData.schoolStampUrl)||'blue_stamp_transparent.png');
       const ownerStampUrl=toDisplayUrl((contractData&&contractData.ownerStampUrl)||'red_stamp_transparent.png');
-      const bodyHtml=renderPreviewHtml(contractData?.contractTemplateHtml || contractData?.contractHtml || '', payload);
+      const filledText=fillTemplateText(contractData?.contractTemplateHtml || contractData?.contractHtml || '', payload);
+      const [page1Text, page2Text]=splitContractText(filledText);
       const signatureUrl=(showSignature && payload.signatureDataUrl) ? payload.signatureDataUrl : '';
       qs('#contractBody').innerHTML = `
-        <div class="contract-paper">
-          <div class="contract-paper-title">${escapeHtml(title)}</div>
-          <div class="contract-paper-meta">
-            <div><strong>甲方：</strong>${escapeHtml(partyA)}</div>
-            <div><strong>甲方代表人：</strong>${escapeHtml(owner)}</div>
-            <div><strong>甲方地址：</strong>${escapeHtml(address)}</div>
-            <div><strong>契約期間：</strong>${escapeHtml(period)}</div>
+        <div class="contract-pages">
+          <div class="contract-page">
+            <div class="contract-paper-title">${escapeHtml(title)}</div>
+            <div class="contract-paper-meta">
+              <div><strong>甲方：</strong>${escapeHtml(partyA)}</div>
+              <div><strong>甲方代表人：</strong>${escapeHtml(owner)}</div>
+              <div><strong>甲方地址：</strong>${escapeHtml(address)}</div>
+              <div><strong>契約期間：</strong>${escapeHtml(period)}</div>
+            </div>
+            <div class="contract-paper-main">${textBlockToHtml(page1Text)}</div>
           </div>
-          <div class="contract-paper-main">${bodyHtml}</div>
-          <div class="contract-sign-row">
-            <div class="contract-sign-col">
-              <div class="contract-sign-title">甲方簽署</div>
-              <div class="stamp-stack">
-                <div class="stamp-box large">${schoolStampUrl ? `<img src="${escapeAttr(schoolStampUrl)}" alt="補習班章">` : ''}</div>
-                <div class="stamp-box small">${ownerStampUrl ? `<img src="${escapeAttr(ownerStampUrl)}" alt="負責人章">` : ''}</div>
+          <div class="contract-page">
+            <div class="contract-paper-main">${textBlockToHtml(page2Text)}</div>
+            <div class="contract-sign-row">
+              <div class="contract-sign-col">
+                <div class="contract-sign-title">甲方簽署</div>
+                <div class="stamp-stack">
+                  <div class="stamp-box large">${schoolStampUrl ? `<img src="${escapeAttr(schoolStampUrl)}" alt="補習班章">` : ''}</div>
+                  <div class="stamp-box small">${ownerStampUrl ? `<img src="${escapeAttr(ownerStampUrl)}" alt="負責人章">` : ''}</div>
+                </div>
+              </div>
+              <div class="contract-sign-col">
+                <div class="contract-sign-title">乙方簽署</div>
+                <div class="teacher-sign-box">${signatureUrl ? `<img src="${escapeAttr(signatureUrl)}" alt="老師簽名">` : '老師簽名位置'}</div>
               </div>
             </div>
-            <div class="contract-sign-col">
-              <div class="contract-sign-title">乙方簽署</div>
-              <div class="teacher-sign-box">${signatureUrl ? `<img src="${escapeAttr(signatureUrl)}" alt="老師簽名">` : '老師簽名位置'}</div>
-            </div>
+            <div class="contract-paper-date">中華民國<span style="color:#2563eb;font-weight:900">【簽署民國年】</span>年 <span style="color:#2563eb;font-weight:900">【簽署月】</span>月 <span style="color:#2563eb;font-weight:900">【簽署日】</span>日</div>
           </div>
-          <div class="contract-paper-date">中華民國<span style="color:#2563eb;font-weight:900">【簽署民國年】</span>年 <span style="color:#2563eb;font-weight:900">【簽署月】</span>月 <span style="color:#2563eb;font-weight:900">【簽署日】</span>日</div>
         </div>`;
     }
     function fillContractBase(){
@@ -543,30 +546,9 @@
     function showPreview(){
       const err=validateForm();
       if(err){ alert(err); return; }
-      const payload=buildPayload();
-      qs('#previewBody').innerHTML=renderPreviewHtml(contractData?.contractTemplateHtml || contractData?.contractHtml || '', payload);
-
-      const schoolStamp=qs('#previewSchoolStamp');
-      const ownerStamp=qs('#previewOwnerStamp');
-      const schoolUrl=(contractData&&contractData.schoolStampUrl)||'blue_stamp_transparent.png';
-      const ownerUrl=(contractData&&contractData.ownerStampUrl)||'red_stamp_transparent.png';
-      schoolStamp.style.display=schoolUrl?'inline-block':'none';
-      ownerStamp.style.display=ownerUrl?'inline-block':'none';
-      if(schoolUrl) schoolStamp.src=schoolUrl;
-      if(ownerUrl) ownerStamp.src=ownerUrl;
-      ['seamSchool1','seamSchool2L','seamSchool2R','seamSchool3'].forEach(id=>{
-        const el=qs('#'+id);
-        if(el){ el.style.display=schoolUrl?'block':'none'; if(schoolUrl) el.src=schoolUrl; }
-      });
-      ['seamOwner1','seamOwner2L','seamOwner2R','seamOwner3'].forEach(id=>{
-        const el=qs('#'+id);
-        if(el){ el.style.display=ownerUrl?'block':'none'; if(ownerUrl) el.src=ownerUrl; }
-      });
-      qs('#previewSignature').src=payload.signatureDataUrl;
-
-      const savePdfBtn = qs('#savePdfBtn');
+      renderContractPaper(true);
+      const savePdfBtn=qs('#savePdfBtn');
       if(savePdfBtn) savePdfBtn.style.display='inline-flex';
-
       qs('#previewPane').classList.add('show');
       qs('#previewPane').scrollIntoView({behavior:'smooth',block:'start'});
     }
@@ -587,8 +569,9 @@
 
     function hidePreview(){
       qs('#previewPane').classList.remove('show');
-      const savePdfBtn = qs('#savePdfBtn');
+      const savePdfBtn=qs('#savePdfBtn');
       if(savePdfBtn) savePdfBtn.style.display='none';
+      renderContractPaper(!!getSignatureDataUrl());
     }
 
     function saveContractPdf(){
