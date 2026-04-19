@@ -6,14 +6,15 @@
   <title>外聘老師正式線上簽署</title>
   <link rel="stylesheet" href="style.css">
   <style>
-    .contract-shell{display:grid;grid-template-columns:minmax(360px,430px) minmax(0,1fr);gap:18px;align-items:start}
+    .container{max-width:min(1580px,calc(100vw - 32px)) !important}
+    .contract-shell{display:grid;grid-template-columns:minmax(380px,460px) minmax(820px,1fr);gap:18px;align-items:start}
     .contract-card{background:#fff;border:1px solid #e2e8f0;border-radius:20px;padding:18px}
     .contract-head,.contract-meta{display:none}
     .contract-title{margin:0;font-size:28px;font-weight:900}
-    .contract-body{line-height:1.9;color:#1f2937}
+    .contract-body{line-height:1.9;color:#1f2937;overflow:auto}
     .contract-body div{margin-bottom:2px}
-    .contract-pages,.preview-shell{display:grid;gap:16px}
-    .contract-page,.preview-page{background:#fff;border:1px solid #cbd5e1;border-radius:18px;padding:12mm 11mm;min-height:297mm;box-sizing:border-box}
+    .contract-pages,.preview-shell{display:grid;gap:16px;justify-items:center}
+    .contract-page,.preview-page{width:210mm;max-width:none;background:#fff;border:1px solid #cbd5e1;border-radius:18px;padding:12mm 11mm;min-height:297mm;box-sizing:border-box;flex:none}
     .contract-paper,.preview-paper{background:#fff;border:1px solid #cbd5e1;border-radius:18px;padding:24px}
     .contract-paper-title,.preview-title{font-size:24px;font-weight:900;text-align:center;margin:0 0 18px;letter-spacing:1px}
     .contract-paper-meta,.preview-meta{font-size:14px;line-height:1.9;margin-bottom:12px}
@@ -35,7 +36,8 @@
     #contractFormCard{grid-column:1}
     #previewPane{grid-column:1}
     #previewPane.show{display:block}
-    @media (max-width:1200px){.contract-shell{grid-template-columns:1fr}.contract-shell > .contract-card:first-child{grid-column:1;grid-row:auto;position:static;max-height:none;overflow:visible}#contractFormCard,#previewPane{grid-column:1}}
+    @media (max-width:1400px){.container{max-width:min(1320px,calc(100vw - 24px)) !important}.contract-shell{grid-template-columns:minmax(360px,430px) minmax(0,1fr)}}
+    @media (max-width:1200px){.contract-shell{grid-template-columns:1fr}.contract-shell > .contract-card:first-child{grid-column:1;grid-row:auto;position:static;max-height:none;overflow:visible}#contractFormCard,#previewPane{grid-column:1}.contract-pages,.preview-shell{justify-items:stretch}.contract-page,.preview-page{width:auto;max-width:100%;min-width:0}}
     .contract-form{display:grid;gap:12px}
     .contract-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
     .contract-grid .full{grid-column:1 / -1}
@@ -83,7 +85,7 @@
       .sign-launch{height:170px}
       .sign-box{height:min(52vh,360px)}
       .preview-inline-side{min-width:0}
-      .contract-page,.preview-page{padding:8mm}
+      .contract-page,.preview-page{padding:8mm;width:auto;max-width:100%;min-width:0}
     }
   </style>
 </head>
