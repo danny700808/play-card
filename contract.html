@@ -29,6 +29,17 @@
     .teacher-sign-box{width:4.4cm;height:2.8cm;background:#fafafa;color:#94a3b8;font-size:13px}
     .teacher-sign-box img{max-width:100%;max-height:100%;object-fit:contain}
     .contract-paper-date{margin-top:18px;text-align:center;font-size:15px;line-height:1.9}
+
+    @page{size:A4 portrait;margin:0}
+    @media print{
+      body{background:#fff}
+      .hero-card,.topbar,.form-card,.muted,.contract-card:not(.paper-print),#previewPane>.submit-actions{display:none !important}
+      .app-shell,.contract-shell{max-width:none;padding:0;margin:0}
+      #previewPane{display:block !important}
+      #previewPane.paper-print{background:transparent;border:none;box-shadow:none;padding:0}
+      #previewPane .preview-paper{width:210mm;min-height:297mm;margin:0 auto;border:none;border-radius:0;box-shadow:none;padding:16mm 14mm 18mm;box-sizing:border-box}
+      #previewPane .preview-paper *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    }
     .contract-form{display:grid;gap:12px}
     .contract-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
     .contract-grid .full{grid-column:1 / -1}
@@ -91,7 +102,7 @@
     </div>
 
     <div class="contract-shell">
-      <div class="contract-card paper-mode">
+      <div class="contract-card">
         <div class="contract-body" id="contractBody">讀取契約內容中…</div>
       </div>
 
@@ -153,7 +164,7 @@
         </div>
       </div>
 
-      <div class="contract-card preview-pane" id="previewPane">
+      <div class="contract-card preview-pane paper-print" id="previewPane">
         <h3 style="margin:0 0 12px">送出前預覽</h3>
         <div class="preview-paper">
           <div class="preview-doc-title" id="previewTitle">外聘老師年度委任契約</div>
@@ -177,6 +188,7 @@
         </div>
         <div class="submit-actions" style="margin-top:14px">
           <button type="button" class="btn secondary" onclick="hidePreview()">返回修改</button>
+          <button type="button" class="btn secondary" id="savePdfBtn" onclick="saveContractPdf()" style="display:none">另存 PDF</button>
           <button type="button" class="btn" id="submitBtn" onclick="submitContract()">正式送出</button>
         </div>
       </div>
