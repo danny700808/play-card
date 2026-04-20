@@ -51,10 +51,9 @@
             <span class="badge">${row.category||'公告'}</span>
             <span class="badge">${row.audienceLabel||''}</span>
             ${row.pinned?'<span class="badge">置頂</span>':''}
-            ${row.requireReply?'<span class="badge">需回覆</span>':''}
           </div>
           <h3>${row.title||'未命名公告'}</h3>
-          <div class="meta">${row.publishDate||''}${row.replyDeadline ? '｜回覆截止：' + row.replyDeadline : ''}</div>
+          <div class="meta">${row.publishDate||''}</div>
           ${row.summary?`<div style="font-weight:800;margin-bottom:8px">${row.summary.replace(/\n/g,'<br>')}</div>`:''}
           <div>${(row.content||'').replace(/\n/g,'<br>')}</div>
           ${mediaLinksHtml([...(row.imageAssets||[]), ...(row.videoAssets||[]), ...(row.audioAssets||[]), ...(row.fileAssets||[])])}
