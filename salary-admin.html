@@ -37,11 +37,15 @@
     .empty-box{padding:14px;border-radius:14px;background:#fafafa;color:#6b7280}
     @media (max-width:860px){.admin-grid{grid-template-columns:1fr}}
     @media (max-width:560px){.line-grid,.field-inline-grid{grid-template-columns:1fr}}
-  </style>
+  
+    .page-return-wrap{margin-bottom:16px}
+    .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
+</style>
 </head>
 <body onload="init()">
   <div class="container">
-    <div class="topbar"><a class="navlink" href="settings.html">← 返回管理首頁</a></div>
+    <div class="page-return-wrap"><a class="btn page-return-btn" href="settings.html">返回管理首頁</a></div>
+    
     <div class="card">
       <div class="header" style="margin:0">
         <h1 class="title">薪資與投保設定</h1>

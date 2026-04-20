@@ -22,17 +22,15 @@
     .preview-meta{font-size:14px;line-height:1.9;margin-bottom:12px}
     .preview-body{font-size:14px;line-height:1.82;color:#1f2937;white-space:normal;word-break:break-word}
     .token-mark{color:#2563eb;font-weight:900}
-    .preview-inline-signing{margin-top:18px;display:grid;gap:14px}
-    .preview-inline-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:18px}
-    .preview-inline-info{min-width:0;font-size:14px;line-height:2.05}
-    .preview-inline-info div{word-break:break-word}
-    .preview-inline-side{display:flex;align-items:center;justify-content:flex-start;gap:10px;flex:0 0 auto;min-width:5.1cm}
-    .preview-stamp-box,.preview-signature-box{display:flex;align-items:center;justify-content:center;overflow:visible;background:#fff;flex:0 0 auto}
+    .preview-sign-row{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:20px;align-items:start}
+    .preview-sign-col{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+    .preview-sign-title{font-size:18px;font-weight:900;white-space:nowrap;padding-top:6px}
+    .preview-stamp-stack{display:flex;flex-direction:column;gap:10px;align-items:center}
+    .preview-stamp-box,.preview-signature-box{display:flex;align-items:center;justify-content:center;overflow:visible;background:#fff}
     .preview-stamp-box.large{width:3cm;height:3cm}
-    .preview-stamp-box.small{width:1.8cm;height:1.8cm}
+    .preview-stamp-box.small{width:2cm;height:2cm}
     .preview-stamp-box img{display:block;max-width:100%;max-height:100%;object-fit:contain}
-    .preview-signature-box{width:4.6cm;height:2.7cm;border:1px solid #cbd5e1;border-radius:12px;background:#fafafa;color:#94a3b8;font-size:13px}
-    .preview-signature-box img{display:block;max-width:100%;max-height:100%;object-fit:contain}
+    .preview-signature-box{width:4.2cm;height:2.7cm;border:1px solid #cbd5e1;border-radius:12px;background:#fafafa;color:#94a3b8;font-size:13px}
     .preview-date{margin-top:18px;text-align:center;font-size:14px;line-height:1.9}
     .contract-admin-list{display:grid;gap:12px}
     .contract-admin-card{border:1px solid #d9e0e6;border-radius:14px;padding:14px;background:#fff}
@@ -51,10 +49,9 @@
       html,body{margin:0 !important;padding:0 !important;background:#fff !important}
       body *{visibility:hidden !important}
       #printArea,#printArea *{visibility:visible !important}
-      #printArea{position:static !important;width:auto !important;margin:0 !important;padding:0 !important;border:none !important;box-shadow:none !important;background:#fff !important}
-      #printArea .preview-shell{display:block !important}
-      #printArea .preview-page{border:none !important;box-shadow:none !important;border-radius:0 !important;page-break-after:always;break-after:page;min-height:277mm !important;padding:10mm 8mm !important;margin:0 !important}
-      #printArea .preview-page:last-child{page-break-after:auto !important;break-after:auto !important}
+      #printArea{position:fixed !important;left:8mm !important;top:8mm !important;width:194mm !important;margin:0 !important;padding:0 !important;border:none !important;box-shadow:none !important;background:#fff !important}
+      #printArea .preview-page{border:none !important;box-shadow:none !important;border-radius:0 !important;page-break-after:always;min-height:281mm !important;padding:10mm 8mm !important}
+      #printArea .preview-page:last-child{page-break-after:auto}
       .page-return-wrap,.topbar,.left-col,.preview-top{display:none !important}
       @page{size:A4 portrait;margin:0}
     }
@@ -63,16 +60,16 @@
       .preview-panel{position:static}
     }
     @media (max-width:700px){
-      .row2,.meta{grid-template-columns:1fr}
-      .preview-inline-row{grid-template-columns:1fr;align-items:start}
-      .preview-inline-side{min-width:0}
+      .row2,.meta,.preview-sign-row{grid-template-columns:1fr}
+      .preview-sign-col{justify-content:flex-start}
       .preview-page{padding:8mm}
     }
   </style>
 </head>
 <body onload="init()">
-  <div class="container" style="max-width:1500px">
     <div class="page-return-wrap"><a class="btn page-return-btn" href="settings.html">返回管理首頁</a></div>
+  <div class="container" style="max-width:1500px">
+    
 
     <div class="layout">
       <div class="left-col">
@@ -153,10 +150,9 @@
 
         <div class="subcard">
           <div class="topbar">
-            <h2 class="section-title" style="margin:0">本年度簽署紀錄</h2>
+            <h2 class="section-title" style="margin:0">本年度簽署狀態</h2>
             <button class="btn secondary" style="width:auto" onclick="loadList()">重新讀取</button>
           </div>
-          <div class="helper" style="margin:8px 0 12px">這裡會列出目前所選年度，每位外聘老師最新一筆簽署紀錄；已簽署可直接查看 PDF / 簽名，未簽則顯示待簽署。</div>
           <div id="list" class="contract-admin-list"></div>
         </div>
       </div>
@@ -165,7 +161,7 @@
         <div class="preview-top">
           <div>
             <h2 class="section-title" style="margin:0">契約預覽</h2>
-            <div class="helper">右邊是實際輸出的合約文件；按「儲存 PDF」會只輸出這裡的第 1 頁與第 2 頁。</div>
+            <div class="helper">右邊就是之後列印 / PDF 的文件外觀，目標控制在最多兩張 A4。</div>
           </div>
           <button class="btn secondary" style="width:auto" onclick="savePreviewPdf()">儲存 PDF</button>
         </div>
@@ -225,97 +221,8 @@
       });
       return [page1.join('\n'), page2.join('\n')];
     }
-    function buildInlineSigningHtml(schoolStampUrl, ownerStampUrl){
-      return `
-        <div class="preview-inline-signing">
-          <div class="preview-inline-row">
-            <div class="preview-inline-info">
-              <div><strong>甲　方：</strong>${textToPreviewHtml('【甲方名稱】')}</div>
-              <div><strong>代表人：</strong>${textToPreviewHtml('【甲方代表人】')}</div>
-              <div><strong>地　址：</strong>${textToPreviewHtml('【甲方地址】')}</div>
-            </div>
-            <div class="preview-inline-side">
-              <div class="preview-stamp-box large">${schoolStampUrl ? `<img src="${escapeAttr(schoolStampUrl)}" alt="補習班章">` : ''}</div>
-              <div class="preview-stamp-box small">${ownerStampUrl ? `<img src="${escapeAttr(ownerStampUrl)}" alt="負責人章">` : ''}</div>
-            </div>
-          </div>
-          <div class="preview-inline-row">
-            <div class="preview-inline-info">
-              <div><strong>乙　方：</strong>${textToPreviewHtml('【老師姓名】')}</div>
-              <div><strong>身分證字號：</strong>${textToPreviewHtml('【身分證字號】')}</div>
-              <div><strong>地　址：</strong>${textToPreviewHtml('【地址】')}</div>
-            </div>
-            <div class="preview-inline-side">
-              <div class="preview-signature-box">老師簽名位置</div>
-            </div>
-          </div>
-        </div>`;
-    }
-    function stripSigningBlock(text){
-      const lines = String(text||'').replace(/\r/g,'').split('\n');
-      const isStartLine = (s) => /^(立.?契約書人|立約書人)\s*$/.test(s) || /^(甲\s*方|甲　方|甲方)\s*[:：]/.test(s);
-      const start = lines.findIndex(line => isStartLine(String(line||'').trim()));
-      if(start < 0) return { bodyText: String(text||''), hasSigningBlock: false };
-      let end = start;
-      while(end < lines.length){
-        const t = String(lines[end]||'').trim();
-        end += 1;
-        if(/【簽署日】/.test(t) || /中華民國/.test(t)) break;
-      }
-      const remaining = lines.slice(0, start).concat(lines.slice(end)).join('\n').replace(/\n{3,}/g,'\n\n').trim();
-      return { bodyText: remaining, hasSigningBlock: true };
-    }
     function savePreviewPdf(){
-      const previewBox = qs('#previewBox');
-      if(!previewBox || !previewBox.innerHTML.trim()){
-        setMsg(qs('#msg'),'目前沒有可輸出的合約預覽。',true);
-        return;
-      }
-      const printWindow = window.open('', '_blank', 'width=980,height=1280');
-      if(!printWindow){
-        setMsg(qs('#msg'),'瀏覽器阻擋了列印視窗，請先允許彈出視窗。',true);
-        return;
-      }
-      const styleHtml = `
-        <style>
-          html,body{margin:0;padding:0;background:#fff;color:#111827;font-family:Arial,"Noto Sans TC",sans-serif;}
-          .preview-shell{display:block;}
-          .preview-page{box-sizing:border-box;width:210mm;min-height:297mm;margin:0 auto;padding:12mm 11mm;background:#fff;page-break-after:always;break-after:page;}
-          .preview-page:last-child{page-break-after:auto;break-after:auto;}
-          .preview-title{text-align:center;font-size:24px;font-weight:900;letter-spacing:1px;margin:0 0 12px;}
-          .preview-meta{font-size:14px;line-height:1.9;margin-bottom:12px;}
-          .preview-body{font-size:14px;line-height:1.82;color:#1f2937;white-space:normal;word-break:break-word;}
-          .token-mark{color:#2563eb;font-weight:900;}
-          .preview-inline-signing{margin-top:18px;display:grid;gap:14px;}
-          .preview-inline-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:18px;}
-          .preview-inline-info{min-width:0;font-size:14px;line-height:2.05;}
-          .preview-inline-info div{word-break:break-word;}
-          .preview-inline-side{display:flex;align-items:center;justify-content:flex-start;gap:10px;flex:0 0 auto;min-width:5.1cm;}
-          .preview-stamp-box,.preview-signature-box{display:flex;align-items:center;justify-content:center;overflow:visible;background:#fff;flex:0 0 auto;}
-          .preview-stamp-box.large{width:3cm;height:3cm;}
-          .preview-stamp-box.small{width:1.8cm;height:1.8cm;}
-          .preview-stamp-box img{display:block;max-width:100%;max-height:100%;object-fit:contain;}
-          .preview-signature-box{width:4.6cm;height:2.7cm;border:1px solid #cbd5e1;border-radius:12px;background:#fafafa;color:#94a3b8;font-size:13px;}
-          .preview-signature-box img{display:block;max-width:100%;max-height:100%;object-fit:contain;}
-          .preview-date{margin-top:18px;text-align:center;font-size:14px;line-height:1.9;}
-          @media print{
-            html,body{background:#fff;}
-            .preview-page{margin:0;padding:12mm 11mm;}
-            @page{size:A4 portrait;margin:0;}
-          }
-        </style>`;
-      printWindow.document.open();
-      printWindow.document.write(`<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><title>合約預覽 PDF</title>${styleHtml}</head><body>${previewBox.innerHTML}</body></html>`);
-      printWindow.document.close();
-      printWindow.focus();
-      const doPrint = () => {
-        try { printWindow.print(); } catch (e) {}
-      };
-      if (printWindow.document.readyState === 'complete') {
-        setTimeout(doPrint, 250);
-      } else {
-        printWindow.onload = () => setTimeout(doPrint, 250);
-      }
+      window.print();
     }
     function renderPreview(){
       const contractName = qs('#contractName').value.trim() || '委任契約書';
@@ -326,11 +233,9 @@
       const endDate = qs('#endDate').value.trim() || '【合約結束日期】';
       const schoolStampUrl = toDisplayUrl(qs('#schoolStampUrl').value.trim() || 'blue_stamp_transparent.png');
       const ownerStampUrl = toDisplayUrl(qs('#ownerStampUrl').value.trim() || 'red_stamp_transparent.png');
-      const [page1Text, rawPage2Text] = splitPreviewText(qs('#contractText').value || '');
+      const [page1Text, page2Text] = splitPreviewText(qs('#contractText').value || '');
       const page1Html = textToPreviewHtml(page1Text);
-      const signingParsed = stripSigningBlock(rawPage2Text);
-      const page2Html = textToPreviewHtml(signingParsed.bodyText);
-      const signingHtml = buildInlineSigningHtml(schoolStampUrl, ownerStampUrl);
+      const page2Html = textToPreviewHtml(page2Text);
       qs('#previewBox').innerHTML = `
         <div class="preview-shell">
           <div class="preview-page">
@@ -345,7 +250,19 @@
           </div>
           <div class="preview-page">
             <div class="preview-body">${page2Html}</div>
-            ${signingHtml}
+            <div class="preview-sign-row">
+              <div class="preview-sign-col">
+                <div class="preview-sign-title">甲方簽署</div>
+                <div class="preview-stamp-stack">
+                  <div class="preview-stamp-box large">${schoolStampUrl ? `<img src="${escapeAttr(schoolStampUrl)}" alt="補習班章">` : ''}</div>
+                  <div class="preview-stamp-box small">${ownerStampUrl ? `<img src="${escapeAttr(ownerStampUrl)}" alt="負責人章">` : ''}</div>
+                </div>
+              </div>
+              <div class="preview-sign-col">
+                <div class="preview-sign-title">乙方簽署</div>
+                <div class="preview-signature-box">老師簽名位置</div>
+              </div>
+            </div>
             <div class="preview-date">中華民國<span class="token-mark">【簽署民國年】</span>年 <span class="token-mark">【簽署月】</span>月 <span class="token-mark">【簽署日】</span>日</div>
           </div>
         </div>`;

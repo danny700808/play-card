@@ -5,19 +5,20 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>打卡修正審核</title>
   <link rel="stylesheet" href="style.css">
+<style>
+    .page-return-wrap{margin-bottom:16px}
+    .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
+</style>
 </head>
 <body onload="init()">
   <div class="container">
+    <div class="page-return-wrap"><a class="btn page-return-btn" href="settings.html">返回管理首頁</a></div>
     <div class="card">
-      <div class="topbar">
-        <div class="header" style="margin:0">
+      <div class="topbar"><div class="header" style="margin:0">
           <h1 class="title" style="margin:0">打卡修正審核</h1>
           <div class="welcome">歡迎 <span data-user-name></span></div>
         </div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap">
-          <a class="btn secondary" href="settings.html" style="width:auto;padding:10px 14px">返回管理首頁</a>
-          <button class="btn secondary" style="width:auto;padding:10px 14px" onclick="loadRows()">重新整理</button>
-        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn secondary" style="width:auto;padding:10px 14px" onclick="loadRows()">重新整理</button></div>
       </div>
       <div id="msg" class="hint" style="margin-top:12px"></div>
       <div id="list" style="display:grid;gap:14px;margin-top:18px"></div>
