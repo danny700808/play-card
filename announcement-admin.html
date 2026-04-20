@@ -6,28 +6,54 @@
   <title>公告管理</title>
   <link rel="stylesheet" href="style.css">
   <style>
-    .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
-    .toolbar .field{flex:1;min-width:160px}
-    .cards{display:grid;gap:14px;margin-top:18px}
-    .cardx{background:#fff;border:1px solid #e2e8f0;border-radius:18px;padding:16px}
-    .cardx h3{margin:0 0 8px;font-size:22px}
-    .meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:10px 0}
-    .meta .item{background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:10px}
-    .meta .label{font-size:12px;color:#64748b;font-weight:800}
-    .meta .value{font-size:15px;font-weight:800;word-break:break-word}
-    .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
-    .upload-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-    .checkbox-group{display:flex;gap:14px;flex-wrap:wrap}
-    @media (max-width:700px){.meta,.upload-grid{grid-template-columns:1fr}}
-  
     .page-return-wrap{margin-bottom:16px}
     .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
-</style>
+    .admin-card{background:#fff;border:1px solid #e2e8f0;border-radius:20px;padding:18px;box-shadow:0 8px 24px rgba(15,23,42,.04)}
+    .section-title{margin:0 0 10px;font-size:17px;font-weight:900;color:#0f172a}
+    .section-desc{margin:0 0 12px;color:#64748b;font-size:13px}
+    .stack{display:grid;gap:14px}
+    .field-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+    .setting-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+    .option-box{background:#f8fafc;border:1px solid #dbe5f1;border-radius:16px;padding:12px}
+    .option-title{font-size:13px;font-weight:900;color:#334155;margin:0 0 10px}
+    .check-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+    .check-item{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1px solid #e2e8f0;border-radius:14px;background:#fff;line-height:1.45}
+    .check-item input{margin-top:2px;accent-color:#1d4ed8;width:18px;height:18px;flex:0 0 auto}
+    .upload-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+    .upload-box{background:#f8fafc;border:1px solid #dbe5f1;border-radius:16px;padding:12px}
+    .upload-box label{display:block;font-weight:900;margin-bottom:8px}
+    .upload-tip{font-size:12px;color:#64748b;margin-top:6px;line-height:1.5}
+    .action-row{display:flex;gap:10px;flex-wrap:wrap}
+    .cards{display:grid;gap:16px;margin-top:18px}
+    .cardx{background:#fff;border:1px solid #dbe5f1;border-radius:20px;padding:16px;box-shadow:0 8px 24px rgba(15,23,42,.04)}
+    .card-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+    .card-title{margin:0;font-size:20px;line-height:1.35}
+    .badge-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+    .badge{display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;background:#eff6ff;color:#1d4ed8;font-size:12px;font-weight:900}
+    .meta{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:14px 0}
+    .meta .item{background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:10px}
+    .meta .label{font-size:12px;color:#64748b;font-weight:800}
+    .meta .value{font-size:15px;font-weight:800;word-break:break-word;margin-top:4px}
+    .summary-box{background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:12px;margin-top:6px}
+    .expand-btn{width:auto;padding:10px 14px}
+    .detail-panel{display:none;margin-top:14px;padding-top:14px;border-top:1px dashed #cbd5e1}
+    .detail-panel.open{display:block}
+    .detail-block{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:12px;margin-top:10px}
+    .detail-block h4{margin:0 0 8px;font-size:15px}
+    .asset-list{display:grid;gap:8px}
+    .asset-link{display:flex;justify-content:space-between;gap:10px;padding:10px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;color:#0f172a;text-decoration:none}
+    .asset-link span:last-child{color:#1d4ed8;font-weight:800;white-space:nowrap}
+    .muted-mini{font-size:12px;color:#64748b}
+    @media (max-width:900px){
+      .field-grid,.setting-grid,.upload-grid,.meta,.check-grid{grid-template-columns:1fr}
+      .card-head{flex-direction:column}
+    }
+  </style>
 </head>
 <body onload="initPage()">
   <div class="container">
     <div class="page-return-wrap"><a class="btn page-return-btn" href="settings.html">返回管理首頁</a></div>
-    
+
     <div class="card">
       <div class="topbar">
         <div>
@@ -37,62 +63,104 @@
         <button class="btn secondary" style="width:auto;padding:10px 14px" onclick="logout()">登出</button>
       </div>
 
-      <div class="field">
-        <label>公告標題</label>
-        <input id="titleInput" placeholder="請輸入公告標題">
-      </div>
-      <div class="field">
-        <label>公告分類</label>
-        <input id="categoryInput" placeholder="例如：一般公告 / 行政提醒 / 課務通知">
-      </div>
-      <div class="field">
-        <label>公告摘要</label>
-        <textarea id="summaryInput" placeholder="列表卡片上顯示的短摘要"></textarea>
-      </div>
-      <div class="field">
-        <label>公告內文</label>
-        <textarea id="contentInput" placeholder="請輸入完整公告內容"></textarea>
-      </div>
-
-      <div class="toolbar">
-        <div class="field">
-          <label>發布日期</label>
-          <input id="publishDateInput" type="date">
-        </div>
-        <div class="field">
-          <label>發布對象</label>
-          <div class="checkbox-group">
-            <label><input type="checkbox" id="audAll" checked> 全部</label>
-            <label><input type="checkbox" id="audStaff"> 員工</label>
-            <label><input type="checkbox" id="audExternal"> 外聘老師</label>
+      <div class="stack">
+        <section class="admin-card">
+          <h2 class="section-title">公告內容</h2>
+          <p class="section-desc">先設定標題、摘要與內文，再選擇對象與發布方式。</p>
+          <div class="stack">
+            <div class="field">
+              <label>公告標題</label>
+              <input id="titleInput" placeholder="請輸入公告標題">
+            </div>
+            <div class="field-grid">
+              <div class="field">
+                <label>公告分類</label>
+                <input id="categoryInput" placeholder="例如：一般公告 / 行政提醒 / 課務通知">
+              </div>
+              <div class="field">
+                <label>發布日期</label>
+                <input id="publishDateInput" type="date">
+              </div>
+            </div>
+            <div class="field">
+              <label>公告摘要</label>
+              <textarea id="summaryInput" placeholder="列表卡片上顯示的短摘要"></textarea>
+            </div>
+            <div class="field">
+              <label>公告內文</label>
+              <textarea id="contentInput" placeholder="請輸入完整公告內容"></textarea>
+            </div>
           </div>
-        </div>
-        <div class="field">
-          <label>其他設定</label>
-          <div class="checkbox-group">
-            <label><input type="checkbox" id="pinnedInput"> 置頂</label>
-            <label><input type="checkbox" id="publishedInput" checked> 立即發布</label>
-            <label><input type="checkbox" id="sendEmailInput" checked> 寄送 Email</label>
-            <label><input type="checkbox" id="sendLineInput" checked> 寄送 LINE</label>
-            <label><input type="checkbox" id="requireReplyInput"> 需要回覆</label>
+        </section>
+
+        <section class="admin-card">
+          <h2 class="section-title">發布設定</h2>
+          <p class="section-desc">把對象和其他設定分開，勾選起來會比較清楚。</p>
+          <div class="setting-grid">
+            <div class="option-box">
+              <div class="option-title">發布對象</div>
+              <div class="check-grid">
+                <label class="check-item"><input type="checkbox" id="audAll" checked><span>全部對象</span></label>
+                <label class="check-item"><input type="checkbox" id="audStaff"><span>專職員工</span></label>
+                <label class="check-item"><input type="checkbox" id="audParttime"><span>工讀生</span></label>
+                <label class="check-item"><input type="checkbox" id="audExternal"><span>外聘老師</span></label>
+              </div>
+            </div>
+            <div class="option-box">
+              <div class="option-title">其他設定</div>
+              <div class="check-grid">
+                <label class="check-item"><input type="checkbox" id="pinnedInput"><span>置頂顯示</span></label>
+                <label class="check-item"><input type="checkbox" id="publishedInput" checked><span>立即發布</span></label>
+                <label class="check-item"><input type="checkbox" id="sendEmailInput" checked><span>寄送 Email 通知</span></label>
+                <label class="check-item"><input type="checkbox" id="sendLineInput" checked><span>寄送 LINE 通知</span></label>
+                <label class="check-item"><input type="checkbox" id="requireReplyInput"><span>需要回覆 / 確認</span></label>
+              </div>
+              <div class="field" style="margin-top:12px">
+                <label>回覆截止日</label>
+                <input id="replyDeadlineInput" type="date">
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
+        </section>
 
-      <div class="upload-grid">
-        <div class="field"><label>圖片附件</label><input id="imageInput" type="file" multiple accept="image/*"></div>
-        <div class="field"><label>影片附件</label><input id="videoInput" type="file" multiple accept="video/*"></div>
-        <div class="field"><label>錄音附件</label><input id="audioInput" type="file" multiple accept="audio/*"></div>
-        <div class="field"><label>文件附件</label><input id="fileInput" type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip"></div>
-      </div>
+        <section class="admin-card">
+          <h2 class="section-title">附件</h2>
+          <p class="section-desc">手機上可直接錄音；其他附件維持原本上傳方式。</p>
+          <div class="upload-grid">
+            <div class="upload-box">
+              <label>圖片附件</label>
+              <input id="imageInput" type="file" multiple accept="image/*">
+            </div>
+            <div class="upload-box">
+              <label>影片附件</label>
+              <input id="videoInput" type="file" multiple accept="video/*">
+            </div>
+            <div class="upload-box">
+              <label>錄音附件</label>
+              <input id="audioInput" type="file" multiple accept="audio/*" capture>
+              <div class="upload-tip">手機可直接開啟錄音後上傳；電腦則可選擇現有音檔。</div>
+            </div>
+            <div class="upload-box">
+              <label>文件附件</label>
+              <input id="fileInput" type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip">
+            </div>
+          </div>
+        </section>
 
-      <div style="display:flex;gap:10px;flex-wrap:wrap">
-        <button class="btn" type="button" onclick="saveAnnouncement()">儲存公告</button>
-        <button class="btn secondary" type="button" onclick="resetForm()">清空表單</button>
-      </div>
+        <section class="admin-card">
+          <div class="action-row">
+            <button class="btn" type="button" onclick="saveAnnouncement()">儲存公告</button>
+            <button class="btn secondary" type="button" onclick="resetForm()">清空表單</button>
+          </div>
+          <div id="msg" class="message"></div>
+        </section>
 
-      <div id="msg" class="message"></div>
-      <div id="list" class="cards"></div>
+        <section class="admin-card">
+          <h2 class="section-title">已建立公告</h2>
+          <p class="section-desc">預設先收合內容，需要時再展開查看，卡片之間也會比較清楚。</p>
+          <div id="list" class="cards"></div>
+        </section>
+      </div>
     </div>
   </div>
 
@@ -117,6 +185,28 @@
       if(qs('#audExternal').checked) arr.push('external');
       return arr.length?arr:['all'];
     }
+    function escapeHtml(v){
+      return String(v==null?'':v)
+        .replace(/&/g,'&amp;')
+        .replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;')
+        .replace(/'/g,'&#39;');
+    }
+    function renderAssetLinks(items,label){
+      if(!items || !items.length) return '';
+      return `
+        <div class="detail-block">
+          <h4>${label}</h4>
+          <div class="asset-list">
+            ${items.map(item=>{
+              const href = escapeHtml(item.url || item.secure_url || '#');
+              const name = escapeHtml(item.name || item.original_filename || '查看附件');
+              return `<a class="asset-link" href="${href}" target="_blank" rel="noopener"><span>${name}</span><span>開啟</span></a>`;
+            }).join('')}
+          </div>
+        </div>`;
+    }
     async function filesToAssets(inputSel, folder){
       const files = Array.from(qs(inputSel).files||[]);
       const assets=[];
@@ -129,23 +219,56 @@
     function rowHtml(row){
       const id = JSON.stringify(row.id||'');
       const published = row.published ? 'true' : 'false';
+      const detailId = `detail_${row.id||Math.random().toString(36).slice(2)}`;
       return `
         <article class="cardx">
-          <h3>${row.title||'未命名公告'}</h3>
-          <div class="meta">
-            <div class="item"><div class="label">對象</div><div class="value">${row.audienceLabel||''}</div></div>
-            <div class="item"><div class="label">日期</div><div class="value">${row.publishDate||''}</div></div>
-            <div class="item"><div class="label">狀態</div><div class="value">${row.published?'已發布':'已下架'}${row.pinned?' / 置頂':''}</div></div>
-            <div class="item"><div class="label">附件數</div><div class="value">${(row.imageAssets||[]).length + (row.videoAssets||[]).length + (row.audioAssets||[]).length + (row.fileAssets||[]).length}</div></div>
+          <div class="card-head">
+            <div>
+              <h3 class="card-title">${escapeHtml(row.title||'未命名公告')}</h3>
+              <div class="badge-row">
+                <span class="badge">${escapeHtml(row.audienceLabel||'')}</span>
+                <span class="badge">${row.published?'已發布':'已下架'}</span>
+                ${row.pinned?'<span class="badge">置頂</span>':''}
+                ${row.requireReply?'<span class="badge">需要回覆</span>':''}
+              </div>
+            </div>
+            <div class="action-row">
+              <button class="btn secondary expand-btn" type="button" onclick="toggleDetail('${detailId}',this)">展開內容</button>
+              <button class="btn secondary" style="width:auto" onclick='editRow(${id})'>編輯</button>
+              <button class="btn secondary" style="width:auto" onclick='toggleRow(${id},${published})'>${row.published?'下架':'發布'}</button>
+              <button class="btn secondary" style="width:auto" onclick='deleteRow(${id})'>刪除</button>
+            </div>
           </div>
-          <div style="margin:8px 0;font-weight:800">${row.summary||''}</div>
-          <div class="muted">${(row.content||'').slice(0,120)}${(row.content||'').length>120?'...':''}</div>
-          <div class="actions">
-            <button class="btn secondary" style="width:auto" onclick='editRow(${id})'>編輯</button>
-            <button class="btn secondary" style="width:auto" onclick='toggleRow(${id},${published})'>${row.published?'下架':'發布'}</button>
-            <button class="btn secondary" style="width:auto" onclick='deleteRow(${id})'>刪除</button>
+
+          <div class="meta">
+            <div class="item"><div class="label">發布日期</div><div class="value">${escapeHtml(row.publishDate||'')}</div></div>
+            <div class="item"><div class="label">分類</div><div class="value">${escapeHtml(row.category||'未分類')}</div></div>
+            <div class="item"><div class="label">附件數</div><div class="value">${(row.imageAssets||[]).length + (row.videoAssets||[]).length + (row.audioAssets||[]).length + (row.fileAssets||[]).length}</div></div>
+            <div class="item"><div class="label">回覆截止日</div><div class="value">${escapeHtml(row.replyDeadline||'無')}</div></div>
+          </div>
+
+          <div class="summary-box">
+            <div style="font-weight:900;margin-bottom:6px">摘要</div>
+            <div>${escapeHtml(row.summary||'')}</div>
+          </div>
+
+          <div id="${detailId}" class="detail-panel">
+            <div class="detail-block">
+              <h4>公告內文</h4>
+              <div style="white-space:pre-wrap;line-height:1.75">${escapeHtml(row.content||'')}</div>
+            </div>
+            ${renderAssetLinks(row.imageAssets,'圖片附件')}
+            ${renderAssetLinks(row.videoAssets,'影片附件')}
+            ${renderAssetLinks(row.audioAssets,'錄音附件')}
+            ${renderAssetLinks(row.fileAssets,'文件附件')}
           </div>
         </article>`;
+    }
+    function toggleDetail(id, btn){
+      const panel = document.getElementById(id);
+      if(!panel) return;
+      const open = panel.classList.toggle('open');
+      if(btn) btn.textContent = open ? '收合內容' : '展開內容';
     }
     async function loadList(){
       try{
@@ -160,8 +283,9 @@
       ['#titleInput','#categoryInput','#summaryInput','#contentInput'].forEach(sel=>qs(sel).value='');
       ['#imageInput','#videoInput','#audioInput','#fileInput'].forEach(sel=>qs(sel).value='');
       qs('#publishDateInput').value=todayStr();
+      qs('#replyDeadlineInput').value='';
       qs('#audAll').checked=true; qs('#audStaff').checked=false; qs('#audParttime').checked=false; qs('#audExternal').checked=false;
-      qs('#pinnedInput').checked=false; qs('#publishedInput').checked=true; qs('#sendEmailInput').checked=true; qs('#sendLineInput').checked=true; qs('#requireReplyInput').checked=false; qs('#replyDeadlineInput').value='';
+      qs('#pinnedInput').checked=false; qs('#publishedInput').checked=true; qs('#sendEmailInput').checked=true; qs('#sendLineInput').checked=true; qs('#requireReplyInput').checked=false;
       setMsg(qs('#msg'),'');
     }
     function editRow(id){
