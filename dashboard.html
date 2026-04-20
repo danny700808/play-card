@@ -39,6 +39,7 @@
     <div id="lineBindArea"></div>
 
     <div class="home-grid" id="homeGrid">
+      <a class="home-tile" data-feature="announcement" href="announcements.html"><div><strong>公告</strong><span>查看最新公告、行政通知與發布內容</span></div><div class="tile-count" id="announcementCount">0</div></a>
       <a class="home-tile" data-feature="clock" href="clock.html"><div><strong>打卡系統</strong><span>上班 / 下班打卡與本月紀錄</span></div><div class="tile-count" id="clockCount">0</div></a>
       <a class="home-tile" data-feature="parttime" href="parttime.html"><div><strong>工讀生時數</strong><span>1～12 小時與半小時加時</span></div><div class="tile-count zero">&nbsp;</div></a>
       <a class="home-tile" data-feature="leave" href="leave.html"><div><strong>請假系統</strong><span>請假申請與自己的請假紀錄</span></div><div class="tile-count" id="leaveCount">0</div></a>
@@ -71,33 +72,43 @@
       refreshHomeCounts(user);
     }
 
-    async function refreshHomeCounts(user){
+    
+async function refreshHomeCounts(user){
   const taskEl = qs('#taskCount');
   const routineEl = qs('#routineCount');
   const leaveEl = qs('#leaveCount');
   const clockEl = qs('#clockCount');
+  const annEl = qs('#announcementCount');
   try{
     const summaryRes = await api('getDashboardSummary',{userId:user.id,email:user.email,role:'staff'});
     const taskCount = Number(summaryRes?.counts?.tasks||0);
     const routineCount = Number(summaryRes?.counts?.routines||0);
     const leaveCount = Number(summaryRes?.counts?.leaves||0);
     const clockCount = Number(summaryRes?.counts?.clocks||0);
+    let announcementCount = 0;
+    try{
+      const annRes = await api('getAnnouncements',{userId:user.id});
+      announcementCount = Array.isArray(annRes?.rows) ? annRes.rows.length : 0;
+    }catch(e){}
     taskEl.textContent = String(taskCount);
     routineEl.textContent = String(routineCount);
     leaveEl.textContent = String(leaveCount);
     clockEl.textContent = String(clockCount);
+    annEl.textContent = String(announcementCount);
     taskEl.classList.toggle('zero', taskCount===0);
     routineEl.classList.toggle('zero', routineCount===0);
     leaveEl.classList.toggle('zero', leaveCount===0);
     clockEl.classList.toggle('zero', clockCount===0);
+    annEl.classList.toggle('zero', announcementCount===0);
   }catch(e){
-    [taskEl,routineEl,leaveEl,clockEl].forEach(el=>{
+    [taskEl,routineEl,leaveEl,clockEl,annEl].forEach(el=>{
       if(!el) return;
       el.textContent='0';
       el.classList.add('zero');
     });
   }
 }
+
   </script>
 </body>
 </html>

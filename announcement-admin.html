@@ -72,7 +72,9 @@
           <div class="checkbox-group">
             <label><input type="checkbox" id="pinnedInput"> 置頂</label>
             <label><input type="checkbox" id="publishedInput" checked> 立即發布</label>
-            <label><input type="checkbox" id="sendEmailInput"> 寄送 Email</label>
+            <label><input type="checkbox" id="sendEmailInput" checked> 寄送 Email</label>
+            <label><input type="checkbox" id="sendLineInput" checked> 寄送 LINE</label>
+            <label><input type="checkbox" id="requireReplyInput"> 需要回覆</label>
           </div>
         </div>
       </div>
@@ -111,6 +113,7 @@
       if(qs('#audAll').checked) return ['all'];
       const arr=[];
       if(qs('#audStaff').checked) arr.push('staff');
+      if(qs('#audParttime').checked) arr.push('parttime');
       if(qs('#audExternal').checked) arr.push('external');
       return arr.length?arr:['all'];
     }
@@ -157,8 +160,8 @@
       ['#titleInput','#categoryInput','#summaryInput','#contentInput'].forEach(sel=>qs(sel).value='');
       ['#imageInput','#videoInput','#audioInput','#fileInput'].forEach(sel=>qs(sel).value='');
       qs('#publishDateInput').value=todayStr();
-      qs('#audAll').checked=true; qs('#audStaff').checked=false; qs('#audExternal').checked=false;
-      qs('#pinnedInput').checked=false; qs('#publishedInput').checked=true; qs('#sendEmailInput').checked=false;
+      qs('#audAll').checked=true; qs('#audStaff').checked=false; qs('#audParttime').checked=false; qs('#audExternal').checked=false;
+      qs('#pinnedInput').checked=false; qs('#publishedInput').checked=true; qs('#sendEmailInput').checked=true; qs('#sendLineInput').checked=true; qs('#requireReplyInput').checked=false; qs('#replyDeadlineInput').value='';
       setMsg(qs('#msg'),'');
     }
     function editRow(id){
@@ -173,10 +176,14 @@
       const aud=row.audience||[];
       qs('#audAll').checked=aud.includes('all');
       qs('#audStaff').checked=aud.includes('staff');
+      qs('#audParttime').checked=aud.includes('parttime');
       qs('#audExternal').checked=aud.includes('external');
       qs('#pinnedInput').checked=!!row.pinned;
       qs('#publishedInput').checked=!!row.published;
-      qs('#sendEmailInput').checked=!!row.sendEmail;
+      qs('#sendEmailInput').checked=row.sendEmail!==false;
+      qs('#sendLineInput').checked=row.sendLine!==false;
+      qs('#requireReplyInput').checked=!!row.requireReply;
+      qs('#replyDeadlineInput').value=row.replyDeadline||'';
       setMsg(qs('#msg'),'已載入公告，可直接修改後再按儲存。');
       window.scrollTo({top:0,behavior:'smooth'});
     }
@@ -214,6 +221,9 @@
           pinned: qs('#pinnedInput').checked,
           published: qs('#publishedInput').checked,
           sendEmail: qs('#sendEmailInput').checked,
+          sendLine: qs('#sendLineInput').checked,
+          requireReply: qs('#requireReplyInput').checked,
+          replyDeadline: qs('#replyDeadlineInput').value,
           imageAssets, videoAssets, audioAssets, fileAssets
         };
         const r = await api('saveAnnouncement', payload);

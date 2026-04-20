@@ -179,6 +179,11 @@
       }).catch(function(){});
       try{
         const data=await postJson('getDashboardSummary', { userId, role:'external' });
+        try{
+          const annRes = await postJson('getAnnouncements',{ userId });
+          data.counts = data.counts || {};
+          data.counts.announcements = Array.isArray(annRes.rows) ? annRes.rows.length : 0;
+        }catch(e){}
         renderHome(data);
       }catch(err){
         setStatus(err.message || '讀取失敗', true);
