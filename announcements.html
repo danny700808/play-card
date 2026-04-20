@@ -54,8 +54,8 @@
           </div>
           <h3>${row.title||'未命名公告'}</h3>
           <div class="meta">${row.publishDate||''}</div>
-          ${row.summary?`<div style="font-weight:800;margin-bottom:8px">${row.summary.replace(/\n/g,'<br>')}</div>`:''}
-          <div>${(row.content||'').replace(/\n/g,'<br>')}</div>
+          ${String(row.summary || '').trim() ? `<div style="font-weight:800;margin-bottom:8px">${String(row.summary || '').replace(/\n/g,'<br>')}</div>` : ''}
+          <div>${String(row.content || '').replace(/\n/g,'<br>')}</div>
           ${mediaLinksHtml([...(row.imageAssets||[]), ...(row.videoAssets||[]), ...(row.audioAssets||[]), ...(row.fileAssets||[])])}
         </article>`;
     }
