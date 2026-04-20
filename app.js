@@ -20,7 +20,7 @@ function settingsHomeHref(){return 'settings.html'}
 function staffHomeHref(){return 'dashboard.html'}
 function teacherHomeHref(){return 'teacher-home.html'}
 function userHomeHref(user=getUser()){if(isExternalTeacher(user)) return teacherHomeHref(); return isManager(user)&&isSettingsMode() ? settingsHomeHref() : staffHomeHref()}
-function userHomeLabel(user=getUser()){if(isExternalTeacher(user)) return '返回老師首頁'; return isManager(user)&&isSettingsMode() ? '返回管理首頁' : '返回員工首頁'}
+function userHomeLabel(user=getUser()){if(isExternalTeacher(user)) return '返回老師首頁'; if(isPartTimeUser(user)) return '返回工讀首頁'; return isManager(user)&&isSettingsMode() ? '返回管理首頁' : '返回員工首頁'}
 function portalSwitchLabel(user=getUser()){return hasSettingsZoneAccess(user) ? '切換入口' : '系統入口'}
 function getUser(){try{return JSON.parse(localStorage.getItem('employeeUser')||'null')}catch(e){return null}}
 function getApiUrl(){return API_URL}

@@ -303,8 +303,8 @@
       qs('#adminBlock').style.display = taskAdminMode ? '' : 'none';
       qs('#staffBlock').style.display = taskAdminMode ? 'none' : '';
       qs('#taskPageTitle').textContent = taskAdminMode ? '交辦事項設定' : '交辦事項';
-      qs('#taskHomeLink').href = taskAdminMode ? 'settings.html' : 'dashboard.html';
-      qs('#taskHomeLink').textContent = taskAdminMode ? '返回管理首頁' : '返回員工首頁';
+      qs('#taskHomeLink').href = taskAdminMode ? 'settings.html' : userHomeHref(currentUser);
+      qs('#taskHomeLink').textContent = taskAdminMode ? '返回管理首頁' : userHomeLabel(currentUser);
       
     }
 

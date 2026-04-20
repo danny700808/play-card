@@ -10,23 +10,15 @@
     .summary-value{font-size:22px;font-weight:800;margin-top:4px}
     .inline-note{margin-top:6px}
     .month-badge{display:inline-block;padding:4px 10px;border-radius:999px;background:#eef7f2;color:#16533f;font-size:12px;font-weight:700}
+  
     .page-return-wrap{margin-bottom:16px}
     .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
-    .context-box{border:1px solid #dbe7f4;border-radius:16px;background:#f8fbff;padding:14px 16px;margin:12px 0 18px}
-    .context-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
-    .context-title{font-size:15px;font-weight:900;color:#1f2d3d}
-    .context-tag{display:inline-flex;align-items:center;padding:5px 10px;border-radius:999px;background:#eef2f6;color:#42556d;font-size:12px;font-weight:800}
-    .context-tag.ok{background:#ecf7f1;color:#1f7a5a}
-    .context-tag.warn{background:#fff4f2;color:#b42318}
-    .context-main{font-size:16px;font-weight:800;margin-top:8px}
-    .context-help{color:var(--muted);font-size:13px;line-height:1.7;margin-top:6px}
-    .record-top{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap}
-    .record-tags{display:flex;gap:8px;flex-wrap:wrap}
-    .record-tag{display:inline-flex;align-items:center;padding:5px 10px;border-radius:999px;background:#eef2f6;color:#42556d;font-size:12px;font-weight:800}
-    .record-tag.ok{background:#ecf7f1;color:#1f7a5a}
-    .record-tag.warn{background:#fff4f2;color:#b42318}
-    .record-meta{margin-top:8px;color:var(--muted);font-size:13px;line-height:1.7}
-  </style>
+    .date-status-box{border:1px solid var(--line);border-radius:14px;padding:12px 14px;background:#f8fbff;margin-top:10px}
+    .date-status-title{font-size:12px;color:var(--muted);font-weight:700}
+    .date-status-main{font-size:18px;font-weight:800;margin-top:4px}
+    .date-status-main.ok{color:#16533f}
+    .date-status-main.bad{color:#b42318}
+</style>
 </head>
 <body onload="init()">
   <div class="container">
@@ -37,23 +29,21 @@
           <h1 class="title" style="margin:0">工讀生時數登記</h1>
           <div class="welcome">歡迎 <span data-user-name></span></div>
         </div>
+        
       </div>
 
       <div id="msg" class="message"></div>
+
 
       <div class="field" id="fieldWorkDate">
         <label for="workDate">日期</label>
         <input id="workDate" type="date">
         <div class="field-error" id="errorWorkDate"></div>
-      </div>
-
-      <div class="context-box" id="dateContextBox">
-        <div class="context-head">
-          <div class="context-title">當日班表狀態</div>
-          <span class="context-tag" id="dateContextTag">讀取中</span>
+        <div id="dateStatusBox" class="date-status-box" style="display:none">
+          <div class="date-status-title">當日班表狀態</div>
+          <div id="dateStatusMain" class="date-status-main"></div>
+          <div id="dateStatusNote" class="muted inline-note"></div>
         </div>
-        <div class="context-main" id="dateContextMain">請先選擇日期</div>
-        <div class="context-help" id="dateContextHelp">只有排班日才能登記工讀時數；今天有班即可先登記，不限制一定要到上班時刻才填。</div>
       </div>
 
       <div class="field" id="fieldHours">
@@ -84,7 +74,7 @@
 
       <div class="field" id="fieldNote">
         <label for="note">備註</label>
-        <textarea id="note" placeholder="若為補時數，可在這裡寫原因"></textarea>
+        <textarea id="note" placeholder="有任何問題，可填寫在這裡"></textarea>
         <div class="field-error" id="errorNote"></div>
       </div>
 
@@ -95,7 +85,7 @@
       <div class="topbar" style="margin-bottom:10px">
         <div>
           <h2 class="title" style="font-size:20px;margin:0">本月時數紀錄</h2>
-          <div class="muted">只顯示當月資料，會同步顯示狀態與當筆金額。</div>
+          <div class="muted">只顯示當月資料，月份切換後前台不再顯示舊月份。</div>
         </div>
         <span id="monthBadge" class="month-badge"></span>
       </div>
@@ -103,16 +93,13 @@
       <div class="summary-box">
         <div class="muted">這個月總計</div>
         <div id="monthTotal" class="summary-value">0 小時</div>
-        <div class="muted" id="monthGrossText" style="margin-top:6px">毛額 0 元</div>
       </div>
     </div>
   </div>
 
-  <script src="config.js?v=20260420pt1"></script>
-  <script src="app.js?v=20260420pt1"></script>
+  <script src="config.js?v=20260413fix1"></script>
+  <script src="app.js?v=20260413fix1"></script>
   <script>
-    let currentDateContext = null;
-
     function localDateInputValue(){
       const now = new Date();
       const tzOffset = now.getTimezoneOffset() * 60000;
@@ -121,12 +108,9 @@
     function sleep(ms){ return new Promise(resolve=>setTimeout(resolve, ms)); }
     function formatHoursLabel(v){
       const n = Number(v || 0);
+      if(!Number.isFinite(n) || n < 0) return '0 小時';
       if (Math.abs(n - Math.round(n)) < 0.0001) return Math.round(n) + ' 小時';
       return n.toFixed(1).replace(/\.0$/, '') + ' 小時';
-    }
-    function moneyText(v){
-      const n = Number(v || 0) || 0;
-      return n.toLocaleString('zh-TW') + ' 元';
     }
     function monthLabel(ym){
       if(!ym) return '';
@@ -141,45 +125,47 @@
         if(err) err.textContent = '';
       });
     }
+    let currentDateContext = null;
     function setFieldInvalid(name, message){
       const field = qs('#field' + name);
       const err = qs('#error' + name);
       if(field) field.classList.add('invalid');
       if(err) err.textContent = message || '';
     }
-    function setDateContext(context){
-      currentDateContext = context || null;
-      const tag = qs('#dateContextTag');
-      const main = qs('#dateContextMain');
-      const help = qs('#dateContextHelp');
-      tag.className = 'context-tag';
-      if(!context){
-        tag.textContent = '未讀取';
-        main.textContent = '請先選擇日期';
-        help.textContent = '';
+    function renderDateContext(ctx){
+      currentDateContext = ctx || null;
+      const box = qs('#dateStatusBox');
+      const main = qs('#dateStatusMain');
+      const note = qs('#dateStatusNote');
+      const btn = qs('#submitBtn');
+      if(!ctx || !ctx.workDate){
+        if(box) box.style.display = 'none';
+        if(btn) btn.disabled = false;
         return;
       }
-      tag.textContent = context.statusLabel || '未讀取';
-      if(context.canRegister) tag.classList.add('ok'); else tag.classList.add('warn');
-      const statusText = context.scheduleLabel || context.blockedReason || '請先選擇日期';
-      main.textContent = statusText;
-      const extra = [];
-      if(context.expectedEntryStatus){
-        extra.push('送出後狀態：' + context.expectedEntryStatus);
+      if(box) box.style.display = '';
+      if(main){
+        main.textContent = ctx.canRegister ? `${ctx.statusLabel}｜${ctx.scheduleLabel || ''}` : `${ctx.statusLabel}｜${ctx.scheduleLabel || '無班'}`;
+        main.className = 'date-status-main ' + (ctx.canRegister ? 'ok' : 'bad');
       }
-      if(context.helperText) extra.push(context.helperText);
-      help.textContent = extra.join('｜');
+      if(note) note.textContent = ctx.canRegister ? (ctx.helperText || '今天有排班，可以登記工讀時數。') : (ctx.blockedReason || '這一天沒有班，不能登記工讀時數。');
+      if(btn) btn.disabled = !!(ctx && !ctx.canRegister);
     }
     async function loadDateContext(){
       const user = requireLogin();
       if(!user) return;
+      qs('#parttimeHomeLink').href = userHomeHref(user);
+      qs('#parttimeHomeLink').textContent = userHomeLabel(user);
       const workDate = qs('#workDate').value;
-      if(!workDate){ setDateContext(null); return; }
+      if(!workDate){
+        renderDateContext(null);
+        return;
+      }
       try{
-        const r = await api('getParttimeDateContext',{userId:user.id, workDate});
-        setDateContext(r.context || null);
-      }catch(err){
-        setDateContext({canRegister:false,statusLabel:'讀取失敗',blockedReason:'暫時無法讀取班表狀態',helperText:''});
+        const r = await api('getParttimeDateContext',{ userId:user.id, workDate });
+        renderDateContext(r.context || null);
+      }catch(e){
+        renderDateContext(null);
       }
     }
     function validateForm(){
@@ -195,15 +181,16 @@
         setFieldInvalid('Hours','請先選擇時數');
         errors.push('#hoursSelect');
       }
-      if(currentDateContext && currentDateContext.canRegister===false){
-        setFieldInvalid('WorkDate', currentDateContext.blockedReason || '這一天不能登記工讀時數');
-        errors.push('#workDate');
-      }
       if(errors.length){
         setMsg(qs('#msg'),'請先完成必填欄位',true);
         window.scrollTo({top:0,behavior:'smooth'});
         const first = qs(errors[0]);
         if(first) first.focus();
+        return false;
+      }
+      if(currentDateContext && !currentDateContext.canRegister){
+        setMsg(qs('#msg'), currentDateContext.blockedReason || '這一天沒有班，不能登記工讀時數。', true);
+        window.scrollTo({top:0,behavior:'smooth'});
         return false;
       }
       return true;
@@ -215,14 +202,9 @@
       const rows = r.rows || [];
       qs('#monthBadge').textContent = monthLabel(r.monthText || '');
       qs('#monthTotal').textContent = formatHoursLabel(r.monthTotalHours || 0);
-      qs('#monthGrossText').textContent = '毛額 ' + moneyText(r.monthGrossPay || 0);
-      qs('#list').innerHTML = rows.map(x=>{
-        const statusClass = x.status === '補時數' ? 'warn' : 'ok';
-        return `<div class="item"><div class="record-top"><strong>${x.date}</strong><div class="record-tags"><span class="record-tag ${statusClass}">${x.status || '正常'}</span><span class="record-tag">${formatHoursLabel(x.totalHours)}</span>${x.grossPay?`<span class="record-tag">${moneyText(x.grossPay)}</span>`:''}</div></div>${x.scheduleLabel?`<div class="record-meta">班表：${x.scheduleLabel}</div>`:''}${x.note?`<div class="record-meta">備註：${x.note}</div>`:''}</div>`;
-      }).join('') || '<div class="muted">本月目前沒有紀錄</div>';
+      qs('#list').innerHTML = rows.map(x=>`<div class="item"><div class="top"><strong>${x.date}</strong><span class="tag">${formatHoursLabel(x.totalHours)}</span></div>${x.note?`<div class="muted">${x.note}</div>`:''}</div>`).join('') || '<div class="muted">本月目前沒有紀錄</div>';
     }
     async function submitParttime(){
-      await loadDateContext();
       if(!validateForm()) return;
       const user = requireLogin();
       if(!user) return;
@@ -239,20 +221,21 @@
       try {
         progress.set(10, '檢查資料中');
         await sleep(100);
-        progress.set(35, '確認班表狀態');
+        progress.set(30, '整理時數資料');
         const request = api('parttime', payload);
         await sleep(120);
-        progress.set(65, '送出時數資料');
+        progress.set(60, '送出時數資料');
         const r = await request;
-        progress.set(88, r.ok ? '更新畫面中' : '等待系統回應');
+        progress.set(85, r.ok ? '更新畫面中' : '等待系統回應');
         await sleep(100);
         setMsg(qs('#msg'), r.message, !r.ok);
         if(r.ok){
           qs('#note').value = '';
           qs('#halfHour').checked = false;
           qs('#hoursSelect').value = '';
-          await loadDateContext();
+          qs('#workDate').value = localDateInputValue();
           await loadHistory(r.monthText || '');
+          await loadDateContext();
           progress.done('送出成功');
         } else {
           progress.fail('送出失敗');
@@ -269,9 +252,10 @@
       qs('#workDate').value = localDateInputValue();
       qs('#submitBtn').onclick = submitParttime;
       qs('#workDate').addEventListener('input', async ()=>{ clearValidation(); await loadDateContext(); });
+      qs('#workDate').addEventListener('change', async ()=>{ clearValidation(); await loadDateContext(); });
       qs('#hoursSelect').addEventListener('change', clearValidation);
-      loadDateContext();
       loadHistory();
+      loadDateContext();
     }
   </script>
 </body>

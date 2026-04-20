@@ -15,13 +15,13 @@
     .readonly-value{font-size:16px;font-weight:700;color:var(--text)}
     .readonly-stack{display:grid;grid-template-columns:1fr 1fr;gap:12px}
     @media (max-width:560px){.stat-grid,.readonly-stack{grid-template-columns:1fr}}
+    .page-return-wrap{margin-bottom:16px}
+    .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
   </style>
 </head>
 <body onload="init()">
   <div class="container">
-    <div class="topbar">
-      <a class="navlink" href="dashboard.html">← 返回員工首頁</a>
-    </div>
+    <div class="page-return-wrap"><a class="btn page-return-btn" id="profileHomeLink" href="dashboard.html">返回員工首頁</a></div>
 
     <div class="card">
       <div class="profile-head">
@@ -74,12 +74,16 @@
       fillHeader();
       const user=requireLogin();
       if(!user) return;
+      qs('#profileHomeLink').href = userHomeHref(user);
+      qs('#profileHomeLink').textContent = userHomeLabel(user);
       await loadProfile();
     }
 
     async function loadProfile(){
       const user=requireLogin();
       if(!user) return;
+      qs('#profileHomeLink').href = userHomeHref(user);
+      qs('#profileHomeLink').textContent = userHomeLabel(user);
       const msg=qs('#msg');
       setMsg(msg,'讀取中…',false);
       try{
@@ -106,6 +110,8 @@
     async function submitProfileChange(){
       const user=requireLogin();
       if(!user) return;
+      qs('#profileHomeLink').href = userHomeHref(user);
+      qs('#profileHomeLink').textContent = userHomeLabel(user);
       const msg=qs('#msg');
       try{
         setMsg(msg,'送出中…',false);

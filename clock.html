@@ -27,7 +27,7 @@
 </head>
 <body onload="init()">
   <div class="container">
-    <div class="page-return-wrap"><a class="btn page-return-btn" href="dashboard.html">返回員工首頁</a></div>
+    <div class="page-return-wrap"><a class="btn page-return-btn" id="clockHomeLink" href="dashboard.html">返回員工首頁</a></div>
 
     <div class="card">
       <div class="topbar">
@@ -258,6 +258,8 @@
     async function loadEditableHistory(){
       const user = requireLogin();
       if(!user) return;
+      qs('#clockHomeLink').href = userHomeHref(user);
+      qs('#clockHomeLink').textContent = userHomeLabel(user);
       const r = await api('getEditableClockHistory', { userId:user.id });
       renderIntoList('#editableList', r.rows || [], false);
     }

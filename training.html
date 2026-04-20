@@ -119,7 +119,10 @@
     }
     function init(){
       fillHeader();
-      requireLogin();
+      const user=requireLogin();
+      if(!user) return;
+      qs('#trainingHomeLink').href = userHomeHref(user);
+      qs('#trainingHomeLink').textContent = userHomeLabel(user);
       trainingData.categories = getFixedTrainingCategories();
       renderCategories();
       qs('#searchBtn').onclick=()=>renderResults(true);
