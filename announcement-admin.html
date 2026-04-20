@@ -23,6 +23,22 @@
     .upload-box{background:#f8fafc;border:1px solid #dbe5f1;border-radius:16px;padding:12px}
     .upload-box label{display:block;font-weight:900;margin-bottom:8px}
     .upload-tip{font-size:12px;color:#64748b;margin-top:6px;line-height:1.5}
+    .record-panel{display:grid;gap:10px}
+    .record-visual{display:flex;align-items:center;gap:10px;padding:12px;border:1px solid #dbe5f1;border-radius:14px;background:#fff}
+    .record-dot{width:12px;height:12px;border-radius:999px;background:#cbd5e1;flex:0 0 auto}
+    .record-dot.recording{background:#ef4444;box-shadow:0 0 0 6px rgba(239,68,68,.16)}
+    .record-bar{position:relative;flex:1;height:10px;border-radius:999px;background:linear-gradient(90deg,#dbeafe,#bfdbfe);overflow:hidden}
+    .record-bar-fill{height:100%;width:0%;background:linear-gradient(90deg,#2563eb,#1d4ed8);transition:width .2s ease}
+    .record-time{min-width:70px;text-align:right;font-weight:900;color:#0f172a}
+    .record-actions{display:flex;gap:10px;flex-wrap:wrap}
+    .record-preview{display:none;padding:12px;border:1px solid #dbe5f1;border-radius:14px;background:#fff}
+    .record-preview.open{display:block}
+    .save-wrap{display:grid;gap:10px}
+    .save-progress{display:none;gap:8px}
+    .save-progress.open{display:grid}
+    .save-progress-bar{height:10px;border-radius:999px;background:#dcfce7;overflow:hidden}
+    .save-progress-fill{height:100%;width:0%;background:linear-gradient(90deg,#22c55e,#16a34a);transition:width .25s ease}
+    .save-progress-text{font-size:13px;font-weight:900;color:#166534}
     .action-row{display:flex;gap:10px;flex-wrap:wrap}
     .cards{display:grid;gap:16px;margin-top:18px}
     .cardx{background:#fff;border:1px solid #dbe5f1;border-radius:20px;padding:16px;box-shadow:0 8px 24px rgba(15,23,42,.04)}
@@ -137,8 +153,23 @@
             </div>
             <div class="upload-box">
               <label>錄音附件</label>
-              <input id="audioInput" type="file" multiple accept="audio/*" capture>
-              <div class="upload-tip">手機可直接開啟錄音後上傳；電腦則可選擇現有音檔。</div>
+              <div class="record-panel">
+                <div class="record-visual">
+                  <div id="recordDot" class="record-dot"></div>
+                  <div class="record-bar"><div id="recordBarFill" class="record-bar-fill"></div></div>
+                  <div id="recordTime" class="record-time">00:00</div>
+                </div>
+                <div class="record-actions">
+                  <button id="recordBtn" class="btn secondary" type="button" style="width:auto" onclick="startRecording()">開始錄音</button>
+                  <button id="stopRecordBtn" class="btn secondary" type="button" style="width:auto" onclick="stopRecording()" disabled>停止</button>
+                  <button id="clearRecordBtn" class="btn secondary" type="button" style="width:auto" onclick="clearRecording()" disabled>刪除</button>
+                </div>
+                <div id="recordPreview" class="record-preview">
+                  <div style="font-weight:900;margin-bottom:8px">錄音預覽</div>
+                  <audio id="recordedAudio" controls style="width:100%"></audio>
+                </div>
+              </div>
+              <div class="upload-tip">這裡不需要選擇檔案，手機可直接開啟錄音；錄完後可確認預覽，或刪除重錄。</div>
             </div>
             <div class="upload-box">
               <label>文件附件</label>
@@ -148,9 +179,15 @@
         </section>
 
         <section class="admin-card">
-          <div class="action-row">
-            <button class="btn" type="button" onclick="saveAnnouncement()">儲存公告</button>
-            <button class="btn secondary" type="button" onclick="resetForm()">清空表單</button>
+          <div class="save-wrap">
+            <div class="action-row">
+              <button id="saveBtn" class="btn" type="button" onclick="saveAnnouncement()">儲存公告</button>
+              <button class="btn secondary" type="button" onclick="resetForm()">清空表單</button>
+            </div>
+            <div id="saveProgress" class="save-progress">
+              <div class="save-progress-text" id="saveProgressText">準備儲存 0%</div>
+              <div class="save-progress-bar"><div id="saveProgressFill" class="save-progress-fill"></div></div>
+            </div>
           </div>
           <div id="msg" class="message"></div>
         </section>
@@ -169,6 +206,135 @@
   <script>
     let currentUser=null;
     let editingId='';
+    let mediaRecorder=null;
+    let recordingStream=null;
+    let recordingChunks=[];
+    let recordedAudioFile=null;
+    let recordingStartAt=0;
+    let recordingTimer=null;
+
+    function setSaveProgress(percent, text){
+      const wrap = qs('#saveProgress');
+      const fill = qs('#saveProgressFill');
+      const label = qs('#saveProgressText');
+      if(!wrap || !fill || !label) return;
+      wrap.classList.add('open');
+      const safe = Math.max(0, Math.min(100, Number(percent||0)));
+      fill.style.width = safe + '%';
+      label.textContent = `${text || '處理中'} ${safe}%`;
+    }
+    function hideSaveProgress(){
+      const wrap = qs('#saveProgress');
+      const fill = qs('#saveProgressFill');
+      const label = qs('#saveProgressText');
+      if(!wrap || !fill || !label) return;
+      wrap.classList.remove('open');
+      fill.style.width='0%';
+      label.textContent='準備儲存 0%';
+    }
+    function setSaveBusy(busy){
+      const btn = qs('#saveBtn');
+      if(btn) btn.disabled = !!busy;
+    }
+    function renderRecordingState(){
+      const dot = qs('#recordDot');
+      const fill = qs('#recordBarFill');
+      const time = qs('#recordTime');
+      const preview = qs('#recordPreview');
+      const audio = qs('#recordedAudio');
+      const recordBtn = qs('#recordBtn');
+      const stopBtn = qs('#stopRecordBtn');
+      const clearBtn = qs('#clearRecordBtn');
+      if(dot) dot.classList.toggle('recording', !!mediaRecorder && mediaRecorder.state === 'recording');
+      if(fill && (!mediaRecorder || mediaRecorder.state !== 'recording') && !recordedAudioFile) fill.style.width = '0%';
+      if(time && !recordedAudioFile && (!mediaRecorder || mediaRecorder.state !== 'recording')) time.textContent = '00:00';
+      if(recordBtn) recordBtn.disabled = !!mediaRecorder && mediaRecorder.state === 'recording';
+      if(stopBtn) stopBtn.disabled = !(mediaRecorder && mediaRecorder.state === 'recording');
+      if(clearBtn) clearBtn.disabled = !recordedAudioFile && !(mediaRecorder && mediaRecorder.state === 'recording');
+      if(preview) preview.classList.toggle('open', !!recordedAudioFile);
+      if(audio && !recordedAudioFile){ audio.removeAttribute('src'); audio.load(); }
+    }
+    function formatRecordTime(ms){
+      const total = Math.max(0, Math.floor(ms / 1000));
+      const mm = String(Math.floor(total / 60)).padStart(2,'0');
+      const ss = String(total % 60).padStart(2,'0');
+      return `${mm}:${ss}`;
+    }
+    function updateRecordingMeter(){
+      const elapsed = Date.now() - recordingStartAt;
+      const time = qs('#recordTime');
+      const fill = qs('#recordBarFill');
+      if(time) time.textContent = formatRecordTime(elapsed);
+      if(fill){
+        const pct = Math.min(100, ((elapsed % 15000) / 15000) * 100);
+        fill.style.width = pct + '%';
+      }
+    }
+    async function startRecording(){
+      try{
+        if(mediaRecorder && mediaRecorder.state === 'recording') return;
+        clearRecording(true);
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        recordingStream = stream;
+        mediaRecorder = new MediaRecorder(stream);
+        recordingChunks = [];
+        mediaRecorder.ondataavailable = ev => { if(ev.data && ev.data.size) recordingChunks.push(ev.data); };
+        mediaRecorder.onstop = () => {
+          const mime = mediaRecorder.mimeType || 'audio/webm';
+          const ext = mime.includes('mp4') || mime.includes('aac') ? 'm4a' : (mime.includes('ogg') ? 'ogg' : 'webm');
+          const blob = new Blob(recordingChunks, { type: mime });
+          recordedAudioFile = new File([blob], `announcement-audio-${Date.now()}.${ext}`, { type: mime });
+          const audio = qs('#recordedAudio');
+          if(audio){
+            audio.src = URL.createObjectURL(blob);
+            audio.load();
+          }
+          if(recordingStream){
+            recordingStream.getTracks().forEach(track => track.stop());
+            recordingStream = null;
+          }
+          mediaRecorder = null;
+          if(recordingTimer){ clearInterval(recordingTimer); recordingTimer = null; }
+          const fill = qs('#recordBarFill');
+          if(fill) fill.style.width = '100%';
+          renderRecordingState();
+        };
+        mediaRecorder.start();
+        recordingStartAt = Date.now();
+        updateRecordingMeter();
+        recordingTimer = setInterval(updateRecordingMeter, 200);
+        renderRecordingState();
+      }catch(err){
+        setMsg(qs('#msg'), '無法啟動錄音，請確認瀏覽器已允許麥克風權限。', true);
+      }
+    }
+    function stopRecording(){
+      if(mediaRecorder && mediaRecorder.state === 'recording'){
+        mediaRecorder.stop();
+      }
+    }
+    function clearRecording(silent){
+      const audio = qs('#recordedAudio');
+      if(mediaRecorder && mediaRecorder.state === 'recording'){
+        mediaRecorder.stop();
+      }
+      if(recordingStream){
+        recordingStream.getTracks().forEach(track => track.stop());
+        recordingStream = null;
+      }
+      if(recordingTimer){ clearInterval(recordingTimer); recordingTimer = null; }
+      if(audio && audio.src){
+        try{ URL.revokeObjectURL(audio.src); }catch(_){}
+        audio.removeAttribute('src');
+        audio.load();
+      }
+      recordedAudioFile = null;
+      mediaRecorder = null;
+      recordingChunks = [];
+      renderRecordingState();
+      if(!silent) setMsg(qs('#msg'),'錄音附件已清除。');
+    }
+
 
     function todayStr(){
       const d=new Date();
@@ -281,7 +447,10 @@
     function resetForm(){
       editingId='';
       ['#titleInput','#categoryInput','#summaryInput','#contentInput'].forEach(sel=>qs(sel).value='');
-      ['#imageInput','#videoInput','#audioInput','#fileInput'].forEach(sel=>qs(sel).value='');
+      ['#imageInput','#videoInput','#fileInput'].forEach(sel=>qs(sel).value='');
+      clearRecording(true);
+      hideSaveProgress();
+      setSaveBusy(false);
       qs('#publishDateInput').value=todayStr();
       qs('#replyDeadlineInput').value='';
       qs('#audAll').checked=true; qs('#audStaff').checked=false; qs('#audParttime').checked=false; qs('#audExternal').checked=false;
@@ -292,6 +461,7 @@
       const row=(window.__rows||[]).find(x=>x.id===id);
       if(!row) return;
       editingId=id;
+      clearRecording(true);
       qs('#titleInput').value=row.title||'';
       qs('#categoryInput').value=row.category||'';
       qs('#summaryInput').value=row.summary||'';
@@ -328,11 +498,21 @@
     }
     async function saveAnnouncement(){
       try{
-        setMsg(qs('#msg'),'附件上傳中，請稍候…');
+        setSaveBusy(true);
+        setSaveProgress(10, '開始處理');
+        setMsg(qs('#msg'),'準備上傳附件…');
         const imageAssets = await filesToAssets('#imageInput','announcements/images');
+        setSaveProgress(25, '圖片處理中');
         const videoAssets = await filesToAssets('#videoInput','announcements/videos');
-        const audioAssets = await filesToAssets('#audioInput','announcements/audios');
+        setSaveProgress(45, '影片處理中');
+        let audioAssets = [];
+        if(recordedAudioFile){
+          const res = await uploadFileToCloudinary(recordedAudioFile,{folder:'announcements/audios'});
+          audioAssets.push(cloudinaryAssetFromResponse(res));
+        }
+        setSaveProgress(65, '錄音處理中');
         const fileAssets = await filesToAssets('#fileInput','announcements/files');
+        setSaveProgress(80, '文件處理中');
         const payload = {
           userId: currentUser.id,
           announcementId: editingId,
@@ -350,11 +530,15 @@
           replyDeadline: qs('#replyDeadlineInput').value,
           imageAssets, videoAssets, audioAssets, fileAssets
         };
+        setSaveProgress(92, '儲存公告中');
         const r = await api('saveAnnouncement', payload);
+        setSaveProgress(100, '儲存完成');
         setMsg(qs('#msg'),r.message,!r.ok);
         if(r.ok){ resetForm(); loadList(); }
       }catch(e){
         setMsg(qs('#msg'),e.message||'儲存失敗',true);
+      }finally{
+        setTimeout(()=>{ hideSaveProgress(); setSaveBusy(false); }, 700);
       }
     }
     function initPage(){
@@ -363,6 +547,7 @@
       if(!currentUser) return;
       if(!isManager(currentUser)){ location.href='dashboard.html'; return; }
       qs('#publishDateInput').value=todayStr();
+      renderRecordingState();
       loadList();
     }
   </script>
