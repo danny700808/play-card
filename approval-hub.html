@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>簽核</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .tile strong{display:flex;align-items:center;gap:8px;justify-content:space-between}
+    .badge{display:inline-flex;min-width:22px;height:22px;padding:0 6px;border-radius:999px;background:#dc2626;color:#fff;font-size:12px;align-items:center;justify-content:center;font-weight:800}
+    .badge:empty{display:none}
+    .page-return-wrap{margin-bottom:16px}
+    .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
+  </style>
+</head>
+<body onload="init()">
+  <div class="container">
+    <div class="page-return-wrap"><a class="btn page-return-btn" href="settings.html">返回管理首頁</a></div>
+    <div class="card">
+      <div class="topbar">
+        <div class="header" style="margin:0">
+          <h1 class="title" style="margin:0">簽核</h1>
+          <div class="welcome">整合註冊、打卡與請假簽核</div>
+        </div>
+      </div>
+      <div class="grid" style="margin-top:18px">
+<a class="tile" href="registration-approval.html"><strong>註冊簽核 <span class="badge" id="badge-registration"></span></strong><span>查看新註冊員工申請，直接同意或駁回</span></a>
+<a class="tile" href="clock-corrections-admin.html"><strong>打卡簽核 <span class="badge" id="badge-clock"></span></strong><span>查看待審核補打卡 / 修正申請，並可往下做打卡紀錄查詢匯出</span></a>
+<a class="tile" href="leave.html?mode=approval"><strong>請假簽核 <span class="badge" id="badge-leave"></span></strong><span>查看待簽核請假單並直接同意 / 駁回</span></a>
+</div>
+    </div>
+  </div>
+  <script src="config.js?v=20260420group1"></script>
+  <script src="app.js?v=20260420group1"></script>
+  <script>
+    async function init(){
+      fillHeader();
+      const user=requireLogin();
+      if(!user) return;
+      if(!hasSettingsZoneAccess(user)){location.href='dashboard.html';return;}
+      try{ const r=await api('getPendingCounts',{userId:user.id}); setBadge('badge-registration',r.registrationCount); setBadge('badge-clock',r.clockCorrectionCount); setBadge('badge-leave',r.leaveCount); }catch(err){}
+    }
+    function setBadge(id, count){
+      const el=document.getElementById(id);
+      if(!el) return;
+      const n=Number(count||0)||0;
+      el.textContent=n>0?String(n):'';
+    }
+    function sum_(){ return Array.from(arguments).reduce((s,v)=>s+(Number(v||0)||0),0); }
+  </script>
+</body>
+</html>

@@ -5,7 +5,11 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>管理首頁</title>
   <link rel="stylesheet" href="style.css">
-  <style>.tile strong{display:flex;align-items:center;gap:8px;justify-content:space-between}.badge{display:inline-flex;min-width:22px;height:22px;padding:0 6px;border-radius:999px;background:#dc2626;color:#fff;font-size:12px;align-items:center;justify-content:center;font-weight:800}.badge:empty{display:none}</style>
+  <style>
+    .tile strong{display:flex;align-items:center;gap:8px;justify-content:space-between}
+    .badge{display:inline-flex;min-width:22px;height:22px;padding:0 6px;border-radius:999px;background:#dc2626;color:#fff;font-size:12px;align-items:center;justify-content:center;font-weight:800}
+    .badge:empty{display:none}
+  </style>
 </head>
 <body onload="init()">
   <div class="container">
@@ -19,27 +23,22 @@
           <button class="btn secondary" style="width:auto;padding:10px 14px" onclick="logout()">登出</button>
         </div>
       </div>
-          </div>
+    </div>
     <div id="lineBindArea" style="margin:16px 0"></div>
     <div class="grid">
-      <a class="tile" href="registration-approval.html"><strong>註冊審核 <span class="badge" id="badge-registration"></span></strong><span>查看新註冊員工申請，直接同意或駁回</span></a>
-      <a class="tile" href="leave.html"><strong>請假簽核 <span class="badge" id="badge-leave"></span></strong><span>查看待簽核請假單並直接同意 / 駁回</span></a>
-      <a class="tile" href="task.html"><strong>交辦事項管理 <span class="badge" id="badge-task"></span></strong><span>建立交辦事項、查看已建立任務與調整設定</span></a>
-      <a class="tile" href="routine.html"><strong>定期事項管理</strong><span>建立固定週期工作、修改負責人與週期設定</span></a>
+      <a class="tile" href="approval-hub.html"><strong>簽核 <span class="badge" id="badge-approval"></span></strong><span>整合註冊、打卡與請假簽核，先看總件數再進入個別處理</span></a>
+      <a class="tile" href="teacher-hub.html"><strong>外聘老師 <span class="badge" id="badge-teacher"></span></strong><span>整合外聘老師合約與拿貨紀錄，讓首頁更單純</span></a>
+      <a class="tile" href="items-hub.html"><strong>事項 <span class="badge" id="badge-items"></span></strong><span>整合交辦任務與定期事項，先看總件數再進入處理</span></a>
       <a class="tile" href="training-admin.html"><strong>教育訓練管理</strong><span>新增教材、上傳影片 / 文件 / 音檔與控制是否啟用</span></a>
       <a class="tile" href="schedule-admin.html"><strong>班表管理</strong><span>建立班表模板、指定員工套用班表、管理起訖日與無期限</span></a>
-      <a class="tile" href="clock-corrections-admin.html"><strong>打卡修正審核 <span class="badge" id="badge-clock"></span></strong><span>查看待審核補打卡 / 修正申請，直接同意或駁回</span></a>
-      <a class="tile" href="contract-admin.html"><strong>外聘老師合約管理 <span class="badge" id="badge-contract"></span></strong><span>查看年度簽署狀態、合約資料、PDF 與重寄紀錄</span></a>
-      <a class="tile" href="teacher-goods-admin.html"><strong>外聘老師拿貨管理 <span class="badge" id="badge-goods"></span></strong><span>依老師設定商品、老師價格、圖片，並回覆詢價 / 庫存需求</span></a>
       <a class="tile" href="leave-policy-admin.html"><strong>假勤制度設定</strong><span>管理假別、特休年資、喪假關係、年度假日摘要與全域請假規則</span></a>
       <a class="tile" href="salary-admin.html"><strong>薪資與投保設定 <span class="badge" id="badge-salary"></span></strong><span>只顯示專職與工讀，未完成設定人數會直接提醒你</span></a>
       <a class="tile" href="parttime-payroll-admin.html"><strong>工讀薪資結算</strong><span>查詢工讀生整月或指定區間工時、毛額、勞保自付額與應發金額</span></a>
       <a class="tile" href="quotation-contract-hub.html"><strong>估價單合約單</strong><span>先選擇估價單或合約，再進入對應模式進行填寫、預覽與列印</span></a>
-
     </div>
   </div>
-  <script src="config.js?v=20260418salary2"></script>
-  <script src="app.js?v=20260418salary2"></script>
+  <script src="config.js?v=20260420group1"></script>
+  <script src="app.js?v=20260420group1"></script>
   <script>
     async function init(){
       fillHeader();
@@ -50,18 +49,19 @@
       if(typeof renderLineBindPrompt_==='function') renderLineBindPrompt_('#lineBindArea');
       loadBadges(user);
     }
-      async function loadBadges(user){
+    async function loadBadges(user){
       try{
         const r=await api('getPendingCounts',{userId:user.id});
-        setBadge('badge-registration', r.registrationCount);
-        setBadge('badge-leave', r.leaveCount);
-        setBadge('badge-clock', r.clockCorrectionCount);
-        setBadge('badge-task', r.taskCount);
-        setBadge('badge-contract', r.contractCount);
-        setBadge('badge-goods', r.goodsInquiryCount);
+        const approval = sum_(r.registrationCount, r.leaveCount, r.clockCorrectionCount);
+        const teacher = sum_(r.contractCount, r.goodsInquiryCount);
+        const items = sum_(r.taskCount, r.routineCount);
+        setBadge('badge-approval', approval);
+        setBadge('badge-teacher', teacher);
+        setBadge('badge-items', items);
         setBadge('badge-salary', r.salaryCount);
       }catch(err){}
     }
+    function sum_(){ return Array.from(arguments).reduce((s,v)=>s+(Number(v||0)||0),0); }
     function setBadge(id, count){
       const el=document.getElementById(id);
       if(!el) return;

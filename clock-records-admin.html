@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>打卡紀錄查詢匯出</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .page-return-wrap{margin-bottom:16px}
+    .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
+    .toolbar{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-top:14px}
+    .toolbar .field{margin:0}
+    .action-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+    .summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-top:18px}
+    .summary-card{padding:14px;border-radius:16px;background:#f7fafc;border:1px solid #dbe5ef}
+    .summary-card strong{display:block;font-size:24px;margin-top:6px}
+    .table-wrap{margin-top:18px;overflow:auto;border:1px solid #e5e7eb;border-radius:16px;background:#fff}
+    table{width:100%;border-collapse:collapse;min-width:980px}
+    th,td{padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:left;vertical-align:top;font-size:14px}
+    th{background:#eef4fb;font-weight:800;position:sticky;top:0;z-index:1}
+    td.time-cell{font-weight:800;text-align:center;white-space:nowrap}
+    td.center{text-align:center;white-space:nowrap}
+    td.note-cell{min-width:220px;white-space:normal}
+    .empty-box{padding:28px 18px;text-align:center;color:#64748b}
+    .meta-line{display:flex;gap:12px;flex-wrap:wrap;color:#64748b;margin-top:10px}
+  </style>
+</head>
+<body onload="init()">
+  <div class="container">
+    <div class="page-return-wrap"><a class="btn page-return-btn" href="approval-hub.html">返回簽核</a></div>
+    <div class="card">
+      <div class="topbar">
+        <div class="header" style="margin:0">
+          <h1 class="title" style="margin:0">打卡紀錄查詢匯出</h1>
+          <div class="welcome">歡迎 <span data-user-name></span></div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn secondary" style="width:auto;padding:10px 14px" onclick="resetFilters()">清空條件</button>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <div class="field">
+          <label>員工</label>
+          <select id="employeeId"></select>
+        </div>
+        <div class="field">
+          <label>開始日期</label>
+          <input id="startDate" type="date">
+        </div>
+        <div class="field">
+          <label>結束日期</label>
+          <input id="endDate" type="date">
+        </div>
+        <div class="field">
+          <label>狀態</label>
+          <select id="statusFilter">
+            <option value="">全部</option>
+            <option value="正常">正常</option>
+            <option value="遲到">遲到</option>
+            <option value="補打卡">補打卡</option>
+            <option value="特殊打卡">特殊打卡</option>
+            <option value="已被補登修正">已被補登修正</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>打卡動作</label>
+          <select id="actionFilter">
+            <option value="">全部</option>
+            <option value="上班打卡">上班打卡</option>
+            <option value="下班打卡">下班打卡</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>打卡方式</label>
+          <select id="clockTypeFilter">
+            <option value="">全部</option>
+            <option value="標準打卡">標準打卡</option>
+            <option value="特殊打卡">特殊打卡</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="action-row">
+        <button class="btn" id="searchBtn" onclick="searchRows()">查詢紀錄</button>
+        <button class="btn secondary" id="exportBtn" onclick="exportExcel()">匯出 Excel（A4列印版）</button>
+      </div>
+
+      <div id="msg" class="hint" style="margin-top:14px"></div>
+      <div id="metaLine" class="meta-line"></div>
+
+      <div class="summary-grid" id="summaryGrid">
+        <div class="summary-card"><div>查詢筆數</div><strong id="sumTotal">0</strong></div>
+        <div class="summary-card"><div>遲到筆數</div><strong id="sumLate">0</strong></div>
+        <div class="summary-card"><div>補登筆數</div><strong id="sumSupplement">0</strong></div>
+        <div class="summary-card"><div>特殊打卡筆數</div><strong id="sumSpecial">0</strong></div>
+      </div>
+
+      <div class="table-wrap" id="tableWrap">
+        <div class="empty-box">請先選擇員工與日期區間後查詢。</div>
+      </div>
+    </div>
+  </div>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+  <script>
+    let currentUser = null;
+    let employeeOptions = [];
+    let lastResult = null;
+
+    function setStatus(text, isError){
+      const el = qs('#msg');
+      el.textContent = text || '';
+      el.classList.toggle('error', !!isError);
+    }
+    function fillSummary(summary){
+      const data = summary || {};
+      qs('#sumTotal').textContent = String(Number(data.totalCount||0)||0);
+      qs('#sumLate').textContent = String(Number(data.lateCount||0)||0);
+      qs('#sumSupplement').textContent = String(Number(data.supplementCount||0)||0);
+      qs('#sumSpecial').textContent = String(Number(data.specialCount||0)||0);
+    }
+    function renderMetaLine(res){
+      const el = qs('#metaLine');
+      if(!res){ el.innerHTML = ''; return; }
+      const bits = [];
+      if(res.employeeName) bits.push(`員工：${escapeHtml(res.employeeName)}`);
+      if(res.employeeId) bits.push(`員工ID：${escapeHtml(res.employeeId)}`);
+      if(res.startDate && res.endDate) bits.push(`查詢區間：${escapeHtml(res.startDate)} ～ ${escapeHtml(res.endDate)}`);
+      el.innerHTML = bits.map(x=>`<span>${x}</span>`).join('');
+    }
+    function renderRows(rows){
+      const list = Array.isArray(rows) ? rows : [];
+      const wrap = qs('#tableWrap');
+      if(!list.length){
+        wrap.innerHTML = '<div class="empty-box">此區間沒有打卡紀錄。</div>';
+        return;
+      }
+      wrap.innerHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th>日期</th>
+              <th>打卡時間</th>
+              <th>打卡動作</th>
+              <th>狀態</th>
+              <th>打卡方式</th>
+              <th>遲到分鐘</th>
+              <th>是否補登</th>
+              <th>備註</th>
+              <th>來源IP</th>
+              <th>建立時間</th>
+              <th>最後更新時間</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${list.map(r=>`
+              <tr>
+                <td class="center">${escapeHtml(r.date||'')}</td>
+                <td class="time-cell">${escapeHtml(r.time||'')}</td>
+                <td class="center">${escapeHtml(r.actionName||'')}</td>
+                <td class="center">${escapeHtml(r.statusLabel||r.status||'')}</td>
+                <td class="center">${escapeHtml(r.clockType||'')}</td>
+                <td class="center">${escapeHtml(String(r.lateMinutes||0))}</td>
+                <td class="center">${escapeHtml(r.isSupplement||'')}</td>
+                <td class="note-cell">${escapeHtml(r.note||'')}</td>
+                <td class="center">${escapeHtml(r.sourceIp||'')}</td>
+                <td class="center">${escapeHtml(r.createdAt||'')}</td>
+                <td class="center">${escapeHtml(r.updatedAt||'')}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>`;
+    }
+    function getPayload(){
+      return {
+        userId: currentUser.id,
+        employeeId: qs('#employeeId').value,
+        startDate: qs('#startDate').value,
+        endDate: qs('#endDate').value,
+        status: qs('#statusFilter').value,
+        actionName: qs('#actionFilter').value,
+        clockType: qs('#clockTypeFilter').value
+      };
+    }
+    function validatePayload(payload){
+      if(!payload.employeeId) throw new Error('請先選擇員工。');
+      if(!payload.startDate || !payload.endDate) throw new Error('請先選擇查詢起訖日期。');
+      if(payload.endDate < payload.startDate) throw new Error('結束日期不能早於開始日期。');
+    }
+    async function init(){
+      fillHeader();
+      currentUser = requireLogin();
+      if(!currentUser) return;
+      if(!hasSettingsZoneAccess(currentUser)){ location.href='dashboard.html'; return; }
+      await loadEmployees();
+      const today = new Date();
+      const start = new Date(today.getFullYear(), today.getMonth(), 1);
+      qs('#startDate').value = start.toISOString().slice(0,10);
+      qs('#endDate').value = today.toISOString().slice(0,10);
+      fillSummary({});
+    }
+    async function loadEmployees(){
+      setStatus('讀取員工名單中...');
+      try{
+        const r = await api('getEmployeeOptions', { userId: currentUser.id });
+        employeeOptions = Array.isArray(r.rows) ? r.rows : [];
+        const select = qs('#employeeId');
+        select.innerHTML = '<option value="">請選擇員工</option>' + employeeOptions.map(emp=>`<option value="${escapeHtml(emp.id||emp.employeeId||'')}">${escapeHtml((emp.name||emp.employeeName||'') + (emp.identityLabel ? '｜' + emp.identityLabel : ''))}</option>`).join('');
+        setStatus('');
+      }catch(err){
+        setStatus(err.message || '讀取員工名單失敗', true);
+      }
+    }
+    async function searchRows(){
+      const payload = getPayload();
+      try{
+        validatePayload(payload);
+      }catch(err){
+        setStatus(err.message || '查詢條件不完整', true);
+        return;
+      }
+      const btn = qs('#searchBtn');
+      btn.disabled = true;
+      setStatus('查詢中...');
+      try{
+        const r = await api('getAdminClockRecords', payload);
+        lastResult = r;
+        fillSummary(r.summary || {});
+        renderMetaLine(r);
+        renderRows(r.rows || []);
+        setStatus(`查詢完成，共 ${Number((r.summary||{}).totalCount||0)||0} 筆。`);
+      }catch(err){
+        setStatus(err.message || '查詢失敗', true);
+      }finally{
+        btn.disabled = false;
+      }
+    }
+    async function exportExcel(){
+      const payload = getPayload();
+      try{
+        validatePayload(payload);
+      }catch(err){
+        setStatus(err.message || '匯出條件不完整', true);
+        return;
+      }
+      const btn = qs('#exportBtn');
+      btn.disabled = true;
+      setStatus('匯出中，請稍候...');
+      try{
+        const r = await api('exportAdminClockRecordsExcel', payload);
+        if(r.downloadUrl) window.open(r.downloadUrl, '_blank');
+        else if(r.fileUrl) window.open(r.fileUrl, '_blank');
+        setStatus(`Excel 已建立：${r.fileName || '打卡紀錄報表'}`);
+      }catch(err){
+        setStatus(err.message || '匯出失敗', true);
+      }finally{
+        btn.disabled = false;
+      }
+    }
+    function resetFilters(){
+      qs('#employeeId').value = '';
+      qs('#statusFilter').value = '';
+      qs('#actionFilter').value = '';
+      qs('#clockTypeFilter').value = '';
+      lastResult = null;
+      renderMetaLine(null);
+      fillSummary({});
+      qs('#tableWrap').innerHTML = '<div class="empty-box">請先選擇員工與日期區間後查詢。</div>';
+      setStatus('');
+    }
+    function escapeHtml(v){return String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+  </script>
+</body>
+</html>

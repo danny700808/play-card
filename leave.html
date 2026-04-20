@@ -137,8 +137,8 @@ function applyLeaveMode(){
   qs('#pageHint').textContent = leaveApprovalMode
     ? '這一頁只負責簽核員工送出的請假申請與修改後重送的請假單。'
     : '';
-  qs('#leaveHomeLink').href = leaveApprovalMode ? 'settings.html' : userHomeHref(currentUser);
-  qs('#leaveHomeLink').textContent = leaveApprovalMode ? '返回管理首頁' : userHomeLabel(currentUser);
+  qs('#leaveHomeLink').href = leaveApprovalMode ? 'approval-hub.html' : userHomeHref(currentUser);
+  qs('#leaveHomeLink').textContent = leaveApprovalMode ? '返回簽核' : userHomeLabel(currentUser);
 }
 
 function localDateInputValue(){

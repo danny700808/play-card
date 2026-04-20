@@ -304,8 +304,8 @@
       qs('#adminBlock').classList.toggle('hidden', !routineAdminMode);
       qs('#staffBlock').classList.toggle('hidden', routineAdminMode);
       qs('#routinePageTitle').textContent = routineAdminMode ? '定期事項設定' : '定期事項';
-      qs('#routineHomeLink').href = routineAdminMode ? 'settings.html' : userHomeHref(currentUser);
-      qs('#routineHomeLink').textContent = routineAdminMode ? '返回管理首頁' : userHomeLabel(currentUser);
+      qs('#routineHomeLink').href = routineAdminMode ? 'items-hub.html' : userHomeHref(currentUser);
+      qs('#routineHomeLink').textContent = routineAdminMode ? '返回事項' : userHomeLabel(currentUser);
     }
 
     function fillMonthDays() {

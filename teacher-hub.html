@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>外聘老師</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .tile strong{display:flex;align-items:center;gap:8px;justify-content:space-between}
+    .badge{display:inline-flex;min-width:22px;height:22px;padding:0 6px;border-radius:999px;background:#dc2626;color:#fff;font-size:12px;align-items:center;justify-content:center;font-weight:800}
+    .badge:empty{display:none}
+    .page-return-wrap{margin-bottom:16px}
+    .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
+  </style>
+</head>
+<body onload="init()">
+  <div class="container">
+    <div class="page-return-wrap"><a class="btn page-return-btn" href="settings.html">返回管理首頁</a></div>
+    <div class="card">
+      <div class="topbar">
+        <div class="header" style="margin:0">
+          <h1 class="title" style="margin:0">外聘老師</h1>
+          <div class="welcome">整合外聘老師合約與拿貨紀錄</div>
+        </div>
+      </div>
+      <div class="grid" style="margin-top:18px">
+<a class="tile" href="contract-admin.html"><strong>合約簽署 <span class="badge" id="badge-contract"></span></strong><span>查看年度簽署狀態、合約資料、PDF 與重寄紀錄</span></a>
+<a class="tile" href="teacher-goods-admin.html"><strong>拿貨紀錄 <span class="badge" id="badge-goods"></span></strong><span>管理商品、回覆詢價與追蹤外聘老師拿貨相關事項</span></a>
+</div>
+    </div>
+  </div>
+  <script src="config.js?v=20260420group1"></script>
+  <script src="app.js?v=20260420group1"></script>
+  <script>
+    async function init(){
+      fillHeader();
+      const user=requireLogin();
+      if(!user) return;
+      if(!hasSettingsZoneAccess(user)){location.href='dashboard.html';return;}
+      try{ const r=await api('getPendingCounts',{userId:user.id}); setBadge('badge-contract',r.contractCount); setBadge('badge-goods',r.goodsInquiryCount); }catch(err){}
+    }
+    function setBadge(id, count){
+      const el=document.getElementById(id);
+      if(!el) return;
+      const n=Number(count||0)||0;
+      el.textContent=n>0?String(n):'';
+    }
+    function sum_(){ return Array.from(arguments).reduce((s,v)=>s+(Number(v||0)||0),0); }
+  </script>
+</body>
+</html>

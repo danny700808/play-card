@@ -144,7 +144,17 @@
       .task-dual-section{padding:14px}
     }
 
-</style>
+
+    .task-loading-overlay{position:fixed;inset:0;background:rgba(15,23,42,.28);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px}
+    .task-loading-overlay.hidden{display:none}
+    .task-loading-card{width:min(420px,100%);background:#fff;border-radius:22px;padding:20px 18px;box-shadow:0 24px 60px rgba(15,23,42,.18)}
+    .task-loading-title{font-size:18px;font-weight:900;color:#203040;margin:0 0 8px}
+    .task-loading-text{font-size:14px;color:#526174;margin:0 0 12px;line-height:1.7}
+    .task-loading-track{width:100%;height:10px;border-radius:999px;background:#e7edf5;overflow:hidden}
+    .task-loading-bar{height:100%;width:0%;background:linear-gradient(90deg,#6fa8ff,#3b82f6);transition:width .2s ease}
+    .task-loading-meta{display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:12px;color:#6b7280;font-weight:700}
+
+  </style>
 </head>
 <body onload="init()">
   <div class="container">
@@ -158,6 +168,15 @@
         
       </div>
       <div id="msg" class="message"></div>
+
+      <div id="taskLoadingOverlay" class="task-loading-overlay hidden" aria-live="polite" aria-busy="true">
+        <div class="task-loading-card">
+          <div class="task-loading-title" id="taskLoadingTitle">任務資料讀取中</div>
+          <p class="task-loading-text" id="taskLoadingText">正在整理交辦內容、附件與完成資訊…</p>
+          <div class="task-loading-track"><div class="task-loading-bar" id="taskLoadingBar"></div></div>
+          <div class="task-loading-meta"><span id="taskLoadingPercent">0%</span><span id="taskLoadingStep">準備中</span></div>
+        </div>
+      </div>
 
       <div id="teacherContractBanner" class="card hidden" style="margin-top:14px;border:1px solid #f5d08a;background:#fff8e8">
         <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
@@ -303,8 +322,8 @@
       qs('#adminBlock').style.display = taskAdminMode ? '' : 'none';
       qs('#staffBlock').style.display = taskAdminMode ? 'none' : '';
       qs('#taskPageTitle').textContent = taskAdminMode ? '交辦事項設定' : '交辦事項';
-      qs('#taskHomeLink').href = taskAdminMode ? 'settings.html' : userHomeHref(currentUser);
-      qs('#taskHomeLink').textContent = taskAdminMode ? '返回管理首頁' : userHomeLabel(currentUser);
+      qs('#taskHomeLink').href = taskAdminMode ? 'items-hub.html' : userHomeHref(currentUser);
+      qs('#taskHomeLink').textContent = taskAdminMode ? '返回事項' : userHomeLabel(currentUser);
       
     }
 
@@ -373,7 +392,15 @@
     function mediaPairs(urls,names){
       const u=Array.isArray(urls)?urls.filter(Boolean):[];
       const n=Array.isArray(names)?names:[];
-      return u.map((url,idx)=>({url,name:n[idx]||`附件 ${idx+1}`}));
+      return u.map((entry,idx)=>{
+        if(entry && typeof entry==='object' && !Array.isArray(entry)){
+          return {
+            url:String(entry.url||''),
+            name:String(entry.name||n[idx]||`附件 ${idx+1}`)
+          };
+        }
+        return {url:String(entry||''),name:String(n[idx]||`附件 ${idx+1}`)};
+      }).filter(x=>x.url);
     }
 
     function renderImageGallery(urls,names){
@@ -448,9 +475,9 @@
     }
 
     function renderAdminTaskDetail(x){
-      const mediaDoneImages = renderImageGallery(x.donePhotoUrls||[], x.donePhotoNames||[]);
-      const mediaDoneVideos = renderVideoPlayers(mediaPairs(x.doneVideoUrls||[], x.doneVideoNames||[]), '完成影片');
-      const mediaDoneAudios = renderAudioPlayers(mediaPairs(x.doneAudioUrls||[], x.doneAudioNames||[]), '完成錄音');
+      const mediaDoneImages = renderImageGallery(x.donePhotoUrls||x.completeImageUrls||[], x.donePhotoNames||x.completeImageNames||[]);
+      const mediaDoneVideos = renderVideoPlayers(mediaPairs(x.doneVideoUrls||x.completeVideoUrls||[], x.doneVideoNames||x.completeVideoNames||[]), '完成影片');
+      const mediaDoneAudios = renderAudioPlayers(mediaPairs(x.doneAudioUrls||x.completeAudioUrls||[], x.doneAudioNames||x.completeAudioNames||[]), '完成錄音');
       const mediaDoneFiles = renderMediaButtons(mediaPairs(x.doneFileUrls||[], x.doneFileNames||[]), '完成文件');
       const redoAudio = renderAudioPlayers(mediaPairs(x.redoAudioUrls||[], x.redoAudioNames||[]), '需重新完成說明');
       return `
@@ -702,22 +729,65 @@
       if(box) setMsg(box, r.ok ? '提醒已更新' : (r.message||'提醒更新失敗'), !r.ok);
     }
 
+    let taskLoadingTimer = 0;
+    function showTaskLoading(title='任務資料讀取中', text='正在整理交辦內容、附件與完成資訊…'){
+      const overlay=qs('#taskLoadingOverlay');
+      if(!overlay) return;
+      qs('#taskLoadingTitle').textContent=title;
+      qs('#taskLoadingText').textContent=text;
+      qs('#taskLoadingBar').style.width='8%';
+      qs('#taskLoadingPercent').textContent='8%';
+      qs('#taskLoadingStep').textContent='開始讀取';
+      overlay.classList.remove('hidden');
+      clearInterval(taskLoadingTimer);
+      let progress=8;
+      taskLoadingTimer=setInterval(()=>{
+        progress=Math.min(progress + (progress<55?9:(progress<78?5:2)), 90);
+        qs('#taskLoadingBar').style.width=progress+'%';
+        qs('#taskLoadingPercent').textContent=Math.round(progress)+'%';
+        qs('#taskLoadingStep').textContent=progress<45?'讀取任務資料':(progress<72?'整理附件內容':'建立畫面中');
+      }, 180);
+    }
+    function updateTaskLoading(progress, step){
+      const overlay=qs('#taskLoadingOverlay');
+      if(!overlay || overlay.classList.contains('hidden')) return;
+      const p=Math.max(0, Math.min(Number(progress||0),100));
+      qs('#taskLoadingBar').style.width=p+'%';
+      qs('#taskLoadingPercent').textContent=Math.round(p)+'%';
+      if(step) qs('#taskLoadingStep').textContent=step;
+    }
+    function hideTaskLoading(){
+      const overlay=qs('#taskLoadingOverlay');
+      if(!overlay) return;
+      clearInterval(taskLoadingTimer);
+      updateTaskLoading(100,'完成');
+      setTimeout(()=>overlay.classList.add('hidden'), 180);
+    }
+
     async function loadTasks(){
       const user=currentUser||requireLogin();
       const requestRole = taskAdminMode ? 'admin' : 'staff';
-      const r=await api('getTasks',{userId:user.id,email:user.email,role:requestRole});
-      const rows=r.rows||[];
-      if(taskAdminMode){
-        window.__adminTaskRows = rows.slice();
-        renderAdminTaskList(window.__adminTaskRows);
-        qs('#staffBlock').style.display='none';
-      }else{
-        qs('#list').innerHTML = rows.filter(x=>x.status!=='已完成').map(x=>renderTaskRow(x,false,user)).join('') || '<div class="muted">目前沒有任務</div>';
-      }
-      const taskId=new URLSearchParams(location.search).get('taskId');
-      if(taskId){
-        const el=qs('#task_'+taskId);
-        if(el){el.scrollIntoView({behavior:'smooth', block:'start'}); el.classList.add('focus-task'); setTimeout(()=>el.classList.remove('focus-task'),2200);}
+      showTaskLoading('任務資料讀取中', '正在整理交辦內容、附件與完成資訊…');
+      try{
+        updateTaskLoading(18,'向系統取得任務');
+        const r=await api('getTasks',{userId:user.id,email:user.email,role:requestRole});
+        updateTaskLoading(58,'整理任務附件');
+        const rows=r.rows||[];
+        if(taskAdminMode){
+          window.__adminTaskRows = rows.slice();
+          renderAdminTaskList(window.__adminTaskRows);
+          qs('#staffBlock').style.display='none';
+        }else{
+          qs('#list').innerHTML = rows.filter(x=>x.status!=='已完成').map(x=>renderTaskRow(x,false,user)).join('') || '<div class="muted">目前沒有任務</div>';
+        }
+        updateTaskLoading(88,'套用畫面');
+        const taskId=new URLSearchParams(location.search).get('taskId');
+        if(taskId){
+          const el=qs('#task_'+taskId);
+          if(el){el.scrollIntoView({behavior:'smooth', block:'start'}); el.classList.add('focus-task'); setTimeout(()=>el.classList.remove('focus-task'),2200);}
+        }
+      } finally {
+        hideTaskLoading();
       }
     }
 
