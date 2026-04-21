@@ -11,9 +11,7 @@
       --line:#d9e2ef;
       --text:#22364d;
       --muted:#70829a;
-      --soft:#f2f5f9;
       --accent:#1f7a5a;
-      --danger:#b42318;
       --shadow:0 10px 28px rgba(25,46,89,.06);
       --radius:30px;
     }
@@ -23,50 +21,48 @@
     .hero{display:flex;justify-content:space-between;align-items:center;gap:20px;background:var(--card);border:1px solid var(--line);border-radius:30px;padding:24px 22px;box-shadow:var(--shadow);flex-wrap:wrap}
     .hero-main h1{margin:0;font-size:28px;line-height:1.2;color:#18314a;font-weight:900}
     .welcome{margin-top:8px;font-size:20px;font-weight:800;color:#24384f}
-    .hero-tools{display:flex;align-items:stretch;gap:12px;flex-wrap:wrap;justify-content:flex-end}
-    .hero-tools #lineBindArea{display:flex;align-items:stretch}
-    .hero-tools #lineBindArea:empty{display:none}
-    .tool-card{height:104px;border:1px solid var(--line);border-radius:24px;background:#f5f8fc;padding:14px 16px;display:flex;flex-direction:column;justify-content:space-between;text-decoration:none;color:inherit}
-    .profile-card{width:166px}
-    .logout-card{width:92px;align-items:center;justify-content:center;background:#eef2f6}
-    .tool-title{font-size:15px;font-weight:900;line-height:1.25;color:#18314a;text-align:center}
-    .tool-desc{font-size:13px;line-height:1.45;color:var(--muted);text-align:center}
-    .btn{border:none;border-radius:18px;padding:14px 18px;font-size:18px;font-weight:900;cursor:pointer;background:#e9eef5;color:#24384f}
-    .btn:disabled{opacity:.55;cursor:default}
-    .mini-btn{align-self:center;width:auto;padding:9px 14px;font-size:14px;border-radius:16px}
-    .logout-mini-btn{border:none;background:transparent;color:#24384f;font-size:16px;font-weight:900;cursor:pointer}
+    .hero-tools{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 98px;align-items:stretch;gap:12px;width:min(100%,460px)}
+    .tool-card,.line-compact-card{height:118px;border:1px solid var(--line);border-radius:24px;background:#f5f8fc;padding:12px 12px;display:flex;flex-direction:column;justify-content:space-between;text-decoration:none;color:inherit;width:100%;min-width:0}
+    .logout-card{align-items:center;justify-content:center}
+    .tool-title,.line-compact-title{font-size:15px;font-weight:900;line-height:1.25;color:#18314a;text-align:center;margin:0}
+    .tool-desc,.line-compact-status{font-size:13px;line-height:1.4;color:var(--muted);text-align:center;margin-top:6px}
+    .line-compact-status.is-on{color:var(--accent);font-weight:800}
+    .line-compact-status.is-off{color:#b42318;font-weight:800}
+    .btn,.line-compact-btn,.logout-mini-btn{align-self:center;display:inline-flex;align-items:center;justify-content:center;min-width:84px;padding:9px 14px;font-size:14px;border-radius:999px;background:var(--accent);color:#fff;border:none;font-weight:900;white-space:nowrap;text-decoration:none;cursor:pointer}
     .section{margin-top:18px}
-    .status{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:14px 16px;color:var(--muted)}
-    .status.error{color:var(--danger);border-color:#efc8c8;background:#fff6f6}
     .cards{display:grid;gap:18px}
-    .entry-card{display:flex;justify-content:space-between;align-items:center;gap:14px;text-decoration:none;color:inherit;background:var(--card);border:1px solid var(--line);border-radius:30px;padding:26px 30px;box-shadow:var(--shadow);min-height:132px;cursor:pointer}
-    .entry-card:hover{transform:translateY(-1px)}
-    .entry-copy{flex:1;text-align:center}
-    .entry-title{font-size:28px;line-height:1.2;font-weight:900;color:#18314a;margin:0 0 14px;text-align:center}
-    .entry-desc{font-size:18px;line-height:1.7;color:var(--muted);text-align:center}
-    .entry-count{min-width:72px;text-align:center;font-size:54px;line-height:1;font-weight:900;color:#bcc6d4}
-    .entry-count.done{font-size:20px;color:var(--accent);background:#ecf7f1;border-radius:999px;padding:12px 16px;min-width:92px}
-
-    .hero-tools .line-bind-mini{width:176px;min-height:104px;margin:0;padding:14px 16px;border-radius:24px;display:flex;flex-direction:column;justify-content:space-between;gap:8px;background:#f5f8fc;box-shadow:none}
-    .hero-tools .line-bind-mini-title{font-size:15px;line-height:1.2;text-align:center}
-    .hero-tools .line-bind-mini-status,.hero-tools .line-bind-mini-hint{font-size:13px;line-height:1.4;text-align:center}
-    .hero-tools .line-bind-mini-actions{justify-content:center}
-    .hero-tools .line-bind-mini .btn{padding:9px 14px;font-size:14px;border-radius:16px}
-    .hero-tools .line-bind-guide{text-align:left}
+    .entry-card{appearance:none;-webkit-appearance:none;width:100%;border:1px solid var(--line);background:var(--card);border-radius:30px;padding:28px 26px;box-shadow:var(--shadow);display:flex;align-items:center;justify-content:space-between;gap:20px;cursor:pointer;text-align:left}
+    .entry-copy{flex:1;min-width:0;text-align:center}
+    .entry-title{font-size:26px;line-height:1.2;font-weight:900;color:#18314a;margin:0 0 10px}
+    .entry-desc{font-size:17px;line-height:1.6;color:var(--muted);margin:0;text-align:center}
+    .entry-count{font-size:56px;line-height:1;font-weight:900;color:#c6cfdd;min-width:64px;text-align:center;flex:0 0 auto}
+    .entry-count.done{font-size:20px;color:var(--accent);padding:10px 18px;border-radius:999px;background:#e7f4ee;min-width:88px}
+    .status{padding:12px 14px;border-radius:18px;background:#eef5ff;color:#27405e;border:1px solid #d7e4f5}
+    .status.error{background:#fff1f0;color:#9f2d25;border-color:#f1d1cf}
+    .line-bind-modal{position:fixed;inset:0;background:rgba(19,34,54,.42);display:none;align-items:center;justify-content:center;padding:20px;z-index:9999}
+    .line-bind-modal.show{display:flex}
+    .line-bind-dialog{width:min(92vw,420px);background:#fff;border-radius:26px;border:1px solid var(--line);box-shadow:var(--shadow);padding:22px 20px}
+    .line-bind-dialog h3{margin:0 0 10px;font-size:22px;color:#18314a;text-align:center}
+    .line-bind-dialog p{margin:8px 0;font-size:15px;line-height:1.7;color:#506278}
+    .line-bind-code{margin-top:12px;border-radius:18px;background:#f5f8fc;border:1px dashed var(--line);padding:12px 14px;text-align:center;font-weight:900;color:#18314a;word-break:break-all}
+    .line-bind-dialog .actions{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin-top:16px}
+    .btn.secondary{background:#e9eef5;color:#24384f}
 
     @media (max-width:640px){
       .page{padding:14px 12px 28px}
-      .hero{padding:20px 18px;border-radius:24px}
+      .hero{padding:20px 16px;border-radius:24px}
       .hero-main{width:100%;text-align:center}
       .hero-main h1{font-size:24px}
       .welcome{font-size:19px}
-      .hero-tools{width:100%;justify-content:center}
-      .hero-tools .line-bind-mini{width:160px}
-      .profile-card{width:160px}
-      .logout-card{width:86px}
-      .entry-card{padding:24px 22px;min-height:122px;border-radius:26px;flex-direction:column;align-items:center}
-      .entry-title{font-size:24px;margin-bottom:10px}
-      .entry-desc{font-size:16px}
+      .hero-tools{width:100%;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 86px;gap:10px}
+      .tool-card,.line-compact-card{height:108px;border-radius:22px;padding:12px 10px}
+      .tool-title,.line-compact-title{font-size:13px}
+      .tool-desc,.line-compact-status{font-size:12px;line-height:1.35}
+      .btn,.line-compact-btn,.logout-mini-btn{min-width:68px;padding:8px 10px;font-size:13px}
+      .entry-card{padding:24px 22px;border-radius:26px;flex-direction:column;align-items:center}
+      .entry-copy{width:100%}
+      .entry-title{font-size:24px;margin-bottom:10px;text-align:center}
+      .entry-desc{font-size:16px;text-align:center}
       .entry-count{font-size:46px;min-width:58px}
       .entry-count.done{font-size:18px;min-width:84px}
     }
@@ -81,12 +77,12 @@
       </div>
       <div class="hero-tools">
         <div id="lineBindArea"></div>
-        <a class="tool-card profile-card" href="profile.html" id="openProfileBtn">
+        <a class="tool-card" href="profile.html" id="openProfileBtn">
           <div>
             <div class="tool-title">個人資料</div>
             <div class="tool-desc">查看與修改資料</div>
           </div>
-          <span class="btn mini-btn">查看</span>
+          <span class="btn">查看</span>
         </a>
         <div class="tool-card logout-card">
           <button class="logout-mini-btn" type="button" id="logoutBtn">登出</button>
@@ -133,109 +129,121 @@
     </section>
   </div>
 
+  <div class="line-bind-modal" id="lineBindModal" aria-hidden="true">
+    <div class="line-bind-dialog">
+      <h3>LINE 綁定</h3>
+      <p>1. 先加入官方 LINE 好友。</p>
+      <p>2. 複製綁定文字，到 LINE 聊天視窗貼上並送出。</p>
+      <div class="line-bind-code" id="lineBindCode"></div>
+      <div class="actions">
+        <button class="btn secondary" type="button" id="copyLineBindBtn">複製綁定文字</button>
+        <a class="btn" href="#" target="_blank" id="lineAddFriendBtn">加入 LINE</a>
+        <button class="btn secondary" type="button" id="closeLineBindBtn">關閉</button>
+      </div>
+    </div>
+  </div>
+
   <script src="config.js?v=20260413fix1"></script>
   <script src="app.js?v=20260413fix1"></script>
   <script>
-    function getTeacherUser(){
-      return (typeof getUser === 'function') ? getUser() : null;
+    function getTeacherUser(){ return (typeof getUser === 'function') ? getUser() : null; }
+    function getUserId(){ const user=getTeacherUser(); return (user && (user.id || user.userId || user.employeeId)) || localStorage.getItem('employeeUserId') || ''; }
+    function getOpenTargets(){ return { announcement:'announcements.html', todo:'task.html', contract:'contract.html', goods:'teacher-goods.html' }; }
+    function setStatus(message, isError){ const box=document.getElementById('statusBox'); box.textContent=message||''; box.className=isError?'status error':'status'; document.getElementById('statusSection').hidden=!message; }
+    async function postJson(action,payload){ const json=await api(action,payload||{}); if(!json.ok) throw new Error(json.message || '讀取失敗'); return json; }
+    function setCount(id, value, doneText){ const el=document.getElementById(id); const n=Number(value||0)||0; if(doneText && n<=0){ el.textContent=doneText; el.classList.add('done'); } else { el.textContent=String(n); el.classList.remove('done'); } }
+    function buildLineBindCommand(){ const user=getTeacherUser()||{}; const email=String(user.email||'').trim(); return email ? ('柚子綁定 ' + email) : ''; }
+    async function copyText(text){ if(!text) return; if(navigator.clipboard && navigator.clipboard.writeText){ await navigator.clipboard.writeText(text); return; } const input=document.createElement('textarea'); input.value=text; document.body.appendChild(input); input.select(); document.execCommand('copy'); input.remove(); }
+
+    async function renderCompactLineCard(){
+      const target=document.getElementById('lineBindArea');
+      if(!target) return;
+      const user=getTeacherUser()||{};
+      const hasLineId=!!String(user.lineUserId||'').trim();
+      const notifyOn=String(user.lineNotifyEnabled||'').trim()==='是' || user.lineNotifyEnabled===true;
+      const statusText=!hasLineId ? '尚未綁定' : '已綁定';
+      const btnText=!hasLineId ? '前往綁定' : (notifyOn ? '取消提醒' : '開啟提醒');
+      const btnClass=!hasLineId || !notifyOn ? 'line-compact-btn' : 'line-compact-btn secondary';
+      target.innerHTML = '<div class="line-compact-card">'
+        + '<div><p class="line-compact-title">LINE 綁定</p><p class="line-compact-status '+(!hasLineId?'is-off':'is-on')+'">'+statusText+'</p></div>'
+        + '<button class="'+btnClass+'" type="button" id="lineCardActionBtn">'+btnText+'</button>'
+        + '</div>';
+      const btn=target.querySelector('#lineCardActionBtn');
+      if(!btn) return;
+      btn.addEventListener('click', async function(){
+        if(!hasLineId){
+          const cmd=buildLineBindCommand();
+          document.getElementById('lineBindCode').textContent=cmd || '請先重新登入後再試';
+          try{
+            const links=await getPublicSystemLinksCached();
+            const addBtn=document.getElementById('lineAddFriendBtn');
+            addBtn.href=(links&&links.lineAddFriendUrl)||'#';
+            addBtn.style.pointerEvents=(links&&links.lineAddFriendUrl)?'auto':'none';
+            addBtn.style.opacity=(links&&links.lineAddFriendUrl)?'1':'.5';
+          }catch(e){}
+          document.getElementById('lineBindModal').classList.add('show');
+          document.getElementById('lineBindModal').setAttribute('aria-hidden','false');
+          return;
+        }
+        try{
+          btn.disabled=true;
+          const res=await setLineNotifyPreference_(!notifyOn, false);
+          if(res&&res.user&&typeof saveUser==='function') saveUser(res.user);
+          await renderCompactLineCard();
+        }catch(err){ alert(err.message||'LINE 設定更新失敗'); }
+        finally{ btn.disabled=false; }
+      });
     }
-    function getUserId(){
-      const user = getTeacherUser();
-      return (user && (user.id || user.userId || user.employeeId)) || localStorage.getItem('employeeUserId') || '';
+
+    function bindLineModal(){
+      const modal=document.getElementById('lineBindModal');
+      const closeBtn=document.getElementById('closeLineBindBtn');
+      const copyBtn=document.getElementById('copyLineBindBtn');
+      if(closeBtn) closeBtn.addEventListener('click', function(){ modal.classList.remove('show'); modal.setAttribute('aria-hidden','true'); });
+      if(modal) modal.addEventListener('click', function(e){ if(e.target===modal){ modal.classList.remove('show'); modal.setAttribute('aria-hidden','true'); }});
+      if(copyBtn) copyBtn.addEventListener('click', async function(){ try{ await copyText(document.getElementById('lineBindCode').textContent||''); copyBtn.textContent='已複製'; setTimeout(function(){ copyBtn.textContent='複製綁定文字'; },1200);}catch(e){} });
     }
-    function getOpenTargets(){
-      return {
-        announcement: 'announcements.html',
-        todo: 'task.html',
-        contract: 'contract.html',
-        goods: 'teacher-goods.html'
-      };
-    }
-    function setStatus(message, isError){
-      const box=document.getElementById('statusBox');
-      box.textContent=message||'';
-      box.className=isError ? 'status error' : 'status';
-      document.getElementById('statusSection').hidden=!message;
-    }
-    async function postJson(action,payload){
-      const json=await api(action,payload||{});
-      if(!json.ok) throw new Error(json.message || '讀取失敗');
-      return json;
-    }
-    function setCount(id, value, doneText){
-      const el=document.getElementById(id);
-      const n=Number(value||0)||0;
-      if(doneText && n<=0){
-        el.textContent=doneText;
-        el.classList.add('done');
-      }else{
-        el.textContent=String(n);
-        el.classList.remove('done');
-      }
-    }
+
     function renderHome(data){
       const user=getTeacherUser()||{};
       const profile=(data&&data.profile)||{};
       document.getElementById('teacherName').textContent='歡迎 ' + (profile.name || user.name || '老師');
-
       const counts=(data&&data.counts)||{};
       const contract=(data&&data.contract)||{};
       const goods=(data&&data.goods)||{};
-
       setCount('announcementCount', counts.announcements || 0, '完成');
       setCount('todoCount', counts.tasks || 0, '完成');
       setCount('contractCount', contract.pendingCount || (contract.signed ? 0 : 1), contract.signed ? '完成' : '1');
       setCount('goodsCount', goods.openInquiryCount || goods.newItemCount || goods.total || 0, '完成');
-
-      setStatus('', false);
     }
+
     async function loadHome(){
       const user=getTeacherUser();
-      if (user && typeof isExternalTeacher === 'function' && !isExternalTeacher(user)) {
-        window.location.href='dashboard.html';
-        return;
-      }
-      const userId=getUserId();
-      if(!userId){
-        setStatus('缺少 userId，請重新登入。', true);
-        return;
-      }
-      Promise.resolve().then(function(){
-        if(typeof renderLineBindPrompt_==='function') return renderLineBindPrompt_('#lineBindArea');
-      }).catch(function(){});
+      if(!user){ window.location.href='login.html'; return; }
       try{
-        const data=await postJson('getDashboardSummary', { userId, role:'external' });
-        try{
-          const annRes = await postJson('getAnnouncements',{ userId });
-          data.counts = data.counts || {};
-          data.counts.announcements = Array.isArray(annRes.rows) ? annRes.rows.length : 0;
-        }catch(e){}
-        renderHome(data);
+        await renderCompactLineCard();
+        let data={counts:{},contract:{},goods:{},profile:{name:user.name||''}};
+        try{ data = await postJson('getTeacherHomeData',{ userId:getUserId(), data }); }catch(e){}
+        renderHome(data || {});
+        setStatus('', false);
       }catch(err){
-        setStatus(err.message || '讀取失敗', true);
+        setStatus(err.message || '首頁讀取失敗', true);
       }
     }
-    function openPage(target){
-      const userId=getUserId();
-      const url=new URL(target, window.location.href);
-      if(userId) url.searchParams.set('userId', userId);
-      if(target.indexOf('contract.html')>=0) url.searchParams.set('source','home');
-      window.location.href=url.toString();
+
+    function bindActions(){
+      const targets=getOpenTargets();
+      const openPage=(url)=>{ window.location.href=url; };
+      const byId=(id, fn)=>{ const el=document.getElementById(id); if(el) el.addEventListener('click', fn); };
+      byId('openAnnouncementBtn', ()=>openPage(targets.announcement));
+      byId('openTodoBtn', ()=>openPage(targets.todo));
+      byId('openGoodsBtn', ()=>openPage(targets.goods));
+      byId('openContractBtn', ()=>openPage(targets.contract));
+      byId('logoutBtn', ()=>{ if(typeof logout==='function') logout(); else { localStorage.removeItem('employeeUser'); localStorage.removeItem('employeeUserId'); window.location.href='login.html'; } });
     }
-    document.getElementById('logoutBtn').addEventListener('click', function(){
-      if(typeof logout==='function'){ logout(); return; }
-      localStorage.removeItem('employeeUser');
-      localStorage.removeItem('employeeUserId');
-      window.location.href='index.html';
-    });
-    document.getElementById('openAnnouncementBtn').addEventListener('click', function(){ openPage(getOpenTargets().announcement); });
-    document.getElementById('openTodoBtn').addEventListener('click', function(){ openPage(getOpenTargets().todo); });
-    document.getElementById('openContractBtn').addEventListener('click', function(){ openPage(getOpenTargets().contract); });
-    document.getElementById('openGoodsBtn').addEventListener('click', function(){ openPage(getOpenTargets().goods); });
-    document.getElementById('openProfileBtn').addEventListener('click', function(event){
-      event.preventDefault();
-      openPage('profile.html');
-    });
+
+    bindLineModal();
+    bindActions();
     loadHome();
   </script>
 </body>
