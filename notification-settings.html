@@ -59,6 +59,13 @@
   <script src="app.js"></script>
   <script>
     let currentUser=null;
+
+    function withTimeout(promise, ms){
+      return Promise.race([
+        promise,
+        new Promise((_, reject)=>setTimeout(()=>reject(new Error('讀取逾時，請確認 GS 已重新部署且通知設定工作表已建立。')), ms))
+      ]);
+    }
     function makeCheck(name, checked){
       return `<label style="display:inline-flex;justify-content:center;width:100%"><input type="checkbox" data-key="${name}" ${checked?'checked':''}></label>`;
     }
@@ -70,7 +77,7 @@
       const box=document.getElementById('settingRows');
       box.innerHTML='<tr><td colspan="7" class="muted">讀取中...</td></tr>';
       try{
-        const res=await api('getNotificationSettings',{userId:currentUser.id});
+        const res=await withTimeout(api('getNotificationSettings',{userId:currentUser.id}), 12000);
         const rows=Array.isArray(res?.rows)?res.rows:[];
         if(!rows.length){
           box.innerHTML='<tr><td colspan="7" class="muted">目前沒有通知設定資料。</td></tr>';
@@ -110,7 +117,7 @@
           notifyManagerLine: !!document.querySelector(`input[data-key="managerLine:${idx}"]`)?.checked,
           enabled: !!document.querySelector(`input[data-key="enabled:${idx}"]`)?.checked
         }));
-        const res=await api('saveNotificationSettings',{userId:currentUser.id,rows});
+        const res=await withTimeout(api('saveNotificationSettings',{userId:currentUser.id,rows}), 12000);
         if(!res||res.ok===false) throw new Error(res&&res.message||'儲存失敗');
         setMsg(document.getElementById('msg'),res.message||'通知設定已儲存。',false);
         await initPage();
