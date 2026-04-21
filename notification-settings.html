@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>通知設定</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .nt-card{background:#fff;border:1px solid #e5e7eb;border-radius:18px;padding:16px}
+    .nt-table{width:100%;border-collapse:collapse}
+    .nt-table th,.nt-table td{padding:10px 8px;border-bottom:1px solid #e5e7eb;vertical-align:middle}
+    .nt-table th{font-size:13px;color:#475569;text-align:left}
+    .nt-table td{font-size:14px}
+    .nt-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap}
+    .pill{display:inline-block;padding:4px 10px;border-radius:999px;background:#eef2ff;color:#4338ca;font-size:12px;font-weight:700}
+    .muted{color:#64748b;font-size:13px}
+  </style>
+</head>
+<body onload="initPage()">
+  <div class="container">
+    <div class="card">
+      <div class="topbar">
+        <div>
+          <h1 class="title" style="margin:0">通知設定</h1>
+          <div class="welcome">用勾選方式決定每個事件要不要寄 Email、LINE，或通知主管</div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn secondary" style="width:auto;padding:10px 14px" onclick="history.back()">返回</button>
+          <button class="btn secondary" style="width:auto;padding:10px 14px" onclick="logout()">登出</button>
+        </div>
+      </div>
+      <div class="nt-card">
+        <div class="muted" style="margin-bottom:12px">LINE 只有在對方已綁定且啟用 LINE 通知時才會實際送出。</div>
+        <table class="nt-table">
+          <thead>
+            <tr>
+              <th style="width:180px">事件名稱</th>
+              <th style="width:110px">分類</th>
+              <th style="width:120px">寄 Email 給當事人</th>
+              <th style="width:120px">寄 LINE 給當事人</th>
+              <th style="width:100px">通知主管</th>
+              <th style="width:90px">啟用</th>
+            </tr>
+          </thead>
+          <tbody id="settingRows"></tbody>
+        </table>
+        <div class="nt-actions">
+          <button id="saveBtn" class="btn" style="width:auto;padding:10px 18px" onclick="saveAll()">儲存通知設定</button>
+        </div>
+        <div id="msg" class="message"></div>
+      </div>
+    </div>
+  </div>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+  <script>
+    let currentUser=null;
+    function makeCheck(name, checked){
+      return `<label style="display:inline-flex;justify-content:center;width:100%"><input type="checkbox" data-key="${name}" ${checked?'checked':''}></label>`;
+    }
+    async function initPage(){
+      fillHeader();
+      currentUser=requireLogin();
+      if(!currentUser) return;
+      if(!hasSettingsZoneAccess(currentUser)){ location.href='dashboard.html'; return; }
+      const box=document.getElementById('settingRows');
+      box.innerHTML='<tr><td colspan="6" class="muted">讀取中...</td></tr>';
+      try{
+        const res=await api('getNotificationSettings',{userId:currentUser.id});
+        const rows=Array.isArray(res?.rows)?res.rows:[];
+        box.innerHTML = rows.map((row,idx)=>`
+          <tr>
+            <td>${escapeHtml(row.eventName||'')}</td>
+            <td><span class="pill">${escapeHtml(row.category||'')}</span></td>
+            <td>${makeCheck(`email:${idx}`, !!row.sendEmailToActor)}</td>
+            <td>${makeCheck(`line:${idx}`, !!row.sendLineToActor)}</td>
+            <td>${makeCheck(`manager:${idx}`, !!row.notifyManager)}</td>
+            <td>${makeCheck(`enabled:${idx}`, !!row.enabled)}</td>
+          </tr>
+        `).join('');
+        box.dataset.rows = JSON.stringify(rows);
+      }catch(err){
+        box.innerHTML='<tr><td colspan="6" class="error">讀取失敗：'+escapeHtml(err.message||String(err))+'</td></tr>';
+      }
+    }
+    async function saveAll(){
+      const btn=document.getElementById('saveBtn');
+      btn.disabled=true;
+      const old=btn.textContent;
+      btn.textContent='儲存中...';
+      try{
+        const rows=JSON.parse(document.getElementById('settingRows').dataset.rows||'[]');
+        const payload=rows.map((row,idx)=>({
+          eventCode: row.eventCode,
+          eventName: row.eventName,
+          category: row.category,
+          sendEmailToActor: document.querySelector(`[data-key="email:${idx}"]`)?.checked ? '是':'否',
+          sendLineToActor: document.querySelector(`[data-key="line:${idx}"]`)?.checked ? '是':'否',
+          notifyManager: document.querySelector(`[data-key="manager:${idx}"]`)?.checked ? '是':'否',
+          enabled: document.querySelector(`[data-key="enabled:${idx}"]`)?.checked ? '是':'否'
+        }));
+        await api('saveNotificationSettings',{userId:currentUser.id, rows:payload});
+        setMsg(document.getElementById('msg'),'通知設定已儲存');
+      }catch(err){
+        setMsg(document.getElementById('msg'),'儲存失敗：'+(err.message||String(err)), true);
+      }finally{
+        btn.disabled=false;
+        btn.textContent=old;
+      }
+    }
+  </script>
+</body>
+</html>
