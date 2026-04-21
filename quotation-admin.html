@@ -44,7 +44,7 @@
     .signature-box{border:1px solid #94a3b8;border-radius:14px;overflow:hidden;background:#fff;min-height:196px}
     .signature-box .hd{background:#f8fafc;padding:8px 10px;font-weight:800;border-bottom:1px solid #cbd5e1;text-align:center}
     .signature-box .bd{position:relative;padding:14px;min-height:156px}
-    .stamp-blue{position:absolute;left:12px;bottom:22px;width:4cm;height:3.5cm;object-fit:contain}
+    .stamp-blue{position:absolute;left:12px;bottom:22px;width:151px;height:132px;object-fit:contain}
     .stamp-red{position:absolute;left:168px;bottom:42px;width:57px;height:57px;object-fit:contain}
     .sign-line{position:absolute;left:24px;right:24px;bottom:18px;border-top:1px solid #64748b}
     .send-box{margin-top:14px;padding:12px;border:1px dashed #cbd5e1;border-radius:14px;background:#fbfdff}
@@ -65,7 +65,7 @@
       .layout{grid-template-columns:1fr}
       .quote-preview{position:static}
       .top-grid,.row2,.bottom-wrap,.signature-grid{grid-template-columns:1fr}
-      .stamp-blue{width:4cm;height:3.5cm}
+      .stamp-blue{width:136px;height:119px}
       .stamp-red{left:150px;bottom:40px}
     }
 </style>
@@ -79,6 +79,7 @@
         <div>
           <h1 class="title" style="margin:0">估價單管理</h1>
           <div class="welcome">歡迎 <span data-user-name></span></div>
+          <div id="editorModeBar" class="muted-sm" style="margin-top:6px"></div>
         </div>
         <button class="btn secondary" style="width:auto;padding:10px 14px" onclick="logout()">登出</button>
       </div>
@@ -127,8 +128,9 @@
             <div id="items" class="items-wrap"></div>
 
             <div class="mini-actions" style="margin-top:16px">
-              <button id="saveBtn" class="btn" type="button" onclick="saveQuotation()">儲存估價單</button>
-              <button class="btn secondary" type="button" onclick="resetForm(true)">新增空白估價單</button>
+              <button id="saveBtn" class="btn" type="button" onclick="saveQuotation(false,false)">儲存估價單</button>
+              <button id="saveAsNewBtn" class="btn secondary" type="button" onclick="saveQuotation(true)">儲存新估價單</button>
+              <button id="newBlankQuoteBtn" class="btn secondary" type="button" onclick="createNewBlankQuotation()">新增空白估價單</button>
               <button id="savePdfBtn" class="btn secondary" type="button" onclick="savePdfOnly()">儲存 PDF</button>
               <button id="printBtn" class="btn secondary" type="button" onclick="printQuotation()">列印</button>
             </div>
@@ -205,7 +207,7 @@ Email：<span id="pvCustomerEmail"></span>
               <div class="signature-box">
                 <div class="hd">廠商簽核</div>
                 <div class="bd">
-                  <img class="stamp-blue" src="blue_invoice_stamp_transparent_exact_v2.png" alt="公司章" onerror="this.style.display='none'">
+                  <img class="stamp-blue" src="blue_stamp_transparent.png" alt="公司章" onerror="this.style.display='none'">
                   <img class="stamp-red" src="red_stamp_transparent.png" alt="負責人章" onerror="this.style.display='none'">
                   <div class="sign-line"></div>
                 </div>
@@ -229,6 +231,9 @@ Email：<span id="pvCustomerEmail"></span>
   <script>
     let currentUser=null;
     let editingQuotationId='';
+    let currentRootQuotationId='';
+    let currentVersionNo=0;
+    let currentVersionName='原始版';
     let quotationRows=[];
     const vendorText=`名稱：尚品樂器行（對外名稱：柚子樂器）\n統編：99680937\n電話：04-25227893\nEmail：danny700808@gmail.com\n地址：台中市豐原區圓環東路347號四樓\n銀行：台新銀行 812 逢甲分行\n戶名：尚品樂器行黃銘廷\n帳號：20510100004001`;
 
@@ -254,7 +259,8 @@ Email：<span id="pvCustomerEmail"></span>
         </div>`;
     }
     function escapeHtml(v=''){return String(v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-    function addItem(item){ qs('#items').insertAdjacentHTML('beforeend', itemHtml(item)); bindItemEvents(); renderPreview(); }
+    function addItem(item){ qs('#items').insertAdjacentHTML('beforeend', itemHtml(item)); bindItemEvents(); prog.set(66,'整理預覽中');
+        renderPreview(); }
     function removeItem(btn){ const card=btn.closest('.item-card'); if(card) card.remove(); renderPreview(); }
     function bindItemEvents(){ qsa('#items input').forEach(el=>{ el.oninput=renderPreview; }); }
     function getItems(){ return qsa('#items .item-card').map((card,idx)=>({ sort:idx+1, section:card.querySelector('.item-section').value.trim(), name:card.querySelector('.item-name').value.trim(), spec:card.querySelector('.item-spec').value.trim(), unit:card.querySelector('.item-unit').value.trim(), qty:Number(card.querySelector('.item-qty').value||0), price:Number(card.querySelector('.item-price').value||0) })); }
@@ -262,6 +268,9 @@ Email：<span id="pvCustomerEmail"></span>
       const items=getItems();
       return {
         quotationId: editingQuotationId,
+        rootQuotationId: currentRootQuotationId,
+        versionNo: currentVersionNo,
+        versionName: currentVersionName,
         quoteNo: qs('#quoteNo').value.trim(),
         quoteDate: qs('#quoteDate').value || todayStr(),
         customerTitle: qs('#customerTitle').value.trim(),
@@ -310,6 +319,9 @@ Email：<span id="pvCustomerEmail"></span>
     }
     function resetForm(withDefaults=false){
       editingQuotationId='';
+      currentRootQuotationId='';
+      currentVersionNo=0;
+      currentVersionName='原始版';
       qs('#quoteNo').value='';
       qs('#quoteDate').value=todayStr();
       qs('#customerTitle').value='';
@@ -328,10 +340,14 @@ Email：<span id="pvCustomerEmail"></span>
       qs('#items').innerHTML='';
       if(withDefaults!==false){ addItem({section:'音響設備',name:'主喇叭',spec:'12 吋主動式喇叭',unit:'組',qty:2,price:3500}); addItem({section:'音響設備',name:'無線麥克風',spec:'手握式',unit:'支',qty:2,price:800}); }
       renderPreview();
+      refreshEditorMode();
       setLocalMsg('');
     }
     function fillForm(data){
       editingQuotationId=data.quotationId||'';
+      currentRootQuotationId=data.rootQuotationId||data.quotationId||'';
+      currentVersionNo=Number(data.versionNo||0)||0;
+      currentVersionName=data.versionName||'原始版';
       qs('#quoteNo').value=data.quoteNo||'';
       qs('#quoteDate').value=data.quoteDate||todayStr();
       qs('#customerTitle').value=data.customerTitle||'';
@@ -350,7 +366,19 @@ Email：<span id="pvCustomerEmail"></span>
       (data.items||[]).forEach(addItem);
       if(!(data.items||[]).length) addItem();
       renderPreview();
+      refreshEditorMode();
       window.scrollTo({top:0,behavior:'smooth'});
+    }
+
+    function refreshEditorMode(){
+      const bar=qs('#editorModeBar');
+      if(!bar) return;
+      if(!editingQuotationId){
+        bar.textContent='目前模式：新估價單。按「儲存估價單」會建立原始版；按「儲存新估價單」也會建立全新估價單。';
+        return;
+      }
+      const quoteNo=qs('#quoteNo').value.trim()||'未編號';
+      bar.textContent=`目前模式：${quoteNo}｜${currentVersionName||'原始版'}。按「儲存估價單」會新增修改版本；按「儲存新估價單」會另開全新估價單。`;
     }
     
 
@@ -389,20 +417,29 @@ Email：<span id="pvCustomerEmail"></span>
       }
       return btoa(binary);
     }
-    function historyCard(row){
-      return `<div class="list-card"><div class="list-card-top"><div><div style="font-size:18px;font-weight:900">${escapeHtml(row.quoteNo||'未編號')}</div><div class="muted-sm">${escapeHtml(row.customerTitle||'未填客戶')}｜${escapeHtml(row.quoteDate||'')}</div><div class="muted-sm">總額：${money(row.totalAmount||0)}｜${escapeHtml(row.sendStatus||'未寄送')}</div></div><div class="mini-actions"><button class="btn secondary" style="width:auto;padding:10px 14px" onclick="previewQuotation('${row.quotationId}')">預覽</button><button class="btn secondary" style="width:auto;padding:10px 14px" onclick="editQuotation('${row.quotationId}')">編輯</button><button class="btn secondary" style="width:auto;padding:10px 14px" onclick="copyQuotation('${row.quotationId}')">複製</button></div></div></div>`;
+    function versionActionHtml(row){
+      return `<div class="list-card" style="padding:10px 12px;margin-top:8px;background:#fbfdff"><div class="list-card-top"><div><div style="font-size:15px;font-weight:900">${escapeHtml(row.versionName||'原始版')}</div><div class="muted-sm">${escapeHtml(row.quoteDate||'')}｜總額：${money(row.totalAmount||0)}｜${escapeHtml(row.sendStatus||'未寄送')}</div></div><div class="mini-actions"><button class="btn secondary" style="width:auto;padding:8px 12px" onclick="previewQuotation('${row.quotationId}', this)">預覽</button><button class="btn secondary" style="width:auto;padding:8px 12px" onclick="editQuotation('${row.quotationId}', false, this)">修改</button><button class="btn secondary" style="width:auto;padding:8px 12px" onclick="copyQuotation('${row.quotationId}', this)">複製估價單</button></div></div></div>`;
     }
     function groupRowsByYear(rows){
-      const out={};
+      const years={};
       (rows||[]).forEach(row=>{
         const y=String((row.year||row.quoteDate||'').slice(0,4) || '未分類');
-        if(!out[y]) out[y]=[];
-        out[y].push(row);
+        if(!years[y]) years[y]={};
+        const root=row.rootQuotationId||row.quotationId;
+        if(!years[y][root]) years[y][root]=[];
+        years[y][root].push(row);
       });
-      return Object.keys(out).sort((a,b)=>b.localeCompare(a)).map(year=>({year,rows:out[year]}));
+      return Object.keys(years).sort((a,b)=>b.localeCompare(a)).map(year=>({
+        year,
+        groups:Object.keys(years[year]).map(root=>({rootId:root, rows:years[year][root].sort((a,b)=>(Number(a.versionNo||0)-Number(b.versionNo||0)))}))
+      }));
+    }
+    function quotationGroupCard(group){
+      const head=group.rows[0]||{};
+      return `<div class="list-card"><div style="font-size:18px;font-weight:900">${escapeHtml(head.quoteNo||'未編號')}</div><div class="muted-sm">${escapeHtml(head.customerTitle||'未填客戶')}｜${escapeHtml(head.quoteDate||'')}</div><div class="muted-sm">版本數：${group.rows.length}</div>${group.rows.map(versionActionHtml).join('')}</div>`;
     }
     function yearGroupHtml(group){
-      return `<div class="year-group"><button class="year-btn" type="button" onclick="toggleYearGroup(this)"><span>${group.year}</span><span>＋</span></button><div class="year-body">${group.rows.map(historyCard).join('')}</div></div>`;
+      return `<div class="year-group"><button class="year-btn" type="button" onclick="toggleYearGroup(this)"><span>${group.year}</span><span>＋</span></button><div class="year-body">${group.groups.map(quotationGroupCard).join('')}</div></div>`;
     }
     function toggleYearGroup(btn){
       const body=btn.nextElementSibling;
@@ -410,76 +447,135 @@ Email：<span id="pvCustomerEmail"></span>
       btn.classList.toggle('active',open);
       btn.lastElementChild.textContent=open?'－':'＋';
     }
-    async function loadHistory(){
+    async function loadHistory(target){
+      let prog = null;
       try{
+        prog = target ? startButtonProgress(target,'讀取中') : null;
+        prog && prog.set(18,'讀取中');
         const r=await api('getQuotationList',{userId:currentUser.id});
         if(!r.ok) throw new Error(r.message||'讀取估價單失敗');
         quotationRows=r.rows||[];
+        prog && prog.set(72,'整理清單中');
         const groups=groupRowsByYear(quotationRows);
         qs('#historyList').innerHTML=groups.length ? groups.map(yearGroupHtml).join('') : '<div class="empty-box">目前還沒有估價單紀錄</div>';
-      }catch(err){ setLocalMsg(err.message||'讀取估價單失敗',true); }
+        prog && prog.done('完成');
+      }catch(err){ if(prog) prog.fail('讀取失敗'); setLocalMsg(err.message||'讀取估價單失敗',true); }
     }
-    async function previewQuotation(id){
-      await editQuotation(id,true);
+    async function previewQuotation(id, btn){
+      await editQuotation(id,true,btn);
     }
-    async function editQuotation(id,previewOnly){
+    async function editQuotation(id,previewOnly,btn){
+      let prog = null;
       try{
+        prog = btn ? startButtonProgress(btn, previewOnly ? '預覽載入中' : '載入中') : null;
+        prog && prog.set(18, previewOnly ? '預覽載入中' : '讀取資料中');
         const r=await api('getQuotationDetail',{userId:currentUser.id,quotationId:id});
         if(!r.ok) throw new Error(r.message||'讀取估價單失敗');
+        prog && prog.set(70,'套用資料中');
         fillForm(r.quotation||{});
         setLocalMsg(previewOnly?'已載入估價單預覽。':'已載入估價單，可直接修改後再儲存。');
-      }catch(err){ setLocalMsg(err.message||'載入失敗',true); }
+        prog && prog.done('完成');
+      }catch(err){ if(prog) prog.fail(previewOnly ? '預覽' : '修改'); setLocalMsg(err.message||'載入失敗',true); }
     }
-    async function copyQuotation(id){
+    async function copyQuotation(id, btn){
+      let prog = null;
       try{
+        prog = btn ? startButtonProgress(btn,'複製中') : null;
+        prog && prog.set(18,'讀取資料中');
         const r=await api('getQuotationDetail',{userId:currentUser.id,quotationId:id});
         if(!r.ok) throw new Error(r.message||'讀取估價單失敗');
         const q=Object.assign({}, r.quotation||{});
         q.quotationId='';
+        q.rootQuotationId='';
+        q.versionNo=0;
+        q.versionName='原始版';
         q.quoteNo='';
         q.quoteDate=todayStr();
+        prog && prog.set(72,'建立新表單中');
         fillForm(q);
         editingQuotationId='';
+        currentRootQuotationId='';
+        currentVersionNo=0;
+        currentVersionName='原始版';
+        refreshEditorMode();
         setLocalMsg('已複製舊估價單內容，接下來儲存會建立新單。');
-      }catch(err){ setLocalMsg(err.message||'複製失敗',true); }
+        prog && prog.done('完成');
+      }catch(err){ if(prog) prog.fail('複製'); setLocalMsg(err.message||'複製失敗',true); }
     }
-    function setButtonBusy(id,text){
-      const btn=qs('#'+id);
-      if(!btn) return ()=>{};
-      const old=btn.textContent;
-      btn.textContent=text;
-      btn.disabled=true;
+    function startButtonProgress(target, baseText){
+      const btn = typeof target === 'string' ? qs('#'+target) : target;
+      if(!btn) return { set(){}, done(){}, fail(){} };
+      const old = btn.textContent;
+      btn.disabled = true;
       btn.classList.add('is-busy');
-      return ()=>{
-        btn.textContent=old;
-        btn.disabled=false;
-        btn.classList.remove('is-busy');
+      let pct = 0;
+      let timer = null;
+      function paint(v, text){
+        pct = Math.max(0, Math.min(100, Number(v)||0));
+        btn.textContent = `${text || baseText} ${pct}%`;
+      }
+      function auto(seq=[10,20,35,50,65,80,90], gap=180){
+        let i=0; paint(seq[0], baseText);
+        timer = setInterval(()=>{ i++; if(i>=seq.length){ clearInterval(timer); timer=null; return; } paint(seq[i], baseText); }, gap);
+      }
+      auto();
+      return {
+        set(v, text){ paint(v, text || baseText); },
+        done(text){ if(timer) clearInterval(timer); paint(100, text || baseText); setTimeout(()=>{ btn.textContent = old; btn.disabled = false; btn.classList.remove('is-busy'); }, 220); },
+        fail(text){ if(timer) clearInterval(timer); btn.textContent = text || old; btn.disabled = false; btn.classList.remove('is-busy'); }
       };
     }
-    async function saveQuotation(showMessage=true){
-      const done=setButtonBusy('saveBtn','儲存中…');
+    async function createNewBlankQuotation(){
+      const prog = startButtonProgress('newBlankQuoteBtn','建立空白中');
+      try{
+        prog.set(25,'清除資料中');
+        await new Promise(r=>setTimeout(r,120));
+        resetForm(true);
+        prog.set(80,'整理畫面中');
+        await new Promise(r=>setTimeout(r,120));
+        setLocalMsg('已建立新的空白估價單。');
+        prog.done('完成');
+      }catch(err){
+        prog.fail('新增空白估價單');
+        setLocalMsg(err.message||'建立空白估價單失敗',true);
+      }
+    }
+    async function saveQuotation(saveAsNew=false, showMessage=true){
+      const prog=startButtonProgress(saveAsNew ? 'saveAsNewBtn' : 'saveBtn', saveAsNew ? '儲存新單中' : '儲存中');
       try{
         const payload=currentPayload();
         if(!payload.customerTitle) throw new Error('請先輸入客戶名稱');
         if(!payload.items.length) throw new Error('請至少新增一列品項');
-        const r=await api('saveQuotation',Object.assign({userId:currentUser.id},payload));
+        prog.set(28,'整理資料中');
+        const r=await api('saveQuotation',Object.assign({userId:currentUser.id, saveAsNew: saveAsNew},payload));
         if(!r.ok) throw new Error(r.message||'儲存失敗');
         editingQuotationId=r.quotationId||editingQuotationId;
-        if(r.quoteNo && !qs('#quoteNo').value) qs('#quoteNo').value=r.quoteNo;
+        currentRootQuotationId=r.rootQuotationId||currentRootQuotationId||editingQuotationId;
+        currentVersionNo=Number(r.versionNo||0)||0;
+        currentVersionName=r.versionName||currentVersionName||'原始版';
+        if(r.quoteNo) qs('#quoteNo').value=r.quoteNo;
+        refreshEditorMode();
         if(showMessage) setLocalMsg(r.message||'已儲存估價單');
+        prog.set(82,'讀取歷史資料中');
+        prog.set(92,'刷新紀錄中');
         await loadHistory();
+        prog.done(saveAsNew ? '完成' : '完成');
         return r;
       }catch(err){
         setLocalMsg(err.message||'儲存失敗',true);
         throw err;
-      }finally{ done(); }
+      }finally{ if(typeof prog!=='undefined'){} }
     }
     async function savePdfOnly(){
-      const done=setButtonBusy('savePdfBtn','儲存 PDF 中…');
+      const prog=startButtonProgress('savePdfBtn','儲存PDF中');
       try{
-        const saved=await saveQuotation(false);
+        prog.set(18,'儲存單據中');
+        const saved=prog.set(20,'儲存資料中');
+        await saveQuotation(false,false);
         const payload=currentPayload();
         if(saved && saved.quoteNo && !payload.quoteNo) payload.quoteNo=saved.quoteNo;
+        prog.set(58,'產生PDF中');
+        prog.set(48,'建立PDF中');
         const blob=await buildPreviewPdfBlob_();
         const name=buildPdfFileName_(payload);
         const url=URL.createObjectURL(blob);
@@ -491,25 +587,30 @@ Email：<span id="pvCustomerEmail"></span>
         a.remove();
         setTimeout(()=>URL.revokeObjectURL(url), 3000);
         setLocalMsg('PDF 已準備下載。');
+        prog.done('完成');
       }catch(err){ setLocalMsg(err.message||'儲存 PDF 失敗',true); }
-      finally{ done(); }
+      finally{ if(typeof prog!=='undefined'){} }
     }
     async function createPdfOnly(){
       return savePdfOnly();
     }
     async function createPdfForId(id){ editingQuotationId=id; await savePdfOnly(); }
     async function sendQuotationEmail(){
-      const done=setButtonBusy('sendBtn','寄送中…');
+      const prog=startButtonProgress('sendBtn','寄送中');
       try{
-        const saved=await saveQuotation(false);
+        prog.set(18,'儲存單據中');
+        const saved=await saveQuotation(false,false);
         if(!editingQuotationId) throw new Error('請先儲存估價單');
+        prog.set(12,'整理資料中');
         const to=qs('#sendEmailTo').value.trim();
         if(!to) throw new Error('請先輸入收件人 Email');
         const payload=currentPayload();
         if(saved && saved.quoteNo && !payload.quoteNo) payload.quoteNo=saved.quoteNo;
+        prog.set(58,'產生PDF中');
         const blob=await buildPreviewPdfBlob_();
         const pdfBase64=await blobToBase64_(blob);
         const pdfName=buildPdfFileName_(payload);
+        prog.set(74,'寄送信件中');
         const r=await api('sendQuotationEmail',{
           userId:currentUser.id,
           quotationId:editingQuotationId,
@@ -522,23 +623,27 @@ Email：<span id="pvCustomerEmail"></span>
         });
         if(!r.ok) throw new Error(r.message||'寄送失敗');
         setLocalMsg(r.message||'估價單已寄出');
+        prog.done('完成');
+        prog.set(82,'讀取歷史資料中');
         await loadHistory();
       }catch(err){ setLocalMsg(err.message||'寄送失敗',true); }
-      finally{ done(); }
+      finally{ if(typeof prog!=='undefined'){} }
     }
     async function sendQuotationForId(id){
       await editQuotation(id);
       await sendQuotationEmail();
     }
     async function printQuotation(){
-      const done=setButtonBusy('printBtn','準備列印…');
+      const prog=startButtonProgress('printBtn','準備列印中');
       try{
-        await saveQuotation(false);
+        await saveQuotation(false,false);
         renderPreview();
+        prog.set(92,'開啟列印中');
         window.print();
+        prog.done('完成');
         setLocalMsg('已開啟列印視窗。');
       }catch(err){ setLocalMsg(err.message||'列印失敗',true); }
-      finally{ done(); }
+      finally{ if(typeof prog!=='undefined'){} }
     }
     async function initPage(){
 
@@ -548,10 +653,12 @@ Email：<span id="pvCustomerEmail"></span>
       if(!isManager(currentUser)){ location.href='dashboard.html'; return; }
       document.getElementById('vendorBox').textContent=vendorText;
       resetForm(true);
+      refreshEditorMode();
       ['quoteNo','quoteDate','customerTitle','customerTaxId','customerContact','customerPhone','customerEmail','customerAddress','remark','taxMode','taxRate'].forEach(id=>qs('#'+id).addEventListener('input',renderPreview));
       qs('#taxMode').addEventListener('change',renderPreview);
       qs('#quoteDate').value=todayStr();
-      await loadHistory();
+      prog.set(82,'讀取歷史資料中');
+        await loadHistory();
     }
   </script>
 </body>

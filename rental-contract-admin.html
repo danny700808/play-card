@@ -83,6 +83,7 @@
         <div>
           <h1 class="title" style="margin:0">合約管理</h1>
           <div class="welcome">歡迎 <span data-user-name></span></div>
+          <div id="contractModeBar" class="muted-tip" style="margin-top:6px"></div>
         </div>
         <button class="btn secondary" style="width:auto;padding:10px 14px" onclick="logout()">登出</button>
       </div>
@@ -129,10 +130,11 @@
               <div class="field"><label>乙方負責人</label><input id="partyBOwner" value="黃銘廷"></div>
             </div>
             <div class="mini-actions" style="margin-top:16px">
-              <button class="btn" type="button" onclick="printContract()">列印</button>
-              <button class="btn secondary" type="button" onclick="savePdf()">另存 PDF</button>
-              <button class="btn secondary" type="button" onclick="saveContract()">儲存合約</button>
-              <button class="btn secondary" type="button" onclick="newBlankContract()">新增空白合約</button>
+              <button id="printContractBtn" class="btn" type="button" onclick="printContract()">列印</button>
+              <button id="saveContractPdfBtn" class="btn secondary" type="button" onclick="savePdf()">另存 PDF</button>
+              <button id="saveContractBtn" class="btn secondary" type="button" onclick="saveContract(false)">儲存合約</button>
+              <button id="saveContractAsNewBtn" class="btn secondary" type="button" onclick="saveContract(true)">儲存新合約</button>
+              <button id="newBlankContractBtn" class="btn secondary" type="button" onclick="newBlankContract()">新增空白合約</button>
             </div>
           </div>
 
@@ -147,7 +149,7 @@
 附件為本次設備租賃契約書 PDF，請查收。
 如內容需要調整，請直接回信告知，謝謝。</textarea></div>
             <div class="mini-actions" style="margin-top:12px">
-              <button class="btn" type="button" onclick="sendContractEmail()">寄送合約</button>
+              <button id="sendContractBtn" class="btn" type="button" onclick="sendContractEmail()">寄送合約</button>
             </div>
           </div>
 
@@ -195,7 +197,7 @@
                 <div class="signature-box">
                   <div class="hd">乙方簽章</div>
                   <div class="bd">
-                    <img class="stamp-blue" src="company_seal_contract_transparent.png" alt="公司章">
+                    <img class="stamp-blue" src="blue_stamp_transparent.png" alt="公司章">
                     <img class="stamp-red" src="red_stamp_transparent.png" alt="負責人章">
                     <div class="sign-line"></div>
                   </div>
@@ -215,6 +217,10 @@
   
   <script>
     let currentUser = null;
+    let currentContractId = '';
+    let currentRootContractId = '';
+    let currentContractVersionNo = 0;
+    let currentContractVersionName = '原始版';
     const defaultValues = {};
     let historyRows = [];
     function qs(sel){ return document.querySelector(sel); }
@@ -309,22 +315,74 @@
     function resetFormToDefaults(){
       Object.keys(defaultValues).forEach(id=>{ if(qs('#'+id)) qs('#'+id).value = defaultValues[id]; });
       qs('#contractId').value = '';
+      currentContractId='';
+      currentRootContractId='';
+      currentContractVersionNo=0;
+      currentContractVersionName='原始版';
       delete qs('#emailSubject').dataset.touched;
       renderPreview();
+      refreshContractMode();
     }
-    function newBlankContract(){
-      resetFormToDefaults();
-      setLocalMsg && setLocalMsg('已建立新的空白合約。');
+    async function newBlankContract(){
+      const prog=startButtonProgress('newBlankContractBtn','建立空白中');
+      try{
+        prog.set(26,'清除資料中');
+        await new Promise(r=>setTimeout(r,120));
+        resetFormToDefaults();
+        prog.set(82,'整理畫面中');
+        await new Promise(r=>setTimeout(r,120));
+        setLocalMsg && setLocalMsg('已建立新的空白合約。');
+        prog.done('完成');
+      }catch(err){
+        prog.fail('新增空白合約');
+        setLocalMsg && setLocalMsg(err.message || '建立空白合約失敗', true);
+      }
     }
-    async function saveContract(silent){
+    function startButtonProgress(target, baseText){
+      const btn = typeof target === 'string' ? qs('#'+target) : target;
+      if(!btn) return { set(){}, done(){}, fail(){} };
+      const old = btn.textContent;
+      btn.disabled = true; btn.classList.add('is-busy');
+      let timer=null; let pct=0;
+      function paint(v, text){ pct=Math.max(0,Math.min(100,Number(v)||0)); btn.textContent = `${text || baseText} ${pct}%`; }
+      paint(10, baseText);
+      timer=setInterval(()=>{ pct=Math.min(90,pct+12); paint(pct, baseText); if(pct>=90){ clearInterval(timer); timer=null; } }, 180);
+      return {
+        set(v,text){ paint(v, text||baseText); },
+        done(text){ if(timer) clearInterval(timer); paint(100, text||baseText); setTimeout(()=>{ btn.textContent=old; btn.disabled=false; btn.classList.remove('is-busy'); }, 220); },
+        fail(text){ if(timer) clearInterval(timer); btn.textContent = text || old; btn.disabled=false; btn.classList.remove('is-busy'); }
+      };
+    }
+    function refreshContractMode(){
+      const bar=qs('#contractModeBar');
+      if(!bar) return;
+      if(!currentContractId){
+        bar.textContent='目前模式：新合約。按「儲存合約」會建立原始版；按「儲存新合約」會另開全新合約。';
+      }else{
+        const title=(qs('#partyAName').value.trim()||'未命名甲方')+'｜'+(currentContractVersionName||'原始版');
+        bar.textContent=`目前模式：${title}。按「儲存合約」會新增修改版本；按「儲存新合約」會另開全新合約。`;
+      }
+    }
+    async function saveContract(saveAsNew, silent){
       if(!currentUser) return { ok:false, message:'尚未登入' };
+      const prog = silent ? null : startButtonProgress(saveAsNew ? 'saveContractAsNewBtn' : 'saveContractBtn', saveAsNew ? '儲存新合約中' : '儲存合約中');
+      prog && prog.set(18,'整理資料中');
       const payload = readValues();
-      const res = await api('saveRentalContract', { userId: currentUser.id, formData: payload, contractId: payload.contractId || '' });
+      const res = await api('saveRentalContract', { userId: currentUser.id, formData: payload, contractId: payload.contractId || currentContractId || '', saveAsNew: !!saveAsNew });
       if(res && res.ok){
-        qs('#contractId').value = res.contractId || '';
+        currentContractId = res.contractId || currentContractId;
+        currentRootContractId = res.rootContractId || currentRootContractId || currentContractId;
+        currentContractVersionNo = Number(res.versionNo||0)||0;
+        currentContractVersionName = res.versionName || currentContractVersionName || '原始版';
+        qs('#contractId').value = currentContractId || '';
+        prog && prog.set(82,'讀取歷史資料中');
+        prog.set(92,'刷新紀錄中');
         await loadHistory();
-        if(!silent && window.setLocalMsg) setLocalMsg('合約已儲存。');
+        refreshContractMode();
+        if(!silent && window.setLocalMsg) setLocalMsg((res && res.message) || '合約已儲存。');
+        prog && prog.done('完成');
       }else if(!silent && window.setLocalMsg){
+        prog && prog.fail(saveAsNew ? '儲存新合約' : '儲存合約');
         setLocalMsg((res && res.message) || '合約儲存失敗', true);
       }
       return res;
@@ -345,23 +403,43 @@
       return `${name}.pdf`;
     }
     async function printContract(){
-      window.print();
+      const prog=startButtonProgress('printContractBtn','準備列印中');
+      try{
+        prog.set(25,'整理預覽中');
+        renderPreview();
+        await new Promise(r=>setTimeout(r,120));
+        prog.set(88,'開啟列印中');
+        window.print();
+        prog.done('完成');
+      }catch(err){
+        prog.fail('列印');
+        if(window.setLocalMsg) setLocalMsg(err.message || '列印失敗', true);
+      }
     }
     async function savePdf(){
+      const prog=startButtonProgress('saveContractPdfBtn','另存PDF中');
       try{
-        const saved = await saveContract(true);
+        prog.set(18,'儲存資料中');
+        const saved = await saveContract(false, true);
+        prog.set(42,'建立PDF中');
+        prog.set(58,'產生PDF中');
         const { pdf } = await buildPdfBlob();
         pdf.save(buildFileName());
         if(window.setLocalMsg) setLocalMsg('PDF 已開始下載。');
+        prog.done('完成');
       }catch(err){
+        prog.fail('另存 PDF');
         if(window.setLocalMsg) setLocalMsg(err.message || 'PDF 下載失敗', true);
       }
     }
     async function sendContractEmail(){
+      const prog=startButtonProgress('sendContractBtn','寄送中');
       try{
+        prog.set(14,'整理資料中');
         const to = qs('#emailTo').value.trim();
         if(!to) throw new Error('請填寫收件人 Email。');
-        const saved = await saveContract(true);
+        const saved = await saveContract(false, true);
+        prog.set(42,'建立PDF中');
         const { blob } = await buildPdfBlob();
         const base64 = await new Promise((resolve,reject)=>{
           const fr = new FileReader();
@@ -369,6 +447,7 @@
           fr.onerror = reject;
           fr.readAsDataURL(blob);
         });
+        prog.set(76,'寄送信件中');
         const res = await api('sendRentalContractEmail', {
           userId: currentUser.id,
           contractId: qs('#contractId').value.trim(),
@@ -381,18 +460,27 @@
           pdfName: buildFileName()
         });
         if(!res || !res.ok) throw new Error((res && res.message) || '寄送失敗');
+        prog && prog.set(82,'讀取歷史資料中');
         await loadHistory();
         if(window.setLocalMsg) setLocalMsg('合約已寄送到信箱。');
+        prog.done('完成');
       }catch(err){
+        prog.fail('寄送合約');
         if(window.setLocalMsg) setLocalMsg(err.message || '寄送失敗', true);
       }
     }
-    async function loadHistory(){
+    async function loadHistory(target){
+      let prog = null;
       try{
+        prog = target ? startButtonProgress(target,'讀取中') : null;
+        prog && prog.set(18,'讀取中');
         const res = await api('getRentalContracts', { userId: currentUser.id });
         historyRows = (res && res.ok && Array.isArray(res.rows)) ? res.rows : [];
+        prog && prog.set(72,'整理清單中');
         renderHistory();
+        prog && prog.done('完成');
       }catch(err){
+        if(prog) prog.fail('讀取失敗');
         console.warn(err);
       }
     }
@@ -405,36 +493,53 @@
       const groups = {};
       historyRows.forEach(row=>{
         const year = String(row.year || '');
-        (groups[year] ||= []).push(row);
+        const root = String(row.rootContractId || row.contractId || '');
+        groups[year] ||= {};
+        groups[year][root] ||= [];
+        groups[year][root].push(row);
       });
       const years = Object.keys(groups).sort((a,b)=> b.localeCompare(a));
       wrap.innerHTML = years.map(year=>{
-        const items = groups[year].map(row=>`
-          <div class="history-item">
-            <div class="history-item-title">${escapeHtml(row.partyAName || '未命名甲方')}｜${escapeHtml(row.equipmentName || '未填設備')}</div>
-            <div class="history-item-actions">
-              <button class="btn secondary" type="button" onclick="loadContractHistoryItem('${row.contractId}')">載入</button>
-              <button class="btn secondary" type="button" onclick="duplicateContractHistoryItem('${row.contractId}')">複製表單</button>
-            </div>
-          </div>
-        `).join('');
+        const items = Object.keys(groups[year]).map(root=>{
+          const rows = groups[year][root].sort((a,b)=>(Number(a.versionNo||0)-Number(b.versionNo||0)));
+          const head = rows[0] || {};
+          const versions = rows.map(row=>`<div class="history-item" style="margin-top:8px;background:#fbfdff"><div class="history-item-title">${escapeHtml(row.versionName || '原始版')}｜${escapeHtml(row.contractDate || '')}</div><div class="history-item-actions"><button class="btn secondary" type="button" onclick="loadContractHistoryItem('${row.contractId}', this)">修改</button><button class="btn secondary" type="button" onclick="duplicateContractHistoryItem('${row.contractId}', this)">複製合約</button></div></div>`).join('');
+          return `<div class="history-item" style="display:block"><div class="history-item-title">${escapeHtml(head.partyAName || '未命名甲方')}｜${escapeHtml(head.equipmentName || '未填設備')}</div><div class="muted-tip">版本數：${rows.length}</div>${versions}</div>`;
+        }).join('');
         return `<div style="margin-bottom:14px"><div class="history-year">${year}</div>${items}</div>`;
       }).join('');
     }
     function escapeHtml(s){
       return String(s || '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
     }
-    function loadContractHistoryItem(id){
+    function loadContractHistoryItem(id, btn){
+      const prog = btn ? startButtonProgress(btn,'載入中') : null;
       const row = historyRows.find(r=> String(r.contractId||'') === String(id));
       if(!row) return;
-      applyValues(row.formData || row, false);
+      const payload = row.formData || row;
+      prog && prog.set(70,'套用資料中');
+      applyValues(payload, false);
+      currentContractId = row.contractId || '';
+      currentRootContractId = row.rootContractId || row.contractId || '';
+      currentContractVersionNo = Number(row.versionNo||0)||0;
+      currentContractVersionName = row.versionName || '原始版';
+      refreshContractMode();
       if(window.setLocalMsg) setLocalMsg('已載入歷史合約。');
+      prog && prog.done('完成');
     }
-    function duplicateContractHistoryItem(id){
+    function duplicateContractHistoryItem(id, btn){
+      const prog = btn ? startButtonProgress(btn,'複製中') : null;
       const row = historyRows.find(r=> String(r.contractId||'') === String(id));
       if(!row) return;
+      prog && prog.set(70,'建立新表單中');
       applyValues(row.formData || row, true);
+      currentContractId='';
+      currentRootContractId='';
+      currentContractVersionNo=0;
+      currentContractVersionName='原始版';
+      refreshContractMode();
       if(window.setLocalMsg) setLocalMsg('已複製成新的空白表單，可另行儲存。');
+      prog && prog.done('完成');
     }
     function initPage(){
       fillHeader();
@@ -446,6 +551,7 @@
       document.querySelectorAll('input, textarea').forEach(el=>{ if(el.id) defaultValues[el.id] = el.value; });
       bindInputs();
       renderPreview();
+      refreshContractMode();
       loadHistory();
     }
   </script>
