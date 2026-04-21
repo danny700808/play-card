@@ -7,9 +7,10 @@
   <link rel="stylesheet" href="style.css">
   <style>
     .nt-card{background:#fff;border:1px solid #e5e7eb;border-radius:18px;padding:16px}
-    .nt-table{width:100%;border-collapse:collapse}
+    .nt-table-wrap{overflow:auto}
+    .nt-table{width:100%;min-width:960px;border-collapse:collapse}
     .nt-table th,.nt-table td{padding:10px 8px;border-bottom:1px solid #e5e7eb;vertical-align:middle}
-    .nt-table th{font-size:13px;color:#475569;text-align:left}
+    .nt-table th{font-size:13px;color:#475569;text-align:left;white-space:nowrap}
     .nt-table td{font-size:14px}
     .nt-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap}
     .pill{display:inline-block;padding:4px 10px;border-radius:999px;background:#eef2ff;color:#4338ca;font-size:12px;font-weight:700}
@@ -22,7 +23,7 @@
       <div class="topbar">
         <div>
           <h1 class="title" style="margin:0">通知設定</h1>
-          <div class="welcome">用勾選方式決定每個事件要不要寄 Email、LINE，或通知主管 Email / LINE</div>
+          <div class="welcome">用勾選方式決定每個事件要不要寄 Email、LINE，以及主管要走 Email 還是 LINE</div>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
           <button class="btn secondary" style="width:auto;padding:10px 14px" onclick="history.back()">返回</button>
@@ -30,21 +31,23 @@
         </div>
       </div>
       <div class="nt-card">
-        <div class="muted" style="margin-bottom:12px">LINE 只有在對方已綁定且啟用 LINE 通知時才會實際送出。</div>
-        <table class="nt-table">
-          <thead>
-            <tr>
-              <th style="width:180px">事件名稱</th>
-              <th style="width:110px">分類</th>
-              <th style="width:120px">寄 Email 給當事人</th>
-              <th style="width:120px">寄 LINE 給當事人</th>
-              <th style="width:110px">主管 Email</th>
-              <th style="width:110px">主管 LINE</th>
-              <th style="width:90px">啟用</th>
-            </tr>
-          </thead>
-          <tbody id="settingRows"></tbody>
-        </table>
+        <div class="muted" style="margin-bottom:12px">LINE 只有在對方已綁定且啟用 LINE 通知時才會實際送出。主管通知已拆成 Email 與 LINE 兩個欄位。</div>
+        <div class="nt-table-wrap">
+          <table class="nt-table">
+            <thead>
+              <tr>
+                <th style="width:180px">事件名稱</th>
+                <th style="width:110px">分類</th>
+                <th style="width:120px">寄 Email 給當事人</th>
+                <th style="width:120px">寄 LINE 給當事人</th>
+                <th style="width:120px">通知主管 Email</th>
+                <th style="width:120px">通知主管 LINE</th>
+                <th style="width:90px">啟用</th>
+              </tr>
+            </thead>
+            <tbody id="settingRows"></tbody>
+          </table>
+        </div>
         <div class="nt-actions">
           <button id="saveBtn" class="btn" style="width:auto;padding:10px 18px" onclick="saveAll()">儲存通知設定</button>
         </div>
@@ -69,6 +72,11 @@
       try{
         const res=await api('getNotificationSettings',{userId:currentUser.id});
         const rows=Array.isArray(res?.rows)?res.rows:[];
+        if(!rows.length){
+          box.innerHTML='<tr><td colspan="7" class="muted">目前沒有通知設定資料。</td></tr>';
+          box.dataset.rows='[]';
+          return;
+        }
         box.innerHTML = rows.map((row,idx)=>`
           <tr>
             <td>${escapeHtml(row.eventName||'')}</td>
@@ -91,20 +99,23 @@
       const old=btn.textContent;
       btn.textContent='儲存中...';
       try{
-        const rows=JSON.parse(document.getElementById('settingRows').dataset.rows||'[]');
-        const payload=rows.map((row,idx)=>({
+        const box=document.getElementById('settingRows');
+        const rows=JSON.parse(box.dataset.rows||'[]').map((row,idx)=>({
           eventCode: row.eventCode,
           eventName: row.eventName,
           category: row.category,
-          sendEmailToActor: document.querySelector(`[data-key="email:${idx}"]`)?.checked ? '是':'否',
-          sendLineToActor: document.querySelector(`[data-key="line:${idx}"]`)?.checked ? '是':'否',
-          notifyManager: document.querySelector(`[data-key="manager:${idx}"]`)?.checked ? '是':'否',
-          enabled: document.querySelector(`[data-key="enabled:${idx}"]`)?.checked ? '是':'否'
+          sendEmailToActor: !!document.querySelector(`input[data-key="email:${idx}"]`)?.checked,
+          sendLineToActor: !!document.querySelector(`input[data-key="line:${idx}"]`)?.checked,
+          notifyManagerEmail: !!document.querySelector(`input[data-key="managerEmail:${idx}"]`)?.checked,
+          notifyManagerLine: !!document.querySelector(`input[data-key="managerLine:${idx}"]`)?.checked,
+          enabled: !!document.querySelector(`input[data-key="enabled:${idx}"]`)?.checked
         }));
-        await api('saveNotificationSettings',{userId:currentUser.id, rows:payload});
-        setMsg(document.getElementById('msg'),'通知設定已儲存');
+        const res=await api('saveNotificationSettings',{userId:currentUser.id,rows});
+        if(!res||res.ok===false) throw new Error(res&&res.message||'儲存失敗');
+        setMsg(document.getElementById('msg'),res.message||'通知設定已儲存。',false);
+        await initPage();
       }catch(err){
-        setMsg(document.getElementById('msg'),'儲存失敗：'+(err.message||String(err)), true);
+        setMsg(document.getElementById('msg'),err.message||String(err),true);
       }finally{
         btn.disabled=false;
         btn.textContent=old;
