@@ -22,7 +22,7 @@
       <div class="topbar">
         <div>
           <h1 class="title" style="margin:0">通知設定</h1>
-          <div class="welcome">用勾選方式決定每個事件要不要寄 Email、LINE，或通知主管</div>
+          <div class="welcome">用勾選方式決定每個事件要不要寄 Email、LINE，以及是否通知主管 Email / LINE</div>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
           <button class="btn secondary" style="width:auto;padding:10px 14px" onclick="history.back()">返回</button>
@@ -38,7 +38,8 @@
               <th style="width:110px">分類</th>
               <th style="width:120px">寄 Email 給當事人</th>
               <th style="width:120px">寄 LINE 給當事人</th>
-              <th style="width:100px">通知主管</th>
+              <th style="width:120px">通知主管 Email</th>
+              <th style="width:120px">通知主管 LINE</th>
               <th style="width:90px">啟用</th>
             </tr>
           </thead>
@@ -64,7 +65,7 @@
       if(!currentUser) return;
       if(!hasSettingsZoneAccess(currentUser)){ location.href='dashboard.html'; return; }
       const box=document.getElementById('settingRows');
-      box.innerHTML='<tr><td colspan="6" class="muted">讀取中...</td></tr>';
+      box.innerHTML='<tr><td colspan="7" class="muted">讀取中...</td></tr>';
       try{
         const res=await api('getNotificationSettings',{userId:currentUser.id});
         const rows=Array.isArray(res?.rows)?res.rows:[];
@@ -74,13 +75,14 @@
             <td><span class="pill">${escapeHtml(row.category||'')}</span></td>
             <td>${makeCheck(`email:${idx}`, !!row.sendEmailToActor)}</td>
             <td>${makeCheck(`line:${idx}`, !!row.sendLineToActor)}</td>
-            <td>${makeCheck(`manager:${idx}`, !!row.notifyManager)}</td>
+            <td>${makeCheck(`managerEmail:${idx}`, !!row.notifyManagerEmail)}</td>
+            <td>${makeCheck(`managerLine:${idx}`, !!row.notifyManagerLine)}</td>
             <td>${makeCheck(`enabled:${idx}`, !!row.enabled)}</td>
           </tr>
         `).join('');
         box.dataset.rows = JSON.stringify(rows);
       }catch(err){
-        box.innerHTML='<tr><td colspan="6" class="error">讀取失敗：'+escapeHtml(err.message||String(err))+'</td></tr>';
+        box.innerHTML='<tr><td colspan="7" class="error">讀取失敗：'+escapeHtml(err.message||String(err))+'</td></tr>';
       }
     }
     async function saveAll(){
@@ -96,7 +98,8 @@
           category: row.category,
           sendEmailToActor: document.querySelector(`[data-key="email:${idx}"]`)?.checked ? '是':'否',
           sendLineToActor: document.querySelector(`[data-key="line:${idx}"]`)?.checked ? '是':'否',
-          notifyManager: document.querySelector(`[data-key="manager:${idx}"]`)?.checked ? '是':'否',
+          notifyManagerEmail: document.querySelector(`[data-key="managerEmail:${idx}"]`)?.checked ? '是':'否',
+          notifyManagerLine: document.querySelector(`[data-key="managerLine:${idx}"]`)?.checked ? '是':'否',
           enabled: document.querySelector(`[data-key="enabled:${idx}"]`)?.checked ? '是':'否'
         }));
         await api('saveNotificationSettings',{userId:currentUser.id, rows:payload});

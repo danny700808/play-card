@@ -130,7 +130,8 @@
         announcement: 'announcements.html',
         todo: 'task.html',
         contract: 'contract.html',
-        goods: 'teacher-goods.html'
+        goods: 'teacher-goods.html',
+        profile: 'profile.html'
       };
     }
     function setStatus(message, isError){
@@ -215,6 +216,7 @@
     document.getElementById('openTodoBtn').addEventListener('click', function(){ openPage(getOpenTargets().todo); });
     document.getElementById('openContractBtn').addEventListener('click', function(){ openPage(getOpenTargets().contract); });
     document.getElementById('openGoodsBtn').addEventListener('click', function(){ openPage(getOpenTargets().goods); });
+    document.getElementById('openProfileBtn').addEventListener('click', function(){ openPage(getOpenTargets().profile); });
     loadHome();
   </script>
 </body>
