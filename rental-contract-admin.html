@@ -41,12 +41,12 @@
     .print-only{display:none}
 
     .history-card,.email-card{margin-top:14px}
-    .year-group{border:1px solid #d9e0e6;border-radius:16px;overflow:hidden;background:#fff;margin-bottom:12px}
-    .year-btn{width:100%;border:none;background:#fff;padding:14px 16px;font-size:18px;font-weight:900;text-align:left;display:flex;justify-content:space-between;align-items:center;cursor:pointer}
-    .year-btn.active{background:#f8fafc}
-    .year-body{display:none;padding:0 12px 12px}
-    .year-body.open{display:grid;gap:10px}
-    .history-item{display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid #e2e8f0;border-radius:14px;padding:10px 12px;background:#fff}
+    .history-year-group{border:1px solid #d9e0e6;border-radius:16px;overflow:hidden;background:#fff;margin-bottom:12px}
+    .history-year-btn{width:100%;border:none;background:#fff;padding:14px 16px;font-size:18px;font-weight:900;text-align:left;display:flex;justify-content:space-between;align-items:center;cursor:pointer}
+    .history-year-btn.active{background:#f8fafc}
+    .history-year-body{display:none;padding:0 12px 12px}
+    .history-year-body.open{display:grid;gap:8px}
+    .history-item{display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid #e2e8f0;border-radius:14px;padding:10px 12px;background:#fff;margin-top:8px}
     .history-item-title{font-size:14px;font-weight:800;line-height:1.5}
     .history-item-actions{display:flex;gap:8px;flex-wrap:wrap}
 
@@ -193,14 +193,14 @@
                 <div class="signature-box">
                   <div class="hd">甲方簽章</div>
                   <div class="bd">
-                    <img class="stamp-blue" src="company_seal_contract_transparent.png" alt="公司章">
-                    <img class="stamp-red" src="red_stamp_transparent.png" alt="負責人章">
                     <div class="sign-line"></div>
                   </div>
                 </div>
                 <div class="signature-box">
                   <div class="hd">乙方簽章</div>
                   <div class="bd">
+                    <img class="stamp-blue" src="company_seal_contract_transparent.png" alt="公司章" onerror="this.style.display='none'">
+                    <img class="stamp-red" src="red_stamp_transparent.png" alt="負責人章" onerror="this.style.display='none'">
                     <div class="sign-line"></div>
                   </div>
                 </div>
@@ -412,7 +412,8 @@
         (groups[year] ||= []).push(row);
       });
       const years = Object.keys(groups).sort((a,b)=> b.localeCompare(a));
-      wrap.innerHTML = years.map(year=>{
+      wrap.innerHTML = years.map((year, idx)=>{
+        const bodyId = `history-year-${idx}`;
         const items = groups[year].map(row=>`
           <div class="history-item">
             <div class="history-item-title">${escapeHtml(row.partyAName || '未命名甲方')}｜${escapeHtml(row.equipmentName || '未填設備')}</div>
@@ -422,14 +423,19 @@
             </div>
           </div>
         `).join('');
-        return `<div class="year-group"><button class="year-btn" type="button" onclick="toggleYearGroup(this)"><span>${year}</span><span>＋</span></button><div class="year-body">${items}</div></div>`;
+        return `<div class="history-year-group">
+          <button class="history-year-btn" type="button" onclick="toggleHistoryYear('${bodyId}', this)">${year}<span>＋</span></button>
+          <div id="${bodyId}" class="history-year-body">${items}</div>
+        </div>`;
       }).join('');
     }
-    function toggleYearGroup(btn){
-      const body = btn.nextElementSibling;
+    function toggleHistoryYear(id, btn){
+      const body = document.getElementById(id);
+      if(!body) return;
       const open = body.classList.toggle('open');
       btn.classList.toggle('active', open);
-      btn.lastElementChild.textContent = open ? '－' : '＋';
+      const span = btn.querySelector('span');
+      if(span) span.textContent = open ? '－' : '＋';
     }
     function escapeHtml(s){
       return String(s || '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
