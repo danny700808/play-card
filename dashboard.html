@@ -5,52 +5,37 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>員工首頁</title>
   <link rel="stylesheet" href="style.css">
-    <style>
+  <style>
     .home-shell{display:grid;gap:18px}
-    .home-head-card{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;padding:24px 22px;border:1px solid var(--line);border-radius:30px;background:#fff;box-shadow:0 10px 28px rgba(25,46,89,.06)}
-    .home-head-info{min-width:0;flex:1 1 180px}
-    .home-head-info .title{margin:0;font-size:28px;line-height:1.25;color:#18314a;font-weight:900}
-    .home-head-info .welcome{margin-top:8px;font-size:20px;font-weight:800;color:#24384f}
-    .home-head-tools{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 96px;gap:12px;align-items:stretch;width:min(100%,460px)}
-    .head-tool-slot{min-width:0}
-    .head-tool-card,.line-compact-card{height:112px;border:1px solid var(--line);border-radius:24px;background:#f5f8fc;padding:14px 12px;display:flex;flex-direction:column;justify-content:space-between;align-items:center;text-align:center;text-decoration:none;color:inherit}
-    .head-tool-card.logout-card{background:#f5f8fc}
-    .head-tool-title,.line-compact-title{font-size:15px;font-weight:900;color:#18314a;line-height:1.2;margin:0}
-    .head-tool-desc,.line-compact-status{font-size:13px;line-height:1.35;color:var(--muted);margin-top:6px}
-    .line-compact-status.is-on{color:var(--accent);font-weight:800}
-    .line-compact-status.is-off{color:#b42318;font-weight:800}
-    .head-tool-btn,.line-compact-btn,.logout-mini-btn{min-width:84px;padding:10px 14px;font-size:14px;border-radius:999px;background:var(--accent);color:#fff;border:none;font-weight:900;display:inline-flex;align-items:center;justify-content:center;text-decoration:none;cursor:pointer}
-    .line-compact-btn.secondary{background:#e9eef5;color:#24384f}
+    .home-head-card{display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap;padding:26px 28px;border:1px solid var(--line);border-radius:30px;background:#fff;box-shadow:0 12px 30px rgba(15,23,42,.04)}
+    .home-head-info .title{margin:0;font-size:30px;line-height:1.15}
+    .home-head-info .welcome{margin-top:10px;font-size:21px;font-weight:800;color:#24384f}
+    .home-head-tools{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 92px;align-items:stretch;gap:12px;flex:1 1 380px;max-width:450px;width:100%}
+    .home-head-tools #lineBindArea{display:block;min-width:0}
+    .home-head-tools #lineBindArea:empty{display:none}
+    .head-tool-card{height:104px;border:1px solid var(--line);border-radius:24px;background:#f5f8fc;padding:14px 14px;display:flex;flex-direction:column;justify-content:space-between;text-decoration:none;color:inherit;box-shadow:none}
+    .head-tool-title{font-size:15px;font-weight:900;line-height:1.25;color:#18314a;text-align:center}
+    .head-tool-desc{font-size:13px;line-height:1.35;color:var(--muted);text-align:center}
+    .btn{background:#1f7a5a;color:#fff}
+    .btn.secondary{background:#1f7a5a;color:#fff}
+    .head-tool-btn{align-self:center;width:auto;padding:9px 14px;font-size:14px;border-radius:16px}
+    .logout-card{align-items:center;justify-content:center;background:#eef2f6}
+    .logout-mini-btn{border:none;background:transparent;color:#24384f;font-size:16px;font-weight:900;cursor:pointer}
     .home-grid{display:grid;grid-template-columns:1fr;gap:18px}
     .home-tile{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:28px 32px;border:1px solid var(--line);border-radius:28px;background:#fff;text-decoration:none;color:inherit;box-shadow:0 12px 30px rgba(15,23,42,.04)}
-    .tile-copy{text-align:left}
+    .home-tile .tile-copy{flex:1;text-align:center}
     .home-tile strong{display:block;font-size:26px;line-height:1.2;margin-bottom:8px;text-align:center}
     .home-tile span{display:block;color:var(--muted);font-size:18px;line-height:1.7;text-align:center}
     .tile-count{min-width:96px;text-align:center;font-weight:900;font-size:42px;line-height:1;color:#1f7a5a}
     .tile-count.zero{color:#b8c3cf}
-    .line-bind-modal{position:fixed;inset:0;background:rgba(19,34,54,.42);display:none;align-items:center;justify-content:center;padding:20px;z-index:9999}
-    .line-bind-modal.show{display:flex}
-    .line-bind-dialog{width:min(92vw,420px);background:#fff;border-radius:26px;border:1px solid var(--line);box-shadow:0 10px 28px rgba(25,46,89,.06);padding:22px 20px}
-    .line-bind-dialog h3{margin:0 0 10px;font-size:22px;color:#18314a;text-align:center}
-    .line-bind-dialog p{margin:8px 0;font-size:15px;line-height:1.7;color:#506278}
-    .line-bind-code{margin-top:12px;border-radius:18px;background:#f5f8fc;border:1px dashed var(--line);padding:12px 14px;text-align:center;font-weight:900;color:#18314a;word-break:break-all}
-    .line-bind-dialog .actions{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin-top:16px}
-    @media (max-width:720px){
-      .home-head-card{padding:22px 18px;border-radius:24px}
-      .home-head-info{width:100%;text-align:center;flex:0 0 100%}
-      .home-head-info .title{font-size:26px}
-      .home-head-info .welcome{font-size:20px}
-      .home-head-tools{width:100%;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 84px;gap:10px}
-      .head-tool-card,.line-compact-card{height:106px;border-radius:22px;padding:12px 8px}
-      .head-tool-title,.line-compact-title{font-size:13px}
-      .head-tool-desc,.line-compact-status{font-size:12px}
-      .head-tool-btn,.line-compact-btn,.logout-mini-btn{min-width:68px;padding:8px 10px;font-size:13px}
-      .home-tile{padding:24px 22px;border-radius:22px;flex-direction:column;align-items:center}
-      .tile-copy{width:100%}
-      .home-tile strong{font-size:22px}
-      .home-tile span{font-size:16px}
-      .tile-count{min-width:74px;font-size:38px}
-    }
+    .home-head-tools .line-bind-mini{margin-top:0;width:100%;height:104px;min-height:104px;padding:14px 14px;border-radius:24px;display:flex;flex-direction:column;justify-content:space-between;gap:8px;background:#f5f8fc;box-shadow:none;border:1px solid var(--line)}
+    .home-head-tools .line-bind-mini-left{gap:6px;flex:1 1 auto;min-width:0}
+    .home-head-tools .line-bind-mini-title,.home-head-tools .line-bind-mini-status{text-align:center}
+    .home-head-tools .line-bind-mini-hint{display:none}
+    .home-head-tools .line-bind-mini-actions{width:100%;justify-content:center}
+    .home-head-tools .line-bind-mini .btn{padding:9px 14px;font-size:14px;border-radius:16px;background:#1f7a5a!important;color:#fff!important}
+    .home-head-tools .line-bind-guide{text-align:left}
+    @media (max-width:720px){.home-head-card{padding:22px 18px;border-radius:24px}.home-head-info{width:100%;text-align:center}.home-head-info .title{font-size:26px}.home-head-info .welcome{font-size:20px}.home-head-tools{max-width:none;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 82px}.head-tool-card{height:100px}.home-head-tools .line-bind-mini{height:100px;min-height:100px}.home-tile{padding:24px 22px;border-radius:22px;flex-direction:column;align-items:center}.home-tile strong{font-size:22px}.home-tile span{font-size:16px}.tile-count{min-width:74px;font-size:38px}}
   </style>
 </head>
 <body onload="init()">
@@ -62,13 +47,13 @@
           <div class="welcome">歡迎 <span data-user-name></span></div>
         </div>
         <div class="home-head-tools">
-          <div id="lineBindArea" class="head-tool-slot"></div>
+          <div id="lineBindArea"></div>
           <a class="head-tool-card" href="profile.html">
             <div>
               <div class="head-tool-title">個人資料</div>
-              <div class="head-tool-desc">查看與修改</div>
+              <div class="head-tool-desc">查看與修改資料</div>
             </div>
-            <span class="head-tool-btn">查看</span>
+            <span class="btn head-tool-btn">查看</span>
           </a>
           <div class="head-tool-card logout-card">
             <button class="logout-mini-btn" type="button" onclick="logout()">登出</button>
@@ -88,140 +73,12 @@
       </div>
     </div>
   </div>
-  <div class="line-bind-modal" id="lineBindModal" aria-hidden="true">
-    <div class="line-bind-dialog">
-      <h3>LINE 綁定</h3>
-      <p>1. 先加入官方 LINE 好友。</p>
-      <p>2. 複製綁定文字，到 LINE 聊天視窗貼上並送出。</p>
-      <div class="line-bind-code" id="lineBindCode"></div>
-      <div class="actions">
-        <button class="head-tool-btn line-compact-btn secondary" type="button" id="copyLineBindBtn">複製綁定文字</button>
-        <a class="head-tool-btn line-compact-btn" href="#" target="_blank" id="lineAddFriendBtn">加入 LINE</a>
-        <button class="head-tool-btn line-compact-btn secondary" type="button" id="closeLineBindBtn">關閉</button>
-      </div>
-    </div>
-  </div>
-  <script src="config.js?v=20260414clean3"></script>
-  <script src="app.js?v=20260414clean3"></script>
+  <script src="config.js?v=20260421fix2"></script>
+  <script src="app.js?v=20260421fix2"></script>
   <script>
-    function renderHomeTiles(user){
-      qsa('#homeGrid [data-feature]').forEach(tile=>{
-        const feature = tile.dataset.feature || '';
-        tile.style.display = canUseFeature(feature, user) ? '' : 'none';
-      });
-    }
-
-    async function copyText(text){
-      if(!text) return;
-      if(navigator.clipboard && navigator.clipboard.writeText){
-        await navigator.clipboard.writeText(text);
-        return;
-      }
-      const input=document.createElement('textarea');
-      input.value=text;
-      document.body.appendChild(input);
-      input.select();
-      document.execCommand('copy');
-      input.remove();
-    }
-    function buildLineBindCommand(user){
-      const email=String((user&&user.email)||'').trim();
-      return email ? ('柚子綁定 ' + email) : '';
-    }
-    async function renderCompactLineCard(user){
-      const target=document.getElementById('lineBindArea');
-      if(!target || !user) return;
-      const hasLineId=!!String(user.lineUserId||'').trim();
-      const notifyOn=String(user.lineNotifyEnabled||'').trim()==='是' || user.lineNotifyEnabled===true;
-      const statusText=!hasLineId ? '尚未綁定' : '已綁定';
-      const btnText=!hasLineId ? '前往綁定' : (notifyOn ? '關閉提醒' : '開啟提醒');
-      target.innerHTML=`<div class="line-compact-card"><div><p class="line-compact-title">LINE 綁定</p><p class="line-compact-status ${!hasLineId ? 'is-off' : 'is-on'}">${statusText}</p></div><button class="head-tool-btn line-compact-btn" type="button" id="lineCardActionBtn">${btnText}</button></div>`;
-      const btn=target.querySelector('#lineCardActionBtn');
-      if(!btn) return;
-      btn.addEventListener('click', async function(){
-        if(!hasLineId){
-          document.getElementById('lineBindCode').textContent=buildLineBindCommand(user) || '請先重新登入後再試';
-          try{
-            const links=await getPublicSystemLinksCached();
-            const addBtn=document.getElementById('lineAddFriendBtn');
-            addBtn.href=(links&&links.lineAddFriendUrl)||'#';
-            addBtn.style.pointerEvents=(links&&links.lineAddFriendUrl)?'auto':'none';
-            addBtn.style.opacity=(links&&links.lineAddFriendUrl)?'1':'.5';
-          }catch(e){}
-          document.getElementById('lineBindModal').classList.add('show');
-          document.getElementById('lineBindModal').setAttribute('aria-hidden','false');
-          return;
-        }
-        try{
-          btn.disabled=true;
-          const res=await setLineNotifyPreference_(!notifyOn, false);
-          if(res&&res.user&&typeof saveUser==='function') saveUser(res.user);
-          renderCompactLineCard(getUser());
-        }catch(err){
-          alert(err.message||'LINE 設定更新失敗');
-        }finally{btn.disabled=false;}
-      });
-    }
-    function bindLineModal(){
-      const modal=document.getElementById('lineBindModal');
-      const closeBtn=document.getElementById('closeLineBindBtn');
-      const copyBtn=document.getElementById('copyLineBindBtn');
-      if(closeBtn) closeBtn.addEventListener('click', function(){ modal.classList.remove('show'); modal.setAttribute('aria-hidden','true'); });
-      if(modal) modal.addEventListener('click', function(e){ if(e.target===modal){ modal.classList.remove('show'); modal.setAttribute('aria-hidden','true'); }});
-      if(copyBtn) copyBtn.addEventListener('click', async function(){
-        try{ await copyText(document.getElementById('lineBindCode').textContent||''); copyBtn.textContent='已複製'; setTimeout(function(){ copyBtn.textContent='複製綁定文字'; },1200);}catch(e){}
-      });
-    }
-
-    async function init(){
-      fillHeader();
-      const user=requireLogin();
-      if(!user) return;
-      if(!guardFeatureAccess('dashboard', user)) return;
-      setPortalMode('staff');
-      renderHomeTiles(user);
-      bindLineModal();
-      renderCompactLineCard(user);
-      refreshHomeCounts(user);
-    }
-
-    
-async function refreshHomeCounts(user){
-  const taskEl = qs('#taskCount');
-  const routineEl = qs('#routineCount');
-  const leaveEl = qs('#leaveCount');
-  const clockEl = qs('#clockCount');
-  const annEl = qs('#announcementCount');
-  try{
-    const summaryRes = await api('getDashboardSummary',{userId:user.id,email:user.email,role:'staff'});
-    const taskCount = Number(summaryRes?.counts?.tasks||0);
-    const routineCount = Number(summaryRes?.counts?.routines||0);
-    const leaveCount = Number(summaryRes?.counts?.leaves||0);
-    const clockCount = Number(summaryRes?.counts?.clocks||0);
-    let announcementCount = 0;
-    try{
-      const annRes = await api('getAnnouncements',{userId:user.id});
-      announcementCount = Array.isArray(annRes?.rows) ? annRes.rows.length : 0;
-    }catch(e){}
-    taskEl.textContent = String(taskCount);
-    routineEl.textContent = String(routineCount);
-    leaveEl.textContent = String(leaveCount);
-    clockEl.textContent = String(clockCount);
-    annEl.textContent = String(announcementCount);
-    taskEl.classList.toggle('zero', taskCount===0);
-    routineEl.classList.toggle('zero', routineCount===0);
-    leaveEl.classList.toggle('zero', leaveCount===0);
-    clockEl.classList.toggle('zero', clockCount===0);
-    annEl.classList.toggle('zero', announcementCount===0);
-  }catch(e){
-    [taskEl,routineEl,leaveEl,clockEl,annEl].forEach(el=>{
-      if(!el) return;
-      el.textContent='0';
-      el.classList.add('zero');
-    });
-  }
-}
-
+    function renderHomeTiles(user){ qsa('#homeGrid [data-feature]').forEach(tile=>{ const feature = tile.dataset.feature || ''; tile.style.display = canUseFeature(feature, user) ? '' : 'none'; }); }
+    async function init(){ fillHeader(); const user=requireLogin(); if(!user) return; if(!guardFeatureAccess('dashboard', user)) return; setPortalMode('staff'); renderHomeTiles(user); Promise.resolve().then(function(){ if(typeof renderLineBindPrompt_==='function') return renderLineBindPrompt_('#lineBindArea'); }).catch(function(){}); refreshHomeCounts(user); }
+    async function refreshHomeCounts(user){ const taskEl=qs('#taskCount'); const routineEl=qs('#routineCount'); const leaveEl=qs('#leaveCount'); const clockEl=qs('#clockCount'); const annEl=qs('#announcementCount'); try{ const summaryRes=await api('getDashboardSummary',{userId:user.id,email:user.email,role:'staff'}); const taskCount=Number(summaryRes?.counts?.tasks||0); const routineCount=Number(summaryRes?.counts?.routines||0); const leaveCount=Number(summaryRes?.counts?.leaves||0); const clockCount=Number(summaryRes?.counts?.clocks||0); let announcementCount=0; try{ const annRes=await api('getAnnouncements',{userId:user.id}); announcementCount=Array.isArray(annRes?.rows) ? annRes.rows.length : 0; }catch(e){} taskEl.textContent=String(taskCount); routineEl.textContent=String(routineCount); leaveEl.textContent=String(leaveCount); clockEl.textContent=String(clockCount); annEl.textContent=String(announcementCount); taskEl.classList.toggle('zero', taskCount===0); routineEl.classList.toggle('zero', routineCount===0); leaveEl.classList.toggle('zero', leaveCount===0); clockEl.classList.toggle('zero', clockCount===0); annEl.classList.toggle('zero', announcementCount===0); }catch(e){ [taskEl,routineEl,leaveEl,clockEl,annEl].forEach(el=>{ if(!el) return; el.textContent='0'; el.classList.add('zero'); }); } }
   </script>
 </body>
 </html>
