@@ -10,17 +10,15 @@
     .home-head-card{display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap;padding:26px 28px;border:1px solid var(--line);border-radius:30px;background:#fff;box-shadow:0 12px 30px rgba(15,23,42,.04)}
     .home-head-info .title{margin:0;font-size:30px;line-height:1.15}
     .home-head-info .welcome{margin-top:10px;font-size:21px;font-weight:800;color:#24384f}
-    .home-head-tools{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 92px;align-items:stretch;gap:12px;flex:1 1 380px;max-width:450px;width:100%}
-    .home-head-tools #lineBindArea{display:block;min-width:0}
-    .home-head-tools #lineBindArea:empty{display:none}
-    .head-tool-card{height:104px;border:1px solid var(--line);border-radius:24px;background:#f5f8fc;padding:14px 14px;display:flex;flex-direction:column;justify-content:space-between;text-decoration:none;color:inherit;box-shadow:none}
-    .head-tool-title{font-size:15px;font-weight:900;line-height:1.25;color:#18314a;text-align:center}
-    .head-tool-desc{font-size:13px;line-height:1.35;color:var(--muted);text-align:center}
-    .btn{background:#1f7a5a;color:#fff}
-    .btn.secondary{background:#1f7a5a;color:#fff}
-    .head-tool-btn{align-self:center;width:auto;padding:9px 14px;font-size:14px;border-radius:16px}
-    .logout-card{align-items:center;justify-content:center;background:#eef2f6}
-    .logout-mini-btn{border:none;background:transparent;color:#24384f;font-size:16px;font-weight:900;cursor:pointer}
+    .home-head-tools{display:grid;grid-template-columns:1.28fr 1.28fr .78fr;gap:12px;align-items:stretch;width:min(100%,460px)}
+    .head-tool-slot{display:block}
+    .head-tool-card{height:104px;border:1px solid var(--line);border-radius:24px;background:#f5f8fc;padding:14px 16px;display:flex;flex-direction:column;justify-content:space-between;text-decoration:none;color:inherit;box-shadow:none;min-width:0}
+    .head-tool-card.line-card,.head-tool-card.profile-card{width:auto}
+    .head-tool-card.logout-card{width:auto;align-items:center;justify-content:center;background:#eef2f6}
+    .head-tool-title{font-size:15px;font-weight:900;line-height:1.25;color:#18314a;text-align:center;white-space:nowrap}
+    .head-tool-desc{font-size:13px;line-height:1.45;color:var(--muted);text-align:center}
+    .head-tool-btn{align-self:center;width:auto;padding:9px 14px;font-size:14px;border-radius:16px;white-space:nowrap}
+    .logout-mini-btn{border:none;background:transparent;color:#24384f;font-size:16px;font-weight:900;cursor:pointer;white-space:nowrap}
     .home-grid{display:grid;grid-template-columns:1fr;gap:18px}
     .home-tile{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:28px 32px;border:1px solid var(--line);border-radius:28px;background:#fff;text-decoration:none;color:inherit;box-shadow:0 12px 30px rgba(15,23,42,.04)}
     .home-tile .tile-copy{flex:1;text-align:center}
@@ -28,14 +26,23 @@
     .home-tile span{display:block;color:var(--muted);font-size:18px;line-height:1.7;text-align:center}
     .tile-count{min-width:96px;text-align:center;font-weight:900;font-size:42px;line-height:1;color:#1f7a5a}
     .tile-count.zero{color:#b8c3cf}
-    .home-head-tools .line-bind-mini{margin-top:0;width:100%;height:104px;min-height:104px;padding:14px 14px;border-radius:24px;display:flex;flex-direction:column;justify-content:space-between;gap:8px;background:#f5f8fc;box-shadow:none;border:1px solid var(--line)}
-    .home-head-tools .line-bind-mini-left{gap:6px;flex:1 1 auto;min-width:0}
-    .home-head-tools .line-bind-mini-title,.home-head-tools .line-bind-mini-status{text-align:center}
-    .home-head-tools .line-bind-mini-hint{display:none}
-    .home-head-tools .line-bind-mini-actions{width:100%;justify-content:center}
-    .home-head-tools .line-bind-mini .btn{padding:9px 14px;font-size:14px;border-radius:16px;background:#1f7a5a!important;color:#fff!important}
-    .home-head-tools .line-bind-guide{text-align:left}
-    @media (max-width:720px){.home-head-card{padding:22px 18px;border-radius:24px}.home-head-info{width:100%;text-align:center}.home-head-info .title{font-size:26px}.home-head-info .welcome{font-size:20px}.home-head-tools{max-width:none;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 82px}.head-tool-card{height:100px}.home-head-tools .line-bind-mini{height:100px;min-height:100px}.home-tile{padding:24px 22px;border-radius:22px;flex-direction:column;align-items:center}.home-tile strong{font-size:22px}.home-tile span{font-size:16px}.tile-count{min-width:74px;font-size:38px}}
+    .home-head-tools #lineBindArea{display:block}
+
+    @media (max-width:720px){
+      .home-head-card{padding:22px 18px;border-radius:24px}
+      .home-head-info{width:100%;text-align:center}
+      .home-head-info .title{font-size:26px}
+      .home-head-info .welcome{font-size:20px}
+      .home-head-tools{width:100%;grid-template-columns:1.16fr 1.16fr .72fr;gap:10px}
+      .head-tool-card.line-card,.head-tool-card.profile-card,.head-tool-card.logout-card{width:auto}
+      .head-tool-card{height:96px;padding:12px 12px;border-radius:22px}
+      .head-tool-title{font-size:14px}
+      .head-tool-desc{font-size:12px}
+      .home-tile{padding:24px 22px;border-radius:22px;flex-direction:column;align-items:center}
+      .home-tile strong{font-size:22px}
+      .home-tile span{font-size:16px}
+      .tile-count{min-width:74px;font-size:38px}
+    }
   </style>
 </head>
 <body onload="init()">
@@ -47,8 +54,8 @@
           <div class="welcome">歡迎 <span data-user-name></span></div>
         </div>
         <div class="home-head-tools">
-          <div id="lineBindArea"></div>
-          <a class="head-tool-card" href="profile.html">
+          <div id="lineBindArea" class="head-tool-slot"></div>
+          <a class="head-tool-card profile-card" href="profile.html">
             <div>
               <div class="head-tool-title">個人資料</div>
               <div class="head-tool-desc">查看與修改資料</div>
@@ -73,12 +80,101 @@
       </div>
     </div>
   </div>
-  <script src="config.js?v=20260421fix2"></script>
-  <script src="app.js?v=20260421fix2"></script>
+  <script src="config.js?v=20260414clean3"></script>
+  <script src="app.js?v=20260414clean3"></script>
   <script>
-    function renderHomeTiles(user){ qsa('#homeGrid [data-feature]').forEach(tile=>{ const feature = tile.dataset.feature || ''; tile.style.display = canUseFeature(feature, user) ? '' : 'none'; }); }
-    async function init(){ fillHeader(); const user=requireLogin(); if(!user) return; if(!guardFeatureAccess('dashboard', user)) return; setPortalMode('staff'); renderHomeTiles(user); Promise.resolve().then(function(){ if(typeof renderLineBindPrompt_==='function') return renderLineBindPrompt_('#lineBindArea'); }).catch(function(){}); refreshHomeCounts(user); }
-    async function refreshHomeCounts(user){ const taskEl=qs('#taskCount'); const routineEl=qs('#routineCount'); const leaveEl=qs('#leaveCount'); const clockEl=qs('#clockCount'); const annEl=qs('#announcementCount'); try{ const summaryRes=await api('getDashboardSummary',{userId:user.id,email:user.email,role:'staff'}); const taskCount=Number(summaryRes?.counts?.tasks||0); const routineCount=Number(summaryRes?.counts?.routines||0); const leaveCount=Number(summaryRes?.counts?.leaves||0); const clockCount=Number(summaryRes?.counts?.clocks||0); let announcementCount=0; try{ const annRes=await api('getAnnouncements',{userId:user.id}); announcementCount=Array.isArray(annRes?.rows) ? annRes.rows.length : 0; }catch(e){} taskEl.textContent=String(taskCount); routineEl.textContent=String(routineCount); leaveEl.textContent=String(leaveCount); clockEl.textContent=String(clockCount); annEl.textContent=String(announcementCount); taskEl.classList.toggle('zero', taskCount===0); routineEl.classList.toggle('zero', routineCount===0); leaveEl.classList.toggle('zero', leaveCount===0); clockEl.classList.toggle('zero', clockCount===0); annEl.classList.toggle('zero', announcementCount===0); }catch(e){ [taskEl,routineEl,leaveEl,clockEl,annEl].forEach(el=>{ if(!el) return; el.textContent='0'; el.classList.add('zero'); }); } }
+    function renderHomeTiles(user){
+      qsa('#homeGrid [data-feature]').forEach(tile=>{
+        const feature = tile.dataset.feature || '';
+        tile.style.display = canUseFeature(feature, user) ? '' : 'none';
+      });
+    }
+
+    async function init(){
+      fillHeader();
+      const user=requireLogin();
+      if(!user) return;
+      if(!guardFeatureAccess('dashboard', user)) return;
+      setPortalMode('staff');
+      renderHomeTiles(user);
+      renderSimpleLineCard('#lineBindArea');
+      refreshHomeCounts(user);
+    }
+
+    
+
+
+    async function renderSimpleLineCard(targetSelector){
+      const target = typeof targetSelector === 'string' ? document.querySelector(targetSelector) : targetSelector;
+      const user = getUser && getUser();
+      if(!target || !user) return;
+      const hasLineId = !!String(user.lineUserId||'').trim();
+      const notifyOn = String(user.lineNotifyEnabled||'').trim()==='是' || user.lineNotifyEnabled===true;
+      const statusText = !hasLineId ? '尚未綁定' : (notifyOn ? '已綁定' : '已綁定｜提醒關閉');
+      const btnText = !hasLineId ? '前往綁定' : (notifyOn ? '關閉提醒' : '開啟提醒');
+      target.innerHTML = `<div class="head-tool-card line-card"><div><div class="head-tool-title">LINE 通知設定</div><div class="head-tool-desc">${statusText}</div></div><button type="button" class="btn head-tool-btn" id="lineCardActionBtn">${btnText}</button></div>`;
+      const btn = document.getElementById('lineCardActionBtn');
+      if(!btn) return;
+      btn.onclick = async function(){
+        btn.disabled = true;
+        try{
+          if(!hasLineId){
+            const links = (typeof getPublicSystemLinksCached==='function') ? await getPublicSystemLinksCached() : {};
+            const cmd = `柚子綁定 ${String(user.email||'').trim()}`;
+            try{ if(navigator.clipboard && navigator.clipboard.writeText) await navigator.clipboard.writeText(cmd); }catch(e){}
+            if(links && links.lineAddFriendUrl) window.open(links.lineAddFriendUrl, '_blank');
+            alert('已幫你準備綁定方式。
+1. 先加入官方 LINE
+2. 到聊天視窗貼上：
+' + cmd + '
+3. 送出後回首頁重新整理');
+          }else if(typeof setLineNotifyPreference_==='function'){
+            await setLineNotifyPreference_(!notifyOn, false);
+          }
+          await renderSimpleLineCard(targetSelector);
+        }catch(err){
+          alert(err && err.message ? err.message : 'LINE 設定失敗');
+          btn.disabled = false;
+        }
+      };
+    }
+
+async function refreshHomeCounts(user){
+  const taskEl = qs('#taskCount');
+  const routineEl = qs('#routineCount');
+  const leaveEl = qs('#leaveCount');
+  const clockEl = qs('#clockCount');
+  const annEl = qs('#announcementCount');
+  try{
+    const summaryRes = await api('getDashboardSummary',{userId:user.id,email:user.email,role:'staff'});
+    const taskCount = Number(summaryRes?.counts?.tasks||0);
+    const routineCount = Number(summaryRes?.counts?.routines||0);
+    const leaveCount = Number(summaryRes?.counts?.leaves||0);
+    const clockCount = Number(summaryRes?.counts?.clocks||0);
+    let announcementCount = 0;
+    try{
+      const annRes = await api('getAnnouncements',{userId:user.id});
+      announcementCount = Array.isArray(annRes?.rows) ? annRes.rows.length : 0;
+    }catch(e){}
+    taskEl.textContent = String(taskCount);
+    routineEl.textContent = String(routineCount);
+    leaveEl.textContent = String(leaveCount);
+    clockEl.textContent = String(clockCount);
+    annEl.textContent = String(announcementCount);
+    taskEl.classList.toggle('zero', taskCount===0);
+    routineEl.classList.toggle('zero', routineCount===0);
+    leaveEl.classList.toggle('zero', leaveCount===0);
+    clockEl.classList.toggle('zero', clockCount===0);
+    annEl.classList.toggle('zero', announcementCount===0);
+  }catch(e){
+    [taskEl,routineEl,leaveEl,clockEl,annEl].forEach(el=>{
+      if(!el) return;
+      el.textContent='0';
+      el.classList.add('zero');
+    });
+  }
+}
+
   </script>
 </body>
 </html>
