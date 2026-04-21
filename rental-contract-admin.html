@@ -41,8 +41,12 @@
     .print-only{display:none}
 
     .history-card,.email-card{margin-top:14px}
-    .history-year{font-size:15px;font-weight:900;margin:0 0 8px}
-    .history-item{display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid #e2e8f0;border-radius:14px;padding:10px 12px;background:#fff;margin-bottom:8px}
+    .year-group{border:1px solid #d9e0e6;border-radius:16px;overflow:hidden;background:#fff;margin-bottom:12px}
+    .year-btn{width:100%;border:none;background:#fff;padding:14px 16px;font-size:18px;font-weight:900;text-align:left;display:flex;justify-content:space-between;align-items:center;cursor:pointer}
+    .year-btn.active{background:#f8fafc}
+    .year-body{display:none;padding:0 12px 12px}
+    .year-body.open{display:grid;gap:10px}
+    .history-item{display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid #e2e8f0;border-radius:14px;padding:10px 12px;background:#fff}
     .history-item-title{font-size:14px;font-weight:800;line-height:1.5}
     .history-item-actions{display:flex;gap:8px;flex-wrap:wrap}
 
@@ -189,14 +193,14 @@
                 <div class="signature-box">
                   <div class="hd">甲方簽章</div>
                   <div class="bd">
+                    <img class="stamp-blue" src="company_seal_contract_transparent.png" alt="公司章">
+                    <img class="stamp-red" src="red_stamp_transparent.png" alt="負責人章">
                     <div class="sign-line"></div>
                   </div>
                 </div>
                 <div class="signature-box">
                   <div class="hd">乙方簽章</div>
                   <div class="bd">
-                    <img class="stamp-blue" src="company_seal_contract_transparent.png" alt="公司章">
-                    <img class="stamp-red" src="red_stamp_transparent.png" alt="負責人章">
                     <div class="sign-line"></div>
                   </div>
                 </div>
@@ -404,7 +408,7 @@
       }
       const groups = {};
       historyRows.forEach(row=>{
-        const year = String(row.year || '');
+        const year = String(row.year || '未分類');
         (groups[year] ||= []).push(row);
       });
       const years = Object.keys(groups).sort((a,b)=> b.localeCompare(a));
@@ -418,8 +422,14 @@
             </div>
           </div>
         `).join('');
-        return `<div style="margin-bottom:14px"><div class="history-year">${year}</div>${items}</div>`;
+        return `<div class="year-group"><button class="year-btn" type="button" onclick="toggleYearGroup(this)"><span>${year}</span><span>＋</span></button><div class="year-body">${items}</div></div>`;
       }).join('');
+    }
+    function toggleYearGroup(btn){
+      const body = btn.nextElementSibling;
+      const open = body.classList.toggle('open');
+      btn.classList.toggle('active', open);
+      btn.lastElementChild.textContent = open ? '－' : '＋';
     }
     function escapeHtml(s){
       return String(s || '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
