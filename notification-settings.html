@@ -71,6 +71,14 @@
   <script src="app.js"></script>
   <script>
     let currentUser=null;
+    function escapeHtml(v){
+      return String(v==null?'':v)
+        .replace(/&/g,'&amp;')
+        .replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;')
+        .replace(/'/g,'&#39;');
+    }
     function makeCheck(name, checked){
       return `<label style="display:inline-flex;justify-content:center;width:100%"><input type="checkbox" data-key="${name}" ${checked?'checked':''}></label>`;
     }
