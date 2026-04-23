@@ -73,7 +73,7 @@
 </head>
 <body onload="initPage()">
   <div class="container" style="max-width:1400px">
-    
+    <div class="page-return-wrap"><a class="btn page-return-btn" href="settings.html">返回管理首頁</a></div>
     <div class="card">
       <div class="topbar">
         <div>
@@ -259,8 +259,7 @@ Email：<span id="pvCustomerEmail"></span>
         </div>`;
     }
     function escapeHtml(v=''){return String(v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-    function addItem(item){ qs('#items').insertAdjacentHTML('beforeend', itemHtml(item)); bindItemEvents(); prog.set(66,'整理預覽中');
-        renderPreview(); }
+    function addItem(item){ qs('#items').insertAdjacentHTML('beforeend', itemHtml(item)); bindItemEvents(); renderPreview(); }
     function removeItem(btn){ const card=btn.closest('.item-card'); if(card) card.remove(); renderPreview(); }
     function bindItemEvents(){ qsa('#items input').forEach(el=>{ el.oninput=renderPreview; }); }
     function getItems(){ return qsa('#items .item-card').map((card,idx)=>({ sort:idx+1, section:card.querySelector('.item-section').value.trim(), name:card.querySelector('.item-name').value.trim(), spec:card.querySelector('.item-spec').value.trim(), unit:card.querySelector('.item-unit').value.trim(), qty:Number(card.querySelector('.item-qty').value||0), price:Number(card.querySelector('.item-price').value||0) })); }
@@ -657,8 +656,7 @@ Email：<span id="pvCustomerEmail"></span>
       ['quoteNo','quoteDate','customerTitle','customerTaxId','customerContact','customerPhone','customerEmail','customerAddress','remark','taxMode','taxRate'].forEach(id=>qs('#'+id).addEventListener('input',renderPreview));
       qs('#taxMode').addEventListener('change',renderPreview);
       qs('#quoteDate').value=todayStr();
-      prog.set(82,'讀取歷史資料中');
-        await loadHistory();
+      await loadHistory();
     }
   </script>
 </body>

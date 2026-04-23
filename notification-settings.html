@@ -7,8 +7,6 @@
   <link rel="stylesheet" href="style.css">
   <style>
     .page{max-width:1100px;margin:0 auto;padding:20px}
-    .topbar{display:flex;justify-content:flex-end;gap:10px;margin-bottom:16px}
-    .btn-lite{border:none;border-radius:16px;padding:12px 18px;background:#eef2f6;color:#16324f;font-weight:800}
     .card{background:#fff;border:1px solid #e5e7eb;border-radius:22px;padding:20px;box-shadow:0 6px 20px rgba(15,23,42,.04)}
     h1{margin:0 0 10px;font-size:40px;color:#16324f}
     .desc{margin:0 0 14px;color:#4b5563;line-height:1.7}
@@ -30,9 +28,7 @@
 </head>
 <body>
   <div class="page">
-    <div class="topbar">
-      <button class="btn-lite" id="backBtn">返回管理頁面</button>
-    </div>
+    <div class="page-return-wrap"><a class="btn page-return-btn" href="settings.html">返回管理首頁</a></div>
 
     <section class="card">
       <h1>通知設定</h1>
@@ -134,9 +130,6 @@
       }
     }
 
-    document.getElementById('backBtn').addEventListener('click', function(){
-      location.href = 'settings.html';
-    });
     document.getElementById('saveBtn').addEventListener('click', saveRows);
 
     (async function init(){
