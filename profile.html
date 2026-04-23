@@ -37,11 +37,9 @@
       <div class="section-title">查看資料</div>
       <div class="readonly-stack">
         <div class="readonly-box"><div class="readonly-label">姓名</div><div class="readonly-value" id="viewName">-</div></div>
-        <div class="readonly-box"><div class="readonly-label">身分類型</div><div class="readonly-value" id="viewIdentity">-</div></div>
         <div class="readonly-box"><div class="readonly-label">出生年月日</div><div class="readonly-value" id="viewBirth">-</div></div>
         <div class="readonly-box"><div class="readonly-label">身分證字號</div><div class="readonly-value" id="viewIdMasked">-</div></div>
         <div class="readonly-box"><div class="readonly-label">到職日</div><div class="readonly-value" id="viewHireDate">-</div></div>
-        <div class="readonly-box"><div class="readonly-label">員工ID</div><div class="readonly-value" id="viewEmployeeId">-</div></div>
         <div class="readonly-box"><div class="readonly-label">緊急聯絡人</div><div class="readonly-value" id="viewEmergency">-</div></div>
         <div class="readonly-box"><div class="readonly-label">緊急聯絡人電話</div><div class="readonly-value" id="viewEmergencyPhone">-</div></div>
         <div class="readonly-box"><div class="readonly-label">行動電話</div><div class="readonly-value" id="viewMobilePhone">-</div></div>
@@ -88,11 +86,9 @@
         if(!res||res.ok===false) throw new Error(res&&res.message||'讀取失敗');
         const p=res.profile||{};
         qs('#viewName').textContent=p.name||'-';
-        qs('#viewIdentity').textContent=p.identityLabel||'-';
         qs('#viewBirth').textContent=p.birthDate||'-';
         qs('#viewIdMasked').textContent=p.idNumberMasked||'-';
         qs('#viewHireDate').textContent=p.hireDate||'-';
-        qs('#viewEmployeeId').textContent=p.employeeId||'-';
         qs('#viewEmergency').textContent=p.emergencyContact||'-';
         qs('#viewEmergencyPhone').textContent=p.emergencyPhone||'-';
         qs('#viewMobilePhone').textContent=p.mobilePhone||'-';
