@@ -14,6 +14,8 @@
     .item-card{border:1px solid #d9e0e6;border-radius:14px;padding:12px;background:#fafbfc}
     .mini-actions{display:flex;gap:8px;flex-wrap:wrap}
     .mini-actions .btn{width:auto;padding:10px 14px}
+    .btn-danger{background:#dc2626!important;border-color:#dc2626!important;color:#fff!important}
+    .btn-danger:hover{filter:brightness(.96)}
     .list-cards{display:grid;gap:12px}
     .year-group{border:1px solid #d9e0e6;border-radius:16px;overflow:hidden;background:#fff}
     .year-btn{width:100%;border:none;background:#fff;padding:14px 16px;font-size:18px;font-weight:900;text-align:left;display:flex;justify-content:space-between;align-items:center;cursor:pointer}
@@ -417,7 +419,9 @@ Email：<span id="pvCustomerEmail"></span>
       return btoa(binary);
     }
     function versionActionHtml(row){
-      return `<div class="list-card" style="padding:10px 12px;margin-top:8px;background:#fbfdff"><div class="list-card-top"><div><div style="font-size:15px;font-weight:900">${escapeHtml(row.versionName||'原始版')}</div><div class="muted-sm">${escapeHtml(row.quoteDate||'')}｜總額：${money(row.totalAmount||0)}｜${escapeHtml(row.sendStatus||'未寄送')}</div></div><div class="mini-actions"><button class="btn secondary" style="width:auto;padding:8px 12px" onclick="previewQuotation('${row.quotationId}', this)">預覽</button><button class="btn secondary" style="width:auto;padding:8px 12px" onclick="editQuotation('${row.quotationId}', false, this)">修改</button><button class="btn secondary" style="width:auto;padding:8px 12px" onclick="copyQuotation('${row.quotationId}', this)">複製估價單</button></div></div></div>`;
+      const versionDate=escapeHtml(row.versionCreatedAt||row.updatedAt||row.quoteDate||'');
+      const totalText=money(row.totalAmount||0);
+      return `<div class="list-card" style="padding:10px 12px;margin-top:8px;background:#fbfdff"><div class="list-card-top"><div><div style="font-size:15px;font-weight:900">${escapeHtml(row.versionName||'原始版')}</div><div class="muted-sm">版本日期：${versionDate}｜開單日期：${escapeHtml(row.quoteDate||'')}｜總額：${totalText}｜${escapeHtml(row.sendStatus||'未寄送')}</div></div><div class="mini-actions"><button class="btn secondary" style="width:auto;padding:8px 12px" onclick="previewQuotation('${row.quotationId}', this)">預覽</button><button class="btn secondary" style="width:auto;padding:8px 12px" onclick="editQuotation('${row.quotationId}', false, this)">修改</button><button class="btn secondary" style="width:auto;padding:8px 12px" onclick="copyQuotation('${row.quotationId}', this)">複製估價單</button><button class="btn btn-danger" style="width:auto;padding:8px 12px" onclick="deleteQuotationVersion('${row.quotationId}', '${escapeHtml(row.versionName||'原始版')}', this)">刪除</button></div></div></div>`;
     }
     function groupRowsByYear(rows){
       const years={};
@@ -435,7 +439,8 @@ Email：<span id="pvCustomerEmail"></span>
     }
     function quotationGroupCard(group){
       const head=group.rows[0]||{};
-      return `<div class="list-card"><div style="font-size:18px;font-weight:900">${escapeHtml(head.quoteNo||'未編號')}</div><div class="muted-sm">${escapeHtml(head.customerTitle||'未填客戶')}｜${escapeHtml(head.quoteDate||'')}</div><div class="muted-sm">版本數：${group.rows.length}</div>${group.rows.map(versionActionHtml).join('')}</div>`;
+      const latest=(group.rows||[]).slice().sort((a,b)=>new Date(b.versionCreatedAt||b.updatedAt||0)-new Date(a.versionCreatedAt||a.updatedAt||0))[0]||head;
+      return `<div class="list-card"><div style="font-size:18px;font-weight:900">${escapeHtml(head.quoteNo||'未編號')}</div><div class="muted-sm">${escapeHtml(head.customerTitle||'未填客戶')}｜開單日期：${escapeHtml(head.quoteDate||'')}</div><div class="muted-sm">版本數：${group.rows.length}｜最新版本：${escapeHtml(latest.versionName||'原始版')}｜${escapeHtml(latest.versionCreatedAt||latest.updatedAt||'')}</div>${group.rows.map(versionActionHtml).join('')}</div>`;
     }
     function yearGroupHtml(group){
       return `<div class="year-group"><button class="year-btn" type="button" onclick="toggleYearGroup(this)"><span>${group.year}</span><span>＋</span></button><div class="year-body">${group.groups.map(quotationGroupCard).join('')}</div></div>`;
@@ -500,6 +505,26 @@ Email：<span id="pvCustomerEmail"></span>
         setLocalMsg('已複製舊估價單內容，接下來儲存會建立新單。');
         prog && prog.done('完成');
       }catch(err){ if(prog) prog.fail('複製'); setLocalMsg(err.message||'複製失敗',true); }
+    }
+
+    async function deleteQuotationVersion(id, versionName, btn){
+      const label=versionName||'這個版本';
+      if(!window.confirm(`確定要刪除 ${label} 嗎？
+刪除後這個版本會從歷史紀錄隱藏。`)) return;
+      let prog = null;
+      try{
+        prog = btn ? startButtonProgress(btn,'刪除中') : null;
+        prog && prog.set(18,'刪除中');
+        const r=await api('deleteQuotation',{userId:currentUser.id, quotationId:id});
+        if(!r.ok) throw new Error(r.message||'刪除失敗');
+        if(String(editingQuotationId||'')===String(id||'')){
+          resetForm(true);
+        }
+        setLocalMsg(r.message||'估價單版本已刪除');
+        prog && prog.set(82,'刷新紀錄中');
+        await loadHistory();
+        prog && prog.done('完成');
+      }catch(err){ if(prog) prog.fail('刪除'); setLocalMsg(err.message||'刪除失敗',true); }
     }
     function startButtonProgress(target, baseText){
       const btn = typeof target === 'string' ? qs('#'+target) : target;
@@ -569,8 +594,8 @@ Email：<span id="pvCustomerEmail"></span>
       const prog=startButtonProgress('savePdfBtn','儲存PDF中');
       try{
         prog.set(18,'儲存單據中');
-        const saved=prog.set(20,'儲存資料中');
-        await saveQuotation(false,false);
+        prog.set(20,'儲存資料中');
+        const saved=await saveQuotation(false,false);
         const payload=currentPayload();
         if(saved && saved.quoteNo && !payload.quoteNo) payload.quoteNo=saved.quoteNo;
         prog.set(58,'產生PDF中');
