@@ -6,6 +6,15 @@
   <title>假勤制度設定</title>
   <link rel="stylesheet" href="style.css">
   <style>
+    .container.leave-policy-wide{max-width:min(1480px, calc(100vw - 32px));}
+    .container.leave-policy-wide .card{padding:20px 22px}
+    @media (min-width:1024px){
+      .container.leave-policy-wide .topbar{align-items:flex-start;gap:16px}
+      .container.leave-policy-wide .topbar>div:last-child{flex:0 0 320px;justify-content:flex-end}
+      .container.leave-policy-wide .policy-table input,.container.leave-policy-wide .policy-table textarea,.container.leave-policy-wide .policy-table select{min-width:64px}
+      .container.leave-policy-wide .policy-table textarea{min-width:140px}
+      .container.leave-policy-wide .policy-table .wide textarea{min-width:190px}
+    }
     .page-return-wrap{margin-bottom:14px}
     .page-return-btn{display:block;width:100%;padding:14px 16px;text-align:center;text-decoration:none;border-radius:14px;font-size:18px;font-weight:800}
     .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-top:14px}
@@ -42,7 +51,7 @@
   </style>
 </head>
 <body onload="init()">
-  <div class="container">
+  <div class="container leave-policy-wide">
     <div class="page-return-wrap"><a class="btn page-return-btn" href="settings.html">返回管理首頁</a></div>
     
     <div class="card">
