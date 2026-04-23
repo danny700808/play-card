@@ -224,17 +224,12 @@
       btn.onclick = async function(){
         btn.disabled = true;
         try{
-          if(!hasLineId){
-            await openLineBindGuide_(String(user.email||'').trim());
-            btn.disabled = false;
-            return;
-          }
-          if(typeof setLineNotifyPreference_==='function'){
-            await setLineNotifyPreference_(!notifyOn, false);
-          }
-          await renderSimpleLineCard(targetSelector);
+          await handleLineCardPrimaryAction_(user, async function(){
+            await renderSimpleLineCard(targetSelector);
+          });
         }catch(err){
           alert(err && err.message ? err.message : 'LINE 設定失敗');
+        }finally{
           btn.disabled = false;
         }
       };

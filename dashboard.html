@@ -103,19 +103,13 @@
       btn.onclick = async function(){
         btn.disabled = true;
         try{
-          if(!hasLineId){
-            await openLineBindGuide_(String(safeUser.email || '').trim());
-            btn.disabled = false;
-            return;
-          }
-          if(typeof setLineNotifyPreference_ === 'function'){
-            const res = await setLineNotifyPreference_(!notifyOn, false);
-            if(res && res.user && typeof saveUser === 'function') saveUser(res.user);
-          }
-          const nextUser = (typeof getUser==='function') ? getUser() : safeUser;
-          await renderSimpleLineCard(nextUser, target);
+          await handleLineCardPrimaryAction_(safeUser, async function(){
+            const nextUser = (typeof getUser==='function') ? getUser() : safeUser;
+            await renderSimpleLineCard(nextUser, target);
+          });
         }catch(err){
           alert(err && err.message ? err.message : 'LINE 設定失敗');
+        }finally{
           btn.disabled = false;
         }
       };

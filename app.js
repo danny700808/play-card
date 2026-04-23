@@ -340,6 +340,113 @@ async function openLineBindGuide_(email){
   }
 }
 
+
+function getLineBindState_(user){
+  const safeUser=user||getUser()||{};
+  const hasLineId=!!String(safeUser.lineUserId||'').trim();
+  const notifyOn=String(safeUser.lineNotifyEnabled||'').trim()==='是' || safeUser.lineNotifyEnabled===true;
+  return {
+    user:safeUser,
+    hasLineId:hasLineId,
+    notifyOn:notifyOn,
+    statusText: !hasLineId ? '尚未綁定' : (notifyOn ? '已綁定' : '已綁定｜提醒關閉'),
+    primaryText: !hasLineId ? '前往綁定' : (notifyOn ? '關閉提醒' : '開啟提醒')
+  };
+}
+
+async function openLineBindManageModal_(user, refreshFn){
+  const state=getLineBindState_(user);
+  const safeUser=state.user||{};
+  if(!state.hasLineId){
+    return openLineBindGuide_(String(safeUser.email||'').trim());
+  }
+
+  ensureLineBindGuideModalStyle_();
+  const old=document.getElementById('lineBindGuideModalBackdrop');
+  if(old) old.remove();
+
+  const wrap=document.createElement('div');
+  wrap.id='lineBindGuideModalBackdrop';
+  wrap.className='line-bind-modal-backdrop';
+  wrap.innerHTML=`
+    <div class="line-bind-modal" role="dialog" aria-modal="true" aria-labelledby="lineBindManageModalTitle">
+      <div class="line-bind-modal-head">
+        <div>
+          <div class="line-bind-modal-title" id="lineBindManageModalTitle">LINE 通知設定</div>
+          <div class="line-bind-modal-sub">首頁版面維持不變，所有操作都在這個視窗裡完成。</div>
+        </div>
+        <button type="button" class="line-bind-modal-close" id="closeLineManageModalBtn">關閉</button>
+      </div>
+      <div class="line-bind-modal-steps">
+        <div class="line-bind-modal-step">
+          <div class="line-bind-modal-num">1</div>
+          <div class="line-bind-modal-text">綁定狀態：${state.hasLineId ? '已綁定' : '尚未綁定'}</div>
+        </div>
+        <div class="line-bind-modal-step">
+          <div class="line-bind-modal-num">2</div>
+          <div class="line-bind-modal-text">提醒狀態：${state.notifyOn ? '已開啟' : '已關閉'}</div>
+        </div>
+      </div>
+      <div class="line-bind-modal-actions" id="lineBindManageModalActions">
+        ${state.notifyOn
+          ? '<button class="btn" type="button" id="lineManageToggleBtn">關閉提醒</button>'
+          : '<button class="btn" type="button" id="lineManageToggleBtn">開啟提醒</button>'}
+        <button class="btn secondary" type="button" id="lineManageUnbindBtn">解除綁定</button>
+      </div>
+    </div>`;
+  document.body.appendChild(wrap);
+
+  const close=()=>{ const el=document.getElementById('lineBindGuideModalBackdrop'); if(el) el.remove(); document.removeEventListener('keydown', onKey); };
+  const onKey=(ev)=>{ if(ev.key==='Escape') close(); };
+  document.addEventListener('keydown', onKey);
+  wrap.addEventListener('click',(ev)=>{ if(ev.target===wrap) close(); });
+  const closeBtn=wrap.querySelector('#closeLineManageModalBtn');
+  if(closeBtn) closeBtn.onclick=close;
+
+  const refresh=async()=>{
+    if(typeof refreshFn==='function') await refreshFn();
+  };
+
+  const toggleBtn=wrap.querySelector('#lineManageToggleBtn');
+  if(toggleBtn){
+    toggleBtn.onclick=async()=>{
+      const wantEnable=!state.notifyOn;
+      const progress=startActionButtonProgress(toggleBtn,{label:'處理中',startPct:10,maxPct:84,interval:140});
+      try{
+        await setLineNotifyPreference_(wantEnable,false);
+        progress.done(wantEnable ? '已開啟' : '已關閉',700);
+        close();
+        await refresh();
+      }catch(e){
+        progress.fail(e && e.message ? e.message : '儲存失敗',1400);
+      }
+    };
+  }
+
+  const unbindBtn=wrap.querySelector('#lineManageUnbindBtn');
+  if(unbindBtn){
+    unbindBtn.onclick=async()=>{
+      if(!window.confirm('確定要解除 LINE 綁定嗎？解除後仍可再重新綁定。')) return;
+      const progress=startActionButtonProgress(unbindBtn,{label:'解除中',startPct:10,maxPct:84,interval:140});
+      try{
+        await setLineNotifyPreference_(false,true);
+        progress.done('已解除',700);
+        close();
+        await refresh();
+      }catch(e){
+        progress.fail(e && e.message ? e.message : '解除失敗',1400);
+      }
+    };
+  }
+}
+
+async function handleLineCardPrimaryAction_(user, refreshFn){
+  const safeUser=user || getUser() || null;
+  if(!safeUser) throw new Error('找不到登入資料');
+  await openLineBindManageModal_(safeUser, refreshFn);
+}
+
+
 async function setLineNotifyPreference_(enabled, clearBinding){
   const user=getUser();
   if(!user || !user.id) throw new Error('找不到登入資料，請重新登入');
@@ -398,12 +505,12 @@ async function renderLineBindPrompt_(targetSelector){
     actionsHtml='<button class="btn" type="button" id="showLineBindGuideBtn">前往綁定</button>';
   }else if(notifyOn){
     statusHtml='已綁定｜<span class="on">提醒開啟</span>';
-    hint='目前會依通知設定接收 LINE 提醒。';
-    actionsHtml=`<button class="btn secondary" type="button" id="toggleLineNotifyBtn">取消提醒</button><button class="btn secondary" type="button" id="unbindLineBtn">解除綁定</button>`;
+    hint='請按下面綠色按鈕，在彈跳視窗中設定提醒或解除綁定。';
+    actionsHtml='<button class="btn" type="button" id="showLineBindGuideBtn">關閉提醒</button>';
   }else{
     statusHtml='已綁定｜<span class="off">提醒關閉</span>';
-    hint='LINE 已綁定，目前只是不接收 LINE 提醒。';
-    actionsHtml=`<button class="btn" type="button" id="toggleLineNotifyBtn">開啟提醒</button><button class="btn secondary" type="button" id="unbindLineBtn">解除綁定</button>`;
+    hint='請按下面綠色按鈕，在彈跳視窗中設定提醒或解除綁定。';
+    actionsHtml='<button class="btn" type="button" id="showLineBindGuideBtn">開啟提醒</button>';
   }
 
   statusEl.innerHTML=statusHtml;
@@ -412,39 +519,7 @@ async function renderLineBindPrompt_(targetSelector){
 
   const guideBtn=wrap.querySelector('#showLineBindGuideBtn');
   if(guideBtn){
-    guideBtn.onclick=()=>openLineBindGuide_(email).catch(err=>alert(err&&err.message?err.message:'LINE 綁定方式開啟失敗'));
-  }
-
-  const toggleBtn=wrap.querySelector('#toggleLineNotifyBtn');
-  if(toggleBtn){
-    toggleBtn.onclick=async()=>{
-      const wantEnable=!notifyOn;
-      const text=wantEnable ? '確定要開啟 LINE 提醒嗎？' : '確定要取消 LINE 提醒嗎？';
-      if(!window.confirm(text)) return;
-      const progress=startActionButtonProgress(toggleBtn,{label:'處理中',startPct:10,maxPct:84,interval:140});
-      try{
-        await setLineNotifyPreference_(wantEnable,false);
-        progress.set(96,'更新中');
-        await renderLineBindPrompt_(targetSelector);
-      }catch(e){
-        progress.fail(e.message || '儲存失敗',1400);
-      }
-    };
-  }
-
-  const unbindBtn=wrap.querySelector('#unbindLineBtn');
-  if(unbindBtn){
-    unbindBtn.onclick=async()=>{
-      if(!window.confirm('確定要解除 LINE 綁定嗎？解除後仍可再重新綁定。')) return;
-      const progress=startActionButtonProgress(unbindBtn,{label:'解除中',startPct:10,maxPct:84,interval:140});
-      try{
-        await setLineNotifyPreference_(false,true);
-        progress.set(96,'更新中');
-        await renderLineBindPrompt_(targetSelector);
-      }catch(e){
-        progress.fail(e.message || '解除失敗',1400);
-      }
-    };
+    guideBtn.onclick=()=>handleLineCardPrimaryAction_(user, ()=>renderLineBindPrompt_(targetSelector)).catch(err=>alert(err&&err.message?err.message:'LINE 設定開啟失敗'));
   }
 }
 
