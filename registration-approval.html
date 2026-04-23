@@ -13,7 +13,6 @@
 <body onload="init()">
   <div class="container">
     <div class="page-return-wrap"><a class="btn page-return-btn" href="approval-hub.html">返回簽核</a></div>
-    
     <div class="card">
       <div class="topbar">
         <div>
@@ -21,7 +20,7 @@
           <div class="welcome">歡迎 <span data-user-name></span></div>
         </div>
       </div>
-      <div class="muted">新員工註冊後會先進入待審核；主管同意後，系統會自動產生 8 碼初始密碼並寄到員工 Email。</div>
+      <div class="muted">新員工註冊後會先進入待審核；主管同意後，系統會寄送「設定密碼連結」到員工 Email，不再寄送明碼密碼。</div>
       <div id="pageMsg" class="message" style="margin-top:12px"></div>
     </div>
     <div class="card">
@@ -29,8 +28,8 @@
       <div id="list" class="list" style="margin-top:12px"></div>
     </div>
   </div>
-  <script src="config.js?v=20260413fix1"></script>
-  <script src="app.js?v=20260413fix1"></script>
+  <script src="config.js?v=20260423authfull1"></script>
+  <script src="app.js?v=20260423authfull1"></script>
   <script>
     let rows=[];
     function render(){
@@ -44,36 +43,24 @@
       const r=await api('getPendingRegistrations',{userId:user.id});
       setMsg(qs('#pageMsg'), r.message || '', !r.ok);
       rows = r.ok ? (r.rows || r.list || []) : [];
-      console.log('pending registrations response', r);
       render();
-    }
-    function askRejectReason(){
-      const reason = window.prompt('請輸入駁回理由，系統會把這個理由寄給申請人：', '資料不完整，請補齊後重新申請');
-      if(reason==null) return null;
-      const clean = String(reason || '').trim();
-      if(!clean){
-        alert('請先填寫駁回理由。');
-        return false;
-      }
-      return clean;
     }
     async function review(email, decision, btn){
       const user=requireLogin(); if(!user) return;
       const action = decision==='approve' ? 'approveRegistrationApi' : 'rejectRegistrationApi';
       const text = decision==='approve' ? '同意' : '駁回';
       let rejectReason = '';
-      if(decision==='reject'){
-        const asked = askRejectReason();
-        if(asked===null) return;
-        if(asked===false) return;
-        rejectReason = asked;
+      if (decision === 'reject') {
+        rejectReason = prompt('請輸入駁回理由：', '資料不完整，請補充後重新申請。') || '';
+        if (!rejectReason.trim()) return;
+      } else {
+        if(!confirm(`確定要${text}這位員工的註冊申請嗎？`)) return;
       }
-      if(!confirm(`確定要${text}這位員工的註冊申請嗎？`)) return;
-      const progress = btn ? startActionButtonProgress(btn, { label: '處理中', maxPct:82 }) : null;
+      const progress = btn ? startActionButtonProgress(btn, { label:'處理中', maxPct:82 }) : null;
       try{
         const payload = {userId:user.id,email};
-        if(decision==='reject') payload.rejectReason = rejectReason;
-        const r = await api(action, payload);
+        if (decision === 'reject') payload.rejectReason = rejectReason.trim();
+        const r = await api(action,payload);
         setMsg(qs('#pageMsg'), r.message || '', !r.ok);
         if(r.ok){ if(progress) progress.done(text==='同意' ? '已同意' : '已駁回', 500, true); loadRows(); }
         else if(progress){ progress.fail(text==='同意' ? '同意失敗' : '駁回失敗'); }

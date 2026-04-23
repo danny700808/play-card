@@ -20,7 +20,7 @@
       <div class="header login-header">
         <div class="login-system-names">
           <h1 class="title center">柚子樂器系統</h1>
-                  </div>
+        </div>
       </div>
 
       <div id="msg" class="message"></div>
@@ -47,7 +47,7 @@
           <button class="btn login-main-btn" id="loginBtn">登入</button>
           <div class="auth-sub-actions">
             <button class="btn secondary" id="forgotBtn" type="button">忘記密碼</button>
-            <button class="btn secondary" id="resetBtn" type="button">重設密碼</button>
+            <button class="btn secondary" id="resetBtn" type="button">修改密碼</button>
           </div>
           <a href="register.html" class="btn btn-link" style="margin-top:12px">前往註冊</a>
         </div>
@@ -95,7 +95,7 @@
           </div>
         </div>
         <div class="login-actions-stack">
-          <button class="btn login-main-btn" id="resetSubmitBtn" type="button">確認重設密碼</button>
+          <button class="btn login-main-btn" id="resetSubmitBtn" type="button">確認修改密碼</button>
           <div class="auth-back-row">
             <button class="btn secondary" id="backToLoginFromReset" type="button">返回登入</button>
           </div>
@@ -104,8 +104,8 @@
     </div>
   </div>
 
-  <script src="config.js?v=20260413loginfix1"></script>
-  <script src="app.js?v=20260413loginfix1"></script>
+  <script src="config.js?v=20260423authfull1"></script>
+  <script src="app.js?v=20260423authfull1"></script>
   <script>
     const msg = qs('#msg');
     const panels = {
@@ -122,7 +122,8 @@
       if (target && target !== window) {
         const src = target.src || target.href || target.currentSrc || '';
         const tag = (target.tagName || 'RESOURCE').toUpperCase();
-        return '前端資源載入失敗：' + tag + (src ? ('\n' + src) : '');
+        return '前端資源載入失敗：' + tag + (src ? ('
+' + src) : '');
       }
       if (event && event.message) return '前端錯誤：' + event.message;
       return '前端載入失敗';
@@ -226,11 +227,8 @@
       try {
         const r = await api('forgotPassword', { email });
         setMsg(msg, r.message, !r.ok);
-        if (r.ok) {
-          progress.done('已寄出');
-        } else {
-          progress.fail('寄送失敗');
-        }
+        if (r.ok) progress.done('已寄出');
+        else progress.fail('寄送失敗');
       } catch (e) {
         progress.fail('寄送失敗');
         setMsg(msg, e.message || '寄送失敗', true);
@@ -243,27 +241,26 @@
       const newPassword = qs('#resetNewPassword').value.trim();
       const confirmPassword = qs('#resetConfirmPassword').value.trim();
       if (!email || !oldPassword || !newPassword || !confirmPassword) {
-        setMsg(msg, '請完整填寫 Email、原密碼與兩次新密碼。', true);
+        setMsg(msg, '請完整填寫 Email、原密碼、新密碼與確認密碼。', true);
         return;
       }
-      fillSharedEmail(email);
       const btn = qs('#resetSubmitBtn');
-      const progress = startActionButtonProgress(btn, { label:'更新中' });
+      const progress = startActionButtonProgress(btn, { label:'處理中' });
       try {
         const r = await api('changePassword', { email, oldPassword, newPassword, confirmPassword });
         setMsg(msg, r.message, !r.ok);
         if (r.ok) {
-          qs('#password').value = '';
+          progress.done('已完成');
           qs('#resetOldPassword').value = '';
           qs('#resetNewPassword').value = '';
           qs('#resetConfirmPassword').value = '';
-          progress.done('更新完成');
+          setTimeout(()=>setAuthMode('login'), 700);
         } else {
-          progress.fail('更新失敗');
+          progress.fail('修改失敗');
         }
       } catch (e) {
-        progress.fail('更新失敗');
-        setMsg(msg, e.message || '更新失敗', true);
+        progress.fail('修改失敗');
+        setMsg(msg, e.message || '修改失敗', true);
       }
     };
   </script>

@@ -8,7 +8,7 @@
   <style>
     .page{max-width:1100px;margin:0 auto;padding:20px}
     .topbar{display:flex;justify-content:flex-end;gap:10px;margin-bottom:16px}
-    .btn-lite{border:none;border-radius:16px;padding:12px 18px;background:#eef2f6;color:#16324f;font-weight:800}
+    .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
     .card{background:#fff;border:1px solid #e5e7eb;border-radius:22px;padding:20px;box-shadow:0 6px 20px rgba(15,23,42,.04)}
     h1{margin:0 0 10px;font-size:40px;color:#16324f}
     .desc{margin:0 0 14px;color:#4b5563;line-height:1.7}
@@ -22,22 +22,14 @@
     .btn-primary{border:none;border-radius:16px;padding:14px 22px;background:#1f7a5a;color:#fff;font-weight:800}
     .muted{color:#94a3b8}
     .error{color:#b42318}
-    @media (max-width:768px){
-      .page{padding:14px}
-      h1{font-size:34px}
-    }
   </style>
 </head>
 <body>
-  <div class="page">
-    <div class="topbar">
-      <button class="btn-lite" id="backBtn">返回管理頁面</button>
-    </div>
-
+  <div class="container">
+    <div style="margin-bottom:16px"><a class="btn page-return-btn" href="settings.html">返回管理首頁</a></div>
     <section class="card">
       <h1>通知設定</h1>
       <p class="desc">用勾選方式控制每個事件是否寄給當事人 Email / LINE，以及主管 Email / LINE。</p>
-
       <div class="table-wrap">
         <table>
           <thead>
@@ -51,56 +43,24 @@
               <th class="center">啟用</th>
             </tr>
           </thead>
-          <tbody id="settingRows">
-            <tr><td colspan="7" class="muted">讀取中...</td></tr>
-          </tbody>
+          <tbody id="settingRows"><tr><td colspan="7" class="muted">讀取中...</td></tr></tbody>
         </table>
       </div>
-
-      <div class="bottom">
-        <button class="btn-primary" id="saveBtn">儲存通知設定</button>
-      </div>
+      <div class="bottom"><button class="btn-primary" id="saveBtn">儲存通知設定</button></div>
     </section>
   </div>
-
-  <script src="config.js"></script>
-  <script src="app.js"></script>
+  <script src="config.js?v=20260423authfull1"></script>
+  <script src="app.js?v=20260423authfull1"></script>
   <script>
     let currentUser = null;
     let currentRows = [];
-
-    function escapeHtml(v){
-      return String(v==null?'':v)
-        .replace(/&/g,'&amp;')
-        .replace(/</g,'&lt;')
-        .replace(/>/g,'&gt;')
-        .replace(/"/g,'&quot;')
-        .replace(/'/g,'&#39;');
-    }
-
-    function makeCheck(name, checked){
-      return '<label style="display:inline-flex;justify-content:center;width:100%"><input type="checkbox" data-key="'+name+'" '+(checked?'checked':'')+'></label>';
-    }
-
+    function escapeHtml(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+    function makeCheck(name, checked){return '<label style="display:inline-flex;justify-content:center;width:100%"><input type="checkbox" data-key="'+name+'" '+(checked?'checked':'')+'></label>';}
     function renderRows(rows){
       const box = document.getElementById('settingRows');
-      if(!rows.length){
-        box.innerHTML = '<tr><td colspan="7" class="muted">目前沒有通知設定資料。</td></tr>';
-        return;
-      }
-      box.innerHTML = rows.map((row, idx)=>`
-        <tr data-idx="${idx}">
-          <td>${escapeHtml(row.eventName || '')}</td>
-          <td>${escapeHtml(row.category || '')}</td>
-          <td class="center">${makeCheck('sendEmailToActor', !!row.sendEmailToActor)}</td>
-          <td class="center">${makeCheck('sendLineToActor', !!row.sendLineToActor)}</td>
-          <td class="center">${makeCheck('notifyManagerEmail', !!row.notifyManagerEmail)}</td>
-          <td class="center">${makeCheck('notifyManagerLine', !!row.notifyManagerLine)}</td>
-          <td class="center">${makeCheck('enabled', row.enabled !== false)}</td>
-        </tr>
-      `).join('');
+      if(!rows.length){ box.innerHTML = '<tr><td colspan="7" class="muted">目前沒有通知設定資料。</td></tr>'; return; }
+      box.innerHTML = rows.map((row, idx)=>`<tr data-idx="${idx}"><td>${escapeHtml(row.eventName || '')}</td><td>${escapeHtml(row.category || '')}</td><td class="center">${makeCheck('sendEmailToActor', !!row.sendEmailToActor)}</td><td class="center">${makeCheck('sendLineToActor', !!row.sendLineToActor)}</td><td class="center">${makeCheck('notifyManagerEmail', !!row.notifyManagerEmail)}</td><td class="center">${makeCheck('notifyManagerLine', !!row.notifyManagerLine)}</td><td class="center">${makeCheck('enabled', row.enabled !== false)}</td></tr>`).join('');
     }
-
     async function loadRows(){
       const box = document.getElementById('settingRows');
       box.innerHTML = '<tr><td colspan="7" class="muted">讀取中...</td></tr>';
@@ -109,47 +69,28 @@
         if(!res || res.ok === false) throw new Error(res && res.message ? res.message : '讀取失敗');
         currentRows = Array.isArray(res.rows) ? res.rows : [];
         renderRows(currentRows);
-      }catch(err){
-        box.innerHTML = '<tr><td colspan="7" class="error">讀取失敗：'+escapeHtml(err && err.message ? err.message : String(err))+'</td></tr>';
-      }
+      }catch(err){ box.innerHTML = '<tr><td colspan="7" class="error">讀取失敗：'+escapeHtml(err && err.message ? err.message : String(err))+'</td></tr>'; }
     }
-
     async function saveRows(){
       const trs = Array.from(document.querySelectorAll('#settingRows tr[data-idx]'));
       const rows = trs.map(tr => {
         const idx = Number(tr.dataset.idx);
         const base = Object.assign({}, currentRows[idx] || {});
-        tr.querySelectorAll('input[type="checkbox"]').forEach(input => {
-          base[input.dataset.key] = !!input.checked;
-        });
+        tr.querySelectorAll('input[type="checkbox"]').forEach(input => { base[input.dataset.key] = !!input.checked; });
         return base;
       });
+      const btn = document.getElementById('saveBtn');
+      const progress = startActionButtonProgress(btn, { label:'儲存中' });
       try{
         const res = await api('saveNotificationSettings', { userId: currentUser.id, rows });
         if(!res || res.ok === false) throw new Error(res && res.message ? res.message : '儲存失敗');
-        alert('通知設定已儲存');
         currentRows = rows;
+        progress.done('已儲存');
         await loadRows();
-      }catch(err){
-        alert('儲存失敗：' + (err && err.message ? err.message : String(err)));
-      }
+      }catch(err){ progress.fail('儲存失敗'); alert('儲存失敗：' + (err && err.message ? err.message : String(err))); }
     }
-
-    document.getElementById('backBtn').addEventListener('click', function(){
-      location.href = 'settings.html';
-    });
     document.getElementById('saveBtn').addEventListener('click', saveRows);
-
-    (async function init(){
-      fillHeader && fillHeader();
-      currentUser = requireLogin();
-      if(!currentUser) return;
-      if(!(hasSettingsZoneAccess && hasSettingsZoneAccess(currentUser))){
-        location.href = 'dashboard.html';
-        return;
-      }
-      await loadRows();
-    })();
+    (async function init(){ fillHeader && fillHeader(); currentUser = requireLogin(); if(!currentUser) return; if(!(hasSettingsZoneAccess && hasSettingsZoneAccess(currentUser))){ location.href = 'dashboard.html'; return; } await loadRows(); })();
   </script>
 </body>
 </html>
