@@ -6,14 +6,14 @@
   <title>假勤制度設定</title>
   <link rel="stylesheet" href="style.css">
   <style>
-    .container.leave-policy-wide{max-width:min(1480px, calc(100vw - 32px));}
-    .container.leave-policy-wide .card{padding:20px 22px}
+    .container.leave-policy-wide{max-width:min(1600px, calc(100vw - 24px));}
+    .container.leave-policy-wide .card{padding:18px 18px}
     @media (min-width:1024px){
       .container.leave-policy-wide .topbar{align-items:flex-start;gap:16px}
-      .container.leave-policy-wide .topbar>div:last-child{flex:0 0 320px;justify-content:flex-end}
-      .container.leave-policy-wide .policy-table input,.container.leave-policy-wide .policy-table textarea,.container.leave-policy-wide .policy-table select{min-width:64px}
-      .container.leave-policy-wide .policy-table textarea{min-width:140px}
-      .container.leave-policy-wide .policy-table .wide textarea{min-width:190px}
+      .container.leave-policy-wide .topbar>div:last-child{flex:0 0 290px;justify-content:flex-end}
+      .container.leave-policy-wide .policy-table input,.container.leave-policy-wide .policy-table textarea,.container.leave-policy-wide .policy-table select{min-width:52px}
+      .container.leave-policy-wide .policy-table textarea{min-width:96px}
+      .container.leave-policy-wide .policy-table .wide textarea{min-width:132px}
     }
     .page-return-wrap{margin-bottom:14px}
     .page-return-btn{display:block;width:100%;padding:14px 16px;text-align:center;text-decoration:none;border-radius:14px;font-size:18px;font-weight:800}
@@ -27,16 +27,18 @@
     .sheet-desc{margin-top:4px;color:#6b7c93;line-height:1.6;font-size:13px}
     .table-wrap{overflow:auto;border:1px solid var(--line);border-radius:14px;background:#fff}
     table.policy-table{width:max-content;min-width:100%;border-collapse:collapse}
-    .policy-table th,.policy-table td{border-bottom:1px solid #e7edf5;border-right:1px solid #eef2f7;padding:6px;vertical-align:top;background:#fff}
-    .policy-table th{position:sticky;top:0;background:#f8fbff;font-size:12px;z-index:1;white-space:nowrap}
+    .policy-table th,.policy-table td{border-bottom:1px solid #e7edf5;border-right:1px solid #eef2f7;padding:4px;vertical-align:top;background:#fff}
+    .policy-table th{position:sticky;top:0;background:#f8fbff;font-size:11px;z-index:1;white-space:nowrap}
     .policy-table td:last-child,.policy-table th:last-child{border-right:none}
-    .policy-table input,.policy-table textarea,.policy-table select{width:100%;min-width:72px;border:1px solid #d7e1ec;border-radius:8px;padding:6px 8px;font-size:12px;background:#fff;box-sizing:border-box}
-    .policy-table textarea{min-height:38px;resize:vertical;min-width:120px}
-    .policy-table .wide textarea{min-width:170px}
+    .policy-table input,.policy-table textarea,.policy-table select{width:100%;min-width:56px;border:1px solid #d7e1ec;border-radius:8px;padding:5px 6px;font-size:11px;background:#fff;box-sizing:border-box}
+    .policy-table textarea{min-height:34px;resize:vertical;min-width:90px}
+    .policy-table .wide textarea{min-width:124px}
     .policy-table .code input{min-width:88px}
-    .policy-table .name input{min-width:82px}
-    .policy-table .num input{min-width:58px;max-width:74px;text-align:center}
-    .mini{width:auto;padding:7px 10px;border-radius:10px;font-size:12px}
+    .policy-table .name input{min-width:66px}
+    .policy-table td:nth-child(3) select,.policy-table td:nth-child(4) input,.policy-table td:nth-child(8) input,.policy-table td:nth-child(9) input,.policy-table td:nth-child(10) select,.policy-table td:nth-child(11) select,.policy-table td:nth-child(12) select,.policy-table td:nth-child(13) select,.policy-table td:nth-child(14) select{min-width:42px}
+    .policy-table td:nth-child(5) input,.policy-table td:nth-child(6) select,.policy-table td:nth-child(7) select{min-width:74px}
+    .policy-table .num input{min-width:42px;max-width:56px;text-align:center}
+    .mini{width:auto;padding:6px 8px;border-radius:10px;font-size:11px}
     .chip-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
     .chip{display:inline-block;padding:6px 9px;border-radius:999px;background:#f3f7fb;border:1px solid #dfe8f2;font-size:12px;color:#2f4256;font-weight:700}
     .section-note{margin-top:12px;padding:12px 14px;border-radius:14px;background:#fff7e8;border:1px solid #f7d9a1;color:#6f4e0c;line-height:1.7;font-size:13px}
