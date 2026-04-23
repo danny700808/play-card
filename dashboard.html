@@ -78,7 +78,7 @@
     </div>
   </div>
   <script src="config.js?v=20260421fix2"></script>
-  <script src="app.js?v=20260421fix2"></script>
+  <script src="app.js?v=20260422linefix1"></script>
   <script>
     function renderHomeTiles(user){
       qsa('#homeGrid [data-feature]').forEach(tile=>{
@@ -88,33 +88,8 @@
     }
 
     async function renderSimpleLineCard(user, targetSelector){
-      const target = typeof targetSelector === 'string' ? document.querySelector(targetSelector) : targetSelector;
-      if(!target){ return; }
-      const safeUser = user || ((typeof getUser==='function') ? getUser() : null);
-      target.innerHTML = '';
-      if(!safeUser){ return; }
-      const hasLineId = !!String(safeUser.lineUserId || '').trim();
-      const notifyOn = String(safeUser.lineNotifyEnabled || '').trim() === '是' || safeUser.lineNotifyEnabled === true;
-      const statusText = !hasLineId ? '尚未綁定' : (notifyOn ? '已綁定' : '已綁定｜提醒關閉');
-      const btnText = !hasLineId ? '前往綁定' : (notifyOn ? '關閉提醒' : '開啟提醒');
-      target.innerHTML = `<div class="head-tool-card"><div><div class="head-tool-title">LINE 通知設定</div><div class="head-tool-desc">${statusText}</div></div><button type="button" class="btn head-tool-btn" id="lineCardActionBtn">${btnText}</button></div>`;
-      const btn = target.querySelector('#lineCardActionBtn');
-      if(!btn){ return; }
-      btn.onclick = async function(){
-        btn.disabled = true;
-        try{
-          await handleLineCardPrimaryAction_(safeUser, async function(){
-            const nextUser = (typeof getUser==='function') ? getUser() : safeUser;
-            await renderSimpleLineCard(nextUser, target);
-          });
-        }catch(err){
-          alert(err && err.message ? err.message : 'LINE 設定失敗');
-        }finally{
-          btn.disabled = false;
-        }
-      };
+      return renderCompactLineCard_(targetSelector, user || getUser());
     }
-
 
     async function init(){
       fillHeader();

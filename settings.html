@@ -9,22 +9,43 @@
     .tile strong{display:flex;align-items:center;gap:8px;justify-content:space-between}
     .badge{display:inline-flex;min-width:22px;height:22px;padding:0 6px;border-radius:999px;background:#dc2626;color:#fff;font-size:12px;align-items:center;justify-content:center;font-weight:800}
     .badge:empty{display:none}
+    .manage-head-card{display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap;padding:26px 28px;border:1px solid var(--line);border-radius:30px;background:#fff;box-shadow:0 12px 30px rgba(15,23,42,.04)}
+    .manage-head-info .title{margin:0;font-size:30px;line-height:1.15}
+    .manage-head-info .welcome{margin-top:10px;font-size:21px;font-weight:800;color:#24384f}
+    .manage-head-tools{display:grid;grid-template-columns:1.05fr .72fr;gap:12px;align-items:stretch;width:min(100%,320px)}
+    .head-tool-card{height:104px;border:1px solid var(--line);border-radius:24px;background:#f5f8fc;padding:14px 16px;display:flex;flex-direction:column;justify-content:space-between;text-decoration:none;color:inherit;box-shadow:none;min-width:0}
+    .head-tool-card.logout-card{align-items:center;justify-content:center;background:var(--accent)}
+    .head-tool-title{font-size:15px;font-weight:900;line-height:1.25;color:#18314a;text-align:center}
+    .head-tool-desc{font-size:13px;line-height:1.45;color:var(--muted);text-align:center}
+    .head-tool-btn{align-self:center;width:auto;padding:9px 14px;font-size:14px;border-radius:16px;white-space:nowrap}
+    .logout-mini-btn{border:none;background:transparent;color:#fff;font-size:16px;font-weight:900;cursor:pointer;white-space:nowrap}
+    @media (max-width:720px){
+      .manage-head-card{padding:22px 18px;border-radius:24px}
+      .manage-head-info{width:100%;text-align:center}
+      .manage-head-info .title{font-size:26px}
+      .manage-head-info .welcome{font-size:20px}
+      .manage-head-tools{width:100%;grid-template-columns:1fr .72fr;gap:10px}
+      .head-tool-card{height:96px;padding:12px 12px;border-radius:22px}
+      .head-tool-title{font-size:14px}
+      .head-tool-desc{font-size:12px}
+      .head-tool-btn,.logout-mini-btn{padding:8px 10px;font-size:13px}
+    }
   </style>
 </head>
 <body onload="init()">
   <div class="container">
-    <div class="card">
-      <div class="topbar">
-        <div class="header" style="margin:0">
-          <h1 class="title" style="margin:0">柚子員工系統｜管理首頁</h1>
-          <div class="welcome">歡迎 <span data-user-name></span></div>
-        </div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap">
-          <button class="btn secondary" style="width:auto;padding:10px 14px" onclick="logout()">登出</button>
+    <section class="manage-head-card">
+      <div class="manage-head-info">
+        <h1 class="title">柚子員工系統｜管理首頁</h1>
+        <div class="welcome">歡迎 <span data-user-name></span></div>
+      </div>
+      <div class="manage-head-tools">
+        <div id="lineBindArea"></div>
+        <div class="head-tool-card logout-card">
+          <button class="logout-mini-btn" type="button" onclick="logout()">登出</button>
         </div>
       </div>
-    </div>
-    <div id="lineBindArea" style="margin:16px 0"></div>
+    </section>
     <div class="grid">
       <a class="tile" href="approval-hub.html"><strong>簽核 <span class="badge" id="badge-approval"></span></strong><span>整合註冊、打卡與請假簽核，先看總件數再進入個別處理</span></a>
       <a class="tile" href="teacher-hub.html"><strong>外聘老師 <span class="badge" id="badge-teacher"></span></strong><span>整合外聘老師合約與拿貨紀錄，讓首頁更單純</span></a>
@@ -39,7 +60,7 @@
     </div>
   </div>
   <script src="config.js?v=20260420group1"></script>
-  <script src="app.js?v=20260420group1"></script>
+  <script src="app.js?v=20260422linefix1"></script>
   <script>
     async function init(){
       fillHeader();
@@ -47,7 +68,7 @@
       if(!user) return;
       if(!hasSettingsZoneAccess(user)){location.href='dashboard.html';return;}
       setPortalMode('settings');
-      if(typeof renderLineBindPrompt_==='function') renderLineBindPrompt_('#lineBindArea');
+      if(typeof renderCompactLineCard_==='function') renderCompactLineCard_('#lineBindArea', user);
       loadBadges(user);
     }
     async function loadBadges(user){

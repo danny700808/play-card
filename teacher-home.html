@@ -28,13 +28,13 @@
     .hero-tools #lineBindArea:empty{display:none}
     .tool-card{height:104px;border:1px solid var(--line);border-radius:24px;background:#f5f8fc;padding:14px 16px;display:flex;flex-direction:column;justify-content:space-between;text-decoration:none;color:inherit;min-width:0}
     .line-card,.profile-card{width:auto}
-    .logout-card{width:auto;align-items:center;justify-content:center;background:#eef2f6}
+    .logout-card{width:auto;align-items:center;justify-content:center;background:var(--accent)}
     .tool-title{font-size:15px;font-weight:900;line-height:1.25;color:#18314a;text-align:center;white-space:nowrap}
     .tool-desc{font-size:13px;line-height:1.45;color:var(--muted);text-align:center}
-    .btn{border:none;border-radius:18px;padding:14px 18px;font-size:18px;font-weight:900;cursor:pointer;background:#e9eef5;color:#24384f}
+    .btn{border:none;border-radius:18px;padding:14px 18px;font-size:18px;font-weight:900;cursor:pointer;background:var(--accent);color:#fff}
     .btn:disabled{opacity:.55;cursor:default}
     .mini-btn{align-self:center;width:auto;padding:9px 14px;font-size:14px;border-radius:16px;white-space:nowrap}
-    .logout-mini-btn{border:none;background:transparent;color:#24384f;font-size:16px;font-weight:900;cursor:pointer;white-space:nowrap}
+    .logout-mini-btn{border:none;background:transparent;color:#fff;font-size:16px;font-weight:900;cursor:pointer;white-space:nowrap}
     .section{margin-top:18px}
     .status{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:14px 16px;color:var(--muted)}
     .status.error{color:var(--danger);border-color:#efc8c8;background:#fff6f6}
@@ -128,7 +128,7 @@
   </div>
 
   <script src="config.js?v=20260413fix1"></script>
-  <script src="app.js?v=20260413fix1"></script>
+  <script src="app.js?v=20260422linefix1"></script>
   <script>
     function getTeacherUser(){
       return (typeof getUser === 'function') ? getUser() : null;
@@ -209,32 +209,8 @@
     }
 
     async function renderSimpleLineCard(targetSelector){
-      const target = typeof targetSelector==='string' ? document.querySelector(targetSelector) : targetSelector;
-      if(!target) return;
-      const user = (typeof getUser==='function') ? getUser() : null;
-      target.innerHTML='';
-      if(!user) return;
-      const hasLineId = !!String(user.lineUserId||'').trim();
-      const notifyOn = String(user.lineNotifyEnabled||'').trim()==='是' || user.lineNotifyEnabled===true;
-      const statusText = !hasLineId ? '尚未綁定' : (notifyOn ? '已綁定' : '已綁定｜提醒關閉');
-      const btnText = !hasLineId ? '前往綁定' : (notifyOn ? '關閉提醒' : '開啟提醒');
-      target.innerHTML = `<div class="tool-card line-card"><div><div class="tool-title">LINE 通知設定</div><div class="tool-desc">${statusText}</div></div><button type="button" class="btn mini-btn" id="lineCardActionBtn">${btnText}</button></div>`;
-      const btn = target.querySelector('#lineCardActionBtn');
-      if(!btn) return;
-      btn.onclick = async function(){
-        btn.disabled = true;
-        try{
-          await handleLineCardPrimaryAction_(user, async function(){
-            await renderSimpleLineCard(targetSelector);
-          });
-        }catch(err){
-          alert(err && err.message ? err.message : 'LINE 設定失敗');
-        }finally{
-          btn.disabled = false;
-        }
-      };
+      return renderCompactLineCard_(targetSelector, getTeacherUser());
     }
-
 
     function openPage(target){
       const userId=getUserId();
