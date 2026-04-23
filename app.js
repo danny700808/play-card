@@ -885,3 +885,14 @@ async function driveUploadFileResumable(file, folderId, accessToken, onProgress)
   }
   throw new Error('影片直傳未完成');
 }
+
+
+async function renderCompactLineCard_(targetSelector, user){
+  if(user){
+    try{
+      const current=getUser()||{};
+      saveUser(Object.assign({}, current, user));
+    }catch(e){}
+  }
+  return renderLineBindPrompt_(targetSelector);
+}

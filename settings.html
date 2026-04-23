@@ -12,9 +12,13 @@
     .manage-head-card{display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap;padding:26px 28px;border:1px solid var(--line);border-radius:30px;background:#fff;box-shadow:0 12px 30px rgba(15,23,42,.04)}
     .manage-head-info .title{margin:0;font-size:30px;line-height:1.15}
     .manage-head-info .welcome{margin-top:10px;font-size:21px;font-weight:800;color:#24384f}
-    .manage-head-tools{display:grid;grid-template-columns:1.05fr .72fr;gap:12px;align-items:stretch;width:min(100%,320px)}
+    .manage-head-tools{display:grid;grid-template-columns:1.05fr .72fr;gap:12px;align-items:stretch;width:min(100%,340px)}
+    .head-tool-slot{display:block;min-height:104px}
+    .head-tool-slot .line-bind-mini{margin-top:0;height:100%;box-sizing:border-box}
+    .head-tool-slot .line-bind-mini-left{justify-content:center}
+
     .head-tool-card{height:104px;border:1px solid var(--line);border-radius:24px;background:#f5f8fc;padding:14px 16px;display:flex;flex-direction:column;justify-content:space-between;text-decoration:none;color:inherit;box-shadow:none;min-width:0}
-    .head-tool-card.logout-card{align-items:center;justify-content:center;background:var(--accent)}
+    .head-tool-card.logout-card{align-items:center;justify-content:center;background:#178a55}
     .head-tool-title{font-size:15px;font-weight:900;line-height:1.25;color:#18314a;text-align:center}
     .head-tool-desc{font-size:13px;line-height:1.45;color:var(--muted);text-align:center}
     .head-tool-btn{align-self:center;width:auto;padding:9px 14px;font-size:14px;border-radius:16px;white-space:nowrap}
@@ -40,7 +44,7 @@
         <div class="welcome">歡迎 <span data-user-name></span></div>
       </div>
       <div class="manage-head-tools">
-        <div id="lineBindArea"></div>
+        <div id="lineBindArea" class="head-tool-slot"></div>
         <div class="head-tool-card logout-card">
           <button class="logout-mini-btn" type="button" onclick="logout()">登出</button>
         </div>
@@ -68,7 +72,7 @@
       if(!user) return;
       if(!hasSettingsZoneAccess(user)){location.href='dashboard.html';return;}
       setPortalMode('settings');
-      if(typeof renderCompactLineCard_==='function') renderCompactLineCard_('#lineBindArea', user);
+      if(typeof renderCompactLineCard_==='function') await renderCompactLineCard_('#lineBindArea', user); else if(typeof renderLineBindPrompt_==='function') await renderLineBindPrompt_('#lineBindArea');
       loadBadges(user);
     }
     async function loadBadges(user){
