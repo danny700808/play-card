@@ -240,6 +240,106 @@ function ensureLineBindPromptStyle_(){
   `;
   document.head.appendChild(s);
 }
+
+function ensureLineBindGuideModalStyle_(){
+  if(document.getElementById('lineBindGuideModalStyle')) return;
+  const s=document.createElement('style');
+  s.id='lineBindGuideModalStyle';
+  s.textContent=`
+    .line-bind-modal-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;padding:18px;z-index:9999}
+    .line-bind-modal{width:min(100%,520px);background:#fff;border-radius:24px;border:1px solid var(--line);box-shadow:0 24px 60px rgba(15,23,42,.22);padding:22px 20px 18px}
+    .line-bind-modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px}
+    .line-bind-modal-title{font-size:22px;font-weight:900;color:#18314a;line-height:1.2}
+    .line-bind-modal-sub{font-size:14px;color:var(--muted);line-height:1.7;margin-top:6px}
+    .line-bind-modal-close{border:none;background:#eef2f6;color:#24384f;border-radius:999px;padding:8px 12px;font-weight:800;cursor:pointer}
+    .line-bind-modal-steps{display:grid;gap:10px;margin:8px 0 14px}
+    .line-bind-modal-step{display:flex;gap:10px;align-items:flex-start;background:#f7fafc;border:1px solid var(--line);border-radius:16px;padding:12px 14px}
+    .line-bind-modal-num{flex:0 0 28px;height:28px;border-radius:999px;background:#1f7a5a;color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:900}
+    .line-bind-modal-text{font-size:15px;line-height:1.7;color:#18314a}
+    .line-bind-modal-code{margin-top:6px;background:#0f172a;color:#f8fafc;border-radius:14px;padding:12px 14px;word-break:break-all;font-size:14px;line-height:1.7}
+    .line-bind-modal-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;margin-top:8px}
+    .line-bind-modal-actions .btn,.line-bind-modal-actions .btn.secondary{width:auto;padding:10px 16px}
+    @media (max-width:640px){
+      .line-bind-modal{padding:18px 16px 16px;border-radius:20px}
+      .line-bind-modal-title{font-size:19px}
+      .line-bind-modal-text{font-size:14px}
+      .line-bind-modal-actions{justify-content:stretch}
+      .line-bind-modal-actions .btn,.line-bind-modal-actions .btn.secondary,.line-bind-modal-close{flex:1 1 auto;text-align:center;justify-content:center}
+    }
+  `;
+  document.head.appendChild(s);
+}
+
+async function openLineBindGuide_(email){
+  const targetEmail=String(email||'').trim();
+  if(!targetEmail) throw new Error('找不到可綁定的 Email');
+  ensureLineBindGuideModalStyle_();
+  const old=document.getElementById('lineBindGuideModalBackdrop');
+  if(old) old.remove();
+  let lineUrl='';
+  try{
+    const links=await getPublicSystemLinksCached();
+    lineUrl=String((links&&links.lineAddFriendUrl)||'').trim();
+  }catch(e){}
+  const cmd=`柚子綁定 ${targetEmail}`;
+  const wrap=document.createElement('div');
+  wrap.id='lineBindGuideModalBackdrop';
+  wrap.className='line-bind-modal-backdrop';
+  wrap.innerHTML=`
+    <div class="line-bind-modal" role="dialog" aria-modal="true" aria-labelledby="lineBindGuideModalTitle">
+      <div class="line-bind-modal-head">
+        <div>
+          <div class="line-bind-modal-title" id="lineBindGuideModalTitle">LINE 綁定方式</div>
+          <div class="line-bind-modal-sub">請依照下面步驟完成綁定，三種身份與管理者皆使用同一種方式。</div>
+        </div>
+        <button type="button" class="line-bind-modal-close" id="closeLineBindGuideModalBtn">關閉</button>
+      </div>
+      <div class="line-bind-modal-steps">
+        <div class="line-bind-modal-step"><div class="line-bind-modal-num">1</div><div class="line-bind-modal-text">先加入柚子樂器官方 LINE。</div></div>
+        <div class="line-bind-modal-step"><div class="line-bind-modal-num">2</div><div class="line-bind-modal-text">到官方 LINE 的留言區，貼上下面這串綁定文字並送出。<div class="line-bind-modal-code" id="lineBindGuideModalCode"></div></div></div>
+      </div>
+      <div class="line-bind-modal-actions" id="lineBindGuideModalActions">
+        <button class="btn secondary" type="button" id="copyLineBindGuideModalBtn">複製綁定文字</button>
+      </div>
+    </div>`;
+  document.body.appendChild(wrap);
+  const codeEl=wrap.querySelector('#lineBindGuideModalCode');
+  if(codeEl) codeEl.textContent=cmd;
+  const close=()=>{ const el=document.getElementById('lineBindGuideModalBackdrop'); if(el) el.remove(); document.removeEventListener('keydown', onKey); };
+  const onKey=(ev)=>{ if(ev.key==='Escape') close(); };
+  document.addEventListener('keydown', onKey);
+  wrap.addEventListener('click',(ev)=>{ if(ev.target===wrap) close(); });
+  const closeBtn=wrap.querySelector('#closeLineBindGuideModalBtn');
+  if(closeBtn) closeBtn.onclick=close;
+  const actionBox=wrap.querySelector('#lineBindGuideModalActions');
+  if(actionBox && lineUrl){
+    const a=document.createElement('a');
+    a.className='btn';
+    a.href=lineUrl;
+    a.target='_blank';
+    a.rel='noopener';
+    a.textContent='加入官方 LINE';
+    actionBox.insertBefore(a, actionBox.firstChild);
+  }
+  const copyBtn=wrap.querySelector('#copyLineBindGuideModalBtn');
+  if(copyBtn){
+    copyBtn.onclick=async()=>{
+      try{
+        const progress=startActionButtonProgress(copyBtn,{label:'複製中',startPct:12,maxPct:78,interval:120});
+        if(navigator.clipboard && navigator.clipboard.writeText){
+          await navigator.clipboard.writeText(cmd);
+        }else{
+          const ta=document.createElement('textarea'); ta.value=cmd; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+        }
+        progress.done('已複製',900);
+      }catch(e){
+        finishActionButtonError(copyBtn,'複製失敗',1400);
+        alert('複製失敗，請手動複製：\n'+cmd);
+      }
+    };
+  }
+}
+
 async function setLineNotifyPreference_(enabled, clearBinding){
   const user=getUser();
   if(!user || !user.id) throw new Error('找不到登入資料，請重新登入');
@@ -268,45 +368,25 @@ async function renderLineBindPrompt_(targetSelector){
   ensureLineBindPromptStyle_();
 
   const wrap=document.createElement('div');
-  wrap.className='line-bind-mini loading';
+  wrap.className='line-bind-mini';
   wrap.id='lineBindPromptCard';
   wrap.innerHTML=`
     <div class="line-bind-mini-left">
       <div class="line-bind-mini-title">LINE 通知設定</div>
-      <div class="line-bind-mini-status">
-        <span class="line-bind-skeleton"><span class="line-bind-skeleton-dot"></span><span class="line-bind-skeleton-bar"></span></span>
-      </div>
-      <div class="line-bind-mini-hint">首頁先固定顯示，操作時再顯示進度。</div>
-      <div class="line-bind-guide" id="lineBindGuideBox" hidden>
-        <div class="line-bind-guide-title">綁定教學</div>
-        <div class="line-bind-guide-text">1. 先加入柚子樂器官方 LINE 好友。</div>
-        <div class="line-bind-guide-text">2. 複製下面這段綁定文字。</div>
-        <div class="line-bind-guide-text">3. 到官方 LINE 聊天視窗貼上並送出，即可完成綁定。</div>
-        <div class="line-bind-guide-code" id="lineBindGuideCode"></div>
-        <div class="line-bind-guide-actions" id="lineBindGuideActions">
-          <button class="btn secondary" type="button" id="copyLineBindGuideBtn">複製綁定文字</button>
-        </div>
-      </div>
+      <div class="line-bind-mini-status"></div>
+      <div class="line-bind-mini-hint"></div>
     </div>
-    <div class="line-bind-mini-actions" id="lineBindActions">
-      <button class="btn secondary" type="button" disabled>讀取中...</button>
-    </div>
+    <div class="line-bind-mini-actions" id="lineBindActions"></div>
   `;
   target.appendChild(wrap);
 
   const email=String(user.email||'').trim();
-  const cmd=`柚子綁定 ${email}`;
   const hasLineId=!!String(user.lineUserId||'').trim();
   const notifyOn=String(user.lineNotifyEnabled||'').trim()==='是' || user.lineNotifyEnabled===true;
 
   const statusEl=wrap.querySelector('.line-bind-mini-status');
   const hintEl=wrap.querySelector('.line-bind-mini-hint');
   const actionsEl=wrap.querySelector('#lineBindActions');
-  const guideBox=wrap.querySelector('#lineBindGuideBox');
-  const guideCode=wrap.querySelector('#lineBindGuideCode');
-  const copyGuideBtn=wrap.querySelector('#copyLineBindGuideBtn');
-  const guideActions=wrap.querySelector('#lineBindGuideActions');
-  if(guideCode) guideCode.textContent=cmd;
 
   let statusHtml='';
   let hint='';
@@ -314,55 +394,25 @@ async function renderLineBindPrompt_(targetSelector){
 
   if(!hasLineId){
     statusHtml='<span class="none">尚未綁定</span>';
-    hint='按下綁定後會顯示操作教學。';
+    hint='請先加入官方 LINE，再用固定格式完成綁定。';
     actionsHtml='<button class="btn" type="button" id="showLineBindGuideBtn">前往綁定</button>';
   }else if(notifyOn){
     statusHtml='已綁定｜<span class="on">提醒開啟</span>';
-    hint='可直接取消提醒，不需要再收時再解除綁定即可。';
+    hint='目前會依通知設定接收 LINE 提醒。';
     actionsHtml=`<button class="btn secondary" type="button" id="toggleLineNotifyBtn">取消提醒</button><button class="btn secondary" type="button" id="unbindLineBtn">解除綁定</button>`;
   }else{
     statusHtml='已綁定｜<span class="off">提醒關閉</span>';
-    hint='LINE 仍已綁定，需要時可重新開啟提醒。';
+    hint='LINE 已綁定，目前只是不接收 LINE 提醒。';
     actionsHtml=`<button class="btn" type="button" id="toggleLineNotifyBtn">開啟提醒</button><button class="btn secondary" type="button" id="unbindLineBtn">解除綁定</button>`;
   }
 
   statusEl.innerHTML=statusHtml;
   hintEl.textContent=hint;
   actionsEl.innerHTML=actionsHtml;
-  wrap.classList.remove('loading');
-
-  try{
-    const links=await getPublicSystemLinksCached();
-    if(guideActions && links && links.lineAddFriendUrl){
-      const a=document.createElement('a');
-      a.className='btn';
-      a.href=links.lineAddFriendUrl;
-      a.target='_blank';
-      a.rel='noopener';
-      a.textContent='加入官方 LINE';
-      guideActions.insertBefore(a, copyGuideBtn);
-    }
-  }catch(e){}
 
   const guideBtn=wrap.querySelector('#showLineBindGuideBtn');
-  if(guideBtn && guideBox){
-    guideBtn.onclick=()=>{
-      guideBox.hidden=false;
-      guideBtn.style.display='none';
-    };
-  }
-
-  if(copyGuideBtn){
-    copyGuideBtn.onclick=async()=>{
-      try{
-        const progress=startActionButtonProgress(copyGuideBtn,{label:'複製中',startPct:12,maxPct:76,interval:120});
-        await navigator.clipboard.writeText(cmd);
-        progress.done('已複製',900);
-      }catch(e){
-        finishActionButtonError(copyGuideBtn,'複製失敗',1400);
-        alert('複製失敗，請手動複製：\n'+cmd);
-      }
-    };
+  if(guideBtn){
+    guideBtn.onclick=()=>openLineBindGuide_(email).catch(err=>alert(err&&err.message?err.message:'LINE 綁定方式開啟失敗'));
   }
 
   const toggleBtn=wrap.querySelector('#toggleLineNotifyBtn');
@@ -385,7 +435,7 @@ async function renderLineBindPrompt_(targetSelector){
   const unbindBtn=wrap.querySelector('#unbindLineBtn');
   if(unbindBtn){
     unbindBtn.onclick=async()=>{
-      if(!window.confirm('確定要解除 LINE 綁定嗎？解除後首頁仍會保留綁定入口。')) return;
+      if(!window.confirm('確定要解除 LINE 綁定嗎？解除後仍可再重新綁定。')) return;
       const progress=startActionButtonProgress(unbindBtn,{label:'解除中',startPct:10,maxPct:84,interval:140});
       try{
         await setLineNotifyPreference_(false,true);
@@ -397,6 +447,7 @@ async function renderLineBindPrompt_(targetSelector){
     };
   }
 }
+
 
 
 const __btnProgressMap=new WeakMap();

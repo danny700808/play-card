@@ -209,30 +209,27 @@
     }
 
     async function renderSimpleLineCard(targetSelector){
-      const target = typeof targetSelector === 'string' ? document.querySelector(targetSelector) : targetSelector;
-      const user = getTeacherUser();
-      if(!target || !user) return;
+      const target = typeof targetSelector==='string' ? document.querySelector(targetSelector) : targetSelector;
+      if(!target) return;
+      const user = (typeof getUser==='function') ? getUser() : null;
+      target.innerHTML='';
+      if(!user) return;
       const hasLineId = !!String(user.lineUserId||'').trim();
       const notifyOn = String(user.lineNotifyEnabled||'').trim()==='是' || user.lineNotifyEnabled===true;
       const statusText = !hasLineId ? '尚未綁定' : (notifyOn ? '已綁定' : '已綁定｜提醒關閉');
       const btnText = !hasLineId ? '前往綁定' : (notifyOn ? '關閉提醒' : '開啟提醒');
       target.innerHTML = `<div class="tool-card line-card"><div><div class="tool-title">LINE 通知設定</div><div class="tool-desc">${statusText}</div></div><button type="button" class="btn mini-btn" id="lineCardActionBtn">${btnText}</button></div>`;
-      const btn = document.getElementById('lineCardActionBtn');
+      const btn = target.querySelector('#lineCardActionBtn');
       if(!btn) return;
       btn.onclick = async function(){
         btn.disabled = true;
         try{
           if(!hasLineId){
-            const links = (typeof getPublicSystemLinksCached==='function') ? await getPublicSystemLinksCached() : {};
-            const cmd = `柚子綁定 ${String(user.email||'').trim()}`;
-            try{ if(navigator.clipboard && navigator.clipboard.writeText) await navigator.clipboard.writeText(cmd); }catch(e){}
-            if(links && links.lineAddFriendUrl) window.open(links.lineAddFriendUrl, '_blank');
-            alert('已幫你準備綁定方式。
-1. 先加入官方 LINE
-2. 到聊天視窗貼上：
-' + cmd + '
-3. 送出後回首頁重新整理');
-          }else if(typeof setLineNotifyPreference_==='function'){
+            await openLineBindGuide_(String(user.email||'').trim());
+            btn.disabled = false;
+            return;
+          }
+          if(typeof setLineNotifyPreference_==='function'){
             await setLineNotifyPreference_(!notifyOn, false);
           }
           await renderSimpleLineCard(targetSelector);
@@ -242,6 +239,7 @@
         }
       };
     }
+
 
     function openPage(target){
       const userId=getUserId();
