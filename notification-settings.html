@@ -7,6 +7,8 @@
   <link rel="stylesheet" href="style.css">
   <style>
     .page{max-width:1100px;margin:0 auto;padding:20px}
+    .topbar{display:flex;justify-content:flex-end;gap:10px;margin-bottom:16px}
+    .btn-lite{border:none;border-radius:16px;padding:12px 18px;background:#eef2f6;color:#16324f;font-weight:800}
     .card{background:#fff;border:1px solid #e5e7eb;border-radius:22px;padding:20px;box-shadow:0 6px 20px rgba(15,23,42,.04)}
     h1{margin:0 0 10px;font-size:40px;color:#16324f}
     .desc{margin:0 0 14px;color:#4b5563;line-height:1.7}
@@ -28,7 +30,9 @@
 </head>
 <body>
   <div class="page">
-    <div class="page-return-wrap"><a class="btn page-return-btn" href="settings.html">返回管理首頁</a></div>
+    <div class="topbar">
+      <button class="btn-lite" id="backBtn">返回管理頁面</button>
+    </div>
 
     <section class="card">
       <h1>通知設定</h1>
@@ -88,8 +92,8 @@
         <tr data-idx="${idx}">
           <td>${escapeHtml(row.eventName || '')}</td>
           <td>${escapeHtml(row.category || '')}</td>
-          <td class="center">${makeCheck('notifyActorEmail', !!row.notifyActorEmail)}</td>
-          <td class="center">${makeCheck('notifyActorLine', !!row.notifyActorLine)}</td>
+          <td class="center">${makeCheck('sendEmailToActor', !!row.sendEmailToActor)}</td>
+          <td class="center">${makeCheck('sendLineToActor', !!row.sendLineToActor)}</td>
           <td class="center">${makeCheck('notifyManagerEmail', !!row.notifyManagerEmail)}</td>
           <td class="center">${makeCheck('notifyManagerLine', !!row.notifyManagerLine)}</td>
           <td class="center">${makeCheck('enabled', row.enabled !== false)}</td>
@@ -125,11 +129,15 @@
         if(!res || res.ok === false) throw new Error(res && res.message ? res.message : '儲存失敗');
         alert('通知設定已儲存');
         currentRows = rows;
+        await loadRows();
       }catch(err){
         alert('儲存失敗：' + (err && err.message ? err.message : String(err)));
       }
     }
 
+    document.getElementById('backBtn').addEventListener('click', function(){
+      location.href = 'settings.html';
+    });
     document.getElementById('saveBtn').addEventListener('click', saveRows);
 
     (async function init(){
