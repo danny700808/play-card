@@ -49,6 +49,8 @@
     .history-item{display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid #e2e8f0;border-radius:14px;padding:10px 12px;background:#fff;margin-top:8px}
     .history-item-title{font-size:14px;font-weight:800;line-height:1.5}
     .history-item-actions{display:flex;gap:8px;flex-wrap:wrap}
+    .btn-danger-soft{background:#fdecec;color:#b42318}
+    .btn-danger-soft:hover{background:#f9d9d9}
 
     @media print{
       html,body{margin:0!important;padding:0!important;background:#fff!important}
@@ -94,7 +96,7 @@
         <div>
           <div class="subcard">
             <input id="contractId" type="hidden" value="">
-            <div class="muted-tip" style="margin-bottom:12px">這個頁面的操作方式比照估價單：左邊填寫、右邊即時預覽；右邊預覽 = 列印 = 另存 PDF。</div>
+            <div class="muted-tip" style="margin-bottom:12px">這個頁面的操作方式比照估價單：左邊填寫、右邊即時預覽；每次修改儲存都會新增版本（原始版、修改 1、修改 2…）；右邊預覽 = 列印 = 另存 PDF。</div>
             <div class="field"><label>契約書標題</label><input id="contractTitle" value="設備租賃契約書"></div>
             <div class="row2">
               <div class="field"><label>甲方名稱</label><input id="partyAName" value="晟瑞科技股份有限公司"></div>
@@ -391,6 +393,46 @@
         if(window.setLocalMsg) setLocalMsg(err.message || '寄送失敗', true);
       }
     }
+    function versionActionHtml(row){
+      const stamp = escapeHtml(row.versionCreatedAt || row.updatedAt || row.contractDate || '');
+      return `<div class="history-item">
+        <div>
+          <div class="history-item-title">${escapeHtml(row.versionName || '原始版')}｜${escapeHtml(row.partyAName || '未命名甲方')}｜${escapeHtml(row.equipmentName || '未填設備')}</div>
+          <div class="muted-tip" style="margin-top:4px">${stamp ? stamp + '｜' : ''}${escapeHtml(row.sendStatus || '未寄送')}</div>
+        </div>
+        <div class="history-item-actions">
+          <button class="btn secondary" type="button" onclick="previewContractHistoryItem('${row.contractId}')">預覽</button>
+          <button class="btn secondary" type="button" onclick="loadContractHistoryItem('${row.contractId}')">修改</button>
+          <button class="btn secondary" type="button" onclick="duplicateContractHistoryItem('${row.contractId}')">複製合約</button>
+          <button class="btn btn-danger-soft" type="button" onclick="deleteContractHistoryItem('${row.contractId}')">刪除</button>
+        </div>
+      </div>`;
+    }
+    function groupHistoryRowsByYear(rows){
+      const years = {};
+      (rows||[]).forEach(row=>{
+        const y = String((row.year || row.contractDate || '').slice(0,4) || '未分類');
+        if(!years[y]) years[y] = {};
+        const root = row.rootContractId || row.contractId;
+        if(!years[y][root]) years[y][root] = [];
+        years[y][root].push(row);
+      });
+      return Object.keys(years).sort((a,b)=>b.localeCompare(a)).map(year=>({
+        year,
+        groups: Object.keys(years[year]).map(root=>({
+          rootId: root,
+          rows: years[year][root].sort((a,b)=>(Number(a.versionNo||0)-Number(b.versionNo||0)))
+        }))
+      }));
+    }
+    function contractGroupCard(group){
+      const head = group.rows[0] || {};
+      return `<div class="history-item" style="display:block">
+        <div class="history-item-title">${escapeHtml(head.contractTitle || '設備租賃契約書')}</div>
+        <div class="muted-tip" style="margin-top:4px">${escapeHtml(head.partyAName || '未命名甲方')}｜${escapeHtml(head.equipmentName || '未填設備')}｜版本數：${group.rows.length}</div>
+        <div style="margin-top:8px;display:grid;gap:8px">${group.rows.map(versionActionHtml).join('')}</div>
+      </div>`;
+    }
     async function loadHistory(){
       try{
         const res = await api('getRentalContracts', { userId: currentUser.id });
@@ -406,26 +448,12 @@
         wrap.innerHTML = '<div class="muted-tip">目前還沒有合約資料。</div>';
         return;
       }
-      const groups = {};
-      historyRows.forEach(row=>{
-        const year = String(row.year || '未分類');
-        (groups[year] ||= []).push(row);
-      });
-      const years = Object.keys(groups).sort((a,b)=> b.localeCompare(a));
+      const years = groupHistoryRowsByYear(historyRows);
       wrap.innerHTML = years.map((year, idx)=>{
         const bodyId = `history-year-${idx}`;
-        const items = groups[year].map(row=>`
-          <div class="history-item">
-            <div class="history-item-title">${escapeHtml(row.partyAName || '未命名甲方')}｜${escapeHtml(row.equipmentName || '未填設備')}</div>
-            <div class="history-item-actions">
-              <button class="btn secondary" type="button" onclick="loadContractHistoryItem('${row.contractId}')">載入</button>
-              <button class="btn secondary" type="button" onclick="duplicateContractHistoryItem('${row.contractId}')">複製表單</button>
-            </div>
-          </div>
-        `).join('');
         return `<div class="history-year-group">
-          <button class="history-year-btn" type="button" onclick="toggleHistoryYear('${bodyId}', this)">${year}<span>＋</span></button>
-          <div id="${bodyId}" class="history-year-body">${items}</div>
+          <button class="history-year-btn" type="button" onclick="toggleHistoryYear('${bodyId}', this)">${year.year}<span>＋</span></button>
+          <div id="${bodyId}" class="history-year-body">${year.groups.map(contractGroupCard).join('')}</div>
         </div>`;
       }).join('');
     }
@@ -440,17 +468,45 @@
     function escapeHtml(s){
       return String(s || '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
     }
+    function previewContractHistoryItem(id){
+      const row = historyRows.find(r=> String(r.contractId||'') === String(id));
+      if(!row) return;
+      applyValues(row.formData || row, false);
+      if(window.setLocalMsg) setLocalMsg('已載入歷史合約預覽。');
+    }
     function loadContractHistoryItem(id){
       const row = historyRows.find(r=> String(r.contractId||'') === String(id));
       if(!row) return;
       applyValues(row.formData || row, false);
-      if(window.setLocalMsg) setLocalMsg('已載入歷史合約。');
+      if(window.setLocalMsg) setLocalMsg('已載入合約，可直接修改後再儲存。');
     }
     function duplicateContractHistoryItem(id){
       const row = historyRows.find(r=> String(r.contractId||'') === String(id));
       if(!row) return;
-      applyValues(row.formData || row, true);
-      if(window.setLocalMsg) setLocalMsg('已複製成新的空白表單，可另行儲存。');
+      const payload = Object.assign({}, row.formData || row, {
+        contractId: '',
+        rootContractId: '',
+        versionNo: 0,
+        versionName: '原始版',
+        contractDate: todayStr()
+      });
+      applyValues(payload, true);
+      if(window.setLocalMsg) setLocalMsg('已複製舊合約內容，接下來儲存會建立新單。');
+    }
+    async function deleteContractHistoryItem(id){
+      const row = historyRows.find(r=> String(r.contractId||'') === String(id));
+      if(!row) return;
+      const ok = window.confirm(`是否確定刪除「${row.versionName || '原始版'}」這個合約版本？`);
+      if(!ok) return;
+      try{
+        const res = await api('deleteRentalContract', { userId: currentUser.id, contractId: id });
+        if(!res || !res.ok) throw new Error((res && res.message) || '刪除失敗');
+        if(String(qs('#contractId').value || '') === String(id)) qs('#contractId').value = '';
+        await loadHistory();
+        if(window.setLocalMsg) setLocalMsg('合約版本已刪除。');
+      }catch(err){
+        if(window.setLocalMsg) setLocalMsg(err.message || '刪除失敗', true);
+      }
     }
     function initPage(){
       fillHeader();
