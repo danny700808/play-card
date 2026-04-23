@@ -6,71 +6,69 @@
   <title>通知設定</title>
   <link rel="stylesheet" href="style.css">
   <style>
-    .nt-card{background:#fff;border:1px solid #e5e7eb;border-radius:18px;padding:16px}
-    .nt-table-wrap{overflow:auto}
-    .nt-table{width:100%;min-width:960px;border-collapse:collapse}
-    .nt-table th,.nt-table td{padding:10px 8px;border-bottom:1px solid #e5e7eb;vertical-align:middle}
-    .nt-table th{font-size:13px;color:#475569;text-align:left;white-space:nowrap}
-    .nt-table td{font-size:14px}
-    .nt-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap}
-    .pill{display:inline-block;padding:4px 10px;border-radius:999px;background:#eef2ff;color:#4338ca;font-size:12px;font-weight:700}
-    .muted{color:#64748b;font-size:13px}
-    .diag{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:14px 0}
-    .diag .item{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:12px}
-    @media (max-width: 760px){ .diag{grid-template-columns:1fr} }
+    .page{max-width:1100px;margin:0 auto;padding:20px}
+    .topbar{display:flex;justify-content:flex-end;gap:10px;margin-bottom:16px}
+    .btn-lite{border:none;border-radius:16px;padding:12px 18px;background:#eef2f6;color:#16324f;font-weight:800}
+    .card{background:#fff;border:1px solid #e5e7eb;border-radius:22px;padding:20px;box-shadow:0 6px 20px rgba(15,23,42,.04)}
+    h1{margin:0 0 10px;font-size:40px;color:#16324f}
+    .desc{margin:0 0 14px;color:#4b5563;line-height:1.7}
+    .table-wrap{overflow:auto;border:1px solid #e5e7eb;border-radius:18px}
+    table{width:100%;min-width:920px;border-collapse:collapse;background:#fff}
+    th,td{padding:14px 12px;border-bottom:1px solid #eef2f6;text-align:left;vertical-align:middle}
+    th{color:#16324f;font-size:15px}
+    td{color:#334155}
+    .center{text-align:center}
+    .bottom{display:flex;justify-content:flex-end;margin-top:16px}
+    .btn-primary{border:none;border-radius:16px;padding:14px 22px;background:#1f7a5a;color:#fff;font-weight:800}
+    .muted{color:#94a3b8}
+    .error{color:#b42318}
+    @media (max-width:768px){
+      .page{padding:14px}
+      h1{font-size:34px}
+    }
   </style>
 </head>
-<body onload="initPage()">
-  <div class="container">
-    <div class="card">
-      <div class="topbar">
-        <div>
-          <h1 class="title" style="margin:0">通知設定</h1>
-          <div class="welcome">用勾選方式統一控制每個事件是否寄給當事人 Email / LINE，以及主管 Email / LINE。</div>
-        </div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap">
-          <button class="btn secondary" style="width:auto;padding:10px 14px" onclick="initPage()">重新讀取</button>
-          <button class="btn secondary" style="width:auto;padding:10px 14px" onclick="history.back()">返回</button>
-          <button class="btn secondary" style="width:auto;padding:10px 14px" onclick="logout()">登出</button>
-        </div>
-      </div>
-
-      <div class="diag">
-        <div class="item"><strong>Build</strong><div id="buildText" class="muted"></div></div>
-        <div class="item"><strong>API</strong><div id="apiText" class="muted"></div></div>
-        <div class="item"><strong>目前登入</strong><div id="userText" class="muted"></div></div>
-        <div class="item"><strong>狀態</strong><div id="statusText" class="muted">準備中</div></div>
-      </div>
-
-      <div class="nt-card">
-        <div class="muted" style="margin-bottom:12px">LINE 只有在對方已綁定且啟用 LINE 通知時才會實際送出。主管通知已拆成 Email 與 LINE 兩個欄位。</div>
-        <div class="nt-table-wrap">
-          <table class="nt-table">
-            <thead>
-              <tr>
-                <th style="width:180px">事件名稱</th>
-                <th style="width:110px">分類</th>
-                <th style="width:120px">寄 Email 給當事人</th>
-                <th style="width:120px">寄 LINE 給當事人</th>
-                <th style="width:120px">通知主管 Email</th>
-                <th style="width:120px">通知主管 LINE</th>
-                <th style="width:90px">啟用</th>
-              </tr>
-            </thead>
-            <tbody id="settingRows"></tbody>
-          </table>
-        </div>
-        <div class="nt-actions">
-          <button id="saveBtn" class="btn" style="width:auto;padding:10px 18px" onclick="saveAll()">儲存通知設定</button>
-        </div>
-        <div id="msg" class="message"></div>
-      </div>
+<body>
+  <div class="page">
+    <div class="topbar">
+      <button class="btn-lite" id="backBtn">返回管理頁面</button>
     </div>
+
+    <section class="card">
+      <h1>通知設定</h1>
+      <p class="desc">用勾選方式控制每個事件是否寄給當事人 Email / LINE，以及主管 Email / LINE。</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>事件名稱</th>
+              <th>分類</th>
+              <th class="center">寄 Email 給當事人</th>
+              <th class="center">寄 LINE 給當事人</th>
+              <th class="center">通知主管 Email</th>
+              <th class="center">通知主管 LINE</th>
+              <th class="center">啟用</th>
+            </tr>
+          </thead>
+          <tbody id="settingRows">
+            <tr><td colspan="7" class="muted">讀取中...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="bottom">
+        <button class="btn-primary" id="saveBtn">儲存通知設定</button>
+      </div>
+    </section>
   </div>
+
   <script src="config.js"></script>
   <script src="app.js"></script>
   <script>
-    let currentUser=null;
+    let currentUser = null;
+    let currentRows = [];
+
     function escapeHtml(v){
       return String(v==null?'':v)
         .replace(/&/g,'&amp;')
@@ -79,83 +77,78 @@
         .replace(/"/g,'&quot;')
         .replace(/'/g,'&#39;');
     }
+
     function makeCheck(name, checked){
-      return `<label style="display:inline-flex;justify-content:center;width:100%"><input type="checkbox" data-key="${name}" ${checked?'checked':''}></label>`;
+      return '<label style="display:inline-flex;justify-content:center;width:100%"><input type="checkbox" data-key="'+name+'" '+(checked?'checked':'')+'></label>';
     }
-    function setStatus(text,isError){
-      const el=document.getElementById('statusText');
-      el.textContent=text||'';
-      el.style.color=isError?'#b42318':'#64748b';
+
+    function renderRows(rows){
+      const box = document.getElementById('settingRows');
+      if(!rows.length){
+        box.innerHTML = '<tr><td colspan="7" class="muted">目前沒有通知設定資料。</td></tr>';
+        return;
+      }
+      box.innerHTML = rows.map((row, idx)=>`
+        <tr data-idx="${idx}">
+          <td>${escapeHtml(row.eventName || '')}</td>
+          <td>${escapeHtml(row.category || '')}</td>
+          <td class="center">${makeCheck('notifyActorEmail', !!row.notifyActorEmail)}</td>
+          <td class="center">${makeCheck('notifyActorLine', !!row.notifyActorLine)}</td>
+          <td class="center">${makeCheck('notifyManagerEmail', !!row.notifyManagerEmail)}</td>
+          <td class="center">${makeCheck('notifyManagerLine', !!row.notifyManagerLine)}</td>
+          <td class="center">${makeCheck('enabled', row.enabled !== false)}</td>
+        </tr>
+      `).join('');
     }
-    async function initPage(){
-      fillHeader();
-      document.getElementById('buildText').textContent=(window.APP_CONFIG&&APP_CONFIG.BUILD)||'';
-      document.getElementById('apiText').textContent=(window.APP_CONFIG&&APP_CONFIG.API_URL)||'';
-      currentUser=requireLogin();
+
+    async function loadRows(){
+      const box = document.getElementById('settingRows');
+      box.innerHTML = '<tr><td colspan="7" class="muted">讀取中...</td></tr>';
+      try{
+        const res = await api('getNotificationSettings', { userId: currentUser.id });
+        if(!res || res.ok === false) throw new Error(res && res.message ? res.message : '讀取失敗');
+        currentRows = Array.isArray(res.rows) ? res.rows : [];
+        renderRows(currentRows);
+      }catch(err){
+        box.innerHTML = '<tr><td colspan="7" class="error">讀取失敗：'+escapeHtml(err && err.message ? err.message : String(err))+'</td></tr>';
+      }
+    }
+
+    async function saveRows(){
+      const trs = Array.from(document.querySelectorAll('#settingRows tr[data-idx]'));
+      const rows = trs.map(tr => {
+        const idx = Number(tr.dataset.idx);
+        const base = Object.assign({}, currentRows[idx] || {});
+        tr.querySelectorAll('input[type="checkbox"]').forEach(input => {
+          base[input.dataset.key] = !!input.checked;
+        });
+        return base;
+      });
+      try{
+        const res = await api('saveNotificationSettings', { userId: currentUser.id, rows });
+        if(!res || res.ok === false) throw new Error(res && res.message ? res.message : '儲存失敗');
+        alert('通知設定已儲存');
+        currentRows = rows;
+      }catch(err){
+        alert('儲存失敗：' + (err && err.message ? err.message : String(err)));
+      }
+    }
+
+    document.getElementById('backBtn').addEventListener('click', function(){
+      location.href = 'settings.html';
+    });
+    document.getElementById('saveBtn').addEventListener('click', saveRows);
+
+    (async function init(){
+      fillHeader && fillHeader();
+      currentUser = requireLogin();
       if(!currentUser) return;
-      document.getElementById('userText').textContent=`${currentUser.name||''}｜${currentUser.id||''}｜${currentUser.role||''}`;
-      if(!hasSettingsZoneAccess(currentUser)){ location.href='dashboard.html'; return; }
-      const box=document.getElementById('settingRows');
-      box.innerHTML='<tr><td colspan="7" class="muted">讀取中...</td></tr>';
-      setStatus('正在向 GS 讀取通知設定...', false);
-      try{
-        const res=await api('getNotificationSettings',{userId:currentUser.id});
-        if(!res || res.ok===false) throw new Error(res&&res.message||'GS 沒有回傳成功');
-        const rows=Array.isArray(res.rows)?res.rows:[];
-        if(!rows.length){
-          box.innerHTML='<tr><td colspan="7" class="muted">目前沒有通知設定資料。</td></tr>';
-          box.dataset.rows='[]';
-          setStatus('GS 已回應，但目前沒有任何事件資料。', true);
-          return;
-        }
-        box.innerHTML = rows.map((row,idx)=>`
-          <tr>
-            <td>${escapeHtml(row.eventName||'')}</td>
-            <td><span class="pill">${escapeHtml(row.category||'')}</span></td>
-            <td>${makeCheck(`email:${idx}`, !!row.sendEmailToActor)}</td>
-            <td>${makeCheck(`line:${idx}`, !!row.sendLineToActor)}</td>
-            <td>${makeCheck(`managerEmail:${idx}`, !!row.notifyManagerEmail)}</td>
-            <td>${makeCheck(`managerLine:${idx}`, !!row.notifyManagerLine)}</td>
-            <td>${makeCheck(`enabled:${idx}`, !!row.enabled)}</td>
-          </tr>
-        `).join('');
-        box.dataset.rows = JSON.stringify(rows);
-        setStatus(`GS 讀取成功，共 ${rows.length} 筆事件。`, false);
-      }catch(err){
-        box.innerHTML='<tr><td colspan="7" class="error">讀取失敗：'+escapeHtml(err.message||String(err))+'</td></tr>';
-        setStatus('讀取失敗：' + (err.message||String(err)), true);
+      if(!(hasSettingsZoneAccess && hasSettingsZoneAccess(currentUser))){
+        location.href = 'dashboard.html';
+        return;
       }
-    }
-    async function saveAll(){
-      const btn=document.getElementById('saveBtn');
-      btn.disabled=true;
-      const old=btn.textContent;
-      btn.textContent='儲存中...';
-      try{
-        const box=document.getElementById('settingRows');
-        const rows=JSON.parse(box.dataset.rows||'[]').map((row,idx)=>({
-          eventCode: row.eventCode,
-          eventName: row.eventName,
-          category: row.category,
-          sendEmailToActor: !!document.querySelector(`input[data-key="email:${idx}"]`)?.checked,
-          sendLineToActor: !!document.querySelector(`input[data-key="line:${idx}"]`)?.checked,
-          notifyManagerEmail: !!document.querySelector(`input[data-key="managerEmail:${idx}"]`)?.checked,
-          notifyManagerLine: !!document.querySelector(`input[data-key="managerLine:${idx}"]`)?.checked,
-          enabled: !!document.querySelector(`input[data-key="enabled:${idx}"]`)?.checked
-        }));
-        const res=await api('saveNotificationSettings',{userId:currentUser.id,rows});
-        if(!res||res.ok===false) throw new Error(res&&res.message||'儲存失敗');
-        setMsg(document.getElementById('msg'),res.message||'通知設定已儲存。',false);
-        setStatus('儲存完成，重新讀取中...', false);
-        await initPage();
-      }catch(err){
-        setMsg(document.getElementById('msg'),err.message||String(err),true);
-        setStatus('儲存失敗：' + (err.message||String(err)), true);
-      }finally{
-        btn.disabled=false;
-        btn.textContent=old;
-      }
-    }
+      await loadRows();
+    })();
   </script>
 </body>
 </html>
