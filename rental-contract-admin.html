@@ -51,6 +51,7 @@
     .history-item-actions{display:flex;gap:8px;flex-wrap:wrap}
     .btn-danger-soft{background:#fdecec;color:#b42318}
     .btn-danger-soft:hover{background:#f9d9d9}
+    .btn.is-busy{opacity:.8;pointer-events:none}
 
     @media print{
       html,body{margin:0!important;padding:0!important;background:#fff!important}
@@ -135,10 +136,11 @@
               <div class="field"><label>乙方負責人</label><input id="partyBOwner" value="黃銘廷"></div>
             </div>
             <div class="mini-actions" style="margin-top:16px">
-              <button class="btn" type="button" onclick="printContract()">列印</button>
-              <button class="btn secondary" type="button" onclick="savePdf()">另存 PDF</button>
-              <button class="btn secondary" type="button" onclick="saveContract()">儲存合約</button>
-              <button class="btn secondary" type="button" onclick="newBlankContract()">新增空白合約</button>
+              <button id="saveContractBtn" class="btn" type="button" onclick="saveCurrentContract()">儲存合約</button>
+              <button id="saveAsNewContractBtn" class="btn" type="button" onclick="saveAsNewContract()">儲存新合約</button>
+              <button id="newBlankContractBtn" class="btn" type="button" onclick="newBlankContract()">新增空白合約</button>
+              <button id="saveContractPdfBtn" class="btn" type="button" onclick="savePdf()">另存 PDF</button>
+              <button id="printContractBtn" class="btn" type="button" onclick="printContract()">列印</button>
             </div>
           </div>
 
@@ -153,7 +155,7 @@
 附件為本次設備租賃契約書 PDF，請查收。
 如內容需要調整，請直接回信告知，謝謝。</textarea></div>
             <div class="mini-actions" style="margin-top:12px">
-              <button class="btn" type="button" onclick="sendContractEmail()">寄送合約</button>
+              <button id="sendContractBtn" class="btn" type="button" onclick="sendContractEmail()">寄送合約</button>
             </div>
           </div>
 
@@ -318,22 +320,91 @@
       delete qs('#emailSubject').dataset.touched;
       renderPreview();
     }
-    function newBlankContract(){
-      resetFormToDefaults();
-      setLocalMsg && setLocalMsg('已建立新的空白合約。');
-    }
-    async function saveContract(silent){
-      if(!currentUser) return { ok:false, message:'尚未登入' };
-      const payload = readValues();
-      const res = await api('saveRentalContract', { userId: currentUser.id, formData: payload, contractId: payload.contractId || '' });
-      if(res && res.ok){
-        qs('#contractId').value = res.contractId || '';
-        await loadHistory();
-        if(!silent && window.setLocalMsg) setLocalMsg('合約已儲存。');
-      }else if(!silent && window.setLocalMsg){
-        setLocalMsg((res && res.message) || '合約儲存失敗', true);
+    function startButtonProgress(target, baseText){
+      const btn = typeof target === 'string' ? qs('#' + target) : target;
+      if(!btn) return { set(){}, done(){}, fail(){} };
+      const old = btn.textContent;
+      btn.disabled = true;
+      btn.classList.add('is-busy');
+      let timer = null;
+      function paint(v, text){
+        const pct = Math.max(0, Math.min(100, Number(v) || 0));
+        btn.textContent = `${text || baseText} ${pct}%`;
       }
-      return res;
+      const seq = [10, 22, 36, 52, 68, 82, 92];
+      let i = 0;
+      paint(seq[0], baseText);
+      timer = setInterval(()=>{
+        i += 1;
+        if(i >= seq.length){
+          clearInterval(timer);
+          timer = null;
+          return;
+        }
+        paint(seq[i], baseText);
+      }, 180);
+      return {
+        set(v, text){ paint(v, text || baseText); },
+        done(text){
+          if(timer) clearInterval(timer);
+          paint(100, text || baseText);
+          setTimeout(()=>{
+            btn.textContent = old;
+            btn.disabled = false;
+            btn.classList.remove('is-busy');
+          }, 220);
+        },
+        fail(text){
+          if(timer) clearInterval(timer);
+          btn.textContent = text || old;
+          btn.disabled = false;
+          btn.classList.remove('is-busy');
+        }
+      };
+    }
+    async function newBlankContract(){
+      const prog = startButtonProgress('newBlankContractBtn', '建立空白中');
+      try{
+        prog.set(24, '清除資料中');
+        resetFormToDefaults();
+        prog.set(86, '整理畫面中');
+        if(window.setLocalMsg) setLocalMsg('已建立新的空白合約。');
+        prog.done('完成');
+      }catch(err){
+        prog.fail('新增空白合約');
+        if(window.setLocalMsg) setLocalMsg(err.message || '建立空白合約失敗', true);
+      }
+    }
+    async function saveContract(saveAsNew = false, silent = false, target = null, baseText = ''){
+      const prog = target ? startButtonProgress(target, baseText || (saveAsNew ? '儲存新合約中' : '儲存合約中')) : null;
+      try{
+        if(!currentUser) throw new Error('尚未登入');
+        const payload = readValues();
+        prog && prog.set(22, '整理資料中');
+        const res = await api('saveRentalContract', {
+          userId: currentUser.id,
+          saveAsNew: !!saveAsNew,
+          formData: payload,
+          contractId: saveAsNew ? '' : (payload.contractId || '')
+        });
+        if(!res || !res.ok) throw new Error((res && res.message) || '合約儲存失敗');
+        qs('#contractId').value = res.contractId || '';
+        prog && prog.set(84, '刷新紀錄中');
+        await loadHistory();
+        if(!silent && window.setLocalMsg) setLocalMsg(res.message || (saveAsNew ? '已建立新的合約。' : '合約已儲存。'));
+        prog && prog.done('完成');
+        return res;
+      }catch(err){
+        if(prog) prog.fail(saveAsNew ? '儲存新合約' : '儲存合約');
+        if(!silent && window.setLocalMsg) setLocalMsg(err.message || '合約儲存失敗', true);
+        return { ok:false, message: err.message || '合約儲存失敗' };
+      }
+    }
+    async function saveCurrentContract(){
+      return saveContract(false, false, 'saveContractBtn', '儲存合約中');
+    }
+    async function saveAsNewContract(){
+      return saveContract(true, false, 'saveAsNewContractBtn', '儲存新合約中');
     }
     async function buildPdfBlob(){
       const target = document.querySelector('#printArea .contract-sheet');
@@ -351,23 +422,46 @@
       return `${name}.pdf`;
     }
     async function printContract(){
-      window.print();
+      const prog = startButtonProgress('printContractBtn', '準備列印中');
+      try{
+        prog.set(18, '儲存資料中');
+        const saved = await saveContract(false, true, null);
+        if(!saved || !saved.ok) throw new Error((saved && saved.message) || '儲存失敗');
+        renderPreview();
+        prog.set(90, '開啟列印中');
+        window.print();
+        if(window.setLocalMsg) setLocalMsg('已開啟列印視窗。');
+        prog.done('完成');
+      }catch(err){
+        prog.fail('列印');
+        if(window.setLocalMsg) setLocalMsg(err.message || '列印失敗', true);
+      }
     }
     async function savePdf(){
+      const prog = startButtonProgress('saveContractPdfBtn', '儲存PDF中');
       try{
-        const saved = await saveContract(true);
+        prog.set(18, '儲存資料中');
+        const saved = await saveContract(false, true, null);
+        if(!saved || !saved.ok) throw new Error((saved && saved.message) || '儲存失敗');
+        prog.set(60, '建立PDF中');
         const { pdf } = await buildPdfBlob();
         pdf.save(buildFileName());
         if(window.setLocalMsg) setLocalMsg('PDF 已開始下載。');
+        prog.done('完成');
       }catch(err){
+        prog.fail('儲存 PDF');
         if(window.setLocalMsg) setLocalMsg(err.message || 'PDF 下載失敗', true);
       }
     }
     async function sendContractEmail(){
+      const prog = startButtonProgress('sendContractBtn', '寄送中');
       try{
         const to = qs('#emailTo').value.trim();
         if(!to) throw new Error('請填寫收件人 Email。');
-        const saved = await saveContract(true);
+        prog.set(18, '儲存資料中');
+        const saved = await saveContract(false, true, null);
+        if(!saved || !saved.ok) throw new Error((saved && saved.message) || '儲存失敗');
+        prog.set(58, '建立PDF中');
         const { blob } = await buildPdfBlob();
         const base64 = await new Promise((resolve,reject)=>{
           const fr = new FileReader();
@@ -375,6 +469,7 @@
           fr.onerror = reject;
           fr.readAsDataURL(blob);
         });
+        prog.set(78, '寄送信件中');
         const res = await api('sendRentalContractEmail', {
           userId: currentUser.id,
           contractId: qs('#contractId').value.trim(),
@@ -389,7 +484,9 @@
         if(!res || !res.ok) throw new Error((res && res.message) || '寄送失敗');
         await loadHistory();
         if(window.setLocalMsg) setLocalMsg('合約已寄送到信箱。');
+        prog.done('完成');
       }catch(err){
+        prog.fail('寄送');
         if(window.setLocalMsg) setLocalMsg(err.message || '寄送失敗', true);
       }
     }
@@ -401,10 +498,10 @@
           <div class="muted-tip" style="margin-top:4px">${stamp ? stamp + '｜' : ''}${escapeHtml(row.sendStatus || '未寄送')}</div>
         </div>
         <div class="history-item-actions">
-          <button class="btn secondary" type="button" onclick="previewContractHistoryItem('${row.contractId}')">預覽</button>
-          <button class="btn secondary" type="button" onclick="loadContractHistoryItem('${row.contractId}')">修改</button>
-          <button class="btn secondary" type="button" onclick="duplicateContractHistoryItem('${row.contractId}')">複製合約</button>
-          <button class="btn btn-danger-soft" type="button" onclick="deleteContractHistoryItem('${row.contractId}')">刪除</button>
+          <button class="btn" type="button" onclick="previewContractHistoryItem('${row.contractId}', this)">預覽</button>
+          <button class="btn" type="button" onclick="loadContractHistoryItem('${row.contractId}', this)">修改</button>
+          <button class="btn" type="button" onclick="duplicateContractHistoryItem('${row.contractId}', this)">複製合約</button>
+          <button class="btn btn-danger-soft" type="button" onclick="deleteContractHistoryItem('${row.contractId}', this)">刪除</button>
         </div>
       </div>`;
     }
@@ -433,12 +530,18 @@
         <div style="margin-top:8px;display:grid;gap:8px">${group.rows.map(versionActionHtml).join('')}</div>
       </div>`;
     }
-    async function loadHistory(){
+    async function loadHistory(target){
+      let prog = null;
       try{
+        prog = target ? startButtonProgress(target, '讀取中') : null;
+        prog && prog.set(18, '讀取中');
         const res = await api('getRentalContracts', { userId: currentUser.id });
         historyRows = (res && res.ok && Array.isArray(res.rows)) ? res.rows : [];
+        prog && prog.set(78, '整理清單中');
         renderHistory();
+        prog && prog.done('完成');
       }catch(err){
+        if(prog) prog.fail('讀取失敗');
         console.warn(err);
       }
     }
@@ -468,43 +571,72 @@
     function escapeHtml(s){
       return String(s || '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
     }
-    function previewContractHistoryItem(id){
+    async function previewContractHistoryItem(id, btn){
       const row = historyRows.find(r=> String(r.contractId||'') === String(id));
       if(!row) return;
-      applyValues(row.formData || row, false);
-      if(window.setLocalMsg) setLocalMsg('已載入歷史合約預覽。');
+      const prog = btn ? startButtonProgress(btn, '預覽載入中') : null;
+      try{
+        prog && prog.set(24, '套用資料中');
+        applyValues(row.formData || row, false);
+        if(window.setLocalMsg) setLocalMsg('已載入歷史合約預覽。');
+        prog && prog.done('完成');
+      }catch(err){
+        if(prog) prog.fail('預覽');
+        if(window.setLocalMsg) setLocalMsg(err.message || '預覽失敗', true);
+      }
     }
-    function loadContractHistoryItem(id){
+    async function loadContractHistoryItem(id, btn){
       const row = historyRows.find(r=> String(r.contractId||'') === String(id));
       if(!row) return;
-      applyValues(row.formData || row, false);
-      if(window.setLocalMsg) setLocalMsg('已載入合約，可直接修改後再儲存。');
+      const prog = btn ? startButtonProgress(btn, '載入中') : null;
+      try{
+        prog && prog.set(24, '套用資料中');
+        applyValues(row.formData || row, false);
+        if(window.setLocalMsg) setLocalMsg('已載入合約，可直接修改後再儲存。');
+        prog && prog.done('完成');
+      }catch(err){
+        if(prog) prog.fail('修改');
+        if(window.setLocalMsg) setLocalMsg(err.message || '載入失敗', true);
+      }
     }
-    function duplicateContractHistoryItem(id){
+    async function duplicateContractHistoryItem(id, btn){
       const row = historyRows.find(r=> String(r.contractId||'') === String(id));
       if(!row) return;
-      const payload = Object.assign({}, row.formData || row, {
-        contractId: '',
-        rootContractId: '',
-        versionNo: 0,
-        versionName: '原始版',
-        contractDate: todayStr()
-      });
-      applyValues(payload, true);
-      if(window.setLocalMsg) setLocalMsg('已複製舊合約內容，接下來儲存會建立新單。');
+      const prog = btn ? startButtonProgress(btn, '複製中') : null;
+      try{
+        const payload = Object.assign({}, row.formData || row, {
+          contractId: '',
+          rootContractId: '',
+          versionNo: 0,
+          versionName: '原始版',
+          contractDate: todayStr()
+        });
+        prog && prog.set(28, '建立新表單中');
+        applyValues(payload, true);
+        if(window.setLocalMsg) setLocalMsg('已複製舊合約內容，接下來儲存會建立新單。');
+        prog && prog.done('完成');
+      }catch(err){
+        if(prog) prog.fail('複製');
+        if(window.setLocalMsg) setLocalMsg(err.message || '複製失敗', true);
+      }
     }
-    async function deleteContractHistoryItem(id){
+    async function deleteContractHistoryItem(id, btn){
       const row = historyRows.find(r=> String(r.contractId||'') === String(id));
       if(!row) return;
       const ok = window.confirm(`是否確定刪除「${row.versionName || '原始版'}」這個合約版本？`);
       if(!ok) return;
+      const prog = btn ? startButtonProgress(btn, '刪除中') : null;
       try{
+        prog && prog.set(22, '刪除中');
         const res = await api('deleteRentalContract', { userId: currentUser.id, contractId: id });
         if(!res || !res.ok) throw new Error((res && res.message) || '刪除失敗');
         if(String(qs('#contractId').value || '') === String(id)) qs('#contractId').value = '';
+        prog && prog.set(86, '刷新紀錄中');
         await loadHistory();
         if(window.setLocalMsg) setLocalMsg('合約版本已刪除。');
+        prog && prog.done('完成');
       }catch(err){
+        if(prog) prog.fail('刪除');
         if(window.setLocalMsg) setLocalMsg(err.message || '刪除失敗', true);
       }
     }
