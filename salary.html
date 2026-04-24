@@ -36,6 +36,8 @@
       <div class="summary-grid">
         <div class="summary-box"><div class="label" id="mainAmountLabel">主要薪資</div><div class="value" id="mainAmountValue">-</div></div>
         <div class="summary-box"><div class="label">薪資生效日</div><div class="value" id="salaryEffectiveDate">-</div></div>
+        <div class="summary-box"><div class="label">本月遲到分鐘</div><div class="value" id="lateMinutesValue">0 分鐘</div></div>
+        <div class="summary-box"><div class="label">本月遲到扣薪</div><div class="value" id="lateDeductionValue">0 元</div></div>
       </div>
     </div>
     <div class="card">
@@ -111,6 +113,8 @@
         qs('#retirementSelf').textContent = info.selfRetirementText || '-';
         qs('#salaryEffectiveDate').textContent = info.effectiveDate || '-';
         qs('#salaryEffectiveDateInfo').textContent = info.effectiveDate || '-';
+        qs('#lateMinutesValue').textContent = info.lateMinutesText || '0 分鐘';
+        qs('#lateDeductionValue').textContent = info.lateDeductionText || '0 元';
         qs('#salaryNote').textContent = info.note || '-';
       }catch(err){
         const msg = (err && err.message) ? String(err.message) : String(err || '');
