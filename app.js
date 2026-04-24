@@ -208,34 +208,32 @@ function ensureLineBindPromptStyle_(){
   const s=document.createElement('style');
   s.id='lineBindPromptStyle';
   s.textContent=`
-  .line-bind-mini{margin-top:12px;padding:12px 14px;border:1px solid #d9e2ef;border-radius:22px;background:#ffffff;display:flex;gap:12px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;box-shadow:0 8px 20px rgba(25,46,89,.04)}
-  .line-bind-mini-left{min-width:0;display:flex;flex-direction:column;gap:4px;flex:1 1 220px}
-  .line-bind-mini-title{font-size:14px;font-weight:900;color:#18314a;letter-spacing:.02em}
-  .line-bind-mini-status{font-size:15px;font-weight:800;color:#5f7086;line-height:1.5}
+  .line-bind-mini{height:104px;padding:14px 16px;border:1px solid #d9e2ef;border-radius:24px;background:#f5f8fc;display:flex;flex-direction:column;justify-content:space-between;gap:10px;box-shadow:none;min-width:0}
+  .line-bind-mini-left{min-width:0;display:flex;flex-direction:column;gap:6px;align-items:center;text-align:center;justify-content:center;flex:1 1 auto}
+  .line-bind-mini-title{font-size:15px;font-weight:900;color:#18314a;letter-spacing:.02em;line-height:1.25}
+  .line-bind-mini-status{font-size:13px;font-weight:800;color:#5f7086;line-height:1.45}
   .line-bind-mini-status .on{color:#1f7a5a}
   .line-bind-mini-status .off{color:#9b7b11}
   .line-bind-mini-status .none{color:#70829a}
-  .line-bind-mini-hint{font-size:12px;color:#8090a3;line-height:1.5}
-  .line-bind-mini-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;flex:0 1 auto}
-  .line-bind-mini .btn{width:auto;padding:10px 14px;border-radius:16px;font-size:14px;line-height:1.2;min-height:auto}
+  .line-bind-mini-hint{display:none !important}
+  .line-bind-mini-actions{display:flex;justify-content:center;align-items:center;width:100%}
+  .line-bind-mini .btn{width:auto;min-width:86px;padding:9px 14px;border-radius:16px;font-size:14px;line-height:1.2;min-height:auto;white-space:nowrap}
   .line-bind-mini .btn.secondary{background:#eef2f7;color:#25374d}
   .line-bind-guide{margin-top:8px;padding:10px 12px;border-radius:16px;background:#f5f8fc;border:1px dashed #d9e2ef}
   .line-bind-guide-title{font-size:13px;font-weight:900;color:#18314a;margin-bottom:6px}
   .line-bind-guide-text{font-size:12px;color:#5f7086;line-height:1.6}
   .line-bind-guide-code{margin-top:8px;padding:10px 12px;border-radius:14px;background:#fff;border:1px solid #d9e2ef;font-size:13px;font-weight:800;color:#18314a;word-break:break-all}
   .line-bind-guide-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
-  .line-bind-mini.loading .line-bind-mini-status,
-  .line-bind-mini.loading .line-bind-mini-hint{color:#8ea0b3}
+  .line-bind-mini.loading .line-bind-mini-status{color:#8ea0b3}
   .line-bind-skeleton{display:inline-flex;align-items:center;gap:8px}
   .line-bind-skeleton-dot{width:8px;height:8px;border-radius:999px;background:#d9e2ef;animation:linePulse 1.1s ease-in-out infinite}
   .line-bind-skeleton-bar{width:78px;height:10px;border-radius:999px;background:#eef2f7;display:inline-block}
   @keyframes linePulse{0%,100%{opacity:.35;transform:scale(.94)}50%{opacity:1;transform:scale(1)}}
   @media (max-width:560px){
-    .line-bind-mini{padding:10px 12px;border-radius:18px;gap:10px}
-    .line-bind-mini-title{font-size:13px}
-    .line-bind-mini-status{font-size:14px}
-    .line-bind-mini-actions{width:100%;justify-content:flex-start}
-    .line-bind-mini .btn{padding:10px 12px;font-size:13px}
+    .line-bind-mini{height:96px;padding:12px 12px;border-radius:22px;gap:8px}
+    .line-bind-mini-title{font-size:14px}
+    .line-bind-mini-status{font-size:12px}
+    .line-bind-mini .btn{padding:8px 12px;font-size:13px}
   }
   `;
   document.head.appendChild(s);
@@ -481,7 +479,7 @@ async function renderLineBindPrompt_(targetSelector){
     <div class="line-bind-mini-left">
       <div class="line-bind-mini-title">LINE 通知設定</div>
       <div class="line-bind-mini-status"></div>
-      <div class="line-bind-mini-hint"></div>
+      
     </div>
     <div class="line-bind-mini-actions" id="lineBindActions"></div>
   `;
@@ -492,29 +490,23 @@ async function renderLineBindPrompt_(targetSelector){
   const notifyOn=String(user.lineNotifyEnabled||'').trim()==='是' || user.lineNotifyEnabled===true;
 
   const statusEl=wrap.querySelector('.line-bind-mini-status');
-  const hintEl=wrap.querySelector('.line-bind-mini-hint');
   const actionsEl=wrap.querySelector('#lineBindActions');
 
   let statusHtml='';
-  let hint='';
   let actionsHtml='';
 
   if(!hasLineId){
     statusHtml='<span class="none">尚未綁定</span>';
-    hint='請先加入官方 LINE，再用固定格式完成綁定。';
     actionsHtml='<button class="btn" type="button" id="showLineBindGuideBtn">前往綁定</button>';
   }else if(notifyOn){
     statusHtml='已綁定｜<span class="on">提醒開啟</span>';
-    hint='請按下面綠色按鈕，在彈跳視窗中設定提醒或解除綁定。';
     actionsHtml='<button class="btn" type="button" id="showLineBindGuideBtn">關閉提醒</button>';
   }else{
     statusHtml='已綁定｜<span class="off">提醒關閉</span>';
-    hint='請按下面綠色按鈕，在彈跳視窗中設定提醒或解除綁定。';
     actionsHtml='<button class="btn" type="button" id="showLineBindGuideBtn">開啟提醒</button>';
   }
 
   statusEl.innerHTML=statusHtml;
-  hintEl.textContent=hint;
   actionsEl.innerHTML=actionsHtml;
 
   const guideBtn=wrap.querySelector('#showLineBindGuideBtn');

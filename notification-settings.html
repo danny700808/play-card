@@ -7,8 +7,8 @@
   <link rel="stylesheet" href="style.css">
   <style>
     .page{max-width:1100px;margin:0 auto;padding:20px}
-    .topbar{display:flex;justify-content:flex-end;gap:10px;margin-bottom:16px}
-    .btn-lite{border:none;border-radius:16px;padding:12px 18px;background:#eef2f6;color:#16324f;font-weight:800}
+    .topbar{display:block;margin-bottom:16px}
+    .back-bar{display:block;width:100%;border:none;border-radius:18px;padding:14px 18px;background:#1f7a5a;color:#fff;font-weight:900;font-size:16px;text-align:center;cursor:pointer}
     .card{background:#fff;border:1px solid #e5e7eb;border-radius:22px;padding:20px;box-shadow:0 6px 20px rgba(15,23,42,.04)}
     h1{margin:0 0 10px;font-size:40px;color:#16324f}
     .desc{margin:0 0 14px;color:#4b5563;line-height:1.7}
@@ -19,7 +19,7 @@
     td{color:#334155}
     .center{text-align:center}
     .bottom{display:flex;justify-content:flex-end;margin-top:16px}
-    .btn-primary{border:none;border-radius:16px;padding:14px 22px;background:#1f7a5a;color:#fff;font-weight:800}
+    .btn-primary{border:none;border-radius:16px;padding:14px 22px;background:#1f7a5a;color:#fff;font-weight:800;cursor:pointer}
     .muted{color:#94a3b8}
     .error{color:#b42318}
     @media (max-width:768px){
@@ -31,7 +31,7 @@
 <body>
   <div class="page">
     <div class="topbar">
-      <button class="btn-lite" id="backBtn">返回管理頁面</button>
+      <button class="back-bar" id="backBtn">返回管理首頁</button>
     </div>
 
     <section class="card">
@@ -115,6 +115,7 @@
     }
 
     async function saveRows(){
+      const saveBtn = document.getElementById('saveBtn');
       const trs = Array.from(document.querySelectorAll('#settingRows tr[data-idx]'));
       const rows = trs.map(tr => {
         const idx = Number(tr.dataset.idx);
@@ -124,14 +125,19 @@
         });
         return base;
       });
+      const progress = (typeof startActionButtonProgress === 'function')
+        ? startActionButtonProgress(saveBtn,{label:'儲存中',startPct:10,maxPct:86,interval:120})
+        : null;
       try{
         const res = await api('saveNotificationSettings', { userId: currentUser.id, rows });
         if(!res || res.ok === false) throw new Error(res && res.message ? res.message : '儲存失敗');
-        alert('通知設定已儲存');
         currentRows = rows;
         await loadRows();
+        if(progress && typeof progress.done === 'function') progress.done('已儲存',900);
+        else alert('通知設定已儲存');
       }catch(err){
-        alert('儲存失敗：' + (err && err.message ? err.message : String(err)));
+        if(progress && typeof progress.fail === 'function') progress.fail(err && err.message ? err.message : '儲存失敗',1600);
+        else alert('儲存失敗：' + (err && err.message ? err.message : String(err)));
       }
     }
 
