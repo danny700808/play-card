@@ -26,10 +26,6 @@
     .page-return-wrap{margin-bottom:16px}
     .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
 
-    .task-remind-box{margin-top:10px;padding:10px 12px;border-radius:12px;background:#f7fafc;border:1px solid #e2e8f0}
-    .task-remind-box .label{font-size:13px;color:#526174;margin-bottom:6px;font-weight:700}
-    .task-remind-box .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-    .task-remind-box select{min-width:140px}
     .task-media-link{margin-top:10px}
     .task-media-link .btn{width:auto}
 
@@ -46,12 +42,6 @@
     .task-complete-fields .field{margin-top:10px}
     .task-complete-fields .field:first-child{margin-top:0}
     .task-complete-fields textarea{min-height:110px}
-    .task-remind-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:10px}
-    .task-remind-options label{display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid #e2e8f0;border-radius:14px;background:#fff;cursor:pointer;font-size:16px;font-weight:700}
-    .task-remind-options input{margin-top:0;width:24px;height:24px}
-    .task-remind-disable-row{display:flex;align-items:center;gap:10px;margin:4px 0 10px;font-size:18px;font-weight:800;color:#1e293b}
-    .task-remind-disable-row input{width:24px;height:24px}
-    .task-remind-subtitle{font-size:16px;font-weight:800;color:#475569;margin-bottom:10px}
     @media (max-width:560px){
       .task-media-grid{grid-template-columns:1fr}
     }
@@ -125,9 +115,6 @@
     .task-subgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
     .task-subgrid .field{margin-top:0 !important}
     .task-side-note{font-size:13px;color:#526174;margin-top:6px}
-    .remind-inline-title{font-size:14px;font-weight:800;color:#334155;margin:0 0 8px}
-    .task-remind-box.compact{background:#fff;border-radius:16px}
-    .task-remind-box.compact .task-note{margin-top:0;margin-bottom:8px}
     .inline-status{margin-top:12px}
     .inline-status .message{margin-top:0}
     .task-complete-fields{background:rgba(255,255,255,.82)}
@@ -248,22 +235,7 @@
           </select>
         </div>
 
-        <div class="field">
-          <label>提醒頻率</label>
-          <select id="remindFreq">
-            <option value="不提醒">不提醒</option>
-            <option value="一般提醒" selected>一般提醒</option>
-            <option value="自訂提醒">自訂提醒</option>
-          </select>
-          <div class="remind-explain" id="remindExplain"></div>
-          <div class="remind-plan-box" id="remindPlanBox"></div>
-          <div id="customRemindBox" class="task-note hidden">
-            <div><label><input type="checkbox" class="custom-remind" value="截止前 24 小時" checked> 截止前 24 小時</label></div>
-            <div><label><input type="checkbox" class="custom-remind" value="截止前 6 小時" checked> 截止前 6 小時</label></div>
-            <div><label><input type="checkbox" class="custom-remind" value="截止前 1 小時" checked> 截止前 1 小時</label></div>
-            <div><label><input type="checkbox" class="custom-remind" value="截止時間到時" checked> 截止時間到時</label></div>
-          </div>
-        </div>
+        <div class="field task-note">提醒已改由「通知 / 提醒設定」統一控制；建立交辦事項時不再個別設定提醒頻率。</div>
 
         <div id="createActionBox">
           <button class="btn" id="createBtn">建立交辦事項</button>
@@ -307,8 +279,6 @@
   <script>
     let dueMode = 'today';
     let taskAudio = '';
-    const STAFF_REMIND_OPTIONS = ['2 天前','1 天前','6 小時前','30 分鐘前'];
-    let reminderState = {freq:'一般提醒', times:[]};
     let currentUser = null;
     let taskAdminMode = false;
     let currentAdminTaskTab = 'pending';
@@ -346,48 +316,15 @@
       return {dueDate:'',dueTime:'',dueLabel:''};
     }
 
-    function getRemindPreset(freq){
-      if(freq==='低提醒') return ['截止前 24 小時','截止前 2 小時','截止時間到時'];
-      if(freq==='高提醒') return ['截止前 24 小時','截止前 6 小時','截止前 2 小時','截止前 30 分鐘','截止時間到時'];
-      return ['截止前 24 小時','截止前 6 小時','截止前 1 小時','截止時間到時'];
+    function renderRemindSummary(task){ return ''; }
+
+    function renderStaffRemindBox(x, isAdmin, isMyAssignedTask){ return ''; }
+
+    async function saveTaskRemindPrefs(taskId, silent){
+      return {ok:true, message:'單筆任務提醒已停用，請到「通知 / 提醒設定」統一調整。'};
     }
 
-    function refreshRemindUi(){
-      var customBox = qs('#customRemindBox');
-      if(customBox) customBox.classList.toggle('hidden', reminderState.freq!=='自訂提醒');
-      var times = [];
-      if(reminderState.freq==='不提醒'){
-        reminderState.times = [];
-        qs('#remindExplain').textContent='不提醒：這筆任務不會寄出到期提醒。';
-        qs('#remindPlanBox').innerHTML='';
-        return;
-      }
-      if(reminderState.freq==='自訂提醒'){
-        times = Array.from(document.querySelectorAll('.custom-remind:checked')).map(function(el){ return el.value; });
-        reminderState.times = times.slice();
-        qs('#remindExplain').textContent='自訂提醒：只會依你勾選的時間寄出提醒。';
-      }else{
-        times = getRemindPreset(reminderState.freq);
-        reminderState.times = times.slice();
-        qs('#remindExplain').textContent='一般提醒：以下是通知員工的提醒時間。';
-      }
-      qs('#remindPlanBox').innerHTML = times.length
-        ? times.map(function(time,idx){ return '<div>'+(idx+1)+'. '+time+' 提醒一次</div>'; }).join('')
-        : '<div class="muted">目前沒有提醒時間</div>';
-    }
-
-    function parseRemindPlan(raw, freq){
-      try{
-        const obj=JSON.parse(raw||'');
-        if(obj && Array.isArray(obj.times)) return obj;
-      }catch(e){}
-      const times=getRemindPreset(freq||'一般提醒');
-      return {freq:freq||'一般提醒', times, enabled:(freq||'一般提醒')!=='不提醒'};
-    }
-
-    function renderRemindSummary(task){
-      return '';
-    }
+    async function autoSaveTaskRemindPrefs(taskId){ return; }
 
     function mediaPairs(urls,names){
       const u=Array.isArray(urls)?urls.filter(Boolean):[];
@@ -425,21 +362,6 @@
       return `<div class="task-media-section"><div class="task-media-title">${labelPrefix}</div><div class="task-file-links">${items.map((x,idx)=>`<a class="task-file-link" href="${audioOpenUrl(x.url)}" target="_blank" rel="noopener">${labelPrefix} ${idx+1}</a>`).join('')}</div></div>`;
     }
 
-    function renderStaffRemindBox(x, isAdmin, isMyAssignedTask){
-      if(isAdmin || !isMyAssignedTask || x.status==='已完成') return '';
-      const plan=parseRemindPlan(x.assigneeRemindPlan || x.remindPlan || '', x.remindFreq || '一般提醒');
-      const selected=(Array.isArray(plan.times)?plan.times:[]).map(v=>String(v||''));
-      const disableDefault = !!(plan && plan.disableDefault);
-      return `
-        <div class="task-remind-box compact">
-          <div class="remind-inline-title">提醒設定</div>
-          <label class="task-remind-disable-row"><input type="checkbox" class="task-remind-disable-default" data-task-id="${x.id}" onchange="autoSaveTaskRemindPrefs('${x.id}')" ${disableDefault?'checked':''}> <span>關閉預設提醒</span></label>
-          <div class="task-remind-subtitle">增加自己想要提醒的時間</div>
-          <div class="task-remind-options">
-            ${STAFF_REMIND_OPTIONS.map(opt=>`<label><input type="checkbox" class="task-remind-opt" data-task-id="${x.id}" value="${opt}" onchange="autoSaveTaskRemindPrefs('${x.id}')" ${selected.includes(opt)?'checked':''}> <span>${opt}</span></label>`).join('')}
-          </div>
-        </div>`;
-    }
 
     function formatDisplayDateTime(v){
       const s=String(v||'').trim();
@@ -714,20 +636,6 @@
       if(fileInput) fileInput.value='';
     }
 
-    async function saveTaskRemindPrefs(taskId, silent){
-      const user=requireLogin();
-      const checked=Array.from(document.querySelectorAll(`.task-remind-opt[data-task-id="${taskId}"]:checked`)).map(el=>el.value);
-      const disableDefault = !!qs(`.task-remind-disable-default[data-task-id="${taskId}"]`)?.checked;
-      const enabled = disableDefault ? (checked.length ? '是' : '否') : '是';
-      const plan=JSON.stringify({freq:disableDefault?'自訂提醒':'預設提醒',times:checked,enabled:disableDefault?checked.length>0:true,disableDefault});
-      const r=await api('updateTaskReminderPrefs',{userId:user.id,taskId,enabled,plan});
-      return r;
-    }
-    async function autoSaveTaskRemindPrefs(taskId){
-      const r=await saveTaskRemindPrefs(taskId, true);
-      const box=qs('#completeMsg_'+taskId) || qs('#msg');
-      if(box) setMsg(box, r.ok ? '提醒已更新' : (r.message||'提醒更新失敗'), !r.ok);
-    }
 
     let taskLoadingTimer = 0;
     function showTaskLoading(title='任務資料讀取中', text='正在整理交辦內容、附件與完成資訊…'){
@@ -889,8 +797,6 @@
     async function init(){
       fillHeader();
       applyDueMode('today');
-      reminderState.freq=qs('#remindFreq') ? qs('#remindFreq').value : '一般提醒';
-      refreshRemindUi();
       if(qs('#dueModeSelect')) qs('#dueModeSelect').onchange=(e)=>applyDueMode(e.target.value);
       currentUser=requireLogin();
       if(!currentUser) return;
@@ -899,8 +805,6 @@
         await loadAssignees();
         initRecMeter();
         let recorder=null;
-        qs('#remindFreq').onchange=(e)=>{reminderState={freq:e.target.value,times:[]}; refreshRemindUi();};
-        document.querySelectorAll('.custom-remind').forEach(function(el){ el.onchange=function(){ if((qs('#remindFreq')||{}).value==='自訂提醒'){ reminderState={freq:'自訂提醒',times:[]}; refreshRemindUi(); } }; });
         qs('#clearAttachBtn').onclick=()=>{ qs('#taskImage').value=''; const videoEl=qs('#taskVideo'); if(videoEl) videoEl.value=''; taskAudio=''; qs('#recStatus').textContent='尚未錄音'; qs('#clearRecBtn').classList.add('hidden'); renderRecMeter(0); qs('#recMeter').classList.add('hidden'); };
         qs('#startRecBtn').onclick=async()=>{
           try{
@@ -943,7 +847,6 @@
               taskAudioAsset=cloudinaryAssetFromResponse(audioRes);
             }
             progress.set(72,'寫入任務資料');
-            const remindPlan = JSON.stringify({freq:reminderState.freq, times:reminderState.times||getRemindPreset(reminderState.freq), enabled: qs('#remindFreq').value!=='不提醒'});
             const r=await api('createTask',{
               creatorId:currentUser.id,
               title:qs('#title').value,
@@ -954,8 +857,6 @@
               dueDate:deadline.dueDate,
               dueTime:deadline.dueTime,
               requirePhotoReturn:qs('#requirePhotoReturn').value,
-              remindFreq:qs('#remindFreq').value,
-              remindPlan,
               taskImageAssets,
               taskFileAssets,
               taskAudioAsset,
@@ -967,7 +868,6 @@
               qs('#title').value=''; qs('#content').value=''; qs('#taskImage').value=''; if(qs('#taskVideo')) qs('#taskVideo').value=''; taskAudio='';
               qs('#recStatus').textContent='尚未錄音'; qs('#clearRecBtn').classList.add('hidden');
               renderRecMeter(0); qs('#recMeter').classList.add('hidden');
-              reminderState={freq:qs('#remindFreq').value,times:[]}; refreshRemindUi();
               applyDueMode('today');
               setTimeout(loadTasks,450);
             } else {

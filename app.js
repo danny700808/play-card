@@ -347,8 +347,8 @@ function getLineBindState_(user){
     user:safeUser,
     hasLineId:hasLineId,
     notifyOn:notifyOn,
-    statusText: !hasLineId ? '尚未綁定' : (notifyOn ? '已綁定' : '已綁定｜提醒關閉'),
-    primaryText: !hasLineId ? '前往綁定' : (notifyOn ? '關閉提醒' : '開啟提醒')
+    statusText: !hasLineId ? '尚未綁定' : (notifyOn ? '已綁定' : '已綁定｜通知關閉'),
+    primaryText: !hasLineId ? '前往綁定' : (notifyOn ? '關閉通知' : '開啟通知')
   };
 }
 
@@ -382,13 +382,13 @@ async function openLineBindManageModal_(user, refreshFn){
         </div>
         <div class="line-bind-modal-step">
           <div class="line-bind-modal-num">2</div>
-          <div class="line-bind-modal-text">提醒狀態：${state.notifyOn ? '已開啟' : '已關閉'}</div>
+          <div class="line-bind-modal-text">通知狀態：${state.notifyOn ? '已開啟' : '已關閉'}</div>
         </div>
       </div>
       <div class="line-bind-modal-actions" id="lineBindManageModalActions">
         ${state.notifyOn
-          ? '<button class="btn" type="button" id="lineManageToggleBtn">關閉提醒</button>'
-          : '<button class="btn" type="button" id="lineManageToggleBtn">開啟提醒</button>'}
+          ? '<button class="btn" type="button" id="lineManageToggleBtn">關閉通知</button>'
+          : '<button class="btn" type="button" id="lineManageToggleBtn">開啟通知</button>'}
         <button class="btn secondary" type="button" id="lineManageUnbindBtn">解除綁定</button>
       </div>
     </div>`;
@@ -499,11 +499,11 @@ async function renderLineBindPrompt_(targetSelector){
     statusHtml='<span class="none">尚未綁定</span>';
     actionsHtml='<button class="btn" type="button" id="showLineBindGuideBtn">前往綁定</button>';
   }else if(notifyOn){
-    statusHtml='已綁定｜<span class="on">提醒開啟</span>';
-    actionsHtml='<button class="btn" type="button" id="showLineBindGuideBtn">關閉提醒</button>';
+    statusHtml='已綁定｜<span class="on">通知開啟</span>';
+    actionsHtml='<button class="btn" type="button" id="showLineBindGuideBtn">關閉通知</button>';
   }else{
-    statusHtml='已綁定｜<span class="off">提醒關閉</span>';
-    actionsHtml='<button class="btn" type="button" id="showLineBindGuideBtn">開啟提醒</button>';
+    statusHtml='已綁定｜<span class="off">通知關閉</span>';
+    actionsHtml='<button class="btn" type="button" id="showLineBindGuideBtn">開啟通知</button>';
   }
 
   statusEl.innerHTML=statusHtml;

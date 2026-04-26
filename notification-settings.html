@@ -3,293 +3,58 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>通知 / 提醒設定</title>
+  <title>通知 / 提醒中心</title>
   <link rel="stylesheet" href="style.css">
   <style>
-    .page{max-width:1240px;margin:0 auto;padding:20px}
-    .topbar{display:block;margin-bottom:16px}
-    .back-bar{display:block;width:100%;border:none;border-radius:18px;padding:14px 18px;background:#1f7a5a;color:#fff;font-weight:900;font-size:16px;text-align:center;cursor:pointer}
-    .card{background:#fff;border:1px solid #e5e7eb;border-radius:22px;padding:20px;box-shadow:0 6px 20px rgba(15,23,42,.04)}
-    h1{margin:0 0 10px;font-size:40px;color:#16324f}
-    .desc{margin:0 0 14px;color:#4b5563;line-height:1.7}
-    .tabs{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0 18px}
-    .tab-btn{border:none;border-radius:16px;padding:12px 18px;background:#e7f5ee;color:#1f7a5a;font-weight:900;cursor:pointer}
-    .tab-btn.active{background:#1f7a5a;color:#fff}
-    .panel{display:none}
-    .panel.active{display:block}
-    .table-wrap{overflow:auto;border:1px solid #e5e7eb;border-radius:18px}
-    table{width:100%;min-width:980px;border-collapse:collapse;background:#fff}
-    .wide-table{min-width:1320px}
-    th,td{padding:13px 10px;border-bottom:1px solid #eef2f6;text-align:left;vertical-align:middle}
-    th{color:#16324f;font-size:14px;white-space:nowrap}
-    td{color:#334155;font-size:14px}
-    .center{text-align:center}
-    .bottom{display:flex;justify-content:flex-end;margin-top:16px}
-    .btn-primary{border:none;border-radius:16px;padding:14px 22px;background:#1f7a5a;color:#fff;font-weight:800;cursor:pointer}
-    .muted{color:#94a3b8}
-    .error{color:#b42318}
-    .sel,.num,.text{width:100%;box-sizing:border-box;border:1px solid #dbe3ec;border-radius:10px;padding:8px 10px;background:#fff}
-    .num{max-width:90px}
-    .mini{max-width:120px}
-    .check-wrap{display:flex;justify-content:center}
-    .legend{display:flex;gap:12px;flex-wrap:wrap;margin:0 0 12px;color:#64748b;font-size:13px}
-    .pill{display:inline-flex;align-items:center;border-radius:999px;padding:4px 10px;background:#f1f5f9}
-    @media (max-width:768px){
-      .page{padding:14px}
-      h1{font-size:34px}
-      .tabs{gap:8px}
-      .tab-btn{flex:1 1 calc(50% - 8px);text-align:center}
-    }
+    .page{max-width:1240px;margin:0 auto;padding:20px}.topbar{margin-bottom:16px}.back-bar{display:block;width:100%;border:0;border-radius:18px;padding:14px 18px;background:#1f7a5a;color:#fff;font-weight:900;font-size:16px;text-align:center;cursor:pointer}.card{background:#fff;border:1px solid #e5e7eb;border-radius:22px;padding:20px;box-shadow:0 6px 20px rgba(15,23,42,.04)}h1{margin:0 0 10px;font-size:40px;color:#16324f}.desc{margin:0 0 14px;color:#4b5563;line-height:1.7}.tabs{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0 18px}.tab-btn{border:0;border-radius:16px;padding:12px 18px;background:#e7f5ee;color:#1f7a5a;font-weight:900;cursor:pointer}.tab-btn.active{background:#1f7a5a;color:#fff}.panel{display:none}.panel.active{display:block}.table-wrap{overflow:auto;border:1px solid #e5e7eb;border-radius:18px;background:#fff}table{width:100%;min-width:980px;border-collapse:collapse;background:#fff}.wide-table{min-width:1180px}th,td{padding:13px 10px;border-bottom:1px solid #eef2f6;text-align:left;vertical-align:top}th{color:#16324f;font-size:14px;white-space:nowrap}td{color:#334155;font-size:14px}.center{text-align:center;vertical-align:middle}.bottom{display:flex;justify-content:flex-end;margin-top:16px}.btn-primary{border:0;border-radius:16px;padding:14px 22px;background:#1f7a5a;color:#fff;font-weight:800;cursor:pointer}.muted{color:#94a3b8}.error{color:#b42318}.sel,.num,.text,.date,.time{box-sizing:border-box;border:1px solid #dbe3ec;border-radius:10px;padding:8px 10px;background:#fff;max-width:100%}.text{width:100%}.num{width:88px}.mini{width:118px}.date{width:150px}.time{width:110px}.check-wrap{display:flex;justify-content:center;align-items:center;min-height:38px}.legend{display:flex;gap:12px;flex-wrap:wrap;margin:0 0 12px;color:#64748b;font-size:13px}.pill{display:inline-flex;align-items:center;border-radius:999px;padding:4px 10px;background:#f1f5f9;color:#475569;font-weight:800;white-space:nowrap}.pill.green{background:#e7f5ee;color:#1f7a5a}.pill.orange{background:#fff7ed;color:#c2410c}.pill.blue{background:#eff6ff;color:#1d4ed8}.condition-box{display:flex;flex-direction:column;gap:8px;min-width:290px;max-width:430px}.condition-line{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.help{font-size:12px;line-height:1.55;color:#64748b;background:#f8fafc;border:1px solid #e5e7eb;border-radius:12px;padding:8px 10px}.name-main{font-weight:900;color:#16324f}.name-sub{font-size:12px;color:#64748b;margin-top:4px}.note-input{min-width:220px}@media(max-width:768px){.page{padding:14px}h1{font-size:34px}.tab-btn{flex:1 1 calc(50% - 8px)}}
   </style>
 </head>
 <body>
   <div class="page">
-    <div class="topbar">
-      <button class="back-bar" id="backBtn">返回管理首頁</button>
-    </div>
-
+    <div class="topbar"><button class="back-bar" id="backBtn">返回管理首頁</button></div>
     <section class="card">
-      <h1>通知 / 提醒設定</h1>
-      <p class="desc">同一個入口分成兩塊：通知設定用來控制事件發生後要不要寄 Email / LINE；提醒設定用來控制何時提醒、是否只在上班時間提醒、是否假日略過等規則。</p>
-
-      <div class="tabs">
-        <button class="tab-btn active" data-tab="notifyPanel">通知設定</button>
-        <button class="tab-btn" data-tab="reminderPanel">提醒設定</button>
-      </div>
-
+      <h1>通知 / 提醒中心</h1>
+      <p class="desc">通知設定負責「事件發生後要不要通知誰」；提醒設定負責「尚未完成、到期前後、固定週期、指定日期」等追蹤規則。提醒設定會依觸發方式只顯示需要的欄位，不再把互相衝突的欄位放在同一排。</p>
+      <div class="tabs"><button class="tab-btn active" data-tab="notifyPanel">通知設定</button><button class="tab-btn" data-tab="reminderPanel">提醒設定</button></div>
       <section class="panel active" id="notifyPanel">
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>事件名稱</th>
-                <th>分類</th>
-                <th class="center">寄 Email 給當事人</th>
-                <th class="center">寄 LINE 給當事人</th>
-                <th class="center">通知主管 Email</th>
-                <th class="center">通知主管 LINE</th>
-                <th class="center">啟用</th>
-              </tr>
-            </thead>
-            <tbody id="settingRows">
-              <tr><td colspan="7" class="muted">讀取中...</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <div class="bottom">
-          <button class="btn-primary" id="saveBtn">儲存通知設定</button>
-        </div>
+        <div class="table-wrap"><table><thead><tr><th>事件名稱</th><th>分類</th><th class="center">寄 Email 給當事人</th><th class="center">寄 LINE 給當事人</th><th class="center">通知主管 Email</th><th class="center">通知主管 LINE</th><th class="center">啟用</th></tr></thead><tbody id="settingRows"><tr><td colspan="7" class="muted">讀取中...</td></tr></tbody></table></div>
+        <div class="bottom"><button class="btn-primary" id="saveBtn">儲存通知設定</button></div>
       </section>
-
       <section class="panel" id="reminderPanel">
-        <div class="legend">
-          <span class="pill">提醒設定先做框架</span>
-          <span class="pill">先把現有項目拉出來管理</span>
-          <span class="pill">之後再逐項接實際提醒邏輯</span>
-        </div>
-        <div class="table-wrap">
-          <table class="wide-table">
-            <thead>
-              <tr>
-                <th>提醒名稱</th>
-                <th>分類</th>
-                <th>對象</th>
-                <th class="center">Email</th>
-                <th class="center">LINE</th>
-                <th>提醒時點</th>
-                <th>提前值</th>
-                <th>單位</th>
-                <th class="center">只在上班時間</th>
-                <th class="center">下班後順延</th>
-                <th class="center">假日略過</th>
-                <th class="center">需要回報</th>
-                <th class="center">啟用</th>
-                <th>備註</th>
-              </tr>
-            </thead>
-            <tbody id="reminderRows">
-              <tr><td colspan="14" class="muted">讀取中...</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <div class="bottom">
-          <button class="btn-primary" id="saveReminderBtn">儲存提醒設定</button>
-        </div>
+        <div class="legend"><span class="pill green">不再顯示無關欄位</span><span class="pill blue">週期性才顯示週期欄位</span><span class="pill orange">事件當下不會出現提前值</span></div>
+        <div class="table-wrap"><table class="wide-table"><thead><tr><th>提醒項目</th><th>對象 / 管道</th><th>觸發方式</th><th>條件設定</th><th class="center">啟用</th><th>備註</th></tr></thead><tbody id="reminderRows"><tr><td colspan="6" class="muted">讀取中...</td></tr></tbody></table></div>
+        <div class="bottom"><button class="btn-primary" id="saveReminderBtn">儲存統一提醒設定</button></div>
       </section>
     </section>
   </div>
-
   <script src="config.js"></script>
   <script src="app.js"></script>
   <script>
-    let currentUser = null;
-    let currentRows = [];
-    let currentReminderRows = [];
-
-    function escapeHtml(v){
-      return String(v==null?'':v)
-        .replace(/&/g,'&amp;')
-        .replace(/</g,'&lt;')
-        .replace(/>/g,'&gt;')
-        .replace(/"/g,'&quot;')
-        .replace(/'/g,'&#39;');
-    }
-
-    function makeCheck(name, checked){
-      return '<label class="check-wrap"><input type="checkbox" data-key="'+name+'" '+(checked?'checked':'')+'></label>';
-    }
-
-    function renderRows(rows){
-      const box = document.getElementById('settingRows');
-      if(!rows.length){
-        box.innerHTML = '<tr><td colspan="7" class="muted">目前沒有通知設定資料。</td></tr>';
-        return;
-      }
-      box.innerHTML = rows.map((row, idx)=>`
-        <tr data-idx="${idx}">
-          <td>${escapeHtml(row.eventName || '')}</td>
-          <td>${escapeHtml(row.category || '')}</td>
-          <td class="center">${makeCheck('sendEmailToActor', !!row.sendEmailToActor)}</td>
-          <td class="center">${makeCheck('sendLineToActor', !!row.sendLineToActor)}</td>
-          <td class="center">${makeCheck('notifyManagerEmail', !!row.notifyManagerEmail)}</td>
-          <td class="center">${makeCheck('notifyManagerLine', !!row.notifyManagerLine)}</td>
-          <td class="center">${makeCheck('enabled', row.enabled !== false)}</td>
-        </tr>
-      `).join('');
-    }
-
-    function renderReminderRows(rows){
-      const box = document.getElementById('reminderRows');
-      if(!rows.length){
-        box.innerHTML = '<tr><td colspan="14" class="muted">目前沒有提醒設定資料。</td></tr>';
-        return;
-      }
-      const triggerOptions = ['事件前','事件當下','事件後','週期性','指定日期'];
-      const unitOptions = ['分鐘','小時','天','週','月'];
-      const targetOptions = ['當事人','主管','雙方'];
-      box.innerHTML = rows.map((row, idx)=>`
-        <tr data-ridx="${idx}">
-          <td>${escapeHtml(row.reminderName || '')}</td>
-          <td>${escapeHtml(row.category || '')}</td>
-          <td><select class="sel mini" data-key="targetRole">${targetOptions.map(v=>`<option value="${v}" ${row.targetRole===v?'selected':''}>${v}</option>`).join('')}</select></td>
-          <td class="center">${makeCheck('sendEmail', !!row.sendEmail)}</td>
-          <td class="center">${makeCheck('sendLine', !!row.sendLine)}</td>
-          <td><select class="sel mini" data-key="triggerType">${triggerOptions.map(v=>`<option value="${v}" ${row.triggerType===v?'selected':''}>${v}</option>`).join('')}</select></td>
-          <td><input class="num" type="number" min="0" step="1" data-key="offsetValue" value="${escapeHtml(row.offsetValue || '0')}"></td>
-          <td><select class="sel mini" data-key="offsetUnit">${unitOptions.map(v=>`<option value="${v}" ${row.offsetUnit===v?'selected':''}>${v}</option>`).join('')}</select></td>
-          <td class="center">${makeCheck('businessHoursOnly', !!row.businessHoursOnly)}</td>
-          <td class="center">${makeCheck('deferAfterHours', !!row.deferAfterHours)}</td>
-          <td class="center">${makeCheck('skipHolidays', !!row.skipHolidays)}</td>
-          <td class="center">${makeCheck('requireReport', !!row.requireReport)}</td>
-          <td class="center">${makeCheck('enabled', !!row.enabled)}</td>
-          <td><input class="text" type="text" data-key="note" value="${escapeHtml(row.note || '')}"></td>
-        </tr>
-      `).join('');
-    }
-
-    async function loadRows(){
-      const box = document.getElementById('settingRows');
-      box.innerHTML = '<tr><td colspan="7" class="muted">讀取中...</td></tr>';
-      try{
-        const res = await api('getNotificationSettings', { userId: currentUser.id });
-        if(!res || res.ok === false) throw new Error(res && res.message ? res.message : '讀取失敗');
-        currentRows = Array.isArray(res.rows) ? res.rows : [];
-        renderRows(currentRows);
-      }catch(err){
-        box.innerHTML = '<tr><td colspan="7" class="error">讀取失敗：'+escapeHtml(err && err.message ? err.message : String(err))+'</td></tr>';
-      }
-    }
-
-    async function loadReminderRows(){
-      const box = document.getElementById('reminderRows');
-      box.innerHTML = '<tr><td colspan="14" class="muted">讀取中...</td></tr>';
-      try{
-        const res = await api('getReminderSettings', { userId: currentUser.id });
-        if(!res || res.ok === false) throw new Error(res && res.message ? res.message : '讀取失敗');
-        currentReminderRows = Array.isArray(res.rows) ? res.rows : [];
-        renderReminderRows(currentReminderRows);
-      }catch(err){
-        box.innerHTML = '<tr><td colspan="14" class="error">讀取失敗：'+escapeHtml(err && err.message ? err.message : String(err))+'</td></tr>';
-      }
-    }
-
-    async function saveRows(){
-      const saveBtn = document.getElementById('saveBtn');
-      const trs = Array.from(document.querySelectorAll('#settingRows tr[data-idx]'));
-      const rows = trs.map(tr => {
-        const idx = Number(tr.dataset.idx);
-        const base = Object.assign({}, currentRows[idx] || {});
-        tr.querySelectorAll('input[type="checkbox"]').forEach(input => { base[input.dataset.key] = !!input.checked; });
-        return base;
-      });
-      const progress = (typeof startActionButtonProgress === 'function')
-        ? startActionButtonProgress(saveBtn,{label:'儲存中',startPct:10,maxPct:86,interval:120})
-        : null;
-      try{
-        const res = await api('saveNotificationSettings', { userId: currentUser.id, rows });
-        if(!res || res.ok === false) throw new Error(res && res.message ? res.message : '儲存失敗');
-        currentRows = rows;
-        await loadRows();
-        if(progress && typeof progress.done === 'function') progress.done('已儲存',900);
-      }catch(err){
-        if(progress && typeof progress.fail === 'function') progress.fail(err && err.message ? err.message : '儲存失敗',1600);
-        else alert('儲存失敗：' + (err && err.message ? err.message : String(err)));
-      }
-    }
-
-    async function saveReminderRows(){
-      const saveBtn = document.getElementById('saveReminderBtn');
-      const trs = Array.from(document.querySelectorAll('#reminderRows tr[data-ridx]'));
-      const rows = trs.map(tr => {
-        const idx = Number(tr.dataset.ridx);
-        const base = Object.assign({}, currentReminderRows[idx] || {});
-        tr.querySelectorAll('[data-key]').forEach(input => {
-          const key = input.dataset.key;
-          if(input.type === 'checkbox') base[key] = !!input.checked;
-          else base[key] = input.value;
-        });
-        return base;
-      });
-      const progress = (typeof startActionButtonProgress === 'function')
-        ? startActionButtonProgress(saveBtn,{label:'儲存中',startPct:10,maxPct:86,interval:120})
-        : null;
-      try{
-        const res = await api('saveReminderSettings', { userId: currentUser.id, rows });
-        if(!res || res.ok === false) throw new Error(res && res.message ? res.message : '儲存失敗');
-        currentReminderRows = Array.isArray(res.rows) ? res.rows : rows;
-        renderReminderRows(currentReminderRows);
-        if(progress && typeof progress.done === 'function') progress.done('已儲存',900);
-      }catch(err){
-        if(progress && typeof progress.fail === 'function') progress.fail(err && err.message ? err.message : '儲存失敗',1600);
-        else alert('儲存失敗：' + (err && err.message ? err.message : String(err)));
-      }
-    }
-
-    function bindTabs(){
-      document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.addEventListener('click', ()=>{
-          const tabId = btn.dataset.tab;
-          document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
-          document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
-          btn.classList.add('active');
-          document.getElementById(tabId).classList.add('active');
-        });
-      });
-    }
-
-    document.getElementById('backBtn').addEventListener('click', function(){ location.href = 'settings.html'; });
-    document.getElementById('saveBtn').addEventListener('click', saveRows);
-    document.getElementById('saveReminderBtn').addEventListener('click', saveReminderRows);
-
-    (async function init(){
-      fillHeader && fillHeader();
-      bindTabs();
-      currentUser = requireLogin();
-      if(!currentUser) return;
-      if(!(hasSettingsZoneAccess && hasSettingsZoneAccess(currentUser))){ location.href = 'dashboard.html'; return; }
-      await loadRows();
-      await loadReminderRows();
-    })();
+    let currentUser=null,currentRows=[],currentReminderRows=[];
+    const FIXED_TRIGGER_BY_CODE={parttime_clock_in_reminder:'上班前',parttime_clock_out_missing:'下班後檢查',clock_abnormal_followup:'事件後檢查',task_due_reminder:'事件前',task_overdue_reminder:'事件後檢查',task_completed_reminder:'事件當下',routine_assigned_reminder:'事件當下',routine_due_reminder:'事件前',routine_completed_reminder:'事件當下',leave_proof_deadline_reminder:'事件前',teacher_contract_expire_reminder:'事件前'};
+    const DEFAULT_EVENT_BASE_BY_CODE={parttime_clock_in_reminder:'班表上班時間',parttime_clock_out_missing:'班表下班時間',clock_abnormal_followup:'打卡異常時間',task_due_reminder:'任務期限',task_overdue_reminder:'任務期限',task_completed_reminder:'任務完成回報時間',routine_assigned_reminder:'指派時間',routine_due_reminder:'定期事項期限',routine_completed_reminder:'定期事項完成回報時間',leave_proof_deadline_reminder:'補件截止日',teacher_contract_expire_reminder:'合約到期日'};
+    function escapeHtml(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
+    function makeCheck(name,checked){return '<label class="check-wrap"><input type="checkbox" data-key="'+name+'" '+(checked?'checked':'')+'></label>'}
+    function optionList(options,selected){return options.map(v=>'<option value="'+escapeHtml(v)+'" '+(String(selected)===String(v)?'selected':'')+'>'+escapeHtml(v)+'</option>').join('')}
+    function normalizeTriggerType(row){const code=row&&row.reminderCode||'';let t=FIXED_TRIGGER_BY_CODE[code]||row.triggerType||row['觸發方式']||row['提醒時點類型']||'事件當下';if(t==='事件後')t='事件後檢查';if(t==='指定日期')t='指定日期時間';if(t==='週期')t='週期性';return ['上班前','下班後檢查','事件前','事件當下','事件後檢查','週期性','指定日期時間'].includes(t)?t:'事件當下'}
+    function sanitizeReminderByTrigger(row){const r=Object.assign({},row||{}),t=normalizeTriggerType(r);r.triggerType=t;r.businessHoursOnly=false;r.deferAfterHours=false;if(t==='上班前'){r.eventBase='班表上班時間';r.offsetValue=r.offsetValue||'30';r.offsetUnit=r.offsetUnit||'分鐘';r.delayValue='';r.delayUnit='';r.frequencyType='';r.frequencyTime='';r.frequencyWeekday='';r.frequencyMonthDay='';r.specifiedDate='';r.specifiedTime='';r.onlyIncomplete=false;r.skipHolidays=true}else if(t==='下班後檢查'){r.eventBase=r.eventBase||'班表下班時間';r.delayValue=r.delayValue||r.offsetValue||'0';r.delayUnit=r.delayUnit||r.offsetUnit||'分鐘';r.offsetValue='';r.offsetUnit='';r.frequencyType='';r.frequencyTime='';r.frequencyWeekday='';r.frequencyMonthDay='';r.specifiedDate='';r.specifiedTime='';r.onlyIncomplete=true;r.skipHolidays=true}else if(t==='事件前'){r.eventBase=r.eventBase||DEFAULT_EVENT_BASE_BY_CODE[r.reminderCode]||'';r.offsetValue=r.offsetValue||'0';r.offsetUnit=r.offsetUnit||'分鐘';r.delayValue='';r.delayUnit='';r.frequencyType='';r.frequencyTime='';r.frequencyWeekday='';r.frequencyMonthDay='';r.specifiedDate='';r.specifiedTime='';r.onlyIncomplete=false}else if(t==='事件當下'){r.eventBase=r.eventBase||DEFAULT_EVENT_BASE_BY_CODE[r.reminderCode]||'';r.offsetValue='';r.offsetUnit='';r.delayValue='';r.delayUnit='';r.frequencyType='';r.frequencyTime='';r.frequencyWeekday='';r.frequencyMonthDay='';r.specifiedDate='';r.specifiedTime='';r.onlyIncomplete=false}else if(t==='事件後檢查'){r.eventBase=r.eventBase||DEFAULT_EVENT_BASE_BY_CODE[r.reminderCode]||'';r.delayValue=r.delayValue||r.offsetValue||'0';r.delayUnit=r.delayUnit||r.offsetUnit||'分鐘';r.offsetValue='';r.offsetUnit='';r.frequencyType='';r.frequencyTime='';r.frequencyWeekday='';r.frequencyMonthDay='';r.specifiedDate='';r.specifiedTime='';if(r.onlyIncomplete==null)r.onlyIncomplete=true}else if(t==='週期性'){r.eventBase='';r.offsetValue='';r.offsetUnit='';r.delayValue='';r.delayUnit='';r.specifiedDate='';r.specifiedTime='';r.frequencyType=r.frequencyType||'每日';r.frequencyTime=r.frequencyTime||'09:00';r.frequencyWeekday=r.frequencyWeekday||'1';r.frequencyMonthDay=r.frequencyMonthDay||'1'}else{r.eventBase='';r.offsetValue='';r.offsetUnit='';r.delayValue='';r.delayUnit='';r.frequencyType='';r.frequencyTime='';r.frequencyWeekday='';r.frequencyMonthDay='';r.skipHolidays=false;r.onlyIncomplete=false;r.specifiedTime=r.specifiedTime||'09:00'}return r}
+    function cleanReminderRow(row){const r=Object.assign({},row||{});r.triggerType=normalizeTriggerType(r);if(!r.eventBase)r.eventBase=DEFAULT_EVENT_BASE_BY_CODE[r.reminderCode]||'';if((r.delayValue==null||r.delayValue==='')&&(r.triggerType==='事件後檢查'||r.triggerType==='下班後檢查'))r.delayValue=r.offsetValue||'0';if(!r.offsetUnit)r.offsetUnit='分鐘';if(!r.delayUnit)r.delayUnit=r.offsetUnit||'分鐘';return sanitizeReminderByTrigger(r)}
+    function triggerBadge(t){const c=t==='上班前'||t==='下班後檢查'?'green':(t==='週期性'||t==='指定日期時間'?'blue':'orange');return '<span class="pill '+c+'">'+escapeHtml(t)+'</span>'}
+    function renderTriggerCell(row){const t=normalizeTriggerType(row);if(FIXED_TRIGGER_BY_CODE[row.reminderCode])return triggerBadge(t)+'<input type="hidden" data-key="triggerType" value="'+escapeHtml(t)+'">';return '<select class="sel mini" data-key="triggerType">'+optionList(['上班前','下班後檢查','事件前','事件當下','事件後檢查','週期性','指定日期時間'],t)+'</select>'}
+    const eventBaseInput=r=>'<input class="text" type="text" data-key="eventBase" value="'+escapeHtml(r.eventBase||'')+'" placeholder="例如：任務期限">';
+    const skipHolidayLine=r=>'<label class="condition-line"><input type="checkbox" data-key="skipHolidays" '+(r.skipHolidays?'checked':'')+'> 假日略過</label>';
+    const reportLine=r=>'<label class="condition-line"><input type="checkbox" data-key="requireReport" '+(r.requireReport?'checked':'')+'> 需要回報才提醒主管</label>';
+    function conditionFields(row){row=cleanReminderRow(row);const units=['分鐘','小時','天','週','月'],small=['分鐘','小時'],t=row.triggerType;if(t==='上班前')return `<div class="condition-box"><div class="condition-line">上班前 <input class="num" type="number" min="0" step="1" data-key="offsetValue" value="${escapeHtml(row.offsetValue||'30')}"> <select class="sel mini" data-key="offsetUnit">${optionList(small,row.offsetUnit||'分鐘')}</select> 提醒</div><div class="help">依員工當天班表上班時間往前提醒；沒有排班就不提醒。不會出現「只在上班時間」或「下班後順延」。</div></div>`;if(t==='下班後檢查')return `<div class="condition-box"><div class="condition-line">下班後 <input class="num" type="number" min="0" step="1" data-key="delayValue" value="${escapeHtml(row.delayValue||'0')}"> <select class="sel mini" data-key="delayUnit">${optionList(small,row.delayUnit||'分鐘')}</select> 檢查</div><div class="help">依班表下班時間檢查；尚未填寫 / 尚未完成才提醒。沒有排班就不提醒。</div></div>`;if(t==='事件前')return `<div class="condition-box"><div class="condition-line">事件基準：${eventBaseInput(row)}</div><div class="condition-line">事件前 <input class="num" type="number" min="0" step="1" data-key="offsetValue" value="${escapeHtml(row.offsetValue||'0')}"> <select class="sel mini" data-key="offsetUnit">${optionList(units,row.offsetUnit||'分鐘')}</select> 提醒</div>${skipHolidayLine(row)}<div class="help">例如任務到期前 1 天、合約到期前 7 天。不會出現延後值或指定日期。</div></div>`;if(t==='事件當下')return `<div class="condition-box"><div class="condition-line">事件基準：${eventBaseInput(row)}</div>${row.reminderCode&&row.reminderCode.indexOf('completed')>=0?reportLine(row):''}<div class="help">事件發生當下立即通知，所以不需要提前值，也不需要延後值。</div></div>`;if(t==='事件後檢查')return `<div class="condition-box"><div class="condition-line">事件基準：${eventBaseInput(row)}</div><div class="condition-line">事件後 <input class="num" type="number" min="0" step="1" data-key="delayValue" value="${escapeHtml(row.delayValue||'0')}"> <select class="sel mini" data-key="delayUnit">${optionList(units,row.delayUnit||'分鐘')}</select> 檢查</div><label class="condition-line"><input type="checkbox" data-key="onlyIncomplete" ${row.onlyIncomplete!==false?'checked':''}> 只有尚未完成才提醒</label>${skipHolidayLine(row)}<div class="help">例如逾期追蹤。這裡不會出現提前值或指定日期。</div></div>`;if(t==='週期性'){const ft=row.frequencyType||'每日';return `<div class="condition-box"><div class="condition-line">週期 <select class="sel mini" data-key="frequencyType">${optionList(['每日','每週','每月'],ft)}</select> <input class="time" type="time" data-key="frequencyTime" value="${escapeHtml(row.frequencyTime||'09:00')}"></div>${ft==='每週'?`<div class="condition-line">星期 <select class="sel mini" data-key="frequencyWeekday">${optionList(['1','2','3','4','5','6','7'],row.frequencyWeekday||'1')}</select><span class="muted">1=週一，7=週日</span></div>`:''}${ft==='每月'?`<div class="condition-line">每月第 <input class="num" type="number" min="1" max="31" step="1" data-key="frequencyMonthDay" value="${escapeHtml(row.frequencyMonthDay||'1')}"> 日</div>`:''}${skipHolidayLine(row)}<div class="help">週期性是固定時間檢查，不會出現事件前、事件後、指定日期欄位。</div></div>`}return `<div class="condition-box"><div class="condition-line">指定日期 <input class="date" type="date" data-key="specifiedDate" value="${escapeHtml(row.specifiedDate||'')}"> 時間 <input class="time" type="time" data-key="specifiedTime" value="${escapeHtml(row.specifiedTime||'09:00')}"></div><div class="help">指定日期時間是單次提醒，不會出現事件前、事件後、週期欄位。</div></div>`}
+    function renderRows(rows){const box=document.getElementById('settingRows');if(!rows.length){box.innerHTML='<tr><td colspan="7" class="muted">目前沒有通知設定資料。</td></tr>';return}box.innerHTML=rows.map((row,idx)=>`<tr data-idx="${idx}"><td>${escapeHtml(row.eventName||'')}</td><td>${escapeHtml(row.category||'')}</td><td class="center">${makeCheck('sendEmailToActor',!!row.sendEmailToActor)}</td><td class="center">${makeCheck('sendLineToActor',!!row.sendLineToActor)}</td><td class="center">${makeCheck('notifyManagerEmail',!!row.notifyManagerEmail)}</td><td class="center">${makeCheck('notifyManagerLine',!!row.notifyManagerLine)}</td><td class="center">${makeCheck('enabled',row.enabled!==false)}</td></tr>`).join('')}
+    function renderReminderRows(rows){const box=document.getElementById('reminderRows');if(!rows.length){box.innerHTML='<tr><td colspan="6" class="muted">目前沒有提醒設定資料。</td></tr>';return}currentReminderRows=rows.map(cleanReminderRow);box.innerHTML=currentReminderRows.map((row,idx)=>`<tr data-ridx="${idx}"><td><div class="name-main">${escapeHtml(row.reminderName||'')}</div><div class="name-sub">${escapeHtml(row.category||'')}</div></td><td><div class="condition-box"><div class="condition-line"><select class="sel mini" data-key="targetRole">${optionList(['當事人','主管','雙方'],row.targetRole||'當事人')}</select></div><label class="condition-line"><input type="checkbox" data-key="sendEmail" ${row.sendEmail?'checked':''}> Email</label><label class="condition-line"><input type="checkbox" data-key="sendLine" ${row.sendLine?'checked':''}> LINE</label></div></td><td>${renderTriggerCell(row)}</td><td>${conditionFields(row)}</td><td class="center">${makeCheck('enabled',!!row.enabled)}</td><td><input class="text note-input" type="text" data-key="note" value="${escapeHtml(row.note||'')}"></td></tr>`).join('')}
+    function collectReminderRowsFromDom(){return Array.from(document.querySelectorAll('#reminderRows tr[data-ridx]')).map(tr=>{const idx=Number(tr.dataset.ridx),base=Object.assign({},currentReminderRows[idx]||{});tr.querySelectorAll('[data-key]').forEach(input=>{const key=input.dataset.key;base[key]=input.type==='checkbox'?!!input.checked:input.value});if(FIXED_TRIGGER_BY_CODE[base.reminderCode])base.triggerType=FIXED_TRIGGER_BY_CODE[base.reminderCode];return sanitizeReminderByTrigger(base)})}
+    async function loadRows(){const box=document.getElementById('settingRows');box.innerHTML='<tr><td colspan="7" class="muted">讀取中...</td></tr>';try{const res=await api('getNotificationSettings',{userId:currentUser.id});if(!res||res.ok===false)throw new Error(res&&res.message?res.message:'讀取失敗');currentRows=Array.isArray(res.rows)?res.rows:[];renderRows(currentRows)}catch(err){box.innerHTML='<tr><td colspan="7" class="error">讀取失敗：'+escapeHtml(err&&err.message?err.message:String(err))+'</td></tr>'}}
+    async function loadReminderRows(){const box=document.getElementById('reminderRows');box.innerHTML='<tr><td colspan="6" class="muted">讀取中...</td></tr>';try{const res=await api('getReminderSettings',{userId:currentUser.id});if(!res||res.ok===false)throw new Error(res&&res.message?res.message:'讀取失敗');renderReminderRows(Array.isArray(res.rows)?res.rows:[])}catch(err){box.innerHTML='<tr><td colspan="6" class="error">讀取失敗：'+escapeHtml(err&&err.message?err.message:String(err))+'</td></tr>'}}
+    async function saveRows(){const btn=document.getElementById('saveBtn');const rows=Array.from(document.querySelectorAll('#settingRows tr[data-idx]')).map(tr=>{const idx=Number(tr.dataset.idx),base=Object.assign({},currentRows[idx]||{});tr.querySelectorAll('input[type="checkbox"]').forEach(i=>base[i.dataset.key]=!!i.checked);return base});const p=typeof startActionButtonProgress==='function'?startActionButtonProgress(btn,{label:'儲存中',startPct:10,maxPct:86,interval:120}):null;try{const res=await api('saveNotificationSettings',{userId:currentUser.id,rows});if(!res||res.ok===false)throw new Error(res&&res.message?res.message:'儲存失敗');currentRows=rows;await loadRows();p&&p.done&&p.done('已儲存',900)}catch(err){p&&p.fail?p.fail(err&&err.message?err.message:'儲存失敗',1600):alert('儲存失敗：'+(err&&err.message?err.message:String(err)))}}
+    async function saveReminderRows(){const btn=document.getElementById('saveReminderBtn'),rows=collectReminderRowsFromDom();const p=typeof startActionButtonProgress==='function'?startActionButtonProgress(btn,{label:'儲存中',startPct:10,maxPct:86,interval:120}):null;try{const res=await api('saveReminderSettings',{userId:currentUser.id,rows});if(!res||res.ok===false)throw new Error(res&&res.message?res.message:'儲存失敗');renderReminderRows(Array.isArray(res.rows)?res.rows:rows);p&&p.done&&p.done('已儲存',900)}catch(err){p&&p.fail?p.fail(err&&err.message?err.message:'儲存失敗',1600):alert('儲存失敗：'+(err&&err.message?err.message:String(err)))}}
+    function bindTabs(){document.querySelectorAll('.tab-btn').forEach(btn=>btn.addEventListener('click',()=>{document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));btn.classList.add('active');document.getElementById(btn.dataset.tab).classList.add('active')}))}
+    document.getElementById('backBtn').addEventListener('click',()=>location.href='settings.html');document.getElementById('saveBtn').addEventListener('click',saveRows);document.getElementById('saveReminderBtn').addEventListener('click',saveReminderRows);document.getElementById('reminderRows').addEventListener('change',ev=>{if(ev.target&&['triggerType','frequencyType'].includes(ev.target.dataset.key)){currentReminderRows=collectReminderRowsFromDom();renderReminderRows(currentReminderRows)}});
+    (async function init(){fillHeader&&fillHeader();bindTabs();currentUser=requireLogin();if(!currentUser)return;if(!(hasSettingsZoneAccess&&hasSettingsZoneAccess(currentUser))){location.href='dashboard.html';return}await loadRows();await loadReminderRows()})();
   </script>
 </body>
 </html>

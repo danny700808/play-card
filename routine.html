@@ -44,12 +44,6 @@
     .rec-live-dot{width:10px;height:10px;border-radius:50%;background:#ef4444;animation:recPulse 1s infinite}
     @keyframes recPulse{0%{transform:scale(.9);opacity:.5}50%{transform:scale(1.2);opacity:1}100%{transform:scale(.9);opacity:.5}}
 
-    .task-remind-box{margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:14px;background:#fbfdff}
-    .task-remind-title{font-size:14px;font-weight:800;margin-bottom:8px}
-    .task-remind-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px}
-    .task-remind-times{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
-    .task-remind-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;background:#eef7f2;font-size:13px}
-    .task-remind-chip button{border:0;background:transparent;font-size:14px;cursor:pointer}
     .task-highlight{box-shadow:0 0 0 2px #1f7a5a inset}
     .task-media-title{font-size:14px;font-weight:800;margin:12px 0 8px}
     .task-file-links{display:flex;flex-wrap:wrap;gap:8px}
@@ -140,11 +134,7 @@
             <div class="mini-help">若先不指派，這筆會進到待重新指派。</div>
           </div>
 
-          <div class="field">
-            <label>提醒時間（可保留在下方）</label>
-            <input id="routineRemindTime" type="time" value="09:00">
-            <div class="mini-help">每天事件也會持續存在，這裡只是額外提醒時間。</div>
-          </div>
+          <div class="field mini-help">提醒已改由「通知 / 提醒設定」統一控制；定期事項不再各自設定提醒時間。</div>
 
           <div class="inline-actions">
             <button class="btn" id="saveRoutineBtn" onclick="saveRoutineTemplate()">儲存定期事項</button>
@@ -176,7 +166,6 @@
     let employeeOptions = [];
     let activeSectionKey = '';
     let targetTemplateId = '';
-    const routineRemindState = {};
     let routineRecorder = null;
     let routineMediaStream = null;
     let routineRecordedBlob = null;
@@ -199,63 +188,9 @@
       setMsg(qs('#msg'), message || '', !!isError);
     }
 
-    function parseRoutineRemindPlan(raw, enabled){
-      try{
-        const obj=JSON.parse(raw||'');
-        return {times:Array.isArray(obj.times)?obj.times.map(x=>String(x||'')).filter(Boolean):[], disableDefault:!!obj.disableDefault, enabled: enabled!==false};
-      }catch(e){}
-      return {times:[], disableDefault:false, enabled: enabled!==false};
-    }
+    function renderRoutineRemindBox(x){ return ''; }
 
-    function loadRoutineRemindStateFromRows(rows){
-      (rows||[]).forEach(x=>{
-        const state=parseRoutineRemindPlan(x.assigneeRemindPlan||'', x.assigneeRemindEnabled!==false);
-        routineRemindState[x.templateId]={times:[...(state.times||[])], disableDefault:!!state.disableDefault};
-      });
-    }
-
-    function renderRoutineRemindBox(x){
-      const state=routineRemindState[x.templateId] || {times:[], disableDefault:false};
-      return `
-        <div class="task-remind-box" id="routineRemindBox_${x.templateId}">
-          <div class="task-remind-title">提醒設定</div>
-          <label><input type="checkbox" ${state.disableDefault?'checked':''} onchange="toggleRoutineDefaultRemind('${x.templateId}', this.checked)"> 關閉預設提醒</label>
-          <div class="task-remind-row">
-            <input type="time" id="customRemindTime_${x.templateId}">
-            <button class="btn secondary" type="button" onclick="addRoutineRemindTime('${x.templateId}')">新增自己的提醒時間</button>
-          </div>
-          <div class="task-remind-times">${(state.times||[]).length ? state.times.map(t=>`<span class="task-remind-chip">${esc(t)} <button type="button" onclick="removeRoutineRemindTime('${x.templateId}','${t}')">×</button></span>`).join('') : '<span class="mini-help">目前沒有自訂提醒時間</span>'}</div>
-        </div>`;
-    }
-
-    async function saveRoutineRemindPrefs(templateId){
-      const state=routineRemindState[templateId] || {times:[], disableDefault:false};
-      await api('updateRoutineReminderPrefs', { userId: currentUser.id, templateId, enabled:'是', plan: JSON.stringify({ times: state.times || [], disableDefault: !!state.disableDefault }) });
-    }
-
-    async function toggleRoutineDefaultRemind(templateId, checked){
-      routineRemindState[templateId]=routineRemindState[templateId]||{times:[],disableDefault:false};
-      routineRemindState[templateId].disableDefault=!!checked;
-      await saveRoutineRemindPrefs(templateId);
-    }
-
-    async function addRoutineRemindTime(templateId){
-      const input=qs(`#customRemindTime_${templateId}`);
-      const time=(input&&input.value)||'';
-      if(!time) return;
-      const state=routineRemindState[templateId]=routineRemindState[templateId]||{times:[],disableDefault:false};
-      if(!state.times.includes(time)) state.times.push(time);
-      state.times.sort();
-      await saveRoutineRemindPrefs(templateId);
-      renderMine();
-    }
-
-    async function removeRoutineRemindTime(templateId, time){
-      const state=routineRemindState[templateId]=routineRemindState[templateId]||{times:[],disableDefault:false};
-      state.times=(state.times||[]).filter(x=>x!==time);
-      await saveRoutineRemindPrefs(templateId);
-      renderMine();
-    }
+    function loadRoutineRemindStateFromRows(rows){ return; }
 
     function renderImageGallery(items){
       const list=Array.isArray(items)?items.filter(x=>x&&x.url):[];
@@ -343,7 +278,6 @@
       qs('#routineContent').value = '';
       qs('#routineAssignee').value = '';
       qs('#routinePhotoNeed').value = '否';
-      qs('#routineRemindTime').value = '09:00';
       qs('#routineLongInterval').value = '2';
       qs('#routineSectionType').value = activeSectionKey || 'daily';
       qs('#routineStartDate').value = '';
@@ -451,7 +385,7 @@
             <div>${statusTags(x)}</div>
           </div>
           <div style="margin-top:8px">${x.content || '未填寫說明'}</div>
-          <div class="item-meta">開始：${x.startDate || '-'}${x.isPermanent ? '　｜　永久有效' : (x.endDate ? `　｜　結束：${x.endDate}` : '')}${x.remindTime ? `　｜　提醒：${x.remindTime}` : ''}</div>
+          <div class="item-meta">開始：${x.startDate || '-'}${x.isPermanent ? '　｜　永久有效' : (x.endDate ? `　｜　結束：${x.endDate}` : '')}</div>
           ${x.needsReassign ? `<div class="item-note-warn">這筆目前沒有人承接，請重新指派。</div>` : ''}
           <div class="inline-actions">
             <button class="btn secondary" onclick="editTemplate('${x.id}')">修改</button>
@@ -501,7 +435,6 @@
       qs('#routineContent').value = x.content || '';
       qs('#routineAssignee').value = x.assigneeId || '';
       qs('#routinePhotoNeed').value = x.requirePhotoReturn || '否';
-      qs('#routineRemindTime').value = x.remindTime || '09:00';
       qs('#routineStartDate').value = x.startDate || '';
       qs('#routineEndDate').value = x.endDate || '';
       qs('#routinePermanent').checked = !!x.isPermanent;
@@ -541,7 +474,6 @@
         content: qs('#routineContent').value,
         assigneeId: qs('#routineAssignee').value,
         requirePhotoReturn: qs('#routinePhotoNeed').value,
-        remindTime: qs('#routineRemindTime').value,
         startDate: qs('#routineStartDate').value,
         endDate: qs('#routineEndDate').value,
         isPermanent: qs('#routinePermanent').checked,

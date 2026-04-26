@@ -8,7 +8,7 @@
     CLOUDINARY_ROOT_FOLDER: 'employee-system',
     CLOUDINARY_CHUNK_SIZE_MB: 20,
     CLOUDINARY_SOFT_MAX_VIDEO_MB: 0,
-    BUILD: '2026-04-22-new-project-notify-center-v1'
+    BUILD: '2026-04-24-reminder-center-clean-v2'
   };
 
   const params = new URLSearchParams(global.location.search || '');
