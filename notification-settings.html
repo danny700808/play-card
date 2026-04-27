@@ -18,10 +18,18 @@ details{border-top:1px solid var(--line);background:#fbfcfe}summary{list-style:n
 .page-return-wrap{margin-bottom:16px}
 .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800;background:var(--main,#1f7a5a);color:#fff}
 
+
+.save-progress{display:none;margin:12px 0;background:#fff;border:1px solid #d0d5dd;border-radius:14px;padding:10px}
+.save-progress.show{display:block}
+.save-progress-text{font-size:13px;font-weight:800;color:#344054;margin-bottom:8px}
+.save-progress-bar{height:10px;border-radius:999px;background:#eef2f7;overflow:hidden}
+.save-progress-fill{height:100%;width:0%;background:#1f7a5a;transition:width .25s ease}
+
 </style></head><body>
-<header><h1>通知 / 提醒萬用表</h1><p class="sub">簡化版：去跟回為主，不顯示不需要的複雜項目。</p></header>
+  <div class="page-return-wrap"><a class="page-return-btn" href="settings.html">返回管理首頁</a></div>
+
 <nav class="toolbar"><a class="chip" href="#account">帳號</a><a class="chip" href="#profile">個人資料</a><a class="chip" href="#clock">打卡 / 工讀</a><a class="chip" href="#leave">請假</a><a class="chip" href="#task">交辦事項</a><a class="chip" href="#routine">固定事項</a><a class="chip" href="#announcement">公告</a><a class="chip" href="#teacher">外聘老師</a><a class="chip" href="#training">教育訓練</a><a class="chip" href="#docs">單據</a><a class="chip" href="#line">LINE</a></nav>
-<main><div class="page-return-wrap"><a class="page-return-btn" href="settings.html">返回管理首頁</a></div><div id="msg"></div><div class="note">提醒項目已簡化：交辦事項、固定事項、公告、外聘老師、教育訓練都只保留你實際需要的通知。未處理提醒只會在「需要主管處理」且有勾主管 LINE / Email 時顯示。</div><section class="section" id="account"><div class="section-title"><h2>1. 帳號</h2><span class="section-count">5 項</span></div><div class="notify-grid">
+<main><div id="msg"></div><section class="section" id="account"><div class="section-title"><h2>1. 帳號</h2><span class="section-count">5 項</span></div><div class="notify-grid">
 <article class="notify-card" data-type="processing" data-event-key="account_0" data-category="帳號" data-event-name="註冊申請送出">
   <div class="notify-main">
     <div class="event-head">
@@ -823,7 +831,7 @@ details{border-top:1px solid var(--line);background:#fbfcfe}summary{list-style:n
   </div>
   <details><summary>進階設定</summary><div class="advanced"><div class="stage-row"><label class="stage"><div>事件發生時通知<small>通知上方勾選的人</small></div><input type="checkbox" data-field="publishEnabled" checked></label></div></div></details>
 </article></div></section>
-<div class="sticky-save"><button class="btn primary" onclick="saveSettings()">儲存通知 / 提醒設定</button></div></main>
+<div id="saveProgress" class="save-progress"><div id="saveProgressText" class="save-progress-text">準備儲存</div><div class="save-progress-bar"><div id="saveProgressFill" class="save-progress-fill"></div></div></div><div class="sticky-save"><button id="saveBtn" class="btn primary" onclick="saveSettings()">儲存通知 / 提醒設定</button></div></main>
 <script src="config.js"></script><script>
 const API_URL = String((window.APP_CONFIG && window.APP_CONFIG.API_URL) || window.API_URL || localStorage.getItem('EMPLOYEE_SYSTEM_API_BASE') || '').trim();
 function getUser(){try{return JSON.parse(localStorage.getItem('employeeUser')||'{}')}catch(e){return {}}}
@@ -870,13 +878,37 @@ async function loadSettings(){
     msg('已載入通知 / 提醒設定', true);
   }catch(e){msg('載入失敗：'+e.message,false)}
 }
+function setSaveProgress(p,text){
+  const box=document.getElementById('saveProgress');
+  const fill=document.getElementById('saveProgressFill');
+  const label=document.getElementById('saveProgressText');
+  if(box) box.classList.add('show');
+  if(fill) fill.style.width=String(p||0)+'%';
+  if(label) label.textContent=text||'儲存中';
+}
+function hideSaveProgress(){
+  const box=document.getElementById('saveProgress');
+  if(box) box.classList.remove('show');
+}
 async function saveSettings(){
+  const btn=document.getElementById('saveBtn');
   try{
+    if(btn){btn.disabled=true;btn.textContent='儲存中...';}
+    setSaveProgress(15,'整理設定資料');
     const rows=Array.from(document.querySelectorAll('.notify-card')).map(rowFromCard);
+    setSaveProgress(55,'送出設定中');
     const res=await api('saveNotificationSettings',{userId:userId(),rows});
+    setSaveProgress(90,'確認儲存結果');
     if(!res.ok)throw new Error(res.message||'儲存失敗');
+    setSaveProgress(100,'儲存完成');
     msg('已儲存通知 / 提醒設定', true);
-  }catch(e){msg('儲存失敗：'+e.message,false)}
+    setTimeout(hideSaveProgress,700);
+  }catch(e){
+    msg('儲存失敗：'+e.message,false);
+    setSaveProgress(100,'儲存失敗');
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent='儲存通知 / 提醒設定';}
+  }
 }
 document.addEventListener('DOMContentLoaded',()=>{refreshAdvancedVisibility();loadSettings();});
 </script></body></html>

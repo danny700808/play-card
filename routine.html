@@ -107,9 +107,28 @@ textarea{min-height:96px;resize:vertical}
 
 .actions .btn.primary{width:100%;flex:1}
 .actions{gap:0}
+
+.upload-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.upload-box{background:#f8fafc;border:1px solid #dbe5f1;border-radius:16px;padding:12px}
+.upload-box label{display:block;font-weight:900;margin-bottom:8px;color:#0f172a}
+.upload-box input{width:100%}
+.upload-tip{margin-top:8px;font-size:12px;color:#64748b}
+.record-panel{display:grid;gap:10px}
+.record-visual{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center}
+.record-dot{width:12px;height:12px;border-radius:999px;background:#94a3b8}
+.record-dot.active{background:#dc2626;box-shadow:0 0 0 6px rgba(220,38,38,.12)}
+.record-bar{height:10px;background:#e2e8f0;border-radius:999px;overflow:hidden}
+.record-bar-fill{width:0%;height:100%;background:#1f7a5a;transition:width .15s}
+.record-time{font-size:13px;font-weight:900;color:#334155}
+.record-actions{display:flex;gap:8px;flex-wrap:wrap}
+.record-preview{display:none}
+.record-preview.show{display:block}
+@media(max-width:720px){.upload-grid{grid-template-columns:1fr}}
+
 </style></head><body>
-<header><h1>固定事項｜建立週期事件</h1><p class="sub">固定事項只管週期與本期完成期限；提醒由萬用表控制。</p></header>
-<main><div class="page-return-wrap"><a class="page-return-btn" href="settings.html">返回管理首頁</a></div><div id="msg"></div><div id="adminPageWrap">
+  <div class="page-return-wrap"><a class="page-return-btn" href="settings.html">返回管理首頁</a></div>
+
+<main><div id="msg"></div><div id="adminPageWrap">
 <div class="card"><div class="section-title"><span class="num">1</span>事項基本資料</div><div class="grid">
 <div><label>放入區塊</label><select id="routineGroup"><option>近期事項</option><option>中期事項</option><option>長期事項</option><option>行政例行</option><option>教學例行</option></select></div>
 <div><label>事項名稱</label><input id="routineTitle" placeholder="例如：每月 5 號器材檢查"></div>
@@ -141,15 +160,28 @@ textarea{min-height:96px;resize:vertical}
 <label class="check">主管可退回重做 <input id="routineAllowRedo" type="checkbox" checked></label>
 <label class="check">停用此事項 <input id="routineDisabled" type="checkbox"></label>
 </div></div>
-<div class="card"><div class="section-title"><span class="num">6</span>圖片 / 影片 / 錄音 / 文件</div><div class="grid">
-<div><label>說明圖片</label><input id="routineImage" type="file" accept="image/*"></div>
-<div><label>說明影片</label><input id="routineVideo" type="file" accept="video/*"></div>
-<div class="wide" id="routineAudioRecorderMount"></div>
-<div><label>說明文件</label><input id="routineDoc" type="file"></div>
-<div class="wide"><label>備註</label><textarea id="routineNote" placeholder="固定事項補充說明。"></textarea></div>
+<div class="card attachment-card"><div class="section-title"><span class="num">5</span>附件</div>
+<p class="hint">圖片、影片、錄音、文件統一使用相同格式；錄音可直接用手機錄完試聽。</p>
+<div class="upload-grid">
+  <div class="upload-box"><label>圖片附件</label><input id="imageInput" type="file" multiple accept="image/*"></div>
+  <div class="upload-box"><label>影片附件</label><input id="videoInput" type="file" multiple accept="video/*"></div>
+  <div class="upload-box">
+    <label>錄音附件</label>
+    <div class="record-panel">
+      <div class="record-visual"><div id="recordDot" class="record-dot"></div><div class="record-bar"><div id="recordBarFill" class="record-bar-fill"></div></div><div id="recordTime" class="record-time">00:00</div></div>
+      <div class="record-actions">
+        <button id="recordBtn" class="btn secondary" type="button" onclick="startRecording()">開始錄音</button>
+        <button id="stopRecordBtn" class="btn secondary" type="button" onclick="stopRecording()" disabled>停止</button>
+        <button id="clearRecordBtn" class="btn secondary" type="button" onclick="clearRecording()" disabled>刪除</button>
+      </div>
+      <div id="recordPreview" class="record-preview"><div style="font-weight:900;margin-bottom:8px">錄音預覽</div><audio id="recordedAudio" controls style="width:100%"></audio></div>
+    </div>
+    <div class="upload-tip">手機可直接錄音；錄完後可確認預覽，或刪除重錄。</div>
+  </div>
+  <div class="upload-box"><label>文件附件</label><input id="fileInput" type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip"></div>
 </div></div>
 
-</div><div id="staffPageWrap" class="hidden"><div class="card"><div class="section-title"><span class="num">1</span>我的固定事項</div><div class="note">這裡是一般使用者查看自己負責的固定事項；主管建立週期設定表單只會在主管 / 管理者身分顯示。</div></div><div id="staffList"></div></div><div class="actions admin-actions"><button class="btn primary" onclick="submitRoutine()">儲存固定事項</button></div></main>
+<div class="card"><div class="section-title"><span class="num">7</span>固定事項紀錄</div><div id="adminRoutineHistory" class="history-list"><div class="note">讀取中...</div></div></div></div><div id="staffPageWrap" class="hidden"><div class="card"><div class="section-title"><span class="num">1</span>我的固定事項</div><div class="note">這裡是一般使用者查看自己負責的固定事項；主管建立週期設定表單只會在主管 / 管理者身分顯示。</div></div><div id="staffList"></div></div><div class="actions admin-actions"><button class="btn primary" onclick="submitRoutine()">儲存固定事項</button></div></main>
 <script src="config.js"></script><script>{common_js}
 function renderCycleFields(){{const t=val('cycleType'); $('weekDayWrap').classList.toggle('hidden',t!=='weekly'); $('monthDayWrap').classList.toggle('hidden',!(t==='monthly'||t==='quarterly'||t==='yearly'));}}
 function renderPeriodDueFields(){{const t=val('periodDueType'); $('periodDueDaysWrap').classList.toggle('hidden',t!=='days'); $('periodDueTimeWrap').classList.toggle('hidden',t==='none');}}
@@ -260,7 +292,7 @@ async function loadStaffItemsForThisPage(){
   if(!box) return;
   box.innerHTML = '<div class="card"><div class="note">讀取中...</div></div>';
   try{
-    const res = await api('getMyRoutineItems', {userId:userId()});
+    const res = await api('getRoutinePageData', {userId:userId()});
     const rows = res.rows || res.items || res.tasks || res.routines || [];
     if(!rows.length){ box.innerHTML = '<div class="card"><div class="note">目前沒有固定事項。</div></div>'; return; }
     box.innerHTML = rows.map(r=>`<div class="card"><div class="section-title">${r.title||r.標題||r.name||r.事項名稱||'未命名項目'}</div><div class="hint">${r.status||r.狀態||''}</div><div class="note">${r.content||r.description||r.內容||r.事項說明||''}</div></div>`).join('');
@@ -269,5 +301,71 @@ async function loadStaffItemsForThisPage(){
   }
 }
 document.addEventListener('DOMContentLoaded', function(){ setTimeout(renderRoleMode, 80); });
+
+
+let mediaRecorder=null,recordChunks=[],recordTimer=null,recordSeconds=0,recordedAudioFile=null;
+function renderRecordingState(){
+  const preview=document.getElementById('recordPreview');
+  const audio=document.getElementById('recordedAudio');
+  const clearBtn=document.getElementById('clearRecordBtn');
+  if(preview) preview.classList.toggle('show', !!recordedAudioFile);
+  if(clearBtn) clearBtn.disabled=!recordedAudioFile;
+  if(audio && recordedAudioFile) audio.src=URL.createObjectURL(recordedAudioFile);
+}
+function updateRecordClock(){
+  recordSeconds++;
+  const t=document.getElementById('recordTime');
+  const f=document.getElementById('recordBarFill');
+  const mm=String(Math.floor(recordSeconds/60)).padStart(2,'0');
+  const ss=String(recordSeconds%60).padStart(2,'0');
+  if(t) t.textContent=mm+':'+ss;
+  if(f) f.style.width=String((recordSeconds*7)%100)+'%';
+}
+async function startRecording(){
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+    recordChunks=[]; recordedAudioFile=null; recordSeconds=0;
+    mediaRecorder=new MediaRecorder(stream);
+    mediaRecorder.ondataavailable=e=>{ if(e.data&&e.data.size) recordChunks.push(e.data); };
+    mediaRecorder.onstop=()=>{
+      const blob=new Blob(recordChunks,{type:mediaRecorder.mimeType||'audio/webm'});
+      recordedAudioFile=new File([blob], 'recording_'+Date.now()+'.webm', {type:blob.type});
+      stream.getTracks().forEach(t=>t.stop());
+      document.getElementById('recordDot')?.classList.remove('active');
+      document.getElementById('recordBtn').disabled=false;
+      document.getElementById('stopRecordBtn').disabled=true;
+      clearInterval(recordTimer); recordTimer=null;
+      renderRecordingState();
+    };
+    mediaRecorder.start();
+    document.getElementById('recordDot')?.classList.add('active');
+    document.getElementById('recordBtn').disabled=true;
+    document.getElementById('stopRecordBtn').disabled=false;
+    recordTimer=setInterval(updateRecordClock,1000);
+  }catch(e){ alert('無法啟用錄音：'+(e.message||e)); }
+}
+function stopRecording(){
+  if(mediaRecorder && mediaRecorder.state!=='inactive') mediaRecorder.stop();
+}
+function clearRecording(){
+  recordedAudioFile=null; recordChunks=[];
+  const audio=document.getElementById('recordedAudio');
+  if(audio) audio.removeAttribute('src');
+  const t=document.getElementById('recordTime'); if(t)t.textContent='00:00';
+  const f=document.getElementById('recordBarFill'); if(f)f.style.width='0%';
+  renderRecordingState();
+}
+
+
+async function loadAdminRoutineHistory(){
+  const box=document.getElementById('adminRoutineHistory'); if(!box) return;
+  try{
+    const res=await api('getRoutinePageData',{userId:userId()});
+    const rows=(res.rows||res.templates||res.list||[]).slice().reverse();
+    if(!rows.length){box.innerHTML='<div class="note">目前尚無固定事項紀錄。</div>';return;}
+    box.innerHTML=rows.map(r=>`<div class="note" style="margin-bottom:8px"><b>${r.title||r.標題||r.name||'未命名固定事項'}</b><br>狀態：${r.enabled===false?'停用':'啟用'}　負責人：${r.assigneeName||r.負責人姓名||''}<br>${r.content||r.內容||''}</div>`).join('');
+  }catch(e){box.innerHTML='<div class="note">目前無法讀取固定事項紀錄。</div>';}
+}
+document.addEventListener('DOMContentLoaded',function(){setTimeout(loadAdminRoutineHistory,120);});
 
 </script></body></html>

@@ -34,7 +34,30 @@
       .head-tool-desc{font-size:12px}
       .head-tool-btn,.logout-mini-btn{padding:8px 10px;font-size:13px}
     }
-  </style>
+  
+/* 管理首頁卡片置中修正 */
+.grid .tile{
+  text-align:center;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:10px;
+  min-height:132px;
+}
+.grid .tile strong{
+  width:100%;
+  justify-content:center!important;
+  text-align:center;
+  line-height:1.35;
+  gap:8px;
+}
+.grid .tile span:not(.badge){
+  text-align:center;
+  line-height:1.55;
+}
+
+</style>
 </head>
 <body onload="init()">
   <div class="container">

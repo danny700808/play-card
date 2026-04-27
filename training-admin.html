@@ -107,9 +107,28 @@ textarea{min-height:96px;resize:vertical}
 
 .actions .btn.primary{width:100%;flex:1}
 .actions{gap:0}
+
+.upload-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.upload-box{background:#f8fafc;border:1px solid #dbe5f1;border-radius:16px;padding:12px}
+.upload-box label{display:block;font-weight:900;margin-bottom:8px;color:#0f172a}
+.upload-box input{width:100%}
+.upload-tip{margin-top:8px;font-size:12px;color:#64748b}
+.record-panel{display:grid;gap:10px}
+.record-visual{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center}
+.record-dot{width:12px;height:12px;border-radius:999px;background:#94a3b8}
+.record-dot.active{background:#dc2626;box-shadow:0 0 0 6px rgba(220,38,38,.12)}
+.record-bar{height:10px;background:#e2e8f0;border-radius:999px;overflow:hidden}
+.record-bar-fill{width:0%;height:100%;background:#1f7a5a;transition:width .15s}
+.record-time{font-size:13px;font-weight:900;color:#334155}
+.record-actions{display:flex;gap:8px;flex-wrap:wrap}
+.record-preview{display:none}
+.record-preview.show{display:block}
+@media(max-width:720px){.upload-grid{grid-template-columns:1fr}}
+
 </style></head><body>
-<header><h1>教育訓練｜教材 / 任務設定</h1><p class="sub">教材內容在這裡設定；通知由萬用表的教育訓練區塊控制。</p></header>
-<main><div class="page-return-wrap"><a class="page-return-btn" href="settings.html">返回管理首頁</a></div><div id="msg"></div>
+  <div class="page-return-wrap"><a class="page-return-btn" href="settings.html">返回管理首頁</a></div>
+
+<main><div id="msg"></div>
 <div class="card"><div class="section-title"><span class="num">1</span>教材基本資料</div><div class="grid">
 <div><label>教材標題</label><input id="trainingTitle" placeholder="例如：新進員工打卡與請假教學"></div>
 <div><label>分類</label><select id="trainingCategory"><option>新進員工</option><option>打卡 / 工讀</option><option>請假制度</option><option>活動執行</option><option>器材教學</option></select></div>
@@ -130,17 +149,29 @@ textarea{min-height:96px;resize:vertical}
 <div id="trainingDueDateWrap" class="hidden"><label>指定截止日期</label><input id="trainingDueDate" type="date"></div>
 <div id="trainingDueTimeWrap" class="hidden"><label>截止時間</label><input id="trainingDueTime" type="time" value="18:00"></div>
 <div><label>完成方式</label><select id="completeMode"><option>閱讀確認</option><option>文字回覆</option><option>附件回傳</option></select></div>
-</div><p class="hint">如果有完成期限，萬用表可以套用發布、中段、截止、逾期提醒。</p></div>
-<div class="card"><div class="section-title"><span class="num">4</span>教材內容</div><div class="grid">
-<div><label>影片連結</label><input id="videoLink" placeholder="貼上 YouTube / Cloudinary / Drive 連結"></div>
-<div><label>圖片</label><input id="trainingImage" type="file" accept="image/*"></div>
-<div><label>影片檔</label><input id="trainingVideo" type="file" accept="video/*"></div>
-<div class="wide" id="trainingAudioRecorderMount"></div>
-<div><label>文件附件</label><input id="trainingDoc" type="file"></div>
-<div class="wide"><label>文字教材</label><textarea id="trainingText" placeholder="也可以直接輸入文字教材。"></textarea></div>
+</div><p class="hint">若只是發布教材，可選「不需要，只公告」。</p></div>
+<div class="card"><div class="section-title"><span class="num">4</span>教材內容</div><div class="grid"><div><label>影片連結</label><input id="videoLink" placeholder="貼上 YouTube / Cloudinary / Drive 連結"></div><div class="wide"><label>文字教材</label><textarea id="trainingText" placeholder="也可以直接輸入文字教材。"></textarea></div></div></div><div class="card attachment-card"><div class="section-title"><span class="num">5</span>教材附件</div>
+<p class="hint">圖片、影片、錄音、文件統一使用相同格式；錄音可直接用手機錄完試聽。</p>
+<div class="upload-grid">
+  <div class="upload-box"><label>圖片附件</label><input id="imageInput" type="file" multiple accept="image/*"></div>
+  <div class="upload-box"><label>影片附件</label><input id="videoInput" type="file" multiple accept="video/*"></div>
+  <div class="upload-box">
+    <label>錄音附件</label>
+    <div class="record-panel">
+      <div class="record-visual"><div id="recordDot" class="record-dot"></div><div class="record-bar"><div id="recordBarFill" class="record-bar-fill"></div></div><div id="recordTime" class="record-time">00:00</div></div>
+      <div class="record-actions">
+        <button id="recordBtn" class="btn secondary" type="button" onclick="startRecording()">開始錄音</button>
+        <button id="stopRecordBtn" class="btn secondary" type="button" onclick="stopRecording()" disabled>停止</button>
+        <button id="clearRecordBtn" class="btn secondary" type="button" onclick="clearRecording()" disabled>刪除</button>
+      </div>
+      <div id="recordPreview" class="record-preview"><div style="font-weight:900;margin-bottom:8px">錄音預覽</div><audio id="recordedAudio" controls style="width:100%"></audio></div>
+    </div>
+    <div class="upload-tip">手機可直接錄音；錄完後可確認預覽，或刪除重錄。</div>
+  </div>
+  <div class="upload-box"><label>文件附件</label><input id="fileInput" type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip"></div>
 </div></div>
 
-<div class="actions"><button class="btn primary" onclick="submitTraining()">儲存教材</button></div></main>
+<div class="card"><div class="section-title"><span class="num">6</span>教育訓練檔案</div><div id="adminTrainingHistory" class="history-list"><div class="note">讀取中...</div></div></div><div class="actions"><button class="btn primary" onclick="submitTraining()">儲存教材</button></div></main>
 <script src="config.js"></script><script>
 const API_URL = String((window.APP_CONFIG && window.APP_CONFIG.API_URL) || window.API_URL || localStorage.getItem('EMPLOYEE_SYSTEM_API_BASE') || '').trim();
 function getUser(){try{return JSON.parse(localStorage.getItem('employeeUser')||'{}')}catch(e){return {}}}
@@ -247,9 +278,75 @@ function trainingAdminRoleGuard(){
   const role = String((u && (u.role || u.roleName || u.identityType)) || '').toLowerCase();
   const isMgr = !!(u && (u.showSettingsZone || u.isAdmin || role === 'admin' || role === 'manager' || role.includes('主管') || role.includes('管理')));
   if(!isMgr){
-    document.body.innerHTML = '<header><h1>教育訓練</h1><p class="sub">這裡是主管設定頁，一般使用者請回教育訓練觀看頁。</p></header><main><div class="card"><div class="note">你目前不是主管 / 管理者身分，因此不顯示教材設定表單。</div><div style="margin-top:12px"><a class="btn primary" style="display:block;text-align:center;text-decoration:none" href="training.html">前往教育訓練觀看頁</a></div></div></main>';
+    document.body.innerHTML = '<main><div class="card"><div class="note">你目前不是主管 / 管理者身分，因此不顯示教材設定表單。</div><div style="margin-top:12px"><a class="btn primary" style="display:block;text-align:center;text-decoration:none" href="training.html">前往教育訓練觀看頁</a></div></div></main>';
   }
 }
 document.addEventListener('DOMContentLoaded', trainingAdminRoleGuard);
+
+
+let mediaRecorder=null,recordChunks=[],recordTimer=null,recordSeconds=0,recordedAudioFile=null;
+function renderRecordingState(){
+  const preview=document.getElementById('recordPreview');
+  const audio=document.getElementById('recordedAudio');
+  const clearBtn=document.getElementById('clearRecordBtn');
+  if(preview) preview.classList.toggle('show', !!recordedAudioFile);
+  if(clearBtn) clearBtn.disabled=!recordedAudioFile;
+  if(audio && recordedAudioFile) audio.src=URL.createObjectURL(recordedAudioFile);
+}
+function updateRecordClock(){
+  recordSeconds++;
+  const t=document.getElementById('recordTime');
+  const f=document.getElementById('recordBarFill');
+  const mm=String(Math.floor(recordSeconds/60)).padStart(2,'0');
+  const ss=String(recordSeconds%60).padStart(2,'0');
+  if(t) t.textContent=mm+':'+ss;
+  if(f) f.style.width=String((recordSeconds*7)%100)+'%';
+}
+async function startRecording(){
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+    recordChunks=[]; recordedAudioFile=null; recordSeconds=0;
+    mediaRecorder=new MediaRecorder(stream);
+    mediaRecorder.ondataavailable=e=>{ if(e.data&&e.data.size) recordChunks.push(e.data); };
+    mediaRecorder.onstop=()=>{
+      const blob=new Blob(recordChunks,{type:mediaRecorder.mimeType||'audio/webm'});
+      recordedAudioFile=new File([blob], 'recording_'+Date.now()+'.webm', {type:blob.type});
+      stream.getTracks().forEach(t=>t.stop());
+      document.getElementById('recordDot')?.classList.remove('active');
+      document.getElementById('recordBtn').disabled=false;
+      document.getElementById('stopRecordBtn').disabled=true;
+      clearInterval(recordTimer); recordTimer=null;
+      renderRecordingState();
+    };
+    mediaRecorder.start();
+    document.getElementById('recordDot')?.classList.add('active');
+    document.getElementById('recordBtn').disabled=true;
+    document.getElementById('stopRecordBtn').disabled=false;
+    recordTimer=setInterval(updateRecordClock,1000);
+  }catch(e){ alert('無法啟用錄音：'+(e.message||e)); }
+}
+function stopRecording(){
+  if(mediaRecorder && mediaRecorder.state!=='inactive') mediaRecorder.stop();
+}
+function clearRecording(){
+  recordedAudioFile=null; recordChunks=[];
+  const audio=document.getElementById('recordedAudio');
+  if(audio) audio.removeAttribute('src');
+  const t=document.getElementById('recordTime'); if(t)t.textContent='00:00';
+  const f=document.getElementById('recordBarFill'); if(f)f.style.width='0%';
+  renderRecordingState();
+}
+
+
+async function loadAdminTrainingHistory(){
+  const box=document.getElementById('adminTrainingHistory'); if(!box) return;
+  try{
+    const res=await api('getTrainingPageData',{userId:userId(),adminMode:true,includeDisabled:true});
+    const rows=(res.items||res.trainingItems||[]).slice().reverse();
+    if(!rows.length){box.innerHTML='<div class="note">目前尚無教育訓練檔案。</div>';return;}
+    box.innerHTML=rows.map(r=>`<div class="note" style="margin-bottom:8px"><b>${r.title||r.標題||'未命名教材'}</b><br>分類：${r.categoryName||''}　狀態：${r.enabled===false?'停用':'啟用'}<br>${r.description||r.說明||''}</div>`).join('');
+  }catch(e){box.innerHTML='<div class="note">目前無法讀取教育訓練檔案。</div>';}
+}
+document.addEventListener('DOMContentLoaded',function(){setTimeout(loadAdminTrainingHistory,120);});
 
 </script></body></html>
