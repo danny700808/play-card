@@ -234,4 +234,15 @@ function recorderHtml(key, title){
 function mountInlineRecorderForThisPage(){const m=document.getElementById('trainingAudioRecorderMount'); if(m) m.innerHTML=recorderHtml('trainingAudio','教育訓練錄音教材');}
 
 try{document.addEventListener('DOMContentLoaded', mountInlineRecorderForThisPage);}catch(e){}
+
+function trainingAdminRoleGuard(){
+  const u = getUser();
+  const role = String((u && (u.role || u.roleName || u.identityType)) || '').toLowerCase();
+  const isMgr = !!(u && (u.showSettingsZone || u.isAdmin || role === 'admin' || role === 'manager' || role.includes('主管') || role.includes('管理')));
+  if(!isMgr){
+    document.body.innerHTML = '<header><h1>教育訓練</h1><p class="sub">這裡是主管設定頁，一般使用者請回教育訓練觀看頁。</p></header><main><div class="card"><div class="note">你目前不是主管 / 管理者身分，因此不顯示教材設定表單。</div><div style="margin-top:12px"><a class="btn primary" style="display:block;text-align:center;text-decoration:none" href="training.html">前往教育訓練觀看頁</a></div></div></main>';
+  }
+}
+document.addEventListener('DOMContentLoaded', trainingAdminRoleGuard);
+
 </script></body></html>

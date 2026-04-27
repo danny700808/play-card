@@ -102,7 +102,7 @@ textarea{min-height:96px;resize:vertical}
 
 </style></head><body>
 <header><h1>固定事項｜建立週期事件</h1><p class="sub">固定事項只管週期與本期完成期限；提醒由萬用表控制。</p></header>
-<main><div id="msg"></div>
+<main><div id="msg"></div><div id="adminPageWrap">
 <div class="card"><div class="section-title"><span class="num">1</span>事項基本資料</div><div class="grid">
 <div><label>放入區塊</label><select id="routineGroup"><option>近期事項</option><option>中期事項</option><option>長期事項</option><option>行政例行</option><option>教學例行</option></select></div>
 <div><label>事項名稱</label><input id="routineTitle" placeholder="例如：每月 5 號器材檢查"></div>
@@ -142,7 +142,7 @@ textarea{min-height:96px;resize:vertical}
 <div class="wide"><label>備註</label><textarea id="routineNote" placeholder="固定事項補充說明。"></textarea></div>
 </div></div>
 <div class="card"><div class="section-title"><span class="num">7</span>通知提醒說明</div><div class="note">這裡不再出現舊的「提醒時間、承辦人提醒設定」。固定事項通知由「通知 / 提醒萬用表 → 固定事項」區塊控制。</div></div>
-<div class="actions"><button class="btn secondary" onclick="history.back()">取消</button><button class="btn primary" onclick="submitRoutine()">儲存固定事項</button></div></main>
+</div><div id="staffPageWrap" class="hidden"><div class="card"><div class="section-title"><span class="num">1</span>我的固定事項</div><div class="note">這裡是一般使用者查看自己負責的固定事項；主管建立週期設定表單只會在主管 / 管理者身分顯示。</div></div><div id="staffList"></div></div><div class="actions admin-actions"><button class="btn secondary" onclick="history.back()">取消</button><button class="btn primary" onclick="submitRoutine()">儲存固定事項</button></div></main>
 <script src="config.js"></script><script>{common_js}
 function renderCycleFields(){{const t=val('cycleType'); $('weekDayWrap').classList.toggle('hidden',t!=='weekly'); $('monthDayWrap').classList.toggle('hidden',!(t==='monthly'||t==='quarterly'||t==='yearly'));}}
 function renderPeriodDueFields(){{const t=val('periodDueType'); $('periodDueDaysWrap').classList.toggle('hidden',t!=='days'); $('periodDueTimeWrap').classList.toggle('hidden',t==='none');}}
@@ -232,4 +232,35 @@ function recorderHtml(key, title){
 function mountInlineRecorderForThisPage(){const m=document.getElementById('routineAudioRecorderMount'); if(m) m.innerHTML=recorderHtml('routineAudio','固定事項錄音說明');}
 
 try{document.addEventListener('DOMContentLoaded', mountInlineRecorderForThisPage);}catch(e){}
+
+function currentUserIsManager(){
+  const u = getUser();
+  const role = String((u && (u.role || u.roleName || u.identityType)) || '').toLowerCase();
+  return !!(u && (u.showSettingsZone || u.isAdmin || role === 'admin' || role === 'manager' || role.includes('主管') || role.includes('管理')));
+}
+function renderRoleMode(){
+  const isMgr = currentUserIsManager();
+  const admin = document.getElementById('adminPageWrap');
+  const staff = document.getElementById('staffPageWrap');
+  const actions = document.querySelector('.admin-actions');
+  if(admin) admin.classList.toggle('hidden', !isMgr);
+  if(staff) staff.classList.toggle('hidden', isMgr);
+  if(actions) actions.classList.toggle('hidden', !isMgr);
+  if(!isMgr) loadStaffItemsForThisPage();
+}
+async function loadStaffItemsForThisPage(){
+  const box = document.getElementById('staffList');
+  if(!box) return;
+  box.innerHTML = '<div class="card"><div class="note">讀取中...</div></div>';
+  try{
+    const res = await api('getMyRoutineItems', {userId:userId()});
+    const rows = res.rows || res.items || res.tasks || res.routines || [];
+    if(!rows.length){ box.innerHTML = '<div class="card"><div class="note">目前沒有固定事項。</div></div>'; return; }
+    box.innerHTML = rows.map(r=>`<div class="card"><div class="section-title">${r.title||r.標題||r.name||r.事項名稱||'未命名項目'}</div><div class="hint">${r.status||r.狀態||''}</div><div class="note">${r.content||r.description||r.內容||r.事項說明||''}</div></div>`).join('');
+  }catch(e){
+    box.innerHTML = '<div class="card"><div class="note">目前無法讀取資料，請稍後再試。</div></div>';
+  }
+}
+document.addEventListener('DOMContentLoaded', function(){ setTimeout(renderRoleMode, 80); });
+
 </script></body></html>
