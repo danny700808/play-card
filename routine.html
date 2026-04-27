@@ -1,691 +1,235 @@
-<!doctype html>
-<html lang="zh-Hant">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>定期事項</title>
-  <link rel="stylesheet" href="style.css">
-  <style>
-    .page-return-wrap{margin-bottom:16px}
-    .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
-    .group-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:12px}
-    .group-card{border:1px solid var(--line);border-radius:18px;padding:18px;background:#fbfdff;cursor:pointer;transition:.18s ease}
-    .group-card.active{border-color:#1f7a5a;box-shadow:0 0 0 2px rgba(31,122,90,.12) inset;background:#f4fbf8}
-    .group-card .title{font-size:20px;font-weight:900;margin-bottom:6px}
-    .group-card .meta{font-size:13px;color:var(--muted);line-height:1.7}
-    .group-card.reassign{background:#fff7f7;border-color:#f4c7c7}
-    .hidden{display:none!important}
-    .field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-    .inline-checks{display:flex;flex-wrap:wrap;gap:10px}
-    .inline-checks label{display:flex;align-items:center;gap:6px;background:#fff;border:1px solid var(--line);border-radius:999px;padding:8px 12px;font-size:14px}
-    .inline-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
-    .inline-actions .btn{width:auto;min-width:110px}
-    .compact-list{display:flex;flex-direction:column;gap:10px}
-    .tag{display:inline-block;padding:5px 10px;border-radius:999px;font-size:12px;font-weight:800}
-    .tag.on{background:#eef7f2;color:#16533f}
-    .tag.off{background:#eef2f7;color:#5b6b7c}
-    .tag.todo{background:#fff6e5;color:#9a6700}
-    .tag.overdue{background:#fef0f0;color:#b42318}
-    .tag.reassign{background:#fef0f0;color:#b42318}
-    .item-top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
-    .item-meta{color:var(--muted);font-size:13px;line-height:1.7;margin-top:8px}
-    .item-note-warn{margin-top:10px;padding:10px 12px;border-radius:12px;background:#fff4f4;border:1px solid #f5c2c7;color:#b42318;font-size:14px;font-weight:700}
-    .empty-box{padding:18px;border:1px dashed var(--line);border-radius:14px;color:var(--muted);text-align:center}
-    .mini-help{font-size:13px;color:var(--muted);margin-top:6px;line-height:1.7}
-    .section-subtitle{font-size:13px;color:var(--muted);margin-top:4px;line-height:1.7}
-    .routine-deadline{margin-top:12px;font-size:18px;font-weight:800;color:#203040;line-height:1.6}
-    .routine-deadline .deadline-label{color:#1f7a5a}
-    .routine-complete-btn{display:block;width:100%;min-height:56px;border-radius:16px;font-size:22px;font-weight:800}
-    .complete-box{margin-top:12px;padding-top:12px;border-top:1px dashed var(--line)}
-    .detail-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
-    .detail-title{font-size:22px;font-weight:900}
-    .rec-live{display:inline-flex;align-items:center;gap:8px;margin-top:10px;padding:8px 12px;border-radius:999px;background:#fff4f4;color:#b42318;font-weight:800;font-size:13px}
-    .rec-live.hidden{display:none!important}
-    .rec-live-dot{width:10px;height:10px;border-radius:50%;background:#ef4444;animation:recPulse 1s infinite}
-    @keyframes recPulse{0%{transform:scale(.9);opacity:.5}50%{transform:scale(1.2);opacity:1}100%{transform:scale(.9);opacity:.5}}
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>固定事項</title><link rel="stylesheet" href="style.css"><style>
+:root{
+  --bg:#f4f7fb;--card:#fff;--text:#182230;--muted:#667085;--line:#e4e7ec;
+  --main:#1f7a5a;--main-soft:#e8f5ef;--warn:#b42318;--blue:#175cd3;
+  --shadow:0 10px 24px rgba(16,24,40,.08);--radius:18px
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC",Arial,sans-serif;background:var(--bg);color:var(--text);line-height:1.55}
+header{position:sticky;top:0;z-index:20;background:rgba(244,247,251,.94);backdrop-filter:blur(12px);border-bottom:1px solid var(--line);padding:14px}
+h1{font-size:21px;font-weight:850;margin:0}.sub{font-size:13px;color:var(--muted);margin:5px 0 0}
+main{max-width:920px;margin:0 auto;padding:12px 12px 34px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px;margin-bottom:12px}
+.section-title{font-size:16px;font-weight:850;margin:2px 0 10px;display:flex;align-items:center;gap:8px}
+.num{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--main);color:#fff;font-size:12px;font-weight:800}
+label{display:block;font-size:13px;font-weight:760;margin:0 0 6px}
+input,select,textarea{width:100%;border:1px solid #d0d5dd;border-radius:13px;background:#fff;padding:11px 12px;font-size:15px;color:#101828;outline:none}
+textarea{min-height:96px;resize:vertical}
+.grid{display:grid;grid-template-columns:1fr;gap:10px}.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.hint{font-size:12.5px;color:var(--muted);margin-top:6px}.note{font-size:13px;color:#475467;background:#f9fafb;border:1px dashed #d0d5dd;border-radius:14px;padding:10px}
+.checkrow{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.check{border:1px solid var(--line);border-radius:13px;padding:10px 11px;display:flex;align-items:center;justify-content:space-between;font-size:13px;background:#fcfcfd}
+.box{width:20px;height:20px;border-radius:6px;background:var(--main);display:grid;place-items:center;color:#fff;font-size:14px;font-weight:900}.box.off{background:#fff;border:1px solid #d0d5dd;color:transparent}
+.actions{position:sticky;bottom:0;background:linear-gradient(180deg,rgba(244,247,251,0),var(--bg) 25%);padding:18px 0 0;display:flex;gap:10px}
+.btn{border:0;border-radius:14px;padding:12px 14px;font-size:15px;font-weight:850;cursor:pointer}.btn.primary{background:var(--main);color:#fff;flex:1}.btn.secondary{background:#fff;border:1px solid var(--line);color:#344054}.btn.small{font-size:13px;padding:8px 10px;border-radius:11px}
+.toolbar{display:flex;gap:8px;overflow:auto;padding:10px 14px 6px;background:var(--bg);border-bottom:1px solid var(--line);position:sticky;top:67px;z-index:15}
+.chip{flex:0 0 auto;border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 11px;font-size:13px;color:#344054;text-decoration:none;white-space:nowrap}
+.hidden{display:none!important}.msg{padding:10px 12px;border-radius:14px;margin-bottom:10px;font-size:13px}.msg.ok{background:#e8f5ef;color:#1f7a5a}.msg.err{background:#fef3f2;color:#b42318}
+@media(min-width:720px){.grid{grid-template-columns:1fr 1fr}.wide{grid-column:1/-1}.checkrow{grid-template-columns:repeat(4,1fr)}.cards-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.card{margin-bottom:0}}
 
-    .task-highlight{box-shadow:0 0 0 2px #1f7a5a inset}
-    .task-media-title{font-size:14px;font-weight:800;margin:12px 0 8px}
-    .task-file-links{display:flex;flex-wrap:wrap;gap:8px}
-    .task-file-link{display:inline-flex;align-items:center;padding:8px 12px;border-radius:999px;background:#eef7f2;color:#16533f;text-decoration:none;font-size:13px;font-weight:700}
-    .task-player{width:100%;margin-top:8px;border-radius:12px}
-    .task-gallery{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:8px}
-    .task-gallery img{width:100%;display:block;border-radius:12px}
-    @media (max-width:560px){.group-grid,.field-row{grid-template-columns:1fr}}
-  </style>
-</head>
-<body onload="init()">
-  <div class="container">
-    <div class="page-return-wrap"><a class="btn page-return-btn" id="routineHomeLink" href="dashboard.html">返回員工首頁</a></div>
+/* 手機直接錄音元件 */
+.audio-recorder{
+  border:1px solid var(--line);
+  background:#fff;
+  border-radius:16px;
+  padding:12px;
+}
+.audio-recorder-title{
+  font-size:13px;
+  font-weight:800;
+  margin-bottom:8px;
+  color:#344054;
+}
+.audio-recorder-controls{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  align-items:center;
+}
+.audio-recorder .rec-btn{
+  border:0;
+  border-radius:999px;
+  padding:10px 13px;
+  font-size:14px;
+  font-weight:850;
+  cursor:pointer;
+}
+.rec-start{background:#b42318;color:#fff}
+.rec-stop{background:#344054;color:#fff}
+.rec-delete{background:#fff;border:1px solid #d0d5dd!important;color:#344054}
+.rec-status{
+  flex:1;
+  min-width:120px;
+  font-size:13px;
+  color:var(--muted);
+}
+.wave{
+  height:42px;
+  border-radius:14px;
+  background:#f2f4f7;
+  border:1px solid #eaecf0;
+  margin-top:10px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:3px;
+  overflow:hidden;
+}
+.wave span{
+  display:block;
+  width:4px;
+  height:8px;
+  border-radius:999px;
+  background:#98a2b3;
+  animation:none;
+}
+.audio-recorder.recording .wave span{
+  background:#b42318;
+  animation:wavePulse 800ms ease-in-out infinite;
+}
+.audio-recorder.recording .wave span:nth-child(2n){animation-delay:120ms}
+.audio-recorder.recording .wave span:nth-child(3n){animation-delay:240ms}
+.audio-recorder.recording .wave span:nth-child(4n){animation-delay:360ms}
+@keyframes wavePulse{
+  0%,100%{height:8px;opacity:.55}
+  50%{height:34px;opacity:1}
+}
+.audio-preview{
+  width:100%;
+  margin-top:10px;
+}
+.audio-hidden{display:none!important}
 
-    <div class="card">
-      <div class="topbar">
-        <div>
-          <h1 class="title" id="routinePageTitle" style="margin:0">定期事項</h1>
-          <div class="welcome">歡迎 <span data-user-name></span></div>
-        </div>
-      </div>
-      <div id="msg" class="message"></div>
+</style></head><body>
+<header><h1>固定事項｜建立週期事件</h1><p class="sub">固定事項只管週期與本期完成期限；提醒由萬用表控制。</p></header>
+<main><div id="msg"></div>
+<div class="card"><div class="section-title"><span class="num">1</span>事項基本資料</div><div class="grid">
+<div><label>放入區塊</label><select id="routineGroup"><option>近期事項</option><option>中期事項</option><option>長期事項</option><option>行政例行</option><option>教學例行</option></select></div>
+<div><label>事項名稱</label><input id="routineTitle" placeholder="例如：每月 5 號器材檢查"></div>
+<div class="wide"><label>事項說明</label><textarea id="routineDesc" placeholder="請寫清楚每一期要完成什麼。"></textarea></div>
+<div><label>負責人</label><select id="routineOwner"><option value="">請選擇員工</option></select></div>
+<div><label>主管 / 審核人</label><select id="routineManagerMode"><option value="default">系統預設主管</option><option value="custom">指定主管</option></select></div>
+</div></div>
+<div class="card"><div class="section-title"><span class="num">2</span>週期設定</div><div class="grid">
+<div><label>週期類型</label><select id="cycleType" onchange="renderCycleFields()"><option value="daily">每日</option><option value="weekly">每週</option><option value="monthly">每月</option><option value="quarterly">每季</option><option value="yearly">每年</option><option value="custom">自訂間隔</option></select></div>
+<div><label>週期間隔</label><input id="cycleInterval" type="number" min="1" value="1"></div>
+<div id="weekDayWrap" class="hidden"><label>每週星期</label><select id="weekDay"><option value="1">星期一</option><option value="2">星期二</option><option value="3">星期三</option><option value="4">星期四</option><option value="5">星期五</option><option value="6">星期六</option><option value="0">星期日</option></select></div>
+<div id="monthDayWrap" class="hidden"><label>每月日期</label><select id="monthDay"><option value="1">1 號</option><option value="2">2 號</option><option value="3">3 號</option><option value="4">4 號</option><option value="5">5 號</option><option value="6">6 號</option><option value="7">7 號</option><option value="8">8 號</option><option value="9">9 號</option><option value="10">10 號</option><option value="11">11 號</option><option value="12">12 號</option><option value="13">13 號</option><option value="14">14 號</option><option value="15">15 號</option><option value="16">16 號</option><option value="17">17 號</option><option value="18">18 號</option><option value="19">19 號</option><option value="20">20 號</option><option value="21">21 號</option><option value="22">22 號</option><option value="23">23 號</option><option value="24">24 號</option><option value="25">25 號</option><option value="26">26 號</option><option value="27">27 號</option><option value="28">28 號</option><option value="29">29 號</option><option value="30">30 號</option><option value="31">31 號</option><option value="last">月底最後一天</option></select></div>
+<div><label>產生時間</label><input id="generateTime" type="time" value="09:00"></div>
+</div></div>
+<div class="card"><div class="section-title"><span class="num">3</span>本期完成期限</div><div class="grid">
+<div><label>本期完成期限</label><select id="periodDueType" onchange="renderPeriodDueFields()"><option value="sameDay">當天完成</option><option value="days">產生後幾天內完成</option><option value="none">無期限</option></select></div>
+<div id="periodDueDaysWrap" class="hidden"><label>產生後幾天內</label><input id="periodDueDays" type="number" min="1" value="5"></div>
+<div id="periodDueTimeWrap"><label>截止時間</label><input id="periodDueTime" type="time" value="18:00"></div>
+</div><p class="hint">這個欄位用來計算本期中段提醒、截止提醒、逾期提醒。</p></div>
+<div class="card"><div class="section-title"><span class="num">4</span>起訖範圍</div><div class="grid">
+<div><label>開始日期</label><input id="startDate" type="date"></div>
+<div><label>結束方式</label><select id="endMode" onchange="renderEndFields()"><option value="forever">永久有效</option><option value="date">指定結束日期</option><option value="count">產生幾次後結束</option></select></div>
+<div id="endDateWrap" class="hidden"><label>結束日期</label><input id="endDate" type="date"></div>
+<div id="endCountWrap" class="hidden"><label>產生次數</label><input id="endCount" type="number" min="1" placeholder="例如：12"></div>
+</div></div>
+<div class="card"><div class="section-title"><span class="num">5</span>完成規則</div><div class="checkrow">
+<label class="check">需要完成回報 <input id="routineNeedReport" type="checkbox" checked></label>
+<label class="check">允許員工留言 <input id="routineAllowComment" type="checkbox" checked></label>
+<label class="check">主管可退回重做 <input id="routineAllowRedo" type="checkbox" checked></label>
+<label class="check">停用此事項 <input id="routineDisabled" type="checkbox"></label>
+</div></div>
+<div class="card"><div class="section-title"><span class="num">6</span>圖片 / 影片 / 錄音 / 文件</div><div class="grid">
+<div><label>說明圖片</label><input id="routineImage" type="file" accept="image/*"></div>
+<div><label>說明影片</label><input id="routineVideo" type="file" accept="video/*"></div>
+<div class="wide" id="routineAudioRecorderMount"></div>
+<div><label>說明文件</label><input id="routineDoc" type="file"></div>
+<div class="wide"><label>備註</label><textarea id="routineNote" placeholder="固定事項補充說明。"></textarea></div>
+</div></div>
+<div class="card"><div class="section-title"><span class="num">7</span>通知提醒說明</div><div class="note">這裡不再出現舊的「提醒時間、承辦人提醒設定」。固定事項通知由「通知 / 提醒萬用表 → 固定事項」區塊控制。</div></div>
+<div class="actions"><button class="btn secondary" onclick="history.back()">取消</button><button class="btn primary" onclick="submitRoutine()">儲存固定事項</button></div></main>
+<script src="config.js"></script><script>{common_js}
+function renderCycleFields(){{const t=val('cycleType'); $('weekDayWrap').classList.toggle('hidden',t!=='weekly'); $('monthDayWrap').classList.toggle('hidden',!(t==='monthly'||t==='quarterly'||t==='yearly'));}}
+function renderPeriodDueFields(){{const t=val('periodDueType'); $('periodDueDaysWrap').classList.toggle('hidden',t!=='days'); $('periodDueTimeWrap').classList.toggle('hidden',t==='none');}}
+function renderEndFields(){{const t=val('endMode'); $('endDateWrap').classList.toggle('hidden',t!=='date'); $('endCountWrap').classList.toggle('hidden',t!=='count');}}
+async function loadEmployees(){{try{{const res=await api('getEmployeeOptions',{{userId:userId()}}); const list=res.employees||res.rows||[]; $('routineOwner').innerHTML='<option value="">請選擇員工</option>'+list.map(x=>`<option value="${{x.id||x.employeeId||''}}">${{x.name||x.employeeName||''}}</option>`).join('');}}catch(e){{}}}}
+async function submitRoutine(){{try{{const payload={{userId:userId(),group:val('routineGroup'),title:val('routineTitle'),description:val('routineDesc'),ownerId:val('routineOwner'),cycleType:val('cycleType'),cycleInterval:val('cycleInterval'),weekDay:val('weekDay'),monthDay:val('monthDay'),generateTime:val('generateTime'),periodDueType:val('periodDueType'),periodDueDays:val('periodDueDays'),periodDueTime:val('periodDueTime'),startDate:val('startDate'),endMode:val('endMode'),endDate:val('endDate'),endCount:val('endCount'),needReport:checked('routineNeedReport'),allowComment:checked('routineAllowComment'),allowRedo:checked('routineAllowRedo'),disabled:checked('routineDisabled'),note:val('routineNote')}}; const res=await api('saveRoutineTemplate',payload); if(!res.ok)throw new Error(res.message||'儲存失敗'); msg('固定事項已儲存，通知將依萬用表設定處理。',true);}}catch(e){{msg(e.message,false)}}}}
+document.addEventListener('DOMContentLoaded',()=>{{renderCycleFields();renderPeriodDueFields();renderEndFields();loadEmployees();}});
+
+/* 手機直接錄音：按下錄音 → 停止 → 試聽 → 刪除重錄 */
+const recorderStore = {};
+async function startInlineRecording(key){
+  const box = document.querySelector(`[data-recorder="${key}"]`);
+  if(!box) return;
+  try{
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      throw new Error('這個瀏覽器不支援直接錄音，請改用手機 Chrome / Safari。');
+    }
+    const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+    const chunks = [];
+    const mediaRecorder = new MediaRecorder(stream);
+    recorderStore[key] = {mediaRecorder, stream, chunks, blob:null};
+    mediaRecorder.ondataavailable = e => { if(e.data && e.data.size) chunks.push(e.data); };
+    mediaRecorder.onstop = () => {
+      const blob = new Blob(chunks, {type: mediaRecorder.mimeType || 'audio/webm'});
+      recorderStore[key].blob = blob;
+      const url = URL.createObjectURL(blob);
+      const audio = box.querySelector('audio');
+      audio.src = url;
+      audio.classList.remove('audio-hidden');
+      box.classList.remove('recording');
+      box.querySelector('.rec-status').textContent = '錄音完成，可以先試聽；不滿意可刪除重錄。';
+      box.querySelector('.rec-start').classList.remove('audio-hidden');
+      box.querySelector('.rec-stop').classList.add('audio-hidden');
+      box.querySelector('.rec-delete').classList.remove('audio-hidden');
+      stream.getTracks().forEach(t=>t.stop());
+    };
+    mediaRecorder.start();
+    box.classList.add('recording');
+    box.querySelector('.rec-status').textContent = '錄音中，請直接對著手機說話。';
+    box.querySelector('.rec-start').classList.add('audio-hidden');
+    box.querySelector('.rec-stop').classList.remove('audio-hidden');
+    box.querySelector('.rec-delete').classList.add('audio-hidden');
+    box.querySelector('audio').classList.add('audio-hidden');
+  }catch(err){
+    alert('無法啟用錄音：' + (err.message || err));
+  }
+}
+function stopInlineRecording(key){
+  const rec = recorderStore[key];
+  if(rec && rec.mediaRecorder && rec.mediaRecorder.state !== 'inactive'){
+    rec.mediaRecorder.stop();
+  }
+}
+function deleteInlineRecording(key){
+  const box = document.querySelector(`[data-recorder="${key}"]`);
+  const rec = recorderStore[key];
+  if(rec && rec.stream) rec.stream.getTracks().forEach(t=>t.stop());
+  delete recorderStore[key];
+  if(box){
+    box.classList.remove('recording');
+    const audio = box.querySelector('audio');
+    audio.removeAttribute('src');
+    audio.classList.add('audio-hidden');
+    box.querySelector('.rec-status').textContent = '尚未錄音。';
+    box.querySelector('.rec-start').classList.remove('audio-hidden');
+    box.querySelector('.rec-stop').classList.add('audio-hidden');
+    box.querySelector('.rec-delete').classList.add('audio-hidden');
+  }
+}
+function getInlineRecordingBlob(key){
+  return recorderStore[key] && recorderStore[key].blob ? recorderStore[key].blob : null;
+}
+function recorderHtml(key, title){
+  return `<div class="audio-recorder" data-recorder="${key}">
+    <div class="audio-recorder-title">${title || '錄音說明'}</div>
+    <div class="audio-recorder-controls">
+      <button type="button" class="rec-btn rec-start" onclick="startInlineRecording('${key}')">● 開始錄音</button>
+      <button type="button" class="rec-btn rec-stop audio-hidden" onclick="stopInlineRecording('${key}')">■ 停止錄音</button>
+      <button type="button" class="rec-btn rec-delete audio-hidden" onclick="deleteInlineRecording('${key}')">刪除重錄</button>
+      <div class="rec-status">尚未錄音。</div>
     </div>
+    <div class="wave">${Array.from({length:24}).map(()=>'<span></span>').join('')}</div>
+    <audio controls class="audio-preview audio-hidden"></audio>
+  </div>`;
+}
 
-    <div id="staffBlock">
-      <div class="card">
-        <div class="section-title">我的定期事項</div>
-        <div class="section-subtitle">這裡只顯示目前輪到你處理的固定任務。</div>
-        <div id="myRoutineList" class="compact-list" style="margin-top:12px"></div>
-      </div>
-    </div>
+function mountInlineRecorderForThisPage(){const m=document.getElementById('routineAudioRecorderMount'); if(m) m.innerHTML=recorderHtml('routineAudio','固定事項錄音說明');}
 
-    <div id="adminBlock" class="hidden">
-      <div id="routineDetailCard">
-
-        <div class="card" id="routineFormCard">
-          <div class="section-title">新增 / 修改事項</div>
-          <input type="hidden" id="templateId">
-          <div class="field"><label>放入哪一個區塊</label><select id="routineSectionType"><option value="daily">每天要做的</option><option value="weekly">每週要做的</option><option value="monthly">每個月要做的</option><option value="long">超過一個月</option><option value="reassign">待重新指派</option></select></div>
-          <div class="field"><label>事項名稱</label><input id="routineTitle" placeholder="例如：開店巡檢、每月庫存盤點"></div>
-          <div class="field"><label>說明（選填）</label><textarea id="routineContent" placeholder="需要交代的細節可寫在這裡"></textarea></div>
-
-          <div class="field">
-            <label>完成回報需求</label><select id="routinePhotoNeed"><option value="否">不強制照片</option><option value="是">完成時需附照片</option></select>
-          </div>
-
-          <div class="field"><label>說明圖片（選填）</label><input id="routineImageFiles" type="file" accept=".jpg,.jpeg,.png,.webp" multiple><div class="mini-help">可上傳示意圖片給員工查看。</div></div>
-          <div class="field"><label>說明影片（選填）</label><input id="routineVideoFiles" type="file" accept="video/*" multiple></div>
-          <div class="field"><label>任務錄音（選填）</label>
-            <div class="attach-tools">
-              <div class="task-actions">
-                <button type="button" class="btn secondary" style="width:auto" id="routineStartRecBtn">開始錄音</button>
-                <button type="button" class="btn secondary" style="width:auto" id="routineStopRecBtn" disabled>完成錄音</button>
-                <button type="button" class="btn secondary hidden" style="width:auto" id="routineClearRecBtn">刪除錄音</button>
-              </div>
-            </div>
-            <div class="attach-badge" id="routineRecStatus">尚未錄音</div>
-            <div id="routineRecLive" class="rec-live hidden"><span class="rec-live-dot"></span><span>錄音中</span></div>
-            <audio id="routineRecPreview" class="task-player hidden" controls></audio>
-          </div>
-
-          <div id="weeklyBox" class="field hidden">
-            <label>每週星期</label>
-            <div class="inline-checks">
-              <label><input type="checkbox" value="1" name="routineWeekday"> 週一</label>
-              <label><input type="checkbox" value="2" name="routineWeekday"> 週二</label>
-              <label><input type="checkbox" value="3" name="routineWeekday"> 週三</label>
-              <label><input type="checkbox" value="4" name="routineWeekday"> 週四</label>
-              <label><input type="checkbox" value="5" name="routineWeekday"> 週五</label>
-              <label><input type="checkbox" value="6" name="routineWeekday"> 週六</label>
-              <label><input type="checkbox" value="7" name="routineWeekday"> 週日</label>
-            </div>
-          </div>
-
-          <div id="monthlyBox" class="field hidden"><label>每月幾號</label><select id="routineMonthDay"></select></div>
-          <div id="longBox" class="field hidden"><label>超過一個月週期的固定日期</label><select id="routineLongMonthDay"></select></div>
-          <div class="field hidden" id="longIntervalWrap"><label>每幾個月一次</label><input id="routineLongInterval" type="number" min="2" step="1" value="2"></div>
-
-          <div class="field-row">
-            <div class="field"><label>開始日期</label><input id="routineStartDate" type="date"></div>
-            <div class="field"><label>結束日期</label><input id="routineEndDate" type="date"></div>
-          </div>
-          <div class="field"><label><input id="routinePermanent" type="checkbox" onchange="togglePermanent()"> 永久有效（勾選後不限制結束日期）</label></div>
-
-          <div class="field">
-            <label>負責人（可先不指派）</label>
-            <select id="routineAssignee"><option value="">載入員工中...</option></select>
-            <div class="mini-help">若先不指派，這筆會進到待重新指派。</div>
-          </div>
-
-          <div class="field mini-help">提醒已改由「通知 / 提醒設定」統一控制；定期事項不再各自設定提醒時間。</div>
-
-          <div class="inline-actions">
-            <button class="btn" id="saveRoutineBtn" onclick="saveRoutineTemplate()">儲存定期事項</button>
-            <button class="btn secondary hidden" id="cancelEditBtn" onclick="resetRoutineForm()">取消修改</button>
-          </div>
-          
-        </div>
-
-        <div class="card">
-          <div class="section-title">固定事項區塊</div>
-          <div class="section-subtitle">下面顯示每天 / 每週 / 每月 / 超過一個月 / 待重新指派的區塊摘要。</div>
-          <div id="routineMenuGrid" class="group-grid" style="margin-top:12px"></div>
-          <div id="selectedSectionBox" class="hidden" style="margin-top:16px">
-            <div class="section-title" id="listTitle">這一區的事項</div>
-            <div class="section-subtitle">先顯示簡單任務，點查看再看完整內容。</div>
-            <div id="adminTemplateList" class="compact-list" style="margin-top:12px"></div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <script src="config.js?v=20260413clean1"></script>
-  <script src="app.js?v=20260413clean1"></script>
-  <script>
-    let currentUser = null;
-    let routineAdminMode = false;
-    let pageData = { mine: [], admin: { templates: [], summary: {} } };
-    let employeeOptions = [];
-    let activeSectionKey = '';
-    let targetTemplateId = '';
-    let routineRecorder = null;
-    let routineMediaStream = null;
-    let routineRecordedBlob = null;
-    let routineRecordedUrl = '';
-    let routineRecordedAsset = null;
-    const routineButtonProgressMap = {};
-
-    const SECTIONS = [
-      { key: 'daily', label: '每天要做的', isReassign: false },
-      { key: 'weekly', label: '每週要做的', isReassign: false },
-      { key: 'monthly', label: '每個月要做的', isReassign: false },
-      { key: 'long', label: '超過一個月', isReassign: false },
-      { key: 'reassign', label: '待重新指派', isReassign: true }
-    ];
-
-
-    function esc(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-
-    function showRoutineNotice(message, isError=false){
-      setMsg(qs('#msg'), message || '', !!isError);
-    }
-
-    function renderRoutineRemindBox(x){ return ''; }
-
-    function loadRoutineRemindStateFromRows(rows){ return; }
-
-    function renderImageGallery(items){
-      const list=Array.isArray(items)?items.filter(x=>x&&x.url):[];
-      if(!list.length) return '';
-      return `<div><div class="task-media-title">說明圖片</div><div class="task-gallery">${list.map(x=>`<a href="${x.url}" target="_blank" rel="noopener"><img src="${x.url}" alt="${esc(x.name||'圖片')}"></a>`).join('')}</div></div>`;
-    }
-
-    function renderVideoPlayers(items){
-      const list=Array.isArray(items)?items.filter(x=>x&&x.url):[];
-      if(!list.length) return '';
-      return `<div><div class="task-media-title">說明影片</div>${list.map(x=>`<video class="task-player" controls playsinline preload="metadata" src="${x.url}"></video>`).join('')}</div>`;
-    }
-
-    function renderAudioPlayers(items){
-      const list=Array.isArray(items)?items.filter(x=>x&&x.url):[];
-      if(!list.length) return '';
-      return `<div><div class="task-media-title">說明錄音</div>${list.map(x=>`<audio class="task-player" controls preload="metadata" src="${x.url}"></audio>`).join('')}</div>`;
-    }
-
-    async function collectRoutineAssets(fileInputId, kind, progressStart=0, progressEnd=100){
-      const input=qs('#'+fileInputId);
-      const files=Array.from((input&&input.files)||[]);
-      if(!files.length) return [];
-      const folderMap={image:'routine/images',video:'routine/videos',audio:'routine/audios',file:'routine/files'};
-      const labelMap={image:'圖片',video:'影片',audio:'錄音',file:'附件'};
-      const out=[];
-      for(let i=0;i<files.length;i++){
-        const file=files[i];
-        const base = progressStart + ((progressEnd-progressStart) * (i/files.length));
-        const saveBtnProgress = routineButtonProgressMap.save || null; if(saveBtnProgress) saveBtnProgress.set(Math.round(base), `上傳${labelMap[kind]||'附件'} ${i+1}/${files.length}`);
-        const uploaded=await uploadFileToCloudinary(file,{
-          folder: folderMap[kind]||'routine/files',
-          onProgress:(ratio)=>{
-            const pct = progressStart + ((progressEnd-progressStart) * ((i + ratio)/files.length));
-            const saveBtnProgress = routineButtonProgressMap.save || null; if(saveBtnProgress) saveBtnProgress.set(Math.round(pct), `上傳${labelMap[kind]||'附件'} ${i+1}/${files.length}`);
-          }
-        });
-        const asset=cloudinaryAssetFromResponse(uploaded||{});
-        if(asset && asset.url) out.push({name:file.name||asset.originalFilename||`${labelMap[kind]||'附件'} ${i+1}`, url:asset.url});
-      }
-      return out;
-    }
-
-    function applyRoutineMode() {
-      routineAdminMode = !!(currentUser && hasSettingsZoneAccess(currentUser) && isSettingsMode());
-      qs('#adminBlock').classList.toggle('hidden', !routineAdminMode);
-      qs('#staffBlock').classList.toggle('hidden', routineAdminMode);
-      qs('#routinePageTitle').textContent = routineAdminMode ? '定期事項設定' : '定期事項';
-      qs('#routineHomeLink').href = routineAdminMode ? 'items-hub.html' : userHomeHref(currentUser);
-      qs('#routineHomeLink').textContent = routineAdminMode ? '返回事項' : userHomeLabel(currentUser);
-    }
-
-    function fillMonthDays() {
-      const html = Array.from({ length: 31 }, (_, i) => `<option value="${i + 1}">${i + 1} 號</option>`).join('');
-      qs('#routineMonthDay').innerHTML = html;
-      qs('#routineLongMonthDay').innerHTML = html;
-    }
-
-    function getSectionLabel(key) {
-      return (SECTIONS.find(x => x.key === key) || SECTIONS[0]).label;
-    }
-
-    function getWeekdaysValue() {
-      return qsa('input[name="routineWeekday"]:checked').map(x => x.value).join(',');
-    }
-
-    function setWeekdaysValue(value = '') {
-      const set = new Set(String(value || '').split(',').filter(Boolean));
-      qsa('input[name="routineWeekday"]').forEach(el => el.checked = set.has(el.value));
-    }
-
-    function togglePermanent() {
-      const checked = qs('#routinePermanent').checked;
-      qs('#routineEndDate').disabled = checked;
-      if (checked) qs('#routineEndDate').value = '';
-    }
-
-    function fillEmployeeOptions() {
-      qs('#routineAssignee').innerHTML = '<option value="">暫時不指派</option>' + employeeOptions.map(x => `<option value="${x.id}">${x.name}</option>`).join('');
-    }
-
-    function resetRoutineForm() {
-      qs('#templateId').value = '';
-      qs('#routineTitle').value = '';
-      qs('#routineContent').value = '';
-      qs('#routineAssignee').value = '';
-      qs('#routinePhotoNeed').value = '否';
-      qs('#routineLongInterval').value = '2';
-      qs('#routineSectionType').value = activeSectionKey || 'daily';
-      qs('#routineStartDate').value = '';
-      qs('#routineEndDate').value = '';
-      qs('#routinePermanent').checked = false;
-      togglePermanent();
-      qs('#routineMonthDay').value = '1';
-      qs('#routineLongMonthDay').value = '1';
-      setWeekdaysValue('');
-      ['routineImageFiles','routineVideoFiles'].forEach(id=>{ const el=qs('#'+id); if(el) el.value=''; });
-      clearRoutineRecording();
-      setActionButtonIdle(qs('#saveRoutineBtn'), '儲存定期事項');
-      qs('#cancelEditBtn').classList.add('hidden');
-      updateFormMode();
-    }
-
-    function getCurrentSectionKey() {
-      return activeSectionKey || (qs('#routineSectionType') ? qs('#routineSectionType').value : '') || 'daily';
-    }
-
-    function updateFormMode() {
-      const sectionKey = getCurrentSectionKey();
-      const isReassign = sectionKey === 'reassign';
-      qs('#routineFormCard').classList.toggle('hidden', isReassign);
-      qs('#weeklyBox').classList.toggle('hidden', sectionKey !== 'weekly');
-      qs('#monthlyBox').classList.toggle('hidden', sectionKey !== 'monthly');
-      qs('#longBox').classList.toggle('hidden', sectionKey !== 'long');
-      qs('#longIntervalWrap').classList.toggle('hidden', sectionKey !== 'long');
-      qs('#listTitle').textContent = sectionKey === 'reassign' ? '待重新指派事項' : `${getSectionLabel(sectionKey)}摘要`;
-    }
-
-    function renderSectionDetail() {
-      const box = qs('#selectedSectionBox');
-      if (!box) return;
-      if (!activeSectionKey) {
-        box.classList.add('hidden');
-        return;
-      }
-      box.classList.remove('hidden');
-      updateFormMode();
-      renderAdminList();
-    }
-
-    function openSection(key) {
-      activeSectionKey = key || 'daily';
-      if (qs('#routineSectionType')) qs('#routineSectionType').value = activeSectionKey;
-      updateFormMode();
-      renderMenu();
-      renderSectionDetail();
-      const box = qs('#selectedSectionBox');
-      if (box) {
-        setTimeout(()=>{ try{ box.scrollIntoView({behavior:'smooth', block:'start'}); }catch(e){} }, 30);
-      }
-    }
-
-    function backToMenu() {
-      activeSectionKey = '';
-      renderMenu();
-      renderSectionDetail();
-      resetRoutineForm();
-      routineButtonProgressMap.save = null;
-    }
-
-    function renderMenu() {
-      const summary = pageData.admin?.summary || {};
-      qs('#routineMenuGrid').innerHTML = SECTIONS.map(sec => {
-        let count = 0;
-        if (sec.key === 'reassign') count = Number(summary.needReassignTotal || 0);
-        else count = Number(((summary[sec.key] || {}).total) || 0);
-        const activeClass = activeSectionKey === sec.key ? ' active' : '';
-        return `<div class="group-card ${sec.isReassign ? 'reassign' : ''}${activeClass}" onclick="openSection('${sec.key}')">
-          <div class="title">${sec.label}</div>
-          <div class="meta">目前 ${count} 筆${sec.key==='reassign' ? '｜未指定人員' : ''}</div>
-        </div>`;
-      }).join('');
-    }
-
-    function statusTags(x) {
-      const tags = [];
-      tags.push(`<span class="tag ${x.status === '啟用' ? 'on' : 'off'}">${x.status}</span>`);
-      if (x.needsReassign) tags.push('<span class="tag reassign">待重新指派</span>');
-      return tags.join(' ');
-    }
-
-    function staffStatusTag(status) {
-      const cls = status === '待完成' ? 'todo' : (status === '已逾期' ? 'overdue' : 'on');
-      return `<span class="tag ${cls}">${status}</span>`;
-    }
-
-    function getAdminRowsForCurrentSection() {
-      const rows = pageData.admin?.templates || [];
-      if (activeSectionKey === 'reassign') return rows.filter(x => x.needsReassign);
-      return rows.filter(x => x.groupKey === activeSectionKey);
-    }
-
-    function renderAdminList() {
-      const rows = getAdminRowsForCurrentSection();
-      qs('#adminTemplateList').innerHTML = rows.length ? rows.map(x => `
-        <div class="item">
-          <div class="item-top">
-            <div>
-              <strong>${x.title}</strong>
-              <div class="item-meta">${x.cycleLabel}　｜　${x.assigneeName || '尚未指派'}</div>
-            </div>
-            <div>${statusTags(x)}</div>
-          </div>
-          <div style="margin-top:8px">${x.content || '未填寫說明'}</div>
-          <div class="item-meta">開始：${x.startDate || '-'}${x.isPermanent ? '　｜　永久有效' : (x.endDate ? `　｜　結束：${x.endDate}` : '')}</div>
-          ${x.needsReassign ? `<div class="item-note-warn">這筆目前沒有人承接，請重新指派。</div>` : ''}
-          <div class="inline-actions">
-            <button class="btn secondary" onclick="editTemplate('${x.id}')">修改</button>
-            <button class="btn secondary" onclick="toggleTemplate('${x.id}','${x.status==='啟用'?'停用':'啟用'}')">${x.status==='啟用'?'停用':'啟用'}</button>
-            <button class="btn secondary" onclick="deleteTemplate('${x.id}')">刪除</button>
-          </div>
-        </div>
-      `).join('') : '<div class="empty-box">目前這一區沒有任何定期事項。</div>';
-    }
-
-    function renderMine() {
-      const rows = pageData.mine || [];
-      loadRoutineRemindStateFromRows(rows);
-      qs('#myRoutineList').innerHTML = rows.length ? rows.map((x, idx) => `
-        <div class="item ${x.templateId===targetTemplateId?'task-highlight':''}" id="routineItem_${x.templateId}">
-          <div class="item-top">
-            <div>
-              <strong>${x.title}</strong>
-              <div class="item-meta">${x.groupLabel}　｜　${x.cycleLabel}</div>
-            </div>
-            <div>${staffStatusTag(x.status)}</div>
-          </div>
-          <div style="margin-top:8px">${x.content || '未填寫說明'}</div>
-          <div class="routine-deadline"><span class="deadline-label">應完成日期：</span>${x.dueDate}${x.requirePhotoReturn==='是' ? '　｜　需附照片' : ''}</div>
-          ${renderImageGallery(x.imageAssets||[])}
-          ${renderVideoPlayers(x.videoAssets||[])}
-          ${renderAudioPlayers(x.audioAssets||[])}
-          ${renderRoutineRemindBox(x)}
-          ${x.status==='待完成' || x.status==='已逾期' ? `
-            <div class="complete-box">
-              <div class="field"><label>完成備註（選填）</label><textarea id="note_${idx}" placeholder="有需要補充時再填寫"></textarea></div>
-              <div class="field"><label>完成照片${x.requirePhotoReturn==='是' ? '（必填）' : '（選填）'}</label><input id="photo_${idx}" type="file" accept=".jpg,.jpeg,.png" multiple><div class="attach-badge">可一次上傳多張照片</div></div>
-              <button class="btn routine-complete-btn" onclick="completeItem(${idx}, this)">任務完成</button>
-            </div>` : `<div class="item-meta">完成時間：${x.completedAt || '已完成'}</div>`}
-        </div>
-      `).join('') : '<div class="empty-box">目前沒有輪到你處理的定期事項。</div>';
-      if(targetTemplateId){ const el=qs('#routineItem_' + targetTemplateId); if(el){ setTimeout(()=>{ try{ el.scrollIntoView({behavior:'smooth', block:'center'}); }catch(e){} }, 60); } }
-    }
-
-    function editTemplate(id) {
-      const x = (pageData.admin?.templates || []).find(item => item.id === id);
-      if (!x) return;
-      if (x.needsReassign) openSection('reassign');
-      else openSection(x.groupKey || 'daily');
-      qs('#templateId').value = x.id || '';
-      qs('#routineTitle').value = x.title || '';
-      qs('#routineContent').value = x.content || '';
-      qs('#routineAssignee').value = x.assigneeId || '';
-      qs('#routinePhotoNeed').value = x.requirePhotoReturn || '否';
-      qs('#routineStartDate').value = x.startDate || '';
-      qs('#routineEndDate').value = x.endDate || '';
-      qs('#routinePermanent').checked = !!x.isPermanent;
-      togglePermanent();
-      qs('#routineLongInterval').value = String(x.cycleInterval || 2);
-      setWeekdaysValue('');
-      qs('#routineMonthDay').value = '1';
-      qs('#routineLongMonthDay').value = '1';
-      if (x.groupKey === 'weekly') setWeekdaysValue(x.cycleValue || '');
-      qs('#routineSectionType').value = x.groupKey || 'daily';
-      if (x.groupKey === 'monthly') qs('#routineMonthDay').value = String(x.cycleValue || '1');
-      if (x.groupKey === 'long') qs('#routineLongMonthDay').value = String(x.cycleValue || '1');
-      setActionButtonIdle(qs('#saveRoutineBtn'), '更新定期事項');
-      qs('#cancelEditBtn').classList.remove('hidden');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-
-    function buildSavePayload() {
-      let cycleType = 'daily';
-      let cycleValue = 'daily';
-      let cycleInterval = 1;
-      if (activeSectionKey === 'weekly') {
-        cycleType = 'weekly';
-        cycleValue = getWeekdaysValue();
-      } else if (activeSectionKey === 'monthly') {
-        cycleType = 'monthly';
-        cycleValue = qs('#routineMonthDay').value;
-      } else if (activeSectionKey === 'long') {
-        cycleType = 'monthly';
-        cycleValue = qs('#routineLongMonthDay').value;
-        cycleInterval = Math.max(2, Number(qs('#routineLongInterval').value || 2) || 2);
-      }
-      return {
-        userId: currentUser.id,
-        templateId: qs('#templateId').value,
-        title: qs('#routineTitle').value,
-        content: qs('#routineContent').value,
-        assigneeId: qs('#routineAssignee').value,
-        requirePhotoReturn: qs('#routinePhotoNeed').value,
-        startDate: qs('#routineStartDate').value,
-        endDate: qs('#routineEndDate').value,
-        isPermanent: qs('#routinePermanent').checked,
-        cycleType,
-        cycleValue,
-        cycleInterval,
-        status: '啟用'
-      };
-    }
-
-    async function saveRoutineTemplate() {
-      const saveBtn = qs('#saveRoutineBtn');
-      const progress = startActionButtonProgress(saveBtn, { label:'儲存中', auto:false });
-      routineButtonProgressMap.save = progress;
-      try {
-        if (activeSectionKey === 'reassign') {
-          setMsg(qs('#msg'), '待重新指派區只用來重新指派既有事項。', true);
-          progress.fail('無法在此區新增');
-          return;
-        }
-        progress.set(8,'檢查資料');
-        const payload = buildSavePayload();
-        payload.imageAssets = await collectRoutineAssets('routineImageFiles','image',12,42);
-        payload.videoAssets = await collectRoutineAssets('routineVideoFiles','video',42,72);
-        payload.audioAssets = [];
-        if(routineRecordedAsset){
-          progress.set(78,'錄音上傳中');
-          payload.audioAssets = [routineRecordedAsset];
-        }
-        progress.set(92,'寫入固定事項資料');
-        const r = await api('saveRoutineTemplate', payload);
-        if (!r.ok) { setMsg(qs('#msg'), r.message || '儲存失敗', true); progress.fail(r.message||'儲存失敗'); return; }
-        setMsg(qs('#msg'), r.message || '儲存完成');
-        progress.done(r.message||'儲存完成');
-        const keepSection = activeSectionKey;
-        await setupRoutineRecorder();
-        await refreshPage();
-        if (keepSection) openSection(keepSection);
-        resetRoutineForm();
-      } catch (e) {
-        progress.fail('儲存失敗');
-        setMsg(qs('#msg'), e.message || '儲存失敗', true);
-      } finally {
-        routineButtonProgressMap.save = null;
-      }
-    }
-
-    async function toggleTemplate(id, status) {
-      const r = await api('toggleRoutineTemplate', { userId: currentUser.id, templateId: id, status });
-      if (!r.ok) { setMsg(qs('#msg'), r.message || '更新失敗', true); return; }
-      await refreshPage();
-      if (activeSectionKey) openSection(activeSectionKey);
-    }
-
-    async function deleteTemplate(id) {
-      if (!confirm('確定要刪除這筆定期事項嗎？')) return;
-      const r = await api('deleteRoutineTemplate', { userId: currentUser.id, templateId: id });
-      if (!r.ok) { setMsg(qs('#msg'), r.message || '刪除失敗', true); return; }
-      setMsg(qs('#msg'), r.message || '已刪除');
-      await refreshPage();
-      if (activeSectionKey) openSection(activeSectionKey);
-    }
-
-    async function completeItem(idx, btnEl) {
-      const item = pageData.mine[idx];
-      const note = qs(`#note_${idx}`).value;
-      const photoFiles = Array.from(qs(`#photo_${idx}`).files || []);
-      const progress = startActionButtonProgress(btnEl, { label:'送出中', auto:false });
-      try {
-        if (item.requirePhotoReturn === '是' && !photoFiles.length) {
-          progress.fail('需要附照片');
-          return;
-        }
-        progress.set(15, '準備整理附件');
-        let photos = [];
-        if (photoFiles.length) {
-          progress.set(55, '處理完成照片中');
-          photos = await compressImagesToDataUrls(photoFiles, 1600, 0.75);
-        }
-        progress.set(85, '送出完成回報');
-        const r = await api('completeRoutineItem', { userId: currentUser.id, templateId: item.templateId, periodKey: item.periodKey, note, photos });
-        if (!r.ok) { progress.fail(r.message || '送出失敗'); return; }
-        progress.done(r.message || '已完成');
-        await refreshPage();
-      } catch (e) {
-        progress.fail('送出失敗');
-        setMsg(qs('#msg'), e.message || '送出失敗', true);
-      }
-    }
-
-
-function clearRoutineRecording(){
-      try{ if(routineRecorder && routineRecorder.state !== 'inactive') routineRecorder.stop(); }catch(e){}
-      routineRecorder = null;
-      if(routineMediaStream){ try{ routineMediaStream.getTracks().forEach(t=>t.stop()); }catch(e){} }
-      routineMediaStream = null;
-      routineRecordedBlob = null;
-      routineRecordedAsset = null;
-      if(routineRecordedUrl){ try{ URL.revokeObjectURL(routineRecordedUrl); }catch(e){} }
-      routineRecordedUrl = '';
-      const preview = qs('#routineRecPreview');
-      if(preview){ preview.pause(); preview.removeAttribute('src'); preview.classList.add('hidden'); preview.load?.(); }
-      const status = qs('#routineRecStatus'); if(status) status.textContent='尚未錄音';
-      const live = qs('#routineRecLive'); if(live) live.classList.add('hidden');
-      const startBtn = qs('#routineStartRecBtn'); if(startBtn) startBtn.disabled=false;
-      const stopBtn = qs('#routineStopRecBtn'); if(stopBtn) stopBtn.disabled=true;
-      const clearBtn = qs('#routineClearRecBtn'); if(clearBtn) clearBtn.classList.add('hidden');
-    }
-
-    async function setupRoutineRecorder(){
-      const startBtn = qs('#routineStartRecBtn');
-      const stopBtn = qs('#routineStopRecBtn');
-      const clearBtn = qs('#routineClearRecBtn');
-      const preview = qs('#routineRecPreview');
-      const status = qs('#routineRecStatus');
-      const live = qs('#routineRecLive');
-      if(!startBtn || !stopBtn || !clearBtn || !preview || !status) return;
-      startBtn.onclick = async ()=>{
-        try{
-          if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-            showRoutineNotice('目前瀏覽器不支援錄音權限。', true);
-            return;
-          }
-          if(typeof MediaRecorder === 'undefined'){
-            showRoutineNotice('目前裝置不支援 MediaRecorder 錄音。', true);
-            return;
-          }
-          clearRoutineRecording();
-          routineMediaStream = await navigator.mediaDevices.getUserMedia({audio:true});
-          const chunks = [];
-          routineRecorder = new MediaRecorder(routineMediaStream);
-          routineRecorder.ondataavailable = e=>{ if(e.data && e.data.size) chunks.push(e.data); };
-          routineRecorder.onstop = async ()=>{
-            routineRecordedBlob = new Blob(chunks, {type: (routineRecorder && routineRecorder.mimeType) || 'audio/webm'});
-            routineRecordedUrl = URL.createObjectURL(routineRecordedBlob);
-            preview.src = routineRecordedUrl;
-            preview.classList.remove('hidden');
-            clearBtn.classList.remove('hidden');
-            status.textContent = '已錄音，儲存時會自動上傳';
-            try{
-              const file = new File([routineRecordedBlob], 'routine-audio.webm', {type:routineRecordedBlob.type || 'audio/webm'});
-              const uploaded = await uploadFileToCloudinary(file,{folder:'routine/assigned-audio'});
-              routineRecordedAsset = cloudinaryAssetFromResponse(uploaded);
-              if(live) live.classList.add('hidden');
-              status.textContent = '錄音完成';
-            }catch(err){
-              routineRecordedAsset = null;
-              if(live) live.classList.add('hidden');
-              status.textContent = '錄音已完成，但上傳失敗';
-              showRoutineNotice(err && err.message ? err.message : '錄音上傳失敗', true);
-            }
-          };
-          routineRecorder.start();
-          startBtn.disabled = true;
-          stopBtn.disabled = false;
-          if(live) live.classList.remove('hidden');
-          status.textContent = '錄音中，請直接說話';
-        }catch(err){
-          showRoutineNotice(err && err.message ? err.message : '無法啟用錄音', true);
-        }
-      };
-      stopBtn.onclick = ()=>{
-        if(routineRecorder && routineRecorder.state !== 'inactive') routineRecorder.stop();
-        if(routineMediaStream){ try{ routineMediaStream.getTracks().forEach(t=>t.stop()); }catch(e){} }
-        routineMediaStream = null;
-        if(live) live.classList.add('hidden');
-        startBtn.disabled = false;
-        stopBtn.disabled = true;
-      };
-      clearBtn.onclick = ()=> clearRoutineRecording();
-    }
-
-    async function refreshPage() {
-      const requestRole = routineAdminMode ? 'admin' : 'staff';
-      const r = await api('getRoutinePageData', { userId: currentUser.id, email: currentUser.email, role: requestRole });
-      if (!r.ok) { setMsg(qs('#msg'), r.message || '讀取失敗', true); return; }
-      pageData = r;
-      if (routineAdminMode) {
-        if (!activeSectionKey && qs('#routineSectionType')) activeSectionKey = qs('#routineSectionType').value || 'daily';
-        renderMenu();
-        renderSectionDetail();
-      } else {
-        renderMine();
-      }
-    }
-
-    async function init() {
-      fillHeader();
-      fillMonthDays();
-      currentUser = requireLogin();
-      if (!currentUser) return;
-      targetTemplateId = new URLSearchParams(location.search).get('templateId') || '';
-      applyRoutineMode();
-      togglePermanent();
-      const sectionSelect = qs('#routineSectionType');
-      if (sectionSelect) {
-        sectionSelect.onchange = () => {
-          activeSectionKey = sectionSelect.value || 'daily';
-          updateFormMode();
-          renderMenu();
-          renderSectionDetail();
-        };
-      }
-      if (routineAdminMode) {
-        const emp = await api('getEmployeeOptions', { userId: currentUser.id });
-        employeeOptions = emp.rows || [];
-        fillEmployeeOptions();
-        activeSectionKey = sectionSelect ? (sectionSelect.value || 'daily') : 'daily';
-        await setupRoutineRecorder();
-      }
-      await refreshPage();
-    }
-  </script>
-</body>
-</html>
+try{document.addEventListener('DOMContentLoaded', mountInlineRecorderForThisPage);}catch(e){}
+</script></body></html>

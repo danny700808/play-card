@@ -1,887 +1,239 @@
-<!doctype html>
-<html lang="zh-Hant">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>交辦事項</title>
-  <link rel="stylesheet" href="style.css">
-  <style>
-    .task-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
-    .task-actions .btn{width:auto;min-width:120px}
-    .task-note{background:#f7fafc;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;font-size:13px;color:#526174;margin-top:8px}
-    .task-note.warn{background:#fff8e8;border-color:#f0d18a;color:#8a6413}
-    .task-summary-box{margin-top:8px;padding:10px 12px;border-radius:12px;background:#f7fafc;border:1px solid #e2e8f0}
-    .task-summary-box .muted{margin:0}
-    .task-deadline{margin-top:10px;font-size:18px;font-weight:800;color:#203040;line-height:1.55}
-    .task-deadline .deadline-label{color:#1f7a5a}
-    .complete-primary{display:block;background:#1f7a5a !important;color:#fff !important;width:100% !important;min-height:56px;border-radius:16px;font-size:22px;font-weight:800;margin-top:10px}
-    .task-audio-link{margin-top:10px}
-    .task-audio-link .btn{width:auto}
-    .task-del-wrap{margin-left:auto}
-    @media (max-width:560px){
-      .task-actions .btn,.task-audio-link .btn{width:100%}
-      .task-del-wrap{margin-left:0;width:100%}
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>交辦事項</title><link rel="stylesheet" href="style.css"><style>
+:root{
+  --bg:#f4f7fb;--card:#fff;--text:#182230;--muted:#667085;--line:#e4e7ec;
+  --main:#1f7a5a;--main-soft:#e8f5ef;--warn:#b42318;--blue:#175cd3;
+  --shadow:0 10px 24px rgba(16,24,40,.08);--radius:18px
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC",Arial,sans-serif;background:var(--bg);color:var(--text);line-height:1.55}
+header{position:sticky;top:0;z-index:20;background:rgba(244,247,251,.94);backdrop-filter:blur(12px);border-bottom:1px solid var(--line);padding:14px}
+h1{font-size:21px;font-weight:850;margin:0}.sub{font-size:13px;color:var(--muted);margin:5px 0 0}
+main{max-width:920px;margin:0 auto;padding:12px 12px 34px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px;margin-bottom:12px}
+.section-title{font-size:16px;font-weight:850;margin:2px 0 10px;display:flex;align-items:center;gap:8px}
+.num{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--main);color:#fff;font-size:12px;font-weight:800}
+label{display:block;font-size:13px;font-weight:760;margin:0 0 6px}
+input,select,textarea{width:100%;border:1px solid #d0d5dd;border-radius:13px;background:#fff;padding:11px 12px;font-size:15px;color:#101828;outline:none}
+textarea{min-height:96px;resize:vertical}
+.grid{display:grid;grid-template-columns:1fr;gap:10px}.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.hint{font-size:12.5px;color:var(--muted);margin-top:6px}.note{font-size:13px;color:#475467;background:#f9fafb;border:1px dashed #d0d5dd;border-radius:14px;padding:10px}
+.checkrow{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.check{border:1px solid var(--line);border-radius:13px;padding:10px 11px;display:flex;align-items:center;justify-content:space-between;font-size:13px;background:#fcfcfd}
+.box{width:20px;height:20px;border-radius:6px;background:var(--main);display:grid;place-items:center;color:#fff;font-size:14px;font-weight:900}.box.off{background:#fff;border:1px solid #d0d5dd;color:transparent}
+.actions{position:sticky;bottom:0;background:linear-gradient(180deg,rgba(244,247,251,0),var(--bg) 25%);padding:18px 0 0;display:flex;gap:10px}
+.btn{border:0;border-radius:14px;padding:12px 14px;font-size:15px;font-weight:850;cursor:pointer}.btn.primary{background:var(--main);color:#fff;flex:1}.btn.secondary{background:#fff;border:1px solid var(--line);color:#344054}.btn.small{font-size:13px;padding:8px 10px;border-radius:11px}
+.toolbar{display:flex;gap:8px;overflow:auto;padding:10px 14px 6px;background:var(--bg);border-bottom:1px solid var(--line);position:sticky;top:67px;z-index:15}
+.chip{flex:0 0 auto;border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 11px;font-size:13px;color:#344054;text-decoration:none;white-space:nowrap}
+.hidden{display:none!important}.msg{padding:10px 12px;border-radius:14px;margin-bottom:10px;font-size:13px}.msg.ok{background:#e8f5ef;color:#1f7a5a}.msg.err{background:#fef3f2;color:#b42318}
+@media(min-width:720px){.grid{grid-template-columns:1fr 1fr}.wide{grid-column:1/-1}.checkrow{grid-template-columns:repeat(4,1fr)}.cards-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.card{margin-bottom:0}}
+
+/* 手機直接錄音元件 */
+.audio-recorder{
+  border:1px solid var(--line);
+  background:#fff;
+  border-radius:16px;
+  padding:12px;
+}
+.audio-recorder-title{
+  font-size:13px;
+  font-weight:800;
+  margin-bottom:8px;
+  color:#344054;
+}
+.audio-recorder-controls{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  align-items:center;
+}
+.audio-recorder .rec-btn{
+  border:0;
+  border-radius:999px;
+  padding:10px 13px;
+  font-size:14px;
+  font-weight:850;
+  cursor:pointer;
+}
+.rec-start{background:#b42318;color:#fff}
+.rec-stop{background:#344054;color:#fff}
+.rec-delete{background:#fff;border:1px solid #d0d5dd!important;color:#344054}
+.rec-status{
+  flex:1;
+  min-width:120px;
+  font-size:13px;
+  color:var(--muted);
+}
+.wave{
+  height:42px;
+  border-radius:14px;
+  background:#f2f4f7;
+  border:1px solid #eaecf0;
+  margin-top:10px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:3px;
+  overflow:hidden;
+}
+.wave span{
+  display:block;
+  width:4px;
+  height:8px;
+  border-radius:999px;
+  background:#98a2b3;
+  animation:none;
+}
+.audio-recorder.recording .wave span{
+  background:#b42318;
+  animation:wavePulse 800ms ease-in-out infinite;
+}
+.audio-recorder.recording .wave span:nth-child(2n){animation-delay:120ms}
+.audio-recorder.recording .wave span:nth-child(3n){animation-delay:240ms}
+.audio-recorder.recording .wave span:nth-child(4n){animation-delay:360ms}
+@keyframes wavePulse{
+  0%,100%{height:8px;opacity:.55}
+  50%{height:34px;opacity:1}
+}
+.audio-preview{
+  width:100%;
+  margin-top:10px;
+}
+.audio-hidden{display:none!important}
+
+</style></head><body>
+<header><h1>交辦事項｜建立任務</h1><p class="sub">發布就是開始；只設定一組「完成期限」，不再分開始日、到期日、截止日。</p></header>
+<main><div id="msg"></div>
+<div class="card"><div class="section-title"><span class="num">1</span>任務基本資料</div><div class="grid">
+<div class="wide"><label>任務標題</label><input id="taskTitle" placeholder="例如：整理 5 月份器材盤點"></div>
+<div class="wide"><label>任務內容 / 說明</label><textarea id="taskContent" placeholder="請寫清楚要做什麼、完成標準、注意事項。"></textarea></div>
+<div><label>任務分類</label><select id="taskCategory"><option>一般交辦</option><option>行政作業</option><option>教學相關</option><option>活動執行</option><option>器材 / 場地</option></select></div>
+<div><label>重要程度</label><select id="taskPriority"><option>一般</option><option>重要</option><option>緊急</option></select></div>
+</div></div>
+<div class="card"><div class="section-title"><span class="num">2</span>指派對象</div><div class="grid">
+<div><label>負責人</label><select id="assigneeId"><option value="">請選擇員工</option></select></div>
+<div><label>主管 / 審核人</label><select id="managerMode"><option value="default">系統預設主管</option><option value="custom">指定主管</option></select></div>
+</div><p class="hint">員工完成或回覆後，主管通知由萬用表控制。</p></div>
+<div class="card"><div class="section-title"><span class="num">3</span>完成期限</div><div class="grid">
+<div><label>完成期限類型</label><select id="dueType" onchange="renderDueFields()"><option value="today">今天完成</option><option value="tomorrow">明天完成</option><option value="days">幾天內完成（含今天）</option><option value="date">指定日期完成</option><option value="none">無期限</option></select></div>
+<div id="dueDaysWrap" class="hidden"><label>天數</label><input id="dueDays" type="number" min="1" placeholder="例如：3"></div>
+<div id="dueDateWrap" class="hidden"><label>指定完成日期</label><input id="dueDate" type="date"></div>
+<div id="dueTimeWrap"><label>截止時間</label><input id="dueTime" type="time" value="18:00"></div>
+</div><p class="hint">例：選「幾天內完成」填 3，代表含今天算第 1 天，第 3 天的截止時間到期。</p></div>
+<div class="card"><div class="section-title"><span class="num">4</span>完成規則</div><div class="checkrow">
+<label class="check">需要完成回報 <input id="needReport" type="checkbox" checked></label>
+<label class="check">允許員工留言 <input id="allowComment" type="checkbox" checked></label>
+<label class="check">主管可退回重做 <input id="allowRedo" type="checkbox" checked></label>
+<label class="check">完成需附件 <input id="needDoneFile" type="checkbox"></label>
+</div></div>
+<div class="card"><div class="section-title"><span class="num">5</span>圖片 / 影片 / 錄音 / 文件</div><div class="grid">
+<div><label>交辦圖片</label><input id="taskImage" type="file" accept="image/*"></div>
+<div><label>交辦影片</label><input id="taskVideo" type="file" accept="video/*"></div>
+<div class="wide" id="taskAudioRecorderMount"></div>
+<div><label>交辦文件</label><input id="taskDoc" type="file"></div>
+<div class="wide"><label>補充備註</label><textarea id="taskNote" placeholder="其他補充說明。"></textarea></div>
+</div></div>
+<div class="card"><div class="section-title"><span class="num">6</span>通知提醒說明</div><div class="note">這裡不再出現舊的提醒頻率 / 自訂提醒。交辦事項的通知由「通知 / 提醒萬用表 → 交辦事項」區塊控制。</div></div>
+<div class="actions"><button class="btn secondary" onclick="history.back()">取消</button><button class="btn primary" onclick="submitTask()">儲存交辦事項</button></div></main>
+<script src="config.js"></script><script>
+const API_URL = String((window.APP_CONFIG && window.APP_CONFIG.API_URL) || window.API_URL || localStorage.getItem('EMPLOYEE_SYSTEM_API_BASE') || '').trim();
+function getUser(){try{return JSON.parse(localStorage.getItem('employeeUser')||'{}')}catch(e){return {}}}
+function userId(){return (getUser()&&getUser().id)||localStorage.getItem('employeeUserId')||''}
+async function api(action, payload){
+  if(!API_URL) throw new Error('尚未設定 API_URL');
+  const res = await fetch(API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(Object.assign({action},payload||{}))});
+  const txt = await res.text();
+  try{return JSON.parse(txt)}catch(e){throw new Error(txt||'API 回應格式錯誤')}
+}
+function $(id){return document.getElementById(id)}
+function val(id){const el=$(id); return el?String(el.value||'').trim():''}
+function checked(id){const el=$(id); return !!(el&&el.checked)}
+function msg(text, ok=true){const m=$('msg'); if(!m)return; m.textContent=text; m.className='msg '+(ok?'ok':'err')}
+
+function renderDueFields(){const t=val('dueType'); $('dueDaysWrap').classList.toggle('hidden',t!=='days'); $('dueDateWrap').classList.toggle('hidden',t!=='date'); $('dueTimeWrap').classList.toggle('hidden',t==='none');}
+function calcDueDate(){const t=val('dueType'); const now=new Date(); let d=new Date(now.getFullYear(),now.getMonth(),now.getDate()); if(t==='none')return ''; if(t==='tomorrow')d.setDate(d.getDate()+1); if(t==='days')d.setDate(d.getDate()+Math.max(1,Number(val('dueDays')||1))-1); if(t==='date')return val('dueDate'); return d.toISOString().slice(0,10);}
+async function loadEmployees(){try{const res=await api('getEmployeeOptions',{userId:userId()}); const list=res.employees||res.rows||[]; $('assigneeId').innerHTML='<option value="">請選擇員工</option>'+list.map(x=>`<option value="${x.id||x.employeeId||''}">${x.name||x.employeeName||''}</option>`).join('');}catch(e){}}
+async function submitTask(){try{const dueDate=calcDueDate(); const payload={userId:userId(),title:val('taskTitle'),content:val('taskContent'),category:val('taskCategory'),priority:val('taskPriority'),assigneeId:val('assigneeId'),dueType:val('dueType'),dueDate, dueTime:val('dueTime'),needReport:checked('needReport'),allowComment:checked('allowComment'),allowRedo:checked('allowRedo'),needDoneFile:checked('needDoneFile'),note:val('taskNote')}; const res=await api('createTask',payload); if(!res.ok)throw new Error(res.message||'儲存失敗'); msg('交辦事項已儲存，通知將依萬用表設定處理。',true);}catch(e){msg(e.message,false)}}
+document.addEventListener('DOMContentLoaded',()=>{renderDueFields();loadEmployees();});
+
+/* 手機直接錄音：按下錄音 → 停止 → 試聽 → 刪除重錄 */
+const recorderStore = {};
+async function startInlineRecording(key){
+  const box = document.querySelector(`[data-recorder="${key}"]`);
+  if(!box) return;
+  try{
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      throw new Error('這個瀏覽器不支援直接錄音，請改用手機 Chrome / Safari。');
     }
-  
-    .page-return-wrap{margin-bottom:16px}
-    .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
-
-    .task-media-link{margin-top:10px}
-    .task-media-link .btn{width:auto}
-
-
-    .task-media-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:12px}
-    .task-media-grid .btn{width:100%;min-width:0}
-    .task-gallery{display:grid;gap:10px;margin-top:12px}
-    .task-gallery.cols-1{grid-template-columns:1fr}
-    .task-gallery.cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}
-    .task-gallery.cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}
-    .task-gallery a{display:block;border-radius:14px;overflow:hidden;border:1px solid #e2e8f0;background:#fff}
-    .task-gallery img{width:100%;height:118px;object-fit:cover;display:block}
-    .task-complete-fields{margin-top:12px;border:1px solid #e2e8f0;border-radius:16px;padding:14px;background:#fff}
-    .task-complete-fields .field{margin-top:10px}
-    .task-complete-fields .field:first-child{margin-top:0}
-    .task-complete-fields textarea{min-height:110px}
-    @media (max-width:560px){
-      .task-media-grid{grid-template-columns:1fr}
-    }
-
-
-    .task-actions{display:block}
-    .task-actions .complete-action-box,.task-actions .task-del-wrap{width:100%}
-    .task-del-wrap{margin-top:12px}
-    .task-media-section{margin-top:12px}.task-media-section.audio-wide{margin-left:0;margin-right:0}.task-media-section.audio-wide .task-player{width:100% !important;min-width:100% !important;display:block}
-    .task-media-title{font-size:13px;font-weight:800;color:#526174;margin:0 0 6px}
-    .task-player{width:100%;border-radius:14px;background:#eef2f7;display:block}
-    audio.task-player{width:100% !important;min-width:100% !important;height:60px;min-height:60px;background:transparent;border-radius:20px;display:block;margin:0}
-    video.task-player{max-height:280px}
-    .task-file-links{display:grid;grid-template-columns:1fr;gap:10px;margin-top:12px}
-    .task-file-link{display:block;width:100%;padding:14px 16px;border-radius:16px;background:#e9edf3;color:#1f2937;text-decoration:none;font-weight:800}
-    .task-admin-tabs{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0 14px}
-    .task-admin-tab{border:1px solid #d8e1ea;background:#fff;border-radius:16px;padding:12px 14px;font-size:18px;font-weight:800;cursor:pointer}
-    .task-admin-tab.active{background:#1f7a5a;color:#fff;border-color:#1f7a5a}
-    .task-admin-tab small{display:block;font-size:13px;font-weight:700;opacity:.9;margin-top:4px}
-    .recorder-inline{border:1px solid #e2e8f0;border-radius:16px;padding:12px;background:#fff}
-    .recorder-inline .recorder-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:center}
-    .recorder-inline .btn{width:100%;min-width:0}
-    .recorder-inline .status{font-size:13px;color:#526174;font-weight:700}
-    .recorder-inline audio{margin-top:10px;width:100%;height:64px}
-
-    .task-admin-entry-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:10px 0 14px}
-    .task-admin-entry-card{border:1px solid #d8e1ea;background:#fff;border-radius:18px;padding:16px 14px;text-align:left;cursor:pointer}
-    .task-admin-entry-card strong{display:block;font-size:18px;font-weight:900;color:#17324a}
-    .task-admin-entry-card small{display:block;margin-top:6px;font-size:13px;color:#526174;font-weight:700}
-    .task-admin-panel{margin-top:10px;padding:14px;border-radius:18px;background:#f8fbff;border:1px solid #dbe5ee}
-    .task-admin-panel-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px}
-    .task-admin-close{width:auto;min-width:90px}
-    .task-history-filter{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end;margin-bottom:12px}
-    .task-history-actions .btn{width:auto;min-width:90px}
-    .task-summary-card{background:#fff;border:1px solid #dbe5ee;border-radius:18px;padding:14px 16px;margin-bottom:12px}
-    .task-summary-row{display:grid;grid-template-columns:100px 1fr;gap:8px;line-height:1.8;font-size:15px}
-    .task-summary-row .k{color:#64748b;font-weight:800}
-    .task-summary-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
-    .task-summary-actions .btn{width:auto;min-width:110px}
-    .task-detail-wrap{margin-top:12px;padding-top:12px;border-top:1px dashed #d8e1ea}
-    .redo-box{margin-top:12px;padding:12px;border-radius:16px;background:#fff8e8;border:1px solid #f1d18a}
-    .redo-box .recorder-inline{margin-top:8px}
-    .redo-label{display:inline-block;padding:6px 12px;border-radius:999px;background:#fff3cd;color:#8a5a00;font-weight:900;font-size:13px;border:1px solid #f0df9b}
-    @media (max-width:560px){
-      .task-admin-entry-grid,.task-history-filter{grid-template-columns:1fr}
-      .task-summary-row{grid-template-columns:82px 1fr}
-    }
-
-    @media (max-width:560px){
-      .task-admin-tabs{grid-template-columns:1fr}
-    }
-
-
-    .staff-task-card{padding:0;border-radius:20px;overflow:hidden;border:1px solid #dbe5ee;background:#eef6ff}
-    .staff-task-head{padding:18px 18px 8px}
-    .staff-task-head .top{display:flex;align-items:center;gap:8px;justify-content:space-between}
-    .staff-task-mainline{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
-    .staff-task-mainlabel{font-size:28px;font-weight:900;line-height:1.2;color:#17324a;margin:0}
-    .staff-task-title{font-size:24px;font-weight:900;line-height:1.35;color:#17324a;margin:0}
-    .staff-task-content{margin-top:10px;font-size:16px;line-height:1.8;color:#334155;white-space:pre-wrap}
-    .task-dual-section{padding:16px 18px}
-    .task-dual-section + .task-dual-section{border-top:1px solid rgba(15,23,42,.08)}
-    .task-dual-section.assignment{background:#eef6ff}
-    .task-dual-section.completion{background:#eaf7ee}
-    .task-zone-title{font-size:18px;font-weight:900;margin:0 0 10px;color:#17324a}
-    .task-zone-badge{display:inline-block;padding:6px 12px;border-radius:999px;font-size:14px;font-weight:900;margin-bottom:12px}
-    .task-zone-badge.assignment{display:none}
-    .task-zone-badge.completion{display:none}
-    .task-require-box{margin-top:12px;padding:14px 16px;border-radius:14px;border:1px solid #b7dcc3;background:#ffffff;font-size:16px;line-height:1.7;color:#1f5137;font-weight:800}
-    .task-deadline.emphasis{margin-top:0;padding:12px 14px;border-radius:16px;background:#fff;border:1px solid rgba(31,122,90,.18);box-shadow:0 1px 0 rgba(31,122,90,.04);font-size:22px;font-weight:900;display:none}
-    .task-subgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-    .task-subgrid .field{margin-top:0 !important}
-    .task-side-note{font-size:13px;color:#526174;margin-top:6px}
-    .inline-status{margin-top:12px}
-    .inline-status .message{margin-top:0}
-    .task-complete-fields{background:rgba(255,255,255,.82)}
-    .recorder-inline .status{margin-top:8px;font-size:15px}
-    .task-complete-fields .field label{font-size:18px;font-weight:900}
-    .staff-task-head{padding-bottom:0}
-    .task-status-top{display:flex;justify-content:flex-end;margin:0 18px 0}
-    .task-status-chip{display:inline-block;padding:6px 12px;border-radius:999px;background:#fff3cd;color:#8a5a00;font-size:14px;font-weight:900;border:1px solid #f0df9b}
-    .complete-zone-heading{font-size:26px;font-weight:900;color:#1f7a5a;margin:0 0 10px}
-
-    @media (max-width:560px){
-      .staff-task-title{font-size:21px}
-      .task-subgrid{grid-template-columns:1fr}
-      .task-dual-section{padding:14px}
-    }
-
-
-    .task-loading-overlay{position:fixed;inset:0;background:rgba(15,23,42,.28);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px}
-    .task-loading-overlay.hidden{display:none}
-    .task-loading-card{width:min(420px,100%);background:#fff;border-radius:22px;padding:20px 18px;box-shadow:0 24px 60px rgba(15,23,42,.18)}
-    .task-loading-title{font-size:18px;font-weight:900;color:#203040;margin:0 0 8px}
-    .task-loading-text{font-size:14px;color:#526174;margin:0 0 12px;line-height:1.7}
-    .task-loading-track{width:100%;height:10px;border-radius:999px;background:#e7edf5;overflow:hidden}
-    .task-loading-bar{height:100%;width:0%;background:linear-gradient(90deg,#6fa8ff,#3b82f6);transition:width .2s ease}
-    .task-loading-meta{display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:12px;color:#6b7280;font-weight:700}
-
-  </style>
-</head>
-<body onload="init()">
-  <div class="container">
-    <div class="page-return-wrap"><a class="btn page-return-btn" id="taskHomeLink" href="dashboard.html">返回員工首頁</a></div>
-    <div class="card">
-      <div class="topbar">
-        <div>
-          <h1 class="title" id="taskPageTitle" style="margin:0">交辦事項</h1>
-          <div class="welcome">歡迎 <span data-user-name></span></div>
-        </div>
-        
-      </div>
-      <div id="msg" class="message"></div>
-
-      <div id="taskLoadingOverlay" class="task-loading-overlay hidden" aria-live="polite" aria-busy="true">
-        <div class="task-loading-card">
-          <div class="task-loading-title" id="taskLoadingTitle">任務資料讀取中</div>
-          <p class="task-loading-text" id="taskLoadingText">正在整理交辦內容、附件與完成資訊…</p>
-          <div class="task-loading-track"><div class="task-loading-bar" id="taskLoadingBar"></div></div>
-          <div class="task-loading-meta"><span id="taskLoadingPercent">0%</span><span id="taskLoadingStep">準備中</span></div>
-        </div>
-      </div>
-
-      <div id="teacherContractBanner" class="card hidden" style="margin-top:14px;border:1px solid #f5d08a;background:#fff8e8">
-        <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
-          <div>
-            <div style="font-size:20px;font-weight:900;color:#7c4a03">年度合約簽署</div>
-            <div class="muted" id="teacherContractBannerText">讀取中…</div>
-          </div>
-          <a class="btn" href="contract.html?source=todo" style="width:auto;padding:10px 16px">前往簽署</a>
-        </div>
-      </div>
-
-
-      <div id="adminBlock" data-if-admin style="display:none">        <div class="section-title">快速建立交辦</div>
-        <div class="field"><label>任務標題</label><input id="title" placeholder="請輸入任務標題"></div>
-        <div class="field"><label>任務內容（選填）</label><textarea id="content" placeholder="需要補充時再填寫"></textarea></div>
-        <div class="field"><label>指派員工</label><select id="assigneeId"><option value="">載入員工中...</option></select></div>
-
-        <div class="field">
-          <label>時間選擇</label>
-          <select id="dueModeSelect">
-            <option value="today">今天 9 點前</option>
-            <option value="tomorrow">明天 9 點前</option>
-            <option value="2days">兩天後 9 點前</option>
-            <option value="week">本週內</option>
-            <option value="shopee">蝦皮 19:00 前寄出</option>
-            <option value="momo">Momo 15:00 前完成</option>
-            <option value="custom">自訂時間</option>
-          </select>
-        </div>
-
-        <div id="customDueBox" class="hidden">
-          <div class="field"><label>截止日期</label><input id="dueDate" type="date"></div>
-          <div class="field"><label>截止時間</label><input id="dueTime" type="time"></div>
-        </div>
-
-        <div class="field">
-          <label>任務圖片 / 文件（選填）</label>
-          <input id="taskImage" type="file" accept=".jpg,.jpeg,.png,.pdf,.doc,.docx" multiple>
-        </div>
-
-        <div class="field">
-          <label>任務影片（選填）</label>
-          <input id="taskVideo" type="file" accept="video/*">
-        </div>
-
-        <div class="field">
-          <label>任務錄音（選填）</label>
-          <div class="audio-box">
-            <div class="attach-row">
-              <button type="button" class="btn secondary" style="width:auto" id="startRecBtn">開始錄音</button>
-              <button type="button" class="btn secondary" style="width:auto" id="stopRecBtn" disabled>完成錄音</button>
-              <button type="button" class="btn secondary hidden" style="width:auto" id="clearRecBtn">刪除錄音</button>
-            </div>
-            <div id="recMeter" class="rec-meter hidden" aria-hidden="true"></div>
-            <div class="attach-badge" id="recStatus">尚未錄音</div>
-          </div>
-        </div>
-
-        <div class="field">
-          <button type="button" class="btn secondary" id="clearAttachBtn">清除已選附件</button>
-          <div class="task-note">會一起清除圖片 / 文件、影片、錄音。</div>
-        </div>
-
-        <div class="field">
-          <label>完成時需要回報</label>
-          <select id="requirePhotoReturn">
-            <option value="否">不需要</option>
-            <option value="是">需要</option>
-          </select>
-        </div>
-
-        <div class="field task-note">提醒已改由「通知 / 提醒設定」統一控制；建立交辦事項時不再個別設定提醒頻率。</div>
-
-        <div id="createActionBox">
-          <button class="btn" id="createBtn">建立交辦事項</button>
-        </div>
-
-        <hr style="border:none;border-top:1px solid #e5ebf1;margin:18px 0">
-        <div class="section-title">任務查詢</div>
-        <div class="task-admin-entry-grid">
-          <button type="button" class="task-admin-entry-card" id="recentTaskEntry" onclick="openAdminTaskPanel('recent')">
-            <strong>最近五天任務</strong>
-            <small id="recentTaskCount">0</small>
-          </button>
-          <button type="button" class="task-admin-entry-card" id="historyTaskEntry" onclick="openAdminTaskPanel('history')">
-            <strong>歷史任務</strong>
-            <small id="historyTaskCount">0</small>
-          </button>
-        </div>
-        <div id="adminTaskPanel" class="task-admin-panel hidden">
-          <div class="task-admin-panel-head">
-            <div class="section-title" id="adminPanelTitle" style="margin:0">最近五天任務</div>
-            <button type="button" class="btn secondary task-admin-close" onclick="closeAdminTaskPanel()">收合</button>
-          </div>
-          <div id="adminHistoryFilters" class="task-history-filter hidden">
-            <div class="field"><label>開始日期</label><input type="date" id="historyStartDate"></div>
-            <div class="field"><label>結束日期</label><input type="date" id="historyEndDate"></div>
-            <div class="task-history-actions"><button type="button" class="btn secondary" onclick="renderAdminTaskPanel()">查詢</button></div>
-          </div>
-          <div id="adminList" class="list"></div>
-        </div>
-      </div>
-
-      <div id="staffBlock">
-        <div class="section-title">我的任務</div>
-        <div id="list" class="list"></div>
-      </div>
+    const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+    const chunks = [];
+    const mediaRecorder = new MediaRecorder(stream);
+    recorderStore[key] = {mediaRecorder, stream, chunks, blob:null};
+    mediaRecorder.ondataavailable = e => { if(e.data && e.data.size) chunks.push(e.data); };
+    mediaRecorder.onstop = () => {
+      const blob = new Blob(chunks, {type: mediaRecorder.mimeType || 'audio/webm'});
+      recorderStore[key].blob = blob;
+      const url = URL.createObjectURL(blob);
+      const audio = box.querySelector('audio');
+      audio.src = url;
+      audio.classList.remove('audio-hidden');
+      box.classList.remove('recording');
+      box.querySelector('.rec-status').textContent = '錄音完成，可以先試聽；不滿意可刪除重錄。';
+      box.querySelector('.rec-start').classList.remove('audio-hidden');
+      box.querySelector('.rec-stop').classList.add('audio-hidden');
+      box.querySelector('.rec-delete').classList.remove('audio-hidden');
+      stream.getTracks().forEach(t=>t.stop());
+    };
+    mediaRecorder.start();
+    box.classList.add('recording');
+    box.querySelector('.rec-status').textContent = '錄音中，請直接對著手機說話。';
+    box.querySelector('.rec-start').classList.add('audio-hidden');
+    box.querySelector('.rec-stop').classList.remove('audio-hidden');
+    box.querySelector('.rec-delete').classList.add('audio-hidden');
+    box.querySelector('audio').classList.add('audio-hidden');
+  }catch(err){
+    alert('無法啟用錄音：' + (err.message || err));
+  }
+}
+function stopInlineRecording(key){
+  const rec = recorderStore[key];
+  if(rec && rec.mediaRecorder && rec.mediaRecorder.state !== 'inactive'){
+    rec.mediaRecorder.stop();
+  }
+}
+function deleteInlineRecording(key){
+  const box = document.querySelector(`[data-recorder="${key}"]`);
+  const rec = recorderStore[key];
+  if(rec && rec.stream) rec.stream.getTracks().forEach(t=>t.stop());
+  delete recorderStore[key];
+  if(box){
+    box.classList.remove('recording');
+    const audio = box.querySelector('audio');
+    audio.removeAttribute('src');
+    audio.classList.add('audio-hidden');
+    box.querySelector('.rec-status').textContent = '尚未錄音。';
+    box.querySelector('.rec-start').classList.remove('audio-hidden');
+    box.querySelector('.rec-stop').classList.add('audio-hidden');
+    box.querySelector('.rec-delete').classList.add('audio-hidden');
+  }
+}
+function getInlineRecordingBlob(key){
+  return recorderStore[key] && recorderStore[key].blob ? recorderStore[key].blob : null;
+}
+function recorderHtml(key, title){
+  return `<div class="audio-recorder" data-recorder="${key}">
+    <div class="audio-recorder-title">${title || '錄音說明'}</div>
+    <div class="audio-recorder-controls">
+      <button type="button" class="rec-btn rec-start" onclick="startInlineRecording('${key}')">● 開始錄音</button>
+      <button type="button" class="rec-btn rec-stop audio-hidden" onclick="stopInlineRecording('${key}')">■ 停止錄音</button>
+      <button type="button" class="rec-btn rec-delete audio-hidden" onclick="deleteInlineRecording('${key}')">刪除重錄</button>
+      <div class="rec-status">尚未錄音。</div>
     </div>
-  </div>
+    <div class="wave">${Array.from({length:24}).map(()=>'<span></span>').join('')}</div>
+    <audio controls class="audio-preview audio-hidden"></audio>
+  </div>`;
+}
 
-  <script src="config.js?v=20260413clean1"></script>
-  <script src="app.js?v=20260413clean1"></script>
-  <script>
-    let dueMode = 'today';
-    let taskAudio = '';
-    let currentUser = null;
-    let taskAdminMode = false;
-    let currentAdminTaskTab = 'pending';
-    let currentAdminTaskPanel = '';
-    const completeAudioDataMap = {};
-    const completeRecorderMap = {};
-    const taskButtonProgressMap = {};
+function mountInlineRecorderForThisPage(){const m=document.getElementById('taskAudioRecorderMount'); if(m) m.innerHTML=recorderHtml('taskAudio','交辦錄音說明');}
 
-    function applyTaskMode(){
-      taskAdminMode = !!(currentUser && hasSettingsZoneAccess(currentUser) && isSettingsMode());
-      qs('#adminBlock').style.display = taskAdminMode ? '' : 'none';
-      qs('#staffBlock').style.display = taskAdminMode ? 'none' : '';
-      qs('#taskPageTitle').textContent = taskAdminMode ? '交辦事項設定' : '交辦事項';
-      qs('#taskHomeLink').href = taskAdminMode ? 'items-hub.html' : userHomeHref(currentUser);
-      qs('#taskHomeLink').textContent = taskAdminMode ? '返回事項' : userHomeLabel(currentUser);
-      
-    }
-
-    function applyDueMode(mode){
-      dueMode = mode;
-      if(qs('#dueModeSelect')) qs('#dueModeSelect').value = mode;
-      qs('#customDueBox').classList.toggle('hidden', mode!=='custom');
-    }
-
-    function computeDeadline(mode){
-      const now=new Date();
-      const fmtDate=(d)=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-      if(mode==='custom'){return {dueDate:qs('#dueDate').value,dueTime:qs('#dueTime').value,dueLabel:'自訂時間'};}
-      if(mode==='today'){return {dueDate:fmtDate(now),dueTime:'09:00',dueLabel:'今天 9 點前'};}
-      if(mode==='tomorrow'){const d=new Date(now); d.setDate(d.getDate()+1); return {dueDate:fmtDate(d),dueTime:'09:00',dueLabel:'明天 9 點前'};}
-      if(mode==='2days'){const d=new Date(now); d.setDate(d.getDate()+2); return {dueDate:fmtDate(d),dueTime:'09:00',dueLabel:'兩天後 9 點前'};}
-      if(mode==='week'){const d=new Date(now); const day=d.getDay()||7; d.setDate(d.getDate()+(7-day)); return {dueDate:fmtDate(d),dueTime:'23:59',dueLabel:'本週內'};}
-      if(mode==='shopee'){return {dueDate:fmtDate(now),dueTime:'19:00',dueLabel:'蝦皮 19:00 前寄出'};}
-      if(mode==='momo'){return {dueDate:fmtDate(now),dueTime:'15:00',dueLabel:'Momo 15:00 前完成'};}
-      return {dueDate:'',dueTime:'',dueLabel:''};
-    }
-
-    function renderRemindSummary(task){ return ''; }
-
-    function renderStaffRemindBox(x, isAdmin, isMyAssignedTask){ return ''; }
-
-    async function saveTaskRemindPrefs(taskId, silent){
-      return {ok:true, message:'單筆任務提醒已停用，請到「通知 / 提醒設定」統一調整。'};
-    }
-
-    async function autoSaveTaskRemindPrefs(taskId){ return; }
-
-    function mediaPairs(urls,names){
-      const u=Array.isArray(urls)?urls.filter(Boolean):[];
-      const n=Array.isArray(names)?names:[];
-      return u.map((entry,idx)=>{
-        if(entry && typeof entry==='object' && !Array.isArray(entry)){
-          return {
-            url:String(entry.url||''),
-            name:String(entry.name||n[idx]||`附件 ${idx+1}`)
-          };
-        }
-        return {url:String(entry||''),name:String(n[idx]||`附件 ${idx+1}`)};
-      }).filter(x=>x.url);
-    }
-
-    function renderImageGallery(urls,names){
-      const items=mediaPairs(urls,names).filter(x=>/\.(jpg|jpeg|png|gif|webp|bmp|heic|heif|svg)(\?|$)/i.test(String(x.name||'')) || /\/image\/upload\//.test(String(x.url||'')));
-      if(!items.length) return '';
-      const cols = items.length===1 ? 1 : items.length===2 ? 2 : 3;
-      return `<div class="task-gallery cols-${cols}">${items.map(x=>`<a href="${audioOpenUrl(x.url)}" target="_blank" rel="noopener"><img src="${imagePreviewUrl(x.url)}" alt="${x.name||'任務圖片'}"></a>`).join('')}</div>`;
-    }
-
-    function renderVideoPlayers(items,title){
-      if(!items.length) return '';
-      return `<div class="task-media-section"><div class="task-media-title">${title}</div>${items.map(x=>`<video class="task-player" controls playsinline preload="metadata" src="${optimizedVideoUrl(x.url)}"></video>`).join('')}</div>`;
-    }
-
-    function renderAudioPlayers(items,title){
-      if(!items.length) return '';
-      return `<div class="task-media-section audio-wide"><div class="task-media-title">${title}</div>${items.map(x=>`<audio class="task-player" controls preload="metadata" src="${audioStreamUrl(x.url)}"></audio>`).join('')}</div>`;
-    }
-
-    function renderMediaButtons(items,labelPrefix){
-      if(!items.length) return '';
-      return `<div class="task-media-section"><div class="task-media-title">${labelPrefix}</div><div class="task-file-links">${items.map((x,idx)=>`<a class="task-file-link" href="${audioOpenUrl(x.url)}" target="_blank" rel="noopener">${labelPrefix} ${idx+1}</a>`).join('')}</div></div>`;
-    }
-
-
-    function formatDisplayDateTime(v){
-      const s=String(v||'').trim();
-      if(!s) return '';
-      const iso=s.replace('T',' ').replace(/\.\d+Z?$/,'').replace(/Z$/,'');
-      return iso;
-    }
-
-    async function loadAssignees(){
-      const r=await api('getEmployeeOptions', {});
-      const sel=qs('#assigneeId');
-      sel.innerHTML='<option value="">請選擇員工</option>' + (r.rows||[]).map(x=>`<option value="${x.id}">${x.name}</option>`).join('');
-    }
-
-
-    function taskStatusText(status){
-      const s=String(status||'').trim();
-      if(!s) return '未完成';
-      return s;
-    }
-
-    function summarizeTaskDate(x){
-      return formatDisplayDateTime(x.createdAt||'').slice(0,10) || '';
-    }
-
-    function adminTaskRowMatchesHistory(x){
-      const start=(qs('#historyStartDate')||{}).value || '';
-      const end=(qs('#historyEndDate')||{}).value || '';
-      const d=summarizeTaskDate(x);
-      if(start && d<start) return false;
-      if(end && d>end) return false;
-      return true;
-    }
-
-    function renderAdminTaskDetail(x){
-      const mediaDoneImages = renderImageGallery(x.donePhotoUrls||x.completeImageUrls||[], x.donePhotoNames||x.completeImageNames||[]);
-      const mediaDoneVideos = renderVideoPlayers(mediaPairs(x.doneVideoUrls||x.completeVideoUrls||[], x.doneVideoNames||x.completeVideoNames||[]), '完成影片');
-      const mediaDoneAudios = renderAudioPlayers(mediaPairs(x.doneAudioUrls||x.completeAudioUrls||[], x.doneAudioNames||x.completeAudioNames||[]), '完成錄音');
-      const mediaDoneFiles = renderMediaButtons(mediaPairs(x.doneFileUrls||[], x.doneFileNames||[]), '完成文件');
-      const redoAudio = renderAudioPlayers(mediaPairs(x.redoAudioUrls||[], x.redoAudioNames||[]), '需重新完成說明');
-      return `
-        <div class="task-detail-wrap" id="detail_${x.id}">
-          ${renderTaskRow(x,true,currentUser)}
-          ${x.doneAt || x.doneNote || mediaDoneImages || mediaDoneVideos || mediaDoneAudios || mediaDoneFiles ? `
-            <div class="task-summary-box" style="margin-top:12px">
-              <div class="task-zone-title">員工完成內容</div>
-              ${x.doneAt ? `<div class="muted">完成時間：${formatDisplayDateTime(x.doneAt)}</div>`:''}
-              ${x.doneNote ? `<div style="margin-top:8px;white-space:pre-wrap">${x.doneNote}</div>`:''}
-              ${mediaDoneImages}${mediaDoneVideos}${mediaDoneAudios}${mediaDoneFiles}
-            </div>` : '<div class="muted" style="margin-top:10px">目前還沒有完成回報。</div>'}
-          ${x.status==='已完成' ? `
-            <div class="redo-box">
-              <div class="redo-label">需重新完成</div>
-              <div class="task-side-note">如果這次回覆未達標準，可錄音說明後退回給員工。</div>
-              <div class="recorder-inline">
-                <div class="recorder-row">
-                  <button type="button" class="btn secondary" id="redoStart_${x.id}" onclick="startRedoRec('${x.id}')">開始錄音</button>
-                  <button type="button" class="btn secondary" id="redoStop_${x.id}" onclick="stopRedoRec('${x.id}')" disabled>停止錄音</button>
-                </div>
-                <div class="status" id="redoStatus_${x.id}">尚未錄音</div>
-                <audio id="redoPreview_${x.id}" class="task-player hidden" controls preload="metadata"></audio>
-                <button type="button" class="btn secondary hidden" style="margin-top:10px;width:100%" id="redoClear_${x.id}" onclick="clearRedoRec('${x.id}')">刪除錄音</button>
-                <button type="button" class="btn" style="margin-top:10px;width:100%" onclick="sendRedoTask('${x.id}')">送出需重新完成</button>
-              </div>
-            </div>` : ''}
-          ${x.status==='需重新完成' && redoAudio ? `<div class="task-summary-box" style="margin-top:12px"><div class="task-zone-title">需重新完成說明</div>${redoAudio}</div>`:''}
-        </div>`;
-    }
-
-    function renderAdminSummaryCard(x){
-      return `
-        <div class="task-summary-card" id="task_${x.id}">
-          <div class="task-summary-row"><div class="k">日期</div><div>${summarizeTaskDate(x)||'—'}</div></div>
-          <div class="task-summary-row"><div class="k">標題</div><div>${x.title||''}</div></div>
-          <div class="task-summary-row"><div class="k">負責人</div><div>${x.assigneeName||''}</div></div>
-          <div class="task-summary-row"><div class="k">狀態</div><div>${taskStatusText(x.status)}</div></div>
-          <div class="task-summary-actions">
-            <button type="button" class="btn secondary" onclick="toggleAdminTaskDetail('${x.id}')">查看</button>
-          </div>
-          <div class="hidden" id="detailWrap_${x.id}"></div>
-        </div>`;
-    }
-
-    function toggleAdminTaskDetail(taskId){
-      const box=qs('#detailWrap_'+taskId);
-      if(!box) return;
-      if(!box.classList.contains('hidden')){ box.classList.add('hidden'); box.innerHTML=''; return; }
-      const row=(window.__adminTaskRows||[]).find(x=>String(x.id)===String(taskId));
-      if(!row) return;
-      box.innerHTML=renderAdminTaskDetail(row);
-      box.classList.remove('hidden');
-    }
-
-    function openAdminTaskPanel(kind){
-      currentAdminTaskPanel = kind==='history' ? 'history' : 'recent';
-      const panel=qs('#adminTaskPanel'); if(panel) panel.classList.remove('hidden');
-      const filters=qs('#adminHistoryFilters'); if(filters) filters.classList.toggle('hidden', currentAdminTaskPanel!=='history');
-      const title=qs('#adminPanelTitle'); if(title) title.textContent=currentAdminTaskPanel==='history' ? '歷史任務' : '最近五天任務';
-      renderAdminTaskPanel();
-    }
-
-    function closeAdminTaskPanel(){
-      currentAdminTaskPanel='';
-      const panel=qs('#adminTaskPanel'); if(panel) panel.classList.add('hidden');
-    }
-
-    function renderAdminTaskPanel(){
-      const rows=(window.__adminTaskRows||[]).slice();
-      const now=new Date();
-      const fiveDaysAgo=new Date(now.getTime()-5*24*60*60*1000);
-      let target=[];
-      if(currentAdminTaskPanel==='history'){
-        target=rows.filter(x=>new Date((x.createdAt||'').replace(' ','T')) < fiveDaysAgo).filter(adminTaskRowMatchesHistory);
-      }else{
-        target=rows.filter(x=>new Date((x.createdAt||'').replace(' ','T')) >= fiveDaysAgo);
-      }
-      const list=qs('#adminList'); if(!list) return;
-      list.innerHTML=target.map(renderAdminSummaryCard).join('') || `<div class="muted">目前沒有${currentAdminTaskPanel==='history'?'歷史':'最近五天'}任務</div>`;
-    }
-    function renderTaskRow(x, isAdmin, currentUser){
-      const needReport = x.requirePhotoReturn==='是';
-      const dueText = x.dueLabel || ((x.dueDate||'') + (x.dueTime?(' '+x.dueTime):''));
-      const imageHtml = renderImageGallery(x.taskImageUrls||[], x.taskImageNames||[]);
-      const fileHtml = renderMediaButtons(mediaPairs(x.taskFileUrls||[], x.taskFileNames||[]), '交辦文件');
-      const audioHtml = renderAudioPlayers(mediaPairs(x.taskAudioUrls||[], x.taskAudioNames||[]), '交辦錄音');
-      const videoHtml = renderVideoPlayers(mediaPairs(x.taskVideoUrls||[], x.taskVideoNames||[]), '交辦影片');
-      const remindHtml = renderRemindSummary(x);
-      const isMyAssignedTask = String(x.assigneeId||'')===String(currentUser.id||'') || String(x.assigneeEmail||'').toLowerCase()===String(currentUser.email||'').toLowerCase();
-      const canComplete = x.status!=='已完成' && (!isAdmin || isMyAssignedTask);
-      const proofNote = needReport ? `<div class="task-require-box">此任務需要回報，請至少提供一種方式：圖片、影片、錄音或備註。</div>` : '';
-      const remindToggleBox = renderStaffRemindBox(x, isAdmin, isMyAssignedTask);
-      const completeBox = canComplete ? `
-        <div class="task-dual-section completion">
-          <div class="complete-zone-heading">完成任務區</div>
-          ${proofNote}
-          ${remindToggleBox}
-          <div class="task-complete-fields">
-            <div class="task-subgrid">
-              <div class="field"><label>完成圖片</label><input id="photo_${x.id}" type="file" accept=".jpg,.jpeg,.png" multiple><div class="attach-badge">可上傳一張或多張</div></div>
-              <div class="field"><label>完成影片</label><input id="video_${x.id}" type="file" accept="video/*"></div>
-            </div>
-            <div class="field"><label>完成錄音</label>
-              <div class="recorder-inline">
-                <div class="recorder-row">
-                  <button type="button" class="btn secondary" id="startCompleteRec_${x.id}" onclick="startCompleteRec('${x.id}')">開始錄音</button>
-                  <button type="button" class="btn secondary" id="stopCompleteRec_${x.id}" onclick="stopCompleteRec('${x.id}')" disabled>停止錄音</button>
-                </div>
-                <div class="status" id="completeRecStatus_${x.id}">尚未錄音</div>
-                <audio id="completeRecPreview_${x.id}" class="task-player hidden" controls preload="metadata"></audio>
-                <button type="button" class="btn secondary hidden" style="margin-top:10px;width:100%" id="clearCompleteRec_${x.id}" onclick="clearCompleteRec('${x.id}')">刪除錄音</button>
-              </div>
-            </div>
-            <div class="field"><label>完成備註（選填）</label><textarea id="note_${x.id}" placeholder="補充說明寫在這裡"></textarea></div>
-          </div>
-          <div class="complete-action-box" id="completeWrap_${x.id}">
-            <button class="btn complete-primary" onclick="completeTask('${x.id}', this)">完成任務</button>
-            <div class="inline-status"><div id="completeMsg_${x.id}" class="message"></div></div>
-          </div>
-        </div>` : '';
-      const deleteBtn = isAdmin ? `<div class="task-del-wrap"><button class="btn secondary" onclick="deleteTask('${x.id}', '${(x.title||'').replace(/'/g,"&#39;")}')">刪除任務</button></div>` : '';
-      if(!isAdmin){
-        return `
-          <div class="item staff-task-card" id="task_${x.id}" data-require-photo="${x.requirePhotoReturn||'否'}">
-            <div class="task-dual-section assignment">
-              <div class="staff-task-mainline"><div class="staff-task-mainlabel">交辦任務</div><span class="task-status-chip">待處理</span></div>
-              <h3 class="staff-task-title">${x.title}</h3>
-              ${x.content ? `<div class="staff-task-content">${x.content}</div>` : `<div class="staff-task-content muted">這筆任務沒有額外補充內容。</div>`}
-              ${imageHtml}
-              ${videoHtml}
-              ${audioHtml}
-              ${fileHtml}
-            </div>
-            ${completeBox}
-          </div>`;
-      }
-      return `
-        <div class="item" id="task_${x.id}" data-require-photo="${x.requirePhotoReturn||'否'}">
-          <div class="top"><strong>${x.title}</strong>${formatTaskStatusTag(x.status)}</div>
-          ${x.content ? `<div>${x.content}</div>` : ''}
-          ${imageHtml}
-          ${videoHtml}
-          ${audioHtml}
-          ${fileHtml}
-          <div class="task-deadline">指派：${x.assigneeName||''}｜<span class="deadline-label">期限：${dueText}</span></div>
-          ${remindHtml}
-          ${isAdmin?`<div class="muted">建立者：${x.createdByName||''}｜建立時間：${formatDisplayDateTime(x.createdAt||'')||''}</div>`:''}
-          ${completeBox}
-          ${deleteBtn}
-        </div>`;
-    }
-
-    function switchAdminTaskTab(tab){
-      currentAdminTaskTab = tab==='done' ? 'done' : 'pending';
-      renderAdminTaskPanel();
-    }
-
-    function renderAdminTaskList(rows){
-      window.__adminTaskRows = rows.slice();
-      const recent = rows.filter(x=>{ const d=new Date((x.createdAt||'').replace(' ','T')); return !isNaN(d) && d >= new Date(Date.now()-5*24*60*60*1000); });
-      if(qs('#recentTaskCount')) qs('#recentTaskCount').textContent = `${recent.length} 筆`;
-      if(qs('#historyTaskCount')) qs('#historyTaskCount').textContent = `${Math.max(0, rows.length-recent.length)} 筆`;
-      if(currentAdminTaskPanel) renderAdminTaskPanel();
-      else { const list=qs('#adminList'); if(list) list.innerHTML=''; }
-    }
-
-    const redoAudioDataMap = {};
-    const redoRecorderMap = {};
-
-    async function startRedoRec(taskId){
-      try{
-        const rec = await startRecorder((data)=>{
-          redoAudioDataMap[taskId]=data;
-          const preview=qs('#redoPreview_'+taskId);
-          if(preview){ preview.src=data; preview.classList.remove('hidden'); }
-          const status=qs('#redoStatus_'+taskId); if(status) status.textContent='已錄音，可送出需重新完成。';
-          const clearBtn=qs('#redoClear_'+taskId); if(clearBtn) clearBtn.classList.remove('hidden');
-          redoRecorderMap[taskId]=null;
-        });
-        redoRecorderMap[taskId]=rec;
-        const startBtn=qs('#redoStart_'+taskId), stopBtn=qs('#redoStop_'+taskId), status=qs('#redoStatus_'+taskId);
-        if(startBtn) startBtn.disabled=true;
-        if(stopBtn) stopBtn.disabled=false;
-        if(status) status.textContent='錄音中，請直接說話。';
-      }catch(e){ setMsg(qs('#msg'), e.message||String(e), true); }
-    }
-    function stopRedoRec(taskId){ const rec = redoRecorderMap[taskId]; if(rec){ try{rec.stop();}catch(e){} } const s=qs('#redoStart_'+taskId), t=qs('#redoStop_'+taskId); if(s) s.disabled=false; if(t) t.disabled=true; }
-    function clearRedoRec(taskId){ delete redoAudioDataMap[taskId]; const p=qs('#redoPreview_'+taskId), c=qs('#redoClear_'+taskId), st=qs('#redoStatus_'+taskId); if(p){ p.pause(); p.removeAttribute('src'); p.load(); p.classList.add('hidden'); } if(c) c.classList.add('hidden'); if(st) st.textContent='尚未錄音'; }
-    async function sendRedoTask(taskId){
-      const user=requireLogin();
-      const audioData = redoAudioDataMap[taskId] || '';
-      if(!audioData){ setMsg(qs('#msg'),'請先錄音說明後再送出。',true); return; }
-      const recFile=dataUrlToFile(audioData,'redo-audio.' + guessExtensionByMime((audioData.match(/^data:([^;]+)/)||[])[1]||'audio/webm'));
-      const uploaded=await uploadFileToCloudinary(recFile,{folder:'tasks/redo-audio'});
-      const redoAudioAsset=cloudinaryAssetFromResponse(uploaded);
-      const r=await api('markTaskRedo',{userId:user.id,taskId,redoAudioAsset});
-      setMsg(qs('#msg'),r.message,!r.ok);
-      if(r.ok){ delete redoAudioDataMap[taskId]; setTimeout(loadTasks,300); }
-    }
-
-    async function startCompleteRec(taskId){
-      try{
-        const rec = await startRecorder((data)=>{
-          completeAudioDataMap[taskId]=data;
-          const preview=qs('#completeRecPreview_'+taskId);
-          if(preview){ preview.src=data; preview.classList.remove('hidden'); }
-          const status=qs('#completeRecStatus_'+taskId); if(status) status.textContent='已錄音，可直接送出。';
-          const clearBtn=qs('#clearCompleteRec_'+taskId); if(clearBtn) clearBtn.classList.remove('hidden');
-          completeRecorderMap[taskId]=null;
-        });
-        completeRecorderMap[taskId]=rec;
-        const startBtn=qs('#startCompleteRec_'+taskId), stopBtn=qs('#stopCompleteRec_'+taskId), status=qs('#completeRecStatus_'+taskId);
-        if(startBtn) startBtn.disabled=true;
-        if(stopBtn) stopBtn.disabled=false;
-        if(status) status.textContent='錄音中，請直接說話。';
-      }catch(e){ setMsg(qs('#msg'), e.message||String(e), true); }
-    }
-
-    function stopCompleteRec(taskId){
-      const rec = completeRecorderMap[taskId];
-      if(rec){ try{ rec.stop(); }catch(e){} }
-      const startBtn=qs('#startCompleteRec_'+taskId), stopBtn=qs('#stopCompleteRec_'+taskId);
-      if(startBtn) startBtn.disabled=false;
-      if(stopBtn) stopBtn.disabled=true;
-    }
-
-    function clearCompleteRec(taskId){
-      delete completeAudioDataMap[taskId];
-      const preview=qs('#completeRecPreview_'+taskId), clearBtn=qs('#clearCompleteRec_'+taskId), status=qs('#completeRecStatus_'+taskId), fileInput=qs('#audio_'+taskId);
-      if(preview){ preview.pause(); preview.removeAttribute('src'); preview.load(); preview.classList.add('hidden'); }
-      if(clearBtn) clearBtn.classList.add('hidden');
-      if(status) status.textContent='尚未錄音';
-      if(fileInput) fileInput.value='';
-    }
-
-
-    let taskLoadingTimer = 0;
-    function showTaskLoading(title='任務資料讀取中', text='正在整理交辦內容、附件與完成資訊…'){
-      const overlay=qs('#taskLoadingOverlay');
-      if(!overlay) return;
-      qs('#taskLoadingTitle').textContent=title;
-      qs('#taskLoadingText').textContent=text;
-      qs('#taskLoadingBar').style.width='8%';
-      qs('#taskLoadingPercent').textContent='8%';
-      qs('#taskLoadingStep').textContent='開始讀取';
-      overlay.classList.remove('hidden');
-      clearInterval(taskLoadingTimer);
-      let progress=8;
-      taskLoadingTimer=setInterval(()=>{
-        progress=Math.min(progress + (progress<55?9:(progress<78?5:2)), 90);
-        qs('#taskLoadingBar').style.width=progress+'%';
-        qs('#taskLoadingPercent').textContent=Math.round(progress)+'%';
-        qs('#taskLoadingStep').textContent=progress<45?'讀取任務資料':(progress<72?'整理附件內容':'建立畫面中');
-      }, 180);
-    }
-    function updateTaskLoading(progress, step){
-      const overlay=qs('#taskLoadingOverlay');
-      if(!overlay || overlay.classList.contains('hidden')) return;
-      const p=Math.max(0, Math.min(Number(progress||0),100));
-      qs('#taskLoadingBar').style.width=p+'%';
-      qs('#taskLoadingPercent').textContent=Math.round(p)+'%';
-      if(step) qs('#taskLoadingStep').textContent=step;
-    }
-    function hideTaskLoading(){
-      const overlay=qs('#taskLoadingOverlay');
-      if(!overlay) return;
-      clearInterval(taskLoadingTimer);
-      updateTaskLoading(100,'完成');
-      setTimeout(()=>overlay.classList.add('hidden'), 180);
-    }
-
-    async function loadTasks(){
-      const user=currentUser||requireLogin();
-      const requestRole = taskAdminMode ? 'admin' : 'staff';
-      showTaskLoading('任務資料讀取中', '正在整理交辦內容、附件與完成資訊…');
-      try{
-        updateTaskLoading(18,'向系統取得任務');
-        const r=await api('getTasks',{userId:user.id,email:user.email,role:requestRole});
-        updateTaskLoading(58,'整理任務附件');
-        const rows=r.rows||[];
-        if(taskAdminMode){
-          window.__adminTaskRows = rows.slice();
-          renderAdminTaskList(window.__adminTaskRows);
-          qs('#staffBlock').style.display='none';
-        }else{
-          qs('#list').innerHTML = rows.filter(x=>x.status!=='已完成').map(x=>renderTaskRow(x,false,user)).join('') || '<div class="muted">目前沒有任務</div>';
-        }
-        updateTaskLoading(88,'套用畫面');
-        const taskId=new URLSearchParams(location.search).get('taskId');
-        if(taskId){
-          const el=qs('#task_'+taskId);
-          if(el){el.scrollIntoView({behavior:'smooth', block:'start'}); el.classList.add('focus-task'); setTimeout(()=>el.classList.remove('focus-task'),2200);}
-        }
-      } finally {
-        hideTaskLoading();
-      }
-    }
-
-    function getTaskButtonProgress(key, btn, label){
-      if(!btn) return null;
-      const existing = taskButtonProgressMap[key];
-      if(existing && existing.button === btn) return existing;
-      const progress = startActionButtonProgress(btn, { label: label || '處理中', auto:false });
-      taskButtonProgressMap[key] = progress;
-      return progress;
-    }
-
-    function renderRecMeter(level=0){
-      const meter=qs('#recMeter'); if(!meter) return;
-      const bars=Array.from(meter.children); if(!bars.length) return;
-      const active=Math.max(1, Math.min(bars.length, Math.round(level*bars.length)));
-      bars.forEach((bar,i)=>{
-        const on=i<active && level>0.03;
-        const base=18 + ((i%5)*6);
-        const boost=on ? Math.max(10, level*42 - i*1.2) : 0;
-        bar.style.height=(base+boost)+'px';
-        bar.classList.toggle('live', on);
-      });
-    }
-
-    function initRecMeter(){
-      const meter=qs('#recMeter');
-      if(!meter || meter.children.length) return;
-      meter.innerHTML=Array.from({length:18}).map(()=>'<span class="rec-bar"></span>').join('');
-      renderRecMeter(0);
-    }
-
-    async function completeTask(taskId, btnEl){
-      const user=requireLogin();
-      const item=qs('#task_'+taskId);
-      const requirePhoto=item ? item.dataset.requirePhoto==='是' : false;
-      const inlineMsg=qs('#completeMsg_'+taskId) || qs('#msg');
-      const photoFiles=Array.from(qs('#photo_'+taskId).files||[]);
-      const videoFile=(qs('#video_'+taskId)||{}).files ? qs('#video_'+taskId).files[0] : null;
-      const noteValue=(qs('#note_'+taskId)||{}).value || '';
-      const recordedAudioData = completeAudioDataMap[taskId] || '';
-      const hasAnyReply = !!(photoFiles.length || videoFile || recordedAudioData || String(noteValue).trim());
-      if(requirePhoto && !hasAnyReply){setMsg(inlineMsg,'此任務需要回報，請至少提供一種方式後再送出。',true); return;}
-      let photoAssets=[], videoAsset=null, fileAsset=null, audioAsset=null;
-      const progress = getTaskButtonProgress('complete_'+taskId, btnEl, '完成任務送出中');
-      try {
-        progress.set(10, '檢查完成資料');
-        if(photoFiles.length){ const uploaded=await uploadFilesToCloudinary(photoFiles,{folder:'tasks/completed-photo',onProgress:(ratio)=>progress.set(20 + Math.round(ratio*25), '完成照片上傳中')}); photoAssets=(uploaded||[]).map(cloudinaryAssetFromResponse).filter(x=>x.url); }
-        if(videoFile){ const uploaded=await uploadFileToCloudinary(videoFile,{folder:'tasks/completed-video',onProgress:(ratio)=>progress.set(46 + Math.round(ratio*12), '完成影片上傳中')}); videoAsset=cloudinaryAssetFromResponse(uploaded); }
-        if(recordedAudioData){
-          const recFile=dataUrlToFile(recordedAudioData,'complete-audio.' + guessExtensionByMime((recordedAudioData.match(/^data:([^;]+)/)||[])[1]||'audio/webm'));
-          const uploaded=await uploadFileToCloudinary(recFile,{folder:'tasks/completed-audio',onProgress:(ratio)=>progress.set(72 + Math.round(ratio*8), '完成語音上傳中')});
-          audioAsset=cloudinaryAssetFromResponse(uploaded);
-        }
-        progress.set(85, '等待系統寫入');
-        const r=await api('completeTask',{userId:user.id,taskId,note:noteValue,photoAssets,videoAsset,fileAsset,audioAsset});
-        setMsg(qs('#msg'),r.message,!r.ok);
-        if(r.ok){ progress.done('完成任務'); delete completeAudioDataMap[taskId]; setTimeout(loadTasks,450); }
-        else { progress.fail('送出失敗'); }
-      } catch (e) {
-        progress.fail('送出失敗');
-        setMsg(inlineMsg, e.message || '送出失敗', true);
-      }
-    }
-
-    async function deleteTask(taskId, title){
-      const user=requireLogin();
-      if(!taskAdminMode) return;
-      if(!confirm(`確定要刪除任務「${title||taskId}」嗎？`)) return;
-      const r=await api('deleteTask',{userId:user.id,taskId});
-      setMsg(qs('#msg'),r.message,!r.ok);
-      if(r.ok) setTimeout(loadTasks,220);
-    }
-
-
-    async function loadTeacherContractBanner(){
-      if(!currentUser || !isExternalTeacher(currentUser)) return;
-      const box=qs('#teacherContractBanner');
-      const text=qs('#teacherContractBannerText');
-      if(!box || !text) return;
-      try{
-        const r=await getTeacherContractStatus({userId:currentUser.id,email:currentUser.email});
-        if(shouldShowTeacherContractCard(r)){
-          box.classList.remove('hidden');
-          text.textContent=`${r.contract?.year||''} 年度契約尚未簽署，請先完成簽約。`;
-        }else if(r && r.ok && r.signed){
-          box.classList.add('hidden');
-        }else{
-          box.classList.remove('hidden');
-          text.textContent='目前尚未完成年度合約資料設定。';
-        }
-      }catch(e){
-        box.classList.remove('hidden');
-        text.textContent='目前無法讀取合約狀態，請稍後再試。';
-      }
-    }
-
-
-    async function init(){
-      fillHeader();
-      applyDueMode('today');
-      if(qs('#dueModeSelect')) qs('#dueModeSelect').onchange=(e)=>applyDueMode(e.target.value);
-      currentUser=requireLogin();
-      if(!currentUser) return;
-      applyTaskMode();
-      if(taskAdminMode){
-        await loadAssignees();
-        initRecMeter();
-        let recorder=null;
-        qs('#clearAttachBtn').onclick=()=>{ qs('#taskImage').value=''; const videoEl=qs('#taskVideo'); if(videoEl) videoEl.value=''; taskAudio=''; qs('#recStatus').textContent='尚未錄音'; qs('#clearRecBtn').classList.add('hidden'); renderRecMeter(0); qs('#recMeter').classList.add('hidden'); };
-        qs('#startRecBtn').onclick=async()=>{
-          try{
-            qs('#recMeter').classList.remove('hidden');
-            recorder=await startRecorder((data)=>{taskAudio=data;qs('#recStatus').textContent='已附加錄音';qs('#clearRecBtn').classList.remove('hidden');renderRecMeter(0.04);},(level)=>renderRecMeter(level));
-            qs('#startRecBtn').disabled=true;qs('#stopRecBtn').disabled=false;qs('#recStatus').textContent='錄音中，請直接說話';
-          }catch(e){setMsg(qs('#msg'),e.message||String(e),true);}
-        };
-        qs('#stopRecBtn').onclick=()=>{if(recorder){recorder.stop(); recorder=null;}qs('#startRecBtn').disabled=false;qs('#stopRecBtn').disabled=true;qs('#recStatus').textContent='已錄音，可建立交辦事項';};
-        qs('#clearRecBtn').onclick=()=>{taskAudio='';qs('#recStatus').textContent='尚未錄音';qs('#clearRecBtn').classList.add('hidden');renderRecMeter(0);qs('#recMeter').classList.add('hidden');};
-        qs('#createBtn').onclick=async()=>{
-          const deadline=computeDeadline(dueMode);
-          if(!qs('#title').value.trim() || !qs('#assigneeId').value){setMsg(qs('#msg'),'請先輸入標題並選擇員工',true);return;}
-          let taskImageAssets=[], taskFileAssets=[], taskAudioAsset=null, taskVideoAsset=null;
-          const allTaskFiles=Array.from(qs('#taskImage').files||[]);
-          const imageFiles=allTaskFiles.filter(file=>String(file.type||'').startsWith('image/'));
-          const docFiles=allTaskFiles.filter(file=>!String(file.type||'').startsWith('image/'));
-          const vf=qs('#taskVideo') ? qs('#taskVideo').files[0] : null;
-          const btn=qs('#createBtn');
-          const progress = getTaskButtonProgress('create', btn, '建立交辦事項中');
-          try {
-            progress.set(10, '檢查欄位中');
-            progress.set(25, '準備附件');
-            progress.set(45, '準備送出資料');
-            if(imageFiles.length){
-              const imageRes=await uploadFilesToCloudinary(imageFiles,{folder:'tasks/assigned-image',onProgress:(ratio)=>progress.set(25 + Math.round(ratio*18),'圖片上傳中')});
-              taskImageAssets=(imageRes||[]).map(cloudinaryAssetFromResponse).filter(x=>x.url);
-            }
-            if(docFiles.length){
-              const docRes=await uploadFilesToCloudinary(docFiles,{folder:'tasks/assigned-file',onProgress:(ratio)=>progress.set(43 + Math.round(ratio*10),'文件上傳中')});
-              taskFileAssets=(docRes||[]).map(cloudinaryAssetFromResponse).filter(x=>x.url);
-            }
-            if(vf){
-              const videoRes=await uploadFileToCloudinary(vf,{folder:'tasks/assigned-video',onProgress:(ratio)=>progress.set(45 + Math.round(ratio*15),'影片上傳中')});
-              taskVideoAsset=cloudinaryAssetFromResponse(videoRes);
-            }
-            if(taskAudio){
-              const audioFile=dataUrlToFile(taskAudio,'task-audio.' + guessExtensionByMime((taskAudio.match(/^data:([^;]+)/)||[])[1]||''));
-              const audioRes=await uploadFileToCloudinary(audioFile,{folder:'tasks/assigned-audio',onProgress:(ratio)=>progress.set(60 + Math.round(ratio*10),'錄音上傳中')});
-              taskAudioAsset=cloudinaryAssetFromResponse(audioRes);
-            }
-            progress.set(72,'寫入任務資料');
-            const r=await api('createTask',{
-              creatorId:currentUser.id,
-              title:qs('#title').value,
-              content:qs('#content').value,
-              assigneeId:qs('#assigneeId').value,
-              dueMode,
-              dueLabel:deadline.dueLabel,
-              dueDate:deadline.dueDate,
-              dueTime:deadline.dueTime,
-              requirePhotoReturn:qs('#requirePhotoReturn').value,
-              taskImageAssets,
-              taskFileAssets,
-              taskAudioAsset,
-              taskVideoAsset
-            });
-            setMsg(qs('#msg'),r.message,!r.ok);
-            if(r.ok){
-              progress.done('建立完成');
-              qs('#title').value=''; qs('#content').value=''; qs('#taskImage').value=''; if(qs('#taskVideo')) qs('#taskVideo').value=''; taskAudio='';
-              qs('#recStatus').textContent='尚未錄音'; qs('#clearRecBtn').classList.add('hidden');
-              renderRecMeter(0); qs('#recMeter').classList.add('hidden');
-              applyDueMode('today');
-              setTimeout(loadTasks,450);
-            } else {
-              progress.fail('建立失敗');
-            }
-          } catch (e) {
-            progress.fail('建立失敗');
-            setMsg(qs('#msg'), e.message || '建立失敗', true);
-          }
-        };
-      }
-      loadTasks();
-      loadTeacherContractBanner();
-    }
-  </script>
-</body>
-</html>
+try{document.addEventListener('DOMContentLoaded', mountInlineRecorderForThisPage);}catch(e){}
+</script></body></html>
