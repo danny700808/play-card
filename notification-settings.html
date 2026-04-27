@@ -14,10 +14,14 @@ details{border-top:1px solid var(--line);background:#fbfcfe}summary{list-style:n
 .sticky-save{position:sticky;bottom:0;background:linear-gradient(180deg,rgba(244,247,251,0),var(--bg) 25%);padding:18px 0 0}.btn{border:0;border-radius:14px;padding:12px 14px;font-size:15px;font-weight:850;cursor:pointer}.btn.primary{background:var(--main);color:#fff;width:100%}
 @media(min-width:720px){.notify-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.notify-card{margin-bottom:0}.toolbar{top:74px;justify-content:center}}
 @media(max-width:480px){.unprocessed-grid{grid-template-columns:1fr}}
+
+.page-return-wrap{margin-bottom:16px}
+.page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800;background:var(--main,#1f7a5a);color:#fff}
+
 </style></head><body>
 <header><h1>通知 / 提醒萬用表</h1><p class="sub">簡化版：去跟回為主，不顯示不需要的複雜項目。</p></header>
 <nav class="toolbar"><a class="chip" href="#account">帳號</a><a class="chip" href="#profile">個人資料</a><a class="chip" href="#clock">打卡 / 工讀</a><a class="chip" href="#leave">請假</a><a class="chip" href="#task">交辦事項</a><a class="chip" href="#routine">固定事項</a><a class="chip" href="#announcement">公告</a><a class="chip" href="#teacher">外聘老師</a><a class="chip" href="#training">教育訓練</a><a class="chip" href="#docs">單據</a><a class="chip" href="#line">LINE</a></nav>
-<main><div id="msg"></div><div class="note">提醒項目已簡化：交辦事項、固定事項、公告、外聘老師、教育訓練都只保留你實際需要的通知。未處理提醒只會在「需要主管處理」且有勾主管 LINE / Email 時顯示。</div><section class="section" id="account"><div class="section-title"><h2>1. 帳號</h2><span class="section-count">5 項</span></div><div class="notify-grid">
+<main><div class="page-return-wrap"><a class="page-return-btn" href="settings.html">返回管理首頁</a></div><div id="msg"></div><div class="note">提醒項目已簡化：交辦事項、固定事項、公告、外聘老師、教育訓練都只保留你實際需要的通知。未處理提醒只會在「需要主管處理」且有勾主管 LINE / Email 時顯示。</div><section class="section" id="account"><div class="section-title"><h2>1. 帳號</h2><span class="section-count">5 項</span></div><div class="notify-grid">
 <article class="notify-card" data-type="processing" data-event-key="account_0" data-category="帳號" data-event-name="註冊申請送出">
   <div class="notify-main">
     <div class="event-head">

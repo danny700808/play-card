@@ -100,9 +100,16 @@ textarea{min-height:96px;resize:vertical}
 }
 .audio-hidden{display:none!important}
 
+
+.page-return-wrap{margin-bottom:16px}
+.page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800;background:var(--main,#1f7a5a);color:#fff}
+
+
+.actions .btn.primary{width:100%;flex:1}
+.actions{gap:0}
 </style></head><body>
 <header><h1>教育訓練｜教材 / 任務設定</h1><p class="sub">教材內容在這裡設定；通知由萬用表的教育訓練區塊控制。</p></header>
-<main><div id="msg"></div>
+<main><div class="page-return-wrap"><a class="page-return-btn" href="settings.html">返回管理首頁</a></div><div id="msg"></div>
 <div class="card"><div class="section-title"><span class="num">1</span>教材基本資料</div><div class="grid">
 <div><label>教材標題</label><input id="trainingTitle" placeholder="例如：新進員工打卡與請假教學"></div>
 <div><label>分類</label><select id="trainingCategory"><option>新進員工</option><option>打卡 / 工讀</option><option>請假制度</option><option>活動執行</option><option>器材教學</option></select></div>
@@ -132,8 +139,8 @@ textarea{min-height:96px;resize:vertical}
 <div><label>文件附件</label><input id="trainingDoc" type="file"></div>
 <div class="wide"><label>文字教材</label><textarea id="trainingText" placeholder="也可以直接輸入文字教材。"></textarea></div>
 </div></div>
-<div class="card"><div class="section-title"><span class="num">5</span>通知提醒說明</div><div class="note">新教材發布、教材更新、員工完成、逾期未完成，都會到「通知 / 提醒萬用表 → 教育訓練」區塊控制，不在每筆教材裡另外設定 LINE 或 Email。</div></div>
-<div class="actions"><button class="btn secondary" onclick="history.back()">取消</button><button class="btn primary" onclick="submitTraining()">儲存教材</button></div></main>
+
+<div class="actions"><button class="btn primary" onclick="submitTraining()">儲存教材</button></div></main>
 <script src="config.js"></script><script>
 const API_URL = String((window.APP_CONFIG && window.APP_CONFIG.API_URL) || window.API_URL || localStorage.getItem('EMPLOYEE_SYSTEM_API_BASE') || '').trim();
 function getUser(){try{return JSON.parse(localStorage.getItem('employeeUser')||'{}')}catch(e){return {}}}

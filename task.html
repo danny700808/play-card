@@ -100,9 +100,16 @@ textarea{min-height:96px;resize:vertical}
 }
 .audio-hidden{display:none!important}
 
+
+.page-return-wrap{margin-bottom:16px}
+.page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800;background:var(--main,#1f7a5a);color:#fff}
+
+
+.actions .btn.primary{width:100%;flex:1}
+.actions{gap:0}
 </style></head><body>
 <header><h1>交辦事項｜建立任務</h1><p class="sub">發布就是開始；只設定一組「完成期限」，不再分開始日、到期日、截止日。</p></header>
-<main><div id="msg"></div><div id="adminPageWrap">
+<main><div class="page-return-wrap"><a class="page-return-btn" href="settings.html">返回管理首頁</a></div><div id="msg"></div><div id="adminPageWrap">
 <div class="card"><div class="section-title"><span class="num">1</span>任務基本資料</div><div class="grid">
 <div class="wide"><label>任務標題</label><input id="taskTitle" placeholder="例如：整理 5 月份器材盤點"></div>
 <div class="wide"><label>任務內容 / 說明</label><textarea id="taskContent" placeholder="請寫清楚要做什麼、完成標準、注意事項。"></textarea></div>
@@ -132,8 +139,8 @@ textarea{min-height:96px;resize:vertical}
 <div><label>交辦文件</label><input id="taskDoc" type="file"></div>
 <div class="wide"><label>補充備註</label><textarea id="taskNote" placeholder="其他補充說明。"></textarea></div>
 </div></div>
-<div class="card"><div class="section-title"><span class="num">6</span>通知提醒說明</div><div class="note">這裡不再出現舊的提醒頻率 / 自訂提醒。交辦事項的通知由「通知 / 提醒萬用表 → 交辦事項」區塊控制。</div></div>
-</div><div id="staffPageWrap" class="hidden"><div class="card"><div class="section-title"><span class="num">1</span>我的交辦事項</div><div class="note">這裡是一般使用者查看自己被指派的交辦事項；主管建立任務表單只會在主管 / 管理者身分顯示。</div></div><div id="staffList"></div></div><div class="actions admin-actions"><button class="btn secondary" onclick="history.back()">取消</button><button class="btn primary" onclick="submitTask()">儲存交辦事項</button></div></main>
+
+</div><div id="staffPageWrap" class="hidden"><div class="card"><div class="section-title"><span class="num">1</span>我的交辦事項</div><div class="note">這裡是一般使用者查看自己被指派的交辦事項；主管建立任務表單只會在主管 / 管理者身分顯示。</div></div><div id="staffList"></div></div><div class="actions admin-actions"><button class="btn primary" onclick="submitTask()">儲存交辦事項</button></div></main>
 <script src="config.js"></script><script>
 const API_URL = String((window.APP_CONFIG && window.APP_CONFIG.API_URL) || window.API_URL || localStorage.getItem('EMPLOYEE_SYSTEM_API_BASE') || '').trim();
 function getUser(){try{return JSON.parse(localStorage.getItem('employeeUser')||'{}')}catch(e){return {}}}

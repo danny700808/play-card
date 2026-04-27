@@ -125,7 +125,7 @@
 
         <section class="admin-card">
           <h2 class="section-title">發布設定</h2>
-          <p class="section-desc">把對象和其他設定分開，勾選起來會比較清楚。</p>
+          <p class="section-desc">公告通知方式由「通知 / 提醒萬用表」控制；這裡只設定對象與是否需要回覆確認。</p>
           <div class="setting-grid">
             <div class="option-box">
               <div class="option-title">發布對象</div>
@@ -137,12 +137,9 @@
               </div>
             </div>
             <div class="option-box">
-              <div class="option-title">其他設定</div>
+              <input type="hidden" id="pinnedInput" value=""><input type="hidden" id="publishedInput" value="true"><input type="hidden" id="sendEmailInput" value=""><input type="hidden" id="sendLineInput" value="">
+              <div class="option-title">回覆確認</div>
               <div class="check-grid">
-                <label class="check-item"><input type="checkbox" id="pinnedInput"><span>置頂顯示</span></label>
-                <label class="check-item"><input type="checkbox" id="publishedInput" checked><span>立即發布</span></label>
-                <label class="check-item"><input type="checkbox" id="sendEmailInput" checked><span>寄送 Email 通知</span></label>
-                <label class="check-item"><input type="checkbox" id="sendLineInput" checked><span>寄送 LINE 通知</span></label>
                 <label class="check-item"><input type="checkbox" id="requireReplyInput"><span>需要回覆 / 確認</span></label>
               </div>
               <div class="field" style="margin-top:12px">
