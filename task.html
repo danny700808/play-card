@@ -1,375 +1,82 @@
-<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>交辦事項</title><link rel="stylesheet" href="style.css"><style>
-:root{
-  --bg:#f4f7fb;--card:#fff;--text:#182230;--muted:#667085;--line:#e4e7ec;
-  --main:#1f7a5a;--main-soft:#e8f5ef;--warn:#b42318;--blue:#175cd3;
-  --shadow:0 10px 24px rgba(16,24,40,.08);--radius:18px
-}
-*{box-sizing:border-box}
-body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC",Arial,sans-serif;background:var(--bg);color:var(--text);line-height:1.55}
-header{position:sticky;top:0;z-index:20;background:rgba(244,247,251,.94);backdrop-filter:blur(12px);border-bottom:1px solid var(--line);padding:14px}
-h1{font-size:21px;font-weight:850;margin:0}.sub{font-size:13px;color:var(--muted);margin:5px 0 0}
-main{max-width:920px;margin:0 auto;padding:12px 12px 34px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px;margin-bottom:12px}
-.section-title{font-size:16px;font-weight:850;margin:2px 0 10px;display:flex;align-items:center;gap:8px}
-.num{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--main);color:#fff;font-size:12px;font-weight:800}
-label{display:block;font-size:13px;font-weight:760;margin:0 0 6px}
-input,select,textarea{width:100%;border:1px solid #d0d5dd;border-radius:13px;background:#fff;padding:11px 12px;font-size:15px;color:#101828;outline:none}
-textarea{min-height:96px;resize:vertical}
-.grid{display:grid;grid-template-columns:1fr;gap:10px}.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.hint{font-size:12.5px;color:var(--muted);margin-top:6px}.note{font-size:13px;color:#475467;background:#f9fafb;border:1px dashed #d0d5dd;border-radius:14px;padding:10px}
-.checkrow{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.check{border:1px solid var(--line);border-radius:13px;padding:10px 11px;display:flex;align-items:center;justify-content:space-between;font-size:13px;background:#fcfcfd}
-.box{width:20px;height:20px;border-radius:6px;background:var(--main);display:grid;place-items:center;color:#fff;font-size:14px;font-weight:900}.box.off{background:#fff;border:1px solid #d0d5dd;color:transparent}
-.actions{position:sticky;bottom:0;background:linear-gradient(180deg,rgba(244,247,251,0),var(--bg) 25%);padding:18px 0 0;display:flex;gap:10px}
-.btn{border:0;border-radius:14px;padding:12px 14px;font-size:15px;font-weight:850;cursor:pointer}.btn.primary{background:var(--main);color:#fff;flex:1}.btn.secondary{background:#fff;border:1px solid var(--line);color:#344054}.btn.small{font-size:13px;padding:8px 10px;border-radius:11px}
-.toolbar{display:flex;gap:8px;overflow:auto;padding:10px 14px 6px;background:var(--bg);border-bottom:1px solid var(--line);position:sticky;top:67px;z-index:15}
-.chip{flex:0 0 auto;border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 11px;font-size:13px;color:#344054;text-decoration:none;white-space:nowrap}
-.hidden{display:none!important}.msg{padding:10px 12px;border-radius:14px;margin-bottom:10px;font-size:13px}.msg.ok{background:#e8f5ef;color:#1f7a5a}.msg.err{background:#fef3f2;color:#b42318}
-@media(min-width:720px){.grid{grid-template-columns:1fr 1fr}.wide{grid-column:1/-1}.checkrow{grid-template-columns:repeat(4,1fr)}.cards-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.card{margin-bottom:0}}
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>事項管理</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    :root{--bg:#f4f7fb;--card:#fff;--text:#182230;--muted:#667085;--line:#e4e7ec;--main:#1f7a5a;--main-soft:#e8f5ef;--warn:#b42318;--blue:#175cd3;--shadow:0 10px 24px rgba(16,24,40,.08);--radius:18px}
+    *{box-sizing:border-box} body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC",Arial,sans-serif;background:var(--bg);color:var(--text);line-height:1.55}
+    main{max-width:980px;margin:0 auto;padding:12px 12px 38px}.topbar{position:sticky;top:0;z-index:10;background:rgba(244,247,251,.94);backdrop-filter:blur(12px);border-bottom:1px solid var(--line);padding:12px}.topbar-inner{max-width:980px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:10px}.home-link{display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--line);border-radius:999px;padding:9px 13px;background:#fff;font-weight:900;color:#184e3a;text-decoration:none;white-space:nowrap}.title h1{margin:0;font-size:22px;font-weight:900}.title p{margin:3px 0 0;color:var(--muted);font-size:13px}.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px;margin-bottom:12px}.section-title{font-size:16px;font-weight:900;margin:0 0 10px;display:flex;align-items:center;gap:8px}.num{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--main);color:#fff;font-size:12px;font-weight:900}.grid{display:grid;grid-template-columns:1fr;gap:10px}.wide{grid-column:1/-1}@media(min-width:760px){.grid.two{grid-template-columns:1fr 1fr}.grid.three{grid-template-columns:1fr 1fr 1fr}.upload-grid{grid-template-columns:repeat(4,1fr)}}
+    label{display:block;font-size:13px;font-weight:800;margin:0 0 6px}input,select,textarea{width:100%;border:1px solid #d0d5dd;border-radius:13px;background:#fff;padding:11px 12px;font-size:15px;color:#101828;outline:none}textarea{min-height:92px;resize:vertical}.checkrow{display:grid;grid-template-columns:1fr 1fr;gap:8px}.check{display:flex;align-items:center;justify-content:space-between;gap:8px;border:1px solid var(--line);border-radius:14px;padding:10px;background:#fbfcfe}.check input{width:auto}.upload-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.upload-box{border:1px solid var(--line);border-radius:15px;background:#fbfcfe;padding:10px;min-height:90px}.upload-box label{font-size:13px}.upload-box input{font-size:13px;padding:8px;border-radius:10px}.rec-line{display:grid;grid-template-columns:auto 54px 1fr;gap:6px;align-items:center}.rec-time{font-weight:900;color:#344054;font-size:13px}.rec-buttons{display:flex;gap:5px;flex-wrap:wrap}.mini-btn{border:0;border-radius:999px;padding:7px 9px;font-size:12px;font-weight:900;background:#e9eef4;color:#26384d;cursor:pointer}.mini-btn.primary{background:var(--main);color:#fff}.mini-btn.danger{background:#fdecec;color:#9d1c1c}.mini-btn:disabled{opacity:.45;cursor:not-allowed}.audio-mini{margin-top:8px;width:100%;height:34px}.hidden{display:none!important}.msg{display:none;margin:10px 0;padding:12px 14px;border-radius:14px;font-weight:800;background:#e8f5ef;color:#17614a}.msg.err{background:#fff0f0;color:#b42318}.msg.ok{display:block}.pill{display:inline-flex;align-items:center;border-radius:999px;padding:4px 9px;font-size:12px;font-weight:900;background:#eef7f2;color:#17614a}.pill.warn{background:#fff2e0;color:#9a5b00}.pill.red{background:#fff0f0;color:#b42318}.pill.blue{background:#eef4ff;color:#175cd3}.history-list{display:grid;gap:10px}.item-card{border:1px solid var(--line);border-radius:16px;background:#fff;padding:12px}.item-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.item-title{font-weight:950;font-size:16px}.item-meta{color:var(--muted);font-size:13px;margin-top:4px}.item-content{white-space:pre-wrap;background:#f9fafb;border:1px dashed #d0d5dd;border-radius:13px;padding:10px;margin-top:10px;color:#344054}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.btn{border:0;border-radius:14px;padding:11px 14px;font-size:15px;font-weight:900;background:var(--main);color:#fff;cursor:pointer}.btn.secondary{background:#e9eef4;color:#203040}.btn.warn{background:#fff4e5;color:#9a5b00}.btn.danger{background:#fdecec;color:#b42318}.btn.full{width:100%;margin-top:10px}.asset-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}.asset-list a{display:inline-flex;border:1px solid var(--line);border-radius:999px;padding:6px 9px;font-size:12px;font-weight:800;background:#fff;color:#344054;text-decoration:none}.staff-list{display:grid;gap:12px}.reply-box{border-top:1px solid var(--line);margin-top:12px;padding-top:12px}.empty{font-size:14px;color:#667085;background:#f9fafb;border:1px dashed #d0d5dd;border-radius:14px;padding:12px}@media(max-width:560px){.topbar-inner{align-items:flex-start}.home-link{font-size:13px}.checkrow{grid-template-columns:1fr}.upload-grid{grid-template-columns:1fr}.item-head{flex-direction:column}.btn{width:100%}.actions{display:grid}}
+  </style>
+</head>
+<body>
+  <div class="topbar"><div class="topbar-inner"><div class="title"><h1 id="pageTitle">事項管理</h1><p id="pageSub">一次性事項與固定事項共用回覆方式</p></div><a id="homeLink" class="home-link" href="dashboard.html">返回首頁</a></div></div>
+  <main>
+    <div id="msg" class="msg"></div>
 
-/* 手機直接錄音元件 */
-.audio-recorder{
-  border:1px solid var(--line);
-  background:#fff;
-  border-radius:16px;
-  padding:12px;
-}
-.audio-recorder-title{
-  font-size:13px;
-  font-weight:800;
-  margin-bottom:8px;
-  color:#344054;
-}
-.audio-recorder-controls{
-  display:flex;
-  gap:8px;
-  flex-wrap:wrap;
-  align-items:center;
-}
-.audio-recorder .rec-btn{
-  border:0;
-  border-radius:999px;
-  padding:10px 13px;
-  font-size:14px;
-  font-weight:850;
-  cursor:pointer;
-}
-.rec-start{background:#b42318;color:#fff}
-.rec-stop{background:#344054;color:#fff}
-.rec-delete{background:#fff;border:1px solid #d0d5dd!important;color:#344054}
-.rec-status{
-  flex:1;
-  min-width:120px;
-  font-size:13px;
-  color:var(--muted);
-}
-.wave{
-  height:42px;
-  border-radius:14px;
-  background:#f2f4f7;
-  border:1px solid #eaecf0;
-  margin-top:10px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  gap:3px;
-  overflow:hidden;
-}
-.wave span{
-  display:block;
-  width:4px;
-  height:8px;
-  border-radius:999px;
-  background:#98a2b3;
-  animation:none;
-}
-.audio-recorder.recording .wave span{
-  background:#b42318;
-  animation:wavePulse 800ms ease-in-out infinite;
-}
-.audio-recorder.recording .wave span:nth-child(2n){animation-delay:120ms}
-.audio-recorder.recording .wave span:nth-child(3n){animation-delay:240ms}
-.audio-recorder.recording .wave span:nth-child(4n){animation-delay:360ms}
-@keyframes wavePulse{
-  0%,100%{height:8px;opacity:.55}
-  50%{height:34px;opacity:1}
-}
-.audio-preview{
-  width:100%;
-  margin-top:10px;
-}
-.audio-hidden{display:none!important}
-
-
-.page-return-wrap{margin-bottom:16px}
-.page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800;background:var(--main,#1f7a5a);color:#fff}
-
-
-.actions .btn.primary{width:100%;flex:1}
-.actions{gap:0}
-
-.upload-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
-.upload-box{background:#f8fafc;border:1px solid #dbe5f1;border-radius:16px;padding:12px}
-.upload-box label{display:block;font-weight:900;margin-bottom:8px;color:#0f172a}
-.upload-box input{width:100%}
-.upload-tip{margin-top:8px;font-size:12px;color:#64748b}
-.record-panel{display:grid;gap:10px}
-.record-visual{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center}
-.record-dot{width:12px;height:12px;border-radius:999px;background:#94a3b8}
-.record-dot.active{background:#dc2626;box-shadow:0 0 0 6px rgba(220,38,38,.12)}
-.record-bar{height:10px;background:#e2e8f0;border-radius:999px;overflow:hidden}
-.record-bar-fill{width:0%;height:100%;background:#1f7a5a;transition:width .15s}
-.record-time{font-size:13px;font-weight:900;color:#334155}
-.record-actions{display:flex;gap:8px;flex-wrap:wrap}
-.record-preview{display:none}
-.record-preview.show{display:block}
-@media(max-width:720px){.upload-grid{grid-template-columns:1fr}}
-
-</style></head><body>
-  <div class="page-return-wrap"><a class="page-return-btn" href="settings.html">返回管理首頁</a></div>
-
-<main><div id="msg"></div><div id="adminPageWrap">
-<div class="card"><div class="section-title"><span class="num">1</span>任務基本資料</div><div class="grid">
-<div class="wide"><label>任務標題</label><input id="taskTitle" placeholder="例如：整理 5 月份器材盤點"></div>
-<div class="wide"><label>任務內容 / 說明</label><textarea id="taskContent" placeholder="請寫清楚要做什麼、完成標準、注意事項。"></textarea></div>
-<div><label>任務分類</label><select id="taskCategory"><option>一般交辦</option><option>行政作業</option><option>教學相關</option><option>活動執行</option><option>器材 / 場地</option></select></div>
-<div><label>重要程度</label><select id="taskPriority"><option>一般</option><option>重要</option><option>緊急</option></select></div>
-</div></div>
-<div class="card"><div class="section-title"><span class="num">2</span>指派對象</div><div class="grid">
-<div><label>負責人</label><select id="assigneeId"><option value="">請選擇員工</option></select></div>
-<div><label>主管 / 審核人</label><select id="managerMode"><option value="default">系統預設主管</option><option value="custom">指定主管</option></select></div>
-</div><p class="hint">員工完成或回覆後，主管通知由萬用表控制。</p></div>
-<div class="card"><div class="section-title"><span class="num">3</span>完成期限</div><div class="grid">
-<div><label>完成期限類型</label><select id="dueType" onchange="renderDueFields()"><option value="today">今天完成</option><option value="tomorrow">明天完成</option><option value="days">幾天內完成（含今天）</option><option value="date">指定日期完成</option><option value="none">無期限</option></select></div>
-<div id="dueDaysWrap" class="hidden"><label>天數</label><input id="dueDays" type="number" min="1" placeholder="例如：3"></div>
-<div id="dueDateWrap" class="hidden"><label>指定完成日期</label><input id="dueDate" type="date"></div>
-<div id="dueTimeWrap"><label>截止時間</label><input id="dueTime" type="time" value="18:00"></div>
-</div><p class="hint">例：選「幾天內完成」填 3，代表含今天算第 1 天，第 3 天的截止時間到期。</p></div>
-<div class="card"><div class="section-title"><span class="num">4</span>完成規則</div><div class="checkrow">
-<label class="check">需要完成回報 <input id="needReport" type="checkbox" checked></label>
-<label class="check">允許員工留言 <input id="allowComment" type="checkbox" checked></label>
-<label class="check">主管可退回重做 <input id="allowRedo" type="checkbox" checked></label>
-<label class="check">完成需附件 <input id="needDoneFile" type="checkbox"></label>
-</div></div>
-<div class="card attachment-card"><div class="section-title"><span class="num">5</span>附件</div>
-<p class="hint">圖片、影片、錄音、文件統一使用相同格式；錄音可直接用手機錄完試聽。</p>
-<div class="upload-grid">
-  <div class="upload-box"><label>圖片附件</label><input id="imageInput" type="file" multiple accept="image/*"></div>
-  <div class="upload-box"><label>影片附件</label><input id="videoInput" type="file" multiple accept="video/*"></div>
-  <div class="upload-box">
-    <label>錄音附件</label>
-    <div class="record-panel">
-      <div class="record-visual"><div id="recordDot" class="record-dot"></div><div class="record-bar"><div id="recordBarFill" class="record-bar-fill"></div></div><div id="recordTime" class="record-time">00:00</div></div>
-      <div class="record-actions">
-        <button id="recordBtn" class="btn secondary" type="button" onclick="startRecording()">開始錄音</button>
-        <button id="stopRecordBtn" class="btn secondary" type="button" onclick="stopRecording()" disabled>停止</button>
-        <button id="clearRecordBtn" class="btn secondary" type="button" onclick="clearRecording()" disabled>刪除</button>
+    <section id="adminWrap" class="hidden">
+      <div class="card"><div class="section-title"><span class="num">1</span>一次性事項</div>
+        <div class="grid two">
+          <div class="wide"><label>事項標題</label><input id="taskTitle" placeholder="例如：整理 5 月份器材盤點"></div>
+          <div class="wide"><label>事項內容</label><textarea id="taskContent" placeholder="寫清楚要做什麼與完成標準"></textarea></div>
+          <div><label>分類</label><select id="taskCategory"><option>一般交辦</option><option>行政</option><option>教學</option><option>清潔</option><option>設備</option><option>庫存</option><option>活動</option><option>合約</option><option>其他</option></select></div>
+          <div><label>重要程度</label><select id="taskPriority"><option>一般</option><option>重要</option><option>緊急</option></select></div>
+          <div><label>負責人</label><select id="assigneeId"><option value="">請選擇員工</option></select></div>
+          <div><label>完成期限類型</label><select id="dueType" onchange="renderDueFields()"><option value="today">今天完成</option><option value="tomorrow">明天完成</option><option value="days">幾天內完成</option><option value="date">指定日期完成</option><option value="none">無期限</option></select></div>
+          <div id="dueDaysWrap" class="hidden"><label>天數</label><input id="dueDays" type="number" min="1" value="3"></div>
+          <div id="dueDateWrap" class="hidden"><label>指定日期</label><input id="dueDate" type="date"></div>
+          <div id="dueTimeWrap"><label>截止時間</label><input id="dueTime" type="time" value="18:00"></div>
+        </div>
       </div>
-      <div id="recordPreview" class="record-preview"><div style="font-weight:900;margin-bottom:8px">錄音預覽</div><audio id="recordedAudio" controls style="width:100%"></audio></div>
-    </div>
-    <div class="upload-tip">手機可直接錄音；錄完後可確認預覽，或刪除重錄。</div>
-  </div>
-  <div class="upload-box"><label>文件附件</label><input id="fileInput" type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip"></div>
-</div></div>
+      <div class="card"><div class="section-title"><span class="num">2</span>完成規則</div>
+        <div class="checkrow"><label class="check">需要完成回報 <input id="needReport" type="checkbox" checked></label><label class="check">允許留言 <input id="allowComment" type="checkbox" checked></label><label class="check">主管可退回 <input id="allowRedo" type="checkbox" checked></label><label class="check">完成需附件 <input id="needDoneFile" type="checkbox"></label></div>
+      </div>
+      <div class="card"><div class="section-title"><span class="num">3</span>附件</div>
+        <div class="upload-grid"><div class="upload-box"><label>圖片</label><input id="imageInput" type="file" multiple accept="image/*"></div><div class="upload-box"><label>影片</label><input id="videoInput" type="file" multiple accept="video/*"></div><div class="upload-box"><label>錄音</label><div id="managerRecorder"></div></div><div class="upload-box"><label>文件</label><input id="fileInput" type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip"></div></div>
+        <button id="saveBtn" class="btn full" type="button" onclick="submitTask()">儲存一次性事項</button>
+      </div>
+      <div class="card"><div class="section-title"><span class="num">4</span>一次性事項紀錄</div><div id="adminTaskHistory" class="history-list"><div class="empty">讀取中...</div></div></div>
+    </section>
 
-<div class="card"><div class="section-title"><span class="num">6</span>交辦事項紀錄</div><div id="adminTaskHistory" class="history-list"><div class="note">讀取中...</div></div></div></div><div id="staffPageWrap" class="hidden"><div class="card"><div class="section-title"><span class="num">1</span>我的交辦事項</div><div class="note">這裡是一般使用者查看自己被指派的交辦事項；主管建立任務表單只會在主管 / 管理者身分顯示。</div></div><div id="staffList"></div></div><div class="actions admin-actions"><button class="btn primary" onclick="submitTask()">儲存交辦事項</button></div></main>
-<script src="config.js"></script><script>
-const API_URL = String((window.APP_CONFIG && window.APP_CONFIG.API_URL) || window.API_URL || localStorage.getItem('EMPLOYEE_SYSTEM_API_BASE') || '').trim();
-function getUser(){try{return JSON.parse(localStorage.getItem('employeeUser')||'{}')}catch(e){return {}}}
-function userId(){return (getUser()&&getUser().id)||localStorage.getItem('employeeUserId')||''}
-async function api(action, payload){
-  if(!API_URL) throw new Error('尚未設定 API_URL');
-  const res = await fetch(API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(Object.assign({action},payload||{}))});
-  const txt = await res.text();
-  try{return JSON.parse(txt)}catch(e){throw new Error(txt||'API 回應格式錯誤')}
-}
-function $(id){return document.getElementById(id)}
-function val(id){const el=$(id); return el?String(el.value||'').trim():''}
-function checked(id){const el=$(id); return !!(el&&el.checked)}
-function msg(text, ok=true){const m=$('msg'); if(!m)return; m.textContent=text; m.className='msg '+(ok?'ok':'err')}
+    <section id="staffWrap" class="hidden">
+      <div class="card"><div class="section-title"><span class="num">1</span>我的事項</div><div id="staffList" class="staff-list"><div class="empty">讀取中...</div></div></div>
+    </section>
+  </main>
 
-function renderDueFields(){const t=val('dueType'); $('dueDaysWrap').classList.toggle('hidden',t!=='days'); $('dueDateWrap').classList.toggle('hidden',t!=='date'); $('dueTimeWrap').classList.toggle('hidden',t==='none');}
-function calcDueDate(){const t=val('dueType'); const now=new Date(); let d=new Date(now.getFullYear(),now.getMonth(),now.getDate()); if(t==='none')return ''; if(t==='tomorrow')d.setDate(d.getDate()+1); if(t==='days')d.setDate(d.getDate()+Math.max(1,Number(val('dueDays')||1))-1); if(t==='date')return val('dueDate'); return d.toISOString().slice(0,10);}
-async function loadEmployees(){try{const res=await api('getEmployeeOptions',{userId:userId()}); const list=res.employees||res.rows||[]; $('assigneeId').innerHTML='<option value="">請選擇員工</option>'+list.map(x=>`<option value="${x.id||x.employeeId||''}">${x.name||x.employeeName||''}</option>`).join('');}catch(e){}}
-async function submitTask(){try{const dueDate=calcDueDate(); const payload={userId:userId(),title:val('taskTitle'),content:val('taskContent'),category:val('taskCategory'),priority:val('taskPriority'),assigneeId:val('assigneeId'),dueType:val('dueType'),dueDate, dueTime:val('dueTime'),needReport:checked('needReport'),allowComment:checked('allowComment'),allowRedo:checked('allowRedo'),needDoneFile:checked('needDoneFile'),note:val('taskNote')}; const res=await api('createTask',payload); if(!res.ok)throw new Error(res.message||'儲存失敗'); msg('交辦事項已儲存，通知將依萬用表設定處理。',true);}catch(e){msg(e.message,false)}}
-document.addEventListener('DOMContentLoaded',()=>{renderDueFields();loadEmployees();});
-
-/* 手機直接錄音：按下錄音 → 停止 → 試聽 → 刪除重錄 */
-const recorderStore = {};
-async function startInlineRecording(key){
-  const box = document.querySelector(`[data-recorder="${key}"]`);
-  if(!box) return;
-  try{
-    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-      throw new Error('這個瀏覽器不支援直接錄音，請改用手機 Chrome / Safari。');
-    }
-    const stream = await navigator.mediaDevices.getUserMedia({audio:true});
-    const chunks = [];
-    const mediaRecorder = new MediaRecorder(stream);
-    recorderStore[key] = {mediaRecorder, stream, chunks, blob:null};
-    mediaRecorder.ondataavailable = e => { if(e.data && e.data.size) chunks.push(e.data); };
-    mediaRecorder.onstop = () => {
-      const blob = new Blob(chunks, {type: mediaRecorder.mimeType || 'audio/webm'});
-      recorderStore[key].blob = blob;
-      const url = URL.createObjectURL(blob);
-      const audio = box.querySelector('audio');
-      audio.src = url;
-      audio.classList.remove('audio-hidden');
-      box.classList.remove('recording');
-      box.querySelector('.rec-status').textContent = '錄音完成，可以先試聽；不滿意可刪除重錄。';
-      box.querySelector('.rec-start').classList.remove('audio-hidden');
-      box.querySelector('.rec-stop').classList.add('audio-hidden');
-      box.querySelector('.rec-delete').classList.remove('audio-hidden');
-      stream.getTracks().forEach(t=>t.stop());
-    };
-    mediaRecorder.start();
-    box.classList.add('recording');
-    box.querySelector('.rec-status').textContent = '錄音中，請直接對著手機說話。';
-    box.querySelector('.rec-start').classList.add('audio-hidden');
-    box.querySelector('.rec-stop').classList.remove('audio-hidden');
-    box.querySelector('.rec-delete').classList.add('audio-hidden');
-    box.querySelector('audio').classList.add('audio-hidden');
-  }catch(err){
-    alert('無法啟用錄音：' + (err.message || err));
-  }
-}
-function stopInlineRecording(key){
-  const rec = recorderStore[key];
-  if(rec && rec.mediaRecorder && rec.mediaRecorder.state !== 'inactive'){
-    rec.mediaRecorder.stop();
-  }
-}
-function deleteInlineRecording(key){
-  const box = document.querySelector(`[data-recorder="${key}"]`);
-  const rec = recorderStore[key];
-  if(rec && rec.stream) rec.stream.getTracks().forEach(t=>t.stop());
-  delete recorderStore[key];
-  if(box){
-    box.classList.remove('recording');
-    const audio = box.querySelector('audio');
-    audio.removeAttribute('src');
-    audio.classList.add('audio-hidden');
-    box.querySelector('.rec-status').textContent = '尚未錄音。';
-    box.querySelector('.rec-start').classList.remove('audio-hidden');
-    box.querySelector('.rec-stop').classList.add('audio-hidden');
-    box.querySelector('.rec-delete').classList.add('audio-hidden');
-  }
-}
-function getInlineRecordingBlob(key){
-  return recorderStore[key] && recorderStore[key].blob ? recorderStore[key].blob : null;
-}
-function recorderHtml(key, title){
-  return `<div class="audio-recorder" data-recorder="${key}">
-    <div class="audio-recorder-title">${title || '錄音說明'}</div>
-    <div class="audio-recorder-controls">
-      <button type="button" class="rec-btn rec-start" onclick="startInlineRecording('${key}')">● 開始錄音</button>
-      <button type="button" class="rec-btn rec-stop audio-hidden" onclick="stopInlineRecording('${key}')">■ 停止錄音</button>
-      <button type="button" class="rec-btn rec-delete audio-hidden" onclick="deleteInlineRecording('${key}')">刪除重錄</button>
-      <div class="rec-status">尚未錄音。</div>
-    </div>
-    <div class="wave">${Array.from({length:24}).map(()=>'<span></span>').join('')}</div>
-    <audio controls class="audio-preview audio-hidden"></audio>
-  </div>`;
-}
-
-function mountInlineRecorderForThisPage(){const m=document.getElementById('taskAudioRecorderMount'); if(m) m.innerHTML=recorderHtml('taskAudio','交辦錄音說明');}
-
-try{document.addEventListener('DOMContentLoaded', mountInlineRecorderForThisPage);}catch(e){}
-
-function currentUserIsManager(){
-  const u = getUser();
-  const role = String((u && (u.role || u.roleName || u.identityType)) || '').toLowerCase();
-  return !!(u && (u.showSettingsZone || u.isAdmin || role === 'admin' || role === 'manager' || role.includes('主管') || role.includes('管理')));
-}
-function renderRoleMode(){
-  const isMgr = currentUserIsManager();
-  const admin = document.getElementById('adminPageWrap');
-  const staff = document.getElementById('staffPageWrap');
-  const actions = document.querySelector('.admin-actions');
-  if(admin) admin.classList.toggle('hidden', !isMgr);
-  if(staff) staff.classList.toggle('hidden', isMgr);
-  if(actions) actions.classList.toggle('hidden', !isMgr);
-  if(!isMgr) loadStaffItemsForThisPage();
-}
-async function loadStaffItemsForThisPage(){
-  const box = document.getElementById('staffList');
-  if(!box) return;
-  box.innerHTML = '<div class="card"><div class="note">讀取中...</div></div>';
-  try{
-    const res = await api('getTasks', {userId:userId(), role:'staff'});
-    const rows = res.rows || res.items || res.tasks || res.routines || [];
-    if(!rows.length){ box.innerHTML = '<div class="card"><div class="note">目前沒有交辦事項。</div></div>'; return; }
-    box.innerHTML = rows.map(r=>`<div class="card"><div class="section-title">${r.title||r.標題||r.name||r.事項名稱||'未命名項目'}</div><div class="hint">${r.status||r.狀態||''}</div><div class="note">${r.content||r.description||r.內容||r.事項說明||''}</div></div>`).join('');
-  }catch(e){
-    box.innerHTML = '<div class="card"><div class="note">目前無法讀取資料，請稍後再試。</div></div>';
-  }
-}
-document.addEventListener('DOMContentLoaded', function(){ setTimeout(renderRoleMode, 80); });
-
-
-let mediaRecorder=null,recordChunks=[],recordTimer=null,recordSeconds=0,recordedAudioFile=null;
-function renderRecordingState(){
-  const preview=document.getElementById('recordPreview');
-  const audio=document.getElementById('recordedAudio');
-  const clearBtn=document.getElementById('clearRecordBtn');
-  if(preview) preview.classList.toggle('show', !!recordedAudioFile);
-  if(clearBtn) clearBtn.disabled=!recordedAudioFile;
-  if(audio && recordedAudioFile) audio.src=URL.createObjectURL(recordedAudioFile);
-}
-function updateRecordClock(){
-  recordSeconds++;
-  const t=document.getElementById('recordTime');
-  const f=document.getElementById('recordBarFill');
-  const mm=String(Math.floor(recordSeconds/60)).padStart(2,'0');
-  const ss=String(recordSeconds%60).padStart(2,'0');
-  if(t) t.textContent=mm+':'+ss;
-  if(f) f.style.width=String((recordSeconds*7)%100)+'%';
-}
-async function startRecording(){
-  try{
-    const stream=await navigator.mediaDevices.getUserMedia({audio:true});
-    recordChunks=[]; recordedAudioFile=null; recordSeconds=0;
-    mediaRecorder=new MediaRecorder(stream);
-    mediaRecorder.ondataavailable=e=>{ if(e.data&&e.data.size) recordChunks.push(e.data); };
-    mediaRecorder.onstop=()=>{
-      const blob=new Blob(recordChunks,{type:mediaRecorder.mimeType||'audio/webm'});
-      recordedAudioFile=new File([blob], 'recording_'+Date.now()+'.webm', {type:blob.type});
-      stream.getTracks().forEach(t=>t.stop());
-      document.getElementById('recordDot')?.classList.remove('active');
-      document.getElementById('recordBtn').disabled=false;
-      document.getElementById('stopRecordBtn').disabled=true;
-      clearInterval(recordTimer); recordTimer=null;
-      renderRecordingState();
-    };
-    mediaRecorder.start();
-    document.getElementById('recordDot')?.classList.add('active');
-    document.getElementById('recordBtn').disabled=true;
-    document.getElementById('stopRecordBtn').disabled=false;
-    recordTimer=setInterval(updateRecordClock,1000);
-  }catch(e){ alert('無法啟用錄音：'+(e.message||e)); }
-}
-function stopRecording(){
-  if(mediaRecorder && mediaRecorder.state!=='inactive') mediaRecorder.stop();
-}
-function clearRecording(){
-  recordedAudioFile=null; recordChunks=[];
-  const audio=document.getElementById('recordedAudio');
-  if(audio) audio.removeAttribute('src');
-  const t=document.getElementById('recordTime'); if(t)t.textContent='00:00';
-  const f=document.getElementById('recordBarFill'); if(f)f.style.width='0%';
-  renderRecordingState();
-}
-
-
-async function loadAdminTaskHistory(){
-  const box=document.getElementById('adminTaskHistory'); if(!box) return;
-  try{
-    const res=await api('getTasks',{userId:userId(),role:'admin'});
-    const rows=(res.rows||res.list||[]).slice().reverse();
-    if(!rows.length){box.innerHTML='<div class="note">目前尚無交辦事項紀錄。</div>';return;}
-    box.innerHTML=rows.map(r=>`<div class="note" style="margin-bottom:8px"><b>${r.title||r.標題||'未命名交辦'}</b><br>狀態：${r.status||r.狀態||''}　負責人：${r.assigneeName||r.負責人姓名||''}<br>${r.content||r.內容||''}</div>`).join('');
-  }catch(e){box.innerHTML='<div class="note">目前無法讀取交辦紀錄。</div>';}
-}
-document.addEventListener('DOMContentLoaded',function(){setTimeout(loadAdminTaskHistory,120);});
-
-</script></body></html>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+  <script>
+    const $=id=>document.getElementById(id); const esc=s=>String(s??'').replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+    const user=typeof requireLogin==='function'?requireLogin():null; const currentUser=()=>typeof getUser==='function'?getUser():user; const uid=()=>currentUser()?.id||localStorage.getItem('employeeUserId')||'';
+    let employees=[],editingTaskId='',loading=false;
+    function showMsg(t,ok=true){const m=$('msg');m.textContent=t||'';m.className='msg '+(ok?'ok':'err');m.style.display=t?'block':'none'}
+    function managerMode(){const u=currentUser()||{};return !!(u.showSettingsZone||u.isAdmin||String(u.role||'').toLowerCase()==='admin'||u.identityType==='admin')}
+    function initHeader(){const u=currentUser();$('homeLink').href=typeof userHomeHref==='function'?userHomeHref(u):(managerMode()?'settings.html':'dashboard.html');$('homeLink').textContent=typeof userHomeLabel==='function'?userHomeLabel(u):(managerMode()?'返回管理首頁':'返回首頁');$('pageTitle').textContent=managerMode()?'事項管理':'我的事項';}
+    function renderMode(){const admin=managerMode();$('adminWrap').classList.toggle('hidden',!admin);$('staffWrap').classList.toggle('hidden',admin);if(admin){loadEmployees();loadAdminTaskHistory()}else loadStaffItems()}
+    function renderDueFields(){const t=$('dueType').value;$('dueDaysWrap').classList.toggle('hidden',t!=='days');$('dueDateWrap').classList.toggle('hidden',t!=='date');$('dueTimeWrap').classList.toggle('hidden',t==='none')}
+    function calcDueDate(){const t=$('dueType').value;const now=new Date();let d=new Date(now.getFullYear(),now.getMonth(),now.getDate());if(t==='none')return '';if(t==='tomorrow')d.setDate(d.getDate()+1);if(t==='days')d.setDate(d.getDate()+Math.max(1,Number($('dueDays').value||1))-1);if(t==='date')return $('dueDate').value;return d.toISOString().slice(0,10)}
+    async function loadEmployees(){try{const res=await api('getEmployeeOptions',{userId:uid()});employees=res.employees||res.rows||[];$('assigneeId').innerHTML='<option value="">請選擇員工</option>'+employees.map(x=>`<option value="${esc(x.id||x.employeeId||'')}">${esc(x.name||x.employeeName||'')}</option>`).join('')}catch(e){}}
+    const rec={};function recHtml(key){return `<div class="rec-line" data-rec="${key}"><span class="pill blue">錄音</span><span class="rec-time" id="rt_${key}">00:00</span><div class="rec-buttons"><button class="mini-btn primary" type="button" onclick="startRec('${key}')">開始</button><button class="mini-btn" type="button" onclick="stopRec('${key}')" disabled>停止</button><button class="mini-btn danger" type="button" onclick="clearRec('${key}')" disabled>刪除</button></div><audio id="ra_${key}" class="audio-mini hidden" controls></audio></div>`}
+    async function startRec(key){try{const box=document.querySelector(`[data-rec="${key}"]`);const stream=await navigator.mediaDevices.getUserMedia({audio:true});const chunks=[];const mr=new MediaRecorder(stream);rec[key]={mr,stream,chunks,sec:0,file:null,timer:setInterval(()=>{rec[key].sec++;$('rt_'+key).textContent=String(Math.floor(rec[key].sec/60)).padStart(2,'0')+':'+String(rec[key].sec%60).padStart(2,'0')},1000)};mr.ondataavailable=e=>{if(e.data?.size)chunks.push(e.data)};mr.onstop=()=>{clearInterval(rec[key].timer);const blob=new Blob(chunks,{type:mr.mimeType||'audio/webm'});rec[key].file=new File([blob],`record_${Date.now()}.webm`,{type:blob.type});stream.getTracks().forEach(t=>t.stop());const a=$('ra_'+key);a.src=URL.createObjectURL(rec[key].file);a.classList.remove('hidden');box.querySelectorAll('button')[0].disabled=false;box.querySelectorAll('button')[1].disabled=true;box.querySelectorAll('button')[2].disabled=false};mr.start();box.querySelectorAll('button')[0].disabled=true;box.querySelectorAll('button')[1].disabled=false;box.querySelectorAll('button')[2].disabled=true}catch(e){alert('無法啟用錄音：'+(e.message||e))}}
+    function stopRec(key){if(rec[key]?.mr&&rec[key].mr.state!=='inactive')rec[key].mr.stop()}function clearRec(key){if(rec[key]?.stream)rec[key].stream.getTracks().forEach(t=>t.stop());delete rec[key];$('rt_'+key).textContent='00:00';const a=$('ra_'+key);a.removeAttribute('src');a.classList.add('hidden');const b=document.querySelector(`[data-rec="${key}"]`);if(b){b.querySelectorAll('button')[0].disabled=false;b.querySelectorAll('button')[1].disabled=true;b.querySelectorAll('button')[2].disabled=true}}
+    async function uploadList(inputId,folder){const files=Array.from($(inputId)?.files||[]);if(!files.length)return[];if(typeof uploadFilesToCloudinary!=='function')throw new Error('缺少上傳功能');const out=await uploadFilesToCloudinary(files,{folder});return out.map((r,i)=>({url:r.secure_url||r.url,name:files[i]?.name||r.originalFilename||''}))}
+    async function uploadAudio(key,folder){if(!rec[key]?.file)return[];if(typeof uploadFileToCloudinary!=='function')throw new Error('缺少上傳功能');const r=await uploadFileToCloudinary(rec[key].file,{folder});return[{url:r.secure_url||r.url,name:rec[key].file.name}]}
+    function assetsHtml(a){a=a||{};const rows=[...(a.images||[]).map(x=>['圖片',x]),...(a.videos||[]).map(x=>['影片',x]),...(a.audios||[]).map(x=>['錄音',x]),...(a.files||[]).map(x=>['文件',x])];return rows.length?`<div class="asset-list">${rows.map(([t,x])=>`<a target="_blank" href="${esc(x.url||'#')}">${t}｜${esc(x.name||'查看')}</a>`).join('')}</div>`:''}
+    async function submitTask(){if(loading)return;loading=true;showMsg('儲存中...',true);try{const sel=$('assigneeId');const payload={userId:uid(),taskId:editingTaskId,title:$('taskTitle').value,content:$('taskContent').value,category:$('taskCategory').value,priority:$('taskPriority').value,assigneeId:sel.value,assigneeName:sel.options[sel.selectedIndex]?.text||'',dueDate:calcDueDate(),dueTime:$('dueTime').value,needReport:$('needReport').checked,allowComment:$('allowComment').checked,allowRedo:$('allowRedo').checked,needDoneFile:$('needDoneFile').checked,taskImageAssets:await uploadList('imageInput','tasks/images'),taskVideoAssets:await uploadList('videoInput','tasks/videos'),taskAudioAssets:await uploadAudio('manager','tasks/audio'),taskFileAssets:await uploadList('fileInput','tasks/files')};const res=await api('createTask',payload);if(!res.ok)throw new Error(res.message||'儲存失敗');showMsg('一次性事項已儲存。',true);resetForm();loadAdminTaskHistory()}catch(e){showMsg(e.message||String(e),false)}finally{loading=false}}
+    function resetForm(){editingTaskId='';['taskTitle','taskContent','dueDate'].forEach(id=>$(id).value='');$('taskCategory').value='一般交辦';$('taskPriority').value='一般';$('assigneeId').value='';$('dueType').value='today';$('dueTime').value='18:00';['imageInput','videoInput','fileInput'].forEach(id=>$(id).value='');clearRec('manager');renderDueFields();$('saveBtn').textContent='儲存一次性事項'}
+    function statusPill(r){let c=r.needsReassign?'red':(r.status==='已完成'?'blue':(r.status==='退回重做'?'warn':''));return `<span class="pill ${c}">${esc(r.needsReassign?r.assigneeStatusLabel:r.status||'待處理')}</span>`}
+    function itemCard(r,admin=false){return `<div class="item-card"><div class="item-head"><div><div class="item-title">${esc(r.title||'未命名事項')}</div><div class="item-meta">${esc(r.category||'')}｜負責人：${esc(r.assigneeName||'未指定')}｜期限：${esc((r.dueDate||'無期限')+(r.dueTime?' '+r.dueTime:''))}</div></div>${statusPill(r)}</div><details><summary class="item-meta" style="cursor:pointer;margin-top:8px">預覽內容 / 回覆</summary><div class="item-content">${esc(r.content||'')}</div>${assetsHtml(r.managerAttachments)}${r.replyText?`<div class="item-content"><b>員工回覆</b><br>${esc(r.replyText)}</div>`:''}${assetsHtml(r.replyAttachments)}${r.redoReason?`<div class="item-content"><b>退回原因</b><br>${esc(r.redoReason)}</div>`:''}</details>${admin?`<div class="actions"><button class="btn secondary" onclick='editTask(${JSON.stringify(r).replace(/'/g,"&#39;")})'>修改</button><button class="btn warn" onclick="redoTask('${esc(r.id)}')">退回重做</button><button class="btn danger" onclick="deleteTaskItem('${esc(r.id)}')">刪除</button></div>`:replyArea(r)}</div>`}
+    function replyArea(r){if(r.status==='已完成')return'';const key='staff_'+String(r.sourceType+'_'+r.id).replace(/[^a-zA-Z0-9]/g,'_');return `<div class="reply-box"><label>回覆</label><textarea id="note_${key}" placeholder="完成狀況"></textarea><div class="upload-grid" style="margin-top:8px"><div class="upload-box"><label>圖片</label><input id="img_${key}" type="file" multiple accept="image/*"></div><div class="upload-box"><label>影片</label><input id="vid_${key}" type="file" multiple accept="video/*"></div><div class="upload-box"><label>錄音</label>${recHtml(key)}</div><div class="upload-box"><label>文件</label><input id="fil_${key}" type="file" multiple></div></div><button class="btn full" onclick='completeItem(${JSON.stringify(r).replace(/'/g,"&#39;")},"${key}")'>送出完成</button></div>`}
+    async function completeItem(r,key){try{showMsg('送出中...',true);const payload={userId:uid(),sourceType:r.sourceType,taskId:r.taskId||r.id,templateId:r.templateId||r.sourceId,periodKey:r.periodKey,note:$('note_'+key)?.value||'',photoAssets:await uploadList('img_'+key,'work-replies/images'),videoAssets:await uploadList('vid_'+key,'work-replies/videos'),audioAssets:await uploadAudio(key,'work-replies/audio'),fileAssets:await uploadList('fil_'+key,'work-replies/files')};const res=await api('completeUnifiedWorkItem',payload);if(!res.ok)throw new Error(res.message||'送出失敗');showMsg('已送出完成回覆。',true);loadStaffItems()}catch(e){showMsg(e.message||String(e),false)}}
+    function editTask(r){editingTaskId=r.id;$('taskTitle').value=r.title||'';$('taskContent').value=r.content||'';$('taskCategory').value=r.category||'一般交辦';$('taskPriority').value=r.priority||'一般';$('assigneeId').value=r.assigneeId||'';$('dueType').value=r.dueDate?'date':'none';$('dueDate').value=r.dueDate||'';$('dueTime').value=r.dueTime||'18:00';$('needReport').checked=!!r.needReport;$('allowComment').checked=r.allowComment!==false;$('allowRedo').checked=r.allowRedo!==false;$('needDoneFile').checked=!!r.needDoneFile;$('saveBtn').textContent='儲存修改';renderDueFields();scrollTo({top:0,behavior:'smooth'})}
+    async function redoTask(id){const reason=prompt('退回原因','請重新補充完成回覆。');if(reason===null)return;const res=await api('markUnifiedWorkItemRedo',{userId:uid(),sourceType:'single',taskId:id,reason});if(!res.ok)alert(res.message||'退回失敗');loadAdminTaskHistory()}
+    async function deleteTaskItem(id){if(!confirm('確定刪除這筆一次性事項？'))return;const res=await api('deleteTask',{userId:uid(),taskId:id});if(!res.ok)alert(res.message||'刪除失敗');loadAdminTaskHistory()}
+    async function loadAdminTaskHistory(){const box=$('adminTaskHistory');box.innerHTML='<div class="empty">讀取中...</div>';try{const res=await api('getTasks',{userId:uid(),role:'admin'});const rows=res.rows||[];box.innerHTML=rows.length?rows.map(r=>itemCard(r,true)).join(''):'<div class="empty">目前尚無一次性事項。</div>'}catch(e){box.innerHTML='<div class="empty">目前無法讀取。</div>'}}
+    async function loadStaffItems(){const box=$('staffList');box.innerHTML='<div class="empty">讀取中...</div>';try{const res=await api('getUnifiedWorkItems',{userId:uid(),source:'all'});const rows=res.rows||[];box.innerHTML=rows.length?rows.map(r=>itemCard(r,false)).join(''):'<div class="empty">目前沒有待處理事項。</div>'}catch(e){box.innerHTML='<div class="empty">目前無法讀取資料。</div>'}}
+    document.addEventListener('DOMContentLoaded',()=>{initHeader();$('managerRecorder').innerHTML=recHtml('manager');renderDueFields();renderMode()});
+  </script>
+</body>
+</html>
