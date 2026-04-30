@@ -35,6 +35,34 @@ function renderItems(rows){const box=qs('#itemList');if(!rows.length){box.innerH
 function editItem(i){const r=state.items[i];if(!r)return;state.editingItem=r;qs('#itemName').value=r.name||'';qs('#category').value=r.category||'';qs('#keywords').value=r.keywords||'';qs('#sortOrder').value=r.sortOrder||'';qs('#teacherPrice').value=r.teacherPrice||r.price||'';qs('#marketPrice').value=r.marketPrice||'';qs('#stockStatus').value=r.stockStatus||'現貨';qs('#arrivalDate').value=r.arrivalDate||'';qs('#pickupDate').value=r.pickupDate||'';qs('#offerTerms').value=r.offerTerms||'';qs('#description').value=r.note||'';qs('#enabled').value=r.enabled?'是':'否';state.itemImage=r.imageUrl?{url:r.imageUrl}:null;renderItemPreview();window.scrollTo({top:0,behavior:'smooth'});}
 async function toggleItem(i){const r=state.items[i];if(!r)return;const btn=qs('#toggleItem_'+i);startActionButtonProgress(btn,{label:r.enabled?'下架':'上架'});try{const res=await api('saveTeacherGoodsItem',{userId:getUser().id,itemId:r.itemId,name:r.name,category:r.category,keywords:r.keywords,teacherPrice:r.teacherPrice||r.price,marketPrice:r.marketPrice,stockStatus:r.stockStatus,arrivalDate:r.arrivalDate,pickupDate:r.pickupDate,offerTerms:r.offerTerms,description:r.note,sortOrder:r.sortOrder,enabled:r.enabled?'否':'是',imageUrl:r.imageUrl});if(!res.ok)throw new Error(res.message||'操作失敗');finishActionButtonSuccess(btn,r.enabled?'已下架':'已上架');loadItems();}catch(err){finishActionButtonError(btn,'失敗');setMsg(qs('#msg'),err.message||'操作失敗',true);}}
 async function deleteItem(i){const r=state.items[i];if(!r||!confirm('確定要刪除這個商品嗎？'))return;const btn=qs('#delItem_'+i);startActionButtonProgress(btn,{label:'刪除'});try{const res=await api('deleteTeacherGoodsItem',{userId:getUser().id,itemId:r.itemId});if(!res.ok)throw new Error(res.message||'刪除失敗');finishActionButtonSuccess(btn,'已刪除');loadItems();}catch(err){finishActionButtonError(btn,'刪除失敗');setMsg(qs('#msg'),err.message||'刪除失敗',true);}}
+
+
+/* ===== 2026-04-30：管理端預設只看未處理；過去紀錄收合，需要時再展開 ===== */
+state.inquiryGroup='active';
+function adminInquiryGroupBar_(){
+  return `<div class="search-row" style="margin-top:0"><button class="btn ${state.inquiryGroup==='active'?'':'secondary'}" type="button" style="width:auto" onclick="setInquiryGroup('active')">未處理</button><button class="btn ${state.inquiryGroup==='past'?'':'secondary'}" type="button" style="width:auto" onclick="setInquiryGroup('past')">過去紀錄 / 已處理</button></div>`;
+}
+function setInquiryGroup(group){state.inquiryGroup=group||'active';loadInquiries();}
+async function loadInquiries(){
+  const box=qs('#inquiryList');
+  box.innerHTML=adminInquiryGroupBar_()+'<div class="empty">讀取中...</div>';
+  try{
+    const res=await api('getTeacherGoodsInquiryAdminList',{userId:getUser().id,keyword:qs('#inqKeyword').value||'',status:qs('#statusFilter').value||'',sourceType:qs('#sourceFilter').value||'',group:state.inquiryGroup||'active'});
+    if(!res.ok)throw new Error(res.message||'讀取失敗');
+    state.inquiries=res.rows||[];
+    renderInquiries(state.inquiries);
+    refreshAdminGoodsBadges();
+  }catch(err){box.innerHTML=adminInquiryGroupBar_()+`<div class="empty">${esc(err.message||'讀取失敗')}</div>`;}
+}
+function renderInquiries(rows){
+  const box=qs('#inquiryList');
+  let html=adminInquiryGroupBar_();
+  const emptyText=(state.inquiryGroup==='past')?'目前沒有過去紀錄':'目前沒有未處理的詢價';
+  if(!rows.length){box.innerHTML=html+`<div class="empty">${emptyText}</div>`;return;}
+  html+=rows.map((r,i)=>`<div class="item-card"><div class="card-head"><div><div class="name">${esc(r.teacherName||'外聘老師')}｜${esc(r.itemName||'商品詢價')}</div><div class="meta">${esc(r.sourceType||'')} ｜ 送出：${esc(r.createdAt||'')} ｜ 希望拿貨：${esc(r.needBy||'-')} ｜ 數量：${esc(r.quantity||'-')}</div></div>${badge(r.displayStatus||r.status)}</div>${r.imageUrl?`<div class="thumb" style="margin-top:10px"><img src="${optimizedImageUrl(r.imageUrl)}"></div>`:''}${r.websiteOriginalPriceText?`<div class="meta" style="margin-top:8px">官網價格：${esc(r.websiteOriginalPriceText)}${r.websiteProductUrl?` ｜ <a href="${esc(r.websiteProductUrl)}" target="_blank" rel="noopener">查看官網商品</a>`:''}</div>`:''}${r.websiteVariantSummary?`<div class="meta">官網規格：${esc(r.websiteVariantSummary)}</div>`:''}${r.note?`<div class="meta" style="margin-top:8px">老師詢問：${esc(r.note)}</div>`:''}<div class="reply-form"><div class="grid"><div><label>確認商品名稱</label><input id="replyName_${i}" value="${esc(r.replyItemName||r.itemName||'')}"></div><div><label>狀態</label><select id="replyStatus_${i}"><option value="待處理" ${r.status==='待處理'?'selected':''}>待處理</option><option value="已回覆" ${r.status==='已回覆'?'selected':''}>已回覆</option><option value="可取貨" ${r.status==='可取貨'?'selected':''}>可取貨</option><option value="缺貨" ${r.status==='缺貨'?'selected':''}>缺貨</option><option value="已完成" ${r.status==='已完成'?'selected':''}>已完成</option><option value="已取消" ${r.status==='已取消'?'selected':''}>已取消</option></select></div><div><label>老師價</label><input id="replyTeacherPrice_${i}" value="${esc(r.replyTeacherPrice||r.replyPrice||'')}"></div><div><label>市售價 / 官網價</label><input id="replyMarketPrice_${i}" value="${esc(r.replyMarketPrice||r.websiteOriginalPrice||'')}"></div><div><label>庫存回覆</label><input id="replyStock_${i}" value="${esc(r.replyStock||'')}" placeholder="例如：現貨 3 組 / 缺貨可調貨 / 預計下週到"></div><div><label>預計到貨日</label><input id="replyArrivalDate_${i}" type="date" value="${esc(r.replyArrivalDate||'')}"></div><div><label>可取貨日期</label><input id="replyPickupDate_${i}" type="date" value="${esc(r.replyPickupDate||'')}"></div><div class="full"><label>回覆內容</label><textarea id="replyNote_${i}">${esc(r.replyNote||'')}</textarea></div></div><div class="btn-row"><button class="btn" id="replyBtn_${i}" type="button" onclick="replyInquiry(${i})">送出回覆</button></div></div></div>`).join('');
+  box.innerHTML=html;
+}
+
 </script>
 </body>
 </html>
