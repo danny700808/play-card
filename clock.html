@@ -152,7 +152,7 @@
   </div>
 
   <script src="config.js?v=20260413fix1"></script>
-  <script src="app.js?v=20260413fix1"></script>
+  <script src="app.js?v=20260430clocklinev6"></script>
   <script>
     function tick(){
       const d = new Date();
@@ -164,7 +164,7 @@
       if(!box) return;
       const mins = Number(lateMinutes || 0) || 0;
       if(mins > 0){
-        box.textContent = '已遲到 ' + mins + ' 分鐘\n本次預估扣薪：' + (deductionText || '0 元') + '\n扣薪方式：依薪資比例扣薪';
+        box.textContent = '本次打卡已遲到 ' + mins + ' 分鐘\n本次預估扣薪：' + (deductionText || '0 元') + '\n扣薪方式：依薪資比例扣薪';
         box.classList.remove('hidden');
       }else{
         box.textContent = '';
@@ -410,7 +410,7 @@
         let successMessage = r.message || '';
         if(r && r.ok && Number(r.lateMinutes || 0) > 0){
           const deductionText = (r.lateDeductionText || '').trim() || ((Number(r.lateDeductionAmount || 0) > 0) ? (Math.floor(Number(r.lateDeductionAmount || 0)).toLocaleString('zh-TW') + ' 元') : '0 元');
-          successMessage += '\n已遲到 ' + Number(r.lateMinutes || 0) + ' 分鐘。\n本次預估扣薪：' + deductionText + '。\n扣薪方式：依薪資比例扣薪。';
+          successMessage += '\n本次打卡已遲到 ' + Number(r.lateMinutes || 0) + ' 分鐘。\n本次預估扣薪：' + deductionText + '。\n扣薪方式：依薪資比例扣薪。';
           showLateResultBox(Number(r.lateMinutes || 0), deductionText);
         }else{
           showLateResultBox(0, '');

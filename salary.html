@@ -35,7 +35,6 @@
       <div class="section-title">摘要</div>
       <div class="summary-grid">
         <div class="summary-box"><div class="label" id="mainAmountLabel">主要薪資</div><div class="value" id="mainAmountValue">-</div></div>
-        <div class="summary-box"><div class="label">薪資生效日</div><div class="value" id="salaryEffectiveDate">-</div></div>
         <div class="summary-box"><div class="label">本月遲到分鐘</div><div class="value" id="lateMinutesValue">0 分鐘</div></div>
         <div class="summary-box"><div class="label">本月遲到扣薪</div><div class="value" id="lateDeductionValue">0 元</div></div>
       </div>
@@ -50,7 +49,7 @@
         <div class="info-card" id="cardJobAllowance"><div class="label">職務加給</div><div class="value" id="jobAllowance">-</div></div>
         <div class="info-card" id="cardOtherAllowance"><div class="label">津貼</div><div class="value" id="otherAllowance">-</div></div>
         <div class="info-card"><div class="label">勞保狀態</div><div class="value" id="laborStatus">-</div></div>
-        <div class="info-card" id="cardLaborSalary"><div class="label">勞保級距 / 投保薪資 / 自付額</div><div class="value" id="laborSalary">-</div></div>
+        <div class="info-card" id="cardLaborSalary"><div class="label">勞保級距 / 投保薪資 / 勞保自付額</div><div class="value" id="laborSalary">-</div></div>
         <div class="info-card"><div class="label">健保狀態</div><div class="value" id="healthStatus">-</div></div>
         <div class="info-card" id="cardHealthSalary"><div class="label">健保級距 / 投保金額 / 本人自付額</div><div class="value" id="healthSalary">-</div></div>
         <div class="info-card" id="cardRetirementEmployer"><div class="label">雇主提撥勞退 6%</div><div class="value" id="retirementEmployer">-</div></div>
@@ -138,8 +137,7 @@
           const laborLevel = info.laborLevelText || info.laborPlanName || '';
           const laborSalary = info.laborSalaryText || '-';
           const laborSelf = info.laborSelfPayText || '0 元';
-          const laborFormula = info.laborSelfPayFormulaText || '勞保自付額＝投保薪資 × 12.5% × 20%';
-          qs('#laborSalary').textContent = (laborLevel ? laborLevel + '\n' : '') + '投保薪資：' + laborSalary + '\n自付額：' + laborSelf + '\n' + laborFormula;
+          qs('#laborSalary').textContent = (laborLevel ? laborLevel + '\n' : '') + '投保薪資：' + laborSalary + '\n勞保自付額：' + laborSelf;
         }
 
         setCardVisible('#cardHealthSalary', healthActive);
@@ -156,7 +154,6 @@
         if(showRetirement) qs('#retirementEmployer').textContent = info.retirementEmployerText || '-';
         if(showRetirement) qs('#retirementSelf').textContent = info.selfRetirementText || '-';
 
-        qs('#salaryEffectiveDate').textContent = info.effectiveDate || '-';
         qs('#salaryEffectiveDateInfo').textContent = info.effectiveDate || '-';
         qs('#lateMinutesValue').textContent = info.lateMinutesText || '0 分鐘';
         qs('#lateDeductionValue').textContent = info.lateDeductionText || '0 元';
