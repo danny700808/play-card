@@ -102,19 +102,6 @@
             <input id="hourlyRate" type="number" min="0" step="1" placeholder="輸入工讀時薪">
           </div>
 
-          <div class="field hidden" id="fieldParttimePartial">
-            <label>是否部分工時</label>
-            <select id="isParttimePartial">
-              <option value="否">否</option>
-              <option value="是">是</option>
-            </select>
-          </div>
-
-          <div class="field hidden" id="fieldAverageSalary">
-            <label>目前申報月平均薪資總額</label>
-            <input id="averageSalary" type="number" min="0" step="1" placeholder="工讀生請填平均申報月薪資">
-          </div>
-
           <div class="section-subtitle">職務加給</div>
           <div id="jobAllowanceList" class="line-list"></div>
           <button type="button" class="ghost-btn" id="addJobAllowanceBtn">＋ 新增職務加給</button>
@@ -123,20 +110,10 @@
           <div id="allowanceList" class="line-list"></div>
           <button type="button" class="ghost-btn" id="addAllowanceBtn">＋ 新增津貼</button>
 
-          <div class="field">
-            <label>勞保級距</label>
-            <select id="laborPlan"></select>
-            <div id="laborPlanHint" class="hint-box">選擇級距後，這裡會顯示投保薪資與勞保自付額。</div>
-          </div>
 
-          <div class="field">
-            <label>健保級距</label>
-            <select id="healthPlan"></select>
-            <div id="healthPlanHint" class="hint-box">選擇級距後，這裡會顯示投保金額與健保本人自付額。</div>
-          </div>
-
+          <div class="section-subtitle">投保設定</div>
           <div class="field-inline-grid">
-            <div class="field">
+            <div class="field" id="fieldLaborStatus">
               <label>勞保狀態</label>
               <select id="laborStatus">
                 <option value="">請選擇</option>
@@ -144,8 +121,9 @@
                 <option value="未保">未保</option>
                 <option value="暫停">暫停</option>
               </select>
+              <div id="laborStatusHint" class="hint-box">請先選擇勞保狀態；在保才需要選擇勞保級距。</div>
             </div>
-            <div class="field">
+            <div class="field" id="fieldHealthStatus">
               <label>健保狀態</label>
               <select id="healthStatus">
                 <option value="">請選擇</option>
@@ -153,9 +131,38 @@
                 <option value="未保">未保</option>
                 <option value="暫停">暫停</option>
               </select>
+              <div id="healthStatusHint" class="hint-box">請先選擇健保狀態；在保才需要選擇健保級距。</div>
             </div>
           </div>
+
+          <div class="field hidden" id="fieldParttimePartial">
+            <label>是否部分工時</label>
+            <select id="isParttimePartial">
+              <option value="否">否</option>
+              <option value="是">是</option>
+            </select>
+            <div class="hint-box">工讀生若選「是」，勞保級距會切換成部分工時 / 未達基本工資可用級距。</div>
+          </div>
+
+          <div class="field hidden" id="fieldAverageSalary">
+            <label>目前申報月平均薪資總額</label>
+            <input id="averageSalary" type="number" min="0" step="1" placeholder="工讀生請填平均申報月薪資">
+          </div>
+
+          <div class="field" id="fieldLaborPlan">
+            <label>勞保級距</label>
+            <select id="laborPlan"></select>
+            <div id="laborPlanHint" class="hint-box">勞保狀態為在保時，才需要選擇勞保級距。</div>
+          </div>
+
+          <div class="field" id="fieldHealthPlan">
+            <label>健保級距</label>
+            <select id="healthPlan"></select>
+            <div id="healthPlanHint" class="hint-box">健保狀態為在保時，才需要選擇健保級距。</div>
+          </div>
           <div id="healthHint" class="hint-box">健保若為在保，會依投保金額顯示健保自付額。</div>
+
+
 
           <div class="field">
             <label>勞退自提</label>
@@ -193,8 +200,8 @@
     </div>
   </div>
 
-  <script src="config.js?v=20260418salary2"></script>
-  <script src="app.js?v=20260418salary2"></script>
+  <script src="config.js?v=20260430insure2"></script>
+  <script src="app.js?v=20260430insure2"></script>
   <script>
     let setup = null;
     let selectedId = '';
@@ -239,12 +246,51 @@
     function currentConfig(){
       return (setup && setup.employeeConfigMap && setup.employeeConfigMap[selectedId]) || null;
     }
-    function getLaborMeta(){
-      const code = qs('#laborPlan').value;
+    function currentLaborGroup(){
+      const emp = currentEmployee();
+      const isParttime = emp && emp.identityType === 'parttime';
+      const partialEl = qs('#isParttimePartial');
+      return (isParttime && partialEl && partialEl.value === '是') ? 'partial' : 'regular';
+    }
+    function insuranceIsActive(status){
+      const s = String(status || '').trim();
+      return s === '在保' || s === '已投保' || s === '投保';
+    }
+    function activeOrEmptyPlan(status, value){
+      return insuranceIsActive(status) ? (value || '') : '';
+    }
+    function laborPlanListForCurrent(){
       const list = (setup && setup.laborPlans) || [];
-      return list.find(x => String(x.code || '') === String(code || '')) || null;
+      const group = currentLaborGroup();
+      const filtered = list.filter(x => {
+        const g = String(x.group || x.category || x.laborGroup || '').toLowerCase();
+        if(!g) return true;
+        if(group === 'partial') return ['partial','training','parttime_partial','parttime'].includes(g);
+        return ['regular','normal','fulltime'].includes(g);
+      });
+      return filtered.length ? filtered : list;
+    }
+    function refreshLaborPlanOptions(keepValue=true){
+      const previous = keepValue ? qs('#laborPlan').value : '';
+      const list = laborPlanListForCurrent();
+      fillSelect('laborPlan', list, previous, '請選擇勞保級距');
+      if(previous && !list.some(x => String(x.code || '') === String(previous || ''))){
+        qs('#laborPlan').value = '';
+      }
+      const modeText = currentLaborGroup() === 'partial'
+        ? '目前顯示：部分工時 / 低於基本工資投保級距。'
+        : '目前顯示：一般月薪投保級距。';
+      qs('#laborPlanHint').dataset.modeHint = modeText;
+    }
+    function getLaborMeta(){
+      if(!insuranceIsActive(qs('#laborStatus').value)) return null;
+      const code = qs('#laborPlan').value;
+      const visibleList = laborPlanListForCurrent();
+      const allList = (setup && setup.laborPlans) || [];
+      return visibleList.concat(allList).find(x => String(x.code || '') === String(code || '')) || null;
     }
     function getHealthMeta(){
+      if(!insuranceIsActive(qs('#healthStatus').value)) return null;
       const code = qs('#healthPlan').value;
       const list = (setup && setup.healthPlans) || [];
       return list.find(x => String(x.code || '') === String(code || '')) || null;
@@ -373,15 +419,37 @@
       return base;
     }
     function updateInsuranceHints(){
-      const labor = getLaborMeta();
-      const health = getHealthMeta();
       const laborStatus = qs('#laborStatus').value;
       const healthStatus = qs('#healthStatus').value;
-      const laborText = labor ? `投保薪資：${String(labor.salaryText || '-')}｜勞保自付：${String(labor.selfPayText || '-')}` : '選擇級距後，這裡會顯示投保薪資與勞保自付額。';
+      const laborActive = insuranceIsActive(laborStatus);
+      const healthActive = insuranceIsActive(healthStatus);
+
+      qs('#fieldLaborPlan').classList.toggle('hidden', !laborActive);
+      qs('#fieldHealthPlan').classList.toggle('hidden', !healthActive);
+      if(!laborActive) qs('#laborPlan').value = '';
+      if(!healthActive) qs('#healthPlan').value = '';
+
+      qs('#laborStatusHint').textContent = laborActive
+        ? '勞保目前為在保，請在下方選擇勞保級距。'
+        : (laborStatus ? '此員工目前未投保 / 暫停勞保，因此不需選擇勞保級距。' : '請先選擇勞保狀態；在保才需要選擇勞保級距。');
+      qs('#healthStatusHint').textContent = healthActive
+        ? '健保目前為在保，請在下方選擇健保級距。'
+        : (healthStatus ? '此員工目前未投保 / 暫停健保，因此不需選擇健保級距。' : '請先選擇健保狀態；在保才需要選擇健保級距。');
+
+      const labor = getLaborMeta();
+      const health = getHealthMeta();
+      const modeHint = qs('#laborPlanHint').dataset.modeHint || '';
+      const laborText = !laborActive
+        ? '勞保狀態不是在保，不需選擇勞保級距。'
+        : (labor ? `${modeHint ? modeHint + '｜' : ''}投保薪資：${String(labor.salaryText || '-')}｜勞保自付：${String(labor.selfPayText || '-')}` : `${modeHint ? modeHint + '｜' : ''}請選擇勞保級距，系統會顯示投保薪資與勞保自付額。`);
       qs('#laborPlanHint').textContent = laborText;
-      const healthPlanText = health ? `投保金額：${String(health.salaryText || '-')}｜健保本人自付：${String(health.selfPayText || '-')}` : '選擇級距後，這裡會顯示投保金額與健保本人自付額。';
+
+      const healthPlanText = !healthActive
+        ? '健保狀態不是在保，不需選擇健保級距。'
+        : (health ? `投保金額：${String(health.salaryText || '-')}｜健保本人自付：${String(health.selfPayText || '-')}` : '請選擇健保級距，系統會顯示投保金額與健保本人自付額。');
       qs('#healthPlanHint').textContent = healthPlanText;
-      qs('#healthHint').textContent = (healthStatus === '在保' && health) ? `健保本人自付：${String(health.selfPayText || '-')}` : '健保若為在保，請另外選擇健保級距。';
+      qs('#healthHint').textContent = (healthActive && health) ? `健保本人自付：${String(health.selfPayText || '-')}` : (healthActive ? '健保為在保，請選擇健保級距。' : '健保未投保 / 暫停時，健保級距與自付額會顯示為不適用。');
+
       const base = getRetirementBase();
       const employer = Math.round(base * 0.06);
       const selfEnabled = qs('#laborRetirementSelfEnabled').value === '是';
@@ -392,7 +460,7 @@
         text = `勞退月提繳工資：${moneyText(base)}｜雇主提撥6%：${moneyText(employer)}`;
         if(selfEnabled && rate > 0) text += `｜自提${rate}%：${moneyText(selfAmount)}`;
       }
-      if(laborStatus === '在保' && !labor) text += '｜請記得補選勞保級距';
+      if(laborActive && !labor) text += '｜請記得補選勞保級距';
       qs('#retirementHint').textContent = text;
     }
     function refreshEmployeeMeta(emp){
@@ -421,10 +489,11 @@
       qs('#hourlyRate').value = cfg.hourlyRate || '';
       qs('#isParttimePartial').value = cfg.isPartialHours || '否';
       qs('#averageSalary').value = cfg.averageSalary || '';
-      fillSelect('laborPlan', setup.laborPlans, cfg.laborPlan, '請選擇勞保級距');
-      fillSelect('healthPlan', setup.healthPlans, cfg.healthPlan, '請選擇健保級距');
       qs('#laborStatus').value = cfg.laborStatus || '';
       qs('#healthStatus').value = cfg.healthStatus || '';
+      refreshLaborPlanOptions(false);
+      qs('#laborPlan').value = activeOrEmptyPlan(qs('#laborStatus').value, cfg.laborPlan || '');
+      fillSelect('healthPlan', setup.healthPlans, activeOrEmptyPlan(qs('#healthStatus').value, cfg.healthPlan || ''), '請選擇健保級距');
       qs('#laborRetirementSelfEnabled').value = cfg.selfRetirementEnabled || '否';
       qs('#laborRetirementSelfRate').value = cfg.selfRetirementRate || '';
       qs('#salaryEffectiveDate').value = cfg.effectiveDate || '';
@@ -443,8 +512,8 @@
         hourlyRate: qs('#hourlyRate').value,
         isPartialHours: qs('#isParttimePartial').value,
         averageSalary: qs('#averageSalary').value,
-        laborPlan: qs('#laborPlan').value,
-        healthPlan: qs('#healthPlan').value,
+        laborPlan: activeOrEmptyPlan(qs('#laborStatus').value, qs('#laborPlan').value),
+        healthPlan: activeOrEmptyPlan(qs('#healthStatus').value, qs('#healthPlan').value),
         laborStatus: qs('#laborStatus').value,
         healthStatus: qs('#healthStatus').value,
         selfRetirementEnabled: qs('#laborRetirementSelfEnabled').value,
@@ -509,7 +578,12 @@
         const safeEmployees = (res.employees || []).filter(x => ['staff','parttime'].includes(String(x.identityType || '')));
         const safeConfigMap = {};
         safeEmployees.forEach(x => { safeConfigMap[x.id] = (res.employeeConfigMap && res.employeeConfigMap[x.id]) || {}; });
-        const safeLaborPlans = (res.laborPlans || []).slice().sort((a, b) => (Number(a.salary || 0) || 0) - (Number(b.salary || 0) || 0));
+        const laborGroupOrder = { partial: 1, training: 2, parttime_partial: 2, regular: 3, normal: 3, fulltime: 3 };
+        const safeLaborPlans = (res.laborPlans || []).slice().sort((a, b) => {
+          const ga = laborGroupOrder[String(a.group || a.category || '').toLowerCase()] || 9;
+          const gb = laborGroupOrder[String(b.group || b.category || '').toLowerCase()] || 9;
+          return ga - gb || ((Number(a.salary || 0) || 0) - (Number(b.salary || 0) || 0));
+        });
         const safeHealthPlans = (res.healthPlans || []).slice().sort((a, b) => (Number(a.salary || 0) || 0) - (Number(b.salary || 0) || 0));
         setup = Object.assign({}, res, {
           employees: safeEmployees,
@@ -576,11 +650,12 @@
       qs('#saveBottomBtn').onclick = saveConfig;
       qs('#addJobAllowanceBtn').onclick = addJobAllowance;
       qs('#addAllowanceBtn').onclick = addAllowance;
-      ['#baseSalary','#hourlyRate','#averageSalary','#laborPlan','#healthPlan','#laborStatus','#healthStatus','#isParttimePartial','#laborRetirementSelfRate'].forEach(sel => {
+      ['#baseSalary','#hourlyRate','#averageSalary','#laborPlan','#healthPlan','#laborStatus','#healthStatus','#laborRetirementSelfRate'].forEach(sel => {
         const el = qs(sel);
         if(el) el.addEventListener('input', updateInsuranceHints);
         if(el) el.addEventListener('change', updateInsuranceHints);
       });
+      qs('#isParttimePartial').addEventListener('change', () => { refreshLaborPlanOptions(true); updateInsuranceHints(); });
       qs('#laborRetirementSelfEnabled').addEventListener('change', () => { updateRetirementInputs(); updateInsuranceHints(); });
       await loadSetup();
     }

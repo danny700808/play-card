@@ -50,9 +50,9 @@
         <div class="info-card"><div class="label">職務加給</div><div class="value" id="jobAllowance">-</div></div>
         <div class="info-card"><div class="label">津貼</div><div class="value" id="otherAllowance">-</div></div>
         <div class="info-card"><div class="label">勞保狀態</div><div class="value" id="laborStatus">-</div></div>
-        <div class="info-card"><div class="label">勞保投保薪資 / 自付額</div><div class="value" id="laborSalary">-</div></div>
+        <div class="info-card"><div class="label">勞保級距 / 自付額</div><div class="value" id="laborSalary">-</div></div>
         <div class="info-card"><div class="label">健保狀態</div><div class="value" id="healthStatus">-</div></div>
-        <div class="info-card"><div class="label">健保投保金額 / 本人自付額</div><div class="value" id="healthSalary">-</div></div>
+        <div class="info-card"><div class="label">健保級距 / 本人自付額</div><div class="value" id="healthSalary">-</div></div>
         <div class="info-card"><div class="label">雇主提撥勞退 6%</div><div class="value" id="retirementEmployer">-</div></div>
         <div class="info-card"><div class="label">勞退自提</div><div class="value" id="retirementSelf">-</div></div>
         <div class="info-card"><div class="label">生效日期</div><div class="value" id="salaryEffectiveDateInfo">-</div></div>
@@ -60,8 +60,8 @@
       </div>
     </div>
   </div>
-  <script src="config.js?v=20260418salary4"></script>
-  <script src="app.js?v=20260418salary4"></script>
+  <script src="config.js?v=20260430insure2"></script>
+  <script src="app.js?v=20260430insure2"></script>
   <script>
     function toggleByIdentity(identityType){
       const isParttime = identityType === 'parttime';
@@ -96,19 +96,29 @@
         const res = await callSalaryApi({ action:'getMySalaryInfo', userId: user.id });
         if(!res || res.ok === false) throw new Error((res && res.message) || '讀取失敗');
         const info = res.info || {};
-        toggleByIdentity(info.identityType || user.identityType || 'staff');
+        const identityType = info.identityType || user.identityType || 'staff';
+        const isParttime = identityType === 'parttime';
+        const laborStatus = info.laborStatus || '-';
+        const healthStatus = info.healthStatus || '-';
+        const laborActive = ['在保','已投保','投保'].includes(String(laborStatus || '').trim());
+        const healthActive = ['在保','已投保','投保'].includes(String(healthStatus || '').trim());
+        toggleByIdentity(identityType);
         qs('#mainAmountLabel').textContent = info.mainAmountLabel || '主要薪資';
         qs('#mainAmountValue').textContent = info.mainAmountText || '-';
-        qs('#staffBaseSalary').textContent = info.staffBaseSalaryText || '-';
-        qs('#parttimeHourlyRate').textContent = info.parttimeHourlyRateText || '-';
-        qs('#parttimePartialHours').textContent = info.parttimePartialHoursText || '-';
-        qs('#parttimeAverageSalary').textContent = info.parttimeAverageSalaryText || '-';
+        qs('#staffBaseSalary').textContent = info.staffBaseSalaryText || (!isParttime ? (info.baseOrHourlyText || '-') : '-');
+        qs('#parttimeHourlyRate').textContent = info.parttimeHourlyRateText || (isParttime ? String(info.baseOrHourlyText || '-').split('｜')[0] : '-');
+        qs('#parttimePartialHours').textContent = info.parttimePartialHoursText || info.partialHoursText || '-';
+        qs('#parttimeAverageSalary').textContent = info.parttimeAverageSalaryText || info.averageSalaryText || '-';
         qs('#jobAllowance').textContent = info.jobAllowanceText || '-';
         qs('#otherAllowance').textContent = info.allowanceText || '-';
-        qs('#laborStatus').textContent = info.laborStatus || '-';
-        qs('#laborSalary').textContent = (info.laborSalaryText || '-') + '｜自付 ' + (info.laborSelfPayText || '-');
-        qs('#healthStatus').textContent = info.healthStatus || '-';
-        qs('#healthSalary').textContent = (info.healthSalaryText || '-') + '｜自付 ' + (info.healthSelfPayText || '-');
+        qs('#laborStatus').textContent = laborStatus;
+        qs('#laborSalary').textContent = laborActive
+          ? ((info.laborPlanName || info.laborSalaryText || '-') + '｜自付 ' + (info.laborSelfPayText || '0 元'))
+          : '級距：不適用｜自付 0 元';
+        qs('#healthStatus').textContent = healthStatus;
+        qs('#healthSalary').textContent = healthActive
+          ? ((info.healthPlanName || info.healthSalaryText || '-') + '｜自付 ' + (info.healthSelfPayText || '0 元'))
+          : '級距：不適用｜自付 0 元';
         qs('#retirementEmployer').textContent = info.retirementEmployerText || '-';
         qs('#retirementSelf').textContent = info.selfRetirementText || '-';
         qs('#salaryEffectiveDate').textContent = info.effectiveDate || '-';
