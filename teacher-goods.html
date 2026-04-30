@@ -40,18 +40,34 @@ async function searchWebsiteGoods(){
   if(!kw){box.innerHTML='<div class="empty">請輸入關鍵字後按「搜尋官網商品」。</div>';return;}
   box.innerHTML='<div class="empty">官網商品查詢中...</div>';
   try{
-    const res=await api('searchTeacherWebsiteGoods',{userId:getUser().id,keyword:kw,limit:12});
-    if(!res.ok)throw new Error(res.message||'官網商品暫時無法讀取，請稍後再試。');
+    const res=await api('searchTeacherWebsiteGoods',{userId:getUser().id,keyword:kw,limit:12,debug:true});
+    const debugHtml=renderWebsiteApiDebug(res.debug||null);
+    if(!res.ok){
+      box.innerHTML=debugHtml+`<div class="empty">${esc(res.message||'官網商品暫時無法讀取。')}</div>`;
+      return;
+    }
     state.websiteGoods=res.rows||[];
-    renderWebsiteGoods(state.websiteGoods);
+    if(state.websiteGoods.length){
+      renderWebsiteGoods(state.websiteGoods, debugHtml);
+    }else{
+      box.innerHTML=debugHtml+'<div class="empty">API 有回應，但目前沒有找到符合的商品。請換關鍵字試試，例如：elixir、Yamaha、Fender。</div>';
+    }
   }catch(err){
     box.innerHTML=`<div class="empty">${esc(err.message||'官網商品暫時無法讀取，請確認 EasyStore API 設定或稍後再試。')}</div>`;
   }
 }
-function renderWebsiteGoods(rows){
+function renderWebsiteApiDebug(debug){
+  if(!debug) return '';
+  const attempts=(debug.attempts||[]).map((a,idx)=>`<div style="margin-top:8px;padding:10px;border-radius:12px;background:#fff;border:1px solid #dfe7f1"><div><strong>測試 ${idx+1}</strong>｜HTTP：${esc(a.status||'-')}｜JSON：${a.isJson?'是':'否'}｜商品數：${esc(a.count==null?'-':a.count)}</div><div style="font-size:12px;word-break:break-all;color:#66788f;margin-top:4px">${esc(a.url||'')}</div>${a.error?`<div style="color:#b42318;margin-top:4px">${esc(a.error)}</div>`:''}${a.preview?`<div style="font-size:12px;color:#66788f;margin-top:4px;white-space:pre-wrap">回傳前 180 字：${esc(a.preview)}</div>`:''}</div>`).join('');
+  const first=debug.firstItem||{};
+  const firstHtml=debug.connected?`<div style="margin-top:8px"><strong>第一筆商品欄位測試：</strong><br>名稱：${esc(first.name||'未讀到')}<br>價格：${esc(first.price||'未讀到')}<br>圖片：${esc(first.imageUrl?'有讀到':'未讀到')}</div>`:'';
+  return `<div style="padding:14px 16px;border-radius:18px;background:#f6f8fb;border:1px solid #dfe7f1;margin-bottom:14px;color:#25415f;line-height:1.7"><div style="font-weight:900;font-size:16px">EasyStore API 測試結果</div><div>連線狀態：${debug.connected?'有連上':'尚未確認連上'}｜是否讀到商品：${debug.hasProducts?'有':'沒有'}｜找到商品數：${esc(debug.totalRows||0)}</div>${firstHtml}${attempts}</div>`;
+}
+function renderWebsiteGoods(rows, debugHtml){
   const box=qs('#websiteGoodsList');
-  if(!rows.length){box.innerHTML='<div class="empty">目前沒有找到符合的官網商品</div>';return;}
-  box.innerHTML=rows.map((r,i)=>`<div class="goods-card"><div class="goods-img">${r.imageUrl?`<img src="${optimizedImageUrl(r.imageUrl)}">`:'無圖'}</div><div><div class="goods-name">${esc(r.name||'未命名商品')}</div><div class="meta">${esc(r.brand||'')}${r.category?`｜${esc(r.category)}`:''}${r.variantSummary?`｜${esc(r.variantSummary)}`:''}</div><div class="price-row"><span class="pill gray">官網價格：${esc(r.marketPriceText||r.priceText||'未提供')}</span>${r.stockStatus?`<span class="pill">${esc(r.stockStatus)}</span>`:''}</div>${r.url?`<div class="meta"><a href="${esc(r.url)}" target="_blank" rel="noopener">查看官網商品</a></div>`:''}<div class="card-actions"><button class="btn" type="button" onclick="openWebsiteInquiry(${i})">加入詢價</button><button class="btn secondary" type="button" onclick="openWebsiteInquiry(${i})">詢問老師價 / 量價</button></div><div class="mini-form" id="websiteAsk_${i}"><div class="goods-grid"><div><label>數量</label><input id="websiteQty_${i}" type="number" min="1" step="1" placeholder="例如：1"></div><div><label>希望拿貨日期</label><input id="websiteNeed_${i}" type="date"></div><div class="full"><label>補充說明</label><textarea id="websiteNote_${i}" placeholder="例如：想知道老師拿貨價、3 個以上量價、是否有現貨"></textarea></div></div><div class="btn-row"><button class="btn" id="websiteSubmit_${i}" type="button" onclick="submitWebsiteInquiry(${i})">送出官網商品詢價</button></div></div></div></div>`).join('');
+  debugHtml=debugHtml||'';
+  if(!rows.length){box.innerHTML=debugHtml+'<div class="empty">目前沒有找到符合的官網商品</div>';return;}
+  box.innerHTML=debugHtml+rows.map((r,i)=>`<div class="goods-card"><div class="goods-img">${r.imageUrl?`<img src="${optimizedImageUrl(r.imageUrl)}">`:'無圖'}</div><div><div class="goods-name">${esc(r.name||'未命名商品')}</div><div class="meta">${esc(r.brand||'')}${r.category?`｜${esc(r.category)}`:''}${r.variantSummary?`｜${esc(r.variantSummary)}`:''}</div><div class="price-row"><span class="pill gray">官網價格：${esc(r.marketPriceText||r.priceText||'未提供')}</span>${r.stockStatus?`<span class="pill">${esc(r.stockStatus)}</span>`:''}</div>${r.url?`<div class="meta"><a href="${esc(r.url)}" target="_blank" rel="noopener">查看官網商品</a></div>`:''}<div class="card-actions"><button class="btn" type="button" onclick="openWebsiteInquiry(${i})">加入詢價</button><button class="btn secondary" type="button" onclick="openWebsiteInquiry(${i})">詢問老師價 / 量價</button></div><div class="mini-form" id="websiteAsk_${i}"><div class="goods-grid"><div><label>數量</label><input id="websiteQty_${i}" type="number" min="1" step="1" placeholder="例如：1"></div><div><label>希望拿貨日期</label><input id="websiteNeed_${i}" type="date"></div><div class="full"><label>補充說明</label><textarea id="websiteNote_${i}" placeholder="例如：想知道老師拿貨價、3 個以上量價、是否有現貨"></textarea></div></div><div class="btn-row"><button class="btn" id="websiteSubmit_${i}" type="button" onclick="submitWebsiteInquiry(${i})">送出官網商品詢價</button></div></div></div></div>`).join('');
 }
 function openWebsiteInquiry(i){const el=qs('#websiteAsk_'+i);if(el)el.classList.toggle('show');}
 async function submitWebsiteInquiry(i){
