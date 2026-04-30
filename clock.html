@@ -225,7 +225,7 @@
         <div class="item clock-item">
           <div class="top">
             <strong>${escapeHtml(x.date)} ${escapeHtml(x.time)}</strong>
-            <span class="tag ${x.status === '補打卡' ? 'subtle' : ''}">${escapeHtml(x.statusLabel || x.status || '')}</span>
+            <span class="tag ${isLate ? 'danger' : (x.status === '補打卡' ? 'subtle' : '')}">${escapeHtml(displayStatus)}</span>
           </div>
           <div class="clock-line">${escapeHtml(x.actionName)}｜${escapeHtml(x.clockType)}${lateText}</div>
           ${noteText}
