@@ -213,7 +213,10 @@
     }
 
     function renderHistoryRow(x, readonly){
-      const lateText = x.clockType === '特殊打卡' ? '' : (x.status === '遲到' ? '｜遲到 ' + (x.lateMinutes || 0) + ' 分鐘' : '');
+      const lateMinutes = Number(x.lateMinutes || 0) || 0;
+      const isLate = x.clockType !== '特殊打卡' && lateMinutes > 0;
+      const displayStatus = isLate ? ('遲到 ' + lateMinutes + ' 分鐘') : (x.statusLabel || x.status || '正常');
+      const lateText = isLate ? '｜遲到 ' + lateMinutes + ' 分鐘' : '';
       const noteText = x.note ? `<div class="muted" style="margin-top:6px">備註：${escapeHtml(x.note)}</div>` : '';
       const originalText = x.originalRef ? `<div class="muted" style="margin-top:6px">原始紀錄：${escapeHtml(x.originalRef)}</div>` : '';
       const correctionText = x.status === '補打卡' ? '<div class="muted" style="margin-top:6px">此筆為補登／修正核准後的正式紀錄。</div>' : '';
