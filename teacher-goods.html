@@ -1,39 +1,382 @@
 <!doctype html>
 <html lang="zh-Hant">
 <head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>拿貨 / 詢價</title><link rel="stylesheet" href="style.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>拿貨 / 詢價</title>
+  <link rel="stylesheet" href="style.css">
   <style>
-    .goods-page{max-width:1100px;margin:0 auto;padding:18px 14px 34px}.goods-return{margin-bottom:14px}.goods-return .btn{width:100%;border-radius:16px;background:#1f7a5a;color:#fff;border:none}.goods-panel{background:#fff;border:1px solid #dfe7f1;border-radius:24px;padding:18px;box-shadow:0 10px 28px rgba(31,122,90,.06);margin-bottom:16px}.goods-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}.goods-tabs button{border-radius:16px;padding:12px 10px}.goods-tabs .secondary{background:#eef2f6;color:#31506b}.goods-panel-title{font-size:22px;font-weight:900;color:#18314a;margin:0 0 14px}.goods-sub{color:#607089;font-size:14px;line-height:1.7;margin-top:-8px;margin-bottom:14px}.goods-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.goods-grid .full{grid-column:1/-1}.goods-grid label{display:block;font-weight:900;color:#25415f;margin-bottom:7px}.goods-grid input,.goods-grid textarea,.goods-grid select{width:100%;border:1px solid #cfd8e3;border-radius:16px;padding:12px 14px;font-size:16px;background:#fff}.goods-grid textarea{min-height:96px;resize:vertical}.image-picker{display:grid;grid-template-columns:120px 1fr;gap:12px;align-items:center}.image-preview{width:120px;height:120px;border:1px dashed #b8c7d8;border-radius:20px;background:#f6f8fb;display:flex;align-items:center;justify-content:center;overflow:hidden;color:#6a7a91;font-weight:800;text-align:center}.image-preview img{width:100%;height:100%;object-fit:cover}.hint{font-size:13px;color:#6a7a91;line-height:1.7}.goods-search{display:flex;gap:10px;margin-bottom:14px}.goods-search input{flex:1;min-width:0;border:1px solid #cfd8e3;border-radius:16px;padding:12px 14px;font-size:16px}.goods-list,.record-list{display:grid;gap:14px}.goods-card{border:1px solid #dfe7f1;border-radius:22px;background:#fff;padding:14px;display:grid;grid-template-columns:112px 1fr;gap:14px;align-items:start}.goods-img{width:112px;height:112px;border-radius:18px;background:#f2f5f9;display:flex;align-items:center;justify-content:center;overflow:hidden;color:#8aa;font-weight:800}.goods-img img{width:100%;height:100%;object-fit:cover}.goods-name{font-size:21px;font-weight:900;color:#18314a;margin-bottom:6px}.meta{font-size:14px;color:#66788f;line-height:1.8}.price-row{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}.pill{display:inline-flex;align-items:center;border-radius:999px;padding:7px 11px;font-size:13px;font-weight:900;background:#edf6f2;color:#1f7a5a}.pill.gray{background:#eef2f6;color:#516b84}.pill.wait{background:#fff5e6;color:#9a5b00}.pill.done{background:#ecf7f1;color:#1f7a5a}.pill.bad{background:#fff0f0;color:#b42318}.card-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.mini-form{display:none;margin-top:12px;padding:14px;border-radius:18px;background:#f6f8fb;border:1px solid #dfe7f1}.mini-form.show{display:block}.record-card{border:1px solid #dfe7f1;border-radius:22px;background:#fff;padding:14px}.record-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap}.reply-box{margin-top:10px;padding:12px;border-radius:16px;background:#f6f8fb;border:1px solid #e1e8f0;white-space:pre-wrap}.empty{padding:18px;text-align:center;color:#6a7a91;background:#f6f8fb;border-radius:18px}.msg{margin:0 0 12px}.btn-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}.btn-row .btn{width:auto;min-width:150px}.btn.is-loading{position:relative;overflow:hidden}.btn .btn-progress-fill{position:absolute;left:0;top:0;bottom:0;background:rgba(255,255,255,.22);width:0%;transition:width .25s}.btn .btn-label{position:relative;z-index:1}@media(max-width:680px){.goods-page{padding:12px}.goods-tabs{grid-template-columns:1fr}.goods-grid{grid-template-columns:1fr}.image-picker{grid-template-columns:1fr}.goods-card{grid-template-columns:1fr}.goods-img,.image-preview{width:100%;height:190px}.goods-search{display:grid}.card-actions{grid-template-columns:1fr}.btn-row .btn{width:100%}}
+    .seg{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+    .seg button{width:auto;padding:10px 18px;border-radius:999px}
+    .searchbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+    .searchbar input{flex:1;min-width:220px}
+    .info-note{padding:14px 16px;border-radius:18px;background:#f5f8fc;border:1px solid #dbe5f0;color:#4e6178;line-height:1.8;font-size:14px;margin-bottom:14px}
+    .panel{display:grid;gap:14px}
+    .form-card,.goods-card,.inq-card{border:1px solid var(--line);border-radius:24px;background:#fff;padding:16px}
+    .goods-list,.inquiry-list,.search-results{display:grid;gap:14px}
+    .goods-card{display:grid;grid-template-columns:96px 1fr;gap:14px;align-items:start}
+    .goods-image{width:96px;height:96px;border-radius:18px;overflow:hidden;background:#f2f5f9;display:flex;align-items:center;justify-content:center;color:#8aa;font-size:13px}
+    .goods-image img{width:100%;height:100%;object-fit:cover}
+    .goods-meta{font-size:14px;color:#6a7a91;line-height:1.8}
+    .price-row{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0}
+    .pill{display:inline-flex;align-items:center;border-radius:999px;padding:8px 12px;font-weight:800;background:#edf6f2;color:#1f7a5a}
+    .pill.gray{background:#eef2f6;color:#5d7088}
+    .pill.blue{background:#eef5ff;color:#315f9a}
+    .badge{display:inline-flex;padding:6px 10px;border-radius:999px;background:#eef2f6;color:#42556d;font-size:13px;font-weight:800}
+    .badge.wait{background:#fff5e6;color:#9a5b00}
+    .badge.done{background:#ecf7f1;color:#1f7a5a}
+    .source-badge{display:inline-flex;padding:6px 10px;border-radius:999px;font-size:12px;font-weight:800;background:#edf3ff;color:#3a64a6}
+    .goods-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+    .goods-actions .btn{width:auto;padding:10px 16px}
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    .row{margin-bottom:12px}
+    .row:last-child{margin-bottom:0}
+    label{display:block;font-size:14px;font-weight:800;margin-bottom:8px}
+    input,textarea,select{width:100%;padding:12px 14px;border:1px solid #cfd8e3;border-radius:16px;background:#fff;font-size:16px}
+    textarea{min-height:96px;resize:vertical}
+    .form-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+    .upload-preview{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+    .preview-box{width:96px;height:96px;border-radius:18px;border:1px solid #dfe7f1;background:#f2f5f9;display:flex;align-items:center;justify-content:center;overflow:hidden;color:#8aa;font-size:13px}
+    .preview-box img{width:100%;height:100%;object-fit:cover}
+    .mini-form{display:none;margin-top:14px;padding:16px;border-radius:20px;background:#f6f8fb;border:1px solid #dfe7f1}
+    .mini-form.show{display:block}
+    .line-clamp-2{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+    a.link-btn{display:inline-flex;align-items:center;gap:6px;color:#315f9a;font-weight:800;text-decoration:none}
+    @media (max-width:720px){
+      .grid2{grid-template-columns:1fr}
+      .goods-card{grid-template-columns:1fr}
+      .goods-image{width:100px;height:100px}
+      .goods-actions .btn,.form-actions .btn{width:100%}
+    }
   </style>
 </head>
 <body onload="initPage()">
-  <div class="goods-page">
-    <div class="goods-return"><a class="btn" id="backLink" href="teacher-home.html">返回老師首頁</a></div>
-    <div class="goods-panel">
-      <div class="goods-tabs"><button class="btn" type="button" id="tabAskBtn">我要詢價</button><button class="btn secondary" type="button" id="tabOfferBtn">公司優惠</button><button class="btn secondary" type="button" id="tabRecordBtn">我的紀錄</button></div>
-      <div id="msg" class="msg" style="display:none"></div>
-      <section id="askView"><div class="goods-panel-title">我要詢價</div><div class="goods-sub">不知道品名也沒關係，可以直接拍照或上傳圖片送出。</div><div class="goods-grid"><div><label>商品名稱 / 關鍵字</label><input id="askName" placeholder="知道就填，不知道可空白"></div><div><label>數量</label><input id="askQty" type="number" min="1" step="1" placeholder="例如：1"></div><div><label>希望拿貨日期</label><input id="askNeedBy" type="date"></div><div class="full"><label>商品圖片</label><div class="image-picker"><div class="image-preview" id="askPreview">可拍照<br>或上傳</div><div><input id="askImage" type="file" accept="image/*" capture="environment"><div class="hint">手機可直接拍照；圖片會先上傳後再送出詢價。</div></div></div></div><div class="full"><label>補充說明</label><textarea id="askNote" placeholder="例如：學生要用、不確定型號、想問有沒有類似款"></textarea></div></div><div class="btn-row"><button class="btn" type="button" id="askSubmitBtn">送出詢價</button></div></section>
-      <section id="offerView" hidden><div class="goods-panel-title">公司優惠</div><div class="goods-search"><input id="keyword" placeholder="搜尋商品名稱 / 關鍵字"><button class="btn secondary" type="button" id="searchBtn" style="width:auto">搜尋</button></div><div class="goods-list" id="goodsList"></div></section>
-      <section id="recordView" hidden><div class="goods-panel-title">我的詢價紀錄</div><div class="record-list" id="recordList"></div></section>
+<div class="container">
+  <div class="page-return-wrap"><a class="btn page-return-btn" id="backLink" href="teacher-home.html">返回老師首頁</a></div>
+
+  <div class="card">
+    <div class="topbar">
+      <div class="header" style="margin:0">
+        <h1 class="title" style="margin:0">拿貨 / 詢價</h1>
+        <div class="welcome">老師可以直接搜尋公司官網商品、加入詢價，後台會收到通知並回覆拿貨價與量價。</div>
+      </div>
     </div>
   </div>
-<script src="config.js?v=20260430goods2"></script><script src="app.js?v=20260430goods2"></script>
+
+  <div class="card">
+    <div class="seg">
+      <button class="btn" type="button" id="tabDirectBtn">我要詢價</button>
+      <button class="btn secondary" type="button" id="tabWebsiteBtn">公司官網詢價</button>
+      <button class="btn secondary" type="button" id="tabGoodsBtn">公司優惠</button>
+      <button class="btn secondary" type="button" id="tabInquiryBtn">我的紀錄</button>
+    </div>
+    <div id="msg" class="msg" style="display:none"></div>
+
+    <div id="directView" class="panel">
+      <div class="info-note">如果你找不到商品，或是想直接丟需求給公司，可以在這裡直接送出詢價。可填寫品名、需求數量、時間、說明，也可以附圖片。</div>
+      <div class="form-card">
+        <div class="grid2">
+          <div class="row"><label>想詢問的商品名稱</label><input id="directName" placeholder="例如：88 鍵電鋼琴 / 指定型號"></div>
+          <div class="row"><label>需求數量</label><input id="directQty" type="number" min="1" step="1" placeholder="例如：1"></div>
+          <div class="row"><label>預計想拿貨的時間</label><input id="directNeedBy" type="date"></div>
+          <div class="row"><label>附圖（選填）</label><input id="directImage" type="file" accept="image/*"></div>
+        </div>
+        <div class="row"><label>需求說明</label><textarea id="directNote" placeholder="例如：想知道老師拿貨價、量價、是否有現貨，或希望搭配哪些配件"></textarea></div>
+        <div class="upload-preview">
+          <div class="preview-box" id="directPreview">無圖片</div>
+          <div class="goods-meta">可附上截圖、型號照片或其他參考圖，方便公司更快回覆。</div>
+        </div>
+        <div class="form-actions">
+          <button class="btn" type="button" id="directSubmitBtn">送出詢價</button>
+          <button class="btn secondary" type="button" id="directResetBtn">清空</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="websiteView" class="panel" hidden>
+      <div class="info-note">這裡會直接從公司官網商品資料拉出結果。老師看到的是官網原價，按下「加入詢價」後，公司再回覆實際拿貨價、量價與可取貨資訊。</div>
+      <div class="searchbar">
+        <input id="websiteKeyword" placeholder="輸入品名、型號、品牌，例如：Yamaha、電鋼琴、效果器">
+        <button class="btn secondary" type="button" id="websiteSearchBtn" style="width:auto;padding:10px 18px">搜尋官網商品</button>
+      </div>
+      <div class="search-results" id="websiteResults"></div>
+    </div>
+
+    <div id="goodsView" class="panel" hidden>
+      <div class="info-note">公司主動整理好的優惠商品會顯示在這裡。你可以直接送出詢價，管理端會回覆實際拿貨資訊。</div>
+      <div class="searchbar">
+        <input id="keyword" placeholder="輸入品名關鍵字搜尋公司優惠商品">
+        <button class="btn secondary" type="button" id="searchBtn" style="width:auto;padding:10px 18px">搜尋</button>
+      </div>
+      <div class="goods-list" id="goodsList"></div>
+    </div>
+
+    <div id="inquiryView" class="panel" hidden>
+      <div class="inquiry-list" id="inquiryList"></div>
+    </div>
+  </div>
+</div>
+<script src="config.js?v=20260430_teacher_quote_web_1"></script>
+<script src="app.js?v=20260430_teacher_quote_web_1"></script>
 <script>
-let state={tab:'ask', askImage:null, goods:[], records:[]};
-function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
-function initPage(){const user=requireLogin();if(!user)return;if(!isExternalTeacher(user)){location.href='dashboard.html';return;}qs('#backLink').href=userHomeHref(user);qs('#tabAskBtn').onclick=()=>switchTab('ask');qs('#tabOfferBtn').onclick=()=>switchTab('offer');qs('#tabRecordBtn').onclick=()=>switchTab('record');qs('#searchBtn').onclick=()=>loadGoods();qs('#keyword').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();loadGoods();}});qs('#askImage').addEventListener('change',handleAskImage);qs('#askSubmitBtn').onclick=submitFreeInquiry;switchTab('ask');}
-function switchTab(tab){state.tab=tab;qs('#askView').hidden=tab!=='ask';qs('#offerView').hidden=tab!=='offer';qs('#recordView').hidden=tab!=='record';qs('#tabAskBtn').className=tab==='ask'?'btn':'btn secondary';qs('#tabOfferBtn').className=tab==='offer'?'btn':'btn secondary';qs('#tabRecordBtn').className=tab==='record'?'btn':'btn secondary';setMsg(qs('#msg'),'');if(tab==='offer')loadGoods();if(tab==='record')loadRecords();}
-function badge(status){const s=String(status||'待處理');const cls=s.includes('缺貨')?'bad':(s.includes('回覆')||s.includes('完成')||s.includes('可取')?'done':(s.includes('待')?'wait':'gray'));return `<span class="pill ${cls}">${esc(s)}</span>`;}
-async function handleAskImage(e){const file=(e.target.files||[])[0];if(!file)return;const box=qs('#askPreview');box.textContent='上傳中...';try{const res=await uploadFileToCloudinary(file,{folder:'teacher-goods-inquiry'});state.askImage={url:res.secure_url||res.url,name:file.name};box.innerHTML=`<img src="${optimizedImageUrl(state.askImage.url)}">`;}catch(err){state.askImage=null;box.textContent='上傳失敗';setMsg(qs('#msg'),err.message||'圖片上傳失敗',true);}}
-function resetAskForm(){qs('#askName').value='';qs('#askQty').value='';qs('#askNeedBy').value='';qs('#askNote').value='';qs('#askImage').value='';state.askImage=null;qs('#askPreview').innerHTML='可拍照<br>或上傳';}
-async function submitFreeInquiry(){const name=qs('#askName').value.trim(),note=qs('#askNote').value.trim();if(!name&&!(state.askImage&&state.askImage.url)&&!note){setMsg(qs('#msg'),'請至少填寫品名、補充說明，或上傳一張圖片。',true);return;}const btn=qs('#askSubmitBtn');startActionButtonProgress(btn,{label:'送出'});try{const res=await api('submitTeacherGoodsInquiry',{userId:getUser().id,sourceType:'老師主動詢價',itemName:name,inquiryImageUrl:state.askImage&&state.askImage.url||'',quantity:qs('#askQty').value||'',needBy:qs('#askNeedBy').value||'',note:note});if(!res.ok)throw new Error(res.message||'送出失敗');finishActionButtonSuccess(btn,'已送出');resetAskForm();setMsg(qs('#msg'),'詢價已送出，管理者回覆後會出現在「我的紀錄」。');}catch(err){finishActionButtonError(btn,'送出失敗');setMsg(qs('#msg'),err.message||'送出失敗',true);}}
-async function loadGoods(){const box=qs('#goodsList');box.innerHTML='<div class="empty">讀取中...</div>';try{const res=await api('getTeacherGoodsList',{userId:getUser().id,keyword:qs('#keyword').value||''});if(!res.ok)throw new Error(res.message||'讀取失敗');state.goods=res.rows||[];renderGoods(state.goods);}catch(err){box.innerHTML=`<div class="empty">${esc(err.message||'讀取失敗')}</div>`;}}
-function renderGoods(rows){const box=qs('#goodsList');if(!rows.length){box.innerHTML='<div class="empty">目前沒有可顯示的優惠商品</div>';return;}box.innerHTML=rows.map((r,i)=>`<div class="goods-card"><div class="goods-img">${r.imageUrl?`<img src="${optimizedImageUrl(r.imageUrl)}">`:'無圖'}</div><div><div class="goods-name">${esc(r.name)}</div><div class="meta">${esc(r.category||'')} ${r.stockStatus?`｜${esc(r.stockStatus)}`:''}</div><div class="price-row"><span class="pill">老師價：${esc(r.teacherPriceText||r.priceText||'未設定')}</span><span class="pill gray">市售價：${esc(r.marketPriceText||'未設定')}</span></div>${r.offerTerms?`<div class="meta">優惠條件：${esc(r.offerTerms)}</div>`:''}${r.pickupDate?`<div class="meta">可取貨：${esc(r.pickupDate)}</div>`:''}${r.note?`<div class="meta">${esc(r.note)}</div>`:''}<div class="card-actions"><button class="btn" type="button" onclick="openGoodsInquiry(${i})">確認是否有貨</button><button class="btn secondary" type="button" onclick="openGoodsInquiry(${i})">我要詢問</button></div><div class="mini-form" id="goodsAsk_${i}"><div class="goods-grid"><div><label>數量</label><input id="goodsQty_${i}" type="number" min="1" step="1" placeholder="例如：1"></div><div><label>希望拿貨日期</label><input id="goodsNeed_${i}" type="date"></div><div class="full"><label>補充說明</label><textarea id="goodsNote_${i}" placeholder="例如：確認有沒有現貨，學生下週要用"></textarea></div></div><div class="btn-row"><button class="btn" id="goodsSubmit_${i}" type="button" onclick="submitGoodsInquiry(${i})">送出詢問</button></div></div></div></div>`).join('');}
-function openGoodsInquiry(i){const el=qs('#goodsAsk_'+i);if(el)el.classList.toggle('show');}
-async function submitGoodsInquiry(i){const r=state.goods[i];if(!r)return;const btn=qs('#goodsSubmit_'+i);startActionButtonProgress(btn,{label:'送出'});try{const res=await api('submitTeacherGoodsInquiry',{userId:getUser().id,sourceType:'公司商品詢問',itemId:r.itemId,itemName:r.name,quantity:qs('#goodsQty_'+i).value||'',needBy:qs('#goodsNeed_'+i).value||'',note:qs('#goodsNote_'+i).value||'確認是否有貨'});if(!res.ok)throw new Error(res.message||'送出失敗');finishActionButtonSuccess(btn,'已送出');setMsg(qs('#msg'),'已送出詢問，可到「我的紀錄」查看回覆。');loadGoods();}catch(err){finishActionButtonError(btn,'送出失敗');setMsg(qs('#msg'),err.message||'送出失敗',true);}}
-async function loadRecords(){const box=qs('#recordList');box.innerHTML='<div class="empty">讀取中...</div>';try{const res=await api('getTeacherGoodsInquiries',{userId:getUser().id});if(!res.ok)throw new Error(res.message||'讀取失敗');state.records=res.rows||[];renderRecords(state.records);}catch(err){box.innerHTML=`<div class="empty">${esc(err.message||'讀取失敗')}</div>`;}}
-function renderRecords(rows){const box=qs('#recordList');if(!rows.length){box.innerHTML='<div class="empty">目前沒有詢價紀錄</div>';return;}box.innerHTML=rows.map(r=>`<div class="record-card"><div class="record-head"><div><div class="goods-name">${esc(r.itemName||'商品詢價')}</div><div class="meta">${esc(r.sourceType||'')}｜送出：${esc(r.createdAt||'')}｜希望拿貨：${esc(r.needBy||'-')}｜數量：${esc(r.quantity||'-')}</div></div>${badge(r.status)}</div>${r.imageUrl?`<div class="goods-img" style="margin-top:10px"><img src="${optimizedImageUrl(r.imageUrl)}"></div>`:''}${r.note?`<div class="meta" style="margin-top:8px">我的詢問：${esc(r.note)}</div>`:''}<div class="reply-box">${r.replySummary?esc(r.replySummary):'公司尚未回覆'}</div></div>`).join('');}
+let currentTab='direct';
+let directImageAsset=null;
+function initPage(){
+  const user=requireLogin(); if(!user) return;
+  if(!isExternalTeacher(user)){ location.href='dashboard.html'; return; }
+  qs('#backLink').href=userHomeHref(user);
+  qs('#tabDirectBtn').onclick=()=>switchTab('direct');
+  qs('#tabWebsiteBtn').onclick=()=>switchTab('website');
+  qs('#tabGoodsBtn').onclick=()=>switchTab('goods');
+  qs('#tabInquiryBtn').onclick=()=>switchTab('inquiry');
+  qs('#searchBtn').onclick=()=>loadGoods();
+  qs('#websiteSearchBtn').onclick=()=>searchWebsiteGoods();
+  qs('#directSubmitBtn').onclick=submitDirectInquiry;
+  qs('#directResetBtn').onclick=resetDirectForm;
+  qs('#directImage').addEventListener('change', handleDirectImage);
+  qs('#keyword').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); loadGoods(); } });
+  qs('#websiteKeyword').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); searchWebsiteGoods(); } });
+  switchTab('direct');
+}
+function switchTab(tab){
+  currentTab=tab;
+  qs('#directView').hidden=tab!=='direct';
+  qs('#websiteView').hidden=tab!=='website';
+  qs('#goodsView').hidden=tab!=='goods';
+  qs('#inquiryView').hidden=tab!=='inquiry';
+  qs('#tabDirectBtn').className=tab==='direct'?'btn':'btn secondary';
+  qs('#tabWebsiteBtn').className=tab==='website'?'btn':'btn secondary';
+  qs('#tabGoodsBtn').className=tab==='goods'?'btn':'btn secondary';
+  qs('#tabInquiryBtn').className=tab==='inquiry'?'btn':'btn secondary';
+  if(tab==='goods') loadGoods();
+  if(tab==='website') searchWebsiteGoods(false);
+  if(tab==='inquiry') loadInquiries();
+}
+function statusBadge(status){
+  const s=String(status||'待處理');
+  const cls=s==='已回覆'||s==='已完成'?'done':(s==='待處理'||s==='待確認'?'wait':'');
+  return `<span class="badge ${cls}">${s}</span>`;
+}
+function sourceBadge(source){
+  return `<span class="source-badge">${source||'一般詢價'}</span>`;
+}
+async function handleDirectImage(e){
+  const file=(e.target.files||[])[0];
+  if(!file){ directImageAsset=null; renderDirectPreview(); return; }
+  try{
+    setMsg(qs('#msg'),'圖片上傳中...');
+    const res=await uploadFileToCloudinary(file,{folder:'teacher-goods-inquiry'});
+    directImageAsset={url:res.secure_url||res.url||'', name:file.name||''};
+    renderDirectPreview();
+    setMsg(qs('#msg'),'');
+  }catch(err){
+    directImageAsset=null;
+    renderDirectPreview();
+    setMsg(qs('#msg'), err.message||'圖片上傳失敗', true);
+  }
+}
+function renderDirectPreview(){
+  const box=qs('#directPreview');
+  if(directImageAsset && directImageAsset.url){ box.innerHTML=`<img src="${optimizedImageUrl(directImageAsset.url)}" alt="">`; }
+  else { box.textContent='無圖片'; }
+}
+function resetDirectForm(){
+  qs('#directName').value='';
+  qs('#directQty').value='';
+  qs('#directNeedBy').value='';
+  qs('#directNote').value='';
+  qs('#directImage').value='';
+  directImageAsset=null;
+  renderDirectPreview();
+}
+async function submitDirectInquiry(){
+  const btn=qs('#directSubmitBtn');
+  startActionButtonProgress(btn,{text:'送出中...'});
+  try{
+    const res=await api('submitTeacherGoodsInquiry',{
+      userId:getUser().id,
+      sourceType:'老師主動詢價',
+      itemName:qs('#directName').value||'',
+      quantity:qs('#directQty').value||'',
+      needBy:qs('#directNeedBy').value||'',
+      note:qs('#directNote').value||'',
+      inquiryImageUrl:directImageAsset&&directImageAsset.url||''
+    });
+    if(!res.ok) throw new Error(res.message||'送出失敗');
+    finishActionButtonSuccess(btn,'已送出');
+    resetDirectForm();
+    setMsg(qs('#msg'),'詢價已送出，管理者收到後會回覆你。');
+  }catch(err){
+    finishActionButtonError(btn,'送出失敗');
+    setMsg(qs('#msg'), err.message||'送出失敗', true);
+  }
+}
+function renderGoods(rows){
+  const box=qs('#goodsList');
+  if(!rows.length){ box.innerHTML='<div class="empty">目前沒有可顯示的優惠商品</div>'; return; }
+  box.innerHTML=rows.map((row,idx)=>`<div class="goods-card">
+      <div class="goods-image">${row.imageUrl?`<img src="${optimizedImageUrl(row.imageUrl)}" alt="">`:'<span>無圖</span>'}</div>
+      <div>
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap">
+          <div>
+            <div class="title" style="font-size:22px;margin:0">${row.name||''}</div>
+            <div class="goods-meta line-clamp-2">${row.note||''}</div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">${row.isNew?'<span class="pill">新品</span>':''}${sourceBadge(row.sourceType||'公司優惠')}</div>
+        </div>
+        <div class="price-row">
+          <span class="pill">老師價：${row.teacherPriceText||'未設定'}</span>
+          <span class="pill gray">市場價：${row.marketPriceText||'未設定'}</span>
+          ${row.stockStatus?`<span class="pill blue">${row.stockStatus}</span>`:''}
+        </div>
+        <div class="goods-actions">
+          <button class="btn" type="button" onclick="toggleOfferForm(${idx})">加入詢價</button>
+        </div>
+        <div class="mini-form" id="offerForm_${idx}">
+          <div class="grid2">
+            <div class="row"><label>需求數量</label><input id="offerQty_${idx}" type="number" min="1" step="1" placeholder="例如：1"></div>
+            <div class="row"><label>預計想拿貨的時間</label><input id="offerNeedBy_${idx}" type="date"></div>
+          </div>
+          <div class="row"><label>備註</label><textarea id="offerRemark_${idx}" placeholder="例如：想先確認庫存、一次拿 3 台有沒有量價"></textarea></div>
+          <div class="goods-actions"><button class="btn" type="button" id="offerSubmitBtn_${idx}" onclick="submitOfferInquiry(${idx})">送出詢價</button></div>
+        </div>
+      </div>
+    </div>`).join('');
+  window.__teacherGoodsRows=rows;
+}
+function toggleOfferForm(idx){ const el=qs('#offerForm_'+idx); if(el) el.classList.toggle('show'); }
+async function loadGoods(){
+  try{
+    setMsg(qs('#msg'),'讀取中...');
+    const res=await api('getTeacherGoodsList',{userId:getUser().id, keyword:qs('#keyword').value||''});
+    if(!res.ok) throw new Error(res.message||'讀取失敗');
+    renderGoods(res.rows||[]);
+    setMsg(qs('#msg'),'');
+  }catch(err){ setMsg(qs('#msg'), err.message||'讀取失敗', true); }
+}
+async function submitOfferInquiry(idx){
+  const row=(window.__teacherGoodsRows||[])[idx];
+  if(!row) return;
+  const btn=qs('#offerSubmitBtn_'+idx);
+  startActionButtonProgress(btn,{text:'送出中...'});
+  try{
+    const res=await api('submitTeacherGoodsInquiry',{
+      userId:getUser().id,
+      itemId:row.itemId,
+      sourceType:'公司優惠商品',
+      quantity:qs('#offerQty_'+idx).value||'',
+      needBy:qs('#offerNeedBy_'+idx).value||'',
+      note:qs('#offerRemark_'+idx).value||''
+    });
+    if(!res.ok) throw new Error(res.message||'送出失敗');
+    finishActionButtonSuccess(btn,'已送出');
+    qs('#offerForm_'+idx).classList.remove('show');
+    qs('#offerQty_'+idx).value=''; qs('#offerNeedBy_'+idx).value=''; qs('#offerRemark_'+idx).value='';
+    setMsg(qs('#msg'),'詢價已送出，管理者收到後會回覆你。');
+  }catch(err){ finishActionButtonError(btn,'送出失敗'); setMsg(qs('#msg'), err.message||'送出失敗', true); }
+}
+function renderWebsiteGoods(rows){
+  const box=qs('#websiteResults');
+  if(!rows.length){ box.innerHTML='<div class="empty">目前沒有找到符合的官網商品</div>'; return; }
+  box.innerHTML=rows.map((row,idx)=>`<div class="goods-card">
+      <div class="goods-image">${row.imageUrl?`<img src="${optimizedImageUrl(row.imageUrl)}" alt="">`:'<span>無圖</span>'}</div>
+      <div>
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap">
+          <div>
+            <div class="title" style="font-size:22px;margin:0">${row.name||''}</div>
+            <div class="goods-meta">${row.brand?`品牌：${row.brand} ｜ `:''}${row.category?`分類：${row.category}`:''}</div>
+          </div>
+          ${sourceBadge('公司官網')}
+        </div>
+        <div class="price-row">
+          <span class="pill gray">官網原價：${row.marketPriceText||row.priceText||'未提供'}</span>
+          ${row.stockStatus?`<span class="pill blue">${row.stockStatus}</span>`:''}
+          ${row.variantSummary?`<span class="pill blue">${row.variantSummary}</span>`:''}
+        </div>
+        <div class="goods-meta line-clamp-2">${row.note||row.summary||''}</div>
+        <div class="goods-actions">
+          ${row.url?`<a class="link-btn" href="${row.url}" target="_blank" rel="noopener">查看官網商品</a>`:''}
+          <button class="btn" type="button" onclick="toggleWebsiteForm(${idx})">加入詢價</button>
+        </div>
+        <div class="mini-form" id="websiteForm_${idx}">
+          <div class="grid2">
+            <div class="row"><label>需求數量</label><input id="websiteQty_${idx}" type="number" min="1" step="1" placeholder="例如：1"></div>
+            <div class="row"><label>預計想拿貨的時間</label><input id="websiteNeedBy_${idx}" type="date"></div>
+          </div>
+          <div class="row"><label>備註</label><textarea id="websiteRemark_${idx}" placeholder="例如：想知道老師拿貨價、3 台以上量價、是否可搭配贈品"></textarea></div>
+          <div class="goods-actions"><button class="btn" type="button" id="websiteSubmitBtn_${idx}" onclick="submitWebsiteInquiry(${idx})">送出詢價</button></div>
+        </div>
+      </div>
+    </div>`).join('');
+  window.__teacherWebsiteRows=rows;
+}
+function toggleWebsiteForm(idx){ const el=qs('#websiteForm_'+idx); if(el) el.classList.toggle('show'); }
+async function searchWebsiteGoods(showLoading=true){
+  try{
+    if(showLoading!==false) setMsg(qs('#msg'),'查詢官網商品中...');
+    const res=await api('searchTeacherWebsiteGoods',{userId:getUser().id, keyword:qs('#websiteKeyword').value||'', limit:12});
+    if(!res.ok) throw new Error(res.message||'查詢失敗');
+    renderWebsiteGoods(res.rows||[]);
+    setMsg(qs('#msg'),'');
+  }catch(err){
+    setMsg(qs('#msg'), err.message||'查詢失敗', true);
+    qs('#websiteResults').innerHTML='';
+  }
+}
+async function submitWebsiteInquiry(idx){
+  const row=(window.__teacherWebsiteRows||[])[idx];
+  if(!row) return;
+  const btn=qs('#websiteSubmitBtn_'+idx);
+  startActionButtonProgress(btn,{text:'送出中...'});
+  try{
+    const res=await api('submitTeacherGoodsInquiry',{
+      userId:getUser().id,
+      sourceType:'公司官網詢價',
+      itemName:row.name||'',
+      quantity:qs('#websiteQty_'+idx).value||'',
+      needBy:qs('#websiteNeedBy_'+idx).value||'',
+      note:qs('#websiteRemark_'+idx).value||'',
+      inquiryImageUrl:row.imageUrl||'',
+      websiteProductId:row.productId||'',
+      websiteProductUrl:row.url||'',
+      websiteOriginalPrice:row.marketPrice||row.price||'',
+      websiteVariantSummary:row.variantSummary||'',
+      websiteSource:'EasyStore 官網'
+    });
+    if(!res.ok) throw new Error(res.message||'送出失敗');
+    finishActionButtonSuccess(btn,'已送出');
+    qs('#websiteForm_'+idx).classList.remove('show');
+    qs('#websiteQty_'+idx).value=''; qs('#websiteNeedBy_'+idx).value=''; qs('#websiteRemark_'+idx).value='';
+    setMsg(qs('#msg'),'官網商品詢價已送出，管理端會依照該商品回覆拿貨價與量價。');
+  }catch(err){ finishActionButtonError(btn,'送出失敗'); setMsg(qs('#msg'), err.message||'送出失敗', true); }
+}
+function renderInquiries(rows){
+  const box=qs('#inquiryList');
+  if(!rows.length){ box.innerHTML='<div class="empty">目前還沒有詢價紀錄</div>'; return; }
+  box.innerHTML=rows.map(row=>`<div class="inq-card">
+    <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center">
+      <div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><div style="font-size:20px;font-weight:900;color:#18314a">${row.itemName||''}</div>${sourceBadge(row.sourceType||'一般詢價')}</div>
+        <div class="goods-meta">送出時間：${row.createdAt||''}</div>
+      </div>
+      ${statusBadge(row.status)}
+    </div>
+    <div class="goods-meta" style="margin-top:8px">需求數量：${row.quantity||'-'} ｜ 預計想拿貨的時間：${row.needBy||'-'}</div>
+    ${row.websiteOriginalPriceText?`<div class="goods-meta">官網原價：${row.websiteOriginalPriceText}${row.websiteProductUrl?` ｜ <a href="${row.websiteProductUrl}" target="_blank" rel="noopener">查看商品</a>`:''}</div>`:''}
+    ${row.websiteVariantSummary?`<div class="goods-meta">規格 / 版本：${row.websiteVariantSummary}</div>`:''}
+    ${row.note?`<div class="goods-meta">老師備註：${row.note}</div>`:''}
+    ${row.replySummary?`<div style="margin-top:10px;padding:12px;border-radius:14px;background:#f6f8fb"><strong>管理端回覆</strong><div class="goods-meta" style="margin-top:6px;white-space:pre-wrap">${row.replySummary}</div></div>`:''}
+  </div>`).join('');
+}
+async function loadInquiries(){
+  try{
+    setMsg(qs('#msg'),'讀取中...');
+    const res=await api('getTeacherGoodsInquiries',{userId:getUser().id});
+    if(!res.ok) throw new Error(res.message||'讀取失敗');
+    renderInquiries(res.rows||[]);
+    setMsg(qs('#msg'),'');
+  }catch(err){ setMsg(qs('#msg'), err.message||'讀取失敗', true); }
+}
 </script>
 </body>
 </html>
