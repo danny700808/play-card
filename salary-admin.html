@@ -200,14 +200,70 @@
     </div>
   </div>
 
-  <script src="config.js?v=20260430insure2"></script>
-  <script src="app.js?v=20260430insure2"></script>
+  <script src="config.js?v=20260430insure3"></script>
+  <script src="app.js?v=20260430insure3"></script>
   <script>
     let setup = null;
     let selectedId = '';
     let selectedMap = {};
     let statusFilter = 'all';
     let typeFilter = 'all';
+
+    const DEFAULT_LABOR_PLANS = [
+      { code:'LAB_PART_11100', name:'部分工時｜第 1 級｜11,100 元', salary:11100, salaryText:'11,100 元', selfPayText:'依勞保局級距計算', group:'partial' },
+      { code:'LAB_PART_12540', name:'部分工時｜第 2 級｜12,540 元', salary:12540, salaryText:'12,540 元', selfPayText:'依勞保局級距計算', group:'partial' },
+      { code:'LAB_LOW_13500', name:'低於基本工資｜13,500 元', salary:13500, salaryText:'13,500 元', selfPayText:'依勞保局級距計算', group:'partial' },
+      { code:'LAB_LOW_15840', name:'低於基本工資｜15,840 元', salary:15840, salaryText:'15,840 元', selfPayText:'依勞保局級距計算', group:'partial' },
+      { code:'LAB_LOW_16500', name:'低於基本工資｜16,500 元', salary:16500, salaryText:'16,500 元', selfPayText:'依勞保局級距計算', group:'partial' },
+      { code:'LAB_LOW_17280', name:'低於基本工資｜17,280 元', salary:17280, salaryText:'17,280 元', selfPayText:'依勞保局級距計算', group:'partial' },
+      { code:'LAB_LOW_17880', name:'低於基本工資｜17,880 元', salary:17880, salaryText:'17,880 元', selfPayText:'依勞保局級距計算', group:'partial' },
+      { code:'LAB_LOW_19047', name:'低於基本工資｜19,047 元', salary:19047, salaryText:'19,047 元', selfPayText:'依勞保局級距計算', group:'partial' },
+      { code:'LAB_LOW_20008', name:'低於基本工資｜20,008 元', salary:20008, salaryText:'20,008 元', selfPayText:'依勞保局級距計算', group:'partial' },
+      { code:'LAB_LOW_21009', name:'低於基本工資｜21,009 元', salary:21009, salaryText:'21,009 元', selfPayText:'依勞保局級距計算', group:'partial' },
+      { code:'LAB_LOW_22000', name:'低於基本工資｜22,000 元', salary:22000, salaryText:'22,000 元', selfPayText:'依勞保局級距計算', group:'partial' },
+      { code:'LAB_LOW_23100', name:'低於基本工資｜23,100 元', salary:23100, salaryText:'23,100 元', selfPayText:'依勞保局級距計算', group:'partial' },
+      { code:'LAB_LOW_24000', name:'低於基本工資｜24,000 元', salary:24000, salaryText:'24,000 元', selfPayText:'依勞保局級距計算', group:'partial' },
+      { code:'LAB_LOW_25250', name:'低於基本工資｜25,250 元', salary:25250, salaryText:'25,250 元', selfPayText:'依勞保局級距計算', group:'partial' },
+      { code:'LAB_LOW_26400', name:'低於基本工資｜26,400 元', salary:26400, salaryText:'26,400 元', selfPayText:'依勞保局級距計算', group:'partial' },
+      { code:'LAB_LOW_27600', name:'低於基本工資｜27,600 元', salary:27600, salaryText:'27,600 元', selfPayText:'依勞保局級距計算', group:'partial' },
+      { code:'LAB_LOW_28590', name:'低於基本工資｜28,590 元', salary:28590, salaryText:'28,590 元', selfPayText:'依勞保局級距計算', group:'partial' },
+      { code:'LAB_REG_29500', name:'一般月薪｜第 1 級｜29,500 元', salary:29500, salaryText:'29,500 元', selfPayText:'依勞保局級距計算', group:'regular' },
+      { code:'LAB_REG_30300', name:'一般月薪｜第 2 級｜30,300 元', salary:30300, salaryText:'30,300 元', selfPayText:'依勞保局級距計算', group:'regular' },
+      { code:'LAB_REG_31800', name:'一般月薪｜第 3 級｜31,800 元', salary:31800, salaryText:'31,800 元', selfPayText:'依勞保局級距計算', group:'regular' },
+      { code:'LAB_REG_33300', name:'一般月薪｜第 4 級｜33,300 元', salary:33300, salaryText:'33,300 元', selfPayText:'依勞保局級距計算', group:'regular' },
+      { code:'LAB_REG_34800', name:'一般月薪｜第 5 級｜34,800 元', salary:34800, salaryText:'34,800 元', selfPayText:'依勞保局級距計算', group:'regular' },
+      { code:'LAB_REG_36300', name:'一般月薪｜第 6 級｜36,300 元', salary:36300, salaryText:'36,300 元', selfPayText:'依勞保局級距計算', group:'regular' },
+      { code:'LAB_REG_38200', name:'一般月薪｜第 7 級｜38,200 元', salary:38200, salaryText:'38,200 元', selfPayText:'依勞保局級距計算', group:'regular' },
+      { code:'LAB_REG_40100', name:'一般月薪｜第 8 級｜40,100 元', salary:40100, salaryText:'40,100 元', selfPayText:'依勞保局級距計算', group:'regular' },
+      { code:'LAB_REG_42000', name:'一般月薪｜第 9 級｜42,000 元', salary:42000, salaryText:'42,000 元', selfPayText:'依勞保局級距計算', group:'regular' },
+      { code:'LAB_REG_43900', name:'一般月薪｜第 10 級｜43,900 元', salary:43900, salaryText:'43,900 元', selfPayText:'依勞保局級距計算', group:'regular' },
+      { code:'LAB_REG_45800', name:'一般月薪｜第 11 級｜45,800 元', salary:45800, salaryText:'45,800 元', selfPayText:'依勞保局級距計算', group:'regular' }
+    ];
+    const DEFAULT_HEALTH_PLANS = [28590,28800,30300,31800,33300,34800,36300,38200,40100,42000,43900,45800,48200,50600,53000,55400,57800,60800,63800,66800,69800,72800,76500,80200,83900,87600,92100,96600,101100,105600,110100,115500,120900,126300,131700,137100,142500,147900,150000].map(function(v, i){ return { code:'NHI_' + v, name:'健保｜第 ' + (i + 1) + ' 級｜' + v.toLocaleString('zh-TW') + ' 元', salary:v, salaryText:v.toLocaleString('zh-TW') + ' 元', selfPayText:'依健保署級距計算' }; });
+    function normalizePlanOption(x, prefix, index){
+      const salary = Number(x && (x.salary || x.insuredSalary || x.amount || x.value) || 0) || 0;
+      const code = String((x && (x.code || x.planCode || x.id)) || (prefix + '_' + salary + '_' + index));
+      const salaryText = x && x.salaryText ? String(x.salaryText) : (salary ? salary.toLocaleString('zh-TW') + ' 元' : '');
+      const name = x && x.name ? String(x.name) : ((prefix === 'NHI' ? '健保' : '勞保') + '｜' + salaryText);
+      return Object.assign({}, x || {}, { code: code, name: name, salary: salary, salaryText: salaryText, group: (x && (x.group || x.category || x.laborGroup)) || '' });
+    }
+    function mergePlanOptions(apiPlans, fallbackPlans, prefix){
+      const out = [];
+      const seen = {};
+      (Array.isArray(apiPlans) ? apiPlans : []).forEach(function(x, i){
+        const item = normalizePlanOption(x, prefix, i);
+        if(!item.code || seen[item.code]) return;
+        seen[item.code] = true;
+        out.push(item);
+      });
+      (fallbackPlans || []).forEach(function(x, i){
+        const item = normalizePlanOption(x, prefix, i);
+        if(!item.code || seen[item.code]) return;
+        seen[item.code] = true;
+        out.push(item);
+      });
+      return out;
+    }
 
     function setButtonLoading(id, text){
       const btn = qs('#' + id);
@@ -223,8 +279,12 @@
     }
     function fillSelect(id, items, value, placeholder='請選擇'){
       const el = qs('#' + id);
+      if(!el) return;
       const list = Array.isArray(items) ? items : [];
-      el.innerHTML = '<option value="">' + placeholder + '</option>' + list.map(x => '<option value="' + String(x.code||'') + '">' + String(x.name||'') + '</option>').join('');
+      el.innerHTML = '<option value="">' + placeholder + '</option>' + list.map(x => {
+        const label = String(x.name || x.label || x.salaryText || x.code || '');
+        return '<option value="' + String(x.code||'') + '">' + label + '</option>';
+      }).join('');
       el.value = value || '';
     }
     function moneyText(n){
@@ -281,6 +341,14 @@
         ? '目前顯示：部分工時 / 低於基本工資投保級距。'
         : '目前顯示：一般月薪投保級距。';
       qs('#laborPlanHint').dataset.modeHint = modeText;
+    }
+    function refreshHealthPlanOptions(keepValue=true){
+      const previous = keepValue ? qs('#healthPlan').value : '';
+      const list = (setup && setup.healthPlans) || DEFAULT_HEALTH_PLANS;
+      fillSelect('healthPlan', list, previous, '請選擇健保級距');
+      if(previous && !list.some(x => String(x.code || '') === String(previous || ''))){
+        qs('#healthPlan').value = '';
+      }
     }
     function getLaborMeta(){
       if(!insuranceIsActive(qs('#laborStatus').value)) return null;
@@ -493,7 +561,8 @@
       qs('#healthStatus').value = cfg.healthStatus || '';
       refreshLaborPlanOptions(false);
       qs('#laborPlan').value = activeOrEmptyPlan(qs('#laborStatus').value, cfg.laborPlan || '');
-      fillSelect('healthPlan', setup.healthPlans, activeOrEmptyPlan(qs('#healthStatus').value, cfg.healthPlan || ''), '請選擇健保級距');
+      refreshHealthPlanOptions(false);
+      qs('#healthPlan').value = activeOrEmptyPlan(qs('#healthStatus').value, cfg.healthPlan || '');
       qs('#laborRetirementSelfEnabled').value = cfg.selfRetirementEnabled || '否';
       qs('#laborRetirementSelfRate').value = cfg.selfRetirementRate || '';
       qs('#salaryEffectiveDate').value = cfg.effectiveDate || '';
@@ -579,12 +648,12 @@
         const safeConfigMap = {};
         safeEmployees.forEach(x => { safeConfigMap[x.id] = (res.employeeConfigMap && res.employeeConfigMap[x.id]) || {}; });
         const laborGroupOrder = { partial: 1, training: 2, parttime_partial: 2, regular: 3, normal: 3, fulltime: 3 };
-        const safeLaborPlans = (res.laborPlans || []).slice().sort((a, b) => {
+        const safeLaborPlans = mergePlanOptions(res.laborPlans, DEFAULT_LABOR_PLANS, 'LAB').sort((a, b) => {
           const ga = laborGroupOrder[String(a.group || a.category || '').toLowerCase()] || 9;
           const gb = laborGroupOrder[String(b.group || b.category || '').toLowerCase()] || 9;
           return ga - gb || ((Number(a.salary || 0) || 0) - (Number(b.salary || 0) || 0));
         });
-        const safeHealthPlans = (res.healthPlans || []).slice().sort((a, b) => (Number(a.salary || 0) || 0) - (Number(b.salary || 0) || 0));
+        const safeHealthPlans = mergePlanOptions(res.healthPlans, DEFAULT_HEALTH_PLANS, 'NHI').sort((a, b) => (Number(a.salary || 0) || 0) - (Number(b.salary || 0) || 0));
         setup = Object.assign({}, res, {
           employees: safeEmployees,
           employeeConfigMap: safeConfigMap,
@@ -655,6 +724,8 @@
         if(el) el.addEventListener('input', updateInsuranceHints);
         if(el) el.addEventListener('change', updateInsuranceHints);
       });
+      qs('#laborStatus').addEventListener('change', () => { refreshLaborPlanOptions(true); updateInsuranceHints(); });
+      qs('#healthStatus').addEventListener('change', () => { refreshHealthPlanOptions(true); updateInsuranceHints(); });
       qs('#isParttimePartial').addEventListener('change', () => { refreshLaborPlanOptions(true); updateInsuranceHints(); });
       qs('#laborRetirementSelfEnabled').addEventListener('change', () => { updateRetirementInputs(); updateInsuranceHints(); });
       await loadSetup();
