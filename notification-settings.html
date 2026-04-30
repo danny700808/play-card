@@ -28,7 +28,7 @@ details{border-top:1px solid var(--line);background:#fbfcfe}summary{list-style:n
 </style></head><body>
   <div class="page-return-wrap"><a class="page-return-btn" href="settings.html">返回管理首頁</a></div>
 
-<nav class="toolbar"><a class="chip" href="#account">帳號</a><a class="chip" href="#profile">個人資料</a><a class="chip" href="#clock">打卡 / 工讀</a><a class="chip" href="#leave">請假</a><a class="chip" href="#task">交辦事項</a><a class="chip" href="#routine">固定事項</a><a class="chip" href="#announcement">公告</a><a class="chip" href="#teacher">外聘老師</a><a class="chip" href="#training">教育訓練</a><a class="chip" href="#docs">單據</a><a class="chip" href="#line">LINE</a></nav>
+<nav class="toolbar"><a class="chip" href="#account">帳號</a><a class="chip" href="#profile">個人資料</a><a class="chip" href="#clock">打卡 / 工讀</a><a class="chip" href="#leave">請假</a><a class="chip" href="#task">交辦事項</a><a class="chip" href="#routine">固定事項</a><a class="chip" href="#announcement">公告</a><a class="chip" href="#teacher">外聘 / 拿貨</a><a class="chip" href="#training">教育訓練</a><a class="chip" href="#docs">單據</a><a class="chip" href="#line">LINE</a></nav>
 <main><div id="msg"></div><section class="section" id="account"><div class="section-title"><h2>1. 帳號</h2><span class="section-count">5 項</span></div><div class="notify-grid">
 <article class="notify-card" data-type="processing" data-event-key="account_0" data-category="帳號" data-event-name="註冊申請送出">
   <div class="notify-main">
@@ -627,60 +627,73 @@ details{border-top:1px solid var(--line);background:#fbfcfe}summary{list-style:n
     </div>
   </div>
   <details><summary>進階設定</summary><div class="advanced"><div class="stage-row"><label class="stage"><div>事件發生時通知<small>通知上方勾選的人</small></div><input type="checkbox" data-field="publishEnabled" checked></label></div></div></details>
-</article></div></section><section class="section" id="teacher"><div class="section-title"><h2>8. 外聘老師</h2><span class="section-count">3 項</span></div><div class="notify-grid">
-<article class="notify-card" data-type="contract" data-event-key="teacher_0" data-category="外聘老師" data-event-name="外聘老師合約簽署">
-  <div class="notify-main">
-    <div class="event-head">
-      <div><h3 class="event-title">外聘老師合約簽署</h3><p class="event-desc">控制合約簽署通知、截止提醒與逾期主管提醒。</p></div>
-      <label class="switch"><input type="checkbox" data-field="enabled" checked>啟用</label>
-    </div>
-    <div class="channels">
-      <label class="channel">通知當事人 LINE <input type="checkbox" data-field="targetLineEnabled" checked></label>
-      <label class="channel">通知當事人 Email <input type="checkbox" data-field="targetEmailEnabled"></label>
-      <label class="channel">通知主管 LINE <input type="checkbox" data-field="managerLineEnabled"></label>
-      <label class="channel">通知主管 Email <input type="checkbox" data-field="managerEmailEnabled"></label>
-    </div>
-  </div>
-  <details><summary>進階設定</summary><div class="advanced"><div class="stage-row">
-<label class="stage"><div>通知簽署<small>通知老師去完成簽署</small></div><input type="checkbox" data-field="publishEnabled" checked></label>
-<label class="stage"><div>截止提醒<small>到截止時間提醒老師</small></div><input type="checkbox" data-field="dueEnabled"></label>
-<label class="stage"><div>逾期主管提醒<small>逾期未簽通知主管</small></div><input type="checkbox" data-field="overdueManagerEnabled"></label>
-</div><div class="adv-grid"><div class="field"><label>幾天未完成後提醒主管</label><input type="number" data-field="overdueDays" value="1"></div></div></div></details>
-</article>
-<article class="notify-card" data-type="processing" data-event-key="teacher_1" data-category="外聘老師" data-event-name="老師送出商品詢價">
-  <div class="notify-main">
-    <div class="event-head">
-      <div><h3 class="event-title">老師送出商品詢價</h3><p class="event-desc">主管待處理型事件，可選未處理提醒主管。</p></div>
-      <label class="switch"><input type="checkbox" data-field="enabled" checked>啟用</label>
-    </div>
-    <div class="channels">
-      <label class="channel">通知當事人 LINE <input type="checkbox" data-field="targetLineEnabled" checked></label>
-      <label class="channel">通知當事人 Email <input type="checkbox" data-field="targetEmailEnabled"></label>
-      <label class="channel">通知主管 LINE <input type="checkbox" data-field="managerLineEnabled"></label>
-      <label class="channel">通知主管 Email <input type="checkbox" data-field="managerEmailEnabled"></label>
-    </div>
-  </div>
-  <details><summary>進階設定</summary><div class="advanced"><div class="stage-row"><label class="stage"><div>事件發生時通知<small>送出當下通知上方勾選的人</small></div><input type="checkbox" data-field="publishEnabled" checked></label></div>
-<div class="unprocessed-box hidden"><div class="unprocessed-title">未處理提醒</div><div class="unprocessed-grid">
-<label class="channel">啟用未處理提醒主管 <input type="checkbox" data-field="unprocessedReminderEnabled"></label>
-<div class="field"><label>幾天未處理後提醒主管</label><input type="number" data-field="unprocessedDays" value="2"></div>
-</div></div></div></details>
-</article>
-<article class="notify-card" data-type="reply_to_actor" data-event-key="teacher_2" data-category="外聘老師" data-event-name="主管回覆商品詢價">
-  <div class="notify-main">
-    <div class="event-head">
-      <div><h3 class="event-title">主管回覆商品詢價</h3><p class="event-desc">主管回覆或退回後，單純通知當事人。</p></div>
-      <label class="switch"><input type="checkbox" data-field="enabled" checked>啟用</label>
-    </div>
-    <div class="channels">
-      <label class="channel">通知當事人 LINE <input type="checkbox" data-field="targetLineEnabled" checked></label>
-      <label class="channel">通知當事人 Email <input type="checkbox" data-field="targetEmailEnabled"></label>
-      <label class="channel">通知主管 LINE <input type="checkbox" data-field="managerLineEnabled"></label>
-      <label class="channel">通知主管 Email <input type="checkbox" data-field="managerEmailEnabled"></label>
-    </div>
-  </div>
+</article></div></section><section class="section" id="teacher"><div class="section-title"><h2>8. 外聘老師 / 拿貨詢價</h2><span class="section-count">13 項</span></div><div class="notify-grid">
+<article class="notify-card" data-type="contract" data-event-code="teacher_contract_open" data-event-key="teacher_contract_open" data-category="外聘老師" data-event-name="外聘老師合約開放簽署">
+  <div class="notify-main"><div class="event-head"><div><h3 class="event-title">外聘老師合約開放簽署</h3><p class="event-desc">通知老師完成合約簽署，可搭配截止提醒。</p></div><label class="switch"><input type="checkbox" data-field="enabled" checked>啟用</label></div>
+    <div class="channels"><label class="channel">通知當事人 LINE <input type="checkbox" data-field="targetLineEnabled" checked></label><label class="channel">通知當事人 Email <input type="checkbox" data-field="targetEmailEnabled" checked></label><label class="channel">通知主管 LINE <input type="checkbox" data-field="managerLineEnabled"></label><label class="channel">通知主管 Email <input type="checkbox" data-field="managerEmailEnabled"></label></div></div>
   <details><summary>進階設定</summary><div class="advanced"><div class="stage-row"><label class="stage"><div>事件發生時通知<small>通知上方勾選的人</small></div><input type="checkbox" data-field="publishEnabled" checked></label></div></div></details>
-</article></div></section><section class="section" id="training"><div class="section-title"><h2>9. 教育訓練</h2><span class="section-count">2 項</span></div><div class="notify-grid">
+</article>
+<article class="notify-card" data-type="contract" data-event-code="teacher_contract_midpoint" data-event-key="teacher_contract_midpoint" data-category="外聘老師" data-event-name="外聘老師合約中段提醒">
+  <div class="notify-main"><div class="event-head"><div><h3 class="event-title">外聘老師合約中段提醒</h3><p class="event-desc">合約簽署期間過半時提醒老師。</p></div><label class="switch"><input type="checkbox" data-field="enabled" checked>啟用</label></div>
+    <div class="channels"><label class="channel">通知當事人 LINE <input type="checkbox" data-field="targetLineEnabled" checked></label><label class="channel">通知當事人 Email <input type="checkbox" data-field="targetEmailEnabled"></label><label class="channel">通知主管 LINE <input type="checkbox" data-field="managerLineEnabled"></label><label class="channel">通知主管 Email <input type="checkbox" data-field="managerEmailEnabled"></label></div></div>
+  <details><summary>進階設定</summary><div class="advanced"><div class="stage-row"><label class="stage"><div>事件發生時通知<small>通知上方勾選的人</small></div><input type="checkbox" data-field="publishEnabled" checked></label></div></div></details>
+</article>
+<article class="notify-card" data-type="contract" data-event-code="teacher_contract_due" data-event-key="teacher_contract_due" data-category="外聘老師" data-event-name="外聘老師合約截止提醒">
+  <div class="notify-main"><div class="event-head"><div><h3 class="event-title">外聘老師合約截止提醒</h3><p class="event-desc">合約接近截止時提醒老師。</p></div><label class="switch"><input type="checkbox" data-field="enabled" checked>啟用</label></div>
+    <div class="channels"><label class="channel">通知當事人 LINE <input type="checkbox" data-field="targetLineEnabled" checked></label><label class="channel">通知當事人 Email <input type="checkbox" data-field="targetEmailEnabled"></label><label class="channel">通知主管 LINE <input type="checkbox" data-field="managerLineEnabled"></label><label class="channel">通知主管 Email <input type="checkbox" data-field="managerEmailEnabled"></label></div></div>
+  <details><summary>進階設定</summary><div class="advanced"><div class="stage-row"><label class="stage"><div>事件發生時通知<small>通知上方勾選的人</small></div><input type="checkbox" data-field="publishEnabled" checked></label></div></div></details>
+</article>
+<article class="notify-card" data-type="processing" data-event-code="teacher_contract_overdue" data-event-key="teacher_contract_overdue" data-category="外聘老師" data-event-name="外聘老師合約逾期未簽">
+  <div class="notify-main"><div class="event-head"><div><h3 class="event-title">外聘老師合約逾期未簽</h3><p class="event-desc">外聘老師逾期未簽時通知主管。</p></div><label class="switch"><input type="checkbox" data-field="enabled" checked>啟用</label></div>
+    <div class="channels"><label class="channel">通知當事人 LINE <input type="checkbox" data-field="targetLineEnabled"></label><label class="channel">通知當事人 Email <input type="checkbox" data-field="targetEmailEnabled"></label><label class="channel">通知主管 LINE <input type="checkbox" data-field="managerLineEnabled" checked></label><label class="channel">通知主管 Email <input type="checkbox" data-field="managerEmailEnabled" checked></label></div></div>
+  <details><summary>進階設定</summary><div class="advanced"><div class="stage-row"><label class="stage"><div>事件發生時通知<small>通知上方勾選的人</small></div><input type="checkbox" data-field="publishEnabled" checked></label></div><div class="unprocessed-box hidden"><div class="unprocessed-title">未處理提醒</div><div class="unprocessed-grid"><label class="channel">啟用未處理提醒主管 <input type="checkbox" data-field="unprocessedReminderEnabled"></label><div class="field"><label>幾天未處理後提醒主管</label><input type="number" data-field="unprocessedDays" value="2"></div></div></div></div></details>
+</article>
+<article class="notify-card" data-type="result" data-event-code="teacher_contract_signed" data-event-key="teacher_contract_signed" data-category="外聘老師" data-event-name="外聘老師完成簽署">
+  <div class="notify-main"><div class="event-head"><div><h3 class="event-title">外聘老師完成簽署</h3><p class="event-desc">老師完成簽署後通知主管，可選是否通知老師。</p></div><label class="switch"><input type="checkbox" data-field="enabled" checked>啟用</label></div>
+    <div class="channels"><label class="channel">通知當事人 LINE <input type="checkbox" data-field="targetLineEnabled"></label><label class="channel">通知當事人 Email <input type="checkbox" data-field="targetEmailEnabled"></label><label class="channel">通知主管 LINE <input type="checkbox" data-field="managerLineEnabled" checked></label><label class="channel">通知主管 Email <input type="checkbox" data-field="managerEmailEnabled" checked></label></div></div>
+  <details><summary>進階設定</summary><div class="advanced"><div class="stage-row"><label class="stage"><div>事件發生時通知<small>通知上方勾選的人</small></div><input type="checkbox" data-field="publishEnabled" checked></label></div></div></details>
+</article>
+<article class="notify-card" data-type="result" data-event-code="teacher_contract_pdf_resend" data-event-key="teacher_contract_pdf_resend" data-category="外聘老師" data-event-name="外聘老師合約 PDF 重新寄送">
+  <div class="notify-main"><div class="event-head"><div><h3 class="event-title">外聘老師合約 PDF 重新寄送</h3><p class="event-desc">重新寄送合約 PDF 時通知老師。</p></div><label class="switch"><input type="checkbox" data-field="enabled" checked>啟用</label></div>
+    <div class="channels"><label class="channel">通知當事人 LINE <input type="checkbox" data-field="targetLineEnabled" checked></label><label class="channel">通知當事人 Email <input type="checkbox" data-field="targetEmailEnabled" checked></label><label class="channel">通知主管 LINE <input type="checkbox" data-field="managerLineEnabled"></label><label class="channel">通知主管 Email <input type="checkbox" data-field="managerEmailEnabled"></label></div></div>
+  <details><summary>進階設定</summary><div class="advanced"><div class="stage-row"><label class="stage"><div>事件發生時通知<small>通知上方勾選的人</small></div><input type="checkbox" data-field="publishEnabled" checked></label></div></div></details>
+</article>
+<article class="notify-card" data-type="processing" data-event-code="teacher_goods_inquiry_submitted" data-event-key="teacher_goods_inquiry_submitted" data-category="外聘老師" data-event-name="老師送出商品詢價">
+  <div class="notify-main"><div class="event-head"><div><h3 class="event-title">老師送出商品詢價</h3><p class="event-desc">老師拍照或填寫商品需求送出後通知管理者。</p></div><label class="switch"><input type="checkbox" data-field="enabled" checked>啟用</label></div>
+    <div class="channels"><label class="channel">通知當事人 LINE <input type="checkbox" data-field="targetLineEnabled"></label><label class="channel">通知當事人 Email <input type="checkbox" data-field="targetEmailEnabled"></label><label class="channel">通知主管 LINE <input type="checkbox" data-field="managerLineEnabled" checked></label><label class="channel">通知主管 Email <input type="checkbox" data-field="managerEmailEnabled" checked></label></div></div>
+  <details><summary>進階設定</summary><div class="advanced"><div class="stage-row"><label class="stage"><div>事件發生時通知<small>通知上方勾選的人</small></div><input type="checkbox" data-field="publishEnabled" checked></label></div><div class="unprocessed-box hidden"><div class="unprocessed-title">未處理提醒</div><div class="unprocessed-grid"><label class="channel">啟用未處理提醒主管 <input type="checkbox" data-field="unprocessedReminderEnabled"></label><div class="field"><label>幾天未處理後提醒主管</label><input type="number" data-field="unprocessedDays" value="2"></div></div></div></div></details>
+</article>
+<article class="notify-card" data-type="processing" data-event-code="teacher_goods_offer_inquiry" data-event-key="teacher_goods_offer_inquiry" data-category="外聘老師" data-event-name="老師詢問公司優惠商品">
+  <div class="notify-main"><div class="event-head"><div><h3 class="event-title">老師詢問公司優惠商品</h3><p class="event-desc">老師針對公司優惠商品按下確認有貨或我要詢問時通知管理者。</p></div><label class="switch"><input type="checkbox" data-field="enabled" checked>啟用</label></div>
+    <div class="channels"><label class="channel">通知當事人 LINE <input type="checkbox" data-field="targetLineEnabled"></label><label class="channel">通知當事人 Email <input type="checkbox" data-field="targetEmailEnabled"></label><label class="channel">通知主管 LINE <input type="checkbox" data-field="managerLineEnabled" checked></label><label class="channel">通知主管 Email <input type="checkbox" data-field="managerEmailEnabled" checked></label></div></div>
+  <details><summary>進階設定</summary><div class="advanced"><div class="stage-row"><label class="stage"><div>事件發生時通知<small>通知上方勾選的人</small></div><input type="checkbox" data-field="publishEnabled" checked></label></div><div class="unprocessed-box hidden"><div class="unprocessed-title">未處理提醒</div><div class="unprocessed-grid"><label class="channel">啟用未處理提醒主管 <input type="checkbox" data-field="unprocessedReminderEnabled"></label><div class="field"><label>幾天未處理後提醒主管</label><input type="number" data-field="unprocessedDays" value="2"></div></div></div></div></details>
+</article>
+<article class="notify-card" data-type="reply_to_actor" data-event-code="teacher_goods_reply" data-event-key="teacher_goods_reply" data-category="外聘老師" data-event-name="主管回覆商品詢價">
+  <div class="notify-main"><div class="event-head"><div><h3 class="event-title">主管回覆商品詢價</h3><p class="event-desc">管理者回覆價格、庫存、到貨日後通知該老師。</p></div><label class="switch"><input type="checkbox" data-field="enabled" checked>啟用</label></div>
+    <div class="channels"><label class="channel">通知當事人 LINE <input type="checkbox" data-field="targetLineEnabled" checked></label><label class="channel">通知當事人 Email <input type="checkbox" data-field="targetEmailEnabled" checked></label><label class="channel">通知主管 LINE <input type="checkbox" data-field="managerLineEnabled"></label><label class="channel">通知主管 Email <input type="checkbox" data-field="managerEmailEnabled"></label></div></div>
+  <details><summary>進階設定</summary><div class="advanced"><div class="stage-row"><label class="stage"><div>事件發生時通知<small>通知上方勾選的人</small></div><input type="checkbox" data-field="publishEnabled" checked></label></div></div></details>
+</article>
+<article class="notify-card" data-type="reply_to_actor" data-event-code="teacher_goods_pickup_confirmed" data-event-key="teacher_goods_pickup_confirmed" data-category="外聘老師" data-event-name="主管確認可取貨">
+  <div class="notify-main"><div class="event-head"><div><h3 class="event-title">主管確認可取貨</h3><p class="event-desc">管理者確認可取貨或更新可取貨日期後通知該老師。</p></div><label class="switch"><input type="checkbox" data-field="enabled" checked>啟用</label></div>
+    <div class="channels"><label class="channel">通知當事人 LINE <input type="checkbox" data-field="targetLineEnabled" checked></label><label class="channel">通知當事人 Email <input type="checkbox" data-field="targetEmailEnabled" checked></label><label class="channel">通知主管 LINE <input type="checkbox" data-field="managerLineEnabled"></label><label class="channel">通知主管 Email <input type="checkbox" data-field="managerEmailEnabled"></label></div></div>
+  <details><summary>進階設定</summary><div class="advanced"><div class="stage-row"><label class="stage"><div>事件發生時通知<small>通知上方勾選的人</small></div><input type="checkbox" data-field="publishEnabled" checked></label></div></div></details>
+</article>
+<article class="notify-card" data-type="publish" data-event-code="teacher_goods_offer_created" data-event-key="teacher_goods_offer_created" data-category="外聘老師" data-event-name="公司新增優惠商品">
+  <div class="notify-main"><div class="event-head"><div><h3 class="event-title">公司新增優惠商品</h3><p class="event-desc">公司新增給外聘老師看的優惠商品時，可選是否通知外聘老師。</p></div><label class="switch"><input type="checkbox" data-field="enabled" checked>啟用</label></div>
+    <div class="channels"><label class="channel">通知當事人 LINE <input type="checkbox" data-field="targetLineEnabled" checked></label><label class="channel">通知當事人 Email <input type="checkbox" data-field="targetEmailEnabled" checked></label><label class="channel">通知主管 LINE <input type="checkbox" data-field="managerLineEnabled"></label><label class="channel">通知主管 Email <input type="checkbox" data-field="managerEmailEnabled"></label></div></div>
+  <details><summary>進階設定</summary><div class="advanced"><div class="stage-row"><label class="stage"><div>事件發生時通知<small>通知上方勾選的人</small></div><input type="checkbox" data-field="publishEnabled" checked></label></div></div></details>
+</article>
+<article class="notify-card" data-type="publish" data-event-code="teacher_goods_offer_updated" data-event-key="teacher_goods_offer_updated" data-category="外聘老師" data-event-name="公司更新優惠商品">
+  <div class="notify-main"><div class="event-head"><div><h3 class="event-title">公司更新優惠商品</h3><p class="event-desc">公司更新優惠、價格、庫存或到貨資訊時，可選是否通知外聘老師。</p></div><label class="switch"><input type="checkbox" data-field="enabled" checked>啟用</label></div>
+    <div class="channels"><label class="channel">通知當事人 LINE <input type="checkbox" data-field="targetLineEnabled" checked></label><label class="channel">通知當事人 Email <input type="checkbox" data-field="targetEmailEnabled"></label><label class="channel">通知主管 LINE <input type="checkbox" data-field="managerLineEnabled"></label><label class="channel">通知主管 Email <input type="checkbox" data-field="managerEmailEnabled"></label></div></div>
+  <details><summary>進階設定</summary><div class="advanced"><div class="stage-row"><label class="stage"><div>事件發生時通知<small>通知上方勾選的人</small></div><input type="checkbox" data-field="publishEnabled" checked></label></div></div></details>
+</article>
+<article class="notify-card" data-type="publish" data-event-code="teacher_goods_offer_removed" data-event-key="teacher_goods_offer_removed" data-category="外聘老師" data-event-name="商品下架">
+  <div class="notify-main"><div class="event-head"><div><h3 class="event-title">商品下架</h3><p class="event-desc">公司下架優惠商品時，可選是否通知外聘老師。</p></div><label class="switch"><input type="checkbox" data-field="enabled" checked>啟用</label></div>
+    <div class="channels"><label class="channel">通知當事人 LINE <input type="checkbox" data-field="targetLineEnabled" checked></label><label class="channel">通知當事人 Email <input type="checkbox" data-field="targetEmailEnabled"></label><label class="channel">通知主管 LINE <input type="checkbox" data-field="managerLineEnabled"></label><label class="channel">通知主管 Email <input type="checkbox" data-field="managerEmailEnabled"></label></div></div>
+  <details><summary>進階設定</summary><div class="advanced"><div class="stage-row"><label class="stage"><div>事件發生時通知<small>通知上方勾選的人</small></div><input type="checkbox" data-field="publishEnabled" checked></label></div></div></details>
+</article>
+</div></section><section class="section" id="training"><div class="section-title"><h2>9. 教育訓練</h2><span class="section-count">2 項</span></div><div class="notify-grid">
 <article class="notify-card" data-type="publish" data-event-key="training_0" data-category="教育訓練" data-event-name="新教育訓練發布">
   <div class="notify-main">
     <div class="event-head">
@@ -858,22 +871,49 @@ document.addEventListener('change', e=>{
   if(e.target && (e.target.dataset.field==='managerLineEnabled'||e.target.dataset.field==='managerEmailEnabled')) refreshAdvancedVisibility();
 });
 function rowFromCard(card){
-  const row={eventKey:card.dataset.eventKey,category:card.dataset.category,eventName:card.dataset.eventName,type:card.dataset.type};
-  card.querySelectorAll('[data-field]').forEach(el=>{row[el.dataset.field]=el.type==='checkbox'?el.checked:el.value;});
-  return row;
+  const ui={eventCode:card.dataset.eventCode||card.dataset.eventKey,eventKey:card.dataset.eventKey,category:card.dataset.category,eventName:card.dataset.eventName,type:card.dataset.type};
+  card.querySelectorAll('[data-field]').forEach(el=>{ui[el.dataset.field]=el.type==='checkbox'?el.checked:el.value;});
+  return {
+    eventCode: ui.eventCode,
+    eventName: ui.eventName,
+    category: ui.category,
+    sendEmailToActor: !!ui.targetEmailEnabled,
+    sendLineToActor: !!ui.targetLineEnabled,
+    notifyManagerEmail: !!ui.managerEmailEnabled,
+    notifyManagerLine: !!ui.managerLineEnabled,
+    enabled: ui.enabled !== false,
+    publishEnabled: !!ui.publishEnabled,
+    unprocessedReminderEnabled: !!ui.unprocessedReminderEnabled,
+    unprocessedDays: ui.unprocessedDays || '',
+    dueEnabled: !!ui.dueEnabled,
+    overdueManagerEnabled: !!ui.overdueManagerEnabled,
+    overdueDays: ui.overdueDays || '',
+    midpointEnabled: !!ui.midpointEnabled
+  };
 }
+function truthy(v){return v===true||v==='是'||v==='true'||v==='TRUE'||v===1||v==='1'}
 function applyRow(card,row){
   if(!row)return;
+  if(row.eventCode) card.dataset.eventCode=row.eventCode;
+  const mapped=Object.assign({},row,{
+    targetEmailEnabled: row.sendEmailToActor,
+    targetLineEnabled: row.sendLineToActor,
+    managerEmailEnabled: row.notifyManagerEmail,
+    managerLineEnabled: row.notifyManagerLine
+  });
   card.querySelectorAll('[data-field]').forEach(el=>{
-    const v=row[el.dataset.field]; if(v===undefined||v===null)return;
-    if(el.type==='checkbox')el.checked=(v===true||v==='是'||v==='true'||v==='TRUE'||v===1||v==='1'); else el.value=v;
+    const v=mapped[el.dataset.field]; if(v===undefined||v===null)return;
+    if(el.type==='checkbox')el.checked=truthy(v); else el.value=v;
   });
 }
 async function loadSettings(){
   try{
     const res=await api('getNotificationSettings',{userId:userId()});
     const rows=res.rows||res.settings||[];
-    document.querySelectorAll('.notify-card').forEach(card=>applyRow(card, rows.find(r=>String(r.eventName||'')===card.dataset.eventName)));
+    document.querySelectorAll('.notify-card').forEach(card=>{
+      const hit=rows.find(r=>String(r.eventCode||'')===String(card.dataset.eventCode||card.dataset.eventKey||'')) || rows.find(r=>String(r.eventName||'')===card.dataset.eventName);
+      applyRow(card, hit);
+    });
     refreshAdvancedVisibility();
     msg('已載入通知 / 提醒設定', true);
   }catch(e){msg('載入失敗：'+e.message,false)}
