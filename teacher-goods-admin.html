@@ -12,7 +12,97 @@
     <section id="inquiryView"><div class="title2">老師詢價紀錄</div><div class="search-row"><input id="inqKeyword" placeholder="搜尋老師 / 商品 / 回覆內容"><select id="sourceFilter"><option value="">全部來源</option><option value="老師主動詢價">老師主動詢價</option><option value="公司商品詢問">公司商品詢問</option></select><select id="statusFilter"><option value="">全部狀態</option><option value="待處理">待處理</option><option value="待確認">待確認</option><option value="已回覆">已回覆</option><option value="可取貨">可取貨</option><option value="缺貨">缺貨</option><option value="已完成">已完成</option><option value="已取消">已取消</option></select><button class="btn secondary" id="inqSearchBtn" type="button" style="width:auto">搜尋</button></div><div class="list" id="inquiryList"></div></section>
     <section id="offerView" hidden><div class="title2">公司優惠商品</div><div class="item-card" style="margin-bottom:14px"><div class="grid"><div><label>商品名稱</label><input id="itemName"></div><div><label>分類</label><input id="category" placeholder="例如：琴弦、教材、配件"></div><div><label>關鍵字</label><input id="keywords" placeholder="方便老師搜尋"></div><div><label>排序</label><input id="sortOrder" type="number" step="1" placeholder="數字越小越前面"></div><div><label>老師價</label><input id="teacherPrice"></div><div><label>市售價</label><input id="marketPrice"></div><div><label>庫存狀態</label><select id="stockStatus"><option value="現貨">現貨</option><option value="需確認">需確認</option><option value="預購">預購</option><option value="缺貨">缺貨</option></select></div><div><label>預計到貨日</label><input id="arrivalDate" type="date"></div><div><label>可取貨日期</label><input id="pickupDate" type="date"></div><div><label>是否上架</label><select id="enabled"><option value="是">上架</option><option value="否">下架</option></select></div><div class="full"><label>優惠條件</label><input id="offerTerms" placeholder="例如：一組 $220，三組以上每組 $200"></div><div class="full"><label>商品說明</label><textarea id="description"></textarea></div><div class="full"><label>商品圖片</label><div class="image-picker"><div class="image-preview" id="itemPreview">無圖</div><div><input id="itemImage" type="file" accept="image/*"><div class="meta">可上傳商品照片，老師端會直接看到。</div></div></div></div></div><div class="btn-row"><button class="btn" id="saveItemBtn" type="button">儲存</button><button class="btn secondary" id="clearItemBtn" type="button">清空</button></div></div><div class="search-row"><input id="itemKeyword" placeholder="搜尋商品"><button class="btn secondary" id="itemSearchBtn" type="button" style="width:auto">搜尋</button></div><div class="list" id="itemList"></div></section>
   </div></div>
-<script src="config.js?v=20260430goods2"></script><script src="app.js?v=20260430goods2"></script>
+<script src="config.js?v=20260430goods2">
+
+/* ===== 2026-04-30：管理端移除狀態欄；送出回覆即視同已處理 ===== */
+function adminInquirySearchBarClean_(){
+  const kw = qs('#inqKeyword') ? qs('#inqKeyword').value : '';
+  const src = qs('#sourceFilter') ? qs('#sourceFilter').value : '';
+  return `<input id="inqKeyword" placeholder="搜尋老師 / 商品 / 回覆內容" value="${esc(kw)}"><select id="sourceFilter"><option value="" ${!src?'selected':''}>全部來源</option><option value="老師主動詢價" ${src==='老師主動詢價'?'selected':''}>老師主動詢價</option><option value="公司商品詢問" ${src==='公司商品詢問'?'selected':''}>公司商品詢問</option><option value="公司官網詢價" ${src==='公司官網詢價'?'selected':''}>公司官網詢價</option><option value="再次詢價" ${src==='再次詢價'?'selected':''}>再次詢價</option></select><button class="btn secondary" id="inqSearchBtn" type="button" style="width:auto">搜尋</button>`;
+}
+function ensureAdminCleanSearchBar_(){
+  const row=document.querySelector('#inquiryView .search-row');
+  if(row){row.innerHTML=adminInquirySearchBarClean_();qs('#inqSearchBtn').onclick=loadInquiries;}
+}
+function renderInquiries(rows){
+  ensureAdminCleanSearchBar_();
+  const box=qs('#inquiryList');
+  let html=adminInquiryGroupBar_();
+  const emptyText=(state.inquiryGroup==='past')?'目前沒有過去紀錄':'目前沒有未處理的詢價';
+  if(!rows.length){box.innerHTML=html+`<div class="empty">${emptyText}</div>`;return;}
+  html+=rows.map((r,i)=>`<div class="item-card"><div class="card-head"><div><div class="name">${esc(r.teacherName||'外聘老師')}｜${esc(r.itemName||'商品詢價')}</div><div class="meta">${esc(r.sourceType||'')} ｜ 送出：${esc(r.createdAt||'')} ｜ 希望拿貨：${esc(r.needBy||'-')} ｜ 數量：${esc(r.quantity||'-')}</div></div></div>${r.imageUrl?`<div class="thumb" style="margin-top:10px"><img src="${optimizedImageUrl(r.imageUrl)}"></div>`:''}${r.websiteOriginalPriceText?`<div class="meta" style="margin-top:8px">官網價格：${esc(r.websiteOriginalPriceText)}${r.websiteProductUrl?` ｜ <a href="${esc(r.websiteProductUrl)}" target="_blank" rel="noopener">查看官網商品</a>`:''}</div>`:''}${r.websiteVariantSummary?`<div class="meta">規格：${esc(r.websiteVariantSummary)}</div>`:''}${r.note?`<div class="meta" style="margin-top:8px;white-space:pre-wrap">老師詢問：${esc(r.note)}</div>`:''}<div class="reply-form"><div class="grid"><div><label>確認商品名稱</label><input id="replyName_${i}" value="${esc(r.replyItemName||r.itemName||'')}"></div><div><label>老師價</label><input id="replyTeacherPrice_${i}" value="${esc(r.replyTeacherPrice||r.replyPrice||'')}"></div><div><label>市售價 / 官網價</label><input id="replyMarketPrice_${i}" value="${esc(r.replyMarketPrice||r.websiteOriginalPrice||'')}"></div><div><label>庫存 / 調貨說明</label><input id="replyStock_${i}" value="${esc(r.replyStock||'')}" placeholder="例如：現貨 3 組 / 缺貨可調貨 / 預計下週到"></div><div><label>預計到貨日</label><input id="replyArrivalDate_${i}" type="date" value="${esc(r.replyArrivalDate||'')}"></div><div><label>可取貨日期</label><input id="replyPickupDate_${i}" type="date" value="${esc(r.replyPickupDate||'')}"></div><div class="full"><label>回覆內容</label><textarea id="replyNote_${i}">${esc(r.replyNote||'')}</textarea></div></div><div class="btn-row"><button class="btn" id="replyBtn_${i}" type="button" onclick="replyInquiry(${i})">送出回覆</button></div></div></div>`).join('');
+  box.innerHTML=html;
+}
+async function loadInquiries(){
+  ensureAdminCleanSearchBar_();
+  const box=qs('#inquiryList');
+  box.innerHTML=adminInquiryGroupBar_()+'<div class="empty">讀取中...</div>';
+  try{
+    const res=await api('getTeacherGoodsInquiryAdminList',{userId:getUser().id,keyword:qs('#inqKeyword').value||'',sourceType:qs('#sourceFilter').value||'',group:state.inquiryGroup||'active'});
+    if(!res.ok)throw new Error(res.message||'讀取失敗');
+    state.inquiries=res.rows||[];
+    renderInquiries(state.inquiries);
+    refreshAdminGoodsBadges();
+  }catch(err){box.innerHTML=adminInquiryGroupBar_()+`<div class="empty">${esc(err.message||'讀取失敗')}</div>`;}
+}
+async function replyInquiry(i){
+  const r=state.inquiries[i];if(!r)return;
+  const btn=qs('#replyBtn_'+i);startActionButtonProgress(btn,{label:'回覆'});
+  try{
+    const res=await api('replyTeacherGoodsInquiry',{userId:getUser().id,inquiryId:r.inquiryId,replyItemName:qs('#replyName_'+i).value,replyTeacherPrice:qs('#replyTeacherPrice_'+i).value,replyPrice:qs('#replyTeacherPrice_'+i).value,replyMarketPrice:qs('#replyMarketPrice_'+i).value,replyStock:qs('#replyStock_'+i).value,replyArrivalDate:qs('#replyArrivalDate_'+i).value,replyPickupDate:qs('#replyPickupDate_'+i).value,replyNote:qs('#replyNote_'+i).value});
+    if(!res.ok)throw new Error(res.message||'回覆失敗');
+    finishActionButtonSuccess(btn,'已回覆');
+    loadInquiries();refreshAdminGoodsBadges();
+  }catch(err){finishActionButtonError(btn,'回覆失敗');setMsg(qs('#msg'),err.message||'回覆失敗',true);}
+}
+setTimeout(ensureAdminCleanSearchBar_,0);
+
+</script><script src="app.js?v=20260430goods2">
+
+/* ===== 2026-04-30：管理端移除狀態欄；送出回覆即視同已處理 ===== */
+function adminInquirySearchBarClean_(){
+  const kw = qs('#inqKeyword') ? qs('#inqKeyword').value : '';
+  const src = qs('#sourceFilter') ? qs('#sourceFilter').value : '';
+  return `<input id="inqKeyword" placeholder="搜尋老師 / 商品 / 回覆內容" value="${esc(kw)}"><select id="sourceFilter"><option value="" ${!src?'selected':''}>全部來源</option><option value="老師主動詢價" ${src==='老師主動詢價'?'selected':''}>老師主動詢價</option><option value="公司商品詢問" ${src==='公司商品詢問'?'selected':''}>公司商品詢問</option><option value="公司官網詢價" ${src==='公司官網詢價'?'selected':''}>公司官網詢價</option><option value="再次詢價" ${src==='再次詢價'?'selected':''}>再次詢價</option></select><button class="btn secondary" id="inqSearchBtn" type="button" style="width:auto">搜尋</button>`;
+}
+function ensureAdminCleanSearchBar_(){
+  const row=document.querySelector('#inquiryView .search-row');
+  if(row){row.innerHTML=adminInquirySearchBarClean_();qs('#inqSearchBtn').onclick=loadInquiries;}
+}
+function renderInquiries(rows){
+  ensureAdminCleanSearchBar_();
+  const box=qs('#inquiryList');
+  let html=adminInquiryGroupBar_();
+  const emptyText=(state.inquiryGroup==='past')?'目前沒有過去紀錄':'目前沒有未處理的詢價';
+  if(!rows.length){box.innerHTML=html+`<div class="empty">${emptyText}</div>`;return;}
+  html+=rows.map((r,i)=>`<div class="item-card"><div class="card-head"><div><div class="name">${esc(r.teacherName||'外聘老師')}｜${esc(r.itemName||'商品詢價')}</div><div class="meta">${esc(r.sourceType||'')} ｜ 送出：${esc(r.createdAt||'')} ｜ 希望拿貨：${esc(r.needBy||'-')} ｜ 數量：${esc(r.quantity||'-')}</div></div></div>${r.imageUrl?`<div class="thumb" style="margin-top:10px"><img src="${optimizedImageUrl(r.imageUrl)}"></div>`:''}${r.websiteOriginalPriceText?`<div class="meta" style="margin-top:8px">官網價格：${esc(r.websiteOriginalPriceText)}${r.websiteProductUrl?` ｜ <a href="${esc(r.websiteProductUrl)}" target="_blank" rel="noopener">查看官網商品</a>`:''}</div>`:''}${r.websiteVariantSummary?`<div class="meta">規格：${esc(r.websiteVariantSummary)}</div>`:''}${r.note?`<div class="meta" style="margin-top:8px;white-space:pre-wrap">老師詢問：${esc(r.note)}</div>`:''}<div class="reply-form"><div class="grid"><div><label>確認商品名稱</label><input id="replyName_${i}" value="${esc(r.replyItemName||r.itemName||'')}"></div><div><label>老師價</label><input id="replyTeacherPrice_${i}" value="${esc(r.replyTeacherPrice||r.replyPrice||'')}"></div><div><label>市售價 / 官網價</label><input id="replyMarketPrice_${i}" value="${esc(r.replyMarketPrice||r.websiteOriginalPrice||'')}"></div><div><label>庫存 / 調貨說明</label><input id="replyStock_${i}" value="${esc(r.replyStock||'')}" placeholder="例如：現貨 3 組 / 缺貨可調貨 / 預計下週到"></div><div><label>預計到貨日</label><input id="replyArrivalDate_${i}" type="date" value="${esc(r.replyArrivalDate||'')}"></div><div><label>可取貨日期</label><input id="replyPickupDate_${i}" type="date" value="${esc(r.replyPickupDate||'')}"></div><div class="full"><label>回覆內容</label><textarea id="replyNote_${i}">${esc(r.replyNote||'')}</textarea></div></div><div class="btn-row"><button class="btn" id="replyBtn_${i}" type="button" onclick="replyInquiry(${i})">送出回覆</button></div></div></div>`).join('');
+  box.innerHTML=html;
+}
+async function loadInquiries(){
+  ensureAdminCleanSearchBar_();
+  const box=qs('#inquiryList');
+  box.innerHTML=adminInquiryGroupBar_()+'<div class="empty">讀取中...</div>';
+  try{
+    const res=await api('getTeacherGoodsInquiryAdminList',{userId:getUser().id,keyword:qs('#inqKeyword').value||'',sourceType:qs('#sourceFilter').value||'',group:state.inquiryGroup||'active'});
+    if(!res.ok)throw new Error(res.message||'讀取失敗');
+    state.inquiries=res.rows||[];
+    renderInquiries(state.inquiries);
+    refreshAdminGoodsBadges();
+  }catch(err){box.innerHTML=adminInquiryGroupBar_()+`<div class="empty">${esc(err.message||'讀取失敗')}</div>`;}
+}
+async function replyInquiry(i){
+  const r=state.inquiries[i];if(!r)return;
+  const btn=qs('#replyBtn_'+i);startActionButtonProgress(btn,{label:'回覆'});
+  try{
+    const res=await api('replyTeacherGoodsInquiry',{userId:getUser().id,inquiryId:r.inquiryId,replyItemName:qs('#replyName_'+i).value,replyTeacherPrice:qs('#replyTeacherPrice_'+i).value,replyPrice:qs('#replyTeacherPrice_'+i).value,replyMarketPrice:qs('#replyMarketPrice_'+i).value,replyStock:qs('#replyStock_'+i).value,replyArrivalDate:qs('#replyArrivalDate_'+i).value,replyPickupDate:qs('#replyPickupDate_'+i).value,replyNote:qs('#replyNote_'+i).value});
+    if(!res.ok)throw new Error(res.message||'回覆失敗');
+    finishActionButtonSuccess(btn,'已回覆');
+    loadInquiries();refreshAdminGoodsBadges();
+  }catch(err){finishActionButtonError(btn,'回覆失敗');setMsg(qs('#msg'),err.message||'回覆失敗',true);}
+}
+setTimeout(ensureAdminCleanSearchBar_,0);
+
+</script>
 <script>
 let state={tab:'inquiry',items:[],inquiries:[],editingItem:null,itemImage:null};
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
@@ -62,6 +152,51 @@ function renderInquiries(rows){
   html+=rows.map((r,i)=>`<div class="item-card"><div class="card-head"><div><div class="name">${esc(r.teacherName||'外聘老師')}｜${esc(r.itemName||'商品詢價')}</div><div class="meta">${esc(r.sourceType||'')} ｜ 送出：${esc(r.createdAt||'')} ｜ 希望拿貨：${esc(r.needBy||'-')} ｜ 數量：${esc(r.quantity||'-')}</div></div>${badge(r.displayStatus||r.status)}</div>${r.imageUrl?`<div class="thumb" style="margin-top:10px"><img src="${optimizedImageUrl(r.imageUrl)}"></div>`:''}${r.websiteOriginalPriceText?`<div class="meta" style="margin-top:8px">官網價格：${esc(r.websiteOriginalPriceText)}${r.websiteProductUrl?` ｜ <a href="${esc(r.websiteProductUrl)}" target="_blank" rel="noopener">查看官網商品</a>`:''}</div>`:''}${r.websiteVariantSummary?`<div class="meta">官網規格：${esc(r.websiteVariantSummary)}</div>`:''}${r.note?`<div class="meta" style="margin-top:8px">老師詢問：${esc(r.note)}</div>`:''}<div class="reply-form"><div class="grid"><div><label>確認商品名稱</label><input id="replyName_${i}" value="${esc(r.replyItemName||r.itemName||'')}"></div><div><label>狀態</label><select id="replyStatus_${i}"><option value="待處理" ${r.status==='待處理'?'selected':''}>待處理</option><option value="已回覆" ${r.status==='已回覆'?'selected':''}>已回覆</option><option value="可取貨" ${r.status==='可取貨'?'selected':''}>可取貨</option><option value="缺貨" ${r.status==='缺貨'?'selected':''}>缺貨</option><option value="已完成" ${r.status==='已完成'?'selected':''}>已完成</option><option value="已取消" ${r.status==='已取消'?'selected':''}>已取消</option></select></div><div><label>老師價</label><input id="replyTeacherPrice_${i}" value="${esc(r.replyTeacherPrice||r.replyPrice||'')}"></div><div><label>市售價 / 官網價</label><input id="replyMarketPrice_${i}" value="${esc(r.replyMarketPrice||r.websiteOriginalPrice||'')}"></div><div><label>庫存回覆</label><input id="replyStock_${i}" value="${esc(r.replyStock||'')}" placeholder="例如：現貨 3 組 / 缺貨可調貨 / 預計下週到"></div><div><label>預計到貨日</label><input id="replyArrivalDate_${i}" type="date" value="${esc(r.replyArrivalDate||'')}"></div><div><label>可取貨日期</label><input id="replyPickupDate_${i}" type="date" value="${esc(r.replyPickupDate||'')}"></div><div class="full"><label>回覆內容</label><textarea id="replyNote_${i}">${esc(r.replyNote||'')}</textarea></div></div><div class="btn-row"><button class="btn" id="replyBtn_${i}" type="button" onclick="replyInquiry(${i})">送出回覆</button></div></div></div>`).join('');
   box.innerHTML=html;
 }
+
+
+
+/* ===== 2026-04-30：管理端移除狀態欄；送出回覆即視同已處理 ===== */
+function adminInquirySearchBarClean_(){
+  const kw = qs('#inqKeyword') ? qs('#inqKeyword').value : '';
+  const src = qs('#sourceFilter') ? qs('#sourceFilter').value : '';
+  return `<input id="inqKeyword" placeholder="搜尋老師 / 商品 / 回覆內容" value="${esc(kw)}"><select id="sourceFilter"><option value="" ${!src?'selected':''}>全部來源</option><option value="老師主動詢價" ${src==='老師主動詢價'?'selected':''}>老師主動詢價</option><option value="公司商品詢問" ${src==='公司商品詢問'?'selected':''}>公司商品詢問</option><option value="公司官網詢價" ${src==='公司官網詢價'?'selected':''}>公司官網詢價</option><option value="再次詢價" ${src==='再次詢價'?'selected':''}>再次詢價</option></select><button class="btn secondary" id="inqSearchBtn" type="button" style="width:auto">搜尋</button>`;
+}
+function ensureAdminCleanSearchBar_(){
+  const row=document.querySelector('#inquiryView .search-row');
+  if(row){row.innerHTML=adminInquirySearchBarClean_();qs('#inqSearchBtn').onclick=loadInquiries;}
+}
+function renderInquiries(rows){
+  ensureAdminCleanSearchBar_();
+  const box=qs('#inquiryList');
+  let html=adminInquiryGroupBar_();
+  const emptyText=(state.inquiryGroup==='past')?'目前沒有過去紀錄':'目前沒有未處理的詢價';
+  if(!rows.length){box.innerHTML=html+`<div class="empty">${emptyText}</div>`;return;}
+  html+=rows.map((r,i)=>`<div class="item-card"><div class="card-head"><div><div class="name">${esc(r.teacherName||'外聘老師')}｜${esc(r.itemName||'商品詢價')}</div><div class="meta">${esc(r.sourceType||'')} ｜ 送出：${esc(r.createdAt||'')} ｜ 希望拿貨：${esc(r.needBy||'-')} ｜ 數量：${esc(r.quantity||'-')}</div></div></div>${r.imageUrl?`<div class="thumb" style="margin-top:10px"><img src="${optimizedImageUrl(r.imageUrl)}"></div>`:''}${r.websiteOriginalPriceText?`<div class="meta" style="margin-top:8px">官網價格：${esc(r.websiteOriginalPriceText)}${r.websiteProductUrl?` ｜ <a href="${esc(r.websiteProductUrl)}" target="_blank" rel="noopener">查看官網商品</a>`:''}</div>`:''}${r.websiteVariantSummary?`<div class="meta">規格：${esc(r.websiteVariantSummary)}</div>`:''}${r.note?`<div class="meta" style="margin-top:8px;white-space:pre-wrap">老師詢問：${esc(r.note)}</div>`:''}<div class="reply-form"><div class="grid"><div><label>確認商品名稱</label><input id="replyName_${i}" value="${esc(r.replyItemName||r.itemName||'')}"></div><div><label>老師價</label><input id="replyTeacherPrice_${i}" value="${esc(r.replyTeacherPrice||r.replyPrice||'')}"></div><div><label>市售價 / 官網價</label><input id="replyMarketPrice_${i}" value="${esc(r.replyMarketPrice||r.websiteOriginalPrice||'')}"></div><div><label>庫存 / 調貨說明</label><input id="replyStock_${i}" value="${esc(r.replyStock||'')}" placeholder="例如：現貨 3 組 / 缺貨可調貨 / 預計下週到"></div><div><label>預計到貨日</label><input id="replyArrivalDate_${i}" type="date" value="${esc(r.replyArrivalDate||'')}"></div><div><label>可取貨日期</label><input id="replyPickupDate_${i}" type="date" value="${esc(r.replyPickupDate||'')}"></div><div class="full"><label>回覆內容</label><textarea id="replyNote_${i}">${esc(r.replyNote||'')}</textarea></div></div><div class="btn-row"><button class="btn" id="replyBtn_${i}" type="button" onclick="replyInquiry(${i})">送出回覆</button></div></div></div>`).join('');
+  box.innerHTML=html;
+}
+async function loadInquiries(){
+  ensureAdminCleanSearchBar_();
+  const box=qs('#inquiryList');
+  box.innerHTML=adminInquiryGroupBar_()+'<div class="empty">讀取中...</div>';
+  try{
+    const res=await api('getTeacherGoodsInquiryAdminList',{userId:getUser().id,keyword:qs('#inqKeyword').value||'',sourceType:qs('#sourceFilter').value||'',group:state.inquiryGroup||'active'});
+    if(!res.ok)throw new Error(res.message||'讀取失敗');
+    state.inquiries=res.rows||[];
+    renderInquiries(state.inquiries);
+    refreshAdminGoodsBadges();
+  }catch(err){box.innerHTML=adminInquiryGroupBar_()+`<div class="empty">${esc(err.message||'讀取失敗')}</div>`;}
+}
+async function replyInquiry(i){
+  const r=state.inquiries[i];if(!r)return;
+  const btn=qs('#replyBtn_'+i);startActionButtonProgress(btn,{label:'回覆'});
+  try{
+    const res=await api('replyTeacherGoodsInquiry',{userId:getUser().id,inquiryId:r.inquiryId,replyItemName:qs('#replyName_'+i).value,replyTeacherPrice:qs('#replyTeacherPrice_'+i).value,replyPrice:qs('#replyTeacherPrice_'+i).value,replyMarketPrice:qs('#replyMarketPrice_'+i).value,replyStock:qs('#replyStock_'+i).value,replyArrivalDate:qs('#replyArrivalDate_'+i).value,replyPickupDate:qs('#replyPickupDate_'+i).value,replyNote:qs('#replyNote_'+i).value});
+    if(!res.ok)throw new Error(res.message||'回覆失敗');
+    finishActionButtonSuccess(btn,'已回覆');
+    loadInquiries();refreshAdminGoodsBadges();
+  }catch(err){finishActionButtonError(btn,'回覆失敗');setMsg(qs('#msg'),err.message||'回覆失敗',true);}
+}
+setTimeout(ensureAdminCleanSearchBar_,0);
 
 </script>
 </body>
