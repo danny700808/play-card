@@ -30,21 +30,21 @@
         <button class="btn secondary" style="width:auto;padding:10px 14px" onclick="logout()">登出</button>
       </div>
       <div class="message" id="msg"></div>
-      <div class="tips">姓名、出生年月日、身分證字號、到職日若需更正，請直接聯絡管理者處理。下方僅開放申請修改：行動電話、聯絡地址、Email、緊急聯絡人、緊急聯絡人電話。</div>
+      <div class="tips">個人基本資料若需更正，請直接聯絡管理者處理。下方僅開放申請修改：行動電話、聯絡地址、Email、緊急聯絡人、緊急聯絡人電話。</div>
     </div>
 
     <div class="card">
       <div class="section-title">查看資料</div>
       <div class="readonly-stack">
-        <div class="readonly-box"><div class="readonly-label">姓名</div><div class="readonly-value" id="viewName">-</div></div>
-        <div class="readonly-box"><div class="readonly-label">出生年月日</div><div class="readonly-value" id="viewBirth">-</div></div>
-        <div class="readonly-box"><div class="readonly-label">身分證字號</div><div class="readonly-value" id="viewIdMasked">-</div></div>
-        <div class="readonly-box"><div class="readonly-label">到職日</div><div class="readonly-value" id="viewHireDate">-</div></div>
-        <div class="readonly-box"><div class="readonly-label">緊急聯絡人</div><div class="readonly-value" id="viewEmergency">-</div></div>
-        <div class="readonly-box"><div class="readonly-label">緊急聯絡人電話</div><div class="readonly-value" id="viewEmergencyPhone">-</div></div>
-        <div class="readonly-box"><div class="readonly-label">行動電話</div><div class="readonly-value" id="viewMobilePhone">-</div></div>
-        <div class="readonly-box"><div class="readonly-label">聯絡地址</div><div class="readonly-value" id="viewAddress">-</div></div>
-        <div class="readonly-box" style="grid-column:1 / -1"><div class="readonly-label">Email</div><div class="readonly-value" id="viewEmail">-</div></div>
+        <div class="readonly-box" data-profile-field="viewName"><div class="readonly-label">姓名</div><div class="readonly-value" id="viewName">-</div></div>
+        <div class="readonly-box" data-profile-field="viewBirth"><div class="readonly-label">出生年月日</div><div class="readonly-value" id="viewBirth">-</div></div>
+        <div class="readonly-box" data-profile-field="viewIdMasked"><div class="readonly-label">身分證字號</div><div class="readonly-value" id="viewIdMasked">-</div></div>
+        <div class="readonly-box" data-profile-field="viewHireDate"><div class="readonly-label">到職日</div><div class="readonly-value" id="viewHireDate">-</div></div>
+        <div class="readonly-box" data-profile-field="viewEmergency"><div class="readonly-label">緊急聯絡人</div><div class="readonly-value" id="viewEmergency">-</div></div>
+        <div class="readonly-box" data-profile-field="viewEmergencyPhone"><div class="readonly-label">緊急聯絡人電話</div><div class="readonly-value" id="viewEmergencyPhone">-</div></div>
+        <div class="readonly-box" data-profile-field="viewMobilePhone"><div class="readonly-label">行動電話</div><div class="readonly-value" id="viewMobilePhone">-</div></div>
+        <div class="readonly-box" data-profile-field="viewAddress"><div class="readonly-label">聯絡地址</div><div class="readonly-value" id="viewAddress">-</div></div>
+        <div class="readonly-box" data-profile-field="viewEmail" style="grid-column:1 / -1"><div class="readonly-label">Email</div><div class="readonly-value" id="viewEmail">-</div></div>
       </div>
     </div>
 
@@ -85,15 +85,22 @@
         const res=await api('getMyProfile',{userId:user.id});
         if(!res||res.ok===false) throw new Error(res&&res.message||'讀取失敗');
         const p=res.profile||{};
-        qs('#viewName').textContent=p.name||'-';
-        qs('#viewBirth').textContent=p.birthDate||'-';
-        qs('#viewIdMasked').textContent=p.idNumberMasked||'-';
-        qs('#viewHireDate').textContent=p.hireDate||'-';
-        qs('#viewEmergency').textContent=p.emergencyContact||'-';
-        qs('#viewEmergencyPhone').textContent=p.emergencyPhone||'-';
-        qs('#viewMobilePhone').textContent=p.mobilePhone||'-';
-        qs('#viewAddress').textContent=p.address||'-';
-        qs('#viewEmail').textContent=p.email||'-';
+        const setProfileBox = (id, value) => {
+          const text = String(value || '').trim();
+          const box = document.querySelector('[data-profile-field="' + id + '"]');
+          const el = qs('#' + id);
+          if(el) el.textContent = text;
+          if(box) box.style.display = text ? '' : 'none';
+        };
+        setProfileBox('viewName', p.name);
+        setProfileBox('viewBirth', p.birthDate);
+        setProfileBox('viewIdMasked', p.idNumberMasked);
+        setProfileBox('viewHireDate', p.hireDate);
+        setProfileBox('viewEmergency', p.emergencyContact);
+        setProfileBox('viewEmergencyPhone', p.emergencyPhone);
+        setProfileBox('viewMobilePhone', p.mobilePhone);
+        setProfileBox('viewAddress', p.address);
+        setProfileBox('viewEmail', p.email);
         qs('#mobilePhone').value=p.mobilePhone||'';
         qs('#address').value=p.address||'';
         qs('#email').value=p.email||'';

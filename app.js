@@ -507,12 +507,9 @@ async function renderLineBindPrompt_(targetSelector){
   if(!hasLineId){
     statusHtml='<span class="none">尚未綁定</span>';
     actionsHtml='<button class="btn" type="button" id="showLineBindGuideBtn">前往綁定</button>';
-  }else if(notifyOn){
-    statusHtml='已綁定｜<span class="on">通知開啟</span><div class="muted" style="margin-top:4px">此帳號已完成 LINE 綁定，不需要再重新綁定。</div>';
-    actionsHtml='<button class="btn secondary" type="button" id="showLineBindGuideBtn">管理 LINE 通知</button>';
   }else{
-    statusHtml='已綁定｜<span class="off">通知關閉</span><div class="muted" style="margin-top:4px">此帳號已完成 LINE 綁定，目前只是通知關閉。</div>';
-    actionsHtml='<button class="btn secondary" type="button" id="showLineBindGuideBtn">管理 LINE 通知</button>';
+    statusHtml=notifyOn ? '已綁定｜<span class="on">通知開啟</span>' : '已綁定｜<span class="off">通知關閉</span>';
+    actionsHtml='<button class="btn secondary" type="button" id="lineQuickUnbindBtn">解除綁定</button>';
   }
 
   statusEl.innerHTML=statusHtml;
@@ -521,6 +518,20 @@ async function renderLineBindPrompt_(targetSelector){
   const guideBtn=wrap.querySelector('#showLineBindGuideBtn');
   if(guideBtn){
     guideBtn.onclick=()=>handleLineCardPrimaryAction_(user, ()=>renderLineBindPrompt_(targetSelector)).catch(err=>alert(err&&err.message?err.message:'LINE 設定開啟失敗'));
+  }
+  const unbindBtn=wrap.querySelector('#lineQuickUnbindBtn');
+  if(unbindBtn){
+    unbindBtn.onclick=async()=>{
+      if(!window.confirm('確定要解除 LINE 綁定嗎？解除後仍可再重新綁定。')) return;
+      const progress=startActionButtonProgress(unbindBtn,{label:'解除中',startPct:10,maxPct:84,interval:140});
+      try{
+        await setLineNotifyPreference_(false,true);
+        progress.done('已解除',700);
+        await renderLineBindPrompt_(targetSelector);
+      }catch(e){
+        progress.fail(e && e.message ? e.message : '解除失敗',1400);
+      }
+    };
   }
 }
 

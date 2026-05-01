@@ -204,6 +204,24 @@
       return raw;
     }
 
+    async function hasApprovedLeaveToday(user){
+      try{
+        const today = new Date().toISOString().slice(0,10);
+        const res = await api('getLeaveHistory', { userId:user.id });
+        const rows = Array.isArray(res && res.rows) ? res.rows : [];
+        return rows.some(row => {
+          const status = String(row.status || '').trim();
+          if(status !== '已核准') return false;
+          const start = String(row.startDate || row.leaveDate || row.date || '').slice(0,10);
+          const end = String(row.endDate || start || '').slice(0,10);
+          if(!start) return false;
+          return start <= today && today <= (end || start);
+        });
+      }catch(e){
+        return false;
+      }
+    }
+
     function renderHistoryRow(x, readonly){
       const lateText = x.clockType === '特殊打卡' ? '' : (x.status === '遲到' ? '｜遲到 ' + (x.lateMinutes || 0) + ' 分鐘' : '');
       const noteText = x.note ? `<div class="muted" style="margin-top:6px">備註：${escapeHtml(x.note)}</div>` : '';
@@ -384,6 +402,11 @@
           progress.fail('送出失敗');
           setMsg(msg, friendlyClockMessage(e.message || '送出失敗'), true);
         }
+        return;
+      }
+
+      if(await hasApprovedLeaveToday(user)){
+        setMsg(msg, '今天已有已核准請假紀錄，不能打卡。若需要更正，請提出補登／修正申請或聯絡主管。', true);
         return;
       }
 
