@@ -38,14 +38,14 @@
     .section{margin-top:18px}
     .status{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:14px 16px;color:var(--muted)}
     .status.error{color:var(--danger);border-color:#efc8c8;background:#fff6f6}
-    .cards{display:grid;gap:18px}
-    .entry-card{display:flex;justify-content:space-between;align-items:center;gap:14px;text-decoration:none;color:inherit;background:var(--card);border:1px solid var(--line);border-radius:30px;padding:26px 30px;box-shadow:var(--shadow);min-height:132px;cursor:pointer}
+    .cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+    .entry-card{display:block;text-decoration:none;color:inherit;background:var(--card);border:1px solid var(--line);border-radius:24px;padding:22px 20px;box-shadow:var(--shadow);min-height:138px;cursor:pointer}
     .entry-card:hover{transform:translateY(-1px)}
-    .entry-copy{flex:1;text-align:center}
-    .entry-title{font-size:28px;line-height:1.2;font-weight:900;color:#18314a;margin:0 0 14px;text-align:center}
-    .entry-desc{font-size:18px;line-height:1.7;color:var(--muted);text-align:center}
-    .entry-count{min-width:72px;text-align:center;font-size:54px;line-height:1;font-weight:900;color:#bcc6d4}
-    .entry-count.done{font-size:20px;color:var(--accent);background:#ecf7f1;border-radius:999px;padding:12px 16px;min-width:92px}
+    .entry-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+    .entry-title{font-size:23px;line-height:1.2;font-weight:900;color:#18314a;margin:0}
+    .entry-desc{margin-top:10px;font-size:15px;line-height:1.5;color:var(--muted)}
+    .entry-count{display:inline-flex;align-items:center;justify-content:center;min-width:34px;height:34px;padding:0 10px;border-radius:999px;background:#edf6f1;color:var(--accent);font-size:18px;line-height:1;font-weight:900;flex-shrink:0}
+    .entry-count.done{font-size:16px;background:#eef2f6;color:#91a2b3}
 
     @media (max-width:640px){
       .page{padding:14px 12px 28px}
@@ -58,11 +58,12 @@
       .tool-card{height:96px;padding:12px 12px;border-radius:22px}
       .tool-title{font-size:14px}
       .tool-desc{font-size:12px}
-      .entry-card{padding:24px 22px;min-height:122px;border-radius:26px;flex-direction:column;align-items:center}
-      .entry-title{font-size:24px;margin-bottom:10px}
-      .entry-desc{font-size:16px}
-      .entry-count{font-size:46px;min-width:58px}
-      .entry-count.done{font-size:18px;min-width:84px}
+      .cards{gap:14px}
+      .entry-card{padding:18px 16px;min-height:124px;border-radius:20px}
+      .entry-title{font-size:20px}
+      .entry-desc{font-size:14px;line-height:1.45}
+      .entry-count{min-width:30px;height:30px;font-size:16px;padding:0 8px}
+      .entry-count.done{font-size:14px}
     }
   </style>
 </head>
@@ -78,7 +79,7 @@
         <a class="tool-card profile-card" href="profile.html" id="openProfileBtn">
           <div>
             <div class="tool-title">個人資料</div>
-            <div class="tool-desc">查看與修改資料</div>
+            <div class="tool-desc">查看與修改</div>
           </div>
           <span class="btn mini-btn">查看</span>
         </a>
@@ -94,35 +95,35 @@
 
     <section class="section cards" id="cardsSection">
       <button class="entry-card" type="button" id="openAnnouncementBtn">
-        <div class="entry-copy">
+        <div class="entry-top">
           <div class="entry-title">公告</div>
-          <div class="entry-desc">查看最新公告與通知</div>
+          <div class="entry-count" id="announcementCount">0</div>
         </div>
-        <div class="entry-count" id="announcementCount">0</div>
+        <div class="entry-desc">最新公告</div>
       </button>
 
       <button class="entry-card" type="button" id="openTodoBtn">
-        <div class="entry-copy">
+        <div class="entry-top">
           <div class="entry-title">協助事項</div>
-          <div class="entry-desc">查看待處理協助事項與回報狀態</div>
+          <div class="entry-count" id="todoCount">0</div>
         </div>
-        <div class="entry-count" id="todoCount">0</div>
+        <div class="entry-desc">待處理與回報</div>
       </button>
 
       <button class="entry-card" type="button" id="openGoodsBtn">
-        <div class="entry-copy">
+        <div class="entry-top">
           <div class="entry-title">拿貨 / 詢價</div>
-          <div class="entry-desc">快速搜尋商品、查看老師價並確認庫存</div>
+          <div class="entry-count" id="goodsCount">0</div>
         </div>
-        <div class="entry-count" id="goodsCount">0</div>
+        <div class="entry-desc">商品與詢價</div>
       </button>
 
       <button class="entry-card" type="button" id="openContractBtn">
-        <div class="entry-copy">
+        <div class="entry-top">
           <div class="entry-title">合約</div>
-          <div class="entry-desc">查看合約內容與簽署狀態</div>
+          <div class="entry-count" id="contractCount">0</div>
         </div>
-        <div class="entry-count" id="contractCount">0</div>
+        <div class="entry-desc">簽署狀態</div>
       </button>
     </section>
   </div>

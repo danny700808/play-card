@@ -18,13 +18,15 @@
     .head-tool-desc{font-size:13px;line-height:1.45;color:var(--muted);text-align:center}
     .head-tool-btn{align-self:center;width:auto;padding:9px 14px;font-size:14px;border-radius:16px;white-space:nowrap}
     .logout-mini-btn{border:none;background:transparent;color:#24384f;font-size:16px;font-weight:900;cursor:pointer;white-space:nowrap}
-    .home-grid{display:grid;grid-template-columns:1fr;gap:18px}
-    .home-tile{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:28px 32px;border:1px solid var(--line);border-radius:28px;background:#fff;text-decoration:none;color:inherit;box-shadow:0 12px 30px rgba(15,23,42,.04)}
-    .home-tile .tile-copy{flex:1;text-align:center}
-    .home-tile strong{display:block;font-size:26px;line-height:1.2;margin-bottom:8px;text-align:center}
-    .home-tile span{display:block;color:var(--muted);font-size:18px;line-height:1.7;text-align:center}
-    .tile-count{min-width:96px;text-align:center;font-weight:900;font-size:42px;line-height:1;color:#1f7a5a}
-    .tile-count.zero{color:#b8c3cf}
+    .home-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+    .home-tile{display:block;padding:22px 20px;border:1px solid var(--line);border-radius:24px;background:#fff;text-decoration:none;color:inherit;box-shadow:0 12px 30px rgba(15,23,42,.04);min-height:138px}
+    .home-tile:hover{transform:translateY(-1px)}
+    .tile-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+    .tile-title{margin:0;font-size:23px;line-height:1.2;color:#18314a;font-weight:900}
+    .tile-desc{margin-top:10px;color:var(--muted);font-size:15px;line-height:1.5}
+    .tile-badge{display:inline-flex;align-items:center;justify-content:center;min-width:34px;height:34px;padding:0 10px;border-radius:999px;background:#edf6f1;color:#1f7a5a;font-size:18px;font-weight:900;line-height:1;flex-shrink:0}
+    .tile-badge.zero{background:#eef2f6;color:#9aa9ba}
+    .tile-badge.empty{visibility:hidden}
     @media (max-width:720px){
       .home-head-card{padding:22px 18px;border-radius:24px}
       .home-head-info{width:100%;text-align:center}
@@ -35,10 +37,11 @@
       .head-tool-title{font-size:14px}
       .head-tool-desc{font-size:12px}
       .head-tool-btn,.logout-mini-btn{padding:8px 10px;font-size:13px}
-      .home-tile{padding:24px 22px;border-radius:22px;flex-direction:column;align-items:center}
-      .home-tile strong{font-size:22px}
-      .home-tile span{font-size:16px}
-      .tile-count{min-width:74px;font-size:38px}
+      .home-grid{gap:14px}
+      .home-tile{padding:18px 16px;border-radius:20px;min-height:124px}
+      .tile-title{font-size:20px}
+      .tile-desc{font-size:14px;line-height:1.45}
+      .tile-badge{min-width:30px;height:30px;font-size:16px;padding:0 8px}
     }
   </style>
 </head>
@@ -55,7 +58,7 @@
           <a class="head-tool-card" href="profile.html">
             <div>
               <div class="head-tool-title">個人資料</div>
-              <div class="head-tool-desc">查看與修改資料</div>
+              <div class="head-tool-desc">查看與修改</div>
             </div>
             <span class="btn head-tool-btn">查看</span>
           </a>
@@ -66,14 +69,14 @@
       </section>
 
       <div class="home-grid" id="homeGrid">
-        <a class="home-tile" data-feature="announcement" href="announcements.html"><div class="tile-copy"><strong>公告</strong><span>查看最新公告、行政通知與發布內容</span></div><div class="tile-count" id="announcementCount">0</div></a>
-        <a class="home-tile" data-feature="clock" href="clock.html"><div class="tile-copy"><strong>打卡系統</strong><span>上班 / 下班打卡與本月紀錄</span></div><div class="tile-count" id="clockCount">0</div></a>
-        <a class="home-tile" data-feature="parttime" href="parttime.html"><div class="tile-copy"><strong>工讀生時數</strong><span>1～12 小時與半小時加時</span></div><div class="tile-count zero">&nbsp;</div></a>
-        <a class="home-tile" data-feature="leave" href="leave.html"><div class="tile-copy"><strong>請假系統</strong><span>請假申請與自己的請假紀錄</span></div><div class="tile-count" id="leaveCount">0</div></a>
-        <a class="home-tile" data-feature="task" href="task.html"><div class="tile-copy"><strong>交辦事項</strong><span>查看任務、回報完成狀態</span></div><div class="tile-count" id="taskCount">0</div></a>
-        <a class="home-tile" data-feature="routine" href="routine.html"><div class="tile-copy"><strong>定期事項</strong><span>固定週期工作與完成回報</span></div><div class="tile-count" id="routineCount">0</div></a>
-        <a class="home-tile" data-feature="training" href="training.html"><div class="tile-copy"><strong>教育訓練</strong><span>五大類教材、影片、文件與音檔搜尋</span></div><div class="tile-count zero">&nbsp;</div></a>
-        <a class="home-tile" href="salary.html"><div class="tile-copy"><strong>薪資與投保資訊</strong><span>查看自己的薪資、勞保與健保資訊</span></div><div class="tile-count zero">&nbsp;</div></a>
+        <a class="home-tile" data-feature="announcement" href="announcements.html"><div class="tile-top"><strong class="tile-title">公告</strong><div class="tile-badge" id="announcementCount">0</div></div><div class="tile-desc">最新公告</div></a>
+        <a class="home-tile" data-feature="clock" href="clock.html"><div class="tile-top"><strong class="tile-title">打卡系統</strong><div class="tile-badge" id="clockCount">0</div></div><div class="tile-desc">上下班與紀錄</div></a>
+        <a class="home-tile" data-feature="parttime" href="parttime.html"><div class="tile-top"><strong class="tile-title">工讀生時數</strong><div class="tile-badge empty">&nbsp;</div></div><div class="tile-desc">時數登記</div></a>
+        <a class="home-tile" data-feature="leave" href="leave.html"><div class="tile-top"><strong class="tile-title">請假系統</strong><div class="tile-badge" id="leaveCount">0</div></div><div class="tile-desc">請假與紀錄</div></a>
+        <a class="home-tile" data-feature="task" href="task.html"><div class="tile-top"><strong class="tile-title">交辦事項</strong><div class="tile-badge" id="taskCount">0</div></div><div class="tile-desc">待辦與回報</div></a>
+        <a class="home-tile" data-feature="routine" href="routine.html"><div class="tile-top"><strong class="tile-title">定期事項</strong><div class="tile-badge" id="routineCount">0</div></div><div class="tile-desc">固定工作</div></a>
+        <a class="home-tile" data-feature="training" href="training.html"><div class="tile-top"><strong class="tile-title">教育訓練</strong><div class="tile-badge empty">&nbsp;</div></div><div class="tile-desc">教材與學習</div></a>
+        <a class="home-tile" href="salary.html"><div class="tile-top"><strong class="tile-title">薪資與投保</strong><div class="tile-badge empty">&nbsp;</div></div><div class="tile-desc">薪資與投保</div></a>
       </div>
     </div>
   </div>
@@ -102,65 +105,38 @@
       refreshHomeCounts(user);
     }
 
-    function dashboardCountsCacheKey(user){
-      return 'employeeDashboardCounts:' + String(user?.id || user?.email || 'guest');
-    }
-
-    function applyHomeCounts(counts){
-      const map = {
-        taskCount: Number(counts?.tasks || 0),
-        routineCount: Number(counts?.routines || 0),
-        leaveCount: Number(counts?.leaves || 0),
-        clockCount: Number(counts?.clocks || 0),
-        announcementCount: Number(counts?.announcements || 0)
-      };
-      Object.keys(map).forEach(id=>{
-        const el = qs('#' + id);
-        if(!el) return;
-        const val = map[id];
-        el.textContent = String(val);
-        el.classList.toggle('zero', val===0);
-      });
-    }
-
-    function readHomeCountsCache(user){
-      try{
-        const raw = localStorage.getItem(dashboardCountsCacheKey(user));
-        if(!raw) return null;
-        const pack = JSON.parse(raw);
-        if(!pack || !pack.counts) return null;
-        return pack.counts;
-      }catch(e){ return null; }
-    }
-
-    function saveHomeCountsCache(user, counts){
-      try{
-        localStorage.setItem(dashboardCountsCacheKey(user), JSON.stringify({ts: Date.now(), counts: counts || {}}));
-      }catch(e){}
+    function setCountBadge(el, value){
+      if(!el) return;
+      const n = Number(value||0);
+      el.textContent = String(Number.isFinite(n) ? n : 0);
+      el.classList.toggle('zero', !n);
+      el.classList.remove('empty');
     }
 
     async function refreshHomeCounts(user){
-      const cached = readHomeCountsCache(user);
-      if(cached) applyHomeCounts(cached);
-
+      const taskEl = qs('#taskCount');
+      const routineEl = qs('#routineCount');
+      const leaveEl = qs('#leaveCount');
+      const clockEl = qs('#clockCount');
+      const annEl = qs('#announcementCount');
       try{
-        // 首頁只打一次集中摘要 API，不再另外讀公告 / 交辦 / 固定事項明細。
-        // 詳細內容等使用者點進各功能頁時才讀，首頁體感會比較快。
         const summaryRes = await api('getDashboardSummary',{userId:user.id,email:user.email,role:'staff'});
-        const summaryCounts = summaryRes?.counts || {};
-        const freshCounts = {
-          tasks: Number(summaryCounts.tasks || 0),
-          routines: Number(summaryCounts.routines || 0),
-          leaves: Number(summaryCounts.leaves || 0),
-          clocks: Number(summaryCounts.clocks || 0),
-          announcements: Number(summaryCounts.announcements || 0)
-        };
-        applyHomeCounts(freshCounts);
-        saveHomeCountsCache(user, freshCounts);
+        const taskCount = Number(summaryRes?.counts?.tasks||0);
+        const routineCount = Number(summaryRes?.counts?.routines||0);
+        const leaveCount = Number(summaryRes?.counts?.leaves||0);
+        const clockCount = Number(summaryRes?.counts?.clocks||0);
+        let announcementCount = 0;
+        try{
+          const annRes = await api('getAnnouncements',{userId:user.id});
+          announcementCount = Array.isArray(annRes?.rows) ? annRes.rows.length : 0;
+        }catch(e){}
+        setCountBadge(taskEl, taskCount);
+        setCountBadge(routineEl, routineCount);
+        setCountBadge(leaveEl, leaveCount);
+        setCountBadge(clockEl, clockCount);
+        setCountBadge(annEl, announcementCount);
       }catch(e){
-        if(!cached){
-          applyHomeCounts({tasks:0,routines:0,leaves:0,clocks:0,announcements:0});
-        }
+        [taskEl,routineEl,leaveEl,clockEl,annEl].forEach(el=>setCountBadge(el,0));
       }
     }
   </script>
