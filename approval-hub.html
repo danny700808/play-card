@@ -38,8 +38,53 @@
       const user=requireLogin();
       if(!user) return;
       if(!hasSettingsZoneAccess(user)){location.href='dashboard.html';return;}
-      try{ const r=await api('getPendingCounts',{userId:user.id}); setBadge('badge-registration',r.registrationCount); setBadge('badge-clock',r.clockCorrectionCount); setBadge('badge-leave',r.leaveCount); }catch(err){}
+      applyBadgeCounts_(readCachedPendingCounts_(user));
+      scheduleIdle_(async()=>applyBadgeCounts_(await fetchPendingCountsFast_(user)));
     }
+
+    function pendingCountsCacheKey_(user){ return 'pendingCounts:v2:' + ((user && user.id) || 'guest'); }
+    function readCachedPendingCounts_(user){
+      try{ return JSON.parse(localStorage.getItem(pendingCountsCacheKey_(user)) || '{}') || {}; }catch(e){ return {}; }
+    }
+    function writeCachedPendingCounts_(user, data){
+      try{ localStorage.setItem(pendingCountsCacheKey_(user), JSON.stringify(Object.assign({__cachedAt:Date.now()}, data||{}))); }catch(e){}
+    }
+    function normalizePendingCounts_(r){
+      r = r || {};
+      const counts = r.counts || r.summary || r.dashboard || r;
+      return Object.assign({}, r, counts, {
+        registrationCount: Number(counts.registrationCount || counts.pendingRegistrationCount || counts.registrations || 0) || 0,
+        leaveCount: Number(counts.leaveCount || counts.pendingLeaveCount || counts.leaveApprovalCount || 0) || 0,
+        clockCorrectionCount: Number(counts.clockCorrectionCount || counts.pendingClockCorrectionCount || counts.clockCorrection || 0) || 0,
+        contractCount: Number(counts.contractCount || counts.pendingContractCount || 0) || 0,
+        goodsInquiryCount: Number(counts.goodsInquiryCount || counts.pendingGoodsInquiryCount || 0) || 0,
+        taskCount: Number(counts.taskCount || counts.pendingTaskCount || counts.taskReviewCount || 0) || 0,
+        routineCount: Number(counts.routineCount || counts.pendingRoutineCount || counts.routineReviewCount || 0) || 0,
+        salaryCount: Number(counts.salaryCount || counts.pendingSalaryCount || 0) || 0
+      });
+    }
+    function scheduleIdle_(fn){
+      if(window.requestIdleCallback) requestIdleCallback(fn,{timeout:900});
+      else setTimeout(fn, 80);
+    }
+    async function fetchPendingCountsFast_(user){
+      try{
+        let r = await api('getDashboardSummary',{userId:user.id});
+        if(!r || r.ok === false) r = await api('getPendingCounts',{userId:user.id});
+        const data = normalizePendingCounts_(r);
+        writeCachedPendingCounts_(user, data);
+        return data;
+      }catch(err){
+        try{
+          const r = await api('getPendingCounts',{userId:user.id});
+          const data = normalizePendingCounts_(r);
+          writeCachedPendingCounts_(user, data);
+          return data;
+        }catch(e){ return readCachedPendingCounts_(user); }
+      }
+    }
+
+    function applyBadgeCounts_(r){ r=normalizePendingCounts_(r); setBadge('badge-registration',r.registrationCount); setBadge('badge-clock',r.clockCorrectionCount); setBadge('badge-leave',r.leaveCount); }
     function setBadge(id, count){
       const el=document.getElementById(id);
       if(!el) return;
