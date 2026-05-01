@@ -5,27 +5,44 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>打卡修正審核</title>
   <link rel="stylesheet" href="style.css">
-<style>
+  <style>
     .page-return-wrap{margin-bottom:16px}
     .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
-</style>
+    .correction-card{margin:0;padding:18px;border:1px solid #e5e7eb}
+    .correction-title{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}
+    .person-name{font-weight:900;font-size:20px;color:#111827}
+    .clean-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-top:14px}
+    .clean-field{padding:12px;border:1px solid #e5e7eb;border-radius:14px;background:#f9fafb}
+    .clean-label{font-size:13px;color:#6b7280;margin-bottom:4px}
+    .clean-value{font-weight:800;font-size:18px;color:#111827;word-break:break-word}
+    .change-box{margin-top:14px;padding:14px;border-radius:16px;background:#ecfdf5;border:1px solid #bbf7d0}
+    .change-line{font-weight:900;font-size:20px;color:#065f46}
+    .reason-box{margin-top:12px;padding:12px;border-radius:14px;background:#fff7ed;border:1px solid #fed7aa;line-height:1.7}
+    .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+    .status-pill{display:inline-flex;align-items:center;border-radius:999px;padding:7px 12px;font-weight:800;background:#fef3c7;color:#92400e}
+  </style>
 </head>
 <body onload="init()">
   <div class="container">
     <div class="page-return-wrap"><a class="btn page-return-btn" href="approval-hub.html">返回簽核</a></div>
+
     <div class="card">
-      <div class="topbar"><div class="header" style="margin:0">
+      <div class="topbar">
+        <div class="header" style="margin:0">
           <h1 class="title" style="margin:0">打卡修正審核</h1>
           <div class="welcome">歡迎 <span data-user-name></span></div>
         </div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn secondary" style="width:auto;padding:10px 14px" onclick="loadRows()">重新整理</button></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn secondary" style="width:auto;padding:10px 14px" onclick="loadRows()">重新整理</button>
+        </div>
       </div>
       <div id="msg" class="hint" style="margin-top:12px"></div>
       <div id="list" style="display:grid;gap:14px;margin-top:18px"></div>
     </div>
-  </div>
+
     <div class="card" style="margin-top:16px">
-      <div class="topbar"><div class="header" style="margin:0">
+      <div class="topbar">
+        <div class="header" style="margin:0">
           <h2 class="title" style="margin:0;font-size:24px">打卡紀錄查詢匯出</h2>
           <div class="welcome">此區整合在打卡簽核底下</div>
         </div>
@@ -35,34 +52,95 @@
         <a class="btn" style="width:auto;padding:12px 18px" href="clock-records-admin.html">前往打卡紀錄查詢匯出</a>
       </div>
     </div>
-  <script src="config.js"></script>
-  <script src="app.js"></script>
+  </div>
+
+  <script src="config.js?v=20260501clockcorrection17"></script>
+  <script src="app.js?v=20260501clockcorrection17"></script>
   <script>
     let currentUser=null;
+
+    function escapeHtml(v){
+      return String(v??'')
+        .replace(/&/g,'&amp;')
+        .replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;')
+        .replace(/'/g,'&#39;');
+    }
+
+    function cleanDate(v){
+      const s=String(v||'').trim();
+      if(!s) return '-';
+      if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+      const d=new Date(s);
+      if(!isNaN(d.getTime())){
+        const y=d.getFullYear();
+        const m=String(d.getMonth()+1).padStart(2,'0');
+        const day=String(d.getDate()).padStart(2,'0');
+        return `${y}-${m}-${day}`;
+      }
+      return s;
+    }
+
+    function cleanTime(v){
+      const s=String(v||'').trim();
+      if(!s) return '-';
+      const m=s.match(/(\d{1,2}):(\d{2})/);
+      if(m) return `${String(m[1]).padStart(2,'0')}:${m[2]}`;
+      const d=new Date(s);
+      if(!isNaN(d.getTime())){
+        return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+      }
+      return s;
+    }
+
     function rowCard(r){
+      const date=cleanDate(r.correctDate);
+      const oldTime=cleanTime(r.originalTime);
+      const newTime=cleanTime(r.correctTime);
+      const oldText=(r.originalRecordId && oldTime!=='-') ? oldTime : '無原始紀錄';
       return `
-        <div class="card" style="margin:0;padding:16px;border:1px solid #e5e7eb">
-          <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap">
+        <div class="card correction-card">
+          <div class="correction-title">
             <div>
-              <div style="font-weight:800;font-size:18px">${escapeHtml(r.name||'')}</div>
+              <div class="person-name">${escapeHtml(r.name||'')}</div>
               <div class="hint">${escapeHtml(r.email||'')}</div>
             </div>
-            <div class="status pending">待審核</div>
+            <div class="status-pill">待審核</div>
           </div>
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:14px">
-            <div><strong>日期：</strong>${escapeHtml(r.correctDate||'')}</div>
-            <div><strong>時間：</strong>${escapeHtml(r.correctTime||'')}</div>
-            <div><strong>動作：</strong>${escapeHtml(r.correctAction||'')}</div>
-            <div><strong>方式：</strong>${escapeHtml(r.correctionType||'')}</div>
+
+          <div class="clean-grid">
+            <div class="clean-field">
+              <div class="clean-label">日期</div>
+              <div class="clean-value">${escapeHtml(date)}</div>
+            </div>
+            <div class="clean-field">
+              <div class="clean-label">動作</div>
+              <div class="clean-value">${escapeHtml(r.correctAction||'')}</div>
+            </div>
+            <div class="clean-field">
+              <div class="clean-label">打卡方式</div>
+              <div class="clean-value">${escapeHtml(r.correctionType||'')}</div>
+            </div>
           </div>
-          ${r.originalRecordId?`<div style="margin-top:8px"><strong>原始紀錄ID：</strong>${escapeHtml(r.originalRecordId)}</div>`:''}
-          <div style="margin-top:10px"><strong>原因：</strong><br>${escapeHtml(r.reason||'')}</div>
-          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px">
-            <button class="btn" onclick="approve('${r.requestId}')">同意</button>
-            <button class="btn secondary" onclick="rejectOne('${r.requestId}')">駁回</button>
+
+          <div class="change-box">
+            <div class="clean-label">申請修改</div>
+            <div class="change-line">${escapeHtml(oldText)} → ${escapeHtml(newTime)}</div>
+            ${r.originalRecordId?`<div class="hint" style="margin-top:6px">原始紀錄ID：${escapeHtml(r.originalRecordId)}</div>`:''}
+          </div>
+
+          <div class="reason-box">
+            <strong>原因：</strong>${escapeHtml(r.reason||'')}
+          </div>
+
+          <div class="actions">
+            <button class="btn" onclick="approve('${escapeHtml(r.requestId)}')">同意</button>
+            <button class="btn secondary" onclick="rejectOne('${escapeHtml(r.requestId)}')">駁回</button>
           </div>
         </div>`;
     }
+
     async function init(){
       fillHeader();
       currentUser=requireLogin();
@@ -70,6 +148,7 @@
       if(!hasSettingsZoneAccess(currentUser)){ location.href='dashboard.html'; return; }
       await loadRows();
     }
+
     async function loadRows(){
       const msg=qs('#msg');
       const list=qs('#list');
@@ -85,14 +164,16 @@
         msg.textContent=err.message||'讀取失敗';
       }
     }
+
     async function approve(requestId){
-      if(!confirm('確定同意這筆打卡修正？')) return;
+      if(!confirm('確定同意這筆打卡修正？核准後會直接更新原始打卡紀錄並重新計算遲到。')) return;
       try{
         await api('approveClockCorrectionApi',{userId:currentUser.id,requestId});
-        alert('已同意');
+        alert('已同意，原始打卡紀錄已更新');
         loadRows();
       }catch(err){ alert(err.message||'同意失敗'); }
     }
+
     async function rejectOne(requestId){
       const rejectReason=prompt('請輸入駁回理由');
       if(rejectReason===null) return;
@@ -102,7 +183,6 @@
         loadRows();
       }catch(err){ alert(err.message||'駁回失敗'); }
     }
-    function escapeHtml(v){return String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
   </script>
 </body>
 </html>
