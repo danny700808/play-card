@@ -1,44 +1,4 @@
 
-
-(function(){
-  if (window.__EMP_LIGHT_PROGRESS_INSTALLED__) return;
-  window.__EMP_LIGHT_PROGRESS_INSTALLED__ = true;
-  var activeCount = 0;
-  var hideTimer = null;
-  function injectStyle(){
-    if (document.getElementById('empLightProgressStyle')) return;
-    var style=document.createElement('style');
-    style.id='empLightProgressStyle';
-    style.textContent = `
-      #empLightProgress{position:fixed;left:0;top:0;right:0;height:3px;z-index:99999;background:transparent;pointer-events:none;opacity:0;transition:opacity .16s ease}
-      #empLightProgress.show{opacity:1}
-      #empLightProgress .elp-fill{height:100%;width:42%;background:#1f7a5a;border-radius:0 999px 999px 0;box-shadow:0 0 10px rgba(31,122,90,.35);animation:empLightProgressMove .9s ease-in-out infinite}
-      @keyframes empLightProgressMove{0%{transform:translateX(-105%);width:32%}50%{width:55%}100%{transform:translateX(260%);width:32%}}
-      .emp-section-loading{position:relative;overflow:hidden;opacity:.72}
-      .emp-section-loading:after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(255,255,255,0),rgba(255,255,255,.55),rgba(255,255,255,0));transform:translateX(-100%);animation:empSectionShimmer 1.1s infinite;pointer-events:none}
-      @keyframes empSectionShimmer{100%{transform:translateX(100%)}}
-    `;
-    document.head.appendChild(style);
-  }
-  function ensureBar(){
-    injectStyle();
-    var el=document.getElementById('empLightProgress');
-    if (el) return el;
-    el=document.createElement('div');
-    el.id='empLightProgress';
-    el.innerHTML='<div class="elp-fill"></div>';
-    document.body.appendChild(el);
-    return el;
-  }
-  function show(){ if(!document.body)return; clearTimeout(hideTimer); ensureBar().classList.add('show'); }
-  function hide(force){ if(!document.body)return; clearTimeout(hideTimer); hideTimer=setTimeout(function(){ if(activeCount>0&&!force)return; var el=document.getElementById('empLightProgress'); if(el)el.classList.remove('show'); }, force?0:140); }
-  window.showPageLoading=function(){activeCount++;show();};
-  window.hidePageLoading=function(){activeCount=Math.max(0,activeCount-1);if(activeCount===0)hide(false);};
-  window.forceHidePageLoading=function(){activeCount=0;hide(true);};
-  window.withPageLoading=async function(promiseOrFn){window.showPageLoading();try{return await (typeof promiseOrFn==='function'?promiseOrFn():promiseOrFn)}finally{window.hidePageLoading();}};
-  window.setSectionLoading=function(target,on){var el=typeof target==='string'?document.querySelector(target):target;if(!el)return;el.classList.toggle('emp-section-loading',!!on);};
-})();
-
 const API_URL = String((window.APP_CONFIG && window.APP_CONFIG.API_URL) || window.API_URL || localStorage.getItem('EMPLOYEE_SYSTEM_API_BASE') || '').trim();
 function qs(s){return document.querySelector(s)}
 function qsa(s){return Array.from(document.querySelectorAll(s))}
@@ -71,14 +31,9 @@ function requireLogin(){const user=getUser(); if(!user){location.href='index.htm
 async function api(action, payload={}){
   const apiUrl=getApiUrl();
   if(!apiUrl) throw new Error('尚未設定 API 網址');
-  if (typeof window.showPageLoading === 'function') window.showPageLoading();
-  try{
-    const res=await fetch(apiUrl,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action,...payload})});
-    const raw=await res.text();
-    try{return JSON.parse(raw);}catch(e){throw new Error(raw || '伺服器回傳格式錯誤');}
-  } finally {
-    if (typeof window.hidePageLoading === 'function') window.hidePageLoading();
-  }
+  const res=await fetch(apiUrl,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action,...payload})});
+  const raw=await res.text();
+  try{return JSON.parse(raw);}catch(e){throw new Error(raw || '伺服器回傳格式錯誤');}
 }
 function setMsg(el, text, isError=false){if(!el) return; el.style.display=text?'block':'none'; el.textContent=text||''; el.classList.toggle('error',!!isError)}
 function togglePassword(inputSel, btn){const input=qs(inputSel); const show=input.type==='password'; input.type=show?'text':'password'; btn.textContent=show?'🙈':'👁';}
@@ -499,22 +454,33 @@ async function setLineNotifyPreference_(enabled, clearBinding){
     clearBinding:clearBinding ? '是' : '否'
   });
   if(!res.ok) throw new Error(res.message || '儲存 LINE 設定失敗');
-  if(res.user) saveUser(res.user);
+  clearLineStatusCache_(user);
+  if(res.user){
+    saveUser(res.user);
+    writeLineStatusCache_(res.user);
+  }
   return res;
 }
 
 async function renderLineBindPrompt_(targetSelector){
   let user=getUser();
   if(!user) return;
-  try{
-    if(user.id){
-      const refreshed=await api('refreshUserSession',{userId:user.id});
-      if(refreshed && refreshed.ok && refreshed.user){
-        saveUser(refreshed.user);
-        user=refreshed.user;
+  const cachedLineUser = readLineStatusCache_(user);
+  if(cachedLineUser){
+    user = Object.assign({}, user, cachedLineUser);
+  }else{
+    // LINE 綁定狀態不常變動，只在沒有本機快取時才讀一次後端，避免每次進首頁都多打一支 API。
+    try{
+      if(user.id){
+        const refreshed=await api('refreshUserSession',{userId:user.id});
+        if(refreshed && refreshed.ok && refreshed.user){
+          saveUser(refreshed.user);
+          writeLineStatusCache_(refreshed.user);
+          user=refreshed.user;
+        }
       }
-    }
-  }catch(e){}
+    }catch(e){}
+  }
   const path=(location.pathname.split('/').pop()||'').toLowerCase();
   if(path && !['dashboard.html','teacher-home.html','settings.html'].includes(path)) return;
   const existing=document.getElementById('lineBindPromptCard');
@@ -552,9 +518,12 @@ async function renderLineBindPrompt_(targetSelector){
   if(!hasLineId){
     statusHtml='<span class="none">尚未綁定</span>';
     actionsHtml='<button class="btn" type="button" id="showLineBindGuideBtn">前往綁定</button>';
+  }else if(notifyOn){
+    statusHtml='已綁定｜<span class="on">通知開啟</span>';
+    actionsHtml='<button class="btn secondary" type="button" id="showLineBindGuideBtn">解除綁定</button>';
   }else{
-    statusHtml= notifyOn ? '已綁定｜<span class="on">通知開啟</span>' : '已綁定｜<span class="off">通知關閉</span>';
-    actionsHtml='<button class="btn secondary" type="button" id="lineQuickUnbindBtn">解除綁定</button>';
+    statusHtml='已綁定｜<span class="off">通知關閉</span>';
+    actionsHtml='<button class="btn secondary" type="button" id="showLineBindGuideBtn">解除綁定</button>';
   }
 
   statusEl.innerHTML=statusHtml;
@@ -563,20 +532,6 @@ async function renderLineBindPrompt_(targetSelector){
   const guideBtn=wrap.querySelector('#showLineBindGuideBtn');
   if(guideBtn){
     guideBtn.onclick=()=>handleLineCardPrimaryAction_(user, ()=>renderLineBindPrompt_(targetSelector)).catch(err=>alert(err&&err.message?err.message:'LINE 設定開啟失敗'));
-  }
-  const unbindBtn=wrap.querySelector('#lineQuickUnbindBtn');
-  if(unbindBtn){
-    unbindBtn.onclick=async()=>{
-      if(!window.confirm('確定要解除 LINE 綁定嗎？解除後仍可再重新綁定。')) return;
-      const progress=startActionButtonProgress(unbindBtn,{label:'解除中',startPct:10,maxPct:84,interval:140});
-      try{
-        await setLineNotifyPreference_(false,true);
-        progress.done('已解除',700);
-        await renderLineBindPrompt_(targetSelector);
-      }catch(e){
-        progress.fail(e && e.message ? e.message : '解除失敗',1400);
-      }
-    };
   }
 }
 
@@ -943,6 +898,48 @@ async function driveUploadFileResumable(file, folderId, accessToken, onProgress)
   throw new Error('影片直傳未完成');
 }
 
+
+
+function lineStatusCacheKey_(user){
+  const id = user && (user.id || user.userId || user.employeeId || user.email);
+  return id ? ('lineStatusCache:' + String(id)) : '';
+}
+function readLineStatusCache_(user){
+  try{
+    const key = lineStatusCacheKey_(user);
+    if(!key) return null;
+    const raw = localStorage.getItem(key);
+    if(!raw) return null;
+    const data = JSON.parse(raw);
+    if(!data || !data.savedAt) return null;
+    const maxAge = 7 * 24 * 60 * 60 * 1000;
+    if(Date.now() - Number(data.savedAt || 0) > maxAge) return null;
+    return data.user || null;
+  }catch(e){ return null; }
+}
+function writeLineStatusCache_(user){
+  try{
+    const key = lineStatusCacheKey_(user);
+    if(!key) return;
+    const payload = {
+      savedAt: Date.now(),
+      user: {
+        id: user.id || user.userId || user.employeeId || '',
+        email: user.email || '',
+        name: user.name || '',
+        lineUserId: user.lineUserId || '',
+        lineNotifyEnabled: user.lineNotifyEnabled || ''
+      }
+    };
+    localStorage.setItem(key, JSON.stringify(payload));
+  }catch(e){}
+}
+function clearLineStatusCache_(user){
+  try{
+    const key = lineStatusCacheKey_(user || getUser());
+    if(key) localStorage.removeItem(key);
+  }catch(e){}
+}
 
 async function renderCompactLineCard_(targetSelector, user){
   if(user){

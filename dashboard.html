@@ -125,11 +125,7 @@
         const routineCount = Number(summaryRes?.counts?.routines||0);
         const leaveCount = Number(summaryRes?.counts?.leaves||0);
         const clockCount = Number(summaryRes?.counts?.clocks||0);
-        let announcementCount = 0;
-        try{
-          const annRes = await api('getAnnouncements',{userId:user.id});
-          announcementCount = Array.isArray(annRes?.rows) ? annRes.rows.length : 0;
-        }catch(e){}
+        const announcementCount = Number(summaryRes?.counts?.announcements || summaryRes?.counts?.announcement || 0);
         setCountBadge(taskEl, taskCount);
         setCountBadge(routineEl, routineCount);
         setCountBadge(leaveEl, leaveCount);
