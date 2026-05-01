@@ -59,8 +59,8 @@
       </div>
     </div>
   </div>
-  <script src="config.js?v=20260501salaryfix"></script>
-  <script src="app.js?v=20260501salaryfix"></script>
+  <script src="config.js?v=20260501salary14"></script>
+  <script src="app.js?v=20260501salary14"></script>
   <script>
     function toggleByIdentity(identityType){
       const isParttime = identityType === 'parttime';
@@ -134,7 +134,7 @@
 
         setCardVisible('#cardLaborSalary', laborActive);
         if(laborActive){
-          const laborLevel = info.laborLevelText || info.laborPlanName || info.laborSalaryText || '';
+          const laborLevel = info.laborSalaryText ? ((info.laborLevelText ? info.laborLevelText + '｜' : '') + info.laborSalaryText) : (info.laborPlanName || '');
           const laborSelf = info.laborSelfPayText || '0 元';
           qs('#laborSalary').textContent = (laborLevel ? '勞保級距：' + laborLevel + '\n' : '') + '勞保自付額：' + laborSelf;
         }
