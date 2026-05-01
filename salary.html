@@ -6,135 +6,175 @@
   <title>薪資與投保資訊</title>
   <link rel="stylesheet" href="style.css">
   <style>
-    .salary-shell{display:grid;gap:18px}
-    .salary-head{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;padding:24px 26px;border:1px solid var(--line);border-radius:28px;background:#fff;box-shadow:0 12px 30px rgba(15,23,42,.04)}
-    .salary-head h1{margin:0;font-size:30px;line-height:1.2}
-    .salary-head .sub{margin-top:8px;color:var(--muted);font-size:16px;line-height:1.7}
-    .salary-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-    .salary-card{padding:24px 26px;border:1px solid var(--line);border-radius:28px;background:#fff;box-shadow:0 12px 30px rgba(15,23,42,.04)}
-    .salary-card h2{margin:0 0 14px;font-size:22px;color:#18314a}
-    .salary-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
-    .salary-item{border:1px solid #e4ebf3;border-radius:20px;background:#f8fafc;padding:16px 18px;min-height:84px}
-    .salary-label{font-size:14px;font-weight:800;color:#62748a;margin-bottom:8px}
-    .salary-value{font-size:20px;font-weight:900;color:#111827;line-height:1.35;word-break:break-word}
-    .salary-value.small{font-size:17px;font-weight:800;line-height:1.6}
-    .status-pill{display:inline-flex;align-items:center;justify-content:center;border-radius:999px;padding:6px 12px;font-size:14px;font-weight:900;background:#eef6f1;color:#1f7a5a}
-    .status-pill.off{background:#f5f0e6;color:#9b6b00}
-    .section-note{margin-top:12px;color:var(--muted);font-size:15px;line-height:1.7}
-    .loading-box{padding:22px;border:1px dashed #cbd5e1;border-radius:22px;background:#f8fafc;color:#52667c;font-weight:800;text-align:center;line-height:1.7}
-    @media(max-width:720px){
-      .salary-head{padding:22px 18px;border-radius:24px;text-align:center;justify-content:center}
-      .salary-head h1{font-size:26px}
-      .salary-actions{width:100%;justify-content:center}
-      .salary-card{padding:20px 18px;border-radius:24px}
-      .salary-grid{grid-template-columns:1fr}
-      .salary-value{font-size:19px}
-    }
+    .summary-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+    .summary-box{border:1px solid var(--line);border-radius:14px;padding:14px;background:#f8fbff}
+    .summary-box .label{font-size:13px;color:var(--muted)}
+    .summary-box .value{font-size:22px;font-weight:800;color:var(--brand);margin-top:6px}
+    .info-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+    .info-card{border:1px solid var(--line);border-radius:14px;padding:14px;background:#fff}
+    .info-card .label{font-size:13px;color:var(--muted)}
+    .info-card .value{font-size:16px;font-weight:700;margin-top:6px;white-space:pre-wrap}
+    .hidden{display:none!important}
+    .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:12px}
+    @media (max-width:560px){.summary-grid,.info-grid{grid-template-columns:1fr}}
+    .page-return-wrap{margin-bottom:16px}
+    .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
   </style>
 </head>
 <body onload="init()">
   <div class="container">
-    <div class="salary-shell">
-      <section class="salary-head">
-        <div>
-          <h1>薪資與投保資訊</h1>
-          <div class="sub">查看自己的薪資、勞保、健保、勞退與本月遲到扣薪資訊。</div>
-        </div>
-        <div class="salary-actions">
-          <a class="btn secondary" id="homeLink" href="dashboard.html" style="width:auto;padding:10px 14px">返回員工首頁</a>
-          <button class="btn secondary" type="button" onclick="logout()" style="width:auto;padding:10px 14px">登出</button>
-        </div>
-      </section>
-
-      <div id="msg" class="loading-box">正在讀取薪資與投保資訊...</div>
-      <div id="content" class="salary-shell" style="display:none"></div>
+    <div class="page-return-wrap"><a class="btn page-return-btn" id="salaryHomeLink" href="dashboard.html">返回員工首頁</a></div>
+    <div class="card">
+      <div class="header" style="margin:0"><h1 class="title">薪資與投保資訊</h1><div class="welcome">歡迎 <span data-user-name></span></div></div>
+      <div id="pageMsg" class="message"></div>
+      <div class="toolbar">
+        <button id="reloadBtn" class="btn" type="button" style="width:auto;padding:10px 16px">重新讀取</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="section-title">摘要</div>
+      <div class="summary-grid">
+        <div class="summary-box"><div class="label" id="mainAmountLabel">主要薪資</div><div class="value" id="mainAmountValue">-</div></div>
+        <div class="summary-box"><div class="label">本月遲到分鐘</div><div class="value" id="lateMinutesValue">0 分鐘</div></div>
+        <div class="summary-box"><div class="label">本月遲到扣薪</div><div class="value" id="lateDeductionValue">0 元</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="section-title">查看資訊</div>
+      <div class="info-grid">
+        <div class="info-card" id="cardStaffBase"><div class="label">本薪</div><div class="value" id="staffBaseSalary">-</div></div>
+        <div class="info-card hidden" id="cardHourlyRate"><div class="label">時薪</div><div class="value" id="parttimeHourlyRate">-</div></div>
+        <div class="info-card hidden" id="cardPartialHours"><div class="label">是否部分工時</div><div class="value" id="parttimePartialHours">-</div></div>
+        <div class="info-card hidden" id="cardAverageSalary"><div class="label">目前申報月平均薪資總額</div><div class="value" id="parttimeAverageSalary">-</div></div>
+        <div class="info-card" id="cardJobAllowance"><div class="label">職務加給</div><div class="value" id="jobAllowance">-</div></div>
+        <div class="info-card" id="cardOtherAllowance"><div class="label">津貼</div><div class="value" id="otherAllowance">-</div></div>
+        <div class="info-card"><div class="label">勞保狀態</div><div class="value" id="laborStatus">-</div></div>
+        <div class="info-card" id="cardLaborSalary"><div class="label">勞保</div><div class="value" id="laborSalary">-</div></div>
+        <div class="info-card"><div class="label">健保狀態</div><div class="value" id="healthStatus">-</div></div>
+        <div class="info-card" id="cardHealthSalary"><div class="label">健保</div><div class="value" id="healthSalary">-</div></div>
+        <div class="info-card" id="cardRetirementEmployer"><div class="label">雇主提撥勞退 6%</div><div class="value" id="retirementEmployer">-</div></div>
+        <div class="info-card" id="cardRetirementSelf"><div class="label">勞退自提</div><div class="value" id="retirementSelf">-</div></div>
+        <div class="info-card"><div class="label">生效日期</div><div class="value" id="salaryEffectiveDateInfo">-</div></div>
+        <div class="info-card" style="grid-column:1/-1"><div class="label">備註</div><div class="value" id="salaryNote">-</div></div>
+      </div>
     </div>
   </div>
-
-  <script src="config.js?v=20260501salary1"></script>
-  <script src="app.js?v=20260501salary1"></script>
+  <script src="config.js?v=20260501salaryfix"></script>
+  <script src="app.js?v=20260501salaryfix"></script>
   <script>
-    function safeText(v, fallback='-'){
-      const s = String(v == null ? '' : v).trim();
-      return s || fallback;
+    function toggleByIdentity(identityType){
+      const isParttime = identityType === 'parttime';
+      qs('#cardStaffBase').classList.toggle('hidden', isParttime);
+      qs('#cardHourlyRate').classList.toggle('hidden', !isParttime);
+      qs('#cardPartialHours').classList.toggle('hidden', !isParttime);
+      qs('#cardAverageSalary').classList.toggle('hidden', !isParttime);
     }
-    function pill(active, onText, offText){
-      return `<span class="status-pill ${active ? '' : 'off'}">${active ? onText : offText}</span>`;
+    function setReloading(loading){
+      const btn = qs('#reloadBtn');
+      if(!btn) return;
+      btn.disabled = !!loading;
+      btn.textContent = loading ? '讀取中...' : '重新讀取';
     }
-    function item(label, value, small=false){
-      return `<div class="salary-item"><div class="salary-label">${label}</div><div class="salary-value ${small ? 'small' : ''}">${safeText(value)}</div></div>`;
+    async function callSalaryApi(payload){
+      const apiUrl = (typeof getApiUrl === 'function' ? getApiUrl() : String((window.APP_CONFIG && window.APP_CONFIG.API_URL) || window.API_URL || '').trim());
+      if(!apiUrl) throw new Error('尚未設定 API 網址');
+      const res = await fetch(apiUrl, {
+        method:'POST',
+        headers:{'Content-Type':'text/plain;charset=utf-8'},
+        body: JSON.stringify(payload)
+      });
+      const raw = await res.text();
+      try{ return JSON.parse(raw); }catch(e){ throw new Error(raw || '伺服器回傳格式錯誤'); }
     }
-    function card(title, body, note=''){
-      return `<section class="salary-card"><h2>${title}</h2><div class="salary-grid">${body}</div>${note ? `<div class="section-note">${note}</div>` : ''}</section>`;
+    function isBlankSalaryText(text){
+      const s = String(text == null ? '' : text).trim();
+      return !s || s === '-' || s === '無' || s === '0' || s === '0 元' || s === '$0';
     }
-    function renderSalary(info){
-      const isParttime = String(info.identityType || '').toLowerCase() === 'parttime';
-      const content = qs('#content');
-      const mainRows = [
-        item('身分', isParttime ? '工讀生' : '專職員工'),
-        item('薪資顯示類型', info.displayTypeName),
-        item(info.mainAmountLabel || (isParttime ? '時薪' : '本薪'), info.mainAmountText),
-        item('薪資生效日', info.effectiveDate),
-        item('薪資備註', info.note, true)
-      ].join('');
-
-      const parttimeRows = isParttime ? card('工讀薪資資料', [
-        item('時薪', info.parttimeHourlyRateText),
-        item('是否部分工時', info.parttimePartialHoursText),
-        item('目前申報月平均薪資總額', info.parttimeAverageSalaryText),
-        item('平均薪資 / 時薪摘要', info.baseOrHourlyText, true)
-      ].join('')) : '';
-
-      const allowanceRows = card('加給與津貼', [
-        item('職務加給', info.jobAllowanceText || '無', true),
-        item('津貼', info.allowanceText || '無', true)
-      ].join(''));
-
-      const insuranceRows = card('投保資訊', [
-        item('勞保狀態', pill(!!info.laborActive, safeText(info.laborStatus, '在保'), safeText(info.laborStatus, '未投保'))),
-        item('健保狀態', pill(!!info.healthActive, safeText(info.healthStatus, '在保'), safeText(info.healthStatus, '未投保'))),
-        item('勞保級距', info.laborPlanName || info.laborLevelText),
-        item('勞保投保薪資', info.laborSalaryText),
-        item('勞保自付額', info.laborSelfPayText),
-        item('健保級距', info.healthPlanName || info.healthLevelText),
-        item('健保投保金額', info.healthSalaryText),
-        item('健保本人自付', info.healthSelfPayText)
-      ].join(''), '若主管尚未完成薪資投保設定，這裡會顯示空白或「-」。');
-
-      const retirementRows = card('勞退資訊', [
-        item('勞退月提繳工資', info.retirementBaseText),
-        item('雇主提撥勞退 6%', info.retirementEmployerText),
-        item('自提勞退', info.selfRetirementText)
-      ].join(''));
-
-      const lateRows = card('本月遲到扣薪', [
-        item('本月遲到分鐘', info.lateMinutesText),
-        item('本月預估扣薪', info.lateDeductionText)
-      ].join(''));
-
-      content.innerHTML = card('薪資摘要', mainRows) + parttimeRows + allowanceRows + insuranceRows + retirementRows + lateRows;
-      content.style.display = '';
+    function setCardVisible(id, visible){
+      const el = qs(id);
+      if(el) el.classList.toggle('hidden', !visible);
     }
-    async function init(){
-      fillHeader && fillHeader();
+    function activeInsuranceStatus(status){
+      const s = String(status || '').trim();
+      return ['在保','已投保','投保','加保','是','有效'].includes(s);
+    }
+    async function loadSalaryInfo(){
       const user = requireLogin();
       if(!user) return;
-      const home = qs('#homeLink');
-      if(home){ home.href = userHomeHref ? userHomeHref(user) : 'dashboard.html'; home.textContent = userHomeLabel ? userHomeLabel(user) : '返回員工首頁'; }
-      const msg = qs('#msg');
+      setReloading(true);
+      setMsg(qs('#pageMsg'), '');
       try{
-        const res = await api('getMySalaryInfo', { userId:user.id, email:user.email });
-        if(!res || !res.ok){
-          setMsg(msg, (res && res.message) || '讀取薪資與投保資訊失敗。', true);
-          return;
+        const res = await callSalaryApi({ action:'getMySalaryInfo', userId: user.id });
+        if(!res || res.ok === false) throw new Error((res && res.message) || '讀取失敗');
+        const info = res.info || {};
+        const identityType = info.identityType || user.identityType || 'staff';
+        const isParttime = identityType === 'parttime';
+        toggleByIdentity(identityType);
+
+        qs('#mainAmountLabel').textContent = info.mainAmountLabel || (isParttime ? '時薪' : '本薪');
+        qs('#mainAmountValue').textContent = info.mainAmountText || '-';
+        qs('#staffBaseSalary').textContent = info.staffBaseSalaryText || info.mainAmountText || '-';
+        qs('#parttimeHourlyRate').textContent = info.parttimeHourlyRateText || '-';
+        qs('#parttimePartialHours').textContent = info.parttimePartialHoursText || info.partialHoursText || '-';
+        qs('#parttimeAverageSalary').textContent = info.parttimeAverageSalaryText || info.averageSalaryText || '-';
+
+        const jobText = info.jobAllowanceText || '-';
+        const allowanceText = info.allowanceText || '-';
+        const hasJobAllowance = (info.hasJobAllowance === true) || (!isBlankSalaryText(jobText) && jobText !== '無');
+        const hasAllowance = (info.hasAllowance === true) || (!isBlankSalaryText(allowanceText) && allowanceText !== '無');
+        setCardVisible('#cardJobAllowance', hasJobAllowance);
+        setCardVisible('#cardOtherAllowance', hasAllowance);
+        if(hasJobAllowance) qs('#jobAllowance').textContent = jobText;
+        if(hasAllowance) qs('#otherAllowance').textContent = allowanceText;
+
+        const laborActive = (info.laborActive === true) || activeInsuranceStatus(info.laborStatus);
+        const healthActive = (info.healthActive === true) || activeInsuranceStatus(info.healthStatus);
+        qs('#laborStatus').textContent = info.laborStatus || '未設定';
+        qs('#healthStatus').textContent = info.healthStatus || '未設定';
+
+        setCardVisible('#cardLaborSalary', laborActive);
+        if(laborActive){
+          const laborLevel = info.laborLevelText || info.laborPlanName || info.laborSalaryText || '';
+          const laborSelf = info.laborSelfPayText || '0 元';
+          qs('#laborSalary').textContent = (laborLevel ? '勞保級距：' + laborLevel + '\n' : '') + '勞保自付額：' + laborSelf;
         }
-        msg.style.display = 'none';
-        renderSalary(res.info || {});
+
+        setCardVisible('#cardHealthSalary', healthActive);
+        if(healthActive){
+          const healthLevel = info.healthLevelText || info.healthPlanName || info.healthSalaryText || '';
+          const healthSelf = info.healthSelfPayText || '0 元';
+          qs('#healthSalary').textContent = (healthLevel ? '健保級距：' + healthLevel + '\n' : '') + '健保自付額：' + healthSelf;
+        }
+
+        const showRetirement = laborActive && !isBlankSalaryText(info.retirementEmployerText || '');
+        setCardVisible('#cardRetirementEmployer', showRetirement);
+        setCardVisible('#cardRetirementSelf', showRetirement && !isBlankSalaryText(info.selfRetirementText || '') && info.selfRetirementText !== '未自提');
+        if(showRetirement) qs('#retirementEmployer').textContent = info.retirementEmployerText || '-';
+        if(showRetirement) qs('#retirementSelf').textContent = info.selfRetirementText || '-';
+
+        qs('#salaryEffectiveDateInfo').textContent = info.effectiveDate || '-';
+        qs('#lateMinutesValue').textContent = info.lateMinutesText || '0 分鐘';
+        qs('#lateDeductionValue').textContent = info.lateDeductionText || '0 元';
+        qs('#salaryNote').textContent = info.note || '-';
       }catch(err){
-        setMsg(msg, err.message || String(err), true);
+        const msg = (err && err.message) ? String(err.message) : String(err || '');
+        if(msg === 'Failed to fetch'){
+          setMsg(qs('#pageMsg'), '員工薪資頁目前連不到 Web App。請重新部署 Apps Script，並確認前端 config.js 的 API URL 仍是最新版本後再重整。', true);
+        }else{
+          setMsg(qs('#pageMsg'), msg, true);
+        }
+      }finally{
+        setReloading(false);
       }
+    }
+    async function init(){
+      fillHeader();
+      const user = requireLogin();
+      if(!user) return;
+      const btn = qs('#reloadBtn');
+      if(btn) btn.addEventListener('click', loadSalaryInfo);
+      await loadSalaryInfo();
     }
   </script>
 </body>
 </html>
-<!-- updated salary display -->
