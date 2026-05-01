@@ -98,17 +98,42 @@
       if(typeof renderCompactLineCard_==='function') await renderCompactLineCard_('#lineBindArea', user); else if(typeof renderLineBindPrompt_==='function') await renderLineBindPrompt_('#lineBindArea');
       loadBadges(user);
     }
-    async function loadBadges(user){
+    function managerCountsCacheKey(user){
+      return 'managerDashboardCounts:' + String(user?.id || user?.email || 'admin');
+    }
+    function applyManagerBadges(counts){
+      counts = counts || {};
+      const approval = sum_(counts.registrations, counts.leaves, counts.clockCorrections);
+      const teacher = sum_(counts.contracts, counts.goodsInquiries);
+      const items = sum_(counts.tasks, counts.routines);
+      setBadge('badge-approval', approval);
+      setBadge('badge-teacher', teacher);
+      setBadge('badge-items', items);
+      setBadge('badge-salary', counts.salary || counts.salaryCount);
+    }
+    function readManagerCountsCache(user){
       try{
-        const r=await api('getPendingCounts',{userId:user.id});
-        const approval = sum_(r.registrationCount, r.leaveCount, r.clockCorrectionCount);
-        const teacher = sum_(r.contractCount, r.goodsInquiryCount);
-        const items = sum_(r.taskCount, r.routineCount);
-        setBadge('badge-approval', approval);
-        setBadge('badge-teacher', teacher);
-        setBadge('badge-items', items);
-        setBadge('badge-salary', r.salaryCount);
-      }catch(err){}
+        const raw=localStorage.getItem(managerCountsCacheKey(user));
+        if(!raw) return null;
+        const pack=JSON.parse(raw);
+        return pack && pack.counts ? pack.counts : null;
+      }catch(e){ return null; }
+    }
+    function saveManagerCountsCache(user, counts){
+      try{ localStorage.setItem(managerCountsCacheKey(user), JSON.stringify({ts:Date.now(), counts:counts||{}})); }catch(e){}
+    }
+    async function loadBadges(user){
+      const cached=readManagerCountsCache(user);
+      if(cached) applyManagerBadges(cached);
+      try{
+        // 管理首頁也改走集中摘要 API，避免一進頁就到處抓明細。
+        const r=await api('getDashboardSummary',{userId:user.id,email:user.email,role:'admin'});
+        const counts=(r && r.counts) ? r.counts : {};
+        applyManagerBadges(counts);
+        saveManagerCountsCache(user, counts);
+      }catch(err){
+        if(!cached) applyManagerBadges({});
+      }
     }
     function sum_(){ return Array.from(arguments).reduce((s,v)=>s+(Number(v||0)||0),0); }
     function setBadge(id, count){
