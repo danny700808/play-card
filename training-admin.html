@@ -125,7 +125,80 @@ textarea{min-height:96px;resize:vertical}
 .record-preview.show{display:block}
 @media(max-width:720px){.upload-grid{grid-template-columns:1fr}}
 
-</style></head><body>
+</style><script>
+
+(function(){
+  if (window.__EMP_GLOBAL_LOADER_INSTALLED__) return;
+  window.__EMP_GLOBAL_LOADER_INSTALLED__ = true;
+  var activeCount = 0;
+  var minUntil = 0;
+  function injectStyle(){
+    if (document.getElementById('empGlobalLoaderStyle')) return;
+    var style=document.createElement('style');
+    style.id='empGlobalLoaderStyle';
+    style.textContent = `
+      #empGlobalLoader{position:fixed;inset:0;z-index:99999;background:rgba(244,247,251,.88);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:24px;transition:opacity .2s ease}
+      #empGlobalLoader.hidden{opacity:0;pointer-events:none}
+      #empGlobalLoader .egl-card{width:min(420px,92vw);background:#fff;border:1px solid #d9e2ec;border-radius:22px;box-shadow:0 16px 45px rgba(16,24,40,.12);padding:22px;text-align:center}
+      #empGlobalLoader .egl-title{font-size:20px;font-weight:900;color:#182230;margin:0 0 8px}
+      #empGlobalLoader .egl-text{font-size:14px;color:#667085;margin:0 0 14px}
+      #empGlobalLoader .egl-bar{height:10px;border-radius:999px;background:#eef2f7;overflow:hidden}
+      #empGlobalLoader .egl-fill{height:100%;width:38%;border-radius:999px;background:#1f7a5a;animation:empLoaderMove 1.05s ease-in-out infinite}
+      @keyframes empLoaderMove{0%{transform:translateX(-120%);width:35%}50%{width:55%}100%{transform:translateX(290%);width:35%}}
+      body.emp-page-loading main,body.emp-page-loading .card,body.emp-page-loading .section,body.emp-page-loading .shell,body.emp-page-loading .panel,body.emp-page-loading .container,body.emp-page-loading form{filter:grayscale(.08);opacity:.38;pointer-events:none}
+      body.emp-page-loading button,body.emp-page-loading input,body.emp-page-loading select,body.emp-page-loading textarea,body.emp-page-loading a{pointer-events:none}
+    `;
+    document.head.appendChild(style);
+  }
+  function ensureLoader(){
+    injectStyle();
+    var el=document.getElementById('empGlobalLoader');
+    if (el) return el;
+    el=document.createElement('div');
+    el.id='empGlobalLoader';
+    el.innerHTML='<div class="egl-card"><div class="egl-title">資料讀取中</div><p class="egl-text">請稍候，系統正在整理頁面資料。</p><div class="egl-bar"><div class="egl-fill"></div></div></div>';
+    document.body.appendChild(el);
+    return el;
+  }
+  function show(text){
+    minUntil = Date.now()+350;
+    if (!document.body) return;
+    var el=ensureLoader();
+    var t=el.querySelector('.egl-text');
+    if (t && text) t.textContent=text;
+    el.classList.remove('hidden');
+    document.body.classList.add('emp-page-loading');
+  }
+  function hide(force){
+    if (!document.body) return;
+    var wait = force ? 0 : Math.max(0, minUntil-Date.now());
+    setTimeout(function(){
+      if (activeCount>0 && !force) return;
+      var el=document.getElementById('empGlobalLoader');
+      if (el) el.classList.add('hidden');
+      document.body.classList.remove('emp-page-loading');
+    }, wait);
+  }
+  window.showPageLoading=function(text){activeCount++;show(text||'資料讀取中，請稍候。')};
+  window.hidePageLoading=function(){activeCount=Math.max(0,activeCount-1);if(activeCount===0)hide(false)};
+  window.forceHidePageLoading=function(){activeCount=0;hide(true)};
+  window.withPageLoading=async function(promiseOrFn,text){window.showPageLoading(text);try{return await (typeof promiseOrFn==='function'?promiseOrFn():promiseOrFn)}finally{window.hidePageLoading()}};
+  function boot(){show('頁面載入中，請稍候。');setTimeout(function(){if(activeCount===0)hide(false)},900)}
+  if (document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot); else setTimeout(boot,0);
+})();
+
+</script><script>
+(function(){
+  if(window.__EMP_FETCH_LOADER_PATCHED__)return;window.__EMP_FETCH_LOADER_PATCHED__=true;
+  var rawFetch=window.fetch;
+  window.fetch=function(){
+    var url=arguments[0];
+    var shouldShow=String(url||'').indexOf('script.google.com')>=0 || (window.APP_CONFIG&&String(url||'')===String(window.APP_CONFIG.API_URL||''));
+    if(shouldShow&&typeof window.showPageLoading==='function')window.showPageLoading('資料讀取中，請稍候。');
+    return rawFetch.apply(this,arguments).finally(function(){if(shouldShow&&typeof window.hidePageLoading==='function')window.hidePageLoading();});
+  };
+})();
+</script></head><body>
   <div class="page-return-wrap"><a class="page-return-btn" href="settings.html">返回管理首頁</a></div>
 
 <main><div id="msg"></div>

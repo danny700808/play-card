@@ -1,4 +1,65 @@
 
+(function(){
+  if (window.__EMP_GLOBAL_LOADER_INSTALLED__) return;
+  window.__EMP_GLOBAL_LOADER_INSTALLED__ = true;
+  var activeCount = 0;
+  var minUntil = 0;
+  function injectStyle(){
+    if (document.getElementById('empGlobalLoaderStyle')) return;
+    var style=document.createElement('style');
+    style.id='empGlobalLoaderStyle';
+    style.textContent = `
+      #empGlobalLoader{position:fixed;inset:0;z-index:99999;background:rgba(244,247,251,.88);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:24px;transition:opacity .2s ease}
+      #empGlobalLoader.hidden{opacity:0;pointer-events:none}
+      #empGlobalLoader .egl-card{width:min(420px,92vw);background:#fff;border:1px solid #d9e2ec;border-radius:22px;box-shadow:0 16px 45px rgba(16,24,40,.12);padding:22px;text-align:center}
+      #empGlobalLoader .egl-title{font-size:20px;font-weight:900;color:#182230;margin:0 0 8px}
+      #empGlobalLoader .egl-text{font-size:14px;color:#667085;margin:0 0 14px}
+      #empGlobalLoader .egl-bar{height:10px;border-radius:999px;background:#eef2f7;overflow:hidden}
+      #empGlobalLoader .egl-fill{height:100%;width:38%;border-radius:999px;background:#1f7a5a;animation:empLoaderMove 1.05s ease-in-out infinite}
+      @keyframes empLoaderMove{0%{transform:translateX(-120%);width:35%}50%{width:55%}100%{transform:translateX(290%);width:35%}}
+      body.emp-page-loading main,body.emp-page-loading .card,body.emp-page-loading .section,body.emp-page-loading .shell,body.emp-page-loading .panel,body.emp-page-loading .container,body.emp-page-loading form{filter:grayscale(.08);opacity:.38;pointer-events:none}
+      body.emp-page-loading button,body.emp-page-loading input,body.emp-page-loading select,body.emp-page-loading textarea,body.emp-page-loading a{pointer-events:none}
+    `;
+    document.head.appendChild(style);
+  }
+  function ensureLoader(){
+    injectStyle();
+    var el=document.getElementById('empGlobalLoader');
+    if (el) return el;
+    el=document.createElement('div');
+    el.id='empGlobalLoader';
+    el.innerHTML='<div class="egl-card"><div class="egl-title">資料讀取中</div><p class="egl-text">請稍候，系統正在整理頁面資料。</p><div class="egl-bar"><div class="egl-fill"></div></div></div>';
+    document.body.appendChild(el);
+    return el;
+  }
+  function show(text){
+    minUntil = Date.now()+350;
+    if (!document.body) return;
+    var el=ensureLoader();
+    var t=el.querySelector('.egl-text');
+    if (t && text) t.textContent=text;
+    el.classList.remove('hidden');
+    document.body.classList.add('emp-page-loading');
+  }
+  function hide(force){
+    if (!document.body) return;
+    var wait = force ? 0 : Math.max(0, minUntil-Date.now());
+    setTimeout(function(){
+      if (activeCount>0 && !force) return;
+      var el=document.getElementById('empGlobalLoader');
+      if (el) el.classList.add('hidden');
+      document.body.classList.remove('emp-page-loading');
+    }, wait);
+  }
+  window.showPageLoading=function(text){activeCount++;show(text||'資料讀取中，請稍候。')};
+  window.hidePageLoading=function(){activeCount=Math.max(0,activeCount-1);if(activeCount===0)hide(false)};
+  window.forceHidePageLoading=function(){activeCount=0;hide(true)};
+  window.withPageLoading=async function(promiseOrFn,text){window.showPageLoading(text);try{return await (typeof promiseOrFn==='function'?promiseOrFn():promiseOrFn)}finally{window.hidePageLoading()}};
+  function boot(){show('頁面載入中，請稍候。');setTimeout(function(){if(activeCount===0)hide(false)},900)}
+  if (document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot); else setTimeout(boot,0);
+})();
+
+
 const API_URL = String((window.APP_CONFIG && window.APP_CONFIG.API_URL) || window.API_URL || localStorage.getItem('EMPLOYEE_SYSTEM_API_BASE') || '').trim();
 function qs(s){return document.querySelector(s)}
 function qsa(s){return Array.from(document.querySelectorAll(s))}
@@ -31,9 +92,14 @@ function requireLogin(){const user=getUser(); if(!user){location.href='index.htm
 async function api(action, payload={}){
   const apiUrl=getApiUrl();
   if(!apiUrl) throw new Error('尚未設定 API 網址');
-  const res=await fetch(apiUrl,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action,...payload})});
-  const raw=await res.text();
-  try{return JSON.parse(raw);}catch(e){throw new Error(raw || '伺服器回傳格式錯誤');}
+  if (typeof window.showPageLoading === 'function') window.showPageLoading('資料讀取中，請稍候。');
+  try{
+    const res=await fetch(apiUrl,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action,...payload})});
+    const raw=await res.text();
+    try{return JSON.parse(raw);}catch(e){throw new Error(raw || '伺服器回傳格式錯誤');}
+  } finally {
+    if (typeof window.hidePageLoading === 'function') window.hidePageLoading();
+  }
 }
 function setMsg(el, text, isError=false){if(!el) return; el.style.display=text?'block':'none'; el.textContent=text||''; el.classList.toggle('error',!!isError)}
 function togglePassword(inputSel, btn){const input=qs(inputSel); const show=input.type==='password'; input.type=show?'text':'password'; btn.textContent=show?'🙈':'👁';}
@@ -507,9 +573,12 @@ async function renderLineBindPrompt_(targetSelector){
   if(!hasLineId){
     statusHtml='<span class="none">尚未綁定</span>';
     actionsHtml='<button class="btn" type="button" id="showLineBindGuideBtn">前往綁定</button>';
+  }else if(notifyOn){
+    statusHtml='已綁定｜<span class="on">通知開啟</span><div class="muted" style="margin-top:4px">此帳號已完成 LINE 綁定，不需要再重新綁定。</div>';
+    actionsHtml='<button class="btn secondary" type="button" id="showLineBindGuideBtn">管理 LINE 通知</button>';
   }else{
-    statusHtml=notifyOn ? '已綁定｜<span class="on">通知開啟</span>' : '已綁定｜<span class="off">通知關閉</span>';
-    actionsHtml='<button class="btn secondary" type="button" id="lineQuickUnbindBtn">解除綁定</button>';
+    statusHtml='已綁定｜<span class="off">通知關閉</span><div class="muted" style="margin-top:4px">此帳號已完成 LINE 綁定，目前只是通知關閉。</div>';
+    actionsHtml='<button class="btn secondary" type="button" id="showLineBindGuideBtn">管理 LINE 通知</button>';
   }
 
   statusEl.innerHTML=statusHtml;
@@ -518,20 +587,6 @@ async function renderLineBindPrompt_(targetSelector){
   const guideBtn=wrap.querySelector('#showLineBindGuideBtn');
   if(guideBtn){
     guideBtn.onclick=()=>handleLineCardPrimaryAction_(user, ()=>renderLineBindPrompt_(targetSelector)).catch(err=>alert(err&&err.message?err.message:'LINE 設定開啟失敗'));
-  }
-  const unbindBtn=wrap.querySelector('#lineQuickUnbindBtn');
-  if(unbindBtn){
-    unbindBtn.onclick=async()=>{
-      if(!window.confirm('確定要解除 LINE 綁定嗎？解除後仍可再重新綁定。')) return;
-      const progress=startActionButtonProgress(unbindBtn,{label:'解除中',startPct:10,maxPct:84,interval:140});
-      try{
-        await setLineNotifyPreference_(false,true);
-        progress.done('已解除',700);
-        await renderLineBindPrompt_(targetSelector);
-      }catch(e){
-        progress.fail(e && e.message ? e.message : '解除失敗',1400);
-      }
-    };
   }
 }
 
