@@ -36,6 +36,16 @@ details{border-top:1px solid var(--line);background:#fbfcfe}summary{list-style:n
 .save-progress-bar{height:10px;border-radius:999px;background:#eef2f7;overflow:hidden}
 .save-progress-fill{height:100%;width:0%;background:#1f7a5a;transition:width .25s ease}
 
+
+.simple-time-table-wrap{overflow-x:auto;background:#fff;border:1px solid #dbe4ef;border-radius:16px;padding:10px;margin-top:14px}
+.simple-time-table{width:100%;border-collapse:separate;border-spacing:0 8px;min-width:900px}
+.simple-time-table th{font-size:14px;color:#64748b;text-align:left;padding:8px 10px;white-space:nowrap}
+.simple-time-table td{background:#f8fafc;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;padding:10px;vertical-align:middle}
+.simple-time-table td:first-child{border-left:1px solid #e2e8f0;border-radius:12px 0 0 12px;font-weight:800;color:#16263a;white-space:nowrap}
+.simple-time-table td:last-child{border-right:1px solid #e2e8f0;border-radius:0 12px 12px 0;text-align:center}
+.simple-time-table select,.simple-time-table input[type="time"]{width:100%;box-sizing:border-box;border:1px solid #cfd8e3;border-radius:10px;padding:9px 10px;background:#fff;color:#16263a;font-size:15px}
+.simple-time-table input[disabled]{background:#edf2f7;color:#94a3b8}
+.identity-cell{min-width:90px}
 </style></head><body>
   <div class="page-return-wrap"><a class="page-return-btn" href="settings.html">返回管理首頁</a></div>
 
@@ -864,9 +874,8 @@ details{border-top:1px solid var(--line);background:#fbfcfe}summary{list-style:n
 
 <section class="section" id="send-rules">
   <div class="section-title"><h2>12. 通知送出時間規則</h2><span class="section-count">4 項</span></div>
-  <div class="note">這一區是控制「什麼時候送出」；上面的提醒事件設定仍然控制「要不要通知、用 LINE 或 Email」。如果目前不能送，系統會先放到「通知待送佇列」，時間到再送。</div>
+  <div class="note">這一區只設定「通知什麼時間可以送」。上面的提醒事件設定控制要不要通知；這裡只管現在送或延後送。</div>
   <div id="timeRuleList"></div>
-  <div class="queue-note">目前預設：專職 / 工讀下班後不發，順延到下一個可通知日 08:00；休假日、例假日、無班、整天請假不發並順延。外聘老師 / 管理者只限制 00:00～07:59，延到 08:00。打卡前提醒屬例外事件。</div>
 </section>
 
 <div id="saveProgress" class="save-progress"><div id="saveProgressText" class="save-progress-text">準備儲存</div><div class="save-progress-bar"><div id="saveProgressFill" class="save-progress-fill"></div></div></div><div class="sticky-save"><button id="saveBtn" class="btn primary" onclick="saveSettings()">儲存通知 / 提醒設定</button></div></main>
@@ -977,58 +986,115 @@ function hideSaveProgress(){
   if(box) box.classList.remove('show');
 }
 
-function timeRuleTemplate(row){
-  const r=Object.assign({
-    ruleCode:'',identityType:'',ruleName:'',
-    enabled:true,startTime:'',endTime:'',
-    delayAfterWork:true,delaySendTime:'08:00',
-    sendOnOffDay:false,useSchedule:false,
-    exceptionEventCodes:'',note:''
-  },row||{});
-  const code=String(r.ruleCode||'').toLowerCase();
-  const isScheduleRule = code==='staff' || code==='parttime' || truthy(r.useSchedule);
-  const startValue = isScheduleRule ? '' : (r.startTime || '08:00');
-  const endValue = isScheduleRule ? '' : (r.endTime || '23:59');
-  const delayValue = r.delaySendTime || '08:00';
-  const summary = isScheduleRule
-    ? '依班表與請假判斷｜下班後延到下一個可通知日 '+delayValue+'｜休假 / 例假 / 無班 / 整天請假日不發送'
-    : '可立即發送時間：'+startValue+' ～ '+endValue+'｜00:00～07:59 延到 '+delayValue;
-  const scheduleHidden = isScheduleRule ? 'style="display:none"' : '';
-  const fixedTimeHidden = isScheduleRule ? '' : 'style="display:none"';
-  return `<article class="time-rule-card" data-rule-code="${esc(r.ruleCode||'')}">
-    <div class="time-rule-head">
-      <div><h3 class="time-rule-title">${esc(r.ruleName||r.identityType||'通知時間規則')}</h3><p class="time-rule-desc">${esc(r.identityType||'')}</p></div>
-      <label class="switch"><input type="checkbox" data-time-field="enabled" ${truthy(r.enabled)?'checked':''}>啟用</label>
-    </div>
-    <div class="time-rule-body">
-      <div class="time-rule-summary">目前規則：${esc(summary)}<small>這裡顯示的是「通知送出時間規則」表目前資料；按下儲存後會寫回同一張表。</small></div>
-      <div class="field"><label>規則代碼</label><input data-time-field="ruleCode" value="${esc(r.ruleCode||'')}" readonly></div>
-      <div class="field"><label>適用身分</label><input data-time-field="identityType" value="${esc(r.identityType||'')}" readonly></div>
-      <div class="field full"><label>規則名稱</label><input data-time-field="ruleName" value="${esc(r.ruleName||'')}"></div>
-      <div class="field full" ${fixedTimeHidden}><label>可立即發送時間</label><input class="time-rule-readonly" value="依班表與請假判斷，不使用固定時間" readonly><input type="hidden" data-time-field="startTime" value=""><input type="hidden" data-time-field="endTime" value=""></div>
-      <div class="field" ${scheduleHidden}><label>可立即發送開始時間</label><input type="time" data-time-field="startTime" value="${esc(startValue)}"></div>
-      <div class="field" ${scheduleHidden}><label>可立即發送結束時間</label><input type="time" data-time-field="endTime" value="${esc(endValue)}"></div>
-      <label class="time-rule-check">下班後是否延後 <input type="checkbox" data-time-field="delayAfterWork" ${truthy(r.delayAfterWork)?'checked':''}></label>
-      <div class="field"><label>延後發送時間</label><input type="time" data-time-field="delaySendTime" value="${esc(delayValue)}"></div>
-      <label class="time-rule-check">休假 / 例假 / 請假日仍發送 <input type="checkbox" data-time-field="sendOnOffDay" ${truthy(r.sendOnOffDay)?'checked':''}></label>
-      <label class="time-rule-check">依班表與請假判斷 <input type="checkbox" data-time-field="useSchedule" ${isScheduleRule?'checked':''}></label>
-      <div class="field full"><label>例外事件代碼（逗號分隔，不受時間限制）</label><input data-time-field="exceptionEventCodes" value="${esc(r.exceptionEventCodes||'')}"></div>
-      <div class="field full"><label>說明</label><textarea data-time-field="note">${esc(r.note||'')}</textarea></div>
-    </div>
-  </article>`;
+
+const TIME_RULE_LABEL_BY_CODE = { staff:'專職員工', parttime:'工讀生', external:'外聘老師', manager:'管理者' };
+function normalizeTimeRule(row, code){
+  const r = Object.assign({}, row || {});
+  const ruleCode = String(r.ruleCode || code || '').toLowerCase();
+  const label = TIME_RULE_LABEL_BY_CODE[ruleCode] || r.identityType || r.ruleName || '';
+  const useSchedule = ruleCode === 'staff' || ruleCode === 'parttime' || truthy(r.useSchedule);
+  return {
+    ruleCode,
+    identityType: label,
+    enabled: r.enabled !== false,
+    useSchedule,
+    startTime: useSchedule ? '' : (r.startTime || '08:00'),
+    endTime: useSchedule ? '' : (r.endTime || '23:59'),
+    delayAfterWork: r.delayAfterWork !== false,
+    delaySendTime: r.delaySendTime || '08:00',
+    sendOnOffDay: !!truthy(r.sendOnOffDay)
+  };
+}
+function sendRuleText(r){
+  if(r.useSchedule) return '依班表';
+  return (r.startTime || '08:00') + ' ～ ' + (r.endTime || '23:59');
 }
 function renderTimeRules(rows){
   const box=document.getElementById('timeRuleList');
   if(!box)return;
-  box.innerHTML=(rows||[]).map(timeRuleTemplate).join('');
+  const order=['staff','parttime','external','manager'];
+  const map={};
+  (rows||[]).forEach(r=>{ const code=String(r.ruleCode||'').toLowerCase(); if(code) map[code]=r; });
+  const normalized=order.map(code=>normalizeTimeRule(map[code], code));
+  box.innerHTML=`<div class="simple-time-table-wrap">
+    <table class="simple-time-table">
+      <thead><tr>
+        <th>身分</th>
+        <th>通知時間</th>
+        <th>可通知開始</th>
+        <th>可通知結束</th>
+        <th>下班後</th>
+        <th>休假 / 請假 / 無班</th>
+        <th>延後時間</th>
+        <th>啟用</th>
+      </tr></thead>
+      <tbody>${normalized.map(r=>timeRuleRowTemplate(r)).join('')}</tbody>
+    </table>
+  </div>`;
+  refreshTimeRuleRows();
 }
-function readTimeRules(){
-  return Array.from(document.querySelectorAll('.time-rule-card')).map(card=>{
-    const row={};
-    card.querySelectorAll('[data-time-field]').forEach(el=>{
-      row[el.dataset.timeField]=el.type==='checkbox'?el.checked:el.value;
+function timeRuleRowTemplate(r){
+  const mode = r.useSchedule ? 'schedule' : 'fixed';
+  return `<tr class="time-rule-row" data-rule-code="${esc(r.ruleCode)}">
+    <td class="identity-cell">${esc(r.identityType)}</td>
+    <td>
+      <select data-time-field="mode">
+        <option value="schedule" ${mode==='schedule'?'selected':''}>依班表</option>
+        <option value="fixed" ${mode==='fixed'?'selected':''}>固定時間</option>
+      </select>
+    </td>
+    <td><input type="time" data-time-field="startTime" value="${esc(r.startTime||'')}" placeholder="依班表"></td>
+    <td><input type="time" data-time-field="endTime" value="${esc(r.endTime||'')}" placeholder="依班表"></td>
+    <td>
+      <select data-time-field="delayAfterWork">
+        <option value="yes" ${r.delayAfterWork?'selected':''}>不發，延後</option>
+        <option value="no" ${!r.delayAfterWork?'selected':''}>可以發</option>
+      </select>
+    </td>
+    <td>
+      <select data-time-field="sendOnOffDay">
+        <option value="no" ${!r.sendOnOffDay?'selected':''}>不發，順延</option>
+        <option value="yes" ${r.sendOnOffDay?'selected':''}>可以發</option>
+        <option value="ignore" ${(!r.useSchedule && !r.sendOnOffDay)?'selected':''}>不判斷</option>
+      </select>
+    </td>
+    <td><input type="time" data-time-field="delaySendTime" value="${esc(r.delaySendTime||'08:00')}"></td>
+    <td><input type="checkbox" data-time-field="enabled" ${r.enabled?'checked':''}></td>
+  </tr>`;
+}
+function refreshTimeRuleRows(){
+  document.querySelectorAll('.time-rule-row').forEach(row=>{
+    const mode=row.querySelector('[data-time-field="mode"]')?.value || 'schedule';
+    const isSchedule=mode==='schedule';
+    row.querySelectorAll('[data-time-field="startTime"],[data-time-field="endTime"]').forEach(input=>{
+      input.disabled=isSchedule;
+      if(isSchedule) input.value='';
     });
-    return row;
+    const offDay=row.querySelector('[data-time-field="sendOnOffDay"]');
+    if(offDay && !isSchedule && offDay.value==='no') offDay.value='ignore';
+  });
+}
+document.addEventListener('change', e=>{
+  if(e.target && e.target.dataset && e.target.dataset.timeField) refreshTimeRuleRows();
+});
+function readTimeRules(){
+  return Array.from(document.querySelectorAll('.time-rule-row')).map(row=>{
+    const code=row.dataset.ruleCode;
+    const mode=row.querySelector('[data-time-field="mode"]')?.value || 'schedule';
+    const isSchedule=mode==='schedule';
+    const offValue=row.querySelector('[data-time-field="sendOnOffDay"]')?.value || 'no';
+    return {
+      ruleCode: code,
+      identityType: TIME_RULE_LABEL_BY_CODE[code] || '',
+      ruleName: (TIME_RULE_LABEL_BY_CODE[code] || '') + '通知時間',
+      enabled: !!row.querySelector('[data-time-field="enabled"]')?.checked,
+      useSchedule: isSchedule,
+      startTime: isSchedule ? '' : (row.querySelector('[data-time-field="startTime"]')?.value || '08:00'),
+      endTime: isSchedule ? '' : (row.querySelector('[data-time-field="endTime"]')?.value || '23:59'),
+      delayAfterWork: (row.querySelector('[data-time-field="delayAfterWork"]')?.value || 'yes') === 'yes',
+      delaySendTime: row.querySelector('[data-time-field="delaySendTime"]')?.value || '08:00',
+      sendOnOffDay: offValue === 'yes'
+    };
   });
 }
 async function loadTimeRules(){
