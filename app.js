@@ -950,3 +950,57 @@ async function renderCompactLineCard_(targetSelector, user){
   }
   return renderLineBindPrompt_(targetSelector);
 }
+
+
+/************************************************************
+ * 歷史紀錄查詢共用規則
+ * 員工端：歷史查詢最多 70 天。
+ * 管理端：不限制天數，但必須按搜尋才讀歷史。
+ ************************************************************/
+function isHistoryManagerMode_(){
+  try{
+    const u = getUser && getUser();
+    return !!(u && (u.showSettingsZone || String(u.role || '').toLowerCase() === 'admin'));
+  }catch(e){ return false; }
+}
+function addDaysForHistory_(dateStr, days){
+  const d = new Date(String(dateStr || '') + 'T00:00:00');
+  if(isNaN(d.getTime())) return '';
+  d.setDate(d.getDate() + Number(days || 0));
+  return d.toISOString().slice(0,10);
+}
+function enforceHistoryDateRange_(startInput, endInput){
+  const startEl = typeof startInput === 'string' ? document.querySelector(startInput) : startInput;
+  const endEl = typeof endInput === 'string' ? document.querySelector(endInput) : endInput;
+  if(!startEl || !endEl) return;
+  startEl.addEventListener('change', function(){
+    if(!startEl.value) return;
+    if(isHistoryManagerMode_()){
+      if(!endEl.value) endEl.value = addDaysForHistory_(startEl.value, 70);
+      return;
+    }
+    endEl.value = addDaysForHistory_(startEl.value, 70);
+  });
+  endEl.addEventListener('change', function(){
+    if(isHistoryManagerMode_()) return;
+    if(!startEl.value || !endEl.value) return;
+    const s = new Date(startEl.value + 'T00:00:00');
+    const e = new Date(endEl.value + 'T00:00:00');
+    if(isNaN(s.getTime()) || isNaN(e.getTime())) return;
+    const diff = Math.floor((e - s) / 86400000);
+    if(diff > 70){
+      endEl.value = addDaysForHistory_(startEl.value, 70);
+      alert('歷史紀錄一次最多查詢 70 天。');
+    }
+  });
+}
+function buildHistoryQueryPayload_(extra, startSelector, endSelector){
+  const startEl = typeof startSelector === 'string' ? document.querySelector(startSelector) : startSelector;
+  const endEl = typeof endSelector === 'string' ? document.querySelector(endSelector) : endSelector;
+  const payload = Object.assign({}, extra || {});
+  if(startEl && startEl.value) payload.startDate = startEl.value;
+  if(endEl && endEl.value) payload.endDate = endEl.value;
+  payload.historyMode = '是';
+  payload.isManagerHistory = isHistoryManagerMode_() ? '是' : '否';
+  return payload;
+}
