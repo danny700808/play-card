@@ -8,23 +8,75 @@
   <style>
     .toolbar{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap}.cards{display:grid;gap:14px}.cardx{background:#fff;border:1px solid #e2e8f0;border-radius:20px;padding:18px}.cardx h3{margin:0 0 8px;font-size:24px;color:#163252}.meta{font-size:14px;color:#64748b;margin-bottom:10px}.badge{display:inline-block;padding:6px 12px;border-radius:999px;font-size:13px;font-weight:900;background:#eef4fb;color:#315b8a;margin-right:8px;margin-bottom:8px}.badge.need{background:#fff5e6;color:#9a5b00}.badge.done{background:#ecf7f1;color:#1f7a5a}.empty{padding:18px;border:1px dashed #cbd5e1;border-radius:16px;color:#64748b;background:#fff}.history-search{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end;margin:14px 0}.history-search label{font-weight:900;font-size:13px}.history-search input{width:100%;border:1px solid #cbd5e1;border-radius:12px;padding:10px 12px}@media(max-width:640px){.history-search{grid-template-columns:1fr}}
     .asset-section{display:grid;gap:10px;margin-top:14px}.image-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}.image-grid a{display:block;border-radius:14px;overflow:hidden;border:1px solid #e2e8f0;background:#f8fafc}.image-grid img{width:100%;height:150px;object-fit:cover;display:block}.media-box{padding:12px;border:1px solid #e2e8f0;border-radius:14px;background:#f8fafc}.file-list{display:grid;gap:8px}.file-link{display:flex;justify-content:space-between;gap:10px;padding:10px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;color:#0f172a;text-decoration:none}.file-link span:last-child{color:#1d4ed8;font-weight:800;white-space:nowrap}.reply-box{margin-top:14px;padding:14px;border:1px solid #fde68a;border-radius:16px;background:#fffbeb}.reply-box.done{border-color:#bbf7d0;background:#f0fdf4}.reply-box textarea{min-height:96px}.reply-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}.muted-mini{font-size:12px;color:#64748b}
+  
+    .announcement-section-card{
+      background:#fff;
+      border:1px solid #dfe7f1;
+      border-radius:24px;
+      padding:18px;
+      margin-top:16px;
+      box-shadow:0 10px 28px rgba(25,46,89,.05);
+    }
+    .announcement-section-card.history{
+      background:#f8fafc;
+      border-style:dashed;
+    }
+    .announcement-section-title{
+      margin:0 0 14px;
+      font-size:24px;
+      line-height:1.25;
+      font-weight:900;
+      color:#18314a;
+    }
+    .announcement-section-sub{
+      margin:-6px 0 14px;
+      color:#70829a;
+      font-size:14px;
+      line-height:1.5;
+    }
+    .announcement-history-summary{
+      cursor:pointer;
+      list-style:none;
+      display:flex;
+      align-items:center;
+      gap:8px;
+    }
+    .announcement-history-summary::-webkit-details-marker{display:none}
+    .announcement-history-summary:before{
+      content:'▶';
+      font-size:18px;
+      color:#18314a;
+      transform:translateY(-1px);
+    }
+    details[open] .announcement-history-summary:before{content:'▼'}
+    .announcement-toolbar-actions{display:none!important}
+
   </style>
 </head>
 <body onload="initPage()">
   <div class="container">
     <div class="page-return-wrap"><a class="btn page-return-btn" id="backBtn" href="dashboard.html">返回員工首頁</a></div>
-    <div class="card"><div class="toolbar"><div><h1 class="title" style="margin:0">公告列表</h1><div class="welcome">歡迎 <span data-user-name></span></div></div><div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn secondary" style="width:auto;padding:10px 14px" onclick="loadAnnouncements()">重新整理</button><button class="btn secondary" style="width:auto;padding:10px 14px" onclick="logout()">登出</button></div></div><div id="msg" class="message"></div>
-        <h2 class="title" style="font-size:20px;margin:10px 0">未讀 / 待處理公告</h2>
-        <div id="list" class="cards"></div>
-        <details style="margin-top:18px">
-          <summary style="font-weight:900;font-size:20px;cursor:pointer">歷史公告</summary>
+    <div class="card"><div class="toolbar"><div><h1 class="title" style="margin:0">公告列表</h1><div class="welcome">歡迎 <span data-user-name></span></div></div><div style="display:flex;gap:10px;flex-wrap:wrap"></div></div><div id="msg" class="message"></div>
+        <section class="announcement-section-card">
+          <h2 class="announcement-section-title">未讀 / 待處理公告</h2>
+          <div class="announcement-section-sub">目前需要查看或回覆的公告。</div>
+          <div id="list" class="cards"></div>
+        </section>
+
+        <section class="announcement-section-card history">
+          <details>
+            <summary class="announcement-history-summary">
+              <span class="announcement-section-title" style="margin:0">歷史公告</span>
+            </summary>
+            <div class="announcement-section-sub">已讀或已處理的公告，點開後可依日期搜尋。</div>
           <div class="history-search">
             <label>開始日期<input id="historyStart" type="date"></label>
             <label>結束日期<input id="historyEnd" type="date"></label>
             <button class="btn secondary" type="button" onclick="loadAnnouncementHistory()" style="width:auto;padding:10px 14px">搜尋歷史</button>
           </div>
           <div id="historyList" class="cards"></div>
-        </details>
+          </details>
+        </section>
       </div>
   </div>
   <script src="config.js?v=20260430_announcement_unified"></script>
