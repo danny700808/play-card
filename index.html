@@ -104,8 +104,8 @@
     </div>
   </div>
 
-  <script src="config.js?v=20260413loginfix1"></script>
-  <script src="app.js?v=20260413loginfix1"></script>
+  <script src="config.js?v=20260502_btnprogress_final"></script>
+  <script src="app.js?v=20260502_btnprogress_final"></script>
   <script>
     const msg = qs('#msg');
     const panels = {
@@ -115,6 +115,17 @@
     };
 
     applySavedLogin();
+
+    if (typeof startActionButtonProgress !== 'function') {
+      window.startActionButtonProgress = function(btn){
+        if(btn) btn.disabled = true;
+        return {
+          done:function(){ if(btn) btn.disabled = false; },
+          fail:function(){ if(btn) btn.disabled = false; }
+        };
+      };
+    }
+
 
     function describeWindowError(event){
       if (!event) return '前端載入失敗';

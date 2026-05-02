@@ -1,3 +1,11 @@
+/* 安全版按鈕進度條狀態：避免 iOS / LINE WebView 快取舊版 app.js 時卡登入 */
+window.__btnProgressMap = window.__btnProgressMap || new WeakMap();
+function getBtnProgressMap_(){
+  if(!window.__btnProgressMap){ window.__btnProgressMap = new WeakMap(); }
+  return window.__btnProgressMap;
+}
+var __btnProgressMap = getBtnProgressMap_();
+
 
 const API_URL = String((window.APP_CONFIG && window.APP_CONFIG.API_URL) || window.API_URL || localStorage.getItem('EMPLOYEE_SYSTEM_API_BASE') || '').trim();
 function qs(s){return document.querySelector(s)}
@@ -511,8 +519,7 @@ async function renderLineBindPrompt_(targetSelector){
 }
 
 
-var __btnProgressMap = window.__btnProgressMap || new WeakMap();
-window.__btnProgressMap = __btnProgressMap;
+
 function ensureActionButton(btn){
   if(!btn) return null;
   if(btn.dataset.progressReady==='1') return {fill:btn.querySelector('.btn-progress-fill'),label:btn.querySelector('.btn-progress-label')};
@@ -539,13 +546,13 @@ function setActionButtonIdle(btn, text){
   btn.classList.remove('is-loading','is-success','is-error');
   nodes.fill.style.width='0%';
   nodes.label.textContent=idle;
-  const existing=__btnProgressMap.get(btn);
+  const existing=getBtnProgressMap_().get(btn);
   if(existing&&existing.timer) clearInterval(existing.timer);
-  __btnProgressMap.delete(btn);
+  getBtnProgressMap_().delete(btn);
 }
 function startActionButtonProgress(btn, options={}){
   const nodes=ensureActionButton(btn);
-  const existing=__btnProgressMap.get(btn);
+  const existing=getBtnProgressMap_().get(btn);
   if(existing&&existing.timer) clearInterval(existing.timer);
   const rawSequence=Array.isArray(options.sequence)&&options.sequence.length
     ? options.sequence
@@ -588,7 +595,7 @@ function startActionButtonProgress(btn, options={}){
       render();
     }, Number(options.interval||220));
   }
-  __btnProgressMap.set(btn,{timer,state,nodes,render});
+  getBtnProgressMap_().set(btn,{timer,state,nodes,render});
   return {
     button:btn,
     set(percent,label){
@@ -597,7 +604,7 @@ function startActionButtonProgress(btn, options={}){
       render();
     },
     done(text='已完成', holdMs=900, keepDisabled=false){
-      const current=__btnProgressMap.get(btn); if(current&&current.timer) clearInterval(current.timer);
+      const current=getBtnProgressMap_().get(btn); if(current&&current.timer) clearInterval(current.timer);
       state.pct=100;
       btn.classList.remove('is-loading','is-error');
       btn.classList.add('is-success');
@@ -609,7 +616,7 @@ function startActionButtonProgress(btn, options={}){
       }
     },
     fail(text='送出失敗', holdMs=1300){
-      const current=__btnProgressMap.get(btn); if(current&&current.timer) clearInterval(current.timer);
+      const current=getBtnProgressMap_().get(btn); if(current&&current.timer) clearInterval(current.timer);
       state.pct=100;
       btn.classList.remove('is-loading','is-success');
       btn.classList.add('is-error');
