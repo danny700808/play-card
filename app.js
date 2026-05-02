@@ -226,7 +226,7 @@ function ensureLineBindPromptStyle_(){
   .line-bind-mini-hint{display:none !important}
   .line-bind-mini-actions{display:flex;justify-content:center;align-items:center;width:100%}
   .line-bind-mini .btn{width:auto;min-width:86px;padding:9px 14px;border-radius:16px;font-size:14px;line-height:1.2;min-height:auto;white-space:nowrap}
-  .line-bind-mini .btn.secondary{background:#eef2f7;color:#25374d}
+  .line-bind-mini .btn.secondary{background:#1f7a5a;color:#fff}
   .line-bind-guide{margin-top:8px;padding:10px 12px;border-radius:16px;background:#f5f8fc;border:1px dashed #d9e2ef}
   .line-bind-guide-title{font-size:13px;font-weight:900;color:#18314a;margin-bottom:6px}
   .line-bind-guide-text{font-size:12px;color:#5f7086;line-height:1.6}
@@ -504,7 +504,7 @@ async function renderLineBindPrompt_(targetSelector){
   wrap.innerHTML=`
     <div class="line-bind-mini-left">
       <div class="line-bind-mini-title">LINE 通知設定</div>
-      <div class="line-bind-mini-status">點進去後再讀取綁定狀態</div>
+      <div class="line-bind-mini-status">查看與修改</div>
     </div>
     <div class="line-bind-mini-actions" id="lineBindActions">
       <button class="btn secondary" type="button" id="showLineBindGuideBtn">查看</button>
@@ -514,7 +514,21 @@ async function renderLineBindPrompt_(targetSelector){
 
   const guideBtn=wrap.querySelector('#showLineBindGuideBtn');
   if(guideBtn){
-    guideBtn.onclick=()=>handleLineCardPrimaryAction_(user, ()=>renderLineBindPrompt_(targetSelector)).catch(err=>alert(err&&err.message?err.message:'LINE 設定開啟失敗'));
+    guideBtn.onclick=async()=>{
+      let progress=null;
+      try{
+        progress = typeof startActionButtonProgress==='function'
+          ? startActionButtonProgress(guideBtn,{label:'讀取中',startPct:15,maxPct:82,interval:160})
+          : null;
+        await handleLineCardPrimaryAction_(user, ()=>renderLineBindPrompt_(targetSelector));
+        if(progress && progress.done) progress.done('查看',300);
+      }catch(err){
+        if(progress && progress.fail) progress.fail('失敗',900);
+        alert(err&&err.message?err.message:'LINE 設定開啟失敗');
+      }finally{
+        if(!progress && guideBtn) guideBtn.disabled=false;
+      }
+    };
   }
 }
 

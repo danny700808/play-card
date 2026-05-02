@@ -55,7 +55,7 @@
         </div>
         <div class="home-head-tools">
           <div id="lineBindArea" class="head-tool-slot"></div>
-          <a class="head-tool-card" href="profile.html">
+          <a class="head-tool-card" href="profile.html" id="openProfileBtn">
             <div>
               <div class="head-tool-title">個人資料</div>
               <div class="head-tool-desc">查看與修改</div>
@@ -135,6 +135,23 @@
         [taskEl,routineEl,leaveEl,clockEl,annEl].forEach(el=>setCountBadge(el,0));
       }
     }
+
+    function openProfileWithProgress_(event){
+      if(event) event.preventDefault();
+      const btn = qs('#openProfileBtn .head-tool-btn') || qs('#openProfileBtn');
+      let progress = null;
+      try{
+        progress = typeof startActionButtonProgress === 'function'
+          ? startActionButtonProgress(btn,{label:'讀取中',startPct:15,maxPct:82,interval:160})
+          : null;
+      }catch(e){}
+      setTimeout(()=>{
+        window.location.href = 'profile.html';
+      }, progress ? 260 : 0);
+    }
+    const profileBtnEl = qs('#openProfileBtn');
+    if(profileBtnEl) profileBtnEl.addEventListener('click', openProfileWithProgress_);
+
   </script>
 </body>
 </html>

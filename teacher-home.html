@@ -227,7 +227,14 @@
     document.getElementById('openGoodsBtn').addEventListener('click', function(){ openPage(getOpenTargets().goods); });
     document.getElementById('openProfileBtn').addEventListener('click', function(event){
       event.preventDefault();
-      openPage('profile.html');
+      const btn = document.querySelector('#openProfileBtn .mini-btn') || document.getElementById('openProfileBtn');
+      let progress = null;
+      try{
+        progress = typeof startActionButtonProgress === 'function'
+          ? startActionButtonProgress(btn,{label:'讀取中',startPct:15,maxPct:82,interval:160})
+          : null;
+      }catch(e){}
+      setTimeout(()=>openPage('profile.html'), progress ? 260 : 0);
     });
     loadHome();
   </script>
