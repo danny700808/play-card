@@ -454,33 +454,22 @@ async function setLineNotifyPreference_(enabled, clearBinding){
     clearBinding:clearBinding ? '是' : '否'
   });
   if(!res.ok) throw new Error(res.message || '儲存 LINE 設定失敗');
-  clearLineStatusCache_(user);
-  if(res.user){
-    saveUser(res.user);
-    writeLineStatusCache_(res.user);
-  }
+  if(res.user) saveUser(res.user);
   return res;
 }
 
 async function renderLineBindPrompt_(targetSelector){
   let user=getUser();
   if(!user) return;
-  const cachedLineUser = readLineStatusCache_(user);
-  if(cachedLineUser){
-    user = Object.assign({}, user, cachedLineUser);
-  }else{
-    // LINE 綁定狀態不常變動，只在沒有本機快取時才讀一次後端，避免每次進首頁都多打一支 API。
-    try{
-      if(user.id){
-        const refreshed=await api('refreshUserSession',{userId:user.id});
-        if(refreshed && refreshed.ok && refreshed.user){
-          saveUser(refreshed.user);
-          writeLineStatusCache_(refreshed.user);
-          user=refreshed.user;
-        }
+  try{
+    if(user.id){
+      const refreshed=await api('refreshUserSession',{userId:user.id});
+      if(refreshed && refreshed.ok && refreshed.user){
+        saveUser(refreshed.user);
+        user=refreshed.user;
       }
-    }catch(e){}
-  }
+    }
+  }catch(e){}
   const path=(location.pathname.split('/').pop()||'').toLowerCase();
   if(path && !['dashboard.html','teacher-home.html','settings.html'].includes(path)) return;
   const existing=document.getElementById('lineBindPromptCard');
@@ -519,11 +508,11 @@ async function renderLineBindPrompt_(targetSelector){
     statusHtml='<span class="none">尚未綁定</span>';
     actionsHtml='<button class="btn" type="button" id="showLineBindGuideBtn">前往綁定</button>';
   }else if(notifyOn){
-    statusHtml='已綁定｜<span class="on">通知開啟</span>';
-    actionsHtml='<button class="btn secondary" type="button" id="showLineBindGuideBtn">解除綁定</button>';
+    statusHtml='已綁定｜<span class="on">通知開啟</span><div class="muted" style="margin-top:4px">此帳號已完成 LINE 綁定，不需要再重新綁定。</div>';
+    actionsHtml='<button class="btn secondary" type="button" id="showLineBindGuideBtn">管理 LINE 通知</button>';
   }else{
-    statusHtml='已綁定｜<span class="off">通知關閉</span>';
-    actionsHtml='<button class="btn secondary" type="button" id="showLineBindGuideBtn">解除綁定</button>';
+    statusHtml='已綁定｜<span class="off">通知關閉</span><div class="muted" style="margin-top:4px">此帳號已完成 LINE 綁定，目前只是通知關閉。</div>';
+    actionsHtml='<button class="btn secondary" type="button" id="showLineBindGuideBtn">管理 LINE 通知</button>';
   }
 
   statusEl.innerHTML=statusHtml;
@@ -899,48 +888,6 @@ async function driveUploadFileResumable(file, folderId, accessToken, onProgress)
 }
 
 
-
-function lineStatusCacheKey_(user){
-  const id = user && (user.id || user.userId || user.employeeId || user.email);
-  return id ? ('lineStatusCache:' + String(id)) : '';
-}
-function readLineStatusCache_(user){
-  try{
-    const key = lineStatusCacheKey_(user);
-    if(!key) return null;
-    const raw = localStorage.getItem(key);
-    if(!raw) return null;
-    const data = JSON.parse(raw);
-    if(!data || !data.savedAt) return null;
-    const maxAge = 7 * 24 * 60 * 60 * 1000;
-    if(Date.now() - Number(data.savedAt || 0) > maxAge) return null;
-    return data.user || null;
-  }catch(e){ return null; }
-}
-function writeLineStatusCache_(user){
-  try{
-    const key = lineStatusCacheKey_(user);
-    if(!key) return;
-    const payload = {
-      savedAt: Date.now(),
-      user: {
-        id: user.id || user.userId || user.employeeId || '',
-        email: user.email || '',
-        name: user.name || '',
-        lineUserId: user.lineUserId || '',
-        lineNotifyEnabled: user.lineNotifyEnabled || ''
-      }
-    };
-    localStorage.setItem(key, JSON.stringify(payload));
-  }catch(e){}
-}
-function clearLineStatusCache_(user){
-  try{
-    const key = lineStatusCacheKey_(user || getUser());
-    if(key) localStorage.removeItem(key);
-  }catch(e){}
-}
-
 async function renderCompactLineCard_(targetSelector, user){
   if(user){
     try{
@@ -951,56 +898,13 @@ async function renderCompactLineCard_(targetSelector, user){
   return renderLineBindPrompt_(targetSelector);
 }
 
-
 /************************************************************
  * 歷史紀錄查詢共用規則
- * 員工端：歷史查詢最多 70 天。
- * 管理端：不限制天數，但必須按搜尋才讀歷史。
  ************************************************************/
 function isHistoryManagerMode_(){
-  try{
-    const u = getUser && getUser();
-    return !!(u && (u.showSettingsZone || String(u.role || '').toLowerCase() === 'admin'));
-  }catch(e){ return false; }
+  try{const u=getUser&&getUser();return !!(u&&(u.showSettingsZone||String(u.role||'').toLowerCase()==='admin'));}catch(e){return false;}
 }
-function addDaysForHistory_(dateStr, days){
-  const d = new Date(String(dateStr || '') + 'T00:00:00');
-  if(isNaN(d.getTime())) return '';
-  d.setDate(d.getDate() + Number(days || 0));
-  return d.toISOString().slice(0,10);
-}
-function enforceHistoryDateRange_(startInput, endInput){
-  const startEl = typeof startInput === 'string' ? document.querySelector(startInput) : startInput;
-  const endEl = typeof endInput === 'string' ? document.querySelector(endInput) : endInput;
-  if(!startEl || !endEl) return;
-  startEl.addEventListener('change', function(){
-    if(!startEl.value) return;
-    if(isHistoryManagerMode_()){
-      if(!endEl.value) endEl.value = addDaysForHistory_(startEl.value, 70);
-      return;
-    }
-    endEl.value = addDaysForHistory_(startEl.value, 70);
-  });
-  endEl.addEventListener('change', function(){
-    if(isHistoryManagerMode_()) return;
-    if(!startEl.value || !endEl.value) return;
-    const s = new Date(startEl.value + 'T00:00:00');
-    const e = new Date(endEl.value + 'T00:00:00');
-    if(isNaN(s.getTime()) || isNaN(e.getTime())) return;
-    const diff = Math.floor((e - s) / 86400000);
-    if(diff > 70){
-      endEl.value = addDaysForHistory_(startEl.value, 70);
-      alert('歷史紀錄一次最多查詢 70 天。');
-    }
-  });
-}
-function buildHistoryQueryPayload_(extra, startSelector, endSelector){
-  const startEl = typeof startSelector === 'string' ? document.querySelector(startSelector) : startSelector;
-  const endEl = typeof endSelector === 'string' ? document.querySelector(endSelector) : endSelector;
-  const payload = Object.assign({}, extra || {});
-  if(startEl && startEl.value) payload.startDate = startEl.value;
-  if(endEl && endEl.value) payload.endDate = endEl.value;
-  payload.historyMode = '是';
-  payload.isManagerHistory = isHistoryManagerMode_() ? '是' : '否';
-  return payload;
-}
+function addDaysForHistory_(dateStr,days){const d=new Date(String(dateStr||'')+'T00:00:00');if(isNaN(d.getTime()))return '';d.setDate(d.getDate()+Number(days||0));return d.toISOString().slice(0,10);}
+function enforceHistoryDateRange_(startInput,endInput){const startEl=typeof startInput==='string'?document.querySelector(startInput):startInput;const endEl=typeof endInput==='string'?document.querySelector(endInput):endInput;if(!startEl||!endEl)return;startEl.addEventListener('change',function(){if(!startEl.value)return;if(isHistoryManagerMode_()){if(!endEl.value)endEl.value=addDaysForHistory_(startEl.value,70);return;}endEl.value=addDaysForHistory_(startEl.value,70);});endEl.addEventListener('change',function(){if(isHistoryManagerMode_())return;if(!startEl.value||!endEl.value)return;const s=new Date(startEl.value+'T00:00:00');const e=new Date(endEl.value+'T00:00:00');if(isNaN(s.getTime())||isNaN(e.getTime()))return;const diff=Math.floor((e-s)/86400000);if(diff>70){endEl.value=addDaysForHistory_(startEl.value,70);alert('歷史紀錄一次最多查詢 70 天。');}});}
+function buildHistoryQueryPayload_(extra,startSelector,endSelector){const startEl=typeof startSelector==='string'?document.querySelector(startSelector):startSelector;const endEl=typeof endSelector==='string'?document.querySelector(endSelector):endSelector;const payload=Object.assign({},extra||{});if(startEl&&startEl.value)payload.startDate=startEl.value;if(endEl&&endEl.value)payload.endDate=endEl.value;payload.historyMode='是';payload.isManagerHistory=isHistoryManagerMode_()?'是':'否';return payload;}
+function isHistoryStatus_(status,type){const s=String(status||'').trim();if(!s)return false;return ['已讀','已完成','完成','已確認','已結案','結案','已核准','核准','已駁回','駁回','已取消','取消','已簽署','簽署完成','已回覆','已處理','停用','已停用'].some(w=>s.indexOf(w)>=0);}
