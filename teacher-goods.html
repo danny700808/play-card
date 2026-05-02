@@ -190,18 +190,37 @@ async function refreshGoodsBadges(){try{const res=await api('getTeacherGoodsBadg
 
 function initPage(){ setTimeout(()=>{if(typeof enforceHistoryDateRange_==='function'){enforceHistoryDateRange_('#goodsHistoryStart','#goodsHistoryEnd');activateHistoryColoring_&&activateHistoryColoring_('#goodsHistoryList');}},0);const user=requireLogin();if(!user)return;if(!isExternalTeacher(user)){location.href='dashboard.html';return;}qs('#backLink').href=userHomeHref(user);qs('#tabAskBtn').onclick=()=>switchTab('ask');qs('#tabWebsiteBtn').onclick=()=>switchTab('website');qs('#tabOfferBtn').onclick=()=>switchTab('offer');qs('#tabRecordBtn').onclick=()=>switchTab('record');qs('#searchBtn').onclick=()=>loadGoods();qs('#websiteSearchBtn').onclick=()=>searchWebsiteGoods();qs('#keyword').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();loadGoods();}});qs('#websiteKeyword').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();searchWebsiteGoods();}});qs('#askImage').addEventListener('change',handleAskImage);qs('#askSubmitBtn').onclick=submitFreeInquiry;switchTab('ask');refreshGoodsBadges();setTimeout(()=>{loadWebsiteRandomGoods&&loadWebsiteRandomGoods();},300);}
 
+
 async function loadWebsiteRandomGoods(){
   const box = qs('#websiteGoodsList');
   if(!box) return;
   box.innerHTML = '<div class="empty">正在準備推薦商品...</div>';
+
+  const seeds = ['Fender','Yamaha','Roland','Korg','吉他','吉他弦','鼓棒','導線','麥克風','電鋼琴','效果器','烏克麗麗','琴架','調音器'];
+  const shuffledSeeds = seeds.slice().sort(()=>Math.random()-0.5);
+  const picked = [];
+  const seen = new Set();
+
   try{
-    // 優先請後端回傳 2 筆推薦 / 隨機商品。
-    await searchWebsiteGoods('', {random:true, limit:2});
-    // 如果後端仍回很多筆，前端再隨機抽 2 筆顯示。
-    if(Array.isArray(state.websiteGoods) && state.websiteGoods.length > 2){
-      const shuffled = state.websiteGoods.slice().sort(()=>Math.random()-0.5).slice(0,2);
-      state.websiteGoods = shuffled;
-      renderWebsiteGoods(shuffled);
+    for(const keyword of shuffledSeeds){
+      const res = await api('searchTeacherWebsiteGoods',{userId:getUser().id,keyword,limit:12});
+      if(!res || !res.ok) continue;
+      const rows = (res.rows || []).slice().sort(()=>Math.random()-0.5);
+      for(const r of rows){
+        const key = String(r.itemId || r.id || r.url || r.name || '').trim();
+        if(!key || seen.has(key)) continue;
+        seen.add(key);
+        picked.push(r);
+        if(picked.length >= 2) break;
+      }
+      if(picked.length >= 2) break;
+    }
+
+    if(picked.length){
+      state.websiteGoods = picked;
+      renderWebsiteGoods(picked);
+    }else{
+      box.innerHTML = '<div class="empty">目前沒有推薦商品，請輸入關鍵字搜尋。</div>';
     }
   }catch(e){
     box.innerHTML = '<div class="empty">目前沒有推薦商品，請輸入關鍵字搜尋。</div>';
@@ -218,27 +237,41 @@ function renderGoods(rows){const box=qs('#goodsList');if(!rows.length){box.inner
 function openGoodsInquiry(i){const el=qs('#goodsAsk_'+i);if(el)el.classList.toggle('show');}
 async function submitGoodsInquiry(i){const r=state.goods[i];if(!r)return;const btn=qs('#goodsSubmit_'+i);startActionButtonProgress(btn,{label:'送出'});try{const res=await api('submitTeacherGoodsInquiry',{userId:getUser().id,sourceType:'公司商品詢問',itemId:r.itemId,itemName:r.name,quantity:qs('#goodsQty_'+i).value||'',needBy:qs('#goodsNeed_'+i).value||'',note:qs('#goodsNote_'+i).value||'確認是否有貨'});if(!res.ok)throw new Error(res.message||'送出失敗');finishActionButtonSuccess(btn,'已送出');setMsg(qs('#msg'),'已送出詢問，可到「我的紀錄」查看回覆。');loadGoods();refreshGoodsBadges();}catch(err){finishActionButtonError(btn,'送出失敗');setMsg(qs('#msg'),err.message||'送出失敗',true);}}
 
-async function searchWebsiteGoods(keywordOverride, options){ options = options || {};
-  const kw=(qs('#websiteKeyword').value||'').trim();
-  const box=qs('#websiteGoodsList');
-  if(!kw){box.innerHTML='<div class="empty">請輸入關鍵字後按「搜尋官網商品」。</div>';return;}
-  box.innerHTML='<div class="empty">官網商品查詢中...</div>';
+
+async function searchWebsiteGoods(keywordOverride, options){
+  options = options || {};
+  const kw = String(keywordOverride != null ? keywordOverride : (qs('#websiteKeyword').value || '')).trim();
+  const box = qs('#websiteGoodsList');
+
+  if(!kw){
+    if(options.random){
+      return loadWebsiteRandomGoods();
+    }
+    box.innerHTML = '<div class="empty">請輸入關鍵字後按「搜尋官網商品」。</div>';
+    return;
+  }
+
+  box.innerHTML = '<div class="empty">官網商品查詢中...</div>';
   try{
-    const res=await api('searchTeacherWebsiteGoods',{userId:getUser().id,keyword:kw,limit:12});
+    const res = await api('searchTeacherWebsiteGoods',{userId:getUser().id,keyword:kw,limit:options.limit||12});
     if(!res.ok){
-      box.innerHTML=`<div class="empty">${esc(res.message||'官網商品暫時無法讀取，請稍後再試。')}</div>`;
+      box.innerHTML = `<div class="empty">${esc(res.message||'官網商品暫時無法讀取，請稍後再試。')}</div>`;
       return;
     }
-    state.websiteGoods=res.rows||[];
+    state.websiteGoods = res.rows || [];
+    if(options.random && state.websiteGoods.length > 2){
+      state.websiteGoods = state.websiteGoods.slice().sort(()=>Math.random()-0.5).slice(0,2);
+    }
     if(state.websiteGoods.length){
       renderWebsiteGoods(state.websiteGoods);
     }else{
-      box.innerHTML='<div class="empty">目前沒有找到符合的官網商品，請換關鍵字試試，例如：elixir、Yamaha、Fender。</div>';
+      box.innerHTML = '<div class="empty">目前沒有找到符合的官網商品，請換關鍵字試試，例如：elixir、Yamaha、Fender。</div>';
     }
   }catch(err){
-    box.innerHTML=`<div class="empty">${esc(err.message||'官網商品暫時無法讀取，請稍後再試。')}</div>`;
+    box.innerHTML = `<div class="empty">${esc(err.message||'官網商品暫時無法讀取，請稍後再試。')}</div>`;
   }
 }
+
 function renderWebsiteGoods(rows){
   const box=qs('#websiteGoodsList');
   if(!rows.length){box.innerHTML='<div class="empty">目前沒有找到符合的官網商品</div>';return;}
