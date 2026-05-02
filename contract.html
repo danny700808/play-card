@@ -201,12 +201,10 @@
     <div class="contract-card">
       <details>
         <summary class="contract-title" style="font-size:22px;cursor:pointer">歷史合約紀錄</summary>
-        <div class="history-search">
-          <label>開始日期<input id="contractHistoryStart" type="date"></label>
-          <label>結束日期<input id="contractHistoryEnd" type="date"></label>
-          <button class="btn secondary" type="button" onclick="loadContractHistory()" style="width:auto;padding:10px 14px">搜尋歷史</button>
+        <div style="margin-top:14px">
+          <button class="btn secondary" type="button" onclick="loadContractHistory()" style="width:100%;padding:12px 14px">查看歷史合約</button>
         </div>
-        <div id="contractHistoryList" class="history-color-list"><div class="empty-box">請選擇日期後搜尋歷史合約。</div></div>
+        <div id="contractHistoryList" class="history-color-list" style="margin-top:14px"><div class="empty-box">點「查看歷史合約」後，會列出你的歷史合約。</div></div>
       </details>
     </div>
 
@@ -728,10 +726,10 @@ async function loadContractHistory(){
   box.innerHTML='<div class="empty-box">讀取中...</div>';
   try{
     const user=requireLogin();
-    const payload=typeof buildHistoryQueryPayload_==='function'?buildHistoryQueryPayload_({userId:user.id},'#contractHistoryStart','#contractHistoryEnd'):{userId:user.id,historyMode:'是'};
+    const payload={userId:user.id,historyMode:'是',isManagerHistory:'是'};
     const r=await api('getTeacherContracts',payload);
     const rows=(r.rows||r.contracts||[]).filter(x=>typeof isHistoryStatus_!=='function'||isHistoryStatus_(x.status||x.signStatus,'contract'));
-    box.innerHTML=rows.length?rows.map(x=>`<div class="contract-card"><strong>${contractEsc_(x.title||x.contractName||'合約')}</strong><div class="contract-paper-meta">${contractEsc_(x.date||x.signedAt||x.createdAt||'')}｜${contractEsc_(x.status||x.signStatus||'')}</div></div>`).join(''):'<div class="empty-box">這個日期區間沒有歷史合約。</div>';
+    box.innerHTML=rows.length?rows.map(x=>`<div class="contract-card"><strong>${contractEsc_(x.title||x.contractName||'合約')}</strong><div class="contract-paper-meta">${contractEsc_(x.date||x.signedAt||x.createdAt||'')}｜${contractEsc_(x.status||x.signStatus||'')}</div></div>`).join(''):'<div class="empty-box">目前沒有歷史合約。</div>';
     if(typeof colorHistoryCards_==='function')colorHistoryCards_(box);
   }catch(e){box.innerHTML='<div class="empty-box">目前無法讀取歷史合約。</div>'}
 }
