@@ -13,7 +13,7 @@
     <div class="goods-panel">
       <div class="goods-tabs"><button class="btn" type="button" id="tabAskBtn">我要詢價<span class="tab-badge" id="askBadge"></span></button><button class="btn secondary" type="button" id="tabWebsiteBtn">公司官網詢價<span class="tab-badge" id="websiteBadge"></span></button><button class="btn secondary" type="button" id="tabOfferBtn">公司優惠<span class="tab-badge" id="offerBadge"></span></button><button class="btn secondary" type="button" id="tabRecordBtn">我的紀錄<span class="tab-badge" id="recordBadge"></span></button></div>
       <div id="msg" class="msg" style="display:none"></div>
-      <section id="askView"><div class="goods-panel-title">我要詢價</div><div class="goods-sub">不知道品名也沒關係，可以直接拍照或上傳圖片送出。</div><div class="goods-grid"><div><label>商品名稱 / 關鍵字</label><input id="askName" placeholder="知道就填，不知道可空白"></div><div><label>數量</label><input id="askQty" type="number" min="1" step="1" placeholder="例如：1"></div><div><label>希望拿貨日期</label><input id="askNeedBy" type="date"></div><div class="full"><label>商品圖片</label><div class="image-picker"><div class="image-preview" id="askPreview">可拍照<br>或上傳</div><div><input id="askImage" type="file" accept="image/*" capture="environment"><div class="hint">手機可直接拍照；圖片會先上傳後再送出詢價。</div></div></div></div><div class="full"><label>補充說明</label><textarea id="askNote" placeholder="例如：學生要用、不確定型號、想問有沒有類似款"></textarea></div></div><div class="btn-row"><button class="btn" type="button" id="askSubmitBtn">送出詢價</button></div></section>
+      <section id="askView"><div class="goods-panel-title">我要詢價</div><div class="goods-sub">不知道品名也沒關係，可以直接拍照或上傳圖片送出。</div><div class="goods-grid"><div><label>商品名稱 / 關鍵字</label><input id="askName" placeholder="知道就填，不知道可空白"></div><div><label>數量</label><input id="askQty" type="number" min="1" step="1" placeholder="例如：1"></div><div><label>希望拿貨日期</label><input id="askNeedBy" type="date"></div><div class="full"><label>商品圖片</label><div class="image-picker"><label class="image-preview" id="askPreview" for="askImage">可拍照<br>或上傳</label><div><input id="askImage" type="file" accept="image/*" capture="environment"><div class="hint">手機可直接拍照；圖片會先上傳後再送出詢價。</div></div></div></div><div class="full"><label>補充說明</label><textarea id="askNote" placeholder="例如：學生要用、不確定型號、想問有沒有類似款"></textarea></div></div><div class="btn-row"><button class="btn" type="button" id="askSubmitBtn">送出詢價</button></div></section>
       <section id="websiteView" hidden><div class="goods-panel-title">公司官網詢價</div><div class="goods-sub">這裡才會搜尋公司官網商品。搜尋後會列出圖片、商品名稱、官網價格與連結，老師再按「加入詢價」送給公司報老師價與量價。</div><div class="goods-search"><input id="websiteKeyword" placeholder="搜尋公司官網商品，例如：Fender、吉他弦、電鋼琴"><button class="btn secondary" type="button" id="websiteSearchBtn" style="width:auto">搜尋官網商品</button></div><div class="goods-list" id="websiteGoodsList"><div class="empty">請輸入關鍵字後按「搜尋官網商品」。</div></div></section>
       <section id="offerView" hidden><div class="goods-panel-title">公司優惠</div><div class="goods-search"><input id="keyword" placeholder="搜尋商品名稱 / 關鍵字"><button class="btn secondary" type="button" id="searchBtn" style="width:auto">搜尋</button></div><div class="goods-list" id="goodsList"></div></section>
       <section id="recordView" hidden><div class="goods-panel-title">我的詢價紀錄</div><div class="record-list" id="recordList"></div></section>
@@ -361,18 +361,3 @@ async function loadGoodsHistory(){
 </script>
 </body>
 </html>
-    function bindImagePickerTrigger_(){
-      var preview=document.getElementById('askPreview');
-      var file=document.getElementById('askImage');
-      if(!preview || !file) return;
-      function openPicker(){ try{ file.click(); }catch(_e){} }
-      preview.addEventListener('click', openPicker);
-      preview.addEventListener('keydown', function(e){
-        if(e.key==='Enter' || e.key===' '){ e.preventDefault(); openPicker(); }
-      });
-      preview.setAttribute('role','button');
-      preview.setAttribute('tabindex','0');
-      preview.setAttribute('aria-label','點一下可拍照或上傳商品圖片');
-    }
-
-
