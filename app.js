@@ -511,7 +511,8 @@ async function renderLineBindPrompt_(targetSelector){
 }
 
 
-const __btnProgressMap=new WeakMap();
+var __btnProgressMap = window.__btnProgressMap || new WeakMap();
+window.__btnProgressMap = __btnProgressMap;
 function ensureActionButton(btn){
   if(!btn) return null;
   if(btn.dataset.progressReady==='1') return {fill:btn.querySelector('.btn-progress-fill'),label:btn.querySelector('.btn-progress-label')};
