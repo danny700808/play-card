@@ -23,13 +23,14 @@
     .hero{display:flex;justify-content:space-between;align-items:center;gap:20px;background:var(--card);border:1px solid var(--line);border-radius:30px;padding:24px 22px;box-shadow:var(--shadow);flex-wrap:wrap}
     .hero-main h1{margin:0;font-size:28px;line-height:1.2;color:#18314a;font-weight:900}
     .welcome{margin-top:8px;font-size:20px;font-weight:800;color:#24384f}
-    .hero-tools{display:grid;grid-template-columns:1.28fr 1.28fr .78fr;gap:12px;align-items:stretch;width:min(100%,460px)}
+    .hero-tools{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:stretch;width:min(100%,620px)}
     .hero-tools #lineBindArea{display:block}
     .hero-tools #lineBindArea:empty{display:none}
-    .tool-card{height:104px;border:1px solid var(--line);border-radius:24px;background:#f5f8fc;padding:14px 16px;display:flex;flex-direction:column;justify-content:space-between;text-decoration:none;color:inherit;min-width:0}
+    .tool-card{min-height:104px;height:100%;border:1px solid var(--line);border-radius:24px;background:#f5f8fc;padding:14px 16px;display:flex;flex-direction:column;justify-content:space-between;text-decoration:none;color:inherit;min-width:0}
     .line-card,.profile-card{width:auto}
     .logout-card{width:auto;align-items:center;justify-content:center;background:var(--accent)}
     .tool-title{font-size:15px;font-weight:900;line-height:1.25;color:#18314a;text-align:center;white-space:nowrap}
+    .tool-card > div:first-child{display:flex;flex-direction:column;gap:6px;align-items:center;justify-content:flex-start}
     .tool-desc{font-size:13px;line-height:1.45;color:var(--muted);text-align:center}
     .btn{border:none;border-radius:18px;padding:14px 18px;font-size:18px;font-weight:900;cursor:pointer;background:var(--accent);color:#fff}
     .btn:disabled{opacity:.55;cursor:default}

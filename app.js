@@ -216,15 +216,15 @@ function ensureLineBindPromptStyle_(){
   const s=document.createElement('style');
   s.id='lineBindPromptStyle';
   s.textContent=`
-  .line-bind-mini{height:104px;padding:14px 16px;border:1px solid #d9e2ef;border-radius:24px;background:#f5f8fc;display:flex;flex-direction:column;justify-content:space-between;gap:10px;box-shadow:none;min-width:0}
-  .line-bind-mini-left{min-width:0;display:flex;flex-direction:column;gap:6px;align-items:center;text-align:center;justify-content:center;flex:1 1 auto}
+  .line-bind-mini{min-height:104px;height:100%;padding:14px 16px;border:1px solid #d9e2ef;border-radius:24px;background:#f5f8fc;display:flex;flex-direction:column;justify-content:space-between;gap:12px;box-shadow:none;min-width:0}
+  .line-bind-mini-left{min-width:0;display:flex;flex-direction:column;gap:6px;align-items:center;text-align:center;justify-content:flex-start;flex:0 0 auto}
   .line-bind-mini-title{font-size:15px;font-weight:900;color:#18314a;letter-spacing:.02em;line-height:1.25}
   .line-bind-mini-status{font-size:13px;font-weight:800;color:#5f7086;line-height:1.45}
   .line-bind-mini-status .on{color:#1f7a5a}
   .line-bind-mini-status .off{color:#9b7b11}
   .line-bind-mini-status .none{color:#70829a}
   .line-bind-mini-hint{display:none !important}
-  .line-bind-mini-actions{display:flex;justify-content:center;align-items:center;width:100%}
+  .line-bind-mini-actions{display:flex;justify-content:center;align-items:center;width:100%;margin-top:auto}
   .line-bind-mini .btn{width:auto;min-width:86px;padding:9px 14px;border-radius:16px;font-size:14px;line-height:1.2;min-height:auto;white-space:nowrap}
   .line-bind-mini .btn.secondary{background:#1f7a5a;color:#fff}
   .line-bind-guide{margin-top:8px;padding:10px 12px;border-radius:16px;background:#f5f8fc;border:1px dashed #d9e2ef}
@@ -238,7 +238,7 @@ function ensureLineBindPromptStyle_(){
   .line-bind-skeleton-bar{width:78px;height:10px;border-radius:999px;background:#eef2f7;display:inline-block}
   @keyframes linePulse{0%,100%{opacity:.35;transform:scale(.94)}50%{opacity:1;transform:scale(1)}}
   @media (max-width:560px){
-    .line-bind-mini{height:96px;padding:12px 12px;border-radius:22px;gap:8px}
+    .line-bind-mini{min-height:96px;height:100%;padding:12px 12px;border-radius:22px;gap:8px}
     .line-bind-mini-title{font-size:14px}
     .line-bind-mini-status{font-size:12px}
     .line-bind-mini .btn{padding:8px 12px;font-size:13px}
