@@ -575,7 +575,6 @@ function buildLeavePolicyMaps(bundle){
       const allow = rawIdentity.indexOf(identity) >= 0 || rawIdentity.indexOf(fallbackIdentity) >= 0 || rawIdentity.indexOf('全部') >= 0;
       if(!allow) return;
     }
-    if(identityTypeOf(currentUser) === 'parttime' && ['事假','病假'].indexOf(name) < 0) return;
     leaveTypeMap[name] = {
       name,
       canHalf: String((row && row[idxCanHalf]) || '').trim() === '是',
@@ -995,31 +994,23 @@ function buildEmployeeLeaveDigestCard(profile, historyData){
 }
 
 function buildOverview(profile, historyData, bundle){
-  const isParttime = identityTypeOf(currentUser) === 'parttime';
-  const annual = isParttime ? { totalHours:0, usedHours:0, remainingHours:0, hireDate:'', tenureText:'' } : computeAnnualEntitlement(profile, bundle, historyData);
+  const annual = computeAnnualEntitlement(profile, bundle, historyData);
   const summary = summarizeLeaveRows((historyData && historyData.rows) || []);
-  let lines = [];
-  if(isParttime){
-    if(summary.approvedLines.length) lines.push(...summary.approvedLines);
-    if(summary.pendingLines.length) lines.push(...summary.pendingLines);
-    if(!lines.length) lines.push('目前沒有請假紀錄');
-  }else{
-    lines = [
-      `到職日：${annual.hireDate || '未設定'}`,
-      `在職時間：${annual.tenureText || '尚未計算'}`,
-      `年度可用特休：${formatAmountText(annual.totalHours, 'days_hours')}`,
-      `已使用特休：${formatAmountText(annual.usedHours, 'days_hours')}`,
-      `剩餘特休：${formatAmountText(annual.remainingHours, 'days_hours')}`
-    ];
-    if(summary.approvedLines.length){
-      lines.push(...summary.approvedLines);
-    }
-    if(summary.pendingLines.length){
-      lines.push(...summary.pendingLines);
-    }
+  const lines = [
+    `到職日：${annual.hireDate || '未設定'}`,
+    `在職時間：${annual.tenureText || '尚未計算'}`,
+    `年度可用特休：${formatAmountText(annual.totalHours, 'days_hours')}`,
+    `已使用特休：${formatAmountText(annual.usedHours, 'days_hours')}`,
+    `剩餘特休：${formatAmountText(annual.remainingHours, 'days_hours')}`
+  ];
+  if(summary.approvedLines.length){
+    lines.push(...summary.approvedLines);
+  }
+  if(summary.pendingLines.length){
+    lines.push(...summary.pendingLines);
   }
   const metaCards = [{
-    title: isParttime ? '請假紀錄摘要' : '到職、特休與請假摘要',
+    title:'到職、特休與請假摘要',
     lines
   }];
   return { annual, metaCards, usageCards: [], notices: [] };
@@ -1242,7 +1233,7 @@ async function submitLeave(){
     cancelBtn.disabled = false;
   }
 }
-async function init(){
+async function init(){ setTimeout(()=>{if(typeof enforceHistoryDateRange_==='function'){enforceHistoryDateRange_('#leaveHistoryStart','#leaveHistoryEnd');activateHistoryColoring_&&activateHistoryColoring_('#leaveHistoryList');}},0);
   bootstrapLeaveUserFromQuery();
   fillHeader();
   currentUser = requireLogin();

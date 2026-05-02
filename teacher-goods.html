@@ -181,7 +181,7 @@ function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,m=>({'&':'&amp;',
 function setMiniBadge(id,count){const el=qs('#'+id);if(!el)return;const n=Number(count||0)||0;el.textContent=n>0?String(n):'';}
 async function refreshGoodsBadges(){try{const res=await api('getTeacherGoodsBadgeCounts',{userId:getUser().id});if(!res.ok)return;setMiniBadge('recordBadge',res.teacherActionCount||0);setMiniBadge('offerBadge',res.offerAvailableCount||0);setMiniBadge('websiteBadge',0);setMiniBadge('askBadge',0);}catch(e){}}
 
-function initPage(){const user=requireLogin();if(!user)return;if(!isExternalTeacher(user)){location.href='dashboard.html';return;}qs('#backLink').href=userHomeHref(user);qs('#tabAskBtn').onclick=()=>switchTab('ask');qs('#tabWebsiteBtn').onclick=()=>switchTab('website');qs('#tabOfferBtn').onclick=()=>switchTab('offer');qs('#tabRecordBtn').onclick=()=>switchTab('record');qs('#searchBtn').onclick=()=>loadGoods();qs('#websiteSearchBtn').onclick=()=>searchWebsiteGoods();qs('#keyword').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();loadGoods();}});qs('#websiteKeyword').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();searchWebsiteGoods();}});qs('#askImage').addEventListener('change',handleAskImage);qs('#askSubmitBtn').onclick=submitFreeInquiry;switchTab('ask');refreshGoodsBadges();}
+function initPage(){ setTimeout(()=>{if(typeof enforceHistoryDateRange_==='function'){enforceHistoryDateRange_('#goodsHistoryStart','#goodsHistoryEnd');activateHistoryColoring_&&activateHistoryColoring_('#goodsHistoryList');}},0);const user=requireLogin();if(!user)return;if(!isExternalTeacher(user)){location.href='dashboard.html';return;}qs('#backLink').href=userHomeHref(user);qs('#tabAskBtn').onclick=()=>switchTab('ask');qs('#tabWebsiteBtn').onclick=()=>switchTab('website');qs('#tabOfferBtn').onclick=()=>switchTab('offer');qs('#tabRecordBtn').onclick=()=>switchTab('record');qs('#searchBtn').onclick=()=>loadGoods();qs('#websiteSearchBtn').onclick=()=>searchWebsiteGoods();qs('#keyword').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();loadGoods();}});qs('#websiteKeyword').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();searchWebsiteGoods();}});qs('#askImage').addEventListener('change',handleAskImage);qs('#askSubmitBtn').onclick=submitFreeInquiry;switchTab('ask');refreshGoodsBadges();}
 function switchTab(tab){state.tab=tab;qs('#askView').hidden=tab!=='ask';qs('#websiteView').hidden=tab!=='website';qs('#offerView').hidden=tab!=='offer';qs('#recordView').hidden=tab!=='record';qs('#tabAskBtn').className=tab==='ask'?'btn':'btn secondary';qs('#tabWebsiteBtn').className=tab==='website'?'btn':'btn secondary';qs('#tabOfferBtn').className=tab==='offer'?'btn':'btn secondary';qs('#tabRecordBtn').className=tab==='record'?'btn':'btn secondary';setMsg(qs('#msg'),'');if(tab==='offer')loadGoods();if(tab==='record')loadRecords();}
 function badge(status){const s=String(status||'待處理');const cls=s.includes('缺貨')?'bad':(s.includes('回覆')||s.includes('完成')||s.includes('可取')?'done':(s.includes('待')?'wait':'gray'));return `<span class="pill ${cls}">${esc(s)}</span>`;}
 async function handleAskImage(e){const file=(e.target.files||[])[0];if(!file)return;const box=qs('#askPreview');box.textContent='上傳中...';try{const res=await uploadFileToCloudinary(file,{folder:'teacher-goods-inquiry'});state.askImage={url:res.secure_url||res.url,name:file.name};box.innerHTML=`<img src="${optimizedImageUrl(state.askImage.url)}">`;}catch(err){state.askImage=null;box.textContent='上傳失敗';setMsg(qs('#msg'),err.message||'圖片上傳失敗',true);}}
@@ -340,6 +340,22 @@ async function submitReask(idx){
     finishActionButtonSuccess(btn,'已送出');
     setMsg(qs('#msg'),'已送出再次詢價。');loadRecords();refreshGoodsBadges();
   }catch(err){finishActionButtonError(btn,'送出失敗');setMsg(qs('#msg'),err.message||'送出失敗',true);}
+}
+
+
+function goodsEsc_(v){return String(v==null?'':v).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+async function loadGoodsHistory(){
+  const box=qs('#goodsHistoryList');
+  if(!box)return;
+  box.innerHTML='<div class="empty-box">讀取中...</div>';
+  try{
+    const user=requireLogin();
+    const payload=typeof buildHistoryQueryPayload_==='function'?buildHistoryQueryPayload_({userId:user.id},'#goodsHistoryStart','#goodsHistoryEnd'):{userId:user.id,historyMode:'是'};
+    const r=await api('getTeacherGoodsInquiries',payload);
+    const rows=(r.rows||r.inquiries||[]).filter(x=>typeof isHistoryStatus_!=='function'||isHistoryStatus_(x.status||x.replyStatus,'goods'));
+    box.innerHTML=rows.length?rows.map(x=>`<div class="goods-card" style="display:block"><strong>${goodsEsc_(x.title||x.itemName||'詢價紀錄')}</strong><div class="hint">${goodsEsc_(x.date||x.createdAt||'')}｜${goodsEsc_(x.status||x.replyStatus||'')}</div><div>${goodsEsc_(x.note||x.content||x.reply||'')}</div></div>`).join(''):'<div class="empty-box">這個日期區間沒有歷史詢價紀錄。</div>';
+    if(typeof colorHistoryCards_==='function')colorHistoryCards_(box);
+  }catch(e){box.innerHTML='<div class="empty-box">目前無法讀取歷史詢價紀錄。</div>'}
 }
 
 </script>

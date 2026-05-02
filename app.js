@@ -908,3 +908,55 @@ function addDaysForHistory_(dateStr,days){const d=new Date(String(dateStr||'')+'
 function enforceHistoryDateRange_(startInput,endInput){const startEl=typeof startInput==='string'?document.querySelector(startInput):startInput;const endEl=typeof endInput==='string'?document.querySelector(endInput):endInput;if(!startEl||!endEl)return;startEl.addEventListener('change',function(){if(!startEl.value)return;if(isHistoryManagerMode_()){if(!endEl.value)endEl.value=addDaysForHistory_(startEl.value,70);return;}endEl.value=addDaysForHistory_(startEl.value,70);});endEl.addEventListener('change',function(){if(isHistoryManagerMode_())return;if(!startEl.value||!endEl.value)return;const s=new Date(startEl.value+'T00:00:00');const e=new Date(endEl.value+'T00:00:00');if(isNaN(s.getTime())||isNaN(e.getTime()))return;const diff=Math.floor((e-s)/86400000);if(diff>70){endEl.value=addDaysForHistory_(startEl.value,70);alert('歷史紀錄一次最多查詢 70 天。');}});}
 function buildHistoryQueryPayload_(extra,startSelector,endSelector){const startEl=typeof startSelector==='string'?document.querySelector(startSelector):startSelector;const endEl=typeof endSelector==='string'?document.querySelector(endSelector):endSelector;const payload=Object.assign({},extra||{});if(startEl&&startEl.value)payload.startDate=startEl.value;if(endEl&&endEl.value)payload.endDate=endEl.value;payload.historyMode='是';payload.isManagerHistory=isHistoryManagerMode_()?'是':'否';return payload;}
 function isHistoryStatus_(status,type){const s=String(status||'').trim();if(!s)return false;return ['已讀','已完成','完成','已確認','已結案','結案','已核准','核准','已駁回','駁回','已取消','取消','已簽署','簽署完成','已回覆','已處理','停用','已停用'].some(w=>s.indexOf(w)>=0);}
+
+
+/************************************************************
+ * 歷史紀錄共用 UI：日期限制 + 卡片淡色輪替
+ ************************************************************/
+function isHistoryManagerMode_(){
+  try{const u=getUser&&getUser();return !!(u&&(u.showSettingsZone||String(u.role||'').toLowerCase()==='admin'));}catch(e){return false;}
+}
+function addDaysForHistory_(dateStr,days){const d=new Date(String(dateStr||'')+'T00:00:00');if(isNaN(d.getTime()))return '';d.setDate(d.getDate()+Number(days||0));return d.toISOString().slice(0,10);}
+function enforceHistoryDateRange_(startInput,endInput){const startEl=typeof startInput==='string'?document.querySelector(startInput):startInput;const endEl=typeof endInput==='string'?document.querySelector(endInput):endInput;if(!startEl||!endEl)return;startEl.addEventListener('change',function(){if(!startEl.value)return;if(isHistoryManagerMode_()){if(!endEl.value)endEl.value=addDaysForHistory_(startEl.value,70);return;}endEl.value=addDaysForHistory_(startEl.value,70);});endEl.addEventListener('change',function(){if(isHistoryManagerMode_())return;if(!startEl.value||!endEl.value)return;const s=new Date(startEl.value+'T00:00:00');const e=new Date(endEl.value+'T00:00:00');if(isNaN(s.getTime())||isNaN(e.getTime()))return;const diff=Math.floor((e-s)/86400000);if(diff>70){endEl.value=addDaysForHistory_(startEl.value,70);alert('歷史紀錄一次最多查詢 70 天。');}});}
+function buildHistoryQueryPayload_(extra,startSelector,endSelector){const startEl=typeof startSelector==='string'?document.querySelector(startSelector):startSelector;const endEl=typeof endSelector==='string'?document.querySelector(endSelector):endSelector;const payload=Object.assign({},extra||{});if(startEl&&startEl.value)payload.startDate=startEl.value;if(endEl&&endEl.value)payload.endDate=endEl.value;payload.historyMode='是';payload.isManagerHistory=isHistoryManagerMode_()?'是':'否';return payload;}
+function isHistoryStatus_(status,type){const s=String(status||'').trim();if(!s)return false;return ['已讀','已完成','完成','已確認','已結案','結案','已核准','核准','已駁回','駁回','已取消','取消','已簽署','簽署完成','已回覆','已處理','停用','已停用'].some(w=>s.indexOf(w)>=0);}
+function ensureHistoryCardStyle_(){
+  if(document.getElementById('historyCardToneStyle'))return;
+  const st=document.createElement('style');
+  st.id='historyCardToneStyle';
+  st.textContent=`
+    .history-search{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end;margin:12px 0}
+    .history-search label{font-weight:900;font-size:13px}
+    .history-search input{width:100%;border:1px solid #cbd5e1;border-radius:12px;padding:10px 12px;background:#fff}
+    .history-color-list{display:grid;gap:12px}
+    .history-tone-0{background:#f0fdf4!important;border-color:#bbf7d0!important}
+    .history-tone-1{background:#fffbeb!important;border-color:#fde68a!important}
+    .history-tone-2{background:#eff6ff!important;border-color:#bfdbfe!important}
+    .history-tone-3{background:#fff1f2!important;border-color:#fecdd3!important}
+    .history-tone-4{background:#f8fafc!important;border-color:#cbd5e1!important}
+    @media(max-width:640px){.history-search{grid-template-columns:1fr}}
+  `;
+  document.head.appendChild(st);
+}
+function colorHistoryCards_(rootSelector){
+  ensureHistoryCardStyle_();
+  const root=typeof rootSelector==='string'?document.querySelector(rootSelector):rootSelector;
+  if(!root)return;
+  root.classList.add('history-color-list');
+  const children=Array.from(root.children||[]).filter(el=>!el.classList.contains('empty'));
+  children.forEach((el,i)=>{
+    el.classList.remove('history-tone-0','history-tone-1','history-tone-2','history-tone-3','history-tone-4');
+    el.classList.add('history-tone-'+(i%5));
+    if(!el.style.borderRadius) el.style.borderRadius='18px';
+  });
+}
+function activateHistoryColoring_(rootSelector){
+  ensureHistoryCardStyle_();
+  const root=typeof rootSelector==='string'?document.querySelector(rootSelector):rootSelector;
+  if(!root)return;
+  colorHistoryCards_(root);
+  try{
+    const obs=new MutationObserver(()=>colorHistoryCards_(root));
+    obs.observe(root,{childList:true,subtree:false});
+  }catch(e){}
+}

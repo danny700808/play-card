@@ -148,6 +148,19 @@
     </div>
   </div>
 
+
+    <div class="card">
+      <details>
+        <summary class="title" style="font-size:20px;cursor:pointer;margin:0">歷史打卡 / 補登紀錄</summary>
+        <div class="history-search">
+          <label>開始日期<input id="clockHistoryStart" type="date"></label>
+          <label>結束日期<input id="clockHistoryEnd" type="date"></label>
+          <button class="btn secondary" type="button" onclick="loadClockHistory()" style="width:auto;padding:10px 14px">搜尋歷史</button>
+        </div>
+        <div id="clockHistoryList" class="list history-color-list"><div class="empty">請選擇日期後搜尋歷史打卡紀錄。</div></div>
+      </details>
+    </div>
+
   <script src="config.js?v=20260501uifix2"></script>
   <script src="app.js?v=20260501uifix2"></script>
   <script>
@@ -202,24 +215,6 @@
         return '今天沒有排班，不需要打卡。';
       }
       return raw;
-    }
-
-    async function hasApprovedLeaveToday(user){
-      try{
-        const today = new Date().toISOString().slice(0,10);
-        const res = await api('getLeaveHistory', { userId:user.id });
-        const rows = Array.isArray(res && res.rows) ? res.rows : [];
-        return rows.some(row => {
-          const status = String(row.status || '').trim();
-          if(status !== '已核准') return false;
-          const start = String(row.startDate || row.leaveDate || row.date || '').slice(0,10);
-          const end = String(row.endDate || start || '').slice(0,10);
-          if(!start) return false;
-          return start <= today && today <= (end || start);
-        });
-      }catch(e){
-        return false;
-      }
     }
 
     function renderHistoryRow(x, readonly){
@@ -405,11 +400,6 @@
         return;
       }
 
-      if(await hasApprovedLeaveToday(user)){
-        setMsg(msg, '今天已有已核准請假紀錄，不能打卡。若需要更正，請提出補登／修正申請或聯絡主管。', true);
-        return;
-      }
-
       let payload = { userId:user.id, actionName, clockType:qs('#clockType').value };
       setMsg(msg, '正在偵測公司 Wi‑Fi IP...');
       payload.clientIp = await getPublicIp();
@@ -448,7 +438,7 @@
       qs('#rangeEnd').value = end.toISOString().slice(0,10);
     }
 
-    function init(){
+    function init(){ setTimeout(()=>{if(typeof enforceHistoryDateRange_==='function'){enforceHistoryDateRange_('#clockHistoryStart','#clockHistoryEnd');activateHistoryColoring_&&activateHistoryColoring_('#clockHistoryList');}},0);
       fillHeader();
       tick();
       setInterval(tick, 1000);
@@ -460,6 +450,21 @@
       toggleSupplementBox();
       loadEditableHistory().catch(e => setMsg(qs('#mainMsg'), friendlyClockMessage(e.message || '載入打卡紀錄失敗'), true));
     }
+  
+    async function loadClockHistory(){
+      const box=qs('#clockHistoryList');
+      if(!box)return;
+      box.innerHTML='<div class="empty">讀取中...</div>';
+      try{
+        const user=requireLogin();
+        const payload=typeof buildHistoryQueryPayload_==='function'?buildHistoryQueryPayload_({userId:user.id},'#clockHistoryStart','#clockHistoryEnd'):{userId:user.id,historyMode:'是'};
+        const r=await api('getClockRecords',payload);
+        const rows=(r.rows||r.records||[]);
+        box.innerHTML=rows.length?rows.map(x=>`<div class="clock-item card"><strong>${escapeHtml?escapeHtml(x.type||x.clockType||'打卡'):x.type||x.clockType||'打卡'}</strong><div class="muted">${escapeHtml?escapeHtml(x.date||x.workDate||''):x.date||x.workDate||''}｜${escapeHtml?escapeHtml(x.time||x.clockTime||''):x.time||x.clockTime||''}｜${escapeHtml?escapeHtml(x.status||''):x.status||''}</div></div>`).join(''):'<div class="empty">這個日期區間沒有歷史打卡紀錄。</div>';
+        if(typeof colorHistoryCards_==='function')colorHistoryCards_(box);
+      }catch(e){box.innerHTML='<div class="empty">目前無法讀取歷史打卡紀錄。</div>'}
+    }
+
   </script>
 </body>
 </html>
