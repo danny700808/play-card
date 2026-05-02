@@ -6,12 +6,12 @@
   <title>柚子樂器系統｜登入</title>
   <link rel="stylesheet" href="style.css">
   <style>
-    .auth-sub-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+    .auth-sub-actions{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:12px}
     .auth-panel{margin-top:6px}
     .auth-panel.hidden{display:none}
     .auth-note{margin-top:8px;padding:10px 12px;border-radius:14px;background:#f3f7f4;color:#355f4a;font-size:14px;line-height:1.7}
     .auth-back-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
-    .password-rule{margin-top:6px;font-size:13px;line-height:1.7;color:#6b7280}
+    .auth-sub-actions .btn,.auth-sub-actions .btn-link{width:100%;margin-top:0;display:flex;align-items:center;justify-content:center;text-decoration:none}.password-rule{margin-top:6px;font-size:13px;line-height:1.7;color:#6b7280}
   </style>
 </head>
 <body>
@@ -48,8 +48,8 @@
           <div class="auth-sub-actions">
             <button class="btn secondary" id="forgotBtn" type="button">忘記密碼</button>
             <button class="btn secondary" id="resetBtn" type="button">重設密碼</button>
+            <a href="register.html" class="btn btn-link">前往註冊</a>
           </div>
-          <a href="register.html" class="btn btn-link" style="margin-top:12px">前往註冊</a>
         </div>
       </div>
 
