@@ -352,7 +352,24 @@ function getLineBindState_(user){
   };
 }
 
-async function openLineBindManageModal_(user, refreshFn){
+async 
+async function refreshLineUserForManage_(user){
+  let safeUser = user || getUser() || null;
+  if(!safeUser) throw new Error('找不到登入資料');
+  try{
+    const uid = safeUser.id || safeUser.userId || safeUser.employeeId;
+    if(uid){
+      const refreshed = await api('refreshUserSession',{userId:uid});
+      if(refreshed && refreshed.ok && refreshed.user){
+        saveUser(refreshed.user);
+        return refreshed.user;
+      }
+    }
+  }catch(e){}
+  return safeUser;
+}
+
+function openLineBindManageModal_(user, refreshFn){
   const state=getLineBindState_(user);
   const safeUser=state.user||{};
   if(!state.hasLineId){
@@ -439,8 +456,9 @@ async function openLineBindManageModal_(user, refreshFn){
 }
 
 async function handleLineCardPrimaryAction_(user, refreshFn){
-  const safeUser=user || getUser() || null;
+  let safeUser=user || getUser() || null;
   if(!safeUser) throw new Error('找不到登入資料');
+  safeUser = await refreshLineUserForManage_(safeUser);
   await openLineBindManageModal_(safeUser, refreshFn);
 }
 
@@ -459,17 +477,8 @@ async function setLineNotifyPreference_(enabled, clearBinding){
 }
 
 async function renderLineBindPrompt_(targetSelector){
-  let user=getUser();
+  const user=getUser();
   if(!user) return;
-  try{
-    if(user.id){
-      const refreshed=await api('refreshUserSession',{userId:user.id});
-      if(refreshed && refreshed.ok && refreshed.user){
-        saveUser(refreshed.user);
-        user=refreshed.user;
-      }
-    }
-  }catch(e){}
   const path=(location.pathname.split('/').pop()||'').toLowerCase();
   if(path && !['dashboard.html','teacher-home.html','settings.html'].includes(path)) return;
   const existing=document.getElementById('lineBindPromptCard');
@@ -487,43 +496,19 @@ async function renderLineBindPrompt_(targetSelector){
   wrap.innerHTML=`
     <div class="line-bind-mini-left">
       <div class="line-bind-mini-title">LINE 通知設定</div>
-      <div class="line-bind-mini-status"></div>
-      
+      <div class="line-bind-mini-status">點進去後再讀取綁定狀態</div>
     </div>
-    <div class="line-bind-mini-actions" id="lineBindActions"></div>
+    <div class="line-bind-mini-actions" id="lineBindActions">
+      <button class="btn secondary" type="button" id="showLineBindGuideBtn">查看</button>
+    </div>
   `;
   target.appendChild(wrap);
-
-  const email=String(user.email||'').trim();
-  const hasLineId=!!String(user.lineUserId||'').trim();
-  const notifyOn=String(user.lineNotifyEnabled||'').trim()==='是' || user.lineNotifyEnabled===true;
-
-  const statusEl=wrap.querySelector('.line-bind-mini-status');
-  const actionsEl=wrap.querySelector('#lineBindActions');
-
-  let statusHtml='';
-  let actionsHtml='';
-
-  if(!hasLineId){
-    statusHtml='<span class="none">尚未綁定</span>';
-    actionsHtml='<button class="btn" type="button" id="showLineBindGuideBtn">前往綁定</button>';
-  }else if(notifyOn){
-    statusHtml='已綁定｜<span class="on">通知開啟</span><div class="muted" style="margin-top:4px">此帳號已完成 LINE 綁定，不需要再重新綁定。</div>';
-    actionsHtml='<button class="btn secondary" type="button" id="showLineBindGuideBtn">管理 LINE 通知</button>';
-  }else{
-    statusHtml='已綁定｜<span class="off">通知關閉</span><div class="muted" style="margin-top:4px">此帳號已完成 LINE 綁定，目前只是通知關閉。</div>';
-    actionsHtml='<button class="btn secondary" type="button" id="showLineBindGuideBtn">管理 LINE 通知</button>';
-  }
-
-  statusEl.innerHTML=statusHtml;
-  actionsEl.innerHTML=actionsHtml;
 
   const guideBtn=wrap.querySelector('#showLineBindGuideBtn');
   if(guideBtn){
     guideBtn.onclick=()=>handleLineCardPrimaryAction_(user, ()=>renderLineBindPrompt_(targetSelector)).catch(err=>alert(err&&err.message?err.message:'LINE 設定開啟失敗'));
   }
 }
-
 
 
 const __btnProgressMap=new WeakMap();
