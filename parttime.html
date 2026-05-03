@@ -19,14 +19,13 @@
     .date-status-main.ok{color:#16533f}
     .date-status-main.bad{color:#b42318}
 
-    /* 工讀生時數：手機版人性化選擇 */
+    /* 工讀生時數：保留原本版面，只把時數改成按鈕格子 */
     #fieldWorkDate input[type="date"]{
       width:100%;
       max-width:100%;
       min-width:0;
       box-sizing:border-box;
       display:block;
-      overflow:hidden;
     }
     #hoursSelect{
       position:absolute!important;
@@ -39,65 +38,58 @@
       border:0!important;
     }
     .hour-grid{
-      display:grid;
-      grid-template-columns:repeat(4,minmax(0,1fr));
-      gap:10px;
-      margin-top:0;
+      display:grid!important;
+      grid-template-columns:repeat(4,minmax(0,1fr))!important;
+      gap:10px!important;
+      margin-top:0!important;
     }
     .hour-choice{
+      min-height:46px!important;
+      border:none!important;
+      border-radius:999px!important;
+      background:#eef2f6!important;
+      color:#18314a!important;
+      font-size:15px!important;
+      font-weight:900!important;
+      cursor:pointer!important;
+      padding:10px 4px!important;
+      line-height:1.2!important;
+      text-align:center!important;
+    }
+    .hour-choice.active{
+      background:#1f7a5a!important;
+      color:#fff!important;
+    }
+    .parttime-selected-total{
+      margin-top:10px;
+      color:#16533f;
+      font-weight:900;
+      font-size:16px;
+      line-height:1.4;
+    }
+    #fieldHalfHour .check-row{display:none!important}
+    #fieldHalfHour .inline-note{display:none!important}
+    .half-hour-choice{
+      width:100%;
       min-height:48px;
       border:none;
-      border-radius:18px;
+      border-radius:999px;
       background:#eef2f6;
       color:#18314a;
       font-size:16px;
       font-weight:900;
       cursor:pointer;
-      padding:10px 6px;
-      line-height:1.2;
-    }
-    .hour-choice.active{
-      background:#1f7a5a;
-      color:#fff;
-    }
-    .selected-hours-text{
-      margin-top:12px;
-      padding:12px 14px;
-      border-radius:16px;
-      background:#f3f7f4;
-      color:#16533f;
-      font-weight:900;
+      padding:10px 14px;
       text-align:center;
-      font-size:18px;
-      line-height:1.4;
-    }
-    .half-hour-choice{
-      width:100%;
-      min-height:50px;
-      border:none;
-      border-radius:18px;
-      background:#eef2f6;
-      color:#18314a;
-      font-size:17px;
-      font-weight:900;
-      cursor:pointer;
-      padding:12px 14px;
     }
     .half-hour-choice.active{
       background:#1f7a5a;
       color:#fff;
     }
-    #halfHour{
-      position:absolute!important;
-      opacity:0!important;
-      pointer-events:none!important;
-      width:1px!important;
-      height:1px!important;
-    }
     #fieldNote{display:none!important}
     @media(max-width:420px){
-      .hour-grid{gap:8px}
-      .hour-choice{font-size:15px;min-height:46px;border-radius:16px}
+      .hour-grid{gap:8px!important}
+      .hour-choice{font-size:14px!important;min-height:44px!important}
     }
 
 </style>
@@ -146,14 +138,14 @@
           <option value="12">12 小時</option>
         </select>
         <div id="hoursGrid" class="hour-grid" role="group" aria-label="選擇時數"></div>
-        <div id="selectedHoursText" class="selected-hours-text">請選擇時數</div>
+        <div id="parttimeSelectedTotal" class="parttime-selected-total"></div>
         <div class="field-error" id="errorHours"></div>
       </div>
 
       <div class="field" id="fieldHalfHour">
         <label>額外增加 0.5 小時</label>
-        <input id="halfHour" type="checkbox">
-        <button type="button" class="half-hour-choice" id="halfHourBtn">不加 0.5 小時</button>
+        <div class="check-row parttime-half-row"><label class="parttime-half-label"><input id="halfHour" type="checkbox"><span>主管同意再執行</span></label></div>
+        <button type="button" id="halfHourBtn" class="half-hour-choice">不加 0.5 小時</button>
       </div>
 
       <div class="field" id="fieldNote">
@@ -202,7 +194,7 @@
       const select = qs('#hoursSelect');
       if(!grid || !select) return;
       const values = Array.from({length:12}, (_,i)=>String(i+1));
-      grid.innerHTML = values.map(v => `<button type="button" class="hour-choice" data-hour="${v}">${v}</button>`).join('');
+      grid.innerHTML = values.map(v => `<button type="button" class="hour-choice" data-hour="${v}">${v} 小時</button>`).join('');
       grid.querySelectorAll('.hour-choice').forEach(btn=>{
         btn.onclick = () => {
           select.value = btn.dataset.hour;
@@ -216,7 +208,7 @@
       const grid = qs('#hoursGrid');
       const select = qs('#hoursSelect');
       const half = qs('#halfHour');
-      const text = qs('#selectedHoursText');
+      const totalText = qs('#parttimeSelectedTotal');
       if(grid && select){
         grid.querySelectorAll('.hour-choice').forEach(btn=>{
           btn.classList.toggle('active', btn.dataset.hour === select.value);
@@ -224,13 +216,13 @@
       }
       const base = Number(select && select.value ? select.value : 0);
       const total = base + ((half && half.checked) ? 0.5 : 0);
-      if(text){
-        text.textContent = total ? `目前選擇：${formatHoursLabel(total)}` : '請選擇時數';
+      if(totalText){
+        totalText.textContent = total ? `目前選擇：${formatHoursLabel(total)}` : '';
       }
       const halfBtn = qs('#halfHourBtn');
       if(halfBtn && half){
         halfBtn.classList.toggle('active', half.checked);
-        halfBtn.textContent = half.checked ? '已加 0.5 小時' : '不加 0.5 小時';
+        halfBtn.textContent = half.checked ? '加 0.5 小時' : '不加 0.5 小時';
       }
     });
     }
@@ -379,7 +371,8 @@
       const halfBtn = qs('#halfHourBtn');
       if(halfBtn){
         halfBtn.onclick = () => {
-          qs('#halfHour').checked = !qs('#halfHour').checked;
+          const half = qs('#halfHour');
+          half.checked = !half.checked;
           updateHoursGrid();
         };
       }
