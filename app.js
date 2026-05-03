@@ -318,7 +318,65 @@ function ensureLineBindPromptStyle_(){
       line-height:1.25!important;
       white-space:nowrap!important;
     }
-    @media(max-width:560px){
+  
+    /* 登出卡統一：所有首頁工具列的登出格，外框同大，整格綠底白字置中 */
+    .home-head-tools .top-tool-logout,
+    .hero-tools .top-tool-logout,
+    .manage-head-tools .top-tool-logout,
+    .home-head-tools .logout-card,
+    .hero-tools .logout-card,
+    .manage-head-tools .logout-card{
+      height:96px!important;
+      min-height:96px!important;
+      width:100%!important;
+      box-sizing:border-box!important;
+      border:1px solid #1f7a5a!important;
+      border-radius:22px!important;
+      background:#1f7a5a!important;
+      color:#fff!important;
+      display:flex!important;
+      align-items:center!important;
+      justify-content:center!important;
+      text-align:center!important;
+      padding:12px!important;
+      text-decoration:none!important;
+      overflow:hidden!important;
+    }
+    .home-head-tools .top-tool-logout *,
+    .hero-tools .top-tool-logout *,
+    .manage-head-tools .top-tool-logout *,
+    .home-head-tools .logout-card *,
+    .hero-tools .logout-card *,
+    .manage-head-tools .logout-card *{
+      color:#fff!important;
+    }
+    .logout-only-text,
+    .logout-mini-btn{
+      color:#fff!important;
+      font-size:16px!important;
+      font-weight:900!important;
+      line-height:1.2!important;
+      white-space:nowrap!important;
+      background:transparent!important;
+      border:none!important;
+      padding:0!important;
+      margin:0!important;
+    }
+    @media(min-width:561px){
+      .home-head-tools .top-tool-logout,
+      .hero-tools .top-tool-logout,
+      .manage-head-tools .top-tool-logout,
+      .home-head-tools .logout-card,
+      .hero-tools .logout-card,
+      .manage-head-tools .logout-card{
+        height:104px!important;
+        min-height:104px!important;
+        border-radius:24px!important;
+        padding:14px 16px!important;
+      }
+    }
+
+  @media(max-width:560px){
       .home-head-tools,
       .hero-tools{
         gap:10px!important;
