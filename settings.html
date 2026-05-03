@@ -253,6 +253,71 @@
       display:none!important;
     }
 
+  
+    /* 管理首頁下方功能卡：手機也改成左右兩欄，縮短頁面高度 */
+    .grid{
+      display:grid!important;
+      grid-template-columns:repeat(2,minmax(0,1fr))!important;
+      gap:12px!important;
+      align-items:stretch!important;
+    }
+    .grid .tile{
+      min-height:118px!important;
+      padding:18px 14px!important;
+      border-radius:24px!important;
+      display:flex!important;
+      flex-direction:column!important;
+      align-items:center!important;
+      justify-content:center!important;
+      text-align:center!important;
+      gap:8px!important;
+      box-sizing:border-box!important;
+    }
+    .grid .tile strong{
+      display:flex!important;
+      align-items:center!important;
+      justify-content:center!important;
+      gap:6px!important;
+      font-size:20px!important;
+      line-height:1.25!important;
+      text-align:center!important;
+      width:100%!important;
+    }
+    .grid .tile > span{
+      font-size:13px!important;
+      line-height:1.45!important;
+      color:#64748b!important;
+      text-align:center!important;
+      display:-webkit-box!important;
+      -webkit-line-clamp:2!important;
+      -webkit-box-orient:vertical!important;
+      overflow:hidden!important;
+      max-width:100%!important;
+    }
+    .grid .tile .badge{
+      position:static!important;
+      display:inline-flex!important;
+      align-items:center!important;
+      justify-content:center!important;
+      min-width:24px!important;
+      height:24px!important;
+      padding:0 7px!important;
+      border-radius:999px!important;
+      font-size:14px!important;
+      line-height:1!important;
+      flex:0 0 auto!important;
+    }
+    @media(max-width:420px){
+      .grid{gap:10px!important}
+      .grid .tile{
+        min-height:108px!important;
+        padding:16px 10px!important;
+        border-radius:22px!important;
+      }
+      .grid .tile strong{font-size:18px!important}
+      .grid .tile > span{font-size:12px!important}
+    }
+
   </style>
 </head>
 <body onload="init()">
@@ -268,16 +333,16 @@
       </div>
     </section>
     <div class="grid">
-      <a class="tile" href="approval-hub.html"><strong>簽核 <span class="badge" id="badge-approval"></span></strong><span>整合註冊、打卡與請假簽核，先看總件數再進入個別處理</span></a>
-      <a class="tile" href="teacher-hub.html"><strong>外聘老師 <span class="badge" id="badge-teacher"></span></strong><span>整合外聘老師合約與拿貨紀錄，讓首頁更單純</span></a>
-      <a class="tile" href="items-hub.html"><strong>公告／交辦／定期 <span class="badge" id="badge-items"></span></strong><span>公告發布、交辦事項與定期事項集中處理</span></a>
-      <a class="tile" href="notification-settings.html"><strong>通知 / 提醒設定</strong><span>所有通知與提醒統一由表格控制，不再分散在各頁面各自設定</span></a>
-      <a class="tile" href="training-admin.html"><strong>教育訓練管理</strong><span>新增教材、上傳影片 / 文件 / 音檔與控制是否啟用</span></a>
-      <a class="tile" href="schedule-admin.html"><strong>班表管理</strong><span>建立班表模板、指定員工套用班表、管理起訖日與無期限</span></a>
-      <a class="tile" href="leave-policy-admin.html"><strong>假勤制度設定</strong><span>管理假別、特休年資、喪假關係、年度假日摘要與全域請假規則</span></a>
-      <a class="tile" href="salary-admin.html"><strong>薪資與投保設定 <span class="badge" id="badge-salary"></span></strong><span>只顯示專職與工讀，未完成設定人數會直接提醒你</span></a>
-      <a class="tile" href="parttime-payroll-admin.html"><strong>工讀薪資結算</strong><span>查詢工讀生整月或指定區間工時、毛額、勞保自付額與應發金額</span></a>
-      <a class="tile" href="quotation-contract-hub.html"><strong>估價單合約單</strong><span>先選擇估價單或合約，再進入對應模式進行填寫、預覽與列印</span></a>
+      <a class="tile" href="approval-hub.html"><strong>簽核 <span class="badge" id="badge-approval"></span></strong><span>註冊、打卡、請假簽核</span></a>
+      <a class="tile" href="teacher-hub.html"><strong>外聘老師 <span class="badge" id="badge-teacher"></span></strong><span>合約與拿貨紀錄</span></a>
+      <a class="tile" href="items-hub.html"><strong>公告／交辦／定期 <span class="badge" id="badge-items"></span></strong><span>公告、交辦與定期</span></a>
+      <a class="tile" href="notification-settings.html"><strong>通知 / 提醒設定</strong><span>通知與提醒表格</span></a>
+      <a class="tile" href="training-admin.html"><strong>教育訓練管理</strong><span>教材與學習內容</span></a>
+      <a class="tile" href="schedule-admin.html"><strong>班表管理</strong><span>班表與排班設定</span></a>
+      <a class="tile" href="leave-policy-admin.html"><strong>假勤制度設定</strong><span>假別與請假規則</span></a>
+      <a class="tile" href="salary-admin.html"><strong>薪資與投保設定 <span class="badge" id="badge-salary"></span></strong><span>薪資與投保資料</span></a>
+      <a class="tile" href="parttime-payroll-admin.html"><strong>工讀薪資結算</strong><span>工時與薪資結算</span></a>
+      <a class="tile" href="quotation-contract-hub.html"><strong>估價單合約單</strong><span>估價與合約作業</span></a>
     </div>
   </div>
   <script src="config.js?v=20260420group1"></script>
