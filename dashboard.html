@@ -469,6 +469,22 @@
       }
     }
 
+  
+    .top-tool-logout,
+    .top-tool-logout *,
+    .logout-card,
+    .logout-card *,
+    .top-tool-logout .logout-only-text,
+    .top-tool-logout span,
+    .top-tool-logout button{
+      color:#fff!important;
+      -webkit-text-fill-color:#fff!important;
+    }
+    #clockCount.zero,
+    #clockCount.empty{
+      display:none!important;
+    }
+
   </style>
 </head>
 <body onload="init()">
@@ -488,7 +504,7 @@
             </div>
             <div class="top-tool-actions"><span class="top-tool-btn">查看</span></div>
           </a>
-          <button class="top-tool-card top-tool-logout" type="button" onclick="logout()"><span class="logout-only-text">登出</span></button>
+          <button class="top-tool-card top-tool-logout" type="button" onclick="logout()"><span class="logout-only-text" style="color:#fff!important;-webkit-text-fill-color:#fff!important">登出</span></button>
         </div>
       </section>
 
@@ -532,9 +548,13 @@
     function setCountBadge(el, value){
       if(!el) return;
       const n = Number(value||0);
-      el.textContent = String(Number.isFinite(n) ? n : 0);
-      el.classList.toggle('zero', !n);
+      const safe = Number.isFinite(n) ? n : 0;
+      el.textContent = String(safe);
+      el.classList.toggle('zero', !safe);
       el.classList.remove('empty');
+      if(el.id === 'clockCount'){
+        el.style.display = safe > 0 ? '' : 'none';
+      }
     }
 
     async function refreshHomeCounts(user){

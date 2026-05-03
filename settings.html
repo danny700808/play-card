@@ -237,6 +237,22 @@
       }
     }
 
+  
+    .top-tool-logout,
+    .top-tool-logout *,
+    .logout-card,
+    .logout-card *,
+    .top-tool-logout .logout-only-text,
+    .top-tool-logout span,
+    .top-tool-logout button{
+      color:#fff!important;
+      -webkit-text-fill-color:#fff!important;
+    }
+    #clockCount.zero,
+    #clockCount.empty{
+      display:none!important;
+    }
+
   </style>
 </head>
 <body onload="init()">
@@ -248,7 +264,7 @@
       </div>
       <div class="manage-head-tools">
         <div id="lineBindArea" class="head-tool-slot"></div>
-        <button class="top-tool-card top-tool-logout" type="button" onclick="logout()"><span class="logout-only-text">登出</span></button>
+        <button class="top-tool-card top-tool-logout" type="button" onclick="logout()"><span class="logout-only-text" style="color:#fff!important;-webkit-text-fill-color:#fff!important">登出</span></button>
       </div>
     </section>
     <div class="grid">

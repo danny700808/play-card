@@ -441,7 +441,18 @@ function ensureLineBindGuideModalStyle_(){
       .line-bind-modal-actions{justify-content:stretch}
       .line-bind-modal-actions .btn,.line-bind-modal-actions .btn.secondary,.line-bind-modal-close{flex:1 1 auto;text-align:center;justify-content:center}
     }
-  `;
+  
+  .top-tool-logout,
+  .top-tool-logout *,
+  .logout-card,
+  .logout-card *,
+  .top-tool-logout .logout-only-text,
+  .top-tool-logout span,
+  .top-tool-logout button{
+    color:#fff!important;
+    -webkit-text-fill-color:#fff!important;
+  }
+`;
   document.head.appendChild(s);
 }
 
@@ -1139,3 +1150,14 @@ function activateHistoryColoring_(rootSelector){
     obs.observe(root,{childList:true,subtree:false});
   }catch(e){}
 }
+
+
+function hideClockZeroBadge_(){
+  try{
+    var el=document.getElementById('clockCount');
+    if(!el) return;
+    var n=Number(el.textContent||0)||0;
+    el.style.display = n>0 ? '' : 'none';
+  }catch(e){}
+}
+document.addEventListener('DOMContentLoaded', function(){ setTimeout(hideClockZeroBadge_, 300); setTimeout(hideClockZeroBadge_, 1200); });
