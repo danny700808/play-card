@@ -92,6 +92,30 @@
       .hour-choice{font-size:14px!important;min-height:44px!important}
     }
 
+
+    /* 修正 iPhone 直向日期欄位右側超出卡片 */
+    #fieldWorkDate{
+      min-width:0!important;
+      overflow:hidden!important;
+    }
+    #fieldWorkDate input[type="date"]{
+      width:100%!important;
+      max-width:100%!important;
+      min-width:0!important;
+      box-sizing:border-box!important;
+      display:block!important;
+      -webkit-appearance:none!important;
+      appearance:none!important;
+      padding-left:14px!important;
+      padding-right:14px!important;
+    }
+    @media(max-width:560px){
+      #fieldWorkDate input[type="date"]{
+        font-size:18px!important;
+        text-align:center!important;
+      }
+    }
+
 </style>
 </head>
 <body onload="init()">
@@ -145,7 +169,7 @@
       <div class="field" id="fieldHalfHour">
         <label>額外增加 0.5 小時</label>
         <div class="check-row parttime-half-row"><label class="parttime-half-label"><input id="halfHour" type="checkbox"><span>主管同意再執行</span></label></div>
-        <button type="button" id="halfHourBtn" class="half-hour-choice">不加 0.5 小時</button>
+        <button type="button" id="halfHourBtn" class="half-hour-choice">增加 0.5 小時</button>
       </div>
 
       <div class="field" id="fieldNote">
@@ -222,7 +246,7 @@
       const halfBtn = qs('#halfHourBtn');
       if(halfBtn && half){
         halfBtn.classList.toggle('active', half.checked);
-        halfBtn.textContent = half.checked ? '加 0.5 小時' : '不加 0.5 小時';
+        halfBtn.textContent = '增加 0.5 小時';
       }
     }
     function monthLabel(ym){
