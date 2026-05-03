@@ -50,6 +50,48 @@
     .segment-toolbar{margin-top:12px;display:flex;justify-content:flex-start}
     @media (max-width:560px){.segment-grid{grid-template-columns:1fr}.segment-head{align-items:flex-start;flex-direction:column}}
 
+
+    /* 請假頁日期欄位：修正手機直向時 date input 右側凸出卡片 */
+    .segment-field,
+    #fieldSegments,
+    .segment-card,
+    .segment-grid,
+    .segment-wrap{
+      min-width:0!important;
+      max-width:100%!important;
+      box-sizing:border-box!important;
+    }
+    .segment-field{
+      overflow:hidden!important;
+    }
+    .segment-field input[type="date"],
+    #staffBlock input[type="date"],
+    input[type="date"]{
+      width:100%!important;
+      max-width:100%!important;
+      min-width:0!important;
+      box-sizing:border-box!important;
+      display:block!important;
+      -webkit-appearance:none!important;
+      appearance:none!important;
+      padding-left:14px!important;
+      padding-right:14px!important;
+      overflow:hidden!important;
+    }
+    @media(max-width:560px){
+      .segment-grid{
+        grid-template-columns:minmax(0,1fr)!important;
+      }
+      .segment-field input[type="date"],
+      #staffBlock input[type="date"]{
+        font-size:18px!important;
+        text-align:center!important;
+      }
+      .segment-card{
+        overflow:hidden!important;
+      }
+    }
+
 </style>
 </head>
 <body onload="init()">
@@ -128,6 +170,19 @@ let leaveEventCandidateMap = {};
 let leaveSegmentsState = [];
 let leaveSegmentSeed = 0;
 
+
+function applyParttimeLeaveUi_(){
+  if(!isParttimeLeaveUser()) return;
+  const pageHint = qs('#pageHint');
+  if(pageHint) pageHint.textContent = '';
+  const infoCard = qs('#leaveSimpleInfoCard');
+  if(infoCard) infoCard.classList.add('hidden');
+  const segWrap = qs('#fieldSegments .segment-wrap > .muted');
+  if(segWrap) segWrap.textContent = '請選擇請假日期區段。';
+  const fileHint = qs('#fileHintText');
+  if(fileHint) fileHint.textContent = '';
+}
+
 function applyLeaveMode(){
   leaveApprovalMode = !!(currentUser && hasSettingsZoneAccess(currentUser) && isSettingsMode());
   qs('#staffBlock').classList.toggle('hidden', leaveApprovalMode);
@@ -139,6 +194,7 @@ function applyLeaveMode(){
     : '';
   qs('#leaveHomeLink').href = leaveApprovalMode ? 'approval-hub.html' : userHomeHref(currentUser);
   qs('#leaveHomeLink').textContent = leaveApprovalMode ? '返回簽核' : userHomeLabel(currentUser);
+  applyParttimeLeaveUi_();
 }
 
 function localDateInputValue(){
@@ -586,7 +642,22 @@ function buildLeavePolicyMaps(bundle){
     };
   });
 }
-function availableLeaveTypes(){ return Object.values(leaveTypeMap || {}); }
+
+function isParttimeLeaveUser(){
+  try{ return identityTypeOf(currentUser) === 'parttime'; }catch(e){ return false; }
+}
+function isAllowedParttimeLeaveTypeName(name){
+  const s = String(name || '').trim();
+  return s === '事假' || s === '病假';
+}
+
+function availableLeaveTypes(){
+  let list = Object.values(leaveTypeMap || {});
+  if(isParttimeLeaveUser()){
+    list = list.filter(item => isAllowedParttimeLeaveTypeName(item && item.name));
+  }
+  return list;
+}
 function getSelectedLeaveMeta(){
   const name = qs('#reason') ? qs('#reason').value : '';
   return name ? (leaveTypeMap[name] || null) : null;
@@ -713,6 +784,16 @@ function getSelectedBereavementMeta(){
   return key ? (bereavementMap[key] || null) : null;
 }
 function renderPolicyHint(meta){
+  if(isParttimeLeaveUser()){
+    const box = qs('#leavePolicyHint');
+    const label = qs('#fileLabel');
+    const fileHint = qs('#fileHintText');
+    if(box){ box.classList.add('hidden'); box.innerHTML = ''; }
+    if(label) label.textContent = '附件（選填）';
+    if(fileHint) fileHint.textContent = '';
+    return;
+  }
+
   const box = qs('#leavePolicyHint');
   const label = qs('#fileLabel');
   const fileHint = qs('#fileHintText');
@@ -1016,6 +1097,12 @@ function buildOverview(profile, historyData, bundle){
   return { annual, metaCards, usageCards: [], notices: [] };
 }
 function renderLeaveOverview(overview){
+  if(isParttimeLeaveUser()){
+    const card = qs('#leaveSimpleInfoCard');
+    if(card) card.classList.add('hidden');
+    return;
+  }
+
   leaveOverviewData = overview || null;
   const card = qs('#leaveSimpleInfoCard');
   const metaEl = qs('#leaveSimpleMeta');
@@ -1050,6 +1137,7 @@ async function loadStaffData(){
   if(policyRes && policyRes.ok && policyRes.bundle){
     buildLeavePolicyMaps(policyRes.bundle);
     renderReasonOptions('');
+    applyParttimeLeaveUi_();
     renderBereavementOptions('');
     toggleHoursByReason();
     policyReady = availableLeaveTypes().length > 0;
@@ -1233,7 +1321,7 @@ async function submitLeave(){
     cancelBtn.disabled = false;
   }
 }
-async function init(){ setTimeout(()=>{if(typeof enforceHistoryDateRange_==='function'){enforceHistoryDateRange_('#leaveHistoryStart','#leaveHistoryEnd');activateHistoryColoring_&&activateHistoryColoring_('#leaveHistoryList');}},0);
+async function init(){
   bootstrapLeaveUserFromQuery();
   fillHeader();
   currentUser = requireLogin();
