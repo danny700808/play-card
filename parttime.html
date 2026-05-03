@@ -18,6 +18,88 @@
     .date-status-main{font-size:18px;font-weight:800;margin-top:4px}
     .date-status-main.ok{color:#16533f}
     .date-status-main.bad{color:#b42318}
+
+    /* 工讀生時數：手機版人性化選擇 */
+    #fieldWorkDate input[type="date"]{
+      width:100%;
+      max-width:100%;
+      min-width:0;
+      box-sizing:border-box;
+      display:block;
+      overflow:hidden;
+    }
+    #hoursSelect{
+      position:absolute!important;
+      width:1px!important;
+      height:1px!important;
+      opacity:0!important;
+      pointer-events:none!important;
+      margin:0!important;
+      padding:0!important;
+      border:0!important;
+    }
+    .hour-grid{
+      display:grid;
+      grid-template-columns:repeat(4,minmax(0,1fr));
+      gap:10px;
+      margin-top:0;
+    }
+    .hour-choice{
+      min-height:48px;
+      border:none;
+      border-radius:18px;
+      background:#eef2f6;
+      color:#18314a;
+      font-size:16px;
+      font-weight:900;
+      cursor:pointer;
+      padding:10px 6px;
+      line-height:1.2;
+    }
+    .hour-choice.active{
+      background:#1f7a5a;
+      color:#fff;
+    }
+    .selected-hours-text{
+      margin-top:12px;
+      padding:12px 14px;
+      border-radius:16px;
+      background:#f3f7f4;
+      color:#16533f;
+      font-weight:900;
+      text-align:center;
+      font-size:18px;
+      line-height:1.4;
+    }
+    .half-hour-choice{
+      width:100%;
+      min-height:50px;
+      border:none;
+      border-radius:18px;
+      background:#eef2f6;
+      color:#18314a;
+      font-size:17px;
+      font-weight:900;
+      cursor:pointer;
+      padding:12px 14px;
+    }
+    .half-hour-choice.active{
+      background:#1f7a5a;
+      color:#fff;
+    }
+    #halfHour{
+      position:absolute!important;
+      opacity:0!important;
+      pointer-events:none!important;
+      width:1px!important;
+      height:1px!important;
+    }
+    #fieldNote{display:none!important}
+    @media(max-width:420px){
+      .hour-grid{gap:8px}
+      .hour-choice{font-size:15px;min-height:46px;border-radius:16px}
+    }
+
 </style>
 </head>
 <body onload="init()">
@@ -64,13 +146,14 @@
           <option value="12">12 小時</option>
         </select>
         <div id="hoursGrid" class="hour-grid" role="group" aria-label="選擇時數"></div>
+        <div id="selectedHoursText" class="selected-hours-text">請選擇時數</div>
         <div class="field-error" id="errorHours"></div>
       </div>
 
       <div class="field" id="fieldHalfHour">
         <label>額外增加 0.5 小時</label>
-        <div class="check-row parttime-half-row"><label class="parttime-half-label"><input id="halfHour" type="checkbox"><span>主管同意再執行</span></label></div>
-        <div class="muted inline-note">有勾選才會以 0.5 小時一起計算。</div>
+        <input id="halfHour" type="checkbox">
+        <button type="button" class="half-hour-choice" id="halfHourBtn">不加 0.5 小時</button>
       </div>
 
       <div class="field" id="fieldNote">
@@ -119,7 +202,7 @@
       const select = qs('#hoursSelect');
       if(!grid || !select) return;
       const values = Array.from({length:12}, (_,i)=>String(i+1));
-      grid.innerHTML = values.map(v => `<button type="button" class="hour-choice" data-hour="${v}">${v} 小時</button>`).join('');
+      grid.innerHTML = values.map(v => `<button type="button" class="hour-choice" data-hour="${v}">${v}</button>`).join('');
       grid.querySelectorAll('.hour-choice').forEach(btn=>{
         btn.onclick = () => {
           select.value = btn.dataset.hour;
@@ -132,10 +215,24 @@
     function updateHoursGrid(){
       const grid = qs('#hoursGrid');
       const select = qs('#hoursSelect');
-      if(!grid || !select) return;
-      grid.querySelectorAll('.hour-choice').forEach(btn=>{
-        btn.classList.toggle('active', btn.dataset.hour === select.value);
-      });
+      const half = qs('#halfHour');
+      const text = qs('#selectedHoursText');
+      if(grid && select){
+        grid.querySelectorAll('.hour-choice').forEach(btn=>{
+          btn.classList.toggle('active', btn.dataset.hour === select.value);
+        });
+      }
+      const base = Number(select && select.value ? select.value : 0);
+      const total = base + ((half && half.checked) ? 0.5 : 0);
+      if(text){
+        text.textContent = total ? `目前選擇：${formatHoursLabel(total)}` : '請選擇時數';
+      }
+      const halfBtn = qs('#halfHourBtn');
+      if(halfBtn && half){
+        halfBtn.classList.toggle('active', half.checked);
+        halfBtn.textContent = half.checked ? '已加 0.5 小時' : '不加 0.5 小時';
+      }
+    });
     }
     function monthLabel(ym){
       if(!ym) return '';
@@ -143,7 +240,7 @@
       return m ? `${m[1]}-${m[2]}` : ym;
     }
     function clearValidation(){
-      ['WorkDate','Hours','Note'].forEach(name=>{
+      ['WorkDate','Hours'].forEach(name=>{
         const field = qs('#field' + name);
         const err = qs('#error' + name);
         if(field) field.classList.remove('invalid');
@@ -238,7 +335,7 @@
         workDate: qs('#workDate').value,
         hours: qs('#hoursSelect').value,
         halfHour: qs('#halfHour').checked,
-        note: qs('#note').value.trim()
+        note: ''
       };
       const btn = qs('#submitBtn');
       const progress = startActionButtonProgress(btn, { label:'送出中' });
@@ -255,7 +352,6 @@
         await sleep(100);
         setMsg(qs('#msg'), r.message, !r.ok);
         if(r.ok){
-          qs('#note').value = '';
           qs('#halfHour').checked = false;
           qs('#hoursSelect').value = '';
           updateHoursGrid();
@@ -280,6 +376,14 @@
       qs('#workDate').addEventListener('input', async ()=>{ clearValidation(); await loadDateContext(); });
       qs('#workDate').addEventListener('change', async ()=>{ clearValidation(); await loadDateContext(); });
       qs('#hoursSelect').addEventListener('change', ()=>{ clearValidation(); updateHoursGrid(); });
+      const halfBtn = qs('#halfHourBtn');
+      if(halfBtn){
+        halfBtn.onclick = () => {
+          qs('#halfHour').checked = !qs('#halfHour').checked;
+          updateHoursGrid();
+        };
+      }
+      qs('#halfHour').addEventListener('change', updateHoursGrid);
       renderHoursGrid();
       loadHistory();
       loadDateContext();
