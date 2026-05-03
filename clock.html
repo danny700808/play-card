@@ -122,44 +122,29 @@
     </div>
 
     <div class="card">
-      <div class="history-head">
-        <div>
-          <h2 class="title" style="font-size:20px;margin-bottom:4px">區間搜尋打卡紀錄</h2>
-          <div class="muted">可查詢指定區間內的正式打卡紀錄，單次最多 70 天。</div>
+      <details id="clockHistoryDetails">
+        <summary class="title" style="font-size:20px;margin-bottom:4px;cursor:pointer">歷史打卡紀錄</summary>
+        <div class="muted" style="margin:8px 0 14px">可查詢正式打卡紀錄。單次最長 70 天；選擇開始日期後，結束日期會自動帶 70 天。</div>
+        <div class="search-grid">
+          <div class="field" id="fieldRangeStart">
+            <label>開始日期</label>
+            <input type="date" id="rangeStart">
+            <div class="field-error" data-error-for="rangeStart"></div>
+          </div>
+          <div class="field" id="fieldRangeEnd">
+            <label>結束日期</label>
+            <input type="date" id="rangeEnd">
+            <div class="field-error" data-error-for="rangeEnd"></div>
+          </div>
         </div>
-      </div>
-      <div class="search-grid">
-        <div class="field" id="fieldRangeStart">
-          <label>開始日期</label>
-          <input type="date" id="rangeStart">
-          <div class="field-error" data-error-for="rangeStart"></div>
+        <div class="range-actions">
+          <button class="btn" id="rangeSearchBtn">搜尋歷史打卡紀錄</button>
         </div>
-        <div class="field" id="fieldRangeEnd">
-          <label>結束日期</label>
-          <input type="date" id="rangeEnd">
-          <div class="field-error" data-error-for="rangeEnd"></div>
-        </div>
-      </div>
-      <div class="range-actions">
-        <button class="btn" id="rangeSearchBtn">搜尋打卡紀錄</button>
-      </div>
-      <div id="rangeMsg" class="message local-message"></div>
-      <div id="rangeList" class="list"></div>
-    </div>
-  </div>
-
-
-    <div class="card">
-      <details>
-        <summary class="title" style="font-size:20px;cursor:pointer;margin:0">歷史打卡 / 補登紀錄</summary>
-        <div class="history-search">
-          <label>開始日期<input id="clockHistoryStart" type="date"></label>
-          <label>結束日期<input id="clockHistoryEnd" type="date"></label>
-          <button class="btn secondary" type="button" onclick="loadClockHistory()" style="width:auto;padding:10px 14px">搜尋歷史</button>
-        </div>
-        <div id="clockHistoryList" class="list history-color-list"><div class="empty">請選擇日期後搜尋歷史打卡紀錄。</div></div>
+        <div id="rangeMsg" class="message local-message"></div>
+        <div id="rangeList" class="list"></div>
       </details>
     </div>
+  </div>
 
   <script src="config.js?v=20260501uifix2"></script>
   <script src="app.js?v=20260501uifix2"></script>
@@ -430,15 +415,53 @@
       }
     }
 
-    function initRangeDefault(){
-      const end = new Date();
-      const start = new Date();
-      start.setDate(end.getDate() - 29);
-      qs('#rangeStart').value = start.toISOString().slice(0,10);
-      qs('#rangeEnd').value = end.toISOString().slice(0,10);
+    
+    function addDaysForClockRange_(dateStr, days){
+      const d = new Date(String(dateStr||'') + 'T00:00:00');
+      if(isNaN(d.getTime())) return '';
+      d.setDate(d.getDate() + Number(days||0));
+      return d.toISOString().slice(0,10);
     }
 
-    function init(){ setTimeout(()=>{if(typeof enforceHistoryDateRange_==='function'){enforceHistoryDateRange_('#clockHistoryStart','#clockHistoryEnd');activateHistoryColoring_&&activateHistoryColoring_('#clockHistoryList');}},0);
+    function bindClockHistoryRangeAuto_(){
+      const startEl = qs('#rangeStart');
+      const endEl = qs('#rangeEnd');
+      if(!startEl || !endEl) return;
+      startEl.onchange = () => {
+        if(startEl.value) endEl.value = addDaysForClockRange_(startEl.value, 69);
+      };
+      endEl.onchange = () => {
+        if(!startEl.value || !endEl.value) return;
+        const s = new Date(startEl.value + 'T00:00:00');
+        const e = new Date(endEl.value + 'T00:00:00');
+        if(isNaN(s.getTime()) || isNaN(e.getTime())) return;
+        const diffDays = Math.floor((e - s) / 86400000) + 1;
+        if(diffDays > 70){
+          endEl.value = addDaysForClockRange_(startEl.value, 69);
+          setMsg(qs('#rangeMsg'), '歷史打卡紀錄一次最多查詢 70 天。', true);
+        }
+      };
+    }
+
+function initRangeDefault(){
+      const end = new Date();
+      const start = new Date();
+      start.setDate(end.getDate() - 69);
+      qs('#rangeStart').value = start.toISOString().slice(0,10);
+      qs('#rangeEnd').value = end.toISOString().slice(0,10);
+      bindClockHistoryRangeAuto_();
+    }
+
+    
+    async function markClockCorrectionRepliesReadOnEnter_(){
+      try{
+        const user = requireLogin();
+        if(!user) return;
+        await api('markClockCorrectionRepliesRead', { userId:user.id });
+      }catch(e){}
+    }
+
+function init(){
       fillHeader();
       tick();
       setInterval(tick, 1000);
@@ -448,23 +471,10 @@
       qs('#rangeSearchBtn').onclick = () => searchRange();
       initRangeDefault();
       toggleSupplementBox();
-      loadEditableHistory().catch(e => setMsg(qs('#mainMsg'), friendlyClockMessage(e.message || '載入打卡紀錄失敗'), true));
+      loadEditableHistory()
+        .then(()=>markClockCorrectionRepliesReadOnEnter_())
+        .catch(e => setMsg(qs('#mainMsg'), friendlyClockMessage(e.message || '載入打卡紀錄失敗'), true));
     }
-  
-    async function loadClockHistory(){
-      const box=qs('#clockHistoryList');
-      if(!box)return;
-      box.innerHTML='<div class="empty">讀取中...</div>';
-      try{
-        const user=requireLogin();
-        const payload=typeof buildHistoryQueryPayload_==='function'?buildHistoryQueryPayload_({userId:user.id},'#clockHistoryStart','#clockHistoryEnd'):{userId:user.id,historyMode:'是'};
-        const r=await api('getClockRecords',payload);
-        const rows=(r.rows||r.records||[]);
-        box.innerHTML=rows.length?rows.map(x=>`<div class="clock-item card"><strong>${escapeHtml?escapeHtml(x.type||x.clockType||'打卡'):x.type||x.clockType||'打卡'}</strong><div class="muted">${escapeHtml?escapeHtml(x.date||x.workDate||''):x.date||x.workDate||''}｜${escapeHtml?escapeHtml(x.time||x.clockTime||''):x.time||x.clockTime||''}｜${escapeHtml?escapeHtml(x.status||''):x.status||''}</div></div>`).join(''):'<div class="empty">這個日期區間沒有歷史打卡紀錄。</div>';
-        if(typeof colorHistoryCards_==='function')colorHistoryCards_(box);
-      }catch(e){box.innerHTML='<div class="empty">目前無法讀取歷史打卡紀錄。</div>'}
-    }
-
   </script>
 </body>
 </html>
