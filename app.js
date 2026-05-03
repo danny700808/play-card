@@ -216,139 +216,146 @@ function ensureLineBindPromptStyle_(){
   const s=document.createElement('style');
   s.id='lineBindPromptStyle';
   s.textContent=`
-  .top-tool-card{
-    height:104px!important;
-    min-height:104px!important;
-    width:100%!important;
-    box-sizing:border-box!important;
-    padding:14px 16px!important;
-    border:1px solid #d9e2ef!important;
-    border-radius:24px!important;
-    background:#f5f8fc!important;
-    display:flex!important;
-    flex-direction:column!important;
-    justify-content:space-between!important;
-    align-items:center!important;
-    gap:8px!important;
-    box-shadow:none!important;
-    min-width:0!important;
-    text-align:center!important;
-    text-decoration:none!important;
-    color:inherit!important;
-  }
-  .top-tool-main{
-    min-width:0!important;
-    width:100%!important;
-    display:flex!important;
-    flex-direction:column!important;
-    gap:6px!important;
-    align-items:center!important;
-    justify-content:flex-start!important;
-    text-align:center!important;
-  }
-  .top-tool-title{
-    font-size:15px!important;
-    font-weight:900!important;
-    color:#18314a!important;
-    letter-spacing:.02em!important;
-    line-height:1.25!important;
-    text-align:center!important;
-  }
-  .top-tool-desc{
-    font-size:13px!important;
-    font-weight:800!important;
-    color:#5f7086!important;
-    line-height:1.45!important;
-    text-align:center!important;
-  }
-  .top-tool-actions{
-    display:flex!important;
-    justify-content:center!important;
-    align-items:center!important;
-    width:100%!important;
-    margin-top:auto!important;
-  }
-  .top-tool-btn{
-    width:auto!important;
-    min-width:86px!important;
-    padding:9px 14px!important;
-    border-radius:16px!important;
-    font-size:14px!important;
-    line-height:1.2!important;
-    min-height:auto!important;
-    white-space:nowrap!important;
-    background:#1f7a5a!important;
-    color:#fff!important;
-    border:none!important;
-    font-weight:900!important;
-    cursor:pointer!important;
-    text-decoration:none!important;
-    display:inline-flex!important;
-    align-items:center!important;
-    justify-content:center!important;
-  }
-  .top-tool-logout{
-    background:#1f7a5a!important;
-    border-color:#1f7a5a!important;
-  }
-  .top-tool-logout .top-tool-title,
-  .top-tool-logout .top-tool-desc{
-    color:#fff!important;
-  }
-  .top-tool-logout .top-tool-desc{
-    opacity:.92!important;
-  }
-  .top-tool-logout .top-tool-btn{
-    background:rgba(255,255,255,.18)!important;
-    color:#fff!important;
-  }
-  .line-bind-mini{margin:0!important}
-  .line-bind-guide{margin-top:8px;padding:10px 12px;border-radius:16px;background:#f5f8fc;border:1px dashed #d9e2ef}
-  .line-bind-guide-title{font-size:13px;font-weight:900;color:#18314a;margin-bottom:6px}
-  .line-bind-guide-text{font-size:12px;color:#5f7086;line-height:1.6}
-  .line-bind-guide-code{margin-top:8px;padding:10px 12px;border-radius:14px;background:#fff;border:1px solid #d9e2ef;font-size:13px;font-weight:800;color:#18314a;word-break:break-all}
-  .line-bind-guide-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
 
-  .top-tool-card{
-    height:96px!important;
-    min-height:96px!important;
-  }
-  @media(min-width:561px){
-    .top-tool-card{
+    /* 首頁上方三格：完全比照「個人資料」卡片 */
+    .home-head-tools,
+    .hero-tools{
+      display:grid!important;
+      grid-template-columns:repeat(3,minmax(0,1fr))!important;
+      gap:12px!important;
+      align-items:stretch!important;
+      width:min(100%,620px)!important;
+    }
+    .home-head-tools > *,
+    .hero-tools > *,
+    .home-head-tools .top-tool-card,
+    .hero-tools .top-tool-card{
       height:104px!important;
       min-height:104px!important;
+      width:100%!important;
+      box-sizing:border-box!important;
     }
-  }
-  .top-tool-logout{
-    display:flex!important;
-    align-items:center!important;
-    justify-content:center!important;
-    text-align:center!important;
-    background:#1f7a5a!important;
-    border-color:#1f7a5a!important;
-    color:#fff!important;
-  }
-  .top-tool-logout .logout-only-text{
-    color:#fff!important;
-    font-size:16px!important;
-    font-weight:900!important;
-    line-height:1.2!important;
-  }
-
-  @media (max-width:560px){
-    .top-tool-card{
-      height:96px!important;
-      min-height:96px!important;
-      padding:12px 12px!important;
-      border-radius:22px!important;
+    .home-head-tools .top-tool-card,
+    .hero-tools .top-tool-card{
+      padding:14px 16px!important;
+      border:1px solid #d9e2ef!important;
+      border-radius:24px!important;
+      background:#f5f8fc!important;
+      color:inherit!important;
+      display:flex!important;
+      flex-direction:column!important;
+      justify-content:space-between!important;
+      align-items:center!important;
       gap:8px!important;
+      text-align:center!important;
+      text-decoration:none!important;
+      overflow:hidden!important;
     }
-    .top-tool-title{font-size:14px!important}
-    .top-tool-desc{font-size:12px!important}
-    .top-tool-btn{padding:8px 12px!important;font-size:13px!important}
-  }
+    .home-head-tools .top-tool-main,
+    .hero-tools .top-tool-main{
+      width:100%!important;
+      display:flex!important;
+      flex-direction:column!important;
+      gap:6px!important;
+      align-items:center!important;
+      justify-content:flex-start!important;
+      text-align:center!important;
+    }
+    .home-head-tools .top-tool-title,
+    .hero-tools .top-tool-title{
+      font-size:15px!important;
+      font-weight:900!important;
+      line-height:1.25!important;
+      color:#18314a!important;
+      white-space:nowrap!important;
+      text-align:center!important;
+    }
+    .home-head-tools .top-tool-desc,
+    .hero-tools .top-tool-desc{
+      font-size:13px!important;
+      font-weight:800!important;
+      line-height:1.45!important;
+      color:#5f7086!important;
+      white-space:nowrap!important;
+      text-align:center!important;
+    }
+    .home-head-tools .top-tool-actions,
+    .hero-tools .top-tool-actions{
+      display:flex!important;
+      justify-content:center!important;
+      align-items:center!important;
+      width:100%!important;
+      margin-top:auto!important;
+    }
+    .home-head-tools .top-tool-btn,
+    .hero-tools .top-tool-btn{
+      min-width:86px!important;
+      padding:9px 14px!important;
+      border-radius:16px!important;
+      background:#1f7a5a!important;
+      color:#fff!important;
+      border:none!important;
+      font-weight:900!important;
+      font-size:14px!important;
+      line-height:1.2!important;
+      display:inline-flex!important;
+      align-items:center!important;
+      justify-content:center!important;
+      text-decoration:none!important;
+      white-space:nowrap!important;
+    }
+    .home-head-tools .top-tool-logout,
+    .hero-tools .top-tool-logout{
+      background:#f5f8fc!important;
+      border-color:#d9e2ef!important;
+      color:inherit!important;
+    }
+    .home-head-tools .top-tool-logout .logout-only-text,
+    .hero-tools .top-tool-logout .logout-only-text{
+      color:#18314a!important;
+      font-size:15px!important;
+      font-weight:900!important;
+      line-height:1.25!important;
+      white-space:nowrap!important;
+    }
+    @media(max-width:560px){
+      .home-head-tools,
+      .hero-tools{
+        gap:10px!important;
+        width:100%!important;
+        grid-template-columns:repeat(3,minmax(0,1fr))!important;
+      }
+      .home-head-tools > *,
+      .hero-tools > *,
+      .home-head-tools .top-tool-card,
+      .hero-tools .top-tool-card{
+        height:96px!important;
+        min-height:96px!important;
+      }
+      .home-head-tools .top-tool-card,
+      .hero-tools .top-tool-card{
+        padding:12px!important;
+        border-radius:22px!important;
+      }
+      .home-head-tools .top-tool-title,
+      .hero-tools .top-tool-title,
+      .home-head-tools .top-tool-logout .logout-only-text,
+      .hero-tools .top-tool-logout .logout-only-text{
+        font-size:14px!important;
+      }
+      .home-head-tools .top-tool-desc,
+      .hero-tools .top-tool-desc{
+        font-size:12px!important;
+      }
+      .home-head-tools .top-tool-btn,
+      .hero-tools .top-tool-btn{
+        padding:8px 12px!important;
+        font-size:13px!important;
+      }
+    }
+
   `;
-  document.head.appendChild(s);
+ document.head.appendChild(s);
 }
 
 function ensureLineBindGuideModalStyle_(){
@@ -593,25 +600,28 @@ async function renderLineBindPrompt_(targetSelector){
   if(!user) return;
   const path=(location.pathname.split('/').pop()||'').toLowerCase();
   if(path && !['dashboard.html','teacher-home.html','settings.html'].includes(path)) return;
+
   const existing=document.getElementById('lineBindPromptCard');
   if(existing) existing.remove();
+
   const target=(typeof targetSelector==='string' && document.querySelector(targetSelector))
     || document.getElementById('lineBindArea')
     || document.querySelector('.page')
     || document.querySelector('.container');
   if(!target) return;
+
   ensureLineBindPromptStyle_();
 
   const wrap=document.createElement('div');
-  wrap.className='line-bind-mini';
+  wrap.className='top-tool-card';
   wrap.id='lineBindPromptCard';
   wrap.innerHTML=`
-    <div class="line-bind-mini-left">
-      <div class="line-bind-mini-title">LINE設定</div>
-      <div class="line-bind-mini-status">查看與修改</div>
+    <div class="top-tool-main">
+      <div class="top-tool-title">LINE設定</div>
+      <div class="top-tool-desc">查看與修改</div>
     </div>
-    <div class="line-bind-mini-actions" id="lineBindActions">
-      <button class="btn secondary" type="button" id="showLineBindGuideBtn">查看</button>
+    <div class="top-tool-actions">
+      <button class="top-tool-btn" type="button" id="showLineBindGuideBtn">查看</button>
     </div>
   `;
   target.appendChild(wrap);
