@@ -308,6 +308,33 @@ function ensureLineBindPromptStyle_(){
   .line-bind-guide-text{font-size:12px;color:#5f7086;line-height:1.6}
   .line-bind-guide-code{margin-top:8px;padding:10px 12px;border-radius:14px;background:#fff;border:1px solid #d9e2ef;font-size:13px;font-weight:800;color:#18314a;word-break:break-all}
   .line-bind-guide-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+
+  .top-tool-card{
+    height:96px!important;
+    min-height:96px!important;
+  }
+  @media(min-width:561px){
+    .top-tool-card{
+      height:104px!important;
+      min-height:104px!important;
+    }
+  }
+  .top-tool-logout{
+    display:flex!important;
+    align-items:center!important;
+    justify-content:center!important;
+    text-align:center!important;
+    background:#1f7a5a!important;
+    border-color:#1f7a5a!important;
+    color:#fff!important;
+  }
+  .top-tool-logout .logout-only-text{
+    color:#fff!important;
+    font-size:16px!important;
+    font-weight:900!important;
+    line-height:1.2!important;
+  }
+
   @media (max-width:560px){
     .top-tool-card{
       height:96px!important;
@@ -472,7 +499,7 @@ function openLineBindManageModal_(user, refreshFn){
     <div class="line-bind-modal" role="dialog" aria-modal="true" aria-labelledby="lineBindManageModalTitle">
       <div class="line-bind-modal-head">
         <div>
-          <div class="line-bind-modal-title" id="lineBindManageModalTitle">LINE 通知設定</div>
+          <div class="line-bind-modal-title" id="lineBindManageModalTitle">LINE設定</div>
           <div class="line-bind-modal-sub">首頁版面維持不變，所有操作都在這個視窗裡完成。</div>
         </div>
         <button type="button" class="line-bind-modal-close" id="closeLineManageModalBtn">關閉</button>
@@ -580,7 +607,7 @@ async function renderLineBindPrompt_(targetSelector){
   wrap.id='lineBindPromptCard';
   wrap.innerHTML=`
     <div class="line-bind-mini-left">
-      <div class="line-bind-mini-title">LINE 通知設定</div>
+      <div class="line-bind-mini-title">LINE設定</div>
       <div class="line-bind-mini-status">查看與修改</div>
     </div>
     <div class="line-bind-mini-actions" id="lineBindActions">

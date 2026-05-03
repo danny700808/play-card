@@ -142,6 +142,40 @@
       .top-tool-btn{padding:8px 12px;font-size:13px}
     }
 
+  
+    .top-tool-card{
+      height:96px!important;
+      min-height:96px!important;
+      width:100%!important;
+      box-sizing:border-box!important;
+      border-radius:22px!important;
+    }
+    @media(min-width:561px){
+      .top-tool-card{
+        height:104px!important;
+        min-height:104px!important;
+        border-radius:24px!important;
+      }
+    }
+    .top-tool-title{white-space:nowrap!important}
+    .top-tool-logout{
+      display:flex!important;
+      align-items:center!important;
+      justify-content:center!important;
+      text-align:center!important;
+      background:#1f7a5a!important;
+      border-color:#1f7a5a!important;
+      color:#fff!important;
+      padding:12px!important;
+    }
+    .top-tool-logout .logout-only-text{
+      color:#fff!important;
+      font-size:16px!important;
+      font-weight:900!important;
+      line-height:1.2!important;
+      white-space:nowrap!important;
+    }
+    
   </style>
 </head>
 <body onload="init()">
@@ -162,11 +196,7 @@
             <div class="top-tool-actions"><span class="top-tool-btn">查看</span></div>
           </a>
           <button class="top-tool-card top-tool-logout" type="button" onclick="logout()">
-            <div class="top-tool-main">
-              <div class="top-tool-title">登出</div>
-              <div class="top-tool-desc">離開系統</div>
-            </div>
-            <div class="top-tool-actions"><span class="top-tool-btn">登出</span></div>
+            <span class="logout-only-text">離開登出</span>
           </button>
         </div>
       </section>
