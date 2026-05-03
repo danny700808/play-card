@@ -70,17 +70,22 @@
     #fieldHalfHour .check-row{display:none!important}
     #fieldHalfHour .inline-note{display:none!important}
     .half-hour-choice{
-      width:100%;
-      min-height:48px;
+      width:auto;
+      min-width:150px;
+      min-height:46px;
       border:none;
       border-radius:999px;
       background:#eef2f6;
       color:#18314a;
-      font-size:16px;
+      font-size:15px;
       font-weight:900;
       cursor:pointer;
-      padding:10px 14px;
+      padding:10px 16px;
+      line-height:1.2;
       text-align:center;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
     }
     .half-hour-choice.active{
       background:#1f7a5a;
@@ -114,6 +119,43 @@
         font-size:18px!important;
         text-align:center!important;
       }
+    }
+
+
+    #fieldHalfHour .half-hour-choice{
+      width:auto!important;
+      min-width:150px!important;
+      min-height:46px!important;
+      border-radius:999px!important;
+      font-size:15px!important;
+      padding:10px 16px!important;
+      display:inline-flex!important;
+      align-items:center!important;
+      justify-content:center!important;
+    }
+
+
+    #fieldHalfHour .half-hour-choice{
+      width:auto!important;
+      min-width:0!important;
+      min-height:46px!important;
+      border:none!important;
+      border-radius:999px!important;
+      background:#eef2f6!important;
+      color:#18314a!important;
+      font-size:15px!important;
+      font-weight:900!important;
+      cursor:pointer!important;
+      padding:10px 16px!important;
+      line-height:1.2!important;
+      text-align:center!important;
+      display:inline-flex!important;
+      align-items:center!important;
+      justify-content:center!important;
+    }
+    #fieldHalfHour .half-hour-choice.active{
+      background:#1f7a5a!important;
+      color:#fff!important;
     }
 
 </style>
@@ -169,7 +211,7 @@
       <div class="field" id="fieldHalfHour">
         <label>額外增加 0.5 小時</label>
         <div class="check-row parttime-half-row"><label class="parttime-half-label"><input id="halfHour" type="checkbox"><span>主管同意再執行</span></label></div>
-        <button type="button" id="halfHourBtn" class="half-hour-choice">增加 0.5 小時</button>
+        <button type="button" id="halfHourBtn" class="half-hour-choice">+0.5 小時</button>
       </div>
 
       <div class="field" id="fieldNote">
@@ -246,7 +288,7 @@
       const halfBtn = qs('#halfHourBtn');
       if(halfBtn && half){
         halfBtn.classList.toggle('active', half.checked);
-        halfBtn.textContent = '增加 0.5 小時';
+        halfBtn.textContent = '+0.5 小時';
       }
     }
     function monthLabel(ym){

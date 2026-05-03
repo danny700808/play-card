@@ -24,17 +24,17 @@
     .hero-main h1{margin:0;font-size:28px;line-height:1.2;color:#18314a;font-weight:900}
     .welcome{margin-top:8px;font-size:20px;font-weight:800;color:#24384f}
     .hero-tools{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:stretch;width:min(100%,620px)}
-    .hero-tools #lineBindArea{display:block}
-    .hero-tools #lineBindArea:empty{display:none}
-    .tool-card{min-height:104px;height:100%;border:1px solid var(--line);border-radius:24px;background:#f5f8fc;padding:14px 16px;display:flex;flex-direction:column;justify-content:space-between;text-decoration:none;color:inherit;min-width:0}
+    .hero-tools #lineBindArea{display:block;height:100%}
+    .hero-tools #lineBindArea:empty{display:block}
+    .tool-card{height:104px;min-height:104px;border:1px solid var(--line);border-radius:24px;background:#f5f8fc;padding:14px 16px;display:flex;flex-direction:column;justify-content:space-between;align-items:center;text-decoration:none;color:inherit;min-width:0;text-align:center}
     .line-card,.profile-card{width:auto}
-    .logout-card{width:auto;align-items:center;justify-content:center;background:var(--accent)}
+    .logout-card{width:auto;align-items:center;justify-content:center;background:#1f7a5a;border-color:#1f7a5a}
     .tool-title{font-size:15px;font-weight:900;line-height:1.25;color:#18314a;text-align:center;white-space:nowrap}
     .tool-card > div:first-child{display:flex;flex-direction:column;gap:6px;align-items:center;justify-content:flex-start}
-    .tool-desc{font-size:13px;line-height:1.45;color:var(--muted);text-align:center}
+    .tool-desc{font-size:13px;font-weight:800;line-height:1.45;color:var(--muted);text-align:center}
     .btn{border:none;border-radius:18px;padding:14px 18px;font-size:18px;font-weight:900;cursor:pointer;background:var(--accent);color:#fff}
     .btn:disabled{opacity:.55;cursor:default}
-    .mini-btn{align-self:center;width:auto;padding:9px 14px;font-size:14px;border-radius:16px;white-space:nowrap}
+    .mini-btn{align-self:center;width:auto;min-width:86px;padding:9px 14px;font-size:14px;border-radius:16px;white-space:nowrap;background:#1f7a5a!important;color:#fff!important}
     .logout-mini-btn{border:none;background:transparent;color:#fff;font-size:16px;font-weight:900;cursor:pointer;white-space:nowrap}
     .section{margin-top:18px}
     .status{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:14px 16px;color:var(--muted)}
@@ -54,9 +54,9 @@
       .hero-main{width:100%;text-align:center}
       .hero-main h1{font-size:24px}
       .welcome{font-size:19px}
-      .hero-tools{width:100%;grid-template-columns:1.16fr 1.16fr .72fr;gap:10px}
+      .hero-tools{width:100%;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
       .line-card,.profile-card,.logout-card{width:auto}
-      .tool-card{height:96px;padding:12px 12px;border-radius:22px}
+      .tool-card{height:96px;min-height:96px;padding:12px 12px;border-radius:22px}
       .tool-title{font-size:14px}
       .tool-desc{font-size:12px}
       .cards{gap:14px}
@@ -66,6 +66,102 @@
       .entry-count{min-width:30px;height:30px;font-size:16px;padding:0 8px}
       .entry-count.done{font-size:14px}
     }
+  
+    .top-tool-card{
+      height:104px;
+      min-height:104px;
+      width:100%;
+      box-sizing:border-box;
+      padding:14px 16px;
+      border:1px solid var(--line);
+      border-radius:24px;
+      background:#f5f8fc;
+      display:flex;
+      flex-direction:column;
+      justify-content:space-between;
+      align-items:center;
+      gap:8px;
+      text-align:center;
+      text-decoration:none;
+      color:inherit;
+      min-width:0;
+    }
+    .top-tool-main{
+      width:100%;
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+      align-items:center;
+      justify-content:flex-start;
+    }
+    .top-tool-title{
+      font-size:15px;
+      font-weight:900;
+      line-height:1.25;
+      color:#18314a;
+      text-align:center;
+    }
+    .top-tool-desc{
+      font-size:13px;
+      font-weight:800;
+      line-height:1.45;
+      color:#5f7086;
+      text-align:center;
+    }
+    .top-tool-actions{
+      display:flex;
+      justify-content:center;
+      align-items:center;
+      width:100%;
+      margin-top:auto;
+    }
+    .top-tool-btn{
+      width:auto;
+      min-width:86px;
+      padding:9px 14px;
+      border-radius:16px;
+      font-size:14px;
+      line-height:1.2;
+      min-height:auto;
+      white-space:nowrap;
+      background:#1f7a5a;
+      color:#fff;
+      border:none;
+      font-weight:900;
+      cursor:pointer;
+      text-decoration:none;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+    }
+    .top-tool-logout{
+      background:#1f7a5a;
+      border-color:#1f7a5a;
+    }
+    .top-tool-logout .top-tool-title,
+    .top-tool-logout .top-tool-desc{
+      color:#fff;
+    }
+    .top-tool-logout .top-tool-desc{
+      opacity:.92;
+    }
+    .top-tool-logout .top-tool-btn{
+      background:rgba(255,255,255,.18);
+      color:#fff;
+    }
+    @media(max-width:560px){
+      .top-tool-card{
+        height:96px;
+        min-height:96px;
+        padding:12px 12px;
+        border-radius:22px;
+        gap:8px;
+      }
+      .top-tool-title{font-size:14px}
+      .top-tool-desc{font-size:12px}
+      .top-tool-btn{padding:8px 12px;font-size:13px}
+    }
+
   </style>
 </head>
 <body>
@@ -77,16 +173,20 @@
       </div>
       <div class="hero-tools">
         <div id="lineBindArea"></div>
-        <a class="tool-card profile-card" href="profile.html" id="openProfileBtn">
-          <div>
-            <div class="tool-title">個人資料</div>
-            <div class="tool-desc">查看與修改</div>
+        <a class="top-tool-card" href="profile.html" id="openProfileBtn">
+          <div class="top-tool-main">
+            <div class="top-tool-title">個人資料</div>
+            <div class="top-tool-desc">查看與修改</div>
           </div>
-          <span class="btn mini-btn">查看</span>
+          <div class="top-tool-actions"><span class="top-tool-btn">查看</span></div>
         </a>
-        <div class="tool-card logout-card">
-          <button class="logout-mini-btn" type="button" id="logoutBtn">登出</button>
-        </div>
+        <button class="top-tool-card top-tool-logout" type="button" id="logoutBtn">
+          <div class="top-tool-main">
+            <div class="top-tool-title">登出</div>
+            <div class="top-tool-desc">離開系統</div>
+          </div>
+          <div class="top-tool-actions"><span class="top-tool-btn">登出</span></div>
+        </button>
       </div>
     </section>
 
