@@ -382,7 +382,7 @@
       return (setup && setup.employeeConfigMap && row && setup.employeeConfigMap[row.id]) || {};
     }
     function isSalaryConfiguredRow(row){
-      if(row && typeof isSalaryConfiguredRow(row) === 'boolean') return isSalaryConfiguredRow(row);
+      if(row && typeof row.salaryConfigured === 'boolean') return row.salaryConfigured;
       const cfg = getSalaryConfigForRow(row);
       if(row && row.identityType === 'parttime'){
         return Number(cfg.hourlyRate || 0) > 0;
