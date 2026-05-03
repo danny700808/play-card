@@ -378,13 +378,26 @@
       const list = (setup && setup.healthPlans) || [];
       return list.find(x => String(x.code || '') === String(code || '')) || null;
     }
+    function getSalaryConfigForRow(row){
+      return (setup && setup.employeeConfigMap && row && setup.employeeConfigMap[row.id]) || {};
+    }
+    function isSalaryConfiguredRow(row){
+      if(row && typeof isSalaryConfiguredRow(row) === 'boolean') return isSalaryConfiguredRow(row);
+      const cfg = getSalaryConfigForRow(row);
+      if(row && row.identityType === 'parttime'){
+        return Number(cfg.hourlyRate || 0) > 0;
+      }
+      return Number(cfg.baseSalary || 0) > 0;
+    }
     function getPendingReasons(row){
-      return Array.isArray(row && row.salaryPendingReasons) ? row.salaryPendingReasons : [];
+      if(Array.isArray(row && row.salaryPendingReasons) && row.salaryPendingReasons.length) return row.salaryPendingReasons;
+      if(isSalaryConfiguredRow(row)) return [];
+      return row && row.identityType === 'parttime' ? ['未填時薪'] : ['未填本薪'];
     }
     function renderSummary(){
       const rows = (setup && setup.employees) || [];
-      const pending = rows.filter(x => !x.salaryConfigured).length;
-      const done = rows.filter(x => x.salaryConfigured).length;
+      const pending = rows.filter(x => !isSalaryConfiguredRow(x)).length;
+      const done = rows.filter(x => isSalaryConfiguredRow(x)).length;
       qs('#pendingCountText').textContent = String(pending);
       qs('#doneCountText').textContent = String(done);
     }
@@ -395,8 +408,8 @@
         if(!hit) return false;
       }
       if(typeFilter !== 'all' && String(row.identityType || '') !== typeFilter) return false;
-      if(statusFilter === 'pending' && row.salaryConfigured) return false;
-      if(statusFilter === 'done' && !row.salaryConfigured) return false;
+      if(statusFilter === 'pending' && isSalaryConfiguredRow(row)) return false;
+      if(statusFilter === 'done' && !isSalaryConfiguredRow(row)) return false;
       return true;
     }
     function renderEmployeeList(){
@@ -412,7 +425,7 @@
               </div>
               <div class="tag-group">
                 <span class="tag">${x.identityLabel || ''}</span>
-                <span class="tag ${x.salaryConfigured ? 'ok' : 'warn'}">${x.salaryConfigured ? '已完成' : '未完成'}</span>
+                <span class="tag ${isSalaryConfiguredRow(x) ? 'ok' : 'warn'}">${isSalaryConfiguredRow(x) ? '已完成' : '未完成'}</span>
               </div>
             </div>
             ${reasons.length ? `<div class="small-note" style="margin-top:8px">${reasons.join('、')}</div>` : `<div class="small-note" style="margin-top:8px">目前薪資與投保設定已完成。</div>`}
