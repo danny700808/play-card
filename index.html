@@ -11,7 +11,11 @@
     .auth-panel.hidden{display:none}
     .auth-note{margin-top:8px;padding:10px 12px;border-radius:14px;background:#f3f7f4;color:#355f4a;font-size:14px;line-height:1.7}
     .auth-back-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
-    .auth-sub-actions .btn,.auth-sub-actions .btn-link{width:100%;margin-top:0;display:flex;align-items:center;justify-content:center;text-decoration:none}.teacher-apply-entry{margin-top:10px;width:100%;display:flex;align-items:center;justify-content:center;text-decoration:none}.password-rule{margin-top:6px;font-size:13px;line-height:1.7;color:#6b7280}
+    .auth-sub-actions .btn,.auth-sub-actions .btn-link{width:100%;margin-top:0;display:flex;align-items:center;justify-content:center;text-decoration:none}
+    .external-entry-zone{margin-top:16px;padding-top:14px;border-top:1px solid #dbe5dd;text-align:center}
+    .external-entry-title{font-size:13px;font-weight:900;color:#6b7a6f;letter-spacing:.08em;margin-bottom:8px}
+    .teacher-apply-entry{width:100%;display:flex;align-items:center;justify-content:center;text-decoration:none}
+    .password-rule{margin-top:6px;font-size:13px;line-height:1.7;color:#6b7280}
   </style>
 </head>
 <body>
@@ -50,7 +54,10 @@
             <button class="btn secondary" id="resetBtn" type="button">重設密碼</button>
             <a href="register.html" class="btn btn-link">前往註冊</a>
           </div>
-          <a href="teacher-apply.html" class="btn secondary teacher-apply-entry">應聘履歷投遞</a>
+          <div class="external-entry-zone">
+            <div class="external-entry-title">其他入口</div>
+            <a href="teacher-apply.html" class="btn secondary teacher-apply-entry">應聘履歷投遞</a>
+          </div>
         </div>
       </div>
 

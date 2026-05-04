@@ -24,8 +24,8 @@
     .upload-box{border:1px dashed #cbd5e1;background:#f8fafc;border-radius:18px;padding:12px}
     .upload-box input{background:#fff}
     .file-note{font-size:13px;color:#64748b;margin-top:8px;line-height:1.7}
-    .submit-row{display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;margin-top:16px}
-    .submit-row .btn{min-width:180px}
+    .submit-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:center;margin-top:16px}
+    .submit-row .btn{min-width:0;width:100%;display:flex;align-items:center;justify-content:center;text-decoration:none}
     .top-link{display:inline-flex;text-decoration:none;align-items:center;justify-content:center;margin-top:12px;color:#1f7a5a;font-weight:900}
     .message{white-space:pre-wrap}
     @media(max-width:720px){.apply-shell{padding:10px 0 28px}.apply-head{border-radius:22px;padding:20px 16px}.apply-head h1{font-size:26px}.section-card{padding:18px 14px;border-radius:22px}.form-grid{grid-template-columns:1fr}.check-grid{grid-template-columns:1fr 1fr}.section-title{font-size:20px}}
@@ -37,7 +37,6 @@
     <section class="apply-head">
       <h1>應聘履歷投遞</h1>
       <p>請填寫基本資料、教學專長與作品連結。影片請提供連結，履歷 PDF / Word 與圖片可直接上傳。</p>
-      <a class="top-link" href="index.html">返回登入頁</a>
     </section>
 
     <div id="msg" class="message"></div>
@@ -52,7 +51,6 @@
           <div class="field"><label>目前身分</label><input id="currentStatus" placeholder="音樂老師、學生、自由工作者、上班族、其他"></div>
           <div class="field"><label>居住縣市<span class="required">*</span></label><input id="city" required placeholder="例如：台中市"></div>
           <div class="field"><label>居住區域</label><input id="district" placeholder="例如：南屯區"></div>
-          <div class="field full"><label>可授課地區<span class="required">*</span></label><input id="teachAreas" required placeholder="例如：台中市區、南屯、西屯、線上"></div>
         </div>
       </section>
 
@@ -62,7 +60,7 @@
           <div class="field"><label>主修樂器 / 專長項目<span class="required">*</span></label><input id="mainSkill" required placeholder="例如：鋼琴、吉他、爵士鼓"></div>
           <div class="field"><label>可教項目<span class="required">*</span></label><input id="teachItems" required placeholder="可填多項，例如：鋼琴、樂理、視唱聽寫"></div>
           <div class="field"><label>可教程度<span class="required">*</span></label><input id="teachLevels" required placeholder="初學、初中階、中高階、檢定、比賽、升學"></div>
-          <div class="field"><label>教學年資<span class="required">*</span></label><input id="teachingYears" required placeholder="例如：3 年、5 年以上"></div>
+          <div class="field"><label>教學年資<span class="required">*</span></label><select id="teachingYears" required><option value="">請選擇</option><option>1年</option><option>2至3年</option><option>4至6年</option><option>6年以上</option></select></div>
           <div class="field"><label>是否有兒童教學經驗<span class="required">*</span></label><select id="childExperience" required><option value="">請選擇</option><option>是</option><option>否</option></select></div>
           <div class="field"><label>是否有團體課經驗<span class="required">*</span></label><select id="groupExperience" required><option value="">請選擇</option><option>是</option><option>否</option></select></div>
           <div class="field"><label>是否可到府教學<span class="required">*</span></label><select id="homeTeaching" required><option value="">請選擇</option><option>是</option><option>否</option></select></div>
@@ -75,8 +73,6 @@
               <label class="check-pill"><input type="checkbox" value="平日晚上">平日晚上</label>
               <label class="check-pill"><input type="checkbox" value="週六">週六</label>
               <label class="check-pill"><input type="checkbox" value="週日">週日</label>
-              <label class="check-pill"><input type="checkbox" value="寒暑假">寒暑假</label>
-              <label class="check-pill"><input type="checkbox" value="其他可討論">其他可討論</label>
             </div>
             <div class="help">至少勾選一個。</div>
           </div>
@@ -87,9 +83,7 @@
         <h2 class="section-title">三、學經歷與自我介紹</h2>
         <div class="form-grid">
           <div class="field"><label>相關科系</label><input id="relatedDepartment" placeholder="例如：音樂系、流行音樂系、音樂教育系"></div>
-          <div class="field"><label>希望合作方式<span class="required">*</span></label><input id="cooperationType" required placeholder="長期配合、短期代課、活動演出、其他"></div>
           <div class="field"><label>期望鐘點費</label><input id="expectedHourlyPay" placeholder="例如：800-1200 / 依課程討論"></div>
-          <div class="field"><label>可開始配合日期</label><input id="availableStartDate" type="date"></div>
           <div class="field full"><label>教學經歷摘要<span class="required">*</span></label><textarea id="teachingSummary" required placeholder="請簡述曾教過哪些學生、在哪些單位、教學多久。"></textarea></div>
           <div class="field full"><label>演出 / 比賽 / 證照 / 其他經歷</label><textarea id="performanceExperience" placeholder="有相關演出、比賽、證照或其他經歷可填寫。"></textarea></div>
           <div class="field full"><label>自我介紹<span class="required">*</span></label><textarea id="selfIntro" required placeholder="請簡單介紹你的教學風格、專長與想配合的方向。"></textarea></div>
@@ -111,7 +105,7 @@
           <div class="field full"><label>表演影片連結 1<span class="required">*</span></label><input id="videoLink1" required placeholder="YouTube / Google Drive / Facebook / Instagram 皆可"></div>
           <div class="field full"><label>表演影片連結 2</label><input id="videoLink2" placeholder="其他作品連結"></div>
           <div class="field full"><label>表演影片連結 3</label><input id="videoLink3" placeholder="其他作品連結"></div>
-          <div class="field full"><label>個人網站 / 社群 / 作品集連結</label><input id="portfolioLink" placeholder="IG、FB、YouTube 頻道、個人網站等"></div>
+          <div class="field full"><label>作品連結</label><input id="portfolioLink" placeholder="可貼上 YouTube 頻道、IG、FB、作品集或其他作品連結"></div>
           <div class="field full"><label>其他補充連結</label><input id="otherLink" placeholder="其他想讓我們看的資料"></div>
           <div class="field full"><div class="help">請至少提供一個可以觀看你實際演奏、演出、教學或表演成果的影片連結，方便我們了解你的程度與風格。影片請提供連結，不開放直接上傳影片檔。</div></div>
         </div>
@@ -124,7 +118,7 @@
         <div class="field full"><label>應聘者備註</label><textarea id="applicantNote" placeholder="其他想補充的內容。"></textarea></div>
         <div class="submit-row">
           <button id="submitBtn" type="submit" class="btn">送出應聘履歷</button>
-          <a class="btn secondary" href="index.html">返回登入頁</a>
+          <a class="btn" href="index.html">返回登入頁</a>
         </div>
       </section>
     </form>
@@ -171,7 +165,7 @@
     function buildPayload(uploads){
       return {
         name:valueOf('name'), phone:valueOf('phone'), email:valueOf('email'),
-        city:valueOf('city'), district:valueOf('district'), teachAreas:valueOf('teachAreas'), currentStatus:valueOf('currentStatus'),
+        city:valueOf('city'), district:valueOf('district'), teachAreas:'', currentStatus:valueOf('currentStatus'),
         mainSkill:valueOf('mainSkill'), teachItems:valueOf('teachItems'), teachLevels:valueOf('teachLevels'), teachingYears:valueOf('teachingYears'),
         childExperience:valueOf('childExperience'), groupExperience:valueOf('groupExperience'), homeTeaching:valueOf('homeTeaching'), onlineTeaching:valueOf('onlineTeaching'), companyRules:valueOf('companyRules'),
         availableTimes:checkedValues('availableTimes'), relatedDepartment:valueOf('relatedDepartment'), teachingSummary:valueOf('teachingSummary'),
