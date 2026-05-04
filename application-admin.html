@@ -12,6 +12,8 @@
     .filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
     .filter-btn{border:1px solid var(--line);background:#fff;border-radius:999px;padding:9px 13px;font-weight:900;color:#374151;cursor:pointer}
     .filter-btn.active{background:#1f7a5a;color:#fff;border-color:#1f7a5a}
+    .filter-count{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;margin-left:5px;padding:0 6px;border-radius:999px;background:#eef2f6;color:#24384f;font-size:12px;font-weight:900}
+    .filter-btn.active .filter-count{background:rgba(255,255,255,.22);color:#fff}
     .table-card,.detail-card{background:#fff;border:1px solid var(--line);border-radius:24px;padding:16px;box-shadow:0 12px 30px rgba(15,23,42,.035);margin-bottom:14px}
     .responsive-table{overflow:auto}
     table{width:100%;border-collapse:collapse;min-width:900px}
@@ -22,6 +24,7 @@
     .status-pill.ok{background:#e8f7ef;color:#1f7a5a}.status-pill.no{background:#fef2f2;color:#b42318}.status-pill.wait{background:#fff7ed;color:#c2410c}
     .small-btn{border:none;border-radius:12px;background:#1f7a5a;color:#fff;font-weight:900;padding:8px 11px;cursor:pointer;white-space:nowrap}
     .small-btn.secondary{background:#eef2f6;color:#24384f}.small-btn.danger{background:#b42318;color:#fff}
+    .return-home-btn{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;background:#1f7a5a!important;color:#fff!important;border:1px solid #1f7a5a!important;border-radius:16px;padding:11px 16px;font-weight:900;min-width:150px}
     .detail-card.hidden{display:none}
     .detail-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;margin-bottom:12px}
     .detail-head h2{margin:0;color:#18314a;font-size:24px}
@@ -37,7 +40,7 @@
   <div class="container admin-shell">
     <section class="top-card">
       <div><h1>應聘管理</h1><div class="muted">查看應聘履歷、作品連結與附件，並寄送審核通知。</div></div>
-      <div class="action-row"><a class="btn secondary" href="settings.html">返回管理首頁</a><button class="btn secondary" type="button" onclick="logout()">登出</button></div>
+      <div class="action-row"><a class="return-home-btn" href="settings.html">返回管理首頁</a></div>
     </section>
     <div id="msg" class="message"></div>
     <div class="filters" id="filters"></div>
@@ -50,7 +53,7 @@
   <script src="app.js?v=20260504_apply1"></script>
   <script>
     const msg=qs('#msg');
-    let user=null, currentStatus='全部', rows=[], current=null;
+    let user=null, currentStatus='全部', allRows=[], rows=[], current=null;
     const statuses=['全部','待審核','已同意','未通過','封存'];
     function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
     function nl(v){return esc(v).replace(/\n/g,'<br>');}
@@ -60,15 +63,29 @@
       if(!list.length) return '<span class="muted">無</span>';
       return '<div class="link-list">'+list.map((url,i)=>'<a href="'+esc(url)+'" target="_blank" rel="noopener">'+esc(prefix||'查看')+(list.length>1?' '+(i+1):'')+'</a>').join('')+'</div>';
     }
-    function renderFilters(){qs('#filters').innerHTML=statuses.map(s=>'<button class="filter-btn '+(s===currentStatus?'active':'')+'" onclick="setFilter(\''+s+'\')">'+s+'</button>').join('');}
-    function setFilter(s){currentStatus=s; renderFilters(); loadRows();}
+    function statusCount(s){
+      if(s==='全部') return allRows.length;
+      return allRows.filter(x=>String(x.status||'待審核')===s).length;
+    }
+    function renderFilters(){
+      qs('#filters').innerHTML=statuses.map(s=>{
+        const n=statusCount(s);
+        return '<button class="filter-btn '+(s===currentStatus?'active':'')+'" onclick="setFilter(\''+s+'\')">'+s+'<span class="filter-count">'+n+'</span></button>';
+      }).join('');
+    }
+    function setFilter(s){currentStatus=s; applyFilterAndRender();}
     async function init(){
-      fillHeader(); user=requireLogin(); if(!user) return; if(!hasSettingsZoneAccess(user)){location.href='dashboard.html';return;} setPortalMode('settings'); renderFilters(); await loadRows();
+      fillHeader(); user=requireLogin(); if(!user) return; if(!hasSettingsZoneAccess(user)){location.href='dashboard.html';return;} setPortalMode('settings'); await loadRows();
     }
     async function loadRows(){
       setMsg(msg,'讀取中...');
-      try{ const r=await api('getTeacherApplicationsAdmin',{userId:user.id,status:currentStatus}); if(!r.ok) throw new Error(r.message||'讀取失敗'); rows=r.rows||[]; renderRows(); setMsg(msg,''); }
+      try{ const r=await api('getTeacherApplicationsAdmin',{userId:user.id,status:'全部'}); if(!r.ok) throw new Error(r.message||'讀取失敗'); allRows=r.rows||[]; applyFilterAndRender(); setMsg(msg,''); }
       catch(e){ setMsg(msg,e.message||'讀取失敗',true); }
+    }
+    function applyFilterAndRender(){
+      rows = currentStatus==='全部' ? allRows.slice() : allRows.filter(x=>String(x.status||'待審核')===currentStatus);
+      renderFilters();
+      renderRows();
     }
     function renderRows(){
       qs('#rows').innerHTML = rows.length ? rows.map(r=>`<tr>
@@ -90,7 +107,7 @@
       qs('#detailCard').innerHTML=`
         <div class="detail-head"><div><h2>${esc(x.name||'應聘詳情')}</h2><div class="muted">${esc(x.applicationId||'')}｜${esc(x.submittedAt||'')}</div></div><span class="status-pill ${statusClass(x.status)}">${esc(x.status||'')}</span></div>
         <div class="detail-grid">
-          ${box('手機',x.phone)}${box('Email',x.email)}${box('居住縣市 / 區域',(x.city||'')+' '+(x.district||''))}${box('可授課地區',x.teachAreas)}${box('目前身分',x.currentStatus)}${box('主修樂器 / 專長',x.mainSkill)}${box('可教項目',x.teachItems)}${box('可教程度',x.teachLevels)}${box('教學年資',x.teachingYears)}${box('相關科系',x.relatedDepartment)}${box('兒童 / 團體課經驗','兒童：'+(x.childExperience||'')+'｜團體：'+(x.groupExperience||''))}${box('到府 / 線上 / 配合教材','到府：'+(x.homeTeaching||'')+'｜線上：'+(x.onlineTeaching||'')+'｜教材規範：'+(x.companyRules||''))}${box('可授課時段',x.availableTimes,true)}${box('教學經歷摘要',x.teachingSummary,true)}${box('演出 / 比賽 / 證照 / 其他經歷',x.performanceExperience,true)}${box('自我介紹',x.selfIntro,true)}${box('希望合作方式 / 期望鐘點費 / 可開始日期','合作方式：'+(x.cooperationType||'')+'\n鐘點費：'+(x.expectedHourlyPay||'')+'\n可開始：'+(x.availableStartDate||''),true)}
+          ${box('手機',x.phone)}${box('Email',x.email)}${box('居住縣市 / 區域',(x.city||'')+' '+(x.district||''))}${box('目前身分',x.currentStatus)}${box('主修樂器 / 專長',x.mainSkill)}${box('可教項目',x.teachItems)}${box('可教程度',x.teachLevels)}${box('教學年資',x.teachingYears)}${box('相關科系',x.relatedDepartment)}${box('兒童 / 團體課經驗','兒童：'+(x.childExperience||'')+'｜團體：'+(x.groupExperience||''))}${box('到府 / 線上 / 配合教材','到府：'+(x.homeTeaching||'')+'｜線上：'+(x.onlineTeaching||'')+'｜教材規範：'+(x.companyRules||''))}${box('期望鐘點費',x.expectedHourlyPay)}${box('可授課時段',x.availableTimes,true)}${box('教學經歷摘要',x.teachingSummary,true)}${box('演出 / 比賽 / 證照 / 其他經歷',x.performanceExperience,true)}${box('自我介紹',x.selfIntro,true)}
           <div class="info-box full"><div class="info-label">履歷附件</div>${makeLinks(x.resumeAttachmentLinks,'查看履歷')}</div>
           <div class="info-box full"><div class="info-label">補充附件</div>${makeLinks(x.extraAttachmentLinks,'查看附件')}</div>
           <div class="info-box full"><div class="info-label">圖片附件</div>${makeLinks(x.imageAttachmentLinks,'查看圖片')}</div>
