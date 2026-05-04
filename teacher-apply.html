@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>應聘履歷投遞</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .apply-shell{max-width:980px;margin:0 auto;padding:18px 0 34px}
+    .apply-head{padding:22px 22px;border:1px solid var(--line);border-radius:26px;background:#fff;box-shadow:0 12px 30px rgba(15,23,42,.04);margin-bottom:14px;text-align:center}
+    .apply-head h1{margin:0;font-size:30px;color:#18314a;line-height:1.2}
+    .apply-head p{margin:10px 0 0;color:#5f7086;line-height:1.7;font-weight:700}
+    .section-card{background:#fff;border:1px solid var(--line);border-radius:24px;padding:20px;margin-bottom:14px;box-shadow:0 12px 30px rgba(15,23,42,.035)}
+    .section-title{margin:0 0 14px;font-size:22px;color:#18314a;font-weight:900;line-height:1.2}
+    .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+    .field.full{grid-column:1 / -1}
+    .field label{font-weight:900;color:#24384f}
+    textarea{min-height:108px;resize:vertical}
+    .check-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:8px}
+    .check-pill{border:1px solid var(--line);background:#f8fafc;border-radius:16px;padding:10px 12px;display:flex;align-items:center;gap:8px;font-weight:800;color:#374151;line-height:1.35}
+    .check-pill input{width:auto;margin:0}
+    .help{font-size:13px;color:#64748b;line-height:1.7;margin-top:6px;font-weight:700}
+    .required{color:#dc2626;margin-left:3px}
+    .upload-box{border:1px dashed #cbd5e1;background:#f8fafc;border-radius:18px;padding:12px}
+    .upload-box input{background:#fff}
+    .file-note{font-size:13px;color:#64748b;margin-top:8px;line-height:1.7}
+    .submit-row{display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;margin-top:16px}
+    .submit-row .btn{min-width:180px}
+    .top-link{display:inline-flex;text-decoration:none;align-items:center;justify-content:center;margin-top:12px;color:#1f7a5a;font-weight:900}
+    .message{white-space:pre-wrap}
+    @media(max-width:720px){.apply-shell{padding:10px 0 28px}.apply-head{border-radius:22px;padding:20px 16px}.apply-head h1{font-size:26px}.section-card{padding:18px 14px;border-radius:22px}.form-grid{grid-template-columns:1fr}.check-grid{grid-template-columns:1fr 1fr}.section-title{font-size:20px}}
+    @media(max-width:430px){.check-grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="container apply-shell">
+    <section class="apply-head">
+      <h1>應聘履歷投遞</h1>
+      <p>請填寫基本資料、教學專長與作品連結。影片請提供連結，履歷 PDF / Word 與圖片可直接上傳。</p>
+      <a class="top-link" href="index.html">返回登入頁</a>
+    </section>
+
+    <div id="msg" class="message"></div>
+
+    <form id="applyForm">
+      <section class="section-card">
+        <h2 class="section-title">一、基本資料</h2>
+        <div class="form-grid">
+          <div class="field"><label>姓名<span class="required">*</span></label><input id="name" required></div>
+          <div class="field"><label>手機<span class="required">*</span></label><input id="phone" required inputmode="tel"></div>
+          <div class="field"><label>Email<span class="required">*</span></label><input id="email" type="email" required></div>
+          <div class="field"><label>目前身分</label><input id="currentStatus" placeholder="音樂老師、學生、自由工作者、上班族、其他"></div>
+          <div class="field"><label>居住縣市<span class="required">*</span></label><input id="city" required placeholder="例如：台中市"></div>
+          <div class="field"><label>居住區域</label><input id="district" placeholder="例如：南屯區"></div>
+          <div class="field full"><label>可授課地區<span class="required">*</span></label><input id="teachAreas" required placeholder="例如：台中市區、南屯、西屯、線上"></div>
+        </div>
+      </section>
+
+      <section class="section-card">
+        <h2 class="section-title">二、教學專長</h2>
+        <div class="form-grid">
+          <div class="field"><label>主修樂器 / 專長項目<span class="required">*</span></label><input id="mainSkill" required placeholder="例如：鋼琴、吉他、爵士鼓"></div>
+          <div class="field"><label>可教項目<span class="required">*</span></label><input id="teachItems" required placeholder="可填多項，例如：鋼琴、樂理、視唱聽寫"></div>
+          <div class="field"><label>可教程度<span class="required">*</span></label><input id="teachLevels" required placeholder="初學、初中階、中高階、檢定、比賽、升學"></div>
+          <div class="field"><label>教學年資<span class="required">*</span></label><input id="teachingYears" required placeholder="例如：3 年、5 年以上"></div>
+          <div class="field"><label>是否有兒童教學經驗<span class="required">*</span></label><select id="childExperience" required><option value="">請選擇</option><option>是</option><option>否</option></select></div>
+          <div class="field"><label>是否有團體課經驗<span class="required">*</span></label><select id="groupExperience" required><option value="">請選擇</option><option>是</option><option>否</option></select></div>
+          <div class="field"><label>是否可到府教學<span class="required">*</span></label><select id="homeTeaching" required><option value="">請選擇</option><option>是</option><option>否</option></select></div>
+          <div class="field"><label>是否可線上教學<span class="required">*</span></label><select id="onlineTeaching" required><option value="">請選擇</option><option>是</option><option>否</option></select></div>
+          <div class="field"><label>是否可配合公司教材 / 規範<span class="required">*</span></label><select id="companyRules" required><option value="">請選擇</option><option>是</option><option>否</option></select></div>
+          <div class="field full">
+            <label>可授課時段<span class="required">*</span></label>
+            <div class="check-grid" data-check-group="availableTimes">
+              <label class="check-pill"><input type="checkbox" value="平日白天">平日白天</label>
+              <label class="check-pill"><input type="checkbox" value="平日晚上">平日晚上</label>
+              <label class="check-pill"><input type="checkbox" value="週六">週六</label>
+              <label class="check-pill"><input type="checkbox" value="週日">週日</label>
+              <label class="check-pill"><input type="checkbox" value="寒暑假">寒暑假</label>
+              <label class="check-pill"><input type="checkbox" value="其他可討論">其他可討論</label>
+            </div>
+            <div class="help">至少勾選一個。</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section-card">
+        <h2 class="section-title">三、學經歷與自我介紹</h2>
+        <div class="form-grid">
+          <div class="field"><label>相關科系</label><input id="relatedDepartment" placeholder="例如：音樂系、流行音樂系、音樂教育系"></div>
+          <div class="field"><label>希望合作方式<span class="required">*</span></label><input id="cooperationType" required placeholder="長期配合、短期代課、活動演出、其他"></div>
+          <div class="field"><label>期望鐘點費</label><input id="expectedHourlyPay" placeholder="例如：800-1200 / 依課程討論"></div>
+          <div class="field"><label>可開始配合日期</label><input id="availableStartDate" type="date"></div>
+          <div class="field full"><label>教學經歷摘要<span class="required">*</span></label><textarea id="teachingSummary" required placeholder="請簡述曾教過哪些學生、在哪些單位、教學多久。"></textarea></div>
+          <div class="field full"><label>演出 / 比賽 / 證照 / 其他經歷</label><textarea id="performanceExperience" placeholder="有相關演出、比賽、證照或其他經歷可填寫。"></textarea></div>
+          <div class="field full"><label>自我介紹<span class="required">*</span></label><textarea id="selfIntro" required placeholder="請簡單介紹你的教學風格、專長與想配合的方向。"></textarea></div>
+        </div>
+      </section>
+
+      <section class="section-card">
+        <h2 class="section-title">四、履歷、附件與圖片上傳</h2>
+        <div class="form-grid">
+          <div class="field upload-box"><label>履歷附件（PDF / Word）</label><input id="resumeFile" type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"><div class="file-note">建議上傳 PDF 或 Word，單一檔案 20MB 以下。</div></div>
+          <div class="field upload-box"><label>補充附件（PDF / Word）</label><input id="extraFile" type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"><div class="file-note">例如補充履歷、證照文件。</div></div>
+          <div class="field full upload-box"><label>圖片附件（最多 3 張）</label><input id="imageFiles" type="file" multiple accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"><div class="file-note">可上傳演出照、證照照片、作品圖片；單張 20MB 以下，最多 3 張。</div></div>
+        </div>
+      </section>
+
+      <section class="section-card">
+        <h2 class="section-title">五、表演影片 / 作品連結</h2>
+        <div class="form-grid">
+          <div class="field full"><label>表演影片連結 1<span class="required">*</span></label><input id="videoLink1" required placeholder="YouTube / Google Drive / Facebook / Instagram 皆可"></div>
+          <div class="field full"><label>表演影片連結 2</label><input id="videoLink2" placeholder="其他作品連結"></div>
+          <div class="field full"><label>表演影片連結 3</label><input id="videoLink3" placeholder="其他作品連結"></div>
+          <div class="field full"><label>個人網站 / 社群 / 作品集連結</label><input id="portfolioLink" placeholder="IG、FB、YouTube 頻道、個人網站等"></div>
+          <div class="field full"><label>其他補充連結</label><input id="otherLink" placeholder="其他想讓我們看的資料"></div>
+          <div class="field full"><div class="help">請至少提供一個可以觀看你實際演奏、演出、教學或表演成果的影片連結，方便我們了解你的程度與風格。影片請提供連結，不開放直接上傳影片檔。</div></div>
+        </div>
+      </section>
+
+      <section class="section-card">
+        <h2 class="section-title">六、同意與送出</h2>
+        <div class="field full"><label class="check-pill"><input id="agreeData" type="checkbox" required> 我同意資料僅供柚子樂器應聘審核使用<span class="required">*</span></label></div>
+        <div class="field full"><label class="check-pill"><input id="agreeContact" type="checkbox" required> 我同意柚子樂器透過電話、Email 或 LINE 與我聯絡<span class="required">*</span></label></div>
+        <div class="field full"><label>應聘者備註</label><textarea id="applicantNote" placeholder="其他想補充的內容。"></textarea></div>
+        <div class="submit-row">
+          <button id="submitBtn" type="submit" class="btn">送出應聘履歷</button>
+          <a class="btn secondary" href="index.html">返回登入頁</a>
+        </div>
+      </section>
+    </form>
+  </div>
+
+  <script src="config.js?v=20260504_apply1"></script>
+  <script src="app.js?v=20260504_apply1"></script>
+  <script>
+    const msg = qs('#msg');
+    const MAX_FILE_BYTES = 20 * 1024 * 1024;
+    function valueOf(id){ return (qs('#'+id)?.value || '').trim(); }
+    function checkedValues(group){ return Array.from(document.querySelectorAll('[data-check-group="'+group+'"] input:checked')).map(x=>x.value).join('、'); }
+    function fileList(id){ return Array.from(qs('#'+id)?.files || []); }
+    function validateFiles(){
+      const resume = fileList('resumeFile');
+      const extra = fileList('extraFile');
+      const images = fileList('imageFiles');
+      if(images.length > 3) throw new Error('圖片附件最多 3 張。');
+      [...resume, ...extra, ...images].forEach(file => {
+        if(file.size > MAX_FILE_BYTES) throw new Error(file.name + ' 超過 20MB，請壓縮後再上傳。');
+      });
+    }
+    async function uploadGroup(files, folder, label){
+      if(!files.length) return [];
+      setMsg(msg, label + ' 上傳中...');
+      const results = await uploadFilesToCloudinary(files, {
+        folder,
+        onItemProgress: info => {
+          const pct = Math.round((info.ratio || 0) * 100);
+          setMsg(msg, label + ' 上傳中：' + (info.index + 1) + '/' + info.total + '｜' + pct + '%');
+        }
+      });
+      return results.map(r => cloudinaryAssetFromResponse(r).url).filter(Boolean);
+    }
+    async function uploadAttachments(){
+      validateFiles();
+      const stamp = new Date().toISOString().slice(0,10).replace(/-/g,'');
+      const folder = 'teacher-applications/' + stamp;
+      const resumeUrls = await uploadGroup(fileList('resumeFile'), folder + '/resume', '履歷附件');
+      const extraUrls = await uploadGroup(fileList('extraFile'), folder + '/extra', '補充附件');
+      const imageUrls = await uploadGroup(fileList('imageFiles'), folder + '/images', '圖片附件');
+      return { resumeUrls, extraUrls, imageUrls };
+    }
+    function buildPayload(uploads){
+      return {
+        name:valueOf('name'), phone:valueOf('phone'), email:valueOf('email'),
+        city:valueOf('city'), district:valueOf('district'), teachAreas:valueOf('teachAreas'), currentStatus:valueOf('currentStatus'),
+        mainSkill:valueOf('mainSkill'), teachItems:valueOf('teachItems'), teachLevels:valueOf('teachLevels'), teachingYears:valueOf('teachingYears'),
+        childExperience:valueOf('childExperience'), groupExperience:valueOf('groupExperience'), homeTeaching:valueOf('homeTeaching'), onlineTeaching:valueOf('onlineTeaching'), companyRules:valueOf('companyRules'),
+        availableTimes:checkedValues('availableTimes'), relatedDepartment:valueOf('relatedDepartment'), teachingSummary:valueOf('teachingSummary'),
+        performanceExperience:valueOf('performanceExperience'), selfIntro:valueOf('selfIntro'), cooperationType:valueOf('cooperationType'), expectedHourlyPay:valueOf('expectedHourlyPay'), availableStartDate:valueOf('availableStartDate'),
+        resumeAttachmentLinks:(uploads.resumeUrls||[]).join('\n'), extraAttachmentLinks:(uploads.extraUrls||[]).join('\n'), imageAttachmentLinks:(uploads.imageUrls||[]).join('\n'),
+        videoLink1:valueOf('videoLink1'), videoLink2:valueOf('videoLink2'), videoLink3:valueOf('videoLink3'), portfolioLink:valueOf('portfolioLink'), otherLink:valueOf('otherLink'),
+        agreeData:qs('#agreeData').checked ? '是' : '否', agreeContact:qs('#agreeContact').checked ? '是' : '否', applicantNote:valueOf('applicantNote')
+      };
+    }
+    qs('#applyForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = qs('#submitBtn');
+      setMsg(msg, '');
+      if(!checkedValues('availableTimes')){ setMsg(msg, '請至少勾選一個可授課時段。', true); return; }
+      btn.disabled = true;
+      try{
+        const uploads = await uploadAttachments();
+        setMsg(msg, '資料送出中...');
+        const r = await api('submitTeacherApplication', buildPayload(uploads));
+        if(!r.ok) throw new Error(r.message || '送出失敗');
+        setMsg(msg, r.message || '應聘履歷已送出，我們會於審核後聯繫你。');
+        qs('#applyForm').reset();
+        window.scrollTo({top:0, behavior:'smooth'});
+      }catch(err){
+        setMsg(msg, err.message || '送出失敗，請稍後再試。', true);
+      }finally{
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

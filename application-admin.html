@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>應聘管理</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .admin-shell{max-width:1180px;margin:0 auto;padding:18px 0 34px}
+    .top-card{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:18px 20px;border:1px solid var(--line);border-radius:24px;background:#fff;box-shadow:0 12px 30px rgba(15,23,42,.04);margin-bottom:14px}
+    .top-card h1{margin:0;font-size:28px;color:#18314a;line-height:1.2}
+    .filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+    .filter-btn{border:1px solid var(--line);background:#fff;border-radius:999px;padding:9px 13px;font-weight:900;color:#374151;cursor:pointer}
+    .filter-btn.active{background:#1f7a5a;color:#fff;border-color:#1f7a5a}
+    .table-card,.detail-card{background:#fff;border:1px solid var(--line);border-radius:24px;padding:16px;box-shadow:0 12px 30px rgba(15,23,42,.035);margin-bottom:14px}
+    .responsive-table{overflow:auto}
+    table{width:100%;border-collapse:collapse;min-width:900px}
+    th,td{border-bottom:1px solid #e5e7eb;padding:11px 9px;text-align:left;vertical-align:top;font-size:14px;line-height:1.45}
+    th{color:#18314a;font-weight:900;background:#f8fafc;white-space:nowrap}
+    td .mini{font-size:12px;color:#64748b;margin-top:4px}
+    .status-pill{display:inline-flex;border-radius:999px;padding:5px 10px;font-size:12px;font-weight:900;background:#eef2f6;color:#475569;white-space:nowrap}
+    .status-pill.ok{background:#e8f7ef;color:#1f7a5a}.status-pill.no{background:#fef2f2;color:#b42318}.status-pill.wait{background:#fff7ed;color:#c2410c}
+    .small-btn{border:none;border-radius:12px;background:#1f7a5a;color:#fff;font-weight:900;padding:8px 11px;cursor:pointer;white-space:nowrap}
+    .small-btn.secondary{background:#eef2f6;color:#24384f}.small-btn.danger{background:#b42318;color:#fff}
+    .detail-card.hidden{display:none}
+    .detail-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;margin-bottom:12px}
+    .detail-head h2{margin:0;color:#18314a;font-size:24px}
+    .detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+    .info-box{border:1px solid #e5e7eb;border-radius:18px;padding:12px;background:#f8fafc;line-height:1.7}
+    .info-box.full{grid-column:1/-1}.info-label{font-size:12px;color:#64748b;font-weight:900}.info-value{white-space:pre-wrap;font-weight:800;color:#24384f;word-break:break-word}
+    .link-list{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}.link-list a{display:inline-flex;background:#1f7a5a;color:#fff;text-decoration:none;border-radius:12px;padding:8px 10px;font-weight:900;font-size:13px}
+    textarea{min-height:110px;resize:vertical}.action-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.message{white-space:pre-wrap}
+    @media(max-width:720px){.admin-shell{padding:10px 0 28px}.top-card h1{font-size:25px}.detail-grid{grid-template-columns:1fr}.table-card,.detail-card,.top-card{border-radius:22px;padding:14px}.filters{gap:7px}.filter-btn{padding:8px 11px;font-size:13px}}
+  </style>
+</head>
+<body onload="init()">
+  <div class="container admin-shell">
+    <section class="top-card">
+      <div><h1>應聘管理</h1><div class="muted">查看應聘履歷、作品連結與附件，並寄送審核通知。</div></div>
+      <div class="action-row"><a class="btn secondary" href="settings.html">返回管理首頁</a><button class="btn secondary" type="button" onclick="logout()">登出</button></div>
+    </section>
+    <div id="msg" class="message"></div>
+    <div class="filters" id="filters"></div>
+    <section class="table-card">
+      <div class="responsive-table"><table><thead><tr><th>送出時間</th><th>狀態</th><th>姓名 / 聯絡</th><th>主修樂器</th><th>可教項目</th><th>相關科系</th><th>教學年資</th><th>操作</th></tr></thead><tbody id="rows"></tbody></table></div>
+    </section>
+    <section id="detailCard" class="detail-card hidden"></section>
+  </div>
+  <script src="config.js?v=20260504_apply1"></script>
+  <script src="app.js?v=20260504_apply1"></script>
+  <script>
+    const msg=qs('#msg');
+    let user=null, currentStatus='全部', rows=[], current=null;
+    const statuses=['全部','待審核','已同意','未通過','封存'];
+    function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+    function nl(v){return esc(v).replace(/\n/g,'<br>');}
+    function statusClass(s){s=String(s||''); if(s==='已同意') return 'ok'; if(s==='未通過') return 'no'; if(s==='待審核') return 'wait'; return '';}
+    function makeLinks(text, prefix){
+      const list=String(text||'').split(/\n+/).map(x=>x.trim()).filter(Boolean);
+      if(!list.length) return '<span class="muted">無</span>';
+      return '<div class="link-list">'+list.map((url,i)=>'<a href="'+esc(url)+'" target="_blank" rel="noopener">'+esc(prefix||'查看')+(list.length>1?' '+(i+1):'')+'</a>').join('')+'</div>';
+    }
+    function renderFilters(){qs('#filters').innerHTML=statuses.map(s=>'<button class="filter-btn '+(s===currentStatus?'active':'')+'" onclick="setFilter(\''+s+'\')">'+s+'</button>').join('');}
+    function setFilter(s){currentStatus=s; renderFilters(); loadRows();}
+    async function init(){
+      fillHeader(); user=requireLogin(); if(!user) return; if(!hasSettingsZoneAccess(user)){location.href='dashboard.html';return;} setPortalMode('settings'); renderFilters(); await loadRows();
+    }
+    async function loadRows(){
+      setMsg(msg,'讀取中...');
+      try{ const r=await api('getTeacherApplicationsAdmin',{userId:user.id,status:currentStatus}); if(!r.ok) throw new Error(r.message||'讀取失敗'); rows=r.rows||[]; renderRows(); setMsg(msg,''); }
+      catch(e){ setMsg(msg,e.message||'讀取失敗',true); }
+    }
+    function renderRows(){
+      qs('#rows').innerHTML = rows.length ? rows.map(r=>`<tr>
+        <td>${esc(r.submittedAt||'')}</td><td><span class="status-pill ${statusClass(r.status)}">${esc(r.status||'')}</span></td>
+        <td><strong>${esc(r.name||'')}</strong><div class="mini">${esc(r.phone||'')}</div><div class="mini">${esc(r.email||'')}</div></td>
+        <td>${esc(r.mainSkill||'')}</td><td>${esc(r.teachItems||'')}</td><td>${esc(r.relatedDepartment||'')}</td><td>${esc(r.teachingYears||'')}</td>
+        <td><button class="small-btn" onclick="openDetail('${esc(r.applicationId)}')">查看</button></td>
+      </tr>`).join('') : '<tr><td colspan="8">目前沒有資料。</td></tr>';
+    }
+    async function openDetail(id){
+      setMsg(msg,'讀取詳情中...');
+      try{ const r=await api('getTeacherApplicationDetail',{userId:user.id,applicationId:id}); if(!r.ok) throw new Error(r.message||'讀取失敗'); current=r.item; renderDetail(); setMsg(msg,''); window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'}); }
+      catch(e){ setMsg(msg,e.message||'讀取失敗',true); }
+    }
+    function box(label,value,full=false){return `<div class="info-box ${full?'full':''}"><div class="info-label">${esc(label)}</div><div class="info-value">${nl(value||'')}</div></div>`;}
+    function renderDetail(){
+      const x=current||{};
+      qs('#detailCard').classList.remove('hidden');
+      qs('#detailCard').innerHTML=`
+        <div class="detail-head"><div><h2>${esc(x.name||'應聘詳情')}</h2><div class="muted">${esc(x.applicationId||'')}｜${esc(x.submittedAt||'')}</div></div><span class="status-pill ${statusClass(x.status)}">${esc(x.status||'')}</span></div>
+        <div class="detail-grid">
+          ${box('手機',x.phone)}${box('Email',x.email)}${box('居住縣市 / 區域',(x.city||'')+' '+(x.district||''))}${box('可授課地區',x.teachAreas)}${box('目前身分',x.currentStatus)}${box('主修樂器 / 專長',x.mainSkill)}${box('可教項目',x.teachItems)}${box('可教程度',x.teachLevels)}${box('教學年資',x.teachingYears)}${box('相關科系',x.relatedDepartment)}${box('兒童 / 團體課經驗','兒童：'+(x.childExperience||'')+'｜團體：'+(x.groupExperience||''))}${box('到府 / 線上 / 配合教材','到府：'+(x.homeTeaching||'')+'｜線上：'+(x.onlineTeaching||'')+'｜教材規範：'+(x.companyRules||''))}${box('可授課時段',x.availableTimes,true)}${box('教學經歷摘要',x.teachingSummary,true)}${box('演出 / 比賽 / 證照 / 其他經歷',x.performanceExperience,true)}${box('自我介紹',x.selfIntro,true)}${box('希望合作方式 / 期望鐘點費 / 可開始日期','合作方式：'+(x.cooperationType||'')+'\n鐘點費：'+(x.expectedHourlyPay||'')+'\n可開始：'+(x.availableStartDate||''),true)}
+          <div class="info-box full"><div class="info-label">履歷附件</div>${makeLinks(x.resumeAttachmentLinks,'查看履歷')}</div>
+          <div class="info-box full"><div class="info-label">補充附件</div>${makeLinks(x.extraAttachmentLinks,'查看附件')}</div>
+          <div class="info-box full"><div class="info-label">圖片附件</div>${makeLinks(x.imageAttachmentLinks,'查看圖片')}</div>
+          <div class="info-box full"><div class="info-label">表演影片 / 作品連結</div>${makeLinks([x.videoLink1,x.videoLink2,x.videoLink3,x.portfolioLink,x.otherLink].filter(Boolean).join('\n'),'開啟連結')}</div>
+          ${box('應聘者備註',x.applicantNote,true)}
+          <div class="info-box full"><div class="info-label">管理者備註</div><textarea id="adminNote">${esc(x.adminNote||'')}</textarea><div class="action-row"><button class="small-btn secondary" onclick="saveNote()">儲存備註</button></div></div>
+          ${box('最近寄信紀錄','類型：'+(x.lastEmailType||'')+'\n時間：'+(x.lastEmailAt||'')+'\n人員：'+(x.lastEmailByName||''),true)}
+        </div>
+        <div class="action-row">
+          <button class="small-btn" onclick="sendDecision('accept')">同意並寄信</button>
+          <button class="small-btn danger" onclick="sendDecision('reject')">未通過並寄信</button>
+          <button class="small-btn secondary" onclick="setStatusOnly('封存')">封存</button>
+          <button class="small-btn secondary" onclick="setStatusOnly('待審核')">改回待審核</button>
+        </div>`;
+    }
+    async function saveNote(){
+      if(!current) return;
+      try{ const r=await api('updateTeacherApplicationAdminNote',{userId:user.id,applicationId:current.applicationId,adminNote:qs('#adminNote').value}); if(!r.ok) throw new Error(r.message||'儲存失敗'); setMsg(msg,'管理備註已儲存。'); current.adminNote=qs('#adminNote').value; await loadRows(); }
+      catch(e){ setMsg(msg,e.message||'儲存失敗',true); }
+    }
+    async function sendDecision(type){
+      if(!current) return;
+      const label=type==='accept'?'同意通知':'未通過通知';
+      if(!confirm('確定要寄送「'+label+'」給 '+(current.name||'應聘者')+'？')) return;
+      try{ const r=await api('sendTeacherApplicationEmail',{userId:user.id,applicationId:current.applicationId,emailType:type}); if(!r.ok) throw new Error(r.message||'寄送失敗'); setMsg(msg,r.message||'信件已寄出。'); await loadRows(); await openDetail(current.applicationId); }
+      catch(e){ setMsg(msg,e.message||'寄送失敗',true); }
+    }
+    async function setStatusOnly(status){
+      if(!current) return;
+      try{ const r=await api('updateTeacherApplicationStatus',{userId:user.id,applicationId:current.applicationId,status}); if(!r.ok) throw new Error(r.message||'更新失敗'); setMsg(msg,'狀態已更新。'); await loadRows(); await openDetail(current.applicationId); }
+      catch(e){ setMsg(msg,e.message||'更新失敗',true); }
+    }
+  </script>
+</body>
+</html>
