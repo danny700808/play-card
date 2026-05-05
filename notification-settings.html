@@ -1151,5 +1151,58 @@ async function saveSettings(){
     if(btn){btn.disabled=false;btn.textContent='儲存通知 / 提醒設定';}
   }
 }
-document.addEventListener('DOMContentLoaded',()=>{ensureNotifyEventCodes();refreshAdvancedVisibility();loadSettings();loadTimeRules();});
+
+function applyNotificationUiSimplifyV14(){
+  const hideNames = new Set([
+    '外聘老師合約中段提醒','外聘老師合約截止提醒','外聘老師合約逾期未簽','外聘老師合約 PDF 重新寄送',
+    '老師詢問公司優惠商品','老師送出官網商品詢價','主管確認可取貨','公司新增優惠商品','公司更新優惠商品','商品下架'
+  ]);
+  document.querySelectorAll('.notify-card').forEach(card=>{
+    const name = (card.dataset.eventName || '').trim();
+    if(hideNames.has(name)) card.remove();
+  });
+  // 註冊申請送出：只保留主管 LINE / Email
+  const reg = Array.from(document.querySelectorAll('.notify-card')).find(c=>(c.dataset.eventName||'')==='註冊申請送出');
+  if(reg){
+    reg.querySelectorAll('[data-field="targetLineEnabled"],[data-field="targetEmailEnabled"]').forEach(input=>input.closest('label')?.remove());
+    reg.querySelectorAll('[data-field="managerLineEnabled"],[data-field="managerEmailEnabled"]').forEach(input=>input.checked=true);
+    const desc = reg.querySelector('.event-desc'); if(desc) desc.textContent='新帳號註冊送出後，只通知主管 LINE 與主管 Email。';
+  }
+  // 應聘送出：只保留主管 LINE / Email
+  const appSubmit = Array.from(document.querySelectorAll('.notify-card')).find(c=>(c.dataset.eventName||'')==='應聘者送出履歷');
+  if(appSubmit){
+    appSubmit.dataset.eventCode='teacher_application_submitted'; appSubmit.dataset.eventKey='teacher_application_submitted';
+    appSubmit.querySelectorAll('[data-field="targetLineEnabled"],[data-field="targetEmailEnabled"]').forEach(input=>input.closest('label')?.remove());
+    appSubmit.querySelectorAll('[data-field="managerLineEnabled"],[data-field="managerEmailEnabled"]').forEach(input=>input.checked=true);
+  }
+  // 應聘審核結果：只保留當事人 Email，讓「同意 / 未通過」是否寄出由這裡控制
+  if(!Array.from(document.querySelectorAll('.notify-card')).some(c=>(c.dataset.eventName||'')==='應聘審核結果')){
+    const section = document.querySelector('#application .notify-grid') || document.querySelector('#application');
+    if(section){
+      const article = document.createElement('article');
+      article.className='notify-card'; article.dataset.type='result'; article.dataset.eventKey='teacher_application_result'; article.dataset.eventCode='teacher_application_result'; article.dataset.category='應聘履歷'; article.dataset.eventName='應聘審核結果';
+      article.innerHTML='<div class="notify-main"><div class="event-head"><div><h3 class="event-title">應聘審核結果</h3><p class="event-desc">管理者按同意或未通過時，是否寄 Email 給應聘者。</p></div><label class="switch"><input type="checkbox" data-field="enabled" checked>啟用</label></div><div class="channels"><label class="channel">通知當事人 Email <input type="checkbox" data-field="targetEmailEnabled" checked></label></div></div><details><summary>進階設定</summary><div class="advanced"><div class="stage-row"><label class="stage"><div>事件發生時通知<small>同意或未通過時依此設定寄信</small></div><input type="checkbox" data-field="publishEnabled" checked></label></div></div></details>';
+      section.appendChild(article);
+    }
+  }
+  // 合約事件簡化命名：保留合約待簽提醒、完成簽署通知主管
+  document.querySelectorAll('.notify-card').forEach(card=>{
+    const name=(card.dataset.eventName||'').trim();
+    if(name==='外聘老師合約開放簽署'){
+      card.dataset.eventName='外聘老師合約待簽提醒'; card.dataset.eventCode='teacher_contract_notice'; card.dataset.eventKey='teacher_contract_notice';
+      const title=card.querySelector('.event-title'); if(title) title.textContent='外聘老師合約待簽提醒';
+      const desc=card.querySelector('.event-desc'); if(desc) desc.textContent='合約發出後提醒老師簽署。';
+    }
+    if(name==='外聘老師完成簽署'){
+      card.dataset.eventName='外聘老師合約完成簽署通知主管'; card.dataset.eventCode='teacher_contract_signed'; card.dataset.eventKey='teacher_contract_signed';
+      const title=card.querySelector('.event-title'); if(title) title.textContent='外聘老師合約完成簽署通知主管';
+      card.querySelectorAll('[data-field="targetLineEnabled"],[data-field="targetEmailEnabled"]').forEach(input=>input.closest('label')?.remove());
+      card.querySelectorAll('[data-field="managerLineEnabled"],[data-field="managerEmailEnabled"]').forEach(input=>input.checked=true);
+    }
+  });
+  // 更新每區數量
+  document.querySelectorAll('.section').forEach(sec=>{ const c=sec.querySelectorAll('.notify-card').length; const s=sec.querySelector('.section-count'); if(s) s.textContent=c+' 項'; });
+}
+
+document.addEventListener('DOMContentLoaded',()=>{ensureNotifyEventCodes();applyNotificationUiSimplifyV14();refreshAdvancedVisibility();loadSettings();loadTimeRules();});
 </script></body></html>

@@ -79,7 +79,7 @@
     <section id="reviewPanel" class="review-panel hidden">
       <div class="sub-head"><button class="small-btn secondary" type="button" onclick="showSection('home')">返回應聘管理</button></div>
       <section class="top-card review-title-card">
-        <div><h1>應聘履歷審核</h1><div class="muted">查看投遞資料、作品連結與附件，並寄送審核通知。</div></div>
+        <div><h1>應聘履歷審核</h1><div class="muted">查看投遞資料、作品連結與附件，並處理審核結果。</div></div>
       </section>
       <div class="filters" id="filters"></div>
       <section class="table-card">
@@ -158,18 +158,18 @@
       qs('#detailCard').innerHTML=`
         <div class="detail-head"><div><h2>${esc(x.name||'應聘詳情')}</h2><div class="muted">${esc(x.applicationId||'')}｜${esc(x.submittedAt||'')}</div></div><span class="status-pill ${statusClass(x.status)}">${esc(x.status||'')}</span></div>
         <div class="detail-grid">
-          ${box('手機',x.phone)}${box('Email',x.email)}${box('目前身分',x.currentStatus)}${box('居住縣市 / 區域',(x.city||'')+' '+(x.district||''))}${box('主修樂器 / 專長',x.mainSkill)}${box('可教項目',x.teachItems)}${box('可教程度',x.teachLevels)}${box('教學年資',x.teachingYears)}${box('相關科系',x.relatedDepartment)}${box('兒童教學經驗',x.childExperience)}${box('團體課經驗',x.groupExperience)}${box('期望鐘點費',x.expectedHourlyPay)}${box('可授課時段',x.availableTimes,true)}${box('教學經歷摘要',x.teachingSummary,true)}${box('演出 / 比賽 / 證照 / 其他經歷',x.performanceExperience,true)}${box('自我介紹',x.selfIntro,true)}
+          ${box('手機',x.phone)}${box('Email',x.email)}${box('目前身分',x.currentStatus)}${box('居住地址',x.city || x.district || '')}${box('主修樂器 / 專長',x.mainSkill)}${box('可教項目',x.teachItems)}${box('可教程度',x.teachLevels)}${box('教學年資',x.teachingYears)}${box('相關科系',x.relatedDepartment)}${box('可教學生類型',x.childExperience || x.groupExperience)}${box('期望鐘點費',x.expectedHourlyPay)}${box('可授課時段',x.availableTimes)}${box('教學經歷摘要',x.teachingSummary,true)}${box('演出 / 比賽 / 證照 / 其他經歷',x.performanceExperience,true)}${box('自我介紹',x.selfIntro,true)}
           <div class="info-box full"><div class="info-label">履歷附件</div>${makeLinks(x.resumeAttachmentLinks,'查看履歷')}</div>
           <div class="info-box full"><div class="info-label">補充附件</div>${makeLinks(x.extraAttachmentLinks,'查看附件')}</div>
           <div class="info-box full"><div class="info-label">圖片附件</div>${makeLinks(x.imageAttachmentLinks,'查看圖片')}</div>
           <div class="info-box full"><div class="info-label">表演影片 / 作品連結</div>${makeLinks([x.videoLink1,x.videoLink2,x.videoLink3,x.portfolioLink,x.otherLink].filter(Boolean).join('\n'),'開啟連結')}</div>
           ${box('應聘者備註',x.applicantNote,true)}
           <div class="info-box full"><div class="info-label">管理者備註</div><textarea id="adminNote">${esc(x.adminNote||'')}</textarea><div class="action-row"><button class="small-btn secondary" onclick="saveNote()">儲存備註</button></div></div>
-          ${box('最近寄信紀錄','類型：'+(x.lastEmailType||'')+'\n時間：'+(x.lastEmailAt||'')+'\n人員：'+(x.lastEmailByName||''),true)}
+          ${box('最近通知紀錄','類型：'+(x.lastEmailType||'')+'\n時間：'+(x.lastEmailAt||'')+'\n人員：'+(x.lastEmailByName||''),true)}
         </div>
         <div class="action-row">
-          <button class="small-btn" onclick="sendDecision('accept')">同意並寄信</button>
-          <button class="small-btn danger" onclick="sendDecision('reject')">未通過並寄信</button>
+          <button class="small-btn" onclick="sendDecision('accept')">同意</button>
+          <button class="small-btn danger" onclick="sendDecision('reject')">未通過</button>
           <button class="small-btn secondary" onclick="setStatusOnly('封存')">封存</button>
           <button class="small-btn secondary" onclick="setStatusOnly('待審核')">改回待審核</button>
         </div>`;
@@ -181,10 +181,11 @@
     }
     async function sendDecision(type){
       if(!current) return;
-      const label=type==='accept'?'同意通知':'未通過通知';
-      if(!confirm('確定要寄送「'+label+'」給 '+(current.name||'應聘者')+'？')) return;
-      try{ const r=await api('sendTeacherApplicationEmail',{userId:user.id,applicationId:current.applicationId,emailType:type}); if(!r.ok) throw new Error(r.message||'寄送失敗'); setMsg(msg,r.message||'信件已寄出。'); await loadRows(); await openDetail(current.applicationId); }
-      catch(e){ setMsg(msg,e.message||'寄送失敗',true); }
+      const label=type==='accept'?'同意':'未通過';
+      const nextStatus=type==='accept'?'已同意':'未通過';
+      if(!confirm('確定要將 '+(current.name||'應聘者')+' 設為「'+nextStatus+'」？通知是否寄出會依通知 / 提醒設定執行。')) return;
+      try{ const r=await api('updateTeacherApplicationStatus',{userId:user.id,applicationId:current.applicationId,status:nextStatus,sendResultNotice:true}); if(!r.ok) throw new Error(r.message||'更新失敗'); setMsg(msg,r.message||'狀態已更新。'); await loadRows(); await openDetail(current.applicationId); }
+      catch(e){ setMsg(msg,e.message||'更新失敗',true); }
     }
     async function setStatusOnly(status){
       if(!current) return;
