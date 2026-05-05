@@ -369,7 +369,7 @@
       try{
         const r=await api('getPendingCounts',{userId:user.id});
         const approval = sum_(r.registrationCount, r.leaveCount, r.clockCorrectionCount);
-        const teacher = sum_(r.contractCount, r.goodsInquiryCount);
+        const teacher = 0; // 外聘老師內層目前沒有對應細項數字，避免外層顯示來源不明的待辦數。
         const items = sum_(r.taskCount, r.routineCount);
         setBadge('badge-approval', approval);
         setBadge('badge-teacher', teacher);
