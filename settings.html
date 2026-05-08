@@ -353,8 +353,8 @@
       <a class="tile" href="quotation-contract-hub.html"><strong>估價單合約單</strong><span>估價與合約作業</span></a>
     </div>
   </div>
-  <script src="config.js?v=20260420group1"></script>
-  <script src="app.js?v=20260422linefix1"></script>
+  <script src="config.js?v=20260508frontendperf1"></script>
+  <script src="app.js?v=20260508frontendperf1"></script>
   <script>
     async function init(){
       fillHeader();
@@ -362,21 +362,74 @@
       if(!user) return;
       if(!hasSettingsZoneAccess(user)){location.href='dashboard.html';return;}
       setPortalMode('settings');
-      if(typeof renderCompactLineCard_==='function') await renderCompactLineCard_('#lineBindArea', user); else if(typeof renderLineBindPrompt_==='function') await renderLineBindPrompt_('#lineBindArea');
-      loadBadges(user);
+
+      // 先用本機快取補上徽章，讓管理首頁先顯示，不要卡在讀表。
+      applyBadgeCounts_(readCachedPendingCounts_(user));
+
+      // LINE 設定卡延後載入，不阻塞管理首頁主畫面。
+      scheduleIdle_(async()=>{
+        try{
+          if(typeof renderCompactLineCard_==='function') await renderCompactLineCard_('#lineBindArea', user);
+          else if(typeof renderLineBindPrompt_==='function') await renderLineBindPrompt_('#lineBindArea');
+        }catch(e){}
+      });
+
+      // 待處理數字延後更新；後端已經有快取，前端再避免卡第一屏。
+      scheduleIdle_(async()=>applyBadgeCounts_(await fetchPendingCountsFast_(user)));
     }
-    async function loadBadges(user){
+
+    function pendingCountsCacheKey_(user){ return 'pendingCounts:v3:settings:' + ((user && user.id) || 'guest'); }
+    function readCachedPendingCounts_(user){
+      try{ return JSON.parse(localStorage.getItem(pendingCountsCacheKey_(user)) || '{}') || {}; }catch(e){ return {}; }
+    }
+    function writeCachedPendingCounts_(user, data){
+      try{ localStorage.setItem(pendingCountsCacheKey_(user), JSON.stringify(Object.assign({__cachedAt:Date.now()}, data||{}))); }catch(e){}
+    }
+    function scheduleIdle_(fn){
+      if(window.requestIdleCallback) requestIdleCallback(fn,{timeout:900});
+      else setTimeout(fn, 80);
+    }
+    function normalizePendingCounts_(r){
+      r = r || {};
+      const counts = r.counts || r.summary || r.dashboard || r;
+      return Object.assign({}, r, counts, {
+        registrationCount: Number(counts.registrationCount || counts.pendingRegistrationCount || counts.registrations || 0) || 0,
+        leaveCount: Number(counts.leaveCount || counts.pendingLeaveCount || counts.leaveApprovalCount || 0) || 0,
+        clockCorrectionCount: Number(counts.clockCorrectionCount || counts.pendingClockCorrectionCount || counts.clockCorrection || 0) || 0,
+        contractCount: Number(counts.contractCount || counts.pendingContractCount || 0) || 0,
+        goodsInquiryCount: Number(counts.goodsInquiryCount || counts.pendingGoodsInquiryCount || 0) || 0,
+        taskCount: Number(counts.taskCount || counts.pendingTaskCount || counts.taskReviewCount || 0) || 0,
+        routineCount: Number(counts.routineCount || counts.pendingRoutineCount || counts.routineReviewCount || 0) || 0,
+        applicationCount: Number(counts.applicationCount || counts.pendingApplicationCount || counts.teacherApplicationCount || 0) || 0,
+        salaryCount: Number(counts.salaryCount || counts.pendingSalaryCount || 0) || 0
+      });
+    }
+    async function fetchPendingCountsFast_(user){
       try{
-        const r=await api('getPendingCounts',{userId:user.id});
-        const approval = sum_(r.registrationCount, r.leaveCount, r.clockCorrectionCount);
-        const teacher = 0; // 外聘老師內層目前沒有對應細項數字，避免外層顯示來源不明的待辦數。
-        const items = sum_(r.taskCount, r.routineCount);
-        setBadge('badge-approval', approval);
-        setBadge('badge-teacher', teacher);
-        setBadge('badge-application', r.applicationCount);
-        setBadge('badge-items', items);
-        setBadge('badge-salary', r.salaryCount);
-      }catch(err){}
+        let r = await api('getDashboardSummary',{userId:user.id, role:'admin'});
+        if(!r || r.ok === false) r = await api('getPendingCounts',{userId:user.id});
+        const data = normalizePendingCounts_(r);
+        writeCachedPendingCounts_(user, data);
+        return data;
+      }catch(err){
+        try{
+          const r = await api('getPendingCounts',{userId:user.id});
+          const data = normalizePendingCounts_(r);
+          writeCachedPendingCounts_(user, data);
+          return data;
+        }catch(e){ return readCachedPendingCounts_(user); }
+      }
+    }
+    function applyBadgeCounts_(r){
+      r = normalizePendingCounts_(r);
+      const approval = sum_(r.registrationCount, r.leaveCount, r.clockCorrectionCount);
+      const teacher = 0; // 外聘老師外層不顯示來源不明數字，內層頁再顯示細項。
+      const items = sum_(r.taskCount, r.routineCount);
+      setBadge('badge-approval', approval);
+      setBadge('badge-teacher', teacher);
+      setBadge('badge-application', r.applicationCount);
+      setBadge('badge-items', items);
+      setBadge('badge-salary', r.salaryCount);
     }
     function sum_(){ return Array.from(arguments).reduce((s,v)=>s+(Number(v||0)||0),0); }
     function setBadge(id, count){
