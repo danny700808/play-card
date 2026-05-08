@@ -30,24 +30,33 @@
 </div>
     </div>
   </div>
-  <script src="config.js?v=20260420group1"></script>
-  <script src="app.js?v=20260420group1"></script>
+  <script src="config.js?v=20260508frontendperf2"></script>
+  <script src="app.js?v=20260508frontendperf2"></script>
   <script>
+    
     async function init(){
       fillHeader();
       const user=requireLogin();
       if(!user) return;
       if(!hasSettingsZoneAccess(user)){location.href='dashboard.html';return;}
+
+      // 先吃管理首頁共用快取，讓中繼入口頁先顯示。
       applyBadgeCounts_(readCachedPendingCounts_(user));
+
+      // 待處理數字延後更新，不阻塞第一屏。
       scheduleIdle_(async()=>applyBadgeCounts_(await fetchPendingCountsFast_(user)));
     }
 
-    function pendingCountsCacheKey_(user){ return 'pendingCounts:v2:' + ((user && user.id) || 'guest'); }
+    function pendingCountsCacheKey_(user){ return 'pendingCounts:v3:settings:' + ((user && user.id) || 'guest'); }
     function readCachedPendingCounts_(user){
       try{ return JSON.parse(localStorage.getItem(pendingCountsCacheKey_(user)) || '{}') || {}; }catch(e){ return {}; }
     }
     function writeCachedPendingCounts_(user, data){
       try{ localStorage.setItem(pendingCountsCacheKey_(user), JSON.stringify(Object.assign({__cachedAt:Date.now()}, data||{}))); }catch(e){}
+    }
+    function scheduleIdle_(fn){
+      if(window.requestIdleCallback) requestIdleCallback(fn,{timeout:900});
+      else setTimeout(fn, 80);
     }
     function normalizePendingCounts_(r){
       r = r || {};
@@ -56,20 +65,17 @@
         registrationCount: Number(counts.registrationCount || counts.pendingRegistrationCount || counts.registrations || 0) || 0,
         leaveCount: Number(counts.leaveCount || counts.pendingLeaveCount || counts.leaveApprovalCount || 0) || 0,
         clockCorrectionCount: Number(counts.clockCorrectionCount || counts.pendingClockCorrectionCount || counts.clockCorrection || 0) || 0,
-        contractCount: Number(counts.contractCount || counts.pendingContractCount || 0) || 0,
-        goodsInquiryCount: Number(counts.goodsInquiryCount || counts.pendingGoodsInquiryCount || 0) || 0,
-        taskCount: Number(counts.taskCount || counts.pendingTaskCount || counts.taskReviewCount || 0) || 0,
-        routineCount: Number(counts.routineCount || counts.pendingRoutineCount || counts.routineReviewCount || 0) || 0,
+        contractCount: Number(counts.contractCount || counts.pendingContractCount || counts.contracts || 0) || 0,
+        goodsInquiryCount: Number(counts.goodsInquiryCount || counts.pendingGoodsInquiryCount || counts.goodsInquiries || 0) || 0,
+        taskCount: Number(counts.taskCount || counts.pendingTaskCount || counts.taskReviewCount || counts.tasks || 0) || 0,
+        routineCount: Number(counts.routineCount || counts.pendingRoutineCount || counts.routineReviewCount || counts.routines || 0) || 0,
+        applicationCount: Number(counts.applicationCount || counts.pendingApplicationCount || counts.teacherApplicationCount || counts.applications || 0) || 0,
         salaryCount: Number(counts.salaryCount || counts.pendingSalaryCount || 0) || 0
       });
     }
-    function scheduleIdle_(fn){
-      if(window.requestIdleCallback) requestIdleCallback(fn,{timeout:900});
-      else setTimeout(fn, 80);
-    }
     async function fetchPendingCountsFast_(user){
       try{
-        let r = await api('getDashboardSummary',{userId:user.id});
+        let r = await api('getDashboardSummary',{userId:user.id, role:'admin'});
         if(!r || r.ok === false) r = await api('getPendingCounts',{userId:user.id});
         const data = normalizePendingCounts_(r);
         writeCachedPendingCounts_(user, data);
@@ -83,15 +89,26 @@
         }catch(e){ return readCachedPendingCounts_(user); }
       }
     }
-
-    function applyBadgeCounts_(r){ r=normalizePendingCounts_(r); setBadge('badge-registration',r.registrationCount); setBadge('badge-clock',r.clockCorrectionCount); setBadge('badge-leave',r.leaveCount); }
     function setBadge(id, count){
       const el=document.getElementById(id);
       if(!el) return;
       const n=Number(count||0)||0;
-      el.textContent=n>0?String(n):'';
+      if(n>0){
+        el.textContent=n>99?'99+':String(n);
+        el.classList.remove('is-empty');
+      }else{
+        el.textContent='';
+        el.classList.add('is-empty');
+      }
     }
-    function sum_(){ return Array.from(arguments).reduce((s,v)=>s+(Number(v||0)||0),0); }
+
+    function applyBadgeCounts_(r){
+      r=normalizePendingCounts_(r);
+      setBadge('badge-registration',r.registrationCount);
+      setBadge('badge-clock',r.clockCorrectionCount);
+      setBadge('badge-leave',r.leaveCount);
+    }
+  
   </script>
 </body>
 </html>
