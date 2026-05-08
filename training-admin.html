@@ -186,6 +186,10 @@ function $(id){return document.getElementById(id)}
 function val(id){const el=$(id); return el?String(el.value||'').trim():''}
 function checked(id){const el=$(id); return !!(el&&el.checked)}
 function msg(text, ok=true){const m=$('msg'); if(!m)return; m.textContent=text; m.className='msg '+(ok?'ok':'err')}
+function scheduleIdle_(fn){
+  if(window.requestIdleCallback) requestIdleCallback(fn,{timeout:1200});
+  else setTimeout(fn, 180);
+}
 
 function renderTrainingDue(){const need=val('needComplete')==='yes'; const t=val('trainingDueType'); $('trainingDueDaysWrap').classList.toggle('hidden',!(need&&t==='days')); $('trainingDueDateWrap').classList.toggle('hidden',!(need&&t==='date')); $('trainingDueTimeWrap').classList.toggle('hidden',!(need&&t!=='none'));}
 async function submitTraining(){try{const payload={userId:userId(),title:val('trainingTitle'),category:val('trainingCategory'),description:val('trainingDesc'),status:val('trainingStatus'),priority:val('trainingPriority'),targets:{staff:checked('targetStaff'),parttime:checked('targetParttime'),external:checked('targetExternal'),manager:checked('targetManager')},needComplete:val('needComplete'),dueType:val('trainingDueType'),dueDays:val('trainingDueDays'),dueDate:val('trainingDueDate'),dueTime:val('trainingDueTime'),completeMode:val('completeMode'),videoLink:val('videoLink'),text:val('trainingText')}; const res=await api('saveTrainingItem',payload); if(!res.ok)throw new Error(res.message||'儲存失敗'); msg('教育訓練教材已儲存，通知將依萬用表設定處理。',true);}catch(e){msg(e.message,false)}}
@@ -347,6 +351,10 @@ async function loadAdminTrainingHistory(){
     box.innerHTML=rows.map(r=>`<div class="note" style="margin-bottom:8px"><b>${r.title||r.標題||'未命名教材'}</b><br>分類：${r.categoryName||''}　狀態：${r.enabled===false?'停用':'啟用'}<br>${r.description||r.說明||''}</div>`).join('');
   }catch(e){box.innerHTML='<div class="note">目前無法讀取教育訓練檔案。</div>';}
 }
-document.addEventListener('DOMContentLoaded',function(){setTimeout(loadAdminTrainingHistory,120);});
+document.addEventListener('DOMContentLoaded',function(){
+  const box=document.getElementById('adminTrainingHistory');
+  if(box) box.innerHTML='<div class="note">教育訓練清單稍後載入。</div>';
+  scheduleIdle_(loadAdminTrainingHistory);
+});
 
 </script></body></html>

@@ -68,8 +68,8 @@
       </details>
     </div>
 
-  <script src="config.js?v=20260413fix1"></script>
-  <script src="app.js?v=20260413fix1"></script>
+  <script src="config.js?v=20260508frontendperf5"></script>
+  <script src="app.js?v=20260508frontendperf5"></script>
   <script>
     let trainingData={categories:[],items:[]}; let activeCategory='';
 
@@ -130,6 +130,17 @@
       const categoryName = activeCategory ? ((trainingData.categories.find(x=>x.id===activeCategory)||{}).name||'') : '全部'; qs('#resultTag').textContent = kw ? ('搜尋') : (categoryName || '全部');
       qs('#resultList').innerHTML = rows.length ? rows.map(x=>`<div class="training-item"><div class="training-head"><div class="training-title-wrap"><span class="training-title-box">${esc(x.title)}</span><span class="tag">${esc(x.categoryName)}</span></div></div><div class="training-meta">${x.keywords?`<span class="attach-badge">關鍵字：${esc(x.keywords)}</span>`:''}${x.updatedAt?`<span class="attach-badge">更新：${esc(String(x.updatedAt).replace(/ GMT.*$/,''))}</span>`:''}</div>${x.description?`<div class="muted">${nl2br(x.description)}</div>`:''}<div class="link-row">${resourceBtns(x.videoUrl,'觀看影片')}${resourceBtns(x.docUrl,'查看文件 / 圖片')}${resourceBtns(x.audioUrl,'播放錄音')}</div></div>`).join('') : '<div class="empty-box">目前沒有符合條件的教材</div>';
     }
+    function scheduleIdle_(fn){
+      if(window.requestIdleCallback) requestIdleCallback(fn,{timeout:900});
+      else setTimeout(fn, 80);
+    }
+    function trainingMsg_(text, isErr){
+      const el=document.querySelector('#msg');
+      if(!el) return;
+      el.textContent = text || '';
+      el.className = isErr ? 'message error' : 'message';
+    }
+
     function init(){ setTimeout(()=>{if(typeof enforceHistoryDateRange_==='function'){enforceHistoryDateRange_('#trainingHistoryStart','#trainingHistoryEnd');activateHistoryColoring_&&activateHistoryColoring_('#trainingHistoryList');}},0);
       fillHeader();
       const user=requireLogin();
@@ -140,7 +151,10 @@
       renderCategories();
       qs('#searchBtn').onclick=()=>renderResults(true);
       qs('#keyword').addEventListener('input', ()=>renderResults(!!qs('#keyword').value.trim()));
-      loadTraining().catch(e=>setMsg(qs('#msg'),e.message||String(e),true));
+      trainingMsg_('教育訓練頁已開啟，教材稍後載入。');
+      scheduleIdle_(()=>loadTraining()
+        .then(()=>trainingMsg_(''))
+        .catch(e=>trainingMsg_(e.message||String(e),true)));
     }
   
 function trainingEsc_(v){return String(v==null?'':v).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
