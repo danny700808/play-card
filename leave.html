@@ -203,6 +203,10 @@ function localDateInputValue(){
   return new Date(now.getTime() - tzOffset).toISOString().slice(0,10);
 }
 function sleep(ms){ return new Promise(resolve => setTimeout(resolve, ms)); }
+function scheduleIdle_(fn){
+  if(window.requestIdleCallback) requestIdleCallback(fn,{timeout:900});
+  else setTimeout(fn, 80);
+}
 function withTimeout(promise, ms, message){
   const timeoutMs = Math.max(1000, Number(ms || 0) || 0);
   if(!timeoutMs) return promise;
@@ -1339,12 +1343,30 @@ async function init(){
   qs('#submitBtn').onclick = submitLeave;
   qs('#cancelEditBtn').onclick = () => { resetForm({ keepOptions:true }); };
   applyLeaveMode();
+
   if(leaveApprovalMode){
-    setPageProgress('讀取簽核資料中 35%', 35);
-    await Promise.all([loadApprovalList(), loadApprovalRecords()]);
-    setPageProgressDone('簽核資料讀取完成');
+    setPageProgress('簽核頁已開啟，正在讀取資料…', 18);
+    try{ qs('#approvalCountText').textContent = '待簽核資料載入中…'; }catch(e){}
+    try{ qs('#approvalRecordCountText').textContent = '員工請假紀錄載入中…'; }catch(e2){}
+    scheduleIdle_(async()=>{
+      try{
+        setPageProgress('讀取簽核資料中 35%', 35);
+        await Promise.all([loadApprovalList(), loadApprovalRecords()]);
+        setPageProgressDone('簽核資料讀取完成');
+      }catch(err){
+        setPageProgressError((err && err.message) || '簽核資料讀取失敗');
+      }
+    });
   }else{
-    await loadStaffData();
+    setPageProgress('請假頁已開啟，正在準備假別資料…', 18);
+    scheduleIdle_(async()=>{
+      try{
+        await loadStaffData();
+        setPageProgressDone('請假資料讀取完成');
+      }catch(err){
+        setPageProgressError((err && err.message) || '請假資料讀取失敗');
+      }
+    });
   }
 }
 </script></body></html>
