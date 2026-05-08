@@ -139,14 +139,16 @@
             <button class="btn secondary" onclick="rejectOne('${escapeHtml(r.requestId)}')">駁回</button>
           </div>
         </div>`;
-    }
+    }function scheduleIdle_(fn){if(window.requestIdleCallback)requestIdleCallback(fn,{timeout:1200});else setTimeout(fn,160);}
+
 
     async function init(){
       fillHeader();
       currentUser=requireLogin();
       if(!currentUser) return;
       if(!hasSettingsZoneAccess(currentUser)){ location.href='dashboard.html'; return; }
-      await loadRows();
+      const msg=qs('#msg'); if(msg) msg.textContent='打卡修正資料稍後載入。';
+      scheduleIdle_(loadRows);
     }
 
     async function loadRows(){

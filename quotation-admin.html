@@ -524,7 +524,7 @@ Email：<span id="pvCustomerEmail"></span>
           refreshEditorMode();
         }
         prog && prog.set(86,'刷新紀錄中');
-        await loadHistory();
+        scheduleIdle_(loadHistory);
         setLocalMsg('估價單版本已刪除。');
         prog && prog.done('完成');
       }catch(err){
@@ -671,7 +671,8 @@ Email：<span id="pvCustomerEmail"></span>
         prog.done('完成');
         setLocalMsg('已開啟列印視窗。');
       }catch(err){ prog.fail('列印'); setLocalMsg(err.message||'列印失敗',true); }
-    }
+    }function scheduleIdle_(fn){if(window.requestIdleCallback)requestIdleCallback(fn,{timeout:1200});else setTimeout(fn,160);}
+
     async function initPage(){
 
       fillHeader();

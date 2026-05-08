@@ -187,13 +187,14 @@
       if(!payload.employeeId) throw new Error('請先選擇員工。');
       if(!payload.startDate || !payload.endDate) throw new Error('請先選擇查詢起訖日期。');
       if(payload.endDate < payload.startDate) throw new Error('結束日期不能早於開始日期。');
-    }
+    }function scheduleIdle_(fn){if(window.requestIdleCallback)requestIdleCallback(fn,{timeout:1200});else setTimeout(fn,160);}
+
     async function init(){
       fillHeader();
       currentUser = requireLogin();
       if(!currentUser) return;
       if(!hasSettingsZoneAccess(currentUser)){ location.href='dashboard.html'; return; }
-      await loadEmployees();
+      scheduleIdle_(loadEmployees);
       const today = new Date();
       const start = new Date(today.getFullYear(), today.getMonth(), 1);
       qs('#startDate').value = start.toISOString().slice(0,10);

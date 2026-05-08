@@ -639,7 +639,8 @@
         if(prog) prog.fail('刪除');
         if(window.setLocalMsg) setLocalMsg(err.message || '刪除失敗', true);
       }
-    }
+    }function scheduleIdle_(fn){if(window.requestIdleCallback)requestIdleCallback(fn,{timeout:1200});else setTimeout(fn,160);}
+
     function initPage(){
       fillHeader();
       currentUser = requireLogin();
@@ -650,7 +651,7 @@
       document.querySelectorAll('input, textarea').forEach(el=>{ if(el.id) defaultValues[el.id] = el.value; });
       bindInputs();
       renderPreview();
-      loadHistory();
+      scheduleIdle_(loadHistory);
     }
   </script>
 </body>

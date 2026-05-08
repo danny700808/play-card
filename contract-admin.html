@@ -169,8 +169,8 @@
       </div>
     </div>
   </div>
-  <script src="config.js?v=20260413fix1"></script>
-  <script src="app.js?v=20260413fix1"></script>
+  <script src="config.js?v=20260508frontendperf7"></script>
+  <script src="app.js?v=20260508frontendperf7"></script>
   <script>
     let currentUser=null;
     let currentSettingId='';
@@ -313,7 +313,7 @@
         if(!r.ok) throw new Error(r.message||'儲存失敗');
         currentSettingId=r.settingId||currentSettingId;
         setMsg(qs('#msg'),r.message||'已儲存',false);
-        loadConfig();
+        scheduleIdle_(loadConfig);
       }catch(e){ setMsg(qs('#msg'),e.message||'儲存失敗',true); }
     }
     function rowHtml(row){
@@ -353,7 +353,8 @@
         if(!r.ok) throw new Error(r.message||'讀取失敗');
         qs('#list').innerHTML=(r.rows||[]).map(rowHtml).join('') || '<div class="muted">目前沒有資料</div>';
       }catch(e){ setMsg(qs('#msg'),e.message||'讀取失敗',true); }
-    }
+    }function scheduleIdle_(fn){if(window.requestIdleCallback)requestIdleCallback(fn,{timeout:1200});else setTimeout(fn,160);}
+
     function init(){
       fillHeader();
       buildTokenButtons();
