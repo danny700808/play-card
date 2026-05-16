@@ -273,10 +273,10 @@ details{border-top:1px solid var(--line);background:#fbfcfe}summary{list-style:n
   </div>
   <details><summary>進階設定</summary><div class="advanced"><div class="stage-row"><label class="stage"><div>事件發生時通知<small>通知上方勾選的人</small></div><input type="checkbox" data-field="publishEnabled" checked></label></div></div></details>
 </article>
-<article class="notify-card" data-type="clock" data-event-key="parttime_clock_in_reminder" data-event-code="parttime_clock_in_reminder" data-category="打卡 / 工讀" data-event-name="上班前提醒">
+<article class="notify-card" data-type="clock" data-event-key="parttime_clock_in_reminder" data-event-code="parttime_clock_in_reminder" data-category="打卡 / 工讀" data-event-name="上班提醒">
   <div class="notify-main">
     <div class="event-head">
-      <div><h3 class="event-title">上班前提醒</h3><p class="event-desc">依班表時間執行提醒或檢查。</p></div>
+      <div><h3 class="event-title">上班提醒</h3><p class="event-desc">包含上班前、表定上班時間、上班後30分鐘提醒；專職與工讀都適用。</p></div>
       <label class="switch"><input type="checkbox" data-field="enabled" checked>啟用</label>
     </div>
     <div class="channels">
@@ -287,17 +287,17 @@ details{border-top:1px solid var(--line);background:#fbfcfe}summary{list-style:n
     </div>
   </div>
   <details><summary>進階設定</summary><div class="advanced"><div class="adv-grid">
-<div class="field"><label>上班前幾分鐘</label><input type="number" data-field="beforeWorkMinutes" value="20"></div>
-<div class="field"><label>下班後幾分鐘檢查</label><input type="number" data-field="afterWorkMinutes" value="10"></div>
+<div class="field"><label>上班前幾分鐘</label><input type="number" data-field="beforeWorkMinutes" value="20" min="0"></div>
 </div><div class="stage-row">
-<label class="stage"><div>上班前提醒<small>有排班才提醒</small></div><input type="checkbox" data-field="beforeWorkEnabled" checked></label>
-<label class="stage"><div>下班後檢查<small>未填才提醒</small></div><input type="checkbox" data-field="afterWorkCheckEnabled"></label>
+<label class="stage"><div>上班前提醒<small>依上方分鐘數，表定上班前提醒一次</small></div><input type="checkbox" data-field="beforeWorkEnabled" checked></label>
+<label class="stage"><div>表定上班時間提醒<small>到上班時間仍未打卡時提醒一次</small></div><input type="checkbox" data-field="scheduledClockInEnabled" checked></label>
+<label class="stage"><div>上班後30分鐘提醒<small>上班後30分鐘仍未打卡時提醒一次</small></div><input type="checkbox" data-field="afterClockIn30Enabled" checked></label>
 </div></div></details>
 </article>
-<article class="notify-card" data-type="clock" data-event-key="parttime_clock_out_missing" data-event-code="parttime_clock_out_missing" data-category="打卡 / 工讀" data-event-name="下班後工讀時數未填">
+<article class="notify-card" data-type="clock" data-event-key="parttime_clock_out_missing" data-event-code="parttime_clock_out_missing" data-category="打卡 / 工讀" data-event-name="下班打卡 / 工讀時數未填">
   <div class="notify-main">
     <div class="event-head">
-      <div><h3 class="event-title">下班後工讀時數未填</h3><p class="event-desc">依班表時間執行提醒或檢查。</p></div>
+      <div><h3 class="event-title">下班打卡 / 工讀時數未填</h3><p class="event-desc">包含表定下班時間與下班後30分鐘提醒；提醒下班打卡與工讀時數未填。</p></div>
       <label class="switch"><input type="checkbox" data-field="enabled" checked>啟用</label>
     </div>
     <div class="channels">
@@ -308,11 +308,9 @@ details{border-top:1px solid var(--line);background:#fbfcfe}summary{list-style:n
     </div>
   </div>
   <details><summary>進階設定</summary><div class="advanced"><div class="adv-grid">
-<div class="field"><label>上班前幾分鐘</label><input type="number" data-field="beforeWorkMinutes" value="20"></div>
-<div class="field"><label>下班後幾分鐘檢查</label><input type="number" data-field="afterWorkMinutes" value="10"></div>
 </div><div class="stage-row">
-<label class="stage"><div>上班前提醒<small>有排班才提醒</small></div><input type="checkbox" data-field="beforeWorkEnabled"></label>
-<label class="stage"><div>下班後檢查<small>未填才提醒</small></div><input type="checkbox" data-field="afterWorkCheckEnabled" checked></label>
+<label class="stage"><div>表定下班時間提醒<small>到下班時間仍未下班打卡／工讀時數未填時提醒一次</small></div><input type="checkbox" data-field="scheduledClockOutEnabled" checked></label>
+<label class="stage"><div>下班後30分鐘提醒<small>下班後30分鐘仍未下班打卡／工讀時數未填時提醒一次</small></div><input type="checkbox" data-field="afterClockOut30Enabled" checked></label>
 </div></div></details>
 </article>
 <article class="notify-card" data-type="result" data-event-key="clock_8" data-category="打卡 / 工讀" data-event-name="工讀時數送出">
@@ -924,7 +922,7 @@ document.addEventListener('change', e=>{
 const NOTIFY_EVENT_CODE_BY_NAME = {
   '註冊申請送出':'register_pending','註冊審核通過':'register_approved','註冊審核駁回':'register_rejected','忘記密碼':'forgot_password',
   '個人資料修改申請送出':'profile_change_submitted','個人資料修改審核通過':'profile_change_approved','個人資料修改審核駁回':'profile_change_rejected',
-  '打卡補登申請送出':'clock_correction_submitted','打卡補登審核結果':'clock_correction_result','上班前提醒':'parttime_clock_in_reminder','下班後工讀時數未填':'parttime_clock_out_missing','工讀時數填寫':'parttime_hours_submitted','工讀時數提醒':'parttime_clock_in_reminder',
+  '打卡補登申請送出':'clock_correction_submitted','打卡補登審核結果':'clock_correction_result','上班前提醒':'parttime_clock_in_reminder','上班提醒':'parttime_clock_in_reminder','下班後工讀時數未填':'parttime_clock_out_missing','下班打卡 / 工讀時數未填':'parttime_clock_out_missing','工讀時數填寫':'parttime_hours_submitted','工讀時數提醒':'parttime_clock_in_reminder',
   '請假申請送出':'leave_submitted','請假審核結果':'leave_result','請假補證明提醒':'leave_proof_reminder','新交辦事項':'task_assigned','任務完成':'task_completed','任務退回重做':'task_redo',
   '定期事項提醒':'routine_reminder','定期事項完成':'routine_completed','新公告發布':'announcement_published','公告回覆':'announcement_replied',
   '外聘老師合約通知':'teacher_contract_notice','外聘老師合約簽署完成':'teacher_contract_signed','外聘老師拿貨詢價':'teacher_goods_inquiry','外聘老師拿貨回覆':'teacher_goods_reply',
@@ -962,6 +960,10 @@ function rowFromCard(card){
     beforeWorkMinutes: ui.beforeWorkMinutes || '',
     afterWorkCheckEnabled: !!ui.afterWorkCheckEnabled,
     afterWorkMinutes: ui.afterWorkMinutes || '',
+    scheduledClockInEnabled: !!ui.scheduledClockInEnabled,
+    afterClockIn30Enabled: !!ui.afterClockIn30Enabled,
+    scheduledClockOutEnabled: !!ui.scheduledClockOutEnabled,
+    afterClockOut30Enabled: !!ui.afterClockOut30Enabled,
     reviewDueDays: ui.reviewDueDays || '',
     note: ui.note || ''
   };
@@ -1044,7 +1046,7 @@ function renderTimeRules(rows){
         <th>通知時間</th>
         <th>可通知開始</th>
         <th>可通知結束</th>
-        <th>下班後</th>
+        <th>下班後通知時段</th>
         <th>休假 / 請假 / 無班</th>
         <th>延後時間</th>
         <th>啟用</th>
