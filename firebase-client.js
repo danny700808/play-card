@@ -241,3 +241,269 @@
 
   global.YZFirebase = {init,enabled,handleApi,getEmployee,getMyProfile,normalizeClockDoc,getClockRowsByEmployee,getEditableClockHistory,getClockHistoryRange,addClockRecordFromClient,getLeaveHistory,getPendingLeaveApprovals,getAdminLeaveEmployeeSummary,getParttimeHistory,getNotificationSettings,getNotificationTimeRules,mirrorNotificationSettings,mirrorNotificationTimeRules,getDashboardSummary,getPendingCounts,mirrorApiWrite};
 })(window);
+
+
+/* =========================================================
+ * Firebase 全站接上橋接層（第4階段）
+ * 原則：Firebase 有資料就優先讀 Firebase；沒有資料或格式不合，回退原 GS。
+ * 寫入：仍由 app.js 原本流程先寫 GS，成功後 mirrorApiWrite 鏡像到 Firebase。
+ * ========================================================= */
+(function(global){
+  const old = global.YZFirebase || {};
+  if(!old.enabled) return;
+  function clean(v){ return String(v == null ? '' : v).trim(); }
+  function lower(v){ return clean(v).toLowerCase(); }
+  function truthy(v){ const s=lower(v); return v===true || ['是','yes','true','1','啟用','enabled','active','true'].indexOf(s)>=0; }
+  function db(){ try{return old.init && old.init()}catch(e){return null} }
+  async function all(col){ const d=db(); if(!d) return []; const snap=await d.collection(col).get(); const rows=[]; snap.forEach(doc=>rows.push(Object.assign({__id:doc.id}, doc.data()||{}))); return rows; }
+  async function where(col, field, val){ const d=db(); if(!d) return []; const snap=await d.collection(col).where(field,'==',val).get(); const rows=[]; snap.forEach(doc=>rows.push(Object.assign({__id:doc.id}, doc.data()||{}))); return rows; }
+  function date(v){
+    if(!v) return ''; if(v && typeof v.toDate==='function') v=v.toDate();
+    if(v instanceof Date && !isNaN(v.getTime())) return v.getFullYear()+'-'+String(v.getMonth()+1).padStart(2,'0')+'-'+String(v.getDate()).padStart(2,'0');
+    const s=clean(v); if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10); const d=new Date(s); return isNaN(d.getTime())?s:date(d);
+  }
+  function time(v){ const s=clean(v); if(/^\d{1,2}:\d{2}/.test(s)){ const p=s.split(':'); return String(p[0]).padStart(2,'0')+':'+p[1]+(p[2]?':'+p[2]:''); } return s; }
+  function user(){ try{return JSON.parse(localStorage.getItem('employeeUser')||'null')||{}}catch(e){return{}} }
+  function idOf(){ const u=user(); return clean(u.id||u.employeeId||u.adminId); }
+  function isAdmin(){ const u=user(); return lower(u.role)==='admin' || !!u.showSettingsZone || !!u.canViewSettings || !!u.isManagerAccount; }
+  function money(n){ return Math.round(Number(n||0)||0); }
+  function normalizeEmployee(o){
+    o=o||{}; const type=lower(o.identityType||o['身分類型']) || (truthy(o.isPartTime||o['是否工讀生'])?'parttime':'staff');
+    return {id:clean(o.employeeId||o.adminId||o['員工ID']||o.__id),employeeId:clean(o.employeeId||o['員工ID']||o.__id),name:clean(o.name||o['姓名']),email:lower(o.email||o['Email']),role:lower(o.role||o['角色']||'staff')||'staff',identityType:type,identityLabel:type==='parttime'?'工讀生':(type==='external'?'外聘老師':'專職員工'),isPartTime:type==='parttime',accountStatus:clean(o.accountStatus||o['帳號狀態']||'active'),lineUserId:clean(o.lineUserId||o['LINE User ID']),lineNotifyEnabled:truthy(o.lineNotifyEnabled||o['LINE 通知啟用'])};
+  }
+  function normalizeAdmin(o){ return {id:clean(o.adminId||o['管理者代碼']||o.__id),adminId:clean(o.adminId||o['管理者代碼']||o.__id),name:clean(o.name||o['姓名']||'管理者'),email:lower(o.loginAccount||o.email||o['登入帳號']),role:lower(o.role||o['角色']||'admin')||'admin',identityType:'admin',identityLabel:'管理者',showSettingsZone:truthy(o.canViewSettings||o['可看設定區']),showApprovalZone:truthy(o.canViewApproval||o['可看審核區']),canManageLeavePolicy:truthy(o.canManageLeavePolicy||o['可操作假勤制度']),isManagerAccount:true}; }
+  async function getEmployeeOptions(){ const rows=(await all('employees')).map(normalizeEmployee).filter(x=>x.employeeId && lower(x.accountStatus)!=='rejected'); return {ok:true,rows,employees:rows,list:rows}; }
+  function normClock(o){ return {id:clean(o.recordId||o['紀錄ID']||o.__id),recordId:clean(o.recordId||o['紀錄ID']||o.__id),employeeId:clean(o.employeeId||o['員工ID']),name:clean(o.name||o['姓名']),email:lower(o.email||o['Email']),date:date(o.clockDate||o.date||o['打卡日期']),time:time(o.clockTime||o.time||o['打卡時間']),actionName:clean(o.actionName||o['打卡動作']),clockType:clean(o.clockType||o['打卡方式']||'標準打卡'),status:clean(o.status||o['狀態']||'正常')||'正常',lateMinutes:Number(o.lateMinutes||o['遲到分鐘']||0)||0,note:clean(o.note||o['備註']),sourceIp:clean(o.sourceIp||o['來源IP'])}; }
+  async function getAdminClockRecords(p){ let rows=(await all('clockRecords')).map(normClock); if(p&&p.employeeId) rows=rows.filter(r=>r.employeeId===clean(p.employeeId)); if(p&&p.startDate) rows=rows.filter(r=>r.date>=clean(p.startDate)); if(p&&p.endDate) rows=rows.filter(r=>r.date<=clean(p.endDate)); rows.sort((a,b)=>(b.date+' '+b.time).localeCompare(a.date+' '+a.time)); return {ok:true,rows,list:rows}; }
+  function normCorrection(o){ return {requestId:clean(o.requestId||o['申請ID']||o.__id),employeeId:clean(o.employeeId||o['員工ID']),name:clean(o.name||o['姓名']),email:lower(o.email||o['Email']),originalRecordId:clean(o.originalRecordId||o['原始紀錄ID']),correctDate:date(o.correctionDate||o.correctDate||o['修正日期']),correctTime:time(o.correctionTime||o.correctTime||o['修正時間']),correctAction:clean(o.actionName||o.correctAction||o['修正動作']),correctionType:clean(o.clockType||o.correctionType||o['修正打卡方式']),reason:clean(o.reason||o['修正原因']),status:clean(o.status||o['狀態']||'待審核')||'待審核',reviewedAt:clean(o.reviewedAtText||o['審核時間']),rejectReason:clean(o.rejectReason||o['駁回理由'])}; }
+  async function getPendingClockCorrections(){ const rows=(await all('clockCorrections')).map(normCorrection).filter(r=>r.status==='待審核'||!r.status); return {ok:true,rows,list:rows}; }
+  async function getPendingRegistrations(){ const rows=(await all('employees')).map(normalizeEmployee).filter(r=>lower(r.accountStatus)==='pending'); return {ok:true,rows,list:rows}; }
+  async function getScheduleSetupData(){ const [templates,assignments,single,emps]=await Promise.all([all('scheduleTemplates'),all('employeeSchedules'),all('singleDaySchedules'),getEmployeeOptions()]); return {ok:true,templates:templates.map(o=>Object.assign({templateId:clean(o.templateId||o.__id),templateName:clean(o.templateName||o.name),enabled:truthy(o.enabled)},o)),assignments:assignments.map(o=>Object.assign({assignmentId:clean(o.assignmentId||o.__id),employeeId:clean(o.employeeId),employeeName:clean(o.employeeName),templateId:clean(o.templateId),templateName:clean(o.templateName),startDate:date(o.startDate),endDate:date(o.endDate),indefinite:truthy(o.indefinite),enabled:truthy(o.enabled)},o)),singleDaySchedules:single.map(o=>Object.assign({recordId:clean(o.recordId||o.__id),employeeId:clean(o.employeeId),employeeName:clean(o.employeeName),date:date(o.date),clockType:clean(o.clockType),startTime:time(o.startTime),endTime:time(o.endTime),allowSpecial:truthy(o.allowSpecial),enabled:truthy(o.enabled)},o)),employees:emps.rows}; }
+  function normPart(o){ const total=Number(o.totalHours||o['總時數']||o.hours||0)||0; return {id:clean(o.recordId||o.__id),recordId:clean(o.recordId||o.__id),employeeId:clean(o.employeeId||o['員工ID']),name:clean(o.name||o['姓名']),email:lower(o.email||o['Email']),date:date(o.workDate||o.date||o['日期']),totalHours:total,hours:Number(o.hours||0)||0,status:clean(o.status||'正常')||'正常',hourlyRate:Number(o.hourlyRate||0)||0,grossPay:money(o.grossPay||0),note:clean(o.note),scheduleLabel:clean(o.scheduleLabel)}; }
+  async function getParttimePayrollAdminData(){ const emps=(await getEmployeeOptions()).rows.filter(e=>e.identityType==='parttime'); return {ok:true,employees:emps,defaultMonth:date(new Date()).slice(0,7)}; }
+  async function getParttimePayrollSummary(p){ const empId=clean(p&&p.employeeId); if(!empId) return null; let rows=(await all('parttimeRecords')).map(normPart).filter(r=>r.employeeId===empId); if(p&&p.startDate) rows=rows.filter(r=>r.date>=clean(p.startDate)); if(p&&p.endDate) rows=rows.filter(r=>r.date<=clean(p.endDate)); if(p&&p.monthText) rows=rows.filter(r=>r.date.slice(0,7)===clean(p.monthText)); const totalHours=Math.round(rows.reduce((s,r)=>s+(Number(r.totalHours)||0),0)*100)/100; const grossPay=money(rows.reduce((s,r)=>s+(Number(r.grossPay)||0),0)); return {ok:true,rows,summary:{totalHours,grossPay,netPay:grossPay,recordCount:rows.length,supplementCount:rows.filter(r=>r.status==='補時數').length}}; }
+  async function getSettingsKV(){ const rows=await all('systemSettings'); const obj={}; rows.forEach(r=>{obj[clean(r.key||r.__id)]=clean(r.value)}); return obj; }
+  async function getPublicSystemLinks(){ const s=await getSettingsKV(); return {ok:true,lineAddFriendUrl:s['LINE 加好友網址']||'',lineBotBasicId:s['LINE Bot Basic ID']||'',settingsPageUrl:s['設定區頁面網址']||'',leavePageUrl:s['請假頁面網址']||''}; }
+  async function getNotificationSettings(){ let rows=(await all('notificationUniversal')).concat(await all('notificationSettings')); rows=rows.map(o=>Object.assign({},o,{eventCode:clean(o.eventCode||o.__id),eventName:clean(o.eventName),enabled:truthy(o.enabled),targetLineEnabled:truthy(o.partyLine||o.targetLineEnabled),targetEmailEnabled:truthy(o.partyEmail||o.targetEmailEnabled),managerLineEnabled:truthy(o.managerLine||o.managerLineEnabled),managerEmailEnabled:truthy(o.managerEmail||o.managerEmailEnabled)})); return rows.length?{ok:true,rows}:null; }
+  async function getGenericList(collection, mapper){ const rows=(await all(collection)).map(mapper||((x)=>x)); return rows.length?{ok:true,rows,list:rows}:null; }
+  function normAnnouncement(o){return {announcementId:clean(o.announcementId||o.id||o.__id),title:clean(o.title||o['標題']),category:clean(o.category||o['分類']),summary:clean(o.summary),content:clean(o.content||o['內容']),published:truthy(o.published||o.enabled),pinned:truthy(o.pinned),isRead:false,myReply:null,createdAt:clean(o.createdAtText||o.createdAt||'')};}
+  function normTask(o){return {id:clean(o.taskId||o.id||o.__id),taskId:clean(o.taskId||o.id||o.__id),title:clean(o.title||o['標題']),content:clean(o.content||o['內容']),assigneeId:clean(o.assigneeId||o.employeeId),assigneeName:clean(o.assigneeName||o.employeeName),status:clean(o.status||'待處理'),dueDate:date(o.dueDate),dueTime:time(o.dueTime)};}
+  async function getDashboardSummary(p){
+    const [leaves,cc,pt,tasks,ann]=await Promise.all([all('leaveRequests').catch(()=>[]),all('clockCorrections').catch(()=>[]),all('parttimeRecords').catch(()=>[]),all('tasks').catch(()=>[]),all('announcements').catch(()=>[])]);
+    return {ok:true,counts:{leaves:leaves.filter(x=>clean(x.status)==='待審核').length,clockCorrections:cc.filter(x=>clean(x.status)==='待審核').length,clocks:cc.filter(x=>clean(x.status)==='待審核').length,parttime:pt.length,tasks:tasks.filter(x=>clean(x.status)!=='已完成').length,announcements:ann.length,registrations:(await all('employees')).filter(x=>lower(x.accountStatus)==='pending').length,contracts:0,goodsInquiries:0}};
+  }
+  async function handleApi(action,payload){
+    const a=clean(action), p=payload||{};
+    try{
+      if(a==='getPublicSystemLinks') return await getPublicSystemLinks();
+      if(a==='getEmployeeOptions') return await getEmployeeOptions();
+      if(a==='getPendingRegistrations') return await getPendingRegistrations();
+      if(a==='getAdminClockRecords') return await getAdminClockRecords(p);
+      if(a==='getPendingClockCorrections') return await getPendingClockCorrections(p);
+      if(a==='getScheduleSetupData') return await getScheduleSetupData(p);
+      if(a==='getParttimePayrollAdminData') return await getParttimePayrollAdminData(p);
+      if(a==='getParttimePayrollSummary') return await getParttimePayrollSummary(p);
+      if(a==='getNotificationSettings') return await getNotificationSettings();
+      if(a==='getDashboardSummary'||a==='getPendingCounts') return await getDashboardSummary(p);
+      if(a==='getAnnouncementAdminList') return await getGenericList('announcements', normAnnouncement);
+      if(a==='getAnnouncements') return await getGenericList('announcements', normAnnouncement);
+      if(a==='getTasks') { let r=await getGenericList('tasks', normTask); if(r&&!isAdmin()) r.rows=r.list=r.rows.filter(x=>x.assigneeId===idOf()); return r; }
+      if(a==='getRoutinePageData') return await getGenericList('routineTemplates');
+      if(a==='getTrainingPageData') return await getGenericList('trainingItems');
+      if(a==='getTrainingRecords') return await getGenericList('trainingRecords');
+      if(a==='getTeacherContractAdminList'||a==='getTeacherContracts'||a==='getTeacherContractStatus') return await getGenericList('teacherContractLogs');
+      if(a==='getTeacherGoodsList') return await getGenericList('teacherGoods');
+      if(a==='getTeacherGoodsInquiries'||a==='getTeacherGoodsInquiryAdminList') return await getGenericList('teacherGoodsInquiry');
+      if(a==='getRentalContracts') return await getGenericList('rentalContracts');
+      if(a==='getQuotationList') return await getGenericList('quotations');
+      if(a==='getSalarySetupOptions') return {ok:true,employees:(await getEmployeeOptions()).rows};
+      if(a==='getMySalaryInfo') { const emp=(await where('employees','employeeId',clean(p.userId)))[0]; return emp?{ok:true,info:emp,salary:emp}:null; }
+    }catch(e){ console.warn('[Firebase stage4 fallback]', a, e); }
+    if(old.handleApi) return old.handleApi(action,payload);
+    return null;
+  }
+  global.YZFirebase = Object.assign({}, old, {handleApi,getEmployeeOptions,getAdminClockRecords,getPendingClockCorrections,getScheduleSetupData,getParttimePayrollAdminData,getParttimePayrollSummary});
+})(window);
+
+
+/* =========================================================
+ * Firebase 第5階段：正式主寫入 Firebase
+ * 說明：
+ * - 資料型動作先直接寫 Firestore，降低 GS/Sheet 依賴與等待時間。
+ * - Email、LINE、PDF、Excel、Cloudinary/Google Drive 等外部服務仍保留原 GS。
+ * - 若遇到未支援 action，app.js 會照原流程回 GS。
+ * ========================================================= */
+(function(global){
+  const fb = global.YZFirebase || {};
+  if(!fb.enabled) return;
+  function clean(v){ return String(v == null ? '' : v).trim(); }
+  function lower(v){ return clean(v).toLowerCase(); }
+  function truthy(v){ const s=lower(v); return v===true || ['是','yes','true','1','啟用','enabled','active'].indexOf(s)>=0; }
+  function pad(n){ return String(n).padStart(2,'0'); }
+  function nowDate(){ return new Date(); }
+  function ymd(d){ return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
+  function timeText(d){ return pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds()); }
+  function ts(){ return global.firebase.firestore.FieldValue.serverTimestamp(); }
+  function db(){ try{return fb.init && fb.init()}catch(e){console.warn('[Firebase stage5 init]',e); return null;} }
+  function currentUser(){ try{return JSON.parse(localStorage.getItem('employeeUser')||'null')}catch(e){return null} }
+  async function rowsWhere(col, field, value){ const d=db(); if(!d) throw new Error('Firebase 尚未啟用'); const snap=await d.collection(col).where(field,'==',value).get(); const out=[]; snap.forEach(x=>out.push(Object.assign({__id:x.id},x.data()||{}))); return out; }
+  async function docSet(col, id, data, merge=true){ const d=db(); if(!d) throw new Error('Firebase 尚未啟用'); const key=clean(id)||('WEB_'+Date.now()+'_'+Math.random().toString(36).slice(2,8)); await d.collection(col).doc(key).set(Object.assign({},data,{updatedAt:ts()}),{merge}); return key; }
+  async function docUpdate(col, id, data){ return await docSet(col,id,data,true); }
+  function normalizeUserDoc(o){
+    const isAdmin = !!(o.adminId || o.managerId || o['管理者代碼'] || o.__collection === 'admins');
+    const identity = isAdmin ? 'admin' : (lower(o.identityType || o['身分類型']) || (truthy(o.isPartTime || o['是否工讀生'])?'parttime':'staff'));
+    return {
+      id: clean(o.employeeId || o.adminId || o.managerId || o['員工ID'] || o['管理者代碼'] || o.__id),
+      employeeId: clean(o.employeeId || o['員工ID'] || ''),
+      name: clean(o.name || o['姓名'] || '使用者'),
+      email: lower(o.email || o.loginAccount || o['Email'] || o['登入帳號']),
+      role: lower(o.role || o['角色'] || (isAdmin?'admin':'staff')) || (isAdmin?'admin':'staff'),
+      identityType: identity,
+      identityLabel: identity==='admin'?'管理者':(identity==='parttime'?'工讀生':(identity==='external'?'外聘老師':'專職員工')),
+      isPartTime: identity==='parttime',
+      isExternalTeacher: identity==='external',
+      isManagerAccount: isAdmin,
+      showSettingsZone: isAdmin || truthy(o.showSettingsZone || o['是否顯示設定區'] || o['可看設定區']),
+      showApprovalZone: isAdmin || truthy(o.showApprovalZone || o['可看審核區']),
+      canManageLeavePolicy: isAdmin || truthy(o.canManageLeavePolicy || o['可操作假勤制度']),
+      lineUserId: clean(o.lineUserId || o['LINE User ID']),
+      lineNotifyEnabled: truthy(o.lineNotifyEnabled || o['LINE 通知啟用'])
+    };
+  }
+  async function firebaseLogin(payload){
+    const account=lower(payload.email || payload.account);
+    const password=String(payload.password||'');
+    if(!account || !password) return {ok:false,message:'請輸入帳號與密碼。'};
+    let rows = await rowsWhere('admins','email',account);
+    if(!rows.length) rows = await rowsWhere('admins','loginAccount',account);
+    let kind='admin';
+    if(!rows.length){ rows = await rowsWhere('employees','email',account); kind='employee'; }
+    if(!rows.length) return {ok:false,message:'查無此帳號，請先註冊。'};
+    const o=rows[0]; o.__collection = kind==='admin'?'admins':'employees';
+    const status=lower(o.accountStatus || o.status || o['帳號狀態'] || 'active');
+    if(status==='pending') return {ok:false,message:'此帳號尚未通過主管審核。'};
+    if(status && ['active','enabled','啟用','是'].indexOf(status)<0) return {ok:false,message:'此帳號目前無法登入。'};
+    const stored=String(o.password || o.loginPassword || o['密碼'] || o['登入密碼'] || '');
+    if(stored !== password) return {ok:false,message:'密碼錯誤，請重新輸入。'};
+    const user=normalizeUserDoc(o);
+    await docUpdate(kind==='admin'?'admins':'employees', clean(o.__id || user.id), {lastLoginAt:ts()});
+    return {ok:true,message:kind==='admin'?'管理者登入成功':'登入成功',user};
+  }
+  async function firebaseRegister(payload){
+    const email=lower(payload.email); const name=clean(payload.name);
+    if(!email || !name) return {ok:false,message:'註冊資料不完整。'};
+    const existed=await rowsWhere('employees','email',email);
+    if(existed.length && lower(existed[0].accountStatus||existed[0]['帳號狀態'])==='active') return {ok:false,message:'這個 Email 已經註冊過了，請直接登入。'};
+    const id=clean(payload.employeeId)||clean(existed[0]&&existed[0].employeeId)||('EMP_'+Math.random().toString(36).slice(2,10));
+    const identity=clean(payload.identityType || (truthy(payload.isPartTime)?'parttime':'staff')) || 'staff';
+    await docSet('employees', id, {
+      employeeId:id, name, email, password:'', role:'staff', identityType:identity, isPartTime:identity==='parttime', accountStatus:'pending',
+      idNumber:clean(payload.idNumber).toUpperCase(), birthDate:clean(payload.birthDate), mobilePhone:clean(payload.mobilePhone), address:clean(payload.contactAddress||payload.address),
+      emergencyContact:clean(payload.emergencyContact), emergencyPhone:clean(payload.emergencyPhone), hireDate:clean(payload.hireDate||payload.joinDate),
+      lineUserId:'', lineNotifyEnabled:false, createdAt:ts(), source:'firebase-primary'
+    });
+    return {ok:true,message:'註冊申請已送出，待主管審核。'};
+  }
+  async function firebaseClock(payload){
+    const user=currentUser()||{}; const now=nowDate();
+    const employeeId=clean(payload.userId || user.id || user.employeeId);
+    const actionName=clean(payload.actionName); if(!employeeId || !actionName) return {ok:false,message:'缺少打卡資料。'};
+    const clockDate=clean(payload.supplementDate)||ymd(now);
+    const clockTime=clean(payload.supplementTime)||timeText(now);
+    const recordId='CLK_'+employeeId+'_'+Date.now();
+    // Firebase 主寫入版先保留前端能取得的資料；公司 Wi-Fi/IP、請假、班表深層規則仍需後續以 Cloud Functions 完整補強。
+    await docSet('clockRecords', recordId, {
+      recordId, employeeId, name:clean(user.name), email:lower(user.email), clockDate, clockTime,
+      actionName, clockType:clean(payload.clockType || payload.supplementClockType || '標準打卡')||'標準打卡',
+      status: truthy(payload.isSupplement)?'補打卡':'正常', lateMinutes:0, note:clean(payload.supplementReason || payload.note), sourceIp:clean(payload.clientIp),
+      isSupplement:truthy(payload.isSupplement), source:'firebase-primary', createdAt:ts()
+    });
+    return {ok:true,message:(truthy(payload.isSupplement)?'補打卡已送出。':actionName+'成功'),recordId,lateMinutes:0,lateDeductionAmount:0,lateDeductionText:'$0'};
+  }
+  function leaveDoc(payload, base={}){
+    const user=currentUser()||{}; const first=Array.isArray(payload.segments)&&payload.segments.length?payload.segments[0]:{};
+    const id=clean(payload.requestId||payload.leaveId||base.requestId)||('LV_'+clean(payload.userId||user.id||'USER')+'_'+Date.now());
+    return Object.assign({}, base, {
+      requestId:id, employeeId:clean(payload.userId||base.employeeId||user.id||user.employeeId), name:clean(base.name||user.name), email:lower(base.email||user.email),
+      reason:clean(payload.reason||payload.leaveName||base.reason||'請假'), leaveCode:clean(payload.leaveCode||base.leaveCode),
+      bereavementRelation:clean(payload.bereavementRelation||base.bereavementRelation),
+      leaveDate:clean(payload.date||payload.leaveDate||first.date||first.startDate||base.leaveDate),
+      startDate:clean(payload.startDate||first.startDate||first.date||base.startDate), endDate:clean(payload.endDate||first.endDate||first.date||base.endDate),
+      startTime:clean(payload.startTime||first.startTime||base.startTime), endTime:clean(payload.endTime||first.endTime||base.endTime),
+      session:clean(payload.session||first.session||base.session), hours:Number(payload.hours||payload.leaveHours||first.hours||base.hours||0)||0,
+      note:clean(payload.note||base.note), attachmentUrl:clean(payload.attachmentUrl||base.attachmentUrl), status:clean(base.status||'待審核')||'待審核',
+      segments:Array.isArray(payload.segments)?payload.segments:(base.segments||[]), source:'firebase-primary'
+    });
+  }
+  async function firebaseLeave(action,payload){
+    const id=clean(payload.requestId||payload.leaveId);
+    if(action==='deleteLeaveRequest'){ if(id) await docUpdate('leaveRequests',id,{status:'已刪除',deletedAt:ts(),source:'firebase-primary'}); return {ok:true,message:'請假申請已刪除。'}; }
+    if(action==='reviewLeaveRequest'){
+      if(!id) return {ok:false,message:'缺少請假ID'};
+      const status=/reject/i.test(clean(payload.decision||payload.action))?'已駁回':'已核准';
+      await docUpdate('leaveRequests',id,{status,rejectReason:clean(payload.rejectReason||payload.reason),reviewedAt:ts(),source:'firebase-primary'});
+      if(status==='已核准') await docSet('leaveRecords',id,{requestId:id,status,reviewedAt:ts(),source:'firebase-primary'},true);
+      return {ok:true,message:status==='已核准'?'請假已核准。':'請假已駁回。'};
+    }
+    const doc=leaveDoc(payload,{requestId:id,status:'待審核'}); await docSet('leaveRequests',doc.requestId,Object.assign({},doc,{createdAt:ts()}));
+    return {ok:true,message:action==='modifyLeaveRequest'?'請假申請已更新。':'請假申請已送出。',row:doc,requestId:doc.requestId};
+  }
+  async function firebaseParttime(payload){
+    const user=currentUser()||{}; const employeeId=clean(payload.userId||user.id||user.employeeId); const date=clean(payload.workDate||payload.date)||ymd(nowDate());
+    const hours=Number(payload.hours||payload.workHours||0)||0; const half=truthy(payload.halfHour||payload.addHalfHour); const total=Math.round((hours+(half?0.5:0))*100)/100;
+    if(!employeeId || !total) return {ok:false,message:'請填寫工讀時數。'};
+    const recordId='PT_'+employeeId+'_'+Date.now();
+    const row={recordId,employeeId,name:clean(user.name),email:lower(user.email),date,hours,halfHour:half,totalHours:total,status:'正常',note:clean(payload.note),source:'firebase-primary',createdAt:ts()};
+    await docSet('parttimeRecords',recordId,row); return {ok:true,message:'工讀時數已送出。',recordId,totalHours:total,row};
+  }
+  async function firebaseClockCorrection(action,payload){
+    const id=clean(payload.requestId)||('CCR_'+clean(payload.userId||'USER')+'_'+Date.now());
+    if(action==='approveClockCorrectionApi'||action==='rejectClockCorrectionApi'){
+      const status=action==='approveClockCorrectionApi'?'已核准':'已駁回'; await docUpdate('clockCorrections',id,{status,rejectReason:clean(payload.rejectReason),reviewedAt:ts(),source:'firebase-primary'}); return {ok:true,message:status};
+    }
+    const user=currentUser()||{}; const row=Object.assign({},payload,{requestId:id,employeeId:clean(payload.userId||user.id),name:clean(user.name),email:lower(user.email),status:'待審核',source:'firebase-primary',createdAt:ts()});
+    await docSet('clockCorrections',id,row); return {ok:true,message:'打卡修正申請已送出。',requestId:id,row};
+  }
+  async function simpleSave(collection, idFields, payload, okMessage){
+    const id=clean(idFields.map(k=>payload&&payload[k]).find(Boolean)) || ('WEB_'+Date.now()+'_'+Math.random().toString(36).slice(2,8));
+    await docSet(collection,id,Object.assign({},payload,{source:'firebase-primary',createdAt:ts()}));
+    return {ok:true,message:okMessage||'已儲存。',id};
+  }
+  async function firebaseSaveNotification(action,payload){
+    if(action==='saveNotificationSettings' && fb.mirrorNotificationSettings){ await fb.mirrorNotificationSettings((payload&&payload.rows)||[]); return {ok:true,message:'通知設定已儲存。'}; }
+    if(action==='saveNotificationTimeRules' && fb.mirrorNotificationTimeRules){ await fb.mirrorNotificationTimeRules((payload&&payload.rows)||[]); return {ok:true,message:'提醒時間規則已儲存。'}; }
+    return null;
+  }
+  const primaryMap = {
+    saveScheduleTemplate:['scheduleTemplates',['templateId','模板ID'],'班表模板已儲存。'], deleteScheduleTemplate:['scheduleTemplates',['templateId','模板ID'],'班表模板已刪除。'],
+    saveEmployeeSchedule:['employeeSchedules',['assignmentId','套用ID'],'員工班表已儲存。'], deleteEmployeeSchedule:['employeeSchedules',['assignmentId','套用ID'],'員工班表已刪除。'],
+    saveSingleDaySchedule:['singleDaySchedules',['recordId','單日ID'],'單日班表已儲存。'], deleteSingleDaySchedule:['singleDaySchedules',['recordId','單日ID'],'單日班表已刪除。'],
+    createTask:['tasks',['taskId','id','任務ID'],'任務已儲存。'], deleteTask:['tasks',['taskId','id','任務ID'],'任務已刪除。'], completeTask:['tasks',['taskId','id','任務ID'],'任務已完成。'], markTaskRedo:['tasks',['taskId','id','任務ID'],'已退回重做。'],
+    saveAnnouncement:['announcements',['announcementId','id','公告ID'],'公告已儲存。'], deleteAnnouncement:['announcements',['announcementId','id','公告ID'],'公告已刪除。'], toggleAnnouncement:['announcements',['announcementId','id','公告ID'],'公告狀態已更新。'],
+    saveTrainingItem:['trainingItems',['itemId','id','教材ID'],'教材已儲存。'], deleteTrainingItem:['trainingItems',['itemId','id','教材ID'],'教材已刪除。'], toggleTrainingItem:['trainingItems',['itemId','id','教材ID'],'教材狀態已更新。'],
+    saveEmployeeSalaryConfig:['employees',['employeeId','userId','員工ID'],'薪資設定已儲存。'],
+    approveRegistrationApi:['employees',['employeeId','id','email'],'已同意註冊。'], rejectRegistrationApi:['employees',['employeeId','id','email'],'已駁回註冊。'],
+    submitProfileChangeRequest:['profileChangeRequests',['requestId','申請ID'],'個人資料修改申請已送出。']
+  };
+  async function primaryWrite(action,payload){
+    const a=clean(action);
+    if(a==='login') return await firebaseLogin(payload||{});
+    if(a==='register') return await firebaseRegister(payload||{});
+    if(a==='clock') return await firebaseClock(payload||{});
+    if(a==='leaveRequest'||a==='modifyLeaveRequest'||a==='deleteLeaveRequest'||a==='reviewLeaveRequest') return await firebaseLeave(a,payload||{});
+    if(a==='parttime') return await firebaseParttime(payload||{});
+    if(a==='submitClockCorrection'||a==='approveClockCorrectionApi'||a==='rejectClockCorrectionApi') return await firebaseClockCorrection(a,payload||{});
+    if(a==='saveNotificationSettings'||a==='saveNotificationTimeRules') return await firebaseSaveNotification(a,payload||{});
+    if(primaryMap[a]){ const [col,ids,msg]=primaryMap[a]; return await simpleSave(col,ids,payload||{},msg); }
+    return null;
+  }
+  const oldHandle = fb.handleApi;
+  fb.handleApi = async function(action,payload){
+    const w = await primaryWrite(action,payload||{});
+    if(w) return w;
+    if(typeof oldHandle==='function') return await oldHandle(action,payload||{});
+    return null;
+  };
+  fb.primaryWrite = primaryWrite;
+  global.YZFirebase = fb;
+})(window);

@@ -1,0 +1,17 @@
+Firebase 全站接上版（第4階段）
+
+覆蓋方式：
+1. 解壓縮本 ZIP。
+2. 將裡面所有檔案複製到 GitHub 專案根目錄。
+3. 遇到同名檔案選「取代」。
+4. Commit changes。
+5. GitHub Pages 更新後，每個頁面按 Ctrl + F5 測試。
+
+這版做法：
+- 全站 HTML 都接入 firebase-client.js。
+- app.js 的 api() 會先問 Firebase；Firebase 沒資料或不支援時，自動回退原本 GS。
+- 寫入仍先寫原 GS，成功後鏡像到 Firebase。
+- 管理者後台：員工清單、打卡紀錄、打卡修正、班表、工讀結算、待辦數字、通知設定，優先讀 Firebase。
+
+注意：
+這不是最終純 Firebase 版；這是「全站先接上 Firebase + 保留 GS 備援」的安全過渡版。

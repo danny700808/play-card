@@ -892,34 +892,15 @@ details{border-top:1px solid var(--line);background:#fbfcfe}summary{list-style:n
 </section>
 
 <div id="saveProgress" class="save-progress"><div id="saveProgressText" class="save-progress-text">準備儲存</div><div class="save-progress-bar"><div id="saveProgressFill" class="save-progress-fill"></div></div></div><div class="sticky-save"><button id="saveBtn" class="btn primary" onclick="saveSettings()">儲存通知 / 提醒設定</button></div></main>
-<script src="config.js?v=20260523phase2"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-<script src="firebase-client.js?v=20260523phase2"></script>
-<script>
+<script src="config.js"></script><script>
 const API_URL = String((window.APP_CONFIG && window.APP_CONFIG.API_URL) || window.API_URL || localStorage.getItem('EMPLOYEE_SYSTEM_API_BASE') || '').trim();
 function getUser(){try{return JSON.parse(localStorage.getItem('employeeUser')||'{}')}catch(e){return {}}}
 function userId(){return (getUser()&&getUser().id)||localStorage.getItem('employeeUserId')||''}
 async function api(action, payload){
-  try{
-    if(window.YZFirebase && typeof window.YZFirebase.handleApi === 'function'){
-      const fbRes = await window.YZFirebase.handleApi(action, payload || {});
-      if(fbRes) return fbRes;
-    }
-  }catch(firebaseErr){
-    console.warn('[Firebase notification fallback to GS]', action, firebaseErr);
-  }
   if(!API_URL) throw new Error('尚未設定 API_URL');
   const res = await fetch(API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(Object.assign({action},payload||{}))});
   const txt = await res.text();
-  const parsed = (()=>{ try{return JSON.parse(txt)}catch(e){throw new Error(txt||'API 回傳格式錯誤')} })();
-  try{
-    if(parsed && parsed.ok && window.YZFirebase){
-      if(action === 'saveNotificationSettings' && window.YZFirebase.mirrorNotificationSettings){ await window.YZFirebase.mirrorNotificationSettings((payload&&payload.rows)||[]); }
-      if(action === 'saveNotificationTimeRules' && window.YZFirebase.mirrorNotificationTimeRules){ await window.YZFirebase.mirrorNotificationTimeRules((payload&&payload.rows)||[]); }
-    }
-  }catch(mirrorErr){ console.warn('[Firebase notification mirror failed]', mirrorErr); }
-  return parsed;
+  try{return JSON.parse(txt)}catch(e){throw new Error(txt||'API 回應格式錯誤')}
 }
 function msg(text, ok=true){const m=document.getElementById('msg'); if(!m)return; m.textContent=text; m.className='msg '+(ok?'ok':'err')}
 function esc(v){return String(v==null?'':v).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
@@ -1232,4 +1213,8 @@ function applyNotificationUiSimplifyV14(){
 }
 
 document.addEventListener('DOMContentLoaded',()=>{ensureNotifyEventCodes();applyNotificationUiSimplifyV14();refreshAdvancedVisibility();loadSettings();loadTimeRules();});
-</script></body></html>
+</script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="firebase-client.js?v=20260523stage5primary"></script>
+</body></html>

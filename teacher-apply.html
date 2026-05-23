@@ -78,7 +78,11 @@
       </section>
     </form>
   </div>
-  <script src="config.js?v=20260504_apply1"></script><script src="app.js?v=20260504_apply1"></script>
+  <script src="config.js?v=20260504_apply1"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="firebase-client.js?v=20260523stage5primary"></script>
+<script src="app.js?v=20260504_apply1"></script>
   <script>
     const msg = qs('#msg'); const MAX_FILE_BYTES = 20 * 1024 * 1024;
     function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
