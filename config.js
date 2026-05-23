@@ -8,7 +8,17 @@
     CLOUDINARY_ROOT_FOLDER: 'employee-system',
     CLOUDINARY_CHUNK_SIZE_MB: 20,
     CLOUDINARY_SOFT_MAX_VIDEO_MB: 0,
-    BUILD: '2026-04-24-reminder-center-clean-v2'
+    FIREBASE_CONFIG: {
+      apiKey: 'AIzaSyBTrUyhQSEI2mun5O1mjnSN_mO10c_t-Xs',
+      authDomain: 'youzi-c1b74.firebaseapp.com',
+      projectId: 'youzi-c1b74',
+      storageBucket: 'youzi-c1b74.firebasestorage.app',
+      messagingSenderId: '187002582910',
+      appId: '1:187002582910:web:f5c73a46e5a773a860a52f',
+      measurementId: 'G-WLYK892EDW'
+    },
+    FIREBASE_ENABLED: true,
+    BUILD: '2026-05-23-firebase-clock-v1'
   };
 
   const params = new URLSearchParams(global.location.search || '');
