@@ -41,7 +41,11 @@
     </section>
     <section id="staffWrap" class="hidden"><div class="card"><div class="section-title"><span class="num">1</span>我的待辦固定事項</div><div id="staffList" class="list"><div class="empty">讀取中...</div></div></div><div class="card"><details><summary class="section-title" style="cursor:pointer;margin:0"><span class="num">2</span>歷史固定事項</summary><div class="history-search"><label>開始日期<input id="staffRoutineHistoryStart" type="date"></label><label>結束日期<input id="staffRoutineHistoryEnd" type="date"></label><button class="btn secondary" type="button" onclick="loadStaffRoutineHistoryArchive()" style="width:auto">搜尋歷史</button></div><div id="staffRoutineHistoryArchive" class="list"><div class="empty">請選擇日期後搜尋歷史固定事項。</div></div></details></div></section>
   </main>
-  <script src="config.js"></script><script src="app.js"></script>
+  <script src="config.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="firebase-client.js?v=20260523stage4all"></script>
+<script src="app.js"></script>
   <script>
 
     const $=id=>document.getElementById(id);

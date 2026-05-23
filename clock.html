@@ -147,10 +147,11 @@
   </div>
 
   <script src="config.js?v=20260501uifix2"></script>
-  <script src="app.js?v=20260501uifix2"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260523firebaseclock1"></script>
+  <script src="firebase-client.js?v=20260523stage4all"></script>
+
+  <script src="app.js?v=20260501uifix2"></script>
   <script>
     function tick(){
       const d = new Date();
@@ -271,18 +272,6 @@
       if(!user) return;
       qs('#clockHomeLink').href = userHomeHref(user);
       qs('#clockHomeLink').textContent = userHomeLabel(user);
-
-      // Firebase 加速版：先直接讀 Firestore；若失敗才退回原本 Apps Script。
-      if(window.YZFirebase && window.YZFirebase.enabled()){
-        try{
-          const rows = await window.YZFirebase.getEditableClockHistory(user.id);
-          renderIntoList('#editableList', rows || [], false);
-          return;
-        }catch(firebaseErr){
-          console.warn('[Firebase clock history fallback]', firebaseErr);
-        }
-      }
-
       const r = await api('getEditableClockHistory', { userId:user.id });
       renderIntoList('#editableList', r.rows || [], false);
     }
@@ -303,18 +292,6 @@
       const btn = qs('#rangeSearchBtn');
       const progress = startActionButtonProgress(btn, { label:'搜尋中', startPct:20, maxPct:80, steps:[20,40,60,80], interval:160 });
       try {
-        if(window.YZFirebase && window.YZFirebase.enabled()){
-          try{
-            const rows = await window.YZFirebase.getClockHistoryRange(user.id, startDate, endDate);
-            setMsg(qs('#rangeMsg'), rows.length ? '' : '這段期間沒有打卡紀錄', false);
-            renderIntoList('#rangeList', rows || [], true);
-            progress.done('搜尋完成');
-            return;
-          }catch(firebaseErr){
-            console.warn('[Firebase clock range fallback]', firebaseErr);
-          }
-        }
-
         const r = await api('getClockHistoryRange', { userId:user.id, startDate, endDate });
         setMsg(qs('#rangeMsg'), r.message || ((r.rows || []).length ? '' : '這段期間沒有打卡紀錄'), !r.ok);
         renderIntoList('#rangeList', r.rows || [], true);
@@ -432,23 +409,6 @@
         setMsg(msg, friendlyClockMessage(successMessage), !r.ok);
         if(r.ok){
           progress.done('打卡完成');
-          // 打卡仍先走原本 Apps Script，保留 IP、班表、請假、遲到等規則；成功後同步一筆到 Firebase，讓頁面紀錄立即變快。
-          try{
-            if(window.YZFirebase && window.YZFirebase.enabled()){
-              await window.YZFirebase.addClockRecordFromClient({
-                employeeId:user.id,
-                name:user.name || '',
-                email:user.email || '',
-                actionName:actionName,
-                clockType:payload.clockType,
-                status:Number(r.lateMinutes || 0) > 0 ? '遲到' : '正常',
-                lateMinutes:Number(r.lateMinutes || 0) || 0,
-                sourceIp:payload.clientIp || ''
-              });
-            }
-          }catch(firebaseWriteErr){
-            console.warn('[Firebase clock mirror failed]', firebaseWriteErr);
-          }
           try { await loadEditableHistory(); } catch(refreshErr) { setMsg(msg, successMessage || '打卡成功，但重新整理紀錄失敗，請稍後手動刷新。', false); }
         } else {
           progress.fail('打卡失敗');
