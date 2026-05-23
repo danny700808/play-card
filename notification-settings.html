@@ -920,13 +920,16 @@ document.addEventListener('change', e=>{
 });
 
 const NOTIFY_EVENT_CODE_BY_NAME = {
-  '註冊申請送出':'register_pending','註冊審核通過':'register_approved','註冊審核駁回':'register_rejected','忘記密碼':'forgot_password',
+  '註冊申請送出':'register_pending','註冊審核通過':'register_approved','註冊審核駁回':'register_rejected','忘記密碼':'forgot_password','密碼修改成功':'password_changed',
   '個人資料修改申請送出':'profile_change_submitted','個人資料修改審核通過':'profile_change_approved','個人資料修改審核駁回':'profile_change_rejected',
-  '打卡補登申請送出':'clock_correction_submitted','打卡補登審核結果':'clock_correction_result','上班前提醒':'parttime_clock_in_reminder','上班提醒':'parttime_clock_in_reminder','下班後工讀時數未填':'parttime_clock_out_missing','下班打卡 / 工讀時數未填':'parttime_clock_out_missing','工讀時數填寫':'parttime_hours_submitted','工讀時數提醒':'parttime_clock_in_reminder',
-  '請假申請送出':'leave_submitted','請假審核結果':'leave_result','請假補證明提醒':'leave_proof_reminder','新交辦事項':'task_assigned','任務完成':'task_completed','任務退回重做':'task_redo',
-  '定期事項提醒':'routine_reminder','定期事項完成':'routine_completed','新公告發布':'announcement_published','公告回覆':'announcement_replied',
-  '外聘老師合約通知':'teacher_contract_notice','外聘老師合約簽署完成':'teacher_contract_signed','外聘老師拿貨詢價':'teacher_goods_inquiry','外聘老師拿貨回覆':'teacher_goods_reply',
-  '教育訓練發布':'training_published','估價單寄送':'quotation_sent','合約寄送':'contract_sent','LINE 綁定成功':'line_bound','應聘者送出履歷':'teacher_application_submitted'
+  '打卡成功':'clock_success','打卡失敗':'clock_failed','遲到紀錄產生':'clock_late_created','打卡補登申請送出':'clock_correction_submitted','打卡補登核准':'clock_correction_approved','打卡補登駁回':'clock_correction_rejected','打卡補登審核結果':'clock_correction_result',
+  '上班前提醒':'parttime_clock_in_reminder','上班提醒':'parttime_clock_in_reminder','下班後工讀時數未填':'parttime_clock_out_missing','下班打卡 / 工讀時數未填':'parttime_clock_out_missing','工讀時數送出':'parttime_hours_submitted','工讀時數填寫':'parttime_hours_submitted','工讀時數補登':'parttime_hours_supplement','工讀時數提醒':'parttime_clock_in_reminder','工讀薪資月報寄送':'parttime_monthly_report_sent',
+  '請假申請送出':'leave_submitted','請假申請修改':'leave_modified','請假申請撤回 / 刪除':'leave_deleted','請假核准':'leave_approved','請假駁回':'leave_rejected','請假審核結果':'leave_result','請假補證明提醒':'leave_proof_reminder','請假即將開始但未審核':'leave_pending_before_start','請假日已到仍未審核':'leave_pending_on_start','婚假 / 喪假事件建立':'leave_event_created','婚假 / 喪假同事件再次請假':'leave_event_continued',
+  '交辦事項':'task_assigned','新交辦事項發布':'task_assigned','新交辦事項':'task_assigned','員工完成 / 回覆交辦事項':'task_completed','任務完成':'task_completed','主管退回 / 要求重做':'task_redo_requested','任務退回重做':'task_redo_requested',
+  '固定事項':'routine_created_period','定期事項提醒':'routine_created_period','固定事項完成 / 回覆':'routine_completed','定期事項完成':'routine_completed','固定事項退回 / 要求重做':'routine_redo_requested',
+  '新公告發布':'announcement_published','公告修改後重新發布':'announcement_republished','公告回覆':'announcement_replied',
+  '外聘老師合約待簽提醒':'teacher_contract_notice','外聘老師合約通知':'teacher_contract_notice','外聘老師合約簽署完成':'teacher_contract_signed','外聘老師合約完成簽署通知主管':'teacher_contract_signed','外聘老師拿貨詢價':'teacher_goods_inquiry','外聘老師拿貨回覆':'teacher_goods_reply',
+  '教育訓練發布':'training_item_published','新教育訓練發布':'training_item_published','教育訓練更新':'training_item_updated','估價單寄送':'quotation_sent','估價單重新寄送':'quotation_resent','合約寄送':'contract_sent','合約重新寄送':'contract_resent','LINE 綁定成功':'line_bind_success','LINE 綁定失敗':'line_bind_failed','LINE 通知啟用 / 關閉':'line_notify_pref_changed','LINE 推播失敗':'line_push_failed','應聘者送出履歷':'teacher_application_submitted','應聘審核結果':'teacher_application_result'
 };
 function ensureNotifyEventCodes(){
   document.querySelectorAll('.notify-card').forEach(card=>{
@@ -1149,6 +1152,13 @@ async function saveSettings(){
     await saveTimeRules();
     setSaveProgress(90,'確認儲存結果');
     if(!res.ok)throw new Error(res.message||'儲存失敗');
+    if(res.rows){
+      document.querySelectorAll('.notify-card').forEach(card=>{
+        const hit=res.rows.find(r=>String(r.eventCode||'')===String(card.dataset.eventCode||card.dataset.eventKey||'')) || res.rows.find(r=>String(r.eventName||'')===card.dataset.eventName);
+        applyRow(card, hit);
+      });
+      refreshAdvancedVisibility();
+    }
     setSaveProgress(100,'儲存完成');
     msg('已儲存通知 / 提醒設定', true);
     setTimeout(hideSaveProgress,700);
