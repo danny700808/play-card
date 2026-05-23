@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>工讀薪資結算</title>
+  <!-- 2026-05-23 layout v6: 精簡工讀生卡片與薪資結算抬頭 -->
   <link rel="stylesheet" href="style.css">
   <style>
     .page-return-wrap{margin-bottom:16px}
@@ -43,8 +44,7 @@
 
     <div class="payroll-wrap">
       <div class="card">
-        <div class="section-title">工讀生</div>
-        <div class="field"><label>搜尋</label><input id="keyword" placeholder="輸入姓名或 Email"></div>
+        <div class="field"><label>搜尋</label><input id="keyword" placeholder="輸入姓名"></div>
         <div id="employeeList" class="list employee-list"></div>
       </div>
 
@@ -55,7 +55,7 @@
         <div id="queryWrap" class="hidden">
           <div class="selected-panel">
             <div class="selected-name" id="selectedName">-</div>
-            <div class="tag-row" id="employeeMetaTags"></div>
+            <div class="tag-row hidden" id="employeeMetaTags"></div>
           </div>
 
           <div class="query-row">
@@ -75,19 +75,19 @@
             <div class="summary-card final"><strong>應發金額</strong><div class="value" id="sumNet">0 元</div></div>
           </div>
 
-          <div class="mini-line" id="rangeText"></div>
-          <div class="mini-line" id="detailText"></div>
+          <div class="mini-line hidden" id="rangeText"></div>
+          <div class="mini-line hidden" id="detailText"></div>
         </div>
       </div>
     </div>
   </div>
 
-  <script src="config.js?v=20260523payrollfix5"></script>
+  <script src="config.js?v=20260523payrolllayout6"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260523payrollfix5"></script>
+  <script src="firebase-client.js?v=20260523payrolllayout6"></script>
 
-  <script src="app.js?v=20260523payrollfix5"></script>
+  <script src="app.js?v=20260523payrolllayout6"></script>
   <script>
     let state = { employees: [], selectedId: '', summary: null };
 
@@ -242,8 +242,6 @@
         const active = item.id === state.selectedId ? ' active' : '';
         return `<div class="item${active}" data-id="${item.id}">
           <div class="top"><strong>${item.name}</strong><span class="tag">${moneyText(item.hourlyRate||0)} / 時</span></div>
-          <div class="muted" style="margin-top:6px">${item.email || ''}</div>
-          <div class="tag-row"><span class="tag">勞保自付 ${moneyText(item.laborSelfPay||0)}</span></div>
         </div>`;
       }).join('') || '<div class="empty-box">目前沒有工讀生資料。</div>';
       qsa('#employeeList [data-id]').forEach(el=>{
@@ -266,11 +264,7 @@
       qs('#emptyState').classList.add('hidden');
       qs('#queryWrap').classList.remove('hidden');
       qs('#selectedName').textContent = emp.name || '-';
-      qs('#employeeMetaTags').innerHTML = [
-        `<span class="tag">時薪 ${moneyText(emp.hourlyRate||0)}</span>`,
-        `<span class="tag">勞保自付 ${moneyText(emp.laborSelfPay||0)}</span>`,
-        emp.laborInsuredSalary ? `<span class="tag">投保薪資 ${moneyText(emp.laborInsuredSalary||0)}</span>` : ''
-      ].join('');
+      qs('#employeeMetaTags').innerHTML = '';
     }
 
     function fillSummary(summary, search){
@@ -283,8 +277,8 @@
       qs('#sumLateMinutes').textContent = `遲到 ${summary.lateMinutes || 0} 分鐘`;
       qs('#sumLabor').textContent = moneyText(summary.laborSelfPay || 0);
       qs('#sumNet').textContent = moneyText(summary.netPay || 0);
-      qs('#rangeText').textContent = `${search.monthText || ''}｜${search.startDate || '-'} ～ ${search.endDate || '-'}`;
-      qs('#detailText').textContent = `資料來源：${summary.sourceLabel || 'Firebase'}｜工讀紀錄 ${summary.recordCount || 0} 筆｜補時數 ${summary.supplementCount || 0} 筆｜遲到 ${summary.lateMinutes || 0} 分鐘｜遲到扣款 ${moneyText(summary.lateDeduction || 0)}`;
+      qs('#rangeText').textContent = '';
+      qs('#detailText').textContent = '';
     }
 
     async function loadSetup(){
