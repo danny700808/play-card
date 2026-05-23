@@ -82,12 +82,12 @@
     </div>
   </div>
 
-  <script src="config.js?v=20260523payrollfix4"></script>
+  <script src="config.js?v=20260523payrollfix5"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260523payrollfix4"></script>
+  <script src="firebase-client.js?v=20260523payrollfix5"></script>
 
-  <script src="app.js?v=20260523payrollfix4"></script>
+  <script src="app.js?v=20260523payrollfix5"></script>
   <script>
     let state = { employees: [], selectedId: '', summary: null };
 
@@ -284,7 +284,7 @@
       qs('#sumLabor').textContent = moneyText(summary.laborSelfPay || 0);
       qs('#sumNet').textContent = moneyText(summary.netPay || 0);
       qs('#rangeText').textContent = `${search.monthText || ''}｜${search.startDate || '-'} ～ ${search.endDate || '-'}`;
-      qs('#detailText').textContent = `工讀紀錄 ${summary.recordCount || 0} 筆｜補時數 ${summary.supplementCount || 0} 筆｜遲到 ${summary.lateMinutes || 0} 分鐘｜遲到扣款 ${moneyText(summary.lateDeduction || 0)}`;
+      qs('#detailText').textContent = `資料來源：${summary.sourceLabel || 'Firebase'}｜工讀紀錄 ${summary.recordCount || 0} 筆｜補時數 ${summary.supplementCount || 0} 筆｜遲到 ${summary.lateMinutes || 0} 分鐘｜遲到扣款 ${moneyText(summary.lateDeduction || 0)}`;
     }
 
     async function loadSetup(){
@@ -358,6 +358,50 @@
       };
     }
 
+    function normalizeGsPayrollResult_(res){
+      if(!res || !res.ok) return null;
+      const s = res.summary || {};
+      return {
+        search: res.search || {},
+        summary: {
+          totalHours: safeNum(s.totalHours),
+          hourlyRate: safeNum(s.hourlyRate),
+          grossPay: safeNum(s.grossPay),
+          laborSelfPay: safeNum(s.laborSelfPay),
+          lateMinutes: safeNum(s.lateMinutes),
+          lateDeduction: safeNum(s.lateDeduction || s.lateDeductionValue),
+          netPay: safeNum(s.netPay),
+          recordCount: safeNum(s.recordCount || ((res.rows || []).length)),
+          supplementCount: safeNum(s.supplementCount),
+          sourceLabel: 'GS完整計算備援'
+        }
+      };
+    }
+
+    async function buildGsSummaryFallback_(user, emp, monthText){
+      if(typeof api !== 'function') return null;
+      const res = await api('getParttimePayrollSummary', {
+        userId: user.id,
+        employeeId: emp.id,
+        mode: 'month',
+        monthText: monthText
+      });
+      return normalizeGsPayrollResult_(res);
+    }
+
+    function chooseBetterPayrollSummary_(fbResult, gsResult){
+      if(fbResult && fbResult.summary) fbResult.summary.sourceLabel = 'Firebase';
+      if(!gsResult || !gsResult.summary) return fbResult;
+      if(!fbResult || !fbResult.summary) return gsResult;
+      const fb = fbResult.summary, gs = gsResult.summary;
+      // 目前你遇到的狀況是 Firebase 只抓到單筆 3 小時；若 GS 完整計算筆數/時數更多，先採用完整結果。
+      if((gs.recordCount || 0) > (fb.recordCount || 0)) return gsResult;
+      if((gs.totalHours || 0) > (fb.totalHours || 0) + 0.01) return gsResult;
+      // 若 Firebase 沒有遲到資料，但 GS 有，採用 GS 的完整扣款資訊。
+      if(!(fb.lateMinutes || 0) && (gs.lateMinutes || 0)) return gsResult;
+      return fbResult;
+    }
+
     async function searchSummary(){
       const user = requireLogin();
       const emp = selectedEmployee();
@@ -366,9 +410,18 @@
       const btn = qs('#searchBtn');
       const progress = startActionButtonProgress(btn, { label:'查詢中' });
       try{
-        progress.set(35,'讀取 Firebase');
-        const r = await buildSummary(emp, qs('#monthText').value);
-        fillSummary(r.summary || {}, r.search || {});
+        progress.set(25,'讀取 Firebase');
+        const monthText = qs('#monthText').value;
+        const fbPromise = buildSummary(emp, monthText).catch(err=>({ error: err }));
+        const gsPromise = buildGsSummaryFallback_(user, emp, monthText).catch(err=>null);
+        const [fbRaw, gsResult] = await Promise.all([fbPromise, gsPromise]);
+        const fbResult = fbRaw && !fbRaw.error ? fbRaw : null;
+        const finalResult = chooseBetterPayrollSummary_(fbResult, gsResult);
+        if(!finalResult) throw (fbRaw && fbRaw.error) || new Error('查無薪資資料');
+        fillSummary(finalResult.summary || {}, finalResult.search || {});
+        if((finalResult.summary && finalResult.summary.sourceLabel) === 'GS完整計算備援'){
+          setMsgText('目前 Firebase 只抓到部分工讀紀錄，已先用 GS 完整計算結果顯示；接下來需要補一次 Firebase 工讀紀錄重新匯入。', false);
+        }
         progress.done('完成');
       }catch(err){
         progress.fail('查詢失敗');
