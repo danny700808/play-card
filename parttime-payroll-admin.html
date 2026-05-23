@@ -8,8 +8,8 @@
   <style>
     .page-return-wrap{margin-bottom:16px}
     .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
-    .payroll-wrap{display:grid;grid-template-columns:330px minmax(0,1fr);gap:16px;align-items:start}
-    .employee-list .item{cursor:pointer;border-radius:16px;padding:16px;border:1px solid var(--line);background:#fff;margin:10px 0}
+    .payroll-wrap{display:grid;grid-template-columns:1fr;gap:16px;align-items:start}
+    .employee-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.employee-list .item{cursor:pointer;border-radius:16px;padding:16px;border:1px solid var(--line);background:#fff;margin:0}
     .employee-list .item.active{border-color:var(--brand);box-shadow:0 0 0 2px rgba(31,122,90,.10)}
     .employee-list .top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
     .tag-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
@@ -20,15 +20,15 @@
     .summary-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}
     .summary-card{border:1px solid var(--line);border-radius:18px;padding:16px;background:#f8fbff}
     .summary-card strong{display:block;font-size:14px;color:var(--muted);margin-bottom:8px}
-    .summary-card .value{font-size:30px;font-weight:900;line-height:1.15;color:#1f2d3d}
+    .summary-card .value{font-size:30px;font-weight:900;line-height:1.15;color:#1f2d3d}.summary-card .subvalue{font-size:14px;font-weight:800;color:var(--muted);margin-top:8px}
     .summary-card.warn{background:#fff4f2}
     .summary-card.final{grid-column:1/-1;background:#1f7a5a;color:#fff;border-color:#1f7a5a}
     .summary-card.final strong,.summary-card.final .value{color:#fff}
     .mini-line{font-size:14px;color:var(--muted);line-height:1.6;margin-top:10px}
     .empty-box{padding:18px;border-radius:16px;background:#fafafa;color:#6b7280;line-height:1.7}
     .hidden{display:none!important}
-    @media (max-width:980px){.payroll-wrap{grid-template-columns:1fr}}
-    @media (max-width:640px){.query-row{grid-template-columns:1fr}.summary-grid{grid-template-columns:1fr}.selected-name{font-size:22px}.summary-card .value{font-size:28px}}
+    @media (max-width:980px){.employee-list{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    @media (max-width:640px){.employee-list{grid-template-columns:1fr}.query-row{grid-template-columns:1fr}.summary-grid{grid-template-columns:1fr}.selected-name{font-size:22px}.summary-card .value{font-size:28px}}
   </style>
 </head>
 <body onload="init()">
@@ -70,7 +70,7 @@
             <div class="summary-card"><strong>總工時</strong><div class="value" id="sumHours">0 小時</div></div>
             <div class="summary-card"><strong>時薪</strong><div class="value" id="sumHourly">0 元</div></div>
             <div class="summary-card"><strong>工時金額</strong><div class="value" id="sumGross">0 元</div></div>
-            <div class="summary-card warn"><strong>遲到扣款</strong><div class="value" id="sumLate">0 元</div></div>
+            <div class="summary-card warn"><strong>遲到扣款 / 遲到時間</strong><div class="value" id="sumLate">0 元</div><div class="subvalue" id="sumLateMinutes">遲到 0 分鐘</div></div>
             <div class="summary-card warn"><strong>勞保自付額</strong><div class="value" id="sumLabor">0 元</div></div>
             <div class="summary-card final"><strong>應發金額</strong><div class="value" id="sumNet">0 元</div></div>
           </div>
@@ -82,12 +82,12 @@
     </div>
   </div>
 
-  <script src="config.js?v=20260523payrollfix2"></script>
+  <script src="config.js?v=20260523payrollfix3"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260523payrollfix2"></script>
+  <script src="firebase-client.js?v=20260523payrollfix3"></script>
 
-  <script src="app.js?v=20260523payrollfix2"></script>
+  <script src="app.js?v=20260523payrollfix3"></script>
   <script>
     let state = { employees: [], selectedId: '', summary: null };
 
@@ -98,6 +98,118 @@
     }
     function setMsgText(message, isError){ setMsg(qs('#pageMsg'), message || '', !!isError); }
     function selectedEmployee(){ return state.employees.find(x=>x.id === state.selectedId) || null; }
+    function clean(v){ return String(v == null ? '' : v).trim(); }
+    function lower(v){ return clean(v).toLowerCase(); }
+    function truthy(v){ const s=lower(v); return v===true || ['是','yes','true','1','active','enabled','啟用'].includes(s); }
+    function safeNum(v){
+      if(v && typeof v.toDate === 'function') return 0;
+      if(v instanceof Date) return 0;
+      const n = Number(v || 0);
+      return Number.isFinite(n) ? n : 0;
+    }
+    function dateKey(v){
+      if(!v) return '';
+      if(v && typeof v.toDate === 'function') v = v.toDate();
+      if(v instanceof Date && !isNaN(v.getTime())) return v.getFullYear()+'-'+String(v.getMonth()+1).padStart(2,'0')+'-'+String(v.getDate()).padStart(2,'0');
+      const s = clean(v);
+      if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+      if(/^\d{4}\/\d{1,2}\/\d{1,2}/.test(s)){ const p=s.split(/[\/\s]/); return p[0]+'-'+String(p[1]).padStart(2,'0')+'-'+String(p[2]).padStart(2,'0'); }
+      const d = new Date(s);
+      return isNaN(d.getTime()) ? s : dateKey(d);
+    }
+    function timeText(v){
+      if(!v) return '';
+      if(v && typeof v.toDate === 'function') v = v.toDate();
+      if(v instanceof Date && !isNaN(v.getTime())) return String(v.getHours()).padStart(2,'0')+':'+String(v.getMinutes()).padStart(2,'0')+':'+String(v.getSeconds()).padStart(2,'0');
+      const s = clean(v);
+      if(/^\d{1,2}:\d{2}/.test(s)){ const p=s.split(':'); return String(p[0]).padStart(2,'0')+':'+p[1]+(p[2]?':'+p[2]:''); }
+      return s;
+    }
+    function fbDb(){
+      if(!(window.APP_CONFIG && window.APP_CONFIG.FIREBASE_CONFIG && window.firebase && window.firebase.firestore)) throw new Error('Firebase 尚未啟用');
+      if(!window.firebase.apps.length) window.firebase.initializeApp(window.APP_CONFIG.FIREBASE_CONFIG);
+      return window.firebase.firestore();
+    }
+    async function fbAll(collection){
+      const snap = await fbDb().collection(collection).get();
+      const rows = [];
+      snap.forEach(doc=>rows.push(Object.assign({__id:doc.id}, doc.data()||{})));
+      return rows;
+    }
+    function rawVal(o, keys){
+      for(const k of keys){ if(o && o[k] != null && clean(o[k]) !== '') return o[k]; }
+      return '';
+    }
+    function normalizeEmployeeRow(o){
+      const source = o.source || {};
+      const get = (keys)=> rawVal(o, keys) || rawVal(source, keys);
+      const identityType = lower(get(['identityType','身分類型'])) || (truthy(get(['isPartTime','是否工讀生'])) ? 'parttime' : 'staff');
+      const hourlyRate = safeNum(get(['hourlyRate','時薪金額','時薪','hourlyPay'])) || 196;
+      const laborSelfPay = safeNum(get(['laborSelfPay','勞保自付額','勞保自付額快照','laborEmployeeSelfPay']));
+      const laborInsuredSalary = safeNum(get(['laborInsuredSalary','勞保投保薪資','目前申報月平均薪資總額']));
+      return {
+        id: clean(get(['employeeId','員工ID']) || o.__id),
+        name: clean(get(['name','姓名'])),
+        email: lower(get(['email','Email'])),
+        role: lower(get(['role','角色']) || 'staff'),
+        identityType,
+        accountStatus: clean(get(['accountStatus','帳號狀態']) || 'active'),
+        hourlyRate,
+        laborSelfPay,
+        laborInsuredSalary,
+        raw:o
+      };
+    }
+    function normalizeParttimeRow(o){
+      const source = o.source || {};
+      const get = (keys)=> rawVal(o, keys) || rawVal(source, keys);
+      const baseHours = safeNum(get(['hours','時數']));
+      const half = truthy(get(['halfHour','addHalfHour','是否加半小時']));
+      let total = safeNum(get(['totalHours','總時數']));
+      // 舊 Excel 有些「總時數」會被讀成日期或異常數字，遇到不合理就用「時數 + 半小時」重算。
+      if(!total || total < 0 || total > 24) total = baseHours + (half ? 0.5 : 0);
+      total = Math.round(total * 100) / 100;
+      return {
+        id: clean(get(['recordId','紀錄ID']) || o.__id),
+        employeeId: clean(get(['employeeId','員工ID'])),
+        name: clean(get(['name','姓名'])),
+        email: lower(get(['email','Email'])),
+        date: dateKey(get(['workDate','date','日期'])),
+        hours: baseHours,
+        halfHour: half,
+        totalHours: total,
+        status: clean(get(['status','狀態']) || '正常'),
+        note: clean(get(['note','備註'])),
+        hourlyRate: safeNum(get(['hourlyRate','時薪'])),
+        grossPay: safeNum(get(['grossPay','當筆毛額'])),
+        laborSelfPaySnapshot: safeNum(get(['laborSelfPaySnapshot','勞保自付額快照']))
+      };
+    }
+    function normalizeClockRow(o){
+      const source = o.source || {};
+      const get = (keys)=> rawVal(o, keys) || rawVal(source, keys);
+      return {
+        id: clean(get(['recordId','紀錄ID']) || o.__id),
+        employeeId: clean(get(['employeeId','員工ID'])),
+        date: dateKey(get(['clockDate','date','打卡日期'])),
+        time: timeText(get(['clockTime','time','打卡時間'])),
+        actionName: clean(get(['actionName','打卡動作'])),
+        status: clean(get(['status','狀態']) || '正常'),
+        lateMinutes: safeNum(get(['lateMinutes','遲到分鐘'])),
+        originalRecordId: clean(get(['originalRecordId','原始紀錄ID']))
+      };
+    }
+    function normalizeCorrectionRow(o){
+      const source = o.source || {};
+      const get = (keys)=> rawVal(o, keys) || rawVal(source, keys);
+      return {
+        id: clean(get(['requestId','申請ID']) || o.__id),
+        employeeId: clean(get(['employeeId','員工ID'])),
+        originalRecordId: clean(get(['originalRecordId','原始紀錄ID'])),
+        status: clean(get(['status','狀態'])),
+        approvedRecordId: clean(get(['approvedRecordId','核准後紀錄ID']))
+      };
+    }
 
     function renderEmployees(){
       const keyword = (qs('#keyword').value || '').trim().toLowerCase();
@@ -147,38 +259,88 @@
       qs('#sumHourly').textContent = moneyText(summary.hourlyRate || 0);
       qs('#sumGross').textContent = moneyText(summary.grossPay || 0);
       qs('#sumLate').textContent = moneyText(summary.lateDeduction || 0);
+      qs('#sumLateMinutes').textContent = `遲到 ${summary.lateMinutes || 0} 分鐘`;
       qs('#sumLabor').textContent = moneyText(summary.laborSelfPay || 0);
       qs('#sumNet').textContent = moneyText(summary.netPay || 0);
       qs('#rangeText').textContent = `${search.monthText || ''}｜${search.startDate || '-'} ～ ${search.endDate || '-'}`;
-      qs('#detailText').textContent = `工讀紀錄 ${summary.recordCount || 0} 筆｜補時數 ${summary.supplementCount || 0} 筆｜遲到 ${summary.lateMinutes || 0} 分鐘`;
+      qs('#detailText').textContent = `工讀紀錄 ${summary.recordCount || 0} 筆｜補時數 ${summary.supplementCount || 0} 筆｜遲到 ${summary.lateMinutes || 0} 分鐘｜遲到扣款 ${moneyText(summary.lateDeduction || 0)}`;
     }
 
     async function loadSetup(){
       const user = requireLogin();
       if(!user) return;
-      const r = await api('getParttimePayrollAdminData',{userId:user.id});
-      state.employees = r.employees || [];
-      qs('#monthText').value = r.defaultMonth || '';
+      const allEmployees = (await fbAll('employees')).map(normalizeEmployeeRow);
+      state.employees = allEmployees.filter(e=>e.id && e.identityType === 'parttime' && lower(e.accountStatus) !== 'rejected');
+      qs('#monthText').value = new Date().toISOString().slice(0,7);
       renderEmployees();
       renderSelected();
+    }
+
+    function monthRange(monthText){
+      const month = clean(monthText) || new Date().toISOString().slice(0,7);
+      return { monthText: month, startDate: month + '-01', endDate: month + '-31' };
+    }
+
+    async function buildSummary(emp, monthText){
+      const range = monthRange(monthText);
+      const [ptRaw, clockRaw, correctionRaw] = await Promise.all([
+        fbAll('parttimeRecords'),
+        fbAll('clockRecords'),
+        fbAll('clockCorrections').catch(()=>[])
+      ]);
+      const records = ptRaw.map(normalizeParttimeRow)
+        .filter(r=>r.employeeId === emp.id && r.date.slice(0,7) === range.monthText);
+      const hourlyRate = emp.hourlyRate || records.map(r=>r.hourlyRate).find(v=>v>0) || 196;
+      const totalHours = Math.round(records.reduce((sum,r)=>sum + (Number(r.totalHours)||0),0) * 100) / 100;
+      const grossPay = Math.round(records.reduce((sum,r)=>{
+        const gross = Number(r.grossPay || 0);
+        return sum + (gross > 0 ? gross : ((Number(r.totalHours)||0) * hourlyRate));
+      },0));
+      const latestLaborSnapshot = records.slice().reverse().map(r=>r.laborSelfPaySnapshot).find(v=>Number(v||0)>0) || 0;
+      const laborSelfPay = Math.round(Number(emp.laborSelfPay || latestLaborSnapshot || 0) || 0);
+
+      const approvedCorrectionOriginalIds = new Set(
+        correctionRaw.map(normalizeCorrectionRow)
+          .filter(c=>c.employeeId === emp.id && (c.status === '已核准' || lower(c.status).includes('approve')) && c.originalRecordId)
+          .map(c=>c.originalRecordId)
+      );
+      const lateRows = clockRaw.map(normalizeClockRow).filter(r=>{
+        if(r.employeeId !== emp.id) return false;
+        if(r.date.slice(0,7) !== range.monthText) return false;
+        if(!r.lateMinutes || r.lateMinutes <= 0) return false;
+        if(r.status === '已被補登修正') return false;
+        if(approvedCorrectionOriginalIds.has(r.id)) return false;
+        return true;
+      });
+      const lateMinutes = Math.round(lateRows.reduce((sum,r)=>sum+(Number(r.lateMinutes)||0),0));
+      const lateDeduction = Math.round((hourlyRate / 60) * lateMinutes);
+      const netPay = Math.max(0, Math.round(grossPay - laborSelfPay - lateDeduction));
+      return {
+        search: range,
+        summary: {
+          totalHours,
+          hourlyRate,
+          grossPay,
+          laborSelfPay,
+          lateMinutes,
+          lateDeduction,
+          netPay,
+          recordCount: records.length,
+          supplementCount: records.filter(r=>r.status === '補時數').length
+        }
+      };
     }
 
     async function searchSummary(){
       const user = requireLogin();
       const emp = selectedEmployee();
       if(!user || !emp) return;
-      const payload = { userId:user.id, employeeId:emp.id, mode:'month', monthText:qs('#monthText').value };
       setMsgText('');
       const btn = qs('#searchBtn');
       const progress = startActionButtonProgress(btn, { label:'查詢中' });
       try{
-        progress.set(35,'讀取資料');
-        const r = await api('getParttimePayrollSummary', payload);
-        if(!r.ok){
-          progress.fail('查詢失敗');
-          setMsgText(r.message || '查詢失敗', true);
-          return;
-        }
+        progress.set(35,'讀取 Firebase');
+        const r = await buildSummary(emp, qs('#monthText').value);
         fillSummary(r.summary || {}, r.search || {});
         progress.done('完成');
       }catch(err){
