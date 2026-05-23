@@ -121,6 +121,109 @@
   async function getDashboardSummary(payload){ const user=currentUser()||{}; const role=lower(payload&&payload.role || user.role); const uid=clean(payload&&payload.userId || user.id || user.employeeId); if(role==='admin' || user.showSettingsZone){ const [leaves, corrections]=await Promise.all([getPendingLeaveApprovals().catch(()=>({rows:[]})), queryEq('clockCorrections','status','待審核').catch(()=>[])]); return {ok:true,counts:{leaves:(leaves.rows||[]).length,clocks:corrections.length,clockCorrections:corrections.length,tasks:0,routines:0,announcements:0,registrations:0,contracts:0,goodsInquiries:0}}; } const [leaves, clocks, pts]=await Promise.all([getLeaveHistory(uid).catch(()=>({rows:[]})), getEditableClockHistory(uid).catch(()=>[]), getParttimeHistory(uid,'').catch(()=>({rows:[]}))]); return {ok:true,counts:{leaves:(leaves.rows||[]).filter(x=>x.status==='待審核').length,clocks:(clocks||[]).length,parttime:(pts.rows||[]).length,tasks:0,routines:0,announcements:0}}; }
   async function getPendingCounts(payload){ return getDashboardSummary(Object.assign({},payload,{role:'admin'})); }
 
+
+  function pick(obj, keys){ for(const k of keys){ if(obj && obj[k] != null && clean(obj[k]) !== '') return obj[k]; } return ''; }
+  function serverTs(){ return global.firebase.firestore.FieldValue.serverTimestamp(); }
+  async function setCollectionDoc(collection, id, data){
+    const d=init(); if(!d) return {ok:false,message:'Firebase 尚未啟用'};
+    const docId=clean(id) || ('WEB_'+Date.now()+'_'+Math.random().toString(36).slice(2,8));
+    await d.collection(collection).doc(docId).set(Object.assign({}, data, {updatedAt:serverTs()}), {merge:true});
+    return {ok:true,id:docId};
+  }
+  function flattenLeaveResult(payload, result){
+    const row = (result && result.row) || {};
+    const requestId = clean(pick(row, ['請假ID','requestId','leaveId'])) || clean(result && (result.requestId || result.leaveId)) || clean(payload.requestId) || clean(payload.leaveId);
+    const user = currentUser() || {};
+    const firstSeg = Array.isArray(payload.segments) && payload.segments.length ? payload.segments[0] : {};
+    return {
+      requestId: requestId || ('LV_'+clean(payload.userId||user.id||'USER')+'_'+Date.now()),
+      employeeId: clean(pick(row, ['員工ID','employeeId'])) || clean(payload.userId || user.id || user.employeeId),
+      name: clean(pick(row, ['姓名','name'])) || clean(user.name),
+      email: lower(pick(row, ['Email','email']) || user.email),
+      reason: clean(payload.reason || payload.leaveName || pick(row, ['請假原因','reason']) || '請假'),
+      leaveCode: clean(payload.leaveCode || pick(row, ['假別代碼','leaveCode'])),
+      bereavementRelation: clean(payload.bereavementRelation || pick(row, ['喪假關係人','bereavementRelation'])),
+      leaveDate: fmtDate(pick(row, ['請假日期','leaveDate']) || firstSeg.date || firstSeg.startDate),
+      startDate: fmtDate(pick(row, ['開始日期','startDate']) || firstSeg.startDate || firstSeg.date),
+      endDate: fmtDate(pick(row, ['結束日期','endDate']) || firstSeg.endDate || firstSeg.date || firstSeg.startDate),
+      startTime: clean(pick(row, ['請假開始時間','startTime']) || firstSeg.startTime),
+      endTime: clean(pick(row, ['請假結束時間','endTime']) || firstSeg.endTime),
+      session: clean(pick(row, ['請假時段','session']) || firstSeg.session),
+      hours: Number(pick(row, ['請假時數','hours']) || firstSeg.hours || 0) || 0,
+      note: clean(payload.note || pick(row, ['備註','note'])),
+      attachmentUrl: clean(pick(row, ['附件連結','attachmentUrl'])),
+      status: clean(pick(row, ['狀態','status']) || '待審核') || '待審核',
+      modifyCount: Number(pick(row, ['修改次數','modifyCount']) || 0) || 0,
+      segments: Array.isArray(payload.segments) ? payload.segments : [],
+      source: 'gs-double-write',
+      createdAt: serverTs()
+    };
+  }
+  function flattenParttimeResult(payload, result){
+    const row = (result && result.row) || {};
+    const user = currentUser() || {};
+    const recordId = clean(pick(row, ['紀錄ID','recordId'])) || clean(result && result.recordId) || ('PT_'+clean(payload.userId||user.id||'USER')+'_'+Date.now());
+    return {
+      recordId,
+      employeeId: clean(pick(row, ['員工ID','employeeId'])) || clean(payload.userId || user.id || user.employeeId),
+      name: clean(pick(row, ['姓名','name'])) || clean(user.name),
+      email: lower(pick(row, ['Email','email']) || user.email),
+      date: fmtDate(pick(row, ['日期','date']) || payload.workDate || payload.date),
+      hours: Number(pick(row, ['時數','hours']) || payload.hours || payload.workHours || 0) || 0,
+      halfHour: truthy(pick(row, ['是否加半小時','halfHour']) || payload.halfHour || payload.addHalfHour),
+      totalHours: Number(pick(row, ['總時數','totalHours']) || result.totalHours || 0) || 0,
+      status: clean(pick(row, ['狀態','status']) || '正常') || '正常',
+      supplementReason: clean(pick(row, ['補時數原因','supplementReason'])),
+      scheduleLabel: clean(pick(row, ['班表狀態','scheduleLabel'])),
+      startTime: clean(pick(row, ['班表開始時間','startTime'])),
+      endTime: clean(pick(row, ['班表結束時間','endTime'])),
+      hourlyRate: Number(pick(row, ['時薪','hourlyRate']) || 0) || 0,
+      grossPay: Number(pick(row, ['當筆毛額','grossPay']) || 0) || 0,
+      laborSelfPaySnapshot: Number(pick(row, ['勞保自付額快照','laborSelfPaySnapshot']) || 0) || 0,
+      note: clean(payload.note || pick(row, ['備註','note'])),
+      source: 'gs-double-write',
+      createdAt: serverTs()
+    };
+  }
+  async function mirrorLeaveRequest(action, payload, result){
+    const row = flattenLeaveResult(payload, result);
+    if(action === 'deleteLeaveRequest'){
+      const d=init(); if(!d) return;
+      const id=clean(payload.requestId || payload.leaveId || row.requestId); if(id) await d.collection('leaveRequests').doc(id).set({status:'已刪除', deletedAt:serverTs(), updatedAt:serverTs(), source:'gs-double-write'}, {merge:true});
+      return;
+    }
+    if(action === 'reviewLeaveRequest'){
+      const id=clean(payload.requestId || payload.leaveId || row.requestId); if(!id) return;
+      const status = /reject/i.test(clean(payload.decision || payload.action)) ? '已駁回' : '已核准';
+      await setCollectionDoc('leaveRequests', id, {status, rejectReason:clean(payload.rejectReason||payload.reason), reviewedAt:serverTs(), source:'gs-double-write'});
+      if(status === '已核准') await setCollectionDoc('leaveRecords', id, Object.assign({}, row, {status:'已核准'}));
+      return;
+    }
+    await setCollectionDoc('leaveRequests', row.requestId, row);
+  }
+  async function mirrorParttime(payload, result){
+    const row = flattenParttimeResult(payload, result);
+    await setCollectionDoc('parttimeRecords', row.recordId, row);
+  }
+  async function mirrorClockCorrection(action, payload, result){
+    const row=(result&&result.row)||{};
+    const requestId=clean(pick(row,['申請ID','修正ID','requestId']) || result.requestId || payload.requestId) || ('CCR_'+clean(payload.userId||'USER')+'_'+Date.now());
+    if(action==='approveClockCorrectionApi' || action==='rejectClockCorrectionApi'){
+      await setCollectionDoc('clockCorrections', requestId, {status: action==='approveClockCorrectionApi'?'已核准':'已駁回', rejectReason:clean(payload.rejectReason||''), reviewedAt:serverTs(), source:'gs-double-write'});
+      return;
+    }
+    await setCollectionDoc('clockCorrections', requestId, Object.assign({}, payload, row, {requestId, employeeId:clean(payload.userId||pick(row,['員工ID','employeeId'])), status:clean(pick(row,['狀態','status'])||'待審核')||'待審核', source:'gs-double-write', createdAt:serverTs()}));
+  }
+  async function mirrorApiWrite(action, payload, result){
+    const a=clean(action);
+    if(!enabled() || !(result && result.ok)) return;
+    if(a==='leaveRequest' || a==='modifyLeaveRequest' || a==='deleteLeaveRequest' || a==='reviewLeaveRequest') return await mirrorLeaveRequest(a, payload||{}, result||{});
+    if(a==='parttime') return await mirrorParttime(payload||{}, result||{});
+    if(a==='submitClockCorrection' || a==='approveClockCorrectionApi' || a==='rejectClockCorrectionApi') return await mirrorClockCorrection(a, payload||{}, result||{});
+    if(a==='saveNotificationSettings') return await mirrorNotificationSettings((payload&&payload.rows)||[]);
+    if(a==='saveNotificationTimeRules') return await mirrorNotificationTimeRules((payload&&payload.rows)||[]);
+  }
+
   async function handleApi(action,payload){
     if(!enabled()) return null;
     const a=clean(action);
@@ -136,5 +239,5 @@
     return null;
   }
 
-  global.YZFirebase = {init,enabled,handleApi,getEmployee,getMyProfile,normalizeClockDoc,getClockRowsByEmployee,getEditableClockHistory,getClockHistoryRange,addClockRecordFromClient,getLeaveHistory,getPendingLeaveApprovals,getAdminLeaveEmployeeSummary,getParttimeHistory,getNotificationSettings,getNotificationTimeRules,mirrorNotificationSettings,mirrorNotificationTimeRules,getDashboardSummary,getPendingCounts};
+  global.YZFirebase = {init,enabled,handleApi,getEmployee,getMyProfile,normalizeClockDoc,getClockRowsByEmployee,getEditableClockHistory,getClockHistoryRange,addClockRecordFromClient,getLeaveHistory,getPendingLeaveApprovals,getAdminLeaveEmployeeSummary,getParttimeHistory,getNotificationSettings,getNotificationTimeRules,mirrorNotificationSettings,mirrorNotificationTimeRules,getDashboardSummary,getPendingCounts,mirrorApiWrite};
 })(window);

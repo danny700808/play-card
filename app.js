@@ -50,7 +50,19 @@ async function api(action, payload={}){
   if(!apiUrl) throw new Error('尚未設定 API 網址');
   const res=await fetch(apiUrl,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action,...payload})});
   const raw=await res.text();
-  try{return JSON.parse(raw);}catch(e){throw new Error(raw || '伺服器回傳格式錯誤');}
+  let parsed;
+  try{ parsed = JSON.parse(raw); }catch(e){ throw new Error(raw || '伺服器回傳格式錯誤'); }
+
+  // Firebase 第三階段：寫入型資料先採「雙寫」。
+  // 原 GS 成功後，再同步鏡像一份到 Firebase；若 Firebase 同步失敗，不阻斷原本正式流程。
+  try{
+    if(parsed && parsed.ok && window.YZFirebase && typeof window.YZFirebase.mirrorApiWrite === 'function'){
+      await window.YZFirebase.mirrorApiWrite(action, payload || {}, parsed);
+    }
+  }catch(firebaseMirrorErr){
+    console.warn('[Firebase mirror write failed]', action, firebaseMirrorErr);
+  }
+  return parsed;
 }
 function setMsg(el, text, isError=false){if(!el) return; el.style.display=text?'block':'none'; el.textContent=text||''; el.classList.toggle('error',!!isError)}
 function togglePassword(inputSel, btn){const input=qs(inputSel); const show=input.type==='password'; input.type=show?'text':'password'; btn.textContent=show?'🙈':'👁';}
