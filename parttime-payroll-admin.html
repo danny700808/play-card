@@ -82,12 +82,12 @@
     </div>
   </div>
 
-  <script src="config.js?v=20260523payrollfix3"></script>
+  <script src="config.js?v=20260523payrollfix4"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260523payrollfix3"></script>
+  <script src="firebase-client.js?v=20260523payrollfix4"></script>
 
-  <script src="app.js?v=20260523payrollfix3"></script>
+  <script src="app.js?v=20260523payrollfix4"></script>
   <script>
     let state = { employees: [], selectedId: '', summary: null };
 
@@ -107,22 +107,43 @@
       const n = Number(v || 0);
       return Number.isFinite(n) ? n : 0;
     }
+    function excelSerialToDateKey_(n){
+      n = Number(n);
+      if(!Number.isFinite(n) || n < 20000 || n > 70000) return '';
+      const base = new Date(Date.UTC(1899, 11, 30));
+      base.setUTCDate(base.getUTCDate() + Math.floor(n));
+      return base.getUTCFullYear()+'-'+String(base.getUTCMonth()+1).padStart(2,'0')+'-'+String(base.getUTCDate()).padStart(2,'0');
+    }
+    function excelSerialToTimeText_(n){
+      n = Number(n);
+      if(!Number.isFinite(n)) return '';
+      const fraction = ((n % 1) + 1) % 1;
+      const total = Math.round(fraction * 24 * 60 * 60);
+      const h = Math.floor(total / 3600) % 24;
+      const m = Math.floor((total % 3600) / 60);
+      const s = total % 60;
+      return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');
+    }
     function dateKey(v){
-      if(!v) return '';
+      if(v == null || v === '') return '';
       if(v && typeof v.toDate === 'function') v = v.toDate();
       if(v instanceof Date && !isNaN(v.getTime())) return v.getFullYear()+'-'+String(v.getMonth()+1).padStart(2,'0')+'-'+String(v.getDate()).padStart(2,'0');
+      if(typeof v === 'number') return excelSerialToDateKey_(v) || '';
       const s = clean(v);
-      if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+      if(/^\d{4}-\d{1,2}-\d{1,2}/.test(s)){ const p=s.split(/[\-\sT]/); return p[0]+'-'+String(p[1]).padStart(2,'0')+'-'+String(p[2]).padStart(2,'0'); }
       if(/^\d{4}\/\d{1,2}\/\d{1,2}/.test(s)){ const p=s.split(/[\/\s]/); return p[0]+'-'+String(p[1]).padStart(2,'0')+'-'+String(p[2]).padStart(2,'0'); }
+      if(/^\d{4,5}(?:\.\d+)?$/.test(s)) return excelSerialToDateKey_(Number(s)) || s;
       const d = new Date(s);
       return isNaN(d.getTime()) ? s : dateKey(d);
     }
     function timeText(v){
-      if(!v) return '';
+      if(v == null || v === '') return '';
       if(v && typeof v.toDate === 'function') v = v.toDate();
       if(v instanceof Date && !isNaN(v.getTime())) return String(v.getHours()).padStart(2,'0')+':'+String(v.getMinutes()).padStart(2,'0')+':'+String(v.getSeconds()).padStart(2,'0');
+      if(typeof v === 'number') return excelSerialToTimeText_(v);
       const s = clean(v);
       if(/^\d{1,2}:\d{2}/.test(s)){ const p=s.split(':'); return String(p[0]).padStart(2,'0')+':'+p[1]+(p[2]?':'+p[2]:''); }
+      if(/^0?\.\d+$/.test(s)) return excelSerialToTimeText_(Number(s));
       return s;
     }
     function fbDb(){
@@ -289,7 +310,12 @@
         fbAll('clockCorrections').catch(()=>[])
       ]);
       const records = ptRaw.map(normalizeParttimeRow)
-        .filter(r=>r.employeeId === emp.id && r.date.slice(0,7) === range.monthText);
+        .filter(r=>{
+          const sameEmployee = (r.employeeId && r.employeeId === emp.id)
+            || (r.email && emp.email && r.email === emp.email)
+            || (!r.employeeId && r.name && emp.name && r.name === emp.name);
+          return sameEmployee && String(r.date || '').slice(0,7) === range.monthText;
+        });
       const hourlyRate = emp.hourlyRate || records.map(r=>r.hourlyRate).find(v=>v>0) || 196;
       const totalHours = Math.round(records.reduce((sum,r)=>sum + (Number(r.totalHours)||0),0) * 100) / 100;
       const grossPay = Math.round(records.reduce((sum,r)=>{
@@ -305,7 +331,8 @@
           .map(c=>c.originalRecordId)
       );
       const lateRows = clockRaw.map(normalizeClockRow).filter(r=>{
-        if(r.employeeId !== emp.id) return false;
+        const sameEmployee = (r.employeeId && r.employeeId === emp.id);
+        if(!sameEmployee) return false;
         if(r.date.slice(0,7) !== range.monthText) return false;
         if(!r.lateMinutes || r.lateMinutes <= 0) return false;
         if(r.status === '已被補登修正') return false;
