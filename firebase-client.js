@@ -280,15 +280,36 @@
   async function getPendingRegistrations(){ const rows=(await all('employees')).map(normalizeEmployee).filter(r=>lower(r.accountStatus)==='pending'); return {ok:true,rows,list:rows}; }
   async function getScheduleSetupData(){ const [templates,assignments,single,emps]=await Promise.all([all('scheduleTemplates'),all('employeeSchedules'),all('singleDaySchedules'),getEmployeeOptions()]); return {ok:true,templates:templates.map(o=>Object.assign({templateId:clean(o.templateId||o.__id),templateName:clean(o.templateName||o.name),enabled:truthy(o.enabled)},o)),assignments:assignments.map(o=>Object.assign({assignmentId:clean(o.assignmentId||o.__id),employeeId:clean(o.employeeId),employeeName:clean(o.employeeName),templateId:clean(o.templateId),templateName:clean(o.templateName),startDate:date(o.startDate),endDate:date(o.endDate),indefinite:truthy(o.indefinite),enabled:truthy(o.enabled)},o)),singleDaySchedules:single.map(o=>Object.assign({recordId:clean(o.recordId||o.__id),employeeId:clean(o.employeeId),employeeName:clean(o.employeeName),date:date(o.date),clockType:clean(o.clockType),startTime:time(o.startTime),endTime:time(o.endTime),allowSpecial:truthy(o.allowSpecial),enabled:truthy(o.enabled)},o)),employees:emps.rows}; }
   function num(v){ if(v==null||v==='') return 0; const n=Number(String(v).replace(/,/g,'').trim()); return isFinite(n)?n:0; }
+  function normalizeHourValue_(v){
+    if(v==null || v==='') return 0;
+    if(typeof v === 'number'){ return (isFinite(v) && v >= 0 && v <= 24) ? Math.round(v*100)/100 : 0; }
+    if(v && typeof v.toDate === 'function'){
+      const d=v.toDate();
+      const hh=d.getHours() + d.getMinutes()/60 + d.getSeconds()/3600;
+      return (isFinite(hh) && hh >= 0 && hh <= 24) ? Math.round(hh*100)/100 : 0;
+    }
+    if(v instanceof Date && !isNaN(v.getTime())){
+      const hh=v.getHours() + v.getMinutes()/60 + v.getSeconds()/3600;
+      return (isFinite(hh) && hh >= 0 && hh <= 24) ? Math.round(hh*100)/100 : 0;
+    }
+    const raw=String(v).replace(/小時/g,'').replace(/hours?/ig,'').replace(/hr/ig,'').trim();
+    const m=raw.match(/^-?\d+(?:\.\d+)?/);
+    if(!m) return 0;
+    const n=Number(m[0]);
+    return (isFinite(n) && n >= 0 && n <= 24) ? Math.round(n*100)/100 : 0;
+  }
   function normPart(o){
     o=o||{};
-    const total=num(o.totalHours||o['總時數']||o.hours||o['時數']);
+    const baseHours = normalizeHourValue_(o.hours||o['時數']);
+    const halfHour = truthy(o.halfHour||o.addHalfHour||o['是否加半小時']) ? 0.5 : 0;
+    let total = normalizeHourValue_(o.totalHours||o['總時數']);
+    if(!total) total = Math.round((baseHours + halfHour) * 100) / 100;
     const hourly=num(o.hourlyRate||o['時薪']);
     const grossRaw=num(o.grossPay||o['當筆毛額']);
     return {
       id:clean(o.recordId||o['紀錄ID']||o.__id),recordId:clean(o.recordId||o['紀錄ID']||o.__id),
       employeeId:clean(o.employeeId||o['員工ID']),name:clean(o.name||o['姓名']),email:lower(o.email||o['Email']),
-      date:date(o.workDate||o.date||o['日期']),totalHours:total,hours:num(o.hours||o['時數']),
+      date:date(o.workDate||o.date||o['日期']),totalHours:total,hours:baseHours,halfHour:halfHour>0,
       status:clean(o.status||o['狀態']||'正常')||'正常',hourlyRate:hourly,grossPay:grossRaw,
       laborSelfPaySnapshot:num(o.laborSelfPaySnapshot||o['勞保自付額快照']),note:clean(o.note||o['備註']),scheduleLabel:clean(o.scheduleLabel||o['班表狀態'])
     };
@@ -305,12 +326,19 @@
       return v || 196;
     }catch(e){ return 196; }
   }
+  function employeeHourlyRate_(e){
+    return num(e.hourlyRate||e['時薪']||e.hourlyAmount||e['時薪金額']||(e.source&&(e.source['時薪金額']||e.source['時薪'])));
+  }
+  function employeeLaborSelfPay_(e){
+    return num(e.laborSelfPay||e['勞保自付額']||e.laborSelfPayAmount||(e.source&&e.source['勞保自付額']));
+  }
   async function getParttimePayrollAdminData(){
     const [empRes, allParts, defaultHourly] = await Promise.all([getEmployeeOptions(), all('parttimeRecords').catch(()=>[]), getDefaultHourlyRate()]);
     const parts=allParts.map(normPart);
     const emps=empRes.rows.filter(e=>e.identityType==='parttime').map(e=>{
-      const rate = latestHourlyRateForEmployee(parts, e.employeeId) || defaultHourly;
-      return Object.assign({}, e, {hourlyRate: rate});
+      const rate = employeeHourlyRate_(e) || latestHourlyRateForEmployee(parts, e.employeeId) || defaultHourly;
+      const laborSelfPay = employeeLaborSelfPay_(e) || Math.max(0, ...parts.filter(r=>r.employeeId===e.employeeId).map(r=>num(r.laborSelfPaySnapshot)));
+      return Object.assign({}, e, {hourlyRate: rate, laborSelfPay: laborSelfPay});
     });
     return {ok:true,employees:emps,defaultMonth:date(new Date()).slice(0,7),defaultHourlyRate:defaultHourly};
   }
@@ -322,7 +350,9 @@
     if(p&&p.startDate) rows=rows.filter(r=>r.date>=clean(p.startDate));
     if(p&&p.endDate) rows=rows.filter(r=>r.date<=clean(p.endDate));
     if(p&&p.monthText) rows=rows.filter(r=>r.date.slice(0,7)===clean(p.monthText));
-    const fallbackRate=latestHourlyRateForEmployee(allRows, empId) || defaultHourly;
+    const empList = (await getEmployeeOptions().catch(()=>({rows:[]}))).rows || [];
+    const emp = empList.find(e=>e.employeeId===empId || e.id===empId) || {};
+    const fallbackRate=employeeHourlyRate_(emp) || latestHourlyRateForEmployee(allRows, empId) || defaultHourly;
     rows=rows.map(r=>{
       const rate=num(r.hourlyRate)||fallbackRate;
       const gross=num(r.grossPay) || money(num(r.totalHours)*rate);
@@ -330,7 +360,7 @@
     });
     const totalHours=Math.round(rows.reduce((s,r)=>s+num(r.totalHours),0)*100)/100;
     const grossPay=money(rows.reduce((s,r)=>s+num(r.grossPay),0));
-    const laborSelfPay=money(rows.reduce((max,r)=>Math.max(max,num(r.laborSelfPaySnapshot)),0));
+    const laborSelfPay=money(employeeLaborSelfPay_(emp) || rows.reduce((max,r)=>Math.max(max,num(r.laborSelfPaySnapshot)),0));
     const netPay=Math.max(0,grossPay-laborSelfPay);
     return {ok:true,rows,summary:{totalHours,hourlyRate:fallbackRate,grossPay,laborSelfPay,lateMinutes:0,lateDeduction:0,lateDeductionValue:0,netPay,recordCount:rows.length,supplementCount:rows.filter(r=>r.status==='補時數').length}};
   }
