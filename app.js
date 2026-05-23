@@ -37,6 +37,15 @@ function logout(){localStorage.removeItem('employeeUser'); localStorage.removeIt
 function currentFeatureKey(){const path=String((location&&location.pathname)||'').split('/').pop().toLowerCase(); if(path==='dashboard.html') return 'dashboard'; if(path==='clock.html') return 'clock'; if(path==='parttime.html') return 'parttime'; if(path==='leave.html') return 'leave'; if(path==='announcements.html') return 'announcement'; if(path==='task.html') return 'task'; if(path==='routine.html') return 'routine'; if(path==='training.html') return 'training'; if(path==='contract.html') return 'contract'; if(path==='contract-admin.html') return 'contractAdmin'; if(path==='settings.html') return 'settings'; return '';}
 function requireLogin(){const user=getUser(); if(!user){location.href='index.html'; return null;} const feature=currentFeatureKey(); if(feature==='contract' && !isExternalTeacher(user)){location.href='dashboard.html'; return null;} if(feature==='contractAdmin' && !isManager(user)){location.href='dashboard.html'; return null;} if(feature && feature!=='contract' && feature!=='contractAdmin' && feature!=='settings' && !guardFeatureAccess(feature,user)) return null; return user;}
 async function api(action, payload={}){
+  // Firebase 第二階段：讀取型資料優先走 Firebase；送出/審核仍保留原 GS，避免正式流程一次切太大。
+  try{
+    if(window.YZFirebase && typeof window.YZFirebase.handleApi === 'function'){
+      const fbRes = await window.YZFirebase.handleApi(action, payload || {});
+      if(fbRes) return fbRes;
+    }
+  }catch(firebaseErr){
+    console.warn('[Firebase read fallback to GS]', action, firebaseErr);
+  }
   const apiUrl=getApiUrl();
   if(!apiUrl) throw new Error('尚未設定 API 網址');
   const res=await fetch(apiUrl,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action,...payload})});
