@@ -279,9 +279,61 @@
   async function getPendingClockCorrections(){ const rows=(await all('clockCorrections')).map(normCorrection).filter(r=>r.status==='待審核'||!r.status); return {ok:true,rows,list:rows}; }
   async function getPendingRegistrations(){ const rows=(await all('employees')).map(normalizeEmployee).filter(r=>lower(r.accountStatus)==='pending'); return {ok:true,rows,list:rows}; }
   async function getScheduleSetupData(){ const [templates,assignments,single,emps]=await Promise.all([all('scheduleTemplates'),all('employeeSchedules'),all('singleDaySchedules'),getEmployeeOptions()]); return {ok:true,templates:templates.map(o=>Object.assign({templateId:clean(o.templateId||o.__id),templateName:clean(o.templateName||o.name),enabled:truthy(o.enabled)},o)),assignments:assignments.map(o=>Object.assign({assignmentId:clean(o.assignmentId||o.__id),employeeId:clean(o.employeeId),employeeName:clean(o.employeeName),templateId:clean(o.templateId),templateName:clean(o.templateName),startDate:date(o.startDate),endDate:date(o.endDate),indefinite:truthy(o.indefinite),enabled:truthy(o.enabled)},o)),singleDaySchedules:single.map(o=>Object.assign({recordId:clean(o.recordId||o.__id),employeeId:clean(o.employeeId),employeeName:clean(o.employeeName),date:date(o.date),clockType:clean(o.clockType),startTime:time(o.startTime),endTime:time(o.endTime),allowSpecial:truthy(o.allowSpecial),enabled:truthy(o.enabled)},o)),employees:emps.rows}; }
-  function normPart(o){ const total=Number(o.totalHours||o['總時數']||o.hours||0)||0; return {id:clean(o.recordId||o.__id),recordId:clean(o.recordId||o.__id),employeeId:clean(o.employeeId||o['員工ID']),name:clean(o.name||o['姓名']),email:lower(o.email||o['Email']),date:date(o.workDate||o.date||o['日期']),totalHours:total,hours:Number(o.hours||0)||0,status:clean(o.status||'正常')||'正常',hourlyRate:Number(o.hourlyRate||0)||0,grossPay:money(o.grossPay||0),note:clean(o.note),scheduleLabel:clean(o.scheduleLabel)}; }
-  async function getParttimePayrollAdminData(){ const emps=(await getEmployeeOptions()).rows.filter(e=>e.identityType==='parttime'); return {ok:true,employees:emps,defaultMonth:date(new Date()).slice(0,7)}; }
-  async function getParttimePayrollSummary(p){ const empId=clean(p&&p.employeeId); if(!empId) return null; let rows=(await all('parttimeRecords')).map(normPart).filter(r=>r.employeeId===empId); if(p&&p.startDate) rows=rows.filter(r=>r.date>=clean(p.startDate)); if(p&&p.endDate) rows=rows.filter(r=>r.date<=clean(p.endDate)); if(p&&p.monthText) rows=rows.filter(r=>r.date.slice(0,7)===clean(p.monthText)); const totalHours=Math.round(rows.reduce((s,r)=>s+(Number(r.totalHours)||0),0)*100)/100; const grossPay=money(rows.reduce((s,r)=>s+(Number(r.grossPay)||0),0)); return {ok:true,rows,summary:{totalHours,grossPay,netPay:grossPay,recordCount:rows.length,supplementCount:rows.filter(r=>r.status==='補時數').length}}; }
+  function num(v){ if(v==null||v==='') return 0; const n=Number(String(v).replace(/,/g,'').trim()); return isFinite(n)?n:0; }
+  function normPart(o){
+    o=o||{};
+    const total=num(o.totalHours||o['總時數']||o.hours||o['時數']);
+    const hourly=num(o.hourlyRate||o['時薪']);
+    const grossRaw=num(o.grossPay||o['當筆毛額']);
+    return {
+      id:clean(o.recordId||o['紀錄ID']||o.__id),recordId:clean(o.recordId||o['紀錄ID']||o.__id),
+      employeeId:clean(o.employeeId||o['員工ID']),name:clean(o.name||o['姓名']),email:lower(o.email||o['Email']),
+      date:date(o.workDate||o.date||o['日期']),totalHours:total,hours:num(o.hours||o['時數']),
+      status:clean(o.status||o['狀態']||'正常')||'正常',hourlyRate:hourly,grossPay:grossRaw,
+      laborSelfPaySnapshot:num(o.laborSelfPaySnapshot||o['勞保自付額快照']),note:clean(o.note||o['備註']),scheduleLabel:clean(o.scheduleLabel||o['班表狀態'])
+    };
+  }
+  function latestHourlyRateForEmployee(rows, empId){
+    const own=(rows||[]).filter(r=>r.employeeId===empId && num(r.hourlyRate)>0).sort((a,b)=>clean(b.date).localeCompare(clean(a.date)));
+    return own[0] ? num(own[0].hourlyRate) : 0;
+  }
+  async function getDefaultHourlyRate(){
+    try{
+      const settings=await all('systemSettings');
+      const row=settings.find(x=>clean(x.key||x.name||x['設定名稱']||x.__id)==='工讀預設時薪');
+      const v=num(row && (row.value||row['設定值']));
+      return v || 196;
+    }catch(e){ return 196; }
+  }
+  async function getParttimePayrollAdminData(){
+    const [empRes, allParts, defaultHourly] = await Promise.all([getEmployeeOptions(), all('parttimeRecords').catch(()=>[]), getDefaultHourlyRate()]);
+    const parts=allParts.map(normPart);
+    const emps=empRes.rows.filter(e=>e.identityType==='parttime').map(e=>{
+      const rate = latestHourlyRateForEmployee(parts, e.employeeId) || defaultHourly;
+      return Object.assign({}, e, {hourlyRate: rate});
+    });
+    return {ok:true,employees:emps,defaultMonth:date(new Date()).slice(0,7),defaultHourlyRate:defaultHourly};
+  }
+  async function getParttimePayrollSummary(p){
+    const empId=clean(p&&p.employeeId); if(!empId) return null;
+    const defaultHourly=await getDefaultHourlyRate();
+    let allRows=(await all('parttimeRecords')).map(normPart);
+    let rows=allRows.filter(r=>r.employeeId===empId);
+    if(p&&p.startDate) rows=rows.filter(r=>r.date>=clean(p.startDate));
+    if(p&&p.endDate) rows=rows.filter(r=>r.date<=clean(p.endDate));
+    if(p&&p.monthText) rows=rows.filter(r=>r.date.slice(0,7)===clean(p.monthText));
+    const fallbackRate=latestHourlyRateForEmployee(allRows, empId) || defaultHourly;
+    rows=rows.map(r=>{
+      const rate=num(r.hourlyRate)||fallbackRate;
+      const gross=num(r.grossPay) || money(num(r.totalHours)*rate);
+      return Object.assign({}, r, {hourlyRate:rate, grossPay:gross});
+    });
+    const totalHours=Math.round(rows.reduce((s,r)=>s+num(r.totalHours),0)*100)/100;
+    const grossPay=money(rows.reduce((s,r)=>s+num(r.grossPay),0));
+    const laborSelfPay=money(rows.reduce((max,r)=>Math.max(max,num(r.laborSelfPaySnapshot)),0));
+    const netPay=Math.max(0,grossPay-laborSelfPay);
+    return {ok:true,rows,summary:{totalHours,hourlyRate:fallbackRate,grossPay,laborSelfPay,lateMinutes:0,lateDeduction:0,lateDeductionValue:0,netPay,recordCount:rows.length,supplementCount:rows.filter(r=>r.status==='補時數').length}};
+  }
   async function getSettingsKV(){ const rows=await all('systemSettings'); const obj={}; rows.forEach(r=>{obj[clean(r.key||r.__id)]=clean(r.value)}); return obj; }
   async function getPublicSystemLinks(){ const s=await getSettingsKV(); return {ok:true,lineAddFriendUrl:s['LINE 加好友網址']||'',lineBotBasicId:s['LINE Bot Basic ID']||'',settingsPageUrl:s['設定區頁面網址']||'',leavePageUrl:s['請假頁面網址']||''}; }
   async function getNotificationSettings(){ let rows=(await all('notificationUniversal')).concat(await all('notificationSettings')); rows=rows.map(o=>Object.assign({},o,{eventCode:clean(o.eventCode||o.__id),eventName:clean(o.eventName),enabled:truthy(o.enabled),targetLineEnabled:truthy(o.partyLine||o.targetLineEnabled),targetEmailEnabled:truthy(o.partyEmail||o.targetEmailEnabled),managerLineEnabled:truthy(o.managerLine||o.managerLineEnabled),managerEmailEnabled:truthy(o.managerEmail||o.managerEmailEnabled)})); return rows.length?{ok:true,rows}:null; }
@@ -453,7 +505,10 @@
     const hours=Number(payload.hours||payload.workHours||0)||0; const half=truthy(payload.halfHour||payload.addHalfHour); const total=Math.round((hours+(half?0.5:0))*100)/100;
     if(!employeeId || !total) return {ok:false,message:'請填寫工讀時數。'};
     const recordId='PT_'+employeeId+'_'+Date.now();
-    const row={recordId,employeeId,name:clean(user.name),email:lower(user.email),date,hours,halfHour:half,totalHours:total,status:'正常',note:clean(payload.note),source:'firebase-primary',createdAt:ts()};
+    const allParts=(await all('parttimeRecords').catch(()=>[])).map(normPart);
+    const hourlyRate=latestHourlyRateForEmployee(allParts, employeeId) || (await getDefaultHourlyRate());
+    const grossPay=money(total*hourlyRate);
+    const row={recordId,employeeId,name:clean(user.name),email:lower(user.email),date,hours,halfHour:half,totalHours:total,status:'正常',hourlyRate,grossPay,note:clean(payload.note),source:'firebase-primary',createdAt:ts()};
     await docSet('parttimeRecords',recordId,row); return {ok:true,message:'工讀時數已送出。',recordId,totalHours:total,row};
   }
   async function firebaseClockCorrection(action,payload){
