@@ -207,7 +207,7 @@
     </div>
   </div>
 
-  <script src="config.js?v=20260524ptdc12"></script>
+  <script src="config.js?v=20260524ptdc15"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -524,33 +524,43 @@
       if(!e){qs('#selectedTitle').textContent='請先選擇工讀生';return}
       qs('#selectedTitle').textContent=e.name;
       qs('#selectedSub').textContent=`${month()||'全部月份'}｜時薪 ${money(e.hourlyRate)}`;
-      renderParttime(); renderClocks(); renderLeaves(); renderSummary(); renderIssues();
+      renderParttime(); renderClocks(); renderLeaves(); renderIssues(); renderSummary();
     }
     function renderSummary(){
-      const e = selected();
-      const pts = empRows(state.parttime);
-      const totalH = pts.reduce((s,r)=>s+r.hours,0);
-      const totalW = pts.reduce((s,r)=>s+r.gross,0);
-
+      // 這裡不再重新猜 Firebase 資料來源。
+      // 直接從下面已經顯示出來的三個表格加總：
+      // 工讀時數表 → 總工時 / 工讀金額
+      // 打卡遲到表 → 遲到分鐘 / 遲到扣款
+      // 請假表 → 請假筆數
+      let totalH = 0;
+      let totalW = 0;
       let lateM = 0;
       let lateFee = 0;
 
-      // 遲到分鐘 / 遲到扣款必須直接依照打卡區塊目前採用的資料加總。
-      // 不能只從工讀時數推估，否則主管在打卡區修改後，上方摘要不會同步。
-      if(e){
-        mergedClockRows().forEach(r=>{
-          const fake = {employeeId:e.id,name:e.name,date:r.date,hourlyRate:e.hourlyRate};
-          const fixed = approvedFixFor(fake);
-          const minutes = safeNum(r.late);
-          if(minutes > 0 && !fixed){
-            lateM += minutes;
-            lateFee += Math.round((safeNum(e.hourlyRate) / 60) * minutes);
-          }
-        });
-      }
+      qsa('#parttimeRows tr').forEach(tr=>{
+        const cells = tr.querySelectorAll('td');
+        if(cells.length >= 4){
+          totalH += safeNum(cells[1].textContent);
+          totalW += safeNum(cells[3].textContent);
+        }
+      });
 
-      const leaves = empRows(state.leaves).length;
-      const issues = calcIssues().length;
+      qsa('#clockRows tr').forEach(tr=>{
+        const cells = tr.querySelectorAll('td');
+        // 打卡表欄位：日期 / 上班 / 下班 / 上班來源 / 下班來源 / 遲到分鐘 / 遲到扣款 / 狀態 / 備註 / 操作
+        if(cells.length >= 7){
+          lateM += safeNum(cells[5].textContent);
+          lateFee += safeNum(cells[6].textContent);
+        }
+      });
+
+      const leaves = qsa('#leaveRows tr').length;
+      let issues = 0;
+      try{
+        issues = calcIssues().length;
+      }catch(e){
+        issues = 0;
+      }
 
       qs('#sumHours').textContent = hours(totalH);
       qs('#sumWage').textContent = money(totalW);
