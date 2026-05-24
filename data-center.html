@@ -177,7 +177,7 @@
           <div class="table-wrap" id="clockWrap"><table>
             <thead><tr>
               <th style="width:115px">日期</th><th style="width:210px">上班打卡時間</th><th style="width:210px">下班打卡時間</th><th style="width:105px">上班來源</th>
-              <th style="width:105px">下班來源</th><th style="width:110px">遲到分鐘</th><th style="width:110px">遲到扣款</th><th style="width:150px">修正狀態</th><th style="width:260px">備註 / 原因</th><th style="width:170px">操作</th>
+              <th style="width:105px">下班來源</th><th style="width:110px">遲到分鐘</th><th style="width:110px">遲到扣款</th><th style="width:120px">狀態</th><th style="width:280px">備註 / 原因</th><th style="width:170px">操作</th>
             </tr></thead><tbody id="clockRows"></tbody>
           </table></div>
           <div class="empty hidden" id="clockEmpty">這個月份沒有打卡資料。</div>
@@ -205,7 +205,7 @@
     </div>
   </div>
 
-  <script src="config.js?v=20260524ptdc8"></script>
+  <script src="config.js?v=20260524ptdc9"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -549,6 +549,39 @@
         <td><div class="row-actions"><button class="btn small" onclick="saveParttime('${escjs(r.__id)}')">儲存工時</button><button class="btn small gray" onclick="goClock('${escjs(r.date)}')">修正出勤</button><button class="btn small danger" onclick="deleteParttime('${escjs(r.__id)}')">刪除</button></div></td>
       </tr>`}).join('');
     }
+    function hasApprovedCorrectionForRow(r){
+      const e = selected();
+      if(!e) return false;
+      return state.corrections.some(c => {
+        const sameEmp = (c.employeeId && c.employeeId === e.id) || (c.name && c.name === e.name);
+        return sameEmp && c.date === r.date && c.approved;
+      });
+    }
+    function hasBackendEditedForRow(r){
+      const src = r && r.raw || {};
+      const inRaw = src.in || {};
+      const outRaw = src.out || {};
+      return !!(inRaw.dataCenterEdited || outRaw.dataCenterEdited || inRaw.主管修改 || outRaw.主管修改);
+    }
+    function clockStatusText(r){
+      if(hasApprovedCorrectionForRow(r) || hasBackendEditedForRow(r)) return '已修改';
+      return '正常';
+    }
+    function clockStatusClass(r){
+      return clockStatusText(r) === '已修改' ? 'blue' : 'green';
+    }
+    function clockReasonText(r){
+      const reasons = [];
+      const src = r && r.raw || {};
+      const inRaw = src.in || {};
+      const outRaw = src.out || {};
+      if(hasBackendEditedForRow(r)) reasons.push('主管後台修改');
+      if(hasApprovedCorrectionForRow(r)) reasons.push('員工申請修正，主管已核准');
+      const note = clean(r.note || raw(inRaw, ['note','備註','reason','原因']) || raw(outRaw, ['note','備註','reason','原因']));
+      if(note && !reasons.includes(note)) reasons.push(note);
+      return reasons.join('；');
+    }
+
     function renderClocks(){
       const rows=mergedClockRows();
       qs('#clockWrap').classList.toggle('hidden',rows.length===0); qs('#clockEmpty').classList.toggle('hidden',rows.length>0);
@@ -568,8 +601,8 @@
         <td><span class="pill ${outSource.cls}">${esc(outSource.text)}</span></td>
         <td>${esc(r.late || 0)}</td>
         <td>${money(deduct)}</td>
-        <td>${fixed?'<span class="pill green">已修正不扣款</span>':(r.late>0?'<span class="pill red">未修正</span>':'<span class="pill green">正常</span>')}</td>
-        <td>${esc(r.note||'')}</td>
+        <td>${'<span class="pill ' + clockStatusClass(r) + '">' + clockStatusText(r) + '</span>'}</td>
+        <td>${esc(clockReasonText(r)||'')}</td>
         <td><div class="row-actions"><button class="btn small" onclick="modifyClockRecord('${escjs(saveId)}')">修改打卡時間</button></div></td>
       </tr>`
       }).join('');
@@ -577,7 +610,7 @@
     function renderLeaves(){
       const rows=empRows(state.leaves).sort((a,b)=>a.date.localeCompare(b.date));
       qs('#leaveWrap').classList.toggle('hidden',rows.length===0); qs('#leaveEmpty').classList.toggle('hidden',rows.length>0);
-      qs('#leaveRows').innerHTML=rows.map(r=>`<tr><td>${esc(r.date)}</td><td>${esc(r.time||'-')}</td><td>${esc(r.type||'-')}</td><td>${esc(r.hours||'')}</td><td>${esc(r.status||'-')}</td><td>${esc(r.reviewer||'-')}</td><td>${esc(r.note||'')}</td><td><span class="subtle">${esc(r.__id)}</span></td></tr>`).join('');
+      qs('#leaveRows').innerHTML=rows.map(r=>`<tr><td>${esc(r.date)}</td><td>${esc(r.time||'-')}</td><td>${esc(r.type||'-')}</td><td>${esc(r.hours||'')}</td><td>${esc(r.status||'-')}</td><td>${esc(r.reviewer||'-')}</td><td>${esc(clockReasonText(r)||'')}</td><td><span class="subtle">${esc(r.__id)}</span></td></tr>`).join('');
     }
     function calcIssues(){
       const pts=empRows(state.parttime), issues=[];
@@ -625,7 +658,7 @@
       const choice = prompt('請選擇修改方式：\n\n1：主管核准不扣款\n2：修改遲到分鐘\n\n請輸入 1 或 2');
       if(choice === null) return;
       if(clean(choice) === '1'){
-        await setClockNoDeduct(id, '主管修改');
+        await setClockNoDeduct(id, '主管核准不扣款');
         return;
       }
       if(clean(choice) === '2'){
@@ -636,12 +669,12 @@
         await fb().collection('clockRecords').doc(id).set({
           lateMinutes: minutes,
           遲到分鐘: minutes,
-          note: '主管修改',
-          備註: '主管修改',
+          note: '主管修改遲到分鐘',
+          備註: '主管修改遲到分鐘',
           updatedAt: new Date().toISOString(),
           dataCenterEdited: true
         }, {merge:true});
-        msg('已由主管修改遲到分鐘。');
+        msg('已修改遲到分鐘，備註已寫入「主管修改遲到分鐘」。');
         await reloadAll();
         return;
       }
@@ -670,12 +703,12 @@
         dataCenterCreated:true
       }, {merge:true});
       await fb().collection('clockRecords').doc(id).set({
-        note:'主管修改',
-        備註:'主管修改',
+        note:'主管核准不扣款',
+        備註:'主管核准不扣款',
         updatedAt:new Date().toISOString(),
         dataCenterEdited:true
       }, {merge:true});
-      msg('已設為主管核准不扣款。');
+      msg('已設為主管核准不扣款，備註已寫入「主管核准不扣款」。');
       await reloadAll();
     }
 
@@ -750,7 +783,7 @@
           .sort((a,b)=>a.date.localeCompare(b.date))
           .forEach(r => {
             const a = attendStatus(r);
-            rows.push([e.name, r.date, r.hours, r.hourlyRate, r.gross, workSource(r), a.text, r.note || '']);
+            rows.push([e.name, r.date, r.hours, r.hourlyRate, r.gross, workSource(r), a.text, clockReasonText(r) || '']);
           });
         XLSX.utils.book_append_sheet(wb, makeSheet(rows), '工讀時數');
       }
@@ -764,7 +797,7 @@
             const fake = {employeeId:e.id,name:e.name,date:r.date,hourlyRate:e.hourlyRate};
             const fixed = approvedFixFor(fake);
             const deduct = (r.late > 0 && !fixed) ? Math.round(e.hourlyRate/60*r.late) : 0;
-            rows.push([e.name, r.date, r.clockIn || '', r.clockOut || '', (clockInSourceLabel(r.ip).text || ''), (clockInSourceLabel(r.outIp).text || ''), r.late || 0, deduct, fixed ? '已修正不扣款' : (r.late>0 ? '未修正' : '正常'), r.note || '']);
+            rows.push([e.name, r.date, r.clockIn || '', r.clockOut || '', (clockInSourceLabel(r.ip).text || ''), (clockInSourceLabel(r.outIp).text || ''), r.late || 0, deduct, clockStatusText(r), clockReasonText(r) || '']);
           });
         XLSX.utils.book_append_sheet(wb, makeSheet(rows), '打卡遲到');
       }
