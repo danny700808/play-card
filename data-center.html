@@ -207,7 +207,7 @@
     </div>
   </div>
 
-  <script src="config.js?v=20260524ptdc10"></script>
+  <script src="config.js?v=20260524ptdc11"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -440,7 +440,7 @@
         clockOutRaw: clean(outRaw || tRaw),
         ip:inIp,
         outIp:outIp,
-        late:safeNum(raw(o,['lateMinutes','遲到分鐘','lateMins'])),
+        late:safeNum(raw(o,['finalLateMinutes','最終遲到分鐘','lateMinutes','遲到分鐘','lateMins'])),
         note:clean(raw(o,['note','備註','reason','原因'])),
         raw:o
       }
@@ -527,14 +527,38 @@
       renderParttime(); renderClocks(); renderLeaves(); renderSummary(); renderIssues();
     }
     function renderSummary(){
-      const pts=empRows(state.parttime);
-      const totalH=pts.reduce((s,r)=>s+r.hours,0);
-      const totalW=pts.reduce((s,r)=>s+r.gross,0);
-      let lateM=0, lateFee=0;
-      pts.forEach(r=>{const a=attendStatus(r);lateM+=a.deduct?a.late:0;lateFee+=a.deduct});
-      const leaves=empRows(state.leaves).length;
-      const issues=calcIssues().length;
-      qs('#sumHours').textContent=hours(totalH); qs('#sumWage').textContent=money(totalW); qs('#sumLateMins').textContent=lateM+' 分'; qs('#sumLateFee').textContent=money(lateFee); qs('#sumLeave').textContent=leaves; qs('#sumIssues').textContent=issues; qs('#sumNet').textContent=money(totalW-lateFee);
+      const e = selected();
+      const pts = empRows(state.parttime);
+      const totalH = pts.reduce((s,r)=>s+r.hours,0);
+      const totalW = pts.reduce((s,r)=>s+r.gross,0);
+
+      let lateM = 0;
+      let lateFee = 0;
+
+      // 遲到分鐘 / 遲到扣款必須直接依照打卡區塊目前採用的資料加總。
+      // 不能只從工讀時數推估，否則主管在打卡區修改後，上方摘要不會同步。
+      if(e){
+        mergedClockRows().forEach(r=>{
+          const fake = {employeeId:e.id,name:e.name,date:r.date,hourlyRate:e.hourlyRate};
+          const fixed = approvedFixFor(fake);
+          const minutes = safeNum(r.late);
+          if(minutes > 0 && !fixed){
+            lateM += minutes;
+            lateFee += Math.round((safeNum(e.hourlyRate) / 60) * minutes);
+          }
+        });
+      }
+
+      const leaves = empRows(state.leaves).length;
+      const issues = calcIssues().length;
+
+      qs('#sumHours').textContent = hours(totalH);
+      qs('#sumWage').textContent = money(totalW);
+      qs('#sumLateMins').textContent = lateM + ' 分';
+      qs('#sumLateFee').textContent = money(lateFee);
+      qs('#sumLeave').textContent = leaves;
+      qs('#sumIssues').textContent = issues;
+      qs('#sumNet').textContent = money(totalW - lateFee);
     }
     function renderParttime(){
       const rows=empRows(state.parttime).sort((a,b)=>a.date.localeCompare(b.date));
@@ -693,10 +717,13 @@
         await fb().collection('clockRecords').doc(id).set({
           lateMinutes: minutes,
           遲到分鐘: minutes,
+          finalLateMinutes: minutes,
+          最終遲到分鐘: minutes,
           note: '主管修改遲到分鐘',
           備註: '主管修改遲到分鐘',
           updatedAt: new Date().toISOString(),
-          dataCenterEdited: true
+          dataCenterEdited: true,
+          主管已修改: true
         }, {merge:true});
         msg('已修改遲到分鐘，備註已寫入「主管修改遲到分鐘」。');
         await reloadAll();
