@@ -205,7 +205,7 @@
     </div>
   </div>
 
-  <script src="config.js?v=20260524ptdc6"></script>
+  <script src="config.js?v=20260524ptdc7"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -344,7 +344,7 @@
       return raw(o,['打卡時間','clockTime','time','時間','punchTime','打卡送出時間','建立時間','createdAt']);
     }
     function pickClockAction(o){
-      return clean(raw(o,['打卡動作','action','clockAction','punchAction','動作','type']));
+      return clean(raw(o,['打卡動作','actionName','action','clockAction','punchAction','動作','type']));
     }
     function formatDateAndTime(d, t){
       const dk = dateKey(d);
@@ -371,9 +371,9 @@
         const key = r.date || '';
         if(!map[key]) map[key] = {date:key, employeeId:e.id, name:e.name, inRec:null, outRec:null, late:0, note:''};
         const action = clean(r.action);
-        if(action.includes('上班') || lower(action).includes('in')){
+        if(action.includes('上班') || action.includes('上班打卡') || lower(action).includes('in')){
           if(!map[key].inRec || clean(r.clockIn) < clean(map[key].inRec.clockIn || '9999')) map[key].inRec = r;
-        }else if(action.includes('下班') || lower(action).includes('out')){
+        }else if(action.includes('下班') || action.includes('下班打卡') || lower(action).includes('out')){
           if(!map[key].outRec || clean(r.clockOut) > clean(map[key].outRec.clockOut || '')) map[key].outRec = r;
         }else{
           // 舊格式：同一筆可能已經有 clockIn / clockOut
@@ -423,8 +423,8 @@
         name:clean(raw(o,['name','姓名','employeeName'])),
         date,
         action,
-        clockIn: (action.includes('上班') || lower(action).includes('in')) ? (explicitTime || dateTimeText(inRaw)||timeText(inRaw)) : (dateTimeText(inRaw)||timeText(inRaw)),
-        clockOut: (action.includes('下班') || lower(action).includes('out')) ? (explicitTime || dateTimeText(outRaw)||timeText(outRaw)) : (dateTimeText(outRaw)||timeText(outRaw)),
+        clockIn: (action.includes('上班') || action.includes('上班打卡') || lower(action).includes('in')) ? (explicitTime || dateTimeText(inRaw)||timeText(inRaw)) : (dateTimeText(inRaw)||timeText(inRaw)),
+        clockOut: (action.includes('下班') || action.includes('下班打卡') || lower(action).includes('out')) ? (explicitTime || dateTimeText(outRaw)||timeText(outRaw)) : (dateTimeText(outRaw)||timeText(outRaw)),
         clockInRaw: clean(inRaw || tRaw),
         clockOutRaw: clean(outRaw || tRaw),
         ip:inIp,
