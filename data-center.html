@@ -172,12 +172,12 @@
         <div class="card data-panel hidden" id="clock" data-panel="clock">
           <div class="section-head">
             <div class="section-title">打卡 / 遲到紀錄</div>
-            <div class="muted">遲到錯誤請在這裡修正，不要只改工讀時數。上班打卡必須是公司 IP：125.229.190.123；下班打卡不限制 IP。</div>
+            <div class="muted">遲到錯誤請在這裡修正，不要只改工讀時數。上班來源顯示「公司IP」即可；下班打卡不限制 IP，所以不另外顯示下班來源。</div>
           </div>
           <div class="table-wrap" id="clockWrap"><table>
             <thead><tr>
-              <th style="width:115px">日期</th><th style="width:190px">上班打卡時間</th><th style="width:190px">下班打卡時間</th><th style="width:145px">上班來源 IP</th>
-              <th style="width:145px">下班來源 IP</th><th style="width:135px">上班 IP 判定</th><th style="width:110px">遲到分鐘</th><th style="width:110px">遲到扣款</th><th style="width:150px">修正狀態</th><th style="width:260px">備註 / 原因</th><th style="width:170px">操作</th>
+              <th style="width:115px">日期</th><th style="width:210px">上班打卡時間</th><th style="width:210px">下班打卡時間</th><th style="width:105px">上班來源</th>
+              <th style="width:110px">遲到分鐘</th><th style="width:110px">遲到扣款</th><th style="width:150px">修正狀態</th><th style="width:260px">備註 / 原因</th><th style="width:170px">操作</th>
             </tr></thead><tbody id="clockRows"></tbody>
           </table></div>
           <div class="empty hidden" id="clockEmpty">這個月份沒有打卡資料。</div>
@@ -205,7 +205,7 @@
     </div>
   </div>
 
-  <script src="config.js?v=20260524ptdc3"></script>
+  <script src="config.js?v=20260524ptdc4"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -257,6 +257,10 @@
       if(ip===COMPANY_CLOCK_IN_IP)return {text:'公司 IP', cls:'green'};
       return {text:'非公司 IP', cls:'red'};
     }
+    function clockInSourceLabel(ip){
+      const judge = ipJudge(ip);
+      return judge.text === '公司 IP' ? {text:'公司IP', cls:'green'} : judge;
+    }
     function fb(){ if(!(window.APP_CONFIG&&window.APP_CONFIG.FIREBASE_CONFIG))throw new Error('找不到 Firebase 設定'); if(!firebase.apps.length)firebase.initializeApp(window.APP_CONFIG.FIREBASE_CONFIG); return firebase.firestore(); }
     async function all(col){const snap=await fb().collection(col).get();const a=[];snap.forEach(d=>a.push(Object.assign({__id:d.id},d.data()||{})));return a}
 
@@ -276,24 +280,18 @@
     }
     function clock(o){
       const empId=clean(raw(o,['employeeId','員工ID']));
-      const inRaw = raw(o,['clockIn','上班打卡','上班時間','上班打卡時間','clockInTime','inTime']);
-      const outRaw = raw(o,['clockOut','下班打卡','下班時間','下班打卡時間','clockOutTime','outTime']);
+      const inRaw = raw(o,[
+        'clockIn','clockInTime','inTime','上班打卡','上班時間','上班打卡時間',
+        'clockInAt','上班打卡時間戳','上班打卡送出時間','上班送出時間','punchInAt'
+      ]);
+      const outRaw = raw(o,[
+        'clockOut','clockOutTime','outTime','下班打卡','下班時間','下班打卡時間',
+        'clockOutAt','下班打卡時間戳','下班打卡送出時間','下班送出時間','punchOutAt'
+      ]);
       const date = dateKey(raw(o,['date','日期','clockDate','打卡日期','workDate']) || inRaw || outRaw);
       const inIp = clean(raw(o,['clockInIp','上班IP','上班來源IP','ip','IP','來源IP','sourceIp']));
       const outIp = clean(raw(o,['clockOutIp','下班IP','下班來源IP']));
-      return {
-        __id:o.__id,
-        employeeId:empId,
-        name:clean(raw(o,['name','姓名','employeeName'])),
-        date,
-        clockIn:dateTimeText(inRaw) || timeText(inRaw),
-        clockOut:dateTimeText(outRaw) || timeText(outRaw),
-        ip:inIp,
-        outIp:outIp,
-        late:safeNum(raw(o,['lateMinutes','遲到分鐘','lateMins'])),
-        note:clean(raw(o,['note','備註','reason','原因'])),
-        raw:o
-      }
+      return {__id:o.__id,employeeId:empId,name:clean(raw(o,['name','姓名','employeeName'])),date,clockIn:dateTimeText(inRaw)||timeText(inRaw),clockOut:dateTimeText(outRaw)||timeText(outRaw),ip:inIp,outIp:outIp,late:safeNum(raw(o,['lateMinutes','遲到分鐘','lateMins'])),note:clean(raw(o,['note','備註','reason','原因'])),raw:o}
     }
     function correction(o){
       const status=clean(raw(o,['status','狀態','審核狀態']));
@@ -409,14 +407,12 @@
         const fake={employeeId:e.id,name:e.name,date:r.date,hourlyRate:e.hourlyRate};
         const fixed=approvedFixFor(fake);
         const deduct=(r.late>0&&!fixed)?Math.round(e.hourlyRate/60*r.late):0;
-        const judge=ipJudge(r.ip);
+        const source=clockInSourceLabel(r.ip);
         return `<tr data-clock="${esc(r.__id)}">
         <td>${esc(r.date)}</td>
         <td>${esc(r.clockIn||'-')}</td>
         <td>${esc(r.clockOut||'-')}</td>
-        <td>${esc(r.ip||'-')}</td>
-        <td>${esc(r.outIp||'-')}</td>
-        <td><span class="pill ${judge.cls}">${esc(judge.text)}</span></td>
+        <td><span class="pill ${source.cls}">${esc(source.text)}</span></td>
         <td><input data-field="late" type="number" min="0" step="1" value="${esc(r.late)}"></td>
         <td>${money(deduct)}</td>
         <td>${fixed?'<span class="pill green">已修正不扣款</span>':(r.late>0?'<span class="pill red">未修正</span>':'<span class="pill green">正常</span>')}</td>
@@ -546,7 +542,7 @@
       }
 
       function addClock(){
-        const rows = [['姓名','日期','上班打卡時間','下班打卡時間','上班來源IP','下班來源IP','上班IP判定','遲到分鐘','遲到扣款','修正狀態','備註']];
+        const rows = [['姓名','日期','上班打卡時間','下班打卡時間','上班來源','遲到分鐘','遲到扣款','修正狀態','備註']];
         empRows(state.clocks)
           .filter(r => dateInRange(r.date, start, end))
           .sort((a,b)=>a.date.localeCompare(b.date))
@@ -555,7 +551,7 @@
             const fixed = approvedFixFor(fake);
             const deduct = (r.late > 0 && !fixed) ? Math.round(e.hourlyRate/60*r.late) : 0;
             const judge = ipJudge(r.ip);
-            rows.push([e.name, r.date, r.clockIn || '', r.clockOut || '', r.ip || '', r.outIp || '', judge.text, r.late || 0, deduct, fixed ? '已修正不扣款' : (r.late>0 ? '未修正' : '正常'), r.note || '']);
+            rows.push([e.name, r.date, r.clockIn || '', r.clockOut || '', (clockInSourceLabel(r.ip).text || ''), r.late || 0, deduct, fixed ? '已修正不扣款' : (r.late>0 ? '未修正' : '正常'), r.note || '']);
           });
         XLSX.utils.book_append_sheet(wb, makeSheet(rows), '打卡遲到');
       }
