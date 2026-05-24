@@ -3,61 +3,71 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>資料管理中心</title>
+  <title>工讀資料管理中心</title>
   <link rel="stylesheet" href="style.css">
   <style>
-    :root{--brand:#1f7a5a;--line:#e5e7eb;--muted:#6b7280;--danger:#b42318;--bg:#f6f8fb}
-    body{background:var(--bg)}
+    :root{--brand:#1f7a5a;--red:#b42318;--red2:#dc2626;--line:#e5e7eb;--muted:#6b7280;--bg:#f6f8fb;--ink:#111827}
+    body{background:var(--bg);color:var(--ink)}
     .page-return-wrap{margin-bottom:16px}
-    .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
+    .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:900}
     .center-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
-    .module-tabs{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
-    .module-tab{border:1px solid var(--line);background:#fff;color:#1f2d3d;border-radius:999px;padding:10px 14px;font-weight:900;text-decoration:none}
-    .module-tab.active{background:var(--brand);color:#fff;border-color:var(--brand)}
-    .toolbar{display:grid;grid-template-columns:1fr 180px 150px auto auto;gap:12px;align-items:end}
-    .summary-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin-top:14px}
+    .muted{color:var(--muted);line-height:1.7}
+    .btn-red{background:var(--red)!important;color:#fff!important;border:0!important}
+    .btn-red:hover{background:#991b1b!important}
+    .tabs{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+    .tab{border:1px solid var(--line);background:#fff;color:#1f2937;border-radius:999px;padding:10px 14px;font-weight:900;text-decoration:none}
+    .tab.active{background:var(--brand);color:#fff;border-color:var(--brand)}
+    .toolbar{display:grid;grid-template-columns:1.3fr 180px auto auto;gap:12px;align-items:end}
+    .employee-layout{display:grid;grid-template-columns:320px 1fr;gap:16px}
+    .employee-list{max-height:560px;overflow:auto;border:1px solid var(--line);border-radius:16px;background:#fff}
+    .employee-item{padding:12px 14px;border-bottom:1px solid var(--line);cursor:pointer}
+    .employee-item:hover{background:#f9fafb}
+    .employee-item.active{background:#eaf8f1;border-left:5px solid var(--brand)}
+    .employee-item strong{display:block;font-size:16px}
+    .summary-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:12px;margin-top:14px}
     .summary-card{border:1px solid var(--line);border-radius:18px;padding:14px;background:#fff}
     .summary-card strong{display:block;font-size:13px;color:var(--muted);margin-bottom:8px}
-    .summary-card .value{font-size:24px;font-weight:900;color:#1f2d3d}
+    .summary-card .value{font-size:22px;font-weight:900;color:#1f2d3d}
     .summary-card.final{background:#1f7a5a;color:#fff;border-color:#1f7a5a}.summary-card.final strong,.summary-card.final .value{color:#fff}
+    .summary-card.warn{background:#fff7ed;border-color:#fed7aa}
+    .section-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+    .section-title{font-size:20px;font-weight:900}
     .table-wrap{overflow:auto;border:1px solid var(--line);border-radius:16px;background:#fff}
-    table{width:100%;border-collapse:collapse;font-size:14px;min-width:1320px}
+    table{width:100%;border-collapse:collapse;font-size:14px;min-width:1280px}
     th,td{border-bottom:1px solid var(--line);padding:9px;text-align:left;vertical-align:middle}
     th{position:sticky;top:0;background:#f9fafb;z-index:1;color:#374151;font-size:13px}
     td input,td select{width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:10px;padding:8px;background:#fff}
-    .row-actions{display:flex;gap:6px}
+    .row-actions{display:flex;gap:6px;flex-wrap:wrap}
     .btn.small{padding:8px 10px;font-size:13px;border-radius:10px;white-space:nowrap}
-    .btn.danger{background:var(--danger)}
-    .muted{color:var(--muted);line-height:1.7}
-    .notice{padding:12px 14px;border-radius:14px;background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;margin-top:12px}
-    .success{padding:12px 14px;border-radius:14px;background:#ecfdf3;border:1px solid #bbf7d0;color:#166534;margin-top:12px}
-    .error{padding:12px 14px;border-radius:14px;background:#fff1f2;border:1px solid #fecdd3;color:#9f1239;margin-top:12px}
-    .add-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;align-items:end}
+    .btn.danger{background:var(--red)}
+    .btn.gray{background:#374151}
+    .pill{display:inline-flex;align-items:center;border-radius:999px;padding:5px 9px;font-size:12px;font-weight:900;background:#f3f4f6;color:#374151}
+    .pill.red{background:#fee2e2;color:#991b1b}.pill.green{background:#dcfce7;color:#166534}.pill.orange{background:#ffedd5;color:#9a3412}.pill.blue{background:#dbeafe;color:#1d4ed8}
     .hidden{display:none!important}
-    @media(max-width:1100px){.toolbar{grid-template-columns:1fr 1fr}.summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.add-grid{grid-template-columns:1fr 1fr}}
-    @media(max-width:640px){.toolbar{grid-template-columns:1fr}.summary-grid{grid-template-columns:1fr}.add-grid{grid-template-columns:1fr}.center-head{display:block}.module-tabs{margin-top:12px}}
-
-    /* 電腦版加寬：資料管理中心需要一次看到更多欄位 */
-    @media (min-width: 1024px){
-      body{overflow-x:auto;}
-      .container{
-        width:min(96vw, 1680px) !important;
-        max-width:1680px !important;
-        margin:0 auto !important;
-      }
-      .card{
-        width:100% !important;
-        box-sizing:border-box;
-      }
-      .table-wrap{
-        max-width:100% !important;
-        overflow-x:auto;
-      }
-      table{
-        min-width:1320px;
-      }
+    .message{margin-top:12px}
+    .success{padding:12px 14px;border-radius:14px;background:#ecfdf3;border:1px solid #bbf7d0;color:#166534}
+    .error{padding:12px 14px;border-radius:14px;background:#fff1f2;border:1px solid #fecdd3;color:#9f1239}
+    .notice{padding:12px 14px;border-radius:14px;background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af}
+    .add-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;align-items:end}
+    .empty{padding:18px;border:1px dashed var(--line);border-radius:16px;background:#fff;color:var(--muted)}
+    .subtle{font-size:12px;color:var(--muted)}
+    @media (min-width:1024px){
+      body{overflow-x:auto}
+      .container{width:min(96vw,1680px)!important;max-width:1680px!important;margin:0 auto!important}
+      .card{width:100%!important;box-sizing:border-box}
+      .table-wrap{max-width:100%!important;overflow-x:auto}
     }
-
+    @media(max-width:1100px){
+      .employee-layout{grid-template-columns:1fr}
+      .summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+      .toolbar{grid-template-columns:1fr 1fr}
+      .add-grid{grid-template-columns:1fr 1fr}
+    }
+    @media(max-width:640px){
+      .toolbar,.add-grid{grid-template-columns:1fr}
+      .summary-grid{grid-template-columns:1fr}
+      table{min-width:1100px}
+    }
   </style>
 </head>
 <body onload="init()">
@@ -67,482 +77,340 @@
     <div class="card">
       <div class="center-head">
         <div>
-          <h1 class="title" style="margin:0">資料管理中心</h1>
-          <div class="muted">第一版先做「工讀時數 / 薪資資料」。這裡修改的是 Firebase 主資料，員工端與管理端會讀到修改後資料。</div>
+          <h1 class="title" style="margin:0">工讀資料管理中心</h1>
+          <div class="muted">先選工讀生，再看同月份的工讀時數、打卡/遲到、請假紀錄。這裡修改的是 Firebase 主資料。</div>
         </div>
         <a class="btn" href="parttime-payroll-admin.html">回工讀薪資結算</a>
       </div>
-      <div class="module-tabs">
-        <a class="module-tab active" href="data-center.html?module=parttime">工讀時數 / 薪資</a>
-        <a class="module-tab" href="javascript:void(0)" onclick="comingSoon('打卡紀錄資料管理會在下一階段加入')">打卡紀錄</a>
-        <a class="module-tab" href="javascript:void(0)" onclick="comingSoon('請假紀錄資料管理會在下一階段加入')">請假紀錄</a>
+      <div class="tabs">
+        <a class="tab active" href="#parttime">工讀時數</a>
+        <a class="tab" href="#clock">打卡 / 遲到</a>
+        <a class="tab" href="#leave">請假紀錄</a>
       </div>
-      <div id="pageMsg"></div>
+      <div id="pageMsg" class="message"></div>
     </div>
 
     <div class="card">
-      <div class="section-title">工讀時數資料查詢</div>
       <div class="toolbar">
-        <div class="field"><label>搜尋</label><input id="keyword" placeholder="輸入姓名、員工ID 或 Email"></div>
+        <div class="field"><label>搜尋工讀生</label><input id="keyword" placeholder="輸入姓名、員工ID 或 Email"></div>
         <div class="field"><label>月份</label><input id="monthText" type="month"></div>
-        <div class="field"><label>狀態</label>
-          <select id="statusFilter">
-            <option value="">全部</option>
-            <option value="正常登記">正常登記</option>
-            <option value="正常">正常</option>
-            <option value="補時數">補時數</option>
-            <option value="管理者新增">管理者新增</option>
-            <option value="管理者修正">管理者修正</option>
-          </select>
+        <button class="btn" onclick="reloadAll()">重新查詢</button>
+        <button class="btn secondary" onclick="exportAllCsv()">匯出本人工讀資料 CSV</button>
+      </div>
+    </div>
+
+    <div class="employee-layout">
+      <div class="card">
+        <div class="section-head">
+          <div class="section-title">工讀生</div>
+          <span class="pill" id="employeeCount">0 人</span>
         </div>
-        <button class="btn" onclick="loadParttime()">查詢</button>
-        <button class="btn secondary" onclick="exportCsv()">匯出 CSV</button>
+        <div id="employeeList" class="employee-list"></div>
       </div>
-      <div class="notice">注意：刪除與修改會直接改 Firebase 的 <b>parttimeRecords</b>。目前不會自動改回 Google Sheet，因為 Firebase 已是主資料來源。同一位工讀生同一天只保留一筆正式工讀時數。</div>
 
-      <div class="summary-grid">
-        <div class="summary-card"><strong>資料筆數</strong><div class="value" id="sumCount">0</div></div>
-        <div class="summary-card"><strong>總工時</strong><div class="value" id="sumHours">0 小時</div></div>
-        <div class="summary-card"><strong>工時金額</strong><div class="value" id="sumGross">0 元</div></div>
-        <div class="summary-card"><strong>遲到 / 扣款</strong><div class="value" id="sumLate">0 分 / 0 元</div></div>
-        <div class="summary-card final"><strong>試算應發</strong><div class="value" id="sumNet">0 元</div></div>
-      </div>
-    </div>
+      <div>
+        <div class="card">
+          <div class="section-head">
+            <div>
+              <div class="section-title" id="selectedTitle">請先選擇工讀生</div>
+              <div class="muted" id="selectedSub">選擇後會顯示個人本月份資料。</div>
+            </div>
+          </div>
+          <div class="summary-grid">
+            <div class="summary-card"><strong>總工時</strong><div class="value" id="sumHours">0 小時</div></div>
+            <div class="summary-card"><strong>工讀金額</strong><div class="value" id="sumWage">0 元</div></div>
+            <div class="summary-card"><strong>遲到分鐘</strong><div class="value" id="sumLateMins">0 分</div></div>
+            <div class="summary-card"><strong>遲到扣款</strong><div class="value" id="sumLateFee">0 元</div></div>
+            <div class="summary-card"><strong>請假筆數</strong><div class="value" id="sumLeave">0</div></div>
+            <div class="summary-card warn"><strong>異常提醒</strong><div class="value" id="sumIssues">0</div></div>
+            <div class="summary-card final"><strong>試算應發</strong><div class="value" id="sumNet">0 元</div></div>
+          </div>
+        </div>
 
-    <div class="card">
-      <div class="section-title">新增一筆工讀時數</div>
-      <div class="add-grid">
-        <div class="field"><label>工讀生</label><select id="addEmployee"></select></div>
-        <div class="field"><label>日期</label><input id="addDate" type="date"></div>
-        <div class="field"><label>時數</label><input id="addHours" type="number" step="0.5" min="0"></div>
-        <div class="field"><label>工時狀態</label><select id="addStatus"><option>正常登記</option><option>補時數</option><option>管理者新增</option></select></div>
-        <div class="field"><label>備註</label><input id="addNote" placeholder="選填"></div>
-        <button class="btn" onclick="addRecord()">新增</button>
-      </div>
-    </div>
+        <div class="card" id="parttime">
+          <div class="section-head">
+            <div class="section-title">工讀時數</div>
+            <button class="btn btn-red" onclick="openAddParttime()">新增目前工讀生時數</button>
+          </div>
+          <div id="parttimeAddBox" class="hidden" style="margin-bottom:14px">
+            <div class="add-grid">
+              <div class="field"><label>日期</label><input id="addDate" type="date"></div>
+              <div class="field"><label>時數</label><input id="addHours" type="number" step="0.5" min="0"></div>
+              <div class="field"><label>工時來源</label><select id="addSource"><option>管理者新增</option><option>補時數</option><option>正常登記</option></select></div>
+              <div class="field"><label>備註</label><input id="addNote" placeholder="選填"></div>
+              <button class="btn" onclick="addParttimeRecord()">儲存新增</button>
+            </div>
+          </div>
+          <div class="table-wrap" id="parttimeWrap"><table>
+            <thead><tr>
+              <th style="width:120px">日期</th><th style="width:95px">登記時數</th><th style="width:90px">時薪</th><th style="width:110px">當日工資</th>
+              <th style="width:130px">工時來源</th><th style="width:210px">出勤狀態</th><th style="width:230px">備註</th><th style="width:180px">紀錄ID</th><th style="width:220px">操作</th>
+            </tr></thead><tbody id="parttimeRows"></tbody>
+          </table></div>
+          <div class="empty hidden" id="parttimeEmpty">這個月份沒有工讀時數資料。</div>
+        </div>
 
-    <div class="card">
-      <div class="section-title">工讀時數資料表</div>
-      <div id="emptyState" class="muted">請先查詢資料。</div>
-      <div class="table-wrap hidden" id="tableWrap">
-        <table>
-          <thead>
-            <tr>
-              <th style="width:120px">員工</th>
-              <th style="width:115px">日期</th>
-              <th style="width:100px">登記時數</th>
-              <th style="width:90px">時薪</th>
-              <th style="width:120px">當日工資</th>
-              <th style="width:130px">工時狀態</th>
-              <th style="width:180px">出勤狀態</th>
-              <th style="width:220px">備註</th>
-              <th style="width:170px">紀錄ID</th>
-              <th style="width:160px">操作</th>
-            </tr>
-          </thead>
-          <tbody id="rowsBody"></tbody>
-        </table>
+        <div class="card" id="clock">
+          <div class="section-head">
+            <div class="section-title">打卡 / 遲到紀錄</div>
+            <div class="muted">遲到錯誤請在這裡修正，不要只改工讀時數。</div>
+          </div>
+          <div class="table-wrap" id="clockWrap"><table>
+            <thead><tr>
+              <th style="width:120px">日期</th><th style="width:160px">上班打卡</th><th style="width:160px">下班打卡</th><th style="width:130px">來源 IP</th>
+              <th style="width:110px">遲到分鐘</th><th style="width:110px">遲到扣款</th><th style="width:150px">修正狀態</th><th style="width:260px">備註 / 原因</th><th style="width:170px">操作</th>
+            </tr></thead><tbody id="clockRows"></tbody>
+          </table></div>
+          <div class="empty hidden" id="clockEmpty">這個月份沒有打卡資料。</div>
+        </div>
+
+        <div class="card" id="leave">
+          <div class="section-head">
+            <div class="section-title">請假紀錄</div>
+            <div class="muted">用來勾稽：請假時段內不應打卡，也不應產生工讀時數。</div>
+          </div>
+          <div class="table-wrap" id="leaveWrap"><table>
+            <thead><tr>
+              <th style="width:120px">日期</th><th style="width:150px">時間</th><th style="width:120px">假別</th><th style="width:95px">時數</th>
+              <th style="width:120px">狀態</th><th style="width:140px">審核人</th><th style="width:230px">備註</th><th style="width:170px">紀錄ID</th>
+            </tr></thead><tbody id="leaveRows"></tbody>
+          </table></div>
+          <div class="empty hidden" id="leaveEmpty">這個月份沒有請假資料。</div>
+        </div>
+
+        <div class="card">
+          <div class="section-title">異常提醒</div>
+          <div id="issueList" class="muted">請先選擇工讀生。</div>
+        </div>
       </div>
     </div>
   </div>
 
-  <script src="config.js?v=20260524datacenter_wide1"></script>
+  <script src="config.js?v=20260524ptdc1"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script>
-    let state = { employees: [], records: [], visible: [], clockRecords: [], corrections: [] };
+    let state = { employees: [], parttime: [], clocks: [], corrections: [], leaves: [], selectedId: '' };
 
-    function qs(sel){ return document.querySelector(sel); }
-    function clean(v){ return String(v == null ? '' : v).trim(); }
-    function lower(v){ return clean(v).toLowerCase(); }
-    function safeNum(v){ const n = Number(clean(v).replace(/[^\d.\-]/g,'')); return Number.isFinite(n) ? n : 0; }
-    function moneyText(v){ return (Math.round(Number(v||0)||0)).toLocaleString('zh-TW') + ' 元'; }
-    function hoursText(v){ const n=Number(v||0)||0; return (Math.abs(n-Math.round(n))<0.0001?String(Math.round(n)):n.toFixed(1).replace(/\.0$/,'')) + ' 小時'; }
-    function showMsg(msg, type='success'){ qs('#pageMsg').innerHTML = msg ? `<div class="${type}">${msg}</div>` : ''; }
-    function comingSoon(msg){ showMsg(msg, 'notice'); }
-
-    function fbDb(){
-      if(!(window.APP_CONFIG && window.APP_CONFIG.FIREBASE_CONFIG)) throw new Error('找不到 Firebase 設定');
-      if(!window.firebase.apps.length) window.firebase.initializeApp(window.APP_CONFIG.FIREBASE_CONFIG);
-      return window.firebase.firestore();
-    }
-
-    function rawVal(o, keys){
-      const source = o && o.source || {};
-      for(const k of keys){ if(o && o[k] != null && clean(o[k]) !== '') return o[k]; }
-      for(const k of keys){ if(source && source[k] != null && clean(source[k]) !== '') return source[k]; }
-      return '';
-    }
-
-    function truthy(v){ const s=lower(v); return v===true || ['是','yes','true','1','active','enabled','啟用'].includes(s); }
-
-    function excelSerialToDateKey(n){
-      n = Number(n);
-      if(!Number.isFinite(n) || n < 20000 || n > 70000) return '';
-      const base = new Date(Date.UTC(1899, 11, 30));
-      base.setUTCDate(base.getUTCDate() + Math.floor(n));
-      return base.getUTCFullYear()+'-'+String(base.getUTCMonth()+1).padStart(2,'0')+'-'+String(base.getUTCDate()).padStart(2,'0');
-    }
+    function qs(s){return document.querySelector(s)}
+    function qsa(s){return [...document.querySelectorAll(s)]}
+    function clean(v){return String(v==null?'':v).trim()}
+    function lower(v){return clean(v).toLowerCase()}
+    function safeNum(v){const n=Number(clean(v).replace(/[^\d.\-]/g,''));return Number.isFinite(n)?n:0}
+    function money(v){return (Math.round(Number(v||0)||0)).toLocaleString('zh-TW')+' 元'}
+    function hours(v){const n=Number(v||0)||0;return (Math.abs(n-Math.round(n))<.001?String(Math.round(n)):n.toFixed(1).replace(/\.0$/,''))+' 小時'}
+    function msg(t,type='success'){qs('#pageMsg').innerHTML=t?`<div class="${type}">${t}</div>`:''}
+    function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+    function escjs(s){return String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'")}
+    function raw(o,keys){const src=o&&o.source||{};for(const k of keys){if(o&&o[k]!=null&&clean(o[k])!=='')return o[k]}for(const k of keys){if(src&&src[k]!=null&&clean(src[k])!=='')return src[k]}return ''}
+    function isTrue(v){const s=lower(v);return v===true||['是','yes','true','1','啟用','active','enabled'].includes(s)}
+    function excelDate(n){n=Number(n);if(!Number.isFinite(n)||n<20000||n>70000)return'';const d=new Date(Date.UTC(1899,11,30));d.setUTCDate(d.getUTCDate()+Math.floor(n));return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')+'-'+String(d.getUTCDate()).padStart(2,'0')}
     function dateKey(v){
-      if(v == null || v === '') return '';
-      if(v && typeof v.toDate === 'function') v = v.toDate();
-      if(v instanceof Date && !isNaN(v.getTime())) return v.getFullYear()+'-'+String(v.getMonth()+1).padStart(2,'0')+'-'+String(v.getDate()).padStart(2,'0');
-      if(typeof v === 'number') return excelSerialToDateKey(v) || '';
-      const s = clean(v);
-      if(/^\d{4}-\d{1,2}-\d{1,2}/.test(s)){ const p=s.split(/[\-\sT]/); return p[0]+'-'+String(p[1]).padStart(2,'0')+'-'+String(p[2]).padStart(2,'0'); }
-      if(/^\d{4}\/\d{1,2}\/\d{1,2}/.test(s)){ const p=s.split(/[\/\s]/); return p[0]+'-'+String(p[1]).padStart(2,'0')+'-'+String(p[2]).padStart(2,'0'); }
-      if(/^\d{4,5}(?:\.\d+)?$/.test(s)) return excelSerialToDateKey(Number(s)) || s;
-      const d = new Date(s);
-      return isNaN(d.getTime()) ? s : dateKey(d);
+      if(v==null||v==='')return''; if(v&&typeof v.toDate==='function')v=v.toDate();
+      if(v instanceof Date&&!isNaN(v.getTime()))return v.getFullYear()+'-'+String(v.getMonth()+1).padStart(2,'0')+'-'+String(v.getDate()).padStart(2,'0');
+      if(typeof v==='number')return excelDate(v)||''; const s=clean(v);
+      if(/^\d{4}-\d{1,2}-\d{1,2}/.test(s)){const p=s.split(/[-\sT]/);return p[0]+'-'+String(p[1]).padStart(2,'0')+'-'+String(p[2]).padStart(2,'0')}
+      if(/^\d{4}\/\d{1,2}\/\d{1,2}/.test(s)){const p=s.split(/[\/\s]/);return p[0]+'-'+String(p[1]).padStart(2,'0')+'-'+String(p[2]).padStart(2,'0')}
+      if(/^\d{4,5}(?:\.\d+)?$/.test(s))return excelDate(Number(s))||s; const d=new Date(s);return isNaN(d.getTime())?s:dateKey(d)
     }
+    function timeText(v){if(!v)return'';if(v&&typeof v.toDate==='function')v=v.toDate();if(v instanceof Date&&!isNaN(v.getTime()))return String(v.getHours()).padStart(2,'0')+':'+String(v.getMinutes()).padStart(2,'0');return clean(v)}
+    function fb(){ if(!(window.APP_CONFIG&&window.APP_CONFIG.FIREBASE_CONFIG))throw new Error('找不到 Firebase 設定'); if(!firebase.apps.length)firebase.initializeApp(window.APP_CONFIG.FIREBASE_CONFIG); return firebase.firestore(); }
+    async function all(col){const snap=await fb().collection(col).get();const a=[];snap.forEach(d=>a.push(Object.assign({__id:d.id},d.data()||{})));return a}
 
-    async function fbAll(collectionName){
-      const snap = await fbDb().collection(collectionName).get();
-      const rows = [];
-      snap.forEach(doc => rows.push(Object.assign({__id: doc.id}, doc.data() || {})));
-      return rows;
+    function employee(o){
+      const id=clean(raw(o,['employeeId','員工ID'])||o.__id);
+      const part = isTrue(raw(o,['isPartTime','是否工讀生'])) || lower(raw(o,['identityType','身分類型'])).includes('part');
+      return {id,name:clean(raw(o,['name','姓名']))||id,email:lower(raw(o,['email','Email'])),hourlyRate:safeNum(raw(o,['hourlyRate','時薪','時薪金額']))||196,active:lower(raw(o,['accountStatus','帳號狀態']))!=='停用',part,raw:o}
     }
-
-    function normalizeEmployee(o){
-      const id = clean(rawVal(o, ['employeeId','員工ID']) || o.__id);
-      const hourlyRate = safeNum(rawVal(o, ['hourlyRate','時薪金額','時薪','hourlyPay'])) || 196;
-      return {
-        id,
-        name: clean(rawVal(o, ['name','姓名'])) || id,
-        email: lower(rawVal(o, ['email','Email'])),
-        identityType: lower(rawVal(o, ['identityType','身分類型'])) || (truthy(rawVal(o, ['isPartTime','是否工讀生'])) ? 'parttime' : 'staff'),
-        accountStatus: lower(rawVal(o, ['accountStatus','帳號狀態'])) || 'active',
-        hourlyRate,
-        laborSelfPay: safeNum(rawVal(o, ['laborSelfPay','勞保自付額','勞保自付額快照'])),
-        raw: o
-      };
+    function pt(o){
+      const empId=clean(raw(o,['employeeId','員工ID']));
+      let total=safeNum(raw(o,['totalHours','總時數'])); if(!total) total=safeNum(raw(o,['hours','時數']))+(isTrue(raw(o,['halfHour','是否加半小時']))?.5:0);
+      const emp=state.employees.find(e=>e.id===empId||e.name===clean(raw(o,['name','姓名']))||e.email===lower(raw(o,['email','Email'])));
+      const rate=safeNum(raw(o,['hourlyRate','時薪']))||(emp?emp.hourlyRate:196);
+      const status=clean(raw(o,['status','狀態']));
+      const note=clean(raw(o,['note','備註','補時數原因']));
+      return {__id:o.__id,recordId:clean(raw(o,['recordId','紀錄ID'])||o.__id),employeeId:empId||(emp?emp.id:''),name:clean(raw(o,['name','姓名']))||(emp?emp.name:''),date:dateKey(raw(o,['workDate','date','日期'])),hours:Math.round(total*100)/100,hourlyRate:rate,status,note,gross:Math.round(total*rate),raw:o}
     }
-
-    function normalizeRecord(o){
-      const baseHours = safeNum(rawVal(o, ['hours','時數']));
-      const half = truthy(rawVal(o, ['halfHour','addHalfHour','是否加半小時']));
-      let total = safeNum(rawVal(o, ['totalHours','總時數']));
-      if(!total || total < 0 || total > 24) total = baseHours + (half ? 0.5 : 0);
-      total = Math.round(total * 100) / 100;
-      const employeeId = clean(rawVal(o, ['employeeId','員工ID']));
-      const emp = state.employees.find(e => e.id === employeeId || lower(e.email) === lower(rawVal(o, ['email','Email'])) || e.name === clean(rawVal(o, ['name','姓名'])));
-      const hourlyRate = safeNum(rawVal(o, ['hourlyRate','時薪'])) || (emp ? emp.hourlyRate : 196);
-      return {
-        __id: o.__id,
-        recordId: clean(rawVal(o, ['recordId','紀錄ID']) || o.__id),
-        employeeId: employeeId || (emp ? emp.id : ''),
-        name: clean(rawVal(o, ['name','姓名'])) || (emp ? emp.name : ''),
-        email: lower(rawVal(o, ['email','Email'])) || (emp ? emp.email : ''),
-        date: dateKey(rawVal(o, ['workDate','date','日期'])),
-        hours: total,
-        hourlyRate,
-        status: clean(rawVal(o, ['status','狀態']) || '正常'),
-        note: clean(rawVal(o, ['note','備註','補時數原因'])),
-        grossPay: Math.round(total * hourlyRate),
-        raw: o
-      };
+    function clock(o){
+      const empId=clean(raw(o,['employeeId','員工ID']));
+      return {__id:o.__id,employeeId:empId,name:clean(raw(o,['name','姓名','employeeName'])),date:dateKey(raw(o,['date','日期','clockDate','打卡日期','workDate'])),clockIn:timeText(raw(o,['clockIn','上班打卡','上班時間','上班打卡時間'])),clockOut:timeText(raw(o,['clockOut','下班打卡','下班時間','下班打卡時間'])),ip:clean(raw(o,['ip','IP','來源IP','sourceIp'])),late:safeNum(raw(o,['lateMinutes','遲到分鐘','lateMins'])),note:clean(raw(o,['note','備註','reason','原因'])),raw:o}
     }
-
-    function normalizeClock(o){
-      const employeeId = clean(rawVal(o, ['employeeId','員工ID']));
-      const name = clean(rawVal(o, ['name','姓名','employeeName']));
-      const date = dateKey(rawVal(o, ['date','日期','clockDate','打卡日期','workDate']));
-      const lateMinutes = safeNum(rawVal(o, ['lateMinutes','遲到分鐘','lateMins']));
-      return {__id:o.__id, employeeId, name, date, lateMinutes, raw:o};
+    function correction(o){
+      const status=clean(raw(o,['status','狀態','審核狀態']));
+      return {__id:o.__id,employeeId:clean(raw(o,['employeeId','員工ID'])),name:clean(raw(o,['name','姓名','employeeName'])),date:dateKey(raw(o,['date','日期','workDate','打卡日期','申請日期'])),approved:['核准','已核准','approved','通過'].includes(lower(status)),status,note:clean(raw(o,['note','備註','reason','原因'])),raw:o}
     }
-
-    function normalizeCorrection(o){
-      const employeeId = clean(rawVal(o, ['employeeId','員工ID']));
-      const name = clean(rawVal(o, ['name','姓名','employeeName']));
-      const date = dateKey(rawVal(o, ['date','日期','workDate','申請日期','打卡日期']));
-      const status = clean(rawVal(o, ['status','狀態','審核狀態']));
-      const approved = ['核准','已核准','approved','通過'].includes(lower(status));
-      return {__id:o.__id, employeeId, name, date, status, approved, raw:o};
+    function leave(o){
+      const d=dateKey(raw(o,['date','日期','leaveDate','請假日期','startDate','開始日期']));
+      const s=clean(raw(o,['startTime','開始時間','請假開始時間']));
+      const e=clean(raw(o,['endTime','結束時間','請假結束時間']));
+      return {__id:o.__id,employeeId:clean(raw(o,['employeeId','員工ID'])),name:clean(raw(o,['name','姓名','employeeName'])),date:d,time:[s,e].filter(Boolean).join(' - '),type:clean(raw(o,['leaveType','假別','type'])),hours:safeNum(raw(o,['hours','時數','請假時數'])),status:clean(raw(o,['status','狀態','審核狀態'])),reviewer:clean(raw(o,['reviewer','審核人','approver'])),note:clean(raw(o,['note','備註','reason','請假原因'])),raw:o}
     }
-
-    function workStatus(r){
-      const status = clean(r.status);
-      if(status && status !== '正常') return status;
-      if(r.raw && r.raw.dataCenterCreated) return '管理者新增';
-      if(r.raw && r.raw.dataCenterEdited) return '管理者修正';
-      if(r.note && (r.note.includes('補') || r.note.includes('超過原訂班表'))) return '補時數';
-      return '正常登記';
+    function workSource(r){
+      if(r.status&&r.status!=='正常')return r.status;
+      if(r.raw&&r.raw.dataCenterCreated)return'管理者新增';
+      if(r.raw&&r.raw.dataCenterEdited)return'管理者修正';
+      if(r.note&&(r.note.includes('補')||r.note.includes('超過原訂班表')))return'補時數';
+      return'員工填寫';
     }
-
-    function attendanceStatus(r){
-      const relatedClocks = state.clockRecords.filter(c => {
-        const sameEmp = (r.employeeId && c.employeeId === r.employeeId) || (r.name && c.name === r.name);
-        return sameEmp && c.date === r.date;
-      });
-      const late = relatedClocks.reduce((max, c) => Math.max(max, safeNum(c.lateMinutes)), 0);
-      const approvedFix = state.corrections.some(c => {
-        const sameEmp = (r.employeeId && c.employeeId === r.employeeId) || (r.name && c.name === r.name);
-        return sameEmp && c.date === r.date && c.approved;
-      });
-      if(late > 0 && approvedFix) return '遲到已修正，不扣款';
-      if(late > 0){
-        const deduct = Math.round((safeNum(r.hourlyRate) / 60) * late);
-        return `遲到 ${late} 分鐘，扣 ${deduct.toLocaleString('zh-TW')} 元`;
-      }
-      return '正常';
+    function approvedFixFor(r){
+      return state.corrections.some(c=>sameEmp(c,r)&&c.date===r.date&&c.approved)
     }
-
-    function uniqueDayKey(employeeId, date){
-      return `${clean(employeeId)}__${clean(date)}`;
+    function sameEmp(a,b){return (a.employeeId&&b.employeeId&&a.employeeId===b.employeeId)||(a.name&&b.name&&a.name===b.name)}
+    function lateFor(r){
+      const cs=state.clocks.filter(c=>sameEmp(c,r)&&c.date===r.date);
+      return cs.reduce((m,c)=>Math.max(m,safeNum(c.late)),0)
     }
-
-    function currentMonth(){
-      const d = new Date();
-      return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+    function attendStatus(r){
+      const late=lateFor(r);
+      if(late>0&&approvedFixFor(r))return {text:'遲到已修正，不扣款',cls:'green',deduct:0,late};
+      if(late>0){const d=Math.round((safeNum(r.hourlyRate)/60)*late);return {text:`遲到 ${late} 分鐘，扣 ${d.toLocaleString('zh-TW')} 元`,cls:'red',deduct:d,late};}
+      const lv=state.leaves.some(l=>sameEmp(l,r)&&l.date===r.date&&['核准','已核准','approved'].includes(lower(l.status)));
+      if(lv)return {text:'有核准請假，請確認時段',cls:'orange',deduct:0,late:0};
+      return {text:'正常',cls:'green',deduct:0,late:0};
     }
+    function selected(){return state.employees.find(e=>e.id===state.selectedId)}
+    function month(){return clean(qs('#monthText').value)}
+    function inMonth(d){return !month()||String(d||'').slice(0,7)===month()}
+    function empRows(arr){const e=selected();if(!e)return[];return arr.filter(r=>sameEmp(r,e)&&inMonth(r.date))}
 
     async function init(){
+      qs('#monthText').value=new Date().getFullYear()+'-'+String(new Date().getMonth()+1).padStart(2,'0');
+      await reloadAll();
+    }
+    async function reloadAll(){
       try{
-        qs('#monthText').value = currentMonth();
-        await loadBaseData();
-        await loadParttime();
-      }catch(err){
-        showMsg('初始化失敗：' + (err.message || err), 'error');
-      }
+        msg('讀取資料中...','notice');
+        state.employees=(await all('employees')).map(employee).filter(e=>e.part&&e.active).sort((a,b)=>a.name.localeCompare(b.name,'zh-Hant'));
+        state.parttime=(await all('parttimeRecords')).map(pt);
+        state.clocks=(await all('clockRecords')).map(clock);
+        try{state.corrections=(await all('clockCorrections')).map(correction)}catch(e){state.corrections=[]}
+        try{state.leaves=(await all('leaveRecords')).map(leave)}catch(e){state.leaves=[]}
+        try{state.leaves=state.leaves.concat((await all('leaveRequests')).map(leave))}catch(e){}
+        renderEmployees();
+        if(!state.selectedId&&state.employees[0])state.selectedId=state.employees[0].id;
+        renderAll();
+        msg('');
+      }catch(e){msg('讀取失敗：'+(e.message||e),'error')}
     }
-
-    async function loadBaseData(){
-      showMsg('讀取員工資料中...', 'notice');
-      const rows = await fbAll('employees');
-      state.employees = rows.map(normalizeEmployee).filter(e => e.identityType === 'parttime' && (!e.accountStatus || e.accountStatus === 'active' || e.accountStatus === '啟用'));
-      state.employees.sort((a,b)=>a.name.localeCompare(b.name,'zh-Hant'));
-      const select = qs('#addEmployee');
-      select.innerHTML = state.employees.map(e => `<option value="${escapeHtml(e.id)}">${escapeHtml(e.name)}｜${moneyText(e.hourlyRate)}/時</option>`).join('');
-      qs('#addDate').value = new Date().toISOString().slice(0,10);
-      showMsg('', 'success');
+    function renderEmployees(){
+      const kw=lower(qs('#keyword').value);
+      const list=state.employees.filter(e=>!kw||lower(e.name).includes(kw)||lower(e.id).includes(kw)||lower(e.email).includes(kw));
+      qs('#employeeCount').textContent=list.length+' 人';
+      qs('#employeeList').innerHTML=list.map(e=>`<div class="employee-item ${e.id===state.selectedId?'active':''}" onclick="selectEmp('${escjs(e.id)}')"><strong>${esc(e.name)}</strong><div class="subtle">${money(e.hourlyRate)} / 時</div></div>`).join('')||'<div class="employee-item muted">沒有符合的工讀生</div>';
     }
-
-    async function loadParttime(){
-      try{
-        showMsg('讀取工讀時數資料中...', 'notice');
-        const all = await fbAll('parttimeRecords');
-        state.records = all.map(normalizeRecord);
-        try { state.clockRecords = (await fbAll('clockRecords')).map(normalizeClock); } catch(e) { state.clockRecords = []; }
-        try { state.corrections = (await fbAll('clockCorrections')).map(normalizeCorrection); } catch(e) { state.corrections = []; }
-        applyFilters();
-        showMsg('讀取完成。', 'success');
-        setTimeout(()=>showMsg(''), 1200);
-      }catch(err){
-        showMsg('讀取失敗：' + (err.message || err), 'error');
-      }
+    function selectEmp(id){state.selectedId=id;renderEmployees();renderAll();}
+    function renderAll(){
+      const e=selected();
+      if(!e){qs('#selectedTitle').textContent='請先選擇工讀生';return}
+      qs('#selectedTitle').textContent=e.name;
+      qs('#selectedSub').textContent=`${month()||'全部月份'}｜時薪 ${money(e.hourlyRate)}`;
+      renderParttime(); renderClocks(); renderLeaves(); renderSummary(); renderIssues();
     }
-
-    function applyFilters(){
-      const keyword = lower(qs('#keyword').value);
-      const month = clean(qs('#monthText').value);
-      const status = clean(qs('#statusFilter').value);
-      state.visible = state.records.filter(r => {
-        const hitKeyword = !keyword || lower(r.name).includes(keyword) || lower(r.employeeId).includes(keyword) || lower(r.email).includes(keyword);
-        const hitMonth = !month || String(r.date || '').slice(0,7) === month;
-        const hitStatus = !status || workStatus(r) === status || r.status === status;
-        return hitKeyword && hitMonth && hitStatus;
-      });
-      state.visible.sort((a,b)=>(a.date || '').localeCompare(b.date || '') || a.name.localeCompare(b.name,'zh-Hant'));
-      renderTable();
-      renderSummary();
-    }
-
     function renderSummary(){
-      const totalHours = state.visible.reduce((s,r)=>s + safeNum(r.hours),0);
-      const totalGross = state.visible.reduce((s,r)=>s + safeNum(r.grossPay),0);
-      qs('#sumCount').textContent = state.visible.length;
-      qs('#sumHours').textContent = hoursText(totalHours);
-      qs('#sumGross').textContent = moneyText(totalGross);
-      let totalLateMinutes = 0;
-      let totalLateDeduction = 0;
-      state.visible.forEach(r => {
-        const relatedClocks = state.clockRecords.filter(c => {
-          const sameEmp = (r.employeeId && c.employeeId === r.employeeId) || (r.name && c.name === r.name);
-          return sameEmp && c.date === r.date;
-        });
-        const late = relatedClocks.reduce((max, c) => Math.max(max, safeNum(c.lateMinutes)), 0);
-        const approvedFix = state.corrections.some(c => {
-          const sameEmp = (r.employeeId && c.employeeId === r.employeeId) || (r.name && c.name === r.name);
-          return sameEmp && c.date === r.date && c.approved;
-        });
-        if(late > 0 && !approvedFix){
-          totalLateMinutes += late;
-          totalLateDeduction += Math.round((safeNum(r.hourlyRate) / 60) * late);
-        }
-      });
-      qs('#sumLate').textContent = `${totalLateMinutes} 分 / ${moneyText(totalLateDeduction)}`;
-      qs('#sumNet').textContent = moneyText(totalGross - totalLateDeduction);
+      const pts=empRows(state.parttime);
+      const totalH=pts.reduce((s,r)=>s+r.hours,0);
+      const totalW=pts.reduce((s,r)=>s+r.gross,0);
+      let lateM=0, lateFee=0;
+      pts.forEach(r=>{const a=attendStatus(r);lateM+=a.deduct?a.late:0;lateFee+=a.deduct});
+      const leaves=empRows(state.leaves).length;
+      const issues=calcIssues().length;
+      qs('#sumHours').textContent=hours(totalH); qs('#sumWage').textContent=money(totalW); qs('#sumLateMins').textContent=lateM+' 分'; qs('#sumLateFee').textContent=money(lateFee); qs('#sumLeave').textContent=leaves; qs('#sumIssues').textContent=issues; qs('#sumNet').textContent=money(totalW-lateFee);
     }
-
-    function renderTable(){
-      qs('#emptyState').classList.toggle('hidden', state.visible.length > 0);
-      qs('#tableWrap').classList.toggle('hidden', state.visible.length === 0);
-      const body = qs('#rowsBody');
-      body.innerHTML = state.visible.map((r, idx) => {
-        return `<tr data-doc="${escapeHtml(r.__id)}">
-          <td>${escapeHtml(r.name)}<div class="muted" style="font-size:12px">${escapeHtml(r.employeeId)}</div></td>
-          <td><input type="date" data-field="date" value="${escapeHtml(r.date)}"></td>
-          <td><input type="number" step="0.5" min="0" data-field="hours" value="${escapeHtml(r.hours)}"></td>
-          <td><input type="number" step="1" min="0" data-field="hourlyRate" value="${escapeHtml(r.hourlyRate)}"></td>
-          <td>${moneyText(r.grossPay)}</td>
-          <td><select data-field="status">
-            <option ${workStatus(r)==='正常登記'?'selected':''}>正常登記</option>
-            <option ${workStatus(r)==='補時數'?'selected':''}>補時數</option>
-            <option ${workStatus(r)==='管理者新增'?'selected':''}>管理者新增</option>
-            <option ${workStatus(r)==='管理者修正'?'selected':''}>管理者修正</option>
-          </select></td>
-          <td>${escapeHtml(attendanceStatus(r))}</td>
-          <td><input data-field="note" value="${escapeHtml(r.note)}"></td>
-          <td><span style="font-size:12px">${escapeHtml(r.recordId)}</span></td>
-          <td><div class="row-actions"><button class="btn small" onclick="saveRow('${escapeJs(r.__id)}')">儲存</button><button class="btn small danger" onclick="deleteRow('${escapeJs(r.__id)}')">刪除</button></div></td>
-        </tr>`;
-      }).join('');
+    function renderParttime(){
+      const rows=empRows(state.parttime).sort((a,b)=>a.date.localeCompare(b.date));
+      qs('#parttimeWrap').classList.toggle('hidden',rows.length===0); qs('#parttimeEmpty').classList.toggle('hidden',rows.length>0);
+      qs('#parttimeRows').innerHTML=rows.map(r=>{const a=attendStatus(r);return `<tr data-pt="${esc(r.__id)}">
+        <td>${esc(r.date)}</td>
+        <td><input data-field="hours" type="number" step="0.5" min="0" value="${esc(r.hours)}"></td>
+        <td><input data-field="hourlyRate" type="number" step="1" min="0" value="${esc(r.hourlyRate)}"></td>
+        <td>${money(r.gross)}</td>
+        <td><select data-field="status"><option ${workSource(r)==='員工填寫'?'selected':''}>員工填寫</option><option ${workSource(r)==='補時數'?'selected':''}>補時數</option><option ${workSource(r)==='管理者新增'?'selected':''}>管理者新增</option><option ${workSource(r)==='管理者修正'?'selected':''}>管理者修正</option></select></td>
+        <td><span class="pill ${a.cls}">${esc(a.text)}</span></td>
+        <td><input data-field="note" value="${esc(r.note)}"></td>
+        <td><span class="subtle">${esc(r.recordId)}</span></td>
+        <td><div class="row-actions"><button class="btn small" onclick="saveParttime('${escjs(r.__id)}')">儲存工時</button><button class="btn small gray" onclick="goClock('${escjs(r.date)}')">修正出勤</button><button class="btn small danger" onclick="deleteParttime('${escjs(r.__id)}')">刪除</button></div></td>
+      </tr>`}).join('');
     }
-
-    function getTr(docId){ return [...document.querySelectorAll('tr[data-doc]')].find(tr => tr.getAttribute('data-doc') === docId); }
-
-    async function saveRow(docId){
-      const tr = getTr(docId);
-      const old = state.records.find(r => r.__id === docId);
-      if(!tr || !old) return;
-      const date = tr.querySelector('[data-field="date"]').value;
-      const hours = safeNum(tr.querySelector('[data-field="hours"]').value);
-      const hourlyRate = safeNum(tr.querySelector('[data-field="hourlyRate"]').value) || old.hourlyRate || 196;
-      const status = tr.querySelector('[data-field="status"]').value;
-      const note = tr.querySelector('[data-field="note"]').value;
-      if(!date || !hours){ showMsg('日期與時數必填。', 'error'); return; }
-      const grossPay = Math.round(hours * hourlyRate);
-      const payload = {
-        workDate: date,
-        date: date,
-        日期: date,
-        hours: hours,
-        totalHours: hours,
-        時數: hours,
-        總時數: hours,
-        hourlyRate: hourlyRate,
-        時薪: hourlyRate,
-        grossPay: grossPay,
-        當日工資: grossPay,
-        當日工資: grossPay,
-        當筆毛額: grossPay,
-        status: status,
-        狀態: status,
-        note: note,
-        備註: note,
-        updatedAt: new Date().toISOString(),
-        最後更新時間: new Date().toISOString(),
-        dataCenterEdited: true
-      };
-      await fbDb().collection('parttimeRecords').doc(docId).set(payload, {merge:true});
-      Object.assign(old, payload, {date, hours, hourlyRate, status, note, grossPay});
-      showMsg('已儲存。', 'success');
-      await loadParttime();
+    function renderClocks(){
+      const rows=empRows(state.clocks).sort((a,b)=>a.date.localeCompare(b.date));
+      qs('#clockWrap').classList.toggle('hidden',rows.length===0); qs('#clockEmpty').classList.toggle('hidden',rows.length>0);
+      qs('#clockRows').innerHTML=rows.map(r=>{const e=selected();const fake={employeeId:e.id,name:e.name,date:r.date,hourlyRate:e.hourlyRate};const fixed=approvedFixFor(fake);const deduct=(r.late>0&&!fixed)?Math.round(e.hourlyRate/60*r.late):0;return `<tr data-clock="${esc(r.__id)}">
+        <td>${esc(r.date)}</td><td>${esc(r.clockIn||'-')}</td><td>${esc(r.clockOut||'-')}</td><td>${esc(r.ip||'-')}</td>
+        <td><input data-field="late" type="number" min="0" step="1" value="${esc(r.late)}"></td><td>${money(deduct)}</td>
+        <td>${fixed?'<span class="pill green">已修正不扣款</span>':(r.late>0?'<span class="pill red">未修正</span>':'<span class="pill green">正常</span>')}</td>
+        <td><input data-field="note" value="${esc(r.note||'')}"></td>
+        <td><div class="row-actions"><button class="btn small" onclick="saveClock('${escjs(r.__id)}')">儲存遲到</button><button class="btn small gray" onclick="markNoDeduct('${escjs(r.__id)}')">設為不扣款</button></div></td>
+      </tr>`}).join('');
     }
-
-    async function deleteRow(docId){
-      const old = state.records.find(r => r.__id === docId);
-      if(!old) return;
-      if(!confirm(`確定刪除這筆工讀時數？\n${old.name}｜${old.date}｜${old.hours} 小時`)) return;
-      await fbDb().collection('parttimeRecords').doc(docId).delete();
-      showMsg('已刪除。', 'success');
-      await loadParttime();
+    function renderLeaves(){
+      const rows=empRows(state.leaves).sort((a,b)=>a.date.localeCompare(b.date));
+      qs('#leaveWrap').classList.toggle('hidden',rows.length===0); qs('#leaveEmpty').classList.toggle('hidden',rows.length>0);
+      qs('#leaveRows').innerHTML=rows.map(r=>`<tr><td>${esc(r.date)}</td><td>${esc(r.time||'-')}</td><td>${esc(r.type||'-')}</td><td>${esc(r.hours||'')}</td><td>${esc(r.status||'-')}</td><td>${esc(r.reviewer||'-')}</td><td>${esc(r.note||'')}</td><td><span class="subtle">${esc(r.__id)}</span></td></tr>`).join('');
     }
-
-    async function addRecord(){
-      const empId = clean(qs('#addEmployee').value);
-      const emp = state.employees.find(e => e.id === empId);
-      const date = clean(qs('#addDate').value);
-      const hours = safeNum(qs('#addHours').value);
-      const status = clean(qs('#addStatus').value || '正常登記');
-      const note = clean(qs('#addNote').value);
-      if(!emp || !date || !hours){ showMsg('請選擇工讀生、日期與時數。', 'error'); return; }
-      const existing = state.records.find(r => r.employeeId === emp.id && r.date === date);
-      if(existing){
-        const ok = confirm(`${emp.name} 在 ${date} 已經有一筆工讀時數：${existing.hours} 小時。\n\n系統規則：同一位工讀生同一天只能有一筆正式工讀時數。\n\n按「確定」會覆蓋原本那筆；按「取消」不新增。`);
-        if(!ok) return;
-        const grossPay = Math.round(hours * emp.hourlyRate);
-        await fbDb().collection('parttimeRecords').doc(existing.__id).set({
-          workDate: date, date: date, 日期: date,
-          hours: hours, totalHours: hours, 時數: hours, 總時數: hours,
-          hourlyRate: emp.hourlyRate, 時薪: emp.hourlyRate,
-          grossPay: grossPay, 當日工資: grossPay,
-          status: '管理者修正', 狀態: '管理者修正',
-          note: note || existing.note || '',
-          備註: note || existing.note || '',
-          updatedAt: new Date().toISOString(),
-          最後更新時間: new Date().toISOString(),
-          dataCenterEdited: true
-        }, {merge:true});
-        qs('#addHours').value = '';
-        qs('#addNote').value = '';
-        showMsg('已覆蓋原本同一天的工讀時數。', 'success');
-        await loadParttime();
-        return;
-      }
-      const id = 'PT_' + emp.id + '_' + date.replace(/-/g,'');
-      const grossPay = Math.round(hours * emp.hourlyRate);
-      const payload = {
-        recordId: id,
-        紀錄ID: id,
-        employeeId: emp.id,
-        員工ID: emp.id,
-        name: emp.name,
-        姓名: emp.name,
-        email: emp.email,
-        Email: emp.email,
-        workDate: date,
-        date: date,
-        日期: date,
-        hours: hours,
-        totalHours: hours,
-        時數: hours,
-        總時數: hours,
-        halfHour: false,
-        是否加半小時: '否',
-        hourlyRate: emp.hourlyRate,
-        時薪: emp.hourlyRate,
-        grossPay: grossPay,
-        當日工資: grossPay,
-        當日工資: grossPay,
-        當筆毛額: grossPay,
-        status: status,
-        狀態: status,
-        note: note,
-        備註: note,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        建立時間: new Date().toISOString(),
-        最後更新時間: new Date().toISOString(),
-        dataCenterCreated: true
-      };
-      await fbDb().collection('parttimeRecords').doc(id).set(payload, {merge:true});
-      qs('#addHours').value = '';
-      qs('#addNote').value = '';
-      showMsg('已新增一筆工讀時數。', 'success');
-      await loadParttime();
+    function calcIssues(){
+      const pts=empRows(state.parttime), issues=[];
+      const seen={};
+      pts.forEach(r=>{const k=r.date;if(seen[k])issues.push(`${r.date} 有重複工讀時數`);seen[k]=true;const a=attendStatus(r);if(a.cls==='red')issues.push(`${r.date} ${a.text}`);if(a.cls==='orange')issues.push(`${r.date} 有請假紀錄，需確認是否與工讀時段重疊`)});
+      return issues;
     }
-
-    function exportCsv(){
-      if(!state.visible.length){ showMsg('目前沒有可匯出的資料。','error'); return; }
-      const headers = ['姓名','員工ID','日期','登記時數','時薪','當日工資','工時狀態','出勤狀態','備註','紀錄ID'];
-      const rows = state.visible.map(r => [r.name,r.employeeId,r.date,r.hours,r.hourlyRate,r.grossPay,workStatus(r),attendanceStatus(r),r.note,r.recordId]);
-      const csv = '\ufeff' + [headers].concat(rows).map(row => row.map(cell => `"${String(cell == null ? '' : cell).replace(/"/g,'""')}"`).join(',')).join('\n');
-      const blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `工讀時數資料_${clean(qs('#monthText').value)||'全部'}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
+    function renderIssues(){
+      const issues=calcIssues();
+      qs('#issueList').innerHTML=issues.length?issues.map(x=>`<div class="pill orange" style="margin:4px">${esc(x)}</div>`).join(''):'目前沒有明顯異常。';
     }
-
-    function escapeHtml(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-    function escapeJs(s){ return String(s == null ? '' : s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
-
-    document.addEventListener('input', (e)=>{
-      if(['keyword','monthText','statusFilter'].includes(e.target.id)) applyFilters();
-    });
+    function openAddParttime(){
+      if(!selected()){msg('請先選擇工讀生。','error');return}
+      qs('#parttimeAddBox').classList.toggle('hidden');
+      qs('#addDate').value=new Date().toISOString().slice(0,10);
+    }
+    async function addParttimeRecord(){
+      const e=selected(); if(!e){msg('請先選擇工讀生。','error');return}
+      const d=clean(qs('#addDate').value), h=safeNum(qs('#addHours').value), source=clean(qs('#addSource').value), note=clean(qs('#addNote').value);
+      if(!d||!h){msg('日期與時數必填。','error');return}
+      const existing=state.parttime.find(r=>r.employeeId===e.id&&r.date===d);
+      if(existing&&!confirm(`${e.name} 在 ${d} 已有 ${existing.hours} 小時。\n同一天只保留一筆正式工讀時數。\n\n按確定會覆蓋原本那筆；按取消不新增。`)) return;
+      const id=existing?existing.__id:`PT_${e.id}_${d.replace(/-/g,'')}`;
+      const gross=Math.round(h*e.hourlyRate);
+      await fb().collection('parttimeRecords').doc(id).set({recordId:id,紀錄ID:id,employeeId:e.id,員工ID:e.id,name:e.name,姓名:e.name,email:e.email,Email:e.email,workDate:d,date:d,日期:d,hours:h,totalHours:h,時數:h,總時數:h,hourlyRate:e.hourlyRate,時薪:e.hourlyRate,grossPay:gross,當日工資:gross,status:existing?'管理者修正':source,狀態:existing?'管理者修正':source,note:note,備註:note,updatedAt:new Date().toISOString(),dataCenterEdited:!!existing,dataCenterCreated:!existing},{merge:true});
+      qs('#addHours').value=''; qs('#addNote').value=''; msg(existing?'已覆蓋原本同一天資料。':'已新增工讀時數。'); await reloadAll();
+    }
+    async function saveParttime(id){
+      const tr=qs(`tr[data-pt="${CSS.escape(id)}"]`), r=state.parttime.find(x=>x.__id===id); if(!tr||!r)return;
+      const h=safeNum(tr.querySelector('[data-field="hours"]').value), rate=safeNum(tr.querySelector('[data-field="hourlyRate"]').value)||r.hourlyRate, status=tr.querySelector('[data-field="status"]').value, note=tr.querySelector('[data-field="note"]').value;
+      const gross=Math.round(h*rate);
+      await fb().collection('parttimeRecords').doc(id).set({hours:h,totalHours:h,時數:h,總時數:h,hourlyRate:rate,時薪:rate,grossPay:gross,當日工資:gross,status:status,狀態:status,note:note,備註:note,updatedAt:new Date().toISOString(),dataCenterEdited:true},{merge:true});
+      msg('已儲存工讀時數。'); await reloadAll();
+    }
+    async function deleteParttime(id){
+      const r=state.parttime.find(x=>x.__id===id); if(!r)return;
+      if(!confirm(`確定刪除？\n${r.name}｜${r.date}｜${r.hours} 小時`))return;
+      await fb().collection('parttimeRecords').doc(id).delete(); msg('已刪除。'); await reloadAll();
+    }
+    function goClock(date){location.hash='clock';qs('#clock').scrollIntoView({behavior:'smooth'});msg(`${date} 的遲到扣款請在「打卡 / 遲到紀錄」區塊修正。`,'notice')}
+    async function saveClock(id){
+      const tr=qs(`tr[data-clock="${CSS.escape(id)}"]`), r=state.clocks.find(x=>x.__id===id); if(!tr||!r)return;
+      const late=safeNum(tr.querySelector('[data-field="late"]').value), note=tr.querySelector('[data-field="note"]').value;
+      await fb().collection('clockRecords').doc(id).set({lateMinutes:late,遲到分鐘:late,note:note,備註:note,updatedAt:new Date().toISOString(),dataCenterEdited:true},{merge:true});
+      msg('已儲存遲到資料。'); await reloadAll();
+    }
+    async function markNoDeduct(id){
+      const c=state.clocks.find(x=>x.__id===id), e=selected(); if(!c||!e)return;
+      const reason=prompt('請輸入不扣款原因：','主管確認此筆遲到不列入扣款');
+      if(reason===null)return;
+      const cid=`CORR_DC_${id}_${Date.now()}`;
+      await fb().collection('clockCorrections').doc(cid).set({employeeId:e.id,員工ID:e.id,name:e.name,姓名:e.name,date:c.date,日期:c.date,status:'已核准',狀態:'已核准',reason:reason,note:reason,備註:reason,sourceClockId:id,createdAt:new Date().toISOString(),dataCenterCreated:true},{merge:true});
+      msg('已新增出勤修正，這筆遲到會顯示為已修正不扣款。'); await reloadAll();
+    }
+    function exportAllCsv(){
+      const e=selected(); if(!e){msg('請先選擇工讀生。','error');return}
+      const rows=[['類型','姓名','日期','項目1','項目2','狀態','備註','ID']];
+      empRows(state.parttime).forEach(r=>rows.push(['工讀時數',e.name,r.date,r.hours+' 小時',money(r.gross),workSource(r),r.note,r.recordId]));
+      empRows(state.clocks).forEach(r=>rows.push(['打卡紀錄',e.name,r.date,`上班 ${r.clockIn||'-'} / 下班 ${r.clockOut||'-'}`,`遲到 ${r.late} 分`,approvedFixFor({employeeId:e.id,name:e.name,date:r.date})?'已修正':'',r.note,r.__id]));
+      empRows(state.leaves).forEach(r=>rows.push(['請假紀錄',e.name,r.date,r.time,r.type,r.status,r.note,r.__id]));
+      const csv='\ufeff'+rows.map(row=>row.map(x=>`"${String(x==null?'':x).replace(/"/g,'""')}"`).join(',')).join('\n');
+      const blob=new Blob([csv],{type:'text/csv;charset=utf-8'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`${e.name}_${month()||'全部'}_工讀資料.csv`; a.click(); URL.revokeObjectURL(url);
+    }
+    qs('#keyword').addEventListener('input',()=>renderEmployees());
+    qs('#monthText').addEventListener('change',()=>renderAll());
   </script>
 </body>
 </html>
