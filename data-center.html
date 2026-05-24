@@ -205,7 +205,7 @@
     </div>
   </div>
 
-  <script src="config.js?v=20260524ptdc4"></script>
+  <script src="config.js?v=20260524ptdc5"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -278,20 +278,87 @@
       const note=clean(raw(o,['note','備註','補時數原因']));
       return {__id:o.__id,recordId:clean(raw(o,['recordId','紀錄ID'])||o.__id),employeeId:empId||(emp?emp.id:''),name:clean(raw(o,['name','姓名']))||(emp?emp.name:''),date:dateKey(raw(o,['workDate','date','日期'])),hours:Math.round(total*100)/100,hourlyRate:rate,status,note,gross:Math.round(total*rate),raw:o}
     }
+    function flattenRawFields(obj, prefix='', out={}){
+      if(!obj || typeof obj !== 'object') return out;
+      Object.keys(obj).forEach(k=>{
+        const v=obj[k];
+        const key=prefix ? prefix + '.' + k : k;
+        if(v && typeof v === 'object' && !(v instanceof Date) && typeof v.toDate !== 'function'){
+          flattenRawFields(v, key, out);
+        }else{
+          out[key]=v;
+        }
+      });
+      return out;
+    }
+    function pickByKeyWords(o, includeWords, excludeWords=[]){
+      const fields = flattenRawFields(o || {});
+      const candidates = [];
+      Object.entries(fields).forEach(([k,v])=>{
+        const key = lower(k);
+        const hasInclude = includeWords.some(w => key.includes(lower(w)));
+        const hasExclude = excludeWords.some(w => key.includes(lower(w)));
+        if(hasInclude && !hasExclude && clean(v) !== '') candidates.push({key:k,value:v});
+      });
+      // Prefer values that look like a date-time, then any time-like value
+      const scored = candidates.map(c=>{
+        const s=clean(c.value);
+        let score=0;
+        if(/20\d{2}[-/]\d{1,2}[-/]\d{1,2}/.test(s) || (c.value && typeof c.value.toDate === 'function')) score += 10;
+        if(/\d{1,2}:\d{2}/.test(s)) score += 5;
+        if(lower(c.key).includes('time') || c.key.includes('時間')) score += 3;
+        if(lower(c.key).includes('at') || c.key.includes('戳')) score += 2;
+        return {...c,score};
+      }).sort((a,b)=>b.score-a.score);
+      return scored[0] || null;
+    }
+    function pickClockInRaw(o){
+      return raw(o,[
+        'clockIn','clockInTime','inTime','上班打卡','上班時間','上班打卡時間',
+        'clockInAt','上班打卡時間戳','上班打卡送出時間','上班送出時間','punchInAt',
+        '上班簽到時間','簽到時間','clock_in','clockInDateTime'
+      ]) || (pickByKeyWords(o, ['clockin'], ['out']) || {}).value
+         || (pickByKeyWords(o, ['punchin'], ['out']) || {}).value
+         || (pickByKeyWords(o, ['上班'], ['下班','out']) || {}).value
+         || (pickByKeyWords(o, ['簽到'], ['簽退','下班']) || {}).value;
+    }
+    function pickClockOutRaw(o){
+      return raw(o,[
+        'clockOut','clockOutTime','outTime','下班打卡','下班時間','下班打卡時間',
+        'clockOutAt','下班打卡時間戳','下班打卡送出時間','下班送出時間','punchOutAt',
+        '下班簽退時間','簽退時間','clock_out','clockOutDateTime'
+      ]) || (pickByKeyWords(o, ['clockout'], ['in']) || {}).value
+         || (pickByKeyWords(o, ['punchout'], ['in']) || {}).value
+         || (pickByKeyWords(o, ['下班'], ['上班','in']) || {}).value
+         || (pickByKeyWords(o, ['簽退'], ['簽到','上班']) || {}).value;
+    }
+    function rawFieldSummary(o){
+      const fields = flattenRawFields(o || {});
+      return Object.entries(fields).map(([k,v]) => `${k}: ${clean(v)}`).join('\n');
+    }
+
     function clock(o){
       const empId=clean(raw(o,['employeeId','員工ID']));
-      const inRaw = raw(o,[
-        'clockIn','clockInTime','inTime','上班打卡','上班時間','上班打卡時間',
-        'clockInAt','上班打卡時間戳','上班打卡送出時間','上班送出時間','punchInAt'
-      ]);
-      const outRaw = raw(o,[
-        'clockOut','clockOutTime','outTime','下班打卡','下班時間','下班打卡時間',
-        'clockOutAt','下班打卡時間戳','下班打卡送出時間','下班送出時間','punchOutAt'
-      ]);
+      const inRaw = pickClockInRaw(o);
+      const outRaw = pickClockOutRaw(o);
       const date = dateKey(raw(o,['date','日期','clockDate','打卡日期','workDate']) || inRaw || outRaw);
       const inIp = clean(raw(o,['clockInIp','上班IP','上班來源IP','ip','IP','來源IP','sourceIp']));
       const outIp = clean(raw(o,['clockOutIp','下班IP','下班來源IP']));
-      return {__id:o.__id,employeeId:empId,name:clean(raw(o,['name','姓名','employeeName'])),date,clockIn:dateTimeText(inRaw)||timeText(inRaw),clockOut:dateTimeText(outRaw)||timeText(outRaw),ip:inIp,outIp:outIp,late:safeNum(raw(o,['lateMinutes','遲到分鐘','lateMins'])),note:clean(raw(o,['note','備註','reason','原因'])),raw:o}
+      return {
+        __id:o.__id,
+        employeeId:empId,
+        name:clean(raw(o,['name','姓名','employeeName'])),
+        date,
+        clockIn:dateTimeText(inRaw)||timeText(inRaw),
+        clockOut:dateTimeText(outRaw)||timeText(outRaw),
+        clockInRaw: clean(inRaw),
+        clockOutRaw: clean(outRaw),
+        ip:inIp,
+        outIp:outIp,
+        late:safeNum(raw(o,['lateMinutes','遲到分鐘','lateMins'])),
+        note:clean(raw(o,['note','備註','reason','原因'])),
+        raw:o
+      }
     }
     function correction(o){
       const status=clean(raw(o,['status','狀態','審核狀態']));
@@ -417,7 +484,7 @@
         <td>${money(deduct)}</td>
         <td>${fixed?'<span class="pill green">已修正不扣款</span>':(r.late>0?'<span class="pill red">未修正</span>':'<span class="pill green">正常</span>')}</td>
         <td><input data-field="note" value="${esc(r.note||'')}"></td>
-        <td><div class="row-actions"><button class="btn small" onclick="saveClock('${escjs(r.__id)}')">儲存遲到</button><button class="btn small gray" onclick="markNoDeduct('${escjs(r.__id)}')">設為不扣款</button></div></td>
+        <td><div class="row-actions"><button class="btn small" onclick="saveClock('${escjs(r.__id)}')">儲存遲到</button><button class="btn small gray" onclick="markNoDeduct('${escjs(r.__id)}')">設為不扣款</button><button class="btn small gray" onclick="showClockRaw('${escjs(r.__id)}')">原始欄位</button></div></td>
       </tr>`
       }).join('');
     }
@@ -575,6 +642,12 @@
       wb.Props = {Title: title, Subject: '工讀資料匯出', Author: 'YOUZI Employee System', CreatedDate: new Date()};
       const filename = `${e.name}_${start || month() || '全部'}_${end || ''}_工讀資料.xlsx`.replace(/[\\/:*?"<>|]/g,'_');
       XLSX.writeFile(wb, filename);
+    }
+
+    function showClockRaw(id){
+      const r = state.clocks.find(x=>x.__id===id);
+      if(!r){ alert('找不到這筆打卡資料'); return; }
+      alert('這筆打卡資料的原始欄位：\n\n' + rawFieldSummary(r.raw));
     }
 
     function exportAllCsv(){
