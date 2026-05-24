@@ -83,9 +83,9 @@
         <a class="btn" href="parttime-payroll-admin.html">回工讀薪資結算</a>
       </div>
       <div class="tabs">
-        <a class="tab active" href="#parttime">工讀時數</a>
-        <a class="tab" href="#clock">打卡 / 遲到</a>
-        <a class="tab" href="#leave">請假紀錄</a>
+        <a class="tab active" data-panel-tab="parttime" href="javascript:void(0)" onclick="showPanel('parttime')">工讀時數</a>
+        <a class="tab" data-panel-tab="clock" href="javascript:void(0)" onclick="showPanel('clock')">打卡 / 遲到</a>
+        <a class="tab" data-panel-tab="leave" href="javascript:void(0)" onclick="showPanel('leave')">請假紀錄</a>
       </div>
       <div id="pageMsg" class="message"></div>
     </div>
@@ -95,7 +95,26 @@
         <div class="field"><label>搜尋工讀生</label><input id="keyword" placeholder="輸入姓名、員工ID 或 Email"></div>
         <div class="field"><label>月份</label><input id="monthText" type="month"></div>
         <button class="btn" onclick="reloadAll()">重新查詢</button>
-        <button class="btn secondary" onclick="exportAllCsv()">匯出本人工讀資料 CSV</button>
+        <button class="btn secondary" onclick="toggleExportBox()">匯出 Excel</button>
+      </div>
+      <div id="exportBox" class="hidden" style="margin-top:14px;border-top:1px solid var(--line);padding-top:14px">
+        <div class="section-title" style="font-size:18px;margin-bottom:10px">匯出 Excel</div>
+        <div class="add-grid">
+          <div class="field"><label>開始日期</label><input id="exportStart" type="date"></div>
+          <div class="field"><label>結束日期</label><input id="exportEnd" type="date"></div>
+          <div class="field"><label>匯出內容</label>
+            <select id="exportType">
+              <option value="current">目前頁籤</option>
+              <option value="all">工讀＋打卡＋請假</option>
+              <option value="parttime">只匯出工讀時數</option>
+              <option value="clock">只匯出打卡 / 遲到</option>
+              <option value="leave">只匯出請假紀錄</option>
+            </select>
+          </div>
+          <button class="btn" onclick="exportExcel()">下載 Excel</button>
+          <button class="btn gray" onclick="toggleExportBox(false)">取消</button>
+        </div>
+        <div class="muted" style="margin-top:8px">Excel 會依你選的工讀生與日期區間匯出；欄位會以畫面主要資料為主，不包含紀錄ID與操作欄位。</div>
       </div>
     </div>
 
@@ -127,7 +146,7 @@
           </div>
         </div>
 
-        <div class="card" id="parttime">
+        <div class="card data-panel" id="parttime" data-panel="parttime">
           <div class="section-head">
             <div class="section-title">工讀時數</div>
             <button class="btn btn-red" onclick="openAddParttime()">新增目前工讀生時數</button>
@@ -150,21 +169,21 @@
           <div class="empty hidden" id="parttimeEmpty">這個月份沒有工讀時數資料。</div>
         </div>
 
-        <div class="card" id="clock">
+        <div class="card data-panel hidden" id="clock" data-panel="clock">
           <div class="section-head">
             <div class="section-title">打卡 / 遲到紀錄</div>
-            <div class="muted">遲到錯誤請在這裡修正，不要只改工讀時數。</div>
+            <div class="muted">遲到錯誤請在這裡修正，不要只改工讀時數。上班打卡必須是公司 IP：125.229.190.123；下班打卡不限制 IP。</div>
           </div>
           <div class="table-wrap" id="clockWrap"><table>
             <thead><tr>
-              <th style="width:120px">日期</th><th style="width:160px">上班打卡</th><th style="width:160px">下班打卡</th><th style="width:130px">來源 IP</th>
-              <th style="width:110px">遲到分鐘</th><th style="width:110px">遲到扣款</th><th style="width:150px">修正狀態</th><th style="width:260px">備註 / 原因</th><th style="width:170px">操作</th>
+              <th style="width:115px">日期</th><th style="width:190px">上班打卡時間</th><th style="width:190px">下班打卡時間</th><th style="width:145px">上班來源 IP</th>
+              <th style="width:145px">下班來源 IP</th><th style="width:135px">上班 IP 判定</th><th style="width:110px">遲到分鐘</th><th style="width:110px">遲到扣款</th><th style="width:150px">修正狀態</th><th style="width:260px">備註 / 原因</th><th style="width:170px">操作</th>
             </tr></thead><tbody id="clockRows"></tbody>
           </table></div>
           <div class="empty hidden" id="clockEmpty">這個月份沒有打卡資料。</div>
         </div>
 
-        <div class="card" id="leave">
+        <div class="card data-panel hidden" id="leave" data-panel="leave">
           <div class="section-head">
             <div class="section-title">請假紀錄</div>
             <div class="muted">用來勾稽：請假時段內不應打卡，也不應產生工讀時數。</div>
@@ -186,11 +205,13 @@
     </div>
   </div>
 
-  <script src="config.js?v=20260524ptdc1"></script>
+  <script src="config.js?v=20260524ptdc3"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script>
     let state = { employees: [], parttime: [], clocks: [], corrections: [], leaves: [], selectedId: '' };
+    const COMPANY_CLOCK_IN_IP = '125.229.190.123';
 
     function qs(s){return document.querySelector(s)}
     function qsa(s){return [...document.querySelectorAll(s)]}
@@ -213,7 +234,29 @@
       if(/^\d{4}\/\d{1,2}\/\d{1,2}/.test(s)){const p=s.split(/[\/\s]/);return p[0]+'-'+String(p[1]).padStart(2,'0')+'-'+String(p[2]).padStart(2,'0')}
       if(/^\d{4,5}(?:\.\d+)?$/.test(s))return excelDate(Number(s))||s; const d=new Date(s);return isNaN(d.getTime())?s:dateKey(d)
     }
-    function timeText(v){if(!v)return'';if(v&&typeof v.toDate==='function')v=v.toDate();if(v instanceof Date&&!isNaN(v.getTime()))return String(v.getHours()).padStart(2,'0')+':'+String(v.getMinutes()).padStart(2,'0');return clean(v)}
+    function timeText(v){
+      if(!v)return'';
+      if(v&&typeof v.toDate==='function')v=v.toDate();
+      if(v instanceof Date&&!isNaN(v.getTime()))return String(v.getHours()).padStart(2,'0')+':'+String(v.getMinutes()).padStart(2,'0')+':'+String(v.getSeconds()).padStart(2,'0');
+      return clean(v)
+    }
+    function dateTimeText(v){
+      if(!v)return'';
+      if(v&&typeof v.toDate==='function')v=v.toDate();
+      if(v instanceof Date&&!isNaN(v.getTime())){
+        return dateKey(v)+' '+String(v.getHours()).padStart(2,'0')+':'+String(v.getMinutes()).padStart(2,'0')+':'+String(v.getSeconds()).padStart(2,'0');
+      }
+      const s=clean(v);
+      const d=new Date(s);
+      if(!isNaN(d.getTime()) && /[T:]/.test(s)) return dateKey(d)+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')+':'+String(d.getSeconds()).padStart(2,'0');
+      return s;
+    }
+    function ipJudge(ip){
+      ip=clean(ip);
+      if(!ip)return {text:'未記錄', cls:'orange'};
+      if(ip===COMPANY_CLOCK_IN_IP)return {text:'公司 IP', cls:'green'};
+      return {text:'非公司 IP', cls:'red'};
+    }
     function fb(){ if(!(window.APP_CONFIG&&window.APP_CONFIG.FIREBASE_CONFIG))throw new Error('找不到 Firebase 設定'); if(!firebase.apps.length)firebase.initializeApp(window.APP_CONFIG.FIREBASE_CONFIG); return firebase.firestore(); }
     async function all(col){const snap=await fb().collection(col).get();const a=[];snap.forEach(d=>a.push(Object.assign({__id:d.id},d.data()||{})));return a}
 
@@ -233,7 +276,24 @@
     }
     function clock(o){
       const empId=clean(raw(o,['employeeId','員工ID']));
-      return {__id:o.__id,employeeId:empId,name:clean(raw(o,['name','姓名','employeeName'])),date:dateKey(raw(o,['date','日期','clockDate','打卡日期','workDate'])),clockIn:timeText(raw(o,['clockIn','上班打卡','上班時間','上班打卡時間'])),clockOut:timeText(raw(o,['clockOut','下班打卡','下班時間','下班打卡時間'])),ip:clean(raw(o,['ip','IP','來源IP','sourceIp'])),late:safeNum(raw(o,['lateMinutes','遲到分鐘','lateMins'])),note:clean(raw(o,['note','備註','reason','原因'])),raw:o}
+      const inRaw = raw(o,['clockIn','上班打卡','上班時間','上班打卡時間','clockInTime','inTime']);
+      const outRaw = raw(o,['clockOut','下班打卡','下班時間','下班打卡時間','clockOutTime','outTime']);
+      const date = dateKey(raw(o,['date','日期','clockDate','打卡日期','workDate']) || inRaw || outRaw);
+      const inIp = clean(raw(o,['clockInIp','上班IP','上班來源IP','ip','IP','來源IP','sourceIp']));
+      const outIp = clean(raw(o,['clockOutIp','下班IP','下班來源IP']));
+      return {
+        __id:o.__id,
+        employeeId:empId,
+        name:clean(raw(o,['name','姓名','employeeName'])),
+        date,
+        clockIn:dateTimeText(inRaw) || timeText(inRaw),
+        clockOut:dateTimeText(outRaw) || timeText(outRaw),
+        ip:inIp,
+        outIp:outIp,
+        late:safeNum(raw(o,['lateMinutes','遲到分鐘','lateMins'])),
+        note:clean(raw(o,['note','備註','reason','原因'])),
+        raw:o
+      }
     }
     function correction(o){
       const status=clean(raw(o,['status','狀態','審核狀態']));
@@ -273,9 +333,19 @@
     function inMonth(d){return !month()||String(d||'').slice(0,7)===month()}
     function empRows(arr){const e=selected();if(!e)return[];return arr.filter(r=>sameEmp(r,e)&&inMonth(r.date))}
 
+    function showPanel(panel){
+      ['parttime','clock','leave'].forEach(p=>{
+        const el=qs(`[data-panel="${p}"]`);
+        if(el) el.classList.toggle('hidden', p!==panel);
+        const tab=qs(`[data-panel-tab="${p}"]`);
+        if(tab) tab.classList.toggle('active', p===panel);
+      });
+    }
+
     async function init(){
       qs('#monthText').value=new Date().getFullYear()+'-'+String(new Date().getMonth()+1).padStart(2,'0');
       await reloadAll();
+        showPanel('parttime');
     }
     async function reloadAll(){
       try{
@@ -334,13 +404,26 @@
     function renderClocks(){
       const rows=empRows(state.clocks).sort((a,b)=>a.date.localeCompare(b.date));
       qs('#clockWrap').classList.toggle('hidden',rows.length===0); qs('#clockEmpty').classList.toggle('hidden',rows.length>0);
-      qs('#clockRows').innerHTML=rows.map(r=>{const e=selected();const fake={employeeId:e.id,name:e.name,date:r.date,hourlyRate:e.hourlyRate};const fixed=approvedFixFor(fake);const deduct=(r.late>0&&!fixed)?Math.round(e.hourlyRate/60*r.late):0;return `<tr data-clock="${esc(r.__id)}">
-        <td>${esc(r.date)}</td><td>${esc(r.clockIn||'-')}</td><td>${esc(r.clockOut||'-')}</td><td>${esc(r.ip||'-')}</td>
-        <td><input data-field="late" type="number" min="0" step="1" value="${esc(r.late)}"></td><td>${money(deduct)}</td>
+      qs('#clockRows').innerHTML=rows.map(r=>{
+        const e=selected();
+        const fake={employeeId:e.id,name:e.name,date:r.date,hourlyRate:e.hourlyRate};
+        const fixed=approvedFixFor(fake);
+        const deduct=(r.late>0&&!fixed)?Math.round(e.hourlyRate/60*r.late):0;
+        const judge=ipJudge(r.ip);
+        return `<tr data-clock="${esc(r.__id)}">
+        <td>${esc(r.date)}</td>
+        <td>${esc(r.clockIn||'-')}</td>
+        <td>${esc(r.clockOut||'-')}</td>
+        <td>${esc(r.ip||'-')}</td>
+        <td>${esc(r.outIp||'-')}</td>
+        <td><span class="pill ${judge.cls}">${esc(judge.text)}</span></td>
+        <td><input data-field="late" type="number" min="0" step="1" value="${esc(r.late)}"></td>
+        <td>${money(deduct)}</td>
         <td>${fixed?'<span class="pill green">已修正不扣款</span>':(r.late>0?'<span class="pill red">未修正</span>':'<span class="pill green">正常</span>')}</td>
         <td><input data-field="note" value="${esc(r.note||'')}"></td>
         <td><div class="row-actions"><button class="btn small" onclick="saveClock('${escjs(r.__id)}')">儲存遲到</button><button class="btn small gray" onclick="markNoDeduct('${escjs(r.__id)}')">設為不扣款</button></div></td>
-      </tr>`}).join('');
+      </tr>`
+      }).join('');
     }
     function renderLeaves(){
       const rows=empRows(state.leaves).sort((a,b)=>a.date.localeCompare(b.date));
@@ -385,7 +468,7 @@
       if(!confirm(`確定刪除？\n${r.name}｜${r.date}｜${r.hours} 小時`))return;
       await fb().collection('parttimeRecords').doc(id).delete(); msg('已刪除。'); await reloadAll();
     }
-    function goClock(date){location.hash='clock';qs('#clock').scrollIntoView({behavior:'smooth'});msg(`${date} 的遲到扣款請在「打卡 / 遲到紀錄」區塊修正。`,'notice')}
+    function goClock(date){showPanel('clock');qs('#clock').scrollIntoView({behavior:'smooth'});msg(`${date} 的遲到扣款請在「打卡 / 遲到紀錄」頁籤修正。`,'notice')}
     async function saveClock(id){
       const tr=qs(`tr[data-clock="${CSS.escape(id)}"]`), r=state.clocks.find(x=>x.__id===id); if(!tr||!r)return;
       const late=safeNum(tr.querySelector('[data-field="late"]').value), note=tr.querySelector('[data-field="note"]').value;
@@ -400,6 +483,104 @@
       await fb().collection('clockCorrections').doc(cid).set({employeeId:e.id,員工ID:e.id,name:e.name,姓名:e.name,date:c.date,日期:c.date,status:'已核准',狀態:'已核准',reason:reason,note:reason,備註:reason,sourceClockId:id,createdAt:new Date().toISOString(),dataCenterCreated:true},{merge:true});
       msg('已新增出勤修正，這筆遲到會顯示為已修正不扣款。'); await reloadAll();
     }
+
+    function currentPanel(){
+      const active = qs('.tab.active');
+      return active ? active.getAttribute('data-panel-tab') || 'parttime' : 'parttime';
+    }
+    function toggleExportBox(force){
+      const box = qs('#exportBox');
+      const willShow = typeof force === 'boolean' ? force : box.classList.contains('hidden');
+      box.classList.toggle('hidden', !willShow);
+      if(willShow){
+        const m = month();
+        if(m && !qs('#exportStart').value) qs('#exportStart').value = m + '-01';
+        if(m && !qs('#exportEnd').value){
+          const [y,mm] = m.split('-').map(Number);
+          const last = new Date(y, mm, 0).getDate();
+          qs('#exportEnd').value = m + '-' + String(last).padStart(2,'0');
+        }
+        qs('#exportType').value = currentPanel();
+      }
+    }
+    function dateInRange(d, start, end){
+      d = clean(d);
+      if(!d) return false;
+      if(start && d < start) return false;
+      if(end && d > end) return false;
+      return true;
+    }
+    function autoWidth(rows){
+      const widths = [];
+      rows.forEach(row => row.forEach((v,i)=>{
+        const len = String(v == null ? '' : v).length;
+        widths[i] = Math.min(Math.max(widths[i] || 8, len + 2), 24);
+      }));
+      return widths.map(w => ({wch:w}));
+    }
+    function makeSheet(rows){
+      const ws = XLSX.utils.aoa_to_sheet(rows);
+      ws['!cols'] = autoWidth(rows);
+      return ws;
+    }
+    function exportExcel(){
+      const e = selected();
+      if(!e){ msg('請先選擇工讀生。','error'); return; }
+      const start = clean(qs('#exportStart').value);
+      const end = clean(qs('#exportEnd').value);
+      if(start && end && start > end){ msg('開始日期不能晚於結束日期。','error'); return; }
+      const type = clean(qs('#exportType').value || 'current');
+      const wb = XLSX.utils.book_new();
+      const title = `${e.name}｜${start || '不限'}～${end || '不限'}`;
+
+      function addParttime(){
+        const rows = [['姓名','日期','登記時數','時薪','當日工資','工時來源','出勤狀態','備註']];
+        empRows(state.parttime)
+          .filter(r => dateInRange(r.date, start, end))
+          .sort((a,b)=>a.date.localeCompare(b.date))
+          .forEach(r => {
+            const a = attendStatus(r);
+            rows.push([e.name, r.date, r.hours, r.hourlyRate, r.gross, workSource(r), a.text, r.note || '']);
+          });
+        XLSX.utils.book_append_sheet(wb, makeSheet(rows), '工讀時數');
+      }
+
+      function addClock(){
+        const rows = [['姓名','日期','上班打卡時間','下班打卡時間','上班來源IP','下班來源IP','上班IP判定','遲到分鐘','遲到扣款','修正狀態','備註']];
+        empRows(state.clocks)
+          .filter(r => dateInRange(r.date, start, end))
+          .sort((a,b)=>a.date.localeCompare(b.date))
+          .forEach(r => {
+            const fake = {employeeId:e.id,name:e.name,date:r.date,hourlyRate:e.hourlyRate};
+            const fixed = approvedFixFor(fake);
+            const deduct = (r.late > 0 && !fixed) ? Math.round(e.hourlyRate/60*r.late) : 0;
+            const judge = ipJudge(r.ip);
+            rows.push([e.name, r.date, r.clockIn || '', r.clockOut || '', r.ip || '', r.outIp || '', judge.text, r.late || 0, deduct, fixed ? '已修正不扣款' : (r.late>0 ? '未修正' : '正常'), r.note || '']);
+          });
+        XLSX.utils.book_append_sheet(wb, makeSheet(rows), '打卡遲到');
+      }
+
+      function addLeave(){
+        const rows = [['姓名','請假日期','請假時間','假別','請假時數','狀態','審核人','備註']];
+        empRows(state.leaves)
+          .filter(r => dateInRange(r.date, start, end))
+          .sort((a,b)=>a.date.localeCompare(b.date))
+          .forEach(r => rows.push([e.name, r.date, r.time || '', r.type || '', r.hours || '', r.status || '', r.reviewer || '', r.note || '']));
+        XLSX.utils.book_append_sheet(wb, makeSheet(rows), '請假紀錄');
+      }
+
+      const actualType = type === 'current' ? currentPanel() : type;
+      if(actualType === 'all'){ addParttime(); addClock(); addLeave(); }
+      else if(actualType === 'parttime') addParttime();
+      else if(actualType === 'clock') addClock();
+      else if(actualType === 'leave') addLeave();
+
+      if(!wb.SheetNames.length){ msg('沒有可匯出的資料。','error'); return; }
+      wb.Props = {Title: title, Subject: '工讀資料匯出', Author: 'YOUZI Employee System', CreatedDate: new Date()};
+      const filename = `${e.name}_${start || month() || '全部'}_${end || ''}_工讀資料.xlsx`.replace(/[\\/:*?"<>|]/g,'_');
+      XLSX.writeFile(wb, filename);
+    }
+
     function exportAllCsv(){
       const e=selected(); if(!e){msg('請先選擇工讀生。','error');return}
       const rows=[['類型','姓名','日期','項目1','項目2','狀態','備註','ID']];
