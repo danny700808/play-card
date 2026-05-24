@@ -135,6 +135,7 @@
             <div>
               <div class="section-title" id="selectedTitle">請先選擇工讀生</div>
               <div class="muted" id="selectedSub">選擇後會顯示個人本月份資料。</div>
+            <button class="btn small" style="margin-top:10px" onclick="renderSummary()">重算上方摘要</button>
             </div>
           </div>
           <div class="summary-grid">
@@ -207,7 +208,7 @@
     </div>
   </div>
 
-  <script src="config.js?v=20260524ptdc15"></script>
+  <script src="config.js?v=20260524ptdc16"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -524,43 +525,73 @@
       if(!e){qs('#selectedTitle').textContent='請先選擇工讀生';return}
       qs('#selectedTitle').textContent=e.name;
       qs('#selectedSub').textContent=`${month()||'全部月份'}｜時薪 ${money(e.hourlyRate)}`;
-      renderParttime(); renderClocks(); renderLeaves(); renderIssues(); renderSummary();
+      renderParttime(); renderClocks(); renderLeaves(); renderIssues(); renderSummary(); setTimeout(renderSummary, 120);
     }
     function renderSummary(){
-      // 這裡不再重新猜 Firebase 資料來源。
-      // 直接從下面已經顯示出來的三個表格加總：
-      // 工讀時數表 → 總工時 / 工讀金額
-      // 打卡遲到表 → 遲到分鐘 / 遲到扣款
-      // 請假表 → 請假筆數
+      const e = selected();
+      if(!e){
+        qs('#sumHours').textContent='0 小時';
+        qs('#sumWage').textContent='0 元';
+        qs('#sumLateMins').textContent='0 分';
+        qs('#sumLateFee').textContent='0 元';
+        qs('#sumLeave').textContent='0';
+        qs('#sumIssues').textContent='0';
+        qs('#sumNet').textContent='0 元';
+        return;
+      }
+
       let totalH = 0;
       let totalW = 0;
       let lateM = 0;
       let lateFee = 0;
 
-      qsa('#parttimeRows tr').forEach(tr=>{
-        const cells = tr.querySelectorAll('td');
-        if(cells.length >= 4){
-          totalH += safeNum(cells[1].textContent);
-          totalW += safeNum(cells[3].textContent);
-        }
-      });
-
-      qsa('#clockRows tr').forEach(tr=>{
-        const cells = tr.querySelectorAll('td');
-        // 打卡表欄位：日期 / 上班 / 下班 / 上班來源 / 下班來源 / 遲到分鐘 / 遲到扣款 / 狀態 / 備註 / 操作
-        if(cells.length >= 7){
-          lateM += safeNum(cells[5].textContent);
-          lateFee += safeNum(cells[6].textContent);
-        }
-      });
-
-      const leaves = qsa('#leaveRows tr').length;
-      let issues = 0;
       try{
-        issues = calcIssues().length;
-      }catch(e){
-        issues = 0;
+        const pts = empRows(state.parttime).filter(r => inMonth(r.date));
+        pts.forEach(r=>{
+          totalH += safeNum(r.hours);
+          totalW += safeNum(r.gross || (safeNum(r.hours) * safeNum(r.hourlyRate)));
+        });
+      }catch(err){}
+
+      try{
+        const clocks = mergedClockRows().filter(r => inMonth(r.date));
+        clocks.forEach(r=>{
+          const fake = {employeeId:e.id,name:e.name,date:r.date,hourlyRate:e.hourlyRate};
+          const fixed = approvedFixFor(fake);
+          const minutes = safeNum(r.late);
+          if(minutes > 0 && !fixed){
+            lateM += minutes;
+            lateFee += Math.round((safeNum(e.hourlyRate) / 60) * minutes);
+          }
+        });
+      }catch(err){}
+
+      if(totalH === 0 && totalW === 0){
+        qsa('#parttimeRows tr').forEach(tr=>{
+          const cells = tr.querySelectorAll('td');
+          if(cells.length >= 4){
+            totalH += safeNum(cells[1].innerText || cells[1].textContent);
+            totalW += safeNum(cells[3].innerText || cells[3].textContent);
+          }
+        });
       }
+
+      if(lateM === 0 && lateFee === 0){
+        qsa('#clockRows tr').forEach(tr=>{
+          const cells = tr.querySelectorAll('td');
+          if(cells.length >= 7){
+            lateM += safeNum(cells[5].innerText || cells[5].textContent);
+            lateFee += safeNum(cells[6].innerText || cells[6].textContent);
+          }
+        });
+      }
+
+      let leaves = 0;
+      try{ leaves = empRows(state.leaves).filter(r => inMonth(r.date)).length; }catch(err){}
+      if(leaves === 0) leaves = qsa('#leaveRows tr').length;
+
+      let issues = 0;
+      try{ issues = calcIssues().length; }catch(err){ issues = 0; }
 
       qs('#sumHours').textContent = hours(totalH);
       qs('#sumWage').textContent = money(totalW);
@@ -569,6 +600,8 @@
       qs('#sumLeave').textContent = leaves;
       qs('#sumIssues').textContent = issues;
       qs('#sumNet').textContent = money(totalW - lateFee);
+
+      console.log('summary v16', {employee:e.name, month:month(), totalH,totalW,lateM,lateFee,leaves,issues});
     }
     function parttimeStatusText(r){
       if(r && r.raw && (r.raw.dataCenterEdited || r.raw.主管已修改)) return '已修改';
