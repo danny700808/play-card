@@ -207,7 +207,7 @@
     </div>
   </div>
 
-  <script src="config.js?v=20260524ptdc13"></script>
+  <script src="config.js?v=20260524ptdc12"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -526,53 +526,30 @@
       qs('#selectedSub').textContent=`${month()||'全部月份'}｜時薪 ${money(e.hourlyRate)}`;
       renderParttime(); renderClocks(); renderLeaves(); renderSummary(); renderIssues();
     }
-    function sameSelectedRecord(r){
-      const e = selected();
-      if(!e || !r) return false;
-      return (r.employeeId && r.employeeId === e.id) || (r.name && r.name === e.name) || (r.email && e.email && r.email === e.email);
-    }
-    function selectedParttimeRows(){
-      return state.parttime.filter(r => sameSelectedRecord(r) && inMonth(r.date));
-    }
-    function selectedLeaveRows(){
-      return state.leaves.filter(r => sameSelectedRecord(r) && inMonth(r.date));
-    }
-    function selectedClockRows(){
-      return mergedClockRows().filter(r => inMonth(r.date));
-    }
-
     function renderSummary(){
       const e = selected();
-      if(!e){
-        qs('#sumHours').textContent = '0 小時';
-        qs('#sumWage').textContent = '0 元';
-        qs('#sumLateMins').textContent = '0 分';
-        qs('#sumLateFee').textContent = '0 元';
-        qs('#sumLeave').textContent = '0';
-        qs('#sumIssues').textContent = '0';
-        qs('#sumNet').textContent = '0 元';
-        return;
-      }
+      const pts = empRows(state.parttime);
+      const totalH = pts.reduce((s,r)=>s+r.hours,0);
+      const totalW = pts.reduce((s,r)=>s+r.gross,0);
 
-      // 工讀時數與工讀金額：直接抓目前選到的工讀生 + 目前月份
-      const pts = selectedParttimeRows();
-      const totalH = pts.reduce((s,r)=>s + safeNum(r.hours), 0);
-      const totalW = pts.reduce((s,r)=>s + safeNum(r.gross || (safeNum(r.hours) * safeNum(r.hourlyRate))), 0);
-
-      // 遲到分鐘與遲到扣款：直接抓打卡 / 遲到頁籤合併後的資料
       let lateM = 0;
       let lateFee = 0;
-      selectedClockRows().forEach(r=>{
-        const fake = {employeeId:e.id,name:e.name,date:r.date,hourlyRate:e.hourlyRate};
-        const fixed = approvedFixFor(fake);
-        const minutes = safeNum(r.late);
-        if(minutes > 0 && !fixed){
-          lateM += minutes;
-          lateFee += Math.round((safeNum(e.hourlyRate) / 60) * minutes);
-        }
-      });
 
-      const leaves = selectedLeaveRows().length;
+      // 遲到分鐘 / 遲到扣款必須直接依照打卡區塊目前採用的資料加總。
+      // 不能只從工讀時數推估，否則主管在打卡區修改後，上方摘要不會同步。
+      if(e){
+        mergedClockRows().forEach(r=>{
+          const fake = {employeeId:e.id,name:e.name,date:r.date,hourlyRate:e.hourlyRate};
+          const fixed = approvedFixFor(fake);
+          const minutes = safeNum(r.late);
+          if(minutes > 0 && !fixed){
+            lateM += minutes;
+            lateFee += Math.round((safeNum(e.hourlyRate) / 60) * minutes);
+          }
+        });
+      }
+
+      const leaves = empRows(state.leaves).length;
       const issues = calcIssues().length;
 
       qs('#sumHours').textContent = hours(totalH);
@@ -583,8 +560,23 @@
       qs('#sumIssues').textContent = issues;
       qs('#sumNet').textContent = money(totalW - lateFee);
     }
+    function parttimeStatusText(r){
+      if(r && r.raw && (r.raw.dataCenterEdited || r.raw.主管已修改)) return '已修改';
+      return '正常';
+    }
+    function parttimeStatusClass(r){
+      return parttimeStatusText(r) === '已修改' ? 'blue' : 'green';
+    }
+    function parttimeReasonText(r){
+      const reasons = [];
+      if(r && r.raw && (r.raw.dataCenterEdited || r.raw.主管已修改)) reasons.push('主管修改');
+      const note = clean(r.note || raw(r.raw || {}, ['note','備註','reason','原因']));
+      if(note && !reasons.includes(note)) reasons.push(note);
+      return reasons.join('；');
+    }
+
     function renderParttime(){
-      const rows=selectedParttimeRows().sort((a,b)=>a.date.localeCompare(b.date));
+      const rows=empRows(state.parttime).sort((a,b)=>a.date.localeCompare(b.date));
       qs('#parttimeWrap').classList.toggle('hidden',rows.length===0); qs('#parttimeEmpty').classList.toggle('hidden',rows.length>0);
       qs('#parttimeRows').innerHTML=rows.map(r=>{
         return `<tr data-pt="${esc(r.__id)}">
@@ -624,40 +616,14 @@
       }).join('');
     }
     function renderLeaves(){
-      const rows=selectedLeaveRows().sort((a,b)=>a.date.localeCompare(b.date));
+      const rows=empRows(state.leaves).sort((a,b)=>a.date.localeCompare(b.date));
       qs('#leaveWrap').classList.toggle('hidden',rows.length===0); qs('#leaveEmpty').classList.toggle('hidden',rows.length>0);
       qs('#leaveRows').innerHTML=rows.map(r=>`<tr><td>${esc(r.date)}</td><td>${esc(r.time||'-')}</td><td>${esc(r.type||'-')}</td><td>${esc(r.hours||'')}</td><td>${esc(r.status||'-')}</td><td>${esc(r.reviewer||'-')}</td><td>${esc(clockReasonText(r)||'')}</td><td><span class="subtle">${esc(r.__id)}</span></td></tr>`).join('');
     }
     function calcIssues(){
-      const pts = selectedParttimeRows();
-      const clocks = selectedClockRows();
-      const leaves = selectedLeaveRows();
-      const issues = [];
-      const seen = {};
-      pts.forEach(r=>{
-        const k = r.date;
-        if(seen[k]) issues.push(`${r.date} 有重複工讀時數`);
-        seen[k] = true;
-      });
-
-      const ptDates = new Set(pts.map(r=>r.date));
-      const clockDates = new Set(clocks.map(r=>r.date));
-      ptDates.forEach(d=>{ if(!clockDates.has(d)) issues.push(`${d} 有工讀時數但沒有打卡紀錄`); });
-      clockDates.forEach(d=>{ if(!ptDates.has(d)) issues.push(`${d} 有打卡紀錄但沒有工讀時數`); });
-
-      clocks.forEach(r=>{
-        const e = selected();
-        const fake = e ? {employeeId:e.id,name:e.name,date:r.date,hourlyRate:e.hourlyRate} : r;
-        const fixed = approvedFixFor(fake);
-        if(safeNum(r.late) > 0 && !fixed) issues.push(`${r.date} 遲到 ${r.late} 分鐘尚未處理`);
-        if(clockInSourceLabel(r.ip).text === '非公司 IP') issues.push(`${r.date} 上班來源非公司IP`);
-      });
-
-      leaves.forEach(l=>{
-        if(ptDates.has(l.date)) issues.push(`${l.date} 有請假紀錄但仍有工讀時數`);
-        if(clockDates.has(l.date)) issues.push(`${l.date} 有請假紀錄但仍有打卡紀錄`);
-      });
-
+      const pts=empRows(state.parttime), issues=[];
+      const seen={};
+      pts.forEach(r=>{const k=r.date;if(seen[k])issues.push(`${r.date} 有重複工讀時數`);seen[k]=true;const a=attendStatus(r);if(a.cls==='red')issues.push(`${r.date} ${a.text}`);if(a.cls==='orange')issues.push(`${r.date} 有請假紀錄，需確認是否與工讀時段重疊`)});
       return issues;
     }
     function renderIssues(){
