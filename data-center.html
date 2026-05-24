@@ -21,7 +21,7 @@
     .summary-card .value{font-size:24px;font-weight:900;color:#1f2d3d}
     .summary-card.final{background:#1f7a5a;color:#fff;border-color:#1f7a5a}.summary-card.final strong,.summary-card.final .value{color:#fff}
     .table-wrap{overflow:auto;border:1px solid var(--line);border-radius:16px;background:#fff}
-    table{width:100%;border-collapse:collapse;font-size:14px;min-width:1050px}
+    table{width:100%;border-collapse:collapse;font-size:14px;min-width:1320px}
     th,td{border-bottom:1px solid var(--line);padding:9px;text-align:left;vertical-align:middle}
     th{position:sticky;top:0;background:#f9fafb;z-index:1;color:#374151;font-size:13px}
     td input,td select{width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:10px;padding:8px;background:#fff}
@@ -36,6 +36,28 @@
     .hidden{display:none!important}
     @media(max-width:1100px){.toolbar{grid-template-columns:1fr 1fr}.summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.add-grid{grid-template-columns:1fr 1fr}}
     @media(max-width:640px){.toolbar{grid-template-columns:1fr}.summary-grid{grid-template-columns:1fr}.add-grid{grid-template-columns:1fr}.center-head{display:block}.module-tabs{margin-top:12px}}
+
+    /* 電腦版加寬：資料管理中心需要一次看到更多欄位 */
+    @media (min-width: 1024px){
+      body{overflow-x:auto;}
+      .container{
+        width:min(96vw, 1680px) !important;
+        max-width:1680px !important;
+        margin:0 auto !important;
+      }
+      .card{
+        width:100% !important;
+        box-sizing:border-box;
+      }
+      .table-wrap{
+        max-width:100% !important;
+        overflow-x:auto;
+      }
+      table{
+        min-width:1320px;
+      }
+    }
+
   </style>
 </head>
 <body onload="init()">
@@ -66,14 +88,17 @@
         <div class="field"><label>狀態</label>
           <select id="statusFilter">
             <option value="">全部</option>
+            <option value="正常登記">正常登記</option>
             <option value="正常">正常</option>
             <option value="補時數">補時數</option>
+            <option value="管理者新增">管理者新增</option>
+            <option value="管理者修正">管理者修正</option>
           </select>
         </div>
         <button class="btn" onclick="loadParttime()">查詢</button>
         <button class="btn secondary" onclick="exportCsv()">匯出 CSV</button>
       </div>
-      <div class="notice">注意：刪除與修改會直接改 Firebase 的 <b>parttimeRecords</b>。目前不會自動改回 Google Sheet，因為 Firebase 已是主資料來源。</div>
+      <div class="notice">注意：刪除與修改會直接改 Firebase 的 <b>parttimeRecords</b>。目前不會自動改回 Google Sheet，因為 Firebase 已是主資料來源。同一位工讀生同一天只保留一筆正式工讀時數。</div>
 
       <div class="summary-grid">
         <div class="summary-card"><strong>資料筆數</strong><div class="value" id="sumCount">0</div></div>
@@ -90,7 +115,7 @@
         <div class="field"><label>工讀生</label><select id="addEmployee"></select></div>
         <div class="field"><label>日期</label><input id="addDate" type="date"></div>
         <div class="field"><label>時數</label><input id="addHours" type="number" step="0.5" min="0"></div>
-        <div class="field"><label>狀態</label><select id="addStatus"><option>正常</option><option>補時數</option></select></div>
+        <div class="field"><label>工時狀態</label><select id="addStatus"><option>正常登記</option><option>補時數</option><option>管理者新增</option></select></div>
         <div class="field"><label>備註</label><input id="addNote" placeholder="選填"></div>
         <button class="btn" onclick="addRecord()">新增</button>
       </div>
@@ -105,11 +130,12 @@
             <tr>
               <th style="width:120px">員工</th>
               <th style="width:115px">日期</th>
-              <th style="width:90px">時數</th>
+              <th style="width:100px">登記時數</th>
               <th style="width:90px">時薪</th>
-              <th style="width:110px">狀態</th>
-              <th style="width:190px">備註</th>
-              <th style="width:120px">毛額</th>
+              <th style="width:120px">當日工資</th>
+              <th style="width:130px">工時狀態</th>
+              <th style="width:180px">出勤狀態</th>
+              <th style="width:220px">備註</th>
               <th style="width:170px">紀錄ID</th>
               <th style="width:160px">操作</th>
             </tr>
@@ -120,11 +146,11 @@
     </div>
   </div>
 
-  <script src="config.js?v=20260524datacenter1"></script>
+  <script src="config.js?v=20260524datacenter_wide1"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script>
-    let state = { employees: [], records: [], visible: [] };
+    let state = { employees: [], records: [], visible: [], clockRecords: [], corrections: [] };
 
     function qs(sel){ return document.querySelector(sel); }
     function clean(v){ return String(v == null ? '' : v).trim(); }
@@ -217,6 +243,54 @@
       };
     }
 
+    function normalizeClock(o){
+      const employeeId = clean(rawVal(o, ['employeeId','員工ID']));
+      const name = clean(rawVal(o, ['name','姓名','employeeName']));
+      const date = dateKey(rawVal(o, ['date','日期','clockDate','打卡日期','workDate']));
+      const lateMinutes = safeNum(rawVal(o, ['lateMinutes','遲到分鐘','lateMins']));
+      return {__id:o.__id, employeeId, name, date, lateMinutes, raw:o};
+    }
+
+    function normalizeCorrection(o){
+      const employeeId = clean(rawVal(o, ['employeeId','員工ID']));
+      const name = clean(rawVal(o, ['name','姓名','employeeName']));
+      const date = dateKey(rawVal(o, ['date','日期','workDate','申請日期','打卡日期']));
+      const status = clean(rawVal(o, ['status','狀態','審核狀態']));
+      const approved = ['核准','已核准','approved','通過'].includes(lower(status));
+      return {__id:o.__id, employeeId, name, date, status, approved, raw:o};
+    }
+
+    function workStatus(r){
+      const status = clean(r.status);
+      if(status && status !== '正常') return status;
+      if(r.raw && r.raw.dataCenterCreated) return '管理者新增';
+      if(r.raw && r.raw.dataCenterEdited) return '管理者修正';
+      if(r.note && (r.note.includes('補') || r.note.includes('超過原訂班表'))) return '補時數';
+      return '正常登記';
+    }
+
+    function attendanceStatus(r){
+      const relatedClocks = state.clockRecords.filter(c => {
+        const sameEmp = (r.employeeId && c.employeeId === r.employeeId) || (r.name && c.name === r.name);
+        return sameEmp && c.date === r.date;
+      });
+      const late = relatedClocks.reduce((max, c) => Math.max(max, safeNum(c.lateMinutes)), 0);
+      const approvedFix = state.corrections.some(c => {
+        const sameEmp = (r.employeeId && c.employeeId === r.employeeId) || (r.name && c.name === r.name);
+        return sameEmp && c.date === r.date && c.approved;
+      });
+      if(late > 0 && approvedFix) return '遲到已修正，不扣款';
+      if(late > 0){
+        const deduct = Math.round((safeNum(r.hourlyRate) / 60) * late);
+        return `遲到 ${late} 分鐘，扣 ${deduct.toLocaleString('zh-TW')} 元`;
+      }
+      return '正常';
+    }
+
+    function uniqueDayKey(employeeId, date){
+      return `${clean(employeeId)}__${clean(date)}`;
+    }
+
     function currentMonth(){
       const d = new Date();
       return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
@@ -248,6 +322,8 @@
         showMsg('讀取工讀時數資料中...', 'notice');
         const all = await fbAll('parttimeRecords');
         state.records = all.map(normalizeRecord);
+        try { state.clockRecords = (await fbAll('clockRecords')).map(normalizeClock); } catch(e) { state.clockRecords = []; }
+        try { state.corrections = (await fbAll('clockCorrections')).map(normalizeCorrection); } catch(e) { state.corrections = []; }
         applyFilters();
         showMsg('讀取完成。', 'success');
         setTimeout(()=>showMsg(''), 1200);
@@ -263,7 +339,7 @@
       state.visible = state.records.filter(r => {
         const hitKeyword = !keyword || lower(r.name).includes(keyword) || lower(r.employeeId).includes(keyword) || lower(r.email).includes(keyword);
         const hitMonth = !month || String(r.date || '').slice(0,7) === month;
-        const hitStatus = !status || r.status === status;
+        const hitStatus = !status || workStatus(r) === status || r.status === status;
         return hitKeyword && hitMonth && hitStatus;
       });
       state.visible.sort((a,b)=>(a.date || '').localeCompare(b.date || '') || a.name.localeCompare(b.name,'zh-Hant'));
@@ -277,9 +353,25 @@
       qs('#sumCount').textContent = state.visible.length;
       qs('#sumHours').textContent = hoursText(totalHours);
       qs('#sumGross').textContent = moneyText(totalGross);
-      // 第一版以工讀時數資料為主，遲到會在下一階段接 clockRecords 完整明細。
-      qs('#sumLate').textContent = '0 分 / 0 元';
-      qs('#sumNet').textContent = moneyText(totalGross);
+      let totalLateMinutes = 0;
+      let totalLateDeduction = 0;
+      state.visible.forEach(r => {
+        const relatedClocks = state.clockRecords.filter(c => {
+          const sameEmp = (r.employeeId && c.employeeId === r.employeeId) || (r.name && c.name === r.name);
+          return sameEmp && c.date === r.date;
+        });
+        const late = relatedClocks.reduce((max, c) => Math.max(max, safeNum(c.lateMinutes)), 0);
+        const approvedFix = state.corrections.some(c => {
+          const sameEmp = (r.employeeId && c.employeeId === r.employeeId) || (r.name && c.name === r.name);
+          return sameEmp && c.date === r.date && c.approved;
+        });
+        if(late > 0 && !approvedFix){
+          totalLateMinutes += late;
+          totalLateDeduction += Math.round((safeNum(r.hourlyRate) / 60) * late);
+        }
+      });
+      qs('#sumLate').textContent = `${totalLateMinutes} 分 / ${moneyText(totalLateDeduction)}`;
+      qs('#sumNet').textContent = moneyText(totalGross - totalLateDeduction);
     }
 
     function renderTable(){
@@ -292,9 +384,15 @@
           <td><input type="date" data-field="date" value="${escapeHtml(r.date)}"></td>
           <td><input type="number" step="0.5" min="0" data-field="hours" value="${escapeHtml(r.hours)}"></td>
           <td><input type="number" step="1" min="0" data-field="hourlyRate" value="${escapeHtml(r.hourlyRate)}"></td>
-          <td><select data-field="status"><option ${r.status==='正常'?'selected':''}>正常</option><option ${r.status==='補時數'?'selected':''}>補時數</option></select></td>
-          <td><input data-field="note" value="${escapeHtml(r.note)}"></td>
           <td>${moneyText(r.grossPay)}</td>
+          <td><select data-field="status">
+            <option ${workStatus(r)==='正常登記'?'selected':''}>正常登記</option>
+            <option ${workStatus(r)==='補時數'?'selected':''}>補時數</option>
+            <option ${workStatus(r)==='管理者新增'?'selected':''}>管理者新增</option>
+            <option ${workStatus(r)==='管理者修正'?'selected':''}>管理者修正</option>
+          </select></td>
+          <td>${escapeHtml(attendanceStatus(r))}</td>
+          <td><input data-field="note" value="${escapeHtml(r.note)}"></td>
           <td><span style="font-size:12px">${escapeHtml(r.recordId)}</span></td>
           <td><div class="row-actions"><button class="btn small" onclick="saveRow('${escapeJs(r.__id)}')">儲存</button><button class="btn small danger" onclick="deleteRow('${escapeJs(r.__id)}')">刪除</button></div></td>
         </tr>`;
@@ -325,6 +423,8 @@
         hourlyRate: hourlyRate,
         時薪: hourlyRate,
         grossPay: grossPay,
+        當日工資: grossPay,
+        當日工資: grossPay,
         當筆毛額: grossPay,
         status: status,
         狀態: status,
@@ -354,10 +454,33 @@
       const emp = state.employees.find(e => e.id === empId);
       const date = clean(qs('#addDate').value);
       const hours = safeNum(qs('#addHours').value);
-      const status = clean(qs('#addStatus').value || '正常');
+      const status = clean(qs('#addStatus').value || '正常登記');
       const note = clean(qs('#addNote').value);
       if(!emp || !date || !hours){ showMsg('請選擇工讀生、日期與時數。', 'error'); return; }
-      const id = 'PT_DC_' + Date.now();
+      const existing = state.records.find(r => r.employeeId === emp.id && r.date === date);
+      if(existing){
+        const ok = confirm(`${emp.name} 在 ${date} 已經有一筆工讀時數：${existing.hours} 小時。\n\n系統規則：同一位工讀生同一天只能有一筆正式工讀時數。\n\n按「確定」會覆蓋原本那筆；按「取消」不新增。`);
+        if(!ok) return;
+        const grossPay = Math.round(hours * emp.hourlyRate);
+        await fbDb().collection('parttimeRecords').doc(existing.__id).set({
+          workDate: date, date: date, 日期: date,
+          hours: hours, totalHours: hours, 時數: hours, 總時數: hours,
+          hourlyRate: emp.hourlyRate, 時薪: emp.hourlyRate,
+          grossPay: grossPay, 當日工資: grossPay,
+          status: '管理者修正', 狀態: '管理者修正',
+          note: note || existing.note || '',
+          備註: note || existing.note || '',
+          updatedAt: new Date().toISOString(),
+          最後更新時間: new Date().toISOString(),
+          dataCenterEdited: true
+        }, {merge:true});
+        qs('#addHours').value = '';
+        qs('#addNote').value = '';
+        showMsg('已覆蓋原本同一天的工讀時數。', 'success');
+        await loadParttime();
+        return;
+      }
+      const id = 'PT_' + emp.id + '_' + date.replace(/-/g,'');
       const grossPay = Math.round(hours * emp.hourlyRate);
       const payload = {
         recordId: id,
@@ -380,6 +503,8 @@
         hourlyRate: emp.hourlyRate,
         時薪: emp.hourlyRate,
         grossPay: grossPay,
+        當日工資: grossPay,
+        當日工資: grossPay,
         當筆毛額: grossPay,
         status: status,
         狀態: status,
@@ -400,8 +525,8 @@
 
     function exportCsv(){
       if(!state.visible.length){ showMsg('目前沒有可匯出的資料。','error'); return; }
-      const headers = ['姓名','員工ID','日期','時數','時薪','毛額','狀態','備註','紀錄ID'];
-      const rows = state.visible.map(r => [r.name,r.employeeId,r.date,r.hours,r.hourlyRate,r.grossPay,r.status,r.note,r.recordId]);
+      const headers = ['姓名','員工ID','日期','登記時數','時薪','當日工資','工時狀態','出勤狀態','備註','紀錄ID'];
+      const rows = state.visible.map(r => [r.name,r.employeeId,r.date,r.hours,r.hourlyRate,r.grossPay,workStatus(r),attendanceStatus(r),r.note,r.recordId]);
       const csv = '\ufeff' + [headers].concat(rows).map(row => row.map(cell => `"${String(cell == null ? '' : cell).replace(/"/g,'""')}"`).join(',')).join('\n');
       const blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
       const url = URL.createObjectURL(blob);
