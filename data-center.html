@@ -205,7 +205,7 @@
     </div>
   </div>
 
-  <script src="config.js?v=20260524ptdc7"></script>
+  <script src="config.js?v=20260524ptdc8"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -256,6 +256,15 @@
       if(!ip)return {text:'未記錄', cls:'orange'};
       if(ip===COMPANY_CLOCK_IN_IP)return {text:'公司 IP', cls:'green'};
       return {text:'非公司 IP', cls:'red'};
+    }
+    function onlyTimeText(v){
+      const s = clean(v);
+      if(!s) return '';
+      const m = s.match(/(\d{1,2}:\d{2}:\d{2})/);
+      if(m) return m[1];
+      const m2 = s.match(/(\d{1,2}:\d{2})/);
+      if(m2) return m2[1] + ':00';
+      return s;
     }
     function clockInSourceLabel(ip){
       const judge = ipJudge(ip);
@@ -553,15 +562,15 @@
         const saveId = r.inId || r.outId || r.__id;
         return `<tr data-clock="${esc(saveId)}">
         <td>${esc(r.date)}</td>
-        <td>${esc(r.clockIn||'-')}</td>
-        <td>${esc(r.clockOut||'-')}</td>
+        <td>${esc(onlyTimeText(r.clockIn)||'-')}</td>
+        <td>${esc(onlyTimeText(r.clockOut)||'-')}</td>
         <td><span class="pill ${source.cls}">${esc(source.text)}</span></td>
         <td><span class="pill ${outSource.cls}">${esc(outSource.text)}</span></td>
-        <td><input data-field="late" type="number" min="0" step="1" value="${esc(r.late)}"></td>
+        <td>${esc(r.late || 0)}</td>
         <td>${money(deduct)}</td>
         <td>${fixed?'<span class="pill green">已修正不扣款</span>':(r.late>0?'<span class="pill red">未修正</span>':'<span class="pill green">正常</span>')}</td>
-        <td><input data-field="note" value="${esc(r.note||'')}"></td>
-        <td><div class="row-actions"><button class="btn small" onclick="saveClock('${escjs(saveId)}')">儲存遲到</button><button class="btn small gray" onclick="markNoDeduct('${escjs(saveId)}')">設為不扣款</button><button class="btn small gray" onclick="showClockRaw('${escjs(saveId)}')">原始欄位</button></div></td>
+        <td>${esc(r.note||'')}</td>
+        <td><div class="row-actions"><button class="btn small" onclick="modifyClockRecord('${escjs(saveId)}')">修改打卡時間</button></div></td>
       </tr>`
       }).join('');
     }
@@ -609,11 +618,72 @@
       await fb().collection('parttimeRecords').doc(id).delete(); msg('已刪除。'); await reloadAll();
     }
     function goClock(date){showPanel('clock');qs('#clock').scrollIntoView({behavior:'smooth'});msg(`${date} 的遲到扣款請在「打卡 / 遲到紀錄」頁籤修正。`,'notice')}
+
+    async function modifyClockRecord(id){
+      const r = state.clocks.find(x=>x.__id===id);
+      if(!r){ msg('找不到這筆打卡資料。','error'); return; }
+      const choice = prompt('請選擇修改方式：\n\n1：主管核准不扣款\n2：修改遲到分鐘\n\n請輸入 1 或 2');
+      if(choice === null) return;
+      if(clean(choice) === '1'){
+        await setClockNoDeduct(id, '主管修改');
+        return;
+      }
+      if(clean(choice) === '2'){
+        const minutesText = prompt('請輸入新的遲到分鐘數：', String(r.late || 0));
+        if(minutesText === null) return;
+        const minutes = safeNum(minutesText);
+        if(minutes < 0){ msg('遲到分鐘不能小於 0。','error'); return; }
+        await fb().collection('clockRecords').doc(id).set({
+          lateMinutes: minutes,
+          遲到分鐘: minutes,
+          note: '主管修改',
+          備註: '主管修改',
+          updatedAt: new Date().toISOString(),
+          dataCenterEdited: true
+        }, {merge:true});
+        msg('已由主管修改遲到分鐘。');
+        await reloadAll();
+        return;
+      }
+      msg('沒有修改，請輸入 1 或 2。','notice');
+    }
+
+    async function setClockNoDeduct(id, reason){
+      const c = state.clocks.find(x=>x.__id===id);
+      const e = selected();
+      if(!c || !e){ msg('找不到這筆打卡資料。','error'); return; }
+      const cid = `CORR_DC_${id}_${Date.now()}`;
+      await fb().collection('clockCorrections').doc(cid).set({
+        employeeId:e.id,
+        員工ID:e.id,
+        name:e.name,
+        姓名:e.name,
+        date:c.date,
+        日期:c.date,
+        status:'已核准',
+        狀態:'已核准',
+        reason:reason || '主管修改',
+        note:reason || '主管修改',
+        備註:reason || '主管修改',
+        sourceClockId:id,
+        createdAt:new Date().toISOString(),
+        dataCenterCreated:true
+      }, {merge:true});
+      await fb().collection('clockRecords').doc(id).set({
+        note:'主管修改',
+        備註:'主管修改',
+        updatedAt:new Date().toISOString(),
+        dataCenterEdited:true
+      }, {merge:true});
+      msg('已設為主管核准不扣款。');
+      await reloadAll();
+    }
+
     async function saveClock(id){
       const tr=qs(`tr[data-clock="${CSS.escape(id)}"]`), r=state.clocks.find(x=>x.__id===id); if(!tr||!r)return;
       const late=safeNum(tr.querySelector('[data-field="late"]').value), note=tr.querySelector('[data-field="note"]').value;
       await fb().collection('clockRecords').doc(id).set({lateMinutes:late,遲到分鐘:late,note:note,備註:note,updatedAt:new Date().toISOString(),dataCenterEdited:true},{merge:true});
-      msg('已儲存遲到資料。'); await reloadAll();
+      msg('已儲存遲到分鐘資料。'); await reloadAll();
     }
     async function markNoDeduct(id){
       const c=state.clocks.find(x=>x.__id===id), e=selected(); if(!c||!e)return;
@@ -718,12 +788,6 @@
       wb.Props = {Title: title, Subject: '工讀資料匯出', Author: 'YOUZI Employee System', CreatedDate: new Date()};
       const filename = `${e.name}_${start || month() || '全部'}_${end || ''}_工讀資料.xlsx`.replace(/[\\/:*?"<>|]/g,'_');
       XLSX.writeFile(wb, filename);
-    }
-
-    function showClockRaw(id){
-      const r = state.clocks.find(x=>x.__id===id);
-      if(!r){ alert('找不到這筆打卡資料'); return; }
-      alert('這筆打卡資料的原始欄位：\n\n' + rawFieldSummary(r.raw));
     }
 
     function exportAllCsv(){
