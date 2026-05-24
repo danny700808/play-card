@@ -81,7 +81,7 @@
           <h1 class="title" style="margin:0">工讀資料管理中心</h1>
           <div class="muted">先選工讀生，再看同月份的工讀時數、打卡/遲到、請假紀錄。這裡修改的是 Firebase 主資料。</div>
         </div>
-        <a class="btn" href="parttime-payroll-admin.html">回工讀薪資結算</a>
+        <div style="display:flex;gap:10px;flex-wrap:wrap"><a class="btn btn-red" href="temporary-attendance-admin.html">臨時出勤審核</a><a class="btn" href="parttime-payroll-admin.html">回工讀薪資結算</a></div>
       </div>
       <div class="tabs">
         <a class="tab active" data-panel-tab="parttime" href="javascript:void(0)" onclick="showPanel('parttime')">工讀時數</a>
@@ -208,7 +208,7 @@
     </div>
   </div>
 
-  <script src="config.js?v=20260524ptdc17"></script>
+  <script src="config.js?v=20260524tempatt1"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -257,6 +257,7 @@
     function ipJudge(ip){
       ip=clean(ip);
       if(!ip)return {text:'未記錄', cls:'orange'};
+      if(ip==='臨時出勤核准')return {text:'臨時核准', cls:'blue'};
       if(ip===COMPANY_CLOCK_IN_IP)return {text:'公司 IP', cls:'green'};
       return {text:'非公司 IP', cls:'red'};
     }
