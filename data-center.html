@@ -177,7 +177,7 @@
           <div class="table-wrap" id="clockWrap"><table>
             <thead><tr>
               <th style="width:115px">日期</th><th style="width:210px">上班打卡時間</th><th style="width:210px">下班打卡時間</th><th style="width:105px">上班來源</th>
-              <th style="width:110px">遲到分鐘</th><th style="width:110px">遲到扣款</th><th style="width:150px">修正狀態</th><th style="width:260px">備註 / 原因</th><th style="width:170px">操作</th>
+              <th style="width:105px">下班來源</th><th style="width:110px">遲到分鐘</th><th style="width:110px">遲到扣款</th><th style="width:150px">修正狀態</th><th style="width:260px">備註 / 原因</th><th style="width:170px">操作</th>
             </tr></thead><tbody id="clockRows"></tbody>
           </table></div>
           <div class="empty hidden" id="clockEmpty">這個月份沒有打卡資料。</div>
@@ -205,7 +205,7 @@
     </div>
   </div>
 
-  <script src="config.js?v=20260524ptdc5"></script>
+  <script src="config.js?v=20260524ptdc6"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -337,11 +337,84 @@
       return Object.entries(fields).map(([k,v]) => `${k}: ${clean(v)}`).join('\n');
     }
 
+    function pickClockDate(o){
+      return dateKey(raw(o,['打卡日期','clockDate','date','日期','workDate']) || pickClockInRaw(o) || pickClockOutRaw(o));
+    }
+    function pickClockTime(o){
+      return raw(o,['打卡時間','clockTime','time','時間','punchTime','打卡送出時間','建立時間','createdAt']);
+    }
+    function pickClockAction(o){
+      return clean(raw(o,['打卡動作','action','clockAction','punchAction','動作','type']));
+    }
+    function formatDateAndTime(d, t){
+      const dk = dateKey(d);
+      if(!t) return '';
+      if(t && typeof t.toDate === 'function') t = t.toDate();
+      if(t instanceof Date && !isNaN(t.getTime())){
+        const hh = String(t.getHours()).padStart(2,'0');
+        const mm = String(t.getMinutes()).padStart(2,'0');
+        const ss = String(t.getSeconds()).padStart(2,'0');
+        return (dk || dateKey(t)) + ' ' + hh + ':' + mm + ':' + ss;
+      }
+      const s = clean(t);
+      const parsed = dateTimeText(s);
+      if(parsed && /20\d{2}/.test(parsed)) return parsed;
+      if(/\d{1,2}:\d{2}/.test(s)) return (dk ? dk + ' ' : '') + s;
+      return s;
+    }
+    function mergedClockRows(){
+      const e = selected();
+      if(!e) return [];
+      const rows = empRows(state.clocks);
+      const map = {};
+      rows.forEach(r=>{
+        const key = r.date || '';
+        if(!map[key]) map[key] = {date:key, employeeId:e.id, name:e.name, inRec:null, outRec:null, late:0, note:''};
+        const action = clean(r.action);
+        if(action.includes('上班') || lower(action).includes('in')){
+          if(!map[key].inRec || clean(r.clockIn) < clean(map[key].inRec.clockIn || '9999')) map[key].inRec = r;
+        }else if(action.includes('下班') || lower(action).includes('out')){
+          if(!map[key].outRec || clean(r.clockOut) > clean(map[key].outRec.clockOut || '')) map[key].outRec = r;
+        }else{
+          // 舊格式：同一筆可能已經有 clockIn / clockOut
+          if(r.clockIn && !map[key].inRec) map[key].inRec = r;
+          if(r.clockOut && !map[key].outRec) map[key].outRec = r;
+        }
+        map[key].late = Math.max(map[key].late || 0, safeNum(r.late));
+        map[key].note = [map[key].note, r.note].filter(Boolean).join('；');
+      });
+      return Object.values(map).sort((a,b)=>a.date.localeCompare(b.date)).map(g=>{
+        const inRec = g.inRec || {};
+        const outRec = g.outRec || {};
+        const ip = clean(inRec.ip || '');
+        const outIp = clean(outRec.ip || outRec.outIp || '');
+        return {
+          __id: clean((inRec.__id || outRec.__id || g.date)),
+          inId: clean(inRec.__id || ''),
+          outId: clean(outRec.__id || ''),
+          employeeId:e.id,
+          name:e.name,
+          date:g.date,
+          clockIn: clean(inRec.clockIn || ''),
+          clockOut: clean(outRec.clockOut || ''),
+          ip,
+          outIp,
+          late:g.late || 0,
+          note:g.note || '',
+          raw:{in:inRec.raw || null, out:outRec.raw || null}
+        };
+      });
+    }
+
     function clock(o){
       const empId=clean(raw(o,['employeeId','員工ID']));
+      const action = pickClockAction(o);
+      const dRaw = raw(o,['打卡日期','clockDate','date','日期','workDate']);
+      const tRaw = pickClockTime(o);
+      const date = pickClockDate(o);
+      const explicitTime = formatDateAndTime(dRaw || date, tRaw);
       const inRaw = pickClockInRaw(o);
       const outRaw = pickClockOutRaw(o);
-      const date = dateKey(raw(o,['date','日期','clockDate','打卡日期','workDate']) || inRaw || outRaw);
       const inIp = clean(raw(o,['clockInIp','上班IP','上班來源IP','ip','IP','來源IP','sourceIp']));
       const outIp = clean(raw(o,['clockOutIp','下班IP','下班來源IP']));
       return {
@@ -349,10 +422,11 @@
         employeeId:empId,
         name:clean(raw(o,['name','姓名','employeeName'])),
         date,
-        clockIn:dateTimeText(inRaw)||timeText(inRaw),
-        clockOut:dateTimeText(outRaw)||timeText(outRaw),
-        clockInRaw: clean(inRaw),
-        clockOutRaw: clean(outRaw),
+        action,
+        clockIn: (action.includes('上班') || lower(action).includes('in')) ? (explicitTime || dateTimeText(inRaw)||timeText(inRaw)) : (dateTimeText(inRaw)||timeText(inRaw)),
+        clockOut: (action.includes('下班') || lower(action).includes('out')) ? (explicitTime || dateTimeText(outRaw)||timeText(outRaw)) : (dateTimeText(outRaw)||timeText(outRaw)),
+        clockInRaw: clean(inRaw || tRaw),
+        clockOutRaw: clean(outRaw || tRaw),
         ip:inIp,
         outIp:outIp,
         late:safeNum(raw(o,['lateMinutes','遲到分鐘','lateMins'])),
@@ -467,7 +541,7 @@
       </tr>`}).join('');
     }
     function renderClocks(){
-      const rows=empRows(state.clocks).sort((a,b)=>a.date.localeCompare(b.date));
+      const rows=mergedClockRows();
       qs('#clockWrap').classList.toggle('hidden',rows.length===0); qs('#clockEmpty').classList.toggle('hidden',rows.length>0);
       qs('#clockRows').innerHTML=rows.map(r=>{
         const e=selected();
@@ -475,16 +549,19 @@
         const fixed=approvedFixFor(fake);
         const deduct=(r.late>0&&!fixed)?Math.round(e.hourlyRate/60*r.late):0;
         const source=clockInSourceLabel(r.ip);
-        return `<tr data-clock="${esc(r.__id)}">
+        const outSource=clockInSourceLabel(r.outIp);
+        const saveId = r.inId || r.outId || r.__id;
+        return `<tr data-clock="${esc(saveId)}">
         <td>${esc(r.date)}</td>
         <td>${esc(r.clockIn||'-')}</td>
         <td>${esc(r.clockOut||'-')}</td>
         <td><span class="pill ${source.cls}">${esc(source.text)}</span></td>
+        <td><span class="pill ${outSource.cls}">${esc(outSource.text)}</span></td>
         <td><input data-field="late" type="number" min="0" step="1" value="${esc(r.late)}"></td>
         <td>${money(deduct)}</td>
         <td>${fixed?'<span class="pill green">已修正不扣款</span>':(r.late>0?'<span class="pill red">未修正</span>':'<span class="pill green">正常</span>')}</td>
         <td><input data-field="note" value="${esc(r.note||'')}"></td>
-        <td><div class="row-actions"><button class="btn small" onclick="saveClock('${escjs(r.__id)}')">儲存遲到</button><button class="btn small gray" onclick="markNoDeduct('${escjs(r.__id)}')">設為不扣款</button><button class="btn small gray" onclick="showClockRaw('${escjs(r.__id)}')">原始欄位</button></div></td>
+        <td><div class="row-actions"><button class="btn small" onclick="saveClock('${escjs(saveId)}')">儲存遲到</button><button class="btn small gray" onclick="markNoDeduct('${escjs(saveId)}')">設為不扣款</button><button class="btn small gray" onclick="showClockRaw('${escjs(saveId)}')">原始欄位</button></div></td>
       </tr>`
       }).join('');
     }
@@ -609,16 +686,15 @@
       }
 
       function addClock(){
-        const rows = [['姓名','日期','上班打卡時間','下班打卡時間','上班來源','遲到分鐘','遲到扣款','修正狀態','備註']];
-        empRows(state.clocks)
+        const rows = [['姓名','日期','上班打卡時間','下班打卡時間','上班來源','下班來源','遲到分鐘','遲到扣款','修正狀態','備註']];
+        mergedClockRows()
           .filter(r => dateInRange(r.date, start, end))
           .sort((a,b)=>a.date.localeCompare(b.date))
           .forEach(r => {
             const fake = {employeeId:e.id,name:e.name,date:r.date,hourlyRate:e.hourlyRate};
             const fixed = approvedFixFor(fake);
             const deduct = (r.late > 0 && !fixed) ? Math.round(e.hourlyRate/60*r.late) : 0;
-            const judge = ipJudge(r.ip);
-            rows.push([e.name, r.date, r.clockIn || '', r.clockOut || '', (clockInSourceLabel(r.ip).text || ''), r.late || 0, deduct, fixed ? '已修正不扣款' : (r.late>0 ? '未修正' : '正常'), r.note || '']);
+            rows.push([e.name, r.date, r.clockIn || '', r.clockOut || '', (clockInSourceLabel(r.ip).text || ''), (clockInSourceLabel(r.outIp).text || ''), r.late || 0, deduct, fixed ? '已修正不扣款' : (r.late>0 ? '未修正' : '正常'), r.note || '']);
           });
         XLSX.utils.book_append_sheet(wb, makeSheet(rows), '打卡遲到');
       }
