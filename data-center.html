@@ -165,7 +165,7 @@
           <div class="table-wrap" id="parttimeWrap"><table>
             <thead><tr>
               <th style="width:120px">日期</th><th style="width:95px">登記時數</th><th style="width:90px">時薪</th><th style="width:110px">當日工資</th>
-              <th style="width:130px">工時來源</th><th style="width:210px">出勤狀態</th><th style="width:230px">備註</th><th style="width:180px">紀錄ID</th><th style="width:220px">操作</th>
+              <th style="width:130px">狀態</th><th style="width:230px">備註 / 原因</th><th style="width:140px">操作</th>
             </tr></thead><tbody id="parttimeRows"></tbody>
           </table></div>
           <div class="empty hidden" id="parttimeEmpty">這個月份沒有工讀時數資料。</div>
@@ -207,7 +207,7 @@
     </div>
   </div>
 
-  <script src="config.js?v=20260524ptdc11"></script>
+  <script src="config.js?v=20260524ptdc12"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -560,76 +560,36 @@
       qs('#sumIssues').textContent = issues;
       qs('#sumNet').textContent = money(totalW - lateFee);
     }
-    function renderParttime(){
-      const rows=empRows(state.parttime).sort((a,b)=>a.date.localeCompare(b.date));
-      qs('#parttimeWrap').classList.toggle('hidden',rows.length===0); qs('#parttimeEmpty').classList.toggle('hidden',rows.length>0);
-      qs('#parttimeRows').innerHTML=rows.map(r=>{const a=attendStatus(r);return `<tr data-pt="${esc(r.__id)}">
-        <td>${esc(r.date)}</td>
-        <td><input data-field="hours" type="number" step="0.5" min="0" value="${esc(r.hours)}"></td>
-        <td><input data-field="hourlyRate" type="number" step="1" min="0" value="${esc(r.hourlyRate)}"></td>
-        <td>${money(r.gross)}</td>
-        <td><select data-field="status"><option ${workSource(r)==='員工填寫'?'selected':''}>員工填寫</option><option ${workSource(r)==='補時數'?'selected':''}>補時數</option><option ${workSource(r)==='管理者新增'?'selected':''}>管理者新增</option><option ${workSource(r)==='管理者修正'?'selected':''}>管理者修正</option></select></td>
-        <td><span class="pill ${a.cls}">${esc(a.text)}</span></td>
-        <td><input data-field="note" value="${esc(r.note)}"></td>
-        <td><span class="subtle">${esc(r.recordId)}</span></td>
-        <td><div class="row-actions"><button class="btn small" onclick="saveParttime('${escjs(r.__id)}')">儲存工時</button><button class="btn small gray" onclick="goClock('${escjs(r.date)}')">修正出勤</button><button class="btn small danger" onclick="deleteParttime('${escjs(r.__id)}')">刪除</button></div></td>
-      </tr>`}).join('');
-    }
-    function hasApprovedCorrectionForRow(r){
-      const e = selected();
-      if(!e) return false;
-      return state.corrections.some(c => {
-        const sameEmp = (c.employeeId && c.employeeId === e.id) || (c.name && c.name === e.name);
-        return sameEmp && c.date === r.date && c.approved;
-      });
-    }
-    function hasBackendEditedForRow(r){
-      const src = r && r.raw || {};
-      const inRaw = src.in || {};
-      const outRaw = src.out || {};
-      return !!(inRaw.dataCenterEdited || outRaw.dataCenterEdited || inRaw.主管修改 || outRaw.主管修改);
-    }
-    function clockStatusText(r){
-      if(hasApprovedCorrectionForRow(r) || hasBackendEditedForRow(r)) return '已修改';
+    function parttimeStatusText(r){
+      if(r && r.raw && (r.raw.dataCenterEdited || r.raw.主管已修改)) return '已修改';
       return '正常';
     }
-    function clockStatusClass(r){
-      return clockStatusText(r) === '已修改' ? 'blue' : 'green';
+    function parttimeStatusClass(r){
+      return parttimeStatusText(r) === '已修改' ? 'blue' : 'green';
     }
-    function clockReasonText(r){
+    function parttimeReasonText(r){
       const reasons = [];
-      const src = r && r.raw || {};
-      const inRaw = src.in || {};
-      const outRaw = src.out || {};
-      if(hasBackendEditedForRow(r)) reasons.push('主管後台修改');
-      if(hasApprovedCorrectionForRow(r)) reasons.push('員工申請修正，主管已核准');
-      const note = clean(r.note || raw(inRaw, ['note','備註','reason','原因']) || raw(outRaw, ['note','備註','reason','原因']));
+      if(r && r.raw && (r.raw.dataCenterEdited || r.raw.主管已修改)) reasons.push('主管修改');
+      const note = clean(r.note || raw(r.raw || {}, ['note','備註','reason','原因']));
       if(note && !reasons.includes(note)) reasons.push(note);
       return reasons.join('；');
     }
 
-    function correctionTimeFor(date, kind){
-      const e = selected();
-      if(!e) return '';
-      const list = state.corrections.filter(c => {
-        const sameEmp = (c.employeeId && c.employeeId === e.id) || (c.name && c.name === e.name);
-        return sameEmp && c.date === date && c.approved;
-      });
-      for(const c of list){
-        const src = c.raw || {};
-        const keysIn = ['修正上班時間','修正後上班時間','correctedClockIn','correctedIn','newClockIn','newInTime','上班修正時間','補上班時間','clockIn'];
-        const keysOut = ['修正下班時間','修正後下班時間','correctedClockOut','correctedOut','newClockOut','newOutTime','下班修正時間','補下班時間','clockOut'];
-        const val = raw(src, kind === 'in' ? keysIn : keysOut);
-        if(val) return onlyTimeText(dateTimeText(val) || timeText(val) || val);
-      }
-      return '';
+    function renderParttime(){
+      const rows=empRows(state.parttime).sort((a,b)=>a.date.localeCompare(b.date));
+      qs('#parttimeWrap').classList.toggle('hidden',rows.length===0); qs('#parttimeEmpty').classList.toggle('hidden',rows.length>0);
+      qs('#parttimeRows').innerHTML=rows.map(r=>{
+        return `<tr data-pt="${esc(r.__id)}">
+        <td>${esc(r.date)}</td>
+        <td>${esc(r.hours)}</td>
+        <td>${esc(r.hourlyRate)}</td>
+        <td>${money(r.gross)}</td>
+        <td><span class="pill ${parttimeStatusClass(r)}">${esc(parttimeStatusText(r))}</span></td>
+        <td>${esc(parttimeReasonText(r)||'')}</td>
+        <td><div class="row-actions"><button class="btn small" onclick="modifyParttimeRecord('${escjs(r.__id)}')">修改</button></div></td>
+      </tr>`
+      }).join('');
     }
-    function timeCellHtml(original, corrected){
-      const base = esc(onlyTimeText(original) || '-');
-      if(corrected) return `<div class="time-cell">${base}<span class="time-fix">修正後：${esc(corrected)}</span></div>`;
-      return `<div class="time-cell">${base}</div>`;
-    }
-
     function renderClocks(){
       const rows=mergedClockRows();
       qs('#clockWrap').classList.toggle('hidden',rows.length===0); qs('#clockEmpty').classList.toggle('hidden',rows.length>0);
@@ -675,6 +635,62 @@
       qs('#parttimeAddBox').classList.toggle('hidden');
       qs('#addDate').value=new Date().toISOString().slice(0,10);
     }
+
+    async function modifyParttimeRecord(id){
+      const r = state.parttime.find(x=>x.__id===id);
+      if(!r){ msg('找不到這筆工讀時數資料。','error'); return; }
+      const choice = prompt('請選擇修改方式：\n\n1：修改登記時數\n2：修改時薪\n\n請輸入 1 或 2');
+      if(choice === null) return;
+
+      if(clean(choice) === '1'){
+        const hoursText = prompt('請輸入新的登記時數：', String(r.hours || 0));
+        if(hoursText === null) return;
+        const newHours = safeNum(hoursText);
+        if(newHours < 0){ msg('登記時數不能小於 0。','error'); return; }
+        const gross = Math.round(newHours * safeNum(r.hourlyRate));
+        await fb().collection('parttimeRecords').doc(id).set({
+          hours:newHours,
+          totalHours:newHours,
+          時數:newHours,
+          總時數:newHours,
+          grossPay:gross,
+          當日工資:gross,
+          note:'主管修改',
+          備註:'主管修改',
+          updatedAt:new Date().toISOString(),
+          dataCenterEdited:true,
+          主管已修改:true
+        }, {merge:true});
+        msg('已修改登記時數，備註已寫入「主管修改」。');
+        await reloadAll();
+        return;
+      }
+
+      if(clean(choice) === '2'){
+        const rateText = prompt('請輸入新的時薪：', String(r.hourlyRate || 0));
+        if(rateText === null) return;
+        const newRate = safeNum(rateText);
+        if(newRate <= 0){ msg('時薪必須大於 0。','error'); return; }
+        const gross = Math.round(safeNum(r.hours) * newRate);
+        await fb().collection('parttimeRecords').doc(id).set({
+          hourlyRate:newRate,
+          時薪:newRate,
+          grossPay:gross,
+          當日工資:gross,
+          note:'主管修改',
+          備註:'主管修改',
+          updatedAt:new Date().toISOString(),
+          dataCenterEdited:true,
+          主管已修改:true
+        }, {merge:true});
+        msg('已修改時薪，備註已寫入「主管修改」。');
+        await reloadAll();
+        return;
+      }
+
+      msg('沒有修改，請輸入 1 或 2。','notice');
+    }
+
     async function addParttimeRecord(){
       const e=selected(); if(!e){msg('請先選擇工讀生。','error');return}
       const d=clean(qs('#addDate').value), h=safeNum(qs('#addHours').value), source=clean(qs('#addSource').value), note=clean(qs('#addNote').value);
@@ -836,7 +852,7 @@
         const pts = empRows(state.parttime).filter(r=>r.date===d);
         const c = mergedClockRows().find(r=>r.date===d);
         const ls = empRows(state.leaves).filter(r=>r.date===d);
-        const ptText = pts.length ? pts.map(r=>`${r.hours}小時 / ${money(r.gross)} / ${workSource(r)}`).join('；') : '-';
+        const ptText = pts.length ? pts.map(r=>`${r.hours}小時 / ${money(r.gross)} / ${parttimeStatusText(r)}`).join('；') : '-';
         let clockText = '-';
         let statusText = '-';
         let noteText = '';
