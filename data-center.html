@@ -208,7 +208,7 @@
     </div>
   </div>
 
-  <script src="config.js?v=20260524ptdc16"></script>
+  <script src="config.js?v=20260524ptdc17"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -520,12 +520,27 @@
       qs('#employeeList').innerHTML=list.map(e=>`<div class="employee-item ${e.id===state.selectedId?'active':''}" onclick="selectEmp('${escjs(e.id)}')"><strong>${esc(e.name)}</strong><div class="subtle">${money(e.hourlyRate)} / 時</div></div>`).join('')||'<div class="employee-item muted">沒有符合的工讀生</div>';
     }
     function selectEmp(id){state.selectedId=id;renderEmployees();renderAll();}
+    function safeRun(label, fn){
+      try{
+        return fn();
+      }catch(err){
+        console.error(label + ' error', err);
+        msg(label + ' 顯示發生問題，但其他資料會繼續顯示。', 'notice');
+        return null;
+      }
+    }
+
     function renderAll(){
       const e=selected();
       if(!e){qs('#selectedTitle').textContent='請先選擇工讀生';return}
       qs('#selectedTitle').textContent=e.name;
       qs('#selectedSub').textContent=`${month()||'全部月份'}｜時薪 ${money(e.hourlyRate)}`;
-      renderParttime(); renderClocks(); renderLeaves(); renderIssues(); renderSummary(); setTimeout(renderSummary, 120);
+      safeRun('工讀時數', renderParttime);
+      safeRun('打卡 / 遲到', renderClocks);
+      safeRun('請假紀錄', renderLeaves);
+      safeRun('異常提醒', renderIssues);
+      safeRun('上方摘要', renderSummary);
+      setTimeout(()=>safeRun('上方摘要', renderSummary), 120);
     }
     function renderSummary(){
       const e = selected();
@@ -551,7 +566,7 @@
           totalH += safeNum(r.hours);
           totalW += safeNum(r.gross || (safeNum(r.hours) * safeNum(r.hourlyRate)));
         });
-      }catch(err){}
+      }catch(err){ console.warn('summary parttime state failed', err); }
 
       try{
         const clocks = mergedClockRows().filter(r => inMonth(r.date));
@@ -564,7 +579,7 @@
             lateFee += Math.round((safeNum(e.hourlyRate) / 60) * minutes);
           }
         });
-      }catch(err){}
+      }catch(err){ console.warn('summary clock state failed', err); }
 
       if(totalH === 0 && totalW === 0){
         qsa('#parttimeRows tr').forEach(tr=>{
@@ -601,7 +616,7 @@
       qs('#sumIssues').textContent = issues;
       qs('#sumNet').textContent = money(totalW - lateFee);
 
-      console.log('summary v16', {employee:e.name, month:month(), totalH,totalW,lateM,lateFee,leaves,issues});
+      console.log('summary v17', {employee:e.name, month:month(), totalH,totalW,lateM,lateFee,leaves,issues});
     }
     function parttimeStatusText(r){
       if(r && r.raw && (r.raw.dataCenterEdited || r.raw.主管已修改)) return '已修改';
@@ -633,6 +648,66 @@
       </tr>`
       }).join('');
     }
+    function correctionTimeFor(date, kind){
+      const e = selected();
+      if(!e) return '';
+      const list = (state.corrections || []).filter(c => {
+        const sameEmp = (c.employeeId && c.employeeId === e.id) || (c.name && c.name === e.name);
+        return sameEmp && c.date === date && c.approved;
+      });
+      for(const c of list){
+        const src = c.raw || {};
+        const keysIn = ['修正上班時間','修正後上班時間','correctedClockIn','correctedIn','newClockIn','newInTime','上班修正時間','補上班時間','clockIn'];
+        const keysOut = ['修正下班時間','修正後下班時間','correctedClockOut','correctedOut','newClockOut','newOutTime','下班修正時間','補下班時間','clockOut'];
+        const val = raw(src, kind === 'in' ? keysIn : keysOut);
+        if(val) return onlyTimeText(dateTimeText(val) || timeText(val) || val);
+      }
+      return '';
+    }
+
+    function timeCellHtml(original, corrected){
+      const base = esc(onlyTimeText(original) || '-');
+      if(corrected) return `<div class="time-cell">${base}<span class="time-fix">修正後：${esc(corrected)}</span></div>`;
+      return `<div class="time-cell">${base}</div>`;
+    }
+
+    function hasApprovedCorrectionForRow(r){
+      const e = selected();
+      if(!e || !r) return false;
+      return (state.corrections || []).some(c => {
+        const sameEmp = (c.employeeId && c.employeeId === e.id) || (c.name && c.name === e.name);
+        return sameEmp && c.date === r.date && c.approved;
+      });
+    }
+
+    function hasBackendEditedForRow(r){
+      const src = r && r.raw || {};
+      const inRaw = src.in || {};
+      const outRaw = src.out || {};
+      return !!(inRaw.dataCenterEdited || outRaw.dataCenterEdited || inRaw.主管已修改 || outRaw.主管已修改);
+    }
+
+    function clockStatusText(r){
+      if(hasApprovedCorrectionForRow(r) || hasBackendEditedForRow(r)) return '已修改';
+      return '正常';
+    }
+
+    function clockStatusClass(r){
+      return clockStatusText(r) === '已修改' ? 'blue' : 'green';
+    }
+
+    function clockReasonText(r){
+      const reasons = [];
+      const src = r && r.raw || {};
+      const inRaw = src.in || {};
+      const outRaw = src.out || {};
+      if(hasBackendEditedForRow(r)) reasons.push('主管後台修改');
+      if(hasApprovedCorrectionForRow(r)) reasons.push('員工申請修正，主管已核准');
+      const note = clean(r.note || raw(inRaw, ['note','備註','reason','原因']) || raw(outRaw, ['note','備註','reason','原因']));
+      if(note && !reasons.includes(note)) reasons.push(note);
+      return reasons.join('；');
+    }
+
     function renderClocks(){
       const rows=mergedClockRows();
       qs('#clockWrap').classList.toggle('hidden',rows.length===0); qs('#clockEmpty').classList.toggle('hidden',rows.length>0);
