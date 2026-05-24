@@ -38,7 +38,10 @@
     <div class="topbar"></div>
 
     <div class="card">
-      <h1 class="title" style="margin:0">工讀薪資結算</h1>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        <h1 class="title" style="margin:0">工讀薪資結算</h1>
+        <a class="btn" href="data-center.html?module=parttime">工讀資料管理</a>
+      </div>
       <div id="pageMsg" class="message"></div>
     </div>
 
@@ -82,12 +85,12 @@
     </div>
   </div>
 
-  <script src="config.js?v=20260523payrolllayout6"></script>
+  <script src="config.js?v=20260524datacenter1"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260523payrolllayout6"></script>
+  <script src="firebase-client.js?v=20260524datacenter1"></script>
 
-  <script src="app.js?v=20260523payrolllayout6"></script>
+  <script src="app.js?v=20260524datacenter1"></script>
   <script>
     let state = { employees: [], selectedId: '', summary: null };
 

@@ -1,0 +1,423 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>資料管理中心</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    :root{--brand:#1f7a5a;--line:#e5e7eb;--muted:#6b7280;--danger:#b42318;--bg:#f6f8fb}
+    body{background:var(--bg)}
+    .page-return-wrap{margin-bottom:16px}
+    .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
+    .center-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+    .module-tabs{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+    .module-tab{border:1px solid var(--line);background:#fff;color:#1f2d3d;border-radius:999px;padding:10px 14px;font-weight:900;text-decoration:none}
+    .module-tab.active{background:var(--brand);color:#fff;border-color:var(--brand)}
+    .toolbar{display:grid;grid-template-columns:1fr 180px 150px auto auto;gap:12px;align-items:end}
+    .summary-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin-top:14px}
+    .summary-card{border:1px solid var(--line);border-radius:18px;padding:14px;background:#fff}
+    .summary-card strong{display:block;font-size:13px;color:var(--muted);margin-bottom:8px}
+    .summary-card .value{font-size:24px;font-weight:900;color:#1f2d3d}
+    .summary-card.final{background:#1f7a5a;color:#fff;border-color:#1f7a5a}.summary-card.final strong,.summary-card.final .value{color:#fff}
+    .table-wrap{overflow:auto;border:1px solid var(--line);border-radius:16px;background:#fff}
+    table{width:100%;border-collapse:collapse;font-size:14px;min-width:1050px}
+    th,td{border-bottom:1px solid var(--line);padding:9px;text-align:left;vertical-align:middle}
+    th{position:sticky;top:0;background:#f9fafb;z-index:1;color:#374151;font-size:13px}
+    td input,td select{width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:10px;padding:8px;background:#fff}
+    .row-actions{display:flex;gap:6px}
+    .btn.small{padding:8px 10px;font-size:13px;border-radius:10px;white-space:nowrap}
+    .btn.danger{background:var(--danger)}
+    .muted{color:var(--muted);line-height:1.7}
+    .notice{padding:12px 14px;border-radius:14px;background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;margin-top:12px}
+    .success{padding:12px 14px;border-radius:14px;background:#ecfdf3;border:1px solid #bbf7d0;color:#166534;margin-top:12px}
+    .error{padding:12px 14px;border-radius:14px;background:#fff1f2;border:1px solid #fecdd3;color:#9f1239;margin-top:12px}
+    .add-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;align-items:end}
+    .hidden{display:none!important}
+    @media(max-width:1100px){.toolbar{grid-template-columns:1fr 1fr}.summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.add-grid{grid-template-columns:1fr 1fr}}
+    @media(max-width:640px){.toolbar{grid-template-columns:1fr}.summary-grid{grid-template-columns:1fr}.add-grid{grid-template-columns:1fr}.center-head{display:block}.module-tabs{margin-top:12px}}
+  </style>
+</head>
+<body onload="init()">
+  <div class="container">
+    <div class="page-return-wrap"><a class="btn page-return-btn" href="settings.html">返回管理首頁</a></div>
+
+    <div class="card">
+      <div class="center-head">
+        <div>
+          <h1 class="title" style="margin:0">資料管理中心</h1>
+          <div class="muted">第一版先做「工讀時數 / 薪資資料」。這裡修改的是 Firebase 主資料，員工端與管理端會讀到修改後資料。</div>
+        </div>
+        <a class="btn" href="parttime-payroll-admin.html">回工讀薪資結算</a>
+      </div>
+      <div class="module-tabs">
+        <a class="module-tab active" href="data-center.html?module=parttime">工讀時數 / 薪資</a>
+        <a class="module-tab" href="javascript:void(0)" onclick="comingSoon('打卡紀錄資料管理會在下一階段加入')">打卡紀錄</a>
+        <a class="module-tab" href="javascript:void(0)" onclick="comingSoon('請假紀錄資料管理會在下一階段加入')">請假紀錄</a>
+      </div>
+      <div id="pageMsg"></div>
+    </div>
+
+    <div class="card">
+      <div class="section-title">工讀時數資料查詢</div>
+      <div class="toolbar">
+        <div class="field"><label>搜尋</label><input id="keyword" placeholder="輸入姓名、員工ID 或 Email"></div>
+        <div class="field"><label>月份</label><input id="monthText" type="month"></div>
+        <div class="field"><label>狀態</label>
+          <select id="statusFilter">
+            <option value="">全部</option>
+            <option value="正常">正常</option>
+            <option value="補時數">補時數</option>
+          </select>
+        </div>
+        <button class="btn" onclick="loadParttime()">查詢</button>
+        <button class="btn secondary" onclick="exportCsv()">匯出 CSV</button>
+      </div>
+      <div class="notice">注意：刪除與修改會直接改 Firebase 的 <b>parttimeRecords</b>。目前不會自動改回 Google Sheet，因為 Firebase 已是主資料來源。</div>
+
+      <div class="summary-grid">
+        <div class="summary-card"><strong>資料筆數</strong><div class="value" id="sumCount">0</div></div>
+        <div class="summary-card"><strong>總工時</strong><div class="value" id="sumHours">0 小時</div></div>
+        <div class="summary-card"><strong>工時金額</strong><div class="value" id="sumGross">0 元</div></div>
+        <div class="summary-card"><strong>遲到 / 扣款</strong><div class="value" id="sumLate">0 分 / 0 元</div></div>
+        <div class="summary-card final"><strong>試算應發</strong><div class="value" id="sumNet">0 元</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-title">新增一筆工讀時數</div>
+      <div class="add-grid">
+        <div class="field"><label>工讀生</label><select id="addEmployee"></select></div>
+        <div class="field"><label>日期</label><input id="addDate" type="date"></div>
+        <div class="field"><label>時數</label><input id="addHours" type="number" step="0.5" min="0"></div>
+        <div class="field"><label>狀態</label><select id="addStatus"><option>正常</option><option>補時數</option></select></div>
+        <div class="field"><label>備註</label><input id="addNote" placeholder="選填"></div>
+        <button class="btn" onclick="addRecord()">新增</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-title">工讀時數資料表</div>
+      <div id="emptyState" class="muted">請先查詢資料。</div>
+      <div class="table-wrap hidden" id="tableWrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:120px">員工</th>
+              <th style="width:115px">日期</th>
+              <th style="width:90px">時數</th>
+              <th style="width:90px">時薪</th>
+              <th style="width:110px">狀態</th>
+              <th style="width:190px">備註</th>
+              <th style="width:120px">毛額</th>
+              <th style="width:170px">紀錄ID</th>
+              <th style="width:160px">操作</th>
+            </tr>
+          </thead>
+          <tbody id="rowsBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script src="config.js?v=20260524datacenter1"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script>
+    let state = { employees: [], records: [], visible: [] };
+
+    function qs(sel){ return document.querySelector(sel); }
+    function clean(v){ return String(v == null ? '' : v).trim(); }
+    function lower(v){ return clean(v).toLowerCase(); }
+    function safeNum(v){ const n = Number(clean(v).replace(/[^\d.\-]/g,'')); return Number.isFinite(n) ? n : 0; }
+    function moneyText(v){ return (Math.round(Number(v||0)||0)).toLocaleString('zh-TW') + ' 元'; }
+    function hoursText(v){ const n=Number(v||0)||0; return (Math.abs(n-Math.round(n))<0.0001?String(Math.round(n)):n.toFixed(1).replace(/\.0$/,'')) + ' 小時'; }
+    function showMsg(msg, type='success'){ qs('#pageMsg').innerHTML = msg ? `<div class="${type}">${msg}</div>` : ''; }
+    function comingSoon(msg){ showMsg(msg, 'notice'); }
+
+    function fbDb(){
+      if(!(window.APP_CONFIG && window.APP_CONFIG.FIREBASE_CONFIG)) throw new Error('找不到 Firebase 設定');
+      if(!window.firebase.apps.length) window.firebase.initializeApp(window.APP_CONFIG.FIREBASE_CONFIG);
+      return window.firebase.firestore();
+    }
+
+    function rawVal(o, keys){
+      const source = o && o.source || {};
+      for(const k of keys){ if(o && o[k] != null && clean(o[k]) !== '') return o[k]; }
+      for(const k of keys){ if(source && source[k] != null && clean(source[k]) !== '') return source[k]; }
+      return '';
+    }
+
+    function truthy(v){ const s=lower(v); return v===true || ['是','yes','true','1','active','enabled','啟用'].includes(s); }
+
+    function excelSerialToDateKey(n){
+      n = Number(n);
+      if(!Number.isFinite(n) || n < 20000 || n > 70000) return '';
+      const base = new Date(Date.UTC(1899, 11, 30));
+      base.setUTCDate(base.getUTCDate() + Math.floor(n));
+      return base.getUTCFullYear()+'-'+String(base.getUTCMonth()+1).padStart(2,'0')+'-'+String(base.getUTCDate()).padStart(2,'0');
+    }
+    function dateKey(v){
+      if(v == null || v === '') return '';
+      if(v && typeof v.toDate === 'function') v = v.toDate();
+      if(v instanceof Date && !isNaN(v.getTime())) return v.getFullYear()+'-'+String(v.getMonth()+1).padStart(2,'0')+'-'+String(v.getDate()).padStart(2,'0');
+      if(typeof v === 'number') return excelSerialToDateKey(v) || '';
+      const s = clean(v);
+      if(/^\d{4}-\d{1,2}-\d{1,2}/.test(s)){ const p=s.split(/[\-\sT]/); return p[0]+'-'+String(p[1]).padStart(2,'0')+'-'+String(p[2]).padStart(2,'0'); }
+      if(/^\d{4}\/\d{1,2}\/\d{1,2}/.test(s)){ const p=s.split(/[\/\s]/); return p[0]+'-'+String(p[1]).padStart(2,'0')+'-'+String(p[2]).padStart(2,'0'); }
+      if(/^\d{4,5}(?:\.\d+)?$/.test(s)) return excelSerialToDateKey(Number(s)) || s;
+      const d = new Date(s);
+      return isNaN(d.getTime()) ? s : dateKey(d);
+    }
+
+    async function fbAll(collectionName){
+      const snap = await fbDb().collection(collectionName).get();
+      const rows = [];
+      snap.forEach(doc => rows.push(Object.assign({__id: doc.id}, doc.data() || {})));
+      return rows;
+    }
+
+    function normalizeEmployee(o){
+      const id = clean(rawVal(o, ['employeeId','員工ID']) || o.__id);
+      const hourlyRate = safeNum(rawVal(o, ['hourlyRate','時薪金額','時薪','hourlyPay'])) || 196;
+      return {
+        id,
+        name: clean(rawVal(o, ['name','姓名'])) || id,
+        email: lower(rawVal(o, ['email','Email'])),
+        identityType: lower(rawVal(o, ['identityType','身分類型'])) || (truthy(rawVal(o, ['isPartTime','是否工讀生'])) ? 'parttime' : 'staff'),
+        accountStatus: lower(rawVal(o, ['accountStatus','帳號狀態'])) || 'active',
+        hourlyRate,
+        laborSelfPay: safeNum(rawVal(o, ['laborSelfPay','勞保自付額','勞保自付額快照'])),
+        raw: o
+      };
+    }
+
+    function normalizeRecord(o){
+      const baseHours = safeNum(rawVal(o, ['hours','時數']));
+      const half = truthy(rawVal(o, ['halfHour','addHalfHour','是否加半小時']));
+      let total = safeNum(rawVal(o, ['totalHours','總時數']));
+      if(!total || total < 0 || total > 24) total = baseHours + (half ? 0.5 : 0);
+      total = Math.round(total * 100) / 100;
+      const employeeId = clean(rawVal(o, ['employeeId','員工ID']));
+      const emp = state.employees.find(e => e.id === employeeId || lower(e.email) === lower(rawVal(o, ['email','Email'])) || e.name === clean(rawVal(o, ['name','姓名'])));
+      const hourlyRate = safeNum(rawVal(o, ['hourlyRate','時薪'])) || (emp ? emp.hourlyRate : 196);
+      return {
+        __id: o.__id,
+        recordId: clean(rawVal(o, ['recordId','紀錄ID']) || o.__id),
+        employeeId: employeeId || (emp ? emp.id : ''),
+        name: clean(rawVal(o, ['name','姓名'])) || (emp ? emp.name : ''),
+        email: lower(rawVal(o, ['email','Email'])) || (emp ? emp.email : ''),
+        date: dateKey(rawVal(o, ['workDate','date','日期'])),
+        hours: total,
+        hourlyRate,
+        status: clean(rawVal(o, ['status','狀態']) || '正常'),
+        note: clean(rawVal(o, ['note','備註','補時數原因'])),
+        grossPay: Math.round(total * hourlyRate),
+        raw: o
+      };
+    }
+
+    function currentMonth(){
+      const d = new Date();
+      return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+    }
+
+    async function init(){
+      try{
+        qs('#monthText').value = currentMonth();
+        await loadBaseData();
+        await loadParttime();
+      }catch(err){
+        showMsg('初始化失敗：' + (err.message || err), 'error');
+      }
+    }
+
+    async function loadBaseData(){
+      showMsg('讀取員工資料中...', 'notice');
+      const rows = await fbAll('employees');
+      state.employees = rows.map(normalizeEmployee).filter(e => e.identityType === 'parttime' && (!e.accountStatus || e.accountStatus === 'active' || e.accountStatus === '啟用'));
+      state.employees.sort((a,b)=>a.name.localeCompare(b.name,'zh-Hant'));
+      const select = qs('#addEmployee');
+      select.innerHTML = state.employees.map(e => `<option value="${escapeHtml(e.id)}">${escapeHtml(e.name)}｜${moneyText(e.hourlyRate)}/時</option>`).join('');
+      qs('#addDate').value = new Date().toISOString().slice(0,10);
+      showMsg('', 'success');
+    }
+
+    async function loadParttime(){
+      try{
+        showMsg('讀取工讀時數資料中...', 'notice');
+        const all = await fbAll('parttimeRecords');
+        state.records = all.map(normalizeRecord);
+        applyFilters();
+        showMsg('讀取完成。', 'success');
+        setTimeout(()=>showMsg(''), 1200);
+      }catch(err){
+        showMsg('讀取失敗：' + (err.message || err), 'error');
+      }
+    }
+
+    function applyFilters(){
+      const keyword = lower(qs('#keyword').value);
+      const month = clean(qs('#monthText').value);
+      const status = clean(qs('#statusFilter').value);
+      state.visible = state.records.filter(r => {
+        const hitKeyword = !keyword || lower(r.name).includes(keyword) || lower(r.employeeId).includes(keyword) || lower(r.email).includes(keyword);
+        const hitMonth = !month || String(r.date || '').slice(0,7) === month;
+        const hitStatus = !status || r.status === status;
+        return hitKeyword && hitMonth && hitStatus;
+      });
+      state.visible.sort((a,b)=>(a.date || '').localeCompare(b.date || '') || a.name.localeCompare(b.name,'zh-Hant'));
+      renderTable();
+      renderSummary();
+    }
+
+    function renderSummary(){
+      const totalHours = state.visible.reduce((s,r)=>s + safeNum(r.hours),0);
+      const totalGross = state.visible.reduce((s,r)=>s + safeNum(r.grossPay),0);
+      qs('#sumCount').textContent = state.visible.length;
+      qs('#sumHours').textContent = hoursText(totalHours);
+      qs('#sumGross').textContent = moneyText(totalGross);
+      // 第一版以工讀時數資料為主，遲到會在下一階段接 clockRecords 完整明細。
+      qs('#sumLate').textContent = '0 分 / 0 元';
+      qs('#sumNet').textContent = moneyText(totalGross);
+    }
+
+    function renderTable(){
+      qs('#emptyState').classList.toggle('hidden', state.visible.length > 0);
+      qs('#tableWrap').classList.toggle('hidden', state.visible.length === 0);
+      const body = qs('#rowsBody');
+      body.innerHTML = state.visible.map((r, idx) => {
+        return `<tr data-doc="${escapeHtml(r.__id)}">
+          <td>${escapeHtml(r.name)}<div class="muted" style="font-size:12px">${escapeHtml(r.employeeId)}</div></td>
+          <td><input type="date" data-field="date" value="${escapeHtml(r.date)}"></td>
+          <td><input type="number" step="0.5" min="0" data-field="hours" value="${escapeHtml(r.hours)}"></td>
+          <td><input type="number" step="1" min="0" data-field="hourlyRate" value="${escapeHtml(r.hourlyRate)}"></td>
+          <td><select data-field="status"><option ${r.status==='正常'?'selected':''}>正常</option><option ${r.status==='補時數'?'selected':''}>補時數</option></select></td>
+          <td><input data-field="note" value="${escapeHtml(r.note)}"></td>
+          <td>${moneyText(r.grossPay)}</td>
+          <td><span style="font-size:12px">${escapeHtml(r.recordId)}</span></td>
+          <td><div class="row-actions"><button class="btn small" onclick="saveRow('${escapeJs(r.__id)}')">儲存</button><button class="btn small danger" onclick="deleteRow('${escapeJs(r.__id)}')">刪除</button></div></td>
+        </tr>`;
+      }).join('');
+    }
+
+    function getTr(docId){ return [...document.querySelectorAll('tr[data-doc]')].find(tr => tr.getAttribute('data-doc') === docId); }
+
+    async function saveRow(docId){
+      const tr = getTr(docId);
+      const old = state.records.find(r => r.__id === docId);
+      if(!tr || !old) return;
+      const date = tr.querySelector('[data-field="date"]').value;
+      const hours = safeNum(tr.querySelector('[data-field="hours"]').value);
+      const hourlyRate = safeNum(tr.querySelector('[data-field="hourlyRate"]').value) || old.hourlyRate || 196;
+      const status = tr.querySelector('[data-field="status"]').value;
+      const note = tr.querySelector('[data-field="note"]').value;
+      if(!date || !hours){ showMsg('日期與時數必填。', 'error'); return; }
+      const grossPay = Math.round(hours * hourlyRate);
+      const payload = {
+        workDate: date,
+        date: date,
+        日期: date,
+        hours: hours,
+        totalHours: hours,
+        時數: hours,
+        總時數: hours,
+        hourlyRate: hourlyRate,
+        時薪: hourlyRate,
+        grossPay: grossPay,
+        當筆毛額: grossPay,
+        status: status,
+        狀態: status,
+        note: note,
+        備註: note,
+        updatedAt: new Date().toISOString(),
+        最後更新時間: new Date().toISOString(),
+        dataCenterEdited: true
+      };
+      await fbDb().collection('parttimeRecords').doc(docId).set(payload, {merge:true});
+      Object.assign(old, payload, {date, hours, hourlyRate, status, note, grossPay});
+      showMsg('已儲存。', 'success');
+      await loadParttime();
+    }
+
+    async function deleteRow(docId){
+      const old = state.records.find(r => r.__id === docId);
+      if(!old) return;
+      if(!confirm(`確定刪除這筆工讀時數？\n${old.name}｜${old.date}｜${old.hours} 小時`)) return;
+      await fbDb().collection('parttimeRecords').doc(docId).delete();
+      showMsg('已刪除。', 'success');
+      await loadParttime();
+    }
+
+    async function addRecord(){
+      const empId = clean(qs('#addEmployee').value);
+      const emp = state.employees.find(e => e.id === empId);
+      const date = clean(qs('#addDate').value);
+      const hours = safeNum(qs('#addHours').value);
+      const status = clean(qs('#addStatus').value || '正常');
+      const note = clean(qs('#addNote').value);
+      if(!emp || !date || !hours){ showMsg('請選擇工讀生、日期與時數。', 'error'); return; }
+      const id = 'PT_DC_' + Date.now();
+      const grossPay = Math.round(hours * emp.hourlyRate);
+      const payload = {
+        recordId: id,
+        紀錄ID: id,
+        employeeId: emp.id,
+        員工ID: emp.id,
+        name: emp.name,
+        姓名: emp.name,
+        email: emp.email,
+        Email: emp.email,
+        workDate: date,
+        date: date,
+        日期: date,
+        hours: hours,
+        totalHours: hours,
+        時數: hours,
+        總時數: hours,
+        halfHour: false,
+        是否加半小時: '否',
+        hourlyRate: emp.hourlyRate,
+        時薪: emp.hourlyRate,
+        grossPay: grossPay,
+        當筆毛額: grossPay,
+        status: status,
+        狀態: status,
+        note: note,
+        備註: note,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        建立時間: new Date().toISOString(),
+        最後更新時間: new Date().toISOString(),
+        dataCenterCreated: true
+      };
+      await fbDb().collection('parttimeRecords').doc(id).set(payload, {merge:true});
+      qs('#addHours').value = '';
+      qs('#addNote').value = '';
+      showMsg('已新增一筆工讀時數。', 'success');
+      await loadParttime();
+    }
+
+    function exportCsv(){
+      if(!state.visible.length){ showMsg('目前沒有可匯出的資料。','error'); return; }
+      const headers = ['姓名','員工ID','日期','時數','時薪','毛額','狀態','備註','紀錄ID'];
+      const rows = state.visible.map(r => [r.name,r.employeeId,r.date,r.hours,r.hourlyRate,r.grossPay,r.status,r.note,r.recordId]);
+      const csv = '\ufeff' + [headers].concat(rows).map(row => row.map(cell => `"${String(cell == null ? '' : cell).replace(/"/g,'""')}"`).join(',')).join('\n');
+      const blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `工讀時數資料_${clean(qs('#monthText').value)||'全部'}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function escapeHtml(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+    function escapeJs(s){ return String(s == null ? '' : s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
+
+    document.addEventListener('input', (e)=>{
+      if(['keyword','monthText','statusFilter'].includes(e.target.id)) applyFilters();
+    });
+  </script>
+</body>
+</html>
