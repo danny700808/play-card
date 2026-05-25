@@ -100,7 +100,7 @@
     input, select, button, textarea {
       font: inherit;
     }
-    input[type="text"], input[type="date"], input[type="time"], select, textarea {
+    input[type="text"], input[type="date"], input[type="time" step="1800"], select, textarea {
       width: 100%;
       padding: 12px 13px;
       border-radius: 14px;
@@ -933,17 +933,14 @@
 
     async function deleteTemplate(templateId) {
       templateId = String(templateId || '').trim();
-      if (!templateId) {
-        showStatus('templateStatus', '找不到模板 ID，無法刪除。', 'error');
-        return;
-      }
+      if (!templateId) return;
       if (!confirm('確定要刪除這個班表模板嗎？已套用的員工資料不會一起刪除。')) return;
       try {
-        await callBackend('deleteScheduleTemplate', { templateId });
+        await callBackend('deleteScheduleTemplate', { templateId, id: templateId });
         showStatus('templateStatus', '班表模板已刪除。', 'success');
-        await reloadPageData();
+        setTimeout(() => window.location.reload(), 250);
       } catch (err) {
-        showStatus('templateStatus', err.message || '刪除班表模板失敗', 'error');
+        showStatus('templateStatus', (err && err.message) || '刪除班表模板失敗', 'error');
       }
     }
 
