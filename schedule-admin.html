@@ -100,7 +100,7 @@
     input, select, button, textarea {
       font: inherit;
     }
-    input[type="text"], input[type="date"], input[type="time" step="1800"], select, textarea {
+    input[type="text"], input[type="date"], input[type="time"], select, textarea {
       width: 100%;
       padding: 12px 13px;
       border-radius: 14px;
@@ -357,6 +357,7 @@
 
     document.addEventListener('DOMContentLoaded', () => {
       buildDayFields();
+      enhanceAllHalfHourTimeInputs();
       bindForms();
       toggleSingleDayTime();
       const currentUser = (typeof getUser === 'function') ? getUser() : null;
@@ -378,6 +379,76 @@
         return;
       }
       window.location.href = 'settings.html';
+    }
+
+
+    function buildHourOptionsHtml(selected) {
+      selected = String(selected || '').padStart(2, '0');
+      let html = '<option value="">時</option>';
+      for (let i = 0; i < 24; i++) {
+        const v = String(i).padStart(2, '0');
+        html += `<option value="${v}" ${v === selected ? 'selected' : ''}>${v}</option>`;
+      }
+      return html;
+    }
+
+    function buildMinuteOptionsHtml(selected) {
+      selected = String(selected || '00').padStart(2, '0');
+      return ['00', '30'].map(v => `<option value="${v}" ${v === selected ? 'selected' : ''}>${v}</option>`).join('');
+    }
+
+    function normalizeHalfHourTime(value) {
+      const s = String(value || '').trim();
+      const m = s.match(/^(\d{1,2}):(\d{2})/);
+      if (!m) return '';
+      const h = Math.max(0, Math.min(23, Number(m[1]) || 0));
+      const minute = Number(m[2]) >= 30 ? '30' : '00';
+      return String(h).padStart(2, '0') + ':' + minute;
+    }
+
+    function enhanceHalfHourTimeInput(inputId) {
+      const input = document.getElementById(inputId);
+      if (!input || input.dataset.halfHourEnhanced === '1') return;
+      input.dataset.halfHourEnhanced = '1';
+      input.type = 'hidden';
+      input.setAttribute('data-half-hour-source', '1');
+      const picker = document.createElement('div');
+      picker.className = 'half-hour-time';
+      picker.innerHTML = `
+        <select id="${inputId}Hour" aria-label="小時"></select>
+        <span class="time-colon">:</span>
+        <select id="${inputId}Minute" aria-label="分鐘"></select>
+      `;
+      input.insertAdjacentElement('afterend', picker);
+      const hour = document.getElementById(inputId + 'Hour');
+      const minute = document.getElementById(inputId + 'Minute');
+      function syncFromInput() {
+        const value = normalizeHalfHourTime(input.value);
+        const parts = value ? value.split(':') : ['', '00'];
+        hour.innerHTML = buildHourOptionsHtml(parts[0]);
+        minute.innerHTML = buildMinuteOptionsHtml(parts[1] || '00');
+      }
+      function syncToInput() {
+        input.value = hour.value ? `${hour.value}:${minute.value || '00'}` : '';
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      hour.addEventListener('change', syncToInput);
+      minute.addEventListener('change', syncToInput);
+      input.syncHalfHourPicker = syncFromInput;
+      syncFromInput();
+    }
+
+    function enhanceAllHalfHourTimeInputs() {
+      document.querySelectorAll('input[type="time"], input[data-half-hour-source="1"]').forEach(input => enhanceHalfHourTimeInput(input.id));
+      syncAllHalfHourPickers();
+    }
+
+    function syncAllHalfHourPickers() {
+      document.querySelectorAll('input[data-half-hour-source="1"]').forEach(input => {
+        input.value = normalizeHalfHourTime(input.value);
+        if (typeof input.syncHalfHourPicker === 'function') input.syncHalfHourPicker();
+      });
     }
 
     function buildDayFields() {
@@ -406,6 +477,7 @@
           <div class="schedule-preview muted" id="${day.key}Preview" style="margin-top:8px;"></div>
         </div>
       `).join('');
+      enhanceAllHalfHourTimeInputs();
       DAYS.forEach(day => updateDayPreview(day.key));
     }
 
@@ -634,7 +706,7 @@
         return;
       }
       wrap.innerHTML = pageData.templates.map((t, index) => {
-        const id = t.templateId || t.模板ID || '';
+        const id = t.templateId || t.模板ID || t.__id || '';
         const name = t.templateName || t.模板名稱 || '未命名模板';
         const enabled = String(t.enabled || t.啟用 || 'TRUE') !== 'FALSE';
         return `
@@ -751,6 +823,7 @@
         startInput.value = '';
         endInput.value = '';
       }
+      syncAllHalfHourPickers();
       updateDayPreview(dayKey);
     }
 
@@ -768,6 +841,7 @@
         toggleDayTime(day.key);
         updateDayPreview(day.key);
       });
+      syncAllHalfHourPickers();
     }
 
     function resetAssignmentForm() {
@@ -913,6 +987,7 @@
         document.getElementById(`${day.key}AllowSpecial`).checked = !!getTemplateDayValue(t, day, 'allowSpecial');
         toggleDayTime(day.key);
       });
+      syncAllHalfHourPickers();
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
@@ -933,14 +1008,14 @@
 
     async function deleteTemplate(templateId) {
       templateId = String(templateId || '').trim();
-      if (!templateId) return;
+      if (!templateId) { showStatus('templateStatus', '找不到模板 ID，無法刪除。', 'error'); return; }
       if (!confirm('確定要刪除這個班表模板嗎？已套用的員工資料不會一起刪除。')) return;
       try {
-        await callBackend('deleteScheduleTemplate', { templateId, id: templateId });
+        await callBackend('deleteScheduleTemplate', { templateId });
         showStatus('templateStatus', '班表模板已刪除。', 'success');
-        setTimeout(() => window.location.reload(), 250);
+        await reloadPageData();
       } catch (err) {
-        showStatus('templateStatus', (err && err.message) || '刪除班表模板失敗', 'error');
+        showStatus('templateStatus', err.message || '刪除班表模板失敗', 'error');
       }
     }
 
@@ -971,6 +1046,7 @@
         document.getElementById('singleDayStartTime').value = '';
         document.getElementById('singleDayEndTime').value = '';
       }
+      syncAllHalfHourPickers();
     }
 
     function resetSingleDayForm() {
@@ -984,6 +1060,7 @@
       document.getElementById('singleDayEnabled').value = 'TRUE';
       document.getElementById('singleDayNote').value = '';
       toggleSingleDayTime();
+      syncAllHalfHourPickers();
     }
 
     async function saveSingleDay(evt) {
@@ -1033,6 +1110,7 @@
       document.getElementById('singleDayEnabled').value = String(a.enabled || a['啟用'] || 'TRUE');
       document.getElementById('singleDayNote').value = a.note || a['備註'] || '';
       toggleSingleDayTime();
+      syncAllHalfHourPickers();
       switchSchedulePanel('singleDayPanel');
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }

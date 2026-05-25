@@ -431,6 +431,7 @@
   async function rowsWhere(col, field, value){ const d=db(); if(!d) throw new Error('Firebase 尚未啟用'); const snap=await d.collection(col).where(field,'==',value).get(); const out=[]; snap.forEach(x=>out.push(Object.assign({__id:x.id},x.data()||{}))); return out; }
   async function docSet(col, id, data, merge=true){ const d=db(); if(!d) throw new Error('Firebase 尚未啟用'); const key=clean(id)||('WEB_'+Date.now()+'_'+Math.random().toString(36).slice(2,8)); await d.collection(col).doc(key).set(Object.assign({},data,{updatedAt:ts()}),{merge}); return key; }
   async function docUpdate(col, id, data){ return await docSet(col,id,data,true); }
+  async function docDelete(col, id){ const d=init(); if(!d) throw new Error('Firebase 尚未啟用'); const key=clean(id); if(!key) throw new Error('缺少要刪除的資料 ID'); await d.collection(col).doc(key).delete(); return key; }
   function normalizeUserDoc(o){
     const isAdmin = !!(o.adminId || o.managerId || o['管理者代碼'] || o.__collection === 'admins');
     const identity = isAdmin ? 'admin' : (lower(o.identityType || o['身分類型']) || (truthy(o.isPartTime || o['是否工讀生'])?'parttime':'staff'));
@@ -554,6 +555,12 @@
     await docSet(collection,id,Object.assign({},payload,{source:'firebase-primary',createdAt:ts()}));
     return {ok:true,message:okMessage||'已儲存。',id};
   }
+  async function simpleDelete(collection, idFields, payload, okMessage){
+    const id=clean(idFields.map(k=>payload&&payload[k]).find(Boolean));
+    if(!id) throw new Error('缺少要刪除的資料 ID');
+    await docDelete(collection,id);
+    return {ok:true,message:okMessage||'已刪除。',id};
+  }
   async function firebaseSaveNotification(action,payload){
     if(action==='saveNotificationSettings' && fb.mirrorNotificationSettings){ await fb.mirrorNotificationSettings((payload&&payload.rows)||[]); return {ok:true,message:'通知設定已儲存。'}; }
     if(action==='saveNotificationTimeRules' && fb.mirrorNotificationTimeRules){ await fb.mirrorNotificationTimeRules((payload&&payload.rows)||[]); return {ok:true,message:'提醒時間規則已儲存。'}; }
@@ -579,7 +586,7 @@
     if(a==='parttime') return await firebaseParttime(payload||{});
     if(a==='submitClockCorrection'||a==='approveClockCorrectionApi'||a==='rejectClockCorrectionApi') return await firebaseClockCorrection(a,payload||{});
     if(a==='saveNotificationSettings'||a==='saveNotificationTimeRules') return await firebaseSaveNotification(a,payload||{});
-    if(primaryMap[a]){ const [col,ids,msg]=primaryMap[a]; return await simpleSave(col,ids,payload||{},msg); }
+    if(primaryMap[a]){ const [col,ids,msg]=primaryMap[a]; return a.indexOf('delete')===0 ? await simpleDelete(col,ids,payload||{},msg) : await simpleSave(col,ids,payload||{},msg); }
     return null;
   }
   const oldHandle = fb.handleApi;
