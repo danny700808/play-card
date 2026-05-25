@@ -30,7 +30,7 @@ body{background:var(--bg);color:var(--ink)}
 <body onload="init()"><div class="container">
 <div class="card">
   <h1 class="title">補登 / 臨時出勤申請</h1>
-  <div class="muted">請先選擇申請日期。系統會依登入員工本人與班表先判斷是否可申請；若不符合規則，會直接顯示原因，不會讓你選時間或送出。</div>
+  <div class="muted">請先選擇申請日期。系統會呼叫原本班表邏輯查詢這位員工當天班表；不符合規則時只顯示原因，不會開放時間或送出。</div>
   <div id="msg" class="message"></div>
 </div>
 
@@ -45,9 +45,9 @@ body{background:var(--bg);color:var(--ink)}
 
   <div id="timeSection" class="hidden">
     <div class="grid" style="margin-top:12px">
-      <div class="field"><label>申請上班時間</label><select id="startTime" onchange="validateSelectedTime(false)"></select></div>
+      <div class="field"><label>申請上班時間</label><select id="startTime" onchange="refreshEndOptions();validateSelectedTime(false)"></select></div>
       <div class="field"><label>申請下班時間</label><select id="endTime" onchange="validateSelectedTime(false)"></select></div>
-      <div class="field"><label>是否計薪</label><select id="payable"><option value="是">是</option><option value="否">否</option></select></div>
+      <input type="hidden" id="payable" value="待主管審核">
     </div>
     <div id="lawHint" class="law-hint hidden"></div>
     <div class="field" style="margin-top:12px"><label>備註（選填）</label><textarea id="reason" placeholder="可簡單填寫，例如：忘記打卡、臨時加班、原本無排班但實際有上班"></textarea></div>
@@ -63,8 +63,8 @@ body{background:var(--bg);color:var(--ink)}
 </div>
 </div>
 
-<script src="config.js?v=20260524tempatt4"></script>
-<script src="app.js?v=20260524tempatt4"></script>
+<script src="config.js?v=20260524tempatt14"></script>
+<script src="app.js?v=20260524tempatt14"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
 <script>
@@ -92,8 +92,19 @@ function minToTime(min){
   const h=Math.floor(min/60), m=min%60;
   return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0');
 }
-function hoursBetween(date,start,end){const a=new Date(date+'T'+start+':00');const b=new Date(date+'T'+end+':00');const diff=(b-a)/3600000;return Math.max(0,Math.round(diff*100)/100)}
-
+function hoursBetween(date,start,end){
+  const a=new Date(date+'T'+start+':00');
+  const b=new Date(date+'T'+end+':00');
+  const diff=(b-a)/3600000;
+  return Math.max(0,Math.round(diff*100)/100);
+}
+function halfHourOptions(startMin=0,endMin=24*60){
+  const opts=[];
+  startMin=Math.ceil(startMin/30)*30;
+  endMin=Math.floor(endMin/30)*30;
+  for(let m=startMin;m<=endMin;m+=30) opts.push(minToTime(m));
+  return opts;
+}
 function showBox(sel,text,type){
   const box=qs(sel);
   if(!box)return;
@@ -108,23 +119,34 @@ function setTimeSection(show){
   qs('#timeSection').classList.toggle('hidden', !show);
   qs('#blockedReturn').classList.toggle('hidden', show);
 }
-
-function halfHourOptions(startMin=0,endMin=24*60){
-  const opts=[];
-  startMin=Math.ceil(startMin/30)*30;
-  endMin=Math.floor(endMin/30)*30;
-  for(let m=startMin;m<=endMin;m+=30) opts.push(minToTime(m));
-  return opts;
+function setStartOptions(ranges){
+  const starts=[];
+  ranges.forEach(r=>{
+    halfHourOptions(r.start, r.end-30).forEach(t=>starts.push(t));
+  });
+  qs('#startTime').innerHTML='<option value="">請選擇</option>'+starts.map(t=>`<option value="${t}">${t}</option>`).join('');
+  qs('#endTime').innerHTML='<option value="">請先選上班時間</option>';
 }
-function setTimeOptions(startOpts,endOpts){
-  qs('#startTime').innerHTML='<option value="">請選擇</option>'+startOpts.map(t=>`<option value="${t}">${t}</option>`).join('');
-  qs('#endTime').innerHTML='<option value="">請選擇</option>'+endOpts.map(t=>`<option value="${t}">${t}</option>`).join('');
+function refreshEndOptions(){
+  const a=currentAnalysis;
+  const start=clean(qs('#startTime').value);
+  const sm=parseMinutes(start);
+  if(!a||!a.allowedRanges||sm==null){
+    qs('#endTime').innerHTML='<option value="">請先選上班時間</option>';
+    return;
+  }
+  const range=a.allowedRanges.find(r=>sm>=r.start&&sm<r.end);
+  if(!range){
+    qs('#endTime').innerHTML='<option value="">此時間不可申請</option>';
+    return;
+  }
+  const ends=halfHourOptions(sm+30, range.end);
+  qs('#endTime').innerHTML='<option value="">請選擇</option>'+ends.map(t=>`<option value="${t}">${t}</option>`).join('');
 }
 
 async function init(){
   try{
-    const today=new Date().toISOString().slice(0,10);
-    qs('#workDate').value=today;
+    qs('#workDate').value=new Date().toISOString().slice(0,10);
 
     let loginUser=null;
     try{loginUser=(typeof requireLogin==='function')?requireLogin():null}catch(e){loginUser=null}
@@ -171,37 +193,28 @@ async function init(){
   }catch(e){msg('初始化失敗：'+(e.message||e),'error')}
 }
 
-async function fetchCollection(name){
-  try{
-    const snap=await fb().collection(name).get();
-    const rows=[]; snap.forEach(doc=>rows.push(Object.assign({__id:doc.id},doc.data()||{})));
-    return rows;
-  }catch(e){return []}
-}
+function parseScheduleFromContext(ctx){
+  const label=clean(ctx&&ctx.scheduleLabel||'');
+  let clockType=clean(ctx&&ctx.clockType||'') || label.split('｜')[0] || clean(ctx&&ctx.statusLabel||'');
+  if(label.includes('例假日')) clockType='例假日';
+  if(label.includes('休息日')) clockType='休息日';
+  if(label.includes('無班')) clockType='無班';
 
-function sameEmp(r, emp){
-  const id=clean(raw(r,['employeeId','員工ID','staffId','員編']) || r.employeeId || r.員工ID);
-  const name=clean(raw(r,['name','姓名']) || r.name || r.姓名);
-  const email=clean(raw(r,['email','Email']) || r.email || r.Email);
-  return (id&&id===emp.id) || (name&&name===emp.name) || (email&&emp.email&&email===emp.email);
-}
-function dateOf(r){
-  return clean(raw(r,['date','workDate','scheduleDate','日期','班表日期','clockDate','打卡日期']) || r.date || r.日期);
-}
-function dayTypeOf(r){
-  const s=clean(raw(r,['dayType','出勤日別','scheduleType','班表類型','clockType','打卡方式','type','類型','狀態']) || '');
-  if(s.includes('例假'))return '例假日';
-  if(s.includes('休息'))return '休息日';
-  if(s.includes('無班'))return '無班';
-  if(s.includes('特殊'))return '特殊打卡';
-  if(s.includes('標準'))return '平日';
-  return '';
-}
-function startOf(r){
-  return clean(raw(r,['startTime','開始時間','上班時間','班表開始','shiftStart','workStart']) || '');
-}
-function endOf(r){
-  return clean(raw(r,['endTime','結束時間','下班時間','班表結束','shiftEnd','workEnd']) || '');
+  let start='', end='';
+  const m=label.match(/(\d{1,2}:\d{2})\s*[-－~～]\s*(\d{1,2}:\d{2})/);
+  if(m){ start=m[1]; end=m[2]; }
+  if(!start) start=clean(ctx&&ctx.shiftStart||ctx&&ctx.startTime||'');
+  if(!end) end=clean(ctx&&ctx.shiftEnd||ctx&&ctx.endTime||'');
+
+  let dayType='無班';
+  if(clockType.includes('例假')) dayType='例假日';
+  else if(clockType.includes('休息')) dayType='休息日';
+  else if(clockType.includes('無班')||clean(ctx&&ctx.statusCode)==='OFF') dayType='無班';
+  else if(start&&end) dayType=clockType.includes('特殊')?'特殊打卡':'平日';
+
+  const st=parseMinutes(start), en=parseMinutes(end);
+  const existing=(st!=null&&en!=null&&en>st)?Math.round(((en-st)/60)*100)/100:0;
+  return {dayType,clockType,start,end,existing,label};
 }
 
 async function analyzeSelectedDate(){
@@ -212,93 +225,75 @@ async function analyzeSelectedDate(){
   showBox('#lawHint','');
   if(!emp||!date){showBox('#analysisBox','請先選擇日期。','notice');return}
 
-  showBox('#analysisBox','正在查詢班表並判斷可申請時間，請稍候...','notice');
+  showBox('#analysisBox','正在依照原本班表邏輯查詢，請稍候...','notice');
 
-  // Try multiple likely schedule collections. If your system only has one of them, the first found rows will be used.
-  const collectionNames=['employeeSchedules','schedules','shiftSchedules','workSchedules','scheduleRecords'];
-  let schedules=[];
-  for(const c of collectionNames){
-    const rows=await fetchCollection(c);
-    schedules=schedules.concat(rows.map(r=>Object.assign({_collection:c},r)));
+  let res=null;
+  try{
+    res=await api('getParttimeDateContext',{userId:emp.id,workDate:date,date:date});
+  }catch(e){
+    res={ok:false,message:e.message||'班表查詢失敗'};
   }
 
-  const dayRows=schedules.filter(r=>sameEmp(r,emp)&&dateOf(r)===date);
-  let dayType='無班';
-  let scheduleStart='', scheduleEnd='', existingHours=0;
-
-  if(dayRows.length){
-    // Prefer explicit day off rows first.
-    const regularHoliday=dayRows.find(r=>dayTypeOf(r)==='例假日');
-    const restDay=dayRows.find(r=>dayTypeOf(r)==='休息日');
-    const noShift=dayRows.find(r=>dayTypeOf(r)==='無班');
-    const workRow=dayRows.find(r=>parseMinutes(startOf(r))!=null && parseMinutes(endOf(r))!=null) || dayRows[0];
-
-    if(regularHoliday){ dayType='例假日'; }
-    else if(restDay){ dayType='休息日'; }
-    else if(noShift && !workRow){ dayType='無班'; }
-    else {
-      const t=dayTypeOf(workRow);
-      dayType=(t&&t!=='無班')?t:'平日';
-      scheduleStart=startOf(workRow);
-      scheduleEnd=endOf(workRow);
-      const st=parseMinutes(scheduleStart), en=parseMinutes(scheduleEnd);
-      if(st!=null&&en!=null&&en>st) existingHours=Math.round(((en-st)/60)*100)/100;
-    }
+  if(!res||!res.ok){
+    const text='目前無法查詢班表，因此暫不開放送出。\n原因：'+clean(res&&res.message||'班表查詢失敗');
+    showBox('#analysisBox',text,'error');
+    setTimeSection(false);
+    currentAnalysis={ok:false,message:text};
+    return;
   }
+
+  const ctx=res.context||{};
+  const parsed=parseScheduleFromContext(ctx);
+  let {dayType,start,end,existing,label}=parsed;
 
   if(dayType==='例假日'){
     const text='系統判斷：這一天是例假日。\n例假日不可用補登 / 臨時出勤流程送出加班申請，因此不開放選擇時間。';
     showBox('#analysisBox',text,'error');
     setTimeSection(false);
-    currentAnalysis={ok:false,dayType,existingHours,message:text};
+    currentAnalysis={ok:false,dayType,existingHours:existing,message:text,rawContext:ctx};
     return;
   }
 
-  let startOpts=[], endOpts=[], text='';
+  let ranges=[], text='';
   if(dayType==='平日'||dayType==='特殊打卡'){
-    const st=parseMinutes(scheduleStart), en=parseMinutes(scheduleEnd);
+    const st=parseMinutes(start), en=parseMinutes(end);
     if(st!=null&&en!=null&&en>st){
-      if(existingHours>=12){
-        text=`系統判斷：這一天原本班表已達 ${existingHours} 小時，已達每日工時上限，因此不能再送出臨時加班申請。`;
-        showBox('#analysisBox',text,'error'); setTimeSection(false);
-        currentAnalysis={ok:false,dayType,existingHours,scheduleStart,scheduleEnd,message:text}; return;
+      if(existing>=12){
+        text=`系統判斷：這一天已有班表 ${start}～${end}，原本排班約 ${existing} 小時，已達每日工時上限，因此不能再送出臨時加班申請。`;
+        showBox('#analysisBox',text,'error');
+        setTimeSection(false);
+        currentAnalysis={ok:false,dayType,existingHours:existing,scheduleStart:start,scheduleEnd:end,message:text,rawContext:ctx};
+        return;
       }
-      // For scheduled day, temporary attendance can only start after shift end.
-      const maxEnd=24*60;
-      startOpts=halfHourOptions(en,maxEnd-30);
-      endOpts=halfHourOptions(en+30,maxEnd);
-      text=`系統判斷：這一天已有班表 ${scheduleStart}～${scheduleEnd}，原本排班約 ${existingHours} 小時。\n補登 / 臨時出勤只開放班表外時間；如果是班表內忘記打卡或打錯時間，請到打卡紀錄提出補登修正。`;
+      if(st>=30) ranges.push({start:0,end:st});
+      if(en<=24*60-30) ranges.push({start:en,end:24*60});
+      const remainHours=Math.max(0,12-existing);
+      text=`系統判斷：這一天已有班表 ${start}～${end}，原本排班約 ${existing} 小時。\n補登 / 臨時出勤只開放班表外時間；如果是班表內忘記打卡或打錯時間，請到打卡紀錄提出補登修正。\n本日依法規上限初步可再申請最多約 ${remainHours} 小時；若原本已滿8小時，平日一般加班最多4小時。`;
     }else{
       dayType='無班';
     }
   }
 
   if(dayType==='休息日'){
-    startOpts=halfHourOptions(0,24*60-30);
-    endOpts=halfHourOptions(30,24*60);
-    text='系統判斷：這一天是休息日。\n可送出休息日出勤申請，主管審核時會依休息日出勤規則試算金額。';
+    ranges=[{start:0,end:24*60}];
+    text='系統判斷：這一天是休息日。\n可送出休息日出勤申請，主管審核時會依休息日出勤規則試算金額。\n本日出勤最多以12小時為上限，實際金額由主管審核確認。';
   }
 
   if(dayType==='無班'){
-    startOpts=halfHourOptions(0,24*60-30);
-    endOpts=halfHourOptions(30,24*60);
-    text='系統判斷：這一天目前沒有排班。\n可送出臨時出勤申請，主管核准後才會正式補進打卡、時數與薪資。';
+    ranges=[{start:0,end:24*60}];
+    text='系統判斷：這一天目前沒有排班。\n可送出臨時出勤申請，主管核准後才會正式補進打卡、時數與薪資。\n本日出勤最多以12小時為上限，實際金額由主管審核確認。';
   }
 
-  if(dayType==='國定假日/特休'){
-    startOpts=halfHourOptions(0,24*60-30);
-    endOpts=halfHourOptions(30,24*60);
-    text='系統判斷：這一天屬於國定假日 / 特休類型。\n可送出申請，但主管審核時會再次確認給薪方式。';
-  }
-
-  if(!startOpts.length||!endOpts.length){
+  if(!ranges.length){
     text='系統目前找不到可開放的補登 / 臨時出勤時間，因此不開放送出。';
-    showBox('#analysisBox',text,'error'); setTimeSection(false);
-    currentAnalysis={ok:false,dayType,existingHours,message:text}; return;
+    showBox('#analysisBox',text,'error');
+    setTimeSection(false);
+    currentAnalysis={ok:false,dayType,existingHours:existing,message:text,rawContext:ctx};
+    return;
   }
 
-  setTimeOptions(startOpts,endOpts);
-  currentAnalysis={ok:true,dayType,existingHours,scheduleStart,scheduleEnd,message:text};
+  currentAnalysis={ok:true,dayType,existingHours:existing,scheduleStart:start,scheduleEnd:end,allowedRanges:ranges,message:text,rawContext:ctx};
+  setStartOptions(ranges);
   showBox('#analysisBox',text,'ok');
   setTimeSection(true);
 }
@@ -310,6 +305,13 @@ function validateSelectedTime(showMessage){
   const end=clean(qs('#endTime').value);
   if(!a||!a.ok){const t=(a&&a.message)||'目前不可送出申請。'; if(showMessage)msg(t,'error'); return {ok:false,message:t};}
   if(!date||!start||!end){showBox('#lawHint',''); return {ok:false,message:'請選擇上班與下班時間。',silent:true};}
+
+  const sm=parseMinutes(start), em=parseMinutes(end);
+  const inRange=a.allowedRanges.some(r=>sm>=r.start&&em<=r.end&&em>sm);
+  if(!inRange){
+    const t='你選擇的時間不在系統開放的可申請時段內，請重新選擇。';
+    showBox('#lawHint',t,'error'); if(showMessage)msg(t,'error'); return {ok:false,message:t};
+  }
 
   const h=hoursBetween(date,start,end);
   if(h<=0){
@@ -323,13 +325,13 @@ function validateSelectedTime(showMessage){
   if(a.existingHours+h>12){
     const t=`這一天原本排班約 ${a.existingHours} 小時，加上本次 ${h} 小時後合計 ${a.existingHours+h} 小時，超過每日 12 小時上限，無法送出。`;
     showBox('#lawHint',t,'error'); if(showMessage)msg(t,'error'); return {ok:false,message:t};
-    }
+  }
   if((a.dayType==='平日'||a.dayType==='特殊打卡') && a.existingHours>=8 && h>4){
     const t=`這一天原本已達 ${a.existingHours} 小時，平日一般加班最多再申請 4 小時；本次 ${h} 小時超過上限，無法送出。`;
     showBox('#lawHint',t,'error'); if(showMessage)msg(t,'error'); return {ok:false,message:t};
   }
 
-  const okText=`目前可送出：${qs('#employeeType').value||'員工'}｜${a.dayType}｜原本 ${a.existingHours} 小時＋本次 ${h} 小時＝合計 ${a.existingHours+h} 小時。主管審核時仍會再次確認金額。`;
+  const okText=`目前可送出：${qs('#employeeType').value||'員工'}｜${a.dayType}｜原本 ${a.existingHours} 小時＋本次 ${h} 小時＝合計 ${a.existingHours+h} 小時。主管審核時會確認是否計薪與實際金額。`;
   showBox('#lawHint',okText,'ok');
   return {ok:true,hours:h,message:okText};
 }
@@ -338,7 +340,6 @@ async function submitRequest(){
   try{
     const emp=currentEmployee;
     const date=clean(qs('#workDate').value),start=clean(qs('#startTime').value),end=clean(qs('#endTime').value);
-    const payable=clean(qs('#payable').value);
     const reason=clean(qs('#reason').value);
     const empType=clean(qs('#employeeType').value)||'勞工';
 
@@ -364,7 +365,7 @@ async function submitRequest(){
       endTime:end,申請下班時間:end,
       requestedHours:h,申請時數:h,
       requestType:'補登 / 臨時出勤',申請類型:'補登 / 臨時出勤',
-      payable:payable,是否計薪:payable,
+      payable:'待主管審核',是否計薪:'待主管審核',
       hourlyRate:emp.hourlyRate,時薪:emp.hourlyRate,
       reason:reason,原因:reason,
       scheduleCheckNote:a.message,班表判斷:a.message,
