@@ -492,17 +492,11 @@
     const actionName=clean(payload.actionName); if(!employeeId || !actionName) return {ok:false,message:'缺少打卡資料。'};
     const clockDate=clean(payload.supplementDate)||ymd(now);
     const clockTime=clean(payload.supplementTime)||timeText(now);
-    const scheduleRes = await resolveScheduleContext({userId:employeeId, date:clockDate}).catch(()=>null);
-    const ctx = scheduleRes && scheduleRes.context ? scheduleRes.context : null;
-    const requestedType = clean(payload.clockType || payload.supplementClockType || '標準打卡') || '標準打卡';
-    if(ctx && !ctx.canRegister){ return {ok:false,message:'今天沒有排班，不能打卡。'}; }
-    if(ctx && requestedType==='標準打卡' && ctx.clockType && ctx.clockType !== '標準打卡'){ return {ok:false,message:'今天不是標準打卡班表。'}; }
-    if(ctx && requestedType==='特殊打卡' && !ctx.allowSpecial && ctx.clockType !== '特殊打卡'){ return {ok:false,message:'今天的班表未開放特殊打卡。'}; }
     const recordId='CLK_'+employeeId+'_'+Date.now();
+    // Firebase 主寫入版先保留前端能取得的資料；公司 Wi-Fi/IP、請假、班表深層規則仍需後續以 Cloud Functions 完整補強。
     await docSet('clockRecords', recordId, {
       recordId, employeeId, name:clean(user.name), email:lower(user.email), clockDate, clockTime,
-      actionName, clockType:requestedType,
-      scheduleLabel:ctx&&ctx.scheduleLabel||'', scheduleStart:ctx&&ctx.startTime||'', scheduleEnd:ctx&&ctx.endTime||'',
+      actionName, clockType:clean(payload.clockType || payload.supplementClockType || '標準打卡')||'標準打卡',
       status: truthy(payload.isSupplement)?'補打卡':'正常', lateMinutes:0, note:clean(payload.supplementReason || payload.note), sourceIp:clean(payload.clientIp),
       isSupplement:truthy(payload.isSupplement), source:'firebase-primary', createdAt:ts()
     });
@@ -560,101 +554,6 @@
     await docSet(collection,id,Object.assign({},payload,{source:'firebase-primary',createdAt:ts()}));
     return {ok:true,message:okMessage||'已儲存。',id};
   }
-  function truthyStrict(v){
-    const s=lower(v);
-    if(v===false || ['否','no','false','0','停用','disabled','inactive'].indexOf(s)>=0) return false;
-    return v===true || ['是','yes','true','1','啟用','enabled','active'].indexOf(s)>=0 || s==='';
-  }
-  async function simpleDelete(collection, idFields, payload, okMessage){
-    const id=clean(idFields.map(k=>payload&&payload[k]).find(Boolean));
-    if(!id) return {ok:false,message:'缺少刪除ID'};
-    const d=db(); if(!d) throw new Error('Firebase 尚未啟用');
-    await d.collection(collection).doc(id).delete();
-    return {ok:true,message:okMessage||'已刪除。',id};
-  }
-  const SCHEDULE_DAYS = [
-    {key:'sunday',label:'星期日'}, {key:'monday',label:'星期一'}, {key:'tuesday',label:'星期二'},
-    {key:'wednesday',label:'星期三'}, {key:'thursday',label:'星期四'}, {key:'friday',label:'星期五'}, {key:'saturday',label:'星期六'}
-  ];
-  function ymdFromAny(v){
-    if(!v) return '';
-    if(v && typeof v.toDate === 'function') return ymd(v.toDate());
-    if(v instanceof Date && !isNaN(v.getTime())) return ymd(v);
-    const s=clean(v); if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
-    const d=new Date(s); return isNaN(d.getTime()) ? s : ymd(d);
-  }
-  function hhmm(v){
-    const s=clean(v); if(!s) return '';
-    const m=s.match(/^(\d{1,2}):(\d{2})/); if(!m) return s;
-    return String(m[1]).padStart(2,'0')+':'+m[2];
-  }
-  function scheduleDay(dateKey){
-    const d=new Date(clean(dateKey)+'T00:00:00');
-    return isNaN(d.getTime()) ? SCHEDULE_DAYS[0] : SCHEDULE_DAYS[d.getDay()];
-  }
-  function templateDayValue(t, day, kind){
-    t=t||{};
-    if(kind==='type') return clean(t[day.key+'Type'] || t[day.label+'類型']);
-    if(kind==='start') return hhmm(t[day.key+'StartTime'] || t[day.key+'Time'] || t[day.label+'上班時間']);
-    if(kind==='end') return hhmm(t[day.key+'EndTime'] || t[day.label+'下班時間']);
-    if(kind==='allowSpecial') return truthy(t[day.key+'AllowSpecial'] != null ? t[day.key+'AllowSpecial'] : t[day.label+'允許特殊打卡']);
-    return '';
-  }
-  function templateDayFromDaysArray(t, day){
-    const rows=Array.isArray(t&&t.days)?t.days:[];
-    return rows.find(x=>clean(x.dayKey)===day.key || clean(x.dayLabel)===day.label) || null;
-  }
-  function normalizeScheduleFromTemplate(t, dateKey){
-    const day=scheduleDay(dateKey);
-    const arr=templateDayFromDaysArray(t, day);
-    const type=clean(templateDayValue(t,day,'type') || (arr && arr.type) || '無班') || '無班';
-    const start=hhmm(templateDayValue(t,day,'start') || (arr && arr.startTime));
-    const end=hhmm(templateDayValue(t,day,'end') || (arr && arr.endTime));
-    const allowSpecial=templateDayValue(t,day,'allowSpecial') || !!(arr && arr.allowSpecial);
-    return {date:dateKey,dayKey:day.key,dayLabel:day.label,clockType:type,startTime:start,endTime:end,allowSpecial};
-  }
-  function scheduleContextFromRow(row, dateKey, source){
-    const type=clean(row.clockType || row.type || '無班') || '無班';
-    const start=hhmm(row.startTime || row.shiftStart || row.time || '');
-    const end=hhmm(row.endTime || row.shiftEnd || '');
-    const allowSpecial=truthy(row.allowSpecial);
-    const isWork = type && type !== '無班';
-    const label = isWork ? (type==='標準打卡' ? `標準打卡 ${start || '--'} ～ ${end || '--'}` : type) : '無班';
-    return {
-      ok:true, workDate:dateKey, leaveDate:dateKey, date:dateKey,
-      canRegister:isWork, canLeave:isWork, isWorkDay:isWork,
-      statusLabel:isWork?'當天有排班':'當天沒有排班', scheduleLabel:label,
-      helperText:isWork?'已依 Firebase 班表判斷。':'這一天沒有班表或設定為無班。',
-      blockedReason:isWork?'':'這一天沒有排班。', clockType:type,
-      startTime:start, endTime:end, shiftStart:start, shiftEnd:end, allowSpecial, source
-    };
-  }
-  async function resolveScheduleContext(payload){
-    const employeeId=clean(payload&& (payload.userId || payload.employeeId));
-    const dateKey=ymdFromAny((payload&& (payload.workDate || payload.leaveDate || payload.date)) || todayKey());
-    if(!employeeId || !dateKey) return {ok:false,message:'缺少員工或日期資料'};
-    const [singleRows, assignRows, templateRows] = await Promise.all([all('singleDaySchedules'), all('employeeSchedules'), all('scheduleTemplates')]);
-    const single=(singleRows||[]).filter(r=>clean(r.employeeId||r['員工ID'])===employeeId && ymdFromAny(r.date||r['日期'])===dateKey && truthyStrict(r.enabled!=null?r.enabled:r['啟用']))
-      .sort((a,b)=>clean(b.updatedAt||b.createdAt).localeCompare(clean(a.updatedAt||a.createdAt)))[0];
-    if(single){
-      return {ok:true,context:scheduleContextFromRow({clockType:single.clockType||single['打卡類型'],startTime:single.startTime||single['上班時間'],endTime:single.endTime||single['下班時間'],allowSpecial:single.allowSpecial||single['允許特殊打卡']}, dateKey, 'singleDaySchedules')};
-    }
-    const assignments=(assignRows||[]).filter(a=>{
-      if(clean(a.employeeId||a['員工ID'])!==employeeId) return false;
-      if(!truthyStrict(a.enabled!=null?a.enabled:a['啟用'])) return false;
-      const start=ymdFromAny(a.startDate||a['開始日期']);
-      const end=ymdFromAny(a.endDate||a['結束日期']);
-      const indefinite=truthy(a.indefinite||a['無期限']);
-      return (!start || start<=dateKey) && (indefinite || !end || end>=dateKey);
-    }).sort((a,b)=>ymdFromAny(b.startDate||b['開始日期']).localeCompare(ymdFromAny(a.startDate||a['開始日期'])));
-    const assignment=assignments[0];
-    if(!assignment) return {ok:true,context:scheduleContextFromRow({clockType:'無班'},dateKey,'none')};
-    const tid=clean(assignment.templateId||assignment['模板ID']);
-    const template=(templateRows||[]).find(t=>clean(t.templateId||t['模板ID']||t.__id)===tid && truthyStrict(t.enabled!=null?t.enabled:t['啟用']));
-    if(!template) return {ok:true,context:scheduleContextFromRow({clockType:'無班'},dateKey,'templateMissing')};
-    const sch=normalizeScheduleFromTemplate(template,dateKey);
-    return {ok:true,context:scheduleContextFromRow(sch,dateKey,'scheduleTemplates')};
-  }
   async function firebaseSaveNotification(action,payload){
     if(action==='saveNotificationSettings' && fb.mirrorNotificationSettings){ await fb.mirrorNotificationSettings((payload&&payload.rows)||[]); return {ok:true,message:'通知設定已儲存。'}; }
     if(action==='saveNotificationTimeRules' && fb.mirrorNotificationTimeRules){ await fb.mirrorNotificationTimeRules((payload&&payload.rows)||[]); return {ok:true,message:'提醒時間規則已儲存。'}; }
@@ -679,11 +578,7 @@
     if(a==='leaveRequest'||a==='modifyLeaveRequest'||a==='deleteLeaveRequest'||a==='reviewLeaveRequest') return await firebaseLeave(a,payload||{});
     if(a==='parttime') return await firebaseParttime(payload||{});
     if(a==='submitClockCorrection'||a==='approveClockCorrectionApi'||a==='rejectClockCorrectionApi') return await firebaseClockCorrection(a,payload||{});
-    if(a==='getParttimeDateContext' || a==='getLeaveDateContext') return await resolveScheduleContext(payload||{});
     if(a==='saveNotificationSettings'||a==='saveNotificationTimeRules') return await firebaseSaveNotification(a,payload||{});
-    if(a==='deleteScheduleTemplate'){ return await simpleDelete('scheduleTemplates',['templateId','模板ID'],payload||{},'班表模板已刪除。'); }
-    if(a==='deleteEmployeeSchedule'){ return await simpleDelete('employeeSchedules',['assignmentId','套用ID'],payload||{},'員工班表已刪除。'); }
-    if(a==='deleteSingleDaySchedule'){ return await simpleDelete('singleDaySchedules',['recordId','單日ID'],payload||{},'單日班表已刪除。'); }
     if(primaryMap[a]){ const [col,ids,msg]=primaryMap[a]; return await simpleSave(col,ids,payload||{},msg); }
     return null;
   }
