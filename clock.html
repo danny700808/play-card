@@ -33,6 +33,13 @@
     .hidden{display:none!important}
     @media(max-width:720px){.clock-mode-grid{grid-template-columns:1fr}.clock-mode-btn{font-size:17px;padding:15px 12px}}
 
+
+    .clock-mode-screen.hidden{display:none!important}
+    .clock-mode-screen{border:1px solid var(--line,#e5e7eb);border-radius:18px;background:#fff;padding:16px;margin-top:12px}
+    .clock-mode-screen .mode-title{font-size:22px;font-weight:900;margin-bottom:6px;color:#111827}
+    .clock-mode-screen .mode-note{font-size:14px;color:#6b7280;line-height:1.6;margin-bottom:12px}
+    .clock-back-btn{background:#374151!important;color:#fff!important;border:0!important}
+
   </style>
 </head>
 <body onload="init()">
@@ -75,12 +82,13 @@
       </div>
 
       <div id="mainMsg" class="message local-message"></div>
-      <div id="clockActionPanel" class="hidden">
-        <div class="clock-action-title" id="clockActionTitle">請選擇打卡方式</div>
-        <div class="clock-action-note" id="clockActionNote"></div>
+      <div id="clockActionPanel" class="clock-mode-screen hidden">
+        <div class="mode-title" id="clockActionTitle">請選擇打卡方式</div>
+        <div class="mode-note" id="clockActionNote"></div>
         <div class="btn-row btn-row-clock">
           <button class="btn" id="clockInBtn">上班打卡</button>
           <button class="btn" id="clockOutBtn">下班打卡</button>
+          <button class="btn clock-back-btn" type="button" onclick="backToClockModes()">返回</button>
         </div>
       </div>
     </div>
@@ -133,18 +141,33 @@
     function selectClockMode(mode){
       qs('#clockType').value = mode;
       qs('#clockActionPanel').classList.remove('hidden');
+
       qsa('.clock-mode-btn').forEach(btn => btn.classList.remove('active'));
+      if(qs('#modeStandardBtn')) qs('#modeStandardBtn').classList.add(mode === '標準打卡' ? 'active' : 'hidden');
+      if(qs('#modeSpecialBtn')) qs('#modeSpecialBtn').classList.add(mode === '特殊打卡' ? 'active' : 'hidden');
+      if(qs('#modeTempBtn')) qs('#modeTempBtn').classList.add('hidden');
+
       if(mode === '標準打卡'){
-        qs('#modeStandardBtn').classList.add('active');
         qs('#clockActionTitle').textContent = '標準打卡';
         qs('#clockActionNote').textContent = '正常在公司上班使用；上班打卡需符合公司指定網路規則。';
       }else if(mode === '特殊打卡'){
-        qs('#modeSpecialBtn').classList.add('active');
         qs('#clockActionTitle').textContent = '特殊打卡';
         qs('#clockActionNote').textContent = '社團課、外出支援、外場活動等不在公司上班時使用。';
       }
+
       setActionButtonIdle(qs('#clockInBtn'), '上班打卡');
       setActionButtonIdle(qs('#clockOutBtn'), '下班打卡');
+      setMsg(qs('#mainMsg'), '');
+    }
+
+
+    function backToClockModes(){
+      qs('#clockType').value = '';
+      qs('#clockActionPanel').classList.add('hidden');
+      qsa('.clock-mode-btn').forEach(btn => btn.classList.remove('active'));
+      qs('#modeStandardBtn') && qs('#modeStandardBtn').classList.remove('hidden');
+      qs('#modeSpecialBtn') && qs('#modeSpecialBtn').classList.remove('hidden');
+      qs('#modeTempBtn') && qs('#modeTempBtn').classList.remove('hidden');
       setMsg(qs('#mainMsg'), '');
     }
 
