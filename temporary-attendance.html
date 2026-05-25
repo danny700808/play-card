@@ -5,35 +5,73 @@
 <title>補登 / 臨時出勤申請</title><link rel="stylesheet" href="style.css">
 <style>
 :root{--brand:#1f7a5a;--red:#b42318;--line:#e5e7eb;--muted:#6b7280;--bg:#f6f8fb;--ink:#111827}
-body{background:var(--bg);color:var(--ink)}.container{max-width:980px;margin:0 auto;padding:16px}.card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:18px;margin-bottom:16px}.title{font-size:26px;font-weight:900;margin:0}.muted{color:var(--muted);line-height:1.7}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.field label{display:block;font-weight:900;margin-bottom:6px}.field input,.field select,.field textarea{width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:12px;padding:12px;background:#fff;font-size:16px}.field textarea{min-height:110px}.btn{display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:12px;padding:12px 16px;background:var(--brand);color:#fff;font-weight:900;text-decoration:none;cursor:pointer}.btn.red{background:var(--red)}.message{margin-top:12px}.success{padding:12px 14px;border-radius:14px;background:#ecfdf3;border:1px solid #bbf7d0;color:#166534}.error{padding:12px 14px;border-radius:14px;background:#fff1f2;border:1px solid #fecdd3;color:#9f1239}.notice{padding:12px 14px;border-radius:14px;background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af}.law-hint{margin-top:10px;padding:12px 14px;border-radius:14px;background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;line-height:1.7}.readonly-box{padding:12px;border:1px solid var(--line);border-radius:12px;background:#f9fafb;font-weight:900}@media(max-width:720px){.grid{grid-template-columns:1fr}.container{padding:10px}.title{font-size:23px}}
+body{background:var(--bg);color:var(--ink)}
+.container{max-width:980px;margin:0 auto;padding:16px}
+.card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:18px;margin-bottom:16px}
+.title{font-size:26px;font-weight:900;margin:0}
+.muted{color:var(--muted);line-height:1.7}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.field label{display:block;font-weight:900;margin-bottom:6px}
+.field input,.field select,.field textarea{width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:12px;padding:12px;background:#fff;font-size:16px}
+.field textarea{min-height:110px}
+.btn{display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:12px;padding:12px 16px;background:var(--brand);color:#fff;font-weight:900;text-decoration:none;cursor:pointer}
+.btn.red{background:var(--red)}
+.btn.gray{background:#374151}
+.message{margin-top:12px}
+.success{padding:12px 14px;border-radius:14px;background:#ecfdf3;border:1px solid #bbf7d0;color:#166534}
+.error{padding:12px 14px;border-radius:14px;background:#fff1f2;border:1px solid #fecdd3;color:#9f1239}
+.notice{padding:12px 14px;border-radius:14px;background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af}
+.law-hint{margin-top:10px;padding:12px 14px;border-radius:14px;background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;line-height:1.7;white-space:pre-line}
+.readonly-box{padding:12px;border:1px solid var(--line);border-radius:12px;background:#f9fafb;font-weight:900}
+.hidden{display:none!important}
+@media(max-width:720px){.grid{grid-template-columns:1fr}.container{padding:10px}.title{font-size:23px}}
 </style>
 </head>
 <body onload="init()"><div class="container">
-<div class="card"><h1 class="title">補登 / 臨時出勤申請</h1><div class="muted">忘記打卡、臨時加班、沒有排班但實際有上班時，請從這裡送出申請。送出前系統會先檢查每日工時上限；不符合規則時會先提醒並停止送出，避免送到主管端後才退回。</div><div id="msg" class="message"></div></div>
-<div class="card"><div class="grid">
-<div class="field"><label>員工</label><div id="employeeNameBox" class="readonly-box">讀取中...</div><select id="employeeSelect" style="display:none"></select></div>
-<div class="field"><label>員工身分</label><div id="employeeTypeBox" class="readonly-box">自動判斷</div><input type="hidden" id="employeeType" value=""></div>
-<div class="field"><label>申請日期</label><input id="workDate" type="date"></div>
-<div class="field"><label>出勤日別</label><select id="dayType" onchange="validateBeforeSubmit(false)">
-  <option value="平日">平日 / 一般工作日</option>
-  <option value="休息日">休息日</option>
-  <option value="例假日">例假日（不可用本流程）</option>
-  <option value="國定假日/特休">國定假日 / 特休</option>
-</select></div>
-<div class="field"><label>申請上班時間</label><select id="startTime" onchange="validateBeforeSubmit(false)"></select></div>
-<div class="field"><label>申請下班時間</label><select id="endTime" onchange="validateBeforeSubmit(false)"></select></div>
-<div class="field"><label>當天原本已排班 / 已工作時數</label><select id="existingHours" onchange="validateBeforeSubmit(false)"></select><div class="muted" style="font-size:13px;margin-top:6px">若今天原本沒有班，請選 0。若已有班，請選原本已排班或已工作時數。</div></div>
-<div class="field"><label>是否計薪</label><select id="payable"><option value="是">是</option><option value="否">否</option></select></div>
-<input type="hidden" id="requestType" value="補登 / 臨時出勤">
-</div><div id="lawHint" class="law-hint hidden"></div><div class="field" style="margin-top:12px"><label>備註（選填）</label><textarea id="reason" placeholder="可簡單填寫，例如：忘記打卡、臨時加班、原本無排班但實際有上班"></textarea></div>
-<div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap"><button class="btn" onclick="submitRequest()">送出申請</button><a class="btn red" href="javascript:history.back()">返回</a></div></div>
+<div class="card">
+  <h1 class="title">補登 / 臨時出勤申請</h1>
+  <div class="muted">請先選擇申請日期。系統會依登入員工本人與班表先判斷是否可申請；若不符合規則，會直接顯示原因，不會讓你選時間或送出。</div>
+  <div id="msg" class="message"></div>
 </div>
-<script src="config.js?v=20260524tempatt3"></script>
-<script src="app.js?v=20260524tempatt3"></script>
+
+<div class="card">
+  <div class="grid">
+    <div class="field"><label>員工</label><div id="employeeNameBox" class="readonly-box">讀取中...</div><select id="employeeSelect" style="display:none"></select></div>
+    <div class="field"><label>員工身分</label><div id="employeeTypeBox" class="readonly-box">自動判斷</div><input type="hidden" id="employeeType" value=""></div>
+    <div class="field"><label>申請日期</label><input id="workDate" type="date" onchange="analyzeSelectedDate()"></div>
+  </div>
+
+  <div id="analysisBox" class="law-hint hidden"></div>
+
+  <div id="timeSection" class="hidden">
+    <div class="grid" style="margin-top:12px">
+      <div class="field"><label>申請上班時間</label><select id="startTime" onchange="validateSelectedTime(false)"></select></div>
+      <div class="field"><label>申請下班時間</label><select id="endTime" onchange="validateSelectedTime(false)"></select></div>
+      <div class="field"><label>是否計薪</label><select id="payable"><option value="是">是</option><option value="否">否</option></select></div>
+    </div>
+    <div id="lawHint" class="law-hint hidden"></div>
+    <div class="field" style="margin-top:12px"><label>備註（選填）</label><textarea id="reason" placeholder="可簡單填寫，例如：忘記打卡、臨時加班、原本無排班但實際有上班"></textarea></div>
+    <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn" onclick="submitRequest()">送出申請</button>
+      <a class="btn red" href="javascript:history.back()">返回</a>
+    </div>
+  </div>
+
+  <div id="blockedReturn" class="hidden" style="margin-top:14px">
+    <a class="btn gray" href="javascript:history.back()">返回</a>
+  </div>
+</div>
+</div>
+
+<script src="config.js?v=20260524tempatt4"></script>
+<script src="app.js?v=20260524tempatt4"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
 <script>
 let employees=[];
+let currentEmployee=null;
+let currentAnalysis=null;
+
 function qs(s){return document.querySelector(s)}
 function clean(v){return String(v==null?'':v).trim()}
 function msg(t,type='success'){qs('#msg').innerHTML=t?`<div class="${type}">${t}</div>`:''}
@@ -43,24 +81,50 @@ function fb(){if(!(window.APP_CONFIG&&window.APP_CONFIG.FIREBASE_CONFIG))throw n
 function raw(o,keys){const src=o&&o.source||{};for(const k of keys){if(o&&o[k]!=null&&clean(o[k])!=='')return o[k]}for(const k of keys){if(src&&src[k]!=null&&clean(src[k])!=='')return src[k]}return''}
 function isPart(o){return raw(o,['isPartTime','是否工讀生'])===true||clean(raw(o,['是否工讀生'])).includes('是')||clean(raw(o,['identityType','身分類型','員工身分','employeeType'])).toLowerCase().includes('part')||clean(raw(o,['職位','職務','role'])).includes('工讀')}
 
-function populateTimeOptions(){
-  const opts=[];
-  for(let h=0;h<24;h++){['00','30'].forEach(m=>opts.push(String(h).padStart(2,'0')+':'+m))}
-  ['#startTime','#endTime'].forEach(sel=>{const el=qs(sel);if(el)el.innerHTML='<option value="">請選擇</option>'+opts.map(t=>`<option value="${t}">${t}</option>`).join('')});
+function parseMinutes(v){
+  const s=clean(v);
+  const m=s.match(/(\d{1,2}):(\d{2})/);
+  if(!m)return null;
+  return Number(m[1])*60+Number(m[2]);
 }
-function populateExistingHours(){
-  const opts=[];
-  for(let h=0;h<=12;h+=0.5){opts.push(Number.isInteger(h)?String(h):String(h))}
-  const el=qs('#existingHours');
-  if(el)el.innerHTML=opts.map(h=>`<option value="${h}">${h} 小時</option>`).join('');
+function minToTime(min){
+  min=Math.max(0,Math.min(24*60,min));
+  const h=Math.floor(min/60), m=min%60;
+  return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0');
 }
 function hoursBetween(date,start,end){const a=new Date(date+'T'+start+':00');const b=new Date(date+'T'+end+':00');const diff=(b-a)/3600000;return Math.max(0,Math.round(diff*100)/100)}
 
+function showBox(sel,text,type){
+  const box=qs(sel);
+  if(!box)return;
+  if(!text){box.classList.add('hidden');box.textContent='';return}
+  box.classList.remove('hidden');
+  box.textContent=text;
+  box.style.background=type==='error'?'#fff1f2':type==='ok'?'#ecfdf3':'#fff7ed';
+  box.style.borderColor=type==='error'?'#fecdd3':type==='ok'?'#bbf7d0':'#fed7aa';
+  box.style.color=type==='error'?'#9f1239':type==='ok'?'#166534':'#9a3412';
+}
+function setTimeSection(show){
+  qs('#timeSection').classList.toggle('hidden', !show);
+  qs('#blockedReturn').classList.toggle('hidden', show);
+}
+
+function halfHourOptions(startMin=0,endMin=24*60){
+  const opts=[];
+  startMin=Math.ceil(startMin/30)*30;
+  endMin=Math.floor(endMin/30)*30;
+  for(let m=startMin;m<=endMin;m+=30) opts.push(minToTime(m));
+  return opts;
+}
+function setTimeOptions(startOpts,endOpts){
+  qs('#startTime').innerHTML='<option value="">請選擇</option>'+startOpts.map(t=>`<option value="${t}">${t}</option>`).join('');
+  qs('#endTime').innerHTML='<option value="">請選擇</option>'+endOpts.map(t=>`<option value="${t}">${t}</option>`).join('');
+}
+
 async function init(){
   try{
-    qs('#workDate').value=new Date().toISOString().slice(0,10);
-    populateTimeOptions();
-    populateExistingHours();
+    const today=new Date().toISOString().slice(0,10);
+    qs('#workDate').value=today;
 
     let loginUser=null;
     try{loginUser=(typeof requireLogin==='function')?requireLogin():null}catch(e){loginUser=null}
@@ -91,90 +155,198 @@ async function init(){
       qs('#employeeNameBox').textContent='找不到登入員工資料，請重新登入。';
       qs('#employeeTypeBox').textContent='無法判斷';
       msg('找不到登入員工資料，無法送出申請。','error');
+      setTimeSection(false);
       return;
     }
 
-    employees=[me];
+    currentEmployee=me;
     qs('#employeeSelect').innerHTML=`<option value="${me.id}">${me.name}</option>`;
     qs('#employeeSelect').value=me.id;
     qs('#employeeNameBox').textContent=`${me.name}｜${money(me.hourlyRate)}/時`;
     const empType=me.part?'工讀生':'專職員工';
     qs('#employeeType').value=empType;
     qs('#employeeTypeBox').textContent=empType;
-    validateBeforeSubmit(false);
+
+    await analyzeSelectedDate();
   }catch(e){msg('初始化失敗：'+(e.message||e),'error')}
 }
 
-function showLawHint(text,type){
-  const box=qs('#lawHint');
-  if(!box)return;
-  if(!text){box.classList.add('hidden');box.textContent='';return}
-  box.classList.remove('hidden');
-  box.textContent=text;
-  box.style.background=type==='error'?'#fff1f2':'#fff7ed';
-  box.style.borderColor=type==='error'?'#fecdd3':'#fed7aa';
-  box.style.color=type==='error'?'#9f1239':'#9a3412';
+async function fetchCollection(name){
+  try{
+    const snap=await fb().collection(name).get();
+    const rows=[]; snap.forEach(doc=>rows.push(Object.assign({__id:doc.id},doc.data()||{})));
+    return rows;
+  }catch(e){return []}
 }
 
-function validateBeforeSubmit(showMessage){
+function sameEmp(r, emp){
+  const id=clean(raw(r,['employeeId','員工ID','staffId','員編']) || r.employeeId || r.員工ID);
+  const name=clean(raw(r,['name','姓名']) || r.name || r.姓名);
+  const email=clean(raw(r,['email','Email']) || r.email || r.Email);
+  return (id&&id===emp.id) || (name&&name===emp.name) || (email&&emp.email&&email===emp.email);
+}
+function dateOf(r){
+  return clean(raw(r,['date','workDate','scheduleDate','日期','班表日期','clockDate','打卡日期']) || r.date || r.日期);
+}
+function dayTypeOf(r){
+  const s=clean(raw(r,['dayType','出勤日別','scheduleType','班表類型','clockType','打卡方式','type','類型','狀態']) || '');
+  if(s.includes('例假'))return '例假日';
+  if(s.includes('休息'))return '休息日';
+  if(s.includes('無班'))return '無班';
+  if(s.includes('特殊'))return '特殊打卡';
+  if(s.includes('標準'))return '平日';
+  return '';
+}
+function startOf(r){
+  return clean(raw(r,['startTime','開始時間','上班時間','班表開始','shiftStart','workStart']) || '');
+}
+function endOf(r){
+  return clean(raw(r,['endTime','結束時間','下班時間','班表結束','shiftEnd','workEnd']) || '');
+}
+
+async function analyzeSelectedDate(){
+  const emp=currentEmployee;
+  const date=clean(qs('#workDate').value);
+  currentAnalysis=null;
+  setTimeSection(false);
+  showBox('#lawHint','');
+  if(!emp||!date){showBox('#analysisBox','請先選擇日期。','notice');return}
+
+  showBox('#analysisBox','正在查詢班表並判斷可申請時間，請稍候...','notice');
+
+  // Try multiple likely schedule collections. If your system only has one of them, the first found rows will be used.
+  const collectionNames=['employeeSchedules','schedules','shiftSchedules','workSchedules','scheduleRecords'];
+  let schedules=[];
+  for(const c of collectionNames){
+    const rows=await fetchCollection(c);
+    schedules=schedules.concat(rows.map(r=>Object.assign({_collection:c},r)));
+  }
+
+  const dayRows=schedules.filter(r=>sameEmp(r,emp)&&dateOf(r)===date);
+  let dayType='無班';
+  let scheduleStart='', scheduleEnd='', existingHours=0;
+
+  if(dayRows.length){
+    // Prefer explicit day off rows first.
+    const regularHoliday=dayRows.find(r=>dayTypeOf(r)==='例假日');
+    const restDay=dayRows.find(r=>dayTypeOf(r)==='休息日');
+    const noShift=dayRows.find(r=>dayTypeOf(r)==='無班');
+    const workRow=dayRows.find(r=>parseMinutes(startOf(r))!=null && parseMinutes(endOf(r))!=null) || dayRows[0];
+
+    if(regularHoliday){ dayType='例假日'; }
+    else if(restDay){ dayType='休息日'; }
+    else if(noShift && !workRow){ dayType='無班'; }
+    else {
+      const t=dayTypeOf(workRow);
+      dayType=(t&&t!=='無班')?t:'平日';
+      scheduleStart=startOf(workRow);
+      scheduleEnd=endOf(workRow);
+      const st=parseMinutes(scheduleStart), en=parseMinutes(scheduleEnd);
+      if(st!=null&&en!=null&&en>st) existingHours=Math.round(((en-st)/60)*100)/100;
+    }
+  }
+
+  if(dayType==='例假日'){
+    const text='系統判斷：這一天是例假日。\n例假日不可用補登 / 臨時出勤流程送出加班申請，因此不開放選擇時間。';
+    showBox('#analysisBox',text,'error');
+    setTimeSection(false);
+    currentAnalysis={ok:false,dayType,existingHours,message:text};
+    return;
+  }
+
+  let startOpts=[], endOpts=[], text='';
+  if(dayType==='平日'||dayType==='特殊打卡'){
+    const st=parseMinutes(scheduleStart), en=parseMinutes(scheduleEnd);
+    if(st!=null&&en!=null&&en>st){
+      if(existingHours>=12){
+        text=`系統判斷：這一天原本班表已達 ${existingHours} 小時，已達每日工時上限，因此不能再送出臨時加班申請。`;
+        showBox('#analysisBox',text,'error'); setTimeSection(false);
+        currentAnalysis={ok:false,dayType,existingHours,scheduleStart,scheduleEnd,message:text}; return;
+      }
+      // For scheduled day, temporary attendance can only start after shift end.
+      const maxEnd=24*60;
+      startOpts=halfHourOptions(en,maxEnd-30);
+      endOpts=halfHourOptions(en+30,maxEnd);
+      text=`系統判斷：這一天已有班表 ${scheduleStart}～${scheduleEnd}，原本排班約 ${existingHours} 小時。\n補登 / 臨時出勤只開放班表外時間；如果是班表內忘記打卡或打錯時間，請到打卡紀錄提出補登修正。`;
+    }else{
+      dayType='無班';
+    }
+  }
+
+  if(dayType==='休息日'){
+    startOpts=halfHourOptions(0,24*60-30);
+    endOpts=halfHourOptions(30,24*60);
+    text='系統判斷：這一天是休息日。\n可送出休息日出勤申請，主管審核時會依休息日出勤規則試算金額。';
+  }
+
+  if(dayType==='無班'){
+    startOpts=halfHourOptions(0,24*60-30);
+    endOpts=halfHourOptions(30,24*60);
+    text='系統判斷：這一天目前沒有排班。\n可送出臨時出勤申請，主管核准後才會正式補進打卡、時數與薪資。';
+  }
+
+  if(dayType==='國定假日/特休'){
+    startOpts=halfHourOptions(0,24*60-30);
+    endOpts=halfHourOptions(30,24*60);
+    text='系統判斷：這一天屬於國定假日 / 特休類型。\n可送出申請，但主管審核時會再次確認給薪方式。';
+  }
+
+  if(!startOpts.length||!endOpts.length){
+    text='系統目前找不到可開放的補登 / 臨時出勤時間，因此不開放送出。';
+    showBox('#analysisBox',text,'error'); setTimeSection(false);
+    currentAnalysis={ok:false,dayType,existingHours,message:text}; return;
+  }
+
+  setTimeOptions(startOpts,endOpts);
+  currentAnalysis={ok:true,dayType,existingHours,scheduleStart,scheduleEnd,message:text};
+  showBox('#analysisBox',text,'ok');
+  setTimeSection(true);
+}
+
+function validateSelectedTime(showMessage){
+  const a=currentAnalysis;
   const date=clean(qs('#workDate').value);
   const start=clean(qs('#startTime').value);
   const end=clean(qs('#endTime').value);
-  const dayType=clean(qs('#dayType').value);
-  const existing=safeNum(qs('#existingHours').value);
-  const empType=clean(qs('#employeeType').value)||'勞工';
-
-  if(dayType==='例假日'){
-    const t='這一天選擇為例假日，例假日不可用補登 / 臨時出勤流程送出加班申請。請改由主管人工確認是否屬法定特殊狀況。';
-    showLawHint(t,'error'); if(showMessage)msg(t,'error'); return {ok:false,message:t};
-  }
-
-  if(!date||!start||!end){
-    showLawHint('', 'notice');
-    return {ok:false,message:'請先選擇日期、上班時間與下班時間。',silent:true};
-  }
+  if(!a||!a.ok){const t=(a&&a.message)||'目前不可送出申請。'; if(showMessage)msg(t,'error'); return {ok:false,message:t};}
+  if(!date||!start||!end){showBox('#lawHint',''); return {ok:false,message:'請選擇上班與下班時間。',silent:true};}
 
   const h=hoursBetween(date,start,end);
   if(h<=0){
     const t='下班時間必須晚於上班時間，請重新選擇。';
-    showLawHint(t,'error'); if(showMessage)msg(t,'error'); return {ok:false,message:t};
+    showBox('#lawHint',t,'error'); if(showMessage)msg(t,'error'); return {ok:false,message:t};
   }
-
   if(h>12){
     const t='本次申請時數超過 12 小時，不符合每日工時上限，無法送出。';
-    showLawHint(t,'error'); if(showMessage)msg(t,'error'); return {ok:false,message:t};
+    showBox('#lawHint',t,'error'); if(showMessage)msg(t,'error'); return {ok:false,message:t};
+  }
+  if(a.existingHours+h>12){
+    const t=`這一天原本排班約 ${a.existingHours} 小時，加上本次 ${h} 小時後合計 ${a.existingHours+h} 小時，超過每日 12 小時上限，無法送出。`;
+    showBox('#lawHint',t,'error'); if(showMessage)msg(t,'error'); return {ok:false,message:t};
+    }
+  if((a.dayType==='平日'||a.dayType==='特殊打卡') && a.existingHours>=8 && h>4){
+    const t=`這一天原本已達 ${a.existingHours} 小時，平日一般加班最多再申請 4 小時；本次 ${h} 小時超過上限，無法送出。`;
+    showBox('#lawHint',t,'error'); if(showMessage)msg(t,'error'); return {ok:false,message:t};
   }
 
-  if(existing+h>12){
-    const t=`你填寫的當天原本時數 ${existing} 小時，加上本次 ${h} 小時後合計 ${existing+h} 小時，超過每日 12 小時上限，無法送出。`;
-    showLawHint(t,'error'); if(showMessage)msg(t,'error'); return {ok:false,message:t};
-  }
-
-  if(dayType==='平日' && existing>=8 && h>4){
-    const t=`你填寫當天原本已達 ${existing} 小時，平日一般加班最多再申請 4 小時；本次 ${h} 小時超過上限，無法送出。`;
-    showLawHint(t,'error'); if(showMessage)msg(t,'error'); return {ok:false,message:t};
-  }
-
-  const okText=`目前試算可送出：${empType}｜${dayType}｜原本 ${existing} 小時＋本次 ${h} 小時＝合計 ${existing+h} 小時。主管審核時仍會再次確認時數、日別與金額。`;
-  showLawHint(okText,'notice');
+  const okText=`目前可送出：${qs('#employeeType').value||'員工'}｜${a.dayType}｜原本 ${a.existingHours} 小時＋本次 ${h} 小時＝合計 ${a.existingHours+h} 小時。主管審核時仍會再次確認金額。`;
+  showBox('#lawHint',okText,'ok');
   return {ok:true,hours:h,message:okText};
 }
 
 async function submitRequest(){
   try{
-    const emp=employees.find(e=>e.id===qs('#employeeSelect').value);
+    const emp=currentEmployee;
     const date=clean(qs('#workDate').value),start=clean(qs('#startTime').value),end=clean(qs('#endTime').value);
-    const type=clean(qs('#requestType').value)||'補登 / 臨時出勤';
     const payable=clean(qs('#payable').value);
     const reason=clean(qs('#reason').value);
-    const dayType=clean(qs('#dayType').value);
-    const existingHours=safeNum(qs('#existingHours').value);
     const empType=clean(qs('#employeeType').value)||'勞工';
 
-    if(!emp||!date||!start||!end){msg('請填寫日期、上班時間與下班時間。','error');return}
-    const check=validateBeforeSubmit(true);
+    if(!emp){msg('找不到登入員工資料，請重新登入。','error');return}
+    const check=validateSelectedTime(true);
     if(!check.ok)return;
 
+    const a=currentAnalysis;
     const h=check.hours;
     const id='TEMP_ATT_'+emp.id+'_'+date.replace(/-/g,'')+'_'+Date.now();
     await fb().collection('temporaryAttendanceRequests').doc(id).set({
@@ -184,15 +356,18 @@ async function submitRequest(){
       email:emp.email||'',
       employeeType:empType,員工身分:empType,
       date:date,日期:date,
-      dayType:dayType,出勤日別:dayType,
-      existingHours:existingHours,當天原本時數:existingHours,
+      dayType:a.dayType,出勤日別:a.dayType,
+      existingHours:a.existingHours,當天原本時數:a.existingHours,
+      scheduleStart:a.scheduleStart||'',原班表上班時間:a.scheduleStart||'',
+      scheduleEnd:a.scheduleEnd||'',原班表下班時間:a.scheduleEnd||'',
       startTime:start,申請上班時間:start,
       endTime:end,申請下班時間:end,
       requestedHours:h,申請時數:h,
-      requestType:type,申請類型:type,
+      requestType:'補登 / 臨時出勤',申請類型:'補登 / 臨時出勤',
       payable:payable,是否計薪:payable,
       hourlyRate:emp.hourlyRate,時薪:emp.hourlyRate,
       reason:reason,原因:reason,
+      scheduleCheckNote:a.message,班表判斷:a.message,
       lawCheckNote:check.message,送出前檢查:check.message,
       status:'待審核',狀態:'待審核',
       createdAt:new Date().toISOString()
