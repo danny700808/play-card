@@ -30,7 +30,7 @@ body{background:var(--bg);color:var(--ink)}
 <body onload="init()"><div class="container">
 <div class="card">
   <h1 class="title">補登 / 臨時出勤申請</h1>
-  <div class="muted">請先選擇申請日期。系統會呼叫後端原本班表邏輯查詢這位員工當天班表與已核准請假；不符合規則時只顯示原因，不會開放時間或送出。</div>
+  <div class="muted">請先選擇申請日期。系統會呼叫原本班表邏輯查詢這位員工當天班表與已核准請假；不符合規則時只顯示原因，不會開放時間或送出。</div>
   <div id="msg" class="message"></div>
 </div>
 
@@ -229,7 +229,7 @@ async function analyzeSelectedDate(){
 
   let res=null;
   try{
-    res=await api('getTemporaryAttendanceDateContext',{userId:emp.id,workDate:date,date:date});
+    res=await api('getParttimeDateContext',{userId:emp.id,workDate:date,date:date});
   }catch(e){
     res={ok:false,message:e.message||'班表查詢失敗'};
   }
