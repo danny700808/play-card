@@ -23,6 +23,16 @@
     @media (max-width: 640px){
       .search-grid{grid-template-columns:1fr}
     }
+
+    .clock-mode-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:12px 0}
+    .clock-mode-btn{border:1px solid var(--line,#e5e7eb);background:#fff;color:#111827;border-radius:16px;padding:16px 12px;font-size:18px;font-weight:900;text-align:center;cursor:pointer;box-shadow:0 8px 20px rgba(15,23,42,.04)}
+    .clock-mode-btn.active{background:#1f7a5a;color:#fff;border-color:#1f7a5a}
+    .clock-mode-btn.red{background:#b42318;color:#fff;border-color:#b42318}
+    .clock-action-title{font-weight:900;font-size:18px;margin:12px 0 8px;color:#111827}
+    .clock-action-note{font-size:14px;color:#6b7280;line-height:1.6;margin-bottom:10px}
+    .hidden{display:none!important}
+    @media(max-width:720px){.clock-mode-grid{grid-template-columns:1fr}.clock-mode-btn{font-size:17px;padding:15px 12px}}
+
   </style>
 </head>
 <body onload="init()">
@@ -40,76 +50,38 @@
       <div class="timebox" id="nowBox"></div>
 
       <div class="help-box">
-        <div class="help-title">打卡注意事項</div>
+        <div class="help-title">打卡說明</div>
         <ol class="muted">
-          <li>打卡前請先連接公司指定 Wi‑Fi：<strong>YOUZI</strong>，密碼：<strong>12345679</strong>。</li>
-          <li>只有連接公司指定網路並符合打卡條件時，才可完成打卡。</li>
-          <li>請於實際上班與下班時間完成打卡，並自行確認是否打卡成功。</li>
-          <li>遲到會依公司目前設定按比例計算扣薪；如有疑義，請儘快提出補登／修正申請。</li>
-          <li>若有忘記打卡、打錯時間、打錯類型，請使用補登／修正申請；若是臨時上班、臨時加班或沒有排班但實際有上班，請使用「補登 / 臨時出勤申請」。</li>
-          <li>補登／修正申請送出後，需經主管確認後才會正式生效。</li>
-          <li>打卡紀錄可使用區間搜尋查詢，最多可查詢 70 天內的資料。</li>
+          <li><strong>標準打卡：</strong>正常在公司上班使用；上班打卡需符合公司指定網路規則。</li>
+          <li><strong>特殊打卡：</strong>社團課、外出支援、外場活動等不在公司上班時使用。</li>
+          <li><strong>補登 / 臨時出勤：</strong>忘記打卡、臨時加班、沒有排班但實際有上班時使用，送出後需主管審核。</li>
+          <li>如果已經有打卡紀錄但時間錯誤，請到下方打卡紀錄裡提出補登修正。</li>
         </ol>
-        <div class="muted section-note">提醒規則已集中到「設定區 → 通知 / 提醒設定」管理；本頁不再內建舊版固定提醒規則，避免與統一表格互相衝突。</div>
-        <div class="muted section-note">特殊打卡適用情況：社團課、特殊外出、請假中需要來回進出、其他非一般正常上下班情況。</div>
       </div>
 
+      <input type="hidden" id="clockType" value="">
       <div class="field">
         <label>打卡方式</label>
-        <select id="clockType">
-          <option value="標準打卡">標準打卡</option>
-          <option value="特殊打卡">特殊打卡</option>
-          <option value="補登打卡">補登／修正申請</option>
-          <option value="臨時出勤申請">補登 / 臨時出勤申請</option>
-        </select>
+        <div class="clock-mode-grid">
+          <button class="clock-mode-btn" type="button" id="modeStandardBtn" onclick="selectClockMode('標準打卡')">標準打卡</button>
+          <button class="clock-mode-btn" type="button" id="modeSpecialBtn" onclick="selectClockMode('特殊打卡')">特殊打卡</button>
+          <button class="clock-mode-btn red" type="button" id="modeTempBtn" onclick="goTemporaryAttendance()">補登 / 臨時出勤</button>
+        </div>
+        <div class="muted section-note">請先選擇打卡方式。標準 / 特殊打卡會出現上班與下班按鈕；補登 / 臨時出勤會進入申請頁。</div>
       </div>
 
       <div id="supplementBox" class="supplement-box hidden">
-        <div class="section-title">補登／修正申請</div>
-        <div class="grid">
-          <div class="field" id="fieldSupplementDate">
-            <label>修正日期</label>
-            <input type="date" id="supplementDate">
-            <div class="field-error" data-error-for="supplementDate"></div>
-          </div>
-          <div class="field" id="fieldSupplementTime">
-            <label>正確打卡時間</label>
-            <input type="time" id="supplementTime">
-            <div class="field-error" data-error-for="supplementTime"></div>
-          </div>
-        </div>
-        <div class="grid">
-          <div class="field" id="fieldSupplementAction">
-            <label>修正動作</label>
-            <select id="supplementAction">
-              <option value="">請選擇</option>
-              <option value="上班打卡">上班打卡</option>
-              <option value="下班打卡">下班打卡</option>
-            </select>
-            <div class="field-error" data-error-for="supplementAction"></div>
-          </div>
-          <div class="field" id="fieldSupplementAsType">
-            <label>修正方式</label>
-            <select id="supplementAsType">
-              <option value="標準打卡">標準打卡</option>
-              <option value="特殊打卡">特殊打卡</option>
-            </select>
-          </div>
-        </div>
-        <div class="field" id="fieldSupplementReason">
-          <label>修正原因</label>
-          <textarea id="supplementReason" placeholder="請填寫補登／修正原因"></textarea>
-          <div class="field-error" data-error-for="supplementReason"></div>
-          <div class="helper-inline">送出後需主管確認，核准後才會正式生效。</div>
-        </div>
         <div id="supplementMsg" class="message local-message"></div>
       </div>
 
       <div id="mainMsg" class="message local-message"></div>
-      <div class="btn-row btn-row-clock">
-        <button class="btn" id="clockInBtn">上班打卡</button>
-        <button class="btn" id="clockOutBtn">下班打卡</button>
-        <button class="btn temp-attendance-btn" type="button" onclick="goTemporaryAttendance()">補登 / 臨時出勤申請</button>
+      <div id="clockActionPanel" class="hidden">
+        <div class="clock-action-title" id="clockActionTitle">請選擇打卡方式</div>
+        <div class="clock-action-note" id="clockActionNote"></div>
+        <div class="btn-row btn-row-clock">
+          <button class="btn" id="clockInBtn">上班打卡</button>
+          <button class="btn" id="clockOutBtn">下班打卡</button>
+        </div>
       </div>
     </div>
 
@@ -158,21 +130,32 @@
       location.href = 'temporary-attendance.html' + (id ? ('?employeeId=' + id) : '');
     }
 
+    function selectClockMode(mode){
+      qs('#clockType').value = mode;
+      qs('#clockActionPanel').classList.remove('hidden');
+      qsa('.clock-mode-btn').forEach(btn => btn.classList.remove('active'));
+      if(mode === '標準打卡'){
+        qs('#modeStandardBtn').classList.add('active');
+        qs('#clockActionTitle').textContent = '標準打卡';
+        qs('#clockActionNote').textContent = '正常在公司上班使用；上班打卡需符合公司指定網路規則。';
+      }else if(mode === '特殊打卡'){
+        qs('#modeSpecialBtn').classList.add('active');
+        qs('#clockActionTitle').textContent = '特殊打卡';
+        qs('#clockActionNote').textContent = '社團課、外出支援、外場活動等不在公司上班時使用。';
+      }
+      setActionButtonIdle(qs('#clockInBtn'), '上班打卡');
+      setActionButtonIdle(qs('#clockOutBtn'), '下班打卡');
+      setMsg(qs('#mainMsg'), '');
+    }
+
     function tick(){
       const d = new Date();
       qs('#nowBox').textContent = d.toLocaleString('zh-TW', { hour12:false });
     }
 
     function toggleSupplementBox(){
-      if(qs('#clockType').value === '臨時出勤申請'){ goTemporaryAttendance(); return; }
-      const isSupplement = qs('#clockType').value === '補登打卡';
-      qs('#supplementBox').classList.toggle('hidden', !isSupplement);
-      setActionButtonIdle(qs('#clockInBtn'), isSupplement ? '送出補登修正' : '上班打卡');
-      qs('#clockOutBtn').classList.toggle('hidden', isSupplement);
-      if(!isSupplement) setActionButtonIdle(qs('#clockOutBtn'), '下班打卡');
-      clearValidation();
+      // 三模式新版：補登 / 臨時出勤不在本頁展開，直接進申請頁。
       setMsg(qs('#mainMsg'), '');
-      setMsg(qs('#supplementMsg'), '');
     }
 
     function clearValidation(){
@@ -356,8 +339,8 @@
     async function doClock(actionName){
       const user = requireLogin();
       if(!user) return;
-      if(qs('#clockType').value === '臨時出勤申請'){ goTemporaryAttendance(); return; }
-      const isSupplement = qs('#clockType').value === '補登打卡';
+      if(!qs('#clockType').value){ setMsg(qs('#mainMsg'), '請先選擇標準打卡或特殊打卡。', true); return; }
+      const isSupplement = false;
       const msg = isSupplement ? qs('#supplementMsg') : qs('#mainMsg');
       clearValidation();
 
@@ -476,12 +459,12 @@ function init(){
       fillHeader();
       tick();
       setInterval(tick, 1000);
-      qs('#clockType').onchange = toggleSupplementBox;
+      
       qs('#clockInBtn').onclick = () => doClock('上班打卡');
       qs('#clockOutBtn').onclick = () => doClock('下班打卡');
       qs('#rangeSearchBtn').onclick = () => searchRange();
       initRangeDefault();
-      toggleSupplementBox();
+      
       loadEditableHistory()
         .then(()=>markClockCorrectionRepliesReadOnEnter_())
         .catch(e => setMsg(qs('#mainMsg'), friendlyClockMessage(e.message || '載入打卡紀錄失敗'), true));
