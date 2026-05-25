@@ -726,11 +726,13 @@
         sunday: '星期日'
       };
       const zh = map[day.key];
-      if (kind === 'type') return template[`${day.key}Type`] || template[`${zh}類型`] || '';
-      if (kind === 'time') return normalizeTimeValue(template[`${day.key}StartTime`] || template[`${day.key}Time`] || template[`${zh}上班時間`] || '');
-      if (kind === 'endTime') return normalizeTimeValue(template[`${day.key}EndTime`] || template[`${zh}下班時間`] || '');
+      const days = Array.isArray(template.days) ? template.days : [];
+      const dayRow = days.find(d => String(d.dayKey || d.key || '') === day.key || String(d.dayLabel || d.label || '') === day.label);
+      if (kind === 'type') return template[`${day.key}Type`] || template[`${zh}類型`] || (dayRow ? (dayRow.type || dayRow.clockType || '') : '') || '';
+      if (kind === 'time') return normalizeTimeValue(template[`${day.key}StartTime`] || template[`${day.key}Time`] || template[`${zh}上班時間`] || (dayRow ? (dayRow.startTime || dayRow.time || '') : '') || '');
+      if (kind === 'endTime') return normalizeTimeValue(template[`${day.key}EndTime`] || template[`${zh}下班時間`] || (dayRow ? (dayRow.endTime || '') : '') || '');
       if (kind === 'allowSpecial') {
-        const raw = template[`${day.key}AllowSpecial`] != null ? template[`${day.key}AllowSpecial`] : template[`${zh}允許特殊打卡`];
+        const raw = template[`${day.key}AllowSpecial`] != null ? template[`${day.key}AllowSpecial`] : (template[`${zh}允許特殊打卡`] != null ? template[`${zh}允許特殊打卡`] : (dayRow ? dayRow.allowSpecial : ''));
         return String(raw || '').toUpperCase() === 'TRUE' || raw === true || raw === 'true';
       }
       return '';
@@ -805,6 +807,16 @@
           allowSpecial: document.getElementById(`${day.key}AllowSpecial`).checked
         }))
       };
+
+      // Firebase 版班表列表與後續打卡判斷，主要讀取 mondayType / mondayTime / mondayEndTime
+      // 這類攤平欄位；原本只存 days 陣列會造成模板有建立，但每天都顯示「無班」。
+      payload.days.forEach(d => {
+        payload[`${d.dayKey}Type`] = d.type;
+        payload[`${d.dayKey}Time`] = d.startTime;
+        payload[`${d.dayKey}StartTime`] = d.startTime;
+        payload[`${d.dayKey}EndTime`] = d.endTime;
+        payload[`${d.dayKey}AllowSpecial`] = d.allowSpecial ? 'TRUE' : 'FALSE';
+      });
 
       if (!payload.templateName) {
         if (progress) progress.fail('請先填寫', 900);
