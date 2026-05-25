@@ -30,7 +30,7 @@ body{background:var(--bg);color:var(--ink)}
 <body onload="init()"><div class="container">
 <div class="card">
   <h1 class="title">補登 / 臨時出勤申請</h1>
-  <div class="muted">請先選擇申請日期。系統會呼叫原本班表邏輯查詢這位員工當天班表；不符合規則時只顯示原因，不會開放時間或送出。</div>
+  <div class="muted">請先選擇申請日期。系統會呼叫後端原本班表邏輯查詢這位員工當天班表與已核准請假；不符合規則時只顯示原因，不會開放時間或送出。</div>
   <div id="msg" class="message"></div>
 </div>
 
@@ -63,15 +63,14 @@ body{background:var(--bg);color:var(--ink)}
 </div>
 </div>
 
-<script src="config.js?v=20260524tempatt15"></script>
-<script src="app.js?v=20260524tempatt15"></script>
+<script src="config.js?v=20260524tempatt18"></script>
+<script src="app.js?v=20260524tempatt18"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
 <script>
 let employees=[];
 let currentEmployee=null;
 let currentAnalysis=null;
-let loginUserForSchedule=null;
 
 function qs(s){return document.querySelector(s)}
 function clean(v){return String(v==null?'':v).trim()}
@@ -151,7 +150,6 @@ async function init(){
 
     let loginUser=null;
     try{loginUser=(typeof requireLogin==='function')?requireLogin():null}catch(e){loginUser=null}
-    loginUserForSchedule=loginUser;
 
     const snap=await fb().collection('employees').get();
     employees=[];
@@ -184,10 +182,6 @@ async function init(){
     }
 
     currentEmployee=me;
-    const loginId=loginUser?clean(loginUser.employeeId||loginUser.id||loginUser.userId||loginUser['員工ID']||''):'';
-    const loginCode=loginUser?clean(loginUser['管理者代碼']||loginUser.managerId||''):'';
-    currentEmployee.apiUserId=loginId||clean(me.id);
-    currentEmployee.apiUserIdCandidates=[loginId, loginCode, clean(me.id), clean(me.raw&&me.raw['員工ID']), clean(me.raw&&me.raw.employeeId), clean(me.raw&&me.raw.userId)].filter(Boolean);
     qs('#employeeSelect').innerHTML=`<option value="${me.id}">${me.name}</option>`;
     qs('#employeeSelect').value=me.id;
     qs('#employeeNameBox').textContent=`${me.name}｜${money(me.hourlyRate)}/時`;
@@ -234,26 +228,14 @@ async function analyzeSelectedDate(){
   showBox('#analysisBox','正在依照原本班表邏輯查詢，請稍候...','notice');
 
   let res=null;
-  const triedIds=[];
-  const candidates=(emp.apiUserIdCandidates&&emp.apiUserIdCandidates.length)?emp.apiUserIdCandidates:[emp.apiUserId||emp.id];
-  for(const uid of candidates){
-    if(!uid||triedIds.includes(uid))continue;
-    triedIds.push(uid);
-    try{
-      const r=await api('getParttimeDateContext',{userId:uid,workDate:date,date:date});
-      if(r&&r.ok){
-        res=r;
-        emp.apiUserId=uid;
-        break;
-      }
-      if(!res)res=r;
-    }catch(e){
-      if(!res)res={ok:false,message:e.message||'班表查詢失敗'};
-    }
+  try{
+    res=await api('getTemporaryAttendanceDateContext',{userId:emp.id,workDate:date,date:date});
+  }catch(e){
+    res={ok:false,message:e.message||'班表查詢失敗'};
   }
 
   if(!res||!res.ok){
-    const text='目前無法查詢班表，因此暫不開放送出。\n原因：'+clean(res&&res.message||'班表查詢失敗')+'\n已嘗試員工ID：'+triedIds.join('、');
+    const text='目前無法查詢班表，因此暫不開放送出。\n原因：'+clean(res&&res.message||'班表查詢失敗');
     showBox('#analysisBox',text,'error');
     setTimeSection(false);
     currentAnalysis={ok:false,message:text};
@@ -263,12 +245,14 @@ async function analyzeSelectedDate(){
   const ctx=res.context||{};
   const parsed=parseScheduleFromContext(ctx);
   let {dayType,start,end,existing,label}=parsed;
+  const approvedLeaves=Array.isArray(ctx.approvedLeaves)?ctx.approvedLeaves:[];
+  const leaveText=approvedLeaves.length ? ('\n已核准請假：'+approvedLeaves.map(l=>(l.startTime||'')+'～'+(l.endTime||'')+(l.reason?(' '+l.reason):'')).join('、')) : '';
 
   if(dayType==='例假日'){
-    const text='系統判斷：這一天是例假日。\n例假日不可用補登 / 臨時出勤流程送出加班申請，因此不開放選擇時間。';
+    const text='系統判斷：這一天是例假日。\n例假日不可用補登 / 臨時出勤流程送出加班申請，因此不開放選擇時間。'+leaveText;
     showBox('#analysisBox',text,'error');
     setTimeSection(false);
-    currentAnalysis={ok:false,dayType,existingHours:existing,message:text,rawContext:ctx};
+    currentAnalysis={ok:false,dayType,existingHours:existing,message:text,rawContext:ctx,approvedLeaves};
     return;
   }
 
@@ -280,13 +264,13 @@ async function analyzeSelectedDate(){
         text=`系統判斷：這一天已有班表 ${start}～${end}，原本排班約 ${existing} 小時，已達每日工時上限，因此不能再送出臨時加班申請。`;
         showBox('#analysisBox',text,'error');
         setTimeSection(false);
-        currentAnalysis={ok:false,dayType,existingHours:existing,scheduleStart:start,scheduleEnd:end,message:text,rawContext:ctx};
+        currentAnalysis={ok:false,dayType,existingHours:existing,scheduleStart:start,scheduleEnd:end,message:text,rawContext:ctx,approvedLeaves};
         return;
       }
       if(st>=30) ranges.push({start:0,end:st});
       if(en<=24*60-30) ranges.push({start:en,end:24*60});
       const remainHours=Math.max(0,12-existing);
-      text=`系統判斷：這一天已有班表 ${start}～${end}，原本排班約 ${existing} 小時。\n補登 / 臨時出勤只開放班表外時間；如果是班表內忘記打卡或打錯時間，請到打卡紀錄提出補登修正。\n本日依法規上限初步可再申請最多約 ${remainHours} 小時；若原本已滿8小時，平日一般加班最多4小時。`;
+      text=`系統判斷：這一天已有班表 ${start}～${end}，原本排班約 ${existing} 小時。\n補登 / 臨時出勤只開放班表外時間；如果是班表內忘記打卡或打錯時間，請到打卡紀錄提出補登修正。\n本日依法規上限初步可再申請最多約 ${remainHours} 小時；若原本已滿8小時，平日一般加班最多4小時。`+leaveText;
     }else{
       dayType='無班';
     }
@@ -294,26 +278,38 @@ async function analyzeSelectedDate(){
 
   if(dayType==='休息日'){
     ranges=[{start:0,end:24*60}];
-    text='系統判斷：這一天是休息日。\n可送出休息日出勤申請，主管審核時會依休息日出勤規則試算金額。\n本日出勤最多以12小時為上限，實際金額由主管審核確認。';
+    text='系統判斷：這一天是休息日。\n可送出休息日出勤申請，主管審核時會依休息日出勤規則試算金額。\n本日出勤最多以12小時為上限，實際金額由主管審核確認。'+leaveText;
   }
 
   if(dayType==='無班'){
     ranges=[{start:0,end:24*60}];
-    text='系統判斷：這一天目前沒有排班。\n可送出臨時出勤申請，主管核准後才會正式補進打卡、時數與薪資。\n本日出勤最多以12小時為上限，實際金額由主管審核確認。';
+    text='系統判斷：這一天目前沒有排班。\n可送出臨時出勤申請，主管核准後才會正式補進打卡、時數與薪資。\n本日出勤最多以12小時為上限，實際金額由主管審核確認。'+leaveText;
   }
 
   if(!ranges.length){
     text='系統目前找不到可開放的補登 / 臨時出勤時間，因此不開放送出。';
     showBox('#analysisBox',text,'error');
     setTimeSection(false);
-    currentAnalysis={ok:false,dayType,existingHours:existing,message:text,rawContext:ctx};
+    currentAnalysis={ok:false,dayType,existingHours:existing,message:text,rawContext:ctx,approvedLeaves};
     return;
   }
 
-  currentAnalysis={ok:true,dayType,existingHours:existing,scheduleStart:start,scheduleEnd:end,allowedRanges:ranges,message:text,rawContext:ctx};
+  currentAnalysis={ok:true,dayType,existingHours:existing,scheduleStart:start,scheduleEnd:end,allowedRanges:ranges,message:text,rawContext:ctx,approvedLeaves};
   setStartOptions(ranges);
   showBox('#analysisBox',text,'ok');
   setTimeSection(true);
+}
+
+
+function overlapsApprovedLeave(startMin,endMin,leaves){
+  if(!Array.isArray(leaves)) return null;
+  for(const l of leaves){
+    const ls=parseMinutes(l.startTime||'');
+    const le=parseMinutes(l.endTime||'');
+    if(ls==null||le==null||le<=ls) continue;
+    if(startMin<le && endMin>ls) return l;
+  }
+  return null;
 }
 
 function validateSelectedTime(showMessage){
@@ -328,6 +324,11 @@ function validateSelectedTime(showMessage){
   const inRange=a.allowedRanges.some(r=>sm>=r.start&&em<=r.end&&em>sm);
   if(!inRange){
     const t='你選擇的時間不在系統開放的可申請時段內，請重新選擇。';
+    showBox('#lawHint',t,'error'); if(showMessage)msg(t,'error'); return {ok:false,message:t};
+  }
+  const hitLeave=overlapsApprovedLeave(sm,em,a.approvedLeaves||[]);
+  if(hitLeave){
+    const t=`你選擇的時間與已核准請假 ${hitLeave.startTime||''}～${hitLeave.endTime||''} 重疊，不能用補登 / 臨時出勤送出。`;
     showBox('#lawHint',t,'error'); if(showMessage)msg(t,'error'); return {ok:false,message:t};
   }
 
@@ -370,9 +371,8 @@ async function submitRequest(){
     const id='TEMP_ATT_'+emp.id+'_'+date.replace(/-/g,'')+'_'+Date.now();
     await fb().collection('temporaryAttendanceRequests').doc(id).set({
       requestId:id,
-      employeeId:emp.apiUserId||emp.id,員工ID:emp.apiUserId||emp.id,
+      employeeId:emp.id,員工ID:emp.id,
       name:emp.name,姓名:emp.name,
-      firebaseEmployeeId:emp.id,
       email:emp.email||'',
       employeeType:empType,員工身分:empType,
       date:date,日期:date,
@@ -388,6 +388,8 @@ async function submitRequest(){
       hourlyRate:emp.hourlyRate,時薪:emp.hourlyRate,
       reason:reason,原因:reason,
       scheduleCheckNote:a.message,班表判斷:a.message,
+      approvedLeaves: a.approvedLeaves||[], 已核准請假: JSON.stringify(a.approvedLeaves||[]),
+      scheduleDebug: JSON.stringify(a.rawContext&&a.rawContext.debug||{}), 班表查詢明細: JSON.stringify(a.rawContext&&a.rawContext.debug||{}),
       lawCheckNote:check.message,送出前檢查:check.message,
       status:'待審核',狀態:'待審核',
       createdAt:new Date().toISOString()
