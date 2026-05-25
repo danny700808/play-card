@@ -63,14 +63,15 @@ body{background:var(--bg);color:var(--ink)}
 </div>
 </div>
 
-<script src="config.js?v=20260524tempatt14"></script>
-<script src="app.js?v=20260524tempatt14"></script>
+<script src="config.js?v=20260524tempatt15"></script>
+<script src="app.js?v=20260524tempatt15"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
 <script>
 let employees=[];
 let currentEmployee=null;
 let currentAnalysis=null;
+let loginUserForSchedule=null;
 
 function qs(s){return document.querySelector(s)}
 function clean(v){return String(v==null?'':v).trim()}
@@ -150,6 +151,7 @@ async function init(){
 
     let loginUser=null;
     try{loginUser=(typeof requireLogin==='function')?requireLogin():null}catch(e){loginUser=null}
+    loginUserForSchedule=loginUser;
 
     const snap=await fb().collection('employees').get();
     employees=[];
@@ -182,6 +184,10 @@ async function init(){
     }
 
     currentEmployee=me;
+    const loginId=loginUser?clean(loginUser.employeeId||loginUser.id||loginUser.userId||loginUser['員工ID']||''):'';
+    const loginCode=loginUser?clean(loginUser['管理者代碼']||loginUser.managerId||''):'';
+    currentEmployee.apiUserId=loginId||clean(me.id);
+    currentEmployee.apiUserIdCandidates=[loginId, loginCode, clean(me.id), clean(me.raw&&me.raw['員工ID']), clean(me.raw&&me.raw.employeeId), clean(me.raw&&me.raw.userId)].filter(Boolean);
     qs('#employeeSelect').innerHTML=`<option value="${me.id}">${me.name}</option>`;
     qs('#employeeSelect').value=me.id;
     qs('#employeeNameBox').textContent=`${me.name}｜${money(me.hourlyRate)}/時`;
@@ -228,14 +234,26 @@ async function analyzeSelectedDate(){
   showBox('#analysisBox','正在依照原本班表邏輯查詢，請稍候...','notice');
 
   let res=null;
-  try{
-    res=await api('getParttimeDateContext',{userId:emp.id,workDate:date,date:date});
-  }catch(e){
-    res={ok:false,message:e.message||'班表查詢失敗'};
+  const triedIds=[];
+  const candidates=(emp.apiUserIdCandidates&&emp.apiUserIdCandidates.length)?emp.apiUserIdCandidates:[emp.apiUserId||emp.id];
+  for(const uid of candidates){
+    if(!uid||triedIds.includes(uid))continue;
+    triedIds.push(uid);
+    try{
+      const r=await api('getParttimeDateContext',{userId:uid,workDate:date,date:date});
+      if(r&&r.ok){
+        res=r;
+        emp.apiUserId=uid;
+        break;
+      }
+      if(!res)res=r;
+    }catch(e){
+      if(!res)res={ok:false,message:e.message||'班表查詢失敗'};
+    }
   }
 
   if(!res||!res.ok){
-    const text='目前無法查詢班表，因此暫不開放送出。\n原因：'+clean(res&&res.message||'班表查詢失敗');
+    const text='目前無法查詢班表，因此暫不開放送出。\n原因：'+clean(res&&res.message||'班表查詢失敗')+'\n已嘗試員工ID：'+triedIds.join('、');
     showBox('#analysisBox',text,'error');
     setTimeSection(false);
     currentAnalysis={ok:false,message:text};
@@ -352,8 +370,9 @@ async function submitRequest(){
     const id='TEMP_ATT_'+emp.id+'_'+date.replace(/-/g,'')+'_'+Date.now();
     await fb().collection('temporaryAttendanceRequests').doc(id).set({
       requestId:id,
-      employeeId:emp.id,員工ID:emp.id,
+      employeeId:emp.apiUserId||emp.id,員工ID:emp.apiUserId||emp.id,
       name:emp.name,姓名:emp.name,
+      firebaseEmployeeId:emp.id,
       email:emp.email||'',
       employeeType:empType,員工身分:empType,
       date:date,日期:date,

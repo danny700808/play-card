@@ -25,13 +25,13 @@
     }
 
     .clock-mode-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:12px 0}
-    .clock-mode-btn{border:1px solid var(--line,#e5e7eb);background:#fff;color:#111827;border-radius:16px;padding:16px 12px;font-size:18px;font-weight:900;text-align:center;cursor:pointer;box-shadow:0 8px 20px rgba(15,23,42,.04)}
-    .clock-mode-btn.active{background:#1f7a5a;color:#fff;border-color:#1f7a5a}
-    .clock-mode-btn.red{background:#b42318;color:#fff;border-color:#b42318}
+    .clock-mode-btn{border:1px solid #1f7a5a;background:#1f7a5a;color:#fff;border-radius:16px;padding:16px 12px;font-size:18px;font-weight:900;text-align:center;cursor:pointer;box-shadow:0 8px 20px rgba(15,23,42,.04)}
+    .clock-mode-btn.active{background:#145f46;color:#fff;border-color:#145f46}
+    .clock-mode-btn.red{background:#1f7a5a;color:#fff;border-color:#1f7a5a}
     .clock-action-title{font-weight:900;font-size:18px;margin:12px 0 8px;color:#111827}
     .clock-action-note{font-size:14px;color:#6b7280;line-height:1.6;margin-bottom:10px}
     .hidden{display:none!important}
-    @media(max-width:720px){.clock-mode-grid{grid-template-columns:1fr}.clock-mode-btn{font-size:17px;padding:15px 12px}}
+    @media(max-width:720px){.clock-mode-grid{grid-template-columns:1fr}.clock-mode-btn{border:1px solid #1f7a5a;background:#1f7a5a;color:#fff;border-radius:16px;padding:16px 12px;font-size:18px;font-weight:900;text-align:center;cursor:pointer;box-shadow:0 8px 20px rgba(15,23,42,.04)}}
 
 
     .clock-mode-screen.hidden{display:none!important}
@@ -72,7 +72,7 @@
         <div class="clock-mode-grid">
           <button class="clock-mode-btn" type="button" id="modeStandardBtn" onclick="selectClockMode('標準打卡')">標準打卡</button>
           <button class="clock-mode-btn" type="button" id="modeSpecialBtn" onclick="selectClockMode('特殊打卡')">特殊打卡</button>
-          <button class="clock-mode-btn red" type="button" id="modeTempBtn" onclick="goTemporaryAttendance()">補登 / 臨時出勤</button>
+          <button class="clock-mode-btn" type="button" id="modeTempBtn" onclick="goTemporaryAttendance()">補登 / 臨時出勤</button>
         </div>
         <div class="muted section-note">請先選擇打卡方式。標準 / 特殊打卡會出現上班與下班按鈕；補登 / 臨時出勤會進入申請頁。</div>
       </div>
