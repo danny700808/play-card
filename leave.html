@@ -319,8 +319,11 @@ function leaveHasShiftStartedToday(ctx){
 }
 function leaveIsHalfHourTime(t){ const m = String(t || '').match(/^(\d{2}):(\d{2})$/); return !!m && (Number(m[2]) === 0 || Number(m[2]) === 30); }
 function leaveDayStatusClass(ok){ return ok ? 'color:#166534' : 'color:#9f1239'; }
-function leaveBuildDayRows(results){
-  return results.map(item => `<div style="${leaveDayStatusClass(item.ok)}">${escapeHtml(item.date)}：${item.ok ? '有班，會建立請假' : '無班，系統自動略過'}｜${escapeHtml(item.text || '')}</div>`).join('');
+function leaveBuildDayRows(results, openByDefault){
+  const rows = results.map(item => `<div style="${leaveDayStatusClass(item.ok)}">${escapeHtml(item.date)}：${item.ok ? '有班，會建立請假' : '無班，系統自動略過'}｜${escapeHtml(item.text || '')}</div>`).join('');
+  if(!rows) return '';
+  const openAttr = openByDefault ? ' open' : '';
+  return `<details class="leave-range-details"${openAttr}><summary>查看每日班表明細</summary>${rows}</details>`;
 }
 function leaveBuildRangeSummary(results){
   const workDays = results.filter(x => x.ok).length;
@@ -494,14 +497,14 @@ async function refreshScheduleSegmentContext(segmentId){
     }
     if(startedTodayBlock){
       box.className = 'segment-context is-error';
-      box.innerHTML = `<strong>今日班表已開始</strong><div>${escapeHtml(startedTodayBlock.date)} ${escapeHtml(startedTodayBlock.text || '')}</div><div>一般整天請假只能在今日上班時間開始前申請；若已經超過上班時間，請改用「事後補假」。</div>${leaveBuildDayRows(results)}`;
+      box.innerHTML = `<strong>今日班表已開始</strong><div>${escapeHtml(startedTodayBlock.date)} ${escapeHtml(startedTodayBlock.text || '')}</div><div>一般整天請假只能在今日上班時間開始前申請；若已經超過上班時間，請改用「事後補假」。</div>${leaveBuildDayRows(results, true)}`;
       return;
     }
     const workDays = results.filter(item => item.ok).length;
     const offDays = results.length - workDays;
     if(workDays <= 0){
       box.className = 'segment-context is-error';
-      box.innerHTML = `<strong>此區間沒有可請假的班表</strong><div>${escapeHtml(leaveBuildRangeSummary(results))}</div>${leaveBuildDayRows(results)}`;
+      box.innerHTML = `<strong>此區間沒有可請假的班表</strong><div>${escapeHtml(leaveBuildRangeSummary(results))}</div>${leaveBuildDayRows(results, false)}`;
       return;
     }
     box.className = 'segment-context is-ok';
@@ -838,6 +841,25 @@ function buildLeavePolicyMaps(bundle){
       identityText: rawIdentity || '全部'
     };
   });
+}
+
+
+function defaultLeavePolicyBundle_(){
+  return {
+    leaveTypes:{
+      headers:['假別名稱','啟用','適用身分','可半天','可小時','需附件','支薪方式','說明'],
+      rows:[
+        ['事假','是','全部','是','是','否','依規定','可申請整天、部分請假或事後補假。'],
+        ['病假','是','全部','是','是','否','依規定','可申請整天、部分請假或事後補假。'],
+        ['特休','是','專職','是','是','否','支薪','專職員工依特休規則申請。'],
+        ['喪假','是','全部','是','是','是','支薪','需依規定補證明文件。'],
+        ['婚假','是','專職','是','是','是','支薪','需依規定補證明文件。']
+      ]
+    },
+    holidaySummary:{headers:['假別名稱','申請期限類型','最少提前天數','是否允許臨時申請','請畢期限說明','證明文件規則','備註'],rows:[]},
+    bereavement:{headers:['親等','天數'],rows:[['父母、配偶','8'],['祖父母、子女','6'],['兄弟姊妹','3']]},
+    source:'local-default'
+  };
 }
 
 function isParttimeLeaveUser(){
@@ -1341,38 +1363,16 @@ function renderLeaveOverview(overview){
 async function loadStaffData(){
   const user = requireLogin();
   if(!user || leaveApprovalMode) return;
-  setLeaveFormEnabled(false);
-  setPageProgress('讀取請假設定中…', 18);
 
-  const policyRes = await apiSafe('getLeavePolicyPublicBundle', { userId:user.id }, 12000, '請假制度讀取逾時');
-  let policyReady = false;
-
-  if(policyRes && policyRes.ok && policyRes.bundle){
-    buildLeavePolicyMaps(policyRes.bundle);
-    renderReasonOptions('');
-    applyParttimeLeaveUi_();
-    renderBereavementOptions('');
-    toggleHoursByReason();
-    policyReady = availableLeaveTypes().length > 0;
-    if(policyReady){
-      setLeaveFormEnabled(true);
-      setLocalMsg('', false);
-      setPageProgressDone('請假表單已開啟');
-    }else{
-      setLocalMsg('目前沒有可用假別，請先到主管設定區完成假勤制度。', true);
-      setLeaveFormEnabled(false);
-      setPageProgressError('請假設定尚未完成');
-    }
-  }else{
-    buildLeavePolicyMaps(null);
-    renderReasonOptions('');
-    renderBereavementOptions('');
-    renderHoursOptions(null, '');
-    renderPolicyHint(null);
-    setLocalMsg((policyRes && policyRes.message) || '請假制度讀取失敗，請先確認主管設定。', true);
-    setLeaveFormEnabled(false);
-    setPageProgressError('請假設定讀取失敗');
-  }
+  // Firebase 版不再讓「假勤制度讀取」卡住整個頁面：先用本機預設假別打開表單，後台再同步正式設定。
+  buildLeavePolicyMaps(defaultLeavePolicyBundle_());
+  renderReasonOptions(qs('#reason') ? qs('#reason').value : '');
+  applyParttimeLeaveUi_();
+  renderBereavementOptions('');
+  toggleHoursByReason();
+  setLeaveFormEnabled(true);
+  setLocalMsg('', false);
+  setPageProgressDone('請假表單已開啟');
 
   leaveEventCandidates = [];
   leaveEventCandidateMap = {};
@@ -1382,20 +1382,32 @@ async function loadStaffData(){
   toggleBereavementRelation();
 
   currentProfile = null;
-  try{
-    renderLeaveOverview(buildOverview({}, { rows:[], eventCandidates:[] }, policyRes && policyRes.ok ? policyRes.bundle : null));
-  }catch(_ignore){}
-
-  if(!policyReady) return;
+  try{ renderLeaveOverview(buildOverview({}, { rows:[], eventCandidates:[] }, leavePolicyBundle)); }catch(_ignore){}
 
   void (async () => {
     const warnings = [];
+    let policyBundle = leavePolicyBundle;
+    let historyRes = { ok:false, rows:[], eventCandidates:[] };
+    let profileRes = { ok:false, profile:null };
     try{
-      const [historyRes, profileRes] = await Promise.all([
-        apiSafe('getLeaveHistory', { userId:user.id }, 10000, '請假紀錄讀取逾時'),
-        apiSafe('getMyProfile', { userId:user.id }, 10000, '個人資料讀取逾時')
+      const [policyRes, historyLoaded, profileLoaded] = await Promise.all([
+        apiSafe('getLeavePolicyPublicBundle', { userId:user.id }, 3500, '請假制度讀取逾時'),
+        apiSafe('getLeaveHistory', { userId:user.id }, 8000, '請假紀錄讀取逾時'),
+        apiSafe('getMyProfile', { userId:user.id }, 8000, '個人資料讀取逾時')
       ]);
 
+      if(policyRes && policyRes.ok && policyRes.bundle){
+        policyBundle = policyRes.bundle;
+        buildLeavePolicyMaps(policyBundle);
+        renderReasonOptions(qs('#reason') ? qs('#reason').value : '');
+        applyParttimeLeaveUi_();
+        renderBereavementOptions(qs('#bereavementRelation') ? qs('#bereavementRelation').value : '');
+        toggleHoursByReason();
+      }else{
+        warnings.push('假別設定使用預設值：' + ((policyRes && policyRes.message) || '正式設定尚未讀取'));
+      }
+
+      historyRes = historyLoaded || historyRes;
       if(historyRes && historyRes.ok){
         leaveEventCandidates = Array.isArray(historyRes.eventCandidates) ? historyRes.eventCandidates : [];
         leaveEventCandidateMap = {};
@@ -1413,13 +1425,12 @@ async function loadStaffData(){
       renderEventChoiceForReason(qs('#eventChoice') ? qs('#eventChoice').value : '');
       toggleBereavementRelation();
 
+      profileRes = profileLoaded || profileRes;
       currentProfile = profileRes && profileRes.ok ? (profileRes.profile || null) : null;
-      if(!profileRes || !profileRes.ok){
-        warnings.push('個人資料：' + ((profileRes && profileRes.message) || '讀取失敗'));
-      }
+      if(!profileRes || !profileRes.ok){ warnings.push('個人資料：' + ((profileRes && profileRes.message) || '讀取失敗')); }
 
       try{
-        const overview = buildOverview(currentProfile || {}, (historyRes && historyRes.ok ? historyRes : { rows:[], eventCandidates:[] }), policyRes && policyRes.ok ? policyRes.bundle : null);
+        const overview = buildOverview(currentProfile || {}, (historyRes && historyRes.ok ? historyRes : { rows:[], eventCandidates:[] }), policyBundle);
         renderLeaveOverview(overview);
       }catch(renderErr){
         console.error('leave overview render failed', renderErr);
@@ -1433,11 +1444,7 @@ async function loadStaffData(){
       qs('#yearText').textContent = '本年度資料讀取失敗';
       renderHistory([]);
     }finally{
-      if(warnings.length){
-        setLocalMsg(warnings.join('；'), true);
-      }else{
-        setLocalMsg('', false);
-      }
+      setLocalMsg(warnings.length ? warnings.join('；') : '', !!warnings.length);
     }
   })();
 }
@@ -1568,7 +1575,7 @@ async function init(){
       }
     });
   }else{
-    setPageProgress('請假頁已開啟，正在準備假別資料…', 18);
+    setPageProgress('請假頁已開啟', 18);
     scheduleIdle_(async()=>{
       try{
         await loadStaffData();

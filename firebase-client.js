@@ -693,6 +693,25 @@
   }
   function overlap(a1,a2,b1,b2){ return a1<=b2 && b1<=a2; }
   function leaveCoversDate(row,dateKey){ const r=normLeave(row); if(['已刪除','已駁回'].includes(r.status)) return false; if(Array.isArray(r.segments)&&r.segments.length){ return r.segments.some(s=>{ if(s.mode==='custom'||s.mode==='retro') return fmtDate(s.leaveDate)===dateKey; return fmtDate(s.startDate)<=dateKey && fmtDate(s.endDate||s.startDate)>=dateKey; }); } return r.startDate<=dateKey && r.endDate>=dateKey; }
+
+  function getLeavePolicyPublicBundle(p){
+    const identity = lower((currentUser()||{}).identityType || (p&&p.identityType));
+    const allRows = [
+      ['事假','是','全部','是','是','否','依規定','可申請整天、部分請假或事後補假。'],
+      ['病假','是','全部','是','是','否','依規定','可申請整天、部分請假或事後補假。'],
+      ['特休','是','專職','是','是','否','支薪','專職員工依特休規則申請。'],
+      ['喪假','是','全部','是','是','是','支薪','需依規定補證明文件。'],
+      ['婚假','是','專職','是','是','是','支薪','需依規定補證明文件。']
+    ];
+    const rows = identity === 'parttime' ? allRows.filter(r => r[0] === '事假' || r[0] === '病假') : allRows;
+    return {ok:true,bundle:{
+      leaveTypes:{headers:['假別名稱','啟用','適用身分','可半天','可小時','需附件','支薪方式','說明'],rows},
+      holidaySummary:{headers:['假別名稱','申請期限類型','最少提前天數','是否允許臨時申請','請畢期限說明','證明文件規則','備註'],rows:[]},
+      bereavement:{headers:['親等','天數'],rows:[['父母、配偶','8'],['祖父母、子女','6'],['兄弟姊妹','3']]},
+      source:'firebase-default'
+    }};
+  }
+
   async function getLeaveDateContext(p){
     const userId=clean(p.userId||p.employeeId)||userIdOf(p); const dateKey=fmtDate(p.leaveDate||p.date); const ctx=await resolveSchedule(userId,dateKey);
     const reqId=clean(p.requestId||p.leaveId);
@@ -763,6 +782,7 @@
   old.handleApi=async function(action,payload){
     const a=clean(action), p=payload||{};
     try{
+      if(a==='getLeavePolicyPublicBundle') return getLeavePolicyPublicBundle(p);
       if(a==='getLeaveDateContext') return await getLeaveDateContext(p);
       if(a==='getLeaveHistory') return await getLeaveHistory(p);
       if(a==='getPendingLeaveApprovals') return await getPendingLeaveApprovals(p);
