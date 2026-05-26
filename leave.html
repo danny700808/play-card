@@ -297,17 +297,55 @@ function normalizeSegmentModesByReason(){
     return next;
   });
 }
+function leaveNormalizeDateKey(value){
+  const raw = String(value || '').trim();
+  if(!raw) return '';
+  let m = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if(!m) m = raw.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})/);
+  if(!m) m = raw.match(/^(\d{4})年\s*(\d{1,2})月\s*(\d{1,2})日/);
+  if(m){
+    const y = Number(m[1]);
+    const mo = Number(m[2]);
+    const da = Number(m[3]);
+    if(y >= 1900 && mo >= 1 && mo <= 12 && da >= 1 && da <= 31){
+      return `${y}-${String(mo).padStart(2,'0')}-${String(da).padStart(2,'0')}`;
+    }
+  }
+  const d = new Date(raw);
+  if(!isNaN(d.getTime())){
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }
+  return '';
+}
 function dateRangeLabel(startDate, endDate){
-  const s = String(startDate || '').trim();
-  const e = String(endDate || '').trim();
+  const s = leaveNormalizeDateKey(startDate);
+  const e = leaveNormalizeDateKey(endDate) || s;
   if(!s) return '未設定';
   if(!e || e === s) return s;
   return `${s} ～ ${e}`;
 }
 function leaveTodayKey(){ return localDateInputValue(); }
-function leaveIsPastDate(dateKey){ return !!dateKey && String(dateKey) < leaveTodayKey(); }
-function leaveDateAdd(dateKey, days){ const d = new Date(String(dateKey || '') + 'T00:00:00'); if(String(d)==='Invalid Date') return ''; d.setDate(d.getDate() + Number(days || 0)); return d.toISOString().slice(0,10); }
-function leaveDatesBetween(startDate, endDate){ const out=[]; if(!startDate || !endDate || endDate < startDate) return out; let d=startDate; for(let guard=0; d<=endDate && guard<370; guard++){ out.push(d); d=leaveDateAdd(d,1); } return out; }
+function leaveIsPastDate(dateKey){ const d = leaveNormalizeDateKey(dateKey); return !!d && d < leaveTodayKey(); }
+function leaveDateAdd(dateKey, days){
+  const key = leaveNormalizeDateKey(dateKey);
+  if(!key) return '';
+  const [y,m,d] = key.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  dt.setDate(dt.getDate() + Number(days || 0));
+  return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+}
+function leaveDatesBetween(startDate, endDate){
+  const start = leaveNormalizeDateKey(startDate);
+  const end = leaveNormalizeDateKey(endDate || startDate);
+  const out=[];
+  if(!start || !end || end < start) return out;
+  let d=start;
+  for(let guard=0; d && d<=end && guard<370; guard++){
+    out.push(d);
+    d=leaveDateAdd(d,1);
+  }
+  return out;
+}
 const LEAVE_MAX_RANGE_DAYS = 20;
 function leaveRangeDays(startDate, endDate){ return leaveDatesBetween(startDate, endDate || startDate).length; }
 function leaveNowMinutes(){ const d = new Date(); return d.getHours() * 60 + d.getMinutes(); }
@@ -320,10 +358,12 @@ function leaveHasShiftStartedToday(ctx){
 function leaveIsHalfHourTime(t){ const m = String(t || '').match(/^(\d{2}):(\d{2})$/); return !!m && (Number(m[2]) === 0 || Number(m[2]) === 30); }
 function leaveDayStatusClass(ok){ return ok ? 'color:#166534' : 'color:#9f1239'; }
 function leaveBuildDayRows(results, openByDefault){
-  const rows = results.map(item => `<div style="${leaveDayStatusClass(item.ok)}">${escapeHtml(item.date)}：${item.ok ? '有班，會建立請假' : '無班，系統自動略過'}｜${escapeHtml(item.text || '')}</div>`).join('');
+  const rows = results.map(item => {
+    const label = item.ok ? '有班，會建立請假' : (item.offDay ? '無班，系統自動略過' : '不可送出');
+    return `<div style="${leaveDayStatusClass(item.ok)};padding:4px 0;border-bottom:1px dashed #e5e7eb">${escapeHtml(item.date)}：${escapeHtml(label)}｜${escapeHtml(item.text || '')}</div>`;
+  }).join('');
   if(!rows) return '';
-  const openAttr = openByDefault ? ' open' : '';
-  return `<details class="leave-range-details"${openAttr}><summary>查看每日班表明細</summary>${rows}</details>`;
+  return `<details class="leave-range-details" open><summary>每日班表檢查明細</summary>${rows}</details>`;
 }
 function leaveBuildRangeSummary(results){
   const workDays = results.filter(x => x.ok).length;
@@ -449,6 +489,8 @@ async function refreshScheduleSegmentContext(segmentId){
   const box = qs(`[data-segment-context="${segmentId}"]`);
   if(!seg || !box) return;
   if(seg.mode === 'custom' || seg.mode === 'retro') return;
+  seg.startDate = leaveNormalizeDateKey(seg.startDate);
+  seg.endDate = leaveNormalizeDateKey(seg.endDate || seg.startDate);
   if(!reason || !seg.startDate){
     box.className = 'segment-context';
     box.innerHTML = '請先選擇請假原因與日期。';
@@ -467,13 +509,18 @@ async function refreshScheduleSegmentContext(segmentId){
   const startDate = seg.startDate;
   const endDate = seg.endDate || seg.startDate;
   const dates = leaveDatesBetween(startDate, endDate);
+  if(!dates.length){
+    box.className = 'segment-context is-error';
+    box.innerHTML = '<strong>日期需再確認</strong><div>請重新選擇正確的開始日期與結束日期。</div>';
+    return;
+  }
   if(dates.length > LEAVE_MAX_RANGE_DAYS){
     box.className = 'segment-context is-error';
     box.innerHTML = `<strong>日期區間過長</strong><div>單次請假最多可選 ${LEAVE_MAX_RANGE_DAYS} 天，請縮短日期區間後再送出。</div>`;
     return;
   }
   box.className = 'segment-context';
-  box.innerHTML = '檢查班表中...';
+  box.innerHTML = '正在逐日檢查班表，請稍候...';
   try{
     const payloadBase = { userId: currentUser.id, reason, requestId: qs('#editingRequestId') ? qs('#editingRequestId').value : '' };
     const results = [];
@@ -528,22 +575,28 @@ function bindSegmentEvents(){
   qsa('[data-segment-start-date]').forEach(el => el.onchange = () => {
     const seg = getSegmentStateById(el.dataset.segmentStartDate);
     if(!seg) return;
-    seg.startDate = el.value;
-    if(!seg.endDate) seg.endDate = el.value;
+    const key = leaveNormalizeDateKey(el.value);
+    seg.startDate = key;
+    if(key && el.value !== key) el.value = key;
+    if(!seg.endDate) seg.endDate = key;
     renderSegmentSummary();
     refreshScheduleSegmentContext(seg.id);
   });
   qsa('[data-segment-end-date]').forEach(el => el.onchange = () => {
     const seg = getSegmentStateById(el.dataset.segmentEndDate);
     if(!seg) return;
-    seg.endDate = el.value;
+    const key = leaveNormalizeDateKey(el.value);
+    seg.endDate = key;
+    if(key && el.value !== key) el.value = key;
     renderSegmentSummary();
     refreshScheduleSegmentContext(seg.id);
   });
   qsa('[data-segment-leave-date]').forEach(el => el.onchange = () => {
     const seg = getSegmentStateById(el.dataset.segmentLeaveDate);
     if(!seg) return;
-    seg.leaveDate = el.value;
+    const key = leaveNormalizeDateKey(el.value);
+    seg.leaveDate = key;
+    if(key && el.value !== key) el.value = key;
     renderSegmentSummary();
     refreshCustomSegmentContext(seg.id);
   });
@@ -595,15 +648,15 @@ function renderSegments(){
       </div>
       ${isTimed ? `
         <div class="segment-grid">
-          <div class="segment-field"><label for="segDate_${escapeHtml(seg.id)}">${mode === 'retro' ? '補假日期' : '日期'}</label><input id="segDate_${escapeHtml(seg.id)}" type="date" value="${escapeHtml(seg.leaveDate || '')}" data-segment-leave-date="${escapeHtml(seg.id)}"></div>
+          <div class="segment-field"><label for="segDate_${escapeHtml(seg.id)}">${mode === 'retro' ? '補假日期' : '日期'}</label><input id="segDate_${escapeHtml(seg.id)}" type="date" value="${escapeHtml(leaveNormalizeDateKey(seg.leaveDate) || '')}" data-segment-leave-date="${escapeHtml(seg.id)}"></div>
           <div class="segment-field"><label for="segStart_${escapeHtml(seg.id)}">開始時間</label><select class="leave-time-select" id="segStart_${escapeHtml(seg.id)}" data-segment-start-time="${escapeHtml(seg.id)}">${leaveRenderTimeOptionsHtml(leaveBuildWholeHourOptions(seg.shiftStart || '', seg.shiftEnd || '', false, seg.startTime || ''), seg.startTime || '', '選擇開始時間')}</select></div>
           <div class="segment-field"><label for="segEnd_${escapeHtml(seg.id)}">結束時間</label><select class="leave-time-select" id="segEnd_${escapeHtml(seg.id)}" data-segment-end-time="${escapeHtml(seg.id)}">${leaveRenderTimeOptionsHtml(leaveBuildWholeHourOptions(seg.shiftStart || '', seg.shiftEnd || '', true, seg.endTime || ''), seg.endTime || '', '選擇結束時間')}</select></div>
         </div>
         <div class="segment-context" data-segment-context="${escapeHtml(seg.id)}">${mode === 'retro' ? '事後補假可選過去日期；請選日期後，系統會帶出當天班表。' : '請先選擇請假日期與時間。'}</div>
       ` : `
         <div class="segment-grid">
-          <div class="segment-field"><label for="segStartDate_${escapeHtml(seg.id)}">開始日期</label><input id="segStartDate_${escapeHtml(seg.id)}" type="date" value="${escapeHtml(seg.startDate || '')}" data-segment-start-date="${escapeHtml(seg.id)}"></div>
-          <div class="segment-field"><label for="segEndDate_${escapeHtml(seg.id)}">結束日期</label><input id="segEndDate_${escapeHtml(seg.id)}" type="date" value="${escapeHtml(seg.endDate || '')}" data-segment-end-date="${escapeHtml(seg.id)}"></div>
+          <div class="segment-field"><label for="segStartDate_${escapeHtml(seg.id)}">開始日期</label><input id="segStartDate_${escapeHtml(seg.id)}" type="date" value="${escapeHtml(leaveNormalizeDateKey(seg.startDate) || '')}" data-segment-start-date="${escapeHtml(seg.id)}"></div>
+          <div class="segment-field"><label for="segEndDate_${escapeHtml(seg.id)}">結束日期</label><input id="segEndDate_${escapeHtml(seg.id)}" type="date" value="${escapeHtml(leaveNormalizeDateKey(seg.endDate) || '')}" data-segment-end-date="${escapeHtml(seg.id)}"></div>
         </div>
         <div class="segment-context" data-segment-context="${escapeHtml(seg.id)}">請選擇日期後，系統會逐日檢查有班／無班。</div>
       `}

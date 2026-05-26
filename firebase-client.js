@@ -29,8 +29,15 @@
     if(!v) return '';
     if(v && typeof v.toDate === 'function') return ymd(v.toDate());
     if(v instanceof Date && !isNaN(v.getTime())) return ymd(v);
-    const s=clean(v); if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
-    const d=new Date(s); return isNaN(d.getTime()) ? s : ymd(d);
+    const s=clean(v);
+    let m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if(!m) m=s.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})/);
+    if(!m) m=s.match(/^(\d{4})年\s*(\d{1,2})月\s*(\d{1,2})日/);
+    if(m){
+      const y=Number(m[1]), mo=Number(m[2]), da=Number(m[3]);
+      if(y>=1900 && mo>=1 && mo<=12 && da>=1 && da<=31) return y+'-'+pad(mo)+'-'+pad(da);
+    }
+    const d=new Date(s); return isNaN(d.getTime()) ? '' : ymd(d);
   }
   function fmtDateTime(v){
     if(!v) return '';
@@ -611,8 +618,15 @@
     if(!v) return '';
     if(v && typeof v.toDate === 'function') return ymd(v.toDate());
     if(v instanceof Date && !isNaN(v.getTime())) return ymd(v);
-    const s=clean(v); if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
-    const d=new Date(s); return isNaN(d.getTime()) ? s : ymd(d);
+    const s=clean(v);
+    let m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if(!m) m=s.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})/);
+    if(!m) m=s.match(/^(\d{4})年\s*(\d{1,2})月\s*(\d{1,2})日/);
+    if(m){
+      const y=Number(m[1]), mo=Number(m[2]), da=Number(m[3]);
+      if(y>=1900 && mo>=1 && mo<=12 && da>=1 && da<=31) return y+'-'+pad(mo)+'-'+pad(da);
+    }
+    const d=new Date(s); return isNaN(d.getTime()) ? '' : ymd(d);
   }
   function fmtDateTime(v){
     if(!v) return '';
@@ -637,8 +651,8 @@
   function minOf(t){ const s=clean(t).slice(0,5); const m=s.match(/^(\d{1,2}):(\d{2})$/); return m?Number(m[1])*60+Number(m[2]):NaN; }
   function timeOf(m){ return pad(Math.floor(m/60))+':'+pad(m%60); }
   function hoursBetween(s,e){ const a=minOf(s), b=minOf(e); return (!isNaN(a)&&!isNaN(b)&&b>a)?Math.round((b-a)/60*100)/100:0; }
-  function dateAdd(dateKey,days){ const d=new Date(dateKey+'T00:00:00'); d.setDate(d.getDate()+days); return ymd(d); }
-  function datesBetween(start,end){ const out=[]; if(!start||!end||end<start) return out; let d=start; for(let guard=0; d<=end && guard<370; guard++){ out.push(d); d=dateAdd(d,1); } return out; }
+  function dateAdd(dateKey,days){ const key=fmtDate(dateKey); if(!key) return ''; const parts=key.split('-').map(Number); const d=new Date(parts[0],parts[1]-1,parts[2]); d.setDate(d.getDate()+days); return ymd(d); }
+  function datesBetween(start,end){ const s=fmtDate(start), e=fmtDate(end||start); const out=[]; if(!s||!e||e<s) return out; let d=s; for(let guard=0; d&&d<=e && guard<370; guard++){ out.push(d); d=dateAdd(d,1); } return out; }
   const LEAVE_MAX_RANGE_DAYS=20;
   function todayKey(){ return ymd(new Date()); }
   function nowMinutes(){ const d=new Date(); return d.getHours()*60+d.getMinutes(); }
