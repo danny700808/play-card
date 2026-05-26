@@ -322,25 +322,28 @@ function leaveTimeTextToMinutesLocal(text){
 function leaveMinutesToTimeLocal(minutes){
   const n = Number(minutes || 0);
   const h = Math.floor(n / 60);
-  return String(h).padStart(2, '0') + ':00';
+  const m = n % 60;
+  return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
 }
 function leaveBuildWholeHourOptions(startText, endText, isEndSelect, currentValue){
+  // 依班表限制可選時間，並統一以 30 分鐘為單位。
+  const STEP = 30;
   const startMinRaw = leaveTimeTextToMinutesLocal(startText);
   const endMinRaw = leaveTimeTextToMinutesLocal(endText);
   let options = [];
   if(!isNaN(startMinRaw) && !isNaN(endMinRaw) && endMinRaw > startMinRaw){
-    const firstStart = Math.ceil(startMinRaw / 60) * 60;
-    const lastEnd = Math.floor(endMinRaw / 60) * 60;
+    const firstStart = Math.ceil(startMinRaw / STEP) * STEP;
+    const lastEnd = Math.floor(endMinRaw / STEP) * STEP;
     if(isEndSelect){
-      for(let m = firstStart + 60; m <= lastEnd; m += 60) options.push(leaveMinutesToTimeLocal(m));
+      for(let m = firstStart + STEP; m <= lastEnd; m += STEP) options.push(leaveMinutesToTimeLocal(m));
     }else{
-      for(let m = firstStart; m <= lastEnd - 60; m += 60) options.push(leaveMinutesToTimeLocal(m));
+      for(let m = firstStart; m <= lastEnd - STEP; m += STEP) options.push(leaveMinutesToTimeLocal(m));
     }
   }
   if(!options.length){
-    const start = isEndSelect ? 1 : 0;
-    const end = isEndSelect ? 23 : 22;
-    for(let h=start; h<=end; h++) options.push(String(h).padStart(2, '0') + ':00');
+    const start = isEndSelect ? 30 : 0;
+    const end = isEndSelect ? 24*60 : 23*60 + 30;
+    for(let m=start; m<=end; m+=STEP) options.push(leaveMinutesToTimeLocal(m));
   }
   const current = String(currentValue || '').slice(0,5);
   if(current && /^\d{2}:\d{2}$/.test(current) && !options.includes(current)) options.unshift(current);
@@ -566,8 +569,8 @@ function validateSegmentsState(){
       const startMin = leaveTimeTextToMinutesLocal(seg.startTime);
       const endMin = leaveTimeTextToMinutesLocal(seg.endTime);
       if(!(endMin > startMin)) return { ok:false, message:`請假時間 ${i+1} 的結束時間必須晚於開始時間。` };
-      if(startMin % 60 !== 0 || endMin % 60 !== 0) return { ok:false, message:`請假時間 ${i+1} 只能選擇整點時間。` };
-      if(endMin - startMin < 60) return { ok:false, message:`請假時間 ${i+1} 最少需請 1 小時。` };
+      if(startMin % 30 !== 0 || endMin % 30 !== 0) return { ok:false, message:`請假時間 ${i+1} 只能選擇整點或 30 分鐘。` };
+      if(endMin - startMin < 30) return { ok:false, message:`請假時間 ${i+1} 最少需請 30 分鐘。` };
     }else{
       if(!seg.startDate || !seg.endDate) return { ok:false, message:`請完整填寫請假時間 ${i+1} 的開始日期與結束日期。` };
       if(seg.endDate < seg.startDate) return { ok:false, message:`請假時間 ${i+1} 的結束日期不能早於開始日期。` };
@@ -1060,17 +1063,21 @@ function renderSummaryCards(cards){
 function renderApprovalRows(rows){
   approvalRows = rows || [];
   qs('#approvalCountText').textContent = approvalRows.length ? `你有 ${approvalRows.length} 筆待簽核請假單` : '目前沒有待簽核請假單';
-  qs('#approvalList').innerHTML = approvalRows.map(x => `
+  qs('#approvalList').innerHTML = approvalRows.map(x => {
+    const hints = Array.isArray(x.reviewHints) ? x.reviewHints : [];
+    const hintHtml = hints.length ? `<div class="summary-box" style="margin-top:8px">${hints.map(h => `<div>${escapeHtml(h)}</div>`).join('')}</div>` : '';
+    return `
     <div class="item">
       <div class="top"><strong>${escapeHtml(x.name)}｜${escapeHtml(x.leaveDate)}｜${escapeHtml(x.simpleText)}</strong><span class="tag pending">待審核</span></div>
       <div class="muted">申請時間：${escapeHtml(x.requestedAt || x.createdAt || '—')}</div>
+      ${hintHtml}
       ${x.note ? `<div class="muted">備註：${escapeHtml(x.note)}</div>` : ''}
       <div class="item-actions">
         <button class="btn mini-btn" type="button" data-approve-id="${escapeHtml(x.requestId)}">同意</button>
         <button class="btn secondary mini-btn" type="button" data-reject-id="${escapeHtml(x.requestId)}">駁回</button>
       </div>
-    </div>
-  `).join('') || '<div class="muted">目前沒有待簽核請假單</div>';
+    </div>`;
+  }).join('') || '<div class="muted">目前沒有待簽核請假單</div>';
   qsa('[data-approve-id]').forEach(btn => btn.onclick = () => handleApproval(btn.dataset.approveId, 'approve', btn));
   qsa('[data-reject-id]').forEach(btn => btn.onclick = () => handleApproval(btn.dataset.rejectId, 'reject', btn));
 }

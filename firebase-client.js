@@ -431,33 +431,6 @@
   async function rowsWhere(col, field, value){ const d=db(); if(!d) throw new Error('Firebase 尚未啟用'); const snap=await d.collection(col).where(field,'==',value).get(); const out=[]; snap.forEach(x=>out.push(Object.assign({__id:x.id},x.data()||{}))); return out; }
   async function docSet(col, id, data, merge=true){ const d=db(); if(!d) throw new Error('Firebase 尚未啟用'); const key=clean(id)||('WEB_'+Date.now()+'_'+Math.random().toString(36).slice(2,8)); await d.collection(col).doc(key).set(Object.assign({},data,{updatedAt:ts()}),{merge}); return key; }
   async function docUpdate(col, id, data){ return await docSet(col,id,data,true); }
-  async function docDeleteByIdOrField(col, id, idFields){
-    const d=db(); if(!d) throw new Error('Firebase 尚未啟用');
-    const key=clean(id); if(!key) throw new Error('缺少刪除 ID');
-    const batch=d.batch();
-    const seen={};
-    const directRef=d.collection(col).doc(key);
-    batch.delete(directRef); seen[key]=true;
-    for(const f of (idFields||[])){
-      if(!f) continue;
-      const snap=await d.collection(col).where(f,'==',key).get();
-      snap.forEach(doc=>{ if(!seen[doc.id]){ batch.delete(doc.ref); seen[doc.id]=true; } });
-    }
-    await batch.commit();
-    return Object.keys(seen).length;
-  }
-  async function clearCollectionDocs(col){
-    const d=db(); if(!d) throw new Error('Firebase 尚未啟用');
-    const snap=await d.collection(col).get();
-    if(snap.empty) return 0;
-    let batch=d.batch(), count=0, pending=0;
-    for(const doc of snap.docs){
-      batch.delete(doc.ref); count++; pending++;
-      if(pending>=450){ await batch.commit(); batch=d.batch(); pending=0; }
-    }
-    if(pending) await batch.commit();
-    return count;
-  }
   function normalizeUserDoc(o){
     const isAdmin = !!(o.adminId || o.managerId || o['管理者代碼'] || o.__collection === 'admins');
     const identity = isAdmin ? 'admin' : (lower(o.identityType || o['身分類型']) || (truthy(o.isPartTime || o['是否工讀生'])?'parttime':'staff'));
@@ -577,9 +550,7 @@
     await docSet('clockCorrections',id,row); return {ok:true,message:'打卡修正申請已送出。',requestId:id,row};
   }
   async function simpleSave(collection, idFields, payload, okMessage){
-    payload = Object.assign({}, payload || {});
     const id=clean(idFields.map(k=>payload&&payload[k]).find(Boolean)) || ('WEB_'+Date.now()+'_'+Math.random().toString(36).slice(2,8));
-    if(idFields && idFields[0] && !clean(payload[idFields[0]])) payload[idFields[0]] = id;
     await docSet(collection,id,Object.assign({},payload,{source:'firebase-primary',createdAt:ts()}));
     return {ok:true,message:okMessage||'已儲存。',id};
   }
@@ -608,13 +579,6 @@
     if(a==='parttime') return await firebaseParttime(payload||{});
     if(a==='submitClockCorrection'||a==='approveClockCorrectionApi'||a==='rejectClockCorrectionApi') return await firebaseClockCorrection(a,payload||{});
     if(a==='saveNotificationSettings'||a==='saveNotificationTimeRules') return await firebaseSaveNotification(a,payload||{});
-    if(a==='deleteScheduleTemplate'){ await docDeleteByIdOrField('scheduleTemplates', clean((payload||{}).templateId || (payload||{})['模板ID'] || (payload||{}).__id), ['templateId','模板ID']); return {ok:true,message:'班表模板已刪除。'}; }
-    if(a==='deleteEmployeeSchedule'){ await docDeleteByIdOrField('employeeSchedules', clean((payload||{}).assignmentId || (payload||{})['套用ID'] || (payload||{}).__id), ['assignmentId','套用ID']); return {ok:true,message:'員工班表已刪除。'}; }
-    if(a==='deleteSingleDaySchedule'){ await docDeleteByIdOrField('singleDaySchedules', clean((payload||{}).recordId || (payload||{})['單日ID'] || (payload||{}).__id), ['recordId','單日ID']); return {ok:true,message:'單日班表已刪除。'}; }
-    if(a==='clearScheduleTemplates'){ const count=await clearCollectionDocs('scheduleTemplates'); return {ok:true,message:'已清除班表模板。',count}; }
-    if(a==='clearEmployeeSchedules'){ const count=await clearCollectionDocs('employeeSchedules'); return {ok:true,message:'已清除員工套用班表。',count}; }
-    if(a==='clearSingleDaySchedules'){ const count=await clearCollectionDocs('singleDaySchedules'); return {ok:true,message:'已清除單日特別班表。',count}; }
-    if(a==='clearAllScheduleData'){ const counts={templates:await clearCollectionDocs('scheduleTemplates'),assignments:await clearCollectionDocs('employeeSchedules'),singleDay:await clearCollectionDocs('singleDaySchedules')}; return {ok:true,message:'已清除全部班表資料。',counts}; }
     if(primaryMap[a]){ const [col,ids,msg]=primaryMap[a]; return await simpleSave(col,ids,payload||{},msg); }
     return null;
   }
@@ -627,4 +591,166 @@
   };
   fb.primaryWrite = primaryWrite;
   global.YZFirebase = fb;
+})(window);
+
+/* =========================================================
+ * Leave Firebase complete bridge v1
+ * - 補齊請假：員工/工讀生請假、主管簽核、班表檢查、請假時數計算
+ * - 班表判斷順序：單日特別班表 > 員工套用班表 > 班表模板
+ * ========================================================= */
+(function(global){
+  const old = global.YZFirebase || {};
+  const cfg = (global.APP_CONFIG && global.APP_CONFIG.FIREBASE_CONFIG) || null;
+  function clean(v){ return String(v == null ? '' : v).trim(); }
+  function lower(v){ return clean(v).toLowerCase(); }
+  function truthy(v){ const s=lower(v); return v===true || ['是','yes','true','1','啟用','enabled','active','true'].includes(s); }
+  function falsey(v){ const s=lower(v); return v===false || ['否','no','false','0','停用','disabled','inactive'].includes(s); }
+  function pad(n){ return String(n).padStart(2,'0'); }
+  function ymd(d){ return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
+  function fmtDate(v){
+    if(!v) return '';
+    if(v && typeof v.toDate === 'function') return ymd(v.toDate());
+    if(v instanceof Date && !isNaN(v.getTime())) return ymd(v);
+    const s=clean(v); if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+    const d=new Date(s); return isNaN(d.getTime()) ? s : ymd(d);
+  }
+  function fmtDateTime(v){
+    if(!v) return '';
+    const d = v && typeof v.toDate === 'function' ? v.toDate() : (v instanceof Date ? v : new Date(v));
+    if(isNaN(d.getTime())) return clean(v);
+    return ymd(d)+' '+pad(d.getHours())+':'+pad(d.getMinutes());
+  }
+  function db(){
+    if(old.init){ try{ const d=old.init(); if(d) return d; }catch(e){} }
+    if(global.firebase && global.firebase.firestore && cfg){
+      try{ const apps=global.firebase.apps||[]; const app=apps.length?apps[0]:global.firebase.initializeApp(cfg); return global.firebase.firestore(app); }catch(e){}
+    }
+    return null;
+  }
+  function ts(){ return global.firebase.firestore.FieldValue.serverTimestamp(); }
+  async function all(col){ const d=db(); if(!d) throw new Error('Firebase 尚未啟用'); const snap=await d.collection(col).get(); const rows=[]; snap.forEach(doc=>rows.push(Object.assign({__id:doc.id}, doc.data()||{}))); return rows; }
+  async function where(col, field, val){ const d=db(); if(!d) throw new Error('Firebase 尚未啟用'); const snap=await d.collection(col).where(field,'==',val).get(); const rows=[]; snap.forEach(doc=>rows.push(Object.assign({__id:doc.id}, doc.data()||{}))); return rows; }
+  async function setDoc(col,id,data,merge){ const d=db(); if(!d) throw new Error('Firebase 尚未啟用'); const key=clean(id)||('WEB_'+Date.now()+'_'+Math.random().toString(36).slice(2,8)); await d.collection(col).doc(key).set(Object.assign({},data,{updatedAt:ts()}),{merge:merge!==false}); return key; }
+  async function getDoc(col,id){ const d=db(); if(!d) throw new Error('Firebase 尚未啟用'); const doc=await d.collection(col).doc(clean(id)).get(); return doc.exists?Object.assign({__id:doc.id},doc.data()||{}):null; }
+  function currentUser(){ try{return JSON.parse(localStorage.getItem('employeeUser')||'null')}catch(e){return null} }
+  function userIdOf(p){ const u=currentUser()||{}; return clean((p&&p.userId)||u.id||u.employeeId); }
+  function minOf(t){ const s=clean(t).slice(0,5); const m=s.match(/^(\d{1,2}):(\d{2})$/); return m?Number(m[1])*60+Number(m[2]):NaN; }
+  function timeOf(m){ return pad(Math.floor(m/60))+':'+pad(m%60); }
+  function hoursBetween(s,e){ const a=minOf(s), b=minOf(e); return (!isNaN(a)&&!isNaN(b)&&b>a)?Math.round((b-a)/60*100)/100:0; }
+  function dateAdd(dateKey,days){ const d=new Date(dateKey+'T00:00:00'); d.setDate(d.getDate()+days); return ymd(d); }
+  function datesBetween(start,end){ const out=[]; if(!start||!end||end<start) return out; let d=start; for(let guard=0; d<=end && guard<370; guard++){ out.push(d); d=dateAdd(d,1); } return out; }
+  const DKEY=['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
+  const DLABEL=['星期日','星期一','星期二','星期三','星期四','星期五','星期六'];
+  function dayInfo(dateKey){ const d=new Date(dateKey+'T00:00:00'); const idx=isNaN(d.getTime())?0:d.getDay(); return {idx,key:DKEY[idx],label:DLABEL[idx]}; }
+  function enabledRow(o){ return !falsey(o.enabled||o['啟用']||o.active); }
+  function normEmployee(o){ return {employeeId:clean(o.employeeId||o['員工ID']||o.id||o.__id), name:clean(o.name||o.employeeName||o['姓名']||o['員工姓名']), identityType:lower(o.identityType||o['身分類型'])||(truthy(o.isPartTime||o['是否工讀生'])?'parttime':'staff'), email:lower(o.email||o['Email'])}; }
+  function normLeave(o){
+    o=o||{}; const id=clean(o.requestId||o.leaveId||o['請假ID']||o.__id);
+    const segs=Array.isArray(o.segments)?o.segments:[];
+    const first=segs[0]||{};
+    const reason=clean(o.reason||o.leaveName||o['請假原因']||o.leaveCode||'請假');
+    const start=fmtDate(o.startDate||o.leaveDate||first.startDate||first.leaveDate||o['開始日期']||o['請假日期']);
+    const end=fmtDate(o.endDate||first.endDate||start||o['結束日期']);
+    const st=clean(o.startTime||first.startTime||o['請假開始時間']);
+    const et=clean(o.endTime||first.endTime||o['請假結束時間']);
+    const hours=Number(o.hours||o.leaveHours||o['請假時數']||0)||calcLeaveHours({segments:segs,startDate:start,endDate:end,startTime:st,endTime:et});
+    const simpleText=clean(o.simpleText)||`${reason}｜${hours ? hours+' 小時' : (st&&et?st+'-'+et:'整天')}`;
+    return Object.assign({},o,{requestId:id, leaveId:id, employeeId:clean(o.employeeId||o.userId||o['員工ID']), name:clean(o.name||o.employeeName||o['姓名']), email:lower(o.email||o['Email']), reason, leaveCode:clean(o.leaveCode||o['假別代碼']), leaveDate:start, startDate:start, endDate:end, startTime:st, endTime:et, hours, note:clean(o.note||o['備註']), attachmentUrl:clean(o.attachmentUrl||o['附件連結']), status:clean(o.status||o['狀態']||'待審核')||'待審核', segments:segs, simpleText, requestedAt:fmtDateTime(o.requestedAt||o.createdAt||o['建立時間']), createdAt:fmtDateTime(o.createdAt||o['建立時間']), canEdit:['待審核','已駁回'].includes(clean(o.status||'待審核')), canDelete:['待審核','已駁回'].includes(clean(o.status||'待審核'))});
+  }
+  function calcLeaveHours(row){
+    const segs=Array.isArray(row.segments)?row.segments:[]; let total=0;
+    if(segs.length){ segs.forEach(s=>{ if(s.mode==='custom') total+=hoursBetween(s.startTime,s.endTime); else total+=Number(s.hours||0)||0; }); return Math.round(total*100)/100; }
+    if(row.startTime&&row.endTime) return hoursBetween(row.startTime,row.endTime);
+    return 0;
+  }
+  function dayFromTemplate(t,dateKey){
+    const di=dayInfo(dateKey); const days=Array.isArray(t.days)?t.days:[];
+    const found=days.find(d=>clean(d.dayKey||d.key)===di.key || clean(d.dayLabel||d.label)===di.label);
+    const type=clean((found&&(found.type||found.clockType)) || t[di.key+'Type'] || t[di.key+'ClockType'] || t[di.label+'類型'] || '無班') || '無班';
+    const start=clean((found&&(found.startTime||found.time)) || t[di.key+'StartTime'] || t[di.key+'Time'] || t[di.label+'上班時間']);
+    const end=clean((found&&found.endTime) || t[di.key+'EndTime'] || t[di.label+'下班時間']);
+    return {type,startTime:start,endTime:end,source:'班表模板',templateName:clean(t.templateName||t['模板名稱']||t.name),templateId:clean(t.templateId||t['模板ID']||t.__id)};
+  }
+  async function resolveSchedule(userId,dateKey){
+    const employeeId=clean(userId); const dateKey2=fmtDate(dateKey); if(!employeeId||!dateKey2) return {hasSchedule:false,canLeave:false,statusLabel:'缺少日期',blockedReason:'請先選擇日期。'};
+    const [singles,assigns,templates]=await Promise.all([all('singleDaySchedules').catch(()=>[]), all('employeeSchedules').catch(()=>[]), all('scheduleTemplates').catch(()=>[])]);
+    const single=singles.filter(s=>clean(s.employeeId||s['員工ID'])===employeeId && fmtDate(s.date||s['日期'])===dateKey2 && enabledRow(s)).sort((a,b)=>clean(b.updatedAt||b.createdAt||'').localeCompare(clean(a.updatedAt||a.createdAt||'')))[0];
+    let info=null;
+    if(single){ info={type:clean(single.clockType||single.type||single['打卡類型']||'標準打卡'),startTime:clean(single.startTime||single['上班時間']),endTime:clean(single.endTime||single['下班時間']),source:'單日特別班表',templateName:'單日特別班表',recordId:clean(single.recordId||single.__id)}; }
+    if(!info){
+      const valid=assigns.filter(a=>clean(a.employeeId||a['員工ID'])===employeeId && enabledRow(a) && fmtDate(a.startDate||a['開始日期'])<=dateKey2 && (truthy(a.indefinite||a['無期限']) || !fmtDate(a.endDate||a['結束日期']) || fmtDate(a.endDate||a['結束日期'])>=dateKey2)).sort((a,b)=>fmtDate(b.startDate||b['開始日期']).localeCompare(fmtDate(a.startDate||a['開始日期'])));
+      const a=valid[0];
+      if(a){ const tid=clean(a.templateId||a['模板ID']); const t=templates.find(x=>clean(x.templateId||x['模板ID']||x.__id)===tid) || {}; info=dayFromTemplate(t,dateKey2); info.source='員工套用班表'; info.assignmentId=clean(a.assignmentId||a['套用ID']||a.__id); info.templateName=clean(a.templateName||a['模板名稱']||info.templateName); }
+    }
+    if(!info || !info.type || info.type==='無班') return {hasSchedule:false,canLeave:false,statusLabel:'今日無排班',blockedReason:'這一天沒有排班，不能送出請假。',scheduleLabel:'今日無班'};
+    if(!info.startTime || !info.endTime || hoursBetween(info.startTime,info.endTime)<=0) return {hasSchedule:false,canLeave:false,statusLabel:'班表時間不完整',blockedReason:'這一天班表沒有完整上班與下班時間，請先到班表管理修正。',scheduleLabel:`${info.source}｜${info.type}`};
+    const hrs=hoursBetween(info.startTime,info.endTime);
+    return Object.assign({},info,{hasSchedule:true,canLeave:true,statusLabel:'今日有班，可請假',shiftStart:info.startTime,shiftEnd:info.endTime,scheduleLabel:`${info.source}｜${info.type}｜${info.startTime}-${info.endTime}`,helperText:`請假時間會依 ${info.startTime}-${info.endTime} 計算，約 ${hrs} 小時。`,scheduledHours:hrs});
+  }
+  function overlap(a1,a2,b1,b2){ return a1<=b2 && b1<=a2; }
+  function leaveCoversDate(row,dateKey){ const r=normLeave(row); if(['已刪除','已駁回'].includes(r.status)) return false; if(Array.isArray(r.segments)&&r.segments.length){ return r.segments.some(s=>{ if(s.mode==='custom') return fmtDate(s.leaveDate)===dateKey; return fmtDate(s.startDate)<=dateKey && fmtDate(s.endDate||s.startDate)>=dateKey; }); } return r.startDate<=dateKey && r.endDate>=dateKey; }
+  async function getLeaveDateContext(p){
+    const userId=clean(p.userId||p.employeeId)||userIdOf(p); const dateKey=fmtDate(p.leaveDate||p.date); const ctx=await resolveSchedule(userId,dateKey);
+    const reqId=clean(p.requestId||p.leaveId);
+    const leaves=(await all('leaveRequests').catch(()=>[])).filter(r=>clean(r.requestId||r.leaveId||r.__id)!==reqId && clean(r.employeeId||r.userId||r['員工ID'])===userId && leaveCoversDate(r,dateKey));
+    if(leaves.length && ctx.canLeave){ ctx.helperText = (ctx.helperText||'') + `；提醒：當天已有 ${leaves.length} 筆待審/核准請假紀錄。`; ctx.hasConflict=true; }
+    return {ok:true,context:ctx};
+  }
+  async function buildSegmentsWithSchedule(payload){
+    const userId=clean(payload.userId||payload.employeeId)||userIdOf(payload); const segs=Array.isArray(payload.segments)&&payload.segments.length?payload.segments:[];
+    const out=[]; let total=0; const hints=[];
+    for(const raw of segs){
+      const mode=clean(raw.mode)==='custom'?'custom':'schedule';
+      if(mode==='custom'){
+        const dateKey=fmtDate(raw.leaveDate||raw.date); const ctx=await resolveSchedule(userId,dateKey);
+        if(!ctx.canLeave) throw new Error(`${dateKey} ${ctx.blockedReason||'不可請假'}`);
+        const st=clean(raw.startTime).slice(0,5), et=clean(raw.endTime).slice(0,5); const smin=minOf(st), emin=minOf(et), shiftS=minOf(ctx.shiftStart), shiftE=minOf(ctx.shiftEnd);
+        if(isNaN(smin)||isNaN(emin)||emin<=smin) throw new Error(`${dateKey} 請假時間不正確。`);
+        if(smin<shiftS || emin>shiftE) throw new Error(`${dateKey} 請假時間必須在班表 ${ctx.shiftStart}-${ctx.shiftEnd} 內。`);
+        const h=hoursBetween(st,et); total+=h; hints.push(`${dateKey}｜${ctx.scheduleLabel}｜申請 ${st}-${et}，${h} 小時`);
+        out.push(Object.assign({},raw,{mode:'custom',leaveDate:dateKey,startTime:st,endTime:et,hours:h,scheduleContext:{scheduleLabel:ctx.scheduleLabel,shiftStart:ctx.shiftStart,shiftEnd:ctx.shiftEnd,scheduledHours:ctx.scheduledHours}}));
+      }else{
+        const start=fmtDate(raw.startDate||raw.date), end=fmtDate(raw.endDate||raw.startDate||raw.date); if(!start||!end) throw new Error('請假日期不完整。');
+        let h=0; const dayDetails=[];
+        for(const d of datesBetween(start,end)){ const ctx=await resolveSchedule(userId,d); if(!ctx.canLeave) throw new Error(`${d} ${ctx.blockedReason||'不可請假'}`); h+=Number(ctx.scheduledHours||0); dayDetails.push({date:d,scheduleLabel:ctx.scheduleLabel,shiftStart:ctx.shiftStart,shiftEnd:ctx.shiftEnd,hours:ctx.scheduledHours}); }
+        h=Math.round(h*100)/100; total+=h; hints.push(`${start}${end!==start?'～'+end:''}｜整天請假｜共 ${h} 小時`);
+        out.push(Object.assign({},raw,{mode:'schedule',startDate:start,endDate:end,hours:h,dayDetails}));
+      }
+    }
+    return {segments:out,totalHours:Math.round(total*100)/100,hints};
+  }
+  async function getLeaveHistory(p){ const uid=clean(p&&p.userId)||userIdOf(p); const rows=(await where('leaveRequests','employeeId',uid).catch(()=>[])).map(normLeave).filter(r=>r.status!=='已刪除').sort((a,b)=>clean(b.leaveDate).localeCompare(clean(a.leaveDate))); return {ok:true,year:(new Date()).getFullYear(),rows,eventCandidates:[]}; }
+  async function getPendingLeaveApprovals(){ const rows=(await where('leaveRequests','status','待審核').catch(()=>[])).map(normLeave); rows.forEach(r=>{ r.reviewHints=Array.isArray(r.reviewHints)?r.reviewHints:buildReviewHints(r); }); return {ok:true,rows}; }
+  function buildReviewHints(r){ const out=[]; const row=normLeave(r); out.push(`請假時數：${row.hours||0} 小時`); if(row.scheduleSummaryText) out.push(row.scheduleSummaryText); if(Array.isArray(row.segments)){ row.segments.forEach(s=>{ if(s.scheduleContext) out.push(`${s.leaveDate||s.startDate}｜班表 ${s.scheduleContext.shiftStart||''}-${s.scheduleContext.shiftEnd||''}`); else if(Array.isArray(s.dayDetails)) s.dayDetails.slice(0,3).forEach(d=>out.push(`${d.date}｜${d.scheduleLabel}`)); }); } return out; }
+  async function getAdminLeaveEmployeeSummary(){ const [emps,leaves]=await Promise.all([all('employees').catch(()=>[]),all('leaveRequests').catch(()=>[])]); const by={}; leaves.map(normLeave).filter(r=>r.status!=='已刪除').forEach(r=>{ (by[r.employeeId]=by[r.employeeId]||[]).push(r); }); const rows=emps.map(normEmployee).filter(e=>e.employeeId).map(e=>{ const list=by[e.employeeId]||[]; const approved=list.filter(x=>x.status==='已核准').reduce((s,x)=>s+(Number(x.hours)||0),0); const pending=list.filter(x=>x.status==='待審核').length; return {name:e.name,identityLabel:e.identityType==='parttime'?'工讀生':'專職員工',lines:[`已核准請假：${Math.round(approved*100)/100} 小時`,`待審核：${pending} 筆`]}; }); return {ok:true,rows}; }
+  async function saveLeave(action,payload){
+    const user=currentUser()||{}; const uid=clean(payload.userId||payload.employeeId)||userIdOf(payload); const id=clean(payload.requestId||payload.leaveId)||('LV_'+uid+'_'+Date.now());
+    if(action==='deleteLeaveRequest'){ await setDoc('leaveRequests',id,{status:'已刪除',deletedAt:ts(),source:'firebase-leave-v1'}); return {ok:true,message:'請假申請已刪除。'}; }
+    if(action==='reviewLeaveRequest'){
+      const status=/reject/i.test(clean(payload.decision||payload.action))?'已駁回':'已核准'; const base=await getDoc('leaveRequests',id).catch(()=>null);
+      await setDoc('leaveRequests',id,{status,rejectReason:clean(payload.rejectReason||payload.reason),reviewedAt:ts(),reviewerId:uid,reviewerName:clean(user.name),source:'firebase-leave-v1'});
+      if(status==='已核准' && base) await setDoc('leaveRecords',id,Object.assign({},base,{requestId:id,status:'已核准',reviewedAt:ts(),reviewerId:uid,reviewerName:clean(user.name),source:'firebase-leave-v1'}));
+      return {ok:true,message:status==='已核准'?'請假已核准。':'請假已駁回。'};
+    }
+    const checked=await buildSegmentsWithSchedule(Object.assign({},payload,{userId:uid}));
+    const first=checked.segments[0]||{}; const start=fmtDate(first.startDate||first.leaveDate||payload.startDate||payload.leaveDate); const end=fmtDate(first.endDate||first.startDate||first.leaveDate||payload.endDate||payload.leaveDate);
+    const row={requestId:id,employeeId:uid,name:clean(payload.name||user.name),email:lower(payload.email||user.email),reason:clean(payload.reason||payload.leaveName||'請假'),leaveCode:clean(payload.leaveCode),bereavementRelation:clean(payload.bereavementRelation),leaveDate:start,startDate:start,endDate:end,startTime:clean(first.startTime||payload.startTime),endTime:clean(first.endTime||payload.endTime),hours:checked.totalHours,note:clean(payload.note),attachmentUrl:clean(payload.attachmentUrl),segments:checked.segments,reviewHints:checked.hints,status:'待審核',source:'firebase-leave-v1'};
+    if(action==='modifyLeaveRequest'){ row.modifyCount=(Number((await getDoc('leaveRequests',id).catch(()=>null)||{}).modifyCount)||0)+1; }
+    await setDoc('leaveRequests',id,Object.assign({},row,{createdAt:ts()}));
+    return {ok:true,message:action==='modifyLeaveRequest'?'請假申請已更新。':'請假申請已送出。',requestId:id,row:normLeave(row)};
+  }
+  const oldHandle=old.handleApi;
+  old.handleApi=async function(action,payload){
+    const a=clean(action), p=payload||{};
+    try{
+      if(a==='getLeaveDateContext') return await getLeaveDateContext(p);
+      if(a==='getLeaveHistory') return await getLeaveHistory(p);
+      if(a==='getPendingLeaveApprovals') return await getPendingLeaveApprovals(p);
+      if(a==='getAdminLeaveEmployeeSummary') return await getAdminLeaveEmployeeSummary(p);
+      if(['leaveRequest','modifyLeaveRequest','deleteLeaveRequest','reviewLeaveRequest'].includes(a)) return await saveLeave(a,p);
+    }catch(e){ return {ok:false,message:e && e.message ? e.message : '請假資料處理失敗'}; }
+    if(typeof oldHandle==='function') return await oldHandle(action,payload);
+    return null;
+  };
+  global.YZFirebase=old;
 })(window);
