@@ -594,48 +594,80 @@
 })(window);
 
 
-/* 工讀生時數登記：60 天歷史搜尋 */
+/* 薪資與投保資訊：Firebase 直讀加速版 */
 (function(global){
   const fb = global.YZFirebase;
-  if(!fb || fb.__parttimeRangeSearchPatched) return;
+  if(!fb || fb.__salaryFastReadPatched) return;
   const oldHandle = fb.handleApi;
+
   function clean(v){ return String(v == null ? '' : v).trim(); }
   function num(v){ const n = Number(v || 0); return Number.isFinite(n) ? n : 0; }
-  function norm(o){
-    o = o || {};
-    const total = num(o.totalHours || o.workHours || o.hours) + (o.halfHour ? 0.5 : 0);
+  function firstNonEmpty(obj, keys, fallback){
+    obj = obj || {};
+    for(const k of keys){
+      if(obj[k] !== undefined && obj[k] !== null && String(obj[k]).trim() !== '') return obj[k];
+    }
+    return fallback;
+  }
+  function normalizeEmployee(raw, id){
+    raw = raw || {};
+    const hourly = firstNonEmpty(raw, ['hourlyRate','parttimeHourlyRate','hourRate','時薪'], '');
+    const salary = firstNonEmpty(raw, ['baseSalary','monthlySalary','salary','本薪','月薪'], '');
+    const laborLevel = firstNonEmpty(raw, ['laborInsuranceLevel','laborLevel','勞保級距'], '');
+    const healthLevel = firstNonEmpty(raw, ['healthInsuranceLevel','healthLevel','健保級距'], '');
+    const laborSelf = firstNonEmpty(raw, ['laborInsuranceSelfPay','laborSelfPay','勞保自付額'], '');
+    const healthSelf = firstNonEmpty(raw, ['healthInsuranceSelfPay','healthSelfPay','健保自付額'], '');
+    const role = clean(firstNonEmpty(raw, ['role','type','employeeType','職務類型'], ''));
+    const isPartTime = !!raw.isPartTime || /工讀|part/i.test(role) || clean(firstNonEmpty(raw, ['employmentType','聘用類型'], '')).includes('工讀');
     return {
-      recordId: clean(o.recordId || o.__id),
-      employeeId: clean(o.employeeId || o.userId),
-      date: clean(o.date || o.workDate),
-      hours: num(o.hours || o.workHours),
-      halfHour: !!o.halfHour,
-      totalHours: Math.round(total * 100) / 100,
-      note: clean(o.note || o.remark || ''),
-      status: clean(o.status || '正常')
+      ok: true,
+      source: 'firebase',
+      employeeId: clean(raw.employeeId || raw.id || id),
+      name: clean(raw.name || raw.displayName || raw.nickname || ''),
+      email: clean(raw.email || raw.loginEmail || ''),
+      role,
+      isPartTime,
+      hourlyRate: hourly === '' ? '' : num(hourly),
+      salary: salary === '' ? '' : num(salary),
+      baseSalary: salary === '' ? '' : num(salary),
+      monthlySalary: salary === '' ? '' : num(salary),
+      laborInsuranceStatus: clean(firstNonEmpty(raw, ['laborInsuranceStatus','laborStatus','勞保狀態'], '')),
+      healthInsuranceStatus: clean(firstNonEmpty(raw, ['healthInsuranceStatus','healthStatus','健保狀態'], '')),
+      isPartialWorkingTime: !!raw.isPartialWorkingTime || clean(firstNonEmpty(raw, ['partialWorkingTime','是否部分工時'], '')).includes('是'),
+      laborInsuranceLevel: laborLevel,
+      healthInsuranceLevel: healthLevel,
+      laborInsuranceSelfPay: laborSelf,
+      healthInsuranceSelfPay: healthSelf,
+      lateMinutesThisMonth: num(firstNonEmpty(raw, ['lateMinutesThisMonth','monthlyLateMinutes','本月遲到分鐘'], 0)),
+      lateDeductionThisMonth: num(firstNonEmpty(raw, ['lateDeductionThisMonth','monthlyLateDeduction','本月遲到扣薪'], 0)),
+      raw
     };
   }
-  async function getRange(payload){
+  async function getMySalaryInfo(payload){
     const db = global.firebase && global.firebase.apps && global.firebase.apps.length ? global.firebase.firestore() : null;
-    if(!db) return {ok:false,message:'Firebase 尚未啟用',rows:[],totalHours:0};
-    const userId = clean(payload && payload.userId);
-    const start = clean(payload && payload.startDate);
-    const end = clean(payload && payload.endDate);
-    if(!userId || !start || !end) return {ok:false,message:'缺少查詢條件',rows:[],totalHours:0};
-    const snap = await db.collection('parttimeRecords').where('employeeId','==',userId).get();
-    const rows = [];
-    snap.forEach(doc => {
-      const r = norm(Object.assign({__id:doc.id}, doc.data() || {}));
-      if(r.date >= start && r.date <= end && r.status !== '已刪除') rows.push(r);
-    });
-    rows.sort((a,b)=>(b.date || '').localeCompare(a.date || ''));
-    const totalHours = Math.round(rows.reduce((s,r)=>s+num(r.totalHours),0)*100)/100;
-    return {ok:true,rows,list:rows,totalHours,startDate:start,endDate:end};
+    if(!db) return {ok:false, message:'Firebase 尚未啟用'};
+    const p = payload || {};
+    const userId = clean(p.userId || p.employeeId || p.id || (global.currentUser && global.currentUser.id));
+    const email = clean(p.email || (global.currentUser && global.currentUser.email));
+    let doc = null;
+    if(userId){
+      const byId = await db.collection('employees').doc(userId).get();
+      if(byId.exists) doc = byId;
+    }
+    if(!doc && email){
+      const snap = await db.collection('employees').where('email','==',email).limit(1).get();
+      if(!snap.empty) doc = snap.docs[0];
+    }
+    if(!doc){
+      return {ok:false, source:'firebase', message:'找不到員工薪資投保資料'};
+    }
+    return normalizeEmployee(doc.data() || {}, doc.id);
   }
-  fb.handleApi = async function(action,payload){
-    if(String(action || '') === 'getParttimeHistoryRange') return await getRange(payload || {});
-    if(typeof oldHandle === 'function') return await oldHandle(action,payload || {});
+
+  fb.handleApi = async function(action, payload){
+    if(String(action || '') === 'getMySalaryInfo') return await getMySalaryInfo(payload || {});
+    if(typeof oldHandle === 'function') return await oldHandle(action, payload || {});
     return null;
   };
-  fb.__parttimeRangeSearchPatched = true;
+  fb.__salaryFastReadPatched = true;
 })(window);

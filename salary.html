@@ -173,6 +173,22 @@
         setReloading(false);
       }
     }
+
+    /* 薪資與投保資訊：優先直接讀 Firebase，避免繞 Apps Script 造成載入慢 */
+    const __salaryLegacyApi = api;
+    api = async function(action, payload){
+      try{
+        if(action === 'getMySalaryInfo' && window.YZFirebase && typeof window.YZFirebase.handleApi === 'function'){
+          const result = await window.YZFirebase.handleApi(action, payload || {});
+          if(result && result.ok !== false) return result;
+        }
+      }catch(err){
+        console.warn('[salary] Firebase direct read failed, fallback to legacy API', err);
+      }
+      return __salaryLegacyApi(action, payload || {});
+    };
+
+
     async function init(){
       fillHeader();
       const user = requireLogin();
