@@ -16,7 +16,7 @@
     .info-card .value{font-size:16px;font-weight:700;margin-top:6px;white-space:pre-wrap}
     .hidden{display:none!important}
     .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:12px}
-    @media (max-width:560px){.summary-grid,.info-grid{grid-template-columns:1fr}}
+    @media (max-width:560px){.summary-grid,.info-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.summary-box,.info-card{padding:12px}.summary-box .value{font-size:20px}.info-card .value{font-size:15px}}
     .page-return-wrap{margin-bottom:16px}
     .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
   </style>
@@ -27,9 +27,6 @@
     <div class="card">
       <div class="header" style="margin:0"><h1 class="title">薪資與投保資訊</h1><div class="welcome">歡迎 <span data-user-name></span></div></div>
       <div id="pageMsg" class="message"></div>
-      <div class="toolbar">
-        <button id="reloadBtn" class="btn" type="button" style="width:auto;padding:10px 16px">重新讀取</button>
-      </div>
     </div>
     <div class="card">
       <div class="section-title">摘要</div>
@@ -59,12 +56,12 @@
       </div>
     </div>
   </div>
-  <script src="config.js?v=20260501salary16"></script>
+  <script src="config.js?v=20260527salaryfastdirect"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260523stage5primary"></script>
+  <script src="firebase-client.js?v=20260527salaryfastdirect"></script>
 
-  <script src="app.js?v=20260501salary16"></script>
+  <script src="app.js?v=20260527salaryfastdirect"></script>
   <script>
     function toggleByIdentity(identityType){
       const isParttime = identityType === 'parttime';
@@ -74,21 +71,15 @@
       qs('#cardAverageSalary').classList.toggle('hidden', !isParttime);
     }
     function setReloading(loading){
-      const btn = qs('#reloadBtn');
-      if(!btn) return;
-      btn.disabled = !!loading;
-      btn.textContent = loading ? '讀取中...' : '重新讀取';
+      // 已改為 Firebase 直讀，不顯示手動重新讀取按鈕
     }
     async function callSalaryApi(payload){
-      const apiUrl = (typeof getApiUrl === 'function' ? getApiUrl() : String((window.APP_CONFIG && window.APP_CONFIG.API_URL) || window.API_URL || '').trim());
-      if(!apiUrl) throw new Error('尚未設定 API 網址');
-      const res = await fetch(apiUrl, {
-        method:'POST',
-        headers:{'Content-Type':'text/plain;charset=utf-8'},
-        body: JSON.stringify(payload)
-      });
-      const raw = await res.text();
-      try{ return JSON.parse(raw); }catch(e){ throw new Error(raw || '伺服器回傳格式錯誤'); }
+      if(!window.YZFirebase || typeof window.YZFirebase.handleApi !== 'function'){
+        throw new Error('Firebase 尚未啟用，無法讀取薪資投保資訊');
+      }
+      const res = await window.YZFirebase.handleApi('getMySalaryInfo', payload || {});
+      if(!res || res.ok === false) throw new Error((res && res.message) || '讀取失敗');
+      return res;
     }
     function isBlankSalaryText(text){
       const s = String(text == null ? '' : text).trim();
@@ -173,28 +164,10 @@
         setReloading(false);
       }
     }
-
-    /* 薪資與投保資訊：優先直接讀 Firebase，避免繞 Apps Script 造成載入慢 */
-    const __salaryLegacyApi = api;
-    api = async function(action, payload){
-      try{
-        if(action === 'getMySalaryInfo' && window.YZFirebase && typeof window.YZFirebase.handleApi === 'function'){
-          const result = await window.YZFirebase.handleApi(action, payload || {});
-          if(result && result.ok !== false) return result;
-        }
-      }catch(err){
-        console.warn('[salary] Firebase direct read failed, fallback to legacy API', err);
-      }
-      return __salaryLegacyApi(action, payload || {});
-    };
-
-
     async function init(){
       fillHeader();
       const user = requireLogin();
       if(!user) return;
-      const btn = qs('#reloadBtn');
-      if(btn) btn.addEventListener('click', loadSalaryInfo);
       await loadSalaryInfo();
     }
   </script>

@@ -671,3 +671,117 @@
   };
   fb.__salaryFastReadPatched = true;
 })(window);
+
+
+/* 薪資與投保資訊：Firebase 直讀完整版 */
+(function(global){
+  const fb = global.YZFirebase;
+  if(!fb || fb.__salaryDirectOnlyV2) return;
+  const oldHandle = fb.handleApi;
+
+  function clean(v){ return String(v == null ? '' : v).trim(); }
+  function lower(v){ return clean(v).toLowerCase(); }
+  function num(v){ const n = Number(String(v ?? '').replace(/[^\d.-]/g,'')); return Number.isFinite(n) ? n : 0; }
+  function money(v){ const n = num(v); return n ? '$' + Math.round(n).toLocaleString('zh-TW') : '0 元'; }
+  function moneyBlank(v){ const s = clean(v); return s ? '$' + Math.round(num(s)).toLocaleString('zh-TW') : '-'; }
+  function pick(o, keys, fallback=''){
+    o = o || {};
+    for(const k of keys){
+      if(o[k] !== undefined && o[k] !== null && clean(o[k]) !== '') return o[k];
+    }
+    return fallback;
+  }
+  function truthy(v){
+    const s = lower(v);
+    return v === true || ['是','yes','true','1','啟用','enabled','active','在保','已投保','投保'].includes(s);
+  }
+  function fmtDate(v){
+    if(!v) return '';
+    if(v && typeof v.toDate === 'function'){
+      const d = v.toDate();
+      return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+    }
+    return clean(v).slice(0,10);
+  }
+  function normalize(raw, id){
+    raw = raw || {};
+    const identityType = lower(pick(raw, ['identityType','身分類型','employeeType','type'], '')) || (truthy(pick(raw,['isPartTime','是否工讀生'],'')) ? 'parttime' : 'staff');
+    const isParttime = identityType === 'parttime' || clean(pick(raw,['role','職務類型'],'')).includes('工讀');
+    const hourly = pick(raw, ['hourlyRate','parttimeHourlyRate','hourRate','時薪'], '');
+    const base = pick(raw, ['staffBaseSalary','baseSalary','monthlySalary','salary','本薪','月薪'], '');
+    const mainAmountText = isParttime ? (hourly ? moneyBlank(hourly) + ' / 小時' : '-') : (base ? moneyBlank(base) : '-');
+
+    const laborStatus = clean(pick(raw, ['laborStatus','laborInsuranceStatus','laborInsurance','勞保狀態'], '未設定'));
+    const healthStatus = clean(pick(raw, ['healthStatus','healthInsuranceStatus','healthInsurance','健保狀態'], '未設定'));
+
+    const laborLevelText = clean(pick(raw, ['laborLevelText','laborInsuranceLevel','laborLevel','勞保級距'], ''));
+    const healthLevelText = clean(pick(raw, ['healthLevelText','healthInsuranceLevel','healthLevel','健保級距'], ''));
+    const laborSalaryText = clean(pick(raw, ['laborSalaryText','laborInsuranceSalary','laborSalary','勞保投保薪資'], ''));
+    const healthSalaryText = clean(pick(raw, ['healthSalaryText','healthInsuranceSalary','healthSalary','健保投保薪資'], ''));
+    const laborSelf = pick(raw, ['laborSelfPayText','laborInsuranceSelfPay','laborSelfPay','勞保自付額'], '');
+    const healthSelf = pick(raw, ['healthSelfPayText','healthInsuranceSelfPay','healthSelfPay','健保自付額'], '');
+
+    const info = {
+      employeeId: clean(pick(raw, ['employeeId','員工ID'], id)),
+      name: clean(pick(raw, ['name','姓名','displayName'], '')),
+      email: clean(pick(raw, ['email','Email'], '')),
+      identityType: isParttime ? 'parttime' : 'staff',
+      mainAmountLabel: isParttime ? '時薪' : '本薪',
+      mainAmountText,
+      staffBaseSalaryText: base ? moneyBlank(base) : '-',
+      parttimeHourlyRateText: hourly ? moneyBlank(hourly) + ' / 小時' : '-',
+      parttimePartialHoursText: truthy(pick(raw, ['isPartialWorkingTime','partialWorkingTime','是否部分工時'], '')) ? '是' : '否',
+      parttimeAverageSalaryText: pick(raw, ['parttimeAverageSalaryText','averageSalaryText','averageSalary','目前申報月平均薪資總額'], '-') || '-',
+      jobAllowanceText: pick(raw, ['jobAllowanceText','jobAllowance','職務加給'], '-'),
+      allowanceText: pick(raw, ['allowanceText','allowance','津貼'], '-'),
+      laborStatus,
+      healthStatus,
+      laborActive: truthy(laborStatus),
+      healthActive: truthy(healthStatus),
+      laborLevelText,
+      healthLevelText,
+      laborSalaryText: laborSalaryText ? moneyBlank(laborSalaryText) : '',
+      healthSalaryText: healthSalaryText ? moneyBlank(healthSalaryText) : '',
+      laborSelfPayText: laborSelf ? moneyBlank(laborSelf) : '0 元',
+      healthSelfPayText: healthSelf ? moneyBlank(healthSelf) : '0 元',
+      retirementEmployerText: pick(raw, ['retirementEmployerText','retirementEmployer','雇主提撥勞退'], ''),
+      selfRetirementText: pick(raw, ['selfRetirementText','retirementSelf','勞退自提'], ''),
+      effectiveDate: fmtDate(pick(raw, ['salaryEffectiveDate','effectiveDate','生效日期'], '')) || '-',
+      lateMinutesText: (num(pick(raw, ['lateMinutesThisMonth','monthlyLateMinutes','本月遲到分鐘'], 0)) || 0) + ' 分鐘',
+      lateDeductionText: money(pick(raw, ['lateDeductionThisMonth','monthlyLateDeduction','本月遲到扣薪'], 0)),
+      note: clean(pick(raw, ['salaryNote','note','備註'], ''))
+    };
+    return {ok:true, source:'firebase-direct', info, salary:info};
+  }
+
+  async function getMySalaryInfo(payload){
+    const db = global.firebase && global.firebase.apps && global.firebase.apps.length ? global.firebase.firestore() : null;
+    if(!db) return {ok:false, message:'Firebase 尚未啟用'};
+    const p = payload || {};
+    const userId = clean(p.userId || p.employeeId || p.id || (JSON.parse(localStorage.getItem('employeeUser') || '{}').id));
+    const email = clean(p.email || (JSON.parse(localStorage.getItem('employeeUser') || '{}').email));
+    let doc = null;
+
+    if(userId){
+      const direct = await db.collection('employees').doc(userId).get();
+      if(direct.exists) doc = direct;
+      if(!doc){
+        const byEmployeeId = await db.collection('employees').where('employeeId','==',userId).limit(1).get();
+        if(!byEmployeeId.empty) doc = byEmployeeId.docs[0];
+      }
+    }
+    if(!doc && email){
+      const byEmail = await db.collection('employees').where('email','==',email).limit(1).get();
+      if(!byEmail.empty) doc = byEmail.docs[0];
+    }
+    if(!doc) return {ok:false, source:'firebase-direct', message:'找不到員工薪資投保資料'};
+    return normalize(doc.data() || {}, doc.id);
+  }
+
+  fb.handleApi = async function(action, payload){
+    if(String(action || '') === 'getMySalaryInfo') return await getMySalaryInfo(payload || {});
+    if(typeof oldHandle === 'function') return await oldHandle(action, payload || {});
+    return null;
+  };
+  fb.__salaryDirectOnlyV2 = true;
+})(window);
