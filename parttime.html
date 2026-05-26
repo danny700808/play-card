@@ -158,6 +158,61 @@
       color:#fff!important;
     }
 
+
+    /* 工讀生時數登記：手機緊湊版 */
+    .parttime-compact-header{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      margin-bottom:4px;
+    }
+    .parttime-compact-header .title{
+      font-size:24px;
+      line-height:1.2;
+      margin:0;
+      white-space:nowrap;
+    }
+    .parttime-user-name{
+      color:#16533f;
+      font-size:15px;
+      font-weight:900;
+      text-align:right;
+      white-space:nowrap;
+      max-width:42%;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+    #fieldWorkDate label{display:none!important}
+    #fieldHalfHour{display:none!important}
+    .history-search-panel{
+      border:1px solid var(--line);
+      border-radius:16px;
+      padding:12px 14px;
+      background:#fff;
+    }
+    .history-search-panel summary{
+      cursor:pointer;
+      font-size:18px;
+      font-weight:900;
+      color:#16533f;
+      list-style:none;
+    }
+    .history-search-panel summary::-webkit-details-marker{display:none}
+    .history-grid{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:10px;
+      margin-top:12px;
+    }
+    .history-actions{margin-top:12px}
+    .history-result{margin-top:12px}
+    .history-result .item{margin-bottom:8px}
+    @media(max-width:520px){
+      .parttime-compact-header .title{font-size:22px}
+      .history-grid{grid-template-columns:1fr}
+    }
+
 </style>
 </head>
 <body onload="init()">
@@ -176,7 +231,6 @@
 
 
       <div class="field" id="fieldWorkDate">
-        <label for="workDate">日期</label>
         <input id="workDate" type="date">
         <div class="field-error" id="errorWorkDate"></div>
         <div id="dateStatusBox" class="date-status-box" style="display:none">
@@ -190,6 +244,7 @@
         <label for="hoursSelect">時數</label>
         <select id="hoursSelect" aria-hidden="true" tabindex="-1">
           <option value="">請選擇時數</option>
+          <option value="0.5">0.5 小時</option>
           <option value="1">1 小時</option>
           <option value="2">2 小時</option>
           <option value="3">3 小時</option>
@@ -208,11 +263,7 @@
         <div class="field-error" id="errorHours"></div>
       </div>
 
-      <div class="field" id="fieldHalfHour">
-        <label>額外增加 0.5 小時</label>
-        <div class="check-row parttime-half-row"><label class="parttime-half-label"><input id="halfHour" type="checkbox"><span>主管同意再執行</span></label></div>
-        <button type="button" id="halfHourBtn" class="half-hour-choice">+0.5 小時</button>
-      </div>
+      <input id="halfHour" type="checkbox" style="display:none" aria-hidden="true">
 
       <div class="field" id="fieldNote">
         <label for="note">備註</label>
@@ -236,6 +287,28 @@
         <div class="muted">這個月總計</div>
         <div id="monthTotal" class="summary-value">0 小時</div>
       </div>
+    </div>
+
+    <div class="card">
+      <details class="history-search-panel">
+        <summary>歷史紀錄搜尋</summary>
+        <div class="muted inline-note">一次最多查詢 60 天。</div>
+        <div class="history-grid">
+          <div class="field">
+            <label for="historyStart">開始日期</label>
+            <input id="historyStart" type="date">
+          </div>
+          <div class="field">
+            <label for="historyEnd">結束日期</label>
+            <input id="historyEnd" type="date">
+          </div>
+        </div>
+        <div class="history-actions">
+          <button type="button" class="btn" id="historySearchBtn">搜尋紀錄</button>
+        </div>
+        <div id="historySearchMsg" class="message" style="display:none"></div>
+        <div id="historySearchResult" class="history-result"></div>
+      </details>
     </div>
   </div>
 
@@ -263,11 +336,12 @@
       const grid = qs('#hoursGrid');
       const select = qs('#hoursSelect');
       if(!grid || !select) return;
-      const values = Array.from({length:12}, (_,i)=>String(i+1));
-      grid.innerHTML = values.map(v => `<button type="button" class="hour-choice" data-hour="${v}">${v} 小時</button>`).join('');
+      const values = ['0.5'].concat(Array.from({length:12}, (_,i)=>String(i+1)));
+      grid.innerHTML = values.map(v => `<button type="button" class="hour-choice" data-hour="${v}">${formatHoursLabel(v)}</button>`).join('');
       grid.querySelectorAll('.hour-choice').forEach(btn=>{
         btn.onclick = () => {
           select.value = btn.dataset.hour;
+          qs('#halfHour').checked = false;
           updateHoursGrid();
           clearValidation();
         };
@@ -277,22 +351,60 @@
     function updateHoursGrid(){
       const grid = qs('#hoursGrid');
       const select = qs('#hoursSelect');
-      const half = qs('#halfHour');
       const totalText = qs('#parttimeSelectedTotal');
       if(grid && select){
         grid.querySelectorAll('.hour-choice').forEach(btn=>{
           btn.classList.toggle('active', btn.dataset.hour === select.value);
         });
       }
-      const base = Number(select && select.value ? select.value : 0);
-      const total = base + ((half && half.checked) ? 0.5 : 0);
+      const total = Number(select && select.value ? select.value : 0);
       if(totalText){
         totalText.textContent = total ? `目前選擇：${formatHoursLabel(total)}` : '';
       }
-      const halfBtn = qs('#halfHourBtn');
-      if(halfBtn && half){
-        halfBtn.classList.toggle('active', half.checked);
-        halfBtn.textContent = '+0.5 小時';
+    }
+    function daysBetweenInclusive(startDate, endDate){
+      const s = new Date(startDate + 'T00:00:00');
+      const e = new Date(endDate + 'T00:00:00');
+      if(isNaN(s.getTime()) || isNaN(e.getTime())) return NaN;
+      return Math.floor((e - s) / 86400000) + 1;
+    }
+    async function searchHistoryRange(){
+      const user = requireLogin();
+      if(!user) return;
+      const start = qs('#historyStart').value;
+      const end = qs('#historyEnd').value;
+      const msg = qs('#historySearchMsg');
+      const result = qs('#historySearchResult');
+      if(msg){ msg.style.display='none'; msg.textContent=''; msg.classList.remove('error'); }
+      if(result) result.innerHTML = '';
+      if(!start || !end){
+        if(msg){ msg.style.display=''; setMsg(msg, '請先選擇開始日期與結束日期。', true); }
+        return;
+      }
+      const days = daysBetweenInclusive(start, end);
+      if(!Number.isFinite(days) || days <= 0){
+        if(msg){ msg.style.display=''; setMsg(msg, '結束日期不可早於開始日期。', true); }
+        return;
+      }
+      if(days > 60){
+        if(msg){ msg.style.display=''; setMsg(msg, '一次最多只能搜尋 60 天，請縮短日期區間。', true); }
+        return;
+      }
+      const btn = qs('#historySearchBtn');
+      const oldText = btn ? btn.textContent : '';
+      if(btn){ btn.disabled = true; btn.textContent = '搜尋中...'; }
+      try{
+        const r = await api('getParttimeHistoryRange', {userId:user.id, startDate:start, endDate:end});
+        const rows = r.rows || [];
+        const total = Number(r.totalHours || 0);
+        if(msg){ msg.style.display=''; setMsg(msg, `查詢完成，共 ${rows.length} 筆，合計 ${formatHoursLabel(total)}。`, false); }
+        if(result){
+          result.innerHTML = rows.map(x=>`<div class="item"><div class="top"><strong>${x.date}</strong><span class="tag">${formatHoursLabel(x.totalHours)}</span></div>${x.note?`<div class="muted">${x.note}</div>`:''}</div>`).join('') || '<div class="muted">這段期間沒有紀錄</div>';
+        }
+      }catch(e){
+        if(msg){ msg.style.display=''; setMsg(msg, '搜尋失敗，請稍後再試。', true); }
+      }finally{
+        if(btn){ btn.disabled = false; btn.textContent = oldText || '搜尋紀錄'; }
       }
     }
     function monthLabel(ym){
@@ -395,7 +507,7 @@
         userId: user.id,
         workDate: qs('#workDate').value,
         hours: qs('#hoursSelect').value,
-        halfHour: qs('#halfHour').checked,
+        halfHour: false,
         note: ''
       };
       const btn = qs('#submitBtn');
@@ -437,15 +549,8 @@
       qs('#workDate').addEventListener('input', async ()=>{ clearValidation(); await loadDateContext(); });
       qs('#workDate').addEventListener('change', async ()=>{ clearValidation(); await loadDateContext(); });
       qs('#hoursSelect').addEventListener('change', ()=>{ clearValidation(); updateHoursGrid(); });
-      const halfBtn = qs('#halfHourBtn');
-      if(halfBtn){
-        halfBtn.onclick = () => {
-          const half = qs('#halfHour');
-          half.checked = !half.checked;
-          updateHoursGrid();
-        };
-      }
-      qs('#halfHour').addEventListener('change', updateHoursGrid);
+      const historyBtn = qs('#historySearchBtn');
+      if(historyBtn) historyBtn.onclick = searchHistoryRange;
       renderHoursGrid();
       loadHistory();
       loadDateContext();
