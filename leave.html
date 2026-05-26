@@ -56,6 +56,12 @@
     #cancelEditBtn{display:block!important;width:100%!important;max-width:none!important}
     .leave-time-select{width:100%!important}
 
+    .leave-type-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:10px 0 12px}
+    .leave-type-btn{border:1px solid #1f7a5a;background:#1f7a5a;color:#fff;border-radius:16px;padding:16px 12px;font-size:18px;font-weight:900;text-align:center;cursor:pointer;box-shadow:0 8px 20px rgba(15,23,42,.05)}
+    .leave-type-btn.active{background:#145f46;border-color:#145f46}
+    .leave-type-btn[disabled]{opacity:.45;cursor:not-allowed}
+    @media(max-width:720px){.leave-type-grid{grid-template-columns:1fr}.leave-type-btn{font-size:18px;padding:16px 12px}}
+
 
 
     /* 請假頁日期欄位：修正手機直向時 date input 右側凸出卡片 */
@@ -128,7 +134,7 @@
         <div class="field hidden" id="fieldEventChoice"><label for="eventChoice">事件延續</label><select id="eventChoice" disabled><option value="">請先選擇婚假或喪假</option></select><div class="field-error" id="errorEventChoice"></div><div class="muted" id="eventChoiceHintText">若這次和上一次是同一事件，請選擇延續上一次；不是同一事件時再改選建立新事件。</div></div>
         <div class="event-box hidden" id="eventContextBox"></div>
         <div class="field hidden" id="fieldBereavementRelation"><label for="bereavementRelation">喪假關係人</label><select id="bereavementRelation" disabled><option value="">請先讀取關係資料</option></select><div class="field-error" id="errorBereavementRelation"></div><div class="muted" id="bereavementHintText">選擇關係人後，系統會顯示目前設定的喪假天數。</div></div>
-        <div class="field hidden" id="fieldSegments"><label>請假時間</label><div class="segment-wrap"><div class="muted">請先選擇整天請假或部分時間請假。</div><div id="segmentList" class="segment-list"></div><div class="segment-toolbar"><button class="btn secondary" type="button" id="addSegmentBtn">＋新增請假時間</button></div><div class="field-error" id="errorSegments"></div><div id="leaveSegmentSummary" class="summary-box segment-summary hidden"></div></div></div>
+        <div class="field hidden" id="fieldSegments"><label>請假時間</label><div class="segment-wrap"><div class="muted">請先選擇整天請假、部分請假或事後補假。</div><div id="segmentList" class="segment-list"></div><div class="segment-toolbar"><button class="btn secondary" type="button" id="addSegmentBtn">＋新增請假時間</button></div><div class="field-error" id="errorSegments"></div><div id="leaveSegmentSummary" class="summary-box segment-summary hidden"></div></div></div>
         <div class="field" id="fieldNote"><label for="note">備註</label><textarea id="note" placeholder="有任何問題請填寫在這裡"></textarea></div>
         <div class="field" id="fieldFile"><label for="file" id="fileLabel">附件（選填）</label><input id="file" type="file" accept=".jpg,.jpeg,.png,.pdf,.doc,.docx"><div class="muted" id="fileHintText">可上傳 jpg、png、pdf、doc、docx，單檔上限 30MB。婚假／喪假／病假可先送出，核准後可再補證明。</div></div>
         <input id="editingRequestId" type="hidden">
@@ -277,7 +283,8 @@ function setLocalMsg(text, isError=false){ setMsg(qs('#localMsg'), text, isError
 function nextLeaveSegmentId(){ leaveSegmentSeed += 1; return 'SEG_' + leaveSegmentSeed; }
 function createDefaultSegment(mode){
   const today = localDateInputValue();
-  return { id: nextLeaveSegmentId(), mode: mode || 'schedule', startDate: today, endDate: today, leaveDate: today, startTime: '', endTime: '', contextHtml: '', contextError: false };
+  const m = mode || 'schedule';
+  return { id: nextLeaveSegmentId(), mode: m, startDate: today, endDate: today, leaveDate: today, startTime: '', endTime: '', contextHtml: '', contextError: false };
 }
 function getSegmentStateById(id){ return leaveSegmentsState.find(item => item.id === id) || null; }
 function leaveMetaAllowsCustom(meta){ return !!meta; }
@@ -286,7 +293,7 @@ function normalizeSegmentModesByReason(){
   const allowCustom = leaveMetaAllowsCustom(meta);
   leaveSegmentsState = (leaveSegmentsState || []).map(seg => {
     const next = Object.assign({}, seg || {});
-    if(!allowCustom) next.mode = 'schedule';
+    if(!allowCustom && next.mode === 'custom') next.mode = 'schedule';
     return next;
   });
 }
@@ -297,10 +304,15 @@ function dateRangeLabel(startDate, endDate){
   if(!e || e === s) return s;
   return `${s} ～ ${e}`;
 }
+function leaveTodayKey(){ return localDateInputValue(); }
+function leaveIsPastDate(dateKey){ return !!dateKey && String(dateKey) < leaveTodayKey(); }
+function leaveDateAdd(dateKey, days){ const d = new Date(String(dateKey || '') + 'T00:00:00'); if(String(d)==='Invalid Date') return ''; d.setDate(d.getDate() + Number(days || 0)); return d.toISOString().slice(0,10); }
+function leaveDatesBetween(startDate, endDate){ const out=[]; if(!startDate || !endDate || endDate < startDate) return out; let d=startDate; for(let guard=0; d<=endDate && guard<370; guard++){ out.push(d); d=leaveDateAdd(d,1); } return out; }
+function leaveModeLabel(mode){ return mode === 'custom' ? '部分請假' : (mode === 'retro' ? '事後補假' : '整天請假'); }
 function segmentDisplayText(seg){
   if(!seg) return '';
-  if(seg.mode === 'custom'){
-    return `${seg.leaveDate || '未選日期'}｜${seg.startTime || '--:--'}-${seg.endTime || '--:--'}`;
+  if(seg.mode === 'custom' || seg.mode === 'retro'){
+    return `${seg.leaveDate || '未選日期'}｜${leaveModeLabel(seg.mode)}｜${seg.startTime || '--:--'}-${seg.endTime || '--:--'}`;
   }
   return `${dateRangeLabel(seg.startDate, seg.endDate)}｜整天請假`;
 }
@@ -372,7 +384,7 @@ async function refreshCustomSegmentContext(segmentId){
   const reason = qs('#reason') ? qs('#reason').value : '';
   const box = qs(`[data-segment-context="${segmentId}"]`);
   if(!seg || !box) return;
-  if(seg.mode !== 'custom'){
+  if(seg.mode !== 'custom' && seg.mode !== 'retro'){
     box.className = 'segment-context';
     box.innerHTML = '這一段會在送出時依班表檢查。';
     return;
@@ -398,7 +410,7 @@ async function refreshCustomSegmentContext(segmentId){
     renderSegmentSummary();
     if(ctx.canLeave){
       box.className = 'segment-context is-ok';
-      box.innerHTML = `<strong>${escapeHtml(ctx.statusLabel || '可請假')}</strong><div>${escapeHtml(ctx.scheduleLabel || '')}</div><div>${escapeHtml(ctx.helperText || '')}</div>`;
+      box.innerHTML = `<strong>${escapeHtml(seg.mode === 'retro' ? '事後補假可送出' : (ctx.statusLabel || '可請假'))}</strong><div>${escapeHtml(ctx.scheduleLabel || '')}</div><div>${escapeHtml(seg.mode === 'retro' ? '此為事後補假，可選過去日期，送出後需主管審核。' : (ctx.helperText || ''))}</div>`;
     }else{
       box.className = 'segment-context is-error';
       box.innerHTML = `<strong>${escapeHtml(ctx.statusLabel || '不可請假')}</strong><div>${escapeHtml(ctx.blockedReason || '這一天不能請假。')}</div>`;
@@ -414,10 +426,20 @@ async function refreshScheduleSegmentContext(segmentId){
   const reason = qs('#reason') ? qs('#reason').value : '';
   const box = qs(`[data-segment-context="${segmentId}"]`);
   if(!seg || !box) return;
-  if(seg.mode === 'custom') return;
+  if(seg.mode === 'custom' || seg.mode === 'retro') return;
   if(!reason || !seg.startDate){
     box.className = 'segment-context';
     box.innerHTML = '請先選擇請假原因與日期。';
+    return;
+  }
+  if(leaveIsPastDate(seg.startDate) || (seg.endDate && leaveIsPastDate(seg.endDate))){
+    box.className = 'segment-context is-error';
+    box.innerHTML = '<strong>日期需再確認</strong><div>一般請假不能選過去日期；若是臨時狀況已經發生，請改選「事後補假」。</div>';
+    return;
+  }
+  if(seg.endDate && seg.endDate < seg.startDate){
+    box.className = 'segment-context is-error';
+    box.innerHTML = '<strong>日期需再確認</strong><div>結束日期不能早於開始日期。</div>';
     return;
   }
   box.className = 'segment-context';
@@ -425,43 +447,39 @@ async function refreshScheduleSegmentContext(segmentId){
   try{
     const startDate = seg.startDate;
     const endDate = seg.endDate || seg.startDate;
+    const dates = leaveDatesBetween(startDate, endDate);
     const payloadBase = { userId: currentUser.id, reason, requestId: qs('#editingRequestId') ? qs('#editingRequestId').value : '' };
-    const startRes = await api('getLeaveDateContext', Object.assign({}, payloadBase, { leaveDate: startDate }));
-    if(!startRes || !startRes.ok || !startRes.context){
-      box.className = 'segment-context is-error';
-      box.innerHTML = escapeHtml((startRes && startRes.message) || '班表讀取失敗');
-      return;
-    }
-    const startCtx = startRes.context;
-    if(startDate !== endDate){
-      const endRes = await api('getLeaveDateContext', Object.assign({}, payloadBase, { leaveDate: endDate }));
-      const endCtx = endRes && endRes.context ? endRes.context : null;
-      if(!startCtx.canLeave || (endCtx && !endCtx.canLeave)){
-        box.className = 'segment-context is-error';
-        box.innerHTML = `<strong>日期區間需再確認</strong><div>${escapeHtml((!startCtx.canLeave && startCtx.blockedReason) || (endCtx && endCtx.blockedReason) || '區間內有日期目前不可請假。')}</div>`;
+    const results = [];
+    for(const dateKey of dates){
+      const res = await api('getLeaveDateContext', Object.assign({}, payloadBase, { leaveDate: dateKey }));
+      const ctx = res && res.context ? res.context : null;
+      if(!res || !res.ok || !ctx){
+        results.push({ date:dateKey, ok:false, text:(res && res.message) || '班表讀取失敗' });
+      }else if(ctx.canLeave){
+        results.push({ date:dateKey, ok:true, text:ctx.scheduleLabel || `${ctx.shiftStart || ''}-${ctx.shiftEnd || ''}` });
       }else{
-        box.className = 'segment-context is-ok';
-        box.innerHTML = `<strong>可送出整天請假</strong><div>${escapeHtml(startDate)} ～ ${escapeHtml(endDate)}</div><div>系統會依每天班表扣除對應時數。</div>`;
+        results.push({ date:dateKey, ok:false, text:ctx.blockedReason || ctx.scheduleLabel || '無班，不可請假' });
       }
-      return;
     }
-    if(startCtx.canLeave){
-      box.className = 'segment-context is-ok';
-      box.innerHTML = `<strong>${escapeHtml(startCtx.statusLabel || '可請假')}</strong><div>${escapeHtml(startCtx.scheduleLabel || '')}</div><div>整天請假會依當天班表扣除對應時數。</div>`;
-    }else{
-      box.className = 'segment-context is-error';
-      box.innerHTML = `<strong>${escapeHtml(startCtx.statusLabel || '不可請假')}</strong><div>${escapeHtml(startCtx.blockedReason || '這一天不能請假。')}</div>`;
-    }
+    const hasError = results.some(item => !item.ok);
+    box.className = 'segment-context ' + (hasError ? 'is-error' : 'is-ok');
+    const rows = results.map(item => `<div>${escapeHtml(item.date)}：${item.ok ? '有班，可請假' : '不可請假'}｜${escapeHtml(item.text || '')}</div>`).join('');
+    box.innerHTML = hasError
+      ? `<strong>日期區間需再確認</strong>${rows}<div style="margin-top:6px">請調整日期，或如果是已發生的臨時狀況，改用「事後補假」。</div>`
+      : `<strong>可送出整天請假</strong>${rows}<div style="margin-top:6px">系統會依每天班表扣除對應時數。</div>`;
   }catch(err){
     box.className = 'segment-context is-error';
     box.innerHTML = '班表讀取失敗';
   }
 }
 function bindSegmentEvents(){
-  qsa('[data-segment-mode]').forEach(el => el.onchange = () => {
+  qsa('[data-segment-mode]').forEach(el => el.onclick = () => {
     const seg = getSegmentStateById(el.dataset.segmentMode);
-    if(!seg) return;
-    seg.mode = el.value === 'custom' ? 'custom' : 'schedule';
+    if(!seg || el.disabled) return;
+    const mode = String(el.dataset.modeValue || 'schedule');
+    seg.mode = (mode === 'custom' || mode === 'retro') ? mode : 'schedule';
+    if(seg.mode === 'custom' || seg.mode === 'retro') seg.leaveDate = seg.leaveDate || seg.startDate || localDateInputValue();
+    else { seg.startDate = seg.startDate || seg.leaveDate || localDateInputValue(); seg.endDate = seg.endDate || seg.startDate; }
     renderSegments();
   });
   qsa('[data-segment-start-date]').forEach(el => el.onchange = () => {
@@ -515,44 +533,49 @@ function renderSegments(){
   const meta = getSelectedLeaveMeta();
   const allowCustom = leaveMetaAllowsCustom(meta);
   if(!leaveSegmentsState.length) leaveSegmentsState = [createDefaultSegment('schedule')];
-  wrap.innerHTML = leaveSegmentsState.map((seg, idx) => `
+  wrap.innerHTML = leaveSegmentsState.map((seg, idx) => {
+    const mode = (seg.mode === 'custom' || seg.mode === 'retro') ? seg.mode : 'schedule';
+    const isTimed = mode === 'custom' || mode === 'retro';
+    return `
     <div class="segment-card" data-segment-card="${escapeHtml(seg.id)}">
       <div class="segment-head">
         <div class="segment-title">${leaveSegmentsState.length > 1 ? `請假時間 ${idx + 1}` : `請假時間`}</div>
         ${leaveSegmentsState.length > 1 ? `<button class="btn secondary mini-btn" type="button" data-remove-segment="${escapeHtml(seg.id)}">刪除這筆</button>` : ''}
       </div>
       <div class="segment-field">
-        <label for="segMode_${escapeHtml(seg.id)}">請假方式</label>
-        <select id="segMode_${escapeHtml(seg.id)}" data-segment-mode="${escapeHtml(seg.id)}">
-          <option value="schedule" ${seg.mode !== 'custom' ? 'selected' : ''}>整天請假</option>
-          <option value="custom" ${(seg.mode === 'custom' ? 'selected' : '')} ${allowCustom ? '' : 'disabled'}>部分時間請假</option>
-        </select>
+        <label>請假方式</label>
+        <div class="leave-type-grid">
+          <button class="leave-type-btn ${mode === 'schedule' ? 'active' : ''}" type="button" data-segment-mode="${escapeHtml(seg.id)}" data-mode-value="schedule">整天請假</button>
+          <button class="leave-type-btn ${mode === 'custom' ? 'active' : ''}" type="button" data-segment-mode="${escapeHtml(seg.id)}" data-mode-value="custom" ${allowCustom ? '' : 'disabled'}>部分請假</button>
+          <button class="leave-type-btn ${mode === 'retro' ? 'active' : ''}" type="button" data-segment-mode="${escapeHtml(seg.id)}" data-mode-value="retro">事後補假</button>
+        </div>
       </div>
-      ${seg.mode === 'custom' ? `
+      ${isTimed ? `
         <div class="segment-grid">
-          <div class="segment-field"><label for="segDate_${escapeHtml(seg.id)}">日期</label><input id="segDate_${escapeHtml(seg.id)}" type="date" value="${escapeHtml(seg.leaveDate || '')}" data-segment-leave-date="${escapeHtml(seg.id)}"></div>
+          <div class="segment-field"><label for="segDate_${escapeHtml(seg.id)}">${mode === 'retro' ? '補假日期' : '日期'}</label><input id="segDate_${escapeHtml(seg.id)}" type="date" value="${escapeHtml(seg.leaveDate || '')}" data-segment-leave-date="${escapeHtml(seg.id)}"></div>
           <div class="segment-field"><label for="segStart_${escapeHtml(seg.id)}">開始時間</label><select class="leave-time-select" id="segStart_${escapeHtml(seg.id)}" data-segment-start-time="${escapeHtml(seg.id)}">${leaveRenderTimeOptionsHtml(leaveBuildWholeHourOptions(seg.shiftStart || '', seg.shiftEnd || '', false, seg.startTime || ''), seg.startTime || '', '選擇開始時間')}</select></div>
           <div class="segment-field"><label for="segEnd_${escapeHtml(seg.id)}">結束時間</label><select class="leave-time-select" id="segEnd_${escapeHtml(seg.id)}" data-segment-end-time="${escapeHtml(seg.id)}">${leaveRenderTimeOptionsHtml(leaveBuildWholeHourOptions(seg.shiftStart || '', seg.shiftEnd || '', true, seg.endTime || ''), seg.endTime || '', '選擇結束時間')}</select></div>
         </div>
-        <div class="segment-context" data-segment-context="${escapeHtml(seg.id)}">請先選擇請假日期與時間。</div>
+        <div class="segment-context" data-segment-context="${escapeHtml(seg.id)}">${mode === 'retro' ? '事後補假可選過去日期；請選日期後，系統會帶出當天班表。' : '請先選擇請假日期與時間。'}</div>
       ` : `
         <div class="segment-grid">
           <div class="segment-field"><label for="segStartDate_${escapeHtml(seg.id)}">開始日期</label><input id="segStartDate_${escapeHtml(seg.id)}" type="date" value="${escapeHtml(seg.startDate || '')}" data-segment-start-date="${escapeHtml(seg.id)}"></div>
           <div class="segment-field"><label for="segEndDate_${escapeHtml(seg.id)}">結束日期</label><input id="segEndDate_${escapeHtml(seg.id)}" type="date" value="${escapeHtml(seg.endDate || '')}" data-segment-end-date="${escapeHtml(seg.id)}"></div>
         </div>
-        <div class="segment-context" data-segment-context="${escapeHtml(seg.id)}">請選擇日期後，系統會檢查班表與既有假單。</div>
+        <div class="segment-context" data-segment-context="${escapeHtml(seg.id)}">請選擇日期後，系統會逐日檢查有班／無班。</div>
       `}
-    </div>`).join('');
+    </div>`;
+  }).join('');
   bindSegmentEvents();
   renderSegmentSummary();
-  leaveSegmentsState.forEach(seg => { if(seg.mode === 'custom') refreshCustomSegmentContext(seg.id); else refreshScheduleSegmentContext(seg.id); });
+  leaveSegmentsState.forEach(seg => { if(seg.mode === 'custom' || seg.mode === 'retro') refreshCustomSegmentContext(seg.id); else refreshScheduleSegmentContext(seg.id); });
 }
 function collectSegmentPayload(){
   return (leaveSegmentsState || []).map(seg => {
-    if(seg.mode === 'custom'){
-      return { mode:'custom', leaveDate: String(seg.leaveDate || '').trim(), startTime: String(seg.startTime || '').trim(), endTime: String(seg.endTime || '').trim() };
+    if(seg.mode === 'custom' || seg.mode === 'retro'){
+      return { mode: seg.mode === 'retro' ? 'retro' : 'custom', leaveTypeMode: seg.mode === 'retro' ? '事後補假' : '部分請假', leaveDate: String(seg.leaveDate || '').trim(), startTime: String(seg.startTime || '').trim(), endTime: String(seg.endTime || '').trim() };
     }
-    return { mode:'schedule', startDate: String(seg.startDate || '').trim(), endDate: String(seg.endDate || '').trim() };
+    return { mode:'schedule', leaveTypeMode:'整天請假', startDate: String(seg.startDate || '').trim(), endDate: String(seg.endDate || '').trim() };
   });
 }
 function validateSegmentsState(){
@@ -563,8 +586,9 @@ function validateSegmentsState(){
   if(!leaveSegmentsState.length) return { ok:false, message:'請至少新增一筆請假時間。' };
   for(let i=0;i<leaveSegmentsState.length;i++){
     const seg = leaveSegmentsState[i];
-    if(seg.mode === 'custom'){
-      if(!allowCustom) return { ok:false, message:`${meta && meta.name ? meta.name : '此假別'}目前只能選擇整天請假。` };
+    if(seg.mode === 'custom' || seg.mode === 'retro'){
+      if(seg.mode === 'custom' && !allowCustom) return { ok:false, message:`${meta && meta.name ? meta.name : '此假別'}目前只能選擇整天請假。` };
+      if(seg.mode === 'custom' && leaveIsPastDate(seg.leaveDate)) return { ok:false, message:`請假時間 ${i+1} 不能選過去日期；若是已發生的臨時狀況，請選「事後補假」。` };
       if(!seg.leaveDate || !seg.startTime || !seg.endTime) return { ok:false, message:`請完整填寫請假時間 ${i+1} 的日期與時間。` };
       const startMin = leaveTimeTextToMinutesLocal(seg.startTime);
       const endMin = leaveTimeTextToMinutesLocal(seg.endTime);
@@ -573,6 +597,7 @@ function validateSegmentsState(){
       if(endMin - startMin < 30) return { ok:false, message:`請假時間 ${i+1} 最少需請 30 分鐘。` };
     }else{
       if(!seg.startDate || !seg.endDate) return { ok:false, message:`請完整填寫請假時間 ${i+1} 的開始日期與結束日期。` };
+      if(leaveIsPastDate(seg.startDate) || leaveIsPastDate(seg.endDate)) return { ok:false, message:`一般請假不能選過去日期；若是已發生的臨時狀況，請選「事後補假」。` };
       if(seg.endDate < seg.startDate) return { ok:false, message:`請假時間 ${i+1} 的結束日期不能早於開始日期。` };
     }
   }
@@ -1388,7 +1413,7 @@ function startEdit(requestId){
   toggleBereavementRelation();
   leaveSegmentsState = Array.isArray(row.segments) && row.segments.length ? row.segments.map(seg => ({
     id: nextLeaveSegmentId(),
-    mode: seg.mode === 'custom' ? 'custom' : 'schedule',
+    mode: seg.mode === 'retro' ? 'retro' : (seg.mode === 'custom' ? 'custom' : 'schedule'),
     startDate: seg.startDate || seg.leaveDate || localDateInputValue(),
     endDate: seg.endDate || seg.startDate || seg.leaveDate || localDateInputValue(),
     leaveDate: seg.leaveDate || seg.startDate || localDateInputValue(),
@@ -1436,7 +1461,8 @@ async function submitLeave(){
     bereavementRelation: relation,
     eventMode: eventMeta.mode || '',
     eventId: eventMeta.candidate ? eventMeta.candidate.eventId : '',
-    segments: collectSegmentPayload()
+    segments: collectSegmentPayload(),
+    requestType: (leaveSegmentsState || []).some(seg => seg.mode === 'retro') ? '事後補假' : '一般請假'
   };
   if(file) payload.attachment = await fileToDataUrl(file);
   const btn = qs('#submitBtn');

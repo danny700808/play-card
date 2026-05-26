@@ -39,6 +39,13 @@
     .clock-mode-screen .mode-title{font-size:22px;font-weight:900;margin-bottom:6px;color:#111827}
     .clock-mode-screen .mode-note{font-size:14px;color:#6b7280;line-height:1.6;margin-bottom:12px}
     .clock-back-btn{background:#374151!important;color:#fff!important;border:0!important}
+    .choice-modal{position:fixed;inset:0;z-index:9999;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;padding:18px}
+    .choice-modal.hidden{display:none!important}
+    .choice-card{width:min(560px,100%);background:#fff;border-radius:22px;padding:18px;box-shadow:0 24px 70px rgba(15,23,42,.25)}
+    .choice-card h3{margin:0 0 8px;font-size:22px;color:#111827}
+    .choice-card p{margin:0 0 14px;color:#4b5563;line-height:1.7}
+    .choice-actions{display:grid;gap:10px}
+    .choice-actions .btn{width:100%;font-size:17px;padding:14px 12px}
 
   </style>
 </head>
@@ -128,13 +135,44 @@
     </div>
   </div>
 
+  <div id="correctionChoiceModal" class="choice-modal hidden">
+    <div class="choice-card">
+      <h3>請先確認本次狀況</h3>
+      <p>如果你今天有正常上班，只是忘記打卡，請繼續補打卡。若是沒有上班、臨時離開或提早離開，請改用請假／事後補假。</p>
+      <div class="choice-actions">
+        <button class="btn" type="button" id="choiceGoCorrection">我有正常上班，只是忘記打卡</button>
+        <button class="btn" type="button" id="choiceGoLeave">我沒有上班／臨時離開／提早離開</button>
+        <button class="btn secondary" type="button" id="choiceCancelCorrection">取消</button>
+      </div>
+    </div>
+  </div>
+
   <script src="config.js?v=20260501uifix2"></script>
   <script src="app.js?v=20260501uifix2"></script>
   <script>
 
     function goTemporaryAttendance(){
-      const user = (typeof currentUser !== 'undefined' && currentUser) ? currentUser : (typeof getCurrentUser === 'function' ? getCurrentUser() : null);
-      const id = user && (user.employeeId || user.id || user.userId) ? encodeURIComponent(user.employeeId || user.id || user.userId) : '';
+      openCorrectionChoiceModal('temporary');
+    }
+    function openCorrectionChoiceModal(source){
+      const modal = qs('#correctionChoiceModal');
+      if(!modal) return;
+      modal.dataset.source = source || 'temporary';
+      modal.classList.remove('hidden');
+    }
+    function closeCorrectionChoiceModal(){
+      const modal = qs('#correctionChoiceModal');
+      if(modal) modal.classList.add('hidden');
+    }
+    function goLeaveForRetro(){
+      const u = getUser ? (getUser() || {}) : {};
+      const id = encodeURIComponent(u.id || u.employeeId || u.userId || '');
+      location.href = 'leave.html' + (id ? ('?userId=' + id + '&mode=retro') : '?mode=retro');
+    }
+    function goCorrectionFlow(){
+      closeCorrectionChoiceModal();
+      const u = getUser ? (getUser() || {}) : {};
+      const id = encodeURIComponent(u.id || u.employeeId || u.userId || '');
       location.href = 'temporary-attendance.html' + (id ? ('?employeeId=' + id) : '');
     }
 
@@ -318,7 +356,8 @@
       qsa('.js-open-correction').forEach(btn => {
         btn.onclick = () => {
           const box = qs('#correction-' + btn.dataset.id);
-          if(box) box.classList.toggle('hidden');
+          if(!box) return;
+          openCorrectionChoiceModal('inline:' + btn.dataset.id);
         };
       });
       qsa('.js-submit-correction').forEach(btn => {
@@ -485,6 +524,20 @@ function init(){
       
       qs('#clockInBtn').onclick = () => doClock('上班打卡');
       qs('#clockOutBtn').onclick = () => doClock('下班打卡');
+      if(qs('#choiceCancelCorrection')) qs('#choiceCancelCorrection').onclick = closeCorrectionChoiceModal;
+      if(qs('#choiceGoLeave')) qs('#choiceGoLeave').onclick = goLeaveForRetro;
+      if(qs('#choiceGoCorrection')) qs('#choiceGoCorrection').onclick = () => {
+        const modal = qs('#correctionChoiceModal');
+        const source = modal ? String(modal.dataset.source || '') : '';
+        closeCorrectionChoiceModal();
+        if(source.indexOf('inline:') === 0){
+          const id = source.slice(7);
+          const box = qs('#correction-' + id);
+          if(box) box.classList.toggle('hidden');
+          return;
+        }
+        goCorrectionFlow();
+      };
       qs('#rangeSearchBtn').onclick = () => searchRange();
       initRangeDefault();
       
