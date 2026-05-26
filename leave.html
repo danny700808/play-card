@@ -308,6 +308,25 @@ function leaveTodayKey(){ return localDateInputValue(); }
 function leaveIsPastDate(dateKey){ return !!dateKey && String(dateKey) < leaveTodayKey(); }
 function leaveDateAdd(dateKey, days){ const d = new Date(String(dateKey || '') + 'T00:00:00'); if(String(d)==='Invalid Date') return ''; d.setDate(d.getDate() + Number(days || 0)); return d.toISOString().slice(0,10); }
 function leaveDatesBetween(startDate, endDate){ const out=[]; if(!startDate || !endDate || endDate < startDate) return out; let d=startDate; for(let guard=0; d<=endDate && guard<370; guard++){ out.push(d); d=leaveDateAdd(d,1); } return out; }
+const LEAVE_MAX_RANGE_DAYS = 20;
+function leaveRangeDays(startDate, endDate){ return leaveDatesBetween(startDate, endDate || startDate).length; }
+function leaveNowMinutes(){ const d = new Date(); return d.getHours() * 60 + d.getMinutes(); }
+function leaveIsToday(dateKey){ return String(dateKey || '') === leaveTodayKey(); }
+function leaveHasShiftStartedToday(ctx){
+  if(!ctx || !leaveIsToday(ctx.date || ctx.leaveDate || ctx.scheduleDate || '')) return false;
+  const shiftStart = leaveTimeTextToMinutesLocal(ctx.shiftStart || '');
+  return !isNaN(shiftStart) && leaveNowMinutes() >= shiftStart;
+}
+function leaveIsHalfHourTime(t){ const m = String(t || '').match(/^(\d{2}):(\d{2})$/); return !!m && (Number(m[2]) === 0 || Number(m[2]) === 30); }
+function leaveDayStatusClass(ok){ return ok ? 'color:#166534' : 'color:#9f1239'; }
+function leaveBuildDayRows(results){
+  return results.map(item => `<div style="${leaveDayStatusClass(item.ok)}">${escapeHtml(item.date)}：${item.ok ? '有班，會建立請假' : '無班，系統自動略過'}｜${escapeHtml(item.text || '')}</div>`).join('');
+}
+function leaveBuildRangeSummary(results){
+  const workDays = results.filter(x => x.ok).length;
+  const offDays = results.length - workDays;
+  return `本次區間共 ${results.length} 天；需要請假 ${workDays} 天；無排班 ${offDays} 天，系統會自動略過。`;
+}
 function leaveModeLabel(mode){ return mode === 'custom' ? '部分請假' : (mode === 'retro' ? '事後補假' : '整天請假'); }
 function segmentDisplayText(seg){
   if(!seg) return '';
@@ -442,31 +461,52 @@ async function refreshScheduleSegmentContext(segmentId){
     box.innerHTML = '<strong>日期需再確認</strong><div>結束日期不能早於開始日期。</div>';
     return;
   }
+  const startDate = seg.startDate;
+  const endDate = seg.endDate || seg.startDate;
+  const dates = leaveDatesBetween(startDate, endDate);
+  if(dates.length > LEAVE_MAX_RANGE_DAYS){
+    box.className = 'segment-context is-error';
+    box.innerHTML = `<strong>日期區間過長</strong><div>單次請假最多可選 ${LEAVE_MAX_RANGE_DAYS} 天，請縮短日期區間後再送出。</div>`;
+    return;
+  }
   box.className = 'segment-context';
   box.innerHTML = '檢查班表中...';
   try{
-    const startDate = seg.startDate;
-    const endDate = seg.endDate || seg.startDate;
-    const dates = leaveDatesBetween(startDate, endDate);
     const payloadBase = { userId: currentUser.id, reason, requestId: qs('#editingRequestId') ? qs('#editingRequestId').value : '' };
     const results = [];
+    let startedTodayBlock = null;
     for(const dateKey of dates){
       const res = await api('getLeaveDateContext', Object.assign({}, payloadBase, { leaveDate: dateKey }));
-      const ctx = res && res.context ? res.context : null;
+      const ctx = res && res.context ? Object.assign({}, res.context, { date: dateKey }) : null;
       if(!res || !res.ok || !ctx){
         results.push({ date:dateKey, ok:false, text:(res && res.message) || '班表讀取失敗' });
       }else if(ctx.canLeave){
-        results.push({ date:dateKey, ok:true, text:ctx.scheduleLabel || `${ctx.shiftStart || ''}-${ctx.shiftEnd || ''}` });
+        const shiftStart = leaveTimeTextToMinutesLocal(ctx.shiftStart || '');
+        if(leaveIsToday(dateKey) && !isNaN(shiftStart) && leaveNowMinutes() >= shiftStart){
+          startedTodayBlock = { date:dateKey, text:ctx.scheduleLabel || `${ctx.shiftStart || ''}-${ctx.shiftEnd || ''}` };
+          results.push({ date:dateKey, ok:false, text:(ctx.scheduleLabel || '') + '｜今日班表已開始，請改用事後補假。' });
+        }else{
+          results.push({ date:dateKey, ok:true, text:ctx.scheduleLabel || `${ctx.shiftStart || ''}-${ctx.shiftEnd || ''}` });
+        }
       }else{
-        results.push({ date:dateKey, ok:false, text:ctx.blockedReason || ctx.scheduleLabel || '無班，不可請假' });
+        results.push({ date:dateKey, ok:false, offDay:true, text:ctx.blockedReason || ctx.scheduleLabel || '無班' });
       }
     }
-    const hasError = results.some(item => !item.ok);
-    box.className = 'segment-context ' + (hasError ? 'is-error' : 'is-ok');
-    const rows = results.map(item => `<div>${escapeHtml(item.date)}：${item.ok ? '有班，可請假' : '不可請假'}｜${escapeHtml(item.text || '')}</div>`).join('');
-    box.innerHTML = hasError
-      ? `<strong>日期區間需再確認</strong>${rows}<div style="margin-top:6px">請調整日期，或如果是已發生的臨時狀況，改用「事後補假」。</div>`
-      : `<strong>可送出整天請假</strong>${rows}<div style="margin-top:6px">系統會依每天班表扣除對應時數。</div>`;
+    if(startedTodayBlock){
+      box.className = 'segment-context is-error';
+      box.innerHTML = `<strong>今日班表已開始</strong><div>${escapeHtml(startedTodayBlock.date)} ${escapeHtml(startedTodayBlock.text || '')}</div><div>一般整天請假只能在今日上班時間開始前申請；若已經超過上班時間，請改用「事後補假」。</div>${leaveBuildDayRows(results)}`;
+      return;
+    }
+    const workDays = results.filter(item => item.ok).length;
+    const offDays = results.length - workDays;
+    if(workDays <= 0){
+      box.className = 'segment-context is-error';
+      box.innerHTML = `<strong>此區間沒有可請假的班表</strong><div>${escapeHtml(leaveBuildRangeSummary(results))}</div>${leaveBuildDayRows(results)}`;
+      return;
+    }
+    box.className = 'segment-context is-ok';
+    const rows = leaveBuildDayRows(results);
+    box.innerHTML = `<strong>可送出整天請假</strong><div>${escapeHtml(leaveBuildRangeSummary(results))}</div>${rows}<div style="margin-top:6px">送出時只會建立有班日期的請假；無班日期會自動略過，不需要一天一天拆開申請。</div>`;
   }catch(err){
     box.className = 'segment-context is-error';
     box.innerHTML = '班表讀取失敗';
@@ -599,6 +639,7 @@ function validateSegmentsState(){
       if(!seg.startDate || !seg.endDate) return { ok:false, message:`請完整填寫請假時間 ${i+1} 的開始日期與結束日期。` };
       if(leaveIsPastDate(seg.startDate) || leaveIsPastDate(seg.endDate)) return { ok:false, message:`一般請假不能選過去日期；若是已發生的臨時狀況，請選「事後補假」。` };
       if(seg.endDate < seg.startDate) return { ok:false, message:`請假時間 ${i+1} 的結束日期不能早於開始日期。` };
+      if(leaveRangeDays(seg.startDate, seg.endDate) > LEAVE_MAX_RANGE_DAYS) return { ok:false, message:`請假時間 ${i+1} 最多只能選 ${LEAVE_MAX_RANGE_DAYS} 天，請縮短日期區間。` };
     }
   }
   return { ok:true };

@@ -639,6 +639,10 @@
   function hoursBetween(s,e){ const a=minOf(s), b=minOf(e); return (!isNaN(a)&&!isNaN(b)&&b>a)?Math.round((b-a)/60*100)/100:0; }
   function dateAdd(dateKey,days){ const d=new Date(dateKey+'T00:00:00'); d.setDate(d.getDate()+days); return ymd(d); }
   function datesBetween(start,end){ const out=[]; if(!start||!end||end<start) return out; let d=start; for(let guard=0; d<=end && guard<370; guard++){ out.push(d); d=dateAdd(d,1); } return out; }
+  const LEAVE_MAX_RANGE_DAYS=20;
+  function todayKey(){ return ymd(new Date()); }
+  function nowMinutes(){ const d=new Date(); return d.getHours()*60+d.getMinutes(); }
+  function isHalfHourTime(t){ const m=clean(t).match(/^(\d{2}):(\d{2})$/); return !!m && (Number(m[2])===0 || Number(m[2])===30); }
   const DKEY=['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
   const DLABEL=['星期日','星期一','星期二','星期三','星期四','星期五','星期六'];
   function dayInfo(dateKey){ const d=new Date(dateKey+'T00:00:00'); const idx=isNaN(d.getTime())?0:d.getDay(); return {idx,key:DKEY[idx],label:DLABEL[idx]}; }
@@ -706,15 +710,31 @@
         if(!ctx.canLeave) throw new Error(`${dateKey} ${ctx.blockedReason||'不可請假'}`);
         const st=clean(raw.startTime).slice(0,5), et=clean(raw.endTime).slice(0,5); const smin=minOf(st), emin=minOf(et), shiftS=minOf(ctx.shiftStart), shiftE=minOf(ctx.shiftEnd);
         if(isNaN(smin)||isNaN(emin)||emin<=smin) throw new Error(`${dateKey} 請假時間不正確。`);
+        if(!isHalfHourTime(st) || !isHalfHourTime(et)) throw new Error(`${dateKey} 請假時間只能選擇整點或 30 分鐘。`);
         if(smin<shiftS || emin>shiftE) throw new Error(`${dateKey} 請假時間必須在班表 ${ctx.shiftStart}-${ctx.shiftEnd} 內。`);
         const h=hoursBetween(st,et); total+=h; hints.push(`${dateKey}｜${mode==='retro'?'事後補假':'部分請假'}｜${ctx.scheduleLabel}｜申請 ${st}-${et}，${h} 小時`);
         out.push(Object.assign({},raw,{mode,leaveTypeMode:mode==='retro'?'事後補假':'部分請假',leaveDate:dateKey,startTime:st,endTime:et,hours:h,scheduleContext:{scheduleLabel:ctx.scheduleLabel,shiftStart:ctx.shiftStart,shiftEnd:ctx.shiftEnd,scheduledHours:ctx.scheduledHours}}));
       }else{
         const start=fmtDate(raw.startDate||raw.date), end=fmtDate(raw.endDate||raw.startDate||raw.date); if(!start||!end) throw new Error('請假日期不完整。');
-        let h=0; const dayDetails=[];
-        for(const d of datesBetween(start,end)){ const ctx=await resolveSchedule(userId,d); if(!ctx.canLeave) throw new Error(`${d} ${ctx.blockedReason||'不可請假'}`); h+=Number(ctx.scheduledHours||0); dayDetails.push({date:d,scheduleLabel:ctx.scheduleLabel,shiftStart:ctx.shiftStart,shiftEnd:ctx.shiftEnd,hours:ctx.scheduledHours}); }
-        h=Math.round(h*100)/100; total+=h; hints.push(`${start}${end!==start?'～'+end:''}｜整天請假｜共 ${h} 小時`);
-        out.push(Object.assign({},raw,{mode:'schedule',startDate:start,endDate:end,hours:h,dayDetails}));
+        const dates=datesBetween(start,end);
+        if(dates.length>LEAVE_MAX_RANGE_DAYS) throw new Error(`單次整天請假最多只能選 ${LEAVE_MAX_RANGE_DAYS} 天。`);
+        let h=0; const dayDetails=[]; let offDays=0;
+        for(const d of dates){
+          const ctx=await resolveSchedule(userId,d);
+          if(ctx.canLeave){
+            const shiftStart=minOf(ctx.shiftStart);
+            if(d===todayKey() && !isNaN(shiftStart) && nowMinutes()>=shiftStart){
+              throw new Error(`${d} 今日班表已開始，請改用事後補假。`);
+            }
+            h+=Number(ctx.scheduledHours||0); dayDetails.push({date:d,ok:true,scheduleLabel:ctx.scheduleLabel,shiftStart:ctx.shiftStart,shiftEnd:ctx.shiftEnd,hours:ctx.scheduledHours});
+          }else{
+            offDays+=1; dayDetails.push({date:d,ok:false,scheduleLabel:ctx.scheduleLabel||ctx.blockedReason||'無班，系統自動略過',hours:0,skipped:true});
+          }
+        }
+        const workDays=dayDetails.filter(x=>x.ok).length;
+        if(workDays<=0) throw new Error(`${start}${end!==start?'～'+end:''} 區間內沒有可請假的排班。`);
+        h=Math.round(h*100)/100; total+=h; hints.push(`${start}${end!==start?'～'+end:''}｜整天請假｜需要請假 ${workDays} 天，無排班 ${offDays} 天自動略過，共 ${h} 小時`);
+        out.push(Object.assign({},raw,{mode:'schedule',startDate:start,endDate:end,hours:h,dayDetails,workDays,offDays}));
       }
     }
     return {segments:out,totalHours:Math.round(total*100)/100,hints};
