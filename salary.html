@@ -73,22 +73,15 @@
     function setReloading(loading){
       // 已改為 Firebase 直讀，不顯示手動重新讀取按鈕
     }
-    async function waitFirebaseReady(timeoutMs = 6000){
-      const startedAt = Date.now();
-
+    async function callSalaryApi(payload){
+      const start = Date.now();
       while(!window.YZFirebase || typeof window.YZFirebase.handleApi !== 'function'){
-        if(Date.now() - startedAt > timeoutMs){
+        if(Date.now() - start > 8000){
           throw new Error('Firebase 尚未啟用，無法讀取薪資投保資訊');
         }
-        await new Promise(resolve => setTimeout(resolve, 120));
+        await new Promise(r=>setTimeout(r,120));
       }
-
-      return window.YZFirebase;
-    }
-
-    async function callSalaryApi(payload){
-      const api = await waitFirebaseReady();
-      const res = await api.handleApi('getMySalaryInfo', payload || {});
+      const res = await window.YZFirebase.handleApi('getMySalaryInfo', payload || {});
       if(!res || res.ok === false) throw new Error((res && res.message) || '讀取失敗');
       return res;
     }
