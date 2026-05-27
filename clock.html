@@ -39,6 +39,14 @@
     .clock-mode-screen .mode-title{font-size:22px;font-weight:900;margin-bottom:6px;color:#111827}
     .clock-mode-screen .mode-note{font-size:14px;color:#6b7280;line-height:1.6;margin-bottom:12px}
     .clock-back-btn{background:#374151!important;color:#fff!important;border:0!important}
+
+    .today-schedule-box{border:1px solid #dbe5df;background:#f8fbf9;border-radius:18px;padding:14px 16px;margin:14px 0;color:#183028}
+    .today-schedule-box .schedule-head{font-weight:900;font-size:17px;margin-bottom:6px}
+    .today-schedule-box .schedule-text{font-size:15px;line-height:1.6;white-space:pre-line}
+    .today-schedule-box.ready{background:#f0fdf4;border-color:#bbf7d0}
+    .today-schedule-box.warning{background:#fff7ed;border-color:#fed7aa}
+    .today-schedule-box.error{background:#fef2f2;border-color:#fecaca}
+    .today-schedule-box.loading{background:#f8fafc;border-color:#e2e8f0;color:#64748b}
     .choice-modal{position:fixed;inset:0;z-index:9999;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;padding:18px}
     .choice-modal.hidden{display:none!important}
     .choice-card{width:min(560px,100%);background:#fff;border-radius:22px;padding:18px;box-shadow:0 24px 70px rgba(15,23,42,.25)}
@@ -62,6 +70,11 @@
       </div>
 
       <div class="timebox" id="nowBox"></div>
+
+      <div id="todayScheduleBox" class="today-schedule-box loading">
+        <div class="schedule-head">今日班表</div>
+        <div class="schedule-text" id="todayScheduleText">讀取今日班表中...</div>
+      </div>
 
       <div class="help-box">
         <div class="help-title">打卡說明</div>
@@ -147,8 +160,11 @@
     </div>
   </div>
 
-  <script src="config.js?v=20260501uifix2"></script>
-  <script src="app.js?v=20260501uifix2"></script>
+  <script src="config.js?v=20260527clockScheduleLink"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="firebase-client.js?v=20260527clockScheduleLink"></script>
+  <script src="app.js?v=20260527clockScheduleLink"></script>
   <script>
 
     function goTemporaryAttendance(){
@@ -176,7 +192,65 @@
       location.href = 'temporary-attendance.html' + (id ? ('?employeeId=' + id) : '');
     }
 
+
+
+    function setTodayScheduleBox(type, text){
+      const box = qs('#todayScheduleBox');
+      const body = qs('#todayScheduleText');
+      if(!box || !body) return;
+      box.className = 'today-schedule-box ' + (type || 'ready');
+      body.textContent = text || '';
+    }
+
+    function updateClockModeButtonsBySchedule(info){
+      const standardBtn = qs('#modeStandardBtn');
+      const specialBtn = qs('#modeSpecialBtn');
+      const allowed = (info && info.allowedClockTypes) || [];
+      const loaded = !!(info && info.__loaded);
+      if(!loaded){
+        if(standardBtn) standardBtn.disabled = false;
+        if(specialBtn) specialBtn.disabled = false;
+        return;
+      }
+      if(standardBtn) standardBtn.disabled = allowed.indexOf('標準打卡') < 0;
+      if(specialBtn) specialBtn.disabled = allowed.indexOf('特殊打卡') < 0;
+    }
+
+    function todayScheduleAllows(mode){
+      const info = window.__todayClockSchedule || null;
+      if(!info || !info.__loaded) return { ok:true, message:'' };
+      if(!info.okToClock){ return { ok:false, message: info.message || '今天沒有可用班表，無法一般打卡。' }; }
+      const allowed = info.allowedClockTypes || [];
+      if(allowed.indexOf(mode) < 0){ return { ok:false, message:'今日班表不開放「' + mode + '」。' }; }
+      return { ok:true, message:'' };
+    }
+
+    async function loadTodaySchedule(){
+      const user = requireLogin();
+      if(!user) return;
+      try{
+        setTodayScheduleBox('loading', '讀取今日班表中...');
+        const r = await api('getTodaySchedule', { userId:user.id });
+        window.__todayClockSchedule = Object.assign({__loaded:true}, r || {});
+        updateClockModeButtonsBySchedule(window.__todayClockSchedule);
+        if(r && r.okToClock){
+          const allowedText = (r.allowedClockTypes || []).length ? ('\n可用打卡方式：' + (r.allowedClockTypes || []).join('、')) : '';
+          setTodayScheduleBox('ready', (r.message || r.scheduleText || '今日可打卡') + allowedText);
+        }else if(r && r.ok){
+          setTodayScheduleBox('warning', r.message || '今天沒有排班，請改用「補登 / 臨時出勤」提出申請。');
+        }else{
+          setTodayScheduleBox('error', (r && r.message) || '讀取今日班表失敗');
+        }
+      }catch(e){
+        window.__todayClockSchedule = {__loaded:true, ok:false, okToClock:false, allowedClockTypes:[], message:e.message || '讀取今日班表失敗'};
+        updateClockModeButtonsBySchedule(window.__todayClockSchedule);
+        setTodayScheduleBox('error', friendlyClockMessage(e.message || '讀取今日班表失敗'));
+      }
+    }
+
     function selectClockMode(mode){
+      const allow = todayScheduleAllows(mode);
+      if(!allow.ok){ setMsg(qs('#mainMsg'), friendlyClockMessage(allow.message), true); return; }
       qs('#clockType').value = mode;
       qs('#clockActionPanel').classList.remove('hidden');
 
@@ -441,6 +515,9 @@
         return;
       }
 
+      const modeAllow = todayScheduleAllows(qs('#clockType').value);
+      if(!modeAllow.ok){ setMsg(msg, friendlyClockMessage(modeAllow.message), true); return; }
+
       let payload = { userId:user.id, actionName, clockType:qs('#clockType').value };
       setMsg(msg, '正在偵測公司 Wi‑Fi IP...');
       payload.clientIp = await getPublicIp();
@@ -461,7 +538,7 @@
         setMsg(msg, friendlyClockMessage(successMessage), !r.ok);
         if(r.ok){
           progress.done('打卡完成');
-          try { await loadEditableHistory(); } catch(refreshErr) { setMsg(msg, successMessage || '打卡成功，但重新整理紀錄失敗，請稍後手動刷新。', false); }
+          try { await loadEditableHistory(); await loadTodaySchedule(); } catch(refreshErr) { setMsg(msg, successMessage || '打卡成功，但重新整理紀錄失敗，請稍後手動刷新。', false); }
         } else {
           progress.fail('打卡失敗');
         }
@@ -540,6 +617,7 @@ function init(){
       };
       qs('#rangeSearchBtn').onclick = () => searchRange();
       initRangeDefault();
+      loadTodaySchedule();
       
       loadEditableHistory()
         .then(()=>markClockCorrectionRepliesReadOnEnter_())
