@@ -644,7 +644,7 @@
     };
   }
   async function getMySalaryInfo(payload){
-    const db = (fb && typeof fb.init === 'function' ? fb.init() : (global.firebase && global.firebase.apps && global.firebase.apps.length ? global.firebase.firestore() : null));
+    const db = global.firebase && global.firebase.apps && global.firebase.apps.length ? global.firebase.firestore() : null;
     if(!db) return {ok:false, message:'Firebase 尚未啟用'};
     const p = payload || {};
     const userId = clean(p.userId || p.employeeId || p.id || (global.currentUser && global.currentUser.id));
@@ -755,7 +755,7 @@
   }
 
   async function getMySalaryInfo(payload){
-    const db = (fb && typeof fb.init === 'function' ? fb.init() : (global.firebase && global.firebase.apps && global.firebase.apps.length ? global.firebase.firestore() : null));
+    const db = global.firebase && global.firebase.apps && global.firebase.apps.length ? global.firebase.firestore() : null;
     if(!db) return {ok:false, message:'Firebase 尚未啟用'};
     const p = payload || {};
     const userId = clean(p.userId || p.employeeId || p.id || (JSON.parse(localStorage.getItem('employeeUser') || '{}').id));
@@ -784,4 +784,200 @@
     return null;
   };
   fb.__salaryDirectOnlyV2 = true;
+})(window);
+
+
+/* 薪資與投保資訊：員工端顯示欄位最終對應版 20260527 */
+(function(global){
+  const fb = global.YZFirebase;
+  if(!fb || fb.__salaryDisplayFinalV20260527) return;
+  const oldHandle = fb.handleApi;
+
+  const DEFAULT_LABOR_PLANS = [
+    { code:'LAB_PART_11100', name:'第 1 級｜11,100 元', salary:11100, salaryText:'11,100 元', selfPayText:'依勞保局級距計算', group:'partial' },
+    { code:'LAB_PART_12540', name:'第 2 級｜12,540 元', salary:12540, salaryText:'12,540 元', selfPayText:'依勞保局級距計算', group:'partial' },
+    { code:'LAB_LOW_13500', name:'13,500 元', salary:13500, salaryText:'13,500 元', selfPayText:'依勞保局級距計算', group:'partial' },
+    { code:'LAB_LOW_15840', name:'15,840 元', salary:15840, salaryText:'15,840 元', selfPayText:'依勞保局級距計算', group:'partial' },
+    { code:'LAB_LOW_16500', name:'16,500 元', salary:16500, salaryText:'16,500 元', selfPayText:'依勞保局級距計算', group:'partial' },
+    { code:'LAB_LOW_17280', name:'17,280 元', salary:17280, salaryText:'17,280 元', selfPayText:'依勞保局級距計算', group:'partial' },
+    { code:'LAB_LOW_17880', name:'17,880 元', salary:17880, salaryText:'17,880 元', selfPayText:'依勞保局級距計算', group:'partial' },
+    { code:'LAB_LOW_19047', name:'19,047 元', salary:19047, salaryText:'19,047 元', selfPayText:'依勞保局級距計算', group:'partial' },
+    { code:'LAB_LOW_20008', name:'20,008 元', salary:20008, salaryText:'20,008 元', selfPayText:'依勞保局級距計算', group:'partial' },
+    { code:'LAB_LOW_21009', name:'21,009 元', salary:21009, salaryText:'21,009 元', selfPayText:'依勞保局級距計算', group:'partial' },
+    { code:'LAB_LOW_22000', name:'22,000 元', salary:22000, salaryText:'22,000 元', selfPayText:'依勞保局級距計算', group:'partial' },
+    { code:'LAB_LOW_23100', name:'23,100 元', salary:23100, salaryText:'23,100 元', selfPayText:'依勞保局級距計算', group:'partial' },
+    { code:'LAB_LOW_24000', name:'24,000 元', salary:24000, salaryText:'24,000 元', selfPayText:'依勞保局級距計算', group:'partial' },
+    { code:'LAB_LOW_25250', name:'25,250 元', salary:25250, salaryText:'25,250 元', selfPayText:'依勞保局級距計算', group:'partial' },
+    { code:'LAB_LOW_26400', name:'26,400 元', salary:26400, salaryText:'26,400 元', selfPayText:'依勞保局級距計算', group:'partial' },
+    { code:'LAB_LOW_27600', name:'27,600 元', salary:27600, salaryText:'27,600 元', selfPayText:'依勞保局級距計算', group:'partial' },
+    { code:'LAB_LOW_28590', name:'28,590 元', salary:28590, salaryText:'28,590 元', selfPayText:'依勞保局級距計算', group:'partial' },
+    { code:'LAB_REG_29500', name:'第 1 級｜29,500 元', salary:29500, salaryText:'29,500 元', selfPayText:'依勞保局級距計算', group:'regular' },
+    { code:'LAB_REG_30300', name:'第 2 級｜30,300 元', salary:30300, salaryText:'30,300 元', selfPayText:'依勞保局級距計算', group:'regular' },
+    { code:'LAB_REG_31800', name:'第 3 級｜31,800 元', salary:31800, salaryText:'31,800 元', selfPayText:'依勞保局級距計算', group:'regular' },
+    { code:'LAB_REG_33300', name:'第 4 級｜33,300 元', salary:33300, salaryText:'33,300 元', selfPayText:'依勞保局級距計算', group:'regular' },
+    { code:'LAB_REG_34800', name:'第 5 級｜34,800 元', salary:34800, salaryText:'34,800 元', selfPayText:'依勞保局級距計算', group:'regular' },
+    { code:'LAB_REG_36300', name:'第 6 級｜36,300 元', salary:36300, salaryText:'36,300 元', selfPayText:'依勞保局級距計算', group:'regular' },
+    { code:'LAB_REG_38200', name:'第 7 級｜38,200 元', salary:38200, salaryText:'38,200 元', selfPayText:'依勞保局級距計算', group:'regular' },
+    { code:'LAB_REG_40100', name:'第 8 級｜40,100 元', salary:40100, salaryText:'40,100 元', selfPayText:'依勞保局級距計算', group:'regular' },
+    { code:'LAB_REG_42000', name:'第 9 級｜42,000 元', salary:42000, salaryText:'42,000 元', selfPayText:'依勞保局級距計算', group:'regular' },
+    { code:'LAB_REG_43900', name:'第 10 級｜43,900 元', salary:43900, salaryText:'43,900 元', selfPayText:'依勞保局級距計算', group:'regular' },
+    { code:'LAB_REG_45800', name:'第 11 級｜45,800 元', salary:45800, salaryText:'45,800 元', selfPayText:'依勞保局級距計算', group:'regular' }
+  ];
+  const DEFAULT_HEALTH_PLANS = [28590,28800,30300,31800,33300,34800,36300,38200,40100,42000,43900,45800,48200,50600,53000,55400,57800,60800,63800,66800,69800,72800,76500,80200,83900,87600,92100,96600,101100,105600,110100,115500,120900,126300,131700,137100,142500,147900,150000].map(function(v, i){ return { code:'NHI_' + v, name:'健保｜第 ' + (i + 1) + ' 級｜' + v.toLocaleString('zh-TW') + ' 元', salary:v, salaryText:v.toLocaleString('zh-TW') + ' 元', selfPayText:'依健保署級距計算' }; });
+
+  function clean(v){ return String(v == null ? '' : v).trim(); }
+  function lower(v){ return clean(v).toLowerCase(); }
+  function num(v){ const n = Number(String(v == null ? '' : v).replace(/[^\d.-]/g,'')); return Number.isFinite(n) ? n : 0; }
+  function money(v){ const n = num(v); return n ? '$' + Math.round(n).toLocaleString('zh-TW') : ''; }
+  function percent(v){ const n = num(v); return n ? n + '%' : ''; }
+  function truthy(v){ const s = lower(v); return v === true || ['是','yes','true','1','啟用','enabled','active','在保','已投保','投保'].includes(s); }
+  function fmtDate(v){
+    if(!v) return '';
+    if(v && typeof v.toDate === 'function'){
+      const d = v.toDate();
+      return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+    }
+    return clean(v).slice(0,10);
+  }
+  function pick(o, keys, fallback){
+    o = o || {};
+    for(const k of keys){
+      if(o[k] !== undefined && o[k] !== null && clean(o[k]) !== '') return o[k];
+    }
+    return fallback == null ? '' : fallback;
+  }
+  function localUser(){ try{return JSON.parse(localStorage.getItem('employeeUser') || '{}') || {}}catch(e){return {}} }
+  function db(){
+    try{
+      if(fb && typeof fb.init === 'function') return fb.init();
+      if(global.firebase && global.firebase.apps && global.firebase.apps.length) return global.firebase.firestore();
+    }catch(e){ console.warn('[salary display db]', e); }
+    return null;
+  }
+  function planByCode(list, code){
+    const c = clean(code);
+    if(!c) return null;
+    return (list || []).find(x => clean(x.code) === c) || null;
+  }
+  function formatPlan(plan, fallbackCode){
+    if(plan){
+      const name = clean(plan.name || plan.label || '');
+      const salaryText = clean(plan.salaryText || (plan.salary ? Number(plan.salary).toLocaleString('zh-TW') + ' 元' : ''));
+      if(name) return name;
+      if(salaryText) return salaryText;
+    }
+    return clean(fallbackCode);
+  }
+  function formatItems(items){
+    if(!Array.isArray(items)) return '';
+    return items.filter(x => x && (clean(x.name) || num(x.amount))).map(x => {
+      const name = clean(x.name || '未命名');
+      const amount = money(x.amount);
+      return amount ? (name + '：' + amount) : name;
+    }).join('\n');
+  }
+  function statusVisible(v){
+    const s = clean(v);
+    if(!s || s === '未設定') return '';
+    return s;
+  }
+  function insuranceActive(status){ return ['在保','已投保','投保'].includes(clean(status)); }
+
+  async function findEmployeeDoc(p){
+    const database = db();
+    if(!database) throw new Error('Firebase 尚未啟用，無法讀取薪資投保資訊');
+    const u = localUser();
+    const userId = clean(p.userId || p.employeeId || p.id || u.id || u.employeeId);
+    const email = clean(p.email || u.email);
+    let doc = null;
+    if(userId){
+      const direct = await database.collection('employees').doc(userId).get();
+      if(direct.exists) doc = direct;
+      if(!doc){
+        const byEmployeeId = await database.collection('employees').where('employeeId','==',userId).limit(1).get();
+        if(!byEmployeeId.empty) doc = byEmployeeId.docs[0];
+      }
+      if(!doc){
+        const byId = await database.collection('employees').where('id','==',userId).limit(1).get();
+        if(!byId.empty) doc = byId.docs[0];
+      }
+    }
+    if(!doc && email){
+      const byEmail = await database.collection('employees').where('email','==',email).limit(1).get();
+      if(!byEmail.empty) doc = byEmail.docs[0];
+    }
+    if(!doc) throw new Error('找不到員工薪資投保資料');
+    return doc;
+  }
+
+  function normalizeSalary(raw, docId){
+    raw = raw || {};
+    const identityRaw = lower(pick(raw, ['identityType','employeeType','type','身分類型'], ''));
+    const roleText = clean(pick(raw, ['role','identityLabel','職務類型','聘用類型'], ''));
+    const isParttime = identityRaw === 'parttime' || roleText.indexOf('工讀') >= 0 || truthy(pick(raw, ['isPartTime','是否工讀生'], ''));
+    const baseSalary = pick(raw, ['baseSalary','staffBaseSalary','monthlySalary','salary','本薪','月薪'], '');
+    const hourlyRate = pick(raw, ['hourlyRate','parttimeHourlyRate','hourRate','時薪'], '');
+    const averageSalary = pick(raw, ['averageSalary','parttimeAverageSalary','averageSalaryText','目前申報月平均薪資總額'], '');
+    const isPartialHours = pick(raw, ['isPartialHours','isPartialWorkingTime','partialWorkingTime','是否部分工時'], '');
+    const laborStatus = statusVisible(pick(raw, ['laborStatus','laborInsuranceStatus','laborInsurance','勞保狀態'], ''));
+    const healthStatus = statusVisible(pick(raw, ['healthStatus','healthInsuranceStatus','healthInsurance','健保狀態'], ''));
+    const laborPlanCode = pick(raw, ['laborPlan','laborPlanCode','laborInsuranceLevel','laborLevel','勞保級距'], '');
+    const healthPlanCode = pick(raw, ['healthPlan','healthPlanCode','healthInsuranceLevel','healthLevel','健保級距'], '');
+    const laborPlan = planByCode(DEFAULT_LABOR_PLANS, laborPlanCode);
+    const healthPlan = planByCode(DEFAULT_HEALTH_PLANS, healthPlanCode);
+    const laborSelfRaw = pick(raw, ['laborSelfPayText','laborInsuranceSelfPay','laborSelfPay','勞保自付額'], '');
+    const healthSelfRaw = pick(raw, ['healthSelfPayText','healthInsuranceSelfPay','healthSelfPay','健保自付額'], '');
+    const laborActive = insuranceActive(laborStatus);
+    const healthActive = insuranceActive(healthStatus);
+    const selfRetirementEnabled = pick(raw, ['selfRetirementEnabled','laborRetirementSelfEnabled','勞退自提'], '');
+    const selfRetirementRate = pick(raw, ['selfRetirementRate','laborRetirementSelfRate','勞退自提比率'], '');
+    const selfRetirementText = truthy(selfRetirementEnabled) ? (percent(selfRetirementRate) || '已開啟') : '';
+    const retirementEmployerText = laborActive ? '6%' : '';
+
+    return {
+      employeeId: clean(pick(raw, ['employeeId','id','員工ID'], docId)),
+      name: clean(pick(raw, ['name','姓名','displayName'], '')),
+      email: clean(pick(raw, ['email','Email'], '')),
+      identityType: isParttime ? 'parttime' : 'staff',
+      mainAmountLabel: isParttime ? '時薪' : '本薪',
+      mainAmountText: isParttime ? (hourlyRate ? money(hourlyRate) + ' / 小時' : '') : (baseSalary ? money(baseSalary) : ''),
+      staffBaseSalaryText: baseSalary ? money(baseSalary) : '',
+      parttimeHourlyRateText: hourlyRate ? money(hourlyRate) + ' / 小時' : '',
+      parttimePartialHoursText: isParttime && clean(isPartialHours) ? clean(isPartialHours) : '',
+      parttimeAverageSalaryText: averageSalary ? money(averageSalary) : '',
+      jobAllowanceText: formatItems(raw.jobAllowances || raw.jobAllowanceItems || []),
+      allowanceText: formatItems(raw.allowances || raw.allowanceItems || []),
+      laborStatus: laborStatus,
+      healthStatus: healthStatus,
+      laborActive: laborActive,
+      healthActive: healthActive,
+      laborPlanText: laborActive ? formatPlan(laborPlan, laborPlanCode) : '',
+      healthPlanText: healthActive ? formatPlan(healthPlan, healthPlanCode) : '',
+      laborLevelText: laborActive ? formatPlan(laborPlan, laborPlanCode) : '',
+      healthLevelText: healthActive ? formatPlan(healthPlan, healthPlanCode) : '',
+      laborSalaryText: laborActive && laborPlan && laborPlan.salary ? money(laborPlan.salary) : '',
+      healthSalaryText: healthActive && healthPlan && healthPlan.salary ? money(healthPlan.salary) : '',
+      laborSelfPayText: laborActive ? (laborSelfRaw ? (money(laborSelfRaw) || clean(laborSelfRaw)) : '') : '',
+      healthSelfPayText: healthActive ? (healthSelfRaw ? (money(healthSelfRaw) || clean(healthSelfRaw)) : '') : '',
+      retirementEmployerText: retirementEmployerText,
+      selfRetirementText: selfRetirementText,
+      effectiveDate: fmtDate(pick(raw, ['effectiveDate','salaryEffectiveDate','生效日期'], '')),
+      note: clean(pick(raw, ['note','salaryNote','備註'], '')),
+      raw: raw
+    };
+  }
+
+  async function getMySalaryInfo(payload){
+    const doc = await findEmployeeDoc(payload || {});
+    const info = normalizeSalary(doc.data() || {}, doc.id);
+    return {ok:true, source:'firebase-salary-display-final', info:info, salary:info};
+  }
+
+  fb.handleApi = async function(action, payload){
+    if(clean(action) === 'getMySalaryInfo') return await getMySalaryInfo(payload || {});
+    if(typeof oldHandle === 'function') return await oldHandle(action, payload || {});
+    return null;
+  };
+  fb.__salaryDisplayFinalV20260527 = true;
+  global.YZFirebase = fb;
 })(window);
