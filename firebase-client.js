@@ -2805,3 +2805,250 @@
   fb.__myDataSalaryBridgeV20260528b = true;
   global.YZFirebase = fb;
 })(window);
+
+/* 我的資料 Firebase-only 快速讀取 20260528profilefast1
+ * - 員工端「我的資料」只讀 Firebase，不回退 GS。
+ * - 只查本人 employees 與 employeeSalaryConfigs，不掃全公司薪資設定。
+ */
+(function(global){
+  const fb = global.YZFirebase || {};
+  if(!fb || fb.__myProfileFullFastV20260528) return;
+  const previousHandle = fb.handleApi;
+
+  function clean(v){ return String(v == null ? '' : v).trim(); }
+  function lower(v){ return clean(v).toLowerCase(); }
+  function num(v){ const n = Number(String(v == null ? '' : v).replace(/[^\d.-]/g,'')); return Number.isFinite(n) ? n : 0; }
+  function truthy(v){ const s = lower(v); return v === true || ['是','yes','true','1','啟用','enabled','active','在保','已投保','投保'].includes(s); }
+  function meaningful(v){ const s = clean(v); return !!s && !['-','未設定','無','undefined','null','nan'].includes(lower(s)); }
+  function uniq(list){ const out=[]; (list||[]).forEach(x=>{ const s=clean(x); if(s && !out.includes(s)) out.push(s); }); return out; }
+  function currentUser(){ try{return JSON.parse(localStorage.getItem('employeeUser') || '{}') || {}}catch(e){return {}} }
+  function db(){ try{return fb.init && fb.init()}catch(e){ return null; } }
+  function pad(n){ return String(n).padStart(2,'0'); }
+  function ymd(d){ return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()); }
+  function fmtDate(v){
+    if(!v) return '';
+    if(v && typeof v.toDate === 'function') return ymd(v.toDate());
+    if(v instanceof Date && !isNaN(v.getTime())) return ymd(v);
+    const s = clean(v);
+    if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? s : ymd(d);
+  }
+  function money(v){
+    const raw = clean(v);
+    if(!raw) return '';
+    if(/[元$]/.test(raw) || /小時/.test(raw) || /%/.test(raw)) return raw;
+    const n = num(raw);
+    if(!n) return '';
+    return '$' + Math.round(n).toLocaleString('zh-TW');
+  }
+  function percent(v){
+    const raw = clean(v);
+    if(!raw) return '';
+    if(raw.includes('%')) return raw;
+    const n = num(raw);
+    return n ? n + '%' : '';
+  }
+  function maskId(v){ const s=clean(v).toUpperCase(); if(!s) return ''; return s.length<=4 ? s : s.slice(0,1)+'*****'+s.slice(-4); }
+  function pick(o, keys, fallback){
+    o = o || {};
+    for(const k of keys){
+      if(o[k] !== undefined && o[k] !== null && clean(o[k]) !== '') return o[k];
+    }
+    return fallback == null ? '' : fallback;
+  }
+  function ids(payload, employee){
+    const u = currentUser();
+    return uniq([
+      payload && payload.employeeId,
+      payload && payload.userId,
+      payload && payload.id,
+      employee && employee.employeeId,
+      employee && employee.id,
+      employee && employee.__id,
+      u.employeeId,
+      u.id
+    ]);
+  }
+  function emails(payload, employee){
+    const u = currentUser();
+    return uniq([payload && payload.email, employee && employee.email, employee && employee.Email, u.email]).map(lower).filter(Boolean);
+  }
+  async function getDoc(collection, id){
+    const d = db(); if(!d || !id) return null;
+    try{
+      const snap = await d.collection(collection).doc(id).get();
+      return snap.exists ? Object.assign({__id:snap.id}, snap.data() || {}) : null;
+    }catch(e){ return null; }
+  }
+  async function queryOne(collection, field, value){
+    const d = db(); if(!d || !field || !value) return null;
+    try{
+      const snap = await d.collection(collection).where(field,'==',value).limit(1).get();
+      return snap.empty ? null : Object.assign({__id:snap.docs[0].id}, snap.docs[0].data() || {});
+    }catch(e){ return null; }
+  }
+  async function findEmployeeFast(payload){
+    const idList = ids(payload || {});
+    for(const id of idList){
+      const direct = await getDoc('employees', id); if(direct) return direct;
+    }
+    for(const id of idList){
+      const byEmployeeId = await queryOne('employees','employeeId',id); if(byEmployeeId) return byEmployeeId;
+      const byId = await queryOne('employees','id',id); if(byId) return byId;
+    }
+    for(const email of emails(payload || {})){
+      const byEmail = await queryOne('employees','email',email); if(byEmail) return byEmail;
+      const byEmail2 = await queryOne('employees','Email',email); if(byEmail2) return byEmail2;
+    }
+    return null;
+  }
+  async function findSalaryFast(payload, employee){
+    const idList = ids(payload || {}, employee || {});
+    for(const id of idList){
+      const direct = await getDoc('employeeSalaryConfigs', id); if(direct) return direct;
+    }
+    for(const id of idList){
+      const byEmployeeId = await queryOne('employeeSalaryConfigs','employeeId',id); if(byEmployeeId) return byEmployeeId;
+      const byUserId = await queryOne('employeeSalaryConfigs','userId',id); if(byUserId) return byUserId;
+      const byId = await queryOne('employeeSalaryConfigs','id',id); if(byId) return byId;
+    }
+    for(const email of emails(payload || {}, employee || {})){
+      const byEmail = await queryOne('employeeSalaryConfigs','email',email); if(byEmail) return byEmail;
+    }
+    return null;
+  }
+  function identityTypeOf(raw){
+    const identityRaw = lower(pick(raw, ['identityType','employeeType','type','身分類型'], ''));
+    const roleText = clean(pick(raw, ['identityLabel','role','職務類型','聘用類型'], ''));
+    const isParttime = identityRaw === 'parttime' || roleText.includes('工讀') || truthy(pick(raw, ['isPartTime','是否工讀生'], ''));
+    if(identityRaw === 'external') return 'external';
+    if(identityRaw === 'admin') return 'admin';
+    return isParttime ? 'parttime' : 'staff';
+  }
+  function normalizeProfile(raw){
+    raw = raw || {};
+    const identityType = identityTypeOf(raw);
+    return {
+      employeeId: clean(pick(raw, ['employeeId','id','員工ID'], raw.__id)),
+      name: clean(pick(raw, ['name','displayName','姓名'], '')),
+      identityType,
+      identityLabel: identityType === 'parttime' ? '工讀生' : (identityType === 'external' ? '外聘老師' : (identityType === 'admin' ? '管理者' : '專職員工')),
+      isPartTime: identityType === 'parttime',
+      email: lower(pick(raw, ['email','Email'], '')),
+      birthDate: fmtDate(pick(raw, ['birthDate','birthday','出生年月日'], '')),
+      idNumberMasked: clean(raw.idNumberMasked) || maskId(pick(raw, ['idNumber','身分證字號'], '')),
+      hireDate: fmtDate(pick(raw, ['hireDate','startDate','到職日','任職日期'], '')),
+      mobilePhone: clean(pick(raw, ['mobilePhone','phone','行動電話'], '')),
+      address: clean(pick(raw, ['address','contactAddress','聯絡地址'], '')),
+      emergencyContact: clean(pick(raw, ['emergencyContact','緊急聯絡人'], '')),
+      emergencyPhone: clean(pick(raw, ['emergencyPhone','緊急聯絡人電話'], ''))
+    };
+  }
+  function formatItems(items){
+    if(!Array.isArray(items)) return '';
+    return items.filter(Boolean).map(function(x){
+      if(typeof x === 'string') return clean(x);
+      const name = clean(x.name || x.title || x.label || x['名稱']);
+      const amount = money(x.amount || x.value || x['金額']);
+      return name && amount ? (name + '：' + amount) : (name || amount);
+    }).filter(Boolean).join('\n');
+  }
+  function parsePlanSalary(code){
+    const m = clean(code).match(/(\d{4,6})/);
+    return m ? Number(m[1]) : 0;
+  }
+  function formatPlan(code, label, type){
+    const explicit = clean(label);
+    if(meaningful(explicit)) return explicit;
+    const c = clean(code);
+    if(!c) return '';
+    const salary = parsePlanSalary(c);
+    if(salary) return (type === 'health' ? '健保' : '勞保') + '｜' + salary.toLocaleString('zh-TW') + ' 元';
+    return c;
+  }
+  function activeInsurance(status){ return ['在保','已投保','投保','加保','有效','是'].includes(clean(status)); }
+  function normalizeSalary(raw){
+    raw = raw || {};
+    const identityType = identityTypeOf(raw);
+    const isParttime = identityType === 'parttime';
+    const baseSalary = pick(raw, ['baseSalary','staffBaseSalary','monthlySalary','salary','本薪','月薪'], '');
+    const hourlyRate = pick(raw, ['hourlyRate','parttimeHourlyRate','hourRate','時薪'], '');
+    const averageSalary = pick(raw, ['averageSalary','parttimeAverageSalary','averageSalaryText','目前申報月平均薪資總額'], '');
+    const partialHours = pick(raw, ['isPartialHours','isPartialWorkingTime','partialWorkingTime','是否部分工時'], '');
+    const laborStatus = meaningful(pick(raw, ['laborStatus','laborInsuranceStatus','laborInsurance','勞保狀態'], '')) ? clean(pick(raw, ['laborStatus','laborInsuranceStatus','laborInsurance','勞保狀態'], '')) : '';
+    const healthStatus = meaningful(pick(raw, ['healthStatus','healthInsuranceStatus','healthInsurance','健保狀態'], '')) ? clean(pick(raw, ['healthStatus','healthInsuranceStatus','healthInsurance','健保狀態'], '')) : '';
+    const laborActive = activeInsurance(laborStatus);
+    const healthActive = activeInsurance(healthStatus);
+    const laborPlanCode = pick(raw, ['laborPlan','laborPlanCode','laborInsuranceLevel','laborLevel','勞保級距'], '');
+    const healthPlanCode = pick(raw, ['healthPlan','healthPlanCode','healthInsuranceLevel','healthLevel','健保級距'], '');
+    const laborSalary = pick(raw, ['laborSalaryText','laborInsuranceSalary','laborSalary','勞保投保薪資'], '') || parsePlanSalary(laborPlanCode);
+    const healthSalary = pick(raw, ['healthSalaryText','healthInsuranceSalary','healthSalary','健保投保薪資'], '') || parsePlanSalary(healthPlanCode);
+    const laborSelfPay = pick(raw, ['laborSelfPayText','laborInsuranceSelfPay','laborSelfPay','勞保自付額'], '');
+    const healthSelfPay = pick(raw, ['healthSelfPayText','healthInsuranceSelfPay','healthSelfPay','健保自付額'], '');
+    const employerRetirement = pick(raw, ['retirementEmployerText','laborRetirementEmployerText','laborRetirementEmployer','雇主提撥勞退'], '');
+    const selfRetirementEnabled = pick(raw, ['selfRetirementEnabled','laborRetirementSelfEnabled','勞退自提'], '');
+    const selfRetirementRate = pick(raw, ['selfRetirementRate','laborRetirementSelfRate','勞退自提比率'], '');
+    const selfRetirementText = truthy(selfRetirementEnabled) ? (percent(selfRetirementRate) || '已開啟') : '';
+    const jobAllowance = pick(raw, ['jobAllowanceText','jobAllowance','職務加給'], '') || formatItems(raw.jobAllowances || raw.jobAllowanceItems || []);
+    const allowance = pick(raw, ['allowanceText','allowance','津貼'], '') || formatItems(raw.allowances || raw.allowanceItems || []);
+    return {
+      employeeId: clean(pick(raw, ['employeeId','id','員工ID'], raw.__id)),
+      name: clean(pick(raw, ['name','displayName','姓名'], '')),
+      email: lower(pick(raw, ['email','Email'], '')),
+      identityType,
+      identityLabel: isParttime ? '工讀生' : '專職員工',
+      staffBaseSalaryText: !isParttime ? money(baseSalary) : '',
+      parttimeHourlyRateText: isParttime ? (money(hourlyRate) ? money(hourlyRate) + ' / 小時' : '') : '',
+      mainAmountText: isParttime ? (money(hourlyRate) ? money(hourlyRate) + ' / 小時' : '') : money(baseSalary),
+      parttimePartialHoursText: isParttime && meaningful(partialHours) ? clean(partialHours) : '',
+      parttimeAverageSalaryText: isParttime ? money(averageSalary) : '',
+      jobAllowanceText: meaningful(jobAllowance) ? clean(jobAllowance) : '',
+      allowanceText: meaningful(allowance) ? clean(allowance) : '',
+      effectiveDate: fmtDate(pick(raw, ['effectiveDate','salaryEffectiveDate','生效日期'], '')),
+      note: meaningful(pick(raw, ['note','salaryNote','備註'], '')) ? clean(pick(raw, ['note','salaryNote','備註'], '')) : '',
+      laborStatus,
+      laborPlanText: laborActive ? formatPlan(laborPlanCode, pick(raw, ['laborPlanText','laborLevelText','laborPlanName'], ''), 'labor') : '',
+      laborLevelText: laborActive ? formatPlan(laborPlanCode, pick(raw, ['laborPlanText','laborLevelText','laborPlanName'], ''), 'labor') : '',
+      laborSalaryText: laborActive && laborSalary ? (money(laborSalary) || clean(laborSalary)) : '',
+      laborSelfPayText: laborActive && laborSelfPay ? (money(laborSelfPay) || clean(laborSelfPay)) : '',
+      retirementEmployerText: laborActive ? (money(employerRetirement) || clean(employerRetirement) || '6%') : '',
+      selfRetirementText,
+      healthStatus,
+      healthPlanText: healthActive ? formatPlan(healthPlanCode, pick(raw, ['healthPlanText','healthLevelText','healthPlanName'], ''), 'health') : '',
+      healthLevelText: healthActive ? formatPlan(healthPlanCode, pick(raw, ['healthPlanText','healthLevelText','healthPlanName'], ''), 'health') : '',
+      healthSalaryText: healthActive && healthSalary ? (money(healthSalary) || clean(healthSalary)) : '',
+      healthSelfPayText: healthActive && healthSelfPay ? (money(healthSelfPay) || clean(healthSelfPay)) : ''
+    };
+  }
+  async function getMyProfileFull(payload){
+    const employee = await findEmployeeFast(payload || {});
+    if(!employee) return {ok:false, message:'Firebase 找不到員工資料'};
+    const salaryConfig = await findSalaryFast(payload || {}, employee).catch(()=>null);
+    const merged = Object.assign({}, employee || {}, salaryConfig || {});
+    const profile = normalizeProfile(merged);
+    const salary = normalizeSalary(merged);
+    return {ok:true, source:'firebase-only-profile-fast', profile, salary, info:salary};
+  }
+  async function getMySalaryInfoFast(payload){
+    const employee = await findEmployeeFast(payload || {});
+    const salaryConfig = employee ? await findSalaryFast(payload || {}, employee).catch(()=>null) : await findSalaryFast(payload || {}, {}).catch(()=>null);
+    const merged = Object.assign({}, employee || {}, salaryConfig || {});
+    if(!employee && !salaryConfig) return {ok:true, source:'firebase-only-profile-fast', info:{}, salary:{}};
+    const salary = normalizeSalary(merged);
+    return {ok:true, source:'firebase-only-profile-fast', info:salary, salary};
+  }
+  fb.handleApi = async function(action, payload){
+    const a = clean(action);
+    if(a === 'getMyProfileFull') return await getMyProfileFull(payload || {});
+    if(a === 'getMySalaryInfo') return await getMySalaryInfoFast(payload || {});
+    if(a === 'getMyProfile'){
+      const full = await getMyProfileFull(payload || {});
+      return full.ok === false ? full : {ok:true, source:full.source, profile:full.profile || {}};
+    }
+    if(typeof previousHandle === 'function') return await previousHandle(action, payload || {});
+    return null;
+  };
+  fb.__myProfileFullFastV20260528 = true;
+  global.YZFirebase = fb;
+})(window);

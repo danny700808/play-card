@@ -6,31 +6,25 @@
   <title>我的資料</title>
   <link rel="stylesheet" href="style.css">
   <style>
-    .profile-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
     .page-return-wrap{margin-bottom:16px}
     .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
+    .profile-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
     .tips{font-size:14px;line-height:1.8;color:var(--muted)}
-    .data-section{margin-top:14px}
-    .section-title-line{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+    .data-section{margin-top:16px}
+    .data-section:first-child{margin-top:0}
+    .section-title-line{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
     .section-title-line .section-title{margin:0}
-    .section-hint{font-size:12px;color:var(--muted);font-weight:700}
-    .compact-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px}
-    .info-box{border:1px solid var(--line);border-radius:14px;padding:10px 10px;background:#f8fbff;min-width:0;line-height:1.35}
-    .info-box.short{grid-column:span 2}
-    .info-box.medium{grid-column:span 3}
-    .info-box.long{grid-column:span 6}
-    .info-label{font-size:11px;color:var(--muted);font-weight:800;line-height:1.3;margin-bottom:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .info-value{font-size:15px;font-weight:900;color:var(--text);word-break:break-word;white-space:pre-line;line-height:1.45}
-    .info-box.long .info-value{font-size:14px;font-weight:800}
+    .data-list{display:flex;flex-direction:column;gap:8px}
+    .info-row{display:grid;grid-template-columns:minmax(104px,34%) 1fr;gap:10px;align-items:start;border:1px solid var(--line);border-radius:13px;padding:10px 12px;background:#f8fbff;min-width:0}
+    .info-label{font-size:13px;color:var(--muted);font-weight:900;line-height:1.45;word-break:keep-all}
+    .info-value{font-size:15px;color:var(--text);font-weight:900;line-height:1.55;word-break:break-word;white-space:pre-line;text-align:left}
     .empty-note{font-size:14px;color:var(--muted);line-height:1.8;background:#f8fbff;border:1px dashed var(--line);border-radius:14px;padding:12px}
     .edit-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
     .edit-grid .full{grid-column:1 / -1}
-    @media(max-width:420px){
-      .compact-grid{gap:7px}
-      .info-box{padding:9px 8px;border-radius:13px}
-      .info-label{font-size:10.5px}
-      .info-value{font-size:14px}
-      .info-box.long .info-value{font-size:13.5px}
+    @media(max-width:520px){
+      .info-row{grid-template-columns:minmax(92px,38%) 1fr;padding:10px}
+      .info-label{font-size:12.5px}
+      .info-value{font-size:14.5px}
       .edit-grid{grid-template-columns:1fr}
     }
   </style>
@@ -47,7 +41,7 @@
         </div>
       </div>
       <div class="message" id="msg"></div>
-      <div class="tips">此頁整合個人資料、薪資與投保資訊。沒有設定或沒有資料的欄位會自動隱藏；基本身分與薪資投保資料如需調整，請由管理端修改。</div>
+      <div class="tips">此頁直接讀取 Firebase 內的個人、薪資與投保資料。沒有資料的欄位會自動隱藏。</div>
     </div>
 
     <div class="card" id="viewCard">
@@ -67,7 +61,7 @@
         <div class="field full"><label>聯絡地址</label><input id="address" placeholder="請輸入聯絡地址"></div>
       </div>
       <div class="btn-row">
-        <button class="btn secondary" type="button" onclick="loadProfile()">重新讀取</button>
+        <button class="btn secondary" type="button" onclick="loadProfile(true)">重新讀取</button>
         <button class="btn" type="button" onclick="submitProfileChange()">送出修改申請</button>
       </div>
     </div>
@@ -76,19 +70,44 @@
   <script src="config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260528profilemerge2"></script>
-
+  <script src="firebase-client.js?v=20260528profilefast1"></script>
   <script src="app.js"></script>
   <script>
+    function $(id){ return document.getElementById(id); }
     function safeText(v){
       const s = String(v == null ? '' : v).trim();
-      if(!s || s === '-' || s === '未設定' || s === 'undefined' || s === 'null') return '';
+      if(!s) return '';
+      if(['-','未設定','無','undefined','null','NaN'].includes(s)) return '';
       return s;
     }
     function escapeHtml(s){
       return String(s == null ? '' : s).replace(/[&<>'"]/g, function(ch){
         return {'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch];
       });
+    }
+    function showMsg(text, isError){
+      const el = $('msg');
+      if(!el) return;
+      el.textContent = text || '';
+      el.className = 'message' + (isError ? ' error' : '');
+      el.style.display = text ? '' : 'none';
+    }
+    function currentUser(){
+      try{ return JSON.parse(localStorage.getItem('employeeUser') || 'null'); }catch(e){ return null; }
+    }
+    function ensureUser(){
+      if(typeof requireLogin === 'function') return requireLogin();
+      const u = currentUser();
+      if(!u){ location.href='login.html'; return null; }
+      return u;
+    }
+    function setHomeLink(user){
+      const link = $('profileHomeLink');
+      if(!link) return;
+      if(typeof userHomeHref === 'function') link.href = userHomeHref(user);
+      else link.href = 'dashboard.html';
+      if(typeof userHomeLabel === 'function') link.textContent = userHomeLabel(user);
+      else link.textContent = '返回員工首頁';
     }
     function identityLabel(type, fallback){
       const t = String(type || '').trim().toLowerCase();
@@ -97,248 +116,175 @@
       if(t === 'admin') return '管理者';
       return safeText(fallback) || '專職員工';
     }
-    function moneyLike(v){
-      const s = safeText(v);
-      if(!s) return '';
-      if(/[元$]/.test(s) || /小時/.test(s) || /%/.test(s)) return s;
-      const n = Number(String(s).replace(/[^\d.-]/g,''));
-      if(Number.isFinite(n) && String(s).match(/^-?[\d,.]+$/)) return '$' + Math.round(n).toLocaleString('zh-TW');
-      return s;
-    }
-    function item(label, value, size){
+    function row(label, value){
       const text = safeText(value);
       if(!text) return '';
-      return '<div class="info-box ' + (size || 'short') + '"><div class="info-label">' + escapeHtml(label) + '</div><div class="info-value">' + escapeHtml(text) + '</div></div>';
+      return '<div class="info-row"><div class="info-label">' + escapeHtml(label) + '</div><div class="info-value">' + escapeHtml(text) + '</div></div>';
     }
-    function section(title, rows, hint){
+    function section(title, rows){
       const html = rows.filter(Boolean).join('');
       if(!html) return '';
-      return '<div class="data-section"><div class="section-title-line"><div class="section-title">' + escapeHtml(title) + '</div>' + (hint ? '<div class="section-hint">' + escapeHtml(hint) + '</div>' : '') + '</div><div class="compact-grid">' + html + '</div></div>';
+      return '<div class="data-section"><div class="section-title-line"><div class="section-title">' + escapeHtml(title) + '</div></div><div class="data-list">' + html + '</div></div>';
     }
-    function normalizeSalaryInfo(res, ids, email){
-      if(!res) return {};
-      const direct = res.info || res.salary || res.profile || res.data || res.row || null;
-      if(direct && typeof direct === 'object') return direct;
-      ids = (ids || []).map(safeText).filter(Boolean);
-      email = safeText(email).toLowerCase();
-      const map = res.employeeConfigMap || res.salaryConfigMap || res.configMap || {};
-      for(const id of ids){
-        if(map && map[id]) return Object.assign({employeeId:id}, map[id]);
+    function cacheKey(user){
+      const id = safeText(user && (user.employeeId || user.id || user.email)) || 'unknown';
+      return 'MY_PROFILE_FULL_CACHE_' + id;
+    }
+    function fillForm(profile, user){
+      profile = profile || {};
+      user = user || {};
+      $('mobilePhone').value = profile.mobilePhone || '';
+      $('address').value = profile.address || '';
+      $('email').value = profile.email || user.email || '';
+      $('emergencyContact').value = profile.emergencyContact || '';
+      $('emergencyPhone').value = profile.emergencyPhone || '';
+    }
+    async function waitFirebase(timeout){
+      const start = Date.now();
+      while(!window.YZFirebase || typeof window.YZFirebase.handleApi !== 'function'){
+        if(Date.now() - start > (timeout || 5000)) throw new Error('Firebase 尚未啟用');
+        await new Promise(resolve => setTimeout(resolve, 80));
       }
-      const rows = [].concat(res.employees || [], res.rows || [], res.list || []);
-      const row = rows.find(function(x){
-        const xid = safeText(x && (x.id || x.employeeId || x.userId || x['員工ID']));
-        const xe = safeText(x && (x.email || x.Email)).toLowerCase();
-        return (xid && ids.includes(xid)) || (email && xe === email);
-      });
-      if(row){
-        const key = safeText(row.id || row.employeeId || row.userId || row['員工ID']);
-        return Object.assign({}, row, (map && map[key]) || {});
+      if(typeof window.YZFirebase.enabled === 'function' && !window.YZFirebase.enabled()){
+        throw new Error('Firebase 尚未啟用');
       }
-      return {};
+      return window.YZFirebase;
     }
-    function hasSalaryData(obj){
-      obj = obj || {};
-      const keys = [
-        'mainAmountText','staffBaseSalaryText','parttimeHourlyRateText','parttimeAverageSalaryText',
-        'baseSalary','staffBaseSalary','monthlySalary','salary','hourlyRate','parttimeHourlyRate','averageSalary',
-        'laborStatus','healthStatus','laborPlan','healthPlan','laborPlanText','healthPlanText',
-        'laborLevelText','healthLevelText','laborSelfPayText','healthSelfPayText','effectiveDate','salaryEffectiveDate',
-        'jobAllowanceText','allowanceText','note','salaryNote'
-      ];
-      if(keys.some(k => safeText(obj[k]))) return true;
-      if(Array.isArray(obj.jobAllowances) && obj.jobAllowances.length) return true;
-      if(Array.isArray(obj.allowances) && obj.allowances.length) return true;
-      return false;
-    }
-    function formatMoneyValue(v, suffix){
-      const raw = safeText(v);
-      if(!raw) return '';
-      if(/[元$%]/.test(raw) || /小時/.test(raw)) return raw + (suffix && !raw.includes(suffix) ? suffix : '');
-      const n = Number(raw.replace(/[^\d.-]/g,''));
-      if(!Number.isFinite(n) || !n) return raw;
-      return '$' + Math.round(n).toLocaleString('zh-TW') + (suffix || '');
-    }
-    function formatLineItems(items){
-      if(!Array.isArray(items)) return '';
-      return items.filter(Boolean).map(function(x){
-        if(typeof x === 'string') return safeText(x);
-        const name = safeText(x.name || x.title || x.label || x['名稱']);
-        const amount = formatMoneyValue(x.amount || x.value || x['金額']);
-        return name && amount ? (name + '：' + amount) : (name || amount);
-      }).filter(Boolean).join('\n');
-    }
-    function prepareSalaryDisplay(raw){
-      raw = raw || {};
-      const out = Object.assign({}, raw);
-      const laborStatus = safeText(out.laborStatus || out.laborInsuranceStatus || out.laborInsurance || out['勞保狀態']);
-      const healthStatus = safeText(out.healthStatus || out.healthInsuranceStatus || out.healthInsurance || out['健保狀態']);
-      out.laborStatus = laborStatus;
-      out.healthStatus = healthStatus;
-      out.staffBaseSalaryText = out.staffBaseSalaryText || formatMoneyValue(out.baseSalary || out.staffBaseSalary || out.monthlySalary || out.salary || out['本薪'] || out['月薪']);
-      out.parttimeHourlyRateText = out.parttimeHourlyRateText || formatMoneyValue(out.hourlyRate || out.parttimeHourlyRate || out.hourRate || out['時薪'], ' / 小時');
-      out.parttimeAverageSalaryText = out.parttimeAverageSalaryText || formatMoneyValue(out.averageSalary || out.parttimeAverageSalary || out['目前申報月平均薪資總額']);
-      out.parttimePartialHoursText = out.parttimePartialHoursText || safeText(out.isPartialHours || out.isPartialWorkingTime || out.partialWorkingTime || out['是否部分工時']);
-      out.jobAllowanceText = out.jobAllowanceText || formatLineItems(out.jobAllowances || out.jobAllowanceItems) || safeText(out.jobAllowance || out['職務加給']);
-      out.allowanceText = out.allowanceText || formatLineItems(out.allowances || out.allowanceItems) || safeText(out.allowance || out['津貼']);
-      out.laborPlanText = out.laborPlanText || out.laborLevelText || safeText(out.laborPlanName || out.laborInsuranceLevel || out.laborLevel || out.laborPlan || out['勞保級距']);
-      out.healthPlanText = out.healthPlanText || out.healthLevelText || safeText(out.healthPlanName || out.healthInsuranceLevel || out.healthLevel || out.healthPlan || out['健保級距']);
-      out.laborSalaryText = out.laborSalaryText || formatMoneyValue(out.laborInsuranceSalary || out.laborSalary || out['勞保投保薪資']);
-      out.healthSalaryText = out.healthSalaryText || formatMoneyValue(out.healthInsuranceSalary || out.healthSalary || out['健保投保薪資']);
-      out.laborSelfPayText = out.laborSelfPayText || formatMoneyValue(out.laborInsuranceSelfPay || out.laborSelfPay || out['勞保自付額']);
-      out.healthSelfPayText = out.healthSelfPayText || formatMoneyValue(out.healthInsuranceSelfPay || out.healthSelfPay || out['健保自付額']);
-      out.retirementEmployerText = out.retirementEmployerText || safeText(out.retirementEmployer || out.laborRetirementEmployer || out['雇主提撥勞退']);
-      const selfRate = safeText(out.selfRetirementRate || out.laborRetirementSelfRate || out['勞退自提比率']);
-      const selfEnabled = safeText(out.selfRetirementEnabled || out.laborRetirementSelfEnabled || out['勞退自提']);
-      out.selfRetirementText = out.selfRetirementText || (selfRate ? (selfRate.replace('%','') + '%') : (['是','true','1','啟用'].includes(selfEnabled.toLowerCase()) ? '已開啟' : ''));
-      out.effectiveDate = safeText(out.effectiveDate || out.salaryEffectiveDate || out['生效日期']);
-      out.note = safeText(out.note || out.salaryNote || out['備註']);
-      if(!out.mainAmountText) out.mainAmountText = out.identityType === 'parttime' ? out.parttimeHourlyRateText : out.staffBaseSalaryText;
-      return out;
-    }
-    async function loadSalaryQuietly(user, profile){
-      const ids = [profile && profile.employeeId, profile && profile.id, user.employeeId, user.id].map(safeText).filter(Boolean);
-      const email = safeText((profile && profile.email) || user.email);
-      const payload = {userId: ids[0] || user.id, employeeId: ids[0] || user.employeeId || user.id, id: ids[0] || user.id, email: email};
-      try{
-        const res = await api('getMySalaryInfo', payload);
-        const info = prepareSalaryDisplay(normalizeSalaryInfo(res, ids, email));
-        if(hasSalaryData(info)) return info;
-      }catch(err){
-        console.warn('[profile salary primary hidden]', err);
-      }
-      try{
-        const setup = await api('getSalarySetupOptions', payload);
-        const info = prepareSalaryDisplay(normalizeSalaryInfo(setup, ids, email));
-        if(hasSalaryData(info)) return info;
-      }catch(err){
-        console.warn('[profile salary setup hidden]', err);
-      }
-      return {};
+    async function firebaseOnly(action, payload){
+      const fb = await waitFirebase(5000);
+      const res = await fb.handleApi(action, payload || {});
+      if(!res) throw new Error('Firebase 無回應');
+      if(res.ok === false) throw new Error(res.message || '讀取失敗');
+      return res;
     }
     async function init(){
-      fillHeader();
-      const user=requireLogin();
+      if(typeof fillHeader === 'function') fillHeader();
+      const user = ensureUser();
       if(!user) return;
-      qs('#profileHomeLink').href = userHomeHref(user);
-      qs('#profileHomeLink').textContent = userHomeLabel(user);
-      await loadProfile();
+      setHomeLink(user);
+      const nameNode = document.querySelector('[data-user-name]');
+      if(nameNode) nameNode.textContent = user.name || '';
+      await loadProfile(false);
     }
-
-    async function loadProfile(){
-      const user=requireLogin();
+    async function loadProfile(force){
+      const user = ensureUser();
       if(!user) return;
-      qs('#profileHomeLink').href = userHomeHref(user);
-      qs('#profileHomeLink').textContent = userHomeLabel(user);
-      const msg=qs('#msg');
-      setMsg(msg,'讀取中…',false);
+      setHomeLink(user);
+      const key = cacheKey(user);
+      if(!force){
+        try{
+          const cached = JSON.parse(localStorage.getItem(key) || 'null');
+          if(cached && cached.profile){
+            renderProfileData(cached.profile, cached.salary || {}, user);
+            fillForm(cached.profile, user);
+          }
+        }catch(e){}
+      }
+      showMsg('讀取中…', false);
       try{
-        const profileRes=await api('getMyProfile',{userId:user.id, employeeId:user.employeeId || user.id, email:user.email});
-        if(!profileRes||profileRes.ok===false) throw new Error(profileRes&&profileRes.message||'讀取失敗');
-        const p=profileRes.profile||{};
-        const s=await loadSalaryQuietly(user, p);
-        renderProfileData(p, s, user);
-        qs('#mobilePhone').value=p.mobilePhone||'';
-        qs('#address').value=p.address||'';
-        qs('#email').value=p.email||user.email||'';
-        qs('#emergencyContact').value=p.emergencyContact||'';
-        qs('#emergencyPhone').value=p.emergencyPhone||'';
-        setMsg(msg,'',false);
+        const res = await firebaseOnly('getMyProfileFull', {
+          userId:user.id,
+          employeeId:user.employeeId || user.id,
+          id:user.id,
+          email:user.email
+        });
+        const profile = res.profile || {};
+        const salary = res.salary || res.info || {};
+        renderProfileData(profile, salary, user);
+        fillForm(profile, user);
+        try{ localStorage.setItem(key, JSON.stringify({profile:profile, salary:salary, cachedAt:Date.now()})); }catch(e){}
+        showMsg('', false);
       }catch(err){
-        setMsg(msg,err.message||String(err),true);
+        showMsg(err.message || String(err), true);
       }
     }
-
     function renderProfileData(p, s, user){
       p = p || {};
       s = s || {};
       user = user || {};
       const type = safeText(s.identityType || p.identityType || user.identityType || (user.isPartTime ? 'parttime' : 'staff'));
-      const isParttime = type === 'parttime' || /工讀/.test(s.identityLabel || user.identityLabel || '');
+      const isParttime = type === 'parttime' || /工讀/.test(s.identityLabel || p.identityLabel || user.identityLabel || '');
       const name = safeText(p.name || s.name || user.name);
       const email = safeText(p.email || s.email || user.email);
 
       const basic = [
-        item('姓名', name, 'short'),
-        item('身分類型', identityLabel(type, s.identityLabel || user.identityLabel), 'short'),
-        item('出生年月日', p.birthDate, 'short'),
-        item('到職日', p.hireDate, 'short'),
-        item('身分證字號', p.idNumberMasked, 'short'),
-        item('Email', email, 'long')
+        row('姓名', name),
+        row('身分類型', identityLabel(type, s.identityLabel || p.identityLabel || user.identityLabel)),
+        row('Email', email),
+        row('出生年月日', p.birthDate),
+        row('到職日', p.hireDate),
+        row('身分證字號', p.idNumberMasked)
       ];
 
       const contact = [
-        item('行動電話', p.mobilePhone, 'medium'),
-        item('緊急聯絡人', p.emergencyContact, 'medium'),
-        item('緊急聯絡人電話', p.emergencyPhone, 'medium'),
-        item('聯絡地址', p.address, 'long')
+        row('行動電話', p.mobilePhone),
+        row('聯絡地址', p.address),
+        row('緊急聯絡人', p.emergencyContact),
+        row('緊急聯絡人電話', p.emergencyPhone)
       ];
 
       const salary = isParttime ? [
-        item('時薪', s.parttimeHourlyRateText || s.mainAmountText || s.hourlyRate, 'short'),
-        item('是否部分工時', s.parttimePartialHoursText, 'short'),
-        item('月平均申報薪資', s.parttimeAverageSalaryText || s.averageSalary, 'medium'),
-        item('職務加給', s.jobAllowanceText, 'long'),
-        item('津貼', s.allowanceText, 'long'),
-        item('薪資生效日', s.effectiveDate, 'short'),
-        item('薪資備註', s.note, 'long')
+        row('時薪', s.parttimeHourlyRateText || s.mainAmountText || s.hourlyRate),
+        row('是否部分工時', s.parttimePartialHoursText || s.isPartialHours),
+        row('目前申報月平均薪資總額', s.parttimeAverageSalaryText || s.averageSalary),
+        row('職務加給', s.jobAllowanceText),
+        row('津貼', s.allowanceText),
+        row('薪資生效日', s.effectiveDate),
+        row('薪資備註', s.note)
       ] : [
-        item('本薪', s.staffBaseSalaryText || s.mainAmountText || s.baseSalary, 'short'),
-        item('職務加給', s.jobAllowanceText, 'long'),
-        item('津貼', s.allowanceText, 'long'),
-        item('薪資生效日', s.effectiveDate, 'short'),
-        item('薪資備註', s.note, 'long')
+        row('本薪', s.staffBaseSalaryText || s.mainAmountText || s.baseSalary),
+        row('職務加給', s.jobAllowanceText),
+        row('津貼', s.allowanceText),
+        row('薪資生效日', s.effectiveDate),
+        row('薪資備註', s.note)
       ];
 
       const labor = [
-        item('勞保狀態', s.laborStatus, 'short'),
-        item('勞保級距', s.laborPlanText || s.laborLevelText, 'medium'),
-        item('勞保投保薪資', moneyLike(s.laborSalaryText), 'medium'),
-        item('勞保自付額', moneyLike(s.laborSelfPayText), 'short'),
-        item('雇主提撥勞退', s.retirementEmployerText, 'short'),
-        item('勞退自提', s.selfRetirementText, 'short')
+        row('勞保狀態', s.laborStatus),
+        row('勞保級距', s.laborPlanText || s.laborLevelText),
+        row('勞保投保薪資', s.laborSalaryText),
+        row('勞保自付額', s.laborSelfPayText),
+        row('雇主提撥勞退', s.retirementEmployerText),
+        row('勞退自提', s.selfRetirementText)
       ];
 
       const health = [
-        item('健保狀態', s.healthStatus, 'short'),
-        item('健保級距', s.healthPlanText || s.healthLevelText, 'medium'),
-        item('健保投保薪資', moneyLike(s.healthSalaryText), 'medium'),
-        item('健保自付額', moneyLike(s.healthSelfPayText), 'short')
+        row('健保狀態', s.healthStatus),
+        row('健保級距', s.healthPlanText || s.healthLevelText),
+        row('健保投保薪資', s.healthSalaryText),
+        row('健保自付額', s.healthSelfPayText)
       ];
 
       const html = [
-        section('基本資料', basic, '短欄位三格並排'),
-        section('聯絡資料', contact, ''),
-        section('薪資資訊', salary, isParttime ? '工讀生' : '專職員工'),
-        section('勞保 / 勞退資訊', labor, ''),
-        section('健保資訊', health, '')
+        section('基本資料', basic),
+        section('聯絡資料', contact),
+        section('薪資資訊', salary),
+        section('勞保 / 勞退資訊', labor),
+        section('健保資訊', health)
       ].filter(Boolean).join('');
 
-      qs('#profileSections').innerHTML = html;
-      qs('#emptyProfileNote').style.display = html ? 'none' : '';
+      $('profileSections').innerHTML = html;
+      $('emptyProfileNote').style.display = html ? 'none' : '';
     }
-
     async function submitProfileChange(){
-      const user=requireLogin();
+      const user = ensureUser();
       if(!user) return;
-      const msg=qs('#msg');
       try{
-        setMsg(msg,'送出中…',false);
-        const res=await api('submitProfileChangeRequest',{
+        showMsg('送出中…', false);
+        const res = await firebaseOnly('submitProfileChangeRequest', {
           userId:user.id,
           employeeId:user.employeeId || user.id,
           name:user.name || '',
-          mobilePhone:qs('#mobilePhone').value.trim(),
-          address:qs('#address').value.trim(),
-          email:qs('#email').value.trim(),
-          emergencyContact:qs('#emergencyContact').value.trim(),
-          emergencyPhone:qs('#emergencyPhone').value.trim(),
+          mobilePhone:$('mobilePhone').value.trim(),
+          address:$('address').value.trim(),
+          email:$('email').value.trim(),
+          emergencyContact:$('emergencyContact').value.trim(),
+          emergencyPhone:$('emergencyPhone').value.trim(),
           status:'待審核'
         });
-        if(!res||res.ok===false) throw new Error(res&&res.message||'送出失敗');
-        setMsg(msg,res.message||'已送出修改申請。',false);
+        showMsg(res.message || '已送出修改申請。', false);
       }catch(err){
-        setMsg(msg,err.message||String(err),true);
+        showMsg(err.message || String(err), true);
       }
     }
   </script>
