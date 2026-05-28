@@ -1566,3 +1566,165 @@
   fb.__clockMultiScheduleV20260528 = true;
   global.YZFirebase = fb;
 })(window);
+
+/* 打卡紀錄讀取修正：讓今日／昨日與歷史查詢直接讀 Firebase clockRecords */
+(function(global){
+  const fb = global.YZFirebase;
+  if(!fb || fb.__clockHistoryReadFixV20260528) return;
+  const oldHandle = fb.handleApi;
+
+  function clean(v){ return String(v == null ? '' : v).trim(); }
+  function lower(v){ return clean(v).toLowerCase(); }
+  function pad(n){ return String(n).padStart(2,'0'); }
+  function ymd(d){ return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()); }
+  function today(){ return ymd(new Date()); }
+  function addDays(dateKey, days){
+    const d = new Date(clean(dateKey) + 'T00:00:00');
+    if(isNaN(d.getTime())) return '';
+    d.setDate(d.getDate() + Number(days || 0));
+    return ymd(d);
+  }
+  function dateText(v){
+    if(!v) return '';
+    if(v && typeof v.toDate === 'function') return ymd(v.toDate());
+    if(v instanceof Date && !isNaN(v.getTime())) return ymd(v);
+    const s = clean(v);
+    if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? s : ymd(d);
+  }
+  function timeText(v){
+    if(!v) return '';
+    if(v && typeof v.toDate === 'function'){
+      const d = v.toDate();
+      return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+    }
+    if(v instanceof Date && !isNaN(v.getTime())) return pad(v.getHours()) + ':' + pad(v.getMinutes()) + ':' + pad(v.getSeconds());
+    const s = clean(v);
+    if(/^\d{1,2}:\d{2}/.test(s)){
+      const p = s.split(':');
+      return pad(p[0]) + ':' + p[1] + ':' + (p[2] ? pad(p[2]) : '00');
+    }
+    return s;
+  }
+  function localUser(){ try{return JSON.parse(localStorage.getItem('employeeUser') || '{}') || {}}catch(e){return {}} }
+  function employeeIdFrom(p){
+    const u = localUser();
+    return clean((p && (p.userId || p.employeeId || p.id)) || u.employeeId || u.id || u.userId || localStorage.getItem('employeeUserId'));
+  }
+  function emailFrom(p){
+    const u = localUser();
+    return lower((p && p.email) || u.email);
+  }
+  function inTodayOrYesterday(dateKey){
+    const t = today();
+    const d = clean(dateKey);
+    return d === t || d === addDays(t, -1);
+  }
+  function db(){
+    try{
+      if(fb && typeof fb.init === 'function') return fb.init();
+      if(global.firebase && global.firebase.apps && global.firebase.apps.length) return global.firebase.firestore();
+    }catch(e){ console.warn('[clock history db]', e); }
+    return null;
+  }
+  async function where(col, field, value){
+    const d = db();
+    if(!d) throw new Error('Firebase 尚未啟用');
+    const v = clean(value);
+    if(!v) return [];
+    const snap = await d.collection(col).where(field, '==', v).get();
+    const rows = [];
+    snap.forEach(doc => rows.push(Object.assign({__id:doc.id}, doc.data() || {})));
+    return rows;
+  }
+  function dedupe(rows){
+    const map = new Map();
+    (rows || []).forEach(r => {
+      const key = clean(r.recordId || r.id || r['紀錄ID'] || r.__id) || JSON.stringify(r);
+      map.set(key, r);
+    });
+    return Array.from(map.values());
+  }
+  async function readClockRows(p){
+    const employeeId = employeeIdFrom(p || {});
+    const email = emailFrom(p || {});
+    const jobs = [];
+    if(employeeId){
+      jobs.push(where('clockRecords', 'employeeId', employeeId).catch(()=>[]));
+      jobs.push(where('clockRecords', '員工ID', employeeId).catch(()=>[]));
+      jobs.push(where('clockRecords', 'userId', employeeId).catch(()=>[]));
+    }
+    if(email){
+      jobs.push(where('clockRecords', 'email', email).catch(()=>[]));
+      jobs.push(where('clockRecords', 'Email', email).catch(()=>[]));
+    }
+    const chunks = await Promise.all(jobs);
+    return dedupe([].concat.apply([], chunks));
+  }
+  function normalizeClock(o){
+    o = o || {};
+    const d = dateText(o.clockDate || o.date || o['打卡日期'] || o.createdAt || o.updatedAt);
+    const t = timeText(o.clockTime || o.time || o['打卡時間'] || o.createdAt || o.updatedAt);
+    const status = clean(o.status || o['狀態'] || '正常') || '正常';
+    const clockType = clean(o.clockType || o['打卡方式'] || '標準打卡') || '標準打卡';
+    const actionName = clean(o.actionName || o['打卡動作']);
+    return {
+      id: clean(o.recordId || o.id || o['紀錄ID'] || o.__id),
+      recordId: clean(o.recordId || o.id || o['紀錄ID'] || o.__id),
+      employeeId: clean(o.employeeId || o['員工ID'] || o.userId),
+      name: clean(o.name || o['姓名']),
+      email: lower(o.email || o.Email || o['Email']),
+      date: d,
+      time: t,
+      actionName,
+      clockType,
+      status,
+      statusLabel: status,
+      lateMinutes: Number(o.lateMinutes || o['遲到分鐘'] || 0) || 0,
+      earlyLeaveMinutes: Number(o.earlyLeaveMinutes || o['早退分鐘'] || 0) || 0,
+      note: clean(o.note || o['備註']),
+      sourceIp: clean(o.sourceIp || o.clientIp || o['來源IP']),
+      originalRef: clean(o.originalRecordId || o.originalRef || o['原始紀錄ID']),
+      scheduleLinked: o.scheduleLinked === true,
+      scheduleKey: clean(o.scheduleKey),
+      scheduleId: clean(o.scheduleId),
+      scheduleSource: clean(o.scheduleSource),
+      scheduleSourceLabel: clean(o.scheduleSourceLabel),
+      scheduleStartTime: clean(o.scheduleStartTime),
+      scheduleEndTime: clean(o.scheduleEndTime),
+      scheduleTemplateName: clean(o.scheduleTemplateName),
+      canModify: inTodayOrYesterday(d)
+    };
+  }
+  function sortRows(rows){
+    return (rows || []).slice().sort((a,b) => (clean(b.date) + ' ' + clean(b.time)).localeCompare(clean(a.date) + ' ' + clean(a.time)));
+  }
+  async function getEditableClockHistory(p){
+    const rows = sortRows((await readClockRows(p)).map(normalizeClock).filter(r => r.date && inTodayOrYesterday(r.date)));
+    return {ok:true, source:'firebase-clockRecords', rows};
+  }
+  async function getClockHistoryRange(p){
+    const startDate = dateText(p && p.startDate);
+    const endDate = dateText(p && p.endDate);
+    const rows = sortRows((await readClockRows(p)).map(normalizeClock).filter(r => {
+      if(!r.date) return false;
+      if(startDate && r.date < startDate) return false;
+      if(endDate && r.date > endDate) return false;
+      return true;
+    }));
+    return {ok:true, source:'firebase-clockRecords', rows};
+  }
+
+  fb.handleApi = async function(action, payload){
+    const a = clean(action);
+    if(a === 'getEditableClockHistory') return await getEditableClockHistory(payload || {});
+    if(a === 'getClockHistoryRange') return await getClockHistoryRange(payload || {});
+    if(typeof oldHandle === 'function') return await oldHandle(action, payload || {});
+    return null;
+  };
+
+  fb.__clockHistoryReadFixV20260528 = true;
+  global.YZFirebase = fb;
+})(window);
+
