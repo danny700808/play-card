@@ -2297,3 +2297,102 @@
   fb.__clockCorrectionFlowFixV20260528 = true;
   global.YZFirebase = fb;
 })(window);
+
+/* 我的資料整合頁：個人資料完整欄位補強 20260528 */
+(function(global){
+  const fb = global.YZFirebase || {};
+  if(!fb || fb.__myDataProfilePatchV20260528) return;
+  const oldHandle = fb.handleApi;
+  function clean(v){ return String(v == null ? '' : v).trim(); }
+  function lower(v){ return clean(v).toLowerCase(); }
+  function truthy(v){ const s = lower(v); return v === true || ['是','yes','true','1','啟用','enabled','active','工讀生'].indexOf(s) >= 0; }
+  function pad(n){ return String(n).padStart(2,'0'); }
+  function ymd(d){ return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()); }
+  function fmtDate(v){
+    if(!v) return '';
+    if(v && typeof v.toDate === 'function') return ymd(v.toDate());
+    if(v instanceof Date && !isNaN(v.getTime())) return ymd(v);
+    const s = clean(v);
+    if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? s : ymd(d);
+  }
+  function maskId(v){ const s = clean(v).toUpperCase(); if(!s) return ''; return s.length <= 4 ? s : s.slice(0,1) + '*****' + s.slice(-4); }
+  function localUser(){ try{return JSON.parse(localStorage.getItem('employeeUser') || '{}') || {}}catch(e){return {}} }
+  function database(){
+    try{
+      if(fb && typeof fb.init === 'function') return fb.init();
+      if(global.firebase && global.firebase.apps && global.firebase.apps.length) return global.firebase.firestore();
+    }catch(e){ console.warn('[my data profile db]', e); }
+    return null;
+  }
+  async function findEmployee(payload){
+    const db = database();
+    if(!db) return null;
+    const u = localUser();
+    const userId = clean((payload && (payload.userId || payload.employeeId || payload.id)) || u.id || u.employeeId);
+    const email = clean((payload && payload.email) || u.email);
+    let doc = null;
+    if(userId){
+      const direct = await db.collection('employees').doc(userId).get();
+      if(direct.exists) doc = direct;
+      if(!doc){
+        const byEmployeeId = await db.collection('employees').where('employeeId','==',userId).limit(1).get();
+        if(!byEmployeeId.empty) doc = byEmployeeId.docs[0];
+      }
+      if(!doc){
+        const byId = await db.collection('employees').where('id','==',userId).limit(1).get();
+        if(!byId.empty) doc = byId.docs[0];
+      }
+    }
+    if(!doc && email){
+      const byEmail = await db.collection('employees').where('email','==',email).limit(1).get();
+      if(!byEmail.empty) doc = byEmail.docs[0];
+    }
+    if(!doc) return null;
+    return Object.assign({__id:doc.id}, doc.data() || {});
+  }
+  function normalizeProfile(raw){
+    raw = raw || {};
+    const identityRaw = lower(raw.identityType || raw.employeeType || raw.type || raw['身分類型']);
+    const roleText = clean(raw.role || raw.identityLabel || raw['職務類型'] || raw['聘用類型']);
+    const isParttime = identityRaw === 'parttime' || roleText.indexOf('工讀') >= 0 || truthy(raw.isPartTime || raw['是否工讀生']);
+    const identityType = identityRaw === 'external' ? 'external' : (isParttime ? 'parttime' : 'staff');
+    const identityLabel = identityType === 'parttime' ? '工讀生' : (identityType === 'external' ? '外聘老師' : '專職員工');
+    return {
+      employeeId: clean(raw.employeeId || raw.id || raw['員工ID'] || raw.__id),
+      id: clean(raw.employeeId || raw.id || raw['員工ID'] || raw.__id),
+      name: clean(raw.name || raw.displayName || raw['姓名']),
+      identityType: identityType,
+      identityLabel: identityLabel,
+      isPartTime: identityType === 'parttime',
+      birthDate: fmtDate(raw.birthDate || raw['出生年月日']),
+      idNumberMasked: clean(raw.idNumberMasked) || maskId(raw.idNumber || raw['身分證字號']),
+      hireDate: fmtDate(raw.hireDate || raw.startDate || raw['到職日'] || raw['任職日期']),
+      emergencyContact: clean(raw.emergencyContact || raw['緊急聯絡人']),
+      emergencyPhone: clean(raw.emergencyPhone || raw['緊急聯絡人電話']),
+      mobilePhone: clean(raw.mobilePhone || raw.phone || raw['行動電話']),
+      address: clean(raw.address || raw.contactAddress || raw['聯絡地址']),
+      email: lower(raw.email || raw.Email),
+      accountStatus: clean(raw.accountStatus || raw['帳號狀態']),
+      annualLeaveTotal: Number(raw.annualLeaveTotal || raw['年度可用特休天數'] || 0) || 0,
+      annualLeaveUsed: Number(raw.annualLeaveUsed || raw['已使用特休'] || 0) || 0,
+      annualLeaveRemaining: Number(raw.annualLeaveRemaining || raw['剩餘特休'] || 0) || 0
+    };
+  }
+  async function getMyProfilePatched(payload){
+    const row = await findEmployee(payload || {});
+    if(!row){
+      if(typeof oldHandle === 'function') return await oldHandle('getMyProfile', payload || {});
+      return {ok:false, message:'Firebase 找不到員工資料'};
+    }
+    return {ok:true, source:'firebase-my-data-profile', profile:normalizeProfile(row)};
+  }
+  fb.handleApi = async function(action, payload){
+    if(clean(action) === 'getMyProfile') return await getMyProfilePatched(payload || {});
+    if(typeof oldHandle === 'function') return await oldHandle(action, payload || {});
+    return null;
+  };
+  fb.__myDataProfilePatchV20260528 = true;
+  global.YZFirebase = fb;
+})(window);
