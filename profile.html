@@ -45,7 +45,6 @@
           <h1 class="title">我的資料</h1>
           <div class="welcome">個人 / 薪資 / 投保　歡迎 <span data-user-name></span></div>
         </div>
-        <button class="btn secondary" style="width:auto;padding:10px 14px" onclick="logout()">登出</button>
       </div>
       <div class="message" id="msg"></div>
       <div class="tips">此頁整合個人資料、薪資與投保資訊。沒有設定或沒有資料的欄位會自動隱藏；基本身分與薪資投保資料如需調整，請由管理端修改。</div>
@@ -77,7 +76,7 @@
   <script src="config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260528profilemerge1"></script>
+  <script src="firebase-client.js?v=20260528profilemerge2"></script>
 
   <script src="app.js"></script>
   <script>
@@ -116,18 +115,106 @@
       if(!html) return '';
       return '<div class="data-section"><div class="section-title-line"><div class="section-title">' + escapeHtml(title) + '</div>' + (hint ? '<div class="section-hint">' + escapeHtml(hint) + '</div>' : '') + '</div><div class="compact-grid">' + html + '</div></div>';
     }
-    function normalizeSalaryInfo(res){
-      return (res && (res.info || res.salary || res.profile)) || {};
-    }
-    async function loadSalaryQuietly(user){
-      try{
-        const res = await api('getMySalaryInfo', {userId:user.id, employeeId:user.employeeId || user.id, email:user.email});
-        if(res && res.ok === false) return {};
-        return normalizeSalaryInfo(res);
-      }catch(err){
-        console.warn('[profile salary hidden]', err);
-        return {};
+    function normalizeSalaryInfo(res, ids, email){
+      if(!res) return {};
+      const direct = res.info || res.salary || res.profile || res.data || res.row || null;
+      if(direct && typeof direct === 'object') return direct;
+      ids = (ids || []).map(safeText).filter(Boolean);
+      email = safeText(email).toLowerCase();
+      const map = res.employeeConfigMap || res.salaryConfigMap || res.configMap || {};
+      for(const id of ids){
+        if(map && map[id]) return Object.assign({employeeId:id}, map[id]);
       }
+      const rows = [].concat(res.employees || [], res.rows || [], res.list || []);
+      const row = rows.find(function(x){
+        const xid = safeText(x && (x.id || x.employeeId || x.userId || x['員工ID']));
+        const xe = safeText(x && (x.email || x.Email)).toLowerCase();
+        return (xid && ids.includes(xid)) || (email && xe === email);
+      });
+      if(row){
+        const key = safeText(row.id || row.employeeId || row.userId || row['員工ID']);
+        return Object.assign({}, row, (map && map[key]) || {});
+      }
+      return {};
+    }
+    function hasSalaryData(obj){
+      obj = obj || {};
+      const keys = [
+        'mainAmountText','staffBaseSalaryText','parttimeHourlyRateText','parttimeAverageSalaryText',
+        'baseSalary','staffBaseSalary','monthlySalary','salary','hourlyRate','parttimeHourlyRate','averageSalary',
+        'laborStatus','healthStatus','laborPlan','healthPlan','laborPlanText','healthPlanText',
+        'laborLevelText','healthLevelText','laborSelfPayText','healthSelfPayText','effectiveDate','salaryEffectiveDate',
+        'jobAllowanceText','allowanceText','note','salaryNote'
+      ];
+      if(keys.some(k => safeText(obj[k]))) return true;
+      if(Array.isArray(obj.jobAllowances) && obj.jobAllowances.length) return true;
+      if(Array.isArray(obj.allowances) && obj.allowances.length) return true;
+      return false;
+    }
+    function formatMoneyValue(v, suffix){
+      const raw = safeText(v);
+      if(!raw) return '';
+      if(/[元$%]/.test(raw) || /小時/.test(raw)) return raw + (suffix && !raw.includes(suffix) ? suffix : '');
+      const n = Number(raw.replace(/[^\d.-]/g,''));
+      if(!Number.isFinite(n) || !n) return raw;
+      return '$' + Math.round(n).toLocaleString('zh-TW') + (suffix || '');
+    }
+    function formatLineItems(items){
+      if(!Array.isArray(items)) return '';
+      return items.filter(Boolean).map(function(x){
+        if(typeof x === 'string') return safeText(x);
+        const name = safeText(x.name || x.title || x.label || x['名稱']);
+        const amount = formatMoneyValue(x.amount || x.value || x['金額']);
+        return name && amount ? (name + '：' + amount) : (name || amount);
+      }).filter(Boolean).join('\n');
+    }
+    function prepareSalaryDisplay(raw){
+      raw = raw || {};
+      const out = Object.assign({}, raw);
+      const laborStatus = safeText(out.laborStatus || out.laborInsuranceStatus || out.laborInsurance || out['勞保狀態']);
+      const healthStatus = safeText(out.healthStatus || out.healthInsuranceStatus || out.healthInsurance || out['健保狀態']);
+      out.laborStatus = laborStatus;
+      out.healthStatus = healthStatus;
+      out.staffBaseSalaryText = out.staffBaseSalaryText || formatMoneyValue(out.baseSalary || out.staffBaseSalary || out.monthlySalary || out.salary || out['本薪'] || out['月薪']);
+      out.parttimeHourlyRateText = out.parttimeHourlyRateText || formatMoneyValue(out.hourlyRate || out.parttimeHourlyRate || out.hourRate || out['時薪'], ' / 小時');
+      out.parttimeAverageSalaryText = out.parttimeAverageSalaryText || formatMoneyValue(out.averageSalary || out.parttimeAverageSalary || out['目前申報月平均薪資總額']);
+      out.parttimePartialHoursText = out.parttimePartialHoursText || safeText(out.isPartialHours || out.isPartialWorkingTime || out.partialWorkingTime || out['是否部分工時']);
+      out.jobAllowanceText = out.jobAllowanceText || formatLineItems(out.jobAllowances || out.jobAllowanceItems) || safeText(out.jobAllowance || out['職務加給']);
+      out.allowanceText = out.allowanceText || formatLineItems(out.allowances || out.allowanceItems) || safeText(out.allowance || out['津貼']);
+      out.laborPlanText = out.laborPlanText || out.laborLevelText || safeText(out.laborPlanName || out.laborInsuranceLevel || out.laborLevel || out.laborPlan || out['勞保級距']);
+      out.healthPlanText = out.healthPlanText || out.healthLevelText || safeText(out.healthPlanName || out.healthInsuranceLevel || out.healthLevel || out.healthPlan || out['健保級距']);
+      out.laborSalaryText = out.laborSalaryText || formatMoneyValue(out.laborInsuranceSalary || out.laborSalary || out['勞保投保薪資']);
+      out.healthSalaryText = out.healthSalaryText || formatMoneyValue(out.healthInsuranceSalary || out.healthSalary || out['健保投保薪資']);
+      out.laborSelfPayText = out.laborSelfPayText || formatMoneyValue(out.laborInsuranceSelfPay || out.laborSelfPay || out['勞保自付額']);
+      out.healthSelfPayText = out.healthSelfPayText || formatMoneyValue(out.healthInsuranceSelfPay || out.healthSelfPay || out['健保自付額']);
+      out.retirementEmployerText = out.retirementEmployerText || safeText(out.retirementEmployer || out.laborRetirementEmployer || out['雇主提撥勞退']);
+      const selfRate = safeText(out.selfRetirementRate || out.laborRetirementSelfRate || out['勞退自提比率']);
+      const selfEnabled = safeText(out.selfRetirementEnabled || out.laborRetirementSelfEnabled || out['勞退自提']);
+      out.selfRetirementText = out.selfRetirementText || (selfRate ? (selfRate.replace('%','') + '%') : (['是','true','1','啟用'].includes(selfEnabled.toLowerCase()) ? '已開啟' : ''));
+      out.effectiveDate = safeText(out.effectiveDate || out.salaryEffectiveDate || out['生效日期']);
+      out.note = safeText(out.note || out.salaryNote || out['備註']);
+      if(!out.mainAmountText) out.mainAmountText = out.identityType === 'parttime' ? out.parttimeHourlyRateText : out.staffBaseSalaryText;
+      return out;
+    }
+    async function loadSalaryQuietly(user, profile){
+      const ids = [profile && profile.employeeId, profile && profile.id, user.employeeId, user.id].map(safeText).filter(Boolean);
+      const email = safeText((profile && profile.email) || user.email);
+      const payload = {userId: ids[0] || user.id, employeeId: ids[0] || user.employeeId || user.id, id: ids[0] || user.id, email: email};
+      try{
+        const res = await api('getMySalaryInfo', payload);
+        const info = prepareSalaryDisplay(normalizeSalaryInfo(res, ids, email));
+        if(hasSalaryData(info)) return info;
+      }catch(err){
+        console.warn('[profile salary primary hidden]', err);
+      }
+      try{
+        const setup = await api('getSalarySetupOptions', payload);
+        const info = prepareSalaryDisplay(normalizeSalaryInfo(setup, ids, email));
+        if(hasSalaryData(info)) return info;
+      }catch(err){
+        console.warn('[profile salary setup hidden]', err);
+      }
+      return {};
     }
     async function init(){
       fillHeader();
@@ -149,7 +236,7 @@
         const profileRes=await api('getMyProfile',{userId:user.id, employeeId:user.employeeId || user.id, email:user.email});
         if(!profileRes||profileRes.ok===false) throw new Error(profileRes&&profileRes.message||'讀取失敗');
         const p=profileRes.profile||{};
-        const s=await loadSalaryQuietly(user);
+        const s=await loadSalaryQuietly(user, p);
         renderProfileData(p, s, user);
         qs('#mobilePhone').value=p.mobilePhone||'';
         qs('#address').value=p.address||'';
@@ -168,13 +255,11 @@
       user = user || {};
       const type = safeText(s.identityType || p.identityType || user.identityType || (user.isPartTime ? 'parttime' : 'staff'));
       const isParttime = type === 'parttime' || /工讀/.test(s.identityLabel || user.identityLabel || '');
-      const employeeId = safeText(p.employeeId || s.employeeId || user.employeeId || user.id);
       const name = safeText(p.name || s.name || user.name);
       const email = safeText(p.email || s.email || user.email);
 
       const basic = [
         item('姓名', name, 'short'),
-        item('員工ID', employeeId, 'short'),
         item('身分類型', identityLabel(type, s.identityLabel || user.identityLabel), 'short'),
         item('出生年月日', p.birthDate, 'short'),
         item('到職日', p.hireDate, 'short'),
