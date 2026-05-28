@@ -162,7 +162,7 @@
 <script src="config.js?v=20260414clean3"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260523stage5primary"></script>
+  <script src="firebase-client.js?v=20260528ClockFlowFix"></script>
 <script src="app.js?v=20260414clean3"></script>
 
 <script>
@@ -1156,6 +1156,25 @@ function validateForm(){
   setLocalMsg('');
   return true;
 }
+
+function applyRetroQueryPrefill(){
+  try{
+    const q = leaveQuery();
+    if(String(q.get('mode') || '') !== 'retro') return;
+    const date = leaveNormalizeDateKey(q.get('date') || q.get('leaveDate') || localDateInputValue()) || localDateInputValue();
+    const startTime = String(q.get('startTime') || '').slice(0,5);
+    const endTime = String(q.get('endTime') || '').slice(0,5);
+    const seg = createDefaultSegment('retro');
+    seg.leaveDate = date;
+    seg.startDate = date;
+    seg.endDate = date;
+    seg.startTime = startTime;
+    seg.endTime = endTime;
+    leaveSegmentsState = [seg];
+    renderSegments();
+    setLocalMsg('已帶入「有班但未完成打卡」的事後補假日期與時間；請選擇假別並確認後送出。', false);
+  }catch(err){}
+}
 function resetForm(options={}){
   const keepOptions = options.keepOptions !== false;
   const preserveLocalMsg = !!options.preserveLocalMsg;
@@ -1423,6 +1442,7 @@ async function loadStaffData(){
   applyParttimeLeaveUi_();
   renderBereavementOptions('');
   toggleHoursByReason();
+  applyRetroQueryPrefill();
   setLeaveFormEnabled(true);
   setLocalMsg('', false);
   setPageProgressDone('請假表單已開啟');

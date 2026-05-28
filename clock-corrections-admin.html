@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>打卡修正審核</title>
+  <title>打卡修正／補打卡審核</title>
   <link rel="stylesheet" href="style.css">
   <style>
     .page-return-wrap{margin-bottom:16px}
@@ -29,7 +29,7 @@
     <div class="card">
       <div class="topbar">
         <div class="header" style="margin:0">
-          <h1 class="title" style="margin:0">打卡修正審核</h1>
+          <h1 class="title" style="margin:0">打卡修正／補打卡審核</h1>
           <div class="welcome">歡迎 <span data-user-name></span></div>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
@@ -57,7 +57,7 @@
   <script src="config.js?v=20260501clockcorrection17"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260523stage5primary"></script>
+  <script src="firebase-client.js?v=20260528ClockFlowFix"></script>
 
   <script src="app.js?v=20260501clockcorrection17"></script>
   <script>
@@ -99,10 +99,15 @@
     }
 
     function rowCard(r){
+      const isMissing = String(r.requestKind || '') === 'missingClock';
       const date=cleanDate(r.correctDate);
       const oldTime=cleanTime(r.originalTime);
       const newTime=cleanTime(r.correctTime);
-      const oldText=(r.originalRecordId && oldTime!=='-') ? oldTime : '無原始紀錄';
+      const oldText=isMissing ? '缺少打卡' : ((r.originalRecordId && oldTime!=='-') ? oldTime : '無原始紀錄');
+      const actionText = isMissing ? ('補' + String(r.correctAction || '打卡').replace('打卡','卡')) : (r.correctAction || '');
+      const typeText = isMissing ? '補打卡' : (r.correctionType || '');
+      const kindText = isMissing ? '有班但未打卡' : '已打卡時間修正';
+      const scheduleText = [r.scheduleSourceLabel || '', r.scheduleStartTime && r.scheduleEndTime ? (r.scheduleStartTime + ' - ' + r.scheduleEndTime) : '', r.scheduleTemplateName || ''].filter(Boolean).join('｜');
       return `
         <div class="card correction-card">
           <div class="correction-title">
@@ -110,7 +115,7 @@
               <div class="person-name">${escapeHtml(r.name||'')}</div>
               <div class="hint">${escapeHtml(r.email||'')}</div>
             </div>
-            <div class="status-pill">待審核</div>
+            <div class="status-pill">${escapeHtml(kindText)}</div>
           </div>
 
           <div class="clean-grid">
@@ -120,17 +125,18 @@
             </div>
             <div class="clean-field">
               <div class="clean-label">動作</div>
-              <div class="clean-value">${escapeHtml(r.correctAction||'')}</div>
+              <div class="clean-value">${escapeHtml(actionText)}</div>
             </div>
             <div class="clean-field">
-              <div class="clean-label">打卡方式</div>
-              <div class="clean-value">${escapeHtml(r.correctionType||'')}</div>
+              <div class="clean-label">申請類型</div>
+              <div class="clean-value">${escapeHtml(typeText)}</div>
             </div>
           </div>
 
           <div class="change-box">
             <div class="clean-label">申請修改</div>
             <div class="change-line">${escapeHtml(oldText)} → ${escapeHtml(newTime)}</div>
+            ${scheduleText?`<div class="hint" style="margin-top:6px">班表：${escapeHtml(scheduleText)}</div>`:''}
             ${r.originalRecordId?`<div class="hint" style="margin-top:6px">原始紀錄ID：${escapeHtml(r.originalRecordId)}</div>`:''}
           </div>
 
@@ -143,7 +149,8 @@
             <button class="btn secondary" onclick="rejectOne('${escapeHtml(r.requestId)}')">駁回</button>
           </div>
         </div>`;
-    }function scheduleIdle_(fn){if(window.requestIdleCallback)requestIdleCallback(fn,{timeout:1200});else setTimeout(fn,160);}
+    }
+function scheduleIdle_(fn){if(window.requestIdleCallback)requestIdleCallback(fn,{timeout:1200});else setTimeout(fn,160);}
 
 
     async function init(){
@@ -151,7 +158,7 @@
       currentUser=requireLogin();
       if(!currentUser) return;
       if(!hasSettingsZoneAccess(currentUser)){ location.href='dashboard.html'; return; }
-      const msg=qs('#msg'); if(msg) msg.textContent='打卡修正資料稍後載入。';
+      const msg=qs('#msg'); if(msg) msg.textContent='打卡修正與補打卡資料稍後載入。';
       scheduleIdle_(loadRows);
     }
 
@@ -163,7 +170,7 @@
       try{
         const r=await api('getPendingClockCorrections',{userId:currentUser.id});
         const rows=Array.isArray(r.rows)?r.rows:[];
-        if(!rows.length){ msg.textContent='目前沒有待審核打卡修正。'; return; }
+        if(!rows.length){ msg.textContent='目前沒有待審核打卡修正或補打卡。'; return; }
         msg.textContent=`目前共有 ${rows.length} 筆待審核打卡修正。`;
         list.innerHTML=rows.map(rowCard).join('');
       }catch(err){
@@ -172,10 +179,10 @@
     }
 
     async function approve(requestId){
-      if(!confirm('確定同意這筆打卡修正？核准後會直接更新原始打卡紀錄並重新計算遲到。')) return;
+      if(!confirm('確定同意這筆申請？核准後，修正會更新原始打卡紀錄；補打卡會新增正式打卡紀錄。')) return;
       try{
         await api('approveClockCorrectionApi',{userId:currentUser.id,requestId});
-        alert('已同意，原始打卡紀錄已更新');
+        alert('已同意，打卡紀錄已更新');
         loadRows();
       }catch(err){ alert(err.message||'同意失敗'); }
     }

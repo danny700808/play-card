@@ -67,6 +67,20 @@
     .choice-actions{display:grid;gap:10px}
     .choice-actions .btn{width:100%;font-size:17px;padding:14px 12px}
 
+
+    .missing-clock-wrap{margin-top:18px;border-top:1px dashed #e5e7eb;padding-top:14px}
+    .missing-clock-title{font-size:18px;font-weight:900;color:#991b1b;margin-bottom:6px}
+    .missing-clock-note{font-size:14px;color:#6b7280;line-height:1.6;margin-bottom:10px}
+    .missing-clock-list{display:grid;gap:10px}
+    .missing-clock-card{border:1px solid #fecaca;background:#fff1f2;border-radius:16px;padding:12px;color:#7f1d1d}
+    .missing-clock-card.pending{border-color:#fde68a;background:#fffbeb;color:#78350f}
+    .missing-clock-card .missing-head{font-weight:900;font-size:16px;color:inherit;margin-bottom:4px}
+    .missing-clock-card .missing-meta{font-size:14px;line-height:1.6;color:inherit}
+    .missing-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+    .missing-form{margin-top:10px;padding:10px;border:1px solid #fecaca;border-radius:14px;background:#fff}
+    .missing-form.hidden{display:none!important}
+    .readonly-line{padding:10px 12px;border:1px solid #e5e7eb;border-radius:12px;background:#f9fafb;font-weight:800;color:#374151}
+
   </style>
 </head>
 <body onload="init()">
@@ -93,8 +107,8 @@
         <ol class="muted">
           <li><strong>標準打卡：</strong>正常在公司上班使用；上班打卡需符合公司指定網路規則。</li>
           <li><strong>特殊打卡：</strong>社團課、外出支援、外場活動等不在公司上班時使用。</li>
-          <li><strong>補登 / 臨時出勤：</strong>忘記打卡、臨時加班、沒有排班但實際有上班時使用，送出後需主管審核。</li>
-          <li>如果已經有打卡紀錄但時間錯誤，請到下方打卡紀錄裡提出補登修正。</li>
+          <li><strong>臨時出勤申請：</strong>主管尚未來得及排班、臨時增加出勤時使用；員工自行填寫實際出勤時間，送出後需主管審核。</li>
+          <li>如果已經有打卡紀錄但時間錯誤，請到下方該筆紀錄點「修正這筆」。如果有班但忘記打卡，請看下方「有班但未完成打卡」。</li>
         </ol>
       </div>
 
@@ -105,9 +119,9 @@
         <div class="clock-mode-grid">
           <button class="clock-mode-btn" type="button" id="modeStandardBtn" onclick="selectClockMode('標準打卡')">標準打卡</button>
           <button class="clock-mode-btn" type="button" id="modeSpecialBtn" onclick="selectClockMode('特殊打卡')">特殊打卡</button>
-          <button class="clock-mode-btn" type="button" id="modeTempBtn" onclick="goTemporaryAttendance()">補登 / 臨時出勤</button>
+          <button class="clock-mode-btn" type="button" id="modeTempBtn" onclick="goTemporaryAttendance()">臨時出勤申請</button>
         </div>
-        <div class="muted section-note">請先選擇打卡方式。標準 / 特殊打卡會出現上班與下班按鈕；補登 / 臨時出勤會進入申請頁。</div>
+        <div class="muted section-note">請先選擇打卡方式。標準 / 特殊打卡會出現上班與下班按鈕；臨時出勤申請只處理主管尚未排班但實際出勤的情況。</div>
       </div>
 
       <div id="supplementBox" class="supplement-box hidden">
@@ -130,10 +144,15 @@
       <div class="history-head">
         <div>
           <h2 class="title" style="font-size:20px;margin-bottom:4px">今日／昨日打卡紀錄</h2>
-          <div class="muted">若打錯時間、打錯上／下班或忘記打卡，請用「提出補登修正」送出申請，經主管確認後才會正式覆蓋顯示。</div>
+          <div class="muted">若這筆打卡時間錯誤，請點「修正這筆」。已送出待主管審核時，同一筆不能重複送出。</div>
         </div>
       </div>
       <div id="editableList" class="list"></div>
+      <div id="missingClockWrap" class="missing-clock-wrap hidden">
+        <div class="missing-clock-title">有班但未完成打卡</div>
+        <div class="missing-clock-note">系統會檢查今日與昨日班表。如果有班但缺上班卡或下班卡，會在這裡提醒；你可以提出補打卡，或改申請事後補假。</div>
+        <div id="missingClockList" class="missing-clock-list"></div>
+      </div>
     </div>
 
     <div class="card">
@@ -161,48 +180,32 @@
     </div>
   </div>
 
-  <div id="correctionChoiceModal" class="choice-modal hidden">
-    <div class="choice-card">
-      <h3>請先確認本次狀況</h3>
-      <p>如果你今天有正常上班，只是忘記打卡，請繼續補打卡。若是沒有上班、臨時離開或提早離開，請改用請假／事後補假。</p>
-      <div class="choice-actions">
-        <button class="btn" type="button" id="choiceGoCorrection">我有正常上班，只是忘記打卡</button>
-        <button class="btn" type="button" id="choiceGoLeave">我沒有上班／臨時離開／提早離開</button>
-        <button class="btn secondary" type="button" id="choiceCancelCorrection">取消</button>
-      </div>
-    </div>
-  </div>
-
-  <script src="config.js?v=20260528ClockHistoryFix"></script>
+  <script src="config.js?v=20260528ClockFlowFix"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260528ClockHistoryFix"></script>
-  <script src="app.js?v=20260528ClockHistoryFix"></script>
+  <script src="firebase-client.js?v=20260528ClockFlowFix"></script>
+  <script src="app.js?v=20260528ClockFlowFix"></script>
   <script>
 
     function goTemporaryAttendance(){
-      openCorrectionChoiceModal('temporary');
-    }
-    function openCorrectionChoiceModal(source){
-      const modal = qs('#correctionChoiceModal');
-      if(!modal) return;
-      modal.dataset.source = source || 'temporary';
-      modal.classList.remove('hidden');
-    }
-    function closeCorrectionChoiceModal(){
-      const modal = qs('#correctionChoiceModal');
-      if(modal) modal.classList.add('hidden');
-    }
-    function goLeaveForRetro(){
-      const u = getUser ? (getUser() || {}) : {};
-      const id = encodeURIComponent(u.id || u.employeeId || u.userId || '');
-      location.href = 'leave.html' + (id ? ('?userId=' + id + '&mode=retro') : '?mode=retro');
-    }
-    function goCorrectionFlow(){
-      closeCorrectionChoiceModal();
       const u = getUser ? (getUser() || {}) : {};
       const id = encodeURIComponent(u.id || u.employeeId || u.userId || '');
       location.href = 'temporary-attendance.html' + (id ? ('?employeeId=' + id) : '');
+    }
+    function goLeaveForRetro(issue){
+      const u = getUser ? (getUser() || {}) : {};
+      const params = new URLSearchParams();
+      const id = u.id || u.employeeId || u.userId || '';
+      if(id) params.set('userId', id);
+      params.set('mode', 'retro');
+      if(issue){
+        if(issue.date) params.set('date', issue.date);
+        if(issue.startTime) params.set('startTime', issue.startTime);
+        if(issue.endTime) params.set('endTime', issue.endTime);
+        if(issue.scheduleKey) params.set('scheduleKey', issue.scheduleKey);
+        params.set('source', 'missingClock');
+      }
+      location.href = 'leave.html?' + params.toString();
     }
 
 
@@ -250,7 +253,7 @@
     function renderTodayScheduleHtml(info){
       const rows = (info && info.schedules) || [];
       if(!rows.length){
-        return '<div>' + escapeHtml((info && info.message) || '今天沒有排班，請改用「補登 / 臨時出勤」提出申請。') + '</div>';
+        return '<div>' + escapeHtml((info && info.message) || '今天沒有排班，如主管尚未來得及排班但你實際有出勤，請使用「臨時出勤申請」。') + '</div>';
       }
       const selected = (qs('#selectedScheduleKey') && qs('#selectedScheduleKey').value) || window.__selectedScheduleKey || '';
       const head = '<div style="font-weight:800;margin-bottom:8px">' + escapeHtml(info.message || ('今日共有 ' + rows.length + ' 筆班表')) + '</div>';
@@ -407,7 +410,7 @@
     }
 
     function toggleSupplementBox(){
-      // 三模式新版：補登 / 臨時出勤不在本頁展開，直接進申請頁。
+      // 臨時出勤申請不在本頁展開，直接進申請頁。
       setMsg(qs('#mainMsg'), '');
     }
 
@@ -453,7 +456,12 @@
       const noteText = x.note ? `<div class="muted" style="margin-top:6px">備註：${escapeHtml(x.note)}</div>` : '';
       const originalText = x.originalRef ? `<div class="muted" style="margin-top:6px">原始紀錄：${escapeHtml(x.originalRef)}</div>` : '';
       const correctionText = x.status === '補打卡' ? '<div class="muted" style="margin-top:6px">此筆為補登／修正核准後的正式紀錄。</div>' : '';
-      const canFix = (!readonly && x.canModify) ? `<button class="btn mini-btn js-open-correction" data-id="${escapeHtml(x.id)}" data-date="${escapeHtml(x.date)}" data-time="${escapeHtml((x.time || '').slice(0,5))}" data-action="${escapeHtml(x.actionName)}" data-clocktype="${escapeHtml(x.clockType)}">提出補登修正</button>` : '';
+      const pendingText = x.pendingCorrection ? `<div class="muted" style="margin-top:6px;color:#92400e;font-weight:800">已送出修正申請，等待主管審核。</div>` : '';
+      const canFix = (!readonly && x.canModify)
+        ? (x.pendingCorrection
+          ? `<button class="btn mini-btn secondary" type="button" disabled>修正待主管審核</button>`
+          : `<button class="btn mini-btn js-open-correction" data-id="${escapeHtml(x.id)}">修正這筆</button>`)
+        : '';
       return `
         <div class="item clock-item">
           <div class="top">
@@ -464,9 +472,11 @@
           ${noteText}
           ${originalText}
           ${correctionText}
+          ${pendingText}
           <div class="item-actions">${canFix}</div>
           <div class="correction-box hidden" id="correction-${escapeHtml(x.id)}">
-            <div class="grid">
+            <div class="readonly-line">原紀錄：${escapeHtml(x.date)} ${escapeHtml((x.time || '').slice(0,5))}｜${escapeHtml(x.actionName)}｜${escapeHtml(x.clockType)}</div>
+            <div class="grid" style="margin-top:10px">
               <div class="field">
                 <label>修正日期</label>
                 <input type="date" class="js-correct-date" value="${escapeHtml(x.date)}">
@@ -476,29 +486,15 @@
                 <input type="time" class="js-correct-time" value="${escapeHtml((x.time || '').slice(0,5))}">
               </div>
             </div>
-            <div class="grid">
-              <div class="field">
-                <label>修正動作</label>
-                <select class="js-correct-action">
-                  <option value="上班打卡" ${x.actionName === '上班打卡' ? 'selected' : ''}>上班打卡</option>
-                  <option value="下班打卡" ${x.actionName === '下班打卡' ? 'selected' : ''}>下班打卡</option>
-                </select>
-              </div>
-              <div class="field">
-                <label>修正方式</label>
-                <select class="js-correct-type">
-                  <option value="標準打卡" ${x.clockType === '標準打卡' ? 'selected' : ''}>標準打卡</option>
-                  <option value="特殊打卡" ${x.clockType === '特殊打卡' ? 'selected' : ''}>特殊打卡</option>
-                </select>
-              </div>
-            </div>
+            <input type="hidden" class="js-correct-action" value="${escapeHtml(x.actionName)}">
+            <input type="hidden" class="js-correct-type" value="${escapeHtml(x.clockType)}">
             <div class="field">
               <label>修正原因</label>
-              <textarea class="js-correct-reason" placeholder="請填寫修正原因"></textarea>
+              <textarea class="js-correct-reason" placeholder="請填寫修正原因，例如：手機時間延遲、現場訊號不穩、時間誤按"></textarea>
               <div class="field-error js-correct-error"></div>
             </div>
             <div class="message local-message js-correct-msg"></div>
-            <button class="btn js-submit-correction" data-id="${escapeHtml(x.id)}">送出補登修正</button>
+            <button class="btn js-submit-correction" data-id="${escapeHtml(x.id)}">送出修正申請</button>
           </div>
         </div>`;
     }
@@ -549,7 +545,7 @@
         btn.onclick = () => {
           const box = qs('#correction-' + btn.dataset.id);
           if(!box) return;
-          openCorrectionChoiceModal('inline:' + btn.dataset.id);
+          box.classList.toggle('hidden');
         };
       });
       qsa('.js-submit-correction').forEach(btn => {
@@ -590,6 +586,132 @@
       }
     }
 
+
+    function missingIssueKey(issue){
+      return String((issue && (issue.issueKey || issue.scheduleKey)) || '').replace(/[^A-Za-z0-9_-]/g, '_');
+    }
+
+    function renderMissingClockIssues(rows){
+      const wrap = qs('#missingClockWrap');
+      const list = qs('#missingClockList');
+      if(!wrap || !list) return;
+      rows = Array.isArray(rows) ? rows : [];
+      if(!rows.length){
+        wrap.classList.add('hidden');
+        list.innerHTML = '';
+        return;
+      }
+      wrap.classList.remove('hidden');
+      list.innerHTML = rows.map((issue, idx) => {
+        const key = missingIssueKey(issue) || ('ISSUE_' + idx);
+        const pending = issue.pendingCorrection || issue.pendingLeave;
+        const missing = (issue.missingActions || []).join('、');
+        const pendingText = issue.pendingCorrection ? '補打卡申請待主管審核' : (issue.pendingLeave ? '事後補假申請待主管審核' : '尚未處理');
+        const actionButtons = issue.pendingCorrection || issue.pendingLeave ? '' : (issue.missingActions || []).map(action => {
+          const defaultTime = action.indexOf('下班') >= 0 ? (issue.endTime || '') : (issue.startTime || '');
+          return `<button class="btn mini-btn js-open-missing" data-key="${escapeHtml(key)}" data-action="${escapeHtml(action)}" data-time="${escapeHtml(defaultTime)}">補${escapeHtml(action.replace('打卡','卡'))}</button>`;
+        }).join('') + `<button class="btn mini-btn secondary js-missing-leave" data-key="${escapeHtml(key)}">改申請事後補假</button>`;
+        return `
+          <div class="missing-clock-card ${pending ? 'pending' : ''}" data-issue-key="${escapeHtml(key)}">
+            <div class="missing-head">${escapeHtml(issue.date)}｜${escapeHtml(issue.summary || issue.scheduleLabel || '班表')}</div>
+            <div class="missing-meta">缺少：${escapeHtml(missing || '未完成打卡')}｜狀態：${escapeHtml(pendingText)}</div>
+            <div class="missing-actions">${actionButtons}</div>
+            <div class="missing-form hidden" id="missing-form-${escapeHtml(key)}">
+              <div class="readonly-line js-missing-title"></div>
+              <div class="grid" style="margin-top:10px">
+                <div class="field"><label>補打卡日期</label><input type="date" class="js-missing-date" value="${escapeHtml(issue.date)}"></div>
+                <div class="field"><label>正確打卡時間</label><input type="time" class="js-missing-time"></div>
+              </div>
+              <div class="field"><label>補打卡原因</label><textarea class="js-missing-reason" placeholder="請填寫原因，例如：臨時狀況忘記打卡、手機無法連線"></textarea><div class="field-error js-missing-error"></div></div>
+              <div class="message local-message js-missing-msg"></div>
+              <button class="btn js-submit-missing" data-key="${escapeHtml(key)}">送出補打卡申請</button>
+            </div>
+          </div>`;
+      }).join('');
+      window.__missingClockIssuesByKey = {};
+      rows.forEach((issue, idx) => { window.__missingClockIssuesByKey[missingIssueKey(issue) || ('ISSUE_' + idx)] = issue; });
+      bindMissingClockActions();
+    }
+
+    function bindMissingClockActions(){
+      qsa('.js-open-missing').forEach(btn => {
+        btn.onclick = () => {
+          const key = btn.dataset.key || '';
+          const issue = (window.__missingClockIssuesByKey || {})[key];
+          const form = qs('#missing-form-' + key);
+          if(!form || !issue) return;
+          form.classList.remove('hidden');
+          form.dataset.action = btn.dataset.action || '';
+          form.querySelector('.js-missing-title').textContent = '補' + (btn.dataset.action || '') + '｜' + (issue.summary || issue.scheduleLabel || '班表');
+          form.querySelector('.js-missing-time').value = (btn.dataset.time || '').slice(0,5);
+        };
+      });
+      qsa('.js-missing-leave').forEach(btn => {
+        btn.onclick = () => {
+          const issue = (window.__missingClockIssuesByKey || {})[btn.dataset.key || ''];
+          goLeaveForRetro(issue || null);
+        };
+      });
+      qsa('.js-submit-missing').forEach(btn => {
+        btn.onclick = () => submitMissingClock(btn.dataset.key || '', btn);
+      });
+    }
+
+    async function submitMissingClock(key, btn){
+      const user = requireLogin();
+      const issue = (window.__missingClockIssuesByKey || {})[key];
+      const form = qs('#missing-form-' + key);
+      if(!user || !issue || !form) return;
+      const correctAction = form.dataset.action || '';
+      const correctDate = form.querySelector('.js-missing-date').value;
+      const correctTime = form.querySelector('.js-missing-time').value;
+      const reason = form.querySelector('.js-missing-reason').value.trim();
+      const err = form.querySelector('.js-missing-error');
+      const msg = form.querySelector('.js-missing-msg');
+      err.textContent = '';
+      setMsg(msg, '');
+      if(!correctAction || !correctDate || !correctTime || !reason){
+        err.textContent = '請完整填寫補打卡日期、時間與原因';
+        return;
+      }
+      const progress = startActionButtonProgress(btn, { label:'送出中', startPct:20, maxPct:80, steps:[20,40,60,80], interval:160 });
+      try{
+        const r = await api('submitClockCorrection', {
+          userId:user.id,
+          requestKind:'missingClock',
+          scheduleKey:issue.scheduleKey,
+          scheduleDate:issue.date,
+          scheduleSnapshot:issue.schedule || issue,
+          correctDate,
+          correctTime,
+          correctAction,
+          correctionType:issue.defaultClockType || issue.clockType || '標準打卡',
+          reason
+        });
+        setMsg(msg, r.message || '已送出補打卡申請', !r.ok);
+        if(r.ok){
+          progress.done('已送出');
+          await loadMissingClockIssues();
+        }else{
+          progress.fail('送出失敗');
+        }
+      }catch(e){
+        progress.fail('送出失敗');
+        setMsg(msg, friendlyClockMessage(e.message || '送出失敗'), true);
+      }
+    }
+
+    async function loadMissingClockIssues(){
+      const user = requireLogin();
+      if(!user) return;
+      try{
+        const r = await api('getClockCompletionIssues', { userId:user.id });
+        renderMissingClockIssues((r && r.rows) || []);
+      }catch(e){
+        renderMissingClockIssues([]);
+      }
+    }
+
     function companyClockIp(){
       const cfg = window.APP_CONFIG || {};
       return String(cfg.CLOCK_ALLOWED_IP || cfg.COMPANY_CLOCK_IP || '125.229.190.123').trim();
@@ -618,6 +740,7 @@
       setTimeout(() => {
         loadEditableHistory().catch(()=>{});
         loadTodaySchedule().catch(()=>{});
+        loadMissingClockIssues().catch(()=>{});
       }, 80);
     }
 
@@ -739,23 +862,10 @@ function init(){
       
       qs('#clockInBtn').onclick = () => doClock('上班打卡');
       qs('#clockOutBtn').onclick = () => doClock('下班打卡');
-      if(qs('#choiceCancelCorrection')) qs('#choiceCancelCorrection').onclick = closeCorrectionChoiceModal;
-      if(qs('#choiceGoLeave')) qs('#choiceGoLeave').onclick = goLeaveForRetro;
-      if(qs('#choiceGoCorrection')) qs('#choiceGoCorrection').onclick = () => {
-        const modal = qs('#correctionChoiceModal');
-        const source = modal ? String(modal.dataset.source || '') : '';
-        closeCorrectionChoiceModal();
-        if(source.indexOf('inline:') === 0){
-          const id = source.slice(7);
-          const box = qs('#correction-' + id);
-          if(box) box.classList.toggle('hidden');
-          return;
-        }
-        goCorrectionFlow();
-      };
       qs('#rangeSearchBtn').onclick = () => searchRange();
       initRangeDefault();
       loadTodaySchedule();
+      loadMissingClockIssues();
       
       loadEditableHistory()
         .then(()=>markClockCorrectionRepliesReadOnEnter_())

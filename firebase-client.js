@@ -1728,3 +1728,572 @@
   global.YZFirebase = fb;
 })(window);
 
+
+/* 打卡流程拆分修正：臨時出勤、打卡修正、有班未打卡補登、事後補假勾稽 */
+(function(global){
+  const fb = global.YZFirebase;
+  if(!fb || fb.__clockCorrectionFlowFixV20260528) return;
+  const oldHandle = fb.handleApi;
+
+  function clean(v){ return String(v == null ? '' : v).trim(); }
+  function lower(v){ return clean(v).toLowerCase(); }
+  function truthy(v){ const s = lower(v); return v === true || ['是','yes','true','1','啟用','enabled','active'].indexOf(s) >= 0; }
+  function pad(n){ return String(n).padStart(2,'0'); }
+  function ymd(d){ return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()); }
+  function today(){ return ymd(new Date()); }
+  function addDays(dateKey, days){ const d = new Date(clean(dateKey) + 'T00:00:00'); if(isNaN(d.getTime())) return ''; d.setDate(d.getDate() + Number(days || 0)); return ymd(d); }
+  function dateText(v){
+    if(!v) return '';
+    if(v && typeof v.toDate === 'function') return ymd(v.toDate());
+    if(v instanceof Date && !isNaN(v.getTime())) return ymd(v);
+    const s = clean(v);
+    if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? s : ymd(d);
+  }
+  function timeText(v){
+    if(!v) return '';
+    if(v && typeof v.toDate === 'function'){
+      const d = v.toDate(); return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+    }
+    if(v instanceof Date && !isNaN(v.getTime())) return pad(v.getHours()) + ':' + pad(v.getMinutes()) + ':' + pad(v.getSeconds());
+    const s = clean(v);
+    const m = s.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    if(m) return pad(m[1]) + ':' + m[2] + ':' + (m[3] ? pad(m[3]) : '00');
+    return s;
+  }
+  function shortTime(v){ const t = timeText(v); return t ? t.slice(0,5) : ''; }
+  function minutes(v){ const m = clean(v).match(/^(\d{1,2}):(\d{2})/); if(!m) return NaN; return Number(m[1]) * 60 + Number(m[2]); }
+  function nowMinutes(){ const d = new Date(); return d.getHours() * 60 + d.getMinutes(); }
+  function serverTs(){ try{ return global.firebase.firestore.FieldValue.serverTimestamp(); }catch(e){ return new Date().toISOString(); } }
+  function currentUser(){ try{return JSON.parse(localStorage.getItem('employeeUser') || 'null') || {}}catch(e){return {}} }
+  function employeeIdFrom(payload){ const u = currentUser(); return clean((payload && (payload.userId || payload.employeeId || payload.id)) || u.employeeId || u.id || u.userId || localStorage.getItem('employeeUserId')); }
+  function emailFrom(payload){ const u = currentUser(); return lower((payload && payload.email) || u.email || ''); }
+  function db(){
+    try{
+      if(fb && typeof fb.init === 'function') return fb.init();
+      if(global.firebase && global.firebase.apps && global.firebase.apps.length) return global.firebase.firestore();
+    }catch(e){ console.warn('[clock flow db]', e); }
+    return null;
+  }
+  async function all(col){ const d = db(); if(!d) throw new Error('Firebase 尚未啟用'); const snap = await d.collection(col).get(); const rows=[]; snap.forEach(doc => rows.push(Object.assign({__id:doc.id}, doc.data() || {}))); return rows; }
+  async function where(col, field, value){ const d = db(); if(!d) throw new Error('Firebase 尚未啟用'); const snap = await d.collection(col).where(field, '==', value).get(); const rows=[]; snap.forEach(doc => rows.push(Object.assign({__id:doc.id}, doc.data() || {}))); return rows; }
+  async function docGet(col, id){ const d = db(); if(!d) throw new Error('Firebase 尚未啟用'); const key = clean(id); if(!key) return null; const ref = await d.collection(col).doc(key).get(); return ref.exists ? Object.assign({__id:ref.id}, ref.data() || {}) : null; }
+  async function docSet(col, id, data){ const d = db(); if(!d) throw new Error('Firebase 尚未啟用'); await d.collection(col).doc(clean(id)).set(Object.assign({}, data, {updatedAt:serverTs()}), {merge:true}); }
+  async function docUpdate(col, id, data){ return await docSet(col, id, data); }
+  function mergeRows(list){ const m = new Map(); (list || []).forEach(r => { if(!r) return; const k = clean(r.__id || r.recordId || r.requestId || JSON.stringify(r)); if(k) m.set(k, r); }); return Array.from(m.values()); }
+  async function rowsByEmployee(col, employeeId){
+    employeeId = clean(employeeId);
+    if(!employeeId) return [];
+    const res = await Promise.all([
+      where(col, 'employeeId', employeeId).catch(()=>[]),
+      where(col, '員工ID', employeeId).catch(()=>[]),
+      where(col, 'userId', employeeId).catch(()=>[])
+    ]);
+    return mergeRows([].concat.apply([], res));
+  }
+  async function readClockRows(payload){
+    const employeeId = employeeIdFrom(payload);
+    const email = emailFrom(payload);
+    const jobs = [];
+    if(employeeId){ jobs.push(rowsByEmployee('clockRecords', employeeId)); }
+    if(email){ jobs.push(where('clockRecords', 'email', email).catch(()=>[])); jobs.push(where('clockRecords', 'Email', email).catch(()=>[])); }
+    const res = jobs.length ? await Promise.all(jobs) : [await all('clockRecords')];
+    return mergeRows([].concat.apply([], res));
+  }
+  function normalizeClock(o){
+    o = o || {};
+    const date = dateText(o.clockDate || o.date || o['打卡日期']);
+    const time = timeText(o.clockTime || o.time || o['打卡時間']);
+    const actionName = clean(o.actionName || o['打卡動作']);
+    const clockType = clean(o.clockType || o['打卡方式'] || '標準打卡') || '標準打卡';
+    const status = clean(o.status || o['狀態'] || '正常') || '正常';
+    return {
+      id: clean(o.recordId || o.id || o['紀錄ID'] || o.__id),
+      recordId: clean(o.recordId || o.id || o['紀錄ID'] || o.__id),
+      __id: clean(o.__id),
+      employeeId: clean(o.employeeId || o['員工ID']),
+      name: clean(o.name || o['姓名']),
+      email: lower(o.email || o.Email || o['Email']),
+      date, time, actionName, clockType, status, statusLabel: status,
+      lateMinutes: Number(o.lateMinutes || o['遲到分鐘'] || 0) || 0,
+      earlyLeaveMinutes: Number(o.earlyLeaveMinutes || o['早退分鐘'] || 0) || 0,
+      note: clean(o.note || o['備註']),
+      sourceIp: clean(o.sourceIp || o.clientIp || o['來源IP']),
+      originalRef: clean(o.originalRecordId || o.originalRef || o['原始紀錄ID']),
+      scheduleLinked: o.scheduleLinked === true || truthy(o.scheduleLinked),
+      scheduleKey: clean(o.scheduleKey),
+      scheduleId: clean(o.scheduleId),
+      scheduleSource: clean(o.scheduleSource),
+      scheduleSourceLabel: clean(o.scheduleSourceLabel),
+      scheduleDate: dateText(o.scheduleDate),
+      scheduleStartTime: shortTime(o.scheduleStartTime),
+      scheduleEndTime: shortTime(o.scheduleEndTime),
+      scheduleClockType: clean(o.scheduleClockType),
+      scheduleTemplateName: clean(o.scheduleTemplateName),
+      isSupplement: o.isSupplement === true || truthy(o.isSupplement || o['是否補登']),
+      canModify: date === today() || date === addDays(today(), -1),
+      raw: o
+    };
+  }
+  function sortClockRows(rows){ return (rows || []).slice().sort((a,b) => (clean(b.date)+' '+clean(b.time)).localeCompare(clean(a.date)+' '+clean(a.time))); }
+  function normalizeCorrection(o){
+    o = o || {};
+    const requestKind = clean(o.requestKind || o['申請種類'] || (o.originalRecordId || o['原始紀錄ID'] ? 'recordCorrection' : 'missingClock')) || 'recordCorrection';
+    return {
+      requestId: clean(o.requestId || o['申請ID'] || o.__id),
+      requestKind,
+      employeeId: clean(o.employeeId || o['員工ID']),
+      name: clean(o.name || o['姓名']),
+      email: lower(o.email || o.Email || o['Email']),
+      originalRecordId: clean(o.originalRecordId || o['原始紀錄ID']),
+      originalDate: dateText(o.originalDate || o['原日期']),
+      originalTime: timeText(o.originalTime || o['原時間']),
+      originalAction: clean(o.originalAction || o['原打卡動作']),
+      originalClockType: clean(o.originalClockType || o['原打卡方式']),
+      correctDate: dateText(o.correctDate || o.correctionDate || o['修正日期']),
+      correctTime: timeText(o.correctTime || o.correctionTime || o['修正時間']),
+      correctAction: clean(o.correctAction || o.actionName || o['修正動作']),
+      correctionType: clean(o.correctionType || o.clockType || o['修正打卡方式']),
+      scheduleKey: clean(o.scheduleKey),
+      scheduleDate: dateText(o.scheduleDate || o.correctDate || o['班表日期']),
+      scheduleStartTime: shortTime(o.scheduleStartTime),
+      scheduleEndTime: shortTime(o.scheduleEndTime),
+      scheduleSource: clean(o.scheduleSource),
+      scheduleSourceLabel: clean(o.scheduleSourceLabel),
+      scheduleTemplateName: clean(o.scheduleTemplateName),
+      reason: clean(o.reason || o['修正原因']),
+      status: clean(o.status || o['狀態'] || '待審核') || '待審核',
+      rejectReason: clean(o.rejectReason || o['駁回理由']),
+      raw:o
+    };
+  }
+  async function correctionsByEmployee(employeeId){ return (await rowsByEmployee('clockCorrections', employeeId).catch(()=>[])).map(normalizeCorrection); }
+  function isPending(c){ return clean(c && c.status) === '待審核'; }
+  async function findClockById(recordId){
+    recordId = clean(recordId);
+    if(!recordId) return null;
+    const direct = await docGet('clockRecords', recordId).catch(()=>null);
+    if(direct) return direct;
+    const rows = mergeRows([].concat(
+      await where('clockRecords', 'recordId', recordId).catch(()=>[]),
+      await where('clockRecords', '紀錄ID', recordId).catch(()=>[])
+    ));
+    return rows[0] || null;
+  }
+  async function findCorrectionById(requestId){
+    requestId = clean(requestId);
+    if(!requestId) return null;
+    const direct = await docGet('clockCorrections', requestId).catch(()=>null);
+    if(direct) return direct;
+    const rows = await where('clockCorrections', 'requestId', requestId).catch(()=>[]);
+    return rows[0] || null;
+  }
+  function recordScheduleKey(row){
+    row = row || {};
+    return clean(row.scheduleKey || [clean(row.scheduleSource), clean(row.scheduleId), dateText(row.scheduleDate || row.clockDate || row.date || row['打卡日期']), shortTime(row.scheduleStartTime), shortTime(row.scheduleEndTime), clean(row.scheduleClockType)].join('|'));
+  }
+  function scheduleKeyOf(s){ return clean(s && (s.scheduleKey || s.key || [clean(s.source), clean(s.id || s.assignmentId || s.recordId), dateText(s.date), shortTime(s.startTime), shortTime(s.endTime), clean(s.clockType)].join('|'))); }
+  function scheduleSummary(s){
+    if(!s) return '班表';
+    const parts = [clean(s.sourceLabel || s.scheduleSourceLabel || '班表')];
+    if(s.startTime || s.endTime) parts.push((shortTime(s.startTime) || '--:--') + ' - ' + (shortTime(s.endTime) || '--:--'));
+    if(s.clockType) parts.push(clean(s.clockType));
+    return parts.join('｜');
+  }
+  function existingRecordFor(schedule, actionName, rows){
+    const key = scheduleKeyOf(schedule);
+    const dateKey = dateText(schedule && schedule.date);
+    const action = clean(actionName);
+    return (rows || []).map(normalizeClock).find(r => {
+      if(r.date !== dateKey) return false;
+      if(clean(r.actionName) !== action) return false;
+      if(clean(r.status) === '已刪除') return false;
+      const rk = recordScheduleKey(r.raw || r);
+      if(key && rk) return rk === key;
+      return true;
+    }) || null;
+  }
+  function actionIsDue(schedule, actionName, dateKey){
+    const t = today();
+    if(dateKey < t) return true;
+    if(dateKey > t) return false;
+    const now = nowMinutes();
+    const startM = minutes(schedule && schedule.startTime);
+    const endM = minutes(schedule && schedule.endTime);
+    if(clean(actionName).indexOf('上班') >= 0) return !Number.isFinite(startM) || now >= startM + 5;
+    if(clean(actionName).indexOf('下班') >= 0) return !Number.isFinite(endM) || now >= endM + 5;
+    return true;
+  }
+  function leaveCoversDate(row, dateKey){
+    const start = dateText(row.startDate || row.leaveDate || row.date || row['開始日期'] || row['請假日期']);
+    const end = dateText(row.endDate || row['結束日期'] || start);
+    return start && dateKey >= start && dateKey <= (end || start);
+  }
+  function isApprovedAllDayLeave(row){
+    const status = clean(row.status || row['狀態']);
+    if(status !== '已核准') return false;
+    const session = clean(row.session || row['請假時段']);
+    const st = shortTime(row.startTime || row['請假開始時間']);
+    const en = shortTime(row.endTime || row['請假結束時間']);
+    const hours = Number(row.hours || row.leaveHours || row['請假時數'] || 0) || 0;
+    return session.indexOf('全天') >= 0 || (!st && !en && (!hours || hours >= 8));
+  }
+  function pendingLeaveForDate(leaves, dateKey){
+    return (leaves || []).find(row => clean(row.status || row['狀態']) === '待審核' && leaveCoversDate(row, dateKey)) || null;
+  }
+  function approvedAllDayLeaveForDate(leaves, dateKey){
+    return (leaves || []).find(row => leaveCoversDate(row, dateKey) && isApprovedAllDayLeave(row)) || null;
+  }
+  function pendingMissingCorrection(corrections, issue, action){
+    return (corrections || []).find(c => isPending(c) && c.requestKind === 'missingClock' && c.scheduleDate === issue.date && clean(c.scheduleKey) === clean(issue.scheduleKey) && clean(c.correctAction) === clean(action)) || null;
+  }
+  function pendingRecordCorrection(corrections, recordId){
+    return (corrections || []).find(c => isPending(c) && c.originalRecordId && clean(c.originalRecordId) === clean(recordId)) || null;
+  }
+  async function withPendingFlags(rows, employeeId){
+    const corrections = await correctionsByEmployee(employeeId).catch(()=>[]);
+    return (rows || []).map(row => {
+      const p = pendingRecordCorrection(corrections, row.recordId || row.id);
+      return Object.assign({}, row, {pendingCorrection: !!p, pendingCorrectionId: p ? p.requestId : '', canModify: !!row.canModify && !p});
+    });
+  }
+  async function getEditableClockHistory(payload){
+    const employeeId = employeeIdFrom(payload);
+    const rows = sortClockRows((await readClockRows(payload)).map(normalizeClock).filter(r => r.date === today() || r.date === addDays(today(), -1)));
+    return {ok:true, source:'firebase-clock-flow', rows: await withPendingFlags(rows, employeeId)};
+  }
+  async function getClockHistoryRange(payload){
+    const employeeId = employeeIdFrom(payload);
+    const startDate = dateText(payload && payload.startDate);
+    const endDate = dateText(payload && payload.endDate);
+    const rows = sortClockRows((await readClockRows(payload)).map(normalizeClock).filter(r => {
+      if(!r.date) return false;
+      if(startDate && r.date < startDate) return false;
+      if(endDate && r.date > endDate) return false;
+      return true;
+    }));
+    return {ok:true, source:'firebase-clock-flow', rows: await withPendingFlags(rows, employeeId)};
+  }
+  async function getScheduleInfo(employeeId, dateKey){
+    if(typeof oldHandle !== 'function') return {ok:false, schedules:[]};
+    const res = await oldHandle('getTodaySchedule', {userId:employeeId, employeeId, date:dateKey}).catch(err => ({ok:false, message:err && err.message, schedules:[]}));
+    return res || {ok:false, schedules:[]};
+  }
+  async function getClockCompletionIssues(payload){
+    const employeeId = employeeIdFrom(payload);
+    if(!employeeId) return {ok:false, message:'缺少員工資料', rows:[]};
+    const dates = [today(), addDays(today(), -1)];
+    const [clockRows, corrections, leaves] = await Promise.all([
+      readClockRows({employeeId, userId:employeeId}).catch(()=>[]),
+      correctionsByEmployee(employeeId).catch(()=>[]),
+      rowsByEmployee('leaveRequests', employeeId).catch(()=>[])
+    ]);
+    const issues = [];
+    for(const dateKey of dates){
+      const info = await getScheduleInfo(employeeId, dateKey);
+      const schedules = Array.isArray(info && info.schedules) ? info.schedules : ((info && info.schedule) ? [info.schedule] : []);
+      if(approvedAllDayLeaveForDate(leaves, dateKey)) continue;
+      for(const s0 of schedules){
+        const s = Object.assign({}, s0 || {}, {date: dateText(s0 && s0.date) || dateKey});
+        const key = scheduleKeyOf(s);
+        if(!key) continue;
+        const actions = [];
+        if(shortTime(s.startTime)) actions.push('上班打卡');
+        if(shortTime(s.endTime)) actions.push('下班打卡');
+        if(!actions.length) continue;
+        const missing = actions.filter(action => actionIsDue(s, action, dateKey) && !existingRecordFor(s, action, clockRows));
+        if(!missing.length) continue;
+        const issue = {
+          issueKey: dateKey + '|' + key,
+          employeeId,
+          date:dateKey,
+          scheduleKey:key,
+          summary:scheduleSummary(s),
+          scheduleLabel:scheduleSummary(s),
+          startTime:shortTime(s.startTime),
+          endTime:shortTime(s.endTime),
+          clockType:clean(s.clockType),
+          defaultClockType:(Array.isArray(s.allowedClockTypes) && s.allowedClockTypes.indexOf('標準打卡') >= 0) ? '標準打卡' : (clean(s.clockType) || '標準打卡'),
+          sourceLabel:clean(s.sourceLabel),
+          schedule:s,
+          missingActions:missing,
+          pendingCorrection:false,
+          pendingCorrectionId:'',
+          pendingLeave:false,
+          pendingLeaveId:''
+        };
+        const pm = missing.map(action => pendingMissingCorrection(corrections, issue, action)).find(Boolean);
+        const pl = pendingLeaveForDate(leaves, dateKey);
+        if(pm){ issue.pendingCorrection = true; issue.pendingCorrectionId = pm.requestId; }
+        if(pl){ issue.pendingLeave = true; issue.pendingLeaveId = clean(pl.requestId || pl.leaveId || pl.__id); }
+        issues.push(issue);
+      }
+    }
+    return {ok:true, rows:issues, count:issues.length};
+  }
+  function generatedId(prefix){ return prefix + '_' + Date.now() + '_' + Math.random().toString(36).slice(2,8); }
+  function correctionOriginalFields(record){
+    const r = normalizeClock(record || {});
+    return {
+      originalRecordId:r.recordId || r.__id,
+      originalDate:r.date,
+      originalTime:r.time,
+      originalAction:r.actionName,
+      originalClockType:r.clockType,
+      scheduleKey:r.scheduleKey || recordScheduleKey(record || {}),
+      scheduleDate:r.scheduleDate || r.date,
+      scheduleStartTime:r.scheduleStartTime,
+      scheduleEndTime:r.scheduleEndTime,
+      scheduleSource:r.scheduleSource,
+      scheduleSourceLabel:r.scheduleSourceLabel,
+      scheduleTemplateName:r.scheduleTemplateName
+    };
+  }
+  async function submitClockCorrection(payload){
+    const p = payload || {};
+    const user = currentUser();
+    const employeeId = employeeIdFrom(p);
+    const requestKind = clean(p.requestKind || (p.originalRecordId ? 'recordCorrection' : 'recordCorrection'));
+    const reason = clean(p.reason);
+    if(!employeeId) return {ok:false, message:'缺少員工資料，請重新登入。'};
+    if(!reason) return {ok:false, message:'請填寫原因。'};
+    const corrections = await correctionsByEmployee(employeeId).catch(()=>[]);
+    const requestId = clean(p.requestId) || generatedId(requestKind === 'missingClock' ? 'MCLK' : 'CCR');
+
+    if(requestKind === 'missingClock'){
+      const correctDate = dateText(p.correctDate || p.scheduleDate);
+      const correctTime = timeText(p.correctTime);
+      const correctAction = clean(p.correctAction);
+      const scheduleKey = clean(p.scheduleKey);
+      if(!correctDate || !correctTime || !correctAction || !scheduleKey) return {ok:false, message:'缺少補打卡日期、時間或班表資料。'};
+      const issue = {date:correctDate, scheduleKey};
+      const pending = pendingMissingCorrection(corrections, issue, correctAction);
+      if(pending) return {ok:false, message:'這一段班表已經送出補打卡申請，請等待主管審核。', requestId:pending.requestId};
+      const clockRows = await readClockRows({employeeId, userId:employeeId}).catch(()=>[]);
+      const snap = Object.assign({}, p.scheduleSnapshot || {}, {date:correctDate, scheduleKey});
+      if(existingRecordFor(snap, correctAction, clockRows)) return {ok:false, message:'這一段班表已經有該打卡紀錄，不需要補打卡。'};
+      const row = {
+        requestId,
+        requestKind:'missingClock',
+        '申請種類':'missingClock',
+        employeeId,
+        '員工ID':employeeId,
+        name:clean(user.name),
+        '姓名':clean(user.name),
+        email:lower(user.email),
+        correctDate,
+        '修正日期':correctDate,
+        correctTime,
+        '修正時間':correctTime,
+        correctAction,
+        '修正動作':correctAction,
+        correctionType:clean(p.correctionType || snap.clockType || '標準打卡') || '標準打卡',
+        '修正打卡方式':clean(p.correctionType || snap.clockType || '標準打卡') || '標準打卡',
+        reason,
+        '修正原因':reason,
+        scheduleKey,
+        scheduleDate:correctDate,
+        scheduleStartTime:shortTime(snap.startTime || snap.scheduleStartTime),
+        scheduleEndTime:shortTime(snap.endTime || snap.scheduleEndTime),
+        scheduleSource:clean(snap.source || snap.scheduleSource),
+        scheduleSourceLabel:clean(snap.sourceLabel || snap.scheduleSourceLabel),
+        scheduleTemplateName:clean(snap.templateName || snap.scheduleTemplateName),
+        scheduleSnapshot:snap,
+        status:'待審核',
+        '狀態':'待審核',
+        source:'firebase-clock-flow',
+        createdAt:serverTs()
+      };
+      await docSet('clockCorrections', requestId, row);
+      return {ok:true, message:'補打卡申請已送出，請等待主管審核。', requestId, row};
+    }
+
+    const originalRecordId = clean(p.originalRecordId);
+    if(!originalRecordId) return {ok:false, message:'缺少原始打卡紀錄，無法修正。'};
+    const original = await findClockById(originalRecordId);
+    if(!original) return {ok:false, message:'找不到原始打卡紀錄，請重新整理後再試。'};
+    const norm = normalizeClock(original);
+    const pending = pendingRecordCorrection(corrections, norm.recordId || originalRecordId);
+    if(pending) return {ok:false, message:'這筆打卡紀錄已送出修正申請，請等待主管審核。', requestId:pending.requestId};
+    const correctDate = dateText(p.correctDate || norm.date);
+    const correctTime = timeText(p.correctTime || norm.time);
+    if(!correctDate || !correctTime) return {ok:false, message:'請填寫正確日期與時間。'};
+    const fixed = correctionOriginalFields(original);
+    const row = Object.assign({}, fixed, {
+      requestId,
+      requestKind:'recordCorrection',
+      '申請種類':'recordCorrection',
+      employeeId,
+      '員工ID':employeeId,
+      name:clean(user.name || norm.name),
+      '姓名':clean(user.name || norm.name),
+      email:lower(user.email || norm.email),
+      correctDate,
+      '修正日期':correctDate,
+      correctTime,
+      '修正時間':correctTime,
+      correctAction:norm.actionName,
+      '修正動作':norm.actionName,
+      correctionType:norm.clockType,
+      '修正打卡方式':norm.clockType,
+      reason,
+      '修正原因':reason,
+      status:'待審核',
+      '狀態':'待審核',
+      source:'firebase-clock-flow',
+      createdAt:serverTs()
+    });
+    await docSet('clockCorrections', requestId, row);
+    return {ok:true, message:'打卡修正申請已送出，請等待主管審核。', requestId, row};
+  }
+  function statusBySchedule(action, clockType, correctTime, scheduleStart, scheduleEnd, supplement){
+    const t = minutes(correctTime);
+    const st = minutes(scheduleStart);
+    const en = minutes(scheduleEnd);
+    let status = supplement ? '補打卡' : '正常';
+    let lateMinutes = 0;
+    let earlyLeaveMinutes = 0;
+    if(clean(clockType) === '標準打卡' && clean(action).indexOf('上班') >= 0 && Number.isFinite(t) && Number.isFinite(st) && t > st){ lateMinutes = Math.max(0, Math.round(t - st)); status = '遲到'; }
+    if(clean(clockType) === '標準打卡' && clean(action).indexOf('下班') >= 0 && Number.isFinite(t) && Number.isFinite(en) && t < en){ earlyLeaveMinutes = Math.max(0, Math.round(en - t)); status = '早退'; }
+    if(supplement && status === '正常') status = '補打卡';
+    return {status, lateMinutes, earlyLeaveMinutes};
+  }
+  async function approveClockCorrection(payload){
+    const p = payload || {};
+    const requestId = clean(p.requestId);
+    if(!requestId) return {ok:false, message:'缺少修正申請ID'};
+    const raw = await findCorrectionById(requestId);
+    if(!raw) return {ok:false, message:'找不到修正申請'};
+    const c = normalizeCorrection(raw);
+    if(c.status !== '待審核') return {ok:false, message:'這筆申請已處理過。'};
+    const reviewer = currentUser();
+
+    if(c.requestKind === 'missingClock' || !c.originalRecordId){
+      const existing = await readClockRows({employeeId:c.employeeId, userId:c.employeeId}).then(rows => existingRecordFor({date:c.correctDate, scheduleKey:c.scheduleKey, startTime:c.scheduleStartTime, endTime:c.scheduleEndTime, clockType:c.correctionType}, c.correctAction, rows)).catch(()=>null);
+      let appliedRecordId = existing ? clean(existing.recordId || existing.id) : '';
+      if(!existing){
+        const state = statusBySchedule(c.correctAction, c.correctionType, c.correctTime, c.scheduleStartTime, c.scheduleEndTime, true);
+        appliedRecordId = 'CLK_SUP_' + c.employeeId + '_' + c.correctDate.replace(/-/g,'') + '_' + (c.correctAction.indexOf('下班') >= 0 ? 'OUT' : 'IN') + '_' + Date.now();
+        await docSet('clockRecords', appliedRecordId, {
+          recordId:appliedRecordId,
+          '紀錄ID':appliedRecordId,
+          employeeId:c.employeeId,
+          '員工ID':c.employeeId,
+          name:c.name,
+          '姓名':c.name,
+          email:c.email,
+          clockDate:c.correctDate,
+          '打卡日期':c.correctDate,
+          clockTime:c.correctTime,
+          '打卡時間':c.correctTime,
+          actionName:c.correctAction,
+          '打卡動作':c.correctAction,
+          clockType:c.correctionType || '標準打卡',
+          '打卡方式':c.correctionType || '標準打卡',
+          status:state.status,
+          '狀態':state.status,
+          lateMinutes:state.lateMinutes,
+          '遲到分鐘':state.lateMinutes,
+          earlyLeaveMinutes:state.earlyLeaveMinutes,
+          '早退分鐘':state.earlyLeaveMinutes,
+          note:'補打卡核准：' + c.reason,
+          '備註':'補打卡核准：' + c.reason,
+          sourceIp:'補打卡核准',
+          '來源IP':'補打卡核准',
+          isSupplement:true,
+          scheduleLinked:true,
+          scheduleKey:c.scheduleKey,
+          scheduleDate:c.scheduleDate || c.correctDate,
+          scheduleStartTime:c.scheduleStartTime,
+          scheduleEndTime:c.scheduleEndTime,
+          scheduleSource:c.scheduleSource,
+          scheduleSourceLabel:c.scheduleSourceLabel,
+          scheduleTemplateName:c.scheduleTemplateName,
+          correctionRequestId:requestId,
+          source:'firebase-clock-flow-approved-missing',
+          createdAt:serverTs()
+        });
+      }
+      await docUpdate('clockCorrections', requestId, {status:'已核准','狀態':'已核准', reviewedAt:serverTs(), reviewedBy:clean(reviewer.id || reviewer.employeeId || reviewer.adminId), appliedRecordId, source:'firebase-clock-flow'});
+      return {ok:true, message:'補打卡已核准，並已補進正式打卡紀錄。', appliedRecordId};
+    }
+
+    const original = await findClockById(c.originalRecordId);
+    if(!original) return {ok:false, message:'找不到原始打卡紀錄，無法核准。'};
+    const norm = normalizeClock(original);
+    const state = statusBySchedule(c.correctAction || norm.actionName, c.correctionType || norm.clockType, c.correctTime, c.scheduleStartTime || norm.scheduleStartTime, c.scheduleEndTime || norm.scheduleEndTime, false);
+    const targetId = clean(original.__id || norm.recordId || c.originalRecordId);
+    await docUpdate('clockRecords', targetId, {
+      originalClockDate:norm.date,
+      originalClockTime:norm.time,
+      originalActionName:norm.actionName,
+      originalClockType:norm.clockType,
+      clockDate:c.correctDate,
+      '打卡日期':c.correctDate,
+      clockTime:c.correctTime,
+      '打卡時間':c.correctTime,
+      actionName:c.correctAction || norm.actionName,
+      '打卡動作':c.correctAction || norm.actionName,
+      clockType:c.correctionType || norm.clockType,
+      '打卡方式':c.correctionType || norm.clockType,
+      status:state.status,
+      '狀態':state.status,
+      lateMinutes:state.lateMinutes,
+      '遲到分鐘':state.lateMinutes,
+      earlyLeaveMinutes:state.earlyLeaveMinutes,
+      '早退分鐘':state.earlyLeaveMinutes,
+      correctionApplied:true,
+      correctionRequestId:requestId,
+      correctedAt:serverTs(),
+      note: clean((original.note || original['備註'] || '') + (c.reason ? ('｜修正核准：' + c.reason) : '')),
+      '備註': clean((original.note || original['備註'] || '') + (c.reason ? ('｜修正核准：' + c.reason) : '')),
+      source:'firebase-clock-flow-corrected'
+    });
+    await docUpdate('clockCorrections', requestId, {status:'已核准','狀態':'已核准', reviewedAt:serverTs(), reviewedBy:clean(reviewer.id || reviewer.employeeId || reviewer.adminId), appliedRecordId:targetId, source:'firebase-clock-flow'});
+    return {ok:true, message:'打卡修正已核准，原始打卡紀錄已更新。', appliedRecordId:targetId};
+  }
+  async function rejectClockCorrection(payload){
+    const requestId = clean(payload && payload.requestId);
+    if(!requestId) return {ok:false, message:'缺少修正申請ID'};
+    await docUpdate('clockCorrections', requestId, {status:'已駁回','狀態':'已駁回', rejectReason:clean(payload && payload.rejectReason), reviewedAt:serverTs(), source:'firebase-clock-flow'});
+    return {ok:true, message:'已駁回。'};
+  }
+  async function getPendingClockCorrections(){
+    const rows = (await all('clockCorrections')).map(normalizeCorrection).filter(c => c.status === '待審核' || !c.status);
+    for(const r of rows){
+      if(r.originalRecordId && !r.originalTime){
+        const original = await findClockById(r.originalRecordId).catch(()=>null);
+        if(original){
+          const n = normalizeClock(original);
+          r.originalDate = r.originalDate || n.date;
+          r.originalTime = r.originalTime || n.time;
+          r.originalAction = r.originalAction || n.actionName;
+          r.originalClockType = r.originalClockType || n.clockType;
+        }
+      }
+      if(r.requestKind === 'missingClock'){
+        r.originalTime = '';
+        r.originalAction = '缺少' + (r.correctAction || '打卡');
+        r.originalClockType = r.correctionType;
+      }
+    }
+    rows.sort((a,b) => clean(b.correctDate + ' ' + b.correctTime).localeCompare(clean(a.correctDate + ' ' + a.correctTime)));
+    return {ok:true, rows, list:rows};
+  }
+
+  fb.handleApi = async function(action, payload){
+    const a = clean(action);
+    if(a === 'getEditableClockHistory') return await getEditableClockHistory(payload || {});
+    if(a === 'getClockHistoryRange') return await getClockHistoryRange(payload || {});
+    if(a === 'getClockCompletionIssues') return await getClockCompletionIssues(payload || {});
+    if(a === 'submitClockCorrection') return await submitClockCorrection(payload || {});
+    if(a === 'approveClockCorrectionApi') return await approveClockCorrection(payload || {});
+    if(a === 'rejectClockCorrectionApi') return await rejectClockCorrection(payload || {});
+    if(a === 'getPendingClockCorrections') return await getPendingClockCorrections(payload || {});
+    if(typeof oldHandle === 'function') return await oldHandle(action, payload || {});
+    return null;
+  };
+  fb.__clockCorrectionFlowFixV20260528 = true;
+  global.YZFirebase = fb;
+})(window);
