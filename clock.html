@@ -47,6 +47,18 @@
     .today-schedule-box.warning{background:#fff7ed;border-color:#fed7aa}
     .today-schedule-box.error{background:#fef2f2;border-color:#fecaca}
     .today-schedule-box.loading{background:#f8fafc;border-color:#e2e8f0;color:#64748b}
+
+    .schedule-list{display:grid;gap:10px;margin-top:10px}
+    .schedule-card{border:1px solid #d1d5db;background:#fff;border-radius:16px;padding:12px}
+    .schedule-card.selected{border-color:#1f7a5a;background:#ecfdf5;box-shadow:0 0 0 2px rgba(31,122,90,.08)}
+    .schedule-card .schedule-row{display:flex;justify-content:space-between;gap:8px;align-items:flex-start;flex-wrap:wrap}
+    .schedule-card .schedule-name{font-weight:900;color:#111827}
+    .schedule-card .schedule-time{font-size:18px;font-weight:900;color:#064e3b;margin-top:4px}
+    .schedule-card .schedule-meta{font-size:13px;color:#4b5563;line-height:1.6;margin-top:5px}
+    .schedule-card .schedule-status{font-size:14px;font-weight:800;margin-top:7px;color:#92400e}
+    .schedule-card.selected .schedule-status{color:#065f46}
+    .schedule-select-btn{border:1px solid #1f7a5a;background:#1f7a5a;color:#fff;border-radius:999px;padding:8px 12px;font-size:13px;font-weight:900;cursor:pointer}
+    .schedule-card.selected .schedule-select-btn{background:#145f46;border-color:#145f46}
     .choice-modal{position:fixed;inset:0;z-index:9999;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;padding:18px}
     .choice-modal.hidden{display:none!important}
     .choice-card{width:min(560px,100%);background:#fff;border-radius:22px;padding:18px;box-shadow:0 24px 70px rgba(15,23,42,.25)}
@@ -87,6 +99,7 @@
       </div>
 
       <input type="hidden" id="clockType" value="">
+      <input type="hidden" id="selectedScheduleKey" value="">
       <div class="field">
         <label>打卡方式</label>
         <div class="clock-mode-grid">
@@ -160,11 +173,11 @@
     </div>
   </div>
 
-  <script src="config.js?v=20260527clockScheduleLink"></script>
+  <script src="config.js?v=20260528ClockMultiSchedule"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260527clockScheduleLink"></script>
-  <script src="app.js?v=20260527clockScheduleLink"></script>
+  <script src="firebase-client.js?v=20260528ClockMultiSchedule"></script>
+  <script src="app.js?v=20260528ClockMultiSchedule"></script>
   <script>
 
     function goTemporaryAttendance(){
@@ -194,34 +207,130 @@
 
 
 
-    function setTodayScheduleBox(type, text){
+    function setTodayScheduleBox(type, content, isHtml){
       const box = qs('#todayScheduleBox');
       const body = qs('#todayScheduleText');
       if(!box || !body) return;
       box.className = 'today-schedule-box ' + (type || 'ready');
-      body.textContent = text || '';
+      if(isHtml){ body.innerHTML = content || ''; }
+      else { body.textContent = content || ''; }
+    }
+
+    function getTodaySchedules(){
+      const info = window.__todayClockSchedule || {};
+      return Array.isArray(info.schedules) ? info.schedules : (info.schedule ? [info.schedule] : []);
+    }
+
+    function getSelectedSchedule(){
+      const key = (qs('#selectedScheduleKey') && qs('#selectedScheduleKey').value) || window.__selectedScheduleKey || '';
+      const rows = getTodaySchedules();
+      return rows.find(x => String(x.scheduleKey || x.key || '') === String(key || '')) || rows[0] || null;
+    }
+
+    function scheduleLabel(s){
+      if(!s) return '';
+      const range = (s.startTime && s.endTime) ? (s.startTime + ' - ' + s.endTime) : '未設定時間';
+      return (s.sourceLabel || '班表') + '｜' + range + '｜' + (s.clockType || '');
+    }
+
+    function scheduleAllowedText(s){
+      const allowed = (s && s.allowedClockTypes) || [];
+      return allowed.length ? allowed.join('、') : '不開放一般打卡';
+    }
+
+    function chooseDefaultSchedule(info){
+      const rows = (info && info.schedules) || [];
+      if(!rows.length) return '';
+      const oldKey = (qs('#selectedScheduleKey') && qs('#selectedScheduleKey').value) || window.__selectedScheduleKey || '';
+      if(oldKey && rows.some(x => String(x.scheduleKey || x.key) === String(oldKey))) return oldKey;
+      const available = rows.find(x => x.canClockInNow || x.canClockOutNow);
+      return String((available || rows[0]).scheduleKey || (available || rows[0]).key || '');
+    }
+
+    function renderTodayScheduleHtml(info){
+      const rows = (info && info.schedules) || [];
+      if(!rows.length){
+        return '<div>' + escapeHtml((info && info.message) || '今天沒有排班，請改用「補登 / 臨時出勤」提出申請。') + '</div>';
+      }
+      const selected = (qs('#selectedScheduleKey') && qs('#selectedScheduleKey').value) || window.__selectedScheduleKey || '';
+      const head = '<div style="font-weight:800;margin-bottom:8px">' + escapeHtml(info.message || ('今日共有 ' + rows.length + ' 筆班表')) + '</div>';
+      const cards = rows.map((s, idx) => {
+        const key = String(s.scheduleKey || s.key || '');
+        const isSel = key && key === selected;
+        const range = (s.startTime && s.endTime) ? (escapeHtml(s.startTime) + ' - ' + escapeHtml(s.endTime)) : '未設定時間';
+        const status = s.statusText || (s.clockInOpenAt ? (s.clockInOpenAt + ' 後可上班打卡') : '');
+        const openText = s.clockInOpenAt ? ('上班前一小時：' + s.clockInOpenAt + ' 後可上班打卡') : '';
+        return `
+          <div class="schedule-card ${isSel ? 'selected' : ''}" data-schedule-key="${escapeHtml(key)}">
+            <div class="schedule-row">
+              <div>
+                <div class="schedule-name">${idx + 1}. ${escapeHtml(s.sourceLabel || '班表')}${isSel ? '｜目前選擇' : ''}</div>
+                <div class="schedule-time">${range}</div>
+              </div>
+              <button type="button" class="schedule-select-btn js-select-schedule" data-key="${escapeHtml(key)}">${isSel ? '已選擇' : '選擇此班表'}</button>
+            </div>
+            <div class="schedule-meta">打卡類型：${escapeHtml(s.clockType || '')}｜可用方式：${escapeHtml(scheduleAllowedText(s))}${s.templateName ? '｜模板：' + escapeHtml(s.templateName) : ''}</div>
+            ${openText ? '<div class="schedule-meta">' + escapeHtml(openText) + '</div>' : ''}
+            <div class="schedule-status">${escapeHtml(status)}</div>
+          </div>`;
+      }).join('');
+      return head + '<div class="schedule-list">' + cards + '</div>';
+    }
+
+    function bindScheduleCards(){
+      qsa('.js-select-schedule').forEach(btn => {
+        btn.onclick = () => selectTodaySchedule(btn.dataset.key || '');
+      });
+    }
+
+    function selectTodaySchedule(key){
+      window.__selectedScheduleKey = key || '';
+      if(qs('#selectedScheduleKey')) qs('#selectedScheduleKey').value = window.__selectedScheduleKey;
+      const info = window.__todayClockSchedule || {};
+      setTodayScheduleBox(info.okToClock ? 'ready' : 'warning', renderTodayScheduleHtml(info), true);
+      bindScheduleCards();
+      updateClockModeButtonsBySchedule(info);
+      if(qs('#clockType').value){
+        const mode = qs('#clockType').value;
+        const selected = getSelectedSchedule();
+        if(selected && (selected.allowedClockTypes || []).indexOf(mode) < 0){
+          backToClockModes();
+          setMsg(qs('#mainMsg'), '你選擇的班表不開放「' + mode + '」，請重新選擇打卡方式。', true);
+        }else{
+          updateClockActionNote(mode);
+        }
+      }
     }
 
     function updateClockModeButtonsBySchedule(info){
       const standardBtn = qs('#modeStandardBtn');
       const specialBtn = qs('#modeSpecialBtn');
-      const allowed = (info && info.allowedClockTypes) || [];
       const loaded = !!(info && info.__loaded);
       if(!loaded){
         if(standardBtn) standardBtn.disabled = false;
         if(specialBtn) specialBtn.disabled = false;
         return;
       }
+      const selected = getSelectedSchedule();
+      const allowed = selected ? (selected.allowedClockTypes || []) : ((info && info.allowedClockTypes) || []);
       if(standardBtn) standardBtn.disabled = allowed.indexOf('標準打卡') < 0;
       if(specialBtn) specialBtn.disabled = allowed.indexOf('特殊打卡') < 0;
     }
 
-    function todayScheduleAllows(mode){
+    function todayScheduleAllows(mode, actionName){
       const info = window.__todayClockSchedule || null;
       if(!info || !info.__loaded) return { ok:true, message:'' };
       if(!info.okToClock){ return { ok:false, message: info.message || '今天沒有可用班表，無法一般打卡。' }; }
-      const allowed = info.allowedClockTypes || [];
-      if(allowed.indexOf(mode) < 0){ return { ok:false, message:'今日班表不開放「' + mode + '」。' }; }
+      const selected = getSelectedSchedule();
+      if(!selected){ return { ok:false, message:'請先選擇今日班表。' }; }
+      const allowed = selected.allowedClockTypes || [];
+      if(allowed.indexOf(mode) < 0){ return { ok:false, message:'目前選擇的班表不開放「' + mode + '」。' }; }
+      if(actionName && mode === '標準打卡' && actionName.indexOf('上班') >= 0 && selected.canClockInNow === false){
+        return { ok:false, message: selected.statusText || ('尚未到可打卡時間，請於 ' + (selected.clockInOpenAt || '') + ' 後再打卡。') };
+      }
+      if(actionName && mode === '標準打卡' && actionName.indexOf('下班') >= 0 && selected.canClockOutNow === false){
+        return { ok:false, message:'尚未到上班時間，暫不開放下班打卡。' };
+      }
       return { ok:true, message:'' };
     }
 
@@ -232,19 +341,35 @@
         setTodayScheduleBox('loading', '讀取今日班表中...');
         const r = await api('getTodaySchedule', { userId:user.id });
         window.__todayClockSchedule = Object.assign({__loaded:true}, r || {});
+        const defaultKey = chooseDefaultSchedule(window.__todayClockSchedule);
+        window.__selectedScheduleKey = defaultKey;
+        if(qs('#selectedScheduleKey')) qs('#selectedScheduleKey').value = defaultKey;
         updateClockModeButtonsBySchedule(window.__todayClockSchedule);
         if(r && r.okToClock){
-          const allowedText = (r.allowedClockTypes || []).length ? ('\n可用打卡方式：' + (r.allowedClockTypes || []).join('、')) : '';
-          setTodayScheduleBox('ready', (r.message || r.scheduleText || '今日可打卡') + allowedText);
+          setTodayScheduleBox('ready', renderTodayScheduleHtml(window.__todayClockSchedule), true);
+          bindScheduleCards();
         }else if(r && r.ok){
-          setTodayScheduleBox('warning', r.message || '今天沒有排班，請改用「補登 / 臨時出勤」提出申請。');
+          setTodayScheduleBox('warning', renderTodayScheduleHtml(window.__todayClockSchedule), true);
+          bindScheduleCards();
         }else{
           setTodayScheduleBox('error', (r && r.message) || '讀取今日班表失敗');
         }
       }catch(e){
-        window.__todayClockSchedule = {__loaded:true, ok:false, okToClock:false, allowedClockTypes:[], message:e.message || '讀取今日班表失敗'};
+        window.__todayClockSchedule = {__loaded:true, ok:false, okToClock:false, allowedClockTypes:[], schedules:[], message:e.message || '讀取今日班表失敗'};
         updateClockModeButtonsBySchedule(window.__todayClockSchedule);
         setTodayScheduleBox('error', friendlyClockMessage(e.message || '讀取今日班表失敗'));
+      }
+    }
+
+    function updateClockActionNote(mode){
+      const selected = getSelectedSchedule();
+      const suffix = selected ? ('\n目前選擇：' + scheduleLabel(selected)) : '';
+      if(mode === '標準打卡'){
+        qs('#clockActionTitle').textContent = '標準打卡';
+        qs('#clockActionNote').textContent = '正常在公司上班使用；上班打卡需連公司 Wi‑Fi，且只能在上班前一小時後打卡。' + suffix;
+      }else if(mode === '特殊打卡'){
+        qs('#clockActionTitle').textContent = '特殊打卡';
+        qs('#clockActionNote').textContent = '社團課、外出支援、外場活動等不在公司上班時使用。' + suffix;
       }
     }
 
@@ -259,14 +384,7 @@
       if(qs('#modeSpecialBtn')) qs('#modeSpecialBtn').classList.add(mode === '特殊打卡' ? 'active' : 'hidden');
       if(qs('#modeTempBtn')) qs('#modeTempBtn').classList.add('hidden');
 
-      if(mode === '標準打卡'){
-        qs('#clockActionTitle').textContent = '標準打卡';
-        qs('#clockActionNote').textContent = '正常在公司上班使用；上班打卡需符合公司指定網路規則。';
-      }else if(mode === '特殊打卡'){
-        qs('#clockActionTitle').textContent = '特殊打卡';
-        qs('#clockActionNote').textContent = '社團課、外出支援、外場活動等不在公司上班時使用。';
-      }
-
+      updateClockActionNote(mode);
       setActionButtonIdle(qs('#clockInBtn'), '上班打卡');
       setActionButtonIdle(qs('#clockOutBtn'), '下班打卡');
       setMsg(qs('#mainMsg'), '');
@@ -472,63 +590,84 @@
       }
     }
 
+    function companyClockIp(){
+      const cfg = window.APP_CONFIG || {};
+      return String(cfg.CLOCK_ALLOWED_IP || cfg.COMPANY_CLOCK_IP || '125.229.190.123').trim();
+    }
+
+    function needCompanyIp(payload){
+      return payload && payload.clockType === '標準打卡' && String(payload.actionName || '').indexOf('上班') >= 0;
+    }
+
+    async function getPublicIpCached(timeoutMs){
+      const maxAge = 3 * 60 * 1000;
+      try{
+        const cached = JSON.parse(sessionStorage.getItem('clockPublicIpCache') || 'null');
+        if(cached && cached.ip && Date.now() - Number(cached.t || 0) < maxAge) return cached.ip;
+      }catch(e){}
+      const fetchIp = (typeof getPublicIp === 'function') ? getPublicIp() : Promise.resolve('');
+      const timeout = new Promise(resolve => setTimeout(() => resolve(''), Number(timeoutMs || 2800)));
+      const ip = await Promise.race([fetchIp, timeout]);
+      if(ip){
+        try{ sessionStorage.setItem('clockPublicIpCache', JSON.stringify({ip, t:Date.now()})); }catch(e){}
+      }
+      return ip || '';
+    }
+
+    function refreshClockPageInBackground(){
+      setTimeout(() => {
+        loadEditableHistory().catch(()=>{});
+        loadTodaySchedule().catch(()=>{});
+      }, 80);
+    }
+
     async function doClock(actionName){
       const user = requireLogin();
       if(!user) return;
-      if(!qs('#clockType').value){ setMsg(qs('#mainMsg'), '請先選擇標準打卡或特殊打卡。', true); return; }
-      const isSupplement = false;
-      const msg = isSupplement ? qs('#supplementMsg') : qs('#mainMsg');
+      const mode = qs('#clockType').value;
+      if(!mode){ setMsg(qs('#mainMsg'), '請先選擇標準打卡或特殊打卡。', true); return; }
+      const msg = qs('#mainMsg');
       clearValidation();
 
-      if(isSupplement){
-        const supplementDate = qs('#supplementDate').value;
-        const supplementTime = qs('#supplementTime').value;
-        const supplementAction = qs('#supplementAction').value;
-        const supplementReason = qs('#supplementReason').value.trim();
-        const supplementAsType = qs('#supplementAsType').value;
-        const missing = [];
-        if(!supplementDate) missing.push(['supplementDate', '請選擇修正日期']);
-        if(!supplementTime) missing.push(['supplementTime', '請選擇正確打卡時間']);
-        if(!supplementAction) missing.push(['supplementAction', '請選擇修正動作']);
-        if(!supplementReason) missing.push(['supplementReason', '請填寫修正原因']);
-        if(missing.length){
-          missing.forEach(([id, text]) => showFieldError(id, text));
-          setMsg(msg, missing[0][1], true);
-          focusField('#' + missing[0][0]);
-          return;
-        }
-        const progress = startActionButtonProgress(qs('#clockInBtn'), { label:'送出補登修正中', startPct:20, maxPct:80, steps:[20,40,60,80], interval:170 });
-        try {
-          const r = await api('submitClockCorrection', { userId:user.id, correctDate:supplementDate, correctTime:supplementTime, correctAction:supplementAction, correctionType:supplementAsType, reason:supplementReason });
-          setMsg(msg, r.message, !r.ok);
-          if(r.ok){
-            progress.done('已送出');
-            qs('#supplementReason').value = '';
-            try { await loadEditableHistory(); } catch(refreshErr) { setMsg(msg, '申請已送出，但重新整理紀錄失敗，請稍後手動刷新。', false); }
-          } else {
-            progress.fail('送出失敗');
-          }
-        } catch(e) {
-          progress.fail('送出失敗');
-          setMsg(msg, friendlyClockMessage(e.message || '送出失敗'), true);
-        }
-        return;
-      }
-
-      const modeAllow = todayScheduleAllows(qs('#clockType').value);
+      const modeAllow = todayScheduleAllows(mode, actionName);
       if(!modeAllow.ok){ setMsg(msg, friendlyClockMessage(modeAllow.message), true); return; }
 
-      let payload = { userId:user.id, actionName, clockType:qs('#clockType').value };
-      setMsg(msg, '正在偵測公司 Wi‑Fi IP...');
-      payload.clientIp = await getPublicIp();
-      if(payload.clientIp){
-        setMsg(msg, '目前偵測外網 IP：' + payload.clientIp);
-      } else {
-        setMsg(msg, '目前無法取得外網 IP，請確認網路後再試。', true);
-      }
       const actionBtn = actionName === '下班打卡' ? qs('#clockOutBtn') : qs('#clockInBtn');
-      const progress = startActionButtonProgress(actionBtn, { label: actionName === '下班打卡' ? '下班打卡中' : '上班打卡中', startPct:20, maxPct:80, steps:[20,40,60,80], interval:170 });
+      const progress = startActionButtonProgress(actionBtn, { label: actionName === '下班打卡' ? '下班打卡中' : '上班打卡中', startPct:12, maxPct:86, interval:130, fixedSteps:false });
+
       try {
+        const selected = getSelectedSchedule();
+        let payload = {
+          userId:user.id,
+          actionName,
+          clockType:mode,
+          scheduleKey: selected ? (selected.scheduleKey || selected.key || '') : ''
+        };
+
+        progress.set(24, '確認班表中');
+
+        if(needCompanyIp(payload)){
+          progress.set(36, '偵測公司 Wi‑Fi IP中');
+          setMsg(msg, '正在偵測公司 Wi‑Fi IP...');
+          payload.clientIp = await getPublicIpCached(2800);
+          const allowedIp = companyClockIp();
+          if(!payload.clientIp){
+            progress.fail('打卡失敗');
+            setMsg(msg, '無法取得外網 IP，請確認已連上公司 Wi‑Fi 後再試。', true);
+            return;
+          }
+          if(allowedIp && payload.clientIp !== allowedIp){
+            progress.fail('打卡失敗');
+            setMsg(msg, '目前偵測外網 IP：' + payload.clientIp + '，不是公司指定 Wi‑Fi IP（' + allowedIp + '），無法上班打卡。', true);
+            return;
+          }
+          setMsg(msg, '目前偵測外網 IP：' + payload.clientIp + '，正在寫入打卡資料...');
+        }else{
+          payload.clientIp = '';
+          setMsg(msg, '正在寫入打卡資料...');
+        }
+
+        progress.set(58, '寫入打卡資料中');
         const r = await api('clock', payload);
         let successMessage = r.message || '';
         if(r && r.ok && Number(r.lateMinutes || 0) > 0){
@@ -538,7 +677,7 @@
         setMsg(msg, friendlyClockMessage(successMessage), !r.ok);
         if(r.ok){
           progress.done('打卡完成');
-          try { await loadEditableHistory(); await loadTodaySchedule(); } catch(refreshErr) { setMsg(msg, successMessage || '打卡成功，但重新整理紀錄失敗，請稍後手動刷新。', false); }
+          refreshClockPageInBackground();
         } else {
           progress.fail('打卡失敗');
         }
@@ -548,7 +687,6 @@
       }
     }
 
-    
     function addDaysForClockRange_(dateStr, days){
       const d = new Date(String(dateStr||'') + 'T00:00:00');
       if(isNaN(d.getTime())) return '';

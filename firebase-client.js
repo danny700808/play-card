@@ -982,17 +982,17 @@
   global.YZFirebase = fb;
 })(window);
 
-/* 打卡系統：班表勾稽與今日可打卡判斷版 20260527 */
+/* 打卡系統：多班表顯示、上班前一小時限制與快速打卡版 20260528 */
 (function(global){
   const fb = global.YZFirebase || {};
-  if(!fb || fb.__clockScheduleLinkV20260527) return;
+  if(!fb || fb.__clockMultiScheduleV20260528) return;
   const oldHandle = fb.handleApi;
 
   function clean(v){ return String(v == null ? '' : v).trim(); }
   function lower(v){ return clean(v).toLowerCase(); }
   function truthy(v){
     const s = lower(v);
-    return v === true || ['是','yes','true','1','true','啟用','enabled','active','在保','已核准'].includes(s);
+    return v === true || ['是','yes','true','1','啟用','enabled','active','在保','已核准'].includes(s);
   }
   function isDisabled(v){
     const s = lower(v);
@@ -1027,6 +1027,12 @@
     if(!m) return NaN;
     return Number(m[1]) * 60 + Number(m[2]);
   }
+  function hhmmFromMinutes(v){
+    if(!Number.isFinite(v)) return '';
+    const m = ((Math.round(v) % 1440) + 1440) % 1440;
+    return pad(Math.floor(m / 60)) + ':' + pad(m % 60);
+  }
+  function nowMinutes(){ const d = new Date(); return d.getHours() * 60 + d.getMinutes(); }
   function tsValue(v){
     if(!v) return 0;
     if(v && typeof v.toMillis === 'function') return v.toMillis();
@@ -1041,7 +1047,7 @@
     try{
       if(fb && typeof fb.init === 'function') return fb.init();
       if(global.firebase && global.firebase.apps && global.firebase.apps.length) return global.firebase.firestore();
-    }catch(e){ console.warn('[clock schedule db]', e); }
+    }catch(e){ console.warn('[clock multi schedule db]', e); }
     return null;
   }
   function serverTs(){
@@ -1055,6 +1061,33 @@
     const rows = [];
     snap.forEach(doc => rows.push(Object.assign({__id:doc.id}, doc.data() || {})));
     return rows;
+  }
+  async function queryEq(col, field, value){
+    const d = db();
+    if(!d) throw new Error('Firebase 尚未啟用');
+    const snap = await d.collection(col).where(field, '==', value).get();
+    const rows = [];
+    snap.forEach(doc => rows.push(Object.assign({__id:doc.id}, doc.data() || {})));
+    return rows;
+  }
+  function mergeByDocId(list){
+    const map = new Map();
+    (list || []).forEach(row => {
+      if(!row) return;
+      const key = clean(row.__id || row.recordId || row.assignmentId || row.templateId || JSON.stringify(row));
+      map.set(key, row);
+    });
+    return Array.from(map.values());
+  }
+  async function rowsByEmployee(col, employeeId){
+    employeeId = clean(employeeId);
+    if(!employeeId) return [];
+    const jobs = [
+      queryEq(col, 'employeeId', employeeId).catch(()=>[]),
+      queryEq(col, '員工ID', employeeId).catch(()=>[])
+    ];
+    const res = await Promise.all(jobs);
+    return mergeByDocId([].concat.apply([], res));
   }
   async function setDoc(col, id, data){
     const d = db();
@@ -1077,6 +1110,7 @@
     if(o.enabled === undefined && o['啟用'] === undefined && o.active === undefined) return true;
     return !isDisabled(o.enabled !== undefined ? o.enabled : (o['啟用'] !== undefined ? o['啟用'] : o.active));
   }
+
   const DAY_KEYS = [
     {idx:0,key:'sunday',label:'星期日',zh:'星期日'},
     {idx:1,key:'monday',label:'星期一',zh:'星期一'},
@@ -1097,14 +1131,6 @@
       if(o[k] !== undefined && o[k] !== null && clean(o[k]) !== '') return o[k];
     }
     return fallback == null ? '' : fallback;
-  }
-  function latest(rows){
-    return (rows || []).slice().sort((a,b)=>{
-      const ta = tsValue(a.updatedAt || a.createdAt || a.reviewedAt || a.__id);
-      const tb = tsValue(b.updatedAt || b.createdAt || b.reviewedAt || b.__id);
-      if(tb !== ta) return tb - ta;
-      return clean(b.__id).localeCompare(clean(a.__id));
-    })[0] || null;
   }
   function normalizeSingle(o){
     o = o || {};
@@ -1153,6 +1179,12 @@
     const allowSpecial = truthy(pick(template, [info.key+'AllowSpecial', info.zh+'允許特殊打卡'], pick(dayRow, ['allowSpecial','允許特殊打卡'], '')));
     return { dayKey:info.key, dayLabel:info.label, clockType:type, startTime:start, endTime:end, allowSpecial };
   }
+  function hasWorkTime(schedule){
+    if(!schedule) return false;
+    if(schedule.clockType === '標準打卡') return !!(schedule.startTime && schedule.endTime);
+    if(schedule.clockType === '特殊打卡') return true;
+    return false;
+  }
   function allowedClockTypes(schedule){
     if(!schedule || !schedule.hasSchedule) return [];
     const type = clean(schedule.clockType);
@@ -1164,6 +1196,10 @@
     if(type === '特殊打卡') return ['特殊打卡'];
     return [];
   }
+  function scheduleKey(schedule){
+    if(!schedule) return '';
+    return [clean(schedule.source), clean(schedule.id || schedule.assignmentId || schedule.recordId), clean(schedule.date), clean(schedule.startTime), clean(schedule.endTime), clean(schedule.clockType)].join('|');
+  }
   function scheduleSummary(schedule){
     if(!schedule || !schedule.hasSchedule) return '今日沒有排班';
     const parts = [schedule.clockType || '班表'];
@@ -1172,18 +1208,66 @@
     if(schedule.allowSpecial && schedule.clockType === '標準打卡') parts.push('可特殊打卡');
     return parts.join('｜');
   }
+  function scheduleSort(a,b){
+    const ma = Number.isFinite(minutes(a.startTime)) ? minutes(a.startTime) : 9999;
+    const mb = Number.isFinite(minutes(b.startTime)) ? minutes(b.startTime) : 9999;
+    if(ma !== mb) return ma - mb;
+    const pa = a.source === 'singleDaySchedules' ? 0 : 1;
+    const pb = b.source === 'singleDaySchedules' ? 0 : 1;
+    if(pa !== pb) return pa - pb;
+    return clean(a.key).localeCompare(clean(b.key));
+  }
+  function decorateSchedule(schedule, dateKey){
+    const out = Object.assign({}, schedule);
+    out.hasSchedule = hasWorkTime(out);
+    out.key = scheduleKey(out);
+    out.scheduleKey = out.key;
+    out.allowedClockTypes = allowedClockTypes(out);
+    out.summary = scheduleSummary(out);
+
+    const todayKey = today();
+    const n = nowMinutes();
+    const startM = minutes(out.startTime);
+    const endM = minutes(out.endTime);
+    out.clockInOpenMinute = Number.isFinite(startM) ? Math.max(0, startM - 60) : null;
+    out.clockInOpenAt = Number.isFinite(out.clockInOpenMinute) ? hhmmFromMinutes(out.clockInOpenMinute) : '';
+
+    if(!out.hasSchedule){
+      out.statusText = '此班表不開放一般打卡';
+      out.canClockInNow = false;
+      out.canClockOutNow = false;
+    }else if(dateKey !== todayKey){
+      out.statusText = dateKey < todayKey ? '班表日期已過' : '尚未到班表日期';
+      out.canClockInNow = false;
+      out.canClockOutNow = false;
+    }else if(out.clockType === '標準打卡' && Number.isFinite(startM)){
+      if(n < out.clockInOpenMinute){
+        out.statusText = out.clockInOpenAt + ' 後可上班打卡';
+        out.canClockInNow = false;
+        out.canClockOutNow = false;
+      }else{
+        out.statusText = '已到可打卡時間';
+        out.canClockInNow = true;
+        out.canClockOutNow = n >= startM;
+      }
+    }else{
+      out.statusText = '可使用特殊打卡';
+      out.canClockInNow = true;
+      out.canClockOutNow = true;
+    }
+    return out;
+  }
+  function unique(list){ return Array.from(new Set((list || []).filter(Boolean))); }
   function makeNoSchedule(employeeId, dateKey, message, extra){
     return Object.assign({
       ok:true, employeeId, date:dateKey, hasSchedule:false, okToClock:false,
-      allowedClockTypes:[], schedule:null, scheduleText:'今日沒有排班',
+      allowedClockTypes:[], schedules:[], schedule:null, scheduleText:'今日沒有排班',
       message: message || '今天沒有排班，請改用「補登 / 臨時出勤」提出申請。'
     }, extra || {});
   }
   async function approvedLeaveBlocks(employeeId, dateKey){
-    const leaves = await all('leaveRequests').catch(()=>[]);
+    const leaves = await rowsByEmployee('leaveRequests', employeeId).catch(()=>[]);
     return leaves.filter(o => {
-      const emp = clean(o.employeeId || o['員工ID']);
-      if(emp !== employeeId) return false;
       const status = clean(o.status || o['狀態']);
       if(status !== '已核准') return false;
       const start = dateText(o.startDate || o.leaveDate || o['開始日期'] || o['請假日期']);
@@ -1206,89 +1290,136 @@
     const p = payload || {};
     const employeeId = employeeIdFrom(p);
     const dateKey = dateText(p.date || p.clockDate) || today();
-    if(!employeeId) return {ok:false, message:'缺少員工資料，請重新登入。', hasSchedule:false, okToClock:false, allowedClockTypes:[]};
+    if(!employeeId) return {ok:false, message:'缺少員工資料，請重新登入。', hasSchedule:false, okToClock:false, allowedClockTypes:[], schedules:[]};
 
-    const singles = (await all('singleDaySchedules').catch(()=>[]))
-      .map(normalizeSingle)
-      .filter(x => x.enabled && x.employeeId === employeeId && x.date === dateKey);
-    const single = latest(singles);
-    let schedule = null;
+    const [singleRows, assignmentRows, templateRows, leaveBlocks] = await Promise.all([
+      rowsByEmployee('singleDaySchedules', employeeId).catch(()=>[]),
+      rowsByEmployee('employeeSchedules', employeeId).catch(()=>[]),
+      all('scheduleTemplates').catch(()=>[]),
+      approvedLeaveBlocks(employeeId, dateKey).catch(()=>[])
+    ]);
+    const templates = templateRows.map(normalizeTemplate).filter(t => t.enabled);
+    const schedules = [];
 
-    if(single){
-      const hasWorkTime = (single.clockType === '標準打卡' && single.startTime && single.endTime) || single.clockType === '特殊打卡';
-      schedule = {
-        hasSchedule: !!hasWorkTime,
-        id: single.id,
-        source: 'singleDaySchedules',
-        sourceLabel: '單日特別班表',
-        employeeId,
-        employeeName: single.employeeName,
-        date: dateKey,
-        clockType: single.clockType,
-        startTime: single.startTime,
-        endTime: single.endTime,
-        allowSpecial: single.allowSpecial,
-        note: clean(single.note || single['備註'])
-      };
-      if(!hasWorkTime){
-        return makeNoSchedule(employeeId, dateKey, '今天單日班表設定為「' + single.clockType + '」，不開放一般打卡。', {schedule, scheduleText:scheduleSummary(schedule)});
-      }
-    }
+    singleRows.map(normalizeSingle)
+      .filter(x => x.enabled && x.employeeId === employeeId && x.date === dateKey)
+      .forEach(single => {
+        const s = decorateSchedule({
+          id: single.id,
+          source: 'singleDaySchedules',
+          sourceLabel: '單日特別班表',
+          employeeId,
+          employeeName: single.employeeName,
+          date: dateKey,
+          clockType: single.clockType,
+          startTime: single.startTime,
+          endTime: single.endTime,
+          allowSpecial: single.allowSpecial,
+          note: clean(single.note || single['備註'])
+        }, dateKey);
+        if(s.hasSchedule) schedules.push(s);
+      });
 
-    if(!schedule){
-      const assignments = (await all('employeeSchedules').catch(()=>[]))
-        .map(normalizeAssignment)
-        .filter(x => x.enabled && x.employeeId === employeeId && x.startDate && dateKey >= x.startDate && (x.indefinite || !x.endDate || dateKey <= x.endDate));
-      const assignment = latest(assignments);
-      if(!assignment) return makeNoSchedule(employeeId, dateKey);
+    assignmentRows.map(normalizeAssignment)
+      .filter(x => x.enabled && x.employeeId === employeeId && x.startDate && dateKey >= x.startDate && (x.indefinite || !x.endDate || dateKey <= x.endDate))
+      .forEach(assignment => {
+        const template = templates.find(t => clean(t.templateId || t.id) === clean(assignment.templateId) || clean(t.__id) === clean(assignment.templateId));
+        if(!template) return;
+        const day = dayFromTemplate(template, dateKey);
+        const s = decorateSchedule({
+          id: assignment.id,
+          source: 'employeeSchedules',
+          sourceLabel: '固定班表',
+          employeeId,
+          employeeName: assignment.employeeName,
+          date: dateKey,
+          assignmentId: assignment.id,
+          templateId: template.templateId || template.id,
+          templateName: template.templateName || assignment.templateName,
+          dayKey: day.dayKey,
+          dayLabel: day.dayLabel,
+          clockType: day.clockType,
+          startTime: day.startTime,
+          endTime: day.endTime,
+          allowSpecial: day.allowSpecial,
+          note: clean(assignment.note || assignment['備註'] || template.note || template['備註'])
+        }, dateKey);
+        if(s.hasSchedule) schedules.push(s);
+      });
 
-      const templates = (await all('scheduleTemplates').catch(()=>[])).map(normalizeTemplate).filter(t => t.enabled);
-      const template = templates.find(t => clean(t.templateId || t.id) === clean(assignment.templateId) || clean(t.__id) === clean(assignment.templateId));
-      if(!template) return makeNoSchedule(employeeId, dateKey, '今天有套用班表，但找不到對應的班表模板，請通知主管檢查班表設定。', {assignment});
-      const day = dayFromTemplate(template, dateKey);
-      const hasWorkTime = (day.clockType === '標準打卡' && day.startTime && day.endTime) || day.clockType === '特殊打卡';
-      schedule = {
-        hasSchedule: !!hasWorkTime,
-        id: assignment.id,
-        source: 'employeeSchedules',
-        sourceLabel: '固定班表',
-        employeeId,
-        employeeName: assignment.employeeName,
-        date: dateKey,
-        assignmentId: assignment.id,
-        templateId: template.templateId || template.id,
-        templateName: template.templateName || assignment.templateName,
-        dayKey: day.dayKey,
-        dayLabel: day.dayLabel,
-        clockType: day.clockType,
-        startTime: day.startTime,
-        endTime: day.endTime,
-        allowSpecial: day.allowSpecial,
-        note: clean(assignment.note || assignment['備註'] || template.note || template['備註'])
-      };
-      if(!hasWorkTime){
-        return makeNoSchedule(employeeId, dateKey, '今天班表為「' + day.clockType + '」，不開放一般打卡。', {schedule, scheduleText:scheduleSummary(schedule)});
-      }
-    }
+    schedules.sort(scheduleSort);
+    if(!schedules.length) return makeNoSchedule(employeeId, dateKey);
 
-    const allowed = allowedClockTypes(schedule);
-    const leaveBlocks = await approvedLeaveBlocks(employeeId, dateKey);
     const allDayLeave = leaveBlocks.find(x => x.allDay);
+    const allowed = unique([].concat.apply([], schedules.map(s => s.allowedClockTypes || [])));
     const okToClock = allowed.length > 0 && !allDayLeave;
-    let message = okToClock ? ('今日班表：' + scheduleSummary(schedule)) : '今日不開放一般打卡。';
+    let message = '今日共有 ' + schedules.length + ' 筆班表，請依各班表可打卡時間打卡。';
+    if(schedules.length === 1) message = '今日班表：' + scheduleSummary(schedules[0]);
     if(allDayLeave) message = '今天已有核准請假（' + allDayLeave.reason + '），不開放一般打卡。';
+
     return {
-      ok:true, employeeId, date:dateKey, hasSchedule:true, okToClock,
+      ok:true,
+      employeeId,
+      date:dateKey,
+      hasSchedule:true,
+      okToClock,
       allowedClockTypes: allowed,
-      schedule,
-      scheduleText: scheduleSummary(schedule),
+      schedules,
+      schedule: schedules[0],
+      scheduleText: schedules.map(scheduleSummary).join('\n'),
       leaveBlocks,
       message
     };
   }
-  async function existingClock(employeeId, dateKey, actionName){
-    const rows = await all('clockRecords').catch(()=>[]);
-    return rows.find(o => clean(o.employeeId || o['員工ID']) === employeeId && dateText(o.clockDate || o.date || o['打卡日期']) === dateKey && clean(o.actionName || o['打卡動作']) === actionName && clean(o.status || o['狀態']) !== '已刪除') || null;
+  function canClockAction(schedule, mode, actionName, clockDate, clockTime){
+    if(!schedule || !schedule.hasSchedule) return {ok:false, message:'請先選擇今日班表。'};
+    if((schedule.allowedClockTypes || []).indexOf(mode) < 0){
+      return {ok:false, message:'選定班表不開放「' + mode + '」。'};
+    }
+    const action = clean(actionName);
+    const clockM = minutes(clockTime || timeNow());
+    const startM = minutes(schedule.startTime);
+    const openM = Number.isFinite(startM) ? Math.max(0, startM - 60) : NaN;
+    if(mode === '標準打卡' && action.indexOf('上班') >= 0 && Number.isFinite(openM) && Number.isFinite(clockM) && clockM < openM){
+      return {ok:false, message:'尚未到可打卡時間。此班表 ' + schedule.startTime + ' 上班，請於 ' + hhmmFromMinutes(openM) + ' 後再上班打卡。'};
+    }
+    if(mode === '標準打卡' && action.indexOf('下班') >= 0 && Number.isFinite(startM) && Number.isFinite(clockM) && clockM < startM){
+      return {ok:false, message:'尚未到上班時間，暫不開放下班打卡。'};
+    }
+    return {ok:true, message:''};
+  }
+  function chooseScheduleForClock(info, mode, actionName, scheduleKeyValue, clockDate, clockTime){
+    const schedules = (info && info.schedules) || [];
+    if(scheduleKeyValue){
+      const chosen = schedules.find(s => clean(s.scheduleKey || s.key) === clean(scheduleKeyValue));
+      if(!chosen) return {ok:false, message:'找不到你選擇的班表，請重新整理後再試。'};
+      const allowed = canClockAction(chosen, mode, actionName, clockDate, clockTime);
+      return Object.assign({schedule:chosen}, allowed);
+    }
+    const candidates = schedules.filter(s => (s.allowedClockTypes || []).indexOf(mode) >= 0);
+    if(!candidates.length) return {ok:false, message:'今日班表不開放「' + mode + '」。'};
+    const available = candidates.map(s => Object.assign({schedule:s}, canClockAction(s, mode, actionName, clockDate, clockTime))).filter(x => x.ok);
+    if(available.length) return available[0];
+    const first = Object.assign({schedule:candidates[0]}, canClockAction(candidates[0], mode, actionName, clockDate, clockTime));
+    return first;
+  }
+  function recordScheduleKey(o){
+    if(!o) return '';
+    return clean(o.scheduleKey || [clean(o.scheduleSource), clean(o.scheduleId), clean(o.scheduleDate || o.clockDate || o.date || o['打卡日期']), clean(o.scheduleStartTime), clean(o.scheduleEndTime), clean(o.scheduleClockType)].join('|'));
+  }
+  async function existingClock(employeeId, dateKey, actionName, scheduleKeyValue){
+    const rows = await rowsByEmployee('clockRecords', employeeId).catch(()=>[]);
+    return rows.find(o => {
+      if(dateText(o.clockDate || o.date || o['打卡日期']) !== dateKey) return false;
+      if(clean(o.actionName || o['打卡動作']) !== actionName) return false;
+      if(clean(o.status || o['狀態']) === '已刪除') return false;
+      const rk = recordScheduleKey(o);
+      return scheduleKeyValue ? rk === clean(scheduleKeyValue) : true;
+    }) || null;
+  }
+  function companyClockIp(){
+    const cfg = global.APP_CONFIG || {};
+    return clean(cfg.CLOCK_ALLOWED_IP || cfg.COMPANY_CLOCK_IP || '125.229.190.123');
   }
   async function clockWithSchedule(payload){
     const p = payload || {};
@@ -1309,15 +1440,27 @@
     if(!todayInfo.okToClock){
       return Object.assign({}, todayInfo, {ok:false, message:todayInfo.message || '今天沒有可用班表，無法一般打卡。'});
     }
-    if(todayInfo.allowedClockTypes.indexOf(clockType) < 0){
-      return Object.assign({}, todayInfo, {ok:false, message:'今日班表不開放「' + clockType + '」，可用方式：' + todayInfo.allowedClockTypes.join('、')});
+    const picked = chooseScheduleForClock(todayInfo, clockType, actionName, p.scheduleKey, clockDate, clockTime);
+    if(!picked.ok){
+      return Object.assign({}, todayInfo, {ok:false, message:picked.message || '目前不可打卡。'});
     }
-    const existed = await existingClock(employeeId, clockDate, actionName);
-    if(existed){
-      return {ok:false, message:'今天已經有「' + actionName + '」紀錄，如時間錯誤請使用下方「提出補登修正」。', existingRecordId:clean(existed.recordId || existed.__id)};
+    const schedule = picked.schedule || {};
+    const key = clean(schedule.scheduleKey || schedule.key || scheduleKey(schedule));
+
+    if(clockType === '標準打卡' && actionName.indexOf('上班') >= 0){
+      const allowedIp = companyClockIp();
+      const ip = clean(p.clientIp);
+      if(!ip) return {ok:false, message:'無法確認公司 Wi-Fi IP，請確認已連上公司 Wi-Fi 後再試。'};
+      if(allowedIp && ip !== allowedIp){
+        return {ok:false, message:'目前偵測 IP 為 ' + ip + '，不是公司指定 Wi-Fi IP（' + allowedIp + '），無法上班打卡。'};
+      }
     }
 
-    const schedule = todayInfo.schedule || {};
+    const existed = await existingClock(employeeId, clockDate, actionName, key);
+    if(existed){
+      return {ok:false, message:'這一段班表今天已經有「' + actionName + '」紀錄，如時間錯誤請使用下方「提出補登修正」。', existingRecordId:clean(existed.recordId || existed.__id)};
+    }
+
     const clockM = minutes(clockTime);
     const startM = minutes(schedule.startTime);
     const endM = minutes(schedule.endTime);
@@ -1361,6 +1504,7 @@
       '來源IP': clean(p.clientIp),
       isSupplement: false,
       scheduleLinked: true,
+      scheduleKey: key,
       scheduleId: clean(schedule.id || schedule.assignmentId || schedule.recordId),
       scheduleSource: clean(schedule.source),
       scheduleSourceLabel: clean(schedule.sourceLabel),
@@ -1371,18 +1515,17 @@
       scheduleAllowSpecial: !!schedule.allowSpecial,
       scheduleTemplateId: clean(schedule.templateId),
       scheduleTemplateName: clean(schedule.templateName),
-      source:'firebase-clock-schedule-link',
+      source:'firebase-clock-multi-schedule',
       createdAt: serverTs()
     };
     await setDoc('clockRecords', recordId, row);
 
     let message = actionName + '成功';
-    if(schedule.startTime || schedule.endTime) message += '（今日班表 ' + scheduleSummary(schedule) + '）';
+    if(schedule.startTime || schedule.endTime) message += '（' + scheduleSummary(schedule) + '）';
     if(lateMinutes > 0) message += '，本次遲到 ' + lateMinutes + ' 分鐘';
     if(earlyLeaveMinutes > 0) message += '，本次早退 ' + earlyLeaveMinutes + ' 分鐘';
-    return {ok:true, message, recordId, lateMinutes, earlyLeaveMinutes, lateDeductionAmount:0, lateDeductionText:'$0', schedule:todayInfo};
+    return {ok:true, message, recordId, lateMinutes, earlyLeaveMinutes, lateDeductionAmount:0, lateDeductionText:'$0', schedule:todayInfo, usedSchedule:schedule};
   }
-
 
   function generatedId(prefix){ return prefix + '_' + Date.now() + '_' + Math.random().toString(36).slice(2,8); }
   async function saveScheduleDoc(collection, payload, idField, prefix, message){
@@ -1392,7 +1535,7 @@
     if(idField === 'templateId') p['模板ID'] = id;
     if(idField === 'assignmentId') p['套用ID'] = id;
     if(idField === 'recordId') p['單日ID'] = id;
-    p.source = 'firebase-clock-schedule-link';
+    p.source = 'firebase-clock-multi-schedule';
     if(!p.createdAt) p.createdAt = serverTs();
     await setDoc(collection, id, p);
     const out = {ok:true, message:message || '已儲存。', id};
@@ -1420,6 +1563,6 @@
     if(typeof oldHandle === 'function') return await oldHandle(action, payload || {});
     return null;
   };
-  fb.__clockScheduleLinkV20260527 = true;
+  fb.__clockMultiScheduleV20260528 = true;
   global.YZFirebase = fb;
 })(window);
