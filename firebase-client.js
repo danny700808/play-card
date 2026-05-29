@@ -4441,6 +4441,19 @@
       profile:[
         ['profile.changeSubmitted','個人資料修改送出','員工送出聯絡資料修改時，通知主管審核。'],
         ['profile.changeResult','個人資料修改審核結果','主管核准或駁回後，通知員工。']
+      ],
+      profileChange:[
+        ['profile.changeSubmitted','個人資料修改送出','員工送出聯絡資料修改時，通知主管審核。'],
+        ['profile.changeResult','個人資料修改審核結果','主管核准或駁回後，通知員工。']
+      ],
+      registration:[
+        ['registration.submitted','新帳號註冊送出','新帳號送出註冊後，通知主管審核。'],
+        ['registration.reviewResult','註冊審核結果','主管核准或駁回後，通知員工。']
+      ],
+      parttimePayroll:[
+        ['parttime.excessHoursSubmitted','工讀超出排班時數送出','工讀生登記時數超過排班時數時，通知主管審核。'],
+        ['parttime.payrollNotice','工讀時數 / 薪資提醒','工讀時數異常或薪資處理事項通知主管。'],
+        ['parttime.reviewResult','工讀時數處理結果','主管處理後，通知員工。']
       ]
     };
     return (defs[moduleKey]||[]).map(([eventKey,eventName,description])=>({moduleKey,eventKey,eventName,description,enabled:true,managerLineEnabled:false,managerEmailEnabled:false,employeeLineEnabled:true,employeeEmailEnabled:false}));

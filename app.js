@@ -1423,3 +1423,120 @@ document.addEventListener('DOMContentLoaded', function(){ setTimeout(hideClockZe
   function boot(){ setTimeout(installQuickMessage, 500); setTimeout(installQuickMessage, 1500); }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 })();
+
+
+/************************************************************
+ * 通知工具強制掛載修正版 20260529 notify visible v2
+ * - 不再只依賴 showSettingsZone / role=admin，改用主管功能頁網址判斷。
+ * - 自動在主管功能頁底部補上 LINE / Email 提醒設定。
+ * - 自動在主管功能頁右下角補上手動 LINE / Email 浮動按鈕。
+ ************************************************************/
+(function(){
+  if(window.__notifyVisibleFixV2_20260529) return;
+  window.__notifyVisibleFixV2_20260529 = true;
+  function clean(v){return String(v==null?'':v).trim();}
+  function esc(v){return clean(v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  function page(){return clean((location.pathname||'').split('/').pop()).toLowerCase() || 'index.html';}
+  function isManagerFeaturePage(){
+    var p=page();
+    if(['dashboard.html','index.html','portal.html','clock.html','parttime.html','profile.html','salary.html','temporary-attendance.html','announcements.html','routine.html','task.html','contract.html','teacher-home.html'].indexOf(p)>=0) return false;
+    if(p.indexOf('admin')>=0 || p.indexOf('approval')>=0 || p==='settings.html' || p==='approval-hub.html' || p==='leave-policy-admin.html' || p==='clock-records-admin.html' || p==='data-center.html' || p==='items-hub.html') return true;
+    return false;
+  }
+  function feature(){
+    var p=page();
+    if(p==='clock-corrections-admin.html') return {key:'clock', title:'打卡簽核提醒設定'};
+    if(p==='temporary-attendance-admin.html') return {key:'temporaryAttendance', title:'臨時出勤 / 工讀超時提醒設定'};
+    if(p==='parttime-payroll-admin.html') return {key:'parttimePayroll', title:'工讀時數 / 超出排班提醒設定'};
+    if(p==='registration-approval.html') return {key:'registration', title:'註冊簽核提醒設定'};
+    if(p==='profile-change-admin.html') return {key:'profileChange', title:'個資修改提醒設定'};
+    if(p==='leave.html' && ((location.search||'').indexOf('mode=approval')>=0 || (location.search||'').indexOf('entry=approval')>=0)) return {key:'leave', title:'請假簽核提醒設定'};
+    return null;
+  }
+  function apiCall(action,payload){
+    if(typeof api==='function') return api(action,payload||{});
+    if(window.YZFirebase && typeof window.YZFirebase.handleApi==='function') return window.YZFirebase.handleApi(action,payload||{});
+    return Promise.reject(new Error('Firebase API 尚未啟用'));
+  }
+  function style(){
+    if(document.getElementById('notifyVisibleFixStyleV2')) return;
+    var s=document.createElement('style'); s.id='notifyVisibleFixStyleV2';
+    s.textContent='\
+    .notify-v2-fab{position:fixed;right:16px;bottom:18px;z-index:2147483000;border:0;border-radius:999px;background:#06c755;color:#fff;font-weight:900;padding:13px 16px;box-shadow:0 12px 30px rgba(15,23,42,.26);cursor:pointer;font-size:15px}\
+    .notify-v2-panel{margin:16px auto;max-width:1120px;background:#fff;border:1px solid #dbe5f1;border-radius:20px;padding:16px;box-shadow:0 8px 24px rgba(15,23,42,.05)}\
+    .notify-v2-panel h3{margin:0 0 6px;font-size:20px;color:#18314a}.notify-v2-muted{color:#64748b;line-height:1.6;font-size:13px}.notify-v2-list{display:grid;gap:10px;margin-top:12px}.notify-v2-row{border:1px solid #e2e8f0;background:#f8fafc;border-radius:16px;padding:12px}.notify-v2-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.notify-v2-name{font-weight:900;color:#18314a}.notify-v2-checks{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:10px}.notify-v2-checks label{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:8px;font-size:13px;font-weight:800;color:#334155;display:flex;align-items:center;justify-content:space-between;gap:6px}.notify-v2-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px}.notify-v2-actions button,.notify-v2-send,.notify-v2-secondary{border:0;border-radius:14px;padding:11px 14px;font-weight:900;cursor:pointer}.notify-v2-send,.notify-v2-actions button{background:#1f7a5a;color:#fff}.notify-v2-secondary{background:#eef2f6;color:#18314a}.notify-v2-msg{font-size:13px;font-weight:900;color:#1f7a5a}.notify-v2-msg.err{color:#b42318}\
+    .notify-v2-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:2147483001;display:none;align-items:center;justify-content:center;padding:14px}.notify-v2-backdrop.show{display:flex}.notify-v2-modal{width:min(94vw,680px);max-height:88vh;overflow:auto;background:#fff;border-radius:22px;padding:18px;box-shadow:0 24px 70px rgba(15,23,42,.28)}.notify-v2-top{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:12px}.notify-v2-top h3{margin:0;font-size:22px;color:#18314a}.notify-v2-field{margin-top:12px}.notify-v2-field label{display:block;font-weight:900;margin-bottom:6px}.notify-v2-field input,.notify-v2-field textarea,.notify-v2-field select{width:100%;box-sizing:border-box;border:1px solid #d0d5dd;border-radius:14px;padding:11px 12px;font-size:15px}.notify-v2-field textarea{min-height:110px;resize:vertical}.notify-v2-recip{border:1px solid #e5e7eb;border-radius:14px;background:#f8fafc;max-height:230px;overflow:auto;padding:8px}.notify-v2-recip label{display:flex;align-items:center;gap:8px;padding:8px;border-bottom:1px solid #e5e7eb;font-size:14px;font-weight:800}.notify-v2-recip label:last-child{border-bottom:0}.notify-v2-recip input{width:auto}.notify-v2-channels{display:flex;gap:12px;flex-wrap:wrap}.notify-v2-channels label{display:inline-flex;gap:6px;align-items:center;font-weight:900}.notify-v2-channels input{width:auto}.notify-v2-modal-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}.notify-v2-status{font-weight:900;margin-top:10px;color:#1f7a5a}.notify-v2-status.err{color:#b42318}@media(max-width:640px){.notify-v2-fab{right:12px;bottom:12px}.notify-v2-checks{grid-template-columns:1fr}.notify-v2-modal-actions{grid-template-columns:1fr}}';
+    document.head.appendChild(s);
+  }
+  function waitApi(cb,tries){
+    tries=tries||0;
+    if((typeof api==='function') || (window.YZFirebase && typeof window.YZFirebase.handleApi==='function')) return cb();
+    if(tries>30) return;
+    setTimeout(function(){waitApi(cb,tries+1);},200);
+  }
+  async function renderPanel(box, f){
+    style();
+    box.innerHTML='<div class="notify-v2-panel"><h3>'+esc(f.title)+'</h3><div class="notify-v2-muted">讀取提醒設定中…</div></div>';
+    try{
+      var res=await apiCall('getModuleNotificationSettings',{moduleKey:f.key});
+      var rows=Array.isArray(res.rows)?res.rows:[];
+      box.innerHTML='<div class="notify-v2-panel"><h3>'+esc(f.title)+'</h3><div class="notify-v2-muted">此區只設定本功能的 LINE / Email 提醒。LINE / Email 會先寫入通知佇列，後端發送完成後留下紀錄。</div><div class="notify-v2-list">'+rows.map(function(r,i){return '<div class="notify-v2-row" data-i="'+i+'" data-key="'+esc(r.eventKey)+'"><div class="notify-v2-head"><div><div class="notify-v2-name">'+esc(r.eventName||r.eventKey)+'</div><div class="notify-v2-muted">'+esc(r.description||'')+'</div></div><label style="font-weight:900;white-space:nowrap"><input type="checkbox" data-f="enabled" '+(r.enabled!==false?'checked':'')+'> 啟用</label></div><div class="notify-v2-checks"><label>通知主管 LINE <input type="checkbox" data-f="managerLineEnabled" '+(r.managerLineEnabled?'checked':'')+'></label><label>通知主管 Email <input type="checkbox" data-f="managerEmailEnabled" '+(r.managerEmailEnabled?'checked':'')+'></label><label>通知員工 LINE <input type="checkbox" data-f="employeeLineEnabled" '+(r.employeeLineEnabled?'checked':'')+'></label><label>通知員工 Email <input type="checkbox" data-f="employeeEmailEnabled" '+(r.employeeEmailEnabled?'checked':'')+'></label></div></div>';}).join('')+'</div><div class="notify-v2-actions"><button type="button" data-notify-v2-save>儲存提醒設定</button><span class="notify-v2-msg" data-notify-v2-msg></span></div></div>';
+      var btn=box.querySelector('[data-notify-v2-save]');
+      if(btn){btn.onclick=async function(){
+        var msg=box.querySelector('[data-notify-v2-msg]');
+        try{
+          if(msg){msg.textContent='儲存中…'; msg.classList.remove('err');}
+          var next=Array.from(box.querySelectorAll('.notify-v2-row')).map(function(row,idx){
+            var base=Object.assign({},rows[idx]||{}); base.moduleKey=f.key; base.eventKey=row.getAttribute('data-key')||base.eventKey;
+            ['enabled','managerLineEnabled','managerEmailEnabled','employeeLineEnabled','employeeEmailEnabled'].forEach(function(k){var el=row.querySelector('[data-f="'+k+'"]'); base[k]=!!(el&&el.checked);});
+            return base;
+          });
+          var rr=await apiCall('saveModuleNotificationSettings',{moduleKey:f.key,rows:next});
+          if(msg) msg.textContent=(rr&&rr.message)||'已儲存。';
+        }catch(e){if(msg){msg.textContent=e.message||'儲存失敗'; msg.classList.add('err');}}
+      };}
+    }catch(e){box.innerHTML='<div class="notify-v2-panel"><h3>'+esc(f.title)+'</h3><div class="notify-v2-msg err">讀取失敗：'+esc(e.message||e)+'</div></div>';}
+  }
+  function installPanel(){
+    var f=feature(); if(!f) return;
+    var box=document.getElementById('notifyVisibleFeaturePanelV2');
+    if(!box){ box=document.createElement('div'); box.id='notifyVisibleFeaturePanelV2'; var target=document.querySelector('.container:last-of-type')||document.body; target.appendChild(box); }
+    waitApi(function(){renderPanel(box,f);});
+  }
+  function installFloating(){
+    if(!isManagerFeaturePage()) return;
+    style();
+    if(document.getElementById('notifyForceQuickBtn') || document.getElementById('managerQuickMsgBtn') || document.getElementById('notifyFloatingBtn')) return;
+    var btn=document.createElement('button'); btn.id='notifyForceQuickBtn'; btn.className='notify-v2-fab'; btn.type='button'; btn.textContent='LINE / Email'; document.body.appendChild(btn);
+    var modal=document.createElement('div'); modal.id='notifyForceQuickModal'; modal.className='notify-v2-backdrop'; modal.innerHTML='<div class="notify-v2-modal"><div class="notify-v2-top"><h3>LINE / Email 手動通知</h3><button class="notify-v2-secondary" type="button" data-close>關閉</button></div><div class="notify-v2-field"><label>搜尋收件人</label><input data-search placeholder="姓名、Email、員工ID"></div><div class="notify-v2-field"><label>收件人</label><div class="notify-v2-recip" data-recip>讀取中…</div></div><div class="notify-v2-field"><label>發送方式</label><div class="notify-v2-channels"><label><input type="checkbox" value="line" checked> LINE</label><label><input type="checkbox" value="email"> Email</label></div></div><div class="notify-v2-field"><label>訊息內容</label><textarea data-message placeholder="輸入要發送給員工的訊息"></textarea></div><div class="notify-v2-modal-actions"><button class="notify-v2-send" type="button" data-send>送出通知</button><button class="notify-v2-secondary" type="button" data-cancel>取消</button></div><div class="notify-v2-status" data-status></div></div>'; document.body.appendChild(modal);
+    var recips=[]; var timer=null;
+    function status(t,err){var el=modal.querySelector('[data-status]'); el.textContent=t||''; el.className='notify-v2-status'+(err?' err':'');}
+    function render(list){var wrap=modal.querySelector('[data-recip]'); wrap.innerHTML=list.length?list.map(function(x,i){return '<label><input type="checkbox" value="'+i+'"><span>'+esc(x.name||'未命名')+'｜'+esc(x.identityLabel||'')+'｜'+esc(x.email||x.employeeId||'')+(x.lineUserId?'｜LINE 已綁定':'')+'</span></label>';}).join(''):'沒有符合的收件人';}
+    async function load(q){
+      var wrap=modal.querySelector('[data-recip]'); wrap.textContent='讀取中…';
+      try{var r=await apiCall('getNotificationRecipients',{keyword:q||''}); recips=Array.isArray(r.rows)?r.rows:[]; render(recips);}catch(e){wrap.textContent='讀取收件人失敗：'+(e.message||e);}
+    }
+    function open(){modal.classList.add('show'); waitApi(function(){load('');});}
+    function close(){modal.classList.remove('show');}
+    btn.onclick=open; modal.querySelector('[data-close]').onclick=close; modal.querySelector('[data-cancel]').onclick=close; modal.addEventListener('click',function(e){if(e.target===modal) close();});
+    modal.querySelector('[data-search]').addEventListener('input',function(e){clearTimeout(timer); timer=setTimeout(function(){load(e.target.value);},250);});
+    modal.querySelector('[data-send]').onclick=async function(){
+      try{
+        status('');
+        var idxs=Array.from(modal.querySelectorAll('[data-recip] input:checked')).map(function(x){return Number(x.value);});
+        var targets=idxs.map(function(i){return recips[i];}).filter(Boolean);
+        var channels=Array.from(modal.querySelectorAll('.notify-v2-channels input:checked')).map(function(x){return x.value;});
+        var message=clean(modal.querySelector('[data-message]').value);
+        if(!targets.length) throw new Error('請選擇收件人。');
+        if(!channels.length) throw new Error('請至少選擇 LINE 或 Email。');
+        if(!message) throw new Error('請輸入訊息內容。');
+        status('建立發送佇列中…');
+        var r=await apiCall('sendManualNotification',{targets:targets,channels:channels,message:message,page:location.pathname});
+        if(!r || r.ok===false) throw new Error((r&&r.message)||'送出失敗');
+        status((r&&r.message)||'已建立發送佇列。'); modal.querySelector('[data-message]').value='';
+      }catch(e){status(e.message||'送出失敗',true);}
+    };
+  }
+  function boot(){installFloating(); installPanel(); setTimeout(installFloating,700); setTimeout(installPanel,900); setTimeout(installFloating,1800);}
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot); else boot();
+})();
