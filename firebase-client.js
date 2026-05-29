@@ -3052,3 +3052,474 @@
   fb.__myProfileFullFastV20260528 = true;
   global.YZFirebase = fb;
 })(window);
+
+/* 我的資料：Firebase-only 薪資設定對應修正版 20260528-map2
+ * - 不走 GS。
+ * - 員工端先讀 employees；若薪資欄位不在 employees，改讀 employeeSalaryConfigs 與 salarySetup/salarySettings 內的 employeeConfigMap。
+ * - 管理端儲存薪資時，同步寫 employees、employeeSalaryConfigs、salarySetup/default.employeeConfigMap，之後員工端可快速讀到。
+ */
+(function(global){
+  const fb = global.YZFirebase || {};
+  if(!fb || fb.__myDataFirebaseOnlySalaryMap2V20260528) return;
+  const previousHandle = fb.handleApi;
+
+  function clean(v){ return String(v == null ? '' : v).trim(); }
+  function lower(v){ return clean(v).toLowerCase(); }
+  function num(v){
+    if(v === true) return 1;
+    const n = Number(String(v == null ? '' : v).replace(/[^0-9.-]/g,''));
+    return Number.isFinite(n) ? n : 0;
+  }
+  function meaningful(v){
+    const s = clean(v);
+    return !!s && !['-','未設定','無','undefined','null','nan'].includes(lower(s));
+  }
+  function truthy(v){
+    const s = lower(v);
+    return v === true || ['是','yes','true','1','啟用','enabled','active','在保','已投保','投保','加保','有效'].includes(s);
+  }
+  function uniq(list){
+    const out = [];
+    (list || []).forEach(function(x){ const s = clean(x); if(s && !out.includes(s)) out.push(s); });
+    return out;
+  }
+  function localUser(){ try{ return JSON.parse(localStorage.getItem('employeeUser') || '{}') || {}; }catch(e){ return {}; } }
+  function db(){
+    try{
+      if(fb && typeof fb.init === 'function') return fb.init();
+      if(global.firebase && global.firebase.apps && global.firebase.apps.length) return global.firebase.firestore();
+    }catch(e){ console.warn('[profile salary map db]', e); }
+    return null;
+  }
+  function serverTs(){ try{ return global.firebase.firestore.FieldValue.serverTimestamp(); }catch(e){ return new Date().toISOString(); } }
+  function pad(n){ return String(n).padStart(2,'0'); }
+  function ymd(d){ return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()); }
+  function fmtDate(v){
+    if(!v) return '';
+    if(v && typeof v.toDate === 'function') return ymd(v.toDate());
+    if(v instanceof Date && !isNaN(v.getTime())) return ymd(v);
+    const s = clean(v);
+    if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? s : ymd(d);
+  }
+  function money(v){
+    const raw = clean(v);
+    if(!raw) return '';
+    if(raw.includes('元') || raw.includes('$') || raw.includes('小時') || raw.includes('%')) return raw;
+    const n = num(raw);
+    return n ? Math.round(n).toLocaleString('zh-TW') + ' 元' : '';
+  }
+  function percent(v){
+    const raw = clean(v);
+    if(!raw) return '';
+    if(raw.includes('%')) return raw;
+    const n = num(raw);
+    return n ? n + '%' : '';
+  }
+  function maskId(v){
+    const s = clean(v).toUpperCase();
+    if(!s) return '';
+    return s.length <= 4 ? s : s.slice(0,1) + '*****' + s.slice(-4);
+  }
+  function pick(o, keys, fallback){
+    o = o || {};
+    for(const k of keys){
+      if(o[k] !== undefined && o[k] !== null && clean(o[k]) !== '') return o[k];
+    }
+    return fallback == null ? '' : fallback;
+  }
+  function objectKeys(o){ try{ return Object.keys(o || {}); }catch(e){ return []; } }
+
+  const DEFAULT_LABOR_PLANS = [
+    { code:'LAB_PART_11100', name:'第 1 級｜11,100 元', salary:11100, salaryText:'11,100 元', selfPayText:'依勞保局級距計算', group:'partial' },
+    { code:'LAB_PART_12540', name:'第 2 級｜12,540 元', salary:12540, salaryText:'12,540 元', selfPayText:'依勞保局級距計算', group:'partial' },
+    { code:'LAB_LOW_13500', name:'13,500 元', salary:13500, salaryText:'13,500 元', selfPayText:'依勞保局級距計算', group:'partial' },
+    { code:'LAB_LOW_15840', name:'15,840 元', salary:15840, salaryText:'15,840 元', selfPayText:'依勞保局級距計算', group:'partial' },
+    { code:'LAB_LOW_16500', name:'16,500 元', salary:16500, salaryText:'16,500 元', selfPayText:'依勞保局級距計算', group:'partial' },
+    { code:'LAB_LOW_17280', name:'17,280 元', salary:17280, salaryText:'17,280 元', selfPayText:'依勞保局級距計算', group:'partial' },
+    { code:'LAB_LOW_17880', name:'17,880 元', salary:17880, salaryText:'17,880 元', selfPayText:'依勞保局級距計算', group:'partial' },
+    { code:'LAB_LOW_19047', name:'19,047 元', salary:19047, salaryText:'19,047 元', selfPayText:'依勞保局級距計算', group:'partial' },
+    { code:'LAB_LOW_20008', name:'20,008 元', salary:20008, salaryText:'20,008 元', selfPayText:'依勞保局級距計算', group:'partial' },
+    { code:'LAB_LOW_21009', name:'21,009 元', salary:21009, salaryText:'21,009 元', selfPayText:'依勞保局級距計算', group:'partial' },
+    { code:'LAB_LOW_22000', name:'22,000 元', salary:22000, salaryText:'22,000 元', selfPayText:'依勞保局級距計算', group:'partial' },
+    { code:'LAB_LOW_23100', name:'23,100 元', salary:23100, salaryText:'23,100 元', selfPayText:'依勞保局級距計算', group:'partial' },
+    { code:'LAB_LOW_24000', name:'24,000 元', salary:24000, salaryText:'24,000 元', selfPayText:'依勞保局級距計算', group:'partial' },
+    { code:'LAB_LOW_25250', name:'25,250 元', salary:25250, salaryText:'25,250 元', selfPayText:'依勞保局級距計算', group:'partial' },
+    { code:'LAB_LOW_26400', name:'26,400 元', salary:26400, salaryText:'26,400 元', selfPayText:'依勞保局級距計算', group:'partial' },
+    { code:'LAB_LOW_27600', name:'27,600 元', salary:27600, salaryText:'27,600 元', selfPayText:'依勞保局級距計算', group:'partial' },
+    { code:'LAB_LOW_28590', name:'28,590 元', salary:28590, salaryText:'28,590 元', selfPayText:'依勞保局級距計算', group:'partial' },
+    { code:'LAB_REG_29500', name:'第 1 級｜29,500 元', salary:29500, salaryText:'29,500 元', selfPayText:'依勞保局級距計算', group:'regular' },
+    { code:'LAB_REG_30300', name:'第 2 級｜30,300 元', salary:30300, salaryText:'30,300 元', selfPayText:'依勞保局級距計算', group:'regular' },
+    { code:'LAB_REG_31800', name:'第 3 級｜31,800 元', salary:31800, salaryText:'31,800 元', selfPayText:'依勞保局級距計算', group:'regular' },
+    { code:'LAB_REG_33300', name:'第 4 級｜33,300 元', salary:33300, salaryText:'33,300 元', selfPayText:'依勞保局級距計算', group:'regular' },
+    { code:'LAB_REG_34800', name:'第 5 級｜34,800 元', salary:34800, salaryText:'34,800 元', selfPayText:'依勞保局級距計算', group:'regular' },
+    { code:'LAB_REG_36300', name:'第 6 級｜36,300 元', salary:36300, salaryText:'36,300 元', selfPayText:'依勞保局級距計算', group:'regular' },
+    { code:'LAB_REG_38200', name:'第 7 級｜38,200 元', salary:38200, salaryText:'38,200 元', selfPayText:'依勞保局級距計算', group:'regular' },
+    { code:'LAB_REG_40100', name:'第 8 級｜40,100 元', salary:40100, salaryText:'40,100 元', selfPayText:'依勞保局級距計算', group:'regular' },
+    { code:'LAB_REG_42000', name:'第 9 級｜42,000 元', salary:42000, salaryText:'42,000 元', selfPayText:'依勞保局級距計算', group:'regular' },
+    { code:'LAB_REG_43900', name:'第 10 級｜43,900 元', salary:43900, salaryText:'43,900 元', selfPayText:'依勞保局級距計算', group:'regular' },
+    { code:'LAB_REG_45800', name:'第 11 級｜45,800 元', salary:45800, salaryText:'45,800 元', selfPayText:'依勞保局級距計算', group:'regular' }
+  ];
+  const DEFAULT_HEALTH_PLANS = [28590,28800,30300,31800,33300,34800,36300,38200,40100,42000,43900,45800,48200,50600,53000,55400,57800,60800,63800,66800,69800,72800,76500,80200,83900,87600,92100,96600,101100,105600,110100,115500,120900,126300,131700,137100,142500,147900,150000]
+    .map(function(v, i){ return { code:'NHI_' + v, name:'健保｜第 ' + (i + 1) + ' 級｜' + v.toLocaleString('zh-TW') + ' 元', salary:v, salaryText:v.toLocaleString('zh-TW') + ' 元', selfPayText:'依健保署級距計算' }; });
+
+  function identityTypeOf(raw){
+    raw = raw || {};
+    const t = lower(pick(raw, ['identityType','employeeType','type','身分類型'], ''));
+    const label = clean(pick(raw, ['identityLabel','role','職務類型','聘用類型'], ''));
+    if(t === 'parttime' || label.includes('工讀') || truthy(pick(raw, ['isPartTime','是否工讀生'], ''))) return 'parttime';
+    if(t === 'external' || label.includes('外聘') || label.includes('老師')) return 'external';
+    if(t === 'admin') return 'admin';
+    return 'staff';
+  }
+  function identityLabel(type){
+    return type === 'parttime' ? '工讀生' : (type === 'external' ? '外聘老師' : (type === 'admin' ? '管理者' : '專職員工'));
+  }
+  function idList(payload, employee){
+    const u = localUser();
+    return uniq([
+      payload && payload.employeeId, payload && payload.userId, payload && payload.id, payload && payload.adminId,
+      employee && employee.employeeId, employee && employee.id, employee && employee.userId, employee && employee.__id,
+      u.employeeId, u.id, u.userId
+    ]);
+  }
+  function emailList(payload, employee){
+    const u = localUser();
+    return uniq([payload && payload.email, payload && payload.Email, employee && employee.email, employee && employee.Email, u.email, u.Email]).map(lower).filter(Boolean);
+  }
+  async function getDoc(col, id){
+    const d = db(); if(!d || !id) return null;
+    try{ const snap = await d.collection(col).doc(id).get(); return snap.exists ? Object.assign({__id:snap.id}, snap.data() || {}) : null; }catch(e){ return null; }
+  }
+  async function queryOne(col, field, value){
+    const d = db(); if(!d || !field || !value) return null;
+    try{ const snap = await d.collection(col).where(field,'==',value).limit(1).get(); return snap.empty ? null : Object.assign({__id:snap.docs[0].id}, snap.docs[0].data() || {}); }catch(e){ return null; }
+  }
+  async function allLimited(col, limit){
+    const d = db(); if(!d) return [];
+    try{
+      const snap = await d.collection(col).limit(limit || 10).get();
+      const rows = [];
+      snap.forEach(function(doc){ rows.push(Object.assign({__id:doc.id}, doc.data() || {})); });
+      return rows;
+    }catch(e){ return []; }
+  }
+  async function allDocs(col){
+    const d = db(); if(!d) return [];
+    try{
+      const snap = await d.collection(col).get();
+      const rows = [];
+      snap.forEach(function(doc){ rows.push(Object.assign({__id:doc.id}, doc.data() || {})); });
+      return rows;
+    }catch(e){ return []; }
+  }
+  async function findEmployee(payload){
+    const ids = idList(payload || {}, {});
+    for(const id of ids){ const x = await getDoc('employees', id); if(x) return x; }
+    for(const id of ids){
+      const a = await queryOne('employees','employeeId',id); if(a) return a;
+      const b = await queryOne('employees','id',id); if(b) return b;
+      const c = await queryOne('employees','userId',id); if(c) return c;
+    }
+    for(const email of emailList(payload || {}, {})){
+      const a = await queryOne('employees','email',email); if(a) return a;
+      const b = await queryOne('employees','Email',email); if(b) return b;
+    }
+    return null;
+  }
+  function hasSalaryFields(raw){
+    raw = raw || {};
+    const keys = ['baseSalary','staffBaseSalary','monthlySalary','salary','hourlyRate','parttimeHourlyRate','averageSalary','laborStatus','healthStatus','laborPlan','healthPlan','selfRetirementEnabled','selfRetirementRate','effectiveDate','note','jobAllowances','allowances','職務加給','津貼','本薪','時薪','勞保狀態','健保狀態'];
+    return keys.some(function(k){
+      const v = raw[k];
+      if(Array.isArray(v)) return v.length > 0;
+      return meaningful(v);
+    });
+  }
+  function configFromMapContainer(container, ids, emails){
+    const maps = [container && container.employeeConfigMap, container && container.salaryConfigMap, container && container.configMap, container && container.configs, container && container.employeeConfigs].filter(Boolean);
+    for(const m of maps){
+      for(const id of ids){ if(m && m[id] && typeof m[id] === 'object') return Object.assign({employeeId:id}, m[id]); }
+      for(const email of emails){ if(m && m[email] && typeof m[email] === 'object') return Object.assign({email:email}, m[email]); }
+      for(const k of objectKeys(m)){
+        const row = m[k] || {};
+        const rowIds = [row.employeeId,row.id,row.userId,row.__id,k].map(clean).filter(Boolean);
+        const rowEmails = [row.email,row.Email].map(lower).filter(Boolean);
+        if(rowIds.some(function(x){ return ids.includes(x); }) || rowEmails.some(function(x){ return emails.includes(x); })) return Object.assign({employeeId:k}, row);
+      }
+    }
+    const arrs = [container && container.employees, container && container.rows, container && container.list, container && container.employeeConfigsList].filter(Array.isArray);
+    for(const arr of arrs){
+      for(const row of arr){
+        const rowIds = [row && row.employeeId,row && row.id,row && row.userId,row && row.__id].map(clean).filter(Boolean);
+        const rowEmails = [row && row.email,row && row.Email].map(lower).filter(Boolean);
+        if(rowIds.some(function(x){ return ids.includes(x); }) || rowEmails.some(function(x){ return emails.includes(x); })) return row;
+      }
+    }
+    return null;
+  }
+  async function findSalaryConfig(payload, employee){
+    const ids = idList(payload || {}, employee || {});
+    const emails = emailList(payload || {}, employee || {});
+    const cols = ['employeeSalaryConfigs','salaryConfigs','employeeSalarySettings','salaryProfiles'];
+    for(const col of cols){
+      for(const id of ids){ const x = await getDoc(col, id); if(x && hasSalaryFields(x)) return x; }
+    }
+    for(const col of cols){
+      for(const id of ids){
+        const a = await queryOne(col,'employeeId',id); if(a && hasSalaryFields(a)) return a;
+        const b = await queryOne(col,'userId',id); if(b && hasSalaryFields(b)) return b;
+        const c = await queryOne(col,'id',id); if(c && hasSalaryFields(c)) return c;
+      }
+      for(const email of emails){
+        const a = await queryOne(col,'email',email); if(a && hasSalaryFields(a)) return a;
+        const b = await queryOne(col,'Email',email); if(b && hasSalaryFields(b)) return b;
+      }
+    }
+    const setupDocs = [];
+    for(const id of ['default','current','main','setup','settings','salarySetup','salarySettings','global']){
+      const a = await getDoc('salarySetup', id); if(a) setupDocs.push(a);
+      const b = await getDoc('salarySettings', id); if(b) setupDocs.push(b);
+    }
+    if(!setupDocs.length){
+      const more = (await allLimited('salarySetup', 8)).concat(await allLimited('salarySettings', 8));
+      more.forEach(function(x){ setupDocs.push(x); });
+    }
+    for(const doc of setupDocs){
+      const cfg = configFromMapContainer(doc, ids, emails);
+      if(cfg && hasSalaryFields(cfg)) return cfg;
+      if(hasSalaryFields(doc)){
+        const rowIds = [doc.employeeId,doc.id,doc.userId,doc.__id].map(clean).filter(Boolean);
+        const rowEmails = [doc.email,doc.Email].map(lower).filter(Boolean);
+        if(rowIds.some(function(x){ return ids.includes(x); }) || rowEmails.some(function(x){ return emails.includes(x); })) return doc;
+      }
+    }
+    return null;
+  }
+  function normalizeProfile(raw){
+    raw = raw || {};
+    const type = identityTypeOf(raw);
+    return {
+      employeeId: clean(pick(raw, ['employeeId','id','userId','員工ID'], raw.__id)),
+      id: clean(pick(raw, ['employeeId','id','userId','員工ID'], raw.__id)),
+      name: clean(pick(raw, ['name','displayName','姓名'], '')),
+      identityType:type,
+      identityLabel: identityLabel(type),
+      isPartTime:type === 'parttime',
+      email: lower(pick(raw, ['email','Email'], '')),
+      birthDate: fmtDate(pick(raw, ['birthDate','birthday','出生年月日'], '')),
+      idNumberMasked: clean(raw.idNumberMasked) || maskId(pick(raw, ['idNumber','身分證字號'], '')),
+      hireDate: fmtDate(pick(raw, ['hireDate','startDate','joinDate','到職日','任職日期'], '')),
+      mobilePhone: clean(pick(raw, ['mobilePhone','phone','mobile','行動電話'], '')),
+      address: clean(pick(raw, ['address','contactAddress','聯絡地址'], '')),
+      emergencyContact: clean(pick(raw, ['emergencyContact','緊急聯絡人'], '')),
+      emergencyPhone: clean(pick(raw, ['emergencyPhone','emergencyContactPhone','緊急聯絡人電話'], ''))
+    };
+  }
+  function lineItemsText(rows){
+    if(!Array.isArray(rows) || !rows.length) return '';
+    return rows.map(function(x){
+      if(typeof x === 'string') return clean(x);
+      const name = clean(x && (x.name || x.title || x.label || x.itemName || x['名稱']));
+      const amount = money(x && (x.amount || x.value || x.money || x['金額']));
+      if(!name && !amount) return '';
+      return (name || '項目') + (amount ? '：' + amount : '');
+    }).filter(Boolean).join('\n');
+  }
+  function parsePlanSalary(code){ const m = clean(code).match(/(\d{4,6})/); return m ? Number(m[1]) : 0; }
+  function findPlan(list, code){
+    const c = clean(code);
+    if(!c) return null;
+    return (list || []).find(function(x){ return [x.code,x.planCode,x.id,x.salary,x.salaryText,x.name,x.label].map(clean).includes(c); }) || null;
+  }
+  function planText(plan, fallback, type){
+    if(plan) return clean(plan.name || plan.label || plan.salaryText || (plan.salary ? money(plan.salary) : ''));
+    const f = clean(fallback);
+    if(!f) return '';
+    const s = parsePlanSalary(f);
+    return s ? ((type === 'health' ? '健保' : '勞保') + '｜' + s.toLocaleString('zh-TW') + ' 元') : f;
+  }
+  function planSalaryText(plan, fallback){
+    if(plan) return clean(plan.salaryText || (plan.salary ? money(plan.salary) : ''));
+    const s = parsePlanSalary(fallback);
+    return s ? money(s) : '';
+  }
+  function insuranceActive(status){ return ['在保','已投保','投保','加保','有效','是'].includes(clean(status)); }
+  function boolText(v){
+    if(v === true) return '是';
+    if(v === false) return '否';
+    const s = clean(v);
+    return s;
+  }
+  function normalizeSalary(raw){
+    raw = raw || {};
+    const type = identityTypeOf(raw);
+    const isParttime = type === 'parttime';
+    const baseSalary = pick(raw, ['baseSalary','staffBaseSalary','monthlySalary','salary','本薪','月薪'], '');
+    const hourlyRate = pick(raw, ['hourlyRate','parttimeHourlyRate','hourRate','時薪'], '');
+    const averageSalary = pick(raw, ['averageSalary','parttimeAverageSalary','averageSalaryText','目前申報月平均薪資總額'], '');
+    const partialHours = pick(raw, ['isPartialHours','isPartialWorkingTime','partialWorkingTime','是否部分工時'], '');
+    const laborStatus = meaningful(pick(raw, ['laborStatus','laborInsuranceStatus','laborInsurance','勞保狀態'], '')) ? clean(pick(raw, ['laborStatus','laborInsuranceStatus','laborInsurance','勞保狀態'], '')) : '';
+    const healthStatus = meaningful(pick(raw, ['healthStatus','healthInsuranceStatus','healthInsurance','健保狀態'], '')) ? clean(pick(raw, ['healthStatus','healthInsuranceStatus','healthInsurance','健保狀態'], '')) : '';
+    const laborActive = insuranceActive(laborStatus);
+    const healthActive = insuranceActive(healthStatus);
+    const laborPlanCode = pick(raw, ['laborPlan','laborPlanCode','laborInsuranceLevel','laborLevel','勞保級距'], '');
+    const healthPlanCode = pick(raw, ['healthPlan','healthPlanCode','healthInsuranceLevel','healthLevel','健保級距'], '');
+    const laborPlan = findPlan(DEFAULT_LABOR_PLANS, laborPlanCode);
+    const healthPlan = findPlan(DEFAULT_HEALTH_PLANS, healthPlanCode);
+    const laborSelfPay = pick(raw, ['laborSelfPayText','laborInsuranceSelfPay','laborSelfPay','勞保自付額'], '');
+    const healthSelfPay = pick(raw, ['healthSelfPayText','healthInsuranceSelfPay','healthSelfPay','健保自付額'], '');
+    const retirementBase = num((laborPlan && laborPlan.salary) || averageSalary || baseSalary || 0);
+    const employerRetirementAmount = laborActive && retirementBase ? Math.round(retirementBase * 0.06) : 0;
+    const selfRetirementEnabled = pick(raw, ['selfRetirementEnabled','laborRetirementSelfEnabled','勞退自提'], '');
+    const selfRetirementRate = pick(raw, ['selfRetirementRate','laborRetirementSelfRate','勞退自提比率'], '');
+    const selfEnabled = truthy(selfRetirementEnabled);
+    const selfAmount = laborActive && selfEnabled && num(selfRetirementRate) && retirementBase ? Math.round(retirementBase * num(selfRetirementRate) / 100) : 0;
+    const jobAllowance = pick(raw, ['jobAllowanceText','jobAllowance','職務加給'], '') || lineItemsText(raw.jobAllowances || raw.jobAllowanceItems || []);
+    const allowance = pick(raw, ['allowanceText','allowance','津貼'], '') || lineItemsText(raw.allowances || raw.allowanceItems || []);
+    return {
+      employeeId: clean(pick(raw, ['employeeId','id','userId','員工ID'], raw.__id)),
+      name: clean(pick(raw, ['name','displayName','姓名'], '')),
+      email: lower(pick(raw, ['email','Email'], '')),
+      identityType:type,
+      identityLabel: identityLabel(type),
+      staffBaseSalaryText: !isParttime && meaningful(baseSalary) ? money(baseSalary) : '',
+      parttimeHourlyRateText: isParttime && meaningful(hourlyRate) ? money(hourlyRate) + ' / 小時' : '',
+      mainAmountText: isParttime ? (meaningful(hourlyRate) ? money(hourlyRate) + ' / 小時' : '') : (meaningful(baseSalary) ? money(baseSalary) : ''),
+      parttimePartialHoursText: isParttime && meaningful(partialHours) ? boolText(partialHours) : '',
+      parttimeAverageSalaryText: isParttime && meaningful(averageSalary) ? money(averageSalary) : '',
+      jobAllowanceText: meaningful(jobAllowance) ? clean(jobAllowance) : '',
+      allowanceText: meaningful(allowance) ? clean(allowance) : '',
+      effectiveDate: fmtDate(pick(raw, ['effectiveDate','salaryEffectiveDate','生效日期'], '')),
+      note: meaningful(pick(raw, ['note','salaryNote','備註'], '')) ? clean(pick(raw, ['note','salaryNote','備註'], '')) : '',
+      laborStatus: laborStatus,
+      laborPlanText: laborActive ? planText(laborPlan, laborPlanCode, 'labor') : '',
+      laborLevelText: laborActive ? planText(laborPlan, laborPlanCode, 'labor') : '',
+      laborSalaryText: laborActive ? planSalaryText(laborPlan, laborPlanCode) : '',
+      laborSelfPayText: laborActive && meaningful(laborSelfPay) ? (money(laborSelfPay) || clean(laborSelfPay)) : '',
+      retirementEmployerText: laborActive ? ('6%' + (employerRetirementAmount ? '｜' + money(employerRetirementAmount) : '')) : '',
+      selfRetirementText: laborActive && selfEnabled ? ((percent(selfRetirementRate) || '已開啟') + (selfAmount ? '｜' + money(selfAmount) : '')) : '',
+      healthStatus: healthStatus,
+      healthPlanText: healthActive ? planText(healthPlan, healthPlanCode, 'health') : '',
+      healthLevelText: healthActive ? planText(healthPlan, healthPlanCode, 'health') : '',
+      healthSalaryText: healthActive ? planSalaryText(healthPlan, healthPlanCode) : '',
+      healthSelfPayText: healthActive && meaningful(healthSelfPay) ? (money(healthSelfPay) || clean(healthSelfPay)) : '',
+      baseSalary: meaningful(baseSalary) ? money(baseSalary) : '',
+      hourlyRate: meaningful(hourlyRate) ? money(hourlyRate) + ' / 小時' : '',
+      averageSalary: meaningful(averageSalary) ? money(averageSalary) : '',
+      isPartialHours: meaningful(partialHours) ? boolText(partialHours) : '',
+      rawConfig: raw
+    };
+  }
+  function employeeOption(row){
+    row = row || {};
+    const profile = normalizeProfile(row);
+    return {
+      id: profile.employeeId || clean(row.__id),
+      employeeId: profile.employeeId || clean(row.__id),
+      name: profile.name,
+      email: profile.email,
+      identityType: profile.identityType,
+      identityLabel: profile.identityLabel,
+      isPartTime: profile.isPartTime,
+      accountStatus: clean(pick(row, ['accountStatus','帳號狀態'], 'active')) || 'active'
+    };
+  }
+  function configFromPayload(payload, employee){
+    payload = payload || {};
+    const type = identityTypeOf(Object.assign({}, employee || {}, payload));
+    const isParttime = type === 'parttime';
+    return {
+      salaryDisplayType: isParttime ? 'PARTTIME_DIRECT' : 'STAFF_DIRECT',
+      employeeId: clean(payload.employeeId || payload.id || payload.userId || employee && (employee.employeeId || employee.id || employee.__id)),
+      name: clean(employee && employee.name),
+      email: lower(payload.email || employee && (employee.email || employee.Email)),
+      identityType:type,
+      baseSalary: isParttime ? 0 : num(payload.baseSalary),
+      hourlyRate: isParttime ? num(payload.hourlyRate) : 0,
+      isPartialHours: isParttime ? (clean(payload.isPartialHours) || '否') : '否',
+      averageSalary: isParttime ? num(payload.averageSalary) : 0,
+      laborPlan: clean(payload.laborPlan),
+      healthPlan: clean(payload.healthPlan),
+      laborStatus: clean(payload.laborStatus),
+      healthStatus: clean(payload.healthStatus),
+      selfRetirementEnabled: clean(payload.selfRetirementEnabled || '否') || '否',
+      selfRetirementRate: num(payload.selfRetirementRate),
+      effectiveDate: fmtDate(payload.effectiveDate) || clean(payload.effectiveDate),
+      note: clean(payload.note),
+      jobAllowances: Array.isArray(payload.jobAllowances) ? payload.jobAllowances : [],
+      allowances: Array.isArray(payload.allowances) ? payload.allowances : [],
+      salaryUpdatedAt: serverTs(),
+      updatedAt: serverTs(),
+      source:'firebase-mydata-map2'
+    };
+  }
+  async function getMyProfileFull(payload){
+    const employee = await findEmployee(payload || {});
+    if(!employee) return {ok:false, message:'Firebase 找不到員工資料'};
+    const cfg = await findSalaryConfig(payload || {}, employee).catch(function(){ return null; });
+    const merged = Object.assign({}, employee || {}, cfg || {});
+    const profile = normalizeProfile(merged);
+    const salary = normalizeSalary(merged);
+    return {ok:true, source:cfg ? 'firebase-profile-employeeConfigMap' : 'firebase-profile-employees', profile:profile, salary:salary, info:salary};
+  }
+  async function getMySalaryInfo(payload){
+    const employee = await findEmployee(payload || {});
+    const cfg = await findSalaryConfig(payload || {}, employee || {}).catch(function(){ return null; });
+    const merged = Object.assign({}, employee || {}, cfg || {});
+    if(!employee && !cfg) return {ok:false, message:'Firebase 找不到薪資投保資料'};
+    const salary = normalizeSalary(merged);
+    return {ok:true, source:cfg ? 'firebase-salary-employeeConfigMap' : 'firebase-salary-employees', info:salary, salary:salary};
+  }
+  async function saveEmployeeSalaryConfig(payload){
+    const d = db();
+    if(!d) return {ok:false, message:'Firebase 尚未啟用'};
+    payload = payload || {};
+    const employeeId = clean(payload.employeeId || payload.id || payload['員工ID']);
+    if(!employeeId) return {ok:false, message:'缺少員工ID'};
+    const employee = await findEmployee({employeeId:employeeId, userId:employeeId, email:payload.email}).catch(function(){ return null; });
+    const docId = clean(employee && employee.__id) || employeeId;
+    const data = configFromPayload(payload, employee || {employeeId:employeeId});
+    await d.collection('employees').doc(docId).set(data, {merge:true});
+    await d.collection('employeeSalaryConfigs').doc(employeeId).set(data, {merge:true});
+    await d.collection('salarySetup').doc('default').set({employeeConfigMap:{[employeeId]:data}, updatedAt:serverTs(), source:'firebase-mydata-map2'}, {merge:true});
+    return {ok:true, message:'薪資設定已儲存。', employeeId:employeeId, employeeConfig:data};
+  }
+  async function getSalarySetupOptions(){
+    const employeesRaw = await allDocs('employees');
+    const cfgRows = await allDocs('employeeSalaryConfigs');
+    const setupRows = (await allLimited('salarySetup', 10)).concat(await allLimited('salarySettings', 10));
+    const employees = employeesRaw.map(employeeOption).filter(function(x){ return x.id && ['staff','parttime'].includes(x.identityType) && lower(x.accountStatus) !== 'rejected'; });
+    const employeeConfigMap = {};
+    employees.forEach(function(emp){
+      const base = employeesRaw.find(function(r){ return clean(r.__id) === emp.id || clean(r.employeeId) === emp.id || clean(r.id) === emp.id || lower(r.email || r.Email) === lower(emp.email); }) || {};
+      const direct = cfgRows.find(function(r){ return clean(r.__id) === emp.id || clean(r.employeeId) === emp.id || clean(r.id) === emp.id || lower(r.email || r.Email) === lower(emp.email); }) || {};
+      let mapped = {};
+      const ids = idList({employeeId:emp.id, id:emp.id, email:emp.email}, emp);
+      const emails = emailList({email:emp.email}, emp);
+      for(const row of setupRows){
+        const x = configFromMapContainer(row, ids, emails);
+        if(x && hasSalaryFields(x)){ mapped = x; break; }
+      }
+      employeeConfigMap[emp.id] = Object.assign({}, hasSalaryFields(base) ? base : {}, hasSalaryFields(direct) ? direct : {}, hasSalaryFields(mapped) ? mapped : {});
+    });
+    return {ok:true, source:'firebase-salary-setup-map2', employees:employees, employeeConfigMap:employeeConfigMap, laborPlans:DEFAULT_LABOR_PLANS, healthPlans:DEFAULT_HEALTH_PLANS};
+  }
+
+  fb.handleApi = async function(action, payload){
+    const a = clean(action);
+    if(a === 'getMyProfileFull' || a === 'getMyDataFull') return await getMyProfileFull(payload || {});
+    if(a === 'getMySalaryInfo') return await getMySalaryInfo(payload || {});
+    if(a === 'getSalarySetupOptions') return await getSalarySetupOptions(payload || {});
+    if(a === 'saveEmployeeSalaryConfig') return await saveEmployeeSalaryConfig(payload || {});
+    if(a === 'getMyProfile'){
+      const res = await getMyProfileFull(payload || {});
+      return res.ok === false ? res : {ok:true, source:res.source, profile:res.profile || {}};
+    }
+    if(typeof previousHandle === 'function') return await previousHandle(action, payload || {});
+    return null;
+  };
+  fb.__myDataFirebaseOnlySalaryMap2V20260528 = true;
+  global.YZFirebase = fb;
+})(window);
