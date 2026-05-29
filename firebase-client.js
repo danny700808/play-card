@@ -1455,7 +1455,7 @@
         const kind = clean(c.requestKind || c['申請種類']);
         return status === '待審核' && kind === 'specialClock' && dateText(c.correctDate || c['修正日期']) === clockDate && clean(c.correctAction || c.actionName || c['修正動作']) === actionName && clean(c.scheduleKey) === key;
       });
-      if(pending) return {ok:false, message:'這一段班表已經送出特殊打卡申請，請等待主管審核。', requestId:clean(pending.requestId || pending.__id)};
+      if(pending) return {ok:false, message:'這一段班表已經送出特殊打卡申請，待主管審核。主管審核會更新，並自動歸位。', requestId:clean(pending.requestId || pending.__id)};
       const requestId = 'SPCLK_' + employeeId + '_' + clockDate.replace(/-/g,'') + '_' + (actionName.indexOf('下班') >= 0 ? 'OUT' : 'IN') + '_' + Date.now();
       const row = {
         requestId,
@@ -1493,7 +1493,7 @@
         createdAt:serverTs()
       };
       await setDoc('clockCorrections', requestId, row);
-      return {ok:true, message:'特殊打卡申請已送出，請等待主管審核。主管核准後會計入正式打卡紀錄。', requestId, specialClockPending:true, row};
+      return {ok:true, message:'特殊打卡申請已送出，待主管審核。主管審核會更新，並自動歸位。', requestId, specialClockPending:true, row};
     }
 
     if(clockType === '標準打卡' && actionName.indexOf('上班') >= 0){
@@ -1616,7 +1616,7 @@
   global.YZFirebase = fb;
 })(window);
 
-/* 打卡紀錄讀取修正：讓今日／昨日與歷史查詢直接讀 Firebase clockRecords */
+/* 打卡紀錄讀取修正：讓近期與歷史查詢直接讀 Firebase clockRecords */
 (function(global){
   const fb = global.YZFirebase;
   if(!fb || fb.__clockHistoryReadFixV20260528) return;
@@ -1992,6 +1992,19 @@
   function approvedAllDayLeaveForDate(leaves, dateKey){
     return (leaves || []).find(row => leaveCoversDate(row, dateKey) && isApprovedAllDayLeave(row)) || null;
   }
+  function approvedLeaveCoversSchedule(leaves, dateKey, schedule){
+    const sStart = minutes(schedule && schedule.startTime);
+    const sEnd = minutes(schedule && schedule.endTime);
+    return (leaves || []).find(row => {
+      if(!leaveCoversDate(row, dateKey)) return false;
+      if(clean(row.status || row['狀態']) !== '已核准') return false;
+      if(isApprovedAllDayLeave(row)) return true;
+      const st = minutes(row.startTime || row['請假開始時間']);
+      const en = minutes(row.endTime || row['請假結束時間']);
+      if(!Number.isFinite(st) || !Number.isFinite(en) || !Number.isFinite(sStart) || !Number.isFinite(sEnd)) return false;
+      return st <= sStart && en >= sEnd;
+    }) || null;
+  }
   function pendingMissingCorrection(corrections, issue, action){
     return (corrections || []).find(c => isPending(c) && c.requestKind === 'missingClock' && c.scheduleDate === issue.date && clean(c.scheduleKey) === clean(issue.scheduleKey) && clean(c.correctAction) === clean(action)) || null;
   }
@@ -2085,13 +2098,14 @@
         const s = Object.assign({}, s0 || {}, {date: dateText(s0 && s0.date) || dateKey});
         const key = scheduleKeyOf(s);
         if(!key) continue;
+        if(approvedLeaveCoversSchedule(leaves, dateKey, s)) continue;
         const actions = [];
         if(shortTime(s.startTime)) actions.push('上班打卡');
         if(shortTime(s.endTime)) actions.push('下班打卡');
         if(!actions.length) continue;
-        const baseIssueForPending = {date:dateKey, scheduleKey:key};
-        const missing = actions.filter(action => actionIsDue(s, action, dateKey) && !existingRecordFor(s, action, clockRows) && !pendingAnyClockRequest(corrections, baseIssueForPending, action));
-        if(!missing.length) continue;
+        const dueMissingActions = actions.filter(action => actionIsDue(s, action, dateKey) && !existingRecordFor(s, action, clockRows));
+        if(!dueMissingActions.length) continue;
+
         const issue = {
           issueKey: dateKey + '|' + key,
           employeeId,
@@ -2105,21 +2119,45 @@
           defaultClockType:(Array.isArray(s.allowedClockTypes) && s.allowedClockTypes.indexOf('標準打卡') >= 0) ? '標準打卡' : (clean(s.clockType) || '標準打卡'),
           sourceLabel:clean(s.sourceLabel),
           schedule:s,
-          missingActions:missing,
+          missingActions:dueMissingActions,
           pendingCorrection:false,
           pendingCorrectionId:'',
+          pendingCorrectionAction:'',
+          pendingSpecialClock:false,
+          pendingSpecialClockId:'',
           pendingLeave:false,
           pendingLeaveId:''
         };
-        const pm = missing.map(action => pendingMissingCorrection(corrections, issue, action)).find(Boolean);
-        const pl = pendingLeaveForDate(leaves, dateKey);
-        if(pm){ issue.pendingCorrection = true; issue.pendingCorrectionId = pm.requestId; }
-        if(pl){ issue.pendingLeave = true; issue.pendingLeaveId = clean(pl.requestId || pl.leaveId || pl.__id); }
+
+        const pendingLeave = pendingLeaveForDate(leaves, dateKey);
+        if(pendingLeave){
+          issue.pendingLeave = true;
+          issue.pendingLeaveId = clean(pendingLeave.requestId || pendingLeave.leaveId || pendingLeave.__id);
+          issues.push(issue);
+          continue;
+        }
+
+        const pendingMissing = dueMissingActions.map(action => pendingMissingCorrection(corrections, issue, action)).find(Boolean);
+        if(pendingMissing){
+          issue.pendingCorrection = true;
+          issue.pendingCorrectionId = pendingMissing.requestId;
+          issue.pendingCorrectionAction = clean(pendingMissing.correctAction || pendingMissing.actionName || pendingMissing['修正動作']);
+          issues.push(issue);
+          continue;
+        }
+
+        const pendingSpecial = dueMissingActions.map(action => pendingSpecialClock(corrections, issue, action)).find(Boolean);
+        if(pendingSpecial){
+          // 特殊打卡待審核會在「待處理事項」上方以獨立綠色卡片顯示，這裡不再重複顯示缺卡按鈕。
+          continue;
+        }
+
         issues.push(issue);
       }
     }
     return {ok:true, rows:issues, count:issues.length};
   }
+
   function generatedId(prefix){ return prefix + '_' + Date.now() + '_' + Math.random().toString(36).slice(2,8); }
   function correctionOriginalFields(record){
     const r = normalizeClock(record || {});
@@ -2157,7 +2195,7 @@
       if(!correctDate || !correctTime || !correctAction || !scheduleKey) return {ok:false, message:'缺少補打卡日期、時間或班表資料。'};
       const issue = {date:correctDate, scheduleKey};
       const pending = pendingMissingCorrection(corrections, issue, correctAction);
-      if(pending) return {ok:false, message:'這一段班表已經送出補打卡申請，請等待主管審核。', requestId:pending.requestId};
+      if(pending) return {ok:false, message:'這一段班表已經送出補打卡申請，待主管審核。主管審核會更新，並自動歸位。', requestId:pending.requestId};
       const clockRows = await readClockRows({employeeId, userId:employeeId}).catch(()=>[]);
       const snap = Object.assign({}, p.scheduleSnapshot || {}, {date:correctDate, scheduleKey});
       if(existingRecordFor(snap, correctAction, clockRows)) return {ok:false, message:'這一段班表已經有該打卡紀錄，不需要補打卡。'};
@@ -2194,7 +2232,7 @@
         createdAt:serverTs()
       };
       await docSet('clockCorrections', requestId, row);
-      return {ok:true, message:'補打卡申請已送出，請等待主管審核。', requestId, row};
+      return {ok:true, message:'補打卡申請已送出，待主管審核。主管審核會更新，並自動歸位。', requestId, row};
     }
 
     const originalRecordId = clean(p.originalRecordId);
@@ -2203,7 +2241,7 @@
     if(!original) return {ok:false, message:'找不到原始打卡紀錄，請重新整理後再試。'};
     const norm = normalizeClock(original);
     const pending = pendingRecordCorrection(corrections, norm.recordId || originalRecordId);
-    if(pending) return {ok:false, message:'這筆打卡紀錄已送出修正申請，請等待主管審核。', requestId:pending.requestId};
+    if(pending) return {ok:false, message:'這筆打卡紀錄已送出修正申請，待主管審核。主管審核會更新，並自動歸位。', requestId:pending.requestId};
     const correctDate = dateText(p.correctDate || norm.date);
     const correctTime = timeText(p.correctTime || norm.time);
     if(!correctDate || !correctTime) return {ok:false, message:'請填寫正確日期與時間。'};
@@ -2233,7 +2271,7 @@
       createdAt:serverTs()
     });
     await docSet('clockCorrections', requestId, row);
-    return {ok:true, message:'打卡修正申請已送出，請等待主管審核。', requestId, row};
+    return {ok:true, message:'打卡修正申請已送出，待主管審核。主管審核會更新，並自動歸位。', requestId, row};
   }
   function statusBySchedule(action, clockType, correctTime, scheduleStart, scheduleEnd, supplement){
     const t = minutes(correctTime);

@@ -40,23 +40,25 @@
     .clock-mode-screen .mode-note{font-size:14px;color:#6b7280;line-height:1.6;margin-bottom:12px}
     .clock-back-btn{background:#374151!important;color:#fff!important;border:0!important}
 
-    .today-schedule-box{border:1px solid #dbe5df;background:#f8fbf9;border-radius:16px;padding:10px 12px;margin:12px 0;color:#183028}
-    .today-schedule-box .schedule-head{font-weight:900;font-size:16px;margin-bottom:4px}
-    .today-schedule-box .schedule-text{font-size:14px;line-height:1.45;white-space:normal}
+    .today-schedule-box{border:1px solid #dbe5df;background:#f8fbf9;border-radius:18px;padding:14px 16px;margin:14px 0;color:#183028}
+    .today-schedule-box .schedule-head{font-weight:900;font-size:17px;margin-bottom:6px}
+    .today-schedule-box .schedule-text{font-size:15px;line-height:1.6;white-space:pre-line}
     .today-schedule-box.ready{background:#f0fdf4;border-color:#bbf7d0}
     .today-schedule-box.warning{background:#fff7ed;border-color:#fed7aa}
     .today-schedule-box.error{background:#fef2f2;border-color:#fecaca}
     .today-schedule-box.loading{background:#f8fafc;border-color:#e2e8f0;color:#64748b}
 
-    .schedule-count-note{font-size:13px;font-weight:800;color:#166534;margin:2px 0 8px;line-height:1.45}
-    .schedule-list{display:grid;gap:8px;margin-top:6px}
-    .schedule-card{border:1px solid #d1d5db;background:#fff;border-radius:14px;padding:9px 10px;cursor:pointer;transition:background .15s,border-color .15s,box-shadow .15s}
+    .schedule-list{display:grid;gap:10px;margin-top:10px}
+    .schedule-card{border:1px solid #d1d5db;background:#fff;border-radius:16px;padding:12px}
     .schedule-card.selected{border-color:#1f7a5a;background:#ecfdf5;box-shadow:0 0 0 2px rgba(31,122,90,.08)}
-    .schedule-card .schedule-line-main{display:flex;justify-content:space-between;gap:8px;align-items:center;font-size:15px;font-weight:900;color:#111827;line-height:1.4}
-    .schedule-card .schedule-main-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .schedule-card .schedule-status{font-size:13px;font-weight:800;margin-top:3px;color:#92400e;line-height:1.35}
+    .schedule-card .schedule-row{display:flex;justify-content:space-between;gap:8px;align-items:flex-start;flex-wrap:wrap}
+    .schedule-card .schedule-name{font-weight:900;color:#111827}
+    .schedule-card .schedule-time{font-size:18px;font-weight:900;color:#064e3b;margin-top:4px}
+    .schedule-card .schedule-meta{font-size:13px;color:#4b5563;line-height:1.6;margin-top:5px}
+    .schedule-card .schedule-status{font-size:14px;font-weight:800;margin-top:7px;color:#92400e}
     .schedule-card.selected .schedule-status{color:#065f46}
-    .schedule-selected-chip{flex:0 0 auto;border:1px solid #1f7a5a;background:#1f7a5a;color:#fff;border-radius:999px;padding:2px 7px;font-size:11px;font-weight:900;line-height:1.5}
+    .schedule-select-btn{border:1px solid #1f7a5a;background:#1f7a5a;color:#fff;border-radius:999px;padding:8px 12px;font-size:13px;font-weight:900;cursor:pointer}
+    .schedule-card.selected .schedule-select-btn{background:#145f46;border-color:#145f46}
     .choice-modal{position:fixed;inset:0;z-index:9999;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;padding:18px}
     .choice-modal.hidden{display:none!important}
     .choice-card{width:min(560px,100%);background:#fff;border-radius:22px;padding:18px;box-shadow:0 24px 70px rgba(15,23,42,.25)}
@@ -71,9 +73,16 @@
     .missing-clock-note{font-size:14px;color:#6b7280;line-height:1.6;margin-bottom:10px}
     .missing-clock-list{display:grid;gap:10px}
     .missing-clock-card{border:1px solid #fecaca;background:#fff1f2;border-radius:16px;padding:12px;color:#7f1d1d}
-    .missing-clock-card.pending{border-color:#fde68a;background:#fffbeb;color:#78350f}
+    .missing-clock-card.pending{border-color:#bbf7d0;background:#f0fdf4;color:#166534}
     .missing-clock-card .missing-head{font-weight:900;font-size:16px;color:inherit;margin-bottom:4px}
     .missing-clock-card .missing-meta{font-size:14px;line-height:1.6;color:inherit}
+    .pending-review-list{display:grid;gap:10px;margin-bottom:10px}
+    .pending-review-card{border:1px solid #bbf7d0;background:#f0fdf4;border-radius:16px;padding:13px;color:#14532d}
+    .pending-review-card .pending-head{font-weight:900;font-size:17px;margin-bottom:5px;color:#14532d}
+    .pending-review-card .pending-meta{font-size:14px;line-height:1.65;color:#166534}
+    .pending-status-line{margin-top:10px;border-radius:14px;background:#dcfce7;color:#166534;font-weight:900;padding:10px 12px;line-height:1.55}
+    .pending-status-line strong{display:block;font-size:16px;margin-bottom:2px}
+    .pending-empty{padding:12px;border:1px dashed #d1d5db;border-radius:14px;background:#f9fafb;color:#6b7280}
     .missing-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
     .missing-form{margin-top:10px;padding:10px;border:1px solid #fecaca;border-radius:14px;background:#fff}
     .missing-form.hidden{display:none!important}
@@ -104,9 +113,9 @@
         <div class="help-title">打卡說明</div>
         <ol class="muted">
           <li><strong>標準打卡：</strong>有今日班表、人在公司正常出勤時使用；上班打卡需符合公司指定網路規則，並依班表前一小時開放。</li>
-          <li><strong>特殊打卡：</strong>有今日班表，但因外出支援、外場活動、社團課、網路異常等原因無法在公司打卡時使用；送出時需填寫原因，並送主管審核，核准後才會計入正式打卡紀錄。</li>
+          <li><strong>特殊打卡：</strong>有今日班表，但因外出支援、外場活動、社團課、網路異常等原因無法在公司打卡時使用；送出時需填寫原因，並送主管審核；主管審核會更新，並自動歸位。</li>
           <li><strong>臨時出勤申請：</strong>今天沒有排班，但主管臨時安排實際出勤時使用；員工自行填寫實際出勤時間，送出後需主管審核。</li>
-          <li>如果已經有打卡紀錄但時間錯誤，請到下方該筆紀錄點「修正這筆」。如果有班但忘記打卡，請看下方「有班但未完成打卡」。</li>
+          <li>如果已經有打卡紀錄但時間錯誤，請到「近期打卡記錄」點「修正這筆」；如果有班但忘記打卡，請看「待處理事項」。</li>
         </ol>
       </div>
 
@@ -119,7 +128,7 @@
           <button class="clock-mode-btn" type="button" id="modeSpecialBtn" onclick="selectClockMode('特殊打卡')">特殊打卡</button>
           <button class="clock-mode-btn" type="button" id="modeTempBtn" onclick="goTemporaryAttendance()">臨時出勤申請</button>
         </div>
-        <div class="muted section-note">請先選擇打卡方式。標準打卡會直接成立；特殊打卡會要求填寫原因並送主管審核；臨時出勤申請只處理主管尚未排班但實際出勤的情況。</div>
+        <div class="muted section-note">請先選擇打卡方式。標準打卡會直接成立；特殊打卡需填寫原因並送主管審核；臨時出勤申請只處理主管尚未排班但實際出勤的情況。</div>
       </div>
 
       <div id="supplementBox" class="supplement-box hidden">
@@ -139,7 +148,7 @@
       <div id="specialReasonModal" class="choice-modal hidden" role="dialog" aria-modal="true" aria-labelledby="specialReasonTitle">
         <div class="choice-card">
           <h3 id="specialReasonTitle">特殊打卡原因</h3>
-          <p>特殊打卡會先送主管審核，核准後才會計入正式打卡紀錄。請填寫本次無法使用標準打卡的原因。</p>
+          <p>特殊打卡會先送主管審核；主管審核會更新，並自動歸位。請填寫本次無法使用標準打卡的原因。</p>
           <div class="field">
             <label>打卡原因</label>
             <textarea id="specialClockReason" placeholder="例如：外出支援、社團課、外場活動、公司網路異常"></textarea>
@@ -156,16 +165,27 @@
     <div class="card">
       <div class="history-head">
         <div>
-          <h2 class="title" style="font-size:20px;margin-bottom:4px">今日／昨日打卡紀錄</h2>
-          <div class="muted">若這筆打卡時間錯誤，請點「修正這筆」。已送出待主管審核時，同一筆不能重複送出。</div>
+          <h2 class="title" style="font-size:20px;margin-bottom:4px">待處理事項</h2>
+          <div class="muted">這裡只顯示需要處理、已送審或尚未完成的出勤項目。已送出的項目會鎖定，不能重複送出。</div>
         </div>
       </div>
-      <div id="editableList" class="list"></div>
+      <div id="pendingReviewList" class="pending-review-list"></div>
       <div id="missingClockWrap" class="missing-clock-wrap hidden">
         <div class="missing-clock-title">有班但未完成打卡</div>
         <div class="missing-clock-note">系統會檢查今日與昨日班表。如果有班但缺上班卡或下班卡，會在這裡提醒；你可以提出補打卡，或改申請事後補假。</div>
         <div id="missingClockList" class="missing-clock-list"></div>
       </div>
+      <div id="pendingEmpty" class="pending-empty">目前沒有待處理事項。</div>
+    </div>
+
+    <div class="card">
+      <div class="history-head">
+        <div>
+          <h2 class="title" style="font-size:20px;margin-bottom:4px">近期打卡記錄</h2>
+          <div class="muted">顯示今日與昨日已完成的正式打卡紀錄。若時間錯誤，請點「修正這筆」。</div>
+        </div>
+      </div>
+      <div id="editableList" class="list"></div>
     </div>
 
     <div class="card">
@@ -193,11 +213,11 @@
     </div>
   </div>
 
-  <script src="config.js?v=20260529ScheduleCompactFix"></script>
+  <script src="config.js?v=20260529PendingItemsFix"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260529ScheduleCompactFix"></script>
-  <script src="app.js?v=20260529ScheduleCompactFix"></script>
+  <script src="firebase-client.js?v=20260529PendingItemsFix"></script>
+  <script src="app.js?v=20260529PendingItemsFix"></script>
   <script>
 
     function goTemporaryAttendance(){
@@ -258,57 +278,38 @@
       return String((available || rows[0]).scheduleKey || (available || rows[0]).key || '');
     }
 
-    function scheduleDisplayName(s, idx, total){
-      const source = String((s && (s.source || s.scheduleSource || s.sourceLabel || s.scheduleSourceLabel)) || '');
-      if(source.indexOf('singleDaySchedules') >= 0 || source.indexOf('單日') >= 0 || source.indexOf('特別') >= 0){
-        return total > 1 ? '臨時班表' : '班表';
-      }
-      return total > 1 ? ('班表 ' + (idx + 1)) : '班表';
-    }
-
-    function scheduleStatusText(s){
-      if(!s) return '';
-      if(s.canClockInNow && s.canClockOutNow) return '現在可以上班／下班打卡';
-      if(s.canClockInNow) return '現在可以上班打卡';
-      if(s.clockInOpenAt) return s.clockInOpenAt + ' 後可上班打卡';
-      return s.statusText || '';
-    }
-
     function renderTodayScheduleHtml(info){
       const rows = (info && info.schedules) || [];
       if(!rows.length){
         return '<div>' + escapeHtml((info && info.message) || '今天沒有排班，如主管尚未來得及排班但你實際有出勤，請使用「臨時出勤申請」。') + '</div>';
       }
       const selected = (qs('#selectedScheduleKey') && qs('#selectedScheduleKey').value) || window.__selectedScheduleKey || '';
-      const countNote = rows.length > 1
-        ? '<div class="schedule-count-note">今日有 ' + rows.length + ' 段班，請分別完成上下班打卡。</div>'
-        : '';
+      const head = '<div style="font-weight:800;margin-bottom:8px">' + escapeHtml(info.message || ('今日共有 ' + rows.length + ' 筆班表')) + '</div>';
       const cards = rows.map((s, idx) => {
         const key = String(s.scheduleKey || s.key || '');
         const isSel = key && key === selected;
-        const name = scheduleDisplayName(s, idx, rows.length);
         const range = (s.startTime && s.endTime) ? (escapeHtml(s.startTime) + ' - ' + escapeHtml(s.endTime)) : '未設定時間';
-        const status = scheduleStatusText(s);
-        const selectedChip = rows.length > 1 && isSel ? '<span class="schedule-selected-chip">目前選擇</span>' : '';
+        const status = s.statusText || (s.clockInOpenAt ? (s.clockInOpenAt + ' 後可上班打卡') : '');
+        const openText = s.clockInOpenAt ? (s.clockInOpenAt + ' 後可上班打卡') : '';
         return `
-          <div class="schedule-card js-select-schedule ${isSel ? 'selected' : ''}" data-key="${escapeHtml(key)}" data-schedule-key="${escapeHtml(key)}" role="button" tabindex="0">
-            <div class="schedule-line-main">
-              <span class="schedule-main-text">${escapeHtml(name)}｜${range}</span>
-              ${selectedChip}
+          <div class="schedule-card ${isSel ? 'selected' : ''}" data-schedule-key="${escapeHtml(key)}">
+            <div class="schedule-row">
+              <div>
+                <div class="schedule-name">${idx + 1}. 班表${isSel ? '｜目前選擇' : ''}</div>
+                <div class="schedule-time">${range}</div>
+              </div>
+              <button type="button" class="schedule-select-btn js-select-schedule" data-key="${escapeHtml(key)}">${isSel ? '已選擇' : '選擇此班表'}</button>
             </div>
-            ${status ? '<div class="schedule-status">' + escapeHtml(status) + '</div>' : ''}
+            ${openText ? '<div class="schedule-meta">' + escapeHtml(openText) + '</div>' : ''}
+            <div class="schedule-status">${escapeHtml(status)}</div>
           </div>`;
       }).join('');
-      return countNote + '<div class="schedule-list">' + cards + '</div>';
+      return head + '<div class="schedule-list">' + cards + '</div>';
     }
 
     function bindScheduleCards(){
       qsa('.js-select-schedule').forEach(btn => {
-        const pick = () => selectTodaySchedule(btn.dataset.key || btn.dataset.scheduleKey || '');
-        btn.onclick = pick;
-        btn.onkeydown = (ev) => {
-          if(ev.key === 'Enter' || ev.key === ' '){ ev.preventDefault(); pick(); }
-        };
+        btn.onclick = () => selectTodaySchedule(btn.dataset.key || '');
       });
     }
 
@@ -398,7 +399,7 @@
         qs('#clockActionNote').textContent = '正常在公司上班使用；上班打卡需連公司 Wi‑Fi，且只能在上班前一小時後打卡。' + suffix;
       }else if(mode === '特殊打卡'){
         qs('#clockActionTitle').textContent = '特殊打卡';
-        qs('#clockActionNote').textContent = '有班表但因特殊狀況無法使用標準打卡時使用；送出時需填寫原因，並送主管審核。' + suffix;
+        qs('#clockActionNote').textContent = '有班表但因特殊狀況無法使用標準打卡時使用；送出時需填寫原因並送主管審核。' + suffix;
       }
     }
 
@@ -477,15 +478,68 @@
       return raw;
     }
 
+    function pendingAutoReturnText(){
+      return '主管審核會更新，並自動歸位。';
+    }
+
+    function isPendingReviewRow(x){
+      const status = String((x && (x.statusLabel || x.status)) || '');
+      return !!(x && (x.pendingCorrection || status.indexOf('待主管審核') >= 0 || status.indexOf('待審核') >= 0));
+    }
+
+    function pendingReviewTitle(x){
+      const status = String((x && (x.statusLabel || x.status)) || '');
+      if(status.indexOf('特殊打卡') >= 0 || String(x && x.clockType || '').indexOf('特殊') >= 0 && String(x && x.sourceIp || '').indexOf('待審核') >= 0) return '特殊打卡待主管審核';
+      if(x && x.pendingCorrection) return '已送出修正申請待主管審核';
+      return status || '待主管審核';
+    }
+
+    function renderPendingReviewRow(x){
+      const title = pendingReviewTitle(x);
+      const dt = [x.date || '', (x.time || '').slice(0,5)].filter(Boolean).join(' ');
+      const schedule = (x.scheduleStartTime || x.scheduleEndTime) ? ('班表：' + (x.scheduleStartTime || '--:--') + ' - ' + (x.scheduleEndTime || '--:--')) : '';
+      const action = [x.actionName || '', x.clockType || ''].filter(Boolean).join('｜');
+      const reason = x.note ? ('原因：' + x.note) : '';
+      const original = x.originalRef ? ('原始紀錄：' + x.originalRef) : '';
+      return `
+        <div class="pending-review-card">
+          <div class="pending-head">${escapeHtml(title)}</div>
+          <div class="pending-meta">
+            ${dt ? `<div>${escapeHtml(dt)}</div>` : ''}
+            ${action ? `<div>${escapeHtml(action)}</div>` : ''}
+            ${schedule ? `<div>${escapeHtml(schedule)}</div>` : ''}
+            ${reason ? `<div>${escapeHtml(reason)}</div>` : ''}
+            ${original ? `<div>${escapeHtml(original)}</div>` : ''}
+          </div>
+          <div class="pending-status-line"><strong>${escapeHtml(title)}</strong>${escapeHtml(pendingAutoReturnText())}</div>
+        </div>`;
+    }
+
+    function updatePendingEmpty(){
+      const empty = qs('#pendingEmpty');
+      if(!empty) return;
+      const count = Number(window.__pendingReviewCount || 0) + Number(window.__missingIssueCount || 0);
+      empty.classList.toggle('hidden', count > 0);
+    }
+
+    function renderPendingReviewList(rows){
+      const list = qs('#pendingReviewList');
+      if(!list) return;
+      const pendingRows = (rows || []).filter(isPendingReviewRow);
+      window.__pendingReviewCount = pendingRows.length;
+      list.innerHTML = pendingRows.map(renderPendingReviewRow).join('');
+      updatePendingEmpty();
+    }
+
     function renderHistoryRow(x, readonly){
       const lateText = x.clockType === '特殊打卡' ? '' : (x.status === '遲到' ? '｜遲到 ' + (x.lateMinutes || 0) + ' 分鐘' : '');
       const noteText = x.note ? `<div class="muted" style="margin-top:6px">備註：${escapeHtml(x.note)}</div>` : '';
       const originalText = x.originalRef ? `<div class="muted" style="margin-top:6px">原始紀錄：${escapeHtml(x.originalRef)}</div>` : '';
       const correctionText = x.status === '補打卡' ? '<div class="muted" style="margin-top:6px">此筆為補登／修正核准後的正式紀錄。</div>' : '';
-      const pendingText = x.pendingCorrection ? `<div class="muted" style="margin-top:6px;color:#92400e;font-weight:800">已送出修正申請，等待主管審核。</div>` : '';
+      const pendingText = x.pendingCorrection ? `<div class="pending-status-line"><strong>已送出修正申請待主管審核</strong>${escapeHtml(pendingAutoReturnText())}</div>` : '';
       const canFix = (!readonly && x.canModify)
         ? (x.pendingCorrection
-          ? `<button class="btn mini-btn secondary" type="button" disabled>修正待主管審核</button>`
+          ? `<button class="btn mini-btn secondary" type="button" disabled>待主管審核</button>`
           : `<button class="btn mini-btn js-open-correction" data-id="${escapeHtml(x.id)}">修正這筆</button>`)
         : '';
       return `
@@ -537,7 +591,9 @@
       qs('#clockHomeLink').href = userHomeHref(user);
       qs('#clockHomeLink').textContent = userHomeLabel(user);
       const r = await api('getEditableClockHistory', { userId:user.id });
-      renderIntoList('#editableList', r.rows || [], false);
+      const rows = r.rows || [];
+      renderPendingReviewList(rows);
+      renderIntoList('#editableList', rows.filter(x => !isPendingReviewRow(x)), false);
     }
 
     async function searchRange(){
@@ -622,6 +678,8 @@
       const list = qs('#missingClockList');
       if(!wrap || !list) return;
       rows = Array.isArray(rows) ? rows : [];
+      window.__missingIssueCount = rows.length;
+      updatePendingEmpty();
       if(!rows.length){
         wrap.classList.add('hidden');
         list.innerHTML = '';
@@ -630,17 +688,22 @@
       wrap.classList.remove('hidden');
       list.innerHTML = rows.map((issue, idx) => {
         const key = missingIssueKey(issue) || ('ISSUE_' + idx);
-        const pending = issue.pendingCorrection || issue.pendingLeave;
+        const pending = issue.pendingCorrection || issue.pendingLeave || issue.pendingSpecialClock;
         const missing = (issue.missingActions || []).join('、');
-        const pendingText = issue.pendingCorrection ? '補打卡申請待主管審核' : (issue.pendingLeave ? '事後補假申請待主管審核' : '尚未處理');
-        const actionButtons = issue.pendingCorrection || issue.pendingLeave ? '' : (issue.missingActions || []).map(action => {
+        let pendingText = '尚未處理';
+        if(issue.pendingSpecialClock) pendingText = '特殊打卡待主管審核';
+        else if(issue.pendingCorrection) pendingText = issue.pendingCorrectionAction ? ('補' + issue.pendingCorrectionAction.replace('打卡','卡') + '申請待主管審核') : '補打卡申請待主管審核';
+        else if(issue.pendingLeave) pendingText = '事後補假申請待主管審核';
+        const pendingLine = pending ? `<div class="pending-status-line"><strong>${escapeHtml(pendingText)}</strong>${escapeHtml(pendingAutoReturnText())}</div>` : '';
+        const actionButtons = pending ? '' : (issue.missingActions || []).map(action => {
           const defaultTime = action.indexOf('下班') >= 0 ? (issue.endTime || '') : (issue.startTime || '');
           return `<button class="btn mini-btn js-open-missing" data-key="${escapeHtml(key)}" data-action="${escapeHtml(action)}" data-time="${escapeHtml(defaultTime)}">補${escapeHtml(action.replace('打卡','卡'))}</button>`;
-        }).join('') + `<button class="btn mini-btn secondary js-missing-leave" data-key="${escapeHtml(key)}">改申請事後補假</button>`;
+        }).join('') + `<button class="btn mini-btn js-missing-leave" data-key="${escapeHtml(key)}">改申請事後補假</button>`;
         return `
           <div class="missing-clock-card ${pending ? 'pending' : ''}" data-issue-key="${escapeHtml(key)}">
             <div class="missing-head">${escapeHtml(issue.date)}｜${escapeHtml(issue.summary || issue.scheduleLabel || '班表')}</div>
             <div class="missing-meta">缺少：${escapeHtml(missing || '未完成打卡')}｜狀態：${escapeHtml(pendingText)}</div>
+            ${pendingLine}
             <div class="missing-actions">${actionButtons}</div>
             <div class="missing-form hidden" id="missing-form-${escapeHtml(key)}">
               <div class="readonly-line js-missing-title"></div>
