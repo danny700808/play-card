@@ -105,9 +105,9 @@
       <div class="help-box">
         <div class="help-title">打卡說明</div>
         <ol class="muted">
-          <li><strong>標準打卡：</strong>正常在公司上班使用；上班打卡需符合公司指定網路規則。</li>
-          <li><strong>特殊打卡：</strong>社團課、外出支援、外場活動等不在公司上班時使用。</li>
-          <li><strong>臨時出勤申請：</strong>主管尚未來得及排班、臨時增加出勤時使用；員工自行填寫實際出勤時間，送出後需主管審核。</li>
+          <li><strong>標準打卡：</strong>有今日班表、人在公司正常出勤時使用；上班打卡需符合公司指定網路規則，並依班表前一小時開放。</li>
+          <li><strong>特殊打卡：</strong>有今日班表，但因外出支援、外場活動、社團課、網路異常等原因無法在公司打卡時使用；送出時需填寫原因，並送主管審核，核准後才會計入正式打卡紀錄。</li>
+          <li><strong>臨時出勤申請：</strong>今天沒有排班，但主管臨時安排實際出勤時使用；員工自行填寫實際出勤時間，送出後需主管審核。</li>
           <li>如果已經有打卡紀錄但時間錯誤，請到下方該筆紀錄點「修正這筆」。如果有班但忘記打卡，請看下方「有班但未完成打卡」。</li>
         </ol>
       </div>
@@ -121,7 +121,7 @@
           <button class="clock-mode-btn" type="button" id="modeSpecialBtn" onclick="selectClockMode('特殊打卡')">特殊打卡</button>
           <button class="clock-mode-btn" type="button" id="modeTempBtn" onclick="goTemporaryAttendance()">臨時出勤申請</button>
         </div>
-        <div class="muted section-note">請先選擇打卡方式。標準 / 特殊打卡會出現上班與下班按鈕；臨時出勤申請只處理主管尚未排班但實際出勤的情況。</div>
+        <div class="muted section-note">請先選擇打卡方式。標準打卡會直接成立；特殊打卡會要求填寫原因並送主管審核；臨時出勤申請只處理主管尚未排班但實際出勤的情況。</div>
       </div>
 
       <div id="supplementBox" class="supplement-box hidden">
@@ -136,6 +136,21 @@
           <button class="btn" id="clockInBtn">上班打卡</button>
           <button class="btn" id="clockOutBtn">下班打卡</button>
           <button class="btn clock-back-btn" type="button" onclick="backToClockModes()">返回</button>
+        </div>
+      </div>
+      <div id="specialReasonModal" class="choice-modal hidden" role="dialog" aria-modal="true" aria-labelledby="specialReasonTitle">
+        <div class="choice-card">
+          <h3 id="specialReasonTitle">特殊打卡原因</h3>
+          <p>特殊打卡會先送主管審核，核准後才會計入正式打卡紀錄。請填寫本次無法使用標準打卡的原因。</p>
+          <div class="field">
+            <label>打卡原因</label>
+            <textarea id="specialClockReason" placeholder="例如：外出支援、社團課、外場活動、公司網路異常"></textarea>
+            <div class="field-error" id="specialReasonError"></div>
+          </div>
+          <div class="choice-actions">
+            <button class="btn" type="button" id="specialReasonConfirmBtn">送出特殊打卡申請</button>
+            <button class="btn secondary" type="button" id="specialReasonCancelBtn">取消</button>
+          </div>
         </div>
       </div>
     </div>
@@ -180,11 +195,11 @@
     </div>
   </div>
 
-  <script src="config.js?v=20260528ClockFlowFix"></script>
+  <script src="config.js?v=20260529SpecialClockReviewFix"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260528ClockFlowFix"></script>
-  <script src="app.js?v=20260528ClockFlowFix"></script>
+  <script src="firebase-client.js?v=20260529SpecialClockReviewFix"></script>
+  <script src="app.js?v=20260529SpecialClockReviewFix"></script>
   <script>
 
     function goTemporaryAttendance(){
@@ -233,12 +248,7 @@
     function scheduleLabel(s){
       if(!s) return '';
       const range = (s.startTime && s.endTime) ? (s.startTime + ' - ' + s.endTime) : '未設定時間';
-      return (s.sourceLabel || '班表') + '｜' + range + '｜' + (s.clockType || '');
-    }
-
-    function scheduleAllowedText(s){
-      const allowed = (s && s.allowedClockTypes) || [];
-      return allowed.length ? allowed.join('、') : '不開放一般打卡';
+      return range;
     }
 
     function chooseDefaultSchedule(info){
@@ -262,17 +272,16 @@
         const isSel = key && key === selected;
         const range = (s.startTime && s.endTime) ? (escapeHtml(s.startTime) + ' - ' + escapeHtml(s.endTime)) : '未設定時間';
         const status = s.statusText || (s.clockInOpenAt ? (s.clockInOpenAt + ' 後可上班打卡') : '');
-        const openText = s.clockInOpenAt ? ('上班前一小時：' + s.clockInOpenAt + ' 後可上班打卡') : '';
+        const openText = s.clockInOpenAt ? (s.clockInOpenAt + ' 後可上班打卡') : '';
         return `
           <div class="schedule-card ${isSel ? 'selected' : ''}" data-schedule-key="${escapeHtml(key)}">
             <div class="schedule-row">
               <div>
-                <div class="schedule-name">${idx + 1}. ${escapeHtml(s.sourceLabel || '班表')}${isSel ? '｜目前選擇' : ''}</div>
+                <div class="schedule-name">${idx + 1}. 班表${isSel ? '｜目前選擇' : ''}</div>
                 <div class="schedule-time">${range}</div>
               </div>
               <button type="button" class="schedule-select-btn js-select-schedule" data-key="${escapeHtml(key)}">${isSel ? '已選擇' : '選擇此班表'}</button>
             </div>
-            <div class="schedule-meta">打卡類型：${escapeHtml(s.clockType || '')}｜可用方式：${escapeHtml(scheduleAllowedText(s))}${s.templateName ? '｜模板：' + escapeHtml(s.templateName) : ''}</div>
             ${openText ? '<div class="schedule-meta">' + escapeHtml(openText) + '</div>' : ''}
             <div class="schedule-status">${escapeHtml(status)}</div>
           </div>`;
@@ -327,7 +336,7 @@
       const selected = getSelectedSchedule();
       if(!selected){ return { ok:false, message:'請先選擇今日班表。' }; }
       const allowed = selected.allowedClockTypes || [];
-      if(allowed.indexOf(mode) < 0){ return { ok:false, message:'目前選擇的班表不開放「' + mode + '」。' }; }
+      if(allowed.indexOf(mode) < 0){ return { ok:false, message:'目前選擇的班表無法使用「' + mode + '」。' }; }
       if(actionName && mode === '標準打卡' && actionName.indexOf('上班') >= 0 && selected.canClockInNow === false){
         return { ok:false, message: selected.statusText || ('尚未到可打卡時間，請於 ' + (selected.clockInOpenAt || '') + ' 後再打卡。') };
       }
@@ -372,7 +381,7 @@
         qs('#clockActionNote').textContent = '正常在公司上班使用；上班打卡需連公司 Wi‑Fi，且只能在上班前一小時後打卡。' + suffix;
       }else if(mode === '特殊打卡'){
         qs('#clockActionTitle').textContent = '特殊打卡';
-        qs('#clockActionNote').textContent = '社團課、外出支援、外場活動等不在公司上班時使用。' + suffix;
+        qs('#clockActionNote').textContent = '有班表但因特殊狀況無法使用標準打卡時使用；送出時需填寫原因，並送主管審核。' + suffix;
       }
     }
 
@@ -744,6 +753,37 @@
       }, 80);
     }
 
+    function requestSpecialClockReason(actionName){
+      return new Promise(resolve => {
+        const modal = qs('#specialReasonModal');
+        const textarea = qs('#specialClockReason');
+        const err = qs('#specialReasonError');
+        const okBtn = qs('#specialReasonConfirmBtn');
+        const cancelBtn = qs('#specialReasonCancelBtn');
+        if(!modal || !textarea || !okBtn || !cancelBtn){
+          const fallback = prompt('請輸入特殊打卡原因');
+          resolve(fallback === null ? null : String(fallback || '').trim());
+          return;
+        }
+        textarea.value = '';
+        if(err) err.textContent = '';
+        modal.classList.remove('hidden');
+        try { textarea.focus(); } catch(e) {}
+        const cleanup = () => {
+          modal.classList.add('hidden');
+          okBtn.onclick = null;
+          cancelBtn.onclick = null;
+        };
+        okBtn.onclick = () => {
+          const value = textarea.value.trim();
+          if(!value){ if(err) err.textContent = '請填寫特殊打卡原因'; return; }
+          cleanup();
+          resolve(value);
+        };
+        cancelBtn.onclick = () => { cleanup(); resolve(null); };
+      });
+    }
+
     async function doClock(actionName){
       const user = requireLogin();
       if(!user) return;
@@ -755,6 +795,13 @@
       const modeAllow = todayScheduleAllows(mode, actionName);
       if(!modeAllow.ok){ setMsg(msg, friendlyClockMessage(modeAllow.message), true); return; }
 
+      let specialReason = '';
+      if(mode === '特殊打卡'){
+        specialReason = await requestSpecialClockReason(actionName);
+        if(specialReason === null) return;
+        if(!specialReason){ setMsg(msg, '請填寫特殊打卡原因。', true); return; }
+      }
+
       const actionBtn = actionName === '下班打卡' ? qs('#clockOutBtn') : qs('#clockInBtn');
       const progress = startActionButtonProgress(actionBtn, { label: actionName === '下班打卡' ? '下班打卡中' : '上班打卡中', startPct:12, maxPct:86, interval:130, fixedSteps:false });
 
@@ -764,7 +811,9 @@
           userId:user.id,
           actionName,
           clockType:mode,
-          scheduleKey: selected ? (selected.scheduleKey || selected.key || '') : ''
+          scheduleKey: selected ? (selected.scheduleKey || selected.key || '') : '',
+          specialReason: specialReason,
+          note: specialReason
         };
 
         progress.set(24, '確認班表中');
@@ -799,7 +848,7 @@
         }
         setMsg(msg, friendlyClockMessage(successMessage), !r.ok);
         if(r.ok){
-          progress.done('打卡完成');
+          progress.done(r.specialClockPending ? '已送出' : '打卡完成');
           refreshClockPageInBackground();
         } else {
           progress.fail('打卡失敗');
