@@ -1368,9 +1368,6 @@
   }
   function canClockAction(schedule, mode, actionName, clockDate, clockTime){
     if(!schedule || !schedule.hasSchedule) return {ok:false, message:'請先選擇今日班表。'};
-    if((schedule.allowedClockTypes || []).indexOf(mode) < 0){
-      return {ok:false, message:'選定班表不開放「' + mode + '」。'};
-    }
     const action = clean(actionName);
     const clockM = minutes(clockTime || timeNow());
     const startM = minutes(schedule.startTime);
@@ -1391,8 +1388,8 @@
       const allowed = canClockAction(chosen, mode, actionName, clockDate, clockTime);
       return Object.assign({schedule:chosen}, allowed);
     }
-    const candidates = schedules.filter(s => (s.allowedClockTypes || []).indexOf(mode) >= 0);
-    if(!candidates.length) return {ok:false, message:'今日班表不開放「' + mode + '」。'};
+    const candidates = schedules.filter(s => s && s.hasSchedule);
+    if(!candidates.length) return {ok:false, message:'今天沒有可用班表。'};
     const available = candidates.map(s => Object.assign({schedule:s}, canClockAction(s, mode, actionName, clockDate, clockTime))).filter(x => x.ok);
     if(available.length) return available[0];
     const first = Object.assign({schedule:candidates[0]}, canClockAction(candidates[0], mode, actionName, clockDate, clockTime));
@@ -2103,6 +2100,8 @@
         if(shortTime(s.startTime)) actions.push('上班打卡');
         if(shortTime(s.endTime)) actions.push('下班打卡');
         if(!actions.length) continue;
+        const existingIn = existingRecordFor(s, '上班打卡', clockRows);
+        const existingOut = existingRecordFor(s, '下班打卡', clockRows);
         const dueMissingActions = actions.filter(action => actionIsDue(s, action, dateKey) && !existingRecordFor(s, action, clockRows));
         if(!dueMissingActions.length) continue;
 
@@ -2120,6 +2119,11 @@
           sourceLabel:clean(s.sourceLabel),
           schedule:s,
           missingActions:dueMissingActions,
+          existingClockInTime: existingIn ? shortTime(existingIn.clockTime || existingIn.time || existingIn['打卡時間']) : '',
+          existingClockInRecordId: existingIn ? clean(existingIn.recordId || existingIn.__id || existingIn.id) : '',
+          existingClockOutTime: existingOut ? shortTime(existingOut.clockTime || existingOut.time || existingOut['打卡時間']) : '',
+          existingClockOutRecordId: existingOut ? clean(existingOut.recordId || existingOut.__id || existingOut.id) : '',
+          canEarlyLeaveRetro: !!(existingIn && !existingOut && dueMissingActions.length === 1 && clean(dueMissingActions[0]).indexOf('下班') >= 0),
           pendingCorrection:false,
           pendingCorrectionId:'',
           pendingCorrectionAction:'',
@@ -2197,7 +2201,15 @@
       const pending = pendingMissingCorrection(corrections, issue, correctAction);
       if(pending) return {ok:false, message:'這一段班表已經送出補打卡申請，待主管審核。主管審核會更新，並自動歸位。', requestId:pending.requestId};
       const clockRows = await readClockRows({employeeId, userId:employeeId}).catch(()=>[]);
-      const snap = Object.assign({}, p.scheduleSnapshot || {}, {date:correctDate, scheduleKey});
+      const snap = Object.assign({}, p.scheduleSnapshot || {}, {
+        date:correctDate,
+        scheduleKey,
+        startTime: shortTime(p.scheduleStartTime || (p.scheduleSnapshot && p.scheduleSnapshot.startTime)),
+        endTime: shortTime(p.scheduleEndTime || (p.scheduleSnapshot && p.scheduleSnapshot.endTime)),
+        source: clean(p.scheduleSource || (p.scheduleSnapshot && p.scheduleSnapshot.source)),
+        sourceLabel: clean(p.scheduleSourceLabel || (p.scheduleSnapshot && p.scheduleSnapshot.sourceLabel)),
+        templateName: clean(p.scheduleTemplateName || (p.scheduleSnapshot && p.scheduleSnapshot.templateName))
+      });
       if(existingRecordFor(snap, correctAction, clockRows)) return {ok:false, message:'這一段班表已經有該打卡紀錄，不需要補打卡。'};
       const row = {
         requestId,

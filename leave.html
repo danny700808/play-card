@@ -624,7 +624,7 @@ function renderSegments(){
   updateLeaveTimeVisibility_();
   const wrap = qs('#segmentList');
   if(!wrap) return;
-  if(!(qs('#reason') && qs('#reason').value)) return;
+  if(!(qs('#reason') && qs('#reason').value) && String(leaveQuery().get('mode') || '') !== 'retro') return;
   normalizeSegmentModesByReason();
   const meta = getSelectedLeaveMeta();
   const allowCustom = leaveMetaAllowsCustom(meta);
@@ -937,7 +937,7 @@ function getSelectedLeaveMeta(){
 function updateLeaveTimeVisibility_(){
   const field = qs('#fieldSegments');
   if(!field) return;
-  const hasReason = !!(qs('#reason') && qs('#reason').value);
+  const hasReason = !!(qs('#reason') && qs('#reason').value) || String(leaveQuery().get('mode') || '') === 'retro';
   field.classList.toggle('hidden', !hasReason);
   if(!hasReason){
     const wrap = qs('#segmentList');
@@ -1170,10 +1170,64 @@ function applyRetroQueryPrefill(){
     seg.endDate = date;
     seg.startTime = startTime;
     seg.endTime = endTime;
+    seg.shiftStart = String(q.get('scheduleStartTime') || q.get('shiftStart') || startTime || '').slice(0,5);
+    seg.shiftEnd = String(q.get('scheduleEndTime') || q.get('shiftEnd') || endTime || '').slice(0,5);
     leaveSegmentsState = [seg];
+    updateLeaveTimeVisibility_();
     renderSegments();
-    setLocalMsg('已帶入「有班但未完成打卡」的事後補假日期與時間；請選擇假別並確認後送出。', false);
+    const source = String(q.get('source') || '');
+    if(source === 'earlyLeave'){
+      setLocalMsg('已進入「提早離開／剩餘時段事後補假」模式。請選擇假別並確認後送出；主管審核會更新，並自動歸位。', false);
+    }else{
+      setLocalMsg('已帶入「有班但未完成打卡」的事後補假日期與時間；請選擇假別並確認後送出。', false);
+    }
   }catch(err){}
+}
+function retroClockQueryMeta(){
+  const q = leaveQuery();
+  if(String(q.get('mode') || '') !== 'retro') return null;
+  if(String(q.get('source') || '') !== 'earlyLeave') return null;
+  const date = leaveNormalizeDateKey(q.get('date') || q.get('leaveDate') || localDateInputValue()) || localDateInputValue();
+  const clockTime = String(q.get('clockTime') || q.get('startTime') || '').slice(0,5);
+  const scheduleKey = String(q.get('scheduleKey') || '').trim();
+  if(!date || !clockTime || !scheduleKey) return null;
+  return {
+    date,
+    clockTime,
+    scheduleKey,
+    scheduleStartTime:String(q.get('scheduleStartTime') || '').slice(0,5),
+    scheduleEndTime:String(q.get('scheduleEndTime') || q.get('endTime') || '').slice(0,5),
+    scheduleLabel:String(q.get('scheduleLabel') || '').trim(),
+    clockAction:String(q.get('clockAction') || '下班打卡').trim() || '下班打卡',
+    reason:String(q.get('clockReason') || '提早離開，申請剩餘時段事後補假').trim()
+  };
+}
+async function submitRetroClockCorrectionIfNeeded(){
+  const meta = retroClockQueryMeta();
+  if(!meta) return { ok:true, skipped:true };
+  const user = requireLogin();
+  if(!user) return { ok:false, message:'缺少員工資料' };
+  const reasonText = qs('#note') ? String(qs('#note').value || '').trim() : '';
+  return await api('submitClockCorrection', {
+    userId:user.id,
+    requestKind:'missingClock',
+    scheduleKey:meta.scheduleKey,
+    scheduleDate:meta.date,
+    scheduleStartTime:meta.scheduleStartTime,
+    scheduleEndTime:meta.scheduleEndTime,
+    scheduleSnapshot:{
+      date:meta.date,
+      scheduleKey:meta.scheduleKey,
+      startTime:meta.scheduleStartTime,
+      endTime:meta.scheduleEndTime,
+      sourceLabel:meta.scheduleLabel
+    },
+    correctDate:meta.date,
+    correctTime:meta.clockTime,
+    correctAction:meta.clockAction,
+    correctionType:'標準打卡',
+    reason: meta.reason + (reasonText ? ('｜請假原因：' + reasonText) : '')
+  });
 }
 function resetForm(options={}){
   const keepOptions = options.keepOptions !== false;
@@ -1602,6 +1656,18 @@ async function submitLeave(){
     const r = await request;
     setLocalMsg(r.message, !r.ok);
     if(r.ok){
+      let extraMsg = '';
+      try{
+        const clockRes = await submitRetroClockCorrectionIfNeeded();
+        if(clockRes && !clockRes.skipped){
+          extraMsg = clockRes.ok
+            ? '；已同步送出提早離開的下班打卡申請，待主管審核。主管審核會更新，並自動歸位。'
+            : '；事後補假已送出，但下班打卡申請同步失敗：' + (clockRes.message || '請回打卡頁重新處理');
+        }
+      }catch(clockErr){
+        extraMsg = '；事後補假已送出，但下班打卡申請同步失敗：' + ((clockErr && clockErr.message) || '請回打卡頁重新處理');
+      }
+      setLocalMsg((r.message || (editingId ? '請假申請已更新。' : '請假申請已送出。')) + extraMsg, extraMsg.indexOf('失敗') >= 0);
       resetForm({ keepOptions:true, preserveLocalMsg:true });
       await loadStaffData();
       progress.done(editingId ? '更新成功' : '送出成功');

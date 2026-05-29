@@ -213,11 +213,11 @@
     </div>
   </div>
 
-  <script src="config.js?v=20260529PendingItemsFix"></script>
+  <script src="config.js?v=20260529EarlyLeaveRetroFix"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260529PendingItemsFix"></script>
-  <script src="app.js?v=20260529PendingItemsFix"></script>
+  <script src="firebase-client.js?v=20260529EarlyLeaveRetroFix"></script>
+  <script src="app.js?v=20260529EarlyLeaveRetroFix"></script>
   <script>
 
     function goTemporaryAttendance(){
@@ -236,8 +236,48 @@
         if(issue.startTime) params.set('startTime', issue.startTime);
         if(issue.endTime) params.set('endTime', issue.endTime);
         if(issue.scheduleKey) params.set('scheduleKey', issue.scheduleKey);
+        if(issue.summary || issue.scheduleLabel) params.set('scheduleLabel', issue.summary || issue.scheduleLabel);
         params.set('source', 'missingClock');
       }
+      location.href = 'leave.html?' + params.toString();
+    }
+
+    function goEarlyLeaveRetro(issue){
+      if(!issue){ return; }
+      const clockIn = (issue.existingClockInTime || '').slice(0,5);
+      const scheduleStart = (issue.startTime || '').slice(0,5);
+      const scheduleEnd = (issue.endTime || '').slice(0,5);
+      const defaultLeaveAt = clockIn || scheduleStart || '';
+      const leaveAt = prompt('請輸入實際離開時間（例如 10:00）。系統會把離開時間前視為出勤，離開時間後帶入事後補假。', defaultLeaveAt);
+      if(leaveAt === null) return;
+      const time = String(leaveAt || '').trim().slice(0,5);
+      if(!/^\d{2}:\d{2}$/.test(time)){
+        alert('請輸入正確時間，例如 10:00');
+        return;
+      }
+      const ok = confirm(
+        '系統將依照你填寫的離開時間處理：\n\n' +
+        '已出勤時段：' + (clockIn || scheduleStart || '--:--') + ' - ' + time + '\n' +
+        '事後補假時段：' + time + ' - ' + (scheduleEnd || '--:--') + '\n\n' +
+        '送出後會交由主管審核；主管審核會更新，並自動歸位。'
+      );
+      if(!ok) return;
+      const u = getUser ? (getUser() || {}) : {};
+      const params = new URLSearchParams();
+      const id = u.id || u.employeeId || u.userId || '';
+      if(id) params.set('userId', id);
+      params.set('mode', 'retro');
+      params.set('source', 'earlyLeave');
+      params.set('date', issue.date || '');
+      params.set('startTime', time);
+      params.set('endTime', scheduleEnd || '');
+      params.set('scheduleStartTime', scheduleStart || '');
+      params.set('scheduleEndTime', scheduleEnd || '');
+      params.set('scheduleKey', issue.scheduleKey || '');
+      params.set('scheduleLabel', issue.summary || issue.scheduleLabel || '班表');
+      params.set('clockAction', '下班打卡');
+      params.set('clockTime', time);
+      params.set('clockReason', '提早離開，申請剩餘時段事後補假');
       location.href = 'leave.html?' + params.toString();
     }
 
@@ -284,27 +324,28 @@
         return '<div>' + escapeHtml((info && info.message) || '今天沒有排班，如主管尚未來得及排班但你實際有出勤，請使用「臨時出勤申請」。') + '</div>';
       }
       const selected = (qs('#selectedScheduleKey') && qs('#selectedScheduleKey').value) || window.__selectedScheduleKey || '';
-      const head = '<div style="font-weight:800;margin-bottom:8px">' + escapeHtml(info.message || ('今日共有 ' + rows.length + ' 筆班表')) + '</div>';
       const cards = rows.map((s, idx) => {
         const key = String(s.scheduleKey || s.key || '');
         const isSel = key && key === selected;
         const range = (s.startTime && s.endTime) ? (escapeHtml(s.startTime) + ' - ' + escapeHtml(s.endTime)) : '未設定時間';
-        const status = s.statusText || (s.clockInOpenAt ? (s.clockInOpenAt + ' 後可上班打卡') : '');
         const openText = s.clockInOpenAt ? (s.clockInOpenAt + ' 後可上班打卡') : '';
+        let status = '';
+        if(s.canClockInNow === true) status = '現在可以上班打卡';
+        else if(openText) status = openText;
+        else status = s.statusText || '';
         return `
           <div class="schedule-card ${isSel ? 'selected' : ''}" data-schedule-key="${escapeHtml(key)}">
             <div class="schedule-row">
               <div>
-                <div class="schedule-name">${idx + 1}. 班表${isSel ? '｜目前選擇' : ''}</div>
+                <div class="schedule-name">${idx + 1}. 今日班表${isSel ? '｜目前選擇' : ''}</div>
                 <div class="schedule-time">${range}</div>
               </div>
               <button type="button" class="schedule-select-btn js-select-schedule" data-key="${escapeHtml(key)}">${isSel ? '已選擇' : '選擇此班表'}</button>
             </div>
-            ${openText ? '<div class="schedule-meta">' + escapeHtml(openText) + '</div>' : ''}
-            <div class="schedule-status">${escapeHtml(status)}</div>
+            ${status ? '<div class="schedule-status">' + escapeHtml(status) + '</div>' : ''}
           </div>`;
       }).join('');
-      return head + '<div class="schedule-list">' + cards + '</div>';
+      return '<div class="schedule-list">' + cards + '</div>';
     }
 
     function bindScheduleCards(){
@@ -322,13 +363,7 @@
       updateClockModeButtonsBySchedule(info);
       if(qs('#clockType').value){
         const mode = qs('#clockType').value;
-        const selected = getSelectedSchedule();
-        if(selected && (selected.allowedClockTypes || []).indexOf(mode) < 0){
-          backToClockModes();
-          setMsg(qs('#mainMsg'), '你選擇的班表不開放「' + mode + '」，請重新選擇打卡方式。', true);
-        }else{
-          updateClockActionNote(mode);
-        }
+        updateClockActionNote(mode);
       }
     }
 
@@ -341,10 +376,9 @@
         if(specialBtn) specialBtn.disabled = false;
         return;
       }
-      const selected = getSelectedSchedule();
-      const allowed = selected ? (selected.allowedClockTypes || []) : ((info && info.allowedClockTypes) || []);
-      if(standardBtn) standardBtn.disabled = allowed.indexOf('標準打卡') < 0;
-      if(specialBtn) specialBtn.disabled = allowed.indexOf('特殊打卡') < 0;
+      const hasSchedule = !!getSelectedSchedule();
+      if(standardBtn) standardBtn.disabled = !hasSchedule;
+      if(specialBtn) specialBtn.disabled = !hasSchedule;
     }
 
     function todayScheduleAllows(mode, actionName){
@@ -353,8 +387,6 @@
       if(!info.okToClock){ return { ok:false, message: info.message || '今天沒有可用班表，無法一般打卡。' }; }
       const selected = getSelectedSchedule();
       if(!selected){ return { ok:false, message:'請先選擇今日班表。' }; }
-      const allowed = selected.allowedClockTypes || [];
-      if(allowed.indexOf(mode) < 0){ return { ok:false, message:'目前選擇的班表無法使用「' + mode + '」。' }; }
       if(actionName && mode === '標準打卡' && actionName.indexOf('上班') >= 0 && selected.canClockInNow === false){
         return { ok:false, message: selected.statusText || ('尚未到可打卡時間，請於 ' + (selected.clockInOpenAt || '') + ' 後再打卡。') };
       }
@@ -695,14 +727,23 @@
         else if(issue.pendingCorrection) pendingText = issue.pendingCorrectionAction ? ('補' + issue.pendingCorrectionAction.replace('打卡','卡') + '申請待主管審核') : '補打卡申請待主管審核';
         else if(issue.pendingLeave) pendingText = '事後補假申請待主管審核';
         const pendingLine = pending ? `<div class="pending-status-line"><strong>${escapeHtml(pendingText)}</strong>${escapeHtml(pendingAutoReturnText())}</div>` : '';
-        const actionButtons = pending ? '' : (issue.missingActions || []).map(action => {
-          const defaultTime = action.indexOf('下班') >= 0 ? (issue.endTime || '') : (issue.startTime || '');
-          return `<button class="btn mini-btn js-open-missing" data-key="${escapeHtml(key)}" data-action="${escapeHtml(action)}" data-time="${escapeHtml(defaultTime)}">補${escapeHtml(action.replace('打卡','卡'))}</button>`;
-        }).join('') + `<button class="btn mini-btn js-missing-leave" data-key="${escapeHtml(key)}">改申請事後補假</button>`;
+        let actionButtons = '';
+        if(!pending){
+          actionButtons = (issue.missingActions || []).map(action => {
+            const defaultTime = action.indexOf('下班') >= 0 ? (issue.endTime || '') : (issue.startTime || '');
+            return `<button class="btn mini-btn js-open-missing" data-key="${escapeHtml(key)}" data-action="${escapeHtml(action)}" data-time="${escapeHtml(defaultTime)}">補${escapeHtml(action.replace('打卡','卡'))}</button>`;
+          }).join('');
+          if(issue.canEarlyLeaveRetro){
+            actionButtons += `<button class="btn mini-btn js-early-leave" data-key="${escapeHtml(key)}">提早離開，申請剩餘時段事後補假</button>`;
+          }else{
+            actionButtons += `<button class="btn mini-btn js-missing-leave" data-key="${escapeHtml(key)}">改申請事後補假</button>`;
+          }
+        }
         return `
           <div class="missing-clock-card ${pending ? 'pending' : ''}" data-issue-key="${escapeHtml(key)}">
             <div class="missing-head">${escapeHtml(issue.date)}｜${escapeHtml(issue.summary || issue.scheduleLabel || '班表')}</div>
-            <div class="missing-meta">缺少：${escapeHtml(missing || '未完成打卡')}｜狀態：${escapeHtml(pendingText)}</div>
+            <div class="missing-meta">${issue.existingClockInTime ? ('已上班打卡：' + escapeHtml(issue.existingClockInTime) + '｜') : ''}缺少：${escapeHtml(missing || '未完成打卡')}｜狀態：${escapeHtml(pendingText)}</div>
+            ${issue.canEarlyLeaveRetro && !pending ? '<div class="missing-meta">如果你是提早離開，系統會依照你填寫的離開時間，把前段視為出勤、後段帶入事後補假。</div>' : ''}
             ${pendingLine}
             <div class="missing-actions">${actionButtons}</div>
             <div class="missing-form hidden" id="missing-form-${escapeHtml(key)}">
@@ -739,6 +780,12 @@
         btn.onclick = () => {
           const issue = (window.__missingClockIssuesByKey || {})[btn.dataset.key || ''];
           goLeaveForRetro(issue || null);
+        };
+      });
+      qsa('.js-early-leave').forEach(btn => {
+        btn.onclick = () => {
+          const issue = (window.__missingClockIssuesByKey || {})[btn.dataset.key || ''];
+          goEarlyLeaveRetro(issue || null);
         };
       });
       qsa('.js-submit-missing').forEach(btn => {
