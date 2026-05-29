@@ -3669,3 +3669,637 @@
   fb.__myDataFirebaseOnlySalaryMap2V20260528 = true;
   global.YZFirebase = fb;
 })(window);
+
+/* 工讀生時數：Firebase 直讀、班表時數勾稽、超出排班送審 */
+(function(global){
+  const fb = global.YZFirebase;
+  if(!fb || fb.__parttimeFastScheduleFixV20260529) return;
+  const oldHandle = fb.handleApi;
+
+  function clean(v){ return String(v == null ? '' : v).trim(); }
+  function lower(v){ return clean(v).toLowerCase(); }
+  function num(v){ const n = Number(clean(v).replace(/[^\d.\-]/g,'')); return Number.isFinite(n) ? n : 0; }
+  function pad(n){ return String(n).padStart(2,'0'); }
+  function ymd(d){ return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()); }
+  function today(){ return ymd(new Date()); }
+  function serverTs(){ return global.firebase && global.firebase.firestore ? global.firebase.firestore.FieldValue.serverTimestamp() : new Date().toISOString(); }
+  function db(){ try{return fb.init && fb.init();}catch(e){return null;} }
+  function currentUser(){ try{return JSON.parse(localStorage.getItem('employeeUser') || 'null') || {};}catch(e){return {};} }
+  function dateText(v){
+    if(!v) return '';
+    if(v && typeof v.toDate === 'function') return ymd(v.toDate());
+    if(v instanceof Date && !isNaN(v.getTime())) return ymd(v);
+    const s = clean(v);
+    if(/^\d{4}[-/]\d{2}[-/]\d{2}/.test(s)) return s.slice(0,10).replace(/\//g,'-');
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? s : ymd(d);
+  }
+  function shortTime(v){
+    const s = clean(v);
+    const m = s.match(/(\d{1,2}):(\d{2})/);
+    if(!m) return '';
+    return pad(Math.max(0, Math.min(23, Number(m[1]) || 0))) + ':' + pad(Math.max(0, Math.min(59, Number(m[2]) || 0)));
+  }
+  function minutes(v){
+    const t = shortTime(v);
+    if(!t) return NaN;
+    const parts = t.split(':');
+    return Number(parts[0]) * 60 + Number(parts[1]);
+  }
+  function hhmmFromMinutes(m){
+    let n = Math.round(Number(m) || 0);
+    if(n < 0) n = 0;
+    if(n > 24 * 60) n = 24 * 60;
+    const h = Math.floor(n / 60);
+    const mm = n % 60;
+    return pad(h) + ':' + pad(mm);
+  }
+  function addHoursToTime(time, hours){
+    const base = minutes(time);
+    if(!Number.isFinite(base)) return '';
+    return hhmmFromMinutes(base + Math.round((Number(hours) || 0) * 60));
+  }
+  function hoursBetween(start, end){
+    const a = minutes(start), b = minutes(end);
+    if(!Number.isFinite(a) || !Number.isFinite(b) || b <= a) return 0;
+    return Math.round(((b - a) / 60) * 100) / 100;
+  }
+  function formatHours(v){
+    const n = Math.round((Number(v) || 0) * 100) / 100;
+    return (Math.abs(n - Math.round(n)) < 0.001 ? String(Math.round(n)) : n.toFixed(1).replace(/\.0$/,'')) + ' 小時';
+  }
+  async function all(col){
+    const d = db(); if(!d) throw new Error('Firebase 尚未啟用');
+    const snap = await d.collection(col).get();
+    const rows = [];
+    snap.forEach(doc => rows.push(Object.assign({__id:doc.id}, doc.data() || {})));
+    return rows;
+  }
+  async function where(col, field, val){
+    const d = db(); if(!d) throw new Error('Firebase 尚未啟用');
+    const snap = await d.collection(col).where(field, '==', val).get();
+    const rows = [];
+    snap.forEach(doc => rows.push(Object.assign({__id:doc.id}, doc.data() || {})));
+    return rows;
+  }
+  async function setDoc(col, id, data, merge){
+    const d = db(); if(!d) throw new Error('Firebase 尚未啟用');
+    await d.collection(col).doc(id).set(data, {merge: merge !== false});
+    return {ok:true,id};
+  }
+  function employeeIdFrom(payload){
+    const user = currentUser();
+    return clean(payload && (payload.userId || payload.employeeId || payload.id)) || clean(user.id || user.employeeId || user.userId);
+  }
+  function emailFrom(payload){
+    const user = currentUser();
+    return lower(payload && (payload.email || payload.Email)) || lower(user.email || user.Email);
+  }
+  function uniqueById(rows){
+    const seen = new Set();
+    const out = [];
+    (rows || []).forEach(r => {
+      const id = clean(r.__id || r.recordId || r.requestId || r.id) || JSON.stringify(r);
+      if(seen.has(id)) return;
+      seen.add(id);
+      out.push(r);
+    });
+    return out;
+  }
+  async function employeeRows(col, employeeId, email){
+    const jobs = [];
+    if(employeeId){
+      jobs.push(where(col, 'employeeId', employeeId).catch(()=>[]));
+      jobs.push(where(col, '員工ID', employeeId).catch(()=>[]));
+      jobs.push(where(col, 'userId', employeeId).catch(()=>[]));
+    }
+    if(email){
+      jobs.push(where(col, 'email', email).catch(()=>[]));
+      jobs.push(where(col, 'Email', email).catch(()=>[]));
+    }
+    const chunks = jobs.length ? await Promise.all(jobs) : [];
+    return uniqueById([].concat.apply([], chunks));
+  }
+  function normalizeParttime(o){
+    o = o || {};
+    const total = num(o.totalHours || o['總時數'] || o.hours || o['時數']);
+    return {
+      id: clean(o.recordId || o['紀錄ID'] || o.__id),
+      recordId: clean(o.recordId || o['紀錄ID'] || o.__id),
+      employeeId: clean(o.employeeId || o['員工ID']),
+      name: clean(o.name || o['姓名']),
+      email: lower(o.email || o['Email']),
+      date: dateText(o.date || o.workDate || o['日期']),
+      hours: num(o.hours || o['時數'] || total),
+      totalHours: total,
+      hourlyRate: num(o.hourlyRate || o['時薪']),
+      grossPay: num(o.grossPay || o['當日工資'] || o['當筆毛額']),
+      status: clean(o.status || o['狀態'] || '正常') || '正常',
+      note: clean(o.note || o['備註']),
+      sourceType: clean(o.sourceType || o.requestType || o['申請類型'])
+    };
+  }
+  async function getParttimeRows(employeeId, email){
+    return (await employeeRows('parttimeRecords', employeeId, email)).map(normalizeParttime).filter(r => r.date && clean(r.status) !== '已刪除' && clean(r.status) !== '已駁回');
+  }
+  function scheduleHours(schedule){
+    if(!schedule) return 0;
+    const h = hoursBetween(schedule.startTime || schedule.scheduleStartTime, schedule.endTime || schedule.scheduleEndTime);
+    return Math.max(0, h);
+  }
+  function scheduleLabel(schedule){
+    const start = shortTime(schedule.startTime || schedule.scheduleStartTime);
+    const end = shortTime(schedule.endTime || schedule.scheduleEndTime);
+    return start && end ? start + '-' + end : clean(schedule.summary || schedule.scheduleText || '班表');
+  }
+  async function todayScheduleInfo(employeeId, dateKey){
+    if(typeof oldHandle === 'function'){
+      try{
+        const res = await oldHandle('getTodaySchedule', {userId:employeeId, employeeId, date:dateKey, clockDate:dateKey});
+        if(res && (res.ok || Array.isArray(res.schedules))){
+          const schedules = (res.schedules || (res.schedule ? [res.schedule] : [])).filter(Boolean);
+          const usable = schedules.filter(s => (s.hasSchedule !== false) && (s.startTime || s.scheduleStartTime) && (s.endTime || s.scheduleEndTime));
+          const total = Math.round(usable.reduce((sum, s) => sum + scheduleHours(s), 0) * 100) / 100;
+          const firstStart = usable.map(s => shortTime(s.startTime || s.scheduleStartTime)).filter(Boolean).sort()[0] || '';
+          const lastEnd = usable.map(s => shortTime(s.endTime || s.scheduleEndTime)).filter(Boolean).sort().slice(-1)[0] || '';
+          return {
+            hasSchedule: !!usable.length,
+            schedules: usable,
+            scheduledHours: total,
+            scheduleLabel: usable.map(scheduleLabel).join('、'),
+            scheduleStart: firstStart,
+            scheduleEnd: lastEnd,
+            raw: res
+          };
+        }
+      }catch(e){}
+    }
+    return {hasSchedule:false, schedules:[], scheduledHours:0, scheduleLabel:'', scheduleStart:'', scheduleEnd:'', raw:null};
+  }
+  function normalizeTemp(o){
+    o = o || {};
+    const date = dateText(o.date || o['日期'] || o.workDate);
+    const start = shortTime(o.startTime || o['申請上班時間'] || o.approvedStartTime || o['核准上班時間']);
+    const end = shortTime(o.endTime || o['申請下班時間'] || o.approvedEndTime || o['核准下班時間']);
+    const h = num(o.requestedHours || o['申請時數'] || o.approvedHours || o['核准時數']) || hoursBetween(start, end);
+    const kind = clean(o.requestType || o['申請類型'] || '臨時出勤申請');
+    return {
+      id: clean(o.requestId || o['申請ID'] || o.__id),
+      requestId: clean(o.requestId || o['申請ID'] || o.__id),
+      employeeId: clean(o.employeeId || o['員工ID']),
+      date,
+      startTime:start,
+      endTime:end,
+      requestedHours:h,
+      status: clean(o.status || o['狀態'] || '待審核') || '待審核',
+      requestType: kind,
+      reason: clean(o.reason || o['原因']),
+      title: kind.indexOf('超出') >= 0 ? '超出排班時數申請' : kind,
+      timeText: start && end ? start + '-' + end : '',
+      hoursText: h ? formatHours(h) : ''
+    };
+  }
+  async function pendingTempRows(employeeId, email){
+    return (await employeeRows('temporaryAttendanceRequests', employeeId, email)).map(normalizeTemp).filter(r => r.status === '待審核');
+  }
+  async function getDefaultHourlyRate(){
+    const user = currentUser();
+    const v = num(user.hourlyRate || user.parttimeHourlyRate || user['時薪']);
+    if(v) return v;
+    try{
+      const empId = clean(user.id || user.employeeId);
+      if(empId){
+        const rows = await employeeRows('employees', empId, lower(user.email));
+        const emp = rows[0] || {};
+        const rate = num(emp.hourlyRate || emp.parttimeHourlyRate || emp.hourRate || emp['時薪']);
+        if(rate) return rate;
+      }
+    }catch(e){}
+    return 0;
+  }
+  async function getParttimeDateContextFast(payload){
+    const employeeId = employeeIdFrom(payload || {});
+    const email = emailFrom(payload || {});
+    const workDate = dateText((payload || {}).workDate || (payload || {}).date) || today();
+    if(!employeeId) return {ok:false, message:'缺少員工資料', context:null};
+    const [sch, partRows, pendings] = await Promise.all([
+      todayScheduleInfo(employeeId, workDate),
+      getParttimeRows(employeeId, email).catch(()=>[]),
+      pendingTempRows(employeeId, email).catch(()=>[])
+    ]);
+    const dayParts = partRows.filter(r => r.date === workDate);
+    const registered = Math.round(dayParts.reduce((sum, r) => sum + (Number(r.totalHours) || 0), 0) * 100) / 100;
+    const dayPendings = pendings.filter(r => r.date === workDate);
+    const pendingHours = Math.round(dayPendings.reduce((sum, r) => sum + (Number(r.requestedHours) || 0), 0) * 100) / 100;
+    const scheduled = Math.round((Number(sch.scheduledHours) || 0) * 100) / 100;
+    const remaining = Math.max(0, Math.round((scheduled - registered) * 100) / 100);
+    const canRegister = !!(sch.hasSchedule && scheduled > 0);
+    const helperText = canRegister
+      ? '可直接登記排班內時數；超過排班的時數會轉為申請，待主管審核。'
+      : '今天沒有排班，不能直接登記工讀時數。如為臨時出勤，請提出臨時出勤申請。';
+    return {ok:true, context:{
+      workDate,
+      canRegister,
+      statusLabel: canRegister ? '有排班' : '無排班',
+      scheduleLabel: sch.scheduleLabel,
+      helperText,
+      scheduledHours: scheduled,
+      registeredHours: registered,
+      pendingHours,
+      remainingRegularHours: remaining,
+      maxDirectHours: remaining,
+      scheduleStart: sch.scheduleStart,
+      scheduleEnd: sch.scheduleEnd,
+      schedules: sch.schedules,
+      pendingItems: dayPendings
+    }};
+  }
+  async function getParttimeHistoryFast(payload){
+    const p = payload || {};
+    const employeeId = employeeIdFrom(p);
+    const email = emailFrom(p);
+    const month = clean(p.monthText) || today().slice(0,7);
+    const rows = (await getParttimeRows(employeeId, email)).filter(r => r.date.slice(0,7) === month).sort((a,b) => clean(b.date).localeCompare(clean(a.date)) || clean(b.recordId).localeCompare(clean(a.recordId)));
+    const total = Math.round(rows.reduce((sum, r) => sum + (Number(r.totalHours) || 0), 0) * 100) / 100;
+    const pay = Math.round(rows.reduce((sum, r) => sum + (Number(r.grossPay) || 0), 0));
+    return {ok:true, source:'firebase-parttimeRecords', monthText:month, monthTotalHours:total, monthGrossPay:pay, rows, list:rows};
+  }
+  async function getParttimeHistoryRangeFast(payload){
+    const p = payload || {};
+    const employeeId = employeeIdFrom(p);
+    const email = emailFrom(p);
+    const start = dateText(p.startDate);
+    const end = dateText(p.endDate);
+    const rows = (await getParttimeRows(employeeId, email)).filter(r => (!start || r.date >= start) && (!end || r.date <= end)).sort((a,b) => clean(b.date).localeCompare(clean(a.date)) || clean(b.recordId).localeCompare(clean(a.recordId)));
+    const total = Math.round(rows.reduce((sum, r) => sum + (Number(r.totalHours) || 0), 0) * 100) / 100;
+    const pay = Math.round(rows.reduce((sum, r) => sum + (Number(r.grossPay) || 0), 0));
+    return {ok:true, source:'firebase-parttimeRecords', startDate:start, endDate:end, totalHours:total, totalPay:pay, rows, list:rows};
+  }
+  async function getParttimePendingItemsFast(payload){
+    const employeeId = employeeIdFrom(payload || {});
+    const email = emailFrom(payload || {});
+    const rows = (await pendingTempRows(employeeId, email)).sort((a,b) => clean(b.date).localeCompare(clean(a.date)) || clean(b.requestId).localeCompare(clean(a.requestId)));
+    return {ok:true, source:'firebase-temporaryAttendanceRequests', rows};
+  }
+  async function createParttimeRecord(payload, totalHours, extra){
+    const user = currentUser();
+    const employeeId = employeeIdFrom(payload || {});
+    const workDate = dateText(payload.workDate || payload.date) || today();
+    const rate = num(payload.hourlyRate) || await getDefaultHourlyRate();
+    const gross = Math.round((Number(totalHours) || 0) * rate);
+    const recordId = clean(extra && extra.recordId) || ('PT_' + employeeId + '_' + workDate.replace(/-/g,'') + '_' + Date.now() + '_' + Math.random().toString(36).slice(2,6));
+    const row = {
+      recordId, '紀錄ID':recordId,
+      employeeId, '員工ID':employeeId,
+      name: clean(user.name), '姓名':clean(user.name),
+      email: lower(user.email), Email:lower(user.email),
+      date: workDate, workDate, '日期':workDate,
+      hours: Number(totalHours) || 0, '時數':Number(totalHours) || 0,
+      halfHour:false,
+      totalHours:Number(totalHours) || 0, '總時數':Number(totalHours) || 0,
+      hourlyRate:rate, '時薪':rate,
+      grossPay:gross, '當日工資':gross,
+      status:clean(extra && extra.status) || '正常', '狀態':clean(extra && extra.status) || '正常',
+      note:clean(payload.note || (extra && extra.note) || ''), '備註':clean(payload.note || (extra && extra.note) || ''),
+      source:'firebase-parttime-fast',
+      createdAt:serverTs(), updatedAt:serverTs()
+    };
+    await setDoc('parttimeRecords', recordId, row);
+    return row;
+  }
+  async function createOverScheduleRequest(payload, extraHours, ctx){
+    const user = currentUser();
+    const employeeId = employeeIdFrom(payload || {});
+    const workDate = dateText(payload.workDate || payload.date) || today();
+    let start = shortTime(payload.extraStartTime);
+    let end = shortTime(payload.extraEndTime);
+    const mode = clean(payload.extraMode || payload.excessMode || 'late');
+    if(!start && !end){
+      if(mode === 'early' && shortTime(ctx.scheduleStart)){
+        end = shortTime(ctx.scheduleStart);
+        start = hhmmFromMinutes(minutes(end) - Math.round((Number(extraHours) || 0) * 60));
+      }else if(shortTime(ctx.scheduleEnd)){
+        start = shortTime(ctx.scheduleEnd);
+        end = addHoursToTime(start, extraHours);
+      }else{
+        start = shortTime(ctx.scheduleStart);
+        end = start ? addHoursToTime(start, extraHours) : '';
+      }
+    }
+    const requestId = 'PT_EXTRA_' + employeeId + '_' + workDate.replace(/-/g,'') + '_' + Date.now();
+    const rate = num(payload.hourlyRate) || await getDefaultHourlyRate();
+    const row = {
+      requestId, '申請ID':requestId,
+      employeeId, '員工ID':employeeId,
+      name:clean(user.name), '姓名':clean(user.name),
+      email:lower(user.email), Email:lower(user.email),
+      employeeType:'工讀生', '員工身分':'工讀生',
+      date:workDate, '日期':workDate,
+      dayType:'超出排班時數', '出勤日別':'超出排班時數',
+      existingHours:num(ctx.scheduledHours), '當天原本時數':num(ctx.scheduledHours),
+      scheduleStart:clean(ctx.scheduleStart), '原班表上班時間':clean(ctx.scheduleStart),
+      scheduleEnd:clean(ctx.scheduleEnd), '原班表下班時間':clean(ctx.scheduleEnd),
+      startTime:start, '申請上班時間':start,
+      endTime:end, '申請下班時間':end,
+      requestedHours:Number(extraHours) || 0, '申請時數':Number(extraHours) || 0,
+      requestType:'超出排班時數申請', '申請類型':'超出排班時數申請',
+      payable:'待主管審核', '是否計薪':'待主管審核',
+      hourlyRate:rate, '時薪':rate,
+      reason:clean(payload.overScheduledReason || payload.excessReason || payload.reason || '超出排班時數'), '原因':clean(payload.overScheduledReason || payload.excessReason || payload.reason || '超出排班時數'),
+      scheduleCheckNote:'今日排班 ' + formatHours(ctx.scheduledHours) + '，已登記 ' + formatHours(ctx.registeredHours) + '，本次超出 ' + formatHours(extraHours) + '。',
+      '班表判斷':'今日排班 ' + formatHours(ctx.scheduledHours) + '，已登記 ' + formatHours(ctx.registeredHours) + '，本次超出 ' + formatHours(extraHours) + '。',
+      status:'待審核', '狀態':'待審核',
+      source:'firebase-parttime-over-schedule',
+      createdAt:serverTs(), updatedAt:serverTs()
+    };
+    await setDoc('temporaryAttendanceRequests', requestId, row);
+    return row;
+  }
+  async function submitParttimeFast(payload){
+    const p = payload || {};
+    const employeeId = employeeIdFrom(p);
+    if(!employeeId) return {ok:false, message:'缺少員工資料，請重新登入。'};
+    const workDate = dateText(p.workDate || p.date) || today();
+    const selected = Math.round((num(p.hours || p.workHours) + (String(p.halfHour || p.addHalfHour).toLowerCase() === 'true' ? 0.5 : 0)) * 100) / 100;
+    if(!selected) return {ok:false, message:'請先選擇時數。'};
+    const contextRes = await getParttimeDateContextFast(Object.assign({}, p, {workDate}));
+    const ctx = contextRes.context || {};
+    if(!ctx.canRegister) return {ok:false, message:'今天沒有排班，不能直接登記工讀時數。如為臨時出勤，請使用臨時出勤申請。'};
+
+    const remaining = Math.max(0, Number(ctx.remainingRegularHours) || 0);
+    const pendingSameDay = (ctx.pendingItems || []).filter(x => clean(x.status) === '待審核');
+    if(selected > remaining + 0.001 && pendingSameDay.length){
+      return {ok:false, message:'這一天已有待主管審核的臨時出勤 / 超出排班時數申請，請等待主管審核。主管審核會更新，並自動歸位。'};
+    }
+
+    if(selected <= remaining + 0.001){
+      const row = await createParttimeRecord(p, selected, {status:'正常'});
+      return {ok:true, message:'工讀時數已送出。', recordId:row.recordId, totalHours:selected, monthText:workDate.slice(0,7), row};
+    }
+
+    const extraHours = Math.round((selected - remaining) * 100) / 100;
+    if(!(p.overScheduledConfirmed || p.excessReason)){
+      return {ok:false, requiresExtraApproval:true, scheduledHours:ctx.scheduledHours, remainingRegularHours:remaining, extraHours, message:'你登記的時數已超過今日排班可登記時數。超出的 ' + formatHours(extraHours) + ' 需送主管審核。'};
+    }
+
+    let normalRow = null;
+    if(remaining > 0.001){
+      normalRow = await createParttimeRecord(p, remaining, {status:'正常', note:'排班內時數'});
+    }
+    const req = await createOverScheduleRequest(p, extraHours, ctx);
+    const msg = (remaining > 0.001 ? ('排班內 ' + formatHours(remaining) + ' 已登記；') : '') + '超出排班 ' + formatHours(extraHours) + ' 已送出申請，待主管審核。主管審核會更新，並自動歸位。';
+    return {ok:true, message:msg, recordId:normalRow && normalRow.recordId, requestId:req.requestId, monthText:workDate.slice(0,7), pending:true, extraHours, totalHours:remaining};
+  }
+
+  fb.handleApi = async function(action, payload){
+    const a = clean(action);
+    if(a === 'getParttimeDateContext') return await getParttimeDateContextFast(payload || {});
+    if(a === 'getParttimeHistory') return await getParttimeHistoryFast(payload || {});
+    if(a === 'getParttimeHistoryRange') return await getParttimeHistoryRangeFast(payload || {});
+    if(a === 'getParttimePendingItems') return await getParttimePendingItemsFast(payload || {});
+    if(a === 'parttime') return await submitParttimeFast(payload || {});
+    if(typeof oldHandle === 'function') return await oldHandle(action, payload || {});
+    return null;
+  };
+  fb.__parttimeFastScheduleFixV20260529 = true;
+  global.YZFirebase = fb;
+})(window);
+
+/* 工讀時數 Firebase 快速版：月份/搜尋直讀 Firebase，並勾稽班表與超出排班時數 */
+(function(global){
+  const fb = global.YZFirebase || {};
+  const previousHandle = fb.handleApi;
+  function clean(v){ return String(v == null ? '' : v).trim(); }
+  function lower(v){ return clean(v).toLowerCase(); }
+  function num(v){ const n = Number(clean(v).replace(/[^0-9.\-]/g,'')); return Number.isFinite(n) ? n : 0; }
+  function truthy(v){ const s = lower(v); return v === true || s === 'true' || s === 'yes' || s === 'y' || s === '1' || s === '是' || s === '啟用'; }
+  function db(){
+    try{ if(fb && typeof fb.init === 'function') return fb.init(); }catch(e){}
+    try{
+      if(global.firebase && global.APP_CONFIG && global.APP_CONFIG.FIREBASE_CONFIG){
+        if(!global.firebase.apps.length) global.firebase.initializeApp(global.APP_CONFIG.FIREBASE_CONFIG);
+        return global.firebase.firestore();
+      }
+    }catch(e){}
+    return null;
+  }
+  function serverTs(){ try{ return global.firebase.firestore.FieldValue.serverTimestamp(); }catch(e){ return new Date().toISOString(); } }
+  function currentUser(){ try{ return JSON.parse(localStorage.getItem('employeeUser') || 'null') || {}; }catch(e){ return {}; } }
+  function employeeIdFrom(payload){ const u = currentUser(); return clean((payload && (payload.userId || payload.employeeId || payload.id)) || u.employeeId || u.id || u.userId || localStorage.getItem('employeeUserId')); }
+  function ymd(d){ const x = d instanceof Date ? d : new Date(); const off = x.getTimezoneOffset() * 60000; return new Date(x.getTime() - off).toISOString().slice(0,10); }
+  function dateText(v){ const s = clean(v); if(!s) return ''; const m = s.match(/^(\d{4})[\/\-.年]?(\d{1,2})[\/\-.月]?(\d{1,2})/); if(!m) return s.slice(0,10); return m[1] + '-' + String(m[2]).padStart(2,'0') + '-' + String(m[3]).padStart(2,'0'); }
+  function shortTime(v){ const s = clean(v); const m = s.match(/(\d{1,2}):(\d{2})/); if(!m) return ''; return String(Math.min(23, Math.max(0, Number(m[1])))).padStart(2,'0') + ':' + String(Math.min(59, Math.max(0, Number(m[2])))).padStart(2,'0'); }
+  function minutes(v){ const t = shortTime(v); const m = t.match(/^(\d{2}):(\d{2})$/); return m ? Number(m[1]) * 60 + Number(m[2]) : NaN; }
+  function timeFromMinutes(v){ let n = Math.round(Number(v)||0); while(n < 0) n += 1440; while(n >= 1440) n -= 1440; return String(Math.floor(n/60)).padStart(2,'0') + ':' + String(n%60).padStart(2,'0'); }
+  function hoursBetween(date, start, end){ const a = minutes(start), b = minutes(end); if(!Number.isFinite(a) || !Number.isFinite(b) || b <= a) return 0; return Math.round(((b-a)/60)*100)/100; }
+  function money(v){ const n = Math.round(Number(v)||0); return n ? n.toLocaleString('zh-TW') + ' 元' : ''; }
+  async function all(col){ const d = db(); if(!d) throw new Error('Firebase 尚未啟用'); const snap = await d.collection(col).get(); const rows = []; snap.forEach(doc => rows.push(Object.assign({__id:doc.id}, doc.data() || {}))); return rows; }
+  async function queryEq(col, field, value){ const d = db(); if(!d) throw new Error('Firebase 尚未啟用'); const snap = await d.collection(col).where(field, '==', value).get(); const rows = []; snap.forEach(doc => rows.push(Object.assign({__id:doc.id}, doc.data() || {}))); return rows; }
+  async function setDoc(col, id, data){ const d = db(); if(!d) throw new Error('Firebase 尚未啟用'); await d.collection(col).doc(clean(id)).set(Object.assign({}, data, {updatedAt:serverTs()}), {merge:true}); }
+  async function employeeRows(col, employeeId){
+    const id = clean(employeeId);
+    if(!id) return [];
+    let rows = [];
+    try{ rows = await queryEq(col, 'employeeId', id); }catch(e){ rows = []; }
+    if(rows.length) return rows;
+    const allRows = await all(col).catch(()=>[]);
+    return allRows.filter(r => clean(r.employeeId || r['員工ID'] || r.userId || r.id) === id || clean(r.__id) === id);
+  }
+  async function findEmployee(employeeId){
+    const id = clean(employeeId);
+    if(!id) return null;
+    const d = db();
+    if(d){ try{ const doc = await d.collection('employees').doc(id).get(); if(doc.exists) return Object.assign({__id:doc.id}, doc.data() || {}); }catch(e){} }
+    const rows = await employeeRows('employees', id).catch(()=>[]);
+    return rows[0] || null;
+  }
+  function isEnabledRow(o){ const s = lower(o && (o.status || o['狀態'] || o.enabled || o['啟用'])); if(s === 'false' || s === '0' || s === '停用' || s === '停用中' || s === '已刪除' || s === '刪除') return false; return true; }
+  const DAYS = [
+    {idx:0,key:'sunday',label:'星期日',zh:'星期日'}, {idx:1,key:'monday',label:'星期一',zh:'星期一'},
+    {idx:2,key:'tuesday',label:'星期二',zh:'星期二'}, {idx:3,key:'wednesday',label:'星期三',zh:'星期三'},
+    {idx:4,key:'thursday',label:'星期四',zh:'星期四'}, {idx:5,key:'friday',label:'星期五',zh:'星期五'},
+    {idx:6,key:'saturday',label:'星期六',zh:'星期六'}
+  ];
+  function dayInfo(dateKey){ const d = new Date(dateKey + 'T00:00:00'); return DAYS[isNaN(d.getTime()) ? 0 : d.getDay()] || DAYS[0]; }
+  function pick(o, keys, fallback){ o = o || {}; for(const k of keys){ if(o[k] !== undefined && o[k] !== null && clean(o[k]) !== '') return o[k]; } return fallback == null ? '' : fallback; }
+  function normalizeTemplate(o){ return Object.assign({}, o || {}, { id:clean(o && (o.templateId || o['模板ID'] || o.__id)), templateName:clean(o && (o.templateName || o['模板名稱'] || o.name || '班表模板')), enabled:isEnabledRow(o || {}) }); }
+  function dayFromTemplate(template, dateKey){
+    const info = dayInfo(dateKey);
+    const days = Array.isArray(template.days) ? template.days : [];
+    const dayRow = days.find(d => clean(d.dayKey || d.key) === info.key || clean(d.dayLabel || d.label) === info.label || clean(d.dayLabel || d.label) === info.zh) || {};
+    const type = clean(pick(template, [info.key+'Type', info.zh+'類型'], pick(dayRow, ['type','clockType','打卡類型'], '無班'))) || '無班';
+    const start = shortTime(pick(template, [info.key+'StartTime', info.key+'Time', info.zh+'上班時間'], pick(dayRow, ['startTime','time','上班時間'], '')));
+    const end = shortTime(pick(template, [info.key+'EndTime', info.zh+'下班時間'], pick(dayRow, ['endTime','下班時間'], '')));
+    return {dayKey:info.key, dayLabel:info.label, clockType:type, startTime:start, endTime:end};
+  }
+  function scheduleKey(s){ return [clean(s.source), clean(s.id || s.assignmentId || s.recordId), clean(s.date), shortTime(s.startTime), shortTime(s.endTime)].join('|'); }
+  function normalizeSingle(o, dateKey){
+    return {
+      id:clean(o.recordId || o['單日ID'] || o.__id), source:'singleDaySchedules', sourceLabel:'單日班表',
+      employeeId:clean(o.employeeId || o['員工ID']), date:dateText(o.date || o['日期']) || dateKey,
+      startTime:shortTime(o.startTime || o['上班時間'] || o.time || o['開始時間']), endTime:shortTime(o.endTime || o['下班時間'] || o['結束時間']),
+      templateName:clean(o.templateName || o['模板名稱'] || o.name || o['班別名稱']), enabled:isEnabledRow(o)
+    };
+  }
+  function normalizeAssignment(o){
+    return { id:clean(o.assignmentId || o['套用ID'] || o.__id), source:'employeeSchedules', sourceLabel:'固定班表', employeeId:clean(o.employeeId || o['員工ID']), templateId:clean(o.templateId || o['模板ID']), templateName:clean(o.templateName || o['模板名稱']), startDate:dateText(o.startDate || o['開始日期']), endDate:dateText(o.endDate || o['結束日期']), indefinite:truthy(o.indefinite || o['無期限']), enabled:isEnabledRow(o) };
+  }
+  async function schedulesForDate(employeeId, dateKey){
+    const [singleRows, assignmentRows, templateRows] = await Promise.all([
+      employeeRows('singleDaySchedules', employeeId).catch(()=>[]),
+      employeeRows('employeeSchedules', employeeId).catch(()=>[]),
+      all('scheduleTemplates').catch(()=>[])
+    ]);
+    const templates = templateRows.map(normalizeTemplate).filter(t => t.enabled);
+    const schedules = [];
+    singleRows.map(r => normalizeSingle(r, dateKey)).filter(s => s.enabled && s.date === dateKey && s.startTime && s.endTime).forEach(s => { s.hours = hoursBetween(dateKey, s.startTime, s.endTime); s.key = scheduleKey(s); schedules.push(s); });
+    assignmentRows.map(normalizeAssignment).filter(a => a.enabled && a.startDate && dateKey >= a.startDate && (a.indefinite || !a.endDate || dateKey <= a.endDate)).forEach(a => {
+      const t = templates.find(x => clean(x.id) === clean(a.templateId) || clean(x.templateId) === clean(a.templateId));
+      if(!t) return;
+      const d = dayFromTemplate(t, dateKey);
+      if(!d.startTime || !d.endTime) return;
+      const s = { id:a.id, assignmentId:a.id, source:'employeeSchedules', sourceLabel:'固定班表', employeeId, date:dateKey, templateId:t.id, templateName:t.templateName || a.templateName, dayKey:d.dayKey, dayLabel:d.dayLabel, clockType:d.clockType, startTime:d.startTime, endTime:d.endTime };
+      s.hours = hoursBetween(dateKey, s.startTime, s.endTime); s.key = scheduleKey(s); schedules.push(s);
+    });
+    schedules.sort((a,b) => (minutes(a.startTime)||9999) - (minutes(b.startTime)||9999));
+    return schedules.filter(s => s.hours > 0);
+  }
+  function fmtHours(v){ const n = Math.round((Number(v)||0)*100)/100; return Math.abs(n - Math.round(n)) < .001 ? String(Math.round(n)) + ' 小時' : String(n).replace(/\.0$/,'') + ' 小時'; }
+  function scheduleLabel(schedules){ return (schedules || []).map(s => `${s.startTime}-${s.endTime}`).join('、'); }
+  async function getParttimeDateContext(payload){
+    const employeeId = employeeIdFrom(payload || {});
+    const workDate = dateText(payload && (payload.workDate || payload.date)) || ymd(new Date());
+    if(!employeeId) return {ok:false, message:'缺少員工資料', context:{workDate, canRegister:false}};
+    const schedules = await schedulesForDate(employeeId, workDate);
+    const scheduledHours = Math.round(schedules.reduce((sum,s)=>sum+(Number(s.hours)||0),0)*100)/100;
+    const canRegister = scheduledHours > 0;
+    return {ok:true, context:{
+      workDate, date:workDate, employeeId, canRegister, hasSchedule:canRegister, statusLabel:canRegister?'今日有排班':'今日沒有排班',
+      scheduleLabel:scheduleLabel(schedules), scheduledHours, maxDirectHours:scheduledHours, schedules,
+      helperText:canRegister?`今日排班 ${scheduleLabel(schedules)}，可直接登記 ${fmtHours(scheduledHours)}。`:'今天沒有排班，不能直接登記工讀時數。'
+    }};
+  }
+  async function getHourlyRate(employeeId){
+    const emp = await findEmployee(employeeId).catch(()=>null);
+    const rate = num(pick(emp || {}, ['hourlyRate','parttimeHourlyRate','hourRate','時薪'], 0));
+    if(rate) return rate;
+    const cfg = await employeeRows('employeeSalaryConfigs', employeeId).catch(()=>[]);
+    const r2 = cfg.map(x => num(pick(x, ['hourlyRate','parttimeHourlyRate','hourRate','時薪'], 0))).find(Boolean);
+    return r2 || 0;
+  }
+  function normParttime(o){
+    o = o || {};
+    const total = num(o.totalHours || o['總時數'] || o.hours || o['時數']);
+    return { id:clean(o.recordId || o['紀錄ID'] || o.__id), employeeId:clean(o.employeeId || o['員工ID']), date:dateText(o.date || o.workDate || o['日期']), totalHours:total, hours:num(o.hours || o['時數']) || total, status:clean(o.status || o['狀態'] || '正常') || '正常', note:clean(o.note || o['備註']), hourlyRate:num(o.hourlyRate || o['時薪']), grossPay:num(o.grossPay || o['當日工資'] || o['當筆毛額']) };
+  }
+  async function parttimeRows(employeeId){ return (await employeeRows('parttimeRecords', employeeId).catch(()=>[])).map(normParttime).filter(r => r.employeeId === clean(employeeId) && r.date && clean(r.status) !== '已駁回' && clean(r.status) !== '已刪除'); }
+  function groupParttime(rows){
+    const map = {};
+    (rows || []).forEach(r => {
+      const k = r.date;
+      if(!k) return;
+      if(!map[k]) map[k] = {date:k, totalHours:0, grossPay:0, notes:[], rows:[]};
+      map[k].totalHours += Number(r.totalHours)||0;
+      map[k].grossPay += Number(r.grossPay)||0;
+      if(r.note) map[k].notes.push(r.note);
+      map[k].rows.push(r);
+    });
+    return Object.values(map).map(x => { x.totalHours = Math.round(x.totalHours*100)/100; x.grossPay = Math.round(x.grossPay); x.note = Array.from(new Set(x.notes)).join('；'); return x; }).sort((a,b)=>clean(b.date).localeCompare(clean(a.date)));
+  }
+  async function getParttimeHistory(payload){
+    const employeeId = employeeIdFrom(payload || {});
+    const monthText = clean(payload && payload.monthText) || ymd(new Date()).slice(0,7);
+    const rows = groupParttime((await parttimeRows(employeeId)).filter(r => clean(r.date).slice(0,7) === monthText));
+    const monthTotalHours = Math.round(rows.reduce((s,r)=>s+(Number(r.totalHours)||0),0)*100)/100;
+    const monthGrossPay = Math.round(rows.reduce((s,r)=>s+(Number(r.grossPay)||0),0));
+    return {ok:true, source:'firebase-parttime-fast', monthText, monthTotalHours, monthGrossPay, rows, list:rows};
+  }
+  async function getParttimeHistoryRange(payload){
+    const employeeId = employeeIdFrom(payload || {});
+    const startDate = dateText(payload && payload.startDate);
+    const endDate = dateText(payload && payload.endDate);
+    const rows = groupParttime((await parttimeRows(employeeId)).filter(r => (!startDate || r.date >= startDate) && (!endDate || r.date <= endDate)));
+    const totalHours = Math.round(rows.reduce((s,r)=>s+(Number(r.totalHours)||0),0)*100)/100;
+    const grossPay = Math.round(rows.reduce((s,r)=>s+(Number(r.grossPay)||0),0));
+    return {ok:true, source:'firebase-parttime-fast', startDate, endDate, totalHours, grossPay, rows, list:rows};
+  }
+  function pendingStatus(o){ return clean(o.status || o['狀態']); }
+  async function getParttimePendingItems(payload){
+    const employeeId = employeeIdFrom(payload || {});
+    const temps = await employeeRows('temporaryAttendanceRequests', employeeId).catch(()=>[]);
+    const rows = temps.filter(r => pendingStatus(r) === '待審核').map(r => ({
+      id:clean(r.requestId || r.__id), title:clean(r.requestType || r['申請類型']) === 'parttimeExcess' ? '超出排班時數申請' : '臨時出勤申請',
+      date:dateText(r.date || r['日期']), startTime:shortTime(r.startTime || r['申請上班時間']), endTime:shortTime(r.endTime || r['申請下班時間']),
+      hours:num(r.requestedHours || r['申請時數'] || r.hours), reason:clean(r.reason || r['原因']), statusText:'待主管審核'
+    })).sort((a,b)=>clean(b.date).localeCompare(clean(a.date)));
+    return {ok:true, source:'firebase-parttime-fast', rows};
+  }
+  function makeTempRange(schedules, excessHours, mode){
+    const starts = schedules.map(s => minutes(s.startTime)).filter(Number.isFinite);
+    const ends = schedules.map(s => minutes(s.endTime)).filter(Number.isFinite);
+    const excessMin = Math.round((Number(excessHours)||0)*60);
+    if(!starts.length || !ends.length || !excessMin) return {startTime:'', endTime:''};
+    const firstStart = Math.min.apply(null, starts);
+    const lastEnd = Math.max.apply(null, ends);
+    if(mode === 'early') return {startTime:timeFromMinutes(firstStart - excessMin), endTime:timeFromMinutes(firstStart)};
+    return {startTime:timeFromMinutes(lastEnd), endTime:timeFromMinutes(lastEnd + excessMin)};
+  }
+  async function submitParttime(payload){
+    const p = payload || {};
+    const user = currentUser();
+    const employeeId = employeeIdFrom(p);
+    const date = dateText(p.workDate || p.date) || ymd(new Date());
+    const selectedHours = Math.round((num(p.hours || p.workHours) + (truthy(p.halfHour || p.addHalfHour) ? 0.5 : 0))*100)/100;
+    if(!employeeId || !selectedHours) return {ok:false, message:'請選擇工讀時數。'};
+    const ctx = (await getParttimeDateContext({userId:employeeId, workDate:date})).context || {};
+    if(!ctx.canRegister || !ctx.scheduledHours) return {ok:false, message:'今天沒有排班，不能直接登記工讀時數；如為臨時出勤，請使用臨時出勤申請。'};
+    const scheduledHours = Math.round((Number(ctx.scheduledHours)||0)*100)/100;
+    const hourlyRate = await getHourlyRate(employeeId);
+    const normalHours = Math.min(selectedHours, scheduledHours);
+    const dateKey = date.replace(/-/g,'');
+    const baseId = 'PT_' + employeeId + '_' + dateKey;
+    const baseStatus = selectedHours < scheduledHours ? '少於排班' : '正常';
+    const baseNote = selectedHours < scheduledHours ? '登記時數少於當日排班；如為提早離開，請確認是否已完成請假或補假。' : '排班內時數';
+    const gross = Math.round(normalHours * hourlyRate);
+    await setDoc('parttimeRecords', baseId, {
+      recordId:baseId, '紀錄ID':baseId, employeeId, '員工ID':employeeId, name:clean(user.name), '姓名':clean(user.name), email:lower(user.email),
+      date, workDate:date, '日期':date, hours:normalHours, totalHours:normalHours, '時數':normalHours, '總時數':normalHours,
+      scheduledHours, '排班時數':scheduledHours, hourlyRate, '時薪':hourlyRate, grossPay:gross, '當日工資':gross,
+      status:baseStatus, '狀態':baseStatus, note:baseNote, '備註':baseNote, sourceType:'parttimeScheduleHours', source:'firebase-parttime-fast', createdAt:serverTs()
+    });
+    if(selectedHours <= scheduledHours + 0.0001){
+      const msg = selectedHours < scheduledHours ? '工讀時數已送出；本次登記少於當日排班，如有請假或提早離開請確認補假流程。' : '工讀時數已送出。';
+      return {ok:true, source:'firebase-parttime-fast', message:msg, recordId:baseId, monthText:date.slice(0,7), totalHours:normalHours};
+    }
+    const excessHours = Math.round((selectedHours - scheduledHours)*100)/100;
+    const reason = clean(p.excessReason || p.reason || p.note);
+    if(!reason){
+      return {ok:false, needsExcessReview:true, message:`你今日排班可直接登記 ${fmtHours(scheduledHours)}，目前選擇 ${fmtHours(selectedHours)}，超出 ${fmtHours(excessHours)} 需填寫原因並送主管審核。`, context:ctx, scheduledHours, excessHours};
+    }
+    const pending = (await getParttimePendingItems({userId:employeeId})).rows.find(r => r.date === date && r.title === '超出排班時數申請');
+    if(pending) return {ok:false, message:'這一天已經有超出排班時數申請，待主管審核。主管審核會更新，並自動歸位。'};
+    const range = makeTempRange(ctx.schedules || [], excessHours, clean(p.excessMode || 'late'));
+    const reqId = 'PTX_' + employeeId + '_' + dateKey + '_' + Date.now();
+    await setDoc('temporaryAttendanceRequests', reqId, {
+      requestId:reqId, employeeId, '員工ID':employeeId, name:clean(user.name), '姓名':clean(user.name), email:lower(user.email),
+      employeeType:'工讀生', '員工身分':'工讀生', requestType:'parttimeExcess', '申請類型':'超出排班時數',
+      date, '日期':date, startTime:range.startTime, '申請上班時間':range.startTime, endTime:range.endTime, '申請下班時間':range.endTime,
+      requestedHours:excessHours, '申請時數':excessHours, scheduledHours, '排班時數':scheduledHours, selectedHours, '登記時數':selectedHours,
+      hourlyRate, '時薪':hourlyRate, payable:'是', '是否計薪':'是', reason, '原因':reason,
+      status:'待審核', '狀態':'待審核', sourceType:'parttimeExcessHours', source:'firebase-parttime-fast', createdAt:serverTs()
+    });
+    return {ok:true, source:'firebase-parttime-fast', message:`排班內 ${fmtHours(normalHours)} 已登記；超出 ${fmtHours(excessHours)} 已送主管審核。主管審核會更新，並自動歸位。`, recordId:baseId, excessRequestId:reqId, monthText:date.slice(0,7), totalHours:normalHours, pendingExcessHours:excessHours};
+  }
+  fb.handleApi = async function(action, payload){
+    const a = clean(action);
+    if(a === 'getParttimeDateContext') return await getParttimeDateContext(payload || {});
+    if(a === 'getParttimeHistory') return await getParttimeHistory(payload || {});
+    if(a === 'getParttimeHistoryRange') return await getParttimeHistoryRange(payload || {});
+    if(a === 'getParttimePendingItems') return await getParttimePendingItems(payload || {});
+    if(a === 'parttime') return await submitParttime(payload || {});
+    if(typeof previousHandle === 'function') return await previousHandle(action, payload || {});
+    return null;
+  };
+  fb.__parttimeFirebaseFastV20260529 = true;
+  global.YZFirebase = fb;
+})(window);

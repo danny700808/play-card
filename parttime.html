@@ -213,6 +213,25 @@
       .history-grid{grid-template-columns:1fr}
     }
 
+
+
+    /* 工讀時數：待處理事項與超出排班提醒 */
+    .pending-panel{border:1px solid #c7ead8;border-radius:16px;background:#f0fbf5;padding:12px 14px;margin-top:10px}
+    .pending-title{font-weight:900;color:#16533f;margin-bottom:6px}
+    .pending-item{border:1px solid #bfe8d3;background:#fff;border-radius:14px;padding:10px 12px;margin-top:8px}
+    .pending-status{display:inline-block;background:#e7f8ee;color:#12623f;border:1px solid #b9e8ce;border-radius:999px;padding:5px 10px;font-weight:900;font-size:13px;margin-top:8px}
+    .excess-note{border:1px solid #ffd8a8;border-radius:14px;background:#fff8ed;color:#7a3f00;padding:10px 12px;margin-top:10px;font-weight:800;line-height:1.5}
+    .pt-modal-mask{position:fixed;inset:0;background:rgba(15,23,42,.55);display:none;align-items:center;justify-content:center;z-index:9999;padding:18px}
+    .pt-modal{width:min(520px,100%);background:#fff;border-radius:22px;padding:18px;box-shadow:0 18px 50px rgba(0,0,0,.25)}
+    .pt-modal h3{margin:0 0 8px;font-size:22px;color:#18314a}
+    .pt-modal .desc{color:#64748b;line-height:1.6;margin-bottom:12px}
+    .mode-grid{display:grid;grid-template-columns:1fr;gap:10px;margin:10px 0}
+    .mode-choice{border:1px solid #d9e2ec;border-radius:14px;background:#f8fbff;color:#18314a;padding:12px;font-weight:900;text-align:left;cursor:pointer}
+    .mode-choice.active{background:#1f7a5a;color:#fff;border-color:#1f7a5a}
+    .pt-modal textarea{width:100%;min-height:88px;border:1px solid #d9e2ec;border-radius:14px;padding:12px;box-sizing:border-box;font:inherit}
+    .pt-modal-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+    .pt-modal-actions .secondary{background:#e9eef5!important;color:#18314a!important}
+
 </style>
 </head>
 <body onload="init()">
@@ -274,6 +293,12 @@
       <button class="btn" id="submitBtn">送出時數</button>
     </div>
 
+    <div class="card" id="parttimePendingCard" style="display:none">
+      <h2 class="title" style="font-size:20px;margin:0 0 8px">待處理事項</h2>
+      <div class="muted">超出排班時數、臨時出勤或工讀時數相關申請會顯示在這裡。</div>
+      <div id="parttimePendingList" class="pending-panel"></div>
+    </div>
+
     <div class="card">
       <div class="topbar" style="margin-bottom:10px">
         <div>
@@ -312,10 +337,29 @@
     </div>
   </div>
 
+
+  <div id="parttimeExcessModal" class="pt-modal-mask" aria-hidden="true">
+    <div class="pt-modal" role="dialog" aria-modal="true" aria-labelledby="parttimeExcessTitle">
+      <h3 id="parttimeExcessTitle">超出排班時數申請</h3>
+      <div id="parttimeExcessDesc" class="desc"></div>
+      <div class="mode-grid" id="parttimeExcessModes">
+        <button type="button" class="mode-choice active" data-mode="late">延後下班：超出時數接在班表結束後</button>
+        <button type="button" class="mode-choice" data-mode="early">提前到班：超出時數接在班表開始前</button>
+        <button type="button" class="mode-choice" data-mode="other">其他：交由主管審核時確認</button>
+      </div>
+      <label for="parttimeExcessReason" style="font-weight:900">原因</label>
+      <textarea id="parttimeExcessReason" placeholder="請填寫為什麼超出排班時數，例如：主管臨時交辦、延後收班、臨時支援。"></textarea>
+      <div class="pt-modal-actions">
+        <button type="button" class="btn secondary" id="parttimeExcessCancel">取消</button>
+        <button type="button" class="btn" id="parttimeExcessConfirm">送出申請</button>
+      </div>
+    </div>
+  </div>
+
   <script src="config.js?v=20260501uifix2"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260523stage5primary"></script>
+  <script src="firebase-client.js?v=20260529parttime-firebase-fast"></script>
 
   <script src="app.js?v=20260501uifix2"></script>
   <script>
@@ -325,6 +369,7 @@
       return new Date(now.getTime() - tzOffset).toISOString().slice(0,10);
     }
     function sleep(ms){ return new Promise(resolve=>setTimeout(resolve, ms)); }
+    function clean(v){ return String(v == null ? '' : v).trim(); }
     function formatHoursLabel(v){
       const n = Number(v || 0);
       if(!Number.isFinite(n) || n < 0) return '0 小時';
@@ -440,10 +485,20 @@
       }
       if(box) box.style.display = '';
       if(main){
-        main.textContent = ctx.canRegister ? `${ctx.statusLabel}｜${ctx.scheduleLabel || ''}` : '今天沒有排班，不能登記工讀時數。';
+        const directHours = Number(ctx.remainingRegularHours || ctx.maxDirectHours || ctx.scheduledHours || 0) || 0;
+        const hoursText = ctx.scheduledHours ? `｜可直接登記 ${formatHoursLabel(directHours)}` : '';
+        main.textContent = ctx.canRegister ? `${ctx.statusLabel || '今日有排班'}｜${ctx.scheduleLabel || ''}${hoursText}` : '今天沒有排班，不能登記工讀時數。';
         main.className = 'date-status-main ' + (ctx.canRegister ? 'ok' : 'bad');
       }
-      if(note) note.textContent = ctx.canRegister ? (ctx.helperText || '今天有排班，可以登記工讀時數。') : '今天沒有排班，不能登記工讀時數。';
+      if(note){
+        if(ctx.canRegister){
+          const directHours = Number(ctx.remainingRegularHours || ctx.maxDirectHours || ctx.scheduledHours || 0) || 0;
+          const usedText = Number(ctx.registeredHours || 0) > 0 ? `已登記 ${formatHoursLabel(ctx.registeredHours)}。` : '';
+          note.innerHTML = (ctx.helperText || '今天有排班，可以登記排班內時數。') + (ctx.scheduledHours ? `<div class="excess-note">今日排班 ${formatHoursLabel(ctx.scheduledHours)}。${usedText}若登記時數超過可直接登記的 ${formatHoursLabel(directHours)}，超出部分會送主管審核；主管審核會更新，並自動歸位。</div>` : '');
+        }else{
+          note.textContent = '今天沒有排班，不能直接登記工讀時數；如為臨時出勤，請使用臨時出勤申請。';
+        }
+      }
       if(btn) btn.disabled = !!(ctx && !ctx.canRegister);
     }
     async function loadDateContext(){
@@ -499,16 +554,104 @@
       qs('#monthTotal').textContent = formatHoursLabel(r.monthTotalHours || 0);
       qs('#list').innerHTML = rows.map(x=>`<div class="item"><div class="top"><strong>${x.date}</strong><span class="tag">${formatHoursLabel(x.totalHours)}</span></div>${x.note?`<div class="muted">${x.note}</div>`:''}</div>`).join('') || '<div class="muted">本月目前沒有紀錄</div>';
     }
+
+    function pendingStatusHtml(text){
+      return `<div class="pending-status">${text || '待主管審核'}<br>主管審核會更新，並自動歸位。</div>`;
+    }
+    async function loadPendingItems(){
+      const user = requireLogin();
+      if(!user) return;
+      const card = qs('#parttimePendingCard');
+      const list = qs('#parttimePendingList');
+      if(card) card.style.display = 'none';
+      if(list) list.innerHTML = '';
+      try{
+        const r = await api('getParttimePendingItems', {userId:user.id});
+        const rows = r.rows || [];
+        if(!rows.length) return;
+        if(card) card.style.display = '';
+        if(list){
+          list.innerHTML = rows.map(x=>{
+            const range = [x.startTime, x.endTime].filter(Boolean).join(' - ');
+            const title = x.title || '工讀時數申請';
+            const detail = [x.date, range, x.hours ? formatHoursLabel(x.hours) : '', x.reason || ''].filter(Boolean).join('｜');
+            return `<div class="pending-item"><div class="pending-title">${title}</div><div class="muted">${detail}</div>${pendingStatusHtml(x.statusText || '待主管審核')}</div>`;
+          }).join('');
+        }
+      }catch(e){
+        console.warn('[parttime pending]', e);
+      }
+    }
+    let __parttimeExcessResolve = null;
+    function openParttimeExcessModal(info){
+      return new Promise(resolve=>{
+        const mask = qs('#parttimeExcessModal');
+        const desc = qs('#parttimeExcessDesc');
+        const reason = qs('#parttimeExcessReason');
+        if(!mask){ resolve(null); return; }
+        __parttimeExcessResolve = resolve;
+        if(desc){
+          desc.innerHTML = `今日排班可直接登記 <strong>${formatHoursLabel(info.scheduledHours)}</strong>，你選擇 <strong>${formatHoursLabel(info.totalHours)}</strong>，超出 <strong>${formatHoursLabel(info.excessHours)}</strong>。<br>超出部分會以臨時出勤申請送主管審核。`;
+        }
+        if(reason) reason.value = '';
+        mask.style.display = 'flex';
+        mask.setAttribute('aria-hidden','false');
+      });
+    }
+    function closeParttimeExcessModal(value){
+      const mask = qs('#parttimeExcessModal');
+      if(mask){ mask.style.display = 'none'; mask.setAttribute('aria-hidden','true'); }
+      const resolve = __parttimeExcessResolve;
+      __parttimeExcessResolve = null;
+      if(resolve) resolve(value || null);
+    }
+    function initParttimeExcessModal(){
+      const modes = qs('#parttimeExcessModes');
+      if(modes){
+        modes.querySelectorAll('.mode-choice').forEach(btn=>{
+          btn.onclick = () => {
+            modes.querySelectorAll('.mode-choice').forEach(x=>x.classList.remove('active'));
+            btn.classList.add('active');
+          };
+        });
+      }
+      const cancel = qs('#parttimeExcessCancel');
+      if(cancel) cancel.onclick = () => closeParttimeExcessModal(null);
+      const confirm = qs('#parttimeExcessConfirm');
+      if(confirm) confirm.onclick = () => {
+        const active = qs('#parttimeExcessModes .mode-choice.active');
+        const reason = clean(qs('#parttimeExcessReason').value);
+        if(!reason){ alert('請填寫超出排班時數的原因。'); return; }
+        closeParttimeExcessModal({mode: active ? active.dataset.mode : 'late', reason});
+      };
+    }
+    async function collectExcessInfo(totalHours){
+      const ctx = currentDateContext || {};
+      const scheduled = Number(ctx.scheduledHours || 0) || 0;
+      const directHours = Number(ctx.remainingRegularHours || ctx.maxDirectHours || ctx.scheduledHours || 0) || 0;
+      if(!directHours || totalHours <= directHours + 0.0001) return {};
+      const info = {scheduledHours: directHours, totalHours, excessHours: Math.round((totalHours - directHours)*100)/100};
+      const choice = await openParttimeExcessModal(info);
+      if(!choice) return {cancelled:true};
+      return {excessMode: choice.mode, excessReason: choice.reason};
+    }
     async function submitParttime(){
       if(!validateForm()) return;
       const user = requireLogin();
       if(!user) return;
+      const totalHours = Number(qs('#hoursSelect').value || 0) || 0;
+      const excess = await collectExcessInfo(totalHours);
+      if(excess.cancelled) return;
       const payload = {
         userId: user.id,
         workDate: qs('#workDate').value,
         hours: qs('#hoursSelect').value,
         halfHour: false,
-        note: ''
+        note: '',
+        excessMode: excess.excessMode || '',
+        excessReason: excess.excessReason || '',
+        overScheduledConfirmed: !!excess.excessReason,
+        overScheduledReason: excess.excessReason || ''
       };
       const btn = qs('#submitBtn');
       const progress = startActionButtonProgress(btn, { label:'送出中' });
@@ -531,6 +674,7 @@
           qs('#workDate').value = localDateInputValue();
           await loadHistory(r.monthText || '');
           await loadDateContext();
+          await loadPendingItems();
           progress.done('送出成功');
         } else {
           progress.fail('送出失敗');
@@ -551,8 +695,10 @@
       qs('#hoursSelect').addEventListener('change', ()=>{ clearValidation(); updateHoursGrid(); });
       const historyBtn = qs('#historySearchBtn');
       if(historyBtn) historyBtn.onclick = searchHistoryRange;
+      initParttimeExcessModal();
       renderHoursGrid();
       loadHistory();
+      loadPendingItems();
       loadDateContext();
     }
   </script>
