@@ -723,7 +723,7 @@ function renderSegments(){
           <div class="segment-field"><label for="segStart_${escapeHtml(seg.id)}">開始時間</label><select class="leave-time-select" id="segStart_${escapeHtml(seg.id)}" data-segment-start-time="${escapeHtml(seg.id)}" ${lockedAttr}>${leaveRenderTimeOptionsHtml(leaveBuildWholeHourOptions(seg.shiftStart || '', seg.shiftEnd || '', false, seg.startTime || ''), seg.startTime || '', '選擇開始時間')}</select></div>
           <div class="segment-field"><label for="segEnd_${escapeHtml(seg.id)}">結束時間</label><select class="leave-time-select" id="segEnd_${escapeHtml(seg.id)}" data-segment-end-time="${escapeHtml(seg.id)}" ${lockedAttr}>${leaveRenderTimeOptionsHtml(leaveBuildWholeHourOptions(seg.shiftStart || '', seg.shiftEnd || '', true, seg.endTime || ''), seg.endTime || '', '選擇結束時間')}</select></div>
         </div>
-        <div class="segment-context" data-segment-context="${escapeHtml(seg.id)}">${mode === 'retro' ? '事後補假可選過去日期；請選日期後，系統會帶出當天班表。' : '請先選擇請假日期與時間。'}</div>
+        ${retroLocked ? '' : `<div class="segment-context" data-segment-context="${escapeHtml(seg.id)}">${mode === 'retro' ? '事後補假可選過去日期；請選日期後，系統會帶出當天班表。' : '請先選擇請假日期與時間。'}</div>`}
       ` : `
         <div class="segment-grid">
           <div class="segment-field"><label for="segStartDate_${escapeHtml(seg.id)}">開始日期</label><input id="segStartDate_${escapeHtml(seg.id)}" type="date" value="${escapeHtml(leaveNormalizeDateKey(seg.startDate) || '')}" data-segment-start-date="${escapeHtml(seg.id)}"></div>
@@ -1608,7 +1608,8 @@ async function loadStaffData(){
         renderBereavementOptions(qs('#bereavementRelation') ? qs('#bereavementRelation').value : '');
         toggleHoursByReason();
       }else{
-        warnings.push('假別設定使用預設值：' + ((policyRes && policyRes.message) || '正式設定尚未讀取'));
+        // 假別制度背景讀取逾時時，表單已使用預設假別開啟；這不是使用者需要處理的錯誤，不在畫面底部顯示紅色警示。
+        console.warn('leave policy fallback:', (policyRes && policyRes.message) || '正式設定尚未讀取');
       }
 
       historyRes = historyLoaded || historyRes;
