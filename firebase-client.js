@@ -3523,3 +3523,390 @@
   fb.__myDataFirebaseOnlySalaryMap2V20260528 = true;
   global.YZFirebase = fb;
 })(window);
+
+/* 2026-05-29：我的資料 / 薪資投保單一 Firebase 主資料版
+ * 規則：
+ * 1. 員工端只讀 Firebase employees，不再讀 GS、不掃舊薪資集合、不查 salarySetup / employeeConfigMap。
+ * 2. 管理端薪資投保設定直接寫回 employees/{employeeId}。
+ * 3. 如果舊資料沒有寫進 employees，就由管理端重新儲存一次建立新資料。
+ */
+(function(global){
+  const fb = global.YZFirebase;
+  if(!fb || fb.__canonicalEmployeeProfileSalaryV1) return;
+  fb.__canonicalEmployeeProfileSalaryV1 = true;
+  const previousHandle = fb.handleApi;
+
+  function clean(v){ return String(v == null ? '' : v).trim(); }
+  function lower(v){ return clean(v).toLowerCase(); }
+  function truthy(v){ const s=lower(v); return v===true || ['是','yes','true','1','啟用','enabled','active','在保'].indexOf(s)>=0; }
+  function number(v){
+    if(typeof v === 'number') return isFinite(v) ? v : 0;
+    const s = clean(v).replace(/[,，元$\s]/g, '');
+    const n = Number(s);
+    return isFinite(n) ? n : 0;
+  }
+  function money(v){ const n=number(v); return n ? Math.round(n).toLocaleString('zh-TW') + ' 元' : ''; }
+  function dateText(v){
+    if(!v) return '';
+    if(v && typeof v.toDate === 'function') return dateText(v.toDate());
+    if(v instanceof Date && !isNaN(v.getTime())) return v.getFullYear() + '-' + String(v.getMonth()+1).padStart(2,'0') + '-' + String(v.getDate()).padStart(2,'0');
+    const s=clean(v);
+    if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+    return s;
+  }
+  function serverTs(){ return global.firebase && global.firebase.firestore ? global.firebase.firestore.FieldValue.serverTimestamp() : new Date(); }
+  function database(){
+    const d = fb.init ? fb.init() : null;
+    if(!d) throw new Error('Firebase 尚未啟用');
+    return d;
+  }
+  async function getDoc(collection, id){
+    const key = clean(id);
+    if(!key) return null;
+    const snap = await database().collection(collection).doc(key).get();
+    return snap.exists ? Object.assign({__id:snap.id}, snap.data() || {}) : null;
+  }
+  async function queryFirst(collection, field, value){
+    const val = clean(value);
+    if(!val) return null;
+    const snap = await database().collection(collection).where(field, '==', val).limit(1).get();
+    let row = null;
+    snap.forEach(doc => { if(!row) row = Object.assign({__id:doc.id}, doc.data() || {}); });
+    return row;
+  }
+  async function allEmployees(){
+    const snap = await database().collection('employees').get();
+    const rows=[];
+    snap.forEach(doc => rows.push(Object.assign({__id:doc.id}, doc.data() || {})));
+    return rows;
+  }
+  function candidateIds(payload){
+    const p = payload || {};
+    const user = (function(){ try{return JSON.parse(localStorage.getItem('employeeUser') || 'null') || {};}catch(e){return {};} })();
+    const ids = [
+      p.employeeId, p.userId, p.id,
+      user.employeeId, user.id,
+      p['員工ID'], user['員工ID']
+    ].map(clean).filter(Boolean);
+    return Array.from(new Set(ids));
+  }
+  function candidateEmail(payload){
+    const p = payload || {};
+    const user = (function(){ try{return JSON.parse(localStorage.getItem('employeeUser') || 'null') || {};}catch(e){return {};} })();
+    return lower(p.email || p.Email || user.email || user.Email || '');
+  }
+  async function findEmployee(payload){
+    const ids = candidateIds(payload);
+    for(const id of ids){ const row = await getDoc('employees', id); if(row) return row; }
+    for(const id of ids){ const row = await queryFirst('employees', 'employeeId', id); if(row) return row; }
+    for(const id of ids){ const row = await queryFirst('employees', 'id', id); if(row) return row; }
+    const email = candidateEmail(payload);
+    if(email){
+      const byEmail = await queryFirst('employees', 'email', email); if(byEmail) return byEmail;
+      const byEmail2 = await queryFirst('employees', 'Email', email); if(byEmail2) return byEmail2;
+    }
+    return null;
+  }
+  function maskId(v){
+    const s=clean(v).toUpperCase();
+    if(!s) return '';
+    return s.length <= 4 ? s : s.slice(0,1) + '*****' + s.slice(-4);
+  }
+  function identityTypeOf(o){
+    const raw = lower(o.identityType || o['身分類型']);
+    if(raw === 'parttime' || raw === 'staff' || raw === 'external' || raw === 'admin') return raw;
+    if(/工讀/.test(clean(o.identityLabel || o['身分']))) return 'parttime';
+    if(truthy(o.isPartTime || o['是否工讀生'])) return 'parttime';
+    return 'staff';
+  }
+  function identityLabelOf(type){
+    if(type === 'parttime') return '工讀生';
+    if(type === 'external') return '外聘老師';
+    if(type === 'admin') return '管理者';
+    return '專職員工';
+  }
+  function normalizeProfile(o){
+    o = o || {};
+    const type = identityTypeOf(o);
+    const employeeId = clean(o.employeeId || o.id || o['員工ID'] || o.__id);
+    return {
+      employeeId,
+      id: employeeId,
+      name: clean(o.name || o['姓名']),
+      email: lower(o.email || o.Email || o['Email']),
+      identityType: type,
+      identityLabel: identityLabelOf(type),
+      isPartTime: type === 'parttime',
+      birthDate: dateText(o.birthDate || o['出生年月日']),
+      idNumberMasked: clean(o.idNumberMasked) || maskId(o.idNumber || o['身分證字號']),
+      hireDate: dateText(o.hireDate || o.joinDate || o['到職日']),
+      mobilePhone: clean(o.mobilePhone || o.phone || o['行動電話']),
+      address: clean(o.address || o.contactAddress || o['聯絡地址']),
+      emergencyContact: clean(o.emergencyContact || o['緊急聯絡人']),
+      emergencyPhone: clean(o.emergencyPhone || o['緊急聯絡人電話']),
+      accountStatus: clean(o.accountStatus || o.status || o['帳號狀態'] || 'active')
+    };
+  }
+  function sumItems(items){
+    if(!Array.isArray(items)) return 0;
+    return items.reduce((sum, item) => sum + number(item && (item.amount || item.value || item.price)), 0);
+  }
+  function lineItemsText(items){
+    if(!Array.isArray(items)) return '';
+    return items.map(item => {
+      const name = clean(item && (item.name || item.title || item.label));
+      const amount = money(item && (item.amount || item.value || item.price));
+      if(name && amount) return name + '：' + amount;
+      return name || amount;
+    }).filter(Boolean).join('\n');
+  }
+  function planSalaryFromCode(code){
+    const s=clean(code);
+    const nums = s.match(/(\d{4,6})/g);
+    if(!nums || !nums.length) return 0;
+    return number(nums[nums.length - 1]);
+  }
+  function planText(code, prefix){
+    const c = clean(code);
+    if(!c) return '';
+    const salary = planSalaryFromCode(c);
+    if(salary) return money(salary);
+    if(/^LAB_/i.test(c)) return c.replace(/^LAB_/i, '');
+    if(/^NHI_/i.test(c)) return c.replace(/^NHI_/i, '');
+    return c;
+  }
+  function isActiveInsurance(status){
+    const s=clean(status);
+    return s === '在保' || s === '加保' || truthy(s);
+  }
+  function configuredSalaryFields(o){
+    const fields = ['baseSalary','hourlyRate','averageSalary','laborStatus','healthStatus','laborPlan','healthPlan','selfRetirementEnabled','effectiveDate','jobAllowances','allowances'];
+    return fields.some(k => {
+      const v = o && o[k];
+      if(Array.isArray(v)) return v.length > 0;
+      return clean(v) !== '' && clean(v) !== '未設定';
+    });
+  }
+  function normalizeSalaryFromEmployee(o){
+    o = o || {};
+    const type = identityTypeOf(o);
+    const isParttime = type === 'parttime';
+    const baseSalary = number(o.baseSalary || o['本薪']);
+    const hourlyRate = number(o.hourlyRate || o['時薪']);
+    const averageSalary = number(o.averageSalary || o['目前申報月平均薪資總額']);
+    const jobAllowances = Array.isArray(o.jobAllowances) ? o.jobAllowances : [];
+    const allowances = Array.isArray(o.allowances) ? o.allowances : [];
+    const jobTotal = sumItems(jobAllowances);
+    const allowanceTotal = sumItems(allowances);
+    const laborStatus = clean(o.laborStatus || o['勞保狀態']);
+    const healthStatus = clean(o.healthStatus || o['健保狀態']);
+    const laborPlan = clean(o.laborPlan || o.laborLevel || o['勞保級距']);
+    const healthPlan = clean(o.healthPlan || o.healthLevel || o['健保級距']);
+    const laborSalary = planSalaryFromCode(laborPlan);
+    const healthSalary = planSalaryFromCode(healthPlan);
+    const retirementBase = laborSalary || averageSalary || baseSalary + jobTotal + allowanceTotal;
+    const employerRetirement = retirementBase ? Math.round(retirementBase * 0.06) : 0;
+    const selfEnabled = clean(o.selfRetirementEnabled || o['勞退自提'] || '');
+    const selfRate = number(o.selfRetirementRate || o['勞退自提比率']);
+    const selfAmount = selfEnabled === '是' && selfRate && retirementBase ? Math.round(retirementBase * selfRate / 100) : 0;
+    const partial = clean(o.isPartialHours || o['是否部分工時']);
+    const hasSalary = configuredSalaryFields(o);
+    return {
+      employeeId: clean(o.employeeId || o.id || o['員工ID'] || o.__id),
+      name: clean(o.name || o['姓名']),
+      email: lower(o.email || o.Email || o['Email']),
+      identityType: type,
+      identityLabel: identityLabelOf(type),
+      salaryConfigured: hasSalary,
+      salaryDisplayType: clean(o.salaryDisplayType) || (isParttime ? 'PARTTIME_DIRECT' : 'STAFF_DIRECT'),
+      baseSalary: baseSalary || '',
+      hourlyRate: hourlyRate || '',
+      isPartialHours: partial || (isParttime ? '否' : ''),
+      averageSalary: averageSalary || '',
+      laborPlan,
+      healthPlan,
+      laborStatus,
+      healthStatus,
+      selfRetirementEnabled: selfEnabled,
+      selfRetirementRate: selfRate || '',
+      effectiveDate: dateText(o.effectiveDate || o.salaryEffectiveDate || o['薪資生效日']),
+      note: clean(o.note || o.salaryNote || o['薪資備註']),
+      jobAllowances,
+      allowances,
+      staffBaseSalaryText: baseSalary ? money(baseSalary) : '',
+      parttimeHourlyRateText: hourlyRate ? money(hourlyRate) : '',
+      parttimePartialHoursText: isParttime ? (partial || '否') : '',
+      parttimeAverageSalaryText: averageSalary ? money(averageSalary) : '',
+      mainAmountText: isParttime ? (hourlyRate ? money(hourlyRate) : '') : (baseSalary ? money(baseSalary) : ''),
+      jobAllowanceText: lineItemsText(jobAllowances) || (jobTotal ? money(jobTotal) : ''),
+      allowanceText: lineItemsText(allowances) || (allowanceTotal ? money(allowanceTotal) : ''),
+      laborPlanText: isActiveInsurance(laborStatus) ? planText(laborPlan, 'LAB') : '',
+      laborSalaryText: isActiveInsurance(laborStatus) && laborSalary ? money(laborSalary) : '',
+      laborSelfPayText: clean(o.laborSelfPayText || o.laborSelfPay || o['勞保自付額']),
+      healthPlanText: isActiveInsurance(healthStatus) ? planText(healthPlan, 'NHI') : '',
+      healthSalaryText: isActiveInsurance(healthStatus) && healthSalary ? money(healthSalary) : '',
+      healthSelfPayText: clean(o.healthSelfPayText || o.healthSelfPay || o['健保自付額']),
+      retirementEmployerText: employerRetirement ? ('6%｜' + money(employerRetirement)) : '',
+      selfRetirementText: selfEnabled === '是' ? (selfRate ? (selfRate + '%｜' + (selfAmount ? money(selfAmount) : '')) : '是') : (selfEnabled === '否' ? '否' : ''),
+      _raw: o
+    };
+  }
+  function employeeForAdmin(o){
+    const p = normalizeProfile(o);
+    const s = normalizeSalaryFromEmployee(o);
+    const isParttime = p.identityType === 'parttime';
+    const reasons = [];
+    if(isParttime){
+      if(!s.hourlyRate) reasons.push('未設定時薪');
+      if(!s.averageSalary) reasons.push('未設定目前申報月平均薪資總額');
+    }else{
+      if(!s.baseSalary) reasons.push('未設定本薪');
+    }
+    if(!s.laborStatus) reasons.push('未設定勞保狀態');
+    if(!s.healthStatus) reasons.push('未設定健保狀態');
+    if(isActiveInsurance(s.laborStatus) && !s.laborPlan) reasons.push('勞保在保但未設定勞保級距');
+    if(isActiveInsurance(s.healthStatus) && !s.healthPlan) reasons.push('健保在保但未設定健保級距');
+    return Object.assign({}, p, {
+      id: p.employeeId,
+      salaryConfigured: reasons.length === 0,
+      salaryPendingReasons: reasons
+    });
+  }
+  function salaryConfigForAdmin(o){
+    o = o || {};
+    return {
+      salaryDisplayType: clean(o.salaryDisplayType) || (identityTypeOf(o)==='parttime' ? 'PARTTIME_DIRECT' : 'STAFF_DIRECT'),
+      baseSalary: number(o.baseSalary) || '',
+      hourlyRate: number(o.hourlyRate) || '',
+      isPartialHours: clean(o.isPartialHours) || '否',
+      averageSalary: number(o.averageSalary) || '',
+      laborPlan: clean(o.laborPlan),
+      healthPlan: clean(o.healthPlan),
+      laborStatus: clean(o.laborStatus),
+      healthStatus: clean(o.healthStatus),
+      selfRetirementEnabled: clean(o.selfRetirementEnabled) || '否',
+      selfRetirementRate: number(o.selfRetirementRate) || '',
+      effectiveDate: dateText(o.effectiveDate),
+      note: clean(o.note),
+      jobAllowances: Array.isArray(o.jobAllowances) ? o.jobAllowances : [],
+      allowances: Array.isArray(o.allowances) ? o.allowances : []
+    };
+  }
+  async function getMyProfileFull(payload){
+    const emp = await findEmployee(payload || {});
+    if(!emp) return {ok:false, message:'Firebase employees 尚未建立此帳號資料，請由管理端確認員工資料。'};
+    return {
+      ok:true,
+      source:'firebase-employees-canonical',
+      profile: normalizeProfile(emp),
+      salary: normalizeSalaryFromEmployee(emp),
+      info: normalizeSalaryFromEmployee(emp)
+    };
+  }
+  async function getMyProfile(payload){
+    const res = await getMyProfileFull(payload || {});
+    if(!res.ok) return res;
+    return {ok:true, profile:res.profile, source:res.source};
+  }
+  async function getMySalaryInfo(payload){
+    const res = await getMyProfileFull(payload || {});
+    if(!res.ok) return res;
+    return {ok:true, info:res.salary, salary:res.salary, source:res.source};
+  }
+  async function getSalarySetupOptions(){
+    const rows = await allEmployees();
+    const employees = rows.map(employeeForAdmin).filter(e => e.employeeId && (e.identityType === 'staff' || e.identityType === 'parttime') && lower(e.accountStatus) !== 'rejected');
+    const employeeConfigMap = {};
+    rows.forEach(row => {
+      const e = employeeForAdmin(row);
+      if(e.employeeId) employeeConfigMap[e.employeeId] = salaryConfigForAdmin(row);
+    });
+    return {ok:true, source:'firebase-employees-canonical', employees, rows:employees, employeeConfigMap, laborPlans:[], healthPlans:[]};
+  }
+  async function saveEmployeeSalaryConfig(payload){
+    const p = payload || {};
+    const employeeId = clean(p.employeeId || p.userId || p.id || p['員工ID']);
+    if(!employeeId) return {ok:false, message:'缺少員工ID，無法儲存薪資設定。'};
+    const found = await findEmployee({employeeId, userId:employeeId});
+    const docId = clean((found && found.__id) || employeeId);
+    const base = found || {employeeId:employeeId};
+    const type = identityTypeOf(base);
+    const data = {
+      employeeId: clean(base.employeeId || employeeId),
+      salaryDisplayType: type === 'parttime' ? 'PARTTIME_DIRECT' : 'STAFF_DIRECT',
+      baseSalary: number(p.baseSalary) || 0,
+      hourlyRate: number(p.hourlyRate) || 0,
+      isPartialHours: clean(p.isPartialHours) || '否',
+      averageSalary: number(p.averageSalary) || 0,
+      laborPlan: clean(p.laborPlan),
+      healthPlan: clean(p.healthPlan),
+      laborStatus: clean(p.laborStatus),
+      healthStatus: clean(p.healthStatus),
+      selfRetirementEnabled: clean(p.selfRetirementEnabled) || '否',
+      selfRetirementRate: number(p.selfRetirementRate) || 0,
+      effectiveDate: dateText(p.effectiveDate),
+      note: clean(p.note),
+      jobAllowances: Array.isArray(p.jobAllowances) ? p.jobAllowances : [],
+      allowances: Array.isArray(p.allowances) ? p.allowances : [],
+      salaryUpdatedAt: serverTs(),
+      updatedAt: serverTs(),
+      source:'firebase-employees-canonical'
+    };
+    await database().collection('employees').doc(docId).set(data, {merge:true});
+    return {ok:true, message:'薪資與投保設定已儲存到 Firebase employees。', employeeId:data.employeeId};
+  }
+  async function submitProfileChangeRequest(payload){
+    const p = payload || {};
+    const emp = await findEmployee(p);
+    const employeeId = clean((emp && (emp.employeeId || emp.__id)) || p.employeeId || p.userId || p.id);
+    if(!employeeId) return {ok:false, message:'找不到員工資料，無法送出修改申請。'};
+    const pending = await database().collection('profileChangeRequests')
+      .where('employeeId','==',employeeId)
+      .where('status','==','待審核')
+      .limit(1).get().catch(() => null);
+    if(pending && !pending.empty) return {ok:false, message:'已有待審核的資料修改申請，請等待主管審核後再送出。'};
+    const requestId = 'PCR_' + employeeId + '_' + Date.now();
+    await database().collection('profileChangeRequests').doc(requestId).set({
+      requestId,
+      employeeId,
+      name: clean((emp && emp.name) || p.name),
+      oldData: emp ? {
+        mobilePhone: clean(emp.mobilePhone),
+        address: clean(emp.address || emp.contactAddress),
+        email: lower(emp.email || emp.Email),
+        emergencyContact: clean(emp.emergencyContact),
+        emergencyPhone: clean(emp.emergencyPhone)
+      } : {},
+      newData: {
+        mobilePhone: clean(p.mobilePhone),
+        address: clean(p.address),
+        email: lower(p.email),
+        emergencyContact: clean(p.emergencyContact),
+        emergencyPhone: clean(p.emergencyPhone)
+      },
+      mobilePhone: clean(p.mobilePhone),
+      address: clean(p.address),
+      email: lower(p.email),
+      emergencyContact: clean(p.emergencyContact),
+      emergencyPhone: clean(p.emergencyPhone),
+      status:'待審核',
+      createdAt: serverTs(),
+      updatedAt: serverTs(),
+      source:'firebase-employees-canonical'
+    }, {merge:true});
+    return {ok:true, message:'已送出修改申請，等待主管審核。', requestId};
+  }
+
+  fb.handleApi = async function(action, payload){
+    const a = clean(action);
+    if(a === 'getMyProfileFull' || a === 'getMyDataFull') return await getMyProfileFull(payload || {});
+    if(a === 'getMyProfile') return await getMyProfile(payload || {});
+    if(a === 'getMySalaryInfo') return await getMySalaryInfo(payload || {});
+    if(a === 'getSalarySetupOptions') return await getSalarySetupOptions(payload || {});
+    if(a === 'saveEmployeeSalaryConfig') return await saveEmployeeSalaryConfig(payload || {});
+    if(a === 'submitProfileChangeRequest') return await submitProfileChangeRequest(payload || {});
+    if(typeof previousHandle === 'function') return await previousHandle(action, payload || {});
+    return null;
+  };
+  global.YZFirebase = fb;
+})(window);

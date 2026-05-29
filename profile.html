@@ -19,7 +19,7 @@
     .info-label{font-size:13px;color:var(--muted);font-weight:900;line-height:1.45;word-break:keep-all}
     .info-value{font-size:15px;color:var(--text);font-weight:900;line-height:1.55;word-break:break-word;white-space:pre-line;text-align:left}
     .empty-note{font-size:14px;color:var(--muted);line-height:1.8;background:#f8fbff;border:1px dashed var(--line);border-radius:14px;padding:12px}
-    .edit-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+    .edit-grid{display:grid;grid-template-columns:1fr;gap:12px}
     .edit-grid .full{grid-column:1 / -1}
     @media(max-width:520px){
       .info-row{grid-template-columns:minmax(92px,38%) 1fr;padding:10px}
@@ -41,7 +41,7 @@
         </div>
       </div>
       <div class="message" id="msg"></div>
-      <div class="tips">此頁直接讀取 Firebase 內的個人、薪資與投保資料。沒有資料的欄位會自動隱藏。</div>
+      <div class="tips">此頁只讀取 Firebase employees 內的個人、薪資與投保資料。沒有資料的欄位會自動隱藏。</div>
     </div>
 
     <div class="card" id="viewCard">
@@ -70,7 +70,7 @@
   <script src="config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260528profilefast-map2"></script>
+  <script src="firebase-client.js?v=20260529canonical1"></script>
   <script src="app.js"></script>
   <script>
     function $(id){ return document.getElementById(id); }
