@@ -499,7 +499,7 @@
           <div id="lineBindArea" class="head-tool-slot top-tool-slot"></div>
           <a class="top-tool-card" href="profile.html" id="openProfileBtn">
             <div class="top-tool-main">
-              <div class="top-tool-title">我的資料</div>
+              <div class="top-tool-title">我的資料 <span class="tile-badge empty" id="profileCount" style="min-width:24px;height:24px;font-size:13px;padding:0 7px;vertical-align:middle">&nbsp;</span></div>
               <div class="top-tool-desc">個人 / 薪資 / 投保</div>
             </div>
             <div class="top-tool-actions"><span class="top-tool-btn">查看</span></div>
@@ -511,7 +511,7 @@
       <div class="home-grid" id="homeGrid">
         <a class="home-tile" data-feature="announcement" href="announcements.html"><div class="tile-top"><strong class="tile-title">公告</strong><div class="tile-badge" id="announcementCount">0</div></div><div class="tile-desc">最新公告</div></a>
         <a class="home-tile" data-feature="clock" href="clock.html"><div class="tile-top"><strong class="tile-title">打卡系統</strong><div class="tile-badge" id="clockCount">0</div></div><div class="tile-desc">上下班與紀錄</div></a>
-        <a class="home-tile" data-feature="parttime" href="parttime.html"><div class="tile-top"><strong class="tile-title">工讀生時數</strong><div class="tile-badge empty">&nbsp;</div></div><div class="tile-desc">時數登記</div></a>
+        <a class="home-tile" data-feature="parttime" href="parttime.html"><div class="tile-top"><strong class="tile-title">工讀生時數</strong><div class="tile-badge" id="parttimeCount">0</div></div><div class="tile-desc">時數登記</div></a>
         <a class="home-tile" data-feature="leave" href="leave.html"><div class="tile-top"><strong class="tile-title">請假系統</strong><div class="tile-badge" id="leaveCount">0</div></div><div class="tile-desc">請假與紀錄</div></a>
         <a class="home-tile" data-feature="task" href="task.html"><div class="tile-top"><strong class="tile-title">交辦事項</strong><div class="tile-badge" id="taskCount">0</div></div><div class="tile-desc">待辦與回報</div></a>
         <a class="home-tile" data-feature="routine" href="routine.html"><div class="tile-top"><strong class="tile-title">定期事項</strong><div class="tile-badge" id="routineCount">0</div></div><div class="tile-desc">固定工作</div></a>
@@ -522,9 +522,9 @@
   <script src="config.js?v=20260421fix2"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260529canonical1"></script>
+  <script src="firebase-client.js?v=20260529notifybadge1"></script>
 
-  <script src="app.js?v=20260422linefix1"></script>
+  <script src="app.js?v=20260529badgeNotify1"></script>
   <script>
     function renderHomeTiles(user){
       qsa('#homeGrid [data-feature]').forEach(tile=>{
@@ -566,20 +566,18 @@
       const leaveEl = qs('#leaveCount');
       const clockEl = qs('#clockCount');
       const annEl = qs('#announcementCount');
+      const parttimeEl = qs('#parttimeCount');
       try{
         const summaryRes = await api('getDashboardSummary',{userId:user.id,email:user.email,role:'staff'});
-        const taskCount = Number(summaryRes?.counts?.tasks||0);
-        const routineCount = Number(summaryRes?.counts?.routines||0);
-        const leaveCount = Number(summaryRes?.counts?.leaves||0);
-        const clockCount = Number(summaryRes?.counts?.clocks||0);
-        const announcementCount = Number(summaryRes?.counts?.announcements || summaryRes?.counts?.announcement || 0);
-        setCountBadge(taskEl, taskCount);
-        setCountBadge(routineEl, routineCount);
-        setCountBadge(leaveEl, leaveCount);
-        setCountBadge(clockEl, clockCount);
-        setCountBadge(annEl, announcementCount);
+        const counts = summaryRes && summaryRes.counts ? summaryRes.counts : {};
+        setCountBadge(taskEl, Number(counts.tasks || counts.taskCount || 0));
+        setCountBadge(routineEl, Number(counts.routines || counts.routineCount || 0));
+        setCountBadge(leaveEl, Number(counts.leaves || counts.leaveCount || 0));
+        setCountBadge(clockEl, Number(counts.clocks || counts.clockCount || counts.clockCorrectionCount || 0));
+        setCountBadge(annEl, Number(counts.announcements || counts.announcementCount || 0));
+        setCountBadge(parttimeEl, Number(counts.parttimePending || counts.parttime || counts.parttimePendingCount || 0));
       }catch(e){
-        [taskEl,routineEl,leaveEl,clockEl,annEl].forEach(el=>setCountBadge(el,0));
+        [taskEl,routineEl,leaveEl,clockEl,annEl,parttimeEl].forEach(el=>setCountBadge(el,0));
       }
     }
 

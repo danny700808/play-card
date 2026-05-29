@@ -4303,3 +4303,577 @@
   fb.__parttimeFirebaseFastV20260529 = true;
   global.YZFirebase = fb;
 })(window);
+
+/* 2026-05-29 badge + notification queue unification */
+(function(global){
+  const fb = global.YZFirebase || {};
+  if(fb.__badgeNotifyV20260529) return;
+  const previousHandle = fb.handleApi;
+  function clean(v){ return String(v == null ? '' : v).trim(); }
+  function lower(v){ return clean(v).toLowerCase(); }
+  function truthy(v){ const s=lower(v); return v===true || s==='true' || s==='1' || s==='yes' || s==='y' || s==='是' || s==='啟用'; }
+  function nowId(prefix){ return prefix + '_' + Date.now() + '_' + Math.random().toString(36).slice(2,8); }
+  function today(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+  function readUser(){ try{ return JSON.parse(global.localStorage.getItem('employeeUser') || 'null') || {}; }catch(e){ return {}; } }
+  function db(){
+    const cfg = global.APP_CONFIG && global.APP_CONFIG.FIREBASE_CONFIG;
+    if(!cfg || !global.firebase) throw new Error('Firebase 尚未啟用');
+    if(!global.firebase.apps.length) global.firebase.initializeApp(cfg);
+    return global.firebase.firestore();
+  }
+  async function all(collection){ const snap = await db().collection(collection).get(); const rows=[]; snap.forEach(doc=>rows.push(Object.assign({__id:doc.id}, doc.data()||{}))); return rows; }
+  async function setDoc(collection, id, data, merge=true){ await db().collection(collection).doc(clean(id) || nowId('DOC')).set(data || {}, {merge}); }
+  async function updateDoc(collection, id, data){ await db().collection(collection).doc(clean(id)).set(data || {}, {merge:true}); }
+  function serverTs(){ try{ return global.firebase.firestore.FieldValue.serverTimestamp(); }catch(e){ return new Date().toISOString(); } }
+  function statusOf(o){ return clean((o||{}).status || (o||{})['狀態'] || (o||{}).approvalStatus || (o||{})['審核狀態']); }
+  function isPending(o){ const s=statusOf(o); return !s || s==='待審核' || s==='待主管審核' || lower(s)==='pending'; }
+  function isRejected(o){ const s=statusOf(o); return s==='已駁回' || lower(s)==='rejected'; }
+  function isApproved(o){ const s=statusOf(o); return s==='已核准' || s==='已同意' || lower(s)==='approved'; }
+  function empIdOf(o){ o=o||{}; return clean(o.employeeId || o.userId || o.id || o.adminId || o['員工ID'] || o['申請人ID'] || o.__id); }
+  function emailOf(o){ o=o||{}; return lower(o.email || o.Email || o['Email'] || o['電子郵件']); }
+  function nameOf(o){ o=o||{}; return clean(o.name || o['姓名'] || o.employeeName || o['員工姓名']); }
+  function identityOf(o){
+    const raw = lower((o||{}).identityType || (o||{})['身份類型'] || (o||{}).identityLabel || (o||{})['身分類型'] || (o||{}).employeeType || (o||{})['員工身分']);
+    if(raw.indexOf('工讀')>=0 || raw==='parttime') return 'parttime';
+    if(raw.indexOf('外聘')>=0 || raw==='external') return 'external';
+    return 'staff';
+  }
+  function normEmp(o){ return {id:empIdOf(o), employeeId:empIdOf(o), name:nameOf(o), email:emailOf(o), identityType:identityOf(o), identityLabel:identityOf(o)==='parttime'?'工讀生':(identityOf(o)==='external'?'外聘老師':'專職員工'), role:lower((o||{}).role || (o||{})['角色']), showSettingsZone:truthy((o||{}).showSettingsZone || (o||{})['管理區權限']), lineUserId:clean((o||{}).lineUserId || (o||{})['LINE User ID']), lineNotifyEnabled:truthy((o||{}).lineNotifyEnabled || (o||{})['LINE 通知啟用']), accountStatus:clean((o||{}).accountStatus || (o||{})['帳號狀態'])}; }
+  function identFromPayload(payload){
+    const user = readUser();
+    const p = payload || {};
+    const ids = [p.userId,p.employeeId,p.id,user.id,user.employeeId,user.userId].map(clean).filter(Boolean);
+    const emails = [p.email,user.email].map(lower).filter(Boolean);
+    return {ids:Array.from(new Set(ids)), emails:Array.from(new Set(emails)), user};
+  }
+  function rowBelongsTo(row, ident){ const id=empIdOf(row), email=emailOf(row); return (!!id && ident.ids.indexOf(id)>=0) || (!!email && ident.emails.indexOf(email)>=0); }
+  function pendingRows(rows){ return (rows||[]).filter(isPending); }
+  function pendingOwn(rows, ident){ return pendingRows(rows).filter(r=>rowBelongsTo(r, ident)); }
+  function pendingTempType(r){ const t=clean(r.requestType || r['申請類型'] || r.sourceType || r.type); return t; }
+  function isParttimeExcess(r){ const t=pendingTempType(r); return t==='parttimeExcess' || t.indexOf('超出')>=0 || t.indexOf('工讀')>=0; }
+  async function countClockCompletionIssues(ident){
+    if(typeof previousHandle !== 'function') return 0;
+    try{
+      const r = await previousHandle('getClockCompletionIssues', {userId:ident.ids[0]||'', employeeId:ident.ids[0]||'', email:ident.emails[0]||''});
+      return Array.isArray(r && r.rows) ? r.rows.length : 0;
+    }catch(e){ return 0; }
+  }
+  async function countParttimePending(ident){
+    if(typeof previousHandle !== 'function') return 0;
+    try{
+      const r = await previousHandle('getParttimePendingItems', {userId:ident.ids[0]||'', employeeId:ident.ids[0]||'', email:ident.emails[0]||''});
+      return Array.isArray(r && r.rows) ? r.rows.length : 0;
+    }catch(e){ return 0; }
+  }
+  async function getDashboardSummaryUnified(payload){
+    const p=payload||{};
+    const user=readUser();
+    const role=lower(p.role || user.role);
+    const isAdmin = role==='admin' || truthy(user.showSettingsZone) || truthy(p.showSettingsZone);
+    const [employees, leaves, corrections, temps, profileChanges, tasks, routines, announcements, applications] = await Promise.all([
+      all('employees').catch(()=>[]), all('leaveRequests').catch(()=>[]), all('clockCorrections').catch(()=>[]), all('temporaryAttendanceRequests').catch(()=>[]), all('profileChangeRequests').catch(()=>[]), all('tasks').catch(()=>[]), all('routines').catch(()=>[]), all('announcements').catch(()=>[]), all('applications').catch(()=>all('teacherApplications').catch(()=>[]))
+    ]);
+    if(isAdmin){
+      const registrationCount = employees.filter(e => lower(e.accountStatus || e['帳號狀態']) === 'pending' || clean(e.accountStatus || e['帳號狀態']) === '待審核').length;
+      const leaveCount = pendingRows(leaves).length;
+      const clockCorrectionCount = pendingRows(corrections).length;
+      const tempAttendanceCount = pendingRows(temps).length;
+      const parttimePendingCount = pendingRows(temps).filter(isParttimeExcess).length;
+      const profileChangeCount = pendingRows(profileChanges).length;
+      const taskCount = tasks.filter(t => !isApproved(t) && clean(t.status || t['狀態']) !== '已完成').length;
+      const routineCount = routines.filter(t => !isApproved(t) && clean(t.status || t['狀態']) !== '已完成').length;
+      const applicationCount = pendingRows(applications).length;
+      const announcementCount = announcements.length;
+      const approvalCount = registrationCount + leaveCount + clockCorrectionCount + tempAttendanceCount + profileChangeCount;
+      return {ok:true, source:'firebase-unified-counts', counts:{
+        registrationCount, registrations:registrationCount,
+        leaveCount, leaves:leaveCount,
+        clockCorrectionCount, clockCorrections:clockCorrectionCount, clocks:clockCorrectionCount,
+        tempAttendanceCount, temporaryAttendanceCount:tempAttendanceCount,
+        parttimePendingCount, parttime:parttimePendingCount,
+        profileChangeCount, profile:profileChangeCount,
+        taskCount, tasks:taskCount,
+        routineCount, routines:routineCount,
+        applicationCount, applications:applicationCount,
+        announcementCount, announcements:announcementCount,
+        salaryCount:0, approvalCount
+      }};
+    }
+    const ident = identFromPayload(p);
+    const leaveCount = pendingOwn(leaves, ident).length + leaves.filter(r => rowBelongsTo(r, ident) && isRejected(r)).length;
+    const clockCorrectionOwn = pendingOwn(corrections, ident).length;
+    const tempOwn = pendingOwn(temps, ident).length;
+    const profileChangeCount = pendingOwn(profileChanges, ident).length + profileChanges.filter(r=>rowBelongsTo(r, ident) && isRejected(r)).length;
+    const incompleteClockCount = await countClockCompletionIssues(ident);
+    const parttimePendingCount = await countParttimePending(ident) || tempOwn;
+    const taskCount = tasks.filter(t => rowBelongsTo(t, ident) && !isApproved(t) && clean(t.status || t['狀態']) !== '已完成').length;
+    const routineCount = routines.filter(t => rowBelongsTo(t, ident) && !isApproved(t) && clean(t.status || t['狀態']) !== '已完成').length;
+    const announcementCount = announcements.filter(a => !a.readBy || !Array.isArray(a.readBy) || ident.ids.every(id => a.readBy.indexOf(id)<0)).length;
+    const clockCount = clockCorrectionOwn + incompleteClockCount;
+    return {ok:true, source:'firebase-unified-counts', counts:{
+      leaveCount, leaves:leaveCount,
+      clockCount, clocks:clockCount, clockCorrectionCount:clockCorrectionOwn, incompleteClockCount,
+      tempAttendanceCount:tempOwn, temporaryAttendanceCount:tempOwn,
+      parttimePendingCount, parttime:parttimePendingCount,
+      profileChangeCount, profile:profileChangeCount,
+      taskCount, tasks:taskCount,
+      routineCount, routines:routineCount,
+      announcementCount, announcements:announcementCount
+    }};
+  }
+  function defaultModuleEvents(moduleKey){
+    const defs = {
+      clock:[
+        ['clock.specialClockSubmitted','特殊打卡送出','員工送出特殊打卡原因後，通知主管審核。'],
+        ['clock.clockCorrectionSubmitted','打卡修正送出','員工修正已打卡紀錄時，通知主管審核。'],
+        ['clock.missingClockSubmitted','補上班 / 補下班打卡送出','員工補上班卡或補下班卡時，通知主管審核。'],
+        ['clock.reviewResult','打卡審核結果','主管核准或駁回後，通知員工。']
+      ],
+      temporaryAttendance:[
+        ['temporaryAttendance.submitted','臨時出勤送出','員工送出臨時出勤時，通知主管審核。'],
+        ['parttime.excessHoursSubmitted','工讀超出排班時數送出','工讀生登記時數超過排班時數時，通知主管審核。'],
+        ['temporaryAttendance.reviewResult','臨時出勤審核結果','主管核准或駁回後，通知員工。']
+      ],
+      leave:[
+        ['leave.submitted','請假 / 事後補假送出','員工送出請假或事後補假時，通知主管審核。'],
+        ['leave.reviewResult','請假審核結果','主管核准或駁回後，通知員工。']
+      ],
+      profile:[
+        ['profile.changeSubmitted','個人資料修改送出','員工送出聯絡資料修改時，通知主管審核。'],
+        ['profile.changeResult','個人資料修改審核結果','主管核准或駁回後，通知員工。']
+      ]
+    };
+    return (defs[moduleKey]||[]).map(([eventKey,eventName,description])=>({moduleKey,eventKey,eventName,description,enabled:true,managerLineEnabled:false,managerEmailEnabled:false,employeeLineEnabled:true,employeeEmailEnabled:false}));
+  }
+  async function getModuleNotificationSettings(payload){
+    const moduleKey = clean(payload && payload.moduleKey);
+    let rows = (await all('moduleNotificationSettings').catch(()=>[])).filter(r => clean(r.moduleKey) === moduleKey);
+    const defaults = defaultModuleEvents(moduleKey);
+    const map = {};
+    defaults.forEach(d => { map[d.eventKey] = Object.assign({}, d); });
+    rows.forEach(r => { const key=clean(r.eventKey || r.__id); if(key) map[key] = Object.assign({}, map[key] || {}, r, {eventKey:key}); });
+    return {ok:true, rows:Object.values(map)};
+  }
+  async function saveModuleNotificationSettings(payload){
+    const rows = Array.isArray(payload && payload.rows) ? payload.rows : [];
+    for(const r of rows){
+      const moduleKey=clean(r.moduleKey), eventKey=clean(r.eventKey);
+      if(!moduleKey || !eventKey) continue;
+      await setDoc('moduleNotificationSettings', eventKey, Object.assign({}, r, {moduleKey,eventKey,updatedAt:serverTs()}), true);
+    }
+    return {ok:true, message:'提醒設定已儲存。'};
+  }
+  async function getNotificationRecipients(payload){
+    const emps = (await all('employees').catch(()=>[])).map(normEmp).filter(e => e.id || e.email);
+    const keyword = lower(payload && payload.keyword);
+    const rows = emps.filter(e => !keyword || [e.name,e.id,e.email,e.identityLabel].join(' ').toLowerCase().indexOf(keyword) >= 0).sort((a,b)=>clean(a.name).localeCompare(clean(b.name),'zh-Hant'));
+    return {ok:true, rows};
+  }
+  async function sendManualNotification(payload){
+    const user = readUser();
+    const p = payload || {};
+    const message = clean(p.message);
+    const targets = Array.isArray(p.targets) ? p.targets : [];
+    const channels = Array.isArray(p.channels) ? p.channels.map(clean).filter(Boolean) : [];
+    if(!message) return {ok:false, message:'請輸入要發送的內容。'};
+    if(!targets.length) return {ok:false, message:'請選擇收件人。'};
+    if(!channels.length) return {ok:false, message:'請至少選擇 LINE 或 Email。'};
+    const messageId = nowId('MSG');
+    await setDoc('manualMessages', messageId, {messageId, senderId:clean(user.id || user.employeeId), senderName:clean(user.name), message, channels, targetCount:targets.length, status:'pending', createdAt:serverTs(), source:'manual-manager-message'}, true);
+    for(const t of targets){
+      for(const channel of channels){
+        const queueId = nowId('NQ');
+        await setDoc('notificationQueue', queueId, {queueId, messageId, eventKey:'manual.managerMessage', channel, targetEmployeeId:clean(t.employeeId || t.id), targetName:clean(t.name), targetEmail:lower(t.email), targetLineUserId:clean(t.lineUserId), title:'主管訊息', body:message, status:'pending', createdAt:serverTs(), source:'manual-manager-message'}, true);
+      }
+    }
+    return {ok:true, message:'已建立發送佇列。'};
+  }
+  async function getPendingProfileChangeRequests(){
+    const rows = pendingRows(await all('profileChangeRequests').catch(()=>[])).map(r => Object.assign({}, r, {requestId:clean(r.requestId || r['申請ID'] || r.__id), employeeId:empIdOf(r), name:nameOf(r), email:emailOf(r), status:statusOf(r)||'待審核'}));
+    rows.sort((a,b)=>clean(b.createdAt || b['建立時間'] || '').localeCompare(clean(a.createdAt || a['建立時間'] || '')));
+    return {ok:true, rows};
+  }
+  async function approveProfileChangeRequest(payload){
+    const id=clean(payload && payload.requestId);
+    if(!id) return {ok:false, message:'缺少申請ID'};
+    const req = (await all('profileChangeRequests').catch(()=>[])).find(r => clean(r.requestId || r['申請ID'] || r.__id) === id);
+    if(!req) return {ok:false, message:'找不到申請資料'};
+    const empId=empIdOf(req);
+    const updates={};
+    [['mobilePhone','行動電話'],['address','聯絡地址'],['email','Email'],['emergencyContact','緊急聯絡人'],['emergencyPhone','緊急聯絡人電話']].forEach(([k,zh])=>{ const v=clean(req[k] || req[zh]); if(v) updates[k]=v; });
+    if(empId && Object.keys(updates).length) await updateDoc('employees', empId, Object.assign({}, updates, {updatedAt:serverTs()}));
+    await updateDoc('profileChangeRequests', id, {status:'已核准','狀態':'已核准', reviewedAt:serverTs(), reviewedBy:clean((readUser()||{}).id)});
+    return {ok:true, message:'已核准，個人資料已更新。'};
+  }
+  async function rejectProfileChangeRequest(payload){
+    const id=clean(payload && payload.requestId);
+    if(!id) return {ok:false, message:'缺少申請ID'};
+    await updateDoc('profileChangeRequests', id, {status:'已駁回','狀態':'已駁回', rejectReason:clean(payload && payload.rejectReason), reviewedAt:serverTs(), reviewedBy:clean((readUser()||{}).id)});
+    return {ok:true, message:'已駁回。'};
+  }
+  fb.handleApi = async function(action, payload){
+    const a=clean(action);
+    if(a==='getDashboardSummary' || a==='getPendingCounts') return await getDashboardSummaryUnified(payload || {});
+    if(a==='getModuleNotificationSettings') return await getModuleNotificationSettings(payload || {});
+    if(a==='saveModuleNotificationSettings') return await saveModuleNotificationSettings(payload || {});
+    if(a==='getNotificationRecipients') return await getNotificationRecipients(payload || {});
+    if(a==='sendManualNotification') return await sendManualNotification(payload || {});
+    if(a==='getPendingProfileChangeRequests') return await getPendingProfileChangeRequests(payload || {});
+    if(a==='approveProfileChangeRequest') return await approveProfileChangeRequest(payload || {});
+    if(a==='rejectProfileChangeRequest') return await rejectProfileChangeRequest(payload || {});
+    if(typeof previousHandle === 'function') return await previousHandle(action, payload || {});
+    return null;
+  };
+  fb.__badgeNotifyV20260529 = true;
+  global.YZFirebase = fb;
+})(window);
+
+/* 待處理數字 + 通知佇列 + 個資簽核：Firebase 統一版 20260529 */
+(function(global){
+  const fb = global.YZFirebase || {};
+  if(!fb || fb.__notifyBadgeUnifiedV20260529) return;
+  const previousHandle = fb.handleApi;
+
+  function clean(v){ return String(v == null ? '' : v).trim(); }
+  function lower(v){ return clean(v).toLowerCase(); }
+  function truthy(v){ const s = lower(v); return v === true || ['是','yes','true','1','啟用','enabled','active','on'].indexOf(s) >= 0; }
+  function pad(n){ return String(n).padStart(2,'0'); }
+  function ymd(d){ return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()); }
+  function today(){ return ymd(new Date()); }
+  function serverTs(){ return global.firebase && global.firebase.firestore ? global.firebase.firestore.FieldValue.serverTimestamp() : new Date().toISOString(); }
+  function db(){ try{return fb.init && fb.init();}catch(e){return null;} }
+  function currentUser(){ try{return JSON.parse(localStorage.getItem('employeeUser') || 'null') || {};}catch(e){return {};} }
+  function statusOf(o){ return clean(o && (o.status || o['狀態'])); }
+  function pendingStatus(o){ const s = lower(statusOf(o)); return s === '待審核' || s === 'pending' || s === '待主管審核' || s === '審核中'; }
+  function rejectedStatus(o){ const s = lower(statusOf(o)); return s === '已駁回' || s === '駁回' || s === 'rejected'; }
+  function completedStatus(o){ const s = lower(statusOf(o)); return ['已完成','完成','已核准','核准','已處理','已結案','已刪除','刪除','已取消','取消'].indexOf(s) >= 0; }
+  function dateText(v){
+    if(!v) return '';
+    if(v && typeof v.toDate === 'function') return ymd(v.toDate());
+    if(v instanceof Date && !isNaN(v.getTime())) return ymd(v);
+    const s = clean(v).replace(/\//g,'-');
+    if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? s : ymd(d);
+  }
+  async function all(col){
+    const d = db(); if(!d) throw new Error('Firebase 尚未啟用');
+    const snap = await d.collection(col).get();
+    const rows = [];
+    snap.forEach(doc => rows.push(Object.assign({__id:doc.id}, doc.data() || {})));
+    return rows;
+  }
+  async function docSet(col, id, data){
+    const d = db(); if(!d) throw new Error('Firebase 尚未啟用');
+    await d.collection(col).doc(id).set(data, {merge:true});
+    return {ok:true, id};
+  }
+  async function docGet(col, id){
+    const d = db(); if(!d) throw new Error('Firebase 尚未啟用');
+    if(!clean(id)) return null;
+    const snap = await d.collection(col).doc(clean(id)).get();
+    return snap.exists ? Object.assign({__id:snap.id}, snap.data() || {}) : null;
+  }
+  function userKeys(payload){
+    const u = currentUser(); payload = payload || {};
+    const employeeId = clean(payload.userId || payload.employeeId || payload.id || u.id || u.employeeId || u.userId);
+    const email = lower(payload.email || payload.Email || u.email || u.Email);
+    return {employeeId, email};
+  }
+  function belongsTo(row, keys){
+    const id = clean(row.employeeId || row['員工ID'] || row.userId || row.id);
+    const mail = lower(row.email || row.Email || row['Email']);
+    return (!!keys.employeeId && id === keys.employeeId) || (!!keys.email && mail === keys.email);
+  }
+  function identityTypeOf(row){
+    const raw = lower(row.identityType || row['身分類型']);
+    if(raw === 'parttime' || raw === 'staff' || raw === 'external') return raw;
+    if(truthy(row.isPartTime || row['是否工讀生'])) return 'parttime';
+    return 'staff';
+  }
+  function identityLabel(type){ return type === 'parttime' ? '工讀生' : (type === 'external' ? '外聘老師' : '專職員工'); }
+  function requestTypeOf(row){ return clean(row.requestType || row['申請類型'] || row.type || row.sourceType); }
+  function isParttimeExcess(row){ const s = lower(requestTypeOf(row)); return s.indexOf('parttimeexcess') >= 0 || s.indexOf('超出排班') >= 0 || s.indexOf('工讀超') >= 0; }
+
+  async function getEmployeeRecipients(){
+    const rows = await all('employees').catch(()=>[]);
+    const out = rows.map(r => {
+      const type = identityTypeOf(r);
+      const role = lower(r.role || r['角色']);
+      const isManager = truthy(r.showSettingsZone || r['管理權限']) || role === 'admin' || role === 'manager';
+      return {
+        employeeId: clean(r.employeeId || r['員工ID'] || r.__id),
+        name: clean(r.name || r['姓名']),
+        email: lower(r.email || r.Email || r['Email']),
+        identityType: type,
+        identityLabel: identityLabel(type),
+        lineUserId: clean(r.lineUserId || r['LINE User ID']),
+        lineNotifyEnabled: truthy(r.lineNotifyEnabled || r['LINE 通知啟用']),
+        isManager
+      };
+    }).filter(r => r.employeeId && lower(r.employeeId) !== 'undefined' && lower(r.name) !== '測試');
+    return {ok:true, rows:out, list:out};
+  }
+  async function managerRecipients(){
+    const rows = (await getEmployeeRecipients()).rows || [];
+    return rows.filter(r => r.isManager);
+  }
+  async function targetEmployee(payload){
+    const rows = (await getEmployeeRecipients()).rows || [];
+    const keys = userKeys(payload || {});
+    return rows.find(r => clean(r.employeeId) === keys.employeeId || lower(r.email) === keys.email) || null;
+  }
+  async function getFeatureNotificationSetting(payload){
+    const code = clean(payload && (payload.featureCode || payload.code));
+    if(!code) return {ok:false, message:'缺少提醒項目'};
+    const row = await docGet('notificationFeatureSettings', code).catch(()=>null);
+    const defaults = {featureCode:code, notifyManagerLine:true, notifyManagerEmail:false, notifyEmployeeLine:true, notifyEmployeeEmail:false};
+    return {ok:true, setting:Object.assign({}, defaults, row || {})};
+  }
+  async function saveFeatureNotificationSetting(payload){
+    payload = payload || {};
+    const code = clean(payload.featureCode || payload.code);
+    if(!code) return {ok:false, message:'缺少提醒項目'};
+    const row = {
+      featureCode:code,
+      featureName:clean(payload.featureName || payload.name),
+      notifyManagerLine:payload.notifyManagerLine !== false,
+      notifyManagerEmail:payload.notifyManagerEmail === true,
+      notifyEmployeeLine:payload.notifyEmployeeLine !== false,
+      notifyEmployeeEmail:payload.notifyEmployeeEmail === true,
+      updatedAt:serverTs(),
+      source:'firebase-notify-feature-setting'
+    };
+    await docSet('notificationFeatureSettings', code, row);
+    return {ok:true, message:'提醒設定已儲存。', setting:row};
+  }
+  async function queueManualNotification(payload){
+    payload = payload || {};
+    const sender = currentUser();
+    const message = clean(payload.message);
+    const channels = Array.isArray(payload.channels) ? payload.channels.map(clean).filter(Boolean) : [];
+    const targets = Array.isArray(payload.targets) ? payload.targets : [];
+    if(!message) return {ok:false, message:'請輸入訊息內容。'};
+    if(!targets.length) return {ok:false, message:'請選擇收件人。'};
+    if(!channels.length) return {ok:false, message:'請選擇發送方式。'};
+    const batchId = 'MSG_' + Date.now() + '_' + Math.random().toString(36).slice(2,8);
+    const base = {
+      batchId,
+      senderId:clean(sender.id || sender.employeeId || sender.userId),
+      senderName:clean(sender.name || sender.email),
+      message,
+      channels,
+      targetCount:targets.length,
+      page:clean(payload.page),
+      status:'待發送',
+      createdAt:serverTs(),
+      source:'firebase-manual-notification'
+    };
+    await docSet('manualMessages', batchId, Object.assign({}, base, {targets:targets.map(t => ({employeeId:clean(t.employeeId), name:clean(t.name), email:lower(t.email), lineUserId:clean(t.lineUserId)}))}));
+    let count = 0;
+    for(const t of targets){
+      for(const ch of channels){
+        const id = batchId + '_' + clean(t.employeeId) + '_' + ch;
+        await docSet('notificationQueue', id, Object.assign({}, base, {
+          queueId:id,
+          channel:ch,
+          targetEmployeeId:clean(t.employeeId),
+          targetName:clean(t.name),
+          targetEmail:lower(t.email),
+          targetLineUserId:clean(t.lineUserId),
+          status:'待發送'
+        }));
+        count++;
+      }
+    }
+    return {ok:true, message:'已送入通知佇列，共 ' + count + ' 筆。', batchId, count};
+  }
+  async function enqueueFeatureNotification(featureCode, direction, payload, result){
+    try{
+      const setting = (await getFeatureNotificationSetting({featureCode})).setting || {};
+      const channels = [];
+      let targets = [];
+      if(direction === 'manager'){
+        if(setting.notifyManagerLine !== false) channels.push('line');
+        if(setting.notifyManagerEmail === true) channels.push('email');
+        targets = await managerRecipients();
+      }else{
+        if(setting.notifyEmployeeLine !== false) channels.push('line');
+        if(setting.notifyEmployeeEmail === true) channels.push('email');
+        const t = await targetEmployee(payload || {});
+        targets = t ? [t] : [];
+      }
+      if(!targets.length || !channels.length) return null;
+      const user = currentUser();
+      const featureNameMap = {clock:'打卡簽核', leave:'請假簽核', temporaryAttendance:'臨時出勤', parttimePayroll:'工讀時數', profileChange:'個資修改', registration:'註冊簽核'};
+      const msg = clean(payload && payload.notificationMessage) || ('【' + (featureNameMap[featureCode] || featureCode) + '】' + (direction === 'manager' ? '有新的待審核事項。' : '主管已處理你的申請。') + ' ' + clean(result && result.message));
+      return await queueManualNotification({targets, channels, message:msg, page:'auto:' + featureCode, senderId:clean(user.id || user.employeeId)});
+    }catch(e){ console.warn('[notify queue skipped]', featureCode, direction, e); return null; }
+  }
+  async function maybeQueueAfterAction(action, payload, result){
+    if(!result || result.ok === false) return;
+    const a = clean(action);
+    if(a === 'submitClockCorrection') await enqueueFeatureNotification('clock','manager',payload,result);
+    if(a === 'approveClockCorrectionApi' || a === 'rejectClockCorrectionApi') await enqueueFeatureNotification('clock','employee',payload,result);
+    if(a === 'leaveRequest' || a === 'modifyLeaveRequest') await enqueueFeatureNotification('leave','manager',payload,result);
+    if(a === 'reviewLeaveRequest') await enqueueFeatureNotification('leave','employee',payload,result);
+    if(a === 'parttime' && (result.pending || result.pendingExcessHours || result.excessRequestId)) await enqueueFeatureNotification('parttimePayroll','manager',payload,result);
+    if(a === 'submitProfileChangeRequest') await enqueueFeatureNotification('profileChange','manager',payload,result);
+    if(a === 'approveProfileChangeRequest' || a === 'rejectProfileChangeRequest') await enqueueFeatureNotification('profileChange','employee',payload,result);
+    if(a === 'approveRegistrationApi' || a === 'rejectRegistrationApi') await enqueueFeatureNotification('registration','employee',payload,result);
+  }
+
+  async function getDashboardSummaryUnified(payload){
+    payload = payload || {};
+    const role = lower(payload.role || (currentUser().role));
+    const isAdmin = role === 'admin' || role === 'manager' || payload.admin === true || payload.isAdmin === true;
+    const [employees, leaves, corrections, temps, profileChanges, tasks, routines, announcements, applications] = await Promise.all([
+      all('employees').catch(()=>[]),
+      all('leaveRequests').catch(()=>[]),
+      all('clockCorrections').catch(()=>[]),
+      all('temporaryAttendanceRequests').catch(()=>[]),
+      all('profileChangeRequests').catch(()=>[]),
+      all('tasks').catch(()=>[]),
+      all('routineTemplates').catch(()=>all('routines').catch(()=>[])),
+      all('announcements').catch(()=>[]),
+      all('teacherApplications').catch(()=>all('applications').catch(()=>[]))
+    ]);
+    if(isAdmin){
+      const leaveCount = leaves.filter(pendingStatus).length;
+      const clockCorrectionCount = corrections.filter(pendingStatus).length;
+      const tempAttendanceCount = temps.filter(pendingStatus).length;
+      const parttimeApprovalCount = temps.filter(r => pendingStatus(r) && isParttimeExcess(r)).length;
+      const profileChangeCount = profileChanges.filter(pendingStatus).length;
+      const registrationCount = employees.filter(e => lower(e.accountStatus || e['帳號狀態']) === 'pending').length;
+      const taskCount = tasks.filter(r => !completedStatus(r)).length;
+      const routineCount = routines.filter(r => !completedStatus(r)).length;
+      const applicationCount = applications.filter(r => pendingStatus(r) || !completedStatus(r)).length;
+      return {ok:true, source:'firebase-notify-badge-unified', counts:{
+        registrationCount, registrations:registrationCount,
+        leaveCount, leaves:leaveCount,
+        clockCorrectionCount, clocks:clockCorrectionCount,
+        tempAttendanceCount, temporaryAttendanceCount:tempAttendanceCount,
+        parttimeApprovalCount, parttimePending:parttimeApprovalCount,
+        profileChangeCount, profileChanges:profileChangeCount,
+        approvalCount:registrationCount + leaveCount + clockCorrectionCount + tempAttendanceCount + profileChangeCount,
+        taskCount, tasks:taskCount,
+        routineCount, routines:routineCount,
+        announcements:announcements.filter(r => truthy(r.published || r.enabled || r['已發布'])).length,
+        applicationCount,
+        salaryCount:0,
+        contracts:0,
+        goodsInquiries:0
+      }};
+    }
+    const keys = userKeys(payload);
+    const ownLeaves = leaves.filter(r => belongsTo(r, keys));
+    const ownCorrections = corrections.filter(r => belongsTo(r, keys));
+    const ownTemps = temps.filter(r => belongsTo(r, keys));
+    const ownProfileChanges = profileChanges.filter(r => belongsTo(r, keys));
+    let completionIssues = 0;
+    try{
+      if(typeof previousHandle === 'function'){
+        const res = await previousHandle('getClockCompletionIssues', Object.assign({}, payload, {userId:keys.employeeId, employeeId:keys.employeeId}));
+        completionIssues = Number(res && (res.count || ((res.rows || []).length))) || 0;
+      }
+    }catch(e){}
+    const clockPending = ownCorrections.filter(pendingStatus).length + completionIssues;
+    const parttimePending = ownTemps.filter(r => pendingStatus(r) && (isParttimeExcess(r) || lower(requestTypeOf(r)).indexOf('temporary') >= 0 || requestTypeOf(r).indexOf('臨時') >= 0)).length;
+    const leavePending = ownLeaves.filter(r => pendingStatus(r) || rejectedStatus(r)).length;
+    const profilePending = ownProfileChanges.filter(r => pendingStatus(r) || rejectedStatus(r)).length;
+    const ownTasks = tasks.filter(r => {
+      const assignee = clean(r.assigneeId || r.employeeId || r['員工ID']);
+      const mail = lower(r.assigneeEmail || r.email || r.Email);
+      return (keys.employeeId && assignee === keys.employeeId) || (keys.email && mail === keys.email);
+    }).filter(r => !completedStatus(r)).length;
+    return {ok:true, source:'firebase-notify-badge-unified', counts:{
+      clocks:clockPending,
+      clockCount:clockPending,
+      parttime:parttimePending,
+      parttimePending,
+      leaves:leavePending,
+      leaveCount:leavePending,
+      profile:profilePending,
+      profileChangeCount:profilePending,
+      tasks:ownTasks,
+      routines:0,
+      announcements:announcements.filter(r => truthy(r.published || r.enabled || r['已發布'])).length
+    }};
+  }
+
+  async function getProfileChangeRequests(payload){
+    const rows = (await all('profileChangeRequests').catch(()=>[])).map(r => ({
+      requestId:clean(r.requestId || r['申請ID'] || r.__id),
+      __id:clean(r.__id),
+      employeeId:clean(r.employeeId || r.userId || r['員工ID']),
+      name:clean(r.name || r['姓名']),
+      email:lower(r.email || r.Email || r['Email']),
+      mobilePhone:clean(r.mobilePhone || r['行動電話']),
+      address:clean(r.address || r.contactAddress || r['聯絡地址']),
+      emergencyContact:clean(r.emergencyContact || r['緊急聯絡人']),
+      emergencyPhone:clean(r.emergencyPhone || r['緊急聯絡人電話']),
+      status:statusOf(r) || '待審核',
+      rejectReason:clean(r.rejectReason || r['駁回原因']),
+      createdAt:clean(r.createdAtText || r.createdAt || r['建立時間']),
+      raw:r
+    })).sort((a,b) => clean(b.createdAt || b.requestId).localeCompare(clean(a.createdAt || a.requestId)));
+    return {ok:true, rows, list:rows};
+  }
+  async function findEmployeeDocId(employeeId, email){
+    const employees = await all('employees').catch(()=>[]);
+    const row = employees.find(e => clean(e.employeeId || e['員工ID'] || e.__id) === clean(employeeId) || (!!email && lower(e.email || e.Email || e['Email']) === lower(email)));
+    return row ? clean(row.__id || row.employeeId || row['員工ID']) : clean(employeeId);
+  }
+  async function approveProfileChangeRequest(payload){
+    const requestId = clean(payload && payload.requestId);
+    if(!requestId) return {ok:false, message:'缺少申請ID'};
+    const req = await docGet('profileChangeRequests', requestId);
+    if(!req) return {ok:false, message:'找不到個資修改申請'};
+    if(!pendingStatus(req)) return {ok:false, message:'這筆申請已處理過。'};
+    const employeeId = clean(req.employeeId || req.userId || req['員工ID']);
+    const empDocId = await findEmployeeDocId(employeeId, req.email || req.Email);
+    const data = {updatedAt:serverTs(), source:'profile-change-approved'};
+    ['mobilePhone','address','email','emergencyContact','emergencyPhone'].forEach(k => { if(clean(req[k])) data[k] = clean(req[k]); });
+    if(clean(req.mobilePhone)) data['行動電話'] = clean(req.mobilePhone);
+    if(clean(req.address)) data['聯絡地址'] = clean(req.address);
+    if(clean(req.email)) data['Email'] = lower(req.email);
+    if(clean(req.emergencyContact)) data['緊急聯絡人'] = clean(req.emergencyContact);
+    if(clean(req.emergencyPhone)) data['緊急聯絡人電話'] = clean(req.emergencyPhone);
+    await docSet('employees', empDocId, data);
+    await docSet('profileChangeRequests', requestId, {status:'已核准','狀態':'已核准', reviewedAt:serverTs(), source:'profile-change-approved'});
+    return {ok:true, message:'個資修改已核准，員工資料已更新。', employeeId};
+  }
+  async function rejectProfileChangeRequest(payload){
+    const requestId = clean(payload && payload.requestId);
+    if(!requestId) return {ok:false, message:'缺少申請ID'};
+    await docSet('profileChangeRequests', requestId, {status:'已駁回','狀態':'已駁回', rejectReason:clean(payload && payload.rejectReason), reviewedAt:serverTs(), source:'profile-change-rejected'});
+    return {ok:true, message:'個資修改申請已駁回。'};
+  }
+
+  fb.handleApi = async function(action, payload){
+    const a = clean(action);
+    if(a === 'getDashboardSummary' || a === 'getPendingCounts') return await getDashboardSummaryUnified(payload || {});
+    if(a === 'getEmployeeRecipients') return await getEmployeeRecipients(payload || {});
+    if(a === 'queueFeatureNotification'){ const q = await enqueueFeatureNotification(clean((payload||{}).featureCode), clean((payload||{}).direction || 'manager'), payload || {}, {ok:true, message:clean((payload||{}).message || (payload||{}).notificationMessage)}); return q || {ok:true, message:'通知設定未啟用或沒有符合收件人，未建立通知。'}; }
+    if(a === 'queueManualNotification') return await queueManualNotification(payload || {});
+    if(a === 'getFeatureNotificationSetting') return await getFeatureNotificationSetting(payload || {});
+    if(a === 'saveFeatureNotificationSetting') return await saveFeatureNotificationSetting(payload || {});
+    if(a === 'getProfileChangeRequests') return await getProfileChangeRequests(payload || {});
+    if(a === 'approveProfileChangeRequest'){
+      const res = await approveProfileChangeRequest(payload || {});
+      await maybeQueueAfterAction(a, payload || {}, res);
+      return res;
+    }
+    if(a === 'rejectProfileChangeRequest'){
+      const res = await rejectProfileChangeRequest(payload || {});
+      await maybeQueueAfterAction(a, payload || {}, res);
+      return res;
+    }
+    let res = null;
+    if(typeof previousHandle === 'function') res = await previousHandle(action, payload || {});
+    try{ await maybeQueueAfterAction(a, payload || {}, res); }catch(e){}
+    return res;
+  };
+  fb.__notifyBadgeUnifiedV20260529 = true;
+  global.YZFirebase = fb;
+})(window);

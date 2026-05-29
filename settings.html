@@ -340,7 +340,7 @@
       </div>
     </section>
     <div class="grid">
-      <a class="tile" href="approval-hub.html"><strong>簽核 <span class="badge" id="badge-approval"></span></strong><span>註冊、打卡、請假簽核</span></a>
+      <a class="tile" href="approval-hub.html"><strong>簽核 <span class="badge" id="badge-approval"></span></strong><span>註冊、打卡、臨時出勤、請假、個資簽核</span></a>
       <a class="tile" href="teacher-hub.html"><strong>外聘老師 <span class="badge" id="badge-teacher"></span></strong><span>合約與拿貨紀錄</span></a>
       <a class="tile" href="application-admin.html"><strong>應聘管理 <span class="badge" id="badge-application"></span></strong><span>履歷投遞與審核通知</span></a>
       <a class="tile" href="items-hub.html"><strong>公告／交辦／定期 <span class="badge" id="badge-items"></span></strong><span>公告、交辦與定期</span></a>
@@ -356,9 +356,9 @@
   <script src="config.js?v=20260508frontendperf1"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260523stage5primary"></script>
+  <script src="firebase-client.js?v=20260529notifybadge1"></script>
 
-  <script src="app.js?v=20260508frontendperf1"></script>
+  <script src="app.js?v=20260529badgeNotify1"></script>
   <script>
     async function init(){
       fillHeader();
@@ -398,14 +398,18 @@
       const counts = r.counts || r.summary || r.dashboard || r;
       return Object.assign({}, r, counts, {
         registrationCount: Number(counts.registrationCount || counts.pendingRegistrationCount || counts.registrations || 0) || 0,
-        leaveCount: Number(counts.leaveCount || counts.pendingLeaveCount || counts.leaveApprovalCount || 0) || 0,
-        clockCorrectionCount: Number(counts.clockCorrectionCount || counts.pendingClockCorrectionCount || counts.clockCorrection || 0) || 0,
-        contractCount: Number(counts.contractCount || counts.pendingContractCount || 0) || 0,
-        goodsInquiryCount: Number(counts.goodsInquiryCount || counts.pendingGoodsInquiryCount || 0) || 0,
-        taskCount: Number(counts.taskCount || counts.pendingTaskCount || counts.taskReviewCount || 0) || 0,
-        routineCount: Number(counts.routineCount || counts.pendingRoutineCount || counts.routineReviewCount || 0) || 0,
-        applicationCount: Number(counts.applicationCount || counts.pendingApplicationCount || counts.teacherApplicationCount || 0) || 0,
-        salaryCount: Number(counts.salaryCount || counts.pendingSalaryCount || 0) || 0
+        leaveCount: Number(counts.leaveCount || counts.pendingLeaveCount || counts.leaveApprovalCount || counts.leaves || 0) || 0,
+        clockCorrectionCount: Number(counts.clockCorrectionCount || counts.pendingClockCorrectionCount || counts.clockCorrection || counts.clocks || 0) || 0,
+        tempAttendanceCount: Number(counts.tempAttendanceCount || counts.temporaryAttendanceCount || counts.pendingTempAttendanceCount || counts.tempAttendance || 0) || 0,
+        profileChangeCount: Number(counts.profileChangeCount || counts.pendingProfileChangeCount || counts.profileChanges || 0) || 0,
+        parttimeApprovalCount: Number(counts.parttimeApprovalCount || counts.parttimePending || counts.pendingParttimeCount || 0) || 0,
+        contractCount: Number(counts.contractCount || counts.pendingContractCount || counts.contracts || 0) || 0,
+        goodsInquiryCount: Number(counts.goodsInquiryCount || counts.pendingGoodsInquiryCount || counts.goodsInquiries || 0) || 0,
+        taskCount: Number(counts.taskCount || counts.pendingTaskCount || counts.taskReviewCount || counts.tasks || 0) || 0,
+        routineCount: Number(counts.routineCount || counts.pendingRoutineCount || counts.routineReviewCount || counts.routines || 0) || 0,
+        applicationCount: Number(counts.applicationCount || counts.pendingApplicationCount || counts.teacherApplicationCount || counts.applications || 0) || 0,
+        salaryCount: Number(counts.salaryCount || counts.pendingSalaryCount || 0) || 0,
+        approvalCount: Number(counts.approvalCount || 0) || 0
       });
     }
     async function fetchPendingCountsFast_(user){
@@ -426,7 +430,7 @@
     }
     function applyBadgeCounts_(r){
       r = normalizePendingCounts_(r);
-      const approval = sum_(r.registrationCount, r.leaveCount, r.clockCorrectionCount);
+      const approval = r.approvalCount || sum_(r.registrationCount, r.leaveCount, r.clockCorrectionCount, r.tempAttendanceCount, r.profileChangeCount);
       const teacher = 0; // 外聘老師外層不顯示來源不明數字，內層頁再顯示細項。
       const items = sum_(r.taskCount, r.routineCount);
       setBadge('badge-approval', approval);

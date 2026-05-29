@@ -63,11 +63,11 @@ body{background:var(--bg);color:var(--ink)}
 </div>
 </div>
 
-<script src="config.js?v=20260528ClockFlowFix"></script>
+<script src="config.js?v=20260529notifybadge1"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-<script src="firebase-client.js?v=20260528ClockFlowFix"></script>
-<script src="app.js?v=20260528ClockFlowFix"></script>
+<script src="firebase-client.js?v=20260529notifybadge1"></script>
+<script src="app.js?v=20260529notifybadge1"></script>
 <script>
 let employees=[];
 let currentEmployee=null;
@@ -413,6 +413,15 @@ async function submitRequest(){
       status:'待審核',狀態:'待審核',
       createdAt:new Date().toISOString()
     },{merge:true});
+    try{
+      await api('queueFeatureNotification', {
+        featureCode:'temporaryAttendance',
+        direction:'manager',
+        employeeId:emp.id,
+        email:emp.email||'',
+        notificationMessage:`【臨時出勤】${emp.name||emp.id} 送出 ${date} ${start}-${end} 臨時出勤申請，請主管審核。`
+      });
+    }catch(notifyErr){ console.warn('[temporary attendance notification skipped]', notifyErr); }
     msg('已送出臨時出勤申請，請等待主管審核。','success');
     qs('#reason').value='';
   }catch(e){msg('送出失敗：'+(e.message||e),'error')}

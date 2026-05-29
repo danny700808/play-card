@@ -102,14 +102,15 @@
         </div>
       </div>
     </div>
+    <div id="parttimeNotifyPanel"></div>
   </div>
 
-  <script src="config.js?v=20260524datacenter_wide1"></script>
+  <script src="config.js?v=20260529badgeNotify1"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260524datacenter_wide1"></script>
+  <script src="firebase-client.js?v=20260529notifybadge1"></script>
 
-  <script src="app.js?v=20260524datacenter_wide1"></script>
+  <script src="app.js?v=20260529notifybadge1"></script>
   <script>
     let state = { employees: [], selectedId: '', summary: null };
 
@@ -455,6 +456,7 @@
       qs('#searchBtn').onclick = searchSummary;
       qs('#monthText').addEventListener('change', searchSummary);
       loadSetup();
+      if(window.renderModuleNotificationPanel) setTimeout(()=>renderModuleNotificationPanel('#parttimeNotifyPanel','temporaryAttendance','工讀時數 / 超出排班提醒設定'), 500);
     }
   </script>
 </body>

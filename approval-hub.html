@@ -26,13 +26,17 @@
       <div class="grid" style="margin-top:18px">
 <a class="tile" href="registration-approval.html"><strong>註冊簽核 <span class="badge" id="badge-registration"></span></strong><span>查看新註冊員工申請，直接同意或駁回</span></a>
 <a class="tile" href="clock-corrections-admin.html"><strong>打卡簽核 <span class="badge" id="badge-clock"></span></strong><span>查看待審核補打卡 / 修正申請，並可往下做打卡紀錄查詢匯出</span></a>
-<a class="tile" href="temporary-attendance-admin.html"><strong>補登 / 臨時出勤審核 <span class="badge" id="badge-temp-attendance"></span></strong><span>審核臨時上班、臨時加班、無排班但實際上班等申請</span></a>
+<a class="tile" href="temporary-attendance-admin.html"><strong>補登 / 臨時出勤審核 <span class="badge" id="badge-temp-attendance"></span></strong><span>審核臨時上班、工讀超出排班時數、無排班但實際上班等申請</span></a>
 <a class="tile" href="leave.html?mode=approval"><strong>請假簽核 <span class="badge" id="badge-leave"></span></strong><span>查看待簽核請假單並直接同意 / 駁回</span></a>
+<a class="tile" href="profile-change-admin.html"><strong>個資修改簽核 <span class="badge" id="badge-profile-change"></span></strong><span>審核員工行動電話、地址、Email 與緊急聯絡人修改申請</span></a>
 </div>
     </div>
   </div>
-  <script src="config.js?v=20260508frontendperf2"></script>
-  <script src="app.js?v=20260508frontendperf2"></script>
+  <script src="config.js?v=20260529notifybadge1"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="firebase-client.js?v=20260529notifybadge1"></script>
+  <script src="app.js?v=20260529notifybadge1"></script>
   <script>
     
     async function init(){
@@ -64,14 +68,18 @@
       const counts = r.counts || r.summary || r.dashboard || r;
       return Object.assign({}, r, counts, {
         registrationCount: Number(counts.registrationCount || counts.pendingRegistrationCount || counts.registrations || 0) || 0,
-        leaveCount: Number(counts.leaveCount || counts.pendingLeaveCount || counts.leaveApprovalCount || 0) || 0,
-        clockCorrectionCount: Number(counts.clockCorrectionCount || counts.pendingClockCorrectionCount || counts.clockCorrection || 0) || 0,
+        leaveCount: Number(counts.leaveCount || counts.pendingLeaveCount || counts.leaveApprovalCount || counts.leaves || 0) || 0,
+        clockCorrectionCount: Number(counts.clockCorrectionCount || counts.pendingClockCorrectionCount || counts.clockCorrection || counts.clocks || 0) || 0,
+        tempAttendanceCount: Number(counts.tempAttendanceCount || counts.temporaryAttendanceCount || counts.pendingTempAttendanceCount || counts.tempAttendance || 0) || 0,
+        profileChangeCount: Number(counts.profileChangeCount || counts.pendingProfileChangeCount || counts.profileChanges || 0) || 0,
+        parttimeApprovalCount: Number(counts.parttimeApprovalCount || counts.parttimePending || counts.pendingParttimeCount || 0) || 0,
         contractCount: Number(counts.contractCount || counts.pendingContractCount || counts.contracts || 0) || 0,
         goodsInquiryCount: Number(counts.goodsInquiryCount || counts.pendingGoodsInquiryCount || counts.goodsInquiries || 0) || 0,
         taskCount: Number(counts.taskCount || counts.pendingTaskCount || counts.taskReviewCount || counts.tasks || 0) || 0,
         routineCount: Number(counts.routineCount || counts.pendingRoutineCount || counts.routineReviewCount || counts.routines || 0) || 0,
         applicationCount: Number(counts.applicationCount || counts.pendingApplicationCount || counts.teacherApplicationCount || counts.applications || 0) || 0,
-        salaryCount: Number(counts.salaryCount || counts.pendingSalaryCount || 0) || 0
+        salaryCount: Number(counts.salaryCount || counts.pendingSalaryCount || 0) || 0,
+        approvalCount: Number(counts.approvalCount || 0) || 0
       });
     }
     async function fetchPendingCountsFast_(user){
@@ -107,7 +115,9 @@
       r=normalizePendingCounts_(r);
       setBadge('badge-registration',r.registrationCount);
       setBadge('badge-clock',r.clockCorrectionCount);
+      setBadge('badge-temp-attendance',r.tempAttendanceCount);
       setBadge('badge-leave',r.leaveCount);
+      setBadge('badge-profile-change',r.profileChangeCount);
     }
   
   </script>

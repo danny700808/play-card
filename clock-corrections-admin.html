@@ -52,14 +52,15 @@
         <a class="btn" style="width:auto;padding:12px 18px" href="clock-records-admin.html">前往打卡紀錄查詢匯出</a>
       </div>
     </div>
+    <div id="clockNotifyPanel"></div>
   </div>
 
   <script src="config.js?v=20260501clockcorrection17"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260529SpecialClockReviewFix"></script>
+  <script src="firebase-client.js?v=20260529notifybadge1"></script>
 
-  <script src="app.js?v=20260501clockcorrection17"></script>
+  <script src="app.js?v=20260529notifybadge1"></script>
   <script>
     let currentUser=null;
 
@@ -162,6 +163,7 @@ function scheduleIdle_(fn){if(window.requestIdleCallback)requestIdleCallback(fn,
       if(!hasSettingsZoneAccess(currentUser)){ location.href='dashboard.html'; return; }
       const msg=qs('#msg'); if(msg) msg.textContent='打卡修正與補打卡資料稍後載入。';
       scheduleIdle_(loadRows);
+      if(window.renderModuleNotificationPanel) scheduleIdle_(()=>renderModuleNotificationPanel('#clockNotifyPanel','clock','打卡簽核提醒設定'));
     }
 
     async function loadRows(){
