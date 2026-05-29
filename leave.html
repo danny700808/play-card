@@ -56,6 +56,8 @@
     #cancelEditBtn{display:block!important;width:100%!important;max-width:none!important}
     .leave-time-select{width:100%!important}
 
+    .retro-locked-mode{border:1px solid #bbf7d0;background:#f0fdf4;color:#166534;border-radius:16px;padding:14px 16px;margin:10px 0 12px;line-height:1.65}
+    .retro-locked-mode strong{display:block;font-size:18px;margin-bottom:4px;color:#14532d}
     .leave-type-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:10px 0 12px}
     .leave-type-btn{border:1px solid #1f7a5a;background:#1f7a5a;color:#fff;border-radius:16px;padding:16px 12px;font-size:18px;font-weight:900;text-align:center;cursor:pointer;box-shadow:0 8px 20px rgba(15,23,42,.05)}
     .leave-type-btn.active{background:#145f46;border-color:#145f46}
@@ -105,6 +107,8 @@
       }
     }
 
+    .retro-lock-line{border:1px solid #bbf7d0;background:#f0fdf4;color:#166534;border-radius:14px;padding:12px 14px;font-weight:900;line-height:1.65;margin-bottom:12px}
+    .readonly-line{padding:10px 12px;border:1px solid #e5e7eb;border-radius:12px;background:#f9fafb;font-weight:800;color:#374151}
 </style>
 </head>
 <body onload="init()">
@@ -159,11 +163,11 @@
       <div id="approvalRecordList" class="list" style="margin-top:12px"></div>
     </div>
   </div>
-<script src="config.js?v=20260529PendingItemsFix"></script>
+<script src="config.js?v=20260529RetroLeaveLockFix"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260529PendingItemsFix"></script>
-<script src="app.js?v=20260529PendingItemsFix"></script>
+  <script src="firebase-client.js?v=20260529RetroLeaveLockFix"></script>
+<script src="app.js?v=20260529RetroLeaveLockFix"></script>
 
 <script>
 let historyRows = [];
@@ -241,6 +245,21 @@ async function apiSafe(action, payload={}, timeoutMs=10000, fallbackMessage='讀
 }
 function escapeHtml(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, ch => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[ch])); }
 function leaveQuery(){ return new URLSearchParams(location.search || ''); }
+function isRetroLockedMode(){
+  try{ return isRetroQueryLocked(); }catch(err){ return false; }
+}
+function isRetroQueryLocked(){
+  const q = leaveQuery();
+  const mode = String(q.get('mode') || '');
+  const source = String(q.get('source') || '');
+  return mode === 'retro' && (source === 'missingClock' || source === 'earlyLeave');
+}
+function retroLockedSourceLabel(){
+  const source = String(leaveQuery().get('source') || '');
+  if(source === 'earlyLeave') return '提早離開／剩餘時段事後補假';
+  if(source === 'missingClock') return '有班但未完成打卡的事後補假';
+  return '事後補假';
+}
 function bootstrapLeaveUserFromQuery(){
   try{
     const q = leaveQuery();
@@ -291,8 +310,13 @@ function leaveMetaAllowsCustom(meta){ return !!meta; }
 function normalizeSegmentModesByReason(){
   const meta = getSelectedLeaveMeta();
   const allowCustom = leaveMetaAllowsCustom(meta);
+  const retroLocked = isRetroQueryLocked();
   leaveSegmentsState = (leaveSegmentsState || []).map(seg => {
     const next = Object.assign({}, seg || {});
+    if(retroLocked){
+      next.mode = 'retro';
+      return next;
+    }
     if(!allowCustom && next.mode === 'custom') next.mode = 'schedule';
     return next;
   });
@@ -441,6 +465,24 @@ function updateTimeSelectsForSegment(seg){
   startEl.innerHTML = leaveRenderTimeOptionsHtml(startOptions, seg.startTime, '選擇開始時間');
   endEl.innerHTML = leaveRenderTimeOptionsHtml(endOptions, seg.endTime, '選擇結束時間');
 }
+async function getLeaveClockRowsForDate_(dateKey){
+  dateKey = leaveNormalizeDateKey(dateKey);
+  if(!dateKey || !currentUser) return [];
+  try{
+    const res = await api('getClockHistoryRange', { userId: currentUser.id, startDate: dateKey, endDate: dateKey });
+    const rows = Array.isArray(res && res.rows) ? res.rows : [];
+    return rows.filter(row => {
+      const status = String((row && (row.status || row.statusLabel)) || '');
+      if(status.indexOf('已刪除') >= 0 || status.indexOf('駁回') >= 0) return false;
+      return !!(row && (row.date || row.clockDate || row.time || row.clockTime));
+    });
+  }catch(err){ return []; }
+}
+function leaveClockConflictMessage_(dateKey, rows){
+  const list = (rows || []).map(row => [row.actionName || row['打卡動作'] || '', (row.time || row.clockTime || '').slice(0,5)].filter(Boolean).join(' ')).filter(Boolean).join('、');
+  return (dateKey || '') + ' 已有打卡紀錄' + (list ? '（' + list + '）' : '') + '。這一天不能再用整天或一般部分請假；如果是提早離開或已發生的狀況，請回打卡頁「待處理事項」使用事後補假。';
+}
+
 async function refreshCustomSegmentContext(segmentId){
   const seg = getSegmentStateById(segmentId);
   const reason = qs('#reason') ? qs('#reason').value : '';
@@ -455,6 +497,14 @@ async function refreshCustomSegmentContext(segmentId){
     box.className = 'segment-context';
     box.innerHTML = '請先選擇請假原因與請假時間。';
     return;
+  }
+  if(seg.mode !== 'retro'){
+    const clockRows = await getLeaveClockRowsForDate_(seg.leaveDate);
+    if(clockRows.length){
+      box.className = 'segment-context is-error';
+      box.innerHTML = '<strong>這一天已有打卡紀錄</strong><div>' + escapeHtml(leaveClockConflictMessage_(seg.leaveDate, clockRows)) + '</div>';
+      return;
+    }
   }
   box.className = 'segment-context';
   box.innerHTML = '讀取當天班表中...';
@@ -525,7 +575,14 @@ async function refreshScheduleSegmentContext(segmentId){
     const payloadBase = { userId: currentUser.id, reason, requestId: qs('#editingRequestId') ? qs('#editingRequestId').value : '' };
     const results = [];
     let startedTodayBlock = null;
+    const clockConflictRows = [];
     for(const dateKey of dates){
+      const clockRows = await getLeaveClockRowsForDate_(dateKey);
+      if(clockRows.length){
+        clockConflictRows.push({date:dateKey, rows:clockRows});
+        results.push({ date:dateKey, ok:false, clockConflict:true, text:'已有打卡紀錄，請改用事後補假。' });
+        continue;
+      }
       const res = await api('getLeaveDateContext', Object.assign({}, payloadBase, { leaveDate: dateKey }));
       const ctx = res && res.context ? Object.assign({}, res.context, { date: dateKey }) : null;
       if(!res || !res.ok || !ctx){
@@ -547,6 +604,11 @@ async function refreshScheduleSegmentContext(segmentId){
       box.innerHTML = `<strong>今日班表已開始</strong><div>${escapeHtml(startedTodayBlock.date)} ${escapeHtml(startedTodayBlock.text || '')}</div><div>一般整天請假只能在今日上班時間開始前申請；若已經超過上班時間，請改用「事後補假」。</div>${leaveBuildDayRows(results, true)}`;
       return;
     }
+    if(clockConflictRows && clockConflictRows.length){
+      box.className = 'segment-context is-error';
+      box.innerHTML = '<strong>這段日期已有打卡紀錄</strong><div>已有打卡的日期不能再送整天或一般部分請假；請回打卡頁「待處理事項」使用事後補假。</div>' + leaveBuildDayRows(results, true);
+      return;
+    }
     const workDays = results.filter(item => item.ok).length;
     const offDays = results.length - workDays;
     if(workDays <= 0){
@@ -566,6 +628,7 @@ function bindSegmentEvents(){
   qsa('[data-segment-mode]').forEach(el => el.onclick = () => {
     const seg = getSegmentStateById(el.dataset.segmentMode);
     if(!seg || el.disabled) return;
+    if(isRetroQueryLocked()) return;
     const mode = String(el.dataset.modeValue || 'schedule');
     seg.mode = (mode === 'custom' || mode === 'retro') ? mode : 'schedule';
     if(seg.mode === 'custom' || seg.mode === 'retro') seg.leaveDate = seg.leaveDate || seg.startDate || localDateInputValue();
@@ -628,10 +691,13 @@ function renderSegments(){
   normalizeSegmentModesByReason();
   const meta = getSelectedLeaveMeta();
   const allowCustom = leaveMetaAllowsCustom(meta);
-  if(!leaveSegmentsState.length) leaveSegmentsState = [createDefaultSegment('schedule')];
+  const retroLocked = isRetroQueryLocked();
+  if(!leaveSegmentsState.length) leaveSegmentsState = [createDefaultSegment(retroLocked ? 'retro' : 'schedule')];
   wrap.innerHTML = leaveSegmentsState.map((seg, idx) => {
-    const mode = (seg.mode === 'custom' || seg.mode === 'retro') ? seg.mode : 'schedule';
+    if(retroLocked) seg.mode = 'retro';
+    const mode = retroLocked ? 'retro' : ((seg.mode === 'custom' || seg.mode === 'retro') ? seg.mode : 'schedule');
     const isTimed = mode === 'custom' || mode === 'retro';
+    const lockedAttr = retroLocked ? 'disabled' : '';
     return `
     <div class="segment-card" data-segment-card="${escapeHtml(seg.id)}">
       <div class="segment-head">
@@ -640,17 +706,22 @@ function renderSegments(){
       </div>
       <div class="segment-field">
         <label>請假方式</label>
-        <div class="leave-type-grid">
-          <button class="leave-type-btn ${mode === 'schedule' ? 'active' : ''}" type="button" data-segment-mode="${escapeHtml(seg.id)}" data-mode-value="schedule">整天請假</button>
-          <button class="leave-type-btn ${mode === 'custom' ? 'active' : ''}" type="button" data-segment-mode="${escapeHtml(seg.id)}" data-mode-value="custom" ${allowCustom ? '' : 'disabled'}>部分請假</button>
-          <button class="leave-type-btn ${mode === 'retro' ? 'active' : ''}" type="button" data-segment-mode="${escapeHtml(seg.id)}" data-mode-value="retro">事後補假</button>
-        </div>
+        ${retroLocked ? `
+          <div class="retro-locked-mode">
+            <strong>事後補假</strong>
+            <div>${escapeHtml(retroLockedSourceLabel())}，系統已帶入日期與時間；此入口只能送出事後補假，不能切換整天請假或部分請假。</div>
+          </div>` : `
+          <div class="leave-type-grid">
+            <button class="leave-type-btn ${mode === 'schedule' ? 'active' : ''}" type="button" data-segment-mode="${escapeHtml(seg.id)}" data-mode-value="schedule">整天請假</button>
+            <button class="leave-type-btn ${mode === 'custom' ? 'active' : ''}" type="button" data-segment-mode="${escapeHtml(seg.id)}" data-mode-value="custom" ${allowCustom ? '' : 'disabled'}>部分請假</button>
+            <button class="leave-type-btn ${mode === 'retro' ? 'active' : ''}" type="button" data-segment-mode="${escapeHtml(seg.id)}" data-mode-value="retro">事後補假</button>
+          </div>`}
       </div>
       ${isTimed ? `
         <div class="segment-grid">
-          <div class="segment-field"><label for="segDate_${escapeHtml(seg.id)}">${mode === 'retro' ? '補假日期' : '日期'}</label><input id="segDate_${escapeHtml(seg.id)}" type="date" value="${escapeHtml(leaveNormalizeDateKey(seg.leaveDate) || '')}" data-segment-leave-date="${escapeHtml(seg.id)}"></div>
-          <div class="segment-field"><label for="segStart_${escapeHtml(seg.id)}">開始時間</label><select class="leave-time-select" id="segStart_${escapeHtml(seg.id)}" data-segment-start-time="${escapeHtml(seg.id)}">${leaveRenderTimeOptionsHtml(leaveBuildWholeHourOptions(seg.shiftStart || '', seg.shiftEnd || '', false, seg.startTime || ''), seg.startTime || '', '選擇開始時間')}</select></div>
-          <div class="segment-field"><label for="segEnd_${escapeHtml(seg.id)}">結束時間</label><select class="leave-time-select" id="segEnd_${escapeHtml(seg.id)}" data-segment-end-time="${escapeHtml(seg.id)}">${leaveRenderTimeOptionsHtml(leaveBuildWholeHourOptions(seg.shiftStart || '', seg.shiftEnd || '', true, seg.endTime || ''), seg.endTime || '', '選擇結束時間')}</select></div>
+          <div class="segment-field"><label for="segDate_${escapeHtml(seg.id)}">${mode === 'retro' ? '補假日期' : '日期'}</label><input id="segDate_${escapeHtml(seg.id)}" type="date" value="${escapeHtml(leaveNormalizeDateKey(seg.leaveDate) || '')}" data-segment-leave-date="${escapeHtml(seg.id)}" ${lockedAttr}></div>
+          <div class="segment-field"><label for="segStart_${escapeHtml(seg.id)}">開始時間</label><select class="leave-time-select" id="segStart_${escapeHtml(seg.id)}" data-segment-start-time="${escapeHtml(seg.id)}" ${lockedAttr}>${leaveRenderTimeOptionsHtml(leaveBuildWholeHourOptions(seg.shiftStart || '', seg.shiftEnd || '', false, seg.startTime || ''), seg.startTime || '', '選擇開始時間')}</select></div>
+          <div class="segment-field"><label for="segEnd_${escapeHtml(seg.id)}">結束時間</label><select class="leave-time-select" id="segEnd_${escapeHtml(seg.id)}" data-segment-end-time="${escapeHtml(seg.id)}" ${lockedAttr}>${leaveRenderTimeOptionsHtml(leaveBuildWholeHourOptions(seg.shiftStart || '', seg.shiftEnd || '', true, seg.endTime || ''), seg.endTime || '', '選擇結束時間')}</select></div>
         </div>
         <div class="segment-context" data-segment-context="${escapeHtml(seg.id)}">${mode === 'retro' ? '事後補假可選過去日期；請選日期後，系統會帶出當天班表。' : '請先選擇請假日期與時間。'}</div>
       ` : `
@@ -663,6 +734,8 @@ function renderSegments(){
     </div>`;
   }).join('');
   bindSegmentEvents();
+  const segToolbar = qs('#fieldSegments .segment-toolbar');
+  if(segToolbar) segToolbar.classList.toggle('hidden', isRetroLockedMode());
   renderSegmentSummary();
   leaveSegmentsState.forEach(seg => { if(seg.mode === 'custom' || seg.mode === 'retro') refreshCustomSegmentContext(seg.id); else refreshScheduleSegmentContext(seg.id); });
 }
@@ -1176,10 +1249,14 @@ function applyRetroQueryPrefill(){
     updateLeaveTimeVisibility_();
     renderSegments();
     const source = String(q.get('source') || '');
+    if(qs('#leavePageTitle')) qs('#leavePageTitle').textContent = '事後補假申請';
+    if(qs('#pageHint')) qs('#pageHint').textContent = '此申請已由打卡異常帶入，只能送出事後補假；請選擇假別並填寫原因。';
+    const segToolbar = qs('#fieldSegments .segment-toolbar');
+    if(segToolbar) segToolbar.classList.add('hidden');
     if(source === 'earlyLeave'){
-      setLocalMsg('已進入「提早離開／剩餘時段事後補假」模式。請選擇假別並確認後送出；主管審核會更新，並自動歸位。', false);
+      setLocalMsg('已進入「提早離開／剩餘時段事後補假」模式。離開時間以前視為出勤，離開時間以後申請事後補假；主管審核會更新，並自動歸位。', false);
     }else{
-      setLocalMsg('已帶入「有班但未完成打卡」的事後補假日期與時間；請選擇假別並確認後送出。', false);
+      setLocalMsg('已帶入「有班但未完成打卡」的事後補假日期與時間；請選擇假別並確認後送出。主管審核會更新，並自動歸位。', false);
     }
   }catch(err){}
 }
@@ -1615,6 +1692,79 @@ async function handleDelete(requestId){
     await loadStaffData();
   }
 }
+
+function leaveDateRangeList(startDate, endDate){
+  const s = leaveNormalizeDateKey(startDate);
+  const e = leaveNormalizeDateKey(endDate) || s;
+  if(!s) return [];
+  const out = [];
+  const start = new Date(s + 'T00:00:00');
+  const end = new Date((e || s) + 'T00:00:00');
+  if(isNaN(start.getTime()) || isNaN(end.getTime()) || end < start) return [s];
+  let cur = new Date(start.getTime());
+  while(cur <= end && out.length < 45){
+    out.push(cur.toISOString().slice(0,10));
+    cur.setDate(cur.getDate() + 1);
+  }
+  return out;
+}
+function leaveClockGuardDates(){
+  const dates = new Set();
+  (leaveSegmentsState || []).forEach(seg => {
+    const mode = seg.mode === 'retro' ? 'retro' : (seg.mode === 'custom' ? 'custom' : 'schedule');
+    if(mode === 'retro') return;
+    if(mode === 'custom'){
+      const d = leaveNormalizeDateKey(seg.leaveDate);
+      if(d) dates.add(d);
+      return;
+    }
+    leaveDateRangeList(seg.startDate, seg.endDate).forEach(d => dates.add(d));
+  });
+  return Array.from(dates).sort();
+}
+async function validateLeaveClockConflictBeforeSubmit(user){
+  const allRetro = (leaveSegmentsState || []).length > 0 && (leaveSegmentsState || []).every(seg => seg.mode === 'retro');
+  if(allRetro) return {ok:true};
+  const dates = leaveClockGuardDates();
+  if(!dates.length) return {ok:true};
+  const startDate = dates[0];
+  const endDate = dates[dates.length - 1];
+  const dateSet = new Set(dates);
+  try{
+    const r = await api('getClockHistoryRange', { userId:user.id, employeeId:user.id, startDate, endDate });
+    const rows = (r && r.rows) || [];
+    const hit = rows.find(row => dateSet.has(leaveNormalizeDateKey(row.date || row.clockDate || row['打卡日期'])));
+    if(hit){
+      return {
+        ok:false,
+        message:'這一天已經有打卡紀錄，不能再送一般整天請假或一般部分請假。若是已發生的出勤異常，請回打卡頁「待處理事項」使用事後補假流程。'
+      };
+    }
+  }catch(err){
+    return {ok:false, message:'無法確認當日打卡狀態，請稍後再試。'};
+  }
+  return {ok:true};
+}
+
+async function validateLeaveClockConflictsBeforeSubmit_(){
+  if(isRetroLockedMode()) return {ok:true};
+  const segments = leaveSegmentsState || [];
+  for(const seg of segments){
+    if(!seg || seg.mode === 'retro') continue;
+    if(seg.mode === 'custom'){
+      const rows = await getLeaveClockRowsForDate_(seg.leaveDate);
+      if(rows.length) return {ok:false, message:leaveClockConflictMessage_(seg.leaveDate, rows)};
+    }else{
+      const dates = leaveDatesBetween(seg.startDate, seg.endDate || seg.startDate);
+      for(const dateKey of dates){
+        const rows = await getLeaveClockRowsForDate_(dateKey);
+        if(rows.length) return {ok:false, message:leaveClockConflictMessage_(dateKey, rows)};
+      }
+    }
+  }
+  return {ok:true};
+}
+
 async function submitLeave(){
   if(!leavePageReady){
     setLocalMsg('資料尚未讀取完成，請稍候。', true);
@@ -1623,6 +1773,11 @@ async function submitLeave(){
   if(!validateForm()) return;
   const user = requireLogin();
   if(!user) return;
+  const clockConflict = await validateLeaveClockConflictBeforeSubmit(user);
+  if(!clockConflict.ok){
+    setLocalMsg(clockConflict.message || '此日期已有打卡紀錄，請改用事後補假流程。', true);
+    return;
+  }
   const file = qs('#file').files[0];
   const editingId = qs('#editingRequestId').value;
   const eventMeta = selectedEventChoiceMeta();
@@ -1691,6 +1846,7 @@ async function init(){
   if(qs('#eventChoice')) qs('#eventChoice').addEventListener('change', () => { clearValidation(); toggleBereavementRelation(); });
   if(qs('#bereavementRelation')) qs('#bereavementRelation').addEventListener('change', () => { clearValidation(); toggleBereavementRelation(); });
   if(qs('#addSegmentBtn')) qs('#addSegmentBtn').onclick = () => {
+    if(isRetroLockedMode()) return;
     const meta = getSelectedLeaveMeta();
     const mode = leaveMetaAllowsCustom(meta) ? 'custom' : 'schedule';
     leaveSegmentsState.push(createDefaultSegment(mode));

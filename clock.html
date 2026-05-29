@@ -66,6 +66,12 @@
     .choice-card p{margin:0 0 14px;color:#4b5563;line-height:1.7}
     .choice-actions{display:grid;gap:10px}
     .choice-actions .btn{width:100%;font-size:17px;padding:14px 12px}
+    .early-leave-summary{border:1px solid #dbe7f4;border-radius:14px;background:#f8fbff;padding:10px 12px;margin:10px 0 12px;line-height:1.7;color:#334155}
+    .early-leave-time-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:12px 0}
+    .early-leave-time-btn{border:1px solid #1f7a5a;background:#fff;color:#145f46;border-radius:14px;padding:13px 10px;font-size:17px;font-weight:900;cursor:pointer}
+    .early-leave-time-btn.active{background:#1f7a5a;color:#fff}
+    .early-leave-selected{font-weight:900;color:#14532d;margin:10px 0}
+    @media(max-width:560px){.early-leave-time-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
 
     .missing-clock-wrap{margin-top:18px;border-top:1px dashed #e5e7eb;padding-top:14px}
@@ -213,11 +219,11 @@
     </div>
   </div>
 
-  <script src="config.js?v=20260529EarlyLeaveRetroFix"></script>
+  <script src="config.js?v=20260529RetroLeaveLockFix"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260529EarlyLeaveRetroFix"></script>
-  <script src="app.js?v=20260529EarlyLeaveRetroFix"></script>
+  <script src="firebase-client.js?v=20260529RetroLeaveLockFix"></script>
+  <script src="app.js?v=20260529RetroLeaveLockFix"></script>
   <script>
 
     function goTemporaryAttendance(){
@@ -242,21 +248,95 @@
       location.href = 'leave.html?' + params.toString();
     }
 
-    function goEarlyLeaveRetro(issue){
+    function clockTimeToMinutes(value){
+      const m = String(value || '').slice(0,5).match(/^(\d{1,2}):(\d{2})$/);
+      if(!m) return null;
+      const h = Number(m[1]);
+      const mi = Number(m[2]);
+      if(h < 0 || h > 23 || mi < 0 || mi > 59) return null;
+      return h * 60 + mi;
+    }
+    function clockMinutesToTime(minutes){
+      const n = Math.max(0, Math.min(23 * 60 + 59, Number(minutes || 0)));
+      const h = Math.floor(n / 60);
+      const m = n % 60;
+      return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
+    }
+    function buildEarlyLeaveTimeOptions(startTime, endTime){
+      const start = clockTimeToMinutes(startTime);
+      const end = clockTimeToMinutes(endTime);
+      if(start === null || end === null || end <= start) return [];
+      const rows = [];
+      let cursor = Math.ceil((start + 1) / 30) * 30;
+      while(cursor < end){
+        rows.push(clockMinutesToTime(cursor));
+        cursor += 30;
+      }
+      if(!rows.length && end - start > 5){
+        rows.push(clockMinutesToTime(Math.floor((start + end) / 2)));
+      }
+      return rows;
+    }
+    function showEarlyLeaveTimeDialog(issue){
+      return new Promise(resolve => {
+        const clockIn = (issue.existingClockInTime || '').slice(0,5);
+        const scheduleStart = (issue.startTime || '').slice(0,5);
+        const scheduleEnd = (issue.endTime || '').slice(0,5);
+        const workedStart = clockIn || scheduleStart || '';
+        const options = buildEarlyLeaveTimeOptions(workedStart, scheduleEnd);
+        const modal = document.createElement('div');
+        modal.className = 'choice-modal';
+        let selected = options[0] || '';
+        modal.innerHTML = `
+          <div class="choice-card" role="dialog" aria-modal="true">
+            <h3>提早離開，申請剩餘時段事後補假</h3>
+            <p>請選擇你實際離開的時間。系統會把離開時間以前視為出勤，離開時間以後帶入事後補假。</p>
+            <div class="early-leave-summary">
+              <div><strong>班表時間：</strong>${escapeHtml(scheduleStart || '--:--')} - ${escapeHtml(scheduleEnd || '--:--')}</div>
+              <div><strong>已上班打卡：</strong>${escapeHtml(clockIn || '尚未讀到上班卡')}</div>
+            </div>
+            <div class="early-leave-time-grid">
+              ${options.length ? options.map((t, i) => `<button type="button" class="early-leave-time-btn ${i === 0 ? 'active' : ''}" data-time="${escapeHtml(t)}">${escapeHtml(t)}</button>`).join('') : '<div class="muted">目前無可選離開時間，請確認班表時間。</div>'}
+            </div>
+            <div class="early-leave-selected js-early-leave-selected">${selected ? ('已選擇：' + escapeHtml(selected)) : '請先選擇離開時間'}</div>
+            <div class="choice-actions">
+              <button type="button" class="btn js-confirm-early-leave" ${selected ? '' : 'disabled'}>確認，前往事後補假</button>
+              <button type="button" class="btn secondary js-cancel-early-leave">取消</button>
+            </div>
+          </div>`;
+        document.body.appendChild(modal);
+        function close(value){
+          try{ modal.remove(); }catch(e){ if(modal.parentNode) modal.parentNode.removeChild(modal); }
+          resolve(value || '');
+        }
+        modal.querySelectorAll('.early-leave-time-btn').forEach(btn => {
+          btn.onclick = () => {
+            selected = btn.dataset.time || '';
+            modal.querySelectorAll('.early-leave-time-btn').forEach(x => x.classList.remove('active'));
+            btn.classList.add('active');
+            const selectedEl = modal.querySelector('.js-early-leave-selected');
+            if(selectedEl) selectedEl.textContent = selected ? ('已選擇：' + selected) : '請先選擇離開時間';
+            const confirmBtn = modal.querySelector('.js-confirm-early-leave');
+            if(confirmBtn) confirmBtn.disabled = !selected;
+          };
+        });
+        const confirmBtn = modal.querySelector('.js-confirm-early-leave');
+        const cancelBtn = modal.querySelector('.js-cancel-early-leave');
+        if(confirmBtn) confirmBtn.onclick = () => close(selected);
+        if(cancelBtn) cancelBtn.onclick = () => close('');
+        modal.onclick = ev => { if(ev.target === modal) close(''); };
+      });
+    }
+
+    async function goEarlyLeaveRetro(issue){
       if(!issue){ return; }
       const clockIn = (issue.existingClockInTime || '').slice(0,5);
       const scheduleStart = (issue.startTime || '').slice(0,5);
       const scheduleEnd = (issue.endTime || '').slice(0,5);
-      const defaultLeaveAt = clockIn || scheduleStart || '';
-      const leaveAt = prompt('請輸入實際離開時間（例如 10:00）。系統會把離開時間前視為出勤，離開時間後帶入事後補假。', defaultLeaveAt);
-      if(leaveAt === null) return;
-      const time = String(leaveAt || '').trim().slice(0,5);
-      if(!/^\d{2}:\d{2}$/.test(time)){
-        alert('請輸入正確時間，例如 10:00');
-        return;
-      }
+      const time = await showEarlyLeaveTimeDialog(issue);
+      if(!time) return;
       const ok = confirm(
-        '系統將依照你填寫的離開時間處理：\n\n' +
+        '系統將依照你選擇的離開時間處理：\n\n' +
         '已出勤時段：' + (clockIn || scheduleStart || '--:--') + ' - ' + time + '\n' +
         '事後補假時段：' + time + ' - ' + (scheduleEnd || '--:--') + '\n\n' +
         '送出後會交由主管審核；主管審核會更新，並自動歸位。'
@@ -267,6 +347,7 @@
       const id = u.id || u.employeeId || u.userId || '';
       if(id) params.set('userId', id);
       params.set('mode', 'retro');
+      params.set('lockMode', '1');
       params.set('source', 'earlyLeave');
       params.set('date', issue.date || '');
       params.set('startTime', time);
@@ -333,20 +414,22 @@
         if(s.canClockInNow === true) status = '現在可以上班打卡';
         else if(openText) status = openText;
         else status = s.statusText || '';
+        const showSelect = rows.length > 1;
         return `
           <div class="schedule-card ${isSel ? 'selected' : ''}" data-schedule-key="${escapeHtml(key)}">
             <div class="schedule-row">
               <div>
-                <div class="schedule-name">${idx + 1}. 今日班表${isSel ? '｜目前選擇' : ''}</div>
+                ${showSelect ? `<div class="schedule-name">班表 ${idx + 1}${isSel ? '｜已選擇' : ''}</div>` : ''}
                 <div class="schedule-time">${range}</div>
               </div>
-              <button type="button" class="schedule-select-btn js-select-schedule" data-key="${escapeHtml(key)}">${isSel ? '已選擇' : '選擇此班表'}</button>
+              ${showSelect ? `<button type="button" class="schedule-select-btn js-select-schedule" data-key="${escapeHtml(key)}">${isSel ? '已選擇' : '選擇此班表'}</button>` : ''}
             </div>
             ${status ? '<div class="schedule-status">' + escapeHtml(status) + '</div>' : ''}
           </div>`;
       }).join('');
       return '<div class="schedule-list">' + cards + '</div>';
     }
+
 
     function bindScheduleCards(){
       qsa('.js-select-schedule').forEach(btn => {
@@ -425,7 +508,7 @@
 
     function updateClockActionNote(mode){
       const selected = getSelectedSchedule();
-      const suffix = selected ? ('\n目前選擇：' + scheduleLabel(selected)) : '';
+      const suffix = '';
       if(mode === '標準打卡'){
         qs('#clockActionTitle').textContent = '標準打卡';
         qs('#clockActionNote').textContent = '正常在公司上班使用；上班打卡需連公司 Wi‑Fi，且只能在上班前一小時後打卡。' + suffix;
