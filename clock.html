@@ -40,25 +40,23 @@
     .clock-mode-screen .mode-note{font-size:14px;color:#6b7280;line-height:1.6;margin-bottom:12px}
     .clock-back-btn{background:#374151!important;color:#fff!important;border:0!important}
 
-    .today-schedule-box{border:1px solid #dbe5df;background:#f8fbf9;border-radius:18px;padding:14px 16px;margin:14px 0;color:#183028}
-    .today-schedule-box .schedule-head{font-weight:900;font-size:17px;margin-bottom:6px}
-    .today-schedule-box .schedule-text{font-size:15px;line-height:1.6;white-space:pre-line}
+    .today-schedule-box{border:1px solid #dbe5df;background:#f8fbf9;border-radius:16px;padding:10px 12px;margin:12px 0;color:#183028}
+    .today-schedule-box .schedule-head{font-weight:900;font-size:16px;margin-bottom:4px}
+    .today-schedule-box .schedule-text{font-size:14px;line-height:1.45;white-space:normal}
     .today-schedule-box.ready{background:#f0fdf4;border-color:#bbf7d0}
     .today-schedule-box.warning{background:#fff7ed;border-color:#fed7aa}
     .today-schedule-box.error{background:#fef2f2;border-color:#fecaca}
     .today-schedule-box.loading{background:#f8fafc;border-color:#e2e8f0;color:#64748b}
 
-    .schedule-list{display:grid;gap:10px;margin-top:10px}
-    .schedule-card{border:1px solid #d1d5db;background:#fff;border-radius:16px;padding:12px}
+    .schedule-count-note{font-size:13px;font-weight:800;color:#166534;margin:2px 0 8px;line-height:1.45}
+    .schedule-list{display:grid;gap:8px;margin-top:6px}
+    .schedule-card{border:1px solid #d1d5db;background:#fff;border-radius:14px;padding:9px 10px;cursor:pointer;transition:background .15s,border-color .15s,box-shadow .15s}
     .schedule-card.selected{border-color:#1f7a5a;background:#ecfdf5;box-shadow:0 0 0 2px rgba(31,122,90,.08)}
-    .schedule-card .schedule-row{display:flex;justify-content:space-between;gap:8px;align-items:flex-start;flex-wrap:wrap}
-    .schedule-card .schedule-name{font-weight:900;color:#111827}
-    .schedule-card .schedule-time{font-size:18px;font-weight:900;color:#064e3b;margin-top:4px}
-    .schedule-card .schedule-meta{font-size:13px;color:#4b5563;line-height:1.6;margin-top:5px}
-    .schedule-card .schedule-status{font-size:14px;font-weight:800;margin-top:7px;color:#92400e}
+    .schedule-card .schedule-line-main{display:flex;justify-content:space-between;gap:8px;align-items:center;font-size:15px;font-weight:900;color:#111827;line-height:1.4}
+    .schedule-card .schedule-main-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .schedule-card .schedule-status{font-size:13px;font-weight:800;margin-top:3px;color:#92400e;line-height:1.35}
     .schedule-card.selected .schedule-status{color:#065f46}
-    .schedule-select-btn{border:1px solid #1f7a5a;background:#1f7a5a;color:#fff;border-radius:999px;padding:8px 12px;font-size:13px;font-weight:900;cursor:pointer}
-    .schedule-card.selected .schedule-select-btn{background:#145f46;border-color:#145f46}
+    .schedule-selected-chip{flex:0 0 auto;border:1px solid #1f7a5a;background:#1f7a5a;color:#fff;border-radius:999px;padding:2px 7px;font-size:11px;font-weight:900;line-height:1.5}
     .choice-modal{position:fixed;inset:0;z-index:9999;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;padding:18px}
     .choice-modal.hidden{display:none!important}
     .choice-card{width:min(560px,100%);background:#fff;border-radius:22px;padding:18px;box-shadow:0 24px 70px rgba(15,23,42,.25)}
@@ -195,11 +193,11 @@
     </div>
   </div>
 
-  <script src="config.js?v=20260529SpecialClockReviewFix"></script>
+  <script src="config.js?v=20260529ScheduleCompactFix"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260529SpecialClockReviewFix"></script>
-  <script src="app.js?v=20260529SpecialClockReviewFix"></script>
+  <script src="firebase-client.js?v=20260529ScheduleCompactFix"></script>
+  <script src="app.js?v=20260529ScheduleCompactFix"></script>
   <script>
 
     function goTemporaryAttendance(){
@@ -260,38 +258,57 @@
       return String((available || rows[0]).scheduleKey || (available || rows[0]).key || '');
     }
 
+    function scheduleDisplayName(s, idx, total){
+      const source = String((s && (s.source || s.scheduleSource || s.sourceLabel || s.scheduleSourceLabel)) || '');
+      if(source.indexOf('singleDaySchedules') >= 0 || source.indexOf('單日') >= 0 || source.indexOf('特別') >= 0){
+        return total > 1 ? '臨時班表' : '班表';
+      }
+      return total > 1 ? ('班表 ' + (idx + 1)) : '班表';
+    }
+
+    function scheduleStatusText(s){
+      if(!s) return '';
+      if(s.canClockInNow && s.canClockOutNow) return '現在可以上班／下班打卡';
+      if(s.canClockInNow) return '現在可以上班打卡';
+      if(s.clockInOpenAt) return s.clockInOpenAt + ' 後可上班打卡';
+      return s.statusText || '';
+    }
+
     function renderTodayScheduleHtml(info){
       const rows = (info && info.schedules) || [];
       if(!rows.length){
         return '<div>' + escapeHtml((info && info.message) || '今天沒有排班，如主管尚未來得及排班但你實際有出勤，請使用「臨時出勤申請」。') + '</div>';
       }
       const selected = (qs('#selectedScheduleKey') && qs('#selectedScheduleKey').value) || window.__selectedScheduleKey || '';
-      const head = '<div style="font-weight:800;margin-bottom:8px">' + escapeHtml(info.message || ('今日共有 ' + rows.length + ' 筆班表')) + '</div>';
+      const countNote = rows.length > 1
+        ? '<div class="schedule-count-note">今日有 ' + rows.length + ' 段班，請分別完成上下班打卡。</div>'
+        : '';
       const cards = rows.map((s, idx) => {
         const key = String(s.scheduleKey || s.key || '');
         const isSel = key && key === selected;
+        const name = scheduleDisplayName(s, idx, rows.length);
         const range = (s.startTime && s.endTime) ? (escapeHtml(s.startTime) + ' - ' + escapeHtml(s.endTime)) : '未設定時間';
-        const status = s.statusText || (s.clockInOpenAt ? (s.clockInOpenAt + ' 後可上班打卡') : '');
-        const openText = s.clockInOpenAt ? (s.clockInOpenAt + ' 後可上班打卡') : '';
+        const status = scheduleStatusText(s);
+        const selectedChip = rows.length > 1 && isSel ? '<span class="schedule-selected-chip">目前選擇</span>' : '';
         return `
-          <div class="schedule-card ${isSel ? 'selected' : ''}" data-schedule-key="${escapeHtml(key)}">
-            <div class="schedule-row">
-              <div>
-                <div class="schedule-name">${idx + 1}. 班表${isSel ? '｜目前選擇' : ''}</div>
-                <div class="schedule-time">${range}</div>
-              </div>
-              <button type="button" class="schedule-select-btn js-select-schedule" data-key="${escapeHtml(key)}">${isSel ? '已選擇' : '選擇此班表'}</button>
+          <div class="schedule-card js-select-schedule ${isSel ? 'selected' : ''}" data-key="${escapeHtml(key)}" data-schedule-key="${escapeHtml(key)}" role="button" tabindex="0">
+            <div class="schedule-line-main">
+              <span class="schedule-main-text">${escapeHtml(name)}｜${range}</span>
+              ${selectedChip}
             </div>
-            ${openText ? '<div class="schedule-meta">' + escapeHtml(openText) + '</div>' : ''}
-            <div class="schedule-status">${escapeHtml(status)}</div>
+            ${status ? '<div class="schedule-status">' + escapeHtml(status) + '</div>' : ''}
           </div>`;
       }).join('');
-      return head + '<div class="schedule-list">' + cards + '</div>';
+      return countNote + '<div class="schedule-list">' + cards + '</div>';
     }
 
     function bindScheduleCards(){
       qsa('.js-select-schedule').forEach(btn => {
-        btn.onclick = () => selectTodaySchedule(btn.dataset.key || '');
+        const pick = () => selectTodaySchedule(btn.dataset.key || btn.dataset.scheduleKey || '');
+        btn.onclick = pick;
+        btn.onkeydown = (ev) => {
+          if(ev.key === 'Enter' || ev.key === ' '){ ev.preventDefault(); pick(); }
+        };
       });
     }
 
