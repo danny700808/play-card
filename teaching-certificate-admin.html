@@ -4,10 +4,17 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>教學證明設定</title>
-  <link rel="stylesheet" href="style.css?v=certificates-20260530">
+  <link rel="stylesheet" href="style.css?v=certificates-20260530-admin-singlecol-v1">
   <style>
-    body{background:#f5f7fb}.cert-admin-wrap{max-width:1500px;margin:0 auto;padding:18px}.page-card{background:#fff;border:1px solid #e2e8f0;border-radius:24px;padding:20px;box-shadow:0 10px 30px rgba(15,23,42,.06)}.layout{display:grid;grid-template-columns:minmax(330px,430px) minmax(0,1fr);gap:16px;align-items:start}.subcard{background:#fff;border:1px solid #e2e8f0;border-radius:20px;padding:18px;box-shadow:0 8px 24px rgba(15,23,42,.04)}.field{margin-bottom:12px}.field label{display:block;font-weight:900;color:#17324d;margin-bottom:6px}.field input,.field select,.field textarea{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:12px;padding:10px 12px;font-size:15px;background:#fff}.field textarea{resize:vertical;line-height:1.6}.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}.mini-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.mini-actions .btn{width:auto}.muted-tip{font-size:13px;color:#64748b;line-height:1.8}.preview-shell{background:#f7fafc;border:1px solid #e2e8f0;border-radius:20px;padding:14px;position:sticky;top:16px;overflow:auto}.preview-toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}.history-list{display:grid;gap:8px;margin-top:10px}.history-item{border:1px solid #e2e8f0;border-radius:14px;padding:10px;background:#fbfdff;display:flex;justify-content:space-between;gap:10px;align-items:center}.history-meta{font-size:13px;color:#64748b;line-height:1.7}.message{margin-top:10px;color:#1f7a5a;font-weight:800;font-size:13px}.warning-box{border:1px solid #fed7aa;background:#fff7ed;color:#9a3412;border-radius:14px;padding:12px;font-size:13px;line-height:1.8;margin-bottom:12px}.layout>div,.layout>.preview-shell{min-width:0}.preview-shell{overflow:hidden}.admin-cert-preview-box{display:block;background:#f8fafc;border:1px solid #e2e8f0;border-radius:20px;padding:16px;min-height:560px;box-sizing:border-box;max-width:100%;overflow:hidden}.admin-cert-stage{position:relative;margin:0 auto;overflow:visible}.admin-cert-stage>.cert-doc{position:absolute!important;left:0!important;top:0!important;margin:0!important;max-width:none!important;display:block!important;transform-origin:top left!important;padding:20mm 18mm 15mm!important}@media(max-width:1120px){.layout{grid-template-columns:1fr}.preview-shell{position:static}.admin-cert-preview-box{min-height:430px;padding:10px}}@media(max-width:640px){.row2{grid-template-columns:1fr}.mini-actions .btn{width:100%}}
-  </style>
+    body{background:#f5f7fb}.cert-admin-wrap{max-width:1500px;margin:0 auto;padding:18px}.page-card{background:#fff;border:1px solid #e2e8f0;border-radius:24px;padding:20px;box-shadow:0 10px 30px rgba(15,23,42,.06)}.layout{display:grid;grid-template-columns:1fr;gap:16px;align-items:start}.subcard{background:#fff;border:1px solid #e2e8f0;border-radius:20px;padding:18px;box-shadow:0 8px 24px rgba(15,23,42,.04)}.field{margin-bottom:12px}.field label{display:block;font-weight:900;color:#17324d;margin-bottom:6px}.field input,.field select,.field textarea{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:12px;padding:10px 12px;font-size:15px;background:#fff}.field textarea{resize:vertical;line-height:1.6}.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}.mini-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.mini-actions .btn{width:auto}.muted-tip{font-size:13px;color:#64748b;line-height:1.8}.preview-shell{background:#f7fafc;border:1px solid #e2e8f0;border-radius:20px;padding:14px;position:static;top:auto;overflow:auto}.preview-toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}.history-list{display:grid;gap:8px;margin-top:10px}.history-item{border:1px solid #e2e8f0;border-radius:14px;padding:10px;background:#fbfdff;display:flex;justify-content:space-between;gap:10px;align-items:center}.history-meta{font-size:13px;color:#64748b;line-height:1.7}.message{margin-top:10px;color:#1f7a5a;font-weight:800;font-size:13px}.warning-box{border:1px solid #fed7aa;background:#fff7ed;color:#9a3412;border-radius:14px;padding:12px;font-size:13px;line-height:1.8;margin-bottom:12px}@media(max-width:1120px){.layout{grid-template-columns:1fr}.preview-shell{position:static}}@media(max-width:640px){.row2{grid-template-columns:1fr}.mini-actions .btn{width:100%}}
+  
+    /* 管理端證明書預覽固定採單欄：避免右側欄位太窄時裁切 A4，導致預覽看起來往右跑。 */
+    .layout{grid-template-columns:1fr!important;}
+    .layout>div,.preview-shell{min-width:0!important;max-width:100%!important;}
+    .preview-shell{position:static!important;overflow:auto!important;}
+    #previewArea{max-width:100%;margin:0 auto;}
+    #previewArea .cert-preview-stage{margin-left:auto!important;margin-right:auto!important;}
+    </style>
 </head>
 <body onload="initPage()" class="admin-wide-page">
   <div class="cert-admin-wrap">
@@ -39,7 +46,7 @@
         </div>
         <div class="preview-shell">
           <div class="preview-toolbar"><div><div style="font-size:18px;font-weight:900;color:#17324d">A4 預覽</div><div class="muted-tip">文件最上方固定為證明書標題；柚子樂器品牌區放在下方、實際政府認證單位上方。</div></div></div>
-          <div id="previewArea" class="admin-cert-preview-box"></div>
+          <div id="previewArea" class="cert-scale-wrap"></div>
         </div>
       </div>
     </div>
@@ -47,9 +54,9 @@
   <script src="config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=certificates-20260530"></script>
-  <script src="app.js?v=certificates-20260530"></script>
-  <script src="certificate-common.js?v=admin-a4-local-20260530"></script>
+  <script src="firebase-client.js?v=certificates-20260530-admin-singlecol-v1"></script>
+  <script src="app.js?v=certificates-20260530-admin-singlecol-v1"></script>
+  <script src="certificate-common.js?v=certificates-20260530-admin-singlecol-v1-admin-singlecol-v1"></script>
   <script>
     const CERT_TYPE='teaching';
     let currentTemplate=null;
@@ -77,48 +84,10 @@
       if(CERT_TYPE==='teaching') return {type:'teaching',name:'王小明',idNumber:'A123456789',teacherIdentity:'外聘老師',subject:'鋼琴',periodStart:'2024-08-01',periodEnd:'',stillTeaching:true,lessonType:'個別課',location:'台中市豐原區圓環東路347號',unitKey:document.getElementById('defaultUnitKey').value||'kaili',issueDate:YZ_CERT.today()};
       return {type:'employment',name:'王小明',idNumber:'A123456789',jobTitle:'專職老師',workNature:'教學',hireDate:'2024-08-01',stillWorking:true,unitKey:document.getElementById('defaultUnitKey').value||'shangpin',issueDate:YZ_CERT.today()};
     }
-
-    let __adminCertResizeReady=false;
-    function fitAdminCertificatePreview(){
-      const box=document.getElementById('previewArea');
-      if(!box) return;
-      const stage=box.querySelector('.admin-cert-stage');
-      const doc=stage && stage.querySelector('.cert-doc');
-      if(!stage || !doc) return;
-      doc.style.transform='none';
-      doc.style.position='absolute';
-      doc.style.left='0';
-      doc.style.top='0';
-      doc.style.margin='0';
-      doc.style.transformOrigin='top left';
-      const cs=window.getComputedStyle ? window.getComputedStyle(box) : null;
-      const padX=cs ? (parseFloat(cs.paddingLeft)||0)+(parseFloat(cs.paddingRight)||0) : 32;
-      const available=Math.max(240,(box.clientWidth||0)-padX-2);
-      const naturalWidth=doc.offsetWidth||794;
-      const naturalHeight=doc.offsetHeight||1123;
-      const scale=Math.min(1,Math.max(0.28,available/naturalWidth));
-      doc.style.transform='scale('+scale+')';
-      stage.style.width=Math.ceil(naturalWidth*scale)+'px';
-      stage.style.height=Math.ceil(naturalHeight*scale)+'px';
-      box.dataset.adminCertScale=String(scale.toFixed(3));
-    }
-    function scheduleAdminCertificatePreviewFit(){
-      requestAnimationFrame(()=>{fitAdminCertificatePreview(); setTimeout(fitAdminCertificatePreview,60); setTimeout(fitAdminCertificatePreview,240);});
-    }
-    function afterAdminRenderPreview(){
-      const box=document.getElementById('previewArea');
-      if(!box) return;
-      box.querySelectorAll('img').forEach(img=>img.addEventListener('load',scheduleAdminCertificatePreviewFit,{once:true}));
-      if(!__adminCertResizeReady){
-        __adminCertResizeReady=true;
-        window.addEventListener('resize',scheduleAdminCertificatePreviewFit);
-      }
-      scheduleAdminCertificatePreviewFit();
-    }
     function renderPreview(){
       const t=readTemplate();
       const html=YZ_CERT.certificateHtml({type:CERT_TYPE,template:t,data:sampleData(),status:'待主管審核',mode:'editing'});
-      document.getElementById('previewArea').innerHTML='<div class="admin-cert-stage">'+html+'</div>'; afterAdminRenderPreview();
+      document.getElementById('previewArea').innerHTML=html; YZ_CERT.scheduleFitCertificatePreviews(); setTimeout(()=>YZ_CERT.scheduleFitCertificatePreviews(),60); setTimeout(()=>YZ_CERT.scheduleFitCertificatePreviews(),240);
     }
     async function loadTemplate(){
       try{ const r=await api('getCertificateTemplate',{certificateType:CERT_TYPE}); applyTemplate(r.template||r.row||{}); }catch(e){ applyTemplate(YZ_CERT.defaultTemplate(CERT_TYPE)); msg('目前使用預設範本。',true); }
