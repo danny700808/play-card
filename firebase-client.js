@@ -5187,3 +5187,178 @@
   fb.__certificateFlowV20260530 = true;
   global.YZFirebase = fb;
 })(window);
+
+/* Notification V2 backend bridge 20260530
+ * 只保留新版提醒設定使用：
+ * - app.js 新版設定頁呼叫 get/saveNotificationV2Settings。
+ * - 右下角 LINE / Email 手動通知呼叫 getNotificationRecipientsV2 / sendManualNotificationV2。
+ * - 儲存時同步寫入 notificationFeatureSettings，讓既有自動通知佇列讀得到新版勾選結果。
+ */
+(function(global){
+  const fb = global.YZFirebase || {};
+  if(!fb || fb.__notificationV2BackendBridge20260530) return;
+  const previousHandle = fb.handleApi;
+
+  function clean(v){ return String(v == null ? '' : v).trim(); }
+  function lower(v){ return clean(v).toLowerCase(); }
+  function truthy(v){ return v === true || v === 1 || v === '1' || v === '是' || lower(v) === 'true' || lower(v) === 'yes' || lower(v) === 'on'; }
+  function nowId(prefix){ return String(prefix || 'ID') + '_' + Date.now() + '_' + Math.random().toString(36).slice(2,8); }
+  function readUser(){ try{return JSON.parse(localStorage.getItem('employeeUser') || 'null') || {};}catch(e){return {};} }
+  function db(){
+    const cfg = global.APP_CONFIG && global.APP_CONFIG.FIREBASE_CONFIG;
+    if(!cfg || !global.firebase) throw new Error('Firebase 尚未啟用');
+    if(!global.firebase.apps.length) global.firebase.initializeApp(cfg);
+    return global.firebase.firestore();
+  }
+  function serverTs(){ try{return global.firebase.firestore.FieldValue.serverTimestamp();}catch(e){return new Date().toISOString();} }
+  async function all(col){ const snap = await db().collection(col).get(); const rows=[]; snap.forEach(doc=>rows.push(Object.assign({__id:doc.id}, doc.data()||{}))); return rows; }
+  async function setDoc(col,id,data,merge=true){ await db().collection(col).doc(clean(id)).set(data||{}, {merge}); }
+  function empIdOf(o){ o=o||{}; return clean(o.employeeId || o.userId || o.id || o.adminId || o['員工ID'] || o.__id); }
+  function emailOf(o){ o=o||{}; return lower(o.email || o.Email || o['Email'] || o['電子郵件']); }
+  function nameOf(o){ o=o||{}; return clean(o.name || o['姓名'] || o.employeeName || o.applicantName); }
+  function identityTypeOf(o){
+    const raw = lower((o||{}).identityType || (o||{})['身分類型'] || (o||{})['身份類型'] || (o||{})['員工身分'] || (o||{}).employeeType);
+    if(raw === 'external' || raw.indexOf('外聘') >= 0) return 'external';
+    if(raw === 'parttime' || raw.indexOf('工讀') >= 0 || truthy((o||{}).isPartTime || (o||{})['是否工讀生'])) return 'parttime';
+    return 'staff';
+  }
+  function identityLabelOf(o){ const t=identityTypeOf(o); return t === 'external' ? '外聘老師' : (t === 'parttime' ? '工讀生' : '專職老師'); }
+  function isManager(o){ const role=lower((o||{}).role || (o||{})['角色']); return role === 'admin' || role === 'manager' || truthy((o||{}).showSettingsZone || (o||{})['管理區權限'] || (o||{})['管理權限']); }
+  function normEmp(o){
+    return {
+      employeeId:empIdOf(o),
+      id:empIdOf(o),
+      name:nameOf(o),
+      email:emailOf(o),
+      identityType:identityTypeOf(o),
+      identityLabel:identityLabelOf(o),
+      role:lower((o||{}).role || (o||{})['角色']),
+      isManager:isManager(o),
+      lineUserId:clean((o||{}).lineUserId || (o||{})['LINE User ID']),
+      lineNotifyEnabled:truthy((o||{}).lineNotifyEnabled || (o||{})['LINE 通知啟用']),
+      accountStatus:clean((o||{}).accountStatus || (o||{})['帳號狀態'])
+    };
+  }
+  function defaultEvents(moduleKey){
+    const defs={
+      registration:[
+        ['registration.submitted','新帳號註冊送出','新帳號送出註冊後，通知主管審核。'],
+        ['registration.reviewResult','註冊審核結果','主管核准或駁回後，通知員工。']
+      ],
+      clock:[
+        ['clock.specialClockSubmitted','特殊打卡送出','員工送出特殊打卡原因後，通知主管審核。'],
+        ['clock.clockCorrectionSubmitted','打卡修正送出','員工修正已打卡紀錄時，通知主管審核。'],
+        ['clock.missingClockSubmitted','補上班 / 補下班打卡送出','員工補上班卡或補下班卡時，通知主管審核。'],
+        ['clock.reviewResult','打卡審核結果','主管核准或駁回後，通知員工。']
+      ],
+      temporaryAttendance:[
+        ['temporaryAttendance.submitted','臨時出勤送出','員工送出臨時出勤時，通知主管審核。'],
+        ['parttime.excessHoursSubmitted','工讀超出排班時數送出','工讀生登記時數超過排班時數時，通知主管審核。'],
+        ['temporaryAttendance.reviewResult','臨時出勤審核結果','主管核准或駁回後，通知員工。']
+      ],
+      leave:[
+        ['leave.submitted','請假 / 事後補假送出','員工送出請假或事後補假時，通知主管審核。'],
+        ['leave.reviewResult','請假審核結果','主管核准或駁回後，通知員工。']
+      ],
+      profileChange:[
+        ['profile.changeSubmitted','個人資料修改送出','員工送出聯絡資料修改時，通知主管審核。'],
+        ['profile.changeResult','個人資料修改審核結果','主管核准或駁回後，通知員工。']
+      ],
+      contractor:[
+        ['contractor.contractSubmitted','外聘老師合約送出','外聘老師合約或資料送出後，通知主管處理。'],
+        ['contractor.goodsRecord','外聘老師拿貨紀錄','外聘老師拿貨紀錄新增或異動時，通知相關人員。']
+      ],
+      recruitment:[
+        ['recruitment.applicationSubmitted','應聘老師履歷送出','應聘老師送出履歷資料後，通知主管查看。'],
+        ['recruitment.reviewResult','應聘履歷處理結果','主管處理應聘履歷後，通知應聘者。']
+      ]
+    };
+    return (defs[moduleKey] || []).map(function(x){return {moduleKey,eventKey:x[0],eventName:x[1],description:x[2],enabled:true,managerLineEnabled:false,managerEmailEnabled:false,employeeLineEnabled:true,employeeEmailEnabled:false};});
+  }
+  function settingDocId(moduleKey,eventKey){ return clean(moduleKey) + '__' + clean(eventKey).replace(/[\/#?\[\]]/g,'_'); }
+  async function getNotificationV2Settings(payload){
+    const moduleKey=clean(payload && payload.moduleKey);
+    if(!moduleKey) return {ok:false,message:'缺少提醒分類',rows:[]};
+    const defaults=defaultEvents(moduleKey);
+    const rows=(await all('notificationV2Settings').catch(()=>[])).filter(r=>clean(r.moduleKey)===moduleKey);
+    const map={};
+    defaults.forEach(d=>{ map[d.eventKey]=Object.assign({},d); });
+    rows.forEach(r=>{ const k=clean(r.eventKey || r.__id); if(k) map[k]=Object.assign({}, map[k]||{}, r, {moduleKey,eventKey:k}); });
+    return {ok:true,title:'',rows:Object.values(map)};
+  }
+  async function saveNotificationV2Settings(payload){
+    const moduleKey=clean(payload && payload.moduleKey);
+    const rows=Array.isArray(payload && payload.rows) ? payload.rows : [];
+    if(!moduleKey) return {ok:false,message:'缺少提醒分類'};
+    for(const raw of rows){
+      const eventKey=clean(raw && raw.eventKey);
+      if(!eventKey) continue;
+      const row=Object.assign({}, raw, {moduleKey,eventKey,updatedAt:serverTs(),source:'notification-v2-settings'});
+      await setDoc('notificationV2Settings', settingDocId(moduleKey,eventKey), row, true);
+    }
+    const enabledRows=rows.filter(r=>r && r.enabled !== false);
+    const legacyBridge={
+      featureCode:moduleKey,
+      featureName:moduleKey,
+      enabled:enabledRows.length > 0,
+      notifyManagerLine:enabledRows.some(r=>r.managerLineEnabled === true),
+      notifyManagerEmail:enabledRows.some(r=>r.managerEmailEnabled === true),
+      notifyEmployeeLine:enabledRows.some(r=>r.employeeLineEnabled === true),
+      notifyEmployeeEmail:enabledRows.some(r=>r.employeeEmailEnabled === true),
+      updatedAt:serverTs(),
+      source:'notification-v2-bridge'
+    };
+    await setDoc('notificationFeatureSettings', moduleKey, legacyBridge, true);
+    return {ok:true,message:'新版提醒設定已儲存，LINE / Email 佇列設定已同步。'};
+  }
+  async function getNotificationRecipientsV2(payload){
+    const keyword=lower(payload && payload.keyword);
+    const rows=(await all('employees').catch(()=>[])).map(normEmp).filter(e=>e.employeeId || e.email).filter(e=>{
+      if(!keyword) return true;
+      return [e.name,e.employeeId,e.email,e.identityLabel,e.role].join(' ').toLowerCase().indexOf(keyword) >= 0;
+    }).sort((a,b)=>clean(a.name).localeCompare(clean(b.name),'zh-Hant'));
+    return {ok:true,rows};
+  }
+  async function sendManualNotificationV2(payload){
+    payload=payload || {};
+    const user=readUser();
+    const message=clean(payload.message);
+    const targets=Array.isArray(payload.targets) ? payload.targets : [];
+    const channels=Array.isArray(payload.channels) ? payload.channels.map(clean).filter(Boolean) : [];
+    if(!message) return {ok:false,message:'請輸入訊息內容。'};
+    if(!targets.length) return {ok:false,message:'請選擇收件人。'};
+    if(!channels.length) return {ok:false,message:'請至少選擇 LINE 或 Email。'};
+    const batchId=nowId('N2MSG');
+    const base={batchId,senderId:clean(user.id || user.employeeId || user.userId),senderName:clean(user.name || user.email),message,channels,targetCount:targets.length,page:clean(payload.page),status:'待發送',createdAt:serverTs(),source:'notification-v2-manual'};
+    await setDoc('manualMessages', batchId, Object.assign({}, base, {targets:targets.map(t=>({employeeId:clean(t.employeeId || t.id),name:clean(t.name),email:emailOf(t),lineUserId:clean(t.lineUserId),lineNotifyEnabled:truthy(t.lineNotifyEnabled)}))}), true);
+    let count=0, skippedLine=0, skippedEmail=0;
+    for(const t of targets){
+      const employeeId=clean(t.employeeId || t.id);
+      const email=emailOf(t);
+      const lineUserId=clean(t.lineUserId);
+      const lineOk=lineUserId && truthy(t.lineNotifyEnabled);
+      for(const ch of channels){
+        if(ch === 'line' && !lineOk){ skippedLine++; continue; }
+        if(ch === 'email' && !email){ skippedEmail++; continue; }
+        const id=batchId + '_' + (employeeId || email || Math.random().toString(36).slice(2,8)) + '_' + ch;
+        await setDoc('notificationQueue', id, Object.assign({}, base, {queueId:id,channel:ch,targetEmployeeId:employeeId,targetName:clean(t.name),targetEmail:email,targetLineUserId:lineUserId,title:'主管訊息',body:message,status:'待發送'}), true);
+        count++;
+      }
+    }
+    let msg='已建立通知佇列，共 ' + count + ' 筆。';
+    if(skippedLine || skippedEmail) msg += '（略過：LINE ' + skippedLine + ' 筆、Email ' + skippedEmail + ' 筆）';
+    return {ok:true,message:msg,batchId,count,skippedLine,skippedEmail};
+  }
+
+  fb.handleApi = async function(action,payload){
+    const a=clean(action);
+    if(a === 'getNotificationV2Settings') return await getNotificationV2Settings(payload || {});
+    if(a === 'saveNotificationV2Settings') return await saveNotificationV2Settings(payload || {});
+    if(a === 'getNotificationRecipientsV2') return await getNotificationRecipientsV2(payload || {});
+    if(a === 'sendManualNotificationV2') return await sendManualNotificationV2(payload || {});
+    if(typeof previousHandle === 'function') return await previousHandle(action,payload || {});
+    return null;
+  };
+  fb.__notificationV2BackendBridge20260530 = true;
+  global.YZFirebase = fb;
+})(window);
