@@ -79,7 +79,7 @@
       <div class="gift-topbar">
         <div>
           <h1 style="margin:0;color:#17324d">禮物集點單</h1>
-          <div class="muted-tip" style="margin-top:6px">左邊調整文字，右邊即時預覽；此版型是一張 A4 只印一張大集點卡，中間會自動排滿多組 1～10 集點格。</div>
+          <div class="muted-tip" style="margin-top:6px">左邊調整文字，右邊可預覽；按「儲存」後，下次進入會直接套用這份文字與設定。</div>
         </div>
         <button class="btn secondary" type="button" onclick="safeLogout()">登出</button>
       </div>
@@ -104,10 +104,10 @@
 3. 本卡遺失一律不補發，點數重新計算。
 4. 20點可以轉一次扭蛋，可到一樓轉換扭蛋；或直接更換對應點數的禮物。</textarea></div>
             <div class="mini-actions">
-              <button class="btn" type="button" onclick="renderPreview()">更新預覽</button>
-              <button class="btn" type="button" onclick="printCards()">列印</button>
-              <button class="btn" type="button" onclick="saveAsPdf()">另存 PDF</button>
-              <button class="btn secondary" type="button" onclick="resetDefaults()">恢復預設</button>
+              <button class="btn" type="button" onclick="renderPreview()">預覽</button>
+              <button class="btn" type="button" onclick="saveTemplate()">儲存</button>
+              <button class="btn secondary" type="button" onclick="printCards()">列印</button>
+              <button class="btn secondary" type="button" onclick="saveAsPdf()">另存 PDF</button>
             </div>
             <div id="msg" class="message"></div>
           </div>
@@ -118,6 +118,7 @@
               這一版是一張 A4 只印一張集點卡，不再分成多張小卡。<br>
               中間會自動排滿 10 排，共 100 格，並且每一排都是 1～10，方便直接蓋章或手寫集點。<br>
               如果姓名、課程、其他欄位不需要，可以把欄位名稱清空，預覽時就不會顯示。<br>
+              文字調整好後按「儲存」，下次進來會直接使用這份設定。<br>
               點「另存 PDF」後，請在瀏覽器列印視窗選擇「儲存為 PDF」。
             </div>
           </div>
@@ -163,7 +164,7 @@
       location.href = 'index.html';
     }
 
-    function initGiftPointCardPage(){
+    async function initGiftPointCardPage(){
       loadSavedSettings();
       ['cardTitle','cardSubtitle','badgeText','fieldA','fieldB','fieldC','rules'].forEach(id=>{
         const el=document.getElementById(id);
@@ -172,6 +173,8 @@
           el.addEventListener('change', renderPreview);
         }
       });
+      renderPreview();
+      await loadFirebaseTemplate();
       renderPreview();
     }
 
@@ -197,13 +200,64 @@
       });
     }
 
-    function resetDefaults(){
+    function applyFormData(data){
+      if(!data || typeof data !== 'object') return;
       Object.keys(DEFAULTS).forEach(k=>{
         const el=document.getElementById(k);
-        if(el) el.value = DEFAULTS[k];
+        if(el && data[k] != null) el.value = data[k];
       });
+    }
+
+    async function getGiftTemplateDoc(){
+      try{
+        if(window.firebase && firebase.firestore){
+          return firebase.firestore().collection('printTemplates').doc('giftPointCard');
+        }
+      }catch(e){}
+      return null;
+    }
+
+    async function loadFirebaseTemplate(){
+      const docRef = await getGiftTemplateDoc();
+      if(!docRef) return;
+      try{
+        const snap = await docRef.get();
+        if(snap && snap.exists){
+          const data = snap.data() || {};
+          applyFormData(data);
+          try{ localStorage.setItem('giftPointCardSettings:v3', JSON.stringify(Object.assign({}, DEFAULTS, data))); }catch(e){}
+          const msg=document.getElementById('msg');
+          if(msg) msg.textContent='已載入已儲存的集點卡設定。';
+        }
+      }catch(e){
+        const msg=document.getElementById('msg');
+        if(msg) msg.textContent='目前先使用本機設定。';
+      }
+    }
+
+    async function saveTemplate(){
+      const data = readForm();
+      data.updatedAt = new Date().toISOString();
+      saveSettings(data);
+      const msg=document.getElementById('msg');
+      if(msg) msg.textContent='儲存中...';
+      const docRef = await getGiftTemplateDoc();
+      if(docRef){
+        try{
+          await docRef.set(data, { merge:true });
+          if(msg) msg.textContent='已儲存。下次進入會套用這份設定。';
+          renderPreview();
+          return;
+        }catch(e){
+          if(msg) msg.textContent='Firebase 儲存失敗，已先儲存在這台裝置。';
+          renderPreview();
+          return;
+        }
+      }
+      if(msg) msg.textContent='已儲存在這台裝置。';
       renderPreview();
     }
+
 
     function esc(s){
       return String(s == null ? '' : s).replace(/[&<>"']/g, function(m){
@@ -221,7 +275,6 @@
       const area=document.getElementById('printArea');
       if(!area) return;
       const data=readForm();
-      saveSettings(data);
       area.innerHTML = '<section class="a4-sheet">' + renderSheet(data) + '</section>';
       const msg=document.getElementById('msg');
       if(msg) msg.textContent='已更新預覽。';
@@ -263,7 +316,7 @@
   <script src="config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260530giftcardpreviewfix"></script>
-  <script src="app.js?v=20260530giftcardpreviewfix"></script>
+  <script src="firebase-client.js?v=20260530giftcardsavefix"></script>
+  <script src="app.js?v=20260530giftcardsavefix"></script>
 </body>
 </html>
