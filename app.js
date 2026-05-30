@@ -37,15 +37,28 @@ function logout(){localStorage.removeItem('employeeUser'); localStorage.removeIt
 function currentFeatureKey(){const path=String((location&&location.pathname)||'').split('/').pop().toLowerCase(); if(path==='dashboard.html') return 'dashboard'; if(path==='clock.html') return 'clock'; if(path==='parttime.html') return 'parttime'; if(path==='leave.html') return 'leave'; if(path==='announcements.html') return 'announcement'; if(path==='task.html') return 'task'; if(path==='routine.html') return 'routine'; if(path==='training.html') return 'training'; if(path==='contract.html') return 'contract'; if(path==='contract-admin.html') return 'contractAdmin'; if(path==='forms-hub.html'||path==='gift-point-card.html'||path==='employment-certificate.html'||path==='teaching-certificate.html') return 'forms'; if(path==='settings.html') return 'settings'; return '';}
 function requireLogin(){const user=getUser(); if(!user){location.href='index.html'; return null;} const feature=currentFeatureKey(); if(feature==='contract' && !isExternalTeacher(user)){location.href='dashboard.html'; return null;} if(feature==='contractAdmin' && !isManager(user)){location.href='dashboard.html'; return null;} if(feature && feature!=='contract' && feature!=='contractAdmin' && feature!=='settings' && !guardFeatureAccess(feature,user)) return null; return user;}
 async function api(action, payload={}){
-  // Firebase 第二階段：讀取型資料優先走 Firebase；送出/審核仍保留原 GS，避免正式流程一次切太大。
+  const firebaseOnlyActions = {
+    getSalarySetupOptions:true,
+    saveEmployeeSalaryConfig:true,
+    getMySalaryInfo:true,
+    getMyProfileFull:true,
+    getMyDataFull:true
+  };
+  // Firebase 第二階段：讀取型資料優先走 Firebase；薪資/投保相關資料已正式切換為 Firebase-only。
   try{
     if(window.YZFirebase && typeof window.YZFirebase.handleApi === 'function'){
       const fbRes = await window.YZFirebase.handleApi(action, payload || {});
       if(fbRes) return fbRes;
     }
+    if(firebaseOnlyActions[action]) throw new Error('Firebase 尚未回應此薪資投保功能');
   }catch(firebaseErr){
+    if(firebaseOnlyActions[action]){
+      console.warn('[Firebase only action failed]', action, firebaseErr);
+      throw firebaseErr;
+    }
     console.warn('[Firebase read fallback to GS]', action, firebaseErr);
   }
+  if(firebaseOnlyActions[action]) throw new Error('薪資與投保設定目前只允許使用 Firebase / Firestore，不再回退舊系統。');
   const apiUrl=getApiUrl();
   if(!apiUrl) throw new Error('尚未設定 API 網址');
   const res=await fetch(apiUrl,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action,...payload})});
@@ -1362,7 +1375,37 @@ document.addEventListener('DOMContentLoaded', function(){ setTimeout(hideClockZe
       .manager-quick-msg-btn{position:fixed;right:16px;bottom:18px;z-index:9999;border:0;border-radius:999px;background:#1f7a5a;color:#fff;font-weight:900;padding:13px 16px;box-shadow:0 12px 28px rgba(15,23,42,.22);cursor:pointer}.manager-quick-msg-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.42);z-index:10000;display:none;align-items:center;justify-content:center;padding:14px}.manager-quick-msg-backdrop.show{display:flex}.manager-quick-msg-modal{width:min(94vw,680px);max-height:88vh;overflow:auto;background:#fff;border-radius:22px;padding:18px;box-shadow:0 24px 70px rgba(15,23,42,.28)}.manager-quick-msg-top{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:12px}.manager-quick-msg-top h3{margin:0;font-size:22px;color:#18314a}.manager-quick-msg-close{border:0;background:#eef2f6;color:#18314a;border-radius:12px;padding:8px 12px;font-weight:900}.manager-quick-msg-field{margin-top:12px}.manager-quick-msg-field label{display:block;font-weight:900;margin-bottom:6px}.manager-quick-msg-field input,.manager-quick-msg-field textarea{width:100%;box-sizing:border-box;border:1px solid #d0d5dd;border-radius:14px;padding:11px 12px;font-size:15px}.manager-quick-msg-field textarea{min-height:110px;resize:vertical}.manager-quick-recips{border:1px solid #e5e7eb;border-radius:14px;background:#f8fafc;max-height:220px;overflow:auto;padding:8px}.manager-quick-recips label{display:flex;align-items:center;gap:8px;padding:8px;border-bottom:1px solid #e5e7eb;font-size:14px}.manager-quick-recips label:last-child{border-bottom:0}.manager-quick-recips input{width:auto}.manager-quick-channel{display:flex;gap:12px;flex-wrap:wrap}.manager-quick-channel label{display:inline-flex;align-items:center;gap:6px;font-weight:900}.manager-quick-channel input{width:auto}.manager-quick-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}.manager-quick-actions button{border:0;border-radius:14px;padding:12px 14px;font-weight:900}.manager-quick-send{background:#1f7a5a;color:#fff}.manager-quick-cancel{background:#eef2f6;color:#18314a}.manager-quick-status{font-weight:900;margin-top:10px;color:#1f7a5a}.manager-quick-status.err{color:#b42318}@media(max-width:560px){.manager-quick-msg-btn{right:12px;bottom:12px}.manager-quick-actions{grid-template-columns:1fr}}`;
     document.head.appendChild(st);
   }
-  window.renderModuleNotificationPanel = async function(){ return; };
+  window.renderModuleNotificationPanel = async function(containerSelector, moduleKey, title){
+    ensureStyle();
+    const box = typeof containerSelector === 'string' ? document.querySelector(containerSelector) : containerSelector;
+    if(!box) return;
+    box.innerHTML = `<div class="module-notify-panel"><div class="module-notify-title">${esc(title||'LINE / Email 提醒設定')}</div><div class="module-notify-desc">此區只設定本功能的提醒。可決定員工送出時是否通知主管，以及主管審核後是否通知員工。</div><div class="module-notify-msg">讀取中…</div></div>`;
+    try{
+      const res = await api('getModuleNotificationSettings',{moduleKey});
+      const rows = Array.isArray(res.rows) ? res.rows : [];
+      const html = `<div class="module-notify-panel"><div class="module-notify-title">${esc(title||'LINE / Email 提醒設定')}</div><div class="module-notify-desc">此區只設定本功能的提醒。LINE / Email 會先進入發送佇列，後端發送完成後會留下紀錄。</div><div class="module-notify-list">${rows.map((r,i)=>`<div class="module-notify-row" data-index="${i}" data-event-key="${esc(r.eventKey)}"><div class="module-notify-head"><div><div class="module-notify-name">${esc(r.eventName||r.eventKey)}</div><div class="module-notify-help">${esc(r.description||'')}</div></div><label style="white-space:nowrap;font-weight:900"><input type="checkbox" data-field="enabled" ${r.enabled!==false?'checked':''}> 啟用</label></div><div class="module-notify-checks"><label>通知主管 LINE <input type="checkbox" data-field="managerLineEnabled" ${r.managerLineEnabled?'checked':''}></label><label>通知主管 Email <input type="checkbox" data-field="managerEmailEnabled" ${r.managerEmailEnabled?'checked':''}></label><label>通知員工 LINE <input type="checkbox" data-field="employeeLineEnabled" ${r.employeeLineEnabled?'checked':''}></label><label>通知員工 Email <input type="checkbox" data-field="employeeEmailEnabled" ${r.employeeEmailEnabled?'checked':''}></label></div></div>`).join('')}</div><div class="module-notify-actions"><button class="btn" type="button" data-save-module-notify>儲存提醒設定</button><span class="module-notify-msg" data-module-notify-msg></span></div></div>`;
+      box.innerHTML = html;
+      const originalRows = rows;
+      const saveBtn = box.querySelector('[data-save-module-notify]');
+      if(saveBtn){
+        saveBtn.onclick = async()=>{
+          const msg = box.querySelector('[data-module-notify-msg]');
+          try{
+            if(msg){msg.textContent='儲存中…'; msg.classList.remove('err');}
+            const nextRows = Array.from(box.querySelectorAll('.module-notify-row')).map((row,idx)=>{
+              const base = Object.assign({}, originalRows[idx]||{});
+              base.moduleKey = moduleKey;
+              base.eventKey = row.getAttribute('data-event-key') || base.eventKey;
+              ['enabled','managerLineEnabled','managerEmailEnabled','employeeLineEnabled','employeeEmailEnabled'].forEach(f=>{ const el=row.querySelector(`[data-field="${f}"]`); base[f]=!!(el&&el.checked); });
+              return base;
+            });
+            const r = await api('saveModuleNotificationSettings',{moduleKey,rows:nextRows});
+            if(msg) msg.textContent = r.message || '已儲存。';
+          }catch(err){ if(msg){ msg.textContent = (err&&err.message)||'儲存失敗'; msg.classList.add('err'); } }
+        };
+      }
+    }catch(err){ box.innerHTML = `<div class="module-notify-panel"><div class="module-notify-title">${esc(title||'LINE / Email 提醒設定')}</div><div class="module-notify-msg err">讀取失敗：${esc((err&&err.message)||err)}</div></div>`; }
+  };
   function canInstallQuick(){
     try{ const u=typeof getUser==='function'?getUser():null; return !!(u && (u.showSettingsZone || String(u.role||'').toLowerCase()==='admin') && window.YZFirebase); }catch(e){ return false; }
   }
@@ -1533,7 +1576,7 @@ document.addEventListener('DOMContentLoaded', function(){ setTimeout(hideClockZe
   function modulesForPage(){
     const p=pathName();
     if(p==='approval-notification-settings.html') return [
-      {key:'account', title:'註冊簽核提醒設定'},
+      {key:'registration', title:'註冊簽核提醒設定'},
       {key:'clock', title:'打卡簽核提醒設定'},
       {key:'temporaryAttendance', title:'補登 / 臨時出勤提醒設定'},
       {key:'leave', title:'請假簽核提醒設定'},

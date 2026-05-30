@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="style.css?v=admin-final-20260530b">
   <style>
     .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-    .admin-grid{display:grid;grid-template-columns:1.12fr .88fr;gap:14px}
+    .admin-grid{display:grid;grid-template-columns:minmax(250px,340px) minmax(0,1fr);gap:14px;align-items:start}
     .summary-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
     .summary-chip{display:inline-flex;align-items:center;gap:8px;padding:10px 14px;border-radius:999px;background:#f3f8f5;color:#1f7a5a;font-weight:800}
     .summary-chip.warn{background:#fff4f2;color:#b42318}
@@ -27,8 +27,10 @@
     .line-list{display:grid;gap:10px}
     .line-item{border:1px solid #dbe4ee;border-radius:14px;padding:12px;background:#fafcff}
     .line-head{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:10px}
-    .line-grid{display:grid;grid-template-columns:1fr 140px;gap:10px}
-    .line-grid input,.line-grid select{margin:0}
+    .line-grid{display:grid;grid-template-columns:minmax(0,1fr) 180px;gap:12px;align-items:end}
+    .line-field{display:grid;gap:6px}
+    .line-label{font-size:13px;font-weight:800;color:#37506a}
+    .line-grid input,.line-grid select{margin:0;width:100%;box-sizing:border-box}
     .ghost-btn{border:1px dashed #b8c6d6;background:#fff;color:#315b8a;border-radius:12px;padding:10px 14px;font-weight:800;cursor:pointer}
     .danger-btn{border:none;background:#fff1f1;color:#b42318;border-radius:10px;padding:8px 12px;font-weight:800;cursor:pointer}
     .field-inline-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:end}
@@ -37,6 +39,8 @@
     .soft-loading strong{display:block;color:#1f7a5a;margin-bottom:4px}
 
     .employee-meta{margin-top:10px;padding:12px;border-radius:14px;background:#f8fbff;border:1px solid #dbe7f4}
+    .employee-list-note{display:block;margin-top:8px;color:#667085;font-size:12px;line-height:1.55}
+    .firebase-only-note{margin-top:10px;padding:10px 12px;border-radius:14px;background:#f3f8f5;border:1px solid #cfe8dc;color:#1f7a5a;font-size:13px;font-weight:800;line-height:1.6}
     .empty-box{padding:14px;border-radius:14px;background:#fafafa;color:#6b7280}
     @media (max-width:860px){.admin-grid{grid-template-columns:1fr}}
     @media (max-width:560px){.line-grid,.field-inline-grid{grid-template-columns:1fr}}
@@ -79,11 +83,13 @@
           <button type="button" class="chip-btn" data-type-filter="staff">專職</button>
           <button type="button" class="chip-btn" data-type-filter="parttime">工讀</button>
         </div>
+        <div class="employee-list-note">左側只用來選人與查看完成狀態；詳細薪資、投保、加給請在右側設定。</div>
         <div id="employeeList" class="list card-list"></div>
       </div>
 
       <div class="card">
         <div class="section-title">設定內容</div>
+        <div class="firebase-only-note">此頁只使用 Firebase / Firestore 薪資投保資料，不再回退舊 GS 系統。</div>
         <div id="selectedHint" class="muted">請先從左側選擇員工。</div>
         <div id="formWrap" class="hidden">
           <div class="employee-meta">
@@ -388,18 +394,28 @@
     function getSalaryConfigForRow(row){
       return (setup && setup.employeeConfigMap && row && setup.employeeConfigMap[row.id]) || {};
     }
-    function isSalaryConfiguredRow(row){
-      if(row && typeof row.salaryConfigured === 'boolean') return row.salaryConfigured;
-      const cfg = getSalaryConfigForRow(row);
-      if(row && row.identityType === 'parttime'){
-        return Number(cfg.hourlyRate || 0) > 0;
+    function computePendingReasons(row, cfg){
+      const reasons = [];
+      row = row || {};
+      cfg = cfg || getSalaryConfigForRow(row) || {};
+      if(row.identityType === 'parttime'){
+        if(!(Number(cfg.hourlyRate || 0) > 0)) reasons.push('未設定時薪');
+        if(!(Number(cfg.averageSalary || 0) > 0)) reasons.push('未設定目前申報月平均薪資總額');
+      }else{
+        if(!(Number(cfg.baseSalary || 0) > 0)) reasons.push('未設定本薪');
       }
-      return Number(cfg.baseSalary || 0) > 0;
+      if(!String(cfg.laborStatus || '').trim()) reasons.push('未設定勞保狀態');
+      if(!String(cfg.healthStatus || '').trim()) reasons.push('未設定健保狀態');
+      if(insuranceIsActive(cfg.laborStatus) && !String(cfg.laborPlan || '').trim()) reasons.push('勞保在保但未設定勞保級距');
+      if(insuranceIsActive(cfg.healthStatus) && !String(cfg.healthPlan || '').trim()) reasons.push('健保在保但未設定健保級距');
+      if(String(cfg.selfRetirementEnabled || '否') === '是' && !String(cfg.selfRetirementRate || '').trim()) reasons.push('勞退自提已開啟但未設定比率');
+      return reasons;
+    }
+    function isSalaryConfiguredRow(row){
+      return computePendingReasons(row, getSalaryConfigForRow(row)).length === 0;
     }
     function getPendingReasons(row){
-      if(Array.isArray(row && row.salaryPendingReasons) && row.salaryPendingReasons.length) return row.salaryPendingReasons;
-      if(isSalaryConfiguredRow(row)) return [];
-      return row && row.identityType === 'parttime' ? ['未填時薪'] : ['未填本薪'];
+      return computePendingReasons(row, getSalaryConfigForRow(row));
     }
     function renderSummary(){
       const rows = (setup && setup.employees) || [];
@@ -478,8 +494,14 @@
             <button type="button" class="danger-btn" data-remove="${idx}">刪除</button>
           </div>
           <div class="line-grid">
-            <input data-role="name" placeholder="輸入名稱" value="${escapeHtml(row.name || '')}">
-            <input data-role="amount" type="number" min="0" step="1" placeholder="輸入金額" value="${row.amount || ''}">
+            <div class="line-field">
+              <div class="line-label">名稱</div>
+              <input data-role="name" placeholder="例如：行政職務加給、教學津貼" value="${escapeHtml(row.name || '')}">
+            </div>
+            <div class="line-field">
+              <div class="line-label">金額</div>
+              <input data-role="amount" type="number" min="0" step="1" placeholder="輸入金額" value="${row.amount || ''}">
+            </div>
           </div>
         </div>
       `).join('');
@@ -569,7 +591,7 @@
     function refreshEmployeeMeta(emp){
       qs('#employeeNameText').textContent = emp ? emp.name : '-';
       qs('#employeeIdentityTag').textContent = emp ? (emp.identityLabel || '-') : '-';
-      const done = emp && emp.salaryConfigured;
+      const done = emp && isSalaryConfiguredRow(emp);
       const statusTag = qs('#employeeStatusTag');
       statusTag.textContent = done ? '已完成' : '未完成';
       statusTag.className = 'tag ' + (done ? 'ok' : 'warn');
@@ -681,7 +703,12 @@
         if(!res || res.ok === false) throw new Error((res && res.message) || '讀取失敗');
         const safeEmployees = (res.employees || []).filter(x => ['staff','parttime'].includes(String(x.identityType || '')));
         const safeConfigMap = {};
-        safeEmployees.forEach(x => { safeConfigMap[x.id] = (res.employeeConfigMap && res.employeeConfigMap[x.id]) || {}; });
+        safeEmployees.forEach(x => {
+          safeConfigMap[x.id] = (res.employeeConfigMap && res.employeeConfigMap[x.id]) || {};
+          const reasons = computePendingReasons(x, safeConfigMap[x.id]);
+          x.salaryConfigured = reasons.length === 0;
+          x.salaryPendingReasons = reasons;
+        });
         const laborGroupOrder = { partial: 1, training: 2, parttime_partial: 2, regular: 3, normal: 3, fulltime: 3 };
         const safeLaborPlans = mergePlanOptions(res.laborPlans, DEFAULT_LABOR_PLANS, 'LAB').sort((a, b) => {
           const ga = laborGroupOrder[String(a.group || a.category || '').toLowerCase()] || 9;
@@ -702,7 +729,7 @@
         if(selectedId && selectedMap[selectedId]) selectEmployee(selectedId);
         else if((setup.employees || []).length) selectEmployee(setup.employees[0].id);
       }catch(err){
-        setMsg(qs('#pageMsg'), err.message || String(err), true);
+        setMsg(qs('#pageMsg'), (err && err.message ? err.message : String(err)) + '（薪資與投保設定目前只讀寫 Firebase / Firestore，不再回退舊系統。）', true);
       }finally{
         resetButton('loadSetupBtn', '重新讀取');
       }
@@ -726,7 +753,7 @@
         refreshLocalConfig(emp, payload);
         setMsg(qs('#pageMsg'), res.message || '已儲存設定');
       }catch(err){
-        setMsg(qs('#pageMsg'), err.message || String(err), true);
+        setMsg(qs('#pageMsg'), (err && err.message ? err.message : String(err)) + '（薪資與投保設定目前只讀寫 Firebase / Firestore，不再回退舊系統。）', true);
       }finally{
         resetButton('saveBtn', '儲存設定');
         resetButton('saveBottomBtn', '儲存設定');
