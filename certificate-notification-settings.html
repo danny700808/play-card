@@ -4,58 +4,35 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>證明提醒設定</title>
-  <link rel="stylesheet" href="style.css?v=certificates-20260530">
+  <link rel="stylesheet" href="style.css?v=admin-final-20260531notify">
   <style>
-    .notify-wrap{max-width:1100px;margin:0 auto;padding:18px}.section-card{background:#fff;border:1px solid #e2e8f0;border-radius:24px;padding:20px;margin-top:16px;box-shadow:0 10px 30px rgba(15,23,42,.06)}.setting-grid{display:grid;gap:14px}.setting-card{border:1px solid #e2e8f0;border-radius:18px;padding:16px;background:#fbfdff}.setting-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}.setting-title{font-size:20px;font-weight:950;color:#17324d}.setting-desc{font-size:13px;color:#64748b;line-height:1.8;margin-top:4px}.channels{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}.channel{display:flex;align-items:center;gap:8px;border:1px solid #e2e8f0;border-radius:999px;background:#fff;padding:8px 12px;font-weight:900}.channel input{width:18px;height:18px}.muted-tip{font-size:13px;color:#64748b;line-height:1.8}.msg{font-weight:900;margin-top:10px;color:#1f7a5a}.actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}.actions .btn{width:auto}
+    .page-return-wrap{margin-bottom:16px}.page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
+    .settings-intro{margin-bottom:14px}.settings-intro .title{margin:0}.settings-intro .welcome{line-height:1.7}.note-box{border:1px solid #dbe5f1;background:#f8fafc;border-radius:18px;padding:12px 14px;color:#475569;line-height:1.8;font-weight:750}
   </style>
 </head>
-<body onload="initPage()" class="admin-wide-page">
-  <div class="notify-wrap">
-    <div class="page-return-wrap" style="margin-bottom:12px"><a class="btn page-return-btn" href="quotation-contract-hub.html">返回其他表格</a></div>
-    <div class="section-card" style="margin-top:0">
-      <div class="topbar"><div><h1 class="title" style="margin:0">證明提醒設定</h1><div class="muted-tip">這裡只設定在職證明／教學證明的 LINE 與 Email 提醒。每一項都可以獨立決定是否提醒。</div></div><button class="btn secondary" style="width:auto;padding:10px 14px" onclick="logout()">登出</button></div>
-      <div class="actions"><button class="btn" type="button" onclick="saveAll()">儲存提醒設定</button></div>
-      <div id="msg" class="msg"></div>
+<body onload="init()" class="admin-wide-page">
+  <div class="container">
+    <div class="page-return-wrap"><a class="btn page-return-btn" href="quotation-contract-hub.html">返回其他表格</a></div>
+    <div class="card settings-intro">
+      <div class="header" style="margin:0">
+        <h1 class="title">證明提醒設定</h1>
+        <div class="welcome">在職證明與教學證明都套用這裡的送出、核准、退回 / 駁回、逾期未審提醒。</div>
+      </div>
+      <div class="note-box">逾期未審提醒預設 1 天，可在下方欄位調整。</div>
     </div>
-    <div class="section-card"><div class="setting-grid" id="settingsGrid"></div></div>
   </div>
-  <script src="config.js"></script>
+  <script src="config.js?v=20260531notify"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=certificates-20260530"></script>
-  <script src="app.js?v=certificates-20260530"></script>
+  <script src="firebase-client.js?v=20260531notify"></script>
+  <script src="app.js?v=20260531notify"></script>
   <script>
-    const EVENTS=[
-      {code:'certificateSubmitted',name:'證明申請送出提醒主管',desc:'使用者送出在職證明或教學證明時，是否提醒主管審核。',target:'manager'},
-      {code:'certificateApproved',name:'證明申請核准提醒申請人',desc:'主管核准申請後，是否提醒申請人可列印或下載加密 PDF。',target:'employee'},
-      {code:'certificateRejected',name:'證明申請退回提醒申請人',desc:'主管退回申請後，是否提醒申請人查看退回原因。',target:'employee'}
-    ];
-    let rows={};
-    function msg(t,ok=true){const el=document.getElementById('msg'); el.textContent=t||''; el.style.color=ok?'#1f7a5a':'#b42318';}
-    function render(){
-      document.getElementById('settingsGrid').innerHTML=EVENTS.map(ev=>{
-        const s=rows[ev.code]||{};
-        const manager=ev.target==='manager';
-        return `<div class="setting-card" data-code="${ev.code}"><div class="setting-head"><div><div class="setting-title">${ev.name}</div><div class="setting-desc">${ev.desc}</div></div><label class="channel">啟用 <input type="checkbox" data-field="enabled" ${s.enabled!==false?'checked':''}></label></div><div class="channels">${manager?`<label class="channel">主管 LINE <input type="checkbox" data-field="notifyManagerLine" ${s.notifyManagerLine!==false?'checked':''}></label><label class="channel">主管 Email <input type="checkbox" data-field="notifyManagerEmail" ${s.notifyManagerEmail===true?'checked':''}></label>`:`<label class="channel">申請人 LINE <input type="checkbox" data-field="notifyEmployeeLine" ${s.notifyEmployeeLine!==false?'checked':''}></label><label class="channel">申請人 Email <input type="checkbox" data-field="notifyEmployeeEmail" ${s.notifyEmployeeEmail===true?'checked':''}></label>`}</div></div>`;
-      }).join('');
+    function init(){
+      if(typeof fillHeader==='function') fillHeader();
+      const user=typeof requireLogin==='function'?requireLogin():null;
+      if(!user) return;
+      if(typeof hasSettingsZoneAccess==='function' && !hasSettingsZoneAccess(user)){location.href='dashboard.html';}
     }
-    async function loadAll(){
-      for(const ev of EVENTS){
-        try{ const r=await api('getFeatureNotificationSetting',{featureCode:ev.code}); rows[ev.code]=Object.assign({featureCode:ev.code,featureName:ev.name,enabled:true,notifyManagerLine:true,notifyManagerEmail:false,notifyEmployeeLine:true,notifyEmployeeEmail:false},r.setting||{}); }
-        catch(e){ rows[ev.code]={featureCode:ev.code,featureName:ev.name,enabled:true,notifyManagerLine:true,notifyManagerEmail:false,notifyEmployeeLine:true,notifyEmployeeEmail:false}; }
-      }
-      render();
-    }
-    function readCard(card){
-      const code=card.dataset.code; const ev=EVENTS.find(x=>x.code===code)||{};
-      const get=f=>!!card.querySelector(`[data-field="${f}"]`)?.checked;
-      return {featureCode:code,featureName:ev.name,enabled:get('enabled'),notifyManagerLine:get('notifyManagerLine'),notifyManagerEmail:get('notifyManagerEmail'),notifyEmployeeLine:get('notifyEmployeeLine'),notifyEmployeeEmail:get('notifyEmployeeEmail')};
-    }
-    async function saveAll(){
-      try{ const cards=Array.from(document.querySelectorAll('.setting-card')); for(const card of cards){ const row=readCard(card); await api('saveFeatureNotificationSetting',row); } msg('證明提醒設定已儲存。'); }
-      catch(e){ msg('儲存失敗：'+e.message,false); }
-    }
-    async function initPage(){ fillHeader(); const user=requireLogin(); if(!user) return; if(!hasSettingsZoneAccess(user)){location.href='dashboard.html';return;} setPortalMode('settings'); await loadAll(); }
   </script>
 </body>
 </html>

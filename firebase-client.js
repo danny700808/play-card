@@ -5916,3 +5916,170 @@
   fb.__teacherGoodsFirebaseOnly20260530 = true;
   global.YZFirebase = fb;
 })(window);
+
+
+/* Notification V3 complete matrix backend 20260531
+ * Owner-selected reminder list. Keeps manual LINE / Email as fixed tool, not a setting item.
+ */
+(function(global){
+  const fb = global.YZFirebase || {};
+  if(!fb || fb.__notificationV3CompleteBackend20260531) return;
+  fb.__notificationV3CompleteBackend20260531 = true;
+  const previousHandle = fb.handleApi;
+  function clean(v){ return String(v == null ? '' : v).trim(); }
+  function lower(v){ return clean(v).toLowerCase(); }
+  function truthy(v){ return v === true || v === 1 || v === '1' || v === '是' || lower(v) === 'true' || lower(v) === 'yes' || lower(v) === 'on'; }
+  function db(){
+    const cfg = global.APP_CONFIG && global.APP_CONFIG.FIREBASE_CONFIG;
+    if(!cfg || !global.firebase) throw new Error('Firebase 尚未啟用');
+    if(!global.firebase.apps.length) global.firebase.initializeApp(cfg);
+    return global.firebase.firestore();
+  }
+  function serverTs(){ try{return global.firebase.firestore.FieldValue.serverTimestamp();}catch(e){return new Date().toISOString();} }
+  async function all(col){ const snap = await db().collection(col).get(); const rows=[]; snap.forEach(doc=>rows.push(Object.assign({__id:doc.id}, doc.data()||{}))); return rows; }
+  async function setDoc(col,id,data,merge=true){ await db().collection(col).doc(clean(id)).set(data||{}, {merge}); }
+  function settingDocId(moduleKey,eventKey){ return clean(moduleKey) + '__' + clean(eventKey).replace(/[\/#?\[\]]/g,'_'); }
+  function mgr(no,key,name,desc,extra){ return Object.assign({no,moduleKey:'',eventKey:key,eventName:name,description:desc,enabled:true,managerLineEnabled:true,managerEmailEnabled:true,employeeLineEnabled:false,employeeEmailEnabled:false}, extra||{}); }
+  function emp(no,key,name,desc,extra){ return Object.assign({no,moduleKey:'',eventKey:key,eventName:name,description:desc,enabled:true,managerLineEnabled:false,managerEmailEnabled:false,employeeLineEnabled:true,employeeEmailEnabled:true}, extra||{}); }
+  function both(no,key,name,desc,extra){ return Object.assign({no,moduleKey:'',eventKey:key,eventName:name,description:desc,enabled:true,managerLineEnabled:true,managerEmailEnabled:true,employeeLineEnabled:true,employeeEmailEnabled:true}, extra||{}); }
+  function overdue(no,key,name,desc){ return mgr(no,key,name,desc,{reviewDeadlineDays:1,settingFields:['reviewDeadlineDays']}); }
+  function defaultEvents(moduleKey){
+    const defs={
+      account:[
+        mgr(1,'account.register.submitted','註冊申請送出','員工送出註冊申請後，通知主管審核。'),
+        emp(2,'account.register.approved','註冊審核通過','主管通過註冊後，通知員工。'),
+        emp(3,'account.register.rejected','註冊審核駁回','主管駁回註冊後，通知申請人。'),
+        emp(4,'account.forgotPassword','忘記密碼','使用者申請重設密碼時，通知本人。'),
+        emp(5,'account.passwordChanged','密碼修改成功','使用者成功修改密碼後，通知本人。'),
+        emp(6,'account.lineBindSuccess','LINE 綁定成功','LINE 綁定成功時，通知本人。',{employeeEmailEnabled:false}),
+        emp(7,'account.lineBindFailed','LINE 綁定失敗','LINE 綁定失敗時，通知本人。',{employeeEmailEnabled:false})
+      ],
+      registration:[
+        mgr(1,'account.register.submitted','註冊申請送出','員工送出註冊申請後，通知主管審核。'),
+        emp(2,'account.register.approved','註冊審核通過','主管通過註冊後，通知員工。'),
+        emp(3,'account.register.rejected','註冊審核駁回','主管駁回註冊後，通知申請人。')
+      ],
+      profileChange:[
+        mgr(9,'profile.change.submitted','個人資料修改申請送出','員工送出個人資料修改申請後，通知主管。'),
+        emp(10,'profile.change.approved','個人資料修改核准','主管核准後，通知員工。'),
+        emp(11,'profile.change.rejected','個人資料修改駁回','主管駁回後，通知員工。'),
+        overdue(12,'profile.change.overdue','個人資料修改逾期未審','待審超過設定天數後，提醒主管。')
+      ],
+      clock:[
+        mgr(13,'clock.correction.submitted','打卡修正申請送出','員工送出打卡修正後，通知主管。'),
+        emp(14,'clock.correction.approved','打卡修正核准','主管核准打卡修正後，通知員工。'),
+        emp(15,'clock.correction.rejected','打卡修正駁回','主管駁回打卡修正後，通知員工。'),
+        overdue(16,'clock.correction.overdue','打卡修正逾期未審','打卡修正超過設定天數未審，提醒主管。'),
+        mgr(17,'clock.missing.submitted','補打卡申請送出','員工送出補上班卡或補下班卡後，通知主管。'),
+        emp(18,'clock.missing.approved','補打卡核准','主管核准補打卡後，通知員工。'),
+        emp(19,'clock.missing.rejected','補打卡駁回','主管駁回補打卡後，通知員工。'),
+        overdue(20,'clock.missing.overdue','補打卡逾期未審','補打卡超過設定天數未審，提醒主管。')
+      ],
+      clockAuto:[
+        emp(21,'clock.workBefore','上班前提醒','依排班時間，在上班前指定分鐘提醒員工打上班卡。',{beforeMinutes:10,settingFields:['beforeMinutes']}),
+        emp(23,'clock.workMissingAfter','上班後未打卡提醒','上班後超過指定分鐘仍未打卡，提醒員工。',{afterMinutes:30,settingFields:['afterMinutes']}),
+        emp(25,'clock.offTime','表定下班時間提醒','到表定下班時間時，提醒員工打下班卡。'),
+        emp(26,'clock.offMissingAfter','下班後未打卡提醒','下班後超過指定分鐘仍未打下班卡，提醒員工。',{afterMinutes:30,settingFields:['afterMinutes']}),
+        emp(28,'parttime.hoursMissingAfter','工讀下班後未填時數提醒','工讀生下班後未填工讀時數時，提醒工讀生。',{afterMinutes:30,settingFields:['afterMinutes']})
+      ],
+      leave:[
+        mgr(30,'leave.submitted','請假申請送出','員工送出請假申請後，通知主管。'),
+        emp(31,'leave.approved','請假核准','主管核准請假後，通知員工。'),
+        emp(32,'leave.rejected','請假駁回','主管駁回請假後，通知員工。'),
+        overdue(33,'leave.overdue','請假逾期未審','請假超過設定天數未審，提醒主管。')
+      ],
+      temporaryAttendance:[
+        mgr(36,'temporaryAttendance.submitted','臨時出勤申請送出','員工送出臨時出勤申請後，通知主管。'),
+        emp(37,'temporaryAttendance.approved','臨時出勤核准','主管核准臨時出勤後，通知員工。'),
+        emp(38,'temporaryAttendance.rejected','臨時出勤駁回','主管駁回臨時出勤後，通知員工。'),
+        overdue(39,'temporaryAttendance.overdue','臨時出勤逾期未審','臨時出勤超過設定天數未審，提醒主管。'),
+        mgr(40,'parttimeHours.abnormal.submitted','工讀時數異常送出','工讀時數異常或超出排班時數時，通知主管。'),
+        emp(41,'parttimeHours.abnormal.approved','工讀時數異常核准','主管核准工讀時數異常後，通知員工。'),
+        emp(42,'parttimeHours.abnormal.rejected','工讀時數異常駁回','主管駁回工讀時數異常後，通知員工。'),
+        overdue(43,'parttimeHours.abnormal.overdue','工讀時數異常逾期未審','工讀時數異常超過設定天數未審，提醒主管。')
+      ],
+      task:[
+        emp(44,'task.published','交辦事項發布','主管發布交辦事項後，通知被交辦人。'),
+        emp(45,'task.midReminder','交辦事項中段提醒','交辦事項進行到中段時，提醒被交辦人。'),
+        emp(46,'task.deadlineReminder','交辦事項截止提醒','交辦事項到截止時間時，提醒被交辦人。'),
+        mgr(47,'task.overdue','交辦事項逾期未完成','交辦事項逾期未完成時，通知主管。'),
+        mgr(48,'task.completed','交辦事項完成','被交辦人完成事項後，通知主管。'),
+        emp(49,'task.returned','交辦事項退回 / 要求重做','主管退回或要求重做時，通知被交辦人。')
+      ],
+      announcement:[
+        emp(50,'announcement.published','公告發布','公告發布後，通知指定對象。'),
+        emp(51,'announcement.unreadReminder','公告未讀提醒','公告發布後仍未讀，依設定天數提醒未讀者。',{unreadReminderDays:1,settingFields:['unreadReminderDays']})
+      ],
+      contractor:[
+        emp(57,'contractor.contract.open','外聘合約開放簽署','外聘合約開放簽署時，通知老師。'),
+        emp(58,'contractor.contract.dueSoon','外聘合約即將到期未簽','合約即將到期仍未簽署時，提醒老師。'),
+        overdue(59,'contractor.contract.overdue','外聘合約逾期未簽','合約逾期未簽時，通知主管。'),
+        mgr(60,'contractor.goodsInquiry.submitted','老師送出拿貨詢價','老師送出拿貨或官網商品詢價後，通知主管。'),
+        emp(61,'contractor.goodsInquiry.replied','主管回覆拿貨詢價','主管回覆拿貨詢價後，通知老師。')
+      ],
+      certificate:[
+        mgr(65,'certificate.submitted','證明申請送出','在職證明或教學證明送出後，通知主管。'),
+        emp(66,'certificate.approved','證明申請核准','在職證明或教學證明核准後，通知申請人。'),
+        emp(67,'certificate.rejected','證明申請退回 / 駁回','在職證明或教學證明退回或駁回後，通知申請人。'),
+        overdue(68,'certificate.overdue','證明申請逾期未審','證明申請超過設定天數未審，提醒主管。')
+      ],
+      recruitment:[
+        mgr(72,'recruitment.submitted','應聘資料送出','應聘老師送出資料後，通知主管。'),
+        emp(73,'recruitment.preliminaryApproved','應聘資料初審通過','應聘資料初審通過後，通知應聘者。'),
+        emp(74,'recruitment.rejected','應聘資料退回 / 不通過','應聘資料退回或不通過後，通知應聘者。'),
+        overdue(75,'recruitment.overdue','應聘資料逾期未審','應聘資料超過設定天數未審，提醒主管。'),
+        emp(76,'recruitment.supplementRequired','應聘資料補件提醒','需要應聘者補件時，通知應聘者。')
+      ],
+      salary:[
+        emp(78,'salary.statementChanged','薪資明細異動','薪資明細被調整後，通知員工。'),
+        emp(79,'salary.insuranceChanged','投保薪資設定異動','勞保 / 健保 / 投保薪資設定異動後，通知員工。')
+      ],
+      dailySummary:[
+        mgr(86,'summary.dailyPending','每日待審核摘要','每天固定整理待審核事項給主管。',{reviewDeadlineDays:1,settingFields:['reviewDeadlineDays']})
+      ]
+    };
+    return (defs[moduleKey]||[]).map(function(r){ return Object.assign({}, r, {moduleKey:moduleKey, source:'notification-v3-default'}); });
+  }
+  async function getNotificationV2SettingsV3(payload){
+    const moduleKey=clean(payload && payload.moduleKey);
+    if(!moduleKey) return {ok:false,message:'缺少提醒分類',rows:[]};
+    const defaults=defaultEvents(moduleKey);
+    const rows=(await all('notificationV2Settings').catch(()=>[])).filter(r=>clean(r.moduleKey)===moduleKey);
+    const map={};
+    defaults.forEach(d=>{ map[d.eventKey]=Object.assign({},d); });
+    rows.forEach(r=>{ const k=clean(r.eventKey || r.__id); if(k) map[k]=Object.assign({}, map[k]||{}, r, {moduleKey,eventKey:k}); });
+    const ordered=defaults.map(d=>map[d.eventKey]).filter(Boolean);
+    Object.keys(map).forEach(k=>{ if(!ordered.some(x=>x.eventKey===k)) ordered.push(map[k]); });
+    return {ok:true,title:'',rows:ordered};
+  }
+  async function saveNotificationV2SettingsV3(payload){
+    const moduleKey=clean(payload && payload.moduleKey);
+    const rows=Array.isArray(payload && payload.rows) ? payload.rows : [];
+    if(!moduleKey) return {ok:false,message:'缺少提醒分類'};
+    for(const raw of rows){
+      const eventKey=clean(raw && raw.eventKey); if(!eventKey) continue;
+      const row=Object.assign({}, raw, {moduleKey,eventKey,updatedAt:serverTs(),source:'notification-v3-settings'});
+      await setDoc('notificationV2Settings', settingDocId(moduleKey,eventKey), row, true);
+    }
+    const enabledRows=rows.filter(r=>r && r.enabled !== false);
+    await setDoc('notificationFeatureSettings', moduleKey, {
+      featureCode:moduleKey, featureName:moduleKey, enabled:enabledRows.length>0,
+      notifyManagerLine:enabledRows.some(r=>r.managerLineEnabled===true),
+      notifyManagerEmail:enabledRows.some(r=>r.managerEmailEnabled===true),
+      notifyEmployeeLine:enabledRows.some(r=>r.employeeLineEnabled===true),
+      notifyEmployeeEmail:enabledRows.some(r=>r.employeeEmailEnabled===true),
+      reviewDeadlineDays:Number((enabledRows.find(r=>r.reviewDeadlineDays!=null)||{}).reviewDeadlineDays || 1) || 1,
+      beforeMinutes:Number((enabledRows.find(r=>r.beforeMinutes!=null)||{}).beforeMinutes || 10) || 10,
+      afterMinutes:Number((enabledRows.find(r=>r.afterMinutes!=null)||{}).afterMinutes || 30) || 30,
+      updatedAt:serverTs(), source:'notification-v3-bridge'
+    }, true);
+    return {ok:true,message:'提醒設定已儲存。逾期天數與打卡提醒分鐘數也已同步。'};
+  }
+  fb.handleApi = async function(action,payload){
+    if(action === 'getNotificationV2Settings') return await getNotificationV2SettingsV3(payload||{});
+    if(action === 'saveNotificationV2Settings') return await saveNotificationV2SettingsV3(payload||{});
+    if(previousHandle) return previousHandle(action,payload);
+    throw new Error('Firebase API 尚未支援：'+action);
+  };
+  global.YZFirebase = fb;
+})(window);

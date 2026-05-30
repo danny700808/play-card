@@ -1698,3 +1698,116 @@ document.addEventListener('DOMContentLoaded', function(){ setTimeout(hideClockZe
   function boot(){style(); installFab(); renderModulePanel(); setTimeout(installFab,600); setTimeout(renderModulePanel,800); setTimeout(installFab,1600);}
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot); else boot();
 })();
+
+
+/*****************************************************************
+ * Notification V3 complete matrix UI 20260531
+ * - Uses the selected reminder list confirmed by owner.
+ * - Adds editable delay fields: reviewDeadlineDays / beforeMinutes / afterMinutes.
+ * - Keeps manual LINE / Email tool as a fixed function, not a reminder option.
+ *****************************************************************/
+(function(){
+  if(window.__notificationV3CompleteMatrix20260531) return;
+  window.__notificationV3CompleteMatrix20260531 = true;
+  function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  function clean(v){return String(v==null?'':v).trim();}
+  function pathName(){return String((location && location.pathname) || '').split('/').pop().toLowerCase() || 'index.html';}
+  function apiCall(action,payload){
+    if(typeof api==='function') return api(action,payload||{});
+    if(window.YZFirebase && typeof window.YZFirebase.handleApi==='function') return window.YZFirebase.handleApi(action,payload||{});
+    return Promise.reject(new Error('通知系統尚未載入完成'));
+  }
+  function isManagerLikely(){
+    const p=pathName();
+    const managerPages=['settings.html','notification-settings.html','approval-hub.html','approval-notification-settings.html','teacher-notification-settings.html','application-notification-settings.html','certificate-notification-settings.html','teacher-hub.html','application-admin.html','quotation-contract-hub.html','announcement-admin.html','task.html','routine.html','salary-admin.html','teacher-goods-admin.html','certificate-review-admin.html'];
+    if(managerPages.indexOf(p)>=0) return true;
+    if(p==='leave.html' && (location.search||'').indexOf('mode=approval')>=0) return true;
+    try{const u=typeof getUser==='function'?getUser():null; return !!(u && (u.showSettingsZone || String(u.role||'').toLowerCase()==='admin'));}catch(e){return false;}
+  }
+  function modulesForPage(){
+    const p=pathName();
+    if(p==='approval-notification-settings.html') return [
+      {key:'registration', title:'註冊簽核提醒'},
+      {key:'clock', title:'打卡修正 / 補登簽核提醒'},
+      {key:'clockAuto', title:'上下班打卡自動提醒'},
+      {key:'leave', title:'請假簽核提醒'},
+      {key:'temporaryAttendance', title:'工讀 / 臨時出勤 / 工讀時數簽核提醒'},
+      {key:'profileChange', title:'個人資料修改提醒'}
+    ];
+    if(p==='teacher-notification-settings.html') return [{key:'contractor', title:'外聘老師 / 合約 / 拿貨提醒'}];
+    if(p==='application-notification-settings.html') return [{key:'recruitment', title:'應聘老師 / 履歷審核提醒'}];
+    if(p==='certificate-notification-settings.html') return [{key:'certificate', title:'證明申請提醒'}];
+    if(p==='notification-settings.html') return [
+      {key:'account', title:'帳號 / LINE 綁定提醒'},
+      {key:'task', title:'交辦事項 / 任務提醒'},
+      {key:'announcement', title:'公告提醒'},
+      {key:'salary', title:'薪資 / 投保提醒'},
+      {key:'dailySummary', title:'每日待審核摘要'}
+    ];
+    return [];
+  }
+  function style(){
+    if(document.getElementById('notificationV3Style')) return;
+    const s=document.createElement('style');
+    s.id='notificationV3Style';
+    s.textContent=`
+      #notifyVisibleFeaturePanelV2,#managerNotifyPanel,.module-notify-panel,.notify-setting-card,.notify-v2-panel,#notifyForceQuickBtn,#managerQuickMsgBtn,#notifyFloatingBtn,.notify-floating-btn{display:none!important}
+      .n3-panel{margin:18px 0 28px;background:#fff;border:1px solid #dbe5f1;border-radius:22px;padding:16px;box-shadow:0 10px 28px rgba(15,23,42,.05)}
+      .n3-title{font-size:21px;font-weight:950;color:#18314a;margin:0 0 6px}.n3-desc{font-size:13px;line-height:1.7;color:#64748b;margin:0 0 12px}.n3-list{display:grid;gap:10px}.n3-row{border:1px solid #e2e8f0;border-radius:16px;background:#f8fafc;padding:12px}.n3-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.n3-name{font-size:15px;font-weight:950;color:#18314a}.n3-code{font-size:12px;color:#94a3b8;font-weight:800}.n3-help{font-size:12px;color:#64748b;line-height:1.6;margin-top:3px}.n3-enable{font-weight:900;white-space:nowrap}.n3-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:10px}.n3-grid label{display:flex;align-items:center;justify-content:space-between;gap:6px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:9px;font-size:13px;font-weight:850;color:#334155}.n3-grid input,.n3-enable input{width:18px;height:18px;accent-color:#1f7a5a}.n3-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px}.n3-field{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:9px}.n3-field span{display:block;font-size:12px;font-weight:900;color:#475569;margin-bottom:4px}.n3-field input{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:10px;padding:8px;font-size:14px}.n3-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px}.n3-actions button{border:0;border-radius:14px;padding:11px 14px;font-weight:950;cursor:pointer;background:#1f7a5a;color:#fff}.n3-actions .secondary{background:#eef2f6;color:#18314a}.n3-msg{font-size:13px;font-weight:950;color:#1f7a5a}.n3-msg.err{color:#b42318}.n3-quick{display:flex;gap:8px;flex-wrap:wrap}.n3-quick button{background:#eef7f0;color:#1f7a5a;border:1px solid #bbdfca;border-radius:999px;padding:8px 11px;font-size:13px;font-weight:900;cursor:pointer}
+      @media(max-width:760px){.n3-grid{grid-template-columns:1fr 1fr}.n3-fields{grid-template-columns:1fr}.n3-head{display:grid}.n3-enable{justify-self:start}}@media(max-width:430px){.n3-grid{grid-template-columns:1fr}.n3-panel{padding:14px;border-radius:18px}}
+    `;
+    document.head.appendChild(s);
+  }
+  function fieldLabel(k){return {reviewDeadlineDays:'逾期未審提醒天數',beforeMinutes:'提前提醒分鐘',afterMinutes:'未打卡後提醒分鐘',unreadReminderDays:'未讀提醒天數'}[k]||k;}
+  function getExtraFields(r){
+    const fields=Array.isArray(r.settingFields)?r.settingFields.slice():[];
+    ['reviewDeadlineDays','beforeMinutes','afterMinutes','unreadReminderDays'].forEach(function(k){ if(r[k]!==undefined && fields.indexOf(k)<0) fields.push(k); });
+    return fields;
+  }
+  function rowHtml(r,i){
+    const fields=getExtraFields(r);
+    return '<div class="n3-row" data-index="'+i+'" data-event="'+esc(r.eventKey)+'">'
+      + '<div class="n3-head"><div><div class="n3-name">'+esc(r.no? r.no+'｜':'')+esc(r.eventName||r.eventKey)+'</div><div class="n3-code">'+esc(r.eventKey||'')+'</div><div class="n3-help">'+esc(r.description||'')+'</div></div><label class="n3-enable"><input type="checkbox" data-field="enabled" '+(r.enabled!==false?'checked':'')+'> 啟用</label></div>'
+      + '<div class="n3-grid"><label>主管 LINE <input type="checkbox" data-field="managerLineEnabled" '+(r.managerLineEnabled?'checked':'')+'></label><label>主管 Email <input type="checkbox" data-field="managerEmailEnabled" '+(r.managerEmailEnabled?'checked':'')+'></label><label>員工 LINE <input type="checkbox" data-field="employeeLineEnabled" '+(r.employeeLineEnabled?'checked':'')+'></label><label>員工 Email <input type="checkbox" data-field="employeeEmailEnabled" '+(r.employeeEmailEnabled?'checked':'')+'></label></div>'
+      + (fields.length?'<div class="n3-fields">'+fields.map(function(k){const val=r[k]==null?'':r[k]; return '<label class="n3-field"><span>'+esc(fieldLabel(k))+'</span><input type="number" min="0" step="1" data-field="'+esc(k)+'" value="'+esc(val)+'"></label>';}).join('')+'</div>':'')
+      + '</div>';
+  }
+  async function renderOne(holder, mod){
+    holder.innerHTML='<section class="n3-panel"><div class="n3-title">'+esc(mod.title)+'</div><div class="n3-desc">讀取提醒設定中…</div></section>';
+    try{
+      const res=await apiCall('getNotificationV2Settings',{moduleKey:mod.key,version:'v3'});
+      const rows=Array.isArray(res.rows)?res.rows:[];
+      holder.innerHTML='<section class="n3-panel"><div class="n3-title">'+esc(res.title||mod.title)+'</div><div class="n3-desc">每個提醒可獨立設定 LINE / Email。逾期未審預設 1 天；打卡提前提醒預設 10 分鐘；未打卡提醒預設 30 分鐘，之後都可在這裡修改。</div><div class="n3-quick"><button type="button" data-sel="managerLineEnabled">主管 LINE 全選</button><button type="button" data-sel="managerEmailEnabled">主管 Email 全選</button><button type="button" data-sel="employeeLineEnabled">員工 LINE 全選</button><button type="button" data-sel="employeeEmailEnabled">員工 Email 全選</button><button type="button" data-clear>全部取消管道</button></div><div class="n3-list">'+rows.map(rowHtml).join('')+'</div><div class="n3-actions"><button type="button" data-save>儲存提醒設定</button><button class="secondary" type="button" data-reload>重新讀取</button><span class="n3-msg" data-msg></span></div></section>';
+      holder.querySelectorAll('[data-sel]').forEach(function(btn){btn.onclick=function(){const f=btn.getAttribute('data-sel'); holder.querySelectorAll('[data-field="'+f+'"]').forEach(function(x){x.checked=true;});};});
+      const clear=holder.querySelector('[data-clear]'); if(clear) clear.onclick=function(){holder.querySelectorAll('.n3-grid input').forEach(function(x){x.checked=false;});};
+      const reload=holder.querySelector('[data-reload]'); if(reload) reload.onclick=function(){renderOne(holder,mod);};
+      const save=holder.querySelector('[data-save]'); if(save) save.onclick=async function(){
+        const msg=holder.querySelector('[data-msg]');
+        try{
+          if(msg){msg.textContent='儲存中…'; msg.classList.remove('err');}
+          const next=Array.from(holder.querySelectorAll('.n3-row')).map(function(row,idx){
+            const base=Object.assign({}, rows[idx]||{}); base.moduleKey=mod.key; base.eventKey=row.getAttribute('data-event')||base.eventKey;
+            ['enabled','managerLineEnabled','managerEmailEnabled','employeeLineEnabled','employeeEmailEnabled'].forEach(function(k){const el=row.querySelector('[data-field="'+k+'"]'); base[k]=!!(el&&el.checked);});
+            getExtraFields(base).forEach(function(k){const el=row.querySelector('[data-field="'+k+'"]'); if(el) base[k]=Number(el.value||0)||0;});
+            return base;
+          });
+          const rr=await apiCall('saveNotificationV2Settings',{moduleKey:mod.key,rows:next,version:'v3'});
+          if(!rr || rr.ok===false) throw new Error((rr&&rr.message)||'儲存失敗');
+          if(msg) msg.textContent=rr.message||'已儲存。';
+        }catch(e){if(msg){msg.textContent=e.message||'儲存失敗'; msg.classList.add('err');}}
+      };
+    }catch(e){holder.innerHTML='<section class="n3-panel"><div class="n3-title">'+esc(mod.title)+'</div><div class="n3-msg err">讀取失敗：'+esc(e.message||e)+'</div></section>';}
+  }
+  function render(){
+    if(!isManagerLikely()) return;
+    const mods=modulesForPage(); if(!mods.length) return;
+    style();
+    const old=document.getElementById('notificationV2FinalPanel'); if(old) old.remove();
+    let box=document.getElementById('notificationV3Panel');
+    if(!box){box=document.createElement('div'); box.id='notificationV3Panel'; const target=document.querySelector('.container:last-of-type') || document.querySelector('main') || document.body; target.appendChild(box);}
+    box.innerHTML='';
+    mods.forEach(function(mod){const h=document.createElement('div'); h.setAttribute('data-n3-module',mod.key); box.appendChild(h); renderOne(h,mod);});
+  }
+  function boot(){setTimeout(render,900); setTimeout(render,1800);}
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot); else boot();
+})();
