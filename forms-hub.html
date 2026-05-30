@@ -4,22 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>表格</title>
-  <link rel="stylesheet" href="style.css?v=20260530forms1">
+  <link rel="stylesheet" href="style.css?v=cert20260530">
   <style>
-    body{background:#eef2f6}
-    .forms-wrap{max-width:900px;margin:0 auto;padding:18px 16px 36px}
-    .forms-head{background:#fff;border:1px solid var(--line,#d9e2ef);border-radius:28px;padding:22px 20px;box-shadow:0 10px 28px rgba(15,23,42,.05);margin-bottom:16px}
-    .forms-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
-    .forms-title{margin:0;color:#18314a;font-size:30px;line-height:1.15;font-weight:950}
-    .forms-sub{margin-top:8px;color:#64748b;line-height:1.7;font-weight:800}
-    .forms-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
-    .form-card{display:block;text-decoration:none;color:inherit;background:#fff;border:1px solid var(--line,#d9e2ef);border-radius:24px;padding:22px 20px;box-shadow:0 10px 28px rgba(15,23,42,.05);min-height:136px}
-    .form-card:hover{transform:translateY(-1px);border-color:#b8c6d8}
-    .form-card-title{font-size:24px;font-weight:950;color:#18314a;margin:0 0 10px}
-    .form-card-desc{font-size:15px;line-height:1.65;color:#64748b;font-weight:800}
-    .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:0;border-radius:14px;background:#1f7a5a;color:#fff;padding:11px 15px;font-weight:900;text-decoration:none;cursor:pointer}
-    .btn.secondary{background:#e2e8f0;color:#18314a}
-    @media(max-width:640px){.forms-wrap{padding:14px 12px 28px}.forms-grid{grid-template-columns:1fr}.forms-title{font-size:26px}.form-card{padding:18px 16px;border-radius:20px;min-height:120px}.form-card-title{font-size:22px}}
+    body{background:#eef2f6}.forms-wrap{max-width:1040px;margin:0 auto;padding:18px 16px 36px}.forms-head{background:#fff;border:1px solid var(--line,#d9e2ef);border-radius:28px;padding:22px 20px;box-shadow:0 10px 28px rgba(15,23,42,.05);margin-bottom:16px}.forms-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}.forms-title{margin:0;color:#18314a;font-size:30px;line-height:1.15;font-weight:950}.forms-sub{margin-top:8px;color:#64748b;line-height:1.7;font-weight:800}.forms-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.form-card{display:block;text-decoration:none;color:inherit;background:#fff;border:1px solid var(--line,#d9e2ef);border-radius:24px;padding:22px 20px;box-shadow:0 10px 28px rgba(15,23,42,.05);min-height:148px}.form-card:hover{transform:translateY(-1px);border-color:#b8c6d8}.form-card-title{font-size:24px;font-weight:950;color:#18314a;margin:0 0 10px}.form-card-desc{font-size:15px;line-height:1.65;color:#64748b;font-weight:800}.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:0;border-radius:14px;background:#1f7a5a;color:#fff;padding:11px 15px;font-weight:900;text-decoration:none;cursor:pointer}.btn.secondary{background:#e2e8f0;color:#18314a}@media(max-width:840px){.forms-grid{grid-template-columns:1fr}}@media(max-width:640px){.forms-wrap{padding:14px 12px 28px}.forms-title{font-size:26px}.form-card{padding:18px 16px;border-radius:20px;min-height:120px}.form-card-title{font-size:22px}}
   </style>
 </head>
 <body onload="initPage()">
@@ -29,35 +16,24 @@
       <div class="forms-top">
         <div>
           <h1 class="forms-title">表格</h1>
-          <div class="forms-sub">這裡放外聘、工讀生與專職老師可直接查看、列印或另存的表格。</div>
+          <div class="forms-sub">這裡放外聘、工讀生與專職老師可使用的表格。證明類文件需送主管審核，核准後才會成為正式版。</div>
         </div>
         <button class="btn secondary" type="button" onclick="logout()">登出</button>
       </div>
     </section>
-
     <section class="forms-grid">
-      <a class="form-card" href="gift-point-card.html">
-        <div class="form-card-title">集點卡</div>
-        <div class="form-card-desc">開啟集點卡預覽，可直接列印或另存新檔。</div>
-      </a>
+      <a class="form-card" href="gift-point-card.html"><div class="form-card-title">集點卡</div><div class="form-card-desc">開啟集點卡預覽，可直接列印或另存新檔。</div></a>
+      <a class="form-card" href="employment-certificate.html"><div class="form-card-title">在職證明</div><div class="form-card-desc">填寫任職資料並送主管審核。未核准前預覽會有浮水印。</div></a>
+      <a class="form-card" href="teaching-certificate.html"><div class="form-card-title">教學證明</div><div class="form-card-desc">填寫任教科目、教師身分與授課類型，授課地點固定為補習班地址。</div></a>
     </section>
   </div>
-
-  <script src="config.js?v=20260530forms1"></script>
+  <script src="config.js?v=cert20260530"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260530forms1"></script>
-  <script src="app.js?v=20260530forms1"></script>
+  <script src="firebase-client.js?v=cert20260530"></script>
+  <script src="app.js?v=cert20260530"></script>
   <script>
-    function initPage(){
-      const user = requireLogin();
-      if(!user) return;
-      const back = document.getElementById('backHomeBtn');
-      if(back){
-        back.href = (typeof userHomeHref === 'function') ? userHomeHref(user) : 'dashboard.html';
-        back.textContent = (typeof userHomeLabel === 'function') ? userHomeLabel(user) : '返回首頁';
-      }
-    }
+    function initPage(){const user=requireLogin();if(!user)return;const back=document.getElementById('backHomeBtn');if(back){back.href=(typeof userHomeHref==='function')?userHomeHref(user):'dashboard.html';back.textContent=(typeof userHomeLabel==='function')?userHomeLabel(user):'返回首頁';}}
   </script>
 </body>
 </html>

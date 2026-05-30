@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>在職證明申請</title>
+  <link rel="stylesheet" href="style.css?v=cert20260530">
+  <link rel="stylesheet" href="certificate.css?v=cert20260530">
+</head>
+<body class="cert-page">
+  <div class="cert-wrap">
+    <div class="cert-return"><a id="backHomeBtn" class="btn secondary" href="forms-hub.html">返回表格</a></div>
+    <main class="cert-panel">
+      <div class="cert-top">
+        <div>
+          <h1 class="cert-title"><span data-cert-label>在職證明</span>申請</h1>
+          <div class="cert-sub">填寫後可先預覽；送出後需主管核准。未核准前預覽與列印會有浮水印，核准後才能產生正式版。</div>
+        </div>
+        <div class="cert-tools"><button class="btn secondary" type="button" onclick="logout()">登出</button></div>
+      </div>
+      <div class="cert-layout">
+        <section>
+          <form id="applicationForm" class="cert-form-card">
+            <h2>申請資料</h2>
+            <div class="cert-section-note">請依實際任職／教學身分選擇開立單位。若是補習班老師身分，請選擇「台中市私立凱立音樂短期補習班」；若是公司／樂器行工作身分，請選擇「尚品樂器行」。開立單位會影響證明書名稱與使用印章，請勿選錯。</div>
+            <div id="currentStatusBox" class="cert-section-note"></div>
+            <div class="cert-row2">
+              <div class="cert-field"><label>姓名</label><input id="name" autocomplete="name"></div>
+              <div class="cert-field"><label>身分證字號</label><input id="idNumber" autocomplete="off" inputmode="latin" placeholder="例：A123456789"></div>
+            </div>
+            <div class="cert-row2">
+              <div class="cert-field"><label>職稱</label><select id="jobTitle"><option value="">請選擇</option><option>專職老師</option><option>工讀生</option><option>行政人員</option><option>外聘老師</option><option>門市人員</option><option>其他</option></select></div>
+              <div class="cert-field"><label>工作性質</label><select id="workNature"><option value="">請選擇</option><option>音樂教學</option><option>公司行政</option><option>門市／器材協助</option><option>工讀協助</option><option>活動支援</option><option>其他</option></select></div>
+            </div>
+            <div class="cert-row2">
+              <div class="cert-field"><label>到職日期</label><input id="hireDate" type="date"></div>
+              <div class="cert-field"><label>開立日期</label><input id="issueDate" type="date"></div>
+            </div>
+            <label class="cert-check"><input id="stillEmployed" type="checkbox" checked> 目前仍在職</label>
+            <div class="cert-field"><label>開立單位</label><select id="issuerUnit"><option value="company">尚品樂器行（統一編號 99680937）</option><option value="school">台中市私立凱立音樂短期補習班（證號 1110094357 號）</option></select></div>
+            <div class="cert-section-note">列印前需輸入本人身分證字號驗證；「另存加密 PDF」會建立需要身分證字號才能開啟的 PDF。</div>
+            <div class="cert-mini-actions">
+              <button id="saveDraftBtn" class="btn secondary" type="button">儲存草稿</button>
+              <button id="submitReviewBtn" class="btn" type="button">送出主管審核</button>
+              <button id="printBtn" class="btn secondary" type="button">列印</button>
+              <button id="downloadPdfBtn" class="btn secondary" type="button">另存加密 PDF</button>
+            </div>
+            <div id="msg" class="cert-message"></div>
+          </form>
+          <section class="cert-form-card">
+            <h2>我的歷史申請</h2>
+            <div id="applicationHistory" class="cert-history-list"></div>
+          </section>
+        </section>
+        <section class="cert-preview-shell">
+          <div class="cert-preview-toolbar">
+            <div>
+              <div class="cert-preview-title">證明預覽</div>
+              <div class="cert-muted">主管核准前會顯示浮水印；核准後才會移除浮水印。</div>
+            </div>
+            <div class="cert-mini-actions" style="margin:0"><button id="printBtnTop" class="btn" type="button" onclick="document.getElementById('printBtn').click()">列印</button><button class="btn" type="button" onclick="document.getElementById('downloadPdfBtn').click()">另存加密 PDF</button></div>
+          </div>
+          <div id="printArea" class="cert-sheet-wrap"></div>
+        </section>
+      </div>
+    </main>
+  </div>
+  <script src="config.js?v=cert20260530"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="firebase-client.js?v=cert20260530"></script>
+  <script src="app.js?v=cert20260530"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="certificate-common.js?v=cert20260530"></script>
+  <script>window.addEventListener('DOMContentLoaded',()=>Certificates.initUserApplication('employment'));</script>
+</body>
+</html>
