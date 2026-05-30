@@ -28,7 +28,6 @@
       tip:'補習班老師／教學身分請選擇台中市私立凱立音樂短期補習班。'
     }
   };
-
   const BRAND = { name:'柚子樂器', english:'YOU ZI MUSIC', logo:'yuzu-logo-document-black.png' };
   const LEGAL_NOTICE = '本證明書僅供申請人告知之用途使用。若有擅自變造、轉借、冒用，或未依原申請用途及雙方約定使用，致生爭議者，應由申請人或實際使用人自行負相關法律責任。';
   const OLD_DEFAULT_FOOTERS = ['本證明僅作為申請人於本單位服務事實之證明。','本證明僅作為申請人任職事實之證明，不作其他用途。'];
@@ -54,11 +53,10 @@
     if(!v) return '';
     if(v && typeof v.toDate === 'function') v = v.toDate();
     if(v instanceof Date && !isNaN(v.getTime())) return `${v.getFullYear()}-${pad(v.getMonth()+1)}-${pad(v.getDate())} ${pad(v.getHours())}:${pad(v.getMinutes())}`;
-    return clean(v);
+    const s=clean(v); return s;
   }
   function rocDate(v){
-    const s=dateOnly(v);
-    if(!/^\d{4}-\d{2}-\d{2}$/.test(s)) return esc(s);
+    const s=dateOnly(v); if(!/^\d{4}-\d{2}-\d{2}$/.test(s)) return esc(s);
     const [y,m,d]=s.split('-').map(Number);
     return `民國 ${y-1911} 年 ${m} 月 ${d} 日`;
   }
@@ -66,14 +64,13 @@
   function typeLabel(type){ return clean(type)==='teaching' ? '教學證明' : '在職證明'; }
   function docTitle(type){ return clean(type)==='teaching' ? '教學證明書' : '在職證明書'; }
   function statusLabel(s){
-    s=clean(s);
-    if(!s) return '待主管審核';
+    s=clean(s); if(!s) return '待主管審核';
     if(s==='approved'||s==='已同意') return '已核准';
     if(s==='rejected'||s==='已駁回') return '已退回';
     if(s==='pending') return '待主管審核';
     return s;
   }
-  function isApprovedStatus(s){ return statusLabel(s)==='已核准'; }
+  function isApprovedStatus(s){ s=statusLabel(s); return s==='已核准'; }
   function watermarkText(status, mode){
     if(mode==='editing') return '送出前預覽';
     const s=statusLabel(status);
@@ -140,7 +137,7 @@
         periodEnd:dateOnly(f.periodEnd),
         stillTeaching:!!f.stillTeaching || clean(f.stillTeaching)==='是',
         lessonType:clean(f.lessonType || '個別課'),
-        location:ORG_UNITS.kaili.teachingLocation || ORG_UNITS.kaili.address,
+        location:ORG_UNITS.kaili.teachingLocation || '台中市豐原區圓環東路347號',
         unitKey:clean(f.unitKey || 'kaili'),
         issueDate:dateOnly(f.issueDate || app.approvedDate || app.reviewedAt || today())
       };
@@ -158,35 +155,15 @@
     };
   }
 
-  function fieldRowPairs(type, data){
+  function fieldRowsHtml(type, data){
+    const rows = [];
     if(type==='teaching'){
       const period = [rocDate(data.periodStart), data.stillTeaching ? '迄今' : rocDate(data.periodEnd)].filter(Boolean).join(' 至 ');
-      return [
-        ['教師姓名', data.name],
-        ['身分證字號', data.idNumber],
-        ['教師身分', data.teacherIdentity],
-        ['任教科目', data.subject],
-        ['任教期間', period],
-        ['授課類型', data.lessonType],
-        ['授課地點', data.location || ORG_UNITS.kaili.teachingLocation || ORG_UNITS.kaili.address]
-      ];
+      rows.push(['教師姓名', data.name], ['身分證字號', data.idNumber], ['教師身分', data.teacherIdentity], ['任教科目', data.subject], ['任教期間', period], ['授課類型', data.lessonType], ['授課地點', data.location || ORG_UNITS.kaili.address]);
+    }else{
+      rows.push(['姓名', data.name], ['身分證字號', data.idNumber], ['職稱', data.jobTitle], ['工作性質', data.workNature], ['到職日期', rocDate(data.hireDate)], ['任職狀態', data.stillWorking ? '現仍在職' : '已離職']);
     }
-    return [
-      ['姓名', data.name],
-      ['身分證字號', data.idNumber],
-      ['職稱', data.jobTitle],
-      ['工作性質', data.workNature],
-      ['到職日期', rocDate(data.hireDate)],
-      ['任職狀態', data.stillWorking ? '現在在職' : '已離職']
-    ];
-  }
-
-  function fieldRowsHtml(type, data){
-    return fieldRowPairs(type, data).map(([k,v]) => `
-      <div class="cert-info-row" style="display:grid;grid-template-columns:34mm minmax(0,1fr);width:100%;min-width:0;border-bottom:1px solid #111;box-sizing:border-box;position:static;left:auto;right:auto;float:none;transform:none;">
-        <div class="cert-info-key" style="display:flex;align-items:center;justify-content:center;padding:3.2mm 4mm;border-right:1px solid #111;background:#f8fafc;text-align:center;font-weight:900;line-height:1.65;box-sizing:border-box;min-width:0;word-break:break-word;">${esc(k)}</div>
-        <div class="cert-info-val" style="display:flex;align-items:center;padding:3.2mm 4mm;text-align:left;line-height:1.65;box-sizing:border-box;min-width:0;word-break:break-word;overflow-wrap:anywhere;">${esc(v)}</div>
-      </div>`).join('');
+    return rows.map(([k,v])=>`<div class="cert-info-row"><div class="cert-info-key">${esc(k)}</div><div class="cert-info-val">${esc(v)}</div></div>`).join('');
   }
 
   function certificateHtml(opts){
@@ -203,25 +180,24 @@
     if(!footer || OLD_DEFAULT_FOOTERS.indexOf(footer) >= 0) footer = LEGAL_NOTICE;
     const closing=clean(template.closingText || '特此證明');
     const approved = isApprovedStatus(opts.status || '');
-    const reviewLine = approved && opts.reviewedAt ? `<div class="cert-review-line" style="font-size:12px;color:#374151;margin-top:2mm;">核准時間：${esc(dateTimeText(opts.reviewedAt))}${opts.reviewerName?`　核准人：${esc(opts.reviewerName)}`:''}</div>` : '';
-
+    const reviewLine = approved && opts.reviewedAt ? `<div class="cert-review-line">核准時間：${esc(dateTimeText(opts.reviewedAt))}${opts.reviewerName?`　核准人：${esc(opts.reviewerName)}`:''}</div>` : '';
     return `
       <section class="cert-doc ${approved?'cert-approved':'cert-preview'}">
         ${mark ? `<div class="cert-watermark">${esc(mark).replace(/\n/g,'<br>')}</div>` : ''}
         <div class="cert-title">${esc(title)}</div>
         <main class="cert-body">
-          <p class="cert-intro" style="width:148mm;max-width:148mm;margin:0 auto 7mm;text-indent:2em;line-height:2;color:#111827;">${esc(intro)}</p>
-          <div class="cert-info-list" style="display:block;width:148mm;max-width:148mm;min-width:148mm;margin:0 auto 7mm;border:1px solid #111;border-bottom:0;box-sizing:border-box;position:static;left:auto;right:auto;float:none;clear:both;transform:none;overflow:hidden;">${fieldRowsHtml(type, data)}</div>
-          <p class="cert-footer-text" style="width:148mm;max-width:148mm;min-width:148mm;margin:3mm auto 8mm;font-size:12px;line-height:1.8;color:#374151;text-indent:2em;">${esc(footer)}</p>
-          <p class="cert-closing" style="width:148mm;max-width:148mm;margin:8mm auto 0;font-size:17px;font-weight:900;letter-spacing:2px;text-align:left;">${esc(closing)}</p>
+          <p class="cert-intro">${esc(intro)}</p>
+          <div class="cert-info-list">${fieldRowsHtml(type, data)}</div>
+          <p class="cert-footer-text">${esc(footer)}</p>
+          <p class="cert-closing">${esc(closing)}</p>
         </main>
-        <footer class="cert-footer" style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8mm;align-items:end;width:160mm;max-width:160mm;margin:9mm auto 0;border-top:1px solid #e5e7eb;padding-top:6mm;box-sizing:border-box;">
-          <div class="cert-bottom-info" style="display:flex;flex-direction:column;gap:4mm;min-width:0;">
-            <div class="cert-brand-bottom" style="display:flex;align-items:center;gap:5mm;min-width:0;">
-              ${template.showBrandLogo !== false ? `<img class="cert-brand-logo-bottom" src="${esc(BRAND.logo)}" alt="柚子樂器 YOU ZI MUSIC" style="width:50mm;max-width:50mm;max-height:18mm;object-fit:contain;display:block;">` : `<div class="cert-brand-text">${esc(BRAND.name)}<span>${esc(BRAND.english)}</span></div>`}
-              <div class="cert-brand-caption" style="font-size:12px;font-weight:900;letter-spacing:1px;color:#111827;line-height:1.6;">對外商號：${esc(BRAND.name)} / ${esc(BRAND.english)}</div>
+        <footer class="cert-footer">
+          <div class="cert-bottom-info">
+            <div class="cert-brand-bottom">
+              ${template.showBrandLogo !== false ? `<img class="cert-brand-logo-bottom" src="${esc(BRAND.logo)}" alt="柚子樂器 YOU ZI MUSIC">` : `<div class="cert-brand-text">${esc(BRAND.name)}<span>${esc(BRAND.english)}</span></div>`}
+              <div class="cert-brand-caption">對外商號：${esc(BRAND.name)} / ${esc(BRAND.english)}</div>
             </div>
-            <div class="cert-issue" style="font-size:13px;line-height:1.75;font-weight:700;color:#111827;">
+            <div class="cert-issue">
               <div>實際政府認證單位：${esc(unit.name)}</div>
               <div>${esc(unit.identifierLabel)}：${esc(unit.identifier)}</div>
               <div>地址：${esc(unit.address)}</div>
@@ -230,153 +206,88 @@
               ${reviewLine}
             </div>
           </div>
-          <div class="cert-stamps" style="display:flex;justify-content:flex-end;gap:4mm;align-items:flex-end;min-width:62mm;">
-            <div class="stamp-box" style="text-align:center;font-size:12px;color:#64748b;font-weight:800;">
-              <img src="${esc(unit.stamp)}" alt="${esc(unit.stampLabel)}" style="display:block;width:30mm;height:30mm;object-fit:contain;margin:0 auto 2mm;">
-              <span>${esc(unit.stampLabel)}</span>
-            </div>
-            <div class="stamp-box personal" style="text-align:center;font-size:12px;color:#64748b;font-weight:800;">
-              <img src="${esc(unit.personalStamp)}" alt="個人章" style="display:block;width:15mm;height:15mm;object-fit:contain;margin:0 auto 2mm;">
-              <span>個人章</span>
-            </div>
+          <div class="cert-stamps">
+            <div class="stamp-box"><img src="${esc(unit.stamp)}" alt="${esc(unit.stampLabel)}"><span>${esc(unit.stampLabel)}</span></div>
+            <div class="stamp-box personal"><img src="${esc(unit.personalStamp)}" alt="個人章"><span>個人章</span></div>
           </div>
         </footer>
       </section>`;
   }
 
-  function bindPreviewImageRefit(doc){
-    if(!doc) return;
-    Array.from(doc.querySelectorAll('img')).forEach(img => {
-      if(img.dataset.certRefitBound === '1') return;
-      img.dataset.certRefitBound = '1';
-      img.addEventListener('load', scheduleFitCertificatePreviews, {once:true});
-      img.addEventListener('error', scheduleFitCertificatePreviews, {once:true});
-    });
+  function injectCertificateStyles(){
+    if(document.getElementById('certificateCommonStyles')) return;
+    const style=document.createElement('style');
+    style.id='certificateCommonStyles';
+    style.textContent=`
+      .cert-doc{width:210mm;min-height:297mm;background:#fff;color:#111827;box-sizing:border-box;padding:20mm 18mm 15mm;position:relative;box-shadow:0 10px 36px rgba(15,23,42,.16);overflow:hidden;font-family:"Noto Sans TC","Microsoft JhengHei",Arial,sans-serif;}
+      .cert-brand-text{text-align:center;font-size:22px;font-weight:900;letter-spacing:3px}.cert-brand-text span{display:block;font-size:12px;letter-spacing:4px;margin-top:5px}
+      .cert-title{text-align:center;font-size:32px;font-weight:950;letter-spacing:8px;margin:0 0 14mm;}
+      .cert-body{font-size:15px;line-height:2;color:#111827}.cert-intro{width:148mm;max-width:148mm;margin:0 auto 7mm;text-indent:2em}.cert-info-list{display:block!important;width:148mm!important;max-width:148mm!important;min-width:0!important;margin:0 auto 7mm!important;border:1px solid #111!important;border-bottom:0!important;box-sizing:border-box!important;position:static!important;left:auto!important;right:auto!important;float:none!important;clear:both!important;transform:none!important}.cert-info-row{display:grid!important;grid-template-columns:34mm minmax(0,1fr)!important;width:100%!important;min-width:0!important;box-sizing:border-box!important;border-bottom:1px solid #111!important;position:static!important;float:none!important;transform:none!important}.cert-info-key,.cert-info-val{box-sizing:border-box!important;min-width:0!important;max-width:none!important;padding:3.2mm 4mm!important;line-height:1.65!important;white-space:normal!important;overflow-wrap:anywhere!important;word-break:break-word!important;position:static!important;float:none!important;transform:none!important}.cert-info-key{display:flex!important;align-items:center!important;justify-content:center!important;text-align:center!important;background:#f8fafc!important;border-right:1px solid #111!important;font-weight:900!important}.cert-info-val{display:flex!important;align-items:center!important;text-align:left!important}.cert-footer-text{width:148mm;max-width:148mm;margin:3mm auto 8mm;text-indent:2em;font-size:12px;line-height:1.8;color:#374151}.cert-closing{font-size:17px;font-weight:900;letter-spacing:2px;margin-top:8mm;text-align:left}.cert-footer{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8mm;align-items:end;width:160mm;max-width:160mm;margin:9mm auto 0;border-top:1px solid #e5e7eb;padding-top:6mm}.cert-bottom-info{display:flex;flex-direction:column;gap:4mm;min-width:0}.cert-brand-bottom{display:flex;align-items:center;gap:5mm;min-width:0}.cert-brand-logo-bottom{width:50mm;max-width:100%;max-height:18mm;object-fit:contain}.cert-brand-caption{font-size:12px;font-weight:900;letter-spacing:1px;color:#111827}.cert-issue{font-size:13px;line-height:1.75;font-weight:700;color:#111827}.cert-review-line{font-size:12px;color:#374151;margin-top:2mm}.cert-stamps{display:flex;justify-content:flex-end;gap:4mm;align-items:flex-end;min-width:62mm}.stamp-box{text-align:center;font-size:12px;color:#64748b;font-weight:800}.stamp-box img{display:block;width:30mm;height:30mm;object-fit:contain;margin:0 auto 2mm}.stamp-box.personal img{width:27mm;height:27mm}.cert-watermark{position:absolute;left:50%;top:47%;transform:translate(-50%,-50%) rotate(-24deg);font-size:34px;line-height:1.5;font-weight:950;color:rgba(185,28,28,.18);border:4px solid rgba(185,28,28,.16);border-radius:12px;padding:8mm 14mm;text-align:center;letter-spacing:4px;z-index:3;pointer-events:none;white-space:nowrap}.cert-preview .cert-body,.cert-preview .cert-footer{position:relative;z-index:1}.cert-scale-wrap{display:flex;justify-content:center;align-items:flex-start;overflow-x:hidden;overflow-y:auto;background:#f8fafc;border:1px solid #e2e8f0;border-radius:20px;padding:16px;min-height:560px;max-width:100%;box-sizing:border-box;text-align:left}.cert-scale-wrap>.cert-doc{display:block;flex:0 0 auto;text-align:left;vertical-align:top;transform-origin:top center!important;margin:0 auto!important;max-width:none!important;}
+      .cert-modal{position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9999;display:none;align-items:flex-start;justify-content:center;padding:22px;overflow:auto}.cert-modal.show{display:flex}.cert-modal-panel{background:#fff;border-radius:24px;padding:16px;max-width:min(100%,980px);box-shadow:0 25px 70px rgba(15,23,42,.32)}.cert-modal-actions{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px}.cert-modal-actions .right{display:flex;gap:8px;flex-wrap:wrap}.cert-modal-actions button{width:auto}.cert-status-pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:5px 10px;font-size:12px;font-weight:900;background:#eef7f2;color:#166534}.cert-status-pill.pending{background:#fff7ed;color:#9a3412}.cert-status-pill.rejected{background:#fef2f2;color:#991b1b}@media(max-width:780px){.cert-scale-wrap{min-height:430px;padding:10px}.cert-modal{padding:10px}.cert-watermark{font-size:22px}}@media print{html,body{margin:0!important;background:#fff!important}body *{visibility:hidden!important}.print-host,.print-host *{visibility:visible!important}.print-host{position:absolute!important;left:0!important;top:0!important;width:210mm!important}.cert-doc{box-shadow:none!important;margin:0!important;transform:none!important;zoom:1!important}@page{size:A4 portrait;margin:0}}
+    `;
+    document.head.appendChild(style);
   }
 
-  function removeOldScaleStage(wrap, doc){
-    const stage = doc && doc.parentElement && doc.parentElement.classList && doc.parentElement.classList.contains('cert-scale-stage') ? doc.parentElement : null;
-    if(stage && stage.parentNode === wrap){
-      wrap.insertBefore(doc, stage);
-      stage.remove();
-    }
-  }
 
   function fitCertificatePreviews(){
     const wraps = Array.from(document.querySelectorAll('.cert-scale-wrap'));
     wraps.forEach(wrap => {
-      const doc = wrap.querySelector('.cert-doc');
+      const doc = wrap.querySelector(':scope > .cert-doc') || wrap.querySelector('.cert-doc');
       if(!doc) return;
-
-      removeOldScaleStage(wrap, doc);
-      bindPreviewImageRefit(doc);
-
-      // 預覽區固定用合約單／集點卡同一種邏輯：容器負責置中，A4 從左上角縮放。
-      // 不使用 top center，避免縮小後紙張往右邊跑。
-      wrap.style.display = 'flex';
-      wrap.style.justifyContent = 'center';
-      wrap.style.alignItems = 'flex-start';
-      wrap.style.textAlign = 'left';
-      wrap.style.overflow = 'auto';
-
-      // 先還原 A4，再量原始尺寸，避免重複 fit 後尺寸越算越歪。
-      doc.style.position = 'relative';
-      doc.style.left = '';
-      doc.style.top = '';
-      doc.style.display = 'block';
-      doc.style.flex = '0 0 auto';
-      doc.style.maxWidth = 'none';
+      const style = global.getComputedStyle ? global.getComputedStyle(wrap) : null;
+      const padX = style ? (parseFloat(style.paddingLeft)||0) + (parseFloat(style.paddingRight)||0) : 32;
+      doc.style.zoom = '';
       doc.style.transform = 'none';
-      doc.style.transformOrigin = 'top left';
-      doc.style.margin = '0';
-      doc.style.marginLeft = '0';
-      doc.style.marginRight = '0';
-      doc.style.marginBottom = '0';
-
-      const wrapStyle = global.getComputedStyle ? global.getComputedStyle(wrap) : null;
-      const padX = wrapStyle ? (parseFloat(wrapStyle.paddingLeft)||0) + (parseFloat(wrapStyle.paddingRight)||0) : 32;
-      const available = Math.max(120, (wrap.clientWidth || Math.round(wrap.getBoundingClientRect().width) || 0) - padX - 2);
-      const naturalWidth = doc.offsetWidth || Math.round(doc.getBoundingClientRect().width) || 794;
-      const naturalHeight = doc.offsetHeight || doc.scrollHeight || Math.round(doc.getBoundingClientRect().height) || 1123;
-      const scale = Math.min(1, Math.max(0.18, available / naturalWidth));
-      const scaledWidth = Math.ceil(naturalWidth * scale);
-      const scaledHeight = Math.ceil(naturalHeight * scale);
-
-      // CSS transform 只會改變視覺大小，不會改變排版佔位。
-      // 用負 margin 把佔位縮到「縮放後尺寸」，這是集點卡穩定不跑版的核心做法。
+      doc.style.marginLeft = 'auto';
+      doc.style.marginRight = 'auto';
+      doc.style.marginBottom = '0px';
+      const paperW = doc.offsetWidth || 794;
+      const paperH = doc.offsetHeight || 1123;
+      const available = Math.max(260, (wrap.clientWidth || paperW) - padX - 8);
+      const scale = Math.min(1, Math.max(0.28, available / paperW));
       doc.style.transform = `scale(${scale})`;
-      doc.style.marginRight = `${scaledWidth - naturalWidth}px`;
-      doc.style.marginBottom = `${scaledHeight - naturalHeight}px`;
+      doc.style.marginBottom = `${Math.round(paperH * (scale - 1))}px`;
       wrap.dataset.certScale = String(scale.toFixed(3));
     });
   }
   function scheduleFitCertificatePreviews(){
     if(global.__yzCertFitTimer) global.clearTimeout(global.__yzCertFitTimer);
-    global.__yzCertFitTimer = global.setTimeout(() => {
-      if(global.requestAnimationFrame){
-        global.requestAnimationFrame(() => {
-          fitCertificatePreviews();
-          global.requestAnimationFrame(fitCertificatePreviews);
-        });
-      }else{
-        fitCertificatePreviews();
-      }
-    }, 30);
+    global.__yzCertFitTimer = global.setTimeout(fitCertificatePreviews, 40);
   }
 
-  function ensureObserver(){
-    if(global.__yzCertObserverReady) return;
-    global.__yzCertObserverReady = true;
-    if(global.MutationObserver && document && document.body){
-      const mo = new MutationObserver((mutations) => {
-        for(const m of mutations){
-          if(m.type === 'childList' && (m.addedNodes.length || m.removedNodes.length)){
-            scheduleFitCertificatePreviews();
-            break;
-          }
-        }
-      });
-      mo.observe(document.body, {childList:true, subtree:true});
-      global.__yzCertObserver = mo;
-    }
-    if(global.addEventListener){
-      global.addEventListener('resize', scheduleFitCertificatePreviews);
-      global.addEventListener('load', scheduleFitCertificatePreviews);
-    }
-  }
 
-  function injectCertificateStyles(){
-    if(document.getElementById('certificateCommonStyles')){ ensureObserver(); scheduleFitCertificatePreviews(); return; }
-    const style=document.createElement('style');
-    style.id='certificateCommonStyles';
-    style.textContent=`
-      .cert-doc{width:210mm;min-height:297mm;background:#fff;color:#111827;box-sizing:border-box;padding:20mm 18mm 15mm;position:relative;box-shadow:0 10px 36px rgba(15,23,42,.16);overflow:hidden;font-family:"Noto Sans TC","Microsoft JhengHei",Arial,sans-serif;}
-      .cert-title{text-align:center;font-size:32px;font-weight:950;letter-spacing:8px;margin:0 0 14mm;}
-      .cert-brand-text{text-align:center;font-size:22px;font-weight:900;letter-spacing:3px}.cert-brand-text span{display:block;font-size:12px;letter-spacing:4px;margin-top:5px}
-      .cert-watermark{position:absolute;left:50%;top:47%;transform:translate(-50%,-50%) rotate(-24deg);font-size:34px;line-height:1.5;font-weight:950;color:rgba(185,28,28,.18);border:4px solid rgba(185,28,28,.16);border-radius:12px;padding:8mm 14mm;text-align:center;letter-spacing:4px;z-index:3;pointer-events:none;white-space:nowrap}
-      .cert-preview .cert-body,.cert-preview .cert-footer{position:relative;z-index:1}
-      .cert-scale-wrap{display:flex;justify-content:center;align-items:flex-start;overflow:auto;background:#f8fafc;border:1px solid #e2e8f0;border-radius:20px;padding:16px;min-height:560px;max-width:100%;box-sizing:border-box;text-align:left}
-      .cert-scale-wrap>.cert-doc,.cert-scale-wrap .cert-doc{display:block;flex:0 0 auto;margin:0;max-width:none;transform-origin:top left;}
-      .cert-modal{position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9999;display:none;align-items:flex-start;justify-content:center;padding:22px;overflow:auto}.cert-modal.show{display:flex}
-      .cert-modal-panel{background:#fff;border-radius:24px;padding:16px;max-width:min(100%,980px);box-shadow:0 25px 70px rgba(15,23,42,.32)}
-      .cert-modal-actions{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px}.cert-modal-actions .right{display:flex;gap:8px;flex-wrap:wrap}.cert-modal-actions button{width:auto}
-      .cert-status-pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:5px 10px;font-size:12px;font-weight:900;background:#eef7f2;color:#166534}.cert-status-pill.pending{background:#fff7ed;color:#9a3412}.cert-status-pill.rejected{background:#fef2f2;color:#991b1b}
-      @media(max-width:780px){
-        .cert-scale-wrap{padding:10px;min-height:430px}
-        .cert-watermark{font-size:22px}
-      }
-      @media print{
-        html,body{margin:0!important;background:#fff!important}
-        body *{visibility:hidden!important}
-        .print-host,.print-host *{visibility:visible!important}
-        .print-host{position:absolute!important;left:0!important;top:0!important;width:210mm!important}
-        .cert-doc{box-shadow:none!important;margin:0!important;margin-right:0!important;margin-bottom:0!important;transform:none!important}
-        @page{size:A4 portrait;margin:0}
-      }
-    `;
-    document.head.appendChild(style);
-    ensureObserver();
-    scheduleFitCertificatePreviews();
+  function renderPreviewFrame(container, opts){
+    if(!container) return;
+    injectCertificateStyles();
+    const safeOpts = opts || {};
+    const html = certificateHtml(safeOpts);
+    const css = (document.getElementById('certificateCommonStyles') && document.getElementById('certificateCommonStyles').textContent) || '';
+    const available = Math.max(320, (container.clientWidth || 900) - 24);
+    const paperW = 794;
+    const paperH = 1123;
+    const scale = Math.min(1, Math.max(0.36, available / paperW));
+    const frameW = Math.ceil(paperW * scale);
+    const frameH = Math.ceil(paperH * scale);
+    const doc = `<!doctype html><html><head><meta charset="utf-8"><base href="${esc(location.href.replace(/[^\/]*$/,''))}"><style>${css}
+      html,body{margin:0!important;padding:0!important;background:#fff!important;width:${paperW}px!important;height:${paperH}px!important;overflow:hidden!important;}
+      .cert-doc{box-shadow:none!important;margin:0!important;transform:scale(${scale})!important;transform-origin:top left!important;}
+      @media print{.cert-doc{transform:none!important;}}
+    </style></head><body>${html}</body></html>`;
+    container.innerHTML = '';
+    container.style.textAlign = 'center';
+    container.style.overflow = 'auto';
+    const iframe = document.createElement('iframe');
+    iframe.className = 'cert-preview-frame';
+    iframe.setAttribute('title','A4 證明預覽');
+    iframe.style.width = frameW + 'px';
+    iframe.style.height = frameH + 'px';
+    iframe.style.border = '0';
+    iframe.style.display = 'block';
+    iframe.style.margin = '0 auto';
+    iframe.style.background = '#fff';
+    iframe.style.boxShadow = '0 10px 36px rgba(15,23,42,.16)';
+    iframe.srcdoc = doc;
+    container.appendChild(iframe);
   }
 
   async function verifyIdPassword(expected){
@@ -392,10 +303,9 @@
     const w=window.open('', '_blank');
     if(!w){ alert('瀏覽器阻擋彈出視窗，請允許彈出視窗後再試。'); return; }
     w.document.open();
-    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><base href="${esc(base)}"><title>列印證明</title><style>${document.getElementById('certificateCommonStyles')?.textContent||''}body{margin:0;background:#fff}.print-host{width:210mm;margin:0 auto}.print-host .cert-doc{transform:none!important;margin:0!important;margin-right:0!important;margin-bottom:0!important}</style></head><body><div class="print-host">${html}</div><script>window.onload=function(){setTimeout(function(){window.print();},350)}<\/script></body></html>`);
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><base href="${esc(base)}"><title>列印證明</title><style>${document.getElementById('certificateCommonStyles')?.textContent||''}body{margin:0;background:#fff}.print-host{width:210mm;margin:0 auto}</style></head><body><div class="print-host">${html}</div><script>window.onload=function(){setTimeout(function(){window.print();},350)}<\/script></body></html>`);
     w.document.close();
   }
-
   async function downloadEncryptedPdfFromElement(el, fileName, password){
     if(!el) throw new Error('找不到預覽內容。');
     const pass=upperId(password);
@@ -403,12 +313,12 @@
     if(!global.html2canvas || !global.jspdf || !global.jspdf.jsPDF){
       throw new Error('PDF 元件尚未載入，請確認網路後重整頁面。');
     }
+    const oldZoom = el.style.zoom;
     const oldTransform = el.style.transform;
     const oldMarginBottom = el.style.marginBottom;
-    const oldMarginRight = el.style.marginRight;
+    el.style.zoom = '';
     el.style.transform = 'none';
-    el.style.marginRight = '0';
-    el.style.marginBottom = '0';
+    el.style.marginBottom = '0px';
     try{
       const canvas = await global.html2canvas(el, {scale:2, useCORS:true, backgroundColor:'#ffffff'});
       const imgData = canvas.toDataURL('image/jpeg', 0.95);
@@ -416,14 +326,18 @@
       pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
       pdf.save(fileName || 'certificate.pdf');
     } finally {
+      el.style.zoom = oldZoom || '';
       el.style.transform = oldTransform || '';
-      el.style.marginRight = oldMarginRight || '';
       el.style.marginBottom = oldMarginBottom || '';
       scheduleFitCertificatePreviews();
     }
   }
-
   function statusPill(status){ const s=statusLabel(status); const cls=s==='已核准'?'':(s==='已退回'?' rejected':' pending'); return `<span class="cert-status-pill${cls}">${esc(s)}</span>`; }
 
-  global.YZ_CERT = {ORG_UNITS, BRAND, LEGAL_NOTICE, TEACHER_IDENTITY_OPTIONS, LESSON_TYPE_OPTIONS, EMPLOYMENT_WORK_NATURE_OPTIONS, clean, esc, upperId, today, dateOnly, dateTimeText, rocDate, unitByKey, typeLabel, docTitle, statusLabel, isApprovedStatus, watermarkText, defaultTemplate, normalizeTemplate, normalizeApplication, applicationToDocumentData, certificateHtml, injectCertificateStyles, fitCertificatePreviews, scheduleFitCertificatePreviews, verifyIdPassword, printHtml, downloadEncryptedPdfFromElement, statusPill, userIdOf, identityTypeOfUser, identityLabelOfUser};
+  if(!global.__yzCertResizeBound){
+    global.__yzCertResizeBound = true;
+    global.addEventListener && global.addEventListener('resize', scheduleFitCertificatePreviews);
+  }
+
+  global.YZ_CERT = {ORG_UNITS, BRAND, LEGAL_NOTICE, TEACHER_IDENTITY_OPTIONS, LESSON_TYPE_OPTIONS, EMPLOYMENT_WORK_NATURE_OPTIONS, clean, esc, upperId, today, dateOnly, dateTimeText, rocDate, unitByKey, typeLabel, docTitle, statusLabel, isApprovedStatus, watermarkText, defaultTemplate, normalizeTemplate, normalizeApplication, applicationToDocumentData, certificateHtml, injectCertificateStyles, verifyIdPassword, printHtml, downloadEncryptedPdfFromElement, fitCertificatePreviews, scheduleFitCertificatePreviews, renderPreviewFrame, statusPill, userIdOf, identityTypeOfUser, identityLabelOfUser};
 })(window);

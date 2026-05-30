@@ -7,15 +7,6 @@
   <link rel="stylesheet" href="style.css?v=certificates-20260530">
   <style>
     body{background:#f5f7fb}.cert-admin-wrap{max-width:1500px;margin:0 auto;padding:18px}.page-card{background:#fff;border:1px solid #e2e8f0;border-radius:24px;padding:20px;box-shadow:0 10px 30px rgba(15,23,42,.06)}.layout{display:grid;grid-template-columns:minmax(330px,430px) minmax(0,1fr);gap:16px;align-items:start}.subcard{background:#fff;border:1px solid #e2e8f0;border-radius:20px;padding:18px;box-shadow:0 8px 24px rgba(15,23,42,.04)}.field{margin-bottom:12px}.field label{display:block;font-weight:900;color:#17324d;margin-bottom:6px}.field input,.field select,.field textarea{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:12px;padding:10px 12px;font-size:15px;background:#fff}.field textarea{resize:vertical;line-height:1.6}.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}.mini-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.mini-actions .btn{width:auto}.muted-tip{font-size:13px;color:#64748b;line-height:1.8}.preview-shell{background:#f7fafc;border:1px solid #e2e8f0;border-radius:20px;padding:14px;position:sticky;top:16px;overflow:auto}.preview-toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}.history-list{display:grid;gap:8px;margin-top:10px}.history-item{border:1px solid #e2e8f0;border-radius:14px;padding:10px;background:#fbfdff;display:flex;justify-content:space-between;gap:10px;align-items:center}.history-meta{font-size:13px;color:#64748b;line-height:1.7}.message{margin-top:10px;color:#1f7a5a;font-weight:800;font-size:13px}.warning-box{border:1px solid #fed7aa;background:#fff7ed;color:#9a3412;border-radius:14px;padding:12px;font-size:13px;line-height:1.8;margin-bottom:12px}@media(max-width:1120px){.layout{grid-template-columns:1fr}.preview-shell{position:static}}@media(max-width:640px){.row2{grid-template-columns:1fr}.mini-actions .btn{width:100%}}
-
-    /* 管理頁 A4 預覽專用：不要使用共用 cert-scale-wrap，避免右側欄位把 A4 推到右邊 */
-    .layout > *{min-width:0;}
-    .preview-shell{overflow:hidden;}
-    .admin-cert-preview-box{width:100%;max-width:100%;box-sizing:border-box;background:#f8fafc;border:1px solid #e2e8f0;border-radius:20px;padding:16px;min-height:560px;overflow:hidden;}
-    .admin-cert-frame{position:relative;margin:0 auto;overflow:visible;}
-    .admin-cert-stage{position:absolute;left:0;top:0;transform-origin:top left;}
-    .admin-cert-stage>.cert-doc{display:block;margin:0!important;transform:none!important;transform-origin:top left!important;max-width:none!important;}
-    @media(max-width:780px){.admin-cert-preview-box{padding:10px;min-height:430px;}}
   </style>
 </head>
 <body onload="initPage()" class="admin-wide-page">
@@ -40,18 +31,6 @@
             <div class="mini-actions"><button class="btn" type="button" onclick="renderPreview()">預覽</button><button class="btn" type="button" onclick="saveTemplate()">儲存範本</button></div>
             <div id="msg" class="message"></div>
           </div>
-          
-          <div class="subcard" style="margin-top:16px">
-            <h2 style="margin-top:0;color:#17324d">管理者直接開立</h2>
-            <div class="muted-tip">這裡可由管理者直接輸入資料並立即列印／下載加密 PDF，不需再送主管審核。</div>
-            <div class="row2" style="margin-top:10px"><div class="field"><label>姓名</label><input id="directName"></div><div class="field"><label>身分證字號</label><input id="directIdNumber"></div></div>
-            <div class="row2"><div class="field"><label>職稱</label><input id="directJobTitle"></div><div class="field"><label>工作性質</label><select id="directWorkNature"></select></div></div>
-            <div class="row2"><div class="field"><label>到職日期</label><input id="directHireDate" type="date"></div><div class="field"><label>任職狀態</label><select id="directStillWorking"><option value="true">現在在職</option><option value="false">已離職</option></select></div></div>
-            <div class="row2"><div class="field"><label>開立單位</label><select id="directUnitKey"><option value="shangpin">尚品樂器行</option><option value="kaili">台中市私立凱立音樂短期補習班</option></select></div><div class="field"><label>開立日期</label><input id="directIssueDate" type="date"></div></div>
-            <div class="mini-actions"><button class="btn" type="button" onclick="previewDirectIssue()">帶入右側預覽</button><button class="btn" type="button" onclick="printDirectIssue()">直接列印</button><button class="btn" type="button" onclick="downloadDirectIssuePdf()">下載加密 PDF</button></div>
-            <div class="muted-tip" style="margin-top:8px">下載加密 PDF 時，密碼會自動使用這位員工的身分證字號（英文字母自動轉大寫）。</div>
-          </div>
-
           <div class="subcard" style="margin-top:16px">
             <h2 style="margin-top:0;color:#17324d">範本歷史紀錄</h2>
             <div class="muted-tip">儲存後會保留歷史版本，可預覽套用或刪除。</div>
@@ -59,8 +38,8 @@
           </div>
         </div>
         <div class="preview-shell">
-          <div class="preview-toolbar"><div><div style="font-size:18px;font-weight:900;color:#17324d">A4 預覽</div><div class="muted-tip">文件最上方固定為證明書標題；柚子樂器品牌區放在下方、實際政府認證單位上方。</div></div></div>
-          <div id="previewArea" class="admin-cert-preview-box"></div>
+          <div class="preview-toolbar"><div><div style="font-size:18px;font-weight:900;color:#17324d">A4 預覽</div><div class="muted-tip">A4 預覽採獨立隔離顯示，避免受到全站表格樣式影響。</div></div></div>
+          <div id="previewArea" class="cert-scale-wrap"></div>
         </div>
       </div>
     </div>
@@ -68,11 +47,9 @@
   <script src="config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="firebase-client.js?v=certificates-20260530"></script>
   <script src="app.js?v=certificates-20260530"></script>
-  <script src="certificate-common.js?v=certificates-20260530-admin-a4-center"></script>
+  <script src="certificate-common.js?v=cert-preview-iframe-fix-20260530"></script>
   <script>
     const CERT_TYPE='employment';
     let currentTemplate=null;
@@ -97,132 +74,12 @@
       renderPreview();
     }
     function sampleData(){
+      if(CERT_TYPE==='teaching') return {type:'teaching',name:'王小明',idNumber:'A123456789',teacherIdentity:'外聘老師',subject:'鋼琴',periodStart:'2024-08-01',periodEnd:'',stillTeaching:true,lessonType:'個別課',location:'台中市豐原區圓環東路347號',unitKey:document.getElementById('defaultUnitKey').value||'kaili',issueDate:YZ_CERT.today()};
       return {type:'employment',name:'王小明',idNumber:'A123456789',jobTitle:'專職老師',workNature:'教學',hireDate:'2024-08-01',stillWorking:true,unitKey:document.getElementById('defaultUnitKey').value||'shangpin',issueDate:YZ_CERT.today()};
     }
-    let previewMode='template';
-    function fitAdminCertificatePreview(){
-      const box=document.getElementById('previewArea');
-      if(!box) return;
-      const frame=box.querySelector('.admin-cert-frame');
-      const stage=box.querySelector('.admin-cert-stage');
-      const doc=box.querySelector('.cert-doc');
-      if(!frame || !stage || !doc) return;
-      doc.style.transform='none';
-      doc.style.transformOrigin='top left';
-      doc.style.margin='0';
-      doc.style.maxWidth='none';
-      stage.style.transform='none';
-      stage.style.width='auto';
-      stage.style.height='auto';
-      frame.style.width='auto';
-      frame.style.height='auto';
-      const boxStyle=window.getComputedStyle(box);
-      const padX=(parseFloat(boxStyle.paddingLeft)||0)+(parseFloat(boxStyle.paddingRight)||0);
-      const available=Math.max(260, (box.clientWidth||0)-padX);
-      const naturalWidth=doc.offsetWidth || 794;
-      const naturalHeight=doc.offsetHeight || 1123;
-      const scale=Math.min(1, Math.max(0.3, available / naturalWidth));
-      const scaledWidth=Math.ceil(naturalWidth*scale);
-      const scaledHeight=Math.ceil(naturalHeight*scale);
-      frame.style.width=scaledWidth+'px';
-      frame.style.height=scaledHeight+'px';
-      stage.style.width=naturalWidth+'px';
-      stage.style.height=naturalHeight+'px';
-      stage.style.transform='scale('+scale+')';
-      box.dataset.adminCertScale=String(scale.toFixed(3));
-    }
-    function scheduleAdminCertificatePreviewFit(){
-      clearTimeout(window.__adminCertFitTimer);
-      window.__adminCertFitTimer=setTimeout(fitAdminCertificatePreview,30);
-    }
-    function renderAdminCertificatePreview(html){
-      const box=document.getElementById('previewArea');
-      box.innerHTML='<div class="admin-cert-frame"><div class="admin-cert-stage">'+html+'</div></div>';
-      const imgs=box.querySelectorAll('img');
-      imgs.forEach(img=>img.addEventListener('load', scheduleAdminCertificatePreviewFit, {once:true}));
-      scheduleAdminCertificatePreviewFit();
-      setTimeout(fitAdminCertificatePreview,80);
-      setTimeout(fitAdminCertificatePreview,260);
-    }
-    window.addEventListener('resize', scheduleAdminCertificatePreviewFit);
-
-    function fillWorkNatureOptions(){
-      const select=document.getElementById('directWorkNature');
-      if(!select || select.dataset.ready==='true') return;
-      select.innerHTML = YZ_CERT.EMPLOYMENT_WORK_NATURE_OPTIONS.map(x=>`<option value="${YZ_CERT.esc(x)}">${YZ_CERT.esc(x)}</option>`).join('');
-      select.dataset.ready='true';
-    }
-    function applyDirectDefaults(){
-      fillWorkNatureOptions();
-      document.getElementById('directName').value='';
-      document.getElementById('directIdNumber').value='';
-      document.getElementById('directJobTitle').value='專職老師';
-      document.getElementById('directWorkNature').value='教學';
-      document.getElementById('directHireDate').value='';
-      document.getElementById('directStillWorking').value='true';
-      document.getElementById('directUnitKey').value=document.getElementById('defaultUnitKey').value||'shangpin';
-      document.getElementById('directIssueDate').value=YZ_CERT.today();
-    }
-    function readDirectIssueData(){
-      return {
-        type:'employment',
-        name:(document.getElementById('directName').value||'').trim(),
-        idNumber:YZ_CERT.upperId(document.getElementById('directIdNumber').value||''),
-        jobTitle:(document.getElementById('directJobTitle').value||'').trim(),
-        workNature:(document.getElementById('directWorkNature').value||'').trim(),
-        hireDate:document.getElementById('directHireDate').value||'',
-        stillWorking:document.getElementById('directStillWorking').value!=='false',
-        unitKey:document.getElementById('directUnitKey').value||'shangpin',
-        issueDate:document.getElementById('directIssueDate').value||YZ_CERT.today()
-      };
-    }
-    function afterRenderPreview(){ scheduleAdminCertificatePreviewFit(); setTimeout(fitAdminCertificatePreview,80); setTimeout(fitAdminCertificatePreview,260); }
-    function renderPreview(mode){
-      if(mode) previewMode=mode;
+    function renderPreview(){
       const t=readTemplate();
-      const useDirect = previewMode==='direct';
-      const html=YZ_CERT.certificateHtml({
-        type:CERT_TYPE,
-        template:t,
-        data:useDirect ? readDirectIssueData() : sampleData(),
-        status:useDirect ? '已核准' : '待主管審核',
-        mode:useDirect ? 'approved' : 'editing'
-      });
-      renderAdminCertificatePreview(html);
-      afterRenderPreview();
-    }
-    function previewDirectIssue(){
-      previewMode='direct';
-      document.getElementById('directIdNumber').value = YZ_CERT.upperId(document.getElementById('directIdNumber').value||'');
-      renderPreview('direct');
-    }
-    function directIssueHtml(){
-      return YZ_CERT.certificateHtml({type:CERT_TYPE,template:readTemplate(),data:readDirectIssueData(),status:'已核准',mode:'approved'});
-    }
-    function validateDirectIssue(){
-      const d=readDirectIssueData();
-      if(!d.name) throw new Error('請先填寫姓名。');
-      if(!d.idNumber) throw new Error('請先填寫身分證字號。');
-      if(!d.jobTitle) throw new Error('請先填寫職稱。');
-      if(!d.hireDate) throw new Error('請先填寫到職日期。');
-      return d;
-    }
-    function printDirectIssue(){
-      try{ validateDirectIssue(); previewDirectIssue(); YZ_CERT.printHtml(directIssueHtml()); }
-      catch(e){ alert(e.message||e); }
-    }
-    async function downloadDirectIssuePdf(){
-      try{
-        const d=validateDirectIssue();
-        previewDirectIssue();
-        const host=document.createElement('div');
-        host.style.position='fixed'; host.style.left='-99999px'; host.style.top='0'; host.style.zIndex='-1';
-        host.innerHTML=directIssueHtml();
-        document.body.appendChild(host);
-        const el=host.querySelector('.cert-doc');
-        await YZ_CERT.downloadEncryptedPdfFromElement(el, `在職證明_${d.name||'未命名'}.pdf`, d.idNumber);
-        document.body.removeChild(host);
-      }catch(e){ alert(e.message||e); }
+      YZ_CERT.renderPreviewFrame(document.getElementById('previewArea'), {type:CERT_TYPE,template:t,data:sampleData(),status:'待主管審核',mode:'editing'});
     }
     async function loadTemplate(){
       try{ const r=await api('getCertificateTemplate',{certificateType:CERT_TYPE}); applyTemplate(r.template||r.row||{}); }catch(e){ applyTemplate(YZ_CERT.defaultTemplate(CERT_TYPE)); msg('目前使用預設範本。',true); }
@@ -241,10 +98,8 @@
     async function deleteHistory(id){ if(!confirm('確定刪除這筆歷史範本？')) return; try{ const r=await api('deleteCertificateTemplateHistory',{certificateType:CERT_TYPE,historyId:id}); if(!r.ok) throw new Error(r.message||'刪除失敗'); await loadHistory(); }catch(e){ alert(e.message); } }
     async function initPage(){
       fillHeader(); const user=requireLogin(); if(!user) return; if(!hasSettingsZoneAccess(user)){location.href='dashboard.html';return;} setPortalMode('settings'); YZ_CERT.injectCertificateStyles();
-      ['title','defaultUnitKey','introText','footerText','closingText','showBrandLogo','watermarkPending','watermarkRejected'].forEach(id=>{const el=document.getElementById(id); if(el) el.addEventListener('input',()=>renderPreview(previewMode)); if(el) el.addEventListener('change',()=>{ if(id==='defaultUnitKey' && document.getElementById('directUnitKey')) document.getElementById('directUnitKey').value=el.value||'shangpin'; renderPreview(previewMode); });});
-      ['directName','directIdNumber','directJobTitle','directWorkNature','directHireDate','directStillWorking','directUnitKey','directIssueDate'].forEach(id=>{ const el=document.getElementById(id); if(el) el.addEventListener('input', ()=>{ if(previewMode==='direct') renderPreview('direct'); }); if(el) el.addEventListener('change', ()=>{ if(previewMode==='direct') renderPreview('direct'); }); });
-      applyDirectDefaults();
-      await loadTemplate(); await loadHistory(); renderPreview('template');
+      ['title','defaultUnitKey','introText','footerText','closingText','showBrandLogo','watermarkPending','watermarkRejected'].forEach(id=>{const el=document.getElementById(id); if(el) el.addEventListener('input',renderPreview); if(el) el.addEventListener('change',renderPreview);});
+      await loadTemplate(); await loadHistory();
     }
   </script>
 </body>
