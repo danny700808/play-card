@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>估價單合約單</title>
+  <title>估價單／合約／禮物集點單</title>
   <link rel="stylesheet" href="style.css">
   <style>
     .hub-wrap{max-width:980px;margin:0 auto}
@@ -29,12 +29,12 @@
     <div class="card hub-wrap">
       <div class="topbar">
         <div>
-          <h1 class="title" style="margin:0">估價單合約單</h1>
+          <h1 class="title" style="margin:0">估價單／合約／禮物集點單</h1>
           <div class="welcome">歡迎 <span data-user-name></span></div>
         </div>
         <button class="btn secondary" style="width:auto;padding:10px 14px" onclick="logout()">登出</button>
       </div>
-      <div style="margin:8px 0 18px;color:#64748b;line-height:1.8">請先選擇要處理的是估價單還是合約。兩者操作方式相同，都是左邊填寫、右邊預覽與列印。</div>
+      <div style="margin:8px 0 18px;color:#64748b;line-height:1.8">請先選擇要處理的項目。估價單與合約維持原本流程；禮物集點單可直接產生 A4 預覽，並列印或另存 PDF。</div>
       <div class="hub-grid">
         <a class="hub-card" href="quotation-admin.html">
           <div class="hub-mark">模式一</div>
@@ -45,6 +45,11 @@
           <div class="hub-mark">模式二</div>
           <div class="hub-title">合約</div>
           <div class="hub-desc">進入設備租賃契約書模式。左邊填寫、右邊預覽，列印版型與預覽一致。</div>
+        </a>
+        <a class="hub-card" href="gift-point-card-admin.html">
+          <div class="hub-mark">模式三</div>
+          <div class="hub-title">禮物集點單</div>
+          <div class="hub-desc">製作柚子樂器集點卡。每張卡一列 10 格，可 A4 預覽、直接列印，或另存 PDF。</div>
         </a>
       </div>
     </div>
