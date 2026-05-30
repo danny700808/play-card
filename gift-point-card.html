@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>集點卡</title>
+  <link rel="stylesheet" href="style.css?v=20260530forms1">
+  <style>
+    :root{
+      --gift-green:#1f7a5a;
+      --gift-yellow:#fff4bf;
+      --gift-ink:#17324d;
+    }
+    body{background:#eef2f6}
+    .gift-view-wrap{max-width:1160px;margin:0 auto;padding:18px 16px 36px}
+    .page-return-wrap{margin-bottom:12px}
+    .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:0;border-radius:14px;background:#1f7a5a;color:#fff;padding:11px 15px;font-weight:900;text-decoration:none;cursor:pointer}
+    .btn.secondary{background:#e2e8f0;color:#17324d}
+    .gift-page-card{background:#fff;border:1px solid #e2e8f0;border-radius:24px;padding:20px;box-shadow:0 10px 30px rgba(15,23,42,.06)}
+    .gift-topbar{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+    .gift-title-main{margin:0;color:#17324d;font-size:30px;line-height:1.15;font-weight:950}
+    .muted-tip{font-size:13px;color:#64748b;line-height:1.8;font-weight:800}
+    .preview-toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+    .mini-actions{display:flex;gap:8px;flex-wrap:wrap;margin:0}
+    .preview-shell{background:#f7fafc;border:1px solid #e2e8f0;border-radius:20px;padding:14px;overflow:auto}
+    .sheet-scale-wrap{display:flex;justify-content:center;align-items:flex-start;overflow:auto;padding:8px;min-height:420px}
+    .a4-sheet{width:210mm;min-height:297mm;background:#fff;box-shadow:0 10px 35px rgba(15,23,42,.12);box-sizing:border-box;padding:10mm 10mm 9mm;display:grid;grid-template-rows:1fr;margin:0 auto;break-after:page}
+    .a4-main-card{position:relative;border:1.5px solid #9ec8b6;border-radius:20px;background:linear-gradient(135deg,#fff 0%,#fff 58%,#fff8d8 100%);padding:10mm 9mm 8mm;box-sizing:border-box;overflow:hidden;display:grid;grid-template-rows:auto auto 1fr auto;gap:5mm;min-height:100%}
+    .a4-main-card:before{content:"";position:absolute;right:-18mm;top:-18mm;width:58mm;height:58mm;border-radius:50%;background:rgba(31,122,90,.10)}
+    .a4-main-card:after{content:"♪";position:absolute;right:11mm;top:8mm;font-size:28px;color:rgba(31,122,90,.20);font-weight:900}
+    .gift-cut{position:absolute;inset:2mm;border:1px dashed rgba(148,163,184,.55);border-radius:18px;pointer-events:none}
+    .gift-head{position:relative;display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+    .gift-title{font-size:30px;font-weight:950;letter-spacing:1px;color:var(--gift-ink);line-height:1.15;margin:0}
+    .gift-subtitle{font-size:15px;color:#5f7086;font-weight:800;margin-top:4px;line-height:1.5}
+    .gift-badge{border:1px solid #f1c453;background:var(--gift-yellow);border-radius:999px;padding:7px 12px;font-size:13px;font-weight:950;color:#7c4a03;white-space:nowrap;transform:rotate(-3deg)}
+    .gift-info{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:#334155;font-weight:800;position:relative}
+    .gift-line-field{border-bottom:1px solid #94a3b8;min-height:20px;padding-bottom:2px;min-width:120px;flex:1 1 180px}
+    .gift-points-grid{display:grid;grid-template-columns:repeat(10,1fr);gap:2.4mm;align-content:start}
+    .gift-point{aspect-ratio:1/1;border:1.5px solid #9ec8b6;border-radius:10px;background:#fff;display:flex;align-items:center;justify-content:center;color:rgba(31,122,90,.38);font-size:14px;font-weight:900;box-shadow:inset 0 0 0 2px rgba(31,122,90,.04)}
+    .gift-rules{position:relative;border-top:1px dashed #bdd6c9;padding-top:4mm;color:#334155;font-size:12px;line-height:1.55;display:grid;gap:1.5mm}
+    .gift-rules-title{font-weight:950;color:#17324d}
+    .message{margin-top:10px;color:#1f7a5a;font-weight:900;font-size:13px}
+    @media(max-width:1120px){.sheet-scale-wrap{justify-content:flex-start}.a4-sheet{transform:scale(.72);transform-origin:top left;margin-right:-58mm;margin-bottom:-82mm}}
+    @media(max-width:640px){.gift-view-wrap{padding:14px 12px 28px}.gift-title-main{font-size:26px}.a4-sheet{transform:scale(.46);margin-right:-115mm;margin-bottom:-160mm}.mini-actions .btn{width:100%}}
+    @media print{
+      html,body{margin:0!important;padding:0!important;background:#fff!important}
+      body *{visibility:hidden!important}
+      #printArea,#printArea *{visibility:visible!important}
+      #printArea{position:absolute!important;left:0!important;top:0!important;width:210mm!important;margin:0!important;padding:0!important;background:#fff!important;box-shadow:none!important;border:none!important;overflow:visible!important}
+      .sheet-scale-wrap{display:block!important;overflow:visible!important;padding:0!important;min-height:0!important}
+      .a4-sheet{width:210mm!important;min-height:297mm!important;padding:10mm 10mm 9mm!important;margin:0!important;box-shadow:none!important;border:none!important;transform:none!important;page-break-after:auto!important;break-after:auto!important}
+      .gift-view-wrap,.gift-page-card,.preview-shell{padding:0!important;margin:0!important;border:0!important;box-shadow:none!important;background:#fff!important}
+      .page-return-wrap,.gift-topbar,.preview-toolbar,.message{display:none!important}
+      @page{size:A4 portrait;margin:0}
+    }
+  </style>
+</head>
+<body>
+  <div class="gift-view-wrap">
+    <div class="page-return-wrap"><a class="btn secondary" id="backFormsBtn" href="forms-hub.html">返回表格</a></div>
+    <div class="gift-page-card">
+      <div class="gift-topbar">
+        <div>
+          <h1 class="gift-title-main">集點卡</h1>
+          <div class="muted-tip" style="margin-top:6px">此頁只提供預覽、列印與另存新檔；集點卡內容由管理端設定。</div>
+        </div>
+        <button class="btn secondary" type="button" onclick="logout()">登出</button>
+      </div>
+
+      <div class="preview-shell">
+        <div class="preview-toolbar">
+          <div>
+            <div style="font-size:18px;font-weight:900;color:#17324d">列印預覽</div>
+            <div class="muted-tip">A4 直式｜每頁 1 張｜中間 100 格（1～10 重複 10 排）</div>
+          </div>
+          <div class="mini-actions">
+            <button class="btn" type="button" onclick="printCards()">列印</button>
+            <button class="btn" type="button" onclick="saveAsFile()">另存新檔</button>
+          </div>
+        </div>
+        <div id="printArea" class="sheet-scale-wrap"></div>
+        <div id="msg" class="message"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const DEFAULTS = {
+      cardTitle:'柚子樂器 集點卡',
+      cardSubtitle:'學生兌換禮物專用',
+      badgeText:'集滿可兌換禮物',
+      fieldA:'姓名',
+      fieldB:'課程',
+      fieldC:'',
+      rules:'1. 不可與其他優惠合併使用。\n2. 本卡遺失，點數一律作廢。\n3. 集點可選擇轉扭蛋，或兌換對應的集點禮物。'
+    };
+    let currentTemplate = Object.assign({}, DEFAULTS);
+
+    function esc(s){
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function(m){
+        return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m];
+      });
+    }
+    function msg(text){
+      const el=document.getElementById('msg');
+      if(el) el.textContent=text || '';
+    }
+    function lineField(label){
+      const text=String(label || '').trim();
+      if(!text) return '';
+      return '<div class="gift-line-field">'+esc(text)+'：</div>';
+    }
+    async function getGiftTemplateDoc(){
+      try{
+        if(window.firebase && firebase.firestore){
+          return firebase.firestore().collection('printTemplates').doc('giftPointCard');
+        }
+      }catch(e){}
+      return null;
+    }
+    function readLocalTemplate(){
+      try{
+        const data = JSON.parse(localStorage.getItem('giftPointCardSettings:v3') || '{}') || {};
+        return Object.assign({}, DEFAULTS, data);
+      }catch(e){
+        return Object.assign({}, DEFAULTS);
+      }
+    }
+    async function loadTemplate(){
+      currentTemplate = readLocalTemplate();
+      renderPreview();
+      const docRef = await getGiftTemplateDoc();
+      if(!docRef){ msg('目前使用本機暫存的集點卡設定。'); return; }
+      try{
+        const snap = await docRef.get();
+        if(snap && snap.exists){
+          const data = snap.data() || {};
+          currentTemplate = Object.assign({}, DEFAULTS, data);
+          try{ localStorage.setItem('giftPointCardSettings:v3', JSON.stringify(currentTemplate)); }catch(e){}
+          renderPreview();
+          msg('已載入最新集點卡。');
+        }else{
+          msg('尚未找到管理端設定，暫時使用預設集點卡。');
+        }
+      }catch(e){
+        msg('目前無法讀取雲端設定，先使用本機暫存的集點卡。');
+      }
+    }
+    function renderPreview(){
+      const area=document.getElementById('printArea');
+      if(!area) return;
+      area.innerHTML = '<section class="a4-sheet">' + renderSheet(currentTemplate || DEFAULTS) + '</section>';
+    }
+    function renderSheet(data){
+      data = Object.assign({}, DEFAULTS, data || {});
+      const rules=String(data.rules || '').split('\n').map(s=>s.trim()).filter(Boolean);
+      const points=[];
+      for(let row=0; row<10; row++){
+        for(let i=1; i<=10; i++) points.push('<div class="gift-point">'+i+'</div>');
+      }
+      const infoHtml = [lineField(data.fieldA), lineField(data.fieldB), lineField(data.fieldC)].filter(Boolean).join('');
+      return '<article class="a4-main-card">'+
+        '<div class="gift-cut"></div>'+
+        '<div class="gift-head"><div><h2 class="gift-title">'+esc(data.cardTitle)+'</h2><div class="gift-subtitle">'+esc(data.cardSubtitle)+'</div></div><div class="gift-badge">'+esc(data.badgeText)+'</div></div>'+
+        (infoHtml ? '<div class="gift-info">'+infoHtml+'</div>' : '')+
+        '<div class="gift-points-grid">'+points.join('')+'</div>'+
+        '<div class="gift-rules"><div class="gift-rules-title">注意事項：</div>'+rules.map(r=>'<div>'+esc(r)+'</div>').join('')+'</div>'+
+      '</article>';
+    }
+    function printCards(){
+      renderPreview();
+      setTimeout(function(){ window.print(); }, 120);
+    }
+    function saveAsFile(){
+      renderPreview();
+      msg('列印視窗開啟後，可選「另存為 PDF」或使用系統分享 / 儲存到檔案。');
+      setTimeout(function(){ window.print(); }, 120);
+    }
+    function initPage(){
+      const user = requireLogin();
+      if(!user) return;
+      loadTemplate();
+    }
+    document.addEventListener('DOMContentLoaded', initPage);
+  </script>
+
+  <script src="config.js?v=20260530forms1"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="firebase-client.js?v=20260530forms1"></script>
+  <script src="app.js?v=20260530forms1"></script>
+</body>
+</html>

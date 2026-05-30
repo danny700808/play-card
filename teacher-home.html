@@ -563,6 +563,14 @@
         </div>
         <div class="entry-desc">簽署狀態</div>
       </button>
+
+      <button class="entry-card" type="button" id="openFormsBtn">
+        <div class="entry-top">
+          <div class="entry-title">表格</div>
+          <div class="entry-count done">查看</div>
+        </div>
+        <div class="entry-desc">集點卡與其他表格</div>
+      </button>
     </section>
   </div>
 
@@ -585,7 +593,8 @@
         announcement: 'announcements.html',
         todo: 'task.html',
         contract: 'contract.html',
-        goods: 'teacher-goods.html'
+        goods: 'teacher-goods.html',
+        forms: 'forms-hub.html'
       };
     }
     function setStatus(message, isError){
@@ -667,6 +676,7 @@
     document.getElementById('openTodoBtn').addEventListener('click', function(){ openPage(getOpenTargets().todo); });
     document.getElementById('openContractBtn').addEventListener('click', function(){ openPage(getOpenTargets().contract); });
     document.getElementById('openGoodsBtn').addEventListener('click', function(){ openPage(getOpenTargets().goods); });
+    document.getElementById('openFormsBtn').addEventListener('click', function(){ openPage(getOpenTargets().forms); });
     document.getElementById('openProfileBtn').addEventListener('click', function(event){
       event.preventDefault();
       const btn = document.querySelector('#openProfileBtn .mini-btn') || document.getElementById('openProfileBtn');
