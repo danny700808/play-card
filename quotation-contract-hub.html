@@ -4,14 +4,30 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>其他表格</title>
-  <link rel="stylesheet" href="style.css?v=certificates-20260530">
+  <link rel="stylesheet" href="style.css?v=admin-final-20260530b">
   <style>
-    .hub-wrap{max-width:100%;margin:0 auto}.hub-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.hub-card{display:block;background:#fff;border:1px solid #e2e8f0;border-radius:20px;padding:24px;text-decoration:none;color:#0f172a;box-shadow:0 8px 24px rgba(15,23,42,.05);position:relative}.hub-card:hover{transform:translateY(-1px);border-color:#cbd5e1}.hub-title{font-size:24px;font-weight:900;margin:0 0 8px;display:flex;align-items:center;gap:8px;justify-content:space-between}.hub-desc{font-size:14px;line-height:1.8;color:#475569}.hub-mark{font-size:13px;font-weight:800;color:#0f766e;margin-bottom:8px}.page-return-wrap{margin-bottom:16px}.page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}.badge{display:inline-flex;min-width:24px;height:24px;padding:0 7px;border-radius:999px;background:#dc2626;color:#fff;font-size:13px;align-items:center;justify-content:center;font-weight:900}.badge:empty,.badge.zero{display:none}@media(max-width:980px){.hub-grid{grid-template-columns:1fr}}
-  </style>
+    .hub-wrap{max-width:100%;margin:0 auto}
+    .hub-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+    .hub-card{
+      display:block;background:#fff;border:1px solid #e2e8f0;border-radius:20px;
+      padding:24px;text-decoration:none;color:#0f172a;box-shadow:0 8px 24px rgba(15,23,42,.05)
+    }
+    .hub-card:hover{transform:translateY(-1px);border-color:#cbd5e1}
+    .hub-title{font-size:24px;font-weight:900;margin:0 0 8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .hub-desc{font-size:14px;line-height:1.8;color:#475569}
+    .hub-mark{font-size:13px;font-weight:800;color:#0f766e;margin-bottom:8px}
+    .badge{display:inline-flex;min-width:24px;height:24px;padding:0 8px;border-radius:999px;background:#dc2626;color:#fff;font-size:13px;align-items:center;justify-content:center;font-weight:950}
+    .badge:empty{display:none}
+    @media (max-width:980px){ .hub-grid{grid-template-columns:1fr} }
+
+    .page-return-wrap{margin-bottom:16px}
+    .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
+</style>
 </head>
 <body onload="initPage()" class="admin-wide-page admin-quote-page">
   <div class="container">
     <div class="page-return-wrap"><a class="btn page-return-btn" href="settings.html">返回管理首頁</a></div>
+
     <div class="card hub-wrap">
       <div class="topbar">
         <div>
@@ -20,22 +36,22 @@
         </div>
         <button class="btn secondary" style="width:auto;padding:10px 14px" onclick="logout()">登出</button>
       </div>
-      <div style="margin:8px 0 18px;color:#64748b;line-height:1.8">這裡分成三個區塊：表格設定、證明申請審核、證明提醒設定。審核與提醒設定不混在範本設定裡。</div>
+      <div style="margin:8px 0 18px;color:#64748b;line-height:1.8">請先選擇要處理的區塊。這裡維持原本表格入口版面，只新增表格設定、證明審核與提醒設定。</div>
       <div class="hub-grid">
         <a class="hub-card" href="form-settings-hub.html">
           <div class="hub-mark">區塊一</div>
           <div class="hub-title">表格設定</div>
-          <div class="hub-desc">估價單、合約、集點卡、在職證明、教學證明的版面與範本設定。</div>
+          <div class="hub-desc">管理估價單、合約、集點卡、在職證明與教學證明的版面、範本、Logo 與印章。</div>
         </a>
         <a class="hub-card" href="certificate-review-admin.html">
           <div class="hub-mark">區塊二</div>
-          <div class="hub-title">證明申請審核 <span class="badge" id="certificateReviewBadge"></span></div>
-          <div class="hub-desc">審核老師／員工送出的在職證明與教學證明申請。待審核會在這裡顯示數字。</div>
+          <div class="hub-title">證明申請審核 <span class="badge" id="certPendingBadge"></span></div>
+          <div class="hub-desc">審核員工與老師送出的在職證明、教學證明申請。待審核會顯示數字。</div>
         </a>
         <a class="hub-card" href="certificate-notification-settings.html">
           <div class="hub-mark">區塊三</div>
           <div class="hub-title">證明提醒設定</div>
-          <div class="hub-desc">設定證明申請送出、核准、退回時，是否要發 LINE 或 Email 提醒。</div>
+          <div class="hub-desc">設定證明申請送出、核准、退回時是否發送 LINE 或 Email。</div>
         </a>
       </div>
     </div>
@@ -43,13 +59,22 @@
   <script src="config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=certificates-20260530"></script>
-  <script src="app.js?v=certificates-20260530"></script>
+  <script src="firebase-client.js?v=admin-final-20260530b"></script>
+  <script src="app.js?v=admin-final-20260530b"></script>
+  <script src="certificate-common.js?v=admin-final-20260530b"></script>
   <script>
-    function setBadge(n){const el=document.getElementById('certificateReviewBadge'); if(!el) return; n=Number(n||0)||0; el.textContent=n?String(n):''; el.classList.toggle('zero',!n);}
     async function initPage(){
-      fillHeader(); const user=requireLogin(); if(!user) return; if(!hasSettingsZoneAccess(user)){location.href='dashboard.html';return;} setPortalMode('settings');
-      try{ const r=await api('getDashboardSummary',{userId:user.id,role:'admin'}); const c=(r&&r.counts)||{}; setBadge(c.certificateReviewCount || c.certificatePendingCount || c.certificates || 0); }catch(e){ setBadge(0); }
+      fillHeader();
+      const user=requireLogin();
+      if(!user) return;
+      if(!hasSettingsZoneAccess(user)){ location.href='dashboard.html'; return; }
+      try{
+        if(window.YZCertificate && typeof YZCertificate.counts === 'function'){
+          const c=await YZCertificate.counts();
+          const b=document.getElementById('certPendingBadge');
+          if(b) b.textContent=c.pending?String(c.pending):'';
+        }
+      }catch(e){}
     }
   </script>
 </body>
