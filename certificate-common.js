@@ -244,31 +244,89 @@
       </section>`;
   }
 
+  function ensureScaleStage(wrap, doc){
+    if(!wrap || !doc) return null;
+    let stage = doc.parentElement && doc.parentElement.classList && doc.parentElement.classList.contains('cert-scale-stage') ? doc.parentElement : null;
+    if(!stage){
+      stage = document.createElement('div');
+      stage.className = 'cert-scale-stage';
+      doc.parentNode.insertBefore(stage, doc);
+      stage.appendChild(doc);
+    }
+    return stage;
+  }
+
+  function bindPreviewImageRefit(doc){
+    if(!doc) return;
+    Array.from(doc.querySelectorAll('img')).forEach(img => {
+      if(img.dataset.certRefitBound === '1') return;
+      img.dataset.certRefitBound = '1';
+      img.addEventListener('load', scheduleFitCertificatePreviews, {once:true});
+      img.addEventListener('error', scheduleFitCertificatePreviews, {once:true});
+    });
+  }
+
   function fitCertificatePreviews(){
     const wraps = Array.from(document.querySelectorAll('.cert-scale-wrap'));
     wraps.forEach(wrap => {
       const doc = wrap.querySelector('.cert-doc');
       if(!doc) return;
+      const stage = ensureScaleStage(wrap, doc);
+      if(!stage) return;
+
+      bindPreviewImageRefit(doc);
+
+      // 先恢復成原始 A4 尺寸再量測，避免重複縮放後量到錯誤尺寸。
+      stage.style.width = '';
+      stage.style.height = '';
+      doc.style.position = 'relative';
+      doc.style.left = '';
+      doc.style.top = '';
       doc.style.transform = 'none';
-      doc.style.transformOrigin = 'top center';
-      doc.style.marginLeft = 'auto';
-      doc.style.marginRight = 'auto';
+      doc.style.transformOrigin = 'top left';
+      doc.style.margin = '0';
       doc.style.marginBottom = '0';
       doc.style.display = 'block';
+      doc.style.maxWidth = 'none';
+
       const wrapStyle = global.getComputedStyle ? global.getComputedStyle(wrap) : null;
       const padX = wrapStyle ? (parseFloat(wrapStyle.paddingLeft)||0) + (parseFloat(wrapStyle.paddingRight)||0) : 32;
-      const available = Math.max(260, (wrap.clientWidth || 0) - padX - 2);
+      const available = Math.max(220, (wrap.clientWidth || 0) - padX - 2);
       const naturalWidth = doc.offsetWidth || 794;
       const naturalHeight = doc.offsetHeight || 1123;
-      const scale = Math.min(1, Math.max(0.3, available / naturalWidth));
+      const scale = Math.min(1, Math.max(0.28, available / naturalWidth));
+      const scaledWidth = Math.ceil(naturalWidth * scale);
+      const scaledHeight = Math.ceil(naturalHeight * scale);
+
+      // stage 才是真正佔位的盒子；doc 只負責視覺縮放。
+      stage.style.width = `${scaledWidth}px`;
+      stage.style.height = `${scaledHeight}px`;
+      stage.style.marginLeft = 'auto';
+      stage.style.marginRight = 'auto';
+      stage.style.position = 'relative';
+
+      doc.style.position = 'absolute';
+      doc.style.left = '0';
+      doc.style.top = '0';
+      doc.style.transformOrigin = 'top left';
       doc.style.transform = `scale(${scale})`;
-      doc.style.marginBottom = `${Math.round((scale - 1) * naturalHeight)}px`;
+      doc.style.margin = '0';
+
       wrap.dataset.certScale = String(scale.toFixed(3));
     });
   }
   function scheduleFitCertificatePreviews(){
     if(global.__yzCertFitTimer) global.clearTimeout(global.__yzCertFitTimer);
-    global.__yzCertFitTimer = global.setTimeout(fitCertificatePreviews, 30);
+    global.__yzCertFitTimer = global.setTimeout(() => {
+      if(global.requestAnimationFrame){
+        global.requestAnimationFrame(() => {
+          fitCertificatePreviews();
+          global.requestAnimationFrame(fitCertificatePreviews);
+        });
+      }else{
+        fitCertificatePreviews();
+      }
+    }, 30);
   }
 
   function ensureObserver(){
@@ -303,6 +361,8 @@
       .cert-watermark{position:absolute;left:50%;top:47%;transform:translate(-50%,-50%) rotate(-24deg);font-size:34px;line-height:1.5;font-weight:950;color:rgba(185,28,28,.18);border:4px solid rgba(185,28,28,.16);border-radius:12px;padding:8mm 14mm;text-align:center;letter-spacing:4px;z-index:3;pointer-events:none;white-space:nowrap}
       .cert-preview .cert-body,.cert-preview .cert-footer{position:relative;z-index:1}
       .cert-scale-wrap{display:block;overflow:auto;background:#f8fafc;border:1px solid #e2e8f0;border-radius:20px;padding:16px;min-height:560px;max-width:100%;box-sizing:border-box;text-align:center}
+      .cert-scale-stage{position:relative;margin:0 auto;box-sizing:content-box;text-align:left}
+      .cert-scale-stage>.cert-doc{position:absolute;left:0;top:0;display:block;margin:0!important;max-width:none;transform-origin:top left}
       .cert-scale-wrap>.cert-doc{display:block;margin:0 auto;max-width:none;}
       .cert-modal{position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9999;display:none;align-items:flex-start;justify-content:center;padding:22px;overflow:auto}.cert-modal.show{display:flex}
       .cert-modal-panel{background:#fff;border-radius:24px;padding:16px;max-width:min(100%,980px);box-shadow:0 25px 70px rgba(15,23,42,.32)}
@@ -310,8 +370,6 @@
       .cert-status-pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:5px 10px;font-size:12px;font-weight:900;background:#eef7f2;color:#166534}.cert-status-pill.pending{background:#fff7ed;color:#9a3412}.cert-status-pill.rejected{background:#fef2f2;color:#991b1b}
       @media(max-width:780px){
         .cert-scale-wrap{padding:10px;min-height:430px}
-        .cert-doc{padding:18mm 14mm 14mm}
-        .cert-watermark{font-size:22px}
       }
       @media print{
         html,body{margin:0!important;background:#fff!important}
@@ -352,9 +410,17 @@
       throw new Error('PDF 元件尚未載入，請確認網路後重整頁面。');
     }
     const oldTransform = el.style.transform;
+    const oldTransformOrigin = el.style.transformOrigin;
     const oldMarginBottom = el.style.marginBottom;
+    const oldPosition = el.style.position;
+    const oldLeft = el.style.left;
+    const oldTop = el.style.top;
     el.style.transform = 'none';
+    el.style.transformOrigin = 'top left';
     el.style.marginBottom = '0';
+    el.style.position = 'relative';
+    el.style.left = '';
+    el.style.top = '';
     try{
       const canvas = await global.html2canvas(el, {scale:2, useCORS:true, backgroundColor:'#ffffff'});
       const imgData = canvas.toDataURL('image/jpeg', 0.95);
@@ -363,7 +429,11 @@
       pdf.save(fileName || 'certificate.pdf');
     } finally {
       el.style.transform = oldTransform || '';
+      el.style.transformOrigin = oldTransformOrigin || '';
       el.style.marginBottom = oldMarginBottom || '';
+      el.style.position = oldPosition || '';
+      el.style.left = oldLeft || '';
+      el.style.top = oldTop || '';
       scheduleFitCertificatePreviews();
     }
   }

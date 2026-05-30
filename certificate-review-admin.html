@@ -25,7 +25,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="firebase-client.js?v=certificates-20260530"></script>
   <script src="app.js?v=certificates-20260530"></script>
-  <script src="certificate-common.js?v=certificates-20260530"></script>
+  <script src="certificate-common.js?v=certificates-20260530-previewfit"></script>
   <script>
     let rows=[]; let filter='pending'; let adminUser=null;
     function setText(id,text){const el=document.getElementById(id); if(el) el.textContent=text;}
@@ -53,7 +53,7 @@
       try{ const r=await api('getCertificateApplications',{admin:true,userId:adminUser.id||adminUser.employeeId,role:'admin'}); rows=(r.rows||[]).map(YZ_CERT.normalizeApplication); renderRows(); }
       catch(e){ box.innerHTML='<div class="muted-tip">讀取失敗：'+YZ_CERT.esc(e.message)+'</div>'; }
     }
-    function viewApplication(id){ const app=findApp(id); if(!app) return; document.getElementById('modalPreview').innerHTML=appHtml(app); const act=document.getElementById('modalActionButtons'); if(app.status==='待主管審核') act.innerHTML=`<button class="btn" type="button" onclick="approveApplication('${YZ_CERT.esc(app.requestId)}')">核准</button><button class="btn secondary" type="button" onclick="rejectApplication('${YZ_CERT.esc(app.requestId)}')">退回</button>`; else act.innerHTML='<span class="muted-tip">此申請已處理，管理端保留紀錄。</span>'; document.getElementById('certModal').classList.add('show'); }
+    function viewApplication(id){ const app=findApp(id); if(!app) return; document.getElementById('modalPreview').innerHTML=appHtml(app); const act=document.getElementById('modalActionButtons'); if(app.status==='待主管審核') act.innerHTML=`<button class="btn" type="button" onclick="approveApplication('${YZ_CERT.esc(app.requestId)}')">核准</button><button class="btn secondary" type="button" onclick="rejectApplication('${YZ_CERT.esc(app.requestId)}')">退回</button>`; else act.innerHTML='<span class="muted-tip">此申請已處理，管理端保留紀錄。</span>'; document.getElementById('certModal').classList.add('show'); YZ_CERT.scheduleFitCertificatePreviews(); }
     function closeModal(){ document.getElementById('certModal').classList.remove('show'); }
     async function approveApplication(id){ if(!confirm('確定核准這筆證明申請？核准後申請人即可列印與下載加密 PDF。')) return; try{ const r=await api('reviewCertificateApplication',{requestId:id,decision:'approve',reviewerId:adminUser.id||adminUser.employeeId,reviewerName:adminUser.name}); if(!r.ok) throw new Error(r.message||'核准失敗'); closeModal(); await loadRows(); }catch(e){ alert(e.message); } }
     async function rejectApplication(id){ const reason=prompt('請輸入退回原因：'); if(reason==null) return; try{ const r=await api('reviewCertificateApplication',{requestId:id,decision:'reject',rejectReason:reason,reviewerId:adminUser.id||adminUser.employeeId,reviewerName:adminUser.name}); if(!r.ok) throw new Error(r.message||'退回失敗'); closeModal(); await loadRows(); }catch(e){ alert(e.message); } }
