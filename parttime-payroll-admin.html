@@ -26,6 +26,8 @@
     .summary-card.final{grid-column:1/-1;background:#1f7a5a;color:#fff;border-color:#1f7a5a}
     .summary-card.final strong,.summary-card.final .value{color:#fff}
     .mini-line{font-size:14px;color:var(--muted);line-height:1.6;margin-top:10px}
+    .payroll-note{font-size:13px;color:#64748b;line-height:1.6;margin-top:8px}
+    .filter-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;font-size:14px;color:#475569;font-weight:800}
     .empty-box{padding:18px;border-radius:16px;background:#fafafa;color:#6b7280;line-height:1.7}
     .hidden{display:none!important}
     @media (max-width:980px){.employee-list{grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -67,6 +69,8 @@
     <div class="payroll-wrap">
       <div class="card">
         <div class="field"><label>搜尋</label><input id="keyword" placeholder="輸入姓名"></div>
+        <label class="filter-row"><input id="showInactive" type="checkbox"> 顯示離職 / 隱藏工讀生（補查歷史薪資用）</label>
+        <div class="payroll-note">預設只顯示在職、帳號啟用、未隱藏的工讀生。</div>
         <div id="employeeList" class="list employee-list"></div>
       </div>
 
@@ -99,6 +103,7 @@
 
           <div class="mini-line hidden" id="rangeText"></div>
           <div class="mini-line hidden" id="detailText"></div>
+          <div class="payroll-note" id="sourceText">資料來源：Firebase / Firestore，依目前最後有效工讀紀錄與主管核准修正滾動計算；不再讀取 GS。</div>
         </div>
       </div>
     </div>
@@ -183,6 +188,24 @@
       for(const k of keys){ if(o && o[k] != null && clean(o[k]) !== '') return o[k]; }
       return '';
     }
+    function normalizeEmploymentStatusValue(v){
+      const s = lower(v);
+      if(!s || ['active','在職','任職中','正常','啟用','yes','true','1'].includes(s)) return 'active';
+      if(['resigned','離職','已離職'].includes(s)) return 'resigned';
+      if(['suspended','暫停任用','停職','暫停'].includes(s)) return 'suspended';
+      if(['contractorended','contractor_ended','合作結束','外聘合作結束'].includes(s)) return 'contractorEnded';
+      if(['archived','封存'].includes(s)) return 'archived';
+      return s;
+    }
+    function normalizeAccountStatusValue(v){
+      const s = lower(v);
+      if(!s || ['active','啟用','正常','已核准','核准','enabled','yes','true','1'].includes(s)) return 'active';
+      if(['pending','待審核','待主管審核'].includes(s)) return 'pending';
+      if(['rejected','已駁回','駁回','退回'].includes(s)) return 'rejected';
+      if(['inactive','停用','disabled','停權'].includes(s)) return 'inactive';
+      if(['archived','封存'].includes(s)) return 'archived';
+      return s;
+    }
     function normalizeEmployeeRow(o){
       const source = o.source || {};
       const get = (keys)=> rawVal(o, keys) || rawVal(source, keys);
@@ -190,13 +213,20 @@
       const hourlyRate = safeNum(get(['hourlyRate','時薪金額','時薪','hourlyPay'])) || 196;
       const laborSelfPay = safeNum(get(['laborSelfPay','勞保自付額','勞保自付額快照','laborEmployeeSelfPay']));
       const laborInsuredSalary = safeNum(get(['laborInsuredSalary','勞保投保薪資','目前申報月平均薪資總額']));
+      const accountStatus = normalizeAccountStatusValue(get(['accountStatus','帳號狀態','status','狀態']));
+      const employmentStatus = normalizeEmploymentStatusValue(get(['employmentStatus','任職狀態','workStatus','在職狀態']));
+      const hiddenFromActiveLists = truthy(get(['hiddenFromActiveLists','隱藏於日常清單','hidden','隱藏']));
+      const isActiveForDailyUse = accountStatus === 'active' && employmentStatus === 'active' && !hiddenFromActiveLists;
       return {
         id: clean(get(['employeeId','員工ID']) || o.__id),
         name: clean(get(['name','姓名'])),
         email: lower(get(['email','Email'])),
         role: lower(get(['role','角色']) || 'staff'),
         identityType,
-        accountStatus: clean(get(['accountStatus','帳號狀態']) || 'active'),
+        accountStatus,
+        employmentStatus,
+        hiddenFromActiveLists,
+        isActiveForDailyUse,
         hourlyRate,
         laborSelfPay,
         laborInsuredSalary,
@@ -222,10 +252,15 @@
         halfHour: half,
         totalHours: total,
         status: clean(get(['status','狀態']) || '正常'),
+        payable: clean(get(['payable','是否計薪'])),
         note: clean(get(['note','備註'])),
         hourlyRate: safeNum(get(['hourlyRate','時薪'])),
-        grossPay: safeNum(get(['grossPay','當筆毛額'])),
-        laborSelfPaySnapshot: safeNum(get(['laborSelfPaySnapshot','勞保自付額快照']))
+        grossPay: safeNum(get(['grossPay','當筆毛額','當日工資'])),
+        laborSelfPaySnapshot: safeNum(get(['laborSelfPaySnapshot','勞保自付額快照'])),
+        replacementOf: clean(get(['replacementOf','replacesRecordId','取代紀錄ID','原紀錄ID'])),
+        replacedByRecordId: clean(get(['replacedByRecordId','supersededBy','被取代紀錄ID'])),
+        updatedAt: clean(get(['updatedAt','最後更新時間','reviewedAt','審核時間','createdAt','建立時間'])),
+        raw:o
       };
     }
     function normalizeClockRow(o){
@@ -238,8 +273,11 @@
         time: timeText(get(['clockTime','time','打卡時間'])),
         actionName: clean(get(['actionName','打卡動作'])),
         status: clean(get(['status','狀態']) || '正常'),
-        lateMinutes: safeNum(get(['lateMinutes','遲到分鐘'])),
-        originalRecordId: clean(get(['originalRecordId','原始紀錄ID']))
+        lateMinutes: safeNum(get(['finalLateMinutes','最終遲到分鐘','lateMinutes','遲到分鐘'])),
+        originalRecordId: clean(get(['originalRecordId','原始紀錄ID'])),
+        note: clean(get(['note','備註'])),
+        updatedAt: clean(get(['updatedAt','最後更新時間','reviewedAt','審核時間','createdAt','建立時間'])),
+        raw:o
       };
     }
     function normalizeCorrectionRow(o){
@@ -249,23 +287,86 @@
         id: clean(get(['requestId','申請ID']) || o.__id),
         employeeId: clean(get(['employeeId','員工ID'])),
         originalRecordId: clean(get(['originalRecordId','原始紀錄ID'])),
+        sourceClockId: clean(get(['sourceClockId','clockRecordId','打卡紀錄ID'])),
         status: clean(get(['status','狀態'])),
-        approvedRecordId: clean(get(['approvedRecordId','核准後紀錄ID']))
+        approvedRecordId: clean(get(['approvedRecordId','核准後紀錄ID'])),
+        note: clean(get(['note','備註','reason','原因'])),
+        raw:o
       };
+    }
+
+
+
+    function isParttimeEmployeeVisible(emp){
+      return !!(emp && emp.id && emp.identityType === 'parttime' && emp.isActiveForDailyUse);
+    }
+    function isParttimeEmployeeSelectable(emp){
+      if(!emp || !emp.id || emp.identityType !== 'parttime') return false;
+      return qs('#showInactive') && qs('#showInactive').checked ? emp.accountStatus !== 'rejected' : isParttimeEmployeeVisible(emp);
+    }
+    function employeeStatusText(emp){
+      if(!emp) return '';
+      if(emp.hiddenFromActiveLists) return '已隱藏';
+      if(emp.employmentStatus === 'resigned') return '離職';
+      if(emp.employmentStatus === 'suspended') return '暫停任用';
+      if(emp.employmentStatus === 'contractorEnded') return '合作結束';
+      if(emp.accountStatus === 'inactive') return '停用登入';
+      if(emp.accountStatus === 'pending') return '待審核';
+      if(emp.accountStatus === 'rejected') return '已駁回';
+      return '在職';
+    }
+    function isApprovedStatus(s){
+      const v = lower(s);
+      return ['已核准','核准','approved','approve','已同意','通過'].includes(v);
+    }
+    function isBadStatus(s){
+      const v = lower(s);
+      if(!v) return false;
+      return ['待審核','pending','待主管審核','審核中','已駁回','駁回','rejected','已退回','退回','已刪除','刪除','deleted','作廢','void','voided','已取消','取消','cancelled','canceled','被取代','已被取代','superseded','已被修正','不計薪'].includes(v);
+    }
+    function isPayableParttimeRecord(r){
+      if(!r || !r.date) return false;
+      if(isBadStatus(r.status)) return false;
+      if(r.replacedByRecordId) return false;
+      if(truthy(rawVal(r.raw||{}, ['deleted','isDeleted','已刪除','voided','作廢','cancelled','已取消']))) return false;
+      const pay = lower(r.payable);
+      if(['否','no','false','0','不計薪','不支薪'].includes(pay)) return false;
+      return true;
+    }
+    function latestEffectiveParttimeRecords(rows){
+      const good = (rows || []).filter(isPayableParttimeRecord);
+      // 同一 recordId 本來在 Firestore 就只會留下最後版本；這裡再做一次防呆，避免匯入資料有重複。
+      const map = new Map();
+      good.forEach(r=>{
+        const key = r.id || [r.employeeId,r.date,r.note,r.totalHours].join('|');
+        const old = map.get(key);
+        if(!old || clean(r.updatedAt).localeCompare(clean(old.updatedAt)) >= 0) map.set(key, r);
+      });
+      return Array.from(map.values());
+    }
+    function isClockRecordEffectiveForLate(r){
+      if(!r || !r.date) return false;
+      if(isBadStatus(r.status)) return false;
+      if(lower(r.status).includes('已被補登修正')) return false;
+      if(truthy(rawVal(r.raw||{}, ['deleted','isDeleted','已刪除','voided','作廢','cancelled','已取消']))) return false;
+      return true;
     }
 
     function renderEmployees(){
       const keyword = (qs('#keyword').value || '').trim().toLowerCase();
       const rows = state.employees.filter(item=>{
+        if(!isParttimeEmployeeSelectable(item)) return false;
         if(!keyword) return true;
         return String(item.name||'').toLowerCase().includes(keyword) || String(item.email||'').toLowerCase().includes(keyword);
       });
       qs('#employeeList').innerHTML = rows.map(item=>{
         const active = item.id === state.selectedId ? ' active' : '';
+        const status = employeeStatusText(item);
         return `<div class="item${active}" data-id="${item.id}">
           <div class="top"><strong>${item.name}</strong><span class="tag">${moneyText(item.hourlyRate||0)} / 時</span></div>
+          <div class="tag-row"><span class="tag">${status}</span>${item.hiddenFromActiveLists?'<span class="tag">隱藏</span>':''}</div>
         </div>`;
-      }).join('') || '<div class="empty-box">目前沒有工讀生資料。</div>';
+      }).join('') || '<div class="empty-box">目前沒有符合條件的工讀生資料。</div>';
       qsa('#employeeList [data-id]').forEach(el=>{
         el.onclick = ()=>{
           state.selectedId = el.dataset.id || '';
@@ -307,8 +408,9 @@
       const user = requireLogin();
       if(!user) return;
       const allEmployees = (await fbAll('employees')).map(normalizeEmployeeRow);
-      state.employees = allEmployees.filter(e=>e.id && e.identityType === 'parttime' && lower(e.accountStatus) !== 'rejected');
+      state.employees = allEmployees.filter(e=>e.id && e.identityType === 'parttime' && e.accountStatus !== 'rejected');
       qs('#monthText').value = new Date().toISOString().slice(0,7);
+      if(!isParttimeEmployeeSelectable(selectedEmployee())) state.selectedId = '';
       renderEmployees();
       renderSelected();
     }
@@ -325,34 +427,37 @@
         fbAll('clockRecords'),
         fbAll('clockCorrections').catch(()=>[])
       ]);
-      const records = ptRaw.map(normalizeParttimeRow)
+      const allRecords = ptRaw.map(normalizeParttimeRow)
         .filter(r=>{
           const sameEmployee = (r.employeeId && r.employeeId === emp.id)
             || (r.email && emp.email && r.email === emp.email)
             || (!r.employeeId && r.name && emp.name && r.name === emp.name);
           return sameEmployee && String(r.date || '').slice(0,7) === range.monthText;
         });
+      const records = latestEffectiveParttimeRecords(allRecords);
       const hourlyRate = emp.hourlyRate || records.map(r=>r.hourlyRate).find(v=>v>0) || 196;
       const totalHours = Math.round(records.reduce((sum,r)=>sum + (Number(r.totalHours)||0),0) * 100) / 100;
       const grossPay = Math.round(records.reduce((sum,r)=>{
         const gross = Number(r.grossPay || 0);
-        return sum + (gross > 0 ? gross : ((Number(r.totalHours)||0) * hourlyRate));
+        return sum + (gross > 0 ? gross : ((Number(r.totalHours)||0) * (Number(r.hourlyRate)||hourlyRate)));
       },0));
       const latestLaborSnapshot = records.slice().reverse().map(r=>r.laborSelfPaySnapshot).find(v=>Number(v||0)>0) || 0;
       const laborSelfPay = Math.round(Number(emp.laborSelfPay || latestLaborSnapshot || 0) || 0);
 
-      const approvedCorrectionOriginalIds = new Set(
-        correctionRaw.map(normalizeCorrectionRow)
-          .filter(c=>c.employeeId === emp.id && (c.status === '已核准' || lower(c.status).includes('approve')) && c.originalRecordId)
-          .map(c=>c.originalRecordId)
-      );
+      const approvedCorrectionRecordIds = new Set();
+      correctionRaw.map(normalizeCorrectionRow)
+        .filter(c=>c.employeeId === emp.id && isApprovedStatus(c.status))
+        .forEach(c=>{
+          [c.originalRecordId, c.sourceClockId].forEach(id=>{ if(id) approvedCorrectionRecordIds.add(id); });
+        });
       const lateRows = clockRaw.map(normalizeClockRow).filter(r=>{
         const sameEmployee = (r.employeeId && r.employeeId === emp.id);
         if(!sameEmployee) return false;
         if(r.date.slice(0,7) !== range.monthText) return false;
         if(!r.lateMinutes || r.lateMinutes <= 0) return false;
-        if(r.status === '已被補登修正') return false;
-        if(approvedCorrectionOriginalIds.has(r.id)) return false;
+        if(!isClockRecordEffectiveForLate(r)) return false;
+        if(approvedCorrectionRecordIds.has(r.id)) return false;
+        if(approvedCorrectionRecordIds.has(r.originalRecordId)) return false;
         return true;
       });
       const lateMinutes = Math.round(lateRows.reduce((sum,r)=>sum+(Number(r.lateMinutes)||0),0));
@@ -369,53 +474,10 @@
           lateDeduction,
           netPay,
           recordCount: records.length,
-          supplementCount: records.filter(r=>r.status === '補時數').length
+          excludedRecordCount: Math.max(0, allRecords.length - records.length),
+          supplementCount: records.filter(r=>r.status === '補時數' || lower(r.status).includes('臨時出勤')).length
         }
       };
-    }
-
-    function normalizeGsPayrollResult_(res){
-      if(!res || !res.ok) return null;
-      const s = res.summary || {};
-      return {
-        search: res.search || {},
-        summary: {
-          totalHours: safeNum(s.totalHours),
-          hourlyRate: safeNum(s.hourlyRate),
-          grossPay: safeNum(s.grossPay),
-          laborSelfPay: safeNum(s.laborSelfPay),
-          lateMinutes: safeNum(s.lateMinutes),
-          lateDeduction: safeNum(s.lateDeduction || s.lateDeductionValue),
-          netPay: safeNum(s.netPay),
-          recordCount: safeNum(s.recordCount || ((res.rows || []).length)),
-          supplementCount: safeNum(s.supplementCount),
-          sourceLabel: 'GS完整計算備援'
-        }
-      };
-    }
-
-    async function buildGsSummaryFallback_(user, emp, monthText){
-      if(typeof api !== 'function') return null;
-      const res = await api('getParttimePayrollSummary', {
-        userId: user.id,
-        employeeId: emp.id,
-        mode: 'month',
-        monthText: monthText
-      });
-      return normalizeGsPayrollResult_(res);
-    }
-
-    function chooseBetterPayrollSummary_(fbResult, gsResult){
-      if(fbResult && fbResult.summary) fbResult.summary.sourceLabel = 'Firebase';
-      if(!gsResult || !gsResult.summary) return fbResult;
-      if(!fbResult || !fbResult.summary) return gsResult;
-      const fb = fbResult.summary, gs = gsResult.summary;
-      // 目前你遇到的狀況是 Firebase 只抓到單筆 3 小時；若 GS 完整計算筆數/時數更多，先採用完整結果。
-      if((gs.recordCount || 0) > (fb.recordCount || 0)) return gsResult;
-      if((gs.totalHours || 0) > (fb.totalHours || 0) + 0.01) return gsResult;
-      // 若 Firebase 沒有遲到資料，但 GS 有，採用 GS 的完整扣款資訊。
-      if(!(fb.lateMinutes || 0) && (gs.lateMinutes || 0)) return gsResult;
-      return fbResult;
     }
 
     async function searchSummary(){
@@ -428,16 +490,11 @@
       try{
         progress.set(25,'讀取 Firebase');
         const monthText = qs('#monthText').value;
-        const fbPromise = buildSummary(emp, monthText).catch(err=>({ error: err }));
-        const gsPromise = buildGsSummaryFallback_(user, emp, monthText).catch(err=>null);
-        const [fbRaw, gsResult] = await Promise.all([fbPromise, gsPromise]);
-        const fbResult = fbRaw && !fbRaw.error ? fbRaw : null;
-        const finalResult = chooseBetterPayrollSummary_(fbResult, gsResult);
-        if(!finalResult) throw (fbRaw && fbRaw.error) || new Error('查無薪資資料');
+        const finalResult = await buildSummary(emp, monthText);
+        if(!finalResult) throw new Error('查無薪資資料');
         fillSummary(finalResult.summary || {}, finalResult.search || {});
-        if((finalResult.summary && finalResult.summary.sourceLabel) === 'GS完整計算備援'){
-          setMsgText('目前 Firebase 只抓到部分工讀紀錄，已先用 GS 完整計算結果顯示；接下來需要補一次 Firebase 工讀紀錄重新匯入。', false);
-        }
+        const s = finalResult.summary || {};
+        setMsgText(`Firebase 已依最後有效結果重新計算。有效工讀紀錄 ${s.recordCount || 0} 筆${s.excludedRecordCount ? '，已排除非有效紀錄 ' + s.excludedRecordCount + ' 筆' : ''}。`, false);
         progress.done('完成');
       }catch(err){
         progress.fail('查詢失敗');
@@ -452,6 +509,7 @@
       if(!hasSettingsZoneAccess(user)){ location.href = 'dashboard.html'; return; }
       setPortalMode('settings');
       qs('#keyword').addEventListener('input', renderEmployees);
+      qs('#showInactive').addEventListener('change', ()=>{ if(!isParttimeEmployeeSelectable(selectedEmployee())) state.selectedId=''; renderEmployees(); renderSelected(); });
       qs('#searchBtn').onclick = searchSummary;
       qs('#monthText').addEventListener('change', searchSummary);
       loadSetup();

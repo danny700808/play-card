@@ -277,10 +277,33 @@
     function fb(){ if(!(window.APP_CONFIG&&window.APP_CONFIG.FIREBASE_CONFIG))throw new Error('找不到 Firebase 設定'); if(!firebase.apps.length)firebase.initializeApp(window.APP_CONFIG.FIREBASE_CONFIG); return firebase.firestore(); }
     async function all(col){const snap=await fb().collection(col).get();const a=[];snap.forEach(d=>a.push(Object.assign({__id:d.id},d.data()||{})));return a}
 
+    function normalizedAccountStatus(o){
+      const s = lower(raw(o,['accountStatus','帳號狀態','status','狀態']));
+      if(!s || ['active','啟用','正常','已核准','核准','enabled','yes','true','1'].includes(s)) return 'active';
+      if(['inactive','停用','disabled','停權'].includes(s)) return 'inactive';
+      if(['pending','待審核','待主管審核'].includes(s)) return 'pending';
+      if(['rejected','已駁回','駁回','退回'].includes(s)) return 'rejected';
+      if(['archived','封存'].includes(s)) return 'archived';
+      return s;
+    }
+    function normalizedEmploymentStatus(o){
+      const s = lower(raw(o,['employmentStatus','任職狀態','workStatus','在職狀態']));
+      if(!s || ['active','在職','任職中','正常','啟用','yes','true','1'].includes(s)) return 'active';
+      if(['resigned','離職','已離職'].includes(s)) return 'resigned';
+      if(['suspended','暫停任用','停職','暫停'].includes(s)) return 'suspended';
+      if(['contractorended','contractor_ended','合作結束','外聘合作結束'].includes(s)) return 'contractorEnded';
+      if(['archived','封存'].includes(s)) return 'archived';
+      return s;
+    }
+    function isHiddenEmployee(o){ return isTrue(raw(o,['hiddenFromActiveLists','隱藏於日常清單','hidden','隱藏'])); }
     function employee(o){
       const id=clean(raw(o,['employeeId','員工ID'])||o.__id);
       const part = isTrue(raw(o,['isPartTime','是否工讀生'])) || lower(raw(o,['identityType','身分類型'])).includes('part');
-      return {id,name:clean(raw(o,['name','姓名']))||id,email:lower(raw(o,['email','Email'])),hourlyRate:safeNum(raw(o,['hourlyRate','時薪','時薪金額']))||196,active:lower(raw(o,['accountStatus','帳號狀態']))!=='停用',part,raw:o}
+      const accountStatus = normalizedAccountStatus(o);
+      const employmentStatus = normalizedEmploymentStatus(o);
+      const hidden = isHiddenEmployee(o);
+      const active = accountStatus === 'active' && employmentStatus === 'active' && !hidden;
+      return {id,name:clean(raw(o,['name','姓名']))||id,email:lower(raw(o,['email','Email'])),hourlyRate:safeNum(raw(o,['hourlyRate','時薪','時薪金額']))||196,accountStatus,employmentStatus,hiddenFromActiveLists:hidden,active,part,raw:o}
     }
     function pt(o){
       const empId=clean(raw(o,['employeeId','員工ID']));
@@ -885,14 +908,21 @@
         note:reason || '主管修改',
         備註:reason || '主管修改',
         sourceClockId:id,
+        originalRecordId:id,
+        原始紀錄ID:id,
         createdAt:new Date().toISOString(),
         dataCenterCreated:true
       }, {merge:true});
       await fb().collection('clockRecords').doc(id).set({
+        lateMinutes:0,
+        遲到分鐘:0,
+        finalLateMinutes:0,
+        最終遲到分鐘:0,
         note:'主管核准不扣款',
         備註:'主管核准不扣款',
         updatedAt:new Date().toISOString(),
-        dataCenterEdited:true
+        dataCenterEdited:true,
+        主管已修改:true
       }, {merge:true});
       msg('已設為主管核准不扣款，備註已寫入「主管核准不扣款」。');
       await reloadAll();
@@ -909,8 +939,9 @@
       const reason=prompt('請輸入不扣款原因：','主管確認此筆遲到不列入扣款');
       if(reason===null)return;
       const cid=`CORR_DC_${id}_${Date.now()}`;
-      await fb().collection('clockCorrections').doc(cid).set({employeeId:e.id,員工ID:e.id,name:e.name,姓名:e.name,date:c.date,日期:c.date,status:'已核准',狀態:'已核准',reason:reason,note:reason,備註:reason,sourceClockId:id,createdAt:new Date().toISOString(),dataCenterCreated:true},{merge:true});
-      msg('已新增出勤修正，這筆遲到會顯示為已修正不扣款。'); await reloadAll();
+      await fb().collection('clockCorrections').doc(cid).set({employeeId:e.id,員工ID:e.id,name:e.name,姓名:e.name,date:c.date,日期:c.date,status:'已核准',狀態:'已核准',reason:reason,note:reason,備註:reason,sourceClockId:id,originalRecordId:id,原始紀錄ID:id,createdAt:new Date().toISOString(),dataCenterCreated:true},{merge:true});
+      await fb().collection('clockRecords').doc(id).set({lateMinutes:0,遲到分鐘:0,finalLateMinutes:0,最終遲到分鐘:0,note:reason,備註:reason,updatedAt:new Date().toISOString(),dataCenterEdited:true,主管已修改:true},{merge:true});
+      msg('已新增出勤修正，這筆遲到已改為不扣款，薪資結算會滾動更新。'); await reloadAll();
     }
 
     function currentPanel(){
