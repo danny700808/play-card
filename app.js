@@ -42,7 +42,11 @@ async function api(action, payload={}){
     saveEmployeeSalaryConfig:true,
     getMySalaryInfo:true,
     getMyProfileFull:true,
-    getMyDataFull:true
+    getMyDataFull:true,
+    getEmployeeManagementData:true,
+    updateEmployeeAdminStatus:true,
+    getEmployeeHistorySnapshot:true,
+    getEmployeeOptions:true
   };
   // Firebase 第二階段：讀取型資料優先走 Firebase；薪資/投保相關資料已正式切換為 Firebase-only。
   try{

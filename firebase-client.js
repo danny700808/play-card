@@ -5362,3 +5362,300 @@
   fb.__notificationV2BackendBridge20260530 = true;
   global.YZFirebase = fb;
 })(window);
+
+/* 員工主檔 / 離職隱藏控管 - Firebase only final bridge 2026-05-30
+ * 目的：
+ * 1. 新增員工管理中心資料 API。
+ * 2. 所有新操作用員工清單預設只回傳「在職、帳號啟用、未隱藏」的人。
+ * 3. 離職/隱藏員工資料不刪除，員工管理與歷史查詢可用 includeHidden / includeInactive 顯示。
+ */
+(function(global){
+  const fb = global.YZFirebase || (global.YZFirebase = {});
+  if(fb.__employeeMasterControl20260530) return;
+  const previousHandle = fb.handleApi;
+  function clean(v){ return String(v == null ? '' : v).trim(); }
+  function lower(v){ return clean(v).toLowerCase(); }
+  function truthy(v){ const s=lower(v); return v===true || s==='true' || s==='1' || s==='yes' || s==='y' || s==='是' || s==='啟用' || s==='顯示' || s==='checked'; }
+  function falsey(v){ const s=lower(v); return v===false || s==='false' || s==='0' || s==='no' || s==='n' || s==='否' || s==='停用'; }
+  function nowId(prefix){ return prefix + '_' + Date.now() + '_' + Math.random().toString(36).slice(2,8); }
+  function today(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+  function nowText(){ const d=new Date(); return d.toLocaleString('zh-TW',{hour12:false}); }
+  function readUser(){ try{ return JSON.parse(global.localStorage.getItem('employeeUser') || 'null') || {}; }catch(e){ return {}; } }
+  function database(){
+    const cfg = global.APP_CONFIG && global.APP_CONFIG.FIREBASE_CONFIG;
+    if(!cfg || !global.firebase || !global.firebase.firestore) throw new Error('Firebase 尚未啟用');
+    if(!global.firebase.apps || !global.firebase.apps.length) global.firebase.initializeApp(cfg);
+    return global.firebase.firestore();
+  }
+  function serverTs(){ try{ return global.firebase.firestore.FieldValue.serverTimestamp(); }catch(e){ return new Date().toISOString(); } }
+  async function all(collection){ const snap=await database().collection(collection).get(); const rows=[]; snap.forEach(doc=>rows.push(Object.assign({__id:doc.id}, doc.data()||{}))); return rows; }
+  async function getDoc(collection,id){ const key=clean(id); if(!key) return null; const doc=await database().collection(collection).doc(key).get(); return doc.exists ? Object.assign({__id:doc.id}, doc.data()||{}) : null; }
+  async function setDoc(collection,id,data,merge){ await database().collection(collection).doc(clean(id) || nowId('DOC')).set(data || {}, {merge:merge !== false}); }
+  function empIdOf(o){ o=o||{}; return clean(o.employeeId || o.userId || o.id || o.adminId || o['員工ID'] || o['申請人ID'] || o.__id); }
+  function emailOf(o){ o=o||{}; return lower(o.email || o.Email || o['Email'] || o.loginAccount || o['登入帳號'] || o['電子郵件']); }
+  function nameOf(o){ o=o||{}; return clean(o.name || o['姓名'] || o.employeeName || o['員工姓名'] || o.applicantName || o['申請人']); }
+  function identityTypeOf(o){
+    const raw=lower((o||{}).identityType || (o||{})['身分類型'] || (o||{})['身份類型'] || (o||{}).identityLabel || (o||{})['員工身分'] || (o||{}).employeeType);
+    if(raw==='external' || raw.indexOf('外聘')>=0) return 'external';
+    if(raw==='parttime' || raw.indexOf('工讀')>=0 || truthy((o||{}).isPartTime || (o||{})['是否工讀生'])) return 'parttime';
+    return 'staff';
+  }
+  function identityLabelOf(type){ return type==='external'?'外聘老師':(type==='parttime'?'工讀生':'專職員工'); }
+  function normalizeAccountStatus(o){
+    const raw=clean((o||{}).accountStatus || (o||{})['帳號狀態'] || (o||{}).status || (o||{})['狀態']);
+    const s=lower(raw);
+    if(!s) return 'active';
+    if(['pending','待審核','待主管審核'].indexOf(s)>=0) return 'pending';
+    if(['rejected','已駁回','駁回'].indexOf(s)>=0) return 'rejected';
+    if(['inactive','disabled','停用','停用登入','不可登入'].indexOf(s)>=0) return 'inactive';
+    if(['archived','封存'].indexOf(s)>=0) return 'archived';
+    if(['resigned','離職'].indexOf(s)>=0) return 'inactive';
+    if(['active','enabled','啟用','是','正常'].indexOf(s)>=0) return 'active';
+    return s;
+  }
+  function normalizeEmploymentStatus(o){
+    const raw=clean((o||{}).employmentStatus || (o||{})['任職狀態'] || (o||{}).workStatus || (o||{})['在職狀態']);
+    const s=lower(raw);
+    if(!s) return 'active';
+    if(['resigned','離職','已離職'].indexOf(s)>=0) return 'resigned';
+    if(['suspended','暫停','暫停任用','暫停合作'].indexOf(s)>=0) return 'suspended';
+    if(['contractorended','contract_ended','合作結束','外聘合作結束'].indexOf(s)>=0) return 'contractorEnded';
+    if(['archived','封存'].indexOf(s)>=0) return 'archived';
+    if(['active','在職','正常'].indexOf(s)>=0) return 'active';
+    return s;
+  }
+  function hiddenFromLists(o){ return truthy((o||{}).hiddenFromActiveLists || (o||{})['隱藏於日常清單'] || (o||{}).hidden || (o||{})['隱藏']); }
+  function isManager(o){ const role=lower((o||{}).role || (o||{})['角色']); return role==='admin' || role==='manager' || truthy((o||{}).showSettingsZone || (o||{})['管理區權限'] || (o||{})['管理權限']); }
+  function statusLabel(accountStatus, employmentStatus, hidden){
+    if(accountStatus==='pending') return '待審核';
+    if(accountStatus==='rejected') return '註冊駁回';
+    if(accountStatus==='archived' || employmentStatus==='archived') return '封存';
+    if(employmentStatus==='resigned') return '離職';
+    if(employmentStatus==='suspended') return '暫停任用';
+    if(employmentStatus==='contractorEnded') return '合作結束';
+    if(accountStatus==='inactive') return hidden ? '停用 / 隱藏' : '停用登入';
+    if(hidden) return '隱藏';
+    return '在職';
+  }
+  function statusReason(row){
+    const reasons=[];
+    if(row.accountStatus==='pending') reasons.push('註冊尚未審核');
+    if(row.accountStatus==='rejected') reasons.push('註冊已駁回');
+    if(row.accountStatus==='inactive') reasons.push('帳號不可登入');
+    if(row.accountStatus==='archived') reasons.push('帳號已封存');
+    if(row.employmentStatus==='resigned') reasons.push('任職狀態為離職');
+    if(row.employmentStatus==='suspended') reasons.push('任職狀態為暫停任用');
+    if(row.employmentStatus==='contractorEnded') reasons.push('外聘合作已結束');
+    if(row.employmentStatus==='archived') reasons.push('任職資料已封存');
+    if(row.hiddenFromActiveLists) reasons.push('已隱藏於日常操作清單');
+    return reasons;
+  }
+  function normEmployee(o){
+    o=o||{};
+    const id=empIdOf(o);
+    const type=identityTypeOf(o);
+    const accountStatus=normalizeAccountStatus(o);
+    const employmentStatus=normalizeEmploymentStatus(o);
+    const hidden=hiddenFromLists(o);
+    const row={
+      __id:clean(o.__id || id), id, employeeId:id,
+      name:nameOf(o), email:emailOf(o),
+      mobilePhone:clean(o.mobilePhone || o.phone || o['行動電話'] || o['手機']),
+      identityType:type, identityLabel:identityLabelOf(type),
+      role:lower(o.role || o['角色'] || 'staff') || 'staff', isManager:isManager(o),
+      accountStatus, employmentStatus, hiddenFromActiveLists:hidden,
+      statusLabel:statusLabel(accountStatus, employmentStatus, hidden),
+      lineUserId:clean(o.lineUserId || o['LINE User ID']),
+      lineNotifyEnabled:truthy(o.lineNotifyEnabled || o['LINE 通知啟用']),
+      hireDate:clean(o.hireDate || o.joinDate || o['到職日']),
+      resignedDate:clean(o.resignedDate || o.leaveDate || o['離職日']),
+      statusNote:clean(o.statusNote || o['狀態備註'] || o.note || o['備註']),
+      createdAtText:clean(o.createdAtText || o.createdAt || o['建立時間']),
+      updatedAtText:clean(o.updatedAtText || o.updatedAt || o['更新時間']),
+      raw:o
+    };
+    row.statusReasons=statusReason(row);
+    row.isActiveForDailyUse = isActiveEmployee(row);
+    return row;
+  }
+  function isActiveEmployee(row){
+    row = row && row.accountStatus ? row : normEmployee(row || {});
+    if(!row.id && !row.email) return false;
+    if(row.hiddenFromActiveLists) return false;
+    if(row.accountStatus !== 'active') return false;
+    if(['active',''].indexOf(row.employmentStatus) < 0) return false;
+    return true;
+  }
+  function matchesKeyword(row, keyword){
+    if(!keyword) return true;
+    const hay=[row.name,row.employeeId,row.email,row.identityLabel,row.statusLabel,row.mobilePhone,row.role].join(' ').toLowerCase();
+    return hay.indexOf(keyword)>=0;
+  }
+  function canInclude(row,payload){
+    const mode=clean(payload && payload.statusMode) || clean(payload && payload.filter) || 'active';
+    if(payload && (payload.includeHidden === true || payload.includeInactive === true || payload.includeAll === true)) return true;
+    if(mode==='all') return true;
+    if(mode==='pending') return row.accountStatus==='pending';
+    if(mode==='hidden') return row.hiddenFromActiveLists || row.employmentStatus!=='active' || row.accountStatus!=='active';
+    if(mode==='inactive') return row.accountStatus!=='active' || row.employmentStatus!=='active' || row.hiddenFromActiveLists;
+    return row.isActiveForDailyUse;
+  }
+  async function employeeRows(payload){
+    const keyword=lower(payload && payload.keyword);
+    const rows=(await all('employees')).map(normEmployee).filter(r=>(r.id||r.email) && canInclude(r,payload) && matchesKeyword(r,keyword));
+    rows.sort((a,b)=>{
+      const rank=x=>x.accountStatus==='pending'?0:(x.isActiveForDailyUse?1:2);
+      return rank(a)-rank(b) || clean(a.name).localeCompare(clean(b.name),'zh-Hant') || clean(a.employeeId).localeCompare(clean(b.employeeId));
+    });
+    return rows;
+  }
+  async function getEmployeeOptions(payload){
+    const rows=(await employeeRows(payload||{})).filter(r=>r.id || r.email).map(r=>({
+      id:r.id, employeeId:r.employeeId, name:r.name, employeeName:r.name, email:r.email,
+      identityType:r.identityType, identityLabel:r.identityLabel, role:r.role,
+      accountStatus:r.accountStatus, employmentStatus:r.employmentStatus, hiddenFromActiveLists:r.hiddenFromActiveLists,
+      statusLabel:r.statusLabel, lineUserId:r.lineUserId, lineNotifyEnabled:r.lineNotifyEnabled, isManager:r.isManager
+    }));
+    return {ok:true,rows,employees:rows,list:rows,source:'firebase-employee-master-active-filter'};
+  }
+  async function getEmployeeManagementData(payload){
+    const allRows=(await employeeRows(Object.assign({}, payload||{}, {includeAll:true}))).filter(r=>r.id || r.email);
+    const keyword=lower(payload && payload.keyword);
+    const mode=clean(payload && payload.statusMode) || 'active';
+    let rows=allRows.filter(r=>matchesKeyword(r,keyword));
+    if(mode==='active') rows=rows.filter(r=>r.isActiveForDailyUse);
+    else if(mode==='pending') rows=rows.filter(r=>r.accountStatus==='pending');
+    else if(mode==='hidden') rows=rows.filter(r=>!r.isActiveForDailyUse && r.accountStatus!=='pending' && r.accountStatus!=='rejected');
+    else if(mode==='rejected') rows=rows.filter(r=>r.accountStatus==='rejected');
+    else if(mode==='all') rows=rows;
+    const counts={
+      total:allRows.length,
+      active:allRows.filter(r=>r.isActiveForDailyUse).length,
+      pending:allRows.filter(r=>r.accountStatus==='pending').length,
+      hidden:allRows.filter(r=>!r.isActiveForDailyUse && r.accountStatus!=='pending' && r.accountStatus!=='rejected').length,
+      rejected:allRows.filter(r=>r.accountStatus==='rejected').length
+    };
+    return {ok:true,rows,counts,source:'firebase-employee-master'};
+  }
+  async function updateEmployeeAdminStatus(payload){
+    payload=payload||{};
+    const key=clean(payload.employeeId || payload.id || payload.__id);
+    const email=emailOf(payload);
+    if(!key && !email) return {ok:false,message:'缺少員工ID或 Email'};
+    let target = key ? await getDoc('employees', key).catch(()=>null) : null;
+    if(!target && key){
+      const rows=await all('employees');
+      target=rows.find(r=>empIdOf(r)===key || clean(r.__id)===key) || null;
+    }
+    if(!target && email){
+      const rows=await all('employees');
+      target=rows.find(r=>emailOf(r)===email) || null;
+    }
+    if(!target) return {ok:false,message:'找不到員工資料'};
+    const docId=clean(target.__id || target.employeeId || key);
+    const employmentStatus=clean(payload.employmentStatus || normalizeEmploymentStatus(target)) || 'active';
+    let accountStatus=clean(payload.accountStatus || normalizeAccountStatus(target)) || 'active';
+    let hidden = payload.hiddenFromActiveLists;
+    if(hidden === undefined || hidden === null || hidden === '') hidden = hiddenFromLists(target);
+    hidden = truthy(hidden);
+    if(employmentStatus==='resigned' || employmentStatus==='suspended' || employmentStatus==='contractorEnded'){
+      if(accountStatus==='active') accountStatus='inactive';
+      hidden = true;
+    }
+    if(employmentStatus==='archived'){
+      accountStatus='archived';
+      hidden = true;
+    }
+    if(employmentStatus==='active' && accountStatus==='active' && falsey(payload.forceHidden)){
+      // keep explicit checkbox value; do not force visible if manager intentionally hides an active employee.
+    }
+    const user=readUser();
+    const data={
+      accountStatus, employmentStatus, hiddenFromActiveLists:hidden,
+      resignedDate:clean(payload.resignedDate), statusNote:clean(payload.statusNote),
+      updatedAt:serverTs(), updatedAtText:nowText(), updatedBy:clean(user.id || user.employeeId || user.email),
+      source:'employee-admin-status'
+    };
+    if(!data.resignedDate && employmentStatus==='resigned') data.resignedDate=today();
+    await setDoc('employees', docId, data, true);
+    return {ok:true,message:'員工狀態已儲存。',employeeId:empIdOf(target),docId,updates:data};
+  }
+  function sameEmployee(row, emp){
+    const id=emp.employeeId || emp.id;
+    const email=emp.email;
+    const rid=empIdOf(row), remail=emailOf(row);
+    return (!!id && rid===id) || (!!email && remail===email) || (!!id && clean(row.targetEmployeeId)===id) || (!!id && clean(row.userId)===id);
+  }
+  async function getEmployeeHistorySnapshot(payload){
+    const employees=(await employeeRows({includeAll:true}));
+    const key=clean(payload && (payload.employeeId || payload.id));
+    const email=lower(payload && payload.email);
+    const emp=employees.find(e=>(key && (e.employeeId===key || e.id===key || e.__id===key)) || (email && e.email===email));
+    if(!emp) return {ok:false,message:'找不到員工資料'};
+    const collections=[
+      ['clockRecords','打卡紀錄'],['clockCorrections','補打卡/打卡修正'],['leaveRequests','請假申請'],['leaveRecords','請假紀錄'],
+      ['parttimeRecords','工讀時數'],['temporaryAttendanceRequests','臨時出勤/補登'],['employeeSchedules','班表套用'],['singleDaySchedules','單日班表'],
+      ['profileChangeRequests','個資修改'],['certificateApplications','證明申請'],['notificationQueue','通知佇列']
+    ];
+    const items=[];
+    for(const pair of collections){
+      const col=pair[0], label=pair[1];
+      let rows=[]; try{ rows=await all(col); }catch(e){ rows=[]; }
+      const matched=rows.filter(r=>sameEmployee(r,emp));
+      items.push({collection:col,label,count:matched.length,latestId:clean((matched[matched.length-1]||{}).__id)});
+    }
+    return {ok:true,employee:emp,items,source:'firebase-employee-history-snapshot'};
+  }
+  async function getScheduleSetupData(payload){
+    if(typeof previousHandle === 'function'){
+      const res=await previousHandle('getScheduleSetupData', payload||{}).catch(()=>null);
+      if(res){ const e=await getEmployeeOptions(payload||{}); res.employees=e.rows; res.source=(res.source||'')+' + employee-master-filter'; return res; }
+    }
+    return null;
+  }
+  async function getSalarySetupOptions(payload){
+    if(typeof previousHandle === 'function'){
+      const res=await previousHandle('getSalarySetupOptions', payload||{}).catch(()=>null);
+      if(res){
+        const active=await getEmployeeOptions(payload||{});
+        const keep={}; active.rows.forEach(e=>{ keep[e.id]=true; keep[e.employeeId]=true; });
+        res.employees=(res.employees||[]).filter(e=>keep[clean(e.id||e.employeeId)]).map(e=>Object.assign({}, e, active.rows.find(a=>a.id===clean(e.id||e.employeeId))||{}));
+        res.source=(res.source||'')+' + employee-master-filter';
+        return res;
+      }
+    }
+    return await getEmployeeOptions(payload||{});
+  }
+  async function filteredPrevious(action,payload){
+    if(typeof previousHandle !== 'function') return null;
+    const res=await previousHandle(action,payload||{}).catch(()=>null);
+    if(!res) return null;
+    const active=await getEmployeeOptions(payload||{});
+    const keep={}; active.rows.forEach(e=>{ keep[e.id]=true; keep[e.employeeId]=true; if(e.email) keep[e.email]=true; });
+    ['employees','rows','list'].forEach(k=>{
+      if(Array.isArray(res[k])) res[k]=res[k].filter(e=>{
+        const id=clean(e.id||e.employeeId||e.userId||e['員工ID']); const email=emailOf(e);
+        return keep[id] || keep[email];
+      });
+    });
+    return res;
+  }
+  async function getNotificationRecipients(payload){ return await getEmployeeOptions(payload||{}); }
+  async function getNotificationRecipientsV2(payload){ return await getEmployeeOptions(payload||{}); }
+
+  fb.handleApi = async function(action,payload){
+    const a=clean(action);
+    if(a==='getEmployeeManagementData') return await getEmployeeManagementData(payload||{});
+    if(a==='updateEmployeeAdminStatus') return await updateEmployeeAdminStatus(payload||{});
+    if(a==='getEmployeeHistorySnapshot') return await getEmployeeHistorySnapshot(payload||{});
+    if(a==='getEmployeeOptions') return await getEmployeeOptions(payload||{});
+    if(a==='getScheduleSetupData') return await getScheduleSetupData(payload||{});
+    if(a==='getSalarySetupOptions') return await getSalarySetupOptions(payload||{});
+    if(a==='getNotificationRecipients' || a==='getNotificationRecipientsV2') return await getNotificationRecipientsV2(payload||{});
+    if(a==='getParttimePayrollAdminData' || a==='getParttimePayrollSummary') return await filteredPrevious(a,payload||{});
+    if(typeof previousHandle === 'function') return await previousHandle(action,payload||{});
+    return null;
+  };
+  fb.__employeeMasterControl20260530 = true;
+  global.YZFirebase = fb;
+})(window);
