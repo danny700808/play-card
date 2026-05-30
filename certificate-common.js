@@ -16,11 +16,12 @@
     }
   };
   const ASSETS={logoBlack:'yuzu-logo-black.png',logoGreen:'yuzu-logo-green.png',personalStamp:'personal-seal.png'};
+  const LEGAL_NOTICE='本證明僅供證明本文件所載之任職／教學事實，不作其他用途。未經本單位同意，不得擅自塗改、冒用、轉作不實用途或提供與申請目的無關之使用；如申請人或持有人自行不當使用，應自負相關法律責任。';
   const DEFAULT_TEMPLATES={
     employment:{
       type:'employment', documentTitle:'在職證明書', defaultUnit:'company', showLogo:true, logoFile:ASSETS.logoBlack,
       bodyText:'茲證明下列人員現任職於本單位，任職資料如下，特此證明。',
-      footerText:'本證明僅作為申請人任職事實之證明，不作其他用途。',
+      footerText:LEGAL_NOTICE,
       closingText:'特此證明', showUnitStamp:true, showPersonalStamp:true, showApprovalLine:true,
       watermarkDraft:'草稿\n尚未送出', watermarkPending:'主管尚未核准\n僅供預覽', watermarkRejected:'申請已退回\n僅供預覽',
       noteText:'請依實際任職／教學身分選擇開立單位。若是補習班老師身分，請選擇「台中市私立凱立音樂短期補習班」；若是公司／樂器行工作身分，請選擇「尚品樂器行」。開立單位會影響證明書名稱與使用印章，請勿選錯。'
@@ -28,7 +29,7 @@
     teaching:{
       type:'teaching', documentTitle:'教學證明書', defaultUnit:'school', showLogo:true, logoFile:ASSETS.logoBlack,
       bodyText:'茲證明下列教師於本單位擔任教學工作，教學資料如下，特此證明。',
-      footerText:'本證明僅作為申請人於本單位教學事實之證明，不作其他用途。',
+      footerText:LEGAL_NOTICE,
       closingText:'特此證明', showUnitStamp:true, showPersonalStamp:true, showApprovalLine:true,
       watermarkDraft:'草稿\n尚未送出', watermarkPending:'主管尚未核准\n僅供預覽', watermarkRejected:'申請已退回\n僅供預覽',
       noteText:'教學證明預設由「台中市私立凱立音樂短期補習班」開立，授課地點固定為合法立案地址：台中市豐原區圓環東路347號。'
@@ -171,6 +172,12 @@
   }
   function statusClass(status){if(status===STATUS.APPROVED) return 'approved'; if(status===STATUS.PENDING) return 'pending'; if(status===STATUS.REJECTED) return 'rejected'; return 'draft';}
   function watermarkText(status,template){if(status===STATUS.APPROVED) return ''; if(status===STATUS.PENDING) return template.watermarkPending||DEFAULT_TEMPLATES.employment.watermarkPending; if(status===STATUS.REJECTED) return template.watermarkRejected||DEFAULT_TEMPLATES.employment.watermarkRejected; return template.watermarkDraft||DEFAULT_TEMPLATES.employment.watermarkDraft;}
+  function footerHtml(template){
+    const text=clean(template&&template.footerText);
+    if(!text) return `<div class="cert-legal-text">${nl2br(LEGAL_NOTICE)}</div>`;
+    if(text.indexOf('自負相關法律責任')>=0 || text.indexOf('法律責任')>=0) return `<div class="cert-legal-text">${nl2br(text)}</div>`;
+    return `<div class="cert-footer-text">${nl2br(text)}</div><div class="cert-legal-text">${nl2br(LEGAL_NOTICE)}</div>`;
+  }
   function renderCertificate(type,data,template,options){
     options=options||{}; data=data||{}; template=deepMerge(defaultTemplate(type),template||{}); const unit=unitFor(data,template,type); const status=options.status||STATUS.DRAFT; const wm=options.hideWatermark?'':watermarkText(status,template);
     const issueDate=data.issueDate||dateText(data.approvedAt)||today();
@@ -182,15 +189,14 @@
     return `<article class="certificate-page" data-cert-type="${escapeHtml(type)}">
       ${wm?`<div class="cert-watermark">${nl2br(wm)}</div>`:''}
       <div class="certificate-content">
-        ${template.showLogo===false?'':`<div class="cert-logo-wrap"><img class="cert-logo" src="${escapeHtml(template.logoFile||ASSETS.logoBlack)}" alt="柚子樂器 YOU ZI MUSIC"></div>`}
         <h1 class="cert-doc-title">${escapeHtml(template.documentTitle||TYPE_TITLE[type])}</h1>
         <p class="cert-body-text">${nl2br(template.bodyText||'')}</p>
         <table class="cert-table"><tbody>${rows}</tbody></table>
-        <div class="cert-footer-text">${nl2br(template.footerText||'')}</div>
+        ${footerHtml(template)}
         <div class="cert-footer-text">${nl2br(template.closingText||'特此證明')}</div>
         <div class="cert-spacer"></div>
         <section class="cert-issuer">
-          <div class="cert-issuer-row"><span class="cert-issuer-label">對外品牌</span><span>柚子樂器｜YOU ZI MUSIC</span></div>
+          <div class="cert-issuer-row cert-brand-row"><span class="cert-issuer-label">對外品牌</span><span class="cert-brand-content"><span>柚子樂器｜YOU ZI MUSIC</span><img class="cert-brand-logo" src="${escapeHtml(template.logoFile||ASSETS.logoBlack)}" alt="柚子樂器 YOU ZI MUSIC"></span></div>
           <div class="cert-issuer-row"><span class="cert-issuer-label">開立單位</span><span>${escapeHtml(unit.name)}</span></div>
           <div class="cert-issuer-row"><span class="cert-issuer-label">${escapeHtml(unit.idLabel)}</span><span>${escapeHtml(unit.idNo)}</span></div>
           <div class="cert-issuer-row"><span class="cert-issuer-label">地址</span><span>${escapeHtml(unit.address)}</span></div>

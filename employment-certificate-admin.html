@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>在職證明設定</title>
   <link rel="stylesheet" href="style.css?v=cert20260530">
-  <link rel="stylesheet" href="certificate.css?v=cert20260530">
+  <link rel="stylesheet" href="certificate.css?v=cert20260530b">
 </head>
 <body class="cert-page admin-wide-page">
   <div class="cert-wrap">
@@ -14,7 +14,7 @@
       <div class="cert-top">
         <div>
           <h1 class="cert-title"><span data-cert-label>在職證明</span>設定</h1>
-          <div class="cert-sub">左邊設定範本、Logo、浮水印與印章規則；右邊即時預覽 A4 版型。儲存後會保留範本歷史。</div>
+          <div class="cert-sub">左邊設定範本、浮水印與印章規則；右邊即時預覽 A4 版型。文件上方以證明書標題為主，對外品牌欄位會顯示柚子樂器文字與小 Logo。儲存後會保留範本歷史。</div>
         </div>
         <div class="cert-tools">
           <a class="btn secondary" href="certificate-review-admin.html">證明申請審核</a>
@@ -25,10 +25,10 @@
         <section>
           <form id="templateForm" class="cert-form-card">
             <h2>範本設定</h2>
-            <div class="cert-section-note">最上方固定使用「柚子樂器 / YOU ZI MUSIC」作為對外品牌；實際開立單位可選「尚品樂器行」或「台中市私立凱立音樂短期補習班」，系統會自動帶入對應資訊與印章。</div>
+            <div class="cert-section-note">文件上方以「在職證明書」為主標題；對外品牌欄位會顯示「柚子樂器｜YOU ZI MUSIC」與小 Logo。實際開立單位可選「尚品樂器行」或「台中市私立凱立音樂短期補習班」，系統會自動帶入對應資訊與印章。</div>
             <div class="cert-field"><label>文件標題</label><input id="documentTitle" value="在職證明書"></div>
             <div class="cert-field"><label>預設開立單位</label><select id="defaultUnit"><option value="company">尚品樂器行（統一編號 99680937）</option><option value="school">台中市私立凱立音樂短期補習班（證號 1110094357 號）</option></select></div>
-            <label class="cert-check"><input id="showLogo" type="checkbox" checked> 顯示柚子樂器黑色 Logo</label>
+            <label class="cert-check" style="display:none!important"><input id="showLogo" type="checkbox" checked> 對外品牌欄位顯示柚子樂器小 Logo</label>
             <input id="logoFile" type="hidden" value="yuzu-logo-black.png">
             <div class="cert-field"><label>證明內文</label><textarea id="bodyText" rows="3"></textarea></div>
             <div class="cert-field"><label>結尾說明</label><textarea id="footerText" rows="3"></textarea></div>
@@ -72,7 +72,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="firebase-client.js?v=cert20260530"></script>
   <script src="app.js?v=cert20260530"></script>
-  <script src="certificate-common.js?v=cert20260530"></script>
+  <script src="certificate-common.js?v=cert20260530b"></script>
   <script>window.addEventListener('DOMContentLoaded',()=>Certificates.initTemplateAdmin('employment'));</script>
 </body>
 </html>
