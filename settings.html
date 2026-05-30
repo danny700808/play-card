@@ -350,7 +350,7 @@
       <a class="tile" href="leave-policy-admin.html"><strong>假勤制度設定</strong><span>假別與請假規則</span></a>
       <a class="tile" href="salary-admin.html"><strong>薪資與投保設定 <span class="badge" id="badge-salary"></span></strong><span>薪資與投保資料</span></a>
       <a class="tile" href="parttime-payroll-admin.html"><strong>工讀薪資結算</strong><span>工時與薪資結算</span></a>
-      <a class="tile" href="quotation-contract-hub.html"><strong>其他表格</strong><span>估價單、合約與列印表格</span></a>
+      <a class="tile" href="quotation-contract-hub.html"><strong>其他表格 <span class="badge" id="badge-forms"></span></strong><span>表格設定、證明審核與提醒設定</span></a>
     </div>
   </div>
   <script src="config.js?v=20260508frontendperf1"></script>
@@ -409,7 +409,8 @@
         routineCount: Number(counts.routineCount || counts.pendingRoutineCount || counts.routineReviewCount || counts.routines || 0) || 0,
         applicationCount: Number(counts.applicationCount || counts.pendingApplicationCount || counts.teacherApplicationCount || counts.applications || 0) || 0,
         salaryCount: Number(counts.salaryCount || counts.pendingSalaryCount || 0) || 0,
-        approvalCount: Number(counts.approvalCount || 0) || 0
+        approvalCount: Number(counts.approvalCount || 0) || 0,
+        certificateReviewCount: Number(counts.certificateReviewCount || counts.certificatePendingCount || counts.certificates || 0) || 0
       });
     }
     async function fetchPendingCountsFast_(user){
@@ -438,6 +439,7 @@
       setBadge('badge-application', r.applicationCount);
       setBadge('badge-items', items);
       setBadge('badge-salary', r.salaryCount);
+      setBadge('badge-forms', r.certificateReviewCount);
     }
     function sum_(){ return Array.from(arguments).reduce((s,v)=>s+(Number(v||0)||0),0); }
     function setBadge(id, count){

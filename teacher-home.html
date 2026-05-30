@@ -567,9 +567,9 @@
       <button class="entry-card" type="button" id="openFormsBtn">
         <div class="entry-top">
           <div class="entry-title">表格</div>
-          <div class="entry-count done">查看</div>
+          <div class="entry-count" id="formsCount">0</div>
         </div>
-        <div class="entry-desc">集點卡與其他表格</div>
+        <div class="entry-desc">集點卡與證明申請</div>
       </button>
     </section>
   </div>
@@ -632,6 +632,7 @@
       setCount('todoCount', counts.tasks || 0, '完成');
       setCount('contractCount', contract.pendingCount || (contract.signed ? 0 : 1), contract.signed ? '完成' : '1');
       setCount('goodsCount', goods.openInquiryCount || goods.newItemCount || goods.total || 0, '完成');
+      setCount('formsCount', counts.formsCount || counts.certificateCount || 0, '完成');
 
       setStatus('', false);
     }

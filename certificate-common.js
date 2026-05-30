@@ -1,295 +1,258 @@
 (function(global){
-  'use strict';
-  const TYPE_LABEL={employment:'在職證明',teaching:'教學證明'};
-  const TYPE_TITLE={employment:'在職證明書',teaching:'教學證明書'};
-  const STATUS={DRAFT:'草稿',PENDING:'待主管審核',APPROVED:'已核准',REJECTED:'已退回'};
-  const UNITS={
-    company:{
-      key:'company', shortName:'尚品樂器行', name:'尚品樂器行', idLabel:'統一編號', idNo:'99680937',
-      address:'台中市豐原區圓環東路347號4樓', phone:'04-25227893',
-      unitStamp:'shangpin-company-seal.png', invoiceStamp:'shangpin-invoice-stamp.png', personalStamp:'personal-seal.png'
+  const ORG_UNITS = {
+    shangpin: {
+      key:'shangpin',
+      name:'尚品樂器行',
+      label:'尚品樂器行',
+      identifierLabel:'統一編號',
+      identifier:'99680937',
+      address:'台中市豐原區圓環東路347號1樓',
+      stamp:'company_seal_contract_transparent.png',
+      stampLabel:'尚品公司章',
+      personalStamp:'red_stamp_transparent.png',
+      tip:'公司／樂器行工作身分請選擇尚品樂器行。'
     },
-    school:{
-      key:'school', shortName:'凱立音樂短期補習班', name:'台中市私立凱立音樂短期補習班', idLabel:'證號', idNo:'1110094357 號',
-      address:'台中市豐原區圓環東路347號', phone:'04-25227893',
-      unitStamp:'kaili-school-seal.png', invoiceStamp:'', personalStamp:'personal-seal.png'
+    kaili: {
+      key:'kaili',
+      name:'台中市私立凱立音樂短期補習班',
+      label:'台中市私立凱立音樂短期補習班',
+      identifierLabel:'證號',
+      identifier:'1110094357 號',
+      address:'台中市豐原區圓環東路347號',
+      stamp:'blue_stamp_transparent.png',
+      stampLabel:'補習班章',
+      personalStamp:'red_stamp_transparent.png',
+      tip:'補習班老師／教學身分請選擇台中市私立凱立音樂短期補習班。'
     }
   };
-  const ASSETS={logoBlack:'yuzu-logo-black.png',logoGreen:'yuzu-logo-green.png',personalStamp:'personal-seal.png'};
-  const LEGAL_NOTICE='本證明僅供證明本文件所載之任職／教學事實，不作其他用途。未經本單位同意，不得擅自塗改、冒用、轉作不實用途或提供與申請目的無關之使用；如申請人或持有人自行不當使用，應自負相關法律責任。';
-  const DEFAULT_TEMPLATES={
-    employment:{
-      type:'employment', documentTitle:'在職證明書', defaultUnit:'company', showLogo:true, logoFile:ASSETS.logoBlack,
-      bodyText:'茲證明下列人員現任職於本單位，任職資料如下，特此證明。',
-      footerText:LEGAL_NOTICE,
-      closingText:'特此證明', showUnitStamp:true, showPersonalStamp:true, showApprovalLine:true,
-      watermarkDraft:'草稿\n尚未送出', watermarkPending:'主管尚未核准\n僅供預覽', watermarkRejected:'申請已退回\n僅供預覽',
-      noteText:'請依實際任職／教學身分選擇開立單位。若是補習班老師身分，請選擇「台中市私立凱立音樂短期補習班」；若是公司／樂器行工作身分，請選擇「尚品樂器行」。開立單位會影響證明書名稱與使用印章，請勿選錯。'
-    },
-    teaching:{
-      type:'teaching', documentTitle:'教學證明書', defaultUnit:'school', showLogo:true, logoFile:ASSETS.logoBlack,
-      bodyText:'茲證明下列教師於本單位擔任教學工作，教學資料如下，特此證明。',
-      footerText:LEGAL_NOTICE,
-      closingText:'特此證明', showUnitStamp:true, showPersonalStamp:true, showApprovalLine:true,
-      watermarkDraft:'草稿\n尚未送出', watermarkPending:'主管尚未核准\n僅供預覽', watermarkRejected:'申請已退回\n僅供預覽',
-      noteText:'教學證明預設由「台中市私立凱立音樂短期補習班」開立，授課地點固定為合法立案地址：台中市豐原區圓環東路347號。'
-    }
-  };
-  const SAMPLE_DATA={
-    employment:{name:'王小明',idNumber:'A123456789',jobTitle:'專職老師',workNature:'音樂教學',hireDate:'2024-08-01',stillEmployed:true,issueDate:today(),issuerUnit:'company'},
-    teaching:{teacherName:'王小明',idNumber:'A123456789',teacherRole:'外聘老師',subject:'鋼琴',periodStart:'2024-08-01',periodEnd:'',stillTeaching:true,lessonType:'個別課',issueDate:today(),issuerUnit:'school'}
-  };
+  const BRAND = { name:'柚子樂器', english:'YOU ZI MUSIC', logo:'yuzu-logo-document-black.png' };
+  const TEACHER_IDENTITY_OPTIONS = ['外聘老師','專職老師','工讀助教'];
+  const LESSON_TYPE_OPTIONS = ['個別課','團體課','活動課','短期課程'];
+  const EMPLOYMENT_WORK_NATURE_OPTIONS = ['教學','行政','門市','教學與行政','活動支援','其他'];
 
-  function clean(v){return String(v==null?'':v).trim();}
-  function upperId(v){return clean(v).toUpperCase().replace(/\s+/g,'');}
-  function escapeHtml(v){return clean(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
-  function nl2br(v){return escapeHtml(v).replace(/\n/g,'<br>');}
-  function today(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
-  function nowIso(){return new Date().toISOString();}
-  function dateText(v){const s=clean(v); if(!s) return ''; if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10); return s;}
-  function dateTimeText(v){ if(!v) return ''; try{ const d=(v&&typeof v.toDate==='function')?v.toDate():new Date(v); if(isNaN(d.getTime())) return clean(v); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }catch(e){return clean(v);} }
-  function rocDate(v){const s=dateText(v)||today(); const m=s.match(/^(\d{4})-(\d{2})-(\d{2})/); if(!m) return s; return '民國 '+(Number(m[1])-1911)+' 年 '+Number(m[2])+' 月 '+Number(m[3])+' 日';}
-  function maskId(v){const s=upperId(v); if(!s) return ''; if(s.length<=4) return s; return s.slice(0,1)+'*****'+s.slice(-4);}
-  function getUserSafe(){try{ if(typeof global.getUser==='function') return global.getUser(); return JSON.parse(localStorage.getItem('employeeUser')||'null'); }catch(e){return null;} }
-  function userKey(user){return clean(user && (user.id||user.employeeId||user.userId||user.email||user.name)) || 'unknown';}
-  function userName(user){return clean(user && (user.name||user.displayName||user.email)) || '未命名';}
-  function isManagerSafe(user){try{ if(typeof global.isManager==='function') return global.isManager(user); }catch(e){} return !!(user && (user.showSettingsZone || clean(user.role).toLowerCase()==='admin'));}
-  function requireLoginSafe(){try{ if(typeof global.requireLogin==='function') return global.requireLogin(); }catch(e){} const u=getUserSafe(); if(!u){location.href='index.html'; return null;} return u;}
-  function homeHref(user){try{ if(typeof global.userHomeHref==='function') return global.userHomeHref(user); }catch(e){} return clean(user&&user.identityType)==='external'?'teacher-home.html':'dashboard.html';}
-  function setMessage(el,text,isError){ if(!el) return; el.textContent=text||''; el.classList.toggle('error',!!isError); el.classList.toggle('show',!!text); }
-  function db(){ try{ if(global.YZFirebase && typeof global.YZFirebase.init==='function') return global.YZFirebase.init(); }catch(e){} try{ if(global.firebase && global.firebase.firestore) return global.firebase.firestore(); }catch(e){} return null; }
-  function deepMerge(a,b){const out=Object.assign({},a||{}); Object.keys(b||{}).forEach(k=>{ if(b[k]&&typeof b[k]==='object'&&!Array.isArray(b[k]) && !(b[k] instanceof Date)){out[k]=deepMerge(out[k],b[k]);} else {out[k]=b[k];} }); return out;}
-  function templateDocId(type){return type==='teaching'?'teachingCertificate':'employmentCertificate';}
-  function defaultTemplate(type){return deepMerge({}, DEFAULT_TEMPLATES[type]||DEFAULT_TEMPLATES.employment);}
-  function localKey(key){return 'YZ_CERT_'+key;}
-  function getLocalJson(key,def){try{return JSON.parse(localStorage.getItem(localKey(key))||'')||def;}catch(e){return def;}}
-  function setLocalJson(key,val){try{localStorage.setItem(localKey(key),JSON.stringify(val));}catch(e){}}
+  function clean(v){ return String(v == null ? '' : v).trim(); }
+  function lower(v){ return clean(v).toLowerCase(); }
+  function esc(v){ return clean(v).replace(/[&<>"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch])); }
+  function upperId(v){ return clean(v).toUpperCase().replace(/\s+/g,''); }
+  function pad(n){ return String(n).padStart(2,'0'); }
+  function today(){ const d=new Date(); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
+  function dateOnly(v){
+    if(!v) return '';
+    if(v && typeof v.toDate === 'function') v = v.toDate();
+    if(v instanceof Date && !isNaN(v.getTime())) return `${v.getFullYear()}-${pad(v.getMonth()+1)}-${pad(v.getDate())}`;
+    const s=clean(v).replace(/\//g,'-');
+    if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+    const d=new Date(s); return isNaN(d.getTime()) ? s : `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  }
+  function dateTimeText(v){
+    if(!v) return '';
+    if(v && typeof v.toDate === 'function') v = v.toDate();
+    if(v instanceof Date && !isNaN(v.getTime())) return `${v.getFullYear()}-${pad(v.getMonth()+1)}-${pad(v.getDate())} ${pad(v.getHours())}:${pad(v.getMinutes())}`;
+    const s=clean(v); return s;
+  }
+  function rocDate(v){
+    const s=dateOnly(v); if(!/^\d{4}-\d{2}-\d{2}$/.test(s)) return esc(s);
+    const [y,m,d]=s.split('-').map(Number);
+    return `民國 ${y-1911} 年 ${m} 月 ${d} 日`;
+  }
+  function unitByKey(key){ return ORG_UNITS[clean(key)] || ORG_UNITS.kaili; }
+  function typeLabel(type){ return clean(type)==='teaching' ? '教學證明' : '在職證明'; }
+  function docTitle(type){ return clean(type)==='teaching' ? '教學證明書' : '在職證明書'; }
+  function statusLabel(s){
+    s=clean(s); if(!s) return '待主管審核';
+    if(s==='approved'||s==='已同意') return '已核准';
+    if(s==='rejected'||s==='已駁回') return '已退回';
+    if(s==='pending') return '待主管審核';
+    return s;
+  }
+  function isApprovedStatus(s){ s=statusLabel(s); return s==='已核准'; }
+  function watermarkText(status, mode){
+    if(mode==='editing') return '送出前預覽';
+    const s=statusLabel(status);
+    if(s==='已核准') return '';
+    if(s==='已退回') return '申請已退回\n僅供預覽';
+    return '主管尚未核准\n僅供預覽';
+  }
+  function defaultTemplate(type){
+    const isTeaching = clean(type)==='teaching';
+    return {
+      certificateType:isTeaching?'teaching':'employment',
+      title:isTeaching?'教學證明書':'在職證明書',
+      defaultUnitKey:isTeaching?'kaili':'shangpin',
+      showBrandLogo:true,
+      introText:isTeaching?'茲證明下列教師於本單位擔任教學工作，教學資料如下，特此證明。':'茲證明下列人員現任職於本單位，任職資料如下，特此證明。',
+      footerText:'本證明僅作為申請人於本單位服務事實之證明。',
+      closingText:'特此證明',
+      watermarkPending:'主管尚未核准\n僅供預覽',
+      watermarkRejected:'申請已退回\n僅供預覽',
+      updatedAtText:''
+    };
+  }
+  function normalizeTemplate(type, row){ return Object.assign({}, defaultTemplate(type), row || {}); }
+  function userIdOf(u){ u=u||{}; return clean(u.id || u.employeeId || u.userId || u.email); }
+  function identityTypeOfUser(u){
+    u=u||{}; const raw=lower(u.identityType || u['身分類型']);
+    if(raw==='external'||raw.indexOf('外聘')>=0) return 'external';
+    if(raw==='parttime'||raw.indexOf('工讀')>=0 || u.isPartTime===true) return 'parttime';
+    return 'staff';
+  }
+  function identityLabelOfUser(u){ const t=identityTypeOfUser(u); return t==='external'?'外聘老師':(t==='parttime'?'工讀生':'專職老師'); }
 
-  async function getTemplate(type){
-    const base=defaultTemplate(type);
-    const d=db();
-    if(d){
-      try{
-        const snap=await d.collection('printTemplates').doc(templateDocId(type)).get();
-        if(snap.exists) return deepMerge(base, snap.data()||{});
-      }catch(e){console.warn('[certificate] getTemplate Firebase fallback',e);}
-    }
-    return deepMerge(base, getLocalJson('template_'+type, {}));
-  }
-  async function saveTemplate(type,template,user){
-    const row=deepMerge(defaultTemplate(type),template||{});
-    row.type=type; row.updatedAt=nowIso(); row.updatedBy=userName(user); row.updatedById=userKey(user);
-    const history=deepMerge({}, row); history.historyId='TPL_'+type+'_'+Date.now(); history.createdAt=nowIso();
-    const d=db();
-    if(d){
-      try{
-        await d.collection('printTemplates').doc(templateDocId(type)).set(row,{merge:true});
-        await d.collection('certificateTemplateHistory').doc(history.historyId).set(history,{merge:true});
-        setLocalJson('template_'+type,row);
-        return {ok:true,id:history.historyId};
-      }catch(e){console.warn('[certificate] saveTemplate Firebase fallback',e);}
-    }
-    setLocalJson('template_'+type,row);
-    const list=getLocalJson('templateHistory_'+type,[]); list.unshift(history); setLocalJson('templateHistory_'+type,list.slice(0,50));
-    return {ok:true,id:history.historyId,local:true};
-  }
-  async function getTemplateHistory(type){
-    const d=db();
-    if(d){
-      try{
-        const snap=await d.collection('certificateTemplateHistory').where('type','==',type).get();
-        const rows=[]; snap.forEach(doc=>rows.push(Object.assign({historyId:doc.id},doc.data()||{})));
-        return rows.sort((a,b)=>clean(b.createdAt||b.updatedAt).localeCompare(clean(a.createdAt||a.updatedAt)));
-      }catch(e){console.warn('[certificate] getTemplateHistory Firebase fallback',e);}
-    }
-    return getLocalJson('templateHistory_'+type,[]);
-  }
-  async function deleteTemplateHistory(id,type){
-    const d=db();
-    if(d){ try{await d.collection('certificateTemplateHistory').doc(id).delete(); return {ok:true};}catch(e){console.warn('[certificate] deleteTemplateHistory fallback',e);} }
-    const list=getLocalJson('templateHistory_'+type,[]).filter(r=>r.historyId!==id); setLocalJson('templateHistory_'+type,list); return {ok:true,local:true};
-  }
-  async function saveApplication(type,payload,opts){
-    opts=opts||{}; const user=opts.user||getUserSafe(); const id=clean(opts.applicationId)||clean(payload.applicationId)||('CERT_'+type+'_'+userKey(user)+'_'+Date.now());
-    const status=opts.status||STATUS.DRAFT; const old=opts.old||{};
-    const templateSnapshot=opts.templateSnapshot || old.templateSnapshot || await getTemplate(type);
-    const row=Object.assign({},old,{applicationId:id,type,status,applicantId:userKey(user),applicantName:userName(user),applicantIdentity:clean(user&&user.identityType),data:payload,templateSnapshot,updatedAt:nowIso(),updatedBy:userName(user)});
-    if(!row.createdAt) row.createdAt=nowIso();
-    if(status===STATUS.PENDING) row.submittedAt=nowIso();
-    if(status===STATUS.DRAFT && !row.submittedAt) row.submittedAt='';
-    const d=db();
-    if(d){ try{ await d.collection('certificateApplications').doc(id).set(row,{merge:true}); return {ok:true,row}; }catch(e){console.warn('[certificate] saveApplication Firebase fallback',e);} }
-    const list=getLocalJson('applications',[]); const idx=list.findIndex(r=>r.applicationId===id); if(idx>=0) list[idx]=row; else list.unshift(row); setLocalJson('applications',list); return {ok:true,row,local:true};
-  }
-  async function getMyApplications(type,user){
-    const key=userKey(user); const d=db();
-    if(d){
-      try{
-        const snap=await d.collection('certificateApplications').where('applicantId','==',key).get();
-        const rows=[]; snap.forEach(doc=>rows.push(Object.assign({applicationId:doc.id},doc.data()||{})));
-        return rows.filter(r=>r.type===type).sort((a,b)=>clean(b.updatedAt||b.createdAt).localeCompare(clean(a.updatedAt||a.createdAt)));
-      }catch(e){console.warn('[certificate] getMyApplications Firebase fallback',e);}
-    }
-    return getLocalJson('applications',[]).filter(r=>r.type===type && r.applicantId===key).sort((a,b)=>clean(b.updatedAt||b.createdAt).localeCompare(clean(a.updatedAt||a.createdAt)));
-  }
-  async function getAllApplications(filters){
-    filters=filters||{}; const d=db(); let rows=[];
-    if(d){
-      try{ const snap=await d.collection('certificateApplications').get(); snap.forEach(doc=>rows.push(Object.assign({applicationId:doc.id},doc.data()||{}))); }
-      catch(e){console.warn('[certificate] getAllApplications Firebase fallback',e); rows=getLocalJson('applications',[]);}
-    }else rows=getLocalJson('applications',[]);
-    if(filters.type) rows=rows.filter(r=>r.type===filters.type);
-    if(filters.status) rows=rows.filter(r=>r.status===filters.status);
-    return rows.sort((a,b)=>clean(b.updatedAt||b.createdAt).localeCompare(clean(a.updatedAt||a.createdAt)));
-  }
-  async function updateApplicationStatus(id,status,extra){
-    extra=extra||{}; const d=db(); const update=Object.assign({},extra,{status,reviewedAt:nowIso(),updatedAt:nowIso()});
-    if(status===STATUS.APPROVED) update.approvedAt=nowIso();
-    if(status===STATUS.REJECTED) update.rejectedAt=nowIso();
-    if(d){ try{ await d.collection('certificateApplications').doc(id).set(update,{merge:true}); return {ok:true}; }catch(e){console.warn('[certificate] updateApplicationStatus fallback',e);} }
-    const list=getLocalJson('applications',[]); const idx=list.findIndex(r=>r.applicationId===id); if(idx>=0){ list[idx]=Object.assign({},list[idx],update); setLocalJson('applications',list); }
-    return {ok:true,local:true};
-  }
-  async function deleteApplication(id){
-    const d=db(); if(d){ try{ await d.collection('certificateApplications').doc(id).delete(); return {ok:true}; }catch(e){console.warn('[certificate] deleteApplication fallback',e);} }
-    const list=getLocalJson('applications',[]).filter(r=>r.applicationId!==id); setLocalJson('applications',list); return {ok:true,local:true};
+  function normalizeApplication(row){
+    row=row||{};
+    const form=row.formData || row.data || row;
+    const type=clean(row.certificateType || form.certificateType || row.type || 'employment')==='teaching'?'teaching':'employment';
+    return Object.assign({}, row, {
+      requestId:clean(row.requestId || row.__id || row.id),
+      certificateType:type,
+      certificateTypeLabel:typeLabel(type),
+      employeeId:clean(row.employeeId || row.userId || form.employeeId || row['員工ID']),
+      name:clean(row.name || row.applicantName || form.name || form.teacherName || row['姓名']),
+      email:clean(row.email || row.Email || row['Email']),
+      idNumber:upperId(row.idNumber || form.idNumber || row['身分證字號']),
+      status:statusLabel(row.status || row['狀態']),
+      formData:Object.assign({}, form, {idNumber:upperId(form.idNumber || row.idNumber || row['身分證字號'])}),
+      submittedAtText:dateTimeText(row.submittedAt || row.createdAt || row['送出時間'] || row['建立時間']),
+      reviewedAtText:dateTimeText(row.reviewedAt || row['審核時間']),
+      hiddenBy:Array.isArray(row.hiddenBy)?row.hiddenBy:[]
+    });
   }
 
-  function unitFor(data,template,type){const k=clean(data&&data.issuerUnit)||clean(template&&template.defaultUnit)||((type==='teaching')?'school':'company'); return UNITS[k]||UNITS.company;}
-  function periodText(start,end,still){const s=dateText(start); const e=still?'迄今':dateText(end); return [s,e].filter(Boolean).join(' 至 ') || '—';}
-  function tableRows(type,data){
-    data=data||{};
+  function applicationToDocumentData(row){
+    const app=normalizeApplication(row);
+    const f=app.formData || {};
+    if(app.certificateType==='teaching'){
+      return {
+        type:'teaching',
+        name:clean(f.teacherName || app.name),
+        idNumber:upperId(f.idNumber || app.idNumber),
+        teacherIdentity:clean(f.teacherIdentity || app.identityLabel || '外聘老師'),
+        subject:clean(f.subject),
+        periodStart:dateOnly(f.periodStart),
+        periodEnd:dateOnly(f.periodEnd),
+        stillTeaching:!!f.stillTeaching || clean(f.stillTeaching)==='是',
+        lessonType:clean(f.lessonType || '個別課'),
+        location:ORG_UNITS.kaili.address,
+        unitKey:clean(f.unitKey || 'kaili'),
+        issueDate:dateOnly(f.issueDate || app.approvedDate || app.reviewedAt || today())
+      };
+    }
+    return {
+      type:'employment',
+      name:clean(f.name || app.name),
+      idNumber:upperId(f.idNumber || app.idNumber),
+      jobTitle:clean(f.jobTitle || f.title),
+      workNature:clean(f.workNature || '教學'),
+      hireDate:dateOnly(f.hireDate),
+      stillWorking:f.stillWorking === false ? false : true,
+      unitKey:clean(f.unitKey || 'shangpin'),
+      issueDate:dateOnly(f.issueDate || app.approvedDate || app.reviewedAt || today())
+    };
+  }
+
+  function fieldRowsHtml(type, data){
+    const rows = [];
     if(type==='teaching'){
-      return [
-        ['教師姓名', data.teacherName], ['身分證字號', upperId(data.idNumber)], ['教師身分', data.teacherRole], ['任教科目', data.subject],
-        ['任教期間', periodText(data.periodStart,data.periodEnd,data.stillTeaching)], ['授課類型', data.lessonType], ['授課地點', '台中市豐原區圓環東路347號']
-      ];
-    }
-    return [
-      ['姓名', data.name], ['身分證字號', upperId(data.idNumber)], ['職稱', data.jobTitle], ['工作性質', data.workNature],
-      ['到職日期', dateText(data.hireDate)], ['任職狀態', data.stillEmployed?'現仍在職':'已離職']
-    ];
-  }
-  function statusClass(status){if(status===STATUS.APPROVED) return 'approved'; if(status===STATUS.PENDING) return 'pending'; if(status===STATUS.REJECTED) return 'rejected'; return 'draft';}
-  function watermarkText(status,template){if(status===STATUS.APPROVED) return ''; if(status===STATUS.PENDING) return template.watermarkPending||DEFAULT_TEMPLATES.employment.watermarkPending; if(status===STATUS.REJECTED) return template.watermarkRejected||DEFAULT_TEMPLATES.employment.watermarkRejected; return template.watermarkDraft||DEFAULT_TEMPLATES.employment.watermarkDraft;}
-  function footerHtml(template){
-    const text=clean(template&&template.footerText);
-    if(!text) return `<div class="cert-legal-text">${nl2br(LEGAL_NOTICE)}</div>`;
-    if(text.indexOf('自負相關法律責任')>=0 || text.indexOf('法律責任')>=0) return `<div class="cert-legal-text">${nl2br(text)}</div>`;
-    return `<div class="cert-footer-text">${nl2br(text)}</div><div class="cert-legal-text">${nl2br(LEGAL_NOTICE)}</div>`;
-  }
-  function renderCertificate(type,data,template,options){
-    options=options||{}; data=data||{}; template=deepMerge(defaultTemplate(type),template||{}); const unit=unitFor(data,template,type); const status=options.status||STATUS.DRAFT; const wm=options.hideWatermark?'':watermarkText(status,template);
-    const issueDate=data.issueDate||dateText(data.approvedAt)||today();
-    const rows=tableRows(type,data).map(([k,v])=>`<tr><th>${escapeHtml(k)}</th><td>${escapeHtml(v||'—')}</td></tr>`).join('');
-    const stampHtml=[];
-    if(template.showUnitStamp!==false){ stampHtml.push(`<div class="cert-stamp-box"><img class="cert-stamp unit" src="${escapeHtml(unit.unitStamp)}" alt="單位章"><div>單位章</div></div>`); }
-    if(template.showPersonalStamp!==false){ stampHtml.push(`<div class="cert-stamp-box"><img class="cert-stamp personal" src="${escapeHtml(unit.personalStamp||ASSETS.personalStamp)}" alt="個人章"><div>負責人章</div></div>`); }
-    const approvalLine = template.showApprovalLine===false ? '' : `<div class="cert-approval-line">${status===STATUS.APPROVED?'主管核准：'+escapeHtml(data.approvedByName||data.reviewedByName||'主管')+'｜核准時間：'+escapeHtml(dateTimeText(data.approvedAt||data.reviewedAt)): '主管核准後，本證明始為正式文件。'}</div>`;
-    return `<article class="certificate-page" data-cert-type="${escapeHtml(type)}">
-      ${wm?`<div class="cert-watermark">${nl2br(wm)}</div>`:''}
-      <div class="certificate-content">
-        <h1 class="cert-doc-title">${escapeHtml(template.documentTitle||TYPE_TITLE[type])}</h1>
-        <p class="cert-body-text">${nl2br(template.bodyText||'')}</p>
-        <table class="cert-table"><tbody>${rows}</tbody></table>
-        ${footerHtml(template)}
-        <div class="cert-footer-text">${nl2br(template.closingText||'特此證明')}</div>
-        <div class="cert-spacer"></div>
-        <section class="cert-issuer">
-          <div class="cert-issuer-row cert-brand-row"><span class="cert-issuer-label">對外品牌</span><span class="cert-brand-content"><span>柚子樂器｜YOU ZI MUSIC</span><img class="cert-brand-logo" src="${escapeHtml(template.logoFile||ASSETS.logoBlack)}" alt="柚子樂器 YOU ZI MUSIC"></span></div>
-          <div class="cert-issuer-row"><span class="cert-issuer-label">開立單位</span><span>${escapeHtml(unit.name)}</span></div>
-          <div class="cert-issuer-row"><span class="cert-issuer-label">${escapeHtml(unit.idLabel)}</span><span>${escapeHtml(unit.idNo)}</span></div>
-          <div class="cert-issuer-row"><span class="cert-issuer-label">地址</span><span>${escapeHtml(unit.address)}</span></div>
-          <div class="cert-issuer-row"><span class="cert-issuer-label">電話</span><span>${escapeHtml(unit.phone)}</span></div>
-          <div class="cert-issuer-row"><span class="cert-issuer-label">開立日期</span><span>${escapeHtml(rocDate(issueDate))}</span></div>
-          ${approvalLine}
-        </section>
-        <div class="cert-stamp-zone">${stampHtml.join('')}</div>
-      </div>
-    </article>`;
-  }
-  function waitForImages(root){
-    const imgs=Array.from((root||document).querySelectorAll('img'));
-    return Promise.all(imgs.map(img=>img.complete?Promise.resolve():new Promise(res=>{img.onload=img.onerror=res;})));
-  }
-  function collectTemplateForm(type){
-    const v=id=>{const el=document.getElementById(id); return el?el.value:''};
-    const c=id=>{const el=document.getElementById(id); return el?el.checked:false};
-    return {type,documentTitle:v('documentTitle'),defaultUnit:v('defaultUnit'),showLogo:c('showLogo'),logoFile:v('logoFile')||ASSETS.logoBlack,bodyText:v('bodyText'),footerText:v('footerText'),closingText:v('closingText'),showUnitStamp:c('showUnitStamp'),showPersonalStamp:c('showPersonalStamp'),showApprovalLine:c('showApprovalLine'),watermarkDraft:v('watermarkDraft'),watermarkPending:v('watermarkPending'),watermarkRejected:v('watermarkRejected'),noteText:v('noteText')};
-  }
-  function fillTemplateForm(template){
-    const set=(id,val)=>{const el=document.getElementById(id); if(el) el.value=val==null?'':val;};
-    const chk=(id,val)=>{const el=document.getElementById(id); if(el) el.checked=val!==false;};
-    set('documentTitle',template.documentTitle); set('defaultUnit',template.defaultUnit); set('logoFile',template.logoFile||ASSETS.logoBlack); set('bodyText',template.bodyText); set('footerText',template.footerText); set('closingText',template.closingText); set('watermarkDraft',template.watermarkDraft); set('watermarkPending',template.watermarkPending); set('watermarkRejected',template.watermarkRejected); set('noteText',template.noteText); chk('showLogo',template.showLogo); chk('showUnitStamp',template.showUnitStamp); chk('showPersonalStamp',template.showPersonalStamp); chk('showApprovalLine',template.showApprovalLine);
-  }
-  function collectUserForm(type){
-    const v=id=>{const el=document.getElementById(id); return el?el.value:''};
-    const c=id=>{const el=document.getElementById(id); return !!(el&&el.checked);};
-    if(type==='teaching') return {teacherName:v('teacherName'),idNumber:upperId(v('idNumber')),teacherRole:v('teacherRole'),subject:v('subject'),periodStart:v('periodStart'),periodEnd:v('periodEnd'),stillTeaching:c('stillTeaching'),lessonType:v('lessonType'),issueDate:v('issueDate')||today(),issuerUnit:v('issuerUnit')||'school'};
-    return {name:v('name'),idNumber:upperId(v('idNumber')),jobTitle:v('jobTitle'),workNature:v('workNature'),hireDate:v('hireDate'),stillEmployed:c('stillEmployed'),issueDate:v('issueDate')||today(),issuerUnit:v('issuerUnit')||'company'};
-  }
-  function fillUserForm(type,data){
-    data=data||{}; const set=(id,val)=>{const el=document.getElementById(id); if(el) el.value=val==null?'':val;}; const chk=(id,val)=>{const el=document.getElementById(id); if(el) el.checked=!!val;};
-    if(type==='teaching'){set('teacherName',data.teacherName); set('idNumber',upperId(data.idNumber)); set('teacherRole',data.teacherRole); set('subject',data.subject); set('periodStart',dateText(data.periodStart)); set('periodEnd',dateText(data.periodEnd)); chk('stillTeaching',data.stillTeaching); set('lessonType',data.lessonType); set('issueDate',dateText(data.issueDate)||today()); set('issuerUnit',data.issuerUnit||'school');}
-    else {set('name',data.name); set('idNumber',upperId(data.idNumber)); set('jobTitle',data.jobTitle); set('workNature',data.workNature); set('hireDate',dateText(data.hireDate)); chk('stillEmployed',data.stillEmployed!==false); set('issueDate',dateText(data.issueDate)||today()); set('issuerUnit',data.issuerUnit||'company');}
-  }
-  function validateData(type,data){
-    const miss=[];
-    if(type==='teaching'){
-      if(!clean(data.teacherName)) miss.push('教師姓名'); if(!upperId(data.idNumber)) miss.push('身分證字號'); if(!clean(data.teacherRole)) miss.push('教師身分'); if(!clean(data.subject)) miss.push('任教科目'); if(!clean(data.periodStart)) miss.push('任教期間起日'); if(!clean(data.lessonType)) miss.push('授課類型');
+      const period = [rocDate(data.periodStart), data.stillTeaching ? '迄今' : rocDate(data.periodEnd)].filter(Boolean).join(' 至 ');
+      rows.push(['教師姓名', data.name], ['身分證字號', data.idNumber], ['教師身分', data.teacherIdentity], ['任教科目', data.subject], ['任教期間', period], ['授課類型', data.lessonType], ['授課地點', data.location || ORG_UNITS.kaili.address]);
     }else{
-      if(!clean(data.name)) miss.push('姓名'); if(!upperId(data.idNumber)) miss.push('身分證字號'); if(!clean(data.jobTitle)) miss.push('職稱'); if(!clean(data.workNature)) miss.push('工作性質'); if(!clean(data.hireDate)) miss.push('到職日期'); if(!clean(data.issuerUnit)) miss.push('開立單位');
+      rows.push(['姓名', data.name], ['身分證字號', data.idNumber], ['職稱', data.jobTitle], ['工作性質', data.workNature], ['到職日期', rocDate(data.hireDate)], ['任職狀態', data.stillWorking ? '現仍在職' : '已離職']);
     }
-    return miss;
-  }
-  function setIdUppercaseBinding(){ const el=document.getElementById('idNumber'); if(el){ el.addEventListener('input',()=>{const pos=el.selectionStart; el.value=upperId(el.value); try{el.setSelectionRange(pos,pos);}catch(e){} }); } }
-  function statusPill(status){return `<span class="cert-status-pill ${statusClass(status)}">${escapeHtml(status||STATUS.DRAFT)}</span>`;}
-  function bindInputs(selector,cb){Array.from(document.querySelectorAll(selector)).forEach(el=>{el.addEventListener('input',cb); el.addEventListener('change',cb);});}
-  function renderIntoPrintArea(type,data,template,status){const el=document.getElementById('printArea'); if(el) el.innerHTML=renderCertificate(type,data,template,{status});}
-
-  async function initTemplateAdmin(type){
-    const user=requireLoginSafe(); if(!user) return; if(!isManagerSafe(user)){location.href='dashboard.html';return;}
-    const msg=document.getElementById('msg'); const label=TYPE_LABEL[type]; document.querySelectorAll('[data-cert-label]').forEach(el=>el.textContent=label);
-    let template=await getTemplate(type); fillTemplateForm(template); renderIntoPrintArea(type,Object.assign({},SAMPLE_DATA[type],{issuerUnit:template.defaultUnit}),template,STATUS.PENDING);
-    bindInputs('#templateForm input,#templateForm textarea,#templateForm select',()=>{template=collectTemplateForm(type); renderIntoPrintArea(type,Object.assign({},SAMPLE_DATA[type],{issuerUnit:template.defaultUnit}),template,STATUS.PENDING);});
-    const saveBtn=document.getElementById('saveTemplateBtn'); if(saveBtn) saveBtn.onclick=async()=>{try{template=collectTemplateForm(type); await saveTemplate(type,template,user); setMessage(msg,'已儲存範本，並新增一筆範本歷史。'); await renderTemplateHistory(type);}catch(e){setMessage(msg,e.message||'儲存失敗',true);}};
-    await renderTemplateHistory(type);
-  }
-  async function renderTemplateHistory(type){
-    const box=document.getElementById('templateHistory'); if(!box) return; const rows=await getTemplateHistory(type);
-    if(!rows.length){box.innerHTML='<div class="cert-empty">目前沒有範本歷史紀錄。</div>';return;}
-    box.innerHTML=rows.map((r,i)=>`<div class="cert-history-item" data-history-id="${escapeHtml(r.historyId)}"><div class="cert-history-head"><div><div class="cert-history-title">${escapeHtml(r.documentTitle||TYPE_TITLE[type])}</div><div class="cert-history-meta">${escapeHtml(dateTimeText(r.createdAt||r.updatedAt))}｜開立單位：${escapeHtml((UNITS[r.defaultUnit]||{}).name||r.defaultUnit||'')}</div></div><div class="cert-mini-preview">A4</div></div><div class="cert-history-actions"><button class="btn cert-ghost" type="button" data-action="preview">預覽</button><button class="btn" type="button" data-action="apply">套用</button><button class="btn cert-danger" type="button" data-action="delete">刪除</button></div></div>`).join('');
-    Array.from(box.querySelectorAll('button')).forEach(btn=>btn.onclick=async()=>{const item=btn.closest('[data-history-id]'); const id=item&&item.getAttribute('data-history-id'); const row=rows.find(r=>r.historyId===id); const act=btn.getAttribute('data-action'); if(!row) return; if(act==='preview'){renderIntoPrintArea(type,Object.assign({},SAMPLE_DATA[type],{issuerUnit:row.defaultUnit}),row,STATUS.PENDING);} if(act==='apply'){fillTemplateForm(row); renderIntoPrintArea(type,Object.assign({},SAMPLE_DATA[type],{issuerUnit:row.defaultUnit}),row,STATUS.PENDING); window.scrollTo({top:0,behavior:'smooth'});} if(act==='delete'){if(confirm('確定刪除這筆範本歷史？')){await deleteTemplateHistory(id,type); await renderTemplateHistory(type);}} });
+    return rows.map(([k,v])=>`<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join('');
   }
 
-  async function initUserApplication(type){
-    const user=requireLoginSafe(); if(!user) return; document.querySelectorAll('[data-cert-label]').forEach(el=>el.textContent=TYPE_LABEL[type]); const back=document.getElementById('backHomeBtn'); if(back){back.href=homeHref(user);} const msg=document.getElementById('msg'); let template=await getTemplate(type); let current=null; let currentStatus=STATUS.DRAFT;
-    const defaults=Object.assign({},SAMPLE_DATA[type]); if(type==='teaching'){defaults.teacherName=userName(user); defaults.idNumber=''; defaults.periodStart=''; defaults.periodEnd=''; defaults.subject=''; defaults.teacherRole=clean(user.identityType)==='external'?'外聘老師':''; defaults.lessonType='個別課'; defaults.issuerUnit='school';}
-    else {defaults.name=userName(user); defaults.idNumber=''; defaults.hireDate=''; defaults.issuerUnit=template.defaultUnit||'company'; defaults.stillEmployed=true;}
-    fillUserForm(type,defaults); setIdUppercaseBinding(); renderIntoPrintArea(type,collectUserForm(type),template,currentStatus); bindInputs('#applicationForm input,#applicationForm textarea,#applicationForm select',()=>{renderIntoPrintArea(type,collectUserForm(type),current&&current.templateSnapshot?current.templateSnapshot:template,currentStatus);});
-    const statusBox=document.getElementById('currentStatusBox'); const refreshStatus=()=>{if(statusBox) statusBox.innerHTML=statusPill(currentStatus)+(current&&current.rejectReason?`<div class="cert-muted" style="margin-top:6px">退回原因：${escapeHtml(current.rejectReason)}</div>`:'');}; refreshStatus();
-    async function loadHistory(){ const box=document.getElementById('applicationHistory'); if(!box) return; const rows=await getMyApplications(type,user); if(!rows.length){box.innerHTML='<div class="cert-empty">目前沒有歷史申請紀錄。</div>';return;} box.innerHTML=rows.map(r=>{const d=r.data||{}; const name=type==='teaching'?d.teacherName:d.name; return `<div class="cert-history-item" data-app-id="${escapeHtml(r.applicationId)}"><div class="cert-history-head"><div><div class="cert-history-title">${escapeHtml(TYPE_LABEL[type])}｜${escapeHtml(name||'未填姓名')} ${statusPill(r.status)}</div><div class="cert-history-meta">更新：${escapeHtml(dateTimeText(r.updatedAt||r.createdAt))}｜身分證：${escapeHtml(maskId(d.idNumber))}</div></div><div class="cert-mini-preview">預覽</div></div><div class="cert-history-actions"><button class="btn cert-ghost" type="button" data-action="view">查看</button><button class="btn" type="button" data-action="reuse">帶入修改</button><button class="btn cert-danger" type="button" data-action="delete">刪除</button></div></div>`;}).join(''); Array.from(box.querySelectorAll('button')).forEach(btn=>btn.onclick=async()=>{const id=btn.closest('[data-app-id]').getAttribute('data-app-id'); const row=rows.find(r=>r.applicationId===id); if(!row) return; const act=btn.getAttribute('data-action'); if(act==='delete'){if(confirm('確定刪除這筆歷史申請？')){await deleteApplication(id); if(current&&current.applicationId===id){current=null; currentStatus=STATUS.DRAFT;} await loadHistory(); return;}} current=row; currentStatus=row.status||STATUS.DRAFT; fillUserForm(type,row.data||{}); renderIntoPrintArea(type,Object.assign({},row.data||{},row),row.templateSnapshot||template,currentStatus); refreshStatus(); setMessage(msg,act==='view'?'已載入歷史紀錄預覽。':'已帶入歷史資料，可修改後儲存草稿或重新送審。'); window.scrollTo({top:0,behavior:'smooth'});}); }
-    async function saveWithStatus(status){ const data=collectUserForm(type); const miss=validateData(type,data); if(miss.length){setMessage(msg,'請先填寫：'+miss.join('、'),true);return;} try{ const res=await saveApplication(type,data,{user,status,applicationId:current&&current.applicationId,old:current||{},templateSnapshot:(current&&current.templateSnapshot)||template}); current=res.row; currentStatus=status; renderIntoPrintArea(type,data,current.templateSnapshot||template,currentStatus); refreshStatus(); await loadHistory(); setMessage(msg,status===STATUS.PENDING?'已送出主管審核。核准前預覽與列印會保留浮水印。':'已儲存草稿。'); }catch(e){setMessage(msg,e.message||'儲存失敗',true);} }
-    const saveDraftBtn=document.getElementById('saveDraftBtn'); if(saveDraftBtn) saveDraftBtn.onclick=()=>saveWithStatus(STATUS.DRAFT);
-    const submitBtn=document.getElementById('submitReviewBtn'); if(submitBtn) submitBtn.onclick=()=>saveWithStatus(STATUS.PENDING);
-    const printBtn=document.getElementById('printBtn'); if(printBtn) printBtn.onclick=async()=>{const raw=collectUserForm(type); const data=Object.assign({},raw,current||{}); if(!verifyIdPassword(raw.idNumber,'列印驗證')) return; renderIntoPrintArea(type,data,(current&&current.templateSnapshot)||template,currentStatus); document.body.classList.add('cert-print-unlocked'); setTimeout(()=>{global.print(); setTimeout(()=>document.body.classList.remove('cert-print-unlocked'),800);},80);};
-    const pdfBtn=document.getElementById('downloadPdfBtn'); if(pdfBtn) pdfBtn.onclick=async()=>{const raw=collectUserForm(type); const data=Object.assign({},raw,current||{}); if(!verifyIdPassword(raw.idNumber,'另存加密 PDF 驗證')) return; try{setMessage(msg,'正在產生加密 PDF，請稍候。'); await downloadEncryptedPdf(type,data,(current&&current.templateSnapshot)||template,currentStatus); setMessage(msg,'已產生加密 PDF。開啟檔案時，密碼為本人身分證字號。');}catch(e){setMessage(msg,e.message||'PDF 產生失敗',true);} };
-    await loadHistory();
-  }
-  function verifyIdPassword(idNumber,title){ const real=upperId(idNumber); if(!real){alert('請先填寫身分證字號。');return false;} const input=upperId(prompt((title||'文件驗證')+'\n\n此文件含個人資料，請輸入本人身分證字號。英文會自動轉成大寫。')||''); if(!input) return false; if(input!==real){alert('身分證字號不符，無法列印或另存。');return false;} return true; }
-  async function downloadEncryptedPdf(type,data,template,status){
-    if(!(global.html2canvas && global.jspdf && global.jspdf.jsPDF)) throw new Error('PDF 套件尚未載入完成，請重新整理後再試。');
-    const holder=document.createElement('div'); holder.style.position='fixed'; holder.style.left='-10000px'; holder.style.top='0'; holder.style.width='210mm'; holder.style.background='#fff'; holder.innerHTML=renderCertificate(type,data,template,{status}); document.body.appendChild(holder); await waitForImages(holder); const page=holder.querySelector('.certificate-page');
-    const canvas=await global.html2canvas(page,{scale:2,useCORS:true,backgroundColor:'#ffffff'}); const img=canvas.toDataURL('image/jpeg',0.98); const password=upperId(data.idNumber); const {jsPDF}=global.jspdf; const pdf=new jsPDF({orientation:'p',unit:'mm',format:'a4',encryption:{userPassword:password,ownerPassword:password+'_YUZU_OWNER',userPermissions:['print']}}); pdf.addImage(img,'JPEG',0,0,210,297); const blob=pdf.output('blob'); holder.remove(); const url=URL.createObjectURL(blob); const a=document.createElement('a'); const n=type==='teaching'?(data.teacherName||'教學證明'):(data.name||'在職證明'); a.href=url; a.download=`${TYPE_LABEL[type]}_${clean(n).replace(/[\\/:*?"<>|]/g,'_')}_${today().replace(/-/g,'')}.pdf`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),1500);
+  function certificateHtml(opts){
+    opts=opts||{};
+    const type=clean(opts.type)==='teaching'?'teaching':'employment';
+    const template=normalizeTemplate(type, opts.template || {});
+    const data=Object.assign({type, unitKey:template.defaultUnitKey}, opts.data || {});
+    data.unitKey = data.unitKey || template.defaultUnitKey;
+    const unit=unitByKey(data.unitKey);
+    const mark = opts.watermark != null ? clean(opts.watermark) : watermarkText(opts.status, opts.mode);
+    const title=clean(template.title || docTitle(type));
+    const intro=clean(template.introText || defaultTemplate(type).introText);
+    const footer=clean(template.footerText || defaultTemplate(type).footerText);
+    const closing=clean(template.closingText || '特此證明');
+    const approved = isApprovedStatus(opts.status || '');
+    const reviewLine = approved && opts.reviewedAt ? `<div class="cert-review-line">核准時間：${esc(dateTimeText(opts.reviewedAt))}${opts.reviewerName?`　核准人：${esc(opts.reviewerName)}`:''}</div>` : '';
+    return `
+      <section class="cert-doc ${approved?'cert-approved':'cert-preview'}">
+        ${mark ? `<div class="cert-watermark">${esc(mark).replace(/\n/g,'<br>')}</div>` : ''}
+        <header class="cert-brand-head">
+          ${template.showBrandLogo !== false ? `<img class="cert-brand-logo" src="${esc(BRAND.logo)}" alt="柚子樂器 YOU ZI MUSIC">` : `<div class="cert-brand-text">${esc(BRAND.name)}<span>${esc(BRAND.english)}</span></div>`}
+        </header>
+        <div class="cert-title">${esc(title)}</div>
+        <div class="cert-unit-top">
+          <div>${esc(unit.name)}</div>
+          <small>${esc(unit.identifierLabel)}：${esc(unit.identifier)}　地址：${esc(unit.address)}</small>
+        </div>
+        <main class="cert-body">
+          <p class="cert-intro">${esc(intro)}</p>
+          <table class="cert-info-table"><tbody>${fieldRowsHtml(type, data)}</tbody></table>
+          <p class="cert-footer-text">${esc(footer)}</p>
+          <p class="cert-closing">${esc(closing)}</p>
+        </main>
+        <footer class="cert-footer">
+          <div class="cert-issue">
+            <div>開立單位：${esc(unit.name)}</div>
+            <div>${esc(unit.identifierLabel)}：${esc(unit.identifier)}</div>
+            <div>開立日期：${rocDate(data.issueDate || today())}</div>
+            ${reviewLine}
+          </div>
+          <div class="cert-stamps">
+            <div class="stamp-box"><img src="${esc(unit.stamp)}" alt="${esc(unit.stampLabel)}"><span>${esc(unit.stampLabel)}</span></div>
+            <div class="stamp-box personal"><img src="${esc(unit.personalStamp)}" alt="個人章"><span>個人章</span></div>
+          </div>
+        </footer>
+      </section>`;
   }
 
-  async function initReviewAdmin(){
-    const user=requireLoginSafe(); if(!user) return; if(!isManagerSafe(user)){location.href='dashboard.html'; return;} const msg=document.getElementById('msg'); let rows=[]; let selected=null;
-    async function load(){ const type=document.getElementById('filterType').value; const status=document.getElementById('filterStatus').value; rows=await getAllApplications({type,status}); renderList(); }
-    function renderList(){ const box=document.getElementById('reviewList'); if(!box) return; if(!rows.length){box.innerHTML='<div class="cert-empty">目前沒有符合條件的申請。</div>'; document.getElementById('printArea').innerHTML=''; return;} box.innerHTML=rows.map(r=>{const d=r.data||{}; const name=r.type==='teaching'?d.teacherName:d.name; return `<div class="cert-history-item" data-app-id="${escapeHtml(r.applicationId)}"><div class="cert-history-head"><div><div class="cert-history-title">${escapeHtml(TYPE_LABEL[r.type]||r.type)}｜${escapeHtml(name||r.applicantName||'未填姓名')} ${statusPill(r.status)}</div><div class="cert-history-meta">申請人：${escapeHtml(r.applicantName||'')}｜送出：${escapeHtml(dateTimeText(r.submittedAt||r.updatedAt||r.createdAt))}｜身分證：${escapeHtml(maskId(d.idNumber))}</div></div><div class="cert-mini-preview">A4</div></div><div class="cert-history-actions"><button class="btn" type="button" data-action="view">預覽</button><button class="btn" type="button" data-action="approve">核准</button><button class="btn cert-warn" type="button" data-action="reject">退回</button><button class="btn cert-danger" type="button" data-action="delete">刪除</button></div></div>`;}).join(''); Array.from(box.querySelectorAll('button')).forEach(btn=>btn.onclick=async()=>{const id=btn.closest('[data-app-id]').getAttribute('data-app-id'); const row=rows.find(r=>r.applicationId===id); if(!row) return; const act=btn.getAttribute('data-action'); if(act==='view'){selected=row; renderSelected(); return;} if(act==='approve'){if(confirm('確定核准這筆證明申請？')){await updateApplicationStatus(id,STATUS.APPROVED,{reviewedById:userKey(user),reviewedByName:userName(user),approvedByName:userName(user)}); setMessage(msg,'已核准申請。'); await load();}} if(act==='reject'){const reason=prompt('請輸入退回原因：')||''; if(!reason) return; await updateApplicationStatus(id,STATUS.REJECTED,{reviewedById:userKey(user),reviewedByName:userName(user),rejectReason:reason}); setMessage(msg,'已退回申請。'); await load();} if(act==='delete'){if(confirm('確定刪除這筆申請？')){await deleteApplication(id); setMessage(msg,'已刪除申請。'); await load();}} }); }
-    function renderSelected(){ if(!selected) return; const data=Object.assign({},selected.data||{},selected); renderIntoPrintArea(selected.type,data,selected.templateSnapshot||defaultTemplate(selected.type),selected.status||STATUS.DRAFT); const info=document.getElementById('selectedInfo'); if(info) info.innerHTML=`目前預覽：${escapeHtml(TYPE_LABEL[selected.type])}｜${escapeHtml(selected.applicantName||'')}｜${statusPill(selected.status)}`; }
-    document.getElementById('filterType').onchange=load; document.getElementById('filterStatus').onchange=load; await load();
+  function injectCertificateStyles(){
+    if(document.getElementById('certificateCommonStyles')) return;
+    const style=document.createElement('style');
+    style.id='certificateCommonStyles';
+    style.textContent=`
+      .cert-doc{width:210mm;min-height:297mm;background:#fff;color:#111827;box-sizing:border-box;padding:17mm 18mm 15mm;position:relative;box-shadow:0 10px 36px rgba(15,23,42,.16);overflow:hidden;font-family:"Noto Sans TC","Microsoft JhengHei",Arial,sans-serif;}
+      .cert-brand-head{display:flex;justify-content:center;align-items:center;margin-bottom:8mm;height:23mm;}
+      .cert-brand-logo{max-width:118mm;max-height:22mm;object-fit:contain;}
+      .cert-brand-text{text-align:center;font-size:25px;font-weight:900;letter-spacing:3px}.cert-brand-text span{display:block;font-size:12px;letter-spacing:4px;margin-top:5px}
+      .cert-title{text-align:center;font-size:28px;font-weight:950;letter-spacing:6px;margin-bottom:8mm;}
+      .cert-unit-top{text-align:center;border-top:1px solid #111;border-bottom:1px solid #111;padding:4mm 0;margin-bottom:9mm;font-weight:900;font-size:15px;line-height:1.6}.cert-unit-top small{display:block;font-size:12px;font-weight:700;color:#374151}
+      .cert-body{font-size:15px;line-height:2;color:#111827}.cert-intro{margin:0 0 7mm;text-indent:2em}.cert-info-table{width:100%;border-collapse:collapse;margin:0 auto 7mm;font-size:15px}.cert-info-table th,.cert-info-table td{border:1px solid #111;padding:3.2mm 4mm;text-align:left;vertical-align:middle}.cert-info-table th{width:35mm;background:#f8fafc;text-align:center;font-weight:900}.cert-footer-text{margin:3mm 0 8mm;text-indent:2em}.cert-closing{font-size:17px;font-weight:900;letter-spacing:2px;margin-top:8mm;text-align:left}.cert-footer{display:grid;grid-template-columns:1fr 76mm;gap:8mm;align-items:end;margin-top:9mm}.cert-issue{font-size:14px;line-height:1.9;font-weight:700}.cert-review-line{font-size:12px;color:#374151;margin-top:2mm}.cert-stamps{display:flex;justify-content:flex-end;gap:5mm;align-items:flex-end}.stamp-box{text-align:center;font-size:12px;color:#64748b;font-weight:800}.stamp-box img{display:block;width:31mm;height:31mm;object-fit:contain;margin:0 auto 2mm}.stamp-box.personal img{width:28mm;height:28mm}.cert-watermark{position:absolute;left:50%;top:47%;transform:translate(-50%,-50%) rotate(-24deg);font-size:34px;line-height:1.5;font-weight:950;color:rgba(185,28,28,.18);border:4px solid rgba(185,28,28,.16);border-radius:12px;padding:8mm 14mm;text-align:center;letter-spacing:4px;z-index:3;pointer-events:none;white-space:nowrap}.cert-preview .cert-body,.cert-preview .cert-footer{position:relative;z-index:1}.cert-scale-wrap{display:flex;justify-content:center;align-items:flex-start;overflow:auto;background:#f8fafc;border:1px solid #e2e8f0;border-radius:20px;padding:16px;min-height:560px}.cert-modal{position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9999;display:none;align-items:flex-start;justify-content:center;padding:22px;overflow:auto}.cert-modal.show{display:flex}.cert-modal-panel{background:#fff;border-radius:24px;padding:16px;max-width:min(100%,980px);box-shadow:0 25px 70px rgba(15,23,42,.32)}.cert-modal-actions{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px}.cert-modal-actions .right{display:flex;gap:8px;flex-wrap:wrap}.cert-modal-actions button{width:auto}.cert-status-pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:5px 10px;font-size:12px;font-weight:900;background:#eef7f2;color:#166534}.cert-status-pill.pending{background:#fff7ed;color:#9a3412}.cert-status-pill.rejected{background:#fef2f2;color:#991b1b}@media(max-width:780px){.cert-doc{transform:scale(.52);transform-origin:top left;margin-right:-101mm;margin-bottom:-142mm}.cert-scale-wrap{justify-content:flex-start;min-height:430px}.cert-modal{padding:10px}.cert-watermark{font-size:22px}}@media print{html,body{margin:0!important;background:#fff!important}body *{visibility:hidden!important}.print-host,.print-host *{visibility:visible!important}.print-host{position:absolute!important;left:0!important;top:0!important;width:210mm!important}.cert-doc{box-shadow:none!important;margin:0!important;transform:none!important}@page{size:A4 portrait;margin:0}}
+    `;
+    document.head.appendChild(style);
   }
 
-  global.Certificates={STATUS,UNITS,TYPE_LABEL,defaultTemplate,getTemplate,renderCertificate,initTemplateAdmin,initUserApplication,initReviewAdmin};
+  async function verifyIdPassword(expected){
+    const exp=upperId(expected);
+    if(!exp){ alert('這筆資料沒有身分證字號，無法驗證。'); return false; }
+    const input=prompt('此文件含有個人資料。請輸入本人身分證字號後繼續（英文會自動轉大寫）。');
+    if(input==null) return false;
+    if(upperId(input) !== exp){ alert('身分證字號不符，無法繼續。'); return false; }
+    return true;
+  }
+  function printHtml(html){
+    const base=location.href.replace(/[^\/]*$/,'');
+    const w=window.open('', '_blank');
+    if(!w){ alert('瀏覽器阻擋彈出視窗，請允許彈出視窗後再試。'); return; }
+    w.document.open();
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><base href="${esc(base)}"><title>列印證明</title><style>${document.getElementById('certificateCommonStyles')?.textContent||''}body{margin:0;background:#fff}.print-host{width:210mm;margin:0 auto}</style></head><body><div class="print-host">${html}</div><script>window.onload=function(){setTimeout(function(){window.print();},350)}<\/script></body></html>`);
+    w.document.close();
+  }
+  async function downloadEncryptedPdfFromElement(el, fileName, password){
+    if(!el) throw new Error('找不到預覽內容。');
+    const pass=upperId(password);
+    if(!pass) throw new Error('缺少 PDF 密碼。');
+    if(!global.html2canvas || !global.jspdf || !global.jspdf.jsPDF){
+      throw new Error('PDF 元件尚未載入，請確認網路後重整頁面。');
+    }
+    const canvas = await global.html2canvas(el, {scale:2, useCORS:true, backgroundColor:'#ffffff'});
+    const imgData = canvas.toDataURL('image/jpeg', 0.95);
+    const pdf = new global.jspdf.jsPDF({orientation:'portrait', unit:'mm', format:'a4', encryption:{userPassword:pass, ownerPassword:pass, userPermissions:['print']}});
+    pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
+    pdf.save(fileName || 'certificate.pdf');
+  }
+  function statusPill(status){ const s=statusLabel(status); const cls=s==='已核准'?'':(s==='已退回'?' rejected':' pending'); return `<span class="cert-status-pill${cls}">${esc(s)}</span>`; }
+
+  global.YZ_CERT = {ORG_UNITS, BRAND, TEACHER_IDENTITY_OPTIONS, LESSON_TYPE_OPTIONS, EMPLOYMENT_WORK_NATURE_OPTIONS, clean, esc, upperId, today, dateOnly, dateTimeText, rocDate, unitByKey, typeLabel, docTitle, statusLabel, isApprovedStatus, watermarkText, defaultTemplate, normalizeTemplate, normalizeApplication, applicationToDocumentData, certificateHtml, injectCertificateStyles, verifyIdPassword, printHtml, downloadEncryptedPdfFromElement, statusPill, userIdOf, identityTypeOfUser, identityLabelOfUser};
 })(window);

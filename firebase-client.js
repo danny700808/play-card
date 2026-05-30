@@ -4983,3 +4983,207 @@
   fb.__notifyBadgeUnifiedV20260529 = true;
   global.YZFirebase = fb;
 })(window);
+
+/* 2026-05-30 certificate applications + template + notification settings */
+(function(global){
+  const fb = global.YZFirebase || {};
+  if(fb.__certificateFlowV20260530) return;
+  const previousHandle = fb.handleApi;
+  function clean(v){ return String(v == null ? '' : v).trim(); }
+  function lower(v){ return clean(v).toLowerCase(); }
+  function upperId(v){ return clean(v).toUpperCase().replace(/\s+/g,''); }
+  function truthy(v){ const s=lower(v); return v===true || s==='true' || s==='1' || s==='yes' || s==='是' || s==='啟用'; }
+  function pad(n){ return String(n).padStart(2,'0'); }
+  function nowText(){ const d=new Date(); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`; }
+  function today(){ const d=new Date(); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
+  function dateTime(v){
+    if(!v) return '';
+    if(v && typeof v.toDate === 'function') v = v.toDate();
+    if(v instanceof Date && !isNaN(v.getTime())) return `${v.getFullYear()}-${pad(v.getMonth()+1)}-${pad(v.getDate())} ${pad(v.getHours())}:${pad(v.getMinutes())}`;
+    return clean(v);
+  }
+  function readUser(){ try{ return JSON.parse(global.localStorage.getItem('employeeUser') || 'null') || {}; }catch(e){ return {}; } }
+  function db(){
+    const cfg = global.APP_CONFIG && global.APP_CONFIG.FIREBASE_CONFIG;
+    if(!cfg || !global.firebase) throw new Error('Firebase 尚未啟用');
+    if(!global.firebase.apps.length) global.firebase.initializeApp(cfg);
+    return global.firebase.firestore();
+  }
+  function serverTs(){ try{ return global.firebase.firestore.FieldValue.serverTimestamp(); }catch(e){ return new Date().toISOString(); } }
+  async function all(col){ const snap=await db().collection(col).get(); const rows=[]; snap.forEach(doc=>rows.push(Object.assign({__id:doc.id}, doc.data()||{}))); return rows; }
+  async function docGet(col,id){ if(!clean(id)) return null; const snap=await db().collection(col).doc(clean(id)).get(); return snap.exists ? Object.assign({__id:snap.id}, snap.data()||{}) : null; }
+  async function docSet(col,id,data,merge=true){ await db().collection(col).doc(clean(id)).set(data||{}, {merge}); return {ok:true,id}; }
+  function userIdOf(o){ o=o||{}; return clean(o.employeeId || o.userId || o.id || o['員工ID'] || o.__id); }
+  function emailOf(o){ o=o||{}; return lower(o.email || o.Email || o['Email']); }
+  function nameOf(o){ o=o||{}; return clean(o.name || o['姓名'] || o.applicantName); }
+  function statusOf(o){ return clean((o||{}).status || (o||{})['狀態']); }
+  function isPending(o){ const s=statusOf(o); return s==='待主管審核' || s==='待審核' || lower(s)==='pending' || !s; }
+  function isApproved(o){ const s=statusOf(o); return s==='已核准' || s==='已同意' || lower(s)==='approved'; }
+  function isRejected(o){ const s=statusOf(o); return s==='已退回' || s==='已駁回' || lower(s)==='rejected'; }
+  function identityTypeOf(u){ const raw=lower((u||{}).identityType || (u||{})['身分類型']); if(raw==='external'||raw.indexOf('外聘')>=0) return 'external'; if(raw==='parttime'||raw.indexOf('工讀')>=0 || (u||{}).isPartTime===true) return 'parttime'; return 'staff'; }
+  function identityLabelOf(u){ const t=identityTypeOf(u); return t==='external'?'外聘老師':(t==='parttime'?'工讀生':'專職老師'); }
+  function certType(v){ return clean(v)==='teaching' ? 'teaching' : 'employment'; }
+  function certLabel(t){ return certType(t)==='teaching'?'教學證明':'在職證明'; }
+  function templateDocId(t){ return certType(t)==='teaching'?'teachingCertificate':'employmentCertificate'; }
+  function defaultTemplate(t){
+    t=certType(t);
+    return {certificateType:t,title:t==='teaching'?'教學證明書':'在職證明書',defaultUnitKey:t==='teaching'?'kaili':'shangpin',showBrandLogo:true,introText:t==='teaching'?'茲證明下列教師於本單位擔任教學工作，教學資料如下，特此證明。':'茲證明下列人員現任職於本單位，任職資料如下，特此證明。',footerText:'本證明僅作為申請人於本單位服務事實之證明。',closingText:'特此證明',watermarkPending:'主管尚未核准\n僅供預覽',watermarkRejected:'申請已退回\n僅供預覽'};
+  }
+  function normalizeApplication(r){
+    r=r||{}; const f=r.formData || r.data || {}; const t=certType(r.certificateType || f.certificateType || r.type);
+    const status = isApproved(r)?'已核准':(isRejected(r)?'已退回':'待主管審核');
+    return Object.assign({}, r, {
+      requestId:clean(r.requestId || r.__id || r.id), certificateType:t, certificateTypeLabel:certLabel(t),
+      employeeId:clean(r.employeeId || r.userId || f.employeeId || r['員工ID']), name:clean(r.name || r.applicantName || f.name || f.teacherName || r['姓名']), email:emailOf(r),
+      idNumber:upperId(r.idNumber || f.idNumber || r['身分證字號']), status,
+      formData:Object.assign({}, f, {idNumber:upperId(f.idNumber || r.idNumber || r['身分證字號'])}),
+      submittedAtText:clean(r.submittedAtText) || dateTime(r.submittedAt || r.createdAt || r['建立時間']), reviewedAtText:clean(r.reviewedAtText) || dateTime(r.reviewedAt),
+      hiddenBy:Array.isArray(r.hiddenBy)?r.hiddenBy:[]
+    });
+  }
+  function belongs(row, payload){
+    const user=readUser(); payload=payload||{};
+    const ids=[payload.userId,payload.employeeId,payload.id,user.id,user.employeeId,user.userId].map(clean).filter(Boolean);
+    const emails=[payload.email,user.email].map(lower).filter(Boolean);
+    const id=clean(row.employeeId || row.userId || row['員工ID']); const email=emailOf(row);
+    return (!!id && ids.indexOf(id)>=0) || (!!email && emails.indexOf(email)>=0);
+  }
+  async function managerRecipients(){
+    const emps=await all('employees').catch(()=>[]);
+    return emps.map(e=>({employeeId:userIdOf(e),name:nameOf(e),email:emailOf(e),lineUserId:clean(e.lineUserId || e['LINE User ID']),isManager:truthy(e.showSettingsZone || e['管理權限']) || lower(e.role || e['角色'])==='admin' || lower(e.role || e['角色'])==='manager'})).filter(e=>e.employeeId && e.isManager);
+  }
+  async function targetRecipient(app){
+    const emps=await all('employees').catch(()=>[]);
+    const id=clean(app.employeeId); const email=emailOf(app);
+    const e=emps.find(x=>userIdOf(x)===id || (!!email && emailOf(x)===email));
+    if(!e) return id || email ? {employeeId:id,name:nameOf(app),email} : null;
+    return {employeeId:userIdOf(e),name:nameOf(e),email:emailOf(e),lineUserId:clean(e.lineUserId || e['LINE User ID'])};
+  }
+  async function getCertNotifySetting(code){
+    const row=await docGet('notificationFeatureSettings', code).catch(()=>null);
+    return Object.assign({featureCode:code,enabled:true,notifyManagerLine:true,notifyManagerEmail:false,notifyEmployeeLine:true,notifyEmployeeEmail:false}, row||{});
+  }
+  async function saveCertNotifySetting(payload){
+    const code=clean(payload.featureCode || payload.code);
+    if(code.indexOf('certificate')!==0) return null;
+    const row={
+      featureCode:code, featureName:clean(payload.featureName || payload.name), enabled:payload.enabled !== false,
+      notifyManagerLine:payload.notifyManagerLine !== false, notifyManagerEmail:payload.notifyManagerEmail === true,
+      notifyEmployeeLine:payload.notifyEmployeeLine !== false, notifyEmployeeEmail:payload.notifyEmployeeEmail === true,
+      updatedAt:serverTs(), source:'certificate-notification-setting'
+    };
+    await docSet('notificationFeatureSettings', code, row);
+    return {ok:true,message:'提醒設定已儲存。',setting:row};
+  }
+  async function queueCertNotification(code, direction, app, message){
+    try{
+      const setting=await getCertNotifySetting(code);
+      if(setting.enabled === false) return {ok:true,skipped:true,message:'提醒設定未啟用'};
+      const channels=[];
+      if(direction==='manager'){
+        if(setting.notifyManagerLine !== false) channels.push('line');
+        if(setting.notifyManagerEmail === true) channels.push('email');
+      }else{
+        if(setting.notifyEmployeeLine !== false) channels.push('line');
+        if(setting.notifyEmployeeEmail === true) channels.push('email');
+      }
+      if(!channels.length) return {ok:true,skipped:true,message:'沒有啟用發送管道'};
+      let targets=[];
+      if(direction==='manager') targets=await managerRecipients(); else { const t=await targetRecipient(app); if(t) targets=[t]; }
+      if(!targets.length) return {ok:true,skipped:true,message:'沒有符合的收件人'};
+      if(typeof previousHandle==='function'){
+        const res=await previousHandle('queueManualNotification',{targets,channels,message,page:'auto:'+code});
+        if(res) return res;
+      }
+      const batchId='CERTMSG_'+Date.now()+'_'+Math.random().toString(36).slice(2,8);
+      for(const t of targets){
+        for(const ch of channels){
+          const id=batchId+'_'+clean(t.employeeId||t.email)+'_'+ch;
+          await docSet('notificationQueue', id, {queueId:id,batchId,channel:ch,targetEmployeeId:clean(t.employeeId),targetName:clean(t.name),targetEmail:emailOf(t),targetLineUserId:clean(t.lineUserId),message,body:message,title:'證明申請提醒',status:'待發送',createdAt:serverTs(),source:'certificate-notification'});
+        }
+      }
+      return {ok:true,batchId,count:targets.length*channels.length};
+    }catch(e){ console.warn('[certificate notification skipped]', code, e); return {ok:true,skipped:true,message:e.message}; }
+  }
+  async function getCertificateTemplate(payload){ const t=certType(payload && payload.certificateType); const row=await docGet('printTemplates', templateDocId(t)).catch(()=>null); return {ok:true,template:Object.assign({},defaultTemplate(t),row||{}),row:Object.assign({},defaultTemplate(t),row||{})}; }
+  async function saveCertificateTemplate(payload){
+    payload=payload||{}; const t=certType(payload.certificateType); const user=readUser(); const template=Object.assign({},defaultTemplate(t),payload.template||{}, {certificateType:t,updatedAt:serverTs(),updatedAtText:nowText(),updatedBy:clean(payload.userId || user.id || user.employeeId),source:'certificate-template'});
+    await docSet('printTemplates', templateDocId(t), template);
+    const historyId=templateDocId(t)+'_'+Date.now();
+    await docSet('certificateTemplateHistory', historyId, {historyId,certificateType:t,title:clean(template.title),template,createdAt:serverTs(),createdAtText:nowText(),createdBy:clean(payload.userId || user.id || user.employeeId),source:'certificate-template-history'});
+    return {ok:true,message:'範本已儲存。',template,historyId};
+  }
+  async function getCertificateTemplateHistory(payload){ const t=certType(payload && payload.certificateType); const rows=(await all('certificateTemplateHistory').catch(()=>[])).filter(r=>certType(r.certificateType)===t && statusOf(r)!=='已刪除').sort((a,b)=>clean(b.createdAtText||b.historyId).localeCompare(clean(a.createdAtText||a.historyId))); return {ok:true,rows}; }
+  async function deleteCertificateTemplateHistory(payload){ const id=clean(payload && payload.historyId); if(!id) return {ok:false,message:'缺少歷史ID'}; await docSet('certificateTemplateHistory', id, {status:'已刪除',deletedAt:serverTs(),deletedAtText:nowText(),source:'certificate-template-history-delete'}); return {ok:true,message:'歷史範本已刪除。'}; }
+  async function submitCertificateApplication(payload){
+    payload=payload||{}; const user=readUser(); const t=certType(payload.certificateType); const f=Object.assign({}, payload.formData||{}); f.idNumber=upperId(f.idNumber || payload.idNumber); f.certificateType=t;
+    if(!f.idNumber) return {ok:false,message:'請填寫身分證字號。'};
+    const employeeId=clean(payload.userId || payload.employeeId || user.id || user.employeeId); const email=lower(payload.email || user.email);
+    const requestId='CERT_'+t+'_'+(employeeId||email||'USER')+'_'+Date.now();
+    const row={requestId,certificateType:t,certificateTypeLabel:certLabel(t),employeeId,name:clean(payload.name || user.name || f.name || f.teacherName),email,identityType:clean(payload.identityType || user.identityType),identityLabel:clean(payload.identityLabel || identityLabelOf(user)),idNumber:f.idNumber,formData:f,templateSnapshot:payload.templateSnapshot || defaultTemplate(t),status:'待主管審核',submittedAt:serverTs(),submittedAtText:nowText(),createdAt:serverTs(),createdAtText:nowText(),hiddenBy:[],source:'certificate-application'};
+    await docSet('certificateApplications', requestId, row);
+    await queueCertNotification('certificateSubmitted','manager',row,`有新的證明申請待審核\n申請人：${row.name}\n類型：${row.certificateTypeLabel}\n請至管理端「證明申請審核」處理。`);
+    return {ok:true,message:'已送出申請，待主管審核。',requestId,row};
+  }
+  async function getCertificateApplications(payload){
+    payload=payload||{}; const rows=(await all('certificateApplications').catch(()=>[])).map(normalizeApplication);
+    const admin=payload.admin===true || lower(payload.role)==='admin' || lower(payload.role)==='manager';
+    const visible = admin ? rows : rows.filter(r=>belongs(r,payload) && r.hiddenBy.indexOf(clean(payload.userId || readUser().id || readUser().employeeId))<0);
+    visible.sort((a,b)=>clean(b.submittedAtText||b.requestId).localeCompare(clean(a.submittedAtText||a.requestId)));
+    return {ok:true,rows:visible};
+  }
+  async function reviewCertificateApplication(payload){
+    payload=payload||{}; const id=clean(payload.requestId); if(!id) return {ok:false,message:'缺少申請ID'};
+    const old=await docGet('certificateApplications', id); if(!old) return {ok:false,message:'找不到申請資料'};
+    if(!isPending(old)) return {ok:false,message:'這筆申請已處理過。'};
+    const approve=clean(payload.decision || payload.action)==='approve' || /approve|核准|同意/i.test(clean(payload.decision || payload.action));
+    const status=approve?'已核准':'已退回';
+    const update={status,reviewerId:clean(payload.reviewerId),reviewerName:clean(payload.reviewerName),reviewedAt:serverTs(),reviewedAtText:nowText(),source:approve?'certificate-approved':'certificate-rejected'};
+    if(approve){ update.approvedDate=today(); }
+    else{ update.rejectReason=clean(payload.rejectReason || payload.reason); }
+    await docSet('certificateApplications', id, update);
+    const app=Object.assign({}, old, update);
+    if(approve) await queueCertNotification('certificateApproved','employee',app,`您的${certLabel(app.certificateType)}申請已核准。請至「表格 → 歷史申請」查看、列印或下載加密 PDF。`);
+    else await queueCertNotification('certificateRejected','employee',app,`您的${certLabel(app.certificateType)}申請已退回。${update.rejectReason ? '退回原因：'+update.rejectReason : '請至「表格 → 歷史申請」查看。'}`);
+    return {ok:true,message:approve?'證明申請已核准。':'證明申請已退回。',row:app};
+  }
+  async function hideCertificateApplication(payload){
+    payload=payload||{}; const id=clean(payload.requestId); const uid=clean(payload.userId || readUser().id || readUser().employeeId || payload.email || readUser().email); if(!id || !uid) return {ok:false,message:'缺少資料'};
+    const row=await docGet('certificateApplications', id); if(!row) return {ok:false,message:'找不到申請資料'};
+    const arr=Array.isArray(row.hiddenBy)?row.hiddenBy:[]; if(arr.indexOf(uid)<0) arr.push(uid);
+    await docSet('certificateApplications', id, {hiddenBy:arr,updatedAt:serverTs(),source:'certificate-user-hidden'});
+    return {ok:true,message:'已從你的歷史紀錄隱藏。'};
+  }
+  async function summaryWithCertificates(payload){
+    let base=null; if(typeof previousHandle==='function') base=await previousHandle('getDashboardSummary', payload||{});
+    base=base||{ok:true,counts:{}}; base.counts=base.counts||{};
+    const rows=(await all('certificateApplications').catch(()=>[])).map(normalizeApplication);
+    const role=lower((payload||{}).role || readUser().role); const isAdmin=role==='admin' || role==='manager' || (payload||{}).admin===true;
+    if(isAdmin){ const n=rows.filter(isPending).length; base.counts.certificateReviewCount=n; base.counts.certificatePendingCount=n; base.counts.certificates=n; }
+    else{ const uid=clean((payload||{}).userId || readUser().id || readUser().employeeId || (payload||{}).email || readUser().email); const own=rows.filter(r=>belongs(r,payload||{}) && (!uid || (Array.isArray(r.hiddenBy)?r.hiddenBy:[]).indexOf(uid)<0)); const n=own.filter(r=>isPending(r)||isApproved(r)||isRejected(r)).length; base.counts.certificateCount=n; base.counts.formsCount=n; }
+    return base;
+  }
+
+  fb.handleApi = async function(action, payload){
+    const a=clean(action);
+    if(a==='getCertificateTemplate') return await getCertificateTemplate(payload||{});
+    if(a==='saveCertificateTemplate') return await saveCertificateTemplate(payload||{});
+    if(a==='getCertificateTemplateHistory') return await getCertificateTemplateHistory(payload||{});
+    if(a==='deleteCertificateTemplateHistory') return await deleteCertificateTemplateHistory(payload||{});
+    if(a==='submitCertificateApplication') return await submitCertificateApplication(payload||{});
+    if(a==='getCertificateApplications') return await getCertificateApplications(payload||{});
+    if(a==='reviewCertificateApplication') return await reviewCertificateApplication(payload||{});
+    if(a==='hideCertificateApplication') return await hideCertificateApplication(payload||{});
+    if((a==='getDashboardSummary'||a==='getPendingCounts')) return await summaryWithCertificates(payload||{});
+    if(a==='saveFeatureNotificationSetting'){
+      const cert = await saveCertNotifySetting(payload||{}); if(cert) return cert;
+    }
+    if(a==='getFeatureNotificationSetting' && clean((payload||{}).featureCode || (payload||{}).code).indexOf('certificate')===0){
+      const setting=await getCertNotifySetting(clean((payload||{}).featureCode || (payload||{}).code)); return {ok:true,setting};
+    }
+    if(typeof previousHandle==='function') return await previousHandle(action,payload||{});
+    return null;
+  };
+  fb.__certificateFlowV20260530 = true;
+  global.YZFirebase = fb;
+})(window);

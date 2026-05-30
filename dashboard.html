@@ -516,7 +516,7 @@
         <a class="home-tile" data-feature="task" href="task.html"><div class="tile-top"><strong class="tile-title">交辦事項</strong><div class="tile-badge" id="taskCount">0</div></div><div class="tile-desc">待辦與回報</div></a>
         <a class="home-tile" data-feature="routine" href="routine.html"><div class="tile-top"><strong class="tile-title">定期事項</strong><div class="tile-badge" id="routineCount">0</div></div><div class="tile-desc">固定工作</div></a>
         <a class="home-tile" data-feature="training" href="training.html"><div class="tile-top"><strong class="tile-title">教育訓練</strong><div class="tile-badge empty">&nbsp;</div></div><div class="tile-desc">教材與學習</div></a>
-        <a class="home-tile" href="forms-hub.html"><div class="tile-top"><strong class="tile-title">表格</strong><div class="tile-badge empty">&nbsp;</div></div><div class="tile-desc">集點卡與其他表格</div></a>
+        <a class="home-tile" data-feature="forms" href="forms-hub.html"><div class="tile-top"><strong class="tile-title">表格</strong><div class="tile-badge" id="formsCount">0</div></div><div class="tile-desc">集點卡與證明申請</div></a>
       </div>
     </div>
   </div>
@@ -568,6 +568,7 @@
       const clockEl = qs('#clockCount');
       const annEl = qs('#announcementCount');
       const parttimeEl = qs('#parttimeCount');
+      const formsEl = qs('#formsCount');
       try{
         const summaryRes = await api('getDashboardSummary',{userId:user.id,email:user.email,role:'staff'});
         const counts = summaryRes && summaryRes.counts ? summaryRes.counts : {};
@@ -577,8 +578,9 @@
         setCountBadge(clockEl, Number(counts.clocks || counts.clockCount || counts.clockCorrectionCount || 0));
         setCountBadge(annEl, Number(counts.announcements || counts.announcementCount || 0));
         setCountBadge(parttimeEl, Number(counts.parttimePending || counts.parttime || counts.parttimePendingCount || 0));
+        setCountBadge(formsEl, Number(counts.formsCount || counts.certificateCount || 0));
       }catch(e){
-        [taskEl,routineEl,leaveEl,clockEl,annEl,parttimeEl].forEach(el=>setCountBadge(el,0));
+        [taskEl,routineEl,leaveEl,clockEl,annEl,parttimeEl,formsEl].forEach(el=>setCountBadge(el,0));
       }
     }
 

@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>其他表格</title>
-  <link rel="stylesheet" href="style.css?v=cert20260530">
+  <link rel="stylesheet" href="style.css?v=certificates-20260530">
   <style>
-    .hub-wrap{max-width:100%;margin:0 auto}.hub-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.hub-card{display:block;background:#fff;border:1px solid #e2e8f0;border-radius:20px;padding:24px;text-decoration:none;color:#0f172a;box-shadow:0 8px 24px rgba(15,23,42,.05);min-height:162px}.hub-card:hover{transform:translateY(-1px);border-color:#cbd5e1}.hub-title{font-size:24px;font-weight:900;margin:0 0 8px}.hub-desc{font-size:14px;line-height:1.8;color:#475569}.hub-mark{font-size:13px;font-weight:800;color:#0f766e;margin-bottom:8px}.page-return-wrap{margin-bottom:16px}.page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}@media(max-width:980px){.hub-grid{grid-template-columns:1fr}}
+    .hub-wrap{max-width:100%;margin:0 auto}.hub-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.hub-card{display:block;background:#fff;border:1px solid #e2e8f0;border-radius:20px;padding:24px;text-decoration:none;color:#0f172a;box-shadow:0 8px 24px rgba(15,23,42,.05);position:relative}.hub-card:hover{transform:translateY(-1px);border-color:#cbd5e1}.hub-title{font-size:24px;font-weight:900;margin:0 0 8px;display:flex;align-items:center;gap:8px;justify-content:space-between}.hub-desc{font-size:14px;line-height:1.8;color:#475569}.hub-mark{font-size:13px;font-weight:800;color:#0f766e;margin-bottom:8px}.page-return-wrap{margin-bottom:16px}.page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}.badge{display:inline-flex;min-width:24px;height:24px;padding:0 7px;border-radius:999px;background:#dc2626;color:#fff;font-size:13px;align-items:center;justify-content:center;font-weight:900}.badge:empty,.badge.zero{display:none}@media(max-width:980px){.hub-grid{grid-template-columns:1fr}}
   </style>
 </head>
 <body onload="initPage()" class="admin-wide-page admin-quote-page">
@@ -20,36 +20,37 @@
         </div>
         <button class="btn secondary" style="width:auto;padding:10px 14px" onclick="logout()">登出</button>
       </div>
-      <div style="margin:8px 0 18px;color:#64748b;line-height:1.8">請選擇要處理的表格。估價單、合約、集點卡、證明書範本與主管審核都集中在這裡。</div>
+      <div style="margin:8px 0 18px;color:#64748b;line-height:1.8">這裡分成三個區塊：表格設定、證明申請審核、證明提醒設定。審核與提醒設定不混在範本設定裡。</div>
       <div class="hub-grid">
-        <a class="hub-card" href="quotation-admin.html">
-          <div class="hub-mark">表格一</div><div class="hub-title">估價單</div><div class="hub-desc">進入估價單製作與歷史版本管理。</div>
-        </a>
-        <a class="hub-card" href="rental-contract-admin.html">
-          <div class="hub-mark">表格二</div><div class="hub-title">合約</div><div class="hub-desc">進入設備租賃契約書模式。左邊填寫、右邊預覽，列印版型與預覽一致。</div>
-        </a>
-        <a class="hub-card" href="gift-point-card-admin.html">
-          <div class="hub-mark">表格三</div><div class="hub-title">集點卡</div><div class="hub-desc">設定柚子樂器學生集點卡。老師與員工端可直接預覽、列印或另存新檔。</div>
-        </a>
-        <a class="hub-card" href="employment-certificate-admin.html">
-          <div class="hub-mark">證明範本</div><div class="hub-title">在職證明</div><div class="hub-desc">設定在職證明範本、柚子樂器 Logo、開立單位、浮水印與印章顯示規則。</div>
-        </a>
-        <a class="hub-card" href="teaching-certificate-admin.html">
-          <div class="hub-mark">證明範本</div><div class="hub-title">教學證明</div><div class="hub-desc">設定外聘老師／專職老師的教學證明範本，授課地點固定為補習班合法立案地址。</div>
+        <a class="hub-card" href="form-settings-hub.html">
+          <div class="hub-mark">區塊一</div>
+          <div class="hub-title">表格設定</div>
+          <div class="hub-desc">估價單、合約、集點卡、在職證明、教學證明的版面與範本設定。</div>
         </a>
         <a class="hub-card" href="certificate-review-admin.html">
-          <div class="hub-mark">主管功能</div><div class="hub-title">證明申請審核</div><div class="hub-desc">查看老師與員工送出的在職證明、教學證明申請，可預覽、核准、退回或刪除。</div>
+          <div class="hub-mark">區塊二</div>
+          <div class="hub-title">證明申請審核 <span class="badge" id="certificateReviewBadge"></span></div>
+          <div class="hub-desc">審核老師／員工送出的在職證明與教學證明申請。待審核會在這裡顯示數字。</div>
+        </a>
+        <a class="hub-card" href="certificate-notification-settings.html">
+          <div class="hub-mark">區塊三</div>
+          <div class="hub-title">證明提醒設定</div>
+          <div class="hub-desc">設定證明申請送出、核准、退回時，是否要發 LINE 或 Email 提醒。</div>
         </a>
       </div>
     </div>
   </div>
-  <script src="config.js?v=cert20260530"></script>
+  <script src="config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=cert20260530"></script>
-  <script src="app.js?v=cert20260530"></script>
+  <script src="firebase-client.js?v=certificates-20260530"></script>
+  <script src="app.js?v=certificates-20260530"></script>
   <script>
-    function initPage(){fillHeader();const user=requireLogin();if(!user)return;if(!isManager(user)){location.href='dashboard.html';return;}}
+    function setBadge(n){const el=document.getElementById('certificateReviewBadge'); if(!el) return; n=Number(n||0)||0; el.textContent=n?String(n):''; el.classList.toggle('zero',!n);}
+    async function initPage(){
+      fillHeader(); const user=requireLogin(); if(!user) return; if(!hasSettingsZoneAccess(user)){location.href='dashboard.html';return;} setPortalMode('settings');
+      try{ const r=await api('getDashboardSummary',{userId:user.id,role:'admin'}); const c=(r&&r.counts)||{}; setBadge(c.certificateReviewCount || c.certificatePendingCount || c.certificates || 0); }catch(e){ setBadge(0); }
+    }
   </script>
 </body>
 </html>
