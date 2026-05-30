@@ -4863,8 +4863,101 @@
     return {ok:true, message:'個資修改申請已駁回。'};
   }
 
+
+  function defaultLeavePolicyBundleV2(){
+    return {
+      version:'firebase-v2',
+      leaveTypes:{
+        name:'假別規則設定',
+        headers:['假別代碼','假別名稱','啟用','適用身分','可半天','可小時','需附件','天數額度','支薪方式','扣抵類型','全勤影響方式','可跨日','需證明文件','需主管審核','說明'],
+        rows:[
+          ['personal_leave','事假','是','全部','是','是','否','','無薪','獨立額度','影響','否','否','是','可申請整天、部分請假或事後補假。'],
+          ['sick_leave','病假','是','全部','是','是','否','','半薪','獨立額度','依比例','否','必要時補證明','是','臨時身體不適可知悉後儘速通知。'],
+          ['annual_leave','特休','是','專職','是','是','否','','全薪','扣特休','不影響','否','否','是','專職員工依特休週年級距使用。'],
+          ['bereavement_leave','喪假','是','全部','是','是','是','','全薪','獨立額度','不影響','是','是','是','依親屬關係給假，必要時補證明。'],
+          ['marriage_leave','婚假','是','專職','是','是','是','8','全薪','獨立額度','不影響','是','是','是','婚假法定最低 8 日。'],
+          ['official_leave','公假','是','全部','是','是','否','','全薪','獨立額度','不影響','是','必要時補證明','是','因公派訓、支援或主管指派事項。'],
+          ['retro_leave','事後補假','是','全部','是','是','否','','依原假別規則','依原假別規則','依原假別規則','否','必要時補證明','是','由打卡異常、提早離開或事後補假流程帶入。']
+        ]
+      },
+      annualLeave:{
+        name:'特休週年級距設定',
+        headers:['年資起月數','年資迄月數','特休天數','說明'],
+        rows:[
+          ['0','5','0','未滿 6 個月。'],['6','11','3','6 個月以上未滿 1 年。'],['12','23','7','1 年以上未滿 2 年。'],['24','35','10','2 年以上未滿 3 年。'],['36','59','14','3 年以上未滿 5 年。'],['60','119','15','5 年以上未滿 10 年。'],['120','131','16','10 年以上。'],['132','143','17','11 年以上。'],['144','155','18','12 年以上。'],['156','167','19','13 年以上。'],['168','179','20','14 年以上。'],['180','191','21','15 年以上。'],['192','203','22','16 年以上。'],['204','215','23','17 年以上。'],['216','227','24','18 年以上。'],['228','239','25','19 年以上。'],['240','251','26','20 年以上。'],['252','263','27','21 年以上。'],['264','275','28','22 年以上。'],['276','287','29','23 年以上。'],['288','9999','30','24 年以上，最高 30 日。']
+        ]
+      },
+      bereavement:{
+        name:'喪假關係設定',
+        headers:['親屬別','天數','說明'],
+        rows:[
+          ['父母','8','法定最低 8 日'],['養父母','8','法定最低 8 日'],['繼父母','8','法定最低 8 日'],['配偶','8','法定最低 8 日'],['祖父母','6','法定最低 6 日'],['子女','6','法定最低 6 日'],['配偶之父母','6','法定最低 6 日'],['配偶之養父母','6','法定最低 6 日'],['配偶之繼父母','6','法定最低 6 日'],['曾祖父母','3','法定最低 3 日'],['兄弟姊妹','3','法定最低 3 日'],['配偶之祖父母','3','法定最低 3 日']
+        ]
+      },
+      holidaySummary:{
+        name:'請假申請規則',
+        headers:['假別代碼','假別名稱','適用身分','啟用','申請期限類型','最少提前天數','是否允許臨時申請','請畢期限說明','證明文件規則','備註'],
+        rows:[
+          ['personal_leave','事假','全部','是','固定提前','7','是','可預期事假原則提前 7 天；臨時狀況知悉後儘速通知。','免附',''],
+          ['sick_leave','病假','全部','是','知悉後儘速','','是','身體不適知悉後儘速通知主管。','必要時補證明',''],
+          ['annual_leave','特休','專職','是','固定提前','7','否','原則提前 7 天申請。','免附',''],
+          ['bereavement_leave','喪假','全部','是','知悉後儘速','','是','知悉後儘速通知主管，證明可後補。','建議附訃聞或證明',''],
+          ['marriage_leave','婚假','專職','是','固定提前','7','是','原則提前 7 天申請，特殊狀況由主管個案核准。','建議附結婚證明',''],
+          ['official_leave','公假','全部','是','主管個案核准','','是','依主管指派或實際需要辦理。','依實際需要附通知','']
+        ]
+      },
+      globalRules:{
+        name:'制度備註與全域設定',
+        headers:['設定項目','設定值','說明'],
+        rows:[
+          ['請假年度制度','週年制','特休以到職週年計算。'],
+          ['最小請假單位','0.5 小時','可依公司需要調整。'],
+          ['事後補假審核','需主管審核','從打卡異常或未完成出勤帶入時，仍需主管審核。'],
+          ['附件補件','必要時補證明','主管可依假別要求補件。']
+        ]
+      },
+      updatedAtText:'',
+      source:'firebase-default-v2'
+    };
+  }
+  function normalizeLeavePolicyBundleV2(bundle){
+    const fallback = defaultLeavePolicyBundleV2();
+    const out = Object.assign({}, fallback, bundle || {});
+    ['leaveTypes','annualLeave','bereavement','holidaySummary','globalRules'].forEach(k => {
+      const base = fallback[k] || {headers:[],rows:[],name:k};
+      const part = (bundle && bundle[k]) || {};
+      out[k] = {
+        name: clean(part.name || base.name || k),
+        headers: Array.isArray(part.headers) && part.headers.length ? part.headers : base.headers,
+        rows: Array.isArray(part.rows) ? part.rows : base.rows
+      };
+    });
+    return out;
+  }
+  async function getLeavePolicySettingsFirebase(payload){
+    const raw = await docGet('leavePolicySettings', 'default').catch(()=>null);
+    const bundle = raw && raw.bundle ? normalizeLeavePolicyBundleV2(raw.bundle) : defaultLeavePolicyBundleV2();
+    return {ok:true, bundle, source: raw ? 'firebase-leave-policy' : 'firebase-leave-policy-default'};
+  }
+  async function initLeavePolicySettingsFirebase(payload){
+    const raw = await docGet('leavePolicySettings', 'default').catch(()=>null);
+    if(raw && raw.bundle) return {ok:true, bundle:normalizeLeavePolicyBundleV2(raw.bundle), message:'已讀取 Firebase 假勤制度設定。', source:'firebase-leave-policy'};
+    const bundle = defaultLeavePolicyBundleV2();
+    await docSet('leavePolicySettings', 'default', {bundle, updatedAt:serverTs(), updatedBy:clean((payload||{}).userId || currentUser().id || currentUser().employeeId), source:'firebase-leave-policy-seed'});
+    return {ok:true, bundle, message:'已建立 Firebase 假勤制度預設設定。', source:'firebase-leave-policy-seed'};
+  }
+  async function saveLeavePolicySettingsFirebase(payload){
+    const bundle = normalizeLeavePolicyBundleV2((payload||{}).bundle || {});
+    bundle.updatedAtText = new Date().toISOString();
+    await docSet('leavePolicySettings', 'default', {bundle, updatedAt:serverTs(), updatedBy:clean((payload||{}).userId || currentUser().id || currentUser().employeeId), source:'firebase-leave-policy-save'});
+    return {ok:true, bundle, message:'假勤制度設定已儲存到 Firebase。', source:'firebase-leave-policy-save'};
+  }
+
   fb.handleApi = async function(action, payload){
     const a = clean(action);
+    if(a === 'getLeavePolicySettingsAdmin' || a === 'getLeavePolicyPublicBundle') return await getLeavePolicySettingsFirebase(payload || {});
+    if(a === 'initLeavePolicySettings') return await initLeavePolicySettingsFirebase(payload || {});
+    if(a === 'saveLeavePolicySettings') return await saveLeavePolicySettingsFirebase(payload || {});
     if(a === 'getDashboardSummary' || a === 'getPendingCounts') return await getDashboardSummaryUnified(payload || {});
     if(a === 'getEmployeeRecipients') return await getEmployeeRecipients(payload || {});
     if(a === 'queueFeatureNotification'){ const q = await enqueueFeatureNotification(clean((payload||{}).featureCode), clean((payload||{}).direction || 'manager'), payload || {}, {ok:true, message:clean((payload||{}).message || (payload||{}).notificationMessage)}); return q || {ok:true, message:'通知設定未啟用或沒有符合收件人，未建立通知。'}; }
@@ -4888,311 +4981,5 @@
     return res;
   };
   fb.__notifyBadgeUnifiedV20260529 = true;
-  global.YZFirebase = fb;
-})(window);
-
-/* =========================================================
- * Notification V2 + LINE preference Firebase-only final patch
- * - Stops using old GS notification settings for new reminders.
- * - Keeps LINE delivery eligibility tied to lineUserId + lineNotifyEnabled.
- * ========================================================= */
-(function(global){
-  const fb = global.YZFirebase || {};
-  if(!fb || fb.__notifyV2Final20260530) return;
-  const previousHandle = fb.handleApi;
-
-  function clean(v){ return String(v == null ? '' : v).trim(); }
-  function lower(v){ return clean(v).toLowerCase(); }
-  function truthy(v){ const s = lower(v); return v === true || ['是','yes','true','1','啟用','enabled','active','on','開啟'].indexOf(s) >= 0; }
-  function serverTs(){ return global.firebase && global.firebase.firestore ? global.firebase.firestore.FieldValue.serverTimestamp() : new Date().toISOString(); }
-  function db(){ try{return fb.init && fb.init();}catch(e){return null;} }
-  function nowId(prefix){ return prefix + '_' + Date.now() + '_' + Math.random().toString(36).slice(2,8); }
-  function readUser(){ try{return JSON.parse(localStorage.getItem('employeeUser') || 'null') || {};}catch(e){return {};} }
-  function docIdSafe(v){ return clean(v).replace(/[\/#?\[\]]/g,'_') || nowId('DOC'); }
-  async function all(col){ const d=db(); if(!d) throw new Error('Firebase 尚未啟用'); const snap=await d.collection(col).get(); const rows=[]; snap.forEach(doc=>rows.push(Object.assign({__id:doc.id}, doc.data() || {}))); return rows; }
-  async function getDoc(col,id){ if(!clean(id)) return null; const d=db(); if(!d) throw new Error('Firebase 尚未啟用'); const snap=await d.collection(col).doc(clean(id)).get(); return snap.exists ? Object.assign({__id:snap.id}, snap.data() || {}) : null; }
-  async function setDoc(col,id,data,merge){ const d=db(); if(!d) throw new Error('Firebase 尚未啟用'); await d.collection(col).doc(docIdSafe(id)).set(Object.assign({}, data, {updatedAt:serverTs()}), {merge: merge !== false}); return docIdSafe(id); }
-  function identityTypeOf(o){ const raw=lower(o.identityType || o['身分類型'] || o.type); if(['staff','parttime','external','admin'].indexOf(raw)>=0) return raw; if(truthy(o.isPartTime || o['是否工讀生'])) return 'parttime'; if(truthy(o.isExternalTeacher || o['是否外聘老師'])) return 'external'; return 'staff'; }
-  function identityLabelOf(type){ return type==='admin'?'主管 / 管理者':(type==='parttime'?'工讀生':(type==='external'?'外聘老師':'專職員工')); }
-  function normalizeUserDoc(o, collection){
-    o = o || {};
-    const isAdmin = collection === 'admins' || !!(o.adminId || o.managerId || o.showSettingsZone || o['可看設定區']);
-    const type = isAdmin ? 'admin' : identityTypeOf(o);
-    const id = clean(o.employeeId || o.adminId || o.managerId || o.userId || o.id || o['員工ID'] || o['管理者代碼'] || o.__id);
-    return {
-      id,
-      employeeId: clean(o.employeeId || o['員工ID'] || (collection==='employees' ? o.__id : '')),
-      adminId: clean(o.adminId || o.managerId || (collection==='admins' ? o.__id : '')),
-      docId: clean(o.__id || id),
-      collection: collection || clean(o.__collection),
-      name: clean(o.name || o['姓名'] || o.displayName || '使用者'),
-      email: lower(o.email || o.Email || o['Email'] || o.loginAccount || o['登入帳號']),
-      role: lower(o.role || o['角色'] || (isAdmin ? 'admin' : 'staff')),
-      identityType: type,
-      identityLabel: identityLabelOf(type),
-      isPartTime: type === 'parttime',
-      isExternalTeacher: type === 'external',
-      isManager: isAdmin || lower(o.role || o['角色']) === 'admin' || lower(o.role || o['角色']) === 'manager',
-      showSettingsZone: isAdmin || truthy(o.showSettingsZone || o['是否顯示設定區'] || o['可看設定區']),
-      showApprovalZone: isAdmin || truthy(o.showApprovalZone || o['可看審核區']),
-      accountStatus: clean(o.accountStatus || o.status || o['帳號狀態'] || 'active'),
-      lineUserId: clean(o.lineUserId || o.lineId || o['LINE User ID'] || o['LINE使用者ID']),
-      lineNotifyEnabled: truthy(o.lineNotifyEnabled || o['LINE 通知啟用'] || o.lineEnabled || o['LINE提醒啟用'])
-    };
-  }
-  async function findUserDoc(payload){
-    const p = payload || {};
-    const current = readUser();
-    const key = clean(p.userId || p.employeeId || p.adminId || p.id || current.id || current.employeeId || current.adminId);
-    const email = lower(p.email || p.Email || current.email || current.Email);
-    const [admins, employees] = await Promise.all([all('admins').catch(()=>[]), all('employees').catch(()=>[])]);
-    const candidates = [];
-    admins.forEach(r=>candidates.push(Object.assign({}, r, {__collection:'admins'})));
-    employees.forEach(r=>candidates.push(Object.assign({}, r, {__collection:'employees'})));
-    let row = candidates.find(r => clean(r.__id) === key || clean(r.adminId || r.managerId || r.employeeId || r.userId || r.id || r['員工ID'] || r['管理者代碼']) === key);
-    if(!row && email) row = candidates.find(r => lower(r.email || r.Email || r['Email'] || r.loginAccount || r['登入帳號']) === email);
-    if(!row) return null;
-    const collection = row.__collection || (row.adminId || row.managerId ? 'admins' : 'employees');
-    return normalizeUserDoc(row, collection);
-  }
-  async function refreshUserSession(payload){
-    const user = await findUserDoc(payload || {});
-    if(!user) return {ok:false, message:'找不到使用者資料'};
-    return {ok:true, user};
-  }
-  async function setLineNotifyPreference(payload){
-    const p = payload || {};
-    const user = await findUserDoc(p);
-    if(!user) return {ok:false, message:'找不到使用者資料'};
-    const enabled = truthy(p.enabled);
-    const clearBinding = truthy(p.clearBinding);
-    const update = {
-      lineNotifyEnabled: enabled && !clearBinding,
-      'LINE 通知啟用': enabled && !clearBinding ? '是' : '否',
-      linePreferenceUpdatedAt: serverTs(),
-      source: 'firebase-line-preference'
-    };
-    if(clearBinding){ update.lineUserId=''; update['LINE User ID']=''; }
-    await setDoc(user.collection, user.docId, update, true);
-    const next = Object.assign({}, user, {lineNotifyEnabled:update.lineNotifyEnabled, lineUserId:clearBinding?'':user.lineUserId});
-    return {ok:true, message: clearBinding ? '已解除 LINE 綁定。' : (enabled ? 'LINE 通知已開啟。' : 'LINE 通知已關閉。'), user:next};
-  }
-  async function bindLineUserToAccount(payload){
-    const p = payload || {};
-    const lineUserId = clean(p.lineUserId || p.lineId || p.userIdFromLine);
-    if(!lineUserId) return {ok:false, message:'缺少 LINE User ID'};
-    const user = await findUserDoc({employeeId:p.employeeId, adminId:p.adminId, userId:p.employeeId || p.adminId || p.userId, email:p.email});
-    if(!user) return {ok:false, message:'找不到可綁定帳號'};
-    await setDoc(user.collection, user.docId, {lineUserId, 'LINE User ID':lineUserId, lineNotifyEnabled:true, 'LINE 通知啟用':'是', lineBoundAt:serverTs(), source:'firebase-line-bind'}, true);
-    return {ok:true, message:'LINE 已綁定。', user:Object.assign({}, user, {lineUserId, lineNotifyEnabled:true})};
-  }
-
-  const moduleDefs = {
-    account:{title:'帳號提醒設定', events:[
-      ['account.registrationSubmitted','註冊申請送出','新帳號送出註冊後，通知主管審核。','manager'],
-      ['account.registrationResult','註冊審核結果','主管核准或駁回後，通知當事人。','employee'],
-      ['account.passwordReset','忘記密碼','使用者操作忘記密碼時通知。','employeeEmail'],
-      ['account.passwordChanged','密碼修改成功','密碼成功修改後通知。','employeeEmail']
-    ]},
-    profileChange:{title:'個人資料提醒設定', events:[
-      ['profileChange.submitted','個資修改送出','員工送出個資修改，通知主管審核。','manager'],
-      ['profileChange.result','個資修改審核結果','主管核准或駁回後，通知員工。','employee']
-    ]},
-    clock:{title:'打卡提醒設定', events:[
-      ['clock.specialSubmitted','特殊打卡送出','員工填寫特殊打卡原因後，通知主管審核。','manager'],
-      ['clock.correctionSubmitted','打卡時間修正送出','員工修正既有打卡紀錄時，通知主管審核。','manager'],
-      ['clock.missingInSubmitted','補上班打卡送出','員工補上班打卡時，通知主管審核。','manager'],
-      ['clock.missingOutSubmitted','補下班打卡送出','員工補下班打卡時，通知主管審核。','manager'],
-      ['clock.earlyLeaveRetroSubmitted','提早離開事後補假送出','員工已上班打卡，剩餘時段申請事後補假時通知主管。','manager'],
-      ['clock.reviewResult','打卡審核結果','主管核准或駁回特殊打卡、補打卡或修正後通知員工。','employee'],
-      ['clock.inReminder','上班提醒','依班表提醒員工上班打卡。','employee'],
-      ['clock.outMissingReminder','下班打卡未完成提醒','下班後仍未打卡時提醒員工。','employee']
-    ]},
-    parttime:{title:'工讀時數提醒設定', events:[
-      ['parttime.hoursSubmitted','工讀時數送出','工讀生送出排班內時數時通知。','manager'],
-      ['parttime.excessSubmitted','工讀超出排班時數送出','登記時數超過排班，通知主管審核。','manager'],
-      ['parttime.excessResult','工讀超出排班時數審核結果','主管處理後通知工讀生。','employee'],
-      ['parttime.hoursMissingReminder','工讀時數未填提醒','工讀生下班後仍未填時數時提醒。','employee']
-    ]},
-    temporaryAttendance:{title:'臨時出勤提醒設定', events:[
-      ['temporaryAttendance.submitted','臨時出勤送出','沒有排班但臨時出勤時，通知主管審核。','manager'],
-      ['temporaryAttendance.result','臨時出勤審核結果','主管核准或駁回後通知員工。','employee']
-    ]},
-    leave:{title:'請假提醒設定', events:[
-      ['leave.submitted','一般請假送出','員工送出一般請假時，通知主管審核。','manager'],
-      ['leave.retroSubmitted','事後補假送出','員工送出事後補假時，通知主管審核。','manager'],
-      ['leave.result','請假審核結果','主管核准或駁回後通知員工。','employee'],
-      ['leave.proofReminder','請假補證明提醒','需要員工補證明時通知員工。','employee'],
-      ['leave.pendingBeforeStart','請假即將開始但未審核','請假日前仍未審核時提醒主管。','manager'],
-      ['leave.pendingOnDate','請假日已到仍未審核','請假當日仍未審核時提醒主管。','manager']
-    ]},
-    task:{title:'交辦事項提醒設定', events:[
-      ['task.assigned','主管派新交辦事項','主管派出交辦事項時通知對象。','employee'],
-      ['task.replied','員工完成 / 回覆交辦事項','員工完成或回覆後通知主管。','manager'],
-      ['task.returned','主管退回 / 要求重做','主管退回後通知員工。','employee']
-    ]},
-    routine:{title:'固定事項提醒設定', events:[
-      ['routine.reminder','固定事項提醒','固定事項到期或需處理時通知員工。','employee'],
-      ['routine.replied','固定事項完成 / 回覆','員工完成或回覆後通知主管。','manager'],
-      ['routine.returned','固定事項退回 / 要求重做','主管退回後通知員工。','employee']
-    ]},
-    announcement:{title:'公告提醒設定', events:[
-      ['announcement.published','新公告發布','發布新公告時通知對象。','employee'],
-      ['announcement.republished','公告修改後重新發布','公告修改後重新通知對象。','employee'],
-      ['announcement.replyMissing','公告需要回覆但未回覆提醒','需要回覆但尚未回覆時提醒對象。','employee']
-    ]},
-    contractor:{title:'外聘老師提醒設定', events:[
-      ['contractor.contractOpen','合約開放簽署','合約開放簽署時通知老師。','employee'],
-      ['contractor.contractDeadline','合約截止前提醒','合約截止前提醒老師簽署。','employee'],
-      ['contractor.contractOverdue','合約逾期未簽','合約逾期未簽時通知老師與主管。','both'],
-      ['contractor.contractSigned','老師完成合約簽署','老師完成合約後通知主管。','manager'],
-      ['contractor.goodsInquiry','老師送出商品詢價','老師送出拿貨商品詢價時通知主管。','manager'],
-      ['contractor.discountInquiry','老師詢問公司優惠商品','老師詢問公司優惠商品時通知主管。','manager'],
-      ['contractor.websiteInquiry','老師送出官網商品詢價','老師送出官網商品詢價時通知主管。','manager'],
-      ['contractor.inquiryReply','主管回覆商品詢價','主管回覆詢價後通知老師。','employee'],
-      ['contractor.assistAssigned','主管建立協助事項','主管建立協助事項時通知老師。','employee'],
-      ['contractor.assistReplied','老師回覆 / 完成協助事項','老師回覆或完成協助事項時通知主管。','manager'],
-      ['contractor.assistReturned','主管退回 / 要求補充','主管要求補充協助事項時通知老師。','employee']
-    ]},
-    recruitment:{title:'應聘履歷提醒設定', events:[
-      ['recruitment.applicationSubmitted','應聘者送出履歷','有人送出履歷時通知主管。','manager']
-    ]}
-  };
-  function defaultEventRow(moduleKey, def){
-    const [eventKey,eventName,description,mode] = def;
-    return {
-      moduleKey,eventKey,eventName,description,enabled:true,
-      managerLineEnabled: mode==='manager' || mode==='both',
-      managerEmailEnabled:false,
-      employeeLineEnabled: mode==='employee' || mode==='both',
-      employeeEmailEnabled: mode==='employeeEmail'
-    };
-  }
-  function defaultsFor(moduleKey){ const m=moduleDefs[moduleKey] || {events:[]}; return m.events.map(d=>defaultEventRow(moduleKey,d)); }
-  async function getNotificationV2Settings(payload){
-    const moduleKey = clean(payload && payload.moduleKey);
-    const defaults = defaultsFor(moduleKey);
-    const rows = (await all('notificationSettingsV2').catch(()=>[])).filter(r => clean(r.moduleKey) === moduleKey);
-    const map = {};
-    defaults.forEach(r => { map[r.eventKey] = Object.assign({}, r); });
-    rows.forEach(r => { const key=clean(r.eventKey || r.__id); if(key) map[key] = Object.assign({}, map[key] || {}, r, {eventKey:key}); });
-    return {ok:true, moduleKey, title:(moduleDefs[moduleKey]||{}).title || '提醒設定', rows:Object.values(map)};
-  }
-  async function saveNotificationV2Settings(payload){
-    const moduleKey = clean(payload && payload.moduleKey);
-    const rows = Array.isArray(payload && payload.rows) ? payload.rows : [];
-    if(!moduleKey) return {ok:false, message:'缺少提醒大項'};
-    for(const r of rows){
-      const eventKey = clean(r.eventKey);
-      if(!eventKey) continue;
-      await setDoc('notificationSettingsV2', moduleKey + '__' + eventKey, Object.assign({}, r, {moduleKey,eventKey,source:'notification-v2'}), true);
-    }
-    return {ok:true, message:'提醒設定已儲存。'};
-  }
-  async function getNotificationRecipientsV2(payload){
-    const p = payload || {};
-    const keyword = lower(p.keyword);
-    const [admins, employees] = await Promise.all([all('admins').catch(()=>[]), all('employees').catch(()=>[])]);
-    const rows = [];
-    admins.forEach(r => rows.push(normalizeUserDoc(r,'admins')));
-    employees.forEach(r => rows.push(normalizeUserDoc(r,'employees')));
-    const dedup = {};
-    rows.forEach(r => {
-      const key = clean(r.employeeId || r.adminId || r.email || r.docId);
-      if(!key) return;
-      dedup[key] = Object.assign({}, dedup[key] || {}, r, {employeeId:clean(r.employeeId || r.adminId || r.id || key)});
-    });
-    let out = Object.values(dedup).filter(r => r.name || r.email || r.employeeId);
-    if(keyword) out = out.filter(r => [r.name,r.email,r.employeeId,r.identityLabel].join(' ').toLowerCase().indexOf(keyword)>=0);
-    out.sort((a,b)=>clean(a.name || a.email).localeCompare(clean(b.name || b.email),'zh-Hant'));
-    return {ok:true, rows:out, list:out};
-  }
-  function canDeliverLine(t){ return !!(clean(t.lineUserId) && truthy(t.lineNotifyEnabled)); }
-  function canDeliverEmail(t){ return !!lower(t.email); }
-  async function enrichTargets(rawTargets){
-    const allRows = (await getNotificationRecipientsV2({})).rows || [];
-    const out = [];
-    (Array.isArray(rawTargets) ? rawTargets : []).forEach(t => {
-      const obj = typeof t === 'string' ? {employeeId:t} : (t || {});
-      const keyId = clean(obj.employeeId || obj.id || obj.userId || obj.adminId);
-      const keyEmail = lower(obj.email || obj.Email);
-      const found = allRows.find(r => (keyId && [r.employeeId,r.id,r.adminId,r.docId].map(clean).indexOf(keyId)>=0) || (keyEmail && lower(r.email) === keyEmail));
-      out.push(Object.assign({}, found || {}, obj, {employeeId:clean((found&&found.employeeId) || obj.employeeId || obj.id || obj.adminId), email:lower((found&&found.email) || obj.email)}));
-    });
-    return out;
-  }
-  async function sendManualNotificationV2(payload){
-    const p = payload || {};
-    const sender = readUser();
-    const message = clean(p.message);
-    const title = clean(p.title || '主管訊息');
-    const requestedChannels = (Array.isArray(p.channels) ? p.channels : []).map(clean).filter(Boolean);
-    const targets = await enrichTargets(p.targets || []);
-    if(!message) return {ok:false, message:'請輸入訊息內容。'};
-    if(!targets.length) return {ok:false, message:'請選擇收件人。'};
-    if(!requestedChannels.length) return {ok:false, message:'請選擇 LINE 或 Email。'};
-    const batchId = nowId('MSG');
-    let queued = 0, skippedLine = 0, skippedEmail = 0;
-    await setDoc('manualMessages', batchId, {
-      batchId,title,message,channels:requestedChannels,
-      senderId:clean(sender.id || sender.employeeId || sender.adminId), senderName:clean(sender.name || sender.email),
-      targetCount:targets.length, status:'pending', source:'notification-v2-manual', createdAt:serverTs(),
-      targets:targets.map(t=>({employeeId:clean(t.employeeId), name:clean(t.name), email:lower(t.email), lineUserId:clean(t.lineUserId), lineNotifyEnabled:truthy(t.lineNotifyEnabled)}))
-    }, true);
-    for(const t of targets){
-      for(const channel of requestedChannels){
-        if(channel === 'line' && !canDeliverLine(t)){ skippedLine++; continue; }
-        if(channel === 'email' && !canDeliverEmail(t)){ skippedEmail++; continue; }
-        const queueId = batchId + '_' + docIdSafe(t.employeeId || t.email || nowId('T')) + '_' + channel;
-        await setDoc('notificationQueue', queueId, {
-          queueId,batchId,eventKey:'manual.managerMessage',moduleKey:'manual',channel,title,body:message,
-          targetEmployeeId:clean(t.employeeId), targetName:clean(t.name), targetEmail:lower(t.email), targetLineUserId:clean(t.lineUserId),
-          targetLineNotifyEnabled:truthy(t.lineNotifyEnabled), status:'pending', source:'notification-v2-manual', createdAt:serverTs()
-        }, true);
-        queued++;
-      }
-    }
-    const notes = [];
-    if(skippedLine) notes.push('LINE 略過 ' + skippedLine + ' 筆（未綁定或未開啟）');
-    if(skippedEmail) notes.push('Email 略過 ' + skippedEmail + ' 筆（無 Email）');
-    return {ok:true, message:'已建立通知佇列 ' + queued + ' 筆。' + (notes.length ? ' ' + notes.join('，') : ''), batchId, queued, skippedLine, skippedEmail};
-  }
-  async function queueNotificationV2Event(payload){
-    const p = payload || {};
-    const moduleKey = clean(p.moduleKey), eventKey = clean(p.eventKey);
-    const direction = clean(p.direction || 'manager');
-    const message = clean(p.message || p.body || p.notificationMessage || '有新的系統通知。');
-    const title = clean(p.title || ((moduleDefs[moduleKey]||{}).title) || '系統通知');
-    if(!moduleKey || !eventKey) return {ok:false, message:'缺少提醒事件'};
-    const settings = (await getNotificationV2Settings({moduleKey})).rows || [];
-    const setting = settings.find(r => clean(r.eventKey) === eventKey) || {};
-    if(setting.enabled === false) return {ok:true, message:'此提醒未啟用，未建立通知。', queued:0};
-    let channels = [];
-    if(direction === 'manager'){
-      if(setting.managerLineEnabled) channels.push('line');
-      if(setting.managerEmailEnabled) channels.push('email');
-      const recips = (await getNotificationRecipientsV2({})).rows.filter(r => r.isManager || r.showSettingsZone || lower(r.role)==='admin');
-      return await sendManualNotificationV2({title,message,channels,targets:recips,page:'auto:' + moduleKey + ':' + eventKey});
-    }
-    if(setting.employeeLineEnabled) channels.push('line');
-    if(setting.employeeEmailEnabled) channels.push('email');
-    const target = await findUserDoc({userId:p.targetEmployeeId || p.employeeId || p.userId, employeeId:p.targetEmployeeId || p.employeeId, email:p.targetEmail || p.email});
-    return await sendManualNotificationV2({title,message,channels,targets:target?[target]:[],page:'auto:' + moduleKey + ':' + eventKey});
-  }
-
-  fb.handleApi = async function(action, payload){
-    const a = clean(action);
-    if(a === 'refreshUserSession') return await refreshUserSession(payload || {});
-    if(a === 'setLineNotifyPreference') return await setLineNotifyPreference(payload || {});
-    if(a === 'bindLineUserToAccount') return await bindLineUserToAccount(payload || {});
-    if(a === 'getNotificationV2Settings' || a === 'getModuleNotificationSettings') return await getNotificationV2Settings(payload || {});
-    if(a === 'saveNotificationV2Settings' || a === 'saveModuleNotificationSettings') return await saveNotificationV2Settings(payload || {});
-    if(a === 'getNotificationRecipientsV2' || a === 'getNotificationRecipients' || a === 'getEmployeeRecipients') return await getNotificationRecipientsV2(payload || {});
-    if(a === 'sendManualNotificationV2' || a === 'sendManualNotification' || a === 'queueManualNotification') return await sendManualNotificationV2(payload || {});
-    if(a === 'queueNotificationV2Event' || a === 'queueFeatureNotification') return await queueNotificationV2Event(payload || {});
-    if(typeof previousHandle === 'function') return await previousHandle(action, payload || {});
-    return null;
-  };
-  fb.__notifyV2Final20260530 = true;
   global.YZFirebase = fb;
 })(window);

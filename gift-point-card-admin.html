@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>禮物集點單</title>
-  <link rel="stylesheet" href="style.css?v=admin-wide-20260530a">
+  <link rel="stylesheet" href="style.css?v=admin-final-20260530b">
   <style>
     :root{
       --gift-green:#1f7a5a;
@@ -14,7 +14,7 @@
       --gift-ink:#17324d;
       --gift-line:#dbe5ef;
     }
-    .gift-layout{display:grid;grid-template-columns:minmax(320px,420px) minmax(0,1fr);gap:16px;align-items:start}
+    .gift-layout{display:grid;grid-template-columns:minmax(420px,.72fr) minmax(720px,1.28fr);gap:20px;align-items:start}
     .subcard{background:#fff;border:1px solid #e2e8f0;border-radius:20px;padding:18px;box-shadow:0 8px 24px rgba(15,23,42,.04)}
     .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
     .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
@@ -65,8 +65,8 @@
     }
   </style>
 </head>
-<body onload="initPage()" class="admin-wide-page">
-  <div class="container" style="max-width:1400px">
+<body onload="initPage()" class="admin-wide-page admin-quote-page">
+  <div class="container" style="max-width:1880px">
     <div class="page-return-wrap"><a class="btn page-return-btn" href="quotation-contract-hub.html">返回估價單合約單</a></div>
     <div class="card">
       <div class="topbar">
@@ -134,8 +134,8 @@
   <script src="config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260529notifyv2linebind"></script>
-  <script src="app.js?v=20260529notifyv2linebind"></script>
+  <script src="firebase-client.js?v=admin-final-20260530b"></script>
+  <script src="app.js?v=admin-final-20260530b"></script>
   <script>
     const DEFAULTS = {
       cardTitle:'柚子樂器 集點卡',

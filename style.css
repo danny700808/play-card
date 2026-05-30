@@ -157,3 +157,124 @@ a{text-decoration:none;color:inherit} .container{max-width:760px;margin:0 auto;p
     max-width: 760px;
   }
 }
+
+
+/* admin-final-20260530b: 管理端寬版與區塊一致化 */
+@media (min-width: 900px) {
+  body.admin-wide-page { --admin-wide-max: 1880px; }
+  body.admin-wide-page > .container,
+  body.admin-wide-page .container,
+  body.admin-wide-page main,
+  body.admin-wide-page .page,
+  body.admin-wide-page .admin-page,
+  body.admin-wide-page .admin-wrap,
+  body.admin-wide-page .hub-wrap,
+  body.admin-wide-page .content,
+  body.admin-wide-page .wrap {
+    width: calc(100vw - 32px) !important;
+    max-width: var(--admin-wide-max) !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+  body.admin-wide-page > .container,
+  body.admin-wide-page .container,
+  body.admin-wide-page main,
+  body.admin-wide-page .page {
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+  }
+  body.admin-wide-page .card,
+  body.admin-wide-page .subcard,
+  body.admin-wide-page .panel,
+  body.admin-wide-page .section,
+  body.admin-wide-page .page-card,
+  body.admin-wide-page .admin-card {
+    width: 100% !important;
+  }
+  body.admin-wide-page .topbar {
+    gap: 16px;
+    align-items: flex-start;
+  }
+  body.admin-wide-page .topbar > div:first-child {
+    min-width: 0;
+  }
+  body.admin-wide-page .grid,
+  body.admin-wide-page .hub-grid,
+  body.admin-wide-page .card-grid,
+  body.admin-wide-page .tiles {
+    max-width: 100% !important;
+  }
+  body.admin-wide-page .table-wrap,
+  body.admin-wide-page .table-container,
+  body.admin-wide-page .scroll-table,
+  body.admin-wide-page .records-wrap,
+  body.admin-wide-page .preview-shell,
+  body.admin-wide-page .sheet-scale-wrap {
+    max-width: 100% !important;
+    overflow-x: auto;
+  }
+  body.admin-wide-page table { width: 100%; }
+  body.admin-wide-page.admin-quote-page .container {
+    width: calc(100vw - 28px) !important;
+    max-width: 1880px !important;
+  }
+  body.admin-wide-page.admin-quote-page .hub-wrap {
+    max-width: 100% !important;
+  }
+  body.admin-wide-page.admin-quote-page .layout,
+  body.admin-wide-page.admin-quote-page .gift-layout {
+    grid-template-columns: minmax(420px, 0.72fr) minmax(720px, 1.28fr) !important;
+    gap: 20px !important;
+  }
+  body.admin-wide-page.admin-quote-page .quote-preview,
+  body.admin-wide-page.admin-quote-page .preview-shell {
+    min-width: 0;
+  }
+  body.admin-wide-page.admin-quote-page .hub-grid {
+    grid-template-columns: repeat(3, minmax(240px, 1fr)) !important;
+  }
+}
+@media (max-width: 1180px) {
+  body.admin-wide-page.admin-quote-page .layout,
+  body.admin-wide-page.admin-quote-page .gift-layout,
+  body.admin-wide-page.admin-quote-page .hub-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+body.admin-wide-page:not(.admin-home-page) .topbar button[onclick*="logout"] {
+  display: none !important;
+}
+body.admin-wide-page .page-return-btn {
+  background: var(--brand, #1f7a5a) !important;
+  color: #fff !important;
+}
+body.admin-wide-page .card > .section-title,
+body.admin-wide-page .subcard > .section-title,
+body.admin-wide-page h2.section-title {
+  color: #18314a;
+}
+body.admin-wide-page .message,
+body.admin-wide-page .compact-note,
+body.admin-wide-page .hint-box,
+body.admin-wide-page .help-box {
+  border: 1px solid #dce8f2;
+}
+body.admin-wide-page .section-note {
+  border-left: 5px solid #f59e0b;
+}
+body.admin-wide-page .policy-card,
+body.admin-wide-page .status-card {
+  border-left: 5px solid var(--brand, #1f7a5a);
+}
+@media (min-width: 900px) {
+  body.admin-wide-page .btn-row,
+  body.admin-wide-page .mini-actions,
+  body.admin-wide-page .item-actions {
+    align-items: center;
+  }
+  body.admin-wide-page .mini-actions .btn,
+  body.admin-wide-page .item-actions .btn,
+  body.admin-wide-page .small-actions .btn {
+    width: auto;
+  }
+}
