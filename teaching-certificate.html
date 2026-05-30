@@ -41,7 +41,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="firebase-client.js?v=certificates-20260530"></script>
   <script src="app.js?v=certificates-20260530"></script>
-  <script src="certificate-common.js?v=certificates-20260530-previewfit"></script>
+  <script src="certificate-common-a4reset.js?v=20260530-a4reset-3"></script>
   <script>
     const CERT_TYPE='teaching';
     let currentTemplate=null;
@@ -66,7 +66,7 @@
       else{ if(!d.jobTitle) return '請填寫職稱。'; if(!d.hireDate) return '請選擇到職日期。'; if(!d.unitKey) return '請選擇開立單位。'; }
       return '';
     }
-    function renderPreview(){ const d=readData(); const html=YZ_CERT.certificateHtml({type:CERT_TYPE,template:currentTemplate||YZ_CERT.defaultTemplate(CERT_TYPE),data:d,status:'待主管審核',mode:'editing'}); const area=document.getElementById('previewArea'); area.innerHTML=html; YZ_CERT.scheduleFitCertificatePreviews(); }
+    function renderPreview(){ const d=readData(); const html=YZ_CERT.certificateHtml({type:CERT_TYPE,template:currentTemplate||YZ_CERT.defaultTemplate(CERT_TYPE),data:d,status:'待主管審核',mode:'editing'}); document.getElementById('previewArea').innerHTML=html; }
     async function loadTemplate(){ try{ const r=await api('getCertificateTemplate',{certificateType:CERT_TYPE}); currentTemplate=YZ_CERT.normalizeTemplate(CERT_TYPE,r.template||r.row||{}); }catch(e){ currentTemplate=YZ_CERT.defaultTemplate(CERT_TYPE); } }
     async function submitApplication(){
       const d=readData(); const error=validateData(d); if(error){ msg(error,false); return; }
