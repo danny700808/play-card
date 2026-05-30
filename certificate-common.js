@@ -232,11 +232,11 @@
           </div>
           <div class="cert-stamps" style="display:flex;justify-content:flex-end;gap:4mm;align-items:flex-end;min-width:62mm;">
             <div class="stamp-box" style="text-align:center;font-size:12px;color:#64748b;font-weight:800;">
-              <img src="${esc(unit.stamp)}" alt="${esc(unit.stampLabel)}" style="display:block;width:29mm;height:29mm;object-fit:contain;margin:0 auto 2mm;">
+              <img src="${esc(unit.stamp)}" alt="${esc(unit.stampLabel)}" style="display:block;width:30mm;height:30mm;object-fit:contain;margin:0 auto 2mm;">
               <span>${esc(unit.stampLabel)}</span>
             </div>
             <div class="stamp-box personal" style="text-align:center;font-size:12px;color:#64748b;font-weight:800;">
-              <img src="${esc(unit.personalStamp)}" alt="個人章" style="display:block;width:27mm;height:27mm;object-fit:contain;margin:0 auto 2mm;">
+              <img src="${esc(unit.personalStamp)}" alt="個人章" style="display:block;width:15mm;height:15mm;object-fit:contain;margin:0 auto 2mm;">
               <span>個人章</span>
             </div>
           </div>

@@ -23,7 +23,7 @@
             <h2 style="margin-top:0;color:#17324d">範本設定</h2>
             <div class="field"><label>文件標題</label><input id="title"></div>
             <div class="field"><label>預設開立單位</label><select id="defaultUnitKey"><option value="shangpin">尚品樂器行</option><option value="kaili">台中市私立凱立音樂短期補習班</option></select></div>
-            <div class="warning-box">教學證明預設使用「台中市私立凱立音樂短期補習班」；授課地點固定為台中市豐原區圓環東路347號，實際開立單位地址顯示為台中市豐原區圓環東路347號1至2樓。</div>
+            <div class="warning-box">教學證明預設使用「台中市私立凱立音樂短期補習班」，授課地點固定為台中市豐原區圓環東路347號。</div>
             <div class="field"><label>開頭文案</label><textarea id="introText" rows="4"></textarea></div>
             <div class="field"><label>補充文字</label><textarea id="footerText" rows="3"></textarea></div>
             <div class="row2"><div class="field"><label>結尾文字</label><input id="closingText"></div><div class="field"><label>顯示柚子樂器 Logo</label><select id="showBrandLogo"><option value="true">顯示</option><option value="false">不顯示</option></select></div></div>
@@ -38,7 +38,7 @@
           </div>
         </div>
         <div class="preview-shell">
-          <div class="preview-toolbar"><div><div style="font-size:18px;font-weight:900;color:#17324d">A4 預覽</div><div class="muted-tip">文件最上方固定為證明書標題；柚子樂器品牌區放在下方、實際開立單位上方。</div></div></div>
+          <div class="preview-toolbar"><div><div style="font-size:18px;font-weight:900;color:#17324d">A4 預覽</div><div class="muted-tip">文件最上方固定為證明書標題；柚子樂器品牌區放在下方、實際政府認證單位上方。</div></div></div>
           <div id="previewArea" class="cert-scale-wrap"></div>
         </div>
       </div>
@@ -49,7 +49,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="firebase-client.js?v=certificates-20260530"></script>
   <script src="app.js?v=certificates-20260530"></script>
-  <script src="certificate-common.js?v=certificates-20260530"></script>
+  <script src="certificate-common.js?v=certificates-20260530-directfix"></script>
   <script>
     const CERT_TYPE='teaching';
     let currentTemplate=null;
@@ -80,7 +80,7 @@
     function renderPreview(){
       const t=readTemplate();
       const html=YZ_CERT.certificateHtml({type:CERT_TYPE,template:t,data:sampleData(),status:'待主管審核',mode:'editing'});
-      document.getElementById('previewArea').innerHTML=html;
+      document.getElementById('previewArea').innerHTML=html; YZ_CERT.scheduleFitCertificatePreviews(); setTimeout(()=>YZ_CERT.scheduleFitCertificatePreviews(),60); setTimeout(()=>YZ_CERT.scheduleFitCertificatePreviews(),240);
     }
     async function loadTemplate(){
       try{ const r=await api('getCertificateTemplate',{certificateType:CERT_TYPE}); applyTemplate(r.template||r.row||{}); }catch(e){ applyTemplate(YZ_CERT.defaultTemplate(CERT_TYPE)); msg('目前使用預設範本。',true); }

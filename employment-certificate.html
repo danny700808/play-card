@@ -23,7 +23,7 @@
             <div class="field"><label>身分證字號</label><input id="idNumber" placeholder="英文會自動轉大寫"></div>
             <div class="row2"><div class="field"><label>職稱</label><input id="jobTitle" placeholder="例：專職老師、行政人員"></div><div class="field"><label>工作性質</label><select id="workNature"><option>教學</option><option>行政</option><option>門市</option><option>教學與行政</option><option>活動支援</option><option>其他</option></select></div></div>
             <div class="row2"><div class="field"><label>到職日期</label><input id="hireDate" type="date"></div><div class="field"><label>目前狀態</label><label style="display:flex;align-items:center;gap:8px;font-weight:800;margin-top:12px"><input id="stillWorking" type="checkbox" checked style="width:auto"> 現仍在職</label></div></div>
-            <div class="field"><label>開立單位</label><select id="unitKey"><option value="shangpin">尚品樂器行｜統一編號 99680937</option><option value="kaili">台中市私立凱立音樂短期補習班｜證號 中市教終字第1110094357 號</option></select></div>
+            <div class="field"><label>開立單位</label><select id="unitKey"><option value="shangpin">尚品樂器行｜統一編號 99680937</option><option value="kaili">台中市私立凱立音樂短期補習班｜證號 1110094357 號</option></select></div>
             <div class="warning-box">請依實際任職／教學身分選擇開立單位。補習班老師請選「台中市私立凱立音樂短期補習班」；公司／樂器行工作證明請選「尚品樂器行」。開立單位會影響印章，請勿選錯。</div>
 
             <div class="mini-actions"><button class="btn secondary" type="button" onclick="renderPreview()">預覽確認</button><button class="btn" type="button" onclick="submitApplication()">送出審核</button></div>
@@ -40,7 +40,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="firebase-client.js?v=certificates-20260530"></script>
   <script src="app.js?v=certificates-20260530"></script>
-  <script src="certificate-common.js?v=certificates-20260530"></script>
+  <script src="certificate-common.js?v=certificates-20260530-directfix"></script>
   <script>
     const CERT_TYPE='employment';
     let currentTemplate=null;
