@@ -6,14 +6,7 @@
   <title>在職證明設定</title>
   <link rel="stylesheet" href="style.css?v=certificates-20260530">
   <style>
-    body{background:#f5f7fb}.cert-admin-wrap{max-width:1500px;margin:0 auto;padding:18px}.page-card{background:#fff;border:1px solid #e2e8f0;border-radius:24px;padding:20px;box-shadow:0 10px 30px rgba(15,23,42,.06)}.layout{display:grid;grid-template-columns:minmax(330px,430px) minmax(0,1fr);gap:16px;align-items:start}.subcard{background:#fff;border:1px solid #e2e8f0;border-radius:20px;padding:18px;box-shadow:0 8px 24px rgba(15,23,42,.04)}.field{margin-bottom:12px}.field label{display:block;font-weight:900;color:#17324d;margin-bottom:6px}.field input,.field select,.field textarea{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:12px;padding:10px 12px;font-size:15px;background:#fff}.field textarea{resize:vertical;line-height:1.6}.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}.mini-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.mini-actions .btn{width:auto}.muted-tip{font-size:13px;color:#64748b;line-height:1.8}.preview-shell{background:#f7fafc;border:1px solid #e2e8f0;border-radius:20px;padding:14px;position:sticky;top:16px;overflow:auto}.preview-toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}.history-list{display:grid;gap:8px;margin-top:10px}.history-item{border:1px solid #e2e8f0;border-radius:14px;padding:10px;background:#fbfdff;display:flex;justify-content:space-between;gap:10px;align-items:center}.history-meta{font-size:13px;color:#64748b;line-height:1.7}.message{margin-top:10px;color:#1f7a5a;font-weight:800;font-size:13px}.warning-box{border:1px solid #fed7aa;background:#fff7ed;color:#9a3412;border-radius:14px;padding:12px;font-size:13px;line-height:1.8;margin-bottom:12px}
-    /* 管理端 A4 預覽修正：Grid 子項目預設 min-width:auto 會被 210mm A4 撐開，導致右側預覽往右偏移。 */
-    .layout > .subcard,
-    .layout > .preview-shell{min-width:0;max-width:100%;box-sizing:border-box;}
-    .preview-shell{overflow:hidden;}
-    .preview-shell .cert-scale-wrap{width:100%;max-width:100%;box-sizing:border-box;overflow:hidden;}
-    .preview-shell .cert-doc{max-width:none;}
-@media(max-width:1120px){.layout{grid-template-columns:1fr}.preview-shell{position:static}}@media(max-width:640px){.row2{grid-template-columns:1fr}.mini-actions .btn{width:100%}}
+    body{background:#f5f7fb}.cert-admin-wrap{max-width:1500px;margin:0 auto;padding:18px}.page-card{background:#fff;border:1px solid #e2e8f0;border-radius:24px;padding:20px;box-shadow:0 10px 30px rgba(15,23,42,.06)}.layout{display:grid;grid-template-columns:minmax(330px,430px) minmax(0,1fr);gap:16px;align-items:start}.subcard{background:#fff;border:1px solid #e2e8f0;border-radius:20px;padding:18px;box-shadow:0 8px 24px rgba(15,23,42,.04)}.field{margin-bottom:12px}.field label{display:block;font-weight:900;color:#17324d;margin-bottom:6px}.field input,.field select,.field textarea{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:12px;padding:10px 12px;font-size:15px;background:#fff}.field textarea{resize:vertical;line-height:1.6}.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}.mini-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.mini-actions .btn{width:auto}.muted-tip{font-size:13px;color:#64748b;line-height:1.8}.preview-shell{background:#f7fafc;border:1px solid #e2e8f0;border-radius:20px;padding:14px;position:sticky;top:16px;overflow:auto}.preview-toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}.history-list{display:grid;gap:8px;margin-top:10px}.history-item{border:1px solid #e2e8f0;border-radius:14px;padding:10px;background:#fbfdff;display:flex;justify-content:space-between;gap:10px;align-items:center}.history-meta{font-size:13px;color:#64748b;line-height:1.7}.message{margin-top:10px;color:#1f7a5a;font-weight:800;font-size:13px}.warning-box{border:1px solid #fed7aa;background:#fff7ed;color:#9a3412;border-radius:14px;padding:12px;font-size:13px;line-height:1.8;margin-bottom:12px}.layout>div,.layout>.preview-shell{min-width:0}.preview-shell{overflow:hidden}.admin-cert-preview-box{display:block;background:#f8fafc;border:1px solid #e2e8f0;border-radius:20px;padding:16px;min-height:560px;box-sizing:border-box;max-width:100%;overflow:hidden}.admin-cert-stage{position:relative;margin:0 auto;overflow:visible}.admin-cert-stage>.cert-doc{position:absolute!important;left:0!important;top:0!important;margin:0!important;max-width:none!important;display:block!important;transform-origin:top left!important;padding:20mm 18mm 15mm!important}@media(max-width:1120px){.layout{grid-template-columns:1fr}.preview-shell{position:static}.admin-cert-preview-box{min-height:430px;padding:10px}}@media(max-width:640px){.row2{grid-template-columns:1fr}.mini-actions .btn{width:100%}}
   </style>
 </head>
 <body onload="initPage()" class="admin-wide-page">
@@ -58,7 +51,7 @@
         </div>
         <div class="preview-shell">
           <div class="preview-toolbar"><div><div style="font-size:18px;font-weight:900;color:#17324d">A4 預覽</div><div class="muted-tip">文件最上方固定為證明書標題；柚子樂器品牌區放在下方、實際政府認證單位上方。</div></div></div>
-          <div id="previewArea" class="cert-scale-wrap"></div>
+          <div id="previewArea" class="admin-cert-preview-box"></div>
         </div>
       </div>
     </div>
@@ -70,7 +63,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="firebase-client.js?v=certificates-20260530"></script>
   <script src="app.js?v=certificates-20260530"></script>
-  <script src="certificate-common-a4reset.js?v=20260530-admin-preview-only-1"></script>
+  <script src="certificate-common.js?v=admin-a4-local-20260530"></script>
   <script>
     const CERT_TYPE='employment';
     let currentTemplate=null;
@@ -128,13 +121,43 @@
         issueDate:document.getElementById('directIssueDate').value||YZ_CERT.today()
       };
     }
-    function afterRenderPreview(){
+
+    let __adminCertResizeReady=false;
+    function fitAdminCertificatePreview(){
       const box=document.getElementById('previewArea');
-      const imgs=box.querySelectorAll('img');
-      imgs.forEach(img=>img.addEventListener('load', ()=>YZ_CERT.scheduleFitCertificatePreviews(), {once:true}));
-      YZ_CERT.scheduleFitCertificatePreviews();
-      setTimeout(()=>YZ_CERT.scheduleFitCertificatePreviews(), 60);
-      setTimeout(()=>YZ_CERT.scheduleFitCertificatePreviews(), 240);
+      if(!box) return;
+      const stage=box.querySelector('.admin-cert-stage');
+      const doc=stage && stage.querySelector('.cert-doc');
+      if(!stage || !doc) return;
+      doc.style.transform='none';
+      doc.style.position='absolute';
+      doc.style.left='0';
+      doc.style.top='0';
+      doc.style.margin='0';
+      doc.style.transformOrigin='top left';
+      const cs=window.getComputedStyle ? window.getComputedStyle(box) : null;
+      const padX=cs ? (parseFloat(cs.paddingLeft)||0)+(parseFloat(cs.paddingRight)||0) : 32;
+      const available=Math.max(240,(box.clientWidth||0)-padX-2);
+      const naturalWidth=doc.offsetWidth||794;
+      const naturalHeight=doc.offsetHeight||1123;
+      const scale=Math.min(1,Math.max(0.28,available/naturalWidth));
+      doc.style.transform='scale('+scale+')';
+      stage.style.width=Math.ceil(naturalWidth*scale)+'px';
+      stage.style.height=Math.ceil(naturalHeight*scale)+'px';
+      box.dataset.adminCertScale=String(scale.toFixed(3));
+    }
+    function scheduleAdminCertificatePreviewFit(){
+      requestAnimationFrame(()=>{fitAdminCertificatePreview(); setTimeout(fitAdminCertificatePreview,60); setTimeout(fitAdminCertificatePreview,240);});
+    }
+    function afterAdminRenderPreview(){
+      const box=document.getElementById('previewArea');
+      if(!box) return;
+      box.querySelectorAll('img').forEach(img=>img.addEventListener('load',scheduleAdminCertificatePreviewFit,{once:true}));
+      if(!__adminCertResizeReady){
+        __adminCertResizeReady=true;
+        window.addEventListener('resize',scheduleAdminCertificatePreviewFit);
+      }
+      scheduleAdminCertificatePreviewFit();
     }
     function renderPreview(mode){
       if(mode) previewMode=mode;
@@ -147,8 +170,8 @@
         status:useDirect ? '已核准' : '待主管審核',
         mode:useDirect ? 'approved' : 'editing'
       });
-      document.getElementById('previewArea').innerHTML=html;
-      afterRenderPreview();
+      document.getElementById('previewArea').innerHTML='<div class="admin-cert-stage">'+html+'</div>';
+      afterAdminRenderPreview();
     }
     function previewDirectIssue(){
       previewMode='direct';
