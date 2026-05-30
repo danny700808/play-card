@@ -4,43 +4,41 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>禮物集點單</title>
-  <link rel="stylesheet" href="style.css?v=admin-final-20260530b">
+  <link rel="stylesheet" href="style.css">
   <style>
     :root{
       --gift-green:#1f7a5a;
       --gift-mint:#e8f7ef;
       --gift-yellow:#fff4bf;
-      --gift-orange:#f59e0b;
       --gift-ink:#17324d;
       --gift-line:#dbe5ef;
     }
-    .gift-layout{display:grid;grid-template-columns:minmax(420px,.72fr) minmax(720px,1.28fr);gap:20px;align-items:start}
+    .gift-layout{display:grid;grid-template-columns:minmax(320px,420px) minmax(0,1fr);gap:16px;align-items:start}
     .subcard{background:#fff;border:1px solid #e2e8f0;border-radius:20px;padding:18px;box-shadow:0 8px 24px rgba(15,23,42,.04)}
     .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-    .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
     .mini-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
     .mini-actions .btn{width:auto;padding:10px 14px}
     .muted-tip{font-size:13px;color:#64748b;line-height:1.8}
     .preview-shell{background:#f7fafc;border:1px solid #e2e8f0;border-radius:20px;padding:14px;position:sticky;top:16px;overflow:auto}
     .preview-toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
     .sheet-scale-wrap{display:flex;justify-content:center;align-items:flex-start;overflow:auto;padding:8px}
-    .a4-sheet{width:210mm;min-height:297mm;background:#fff;box-shadow:0 10px 35px rgba(15,23,42,.12);box-sizing:border-box;padding:8mm 10mm;display:grid;grid-template-rows:repeat(4,1fr);gap:5mm;margin:0 auto;break-after:page}
-    .gift-card{position:relative;border:1.5px solid #9ec8b6;border-radius:18px;background:linear-gradient(135deg,#fff 0%,#fff 55%,#fff8d8 100%);padding:8mm 8mm 7mm;box-sizing:border-box;overflow:hidden;display:grid;grid-template-rows:auto auto 1fr auto;gap:4mm;min-height:0;break-inside:avoid}
-    .gift-card:before{content:"";position:absolute;right:-18mm;top:-22mm;width:54mm;height:54mm;border-radius:50%;background:rgba(31,122,90,.10)}
-    .gift-card:after{content:"♪";position:absolute;right:11mm;top:7mm;font-size:24px;color:rgba(31,122,90,.20);font-weight:900}
+    .a4-sheet{width:210mm;min-height:297mm;background:#fff;box-shadow:0 10px 35px rgba(15,23,42,.12);box-sizing:border-box;padding:10mm 10mm 9mm;display:grid;grid-template-rows:auto auto 1fr auto;gap:5mm;margin:0 auto;break-after:page}
+    .a4-main-card{position:relative;border:1.5px solid #9ec8b6;border-radius:20px;background:linear-gradient(135deg,#fff 0%,#fff 58%,#fff8d8 100%);padding:10mm 9mm 8mm;box-sizing:border-box;overflow:hidden;display:grid;grid-template-rows:auto auto 1fr auto;gap:4mm;min-height:100%}
+    .a4-main-card:before{content:"";position:absolute;right:-18mm;top:-18mm;width:58mm;height:58mm;border-radius:50%;background:rgba(31,122,90,.10)}
+    .a4-main-card:after{content:"♪";position:absolute;right:11mm;top:8mm;font-size:28px;color:rgba(31,122,90,.20);font-weight:900}
+    .gift-cut{position:absolute;inset:2mm;border:1px dashed rgba(148,163,184,.55);border-radius:18px;pointer-events:none}
     .gift-head{position:relative;display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
-    .gift-title{font-size:23px;font-weight:950;letter-spacing:1px;color:var(--gift-ink);line-height:1.15;margin:0}
-    .gift-subtitle{font-size:12px;color:#5f7086;font-weight:800;margin-top:3px;line-height:1.4}
-    .gift-badge{border:1px solid #f1c453;background:var(--gift-yellow);border-radius:999px;padding:6px 10px;font-size:12px;font-weight:950;color:#7c4a03;white-space:nowrap;transform:rotate(-3deg)}
-    .gift-info{display:grid;grid-template-columns:1.1fr 1fr 1fr;gap:8px;font-size:12px;color:#334155;font-weight:800;position:relative}
-    .gift-line-field{border-bottom:1px solid #94a3b8;min-height:18px;padding-bottom:2px;white-space:nowrap}
-    .gift-points{display:grid;grid-template-columns:repeat(10,1fr);gap:3mm;align-items:center;position:relative}
-    .gift-point{aspect-ratio:1/1;border:1.5px solid #9ec8b6;border-radius:10px;background:#fff;display:flex;align-items:center;justify-content:center;color:#1f7a5a;font-size:13px;font-weight:950;box-shadow:inset 0 0 0 2px rgba(31,122,90,.04)}
-    .gift-rules{position:relative;border-top:1px dashed #bdd6c9;padding-top:3mm;color:#334155;font-size:10.8px;line-height:1.45;display:grid;gap:1.5mm}
+    .gift-title{font-size:30px;font-weight:950;letter-spacing:1px;color:var(--gift-ink);line-height:1.15;margin:0}
+    .gift-subtitle{font-size:15px;color:#5f7086;font-weight:800;margin-top:4px;line-height:1.5}
+    .gift-badge{border:1px solid #f1c453;background:var(--gift-yellow);border-radius:999px;padding:7px 12px;font-size:13px;font-weight:950;color:#7c4a03;white-space:nowrap;transform:rotate(-3deg)}
+    .gift-info{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:#334155;font-weight:800;position:relative}
+    .gift-line-field{border-bottom:1px solid #94a3b8;min-height:20px;padding-bottom:2px;min-width:120px;flex:1 1 180px}
+    .gift-points-grid{display:grid;grid-template-columns:repeat(10,1fr);gap:3.2mm;align-content:start}
+    .gift-point{aspect-ratio:1/1;border:1.5px solid #9ec8b6;border-radius:10px;background:#fff;display:flex;align-items:center;justify-content:center;color:#1f7a5a;font-size:16px;font-weight:950;box-shadow:inset 0 0 0 2px rgba(31,122,90,.04)}
+    .gift-rules{position:relative;border-top:1px dashed #bdd6c9;padding-top:4mm;color:#334155;font-size:12px;line-height:1.55;display:grid;gap:1.5mm}
     .gift-rules-title{font-weight:950;color:#17324d}
-    .gift-cut{position:absolute;inset:1.8mm;border:1px dashed rgba(148,163,184,.55);border-radius:16px;pointer-events:none}
     .hint-box{border:1px dashed #b7c5d3;background:#fbfdff;border-radius:16px;padding:12px;color:#475569;font-size:13px;line-height:1.8}
-    .print-only{display:none}
+    .sheet-note{font-size:13px;color:#475569;font-weight:800}
     @media(max-width:1120px){
       .gift-layout{grid-template-columns:1fr}
       .preview-shell{position:static}
@@ -48,7 +46,7 @@
       .a4-sheet{transform:scale(.72);transform-origin:top left;margin-right:-58mm;margin-bottom:-82mm}
     }
     @media(max-width:640px){
-      .row2,.row3{grid-template-columns:1fr}
+      .row2{grid-template-columns:1fr}
       .a4-sheet{transform:scale(.46);margin-right:-115mm;margin-bottom:-160mm}
       .mini-actions .btn{width:100%}
     }
@@ -58,22 +56,21 @@
       #printArea,#printArea *{visibility:visible!important}
       #printArea{position:absolute!important;left:0!important;top:0!important;width:210mm!important;margin:0!important;padding:0!important;background:#fff!important;box-shadow:none!important;border:none!important;overflow:visible!important}
       .sheet-scale-wrap{display:block!important;overflow:visible!important;padding:0!important}
-      .a4-sheet{width:210mm!important;min-height:297mm!important;padding:8mm 10mm!important;margin:0!important;box-shadow:none!important;border:none!important;transform:none!important;page-break-after:always!important;break-after:page!important}
-      .a4-sheet:last-child{page-break-after:auto!important;break-after:auto!important}
+      .a4-sheet{width:210mm!important;min-height:297mm!important;padding:10mm 10mm 9mm!important;margin:0!important;box-shadow:none!important;border:none!important;transform:none!important;page-break-after:auto!important;break-after:auto!important}
       .page-return-wrap,.topbar,.subcard,.preview-toolbar{display:none!important}
       @page{size:A4 portrait;margin:0}
     }
   </style>
 </head>
-<body onload="initPage()" class="admin-wide-page admin-quote-page">
-  <div class="container" style="max-width:1880px">
+<body onload="initPage()">
+  <div class="container" style="max-width:1400px">
     <div class="page-return-wrap"><a class="btn page-return-btn" href="quotation-contract-hub.html">返回估價單合約單</a></div>
     <div class="card">
       <div class="topbar">
         <div>
           <h1 class="title" style="margin:0">禮物集點單</h1>
           <div class="welcome">歡迎 <span data-user-name></span></div>
-          <div class="muted-tip" style="margin-top:6px">左邊調整文字與張數，右邊即時預覽；預覽版型就是列印與另存 PDF 的版型。</div>
+          <div class="muted-tip" style="margin-top:6px">左邊調整文字，右邊即時預覽；此版型是一張 A4 只印一張大集點卡，中間會自動排滿多組 1～10 集點格。</div>
         </div>
         <button class="btn secondary" style="width:auto;padding:10px 14px" onclick="logout()">登出</button>
       </div>
@@ -85,15 +82,14 @@
             <div class="field"><label>標題</label><input id="cardTitle" value="柚子樂器 集點卡"></div>
             <div class="field"><label>副標題</label><input id="cardSubtitle" value="學生兌換禮物專用"></div>
             <div class="row2">
-              <div class="field"><label>每張點數格</label><input id="pointCount" value="10 格｜一橫列" disabled></div>
-              <div class="field"><label>列印張數</label><select id="cardCount"><option value="4">4 張｜1 張 A4</option><option value="8">8 張｜2 張 A4</option><option value="12">12 張｜3 張 A4</option><option value="16">16 張｜4 張 A4</option><option value="20">20 張｜5 張 A4</option></select></div>
+              <div class="field"><label>角標文字</label><input id="badgeText" value="集滿可兌換禮物"></div>
+              <div class="field"><label>每頁集點格</label><input id="gridCount" value="60 格（1～10 共 6 排）" disabled></div>
             </div>
             <div class="row2">
-              <div class="field"><label>欄位一</label><input id="fieldA" value="姓名"></div>
-              <div class="field"><label>欄位二</label><input id="fieldB" value="班級／課程"></div>
+              <div class="field"><label>欄位一（可留白）</label><input id="fieldA" value="姓名"></div>
+              <div class="field"><label>欄位二（可留白）</label><input id="fieldB" value="課程"></div>
             </div>
-            <div class="field"><label>欄位三</label><input id="fieldC" value="發卡日期"></div>
-            <div class="field"><label>角標文字</label><input id="badgeText" value="10 點兌換"></div>
+            <div class="field"><label>欄位三（可留白）</label><input id="fieldC" value=""></div>
             <div class="field"><label>注意事項</label><textarea id="rules" rows="5">1. 不可與其他優惠合併使用。
 2. 本卡遺失，點數一律作廢。
 3. 集點可選擇轉扭蛋，或兌換對應的集點禮物。</textarea></div>
@@ -109,8 +105,10 @@
           <div class="subcard" style="margin-top:16px">
             <h2 class="section-title" style="margin-top:0">使用說明</h2>
             <div class="hint-box">
-              每張 A4 會放 4 張長方形集點卡，每張卡一橫列 10 格，方便學生集點與櫃台核對。<br>
-              點「另存 PDF」後，請在瀏覽器列印視窗選擇「儲存為 PDF」；點「列印」則直接選擇印表機。
+              這一版是一張 A4 只印一張集點卡，不再分成多張小卡。<br>
+              中間會自動排滿 6 排，共 60 格，並且每一排都是 1～10，方便直接蓋章或手寫集點。<br>
+              如果姓名、課程、其他欄位不需要，可以把欄位名稱清空，預覽時就不會顯示。<br>
+              點「另存 PDF」後，請在瀏覽器列印視窗選擇「儲存為 PDF」。
             </div>
           </div>
         </div>
@@ -119,7 +117,7 @@
           <div class="preview-toolbar">
             <div>
               <div style="font-size:18px;font-weight:900;color:#17324d">列印預覽</div>
-              <div class="muted-tip">A4 直式｜每張 A4 4 張｜每張 10 格</div>
+              <div class="muted-tip">A4 直式｜每頁 1 張｜中間 60 格（1～10 重複 6 排）</div>
             </div>
             <div class="mini-actions" style="margin:0">
               <button class="btn" type="button" onclick="printCards()">列印</button>
@@ -134,18 +132,19 @@
   <script src="config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=admin-final-20260530b"></script>
-  <script src="app.js?v=admin-final-20260530b"></script>
+  <script src="firebase-client.js?v=20260529notifyv2linebind"></script>
+  <script src="app.js?v=20260529notifyv2linebind"></script>
   <script>
     const DEFAULTS = {
       cardTitle:'柚子樂器 集點卡',
       cardSubtitle:'學生兌換禮物專用',
-      badgeText:'10 點兌換',
+      badgeText:'集滿可兌換禮物',
       fieldA:'姓名',
-      fieldB:'班級／課程',
-      fieldC:'發卡日期',
-      cardCount:'4',
-      rules:'1. 不可與其他優惠合併使用。\n2. 本卡遺失，點數一律作廢。\n3. 集點可選擇轉扭蛋，或兌換對應的集點禮物。'
+      fieldB:'課程',
+      fieldC:'',
+      rules:'1. 不可與其他優惠合併使用。
+2. 本卡遺失，點數一律作廢。
+3. 集點可選擇轉扭蛋，或兌換對應的集點禮物。'
     };
     function initPage(){
       fillHeader();
@@ -153,7 +152,7 @@
       if(!user) return;
       if(!hasSettingsZoneAccess(user)){ location.href='dashboard.html'; return; }
       loadSavedSettings();
-      ['cardTitle','cardSubtitle','badgeText','fieldA','fieldB','fieldC','rules','cardCount'].forEach(id=>{
+      ['cardTitle','cardSubtitle','badgeText','fieldA','fieldB','fieldC','rules'].forEach(id=>{
         const el=document.getElementById(id);
         if(el) el.addEventListener('input', renderPreview);
         if(el) el.addEventListener('change', renderPreview);
@@ -166,16 +165,14 @@
         const el=document.getElementById(k);
         data[k]=el ? el.value : DEFAULTS[k];
       });
-      data.cardCount=Math.max(4, Number(data.cardCount || 4) || 4);
       return data;
     }
     function saveSettings(data){
-      try{ localStorage.setItem('giftPointCardSettings:v1', JSON.stringify(data||readForm())); }catch(e){}
+      try{ localStorage.setItem('giftPointCardSettings:v2', JSON.stringify(data||readForm())); }catch(e){}
     }
     function loadSavedSettings(){
       let data={};
-      try{ data=JSON.parse(localStorage.getItem('giftPointCardSettings:v1')||'{}')||{}; }catch(e){ data={}; }
-      Object.assign({}, DEFAULTS, data);
+      try{ data=JSON.parse(localStorage.getItem('giftPointCardSettings:v2')||'{}')||{}; }catch(e){ data={}; }
       Object.keys(DEFAULTS).forEach(k=>{
         const el=document.getElementById(k);
         if(el) el.value = (data[k] != null ? data[k] : DEFAULTS[k]);
@@ -186,34 +183,31 @@
       renderPreview();
     }
     function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+    function lineField(label){
+      const text=String(label||'').trim();
+      if(!text) return '';
+      return '<div class="gift-line-field">'+esc(text)+'：</div>';
+    }
     function renderPreview(){
       const data=readForm();
       saveSettings(data);
-      const total=data.cardCount;
-      const pages=Math.ceil(total/4);
-      const out=[];
-      let made=0;
-      for(let p=0;p<pages;p++){
-        out.push('<section class="a4-sheet">');
-        for(let i=0;i<4;i++){
-          if(made<total) out.push(renderCard(data, made+1));
-          else out.push('<div></div>');
-          made++;
-        }
-        out.push('</section>');
-      }
-      document.getElementById('printArea').innerHTML=out.join('');
+      document.getElementById('printArea').innerHTML = '<section class="a4-sheet">'+renderSheet(data)+'</section>';
       const msg=document.getElementById('msg');
       if(msg) msg.textContent='已更新預覽。';
     }
-    function renderCard(data, idx){
-      const rules=String(data.rules||'').split('\n').map(s=>s.trim()).filter(Boolean);
-      const pointCells=Array.from({length:10},(_,i)=>'<div class="gift-point">'+(i+1)+'</div>').join('');
-      return '<article class="gift-card">'+
+    function renderSheet(data){
+      const rules=String(data.rules||'').split('
+').map(s=>s.trim()).filter(Boolean);
+      const points=[];
+      for(let row=0; row<6; row++){
+        for(let i=1; i<=10; i++) points.push('<div class="gift-point">'+i+'</div>');
+      }
+      const infoHtml = [lineField(data.fieldA), lineField(data.fieldB), lineField(data.fieldC)].filter(Boolean).join('');
+      return '<article class="a4-main-card">'+
         '<div class="gift-cut"></div>'+
         '<div class="gift-head"><div><h2 class="gift-title">'+esc(data.cardTitle)+'</h2><div class="gift-subtitle">'+esc(data.cardSubtitle)+'</div></div><div class="gift-badge">'+esc(data.badgeText)+'</div></div>'+
-        '<div class="gift-info"><div class="gift-line-field">'+esc(data.fieldA)+'：</div><div class="gift-line-field">'+esc(data.fieldB)+'：</div><div class="gift-line-field">'+esc(data.fieldC)+'：</div></div>'+
-        '<div class="gift-points">'+pointCells+'</div>'+
+        (infoHtml ? '<div class="gift-info">'+infoHtml+'</div>' : '')+
+        '<div class="gift-points-grid">'+points.join('')+'</div>'+
         '<div class="gift-rules"><div class="gift-rules-title">注意事項：</div>'+rules.map(r=>'<div>'+esc(r)+'</div>').join('')+'</div>'+
       '</article>';
     }
