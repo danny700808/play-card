@@ -42,8 +42,8 @@
     .gift-badge{border:1px solid #f1c453;background:var(--gift-yellow);border-radius:999px;padding:7px 12px;font-size:13px;font-weight:950;color:#7c4a03;white-space:nowrap;transform:rotate(-3deg)}
     .gift-info{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:#334155;font-weight:800;position:relative}
     .gift-line-field{border-bottom:1px solid #94a3b8;min-height:20px;padding-bottom:2px;min-width:120px;flex:1 1 180px}
-    .gift-points-grid{display:grid;grid-template-columns:repeat(10,1fr);gap:3.2mm;align-content:start}
-    .gift-point{aspect-ratio:1/1;border:1.5px solid #9ec8b6;border-radius:10px;background:#fff;display:flex;align-items:center;justify-content:center;color:#1f7a5a;font-size:16px;font-weight:950;box-shadow:inset 0 0 0 2px rgba(31,122,90,.04)}
+    .gift-points-grid{display:grid;grid-template-columns:repeat(10,1fr);gap:2.4mm;align-content:start}
+    .gift-point{aspect-ratio:1/1;border:1.5px solid #9ec8b6;border-radius:10px;background:#fff;display:flex;align-items:center;justify-content:center;color:rgba(31,122,90,.38);font-size:14px;font-weight:900;box-shadow:inset 0 0 0 2px rgba(31,122,90,.04)}
     .gift-rules{position:relative;border-top:1px dashed #bdd6c9;padding-top:4mm;color:#334155;font-size:12px;line-height:1.55;display:grid;gap:1.5mm}
     .gift-rules-title{font-weight:950;color:#17324d}
     .hint-box{border:1px dashed #b7c5d3;background:#fbfdff;border-radius:16px;padding:12px;color:#475569;font-size:13px;line-height:1.8}
@@ -92,16 +92,17 @@
             <div class="field"><label>副標題</label><input id="cardSubtitle" value="學生兌換禮物專用"></div>
             <div class="row2">
               <div class="field"><label>角標文字</label><input id="badgeText" value="集滿可兌換禮物"></div>
-              <div class="field"><label>每頁集點格</label><input value="60 格（1～10 共 6 排）" disabled></div>
+              <div class="field"><label>每頁集點格</label><input value="100 格（1～10 共 10 排）" disabled></div>
             </div>
             <div class="row2">
               <div class="field"><label>欄位一（可留白）</label><input id="fieldA" value="姓名"></div>
               <div class="field"><label>欄位二（可留白）</label><input id="fieldB" value="課程"></div>
             </div>
             <div class="field"><label>欄位三（可留白）</label><input id="fieldC" value=""></div>
-            <div class="field"><label>注意事項</label><textarea id="rules" rows="5">1. 不可與其他優惠合併使用。
-2. 本卡遺失，點數一律作廢。
-3. 集點可選擇轉扭蛋，或兌換對應的集點禮物。</textarea></div>
+            <div class="field"><label>注意事項</label><textarea id="rules" rows="5">1. 不可以與其他優惠合併使用。
+2. 不可以與其他人合併使用點數。
+3. 本卡遺失一律不補發，點數重新計算。
+4. 20點可以轉一次扭蛋，可到一樓轉換扭蛋；或直接更換對應點數的禮物。</textarea></div>
             <div class="mini-actions">
               <button class="btn" type="button" onclick="renderPreview()">更新預覽</button>
               <button class="btn" type="button" onclick="printCards()">列印</button>
@@ -115,7 +116,7 @@
             <h2 style="margin-top:0;color:#17324d">使用說明</h2>
             <div class="hint-box">
               這一版是一張 A4 只印一張集點卡，不再分成多張小卡。<br>
-              中間會自動排滿 6 排，共 60 格，並且每一排都是 1～10，方便直接蓋章或手寫集點。<br>
+              中間會自動排滿 10 排，共 100 格，並且每一排都是 1～10，方便直接蓋章或手寫集點。<br>
               如果姓名、課程、其他欄位不需要，可以把欄位名稱清空，預覽時就不會顯示。<br>
               點「另存 PDF」後，請在瀏覽器列印視窗選擇「儲存為 PDF」。
             </div>
@@ -126,7 +127,7 @@
           <div class="preview-toolbar">
             <div>
               <div style="font-size:18px;font-weight:900;color:#17324d">列印預覽</div>
-              <div class="muted-tip">A4 直式｜每頁 1 張｜中間 60 格（1～10 重複 6 排）</div>
+              <div class="muted-tip">A4 直式｜每頁 1 張｜中間 100 格（1～10 重複 10 排）</div>
             </div>
             <div class="mini-actions" style="margin:0">
               <button class="btn" type="button" onclick="printCards()">列印</button>
@@ -229,7 +230,7 @@
     function renderSheet(data){
       const rules=String(data.rules || '').split('\n').map(s=>s.trim()).filter(Boolean);
       const points=[];
-      for(let row=0; row<6; row++){
+      for(let row=0; row<10; row++){
         for(let i=1; i<=10; i++){
           points.push('<div class="gift-point">'+i+'</div>');
         }
