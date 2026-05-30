@@ -5659,3 +5659,260 @@
   fb.__employeeMasterControl20260530 = true;
   global.YZFirebase = fb;
 })(window);
+
+/* =========================================================
+ * 2026-05-30：外聘老師拿貨 / 官網商品搜尋正式改 Firebase-only
+ * - 不再回退 GS / Apps Script。
+ * - 官網商品搜尋優先走 Firebase Callable Function；沒有 Functions 時改查 Firestore 快取集合。
+ * - 詢價、管理回覆、公司優惠商品全部寫入 Firestore。
+ * ========================================================= */
+(function(global){
+  const fb = global.YZFirebase || (global.YZFirebase = {});
+  const previousHandle = fb.handleApi;
+  function clean(v){ return String(v == null ? '' : v).trim(); }
+  function lower(v){ return clean(v).toLowerCase(); }
+  function truthy(v){ const s=lower(v); return v===true || ['是','yes','true','1','啟用','enabled','active','上架'].indexOf(s)>=0; }
+  function falsey(v){ const s=lower(v); return v===false || ['否','no','false','0','停用','disabled','inactive','下架'].indexOf(s)>=0; }
+  function pad(n){ return String(n).padStart(2,'0'); }
+  function nowText(){ const d=new Date(); return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+' '+pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds()); }
+  function dateText(){ const d=new Date(); return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
+  function money(v){ const n=Number(String(v==null?'':v).replace(/[^0-9.\-]/g,'')); return isFinite(n)?n:0; }
+  function priceText(v){ const n=money(v); return n>0 ? ('$'+Math.round(n).toLocaleString('zh-TW')) : ''; }
+  function db(){ try{return fb.init && fb.init()}catch(e){ console.warn('[teacher goods firebase init]',e); return null; } }
+  function serverTs(){ try{return global.firebase.firestore.FieldValue.serverTimestamp()}catch(e){ return new Date(); } }
+  function docId(prefix){ return prefix+'_'+Date.now()+'_'+Math.random().toString(36).slice(2,8); }
+  async function all(col){ const d=db(); if(!d) return []; const snap=await d.collection(col).get(); const rows=[]; snap.forEach(x=>rows.push(Object.assign({__id:x.id},x.data()||{}))); return rows; }
+  async function setDoc(col,id,data,merge){ const d=db(); if(!d) throw new Error('Firebase 尚未初始化'); await d.collection(col).doc(id).set(data,{merge:merge!==false}); return id; }
+  function readUser(){ try{return JSON.parse(localStorage.getItem('employeeUser')||'{}')}catch(e){return {}} }
+  function containsKeyword(row, keyword){
+    if(!keyword) return true;
+    const hay=[row.name,row.itemName,row.category,row.keywords,row.brand,row.description,row.note,row.teacherName,row.sourceType,row.replySummary,row.url,row.productId,row.sku,row.variantSummary].join(' ').toLowerCase();
+    return hay.indexOf(keyword)>=0;
+  }
+  function normalizeGoodsItem(o){
+    o=o||{};
+    const id=clean(o.itemId || o.goodsId || o.__id || o.id || docId('goods'));
+    const teacherPrice=money(o.teacherPrice || o.price || o['老師價']);
+    const marketPrice=money(o.marketPrice || o.websiteOriginalPrice || o['市售價'] || o['官網價']);
+    let enabled = o.enabled;
+    if(enabled===undefined || enabled===null || enabled==='') enabled = !falsey(o['是否上架']);
+    enabled = truthy(enabled);
+    return Object.assign({}, o, {
+      __id:clean(o.__id||id), itemId:id, id,
+      name:clean(o.name || o.itemName || o['商品名稱'] || '未命名商品'),
+      category:clean(o.category || o['分類']), keywords:clean(o.keywords || o['關鍵字']),
+      teacherPrice:teacherPrice || clean(o.teacherPrice || o.price || ''),
+      teacherPriceText:priceText(teacherPrice) || clean(o.teacherPriceText || o.priceText || ''),
+      price:teacherPrice, priceText:priceText(teacherPrice) || clean(o.priceText || ''),
+      marketPrice:marketPrice || clean(o.marketPrice || ''), marketPriceText:priceText(marketPrice) || clean(o.marketPriceText || ''),
+      stockStatus:clean(o.stockStatus || o['庫存狀態'] || '需確認'), arrivalDate:clean(o.arrivalDate || o['預計到貨日']), pickupDate:clean(o.pickupDate || o['可取貨日期']),
+      offerTerms:clean(o.offerTerms || o['優惠條件']), note:clean(o.note || o.description || o['商品說明']), description:clean(o.description || o.note || o['商品說明']),
+      imageUrl:clean(o.imageUrl || o.inquiryImageUrl || o.picture || o.image || o['圖片']),
+      sortOrder:money(o.sortOrder || o['排序']), enabled
+    });
+  }
+  function normalizeWebsiteProduct(o){
+    o=o||{};
+    const id=clean(o.productId || o.websiteProductId || o.itemId || o.sku || o.__id || o.id);
+    const rawPrice=o.marketPrice || o.price || o.websiteOriginalPrice || o.salePrice || o['官網價格'] || o['價格'];
+    const m=money(rawPrice);
+    const variants=Array.isArray(o.variants) ? o.variants.map(v=>({
+      id:clean(v.id || v.variantId || v.sku || v.name), name:clean(v.name || v.title || v.optionName || v.sku), sku:clean(v.sku), price:money(v.price || v.marketPrice) || clean(v.price||''), priceText:priceText(v.price || v.marketPrice) || clean(v.priceText||''), imageUrl:clean(v.imageUrl || v.image || o.imageUrl), stockStatus:clean(v.stockStatus || v.inventoryStatus || o.stockStatus)
+    })) : [];
+    return Object.assign({}, o, {
+      __id:clean(o.__id||id), id, productId:id,
+      name:clean(o.name || o.title || o.itemName || o['商品名稱'] || '未命名商品'),
+      brand:clean(o.brand || o.vendor || o['品牌']), category:clean(o.category || o.productType || o['分類']),
+      keywords:clean(o.keywords || o.tags || o['關鍵字']),
+      sku:clean(o.sku), url:clean(o.url || o.productUrl || o.websiteProductUrl || o.permalink || o['連結']),
+      imageUrl:clean(o.imageUrl || o.image || o.picture || o.cover || o['圖片']),
+      marketPrice:m || clean(rawPrice || ''), price:m || clean(rawPrice || ''),
+      marketPriceText:priceText(m) || clean(o.marketPriceText || o.priceText || ''),
+      priceText:priceText(m) || clean(o.priceText || o.marketPriceText || ''),
+      stockStatus:clean(o.stockStatus || o.inventoryStatus || o['庫存狀態'] || '庫存未提供'),
+      variantSummary:clean(o.variantSummary || o.optionsText || o['規格']), variants,
+      source:'Firebase 官網商品快取'
+    });
+  }
+  function normalizeInquiry(o){
+    o=o||{};
+    const id=clean(o.inquiryId || o.__id || o.id || docId('inq'));
+    const status=clean(o.status || o.replyStatus || o['狀態'] || '待處理') || '待處理';
+    const price=money(o.websiteOriginalPrice || o.replyMarketPrice || o.marketPrice);
+    const replyParts=[];
+    if(clean(o.replyTeacherPrice || o.replyPrice)) replyParts.push('老師價：'+clean(o.replyTeacherPrice || o.replyPrice));
+    if(clean(o.replyStock)) replyParts.push('庫存：'+clean(o.replyStock));
+    if(clean(o.replyArrivalDate)) replyParts.push('預計到貨：'+clean(o.replyArrivalDate));
+    if(clean(o.replyPickupDate)) replyParts.push('可取貨：'+clean(o.replyPickupDate));
+    if(clean(o.replyNote)) replyParts.push(clean(o.replyNote));
+    const replySummary=clean(o.replySummary) || replyParts.join('\n');
+    const isDone = ['已完成','已取消','已結案','取消','完成'].some(x=>status.indexOf(x)>=0);
+    const isActive = !isDone;
+    return Object.assign({}, o, {
+      __id:clean(o.__id||id), id, inquiryId:id,
+      teacherId:clean(o.teacherId || o.userId || o.employeeId || o['老師ID']),
+      userId:clean(o.userId || o.teacherId || o.employeeId || o['老師ID']),
+      teacherName:clean(o.teacherName || o.employeeName || o.name || o['老師姓名'] || '外聘老師'),
+      itemId:clean(o.itemId || o.goodsId), itemName:clean(o.itemName || o.name || o.title || o['商品名稱'] || '商品詢價'),
+      sourceType:clean(o.sourceType || o.requestType || o['來源'] || '老師主動詢價'),
+      imageUrl:clean(o.imageUrl || o.inquiryImageUrl || o.picture || o['圖片']),
+      quantity:clean(o.quantity || o.qty || o['數量']), needBy:clean(o.needBy || o.needDate || o['希望拿貨日期']),
+      note:clean(o.note || o['備註']), status,
+      websiteProductId:clean(o.websiteProductId || o.productId), websiteProductUrl:clean(o.websiteProductUrl || o.url),
+      websiteOriginalPrice:price || clean(o.websiteOriginalPrice || ''), websiteOriginalPriceText:priceText(price) || clean(o.websiteOriginalPriceText || ''),
+      websiteVariantSummary:clean(o.websiteVariantSummary || o.variantSummary), websiteSource:clean(o.websiteSource || ''),
+      replyItemName:clean(o.replyItemName || ''), replyTeacherPrice:clean(o.replyTeacherPrice || o.replyPrice || ''), replyPrice:clean(o.replyPrice || o.replyTeacherPrice || ''), replyMarketPrice:clean(o.replyMarketPrice || ''), replyStock:clean(o.replyStock || ''), replyArrivalDate:clean(o.replyArrivalDate || ''), replyPickupDate:clean(o.replyPickupDate || ''), replyNote:clean(o.replyNote || ''), replySummary,
+      createdAt:clean(o.createdAtText || o.createdAt || o['建立時間']), updatedAt:clean(o.updatedAtText || o.updatedAt || ''),
+      isActiveForTeacher:isActive && status!=='待處理', displayStatus: status==='待處理'?'等公司回覆':status
+    });
+  }
+  async function tryCallableWebsiteSearch(payload){
+    try{
+      if(!global.firebase || !global.firebase.functions) return null;
+      const fn=global.firebase.functions().httpsCallable('searchTeacherWebsiteGoods');
+      const res=await fn(payload||{});
+      const data=res && res.data || null;
+      if(data && (Array.isArray(data.rows) || Array.isArray(data.items) || data.ok===true)){
+        const rows=(data.rows || data.items || []).map(normalizeWebsiteProduct);
+        return Object.assign({}, data, {ok:data.ok!==false, rows, items:rows, source:'Firebase Function searchTeacherWebsiteGoods'});
+      }
+    }catch(e){ console.warn('[teacher goods callable unavailable]', e); }
+    return null;
+  }
+  async function searchFirestoreWebsiteProducts(payload){
+    const kw=lower(payload && payload.keyword);
+    const limit=Math.max(1, Math.min(50, Number(payload&&payload.limit)||12));
+    const collections=['websiteProducts','officialWebsiteProducts','easystoreProducts','websiteGoods','products'];
+    let rows=[];
+    for(const col of collections){
+      try{
+        const got=(await all(col)).map(normalizeWebsiteProduct).filter(r=>r.name && containsKeyword(r, kw));
+        got.forEach(r=>{ if(!rows.some(x=>(x.productId&&x.productId===r.productId) || (x.url&&x.url===r.url))) rows.push(Object.assign({},r,{cacheCollection:col})); });
+      }catch(e){ /* ignore missing collections */ }
+    }
+    rows.sort((a,b)=>clean(a.name).localeCompare(clean(b.name),'zh-Hant'));
+    rows=rows.slice(0,limit);
+    return {ok:true,rows,items:rows,source:'Firebase / Firestore 官網商品快取',message:rows.length?'':'目前 Firebase 尚未有官網商品快取；請先同步官網商品到 websiteProducts，或部署 Firebase Function searchTeacherWebsiteGoods。'};
+  }
+  async function searchTeacherWebsiteGoods(payload){
+    const callable=await tryCallableWebsiteSearch(payload||{});
+    if(callable) return callable;
+    return await searchFirestoreWebsiteProducts(payload||{});
+  }
+  async function getTeacherGoodsList(payload){
+    const kw=lower(payload&&payload.keyword);
+    let rows=(await all('teacherGoods')).map(normalizeGoodsItem).filter(r=>r.enabled && containsKeyword(r,kw));
+    rows.sort((a,b)=>(a.sortOrder||9999)-(b.sortOrder||9999) || clean(a.name).localeCompare(clean(b.name),'zh-Hant'));
+    return {ok:true,rows,items:rows,source:'firebase-teacher-goods'};
+  }
+  async function getTeacherGoodsAdminData(payload){
+    const kw=lower(payload&&payload.keyword);
+    let rows=(await all('teacherGoods')).map(normalizeGoodsItem).filter(r=>containsKeyword(r,kw));
+    rows.sort((a,b)=>(a.sortOrder||9999)-(b.sortOrder||9999) || clean(a.name).localeCompare(clean(b.name),'zh-Hant'));
+    const inquiries=(await all('teacherGoodsInquiry')).map(normalizeInquiry);
+    rows=rows.map(r=>Object.assign({},r,{inquiryCount:inquiries.filter(x=>x.itemId===r.itemId || x.itemName===r.name).length}));
+    return {ok:true,rows,items:rows,source:'firebase-teacher-goods-admin'};
+  }
+  async function saveTeacherGoodsItem(payload){
+    payload=payload||{};
+    const id=clean(payload.itemId) || docId('goods');
+    const enabledRaw=payload.enabled;
+    const enabled = enabledRaw===undefined || enabledRaw==='' ? true : truthy(enabledRaw);
+    const data={
+      itemId:id, name:clean(payload.name || payload.itemName), category:clean(payload.category), keywords:clean(payload.keywords),
+      teacherPrice:clean(payload.teacherPrice || payload.price), marketPrice:clean(payload.marketPrice), stockStatus:clean(payload.stockStatus || '需確認'),
+      arrivalDate:clean(payload.arrivalDate), pickupDate:clean(payload.pickupDate), offerTerms:clean(payload.offerTerms), description:clean(payload.description || payload.note), note:clean(payload.note || payload.description),
+      sortOrder:money(payload.sortOrder), enabled, imageUrl:clean(payload.imageUrl), updatedAt:serverTs(), updatedAtText:nowText(), updatedBy:clean((readUser()||{}).id || payload.userId), source:'firebase-teacher-goods-admin'
+    };
+    if(!data.name) return {ok:false,message:'請輸入商品名稱'};
+    if(!payload.itemId){ data.createdAt=serverTs(); data.createdAtText=nowText(); }
+    await setDoc('teacherGoods', id, data, true);
+    return {ok:true,itemId:id,row:normalizeGoodsItem(data),message:'公司優惠商品已儲存'};
+  }
+  async function deleteTeacherGoodsItem(payload){
+    const id=clean(payload&&payload.itemId); if(!id) return {ok:false,message:'缺少商品ID'};
+    await setDoc('teacherGoods', id, {enabled:false, deleted:true, deletedAt:serverTs(), deletedAtText:nowText(), updatedAt:serverTs(), updatedAtText:nowText()}, true);
+    return {ok:true,message:'商品已下架 / 刪除'};
+  }
+  async function submitTeacherGoodsInquiry(payload){
+    payload=payload||{};
+    const user=readUser();
+    const id=docId('inq');
+    const sourceType=clean(payload.sourceType || '老師主動詢價');
+    const itemName=clean(payload.itemName || payload.name);
+    if(!itemName && !clean(payload.note) && !clean(payload.inquiryImageUrl)) return {ok:false,message:'請至少輸入商品名稱、備註或圖片'};
+    const data={
+      inquiryId:id, userId:clean(payload.userId || user.id || user.employeeId || user.email), teacherId:clean(payload.teacherId || payload.userId || user.id || user.employeeId || user.email), teacherName:clean(payload.teacherName || user.name || user.employeeName || user.email || '管理者代查'),
+      sourceType, itemId:clean(payload.itemId), itemName:itemName || '官網商品詢價', imageUrl:clean(payload.inquiryImageUrl || payload.imageUrl), quantity:clean(payload.quantity), needBy:clean(payload.needBy), note:clean(payload.note), status:'待處理',
+      websiteProductId:clean(payload.websiteProductId || payload.productId), websiteProductUrl:clean(payload.websiteProductUrl || payload.url), websiteOriginalPrice:clean(payload.websiteOriginalPrice || payload.marketPrice || payload.price), websiteVariantSummary:clean(payload.websiteVariantSummary || payload.variantSummary), websiteSource:clean(payload.websiteSource || (sourceType==='公司官網詢價'?'EasyStore 官網':'')),
+      createdAt:serverTs(), createdAtText:nowText(), updatedAt:serverTs(), updatedAtText:nowText(), source:'firebase-teacher-goods-inquiry'
+    };
+    await setDoc('teacherGoodsInquiry', id, data, true);
+    return {ok:true,inquiryId:id,row:normalizeInquiry(data),message:'詢價已送出'};
+  }
+  async function getTeacherGoodsInquiries(payload){
+    const userId=clean(payload&&payload.userId);
+    const history=truthy(payload&&payload.historyMode);
+    let rows=(await all('teacherGoodsInquiry')).map(normalizeInquiry);
+    if(userId) rows=rows.filter(r=>r.userId===userId || r.teacherId===userId);
+    if(payload&&payload.startDate) rows=rows.filter(r=>!r.createdAt || r.createdAt.slice(0,10)>=clean(payload.startDate));
+    if(payload&&payload.endDate) rows=rows.filter(r=>!r.createdAt || r.createdAt.slice(0,10)<=clean(payload.endDate));
+    if(!history) rows=rows.sort((a,b)=>clean(b.createdAt).localeCompare(clean(a.createdAt))).slice(0,80);
+    return {ok:true,rows,list:rows,source:'firebase-teacher-goods-inquiries'};
+  }
+  async function getTeacherGoodsInquiryAdminList(payload){
+    payload=payload||{};
+    const kw=lower(payload.keyword), src=clean(payload.sourceType), status=clean(payload.status), group=clean(payload.group || '');
+    let rows=(await all('teacherGoodsInquiry')).map(normalizeInquiry).filter(r=>containsKeyword(r,kw));
+    if(src) rows=rows.filter(r=>r.sourceType===src);
+    if(status) rows=rows.filter(r=>r.status===status);
+    if(group==='active') rows=rows.filter(r=>!['已完成','已取消','取消','已結案'].includes(r.status));
+    if(group==='past') rows=rows.filter(r=>['已完成','已取消','取消','已結案'].includes(r.status));
+    rows.sort((a,b)=>clean(b.createdAt).localeCompare(clean(a.createdAt)));
+    return {ok:true,rows,list:rows,source:'firebase-teacher-goods-admin-inquiries'};
+  }
+  async function replyTeacherGoodsInquiry(payload){
+    payload=payload||{};
+    const id=clean(payload.inquiryId || payload.id); if(!id) return {ok:false,message:'缺少詢價ID'};
+    const status=clean(payload.status || '已回覆') || '已回覆';
+    const data={
+      status, replyItemName:clean(payload.replyItemName), replyTeacherPrice:clean(payload.replyTeacherPrice || payload.replyPrice), replyPrice:clean(payload.replyPrice || payload.replyTeacherPrice), replyMarketPrice:clean(payload.replyMarketPrice), replyStock:clean(payload.replyStock), replyArrivalDate:clean(payload.replyArrivalDate), replyPickupDate:clean(payload.replyPickupDate), replyNote:clean(payload.replyNote), repliedAt:serverTs(), repliedAtText:nowText(), repliedBy:clean((readUser()||{}).id || payload.userId), updatedAt:serverTs(), updatedAtText:nowText()
+    };
+    const parts=[];
+    if(data.replyTeacherPrice) parts.push('老師價：'+data.replyTeacherPrice);
+    if(data.replyMarketPrice) parts.push('官網 / 市售價：'+data.replyMarketPrice);
+    if(data.replyStock) parts.push('庫存：'+data.replyStock);
+    if(data.replyArrivalDate) parts.push('預計到貨：'+data.replyArrivalDate);
+    if(data.replyPickupDate) parts.push('可取貨：'+data.replyPickupDate);
+    if(data.replyNote) parts.push(data.replyNote);
+    data.replySummary=parts.join('\n');
+    await setDoc('teacherGoodsInquiry', id, data, true);
+    return {ok:true,message:'詢價已回覆',inquiryId:id};
+  }
+  async function getTeacherGoodsBadgeCounts(payload){
+    const userId=clean(payload&&payload.userId);
+    const admin=truthy(payload&&payload.admin);
+    const inquiries=(await all('teacherGoodsInquiry')).map(normalizeInquiry);
+    const goods=(await all('teacherGoods')).map(normalizeGoodsItem).filter(x=>x.enabled);
+    const pending=inquiries.filter(r=>!['已完成','已取消','取消','已結案'].includes(r.status));
+    const mine=userId?inquiries.filter(r=>r.userId===userId || r.teacherId===userId):[];
+    return {ok:true,adminPendingCount:pending.length,teacherActionCount:mine.filter(r=>r.status!=='待處理' && !['已完成','已取消','取消','已結案'].includes(r.status)).length,offerAvailableCount:goods.length};
+  }
+  fb.handleApi = async function(action,payload){
+    const a=clean(action);
+    if(a==='searchTeacherWebsiteGoods') return await searchTeacherWebsiteGoods(payload||{});
+    if(a==='getTeacherGoodsList') return await getTeacherGoodsList(payload||{});
+    if(a==='getTeacherGoodsAdminData') return await getTeacherGoodsAdminData(payload||{});
+    if(a==='saveTeacherGoodsItem') return await saveTeacherGoodsItem(payload||{});
+    if(a==='deleteTeacherGoodsItem') return await deleteTeacherGoodsItem(payload||{});
+    if(a==='submitTeacherGoodsInquiry') return await submitTeacherGoodsInquiry(payload||{});
+    if(a==='getTeacherGoodsInquiries') return await getTeacherGoodsInquiries(payload||{});
+    if(a==='getTeacherGoodsInquiryAdminList') return await getTeacherGoodsInquiryAdminList(payload||{});
+    if(a==='replyTeacherGoodsInquiry') return await replyTeacherGoodsInquiry(payload||{});
+    if(a==='getTeacherGoodsBadgeCounts') return await getTeacherGoodsBadgeCounts(payload||{});
+    if(typeof previousHandle === 'function') return await previousHandle(action,payload||{});
+    return null;
+  };
+  fb.__teacherGoodsFirebaseOnly20260530 = true;
+  global.YZFirebase = fb;
+})(window);

@@ -5,7 +5,9 @@
   <title>外聘老師拿貨 / 詢價管理</title><link rel="stylesheet" href="style.css?v=admin-final-20260530b">
   <style>
     .goods-page{max-width:1180px;margin:0 auto;padding:18px 14px 34px}.return-wrap{margin-bottom:14px}.return-wrap .btn{width:100%;border-radius:16px;background:#1f7a5a;color:#fff}.panel{background:#fff;border:1px solid #dfe7f1;border-radius:24px;padding:18px;box-shadow:0 10px 28px rgba(31,122,90,.06);margin-bottom:16px}.tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}.tabs button{border-radius:16px;padding:12px 10px}.tabs .secondary{background:#eef2f6;color:#31506b}.tab-badge{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;padding:0 7px;margin-left:6px;border-radius:999px;background:#dc2626;color:#fff;font-size:12px;font-weight:900;vertical-align:middle}.tab-badge:empty{display:none}.title2{font-size:22px;font-weight:900;color:#18314a;margin:0 0 14px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.grid .full{grid-column:1/-1}.grid label{display:block;font-weight:900;color:#25415f;margin-bottom:7px}.grid input,.grid textarea,.grid select{width:100%;border:1px solid #cfd8e3;border-radius:16px;padding:12px 14px;font-size:16px;background:#fff}.grid textarea{min-height:96px;resize:vertical}.image-picker{display:grid;grid-template-columns:120px 1fr;gap:12px;align-items:center}.image-preview,.thumb{width:120px;height:120px;border:1px dashed #b8c7d8;border-radius:20px;background:#f6f8fb;display:flex;align-items:center;justify-content:center;overflow:hidden;color:#6a7a91;font-weight:800}.image-preview img,.thumb img{width:100%;height:100%;object-fit:cover}.list{display:grid;gap:14px}.item-card{border:1px solid #dfe7f1;border-radius:22px;background:#fff;padding:14px}.card-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}.name{font-size:21px;font-weight:900;color:#18314a;margin-bottom:5px}.meta{font-size:14px;color:#66788f;line-height:1.8}.pill{display:inline-flex;align-items:center;border-radius:999px;padding:7px 11px;font-size:13px;font-weight:900;background:#edf6f2;color:#1f7a5a}.pill.gray{background:#eef2f6;color:#516b84}.pill.wait{background:#fff5e6;color:#9a5b00}.pill.done{background:#ecf7f1;color:#1f7a5a}.pill.bad{background:#fff0f0;color:#b42318}.actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.actions.three{grid-template-columns:repeat(3,1fr)}.reply-form{margin-top:12px;padding:14px;border-radius:18px;background:#f6f8fb;border:1px solid #dfe7f1}.search-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}.search-row input,.search-row select{border:1px solid #cfd8e3;border-radius:16px;padding:12px 14px;font-size:16px;background:#fff}.search-row input{flex:1;min-width:220px}.empty{padding:18px;text-align:center;color:#6a7a91;background:#f6f8fb;border-radius:18px}.msg{margin:0 0 12px}.btn-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}.btn-row .btn{width:auto;min-width:150px}.btn.is-loading{position:relative;overflow:hidden}.btn .btn-progress-fill{position:absolute;left:0;top:0;bottom:0;background:rgba(255,255,255,.22);width:0%;transition:width .25s}.btn .btn-label{position:relative;z-index:1}@media(max-width:760px){.grid{grid-template-columns:1fr}.tabs{grid-template-columns:1fr}.image-picker{grid-template-columns:1fr}.image-preview,.thumb{width:100%;height:190px}.actions,.actions.three{grid-template-columns:1fr}.btn-row .btn{width:100%}}
-  </style>
+  
+    .website-admin-note{padding:12px 14px;border:1px solid #dfe7f1;background:#f6f8fb;border-radius:16px;color:#516b84;font-weight:800;margin:0 0 12px}.website-result-grid{display:grid;grid-template-columns:120px 1fr;gap:14px}.website-result-grid .thumb{margin:0}.website-admin-actions{display:grid;grid-template-columns:130px 170px 1fr auto;gap:10px;align-items:end;margin-top:12px}.website-admin-actions input,.website-admin-actions textarea{border:1px solid #cfd8e3;border-radius:14px;padding:10px 12px;font-size:15px;background:#fff;width:100%}.website-admin-actions textarea{min-height:44px;resize:vertical}.website-admin-actions label{font-size:13px;font-weight:900;color:#25415f;display:block;margin-bottom:5px}@media(max-width:760px){.website-result-grid{grid-template-columns:1fr}.website-admin-actions{grid-template-columns:1fr}}
+</style>
 </head>
 <body onload="initPage()" class="admin-wide-page">
   <div class="goods-page"><div class="return-wrap"><a class="btn" href="settings.html">返回管理首頁</a></div><div class="panel"><div class="tabs"><button class="btn" id="tabInquiryBtn" type="button">老師詢價紀錄<span class="tab-badge" id="inquiryBadge"></span></button><button class="btn secondary" id="tabOfferBtn" type="button">公司優惠商品<span class="tab-badge" id="offerAdminBadge"></span></button></div><div id="msg" class="msg" style="display:none"></div>
@@ -57,7 +59,7 @@ async function replyInquiry(i){
 }
 setTimeout(ensureAdminCleanSearchBar_,0);
 
-</script><script src="app.js?v=admin-final-20260530b">
+</script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script><script src="firebase-client.js?v=20260530teachergoodsfirebase"></script><script src="app.js?v=admin-final-20260530b">
 
 /* ===== 2026-04-30：管理端移除狀態欄；送出回覆即視同已處理 ===== */
 function adminInquirySearchBarClean_(){
@@ -199,6 +201,89 @@ async function replyInquiry(i){
 }
 setTimeout(ensureAdminCleanSearchBar_,0);
 
+
+
+/* ===== 2026-05-30：管理端補回官網 API / Firebase 商品搜尋，不再走 GS ===== */
+(function(){
+  const oldInit = window.initPage;
+  const oldSwitch = window.switchTab;
+  function ensureAdminWebsiteTab_(){
+    const tabs=document.querySelector('.tabs');
+    if(tabs){tabs.style.gridTemplateColumns='repeat(3,1fr)';}
+    if(!qs('#tabWebsiteAdminBtn') && tabs){
+      const btn=document.createElement('button');
+      btn.className='btn secondary';
+      btn.id='tabWebsiteAdminBtn';
+      btn.type='button';
+      btn.textContent='官網商品搜尋';
+      const offer=qs('#tabOfferBtn');
+      if(offer) tabs.insertBefore(btn, offer); else tabs.appendChild(btn);
+    }
+    if(!qs('#websiteAdminView')){
+      const section=document.createElement('section');
+      section.id='websiteAdminView';
+      section.hidden=true;
+      section.innerHTML=`<div class="title2">官網商品搜尋</div><div class="website-admin-note">這裡搜尋 Firebase / Firestore 官網商品快取或 Firebase Function，不再回到舊 GS。可查官網商品並建立官網詢價紀錄。</div><div class="search-row"><input id="websiteAdminKeyword" placeholder="搜尋官網商品，例如：Fender、琴弦、Yamaha、電鋼琴"><button class="btn secondary" id="websiteAdminSearchBtn" type="button" style="width:auto">搜尋官網商品</button></div><div class="list" id="websiteAdminGoodsList"><div class="empty">請輸入關鍵字搜尋官網商品。</div></div>`;
+      const inquiry=qs('#inquiryView');
+      if(inquiry && inquiry.parentNode) inquiry.parentNode.insertBefore(section, inquiry.nextSibling);
+    }
+    if(qs('#tabWebsiteAdminBtn')) qs('#tabWebsiteAdminBtn').onclick=()=>switchTab('websiteAdmin');
+    if(qs('#websiteAdminSearchBtn')) qs('#websiteAdminSearchBtn').onclick=searchAdminWebsiteGoods;
+    if(qs('#websiteAdminKeyword')) qs('#websiteAdminKeyword').onkeydown=(e)=>{if(e.key==='Enter'){e.preventDefault();searchAdminWebsiteGoods();}};
+    if(!state.websiteGoods) state.websiteGoods=[];
+  }
+  window.switchTab=function(tab){
+    ensureAdminWebsiteTab_();
+    if(tab==='websiteAdmin'){
+      state.tab='websiteAdmin';
+      if(qs('#inquiryView')) qs('#inquiryView').hidden=true;
+      if(qs('#offerView')) qs('#offerView').hidden=true;
+      if(qs('#websiteAdminView')) qs('#websiteAdminView').hidden=false;
+      if(qs('#tabInquiryBtn')) qs('#tabInquiryBtn').className='btn secondary';
+      if(qs('#tabOfferBtn')) qs('#tabOfferBtn').className='btn secondary';
+      if(qs('#tabWebsiteAdminBtn')) qs('#tabWebsiteAdminBtn').className='btn';
+      setMsg(qs('#msg'),'');
+      return;
+    }
+    if(typeof oldSwitch==='function') oldSwitch(tab);
+    ensureAdminWebsiteTab_();
+    if(qs('#websiteAdminView')) qs('#websiteAdminView').hidden=true;
+    if(qs('#tabWebsiteAdminBtn')) qs('#tabWebsiteAdminBtn').className='btn secondary';
+  };
+  window.initPage=function(){
+    if(typeof oldInit==='function') oldInit();
+    ensureAdminWebsiteTab_();
+  };
+  window.searchAdminWebsiteGoods=async function(){
+    ensureAdminWebsiteTab_();
+    const kw=(qs('#websiteAdminKeyword')&&qs('#websiteAdminKeyword').value||'').trim();
+    const box=qs('#websiteAdminGoodsList');
+    if(!kw){box.innerHTML='<div class="empty">請輸入關鍵字後搜尋官網商品。</div>';return;}
+    box.innerHTML='<div class="empty">官網商品查詢中...</div>';
+    try{
+      const res=await api('searchTeacherWebsiteGoods',{userId:getUser().id,keyword:kw,limit:20,admin:'yes'});
+      if(!res.ok) throw new Error(res.message||'官網商品暫時無法讀取');
+      state.websiteGoods=res.rows||[];
+      renderAdminWebsiteGoods(state.websiteGoods,res.message||'');
+    }catch(err){box.innerHTML=`<div class="empty">${esc(err.message||'官網商品暫時無法讀取')}</div>`;}
+  };
+  window.renderAdminWebsiteGoods=function(rows,msg){
+    const box=qs('#websiteAdminGoodsList');
+    if(!rows.length){box.innerHTML=`<div class="empty">${esc(msg||'目前沒有找到符合的官網商品。')}</div>`;return;}
+    box.innerHTML=rows.map((r,i)=>`<div class="item-card"><div class="website-result-grid"><div class="thumb">${r.imageUrl?`<img src="${optimizedImageUrl(r.imageUrl)}">`:'無圖'}</div><div><div class="name">${esc(r.name||'未命名商品')}</div><div class="meta">${esc(r.brand||'')}${r.category?` ｜ ${esc(r.category)}`:''}${r.variantSummary?` ｜ ${esc(r.variantSummary)}`:''}</div><div class="meta">官網價格：${esc(r.marketPriceText||r.priceText||'未提供')} ｜ 庫存：${esc(r.stockStatus||'庫存未提供')}</div>${r.url?`<div class="meta"><a href="${esc(r.url)}" target="_blank" rel="noopener">查看官網商品</a></div>`:''}<div class="website-admin-actions"><div><label>數量</label><input id="adminWebsiteQty_${i}" type="number" min="1" step="1" placeholder="1"></div><div><label>希望拿貨日期</label><input id="adminWebsiteNeed_${i}" type="date"></div><div><label>備註</label><textarea id="adminWebsiteNote_${i}" placeholder="例如：幫老師查老師價、量價、是否有現貨"></textarea></div><button class="btn" id="adminWebsiteSubmit_${i}" type="button" onclick="submitAdminWebsiteInquiry(${i})">建立詢價紀錄</button></div></div></div></div>`).join('');
+  };
+  window.submitAdminWebsiteInquiry=async function(i){
+    const r=(state.websiteGoods||[])[i];if(!r)return;
+    const btn=qs('#adminWebsiteSubmit_'+i);startActionButtonProgress(btn,{label:'建立'});
+    try{
+      const res=await api('submitTeacherGoodsInquiry',{userId:getUser().id,teacherName:'管理者代查',sourceType:'公司官網詢價',itemName:r.name||'',inquiryImageUrl:r.imageUrl||'',quantity:qs('#adminWebsiteQty_'+i).value||'',needBy:qs('#adminWebsiteNeed_'+i).value||'',note:qs('#adminWebsiteNote_'+i).value||'管理者由官網商品搜尋建立。',websiteProductId:r.productId||'',websiteProductUrl:r.url||'',websiteOriginalPrice:r.marketPrice||r.price||'',websiteVariantSummary:r.variantSummary||'',websiteSource:'EasyStore 官網 / Firebase 搜尋'});
+      if(!res.ok)throw new Error(res.message||'建立失敗');
+      finishActionButtonSuccess(btn,'已建立');
+      setMsg(qs('#msg'),'已建立官網商品詢價紀錄，可回「老師詢價紀錄」處理回覆。');
+      refreshAdminGoodsBadges();
+    }catch(err){finishActionButtonError(btn,'建立失敗');setMsg(qs('#msg'),err.message||'建立失敗',true);}
+  };
+})();
 </script>
 </body>
 </html>
