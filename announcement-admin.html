@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>公告管理</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=admin-wide-20260530a">
   <style>
     .page-return-wrap{margin-bottom:16px}.page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
     .admin-card{background:#fff;border:1px solid #e2e8f0;border-radius:20px;padding:18px;box-shadow:0 8px 24px rgba(15,23,42,.04)}
@@ -19,7 +19,7 @@
     @media (max-width:900px){.field-grid,.setting-grid,.upload-grid,.meta,.check-grid{grid-template-columns:1fr}.card-head{flex-direction:column}}
   </style>
 </head>
-<body onload="initPage()">
+<body onload="initPage()" class="admin-wide-page">
   <div class="container">
     <div class="page-return-wrap"><a class="btn page-return-btn" href="settings.html">返回管理首頁</a></div>
     <div class="card">
@@ -36,9 +36,9 @@
   <script src="config.js?v=20260430_announcement_unified"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260530notifyv2final1"></script>
+  <script src="firebase-client.js?v=20260523stage5primary"></script>
 
-  <script src="app.js?v=20260530notifyv2final1"></script>
+  <script src="app.js?v=20260430_announcement_unified"></script>
   <script>
     let currentUser=null, editingId='', editingRow=null, mediaRecorder=null, recordingStream=null, recordingChunks=[], recordedAudioFile=null, recordingStartAt=0, recordingTimer=null;
     function setSaveProgress(percent,text){const wrap=qs('#saveProgress'),fill=qs('#saveProgressFill'),label=qs('#saveProgressText'); if(!wrap||!fill||!label)return; wrap.classList.add('open'); const safe=Math.max(0,Math.min(100,Number(percent||0))); fill.style.width=safe+'%'; label.textContent=`${text||'處理中'} ${safe}%`;}

@@ -4,234 +4,228 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>禮物集點單</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=admin-wide-20260530a">
   <style>
     :root{
       --gift-green:#1f7a5a;
-      --gift-deep:#18314a;
-      --gift-muted:#64748b;
-      --gift-line:#d9e3ef;
-      --gift-warm:#fff7df;
-      --gift-pink:#fff1f2;
-      --gift-blue:#eff6ff;
-      --gift-yellow:#facc15;
+      --gift-mint:#e8f7ef;
+      --gift-yellow:#fff4bf;
+      --gift-orange:#f59e0b;
+      --gift-ink:#17324d;
+      --gift-line:#dbe5ef;
     }
-    .page-return-wrap{margin-bottom:16px}
-    .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:900}
-    .admin-layout{display:grid;grid-template-columns:minmax(280px,380px) minmax(0,1fr);gap:18px;align-items:start}
-    .form-card,.preview-card{background:#fff;border:1px solid var(--gift-line);border-radius:24px;box-shadow:0 12px 30px rgba(15,23,42,.05);padding:22px}
-    .section-title{font-size:22px;font-weight:900;margin:0 0 12px;color:var(--gift-deep)}
-    .form-note{font-size:14px;line-height:1.8;color:var(--gift-muted);margin:0 0 16px}
-    .field{margin-bottom:14px}
-    .field label{display:block;font-weight:900;margin-bottom:7px;color:#18314a}
-    .field input,.field textarea,.field select{width:100%;box-sizing:border-box;border:1px solid #cfd8e3;border-radius:15px;padding:12px 13px;font-size:15px;background:#fff;color:#0f172a}
-    .field textarea{min-height:128px;resize:vertical;line-height:1.65}
-    .hint{font-size:13px;color:#64748b;line-height:1.65;margin-top:6px}
-    .button-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}
-    .button-row .btn{width:100%;padding:13px 14px;border-radius:16px;font-weight:900}
-    .btn.print-btn{background:#1f7a5a;color:#fff}
-    .btn.light-btn{background:#eaf0f6;color:#18314a}
-    .preview-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
-    .preview-actions{display:flex;gap:8px;flex-wrap:wrap}
-    .preview-actions .btn{width:auto;padding:10px 14px;border-radius:14px;font-size:14px}
-    .print-preview-scroll{overflow:auto;border:1px solid #e2e8f0;border-radius:20px;background:#f4f7fb;padding:16px;max-width:100%}
-    .a4-sheet{width:297mm;height:210mm;box-sizing:border-box;background:#fff;margin:0 auto;padding:10mm;box-shadow:0 12px 30px rgba(15,23,42,.12);transform-origin:top left}
-    .sheet-grid{height:100%;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:8mm}
-    .gift-card{position:relative;overflow:hidden;box-sizing:border-box;border:1.4px dashed #b7c6d8;border-radius:8mm;background:linear-gradient(135deg,#ffffff 0%,#fff8e5 48%,#f0fdf4 100%);padding:6.4mm 6.8mm;color:#18314a;display:flex;flex-direction:column;justify-content:space-between}
-    .gift-card::before{content:"♪";position:absolute;right:8mm;top:2mm;font-size:22mm;font-weight:900;color:rgba(250,204,21,.22);transform:rotate(-12deg)}
-    .gift-card::after{content:"♫";position:absolute;left:6mm;bottom:3mm;font-size:13mm;color:rgba(31,122,90,.16);transform:rotate(14deg)}
-    .gift-card-main{position:relative;z-index:2}
-    .gift-title-row{display:flex;align-items:center;justify-content:space-between;gap:4mm;margin-bottom:3.5mm}
-    .gift-title-wrap{min-width:0}
-    .gift-title{font-size:18.5pt;line-height:1.12;font-weight:1000;letter-spacing:.04em;color:#13263a;margin:0 0 1mm;white-space:nowrap}
-    .gift-subtitle{font-size:8.8pt;font-weight:900;color:#1f7a5a;letter-spacing:.04em}
-    .gift-badge{flex:0 0 auto;border:1px solid #facc15;border-radius:999px;background:#fef3c7;color:#92400e;font-size:7.8pt;font-weight:900;padding:2.5mm 3mm;text-align:center;line-height:1.25;transform:rotate(-5deg)}
-    .student-lines{display:grid;grid-template-columns:1fr 1fr;gap:2mm;margin-bottom:3.5mm;font-size:8.2pt;font-weight:800;color:#334155}
-    .line-box{border-bottom:1px solid #94a3b8;padding-bottom:1.2mm;min-height:5mm}
-    .point-row{display:grid;grid-template-columns:repeat(10,1fr);gap:1.25mm;margin:1mm 0 3.5mm}
-    .point-cell{aspect-ratio:1;border:1.8px solid #eab308;background:rgba(255,255,255,.8);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:8pt;font-weight:1000;color:#a16207;box-shadow:inset 0 0 0 1px rgba(255,255,255,.7)}
-    .rule-box{position:relative;z-index:2;border:1px solid rgba(31,122,90,.16);background:rgba(255,255,255,.66);border-radius:4mm;padding:2.6mm 3mm;margin-top:1mm}
-    .rule-title{font-size:8pt;font-weight:1000;color:#1f7a5a;margin:0 0 .9mm}
-    .rule-line{font-size:7.4pt;line-height:1.45;color:#334155;font-weight:700;margin:0}
-    .card-footer{position:relative;z-index:2;display:flex;justify-content:space-between;align-items:center;gap:4mm;margin-top:2.5mm;font-size:7.3pt;color:#64748b;font-weight:800}
-    .cut-hint{border-top:1px dashed rgba(100,116,139,.35);padding-top:1.4mm;flex:1}
-    .brand-dot{color:#1f7a5a;white-space:nowrap}
-    @media (max-width:1180px){.admin-layout{grid-template-columns:1fr}.form-card{order:1}.preview-card{order:2}.print-preview-scroll{padding:10px}.a4-sheet{transform:scale(.72);transform-origin:top left;margin:0}.print-preview-scroll{height:calc(210mm * .72 + 28px)}}
-    @media (max-width:760px){.a4-sheet{transform:scale(.46)}.print-preview-scroll{height:calc(210mm * .46 + 24px)}.button-row{grid-template-columns:1fr}.preview-actions{width:100%}.preview-actions .btn{flex:1}.section-title{font-size:20px}}
+    .gift-layout{display:grid;grid-template-columns:minmax(320px,420px) minmax(0,1fr);gap:16px;align-items:start}
+    .subcard{background:#fff;border:1px solid #e2e8f0;border-radius:20px;padding:18px;box-shadow:0 8px 24px rgba(15,23,42,.04)}
+    .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+    .mini-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+    .mini-actions .btn{width:auto;padding:10px 14px}
+    .muted-tip{font-size:13px;color:#64748b;line-height:1.8}
+    .preview-shell{background:#f7fafc;border:1px solid #e2e8f0;border-radius:20px;padding:14px;position:sticky;top:16px;overflow:auto}
+    .preview-toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+    .sheet-scale-wrap{display:flex;justify-content:center;align-items:flex-start;overflow:auto;padding:8px}
+    .a4-sheet{width:210mm;min-height:297mm;background:#fff;box-shadow:0 10px 35px rgba(15,23,42,.12);box-sizing:border-box;padding:8mm 10mm;display:grid;grid-template-rows:repeat(4,1fr);gap:5mm;margin:0 auto;break-after:page}
+    .gift-card{position:relative;border:1.5px solid #9ec8b6;border-radius:18px;background:linear-gradient(135deg,#fff 0%,#fff 55%,#fff8d8 100%);padding:8mm 8mm 7mm;box-sizing:border-box;overflow:hidden;display:grid;grid-template-rows:auto auto 1fr auto;gap:4mm;min-height:0;break-inside:avoid}
+    .gift-card:before{content:"";position:absolute;right:-18mm;top:-22mm;width:54mm;height:54mm;border-radius:50%;background:rgba(31,122,90,.10)}
+    .gift-card:after{content:"♪";position:absolute;right:11mm;top:7mm;font-size:24px;color:rgba(31,122,90,.20);font-weight:900}
+    .gift-head{position:relative;display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+    .gift-title{font-size:23px;font-weight:950;letter-spacing:1px;color:var(--gift-ink);line-height:1.15;margin:0}
+    .gift-subtitle{font-size:12px;color:#5f7086;font-weight:800;margin-top:3px;line-height:1.4}
+    .gift-badge{border:1px solid #f1c453;background:var(--gift-yellow);border-radius:999px;padding:6px 10px;font-size:12px;font-weight:950;color:#7c4a03;white-space:nowrap;transform:rotate(-3deg)}
+    .gift-info{display:grid;grid-template-columns:1.1fr 1fr 1fr;gap:8px;font-size:12px;color:#334155;font-weight:800;position:relative}
+    .gift-line-field{border-bottom:1px solid #94a3b8;min-height:18px;padding-bottom:2px;white-space:nowrap}
+    .gift-points{display:grid;grid-template-columns:repeat(10,1fr);gap:3mm;align-items:center;position:relative}
+    .gift-point{aspect-ratio:1/1;border:1.5px solid #9ec8b6;border-radius:10px;background:#fff;display:flex;align-items:center;justify-content:center;color:#1f7a5a;font-size:13px;font-weight:950;box-shadow:inset 0 0 0 2px rgba(31,122,90,.04)}
+    .gift-rules{position:relative;border-top:1px dashed #bdd6c9;padding-top:3mm;color:#334155;font-size:10.8px;line-height:1.45;display:grid;gap:1.5mm}
+    .gift-rules-title{font-weight:950;color:#17324d}
+    .gift-cut{position:absolute;inset:1.8mm;border:1px dashed rgba(148,163,184,.55);border-radius:16px;pointer-events:none}
+    .hint-box{border:1px dashed #b7c5d3;background:#fbfdff;border-radius:16px;padding:12px;color:#475569;font-size:13px;line-height:1.8}
+    .print-only{display:none}
+    @media(max-width:1120px){
+      .gift-layout{grid-template-columns:1fr}
+      .preview-shell{position:static}
+      .sheet-scale-wrap{justify-content:flex-start}
+      .a4-sheet{transform:scale(.72);transform-origin:top left;margin-right:-58mm;margin-bottom:-82mm}
+    }
+    @media(max-width:640px){
+      .row2,.row3{grid-template-columns:1fr}
+      .a4-sheet{transform:scale(.46);margin-right:-115mm;margin-bottom:-160mm}
+      .mini-actions .btn{width:100%}
+    }
     @media print{
-      @page{size:A4 landscape;margin:0}
       html,body{margin:0!important;padding:0!important;background:#fff!important}
       body *{visibility:hidden!important}
-      #printRoot,#printRoot *{visibility:visible!important}
-      #printRoot{position:absolute;left:0;top:0;width:297mm;height:210mm;margin:0!important;padding:0!important;background:#fff!important}
-      .a4-sheet{box-shadow:none!important;margin:0!important;transform:none!important;width:297mm!important;height:210mm!important;padding:10mm!important}
-      .gift-card{break-inside:avoid;page-break-inside:avoid;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+      #printArea,#printArea *{visibility:visible!important}
+      #printArea{position:absolute!important;left:0!important;top:0!important;width:210mm!important;margin:0!important;padding:0!important;background:#fff!important;box-shadow:none!important;border:none!important;overflow:visible!important}
+      .sheet-scale-wrap{display:block!important;overflow:visible!important;padding:0!important}
+      .a4-sheet{width:210mm!important;min-height:297mm!important;padding:8mm 10mm!important;margin:0!important;box-shadow:none!important;border:none!important;transform:none!important;page-break-after:always!important;break-after:page!important}
+      .a4-sheet:last-child{page-break-after:auto!important;break-after:auto!important}
+      .page-return-wrap,.topbar,.subcard,.preview-toolbar{display:none!important}
+      @page{size:A4 portrait;margin:0}
     }
   </style>
 </head>
-<body onload="initPage()">
-  <div class="container screen-only">
-    <div class="page-return-wrap"><a class="btn page-return-btn" href="quotation-contract-hub.html">返回估價單／合約／集點單</a></div>
-    <div class="card" style="margin-bottom:16px">
+<body onload="initPage()" class="admin-wide-page">
+  <div class="container" style="max-width:1400px">
+    <div class="page-return-wrap"><a class="btn page-return-btn" href="quotation-contract-hub.html">返回估價單合約單</a></div>
+    <div class="card">
       <div class="topbar">
         <div>
           <h1 class="title" style="margin:0">禮物集點單</h1>
           <div class="welcome">歡迎 <span data-user-name></span></div>
+          <div class="muted-tip" style="margin-top:6px">左邊調整文字與張數，右邊即時預覽；預覽版型就是列印與另存 PDF 的版型。</div>
         </div>
         <button class="btn secondary" style="width:auto;padding:10px 14px" onclick="logout()">登出</button>
       </div>
-      <div style="margin-top:8px;color:#64748b;line-height:1.8">A4 橫式一頁 4 張；每張卡片一列 10 格，適合列印後裁切給學生集點兌換禮物。</div>
-    </div>
 
-    <div class="admin-layout">
-      <section class="form-card">
-        <h2 class="section-title">卡片內容</h2>
-        <p class="form-note">左邊修改內容，右邊即時預覽。按「列印／另存 PDF」後，可在列印視窗直接列印，或選擇另存 PDF。</p>
-        <div class="field">
-          <label for="cardTitle">卡片標題</label>
-          <input id="cardTitle" value="柚子樂器 集點卡" oninput="renderCards()">
-        </div>
-        <div class="field">
-          <label for="cardSubtitle">副標</label>
-          <input id="cardSubtitle" value="學生兌換禮物專用" oninput="renderCards()">
-        </div>
-        <div class="field">
-          <label for="cardBadge">右上小標</label>
-          <input id="cardBadge" value="集滿可兌換" oninput="renderCards()">
-        </div>
-        <div class="field">
-          <label for="cardStudentLabel">學生欄位</label>
-          <input id="cardStudentLabel" value="姓名：｜課程：" oninput="renderCards()">
-          <div class="hint">用「｜」分隔左右兩個欄位，例如：姓名：｜課程：</div>
-        </div>
-        <div class="field">
-          <label for="cardRules">注意事項</label>
-          <textarea id="cardRules" oninput="renderCards()">不可與其他優惠合併使用
-本卡遺失，點數一律作廢
-集點可選擇轉扭蛋，或兌換對應的集點禮物</textarea>
-        </div>
-        <div class="field">
-          <label for="cardFooter">底部備註</label>
-          <input id="cardFooter" value="請妥善保管本卡" oninput="renderCards()">
-        </div>
-        <div class="button-row">
-          <button class="btn light-btn" type="button" onclick="resetDefaults()">恢復預設</button>
-          <button class="btn print-btn" type="button" onclick="printCards()">列印／另存 PDF</button>
-        </div>
-      </section>
+      <div class="gift-layout">
+        <div>
+          <div class="subcard">
+            <h2 class="section-title" style="margin-top:0">集點卡內容</h2>
+            <div class="field"><label>標題</label><input id="cardTitle" value="柚子樂器 集點卡"></div>
+            <div class="field"><label>副標題</label><input id="cardSubtitle" value="學生兌換禮物專用"></div>
+            <div class="row2">
+              <div class="field"><label>每張點數格</label><input id="pointCount" value="10 格｜一橫列" disabled></div>
+              <div class="field"><label>列印張數</label><select id="cardCount"><option value="4">4 張｜1 張 A4</option><option value="8">8 張｜2 張 A4</option><option value="12">12 張｜3 張 A4</option><option value="16">16 張｜4 張 A4</option><option value="20">20 張｜5 張 A4</option></select></div>
+            </div>
+            <div class="row2">
+              <div class="field"><label>欄位一</label><input id="fieldA" value="姓名"></div>
+              <div class="field"><label>欄位二</label><input id="fieldB" value="班級／課程"></div>
+            </div>
+            <div class="field"><label>欄位三</label><input id="fieldC" value="發卡日期"></div>
+            <div class="field"><label>角標文字</label><input id="badgeText" value="10 點兌換"></div>
+            <div class="field"><label>注意事項</label><textarea id="rules" rows="5">1. 不可與其他優惠合併使用。
+2. 本卡遺失，點數一律作廢。
+3. 集點可選擇轉扭蛋，或兌換對應的集點禮物。</textarea></div>
+            <div class="mini-actions">
+              <button class="btn" type="button" onclick="renderPreview()">更新預覽</button>
+              <button class="btn" type="button" onclick="printCards()">列印</button>
+              <button class="btn" type="button" onclick="saveAsPdf()">另存 PDF</button>
+              <button class="btn secondary" type="button" onclick="resetDefaults()">恢復預設</button>
+            </div>
+            <div id="msg" class="message"></div>
+          </div>
 
-      <section class="preview-card">
-        <div class="preview-head">
-          <div>
-            <h2 class="section-title" style="margin-bottom:4px">A4 預覽</h2>
-            <div class="form-note" style="margin:0">列印尺寸：A4 橫式；每頁 4 張集點卡。</div>
-          </div>
-          <div class="preview-actions">
-            <button class="btn secondary" type="button" onclick="renderCards()">更新預覽</button>
-            <button class="btn print-btn" type="button" onclick="printCards()">列印／另存 PDF</button>
-          </div>
-        </div>
-        <div class="print-preview-scroll">
-          <div id="printRoot">
-            <div class="a4-sheet">
-              <div id="sheetGrid" class="sheet-grid"></div>
+          <div class="subcard" style="margin-top:16px">
+            <h2 class="section-title" style="margin-top:0">使用說明</h2>
+            <div class="hint-box">
+              每張 A4 會放 4 張長方形集點卡，每張卡一橫列 10 格，方便學生集點與櫃台核對。<br>
+              點「另存 PDF」後，請在瀏覽器列印視窗選擇「儲存為 PDF」；點「列印」則直接選擇印表機。
             </div>
           </div>
         </div>
-      </section>
+
+        <div class="preview-shell">
+          <div class="preview-toolbar">
+            <div>
+              <div style="font-size:18px;font-weight:900;color:#17324d">列印預覽</div>
+              <div class="muted-tip">A4 直式｜每張 A4 4 張｜每張 10 格</div>
+            </div>
+            <div class="mini-actions" style="margin:0">
+              <button class="btn" type="button" onclick="printCards()">列印</button>
+              <button class="btn" type="button" onclick="saveAsPdf()">另存 PDF</button>
+            </div>
+          </div>
+          <div id="printArea" class="sheet-scale-wrap"></div>
+        </div>
+      </div>
     </div>
   </div>
-
-  <script src="config.js?v=20260508frontendperf1"></script>
+  <script src="config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260530giftpoint1"></script>
-  <script src="app.js?v=20260530giftpoint1"></script>
+  <script src="firebase-client.js?v=20260529notifyv2linebind"></script>
+  <script src="app.js?v=20260529notifyv2linebind"></script>
   <script>
-    const STORAGE_KEY = 'giftPointCardSettings:v1';
     const DEFAULTS = {
       cardTitle:'柚子樂器 集點卡',
       cardSubtitle:'學生兌換禮物專用',
-      cardBadge:'集滿可兌換',
-      cardStudentLabel:'姓名：｜課程：',
-      cardRules:'不可與其他優惠合併使用\n本卡遺失，點數一律作廢\n集點可選擇轉扭蛋，或兌換對應的集點禮物',
-      cardFooter:'請妥善保管本卡'
+      badgeText:'10 點兌換',
+      fieldA:'姓名',
+      fieldB:'班級／課程',
+      fieldC:'發卡日期',
+      cardCount:'4',
+      rules:'1. 不可與其他優惠合併使用。\n2. 本卡遺失，點數一律作廢。\n3. 集點可選擇轉扭蛋，或兌換對應的集點禮物。'
     };
     function initPage(){
       fillHeader();
       const user=requireLogin();
       if(!user) return;
       if(!hasSettingsZoneAccess(user)){ location.href='dashboard.html'; return; }
-      setPortalMode('settings');
-      loadSettings();
-      renderCards();
+      loadSavedSettings();
+      ['cardTitle','cardSubtitle','badgeText','fieldA','fieldB','fieldC','rules','cardCount'].forEach(id=>{
+        const el=document.getElementById(id);
+        if(el) el.addEventListener('input', renderPreview);
+        if(el) el.addEventListener('change', renderPreview);
+      });
+      renderPreview();
     }
-    function $(id){return document.getElementById(id)}
-    function htmlEscape(v){return String(v==null?'':v).replace(/[&<>"]/g, ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));}
-    function valueOf(id){const el=$(id); return el ? String(el.value||'').trim() : '';}
-    function collect(){
+    function readForm(){
       const data={};
-      Object.keys(DEFAULTS).forEach(k=>data[k]=valueOf(k)||DEFAULTS[k]);
+      Object.keys(DEFAULTS).forEach(k=>{
+        const el=document.getElementById(k);
+        data[k]=el ? el.value : DEFAULTS[k];
+      });
+      data.cardCount=Math.max(4, Number(data.cardCount || 4) || 4);
       return data;
     }
-    function saveSettings(data){try{localStorage.setItem(STORAGE_KEY, JSON.stringify(data||collect()));}catch(e){}}
-    function loadSettings(){
-      let data=null;
-      try{data=JSON.parse(localStorage.getItem(STORAGE_KEY)||'null');}catch(e){}
-      data=Object.assign({}, DEFAULTS, data||{});
-      Object.keys(DEFAULTS).forEach(k=>{ if($(k)) $(k).value=data[k]; });
+    function saveSettings(data){
+      try{ localStorage.setItem('giftPointCardSettings:v1', JSON.stringify(data||readForm())); }catch(e){}
+    }
+    function loadSavedSettings(){
+      let data={};
+      try{ data=JSON.parse(localStorage.getItem('giftPointCardSettings:v1')||'{}')||{}; }catch(e){ data={}; }
+      Object.assign({}, DEFAULTS, data);
+      Object.keys(DEFAULTS).forEach(k=>{
+        const el=document.getElementById(k);
+        if(el) el.value = (data[k] != null ? data[k] : DEFAULTS[k]);
+      });
     }
     function resetDefaults(){
-      Object.keys(DEFAULTS).forEach(k=>{ if($(k)) $(k).value=DEFAULTS[k]; });
-      saveSettings(DEFAULTS);
-      renderCards();
+      Object.keys(DEFAULTS).forEach(k=>{ const el=document.getElementById(k); if(el) el.value=DEFAULTS[k]; });
+      renderPreview();
     }
-    function pointCells(){
-      let out='';
-      for(let i=1;i<=10;i++) out += '<div class="point-cell">'+i+'</div>';
-      return out;
-    }
-    function buildCard(data){
-      const labels=String(data.cardStudentLabel||'').split('｜');
-      const left=labels[0] || '姓名：';
-      const right=labels[1] || '課程：';
-      const rules=String(data.cardRules||'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean).slice(0,4);
-      return `
-        <article class="gift-card">
-          <div class="gift-card-main">
-            <div class="gift-title-row">
-              <div class="gift-title-wrap">
-                <h3 class="gift-title">${htmlEscape(data.cardTitle)}</h3>
-                <div class="gift-subtitle">${htmlEscape(data.cardSubtitle)}</div>
-              </div>
-              <div class="gift-badge">${htmlEscape(data.cardBadge)}</div>
-            </div>
-            <div class="student-lines">
-              <div class="line-box">${htmlEscape(left)}</div>
-              <div class="line-box">${htmlEscape(right)}</div>
-            </div>
-            <div class="point-row">${pointCells()}</div>
-            <div class="rule-box">
-              <div class="rule-title">注意事項：</div>
-              ${rules.map((r,i)=>`<p class="rule-line">${i+1}. ${htmlEscape(r)}</p>`).join('')}
-            </div>
-          </div>
-          <div class="card-footer">
-            <div class="cut-hint">${htmlEscape(data.cardFooter)}</div>
-            <div class="brand-dot">柚子樂器</div>
-          </div>
-        </article>`;
-    }
-    function renderCards(){
-      const data=collect();
+    function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+    function renderPreview(){
+      const data=readForm();
       saveSettings(data);
-      const grid=$('sheetGrid');
-      if(!grid) return;
-      grid.innerHTML=Array.from({length:4}).map(()=>buildCard(data)).join('');
+      const total=data.cardCount;
+      const pages=Math.ceil(total/4);
+      const out=[];
+      let made=0;
+      for(let p=0;p<pages;p++){
+        out.push('<section class="a4-sheet">');
+        for(let i=0;i<4;i++){
+          if(made<total) out.push(renderCard(data, made+1));
+          else out.push('<div></div>');
+          made++;
+        }
+        out.push('</section>');
+      }
+      document.getElementById('printArea').innerHTML=out.join('');
+      const msg=document.getElementById('msg');
+      if(msg) msg.textContent='已更新預覽。';
+    }
+    function renderCard(data, idx){
+      const rules=String(data.rules||'').split('\n').map(s=>s.trim()).filter(Boolean);
+      const pointCells=Array.from({length:10},(_,i)=>'<div class="gift-point">'+(i+1)+'</div>').join('');
+      return '<article class="gift-card">'+
+        '<div class="gift-cut"></div>'+
+        '<div class="gift-head"><div><h2 class="gift-title">'+esc(data.cardTitle)+'</h2><div class="gift-subtitle">'+esc(data.cardSubtitle)+'</div></div><div class="gift-badge">'+esc(data.badgeText)+'</div></div>'+
+        '<div class="gift-info"><div class="gift-line-field">'+esc(data.fieldA)+'：</div><div class="gift-line-field">'+esc(data.fieldB)+'：</div><div class="gift-line-field">'+esc(data.fieldC)+'：</div></div>'+
+        '<div class="gift-points">'+pointCells+'</div>'+
+        '<div class="gift-rules"><div class="gift-rules-title">注意事項：</div>'+rules.map(r=>'<div>'+esc(r)+'</div>').join('')+'</div>'+
+      '</article>';
     }
     function printCards(){
-      renderCards();
-      setTimeout(()=>window.print(),80);
+      renderPreview();
+      setTimeout(()=>window.print(),120);
+    }
+    function saveAsPdf(){
+      renderPreview();
+      const msg=document.getElementById('msg');
+      if(msg) msg.textContent='列印視窗開啟後，請選擇「另存為 PDF」或「Save as PDF」。';
+      setTimeout(()=>window.print(),120);
     }
   </script>
 </body>

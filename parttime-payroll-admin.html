@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>工讀薪資結算</title>
   <!-- 2026-05-23 layout v6: 精簡工讀生卡片與薪資結算抬頭 -->
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=admin-wide-20260530a">
   <style>
     .page-return-wrap{margin-bottom:16px}
     .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
@@ -51,7 +51,7 @@
 
   .btn-red{background:#b42318!important;color:#fff!important;border:0!important}.btn-red:hover{background:#991b1b!important}</style>
 </head>
-<body onload="init()">
+<body onload="init()" class="admin-wide-page">
   <div class="container">
     <div class="page-return-wrap"><a class="btn page-return-btn" href="settings.html">返回管理首頁</a></div>
     <div class="topbar"></div>
@@ -108,9 +108,9 @@
   <script src="config.js?v=20260529badgeNotify1"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260530notifyv2final1"></script>
+  <script src="firebase-client.js?v=20260529notifyvisible2"></script>
 
-  <script src="app.js?v=20260530notifyv2final1"></script>
+  <script src="app.js?v=20260529notifyvisible2"></script>
   <script>
     let state = { employees: [], selectedId: '', summary: null };
 

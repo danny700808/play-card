@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>管理首頁</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=admin-wide-20260530a">
   <style>
     .tile strong{display:flex;align-items:center;gap:8px;justify-content:space-between}
     .badge{display:inline-flex;min-width:22px;height:22px;padding:0 6px;border-radius:999px;background:#dc2626;color:#fff;font-size:12px;align-items:center;justify-content:center;font-weight:800}
@@ -327,7 +327,7 @@
 
   </style>
 </head>
-<body onload="init()">
+<body onload="init()" class="admin-wide-page">
   <div class="container">
     <section class="manage-head-card">
       <div class="manage-head-info">
@@ -344,6 +344,7 @@
       <a class="tile" href="teacher-hub.html"><strong>外聘老師 <span class="badge" id="badge-teacher"></span></strong><span>合約與拿貨紀錄</span></a>
       <a class="tile" href="application-admin.html"><strong>應聘管理 <span class="badge" id="badge-application"></span></strong><span>履歷投遞與審核通知</span></a>
       <a class="tile" href="items-hub.html"><strong>公告／交辦／定期 <span class="badge" id="badge-items"></span></strong><span>公告、交辦與定期</span></a>
+      <a class="tile" href="notification-settings.html"><strong>通知 / 提醒設定</strong><span>通知與提醒表格</span></a>
       <a class="tile" href="training-admin.html"><strong>教育訓練管理</strong><span>教材與學習內容</span></a>
       <a class="tile" href="schedule-admin.html"><strong>班表管理</strong><span>班表與排班設定</span></a>
       <a class="tile" href="leave-policy-admin.html"><strong>假勤制度設定</strong><span>假別與請假規則</span></a>
@@ -355,9 +356,9 @@
   <script src="config.js?v=20260508frontendperf1"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260530notifyv2final1"></script>
+  <script src="firebase-client.js?v=20260529notifyvisible2"></script>
 
-  <script src="app.js?v=20260530notifyv2final1"></script>
+  <script src="app.js?v=20260529notifyvisible2"></script>
   <script>
     async function init(){
       fillHeader();

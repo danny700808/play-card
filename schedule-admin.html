@@ -282,10 +282,26 @@
     .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800;background:var(--primary);color:#fff;box-shadow:var(--shadow)}
     .page-return-btn:hover{background:var(--primary-dark)}
 .simple-hero{padding:18px 20px}.simple-hero h1{margin:0}.danger-zone{margin-top:10px;border-top:1px dashed #f0b4b4;padding-top:10px}.section-tab{display:flex;align-items:center;justify-content:center;text-align:center}.section-tab strong{margin:0}
+
+    /* schedule-admin-wide-20260530a */
+    @media (min-width: 900px){
+      body.admin-wide-page .page{
+        width:min(98vw,1760px)!important;
+        max-width:1760px!important;
+        margin-left:auto!important;
+        margin-right:auto!important;
+        padding-left:18px!important;
+        padding-right:18px!important;
+      }
+      body.admin-wide-page .card{width:100%;}
+      body.admin-wide-page .table-wrap,
+      body.admin-wide-page .schedule-table-wrap{max-width:100%!important;overflow-x:auto;}
+      body.admin-wide-page table{width:100%;}
+    }
 </style>
 
 </head>
-<body>
+<body class="admin-wide-page">
   <div class="page">
     <div class="page-return-wrap"><a class="btn page-return-btn" href="settings.html">返回管理首頁</a></div>
     <div class="hero simple-hero">
@@ -330,9 +346,9 @@
   <script src="config.js?v=20260528ClockMultiSchedule"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260530notifyv2final1"></script>
+  <script src="firebase-client.js?v=20260528ClockMultiSchedule"></script>
 
-  <script src="app.js?v=20260530notifyv2final1"></script>
+  <script src="app.js?v=20260528ClockMultiSchedule"></script>
   <script>
 
     const DAYS = [

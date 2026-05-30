@@ -92,3 +92,68 @@ a{text-decoration:none;color:inherit} .container{max-width:760px;margin:0 auto;p
 
 .page-return-wrap{margin-bottom:16px}
 .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
+
+
+/* admin-wide-20260530a: 管理端電腦版寬版閱讀 */
+@media (min-width: 900px) {
+  body.admin-wide-page {
+    --admin-wide-max: 1760px;
+  }
+  body.admin-wide-page .container,
+  body.admin-wide-page main,
+  body.admin-wide-page .page,
+  body.admin-wide-page .wrap,
+  body.admin-wide-page .content,
+  body.admin-wide-page .admin-page,
+  body.admin-wide-page .admin-wrap,
+  body.admin-wide-page .dashboard-wrap,
+  body.admin-wide-page .hub-wrap {
+    width: min(98vw, var(--admin-wide-max)) !important;
+    max-width: var(--admin-wide-max) !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+  body.admin-wide-page .container,
+  body.admin-wide-page main,
+  body.admin-wide-page .page {
+    padding-left: 18px !important;
+    padding-right: 18px !important;
+  }
+  body.admin-wide-page .card,
+  body.admin-wide-page .admin-card,
+  body.admin-wide-page .section,
+  body.admin-wide-page .panel,
+  body.admin-wide-page .page-card,
+  body.admin-wide-page .notify-card,
+  body.admin-wide-page .summary-card {
+    width: 100%;
+  }
+  body.admin-wide-page .grid:not(.keep-grid),
+  body.admin-wide-page .tiles:not(.keep-grid),
+  body.admin-wide-page .hub-grid:not(.keep-grid),
+  body.admin-wide-page .card-grid:not(.keep-grid) {
+    width: 100%;
+  }
+  body.admin-wide-page .table-wrap,
+  body.admin-wide-page .table-container,
+  body.admin-wide-page .scroll-table,
+  body.admin-wide-page .simple-time-table-wrap,
+  body.admin-wide-page .records-wrap {
+    max-width: 100% !important;
+    overflow-x: auto;
+  }
+  body.admin-wide-page table {
+    width: 100%;
+  }
+  body.admin-wide-page .page-return-wrap,
+  body.admin-wide-page .page-return-btn {
+    width: 100%;
+  }
+}
+@media (max-width: 899px) {
+  body.admin-wide-page .container,
+  body.admin-wide-page main,
+  body.admin-wide-page .page {
+    max-width: 760px;
+  }
+}
