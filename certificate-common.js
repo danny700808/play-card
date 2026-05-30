@@ -6,7 +6,8 @@
       label:'尚品樂器行',
       identifierLabel:'統一編號',
       identifier:'99680937',
-      address:'台中市豐原區圓環東路347號1樓',
+      address:'台中市豐原區圓環東路347號4樓',
+      phone:'04-25227893',
       stamp:'company_seal_contract_transparent.png',
       stampLabel:'尚品公司章',
       personalStamp:'red_stamp_transparent.png',
@@ -17,8 +18,10 @@
       name:'台中市私立凱立音樂短期補習班',
       label:'台中市私立凱立音樂短期補習班',
       identifierLabel:'證號',
-      identifier:'1110094357 號',
-      address:'台中市豐原區圓環東路347號',
+      identifier:'中市教終字第1110094357 號',
+      address:'台中市豐原區圓環東路347號1至2樓',
+      teachingLocation:'台中市豐原區圓環東路347號',
+      phone:'04-25227893',
       stamp:'blue_stamp_transparent.png',
       stampLabel:'補習班章',
       personalStamp:'red_stamp_transparent.png',
@@ -26,6 +29,8 @@
     }
   };
   const BRAND = { name:'柚子樂器', english:'YOU ZI MUSIC', logo:'yuzu-logo-document-black.png' };
+  const LEGAL_NOTICE = '本證明書僅供申請人告知之用途使用。若有擅自變造、轉借、冒用，或未依原申請用途及雙方約定使用，致生爭議者，應由申請人或實際使用人自行負相關法律責任。';
+  const OLD_DEFAULT_FOOTERS = ['本證明僅作為申請人於本單位服務事實之證明。','本證明僅作為申請人任職事實之證明，不作其他用途。'];
   const TEACHER_IDENTITY_OPTIONS = ['外聘老師','專職老師','工讀助教'];
   const LESSON_TYPE_OPTIONS = ['個別課','團體課','活動課','短期課程'];
   const EMPLOYMENT_WORK_NATURE_OPTIONS = ['教學','行政','門市','教學與行政','活動支援','其他'];
@@ -81,7 +86,7 @@
       defaultUnitKey:isTeaching?'kaili':'shangpin',
       showBrandLogo:true,
       introText:isTeaching?'茲證明下列教師於本單位擔任教學工作，教學資料如下，特此證明。':'茲證明下列人員現任職於本單位，任職資料如下，特此證明。',
-      footerText:'本證明僅作為申請人於本單位服務事實之證明。',
+      footerText:LEGAL_NOTICE,
       closingText:'特此證明',
       watermarkPending:'主管尚未核准\n僅供預覽',
       watermarkRejected:'申請已退回\n僅供預覽',
@@ -132,7 +137,7 @@
         periodEnd:dateOnly(f.periodEnd),
         stillTeaching:!!f.stillTeaching || clean(f.stillTeaching)==='是',
         lessonType:clean(f.lessonType || '個別課'),
-        location:ORG_UNITS.kaili.address,
+        location:ORG_UNITS.kaili.teachingLocation || '台中市豐原區圓環東路347號',
         unitKey:clean(f.unitKey || 'kaili'),
         issueDate:dateOnly(f.issueDate || app.approvedDate || app.reviewedAt || today())
       };
@@ -171,21 +176,15 @@
     const mark = opts.watermark != null ? clean(opts.watermark) : watermarkText(opts.status, opts.mode);
     const title=clean(template.title || docTitle(type));
     const intro=clean(template.introText || defaultTemplate(type).introText);
-    const footer=clean(template.footerText || defaultTemplate(type).footerText);
+    let footer=clean(template.footerText || defaultTemplate(type).footerText);
+    if(!footer || OLD_DEFAULT_FOOTERS.indexOf(footer) >= 0) footer = LEGAL_NOTICE;
     const closing=clean(template.closingText || '特此證明');
     const approved = isApprovedStatus(opts.status || '');
     const reviewLine = approved && opts.reviewedAt ? `<div class="cert-review-line">核准時間：${esc(dateTimeText(opts.reviewedAt))}${opts.reviewerName?`　核准人：${esc(opts.reviewerName)}`:''}</div>` : '';
     return `
       <section class="cert-doc ${approved?'cert-approved':'cert-preview'}">
         ${mark ? `<div class="cert-watermark">${esc(mark).replace(/\n/g,'<br>')}</div>` : ''}
-        <header class="cert-brand-head">
-          ${template.showBrandLogo !== false ? `<img class="cert-brand-logo" src="${esc(BRAND.logo)}" alt="柚子樂器 YOU ZI MUSIC">` : `<div class="cert-brand-text">${esc(BRAND.name)}<span>${esc(BRAND.english)}</span></div>`}
-        </header>
         <div class="cert-title">${esc(title)}</div>
-        <div class="cert-unit-top">
-          <div>${esc(unit.name)}</div>
-          <small>${esc(unit.identifierLabel)}：${esc(unit.identifier)}　地址：${esc(unit.address)}</small>
-        </div>
         <main class="cert-body">
           <p class="cert-intro">${esc(intro)}</p>
           <table class="cert-info-table"><tbody>${fieldRowsHtml(type, data)}</tbody></table>
@@ -193,11 +192,19 @@
           <p class="cert-closing">${esc(closing)}</p>
         </main>
         <footer class="cert-footer">
-          <div class="cert-issue">
-            <div>開立單位：${esc(unit.name)}</div>
-            <div>${esc(unit.identifierLabel)}：${esc(unit.identifier)}</div>
-            <div>開立日期：${rocDate(data.issueDate || today())}</div>
-            ${reviewLine}
+          <div class="cert-bottom-info">
+            <div class="cert-brand-bottom">
+              ${template.showBrandLogo !== false ? `<img class="cert-brand-logo-bottom" src="${esc(BRAND.logo)}" alt="柚子樂器 YOU ZI MUSIC">` : `<div class="cert-brand-text">${esc(BRAND.name)}<span>${esc(BRAND.english)}</span></div>`}
+              <div class="cert-brand-caption">對外品牌：${esc(BRAND.name)} / ${esc(BRAND.english)}</div>
+            </div>
+            <div class="cert-issue">
+              <div>實際開立單位：${esc(unit.name)}</div>
+              <div>${esc(unit.identifierLabel)}：${esc(unit.identifier)}</div>
+              <div>地址：${esc(unit.address)}</div>
+              <div>電話：${esc(unit.phone || '04-25227893')}</div>
+              <div>開立日期：${rocDate(data.issueDate || today())}</div>
+              ${reviewLine}
+            </div>
           </div>
           <div class="cert-stamps">
             <div class="stamp-box"><img src="${esc(unit.stamp)}" alt="${esc(unit.stampLabel)}"><span>${esc(unit.stampLabel)}</span></div>
@@ -212,13 +219,10 @@
     const style=document.createElement('style');
     style.id='certificateCommonStyles';
     style.textContent=`
-      .cert-doc{width:210mm;min-height:297mm;background:#fff;color:#111827;box-sizing:border-box;padding:17mm 18mm 15mm;position:relative;box-shadow:0 10px 36px rgba(15,23,42,.16);overflow:hidden;font-family:"Noto Sans TC","Microsoft JhengHei",Arial,sans-serif;}
-      .cert-brand-head{display:flex;justify-content:center;align-items:center;margin-bottom:8mm;height:23mm;}
-      .cert-brand-logo{max-width:118mm;max-height:22mm;object-fit:contain;}
-      .cert-brand-text{text-align:center;font-size:25px;font-weight:900;letter-spacing:3px}.cert-brand-text span{display:block;font-size:12px;letter-spacing:4px;margin-top:5px}
-      .cert-title{text-align:center;font-size:28px;font-weight:950;letter-spacing:6px;margin-bottom:8mm;}
-      .cert-unit-top{text-align:center;border-top:1px solid #111;border-bottom:1px solid #111;padding:4mm 0;margin-bottom:9mm;font-weight:900;font-size:15px;line-height:1.6}.cert-unit-top small{display:block;font-size:12px;font-weight:700;color:#374151}
-      .cert-body{font-size:15px;line-height:2;color:#111827}.cert-intro{margin:0 0 7mm;text-indent:2em}.cert-info-table{width:100%;border-collapse:collapse;margin:0 auto 7mm;font-size:15px}.cert-info-table th,.cert-info-table td{border:1px solid #111;padding:3.2mm 4mm;text-align:left;vertical-align:middle}.cert-info-table th{width:35mm;background:#f8fafc;text-align:center;font-weight:900}.cert-footer-text{margin:3mm 0 8mm;text-indent:2em}.cert-closing{font-size:17px;font-weight:900;letter-spacing:2px;margin-top:8mm;text-align:left}.cert-footer{display:grid;grid-template-columns:1fr 76mm;gap:8mm;align-items:end;margin-top:9mm}.cert-issue{font-size:14px;line-height:1.9;font-weight:700}.cert-review-line{font-size:12px;color:#374151;margin-top:2mm}.cert-stamps{display:flex;justify-content:flex-end;gap:5mm;align-items:flex-end}.stamp-box{text-align:center;font-size:12px;color:#64748b;font-weight:800}.stamp-box img{display:block;width:31mm;height:31mm;object-fit:contain;margin:0 auto 2mm}.stamp-box.personal img{width:28mm;height:28mm}.cert-watermark{position:absolute;left:50%;top:47%;transform:translate(-50%,-50%) rotate(-24deg);font-size:34px;line-height:1.5;font-weight:950;color:rgba(185,28,28,.18);border:4px solid rgba(185,28,28,.16);border-radius:12px;padding:8mm 14mm;text-align:center;letter-spacing:4px;z-index:3;pointer-events:none;white-space:nowrap}.cert-preview .cert-body,.cert-preview .cert-footer{position:relative;z-index:1}.cert-scale-wrap{display:flex;justify-content:center;align-items:flex-start;overflow:auto;background:#f8fafc;border:1px solid #e2e8f0;border-radius:20px;padding:16px;min-height:560px}.cert-modal{position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9999;display:none;align-items:flex-start;justify-content:center;padding:22px;overflow:auto}.cert-modal.show{display:flex}.cert-modal-panel{background:#fff;border-radius:24px;padding:16px;max-width:min(100%,980px);box-shadow:0 25px 70px rgba(15,23,42,.32)}.cert-modal-actions{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px}.cert-modal-actions .right{display:flex;gap:8px;flex-wrap:wrap}.cert-modal-actions button{width:auto}.cert-status-pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:5px 10px;font-size:12px;font-weight:900;background:#eef7f2;color:#166534}.cert-status-pill.pending{background:#fff7ed;color:#9a3412}.cert-status-pill.rejected{background:#fef2f2;color:#991b1b}@media(max-width:780px){.cert-doc{transform:scale(.52);transform-origin:top left;margin-right:-101mm;margin-bottom:-142mm}.cert-scale-wrap{justify-content:flex-start;min-height:430px}.cert-modal{padding:10px}.cert-watermark{font-size:22px}}@media print{html,body{margin:0!important;background:#fff!important}body *{visibility:hidden!important}.print-host,.print-host *{visibility:visible!important}.print-host{position:absolute!important;left:0!important;top:0!important;width:210mm!important}.cert-doc{box-shadow:none!important;margin:0!important;transform:none!important}@page{size:A4 portrait;margin:0}}
+      .cert-doc{width:210mm;min-height:297mm;background:#fff;color:#111827;box-sizing:border-box;padding:20mm 18mm 15mm;position:relative;box-shadow:0 10px 36px rgba(15,23,42,.16);overflow:hidden;font-family:"Noto Sans TC","Microsoft JhengHei",Arial,sans-serif;}
+      .cert-brand-text{text-align:center;font-size:22px;font-weight:900;letter-spacing:3px}.cert-brand-text span{display:block;font-size:12px;letter-spacing:4px;margin-top:5px}
+      .cert-title{text-align:center;font-size:32px;font-weight:950;letter-spacing:8px;margin:0 0 14mm;}
+      .cert-body{font-size:15px;line-height:2;color:#111827}.cert-intro{margin:0 0 7mm;text-indent:2em}.cert-info-table{width:100%;border-collapse:collapse;margin:0 auto 7mm;font-size:15px}.cert-info-table th,.cert-info-table td{border:1px solid #111;padding:3.2mm 4mm;text-align:left;vertical-align:middle}.cert-info-table th{width:35mm;background:#f8fafc;text-align:center;font-weight:900}.cert-footer-text{margin:3mm 0 8mm;text-indent:2em;font-size:12px;line-height:1.8;color:#374151}.cert-closing{font-size:17px;font-weight:900;letter-spacing:2px;margin-top:8mm;text-align:left}.cert-footer{display:grid;grid-template-columns:1fr 76mm;gap:8mm;align-items:end;margin-top:9mm;border-top:1px solid #e5e7eb;padding-top:6mm}.cert-bottom-info{display:flex;flex-direction:column;gap:4mm}.cert-brand-bottom{display:flex;align-items:center;gap:5mm}.cert-brand-logo-bottom{width:54mm;max-height:18mm;object-fit:contain}.cert-brand-caption{font-size:12px;font-weight:900;letter-spacing:1px;color:#111827}.cert-issue{font-size:13px;line-height:1.75;font-weight:700;color:#111827}.cert-review-line{font-size:12px;color:#374151;margin-top:2mm}.cert-stamps{display:flex;justify-content:flex-end;gap:5mm;align-items:flex-end}.stamp-box{text-align:center;font-size:12px;color:#64748b;font-weight:800}.stamp-box img{display:block;width:31mm;height:31mm;object-fit:contain;margin:0 auto 2mm}.stamp-box.personal img{width:28mm;height:28mm}.cert-watermark{position:absolute;left:50%;top:47%;transform:translate(-50%,-50%) rotate(-24deg);font-size:34px;line-height:1.5;font-weight:950;color:rgba(185,28,28,.18);border:4px solid rgba(185,28,28,.16);border-radius:12px;padding:8mm 14mm;text-align:center;letter-spacing:4px;z-index:3;pointer-events:none;white-space:nowrap}.cert-preview .cert-body,.cert-preview .cert-footer{position:relative;z-index:1}.cert-scale-wrap{display:flex;justify-content:center;align-items:flex-start;overflow:auto;background:#f8fafc;border:1px solid #e2e8f0;border-radius:20px;padding:16px;min-height:560px}.cert-modal{position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9999;display:none;align-items:flex-start;justify-content:center;padding:22px;overflow:auto}.cert-modal.show{display:flex}.cert-modal-panel{background:#fff;border-radius:24px;padding:16px;max-width:min(100%,980px);box-shadow:0 25px 70px rgba(15,23,42,.32)}.cert-modal-actions{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px}.cert-modal-actions .right{display:flex;gap:8px;flex-wrap:wrap}.cert-modal-actions button{width:auto}.cert-status-pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:5px 10px;font-size:12px;font-weight:900;background:#eef7f2;color:#166534}.cert-status-pill.pending{background:#fff7ed;color:#9a3412}.cert-status-pill.rejected{background:#fef2f2;color:#991b1b}@media(max-width:780px){.cert-doc{transform:scale(.52);transform-origin:top left;margin-right:-101mm;margin-bottom:-142mm}.cert-scale-wrap{justify-content:flex-start;min-height:430px}.cert-modal{padding:10px}.cert-watermark{font-size:22px}}@media print{html,body{margin:0!important;background:#fff!important}body *{visibility:hidden!important}.print-host,.print-host *{visibility:visible!important}.print-host{position:absolute!important;left:0!important;top:0!important;width:210mm!important}.cert-doc{box-shadow:none!important;margin:0!important;transform:none!important}@page{size:A4 portrait;margin:0}}
     `;
     document.head.appendChild(style);
   }
@@ -254,5 +258,5 @@
   }
   function statusPill(status){ const s=statusLabel(status); const cls=s==='已核准'?'':(s==='已退回'?' rejected':' pending'); return `<span class="cert-status-pill${cls}">${esc(s)}</span>`; }
 
-  global.YZ_CERT = {ORG_UNITS, BRAND, TEACHER_IDENTITY_OPTIONS, LESSON_TYPE_OPTIONS, EMPLOYMENT_WORK_NATURE_OPTIONS, clean, esc, upperId, today, dateOnly, dateTimeText, rocDate, unitByKey, typeLabel, docTitle, statusLabel, isApprovedStatus, watermarkText, defaultTemplate, normalizeTemplate, normalizeApplication, applicationToDocumentData, certificateHtml, injectCertificateStyles, verifyIdPassword, printHtml, downloadEncryptedPdfFromElement, statusPill, userIdOf, identityTypeOfUser, identityLabelOfUser};
+  global.YZ_CERT = {ORG_UNITS, BRAND, LEGAL_NOTICE, TEACHER_IDENTITY_OPTIONS, LESSON_TYPE_OPTIONS, EMPLOYMENT_WORK_NATURE_OPTIONS, clean, esc, upperId, today, dateOnly, dateTimeText, rocDate, unitByKey, typeLabel, docTitle, statusLabel, isApprovedStatus, watermarkText, defaultTemplate, normalizeTemplate, normalizeApplication, applicationToDocumentData, certificateHtml, injectCertificateStyles, verifyIdPassword, printHtml, downloadEncryptedPdfFromElement, statusPill, userIdOf, identityTypeOfUser, identityLabelOfUser};
 })(window);

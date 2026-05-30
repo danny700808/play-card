@@ -5027,7 +5027,7 @@
   function templateDocId(t){ return certType(t)==='teaching'?'teachingCertificate':'employmentCertificate'; }
   function defaultTemplate(t){
     t=certType(t);
-    return {certificateType:t,title:t==='teaching'?'教學證明書':'在職證明書',defaultUnitKey:t==='teaching'?'kaili':'shangpin',showBrandLogo:true,introText:t==='teaching'?'茲證明下列教師於本單位擔任教學工作，教學資料如下，特此證明。':'茲證明下列人員現任職於本單位，任職資料如下，特此證明。',footerText:'本證明僅作為申請人於本單位服務事實之證明。',closingText:'特此證明',watermarkPending:'主管尚未核准\n僅供預覽',watermarkRejected:'申請已退回\n僅供預覽'};
+    return {certificateType:t,title:t==='teaching'?'教學證明書':'在職證明書',defaultUnitKey:t==='teaching'?'kaili':'shangpin',showBrandLogo:true,introText:t==='teaching'?'茲證明下列教師於本單位擔任教學工作，教學資料如下，特此證明。':'茲證明下列人員現任職於本單位，任職資料如下，特此證明。',footerText:'本證明書僅供申請人告知之用途使用。若有擅自變造、轉借、冒用，或未依原申請用途及雙方約定使用，致生爭議者，應由申請人或實際使用人自行負相關法律責任。',closingText:'特此證明',watermarkPending:'主管尚未核准\n僅供預覽',watermarkRejected:'申請已退回\n僅供預覽'};
   }
   function normalizeApplication(r){
     r=r||{}; const f=r.formData || r.data || {}; const t=certType(r.certificateType || f.certificateType || r.type);
