@@ -102,7 +102,6 @@
         </div>
       </div>
     </div>
-    <div id="parttimeNotifyPanel"></div>
   </div>
 
   <script src="config.js?v=20260529badgeNotify1"></script>
@@ -456,7 +455,6 @@
       qs('#searchBtn').onclick = searchSummary;
       qs('#monthText').addEventListener('change', searchSummary);
       loadSetup();
-      if(window.renderModuleNotificationPanel) setTimeout(()=>renderModuleNotificationPanel('#parttimeNotifyPanel','temporaryAttendance','工讀時數 / 超出排班提醒設定'), 500);
     }
   </script>
 </body>

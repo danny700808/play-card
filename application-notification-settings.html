@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="style.css?v=admin-final-20260530b">
+  <style>
+    .page-return-wrap{margin-bottom:16px}.page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
+    .settings-intro{margin-bottom:14px}.settings-intro .title{margin:0}.settings-intro .welcome{line-height:1.7}
+  </style>
+  <title>應聘老師提醒設定</title>
+</head>
+<body onload="init()" class="admin-wide-page">
+  <div class="container">
+    <div class="page-return-wrap"><a class="btn page-return-btn" href="application-admin.html">返回上一頁</a></div>
+    <div class="card settings-intro">
+      <div class="header" style="margin:0">
+        <h1 class="title">應聘老師提醒設定</h1>
+        <div class="welcome">這裡集中設定應聘履歷相關提醒，不再直接顯示在應聘管理內容頁。</div>
+      </div>
+    </div>
+  </div>
+  <script src="config.js?v=20260530notification1"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="firebase-client.js?v=admin-final-20260530b"></script>
+  <script src="app.js?v=admin-final-20260530b"></script>
+  <script>
+    function init(){
+      if(typeof fillHeader==='function') fillHeader();
+      const user=typeof requireLogin==='function'?requireLogin():null;
+      if(!user) return;
+      if(typeof hasSettingsZoneAccess==='function' && !hasSettingsZoneAccess(user)){location.href='dashboard.html';}
+    }
+  </script>
+</body>
+</html>

@@ -157,7 +157,6 @@
       <div id="approvalMsg" class="message local-message"></div>
       <div id="approvalList" class="list" style="margin-top:12px"></div>
     </div>
-    <div class="card hidden" id="leaveNotifyCard"><div id="leaveNotifyPanel"></div></div>
     <div class="card hidden" id="approvalRecordCard">
       <div class="topbar"><h2 class="title" style="font-size:20px;margin:0">員工請假紀錄</h2><div class="muted" id="approvalRecordCountText">讀取中…</div></div>
       <div id="approvalRecordMsg" class="message local-message"></div>
@@ -1429,7 +1428,6 @@ async function handleApproval(requestId, decision, btn){
     if(r.ok){
       if(progress) progress.done(text === '同意' ? '已同意' : '已駁回', 500, true);
       await Promise.all([loadApprovalList(), loadApprovalRecords()]);
-        if(window.renderModuleNotificationPanel) await renderModuleNotificationPanel('#leaveNotifyPanel','leave','請假簽核提醒設定');
     }else if(progress){
       progress.fail(text === '同意' ? '簽核失敗' : '處理失敗');
     }
@@ -1868,7 +1866,6 @@ async function init(){
       try{
         setPageProgress('讀取簽核資料中 35%', 35);
         await Promise.all([loadApprovalList(), loadApprovalRecords()]);
-        if(window.renderModuleNotificationPanel) await renderModuleNotificationPanel('#leaveNotifyPanel','leave','請假簽核提醒設定');
         setPageProgressDone('簽核資料讀取完成');
       }catch(err){
         setPageProgressError((err && err.message) || '簽核資料讀取失敗');
