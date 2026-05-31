@@ -67,13 +67,33 @@
     .preview-pane{display:none}
     .preview-pane.show{display:block}
     .muted-box{font-size:14px;color:#64748b;background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:12px}
+
+    .preview-page{position:relative;overflow:hidden;width:210mm;min-height:297mm}
+    .contract-page-no{position:absolute;right:11mm;bottom:8mm;font-size:11px;color:#94a3b8}
+    .preview-body{orphans:3;widows:3}
+    .preview-body .article-block{break-inside:avoid;page-break-inside:avoid;margin:0 0 8px}
+    .preview-body .article-title{font-weight:900;margin:8px 0 2px;color:#0f172a}
+    .preview-signing-title{font-size:18px;font-weight:900;text-align:center;margin:16px 0 10px;letter-spacing:1px}
+    .official-sign-grid{display:grid;grid-template-columns:1.08fr .92fr;gap:18px;margin-top:8px;align-items:start}
+    .official-sign-card{border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;min-height:102px;position:relative;background:#fff}
+    .official-sign-card .label{font-weight:900;margin-bottom:6px;color:#0f172a}
+    .official-sign-card .line{font-size:13.5px;line-height:1.85;word-break:break-word}
+    .official-stamps{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:8px}
+    .official-stamps .preview-stamp-box.large{width:3cm;height:3cm}
+    .official-stamps .preview-stamp-box.small{width:1.5cm;height:1.5cm}
+    .teacher-signature-wrap{display:flex;align-items:center;justify-content:center;margin-top:8px}
+    .seam-stamp{position:absolute;right:-14mm;width:28mm;height:42mm;overflow:hidden;z-index:2;opacity:.88;pointer-events:none;display:flex;align-items:center;justify-content:center}
+    .seam-stamp img{width:36mm;height:36mm;object-fit:contain;display:block;max-width:none;max-height:none}
+    .seam-stamp.page1{top:238mm}
+    .seam-stamp.page2{top:10mm}
+
     @media print{
       html,body{margin:0 !important;padding:0 !important;background:#fff !important}
       body *{visibility:hidden !important}
       #contractBody,#contractBody *{visibility:visible !important}
       #contractBody{position:static !important;width:auto !important;margin:0 !important;padding:0 !important;border:none !important;box-shadow:none !important;background:#fff !important}
       #contractBody .preview-shell{display:block !important}
-      #contractBody .preview-page{border:none !important;box-shadow:none !important;border-radius:0 !important;page-break-after:always;break-after:page;min-height:277mm !important;padding:10mm 8mm !important;margin:0 !important}
+      #contractBody .preview-page{border:none !important;box-shadow:none !important;border-radius:0 !important;page-break-after:always;break-after:page;min-height:297mm !important;padding:12mm 11mm !important;margin:0 !important}
       #contractBody .preview-page:last-child{page-break-after:auto !important;break-after:auto !important}
       .topbar,#contractFormCard,#previewPane{display:none !important}
       @page{size:A4 portrait;margin:0}
@@ -401,39 +421,65 @@
     }
     function splitContractText(text){
       const lines=String(text||'').replace(/\r/g,'').split('\n');
-      const p1=[]; const p2=[]; let units=0; const limit=44;
+      const blocks=[]; let cur=[];
+      const isArticle=(s)=>/^\s*(第[一二三四五六七八九十百0-9]+條|[一二三四五六七八九十]+、|\d+[\.、)]|（[一二三四五六七八九十0-9]+）)/.test(String(s||'').trim());
       lines.forEach(line=>{
-        const cost=Math.max(1, Math.ceil((line || '').length / 22));
-        if(units + cost <= limit || !p1.length){
-          p1.push(line); units += cost;
-        }else{
-          p2.push(line);
-        }
+        const t=String(line||'');
+        if(isArticle(t) && cur.length){ blocks.push(cur.join('\n')); cur=[t]; }
+        else cur.push(t);
       });
-      return [p1.join('\n'), p2.join('\n')];
+      if(cur.length) blocks.push(cur.join('\n'));
+      const p1=[]; const p2=[]; let units=0; const limit=42;
+      blocks.forEach(block=>{
+        const cleanBlock=String(block||'').trim();
+        const cost=Math.max(1, Math.ceil(cleanBlock.length/42)) + Math.max(0, cleanBlock.split('\n').length-1)*0.45;
+        if((units + cost <= limit || !p1.length) && !p2.length){ p1.push(block); units += cost; }
+        else p2.push(block);
+      });
+      return [p1.join('\n\n').trim(), p2.join('\n\n').trim()];
     }
-    function buildInlineSigningHtml(schoolStampUrl, ownerStampUrl, signatureUrl){
+    function textBlockToArticleHtml(text){
+      const raw=String(text||'').trim();
+      if(!raw) return '';
+      const blocks=raw.split(/\n{2,}/).filter(x=>String(x).trim()!=='');
+      return blocks.map(block=>{
+        const lines=block.split('\n');
+        const first=String(lines[0]||'').trim();
+        const isTitle=/^(第[一二三四五六七八九十百0-9]+條|[一二三四五六七八九十]+、|\d+[\.、)]|（[一二三四五六七八九十0-9]+）)/.test(first);
+        if(isTitle && lines.length>1){
+          return `<div class="article-block"><div class="article-title">${escapeHtml(first)}</div><div>${escapeHtml(lines.slice(1).join('\n')).replace(/\n/g,'<br>')}</div></div>`;
+        }
+        return `<div class="article-block">${escapeHtml(block).replace(/\n/g,'<br>')}</div>`;
+      }).join('');
+    }
+    function buildInlineSigningHtml(schoolStampUrl, ownerStampUrl, signatureUrl, payload){
+      const map=buildPreviewMap(payload||{});
+      const partyA=map['甲方名稱'] || '台中市私立凱立音樂短期補習班';
+      const owner=map['甲方代表人'] || '';
+      const address=map['甲方地址'] || '';
+      const teacher=map['老師姓名'] || '';
+      const idno=map['身分證字號'] || '';
+      const taddr=map['地址'] || '';
       return `
         <div class="preview-inline-signing">
-          <div class="preview-inline-row">
-            <div class="preview-inline-info">
-              <div><strong>甲　方：</strong><span class="token-mark">【甲方名稱】</span></div>
-              <div><strong>代表人：</strong><span class="token-mark">【甲方代表人】</span></div>
-              <div><strong>地　址：</strong><span class="token-mark">【甲方地址】</span></div>
+          <div class="preview-signing-title">立契約書人</div>
+          <div class="official-sign-grid">
+            <div class="official-sign-card">
+              <div class="label">甲方</div>
+              <div class="line"><strong>單　位：</strong>${escapeHtml(partyA)}</div>
+              <div class="line"><strong>代表人：</strong>${escapeHtml(owner)}</div>
+              <div class="line"><strong>地　址：</strong>${escapeHtml(address)}</div>
+              <div class="official-stamps">
+                <div class="preview-stamp-box large">${schoolStampUrl ? `<img src="${escapeAttr(schoolStampUrl)}" alt="補習班章">` : ''}</div>
+                <div class="preview-stamp-box small">${ownerStampUrl ? `<img src="${escapeAttr(ownerStampUrl)}" alt="負責人章">` : ''}</div>
+              </div>
             </div>
-            <div class="preview-inline-side">
-              <div class="preview-stamp-box large">${schoolStampUrl ? `<img src="${escapeAttr(schoolStampUrl)}" alt="補習班章">` : ''}</div>
-              <div class="preview-stamp-box small">${ownerStampUrl ? `<img src="${escapeAttr(ownerStampUrl)}" alt="負責人章">` : ''}</div>
-            </div>
-          </div>
-          <div class="preview-inline-row">
-            <div class="preview-inline-info">
-              <div><strong>乙　方：</strong><span class="token-mark">【老師姓名】</span></div>
-              <div><strong>身分證字號：</strong><span class="token-mark">【身分證字號】</span></div>
-              <div><strong>地　址：</strong><span class="token-mark">【地址】</span></div>
-            </div>
-            <div class="preview-inline-side">
-              <div class="preview-signature-box">${signatureUrl ? `<img src="${escapeAttr(signatureUrl)}" alt="老師簽名">` : '老師簽名位置'}</div>
+            <div class="official-sign-card">
+              <div class="label">乙方</div>
+              <div class="line"><strong>姓　名：</strong>${escapeHtml(teacher)}</div>
+              <div class="line"><strong>身分證字號：</strong>${escapeHtml(idno)}</div>
+              <div class="line"><strong>地　址：</strong>${escapeHtml(taddr)}</div>
+              <div class="teacher-signature-wrap"><div class="preview-signature-box">${signatureUrl ? `<img src="${escapeAttr(signatureUrl)}" alt="老師簽名">` : '老師簽名位置'}</div></div>
             </div>
           </div>
         </div>`;
@@ -454,6 +500,7 @@
     }
     function buildContractPagesHtml(showSignature){
       const payload=buildPayload();
+      const map=buildPreviewMap(payload);
       const title=(contractData&&contractData.contractName)||'外聘老師年度委任契約';
       const partyA=(contractData&&contractData.partyAName)||'台中市私立凱立音樂短期補習班';
       const owner=(contractData&&contractData.partyAOwner)||'黃銘廷';
@@ -461,16 +508,22 @@
       const period=`${contractData?.startDate||''} ～ ${contractData?.endDate||''}`;
       const schoolStampUrl=toDisplayUrl((contractData&&contractData.schoolStampUrl)||'blue_stamp_transparent.png');
       const ownerStampUrl=toDisplayUrl((contractData&&contractData.ownerStampUrl)||'red_stamp_transparent.png');
-      const filledText=fillTemplateText(contractData?.contractTemplateHtml || contractData?.contractHtml || '', payload);
+      const seamStampUrl=toDisplayUrl((contractData&&contractData.seamStampUrl)||schoolStampUrl);
+      const filledText=fillTemplateText(contractData?.contractTemplateHtml || contractData?.contractHtml || contractData?.contractText || '', payload);
       const [page1Text, rawPage2Text]=splitContractText(filledText);
       const signingParsed=stripSigningBlock(rawPage2Text);
-      const page1Html=textBlockToHtml(page1Text);
-      const page2Html=textBlockToHtml(signingParsed.bodyText);
+      const page1Html=textBlockToArticleHtml(page1Text);
+      const page2Html=textBlockToArticleHtml(signingParsed.bodyText);
       const signatureUrl=(showSignature && payload.signatureDataUrl) ? payload.signatureDataUrl : '';
-      const signingHtml=buildInlineSigningHtml(schoolStampUrl, ownerStampUrl, signatureUrl);
+      const signingHtml=buildInlineSigningHtml(schoolStampUrl, ownerStampUrl, signatureUrl, payload);
+      const signYear=map['簽署民國年']||''; const signMonth=map['簽署月']||''; const signDay=map['簽署日']||'';
+      const seam1=seamStampUrl?`<div class="seam-stamp page1"><img src="${escapeAttr(seamStampUrl)}" alt="騎縫章"></div>`:'';
+      const seam2=seamStampUrl?`<div class="seam-stamp page2"><img src="${escapeAttr(seamStampUrl)}" alt="騎縫章"></div>`:'';
       return `
         <div class="preview-shell">
           <div class="preview-page">
+            ${seam1}
+            <div class="contract-page-no">第 1 頁 / 共 2 頁</div>
             <div class="preview-title">${escapeHtml(title)}</div>
             <div class="preview-meta">
               <div><strong>甲方：</strong>${escapeHtml(partyA)}</div>
@@ -481,9 +534,11 @@
             <div class="preview-body">${page1Html}</div>
           </div>
           <div class="preview-page">
+            ${seam2}
+            <div class="contract-page-no">第 2 頁 / 共 2 頁</div>
             <div class="preview-body">${page2Html}</div>
             ${signingHtml}
-            <div class="preview-date">中華民國<span class="token-mark">【簽署民國年】</span>年 <span class="token-mark">【簽署月】</span>月 <span class="token-mark">【簽署日】</span>日</div>
+            <div class="preview-date">中華民國 ${escapeHtml(signYear)} 年 ${escapeHtml(signMonth)} 月 ${escapeHtml(signDay)} 日</div>
           </div>
         </div>`;
     }
@@ -625,11 +680,11 @@
         <style>
           html,body{margin:0;padding:0;background:#fff;color:#111827;font-family:Arial,"Noto Sans TC",sans-serif;}
           .preview-shell{display:block;}
-          .preview-page{box-sizing:border-box;width:210mm;min-height:297mm;margin:0 auto;padding:12mm 11mm;background:#fff;page-break-after:always;break-after:page;}
+          .preview-page{box-sizing:border-box;width:210mm;min-height:297mm;margin:0 auto;padding:12mm 11mm;background:#fff;page-break-after:always;break-after:page;position:relative;overflow:hidden;}
           .preview-page:last-child{page-break-after:auto;break-after:auto;}
           .preview-title{text-align:center;font-size:24px;font-weight:900;letter-spacing:1px;margin:0 0 12px;}
           .preview-meta{font-size:14px;line-height:1.9;margin-bottom:12px;}
-          .preview-body{font-size:14px;line-height:1.82;color:#1f2937;white-space:normal;word-break:break-word;}
+          .preview-body{font-size:14px;line-height:1.82;color:#1f2937;white-space:normal;word-break:break-word;} .article-block{break-inside:avoid;page-break-inside:avoid;margin:0 0 8px;} .article-title{font-weight:900;margin:8px 0 2px;color:#0f172a;} .contract-page-no{position:absolute;right:11mm;bottom:8mm;font-size:11px;color:#94a3b8;} .preview-signing-title{font-size:18px;font-weight:900;text-align:center;margin:16px 0 10px;letter-spacing:1px;} .official-sign-grid{display:grid;grid-template-columns:1.08fr .92fr;gap:18px;margin-top:8px;align-items:start;} .official-sign-card{border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;min-height:102px;position:relative;background:#fff;} .official-sign-card .label{font-weight:900;margin-bottom:6px;color:#0f172a;} .official-sign-card .line{font-size:13.5px;line-height:1.85;word-break:break-word;} .official-stamps{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:8px;} .teacher-signature-wrap{display:flex;align-items:center;justify-content:center;margin-top:8px;} .seam-stamp{position:absolute;right:-14mm;width:28mm;height:42mm;overflow:hidden;z-index:2;opacity:.88;pointer-events:none;display:flex;align-items:center;justify-content:center;} .seam-stamp img{width:36mm;height:36mm;object-fit:contain;display:block;max-width:none;max-height:none;} .seam-stamp.page1{top:238mm}.seam-stamp.page2{top:10mm}
           .token-mark{color:#2563eb;font-weight:900;}
           .preview-inline-signing{margin-top:18px;display:grid;gap:14px;}
           .preview-inline-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:18px;}
@@ -643,7 +698,27 @@
           .preview-signature-box{width:4.6cm;height:2.7cm;border:1px solid #cbd5e1;border-radius:12px;background:#fafafa;color:#94a3b8;font-size:13px;}
           .preview-signature-box img{display:block;max-width:100%;max-height:100%;object-fit:contain;}
           .preview-date{margin-top:18px;text-align:center;font-size:14px;line-height:1.9;}
-          @media print{
+      
+    .preview-page{position:relative;overflow:hidden;width:210mm;min-height:297mm}
+    .contract-page-no{position:absolute;right:11mm;bottom:8mm;font-size:11px;color:#94a3b8}
+    .preview-body{orphans:3;widows:3}
+    .preview-body .article-block{break-inside:avoid;page-break-inside:avoid;margin:0 0 8px}
+    .preview-body .article-title{font-weight:900;margin:8px 0 2px;color:#0f172a}
+    .preview-signing-title{font-size:18px;font-weight:900;text-align:center;margin:16px 0 10px;letter-spacing:1px}
+    .official-sign-grid{display:grid;grid-template-columns:1.08fr .92fr;gap:18px;margin-top:8px;align-items:start}
+    .official-sign-card{border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;min-height:102px;position:relative;background:#fff}
+    .official-sign-card .label{font-weight:900;margin-bottom:6px;color:#0f172a}
+    .official-sign-card .line{font-size:13.5px;line-height:1.85;word-break:break-word}
+    .official-stamps{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:8px}
+    .official-stamps .preview-stamp-box.large{width:3cm;height:3cm}
+    .official-stamps .preview-stamp-box.small{width:1.5cm;height:1.5cm}
+    .teacher-signature-wrap{display:flex;align-items:center;justify-content:center;margin-top:8px}
+    .seam-stamp{position:absolute;right:-14mm;width:28mm;height:42mm;overflow:hidden;z-index:2;opacity:.88;pointer-events:none;display:flex;align-items:center;justify-content:center}
+    .seam-stamp img{width:36mm;height:36mm;object-fit:contain;display:block;max-width:none;max-height:none}
+    .seam-stamp.page1{top:238mm}
+    .seam-stamp.page2{top:10mm}
+
+    @media print{
             html,body{background:#fff;}
             .preview-page{margin:0;padding:12mm 11mm;}
             @page{size:A4 portrait;margin:0;}

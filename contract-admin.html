@@ -45,6 +45,24 @@
     .meta .value{font-size:15px;font-weight:800;word-break:break-word}
     .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
     .helper{font-size:13px;color:#64748b;line-height:1.7}
+
+    .preview-page{position:relative;overflow:hidden;width:210mm;min-height:297mm}
+    .contract-page-no{position:absolute;right:11mm;bottom:8mm;font-size:11px;color:#94a3b8}
+    .preview-body .article-block{break-inside:avoid;page-break-inside:avoid;margin:0 0 8px}
+    .preview-body .article-title{font-weight:900;margin:8px 0 2px;color:#0f172a}
+    .preview-signing-title{font-size:18px;font-weight:900;text-align:center;margin:16px 0 10px;letter-spacing:1px}
+    .official-sign-grid{display:grid;grid-template-columns:1.08fr .92fr;gap:18px;margin-top:8px;align-items:start}
+    .official-sign-card{border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;min-height:102px;position:relative;background:#fff}
+    .official-sign-card .label{font-weight:900;margin-bottom:6px;color:#0f172a}
+    .official-sign-card .line{font-size:13.5px;line-height:1.85;word-break:break-word}
+    .official-stamps{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:8px}
+    .official-stamps .preview-stamp-box.large{width:3cm;height:3cm}
+    .official-stamps .preview-stamp-box.small{width:1.5cm;height:1.5cm}
+    .teacher-signature-wrap{display:flex;align-items:center;justify-content:center;margin-top:8px}
+    .seam-stamp{position:absolute;right:-14mm;width:28mm;height:42mm;overflow:hidden;z-index:2;opacity:.88;pointer-events:none;display:flex;align-items:center;justify-content:center}
+    .seam-stamp img{width:36mm;height:36mm;object-fit:contain;display:block;max-width:none;max-height:none}
+    .seam-stamp.page1{top:238mm}.seam-stamp.page2{top:10mm}
+
     @media print{
       html,body{margin:0 !important;padding:0 !important;background:#fff !important}
       body *{visibility:hidden !important}
@@ -135,6 +153,11 @@
               <label>負責人章網址</label>
               <input id="ownerStampUrl" placeholder="red_stamp_transparent.png">
             </div>
+            <div class="field">
+              <label>騎縫章網址</label>
+              <input id="seamStampUrl" placeholder="預設使用補習班章">
+              <div class="helper">留空時會使用補習班章；列印時會在兩張 A4 右側做騎縫章效果。</div>
+            </div>
           </div>
         </div>
 
@@ -205,25 +228,28 @@
       qs('#tokenWrap').innerHTML=TOKENS.map(t=>`<button type="button" class="token" onclick="insertToken('${escapeAttr(t)}')">${escapeHtml(t)}</button>`).join('');
     }
     function textToPreviewHtml(text){
-      let safe=escapeHtml(text||'');
-      safe=safe.replace(/【([^】]+)】/g,'<span class="token-mark">【$1】</span>');
-      safe=safe.replace(/\n/g,'<br>');
-      return safe;
+      const raw=String(text||'').trim();
+      if(!raw) return '';
+      const blocks=raw.split(/\n{2,}/).filter(x=>String(x).trim()!=='');
+      return blocks.map(block=>{
+        const lines=block.split('\n');
+        const first=String(lines[0]||'').trim();
+        const isTitle=/^(第[一二三四五六七八九十百0-9]+條|[一二三四五六七八九十]+、|\d+[\.、)]|（[一二三四五六七八九十0-9]+）)/.test(first);
+        if(isTitle && lines.length>1){
+          return `<div class="article-block"><div class="article-title">${escapeHtml(first).replace(/【([^】]+)】/g,'<span class="token-mark">【$1】</span>')}</div><div>${escapeHtml(lines.slice(1).join('\n')).replace(/【([^】]+)】/g,'<span class="token-mark">【$1】</span>').replace(/\n/g,'<br>')}</div></div>`;
+        }
+        return `<div class="article-block">${escapeHtml(block).replace(/【([^】]+)】/g,'<span class="token-mark">【$1】</span>').replace(/\n/g,'<br>')}</div>`;
+      }).join('');
     }
     function splitPreviewText(text){
       const lines=String(text||'').replace(/\r/g,'').split('\n');
-      const page1=[]; const page2=[];
-      let units=0; const limit=46;
-      lines.forEach(line=>{
-        const cost=Math.max(1, Math.ceil((line || '').length / 22));
-        if(units + cost <= limit || !page1.length){
-          page1.push(line);
-          units += cost;
-        }else{
-          page2.push(line);
-        }
-      });
-      return [page1.join('\n'), page2.join('\n')];
+      const blocks=[]; let cur=[];
+      const isArticle=(s)=>/^\s*(第[一二三四五六七八九十百0-9]+條|[一二三四五六七八九十]+、|\d+[\.、)]|（[一二三四五六七八九十0-9]+）)/.test(String(s||'').trim());
+      lines.forEach(line=>{ const t=String(line||''); if(isArticle(t) && cur.length){blocks.push(cur.join('\n')); cur=[t];} else cur.push(t); });
+      if(cur.length) blocks.push(cur.join('\n'));
+      const p1=[]; const p2=[]; let units=0; const limit=42;
+      blocks.forEach(block=>{ const cleanBlock=String(block||'').trim(); const cost=Math.max(1,Math.ceil(cleanBlock.length/42))+Math.max(0,cleanBlock.split('\n').length-1)*0.45; if((units+cost<=limit||!p1.length)&&!p2.length){p1.push(block); units+=cost;}else p2.push(block); });
+      return [p1.join('\n\n').trim(), p2.join('\n\n').trim()];
     }
     function savePreviewPdf(){
       window.print();
@@ -237,12 +263,17 @@
       const endDate = qs('#endDate').value.trim() || '【合約結束日期】';
       const schoolStampUrl = toDisplayUrl(qs('#schoolStampUrl').value.trim() || 'blue_stamp_transparent.png');
       const ownerStampUrl = toDisplayUrl(qs('#ownerStampUrl').value.trim() || 'red_stamp_transparent.png');
+      const seamStampUrl = toDisplayUrl((qs('#seamStampUrl') && qs('#seamStampUrl').value.trim()) || schoolStampUrl);
       const [page1Text, page2Text] = splitPreviewText(qs('#contractText').value || '');
       const page1Html = textToPreviewHtml(page1Text);
       const page2Html = textToPreviewHtml(page2Text);
+      const seam1=seamStampUrl?`<div class="seam-stamp page1"><img src="${escapeAttr(seamStampUrl)}" alt="騎縫章"></div>`:'';
+      const seam2=seamStampUrl?`<div class="seam-stamp page2"><img src="${escapeAttr(seamStampUrl)}" alt="騎縫章"></div>`:'';
       qs('#previewBox').innerHTML = `
         <div class="preview-shell">
           <div class="preview-page">
+            ${seam1}
+            <div class="contract-page-no">第 1 頁 / 共 2 頁</div>
             <h3 class="preview-title">${escapeHtml(contractName)}</h3>
             <div class="preview-meta">
               <div><strong>甲方：</strong>${escapeHtml(partyAName)}</div>
@@ -253,18 +284,27 @@
             <div class="preview-body">${page1Html}</div>
           </div>
           <div class="preview-page">
+            ${seam2}
+            <div class="contract-page-no">第 2 頁 / 共 2 頁</div>
             <div class="preview-body">${page2Html}</div>
-            <div class="preview-sign-row">
-              <div class="preview-sign-col">
-                <div class="preview-sign-title">甲方簽署</div>
-                <div class="preview-stamp-stack">
+            <div class="preview-signing-title">立契約書人</div>
+            <div class="official-sign-grid">
+              <div class="official-sign-card">
+                <div class="label">甲方</div>
+                <div class="line"><strong>單　位：</strong>${escapeHtml(partyAName)}</div>
+                <div class="line"><strong>代表人：</strong>${escapeHtml(partyAOwner)}</div>
+                <div class="line"><strong>地　址：</strong>${escapeHtml(partyAAddress)}</div>
+                <div class="official-stamps">
                   <div class="preview-stamp-box large">${schoolStampUrl ? `<img src="${escapeAttr(schoolStampUrl)}" alt="補習班章">` : ''}</div>
                   <div class="preview-stamp-box small">${ownerStampUrl ? `<img src="${escapeAttr(ownerStampUrl)}" alt="負責人章">` : ''}</div>
                 </div>
               </div>
-              <div class="preview-sign-col">
-                <div class="preview-sign-title">乙方簽署</div>
-                <div class="preview-signature-box">老師簽名位置</div>
+              <div class="official-sign-card">
+                <div class="label">乙方</div>
+                <div class="line"><strong>姓　名：</strong><span class="token-mark">【老師姓名】</span></div>
+                <div class="line"><strong>身分證字號：</strong><span class="token-mark">【身分證字號】</span></div>
+                <div class="line"><strong>地　址：</strong><span class="token-mark">【地址】</span></div>
+                <div class="teacher-signature-wrap"><div class="preview-signature-box">老師簽名位置</div></div>
               </div>
             </div>
             <div class="preview-date">中華民國<span class="token-mark">【簽署民國年】</span>年 <span class="token-mark">【簽署月】</span>月 <span class="token-mark">【簽署日】</span>日</div>
@@ -282,6 +322,7 @@
       qs('#endDate').value=setting.endDate||'';
       qs('#schoolStampUrl').value=setting.schoolStampUrl||'blue_stamp_transparent.png';
       qs('#ownerStampUrl').value=setting.ownerStampUrl||'red_stamp_transparent.png';
+      if(qs('#seamStampUrl')) qs('#seamStampUrl').value=setting.seamStampUrl||'';
       qs('#contractText').value=setting.contractText||'';
       renderPreview();
     }
@@ -309,6 +350,7 @@
         endDate:qs('#endDate').value.trim(),
         schoolStampUrl:qs('#schoolStampUrl').value.trim(),
         ownerStampUrl:qs('#ownerStampUrl').value.trim(),
+        seamStampUrl:qs('#seamStampUrl') ? qs('#seamStampUrl').value.trim() : '',
         contractText:qs('#contractText').value.trim(),
         enabled:true
       };
@@ -366,7 +408,7 @@
       if(!currentUser) return;
       if(!isManager(currentUser)){location.href='dashboard.html'; return;}
       qs('#yearInput').value=String(new Date().getFullYear());
-      ['contractName','partyAName','partyAOwner','partyATaxId','partyAAddress','startDate','endDate','schoolStampUrl','ownerStampUrl','contractText'].forEach(id=>{
+      ['contractName','partyAName','partyAOwner','partyATaxId','partyAAddress','startDate','endDate','schoolStampUrl','ownerStampUrl','seamStampUrl','contractText'].forEach(id=>{
         const el=qs('#'+id);
         if(!el) return;
         el.addEventListener('input',renderPreview);

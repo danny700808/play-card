@@ -6085,3 +6085,152 @@
   };
   global.YZFirebase = fb;
 })(window);
+
+
+/* =========================================================
+ * 外聘老師合約：Firebase / Firestore 專用讀寫補強
+ * - 合約設定：teacherContractSettings/{year or default}
+ * - 簽署紀錄：teacherContractLogs/{recordId}
+ * - 不再依賴 GS 儲存合約設定與簽署紀錄
+ * ========================================================= */
+(function(global){
+  const fb = global.YZFirebase || {};
+  if(!fb.enabled || fb.__teacherContractFirestorePatched) return;
+  fb.__teacherContractFirestorePatched = true;
+  const oldHandle = fb.handleApi;
+
+  function clean(v){ return String(v == null ? '' : v).trim(); }
+  function lower(v){ return clean(v).toLowerCase(); }
+  function nowText(){ const d=new Date(); const p=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds()); }
+  function today(){ return nowText().slice(0,10); }
+  function rocParts(dateText){ const d=new Date((dateText || today())+'T00:00:00'); if(isNaN(d.getTime())) return {year:'',month:'',day:''}; return {year:String(d.getFullYear()-1911),month:String(d.getMonth()+1),day:String(d.getDate())}; }
+  function db(){ return fb.init && fb.init(); }
+  async function getDoc(col,id){ const d=db(); if(!d) throw new Error('Firebase 尚未啟用'); const doc=await d.collection(col).doc(clean(id)).get(); return doc.exists ? Object.assign({__id:doc.id}, doc.data()||{}) : null; }
+  async function setDoc(col,id,data,merge=true){ const d=db(); if(!d) throw new Error('Firebase 尚未啟用'); await d.collection(col).doc(clean(id)).set(Object.assign({}, data, {updatedAt:firebase.firestore.FieldValue.serverTimestamp()}), {merge}); }
+  async function all(col){ const d=db(); if(!d) throw new Error('Firebase 尚未啟用'); const snap=await d.collection(col).get(); const rows=[]; snap.forEach(x=>rows.push(Object.assign({__id:x.id}, x.data()||{}))); return rows; }
+
+  const defaultContractText = `一、委任關係\n甲方委任乙方擔任外聘授課老師，乙方同意依甲方課程安排、教學規範及學生需求提供教學服務。\n\n二、契約期間\n本契約期間自【合約開始日期】起至【合約結束日期】止。契約期滿如雙方同意，得另行續約。\n\n三、授課項目\n乙方授課項目為【授課項目】。實際授課時間、地點、學生名單及課程安排，由甲方依營運需求與乙方協調。\n\n四、教學與管理配合\n乙方應依甲方教學品質要求、課程進度、學生安全與場地管理規範執行教學。乙方不得擅自更改課程、私自收費或以甲方學生資料作其他用途。\n\n五、費用與結算\n授課鐘點、報酬、請款或結算方式，依雙方另行約定或甲方公告之規則辦理。\n\n六、保密與個資\n乙方因教學或合作所知悉之學生資料、家長資料、營運資訊、教材內容及其他未公開資料，均應負保密義務。\n\n七、終止與其他\n任一方如需提前終止合作，應提前通知對方並完成既有課程、交接與費用確認。未盡事宜，雙方得另以書面或電子紀錄補充之。`;
+
+  function normalizeSetting(o){
+    o=o||{};
+    const y=clean(o.year || o.contractYear || o.__id || new Date().getFullYear());
+    const text=clean(o.contractText || o.contractTemplateHtml || o.contractHtml || '') || defaultContractText;
+    return {
+      settingId:clean(o.settingId || o.__id || y || 'default'),
+      year:y,
+      contractName:clean(o.contractName || o.title || '外聘老師年度委任契約'),
+      partyAName:clean(o.partyAName || '台中市私立凱立音樂短期補習班'),
+      partyATaxId:clean(o.partyATaxId || o.taxId || ''),
+      partyAOwner:clean(o.partyAOwner || '黃銘廷'),
+      partyAAddress:clean(o.partyAAddress || '台中市豐原區圓環東路347號1至2樓'),
+      startDate:clean(o.startDate || ''),
+      endDate:clean(o.endDate || ''),
+      schoolStampUrl:clean(o.schoolStampUrl || 'blue_stamp_transparent.png'),
+      ownerStampUrl:clean(o.ownerStampUrl || 'red_stamp_transparent.png'),
+      seamStampUrl:clean(o.seamStampUrl || ''),
+      contractText:text,
+      contractTemplateHtml:text,
+      contractHtml:text,
+      enabled:o.enabled !== false
+    };
+  }
+  async function latestSetting(year){
+    const y=clean(year || new Date().getFullYear());
+    let s=await getDoc('teacherContractSettings', y).catch(()=>null);
+    if(!s) s=await getDoc('teacherContractSettings', 'default').catch(()=>null);
+    if(!s){
+      s=normalizeSetting({year:y});
+      await setDoc('teacherContractSettings', y, Object.assign({}, s, {source:'firebase-teacher-contract-default', createdAt:firebase.firestore.FieldValue.serverTimestamp()}));
+    }
+    return normalizeSetting(Object.assign({}, s, {year:clean(s.year||y)}));
+  }
+  async function getTeacherContractAdminConfig(payload){
+    const setting=await latestSetting(payload && payload.year);
+    return {ok:true,setting,message:'合約設定已讀取'};
+  }
+  async function saveTeacherContractSetting(payload){
+    const y=clean(payload && payload.year) || String(new Date().getFullYear());
+    const id=clean(payload && payload.settingId) || y;
+    const setting=normalizeSetting(Object.assign({}, payload, {settingId:id, year:y}));
+    await setDoc('teacherContractSettings', id, Object.assign({}, setting, {source:'firebase-teacher-contract-setting', updatedBy:clean(payload && payload.userId)}));
+    if(id!==y) await setDoc('teacherContractSettings', y, Object.assign({}, setting, {settingId:y, source:'firebase-teacher-contract-setting'}));
+    return {ok:true,message:'外聘老師合約設定已儲存到 Firebase。',settingId:id,setting};
+  }
+  function normalizeLog(o){
+    o=o||{};
+    return {
+      recordId:clean(o.recordId || o.__id),
+      year:clean(o.year || ''),
+      teacherId:clean(o.teacherId || o.employeeId || o.userId),
+      teacherName:clean(o.teacherName || o.name || o['姓名']),
+      email:lower(o.email || o.teacherEmail || o['Email']),
+      idNumber:clean(o.idNumber || o.teacherIdNumber || o['身分證字號']),
+      address:clean(o.address || o.teacherAddress || o['地址']),
+      course:clean(o.course || o.teacherCourse || o['授課項目']),
+      status:clean(o.status || o.signStatus || '已簽署'),
+      signDate:clean(o.signDate || (clean(o.signedAtText || o.createdAtText).slice(0,10))),
+      signTime:clean(o.signTime || (clean(o.signedAtText || o.createdAtText).slice(11,19))),
+      signatureUrl:clean(o.signatureUrl || o.signatureDataUrl),
+      pdfUrl:clean(o.pdfUrl || ''),
+      contractName:clean(o.contractName || o.title || '')
+    };
+  }
+  async function getTeacherContractAdminList(payload){
+    const y=clean(payload && payload.year);
+    let rows=(await all('teacherContractLogs')).map(normalizeLog);
+    if(y) rows=rows.filter(r=>!r.year || r.year===y);
+    rows.sort((a,b)=>((b.signDate+' '+b.signTime).localeCompare(a.signDate+' '+a.signTime)));
+    return {ok:true,rows,list:rows};
+  }
+  async function getTeacherContracts(payload){
+    const uid=clean(payload && payload.userId); const email=lower(payload && payload.email);
+    let rows=(await all('teacherContractLogs')).map(normalizeLog);
+    if(uid || email) rows=rows.filter(r=>(uid && (r.teacherId===uid || r.recordId.indexOf(uid)>=0)) || (email && r.email===email));
+    rows.sort((a,b)=>((b.signDate+' '+b.signTime).localeCompare(a.signDate+' '+a.signTime)));
+    return {ok:true,rows,contracts:rows};
+  }
+  async function getTeacherContractStatus(payload){
+    const setting=await latestSetting((payload && payload.year) || new Date().getFullYear());
+    const uid=clean(payload && payload.userId); const email=lower(payload && payload.email);
+    const rows=(await all('teacherContractLogs')).map(normalizeLog).filter(r=>r.year===setting.year && ((uid && r.teacherId===uid) || (email && r.email===email)));
+    rows.sort((a,b)=>((b.signDate+' '+b.signTime).localeCompare(a.signDate+' '+a.signTime)));
+    return {ok:true,contract:setting,signed:rows.length>0,record:rows[0]||null};
+  }
+  async function submitTeacherContractSignature(payload){
+    const userId=clean(payload && payload.userId); const signDate=clean(payload && payload.signDate) || today();
+    const y=clean(payload && payload.year) || signDate.slice(0,4) || String(new Date().getFullYear());
+    const setting=await latestSetting(y);
+    const id='TC_'+(userId||'TEACHER')+'_'+Date.now();
+    const roc=rocParts(signDate);
+    const row={
+      recordId:id, year:setting.year, settingId:setting.settingId, teacherId:userId, employeeId:userId,
+      teacherName:clean(payload && payload.teacherName), email:lower(payload && payload.teacherEmail),
+      idNumber:clean(payload && payload.teacherIdNumber), address:clean(payload && payload.teacherAddress), course:clean(payload && payload.teacherCourse),
+      signDate, signTime:nowText().slice(11,19), signedAtText:nowText(), signedAt:firebase.firestore.FieldValue.serverTimestamp(),
+      status:'已簽署', signatureDataUrl:clean(payload && payload.signatureDataUrl), signatureUrl:clean(payload && payload.signatureDataUrl),
+      contractName:setting.contractName, contractSnapshot:setting, signRocYear:roc.year, signMonth:roc.month, signDay:roc.day,
+      source:'firebase-teacher-contract-signature'
+    };
+    await setDoc('teacherContractLogs', id, row);
+    return {ok:true,message:'合約已簽署並儲存到 Firebase。',recordId:id,record:normalizeLog(row)};
+  }
+  async function resendTeacherContractPdf(payload){
+    return {ok:true,message:'Firebase 已保留簽署紀錄；PDF 重寄功能需另接 Email / 檔案服務。'};
+  }
+
+  fb.handleApi = async function(action,payload){
+    const a=clean(action);
+    try{
+      if(a==='getTeacherContractAdminConfig') return await getTeacherContractAdminConfig(payload||{});
+      if(a==='saveTeacherContractSetting') return await saveTeacherContractSetting(payload||{});
+      if(a==='getTeacherContractAdminList') return await getTeacherContractAdminList(payload||{});
+      if(a==='getTeacherContracts') return await getTeacherContracts(payload||{});
+      if(a==='getTeacherContractStatus') return await getTeacherContractStatus(payload||{});
+      if(a==='submitTeacherContractSignature') return await submitTeacherContractSignature(payload||{});
+      if(a==='resendTeacherContractPdf') return await resendTeacherContractPdf(payload||{});
+    }catch(e){ return {ok:false,message:e.message||String(e)}; }
+    if(typeof oldHandle==='function') return await oldHandle(action,payload||{});
+    return null;
+  };
+  global.YZFirebase = fb;
+})(window);
