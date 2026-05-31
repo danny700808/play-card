@@ -1667,29 +1667,92 @@ document.addEventListener('DOMContentLoaded', function(){ setTimeout(hideClockZe
   function installFab(){
     if(!isManagerLikely()) return;
     style();
+    if(!document.getElementById('notificationManualCategoryStyle')){
+      const cs=document.createElement('style');
+      cs.id='notificationManualCategoryStyle';
+      cs.textContent=`
+        .n2-cat-grid{display:grid;grid-template-columns:1fr;gap:10px}
+        .n2-cat-card{width:100%;border:1px solid #dbe5f1;background:#fff;border-radius:16px;padding:13px 14px;text-align:left;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:12px;font-weight:950;color:#18314a;box-shadow:0 6px 16px rgba(15,23,42,.04)}
+        .n2-cat-card:hover{background:#f1f8f4;border-color:#b7dcc5}
+        .n2-cat-title{font-size:16px}.n2-cat-sub{display:block;color:#64748b;font-size:12px;font-weight:750;margin-top:2px}.n2-cat-arrow{font-size:22px;color:#1f7a5a}
+        .n2-recip-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}.n2-recip-title{font-size:16px;font-weight:950;color:#18314a}.n2-back{border:0;border-radius:999px;background:#eef2f6;color:#18314a;padding:8px 11px;font-weight:950;cursor:pointer}
+        .n2-select-tools{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}.n2-select-tools button{border:1px solid #bbdfca;background:#eef7f0;color:#1f7a5a;border-radius:999px;padding:7px 10px;font-weight:900;cursor:pointer;font-size:12px}
+      `;
+      document.head.appendChild(cs);
+    }
     if(document.getElementById('notificationV2FinalFab')) return;
     const btn=document.createElement('button'); btn.id='notificationV2FinalFab'; btn.className='n2-fab'; btn.type='button'; btn.textContent='LINE / Email'; document.body.appendChild(btn);
-    const modal=document.createElement('div'); modal.id='notificationV2FinalModal'; modal.className='n2-backdrop'; modal.innerHTML='<div class="n2-modal"><div class="n2-modal-head"><div><div class="n2-modal-title">LINE / Email 手動通知</div><div class="n2-small">主管臨時傳訊息用。LINE 只會送給已綁定且已開啟 LINE 通知的人。</div></div><button class="n2-secondary" type="button" data-close>關閉</button></div><div class="n2-field"><label>搜尋收件人</label><input data-search placeholder="姓名、Email、員工ID"></div><div class="n2-field"><label>收件人</label><div class="n2-recips" data-recip>讀取中…</div></div><div class="n2-field"><label>發送方式</label><div class="n2-channels"><label><input type="checkbox" value="line" checked> LINE</label><label><input type="checkbox" value="email"> Email</label></div></div><div class="n2-field"><label>訊息內容</label><textarea data-message placeholder="輸入要發送的文字"></textarea></div><div class="n2-modal-actions"><button class="n2-send" type="button" data-send>送出通知</button><button class="n2-secondary" type="button" data-cancel>取消</button></div><div class="n2-status" data-status></div></div>'; document.body.appendChild(modal);
-    let recips=[]; let timer=null;
+    const modal=document.createElement('div'); modal.id='notificationV2FinalModal'; modal.className='n2-backdrop'; modal.innerHTML='<div class="n2-modal"><div class="n2-modal-head"><div><div class="n2-modal-title">LINE / Email 手動通知</div><div class="n2-small">主管臨時傳訊息用。先選工讀生、專職員工或外聘老師，再勾選收件人。已離職、停用、封存或隱藏於日常清單的人不會出現。</div></div><button class="n2-secondary" type="button" data-close>關閉</button></div><div class="n2-field"><label>搜尋收件人</label><input data-search placeholder="請先選擇收件人類別" disabled></div><div class="n2-field"><label>收件人類別 / 收件人</label><div class="n2-recips" data-recip>讀取中…</div></div><div class="n2-field"><label>發送方式</label><div class="n2-channels"><label><input type="checkbox" value="line" checked> LINE</label><label><input type="checkbox" value="email"> Email</label></div></div><div class="n2-field"><label>訊息內容</label><textarea data-message placeholder="輸入要發送的文字"></textarea></div><div class="n2-modal-actions"><button class="n2-send" type="button" data-send>送出通知</button><button class="n2-secondary" type="button" data-cancel>取消</button></div><div class="n2-status" data-status></div></div>'; document.body.appendChild(modal);
+    let allRecips=[]; let currentList=[]; let selectedCategory=''; let timer=null;
+    const categories=[
+      {key:'parttime', title:'工讀生', hint:'點進去選擇工讀生收件人'},
+      {key:'staff', title:'專職員工', hint:'點進去選擇專職員工收件人'},
+      {key:'external', title:'外聘老師', hint:'點進去選擇外聘老師收件人'}
+    ];
     function setStatus(t,err){const el=modal.querySelector('[data-status]'); el.textContent=t||''; el.className='n2-status'+(err?' err':'');}
-    function render(list){const wrap=modal.querySelector('[data-recip]'); wrap.innerHTML=list.length?list.map(function(x,i){const lineState=x.lineUserId?(x.lineNotifyEnabled?'LINE 可通知':'LINE 已綁定但通知關閉'):'LINE 未綁定'; return '<label><input type="checkbox" value="'+i+'"><span>'+esc(x.name||'未命名')+'｜'+esc(x.identityLabel||'')+'<span class="n2-small">'+esc(x.email||x.employeeId||'')+'｜'+esc(lineState)+'</span></span></label>';}).join(''):'沒有符合的收件人';}
-    async function load(q){const wrap=modal.querySelector('[data-recip]'); wrap.textContent='讀取中…'; try{const r=await apiCall('getNotificationRecipientsV2',{keyword:q||''}); recips=Array.isArray(r.rows)?r.rows:[]; render(recips);}catch(e){wrap.textContent='讀取收件人失敗：'+(e.message||e);}}
-    function open(){modal.classList.add('show'); load('');}
+    function isHiddenOrInactive(x){
+      const a=clean(x.accountStatus||'active').toLowerCase();
+      const e=clean(x.employmentStatus||'active').toLowerCase();
+      return x.hiddenFromActiveLists===true || ['inactive','rejected','pending','archived','disabled','停用','駁回'].indexOf(a)>=0 || ['resigned','suspended','archived','contractorended','離職','暫停任用','封存','合作結束'].indexOf(e)>=0;
+    }
+    function normType(x){
+      const raw=clean(x.identityType||x.identityLabel||x.role).toLowerCase();
+      if(raw.indexOf('工讀')>=0 || raw==='parttime') return 'parttime';
+      if(raw.indexOf('外聘')>=0 || raw==='external' || raw==='teacher') return 'external';
+      return 'staff';
+    }
+    function rowsByCat(cat){return allRecips.filter(x=>normType(x)===cat && !isHiddenOrInactive(x));}
+    function catTitle(cat){const c=categories.find(x=>x.key===cat); return c?c.title:'收件人';}
+    function renderCategoryHome(){
+      selectedCategory=''; currentList=[];
+      const search=modal.querySelector('[data-search]'); search.value=''; search.disabled=true; search.placeholder='請先選擇收件人類別';
+      const wrap=modal.querySelector('[data-recip]');
+      wrap.innerHTML='<div class="n2-cat-grid">'+categories.map(function(c){
+        const count=rowsByCat(c.key).length;
+        return '<button type="button" class="n2-cat-card" data-cat="'+esc(c.key)+'"><span><span class="n2-cat-title">'+esc(c.title)+'</span><span class="n2-cat-sub">'+esc(c.hint)+'｜目前可通知名單 '+count+' 人</span></span><span class="n2-cat-arrow">›</span></button>';
+      }).join('')+'</div>';
+      wrap.querySelectorAll('[data-cat]').forEach(function(el){el.onclick=function(){openCategory(el.getAttribute('data-cat'));};});
+    }
+    function renderPeople(keyword){
+      const k=lower(keyword||'');
+      const source=rowsByCat(selectedCategory);
+      currentList=source.filter(function(x){
+        if(!k) return true;
+        return [x.name,x.employeeName,x.employeeId,x.id,x.email,x.identityLabel].join(' ').toLowerCase().indexOf(k)>=0;
+      });
+      const wrap=modal.querySelector('[data-recip]');
+      wrap.innerHTML='<div class="n2-recip-head"><button type="button" class="n2-back" data-back>← 返回類別</button><div class="n2-recip-title">'+esc(catTitle(selectedCategory))+'</div></div><div class="n2-select-tools"><button type="button" data-select-all>全選本頁</button><button type="button" data-clear-all>取消全選</button></div>'+(currentList.length?currentList.map(function(x,i){const lineState=x.lineUserId?(x.lineNotifyEnabled?'LINE 可通知':'LINE 已綁定但通知關閉'):'LINE 未綁定'; const mail=x.email?'Email 可通知':'無 Email'; return '<label><input type="checkbox" value="'+i+'"><span>'+esc(x.name||x.employeeName||'未命名')+'<span class="n2-small">'+esc(x.email||x.employeeId||x.id||'')+'｜'+esc(lineState)+'｜'+esc(mail)+'</span></span></label>';}).join(''):'沒有符合的收件人');
+      const back=wrap.querySelector('[data-back]'); if(back) back.onclick=renderCategoryHome;
+      const sel=wrap.querySelector('[data-select-all]'); if(sel) sel.onclick=function(){wrap.querySelectorAll('input[type="checkbox"]').forEach(x=>x.checked=true);};
+      const clr=wrap.querySelector('[data-clear-all]'); if(clr) clr.onclick=function(){wrap.querySelectorAll('input[type="checkbox"]').forEach(x=>x.checked=false);};
+    }
+    function openCategory(cat){
+      selectedCategory=cat;
+      const search=modal.querySelector('[data-search]'); search.disabled=false; search.value=''; search.placeholder='搜尋 '+catTitle(cat)+' 姓名、Email、員工ID';
+      renderPeople('');
+    }
+    async function loadAll(){
+      const wrap=modal.querySelector('[data-recip]'); wrap.textContent='讀取中…';
+      try{const r=await apiCall('getNotificationRecipientsV2',{keyword:'',statusMode:'active'}); allRecips=Array.isArray(r.rows)?r.rows:[]; renderCategoryHome();}
+      catch(e){wrap.textContent='讀取收件人失敗：'+(e.message||e);}
+    }
+    function open(){modal.classList.add('show'); setStatus(''); loadAll();}
     function close(){modal.classList.remove('show');}
     btn.onclick=open; modal.querySelector('[data-close]').onclick=close; modal.querySelector('[data-cancel]').onclick=close; modal.addEventListener('click',function(e){if(e.target===modal) close();});
-    modal.querySelector('[data-search]').addEventListener('input',function(e){clearTimeout(timer); timer=setTimeout(function(){load(e.target.value);},250);});
+    modal.querySelector('[data-search]').addEventListener('input',function(e){clearTimeout(timer); timer=setTimeout(function(){ if(selectedCategory) renderPeople(e.target.value); },180);});
     modal.querySelector('[data-send]').onclick=async function(){
       try{
         setStatus('');
-        const idxs=Array.from(modal.querySelectorAll('[data-recip] input:checked')).map(x=>Number(x.value));
-        const targets=idxs.map(i=>recips[i]).filter(Boolean);
+        if(!selectedCategory) throw new Error('請先選擇工讀生、專職員工或外聘老師。');
+        const idxs=Array.from(modal.querySelectorAll('[data-recip] input[type="checkbox"]:checked')).map(x=>Number(x.value));
+        const targets=idxs.map(i=>currentList[i]).filter(Boolean);
         const channels=Array.from(modal.querySelectorAll('.n2-channels input:checked')).map(x=>x.value);
         const message=clean(modal.querySelector('[data-message]').value);
         if(!targets.length) throw new Error('請選擇收件人。');
         if(!channels.length) throw new Error('請至少選擇 LINE 或 Email。');
         if(!message) throw new Error('請輸入訊息內容。');
         setStatus('建立發送佇列中…');
-        const r=await apiCall('sendManualNotificationV2',{targets,channels,message,page:pathName()});
+        const r=await apiCall('sendManualNotificationV2',{targets,channels,message,page:pathName(),recipientCategory:selectedCategory});
         if(!r || r.ok===false) throw new Error((r&&r.message)||'送出失敗');
         setStatus(r.message||'已建立發送佇列。'); modal.querySelector('[data-message]').value='';
       }catch(e){setStatus(e.message||'送出失敗',true);}
