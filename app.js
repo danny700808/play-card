@@ -1690,15 +1690,17 @@ document.addEventListener('DOMContentLoaded', function(){ setTimeout(hideClockZe
       {key:'external', title:'外聘老師', hint:'點進去選擇外聘老師收件人'}
     ];
     function setStatus(t,err){const el=modal.querySelector('[data-status]'); el.textContent=t||''; el.className='n2-status'+(err?' err':'');}
+    function truthyLocal(v){ const s=clean(v).toLowerCase(); return v===true || v===1 || s==='1' || s==='true' || s==='yes' || s==='是' || s==='on'; }
     function isHiddenOrInactive(x){
-      const a=clean(x.accountStatus||'active').toLowerCase();
-      const e=clean(x.employmentStatus||'active').toLowerCase();
-      return x.hiddenFromActiveLists===true || ['inactive','rejected','pending','archived','disabled','停用','駁回'].indexOf(a)>=0 || ['resigned','suspended','archived','contractorended','離職','暫停任用','封存','合作結束'].indexOf(e)>=0;
+      const a=clean(x.accountStatus||x['帳號狀態']||'active').toLowerCase();
+      const e=clean(x.employmentStatus||x['任職狀態']||x['在職狀態']||'active').toLowerCase();
+      const h=x.hiddenFromActiveLists===true || truthyLocal(x.hiddenFromActiveLists) || truthyLocal(x['隱藏於日常清單']) || truthyLocal(x['是否隱藏']);
+      return h || ['inactive','rejected','pending','archived','disabled','停用','駁回','待審核','封存'].indexOf(a)>=0 || ['resigned','suspended','archived','contractorended','離職','暫停任用','封存','合作結束','外聘合作結束'].indexOf(e)>=0;
     }
     function normType(x){
-      const raw=clean(x.identityType||x.identityLabel||x.role).toLowerCase();
-      if(raw.indexOf('工讀')>=0 || raw==='parttime') return 'parttime';
-      if(raw.indexOf('外聘')>=0 || raw==='external' || raw==='teacher') return 'external';
+      const raw=clean(x.identityType||x['身分類型']||x.identityLabel||x.role||x.employeeType||x['員工身分']).toLowerCase();
+      if(raw.indexOf('工讀')>=0 || raw==='parttime' || truthyLocal(x.isPartTime || x['是否工讀生'])) return 'parttime';
+      if(raw.indexOf('外聘')>=0 || raw==='external' || raw==='teacher' || raw==='contractor') return 'external';
       return 'staff';
     }
     function rowsByCat(cat){return allRecips.filter(x=>normType(x)===cat && !isHiddenOrInactive(x));}
@@ -1711,7 +1713,11 @@ document.addEventListener('DOMContentLoaded', function(){ setTimeout(hideClockZe
         const count=rowsByCat(c.key).length;
         return '<button type="button" class="n2-cat-card" data-cat="'+esc(c.key)+'"><span><span class="n2-cat-title">'+esc(c.title)+'</span><span class="n2-cat-sub">'+esc(c.hint)+'｜目前可通知名單 '+count+' 人</span></span><span class="n2-cat-arrow">›</span></button>';
       }).join('')+'</div>';
-      wrap.querySelectorAll('[data-cat]').forEach(function(el){el.onclick=function(){openCategory(el.getAttribute('data-cat'));};});
+      // 用事件委派處理點擊，避免手機瀏覽器點到內層 span 時沒有觸發。
+      wrap.onclick=function(ev){
+        const card=ev.target && ev.target.closest ? ev.target.closest('[data-cat]') : null;
+        if(card){ ev.preventDefault(); openCategory(card.getAttribute('data-cat')); }
+      };
     }
     function renderPeople(keyword){
       const k=lower(keyword||'');
@@ -1721,6 +1727,7 @@ document.addEventListener('DOMContentLoaded', function(){ setTimeout(hideClockZe
         return [x.name,x.employeeName,x.employeeId,x.id,x.email,x.identityLabel].join(' ').toLowerCase().indexOf(k)>=0;
       });
       const wrap=modal.querySelector('[data-recip]');
+      wrap.onclick=null;
       wrap.innerHTML='<div class="n2-recip-head"><button type="button" class="n2-back" data-back>← 返回類別</button><div class="n2-recip-title">'+esc(catTitle(selectedCategory))+'</div></div><div class="n2-select-tools"><button type="button" data-select-all>全選本頁</button><button type="button" data-clear-all>取消全選</button></div>'+(currentList.length?currentList.map(function(x,i){const lineState=x.lineUserId?(x.lineNotifyEnabled?'LINE 可通知':'LINE 已綁定但通知關閉'):'LINE 未綁定'; const mail=x.email?'Email 可通知':'無 Email'; return '<label><input type="checkbox" value="'+i+'"><span>'+esc(x.name||x.employeeName||'未命名')+'<span class="n2-small">'+esc(x.email||x.employeeId||x.id||'')+'｜'+esc(lineState)+'｜'+esc(mail)+'</span></span></label>';}).join(''):'沒有符合的收件人');
       const back=wrap.querySelector('[data-back]'); if(back) back.onclick=renderCategoryHome;
       const sel=wrap.querySelector('[data-select-all]'); if(sel) sel.onclick=function(){wrap.querySelectorAll('input[type="checkbox"]').forEach(x=>x.checked=true);};

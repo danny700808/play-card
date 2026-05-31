@@ -5236,7 +5236,9 @@
       isManager:isManager(o),
       lineUserId:clean((o||{}).lineUserId || (o||{})['LINE User ID']),
       lineNotifyEnabled:truthy((o||{}).lineNotifyEnabled || (o||{})['LINE 通知啟用']),
-      accountStatus:clean((o||{}).accountStatus || (o||{})['帳號狀態'])
+      accountStatus:clean((o||{}).accountStatus || (o||{})['帳號狀態']),
+      employmentStatus:clean((o||{}).employmentStatus || (o||{})['任職狀態'] || (o||{})['在職狀態']),
+      hiddenFromActiveLists:truthy((o||{}).hiddenFromActiveLists || (o||{})['隱藏於日常清單'] || (o||{})['是否隱藏'])
     };
   }
   function defaultEvents(moduleKey){
