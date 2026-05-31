@@ -56,7 +56,16 @@ async function api(action, payload={}){
     submitTeacherGoodsInquiry:true,
     replyTeacherGoodsInquiry:true,
     saveTeacherGoodsItem:true,
-    deleteTeacherGoodsItem:true
+    deleteTeacherGoodsItem:true,
+    getTeacherContractAdminConfig:true,
+    saveTeacherContractSetting:true,
+    publishTeacherContract:true,
+    archiveTeacherContract:true,
+    getTeacherContractAdminList:true,
+    getTeacherContracts:true,
+    getTeacherContractStatus:true,
+    submitTeacherContractSignature:true,
+    resendTeacherContractPdf:true
   };
   // Firebase 第二階段：讀取型資料優先走 Firebase；薪資/投保相關資料已正式切換為 Firebase-only。
   try{
