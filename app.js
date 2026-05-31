@@ -1984,3 +1984,153 @@ document.addEventListener('DOMContentLoaded', function(){ setTimeout(hideClockZe
   function boot(){setTimeout(build,1200); setTimeout(function(){if(isLoginPage()||!isAdminUser()) removeManual();},2600);}
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot); else boot();
 })();
+
+/*****************************************************************
+ * 2026-05-31 手動通知修正：改成三分類切換名單，不再使用第二層點進去。
+ * - 第一層固定顯示三個切換按鈕：工讀生 / 專職員工 / 外聘老師
+ * - 下方直接顯示該分類人員，可直接勾選
+ * - 預設只在管理者登入後、非登入頁顯示
+ * - 會排除離職、停用、封存、隱藏、待審核、駁回人員
+ *****************************************************************/
+(function(){
+  if(window.__manualNotifyTabsStable20260531) return;
+  window.__manualNotifyTabsStable20260531 = true;
+
+  function clean(v){ return String(v == null ? '' : v).trim(); }
+  function low(v){ return clean(v).toLowerCase(); }
+  function esc(v){ return String(v == null ? '' : v).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function truthy(v){ var s=low(v); return v===true || v===1 || s==='1' || s==='true' || s==='yes' || s==='是' || s==='on'; }
+  function pageName(){ return String((location && location.pathname) || '').split('/').pop().toLowerCase() || 'index.html'; }
+  function getCurrentUser(){
+    try{
+      if(typeof getUser === 'function') return getUser();
+      return JSON.parse(localStorage.getItem('employeeUser') || localStorage.getItem('user') || 'null');
+    }catch(e){ return null; }
+  }
+  function isLoginPage(){ var p=pageName(); return !p || p==='index.html' || p==='login.html' || p==='register.html'; }
+  function isAdmin(){
+    var u=getCurrentUser();
+    if(!u) return false;
+    var role=low(u.role || u['角色'] || u.userRole || '');
+    return !!(u.showSettingsZone || u.isAdmin || role==='admin' || role==='manager' || role==='主管' || role==='管理者');
+  }
+  function apiCall(action,payload){
+    if(typeof api === 'function') return api(action,payload||{});
+    if(window.YZFirebase && typeof window.YZFirebase.handleApi === 'function') return window.YZFirebase.handleApi(action,payload||{});
+    return Promise.reject(new Error('Firebase 通知 API 尚未載入完成'));
+  }
+  function typeOf(x){
+    var raw=low(x.identityType || x['身分類型'] || x.identityLabel || x['身分'] || x.employeeType || x.role || '');
+    if(raw.indexOf('工讀')>=0 || raw==='parttime' || raw==='pt' || truthy(x.isPartTime) || truthy(x['是否工讀生'])) return 'parttime';
+    if(raw.indexOf('外聘')>=0 || raw==='external' || raw==='teacher' || raw==='contractor') return 'external';
+    return 'staff';
+  }
+  function isInactive(x){
+    var a=low(x.accountStatus || x['帳號狀態'] || 'active');
+    var e=low(x.employmentStatus || x['任職狀態'] || x['在職狀態'] || 'active');
+    var h=truthy(x.hiddenFromActiveLists) || truthy(x['隱藏於日常清單']) || truthy(x['是否隱藏']);
+    return h || ['inactive','disabled','rejected','pending','archived','停用','駁回','待審核','封存'].indexOf(a)>=0 || ['resigned','suspended','archived','contractorended','離職','暫停任用','封存','合作結束','外聘合作結束'].indexOf(e)>=0;
+  }
+  function displayName(x){ return clean(x.name || x.employeeName || x['姓名'] || x.teacherName || x['老師姓名'] || x.employeeId || x.id || '未命名'); }
+  function employeeId(x){ return clean(x.employeeId || x.id || x.userId || x['員工ID'] || x.email || x.Email || displayName(x)); }
+  function emailOf(x){ return clean(x.email || x.Email || x['Email']); }
+  function lineOf(x){ return clean(x.lineUserId || x['LINE User ID'] || x.lineId); }
+  function lineEnabled(x){
+    var v = x.lineNotifyEnabled;
+    if(v == null) v = x['LINE 通知啟用'];
+    if(v == null || v === '') return !!lineOf(x);
+    return truthy(v);
+  }
+  function removeOld(){
+    ['notifyFloatingBtn','notifyManualModalBackdrop','notificationV2FinalFab','notificationV2FinalModal','manualNotifyTabsBtn','manualNotifyTabsModal'].forEach(function(id){ var el=document.getElementById(id); if(el) el.remove(); });
+  }
+  function installStyle(){
+    if(document.getElementById('manualNotifyTabsStableStyle')) return;
+    var s=document.createElement('style');
+    s.id='manualNotifyTabsStableStyle';
+    s.textContent=`
+      .mn-fab{position:fixed;right:18px;bottom:18px;z-index:9998;border:0;border-radius:999px;background:#1f7a5a;color:#fff;padding:13px 18px;font-weight:950;box-shadow:0 12px 28px rgba(15,23,42,.22);cursor:pointer}
+      .mn-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:9999;display:none;align-items:center;justify-content:center;padding:18px}.mn-backdrop.show{display:flex}
+      .mn-modal{width:min(650px,96vw);max-height:92vh;overflow:auto;background:#fff;border-radius:24px;padding:18px;box-shadow:0 24px 80px rgba(15,23,42,.28);font-family:Arial,'Noto Sans TC',sans-serif;color:#18314a}
+      .mn-head,.mn-actions{display:flex;align-items:center;justify-content:space-between;gap:12px}.mn-title{font-size:22px;font-weight:950}.mn-small{display:block;color:#64748b;font-size:12px;line-height:1.55;margin-top:3px}.mn-field{margin-top:14px}.mn-field>label{display:block;font-weight:950;margin-bottom:6px}.mn-field input[type='text'],.mn-field textarea{width:100%;box-sizing:border-box;border:1px solid #d7e1ec;border-radius:14px;padding:12px;font-size:14px}.mn-field textarea{min-height:96px;resize:vertical}
+      .mn-close,.mn-secondary,.mn-send{border:0;border-radius:14px;padding:11px 14px;font-weight:950;cursor:pointer}.mn-close,.mn-secondary{background:#eef2f6;color:#18314a}.mn-send{background:#1f7a5a;color:#fff;min-width:150px}.mn-status{font-size:13px;font-weight:950;color:#1f7a5a;margin-top:10px}.mn-status.err{color:#b42318}
+      .mn-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px}.mn-tab{border:1px solid #dbe5f1;background:#fff;border-radius:16px;padding:11px 9px;font-weight:950;color:#18314a;cursor:pointer}.mn-tab.active{background:#1f7a5a;color:#fff;border-color:#1f7a5a}.mn-tab small{display:block;font-size:11px;font-weight:800;margin-top:4px;opacity:.78}
+      .mn-list{border:1px solid #e2e8f0;background:#f8fafc;border-radius:16px;padding:10px;max-height:250px;overflow:auto}.mn-list label{display:flex;align-items:flex-start;gap:9px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:9px;margin:7px 0;font-weight:900}.mn-list input[type='checkbox']{width:18px;height:18px;accent-color:#1f7a5a;flex:0 0 auto;margin-top:2px}.mn-tools{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}.mn-tools button{border:1px solid #bbdfca;background:#eef7f0;color:#1f7a5a;border-radius:999px;padding:7px 10px;font-weight:900;cursor:pointer;font-size:12px}.mn-channels{display:flex;gap:16px;align-items:center;flex-wrap:wrap}.mn-channels label{font-weight:950}.mn-channels input{width:18px;height:18px;accent-color:#1f7a5a}.mn-muted{color:#64748b;font-weight:800;line-height:1.6;padding:8px}
+      @media(max-width:520px){.mn-modal{padding:14px;border-radius:20px}.mn-tabs{grid-template-columns:1fr}.mn-actions{display:grid}.mn-fab{right:12px;bottom:12px}}
+    `;
+    document.head.appendChild(s);
+  }
+  function build(){
+    removeOld();
+    if(isLoginPage() || !isAdmin()) return;
+    installStyle();
+    var btn=document.createElement('button');
+    btn.id='manualNotifyTabsBtn'; btn.type='button'; btn.className='mn-fab'; btn.textContent='LINE / Email';
+    document.body.appendChild(btn);
+    var modal=document.createElement('div');
+    modal.id='manualNotifyTabsModal'; modal.className='mn-backdrop';
+    modal.innerHTML=`<div class="mn-modal"><div class="mn-head"><div><div class="mn-title">LINE / Email 手動通知</div><span class="mn-small">主管臨時發訊息用。先用三個分類切換名單，再直接勾選收件人。</span></div><button class="mn-close" type="button" data-close>關閉</button></div><div class="mn-field"><label>收件人分類</label><div class="mn-tabs" data-tabs></div></div><div class="mn-field"><label>搜尋收件人</label><input type="text" data-search placeholder="搜尋目前分類的姓名、Email、員工ID"></div><div class="mn-field"><label>收件人</label><div class="mn-tools"><button type="button" data-select>全選目前名單</button><button type="button" data-clear>取消全選</button></div><div class="mn-list" data-list>讀取中…</div></div><div class="mn-field"><label>發送方式</label><div class="mn-channels"><label><input type="checkbox" value="line" checked> LINE</label><label><input type="checkbox" value="email"> Email</label></div></div><div class="mn-field"><label>訊息內容</label><textarea data-message placeholder="輸入要發送的文字"></textarea></div><div class="mn-actions"><button class="mn-send" type="button" data-send>送出通知</button><button class="mn-secondary" type="button" data-cancel>取消</button></div><div class="mn-status" data-status></div></div>`;
+    document.body.appendChild(modal);
+
+    var categories=[{key:'parttime',title:'工讀生'},{key:'staff',title:'專職員工'},{key:'external',title:'外聘老師'}];
+    var all=[], current=[], active='parttime', timer=null;
+    var tabs=modal.querySelector('[data-tabs]'), list=modal.querySelector('[data-list]'), search=modal.querySelector('[data-search]'), stat=modal.querySelector('[data-status]');
+    function setStatus(t,err){stat.textContent=t||''; stat.className='mn-status'+(err?' err':'');}
+    function rowsFor(cat){ return all.filter(function(x){ return typeOf(x)===cat && !isInactive(x); }); }
+    function renderTabs(){
+      tabs.innerHTML=categories.map(function(c){return '<button type="button" class="mn-tab '+(active===c.key?'active':'')+'" data-cat="'+esc(c.key)+'">'+esc(c.title)+'<small>'+rowsFor(c.key).length+' 人</small></button>';}).join('');
+    }
+    function renderList(){
+      var kw=low(search.value), base=rowsFor(active);
+      current=base.filter(function(x){ if(!kw) return true; return [displayName(x), employeeId(x), emailOf(x), x.identityLabel, x['身分類型']].join(' ').toLowerCase().indexOf(kw)>=0; });
+      if(!current.length){ list.innerHTML='<div class="mn-muted">目前分類沒有可通知收件人。</div>'; return; }
+      list.innerHTML=current.map(function(x,i){
+        var lineState=lineOf(x) ? (lineEnabled(x)?'LINE 可通知':'LINE 通知關閉') : 'LINE 未綁定';
+        var mail=emailOf(x) ? 'Email 可通知' : '無 Email';
+        return '<label><input type="checkbox" value="'+i+'"><span>'+esc(displayName(x))+'<span class="mn-small">'+esc(emailOf(x)||employeeId(x))+'｜'+esc(lineState)+'｜'+esc(mail)+'</span></span></label>';
+      }).join('');
+    }
+    function renderAll(){ renderTabs(); renderList(); }
+    async function load(){
+      list.innerHTML='<div class="mn-muted">讀取中…</div>';
+      try{
+        var r;
+        try{ r=await apiCall('getNotificationRecipientsV2',{keyword:'',statusMode:'active'}); }
+        catch(e){ r=await apiCall('getEmployeeRecipients',{}); }
+        all=Array.isArray(r&&r.rows)?r.rows:(Array.isArray(r&&r.list)?r.list:[]);
+        renderAll();
+      }catch(e){ list.innerHTML='<div class="mn-muted">讀取收件人失敗：'+esc(e.message||e)+'</div>'; }
+    }
+    function open(){ if(isLoginPage() || !isAdmin()){ removeOld(); return; } modal.classList.add('show'); setStatus(''); load(); }
+    function close(){ modal.classList.remove('show'); }
+    btn.addEventListener('click',open);
+    modal.querySelector('[data-close]').addEventListener('click',close);
+    modal.querySelector('[data-cancel]').addEventListener('click',close);
+    modal.addEventListener('click',function(e){ if(e.target===modal) close(); });
+    tabs.addEventListener('click',function(e){ var b=e.target.closest && e.target.closest('[data-cat]'); if(!b) return; active=b.getAttribute('data-cat'); search.value=''; renderAll(); });
+    search.addEventListener('input',function(){ clearTimeout(timer); timer=setTimeout(renderList,120); });
+    modal.querySelector('[data-select]').addEventListener('click',function(){ list.querySelectorAll('input[type="checkbox"]').forEach(function(x){ x.checked=true; }); });
+    modal.querySelector('[data-clear]').addEventListener('click',function(){ list.querySelectorAll('input[type="checkbox"]').forEach(function(x){ x.checked=false; }); });
+    modal.querySelector('[data-send]').addEventListener('click',async function(){
+      try{
+        setStatus('');
+        var idxs=Array.from(list.querySelectorAll('input[type="checkbox"]:checked')).map(function(x){return Number(x.value);});
+        var targets=idxs.map(function(i){return current[i];}).filter(Boolean);
+        var channels=Array.from(modal.querySelectorAll('.mn-channels input:checked')).map(function(x){return x.value;});
+        var message=clean(modal.querySelector('[data-message]').value);
+        if(!targets.length) throw new Error('請選擇收件人。');
+        if(!channels.length) throw new Error('請至少選擇 LINE 或 Email。');
+        if(!message) throw new Error('請輸入訊息內容。');
+        setStatus('建立發送佇列中…');
+        var r;
+        try{ r=await apiCall('sendManualNotificationV2',{targets:targets,channels:channels,message:message,page:pageName(),recipientCategory:active}); }
+        catch(e){ r=await apiCall('queueManualNotification',{targets:targets,channels:channels,message:message,page:pageName(),recipientCategory:active}); }
+        if(!r || r.ok===false) throw new Error((r&&r.message)||'送出失敗');
+        setStatus((r&&r.message)||'已建立發送佇列。');
+        modal.querySelector('[data-message]').value='';
+      }catch(e){ setStatus(e.message||String(e), true); }
+    });
+  }
+  function boot(){ setTimeout(build,1800); setTimeout(build,3200); }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot); else boot();
+})();
