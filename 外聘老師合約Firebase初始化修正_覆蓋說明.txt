@@ -1,0 +1,14 @@
+外聘老師合約 Firebase 初始化修正
+
+請覆蓋：
+1. contract-admin.html
+2. contract.html
+3. firebase-client.js
+4. app.js
+
+修正重點：
+- contract-admin.html / contract.html 補上 config.js 載入。
+- Firebase SDK → config.js → firebase-client.js → app.js 載入順序修正。
+- 解決頁面顯示「Firebase 尚未啟用」、待簽署合約與簽署紀錄一直讀取中的問題。
+
+覆蓋後請重新整理頁面；若手機仍有快取，請關閉頁面重新進入或加 ?v=20260601 測試。
