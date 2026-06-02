@@ -132,6 +132,7 @@
         name:clean(f.teacherName || app.name),
         idNumber:upperId(f.idNumber || app.idNumber),
         teacherIdentity:clean(f.teacherIdentity || app.identityLabel || '外聘老師'),
+        identityType:clean(f.identityType || app.identityType || ''),
         subject:clean(f.subject),
         periodStart:dateOnly(f.periodStart),
         periodEnd:dateOnly(f.periodEnd),
@@ -146,10 +147,16 @@
       type:'employment',
       name:clean(f.name || app.name),
       idNumber:upperId(f.idNumber || app.idNumber),
+      identityType:clean(f.identityType || app.identityType || 'staff'),
+      identityLabel:clean(f.identityLabel || app.identityLabel || '專職員工'),
       jobTitle:clean(f.jobTitle || f.title),
       workNature:clean(f.workNature || '教學'),
       hireDate:dateOnly(f.hireDate),
       stillWorking:f.stillWorking === false ? false : true,
+      cooperationYear:clean(f.cooperationYear),
+      cooperationStart:dateOnly(f.cooperationStart),
+      cooperationEnd:dateOnly(f.cooperationEnd),
+      cooperationContent:clean(f.cooperationContent || f.subject),
       unitKey:clean(f.unitKey || 'shangpin'),
       issueDate:dateOnly(f.issueDate || app.approvedDate || app.reviewedAt || today())
     };
@@ -161,9 +168,23 @@
       const period = [rocDate(data.periodStart), data.stillTeaching ? '迄今' : rocDate(data.periodEnd)].filter(Boolean).join(' 至 ');
       rows.push(['教師姓名', data.name], ['身分證字號', data.idNumber], ['教師身分', data.teacherIdentity], ['任教科目', data.subject], ['任教期間', period], ['授課類型', data.lessonType], ['授課地點', data.location || ORG_UNITS.kaili.address]);
     }else{
-      rows.push(['姓名', data.name], ['身分證字號', data.idNumber], ['職稱', data.jobTitle], ['工作性質', data.workNature], ['到職日期', rocDate(data.hireDate)], ['任職狀態', data.stillWorking ? '現仍在職' : '已離職']);
+      const identityType = clean(data.identityType || '').toLowerCase();
+      const label = clean(data.identityLabel || (identityType==='external'?'外聘老師':(identityType==='parttime'?'工讀生':'專職員工')));
+      rows.push(['姓名', data.name], ['身分證字號', data.idNumber]);
+      if(identityType==='parttime'){
+        rows.push(['身分', label || '工讀生'], ['工作性質', data.workNature || '工讀 / 兼職'], ['目前狀態', data.stillWorking ? '目前仍在職 / 持續工讀' : '已結束']);
+      }else if(identityType==='external'){
+        const period = [rocDate(data.cooperationStart), data.stillWorking ? '迄今' : rocDate(data.cooperationEnd)].filter(Boolean).join(' 至 ');
+        rows.push(['身分', label || '外聘老師']);
+        if(clean(data.cooperationYear)) rows.push(['合作年度', data.cooperationYear]);
+        if(clean(period)) rows.push(['合作期間', period]);
+        if(clean(data.cooperationContent)) rows.push(['授課 / 合作內容', data.cooperationContent]);
+        rows.push(['目前狀態', data.stillWorking ? '合作中' : '合作已結束']);
+      }else{
+        rows.push(['職稱', data.jobTitle], ['工作性質', data.workNature], ['到職日期', rocDate(data.hireDate)], ['任職狀態', data.stillWorking ? '現仍在職' : '已離職']);
+      }
     }
-    return rows.map(([k,v])=>`<div class="cert-info-row"><div class="cert-info-key">${esc(k)}</div><div class="cert-info-val">${esc(v)}</div></div>`).join('');
+    return rows.filter(([k,v])=>clean(v)).map(([k,v])=>`<div class="cert-info-row"><div class="cert-info-key">${esc(k)}</div><div class="cert-info-val">${esc(v)}</div></div>`).join('');
   }
 
   function certificateHtml(opts){
