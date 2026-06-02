@@ -6,7 +6,12 @@
   <title>合約管理</title>
   <link rel="stylesheet" href="style.css?v=admin-final-20260530b">
   <style>
-    .layout{display:grid;grid-template-columns:minmax(360px,430px) minmax(0,1fr);gap:16px}
+    .layout{display:grid;grid-template-columns:minmax(360px,430px) minmax(0,1fr);gap:16px;grid-template-areas:"form preview" "email preview" "history preview";align-items:start}
+    .form-panel{grid-area:form}
+    .email-card{grid-area:email}
+    .history-card{grid-area:history}
+    .preview-panel{grid-area:preview;overflow:visible}
+    .mobile-primary-actions{display:none}
     .subcard{background:#fff;border:1px solid #e2e8f0;border-radius:18px;padding:16px}
     .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
     .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
@@ -64,6 +69,7 @@
         width:100%!important;
       }
       .contract-sheet{
+        transform:none!important;
         box-shadow:none!important;
         border:none!important;
         border-radius:0!important;
@@ -76,9 +82,22 @@
       @page{size:A4 portrait;margin:0}
     }
     @media (max-width:1180px){
-      .layout{grid-template-columns:1fr}
-      .contract-sheet{width:100%;min-height:auto;padding:16px}
-      .contract-box-grid,.party-grid,.signature-grid,.row2,.row3{grid-template-columns:1fr}
+      .layout{display:flex;flex-direction:column;gap:14px}
+      .form-panel{order:1;width:100%}
+      .preview-panel{order:2;width:100%;overflow:hidden;background:#f8fafc;border:1px solid #e2e8f0;border-radius:18px;padding:10px;box-sizing:border-box}
+      .mobile-primary-actions{order:3;display:flex;gap:8px;flex-wrap:wrap;background:#fff;border:1px solid #e2e8f0;border-radius:18px;padding:14px;width:100%;box-sizing:border-box}
+      .email-card{order:4;width:100%}
+      .history-card{order:5;width:100%}
+      .contract-sheet{width:210mm;min-height:297mm;padding:9mm;transform-origin:top center;border-radius:0}
+      .contract-box-grid,.party-grid,.signature-grid,.row2{grid-template-columns:1fr 1fr}
+      .row3{grid-template-columns:1fr 1fr}
+      .subcard{padding:12px}
+      .field{margin-bottom:8px}
+      .field label{font-size:12px}
+      input,select,textarea{font-size:13px;padding:8px 9px}
+      textarea{min-height:70px}
+      .primary-actions{display:none !important}
+      .mobile-primary-actions .btn{width:calc(50% - 4px);padding:10px 8px;font-size:13px}
     }
   </style>
 </head>
@@ -94,8 +113,8 @@
         <button class="btn secondary" style="width:auto;padding:10px 14px" onclick="logout()">登出</button>
       </div>
       <div class="layout">
-        <div>
-          <div class="subcard">
+        <div class="form-panel">
+          <div class="subcard form-card">
             <input id="contractId" type="hidden" value="">
             <div class="muted-tip" style="margin-bottom:12px">這個頁面的操作方式比照估價單：左邊填寫、右邊即時預覽；每次修改儲存都會新增版本（原始版、修改 1、修改 2…）；右邊預覽 = 列印 = 另存 PDF。</div>
             <div class="field"><label>契約書標題</label><input id="contractTitle" value="設備租賃契約書"></div>
@@ -135,7 +154,7 @@
               <div class="field"><label>甲方代表人（選填）</label><input id="partyAOwner" value=""></div>
               <div class="field"><label>乙方負責人</label><input id="partyBOwner" value="黃銘廷"></div>
             </div>
-            <div class="mini-actions" style="margin-top:16px">
+            <div class="mini-actions primary-actions" style="margin-top:16px">
               <button id="saveContractBtn" class="btn" type="button" onclick="saveCurrentContract()">儲存合約</button>
               <button id="saveAsNewContractBtn" class="btn" type="button" onclick="saveAsNewContract()">儲存新合約</button>
               <button id="newBlankContractBtn" class="btn" type="button" onclick="newBlankContract()">新增空白合約</button>
@@ -143,8 +162,9 @@
               <button id="printContractBtn" class="btn" type="button" onclick="printContract()">列印</button>
             </div>
           </div>
+        </div>
 
-          <div class="subcard email-card">
+        <div class="subcard email-card">
             <div class="section-title" style="margin:0 0 10px">寄送 Email</div>
             <div class="row2">
               <div class="field"><label>收件人 Email</label><input id="emailTo" type="email" placeholder="example@example.com"></div>
@@ -164,8 +184,7 @@
             <div class="muted-tip" style="margin-bottom:10px">依年份分類顯示，列表先顯示甲方公司名稱與租賃設備名稱。</div>
             <div id="historyWrap"><div class="muted-tip">目前還沒有合約資料。</div></div>
           </div>
-        </div>
-        <div id="printArea">
+        <div id="printArea" class="preview-panel">
           <div class="contract-preview-stage">
             <section class="contract-sheet">
               <div class="contract-title" id="pvContractTitle">設備租賃契約書</div>
@@ -212,6 +231,14 @@
               <div class="contract-intro" style="text-align:center;margin-top:4mm;margin-bottom:0" id="pvContractDate"></div>
             </section>
           </div>
+        </div>
+
+        <div class="mobile-primary-actions" aria-label="手機版操作按鈕">
+          <button class="btn" type="button" onclick="saveCurrentContract()">儲存合約</button>
+          <button class="btn" type="button" onclick="saveAsNewContract()">儲存新合約</button>
+          <button class="btn" type="button" onclick="newBlankContract()">新增空白</button>
+          <button class="btn" type="button" onclick="savePdf()">另存 PDF</button>
+          <button class="btn" type="button" onclick="printContract()">列印</button>
         </div>
       </div>
     </div>
@@ -658,5 +685,30 @@
       scheduleIdle_(loadHistory);
     }
   </script>
+
+<script>
+(function(){
+  function fitMobileA4Preview(){
+    var panel=document.querySelector('.preview-panel');
+    var sheet=document.querySelector('.contract-sheet');
+    if(!panel||!sheet) return;
+    var isMobile=window.matchMedia && window.matchMedia('(max-width: 1180px)').matches;
+    if(!isMobile){
+      sheet.style.transform='';
+      panel.style.height='';
+      return;
+    }
+    sheet.style.transform='scale(1)';
+    var available=Math.max(260, panel.clientWidth-20);
+    var natural=sheet.offsetWidth || 794;
+    var scale=Math.min(1, available/natural);
+    sheet.style.transform='scale('+scale+')';
+    panel.style.height=Math.ceil((sheet.offsetHeight||1123)*scale+22)+'px';
+  }
+  window.addEventListener('load', function(){ setTimeout(fitMobileA4Preview, 80); setTimeout(fitMobileA4Preview, 400); });
+  window.addEventListener('resize', fitMobileA4Preview);
+  window.fitMobileA4Preview=fitMobileA4Preview;
+})();
+</script>
 </body>
 </html>
