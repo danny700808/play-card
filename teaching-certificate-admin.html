@@ -11,10 +11,10 @@
 </head>
 <body onload="initPage()" class="admin-wide-page">
   <div class="cert-admin-wrap">
-    <div class="page-return-wrap" style="margin-bottom:12px"><a class="btn page-return-btn" href="form-settings-hub.html">返回表格設定</a></div>
+    <div class="page-return-wrap" style="margin-bottom:12px"><a class="btn page-return-btn" href="teaching-certificate-hub.html">返回教學證明</a></div>
     <div class="page-card">
       <div class="topbar">
-        <div><h1 class="title" style="margin:0">教學證明設定</h1><div class="muted-tip">左邊設定範本，右邊即時預覽。這裡只管理版型，不審核申請。</div></div>
+        <div><h1 class="title" style="margin:0">教學證明設定</h1><div class="muted-tip">左邊設定範本，右邊即時預覽。這裡只管理表格版型與預設文字；主管填寫與歷史紀錄請回上一層。</div></div>
         <button class="btn secondary" style="width:auto;padding:10px 14px" onclick="logout()">登出</button>
       </div>
       <div class="layout">
@@ -30,11 +30,6 @@
             <div class="row2"><div class="field"><label>未核准浮水印</label><input id="watermarkPending"></div><div class="field"><label>退回浮水印</label><input id="watermarkRejected"></div></div>
             <div class="mini-actions"><button class="btn" type="button" onclick="renderPreview()">預覽</button><button class="btn" type="button" onclick="saveTemplate()">儲存範本</button></div>
             <div id="msg" class="message"></div>
-          </div>
-          <div class="subcard" style="margin-top:16px">
-            <h2 style="margin-top:0;color:#17324d">範本歷史紀錄</h2>
-            <div class="muted-tip">儲存後會保留歷史版本，可預覽套用或刪除。</div>
-            <div id="historyList" class="history-list"></div>
           </div>
         </div>
         <div class="preview-shell">
