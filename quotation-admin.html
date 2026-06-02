@@ -75,7 +75,7 @@
       .preview-panel{order:2;width:100%;overflow:hidden;background:#f8fafc;border:1px solid #e2e8f0;border-radius:18px;padding:10px;box-sizing:border-box}
       .mobile-primary-actions{order:3;display:flex;gap:8px;flex-wrap:wrap;background:#fff;border:1px solid #e2e8f0;border-radius:18px;padding:14px;width:100%;box-sizing:border-box}
       .history-panel{order:4;width:100%}
-      .quote-preview{position:static;width:210mm;min-height:297mm;margin:0 auto;box-sizing:border-box;transform-origin:top center;border-radius:0}
+      .quote-preview{position:static;width:210mm;min-height:297mm;margin:0;box-sizing:border-box;transform-origin:top left;border-radius:0}
       .top-grid,.bottom-wrap,.signature-grid{grid-template-columns:1fr 1fr}
       .row2{grid-template-columns:1fr 1fr}
       .subcard{padding:12px}
@@ -728,13 +728,20 @@ Email：<span id="pvCustomerEmail"></span>
     var isMobile=window.matchMedia && window.matchMedia('(max-width: 980px)').matches;
     if(!isMobile){
       sheet.style.transform='';
+      sheet.style.transformOrigin='';
+      sheet.style.marginLeft='';
       panel.style.height='';
       return;
     }
     sheet.style.transform='scale(1)';
+    sheet.style.transformOrigin='top left';
+    sheet.style.marginLeft='0px';
     var available=Math.max(260, panel.clientWidth-20);
     var natural=sheet.offsetWidth || 794;
     var scale=Math.min(1, available/natural);
+    var visualWidth=natural*scale;
+    var offset=Math.max(0, Math.floor((available-visualWidth)/2));
+    sheet.style.marginLeft=offset+'px';
     sheet.style.transform='scale('+scale+')';
     panel.style.height=Math.ceil((sheet.offsetHeight||1123)*scale+22)+'px';
   }

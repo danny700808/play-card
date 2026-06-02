@@ -88,7 +88,7 @@
       .mobile-primary-actions{order:3;display:flex;gap:8px;flex-wrap:wrap;background:#fff;border:1px solid #e2e8f0;border-radius:18px;padding:14px;width:100%;box-sizing:border-box}
       .email-card{order:4;width:100%}
       .history-card{order:5;width:100%}
-      .contract-sheet{width:210mm;min-height:297mm;padding:9mm;transform-origin:top center;border-radius:0}
+      .contract-sheet{width:210mm;min-height:297mm;padding:9mm;transform-origin:top left;border-radius:0;margin:0}
       .contract-box-grid,.party-grid,.signature-grid,.row2{grid-template-columns:1fr 1fr}
       .row3{grid-template-columns:1fr 1fr}
       .subcard{padding:12px}
@@ -695,13 +695,20 @@
     var isMobile=window.matchMedia && window.matchMedia('(max-width: 1180px)').matches;
     if(!isMobile){
       sheet.style.transform='';
+      sheet.style.transformOrigin='';
+      sheet.style.marginLeft='';
       panel.style.height='';
       return;
     }
     sheet.style.transform='scale(1)';
+    sheet.style.transformOrigin='top left';
+    sheet.style.marginLeft='0px';
     var available=Math.max(260, panel.clientWidth-20);
     var natural=sheet.offsetWidth || 794;
     var scale=Math.min(1, available/natural);
+    var visualWidth=natural*scale;
+    var offset=Math.max(0, Math.floor((available-visualWidth)/2));
+    sheet.style.marginLeft=offset+'px';
     sheet.style.transform='scale('+scale+')';
     panel.style.height=Math.ceil((sheet.offsetHeight||1123)*scale+22)+'px';
   }
