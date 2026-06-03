@@ -53,7 +53,7 @@
       scheduleIdle_(async()=>applyBadgeCounts_(await fetchPendingCountsFast_(user)));
     }
 
-    function pendingCountsCacheKey_(user){ return 'pendingCounts:v3:settings:' + ((user && user.id) || 'guest'); }
+    function pendingCountsCacheKey_(user){ return 'pendingCounts:v4:settings:' + ((user && user.id) || 'guest'); }
     function readCachedPendingCounts_(user){
       try{ return JSON.parse(localStorage.getItem(pendingCountsCacheKey_(user)) || '{}') || {}; }catch(e){ return {}; }
     }
