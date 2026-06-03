@@ -8,15 +8,9 @@
   
     .website-admin-note{padding:12px 14px;border:1px solid #dfe7f1;background:#f6f8fb;border-radius:16px;color:#516b84;font-weight:800;margin:0 0 12px}.website-result-grid{display:grid;grid-template-columns:120px 1fr;gap:14px}.website-result-grid .thumb{margin:0}.website-admin-actions{display:grid;grid-template-columns:130px 170px 1fr auto;gap:10px;align-items:end;margin-top:12px}.website-admin-actions input,.website-admin-actions textarea{border:1px solid #cfd8e3;border-radius:14px;padding:10px 12px;font-size:15px;background:#fff;width:100%}.website-admin-actions textarea{min-height:44px;resize:vertical}.website-admin-actions label{font-size:13px;font-weight:900;color:#25415f;display:block;margin-bottom:5px}@media(max-width:760px){.website-result-grid{grid-template-columns:1fr}.website-admin-actions{grid-template-columns:1fr}}
 </style>
-  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
 </head>
 <body onload="initPage()" class="admin-wide-page">
-  <div class="yz-global-nav" data-yz-global-nav>
-    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
-    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
-  </div>
-
-  <div class="goods-page"><div class="panel"><div class="tabs"><button class="btn" id="tabInquiryBtn" type="button">老師詢價紀錄<span class="tab-badge" id="inquiryBadge"></span></button><button class="btn secondary" id="tabOfferBtn" type="button">公司優惠商品<span class="tab-badge" id="offerAdminBadge"></span></button></div><div id="msg" class="msg" style="display:none"></div>
+  <div class="goods-page"><div class="return-wrap"><a class="btn" href="settings.html">返回管理首頁</a></div><div class="panel"><div class="tabs"><button class="btn" id="tabInquiryBtn" type="button">老師詢價紀錄<span class="tab-badge" id="inquiryBadge"></span></button><button class="btn secondary" id="tabOfferBtn" type="button">公司優惠商品<span class="tab-badge" id="offerAdminBadge"></span></button></div><div id="msg" class="msg" style="display:none"></div>
     <section id="inquiryView"><div class="title2">老師詢價紀錄</div><div class="search-row"><input id="inqKeyword" placeholder="搜尋老師 / 商品 / 回覆內容"><select id="sourceFilter"><option value="">全部來源</option><option value="老師主動詢價">老師主動詢價</option><option value="公司商品詢問">公司商品詢問</option></select><select id="statusFilter"><option value="">全部狀態</option><option value="待處理">待處理</option><option value="待確認">待確認</option><option value="已回覆">已回覆</option><option value="可取貨">可取貨</option><option value="缺貨">缺貨</option><option value="已完成">已完成</option><option value="已取消">已取消</option></select><button class="btn secondary" id="inqSearchBtn" type="button" style="width:auto">搜尋</button></div><div class="list" id="inquiryList"></div></section>
     <section id="offerView" hidden><div class="title2">公司優惠商品</div><div class="item-card" style="margin-bottom:14px"><div class="grid"><div><label>商品名稱</label><input id="itemName"></div><div><label>分類</label><input id="category" placeholder="例如：琴弦、教材、配件"></div><div><label>關鍵字</label><input id="keywords" placeholder="方便老師搜尋"></div><div><label>排序</label><input id="sortOrder" type="number" step="1" placeholder="數字越小越前面"></div><div><label>老師價</label><input id="teacherPrice"></div><div><label>市售價</label><input id="marketPrice"></div><div><label>庫存狀態</label><select id="stockStatus"><option value="現貨">現貨</option><option value="需確認">需確認</option><option value="預購">預購</option><option value="缺貨">缺貨</option></select></div><div><label>預計到貨日</label><input id="arrivalDate" type="date"></div><div><label>可取貨日期</label><input id="pickupDate" type="date"></div><div><label>是否上架</label><select id="enabled"><option value="是">上架</option><option value="否">下架</option></select></div><div class="full"><label>優惠條件</label><input id="offerTerms" placeholder="例如：一組 $220，三組以上每組 $200"></div><div class="full"><label>商品說明</label><textarea id="description"></textarea></div><div class="full"><label>商品圖片</label><div class="image-picker"><div class="image-preview" id="itemPreview">無圖</div><div><input id="itemImage" type="file" accept="image/*"><div class="meta">可上傳商品照片，老師端會直接看到。</div></div></div></div></div><div class="btn-row"><button class="btn" id="saveItemBtn" type="button">儲存</button><button class="btn secondary" id="clearItemBtn" type="button">清空</button></div></div><div class="search-row"><input id="itemKeyword" placeholder="搜尋商品"><button class="btn secondary" id="itemSearchBtn" type="button" style="width:auto">搜尋</button></div><div class="list" id="itemList"></div></section>
   </div></div>
@@ -291,6 +285,5 @@ setTimeout(ensureAdminCleanSearchBar_,0);
   };
 })();
 </script>
-  <script src="global-nav.js?v=20260603unified1"></script>
 </body>
 </html>

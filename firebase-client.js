@@ -4499,7 +4499,7 @@
         await setDoc('notificationQueue', queueId, {queueId, messageId, eventKey:'manual.managerMessage', channel, targetEmployeeId:clean(t.employeeId || t.id), targetName:clean(t.name), targetEmail:lower(t.email), targetLineUserId:clean(t.lineUserId), title:'主管訊息', body:message, status:'pending', createdAt:serverTs(), source:'manual-manager-message'}, true);
       }
     }
-    return {ok:true, message:'已建立發送佇列。'};
+    return {ok:true, message:'已送出通知；LINE 會由後端自動推送。'};
   }
   async function getPendingProfileChangeRequests(){
     const rows = pendingRows(await all('profileChangeRequests').catch(()=>[])).map(r => Object.assign({}, r, {requestId:clean(r.requestId || r['申請ID'] || r.__id), employeeId:empIdOf(r), name:nameOf(r), email:emailOf(r), status:statusOf(r)||'待審核'}));
@@ -4699,7 +4699,7 @@
         count++;
       }
     }
-    return {ok:true, message:'已送入通知佇列，共 ' + count + ' 筆。', batchId, count};
+    return {ok:true, message:'已送出通知，共 ' + count + ' 筆；LINE 會由後端自動推送。', batchId, count};
   }
   async function enqueueFeatureNotification(featureCode, direction, payload, result){
     try{
@@ -5338,7 +5338,7 @@
       const employeeId=clean(t.employeeId || t.id);
       const email=emailOf(t);
       const lineUserId=clean(t.lineUserId);
-      const lineOk=lineUserId && truthy(t.lineNotifyEnabled);
+      const lineOk=!!lineUserId; // 主管右下角手動通知：只要已綁定 LINE User ID 就可送出，不再因 lineNotifyEnabled 未寫入而誤略過。
       for(const ch of channels){
         if(ch === 'line' && !lineOk){ skippedLine++; continue; }
         if(ch === 'email' && !email){ skippedEmail++; continue; }
@@ -5347,7 +5347,7 @@
         count++;
       }
     }
-    let msg='已建立通知佇列，共 ' + count + ' 筆。';
+    let msg='已送出通知，共 ' + count + ' 筆；LINE 會由後端自動推送。';
     if(skippedLine || skippedEmail) msg += '（略過：LINE ' + skippedLine + ' 筆、Email ' + skippedEmail + ' 筆）';
     return {ok:true,message:msg,batchId,count,skippedLine,skippedEmail};
   }

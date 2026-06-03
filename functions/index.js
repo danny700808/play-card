@@ -1,6 +1,8 @@
 'use strict';
 
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
+const { onDocumentCreated } = require('firebase-functions/v2/firestore');
+const { onSchedule } = require('firebase-functions/v2/scheduler');
 const admin = require('firebase-admin');
 
 if (!admin.apps.length) admin.initializeApp();
@@ -331,4 +333,289 @@ exports.searchTeacherWebsiteGoods = onCall({ timeoutSeconds: 60, memory: '512MiB
       attempts,
     },
   };
+});
+
+
+/* =========================================================
+ * LINE / Email 通知佇列發送器 2026-06-03
+ * ---------------------------------------------------------
+ * 前端會把通知寫入 Firestore：notificationQueue/{queueId}
+ * 這裡負責真的送出：
+ * - channel = line  → LINE Messaging API push message
+ * - channel = email → SendGrid（有設定 SENDGRID_API_KEY 時）
+ *
+ * LINE Token 建議放 functions/.env：
+ * LINE_CHANNEL_ACCESS_TOKEN=你的 LINE Messaging API Channel access token
+ *
+ * 也支援暫時放 Firestore systemSettings：
+ * key/value 其中 key 為「LINE Channel Access Token」或「LINE_CHANNEL_ACCESS_TOKEN」
+ * ========================================================= */
+
+const QUEUE_COLLECTION = 'notificationQueue';
+const SENT_STATUSES = new Set(['sent', '已發送', '已送出', 'done', 'completed', 'success']);
+const SENDING_STATUSES = new Set(['sending', '發送中']);
+const PENDING_STATUSES = new Set(['pending', '待發送', 'queued', 'queue', '待處理', 'retry']);
+
+function safeId(value) {
+  return clean(value).replace(/[\/#?\[\]]/g, '_').slice(0, 180) || db.collection('_ids').doc().id;
+}
+
+function asText(value) {
+  if (value == null) return '';
+  if (value && typeof value.toDate === 'function') return value.toDate().toISOString();
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === 'object') {
+    try { return JSON.stringify(value); } catch (err) { return String(value); }
+  }
+  return String(value);
+}
+
+function queueStatus(row = {}) {
+  return clean(row.status || row['狀態'] || '待發送');
+}
+
+function isPendingQueue(row = {}) {
+  const status = queueStatus(row);
+  if (SENT_STATUSES.has(status) || SENDING_STATUSES.has(status)) return false;
+  return !status || PENDING_STATUSES.has(status) || /^fail|失敗|error/i.test(status);
+}
+
+function queueChannel(row = {}) {
+  return clean(row.channel || row.type || row.notifyType || row['發送方式']).toLowerCase();
+}
+
+function queueTargetLineUserId(row = {}) {
+  return clean(row.targetLineUserId || row.lineUserId || row.toLineUserId || row['LINE User ID']);
+}
+
+function queueTargetEmail(row = {}) {
+  return clean(row.targetEmail || row.email || row.toEmail || row['Email']).toLowerCase();
+}
+
+function queueTitle(row = {}) {
+  return clean(row.title || row.subject || row.eventName || '柚子樂器通知');
+}
+
+function queueBody(row = {}) {
+  const body = clean(row.body || row.message || row.content || row.text || row['訊息內容']);
+  if (body) return body;
+  const title = queueTitle(row);
+  return title || '您有一則新的通知。';
+}
+
+async function getSystemSettingValue(names) {
+  const wanted = (Array.isArray(names) ? names : [names]).map(clean).filter(Boolean);
+  for (const name of wanted) {
+    try {
+      const snap = await db.collection('systemSettings').doc(name).get();
+      if (snap.exists) {
+        const data = snap.data() || {};
+        const value = clean(data.value || data.token || data.accessToken || data.secret || data.text);
+        if (value) return value;
+      }
+    } catch (err) {
+      // ignore and try list scan below
+    }
+  }
+  try {
+    const snap = await db.collection('systemSettings').limit(200).get();
+    let found = '';
+    snap.forEach((doc) => {
+      if (found) return;
+      const data = doc.data() || {};
+      const key = clean(data.key || data.name || doc.id);
+      if (wanted.includes(key)) found = clean(data.value || data.token || data.accessToken || data.secret || data.text);
+    });
+    return found;
+  } catch (err) {
+    return '';
+  }
+}
+
+async function getLineAccessToken() {
+  const token = clean(
+    process.env.LINE_CHANNEL_ACCESS_TOKEN ||
+    process.env.LINE_MESSAGING_ACCESS_TOKEN ||
+    process.env.LINE_ACCESS_TOKEN ||
+    process.env.LINE_BOT_CHANNEL_ACCESS_TOKEN ||
+    ''
+  );
+  if (token) return token;
+  return await getSystemSettingValue([
+    'LINE_CHANNEL_ACCESS_TOKEN',
+    'LINE Channel Access Token',
+    'LINE Messaging API Token',
+    'LINE Access Token',
+    'LINE Bot Access Token',
+    'LINE_TOKEN'
+  ]);
+}
+
+async function sendLinePush(row) {
+  const to = queueTargetLineUserId(row);
+  if (!to) throw new Error('缺少 LINE User ID，無法發送 LINE。');
+  const token = await getLineAccessToken();
+  if (!token) throw new Error('缺少 LINE_CHANNEL_ACCESS_TOKEN，尚未設定 LINE Messaging API Channel access token。');
+
+  const title = queueTitle(row);
+  const body = queueBody(row);
+  const text = title && body && title !== body ? `${title}\n${body}` : (body || title || '柚子樂器通知');
+  const res = await fetch('https://api.line.me/v2/bot/message/push', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      to,
+      messages: [{ type: 'text', text: text.slice(0, 4900) }],
+    }),
+  });
+  const responseText = await res.text();
+  if (!res.ok) {
+    throw new Error(`LINE API ${res.status}：${responseText.slice(0, 500)}`);
+  }
+  return { provider: 'line-messaging-api', responseStatus: res.status, responseText: responseText.slice(0, 500) };
+}
+
+async function sendEmailViaSendGrid(row) {
+  const to = queueTargetEmail(row);
+  if (!to) throw new Error('缺少 Email，無法發送 Email。');
+  const apiKey = clean(process.env.SENDGRID_API_KEY || '');
+  const from = clean(process.env.SENDGRID_FROM_EMAIL || process.env.MAIL_FROM || '');
+  const fromName = clean(process.env.SENDGRID_FROM_NAME || '柚子樂器');
+  if (!apiKey || !from) throw new Error('Email 尚未設定 SENDGRID_API_KEY / SENDGRID_FROM_EMAIL。');
+
+  const res = await fetch('https://api.sendgrid.com/v3/mail/send', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      personalizations: [{ to: [{ email: to, name: clean(row.targetName) || undefined }] }],
+      from: { email: from, name: fromName },
+      subject: queueTitle(row),
+      content: [{ type: 'text/plain', value: queueBody(row) }],
+    }),
+  });
+  const responseText = await res.text();
+  if (res.status < 200 || res.status >= 300) {
+    throw new Error(`SendGrid API ${res.status}：${responseText.slice(0, 500)}`);
+  }
+  return { provider: 'sendgrid', responseStatus: res.status, responseText: responseText.slice(0, 500) };
+}
+
+async function markQueue(docRef, data) {
+  await docRef.set(Object.assign({}, data, {
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }), { merge: true });
+}
+
+async function appendNotificationLog(queueId, data) {
+  const id = `${safeId(queueId)}_${Date.now()}`;
+  await db.collection('notificationLogs').doc(id).set(Object.assign({
+    logId: id,
+    queueId,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, data || {}), { merge: true });
+}
+
+async function processNotificationQueueDoc(docRef, row, options = {}) {
+  row = row || {};
+  const queueId = clean(row.queueId || docRef.id);
+  const channel = queueChannel(row);
+  if (!isPendingQueue(row)) return { ok: true, skipped: true, reason: `狀態不是待發送：${queueStatus(row)}` };
+  if (!['line', 'email'].includes(channel)) {
+    await markQueue(docRef, { status: '發送失敗', lastError: `不支援的發送方式：${channel || '(空白)'}` });
+    return { ok: false, skipped: true, reason: 'unsupported-channel' };
+  }
+
+  await markQueue(docRef, {
+    queueId,
+    status: '發送中',
+    sendStartedAt: admin.firestore.FieldValue.serverTimestamp(),
+    attemptCount: admin.firestore.FieldValue.increment(1),
+    processor: options.processor || 'cloud-function',
+  });
+
+  try {
+    const result = channel === 'line' ? await sendLinePush(row) : await sendEmailViaSendGrid(row);
+    await markQueue(docRef, {
+      status: '已發送',
+      sentAt: admin.firestore.FieldValue.serverTimestamp(),
+      sentAtText: new Date().toISOString(),
+      provider: result.provider,
+      responseStatus: result.responseStatus,
+      responseText: result.responseText || '',
+      lastError: '',
+    });
+    await appendNotificationLog(queueId, {
+      status: '已發送',
+      channel,
+      provider: result.provider,
+      targetEmployeeId: clean(row.targetEmployeeId),
+      targetName: clean(row.targetName),
+      targetEmail: queueTargetEmail(row),
+      targetLineUserId: queueTargetLineUserId(row),
+      title: queueTitle(row),
+      body: queueBody(row),
+    });
+    return { ok: true, sent: true, channel, queueId };
+  } catch (err) {
+    const msg = err && err.message ? err.message : String(err);
+    await markQueue(docRef, {
+      status: '發送失敗',
+      failedAt: admin.firestore.FieldValue.serverTimestamp(),
+      failedAtText: new Date().toISOString(),
+      lastError: msg,
+    });
+    await appendNotificationLog(queueId, {
+      status: '發送失敗',
+      channel,
+      error: msg,
+      targetEmployeeId: clean(row.targetEmployeeId),
+      targetName: clean(row.targetName),
+      targetEmail: queueTargetEmail(row),
+      targetLineUserId: queueTargetLineUserId(row),
+      title: queueTitle(row),
+      body: queueBody(row),
+    });
+    console.error('[notificationQueue send failed]', queueId, msg);
+    return { ok: false, error: msg, channel, queueId };
+  }
+}
+
+exports.sendNotificationQueueOnCreate = onDocumentCreated(`${QUEUE_COLLECTION}/{queueId}`, async (event) => {
+  const snap = event.data;
+  if (!snap) return null;
+  return await processNotificationQueueDoc(snap.ref, snap.data() || {}, { processor: 'onCreate' });
+});
+
+exports.flushNotificationQueue = onSchedule({ schedule: 'every 5 minutes', timeoutSeconds: 120, memory: '512MiB' }, async () => {
+  const snap = await db.collection(QUEUE_COLLECTION).where('status', 'in', ['待發送', 'pending', 'queued', 'retry']).limit(50).get();
+  const results = [];
+  for (const doc of snap.docs) {
+    results.push(await processNotificationQueueDoc(doc.ref, doc.data() || {}, { processor: 'scheduler' }));
+  }
+  return results;
+});
+
+exports.processNotificationQueueNow = onCall({ timeoutSeconds: 120, memory: '512MiB' }, async (request) => {
+  const data = request.data || {};
+  const queueId = clean(data.queueId || '');
+  const limit = Math.max(1, Math.min(Number(data.limit || 20) || 20, 50));
+  if (queueId) {
+    const ref = db.collection(QUEUE_COLLECTION).doc(queueId);
+    const snap = await ref.get();
+    if (!snap.exists) return { ok: false, message: '找不到通知佇列資料。' };
+    const result = await processNotificationQueueDoc(ref, snap.data() || {}, { processor: 'callable' });
+    return Object.assign({ ok: result.ok !== false }, result);
+  }
+  const snap = await db.collection(QUEUE_COLLECTION).where('status', 'in', ['待發送', 'pending', 'queued', 'retry']).limit(limit).get();
+  const results = [];
+  for (const doc of snap.docs) {
+    results.push(await processNotificationQueueDoc(doc.ref, doc.data() || {}, { processor: 'callable' }));
+  }
+  return { ok: true, count: results.length, results };
 });
