@@ -8,12 +8,17 @@
   <style>
     body{background:#f5f7fb}.cert-wrap{max-width:1500px;margin:0 auto;padding:18px}.page-card{background:#fff;border:1px solid #e2e8f0;border-radius:24px;padding:20px;box-shadow:0 10px 30px rgba(15,23,42,.06)}.layout{display:grid;grid-template-columns:minmax(330px,430px) minmax(0,1fr);gap:16px;align-items:start}.subcard{background:#fff;border:1px solid #e2e8f0;border-radius:20px;padding:18px;box-shadow:0 8px 24px rgba(15,23,42,.04)}.field{margin-bottom:12px}.field label{display:block;font-weight:900;color:#17324d;margin-bottom:6px}.field input,.field select{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:12px;padding:10px 12px;font-size:15px;background:#fff}.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}.mini-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.mini-actions .btn{width:auto}.muted-tip{font-size:13px;color:#64748b;line-height:1.8}.preview-shell{background:#f7fafc;border:1px solid #e2e8f0;border-radius:20px;padding:14px;position:sticky;top:16px;overflow:auto}.preview-toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}.warning-box{border:1px solid #fed7aa;background:#fff7ed;color:#9a3412;border-radius:14px;padding:12px;font-size:13px;line-height:1.8;margin-bottom:12px}.message{margin-top:10px;color:#1f7a5a;font-weight:800;font-size:13px}.modal-mask{position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9999;display:none;align-items:center;justify-content:center;padding:20px}.modal-mask.show{display:flex}.modal-card{max-width:460px;background:#fff;border-radius:24px;padding:24px;box-shadow:0 25px 80px rgba(15,23,42,.35);text-align:center}.modal-card h2{margin:0 0 10px;color:#17324d}.modal-card p{line-height:1.8;color:#475569}@media(max-width:1120px){.layout{grid-template-columns:1fr}.preview-shell{position:static}}@media(max-width:640px){.row2{grid-template-columns:1fr}.mini-actions .btn{width:100%}}
   </style>
+  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
 </head>
 <body onload="initPage()">
+  <div class="yz-global-nav" data-yz-global-nav>
+    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
+    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
+  </div>
+
   <div class="cert-wrap">
-    <div class="page-return-wrap" style="margin-bottom:12px"><a class="btn page-return-btn" href="forms-hub.html">返回表格</a></div>
     <div class="page-card">
-      <div class="topbar"><div><h1 class="title" style="margin:0">教學證明申請</h1><div class="muted-tip">填寫後可先確認右側預覽。送出後會進入待主管審核，核准後才可列印或下載加密 PDF。</div></div><button class="btn secondary" style="width:auto;padding:10px 14px" onclick="logout()">登出</button></div>
+      <div class="topbar"><div><h1 class="title" style="margin:0">教學證明申請</h1><div class="muted-tip">填寫後可先確認右側預覽。送出後會進入待主管審核，核准後才可列印或下載加密 PDF。</div></div></div>
       <div class="layout">
         <div>
           <div class="subcard">
@@ -80,5 +85,6 @@
       renderPreview();
     }
   </script>
+  <script src="global-nav.js?v=20260603unified1"></script>
 </body>
 </html>

@@ -21,10 +21,15 @@
     .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
     .status-pill{display:inline-flex;align-items:center;border-radius:999px;padding:7px 12px;font-weight:800;background:#fef3c7;color:#92400e}
   </style>
+  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
 </head>
 <body onload="init()" class="admin-wide-page">
+  <div class="yz-global-nav" data-yz-global-nav>
+    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
+    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
+  </div>
+
   <div class="container">
-    <div class="page-return-wrap"><a class="btn page-return-btn" href="approval-hub.html">返回簽核</a></div>
 
     <div class="card">
       <div class="topbar">
@@ -199,5 +204,6 @@ function scheduleIdle_(fn){if(window.requestIdleCallback)requestIdleCallback(fn,
       }catch(err){ alert(err.message||'駁回失敗'); }
     }
   </script>
+  <script src="global-nav.js?v=20260603unified1"></script>
 </body>
 </html>

@@ -121,10 +121,15 @@
     @media(max-width:560px){.leave-admin-tabs{grid-template-columns:1fr 1fr}.leave-admin-tab{padding:12px 8px;font-size:15px}.leave-record-toolbar{grid-template-columns:1fr}}
 
 </style>
+  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
 </head>
 <body onload="init()">
+  <div class="yz-global-nav" data-yz-global-nav>
+    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
+    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
+  </div>
+
   <div class="container">
-    <div class="page-return-wrap"><a class="btn page-return-btn" id="leaveHomeLink" href="dashboard.html">返回員工首頁</a></div>
     <div class="card">
       <div class="topbar">
         <div>
@@ -242,8 +247,8 @@ function applyLeaveMode(){
   qs('#pageHint').textContent = leaveApprovalMode
     ? '這一頁只負責簽核員工送出的請假申請與修改後重送的請假單。'
     : '';
-  qs('#leaveHomeLink').href = leaveApprovalMode ? 'approval-hub.html' : userHomeHref(currentUser);
-  qs('#leaveHomeLink').textContent = leaveApprovalMode ? '返回簽核' : userHomeLabel(currentUser);
+  const oldLeaveHomeLink = qs('#leaveHomeLink');
+  if(oldLeaveHomeLink){ oldLeaveHomeLink.href = leaveApprovalMode ? 'approval-hub.html' : userHomeHref(currentUser); oldLeaveHomeLink.textContent = leaveApprovalMode ? '返回簽核' : userHomeLabel(currentUser); }
   if(leaveApprovalMode){
     const pTab = qs('#leavePendingTab');
     const hTab = qs('#leaveHistoryTab');
@@ -1945,4 +1950,5 @@ async function init(){
     });
   }
 }
-</script></body></html>
+</script>  <script src="global-nav.js?v=20260603unified1"></script>
+</body></html>

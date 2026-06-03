@@ -23,10 +23,15 @@
     .empty-box{padding:18px;border:1px dashed var(--line);border-radius:16px;background:#fbfcfe;color:var(--muted);text-align:center}
     @media (max-width:560px){.category-grid,.search-box{grid-template-columns:1fr}.training-title-box{font-size:24px}.category-chip strong{padding-right:56px}}
   </style>
+  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
 </head>
 <body onload="init()">
+  <div class="yz-global-nav" data-yz-global-nav>
+    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
+    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
+  </div>
+
   <div class="container">
-    <div class="page-return-wrap"><a class="btn page-return-btn" id="trainingHomeLink" href="dashboard.html">返回員工首頁</a></div>
     <div class="card">
       <div class="topbar">
         <div>
@@ -149,8 +154,8 @@
       fillHeader();
       const user=requireLogin();
       if(!user) return;
-      qs('#trainingHomeLink').href = userHomeHref(user);
-      qs('#trainingHomeLink').textContent = userHomeLabel(user);
+      const oldTrainingHomeLink = qs('#trainingHomeLink');
+      if(oldTrainingHomeLink){ oldTrainingHomeLink.href = userHomeHref(user); oldTrainingHomeLink.textContent = userHomeLabel(user); }
       trainingData.categories = getFixedTrainingCategories();
       renderCategories();
       qs('#searchBtn').onclick=()=>renderResults(true);
@@ -177,5 +182,6 @@ async function loadTrainingHistory(){
 }
 
   </script>
+  <script src="global-nav.js?v=20260603unified1"></script>
 </body>
 </html>

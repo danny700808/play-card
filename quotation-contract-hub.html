@@ -23,10 +23,15 @@
     .page-return-wrap{margin-bottom:16px}
     .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
 </style>
+  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
 </head>
 <body onload="initPage()" class="admin-wide-page admin-quote-page">
+  <div class="yz-global-nav" data-yz-global-nav>
+    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
+    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
+  </div>
+
   <div class="container">
-    <div class="page-return-wrap"><a class="btn page-return-btn" href="settings.html">返回管理首頁</a></div>
 
     <div class="card hub-wrap">
       <div class="topbar">
@@ -34,7 +39,6 @@
           <h1 class="title" style="margin:0">其他表格</h1>
           <div class="welcome">歡迎 <span data-user-name></span></div>
         </div>
-        <button class="btn secondary" style="width:auto;padding:10px 14px" onclick="logout()">登出</button>
       </div>
       <div style="margin:8px 0 18px;color:#64748b;line-height:1.8">請先選擇要處理的區塊。這裡維持原本表格入口版面，只新增表格設定、證明審核與提醒設定。</div>
       <div class="hub-grid">
@@ -77,5 +81,6 @@
       }catch(e){}
     }
   </script>
+  <script src="global-nav.js?v=20260603unified1"></script>
 </body>
 </html>

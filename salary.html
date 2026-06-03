@@ -20,10 +20,15 @@
     .empty-note{padding:14px;border:1px dashed var(--line);border-radius:14px;color:var(--muted);background:#fff}
     @media (max-width:560px){.info-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.info-card{padding:12px}.info-card .value{font-size:15px}.wide{grid-column:1/-1}}
   </style>
+  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
 </head>
 <body onload="init()">
+  <div class="yz-global-nav" data-yz-global-nav>
+    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
+    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
+  </div>
+
   <div class="container">
-    <div class="page-return-wrap"><a class="btn page-return-btn" id="salaryHomeLink" href="dashboard.html">返回員工首頁</a></div>
     <div class="card">
       <div class="header" style="margin:0"><h1 class="title">薪資與投保資訊</h1><div class="welcome">歡迎 <span data-user-name></span></div></div>
       <div id="pageMsg" class="message"></div>
@@ -130,5 +135,6 @@
       await loadSalaryInfo();
     }
   </script>
+  <script src="global-nav.js?v=20260603unified1"></script>
 </body>
 </html>

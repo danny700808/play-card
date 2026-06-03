@@ -8,12 +8,17 @@
   <style>
     .review-wrap{max-width:1400px;margin:0 auto;padding:18px}.section-card{background:#fff;border:1px solid #e2e8f0;border-radius:24px;padding:20px;margin-top:16px;box-shadow:0 10px 30px rgba(15,23,42,.06)}.toolbar-line{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.filters{display:flex;gap:8px;flex-wrap:wrap}.filters .btn{width:auto}.review-list{display:grid;gap:10px;margin-top:14px}.review-item{border:1px solid #e2e8f0;border-radius:16px;padding:14px;background:#fbfdff;display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center}.review-title{font-weight:950;color:#17324d}.review-meta{font-size:13px;color:#64748b;line-height:1.8}.review-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.review-actions .btn{width:auto;padding:9px 12px}.count-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.count-pill{display:inline-flex;align-items:center;border-radius:999px;background:#eef7f2;color:#166534;padding:6px 10px;font-size:13px;font-weight:900}.count-pill.pending{background:#fff7ed;color:#9a3412}.count-pill.rejected{background:#fef2f2;color:#991b1b}.muted-tip{font-size:13px;color:#64748b;line-height:1.8}@media(max-width:900px){.review-item{grid-template-columns:1fr}.review-actions{justify-content:flex-start}}
   </style>
+  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
 </head>
 <body onload="initPage()" class="admin-wide-page">
+  <div class="yz-global-nav" data-yz-global-nav>
+    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
+    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
+  </div>
+
   <div class="review-wrap">
-    <div class="page-return-wrap" style="margin-bottom:12px"><a class="btn page-return-btn" href="quotation-contract-hub.html">返回其他表格</a></div>
     <div class="section-card" style="margin-top:0">
-      <div class="topbar"><div><h1 class="title" style="margin:0">證明申請審核</h1><div class="muted-tip">這裡只審核在職證明與教學證明申請；範本設定請回「表格設定」。</div></div><button class="btn secondary" style="width:auto;padding:10px 14px" onclick="logout()">登出</button></div>
+      <div class="topbar"><div><h1 class="title" style="margin:0">證明申請審核</h1><div class="muted-tip">這裡只審核在職證明與教學證明申請；範本設定請回「表格設定」。</div></div></div>
       <div class="toolbar-line"><div class="filters"><button class="btn secondary" onclick="setFilter('all')">全部</button><button class="btn" onclick="setFilter('pending')">待審核</button><button class="btn secondary" onclick="setFilter('approved')">已核准</button><button class="btn secondary" onclick="setFilter('rejected')">已退回</button></div><button class="btn secondary" style="width:auto" onclick="loadRows()">重新整理</button></div>
       <div class="count-row"><span class="count-pill pending" id="pendingCount">待審核 0</span><span class="count-pill" id="approvedCount">已核准 0</span><span class="count-pill rejected" id="rejectedCount">已退回 0</span></div>
     </div>
@@ -59,5 +64,6 @@
     async function rejectApplication(id){ const reason=prompt('請輸入退回原因：'); if(reason==null) return; try{ const r=await api('reviewCertificateApplication',{requestId:id,decision:'reject',rejectReason:reason,reviewerId:adminUser.id||adminUser.employeeId,reviewerName:adminUser.name}); if(!r.ok) throw new Error(r.message||'退回失敗'); closeModal(); await loadRows(); }catch(e){ alert(e.message); } }
     async function initPage(){ fillHeader(); adminUser=requireLogin(); if(!adminUser) return; if(!hasSettingsZoneAccess(adminUser)){location.href='dashboard.html';return;} setPortalMode('settings'); YZ_CERT.injectCertificateStyles(); await loadRows(); }
   </script>
+  <script src="global-nav.js?v=20260603unified1"></script>
 </body>
 </html>

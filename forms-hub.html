@@ -23,10 +23,15 @@
     .btn.secondary{background:#e2e8f0;color:#18314a}
     @media(max-width:640px){.forms-wrap{padding:14px 12px 28px}.forms-grid{grid-template-columns:1fr}.forms-title{font-size:26px}.form-card{padding:18px 16px;border-radius:20px;min-height:120px}.form-card-title{font-size:22px}}
   </style>
+  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
 </head>
 <body onload="initPage()">
+  <div class="yz-global-nav" data-yz-global-nav>
+    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
+    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
+  </div>
+
   <div class="forms-wrap">
-    <div style="margin-bottom:12px"><a class="btn secondary" id="backHomeBtn" href="dashboard.html">返回首頁</a></div>
     <section class="forms-head">
       <div class="forms-top">
         <div>
@@ -34,7 +39,6 @@
           <div class="forms-sub">這裡放外聘、工讀生與專職老師可使用的表格。證明文件送出後需主管審核，核准後才可列印或下載加密 PDF。</div>
           <div class="status-line" id="statusLine"></div>
         </div>
-        <button class="btn secondary" type="button" onclick="logout()">登出</button>
       </div>
     </section>
 
@@ -67,7 +71,7 @@
       const back = document.getElementById('backHomeBtn');
       if(back){
         back.href = (typeof userHomeHref === 'function') ? userHomeHref(user) : 'dashboard.html';
-        back.textContent = (typeof userHomeLabel === 'function') ? userHomeLabel(user) : '返回首頁';
+        back.textContent = (typeof userHomeLabel === 'function') ? userHomeLabel(user) : '回首頁';
       }
       try{
         if(window.YZCertificate && typeof YZCertificate.counts === 'function'){
@@ -78,5 +82,6 @@
       }catch(e){}
     }
   </script>
+  <script src="global-nav.js?v=20260603unified1"></script>
 </body>
 </html>

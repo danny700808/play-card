@@ -486,8 +486,14 @@
     }
 
   </style>
+  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
 </head>
 <body onload="init()">
+  <div class="yz-global-nav" data-yz-global-nav>
+    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
+    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
+  </div>
+
   <div class="container">
     <div class="home-shell">
       <section class="home-head-card">
@@ -504,7 +510,6 @@
             </div>
             <div class="top-tool-actions"><span class="top-tool-btn">查看</span></div>
           </a>
-          <button class="top-tool-card top-tool-logout" type="button" onclick="logout()"><span class="logout-only-text" style="color:#fff!important;-webkit-text-fill-color:#fff!important">登出</span></button>
         </div>
       </section>
 
@@ -601,5 +606,6 @@
     if(profileBtnEl) profileBtnEl.addEventListener('click', openProfileWithProgress_);
 
   </script>
+  <script src="global-nav.js?v=20260603unified1"></script>
 </body>
 </html>

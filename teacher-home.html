@@ -506,8 +506,14 @@
     }
 
   </style>
+  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
 </head>
 <body>
+  <div class="yz-global-nav" data-yz-global-nav>
+    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
+    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
+  </div>
+
   <div class="page">
     <section class="hero">
       <div class="hero-main">
@@ -523,7 +529,6 @@
           </div>
           <div class="top-tool-actions"><span class="top-tool-btn">查看</span></div>
         </a>
-        <button class="top-tool-card top-tool-logout" type="button" id="logoutBtn"><span class="logout-only-text" style="color:#fff!important;-webkit-text-fill-color:#fff!important">登出</span></button>
       </div>
     </section>
 
@@ -667,12 +672,6 @@
       if(target.indexOf('contract.html')>=0) url.searchParams.set('source','home');
       window.location.href=url.toString();
     }
-    document.getElementById('logoutBtn').addEventListener('click', function(){
-      if(typeof logout==='function'){ logout(); return; }
-      localStorage.removeItem('employeeUser');
-      localStorage.removeItem('employeeUserId');
-      window.location.href='index.html';
-    });
     document.getElementById('openAnnouncementBtn').addEventListener('click', function(){ openPage(getOpenTargets().announcement); });
     document.getElementById('openTodoBtn').addEventListener('click', function(){ openPage(getOpenTargets().todo); });
     document.getElementById('openContractBtn').addEventListener('click', function(){ openPage(getOpenTargets().contract); });
@@ -691,5 +690,6 @@
     });
     loadHome();
   </script>
+  <script src="global-nav.js?v=20260603unified1"></script>
 </body>
 </html>

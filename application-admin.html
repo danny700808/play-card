@@ -38,10 +38,15 @@
     textarea{min-height:110px;resize:vertical}.action-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.message{white-space:pre-wrap}
     @media(max-width:900px){.detail-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.settings-grid{grid-template-columns:1fr}.entry-grid{grid-template-columns:1fr}.top-return-btn{max-width:none}}@media(max-width:720px){.admin-shell{padding:10px 0 28px}.top-card h1{font-size:25px}.detail-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.table-card,.detail-card,.top-card,.settings-panel{border-radius:22px;padding:14px}.filters{gap:7px}.filter-btn{padding:8px 11px;font-size:13px}}
   </style>
+  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
 </head>
 <body onload="init()" class="admin-wide-page">
+  <div class="yz-global-nav" data-yz-global-nav>
+    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
+    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
+  </div>
+
   <div class="container admin-shell">
-    <div class="top-return-wrap"><a class="return-home-btn top-return-btn" href="settings.html">返回管理首頁</a></div>
 
     <section id="appHome" class="app-home-card">
       <div class="home-title">
@@ -67,7 +72,7 @@
     <div id="msg" class="message"></div>
 
     <section id="pageSettings" class="settings-panel hidden">
-      <div class="sub-head"><button class="small-btn secondary" type="button" onclick="showSection('home')">返回應聘管理</button></div>
+      <div class="sub-head"><button class="small-btn secondary" type="button" onclick="showSection('home')">應聘管理首頁</button></div>
       <div class="detail-head"><div><h2>應聘首頁設定</h2><div class="muted">設定前台應聘頁最上方的招募圖片與規則說明。儲存新設定後，舊設定會保留在歷史清單。</div></div></div>
       <div class="settings-grid">
         <div class="field"><label>應聘狀態</label><select id="cfgApplicationStatus" class="status-select"><option>開放中</option><option>暫停應聘</option></select><div class="mini">暫停應聘時，前台會顯示「目前沒有應聘老師的需求。」並隱藏表單。</div></div>
@@ -81,7 +86,7 @@
     </section>
 
     <section id="reviewPanel" class="review-panel hidden">
-      <div class="sub-head"><button class="small-btn secondary" type="button" onclick="showSection('home')">返回應聘管理</button></div>
+      <div class="sub-head"><button class="small-btn secondary" type="button" onclick="showSection('home')">應聘管理首頁</button></div>
       <section class="top-card review-title-card">
         <div><h1>應聘履歷審核</h1><div class="muted">查看投遞資料、作品連結與附件，並處理審核結果。</div></div>
       </section>
@@ -300,5 +305,6 @@
       }catch(e){ setMsg(msg,e.message||'儲存失敗',true); }
     }
   </script>
+  <script src="global-nav.js?v=20260603unified1"></script>
 </body>
 </html>

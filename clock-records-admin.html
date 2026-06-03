@@ -24,10 +24,15 @@
     .empty-box{padding:28px 18px;text-align:center;color:#64748b}
     .meta-line{display:flex;gap:12px;flex-wrap:wrap;color:#64748b;margin-top:10px}
   </style>
+  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
 </head>
 <body onload="init()" class="admin-wide-page">
+  <div class="yz-global-nav" data-yz-global-nav>
+    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
+    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
+  </div>
+
   <div class="container">
-    <div class="page-return-wrap"><a class="btn page-return-btn" href="approval-hub.html">返回簽核</a></div>
     <div class="card">
       <div class="topbar">
         <div class="header" style="margin:0">
@@ -276,5 +281,6 @@
     }
     function escapeHtml(v){return String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
   </script>
+  <script src="global-nav.js?v=20260603unified1"></script>
 </body>
 </html>

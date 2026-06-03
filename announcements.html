@@ -52,10 +52,15 @@
     .announcement-toolbar-actions{display:none!important}
 
   </style>
+  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
 </head>
 <body onload="initPage()">
+  <div class="yz-global-nav" data-yz-global-nav>
+    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
+    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
+  </div>
+
   <div class="container">
-    <div class="page-return-wrap"><a class="btn page-return-btn" id="backBtn" href="dashboard.html">返回員工首頁</a></div>
     <div class="card"><div class="toolbar"><div><h1 class="title" style="margin:0">公告列表</h1><div class="welcome">歡迎 <span data-user-name></span></div></div><div style="display:flex;gap:10px;flex-wrap:wrap"></div></div><div id="msg" class="message"></div>
         <section class="announcement-section-card">
           <h2 class="announcement-section-title">未讀 / 待處理公告</h2>
@@ -98,7 +103,8 @@
     async function submitReply(id){const txt=(qs('#reply_'+id)||{}).value||''; if(!txt.trim()){setMsg(qs('#msg'),'請先輸入回覆內容。',true);return} const btn=qs('#replyBtn_'+id); if(btn)btn.disabled=true; try{const r=await api('submitAnnouncementReply',{userId:currentUser.id,announcementId:id,replyText:txt.trim()}); if(!r.ok)throw new Error(r.message||'送出失敗'); setMsg(qs('#msg'),'已送出回覆。'); loadAnnouncements(); if(typeof activateHistoryColoring_==='function')activateHistoryColoring_('#historyList');}catch(e){setMsg(qs('#msg'),e.message||'送出失敗',true); if(btn)btn.disabled=false}}
     async function loadAnnouncements(){try{const r=await api('getAnnouncements',{userId:currentUser.id,historyMode:'否'}); if(!r.ok)throw new Error(r.message||'讀取失敗'); const rows=(r.rows||[]).filter(x=>!x.isRead && !(x.myReply&&x.myReply.replyText)); qs('#list').innerHTML=rows.length?rows.map(rowHtml).join(''):'<div class="empty">目前沒有未讀或待回覆公告。</div>'; setMsg(qs('#msg'),'');}catch(e){setMsg(qs('#msg'),e.message||'讀取失敗',true); qs('#list').innerHTML='<div class="empty">無法讀取公告</div>'}}
     async function loadAnnouncementHistory(){const box=qs('#historyList'); box.innerHTML='<div class="empty">讀取中...</div>'; try{const payload=buildHistoryQueryPayload_?buildHistoryQueryPayload_({userId:currentUser.id},'#historyStart','#historyEnd'):{userId:currentUser.id,historyMode:'是'}; const r=await api('getAnnouncements',payload); if(!r.ok)throw new Error(r.message||'讀取失敗'); const rows=(r.rows||[]).filter(x=>x.isRead || (x.myReply&&x.myReply.replyText)); box.innerHTML=rows.length?rows.map(rowHtml).join(''):'<div class="empty">這個日期區間沒有歷史公告。</div>'}catch(e){box.innerHTML='<div class="empty">無法讀取歷史公告。</div>'}}
-    function initPage(){fillHeader(); currentUser=requireLogin(); if(!currentUser)return; qs('#backBtn').href=userHomeHref(currentUser); qs('#backBtn').textContent=userHomeLabel(currentUser); if(typeof enforceHistoryDateRange_==='function')enforceHistoryDateRange_('#historyStart','#historyEnd'); loadAnnouncements(); if(typeof activateHistoryColoring_==='function')activateHistoryColoring_('#historyList');}
+    function initPage(){fillHeader(); currentUser=requireLogin(); if(!currentUser)return; const oldBackBtn=qs('#backBtn'); if(oldBackBtn){oldBackBtn.href=userHomeHref(currentUser); oldBackBtn.textContent=userHomeLabel(currentUser);}  if(typeof enforceHistoryDateRange_==='function')enforceHistoryDateRange_('#historyStart','#historyEnd'); loadAnnouncements(); if(typeof activateHistoryColoring_==='function')activateHistoryColoring_('#historyList');}
   </script>
+  <script src="global-nav.js?v=20260603unified1"></script>
 </body>
 </html>

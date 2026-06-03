@@ -125,8 +125,13 @@ textarea{min-height:96px;resize:vertical}
 .record-preview.show{display:block}
 @media(max-width:720px){.upload-grid{grid-template-columns:1fr}}
 
-</style></head><body class="admin-wide-page">
-  <div class="page-return-wrap"><a class="page-return-btn" href="settings.html">返回管理首頁</a></div>
+</style>  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
+</head><body class="admin-wide-page">
+  <div class="yz-global-nav" data-yz-global-nav>
+    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
+    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
+  </div>
+
 
 <main><div id="msg"></div>
 <div class="card"><div class="section-title"><span class="num">1</span>教材基本資料</div><div class="grid">
@@ -361,4 +366,5 @@ document.addEventListener('DOMContentLoaded',function(){
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="firebase-client.js?v=admin-final-20260530b"></script>
+  <script src="global-nav.js?v=20260603unified1"></script>
 </body></html>

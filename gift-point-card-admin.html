@@ -71,17 +71,21 @@
       @page{size:A4 portrait;margin:0}
     }
   </style>
+  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
 </head>
 <body>
+  <div class="yz-global-nav" data-yz-global-nav>
+    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
+    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
+  </div>
+
   <div class="gift-admin-wrap">
-    <div class="page-return-wrap" style="margin-bottom:12px"><a class="btn" href="form-settings-hub.html">返回表格設定</a></div>
     <div class="gift-page-card">
       <div class="gift-topbar">
         <div>
           <h1 style="margin:0;color:#17324d">禮物集點單</h1>
           <div class="muted-tip" style="margin-top:6px">左邊調整文字，右邊可預覽；按「儲存」後，下次進入會直接套用這份文字與設定。</div>
         </div>
-        <button class="btn secondary" type="button" onclick="safeLogout()">登出</button>
       </div>
 
       <div class="gift-layout">
@@ -318,5 +322,6 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="firebase-client.js?v=20260530giftcardsavefix"></script>
   <script src="app.js?v=20260530giftcardsavefix"></script>
+  <script src="global-nav.js?v=20260603unified1"></script>
 </body>
 </html>

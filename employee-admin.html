@@ -14,15 +14,20 @@
     @media(max-width:900px){.grid{grid-template-columns:1fr}.list{max-height:none}.history{grid-template-columns:repeat(2,minmax(0,1fr))}.topbar{align-items:flex-start;flex-direction:column}.category-grid{grid-template-columns:1fr}.form-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.field label{font-size:12px;margin-bottom:4px}.field input,.field select,.field textarea{font-size:13px;padding:9px 8px;border-radius:10px}.field.full{grid-column:1/-1}.checkline{grid-column:1/-1;margin-top:6px;font-size:13px}.detail-title{font-size:19px}.detail-sub{font-size:13px}.mobile-hint{display:block}.panel{padding:14px}.wrap{padding:14px}.btn{padding:10px 12px;font-size:13px}.notice{font-size:13px}}
     @media(max-width:420px){.form-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.field input,.field select,.field textarea{font-size:12px;padding:8px 7px}.field label{font-size:11px}.emp-meta{font-size:12px}.category-card{min-height:128px;padding:18px}.cat-title{font-size:20px}}
   </style>
+  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
 </head>
 <body onload="init()">
+  <div class="yz-global-nav" data-yz-global-nav>
+    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
+    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
+  </div>
+
   <div class="wrap">
     <div class="topbar">
       <div>
         <h1 class="title">員工管理</h1>
         <div class="sub">員工主檔、帳號狀態、離職與隱藏控管。先依身分類型分類，再選人查看與修改資料。</div>
       </div>
-      <div class="actions" style="margin-top:0"><button class="btn ghost" type="button" onclick="location.href='settings.html'">返回管理首頁</button></div>
     </div>
 
     <section class="panel" id="categoryHome">
@@ -45,7 +50,7 @@
             <div class="category-name" id="currentCategoryTitle">人員清單</div>
             <div class="info-note" id="currentCategoryDesc"></div>
           </div>
-          <div class="category-actions"><button class="btn ghost" type="button" onclick="backToCategories()">返回分類</button></div>
+          <div class="category-actions"><button class="btn ghost" type="button" onclick="backToCategories()">分類清單</button></div>
         </div>
         <div class="toolbar">
           <input id="keyword" type="search" placeholder="搜尋姓名、Email、身分" oninput="debouncedLoad()" />
@@ -256,5 +261,6 @@
       }catch(err){box.innerHTML='<div class="empty" style="margin-top:12px">讀取歷史統計失敗：'+esc(err.message||err)+'</div>'}
     }
   </script>
+  <script src="global-nav.js?v=20260603unified1"></script>
 </body>
 </html>
