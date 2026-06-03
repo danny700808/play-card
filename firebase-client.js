@@ -6416,3 +6416,102 @@
   };
   global.YZFirebase = fb;
 })(window);
+
+/* 請假簽核：待簽核與歷史紀錄 Firebase 同步修正 */
+(function(global){
+  const fb = global.YZFirebase;
+  if(!fb || fb.__leaveApprovalHistoryPatch) return;
+  fb.__leaveApprovalHistoryPatch = true;
+  const oldHandle = fb.handleApi;
+  function clean(v){ return String(v == null ? '' : v).trim(); }
+  function lower(v){ return clean(v).toLowerCase(); }
+  function db(){
+    const cfg = global.APP_CONFIG && global.APP_CONFIG.FIREBASE_CONFIG;
+    if(!cfg || !global.firebase) throw new Error('Firebase 尚未啟用');
+    if(!global.firebase.apps.length) global.firebase.initializeApp(cfg);
+    return global.firebase.firestore();
+  }
+  async function all(col){ const snap = await db().collection(col).get(); const rows=[]; snap.forEach(doc=>rows.push(Object.assign({__id:doc.id}, doc.data()||{}))); return rows; }
+  function dateText(v){
+    if(!v) return '';
+    if(v && typeof v.toDate === 'function') v = v.toDate();
+    if(v instanceof Date && !isNaN(v.getTime())){
+      const y=v.getFullYear(), m=String(v.getMonth()+1).padStart(2,'0'), d=String(v.getDate()).padStart(2,'0');
+      return `${y}-${m}-${d}`;
+    }
+    const s=clean(v);
+    const m=s.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
+    if(m) return `${m[1]}-${String(m[2]).padStart(2,'0')}-${String(m[3]).padStart(2,'0')}`;
+    return s;
+  }
+  function dateTimeText(v){
+    if(!v) return '';
+    if(v && typeof v.toDate === 'function') v = v.toDate();
+    if(v instanceof Date && !isNaN(v.getTime())){
+      const y=v.getFullYear(), m=String(v.getMonth()+1).padStart(2,'0'), d=String(v.getDate()).padStart(2,'0');
+      const hh=String(v.getHours()).padStart(2,'0'), mm=String(v.getMinutes()).padStart(2,'0');
+      return `${y}-${m}-${d} ${hh}:${mm}`;
+    }
+    return clean(v);
+  }
+  function statusOf(o){
+    const s=clean(o.status || o['狀態'] || o.reviewStatus || o.approvalStatus);
+    if(!s) return '待審核';
+    if(['pending','待主管審核','審核中','待簽核'].includes(lower(s))) return '待審核';
+    if(['approved','approve','核准','同意'].includes(lower(s))) return '已核准';
+    if(['rejected','reject','駁回','退回'].includes(lower(s))) return '已駁回';
+    return s;
+  }
+  function normalizeLeave(o){
+    o=o||{};
+    const start = dateText(o.startDate || o.leaveDate || o.date || o['開始日期'] || o['請假日期']);
+    const end = dateText(o.endDate || o['結束日期']) || start;
+    const reason = clean(o.reason || o.leaveName || o['請假原因'] || o.leaveType || '請假');
+    const hours = Number(o.hours || o.leaveHours || o['請假時數'] || 0) || 0;
+    const startTime = clean(o.startTime || o['請假開始時間']);
+    const endTime = clean(o.endTime || o['請假結束時間']);
+    const simpleText = clean(o.simpleText) || `${reason}${hours ? '｜' + hours + '小時' : ''}${startTime || endTime ? '｜' + startTime + '-' + endTime : ''}`;
+    return {
+      requestId: clean(o.requestId || o.leaveId || o['請假ID'] || o.__id),
+      employeeId: clean(o.employeeId || o.userId || o['員工ID']),
+      name: clean(o.name || o.employeeName || o['姓名'] || o.applicantName || '未命名'),
+      email: lower(o.email || o.Email || o['Email']),
+      reason,
+      leaveCode: clean(o.leaveCode || o['假別代碼']),
+      leaveDate: start,
+      startDate: start,
+      endDate: end,
+      startTime,
+      endTime,
+      session: clean(o.session || o['請假時段']),
+      hours,
+      note: clean(o.note || o['備註']),
+      attachmentUrl: clean(o.attachmentUrl || o['附件連結']),
+      status: statusOf(o),
+      rejectReason: clean(o.rejectReason || o['駁回理由'] || o.reasonText),
+      requestedAt: dateTimeText(o.requestedAt || o.createdAt || o['建立時間']),
+      createdAt: dateTimeText(o.createdAt || o['建立時間']),
+      reviewedAt: dateTimeText(o.reviewedAt || o.approvedAt || o.rejectedAt || o.updatedAt || o['審核時間']),
+      updatedAt: dateTimeText(o.updatedAt || o['更新時間']),
+      simpleText
+    };
+  }
+  function isPending(o){ return statusOf(o) === '待審核'; }
+  async function getPendingLeaveApprovals(){
+    const rows = (await all('leaveRequests').catch(()=>[])).map(normalizeLeave).filter(isPending);
+    rows.sort((a,b)=>String(a.leaveDate||'').localeCompare(String(b.leaveDate||'')) || String(a.createdAt||'').localeCompare(String(b.createdAt||'')));
+    return {ok:true, rows, source:'firebase-leave-approval-unified'};
+  }
+  async function getAdminLeaveRecords(){
+    const rows = (await all('leaveRequests').catch(()=>[])).map(normalizeLeave).filter(r=>r.requestId || r.employeeId || r.name);
+    rows.sort((a,b)=>String(b.leaveDate||'').localeCompare(String(a.leaveDate||'')) || String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
+    return {ok:true, rows, source:'firebase-leave-history-unified'};
+  }
+  fb.handleApi = async function(action,payload){
+    const a = clean(action);
+    if(a === 'getPendingLeaveApprovals') return await getPendingLeaveApprovals(payload||{});
+    if(a === 'getAdminLeaveRecords') return await getAdminLeaveRecords(payload||{});
+    if(typeof oldHandle === 'function') return await oldHandle(action,payload||{});
+    return null;
+  };
+})(window);
