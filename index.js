@@ -5,10 +5,9 @@ const { onDocumentCreated } = require('firebase-functions/v2/firestore');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const admin = require('firebase-admin');
 
-// 2026-06-03 CORS 修正：
-// 前端目前從 GitHub Pages 呼叫 Firebase Callable Function。
-// 若沒有明確允許來源，瀏覽器會在 OPTIONS preflight 階段擋下請求，
-// Console 會出現 No 'Access-Control-Allow-Origin' / net::ERR_FAILED。
+
+// 2026-06-03：允許 GitHub Pages / Firebase Hosting 呼叫 Callable Functions。
+// 這是老師端「公司官網詢價」從前端呼叫 Firebase Function 的必要設定。
 const HTTPS_CALLABLE_OPTIONS = {
   region: 'us-central1',
   invoker: 'public',
@@ -50,7 +49,9 @@ function config() {
     apiBasePath: clean(process.env.EASYSTORE_API_BASE_PATH || DEFAULT_API_BASE_PATH) || DEFAULT_API_BASE_PATH,
     accessToken: clean(process.env.EASYSTORE_ACCESS_TOKEN || LEGACY_EASYSTORE_ACCESS_TOKEN),
     defaultSearchLimit: 12,
-    maxPages: 8,
+    // EasyStore 商品多時，原本只掃 8 頁會漏掉後面商品。
+    // 這裡提高到 60 頁，最多約掃 3000 筆。
+    maxPages: 60,
     fetchLimit: 50,
   };
 }
@@ -268,6 +269,248 @@ async function fetchProductsPage(page, fetchLimit) {
   };
 }
 
+
+function decodeHtml(value) {
+  return clean(value)
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&#(\d+);/g, (_, n) => {
+      try { return String.fromCharCode(Number(n)); } catch (err) { return _; }
+    });
+}
+
+function stripHtml(value) {
+  return decodeHtml(String(value == null ? '' : value)
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim());
+}
+
+function absUrl(url) {
+  const cfg = config();
+  const base = cfg.storeUrl;
+  let u = decodeHtml(clean(url));
+  if (!u) return '';
+  if (/^\/\//.test(u)) return `https:${u}`;
+  if (/^https?:\/\//i.test(u)) return u;
+  if (u[0] === '/') return `${base}${u}`;
+  return `${base}/${u}`;
+}
+
+function removeQueryNoise(url) {
+  const u = clean(url);
+  if (!u) return '';
+  try {
+    const obj = new URL(u);
+    obj.searchParams.delete('srsltid');
+    obj.searchParams.delete('utm_source');
+    obj.searchParams.delete('utm_medium');
+    obj.searchParams.delete('utm_campaign');
+    return obj.toString();
+  } catch (err) {
+    return u.split('?')[0];
+  }
+}
+
+async function fetchTextUrl(url) {
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: {
+      Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'User-Agent': 'Mozilla/5.0 YouziMusicWebsiteQuoteBot/1.0',
+    },
+  });
+  const text = await res.text();
+  return { url, ok: res.status >= 200 && res.status < 300, status: res.status, text };
+}
+
+function htmlAttr(html, patterns) {
+  for (const re of patterns) {
+    const m = String(html || '').match(re);
+    if (m && clean(m[1])) return decodeHtml(m[1]);
+  }
+  return '';
+}
+
+function parseProductFromHtml(html, url) {
+  const raw = String(html || '');
+  let name = htmlAttr(raw, [
+    /<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i,
+    /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i,
+    /<h1[^>]*>([\s\S]*?)<\/h1>/i,
+    /<title[^>]*>([\s\S]*?)<\/title>/i,
+  ]);
+  name = stripHtml(name).replace(/\s*[|｜-]\s*柚子樂器.*$/i, '').trim();
+
+  let imageUrl = htmlAttr(raw, [
+    /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i,
+    /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i,
+    /<img[^>]+src=["']([^"']+)["'][^>]*(?:product|商品|image)/i,
+  ]);
+  imageUrl = absUrl(imageUrl);
+
+  let price = htmlAttr(raw, [
+    /<meta[^>]+property=["']product:price:amount["'][^>]+content=["']([^"']+)["']/i,
+    /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']product:price:amount["']/i,
+  ]);
+  if (!price) {
+    const text = stripHtml(raw);
+    const pm = text.match(/(?:NT\$|NTD|\$)\s*([0-9][0-9,]*(?:\.\d+)?)/i);
+    if (pm) price = pm[1];
+  }
+
+  const visibleText = stripHtml(raw).slice(0, 2000);
+  let stockStatus = '';
+  if (/售完|缺貨|已售完|Sold\s*Out/i.test(visibleText)) stockStatus = '缺貨 / 售完';
+  else if (/加入購物車|Add\s*to\s*cart/i.test(visibleText)) stockStatus = '可加入購物車';
+
+  const cleanUrl = removeQueryNoise(absUrl(url));
+  const slug = cleanUrl.split('/products/')[1] || '';
+  return {
+    productId: clean(slug.split(/[?#]/)[0] || cleanUrl),
+    name: name || decodeURIComponent(clean(slug)).replace(/[-_]/g, ' ') || '官網商品',
+    brand: '',
+    category: '',
+    imageUrl,
+    price,
+    priceText: moneyText(price),
+    marketPrice: price,
+    marketPriceText: moneyText(price),
+    stockStatus,
+    variantSummary: '',
+    summary: '',
+    note: visibleText.slice(0, 300),
+    url: cleanUrl,
+    websiteSource: '公司官網公開頁面',
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function productLinksFromHtml(html, keyword, options = {}) {
+  const raw = String(html || '');
+  const tokens = searchTokens(keyword);
+  const out = [];
+  const seen = new Set();
+  const re = /href=["']([^"']*\/products\/[^"'#?]+[^"']*)["']/gi;
+  let m;
+  while ((m = re.exec(raw))) {
+    const link = removeQueryNoise(absUrl(m[1]));
+    if (!link || seen.has(link)) continue;
+    const start = Math.max(0, m.index - 900);
+    const end = Math.min(raw.length, m.index + 1200);
+    const nearby = stripHtml(raw.slice(start, end));
+    const norm = normalizeSearchText(`${link} ${nearby}`);
+    const matched = options.takeAll || !tokens.length || tokens.some((t) => norm.includes(t));
+    if (!matched) continue;
+    seen.add(link);
+    out.push({ url: link, nearby });
+  }
+  return out;
+}
+
+async function searchPublicWebsiteProducts(keyword, limit) {
+  const cfg = config();
+  const base = cfg.storeUrl;
+  const kw = clean(keyword);
+  const tokens = searchTokens(kw);
+  const searchUrls = [
+    `${base}/search?q=${encodeURIComponent(kw)}`,
+    `${base}/search?type=product&q=${encodeURIComponent(kw)}`,
+    `${base}/collections/all?q=${encodeURIComponent(kw)}`,
+    `${base}/collections/all?search=${encodeURIComponent(kw)}`,
+  ];
+  const collectionPages = [];
+  for (let p = 1; p <= 12; p++) collectionPages.push(`${base}/collections/all${p > 1 ? `?page=${p}` : ''}`);
+
+  const links = [];
+  const seenLinks = new Set();
+  const attempts = [];
+  const addLinks = (items) => {
+    for (const item of items) {
+      const u = removeQueryNoise(item.url);
+      if (!u || seenLinks.has(u)) continue;
+      seenLinks.add(u);
+      links.push(item);
+      if (links.length >= Math.max(limit * 4, 20)) break;
+    }
+  };
+
+  for (const url of searchUrls) {
+    try {
+      const res = await fetchTextUrl(url);
+      attempts.push({ url, status: res.status, ok: res.ok, links: 0, mode: 'public-search' });
+      if (!res.ok) continue;
+      const got = productLinksFromHtml(res.text, kw, { takeAll: true });
+      attempts[attempts.length - 1].links = got.length;
+      addLinks(got);
+      if (links.length >= limit) break;
+    } catch (err) {
+      attempts.push({ url, status: 0, ok: false, error: String(err && err.message || err), mode: 'public-search' });
+    }
+  }
+
+  if (links.length < limit) {
+    for (const url of collectionPages) {
+      try {
+        const res = await fetchTextUrl(url);
+        attempts.push({ url, status: res.status, ok: res.ok, links: 0, mode: 'public-collection' });
+        if (!res.ok) continue;
+        const got = productLinksFromHtml(res.text, kw, { takeAll: false });
+        attempts[attempts.length - 1].links = got.length;
+        addLinks(got);
+        if (links.length >= Math.max(limit * 2, 12)) break;
+        // 若該頁完全沒有商品連結，通常代表已超過最後一頁。
+        if (!productLinksFromHtml(res.text, '', { takeAll: true }).length && url.includes('?page=')) break;
+      } catch (err) {
+        attempts.push({ url, status: 0, ok: false, error: String(err && err.message || err), mode: 'public-collection' });
+      }
+    }
+  }
+
+  const rows = [];
+  const seenRows = new Set();
+  for (const item of links) {
+    if (rows.length >= limit) break;
+    try {
+      const page = await fetchTextUrl(item.url);
+      attempts.push({ url: item.url, status: page.status, ok: page.ok, mode: 'public-product' });
+      if (!page.ok) continue;
+      const row = parseProductFromHtml(page.text, item.url);
+      const norm = normalizeSearchText(`${row.name} ${row.note} ${row.url} ${item.nearby}`);
+      if (tokens.length && !tokens.some((t) => norm.includes(t))) continue;
+      const key = clean(row.url || row.productId || row.name);
+      if (!key || seenRows.has(key)) continue;
+      seenRows.add(key);
+      rows.push(row);
+    } catch (err) {
+      attempts.push({ url: item.url, status: 0, ok: false, error: String(err && err.message || err), mode: 'public-product' });
+    }
+  }
+
+  return { rows, attempts, linkCount: links.length };
+}
+
+function mergeRowsUnique(primaryRows, extraRows, limit) {
+  const rows = [];
+  const seen = new Set();
+  const add = (row) => {
+    if (!row) return;
+    const key = clean(row.productId || row.url || row.name).toLowerCase();
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    rows.push(row);
+  };
+  (primaryRows || []).forEach(add);
+  (extraRows || []).forEach(add);
+  return rows.slice(0, limit);
+}
+
 async function cacheRows(rows) {
   if (!rows || !rows.length) return;
   const batch = db.batch();
@@ -283,7 +526,7 @@ async function cacheRows(rows) {
   await batch.commit();
 }
 
-exports.searchTeacherWebsiteGoods = onCall(Object.assign({}, HTTPS_CALLABLE_OPTIONS, { timeoutSeconds: 60, memory: '512MiB' }), async (request) => {
+exports.searchTeacherWebsiteGoods = onCall(Object.assign({}, HTTPS_CALLABLE_OPTIONS, { timeoutSeconds: 180, memory: '1GiB' }), async (request) => {
   const data = request.data || {};
   const keyword = clean(data.keyword || '');
   if (!keyword) return { ok: true, rows: [], list: [], message: '請輸入搜尋關鍵字。' };
@@ -291,7 +534,7 @@ exports.searchTeacherWebsiteGoods = onCall(Object.assign({}, HTTPS_CALLABLE_OPTI
   const cfg = config();
   const limit = Math.max(1, Math.min(Number(data.limit || cfg.defaultSearchLimit || 12) || 12, 50));
   const fetchLimit = Math.max(10, Math.min(Number(data.fetchLimit || cfg.fetchLimit || 50) || 50, 100));
-  const maxPages = Math.max(1, Math.min(Number(data.maxPages || cfg.maxPages || 8) || 8, 20));
+  const maxPages = Math.max(1, Math.min(Number(data.maxPages || cfg.maxPages || 60) || 60, 100));
   const tokens = searchTokens(keyword);
   const rows = [];
   const seen = new Set();
@@ -300,6 +543,7 @@ exports.searchTeacherWebsiteGoods = onCall(Object.assign({}, HTTPS_CALLABLE_OPTI
   let hasProducts = false;
   let rawProductCount = 0;
 
+  // 第一層：正式 EasyStore API。這會拿到比較乾淨的價格、圖片與商品資料。
   for (let page = 1; page <= maxPages; page++) {
     const pageRes = await fetchProductsPage(page, fetchLimit);
     attempts.push({
@@ -309,6 +553,7 @@ exports.searchTeacherWebsiteGoods = onCall(Object.assign({}, HTTPS_CALLABLE_OPTI
       count: pageRes.count,
       preview: pageRes.preview,
       error: pageRes.error || '',
+      mode: 'easystore-api',
     });
     if (pageRes.status >= 200 && pageRes.status < 300) connected = true;
     if (!pageRes.ok) {
@@ -332,23 +577,51 @@ exports.searchTeacherWebsiteGoods = onCall(Object.assign({}, HTTPS_CALLABLE_OPTI
     if (pageRes.count < fetchLimit) break;
   }
 
-  const finalRows = rows.slice(0, limit);
+  // 第二層：公開官網頁面備援。
+  // 有些商品在公開官網看得到，但 API 權限、分頁或商品欄位沒有回來；這時改掃官網公開頁。
+  let publicRows = [];
+  let publicDebug = null;
+  if (rows.length < limit) {
+    try {
+      const publicRes = await searchPublicWebsiteProducts(keyword, limit - rows.length);
+      publicRows = publicRes.rows || [];
+      publicDebug = {
+        rows: publicRows.length,
+        linkCount: publicRes.linkCount || 0,
+        attempts: (publicRes.attempts || []).slice(0, 30),
+      };
+    } catch (err) {
+      publicDebug = { rows: 0, error: String(err && err.message || err) };
+    }
+  }
+
+  const finalRows = mergeRowsUnique(rows, publicRows, limit);
   try { await cacheRows(finalRows); } catch (err) { console.warn('websiteProducts cache failed:', err); }
+
+  let message = '已完成官網商品搜尋。';
+  if (!finalRows.length) {
+    if (hasProducts) message = 'API 已讀到商品，但目前關鍵字沒有命中；公開官網備援也沒有找到。';
+    else if (connected) message = 'API 有回應，但目前沒有讀到商品列表；公開官網備援也沒有找到。';
+    else message = '目前無法連到 EasyStore API；公開官網備援也沒有找到。';
+  }
 
   return {
     ok: true,
     rows: finalRows,
     list: finalRows,
-    source: 'Firebase Function / EasyStore API',
-    message: finalRows.length ? '已完成官網商品搜尋。' : (hasProducts ? 'API 已讀到商品，但目前關鍵字沒有命中。' : 'API 有回應，但目前沒有讀到商品列表。'),
+    source: finalRows.length && rows.length === 0 ? '公司官網公開頁面備援' : 'Firebase Function / EasyStore API + 官網公開頁面備援',
+    message,
     debug: {
       connected,
       hasProducts,
       totalRows: finalRows.length,
+      apiMatchedRows: rows.length,
+      publicMatchedRows: publicRows.length,
       rawProductCount,
       endpoint: '/api/3.0/products.json',
       tokens,
       attempts,
+      publicDebug,
     },
   };
 });
