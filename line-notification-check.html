@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>LINE 自動通知檢查</title>
-  <link rel="stylesheet" href="style.css?v=20260606lineauto">
+  <link rel="stylesheet" href="style.css?v=20260606primaryline">
   <style>
-    body{background:#f6f8fb}.ln-page{max-width:1100px;margin:0 auto;padding:20px 14px 40px}.ln-card{background:#fff;border:1px solid #dbe5f1;border-radius:22px;padding:18px;margin-bottom:16px;box-shadow:0 10px 28px rgba(15,23,42,.05)}.ln-title{font-size:26px;font-weight:950;color:#18314a;margin:0 0 8px}.ln-sub{color:#64748b;line-height:1.7}.ln-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.ln-stat{border:1px solid #e2e8f0;border-radius:16px;padding:14px;background:#f8fafc}.ln-stat b{display:block;font-size:28px;color:#1f7a5a}.ln-list{display:grid;gap:8px}.ln-row{border:1px solid #e2e8f0;border-radius:14px;padding:10px 12px;background:#fff;display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.ln-row small{display:block;color:#64748b;line-height:1.6}.ln-pill{display:inline-flex;border-radius:999px;padding:5px 9px;font-size:12px;font-weight:950;background:#ecfdf3;color:#166534}.ln-pill.bad{background:#fff1f2;color:#b42318}.ln-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}.ln-actions button,.ln-back{border:0;border-radius:14px;background:#1f7a5a;color:#fff;font-weight:950;padding:11px 14px;cursor:pointer;text-decoration:none;display:inline-flex}.ln-actions .secondary,.ln-back.secondary{background:#eef2f6;color:#18314a}.ln-msg{font-weight:950;margin-top:10px;color:#1f7a5a}.ln-msg.err{color:#b42318}@media(max-width:760px){.ln-grid{grid-template-columns:1fr 1fr}.ln-row{display:grid}}@media(max-width:440px){.ln-grid{grid-template-columns:1fr}}
+    body{background:#f6f8fb}.ln-page{max-width:1100px;margin:0 auto;padding:20px 14px 40px}.ln-card{background:#fff;border:1px solid #dbe5f1;border-radius:22px;padding:18px;margin-bottom:16px;box-shadow:0 10px 28px rgba(15,23,42,.05)}.ln-title{font-size:26px;font-weight:950;color:#18314a;margin:0 0 8px}.ln-sub{color:#64748b;line-height:1.7}.ln-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.ln-stat{border:1px solid #e2e8f0;border-radius:16px;padding:14px;background:#f8fafc}.ln-stat b{display:block;font-size:28px;color:#1f7a5a}.ln-list{display:grid;gap:8px}.ln-row{border:1px solid #e2e8f0;border-radius:14px;padding:10px 12px;background:#fff;display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.ln-row small{display:block;color:#64748b;line-height:1.6}.ln-pill{display:inline-flex;border-radius:999px;padding:5px 9px;font-size:12px;font-weight:950;background:#ecfdf3;color:#166534}.ln-pill.bad{background:#fff1f2;color:#b42318}.ln-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}.ln-actions button,.ln-back{border:0;border-radius:14px;background:#1f7a5a;color:#fff;font-weight:950;padding:11px 14px;cursor:pointer;text-decoration:none;display:inline-flex}.ln-actions .secondary,.ln-back.secondary{background:#eef2f6;color:#18314a}.ln-msg{font-weight:950;margin-top:10px;color:#1f7a5a}.ln-msg.err{color:#b42318}.ln-form{display:grid;gap:8px;margin-top:12px}.ln-form label{font-weight:950;color:#18314a}.ln-form input{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:14px;padding:12px 13px;font-size:16px;background:#fff}@media(max-width:760px){.ln-grid{grid-template-columns:1fr 1fr}.ln-row{display:grid}}@media(max-width:440px){.ln-grid{grid-template-columns:1fr}}
   </style>
 </head>
 <body onload="init()">
@@ -20,15 +20,27 @@
     </div>
     <div class="ln-card"><div class="ln-grid" id="stats"></div></div>
     <div class="ln-card"><h2>主管 LINE 收件人</h2><div id="managers" class="ln-list">讀取中…</div></div>
-    <div class="ln-card"><h2>可設為主管收件人的 LINE 帳號</h2><div class="ln-sub">如果上方主管人數是 0，請在這裡選「柚子樂器 / 主要管理者」那一筆，按「設為主管收件人」。</div><div id="candidates" class="ln-list">讀取中…</div></div>
+    <div class="ln-card">
+      <h2>主要主管 LINE 收件人手動設定</h2>
+      <div class="ln-sub">不用註冊員工，也不會影響薪資、班表、打卡或外聘資料。這裡只儲存一個「主管通知要送到哪個 LINE User ID」。如果你右下角手動 LINE 已經能傳給你，請把那個可收訊的 LINE User ID 填在這裡。</div>
+      <div class="ln-form">
+        <label>顯示名稱</label>
+        <input id="manualManagerName" type="text" placeholder="例如：柚子樂器主要管理者" value="柚子樂器主要管理者">
+        <label>LINE User ID</label>
+        <input id="manualManagerLineId" type="text" placeholder="例如：Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">
+        <div class="ln-sub">提醒：這不是 LINE ID，也不是官方帳號名稱，而是系統綁定後產生的 LINE User ID。通常會以 U 開頭。</div>
+        <div class="ln-actions"><button type="button" id="saveManualManagerBtn">儲存為主要主管收件人</button></div>
+      </div>
+    </div>
+    <div class="ln-card"><h2>可設為主管收件人的 LINE 帳號</h2><div class="ln-sub">如果清單裡有你本人或主要管理者，也可以直接按「設為主管收件人」。如果沒有，就用上方手動輸入。</div><div id="candidates" class="ln-list">讀取中…</div></div>
     <div class="ln-card"><h2>最近通知佇列</h2><div id="queue" class="ln-list">讀取中…</div></div>
   </div>
-  <script src="config.js?v=20260606lineauto"></script>
+  <script src="config.js?v=20260606primaryline"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="firebase-client.js?v=20260606lineauto"></script>
-  <script src="app.js?v=20260606lineauto"></script>
+  <script src="firebase-client.js?v=20260606primaryline"></script>
+  <script src="app.js?v=20260606primaryline"></script>
   <script>
     function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
     function setMsg(t,err){var el=document.getElementById('msg');el.textContent=t||'';el.className='ln-msg'+(err?' err':'');}
@@ -52,7 +64,8 @@
     }
     async function test(target){try{setMsg('建立測試通知中…');var r=await api('sendLineAutoNotificationTest',{target:target,message:'LINE 自動通知檢查測試：如果你收到這則訊息，代表自動通知佇列與 LINE 推播是通的。'});if(!r||r.ok===false)throw new Error((r&&r.message)||'測試失敗');setMsg(r.message||'已建立測試通知。');setTimeout(load,1200);}catch(e){setMsg(e.message||String(e),true);}}
     async function setManager(target){try{setMsg('設定主管 LINE 收件人中…');var r=await api('setPrimaryManagerLineRecipient',{target:target});if(!r||r.ok===false)throw new Error((r&&r.message)||'設定失敗');setMsg(r.message||'已設定主管 LINE 收件人。');setTimeout(load,800);}catch(e){setMsg(e.message||String(e),true);}}
-    function init(){var u=typeof requireLogin==='function'?requireLogin():null;if(!u)return;document.getElementById('reloadBtn').onclick=load;document.getElementById('setMeManagerBtn').onclick=function(){setManager(u)};document.getElementById('testMeBtn').onclick=function(){test('me')};document.getElementById('testManagersBtn').onclick=function(){test('managers')};load();}
+    function saveManualManager(){var name=(document.getElementById('manualManagerName').value||'柚子樂器主要管理者').trim();var lineId=(document.getElementById('manualManagerLineId').value||'').trim();if(!lineId){setMsg('請先填入 LINE User ID。這不是官方帳號名稱，也不是一般 LINE ID。',true);return;}setManager({name:name,employeeId:'PRIMARY_MANAGER_LINE',email:'',lineUserId:lineId,lineNotifyEnabled:true,identityType:'manager',role:'manager'});}
+    function init(){var u=typeof requireLogin==='function'?requireLogin():null;if(!u)return;document.getElementById('reloadBtn').onclick=load;document.getElementById('setMeManagerBtn').onclick=function(){setManager(u)};document.getElementById('saveManualManagerBtn').onclick=saveManualManager;document.getElementById('testMeBtn').onclick=function(){test('me')};document.getElementById('testManagersBtn').onclick=function(){test('managers')};load();}
   </script>
 </body>
 </html>
