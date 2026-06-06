@@ -103,7 +103,7 @@ async function submitReask(idx){
   }catch(err){finishActionButtonError(btn,'送出失敗');setMsg(qs('#msg'),err.message||'送出失敗',true);}
 }
 
-</script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script><script src="firebase-client.js?v=20260530teachergoodsfirebase"></script><script src="app.js?v=20260530notifyv2final1">
+</script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script><script src="firebase-client.js?v=20260606teacherwebsiteforce2"></script><script src="app.js?v=20260606teacherwebsiteforce2">
 
 /* ===== 2026-04-30：官網商品多規格選取 + 過去紀錄再次詢價 + 老師端狀態簡化 ===== */
 function websiteVariantOptionsHtml_(r,i){
@@ -266,7 +266,7 @@ async function searchWebsiteGoods(keywordOverride, options){
     if(state.websiteGoods.length){
       renderWebsiteGoods(state.websiteGoods);
     }else{
-      box.innerHTML = '<div class="empty">目前沒有找到符合的官網商品，請換關鍵字試試，例如：elixir、Yamaha、Fender。</div>';
+      box.innerHTML = `<div class="empty">${esc((res && res.message) || '目前沒有找到符合的官網商品，請換關鍵字試試，例如：elixir、Yamaha、Fender。')}</div>`;
     }
   }catch(err){
     box.innerHTML = `<div class="empty">${esc(err.message||'官網商品暫時無法讀取，請稍後再試。')}</div>`;

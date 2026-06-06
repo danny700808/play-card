@@ -5768,18 +5768,55 @@
       isActiveForTeacher:isActive && status!=='待處理', displayStatus: status==='待處理'?'等公司回覆':status
     });
   }
-  async function tryCallableWebsiteSearch(payload){
+  function callableRestUrlForWebsiteSearch(){
+    const cfg = (global.APP_CONFIG || global.firebaseConfig || {});
+    const projectId = clean(cfg.projectId || (global.firebase && global.firebase.app ? (global.firebase.app().options||{}).projectId : '') || 'youzi-c1b74');
+    return 'https://us-central1-' + projectId + '.cloudfunctions.net/searchTeacherWebsiteGoods';
+  }
+  async function tryCallableWebsiteSearchByRest(payload, previousError){
+    const url = callableRestUrlForWebsiteSearch();
     try{
-      if(!global.firebase || !global.firebase.functions) return null;
-      const fn=global.firebase.functions().httpsCallable('searchTeacherWebsiteGoods');
-      const res=await fn(payload||{});
-      const data=res && res.data || null;
+      const resp = await fetch(url, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({data:payload||{}})
+      });
+      const raw = await resp.text();
+      let parsed = null;
+      try{ parsed = JSON.parse(raw || '{}'); }catch(parseErr){ parsed = {raw}; }
+      if(!resp.ok){
+        const msg = (parsed && parsed.error && (parsed.error.message || parsed.error.status)) || raw || ('HTTP '+resp.status);
+        return {ok:false,rows:[],items:[],source:'Firebase Function REST searchTeacherWebsiteGoods',message:'官網商品 API 呼叫失敗：'+msg,debug:{url,status:resp.status,previousError:previousError||''}};
+      }
+      const data = parsed && (parsed.result || parsed.data || parsed) || null;
       if(data && (Array.isArray(data.rows) || Array.isArray(data.items) || data.ok===true)){
         const rows=(data.rows || data.items || []).map(normalizeWebsiteProduct);
-        return Object.assign({}, data, {ok:data.ok!==false, rows, items:rows, source:'Firebase Function searchTeacherWebsiteGoods'});
+        return Object.assign({}, data, {ok:data.ok!==false, rows, items:rows, source:'Firebase Function REST searchTeacherWebsiteGoods'});
       }
-    }catch(e){ console.warn('[teacher goods callable unavailable]', e); }
-    return null;
+      return {ok:false,rows:[],items:[],source:'Firebase Function REST searchTeacherWebsiteGoods',message:'官網商品 API 回傳格式不正確。',debug:{url,status:resp.status,raw:raw.slice(0,500),previousError:previousError||''}};
+    }catch(e){
+      return {ok:false,rows:[],items:[],source:'Firebase Function REST searchTeacherWebsiteGoods',message:'官網商品 API 無法呼叫：'+(e.message||String(e)),debug:{url,previousError:previousError||''}};
+    }
+  }
+  async function tryCallableWebsiteSearch(payload){
+    let sdkError = '';
+    try{
+      if(global.firebase && global.firebase.functions){
+        const fn=global.firebase.functions().httpsCallable('searchTeacherWebsiteGoods');
+        const res=await fn(payload||{});
+        const data=res && res.data || null;
+        if(data && (Array.isArray(data.rows) || Array.isArray(data.items) || data.ok===true)){
+          const rows=(data.rows || data.items || []).map(normalizeWebsiteProduct);
+          return Object.assign({}, data, {ok:data.ok!==false, rows, items:rows, source:'Firebase Function searchTeacherWebsiteGoods'});
+        }
+      }else{
+        sdkError = 'firebase-functions SDK 尚未載入';
+      }
+    }catch(e){ sdkError = e.message || String(e); console.warn('[teacher goods callable unavailable]', e); }
+
+    // 第二層：不用 firebase-functions SDK，直接用 Callable HTTP endpoint。
+    // 這可以避開 GitHub Pages 快取舊 teacher-goods.html 或漏載 firebase-functions-compat.js 時，畫面只查 Firestore 快取而沒有真的打 API。
+    return await tryCallableWebsiteSearchByRest(payload||{}, sdkError);
   }
   async function searchFirestoreWebsiteProducts(payload){
     const kw=lower(payload && payload.keyword);
