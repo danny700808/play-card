@@ -6649,14 +6649,20 @@
   function norm(o){ return {employeeId:empIdOf(o), name:nameOf(o)||emailOf(o)||empIdOf(o), email:emailOf(o), lineUserId:lineOf(o), lineNotifyEnabled:lineEnabled(o), identityType:identity(o), isManager:isManager(o), active:isActive(o)}; }
   function uniq(rows){ const out=[], seen={}; (rows||[]).forEach(r=>{ const k=clean(r.employeeId||r.email||r.lineUserId||r.name); if(!k||seen[k]) return; seen[k]=1; out.push(r); }); return out; }
   async function managerRows(){
+    // 日常主管通知以「主要主管 LINE 收件人」為優先。
+    // 只要這裡有設定，就不要再把員工 / 其他已綁 LINE 帳號混進主管收件人，避免畫面與通知變混亂。
+    const primary=[];
+    for(const col of ['notificationManagerRecipients','managerLineRecipients','primaryManagerLineRecipients','lineManagerRecipients']){
+      try{ (await all(col,300)).map(norm).filter(x=>x.active&&x.lineUserId).forEach(x=>primary.push(Object.assign(x,{identityType:'manager',isManager:true,isPrimaryManagerLineRecipient:true,sourceCollection:col}))); }catch(e){}
+    }
+    const primaryUniq = uniq(primary);
+    if(primaryUniq.length) return primaryUniq;
+
+    // 沒有手動指定主要主管時，才 fallback 找系統裡被標記為主管 / 管理者的人。
     const rows=[];
     try{ (await all('employees',1000)).map(norm).filter(x=>x.active&&x.isManager).forEach(x=>rows.push(x)); }catch(e){}
     for(const col of ['managerAccounts','adminAccounts','managers','managerUsers','adminUsers']){
       try{ (await all(col,300)).map(norm).filter(x=>x.active).forEach(x=>rows.push(Object.assign(x,{identityType:'manager',isManager:true,sourceCollection:col}))); }catch(e){}
-    }
-    // 主要主管 LINE 收件人：讓「柚子樂器主要 LINE」即使不是員工角色 admin，也能當主管通知收件人。
-    for(const col of ['notificationManagerRecipients','managerLineRecipients','primaryManagerLineRecipients','lineManagerRecipients']){
-      try{ (await all(col,300)).map(norm).filter(x=>x.active&&x.lineUserId).forEach(x=>rows.push(Object.assign(x,{identityType:'manager',isManager:true,isPrimaryManagerLineRecipient:true,sourceCollection:col}))); }catch(e){}
     }
     return uniq(rows);
   }
@@ -6673,13 +6679,21 @@
   async function setPrimaryManagerLineRecipient(payload){
     payload=payload||{};
     const t=norm(payload.target || payload.user || (function(){try{return JSON.parse(localStorage.getItem('employeeUser')||'{}')}catch(e){return {}}})());
-    if(!t.lineUserId) throw new Error('這個帳號沒有 LINE User ID，不能設為主管 LINE 收件人。請先完成 LINE 綁定。');
-    const id=(t.employeeId||t.email||t.lineUserId).replace(/[^a-zA-Z0-9_-]/g,'_');
-    await db().collection('notificationManagerRecipients').doc(id).set({
-      employeeId:t.employeeId||'', name:t.name||'主要主管', email:t.email||'', lineUserId:t.lineUserId,
-      lineNotifyEnabled:true, role:'manager', isManager:true, accountStatus:'active', source:'line-notification-check', updatedAt:serverTs()
+    if(!t.lineUserId) throw new Error('請先填入 LINE User ID。這不是官方帳號名稱，也不是一般 LINE ID。');
+
+    // 只保留一筆主要主管收件人，避免主管人數變成多筆看起來混亂。
+    try{
+      const snap=await db().collection('notificationManagerRecipients').limit(200).get();
+      const batch=db().batch();
+      snap.forEach(function(doc){ batch.set(doc.ref,{accountStatus:'inactive',lineNotifyEnabled:false,updatedAt:serverTs()},{merge:true}); });
+      await batch.commit();
+    }catch(e){}
+
+    await db().collection('notificationManagerRecipients').doc('PRIMARY_MANAGER_LINE').set({
+      employeeId:'PRIMARY_MANAGER_LINE', name:t.name||'柚子樂器主要管理者', email:t.email||'', lineUserId:t.lineUserId,
+      lineNotifyEnabled:true, role:'manager', isManager:true, identityType:'manager', accountStatus:'active', source:'manual-primary-manager-line', updatedAt:serverTs()
     }, {merge:true});
-    return {ok:true,message:'已將「'+(t.name||t.email||t.employeeId||'這個帳號')+'」設為主管 LINE 收件人。請按「重新檢查」，主管已綁 LINE 應該會變成 1。'};
+    return {ok:true,message:'已儲存主要主管 LINE 收件人。之後主管通知會優先送到這個 LINE。'};
   }
   async function sendLineAutoNotificationTest(payload){ payload=payload||{}; const targets = payload.target==='managers' ? await managerRows() : [norm((function(){try{return JSON.parse(localStorage.getItem('employeeUser')||'{}')}catch(e){return {}}})())]; const channels=['line']; let count=0, skipped=0; const batchId=nowId('LINE_AUTO_TEST'); for(const t of targets){ if(!t.lineUserId){ skipped++; continue; } const id=batchId+'_'+(t.employeeId||t.email||t.lineUserId).replace(/[^a-zA-Z0-9_-]/g,'_')+'_line'; await db().collection('notificationQueue').doc(id).set({queueId:id,batchId,eventKey:'manual.lineAutoHealthTest',eventName:'LINE自動通知測試',moduleKey:'healthCheck',channel:'line',targetEmployeeId:t.employeeId,targetName:t.name,targetEmail:t.email,targetLineUserId:t.lineUserId,title:'LINE自動通知測試',body:clean(payload.message)||'這是 LINE 自動通知總修正版的測試訊息。',status:'待發送',createdAt:serverTs(),source:'line-auto-health-check'}, {merge:true}); count++; } return {ok:true,message:'已建立測試通知 '+count+' 筆，略過 '+skipped+' 筆。',count,skipped}; }
 
