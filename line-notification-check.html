@@ -15,11 +15,12 @@
       <a class="ln-back secondary" href="settings.html">回設定區</a>
       <h1 class="ln-title">LINE 自動通知檢查</h1>
       <div class="ln-sub">這裡檢查主管收件人、員工 LINE 綁定、近期 notificationQueue，以及送出一筆測試 LINE。右下角手動 LINE 可用時，這裡可以協助確認「自動通知」會不會找得到主管和員工。</div>
-      <div class="ln-actions"><button type="button" id="reloadBtn">重新檢查</button><button class="secondary" type="button" id="testMeBtn">測試傳給我</button><button class="secondary" type="button" id="testManagersBtn">測試傳給所有主管</button></div>
+      <div class="ln-actions"><button type="button" id="reloadBtn">重新檢查</button><button class="secondary" type="button" id="setMeManagerBtn">把目前登入帳號設為主管收件人</button><button class="secondary" type="button" id="testMeBtn">測試傳給我</button><button class="secondary" type="button" id="testManagersBtn">測試傳給所有主管</button></div>
       <div id="msg" class="ln-msg"></div>
     </div>
     <div class="ln-card"><div class="ln-grid" id="stats"></div></div>
     <div class="ln-card"><h2>主管 LINE 收件人</h2><div id="managers" class="ln-list">讀取中…</div></div>
+    <div class="ln-card"><h2>可設為主管收件人的 LINE 帳號</h2><div class="ln-sub">如果上方主管人數是 0，請在這裡選「柚子樂器 / 主要管理者」那一筆，按「設為主管收件人」。</div><div id="candidates" class="ln-list">讀取中…</div></div>
     <div class="ln-card"><h2>最近通知佇列</h2><div id="queue" class="ln-list">讀取中…</div></div>
   </div>
   <script src="config.js?v=20260606lineauto"></script>
@@ -40,14 +41,18 @@
         var c=r.counts||{};
         document.getElementById('stats').innerHTML=[stat('主管人數',c.managers||0),stat('主管已綁 LINE',c.managersWithLine||0),stat('在職員工',c.activeEmployees||0),stat('員工已綁 LINE',c.activeEmployeesWithLine||0)].join('');
         var mgrs=r.managers||[];
-        document.getElementById('managers').innerHTML=mgrs.length?mgrs.map(function(m){var ok=m.hasLine||m.lineUserId;return '<div class="ln-row"><div><b>'+esc(m.name||m.employeeId||m.email)+'</b><small>'+esc(m.email||m.employeeId||'')+'</small></div><span class="ln-pill '+(ok?'':'bad')+'">'+(ok?'LINE 可通知':'LINE 未綁定')+'</span></div>';}).join(''):'<div class="ln-row">目前找不到主管 LINE 收件人。請確認管理者帳號或員工資料有 LINE User ID。</div>';
+        document.getElementById('managers').innerHTML=mgrs.length?mgrs.map(function(m){var ok=m.hasLine||m.lineUserId;return '<div class="ln-row"><div><b>'+esc(m.name||m.employeeId||m.email)+'</b><small>'+esc((m.email||m.employeeId||'')+(m.isPrimaryManagerLineRecipient?'｜主要主管收件人':''))+'</small></div><span class="ln-pill '+(ok?'':'bad')+'">'+(ok?'LINE 可通知':'LINE 未綁定')+'</span></div>';}).join(''):'<div class="ln-row">目前找不到主管 LINE 收件人。請在下方選一個已綁 LINE 的帳號設為主管收件人。</div>';
+        var candidates=(r.managerCandidates||[]).filter(function(x){return x.lineUserId;});
+        document.getElementById('candidates').innerHTML=candidates.length?candidates.map(function(x,i){return '<div class="ln-row"><div><b>'+esc(x.name||x.employeeId||x.email)+'</b><small>'+esc((x.identityType||'')+'｜'+(x.email||x.employeeId||''))+'</small></div><button type="button" data-set-manager="'+i+'" class="ln-back">設為主管收件人</button></div>';}).join(''):'<div class="ln-row">目前找不到任何已綁 LINE 的帳號。請先完成 LINE 綁定。</div>';
+        Array.from(document.querySelectorAll('[data-set-manager]')).forEach(function(btn){btn.onclick=function(){setManager(candidates[Number(btn.getAttribute('data-set-manager'))]);};});
         var q=r.queue||[];
         document.getElementById('queue').innerHTML=q.length?q.slice(0,40).map(function(x){var bad=/失敗|fail|error/i.test(x.status||'');return '<div class="ln-row"><div><b>'+esc(x.title||x.eventKey||x.queueId)+'</b><small>'+esc((x.channel||'')+'｜'+(x.targetName||'')+'｜'+(x.lastError||''))+'</small></div><span class="ln-pill '+(bad?'bad':'')+'">'+esc(x.status||'')+'</span></div>';}).join(''):'<div class="ln-row">近期沒有通知佇列。</div>';
         setMsg('檢查完成。');
       }catch(e){setMsg(e.message||String(e),true);}
     }
     async function test(target){try{setMsg('建立測試通知中…');var r=await api('sendLineAutoNotificationTest',{target:target,message:'LINE 自動通知檢查測試：如果你收到這則訊息，代表自動通知佇列與 LINE 推播是通的。'});if(!r||r.ok===false)throw new Error((r&&r.message)||'測試失敗');setMsg(r.message||'已建立測試通知。');setTimeout(load,1200);}catch(e){setMsg(e.message||String(e),true);}}
-    function init(){var u=typeof requireLogin==='function'?requireLogin():null;if(!u)return;document.getElementById('reloadBtn').onclick=load;document.getElementById('testMeBtn').onclick=function(){test('me')};document.getElementById('testManagersBtn').onclick=function(){test('managers')};load();}
+    async function setManager(target){try{setMsg('設定主管 LINE 收件人中…');var r=await api('setPrimaryManagerLineRecipient',{target:target});if(!r||r.ok===false)throw new Error((r&&r.message)||'設定失敗');setMsg(r.message||'已設定主管 LINE 收件人。');setTimeout(load,800);}catch(e){setMsg(e.message||String(e),true);}}
+    function init(){var u=typeof requireLogin==='function'?requireLogin():null;if(!u)return;document.getElementById('reloadBtn').onclick=load;document.getElementById('setMeManagerBtn').onclick=function(){setManager(u)};document.getElementById('testMeBtn').onclick=function(){test('me')};document.getElementById('testManagersBtn').onclick=function(){test('managers')};load();}
   </script>
 </body>
 </html>

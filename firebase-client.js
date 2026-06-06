@@ -6648,15 +6648,45 @@
   function isManager(o){ const role=lower(pick(o,['role','角色','identityType','身分類型'],'')); if(['admin','manager','owner','supervisor','管理者','主管','負責人'].indexOf(role)>=0) return true; if(role.indexOf('admin')>=0||role.indexOf('manager')>=0||role.indexOf('管理')>=0||role.indexOf('主管')>=0) return true; return ['showSettingsZone','isManager','isAdmin','canApprove','canReview','canSeeApproval','canManage','可看設定區','可看審核區','可操作假勤制度','是否顯示設定區','管理權限'].some(k=>truthy(o[k])); }
   function norm(o){ return {employeeId:empIdOf(o), name:nameOf(o)||emailOf(o)||empIdOf(o), email:emailOf(o), lineUserId:lineOf(o), lineNotifyEnabled:lineEnabled(o), identityType:identity(o), isManager:isManager(o), active:isActive(o)}; }
   function uniq(rows){ const out=[], seen={}; (rows||[]).forEach(r=>{ const k=clean(r.employeeId||r.email||r.lineUserId||r.name); if(!k||seen[k]) return; seen[k]=1; out.push(r); }); return out; }
-  async function managerRows(){ const rows=[]; try{ (await all('employees',1000)).map(norm).filter(x=>x.active&&x.isManager).forEach(x=>rows.push(x)); }catch(e){} for(const col of ['managerAccounts','adminAccounts','managers','managerUsers','adminUsers']){ try{ (await all(col,300)).map(norm).filter(x=>x.active).forEach(x=>rows.push(Object.assign(x,{identityType:'manager',isManager:true,sourceCollection:col}))); }catch(e){} } return uniq(rows); }
+  async function managerRows(){
+    const rows=[];
+    try{ (await all('employees',1000)).map(norm).filter(x=>x.active&&x.isManager).forEach(x=>rows.push(x)); }catch(e){}
+    for(const col of ['managerAccounts','adminAccounts','managers','managerUsers','adminUsers']){
+      try{ (await all(col,300)).map(norm).filter(x=>x.active).forEach(x=>rows.push(Object.assign(x,{identityType:'manager',isManager:true,sourceCollection:col}))); }catch(e){}
+    }
+    // 主要主管 LINE 收件人：讓「柚子樂器主要 LINE」即使不是員工角色 admin，也能當主管通知收件人。
+    for(const col of ['notificationManagerRecipients','managerLineRecipients','primaryManagerLineRecipients','lineManagerRecipients']){
+      try{ (await all(col,300)).map(norm).filter(x=>x.active&&x.lineUserId).forEach(x=>rows.push(Object.assign(x,{identityType:'manager',isManager:true,isPrimaryManagerLineRecipient:true,sourceCollection:col}))); }catch(e){}
+    }
+    return uniq(rows);
+  }
   async function employeeRows(){ try{ return (await all('employees',1200)).map(norm).filter(x=>x.active); }catch(e){ return []; } }
   async function recentQueue(){ try{ return (await all('notificationQueue',120)).map(r=>({queueId:clean(r.queueId||r.__id), eventKey:clean(r.eventKey), channel:clean(r.channel), targetName:clean(r.targetName), status:clean(r.status), lastError:clean(r.lastError), createdAt:String(r.createdAtText||'')})); }catch(e){ return []; } }
-  async function getLineAutoNotificationStatus(){ const [mgrs, emps, queue]=await Promise.all([managerRows(),employeeRows(),recentQueue()]); const byType={staff:0,parttime:0,external:0,manager:0}; const byTypeLine={staff:0,parttime:0,external:0,manager:0}; emps.forEach(e=>{ byType[e.identityType]=(byType[e.identityType]||0)+1; if(e.lineUserId&&e.lineNotifyEnabled) byTypeLine[e.identityType]=(byTypeLine[e.identityType]||0)+1; }); return {ok:true, managers:mgrs, employees:emps, queue, counts:{managers:mgrs.length, managersWithLine:mgrs.filter(x=>x.lineUserId&&x.lineNotifyEnabled).length, activeEmployees:emps.length, activeEmployeesWithLine:emps.filter(x=>x.lineUserId&&x.lineNotifyEnabled).length, byType, byTypeLine, recentQueue:queue.length}}; }
+  async function getLineAutoNotificationStatus(){
+    const [mgrs, emps, queue]=await Promise.all([managerRows(),employeeRows(),recentQueue()]);
+    const byType={staff:0,parttime:0,external:0,manager:0};
+    const byTypeLine={staff:0,parttime:0,external:0,manager:0};
+    emps.forEach(e=>{ byType[e.identityType]=(byType[e.identityType]||0)+1; if(e.lineUserId&&e.lineNotifyEnabled) byTypeLine[e.identityType]=(byTypeLine[e.identityType]||0)+1; });
+    const candidates=emps.filter(e=>e.lineUserId).map(e=>Object.assign({},e,{canSetAsManager:true}));
+    return {ok:true, managers:mgrs, employees:emps, managerCandidates:candidates, queue, counts:{managers:mgrs.length, managersWithLine:mgrs.filter(x=>x.lineUserId&&x.lineNotifyEnabled!==false).length, activeEmployees:emps.length, activeEmployeesWithLine:emps.filter(x=>x.lineUserId&&x.lineNotifyEnabled).length, byType, byTypeLine, recentQueue:queue.length}};
+  }
+  async function setPrimaryManagerLineRecipient(payload){
+    payload=payload||{};
+    const t=norm(payload.target || payload.user || (function(){try{return JSON.parse(localStorage.getItem('employeeUser')||'{}')}catch(e){return {}}})());
+    if(!t.lineUserId) throw new Error('這個帳號沒有 LINE User ID，不能設為主管 LINE 收件人。請先完成 LINE 綁定。');
+    const id=(t.employeeId||t.email||t.lineUserId).replace(/[^a-zA-Z0-9_-]/g,'_');
+    await db().collection('notificationManagerRecipients').doc(id).set({
+      employeeId:t.employeeId||'', name:t.name||'主要主管', email:t.email||'', lineUserId:t.lineUserId,
+      lineNotifyEnabled:true, role:'manager', isManager:true, accountStatus:'active', source:'line-notification-check', updatedAt:serverTs()
+    }, {merge:true});
+    return {ok:true,message:'已將「'+(t.name||t.email||t.employeeId||'這個帳號')+'」設為主管 LINE 收件人。請按「重新檢查」，主管已綁 LINE 應該會變成 1。'};
+  }
   async function sendLineAutoNotificationTest(payload){ payload=payload||{}; const targets = payload.target==='managers' ? await managerRows() : [norm((function(){try{return JSON.parse(localStorage.getItem('employeeUser')||'{}')}catch(e){return {}}})())]; const channels=['line']; let count=0, skipped=0; const batchId=nowId('LINE_AUTO_TEST'); for(const t of targets){ if(!t.lineUserId){ skipped++; continue; } const id=batchId+'_'+(t.employeeId||t.email||t.lineUserId).replace(/[^a-zA-Z0-9_-]/g,'_')+'_line'; await db().collection('notificationQueue').doc(id).set({queueId:id,batchId,eventKey:'manual.lineAutoHealthTest',eventName:'LINE自動通知測試',moduleKey:'healthCheck',channel:'line',targetEmployeeId:t.employeeId,targetName:t.name,targetEmail:t.email,targetLineUserId:t.lineUserId,title:'LINE自動通知測試',body:clean(payload.message)||'這是 LINE 自動通知總修正版的測試訊息。',status:'待發送',createdAt:serverTs(),source:'line-auto-health-check'}, {merge:true}); count++; } return {ok:true,message:'已建立測試通知 '+count+' 筆，略過 '+skipped+' 筆。',count,skipped}; }
 
   fb.handleApi = async function(action,payload){
     const a=clean(action);
     if(a==='getLineAutoNotificationStatus') return await getLineAutoNotificationStatus(payload||{});
+    if(a==='setPrimaryManagerLineRecipient') return await setPrimaryManagerLineRecipient(payload||{});
     if(a==='sendLineAutoNotificationTest') return await sendLineAutoNotificationTest(payload||{});
     if(typeof previousHandle==='function') return await previousHandle(action,payload||{});
     return null;
