@@ -1601,6 +1601,7 @@ document.addEventListener('DOMContentLoaded', function(){ setTimeout(hideClockZe
     if(p==='approval-notification-settings.html') return [
       {key:'registration', title:'註冊簽核提醒設定'},
       {key:'clock', title:'打卡簽核提醒設定'},
+      {key:'clockAuto', title:'上下班 / 遲到 / 工讀時數提醒設定'},
       {key:'temporaryAttendance', title:'補登 / 臨時出勤提醒設定'},
       {key:'leave', title:'請假簽核提醒設定'},
       {key:'profileChange', title:'個資修改簽核提醒設定'}

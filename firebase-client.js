@@ -5982,7 +5982,9 @@
         emp(23,'clock.workMissingAfter','上班後未打卡提醒','上班後超過指定分鐘仍未打卡，提醒員工。',{afterMinutes:30,settingFields:['afterMinutes']}),
         emp(25,'clock.offTime','表定下班時間提醒','到表定下班時間時，提醒員工打下班卡。'),
         emp(26,'clock.offMissingAfter','下班後未打卡提醒','下班後超過指定分鐘仍未打下班卡，提醒員工。',{afterMinutes:30,settingFields:['afterMinutes']}),
-        emp(28,'parttime.hoursMissingAfter','工讀下班後未填時數提醒','工讀生下班後未填工讀時數時，提醒工讀生。',{afterMinutes:30,settingFields:['afterMinutes']})
+        emp(27,'clock.lateAfterClockIn','遲到後修正提醒','員工上班打卡產生遲到紀錄後，超過設定分鐘仍未送出打卡修正時，提醒員工。',{afterMinutes:30,settingFields:['afterMinutes'],employeeEmailEnabled:false}),
+        emp(28,'parttime.hoursMissingAfter','工讀下班後未填時數提醒','工讀生下班後未填工讀時數時，提醒工讀生。',{afterMinutes:30,settingFields:['afterMinutes']}),
+        emp(29,'clock.lateAfterOffTime','下班後遲到未修正提醒','員工當日有遲到紀錄，表定下班後超過設定分鐘仍未送出打卡修正時，再提醒員工一次。',{afterMinutes:30,settingFields:['afterMinutes'],employeeEmailEnabled:false})
       ],
       leave:[
         mgr(30,'leave.submitted','請假申請送出','員工送出請假申請後，通知主管。'),

@@ -21,16 +21,16 @@
     <div class="card settings-intro">
       <div class="header" style="margin:0">
         <h1 class="title">簽核提醒設定</h1>
-        <div class="welcome">集中設定註冊、打卡修正 / 補登、上下班打卡自動提醒、請假、工讀 / 臨時出勤與個資修改提醒。</div>
+        <div class="welcome">集中設定註冊、打卡修正 / 補登、上下班打卡自動提醒、遲到修正提醒、請假、工讀 / 臨時出勤與個資修改提醒。</div>
       </div>
-      <div class="note-box">逾期未審提醒預設 1 天；上班前提醒預設 10 分鐘；未打卡提醒預設 30 分鐘，皆可在下方欄位修改。</div>
+      <div class="note-box">逾期未審提醒預設 1 天；上班前提醒預設 10 分鐘；未打卡、遲到修正與工讀時數未填提醒預設 30 分鐘，皆可在下方欄位修改。</div>
     </div>
   </div>
-  <script src="config.js?v=20260531notify"></script>
+  <script src="config.js?v=20260606lateReminder"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260531notify"></script>
-  <script src="app.js?v=20260531notify"></script>
+  <script src="firebase-client.js?v=20260606lateReminder"></script>
+  <script src="app.js?v=20260606lateReminder"></script>
   <script>
     function init(){
       if(typeof fillHeader==='function') fillHeader();
