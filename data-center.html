@@ -768,9 +768,49 @@
       qs('#leaveRows').innerHTML=rows.map(r=>`<tr><td>${esc(r.date)}</td><td>${esc(r.time||'-')}</td><td>${esc(r.type||'-')}</td><td>${esc(r.hours||'')}</td><td>${esc(r.status||'-')}</td><td>${esc(r.reviewer||'-')}</td><td>${esc(clockReasonText(r)||'')}</td><td><span class="subtle">${esc(r.__id)}</span></td></tr>`).join('');
     }
     function calcIssues(){
-      const pts=empRows(state.parttime), issues=[];
-      const seen={};
-      pts.forEach(r=>{const k=r.date;if(seen[k])issues.push(`${r.date} 有重複工讀時數`);seen[k]=true;const a=attendStatus(r);if(a.cls==='red')issues.push(`${r.date} ${a.text}`);if(a.cls==='orange')issues.push(`${r.date} 有請假紀錄，需確認是否與工讀時段重疊`)});
+      const pts = empRows(state.parttime).filter(r => clean(r.date));
+      const grouped = {};
+      pts.forEach(r => {
+        const k = clean(r.date);
+        if(!grouped[k]) grouped[k] = [];
+        grouped[k].push(r);
+      });
+
+      const issues = [];
+      const pushIssue = (text) => {
+        const t = clean(text);
+        if(t && !issues.includes(t)) issues.push(t);
+      };
+      const isApprovedExtraHour = (r) => {
+        const note = clean(parttimeReasonText(r) || r.note || raw(r.raw || {}, ['note','備註','reason','原因']));
+        const status = clean(parttimeStatusText(r));
+        const src = r && r.raw || {};
+        return !!(
+          src.dataCenterCreated || src.dataCenterEdited || src.主管已修改 ||
+          status === '已修改' ||
+          note.includes('臨時出勤') || note.includes('主管核准') ||
+          note.includes('補時數') || note.includes('加時') || note.includes('追加')
+        );
+      };
+
+      Object.keys(grouped).sort().forEach(date => {
+        const rows = grouped[date];
+        const base = rows[0];
+
+        // 同一天若有多筆工讀時數，只提醒一次；
+        // 若多出來的是主管核准的臨時出勤 / 補時數，不再列為異常。
+        if(rows.length > 1){
+          const extraRows = rows.slice(1);
+          const allExtraApproved = extraRows.every(isApprovedExtraHour);
+          if(!allExtraApproved) pushIssue(`${date} 有重複工讀時數`);
+        }
+
+        // 遲到 / 請假重疊也以日期為單位只提醒一次，避免同日多筆工讀時數重複計算。
+        const a = attendStatus(base);
+        if(a.cls === 'red') pushIssue(`${date} ${a.text}`);
+        if(a.cls === 'orange') pushIssue(`${date} 有請假紀錄，需確認是否與工讀時段重疊`);
+      });
+
       return issues;
     }
     function renderIssues(){
