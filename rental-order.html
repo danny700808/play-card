@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>柚子樂器設備租賃申請表</title>
+  <link rel="stylesheet" href="style.css?v=rental-20260606">
+  <style>
+    body{background:#eef3f7;color:#18314a}.wrap{max-width:960px;margin:0 auto;padding:22px 14px 54px}.hero{background:#fff;border:1px solid #dbe5ef;border-radius:28px;padding:24px;box-shadow:0 10px 28px rgba(15,23,42,.06);margin-bottom:16px}.hero h1{margin:0 0 10px;font-size:32px;font-weight:950}.card2{background:#fff;border:1px solid #dbe5ef;border-radius:24px;padding:20px;margin-bottom:16px;box-shadow:0 10px 28px rgba(15,23,42,.04)}.section-title{font-size:22px;font-weight:950;margin:0 0 12px}.field{margin-bottom:14px}.field label{display:block;font-weight:900;margin-bottom:7px}.field input,.field select,.field textarea{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:14px;padding:12px 14px;background:#fff;font-size:16px}.field textarea{min-height:92px}.row2{display:grid;grid-template-columns:1fr 1fr;gap:14px}.row3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.checkline{display:flex;align-items:flex-start;gap:10px;line-height:1.7;font-weight:850}.rules{border:1px solid #dbe5ef;background:#f8fafc;border-radius:18px;padding:16px;line-height:1.9;white-space:pre-wrap}.price-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.price-box{border:1px solid #dbe5ef;border-radius:16px;padding:14px;background:#f8fafc;line-height:1.8}.btn-row{display:flex;gap:10px;flex-wrap:wrap}.btn{border:0;border-radius:14px;background:#1f7a5a;color:#fff;font-weight:950;padding:13px 18px;cursor:pointer}.btn.secondary{background:#e2e8f0;color:#18314a}.msg{margin-top:12px;border-radius:14px;padding:12px 14px;font-weight:900;line-height:1.7}.msg.ok{background:#e8fff4;color:#146c43}.msg.bad{background:#fff0f0;color:#b42318}.success-box{display:none;border:2px solid #1f7a5a;background:#f0fff7;border-radius:24px;padding:20px;line-height:1.9}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-weight:950;background:#fff;border:1px dashed #1f7a5a;border-radius:12px;padding:8px 10px;display:inline-block}.small{font-size:13px;color:#64748b;line-height:1.8}@media(max-width:720px){.row2,.row3,.price-grid{grid-template-columns:1fr}.hero h1{font-size:26px}.wrap{padding:14px 10px 40px}.card2,.hero{padding:16px;border-radius:20px}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="hero">
+      <h1>柚子樂器設備租賃申請表</h1>
+      <div class="small">這是租用訂購表。送出後尚未成立正式合約，主管會先透過官方 LINE 與您確認設備、金額與配送時間，再傳送正式合約給您線上簽名。</div>
+    </section>
+
+    <form id="rentalForm">
+      <section class="card2">
+        <h2 class="section-title">租用規則說明</h2>
+        <label class="checkline"><input id="agreeRules" type="checkbox"> <span>我看過並了解租用費用與運費規則說明 <b style="color:#b42318">*</b></span></label>
+        <div class="rules">【租用流程】
+填寫租用表格 → 加入柚子樂器官方 LINE → 等待官方回覆 → 確認配送或自取時間 → 簽署合約 → 付款後安排配送 / 安裝。
+
+【退租流程】
+透過官方 LINE 或合約查詢頁申請退租 → 確認收回日期 → 安排收回 → 完成退租。
+
+【重要說明】
+電鋼琴與電子鼓一期為 90 天。實際型號、租金、運費與配送時間，仍以主管確認後的正式合約為準。</div>
+      </section>
+
+      <section class="card2">
+        <h2 class="section-title">租用內容</h2>
+        <div class="row2">
+          <div class="field"><label>您要租用 <b style="color:#b42318">*</b></label><select id="rentalType" required><option value="">請選擇</option><option value="digitalPiano">電鋼琴</option><option value="electronicDrum">電子鼓</option><option value="other">其他設備</option></select></div>
+          <div class="field"><label>租用期數</label><select id="periods"><option value="1">1 期 90 天</option><option value="2">2 期 180 天</option><option value="3">3 期 270 天</option></select></div>
+        </div>
+        <div class="field" id="otherNeedBox" style="display:none"><label>其他設備需求說明</label><textarea id="otherEquipmentNeed" placeholder="例如：卡拉 OK、音箱、麥克風、活動日期、需求內容"></textarea></div>
+        <div class="price-grid">
+          <div class="price-box"><b>首次租用參考</b><br>1 期：2,900 元<br>2 期：5,600 元<br>3 期：8,000 元</div>
+          <div class="price-box"><b>續租參考</b><br>1 期：2,800 元<br>2 期：5,200 元<br>3 期：7,500 元<br><span class="small">實際金額以主管確認合約為準。</span></div>
+        </div>
+      </section>
+
+      <section class="card2">
+        <h2 class="section-title">聯絡資料</h2>
+        <div class="row2"><div class="field"><label>姓名 / 公司名稱 <b style="color:#b42318">*</b></label><input id="customerName" required></div><div class="field"><label>聯絡行動電話 <b style="color:#b42318">*</b></label><input id="customerPhone" required placeholder="09xx 或市話"></div></div>
+        <div class="row2"><div class="field"><label>Email 信箱 <b style="color:#b42318">*</b></label><input id="customerEmail" type="email" required placeholder="example@example.com"></div><div class="field"><label>LINE 顯示名稱</label><input id="lineDisplayName" placeholder="方便主管對照 LINE 聊天室"></div></div>
+        <div class="row2"><div class="field"><label>身分證字號 / 統一編號</label><input id="customerIdNumber"></div><div class="field"><label>地址 <b style="color:#b42318">*</b></label><input id="customerAddress" required></div></div>
+      </section>
+
+      <section class="card2">
+        <h2 class="section-title">配送 / 自取</h2>
+        <div class="field"><label>您需要運送嗎？ <b style="color:#b42318">*</b></label><select id="shippingMethod" required><option value="">請選擇</option><option value="需要到府安裝 / 配送">需要到府安裝 / 配送</option><option value="自己運送 / 自取自還">自己運送 / 自取自還</option></select></div>
+        <div class="field"><label>配送地址 / 自取說明地址</label><input id="shippingAddress" placeholder="若同聯絡地址可留空"></div>
+        <div class="row2"><div class="field"><label>希望配送 / 自取日期 <b style="color:#b42318">*</b></label><input id="preferredDate" type="date" required></div><div class="field"><label>希望時段 <b style="color:#b42318">*</b></label><select id="preferredTime" required><option value="">請選擇</option><option>09:00</option><option>11:00</option><option>13:00</option><option>15:00</option><option>17:00</option><option>19:00</option><option>20:00</option></select></div></div>
+        <div class="row2"><div class="field"><label>是否有電梯 / 樓層</label><input id="floorNote" placeholder="例如：有電梯 / 3樓無電梯"></div><div class="field"><label>其他需求</label><input id="note" placeholder="想補充給主管的事項"></div></div>
+      </section>
+
+      <section class="card2">
+        <h2 class="section-title">送出申請</h2>
+        <div class="small">送出後會產生申請編號。請加入官方 LINE，並把申請編號傳給官方 LINE，方便我們將 LINE 對話和這筆申請對應起來。</div>
+        <div class="btn-row" style="margin-top:14px"><button id="submitBtn" class="btn" type="submit">送出租賃申請</button><button class="btn secondary" type="reset">清除重填</button></div>
+        <div id="msg"></div>
+      </section>
+    </form>
+
+    <section id="successBox" class="success-box">
+      <h2 style="margin-top:0">申請已送出</h2>
+      <p>您的租賃申請編號：</p>
+      <div id="applicationNo" class="mono"></div>
+      <p>請加入柚子樂器官方 LINE，並傳送這組申請編號。主管確認後，會再傳正式合約連結給您線上簽名。</p>
+      <div class="btn-row"><button class="btn" id="copyNoBtn" type="button">複製申請編號</button><a class="btn secondary" href="https://line.me/R/ti/p/@" target="_blank">開啟 LINE 加好友</a></div>
+    </section>
+  </div>
+
+  <script src="config.js?v=rental-20260606"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="rental-common.js?v=rental-20260606"></script>
+  <script>
+    const R=window.YZRental;
+    document.getElementById('rentalType').addEventListener('change',()=>{ R.show('otherNeedBox', document.getElementById('rentalType').value==='other'?'block':'none'); });
+    document.getElementById('rentalForm').addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      if(!R.checked('agreeRules')) return R.toast('請先勾選已了解租用費用與運費規則說明。', false);
+      const btn=R.qs('submitBtn'); btn.disabled=true; btn.textContent='送出中...';
+      try{
+        const payload={
+          rentalType:R.val('rentalType'), periods:R.val('periods'), otherEquipmentNeed:R.val('otherEquipmentNeed'), customerName:R.val('customerName'), customerPhone:R.val('customerPhone'), customerEmail:R.val('customerEmail'), lineDisplayName:R.val('lineDisplayName'), customerIdNumber:R.val('customerIdNumber'), customerAddress:R.val('customerAddress'), shippingMethod:R.val('shippingMethod'), shippingAddress:R.val('shippingAddress')||R.val('customerAddress'), preferredDate:R.val('preferredDate'), preferredTime:R.val('preferredTime'), floorNote:R.val('floorNote'), note:R.val('note'), source:'rental-order-web'
+        };
+        const res=await R.call('rentalSubmitApplicationHttp', payload);
+        R.qs('applicationNo').textContent=res.applicationNo || res.applicationId;
+        R.show('successBox'); R.qs('rentalForm').style.display='none';
+        R.qs('copyNoBtn').onclick=()=>navigator.clipboard.writeText(res.applicationNo||res.applicationId).then(()=>alert('已複製申請編號'));
+        window.scrollTo({top:0,behavior:'smooth'});
+      }catch(err){ R.toast(err.message||String(err), false); }
+      finally{ btn.disabled=false; btn.textContent='送出租賃申請'; }
+    });
+  </script>
+</body>
+</html>

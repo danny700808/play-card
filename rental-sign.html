@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>設備租賃合約簽署</title>
+  <link rel="stylesheet" href="style.css?v=rental-20260606">
+  <style>
+    body{background:#eef3f7;color:#18314a}.wrap{max-width:980px;margin:0 auto;padding:22px 14px 54px}.card2{background:#fff;border:1px solid #dbe5ef;border-radius:24px;padding:20px;margin-bottom:16px;box-shadow:0 10px 28px rgba(15,23,42,.04)}.title{font-size:30px;font-weight:950;margin:0 0 10px}.small{font-size:13px;color:#64748b;line-height:1.8}.btn{border:0;border-radius:14px;background:#1f7a5a;color:#fff;font-weight:950;padding:12px 18px;cursor:pointer}.btn.secondary{background:#e2e8f0;color:#18314a}.btn-row{display:flex;gap:10px;flex-wrap:wrap}.msg{margin-top:12px;border-radius:14px;padding:12px 14px;font-weight:900;line-height:1.7}.msg.ok{background:#e8fff4;color:#146c43}.msg.bad{background:#fff0f0;color:#b42318}.rental-contract-sheet{background:#fff;color:#111827;width:210mm;min-height:297mm;margin:0 auto;padding:12mm;box-sizing:border-box;border:1px solid #d1d5db;box-shadow:0 8px 20px rgba(0,0,0,.05);font-size:14px;line-height:1.9}.rental-contract-sheet h1{text-align:center;font-size:25px;margin:0 0 7mm;letter-spacing:2px}.party-line{font-weight:800;margin-bottom:3mm;position:relative}.intro{margin:4mm 0}.clauses{padding-left:22px}.clauses li{margin-bottom:3mm}.seal.top{position:absolute;right:12mm;top:-8mm;width:27mm}.seal.bottom{width:28mm;margin-top:4mm}.sign-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8mm}.sign-card{border:1px solid #94a3b8;border-radius:12px;padding:12px;min-height:54mm;position:relative}.sig-box{margin-top:14px;border-top:1px solid #64748b;padding-top:6px;min-height:28mm}.sig-img{max-width:100%;max-height:90px}.contract-date{text-align:center;margin-top:10mm;font-weight:800}#signatureCanvas{width:100%;height:180px;border:2px dashed #94a3b8;border-radius:16px;background:#fff;touch-action:none}.agree{display:flex;gap:10px;line-height:1.8;font-weight:900}@media(max-width:840px){.rental-contract-sheet{width:100%;min-height:auto;padding:16px}.sign-grid{grid-template-columns:1fr}.seal.top{position:static;display:block;margin-left:auto}.wrap{padding:12px 8px}}
+    @media print{body *{visibility:hidden}.print-area,.print-area *{visibility:visible}.print-area{position:absolute;left:0;top:0;width:100%}.card2:not(.print-area){display:none}.rental-contract-sheet{border:none;box-shadow:none;margin:0;width:210mm;min-height:297mm}@page{size:A4;margin:0}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="card2"><h1 class="title">設備租賃合約簽署</h1><div class="small">請確認合約內容。簽署完成後，系統會通知主管並留存合約紀錄。</div><div id="msg"></div></section>
+    <section class="card2 print-area"><div id="contractPreview">讀取中...</div></section>
+    <section id="signPanel" class="card2">
+      <h2 style="margin-top:0">線上簽名</h2>
+      <label class="agree"><input id="agreeContract" type="checkbox"> <span>我已確認合約內容，並同意以線上簽名完成本次租賃契約。</span></label>
+      <div style="margin:12px 0"><canvas id="signatureCanvas" width="900" height="240"></canvas></div>
+      <div class="btn-row"><button class="btn secondary" id="clearSigBtn" type="button">清除簽名</button><button class="btn" id="submitSigBtn" type="button">送出簽名</button><button class="btn secondary" onclick="window.print()" type="button">列印 / 另存 PDF</button></div>
+    </section>
+  </div>
+  <script src="config.js?v=rental-20260606"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="rental-common.js?v=rental-20260606"></script>
+  <script>
+    const R=window.YZRental; const params=new URLSearchParams(location.search); const contractId=params.get('contractId')||''; const token=params.get('token')||''; let contract=null; let signed=false;
+    async function load(){
+      try{
+        contract=await R.get('rentalContracts', contractId); if(!contract) throw new Error('找不到合約');
+        if(R.clean(contract.signToken||contract.token)!==R.clean(token)) throw new Error('合約連結驗證失敗');
+        signed=!!contract.customerSignedAt;
+        R.qs('contractPreview').innerHTML=R.renderContractHtml(contract);
+        if(signed){ R.qs('signPanel').innerHTML='<h2>此合約已簽署完成</h2><p>您可使用上方合約內容列印或另存 PDF。</p><button class="btn" onclick="window.print()">列印 / 另存 PDF</button>'; }
+      }catch(err){ R.toast(err.message||String(err), false); R.qs('contractPreview').textContent='讀取失敗'; R.hide('signPanel'); }
+    }
+    const canvas=document.getElementById('signatureCanvas'), ctx=canvas.getContext('2d'); let drawing=false, hasDraw=false;
+    function pos(e){ const r=canvas.getBoundingClientRect(); const t=e.touches?e.touches[0]:e; return {x:(t.clientX-r.left)*canvas.width/r.width,y:(t.clientY-r.top)*canvas.height/r.height}; }
+    function start(e){ drawing=true; const p=pos(e); ctx.beginPath(); ctx.moveTo(p.x,p.y); e.preventDefault(); }
+    function move(e){ if(!drawing) return; const p=pos(e); ctx.lineWidth=4; ctx.lineCap='round'; ctx.strokeStyle='#111827'; ctx.lineTo(p.x,p.y); ctx.stroke(); hasDraw=true; e.preventDefault(); }
+    function end(){ drawing=false; }
+    ['mousedown','touchstart'].forEach(ev=>canvas.addEventListener(ev,start)); ['mousemove','touchmove'].forEach(ev=>canvas.addEventListener(ev,move)); ['mouseup','mouseleave','touchend','touchcancel'].forEach(ev=>canvas.addEventListener(ev,end));
+    document.getElementById('clearSigBtn').onclick=()=>{ ctx.clearRect(0,0,canvas.width,canvas.height); hasDraw=false; };
+    document.getElementById('submitSigBtn').onclick=async()=>{
+      if(!R.checked('agreeContract')) return R.toast('請先勾選確認同意合約內容。', false);
+      if(!hasDraw) return R.toast('請先在簽名框簽名。', false);
+      const btn=R.qs('submitSigBtn'); btn.disabled=true; btn.textContent='送出中...';
+      try{ const signatureDataUrl=canvas.toDataURL('image/png'); await R.call('rentalSignContractHttp',{contractId,token,signatureDataUrl}); R.toast('簽署完成，已通知主管。', true); await load(); window.scrollTo({top:0,behavior:'smooth'}); }catch(err){ R.toast(err.message||String(err), false); }
+      finally{ btn.disabled=false; btn.textContent='送出簽名'; }
+    };
+    load();
+  </script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>租賃契約設定</title>
+  <link rel="stylesheet" href="style.css?v=rental-20260606"><link rel="stylesheet" href="global-nav.css?v=20260603unified1">
+  <style>
+    body{background:#eef3f7}.wrap{max-width:1100px;margin:0 auto;padding:18px 14px 50px}.card2{background:#fff;border:1px solid #dbe5ef;border-radius:24px;padding:20px;margin-bottom:16px;box-shadow:0 10px 28px rgba(15,23,42,.04)}.title{font-size:30px;font-weight:950;margin:0 0 8px}.small{font-size:13px;color:#64748b;line-height:1.8}.row2{display:grid;grid-template-columns:1fr 1fr;gap:14px}.row3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.field{margin-bottom:14px}.field label{display:block;font-weight:900;margin-bottom:7px}.field input,.field textarea{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:14px;padding:12px 14px;background:#fff;font-size:15px}.field textarea{min-height:120px}.btn{border:0;border-radius:14px;background:#1f7a5a;color:#fff;font-weight:950;padding:12px 18px;cursor:pointer}.msg{margin-top:12px;border-radius:14px;padding:12px 14px;font-weight:900;line-height:1.7}.msg.ok{background:#e8fff4;color:#146c43}.msg.bad{background:#fff0f0;color:#b42318}@media(max-width:760px){.row2,.row3{grid-template-columns:1fr}.wrap{padding:12px 8px}}
+  </style>
+</head>
+<body onload="initPage()">
+  <div class="yz-global-nav" data-yz-global-nav><button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button><button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button></div>
+  <div class="wrap">
+    <section class="card2"><h1 class="title">租賃契約設定</h1><div class="small">這裡設定租賃申請表、合約預設金額、運費說明與 LINE 綁定文字。正式合約仍由主管在申請資料中補設備、機碼、金額與租期。</div><div id="msg"></div></section>
+    <section class="card2"><h2>租金設定</h2><div class="row3"><div class="field"><label>首次 1 期 90 天</label><input id="price1" type="number"></div><div class="field"><label>首次 2 期 180 天</label><input id="price2" type="number"></div><div class="field"><label>首次 3 期 270 天</label><input id="price3" type="number"></div></div><div class="row3"><div class="field"><label>續租 1 期</label><input id="renew1" type="number"></div><div class="field"><label>續租 2 期</label><input id="renew2" type="number"></div><div class="field"><label>續租 3 期</label><input id="renew3" type="number"></div></div></section>
+    <section class="card2"><h2>運費與說明</h2><div class="field"><label>運費說明</label><textarea id="shippingRules"></textarea></div><div class="field"><label>租用流程說明</label><textarea id="rentalRules"></textarea></div><div class="field"><label>LINE 加好友提示文字</label><textarea id="lineBindText"></textarea></div></section>
+    <section class="card2"><h2>提醒設定</h2><div class="row3"><div class="field"><label>到期前幾天提醒一</label><input id="remindA" type="number"></div><div class="field"><label>到期前幾天提醒二</label><input id="remindB" type="number"></div><div class="field"><label>到期當天提醒</label><input id="remindC" type="number"></div></div><button class="btn" onclick="saveSettings()">儲存租賃設定</button></section>
+  </div>
+  <script src="config.js?v=rental-20260606"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script><script src="firebase-client.js?v=rental-20260606"></script><script src="app.js?v=rental-20260606"></script><script src="rental-common.js?v=rental-20260606"></script><script src="global-nav.js?v=20260603unified1"></script>
+  <script>
+    const R=window.YZRental; const defaults={price1:2900,price2:5600,price3:8000,renew1:2800,renew2:5200,renew3:7500,shippingRules:'運費會依地區及租用期數不同而有所差異。自行載運可免運費；特殊樓層、山區或特殊地點需另行確認。',rentalRules:'填寫租用表格 → 加入官方 LINE → 等待官方回覆 → 確認配送或自取時間 → 簽署合約 → 付款後安排配送 / 安裝。',lineBindText:'請加入柚子樂器官方 LINE，並傳送您的租賃申請編號，方便我們將 LINE 對話與申請資料對應。',remindA:7,remindB:3,remindC:0};
+    async function initPage(){ if(typeof fillHeader==='function') fillHeader(); const u=R.requireManager(); if(!u) return; try{ const row=await R.get('rentalSettings','main')||{}; const s=Object.assign({},defaults,row); Object.keys(defaults).forEach(k=>R.setVal(k,s[k])); }catch(e){ R.toast(e.message||String(e), false); } }
+    async function saveSettings(){ try{ const data={}; Object.keys(defaults).forEach(k=>data[k]=R.val(k)); data.updatedAt=window.firebase.firestore.FieldValue.serverTimestamp(); data.updatedBy=(R.user().id||R.user().email||''); await R.set('rentalSettings','main',data,true); R.toast('租賃設定已儲存。', true); }catch(e){ R.toast(e.message||String(e), false); } }
+  </script>
+</body>
+</html>
