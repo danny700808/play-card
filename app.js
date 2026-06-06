@@ -1602,9 +1602,14 @@ document.addEventListener('DOMContentLoaded', function(){ setTimeout(hideClockZe
       {key:'registration', title:'註冊簽核提醒設定'},
       {key:'clock', title:'打卡簽核提醒設定'},
       {key:'clockAuto', title:'上下班 / 遲到 / 工讀時數提醒設定'},
-      {key:'temporaryAttendance', title:'補登 / 臨時出勤提醒設定'},
+      {key:'temporaryAttendance', title:'工讀 / 臨時出勤提醒設定'},
       {key:'leave', title:'請假簽核提醒設定'},
-      {key:'profileChange', title:'個資修改簽核提醒設定'}
+      {key:'profileChange', title:'個資修改簽核提醒設定'},
+      {key:'certificate', title:'證明申請提醒設定'},
+      {key:'task', title:'交辦事項提醒設定'},
+      {key:'announcement', title:'公告提醒設定'},
+      {key:'salary', title:'薪資 / 投保異動提醒設定'},
+      {key:'dailySummary', title:'每日主管摘要提醒設定'}
     ];
     if(p==='teacher-notification-settings.html') return [
       {key:'contractor', title:'外聘老師提醒設定'}

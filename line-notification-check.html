@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>LINE 自動通知檢查</title>
+  <link rel="stylesheet" href="style.css?v=20260606lineauto">
+  <style>
+    body{background:#f6f8fb}.ln-page{max-width:1100px;margin:0 auto;padding:20px 14px 40px}.ln-card{background:#fff;border:1px solid #dbe5f1;border-radius:22px;padding:18px;margin-bottom:16px;box-shadow:0 10px 28px rgba(15,23,42,.05)}.ln-title{font-size:26px;font-weight:950;color:#18314a;margin:0 0 8px}.ln-sub{color:#64748b;line-height:1.7}.ln-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.ln-stat{border:1px solid #e2e8f0;border-radius:16px;padding:14px;background:#f8fafc}.ln-stat b{display:block;font-size:28px;color:#1f7a5a}.ln-list{display:grid;gap:8px}.ln-row{border:1px solid #e2e8f0;border-radius:14px;padding:10px 12px;background:#fff;display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.ln-row small{display:block;color:#64748b;line-height:1.6}.ln-pill{display:inline-flex;border-radius:999px;padding:5px 9px;font-size:12px;font-weight:950;background:#ecfdf3;color:#166534}.ln-pill.bad{background:#fff1f2;color:#b42318}.ln-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}.ln-actions button,.ln-back{border:0;border-radius:14px;background:#1f7a5a;color:#fff;font-weight:950;padding:11px 14px;cursor:pointer;text-decoration:none;display:inline-flex}.ln-actions .secondary,.ln-back.secondary{background:#eef2f6;color:#18314a}.ln-msg{font-weight:950;margin-top:10px;color:#1f7a5a}.ln-msg.err{color:#b42318}@media(max-width:760px){.ln-grid{grid-template-columns:1fr 1fr}.ln-row{display:grid}}@media(max-width:440px){.ln-grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body onload="init()">
+  <div class="ln-page">
+    <div class="ln-card">
+      <a class="ln-back secondary" href="settings.html">回設定區</a>
+      <h1 class="ln-title">LINE 自動通知檢查</h1>
+      <div class="ln-sub">這裡檢查主管收件人、員工 LINE 綁定、近期 notificationQueue，以及送出一筆測試 LINE。右下角手動 LINE 可用時，這裡可以協助確認「自動通知」會不會找得到主管和員工。</div>
+      <div class="ln-actions"><button type="button" id="reloadBtn">重新檢查</button><button class="secondary" type="button" id="testMeBtn">測試傳給我</button><button class="secondary" type="button" id="testManagersBtn">測試傳給所有主管</button></div>
+      <div id="msg" class="ln-msg"></div>
+    </div>
+    <div class="ln-card"><div class="ln-grid" id="stats"></div></div>
+    <div class="ln-card"><h2>主管 LINE 收件人</h2><div id="managers" class="ln-list">讀取中…</div></div>
+    <div class="ln-card"><h2>最近通知佇列</h2><div id="queue" class="ln-list">讀取中…</div></div>
+  </div>
+  <script src="config.js?v=20260606lineauto"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
+  <script src="firebase-client.js?v=20260606lineauto"></script>
+  <script src="app.js?v=20260606lineauto"></script>
+  <script>
+    function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+    function setMsg(t,err){var el=document.getElementById('msg');el.textContent=t||'';el.className='ln-msg'+(err?' err':'');}
+    function stat(label,n){return '<div class="ln-stat"><span>'+esc(label)+'</span><b>'+esc(n)+'</b></div>';}
+    async function load(){
+      try{
+        setMsg('檢查中…');
+        var r=await api('getLineAutoNotificationStatus',{});
+        if(!r||r.ok===false) throw new Error((r&&r.message)||'檢查失敗');
+        var c=r.counts||{};
+        document.getElementById('stats').innerHTML=[stat('主管人數',c.managers||0),stat('主管已綁 LINE',c.managersWithLine||0),stat('在職員工',c.activeEmployees||0),stat('員工已綁 LINE',c.activeEmployeesWithLine||0)].join('');
+        var mgrs=r.managers||[];
+        document.getElementById('managers').innerHTML=mgrs.length?mgrs.map(function(m){var ok=m.hasLine||m.lineUserId;return '<div class="ln-row"><div><b>'+esc(m.name||m.employeeId||m.email)+'</b><small>'+esc(m.email||m.employeeId||'')+'</small></div><span class="ln-pill '+(ok?'':'bad')+'">'+(ok?'LINE 可通知':'LINE 未綁定')+'</span></div>';}).join(''):'<div class="ln-row">目前找不到主管 LINE 收件人。請確認管理者帳號或員工資料有 LINE User ID。</div>';
+        var q=r.queue||[];
+        document.getElementById('queue').innerHTML=q.length?q.slice(0,40).map(function(x){var bad=/失敗|fail|error/i.test(x.status||'');return '<div class="ln-row"><div><b>'+esc(x.title||x.eventKey||x.queueId)+'</b><small>'+esc((x.channel||'')+'｜'+(x.targetName||'')+'｜'+(x.lastError||''))+'</small></div><span class="ln-pill '+(bad?'bad':'')+'">'+esc(x.status||'')+'</span></div>';}).join(''):'<div class="ln-row">近期沒有通知佇列。</div>';
+        setMsg('檢查完成。');
+      }catch(e){setMsg(e.message||String(e),true);}
+    }
+    async function test(target){try{setMsg('建立測試通知中…');var r=await api('sendLineAutoNotificationTest',{target:target,message:'LINE 自動通知檢查測試：如果你收到這則訊息，代表自動通知佇列與 LINE 推播是通的。'});if(!r||r.ok===false)throw new Error((r&&r.message)||'測試失敗');setMsg(r.message||'已建立測試通知。');setTimeout(load,1200);}catch(e){setMsg(e.message||String(e),true);}}
+    function init(){var u=typeof requireLogin==='function'?requireLogin():null;if(!u)return;document.getElementById('reloadBtn').onclick=load;document.getElementById('testMeBtn').onclick=function(){test('me')};document.getElementById('testManagersBtn').onclick=function(){test('managers')};load();}
+  </script>
+</body>
+</html>
