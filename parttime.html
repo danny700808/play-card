@@ -637,8 +637,7 @@
 超出的 ${formatHoursLabel(excessHours)} 不能在工讀時數頁直接登記薪資。
 請先至「打卡 / 補打卡」或「臨時出勤申請」送出超出時段；主管核准後，系統會自動將核准時段加入工讀薪資時數，不需要再回本頁重複登記。`;
       alert(msg);
-      setMsg(qs('#msg'), msg.replace(/
-/g, ' '), true);
+      setMsg(qs('#msg'), msg.replace(/\n+/g, ' '), true);
       return {cancelled:true};
     }
     async function submitParttime(){

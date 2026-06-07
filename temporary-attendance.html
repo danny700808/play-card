@@ -36,7 +36,9 @@ body{background:var(--bg);color:var(--ink)}
 <div class="container">
 <div class="card">
   <h1 class="title">臨時出勤申請</h1>
-  <div class="muted">主管尚未排班、臨時增加出勤，或需要班表外額外出勤時使用。若是「原本有班但忘記打卡」，請回打卡頁下方「有班但未完成打卡」提出補打卡；若是已打卡但時間錯誤，請在該筆紀錄點「修正這筆」。</div>
+  <div class="muted">主管尚未排班、臨時增加出勤，或需要班表外額外出勤時使用。
+若是「原本有班但忘記打卡」，請回打卡頁下方「有班但未完成打卡」提出補打卡；若是已打卡但時間錯誤，請在該筆紀錄點「修正這筆」。
+主管核准後，系統會正式補進打卡紀錄、工讀時數與薪資；員工不需要再回工讀時數頁重複登記。</div>
   <div id="msg" class="message"></div>
 </div>
 
@@ -67,8 +69,8 @@ body{background:var(--bg);color:var(--ink)}
 <script src="config.js?v=20260529notifybadge1"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-<script src="firebase-client.js?v=20260530notifyv2final1"></script>
-<script src="app.js?v=20260530notifyv2final1"></script>
+<script src="firebase-client.js?v=20260607tempattfix1"></script>
+<script src="app.js?v=20260607tempattfix1"></script>
 <script>
 let employees=[];
 let currentEmployee=null;
@@ -118,8 +120,11 @@ function showBox(sel,text,type){
   box.style.color=type==='error'?'#9f1239':type==='ok'?'#166534':'#9a3412';
 }
 function setTimeSection(show){
-  qs('#timeSection').classList.toggle('hidden', !show);
-  qs('#blockedReturn').classList.toggle('hidden', show);
+  const timeSection = qs('#timeSection');
+  if (timeSection) timeSection.classList.toggle('hidden', !show);
+  // 舊版曾有 blockedReturn 區塊，部分頁面已移除；避免因找不到元素導致頁面只剩日期欄位。
+  const blockedReturn = qs('#blockedReturn');
+  if (blockedReturn) blockedReturn.classList.toggle('hidden', show);
 }
 function setStartOptions(ranges){
   const starts=[];
