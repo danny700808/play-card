@@ -337,6 +337,56 @@ function overlapsApprovedLeave(startMin,endMin,leaves){
   return null;
 }
 
+
+function normalizeStatusForOverlap(v){
+  const s=clean(v);
+  return s || '';
+}
+function isActiveTemporaryAttendanceStatus(status){
+  const s=normalizeStatusForOverlap(status);
+  if(!s) return true;
+  // 只有待審核、審核中、已核准視為會占用時段；駁回、取消、已刪除不擋。
+  if(s.includes('駁回') || s.includes('取消') || s.includes('刪除') || s.includes('退回') || s.includes('不同意')) return false;
+  return s.includes('待') || s.includes('審') || s.includes('核准') || s.includes('同意') || s.includes('已核准') || s === 'pending' || s === 'approved';
+}
+function rangesOverlap(aStart,aEnd,bStart,bEnd){
+  return aStart < bEnd && aEnd > bStart;
+}
+async function checkDuplicateTemporaryAttendance(empId,date,start,end){
+  const sm=parseMinutes(start), em=parseMinutes(end);
+  if(!empId||!date||sm==null||em==null) return {ok:true};
+  try{
+    const snap=await fb().collection('temporaryAttendanceRequests')
+      .where('employeeId','==',empId)
+      .where('date','==',date)
+      .get();
+    let hit=null;
+    snap.forEach(doc=>{
+      if(hit) return;
+      const d=doc.data()||{};
+      const status=clean(d.status||d['狀態']||'');
+      if(!isActiveTemporaryAttendanceStatus(status)) return;
+      const oldStart=clean(d.startTime||d['申請上班時間']||'');
+      const oldEnd=clean(d.endTime||d['申請下班時間']||'');
+      const os=parseMinutes(oldStart), oe=parseMinutes(oldEnd);
+      if(os==null||oe==null||oe<=os) return;
+      if(rangesOverlap(sm,em,os,oe)){
+        hit={id:doc.id,start:oldStart,end:oldEnd,status:status||'待審核'};
+      }
+    });
+    if(hit){
+      return {
+        ok:false,
+        message:`此時段已有臨時出勤申請或已核准紀錄，無法重複送出。\n\n既有時段：${hit.start}～${hit.end}\n目前狀態：${hit.status}\n\n請確認既有申請狀態；如需修改時間，請等待主管處理或聯絡主管協助調整。`
+      };
+    }
+    return {ok:true};
+  }catch(e){
+    console.warn('[temporary attendance duplicate check skipped]', e);
+    return {ok:true, warning:e.message||String(e)};
+  }
+}
+
 function validateSelectedTime(showMessage){
   const a=currentAnalysis;
   const date=clean(qs('#workDate').value);
@@ -360,6 +410,10 @@ function validateSelectedTime(showMessage){
   const h=hoursBetween(date,start,end);
   if(h<=0){
     const t='下班時間必須晚於上班時間，請重新選擇。';
+    showBox('#lawHint',t,'error'); if(showMessage)msg(t,'error'); return {ok:false,message:t};
+  }
+  if(h>4){
+    const t='你申請的臨時出勤時段已連續超過 4 小時。\n\n依勞基法休息時間規範，連續工作 4 小時原則上應有至少 30 分鐘休息時間。\n請重新分段申請，或將休息時間拆開填寫，以利主管審核與薪資計算。';
     showBox('#lawHint',t,'error'); if(showMessage)msg(t,'error'); return {ok:false,message:t};
   }
   if(h>12){
@@ -390,6 +444,13 @@ async function submitRequest(){
     if(!emp){msg('找不到登入員工資料，請重新登入。','error');return}
     const check=validateSelectedTime(true);
     if(!check.ok)return;
+
+    const dupCheck=await checkDuplicateTemporaryAttendance(emp.id,date,start,end);
+    if(!dupCheck.ok){
+      showBox('#lawHint',dupCheck.message,'error');
+      msg(dupCheck.message,'error');
+      return;
+    }
 
     const a=currentAnalysis;
     const h=check.hours;
