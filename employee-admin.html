@@ -26,7 +26,7 @@
     <div class="topbar">
       <div>
         <h1 class="title">員工管理</h1>
-        <div class="sub">員工主檔、帳號狀態、離職與隱藏控管。先依身分類型分類，再選人查看與修改資料。</div>
+        
       </div>
     </div>
 
@@ -34,9 +34,9 @@
       <div class="detail-head" style="margin-bottom:6px">
         <div>
           <div class="detail-title">選擇人員類別</div>
-          <div class="detail-sub">先選專職員工、工讀生或外聘老師，再進入該類別名單。</div>
+          <div class="detail-sub">先選類別，再選人查看與修改資料。</div>
         </div>
-        <label class="toggle-row"><input id="homeIncludeHidden" type="checkbox" onchange="loadEmployees()"> 顯示離職 / 停用 / 隱藏</label>
+        <label class="toggle-row"><input id="homeIncludeHidden" type="checkbox" onchange="loadEmployees()"> 顯示隱藏</label>
       </div>
       <div class="category-grid" id="categoryCards">
         <div class="empty">讀取中...</div>
@@ -54,7 +54,7 @@
         </div>
         <div class="toolbar">
           <input id="keyword" type="search" placeholder="搜尋姓名、Email、身分" oninput="debouncedLoad()" />
-          <label class="toggle-row"><input id="includeHidden" type="checkbox" onchange="loadEmployees()"> 顯示離職 / 停用 / 隱藏人員</label>
+          <label class="toggle-row"><input id="includeHidden" type="checkbox" onchange="loadEmployees()"> 顯示隱藏人員</label>
         </div>
         <div class="counts" id="counts"></div>
         <div class="list" id="employeeList"><div class="empty">請先選擇分類。</div></div>
@@ -79,15 +79,15 @@
     const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
     const escjs=s=>String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
     const categoryMeta={
-      staff:{title:'專職員工',desc:'查看專職老師 / 正職人員基本資料、帳號與任職狀態。',cls:'cat-staff'},
-      parttime:{title:'工讀生',desc:'查看工讀生基本資料、帳號狀態與工讀相關資料。',cls:'cat-parttime'},
-      external:{title:'外聘老師',desc:'查看外聘老師基本資料、合作狀態、合約與拿貨關聯資料。',cls:'cat-external'}
+      staff:{title:'員工',desc:'查看員工基本資料。',cls:'cat-staff'},
+      parttime:{title:'工讀生',desc:'查看工讀生基本資料。',cls:'cat-parttime'},
+      external:{title:'外聘老師',desc:'查看外聘老師基本資料。',cls:'cat-external'}
     };
     function clean(v){return String(v==null?'':v).trim()}
     function setMsg(text,isErr){const el=$('#msg'); if(!el)return; el.textContent=text||''; el.style.display=text?'block':'none'; el.classList.toggle('error',!!isErr)}
     function debouncedLoad(){clearTimeout(loadTimer); loadTimer=setTimeout(loadEmployees,250)}
     function statusClass(e){if(e.accountStatus==='pending')return 'warn'; if(e.isActiveForDailyUse)return ''; if(e.accountStatus==='rejected')return 'bad'; return 'off'}
-    function identityText(v){return v==='external'?'外聘老師':(v==='parttime'?'工讀生':'專職員工')}
+    function identityText(v){return v==='external'?'外聘老師':(v==='parttime'?'工讀生':'員工')}
     function normalizeType(e){
       const raw=String(e.identityType||e.identity||e.roleType||e['身分類型']||'').trim().toLowerCase();
       const label=String(e.identityLabel||'').trim();
@@ -179,42 +179,87 @@
       renderList();
       if(emp) renderDetail(emp);
     }
+    function valueOf(e, keys){
+      for(const k of keys){
+        if(e && e[k] != null && String(e[k]).trim() !== '') return e[k];
+      }
+      return '';
+    }
     function inputField(label,value,extraCls){return `<div class="field readonly ${extraCls||''}"><label>${label}</label><input value="${esc(value||'')}" disabled></div>`}
+    function renderOtherFields(e, usedKeys){
+      const skip=new Set([...(usedKeys||[]),'id','employeeId','statusReasons','isActiveForDailyUse','statusLabel','identityLabel']);
+      const rows=[];
+      Object.keys(e||{}).sort().forEach(k=>{
+        if(skip.has(k)) return;
+        const v=e[k];
+        if(v==null || v==='' || typeof v==='object') return;
+        rows.push(`<div class="field readonly"><label>${esc(k)}</label><input value="${esc(v)}" disabled></div>`);
+      });
+      if(!rows.length) return '';
+      return `<div class="section-title full">其他資料</div>${rows.join('')}`;
+    }
     function renderDetail(e){
-      const reasons=(e.statusReasons||[]).length?e.statusReasons.join('、'):'目前會顯示在日常操作清單。';
       const type=normalizeType(e);
-      const typeExtra = type==='external'
-        ? inputField('合作狀態', e.employmentStatus==='contractorEnded'?'外聘合作結束':(e.statusLabel||'合作中')) + inputField('授課 / 合作內容', e.teachingItems||e.subjects||e.contractItems||'')
-        : type==='parttime'
-          ? inputField('工讀狀態', e.statusLabel||'') + inputField('時薪 / 工讀設定', e.hourlyWage||e.parttimeHourlyWage||'')
-          : inputField('到職日', e.hireDate||'') + inputField('職稱 / 薪資類型', e.jobTitle||e.salaryDisplayType||'');
+      const identityLabel=(type==='external')?'外聘':(type==='parttime'?'工讀生':'員工');
+      const statusLabel=e.statusLabel || (e.isActiveForDailyUse?'在職顯示':'隱藏 / 停用');
+      const statusPillClass=statusClass(e);
+      const usedKeys=[
+        'name','姓名','email','Email','identityType','identity','roleType','身分類型','identityLabel','isPartTime',
+        'mobilePhone','phone','行動電話','contactPhone','idNumber','nationalId','身分證字號','birthDate','出生年月日',
+        'address','contactAddress','聯絡地址','emergencyContact','緊急聯絡人','emergencyPhone','緊急聯絡人電話',
+        'hireDate','到職日','resignedDate','離職日','employmentStatus','accountStatus','hiddenFromActiveLists','statusNote',
+        'lineUserId','LINE User ID','lineNotifyEnabled','LINE 通知啟用','hourlyWage','parttimeHourlyWage','時薪金額',
+        'salaryDisplayType','薪資顯示類型','jobTitle','職稱','teachingItems','subjects','contractItems',
+        '勞保狀態','laborInsuranceStatus','健保狀態','healthInsuranceStatus','勞保級距','laborInsuranceLevel','健保級距','healthInsuranceLevel',
+        '本薪金額','baseSalary','目前申報月平均薪資總額','declaredMonthlySalary'
+      ];
+      const basicFields = `
+          ${inputField('姓名', valueOf(e,['name','姓名']))}
+          ${inputField('Email', valueOf(e,['email','Email']))}
+          ${inputField('身分', identityLabel)}
+          ${inputField('手機', valueOf(e,['mobilePhone','phone','行動電話','contactPhone']))}
+          ${inputField('身分證字號', valueOf(e,['idNumber','nationalId','身分證字號']))}
+          ${inputField('出生年月日', valueOf(e,['birthDate','出生年月日']))}
+          ${inputField('聯絡地址', valueOf(e,['address','contactAddress','聯絡地址']),'full')}
+          ${inputField('緊急聯絡人', valueOf(e,['emergencyContact','緊急聯絡人']))}
+          ${inputField('緊急聯絡電話', valueOf(e,['emergencyPhone','緊急聯絡人電話']))}`;
+      const workFields = `
+          ${inputField('到職日', valueOf(e,['hireDate','到職日']))}
+          ${inputField('離職 / 結束日期', valueOf(e,['resignedDate','離職日']))}
+          ${inputField('職稱 / 合作內容', valueOf(e,['jobTitle','職稱','teachingItems','subjects','contractItems']))}
+          ${inputField('薪資顯示類型', valueOf(e,['salaryDisplayType','薪資顯示類型']))}
+          ${inputField('時薪', valueOf(e,['hourlyWage','parttimeHourlyWage','時薪金額']))}
+          ${inputField('本薪 / 申報薪資', valueOf(e,['baseSalary','本薪金額','declaredMonthlySalary','目前申報月平均薪資總額']))}`;
+      const insuranceFields = `
+          ${inputField('勞保狀態', valueOf(e,['laborInsuranceStatus','勞保狀態']))}
+          ${inputField('健保狀態', valueOf(e,['healthInsuranceStatus','健保狀態']))}
+          ${inputField('勞保級距', valueOf(e,['laborInsuranceLevel','勞保級距']))}
+          ${inputField('健保級距', valueOf(e,['healthInsuranceLevel','健保級距']))}`;
       $('#detailPanel').innerHTML=`
         <div class="detail-head">
-          <div><div class="detail-title">${esc(e.name||'未命名')}</div><div class="detail-sub">${esc(e.identityLabel||identityText(e.identityType))}｜${esc(e.email||'無 Email')}</div></div>
-          <span class="pill ${statusClass(e)}">${esc(e.statusLabel||'')}</span>
+          <div><div class="detail-title">${esc(valueOf(e,['name','姓名'])||'未命名')}</div><div class="detail-sub">${esc(identityLabel)}｜${esc(valueOf(e,['email','Email'])||'無 Email')}</div></div>
+          <span class="pill ${statusPillClass}">${esc(statusLabel)}</span>
         </div>
         <div class="section-title">基本資料</div>
         <div class="form-grid">
-          ${inputField('姓名',e.name)}
-          ${inputField('Email',e.email)}
-          ${inputField('身分別',e.identityLabel||identityText(e.identityType))}
-          ${inputField('手機',e.mobilePhone)}
-          ${inputField('身分證字號',e.idNumber||e.nationalId)}
-          ${inputField('出生年月日',e.birthDate)}
-          ${inputField('聯絡地址',e.address||e.contactAddress,'full')}
-          ${inputField('緊急聯絡人',e.emergencyContact)}
-          ${inputField('緊急聯絡電話',e.emergencyPhone)}
-          ${inputField('LINE 綁定',e.lineUserId?(e.lineNotifyEnabled?'已綁定，可通知':'已綁定，通知未開啟'):'未綁定')}
-          ${typeExtra}
+          ${basicFields}
+          <div class="section-title full">任職 / 薪資資料</div>
+          ${workFields}
+          <div class="section-title full">投保資料</div>
+          ${insuranceFields}
+          <div class="section-title full">LINE 資料</div>
+          ${inputField('LINE User ID', valueOf(e,['lineUserId','LINE User ID']),'full')}
+          ${inputField('LINE 通知', valueOf(e,['lineNotifyEnabled','LINE 通知啟用']) ? '啟用 / 已綁定' : '未啟用或未綁定')}
+          ${renderOtherFields(e, usedKeys)}
+          <div class="section-title full">管理設定</div>
           <div class="field"><label>帳號狀態</label><select id="accountStatus"><option value="active">啟用，可登入</option><option value="inactive">停用登入</option><option value="archived">封存</option><option value="pending">待審核</option><option value="rejected">註冊駁回</option></select></div>
           <div class="field"><label>任職 / 合作狀態</label><select id="employmentStatus"><option value="active">在職 / 合作中</option><option value="resigned">離職</option><option value="suspended">暫停任用</option><option value="contractorEnded">外聘合作結束</option><option value="archived">封存</option></select></div>
-          <div class="field"><label>離職 / 結束日期</label><input id="resignedDate" type="date" value="${esc(e.resignedDate||'')}"></div>
+          <div class="field"><label>離職 / 結束日期</label><input id="resignedDate" type="date" value="${esc(valueOf(e,['resignedDate','離職日']))}"></div>
           <label class="checkline"><input id="hiddenFromActiveLists" type="checkbox"> 隱藏於日常操作清單</label>
           <div class="field full"><label>狀態備註</label><textarea id="statusNote" rows="3" placeholder="例如：已離職、暫停排班、外聘合作結束...">${esc(e.statusNote||'')}</textarea></div>
         </div>
-        <div class="actions"><button class="btn" onclick="saveStatus()">儲存員工狀態</button><button class="btn secondary" onclick="loadHistory()">查看歷史資料統計</button><button class="btn ghost" onclick="markResigned()">快速設為離職隱藏</button><button class="btn ghost" onclick="restoreActive()">恢復在職顯示</button></div>
-        <div id="msg" class="msg"></div>
-        <div id="historyBox"></div>`;
+        <div class="actions"><button class="btn" onclick="saveStatus()">儲存資料</button></div>
+        <div id="msg" class="msg"></div>`;
       $('#accountStatus').value=e.accountStatus||'active';
       $('#employmentStatus').value=e.employmentStatus||'active';
       $('#hiddenFromActiveLists').checked=!!e.hiddenFromActiveLists;
