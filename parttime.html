@@ -345,7 +345,7 @@
 
   <div id="parttimeExcessModal" class="pt-modal-mask" aria-hidden="true">
     <div class="pt-modal" role="dialog" aria-modal="true" aria-labelledby="parttimeExcessTitle">
-      <h3 id="parttimeExcessTitle">超出排班時數申請</h3>
+      <h3 id="parttimeExcessTitle">超出排班時數提醒</h3>
       <div id="parttimeExcessDesc" class="desc"></div>
       <div class="mode-grid" id="parttimeExcessModes">
         <button type="button" class="mode-choice active" data-mode="late">延後下班：超出時數接在班表結束後</button>
@@ -356,7 +356,7 @@
       <textarea id="parttimeExcessReason" placeholder="請填寫為什麼超出排班時數，例如：主管臨時交辦、延後收班、臨時支援。"></textarea>
       <div class="pt-modal-actions">
         <button type="button" class="btn secondary" id="parttimeExcessCancel">取消</button>
-        <button type="button" class="btn" id="parttimeExcessConfirm">送出申請</button>
+        <button type="button" class="btn" id="parttimeExcessConfirm">我知道了</button>
       </div>
     </div>
   </div>
@@ -499,9 +499,9 @@
         if(ctx.canRegister){
           const directHours = Number(ctx.remainingRegularHours || ctx.maxDirectHours || ctx.scheduledHours || 0) || 0;
           const usedText = Number(ctx.registeredHours || 0) > 0 ? `已登記 ${formatHoursLabel(ctx.registeredHours)}。` : '';
-          note.innerHTML = (ctx.helperText || '今天有排班，可以登記排班內時數。') + (ctx.scheduledHours ? `<div class="excess-note">今日排班 ${formatHoursLabel(ctx.scheduledHours)}。${usedText}若登記時數超過可直接登記的 ${formatHoursLabel(directHours)}，超出部分會送主管審核；主管審核會更新，並自動歸位。</div>` : '');
+          note.innerHTML = (ctx.helperText || '今天有排班，可以登記排班內時數。') + (ctx.scheduledHours ? `<div class="excess-note">今日排班 ${formatHoursLabel(ctx.scheduledHours)}。${usedText}若實際出勤超出可直接登記時數，請先至「打卡 / 補打卡」或「臨時出勤申請」送出超出時段；主管核准後系統會自動計入工讀薪資時數，不需要再回本頁重複登記。</div>` : '');
         }else{
-          note.textContent = '今天沒有排班，不能直接登記工讀時數；如為臨時出勤，請使用臨時出勤申請。';
+          note.textContent = '今天沒有排班，不能直接登記工讀時數；如為臨時出勤，請先使用「臨時出勤申請」，主管核准後系統會自動計入薪資時數。';
         }
       }
       if(btn) btn.disabled = !!(ctx && !ctx.canRegister);
@@ -624,21 +624,22 @@
       if(cancel) cancel.onclick = () => closeParttimeExcessModal(null);
       const confirm = qs('#parttimeExcessConfirm');
       if(confirm) confirm.onclick = () => {
-        const active = qs('#parttimeExcessModes .mode-choice.active');
-        const reason = clean(qs('#parttimeExcessReason').value);
-        if(!reason){ alert('請填寫超出排班時數的原因。'); return; }
-        closeParttimeExcessModal({mode: active ? active.dataset.mode : 'late', reason});
+        closeParttimeExcessModal({ack:true});
       };
     }
     async function collectExcessInfo(totalHours){
       const ctx = currentDateContext || {};
-      const scheduled = Number(ctx.scheduledHours || 0) || 0;
       const directHours = Number(ctx.remainingRegularHours || ctx.maxDirectHours || ctx.scheduledHours || 0) || 0;
       if(!directHours || totalHours <= directHours + 0.0001) return {};
-      const info = {scheduledHours: directHours, totalHours, excessHours: Math.round((totalHours - directHours)*100)/100};
-      const choice = await openParttimeExcessModal(info);
-      if(!choice) return {cancelled:true};
-      return {excessMode: choice.mode, excessReason: choice.reason};
+      const excessHours = Math.round((totalHours - directHours)*100)/100;
+      const msg = `你選擇的工讀時數已超出目前可直接登記的 ${formatHoursLabel(directHours)}。
+
+超出的 ${formatHoursLabel(excessHours)} 不能在工讀時數頁直接登記薪資。
+請先至「打卡 / 補打卡」或「臨時出勤申請」送出超出時段；主管核准後，系統會自動將核准時段加入工讀薪資時數，不需要再回本頁重複登記。`;
+      alert(msg);
+      setMsg(qs('#msg'), msg.replace(/
+/g, ' '), true);
+      return {cancelled:true};
     }
     async function submitParttime(){
       if(!validateForm()) return;

@@ -3902,8 +3902,8 @@
     const remaining = Math.max(0, Math.round((scheduled - registered) * 100) / 100);
     const canRegister = !!(sch.hasSchedule && scheduled > 0);
     const helperText = canRegister
-      ? '可直接登記排班內時數；超過排班的時數會轉為申請，待主管審核。'
-      : '今天沒有排班，不能直接登記工讀時數。如為臨時出勤，請提出臨時出勤申請。';
+      ? '只能登記已核准可計薪的排班內時數；超出排班的時間請先至打卡 / 補打卡或臨時出勤申請，主管核准後會自動計入薪資。'
+      : '今天沒有排班，不能直接登記工讀時數。如為臨時出勤，請先提出臨時出勤申請；主管核准後系統會自動計入薪資時數。';
     return {ok:true, context:{
       workDate,
       canRegister,
@@ -4262,6 +4262,10 @@
     if(!ctx.canRegister || !ctx.scheduledHours) return {ok:false, message:'今天沒有排班，不能直接登記工讀時數；如為臨時出勤，請使用臨時出勤申請。'};
     const scheduledHours = Math.round((Number(ctx.scheduledHours)||0)*100)/100;
     const hourlyRate = await getHourlyRate(employeeId);
+    if(selectedHours > scheduledHours + 0.0001){
+      const excessHours = Math.round((selectedHours - scheduledHours)*100)/100;
+      return {ok:false, source:'firebase-parttime-fast', blockedBySchedule:true, message:`你選擇的工讀時數已超出今日已核准可登記時數。超出的 ${fmtHours(excessHours)} 不能在工讀時數頁直接登記薪資；請先至「打卡 / 補打卡」或「臨時出勤申請」送出超出時段。主管核准後，系統會自動將核准時段加入工讀薪資時數，不需要再回本頁重複登記。`, scheduledHours, selectedHours, excessHours};
+    }
     const normalHours = Math.min(selectedHours, scheduledHours);
     const dateKey = date.replace(/-/g,'');
     const baseId = 'PT_' + employeeId + '_' + dateKey;
@@ -6073,7 +6077,6 @@
         overdue(20,'clock.missing.overdue','補打卡逾期未審','補打卡超過設定天數未審，提醒主管。')
       ],
       clockAuto:[
-        emp(20,'clock.late.created','遲到紀錄產生','上班打卡被判定遲到時，通知員工本人。',{employeeEmailEnabled:false}),
         emp(21,'clock.workBefore','上班前提醒','依排班時間，在上班前指定分鐘提醒員工打上班卡。',{beforeMinutes:10,settingFields:['beforeMinutes']}),
         emp(23,'clock.workMissingAfter','上班後未打卡提醒','上班後超過指定分鐘仍未打卡，提醒員工。',{afterMinutes:30,settingFields:['afterMinutes']}),
         emp(25,'clock.offTime','表定下班時間提醒','到表定下班時間時，提醒員工打下班卡。'),
@@ -6114,8 +6117,7 @@
         emp(57,'contractor.contract.open','外聘合約開放簽署','外聘合約開放簽署時，通知老師。'),
         emp(58,'contractor.contract.dueSoon','外聘合約即將到期未簽','合約即將到期仍未簽署時，提醒老師。'),
         overdue(59,'contractor.contract.overdue','外聘合約逾期未簽','合約逾期未簽時，通知主管。'),
-        mgr(60,'contractor.contract.signed','外聘老師完成簽署','外聘老師完成合約簽署後，通知主管。'),
-        mgr(61,'contractor.goodsInquiry.submitted','老師送出拿貨詢價','老師送出拿貨或官網商品詢價後，通知主管。'),
+        mgr(60,'contractor.goodsInquiry.submitted','老師送出拿貨詢價','老師送出拿貨或官網商品詢價後，通知主管。'),
         emp(61,'contractor.goodsInquiry.replied','主管回覆拿貨詢價','主管回覆拿貨詢價後，通知老師。')
       ],
       certificate:[
@@ -6613,97 +6615,4 @@
     if(typeof oldHandle === 'function') return await oldHandle(action,payload||{});
     return null;
   };
-})(window);
-
-/* =========================================================
- * LINE 自動通知總修正版：主管檢查工具 2026-06-06
- * ---------------------------------------------------------
- * 提供主管區檢查：管理者收件人、LINE 綁定狀態、近期通知佇列與測試通知。
- * 實際自動通知由 Firebase Functions 觸發器建立 notificationQueue。
- * ========================================================= */
-(function(global){
-  const fb = global.YZFirebase || {};
-  if(!fb || fb.__lineAutoNotifyHealth20260606) return;
-  fb.__lineAutoNotifyHealth20260606 = true;
-  const previousHandle = fb.handleApi;
-
-  function cfg(){ return (global.APP_CONFIG && global.APP_CONFIG.FIREBASE_CONFIG) || {}; }
-  function enabled(){ return !!(global.APP_CONFIG && global.APP_CONFIG.FIREBASE_ENABLED && cfg().projectId && global.firebase && global.firebase.firestore); }
-  function db(){ if(!enabled()) throw new Error('Firebase 尚未啟用'); const apps=global.firebase.apps||[]; const app=apps.length?apps[0]:global.firebase.initializeApp(cfg()); return global.firebase.firestore(app); }
-  function clean(v){ return String(v==null?'':v).trim(); }
-  function lower(v){ return clean(v).toLowerCase(); }
-  function truthy(v){ const s=lower(v); return v===true || v===1 || ['1','true','yes','on','是','啟用','enabled','active'].indexOf(s)>=0; }
-  function no(v){ const s=lower(v); return v===false || v===0 || ['0','false','no','off','否','停用','disabled'].indexOf(s)>=0; }
-  function serverTs(){ return global.firebase.firestore.FieldValue.serverTimestamp(); }
-  function nowId(prefix){ return (prefix||'ID')+'_'+Date.now()+'_'+Math.random().toString(36).slice(2,8); }
-  async function all(col, limit){ const snap=await db().collection(col).limit(limit||800).get(); const rows=[]; snap.forEach(doc=>rows.push(Object.assign({__id:doc.id},doc.data()||{}))); return rows; }
-  function pick(o,keys,fb){ o=o||{}; for(const k of keys){ if(o[k]!==undefined && o[k]!==null && clean(o[k])!=='') return o[k]; } return fb==null?'':fb; }
-  function lineOf(o){ return clean(pick(o,['lineUserId','LINE User ID','LINE使用者ID','lineId','targetLineUserId','LINEUserId'],'')); }
-  function emailOf(o){ return lower(pick(o,['email','Email','登入帳號','targetEmail'],'')); }
-  function nameOf(o){ return clean(pick(o,['name','姓名','employeeName','displayName','targetName'],'')); }
-  function empIdOf(o){ return clean(pick(o,['employeeId','員工ID','id','userId','teacherId'],o&&o.__id)); }
-  function lineEnabled(o){ const v=pick(o,['lineNotifyEnabled','LINE 通知啟用','notifyLine','lineEnabled'],''); if(v===''||v==null) return !!lineOf(o); return truthy(v); }
-  function identity(o){ const raw=lower(pick(o,['identityType','身分類型','identityLabel','employeeType','role','角色'],'')); if(raw.indexOf('工讀')>=0||raw==='parttime'||truthy(o.isPartTime||o['是否工讀生'])) return 'parttime'; if(raw.indexOf('外聘')>=0||raw==='external'||raw==='teacher'||raw==='contractor') return 'external'; if(raw.indexOf('管理')>=0||raw.indexOf('主管')>=0||raw==='admin'||raw==='manager') return 'manager'; return 'staff'; }
-  function isActive(o){ const a=lower(pick(o,['accountStatus','帳號狀態'],'active')); const e=lower(pick(o,['employmentStatus','任職狀態','在職狀態'],'active')); return ['rejected','inactive','disabled','archived','pending','停用','駁回','封存'].indexOf(a)<0 && ['resigned','inactive','suspended','archived','contractorended','離職','暫停任用','封存','外聘合作結束'].indexOf(e)<0; }
-  function isManager(o){ const role=lower(pick(o,['role','角色','identityType','身分類型'],'')); if(['admin','manager','owner','supervisor','管理者','主管','負責人'].indexOf(role)>=0) return true; if(role.indexOf('admin')>=0||role.indexOf('manager')>=0||role.indexOf('管理')>=0||role.indexOf('主管')>=0) return true; return ['showSettingsZone','isManager','isAdmin','canApprove','canReview','canSeeApproval','canManage','可看設定區','可看審核區','可操作假勤制度','是否顯示設定區','管理權限'].some(k=>truthy(o[k])); }
-  function norm(o){ return {employeeId:empIdOf(o), name:nameOf(o)||emailOf(o)||empIdOf(o), email:emailOf(o), lineUserId:lineOf(o), lineNotifyEnabled:lineEnabled(o), identityType:identity(o), isManager:isManager(o), active:isActive(o)}; }
-  function uniq(rows){ const out=[], seen={}; (rows||[]).forEach(r=>{ const k=clean(r.employeeId||r.email||r.lineUserId||r.name); if(!k||seen[k]) return; seen[k]=1; out.push(r); }); return out; }
-  async function managerRows(){
-    // 日常主管通知以「主要主管 LINE 收件人」為優先。
-    // 只要這裡有設定，就不要再把員工 / 其他已綁 LINE 帳號混進主管收件人，避免畫面與通知變混亂。
-    const primary=[];
-    for(const col of ['notificationManagerRecipients','managerLineRecipients','primaryManagerLineRecipients','lineManagerRecipients']){
-      try{ (await all(col,300)).map(norm).filter(x=>x.active&&x.lineUserId).forEach(x=>primary.push(Object.assign(x,{identityType:'manager',isManager:true,isPrimaryManagerLineRecipient:true,sourceCollection:col}))); }catch(e){}
-    }
-    const primaryUniq = uniq(primary);
-    if(primaryUniq.length) return primaryUniq;
-
-    // 沒有手動指定主要主管時，才 fallback 找系統裡被標記為主管 / 管理者的人。
-    const rows=[];
-    try{ (await all('employees',1000)).map(norm).filter(x=>x.active&&x.isManager).forEach(x=>rows.push(x)); }catch(e){}
-    for(const col of ['managerAccounts','adminAccounts','managers','managerUsers','adminUsers']){
-      try{ (await all(col,300)).map(norm).filter(x=>x.active).forEach(x=>rows.push(Object.assign(x,{identityType:'manager',isManager:true,sourceCollection:col}))); }catch(e){}
-    }
-    return uniq(rows);
-  }
-  async function employeeRows(){ try{ return (await all('employees',1200)).map(norm).filter(x=>x.active); }catch(e){ return []; } }
-  async function recentQueue(){ try{ return (await all('notificationQueue',120)).map(r=>({queueId:clean(r.queueId||r.__id), eventKey:clean(r.eventKey), channel:clean(r.channel), targetName:clean(r.targetName), status:clean(r.status), lastError:clean(r.lastError), createdAt:String(r.createdAtText||'')})); }catch(e){ return []; } }
-  async function getLineAutoNotificationStatus(){
-    const [mgrs, emps, queue]=await Promise.all([managerRows(),employeeRows(),recentQueue()]);
-    const byType={staff:0,parttime:0,external:0,manager:0};
-    const byTypeLine={staff:0,parttime:0,external:0,manager:0};
-    emps.forEach(e=>{ byType[e.identityType]=(byType[e.identityType]||0)+1; if(e.lineUserId&&e.lineNotifyEnabled) byTypeLine[e.identityType]=(byTypeLine[e.identityType]||0)+1; });
-    const candidates=emps.filter(e=>e.lineUserId).map(e=>Object.assign({},e,{canSetAsManager:true}));
-    return {ok:true, managers:mgrs, employees:emps, managerCandidates:candidates, queue, counts:{managers:mgrs.length, managersWithLine:mgrs.filter(x=>x.lineUserId&&x.lineNotifyEnabled!==false).length, activeEmployees:emps.length, activeEmployeesWithLine:emps.filter(x=>x.lineUserId&&x.lineNotifyEnabled).length, byType, byTypeLine, recentQueue:queue.length}};
-  }
-  async function setPrimaryManagerLineRecipient(payload){
-    payload=payload||{};
-    const t=norm(payload.target || payload.user || (function(){try{return JSON.parse(localStorage.getItem('employeeUser')||'{}')}catch(e){return {}}})());
-    if(!t.lineUserId) throw new Error('請先填入 LINE User ID。這不是官方帳號名稱，也不是一般 LINE ID。');
-
-    // 只保留一筆主要主管收件人，避免主管人數變成多筆看起來混亂。
-    try{
-      const snap=await db().collection('notificationManagerRecipients').limit(200).get();
-      const batch=db().batch();
-      snap.forEach(function(doc){ batch.set(doc.ref,{accountStatus:'inactive',lineNotifyEnabled:false,updatedAt:serverTs()},{merge:true}); });
-      await batch.commit();
-    }catch(e){}
-
-    await db().collection('notificationManagerRecipients').doc('PRIMARY_MANAGER_LINE').set({
-      employeeId:'PRIMARY_MANAGER_LINE', name:t.name||'柚子樂器主要管理者', email:t.email||'', lineUserId:t.lineUserId,
-      lineNotifyEnabled:true, role:'manager', isManager:true, identityType:'manager', accountStatus:'active', source:'manual-primary-manager-line', updatedAt:serverTs()
-    }, {merge:true});
-    return {ok:true,message:'已儲存主要主管 LINE 收件人。之後主管通知會優先送到這個 LINE。'};
-  }
-  async function sendLineAutoNotificationTest(payload){ payload=payload||{}; const targets = payload.target==='managers' ? await managerRows() : [norm((function(){try{return JSON.parse(localStorage.getItem('employeeUser')||'{}')}catch(e){return {}}})())]; const channels=['line']; let count=0, skipped=0; const batchId=nowId('LINE_AUTO_TEST'); for(const t of targets){ if(!t.lineUserId){ skipped++; continue; } const id=batchId+'_'+(t.employeeId||t.email||t.lineUserId).replace(/[^a-zA-Z0-9_-]/g,'_')+'_line'; await db().collection('notificationQueue').doc(id).set({queueId:id,batchId,eventKey:'manual.lineAutoHealthTest',eventName:'LINE自動通知測試',moduleKey:'healthCheck',channel:'line',targetEmployeeId:t.employeeId,targetName:t.name,targetEmail:t.email,targetLineUserId:t.lineUserId,title:'LINE自動通知測試',body:clean(payload.message)||'這是 LINE 自動通知總修正版的測試訊息。',status:'待發送',createdAt:serverTs(),source:'line-auto-health-check'}, {merge:true}); count++; } return {ok:true,message:'已建立測試通知 '+count+' 筆，略過 '+skipped+' 筆。',count,skipped}; }
-
-  fb.handleApi = async function(action,payload){
-    const a=clean(action);
-    if(a==='getLineAutoNotificationStatus') return await getLineAutoNotificationStatus(payload||{});
-    if(a==='setPrimaryManagerLineRecipient') return await setPrimaryManagerLineRecipient(payload||{});
-    if(a==='sendLineAutoNotificationTest') return await sendLineAutoNotificationTest(payload||{});
-    if(typeof previousHandle==='function') return await previousHandle(action,payload||{});
-    return null;
-  };
-  global.YZFirebase = fb;
 })(window);
