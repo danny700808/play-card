@@ -9,10 +9,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="config.js"></script>
   <style>
-    body{background:#f6faf7}.wrap{max-width:1180px;margin:0 auto;padding:20px}.topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:16px}.title{font-size:28px;font-weight:900;color:#173b2f;margin:0}.sub{color:#1f2937;line-height:1.6;margin-top:6px}.panel{background:#fff;border:1px solid #dbe7df;border-radius:20px;box-shadow:0 10px 26px rgba(16,24,40,.06);padding:18px}.grid{display:grid;grid-template-columns:minmax(280px,380px) minmax(0,1fr);gap:18px;align-items:start}.toolbar{display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:12px}.toolbar input,.toolbar select,.field input,.field select,.field textarea{width:100%;border:1px solid #d0d5dd;border-radius:12px;padding:11px 12px;font-size:15px;background:#fff}.counts{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}.pill{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:5px 10px;font-size:12px;font-weight:800;background:#eef7f1;color:#19613f}.pill.warn{background:#fff4e5;color:#975a16}.pill.off{background:#f2f4f7;color:#475467}.pill.bad{background:#fff1f3;color:#b42318}.list{display:grid;gap:10px;max-height:68vh;overflow:auto;padding-right:4px}.emp-card{border:1px solid #e4ebe6;border-radius:16px;padding:13px;background:#fff;cursor:pointer;transition:.15s}.emp-card:hover{border-color:#9fd3b3}.emp-card.active{border-color:#1f7a5a;box-shadow:0 0 0 3px rgba(31,122,90,.12)}.emp-head{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}.emp-name{font-weight:900;color:#173b2f}.emp-meta{font-size:13px;color:#1f2937;line-height:1.55;margin-top:4px}.reason{font-size:12px;color:#b42318;margin-top:6px;line-height:1.45}.detail-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;border-bottom:1px solid #edf2ee;padding-bottom:14px;margin-bottom:14px}.detail-title{font-size:22px;font-weight:900;color:#173b2f}.detail-sub{color:#1f2937;line-height:1.6;margin-top:5px}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.field label{display:block;font-weight:900;color:#111827;margin:0 0 7px}.field.full{grid-column:1/-1}.checkline{display:flex;align-items:center;gap:9px;font-weight:800;color:#344054;margin-top:30px}.checkline input{width:auto}.actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}.btn{border:0;border-radius:12px;padding:11px 15px;font-weight:900;cursor:pointer;background:#1f7a5a;color:#fff}.btn.secondary{background:#eef7f1;color:#1f7a5a}.btn.ghost{background:#f2f4f7;color:#344054}.btn.danger{background:#d92d20;color:#fff}.msg{display:none;margin-top:12px;border-radius:12px;padding:10px 12px;background:#eef7f1;color:#1f7a5a;font-weight:800}.msg.error{background:#fff1f3;color:#b42318}.history{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:12px}.hist-item{border:1px solid #edf2ee;border-radius:14px;padding:12px;background:#fcfffd}.hist-num{font-size:22px;font-weight:900;color:#173b2f}.hist-label{font-size:12px;color:#374151;margin-top:2px}.empty{border:1px dashed #cbd5d0;border-radius:18px;padding:28px;text-align:center;color:#374151}.notice{background:#fffbeb;border:1px solid #fedf89;color:#7a4b00;border-radius:14px;padding:12px;line-height:1.65;margin-bottom:14px;font-size:14px}
-    .category-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:10px}.category-card{border:1px solid transparent;border-radius:22px;padding:22px;cursor:pointer;min-height:150px;display:flex;flex-direction:column;justify-content:space-between;transition:.15s}.category-card:hover{transform:translateY(-1px);box-shadow:0 10px 28px rgba(16,24,40,.08)}.cat-staff{background:#eef7ff;border-color:#b9dcff}.cat-parttime{background:#fff7ed;border-color:#fed7aa}.cat-external{background:#fff1f8;border-color:#fbcfe8}.cat-title{font-size:22px;font-weight:950;color:#173b2f}.cat-desc{font-size:13px;color:#1f2937;line-height:1.55;margin-top:8px}.cat-count{font-size:30px;font-weight:950;color:#173b2f;margin-top:18px}.cat-count span{font-size:13px;color:#374151;font-weight:800;margin-left:4px}.category-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}.category-name{font-size:20px;font-weight:950;color:#173b2f}.category-actions{display:flex;gap:8px;flex-wrap:wrap}.toggle-row{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:800;color:#1f2937}.toggle-row input{width:auto}.info-note{font-size:12px;color:#374151;line-height:1.55;margin-top:4px}.section-title{font-size:15px;font-weight:950;color:#173b2f;margin:4px 0 10px}.field.readonly input{background:#fff;color:#111827;font-weight:700}.mobile-hint{display:none}
-    @media(max-width:900px){.grid{grid-template-columns:1fr}.list{max-height:none}.history{grid-template-columns:repeat(2,minmax(0,1fr))}.topbar{align-items:flex-start;flex-direction:column}.category-grid{grid-template-columns:1fr}.form-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.field label{font-size:12px;margin-bottom:4px}.field input,.field select,.field textarea{font-size:13px;padding:9px 8px;border-radius:10px}.field.full{grid-column:1/-1}.checkline{grid-column:1/-1;margin-top:6px;font-size:13px}.detail-title{font-size:19px}.detail-sub{font-size:13px}.mobile-hint{display:block}.panel{padding:14px}.wrap{padding:14px}.btn{padding:10px 12px;font-size:13px}.notice{font-size:13px}}
-    @media(max-width:420px){.form-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.field input,.field select,.field textarea{font-size:12px;padding:8px 7px}.field label{font-size:11px}.emp-meta{font-size:12px}.category-card{min-height:128px;padding:18px}.cat-title{font-size:20px}}
+    :root{--bg:#f6faf7;--card:#fff;--ink:#142334;--muted:#637184;--green:#1f7a5a;--green2:#eaf7f0;--orange:#ad6419;--orange2:#fff4e6;--blue:#28728f;--blue2:#edf7fb;--red:#b42318;--red2:#fff1f3;--line:#dde8e1;--shadow:0 10px 26px rgba(16,24,40,.06)}
+    body{background:var(--bg);color:var(--ink);margin:0;font-family:-apple-system,BlinkMacSystemFont,"Noto Sans TC","Segoe UI",sans-serif}.wrap{max-width:1080px;margin:0 auto;padding:18px}.title{font-size:32px;font-weight:900;color:#173b2f;margin:12px 0 18px}.panel{background:var(--card);border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow);padding:20px;margin:16px 0}.layer{display:none}.layer.active{display:block}.layer-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}.layer-title{font-size:25px;font-weight:900;color:#173b2f}.btn{border:0;border-radius:14px;background:#1f7a5a;color:#fff;font-weight:900;padding:11px 16px;cursor:pointer}.btn.ghost{background:#eef2f6;color:#24364a}.btn.red{background:#b42318}.category-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.category-card{border:2px solid var(--line);border-radius:22px;min-height:145px;padding:20px;background:#fff;cursor:pointer;display:flex;flex-direction:column;justify-content:space-between}.category-card.staff{background:var(--green2);border-color:#cbe8d7}.category-card.parttime{background:var(--orange2);border-color:#f1d0aa}.category-card.external{background:#fff0f7;border-color:#f2c7df}.category-card:hover{transform:translateY(-1px);box-shadow:0 10px 22px rgba(16,24,40,.08)}.cat-title{font-size:30px;font-weight:900;color:#173b2f}.cat-count{font-size:38px;font-weight:900;color:#173b2f}.toolbar{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;margin-bottom:14px}.toolbar input{width:100%;border:2px solid #d3dee8;border-radius:16px;padding:13px 14px;font-size:16px;background:#fff}.toggle-row{display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:800;color:#37495b;white-space:nowrap}.toggle-row input{width:22px;height:22px}.counts{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}.pill{display:inline-flex;align-items:center;justify-content:center;border-radius:999px;padding:7px 12px;font-size:14px;font-weight:900;background:#eef7f1;color:#19613f;white-space:nowrap}.pill.warn{background:var(--orange2);color:#ad6419}.pill.off{background:#f2f4f7;color:#475467}.pill.bad{background:var(--red2);color:var(--red)}.pill.blue{background:var(--blue2);color:var(--blue)}.employee-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.emp-card{border:2px solid #e3ebe6;border-radius:20px;padding:16px;background:#fff;cursor:pointer;display:grid;grid-template-columns:1fr auto;align-items:center;gap:12px;min-height:88px}.emp-card:hover{border-color:#9fd3b3}.emp-name{font-size:25px;font-weight:900;color:#173b2f}.emp-email{font-size:15px;color:#637184;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.detail-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;border-bottom:1px solid #edf2ee;padding-bottom:14px;margin-bottom:16px}.detail-title{font-size:30px;font-weight:900;color:#173b2f}.detail-sub{font-size:15px;color:#667085;margin-top:4px}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.section-title{grid-column:1/-1;font-size:20px;font-weight:900;color:#173b2f;margin-top:12px;padding-top:14px;border-top:1px solid #edf2ee}.field label{display:block;font-size:13px;font-weight:900;color:#344054;margin-bottom:6px}.field input,.field select,.field textarea{width:100%;border:1px solid #d0d5dd;border-radius:12px;padding:11px 12px;font-size:15px;background:#fff}.field.readonly input{background:#f8fafc;color:#344054}.field.full{grid-column:1/-1}.checkline{grid-column:1/-1;margin-top:6px;font-size:15px;font-weight:800;color:#344054}.actions{display:flex;justify-content:center;margin-top:18px}.actions .btn{width:min(420px,100%);font-size:18px;padding:14px}.msg{display:none;margin-top:12px;border-radius:12px;padding:10px 12px;background:#eef7f1;color:#1f7a5a;font-weight:800}.msg.error{background:#fff1f3;color:#b42318}.empty{padding:18px;border:1px dashed #cfd8d3;border-radius:16px;color:#667085;background:#fbfdfc}.backline{display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap}.mobile-hint{display:none;color:#667085;font-size:13px;margin-top:8px}@media(max-width:760px){.wrap{padding:14px}.title{font-size:34px}.panel{padding:18px;border-radius:22px}.category-grid,.employee-grid,.form-grid,.toolbar{grid-template-columns:1fr}.layer-head,.detail-head{align-items:flex-start}.cat-title{font-size:28px}.emp-name{font-size:24px}.detail-title{font-size:28px}.mobile-hint{display:block}.toolbar{gap:10px}.toggle-row{white-space:normal}.field input,.field select,.field textarea{font-size:14px;padding:10px}.field label{font-size:12px}}
   </style>
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
 </head>
@@ -23,47 +21,35 @@
   </div>
 
   <div class="wrap">
-    <div class="topbar">
-      <div>
-        <h1 class="title">員工管理</h1>
-        
-      </div>
-    </div>
+    <h1 class="title">員工管理</h1>
 
-    <section class="panel" id="categoryHome">
-      <div class="detail-head" style="margin-bottom:6px">
-        <div>
-          <div class="detail-title">選擇人員類別</div>
-          <div class="detail-sub">先選類別，再選人查看與修改資料。</div>
-        </div>
+    <section class="panel layer active" id="layerCategory">
+      <div class="layer-head">
+        <div class="layer-title">選擇人員類別</div>
         <label class="toggle-row"><input id="homeIncludeHidden" type="checkbox" onchange="loadEmployees()"> 顯示隱藏</label>
       </div>
-      <div class="category-grid" id="categoryCards">
-        <div class="empty">讀取中...</div>
-      </div>
+      <div class="category-grid" id="categoryCards"><div class="empty">讀取中...</div></div>
     </section>
 
-    <div class="grid" id="employeeWorkArea" style="display:none">
-      <section class="panel">
-        <div class="category-bar">
-          <div>
-            <div class="category-name" id="currentCategoryTitle">人員清單</div>
-            <div class="info-note" id="currentCategoryDesc"></div>
-          </div>
-          <div class="category-actions"><button class="btn ghost" type="button" onclick="backToCategories()">分類清單</button></div>
+    <section class="panel layer" id="layerList">
+      <div class="layer-head">
+        <div>
+          <div class="layer-title" id="currentCategoryTitle">人員名單</div>
+          <div class="mobile-hint">點選姓名後進入資料頁。</div>
         </div>
-        <div class="toolbar">
-          <input id="keyword" type="search" placeholder="搜尋姓名、Email、身分" oninput="debouncedLoad()" />
-          <label class="toggle-row"><input id="includeHidden" type="checkbox" onchange="loadEmployees()"> 顯示隱藏人員</label>
-        </div>
-        <div class="counts" id="counts"></div>
-        <div class="list" id="employeeList"><div class="empty">請先選擇分類。</div></div>
-      </section>
+        <button class="btn ghost" type="button" onclick="showCategoryLayer()">回到類別</button>
+      </div>
+      <div class="toolbar">
+        <input id="keyword" type="search" placeholder="搜尋姓名或 Email" oninput="debouncedLoad()">
+        <label class="toggle-row"><input id="includeHidden" type="checkbox" onchange="loadEmployees()"> 顯示隱藏人員</label>
+      </div>
+      <div class="counts" id="counts"></div>
+      <div class="employee-grid" id="employeeList"><div class="empty">請先選擇分類。</div></div>
+    </section>
 
-      <section class="panel" id="detailPanel">
-        <div class="empty">請先從左側選擇人員。</div>
-      </section>
-    </div>
+    <section class="panel layer" id="layerDetail">
+      <div id="detailPanel"><div class="empty">請先從名單選擇人員。</div></div>
+    </section>
   </div>
 
   <script src="app.js"></script>
@@ -76,18 +62,17 @@
     let selectedCategory='';
     let loadTimer=null;
     const $=s=>document.querySelector(s);
-    const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    const esc=s=>String(s==null?'':s).replace(/[&<>\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c]||c));
     const escjs=s=>String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-    const categoryMeta={
-      staff:{title:'員工',desc:'查看員工基本資料。',cls:'cat-staff'},
-      parttime:{title:'工讀生',desc:'查看工讀生基本資料。',cls:'cat-parttime'},
-      external:{title:'外聘老師',desc:'查看外聘老師基本資料。',cls:'cat-external'}
-    };
+    const categoryMeta={staff:{title:'員工',cls:'staff'},parttime:{title:'工讀生',cls:'parttime'},external:{title:'外聘',cls:'external'}};
     function clean(v){return String(v==null?'':v).trim()}
+    function showOnly(id){['layerCategory','layerList','layerDetail'].forEach(x=>{$('#'+x).classList.toggle('active',x===id)}); window.scrollTo({top:0,behavior:'smooth'});}
+    function showCategoryLayer(){selectedCategory='';selectedId='';employees=[];$('#keyword')&&($('#keyword').value='');showOnly('layerCategory');renderCategoryCards();}
+    function showListLayer(){selectedId='';showOnly('layerList');renderList();}
     function setMsg(text,isErr){const el=$('#msg'); if(!el)return; el.textContent=text||''; el.style.display=text?'block':'none'; el.classList.toggle('error',!!isErr)}
     function debouncedLoad(){clearTimeout(loadTimer); loadTimer=setTimeout(loadEmployees,250)}
     function statusClass(e){if(e.accountStatus==='pending')return 'warn'; if(e.isActiveForDailyUse)return ''; if(e.accountStatus==='rejected')return 'bad'; return 'off'}
-    function identityText(v){return v==='external'?'外聘老師':(v==='parttime'?'工讀生':'員工')}
+    function identityText(v){return v==='external'?'外聘':(v==='parttime'?'工讀生':'員工')}
     function normalizeType(e){
       const raw=String(e.identityType||e.identity||e.roleType||e['身分類型']||'').trim().toLowerCase();
       const label=String(e.identityLabel||'').trim();
@@ -99,10 +84,11 @@
       currentUser=requireLogin();
       if(!currentUser)return;
       if(!hasSettingsZoneAccess(currentUser)){location.href='dashboard.html';return;}
+      showOnly('layerCategory');
       await loadEmployees();
     }
     async function loadEmployees(){
-      const includeHidden = selectedCategory ? $('#includeHidden')?.checked : $('#homeIncludeHidden')?.checked;
+      const includeHidden = selectedCategory ? ($('#includeHidden')?.checked||false) : ($('#homeIncludeHidden')?.checked||false);
       try{
         const res=await api('getEmployeeManagementData',{userId:currentUser.id,keyword:$('#keyword')?$('#keyword').value:'',statusMode:includeHidden?'all':'active'});
         allEmployees=res.rows||[];
@@ -111,10 +97,8 @@
           renderCategoryList();
           if(selectedId){
             const still=employees.find(e=>(e.id||e.employeeId)===selectedId);
-            if(still) renderDetail(still); else selectedId='';
+            if(still) renderDetail(still); else showListLayer();
           }
-          if(!selectedId && employees.length){selectEmployee(employees[0].id||employees[0].employeeId)}
-          if(!employees.length) $('#detailPanel').innerHTML='<div class="empty">這個分類目前沒有符合條件的人員。</div>';
         }
       }catch(err){
         if(selectedCategory) $('#employeeList').innerHTML='<div class="empty">讀取失敗：'+esc(err.message||err)+'</div>';
@@ -126,184 +110,88 @@
       allEmployees.forEach(e=>{counts[normalizeType(e)]++;});
       $('#categoryCards').innerHTML=['staff','parttime','external'].map(k=>{
         const m=categoryMeta[k];
-        return `<div class="category-card ${m.cls}" onclick="openCategory('${k}')">
-          <div><div class="cat-title">${m.title}</div><div class="cat-desc">${m.desc}</div></div>
-          <div class="cat-count">${counts[k]||0}<span>人</span></div>
-        </div>`;
+        return `<div class="category-card ${m.cls}" onclick="openCategory('${k}')"><div class="cat-title">${m.title}</div><div class="cat-count">${counts[k]||0}<span style="font-size:18px;margin-left:4px">人</span></div></div>`;
       }).join('');
     }
     function openCategory(type){
       selectedCategory=type; selectedId='';
       if($('#includeHidden') && $('#homeIncludeHidden')) $('#includeHidden').checked=$('#homeIncludeHidden').checked;
-      $('#categoryHome').style.display='none';
-      $('#employeeWorkArea').style.display='grid';
-      $('#currentCategoryTitle').textContent=categoryMeta[type].title;
-      $('#currentCategoryDesc').textContent=categoryMeta[type].desc;
+      $('#currentCategoryTitle').textContent=(categoryMeta[type]?.title||'人員')+'名單';
       renderCategoryList();
-      if(employees.length) selectEmployee(employees[0].id||employees[0].employeeId);
-      else $('#detailPanel').innerHTML='<div class="empty">這個分類目前沒有符合條件的人員。</div>';
+      showOnly('layerList');
     }
-    function backToCategories(){
-      selectedCategory=''; selectedId=''; employees=[];
-      $('#employeeWorkArea').style.display='none';
-      $('#categoryHome').style.display='block';
-      $('#detailPanel').innerHTML='<div class="empty">請先從左側選擇人員。</div>';
-      renderCategoryCards();
-    }
-    function renderCategoryList(){
-      employees=allEmployees.filter(e=>normalizeType(e)===selectedCategory);
-      renderCounts();
-      renderList();
-    }
+    function renderCategoryList(){employees=allEmployees.filter(e=>normalizeType(e)===selectedCategory);renderCounts();renderList();}
     function renderCounts(){
       const active=employees.filter(e=>e.isActiveForDailyUse).length;
       const hidden=employees.filter(e=>!e.isActiveForDailyUse).length;
-      $('#counts').innerHTML=[
-        ['目前顯示',employees.length,''],['日常可用',active,''],['隱藏/停用',hidden,'off']
-      ].map(x=>`<span class="pill ${x[2]}">${x[0]} ${x[1]}</span>`).join('');
+      $('#counts').innerHTML=[['顯示',employees.length,''],['日常可用',active,''],['隱藏/停用',hidden,'off']].map(x=>`<span class="pill ${x[2]}">${x[0]} ${x[1]}</span>`).join('');
     }
     function renderList(){
       if(!employees.length){$('#employeeList').innerHTML='<div class="empty">沒有符合的人員。</div>';return;}
       $('#employeeList').innerHTML=employees.map(e=>{
         const id=e.id||e.employeeId||'';
-        const reasons=(e.statusReasons||[]).slice(0,2).join('、');
-        return `<div class="emp-card ${id===selectedId?'active':''}" onclick="selectEmployee('${escjs(id)}')">
-          <div class="emp-head"><div><div class="emp-name">${esc(e.name||'未命名')}</div><div class="emp-meta">${esc(e.identityLabel||identityText(e.identityType))}｜${esc(e.email||'無 Email')}</div></div><span class="pill ${statusClass(e)}">${esc(e.statusLabel||'')}</span></div>
-          ${reasons?`<div class="reason">${esc(reasons)}</div>`:''}
-        </div>`;
+        const type=normalizeType(e); const role=identityText(type);
+        return `<div class="emp-card" onclick="selectEmployee('${escjs(id)}')"><div><div class="emp-name">${esc(e.name||'未命名')}</div><div class="emp-email">${esc(e.email||'無 Email')}</div></div><span class="pill ${type==='parttime'?'warn':(type==='external'?'blue':'')}">${esc(role)}</span></div>`;
       }).join('');
     }
-    function selectEmployee(id){
-      selectedId=id;
-      const emp=employees.find(e=>(e.id||e.employeeId)===id);
-      renderList();
-      if(emp) renderDetail(emp);
+    function selectEmployee(id){selectedId=id; const emp=employees.find(e=>(e.id||e.employeeId)===id); if(emp){renderDetail(emp);showOnly('layerDetail');}}
+    function formatEmployeeValue(v){
+      if(v == null) return '';
+      if(typeof v === 'object'){
+        if(typeof v.toDate === 'function'){
+          try{return v.toDate().toISOString().slice(0,10)}catch(e){}
+        }
+        if(v.seconds){
+          try{return new Date(v.seconds*1000).toISOString().slice(0,10)}catch(e){}
+        }
+        if(Array.isArray(v)) return v.map(formatEmployeeValue).filter(Boolean).join('、');
+        return '';
+      }
+      return String(v);
+    }
+    function employeeSource(e){
+      const raw=(e && e.raw && typeof e.raw === 'object') ? e.raw : {};
+      return Object.assign({}, raw, e || {});
     }
     function valueOf(e, keys){
+      const src=employeeSource(e);
       for(const k of keys){
-        if(e && e[k] != null && String(e[k]).trim() !== '') return e[k];
+        const v=src[k];
+        const text=formatEmployeeValue(v);
+        if(text.trim() !== '') return text;
       }
       return '';
     }
-    function inputField(label,value,extraCls){return `<div class="field readonly ${extraCls||''}"><label>${label}</label><input value="${esc(value||'')}" disabled></div>`}
+    function inputField(label,value,extraCls){return `<div class="field readonly ${extraCls||''}"><label>${label}</label><input value="${esc(formatEmployeeValue(value)||'')}" disabled></div>`}
     function renderOtherFields(e, usedKeys){
-      const skip=new Set([...(usedKeys||[]),'id','employeeId','statusReasons','isActiveForDailyUse','statusLabel','identityLabel']);
+      const src=employeeSource(e);
+      const skip=new Set([...(usedKeys||[]),'raw','id','employeeId','__id','statusReasons','isActiveForDailyUse','statusLabel','identityLabel']);
       const rows=[];
-      Object.keys(e||{}).sort().forEach(k=>{
-        if(skip.has(k)) return;
-        const v=e[k];
-        if(v==null || v==='' || typeof v==='object') return;
+      Object.keys(src||{}).sort().forEach(k=>{
+        if(skip.has(k))return;
+        const v=formatEmployeeValue(src[k]);
+        if(!v)return;
         rows.push(`<div class="field readonly"><label>${esc(k)}</label><input value="${esc(v)}" disabled></div>`);
       });
-      if(!rows.length) return '';
-      return `<div class="section-title full">其他資料</div>${rows.join('')}`;
+      if(!rows.length)return '';
+      return `<div class="section-title">其他資料</div>${rows.join('')}`;
     }
     function renderDetail(e){
-      const type=normalizeType(e);
-      const identityLabel=(type==='external')?'外聘':(type==='parttime'?'工讀生':'員工');
+      const type=normalizeType(e); const identityLabel=identityText(type);
       const statusLabel=e.statusLabel || (e.isActiveForDailyUse?'在職顯示':'隱藏 / 停用');
       const statusPillClass=statusClass(e);
-      const usedKeys=[
-        'name','姓名','email','Email','identityType','identity','roleType','身分類型','identityLabel','isPartTime',
-        'mobilePhone','phone','行動電話','contactPhone','idNumber','nationalId','身分證字號','birthDate','出生年月日',
-        'address','contactAddress','聯絡地址','emergencyContact','緊急聯絡人','emergencyPhone','緊急聯絡人電話',
-        'hireDate','到職日','resignedDate','離職日','employmentStatus','accountStatus','hiddenFromActiveLists','statusNote',
-        'lineUserId','LINE User ID','lineNotifyEnabled','LINE 通知啟用','hourlyWage','parttimeHourlyWage','時薪金額',
-        'salaryDisplayType','薪資顯示類型','jobTitle','職稱','teachingItems','subjects','contractItems',
-        '勞保狀態','laborInsuranceStatus','健保狀態','healthInsuranceStatus','勞保級距','laborInsuranceLevel','健保級距','healthInsuranceLevel',
-        '本薪金額','baseSalary','目前申報月平均薪資總額','declaredMonthlySalary'
-      ];
-      const basicFields = `
-          ${inputField('姓名', valueOf(e,['name','姓名']))}
-          ${inputField('Email', valueOf(e,['email','Email']))}
-          ${inputField('身分', identityLabel)}
-          ${inputField('手機', valueOf(e,['mobilePhone','phone','行動電話','contactPhone']))}
-          ${inputField('身分證字號', valueOf(e,['idNumber','nationalId','身分證字號']))}
-          ${inputField('出生年月日', valueOf(e,['birthDate','出生年月日']))}
-          ${inputField('聯絡地址', valueOf(e,['address','contactAddress','聯絡地址']),'full')}
-          ${inputField('緊急聯絡人', valueOf(e,['emergencyContact','緊急聯絡人']))}
-          ${inputField('緊急聯絡電話', valueOf(e,['emergencyPhone','緊急聯絡人電話']))}`;
-      const workFields = `
-          ${inputField('到職日', valueOf(e,['hireDate','到職日']))}
-          ${inputField('離職 / 結束日期', valueOf(e,['resignedDate','離職日']))}
-          ${inputField('職稱 / 合作內容', valueOf(e,['jobTitle','職稱','teachingItems','subjects','contractItems']))}
-          ${inputField('薪資顯示類型', valueOf(e,['salaryDisplayType','薪資顯示類型']))}
-          ${inputField('時薪', valueOf(e,['hourlyWage','parttimeHourlyWage','時薪金額']))}
-          ${inputField('本薪 / 申報薪資', valueOf(e,['baseSalary','本薪金額','declaredMonthlySalary','目前申報月平均薪資總額']))}`;
-      const insuranceFields = `
-          ${inputField('勞保狀態', valueOf(e,['laborInsuranceStatus','勞保狀態']))}
-          ${inputField('健保狀態', valueOf(e,['healthInsuranceStatus','健保狀態']))}
-          ${inputField('勞保級距', valueOf(e,['laborInsuranceLevel','勞保級距']))}
-          ${inputField('健保級距', valueOf(e,['healthInsuranceLevel','健保級距']))}`;
-      $('#detailPanel').innerHTML=`
-        <div class="detail-head">
-          <div><div class="detail-title">${esc(valueOf(e,['name','姓名'])||'未命名')}</div><div class="detail-sub">${esc(identityLabel)}｜${esc(valueOf(e,['email','Email'])||'無 Email')}</div></div>
-          <span class="pill ${statusPillClass}">${esc(statusLabel)}</span>
-        </div>
-        <div class="section-title">基本資料</div>
-        <div class="form-grid">
-          ${basicFields}
-          <div class="section-title full">任職 / 薪資資料</div>
-          ${workFields}
-          <div class="section-title full">投保資料</div>
-          ${insuranceFields}
-          <div class="section-title full">LINE 資料</div>
-          ${inputField('LINE User ID', valueOf(e,['lineUserId','LINE User ID']),'full')}
-          ${inputField('LINE 通知', valueOf(e,['lineNotifyEnabled','LINE 通知啟用']) ? '啟用 / 已綁定' : '未啟用或未綁定')}
-          ${renderOtherFields(e, usedKeys)}
-          <div class="section-title full">管理設定</div>
-          <div class="field"><label>帳號狀態</label><select id="accountStatus"><option value="active">啟用，可登入</option><option value="inactive">停用登入</option><option value="archived">封存</option><option value="pending">待審核</option><option value="rejected">註冊駁回</option></select></div>
-          <div class="field"><label>任職 / 合作狀態</label><select id="employmentStatus"><option value="active">在職 / 合作中</option><option value="resigned">離職</option><option value="suspended">暫停任用</option><option value="contractorEnded">外聘合作結束</option><option value="archived">封存</option></select></div>
-          <div class="field"><label>離職 / 結束日期</label><input id="resignedDate" type="date" value="${esc(valueOf(e,['resignedDate','離職日']))}"></div>
-          <label class="checkline"><input id="hiddenFromActiveLists" type="checkbox"> 隱藏於日常操作清單</label>
-          <div class="field full"><label>狀態備註</label><textarea id="statusNote" rows="3" placeholder="例如：已離職、暫停排班、外聘合作結束...">${esc(e.statusNote||'')}</textarea></div>
-        </div>
-        <div class="actions"><button class="btn" onclick="saveStatus()">儲存資料</button></div>
-        <div id="msg" class="msg"></div>`;
-      $('#accountStatus').value=e.accountStatus||'active';
-      $('#employmentStatus').value=e.employmentStatus||'active';
-      $('#hiddenFromActiveLists').checked=!!e.hiddenFromActiveLists;
+      const usedKeys=['name','姓名','email','Email','identityType','identity','roleType','身分類型','identityLabel','isPartTime','mobilePhone','phone','行動電話','contactPhone','idNumber','nationalId','身分證字號','birthDate','出生年月日','address','contactAddress','聯絡地址','emergencyContact','緊急聯絡人','emergencyPhone','緊急聯絡人電話','hireDate','到職日','resignedDate','離職日','employmentStatus','accountStatus','hiddenFromActiveLists','statusNote','lineUserId','LINE User ID','lineNotifyEnabled','LINE 通知啟用','hourlyWage','parttimeHourlyWage','時薪金額','salaryDisplayType','薪資顯示類型','jobTitle','職稱','teachingItems','subjects','contractItems','勞保狀態','laborInsuranceStatus','健保狀態','healthInsuranceStatus','勞保級距','laborInsuranceLevel','健保級距','healthInsuranceLevel','本薪金額','baseSalary','目前申報月平均薪資總額','declaredMonthlySalary'];
+      const basicFields = `${inputField('姓名', valueOf(e,['name','姓名']))}${inputField('Email', valueOf(e,['email','Email']))}${inputField('身分', identityLabel)}${inputField('手機', valueOf(e,['mobilePhone','phone','行動電話','手機','聯絡電話','contactPhone']))}${inputField('身分證字號', valueOf(e,['idNumber','nationalId','身分證字號','身分證','身份證字號']))}${inputField('出生年月日', valueOf(e,['birthDate','出生年月日','生日']))}${inputField('聯絡地址', valueOf(e,['address','contactAddress','聯絡地址','地址']),'full')}${inputField('緊急聯絡人', valueOf(e,['emergencyContact','緊急聯絡人']))}${inputField('緊急聯絡電話', valueOf(e,['emergencyPhone','緊急聯絡人電話','緊急聯絡電話']))}`;
+      const workFields = `${inputField('到職日', valueOf(e,['hireDate','joinDate','到職日']))}${inputField('離職 / 結束日期', valueOf(e,['resignedDate','leaveDate','離職日']))}${inputField('職稱 / 合作內容', valueOf(e,['jobTitle','職稱','teachingItems','subjects','contractItems','合作內容']))}${inputField('薪資顯示類型', valueOf(e,['salaryDisplayType','薪資顯示類型']))}${inputField('時薪', valueOf(e,['hourlyWage','parttimeHourlyWage','時薪金額','時薪']))}${inputField('本薪 / 申報薪資', valueOf(e,['baseSalary','本薪金額','declaredMonthlySalary','目前申報月平均薪資總額','申報薪資']))}`;
+      const insuranceFields = `${inputField('勞保狀態', valueOf(e,['laborInsuranceStatus','勞保狀態']))}${inputField('健保狀態', valueOf(e,['healthInsuranceStatus','健保狀態']))}${inputField('勞保級距', valueOf(e,['laborInsuranceLevel','勞保級距']))}${inputField('健保級距', valueOf(e,['healthInsuranceLevel','健保級距']))}`;
+      $('#detailPanel').innerHTML=`<div class="detail-head"><div><div class="detail-title">${esc(valueOf(e,['name','姓名'])||'未命名')}</div><div class="detail-sub">${esc(identityLabel)}｜${esc(valueOf(e,['email','Email'])||'無 Email')}</div></div><div class="backline"><span class="pill ${statusPillClass}">${esc(statusLabel)}</span><button class="btn ghost" type="button" onclick="showListLayer()">回到名單</button></div></div><div class="form-grid"><div class="section-title">基本資料</div>${basicFields}<div class="section-title">任職 / 薪資資料</div>${workFields}<div class="section-title">投保資料</div>${insuranceFields}<div class="section-title">LINE 資料</div>${inputField('LINE User ID', valueOf(e,['lineUserId','LINE User ID']),'full')}${inputField('LINE 通知', valueOf(e,['lineNotifyEnabled','LINE 通知啟用']) ? '啟用 / 已綁定' : '未啟用或未綁定')}${renderOtherFields(e, usedKeys)}<div class="section-title">管理設定</div><div class="field"><label>帳號狀態</label><select id="accountStatus"><option value="active">啟用，可登入</option><option value="inactive">停用登入</option><option value="archived">封存</option><option value="pending">待審核</option><option value="rejected">註冊駁回</option></select></div><div class="field"><label>任職 / 合作狀態</label><select id="employmentStatus"><option value="active">在職 / 合作中</option><option value="resigned">離職</option><option value="suspended">暫停任用</option><option value="contractorEnded">外聘合作結束</option><option value="archived">封存</option></select></div><div class="field"><label>離職 / 結束日期</label><input id="resignedDate" type="date" value="${esc(valueOf(e,['resignedDate','leaveDate','離職日']))}"></div><label class="checkline"><input id="hiddenFromActiveLists" type="checkbox"> 隱藏於日常操作清單</label><div class="field full"><label>狀態備註</label><textarea id="statusNote" rows="3" placeholder="例如：已離職、暫停排班、外聘合作結束...">${esc(e.statusNote||'')}</textarea></div></div><div class="actions"><button class="btn" onclick="saveStatus()">儲存資料</button></div><div id="msg" class="msg"></div>`;
+      $('#accountStatus').value=e.accountStatus||'active'; $('#employmentStatus').value=e.employmentStatus||'active'; $('#hiddenFromActiveLists').checked=!!e.hiddenFromActiveLists;
     }
     function selectedEmployee(){return employees.find(e=>(e.id||e.employeeId)===selectedId)}
     async function saveStatus(extra){
-      const e=selectedEmployee(); if(!e)return;
-      setMsg('儲存中...');
-      try{
-        const payload=Object.assign({
-          employeeId:e.employeeId||e.id,
-          email:e.email,
-          accountStatus:$('#accountStatus').value,
-          employmentStatus:$('#employmentStatus').value,
-          hiddenFromActiveLists:$('#hiddenFromActiveLists').checked,
-          resignedDate:$('#resignedDate').value,
-          statusNote:$('#statusNote').value
-        }, extra||{});
-        const res=await api('updateEmployeeAdminStatus',payload);
-        setMsg(res.message||'已儲存。');
-        await loadEmployees();
-      }catch(err){setMsg(err.message||'儲存失敗',true)}
-    }
-    function markResigned(){
-      $('#accountStatus').value='inactive';
-      $('#employmentStatus').value=(selectedCategory==='external')?'contractorEnded':'resigned';
-      $('#hiddenFromActiveLists').checked=true;
-      if(!$('#resignedDate').value) $('#resignedDate').value=new Date().toISOString().slice(0,10);
-      saveStatus();
-    }
-    function restoreActive(){
-      $('#accountStatus').value='active';
-      $('#employmentStatus').value='active';
-      $('#hiddenFromActiveLists').checked=false;
-      saveStatus();
-    }
-    async function loadHistory(){
-      const e=selectedEmployee(); if(!e)return;
-      const box=$('#historyBox'); box.innerHTML='<div class="empty" style="margin-top:12px">讀取歷史統計中...</div>';
-      try{
-        const res=await api('getEmployeeHistorySnapshot',{employeeId:e.employeeId||e.id,email:e.email});
-        const items=res.items||[];
-        box.innerHTML='<div class="history">'+items.map(x=>`<div class="hist-item"><div class="hist-num">${Number(x.count||0)}</div><div class="hist-label">${esc(x.label)}</div></div>`).join('')+'</div>';
-      }catch(err){box.innerHTML='<div class="empty" style="margin-top:12px">讀取歷史統計失敗：'+esc(err.message||err)+'</div>'}
+      const e=selectedEmployee(); if(!e)return; setMsg('儲存中...');
+      try{const payload=Object.assign({employeeId:e.employeeId||e.id,email:e.email,accountStatus:$('#accountStatus').value,employmentStatus:$('#employmentStatus').value,hiddenFromActiveLists:$('#hiddenFromActiveLists').checked,resignedDate:$('#resignedDate').value,statusNote:$('#statusNote').value}, extra||{}); const res=await api('updateEmployeeAdminStatus',payload); setMsg(res.message||'已儲存。'); await loadEmployees();}
+      catch(err){setMsg(err.message||'儲存失敗',true)}
     }
   </script>
   <script src="global-nav.js?v=20260603unified1"></script>
