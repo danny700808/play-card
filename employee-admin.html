@@ -13,6 +13,24 @@
     .category-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:10px}.category-card{border:1px solid transparent;border-radius:22px;padding:22px;cursor:pointer;min-height:150px;display:flex;flex-direction:column;justify-content:space-between;transition:.15s}.category-card:hover{transform:translateY(-1px);box-shadow:0 10px 28px rgba(16,24,40,.08)}.cat-staff{background:#eef7ff;border-color:#b9dcff}.cat-parttime{background:#fff7ed;border-color:#fed7aa}.cat-external{background:#fff1f8;border-color:#fbcfe8}.cat-title{font-size:22px;font-weight:950;color:#173b2f}.cat-desc{font-size:13px;color:#1f2937;line-height:1.55;margin-top:8px}.cat-count{font-size:30px;font-weight:950;color:#173b2f;margin-top:18px}.cat-count span{font-size:13px;color:#374151;font-weight:800;margin-left:4px}.category-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}.category-name{font-size:20px;font-weight:950;color:#173b2f}.category-actions{display:flex;gap:8px;flex-wrap:wrap}.toggle-row{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:800;color:#1f2937}.toggle-row input{width:auto}.info-note{font-size:12px;color:#374151;line-height:1.55;margin-top:4px}.section-title{font-size:15px;font-weight:950;color:#173b2f;margin:4px 0 10px}.field.readonly input{background:#fff;color:#111827;font-weight:700}.mobile-hint{display:none}
     @media(max-width:900px){.grid{grid-template-columns:1fr}.list{max-height:none}.history{grid-template-columns:repeat(2,minmax(0,1fr))}.topbar{align-items:flex-start;flex-direction:column}.category-grid{grid-template-columns:1fr}.form-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.field label{font-size:12px;margin-bottom:4px}.field input,.field select,.field textarea{font-size:13px;padding:9px 8px;border-radius:10px}.field.full{grid-column:1/-1}.checkline{grid-column:1/-1;margin-top:6px;font-size:13px}.detail-title{font-size:19px}.detail-sub{font-size:13px}.mobile-hint{display:block}.panel{padding:14px}.wrap{padding:14px}.btn{padding:10px 12px;font-size:13px}.notice{font-size:13px}}
     @media(max-width:420px){.form-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.field input,.field select,.field textarea{font-size:12px;padding:8px 7px}.field label{font-size:11px}.emp-meta{font-size:12px}.category-card{min-height:128px;padding:18px}.cat-title{font-size:20px}}
+
+    .layer-actions{display:flex;gap:10px;align-items:center;justify-content:flex-end;flex-wrap:wrap}
+    .single-layer{max-width:980px;margin:0 auto}
+    .list-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+    .list-grid .emp-card{min-height:92px}
+    .detail-layer{max-width:980px;margin:0 auto}
+    @media(max-width:760px){.list-grid{grid-template-columns:1fr}.layer-actions{justify-content:flex-start}}
+
+
+    .force-hidden{display:none !important}
+    #categoryHome.force-show,
+    #employeeListLayer.force-show,
+    #employeeDetailLayer.force-show{display:block !important}
+    #employeeListLayer.force-show{max-width:980px;margin:0 auto}
+    #employeeDetailLayer.force-show{max-width:980px;margin:0 auto}
+    .step-banner{display:flex;align-items:center;gap:8px;margin:0 0 14px;color:#104b38;font-weight:950}
+    .step-badge{width:32px;height:32px;border-radius:999px;background:#1f7f5f;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:15px}
+
   </style>
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
 </head>
@@ -30,11 +48,11 @@
       </div>
     </div>
 
-    <section class="panel" id="categoryHome">
+    <section class="panel single-layer" id="categoryHome">
+      <div class="step-banner"><span class="step-badge">1</span>第一層：選擇類別</div>
       <div class="detail-head" style="margin-bottom:6px">
         <div>
           <div class="detail-title">選擇人員類別</div>
-          <div class="detail-sub">先選類別，再選人查看與修改資料。</div>
         </div>
         <label class="toggle-row"><input id="homeIncludeHidden" type="checkbox" onchange="loadEmployees()"> 顯示隱藏</label>
       </div>
@@ -43,27 +61,29 @@
       </div>
     </section>
 
-    <div class="grid" id="employeeWorkArea" style="display:none">
-      <section class="panel">
-        <div class="category-bar">
-          <div>
-            <div class="category-name" id="currentCategoryTitle">人員清單</div>
-            <div class="info-note" id="currentCategoryDesc"></div>
-          </div>
-          <div class="category-actions"><button class="btn ghost" type="button" onclick="backToCategories()">分類清單</button></div>
+    <section class="panel single-layer force-hidden" id="employeeListLayer">
+      <div class="step-banner"><span class="step-badge">2</span>第二層：選擇人員</div>
+      <div class="category-bar">
+        <div>
+          <div class="category-name" id="currentCategoryTitle">人員清單</div>
+          <div class="info-note" id="currentCategoryDesc"></div>
         </div>
-        <div class="toolbar">
-          <input id="keyword" type="search" placeholder="搜尋姓名、Email、身分" oninput="debouncedLoad()" />
-          <label class="toggle-row"><input id="includeHidden" type="checkbox" onchange="loadEmployees()"> 顯示隱藏人員</label>
-        </div>
-        <div class="counts" id="counts"></div>
-        <div class="list" id="employeeList"><div class="empty">請先選擇分類。</div></div>
-      </section>
+        <div class="category-actions"><button class="btn ghost" type="button" onclick="backToCategories()">回到類別</button></div>
+      </div>
+      <div class="toolbar">
+        <input id="keyword" type="search" placeholder="搜尋姓名或 Email" oninput="debouncedLoad()" />
+        <label class="toggle-row"><input id="includeHidden" type="checkbox" onchange="loadEmployees()"> 顯示隱藏人員</label>
+      </div>
+      <div class="counts" id="counts"></div>
+      <div class="list-grid" id="employeeList"><div class="empty">請先選擇分類。</div></div>
+    </section>
 
-      <section class="panel" id="detailPanel">
-        <div class="empty">請先從左側選擇人員。</div>
-      </section>
-    </div>
+    <section class="panel detail-layer force-hidden" id="employeeDetailLayer">
+      <div class="step-banner"><span class="step-badge">3</span>第三層：編輯資料</div>
+      <div id="detailPanel">
+        <div class="empty">請先從名單選擇人員。</div>
+      </div>
+    </section>
   </div>
 
   <script src="app.js"></script>
@@ -79,11 +99,28 @@
     const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
     const escjs=s=>String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
     const categoryMeta={
-      staff:{title:'員工',desc:'查看員工基本資料。',cls:'cat-staff'},
-      parttime:{title:'工讀生',desc:'查看工讀生基本資料。',cls:'cat-parttime'},
-      external:{title:'外聘老師',desc:'查看外聘老師基本資料。',cls:'cat-external'}
+      staff:{title:'員工',desc:'',cls:'cat-staff'},
+      parttime:{title:'工讀生',desc:'',cls:'cat-parttime'},
+      external:{title:'外聘',desc:'',cls:'cat-external'}
     };
     function clean(v){return String(v==null?'':v).trim()}
+    
+function showLayer(layer){
+      ['categoryHome','employeeListLayer','employeeDetailLayer'].forEach(id=>{
+        const el=document.getElementById(id);
+        if(!el)return;
+        el.classList.add('force-hidden');
+        el.classList.remove('force-show');
+        el.style.display='none';
+      });
+      const target=document.getElementById(layer);
+      if(target){
+        target.classList.remove('force-hidden');
+        target.classList.add('force-show');
+        target.style.display='block';
+        window.scrollTo({top:0,behavior:'smooth'});
+      }
+    }
     function setMsg(text,isErr){const el=$('#msg'); if(!el)return; el.textContent=text||''; el.style.display=text?'block':'none'; el.classList.toggle('error',!!isErr)}
     function debouncedLoad(){clearTimeout(loadTimer); loadTimer=setTimeout(loadEmployees,250)}
     function statusClass(e){if(e.accountStatus==='pending')return 'warn'; if(e.isActiveForDailyUse)return ''; if(e.accountStatus==='rejected')return 'bad'; return 'off'}
@@ -100,6 +137,7 @@
       if(!currentUser)return;
       if(!hasSettingsZoneAccess(currentUser)){location.href='dashboard.html';return;}
       await loadEmployees();
+      showLayer('categoryHome');
     }
     async function loadEmployees(){
       const includeHidden = selectedCategory ? $('#includeHidden')?.checked : $('#homeIncludeHidden')?.checked;
@@ -111,10 +149,16 @@
           renderCategoryList();
           if(selectedId){
             const still=employees.find(e=>(e.id||e.employeeId)===selectedId);
-            if(still) renderDetail(still); else selectedId='';
+            if(still) renderDetail(still);
+            else {
+              selectedId='';
+              $('#employeeDetailLayer').style.display='none';
+              $('#employeeListLayer').style.display='block';
+            }
           }
-          if(!selectedId && employees.length){selectEmployee(employees[0].id||employees[0].employeeId)}
-          if(!employees.length) $('#detailPanel').innerHTML='<div class="empty">這個分類目前沒有符合條件的人員。</div>';
+          if(!employees.length){
+            $('#employeeList').innerHTML='<div class="empty">這個分類目前沒有符合條件的人員。</div>';
+          }
         }
       }catch(err){
         if(selectedCategory) $('#employeeList').innerHTML='<div class="empty">讀取失敗：'+esc(err.message||err)+'</div>';
@@ -127,7 +171,7 @@
       $('#categoryCards').innerHTML=['staff','parttime','external'].map(k=>{
         const m=categoryMeta[k];
         return `<div class="category-card ${m.cls}" onclick="openCategory('${k}')">
-          <div><div class="cat-title">${m.title}</div><div class="cat-desc">${m.desc}</div></div>
+          <div><div class="cat-title">${m.title}</div></div>
           <div class="cat-count">${counts[k]||0}<span>人</span></div>
         </div>`;
       }).join('');
@@ -135,20 +179,22 @@
     function openCategory(type){
       selectedCategory=type; selectedId='';
       if($('#includeHidden') && $('#homeIncludeHidden')) $('#includeHidden').checked=$('#homeIncludeHidden').checked;
-      $('#categoryHome').style.display='none';
-      $('#employeeWorkArea').style.display='grid';
-      $('#currentCategoryTitle').textContent=categoryMeta[type].title;
-      $('#currentCategoryDesc').textContent=categoryMeta[type].desc;
+      showLayer('employeeListLayer');
+      $('#currentCategoryTitle').textContent=categoryMeta[type].title+'名單';
+      $('#currentCategoryDesc').textContent='點選姓名查看完整資料。';
       renderCategoryList();
-      if(employees.length) selectEmployee(employees[0].id||employees[0].employeeId);
-      else $('#detailPanel').innerHTML='<div class="empty">這個分類目前沒有符合條件的人員。</div>';
+      if(!employees.length) $('#employeeList').innerHTML='<div class="empty">這個分類目前沒有符合條件的人員。</div>';
     }
     function backToCategories(){
       selectedCategory=''; selectedId=''; employees=[];
-      $('#employeeWorkArea').style.display='none';
-      $('#categoryHome').style.display='block';
-      $('#detailPanel').innerHTML='<div class="empty">請先從左側選擇人員。</div>';
+      showLayer('categoryHome');
+      $('#detailPanel').innerHTML='<div class="empty">請先從名單選擇人員。</div>';
       renderCategoryCards();
+    }
+    function backToList(){
+      selectedId='';
+      showLayer('employeeListLayer');
+      renderList();
     }
     function renderCategoryList(){
       employees=allEmployees.filter(e=>normalizeType(e)===selectedCategory);
@@ -166,10 +212,10 @@
       if(!employees.length){$('#employeeList').innerHTML='<div class="empty">沒有符合的人員。</div>';return;}
       $('#employeeList').innerHTML=employees.map(e=>{
         const id=e.id||e.employeeId||'';
-        const reasons=(e.statusReasons||[]).slice(0,2).join('、');
+        const type=normalizeType(e);
+        const role=identityText(type);
         return `<div class="emp-card ${id===selectedId?'active':''}" onclick="selectEmployee('${escjs(id)}')">
-          <div class="emp-head"><div><div class="emp-name">${esc(e.name||'未命名')}</div><div class="emp-meta">${esc(e.identityLabel||identityText(e.identityType))}｜${esc(e.email||'無 Email')}</div></div><span class="pill ${statusClass(e)}">${esc(e.statusLabel||'')}</span></div>
-          ${reasons?`<div class="reason">${esc(reasons)}</div>`:''}
+          <div class="emp-head"><div><div class="emp-name">${esc(e.name||'未命名')}</div><div class="emp-meta">${esc(e.email||'無 Email')}</div></div><span class="pill ${type==='parttime'?'warn':(type==='external'?'off':'')}">${esc(role)}</span></div>
         </div>`;
       }).join('');
     }
@@ -177,7 +223,10 @@
       selectedId=id;
       const emp=employees.find(e=>(e.id||e.employeeId)===id);
       renderList();
-      if(emp) renderDetail(emp);
+      if(emp){
+        renderDetail(emp);
+        showLayer('employeeDetailLayer');
+      }
     }
     function valueOf(e, keys){
       for(const k of keys){
@@ -238,7 +287,10 @@
       $('#detailPanel').innerHTML=`
         <div class="detail-head">
           <div><div class="detail-title">${esc(valueOf(e,['name','姓名'])||'未命名')}</div><div class="detail-sub">${esc(identityLabel)}｜${esc(valueOf(e,['email','Email'])||'無 Email')}</div></div>
-          <span class="pill ${statusPillClass}">${esc(statusLabel)}</span>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
+            <span class="pill ${statusPillClass}">${esc(statusLabel)}</span>
+            <button class="btn ghost" type="button" onclick="backToList()">回到名單</button>
+          </div>
         </div>
         <div class="section-title">基本資料</div>
         <div class="form-grid">
