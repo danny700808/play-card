@@ -10,21 +10,10 @@
   <script src="config.js"></script>
   <style>
     :root{
-      --bg:#f6faf7;
-      --card:#ffffff;
-      --ink:#142235;
-      --muted:#66768a;
-      --line:#dfe8ef;
-      --green:#1f7a5a;
-      --green-soft:#e9f7ef;
-      --orange:#b76a16;
-      --orange-soft:#fff5e8;
-      --blue:#28728f;
-      --blue-soft:#edf7fb;
-      --red:#b42318;
-      --red-soft:#fff0ee;
-      --shadow:0 10px 26px rgba(16,24,40,.07);
-      --radius:22px;
+      --bg:#f6faf7; --card:#fff; --ink:#142235; --muted:#66768a; --line:#dfe8ef;
+      --green:#1f7a5a; --green-soft:#e9f7ef; --orange:#b76a16; --orange-soft:#fff5e8;
+      --blue:#28728f; --blue-soft:#edf7fb; --red:#b42318; --red-soft:#fff0ee;
+      --shadow:0 10px 26px rgba(16,24,40,.07); --radius:22px;
     }
     *{box-sizing:border-box}
     body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Noto Sans TC","Segoe UI",sans-serif;line-height:1.55}
@@ -34,9 +23,9 @@
     .wrap{max-width:980px;margin:0 auto;padding:0 16px 42px}
     .title{font-size:36px;font-weight:950;color:#104b38;margin:12px 0 16px;letter-spacing:.03em}
     .panel{background:var(--card);border:1px solid #edf1f4;border-radius:var(--radius);box-shadow:var(--shadow);padding:20px;margin:16px 0}
+    .hide{display:none!important}
     .layer-title{display:flex;align-items:center;gap:10px;margin:0 0 14px;color:#104b38;font-size:25px;font-weight:950}
     .badge{width:34px;height:34px;border-radius:999px;background:var(--green);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:15px;font-weight:950}
-    .hint{color:var(--muted);font-size:15px;margin:0 0 14px}
     .category-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
     .category-card{border:2px solid var(--line);border-radius:22px;padding:20px;min-height:150px;background:#fff;cursor:pointer;transition:.15s ease}
     .category-card:hover{transform:translateY(-1px);box-shadow:0 8px 18px rgba(16,24,40,.08)}
@@ -74,7 +63,6 @@
     .msg{display:none;margin-top:14px;border-radius:14px;padding:12px 14px;background:#eef7f1;color:#1f7a5a;font-weight:850}.msg.error{background:#fff1f3;color:#b42318}
     .actions{display:flex;justify-content:center;margin-top:20px}
     .save{border:0;border-radius:18px;min-height:56px;width:min(420px,100%);background:var(--green);color:#fff;font-size:19px;font-weight:950}
-    .hide{display:none!important}
     @media(max-width:760px){
       .wrap{padding:0 12px 38px}.title{font-size:34px}
       .panel{padding:18px;border-radius:22px}
@@ -109,7 +97,7 @@
     </section>
 
     <section class="panel hide" id="layer3">
-      <h2 class="layer-title"><span class="badge">3</span>註冊資料</h2>
+      <h2 class="layer-title"><span class="badge">3</span>員工資料</h2>
       <div id="detailPanel"><div class="empty">請先選擇人員。</div></div>
     </section>
   </div>
@@ -124,27 +112,22 @@
     let renderTimer = null;
     const $ = s => document.querySelector(s);
 
-    function esc(s){
-      return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-    }
+    function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
     function clean(v){ return String(v == null ? '' : v).trim(); }
     function lower(v){ return clean(v).toLowerCase(); }
     function showLayer(n){
       ['layer1','layer2','layer3'].forEach((id, idx)=>{
         const el = document.getElementById(id);
-        if(!el) return;
-        el.classList.toggle('hide', idx !== n-1);
+        if(el) el.classList.toggle('hide', idx !== n-1);
       });
       window.scrollTo({top:0, behavior:'smooth'});
     }
-    function debouncedRenderList(){
-      clearTimeout(renderTimer);
-      renderTimer = setTimeout(renderList, 200);
-    }
+    function debouncedRenderList(){ clearTimeout(renderTimer); renderTimer = setTimeout(renderList, 200); }
+
     function rawOf(e){ return (e && e.raw && typeof e.raw === 'object') ? e.raw : {}; }
+    function fromSources(e){ return [e || {}, rawOf(e)]; }
     function firstValue(obj, keys){
-      const sources = [obj || {}, rawOf(obj)];
-      for(const src of sources){
+      for(const src of fromSources(obj)){
         for(const k of keys){
           if(src && src[k] !== undefined && src[k] !== null && clean(src[k]) !== '') return src[k];
         }
@@ -155,12 +138,10 @@
       if(v === undefined || v === null) return '';
       if(typeof v === 'object'){
         if(typeof v.toDate === 'function'){
-          const d = v.toDate();
-          if(!isNaN(d.getTime())) return d.toISOString().slice(0,10);
+          const d = v.toDate(); if(!isNaN(d.getTime())) return d.toISOString().slice(0,10);
         }
         if(v.seconds){
-          const d = new Date(v.seconds * 1000);
-          if(!isNaN(d.getTime())) return d.toISOString().slice(0,10);
+          const d = new Date(v.seconds * 1000); if(!isNaN(d.getTime())) return d.toISOString().slice(0,10);
         }
         return '';
       }
@@ -169,18 +150,27 @@
       if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
       return s;
     }
+
     function empId(e){ return clean(firstValue(e, ['employeeId','id','userId','員工ID','__id'])); }
     function nameOf(e){ return clean(firstValue(e, ['name','姓名','employeeName','員工姓名'])); }
     function emailOf(e){ return lower(firstValue(e, ['email','Email','電子郵件'])); }
     function identityType(e){
       const raw = lower(firstValue(e, ['identityType','identity','roleType','身分類型','身份類型','員工身分','employeeType','identityLabel']));
       const label = clean(firstValue(e, ['identityLabel','身分類型','身份類型','員工身分']));
-      if(raw.includes('parttime') || raw.includes('工讀') || label.includes('工讀') || firstValue(e,['isPartTime','是否工讀生']) === true) return 'parttime';
+      const isPart = firstValue(e,['isPartTime','是否工讀生']);
+      if(raw.includes('parttime') || raw.includes('工讀') || label.includes('工讀') || isPart === true || clean(isPart).toLowerCase()==='yes' || clean(isPart)==='是') return 'parttime';
       if(raw.includes('external') || raw.includes('teacher') || raw.includes('外聘') || label.includes('外聘')) return 'external';
       return 'staff';
     }
     function identityText(type){ return type === 'parttime' ? '工讀生' : (type === 'external' ? '外聘' : '員工'); }
     function typeClass(type){ return type === 'parttime' ? 'orange' : (type === 'external' ? 'blue' : 'green'); }
+    function boolLabel(v){
+      if(v === true) return '啟用';
+      const s = clean(v).toLowerCase();
+      if(['true','yes','1','是','啟用','enabled'].includes(s)) return '啟用';
+      if(['false','no','0','否','停用','disabled'].includes(s)) return '停用';
+      return clean(v);
+    }
     function statusLabel(e){
       const s = clean(firstValue(e, ['statusLabel']));
       if(s) return s;
@@ -192,10 +182,7 @@
       if(hidden) return '隱藏';
       return '在職';
     }
-    function canShowDaily(e){
-      const status = statusLabel(e);
-      return !/離職|停用|隱藏|封存|駁回/.test(status);
-    }
+    function canShowDaily(e){ return !/離職|停用|隱藏|封存|駁回/.test(statusLabel(e)); }
 
     async function init(){
       currentUser = requireLogin();
@@ -214,12 +201,9 @@
     function renderCategories(){
       const counts = {staff:0, parttime:0, external:0};
       allEmployees.forEach(e => counts[identityType(e)]++);
-      const cards = [
-        ['staff','員工','staff'],
-        ['parttime','工讀生','parttime'],
-        ['external','外聘','external']
-      ];
-      $('#categoryCards').innerHTML = cards.map(([type,title,cls]) => `
+      $('#categoryCards').innerHTML = [
+        ['staff','員工','staff'], ['parttime','工讀生','parttime'], ['external','外聘','external']
+      ].map(([type,title,cls]) => `
         <div class="category-card ${cls}" onclick="openCategory('${type}')">
           <div class="cat-title">${title}</div>
           <div class="cat-count">${counts[type] || 0}<span>人</span></div>
@@ -250,15 +234,10 @@
 
     function renderList(){
       const rows = filteredEmployees();
-      if(!rows.length){
-        $('#employeeList').innerHTML = '<div class="empty">這個分類目前沒有符合條件的人員。</div>';
-        return;
-      }
+      if(!rows.length){ $('#employeeList').innerHTML = '<div class="empty">這個分類目前沒有符合條件的人員。</div>'; return; }
       $('#employeeList').innerHTML = rows.map(e => {
         const id = empId(e) || emailOf(e);
         const type = identityType(e);
-        const status = statusLabel(e);
-        const hiddenClass = canShowDaily(e) ? '' : ' red';
         return `
           <div class="emp-card" onclick="selectEmployee('${esc(id)}')">
             <div>
@@ -266,8 +245,7 @@
               <div class="emp-email">${esc(emailOf(e) || '無 Email')}</div>
             </div>
             <span class="pill ${typeClass(type)}">${esc(identityText(type))}</span>
-          </div>
-        `;
+          </div>`;
       }).join('');
     }
 
@@ -280,32 +258,19 @@
     }
 
     function field(label, value, full){
-      return `
-        <div class="field ${full ? 'full' : ''}">
-          <label>${esc(label)}</label>
-          <input value="${esc(fmt(value))}" readonly>
-        </div>
-      `;
+      return `<div class="field ${full ? 'full' : ''}"><label>${esc(label)}</label><input value="${esc(fmt(value))}" readonly></div>`;
+    }
+    function editableSelect(label, id, options){
+      return `<div class="field"><label>${esc(label)}</label><select id="${esc(id)}">${options.map(o=>`<option value="${esc(o[0])}">${esc(o[1])}</option>`).join('')}</select></div>`;
     }
 
     function renderDetail(e){
       const type = identityType(e);
       const identity = identityText(type);
       const status = statusLabel(e);
-
-      const registrationFields = [
-        ['姓名', firstValue(e, ['name','姓名','employeeName','員工姓名'])],
-        ['Email', firstValue(e, ['email','Email','電子郵件'])],
-        ['身分', identity],
-        ['身分證字號', firstValue(e, ['idNumber','nationalId','idNo','身分證字號','身份證字號'])],
-        ['出生年月日', firstValue(e, ['birthDate','出生年月日','生日'])],
-        ['行動電話', firstValue(e, ['mobilePhone','phone','手機','行動電話','聯絡電話'])],
-        ['聯絡地址', firstValue(e, ['address','contactAddress','聯絡地址','地址'])],
-        ['緊急聯絡人', firstValue(e, ['emergencyContact','緊急聯絡人'])],
-        ['緊急聯絡人電話', firstValue(e, ['emergencyPhone','emergencyContactPhone','緊急聯絡人電話','緊急聯絡電話'])],
-        ['到職日', firstValue(e, ['hireDate','joinDate','到職日'])],
-        ['註冊 / 建立時間', firstValue(e, ['createdAtText','createdAt','建立時間','註冊時間'])]
-      ];
+      const lineNotify = boolLabel(firstValue(e, ['lineNotifyEnabled','LINE 通知啟用','LINE通知啟用']));
+      const lineBindTime = firstValue(e, ['lineBoundAt','lineBindAt','lineBoundAtText','lineBindTime','LINE 綁定時間','LINE綁定時間']);
+      const lineDisplayName = firstValue(e, ['lineDisplayName','lineName','LINE 顯示名稱','LINE名稱']);
 
       $('#detailPanel').innerHTML = `
         <div class="topline">
@@ -319,77 +284,73 @@
           </div>
         </div>
 
-        <div class="section-title">註冊資料</div>
+        <div class="section-title">註冊基本資料</div>
         <div class="form-grid">
-          ${registrationFields.map(([label,value]) => field(label, value, label === '聯絡地址')).join('')}
+          ${field('姓名', firstValue(e, ['name','姓名','employeeName','員工姓名']))}
+          ${field('Email', firstValue(e, ['email','Email','電子郵件']))}
+          ${field('身分類型', identity)}
+          ${field('身分證字號', firstValue(e, ['idNumber','nationalId','idNo','身分證字號','身份證字號']))}
+          ${field('出生年月日', firstValue(e, ['birthDate','出生年月日','生日']))}
+          ${field('行動電話', firstValue(e, ['mobilePhone','phone','手機','行動電話','聯絡電話']))}
+          ${field('聯絡地址', firstValue(e, ['address','contactAddress','聯絡地址','地址']), true)}
+          ${field('緊急聯絡人', firstValue(e, ['emergencyContact','緊急聯絡人']))}
+          ${field('緊急聯絡人電話', firstValue(e, ['emergencyPhone','emergencyContactPhone','緊急聯絡人電話','緊急聯絡電話']))}
+          ${field('到職日', firstValue(e, ['hireDate','joinDate','到職日']))}
         </div>
 
-        <div class="section-title">LINE 綁定</div>
+        <div class="section-title">LINE 資料</div>
         <div class="form-grid">
-          ${field('LINE User ID', firstValue(e, ['lineUserId','LINE User ID']), true)}
-          ${field('LINE 通知', firstValue(e, ['lineNotifyEnabled','LINE 通知啟用']) ? '啟用' : '未啟用')}
+          ${field('LINE User ID', firstValue(e, ['lineUserId','LINE User ID','LINEUserID']), true)}
+          ${field('LINE 通知狀態', lineNotify)}
+          ${field('LINE 綁定時間', lineBindTime)}
+          ${field('LINE 顯示名稱', lineDisplayName)}
+        </div>
+
+        <div class="section-title">薪資 / 投保摘要</div>
+        <div class="form-grid">
+          ${field('薪資顯示類型', firstValue(e, ['salaryDisplayType','薪資顯示類型']))}
+          ${field('時薪 / 本薪', firstValue(e, ['hourlyWage','parttimeHourlyWage','時薪金額','baseSalary','本薪金額']))}
+          ${field('勞保狀態', firstValue(e, ['laborInsuranceStatus','勞保狀態']))}
+          ${field('健保狀態', firstValue(e, ['healthInsuranceStatus','健保狀態']))}
+          ${field('勞保級距', firstValue(e, ['laborInsuranceLevel','勞保級距']))}
+          ${field('健保級距', firstValue(e, ['healthInsuranceLevel','健保級距']))}
+          ${field('勞保自付額', firstValue(e, ['laborInsuranceSelfAmount','laborInsuranceEmployeeAmount','勞保自付額']))}
+          ${field('健保自付額', firstValue(e, ['healthInsuranceSelfAmount','healthInsuranceEmployeeAmount','健保自付額']))}
         </div>
 
         <div class="section-title">管理設定</div>
         <div class="form-grid">
-          <div class="field">
-            <label>顯示狀態</label>
-            <select id="displayStatus">
-              <option value="active">在職 / 顯示</option>
-              <option value="hidden">在職 / 隱藏</option>
-              <option value="inactive">停用 / 隱藏</option>
-              <option value="resigned">離職 / 隱藏</option>
-            </select>
-          </div>
-          <div class="field">
-            <label>離職 / 結束日期</label>
-            <input id="resignedDate" type="date" value="${esc(fmt(firstValue(e, ['resignedDate','離職日'])))}">
-          </div>
-          <div class="field full">
-            <label>狀態備註</label>
-            <textarea id="statusNote" rows="3" placeholder="主管內部備註">${esc(firstValue(e, ['statusNote','狀態備註','note','備註']))}</textarea>
-          </div>
+          ${editableSelect('帳號狀態', 'accountStatus', [['active','啟用'],['inactive','停用'],['archived','封存'],['pending','待審核'],['rejected','註冊駁回']])}
+          ${editableSelect('任職狀態', 'employmentStatus', [['active','在職 / 合作中'],['resigned','離職'],['suspended','暫停任用'],['contractorEnded','外聘合作結束'],['archived','封存']])}
+          ${editableSelect('是否隱藏於日常清單', 'hiddenFromActiveLists', [['false','否'],['true','是']])}
+          <div class="field"><label>離職 / 結束日期</label><input id="resignedDate" type="date" value="${esc(fmt(firstValue(e, ['resignedDate','離職日'])))}"></div>
+          <div class="field full"><label>狀態備註</label><textarea id="statusNote" rows="3" placeholder="主管內部備註">${esc(firstValue(e, ['statusNote','狀態備註','note','備註']))}</textarea></div>
         </div>
 
         <div class="actions"><button class="save" type="button" onclick="saveEmployeeStatus()">儲存資料</button></div>
-        <div id="msg" class="msg"></div>
-      `;
+        <div id="msg" class="msg"></div>`;
 
-      const display = canShowDaily(e) ? 'active' : (/離職/.test(status) ? 'resigned' : (/停用/.test(status) ? 'inactive' : 'hidden'));
-      $('#displayStatus').value = display;
+      $('#accountStatus').value = lower(firstValue(e, ['accountStatus','帳號狀態'])) || 'active';
+      const empStatus = lower(firstValue(e, ['employmentStatus','任職狀態'])) || 'active';
+      $('#employmentStatus').value = ['active','resigned','suspended','contractorEnded','archived'].includes(empStatus) ? empStatus : 'active';
+      $('#hiddenFromActiveLists').value = firstValue(e, ['hiddenFromActiveLists','隱藏於日常清單','hidden','隱藏']) ? 'true' : 'false';
     }
 
-    function currentEmployee(){
-      return allEmployees.find(x => (empId(x) || emailOf(x)) === selectedId);
-    }
+    function currentEmployee(){ return allEmployees.find(x => (empId(x) || emailOf(x)) === selectedId); }
 
     async function saveEmployeeStatus(){
-      const e = currentEmployee();
-      if(!e) return;
+      const e = currentEmployee(); if(!e) return;
       const msg = $('#msg');
-      msg.style.display = 'block';
-      msg.classList.remove('error');
-      msg.textContent = '儲存中...';
-      const mode = $('#displayStatus').value;
-      let payload = {
+      msg.style.display = 'block'; msg.classList.remove('error'); msg.textContent = '儲存中...';
+      const payload = {
         employeeId: empId(e),
         email: emailOf(e),
-        accountStatus: 'active',
-        employmentStatus: 'active',
-        hiddenFromActiveLists: false,
+        accountStatus: $('#accountStatus').value,
+        employmentStatus: $('#employmentStatus').value,
+        hiddenFromActiveLists: $('#hiddenFromActiveLists').value === 'true',
         resignedDate: $('#resignedDate').value,
         statusNote: $('#statusNote').value
       };
-      if(mode === 'hidden'){
-        payload.hiddenFromActiveLists = true;
-      }else if(mode === 'inactive'){
-        payload.accountStatus = 'inactive';
-        payload.hiddenFromActiveLists = true;
-      }else if(mode === 'resigned'){
-        payload.accountStatus = 'inactive';
-        payload.employmentStatus = 'resigned';
-        payload.hiddenFromActiveLists = true;
-      }
       try{
         const res = await api('updateEmployeeAdminStatus', payload);
         msg.textContent = (res && res.message) || '已儲存。';
@@ -397,8 +358,7 @@
         const updated = allEmployees.find(x => (empId(x) || emailOf(x)) === selectedId);
         if(updated) renderDetail(updated);
       }catch(err){
-        msg.classList.add('error');
-        msg.textContent = err.message || '儲存失敗';
+        msg.classList.add('error'); msg.textContent = err.message || '儲存失敗';
       }
     }
 
