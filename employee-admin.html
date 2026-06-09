@@ -71,9 +71,10 @@
       .person-title{font-size:29px}
     }
   </style>
+  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
 </head>
 <body>
-  <div class="yz-admin-nav" data-yz-nav>
+  <div class="yz-global-nav" data-yz-global-nav>
     <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
     <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
   </div>
@@ -125,7 +126,10 @@
     function debouncedRenderList(){ clearTimeout(renderTimer); renderTimer = setTimeout(renderList, 200); }
 
     function rawOf(e){ return (e && e.raw && typeof e.raw === 'object') ? e.raw : {}; }
-    function fromSources(e){ return [e || {}, rawOf(e)]; }
+    function profileOf(e){ return (e && e.profile && typeof e.profile === 'object') ? e.profile : {}; }
+    function salaryOf(e){ return (e && e.salary && typeof e.salary === 'object') ? e.salary : ((e && e.info && typeof e.info === 'object') ? e.info : {}); }
+    function rawConfigOf(e){ const s = salaryOf(e); return (s && s.rawConfig && typeof s.rawConfig === 'object') ? s.rawConfig : {}; }
+    function fromSources(e){ return [e || {}, profileOf(e), salaryOf(e), rawConfigOf(e), rawOf(e)]; }
     function firstValue(obj, keys){
       for(const src of fromSources(obj)){
         for(const k of keys){
@@ -133,6 +137,10 @@
         }
       }
       return '';
+    }
+    function displayValue(v, placeholder){
+      const out = fmt(v);
+      return out || placeholder || '尚未填寫';
     }
     function fmt(v){
       if(v === undefined || v === null) return '';
@@ -249,19 +257,40 @@
       }).join('');
     }
 
-    function selectEmployee(id){
+    async function selectEmployee(id){
       selectedId = id;
-      const e = allEmployees.find(x => (empId(x) || emailOf(x)) === id);
-      if(!e) return;
-      renderDetail(e);
+      const base = allEmployees.find(x => (empId(x) || emailOf(x)) === id);
+      if(!base) return;
+      $('#detailPanel').innerHTML = '<div class="empty">讀取員工完整資料中...</div>';
       showLayer(3);
+      try{
+        const key = empId(base) || firstValue(base, ['id','__id','userId']) || id;
+        const email = emailOf(base);
+        const payload = { employeeId:key, userId:key, id:key, email:email };
+        const profileRes = await api('getMyProfileFull', payload).catch(()=>null);
+        const salaryRes = await api('getMySalaryInfo', payload).catch(()=>null);
+        const enriched = Object.assign({}, base, {
+          profile: (profileRes && profileRes.profile) || {},
+          salary: (salaryRes && (salaryRes.salary || salaryRes.info)) || (profileRes && (profileRes.salary || profileRes.info)) || {},
+          raw: Object.assign({}, rawOf(base), (profileRes && profileRes.profile) || {}, (salaryRes && ((salaryRes.salary && salaryRes.salary.rawConfig) || (salaryRes.info && salaryRes.info.rawConfig))) || {})
+        });
+        renderDetail(enriched);
+      }catch(err){
+        console.warn('[employee-admin detail load]', err);
+        renderDetail(base);
+      }
     }
 
-    function field(label, value, full){
-      return `<div class="field ${full ? 'full' : ''}"><label>${esc(label)}</label><input value="${esc(fmt(value))}" readonly></div>`;
+    function field(label, value, full, placeholder){
+      return `<div class="field ${full ? 'full' : ''}"><label>${esc(label)}</label><input value="${esc(displayValue(value, placeholder))}" readonly></div>`;
     }
     function editableSelect(label, id, options){
       return `<div class="field"><label>${esc(label)}</label><select id="${esc(id)}">${options.map(o=>`<option value="${esc(o[0])}">${esc(o[1])}</option>`).join('')}</select></div>`;
+    }
+
+    function optionValue(raw, fallback){
+      const s = lower(raw);
+      return s || fallback;
     }
 
     function renderDetail(e){
@@ -271,11 +300,16 @@
       const lineNotify = boolLabel(firstValue(e, ['lineNotifyEnabled','LINE 通知啟用','LINE通知啟用']));
       const lineBindTime = firstValue(e, ['lineBoundAt','lineBindAt','lineBoundAtText','lineBindTime','LINE 綁定時間','LINE綁定時間']);
       const lineDisplayName = firstValue(e, ['lineDisplayName','lineName','LINE 顯示名稱','LINE名稱']);
+      const mainAmount = type === 'parttime'
+        ? firstValue(e, ['parttimeHourlyRateText','hourlyRateText','hourlyRate','時薪','時薪金額','hourlyWage','parttimeHourlyWage'])
+        : firstValue(e, ['staffBaseSalaryText','baseSalaryText','baseSalary','staffBaseSalary','monthlySalary','salary','本薪','本薪金額']);
+      const laborStatus = firstValue(e, ['laborStatus','laborInsuranceStatus','laborInsurance','勞保狀態']);
+      const healthStatus = firstValue(e, ['healthStatus','healthInsuranceStatus','healthInsurance','健保狀態']);
 
       $('#detailPanel').innerHTML = `
         <div class="topline">
           <div>
-            <div class="person-title">${esc(nameOf(e) || '未命名')}</div>
+            <div class="person-title">${esc(nameOf(e) || firstValue(e, ['displayName']) || '未命名')}</div>
             <div class="person-sub">${esc(identity)}｜${esc(emailOf(e) || '無 Email')}</div>
           </div>
           <div class="back-row">
@@ -286,36 +320,47 @@
 
         <div class="section-title">註冊基本資料</div>
         <div class="form-grid">
-          ${field('姓名', firstValue(e, ['name','姓名','employeeName','員工姓名']))}
-          ${field('Email', firstValue(e, ['email','Email','電子郵件']))}
+          ${field('員工 ID', firstValue(e, ['employeeId','id','userId','__id','員工ID']))}
+          ${field('姓名', firstValue(e, ['name','displayName','姓名','employeeName','員工姓名']))}
+          ${field('Email', firstValue(e, ['email','Email','電子郵件','loginAccount','登入帳號']))}
           ${field('身分類型', identity)}
-          ${field('身分證字號', firstValue(e, ['idNumber','nationalId','idNo','身分證字號','身份證字號']))}
-          ${field('出生年月日', firstValue(e, ['birthDate','出生年月日','生日']))}
+          ${field('身分證字號', firstValue(e, ['idNumber','nationalId','idNo','idNumberMasked','身分證字號','身份證字號']))}
+          ${field('出生年月日', firstValue(e, ['birthDate','birthday','出生年月日','生日']))}
           ${field('行動電話', firstValue(e, ['mobilePhone','phone','手機','行動電話','聯絡電話']))}
+          ${field('到職日', firstValue(e, ['hireDate','joinDate','startDate','到職日','任職日期']))}
           ${field('聯絡地址', firstValue(e, ['address','contactAddress','聯絡地址','地址']), true)}
           ${field('緊急聯絡人', firstValue(e, ['emergencyContact','緊急聯絡人']))}
           ${field('緊急聯絡人電話', firstValue(e, ['emergencyPhone','emergencyContactPhone','緊急聯絡人電話','緊急聯絡電話']))}
-          ${field('到職日', firstValue(e, ['hireDate','joinDate','到職日']))}
         </div>
 
         <div class="section-title">LINE 資料</div>
         <div class="form-grid">
-          ${field('LINE User ID', firstValue(e, ['lineUserId','LINE User ID','LINEUserID']), true)}
-          ${field('LINE 通知狀態', lineNotify)}
-          ${field('LINE 綁定時間', lineBindTime)}
-          ${field('LINE 顯示名稱', lineDisplayName)}
+          ${field('LINE User ID', firstValue(e, ['lineUserId','LINE User ID','LINEUserID']), true, '尚未綁定')}
+          ${field('LINE 通知狀態', lineNotify, false, '尚未設定')}
+          ${field('LINE 綁定時間', lineBindTime, false, '尚未綁定')}
+          ${field('LINE 顯示名稱', lineDisplayName, false, '尚未綁定')}
         </div>
 
         <div class="section-title">薪資 / 投保摘要</div>
         <div class="form-grid">
-          ${field('薪資顯示類型', firstValue(e, ['salaryDisplayType','薪資顯示類型']))}
-          ${field('時薪 / 本薪', firstValue(e, ['hourlyWage','parttimeHourlyWage','時薪金額','baseSalary','本薪金額']))}
-          ${field('勞保狀態', firstValue(e, ['laborInsuranceStatus','勞保狀態']))}
-          ${field('健保狀態', firstValue(e, ['healthInsuranceStatus','健保狀態']))}
-          ${field('勞保級距', firstValue(e, ['laborInsuranceLevel','勞保級距']))}
-          ${field('健保級距', firstValue(e, ['healthInsuranceLevel','健保級距']))}
-          ${field('勞保自付額', firstValue(e, ['laborInsuranceSelfAmount','laborInsuranceEmployeeAmount','勞保自付額']))}
-          ${field('健保自付額', firstValue(e, ['healthInsuranceSelfAmount','healthInsuranceEmployeeAmount','健保自付額']))}
+          ${field('薪資顯示類型', firstValue(e, ['salaryDisplayType','薪資顯示類型']) || (type === 'parttime' ? '工讀時薪' : '專職本薪'))}
+          ${field(type === 'parttime' ? '時薪' : '本薪', mainAmount, false, '尚未設定')}
+          ${type === 'parttime' ? field('是否部分工時', firstValue(e, ['parttimePartialHoursText','isPartialHours','isPartialWorkingTime','partialWorkingTime','是否部分工時']), false, '尚未設定') : ''}
+          ${type === 'parttime' ? field('目前申報月平均薪資總額', firstValue(e, ['parttimeAverageSalaryText','averageSalary','parttimeAverageSalary','目前申報月平均薪資總額']), false, '尚未設定') : ''}
+          ${field('職務加給', firstValue(e, ['jobAllowanceText','jobAllowance','職務加給']), false, '無')}
+          ${field('津貼', firstValue(e, ['allowanceText','allowance','津貼']), false, '無')}
+          ${field('薪資生效日', firstValue(e, ['effectiveDate','salaryEffectiveDate','生效日期']), false, '尚未設定')}
+          ${field('薪資備註', firstValue(e, ['salaryNote','note','備註']), true, '無')}
+          ${field('勞保狀態', laborStatus, false, '尚未設定')}
+          ${field('勞保級距', firstValue(e, ['laborPlanText','laborLevelText','laborPlan','laborPlanCode','laborInsuranceLevel','laborLevel','勞保級距']), false, laborStatus ? '無級距' : '尚未設定')}
+          ${field('勞保投保薪資', firstValue(e, ['laborSalaryText','laborInsuranceSalary','laborSalary','勞保投保薪資']), false, laborStatus ? '尚未設定' : '未加保')}
+          ${field('勞保自付額', firstValue(e, ['laborSelfPayText','laborInsuranceSelfPay','laborSelfPay','laborInsuranceSelfAmount','laborInsuranceEmployeeAmount','勞保自付額']), false, laborStatus ? '尚未設定' : '未加保')}
+          ${field('雇主提撥勞退', firstValue(e, ['retirementEmployerText','laborRetirementEmployer','雇主提撥勞退']), false, laborStatus ? '尚未設定' : '未加保')}
+          ${field('勞退自提', firstValue(e, ['selfRetirementText','selfRetirementRate','laborRetirementSelfRate','勞退自提']), false, '未設定')}
+          ${field('健保狀態', healthStatus, false, '尚未設定')}
+          ${field('健保級距', firstValue(e, ['healthPlanText','healthLevelText','healthPlan','healthPlanCode','healthInsuranceLevel','healthLevel','健保級距']), false, healthStatus ? '無級距' : '尚未設定')}
+          ${field('健保投保薪資', firstValue(e, ['healthSalaryText','healthInsuranceSalary','healthSalary','健保投保薪資']), false, healthStatus ? '尚未設定' : '未加保')}
+          ${field('健保自付額', firstValue(e, ['healthSelfPayText','healthInsuranceSelfPay','healthSelfPay','healthInsuranceSelfAmount','healthInsuranceEmployeeAmount','健保自付額']), false, healthStatus ? '尚未設定' : '未加保')}
         </div>
 
         <div class="section-title">管理設定</div>
@@ -323,16 +368,17 @@
           ${editableSelect('帳號狀態', 'accountStatus', [['active','啟用'],['inactive','停用'],['archived','封存'],['pending','待審核'],['rejected','註冊駁回']])}
           ${editableSelect('任職狀態', 'employmentStatus', [['active','在職 / 合作中'],['resigned','離職'],['suspended','暫停任用'],['contractorEnded','外聘合作結束'],['archived','封存']])}
           ${editableSelect('是否隱藏於日常清單', 'hiddenFromActiveLists', [['false','否'],['true','是']])}
-          <div class="field"><label>離職 / 結束日期</label><input id="resignedDate" type="date" value="${esc(fmt(firstValue(e, ['resignedDate','離職日'])))}"></div>
+          <div class="field"><label>離職 / 結束日期</label><input id="resignedDate" type="date" value="${esc(fmt(firstValue(e, ['resignedDate','leaveDate','離職日'])))}"></div>
           <div class="field full"><label>狀態備註</label><textarea id="statusNote" rows="3" placeholder="主管內部備註">${esc(firstValue(e, ['statusNote','狀態備註','note','備註']))}</textarea></div>
         </div>
 
         <div class="actions"><button class="save" type="button" onclick="saveEmployeeStatus()">儲存資料</button></div>
         <div id="msg" class="msg"></div>`;
 
-      $('#accountStatus').value = lower(firstValue(e, ['accountStatus','帳號狀態'])) || 'active';
+      const acc = lower(firstValue(e, ['accountStatus','帳號狀態'])) || 'active';
+      $('#accountStatus').value = ['active','inactive','archived','pending','rejected'].includes(acc) ? acc : 'active';
       const empStatus = lower(firstValue(e, ['employmentStatus','任職狀態'])) || 'active';
-      $('#employmentStatus').value = ['active','resigned','suspended','contractorEnded','archived'].includes(empStatus) ? empStatus : 'active';
+      $('#employmentStatus').value = ['active','resigned','suspended','contractorended','contractorEnded','archived'].includes(empStatus) ? (empStatus === 'contractorended' ? 'contractorEnded' : empStatus) : 'active';
       $('#hiddenFromActiveLists').value = firstValue(e, ['hiddenFromActiveLists','隱藏於日常清單','hidden','隱藏']) ? 'true' : 'false';
     }
 
@@ -356,7 +402,7 @@
         msg.textContent = (res && res.message) || '已儲存。';
         await loadEmployees();
         const updated = allEmployees.find(x => (empId(x) || emailOf(x)) === selectedId);
-        if(updated) renderDetail(updated);
+        if(updated) await selectEmployee(selectedId);
       }catch(err){
         msg.classList.add('error'); msg.textContent = err.message || '儲存失敗';
       }
