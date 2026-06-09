@@ -259,18 +259,30 @@
       }).join('');
     }
 
+    function apiTimeout(promise, ms){
+      return Promise.race([
+        promise,
+        new Promise(resolve => setTimeout(() => resolve(null), ms || 3500))
+      ]);
+    }
+
     async function selectEmployee(id){
       selectedId = id;
       const base = allEmployees.find(x => (empId(x) || emailOf(x)) === id);
       if(!base) return;
-      $('#detailPanel').innerHTML = '<div class="empty">讀取員工完整資料中...</div>';
+
+      // 先用名單中的員工主檔立即顯示，不讓畫面卡在「讀取中」。
+      renderDetail(base);
       showLayer(3);
+
+      // 再背景補抓薪資 / 投保等完整資料；若 API 慢或無回應，保留目前畫面。
       try{
         const key = empId(base) || firstValue(base, ['id','__id','userId']) || id;
         const email = emailOf(base);
         const payload = { employeeId:key, userId:key, id:key, email:email };
-        const profileRes = await api('getMyProfileFull', payload).catch(()=>null);
-        const salaryRes = await api('getMySalaryInfo', payload).catch(()=>null);
+        const profileRes = await apiTimeout(api('getMyProfileFull', payload).catch(()=>null), 3500);
+        const salaryRes = await apiTimeout(api('getMySalaryInfo', payload).catch(()=>null), 3500);
+        if(!profileRes && !salaryRes) return;
         const enriched = Object.assign({}, base, {
           profile: (profileRes && profileRes.profile) || {},
           salary: (salaryRes && (salaryRes.salary || salaryRes.info)) || (profileRes && (profileRes.salary || profileRes.info)) || {},
@@ -278,8 +290,7 @@
         });
         renderDetail(enriched);
       }catch(err){
-        console.warn('[employee-admin detail load]', err);
-        renderDetail(base);
+        console.warn('[employee-admin detail background load]', err);
       }
     }
 
