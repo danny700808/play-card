@@ -63,6 +63,8 @@
     .msg{display:none;margin-top:14px;border-radius:14px;padding:12px 14px;background:#eef7f1;color:#1f7a5a;font-weight:850}.msg.error{background:#fff1f3;color:#b42318}
     .actions{display:flex;justify-content:center;margin-top:20px}
     .save{border:0;border-radius:18px;min-height:56px;width:min(420px,100%);background:var(--green);color:#fff;font-size:19px;font-weight:950}
+    .danger{border:0;border-radius:18px;min-height:52px;background:#b42318;color:#fff;font-size:17px;font-weight:950;padding:10px 18px}
+    .hint{font-size:14px;color:#66768a;margin-top:8px;line-height:1.5}
     @media(max-width:760px){
       .wrap{padding:0 12px 38px}.title{font-size:34px}
       .panel{padding:18px;border-radius:22px}
@@ -340,6 +342,10 @@
           ${field('LINE 綁定時間', lineBindTime, false, '尚未綁定')}
           ${field('LINE 顯示名稱', lineDisplayName, false, '尚未綁定')}
         </div>
+        <div class="actions" style="justify-content:flex-start;margin-top:12px">
+          <button class="danger" type="button" onclick="clearLineBinding()">清除此員工 LINE 綁定</button>
+        </div>
+        <div class="hint">如果員工 LINE 綁錯到主管手機，先按這顆清掉，再請員工用自己的手機輸入「柚子綁定 Email」。</div>
 
         <div class="section-title">薪資 / 投保摘要</div>
         <div class="form-grid">
@@ -383,6 +389,25 @@
     }
 
     function currentEmployee(){ return allEmployees.find(x => (empId(x) || emailOf(x)) === selectedId); }
+
+    async function clearLineBinding(){
+      const e = currentEmployee(); if(!e) return;
+      const employeeName = nameOf(e) || emailOf(e) || selectedId;
+      if(!confirm('確定要清除「' + employeeName + '」的 LINE 綁定嗎？\n\n清除後，這位員工需要用自己的手機 LINE 重新輸入「柚子綁定 Email」。')) return;
+      const msg = $('#msg');
+      msg.style.display = 'block'; msg.classList.remove('error'); msg.textContent = '正在清除 LINE 綁定...';
+      const payload = { employeeId: empId(e), id: empId(e), email: emailOf(e) };
+      try{
+        const res = await api('clearEmployeeLineBinding', payload);
+        if(!res || res.ok === false) throw new Error((res && res.message) || '清除失敗');
+        msg.textContent = (res && res.message) || '已清除此員工 LINE 綁定。';
+        await loadEmployees();
+        const updated = allEmployees.find(x => (empId(x) || emailOf(x)) === selectedId) || allEmployees.find(x => emailOf(x) === emailOf(e));
+        if(updated) await selectEmployee(empId(updated) || emailOf(updated));
+      }catch(err){
+        msg.classList.add('error'); msg.textContent = err.message || '清除 LINE 綁定失敗';
+      }
+    }
 
     async function saveEmployeeStatus(){
       const e = currentEmployee(); if(!e) return;

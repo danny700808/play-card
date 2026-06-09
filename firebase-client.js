@@ -4640,10 +4640,45 @@
   }
   async function managerRecipients(){
     const rows = (await getEmployeeRecipients()).rows || [];
+    const primary = rows.filter(r => clean(r.employeeId)==='PRIMARY_MANAGER_LINE' && clean(r.lineUserId));
+    if(primary.length) return primary;
     return rows.filter(r => r.isManager);
   }
   async function targetEmployee(payload){
+    payload = payload || {};
     const rows = (await getEmployeeRecipients()).rows || [];
+
+    async function findRequestEmployee(){
+      const requestId = clean(payload.requestId || payload.id || payload.__id || payload.recordId || payload.correctionId || payload.leaveId);
+      if(!requestId) return null;
+      const collections = ['clockCorrections','leaveRequests','temporaryAttendanceRequests','profileChangeRequests','certificateApplications','parttimeRecords','parttimeHourRequests','employees'];
+      for(const col of collections){
+        let row = await docGet(col, requestId).catch(()=>null);
+        if(!row){
+          const list = await all(col).catch(()=>[]);
+          row = list.find(x => clean(x.requestId || x.recordId || x.correctionId || x.leaveId || x.id || x.__id) === requestId) || null;
+        }
+        if(row){
+          const id = clean(row.employeeId || row.targetEmployeeId || row.userId || row['員工ID']);
+          const mail = lower(row.email || row.Email || row['Email']);
+          const found = rows.find(r => (!!id && clean(r.employeeId) === id) || (!!mail && lower(r.email) === mail));
+          if(found) return found;
+          if(id || mail) return {employeeId:id,name:nameOf(row),email:mail,lineUserId:clean(row.lineUserId || row['LINE User ID']),lineNotifyEnabled:truthy(row.lineNotifyEnabled || row['LINE 通知啟用'])};
+        }
+      }
+      return null;
+    }
+
+    // 審核頁通常會送目前主管的 userId；有 requestId 時必須先用申請單反查真正員工，避免通知誤送主管。
+    const byRequest = await findRequestEmployee();
+    if(byRequest) return byRequest;
+
+    const explicitId = clean(payload.employeeId || payload.targetEmployeeId || payload.applicantId || payload.staffId);
+    const explicitEmail = lower(payload.email || payload.targetEmail || payload.applicantEmail);
+    let found = rows.find(r => (!!explicitId && clean(r.employeeId) === explicitId) || (!!explicitEmail && lower(r.email) === explicitEmail));
+    if(found) return found;
+
+    // 只有在沒有申請單 id 的一般員工自發動作，才允許 userId 當作本人。
     const keys = userKeys(payload || {});
     return rows.find(r => clean(r.employeeId) === keys.employeeId || lower(r.email) === keys.email) || null;
   }
@@ -5061,7 +5096,9 @@
   }
   async function managerRecipients(){
     const emps=await all('employees').catch(()=>[]);
-    return emps.map(e=>({employeeId:userIdOf(e),name:nameOf(e),email:emailOf(e),lineUserId:clean(e.lineUserId || e['LINE User ID']),isManager:truthy(e.showSettingsZone || e['管理權限']) || lower(e.role || e['角色'])==='admin' || lower(e.role || e['角色'])==='manager'})).filter(e=>e.employeeId && e.isManager);
+    const rows=emps.map(e=>({employeeId:userIdOf(e),name:nameOf(e),email:emailOf(e),lineUserId:clean(e.lineUserId || e['LINE User ID']),isManager:truthy(e.showSettingsZone || e['管理權限']) || lower(e.role || e['角色'])==='admin' || lower(e.role || e['角色'])==='manager'})).filter(e=>e.employeeId && e.isManager);
+    const primary=rows.filter(e=>clean(e.employeeId)==='PRIMARY_MANAGER_LINE' && clean(e.lineUserId));
+    return primary.length ? primary : rows;
   }
   async function targetRecipient(app){
     const emps=await all('employees').catch(()=>[]);
@@ -5593,6 +5630,56 @@
     await setDoc('employees', docId, data, true);
     return {ok:true,message:'員工狀態已儲存。',employeeId:empIdOf(target),docId,updates:data};
   }
+  async function clearEmployeeLineBinding(payload){
+    payload=payload||{};
+    const key=clean(payload.employeeId || payload.id || payload.__id || payload.userId);
+    const email=emailOf(payload);
+    if(!key && !email) return {ok:false,message:'缺少員工ID或 Email，無法清除 LINE 綁定。'};
+    let target = key ? await getDoc('employees', key).catch(()=>null) : null;
+    if(!target && (key || email)){
+      const rows=await all('employees');
+      target=rows.find(r=>(key && (empIdOf(r)===key || clean(r.__id)===key || clean(r.userId)===key || clean(r.id)===key)) || (email && emailOf(r)===email)) || null;
+    }
+    if(!target) return {ok:false,message:'找不到員工資料，無法清除 LINE 綁定。'};
+    const docId=clean(target.__id || target.employeeId || key);
+    const user=readUser();
+    const del=global.firebase.firestore.FieldValue.delete();
+    const data={
+      lineUserId:del,
+      lineDisplayName:del,
+      lineNotifyEnabled:del,
+      lineBoundAt:del,
+      lineBindAt:del,
+      lineBoundAtText:del,
+      lineBindTime:del,
+      linePictureUrl:del,
+      lineStatusMessage:del,
+      lineBindingEmail:del,
+      lineName:del,
+      lineNotifyStatus:del,
+      'LINE User ID':del,
+      'LINE 顯示名稱':del,
+      'LINE 名稱':del,
+      'LINE 通知啟用':del,
+      'LINE 綁定時間':del,
+      updatedAt:serverTs(),
+      updatedAtText:nowText(),
+      updatedBy:clean(user.id || user.employeeId || user.email),
+      lineBindingClearedAt:serverTs(),
+      lineBindingClearedAtText:nowText(),
+      lineBindingClearedBy:clean(user.id || user.employeeId || user.email),
+      lineBindingClearSource:'employee-admin-clear-line'
+    };
+    await database().collection('employees').doc(docId).update(data);
+    try{
+      await database().collection('lineBindingLogs').doc(nowId('LINE_CLEAR')).set({
+        type:'clear', employeeId:empIdOf(target), email:emailOf(target), name:nameOf(target), docId,
+        clearedBy:clean(user.id || user.employeeId || user.email), clearedByName:clean(user.name || user.email),
+        createdAt:serverTs(), createdAtText:nowText(), source:'employee-admin-clear-line'
+      });
+    }catch(logErr){ console.warn('[clearEmployeeLineBinding log]', logErr); }
+    return {ok:true,message:'已清除此員工的 LINE 綁定。請員工用自己的手機重新輸入「柚子綁定 Email」。',employeeId:empIdOf(target),email:emailOf(target),docId};
+  }
   function sameEmployee(row, emp){
     const id=emp.employeeId || emp.id;
     const email=emp.email;
@@ -5660,6 +5747,7 @@
     const a=clean(action);
     if(a==='getEmployeeManagementData') return await getEmployeeManagementData(payload||{});
     if(a==='updateEmployeeAdminStatus') return await updateEmployeeAdminStatus(payload||{});
+    if(a==='clearEmployeeLineBinding') return await clearEmployeeLineBinding(payload||{});
     if(a==='getEmployeeHistorySnapshot') return await getEmployeeHistorySnapshot(payload||{});
     if(a==='getEmployeeOptions') return await getEmployeeOptions(payload||{});
     if(a==='getScheduleSetupData') return await getScheduleSetupData(payload||{});
@@ -6615,4 +6703,301 @@
     if(typeof oldHandle === 'function') return await oldHandle(action,payload||{});
     return null;
   };
+})(window);
+
+/* =========================================================
+ * LINE routing safety patch 2026-06-09
+ * - 主要主管 LINE 收件人只存一筆 PRIMARY_MANAGER_LINE
+ * - 提供 LINE 檢查頁需要的 API
+ * - 支援重新讀取登入者 LINE 綁定狀態 / 開關通知
+ * ========================================================= */
+(function(global){
+  const fb = global.YZFirebase || {};
+  if(fb.__lineRoutingSafetyPatch20260609) return;
+  fb.__lineRoutingSafetyPatch20260609 = true;
+  const previousHandle = fb.handleApi;
+  function clean(v){ return String(v == null ? '' : v).trim(); }
+  function lower(v){ return clean(v).toLowerCase(); }
+  function truthy(v){ const s=lower(v); return v===true || v===1 || ['1','true','yes','是','啟用','enabled','active','on'].indexOf(s)>=0; }
+  function nowId(prefix){ return (prefix||'ID') + '_' + Date.now() + '_' + Math.random().toString(36).slice(2,8); }
+  function db(){
+    const cfg = global.APP_CONFIG && global.APP_CONFIG.FIREBASE_CONFIG;
+    if(!cfg || !global.firebase) throw new Error('Firebase 尚未啟用');
+    if(!global.firebase.apps.length) global.firebase.initializeApp(cfg);
+    return global.firebase.firestore();
+  }
+  function serverTs(){ try{return global.firebase.firestore.FieldValue.serverTimestamp();}catch(e){return new Date().toISOString();} }
+  async function all(col){ const snap=await db().collection(col).get(); const rows=[]; snap.forEach(doc=>rows.push(Object.assign({__id:doc.id}, doc.data()||{}))); return rows; }
+  async function getDoc(col,id){ if(!clean(id)) return null; const snap=await db().collection(col).doc(clean(id)).get(); return snap.exists ? Object.assign({__id:snap.id}, snap.data()||{}) : null; }
+  async function setDoc(col,id,data,merge=true){ await db().collection(col).doc(clean(id)).set(data||{}, {merge}); }
+  function empIdOf(o){ o=o||{}; return clean(o.employeeId || o.userId || o.id || o.adminId || o['員工ID'] || o.__id); }
+  function emailOf(o){ o=o||{}; return lower(o.email || o.Email || o['Email'] || o.loginAccount || o['登入帳號']); }
+  function nameOf(o){ o=o||{}; return clean(o.name || o['姓名'] || o.employeeName || o['員工姓名'] || o.displayName); }
+  function lineOf(o){ o=o||{}; return clean(o.lineUserId || o['LINE User ID'] || o.targetLineUserId); }
+  function isManager(o){ o=o||{}; const role=lower(o.role || o['角色']); return role==='admin' || role==='manager' || truthy(o.showSettingsZone || o['管理區權限'] || o['管理權限']); }
+  function normEmployee(o){
+    o=o||{};
+    const id=empIdOf(o);
+    const line=lineOf(o);
+    return {
+      __id:clean(o.__id || id), employeeId:id, id,
+      name:nameOf(o), email:emailOf(o),
+      identityType:clean(o.identityType || o['身分類型']),
+      identityLabel:clean(o.identityLabel || o['身分'] || o['身分類型']),
+      role:lower(o.role || o['角色']),
+      lineUserId:line,
+      hasLine:!!line,
+      lineNotifyEnabled:line ? (o.lineNotifyEnabled === undefined && o['LINE 通知啟用'] === undefined ? true : truthy(o.lineNotifyEnabled || o['LINE 通知啟用'])) : false,
+      isManager:isManager(o),
+      isPrimaryManagerLineRecipient:id==='PRIMARY_MANAGER_LINE',
+      raw:o
+    };
+  }
+  async function findEmployee(userId,email){
+    const id=clean(userId), mail=lower(email);
+    if(id){ const direct=await getDoc('employees', id).catch(()=>null); if(direct) return direct; }
+    const rows=await all('employees').catch(()=>[]);
+    return rows.find(r => (!!id && empIdOf(r)===id) || (!!mail && emailOf(r)===mail)) || null;
+  }
+  async function refreshUserSession(payload){
+    payload=payload||{};
+    let user={};
+    try{ user=JSON.parse(global.localStorage.getItem('employeeUser')||'null')||{}; }catch(e){}
+    const row=await findEmployee(payload.userId || payload.employeeId || user.id || user.employeeId, payload.email || user.email);
+    if(!row) return {ok:false,message:'找不到使用者資料'};
+    const merged=Object.assign({}, user, {
+      id:empIdOf(row), employeeId:empIdOf(row), name:nameOf(row), email:emailOf(row),
+      role:lower(row.role || row['角色'] || user.role || 'staff'),
+      identityType:clean(row.identityType || row['身分類型'] || user.identityType),
+      showSettingsZone:truthy(row.showSettingsZone || row['管理區權限'] || row['管理權限'] || user.showSettingsZone),
+      lineUserId:lineOf(row),
+      lineNotifyEnabled:lineOf(row) ? (truthy(row.lineNotifyEnabled || row['LINE 通知啟用']) ? '是' : '否') : '否'
+    });
+    return {ok:true,user:merged};
+  }
+  async function setLineNotifyPreference(payload){
+    payload=payload||{};
+    let user={};
+    try{ user=JSON.parse(global.localStorage.getItem('employeeUser')||'null')||{}; }catch(e){}
+    const row=await findEmployee(payload.userId || payload.employeeId || user.id || user.employeeId, payload.email || user.email);
+    if(!row) return {ok:false,message:'找不到使用者資料'};
+    const docId=clean(row.__id || empIdOf(row));
+    const clear=truthy(payload.clearBinding);
+    const enabled=truthy(payload.enabled);
+    const data={lineNotifyEnabled:clear?false:enabled,'LINE 通知啟用':clear?'否':(enabled?'是':'否'),updatedAt:serverTs(),source:'line-preference-web'};
+    if(clear){ data.lineUserId=''; data['LINE User ID']=''; }
+    await setDoc('employees', docId, data, true);
+    const refreshed=await refreshUserSession({userId:docId,email:emailOf(row)});
+    return {ok:true,message:clear?'已解除 LINE 綁定。':'LINE 通知設定已儲存。',user:refreshed.user};
+  }
+  async function getLineAutoNotificationStatus(){
+    const rows=(await all('employees').catch(()=>[])).map(normEmployee).filter(x=>x.employeeId || x.email);
+    const managers=rows.filter(x => x.isPrimaryManagerLineRecipient || x.isManager).sort((a,b)=>{
+      if(a.isPrimaryManagerLineRecipient && !b.isPrimaryManagerLineRecipient) return -1;
+      if(!a.isPrimaryManagerLineRecipient && b.isPrimaryManagerLineRecipient) return 1;
+      return clean(a.name).localeCompare(clean(b.name),'zh-Hant');
+    });
+    const managerCandidates=rows.filter(x=>x.lineUserId && x.employeeId !== 'PRIMARY_MANAGER_LINE');
+    let queues=[];
+    try{
+      const q=(await all('notificationQueue')).map(r=>({
+        queueId:clean(r.queueId || r.__id), channel:clean(r.channel), status:clean(r.status || r['狀態']),
+        targetEmployeeId:clean(r.targetEmployeeId), targetName:clean(r.targetName), targetLineUserId:clean(r.targetLineUserId),
+        title:clean(r.title), createdAt:clean(r.createdAtText || r.createdAt || r.__id), lastError:clean(r.lastError)
+      }));
+      queues=q.reverse().slice(0,30);
+    }catch(e){ queues=[]; }
+    return {ok:true,managers,managerCandidates,employees:rows,recentQueues:queues,queueRows:queues};
+  }
+  async function setPrimaryManagerLineRecipient(payload){
+    payload=payload||{}; const t=payload.target || payload;
+    const lineId=lineOf(t); if(!lineId) return {ok:false,message:'缺少 LINE User ID'};
+    const row={
+      employeeId:'PRIMARY_MANAGER_LINE', id:'PRIMARY_MANAGER_LINE', name:clean(t.name || '柚子樂器主要管理者'),
+      email:emailOf(t), role:'manager', identityType:'manager', identityLabel:'主管收件人',
+      showSettingsZone:true, hiddenFromActiveLists:true, accountStatus:'active', employmentStatus:'active',
+      lineUserId:lineId, 'LINE User ID':lineId, lineNotifyEnabled:true, 'LINE 通知啟用':'是',
+      updatedAt:serverTs(), source:'primary-manager-line-recipient'
+    };
+    await setDoc('employees','PRIMARY_MANAGER_LINE',row,true);
+    return {ok:true,message:'已設定主要主管 LINE 收件人。',row};
+  }
+  async function sendLineAutoNotificationTest(payload){
+    payload=payload||{};
+    const status=await getLineAutoNotificationStatus();
+    const target=clean(payload.target || 'managers');
+    let targets=[];
+    if(target==='employees') targets=(status.employees||[]).filter(x=>x.lineUserId && !x.isPrimaryManagerLineRecipient);
+    else if(target==='all') targets=(status.employees||[]).filter(x=>x.lineUserId);
+    else targets=(status.managers||[]).filter(x=>x.lineUserId);
+    const primary=targets.filter(x=>x.isPrimaryManagerLineRecipient);
+    if(primary.length) targets=primary;
+    if(!targets.length) return {ok:false,message:'找不到可推播的 LINE 收件人。'};
+    const batchId=nowId('LINE_TEST');
+    const body=clean(payload.message || 'LINE 自動通知測試');
+    let count=0;
+    for(const t of targets){
+      const id=batchId + '_' + clean(t.employeeId || Math.random().toString(36).slice(2,8)) + '_line';
+      await setDoc('notificationQueue', id, {queueId:id,batchId,channel:'line',targetEmployeeId:clean(t.employeeId),targetName:clean(t.name),targetEmail:clean(t.email),targetLineUserId:clean(t.lineUserId),title:'LINE 測試通知',body,status:'待發送',createdAt:serverTs(),source:'line-auto-notification-test'}, true);
+      count++;
+    }
+    return {ok:true,message:'已建立 LINE 測試通知 ' + count + ' 筆。',batchId,count};
+  }
+  fb.handleApi = async function(action,payload){
+    const a=clean(action);
+    if(a==='refreshUserSession') return await refreshUserSession(payload||{});
+    if(a==='setLineNotifyPreference') return await setLineNotifyPreference(payload||{});
+    if(a==='getLineAutoNotificationStatus') return await getLineAutoNotificationStatus(payload||{});
+    if(a==='setPrimaryManagerLineRecipient') return await setPrimaryManagerLineRecipient(payload||{});
+    if(a==='sendLineAutoNotificationTest') return await sendLineAutoNotificationTest(payload||{});
+    if(typeof previousHandle === 'function') return await previousHandle(action,payload||{});
+    return null;
+  };
+  global.YZFirebase = fb;
+})(window);
+
+/* =========================================================
+ * 2026-06-09：右下角 LINE / Email 手動通知收件人安全修正
+ * 問題：舊版 sendManualNotificationV2 直接相信前端 targets 內的 lineUserId，
+ *      若畫面暫存或選單資料帶到主管本人的 LINE ID，就會誤送到主管手機。
+ * 修正：送出前一律用 employeeId / email 回 Firebase employees 主檔重查，
+ *      並排除 PRIMARY_MANAGER_LINE，不再用前端暫存的 LINE ID 當最終收件人。
+ * ========================================================= */
+(function(global){
+  const fb = global.YZFirebase || (global.YZFirebase = {});
+  if(fb.__manualNotifySafeRecipientFix20260609) return;
+  const previousHandle = fb.handleApi;
+
+  function clean(v){ return String(v == null ? '' : v).trim(); }
+  function lower(v){ return clean(v).toLowerCase(); }
+  function truthy(v){ const s=lower(v); return v===true || v===1 || ['1','true','yes','是','啟用','enabled','active','on'].indexOf(s)>=0; }
+  function nowId(prefix){ return (prefix||'MSG') + '_' + Date.now() + '_' + Math.random().toString(36).slice(2,8); }
+  function readUser(){ try{return JSON.parse(global.localStorage.getItem('employeeUser')||'null')||{};}catch(e){return{};} }
+  function db(){
+    const cfg = global.APP_CONFIG && global.APP_CONFIG.FIREBASE_CONFIG;
+    if(!cfg || !global.firebase) throw new Error('Firebase 尚未啟用');
+    if(!global.firebase.apps.length) global.firebase.initializeApp(cfg);
+    return global.firebase.firestore();
+  }
+  function serverTs(){ try{return global.firebase.firestore.FieldValue.serverTimestamp();}catch(e){return new Date().toISOString();} }
+  async function all(col){ const snap=await db().collection(col).get(); const rows=[]; snap.forEach(doc=>rows.push(Object.assign({__id:doc.id}, doc.data()||{}))); return rows; }
+  async function setDoc(col,id,data,merge=true){ await db().collection(col).doc(clean(id)).set(data||{}, {merge}); }
+  function empIdOf(o){ o=o||{}; return clean(o.employeeId || o.userId || o.id || o.adminId || o['員工ID'] || o.__id); }
+  function emailOf(o){ o=o||{}; return lower(o.email || o.Email || o['Email'] || o.loginAccount || o['登入帳號'] || o['電子郵件']); }
+  function nameOf(o){ o=o||{}; return clean(o.name || o['姓名'] || o.employeeName || o['員工姓名'] || o.displayName); }
+  function lineOf(o){ o=o||{}; return clean(o.lineUserId || o['LINE User ID'] || o.targetLineUserId || o.lineId); }
+  function identityTypeOf(o){
+    const raw=lower((o||{}).identityType || (o||{})['身分類型'] || (o||{})['身份類型'] || (o||{}).employeeType || (o||{})['員工身分']);
+    if(raw==='external' || raw.indexOf('外聘')>=0) return 'external';
+    if(raw==='parttime' || raw.indexOf('工讀')>=0 || truthy((o||{}).isPartTime || (o||{})['是否工讀生'])) return 'parttime';
+    return 'staff';
+  }
+  function identityLabelOf(type){ type=clean(type); return type==='external'?'外聘老師':(type==='parttime'?'工讀生':'專職員工'); }
+  function isManager(o){ const role=lower((o||{}).role || (o||{})['角色']); return role==='admin' || role==='manager' || truthy((o||{}).showSettingsZone || (o||{})['管理區權限'] || (o||{})['管理權限']); }
+  function isActive(o){
+    const id=empIdOf(o);
+    if(id==='PRIMARY_MANAGER_LINE') return false;
+    const account=lower((o||{}).accountStatus || (o||{})['帳號狀態'] || 'active');
+    const employ=lower((o||{}).employmentStatus || (o||{})['任職狀態'] || (o||{})['在職狀態'] || 'active');
+    const hidden=truthy((o||{}).hiddenFromActiveLists || (o||{})['隱藏於日常清單'] || (o||{})['是否隱藏']);
+    if(hidden) return false;
+    if(['pending','rejected','inactive','disabled','archived','停用','駁回','待審核','封存'].indexOf(account)>=0) return false;
+    if(['resigned','suspended','archived','contractorended','離職','暫停任用','封存','合作結束','外聘合作結束'].indexOf(employ)>=0) return false;
+    return true;
+  }
+  function normEmp(o){
+    const id=empIdOf(o), type=identityTypeOf(o), line=lineOf(o);
+    return {
+      id, employeeId:id, name:nameOf(o), email:emailOf(o),
+      identityType:type, identityLabel:identityLabelOf(type),
+      role:lower((o||{}).role || (o||{})['角色'] || 'staff'), isManager:isManager(o),
+      lineUserId:line,
+      lineNotifyEnabled:line ? ((o||{}).lineNotifyEnabled === undefined && (o||{})['LINE 通知啟用'] === undefined ? true : truthy((o||{}).lineNotifyEnabled || (o||{})['LINE 通知啟用'])) : false,
+      accountStatus:clean((o||{}).accountStatus || (o||{})['帳號狀態'] || 'active'),
+      employmentStatus:clean((o||{}).employmentStatus || (o||{})['任職狀態'] || (o||{})['在職狀態'] || 'active'),
+      hiddenFromActiveLists:truthy((o||{}).hiddenFromActiveLists || (o||{})['隱藏於日常清單'] || (o||{})['是否隱藏']),
+      isActiveForDailyUse:isActive(o)
+    };
+  }
+  function matches(row, target){
+    const tid=empIdOf(target), temail=emailOf(target);
+    return (!!tid && empIdOf(row)===tid) || (!!temail && emailOf(row)===temail);
+  }
+  async function employeeRows(){ return (await all('employees').catch(()=>[])).filter(r=>empIdOf(r) || emailOf(r)); }
+  async function getNotificationRecipientsV2(payload){
+    const keyword=lower(payload && payload.keyword);
+    const statusMode=clean(payload && payload.statusMode) || 'active';
+    let rows=(await employeeRows()).map(normEmp).filter(r=>r.employeeId !== 'PRIMARY_MANAGER_LINE');
+    if(statusMode==='active') rows=rows.filter(r=>r.isActiveForDailyUse);
+    if(keyword) rows=rows.filter(r=>[r.name,r.employeeId,r.email,r.identityLabel,r.role].join(' ').toLowerCase().indexOf(keyword)>=0);
+    rows.sort((a,b)=>clean(a.name).localeCompare(clean(b.name),'zh-Hant'));
+    return {ok:true,rows,source:'manual-notify-safe-recipients-20260609'};
+  }
+  async function resolveTarget(target, rows){
+    const row=rows.find(r=>matches(r,target));
+    if(!row) return null;
+    const n=normEmp(row);
+    if(n.employeeId==='PRIMARY_MANAGER_LINE') return null;
+    return n;
+  }
+  async function sendManualNotificationV2(payload){
+    payload=payload||{};
+    const sender=readUser();
+    const senderId=clean(sender.id || sender.employeeId || sender.userId);
+    const senderLine=lineOf(sender);
+    const message=clean(payload.message);
+    const rawTargets=Array.isArray(payload.targets)?payload.targets:[];
+    const channels=Array.isArray(payload.channels)?payload.channels.map(clean).filter(Boolean):[];
+    if(!message) return {ok:false,message:'請輸入訊息內容。'};
+    if(!rawTargets.length) return {ok:false,message:'請選擇收件人。'};
+    if(!channels.length) return {ok:false,message:'請至少選擇 LINE 或 Email。'};
+
+    const rows=await employeeRows();
+    const targets=[];
+    let skippedMissing=0;
+    for(const t of rawTargets){
+      const resolved=await resolveTarget(t, rows);
+      if(resolved) targets.push(resolved); else skippedMissing++;
+    }
+    if(!targets.length) return {ok:false,message:'找不到可發送的員工主檔收件人；請重新整理頁面後再試。'};
+
+    const batchId=nowId('N2MSG');
+    const base={batchId,senderId,senderName:clean(sender.name || sender.email),message,channels,targetCount:targets.length,page:clean(payload.page),recipientCategory:clean(payload.recipientCategory),status:'待發送',createdAt:serverTs(),source:'notification-v2-manual-safe-20260609'};
+    await setDoc('manualMessages', batchId, Object.assign({}, base, {targets:targets.map(t=>({employeeId:t.employeeId,name:t.name,email:t.email,lineUserId:t.lineUserId,lineNotifyEnabled:t.lineNotifyEnabled}))}), true);
+
+    let count=0, skippedLine=0, skippedEmail=0, skippedSuspicious=0;
+    for(const t of targets){
+      for(const ch of channels){
+        if(ch==='line'){
+          if(!t.lineUserId){ skippedLine++; continue; }
+          if(senderLine && t.lineUserId===senderLine && t.employeeId!==senderId){ skippedSuspicious++; continue; }
+        }
+        if(ch==='email' && !t.email){ skippedEmail++; continue; }
+        const id=batchId + '_' + (t.employeeId || t.email || Math.random().toString(36).slice(2,8)) + '_' + ch;
+        await setDoc('notificationQueue', id, Object.assign({}, base, {
+          queueId:id, channel:ch, targetEmployeeId:t.employeeId, targetName:t.name, targetEmail:t.email,
+          targetLineUserId:ch==='line'?t.lineUserId:'', title:'主管訊息', body:message, status:'待發送'
+        }), true);
+        count++;
+      }
+    }
+    let msg='已建立手動通知佇列，共 ' + count + ' 筆；LINE 會由後端自動推送。';
+    const skips=[];
+    if(skippedMissing) skips.push('找不到主檔 '+skippedMissing+' 筆');
+    if(skippedLine) skips.push('無 LINE '+skippedLine+' 筆');
+    if(skippedEmail) skips.push('無 Email '+skippedEmail+' 筆');
+    if(skippedSuspicious) skips.push('疑似綁到發送者本人 LINE，已略過 '+skippedSuspicious+' 筆');
+    if(skips.length) msg += '（略過：' + skips.join('、') + '）';
+    return {ok:true,message:msg,batchId,count,skippedMissing,skippedLine,skippedEmail,skippedSuspicious,source:'manual-notify-safe-send-20260609'};
+  }
+
+  fb.handleApi = async function(action,payload){
+    const a=clean(action);
+    if(a==='getNotificationRecipientsV2') return await getNotificationRecipientsV2(payload||{});
+    if(a==='sendManualNotificationV2') return await sendManualNotificationV2(payload||{});
+    if(typeof previousHandle==='function') return await previousHandle(action,payload||{});
+    return null;
+  };
+  fb.__manualNotifySafeRecipientFix20260609 = true;
+  global.YZFirebase = fb;
 })(window);
