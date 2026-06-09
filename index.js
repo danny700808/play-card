@@ -1,6 +1,7 @@
 'use strict';
 
-const { onCall, HttpsError } = require('firebase-functions/v2/https');
+const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
+const crypto = require('crypto');
 const { onDocumentCreated } = require('firebase-functions/v2/firestore');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const admin = require('firebase-admin');
@@ -624,6 +625,457 @@ exports.searchTeacherWebsiteGoods = onCall(Object.assign({}, HTTPS_CALLABLE_OPTI
       publicDebug,
     },
   };
+});
+
+
+/* =========================================================
+ * LINE 綁定 Webhook 2026-06-09 / 2026-06-09b
+ * ---------------------------------------------------------
+ * 核心規則：
+ * 1) LINE 事件只能可靠知道「實際發訊息的 LINE source.userId」。
+ * 2) 主管 / 員工身份必須由 Firestore 帳號資料判斷，不能只相信文字裡的 Email。
+ * 3) 一支 LINE 只能綁一種身份；主管 LINE 不可拿去綁員工 Email。
+ *
+ * 支援指令：
+ * - 柚子綁定 user@example.com       → 自動依 Email 在 admins / employees 判斷身份
+ * - 柚子主管綁定 admin@example.com  → 強制只綁主管 / 管理者
+ * - 柚子員工綁定 user@example.com   → 強制只綁員工 / 工讀 / 外聘老師
+ * ========================================================= */
+function lineReplyToken(row = {}) {
+  return clean(row.replyToken || row.reply_token || '');
+}
+
+function lineSourceUserId(event = {}) {
+  const source = event.source || {};
+  return clean(source.userId || source.user_id || '');
+}
+
+function lineEventText(event = {}) {
+  const msg = event.message || {};
+  if (msg.type !== 'text') return '';
+  return clean(msg.text || '');
+}
+
+function lowerLineText(value) {
+  return clean(value).toLowerCase();
+}
+
+function truthyLineValue(value) {
+  const s = lowerLineText(value);
+  return value === true || value === 1 || ['1', 'true', 'yes', 'y', 'on', '是', '啟用', '開啟', 'active', 'enabled'].includes(s);
+}
+
+function lineEmailOf(data = {}) {
+  return lowerLineText(data.email || data.Email || data['Email'] || data.loginAccount || data['登入帳號']);
+}
+
+function lineNameOf(data = {}) {
+  return clean(data.name || data['姓名'] || data.displayName || data.lineDisplayName || data['LINE 顯示名稱'] || data.email || data.loginAccount || '');
+}
+
+function lineAccountIdOf(data = {}, docId = '') {
+  return clean(data.employeeId || data.adminId || data.managerId || data.userId || data.id || data['員工ID'] || data['管理者代碼'] || docId);
+}
+
+function lineUserIdOfRecord(data = {}) {
+  return clean(data.lineUserId || data['LINE User ID'] || data.targetLineUserId || data.toLineUserId || '');
+}
+
+function isManagerLineAccount(data = {}, collection = '', docId = '') {
+  if (collection === 'admins') return true;
+  const role = lowerLineText(data.role || data['角色']);
+  const identity = lowerLineText(data.identityType || data.identityLabel || data['身分類型'] || data['身份類型']);
+  const id = lineAccountIdOf(data, docId);
+  if (id === 'PRIMARY_MANAGER_LINE' || docId === 'PRIMARY_MANAGER_LINE') return true;
+  if (['admin', 'manager', '主管', '管理者'].includes(role)) return true;
+  if (['admin', 'manager', '主管', '管理者', '主管收件人'].includes(identity)) return true;
+  return truthyLineValue(data.showSettingsZone || data.canViewSettings || data.isManagerAccount || data['管理區權限'] || data['管理權限'] || data['可看設定區']);
+}
+
+function makeLineAccount(doc, collection) {
+  const data = (doc && typeof doc.data === 'function') ? (doc.data() || {}) : (doc || {});
+  const docId = clean(doc && doc.id ? doc.id : data.__id);
+  const kind = isManagerLineAccount(data, collection, docId) ? 'manager' : 'employee';
+  return {
+    ref: doc && doc.ref ? doc.ref : null,
+    collection,
+    docId,
+    id: lineAccountIdOf(data, docId),
+    email: lineEmailOf(data),
+    name: lineNameOf(data),
+    lineUserId: lineUserIdOfRecord(data),
+    kind,
+    data,
+  };
+}
+
+function sameLineAccount(a, b) {
+  return a && b && a.collection === b.collection && clean(a.docId) === clean(b.docId);
+}
+
+function describeLineAccount(account) {
+  if (!account) return '未知帳號';
+  const role = account.kind === 'manager' ? '主管/管理者' : '員工';
+  const name = clean(account.name || account.email || account.id || account.docId || '未命名');
+  const email = clean(account.email);
+  return `${role}「${name}${email ? ' / ' + email : ''}」`;
+}
+
+function verifyLineSignature(req) {
+  const secret = clean(process.env.LINE_CHANNEL_SECRET || process.env.LINE_BOT_CHANNEL_SECRET || process.env.LINE_SECRET || '');
+  if (!secret) return true; // 未設定 secret 時不阻擋，但正式環境建議設定。
+  const sig = clean(req.get('x-line-signature') || req.get('X-Line-Signature') || '');
+  if (!sig || !req.rawBody) return false;
+  const digest = crypto.createHmac('sha256', secret).update(req.rawBody).digest('base64');
+  try {
+    return crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(digest));
+  } catch (err) {
+    return false;
+  }
+}
+
+async function replyLineMessage(replyToken, text) {
+  const token = await getLineAccessToken();
+  if (!replyToken || !token) return false;
+  const res = await fetch('https://api.line.me/v2/bot/message/reply', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ replyToken, messages: [{ type: 'text', text: String(text || '').slice(0, 4900) }] }),
+  });
+  return res.ok;
+}
+
+function parseLineBindCommand(text) {
+  const raw = clean(text).replace(/\s+/g, ' ');
+  const m = raw.match(/^柚子(主管|員工)?綁定\s+([^\s]+@[^\s]+)$/i);
+  if (!m) return null;
+  const kindWord = clean(m[1]);
+  return {
+    requestedKind: kindWord === '主管' ? 'manager' : (kindWord === '員工' ? 'employee' : ''),
+    email: clean(m[2]).toLowerCase(),
+  };
+}
+
+async function getCollectionRowsForLine(collection, limit = 1000) {
+  const snap = await db.collection(collection).limit(limit).get();
+  const rows = [];
+  snap.forEach((doc) => rows.push(makeLineAccount(doc, collection)));
+  return rows;
+}
+
+async function findLineAccountsByEmail(email) {
+  const targetEmail = lowerLineText(email);
+  const rows = [];
+  const seen = new Set();
+  const add = (account) => {
+    if (!account || !account.docId) return;
+    const key = `${account.collection}/${account.docId}`;
+    if (seen.has(key)) return;
+    if (account.email !== targetEmail) return;
+    seen.add(key);
+    rows.push(account);
+  };
+
+  // 先用索引查，再掃描備援，避免 Email 大小寫或欄位名稱不同找不到。
+  const queryDefs = [
+    ['admins', 'email'], ['admins', 'loginAccount'], ['admins', 'Email'],
+    ['employees', 'email'], ['employees', 'Email'],
+  ];
+  for (const [collection, field] of queryDefs) {
+    try {
+      const snap = await db.collection(collection).where(field, '==', targetEmail).limit(10).get();
+      snap.forEach((doc) => add(makeLineAccount(doc, collection)));
+    } catch (err) {
+      // Firestore 欄位不存在或索引問題時，下面還有掃描備援。
+    }
+  }
+
+  for (const collection of ['admins', 'employees']) {
+    try {
+      const all = await getCollectionRowsForLine(collection, 1000);
+      all.forEach(add);
+    } catch (err) {
+      // ignore collection not existing
+    }
+  }
+
+  rows.sort((a, b) => {
+    if (a.kind === 'manager' && b.kind !== 'manager') return -1;
+    if (a.kind !== 'manager' && b.kind === 'manager') return 1;
+    return clean(a.name).localeCompare(clean(b.name), 'zh-Hant');
+  });
+  return rows;
+}
+
+async function findLineAccountsByLineUserId(lineUserId) {
+  const target = clean(lineUserId);
+  if (!target) return [];
+  const rows = [];
+  const seen = new Set();
+  const add = (account) => {
+    if (!account || !account.docId) return;
+    const key = `${account.collection}/${account.docId}`;
+    if (seen.has(key)) return;
+    if (clean(account.lineUserId) !== target) return;
+    seen.add(key);
+    rows.push(account);
+  };
+  for (const collection of ['admins', 'employees']) {
+    try {
+      const all = await getCollectionRowsForLine(collection, 1000);
+      all.forEach(add);
+    } catch (err) {
+      // ignore collection not existing
+    }
+  }
+  rows.sort((a, b) => {
+    if (a.kind === 'manager' && b.kind !== 'manager') return -1;
+    if (a.kind !== 'manager' && b.kind === 'manager') return 1;
+    return clean(a.name).localeCompare(clean(b.name), 'zh-Hant');
+  });
+  return rows;
+}
+
+async function findTargetAccountForLineBind(email, requestedKind) {
+  const matches = await findLineAccountsByEmail(email);
+  if (!matches.length) return { ok: false, reason: 'not_found', matches: [] };
+  if (requestedKind === 'manager') {
+    const managers = matches.filter((x) => x.kind === 'manager');
+    if (!managers.length) return { ok: false, reason: 'not_manager', matches };
+    return { ok: true, target: managers[0], matches };
+  }
+  if (requestedKind === 'employee') {
+    const employees = matches.filter((x) => x.kind === 'employee');
+    if (!employees.length) return { ok: false, reason: 'not_employee', matches };
+    return { ok: true, target: employees[0], matches };
+  }
+
+  // 沒指定時：Email 若屬於 admins / manager，就當主管；否則才當員工。
+  const manager = matches.find((x) => x.kind === 'manager');
+  if (manager) return { ok: true, target: manager, matches };
+  return { ok: true, target: matches[0], matches };
+}
+
+async function validateLineCanBindToTarget(lineUserId, target) {
+  const existing = await findLineAccountsByLineUserId(lineUserId);
+  const same = existing.filter((x) => sameLineAccount(x, target));
+  const others = existing.filter((x) => !sameLineAccount(x, target));
+  const otherManagers = others.filter((x) => x.kind === 'manager');
+  const otherEmployees = others.filter((x) => x.kind === 'employee');
+
+  if (target.kind === 'employee') {
+    if (otherManagers.length) {
+      return {
+        ok: false,
+        message: `綁定已擋下：這支 LINE 已被設定為${describeLineAccount(otherManagers[0])}，不能再綁員工 Email。請員工用自己的手機 LINE 綁定。`,
+      };
+    }
+    if (otherEmployees.length) {
+      return {
+        ok: false,
+        message: `綁定已擋下：這支 LINE 已綁在${describeLineAccount(otherEmployees[0])}，不能再綁另一位員工。若綁錯，請先到員工管理清除原本的 LINE 綁定。`,
+      };
+    }
+    const targetOldLine = clean(target.lineUserId);
+    if (targetOldLine && targetOldLine !== clean(lineUserId)) {
+      return {
+        ok: false,
+        message: `綁定已擋下：${describeLineAccount(target)} 已綁定另一支 LINE。請先到員工管理按「清除此員工 LINE 綁定」後，再由本人手機重新綁定。`,
+      };
+    }
+  }
+
+  if (target.kind === 'manager') {
+    if (otherEmployees.length) {
+      return {
+        ok: false,
+        message: `綁定已擋下：這支 LINE 目前綁在${describeLineAccount(otherEmployees[0])}，不能直接改成主管通知帳號。請先清除原本員工 LINE 綁定。`,
+      };
+    }
+  }
+
+  return { ok: true, existing, same };
+}
+
+async function logLineBinding(type, payload = {}) {
+  try {
+    await db.collection('lineBindLogs').add(Object.assign({}, payload, {
+      type,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAtText: new Date().toISOString(),
+      source: 'line-webhook-strict-role-bind',
+    }));
+  } catch (err) {
+    console.warn('[lineBindLogs failed]', err);
+  }
+}
+
+async function bindManagerLineAccount(target, lineUserId, email, event) {
+  const name = clean(target.name || email || '柚子樂器主要管理者');
+  const nowText = new Date().toISOString();
+  const managerRow = {
+    employeeId: 'PRIMARY_MANAGER_LINE',
+    id: 'PRIMARY_MANAGER_LINE',
+    name,
+    email,
+    role: 'manager',
+    identityType: 'manager',
+    identityLabel: '主管收件人',
+    showSettingsZone: true,
+    isPrimaryManagerLineRecipient: true,
+    hiddenFromActiveLists: true,
+    accountStatus: 'active',
+    employmentStatus: 'active',
+    lineUserId,
+    'LINE User ID': lineUserId,
+    lineNotifyEnabled: true,
+    'LINE 通知啟用': true,
+    lineBindingRole: 'manager',
+    lineBoundAt: admin.firestore.FieldValue.serverTimestamp(),
+    lineBoundAtText: nowText,
+    lineBindEmail: email,
+    lineBindSource: clean((event.source || {}).type || 'user'),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAtText: nowText,
+    source: 'line-webhook-manager-bind',
+  };
+  await db.collection('employees').doc('PRIMARY_MANAGER_LINE').set(managerRow, { merge: true });
+
+  if (target.ref && target.collection === 'admins') {
+    await target.ref.set({
+      lineUserId,
+      'LINE User ID': lineUserId,
+      lineNotifyEnabled: true,
+      'LINE 通知啟用': true,
+      lineBindingRole: 'manager',
+      lineBoundAt: admin.firestore.FieldValue.serverTimestamp(),
+      lineBoundAtText: nowText,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAtText: nowText,
+      source: 'line-webhook-admin-bind',
+    }, { merge: true });
+  }
+
+  await logLineBinding('manager_bind', {
+    accountCollection: target.collection,
+    accountDocId: target.docId,
+    employeeId: 'PRIMARY_MANAGER_LINE',
+    name,
+    email,
+    lineUserId,
+    eventType: clean(event.type || ''),
+  });
+
+  return { ok: true, kind: 'manager', name, email };
+}
+
+async function bindEmployeeLineAccount(target, lineUserId, email, event) {
+  if (!target.ref) throw new Error('找不到可更新的員工文件');
+  const nowText = new Date().toISOString();
+  await target.ref.set({
+    lineUserId,
+    'LINE User ID': lineUserId,
+    lineNotifyEnabled: true,
+    'LINE 通知啟用': true,
+    lineBindingRole: 'employee',
+    lineBoundAt: admin.firestore.FieldValue.serverTimestamp(),
+    lineBoundAtText: nowText,
+    lineBindEmail: email,
+    lineBindSource: clean((event.source || {}).type || 'user'),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAtText: nowText,
+    source: 'line-webhook-employee-bind',
+  }, { merge: true });
+
+  await logLineBinding('employee_bind', {
+    accountCollection: target.collection,
+    accountDocId: target.docId,
+    employeeId: target.id,
+    name: target.name,
+    email,
+    lineUserId,
+    eventType: clean(event.type || ''),
+  });
+
+  return { ok: true, kind: 'employee', name: target.name, email };
+}
+
+async function handleLineBindEvent(event) {
+  const text = lineEventText(event);
+  const command = parseLineBindCommand(text);
+  if (!command) return { handled: false };
+
+  const replyToken = lineReplyToken(event);
+  const lineUserId = lineSourceUserId(event);
+  if (!lineUserId) {
+    await replyLineMessage(replyToken, '綁定失敗：系統沒有取得你的 LINE User ID。請確認你是在柚子樂器官方 LINE 內直接傳送綁定文字。');
+    return { handled: true, ok: false, reason: 'missing_line_user_id' };
+  }
+
+  const targetResult = await findTargetAccountForLineBind(command.email, command.requestedKind);
+  if (!targetResult.ok) {
+    let msg = `綁定失敗：找不到 ${command.email} 對應的帳號資料。請確認 Email 是否和員工系統資料完全相同。`;
+    if (targetResult.reason === 'not_manager') msg = `綁定失敗：${command.email} 不是主管/管理者帳號，不能用「柚子主管綁定」。`;
+    if (targetResult.reason === 'not_employee') msg = `綁定失敗：${command.email} 不是員工帳號，不能用「柚子員工綁定」。`;
+    await replyLineMessage(replyToken, msg);
+    return { handled: true, ok: false, reason: targetResult.reason, email: command.email };
+  }
+
+  const target = targetResult.target;
+  const allowed = await validateLineCanBindToTarget(lineUserId, target);
+  if (!allowed.ok) {
+    await replyLineMessage(replyToken, allowed.message);
+    await logLineBinding('blocked_bind', {
+      email: command.email,
+      requestedKind: command.requestedKind,
+      targetKind: target.kind,
+      targetCollection: target.collection,
+      targetDocId: target.docId,
+      targetName: target.name,
+      lineUserId,
+      reason: allowed.message,
+    });
+    return { handled: true, ok: false, blocked: true, reason: allowed.message, email: command.email, targetKind: target.kind };
+  }
+
+  const result = target.kind === 'manager'
+    ? await bindManagerLineAccount(target, lineUserId, command.email, event)
+    : await bindEmployeeLineAccount(target, lineUserId, command.email, event);
+
+  if (result.kind === 'manager') {
+    await replyLineMessage(replyToken, `主管 LINE 綁定成功：${result.name}\n之後主管通知會優先送到這支 LINE。`);
+  } else {
+    await replyLineMessage(replyToken, `員工 LINE 綁定成功：${result.name || result.email}\n之後個人通知會送到這支 LINE。`);
+  }
+  return { handled: true, ok: true, kind: result.kind, email: command.email };
+}
+
+exports.lineWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 60, memory: '256MiB' }, async (req, res) => {
+  if (req.method !== 'POST') {
+    res.status(200).send('LINE webhook is ready. Strict role binding is active.');
+    return;
+  }
+  if (!verifyLineSignature(req)) {
+    res.status(403).send('Invalid LINE signature');
+    return;
+  }
+  const body = req.body || {};
+  const events = Array.isArray(body.events) ? body.events : [];
+  const results = [];
+  for (const event of events) {
+    try {
+      results.push(await handleLineBindEvent(event));
+    } catch (err) {
+      console.error('[lineWebhook failed]', err);
+      const replyToken = lineReplyToken(event);
+      await replyLineMessage(replyToken, '綁定處理失敗：系統暫時無法完成綁定，請稍後再試或通知管理者。');
+      results.push({ handled: true, ok: false, error: err && err.message ? err.message : String(err) });
+    }
+  }
+  res.status(200).json({ ok: true, results });
 });
 
 
