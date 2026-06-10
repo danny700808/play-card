@@ -4,8 +4,15 @@ const admin = require('firebase-admin');
 admin.initializeApp();
 const db = admin.firestore();
 
+const ADMIN_EMAILS = new Set(['danny700808@gmail.com']);
+const DEFAULT_ADMIN_DOC_ID = 'ADMIN_DANNY';
+
 function normalizeEmail(value) {
   return String(value || '').trim().toLowerCase();
+}
+
+function isBootstrapAdminEmail(email) {
+  return ADMIN_EMAILS.has(normalizeEmail(email));
 }
 
 function normalizeText(value) {
@@ -63,14 +70,72 @@ async function findEmployeeByEmail(email) {
   return null;
 }
 
+
+async function ensureBootstrapAdmin(email) {
+  const normalizedEmail = normalizeEmail(email);
+  if (!isBootstrapAdminEmail(normalizedEmail)) return null;
+
+  const existing = await findEmployeeByEmail(normalizedEmail);
+  if (existing) {
+    await existing.ref.set(
+      {
+        email: normalizedEmail,
+        role: 'admin',
+        identityType: 'admin',
+        canViewSettings: true,
+        showSettingsZone: true,
+        lineNotifyEnabled: true,
+        status: 'active',
+        adminBootstrap: true,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      },
+      { merge: true }
+    );
+    return {
+      id: existing.id,
+      ref: existing.ref,
+      data: {
+        ...existing.data,
+        email: normalizedEmail,
+        role: 'admin',
+        identityType: 'admin',
+        canViewSettings: true,
+        showSettingsZone: true,
+        lineNotifyEnabled: true,
+        status: 'active',
+        adminBootstrap: true
+      }
+    };
+  }
+
+  const ref = db.collection('employees').doc(DEFAULT_ADMIN_DOC_ID);
+  const data = {
+    name: '黃銘廷',
+    email: normalizedEmail,
+    role: 'admin',
+    identityType: 'admin',
+    canViewSettings: true,
+    showSettingsZone: true,
+    lineNotifyEnabled: true,
+    status: 'active',
+    adminBootstrap: true,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+  };
+  await ref.set(data, { merge: true });
+  return { id: DEFAULT_ADMIN_DOC_ID, ref, data };
+}
+
 function isManagerData(data, docId) {
   if (!data) return false;
 
   const role = String(data.role || data.userRole || data.permissionRole || '').toLowerCase();
   const identityType = String(data.identityType || data.type || '').toLowerCase();
   const level = String(data.level || '').toLowerCase();
+  const email = normalizeEmail(data.email || data.Email || data.mail || data.loginEmail || '');
 
   return (
+    isBootstrapAdminEmail(email) ||
     docId === 'PRIMARY_MANAGER_LINE' ||
     role === 'admin' ||
     role === 'manager' ||
@@ -108,6 +173,11 @@ async function hasThisLineBoundToAnotherEmployee(lineUserId, currentEmployeeId) 
 }
 
 async function handleEmployeeBinding({ email, lineUserId, replyToken }) {
+  if (isBootstrapAdminEmail(email)) {
+    await replyLineMessage(replyToken, '這個 Email 已設定為系統管理者，不能使用員工綁定指令。主管請使用：柚子主管綁定 your@email.com');
+    return;
+  }
+
   const employee = await findEmployeeByEmail(email);
 
   if (!employee) {
@@ -152,7 +222,9 @@ async function handleEmployeeBinding({ email, lineUserId, replyToken }) {
 }
 
 async function handleManagerBinding({ email, lineUserId, replyToken }) {
-  const employee = await findEmployeeByEmail(email);
+  const employee = isBootstrapAdminEmail(email)
+    ? await ensureBootstrapAdmin(email)
+    : await findEmployeeByEmail(email);
 
   if (!employee || !isManagerData(employee.data, employee.id)) {
     await replyLineMessage(replyToken, '這個 Email 不是主管或管理者帳號，不能設定為主管 LINE。');
