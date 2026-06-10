@@ -524,7 +524,7 @@ async function openLineBindGuide_(email){
     const links=await getPublicSystemLinksCached();
     lineUrl=String((links&&links.lineAddFriendUrl)||'').trim();
   }catch(e){}
-  const cmd=`柚子綁定 ${targetEmail}`;
+  const cmd=`柚子員工綁定 ${targetEmail}`;
   const wrap=document.createElement('div');
   wrap.id='lineBindGuideModalBackdrop';
   wrap.className='line-bind-modal-backdrop';
@@ -533,7 +533,7 @@ async function openLineBindGuide_(email){
       <div class="line-bind-modal-head">
         <div>
           <div class="line-bind-modal-title" id="lineBindGuideModalTitle">LINE 綁定方式</div>
-          <div class="line-bind-modal-sub">請依照下面步驟完成綁定，三種身份與管理者皆使用同一種方式。</div>
+          <div class="line-bind-modal-sub">請依照下面步驟完成員工 LINE 綁定。主管通知收件人請使用「柚子主管綁定 主管Email」。</div>
         </div>
         <button type="button" class="line-bind-modal-close" id="closeLineBindGuideModalBtn">關閉</button>
       </div>
