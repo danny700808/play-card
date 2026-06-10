@@ -1,0 +1,22 @@
+這包是乾淨完整可覆蓋版。
+
+上傳覆蓋前，請先在 GitHub 刪掉這些舊東西，避免 GitHub Actions 繼續跑錯：
+
+1. 刪掉資料夾：
+   .github/workflows/.github
+
+2. 刪掉檔案：
+   .github/workflows/firebase-hosting-pull-request.yml
+
+3. 如果 GitHub 最外層有這兩個檔案，也請刪掉：
+   firebase-hosting-merge.yml
+   firebase-hosting-pull-request.yml
+
+保留並覆蓋這個檔案：
+   .github/workflows/firebase-hosting-merge.yml
+
+覆蓋完成後，GitHub Actions 應該只看到：
+   Deploy Firebase Functions on merge
+
+不應該再看到：
+   Deploy to Firebase Hosting on merge
