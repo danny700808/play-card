@@ -2,39 +2,59 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>設備租賃合約簽署</title>
-  <link rel="stylesheet" href="style.css?v=rental-20260606">
+  <title>設備租賃資料確認與合約簽署</title>
+  <link rel="stylesheet" href="style.css?v=rental-sign-20260611b">
   <style>
-    body{background:#eef3f7;color:#18314a}.wrap{max-width:980px;margin:0 auto;padding:22px 14px 54px}.card2{background:#fff;border:1px solid #dbe5ef;border-radius:24px;padding:20px;margin-bottom:16px;box-shadow:0 10px 28px rgba(15,23,42,.04)}.title{font-size:30px;font-weight:950;margin:0 0 10px}.small{font-size:13px;color:#64748b;line-height:1.8}.btn{border:0;border-radius:14px;background:#1f7a5a;color:#fff;font-weight:950;padding:12px 18px;cursor:pointer}.btn.secondary{background:#e2e8f0;color:#18314a}.btn-row{display:flex;gap:10px;flex-wrap:wrap}.msg{margin-top:12px;border-radius:14px;padding:12px 14px;font-weight:900;line-height:1.7}.msg.ok{background:#e8fff4;color:#146c43}.msg.bad{background:#fff0f0;color:#b42318}.rental-contract-sheet{background:#fff;color:#111827;width:210mm;min-height:297mm;margin:0 auto;padding:12mm;box-sizing:border-box;border:1px solid #d1d5db;box-shadow:0 8px 20px rgba(0,0,0,.05);font-size:14px;line-height:1.9}.rental-contract-sheet h1{text-align:center;font-size:25px;margin:0 0 7mm;letter-spacing:2px}.party-line{font-weight:800;margin-bottom:3mm;position:relative}.intro{margin:4mm 0}.clauses{padding-left:22px}.clauses li{margin-bottom:3mm}.seal.top{position:absolute;right:12mm;top:-8mm;width:27mm}.seal.bottom{width:28mm;margin-top:4mm}.sign-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8mm}.sign-card{border:1px solid #94a3b8;border-radius:12px;padding:12px;min-height:54mm;position:relative}.sig-box{margin-top:14px;border-top:1px solid #64748b;padding-top:6px;min-height:28mm}.sig-img{max-width:100%;max-height:90px}.contract-date{text-align:center;margin-top:10mm;font-weight:800}#signatureCanvas{width:100%;height:180px;border:2px dashed #94a3b8;border-radius:16px;background:#fff;touch-action:none}.agree{display:flex;gap:10px;line-height:1.8;font-weight:900}@media(max-width:840px){.rental-contract-sheet{width:100%;min-height:auto;padding:16px}.sign-grid{grid-template-columns:1fr}.seal.top{position:static;display:block;margin-left:auto}.wrap{padding:12px 8px}}
-    @media print{body *{visibility:hidden}.print-area,.print-area *{visibility:visible}.print-area{position:absolute;left:0;top:0;width:100%}.card2:not(.print-area){display:none}.rental-contract-sheet{border:none;box-shadow:none;margin:0;width:210mm;min-height:297mm}@page{size:A4;margin:0}}
+    body{background:#eef3f7;color:#18314a}.wrap{max-width:980px;margin:0 auto;padding:22px 14px 54px}.card2{background:#fff;border:1px solid #dbe5ef;border-radius:24px;padding:20px;margin-bottom:16px;box-shadow:0 10px 28px rgba(15,23,42,.04)}.title{font-size:30px;font-weight:950;margin:0 0 10px}.small{font-size:13px;color:#64748b;line-height:1.8}.btn{border:0;border-radius:14px;background:#1f7a5a;color:#fff;font-weight:950;padding:12px 18px;cursor:pointer}.btn.secondary{background:#e2e8f0;color:#18314a}.btn-row{display:flex;gap:10px;flex-wrap:wrap}.msg{margin-top:12px;border-radius:14px;padding:12px 14px;font-weight:900;line-height:1.7}.msg.ok{background:#e8fff4;color:#146c43}.msg.bad{background:#fff0f0;color:#b42318}.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}.field{margin-bottom:12px}.field label{display:block;font-weight:950;margin-bottom:6px}.field input{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:14px;padding:11px 12px;font-size:15px}.hint{font-size:13px;color:#64748b;line-height:1.8}.preview-img{max-width:100%;max-height:220px;border:1px solid #cbd5e1;border-radius:12px;background:#f8fafc;margin-top:8px}.rental-contract-sheet{background:#fff;color:#111827;width:210mm;min-height:297mm;margin:0 auto;padding:12mm;box-sizing:border-box;border:1px solid #d1d5db;box-shadow:0 8px 20px rgba(0,0,0,.05);font-size:14px;line-height:1.9}.agree{display:flex;gap:10px;line-height:1.8;font-weight:900}#signatureCanvas{width:100%;height:180px;border:2px dashed #94a3b8;border-radius:16px;background:#fff;touch-action:none}@media(max-width:840px){.rental-contract-sheet{width:100%;min-height:auto;padding:16px}.row2{grid-template-columns:1fr}.wrap{padding:12px 8px}}@media print{body *{visibility:hidden}.print-area,.print-area *{visibility:visible}.print-area{position:absolute;left:0;top:0;width:100%}.card2:not(.print-area){display:none}.rental-contract-sheet{border:none;box-shadow:none;margin:0;width:210mm;min-height:297mm}@page{size:A4;margin:0}}
   </style>
 </head>
 <body>
   <div class="wrap">
-    <section class="card2"><h1 class="title">設備租賃合約簽署</h1><div class="small">請確認合約內容。簽署完成後，系統會通知主管並留存合約紀錄。</div><div id="msg"></div></section>
-    <section class="card2 print-area"><div id="contractPreview">讀取中...</div></section>
+    <section class="card2"><h1 class="title">設備租賃資料確認與合約簽署</h1><div class="small">請確認店家提供的租賃資料，補上身分證資料與證明圖片後，再查看契約預覽並完成簽名送出。</div><div id="msg"></div></section>
+    <section id="identityPanel" class="card2">
+      <h2 style="margin-top:0">甲方身分資料</h2>
+      <div class="row2"><div class="field"><label>身分證字號 / 統編</label><input id="customerIdNumber" placeholder="例如 A123456789"></div><div class="field"><label>身分證證明圖片</label><input id="idImageInput" type="file" accept="image/*"><div class="hint">圖片會自動加上「限柚子樂器設備租用使用」浮水印，並放在契約第二頁最下方備查。</div></div></div>
+      <img id="idPreview" class="preview-img" style="display:none" alt="身分證證明預覽">
+      <div class="btn-row"><button class="btn secondary" type="button" onclick="refreshPreview()">更新契約預覽</button></div>
+    </section>
+    <section class="card2 print-area"><h2 style="margin-top:0">契約預覽</h2><div id="contractPreview">讀取中...</div></section>
     <section id="signPanel" class="card2">
       <h2 style="margin-top:0">線上簽名</h2>
-      <label class="agree"><input id="agreeContract" type="checkbox"> <span>我已確認合約內容，並同意以線上簽名完成本次租賃契約。</span></label>
+      <label class="agree"><input id="agreeContract" type="checkbox"> <span>我已確認租賃資料、身分證資料與契約內容，並同意以線上簽名完成本次租賃契約資料送出。</span></label>
       <div style="margin:12px 0"><canvas id="signatureCanvas" width="900" height="240"></canvas></div>
-      <div class="btn-row"><button class="btn secondary" id="clearSigBtn" type="button">清除簽名</button><button class="btn" id="submitSigBtn" type="button">送出簽名</button><button class="btn secondary" onclick="window.print()" type="button">列印 / 另存 PDF</button></div>
+      <div class="btn-row"><button class="btn secondary" id="clearSigBtn" type="button">清除簽名</button><button class="btn" id="submitSigBtn" type="button">送出確認資料與簽名</button><button class="btn secondary" onclick="window.print()" type="button">列印 / 另存 PDF</button></div>
     </section>
   </div>
-  <script src="config.js?v=rental-20260606"></script>
+  <script src="config.js?v=rental-sign-20260611b"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="rental-common.js?v=rental-20260606"></script>
+  <script src="rental-common.js?v=rental-sign-20260611b"></script>
   <script>
-    const R=window.YZRental; const params=new URLSearchParams(location.search); const contractId=params.get('contractId')||''; const token=params.get('token')||''; let contract=null; let signed=false;
+    const R=window.YZRental; const params=new URLSearchParams(location.search); const contractId=params.get('contractId')||''; const token=params.get('token')||''; let contract=null; let signed=false; let watermarkedIdImage='';
     async function load(){
       try{
         contract=await R.get('rentalContracts', contractId); if(!contract) throw new Error('找不到合約');
         if(R.clean(contract.signToken||contract.token)!==R.clean(token)) throw new Error('合約連結驗證失敗');
         signed=!!contract.customerSignedAt;
-        R.qs('contractPreview').innerHTML=R.renderContractHtml(contract);
-        if(signed){ R.qs('signPanel').innerHTML='<h2>此合約已簽署完成</h2><p>您可使用上方合約內容列印或另存 PDF。</p><button class="btn" onclick="window.print()">列印 / 另存 PDF</button>'; }
-      }catch(err){ R.toast(err.message||String(err), false); R.qs('contractPreview').textContent='讀取失敗'; R.hide('signPanel'); }
+        R.setVal('customerIdNumber', contract.customerIdNumber||contract.customerTaxId||'');
+        watermarkedIdImage=contract.customerIdImageWatermarkedDataUrl||contract.idImageWatermarkedDataUrl||'';
+        if(watermarkedIdImage){ const img=R.qs('idPreview'); img.src=watermarkedIdImage; img.style.display='block'; }
+        refreshPreview();
+        if(signed){ R.qs('identityPanel').style.display='none'; R.qs('signPanel').innerHTML='<h2>此合約已簽署完成</h2><p>您可使用上方合約內容列印或另存 PDF。</p><button class="btn" onclick="window.print()">列印 / 另存 PDF</button>'; }
+      }catch(err){ R.toast(err.message||String(err), false); R.qs('contractPreview').textContent='讀取失敗'; R.hide('identityPanel'); R.hide('signPanel'); }
     }
+    function refreshPreview(){
+      const c=Object.assign({}, contract||{}, {customerIdNumber:R.val('customerIdNumber'), customerIdImageWatermarkedDataUrl:watermarkedIdImage});
+      R.qs('contractPreview').innerHTML=R.renderContractHtml(c, {customerView:true});
+    }
+    async function makeWatermark(file){
+      return new Promise((resolve,reject)=>{
+        const reader=new FileReader(); reader.onerror=()=>reject(new Error('圖片讀取失敗'));
+        reader.onload=()=>{ const img=new Image(); img.onload=()=>{ try{ const maxW=1200; const scale=Math.min(1,maxW/img.width); const w=Math.round(img.width*scale), h=Math.round(img.height*scale); const cv=document.createElement('canvas'); cv.width=w; cv.height=h; const ctx=cv.getContext('2d'); ctx.drawImage(img,0,0,w,h); ctx.save(); ctx.translate(w/2,h/2); ctx.rotate(-Math.PI/8); ctx.globalAlpha=.22; ctx.fillStyle='#b42318'; ctx.textAlign='center'; ctx.font=`bold ${Math.max(28,Math.round(w/24))}px sans-serif`; const txt='限柚子樂器設備租用使用'; for(let y=-h;y<=h;y+=Math.max(70,h/5)){ ctx.fillText(txt,0,y); } ctx.restore(); ctx.globalAlpha=1; ctx.fillStyle='rgba(0,0,0,.65)'; ctx.font=`bold ${Math.max(18,Math.round(w/42))}px sans-serif`; ctx.fillText('限柚子樂器設備租用使用',w/2,h-24); resolve(cv.toDataURL('image/jpeg',.82)); }catch(e){ reject(e); } }; img.onerror=()=>reject(new Error('圖片載入失敗')); img.src=reader.result; };
+        reader.readAsDataURL(file);
+      });
+    }
+    document.getElementById('idImageInput').onchange=async(e)=>{ const f=e.target.files && e.target.files[0]; if(!f) return; try{ watermarkedIdImage=await makeWatermark(f); const img=R.qs('idPreview'); img.src=watermarkedIdImage; img.style.display='block'; refreshPreview(); R.toast('身分證證明圖片已加上浮水印並更新預覽。', true); }catch(err){ R.toast(err.message||String(err), false); } };
     const canvas=document.getElementById('signatureCanvas'), ctx=canvas.getContext('2d'); let drawing=false, hasDraw=false;
     function pos(e){ const r=canvas.getBoundingClientRect(); const t=e.touches?e.touches[0]:e; return {x:(t.clientX-r.left)*canvas.width/r.width,y:(t.clientY-r.top)*canvas.height/r.height}; }
     function start(e){ drawing=true; const p=pos(e); ctx.beginPath(); ctx.moveTo(p.x,p.y); e.preventDefault(); }
@@ -43,12 +63,21 @@
     ['mousedown','touchstart'].forEach(ev=>canvas.addEventListener(ev,start)); ['mousemove','touchmove'].forEach(ev=>canvas.addEventListener(ev,move)); ['mouseup','mouseleave','touchend','touchcancel'].forEach(ev=>canvas.addEventListener(ev,end));
     document.getElementById('clearSigBtn').onclick=()=>{ ctx.clearRect(0,0,canvas.width,canvas.height); hasDraw=false; };
     document.getElementById('submitSigBtn').onclick=async()=>{
+      if(!R.val('customerIdNumber')) return R.toast('請填寫身分證字號 / 統編。', false);
+      if(!watermarkedIdImage) return R.toast('請上傳身分證證明圖片。', false);
       if(!R.checked('agreeContract')) return R.toast('請先勾選確認同意合約內容。', false);
       if(!hasDraw) return R.toast('請先在簽名框簽名。', false);
       const btn=R.qs('submitSigBtn'); btn.disabled=true; btn.textContent='送出中...';
-      try{ const signatureDataUrl=canvas.toDataURL('image/png'); await R.call('rentalSignContractHttp',{contractId,token,signatureDataUrl}); R.toast('簽署完成，已通知主管。', true); await load(); window.scrollTo({top:0,behavior:'smooth'}); }catch(err){ R.toast(err.message||String(err), false); }
-      finally{ btn.disabled=false; btn.textContent='送出簽名'; }
+      try{
+        const signatureDataUrl=canvas.toDataURL('image/png');
+        await R.db().collection('rentalContracts').doc(contractId).set({ customerIdNumber:R.val('customerIdNumber'), customerIdImageWatermarkedDataUrl:watermarkedIdImage, customerIdImageUpdatedAt:R.nowText(), customerSubmittedFormalAt:R.nowText(), status:'待店家確認' }, {merge:true});
+        await R.call('rentalSignContractHttp',{contractId,token,signatureDataUrl,customerIdNumber:R.val('customerIdNumber'),customerIdImageWatermarkedDataUrl:watermarkedIdImage});
+        R.toast('已送出正式資料與簽名，等待店家確認正式起租日與契約成立。', true);
+        await load(); window.scrollTo({top:0,behavior:'smooth'});
+      }catch(err){ R.toast(err.message||String(err), false); }
+      finally{ btn.disabled=false; btn.textContent='送出確認資料與簽名'; }
     };
+    window.refreshPreview=refreshPreview;
     load();
   </script>
 </body>
