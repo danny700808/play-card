@@ -12,7 +12,7 @@
 <body onload="initPage()">
   <div class="yz-global-nav" data-yz-global-nav><button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button><button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button></div>
   <div class="wrap">
-    <section class="card2"><div class="section-hd"><div><h1 class="title">設備租賃管理</h1><div class="muted">客人先送出租用基本資料；店家確認設備、金額、正式起租日後，再產生正式填寫/簽署連結。正式契約每期固定 90 天。</div></div><div class="btn-row"><a class="btn secondary" href="rental-settings.html">租金 / 運費 / 提醒設定</a><a class="btn secondary" href="rental-template-settings.html">租賃契約模板設定</a><button class="btn" type="button" onclick="startAdminDraft()">店家代填租賃單</button><a class="btn secondary" href="rental-order.html" target="_blank">開啟客人申請表</a><button class="btn secondary" onclick="loadAll()">重新整理</button></div></div><div id="stats" class="stat-grid"></div><div id="msg"></div></section>
+    <section class="card2"><div class="section-hd"><div><h1 class="title">設備租賃管理</h1><div class="muted">客人先送出租用基本資料；店家確認設備、金額、正式起租日後，再產生正式填寫/簽署連結。正式契約每期固定 90 天。</div></div></div><div id="stats" class="stat-grid"></div><div id="msg"></div></section>
     <div class="layout"><section class="card2"><h2 style="margin-top:0">租賃申請管理 / 契約列表</h2><div class="tabs"><button class="tab active" data-filter="all">主要列表</button><button class="tab" data-filter="new">待店家確認</button><button class="tab" data-filter="sign">待客人補資料</button><button class="tab" data-filter="active">租用中</button><button class="tab" data-filter="expiring">30 天內到期</button><button class="tab" data-filter="return">退租</button><button class="tab" data-filter="cancelled">已取消</button></div><div id="list" class="list" style="margin-top:12px">讀取中...</div></section><main><section class="card2" id="detailBox"><h2 style="margin-top:0">請選擇左側案件</h2><div class="muted">可由客人申請轉正式契約，也可按「店家代填租賃單」直接建立。設備欄位只保留「設備名稱 / 備註」，可新增多列。</div></section><section class="card2 print-area"><div id="contractPreview"></div></section></main></div>
   </div>
   <script src="config.js?v=rental-flow-20260611"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script><script src="firebase-client.js?v=rental-flow-20260611"></script><script src="app.js?v=rental-flow-20260611"></script><script src="rental-common.js?v=rental-flow-20260611"></script><script src="global-nav.js?v=20260603unified1"></script>
@@ -31,6 +31,56 @@
     function renderApplication(app){ const c=applicationToContract(app); const linkInfo=`<div class="msg ok"><b>租賃申請 LINE 連結狀態：</b>${(app.customerLineUserId||app.lineUserId)?'已連結':'尚未連結'}<br><b>LINE 留言文字：</b>${R.esc(app.lineConfirmText || ('租賃申請 '+(app.applicationNo||app.__id)+' '+(app.customerName||'')))}<br><span class="muted">客人加入官方 LINE 後貼上這段文字，系統會自動把 LINE 與這筆申請配對，並通知主管。</span></div>`; R.qs('detailBox').innerHTML=linkInfo+editorHtml(c, 'application'); R.qs('contractPreview').innerHTML=R.renderContractHtml(c); bindEditorPreview(); }
     function renderContract(c){ R.qs('detailBox').innerHTML=editorHtml(c, c.__id||c.contractId?'contract':'adminDraft'); R.qs('contractPreview').innerHTML=R.renderContractHtml(c); bindEditorPreview(); }
     function equipmentRows(items){ items=Array.isArray(items)&&items.length?items:[{name:'',note:''}]; return items.map((x,i)=>`<div class="equipment-row" data-eq-row><div class="field"><label>設備名稱</label><input class="eq-name" value="${R.esc(x.name||x.equipmentName||'')}" placeholder="例如：Roland FP-30X"></div><div class="field"><label>備註</label><input class="eq-note" value="${R.esc(x.note||x.remark||'')}" placeholder="例如：含琴椅、電源線"></div><button class="btn danger" type="button" onclick="removeEquipmentRow(this)">刪除</button></div>`).join(''); }
+
+    function actionButtons(source,c){
+      const st=R.clean(c.status||'');
+      const isApp=source==='application';
+      const hasLine=!!(c.customerLineUserId||c.lineUserId);
+      const isCancelled=['已取消','取消申請','cancelled'].includes(st);
+      const isReturned=['已退租','returned'].includes(st);
+      const isActive=['租賃中','租用中','已成立','active','待配送 / 待安裝','到期提醒中','續約待確認'].includes(st);
+      const isWaitingCustomer=['待客人補資料','待客人簽署','待簽署','formal_sent','pending_customer'].includes(st);
+      const isWaitingShop=['客人已送出','待店家確認','待付款確認','待店家確認成立','customer_submitted','pending_shop_confirm','已簽署'].includes(st);
+      const parts=[];
+      const b=(cls,fn,txt)=>parts.push(`<button class="btn ${cls||''}" type="button" onclick="${fn}">${txt}</button>`);
+      if(isCancelled){
+        b('secondary','previewCustomerView()','查看資料');
+        if(isApp) b('danger','deleteApplication()','永久刪除');
+        return `<div class="btn-row">${parts.join('')}</div>`;
+      }
+      if(isReturned){
+        b('secondary','previewCustomerView()','查看契約');
+        b('secondary','window.print()','預覽 / 列印 / PDF');
+        return `<div class="btn-row">${parts.join('')}</div>`;
+      }
+      if(isActive){
+        b('secondary','previewCustomerView()','查看契約');
+        b('secondary','window.print()','預覽 / 列印 / PDF');
+        b('danger','completeReturn()','確認退租完成');
+        return `<div class="btn-row">${parts.join('')}</div>`;
+      }
+      if(isWaitingShop){
+        b('secondary','previewCustomerView()','預覽正式契約');
+        b('secondary','window.print()','預覽 / 列印 / PDF');
+        b('','markDelivered()','確認租用成立');
+        if(isApp) b('secondary','cancelApplication()','取消申請');
+        return `<div class="btn-row">${parts.join('')}</div>`;
+      }
+      if(isWaitingCustomer){
+        b('secondary','previewCustomerView()','客戶視角預覽');
+        b('','sendToCustomerForFill()','重新傳給客人填寫');
+        if(isApp) b('secondary','cancelApplication()','取消申請');
+        return `<div class="btn-row">${parts.join('')}</div>`;
+      }
+      b('secondary','saveContract(false)','儲存資料');
+      b('secondary','previewCustomerView()','客戶視角預覽');
+      b(hasLine?'':'secondary','sendToCustomerForFill()','傳給客人填寫');
+      if(isApp){
+        b('secondary','cancelApplication()','取消申請');
+        b('danger','deleteApplication()','永久刪除');
+      }
+      return `<div class="btn-row">${parts.join('')}</div>`;
+    }
     function editorHtml(c, source){ const items=R.parseEquipmentItems(c); return `<h2 style="margin-top:0">${source==='application'?'由申請建立正式資料':source==='adminDraft'?'店家代填租賃單':'編輯租賃契約'}</h2><div class="muted">流程：先確認基本資料 → 補正式起租日/租金/設備與店家確認配送時間 → 客戶視角預覽 → 傳給客人填寫 → 客人補身分證與簽署 → 店家確認付款與送達後，再按「確認租用成立」。</div><input type="hidden" id="sourceKind" value="${source}"><input type="hidden" id="applicationId" value="${R.esc(c.applicationId||'')}"><input type="hidden" id="contractId" value="${R.esc(c.contractId||c.__id||'')}"><input type="hidden" id="periodDays" value="90">
       <div class="row2"><div class="field"><label>合約類型</label><select id="rentalType"><option value="digitalPiano" ${c.rentalType==='digitalPiano'?'selected':''}>電鋼琴</option><option value="electronicDrum" ${c.rentalType==='electronicDrum'?'selected':''}>電子鼓</option><option value="other" ${c.rentalType==='other'?'selected':''}>其他設備</option></select></div><div class="field"><label>狀態</label><select id="status"><option ${c.status==='草稿'?'selected':''}>草稿</option><option ${c.status==='待店家確認'?'selected':''}>待店家確認</option><option ${c.status==='待客人補資料'?'selected':''}>待客人補資料</option><option ${c.status==='待付款確認'?'selected':''}>待付款確認</option><option ${c.status==='租賃中'?'selected':''}>租賃中</option><option ${c.status==='已退租'?'selected':''}>已退租</option><option ${c.status==='已取消'?'selected':''}>已取消</option></select></div></div>
       <div class="row2"><div class="field"><label>客人姓名 / 公司</label><input id="customerName" value="${R.esc(c.customerName)}"></div><div class="field"><label>電話</label><input id="customerPhone" value="${R.esc(c.customerPhone)}"></div></div><div class="row2"><div class="field"><label>Email</label><input id="customerEmail" value="${R.esc(c.customerEmail)}"></div><div class="field"><label>LINE User ID（正式資料階段需綁定）</label><input id="customerLineUserId" value="${R.esc(c.customerLineUserId)}"></div></div><div class="row2"><div class="field"><label>身分證 / 統編</label><input id="customerIdNumber" value="${R.esc(c.customerIdNumber)}"></div><div class="field"><label>地址</label><input id="customerAddress" value="${R.esc(c.customerAddress)}"></div></div>
@@ -38,7 +88,7 @@
       <div class="row3" style="margin-top:12px"><div class="field"><label>期數（1期=90天）</label><input id="periods" type="number" min="1" max="10" value="${R.esc(c.periods||1)}"></div><div class="field"><label>正式起租日</label><input id="startDate" type="date" value="${R.esc(c.startDate)}"></div><div class="field"><label>租賃到期日</label><input id="endDate" type="date" value="${R.esc(c.endDate)}"></div></div>
       <div class="row3"><div class="field"><label>租金</label><input id="rentFee" type="number" value="${R.esc(c.rentFee||0)}"></div><div class="field"><label>運費</label><input id="shippingFee" type="number" value="${R.esc(c.shippingFee||0)}"></div><div class="field"><label>押金</label><input id="depositFee" type="number" value="${R.esc(c.depositFee||0)}"></div></div>
       <div class="row3"><div class="field"><label>配送 / 自取方式</label><input id="shippingMethod" value="${R.esc(c.shippingMethod)}"></div><div class="field"><label>店家確認配送 / 安裝日期</label><input id="deliveryDate" type="date" value="${R.esc(c.deliveryDate||'')}"><div class="muted">此為店家最後確認的送達日期，不是客人希望時間。</div></div><div class="field"><label>店家確認配送 / 安裝時段</label><select id="deliveryTime">${['09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00'].map(t=>`<option value="${t}" ${(c.deliveryTime||'')===t?'selected':''}>${t}</option>`).join('')}</select><div class="muted">正式契約與成立通知以此時間為準。</div></div></div><div class="field"><label>備註</label><textarea id="adminNote">${R.esc(c.adminNote||'')}</textarea></div>
-      <div class="msg ok" style="background:#f8fafc;color:#334155"><b>操作順序：</b>① 儲存資料 → ② 客戶視角預覽 → ③ 傳給客人填寫 → ④ 客人送出後，店家確認付款與送達時間 → ⑤ 確認租用成立。</div><div class="btn-row"><button class="btn secondary" type="button" onclick="saveContract(false)">儲存資料</button><button class="btn secondary" type="button" onclick="previewCustomerView()">客戶視角預覽</button><button class="btn" type="button" onclick="sendToCustomerForFill()">傳給客人填寫</button><button class="btn secondary" type="button" onclick="copySignLink()">複製正式連結</button><button class="btn secondary" type="button" onclick="markDelivered()">確認租用成立</button><button class="btn danger" type="button" onclick="completeReturn()">確認退租完成</button>${source==='application'?'<button class="btn secondary" type="button" onclick="cancelApplication()">取消申請</button><button class="btn danger" type="button" onclick="deleteApplication()">永久刪除</button>':''}<button class="btn secondary" type="button" onclick="window.print()">預覽 / 列印 / PDF</button></div>`; }
+      <div class="msg ok" style="background:#f8fafc;color:#334155"><b>目前階段操作：</b>系統會依案件狀態只顯示此階段需要的按鈕；客人填寫頁只是確認與預覽，正式成立需由店家確認款項、起租日與配送 / 安裝時間後再執行。</div>${actionButtons(source,c)}`; }
     function readEquipmentItems(){ return Array.from(document.querySelectorAll('[data-eq-row]')).map(row=>({name:R.clean(row.querySelector('.eq-name')?.value),note:R.clean(row.querySelector('.eq-note')?.value)})).filter(x=>x.name||x.note); }
     window.addEquipmentRow=function(){ const box=R.qs('equipmentRows'); box.insertAdjacentHTML('beforeend', equipmentRows([{name:'',note:''}])); bindEditorPreview(); };
     window.removeEquipmentRow=function(btn){ btn.closest('[data-eq-row]')?.remove(); R.qs('contractPreview').innerHTML=R.renderContractHtml(collect()); };
@@ -48,7 +98,7 @@
     window.previewCustomerView=function(){
       const c=collect();
       const url = c.contractId ? R.signUrl({contractId:c.contractId, signToken:'客人連結Token'}) : '儲存並產生正式連結後，系統會產生客人可開啟的正式填寫連結。';
-      R.qs('contractPreview').innerHTML = `<div class="msg ok"><b>客戶視角預覽</b><br>客人打開正式連結後，會先看到已帶入的租賃資料，再補填身分證字號、上傳身分證證明圖片，並查看下方「預覽文件／尚未正式生效」契約後送出。<br><b>正式連結：</b>${R.esc(url)}<br><span class="muted">下方契約預覽中，身分證圖片區若尚未上傳會顯示待補提示；客人上傳後會加浮水印並顯示在第二頁最下方。正式 PDF 需等店家按「確認租用成立」後才會產生與傳送。</span></div>` + R.renderContractHtml(c, {customerView:true});
+      R.qs('contractPreview').innerHTML = `<div class="msg ok"><b>客戶視角預覽</b><br>客人打開正式連結後，會先看到已帶入的租賃資料，再補填身分證字號、上傳身分證證明圖片，並查看下方契約預覽後送出。<br><b>正式連結：</b>${R.esc(url)}<br><span class="muted">下方契約預覽中，身分證圖片區若尚未上傳會顯示待補提示；客人上傳後會加浮水印並顯示在第二頁最下方。</span></div>` + R.renderContractHtml(c, {customerView:true});
       R.toast('已切換為客戶視角預覽。', true);
     };
 
@@ -63,6 +113,7 @@
       const reason=prompt('請輸入取消原因（可留空）：','客人中途取消 / 未成交');
       if(reason===null) return;
       if(!confirm('確定要取消這筆租賃申請？資料會保留，但會移到「已取消」。')) return;
+      if(!confirm('再次確認：取消後此案件不會出現在主要列表，但仍可於「已取消」查看。確定取消？')) return;
       try{
         await R.db().collection('rentalApplications').doc(id).set({
           status:'已取消',
@@ -85,6 +136,7 @@
         if(!confirm('這筆申請看起來已轉成正式契約。仍要只刪除申請紀錄嗎？正式合約不會被刪除。')) return;
       }else{
         if(!confirm('確定要永久刪除此租賃申請嗎？此動作無法復原。')) return;
+        if(!confirm('再次確認：永久刪除後無法復原，請確認不是誤觸。')) return;
       }
       const check=prompt('請輸入「刪除」以確認永久刪除：');
       if(check!=='刪除') return R.toast('未輸入確認文字，已取消永久刪除。', false);
@@ -98,7 +150,7 @@
       }catch(e){ R.toast(e.message||String(e), false); }
     };
 
-    window.completeReturn=async function(){ const id=R.val('contractId'); if(!id) return R.toast('請先儲存合約。', false); if(!confirm('確認已收回設備並完成退租？')) return; try{ await R.call('rentalCompleteReturnHttp',{contractId:id}); R.toast('已完成退租並通知客人。', true); await loadAll(); }catch(e){ R.toast(e.message||String(e), false); } };
+    window.completeReturn=async function(){ const id=R.val('contractId'); if(!id) return R.toast('請先儲存合約。', false); if(!confirm('確認已收回設備並完成退租？')) return; if(!confirm('再次確認：此操作會將契約標記為已退租，確定繼續？')) return; try{ await R.call('rentalCompleteReturnHttp',{contractId:id}); R.toast('已完成退租並通知客人。', true); await loadAll(); }catch(e){ R.toast(e.message||String(e), false); } };
   </script>
 </body>
 </html>

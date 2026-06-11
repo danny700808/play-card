@@ -93,27 +93,31 @@
     const dateText=clean(contract.contractDate)||ymd(new Date());
     const sig=clean(contract.customerSignatureDataUrl || contract.signatureDataUrl);
     const idImage=clean(contract.customerIdImageWatermarkedDataUrl||contract.idImageWatermarkedDataUrl||contract.customerIdImageDataUrl||contract.idImageDataUrl||contract.idCardImageDataUrl||contract.customerIdImageUrl||contract.idImageUrl);
-    const statusText=clean(contract.status||contract.contractStatus);
-    const previewLikeStatus=/待客人|待店家|待確認|草稿|預覽|pending|draft/i.test(statusText);
-    const isPreview=!!(opts.preview || opts.customerView || contract.previewMode || previewLikeStatus);
-    const previewMark=isPreview?`<div class="preview-watermark-rental">預覽文件<br>尚未正式生效</div>`:'';
-    const previewNotice=isPreview?`<div class="preview-notice-rental">此為租賃資料確認與契約預覽，尚未正式生效。實際租賃期間與契約效力，須經店家確認收款、設備交付或配送完成後，另行發送正式契約 PDF。</div>`:'';
     const typeLine = type==='other'
       ? `租賃設備：${esc(equipment || '__________')}`
       : `租賃${esc(rentalTypeLabel(type))}：${esc(equipment || '__________')}${serial?'　編號：'+esc(serial):''}`;
     const itemHtml = items.length ? `<ol class="equipment-list-contract">${items.map(x=>`<li>${esc(x.name)}${x.note?`<span class="eq-note-contract">（${esc(x.note)}）</span>`:''}</li>`).join('')}</ol>` : '依雙方確認設備清單';
     function periodRows(){
       const rows=[];
-      let s=start;
       const periodEntries=Array.isArray(contract.periodEntries)?contract.periodEntries:[];
       if(periodEntries.length){
-        periodEntries.forEach(p=>rows.push({method:clean(p.method||p.rentalMethod||'線上續租'), start:clean(p.startDate), end:clean(p.endDate), days:clean(p.days||periodDays), note:clean(p.note||p.remark)}));
-      }else if(s){
-        for(let i=1;i<=periods;i++){
-          const e=addDays(s, periodDays-1);
-          rows.push({method:i===1?clean(contract.rentalMethod||'實體租用'):'線上續租', start:s, end:e, days:periodDays+' 天', note:i===1?'初次租用':''});
-          s=addDays(e,1);
-        }
+        // 每一筆 periodEntries 代表一次實際租用／續租事件，不再依 90 天切成多列。
+        periodEntries.forEach(p=>{
+          const ps=clean(p.startDate);
+          const pe=clean(p.endDate);
+          const pd=clean(p.days || p.rentDays || (ps && pe ? String(Math.max(1, Math.round((new Date(pe+'T00:00:00')-new Date(ps+'T00:00:00'))/86400000)+1))+' 天' : ''));
+          rows.push({method:clean(p.method||p.rentalMethod||'線上續租'), start:ps, end:pe, days:pd, note:clean(p.note||p.remark)});
+        });
+      }else if(start){
+        // 初次租用只列一格：即使一次租多期，也視為同一次「實體租用」。
+        const totalDays=Number(contract.rentDays || contract.totalDays || (periods*periodDays));
+        rows.push({
+          method:clean(contract.rentalMethod||'實體租用'),
+          start:start,
+          end:end,
+          days:(totalDays ? totalDays+' 天' : ''),
+          note:periods>1 ? `一次租用 ${periods} 期（${totalDays} 天）` : '初次租用'
+        });
       }
       while(rows.length<12) rows.push({method:'',start:'',end:'',days:'',note:''});
       return rows.slice(0,16).map(r=>`<tr><td>${esc(r.method)}</td><td>${esc(r.start)}</td><td>${esc(r.end)}</td><td>${esc(r.days)}</td><td>${esc(r.note)}</td></tr>`).join('');
@@ -122,12 +126,12 @@
     const idCardBlock = `<div class="id-card-block"><div class="id-card-title">身分證資料備查</div><div class="id-card-meta">身分證字號 / 統編：${esc(identity || '客人正式填寫後顯示')}</div><div class="id-card-body">${idImage?`<img class="id-card-img" src="${esc(idImage)}" alt="身分證證明圖片">`:`<div class="id-placeholder">客人正式填寫連結上傳身分證證明後，此處會顯示加浮水印後的圖片。</div>`}</div></div>`;
     return `
       <style>
-        .rental-contract-sheet{page-break-after:always;break-after:page;position:relative;overflow:hidden;background:#fff;color:#111827;width:210mm;min-height:297mm;margin:0 auto 10mm;padding:11mm 12mm;box-sizing:border-box;border:1px solid #d1d5db;box-shadow:0 8px 20px rgba(0,0,0,.05);font-size:13.5px;line-height:1.75}.rental-contract-sheet h1{text-align:center;font-size:24px;margin:0 0 6mm;letter-spacing:2px}.party-line{font-weight:800;margin-bottom:2mm;position:relative}.intro{margin:3mm 0}.clauses{padding-left:20px;margin:0}.clauses li{margin-bottom:2.4mm}.equipment-list-contract{margin:2mm 0 0 0;padding-left:20px}.equipment-list-contract li{margin:1mm 0}.eq-note-contract{color:#475569}.sign-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:10px;margin-top:5mm}.sign-card{border:1px solid #94a3b8;border-radius:12px;padding:11px;min-height:49mm;position:relative}.sign-card.party-a{min-height:54mm}.party-a-line{display:block;margin:3mm 0}.wide-line{display:block;margin-top:2mm;min-height:11mm}.sig-box{margin-top:4mm;border-top:1px solid #64748b;padding-top:2mm;min-height:20mm}.sig-img{max-width:100%;max-height:80px}.official-stamps-rental{position:relative;height:32mm;margin-top:2mm}.seal-company-rental{position:absolute;left:0;top:0;width:34mm;height:27mm;object-fit:contain}.seal-owner-rental{position:absolute;left:37mm;top:10mm;width:16mm;height:16mm;object-fit:contain}.contract-date{text-align:center;margin-top:5mm;font-weight:800}.rental-page-no{position:absolute;right:12mm;bottom:7mm;font-size:11px;color:#64748b}.rental-contract-sheet.period-sheet h1{text-align:center}.period-table{width:100%;border-collapse:collapse;margin-top:4mm;font-size:12.5px}.period-table th,.period-table td{border:1px solid #333;padding:5px;text-align:center;height:8mm}.period-table th{background:#f3f4f6}.period-bottom{position:absolute;left:12mm;right:12mm;bottom:12mm;display:grid;grid-template-columns:1.15fr .85fr;gap:10mm;align-items:end}.id-card-block{border:1px solid #94a3b8;border-radius:12px;padding:8px;min-height:45mm}.id-card-title{font-weight:950;margin-bottom:2mm}.id-card-meta{font-size:12px;margin-bottom:2mm}.id-card-body{height:31mm;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:8px}.id-card-img{max-width:100%;max-height:31mm;object-fit:contain;filter:grayscale(100%)}.id-placeholder{font-size:12px;color:#64748b;text-align:center;padding:4mm}.period-stamp-block{border:1px solid #94a3b8;border-radius:12px;padding:8px;min-height:45mm}.period-stamp-title{font-weight:950;margin-bottom:2mm}.preview-watermark-rental{position:absolute;left:50%;top:47%;transform:translate(-50%,-50%) rotate(-24deg);font-size:34px;line-height:1.35;font-weight:950;letter-spacing:4px;text-align:center;color:rgba(180,35,24,.15);border:4px solid rgba(180,35,24,.12);border-radius:18px;padding:12px 28px;z-index:0;pointer-events:none;white-space:nowrap}.preview-notice-rental{border:2px solid #b42318;background:#fff7ed;color:#9a3412;border-radius:10px;padding:8px 10px;margin:0 0 4mm;font-weight:900;line-height:1.55;position:relative;z-index:1}.rental-contract-sheet>*:not(.preview-watermark-rental){position:relative;z-index:1}
+        .rental-contract-sheet{page-break-after:always;break-after:page;position:relative;overflow:hidden;background:#fff;color:#111827;width:210mm;min-height:297mm;margin:0 auto 10mm;padding:11mm 12mm;box-sizing:border-box;border:1px solid #d1d5db;box-shadow:0 8px 20px rgba(0,0,0,.05);font-size:13.5px;line-height:1.75}.rental-contract-sheet h1{text-align:center;font-size:24px;margin:0 0 6mm;letter-spacing:2px}.party-line{font-weight:800;margin-bottom:2mm;position:relative}.intro{margin:3mm 0}.clauses{padding-left:20px;margin:0}.clauses li{margin-bottom:2.4mm}.equipment-list-contract{margin:2mm 0 0 0;padding-left:20px}.equipment-list-contract li{margin:1mm 0}.eq-note-contract{color:#475569}.sign-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:10px;margin-top:5mm}.sign-card{border:1px solid #94a3b8;border-radius:12px;padding:11px;min-height:49mm;position:relative}.sign-card.party-a{min-height:54mm}.party-a-line{display:block;margin:3mm 0}.wide-line{display:block;margin-top:2mm;min-height:11mm}.sig-box{margin-top:4mm;border-top:1px solid #64748b;padding-top:2mm;min-height:20mm}.sig-img{max-width:100%;max-height:80px}.official-stamps-rental{position:relative;height:32mm;margin-top:2mm}.seal-company-rental{position:absolute;left:0;top:0;width:34mm;height:27mm;object-fit:contain}.seal-owner-rental{position:absolute;left:37mm;top:10mm;width:16mm;height:16mm;object-fit:contain}.contract-date{text-align:center;margin-top:5mm;font-weight:800}.rental-page-no{position:absolute;right:12mm;bottom:7mm;font-size:11px;color:#64748b}.rental-contract-sheet.period-sheet h1{text-align:center}.period-table{width:100%;border-collapse:collapse;margin-top:4mm;font-size:12.5px}.period-table th,.period-table td{border:1px solid #333;padding:5px;text-align:center;height:8mm}.period-table th{background:#f3f4f6}.period-bottom{position:absolute;left:12mm;right:12mm;bottom:12mm;display:grid;grid-template-columns:1.15fr .85fr;gap:10mm;align-items:end}.id-card-block{border:1px solid #94a3b8;border-radius:12px;padding:8px;min-height:45mm}.id-card-title{font-weight:950;margin-bottom:2mm}.id-card-meta{font-size:12px;margin-bottom:2mm}.id-card-body{height:31mm;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:8px}.id-card-img{max-width:100%;max-height:31mm;object-fit:contain;filter:grayscale(100%)}.id-placeholder{font-size:12px;color:#64748b;text-align:center;padding:4mm}.period-stamp-block{border:1px solid #94a3b8;border-radius:12px;padding:8px;min-height:45mm}.period-stamp-title{font-weight:950;margin-bottom:2mm}
         @media(max-width:840px){.rental-contract-sheet{width:100%;min-height:auto;padding:16px}.sign-grid,.period-bottom{grid-template-columns:1fr;position:static}.rental-page-no{position:static;text-align:right;margin-top:8px}}
         @media print{.rental-contract-sheet{width:210mm!important;min-height:297mm!important;border:none!important;box-shadow:none!important;margin:0!important;page-break-after:always!important;break-after:page!important}.period-bottom{position:absolute!important;left:12mm!important;right:12mm!important;bottom:12mm!important;grid-template-columns:1.15fr .85fr!important}@page{size:A4;margin:0}}
       </style>
       <div class="rental-contract-sheet">
-        ${previewMark}${previewNotice}<h1>${esc(title)}</h1>
+        <h1>${esc(title)}</h1>
         <div class="party-line">立契約書人：${esc(partyAName || '__________')}（以下簡稱甲方）</div>
         <div class="party-line">立契約書人：尚品樂器行（以下簡稱乙方）</div>
         <p class="intro">甲方向乙方租賃設備，雙方同意簽訂本契約，條款如下：</p>
@@ -150,7 +154,7 @@
         <div class="contract-date">中華民國 ${esc(dateText)}</div><div class="rental-page-no">第 1 頁 / 共 2 頁</div>
       </div>
       <div class="rental-contract-sheet period-sheet">
-        ${previewMark}${previewNotice}<h1>租賃期間明細表</h1>
+        <h1>租賃期間明細表</h1>
         <div class="party-line">契約名稱：${esc(title)}</div>
         <div class="party-line">租賃設備：${esc(equipment || '__________')}</div>
         <div class="party-line">正式起租日：${esc(start || '____年__月__日')}　目前到期日：${esc(end || '____年__月__日')}　一期：${esc(periodDays)} 天</div>
