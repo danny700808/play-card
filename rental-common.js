@@ -89,6 +89,7 @@
     const rent=fmtMoney(contract.rentFee||contract.rentalFee);
     const ship=fmtMoney(contract.shippingFee);
     const deposit=fmtMoney(contract.depositFee);
+    const deliveryText=clean(contract.deliveryDateTime)||[clean(contract.deliveryDate), clean(contract.deliveryTime)].filter(Boolean).join(' ');
     const dateText=clean(contract.contractDate)||ymd(new Date());
     const sig=clean(contract.customerSignatureDataUrl || contract.signatureDataUrl);
     const idImage=clean(contract.customerIdImageWatermarkedDataUrl||contract.idImageWatermarkedDataUrl||contract.customerIdImageDataUrl||contract.idImageDataUrl||contract.idCardImageDataUrl||contract.customerIdImageUrl||contract.idImageUrl);
@@ -127,7 +128,7 @@
         <p class="intro">甲方向乙方租賃設備，雙方同意簽訂本契約，條款如下：</p>
         <ol class="clauses">
           <li>${typeLine}<br>租賃期間：詳如第二頁「租賃期間明細表」。一期固定 ${esc(periodDays)} 天，續租起日為上一期到期日之隔日。</li>
-          <li>租金：${esc(rent)}。押金：${esc(deposit)}。運費：${esc(ship)}。運送方式：${esc(contract.shippingMethod||'依雙方確認')}。</li>
+          <li>租金：${esc(rent)}。押金：${esc(deposit)}。運費：${esc(ship)}。運送方式：${esc(contract.shippingMethod||'依雙方確認')}。配送 / 安裝時間：${esc(deliveryText || '依店家最後確認')}。</li>
           <li>乙方提供設備包括：${itemHtml}</li>
           <li>退租需提早告知；未告知超過 3 天，視同原簽約方案續約。</li>
           <li>租約使用開始後，若提早退租，全數不退款。</li>
