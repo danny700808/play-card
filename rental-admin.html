@@ -153,15 +153,10 @@
       if(!payload.customerIdNumber) missing.push('甲方身分證字號 / 統編');
       if(!payload.customerIdImageWatermarkedDataUrl && !payload.idImageWatermarkedDataUrl) missing.push('甲方身分證證明圖片');
       if(missing.length){
-        alert('確認租用成立前，請先完成以下資料：
-
-' + missing.map((x,i)=>(i+1)+'. '+x).join('
-'));
+        alert('確認租用成立前，請先完成以下資料：\n\n' + missing.map((x,i)=>(i+1)+'. '+x).join('\n'));
         return;
       }
-      if(!confirm('確認款項已收，並以「店家確認配送 / 安裝日期」作為正式起租日？
-
-系統會產生正式 PDF、上傳 Firebase Storage，並以 LINE 傳送 PDF 下載連結給客人。')) return;
+      if(!confirm('確認款項已收，並以「店家確認配送 / 安裝日期」作為正式起租日？\n\n系統會產生正式 PDF、上傳 Firebase Storage，並以 LINE 傳送 PDF 下載連結給客人。')) return;
       showRentalProgress('確認租用成立');
       try{
         updateRentalProgress(10,'正在計算正式租期...');
