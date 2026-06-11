@@ -18,7 +18,7 @@
     .mini-actions{display:flex;gap:8px;flex-wrap:wrap}
     .mini-actions .btn{width:auto;padding:10px 14px}
     .contract-preview-stage{display:block}
-    .contract-sheet{background:#fff;border:1px solid #e2e8f0;border-radius:18px;padding:9mm;box-shadow:0 8px 24px rgba(15,23,42,.06);width:210mm;min-height:297mm;margin:0 auto;box-sizing:border-box;overflow:hidden}
+    .contract-sheet{background:#fff;border:1px solid #e2e8f0;border-radius:18px;padding:9mm;box-shadow:0 8px 24px rgba(15,23,42,.06);width:210mm;min-height:297mm;margin:0 auto 12px;box-sizing:border-box;overflow:hidden;position:relative;page-break-after:always;break-after:page}.period-sheet{margin-top:12px}.period-table{width:100%;border-collapse:collapse;margin-top:10mm;font-size:12px}.period-table th,.period-table td{border:1px solid #334155;padding:7px;text-align:center}.period-table th{background:#f8fafc}.contract-page-no{position:absolute;right:9mm;bottom:7mm;font-size:11px;color:#64748b}
     .contract-title{text-align:center;font-size:24px;font-weight:900;letter-spacing:4px;margin:2mm 0 4mm}
     .contract-intro{font-size:13px;line-height:1.9;white-space:pre-wrap;margin-bottom:4mm}
     .contract-section-title{font-size:14px;font-weight:900;margin:0 0 2mm}
@@ -74,7 +74,7 @@
         border:none!important;
         border-radius:0!important;
         margin:0 auto!important;
-        page-break-after:auto!important;
+        page-break-after:always!important;
       }
       .page-return-wrap,.topbar,.subcard:first-child,.email-card,.history-card,.muted-tip{display:none!important}
       .contract-box-grid,.party-grid,.signature-grid,.row2{display:grid!important;grid-template-columns:1fr 1fr!important}
@@ -306,15 +306,41 @@
       qs('#contractId').value = asNew ? '' : (v.contractId || '');
       renderPreview();
     }
+    function calcEndDateFixed(startDate, days){
+      if(!startDate) return '';
+      const d = new Date(startDate + 'T00:00:00');
+      if(String(d)==='Invalid Date') return '';
+      d.setDate(d.getDate() + Math.max(1, Number(days||1)) - 1);
+      const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), day=String(d.getDate()).padStart(2,'0');
+      return `${y}-${m}-${day}`;
+    }
+    function periodRows(v){
+      const days = Math.max(1, Number(v.rentDays || 90));
+      const start = v.startDate || '';
+      let rows = '';
+      if(start){
+        const end = calcEndDateFixed(start, days);
+        rows += `<tr><td>第 1 期</td><td>${start}</td><td>${end}</td><td>□實體租用　□線上續租</td><td>${money(v.rentFee)} 元</td><td></td></tr>`;
+        let s = new Date(end + 'T00:00:00');
+        for(let i=2;i<=10;i++){
+          s.setDate(s.getDate()+1);
+          const sy=s.getFullYear(), sm=String(s.getMonth()+1).padStart(2,'0'), sd=String(s.getDate()).padStart(2,'0');
+          const startText=`${sy}-${sm}-${sd}`;
+          const endText=calcEndDateFixed(startText, days);
+          rows += `<tr><td>第 ${i} 期</td><td>${startText}</td><td>${endText}</td><td>□實體租用　□線上續租</td><td></td><td></td></tr>`;
+          s = new Date(endText + 'T00:00:00');
+        }
+      }else{
+        for(let i=1;i<=10;i++) rows += `<tr><td>第 ${i} 期</td><td>　年　月　日</td><td>　年　月　日</td><td>□實體租用　□線上續租</td><td></td><td></td></tr>`;
+      }
+      return rows;
+    }
     function renderPreview(){
       const v = readValues();
       qs('#pvContractTitle').textContent = v.contractTitle || '設備租賃契約書';
-      qs('#pvIntro').textContent = `立契約書人 ${v.partyAName || '甲方'}（以下簡稱甲方）
-立契約書人 ${v.partyBName || '乙方'}（以下簡稱乙方）
-
-甲方向乙方租賃設備，簽訂契約條款如下：`;
+      qs('#pvIntro').textContent = `立契約書人 ${v.partyAName || '甲方'}（以下簡稱甲方）\n立契約書人 ${v.partyBName || '乙方'}（以下簡稱乙方）\n\n甲方向乙方租賃設備，簽訂契約條款如下：`;
       qs('#pvEquipment').textContent = v.equipmentName || '—';
-      qs('#pvRentTerm').textContent = `租賃期間為 ${v.rentDays || '—'} 天，租賃開始時間 ${toRocDate(v.startDate)}`;
+      qs('#pvRentTerm').textContent = `租賃期間詳如第二頁「租賃期間明細表」。一期以 ${v.rentDays || 90} 天計算。`;
       qs('#pvFee').textContent = `租賃費用 ${money(v.rentFee)} 元，運費 ${money(v.shippingFee)} 元`;
       qs('#pvIncluded').textContent = v.includedItems || '—';
       qs('#pvClause4').textContent = v.clause4 || '—';
@@ -336,6 +362,18 @@
         `聯絡電話：${v.partyBPhone || ''}`
       ].filter(Boolean).join('\n');
       qs('#pvContractDate').textContent = toRocDate(v.contractDate);
+      const firstSheet = document.querySelector('#printArea .contract-sheet:not(.period-sheet)');
+      let periodSheet = document.querySelector('#printArea .period-sheet');
+      if(!periodSheet){
+        periodSheet = document.createElement('section');
+        periodSheet.className = 'contract-sheet period-sheet';
+        firstSheet.parentNode.appendChild(periodSheet);
+      }
+      periodSheet.innerHTML = `<div class="contract-title">租賃期間明細表</div>
+        <div class="contract-intro">契約名稱：${v.contractTitle || '設備租賃契約書'}<br>租賃設備：${v.equipmentName || ''}<br>起租日：${v.startDate || '　年　月　日'}　一期天數：${v.rentDays || 90} 天</div>
+        <table class="period-table"><thead><tr><th style="width:70px">期別</th><th>起租日</th><th>到期日</th><th>租用方式</th><th>金額</th><th>付款日期 / 經收人</th></tr></thead><tbody>${periodRows(v)}</tbody></table>
+        <div class="contract-intro" style="text-align:center;margin-top:12mm">${toRocDate(v.contractDate)}</div><div class="contract-page-no">第 2 頁 / 共 2 頁</div>`;
+      if(!firstSheet.querySelector('.contract-page-no')) firstSheet.insertAdjacentHTML('beforeend','<div class="contract-page-no">第 1 頁 / 共 2 頁</div>');
       if(!qs('#emailSubject').dataset.touched){
         qs('#emailSubject').value = `${v.partyAName || '甲方'}｜設備租賃契約書`;
       }

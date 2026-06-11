@@ -70,41 +70,68 @@
     const customerPhone=clean(contract.customerPhone||contract.phone);
     const equipment=clean(contract.equipmentName||contract.modelName||contract.itemName);
     const serial=clean(contract.serialNo||contract.machineCode);
-    const periods=clean(contract.periods||contract.rentalPeriods||'1');
+    const periods=Math.max(1, Math.min(10, Number(contract.periods||contract.rentalPeriods||1)));
+    const periodDays=Math.max(1, Number(contract.periodDays||90));
     const start=clean(contract.startDate);
-    const end=clean(contract.endDate);
+    const end=clean(contract.endDate)||calcEndDate(start, periods, type, contract.rentDays || periodDays);
     const rent=fmtMoney(contract.rentFee||contract.rentalFee);
     const ship=fmtMoney(contract.shippingFee);
     const included=clean(contract.includedItems)||defaultIncludedItems(type);
     const dateText=clean(contract.contractDate)||ymd(new Date());
     const sig=clean(contract.customerSignatureDataUrl || contract.signatureDataUrl);
-    const stamp='shangpin-company-seal.png';
     const typeLine = type==='other'
       ? `租賃設備和型號：${esc(equipment || '__________')}`
       : `租賃${esc(rentalTypeLabel(type))}${type==='digitalPiano'?'品牌':'型號'}：${esc(equipment || '__________')}　機碼編號：${esc(serial || '__________')}`;
+    function periodRows(){
+      let rows='', s=start;
+      for(let i=1;i<=10;i++){
+        if(s && i<=periods){
+          const e=addDays(s, periodDays-1);
+          rows += `<tr><td>第 ${i} 期</td><td>${esc(s)}</td><td>${esc(e)}</td><td>□實體租用　□線上續租</td><td></td><td></td></tr>`;
+          s=addDays(e,1);
+        }else{
+          rows += `<tr><td>第 ${i} 期</td><td>　年　月　日</td><td>　年　月　日</td><td>□實體租用　□線上續租</td><td></td><td></td></tr>`;
+        }
+      }
+      return rows;
+    }
+    const sealHtml = `<div class="official-stamps-rental"><img class="seal-company-rental" src="company_seal_contract_transparent.png" onerror="this.style.display='none'"><img class="seal-owner-rental" src="red_stamp_transparent.png" onerror="this.style.display='none'"></div>`;
     return `
+      <style>
+        .rental-contract-sheet{page-break-after:always;break-after:page;position:relative;overflow:hidden}
+        .rental-contract-sheet .period-table{width:100%;border-collapse:collapse;margin-top:10mm;font-size:13px}.rental-contract-sheet .period-table th,.rental-contract-sheet .period-table td{border:1px solid #333;padding:7px;text-align:center}.rental-contract-sheet .period-table th{background:#f3f4f6}.official-stamps-rental{position:relative;height:34mm;margin-top:4mm}.seal-company-rental{position:absolute;left:0;top:0;width:34mm;height:28mm;object-fit:contain}.seal-owner-rental{position:absolute;left:38mm;top:12mm;width:16mm;height:16mm;object-fit:contain}.rental-page-no{position:absolute;right:12mm;bottom:8mm;font-size:11px;color:#64748b}.rental-contract-sheet.period-sheet h1{text-align:center}
+        @media print{.rental-contract-sheet{width:210mm!important;min-height:297mm!important;border:none!important;box-shadow:none!important;margin:0!important;page-break-after:always!important;break-after:page!important}}
+      </style>
       <div class="rental-contract-sheet">
         <h1>${esc(title)}</h1>
         <div class="party-line">立契約書人：${esc(partyAName || '__________')}（以下簡稱甲方）</div>
-        <div class="party-line">立契約書人：尚品樂器行（以下簡稱乙方）<img class="seal top" src="${stamp}" onerror="this.style.display='none'"></div>
+        <div class="party-line">立契約書人：尚品樂器行（以下簡稱乙方）</div>
         <p class="intro">甲方向乙方租賃設備，雙方同意簽訂本契約，條款如下：</p>
         <ol class="clauses">
-          <li>${typeLine}<br>租賃期間為 ${esc(periods)} 期${type==='other'?' / '+esc(contract.rentDays||'')+' 天':'，「註」一期為 90 天計算'}。<br>租賃期間：${esc(start||'____年__月__日')} ～ ${esc(end||'____年__月__日')}。<br>租賃租金費用：${esc(rent)}。</li>
+          <li>${typeLine}<br>租賃期間：詳如第二頁「租賃期間明細表」。一期固定 ${esc(periodDays)} 天，續租起日為上一期到期日之隔日。<br>租賃租金費用：${esc(rent)}。</li>
           <li>運費：${esc(ship)}。運送方式：${esc(contract.shippingMethod||'依雙方確認')}。</li>
           <li>乙方提供設備包括：${esc(included || '依主管填寫設備清單')}</li>
           <li>退租需提早告知；未告知超過 3 天，視同原簽約方案續約。</li>
           <li>租約使用開始後，若提早退租，全數不退款。</li>
           <li>運費為一次性收費；續約租用不再次收費，特殊地區或特殊搬運另依雙方確認。</li>
-          <li>因設備老舊或電腦相關線材磨損造成損壞，公司全吸收；但因人為破壞須賠償，破壞判斷依原廠認定。</li>
+          <li>因設備老舊或電腦相關線材磨損造成損壞，由乙方吸收；但因人為破壞須賠償，破壞判斷依原廠認定。</li>
           <li>續租方式：線上續租、轉帳付款，請保留相關截圖。</li>
           <li>如雙方發生有關事項之爭議或訴訟，雙方以臺中地方法院為第一審管轄法院。</li>
           <li>本契約壹式貳份，雙方各執乙份為憑；線上簽署及 PDF 留存具同等效力。</li>
         </ol>
         <div class="sign-grid">
           <div class="sign-card"><b>甲方</b><br>姓名 / 公司：${esc(partyAName)}<br>身分證字號 / 統編：${esc(identity)}<br>地址：${esc(customerAddress)}<br>電話：${esc(customerPhone)}<br><div class="sig-box">${sig?`<img src="${sig}" class="sig-img">`:'簽名：________________'}</div></div>
-          <div class="sign-card"><b>乙方</b><br>公司名稱：尚品樂器行<br>負責人：黃銘廷<br>地址：台中市豐原區圓環東路 347 號 4 樓<br>電話：04-25227893<br>統一編號：99680937<br><img class="seal bottom" src="${stamp}" onerror="this.style.display='none'"></div>
+          <div class="sign-card"><b>乙方</b><br>公司名稱：尚品樂器行<br>負責人：黃銘廷<br>地址：台中市豐原區圓環東路 347 號 4 樓<br>電話：04-25227893<br>統一編號：99680937<br>${sealHtml}</div>
         </div>
-        <div class="contract-date">中華民國 ${esc(dateText)}</div>
+        <div class="contract-date">中華民國 ${esc(dateText)}</div><div class="rental-page-no">第 1 頁 / 共 2 頁</div>
+      </div>
+      <div class="rental-contract-sheet period-sheet">
+        <h1>租賃期間明細表</h1>
+        <div class="party-line">契約名稱：${esc(title)}</div>
+        <div class="party-line">租賃設備：${esc(equipment || '__________')}</div>
+        <div class="party-line">起租日：${esc(start || '____年__月__日')}　目前到期日：${esc(end || '____年__月__日')}　一期：${esc(periodDays)} 天</div>
+        <table class="period-table"><thead><tr><th style="width:70px">期別</th><th>起租日</th><th>到期日</th><th>租用方式</th><th>金額</th><th>付款日期 / 經收人</th></tr></thead><tbody>${periodRows()}</tbody></table>
+        <div class="contract-date">中華民國 ${esc(dateText)}</div><div class="rental-page-no">第 2 頁 / 共 2 頁</div>
       </div>`;
   }
   Rental.clean=clean; Rental.num=num; Rental.ymd=ymd; Rental.addDays=addDays; Rental.fmtMoney=fmtMoney; Rental.esc=esc; Rental.qs=qs; Rental.val=val; Rental.checked=checked; Rental.setVal=setVal; Rental.show=show; Rental.hide=hide; Rental.toast=toast; Rental.user=user; Rental.isManager=isManager; Rental.requireManager=requireManager; Rental.db=db; Rental.call=call; Rental.all=all; Rental.get=get; Rental.set=set; Rental.nowText=nowText; Rental.contractStatus=contractStatus; Rental.applicationStatus=applicationStatus; Rental.rentalTypeLabel=rentalTypeLabel; Rental.defaultIncludedItems=defaultIncludedItems; Rental.defaultTitle=defaultTitle; Rental.calcEndDate=calcEndDate; Rental.signUrl=signUrl; Rental.myContractUrl=myContractUrl; Rental.renderContractHtml=renderContractHtml; Rental.functionUrl=functionUrl;
