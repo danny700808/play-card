@@ -48,7 +48,7 @@
     window.previewCustomerView=function(){
       const c=collect();
       const url = c.contractId ? R.signUrl({contractId:c.contractId, signToken:'客人連結Token'}) : '儲存並產生正式連結後，系統會產生客人可開啟的正式填寫連結。';
-      R.qs('contractPreview').innerHTML = `<div class="msg ok"><b>客戶視角預覽</b><br>客人打開正式連結後，會先看到已帶入的租賃資料，再補填身分證字號、上傳身分證證明圖片，並查看下方契約預覽後送出。<br><b>正式連結：</b>${R.esc(url)}<br><span class="muted">下方契約預覽中，身分證圖片區若尚未上傳會顯示待補提示；客人上傳後會加浮水印並顯示在第二頁最下方。</span></div>` + R.renderContractHtml(c, {customerView:true});
+      R.qs('contractPreview').innerHTML = `<div class="msg ok"><b>客戶視角預覽</b><br>客人打開正式連結後，會先看到已帶入的租賃資料，再補填身分證字號、上傳身分證證明圖片，並查看下方「預覽文件／尚未正式生效」契約後送出。<br><b>正式連結：</b>${R.esc(url)}<br><span class="muted">下方契約預覽中，身分證圖片區若尚未上傳會顯示待補提示；客人上傳後會加浮水印並顯示在第二頁最下方。正式 PDF 需等店家按「確認租用成立」後才會產生與傳送。</span></div>` + R.renderContractHtml(c, {customerView:true});
       R.toast('已切換為客戶視角預覽。', true);
     };
 

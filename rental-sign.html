@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>設備租賃資料確認與合約簽署</title>
+  <title>設備租賃資料確認與契約預覽簽署</title>
   <link rel="stylesheet" href="style.css?v=rental-sign-20260611b">
   <style>
     body{background:#eef3f7;color:#18314a}.wrap{max-width:980px;margin:0 auto;padding:22px 14px 54px}.card2{background:#fff;border:1px solid #dbe5ef;border-radius:24px;padding:20px;margin-bottom:16px;box-shadow:0 10px 28px rgba(15,23,42,.04)}.title{font-size:30px;font-weight:950;margin:0 0 10px}.small{font-size:13px;color:#64748b;line-height:1.8}.btn{border:0;border-radius:14px;background:#1f7a5a;color:#fff;font-weight:950;padding:12px 18px;cursor:pointer}.btn.secondary{background:#e2e8f0;color:#18314a}.btn-row{display:flex;gap:10px;flex-wrap:wrap}.msg{margin-top:12px;border-radius:14px;padding:12px 14px;font-weight:900;line-height:1.7}.msg.ok{background:#e8fff4;color:#146c43}.msg.bad{background:#fff0f0;color:#b42318}.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}.field{margin-bottom:12px}.field label{display:block;font-weight:950;margin-bottom:6px}.field input{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:14px;padding:11px 12px;font-size:15px}.hint{font-size:13px;color:#64748b;line-height:1.8}.preview-img{max-width:100%;max-height:220px;border:1px solid #cbd5e1;border-radius:12px;background:#f8fafc;margin-top:8px}.rental-contract-sheet{background:#fff;color:#111827;width:210mm;min-height:297mm;margin:0 auto;padding:12mm;box-sizing:border-box;border:1px solid #d1d5db;box-shadow:0 8px 20px rgba(0,0,0,.05);font-size:14px;line-height:1.9}.agree{display:flex;gap:10px;line-height:1.8;font-weight:900}#signatureCanvas{width:100%;height:180px;border:2px dashed #94a3b8;border-radius:16px;background:#fff;touch-action:none}@media(max-width:840px){.rental-contract-sheet{width:100%;min-height:auto;padding:16px}.row2{grid-template-columns:1fr}.wrap{padding:12px 8px}}@media print{body *{visibility:hidden}.print-area,.print-area *{visibility:visible}.print-area{position:absolute;left:0;top:0;width:100%}.card2:not(.print-area){display:none}.rental-contract-sheet{border:none;box-shadow:none;margin:0;width:210mm;min-height:297mm}@page{size:A4;margin:0}}
@@ -10,17 +10,17 @@
 </head>
 <body>
   <div class="wrap">
-    <section class="card2"><h1 class="title">設備租賃資料確認與合約簽署</h1><div class="small">請確認店家提供的租賃資料，補上身分證資料與證明圖片後，再查看契約預覽並完成簽名送出。</div><div id="msg"></div></section>
+    <section class="card2"><h1 class="title">設備租賃資料確認與契約預覽簽署</h1><div class="small">請確認店家提供的租賃資料，補上身分證資料與證明圖片後，再查看契約預覽並完成簽名送出。此頁顯示的是預覽文件，尚未正式生效；正式契約會由店家確認收款、配送 / 安裝與起租日後另行透過 LINE 發送。</div><div class="msg bad" style="background:#fff7ed;color:#9a3412">重要：目前契約僅供資料確認與預覽，尚未正式生效。實際租賃效力以店家最後確認後發送的正式 PDF 為準。</div><div id="msg"></div></section>
     <section id="identityPanel" class="card2">
       <h2 style="margin-top:0">甲方身分資料</h2>
       <div class="row2"><div class="field"><label>身分證字號 / 統編</label><input id="customerIdNumber" placeholder="例如 A123456789"></div><div class="field"><label>身分證證明圖片</label><input id="idImageInput" type="file" accept="image/*"><div class="hint">圖片會自動加上「限柚子樂器設備租用使用」浮水印，並放在契約第二頁最下方備查。</div></div></div>
       <img id="idPreview" class="preview-img" style="display:none" alt="身分證證明預覽">
       <div class="btn-row"><button class="btn secondary" type="button" onclick="refreshPreview()">更新契約預覽</button></div>
     </section>
-    <section class="card2 print-area"><h2 style="margin-top:0">契約預覽</h2><div id="contractPreview">讀取中...</div></section>
+    <section class="card2 print-area"><h2 style="margin-top:0">契約預覽（尚未正式生效）</h2><div class="hint" style="margin-bottom:10px">下方文件會加上「預覽文件／尚未正式生效」浮水印。您送出後，店家會再確認收款與交付日期，最後才會寄送正式契約 PDF。</div><div id="contractPreview">讀取中...</div></section>
     <section id="signPanel" class="card2">
       <h2 style="margin-top:0">線上簽名</h2>
-      <label class="agree"><input id="agreeContract" type="checkbox"> <span>我已確認租賃資料、身分證資料與契約內容，並同意以線上簽名完成本次租賃契約資料送出。</span></label>
+      <label class="agree"><input id="agreeContract" type="checkbox"> <span>我已確認租賃資料、身分證資料與契約預覽內容，並了解此文件須待店家確認收款與交付後，正式契約才會生效。</span></label>
       <div style="margin:12px 0"><canvas id="signatureCanvas" width="900" height="240"></canvas></div>
       <div class="btn-row"><button class="btn secondary" id="clearSigBtn" type="button">清除簽名</button><button class="btn" id="submitSigBtn" type="button">送出確認資料與簽名</button><button class="btn secondary" onclick="window.print()" type="button">列印 / 另存 PDF</button></div>
     </section>
@@ -40,7 +40,7 @@
         watermarkedIdImage=contract.customerIdImageWatermarkedDataUrl||contract.idImageWatermarkedDataUrl||'';
         if(watermarkedIdImage){ const img=R.qs('idPreview'); img.src=watermarkedIdImage; img.style.display='block'; }
         refreshPreview();
-        if(signed){ R.qs('identityPanel').style.display='none'; R.qs('signPanel').innerHTML='<h2>此合約已簽署完成</h2><p>您可使用上方合約內容列印或另存 PDF。</p><button class="btn" onclick="window.print()">列印 / 另存 PDF</button>'; }
+        if(signed){ R.qs('identityPanel').style.display='none'; R.qs('signPanel').innerHTML='<h2>資料已送出完成</h2><p>您可查看上方預覽文件；正式契約 PDF 會在店家確認收款、交付與正式起租日後另行傳送。</p><button class="btn" onclick="window.print()">列印 / 另存 PDF</button>'; }
       }catch(err){ R.toast(err.message||String(err), false); R.qs('contractPreview').textContent='讀取失敗'; R.hide('identityPanel'); R.hide('signPanel'); }
     }
     function refreshPreview(){
@@ -72,7 +72,7 @@
         const signatureDataUrl=canvas.toDataURL('image/png');
         await R.db().collection('rentalContracts').doc(contractId).set({ customerIdNumber:R.val('customerIdNumber'), customerIdImageWatermarkedDataUrl:watermarkedIdImage, customerIdImageUpdatedAt:R.nowText(), customerSubmittedFormalAt:R.nowText(), status:'待店家確認' }, {merge:true});
         await R.call('rentalSignContractHttp',{contractId,token,signatureDataUrl,customerIdNumber:R.val('customerIdNumber'),customerIdImageWatermarkedDataUrl:watermarkedIdImage});
-        R.toast('已送出正式資料與簽名，等待店家確認正式起租日與契約成立。', true);
+        R.toast('已送出資料與簽名，等待店家確認收款、配送 / 安裝與正式起租日。正式契約 PDF 將於店家確認成立後另行傳送。', true);
         await load(); window.scrollTo({top:0,behavior:'smooth'});
       }catch(err){ R.toast(err.message||String(err), false); }
       finally{ btn.disabled=false; btn.textContent='送出確認資料與簽名'; }
