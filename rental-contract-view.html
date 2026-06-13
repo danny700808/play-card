@@ -5,7 +5,7 @@
   <title>設備租賃正式契約</title>
   <link rel="stylesheet" href="style.css?v=rental-contract-view-20260613">
   <style>
-    body{background:#eef3f7;color:#18314a;margin:0;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.wrap{max-width:980px;margin:0 auto;padding:18px 12px 50px}.card{background:#fff;border:1px solid #dbe5ef;border-radius:22px;padding:16px;margin-bottom:14px;box-shadow:0 8px 22px rgba(15,23,42,.04)}.title{font-size:26px;font-weight:950;margin:0 0 8px}.muted{color:#64748b;line-height:1.8}.btn{border:0;border-radius:14px;background:#1f7a5a;color:#fff;font-weight:950;padding:11px 15px;text-decoration:none;display:inline-flex;margin:6px 6px 0 0}.btn.secondary{background:#e2e8f0;color:#18314a}.msg{padding:12px;border-radius:14px;font-weight:900;line-height:1.7}.msg.bad{background:#fff0f0;color:#b42318}.msg.ok{background:#e8fff4;color:#146c43}.a4-wrap{overflow-x:auto;padding:8px 0}@media(max-width:840px){.a4-wrap{transform-origin:top left}.rental-contract-sheet{width:210mm!important;min-height:297mm!important;transform:scale(.44);transform-origin:top left;margin-bottom:-155mm!important}.rental-contract-sheet.period-sheet{margin-top:10mm!important}}@media print{body *{visibility:hidden}.contractArea,.contractArea *{visibility:visible}.contractArea{position:absolute;left:0;top:0;width:100%}.card:not(.contractPrint){display:none!important}.rental-contract-sheet{border:none!important;box-shadow:none!important;margin:0!important;width:210mm!important;min-height:297mm!important}@page{size:A4;margin:0}}
+    body{background:#eef3f7;color:#18314a;margin:0;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.wrap{max-width:980px;margin:0 auto;padding:18px 12px 50px}.card{background:#fff;border:1px solid #dbe5ef;border-radius:22px;padding:16px;margin-bottom:14px;box-shadow:0 8px 22px rgba(15,23,42,.04)}.title{font-size:26px;font-weight:950;margin:0 0 8px}.muted{color:#64748b;line-height:1.8}.btn{border:0;border-radius:14px;background:#1f7a5a;color:#fff;font-weight:950;padding:11px 15px;text-decoration:none;display:inline-flex;margin:6px 6px 0 0}.btn.secondary{background:#e2e8f0;color:#18314a}.msg{padding:12px;border-radius:14px;font-weight:900;line-height:1.7}.msg.bad{background:#fff0f0;color:#b42318}.msg.ok{background:#e8fff4;color:#146c43}.a4-wrap{overflow-x:auto;padding:8px 0}@media(max-width:840px){.a4-wrap{overflow-x:auto}.rental-contract-sheet{width:210mm!important;min-height:297mm!important;max-width:none!important}}@media print{body *{visibility:hidden}.contractArea,.contractArea *{visibility:visible}.contractArea{position:absolute;left:0;top:0;width:100%}.card:not(.contractPrint){display:none!important}.rental-contract-sheet{border:none!important;box-shadow:none!important;margin:0!important;width:210mm!important;min-height:297mm!important}@page{size:A4;margin:0}}
   </style>
 </head>
 <body>
@@ -23,6 +23,7 @@
   <script src="config.js?v=rental-contract-view-20260613"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" referrerpolicy="no-referrer"></script>
   <script src="rental-common.js?v=rental-contract-view-20260613"></script>
   <script>
     const R=window.YZRental;
@@ -30,10 +31,27 @@
     const contractId=params.get('contractId')||params.get('id')||'';
     const token=params.get('token')||'';
     function showMsg(text, ok=true){ const el=document.getElementById('msg'); el.className='msg '+(ok?'ok':'bad'); el.textContent=text; }
+    async function waitForContractImages(){
+      const root=document.getElementById('contractArea');
+      const imgs=Array.from(root.querySelectorAll('img'));
+      await Promise.all(imgs.map(img=>img.complete?Promise.resolve():new Promise(resolve=>{ img.onload=resolve; img.onerror=resolve; setTimeout(resolve,2500); })));
+      if(document.fonts && document.fonts.ready){ try{ await document.fonts.ready; }catch(_e){} }
+      await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+    }
+    async function downloadCurrentViewPdf(){
+      try{
+        if(!window.html2pdf) throw new Error('PDF 產生工具尚未載入。');
+        const area=document.getElementById('contractArea');
+        await waitForContractImages();
+        const opt={margin:0, filename:(contractId||'rental-contract')+'.pdf', image:{type:'jpeg',quality:0.98}, html2canvas:{scale:2,useCORS:true,allowTaint:true,backgroundColor:'#ffffff',scrollX:0,scrollY:0,windowWidth:1200}, jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}, pagebreak:{mode:['css','legacy'], after:'.rental-contract-sheet'}};
+        await window.html2pdf().set(opt).from(area).save();
+      }catch(e){ showMsg(e.message||String(e), false); }
+    }
+    window.downloadCurrentViewPdf=downloadCurrentViewPdf;
     function renderActions(c){
       const box=document.getElementById('actions');
       const pdf=c.officialPdfUrl||'';
-      box.innerHTML = `${pdf?`<a class="btn" href="${R.esc(pdf)}" target="_blank" rel="noopener">下載正式 PDF</a>`:''}<button class="btn secondary" type="button" onclick="window.print()">列印契約</button>`;
+      box.innerHTML = `${pdf?`<a class="btn secondary" href="${R.esc(pdf)}" target="_blank" rel="noopener">開啟已產生 PDF</a>`:''}<button class="btn" type="button" onclick="downloadCurrentViewPdf()">下載目前畫面 PDF</button><button class="btn secondary" type="button" onclick="window.print()">列印契約</button>`;
     }
     async function load(){
       try{

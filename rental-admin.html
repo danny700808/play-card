@@ -56,6 +56,7 @@
       if(isActive){
         b('secondary','previewOfficialContract()','查看契約');
         b('secondary','printOfficialContract()','預覽 / 列印 / PDF');
+        b('','regenerateOfficialPdf()','重新產生 / 重新傳送正式契約');
         b('danger','completeReturn()','確認退租完成');
         return `<div class="btn-row">${parts.join('')}</div>`;
       }
@@ -92,7 +93,35 @@
     function readEquipmentItems(){ return Array.from(document.querySelectorAll('[data-eq-row]')).map(row=>({name:R.clean(row.querySelector('.eq-name')?.value),note:R.clean(row.querySelector('.eq-note')?.value)})).filter(x=>x.name||x.note); }
     window.addEquipmentRow=function(){ const box=R.qs('equipmentRows'); box.insertAdjacentHTML('beforeend', equipmentRows([{name:'',note:''}])); bindEditorPreview(); };
     window.removeEquipmentRow=function(btn){ btn.closest('[data-eq-row]')?.remove(); R.qs('contractPreview').innerHTML=R.renderContractHtml(collect()); };
-    function collect(){ const type=R.val('rentalType'); const items=readEquipmentItems(); const deliveryDate=R.val('deliveryDate'); const startDate=R.val('startDate')||deliveryDate; const periods=R.val('periods')||1; const signed=selected||{}; return { sourceKind:R.val('sourceKind'), applicationId:R.val('applicationId'), contractId:R.val('contractId'), source:R.val('sourceKind')==='adminDraft'?'admin':'application', stage:'formal-draft', rentalType:type, status:R.val('status')||'草稿', contractTitle:R.defaultTitle(type), customerName:R.val('customerName'), customerPhone:R.val('customerPhone'), customerEmail:R.val('customerEmail'), customerLineUserId:R.val('customerLineUserId'), customerIdNumber:R.val('customerIdNumber'), customerAddress:R.val('customerAddress'), customerSignatureDataUrl:signed.customerSignatureDataUrl||signed.signatureDataUrl||'', signatureDataUrl:signed.customerSignatureDataUrl||signed.signatureDataUrl||'', customerIdImageWatermarkedDataUrl:signed.customerIdImageWatermarkedDataUrl||signed.idImageWatermarkedDataUrl||signed.customerIdImageDataUrl||'', idImageWatermarkedDataUrl:signed.customerIdImageWatermarkedDataUrl||signed.idImageWatermarkedDataUrl||'', equipmentName:items[0]?.name||'', serialNo:items[0]?.note||'', equipmentItems:items, includedItems:items.map(x=>`${x.name}${x.note?' / '+x.note:''}`).join('\n'), periods:periods, periodDays:90, rentDays:Number(periods||1)*90, rentalMethod:'實體租用', startDate:startDate, endDate:R.val('endDate')||R.calcEndDate(startDate,periods,type,Number(periods||1)*90), rentFee:R.val('rentFee'), shippingFee:R.val('shippingFee'), depositFee:R.val('depositFee'), shippingMethod:R.val('shippingMethod'), deliveryDate:deliveryDate||startDate, deliveryTime:'', deliveryDateTime:deliveryDate||startDate, adminNote:R.val('adminNote')}; }
+    function collect(){
+      const type=R.val('rentalType');
+      const items=readEquipmentItems();
+      const deliveryDate=R.val('deliveryDate');
+      const startDate=R.val('startDate')||deliveryDate;
+      const periods=R.val('periods')||1;
+      const signed=selected||{};
+      const sigData=signed.customerSignatureDataUrl||signed.signatureDataUrl||'';
+      const sigUrl=signed.customerSignatureUrl||signed.signatureUrl||'';
+      const idData=signed.customerIdImageWatermarkedDataUrl||signed.idImageWatermarkedDataUrl||signed.customerIdImageDataUrl||signed.idImageDataUrl||'';
+      const idUrl=signed.customerIdImageUrl||signed.idImageUrl||signed.customerIdImageWatermarkedUrl||'';
+      return {
+        sourceKind:R.val('sourceKind'), applicationId:R.val('applicationId'), contractId:R.val('contractId'),
+        source:R.val('sourceKind')==='adminDraft'?'admin':'application', stage:'formal-draft',
+        rentalType:type, status:R.val('status')||'草稿', contractTitle:R.defaultTitle(type),
+        customerName:R.val('customerName'), customerPhone:R.val('customerPhone'), customerEmail:R.val('customerEmail'), customerLineUserId:R.val('customerLineUserId'),
+        customerIdNumber:R.val('customerIdNumber'), customerAddress:R.val('customerAddress'),
+        customerSignatureDataUrl:sigData, signatureDataUrl:sigData, customerSignatureUrl:sigUrl, signatureUrl:sigUrl,
+        customerIdImageWatermarkedDataUrl:idData, idImageWatermarkedDataUrl:idData, customerIdImageDataUrl:idData, idImageDataUrl:idData,
+        customerIdImageUrl:idUrl, idImageUrl:idUrl,
+        equipmentName:items[0]?.name||'', serialNo:items[0]?.note||'', equipmentItems:items,
+        includedItems:items.map(x=>`${x.name}${x.note?' / '+x.note:''}`).join('\n'),
+        periods:periods, periodDays:90, rentDays:Number(periods||1)*90, rentalMethod:'實體租用',
+        startDate:startDate, endDate:R.val('endDate')||R.calcEndDate(startDate,periods,type,Number(periods||1)*90),
+        rentFee:R.val('rentFee'), shippingFee:R.val('shippingFee'), depositFee:R.val('depositFee'),
+        shippingMethod:R.val('shippingMethod'), deliveryDate:deliveryDate||startDate, deliveryTime:'', deliveryDateTime:deliveryDate||startDate,
+        adminNote:R.val('adminNote'), officialPdfUrl:signed.officialPdfUrl||'', officialPdfPath:signed.officialPdfPath||'', officialContractViewUrl:signed.officialContractViewUrl||''
+      };
+    }
     function syncRentalDatesFromDelivery(changedId){ const type=R.val('rentalType'); const periods=R.val('periods')||1; if(changedId==='deliveryDate' && R.val('deliveryDate')) R.setVal('startDate', R.val('deliveryDate')); if((changedId==='startDate'||changedId==='deliveryDate'||changedId==='periods') && (R.val('startDate')||R.val('deliveryDate'))){ const st=R.val('startDate')||R.val('deliveryDate'); R.setVal('startDate', st); R.setVal('deliveryDate', R.val('deliveryDate')||st); R.setVal('endDate', R.calcEndDate(st,periods,type,Number(periods||1)*90)); } }
     function bindEditorPreview(){ document.querySelectorAll('#detailBox input,#detailBox textarea,#detailBox select').forEach(el=>el.oninput=()=>{ syncRentalDatesFromDelivery(el.id); R.qs('contractPreview').innerHTML=R.renderContractHtml(collect()); }); }
 
@@ -166,7 +195,9 @@
         if(img.complete) return Promise.resolve();
         return new Promise(resolve=>{ img.onload=resolve; img.onerror=resolve; setTimeout(resolve,2500); });
       }));
-      await new Promise(resolve=>setTimeout(resolve,250));
+      if(document.fonts && document.fonts.ready){ try{ await document.fonts.ready; }catch(_e){} }
+      await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+      await new Promise(resolve=>setTimeout(resolve,350));
     }
     async function generatePdfBlob(contract){
       if(!window.html2pdf) throw new Error('PDF 產生工具尚未載入，請重新整理後再試。');
@@ -178,11 +209,13 @@
       wrap.style.background='#ffffff';
       wrap.style.zIndex='99998';
       wrap.style.pointerEvents='none';
+      wrap.style.opacity='1';
+      wrap.className='rental-pdf-render-root';
       wrap.innerHTML=R.renderContractHtml(contract);
       document.body.appendChild(wrap);
       try{
         await waitForImages(wrap);
-        const opt={margin:0, filename:(contract.contractNo||contract.contractId||'rental-contract')+'.pdf', image:{type:'jpeg',quality:0.98}, html2canvas:{scale:2,useCORS:true,allowTaint:true,backgroundColor:'#ffffff',scrollX:0,scrollY:0}, jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}, pagebreak:{mode:['css','legacy']}};
+        const opt={margin:0, filename:(contract.contractNo||contract.contractId||'rental-contract')+'.pdf', image:{type:'jpeg',quality:0.98}, html2canvas:{scale:2,useCORS:true,allowTaint:true,backgroundColor:'#ffffff',scrollX:0,scrollY:0,windowWidth:1200}, jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}, pagebreak:{mode:['css','legacy'], after:'.rental-contract-sheet'}};
         const worker=window.html2pdf().set(opt).from(wrap);
         const blob=await worker.outputPdf('blob');
         if(!blob || blob.size < 1000) throw new Error('PDF 內容異常或過小，請確認契約預覽已正常顯示後再試。');
@@ -318,6 +351,15 @@
         R.toast(msg, false);
       }
     };
+    window.regenerateOfficialPdf=async function(){
+      const id=R.val('contractId');
+      if(!id) return R.toast('請先選擇合約。', false);
+      const st=R.val('deliveryDate') || R.val('startDate');
+      if(st){ R.setVal('deliveryDate', st); R.setVal('startDate', st); syncRentalDatesFromDelivery('deliveryDate'); }
+      if(!confirm('確定要用目前畫面資料重新產生正式 PDF，並重新建立 LINE 正式契約查看連結通知？')) return;
+      return window.markDelivered();
+    };
+
     window.cancelApplication=async function(){
       const id=R.val('applicationId');
       if(!id) return R.toast('找不到申請資料，無法取消。', false);
