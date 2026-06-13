@@ -109,10 +109,86 @@ async function findRentalApplication(applicationKey) {
   return null;
 }
 
-async function handleRentalApplicationLink({ applicationKey, declaredName, lineUserId, replyToken }) {
-  const app = await findRentalApplication(applicationKey);
+function rentalApplicationIsOpenForLineLink(data) {
+  const status = normalizeText(data.status || '').toLowerCase();
+  if (status.includes('取消') || status.includes('刪除') || status.includes('退租')) return false;
+  if (normalizeText(data.lineLinkStatus) === 'linked') return false;
+  if (data.customerLineUserId || data.lineUserId) return false;
+  return true;
+}
+
+async function findRentalApplicationByPhone(phoneText) {
+  const phone = normalizePhone(phoneText);
+  if (!phone) return null;
+
+  const exactFields = ['customerPhoneNormalized', 'phoneNormalized', 'mobileNormalized'];
+  for (const field of exactFields) {
+    try {
+      const snap = await db.collection('rentalApplications')
+        .where(field, '==', phone)
+        .limit(10)
+        .get();
+      const rows = [];
+      snap.forEach(doc => rows.push({ id: doc.id, ref: doc.ref, data: doc.data() || {} }));
+      const open = rows.filter(row => rentalApplicationIsOpenForLineLink(row.data));
+      if (open.length) {
+        open.sort((a,b)=>String(b.data.createdAtText || b.data.createdAt || '').localeCompare(String(a.data.createdAtText || a.data.createdAt || '')));
+        return open[0];
+      }
+      if (rows.length) return rows[0];
+    } catch (error) {
+      console.warn('findRentalApplicationByPhone exact query failed:', field, error.message || error);
+    }
+  }
+
+  const phoneFields = ['customerPhone', 'phone', 'mobile'];
+  for (const field of phoneFields) {
+    try {
+      const snap = await db.collection('rentalApplications')
+        .where(field, '==', phoneText)
+        .limit(10)
+        .get();
+      const rows = [];
+      snap.forEach(doc => rows.push({ id: doc.id, ref: doc.ref, data: doc.data() || {} }));
+      const open = rows.filter(row => rentalApplicationIsOpenForLineLink(row.data));
+      if (open.length) return open[0];
+      if (rows.length) return rows[0];
+    } catch (error) {
+      console.warn('findRentalApplicationByPhone raw query failed:', field, error.message || error);
+    }
+  }
+
+  try {
+    const snap = await db.collection('rentalApplications').limit(200).get();
+    const rows = [];
+    snap.forEach(doc => {
+      const data = doc.data() || {};
+      const candidate = normalizePhone(data.customerPhone || data.phone || data.mobile || data.contactPhone || '');
+      if (candidate === phone) rows.push({ id: doc.id, ref: doc.ref, data });
+    });
+    const open = rows.filter(row => rentalApplicationIsOpenForLineLink(row.data));
+    if (open.length) {
+      open.sort((a,b)=>String(b.data.createdAtText || b.data.createdAt || '').localeCompare(String(a.data.createdAtText || a.data.createdAt || '')));
+      return open[0];
+    }
+    if (rows.length) return rows[0];
+  } catch (error) {
+    console.error('findRentalApplicationByPhone fallback failed:', error);
+  }
+
+  return null;
+}
+
+async function handleRentalApplicationLink({ applicationKey, declaredName, lineUserId, replyToken, mode }) {
+  const phoneMode = mode === 'phone';
+  const app = phoneMode ? await findRentalApplicationByPhone(applicationKey) : await findRentalApplication(applicationKey);
   if (!app) {
-    await replyLineMessage(replyToken, `找不到租賃申請編號：${applicationKey}。請確認是否完整複製表單送出後產生的文字。`);
+    await replyLineMessage(
+      replyToken,
+      phoneMode
+        ? `找不到此行動電話的租賃申請：${applicationKey}\n請確認您貼上的電話是否與申請表填寫一致。`
+        : `找不到租賃申請編號：${applicationKey}。請確認是否完整複製表單送出後產生的文字。`
+    );
     return;
   }
 
@@ -121,7 +197,10 @@ async function handleRentalApplicationLink({ applicationKey, declaredName, lineU
   const data = app.data || {};
   const applicationNo = normalizeText(data.applicationNo || data.applicationId || app.id);
   const customerName = normalizeText(data.customerName || declaredName || '未填姓名');
+  const customerPhone = normalizeText(data.customerPhone || data.phone || data.mobile || applicationKey || '');
+  const phoneKey = normalizePhone(customerPhone || applicationKey);
   const now = admin.firestore.FieldValue.serverTimestamp();
+  const lineConfirmText = phoneKey ? `租賃申請${phoneKey}` : `租賃申請 ${applicationNo} ${customerName}`;
 
   await app.ref.set({
     lineUserId,
@@ -130,12 +209,23 @@ async function handleRentalApplicationLink({ applicationKey, declaredName, lineU
     lineLinkStatus: 'linked',
     lineLinkedAt: now,
     lineLinkedAtText: new Date().toISOString(),
-    lineConfirmText: `租賃申請 ${applicationNo} ${customerName}`,
-    status: data.status || '待店家確認',
+    lineConfirmText,
+    customerPhoneNormalized: phoneKey || normalizePhone(customerPhone),
+    status: data.status || 'LINE 已連結',
     updatedAt: now
   }, { merge: true });
 
-  await replyLineMessage(replyToken, `已收到您的租賃申請：${applicationNo}\n柚子樂器會依照您填寫的資料與您確認設備、金額與日期。`);
+  await replyLineMessage(replyToken, [
+    '柚子樂器已收到您的設備租賃申請。',
+    '',
+    '我們已將此 LINE 與您的租賃申請資料完成連結，後續會由專人與您確認租用設備、租金押金、配送方式與預估配送／安裝日期。',
+    '',
+    `申請人：${customerName}`,
+    `行動電話：${customerPhone || phoneKey || '未填寫'}`,
+    `申請編號：${applicationNo}`,
+    '',
+    '若您有其他問題，也可以直接在此 LINE 對話中留言詢問。'
+  ].join('\n'));
 
   const managerLineUserId = await getPrimaryManagerLineUserId();
   if (managerLineUserId && managerLineUserId !== lineUserId) {
@@ -144,7 +234,7 @@ async function handleRentalApplicationLink({ applicationKey, declaredName, lineU
     const message = [
       '有客人完成租賃 LINE 連結',
       `姓名：${customerName}`,
-      `電話：${normalizeText(data.customerPhone || '')}`,
+      `電話：${customerPhone || phoneKey || '未填寫'}`,
       `申請編號：${applicationNo}`,
       `租用需求：${equipment || '未填寫'}`,
       `希望方式：${normalizeText(data.shippingMethod || '')}`,
@@ -540,6 +630,7 @@ exports.lineWebhook = onRequest(
         const lineUserId = event.source && event.source.userId;
         const replyToken = event.replyToken;
 
+        const rentalPhoneMatch = text.match(/^租賃申請\s*([0-9+()\-\s]{6,20})$/i);
         const rentalMatch = text.match(/^租賃申請\s+([^\s]+)(?:\s+(.+))?$/i);
         const employeeMatch = text.match(/^柚子員工綁定\s+([^\s]+@[^\s]+)$/i);
         const managerMatch = text.match(/^柚子主管綁定\s+([^\s]+@[^\s]+)$/i);
@@ -550,12 +641,24 @@ exports.lineWebhook = onRequest(
           continue;
         }
 
+        if (rentalPhoneMatch) {
+          await handleRentalApplicationLink({
+            applicationKey: normalizePhone(rentalPhoneMatch[1]),
+            declaredName: '',
+            lineUserId,
+            replyToken,
+            mode: 'phone'
+          });
+          continue;
+        }
+
         if (rentalMatch) {
           await handleRentalApplicationLink({
             applicationKey: normalizeText(rentalMatch[1]),
             declaredName: normalizeText(rentalMatch[2] || ''),
             lineUserId,
-            replyToken
+            replyToken,
+            mode: 'applicationNo'
           });
           continue;
         }
