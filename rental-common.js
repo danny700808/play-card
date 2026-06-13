@@ -79,6 +79,11 @@
     const base=location.origin+location.pathname.replace(/[^\/]*$/,'');
     return base+'rental-my-contract.html?contractId='+encodeURIComponent(id)+'&token='+encodeURIComponent(token);
   }
+  function officialContractUrl(contract){
+    const id=clean(contract.contractId||contract.__id); const token=clean(contract.officialContractToken||contract.customerToken||contract.signToken||contract.token);
+    const base=location.origin+location.pathname.replace(/[^\/]*$/,'');
+    return base+'rental-contract.html?contractId='+encodeURIComponent(id)+'&token='+encodeURIComponent(token);
+  }
   function renderContractHtml(contract, opts){
     contract=contract||{}; opts=opts||{};
     const type=clean(contract.rentalType||contract.type);
@@ -181,6 +186,6 @@
         <div class="contract-date">中華民國 ${esc(dateText)}</div><div class="rental-page-no">第 2 頁 / 共 2 頁</div>
       </div>`;
   }
-  Object.assign(Rental,{clean,num,ymd,rocDate,addDays,fmtMoney,normalizeDeliveryMethod,esc,qs,val,checked,setVal,show,hide,toast,user,isManager,requireManager,db,call,all,get,set,nowText,contractStatus,applicationStatus,rentalTypeLabel,defaultIncludedItems,parseEquipmentItems,defaultTitle,calcEndDate,signUrl,myContractUrl,renderContractHtml,functionUrl});
+  Object.assign(Rental,{clean,num,ymd,rocDate,addDays,fmtMoney,normalizeDeliveryMethod,esc,qs,val,checked,setVal,show,hide,toast,user,isManager,requireManager,db,call,all,get,set,nowText,contractStatus,applicationStatus,rentalTypeLabel,defaultIncludedItems,parseEquipmentItems,defaultTitle,calcEndDate,signUrl,myContractUrl,officialContractUrl,renderContractHtml,functionUrl});
   global.YZRental = Rental;
 })(window);

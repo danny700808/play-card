@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>設備租賃正式契約</title>
+  <link rel="stylesheet" href="style.css?v=rental-contract-20260613">
+  <style>
+    body{background:#eef3f7;color:#18314a;margin:0}.wrap{max-width:1100px;margin:0 auto;padding:18px 12px 54px}.card2{background:#fff;border:1px solid #dbe5ef;border-radius:24px;padding:18px;margin-bottom:16px;box-shadow:0 10px 28px rgba(15,23,42,.04)}.title{font-size:28px;font-weight:950;margin:0 0 8px}.muted{font-size:13px;color:#64748b;line-height:1.8}.btn{border:0;border-radius:14px;background:#1f7a5a;color:#fff;font-weight:950;padding:11px 15px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}.btn.secondary{background:#e2e8f0;color:#18314a}.btn-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.msg{margin-top:12px;border-radius:14px;padding:12px 14px;font-weight:900;line-height:1.7}.msg.ok{background:#e8fff4;color:#146c43}.msg.bad{background:#fff0f0;color:#b42318}.status{display:inline-block;border-radius:999px;padding:6px 11px;background:#e8fff4;color:#146c43;font-weight:950}.summary-line{line-height:1.9;margin-top:10px}.contract-shell{overflow:auto;background:#f8fafc;border-radius:18px;padding:10px}@media(max-width:840px){.wrap{padding:10px 6px}.card2{padding:12px;border-radius:16px}.title{font-size:23px}.contract-shell{padding:0;background:transparent}}@media print{body{background:#fff!important}.no-print{display:none!important}.wrap{max-width:none!important;margin:0!important;padding:0!important}.card2{border:0!important;box-shadow:none!important;margin:0!important;padding:0!important}.contract-shell{overflow:visible!important;background:#fff!important;padding:0!important}#contractPreview{margin:0!important}@page{size:A4;margin:0}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="card2 no-print">
+      <h1 class="title">設備租賃正式契約</h1>
+      <div class="muted">此頁為柚子樂器正式契約頁面。您可以在此查看契約，或使用「列印 / 另存 PDF」自行保存。</div>
+      <div id="summary">讀取中...</div>
+      <div class="btn-row">
+        <button class="btn" type="button" onclick="window.print()">列印 / 另存 PDF</button>
+        <a class="btn secondary" href="https://lin.ee/Fx5Y2mL" target="_blank" rel="noopener">回到官方 LINE</a>
+      </div>
+      <div id="msg"></div>
+    </section>
+    <section class="card2">
+      <div class="contract-shell"><div id="contractPreview">讀取中...</div></div>
+    </section>
+  </div>
+  <script src="config.js?v=rental-contract-20260613"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="rental-common.js?v=rental-contract-20260613"></script>
+  <script>
+    const R=window.YZRental;
+    const params=new URLSearchParams(location.search);
+    const contractId=params.get('contractId')||params.get('id')||'';
+    const token=params.get('token')||'';
+    async function load(){
+      try{
+        if(!contractId || !token) throw new Error('契約連結不完整，請確認是否複製完整網址。');
+        const contract=await R.get('rentalContracts',contractId);
+        if(!contract) throw new Error('找不到這份契約。');
+        const validTokens=[contract.officialContractToken,contract.customerToken,contract.signToken,contract.token].map(R.clean).filter(Boolean);
+        if(!validTokens.includes(R.clean(token))) throw new Error('契約連結驗證失敗。');
+        const allowed=['租賃中','已簽署','待配送 / 待安裝','到期提醒中','續約待確認','已退租'];
+        if(!allowed.includes(R.clean(contract.status||'')) && !contract.officialConfirmedAt && !contract.officialContractUrl){
+          throw new Error('這份契約尚未正式確認成立，暫時無法查看正式契約。');
+        }
+        const display=Object.assign({_officialPreview:true}, contract);
+        R.qs('summary').innerHTML=`<div class="summary-line"><span class="status">${R.esc(contract.status||'租賃中')}</span><br><b>客戶：</b>${R.esc(contract.customerName||'')}<br><b>租期：</b>${R.esc(contract.startDate||'')} ～ ${R.esc(contract.endDate||'')}<br><b>契約編號：</b>${R.esc(contract.contractNo||contract.contractId||contract.__id||contractId)}</div>`;
+        R.qs('contractPreview').innerHTML=R.renderContractHtml(display,{officialView:true});
+      }catch(err){
+        R.qs('contractPreview').innerHTML='';
+        R.toast(err.message||String(err), false);
+      }
+    }
+    load();
+  </script>
+</body>
+</html>
