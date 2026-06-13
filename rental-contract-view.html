@@ -5,14 +5,14 @@
   <title>設備租賃正式契約</title>
   <link rel="stylesheet" href="style.css?v=rental-contract-view-20260613">
   <style>
-    body{background:#eef3f7;color:#18314a;margin:0;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.wrap{max-width:980px;margin:0 auto;padding:18px 12px 50px}.card{background:#fff;border:1px solid #dbe5ef;border-radius:22px;padding:16px;margin-bottom:14px;box-shadow:0 8px 22px rgba(15,23,42,.04)}.title{font-size:26px;font-weight:950;margin:0 0 8px}.muted{color:#64748b;line-height:1.8}.btn{border:0;border-radius:14px;background:#1f7a5a;color:#fff;font-weight:950;padding:11px 15px;text-decoration:none;display:inline-flex;margin:6px 6px 0 0}.btn.secondary{background:#e2e8f0;color:#18314a}.msg{padding:12px;border-radius:14px;font-weight:900;line-height:1.7}.msg.bad{background:#fff0f0;color:#b42318}.msg.ok{background:#e8fff4;color:#146c43}.a4-wrap{overflow-x:auto;padding:8px 0}@media(max-width:840px){.a4-wrap{transform-origin:top left}.rental-contract-sheet{width:210mm!important;min-height:297mm!important;transform:scale(.44);transform-origin:top left;margin-bottom:-155mm!important}.rental-contract-sheet.period-sheet{margin-top:10mm!important}}@media print{body *{visibility:hidden}.contractArea,.contractArea *{visibility:visible}.contractArea{position:absolute;left:0;top:0;width:100%}.card:not(.contractPrint){display:none!important}.rental-contract-sheet{border:none!important;box-shadow:none!important;margin:0!important;width:210mm!important;min-height:297mm!important}@page{size:A4;margin:0}}
+    body{background:#eef3f7;color:#18314a;margin:0;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.wrap{max-width:980px;margin:0 auto;padding:18px 12px 50px}.card{background:#fff;border:1px solid #dbe5ef;border-radius:22px;padding:16px;margin-bottom:14px;box-shadow:0 8px 22px rgba(15,23,42,.04)}.title{font-size:26px;font-weight:950;margin:0 0 8px}.muted{color:#64748b;line-height:1.8}.btn{border:0;border-radius:14px;background:#1f7a5a;color:#fff;font-weight:950;padding:11px 15px;text-decoration:none;display:inline-flex;margin:6px 6px 0 0}.btn.secondary{background:#e2e8f0;color:#18314a}.desktop-print{display:inline-flex}.msg{padding:12px;border-radius:14px;font-weight:900;line-height:1.7}.msg.bad{background:#fff0f0;color:#b42318}.msg.ok{background:#e8fff4;color:#146c43}.a4-wrap{overflow-x:auto;padding:8px 0}@media(max-width:840px){.desktop-print{display:none}.a4-wrap{transform-origin:top left}.rental-contract-sheet{width:210mm!important;min-height:297mm!important;transform:scale(.44);transform-origin:top left;margin-bottom:-155mm!important}.rental-contract-sheet.period-sheet{margin-top:10mm!important}}@media print{body *{visibility:hidden}.contractArea,.contractArea *{visibility:visible}.contractArea{position:absolute;left:0;top:0;width:100%}.card:not(.contractPrint){display:none!important}.rental-contract-sheet{border:none!important;box-shadow:none!important;margin:0!important;width:210mm!important;min-height:297mm!important}@page{size:A4;margin:0}}
   </style>
 </head>
 <body>
   <div class="wrap">
     <section class="card">
       <h1 class="title">設備租賃正式契約</h1>
-      <div class="muted">本頁為柚子樂器設備租賃正式契約查看頁。若 LINE 內無法直接預覽 PDF，請使用下方按鈕下載或用外部瀏覽器開啟。</div>
+      <div class="muted">本頁為柚子樂器設備租賃正式契約查看頁。此連結日後仍可再次開啟；請優先下載正式 PDF 保存到手機，若 LINE 內無法下載，請點右上角以瀏覽器開啟。</div>
       <div id="msg" style="margin-top:10px"></div>
       <div id="actions" style="margin-top:10px"></div>
     </section>
@@ -33,7 +33,13 @@
     function renderActions(c){
       const box=document.getElementById('actions');
       const pdf=c.officialPdfUrl||'';
-      box.innerHTML = `${pdf?`<a class="btn" href="${R.esc(pdf)}" target="_blank" rel="noopener">下載正式 PDF</a>`:''}<button class="btn secondary" type="button" onclick="window.print()">列印契約</button>`;
+      const pdfBtn = pdf ? `<a class="btn" href="${R.esc(pdf)}" target="_blank" rel="noopener" download>下載正式 PDF 保存</a>` : '<span class="muted">正式 PDF 尚未產生，請洽柚子樂器。</span>';
+      const openBrowser = `<button class="btn secondary" type="button" onclick="openInBrowserHint()">手機無法下載時</button>`;
+      const printBtn = `<button class="btn secondary desktop-print" type="button" onclick="window.print()">列印契約</button>`;
+      box.innerHTML = `${pdfBtn}${openBrowser}${printBtn}<div class="muted" style="margin-top:10px">本連結可日後再次開啟查看；手機上也可截圖留存。若 LINE 內建瀏覽器無法下載 PDF，請點右上角選「以瀏覽器開啟」後再下載。</div>`;
+    }
+    function openInBrowserHint(){
+      alert('若 LINE 內無法下載或畫面空白，請點右上角「⋯」或分享按鈕，選擇「以瀏覽器開啟」，再按「下載正式 PDF 保存」。');
     }
     async function load(){
       try{
