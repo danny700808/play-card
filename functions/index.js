@@ -134,7 +134,7 @@ async function handleRentalApplicationLink({ applicationKey, declaredName, lineU
     updatedAt: now
   }, { merge: true });
 
-  await replyLineMessage(replyToken, `已收到您的租賃申請：${applicationNo}\n柚子樂器會依照您填寫的資料與您確認設備、金額與日期。`);
+  await replyLineMessage(replyToken, `已收到您的租賃申請：${applicationNo}\n\n柚子樂器會先在 LINE 與您再次確認租用機型、安裝／配送時間與相關費用。\n\n雙方確認完成後，我們會再傳送正式資料填寫連結，請您補填身分證字號、詳細資料並完成 LINE 綁定，後續才可使用續約與租賃紀錄查詢功能。`);
 
   const managerLineUserId = await getPrimaryManagerLineUserId();
   if (managerLineUserId && managerLineUserId !== lineUserId) {
@@ -149,7 +149,10 @@ async function handleRentalApplicationLink({ applicationKey, declaredName, lineU
       `希望方式：${normalizeText(data.shippingMethod || '')}`,
       `希望日期：${normalizeText(data.preferredDate || '')} ${normalizeText(data.preferredTime || '')}`.trim(),
       '',
-      `查看申請資料：${adminUrl}`
+      `查看申請資料：${adminUrl}`,
+      '',
+      '客人 LINE 配對文字：',
+      `租賃申請 ${applicationNo} ${customerName}`
     ].join('\n');
     await pushLineMessage(managerLineUserId, message);
   }
