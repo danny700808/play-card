@@ -59,11 +59,12 @@
     }
     async function load(){
       try{
-        contract=await R.get('rentalContracts', contractId); if(!contract) throw new Error('找不到合約');
-        if(R.clean(contract.signToken||contract.token)!==R.clean(token)) throw new Error('合約連結驗證失敗');
+        const loaded=await R.call('rentalGetContractHttp',{contractId,token});
+        contract=loaded.contract;
+        if(!contract) throw new Error('找不到合約');
         signed=!!contract.customerSignedAt;
         R.setVal('customerIdNumber', contract.customerIdNumber||contract.customerTaxId||'');
-        watermarkedIdImage=contract.customerIdImageWatermarkedDataUrl||contract.idImageWatermarkedDataUrl||'';
+        watermarkedIdImage=contract.customerIdImageWatermarkedDataUrl||contract.customerIdImageUrl||contract.idImageWatermarkedDataUrl||contract.idImageUrl||'';
         if(watermarkedIdImage){ const img=R.qs('idPreview'); img.src=watermarkedIdImage; img.style.display='block'; }
         refreshPreview();
         if(signed){ R.qs('identityPanel').style.display='none'; R.qs('signPanel').style.display='none'; R.qs('submitPanel').innerHTML='<h2>此資料已送出完成</h2><p class="small">已送出正式資料與簽名，待柚子樂器確認收款與設備交付後，將另行透過 LINE 發送正式契約 PDF。</p>'; }
@@ -125,10 +126,10 @@
       if(!validateForm()) return;
       const btn=R.qs('submitSigBtn'); btn.disabled=true; btn.textContent='送出中...'; setProgress(8,'準備送出資料...');
       try{
-        setProgress(30,'儲存身分證資料與簽名...');
-        await R.db().collection('rentalContracts').doc(contractId).set({ customerIdNumber:R.val('customerIdNumber'), customerIdImageWatermarkedDataUrl:watermarkedIdImage, customerIdImageUpdatedAt:R.nowText(), customerSubmittedFormalAt:R.nowText(), status:'待店家確認' }, {merge:true});
-        setProgress(68,'送出確認資料...');
-        await R.call('rentalSignContractHttp',{contractId,token,signatureDataUrl,customerIdNumber:R.val('customerIdNumber'),customerIdImageWatermarkedDataUrl:watermarkedIdImage});
+        setProgress(30,'上傳身分證資料與簽名...');
+        const result=await R.call('rentalSignContractHttp',{contractId,token,signatureDataUrl,customerIdNumber:R.val('customerIdNumber'),customerIdImageWatermarkedDataUrl:watermarkedIdImage});
+        setProgress(68,'更新正式租賃資料...');
+        if(result && result.contract){ contract=Object.assign({}, contract||{}, result.contract); }
         setProgress(100,'送出完成');
         showDialog('確認送出完成','您的租賃資料與簽名已送出。待柚子樂器確認收款與設備交付後，將另行透過 LINE 發送正式契約 PDF。');
         await load(); window.scrollTo({top:0,behavior:'smooth'});
