@@ -1,5 +1,6 @@
 const { onRequest } = require('firebase-functions/v2/https');
 const admin = require('firebase-admin');
+const crypto = require('crypto');
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -350,6 +351,167 @@ async function handleManagerBinding({ email, lineUserId, replyToken }) {
 
   await replyLineMessage(replyToken, `主管 LINE 綁定成功：${employee.data.name || employee.data.displayName || email}`);
 }
+
+
+function jsonResponse(res, status, payload) {
+  res.set('Content-Type', 'application/json; charset=utf-8');
+  res.status(status).send(JSON.stringify(payload || {}));
+}
+
+function handleCors(req, res) {
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') {
+    res.status(204).send('');
+    return true;
+  }
+  return false;
+}
+
+function safePublicContractData(id, data) {
+  const d = data || {};
+  const allowed = [
+    'applicationId','applicationNo','contractId','title','rentalType','type','equipmentName','modelName','itemName',
+    'serialNo','machineCode','equipmentItems','includedItems','customerName','customerPhone','customerEmail','customerAddress',
+    'address','rentFee','rentalFee','depositFee','shippingFee','shippingMethod','deliveryDate','deliveryTime','deliveryDateTime',
+    'startDate','endDate','periods','rentalPeriods','periodDays','rentDays','totalDays','rentalMethod','periodEntries',
+    'contractDate','customerIdNumber','customerIdImageUrl','customerIdImagePath','customerSignatureUrl','customerSignaturePath',
+    'customerSubmittedFormalAt','customerSignedAt','status','signToken','token','officialPdfUrl','officialPdfPath','officialContractViewUrl','officialPdfGeneratedAt','officialConfirmedAt','officialStartDate','officialEndDate'
+  ];
+  const out = { __id: id, contractId: id };
+  for (const key of allowed) {
+    if (Object.prototype.hasOwnProperty.call(d, key)) out[key] = d[key];
+  }
+  delete out.signToken;
+  delete out.token;
+  return out;
+}
+
+function parseDataUrl(dataUrl) {
+  const text = String(dataUrl || '');
+  const m = text.match(/^data:([^;]+);base64,(.+)$/);
+  if (!m) return null;
+  return { contentType: m[1], buffer: Buffer.from(m[2], 'base64') };
+}
+
+function downloadUrl(bucketName, filePath, token) {
+  return `https://firebasestorage.googleapis.com/v0/b/${encodeURIComponent(bucketName)}/o/${encodeURIComponent(filePath)}?alt=media&token=${encodeURIComponent(token)}`;
+}
+
+async function uploadDataUrlToStorage({ dataUrl, filePath, fallbackContentType }) {
+  const parsed = parseDataUrl(dataUrl);
+  if (!parsed || !parsed.buffer || !parsed.buffer.length) return null;
+  const bucketName = process.env.STORAGE_BUCKET || 'youzi-c1b74.firebasestorage.app';
+  const bucket = admin.storage().bucket(bucketName);
+  const token = crypto.randomUUID();
+  const contentType = parsed.contentType || fallbackContentType || 'application/octet-stream';
+  const file = bucket.file(filePath);
+  await file.save(parsed.buffer, {
+    resumable: false,
+    metadata: {
+      contentType,
+      metadata: { firebaseStorageDownloadTokens: token }
+    }
+  });
+  return {
+    path: filePath,
+    url: downloadUrl(bucketName, filePath, token),
+    size: parsed.buffer.length,
+    contentType
+  };
+}
+
+async function loadRentalContract(contractId, token) {
+  const id = normalizeText(contractId);
+  const signToken = normalizeText(token);
+  if (!id || !signToken) throw new Error('缺少合約編號或簽署驗證碼。');
+  const ref = db.collection('rentalContracts').doc(id);
+  const doc = await ref.get();
+  if (!doc.exists) throw new Error('找不到租賃合約。');
+  const data = doc.data() || {};
+  const savedToken = normalizeText(data.signToken || data.token);
+  if (!savedToken || savedToken !== signToken) throw new Error('合約連結驗證失敗。');
+  return { ref, id: doc.id, data };
+}
+
+exports.rentalGetContractHttp = onRequest(
+  { region: 'us-central1', cors: true },
+  async (req, res) => {
+    try {
+      if (handleCors(req, res)) return;
+      if (req.method !== 'POST') return jsonResponse(res, 405, { ok: false, message: 'Method Not Allowed' });
+      const { contractId, token } = req.body || {};
+      const contract = await loadRentalContract(contractId, token);
+      return jsonResponse(res, 200, { ok: true, contract: safePublicContractData(contract.id, contract.data) });
+    } catch (error) {
+      console.error('rentalGetContractHttp error:', error);
+      return jsonResponse(res, 400, { ok: false, message: error.message || String(error) });
+    }
+  }
+);
+
+exports.rentalSignContractHttp = onRequest(
+  { region: 'us-central1', cors: true },
+  async (req, res) => {
+    try {
+      if (handleCors(req, res)) return;
+      if (req.method !== 'POST') return jsonResponse(res, 405, { ok: false, message: 'Method Not Allowed' });
+      const { contractId, token, signatureDataUrl, customerIdNumber, customerIdImageWatermarkedDataUrl } = req.body || {};
+      const contract = await loadRentalContract(contractId, token);
+      const now = admin.firestore.FieldValue.serverTimestamp();
+      const id = contract.id;
+
+      if (!normalizeText(customerIdNumber)) throw new Error('請填寫身分證字號 / 統一編號。');
+      if (!normalizeText(signatureDataUrl)) throw new Error('請完成線上簽名。');
+      if (!normalizeText(customerIdImageWatermarkedDataUrl)) throw new Error('請上傳身分證證明圖片。');
+
+      const idUpload = await uploadDataUrlToStorage({
+        dataUrl: customerIdImageWatermarkedDataUrl,
+        filePath: `rental-ids/${id}/id-proof.jpg`,
+        fallbackContentType: 'image/jpeg'
+      });
+      const sigUpload = await uploadDataUrlToStorage({
+        dataUrl: signatureDataUrl,
+        filePath: `rental-contracts/${id}/customer-signature.png`,
+        fallbackContentType: 'image/png'
+      });
+      if (!idUpload) throw new Error('身分證證明圖片格式錯誤，請重新上傳。');
+      if (!sigUpload) throw new Error('簽名圖片格式錯誤，請重新簽名。');
+
+      const update = {
+        customerIdNumber: normalizeText(customerIdNumber),
+        customerIdImageUrl: idUpload.url,
+        customerIdImagePath: idUpload.path,
+        customerSignatureUrl: sigUpload.url,
+        customerSignaturePath: sigUpload.path,
+        customerIdImageUpdatedAt: now,
+        customerSubmittedFormalAt: now,
+        customerSignedAt: now,
+        status: '待店家確認',
+        updatedAt: now,
+        // 保險起見清除可能讓 Firestore 文件超過 1MB 的舊欄位
+        customerIdImageWatermarkedDataUrl: admin.firestore.FieldValue.delete(),
+        idImageWatermarkedDataUrl: admin.firestore.FieldValue.delete(),
+        customerIdImageDataUrl: admin.firestore.FieldValue.delete(),
+        idImageDataUrl: admin.firestore.FieldValue.delete(),
+        idCardImageDataUrl: admin.firestore.FieldValue.delete(),
+        customerSignatureDataUrl: admin.firestore.FieldValue.delete(),
+        signatureDataUrl: admin.firestore.FieldValue.delete()
+      };
+
+      await contract.ref.set(update, { merge: true });
+      return jsonResponse(res, 200, {
+        ok: true,
+        message: '租賃資料與簽名已送出。',
+        contract: safePublicContractData(id, { ...contract.data, ...update, customerIdImageUrl: idUpload.url, customerSignatureUrl: sigUpload.url, status: '待店家確認' })
+      });
+    } catch (error) {
+      console.error('rentalSignContractHttp error:', error);
+      return jsonResponse(res, 400, { ok: false, message: error.message || String(error) });
+    }
+  }
+);
 
 exports.lineWebhook = onRequest(
   {
