@@ -221,7 +221,7 @@ async function handleRentalApplicationLink({ applicationKey, declaredName, lineU
   const customerPhone = normalizeText(data.customerPhone || data.phone || data.mobile || applicationKey || '');
   const phoneKey = normalizePhone(customerPhone || applicationKey);
   const now = admin.firestore.FieldValue.serverTimestamp();
-  const lineConfirmText = phoneKey ? `租賃申請${phoneKey}` : `租賃申請 ${applicationNo} ${customerName}`;
+  const lineConfirmText = `租賃申請 ${applicationNo}`;
 
   await app.ref.set({
     lineUserId,
@@ -786,7 +786,7 @@ exports.lineWebhook = onRequest(
         const lineUserId = event.source && event.source.userId;
         const replyToken = event.replyToken;
 
-        const rentalPhoneMatch = text.match(/^租賃申請\s*([0-9+()\-\s]{6,20})$/i);
+        const rentalPhoneMatch = null; // 租賃 LINE 配對已改回使用申請編號，不再使用手機號碼配對
         const rentalMatch = text.match(/^租賃申請\s+([^\s]+)(?:\s+(.+))?$/i);
         const employeeMatch = text.match(/^柚子員工綁定\s+([^\s]+@[^\s]+)$/i);
         const managerMatch = text.match(/^柚子主管綁定\s+([^\s]+@[^\s]+)$/i);
