@@ -1,16 +1,14 @@
-name: Deploy Firebase Functions on merge
+name: Deploy LINE Webhook Function on merge
 
 on:
   push:
     branches:
       - main
-    paths:
-      - 'functions/**'
-      - '.github/workflows/firebase-hosting-merge.yml'
 
 jobs:
   deploy_functions:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -18,21 +16,19 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: 20
 
       - name: Install Firebase CLI
         run: npm install -g firebase-tools
 
       - name: Install Functions dependencies
-        run: npm install --prefix functions
+        run: npm install
+        working-directory: functions
 
-      - name: Create Firebase service account file
+      - name: Prepare Firebase credentials
+        run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 }}' > $HOME/firebase-service-account.json
+
+      - name: Deploy LINE Webhook Function only
         run: |
-          cat > "$HOME/firebase-service-account.json" <<'EOF_SERVICE_ACCOUNT'
-          ${{ secrets.FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 }}
-          EOF_SERVICE_ACCOUNT
-
-      - name: Deploy LINE and rental signing Functions
-        env:
-          GOOGLE_APPLICATION_CREDENTIALS: /home/runner/firebase-service-account.json
-        run: firebase deploy --only functions:lineWebhook,functions:rentalGetContractHttp,functions:rentalSignContractHttp --project youzi-c1b74 --non-interactive
+          export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
+          firebase deploy --only functions:lineWebhook --project youzi-c1b74
