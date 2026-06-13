@@ -49,19 +49,19 @@
         return `<div class="btn-row">${parts.join('')}</div>`;
       }
       if(isReturned){
-        b('secondary','previewOfficialContract()','查看契約');
-        b('secondary','printOfficialContract()','預覽 / 列印 / PDF');
+        b('secondary','previewCustomerView()','查看契約');
+        b('secondary','window.print()','預覽 / 列印 / PDF');
         return `<div class="btn-row">${parts.join('')}</div>`;
       }
       if(isActive){
-        b('secondary','previewOfficialContract()','查看契約');
-        b('secondary','printOfficialContract()','預覽 / 列印 / PDF');
+        b('secondary','previewCustomerView()','查看契約');
+        b('secondary','window.print()','預覽 / 列印 / PDF');
         b('danger','completeReturn()','確認退租完成');
         return `<div class="btn-row">${parts.join('')}</div>`;
       }
       if(isWaitingShop){
-        b('secondary','previewOfficialContract()','預覽正式契約');
-        b('secondary','printOfficialContract()','預覽 / 列印 / PDF');
+        b('secondary','previewCustomerView()','預覽正式契約');
+        b('secondary','window.print()','預覽 / 列印 / PDF');
         b('','markDelivered()','確認租用成立');
         if(isApp) b('secondary','cancelApplication()','取消申請');
         return `<div class="btn-row">${parts.join('')}</div>`;
@@ -88,36 +88,14 @@
       <div class="row3" style="margin-top:12px"><div class="field"><label>期數（1期=90天）</label><input id="periods" type="number" min="1" max="10" value="${R.esc(c.periods||1)}"></div><div class="field"><label>正式起租日</label><input id="startDate" type="date" value="${R.esc(c.startDate)}"></div><div class="field"><label>租賃到期日</label><input id="endDate" type="date" value="${R.esc(c.endDate)}"></div></div>
       <div class="row3"><div class="field"><label>租金</label><input id="rentFee" type="number" value="${R.esc(c.rentFee||0)}"></div><div class="field"><label>運費</label><input id="shippingFee" type="number" value="${R.esc(c.shippingFee||0)}"></div><div class="field"><label>押金</label><input id="depositFee" type="number" value="${R.esc(c.depositFee||0)}"></div></div>
       <div class="row2"><div class="field"><label>配送 / 自取方式</label><input id="shippingMethod" value="${R.esc(c.shippingMethod)}"></div><div class="field"><label>店家確認配送 / 安裝日期（正式起租日）</label><input id="deliveryDate" type="date" value="${R.esc(c.deliveryDate||c.startDate||'')}"><div class="muted">此日期會同步為正式起租日；正式到期日依 90 天 × 期數自動計算。</div></div></div><div class="field"><label>備註</label><textarea id="adminNote">${R.esc(c.adminNote||'')}</textarea></div>
-      ${(c.officialPdfUrl||c.officialContractViewUrl)?`<div class="pdf-link-box"><b>正式契約已產生：</b><br>${c.officialContractViewUrl?`<a href="${R.esc(c.officialContractViewUrl)}" target="_blank" rel="noopener">開啟正式契約查看頁</a><br>`:''}${c.officialPdfUrl?`<a href="${R.esc(c.officialPdfUrl)}" target="_blank" rel="noopener">下載正式 PDF</a><br>`:''}<span class="muted">LINE 會優先傳正式契約查看頁，頁面內可下載 PDF。</span></div>`:''}<div class="msg ok" style="background:#f8fafc;color:#334155"><b>目前階段操作：</b>系統會依案件狀態只顯示此階段需要的按鈕；客人填寫頁只是確認與預覽，正式成立需由店家確認款項、起租日與配送 / 安裝日期後再執行。</div>${actionButtons(source,c)}`; }
+      ${c.officialPdfUrl?`<div class="pdf-link-box"><b>正式 PDF 已產生：</b><br><a href="${R.esc(c.officialPdfUrl)}" target="_blank" rel="noopener">下載 / 查看正式 PDF</a><br><span class="muted">若客人未收到 LINE，可先複製此連結手動傳送。</span></div>`:''}<div class="msg ok" style="background:#f8fafc;color:#334155"><b>目前階段操作：</b>系統會依案件狀態只顯示此階段需要的按鈕；客人填寫頁只是確認與預覽，正式成立需由店家確認款項、起租日與配送 / 安裝日期後再執行。</div>${actionButtons(source,c)}`; }
     function readEquipmentItems(){ return Array.from(document.querySelectorAll('[data-eq-row]')).map(row=>({name:R.clean(row.querySelector('.eq-name')?.value),note:R.clean(row.querySelector('.eq-note')?.value)})).filter(x=>x.name||x.note); }
     window.addEquipmentRow=function(){ const box=R.qs('equipmentRows'); box.insertAdjacentHTML('beforeend', equipmentRows([{name:'',note:''}])); bindEditorPreview(); };
     window.removeEquipmentRow=function(btn){ btn.closest('[data-eq-row]')?.remove(); R.qs('contractPreview').innerHTML=R.renderContractHtml(collect()); };
-    function collect(){ const type=R.val('rentalType'); const items=readEquipmentItems(); const deliveryDate=R.val('deliveryDate'); const startDate=R.val('startDate')||deliveryDate; const periods=R.val('periods')||1; const signed=selected||{}; return { sourceKind:R.val('sourceKind'), applicationId:R.val('applicationId'), contractId:R.val('contractId'), source:R.val('sourceKind')==='adminDraft'?'admin':'application', stage:'formal-draft', rentalType:type, status:R.val('status')||'草稿', contractTitle:R.defaultTitle(type), customerName:R.val('customerName'), customerPhone:R.val('customerPhone'), customerEmail:R.val('customerEmail'), customerLineUserId:R.val('customerLineUserId'), customerIdNumber:R.val('customerIdNumber'), customerAddress:R.val('customerAddress'), customerSignatureUrl:signed.customerSignatureUrl||signed.signatureUrl||'', signatureUrl:signed.customerSignatureUrl||signed.signatureUrl||'', customerSignatureDataUrl:signed.customerSignatureDataUrl||signed.signatureDataUrl||'', signatureDataUrl:signed.customerSignatureDataUrl||signed.signatureDataUrl||'', customerIdImageUrl:signed.customerIdImageUrl||signed.customerIdImageWatermarkedUrl||signed.idImageUrl||'', customerIdImageWatermarkedUrl:signed.customerIdImageWatermarkedUrl||signed.customerIdImageUrl||signed.idImageWatermarkedUrl||'', customerIdImageWatermarkedDataUrl:signed.customerIdImageWatermarkedDataUrl||signed.idImageWatermarkedDataUrl||signed.customerIdImageDataUrl||'', idImageWatermarkedDataUrl:signed.customerIdImageWatermarkedDataUrl||signed.idImageWatermarkedDataUrl||'', equipmentName:items[0]?.name||'', serialNo:items[0]?.note||'', equipmentItems:items, includedItems:items.map(x=>`${x.name}${x.note?' / '+x.note:''}`).join('\n'), periods:periods, periodDays:90, rentDays:Number(periods||1)*90, rentalMethod:'實體租用', startDate:startDate, endDate:R.val('endDate')||R.calcEndDate(startDate,periods,type,Number(periods||1)*90), rentFee:R.val('rentFee'), shippingFee:R.val('shippingFee'), depositFee:R.val('depositFee'), shippingMethod:R.val('shippingMethod'), deliveryDate:deliveryDate||startDate, deliveryTime:'', deliveryDateTime:deliveryDate||startDate, adminNote:R.val('adminNote')}; }
+    function collect(){ const type=R.val('rentalType'); const items=readEquipmentItems(); const deliveryDate=R.val('deliveryDate'); const startDate=R.val('startDate')||deliveryDate; const periods=R.val('periods')||1; const signed=selected||{}; return { sourceKind:R.val('sourceKind'), applicationId:R.val('applicationId'), contractId:R.val('contractId'), source:R.val('sourceKind')==='adminDraft'?'admin':'application', stage:'formal-draft', rentalType:type, status:R.val('status')||'草稿', contractTitle:R.defaultTitle(type), customerName:R.val('customerName'), customerPhone:R.val('customerPhone'), customerEmail:R.val('customerEmail'), customerLineUserId:R.val('customerLineUserId'), customerIdNumber:R.val('customerIdNumber'), customerAddress:R.val('customerAddress'), customerSignatureDataUrl:signed.customerSignatureDataUrl||signed.signatureDataUrl||'', signatureDataUrl:signed.customerSignatureDataUrl||signed.signatureDataUrl||'', customerIdImageWatermarkedDataUrl:signed.customerIdImageWatermarkedDataUrl||signed.idImageWatermarkedDataUrl||signed.customerIdImageDataUrl||'', idImageWatermarkedDataUrl:signed.customerIdImageWatermarkedDataUrl||signed.idImageWatermarkedDataUrl||'', equipmentName:items[0]?.name||'', serialNo:items[0]?.note||'', equipmentItems:items, includedItems:items.map(x=>`${x.name}${x.note?' / '+x.note:''}`).join('\n'), periods:periods, periodDays:90, rentDays:Number(periods||1)*90, rentalMethod:'實體租用', startDate:startDate, endDate:R.val('endDate')||R.calcEndDate(startDate,periods,type,Number(periods||1)*90), rentFee:R.val('rentFee'), shippingFee:R.val('shippingFee'), depositFee:R.val('depositFee'), shippingMethod:R.val('shippingMethod'), deliveryDate:deliveryDate||startDate, deliveryTime:'', deliveryDateTime:deliveryDate||startDate, adminNote:R.val('adminNote')}; }
     function syncRentalDatesFromDelivery(changedId){ const type=R.val('rentalType'); const periods=R.val('periods')||1; if(changedId==='deliveryDate' && R.val('deliveryDate')) R.setVal('startDate', R.val('deliveryDate')); if((changedId==='startDate'||changedId==='deliveryDate'||changedId==='periods') && (R.val('startDate')||R.val('deliveryDate'))){ const st=R.val('startDate')||R.val('deliveryDate'); R.setVal('startDate', st); R.setVal('deliveryDate', R.val('deliveryDate')||st); R.setVal('endDate', R.calcEndDate(st,periods,type,Number(periods||1)*90)); } }
     function bindEditorPreview(){ document.querySelectorAll('#detailBox input,#detailBox textarea,#detailBox select').forEach(el=>el.oninput=()=>{ syncRentalDatesFromDelivery(el.id); R.qs('contractPreview').innerHTML=R.renderContractHtml(collect()); }); }
 
-
-    function contractViewUrl(contract){
-      contract=contract||{};
-      const id=R.clean(contract.contractId||contract.__id||R.val('contractId'));
-      const token=R.clean(contract.signToken||contract.token||contract.customerToken||(selected&&selected.signToken)||(selected&&selected.token)||'');
-      const base=location.origin+location.pathname.replace(/[^\/]*$/,'');
-      return base+'rental-contract-view.html?contractId='+encodeURIComponent(id)+(token?'&token='+encodeURIComponent(token):'');
-    }
-    window.previewOfficialContract=function(){
-      const c=collect();
-      R.qs('contractPreview').innerHTML=R.renderContractHtml(c);
-      R.toast('已切換為正式契約預覽。', true);
-    };
-    window.printOfficialContract=function(){
-      const c=collect();
-      const original=R.qs('contractPreview').innerHTML;
-      R.qs('contractPreview').innerHTML=R.renderContractHtml(c);
-      setTimeout(()=>{
-        window.print();
-        setTimeout(()=>{ R.qs('contractPreview').innerHTML=original; },300);
-      },150);
-    };
     window.previewCustomerView=function(){
       const c=collect();
       const url = c.contractId ? R.signUrl({contractId:c.contractId, signToken:'客人連結Token'}) : '儲存並產生正式連結後，系統會產生客人可開啟的正式填寫連結。';
@@ -160,35 +138,7 @@
       const actions=document.getElementById('rentalProgressActions');
       if(actions) actions.style.display='flex';
     }
-    async function waitForImages(root){
-      const imgs=Array.from(root.querySelectorAll('img'));
-      await Promise.all(imgs.map(img=>{
-        if(img.complete) return Promise.resolve();
-        return new Promise(resolve=>{ img.onload=resolve; img.onerror=resolve; setTimeout(resolve,2500); });
-      }));
-      await new Promise(resolve=>setTimeout(resolve,250));
-    }
-    async function generatePdfBlob(contract){
-      if(!window.html2pdf) throw new Error('PDF 產生工具尚未載入，請重新整理後再試。');
-      const wrap=document.createElement('div');
-      wrap.style.position='fixed';
-      wrap.style.left='0';
-      wrap.style.top='0';
-      wrap.style.width='210mm';
-      wrap.style.background='#ffffff';
-      wrap.style.zIndex='99998';
-      wrap.style.pointerEvents='none';
-      wrap.innerHTML=R.renderContractHtml(contract);
-      document.body.appendChild(wrap);
-      try{
-        await waitForImages(wrap);
-        const opt={margin:0, filename:(contract.contractNo||contract.contractId||'rental-contract')+'.pdf', image:{type:'jpeg',quality:0.98}, html2canvas:{scale:2,useCORS:true,allowTaint:true,backgroundColor:'#ffffff',scrollX:0,scrollY:0}, jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}, pagebreak:{mode:['css','legacy']}};
-        const worker=window.html2pdf().set(opt).from(wrap);
-        const blob=await worker.outputPdf('blob');
-        if(!blob || blob.size < 1000) throw new Error('PDF 內容異常或過小，請確認契約預覽已正常顯示後再試。');
-        return blob;
-      } finally{ wrap.remove(); }
-    }
+    async function generatePdfBlob(contract){ if(!window.html2pdf) throw new Error('PDF 產生工具尚未載入，請重新整理後再試。'); const wrap=document.createElement('div'); wrap.style.position='fixed'; wrap.style.left='-99999px'; wrap.style.top='0'; wrap.style.width='210mm'; wrap.innerHTML=R.renderContractHtml(contract); document.body.appendChild(wrap); try{ const opt={margin:0, filename:(contract.contractNo||contract.contractId||'rental-contract')+'.pdf', image:{type:'jpeg',quality:0.98}, html2canvas:{scale:2,useCORS:true,allowTaint:true,backgroundColor:'#ffffff'}, jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}, pagebreak:{mode:['css','legacy']}}; const worker=window.html2pdf().set(opt).from(wrap); const blob=await worker.outputPdf('blob'); return blob; } finally{ wrap.remove(); } }
     async function uploadOfficialPdf(contractId, blob, onProgress){
       if(!window.firebase || !firebase.storage) throw new Error('Firebase Storage 尚未載入，無法上傳正式 PDF。');
       if(!blob || !blob.size) throw new Error('PDF 檔案內容為空，無法上傳。');
@@ -234,15 +184,7 @@
       const url=await ref.getDownloadURL();
       return {url,path};
     }
-    async function queueOfficialContractLine(contract, viewUrl, pdfUrl){
-      const lineId=R.clean(contract.customerLineUserId||contract.lineUserId);
-      if(!lineId) return false;
-      const qid='rental-official-contract-'+(contract.contractId||contract.__id)+'-'+Date.now();
-      const period=(contract.startDate&&contract.endDate)?`${contract.startDate} ～ ${contract.endDate}`:'詳見正式契約';
-      const body=`柚子樂器設備租賃契約已正式成立\n\n租賃期間：${period}\n請點擊下方連結查看與下載正式契約：\n${viewUrl}${pdfUrl?'\n\nPDF 直接下載連結：\n'+pdfUrl:''}`;
-      await R.db().collection('notificationQueue').doc(qid).set({queueId:qid,channel:'line',targetLineUserId:lineId,targetName:R.clean(contract.customerName),targetEmail:R.clean(contract.customerEmail),title:'設備租賃正式契約',body,message:body,status:'待發送',createdAt:firebase.firestore.FieldValue.serverTimestamp(),createdAtText:R.nowText(),source:'rental-official-contract',contractId:contract.contractId||contract.__id,officialContractViewUrl:viewUrl,officialPdfUrl:pdfUrl||''},{merge:true});
-      return true;
-    }
+    async function queueOfficialContractLine(contract, pdfUrl){ const lineId=R.clean(contract.customerLineUserId||contract.lineUserId); if(!lineId) return false; const qid='rental-official-contract-'+(contract.contractId||contract.__id)+'-'+Date.now(); const period=(contract.startDate&&contract.endDate)?`${contract.startDate} ～ ${contract.endDate}`:'詳見正式契約'; const body=`柚子樂器設備租賃契約已正式成立\n\n租賃期間：${period}\n請點擊下方連結下載正式契約 PDF：\n${pdfUrl}`; await R.db().collection('notificationQueue').doc(qid).set({queueId:qid,channel:'line',targetLineUserId:lineId,targetName:R.clean(contract.customerName),targetEmail:R.clean(contract.customerEmail),title:'設備租賃正式契約',body,message:body,status:'待發送',createdAt:firebase.firestore.FieldValue.serverTimestamp(),createdAtText:R.nowText(),source:'rental-official-contract',contractId:contract.contractId||contract.__id,officialPdfUrl:pdfUrl},{merge:true}); return true; }
     window.markDelivered=async function(){
       const id=R.val('contractId');
       if(!id) return R.toast('請先儲存合約。', false);
@@ -251,11 +193,9 @@
       const missing=[];
       if(!payload.deliveryDate) missing.push('店家確認配送 / 安裝日期（正式起租日）');
       if(!payload.customerName) missing.push('客人姓名');
-      const hasSignature = !!(payload.customerSignatureUrl || payload.signatureUrl || payload.customerSignatureDataUrl || payload.signatureDataUrl);
-      const hasIdImage = !!(payload.customerIdImageUrl || payload.customerIdImageWatermarkedUrl || payload.idImageUrl || payload.idImageWatermarkedUrl || payload.customerIdImageWatermarkedDataUrl || payload.idImageWatermarkedDataUrl || payload.customerIdImageDataUrl || payload.idImageDataUrl);
-      if(!hasSignature) missing.push('甲方簽名');
+      if(!payload.customerSignatureDataUrl) missing.push('甲方簽名');
       if(!payload.customerIdNumber) missing.push('甲方身分證字號 / 統編');
-      if(!hasIdImage) missing.push('甲方身分證證明圖片');
+      if(!payload.customerIdImageWatermarkedDataUrl && !payload.idImageWatermarkedDataUrl) missing.push('甲方身分證證明圖片');
       if(missing.length){
         alert('確認租用成立前，請先完成以下資料：\n\n' + missing.map((x,i)=>(i+1)+'. '+x).join('\n'));
         return;
@@ -285,7 +225,6 @@
           officialPdfUrl:uploaded.url,
           officialPdfPath:uploaded.path,
           officialPdfGeneratedAt:R.nowText(),
-          officialContractViewUrl:contractViewUrl(Object.assign({}, payload, {contractId:id})),
           officialConfirmedAt:R.nowText(),
           confirmedDeliveryDate:payload.deliveryDate,
           officialStartDate:payload.startDate,
@@ -303,15 +242,15 @@
         savedPayload.customerIdImageDataUrl=del;
         savedPayload.idImageDataUrl=del;
         await R.db().collection('rentalContracts').doc(id).set(savedPayload,{merge:true});
-        updateRentalProgress(86,'正在建立 LINE 正式契約查看連結通知...');
-        const sent=await queueOfficialContractLine(Object.assign({},displayPayload,{contractId:id}), displayPayload.officialContractViewUrl, uploaded.url);
+        updateRentalProgress(86,'正在建立 LINE PDF 下載連結通知...');
+        const sent=await queueOfficialContractLine(Object.assign({},displayPayload,{contractId:id}), uploaded.url);
         await R.db().collection('rentalContracts').doc(id).set({
           officialPdfLineQueueCreated:!!sent,
           officialPdfLineQueueCreatedAt: sent ? R.nowText() : '',
           updatedAtText:R.nowText()
         },{merge:true});
-        completeRentalProgress(sent?'完成：正式 PDF 已產生，並已建立 LINE 正式契約查看連結通知。':'完成：正式 PDF 已產生，但此客人尚未有 LINE ID，請手動複製 PDF 連結。');
-        R.toast(sent?'已確認租用成立，正式 PDF 已上傳，並已建立 LINE 正式契約查看連結通知。':'已確認租用成立並產生正式 PDF，但此客人尚未有 LINE ID，請手動複製 PDF 連結。', true);
+        completeRentalProgress(sent?'完成：正式 PDF 已產生並建立 LINE 傳送佇列。':'完成：正式 PDF 已產生，但此客人尚未有 LINE ID，請手動複製 PDF 連結。');
+        R.toast(sent?'已確認租用成立，正式 PDF 已上傳，並已建立 LINE 傳送佇列。':'已確認租用成立並產生正式 PDF，但此客人尚未有 LINE ID，請手動複製 PDF 連結。', true);
         await loadAll();
         R.qs('contractPreview').innerHTML=R.renderContractHtml(displayPayload);
       }catch(e){

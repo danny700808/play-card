@@ -1,6 +1,5 @@
 const { onRequest } = require('firebase-functions/v2/https');
 const admin = require('firebase-admin');
-const crypto = require('crypto');
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -72,27 +71,6 @@ async function pushLineMessage(lineUserId, message) {
   }
 }
 
-async function pushLineMessageStrict(lineUserId, message) {
-  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
-  if (!lineUserId) throw new Error('缺少客人的 LINE User ID，無法發送 LINE。');
-  if (!token) throw new Error('Cloud Run 尚未設定 LINE_CHANNEL_ACCESS_TOKEN，無法發送 LINE。');
-  const response = await fetch('https://api.line.me/v2/bot/message/push', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`
-    },
-    body: JSON.stringify({
-      to: lineUserId,
-      messages: [{ type: 'text', text: message }]
-    })
-  });
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`LINE push failed ${response.status}: ${body}`);
-  }
-}
-
 async function getLineProfile(lineUserId) {
   const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
   if (!token || !lineUserId) return {};
@@ -130,86 +108,10 @@ async function findRentalApplication(applicationKey) {
   return null;
 }
 
-function rentalApplicationIsOpenForLineLink(data) {
-  const status = normalizeText(data.status || '').toLowerCase();
-  if (status.includes('取消') || status.includes('刪除') || status.includes('退租')) return false;
-  if (normalizeText(data.lineLinkStatus) === 'linked') return false;
-  if (data.customerLineUserId || data.lineUserId) return false;
-  return true;
-}
-
-async function findRentalApplicationByPhone(phoneText) {
-  const phone = normalizePhone(phoneText);
-  if (!phone) return null;
-
-  const exactFields = ['customerPhoneNormalized', 'phoneNormalized', 'mobileNormalized'];
-  for (const field of exactFields) {
-    try {
-      const snap = await db.collection('rentalApplications')
-        .where(field, '==', phone)
-        .limit(10)
-        .get();
-      const rows = [];
-      snap.forEach(doc => rows.push({ id: doc.id, ref: doc.ref, data: doc.data() || {} }));
-      const open = rows.filter(row => rentalApplicationIsOpenForLineLink(row.data));
-      if (open.length) {
-        open.sort((a,b)=>String(b.data.createdAtText || b.data.createdAt || '').localeCompare(String(a.data.createdAtText || a.data.createdAt || '')));
-        return open[0];
-      }
-      if (rows.length) return rows[0];
-    } catch (error) {
-      console.warn('findRentalApplicationByPhone exact query failed:', field, error.message || error);
-    }
-  }
-
-  const phoneFields = ['customerPhone', 'phone', 'mobile'];
-  for (const field of phoneFields) {
-    try {
-      const snap = await db.collection('rentalApplications')
-        .where(field, '==', phoneText)
-        .limit(10)
-        .get();
-      const rows = [];
-      snap.forEach(doc => rows.push({ id: doc.id, ref: doc.ref, data: doc.data() || {} }));
-      const open = rows.filter(row => rentalApplicationIsOpenForLineLink(row.data));
-      if (open.length) return open[0];
-      if (rows.length) return rows[0];
-    } catch (error) {
-      console.warn('findRentalApplicationByPhone raw query failed:', field, error.message || error);
-    }
-  }
-
-  try {
-    const snap = await db.collection('rentalApplications').limit(200).get();
-    const rows = [];
-    snap.forEach(doc => {
-      const data = doc.data() || {};
-      const candidate = normalizePhone(data.customerPhone || data.phone || data.mobile || data.contactPhone || '');
-      if (candidate === phone) rows.push({ id: doc.id, ref: doc.ref, data });
-    });
-    const open = rows.filter(row => rentalApplicationIsOpenForLineLink(row.data));
-    if (open.length) {
-      open.sort((a,b)=>String(b.data.createdAtText || b.data.createdAt || '').localeCompare(String(a.data.createdAtText || a.data.createdAt || '')));
-      return open[0];
-    }
-    if (rows.length) return rows[0];
-  } catch (error) {
-    console.error('findRentalApplicationByPhone fallback failed:', error);
-  }
-
-  return null;
-}
-
-async function handleRentalApplicationLink({ applicationKey, declaredName, lineUserId, replyToken, mode }) {
-  const phoneMode = mode === 'phone';
-  const app = phoneMode ? await findRentalApplicationByPhone(applicationKey) : await findRentalApplication(applicationKey);
+async function handleRentalApplicationLink({ applicationKey, declaredName, lineUserId, replyToken }) {
+  const app = await findRentalApplication(applicationKey);
   if (!app) {
-    await replyLineMessage(
-      replyToken,
-      phoneMode
-        ? `找不到此行動電話的租賃申請：${applicationKey}\n請確認您貼上的電話是否與申請表填寫一致。`
-        : `找不到租賃申請編號：${applicationKey}。請確認是否完整複製表單送出後產生的文字。`
-    );
+    await replyLineMessage(replyToken, `找不到租賃申請編號：${applicationKey}。請確認是否完整複製表單送出後產生的文字。`);
     return;
   }
 
@@ -218,10 +120,7 @@ async function handleRentalApplicationLink({ applicationKey, declaredName, lineU
   const data = app.data || {};
   const applicationNo = normalizeText(data.applicationNo || data.applicationId || app.id);
   const customerName = normalizeText(data.customerName || declaredName || '未填姓名');
-  const customerPhone = normalizeText(data.customerPhone || data.phone || data.mobile || applicationKey || '');
-  const phoneKey = normalizePhone(customerPhone || applicationKey);
   const now = admin.firestore.FieldValue.serverTimestamp();
-  const lineConfirmText = `租賃申請 ${applicationNo}`;
 
   await app.ref.set({
     lineUserId,
@@ -230,23 +129,12 @@ async function handleRentalApplicationLink({ applicationKey, declaredName, lineU
     lineLinkStatus: 'linked',
     lineLinkedAt: now,
     lineLinkedAtText: new Date().toISOString(),
-    lineConfirmText,
-    customerPhoneNormalized: phoneKey || normalizePhone(customerPhone),
-    status: data.status || 'LINE 已連結',
+    lineConfirmText: `租賃申請 ${applicationNo} ${customerName}`,
+    status: data.status || '待店家確認',
     updatedAt: now
   }, { merge: true });
 
-  await replyLineMessage(replyToken, [
-    '柚子樂器已收到您的設備租賃申請。',
-    '',
-    '我們已將此 LINE 與您的租賃申請資料完成連結，後續會由專人與您確認租用設備、租金押金、配送方式與預估配送／安裝日期。',
-    '',
-    `申請人：${customerName}`,
-    `行動電話：${customerPhone || phoneKey || '未填寫'}`,
-    `申請編號：${applicationNo}`,
-    '',
-    '若您有其他問題，也可以直接在此 LINE 對話中留言詢問。'
-  ].join('\n'));
+  await replyLineMessage(replyToken, `已收到您的租賃申請：${applicationNo}\n柚子樂器會依照您填寫的資料與您確認設備、金額與日期。`);
 
   const managerLineUserId = await getPrimaryManagerLineUserId();
   if (managerLineUserId && managerLineUserId !== lineUserId) {
@@ -255,7 +143,7 @@ async function handleRentalApplicationLink({ applicationKey, declaredName, lineU
     const message = [
       '有客人完成租賃 LINE 連結',
       `姓名：${customerName}`,
-      `電話：${customerPhone || phoneKey || '未填寫'}`,
+      `電話：${normalizeText(data.customerPhone || '')}`,
       `申請編號：${applicationNo}`,
       `租用需求：${equipment || '未填寫'}`,
       `希望方式：${normalizeText(data.shippingMethod || '')}`,
@@ -463,302 +351,6 @@ async function handleManagerBinding({ email, lineUserId, replyToken }) {
   await replyLineMessage(replyToken, `主管 LINE 綁定成功：${employee.data.name || employee.data.displayName || email}`);
 }
 
-
-function jsonResponse(res, status, payload) {
-  res.set('Content-Type', 'application/json; charset=utf-8');
-  res.status(status).send(JSON.stringify(payload || {}));
-}
-
-function handleCors(req, res) {
-  res.set('Access-Control-Allow-Origin', '*');
-  res.set('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-  res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  if (req.method === 'OPTIONS') {
-    res.status(204).send('');
-    return true;
-  }
-  return false;
-}
-
-function safePublicContractData(id, data) {
-  const d = data || {};
-  const allowed = [
-    'applicationId','applicationNo','contractId','title','rentalType','type','equipmentName','modelName','itemName',
-    'serialNo','machineCode','equipmentItems','includedItems','customerName','customerPhone','customerEmail','customerAddress',
-    'address','rentFee','rentalFee','depositFee','shippingFee','shippingMethod','deliveryDate','deliveryTime','deliveryDateTime',
-    'startDate','endDate','periods','rentalPeriods','periodDays','rentDays','totalDays','rentalMethod','periodEntries',
-    'contractDate','customerIdNumber','customerIdImageUrl','customerIdImagePath','customerSignatureUrl','customerSignaturePath',
-    'customerSubmittedFormalAt','customerSignedAt','status','signToken','token','officialPdfUrl','officialPdfPath','officialContractViewUrl','officialPdfGeneratedAt','officialConfirmedAt','officialStartDate','officialEndDate'
-  ];
-  const out = { __id: id, contractId: id };
-  for (const key of allowed) {
-    if (Object.prototype.hasOwnProperty.call(d, key)) out[key] = d[key];
-  }
-  delete out.signToken;
-  delete out.token;
-  return out;
-}
-
-function parseDataUrl(dataUrl) {
-  const text = String(dataUrl || '');
-  const m = text.match(/^data:([^;]+);base64,(.+)$/);
-  if (!m) return null;
-  return { contentType: m[1], buffer: Buffer.from(m[2], 'base64') };
-}
-
-function downloadUrl(bucketName, filePath, token) {
-  return `https://firebasestorage.googleapis.com/v0/b/${encodeURIComponent(bucketName)}/o/${encodeURIComponent(filePath)}?alt=media&token=${encodeURIComponent(token)}`;
-}
-
-async function uploadDataUrlToStorage({ dataUrl, filePath, fallbackContentType }) {
-  const parsed = parseDataUrl(dataUrl);
-  if (!parsed || !parsed.buffer || !parsed.buffer.length) return null;
-  const bucketName = process.env.STORAGE_BUCKET || 'youzi-c1b74.firebasestorage.app';
-  const bucket = admin.storage().bucket(bucketName);
-  const token = crypto.randomUUID();
-  const contentType = parsed.contentType || fallbackContentType || 'application/octet-stream';
-  const file = bucket.file(filePath);
-  await file.save(parsed.buffer, {
-    resumable: false,
-    metadata: {
-      contentType,
-      metadata: { firebaseStorageDownloadTokens: token }
-    }
-  });
-  return {
-    path: filePath,
-    url: downloadUrl(bucketName, filePath, token),
-    size: parsed.buffer.length,
-    contentType
-  };
-}
-
-async function loadRentalContract(contractId, token) {
-  const id = normalizeText(contractId);
-  const signToken = normalizeText(token);
-  if (!id || !signToken) throw new Error('缺少合約編號或簽署驗證碼。');
-  const ref = db.collection('rentalContracts').doc(id);
-  const doc = await ref.get();
-  if (!doc.exists) throw new Error('找不到租賃合約。');
-  const data = doc.data() || {};
-  const savedToken = normalizeText(data.signToken || data.token);
-  if (!savedToken || savedToken !== signToken) throw new Error('合約連結驗證失敗。');
-  return { ref, id: doc.id, data };
-}
-
-exports.rentalGetContractHttp = onRequest(
-  { region: 'us-central1', cors: true },
-  async (req, res) => {
-    try {
-      if (handleCors(req, res)) return;
-      if (req.method !== 'POST') return jsonResponse(res, 405, { ok: false, message: 'Method Not Allowed' });
-      const { contractId, token } = req.body || {};
-      const contract = await loadRentalContract(contractId, token);
-      return jsonResponse(res, 200, { ok: true, contract: safePublicContractData(contract.id, contract.data) });
-    } catch (error) {
-      console.error('rentalGetContractHttp error:', error);
-      return jsonResponse(res, 400, { ok: false, message: error.message || String(error) });
-    }
-  }
-);
-
-exports.rentalSignContractHttp = onRequest(
-  { region: 'us-central1', cors: true },
-  async (req, res) => {
-    try {
-      if (handleCors(req, res)) return;
-      if (req.method !== 'POST') return jsonResponse(res, 405, { ok: false, message: 'Method Not Allowed' });
-      const { contractId, token, signatureDataUrl, customerIdNumber, customerIdImageWatermarkedDataUrl } = req.body || {};
-      const contract = await loadRentalContract(contractId, token);
-      const now = admin.firestore.FieldValue.serverTimestamp();
-      const id = contract.id;
-
-      if (!normalizeText(customerIdNumber)) throw new Error('請填寫身分證字號 / 統一編號。');
-      if (!normalizeText(signatureDataUrl)) throw new Error('請完成線上簽名。');
-      if (!normalizeText(customerIdImageWatermarkedDataUrl)) throw new Error('請上傳身分證證明圖片。');
-
-      const idUpload = await uploadDataUrlToStorage({
-        dataUrl: customerIdImageWatermarkedDataUrl,
-        filePath: `rental-ids/${id}/id-proof.jpg`,
-        fallbackContentType: 'image/jpeg'
-      });
-      const sigUpload = await uploadDataUrlToStorage({
-        dataUrl: signatureDataUrl,
-        filePath: `rental-contracts/${id}/customer-signature.png`,
-        fallbackContentType: 'image/png'
-      });
-      if (!idUpload) throw new Error('身分證證明圖片格式錯誤，請重新上傳。');
-      if (!sigUpload) throw new Error('簽名圖片格式錯誤，請重新簽名。');
-
-      const update = {
-        customerIdNumber: normalizeText(customerIdNumber),
-        customerIdImageUrl: idUpload.url,
-        customerIdImagePath: idUpload.path,
-        customerSignatureUrl: sigUpload.url,
-        customerSignaturePath: sigUpload.path,
-        customerIdImageUpdatedAt: now,
-        customerSubmittedFormalAt: now,
-        customerSignedAt: now,
-        status: '待店家確認',
-        updatedAt: now,
-        // 保險起見清除可能讓 Firestore 文件超過 1MB 的舊欄位
-        customerIdImageWatermarkedDataUrl: admin.firestore.FieldValue.delete(),
-        idImageWatermarkedDataUrl: admin.firestore.FieldValue.delete(),
-        customerIdImageDataUrl: admin.firestore.FieldValue.delete(),
-        idImageDataUrl: admin.firestore.FieldValue.delete(),
-        idCardImageDataUrl: admin.firestore.FieldValue.delete(),
-        customerSignatureDataUrl: admin.firestore.FieldValue.delete(),
-        signatureDataUrl: admin.firestore.FieldValue.delete()
-      };
-
-      await contract.ref.set(update, { merge: true });
-      return jsonResponse(res, 200, {
-        ok: true,
-        message: '租賃資料與簽名已送出。',
-        contract: safePublicContractData(id, { ...contract.data, ...update, customerIdImageUrl: idUpload.url, customerSignatureUrl: sigUpload.url, status: '待店家確認' })
-      });
-    } catch (error) {
-      console.error('rentalSignContractHttp error:', error);
-      return jsonResponse(res, 400, { ok: false, message: error.message || String(error) });
-    }
-  }
-);
-
-
-async function loadRentalApplicationById(id) {
-  const key = normalizeText(id);
-  if (!key) return null;
-  const doc = await db.collection('rentalApplications').doc(key).get();
-  if (!doc.exists) return null;
-  return { id: doc.id, ref: doc.ref, data: doc.data() || {} };
-}
-
-function firstNonEmpty(...values) {
-  for (const v of values) {
-    const text = normalizeText(v);
-    if (text) return text;
-  }
-  return '';
-}
-
-async function resolveRentalContractLineUser(contractData) {
-  let lineUserId = firstNonEmpty(
-    contractData.customerLineUserId,
-    contractData.lineUserId,
-    contractData.rentalLineUserId,
-    contractData.customerLineId
-  );
-  if (lineUserId) return { lineUserId, source: 'contract' };
-
-  const appId = firstNonEmpty(contractData.applicationId, contractData.applicationDocId, contractData.rentalApplicationId);
-  if (appId) {
-    const app = await loadRentalApplicationById(appId);
-    if (app && app.data) {
-      lineUserId = firstNonEmpty(
-        app.data.customerLineUserId,
-        app.data.lineUserId,
-        app.data.rentalLineUserId,
-        app.data.customerLineId
-      );
-      if (lineUserId) return { lineUserId, source: 'application' };
-    }
-  }
-  return { lineUserId: '', source: '' };
-}
-
-function publicContractViewUrl(contractId) {
-  return `${webBaseUrl()}rental-contract-view.html?contractId=${encodeURIComponent(contractId)}`;
-}
-
-exports.rentalSendOfficialContractLineHttp = onRequest(
-  { region: 'us-central1', cors: true },
-  async (req, res) => {
-    try {
-      if (handleCors(req, res)) return;
-      if (req.method !== 'POST') return jsonResponse(res, 405, { ok: false, message: 'Method Not Allowed' });
-      const { contractId, officialContractViewUrl, officialPdfUrl } = req.body || {};
-      const id = normalizeText(contractId);
-      if (!id) throw new Error('缺少合約 ID，無法發送正式契約 LINE。');
-
-      const ref = db.collection('rentalContracts').doc(id);
-      const doc = await ref.get();
-      if (!doc.exists) throw new Error('找不到租賃合約，無法發送正式契約 LINE。');
-      const data = doc.data() || {};
-      const resolved = await resolveRentalContractLineUser(data);
-      if (!resolved.lineUserId) {
-        await ref.set({
-          officialLineSendStatus: 'no_line_user_id',
-          officialLineSendError: '此合約尚未帶入客人 LINE User ID，無法發送。',
-          officialLineSendCheckedAt: admin.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
-        return jsonResponse(res, 200, { ok: true, sent: false, message: '此合約尚未帶入客人 LINE User ID，無法發送 LINE。' });
-      }
-
-      const viewUrl = normalizeText(officialContractViewUrl) || normalizeText(data.officialContractViewUrl) || publicContractViewUrl(id);
-      const pdfUrl = normalizeText(officialPdfUrl) || normalizeText(data.officialPdfUrl);
-      const period = (normalizeText(data.officialStartDate || data.startDate) && normalizeText(data.officialEndDate || data.endDate))
-        ? `${normalizeText(data.officialStartDate || data.startDate)} ～ ${normalizeText(data.officialEndDate || data.endDate)}`
-        : '詳見正式契約';
-      const message = [
-        '柚子樂器設備租賃契約已正式成立。',
-        '',
-        `租賃期間：${period}`,
-        '',
-        '請點擊下方連結查看正式契約：',
-        viewUrl,
-        '',
-        '打開後可按「下載正式 PDF 保存」存到手機。',
-        '若 LINE 內無法下載或畫面空白，請點右上角「以瀏覽器開啟」後再下載；也可截圖留存。',
-        '此連結日後仍可再次開啟查看。'
-      ].join('\n');
-
-      await pushLineMessageStrict(resolved.lineUserId, message);
-      const qid = `rental-official-contract-${id}-${Date.now()}`;
-      await db.collection('notificationQueue').doc(qid).set({
-        queueId: qid,
-        channel: 'line',
-        targetLineUserId: resolved.lineUserId,
-        targetName: normalizeText(data.customerName),
-        title: '設備租賃正式契約',
-        body: message,
-        message,
-        status: 'sent',
-        sentAt: admin.firestore.FieldValue.serverTimestamp(),
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        source: 'rental-official-contract-direct',
-        contractId: id,
-        officialContractViewUrl: viewUrl,
-        officialPdfUrl: pdfUrl || ''
-      }, { merge: true });
-      await ref.set({
-        customerLineUserId: normalizeText(data.customerLineUserId || data.lineUserId || resolved.lineUserId),
-        officialContractViewUrl: viewUrl,
-        officialPdfUrl: pdfUrl || normalizeText(data.officialPdfUrl || ''),
-        officialLineSendStatus: 'sent',
-        officialLineSendSource: resolved.source,
-        officialLineSentAt: admin.firestore.FieldValue.serverTimestamp(),
-        officialLineLastError: admin.firestore.FieldValue.delete()
-      }, { merge: true });
-
-      return jsonResponse(res, 200, { ok: true, sent: true, message: '正式契約 LINE 已發送。', officialContractViewUrl: viewUrl, officialPdfUrl: pdfUrl || '' });
-    } catch (error) {
-      console.error('rentalSendOfficialContractLineHttp error:', error);
-      const { contractId } = req.body || {};
-      const id = normalizeText(contractId);
-      if (id) {
-        try {
-          await db.collection('rentalContracts').doc(id).set({
-            officialLineSendStatus: 'failed',
-            officialLineLastError: error.message || String(error),
-            officialLineFailedAt: admin.firestore.FieldValue.serverTimestamp()
-          }, { merge: true });
-        } catch (_) {}
-      }
-      return jsonResponse(res, 400, { ok: false, sent: false, message: error.message || String(error) });
-    }
-  }
-);
-
 exports.lineWebhook = onRequest(
   {
     region: 'us-central1',
@@ -786,7 +378,6 @@ exports.lineWebhook = onRequest(
         const lineUserId = event.source && event.source.userId;
         const replyToken = event.replyToken;
 
-        const rentalPhoneMatch = null; // 租賃 LINE 配對已改回使用申請編號，不再使用手機號碼配對
         const rentalMatch = text.match(/^租賃申請\s+([^\s]+)(?:\s+(.+))?$/i);
         const employeeMatch = text.match(/^柚子員工綁定\s+([^\s]+@[^\s]+)$/i);
         const managerMatch = text.match(/^柚子主管綁定\s+([^\s]+@[^\s]+)$/i);
@@ -797,24 +388,12 @@ exports.lineWebhook = onRequest(
           continue;
         }
 
-        if (rentalPhoneMatch) {
-          await handleRentalApplicationLink({
-            applicationKey: normalizePhone(rentalPhoneMatch[1]),
-            declaredName: '',
-            lineUserId,
-            replyToken,
-            mode: 'phone'
-          });
-          continue;
-        }
-
         if (rentalMatch) {
           await handleRentalApplicationLink({
             applicationKey: normalizeText(rentalMatch[1]),
             declaredName: normalizeText(rentalMatch[2] || ''),
             lineUserId,
-            replyToken,
-            mode: 'applicationNo'
+            replyToken
           });
           continue;
         }
