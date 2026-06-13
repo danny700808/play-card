@@ -89,17 +89,18 @@
     const rent=fmtMoney(contract.rentFee||contract.rentalFee);
     const ship=fmtMoney(contract.shippingFee);
     const deposit=fmtMoney(contract.depositFee);
-    const deliveryText=clean(contract.deliveryDate||contract.deliveryDateTime);
+    const deliveryText=clean(contract.deliveryDate||contract.confirmedDeliveryDate||contract.deliveryDateTime||'').slice(0,10);
     const status=clean(contract.status||contract.contractStatus);
-    const isOfficial=!!(contract.officialPdfUrl || contract.officialConfirmedAt || contract.officialStartDate || ['租賃中','已退租','到期提醒中','續約待確認'].includes(status));
-    const deliveryLabel=isOfficial?'配送 / 安裝日期':'預估安裝日期';
+    const hasFormalData=!!(contract.customerSubmittedFormalAt || contract.customerSignatureDataUrl || contract.signatureDataUrl || contract.customerIdImageWatermarkedDataUrl || contract.idImageWatermarkedDataUrl || contract.customerIdImageDataUrl || contract.idImageDataUrl);
+    const isOfficial=!!(opts.officialView || contract._officialPreview || hasFormalData || contract.officialPdfUrl || contract.officialConfirmedAt || contract.officialStartDate || ['租賃中','已退租','到期提醒中','續約待確認'].includes(status));
+    const deliveryLabel=isOfficial?'確認安裝日期':'預估安裝日期';
     const startLabel=isOfficial?'正式起租日':'預估起租日';
     const startFallback=isOfficial?'____年__月__日':'依實際安裝完成後確認';
     const endFallback=isOfficial?'____年__月__日':'依正式起租日重新計算';
-    const preliminaryNote=isOfficial?'':'實際正式起租日與租賃期間，會在安裝完成、店家確認後另行產生並傳送正式契約。';
+    const preliminaryNote=isOfficial?'':'實際正式起租日與租賃期間，會在店家最後確認後另行產生並傳送正式契約。';
     const dateText=clean(contract.contractDate)||ymd(new Date());
-    const sig=clean(contract.customerSignatureDataUrl || contract.signatureDataUrl);
-    const idImage=clean(contract.customerIdImageWatermarkedDataUrl||contract.idImageWatermarkedDataUrl||contract.customerIdImageDataUrl||contract.idImageDataUrl||contract.idCardImageDataUrl||contract.customerIdImageUrl||contract.idImageUrl);
+    const sig=clean(contract.customerSignatureDataUrl || contract.signatureDataUrl || contract.customerSignatureUrl || contract.signatureUrl || contract.signDataUrl);
+    const idImage=clean(contract.customerIdImageWatermarkedDataUrl||contract.idImageWatermarkedDataUrl||contract.customerIdImageDataUrl||contract.idImageDataUrl||contract.idCardImageDataUrl||contract.customerIdImageUrl||contract.idImageUrl||contract.idCardImageUrl);
     const typeLine = type==='other'
       ? `租賃設備：${esc(equipment || '__________')}`
       : `租賃${esc(rentalTypeLabel(type))}：${esc(equipment || '__________')}${serial?'　編號：'+esc(serial):''}`;
