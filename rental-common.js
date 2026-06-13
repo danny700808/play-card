@@ -107,7 +107,7 @@
     const isSelfPickup=deliveryMethod==='自取自載';
     const status=clean(contract.status||contract.contractStatus);
     const hasFormalData=!!(contract.customerSubmittedFormalAt || contract.customerSignatureDataUrl || contract.signatureDataUrl || contract.customerIdImageWatermarkedDataUrl || contract.idImageWatermarkedDataUrl || contract.customerIdImageDataUrl || contract.idImageDataUrl);
-    const isOfficial=!!(opts.officialView || contract._officialPreview || hasFormalData || contract.officialPdfUrl || contract.officialConfirmedAt || contract.officialStartDate || ['租賃中','已退租','到期提醒中','續約待確認'].includes(status));
+    const isOfficial=!!(opts.officialView || contract._officialPreview || hasFormalData || contract.officialPdfUrl || contract.officialConfirmedAt || contract.officialStartDate || ['租賃中','已退租','待歸還','續約詢問中','續約待付款','續約待確認'].includes(status));
     const deliveryLabel=isOfficial?(isSelfPickup?'確認自取日期':'確認安裝日期'):(isSelfPickup?'預估自取日期':'預估安裝日期');
     const startLabel=isOfficial?'正式起租日':'預估起租日';
     const startFallback=isOfficial?'____年__月__日':'依實際安裝完成後確認';
@@ -123,25 +123,26 @@
     function periodRows(){
       const rows=[];
       const periodEntries=Array.isArray(contract.periodEntries)?contract.periodEntries:[];
+      const renewalEntries=Array.isArray(contract.renewalEntries)?contract.renewalEntries:[];
+      if(start){
+        const totalDays=Number(contract.rentDays || contract.totalDays || (periods*periodDays));
+        rows.push({ method:clean(contract.rentalMethod||'實體租用'), start:start, end:end, days:(totalDays ? totalDays+' 天' : ''), note:periods>1 ? `初次租用 ${periods} 期（${totalDays} 天）` : '初次租用' });
+      }
       if(periodEntries.length){
-        // 每一筆 periodEntries 代表一次實際租用／續租事件，不再依 90 天切成多列。
         periodEntries.forEach(p=>{
-          const ps=clean(p.startDate);
-          const pe=clean(p.endDate);
+          const ps=clean(p.startDate); const pe=clean(p.endDate);
+          if(ps===start && pe===end) return;
           const pd=clean(p.days || p.rentDays || (ps && pe ? String(Math.max(1, Math.round((new Date(pe+'T00:00:00')-new Date(ps+'T00:00:00'))/86400000)+1))+' 天' : ''));
           rows.push({method:clean(p.method||p.rentalMethod||'線上續租'), start:ps, end:pe, days:pd, note:clean(p.note||p.remark)});
         });
-      }else if(start){
-        // 初次租用只列一格：即使一次租多期，也視為同一次「實體租用」。
-        const totalDays=Number(contract.rentDays || contract.totalDays || (periods*periodDays));
-        rows.push({
-          method:clean(contract.rentalMethod||'實體租用'),
-          start:start,
-          end:end,
-          days:(totalDays ? totalDays+' 天' : ''),
-          note:periods>1 ? `一次租用 ${periods} 期（${totalDays} 天）` : '初次租用'
-        });
       }
+      renewalEntries.forEach((p,i)=>{
+        const ps=clean(p.startDate); const pe=clean(p.endDate);
+        const pd=clean(p.days || p.rentDays || (ps && pe ? String(Math.max(1, Math.round((new Date(pe+'T00:00:00')-new Date(ps+'T00:00:00'))/86400000)+1))+' 天' : ''));
+        const fee=p.rentFee?`續約租金 ${fmtMoney(p.rentFee)}`:'';
+        const memo=clean(p.note||p.remark);
+        rows.push({method:clean(p.method||`第 ${p.renewalNo||i+1} 次續約`), start:ps, end:pe, days:pd, note:[fee,memo].filter(Boolean).join('；')});
+      });
       while(rows.length<12) rows.push({method:'',start:'',end:'',days:'',note:''});
       return rows.slice(0,16).map(r=>`<tr><td>${esc(r.method)}</td><td>${esc(r.start)}</td><td>${esc(r.end)}</td><td>${esc(r.days)}</td><td>${esc(r.note)}</td></tr>`).join('');
     }
