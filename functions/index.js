@@ -72,6 +72,27 @@ async function pushLineMessage(lineUserId, message) {
   }
 }
 
+async function pushLineMessageStrict(lineUserId, message) {
+  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+  if (!lineUserId) throw new Error('缺少客人的 LINE User ID，無法發送 LINE。');
+  if (!token) throw new Error('Cloud Run 尚未設定 LINE_CHANNEL_ACCESS_TOKEN，無法發送 LINE。');
+  const response = await fetch('https://api.line.me/v2/bot/message/push', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify({
+      to: lineUserId,
+      messages: [{ type: 'text', text: message }]
+    })
+  });
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`LINE push failed ${response.status}: ${body}`);
+  }
+}
+
 async function getLineProfile(lineUserId) {
   const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
   if (!token || !lineUserId) return {};
@@ -599,6 +620,141 @@ exports.rentalSignContractHttp = onRequest(
     } catch (error) {
       console.error('rentalSignContractHttp error:', error);
       return jsonResponse(res, 400, { ok: false, message: error.message || String(error) });
+    }
+  }
+);
+
+
+async function loadRentalApplicationById(id) {
+  const key = normalizeText(id);
+  if (!key) return null;
+  const doc = await db.collection('rentalApplications').doc(key).get();
+  if (!doc.exists) return null;
+  return { id: doc.id, ref: doc.ref, data: doc.data() || {} };
+}
+
+function firstNonEmpty(...values) {
+  for (const v of values) {
+    const text = normalizeText(v);
+    if (text) return text;
+  }
+  return '';
+}
+
+async function resolveRentalContractLineUser(contractData) {
+  let lineUserId = firstNonEmpty(
+    contractData.customerLineUserId,
+    contractData.lineUserId,
+    contractData.rentalLineUserId,
+    contractData.customerLineId
+  );
+  if (lineUserId) return { lineUserId, source: 'contract' };
+
+  const appId = firstNonEmpty(contractData.applicationId, contractData.applicationDocId, contractData.rentalApplicationId);
+  if (appId) {
+    const app = await loadRentalApplicationById(appId);
+    if (app && app.data) {
+      lineUserId = firstNonEmpty(
+        app.data.customerLineUserId,
+        app.data.lineUserId,
+        app.data.rentalLineUserId,
+        app.data.customerLineId
+      );
+      if (lineUserId) return { lineUserId, source: 'application' };
+    }
+  }
+  return { lineUserId: '', source: '' };
+}
+
+function publicContractViewUrl(contractId) {
+  return `${webBaseUrl()}rental-contract-view.html?contractId=${encodeURIComponent(contractId)}`;
+}
+
+exports.rentalSendOfficialContractLineHttp = onRequest(
+  { region: 'us-central1', cors: true },
+  async (req, res) => {
+    try {
+      if (handleCors(req, res)) return;
+      if (req.method !== 'POST') return jsonResponse(res, 405, { ok: false, message: 'Method Not Allowed' });
+      const { contractId, officialContractViewUrl, officialPdfUrl } = req.body || {};
+      const id = normalizeText(contractId);
+      if (!id) throw new Error('缺少合約 ID，無法發送正式契約 LINE。');
+
+      const ref = db.collection('rentalContracts').doc(id);
+      const doc = await ref.get();
+      if (!doc.exists) throw new Error('找不到租賃合約，無法發送正式契約 LINE。');
+      const data = doc.data() || {};
+      const resolved = await resolveRentalContractLineUser(data);
+      if (!resolved.lineUserId) {
+        await ref.set({
+          officialLineSendStatus: 'no_line_user_id',
+          officialLineSendError: '此合約尚未帶入客人 LINE User ID，無法發送。',
+          officialLineSendCheckedAt: admin.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+        return jsonResponse(res, 200, { ok: true, sent: false, message: '此合約尚未帶入客人 LINE User ID，無法發送 LINE。' });
+      }
+
+      const viewUrl = normalizeText(officialContractViewUrl) || normalizeText(data.officialContractViewUrl) || publicContractViewUrl(id);
+      const pdfUrl = normalizeText(officialPdfUrl) || normalizeText(data.officialPdfUrl);
+      const period = (normalizeText(data.officialStartDate || data.startDate) && normalizeText(data.officialEndDate || data.endDate))
+        ? `${normalizeText(data.officialStartDate || data.startDate)} ～ ${normalizeText(data.officialEndDate || data.endDate)}`
+        : '詳見正式契約';
+      const message = [
+        '柚子樂器設備租賃契約已正式成立。',
+        '',
+        `租賃期間：${period}`,
+        '',
+        '請點擊下方連結查看正式契約：',
+        viewUrl,
+        '',
+        '打開後可按「下載正式 PDF 保存」存到手機。',
+        '若 LINE 內無法下載或畫面空白，請點右上角「以瀏覽器開啟」後再下載；也可截圖留存。',
+        '此連結日後仍可再次開啟查看。'
+      ].join('\n');
+
+      await pushLineMessageStrict(resolved.lineUserId, message);
+      const qid = `rental-official-contract-${id}-${Date.now()}`;
+      await db.collection('notificationQueue').doc(qid).set({
+        queueId: qid,
+        channel: 'line',
+        targetLineUserId: resolved.lineUserId,
+        targetName: normalizeText(data.customerName),
+        title: '設備租賃正式契約',
+        body: message,
+        message,
+        status: 'sent',
+        sentAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        source: 'rental-official-contract-direct',
+        contractId: id,
+        officialContractViewUrl: viewUrl,
+        officialPdfUrl: pdfUrl || ''
+      }, { merge: true });
+      await ref.set({
+        customerLineUserId: normalizeText(data.customerLineUserId || data.lineUserId || resolved.lineUserId),
+        officialContractViewUrl: viewUrl,
+        officialPdfUrl: pdfUrl || normalizeText(data.officialPdfUrl || ''),
+        officialLineSendStatus: 'sent',
+        officialLineSendSource: resolved.source,
+        officialLineSentAt: admin.firestore.FieldValue.serverTimestamp(),
+        officialLineLastError: admin.firestore.FieldValue.delete()
+      }, { merge: true });
+
+      return jsonResponse(res, 200, { ok: true, sent: true, message: '正式契約 LINE 已發送。', officialContractViewUrl: viewUrl, officialPdfUrl: pdfUrl || '' });
+    } catch (error) {
+      console.error('rentalSendOfficialContractLineHttp error:', error);
+      const { contractId } = req.body || {};
+      const id = normalizeText(contractId);
+      if (id) {
+        try {
+          await db.collection('rentalContracts').doc(id).set({
+            officialLineSendStatus: 'failed',
+            officialLineLastError: error.message || String(error),
+            officialLineFailedAt: admin.firestore.FieldValue.serverTimestamp()
+          }, { merge: true });
+        } catch (_) {}
+      }
+      return jsonResponse(res, 400, { ok: false, sent: false, message: error.message || String(error) });
     }
   }
 );
