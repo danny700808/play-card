@@ -8,6 +8,14 @@
   function rocDate(dateText){ const d=new Date(clean(dateText)+'T00:00:00'); if(isNaN(d.getTime())) return clean(dateText)||'　年　月　日'; return `民國 ${d.getFullYear()-1911} 年 ${d.getMonth()+1} 月 ${d.getDate()} 日`; }
   function addDays(dateText, days){ const d=new Date(clean(dateText)+'T00:00:00'); if(isNaN(d.getTime())) return ''; d.setDate(d.getDate()+Number(days||0)); return ymd(d); }
   function fmtMoney(v){ const n=num(v); return n ? n.toLocaleString('zh-TW')+' 元' : '0 元'; }
+  function normalizeDeliveryMethod(v){
+    v=clean(v);
+    if(!v) return '到府安裝';
+    if(v.includes('自取')) return '自取自載';
+    if(v.includes('自載')) return '自取自載';
+    if(v.includes('店取')) return '自取自載';
+    return '到府安裝';
+  }
   function esc(s){ return clean(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
   function qs(id){ return document.getElementById(id); }
   function val(id){ const el=qs(id); return el ? clean(el.value) : ''; }
@@ -90,10 +98,12 @@
     const ship=fmtMoney(contract.shippingFee);
     const deposit=fmtMoney(contract.depositFee);
     const deliveryText=clean(contract.deliveryDate||contract.confirmedDeliveryDate||contract.deliveryDateTime||'').slice(0,10);
+    const deliveryMethod=normalizeDeliveryMethod(contract.shippingMethod||contract.deliveryMethod);
+    const isSelfPickup=deliveryMethod==='自取自載';
     const status=clean(contract.status||contract.contractStatus);
     const hasFormalData=!!(contract.customerSubmittedFormalAt || contract.customerSignatureDataUrl || contract.signatureDataUrl || contract.customerIdImageWatermarkedDataUrl || contract.idImageWatermarkedDataUrl || contract.customerIdImageDataUrl || contract.idImageDataUrl);
     const isOfficial=!!(opts.officialView || contract._officialPreview || hasFormalData || contract.officialPdfUrl || contract.officialConfirmedAt || contract.officialStartDate || ['租賃中','已退租','到期提醒中','續約待確認'].includes(status));
-    const deliveryLabel=isOfficial?'確認安裝日期':'預估安裝日期';
+    const deliveryLabel=isOfficial?(isSelfPickup?'確認自取日期':'確認安裝日期'):(isSelfPickup?'預估自取日期':'預估安裝日期');
     const startLabel=isOfficial?'正式起租日':'預估起租日';
     const startFallback=isOfficial?'____年__月__日':'依實際安裝完成後確認';
     const endFallback=isOfficial?'____年__月__日':'依正式起租日重新計算';
@@ -145,7 +155,7 @@
         <p class="intro">甲方向乙方租賃設備，雙方同意簽訂本契約，條款如下：</p>
         <ol class="clauses">
           <li>${typeLine}<br>租賃期間：詳如第二頁「租賃期間明細表」。一期固定 ${esc(periodDays)} 天，續租起日為上一期到期日之隔日。</li>
-          <li>租金：${esc(rent)}。押金：${esc(deposit)}。運費：${esc(ship)}。運送方式：${esc(contract.shippingMethod||'依雙方確認')}。${esc(deliveryLabel)}：${esc(deliveryText || '依店家最後確認')}。${preliminaryNote?`<br><b>${esc(preliminaryNote)}</b>`:''}</li>
+          <li>租金：${esc(rent)}。押金：${esc(deposit)}。運費：${esc(ship)}。交付方式：${esc(deliveryMethod)}。${esc(deliveryLabel)}：${esc(deliveryText || '依店家最後確認')}。${preliminaryNote?`<br><b>${esc(preliminaryNote)}</b>`:''}</li>
           <li>乙方提供設備包括：${itemHtml}</li>
           <li>退租需提早告知；未告知超過 3 天，視同原簽約方案續約。</li>
           <li>租約使用開始後，若提早退租，全數不退款。</li>
@@ -171,6 +181,6 @@
         <div class="contract-date">中華民國 ${esc(dateText)}</div><div class="rental-page-no">第 2 頁 / 共 2 頁</div>
       </div>`;
   }
-  Object.assign(Rental,{clean,num,ymd,rocDate,addDays,fmtMoney,esc,qs,val,checked,setVal,show,hide,toast,user,isManager,requireManager,db,call,all,get,set,nowText,contractStatus,applicationStatus,rentalTypeLabel,defaultIncludedItems,parseEquipmentItems,defaultTitle,calcEndDate,signUrl,myContractUrl,renderContractHtml,functionUrl});
+  Object.assign(Rental,{clean,num,ymd,rocDate,addDays,fmtMoney,normalizeDeliveryMethod,esc,qs,val,checked,setVal,show,hide,toast,user,isManager,requireManager,db,call,all,get,set,nowText,contractStatus,applicationStatus,rentalTypeLabel,defaultIncludedItems,parseEquipmentItems,defaultTitle,calcEndDate,signUrl,myContractUrl,renderContractHtml,functionUrl});
   global.YZRental = Rental;
 })(window);

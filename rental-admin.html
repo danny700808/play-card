@@ -82,21 +82,46 @@
       return `<div class="btn-row">${parts.join('')}</div>`;
     }
     function isFinalConfirmStage(c){ const st=R.clean((c&&c.status)||''); return !!(c && (c.customerSubmittedFormalAt || c.customerSignatureDataUrl || c.signatureDataUrl || c.customerIdImageWatermarkedDataUrl || c.idImageWatermarkedDataUrl || ['客人已送出','待店家確認','待付款確認','待店家確認成立','customer_submitted','pending_shop_confirm','已簽署','租賃中','到期提醒中','續約待確認','已退租'].includes(st)) && (c.contractId || c.__id || R.val('contractId'))); }
+    function getDeliveryMethod(){ return R.normalizeDeliveryMethod ? R.normalizeDeliveryMethod(R.val('shippingMethod')) : (String(R.val('shippingMethod')||'').includes('自取')?'自取自載':'到府安裝'); }
+    function deliveryDateLabel(method, finalStage){
+      method = R.normalizeDeliveryMethod ? R.normalizeDeliveryMethod(method) : method;
+      const self = method === '自取自載';
+      return finalStage ? (self ? '確認自取日期' : '確認安裝日期') : (self ? '預估自取日期' : '預估安裝日期');
+    }
+    function deliveryDateHint(method, finalStage){
+      method = R.normalizeDeliveryMethod ? R.normalizeDeliveryMethod(method) : method;
+      const self = method === '自取自載';
+      if(finalStage) return self ? '此日期會作為正式契約的確認自取日期與正式起租日；正式契約只顯示日期，不顯示時間。' : '此日期會作為正式契約的確認安裝日期與正式起租日；正式契約只顯示日期，不顯示時間。';
+      return self ? '此日期只作為寄給客人填寫資料前的預估自取日期；正式契約會在店家最後確認後產生並傳送。' : '此日期只作為寄給客人填寫資料前的預估安裝日期；正式契約會在店家最後確認後產生並傳送。';
+    }
+    function updateDeliveryDateText(){
+      const finalStage=isFinalConfirmStage(Object.assign({}, selected||{}, collectWithoutPreviewData()));
+      const method=getDeliveryMethod();
+      const label=deliveryDateLabel(method, finalStage);
+      const hint=deliveryDateHint(method, finalStage);
+      const labelEl=document.getElementById('deliveryDateLabel');
+      const hintEl=document.getElementById('deliveryDateHint');
+      if(labelEl) labelEl.textContent=label;
+      if(hintEl) hintEl.textContent=hint;
+    }
+    function collectWithoutPreviewData(){
+      return { status:R.val('status')||'', shippingMethod:R.val('shippingMethod')||'', customerSubmittedFormalAt:(selected||{}).customerSubmittedFormalAt||'', customerSignatureDataUrl:(selected||{}).customerSignatureDataUrl||(selected||{}).signatureDataUrl||'', customerIdImageWatermarkedDataUrl:(selected||{}).customerIdImageWatermarkedDataUrl||(selected||{}).idImageWatermarkedDataUrl||'' };
+    }
     function officializeContract(c){ c=Object.assign({}, c||{}); const d=R.clean(c.deliveryDate||c.deliveryDateTime||c.startDate); if(d){ c.deliveryDate=d; c.deliveryDateTime=d; c.startDate=d; } c.deliveryTime=''; c._officialPreview=true; return c; }
-    function editorHtml(c, source){ const items=R.parseEquipmentItems(c); const finalStage=isFinalConfirmStage(c); const startLabel=finalStage?'正式起租日':'預估起租日'; const installLabel=finalStage?'確認安裝日期':'預估安裝日期'; const installHint=finalStage?'此日期會作為正式契約的確認安裝日期與正式起租日；正式契約只顯示日期，不顯示時間。':'此日期只作為寄給客人填寫資料前的預估日期；正式契約會在店家最後確認後產生並傳送。'; const flowText=finalStage?'客人已補完身分證資料與簽名；請在下方確認安裝日期、租金、押金與契約內容，確認後產生正式 PDF 並傳送給客人。':'流程：先確認基本資料 → 補預估安裝日期/租金/設備 → 客戶視角預覽 → 傳給客人填寫身分證字號與詳細資料。'; return `<h2 style="margin-top:0">${source==='application'?'由申請建立正式資料':source==='adminDraft'?'店家代填租賃單':'編輯租賃契約'}</h2><div class="muted">${flowText}</div><input type="hidden" id="sourceKind" value="${source}"><input type="hidden" id="applicationId" value="${R.esc(c.applicationId||'')}"><input type="hidden" id="contractId" value="${R.esc(c.contractId||c.__id||'')}"><input type="hidden" id="periodDays" value="90">
+    function editorHtml(c, source){ const items=R.parseEquipmentItems(c); const finalStage=isFinalConfirmStage(c); const startLabel=finalStage?'正式起租日':'預估起租日'; const deliveryMethod=R.normalizeDeliveryMethod?R.normalizeDeliveryMethod(c.shippingMethod):((R.clean(c.shippingMethod).includes('自取'))?'自取自載':'到府安裝'); const installLabel=deliveryDateLabel(deliveryMethod, finalStage); const installHint=deliveryDateHint(deliveryMethod, finalStage); const flowText=finalStage?'客人已補完身分證資料與簽名；請在下方確認交付日期、租金、押金與契約內容，確認後產生正式 PDF 並傳送給客人。':'流程：先確認基本資料 → 補預估交付日期/租金/設備 → 客戶視角預覽 → 傳給客人填寫身分證字號與詳細資料。'; return `<h2 style="margin-top:0">${source==='application'?'由申請建立正式資料':source==='adminDraft'?'店家代填租賃單':'編輯租賃契約'}</h2><div class="muted">${flowText}</div><input type="hidden" id="sourceKind" value="${source}"><input type="hidden" id="applicationId" value="${R.esc(c.applicationId||'')}"><input type="hidden" id="contractId" value="${R.esc(c.contractId||c.__id||'')}"><input type="hidden" id="periodDays" value="90">
       <div class="row2"><div class="field"><label>合約類型</label><select id="rentalType"><option value="digitalPiano" ${c.rentalType==='digitalPiano'?'selected':''}>電鋼琴</option><option value="electronicDrum" ${c.rentalType==='electronicDrum'?'selected':''}>電子鼓</option><option value="other" ${c.rentalType==='other'?'selected':''}>其他設備</option></select></div><div class="field"><label>狀態</label><select id="status"><option ${c.status==='草稿'?'selected':''}>草稿</option><option ${c.status==='待店家確認'?'selected':''}>待店家確認</option><option ${c.status==='待客人補資料'?'selected':''}>待客人補資料</option><option ${c.status==='待付款確認'?'selected':''}>待付款確認</option><option ${c.status==='租賃中'?'selected':''}>租賃中</option><option ${c.status==='已退租'?'selected':''}>已退租</option><option ${c.status==='已取消'?'selected':''}>已取消</option></select></div></div>
       <div class="row2"><div class="field"><label>客人姓名 / 公司</label><input id="customerName" value="${R.esc(c.customerName)}"></div><div class="field"><label>電話</label><input id="customerPhone" value="${R.esc(c.customerPhone)}"></div></div><div class="row2"><div class="field"><label>Email</label><input id="customerEmail" value="${R.esc(c.customerEmail)}"></div><div class="field"><label>LINE User ID（正式資料階段需綁定）</label><input id="customerLineUserId" value="${R.esc(c.customerLineUserId)}"></div></div><div class="row2"><div class="field"><label>身分證 / 統編</label><input id="customerIdNumber" value="${R.esc(c.customerIdNumber)}"></div><div class="field"><label>地址</label><input id="customerAddress" value="${R.esc(c.customerAddress)}"></div></div>
       <h3>乙方提供設備</h3><div class="muted">只填「設備名稱 / 備註」即可；可按新增設備繼續增加。</div><div id="equipmentRows">${equipmentRows(items)}</div><button class="btn secondary" type="button" onclick="addEquipmentRow()">＋新增設備</button>
       <div class="row3" style="margin-top:12px"><div class="field"><label>期數（1期=90天）</label><input id="periods" type="number" min="1" max="10" value="${R.esc(c.periods||1)}"></div><div class="field"><label>${startLabel}</label><input id="startDate" type="date" value="${R.esc(c.startDate)}"><div class="muted">${finalStage?'正式起租日會依確認安裝日期同步計算到期日。':'此欄先作預估；正式起租日以店家最後確認為準。'}</div></div><div class="field"><label>租賃到期日</label><input id="endDate" type="date" value="${R.esc(c.endDate)}"></div></div>
       <div class="row3"><div class="field"><label>租金</label><input id="rentFee" type="number" value="${R.esc(c.rentFee||0)}"></div><div class="field"><label>運費</label><input id="shippingFee" type="number" value="${R.esc(c.shippingFee||0)}"></div><div class="field"><label>押金</label><input id="depositFee" type="number" value="${R.esc(c.depositFee||0)}"></div></div>
-      <div class="row2"><div class="field"><label>配送 / 自取方式</label><input id="shippingMethod" value="${R.esc(c.shippingMethod)}"></div><div class="field"><label>${installLabel}</label><input id="deliveryDate" type="date" value="${R.esc(c.deliveryDate||c.startDate||'')}"><div class="muted">${installHint}</div></div></div><div class="field"><label>備註</label><textarea id="adminNote">${R.esc(c.adminNote||'')}</textarea></div>
+      <div class="row2"><div class="field"><label>配送 / 自取方式</label><select id="shippingMethod"><option value="到府安裝" ${deliveryMethod==='到府安裝'?'selected':''}>到府安裝</option><option value="自取自載" ${deliveryMethod==='自取自載'?'selected':''}>自取自載</option></select></div><div class="field"><label id="deliveryDateLabel">${installLabel}</label><input id="deliveryDate" type="date" value="${R.esc(c.deliveryDate||c.startDate||'')}"><div class="muted" id="deliveryDateHint">${installHint}</div></div></div><div class="field"><label>備註</label><textarea id="adminNote">${R.esc(c.adminNote||'')}</textarea></div>
       ${c.officialPdfUrl?`<div class="pdf-link-box"><b>正式 PDF 已產生：</b><br><a href="${R.esc(c.officialPdfUrl)}" target="_blank" rel="noopener">下載 / 查看正式 PDF</a><br><span class="muted">若客人未收到 LINE，可先複製此連結手動傳送。</span></div>`:''}<div class="msg ok" style="background:#f8fafc;color:#334155"><b>目前階段操作：</b>${finalStage?'這是正式確認階段；下方預覽、列印與正式 PDF 會使用同一份契約內容，並顯示客人簽名與身分證圖片。':'系統會依案件狀態只顯示此階段需要的按鈕；目前填入的是預估安裝日期。'}</div>${actionButtons(source,c)}`; }
     function readEquipmentItems(){ return Array.from(document.querySelectorAll('[data-eq-row]')).map(row=>({name:R.clean(row.querySelector('.eq-name')?.value),note:R.clean(row.querySelector('.eq-note')?.value)})).filter(x=>x.name||x.note); }
     window.addEquipmentRow=function(){ const box=R.qs('equipmentRows'); box.insertAdjacentHTML('beforeend', equipmentRows([{name:'',note:''}])); bindEditorPreview(); };
     window.removeEquipmentRow=function(btn){ btn.closest('[data-eq-row]')?.remove(); R.qs('contractPreview').innerHTML=R.renderContractHtml(collect()); };
-    function collect(){ const type=R.val('rentalType'); const items=readEquipmentItems(); const deliveryDate=R.val('deliveryDate'); const startDate=R.val('startDate')||deliveryDate; const periods=R.val('periods')||1; const signed=selected||{}; const sig=signed.customerSignatureDataUrl||signed.signatureDataUrl||signed.customerSignatureUrl||signed.signatureUrl||signed.signDataUrl||''; const idImg=signed.customerIdImageWatermarkedDataUrl||signed.idImageWatermarkedDataUrl||signed.customerIdImageDataUrl||signed.idImageDataUrl||signed.idCardImageDataUrl||signed.customerIdImageUrl||signed.idImageUrl||signed.idCardImageUrl||''; const payload={ sourceKind:R.val('sourceKind'), applicationId:R.val('applicationId'), contractId:R.val('contractId'), source:R.val('sourceKind')==='adminDraft'?'admin':'application', stage:'formal-draft', rentalType:type, status:R.val('status')||'草稿', contractTitle:R.defaultTitle(type), customerName:R.val('customerName'), customerPhone:R.val('customerPhone'), customerEmail:R.val('customerEmail'), customerLineUserId:R.val('customerLineUserId'), customerIdNumber:R.val('customerIdNumber'), customerAddress:R.val('customerAddress'), customerSignatureDataUrl:sig, signatureDataUrl:sig, customerIdImageWatermarkedDataUrl:idImg, idImageWatermarkedDataUrl:idImg, customerIdImageDataUrl:idImg, idImageDataUrl:idImg, equipmentName:items[0]?.name||'', serialNo:items[0]?.note||'', equipmentItems:items, includedItems:items.map(x=>`${x.name}${x.note?' / '+x.note:''}`).join('\n'), periods:periods, periodDays:90, rentDays:Number(periods||1)*90, rentalMethod:'實體租用', startDate:startDate, endDate:R.val('endDate')||R.calcEndDate(startDate,periods,type,Number(periods||1)*90), rentFee:R.val('rentFee'), shippingFee:R.val('shippingFee'), depositFee:R.val('depositFee'), shippingMethod:R.val('shippingMethod'), deliveryDate:deliveryDate||startDate, deliveryTime:'', deliveryDateTime:deliveryDate||startDate, adminNote:R.val('adminNote'), customerSubmittedFormalAt:signed.customerSubmittedFormalAt||'' }; return isFinalConfirmStage(Object.assign({}, signed, payload)) ? officializeContract(payload) : payload; }
+    function collect(){ const type=R.val('rentalType'); const items=readEquipmentItems(); const deliveryDate=R.val('deliveryDate'); const startDate=R.val('startDate')||deliveryDate; const periods=R.val('periods')||1; const signed=selected||{}; const sig=signed.customerSignatureDataUrl||signed.signatureDataUrl||signed.customerSignatureUrl||signed.signatureUrl||signed.signDataUrl||''; const idImg=signed.customerIdImageWatermarkedDataUrl||signed.idImageWatermarkedDataUrl||signed.customerIdImageDataUrl||signed.idImageDataUrl||signed.idCardImageDataUrl||signed.customerIdImageUrl||signed.idImageUrl||signed.idCardImageUrl||''; const payload={ sourceKind:R.val('sourceKind'), applicationId:R.val('applicationId'), contractId:R.val('contractId'), source:R.val('sourceKind')==='adminDraft'?'admin':'application', stage:'formal-draft', rentalType:type, status:R.val('status')||'草稿', contractTitle:R.defaultTitle(type), customerName:R.val('customerName'), customerPhone:R.val('customerPhone'), customerEmail:R.val('customerEmail'), customerLineUserId:R.val('customerLineUserId'), customerIdNumber:R.val('customerIdNumber'), customerAddress:R.val('customerAddress'), customerSignatureDataUrl:sig, signatureDataUrl:sig, customerIdImageWatermarkedDataUrl:idImg, idImageWatermarkedDataUrl:idImg, customerIdImageDataUrl:idImg, idImageDataUrl:idImg, equipmentName:items[0]?.name||'', serialNo:items[0]?.note||'', equipmentItems:items, includedItems:items.map(x=>`${x.name}${x.note?' / '+x.note:''}`).join('\n'), periods:periods, periodDays:90, rentDays:Number(periods||1)*90, rentalMethod:'實體租用', startDate:startDate, endDate:R.val('endDate')||R.calcEndDate(startDate,periods,type,Number(periods||1)*90), rentFee:R.val('rentFee'), shippingFee:R.val('shippingFee'), depositFee:R.val('depositFee'), shippingMethod:getDeliveryMethod(), deliveryMethod:getDeliveryMethod(), deliveryDate:deliveryDate||startDate, deliveryTime:'', deliveryDateTime:deliveryDate||startDate, adminNote:R.val('adminNote'), customerSubmittedFormalAt:signed.customerSubmittedFormalAt||'' }; return isFinalConfirmStage(Object.assign({}, signed, payload)) ? officializeContract(payload) : payload; }
     function syncRentalDatesFromDelivery(changedId){ const type=R.val('rentalType'); const periods=R.val('periods')||1; if(changedId==='deliveryDate' && R.val('deliveryDate')) R.setVal('startDate', R.val('deliveryDate')); if((changedId==='startDate'||changedId==='deliveryDate'||changedId==='periods') && (R.val('startDate')||R.val('deliveryDate'))){ const st=R.val('startDate')||R.val('deliveryDate'); R.setVal('startDate', st); R.setVal('deliveryDate', R.val('deliveryDate')||st); R.setVal('endDate', R.calcEndDate(st,periods,type,Number(periods||1)*90)); } }
-    function bindEditorPreview(){ document.querySelectorAll('#detailBox input,#detailBox textarea,#detailBox select').forEach(el=>el.oninput=()=>{ syncRentalDatesFromDelivery(el.id); R.qs('contractPreview').innerHTML=R.renderContractHtml(collect()); }); }
+    function bindEditorPreview(){ document.querySelectorAll('#detailBox input,#detailBox textarea,#detailBox select').forEach(el=>{ const handler=()=>{ syncRentalDatesFromDelivery(el.id); updateDeliveryDateText(); R.qs('contractPreview').innerHTML=R.renderContractHtml(collect()); }; el.oninput=handler; el.onchange=handler; }); updateDeliveryDateText(); }
 
 
     window.previewOfficialContract=function(){
@@ -118,24 +143,23 @@
     };
 
 
-    function printWindowHtml(contract){
-      const official=isFinalConfirmStage(Object.assign({}, selected||{}, contract));
-      const html=R.renderContractHtml(official?officializeContract(contract):contract, {officialView:official});
+    function printWindowHtmlFromPreview(html){
       const base=location.href.replace(/[^\/]*$/, '');
-      return `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><base href="${R.esc(base)}"><title>租賃契約列印</title><style>html,body{margin:0!important;padding:0!important;background:#fff!important;}body{width:210mm;}@page{size:A4;margin:0}.rental-contract-sheet{border:0!important;box-shadow:none!important;margin:0!important;width:210mm!important;height:297mm!important;min-height:297mm!important;page-break-after:always!important;break-after:page!important}.rental-contract-sheet:last-child{page-break-after:auto!important;break-after:auto!important}</style></head><body>${html}<script>window.onload=function(){setTimeout(function(){window.focus();window.print();},250)}<\/script></body></html>`;
+      return `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><base href="${R.esc(base)}"><title>租賃契約列印</title><style>html,body{margin:0!important;padding:0!important;background:#fff!important;}body{min-width:210mm!important;}@page{size:A4;margin:0}@media print{html,body{margin:0!important;padding:0!important;background:#fff!important;}.rental-contract-sheet{position:relative!important;overflow:hidden!important;background:#fff!important;color:#111827!important;width:210mm!important;height:297mm!important;min-height:297mm!important;margin:0 auto!important;padding:9mm 11mm!important;box-sizing:border-box!important;border:1px solid #d1d5db!important;box-shadow:none!important;page-break-after:always!important;break-after:page!important;font-size:12.2px!important;line-height:1.48!important}.rental-contract-sheet:last-child{page-break-after:auto!important;break-after:auto!important}.period-bottom{position:absolute!important;left:11mm!important;right:11mm!important;bottom:11mm!important;display:grid!important;grid-template-columns:1.15fr .85fr!important;gap:8mm!important;align-items:end!important}.sign-grid{display:grid!important;grid-template-columns:1.1fr .9fr!important}.rental-page-no{position:absolute!important;right:11mm!important;bottom:6mm!important}}</style></head><body>${html}<script>window.onload=function(){setTimeout(function(){window.focus();window.print();},250)}<\/script></body></html>`;
     }
     window.printRentalContract=function(){
       const c=collect();
       const official=isFinalConfirmStage(Object.assign({}, selected||{}, c));
       const display=official?officializeContract(c):c;
       R.qs('contractPreview').innerHTML=R.renderContractHtml(display, {officialView:official});
+      const previewHtml=R.qs('contractPreview').innerHTML;
       const win=window.open('', '_blank');
       if(!win){
         R.toast('瀏覽器封鎖列印視窗，請允許彈出視窗後再試。', false);
         return;
       }
       win.document.open();
-      win.document.write(printWindowHtml(display));
+      win.document.write(printWindowHtmlFromPreview(previewHtml));
       win.document.close();
     };
 
@@ -227,7 +251,7 @@
       syncRentalDatesFromDelivery('deliveryDate');
       const payload=collect();
       const missing=[];
-      if(!payload.deliveryDate) missing.push('確認安裝日期');
+      if(!payload.deliveryDate) missing.push(payload.shippingMethod==='自取自載'?'確認自取日期':'確認安裝日期');
       if(!payload.customerName) missing.push('客人姓名');
       if(!payload.customerSignatureDataUrl) missing.push('甲方簽名');
       if(!payload.customerIdNumber) missing.push('甲方身分證字號 / 統編');
@@ -236,7 +260,7 @@
         alert('確認租用成立前，請先完成以下資料：\n\n' + missing.map((x,i)=>(i+1)+'. '+x).join('\n'));
         return;
       }
-      if(!confirm('確認款項已收，並以「確認安裝日期」作為正式起租日？\n\n系統會產生正式 PDF、上傳 Firebase Storage，並以 LINE 傳送 PDF 下載連結給客人。')) return;
+      if(!confirm('確認款項已收，並以「'+(payload.shippingMethod==='自取自載'?'確認自取日期':'確認安裝日期')+'」作為正式起租日？\n\n系統會產生正式 PDF、上傳 Firebase Storage，並以 LINE 傳送 PDF 下載連結給客人。')) return;
       showRentalProgress('確認租用成立');
       try{
         updateRentalProgress(10,'正在計算正式租期...');
