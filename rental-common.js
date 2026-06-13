@@ -90,6 +90,13 @@
     const ship=fmtMoney(contract.shippingFee);
     const deposit=fmtMoney(contract.depositFee);
     const deliveryText=clean(contract.deliveryDate||contract.deliveryDateTime);
+    const status=clean(contract.status||contract.contractStatus);
+    const isOfficial=!!(contract.officialPdfUrl || contract.officialConfirmedAt || contract.officialStartDate || ['租賃中','已退租','到期提醒中','續約待確認'].includes(status));
+    const deliveryLabel=isOfficial?'配送 / 安裝日期':'預估安裝日期';
+    const startLabel=isOfficial?'正式起租日':'預估起租日';
+    const startFallback=isOfficial?'____年__月__日':'依實際安裝完成後確認';
+    const endFallback=isOfficial?'____年__月__日':'依正式起租日重新計算';
+    const preliminaryNote=isOfficial?'':'實際正式起租日與租賃期間，會在安裝完成、店家確認後另行產生並傳送正式契約。';
     const dateText=clean(contract.contractDate)||ymd(new Date());
     const sig=clean(contract.customerSignatureDataUrl || contract.signatureDataUrl);
     const idImage=clean(contract.customerIdImageWatermarkedDataUrl||contract.idImageWatermarkedDataUrl||contract.customerIdImageDataUrl||contract.idImageDataUrl||contract.idCardImageDataUrl||contract.customerIdImageUrl||contract.idImageUrl);
@@ -137,7 +144,7 @@
         <p class="intro">甲方向乙方租賃設備，雙方同意簽訂本契約，條款如下：</p>
         <ol class="clauses">
           <li>${typeLine}<br>租賃期間：詳如第二頁「租賃期間明細表」。一期固定 ${esc(periodDays)} 天，續租起日為上一期到期日之隔日。</li>
-          <li>租金：${esc(rent)}。押金：${esc(deposit)}。運費：${esc(ship)}。運送方式：${esc(contract.shippingMethod||'依雙方確認')}。配送 / 安裝日期：${esc(deliveryText || '依店家最後確認')}。</li>
+          <li>租金：${esc(rent)}。押金：${esc(deposit)}。運費：${esc(ship)}。運送方式：${esc(contract.shippingMethod||'依雙方確認')}。${esc(deliveryLabel)}：${esc(deliveryText || '依店家最後確認')}。${preliminaryNote?`<br><b>${esc(preliminaryNote)}</b>`:''}</li>
           <li>乙方提供設備包括：${itemHtml}</li>
           <li>退租需提早告知；未告知超過 3 天，視同原簽約方案續約。</li>
           <li>租約使用開始後，若提早退租，全數不退款。</li>
@@ -157,7 +164,7 @@
         <h1>租賃期間明細表</h1>
         <div class="party-line">契約名稱：${esc(title)}</div>
         <div class="party-line">租賃設備：${esc(equipment || '__________')}</div>
-        <div class="party-line">正式起租日：${esc(start || '____年__月__日')}　目前到期日：${esc(end || '____年__月__日')}　一期：${esc(periodDays)} 天</div>
+        <div class="party-line">${esc(startLabel)}：${esc(start || startFallback)}　目前到期日：${esc(end || endFallback)}　一期：${esc(periodDays)} 天</div>
         <table class="period-table"><thead><tr><th style="width:26%">租用方式</th><th>起租日</th><th>到期日</th><th style="width:72px">天數</th><th>備註</th></tr></thead><tbody>${periodRows()}</tbody></table>
         <div class="period-bottom"><div>${idCardBlock}</div><div class="period-stamp-block"><div class="period-stamp-title">乙方簽章</div>${sealHtml}</div></div>
         <div class="contract-date">中華民國 ${esc(dateText)}</div><div class="rental-page-no">第 2 頁 / 共 2 頁</div>
