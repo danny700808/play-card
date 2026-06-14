@@ -381,6 +381,335 @@ async function handleManagerBinding({ email, lineUserId, replyToken }) {
 
 
 
+
+function todayYmdCompact() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}${m}${day}`;
+}
+
+function nowIsoText() {
+  return new Date().toISOString();
+}
+
+function randomCode(len = 5) {
+  return Math.random().toString(36).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, len).padEnd(len, '0');
+}
+
+function makeRentalId(prefix = 'RC') {
+  return `${prefix}${todayYmdCompact()}${randomCode(5)}`;
+}
+
+function makeToken(len = 32) {
+  return cryptoRandom(len);
+}
+
+function cryptoRandom(len = 32) {
+  try {
+    return require('crypto').randomBytes(Math.ceil(len / 2)).toString('hex').slice(0, len);
+  } catch (e) {
+    return Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+  }
+}
+
+function signUrlForContract(contractId, token) {
+  return `${webBaseUrl()}rental-sign.html?contractId=${encodeURIComponent(contractId)}&token=${encodeURIComponent(token)}`;
+}
+
+function officialUrlForContract(contractId, token) {
+  return `${webBaseUrl()}rental-contract.html?contractId=${encodeURIComponent(contractId)}&token=${encodeURIComponent(token)}`;
+}
+
+function safePublicBody(req) {
+  if (req.method === 'OPTIONS') return null;
+  return req.body && typeof req.body === 'object' ? req.body : {};
+}
+
+function sendCors(res) {
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+}
+
+async function findRentalContract(contractId) {
+  const id = normalizeText(contractId);
+  if (!id) return null;
+  const ref = db.collection('rentalContracts').doc(id);
+  const snap = await ref.get();
+  if (!snap.exists) return null;
+  return { id, ref, data: snap.data() || {} };
+}
+
+function assertContractToken(data, token) {
+  const expected = normalizeText(data.officialContractToken || data.customerToken || data.signToken || data.token);
+  const actual = normalizeText(token);
+  return !expected || expected === actual;
+}
+
+exports.rentalSubmitApplicationHttp = onRequest(
+  { region: 'us-central1', cors: true, timeoutSeconds: 60 },
+  async (req, res) => {
+    try {
+      sendCors(res);
+      if (req.method === 'OPTIONS') return res.status(204).send('');
+      if (req.method !== 'POST') return res.status(405).json({ ok: false, message: 'Method Not Allowed' });
+
+      const body = safePublicBody(req);
+      const customerName = normalizeText(body.customerName);
+      const customerPhone = normalizeText(body.customerPhone);
+      if (!customerName) return res.status(400).json({ ok: false, message: '請填寫姓名。' });
+      if (!customerPhone) return res.status(400).json({ ok: false, message: '請填寫電話。' });
+
+      let applicationId = makeRentalId('RC');
+      let ref = db.collection('rentalApplications').doc(applicationId);
+      // 極低機率撞號時重產一次。
+      const exists = await ref.get();
+      if (exists.exists) {
+        applicationId = makeRentalId('RC');
+        ref = db.collection('rentalApplications').doc(applicationId);
+      }
+
+      const lineConfirmText = `租賃申請 ${applicationId} ${customerName}`;
+      const now = admin.firestore.FieldValue.serverTimestamp();
+      const data = {
+        ...body,
+        applicationId,
+        applicationNo: applicationId,
+        rentalApplicationNo: applicationId,
+        customerName,
+        customerPhone,
+        customerEmail: normalizeText(body.customerEmail),
+        customerAddress: normalizeText(body.customerAddress),
+        rentalType: normalizeText(body.rentalType),
+        periods: normalizeText(body.periods),
+        otherEquipmentNeed: normalizeText(body.otherEquipmentNeed),
+        shippingMethod: normalizeText(body.shippingMethod),
+        preferredDate: normalizeText(body.preferredDate),
+        preferredTime: normalizeText(body.preferredTime),
+        floorNote: normalizeText(body.floorNote),
+        note: normalizeText(body.note),
+        source: normalizeText(body.source || 'customer-inquiry-web'),
+        status: '待店家確認',
+        stage: 'inquiry',
+        lineLinkStatus: 'pending',
+        lineConfirmText,
+        createdAt: now,
+        updatedAt: now,
+        createdAtText: nowIsoText(),
+        updatedAtText: nowIsoText()
+      };
+      await ref.set(data, { merge: true });
+
+      const managerLineUserId = await getPrimaryManagerLineUserId();
+      if (managerLineUserId) {
+        const adminUrl = `${webBaseUrl()}rental-admin.html?applicationId=${encodeURIComponent(applicationId)}`;
+        const msg = [
+          '有新的設備租賃申請',
+          `姓名：${customerName}`,
+          `電話：${customerPhone}`,
+          `申請編號：${applicationId}`,
+          `租用需求：${normalizeText(body.otherEquipmentNeed || body.rentalType || '') || '未填寫'}`,
+          `希望方式：${normalizeText(body.shippingMethod) || '未填寫'}`,
+          `希望日期：${`${normalizeText(body.preferredDate)} ${normalizeText(body.preferredTime)}`.trim() || '未填寫'}`,
+          '',
+          `查看申請資料：${adminUrl}`,
+          '',
+          '客人 LINE 配對文字：',
+          lineConfirmText
+        ].join('\n');
+        await pushLineMessage(managerLineUserId, msg);
+      }
+
+      res.status(200).json({ ok: true, applicationId, applicationNo: applicationId, lineConfirmText });
+    } catch (error) {
+      console.error('rentalSubmitApplicationHttp error:', error);
+      res.status(500).json({ ok: false, message: error && error.message ? error.message : '送出失敗' });
+    }
+  }
+);
+
+exports.rentalSaveContractHttp = onRequest(
+  { region: 'us-central1', cors: true, timeoutSeconds: 90 },
+  async (req, res) => {
+    try {
+      sendCors(res);
+      if (req.method === 'OPTIONS') return res.status(204).send('');
+      if (req.method !== 'POST') return res.status(405).json({ ok: false, message: 'Method Not Allowed' });
+      const body = safePublicBody(req);
+      const contractId = normalizeText(body.contractId) || makeRentalId('RC');
+      const token = normalizeText(body.signToken || body.customerToken || body.token) || makeToken(32);
+      let customerLineUserId = normalizeText(body.customerLineUserId || body.lineUserId);
+
+      const applicationId = normalizeText(body.applicationId);
+      if (applicationId && !customerLineUserId) {
+        const appSnap = await db.collection('rentalApplications').doc(applicationId).get();
+        if (appSnap.exists) {
+          const app = appSnap.data() || {};
+          customerLineUserId = normalizeText(app.customerLineUserId || app.lineUserId);
+        }
+      }
+
+      const makeSignLink = !!body.makeSignLink;
+      const status = makeSignLink ? '待客人補資料' : normalizeText(body.status || '草稿');
+      const payload = {
+        ...body,
+        contractId,
+        status,
+        customerLineUserId,
+        lineUserId: customerLineUserId || normalizeText(body.lineUserId),
+        signToken: token,
+        customerToken: normalizeText(body.customerToken) || token,
+        token: normalizeText(body.token) || token,
+        signUrl: signUrlForContract(contractId, token),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAtText: nowIsoText()
+      };
+      if (!body.createdAtText) {
+        payload.createdAt = admin.firestore.FieldValue.serverTimestamp();
+        payload.createdAtText = nowIsoText();
+      }
+      await db.collection('rentalContracts').doc(contractId).set(payload, { merge: true });
+
+      if (applicationId) {
+        await db.collection('rentalApplications').doc(applicationId).set({
+          status: '已轉正式契約',
+          linkedContractId: contractId,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAtText: nowIsoText()
+        }, { merge: true });
+      }
+
+      res.status(200).json({ ok: true, contractId, signToken: token, customerToken: token, token, signUrl: payload.signUrl });
+    } catch (error) {
+      console.error('rentalSaveContractHttp error:', error);
+      res.status(500).json({ ok: false, message: error && error.message ? error.message : '儲存合約失敗' });
+    }
+  }
+);
+
+exports.rentalSendContractToCustomerHttp = onRequest(
+  { region: 'us-central1', cors: true, timeoutSeconds: 90 },
+  async (req, res) => {
+    try {
+      sendCors(res);
+      if (req.method === 'OPTIONS') return res.status(204).send('');
+      if (req.method !== 'POST') return res.status(405).json({ ok: false, message: 'Method Not Allowed' });
+      const body = safePublicBody(req);
+      const found = await findRentalContract(body.contractId);
+      if (!found) return res.status(404).json({ ok: false, message: '找不到合約資料' });
+      const c = found.data;
+      const token = normalizeText(c.signToken || c.customerToken || c.token) || makeToken(32);
+      const url = signUrlForContract(found.id, token);
+      const lineUserId = normalizeText(c.customerLineUserId || c.lineUserId);
+      const msg = [
+        '柚子樂器租賃資料填寫連結',
+        '',
+        '請點選以下連結，補填身分證字號、上傳身分證證明圖片並完成簽名。',
+        url,
+        '',
+        '填寫完成後，店家會依雙方約定的時間前往安裝／交付設備。'
+      ].join('\n');
+      let sent = false;
+      if (lineUserId) {
+        await pushLineMessage(lineUserId, msg);
+        sent = true;
+      }
+      await found.ref.set({
+        signToken: token,
+        customerToken: normalizeText(c.customerToken) || token,
+        token: normalizeText(c.token) || token,
+        signUrl: url,
+        signLinkSentAt: admin.firestore.FieldValue.serverTimestamp(),
+        signLinkSentAtText: nowIsoText(),
+        signLinkSentByFunction: sent,
+        status: '待客人補資料',
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAtText: nowIsoText()
+      }, { merge: true });
+      res.status(200).json({ ok: true, sent, url, signUrl: url });
+    } catch (error) {
+      console.error('rentalSendContractToCustomerHttp error:', error);
+      res.status(500).json({ ok: false, message: error && error.message ? error.message : '傳送合約連結失敗' });
+    }
+  }
+);
+
+exports.rentalCompleteReturnHttp = onRequest(
+  { region: 'us-central1', cors: true, timeoutSeconds: 60 },
+  async (req, res) => {
+    try {
+      sendCors(res);
+      if (req.method === 'OPTIONS') return res.status(204).send('');
+      if (req.method !== 'POST') return res.status(405).json({ ok: false, message: 'Method Not Allowed' });
+      const found = await findRentalContract((req.body || {}).contractId);
+      if (!found) return res.status(404).json({ ok: false, message: '找不到合約資料' });
+      await found.ref.set({ status: '已退租', returnedAt: admin.firestore.FieldValue.serverTimestamp(), returnedAtText: nowIsoText(), updatedAtText: nowIsoText() }, { merge: true });
+      const lineUserId = normalizeText(found.data.customerLineUserId || found.data.lineUserId);
+      if (lineUserId) await pushLineMessage(lineUserId, '柚子樂器已完成設備退租紀錄。感謝您的租用。');
+      res.status(200).json({ ok: true });
+    } catch (error) {
+      console.error('rentalCompleteReturnHttp error:', error);
+      res.status(500).json({ ok: false, message: error && error.message ? error.message : '退租處理失敗' });
+    }
+  }
+);
+
+exports.rentalSubmitRenewalRequestHttp = onRequest(
+  { region: 'us-central1', cors: true, timeoutSeconds: 60 },
+  async (req, res) => {
+    try {
+      sendCors(res);
+      if (req.method === 'OPTIONS') return res.status(204).send('');
+      if (req.method !== 'POST') return res.status(405).json({ ok: false, message: 'Method Not Allowed' });
+      const body = safePublicBody(req);
+      const found = await findRentalContract(body.contractId);
+      if (!found) return res.status(404).json({ ok: false, message: '找不到合約資料' });
+      if (!assertContractToken(found.data, body.token)) return res.status(403).json({ ok: false, message: '連結驗證失敗' });
+      await found.ref.set({
+        status: '續約待確認',
+        customerRenewalRequest: { periods: normalizeText(body.periods || '1'), note: normalizeText(body.note), requestedAtText: nowIsoText() },
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAtText: nowIsoText()
+      }, { merge: true });
+      const managerLineUserId = await getPrimaryManagerLineUserId();
+      if (managerLineUserId) await pushLineMessage(managerLineUserId, `客人提出租賃續約申請\n合約：${found.id}\n姓名：${normalizeText(found.data.customerName)}\n期數：${normalizeText(body.periods || '1')}\n備註：${normalizeText(body.note) || '無'}`);
+      res.status(200).json({ ok: true });
+    } catch (error) {
+      console.error('rentalSubmitRenewalRequestHttp error:', error);
+      res.status(500).json({ ok: false, message: error && error.message ? error.message : '續約申請送出失敗' });
+    }
+  }
+);
+
+exports.rentalSubmitReturnRequestHttp = onRequest(
+  { region: 'us-central1', cors: true, timeoutSeconds: 60 },
+  async (req, res) => {
+    try {
+      sendCors(res);
+      if (req.method === 'OPTIONS') return res.status(204).send('');
+      if (req.method !== 'POST') return res.status(405).json({ ok: false, message: 'Method Not Allowed' });
+      const body = safePublicBody(req);
+      const found = await findRentalContract(body.contractId);
+      if (!found) return res.status(404).json({ ok: false, message: '找不到合約資料' });
+      if (!assertContractToken(found.data, body.token)) return res.status(403).json({ ok: false, message: '連結驗證失敗' });
+      await found.ref.set({
+        status: '待歸還',
+        customerReturnRequest: { returnDate: normalizeText(body.returnDate), returnTime: normalizeText(body.returnTime), note: normalizeText(body.note), requestedAtText: nowIsoText() },
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAtText: nowIsoText()
+      }, { merge: true });
+      const managerLineUserId = await getPrimaryManagerLineUserId();
+      if (managerLineUserId) await pushLineMessage(managerLineUserId, `客人提出退租申請\n合約：${found.id}\n姓名：${normalizeText(found.data.customerName)}\n希望退租：${normalizeText(body.returnDate)} ${normalizeText(body.returnTime)}\n備註：${normalizeText(body.note) || '無'}`);
+      res.status(200).json({ ok: true });
+    } catch (error) {
+      console.error('rentalSubmitReturnRequestHttp error:', error);
+      res.status(500).json({ ok: false, message: error && error.message ? error.message : '退租申請送出失敗' });
+    }
+  }
+);
+
 exports.rentalSignContractHttp = onRequest(
   {
     region: 'us-central1',
