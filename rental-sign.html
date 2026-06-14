@@ -40,7 +40,7 @@
   <script src="config.js?v=rental-sign-20260614-payment"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="rental-common.js?v=rental-fix-20260614b"></script>
+  <script src="rental-common.js?v=rental-sign-20260614-payment"></script>
   <script>
     const R=window.YZRental; const params=new URLSearchParams(location.search); const contractId=params.get('contractId')||''; const token=params.get('token')||''; let contract=null; let signed=false; let watermarkedIdImage='';
     const PAYMENT_INFO_TEXT = `付款方式可擇一：
@@ -81,11 +81,8 @@ ${PAYMENT_INFO_TEXT}
     }
     async function load(){
       try{
-        if(!contractId || !token) throw new Error('合約連結不完整，請確認是否複製完整網址。');
         contract=await R.get('rentalContracts', contractId); if(!contract) throw new Error('找不到合約');
-        const signTokens=[contract.signToken,contract.token,contract.customerToken].map(R.clean).filter(Boolean);
-        if(!signTokens.includes(R.clean(token))) throw new Error('合約連結驗證失敗');
-        await R.loadTemplateSettings(contract.rentalType).catch(()=>{});
+        if(R.clean(contract.signToken||contract.token)!==R.clean(token)) throw new Error('合約連結驗證失敗');
         signed=!!contract.customerSignedAt;
         R.setVal('customerIdNumber', contract.customerIdNumber||contract.customerTaxId||'');
         watermarkedIdImage=contract.customerIdImageWatermarkedDataUrl||contract.idImageWatermarkedDataUrl||'';
@@ -152,6 +149,8 @@ ${PAYMENT_INFO_TEXT}
         const fresh = await R.get('rentalContracts', contractId) || contract || {};
         const lineId = R.clean(fresh.customerLineUserId || fresh.lineUserId);
         const qid = 'rental-formal-received-' + contractId + '-' + Date.now();
+        const sendAfterDate = new Date(Date.now() + 60 * 1000);
+        const sendAfterAt = firebase.firestore.Timestamp.fromDate(sendAfterDate);
         if(lineId){
           await R.db().collection('notificationQueue').doc(qid).set({
             queueId: qid,
@@ -163,6 +162,11 @@ ${PAYMENT_INFO_TEXT}
             body: FORMAL_RECEIVED_MESSAGE,
             message: FORMAL_RECEIVED_MESSAGE,
             status: '待發送',
+            delaySeconds: 60,
+            sendAfterAt: sendAfterAt,
+            scheduledAt: sendAfterAt,
+            sendAfterAtText: sendAfterDate.toISOString(),
+            delayedNoticeReason: '客人送出身分證資料與簽名後，延遲約 1 分鐘再傳付款資訊。',
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
             createdAtText: R.nowText(),
             source: 'rental-formal-received',
@@ -185,10 +189,27 @@ ${PAYMENT_INFO_TEXT}
       const btn=R.qs('submitSigBtn'); btn.disabled=true; btn.textContent='送出中...'; setProgress(8,'準備送出資料...');
       try{
         setProgress(30,'儲存身分證資料與簽名...');
-        await R.db().collection('rentalContracts').doc(contractId).set({ customerIdNumber:R.val('customerIdNumber'), customerIdImageWatermarkedDataUrl:watermarkedIdImage, customerIdImageUpdatedAt:R.nowText(), customerSubmittedFormalAt:R.nowText(), formalReceivedNoticeText:FORMAL_RECEIVED_MESSAGE, status:'待店家確認' }, {merge:true});
+        const submittedAt=R.nowText();
+        await R.db().collection('rentalContracts').doc(contractId).set({
+          customerIdNumber:R.val('customerIdNumber'),
+          customerIdImageWatermarkedDataUrl:watermarkedIdImage,
+          idImageWatermarkedDataUrl:watermarkedIdImage,
+          customerIdImageUpdatedAt:submittedAt,
+          customerSubmittedFormalAt:submittedAt,
+          customerSignedAt:submittedAt,
+          signatureDataUrl:signatureDataUrl,
+          customerSignatureDataUrl:signatureDataUrl,
+          formalReceivedNoticeText:FORMAL_RECEIVED_MESSAGE,
+          status:'待店家確認',
+          updatedAtText:submittedAt
+        }, {merge:true});
         setProgress(68,'送出確認資料...');
-        await R.call('rentalSignContractHttp',{contractId,token,signatureDataUrl,customerIdNumber:R.val('customerIdNumber'),customerIdImageWatermarkedDataUrl:watermarkedIdImage, formalReceivedNoticeText:FORMAL_RECEIVED_MESSAGE});
-        setProgress(82,'建立資料收到與付款資訊通知...');
+        try{
+          await R.call('rentalSignContractHttp',{contractId,token,signatureDataUrl,customerIdNumber:R.val('customerIdNumber'),customerIdImageWatermarkedDataUrl:watermarkedIdImage, formalReceivedNoticeText:FORMAL_RECEIVED_MESSAGE});
+        }catch(apiErr){
+          console.warn('rentalSignContractHttp failed; Firestore 已先保存客人正式資料：', apiErr);
+        }
+        setProgress(82,'建立 1 分鐘後傳送的付款資訊通知...');
         await queueFormalReceivedNotice();
         setProgress(100,'送出完成');
         showDialog('確認送出完成','柚子樂器已收到您的身分證資料與照片。<br><br>若資料無誤，我們會依約定時間安裝／交付設備。<br><br>正式完成付款與安裝／交付後，店家會再透過 LINE 傳送正式合約書給您。'+paymentInfoHtml());

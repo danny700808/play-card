@@ -366,19 +366,11 @@ ${url}
           updatedAtText:R.nowText()
         });
         const savedPayload=Object.assign({}, displayPayload);
-        // Firestore 單筆文件上限約 1MB；簽名與身分證圖片的 base64 只用來產生正式 PDF，不能整段寫回同一筆文件。
-        // 正式成立後以 officialPdfUrl 作為定稿依據，並清掉可能已存在的大型 dataURL 欄位，避免文件過大。
-        if(uploaded.url){
-          const del=firebase.firestore.FieldValue.delete();
-          savedPayload.customerSignatureDataUrl=del;
-          savedPayload.signatureDataUrl=del;
-          savedPayload.customerIdImageWatermarkedDataUrl=del;
-          savedPayload.idImageWatermarkedDataUrl=del;
-          savedPayload.customerIdImageDataUrl=del;
-          savedPayload.idImageDataUrl=del;
-          savedPayload.officialPdfMissing=false;
-        }else{
-          savedPayload.officialPdfMissing=true;
+        // 正式合約頁本身也要能顯示甲方簽名與身分證圖片。
+        // 之前在 PDF 上傳成功後把 base64 圖片欄位刪掉，會造成客人打開正式契約連結時只看到空白簽名 / 空白身分證區。
+        // 這裡改為保留既有欄位；若未來改成 Storage 圖片 URL，也會由 rental-common.js 自動讀取 URL 欄位。
+        savedPayload.officialPdfMissing=!uploaded.url;
+        if(!uploaded.url){
           savedPayload.officialPdfError=uploaded.error||'PDF 未產生或未上傳；已改用正式契約頁連結。';
         }
         await R.db().collection('rentalContracts').doc(id).set(savedPayload,{merge:true});
