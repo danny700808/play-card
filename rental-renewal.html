@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>租賃續租 / 退租確認</title>
+  <link rel="stylesheet" href="style.css?v=rental-renewal-20260614">
+  <style>
+    body{margin:0;background:#eef3f7;color:#18314a}.wrap{max-width:920px;margin:0 auto;padding:18px 12px 54px}.card2{background:#fff;border:1px solid #dbe5ef;border-radius:24px;padding:18px;margin-bottom:16px;box-shadow:0 10px 28px rgba(15,23,42,.04)}.title{font-size:28px;font-weight:950;margin:0 0 8px}.muted{font-size:14px;color:#64748b;line-height:1.8}.summary{line-height:2;background:#f8fafc;border:1px solid #dbe5ef;border-radius:18px;padding:14px;margin-top:12px}.choice-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}.choice{border:2px solid #dbe5ef;border-radius:18px;background:#fff;padding:16px;text-align:left;cursor:pointer}.choice.active{border-color:#1f7a5a;background:#f0fff7}.choice b{font-size:20px}.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}.row3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.field{margin-bottom:12px}.field label{display:block;font-weight:900;margin-bottom:6px}.field input,.field select,.field textarea{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:14px;padding:11px 12px;background:#fff;font-size:16px}.field textarea{min-height:90px}.btn{border:0;border-radius:14px;background:#1f7a5a;color:#fff;font-weight:950;padding:12px 16px;cursor:pointer;text-decoration:none;display:inline-flex;justify-content:center;align-items:center}.btn.secondary{background:#e2e8f0;color:#18314a}.btn.danger{background:#b42318}.btn-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}.msg{margin-top:12px;border-radius:14px;padding:12px 14px;font-weight:900;line-height:1.7}.msg.ok{background:#e8fff4;color:#146c43}.msg.bad{background:#fff0f0;color:#b42318}.pay-box{background:#fff7ed;border:1px solid #fed7aa;border-radius:18px;padding:14px;line-height:1.8}.pay-box b{color:#9a3412}.status-pill{display:inline-block;background:#e8fff4;color:#146c43;border-radius:999px;padding:6px 12px;font-weight:950}.proof-preview{max-width:260px;max-height:180px;object-fit:contain;border:1px solid #dbe5ef;border-radius:12px;background:#fff;margin-top:8px}.payment-grid{display:grid;grid-template-columns:170px 1fr;gap:14px;align-items:center}.payment-qr{width:160px;max-width:100%;border-radius:14px;background:#fff;border:1px solid #fed7aa;padding:8px;box-sizing:border-box}.pay-title{font-size:18px;font-weight:950;color:#9a3412;margin-bottom:6px}.bank-line{font-size:15px;color:#334155}.account-line{font-size:21px;font-weight:950;color:#18314a;letter-spacing:.5px;margin:6px 0}.account-name{font-size:18px;font-weight:950;color:#18314a}.copy-note{font-size:13px;color:#64748b;margin-top:8px}@media(max-width:720px){.choice-grid,.row2,.row3,.payment-grid{grid-template-columns:1fr}.wrap{padding:10px 8px}.card2{border-radius:18px;padding:14px}.title{font-size:24px}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="card2">
+      <h1 class="title">租賃續租 / 退租確認</h1>
+      <div class="muted">請依照目前租賃狀況選擇續租或退租。送出後系統會通知柚子樂器，後續由店家確認收款或安排設備收回。</div>
+      <div id="summary" class="summary">讀取中...</div>
+      <div id="msg"></div>
+    </section>
+
+    <section class="card2" id="choiceCard" style="display:none">
+      <h2 style="margin-top:0">請選擇處理方式</h2>
+      <div class="choice-grid">
+        <button class="choice" type="button" id="chooseRenew"><b>我要續租</b><br><span class="muted">選擇續租期數、查看金額與匯款資訊，完成後上傳付款截圖。</span></button>
+        <button class="choice" type="button" id="chooseReturn"><b>我要退租</b><br><span class="muted">送出退租回覆後，店家會再與您聯繫安排設備收回時間。</span></button>
+      </div>
+    </section>
+
+    <section class="card2" id="renewCard" style="display:none">
+      <h2 style="margin-top:0">續租資料</h2>
+      <div class="row3">
+        <div class="field"><label>續租期數</label><select id="renewPeriods"><option value="1">續租 1 期</option><option value="2">續租 2 期</option><option value="3">續租 3 期</option></select></div>
+        <div class="field"><label>續租起始日</label><input id="renewStartDate" type="date" readonly></div>
+        <div class="field"><label>續租到期日</label><input id="renewEndDate" type="date" readonly></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>續租金額</label><input id="renewRentFee" readonly></div>
+        <div class="field"><label>匯款末五碼 / 備註</label><input id="paymentLast5" placeholder="例如：12345，或留下備註"></div>
+      </div>
+      <div class="pay-box" id="paymentInfoBox">
+        <div class="payment-grid">
+          <div><img class="payment-qr" src="rental-payment-qr.png?v=20260614" alt="台灣 Pay 匯款 QR Code"></div>
+          <div>
+            <div class="pay-title">匯款資訊</div>
+            <div class="bank-line">台新銀行（812）｜敦南分行（0023）</div>
+            <div class="bank-line">戶名：黃銘廷</div>
+            <div class="account-line">帳號：2888-1010-149-129</div>
+            <div class="account-name">柚子樂器帳戶</div>
+            <div class="copy-note">匯款完成後，請上傳付款截圖或填寫匯款末五碼，送出後由店家確認。</div>
+          </div>
+        </div>
+      </div>
+      <div class="field" style="margin-top:12px"><label>付款截圖</label><input id="paymentProof" type="file" accept="image/*"><div class="muted">圖片會壓縮後附在續租申請中，供店家核對收款。</div><img id="proofPreview" class="proof-preview" style="display:none" alt="付款截圖預覽"></div>
+      <div class="field"><label>給店家的備註</label><textarea id="renewNote" placeholder="例如：已匯款、需要延續目前位置、其他備註"></textarea></div>
+      <div class="btn-row"><button class="btn" type="button" id="submitRenewBtn">送出續租付款確認</button><a class="btn secondary" href="https://lin.ee/Fx5Y2mL" target="_blank" rel="noopener">聯絡官方 LINE</a></div>
+    </section>
+
+    <section class="card2" id="returnCard" style="display:none">
+      <h2 style="margin-top:0">退租回覆</h2>
+      <div class="muted">送出後，柚子樂器會再與您聯繫約定設備取回時間。若您是自取自載，店家也會再確認歸還方式。</div>
+      <div class="row2" style="margin-top:12px">
+        <div class="field"><label>希望收回 / 歸還日期</label><input id="returnDate" type="date"></div>
+        <div class="field"><label>希望時段</label><select id="returnTime"><option value="">請選擇</option><option>09:00</option><option>11:00</option><option>13:00</option><option>15:00</option><option>17:00</option><option>19:00</option><option>20:00</option></select></div>
+      </div>
+      <div class="field"><label>收回地址 / 備註</label><textarea id="returnNote" placeholder="可填寫方便聯絡時段、設備所在位置、搬運注意事項"></textarea></div>
+      <div class="btn-row"><button class="btn danger" type="button" id="submitReturnBtn">送出退租回覆</button><a class="btn secondary" href="https://lin.ee/Fx5Y2mL" target="_blank" rel="noopener">聯絡官方 LINE</a></div>
+    </section>
+  </div>
+
+  <script src="config.js?v=rental-renewal-20260614"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="rental-common.js?v=rental-renewal-20260614"></script>
+  <script>
+    const R=window.YZRental;
+    const params=new URLSearchParams(location.search);
+    const contractId=params.get('contractId')||params.get('id')||'';
+    const token=params.get('token')||'';
+    let contract=null;
+    function dateAdd(dateText,days){ const d=new Date(R.clean(dateText)+'T00:00:00'); if(isNaN(d.getTime())) return ''; d.setDate(d.getDate()+Number(days||0)); return R.ymd(d); }
+    function safeId(value){ return R.clean(value).replace(/[\/#?\[\]]/g,'_').slice(0,160) || ('id_'+Date.now()); }
+    function customerLineId(c){ return R.clean(c.customerLineUserId||c.lineUserId); }
+    function customerEmail(c){ return R.clean(c.customerEmail||c.email).toLowerCase(); }
+    function rentPerPeriod(c){ const v=R.num(c.renewalRentFee||c.rentFee||c.rentalFee); return v||0; }
+    function currentPeriodDays(){ return Math.max(1, Number(contract.periodDays||90)||90); }
+    function recalcRenewal(){
+      const periods=Math.max(1, Number(R.val('renewPeriods')||1)||1);
+      const start=dateAdd(contract.endDate,1) || R.ymd(new Date());
+      const end=R.calcEndDate(start, periods, contract.rentalType, periods*currentPeriodDays());
+      const amount=rentPerPeriod(contract)*periods;
+      R.setVal('renewStartDate',start); R.setVal('renewEndDate',end); R.setVal('renewRentFee', amount ? amount.toLocaleString('zh-TW')+' 元' : '請洽店家確認');
+    }
+    async function imageFileToDataUrl(file){
+      if(!file) return '';
+      return new Promise((resolve,reject)=>{
+        const img=new Image(); const reader=new FileReader();
+        reader.onload=()=>{ img.onload=()=>{ try{ const max=900; let w=img.width,h=img.height; if(Math.max(w,h)>max){ if(w>=h){ h=Math.round(h*max/w); w=max; } else { w=Math.round(w*max/h); h=max; } } const canvas=document.createElement('canvas'); canvas.width=w; canvas.height=h; const ctx=canvas.getContext('2d'); ctx.drawImage(img,0,0,w,h); resolve(canvas.toDataURL('image/jpeg',0.72)); }catch(e){ reject(e); } }; img.onerror=()=>reject(new Error('付款截圖讀取失敗')); img.src=reader.result; };
+        reader.onerror=()=>reject(new Error('付款截圖讀取失敗'));
+        reader.readAsDataURL(file);
+      });
+    }
+    async function queueNotification(channel,title,body,source,extra){
+      const id=(source||'rental-renewal')+'-'+safeId(contractId)+'-'+channel+'-'+Date.now();
+      const row=Object.assign({queueId:id,channel,title,body,message:body,status:'待發送',source,contractId,targetName:R.clean(contract.customerName),targetEmail:customerEmail(contract),targetLineUserId:channel==='line'?customerLineId(contract):'',createdAt:firebase.firestore.FieldValue.serverTimestamp(),createdAtText:R.nowText()}, extra||{});
+      if(channel==='line' && !row.targetLineUserId) return false;
+      if(channel==='email' && !row.targetEmail) return false;
+      await R.db().collection('notificationQueue').doc(id).set(row,{merge:true});
+      return true;
+    }
+    async function queueManagerNotice(title,body,source){
+      try{
+        const mgr=await R.get('employees','PRIMARY_MANAGER_LINE');
+        const lineId=R.clean(mgr&&mgr.lineUserId);
+        if(lineId){
+          const id=(source||'rental-manager')+'-'+safeId(contractId)+'-line-'+Date.now();
+          await R.db().collection('notificationQueue').doc(id).set({queueId:id,channel:'line',targetLineUserId:lineId,targetName:R.clean(mgr.name||'主管'),title,body,message:body,status:'待發送',source,contractId,createdAt:firebase.firestore.FieldValue.serverTimestamp(),createdAtText:R.nowText()},{merge:true});
+        }
+      }catch(e){ console.warn('manager line notice skipped',e); }
+      const id=(source||'rental-manager')+'-'+safeId(contractId)+'-email-'+Date.now();
+      await R.db().collection('notificationQueue').doc(id).set({queueId:id,channel:'email',targetEmail:'danny700808@gmail.com',targetName:'柚子樂器管理者',title,body,message:body,status:'待發送',source,contractId,createdAt:firebase.firestore.FieldValue.serverTimestamp(),createdAtText:R.nowText()},{merge:true});
+    }
+    function showChoice(which){
+      R.qs('renewCard').style.display=which==='renew'?'block':'none';
+      R.qs('returnCard').style.display=which==='return'?'block':'none';
+      R.qs('chooseRenew').classList.toggle('active',which==='renew');
+      R.qs('chooseReturn').classList.toggle('active',which==='return');
+      if(which==='renew') recalcRenewal();
+    }
+    async function load(){
+      try{
+        if(!contractId || !token) throw new Error('續租 / 退租連結不完整，請確認是否複製完整網址。');
+        contract=await R.get('rentalContracts',contractId);
+        if(!contract) throw new Error('找不到這份租賃契約。');
+        const tokens=[contract.renewalToken,contract.officialContractToken,contract.customerToken,contract.signToken,contract.token].map(R.clean).filter(Boolean);
+        if(!tokens.includes(R.clean(token))) throw new Error('連結驗證失敗，請使用店家提供的最新連結。');
+        const equipment=R.clean(contract.equipmentName || (R.parseEquipmentItems(contract)[0]||{}).name || '租賃設備');
+        R.qs('summary').innerHTML=`<span class="status-pill">${R.esc(contract.status||'租賃中')}</span><br><b>承租人：</b>${R.esc(contract.customerName||'')}<br><b>租賃設備：</b>${R.esc(equipment)}<br><b>目前租期：</b>${R.esc(contract.startDate||'')} ～ ${R.esc(contract.endDate||'')}<br><b>續租說明：</b>續租起日會自動接在目前到期日的下一天。`;
+        R.qs('choiceCard').style.display='block';
+        const pr=contract.pendingRenewal||{};
+        if(['續約待確認','續約待付款'].includes(R.clean(contract.status)) && pr.startDate){
+          R.toast('您已有續租資料送出，店家確認後會再傳送更新後契約。若要補傳資料，仍可重新送出。', true);
+        }
+        recalcRenewal();
+      }catch(e){ R.toast(e.message||String(e), false); }
+    }
+    R.qs('chooseRenew').onclick=()=>showChoice('renew');
+    R.qs('chooseReturn').onclick=()=>showChoice('return');
+    R.qs('renewPeriods').onchange=recalcRenewal;
+    R.qs('paymentProof').onchange=async()=>{
+      const f=R.qs('paymentProof').files && R.qs('paymentProof').files[0];
+      if(!f){ R.qs('proofPreview').style.display='none'; return; }
+      try{ const data=await imageFileToDataUrl(f); R.qs('proofPreview').src=data; R.qs('proofPreview').style.display='block'; }catch(e){ R.toast(e.message||String(e), false); }
+    };
+    R.qs('submitRenewBtn').onclick=async()=>{
+      try{
+        if(!contract) throw new Error('尚未讀取契約。');
+        const file=R.qs('paymentProof').files && R.qs('paymentProof').files[0];
+        const proof=file ? await imageFileToDataUrl(file) : '';
+        const periods=Math.max(1,Number(R.val('renewPeriods')||1)||1);
+        const amount=rentPerPeriod(contract)*periods;
+        const renewal={decision:'renew',source:'customer-renewal-page',periods,startDate:R.val('renewStartDate'),endDate:R.val('renewEndDate'),days:periods*currentPeriodDays(),rentFee:amount||'',paymentLast5:R.val('paymentLast5'),paymentProofDataUrl:proof,customerNote:R.val('renewNote'),customerSubmittedAt:R.nowText(),status:'續約待確認'};
+        if(!renewal.startDate || !renewal.endDate) throw new Error('續租日期計算失敗，請聯絡店家。');
+        await R.db().collection('rentalContracts').doc(contractId).set({pendingRenewal:renewal,status:'續約待確認',customerRenewalSubmittedAt:R.nowText(),updatedAtText:R.nowText()},{merge:true});
+        const body=`已收到您的續租付款確認\n\n續租期間：${renewal.startDate} ～ ${renewal.endDate}\n續租金額：${amount?amount.toLocaleString('zh-TW')+' 元':'待店家確認'}\n\n柚子樂器確認款項後，會更新正式契約並再次傳送契約連結。`;
+        await queueNotification('line','已收到續租付款確認',body,'rental-renewal-customer-ack');
+        await queueNotification('email','已收到續租付款確認',body,'rental-renewal-customer-ack');
+        const adminBody=`客人送出續租付款確認\n\n姓名：${R.clean(contract.customerName)}\n設備：${R.clean(contract.equipmentName || ((R.parseEquipmentItems(contract)[0]||{}).name))}\n原到期日：${R.clean(contract.endDate)}\n續租期間：${renewal.startDate} ～ ${renewal.endDate}\n續租金額：${amount||''}\n匯款末五碼/備註：${renewal.paymentLast5||''}\n客人備註：${renewal.customerNote||''}\n\n請到租賃管理確認收款並按「確認續約成立」。`;
+        await queueManagerNotice('客人送出續租付款確認',adminBody,'rental-renewal-manager-notice');
+        R.toast('續租資料已送出。店家確認款項後，會傳送更新後正式契約給您。', true);
+        window.scrollTo({top:0,behavior:'smooth'});
+      }catch(e){ R.toast(e.message||String(e), false); }
+    };
+    R.qs('submitReturnBtn').onclick=async()=>{
+      try{
+        if(!contract) throw new Error('尚未讀取契約。');
+        if(!R.val('returnDate')) throw new Error('請選擇希望收回 / 歸還日期。');
+        if(!confirm('確認送出退租回覆？')) return;
+        const req={decision:'return',source:'customer-renewal-page',returnDate:R.val('returnDate'),returnTime:R.val('returnTime'),note:R.val('returnNote'),customerSubmittedAt:R.nowText(),status:'退租申請中'};
+        await R.db().collection('rentalContracts').doc(contractId).set({returnRequest:req,status:'退租申請中',customerReturnSubmittedAt:R.nowText(),updatedAtText:R.nowText()},{merge:true});
+        const body=`已收到您的退租回覆\n\n希望日期：${req.returnDate}\n希望時段：${req.returnTime||'未指定'}\n\n柚子樂器會再與您聯繫約定設備取回 / 歸還時間，謝謝。`;
+        await queueNotification('line','已收到退租回覆',body,'rental-return-customer-ack');
+        await queueNotification('email','已收到退租回覆',body,'rental-return-customer-ack');
+        const adminBody=`客人選擇退租\n\n姓名：${R.clean(contract.customerName)}\n設備：${R.clean(contract.equipmentName || ((R.parseEquipmentItems(contract)[0]||{}).name))}\n目前到期日：${R.clean(contract.endDate)}\n希望日期：${req.returnDate}\n希望時段：${req.returnTime||'未指定'}\n備註：${req.note||''}\n\n請到租賃管理安排設備收回。`;
+        await queueManagerNotice('客人選擇退租',adminBody,'rental-return-manager-notice');
+        R.toast('已收到您的退租回覆。店家會再與您聯繫安排收回 / 歸還時間。', true);
+        window.scrollTo({top:0,behavior:'smooth'});
+      }catch(e){ R.toast(e.message||String(e), false); }
+    };
+    load();
+  </script>
+</body>
+</html>

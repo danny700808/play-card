@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Email 發送測試</title>
+  <link rel="stylesheet" href="style.css?v=email-check-20260614">
+  <style>
+    body{background:#eef3f7;color:#18314a}.wrap{max-width:820px;margin:0 auto;padding:22px 14px}.card2{background:#fff;border:1px solid #dbe5ef;border-radius:24px;padding:18px;margin-bottom:16px;box-shadow:0 10px 28px rgba(15,23,42,.04)}.title{font-size:28px;font-weight:950;margin:0 0 8px}.muted{font-size:14px;color:#64748b;line-height:1.8}.field{margin-bottom:12px}.field label{display:block;font-weight:900;margin-bottom:6px}.field input,.field textarea{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:14px;padding:11px 12px;background:#fff;font-size:16px}.field textarea{min-height:110px}.btn{border:0;border-radius:14px;background:#1f7a5a;color:#fff;font-weight:950;padding:12px 16px;cursor:pointer}.msg{margin-top:12px;border-radius:14px;padding:12px 14px;font-weight:900;line-height:1.7}.msg.ok{background:#e8fff4;color:#146c43}.msg.bad{background:#fff0f0;color:#b42318}.status-box{background:#f8fafc;border:1px solid #dbe5ef;border-radius:18px;padding:14px;line-height:1.8;white-space:pre-wrap}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="card2">
+      <h1 class="title">Email 發送測試</h1>
+      <div class="muted">這頁用來確認 Firebase Functions 是否真的能透過 SendGrid 發 Email。若未設定 <b>SENDGRID_API_KEY</b> 或 <b>SENDGRID_FROM_EMAIL</b>，狀態會顯示「發送失敗」。</div>
+      <div class="field" style="margin-top:14px"><label>測試收件 Email</label><input id="toEmail" value="danny700808@gmail.com"></div>
+      <div class="field"><label>主旨</label><input id="title" value="柚子樂器 Email 發送測試"></div>
+      <div class="field"><label>內容</label><textarea id="body">這是一封柚子樂器系統 Email 發送測試。</textarea></div>
+      <button class="btn" type="button" id="sendBtn">送出測試 Email</button>
+      <div id="msg"></div>
+    </section>
+    <section class="card2">
+      <h2 style="margin-top:0">發送狀態</h2>
+      <div id="statusBox" class="status-box">尚未送出。</div>
+    </section>
+  </div>
+  <script src="config.js?v=email-check-20260614"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="rental-common.js?v=email-check-20260614"></script>
+  <script>
+    const R=window.YZRental;
+    function msg(t,ok){const el=R.qs('msg'); el.textContent=t; el.className=ok?'msg ok':'msg bad';}
+    function status(t){R.qs('statusBox').textContent=t;}
+    R.qs('sendBtn').onclick=async()=>{
+      try{
+        msg('建立測試佇列中...',true); status('等待建立 queue...');
+        const res=await fetch(R.functionUrl('emailSendCheckHttp'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to:R.val('toEmail'),title:R.val('title'),body:R.val('body')})});
+        const json=await res.json().catch(()=>({}));
+        if(!res.ok || json.ok===false) throw new Error(json.message||('HTTP '+res.status));
+        msg(json.message||'已建立 Email 測試佇列。',true);
+        const id=json.queueId;
+        status('queueId：'+id+'\n狀態：等待後端發送...');
+        R.db().collection('notificationQueue').doc(id).onSnapshot(doc=>{
+          if(!doc.exists){ status('找不到 queue：'+id); return; }
+          const d=doc.data()||{};
+          status(['queueId：'+id,'狀態：'+(d.status||''),'Provider：'+(d.provider||''),'Response：'+(d.responseStatus||''),'錯誤：'+(d.lastError||''),'寄出時間：'+(d.sentAtText||''),'建立時間：'+(d.createdAtText||'')].join('\n'));
+        });
+      }catch(e){ msg(e.message||String(e),false); }
+    };
+  </script>
+</body>
+</html>
