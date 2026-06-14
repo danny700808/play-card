@@ -563,6 +563,42 @@ function queueBody(row = {}) {
   return queueTitle(row) || '您有一則新的通知。';
 }
 
+function queueAvailableAtMillis(row = {}) {
+  const raw = row.sendAfterAt || row.scheduledAt || row.notBeforeAt || row.deliverAt || row.deliverAfterAt;
+  if (!raw) return 0;
+  if (typeof raw.toMillis === 'function') return raw.toMillis();
+  if (typeof raw.toDate === 'function') return raw.toDate().getTime();
+  if (raw instanceof Date) return raw.getTime();
+  if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+  const text = clean(raw || row.sendAfterAtText || row.scheduledAtText || row.notBeforeAtText);
+  if (!text) return 0;
+  const ms = Date.parse(text);
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
+}
+
+async function waitOrSkipUntilQueueDue(row = {}, options = {}) {
+  const dueAt = queueAvailableAtMillis(row);
+  if (!dueAt) return null;
+  const remaining = dueAt - Date.now();
+  if (remaining <= 0) return null;
+  // 送出身分證與簽名後的付款資訊，原本設計就是約 1 分鐘後再傳。
+  // onCreate 觸發時若延遲不長，直接等到時間再送；若延遲較長，交給排程補送。
+  if (options.processor === 'onCreate' && remaining <= 75 * 1000) {
+    await markQueue(options.docRef, {
+      status: '待發送',
+      delayedUntilAtText: new Date(dueAt).toISOString(),
+      delayReason: clean(row.delayedNoticeReason || row.delayReason || '延遲發送'),
+    });
+    await sleep(remaining);
+    return null;
+  }
+  return { ok: true, skipped: true, reason: 'not-due-yet', dueAtText: new Date(dueAt).toISOString() };
+}
+
 async function sendLinePush(row) {
   const to = queueTargetLineUserId(row);
   if (!to) throw new Error('缺少 LINE User ID，無法發送 LINE。');
@@ -637,6 +673,8 @@ async function processNotificationQueueDoc(docRef, row, options = {}) {
   const queueId = clean(row.queueId || docRef.id);
   const channel = queueChannel(row);
   if (!isPendingQueue(row)) return { ok: true, skipped: true, reason: `狀態不是待發送：${queueStatus(row)}` };
+  const dueCheck = await waitOrSkipUntilQueueDue(row, Object.assign({}, options, { docRef }));
+  if (dueCheck) return dueCheck;
   if (!['line', 'email'].includes(channel)) {
     await markQueue(docRef, { status: '發送失敗', lastError: `不支援的發送方式：${channel || '(空白)'}` });
     return { ok: false, skipped: true, reason: 'unsupported-channel' };
@@ -769,7 +807,7 @@ exports.sendNotificationQueueOnCreate = onDocumentCreated(`${QUEUE_COLLECTION}/{
   return await processNotificationQueueDoc(snap.ref, snap.data() || {}, { processor: 'onCreate' });
 });
 
-exports.flushNotificationQueue = onSchedule({ schedule: 'every 5 minutes', region: 'us-central1', timeoutSeconds: 120, memory: '512MiB' }, async () => {
+exports.flushNotificationQueue = onSchedule({ schedule: 'every 1 minutes', region: 'us-central1', timeoutSeconds: 120, memory: '512MiB' }, async () => {
   const snap = await db.collection(QUEUE_COLLECTION).where('status', 'in', ['待發送', 'pending', 'queued', 'retry']).limit(50).get();
   const results = [];
   for (const doc of snap.docs) {
