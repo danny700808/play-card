@@ -1,6 +1,7 @@
 const { onRequest } = require('firebase-functions/v2/https');
 const { onDocumentCreated } = require('firebase-functions/v2/firestore');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
+const nodemailer = require('nodemailer');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
 
@@ -563,42 +564,6 @@ function queueBody(row = {}) {
   return queueTitle(row) || '您有一則新的通知。';
 }
 
-function queueAvailableAtMillis(row = {}) {
-  const raw = row.sendAfterAt || row.scheduledAt || row.notBeforeAt || row.deliverAt || row.deliverAfterAt;
-  if (!raw) return 0;
-  if (typeof raw.toMillis === 'function') return raw.toMillis();
-  if (typeof raw.toDate === 'function') return raw.toDate().getTime();
-  if (raw instanceof Date) return raw.getTime();
-  if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
-  const text = clean(raw || row.sendAfterAtText || row.scheduledAtText || row.notBeforeAtText);
-  if (!text) return 0;
-  const ms = Date.parse(text);
-  return Number.isFinite(ms) ? ms : 0;
-}
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
-}
-
-async function waitOrSkipUntilQueueDue(row = {}, options = {}) {
-  const dueAt = queueAvailableAtMillis(row);
-  if (!dueAt) return null;
-  const remaining = dueAt - Date.now();
-  if (remaining <= 0) return null;
-  // 送出身分證與簽名後的付款資訊，原本設計就是約 1 分鐘後再傳。
-  // onCreate 觸發時若延遲不長，直接等到時間再送；若延遲較長，交給排程補送。
-  if (options.processor === 'onCreate' && remaining <= 75 * 1000) {
-    await markQueue(options.docRef, {
-      status: '待發送',
-      delayedUntilAtText: new Date(dueAt).toISOString(),
-      delayReason: clean(row.delayedNoticeReason || row.delayReason || '延遲發送'),
-    });
-    await sleep(remaining);
-    return null;
-  }
-  return { ok: true, skipped: true, reason: 'not-due-yet', dueAtText: new Date(dueAt).toISOString() };
-}
-
 async function sendLinePush(row) {
   const to = queueTargetLineUserId(row);
   if (!to) throw new Error('缺少 LINE User ID，無法發送 LINE。');
@@ -626,32 +591,61 @@ async function sendLinePush(row) {
   return { provider: 'line-messaging-api', responseStatus: response.status, responseText: responseText.slice(0, 500) };
 }
 
-async function sendEmailViaSendGrid(row) {
+async function sendEmailViaGmail(row) {
   const to = queueTargetEmail(row);
   if (!to) throw new Error('缺少 Email，無法發送 Email。');
-  const apiKey = clean(process.env.SENDGRID_API_KEY || '');
-  const from = clean(process.env.SENDGRID_FROM_EMAIL || process.env.MAIL_FROM || '');
-  const fromName = clean(process.env.SENDGRID_FROM_NAME || '柚子樂器');
-  if (!apiKey || !from) throw new Error('Email 尚未設定 SENDGRID_API_KEY / SENDGRID_FROM_EMAIL。');
 
-  const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      personalizations: [{ to: [{ email: to, name: clean(row.targetName) || undefined }] }],
-      from: { email: from, name: fromName },
-      subject: queueTitle(row),
-      content: [{ type: 'text/plain', value: queueBody(row) }],
-    }),
-  });
-  const responseText = await response.text();
-  if (response.status < 200 || response.status >= 300) {
-    throw new Error(`SendGrid API ${response.status}：${responseText.slice(0, 500)}`);
+  const gmailUser = clean(
+    process.env.GMAIL_USER ||
+    (functions.config().email && functions.config().email.gmail_user) ||
+    ''
+  );
+  const gmailAppPassword = clean(
+    process.env.GMAIL_APP_PASSWORD ||
+    (functions.config().email && functions.config().email.gmail_app_password) ||
+    ''
+  ).replace(/\s+/g, '');
+  const from = clean(
+    process.env.EMAIL_FROM ||
+    (functions.config().email && functions.config().email.email_from) ||
+    ''
+  ) || `柚子樂器 <${gmailUser}>`;
+
+  if (!gmailUser || !gmailAppPassword) {
+    throw new Error('Gmail 尚未設定 GMAIL_USER / GMAIL_APP_PASSWORD。');
   }
-  return { provider: 'sendgrid', responseStatus: response.status, responseText: responseText.slice(0, 500) };
+
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: gmailUser,
+      pass: gmailAppPassword,
+    },
+  });
+
+  const subject = queueTitle(row) || '柚子樂器通知';
+  const body = queueBody(row) || '';
+  const html = clean(row.html || row.htmlBody || '') || body.replace(/\n/g, '<br>');
+
+  const info = await transporter.sendMail({
+    from,
+    to,
+    subject,
+    text: body || subject,
+    html,
+  });
+
+  return {
+    provider: 'gmail',
+    responseStatus: 200,
+    responseText: clean(info && info.messageId ? info.messageId : ''),
+  };
+}
+
+async function sendEmailViaSendGrid(row) {
+  // 保留舊函式名稱，讓 notificationQueue 的原本流程不用重寫。
+  // 實際寄信已改為 Gmail SMTP。
+  return await sendEmailViaGmail(row);
 }
 
 async function markQueue(docRef, data) {
@@ -673,8 +667,6 @@ async function processNotificationQueueDoc(docRef, row, options = {}) {
   const queueId = clean(row.queueId || docRef.id);
   const channel = queueChannel(row);
   if (!isPendingQueue(row)) return { ok: true, skipped: true, reason: `狀態不是待發送：${queueStatus(row)}` };
-  const dueCheck = await waitOrSkipUntilQueueDue(row, Object.assign({}, options, { docRef }));
-  if (dueCheck) return dueCheck;
   if (!['line', 'email'].includes(channel)) {
     await markQueue(docRef, { status: '發送失敗', lastError: `不支援的發送方式：${channel || '(空白)'}` });
     return { ok: false, skipped: true, reason: 'unsupported-channel' };
@@ -807,7 +799,7 @@ exports.sendNotificationQueueOnCreate = onDocumentCreated(`${QUEUE_COLLECTION}/{
   return await processNotificationQueueDoc(snap.ref, snap.data() || {}, { processor: 'onCreate' });
 });
 
-exports.flushNotificationQueue = onSchedule({ schedule: 'every 1 minutes', region: 'us-central1', timeoutSeconds: 120, memory: '512MiB' }, async () => {
+exports.flushNotificationQueue = onSchedule({ schedule: 'every 5 minutes', region: 'us-central1', timeoutSeconds: 120, memory: '512MiB' }, async () => {
   const snap = await db.collection(QUEUE_COLLECTION).where('status', 'in', ['待發送', 'pending', 'queued', 'retry']).limit(50).get();
   const results = [];
   for (const doc of snap.docs) {
@@ -1163,3 +1155,29 @@ exports.lineWebhook = onRequest(
     }
   }
 );
+
+
+exports.sendGmailTestEmail = functions.https.onCall(async (data, context) => {
+  const to = clean((data && (data.to || data.email)) || '');
+  if (!to) {
+    throw new functions.https.HttpsError('invalid-argument', '請提供測試收件人 Email。');
+  }
+  try {
+    const result = await sendEmailViaGmail({
+      channel: 'email',
+      targetEmail: to,
+      title: '柚子樂器 Gmail 寄信測試',
+      body: [
+        '這是一封 Gmail SMTP 測試信。',
+        '',
+        '如果你收到這封信，代表 Firebase Functions 已經可以透過 Gmail 寄信。',
+        '寄出時間：' + nowText(),
+      ].join('\n'),
+    });
+    return { ok: true, result };
+  } catch (err) {
+    const msg = err && err.message ? err.message : String(err);
+    console.error('[sendGmailTestEmail failed]', msg);
+    throw new functions.https.HttpsError('internal', msg);
+  }
+});
