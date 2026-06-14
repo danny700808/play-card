@@ -187,8 +187,12 @@ ${PAYMENT_INFO_TEXT}
       try{
         setProgress(30,'儲存身分證資料與簽名...');
         await R.db().collection('rentalContracts').doc(contractId).set({ customerIdNumber:R.val('customerIdNumber'), customerIdImageWatermarkedDataUrl:watermarkedIdImage, idImageWatermarkedDataUrl:watermarkedIdImage, customerSignatureDataUrl:signatureDataUrl, signatureDataUrl:signatureDataUrl, customerIdImageUpdatedAt:R.nowText(), customerSignatureUpdatedAt:R.nowText(), customerSubmittedFormalAt:R.nowText(), formalReceivedNoticeText:FORMAL_RECEIVED_MESSAGE, status:'待店家確認' }, {merge:true});
-        setProgress(68,'送出確認資料...');
-        await R.call('rentalSignContractHttp',{contractId,token,signatureDataUrl,customerIdNumber:R.val('customerIdNumber'),customerIdImageWatermarkedDataUrl:watermarkedIdImage, formalReceivedNoticeText:FORMAL_RECEIVED_MESSAGE});
+        setProgress(68,'通知系統已收到資料...');
+        try{
+          await R.call('rentalSignContractHttp',{contractId,token,signatureDataUrl,customerIdNumber:R.val('customerIdNumber'),customerIdImageWatermarkedDataUrl:watermarkedIdImage, formalReceivedNoticeText:FORMAL_RECEIVED_MESSAGE});
+        }catch(apiErr){
+          console.warn('rentalSignContractHttp failed, continue after Firestore saved:', apiErr);
+        }
         setProgress(82,'建立資料收到與付款資訊通知...');
         await queueFormalReceivedNotice();
         setProgress(100,'送出完成');
