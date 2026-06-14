@@ -1,4 +1,4 @@
-name: Deploy LINE Webhook Function on merge
+name: Deploy Firebase Rules and Functions on merge
 
 on:
   push:
@@ -28,7 +28,7 @@ jobs:
       - name: Prepare Firebase credentials
         run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 }}' > $HOME/firebase-service-account.json
 
-      - name: Deploy LINE Webhook Function only
+      - name: Deploy Firestore rules, Storage rules and Functions
         run: |
           export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
-          firebase deploy --only functions:lineWebhook --project youzi-c1b74
+          firebase deploy --only firestore:rules,storage,functions --project youzi-c1b74
