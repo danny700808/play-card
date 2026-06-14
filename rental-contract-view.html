@@ -3,162 +3,37 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>設備租賃正式契約</title>
-  <link rel="stylesheet" href="style.css?v=rental-contract-view-20260614-png">
+  <link rel="stylesheet" href="style.css?v=rental-contract-view-20260614-screenshot">
   <style>
-    body{background:#eef3f7;color:#18314a;margin:0;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-    .wrap{max-width:980px;margin:0 auto;padding:18px 12px 50px}
-    .card{background:#fff;border:1px solid #dbe5ef;border-radius:22px;padding:16px;margin-bottom:14px;box-shadow:0 8px 22px rgba(15,23,42,.04)}
-    .title{font-size:26px;font-weight:950;margin:0 0 8px}
-    .muted{color:#64748b;line-height:1.8}
-    .btn{border:0;border-radius:14px;background:#1f7a5a;color:#fff;font-weight:950;padding:11px 15px;text-decoration:none;display:inline-flex;margin:6px 6px 0 0;cursor:pointer}
-    .btn.secondary{background:#e2e8f0;color:#18314a}
-    .msg{padding:12px;border-radius:14px;font-weight:900;line-height:1.7}
-    .msg.bad{background:#fff0f0;color:#b42318}
-    .msg.ok{background:#e8fff4;color:#146c43}
-    .msg.info{background:#eff6ff;color:#1d4ed8}
-    .a4-wrap{overflow-x:auto;padding:8px 0}
-    .png-grid{display:grid;gap:16px;margin-top:14px}
-    .png-item{background:#f8fafc;border:1px solid #dbe5ef;border-radius:18px;padding:12px}
-    .png-item-title{font-weight:950;margin-bottom:8px}
-    .png-item img{width:100%;height:auto;display:block;border-radius:12px;border:1px solid #cbd5e1;background:#fff}
-    .small-tip{font-size:12px;color:#64748b;line-height:1.7;margin-top:8px}.png-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.png-actions .btn{font-size:13px;padding:9px 12px}.png-actions .btn.secondary{background:#e2e8f0;color:#18314a}
-    .hidden-capture-wrap{position:fixed;left:-99999px;top:0;pointer-events:none;opacity:0}
-    @media(max-width:840px){.a4-wrap{transform-origin:top left}.rental-contract-sheet{width:210mm!important;min-height:297mm!important;transform:scale(.44);transform-origin:top left;margin-bottom:-155mm!important}.rental-contract-sheet.period-sheet{margin-top:10mm!important}}
-    @media print{body *{visibility:hidden}.contractArea,.contractArea *{visibility:visible}.contractArea{position:absolute;left:0;top:0;width:100%}.card:not(.contractPrint){display:none!important}.rental-contract-sheet{border:none!important;box-shadow:none!important;margin:0!important;width:210mm!important;min-height:297mm!important}@page{size:A4;margin:0}}
+    body{background:#eef3f7;color:#18314a;margin:0;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.wrap{max-width:980px;margin:0 auto;padding:18px 12px 50px}.card{background:#fff;border:1px solid #dbe5ef;border-radius:22px;padding:16px;margin-bottom:14px;box-shadow:0 8px 22px rgba(15,23,42,.04)}.title{font-size:26px;font-weight:950;margin:0 0 8px}.muted{color:#64748b;line-height:1.8}.btn{border:0;border-radius:14px;background:#1f7a5a;color:#fff;font-weight:950;padding:11px 15px;text-decoration:none;display:inline-flex;margin:6px 6px 0 0}.btn.secondary{background:#e2e8f0;color:#18314a}.msg{padding:12px;border-radius:14px;font-weight:900;line-height:1.7}.msg.bad{background:#fff0f0;color:#b42318}.msg.ok{background:#e8fff4;color:#146c43}.a4-wrap{overflow-x:auto;padding:8px 0}.save-notice{margin-top:10px;border-radius:16px;background:#fff7ed;color:#9a3412;padding:12px 14px;font-weight:900;line-height:1.8}@media(max-width:840px){.a4-wrap{transform-origin:top left}.rental-contract-sheet{width:210mm!important;min-height:297mm!important;transform:scale(.44);transform-origin:top left;margin-bottom:-155mm!important}.rental-contract-sheet.period-sheet{margin-top:10mm!important}}@media print{body *{visibility:hidden}.contractArea,.contractArea *{visibility:visible}.contractArea{position:absolute;left:0;top:0;width:100%}.card:not(.contractPrint){display:none!important}.rental-contract-sheet{border:none!important;box-shadow:none!important;margin:0!important;width:210mm!important;min-height:297mm!important}@page{size:A4;margin:0}}
   </style>
 </head>
 <body>
   <div class="wrap">
     <section class="card">
       <h1 class="title">設備租賃正式契約</h1>
-      <div class="muted">本頁為柚子樂器設備租賃正式契約查看頁。下方會自動產生 PNG 圖片版，手機可用圖片下方的「下載 PNG」或「開啟圖片」保存。</div>
+      <div class="muted">本頁為柚子樂器設備租賃正式契約查看頁。合約內容會直接顯示在下方，請自行截圖保存，或保留 LINE 連結日後查看。</div>
+      <div class="save-notice">請自行截圖保存此正式契約頁面。</div>
       <div id="msg" style="margin-top:10px"></div>
       <div id="actions" style="margin-top:10px"></div>
     </section>
     <section class="card contractPrint">
       <div id="contractArea" class="contractArea a4-wrap">讀取中...</div>
     </section>
-    <section class="card" id="pngSection">
-      <h2 class="title" style="font-size:22px">正式契約 PNG 圖片版</h2>
-      <div id="pngStatus" class="msg info" style="margin-top:10px">正在產生 PNG 圖片版，請稍候…</div>
-      <div id="pngImages" class="png-grid"></div>
-    </section>
   </div>
-  <script src="config.js?v=rental-contract-view-20260614-png"></script>
+  <script src="config.js?v=rental-contract-view-20260614-screenshot"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" referrerpolicy="no-referrer"></script>
-  <script src="rental-common.js?v=rental-contract-view-20260614-png"></script>
+  <script src="rental-common.js?v=rental-contract-view-20260614-screenshot"></script>
   <script>
     const R=window.YZRental;
     const params=new URLSearchParams(location.search);
     const contractId=params.get('contractId')||params.get('id')||'';
     const token=params.get('token')||'';
-    const generatedPngFiles=[];
-    function downloadGeneratedPng(index){
-      const item=generatedPngFiles[index];
-      if(!item) return alert('圖片尚未產生完成，請稍候再試。');
-      const a=document.createElement('a');
-      a.href=item.url;
-      a.download=item.name;
-      document.body.appendChild(a);
-      a.click();
-      setTimeout(()=>a.remove(),100);
-    }
-    function openGeneratedPng(index){
-      const item=generatedPngFiles[index];
-      if(!item) return alert('圖片尚未產生完成，請稍候再試。');
-      const win=window.open(item.url,'_blank');
-      if(!win) location.href=item.url;
-    }
     function showMsg(text, ok=true){ const el=document.getElementById('msg'); el.className='msg '+(ok?'ok':'bad'); el.textContent=text; }
-    function setPngStatus(text, type='info'){ const el=document.getElementById('pngStatus'); el.className='msg '+type; el.textContent=text; }
     function renderActions(){
       const box=document.getElementById('actions');
-      const pngBtn = `<button class="btn" type="button" onclick="document.getElementById('pngSection').scrollIntoView({behavior:'smooth'})">查看 PNG 圖片版</button>`;
-      const lineBtn = `<a class="btn secondary" href="https://lin.ee/Fx5Y2mL" target="_blank" rel="noopener">回到官方 LINE</a>`;
-      box.innerHTML = `${pngBtn}${lineBtn}<div class="muted" style="margin-top:10px">若長按圖片沒有反應，請使用每張圖片下方的「下載 PNG」按鈕；或點「開啟圖片」後，再用手機瀏覽器儲存。iPhone 可長按後選「加入照片」；Android 可長按後選「下載圖片」。</div>`;
-    }
-    function waitForImage(img){
-      return new Promise(resolve=>{
-        if(!img) return resolve();
-        if(img.complete) return resolve();
-        img.addEventListener('load', ()=>resolve(), {once:true});
-        img.addEventListener('error', ()=>resolve(), {once:true});
-      });
-    }
-    async function imageUrlToDataUrl(url){
-      const clean=R.clean(url);
-      if(!clean || clean.startsWith('data:')) return clean;
-      try{
-        const res=await fetch(clean, {mode:'cors'});
-        const blob=await res.blob();
-        return await new Promise((resolve,reject)=>{
-          const reader=new FileReader();
-          reader.onload=()=>resolve(reader.result);
-          reader.onerror=()=>reject(new Error('讀取圖片失敗'));
-          reader.readAsDataURL(blob);
-        });
-      }catch(err){
-        console.warn('圖片轉 dataURL 失敗：', clean, err);
-        return clean;
-      }
-    }
-    async function prepareCloneForCapture(node){
-      const clone=node.cloneNode(true);
-      const imgs=[...clone.querySelectorAll('img')];
-      for(const img of imgs){
-        const newSrc=await imageUrlToDataUrl(img.getAttribute('src') || img.src || '');
-        if(newSrc) img.src=newSrc;
-      }
-      const host=document.createElement('div');
-      host.className='hidden-capture-wrap';
-      host.appendChild(clone);
-      document.body.appendChild(host);
-      await Promise.all([...clone.querySelectorAll('img')].map(waitForImage));
-      await new Promise(r=>setTimeout(r,80));
-      return {host, clone};
-    }
-    async function buildPngImages(){
-      const preview=document.getElementById('contractArea');
-      const pngBox=document.getElementById('pngImages');
-      pngBox.innerHTML='';
-      const sheets=[...preview.querySelectorAll('.rental-contract-sheet')];
-      if(!sheets.length){
-        setPngStatus('尚未找到可轉換的契約頁面。', 'bad');
-        return;
-      }
-      setPngStatus('正在產生 PNG 圖片版，請稍候…', 'info');
-      for(let i=0;i<sheets.length;i++){
-        const {host, clone}=await prepareCloneForCapture(sheets[i]);
-        try{
-          const canvas=await html2canvas(clone, {
-            backgroundColor:'#ffffff',
-            scale:2,
-            useCORS:true,
-            allowTaint:true,
-            logging:false,
-            width:clone.scrollWidth,
-            height:clone.scrollHeight,
-            windowWidth:clone.scrollWidth,
-            windowHeight:clone.scrollHeight,
-            scrollX:0,
-            scrollY:0
-          });
-          const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
-          const blobUrl=URL.createObjectURL(blob);
-          const fileName=(contractId||'rental-contract')+'-page-'+(i+1)+'.png';
-          const fileIndex=generatedPngFiles.length;
-          generatedPngFiles.push({url:blobUrl,name:fileName});
-          const item=document.createElement('div');
-          item.className='png-item';
-          item.innerHTML='<div class="png-item-title">正式契約第 '+(i+1)+' 頁</div><img src="'+blobUrl+'" alt="正式契約第 '+(i+1)+' 頁 PNG 圖片"><div class="png-actions"><button class="btn" type="button" onclick="downloadGeneratedPng('+fileIndex+')">下載 PNG</button><button class="btn secondary" type="button" onclick="openGeneratedPng('+fileIndex+')">開啟圖片</button></div><div class="small-tip">小米或 LINE 內建瀏覽器若長按沒有儲存選項，請按「下載 PNG」。若仍無反應，請按「開啟圖片」後再用瀏覽器儲存。</div>';
-          pngBox.appendChild(item);
-        } finally {
-          host.remove();
-        }
-      }
-      setPngStatus('PNG 圖片版已產生完成，可使用「下載 PNG」或「開啟圖片」保存。', 'ok');
+      box.innerHTML = `<a class="btn secondary" href="https://lin.ee/Fx5Y2mL" target="_blank" rel="noopener">回到官方 LINE</a><div class="muted" style="margin-top:10px">手機可直接使用截圖功能保存；此 LINE 連結日後也可再次開啟查看。</div>`;
     }
     async function load(){
       try{
@@ -173,12 +48,10 @@
         if(!c) throw new Error('找不到契約資料。');
         document.getElementById('contractArea').innerHTML=R.renderContractHtml(c);
         renderActions(c);
-        showMsg('正式契約已載入。系統會自動產生 PNG 圖片版。');
-        await buildPngImages();
+        showMsg('正式契約已載入，請自行截圖保存。');
       }catch(e){
         document.getElementById('contractArea').innerHTML='';
         showMsg(e.message||String(e), false);
-        setPngStatus('目前無法產生 PNG 圖片版。', 'bad');
       }
     }
     load();
