@@ -90,6 +90,31 @@ function webBaseUrl() {
   return String(process.env.PUBLIC_WEB_BASE_URL || 'https://danny700808.github.io/play-card/').replace(/\/?$/, '/');
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function paymentInfoUrlForContract(contractId, token) {
+  return `${webBaseUrl()}rental-payment-info.html?contractId=${encodeURIComponent(contractId)}&token=${encodeURIComponent(token)}`;
+}
+
+function rentalPaymentNoticeMessage(paymentInfoUrl) {
+  return [
+    '柚子樂器已收到您補填的租賃資料。',
+    '',
+    '若資料確認無誤，我們會依雙方約定的時間前往安裝／交付設備。',
+    '',
+    '付款方式與後續說明請點選以下連結查看：',
+    paymentInfoUrl,
+    '',
+    '您可選擇先行匯款並回傳截圖，也可於安裝／自取當下付款。',
+    '',
+    '店家確認資料與款項後，系統會再傳送正式租賃契約連結給您。',
+    '',
+    '如資料需補正，柚子樂器會再透過 LINE 與您聯繫。'
+  ].join('\n');
+}
+
 async function findRentalApplication(applicationKey) {
   const key = normalizeText(applicationKey);
   if (!key) return null;
@@ -134,7 +159,7 @@ async function handleRentalApplicationLink({ applicationKey, declaredName, lineU
     updatedAt: now
   }, { merge: true });
 
-  await replyLineMessage(replyToken, `已收到您的租賃申請：${applicationNo}\n柚子樂器會依照您填寫的資料與您確認設備、金額與日期。`);
+  await replyLineMessage(replyToken, `已收到您的租賃申請：${applicationNo}\n\n柚子樂器會先在 LINE 與您再次確認租用機型、安裝／配送時間與相關費用。\n\n雙方確認完成後，我們會再傳送正式資料填寫連結，請您補填身分證字號、詳細資料並完成 LINE 綁定，後續才可使用續約與租賃紀錄查詢功能。`);
 
   const managerLineUserId = await getPrimaryManagerLineUserId();
   if (managerLineUserId && managerLineUserId !== lineUserId) {
@@ -149,7 +174,10 @@ async function handleRentalApplicationLink({ applicationKey, declaredName, lineU
       `希望方式：${normalizeText(data.shippingMethod || '')}`,
       `希望日期：${normalizeText(data.preferredDate || '')} ${normalizeText(data.preferredTime || '')}`.trim(),
       '',
-      `查看申請資料：${adminUrl}`
+      `查看申請資料：${adminUrl}`,
+      '',
+      '客人 LINE 配對文字：',
+      `租賃申請 ${applicationNo} ${customerName}`
     ].join('\n');
     await pushLineMessage(managerLineUserId, message);
   }
@@ -356,7 +384,8 @@ async function handleManagerBinding({ email, lineUserId, replyToken }) {
 exports.rentalSignContractHttp = onRequest(
   {
     region: 'us-central1',
-    cors: true
+    cors: true,
+    timeoutSeconds: 120
   },
   async (req, res) => {
     try {
@@ -391,17 +420,19 @@ exports.rentalSignContractHttp = onRequest(
         return;
       }
 
-      const formalReceivedNoticeText = normalizeText(body.formalReceivedNoticeText) ||
-        '柚子樂器已收到您補填的租賃資料。\n\n若資料確認無誤，我們會依雙方約定的時間前往安裝／交付設備。\n\n店家確認資料與款項後，系統會再傳送正式租賃契約連結給您。';
+      const paymentInfoUrl = normalizeText(body.paymentInfoUrl) || paymentInfoUrlForContract(contractId, token);
+      const formalReceivedNoticeText = rentalPaymentNoticeMessage(paymentInfoUrl);
 
       const update = {
         customerIdNumber: normalizeText(body.customerIdNumber || data.customerIdNumber),
         customerSubmittedFormalAt: admin.firestore.FieldValue.serverTimestamp(),
+        customerSignedAt: admin.firestore.FieldValue.serverTimestamp(),
         customerSubmittedFormalAtText: new Date().toISOString(),
         formalReceivedNoticeText,
-        formalReceivedNoticeSentAt: admin.firestore.FieldValue.serverTimestamp(),
-        formalReceivedNoticeSentAtText: new Date().toISOString(),
-        paymentInfoSentAt: admin.firestore.FieldValue.serverTimestamp(),
+        formalReceivedNoticeQueuedAt: admin.firestore.FieldValue.serverTimestamp(),
+        formalReceivedNoticeQueuedAtText: new Date().toISOString(),
+        paymentInfoUrl,
+        paymentInfoNoticeDelaySeconds: 60,
         status: '待店家確認'
       };
 
@@ -419,11 +450,24 @@ exports.rentalSignContractHttp = onRequest(
       const freshSnap = await ref.get();
       const fresh = freshSnap.data() || data;
       const lineUserId = normalizeText(fresh.customerLineUserId || fresh.lineUserId);
-      if (lineUserId) {
-        await pushLineMessage(lineUserId, formalReceivedNoticeText);
-      }
 
-      res.status(200).json({ ok: true });
+      res.status(200).json({ ok: true, paymentInfoUrl, lineNoticeDelaySeconds: 60 });
+
+      if (lineUserId) {
+        setTimeout(async () => {
+          try {
+            await pushLineMessage(lineUserId, formalReceivedNoticeText);
+            await ref.set({
+              formalReceivedNoticeSentAt: admin.firestore.FieldValue.serverTimestamp(),
+              formalReceivedNoticeSentAtText: new Date().toISOString(),
+              paymentInfoSentAt: admin.firestore.FieldValue.serverTimestamp(),
+              paymentInfoSentAtText: new Date().toISOString()
+            }, { merge: true });
+          } catch (e) {
+            console.error('delayed rental payment LINE failed:', e);
+          }
+        }, 60000);
+      }
     } catch (error) {
       console.error('rentalSignContractHttp error:', error);
       res.status(500).json({ ok: false, message: error && error.message ? error.message : '送出失敗' });
