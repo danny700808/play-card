@@ -1,4 +1,4 @@
-const { onRequest } = require('firebase-functions/v2/https');
+const { onRequest, onCall, HttpsError } = require('firebase-functions/v2/https');
 const { onDocumentCreated } = require('firebase-functions/v2/firestore');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const nodemailer = require('nodemailer');
@@ -595,21 +595,9 @@ async function sendEmailViaGmail(row) {
   const to = queueTargetEmail(row);
   if (!to) throw new Error('缺少 Email，無法發送 Email。');
 
-  const gmailUser = clean(
-    process.env.GMAIL_USER ||
-    (functions.config().email && functions.config().email.gmail_user) ||
-    ''
-  );
-  const gmailAppPassword = clean(
-    process.env.GMAIL_APP_PASSWORD ||
-    (functions.config().email && functions.config().email.gmail_app_password) ||
-    ''
-  ).replace(/\s+/g, '');
-  const from = clean(
-    process.env.EMAIL_FROM ||
-    (functions.config().email && functions.config().email.email_from) ||
-    ''
-  ) || `柚子樂器 <${gmailUser}>`;
+  const gmailUser = clean(process.env.GMAIL_USER || '');
+  const gmailAppPassword = clean(process.env.GMAIL_APP_PASSWORD || '').replace(/\s+/g, '');
+  const from = clean(process.env.EMAIL_FROM || '') || `柚子樂器 <${gmailUser}>`;
 
   if (!gmailUser || !gmailAppPassword) {
     throw new Error('Gmail 尚未設定 GMAIL_USER / GMAIL_APP_PASSWORD。');
@@ -1157,10 +1145,11 @@ exports.lineWebhook = onRequest(
 );
 
 
-exports.sendGmailTestEmail = functions.https.onCall(async (data, context) => {
+exports.sendGmailTestEmail = onCall({ region: 'us-central1' }, async (request) => {
+  const data = (request && request.data) || {};
   const to = clean((data && (data.to || data.email)) || '');
   if (!to) {
-    throw new functions.https.HttpsError('invalid-argument', '請提供測試收件人 Email。');
+    throw new HttpsError('invalid-argument', '請提供測試收件人 Email。');
   }
   try {
     const result = await sendEmailViaGmail({
@@ -1178,6 +1167,6 @@ exports.sendGmailTestEmail = functions.https.onCall(async (data, context) => {
   } catch (err) {
     const msg = err && err.message ? err.message : String(err);
     console.error('[sendGmailTestEmail failed]', msg);
-    throw new functions.https.HttpsError('internal', msg);
+    throw new HttpsError('internal', msg);
   }
 });
