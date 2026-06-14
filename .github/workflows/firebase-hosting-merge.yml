@@ -31,4 +31,4 @@ jobs:
       - name: Deploy Firestore rules, Storage rules and Functions
         run: |
           export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
-          firebase deploy --only firestore:rules,storage,functions --project youzi-c1b74
+          firebase deploy --only firestore:rules,storage,functions --project youzi-c1b74 --force
