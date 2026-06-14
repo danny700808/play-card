@@ -1,8 +1,25 @@
-const { onRequest } = require('firebase-functions/v2/https');
+const { onRequest, onCall } = require('firebase-functions/v2/https');
+const { onDocumentCreated } = require('firebase-functions/v2/firestore');
+const { onSchedule } = require('firebase-functions/v2/scheduler');
 const admin = require('firebase-admin');
 
 admin.initializeApp();
 const db = admin.firestore();
+
+const HTTPS_CALLABLE_OPTIONS = {
+  region: 'us-central1',
+  invoker: 'public',
+  cors: [
+    'https://denny700808.github.io',
+    'https://danny700808.github.io',
+    'https://youzi-c1b74.web.app',
+    'https://youzi-c1b74.firebaseapp.com',
+    'http://localhost:5000',
+    'http://localhost:5001',
+    'http://127.0.0.1:5000',
+    'http://127.0.0.1:5001'
+  ]
+};
 
 const ADMIN_EMAILS = new Set(['danny700808@gmail.com']);
 const DEFAULT_ADMIN_DOC_ID = 'ADMIN_DANNY';
@@ -20,7 +37,7 @@ function normalizeText(value) {
 }
 
 async function replyLineMessage(replyToken, message) {
-  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+  const token = await getLineAccessToken();
 
   if (!replyToken) {
     console.log('Missing replyToken. Message:', message);
@@ -52,7 +69,7 @@ async function replyLineMessage(replyToken, message) {
 
 
 async function pushLineMessage(lineUserId, message) {
-  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+  const token = await getLineAccessToken();
   if (!token || !lineUserId) return;
   const response = await fetch('https://api.line.me/v2/bot/message/push', {
     method: 'POST',
@@ -72,7 +89,7 @@ async function pushLineMessage(lineUserId, message) {
 }
 
 async function getLineProfile(lineUserId) {
-  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+  const token = await getLineAccessToken();
   if (!token || !lineUserId) return {};
   try {
     const response = await fetch(`https://api.line.me/v2/bot/profile/${encodeURIComponent(lineUserId)}`, {
@@ -354,6 +371,257 @@ async function handleManagerBinding({ email, lineUserId, replyToken }) {
 
   await replyLineMessage(replyToken, `主管 LINE 綁定成功：${employee.data.name || employee.data.displayName || email}`);
 }
+
+
+/* =========================================================
+ * LINE / Email 通知佇列發送器
+ * 前端會寫入 notificationQueue/{queueId}，這裡才是真正發送 LINE / Email 的 Cloud Functions。
+ * ========================================================= */
+const QUEUE_COLLECTION = 'notificationQueue';
+const SENT_QUEUE_STATUSES = new Set(['sent', '已發送', '已送出', 'done', 'completed', 'success']);
+const SENDING_QUEUE_STATUSES = new Set(['sending', '發送中']);
+const PENDING_QUEUE_STATUSES = new Set(['pending', '待發送', 'queued', 'queue', '待處理', 'retry', '發送失敗']);
+
+function safeQueueId(value) {
+  return normalizeText(value).replace(/[\/#?\[\]]/g, '_').slice(0, 180) || db.collection('_ids').doc().id;
+}
+
+function queueStatus(row = {}) {
+  return normalizeText(row.status || row['狀態'] || '待發送');
+}
+
+function isPendingQueue(row = {}) {
+  const status = queueStatus(row);
+  if (SENT_QUEUE_STATUSES.has(status) || SENDING_QUEUE_STATUSES.has(status)) return false;
+  return !status || PENDING_QUEUE_STATUSES.has(status) || /^fail|失敗|error/i.test(status);
+}
+
+function queueChannel(row = {}) {
+  return normalizeText(row.channel || row.type || row.notifyType || row['發送方式']).toLowerCase();
+}
+
+function queueTargetLineUserId(row = {}) {
+  return normalizeText(row.targetLineUserId || row.lineUserId || row.toLineUserId || row['LINE User ID']);
+}
+
+function queueTargetEmail(row = {}) {
+  return normalizeText(row.targetEmail || row.email || row.toEmail || row['Email']).toLowerCase();
+}
+
+function queueTitle(row = {}) {
+  return normalizeText(row.title || row.subject || row.eventName || '柚子樂器通知');
+}
+
+function queueBody(row = {}) {
+  const body = normalizeText(row.body || row.message || row.content || row.text || row['訊息內容']);
+  if (body) return body;
+  return queueTitle(row) || '您有一則新的通知。';
+}
+
+async function getSystemSettingValue(names) {
+  const wanted = (Array.isArray(names) ? names : [names]).map(normalizeText).filter(Boolean);
+  for (const name of wanted) {
+    try {
+      const snap = await db.collection('systemSettings').doc(name).get();
+      if (snap.exists) {
+        const data = snap.data() || {};
+        const value = normalizeText(data.value || data.token || data.accessToken || data.secret || data.text);
+        if (value) return value;
+      }
+    } catch (err) {
+      // ignore and try list scan below
+    }
+  }
+  try {
+    const snap = await db.collection('systemSettings').limit(200).get();
+    let found = '';
+    snap.forEach((doc) => {
+      if (found) return;
+      const data = doc.data() || {};
+      const key = normalizeText(data.key || data.name || doc.id);
+      if (wanted.includes(key)) found = normalizeText(data.value || data.token || data.accessToken || data.secret || data.text);
+    });
+    return found;
+  } catch (err) {
+    return '';
+  }
+}
+
+async function getLineAccessToken() {
+  const token = normalizeText(
+    process.env.LINE_CHANNEL_ACCESS_TOKEN ||
+    process.env.LINE_MESSAGING_ACCESS_TOKEN ||
+    process.env.LINE_ACCESS_TOKEN ||
+    process.env.LINE_BOT_CHANNEL_ACCESS_TOKEN ||
+    ''
+  );
+  if (token) return token;
+  return await getSystemSettingValue([
+    'LINE_CHANNEL_ACCESS_TOKEN',
+    'LINE Channel Access Token',
+    'LINE Messaging API Token',
+    'LINE Access Token',
+    'LINE Bot Access Token',
+    'LINE_TOKEN'
+  ]);
+}
+
+async function sendQueueLinePush(row) {
+  const to = queueTargetLineUserId(row);
+  if (!to) throw new Error('缺少 LINE User ID，無法發送 LINE。');
+  const token = await getLineAccessToken();
+  if (!token) throw new Error('缺少 LINE_CHANNEL_ACCESS_TOKEN，尚未設定 LINE Messaging API Channel access token。');
+  const title = queueTitle(row);
+  const body = queueBody(row);
+  const text = title && body && title !== body ? `${title}\n${body}` : (body || title || '柚子樂器通知');
+  const response = await fetch('https://api.line.me/v2/bot/message/push', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify({
+      to,
+      messages: [{ type: 'text', text: text.slice(0, 4900) }]
+    })
+  });
+  const responseText = await response.text();
+  if (!response.ok) throw new Error(`LINE API ${response.status}：${responseText.slice(0, 500)}`);
+  return { provider: 'line-messaging-api', responseStatus: response.status, responseText: responseText.slice(0, 500) };
+}
+
+async function sendQueueEmail(row) {
+  const to = queueTargetEmail(row);
+  if (!to) throw new Error('缺少 Email，無法發送 Email。');
+  const apiKey = normalizeText(process.env.SENDGRID_API_KEY || '');
+  const from = normalizeText(process.env.SENDGRID_FROM_EMAIL || process.env.MAIL_FROM || '');
+  const fromName = normalizeText(process.env.SENDGRID_FROM_NAME || '柚子樂器');
+  if (!apiKey || !from) throw new Error('Email 尚未設定 SENDGRID_API_KEY / SENDGRID_FROM_EMAIL。');
+  const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      personalizations: [{ to: [{ email: to, name: normalizeText(row.targetName) || undefined }] }],
+      from: { email: from, name: fromName },
+      subject: queueTitle(row),
+      content: [{ type: 'text/plain', value: queueBody(row) }]
+    })
+  });
+  const responseText = await response.text();
+  if (response.status < 200 || response.status >= 300) throw new Error(`SendGrid API ${response.status}：${responseText.slice(0, 500)}`);
+  return { provider: 'sendgrid', responseStatus: response.status, responseText: responseText.slice(0, 500) };
+}
+
+async function markQueue(docRef, data) {
+  await docRef.set(Object.assign({}, data, { updatedAt: admin.firestore.FieldValue.serverTimestamp() }), { merge: true });
+}
+
+async function appendNotificationLog(queueId, data) {
+  const id = `${safeQueueId(queueId)}_${Date.now()}`;
+  await db.collection('notificationLogs').doc(id).set(Object.assign({
+    logId: id,
+    queueId,
+    createdAt: admin.firestore.FieldValue.serverTimestamp()
+  }, data || {}), { merge: true });
+}
+
+async function processNotificationQueueDoc(docRef, row, options = {}) {
+  row = row || {};
+  const queueId = normalizeText(row.queueId || docRef.id);
+  const channel = queueChannel(row);
+  if (!isPendingQueue(row)) return { ok: true, skipped: true, reason: `狀態不是待發送：${queueStatus(row)}` };
+  if (!['line', 'email'].includes(channel)) {
+    await markQueue(docRef, { status: '發送失敗', lastError: `不支援的發送方式：${channel || '(空白)'}` });
+    return { ok: false, skipped: true, reason: 'unsupported-channel' };
+  }
+  await markQueue(docRef, {
+    queueId,
+    status: '發送中',
+    sendStartedAt: admin.firestore.FieldValue.serverTimestamp(),
+    attemptCount: admin.firestore.FieldValue.increment(1),
+    processor: options.processor || 'cloud-function'
+  });
+  try {
+    const result = channel === 'line' ? await sendQueueLinePush(row) : await sendQueueEmail(row);
+    await markQueue(docRef, {
+      status: '已發送',
+      sentAt: admin.firestore.FieldValue.serverTimestamp(),
+      sentAtText: new Date().toISOString(),
+      provider: result.provider,
+      responseStatus: result.responseStatus,
+      responseText: result.responseText || '',
+      lastError: ''
+    });
+    await appendNotificationLog(queueId, {
+      status: '已發送',
+      channel,
+      provider: result.provider,
+      targetName: normalizeText(row.targetName),
+      targetEmail: queueTargetEmail(row),
+      targetLineUserId: queueTargetLineUserId(row),
+      title: queueTitle(row),
+      body: queueBody(row)
+    });
+    return { ok: true, sent: true, channel, queueId };
+  } catch (err) {
+    const msg = err && err.message ? err.message : String(err);
+    await markQueue(docRef, {
+      status: '發送失敗',
+      failedAt: admin.firestore.FieldValue.serverTimestamp(),
+      failedAtText: new Date().toISOString(),
+      lastError: msg
+    });
+    await appendNotificationLog(queueId, {
+      status: '發送失敗',
+      channel,
+      error: msg,
+      targetName: normalizeText(row.targetName),
+      targetEmail: queueTargetEmail(row),
+      targetLineUserId: queueTargetLineUserId(row),
+      title: queueTitle(row),
+      body: queueBody(row)
+    });
+    console.error('[notificationQueue send failed]', queueId, msg);
+    return { ok: false, error: msg, channel, queueId };
+  }
+}
+
+exports.sendNotificationQueueOnCreate = onDocumentCreated(`${QUEUE_COLLECTION}/{queueId}`, async (event) => {
+  const snap = event.data;
+  if (!snap) return null;
+  return await processNotificationQueueDoc(snap.ref, snap.data() || {}, { processor: 'onCreate' });
+});
+
+exports.flushNotificationQueue = onSchedule({ schedule: 'every 5 minutes', timeoutSeconds: 120, memory: '512MiB' }, async () => {
+  const snap = await db.collection(QUEUE_COLLECTION).where('status', 'in', ['待發送', 'pending', 'queued', 'retry', '發送失敗']).limit(50).get();
+  const results = [];
+  for (const doc of snap.docs) {
+    results.push(await processNotificationQueueDoc(doc.ref, doc.data() || {}, { processor: 'scheduler' }));
+  }
+  return results;
+});
+
+exports.processNotificationQueueNow = onCall(Object.assign({}, HTTPS_CALLABLE_OPTIONS, { timeoutSeconds: 120, memory: '512MiB' }), async (request) => {
+  const data = request.data || {};
+  const queueId = normalizeText(data.queueId || '');
+  const limit = Math.max(1, Math.min(Number(data.limit || 20) || 20, 50));
+  if (queueId) {
+    const ref = db.collection(QUEUE_COLLECTION).doc(queueId);
+    const snap = await ref.get();
+    if (!snap.exists) return { ok: false, message: '找不到通知佇列資料。' };
+    const result = await processNotificationQueueDoc(ref, snap.data() || {}, { processor: 'callable' });
+    return Object.assign({ ok: result.ok !== false }, result);
+  }
+  const snap = await db.collection(QUEUE_COLLECTION).where('status', 'in', ['待發送', 'pending', 'queued', 'retry', '發送失敗']).limit(limit).get();
+  const results = [];
+  for (const doc of snap.docs) {
+    results.push(await processNotificationQueueDoc(doc.ref, doc.data() || {}, { processor: 'callable' }));
+  }
+  return { ok: true, count: results.length, results };
+});
 
 exports.lineWebhook = onRequest(
   {
