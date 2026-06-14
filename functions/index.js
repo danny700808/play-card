@@ -1,103 +1,1125 @@
-const { onRequest } = require('firebase-functions/v2/https');
+'use strict';
+
+const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
+const crypto = require('crypto');
+const { onDocumentCreated } = require('firebase-functions/v2/firestore');
+const { onSchedule } = require('firebase-functions/v2/scheduler');
 const admin = require('firebase-admin');
 
-admin.initializeApp();
+
+// 2026-06-03：允許 GitHub Pages / Firebase Hosting 呼叫 Callable Functions。
+// 這是老師端「公司官網詢價」從前端呼叫 Firebase Function 的必要設定。
+const HTTPS_CALLABLE_OPTIONS = {
+  region: 'us-central1',
+  invoker: 'public',
+  cors: [
+    'https://denny700808.github.io',
+    'https://youzi-c1b74.web.app',
+    'https://youzi-c1b74.firebaseapp.com',
+    'http://localhost:5000',
+    'http://localhost:5001',
+    'http://127.0.0.1:5000',
+    'http://127.0.0.1:5001',
+  ],
+};
+
+if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
 
-const ADMIN_EMAILS = new Set(['danny700808@gmail.com']);
-const DEFAULT_ADMIN_DOC_ID = 'ADMIN_DANNY';
+const DEFAULT_STORE_URL = 'https://www.mingtinghuang.com/';
+const DEFAULT_API_BASE_PATH = '/api/3.0';
 
-function normalizeEmail(value) {
-  return String(value || '').trim().toLowerCase();
+// 從舊 GS 的 tgWebsiteQuoteConfig_ 搬過來。
+// 正式環境建議改用 functions/.env 或 Secret Manager 設定 EASYSTORE_ACCESS_TOKEN。
+const LEGACY_EASYSTORE_ACCESS_TOKEN = '380c01a21086de6cb53d72fac31ddb2e';
+
+function clean(value) {
+  return String(value == null ? '' : value).trim();
 }
 
-function isBootstrapAdminEmail(email) {
-  return ADMIN_EMAILS.has(normalizeEmail(email));
+function baseUrl(url) {
+  let s = clean(url || DEFAULT_STORE_URL);
+  if (!s) return '';
+  if (!/^https?:\/\//i.test(s)) s = `https://${s}`;
+  return s.replace(/\/+$/, '');
 }
 
-function normalizeText(value) {
-  return String(value || '').trim();
+function config() {
+  return {
+    storeUrl: baseUrl(process.env.EASYSTORE_STORE_URL || DEFAULT_STORE_URL),
+    apiBasePath: clean(process.env.EASYSTORE_API_BASE_PATH || DEFAULT_API_BASE_PATH) || DEFAULT_API_BASE_PATH,
+    accessToken: clean(process.env.EASYSTORE_ACCESS_TOKEN || LEGACY_EASYSTORE_ACCESS_TOKEN),
+    defaultSearchLimit: 12,
+    // EasyStore 商品多時，原本只掃 8 頁會漏掉後面商品。
+    // 這裡提高到 60 頁，最多約掃 3000 筆。
+    maxPages: 60,
+    fetchLimit: 50,
+  };
 }
 
-async function replyLineMessage(replyToken, message) {
-  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+function headers() {
+  const cfg = config();
+  return {
+    Accept: 'application/json',
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${cfg.accessToken}`,
+    'EasyStore-Access-Token': cfg.accessToken,
+  };
+}
 
-  if (!replyToken) {
-    console.log('Missing replyToken. Message:', message);
-    return;
+function arrayFromPayload(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (!payload || typeof payload !== 'object') return [];
+  const keys = ['data', 'products', 'items', 'results'];
+  for (const key of keys) {
+    if (Array.isArray(payload[key])) return payload[key];
+  }
+  return [];
+}
+
+function moneyText(value) {
+  const s = clean(value);
+  if (!s) return '';
+  const n = Number(String(s).replace(/[^0-9.-]/g, ''));
+  if (!Number.isFinite(n)) return s;
+  return `NT$ ${Math.round(n).toLocaleString('zh-TW')}`;
+}
+
+function imageFromProduct(o = {}) {
+  if (clean(o.image_url)) return clean(o.image_url);
+  if (clean(o.imageUrl)) return clean(o.imageUrl);
+  if (clean(o.image)) return clean(o.image);
+  if (Array.isArray(o.images) && o.images.length) {
+    const first = o.images[0] || {};
+    return clean(first.src || first.url || first.image_url || first.imageUrl || '');
+  }
+  if (o.featured_image) {
+    if (typeof o.featured_image === 'string') return clean(o.featured_image);
+    return clean(o.featured_image.src || o.featured_image.url || '');
+  }
+  return '';
+}
+
+function priceFromProduct(o = {}) {
+  const keys = ['price', 'selling_price', 'display_price', 'min_price', 'max_price'];
+  for (const key of keys) {
+    const v = clean(o[key]);
+    if (v) return v;
+  }
+  if (Array.isArray(o.variants) && o.variants.length) {
+    const v0 = o.variants[0] || {};
+    return clean(v0.price || v0.selling_price || v0.display_price || '');
+  }
+  return '';
+}
+
+function variantSummary(o = {}) {
+  const out = [];
+  if (Array.isArray(o.variants)) {
+    for (let i = 0; i < o.variants.length && i < 3; i++) {
+      const v = o.variants[i] || {};
+      const name = clean(v.name || v.title || v.option1 || v.sku || '');
+      if (name && !out.includes(name)) out.push(name);
+    }
+  }
+  return out.join(' / ');
+}
+
+function productUrl(o = {}) {
+  const cfg = config();
+  const base = cfg.storeUrl;
+  let link = clean(o.url || o.permalink || o.product_url || '');
+  const handle = clean(o.handle || o.slug || '');
+  if (!link && handle) link = `${base}/products/${handle}`;
+  if (link && !/^https?:\/\//i.test(link)) link = `${base}/${link.replace(/^\/+/, '')}`;
+  return link;
+}
+
+function rowFromProduct(o = {}) {
+  const price = priceFromProduct(o);
+  const compare = clean(o.compare_at_price || o.market_price || o.original_price || '');
+  const note = clean(o.summary || o.description || o.short_description || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return {
+    productId: clean(o.id || o.product_id || o.uuid || o.handle || o.slug || ''),
+    name: clean(o.name || o.title || o.product_name || '未命名商品'),
+    brand: clean(o.brand || o.vendor || ''),
+    category: clean(o.category || o.product_type || ''),
+    imageUrl: imageFromProduct(o),
+    price,
+    priceText: moneyText(price),
+    marketPrice: compare || price,
+    marketPriceText: moneyText(compare || price),
+    stockStatus: clean(o.inventory_status || o.availability || o.stock_status || ''),
+    variantSummary: variantSummary(o),
+    summary: clean(o.summary || ''),
+    note,
+    url: productUrl(o),
+    websiteSource: 'EasyStore 官網',
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function normalizeSearchText(value) {
+  return String(value == null ? '' : value)
+    .toLowerCase()
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/[\s\-_/|,，。．.：:；;、()（）\[\]【】{}]+/g, ' ')
+    .trim();
+}
+
+function searchTokens(keyword) {
+  const raw = clean(keyword);
+  const map = {
+    卡西歐: ['casio', '卡西歐'],
+    山葉: ['yamaha', '山葉', '雅馬哈'],
+    雅馬哈: ['yamaha', '山葉', '雅馬哈'],
+    羅蘭: ['roland', '羅蘭'],
+    河合: ['kawai', '河合'],
+    芬達: ['fender', '芬達'],
+    伊利克斯: ['elixir', '伊利克斯'],
+    伊利克: ['elixir', '伊利克'],
+    達達里奧: ['daddario', "d'addario", '達達里奧'],
+    亞瑪哈: ['yamaha', '亞瑪哈'],
+  };
+  const out = [];
+  const add = (v) => {
+    const x = normalizeSearchText(v);
+    if (x && !out.includes(x)) out.push(x);
+  };
+  add(raw);
+  const rawNoSpace = raw.replace(/\s+/g, '');
+  if (rawNoSpace !== raw) add(rawNoSpace);
+  Object.keys(map).forEach((key) => {
+    if (raw.includes(key) || key.includes(raw)) map[key].forEach(add);
+  });
+  const low = raw.toLowerCase();
+  if (low.includes('casio')) add('卡西歐');
+  if (low.includes('yamaha')) { add('山葉'); add('雅馬哈'); add('亞瑪哈'); }
+  if (low.includes('roland')) add('羅蘭');
+  if (low.includes('kawai')) add('河合');
+  if (low.includes('fender')) add('芬達');
+  if (low.includes('elixir')) { add('伊利克斯'); add('伊利克'); }
+  return out;
+}
+
+function deepText(obj, depth = 0) {
+  if (obj == null || depth > 4) return '';
+  if (['string', 'number', 'boolean'].includes(typeof obj)) return String(obj);
+  if (Array.isArray(obj)) return obj.map((v) => deepText(v, depth + 1)).join(' ');
+  if (typeof obj === 'object') {
+    const parts = [];
+    Object.keys(obj).forEach((key) => {
+      if (/image|url|src/i.test(key)) return;
+      parts.push(key);
+      parts.push(deepText(obj[key], depth + 1));
+    });
+    return parts.join(' ');
+  }
+  return '';
+}
+
+function haystack(rawProduct, row) {
+  const mapped = [
+    row.name,
+    row.brand,
+    row.category,
+    row.note,
+    row.summary,
+    row.variantSummary,
+    row.productId,
+    row.stockStatus,
+  ].join(' ');
+  return normalizeSearchText(`${mapped} ${deepText(rawProduct)}`);
+}
+
+function matches(rawProduct, row, tokens) {
+  if (!tokens || !tokens.length) return true;
+  const hay = haystack(rawProduct, row);
+  return tokens.some((token) => hay.includes(token));
+}
+
+async function fetchProductsPage(page, fetchLimit) {
+  const cfg = config();
+  if (!cfg.accessToken) throw new HttpsError('failed-precondition', '缺少 EasyStore Access Token。');
+  const baseApi = `${cfg.storeUrl}${cfg.apiBasePath}`;
+  const url = `${baseApi}/products.json?limit=${encodeURIComponent(String(fetchLimit || 50))}&page=${encodeURIComponent(String(page || 1))}&visibility=published`;
+  const res = await fetch(url, { method: 'GET', headers: headers() });
+  const status = res.status;
+  const body = await res.text();
+  const preview = body.substring(0, 180).replace(/\s+/g, ' ').trim();
+  if (status < 200 || status >= 300) {
+    return { url, ok: false, status, count: 0, products: [], preview, error: `HTTP ${status}` };
+  }
+  if (!/^\s*[\{\[]/.test(body)) {
+    return { url, ok: false, status, count: 0, products: [], preview, error: '回傳不是 JSON' };
+  }
+  const payload = body ? JSON.parse(body) : {};
+  const products = arrayFromPayload(payload);
+  return {
+    url,
+    ok: true,
+    status,
+    count: products.length,
+    products,
+    preview,
+    totalCount: Number(payload.total_count || 0) || 0,
+    pageCount: Number(payload.page_count || 0) || 0,
+  };
+}
+
+
+function decodeHtml(value) {
+  return clean(value)
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&#(\d+);/g, (_, n) => {
+      try { return String.fromCharCode(Number(n)); } catch (err) { return _; }
+    });
+}
+
+function stripHtml(value) {
+  return decodeHtml(String(value == null ? '' : value)
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim());
+}
+
+function absUrl(url) {
+  const cfg = config();
+  const base = cfg.storeUrl;
+  let u = decodeHtml(clean(url));
+  if (!u) return '';
+  if (/^\/\//.test(u)) return `https:${u}`;
+  if (/^https?:\/\//i.test(u)) return u;
+  if (u[0] === '/') return `${base}${u}`;
+  return `${base}/${u}`;
+}
+
+function removeQueryNoise(url) {
+  const u = clean(url);
+  if (!u) return '';
+  try {
+    const obj = new URL(u);
+    obj.searchParams.delete('srsltid');
+    obj.searchParams.delete('utm_source');
+    obj.searchParams.delete('utm_medium');
+    obj.searchParams.delete('utm_campaign');
+    return obj.toString();
+  } catch (err) {
+    return u.split('?')[0];
+  }
+}
+
+async function fetchTextUrl(url) {
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: {
+      Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'User-Agent': 'Mozilla/5.0 YouziMusicWebsiteQuoteBot/1.0',
+    },
+  });
+  const text = await res.text();
+  return { url, ok: res.status >= 200 && res.status < 300, status: res.status, text };
+}
+
+function htmlAttr(html, patterns) {
+  for (const re of patterns) {
+    const m = String(html || '').match(re);
+    if (m && clean(m[1])) return decodeHtml(m[1]);
+  }
+  return '';
+}
+
+function parseProductFromHtml(html, url) {
+  const raw = String(html || '');
+  let name = htmlAttr(raw, [
+    /<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i,
+    /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i,
+    /<h1[^>]*>([\s\S]*?)<\/h1>/i,
+    /<title[^>]*>([\s\S]*?)<\/title>/i,
+  ]);
+  name = stripHtml(name).replace(/\s*[|｜-]\s*柚子樂器.*$/i, '').trim();
+
+  let imageUrl = htmlAttr(raw, [
+    /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i,
+    /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i,
+    /<img[^>]+src=["']([^"']+)["'][^>]*(?:product|商品|image)/i,
+  ]);
+  imageUrl = absUrl(imageUrl);
+
+  let price = htmlAttr(raw, [
+    /<meta[^>]+property=["']product:price:amount["'][^>]+content=["']([^"']+)["']/i,
+    /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']product:price:amount["']/i,
+  ]);
+  if (!price) {
+    const text = stripHtml(raw);
+    const pm = text.match(/(?:NT\$|NTD|\$)\s*([0-9][0-9,]*(?:\.\d+)?)/i);
+    if (pm) price = pm[1];
   }
 
-  if (!token) {
-    console.log('Missing LINE_CHANNEL_ACCESS_TOKEN. Message:', message);
-    return;
+  const visibleText = stripHtml(raw).slice(0, 2000);
+  let stockStatus = '';
+  if (/售完|缺貨|已售完|Sold\s*Out/i.test(visibleText)) stockStatus = '缺貨 / 售完';
+  else if (/加入購物車|Add\s*to\s*cart/i.test(visibleText)) stockStatus = '可加入購物車';
+
+  const cleanUrl = removeQueryNoise(absUrl(url));
+  const slug = cleanUrl.split('/products/')[1] || '';
+  return {
+    productId: clean(slug.split(/[?#]/)[0] || cleanUrl),
+    name: name || decodeURIComponent(clean(slug)).replace(/[-_]/g, ' ') || '官網商品',
+    brand: '',
+    category: '',
+    imageUrl,
+    price,
+    priceText: moneyText(price),
+    marketPrice: price,
+    marketPriceText: moneyText(price),
+    stockStatus,
+    variantSummary: '',
+    summary: '',
+    note: visibleText.slice(0, 300),
+    url: cleanUrl,
+    websiteSource: '公司官網公開頁面',
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function productLinksFromHtml(html, keyword, options = {}) {
+  const raw = String(html || '');
+  const tokens = searchTokens(keyword);
+  const out = [];
+  const seen = new Set();
+  const re = /href=["']([^"']*\/products\/[^"'#?]+[^"']*)["']/gi;
+  let m;
+  while ((m = re.exec(raw))) {
+    const link = removeQueryNoise(absUrl(m[1]));
+    if (!link || seen.has(link)) continue;
+    const start = Math.max(0, m.index - 900);
+    const end = Math.min(raw.length, m.index + 1200);
+    const nearby = stripHtml(raw.slice(start, end));
+    const norm = normalizeSearchText(`${link} ${nearby}`);
+    const matched = options.takeAll || !tokens.length || tokens.some((t) => norm.includes(t));
+    if (!matched) continue;
+    seen.add(link);
+    out.push({ url: link, nearby });
+  }
+  return out;
+}
+
+async function searchPublicWebsiteProducts(keyword, limit) {
+  const cfg = config();
+  const base = cfg.storeUrl;
+  const kw = clean(keyword);
+  const tokens = searchTokens(kw);
+  const searchUrls = [
+    `${base}/search?q=${encodeURIComponent(kw)}`,
+    `${base}/search?type=product&q=${encodeURIComponent(kw)}`,
+    `${base}/collections/all?q=${encodeURIComponent(kw)}`,
+    `${base}/collections/all?search=${encodeURIComponent(kw)}`,
+  ];
+  const collectionPages = [];
+  for (let p = 1; p <= 12; p++) collectionPages.push(`${base}/collections/all${p > 1 ? `?page=${p}` : ''}`);
+
+  const links = [];
+  const seenLinks = new Set();
+  const attempts = [];
+  const addLinks = (items) => {
+    for (const item of items) {
+      const u = removeQueryNoise(item.url);
+      if (!u || seenLinks.has(u)) continue;
+      seenLinks.add(u);
+      links.push(item);
+      if (links.length >= Math.max(limit * 4, 20)) break;
+    }
+  };
+
+  for (const url of searchUrls) {
+    try {
+      const res = await fetchTextUrl(url);
+      attempts.push({ url, status: res.status, ok: res.ok, links: 0, mode: 'public-search' });
+      if (!res.ok) continue;
+      const got = productLinksFromHtml(res.text, kw, { takeAll: true });
+      attempts[attempts.length - 1].links = got.length;
+      addLinks(got);
+      if (links.length >= limit) break;
+    } catch (err) {
+      attempts.push({ url, status: 0, ok: false, error: String(err && err.message || err), mode: 'public-search' });
+    }
   }
 
-  const response = await fetch('https://api.line.me/v2/bot/message/reply', {
+  if (links.length < limit) {
+    for (const url of collectionPages) {
+      try {
+        const res = await fetchTextUrl(url);
+        attempts.push({ url, status: res.status, ok: res.ok, links: 0, mode: 'public-collection' });
+        if (!res.ok) continue;
+        const got = productLinksFromHtml(res.text, kw, { takeAll: false });
+        attempts[attempts.length - 1].links = got.length;
+        addLinks(got);
+        if (links.length >= Math.max(limit * 2, 12)) break;
+        // 若該頁完全沒有商品連結，通常代表已超過最後一頁。
+        if (!productLinksFromHtml(res.text, '', { takeAll: true }).length && url.includes('?page=')) break;
+      } catch (err) {
+        attempts.push({ url, status: 0, ok: false, error: String(err && err.message || err), mode: 'public-collection' });
+      }
+    }
+  }
+
+  const rows = [];
+  const seenRows = new Set();
+  for (const item of links) {
+    if (rows.length >= limit) break;
+    try {
+      const page = await fetchTextUrl(item.url);
+      attempts.push({ url: item.url, status: page.status, ok: page.ok, mode: 'public-product' });
+      if (!page.ok) continue;
+      const row = parseProductFromHtml(page.text, item.url);
+      const norm = normalizeSearchText(`${row.name} ${row.note} ${row.url} ${item.nearby}`);
+      if (tokens.length && !tokens.some((t) => norm.includes(t))) continue;
+      const key = clean(row.url || row.productId || row.name);
+      if (!key || seenRows.has(key)) continue;
+      seenRows.add(key);
+      rows.push(row);
+    } catch (err) {
+      attempts.push({ url: item.url, status: 0, ok: false, error: String(err && err.message || err), mode: 'public-product' });
+    }
+  }
+
+  return { rows, attempts, linkCount: links.length };
+}
+
+function mergeRowsUnique(primaryRows, extraRows, limit) {
+  const rows = [];
+  const seen = new Set();
+  const add = (row) => {
+    if (!row) return;
+    const key = clean(row.productId || row.url || row.name).toLowerCase();
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    rows.push(row);
+  };
+  (primaryRows || []).forEach(add);
+  (extraRows || []).forEach(add);
+  return rows.slice(0, limit);
+}
+
+async function cacheRows(rows) {
+  if (!rows || !rows.length) return;
+  const batch = db.batch();
+  rows.slice(0, 100).forEach((row) => {
+    const id = clean(row.productId || row.url || row.name).replace(/[\/#?\[\]]/g, '_').slice(0, 120) || db.collection('websiteProducts').doc().id;
+    const ref = db.collection('websiteProducts').doc(id);
+    batch.set(ref, Object.assign({}, row, {
+      searchableText: normalizeSearchText([row.name, row.brand, row.category, row.note, row.variantSummary, row.productId].join(' ')),
+      source: 'EasyStore',
+      syncedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }), { merge: true });
+  });
+  await batch.commit();
+}
+
+exports.searchTeacherWebsiteGoods = onCall(Object.assign({}, HTTPS_CALLABLE_OPTIONS, { timeoutSeconds: 180, memory: '1GiB' }), async (request) => {
+  const data = request.data || {};
+  const keyword = clean(data.keyword || '');
+  if (!keyword) return { ok: true, rows: [], list: [], message: '請輸入搜尋關鍵字。' };
+
+  const cfg = config();
+  const limit = Math.max(1, Math.min(Number(data.limit || cfg.defaultSearchLimit || 12) || 12, 50));
+  const fetchLimit = Math.max(10, Math.min(Number(data.fetchLimit || cfg.fetchLimit || 50) || 50, 100));
+  const maxPages = Math.max(1, Math.min(Number(data.maxPages || cfg.maxPages || 60) || 60, 100));
+  const tokens = searchTokens(keyword);
+  const rows = [];
+  const seen = new Set();
+  const attempts = [];
+  let connected = false;
+  let hasProducts = false;
+  let rawProductCount = 0;
+
+  // 第一層：正式 EasyStore API。這會拿到比較乾淨的價格、圖片與商品資料。
+  for (let page = 1; page <= maxPages; page++) {
+    const pageRes = await fetchProductsPage(page, fetchLimit);
+    attempts.push({
+      url: pageRes.url,
+      status: pageRes.status,
+      isJson: pageRes.ok,
+      count: pageRes.count,
+      preview: pageRes.preview,
+      error: pageRes.error || '',
+      mode: 'easystore-api',
+    });
+    if (pageRes.status >= 200 && pageRes.status < 300) connected = true;
+    if (!pageRes.ok) {
+      if (page === 1) break;
+      continue;
+    }
+    rawProductCount += pageRes.count;
+    if (pageRes.count > 0) hasProducts = true;
+
+    for (let i = 0; i < pageRes.products.length; i++) {
+      const raw = pageRes.products[i];
+      const row = rowFromProduct(raw);
+      if (!matches(raw, row, tokens)) continue;
+      const key = clean(row.productId || row.url || row.name) || `ROW_${page}_${i}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      rows.push(row);
+      if (rows.length >= limit) break;
+    }
+    if (rows.length >= limit) break;
+    if (pageRes.count < fetchLimit) break;
+  }
+
+  // 第二層：公開官網頁面備援。
+  // 有些商品在公開官網看得到，但 API 權限、分頁或商品欄位沒有回來；這時改掃官網公開頁。
+  let publicRows = [];
+  let publicDebug = null;
+  if (rows.length < limit) {
+    try {
+      const publicRes = await searchPublicWebsiteProducts(keyword, limit - rows.length);
+      publicRows = publicRes.rows || [];
+      publicDebug = {
+        rows: publicRows.length,
+        linkCount: publicRes.linkCount || 0,
+        attempts: (publicRes.attempts || []).slice(0, 30),
+      };
+    } catch (err) {
+      publicDebug = { rows: 0, error: String(err && err.message || err) };
+    }
+  }
+
+  const finalRows = mergeRowsUnique(rows, publicRows, limit);
+  try { await cacheRows(finalRows); } catch (err) { console.warn('websiteProducts cache failed:', err); }
+
+  let message = '已完成官網商品搜尋。';
+  if (!finalRows.length) {
+    if (hasProducts) message = 'API 已讀到商品，但目前關鍵字沒有命中；公開官網備援也沒有找到。';
+    else if (connected) message = 'API 有回應，但目前沒有讀到商品列表；公開官網備援也沒有找到。';
+    else message = '目前無法連到 EasyStore API；公開官網備援也沒有找到。';
+  }
+
+  return {
+    ok: true,
+    rows: finalRows,
+    list: finalRows,
+    source: finalRows.length && rows.length === 0 ? '公司官網公開頁面備援' : 'Firebase Function / EasyStore API + 官網公開頁面備援',
+    message,
+    debug: {
+      connected,
+      hasProducts,
+      totalRows: finalRows.length,
+      apiMatchedRows: rows.length,
+      publicMatchedRows: publicRows.length,
+      rawProductCount,
+      endpoint: '/api/3.0/products.json',
+      tokens,
+      attempts,
+      publicDebug,
+    },
+  };
+});
+
+
+/* =========================================================
+ * LINE 綁定 Webhook 2026-06-09 / 2026-06-09b
+ * ---------------------------------------------------------
+ * 核心規則：
+ * 1) LINE 事件只能可靠知道「實際發訊息的 LINE source.userId」。
+ * 2) 主管 / 員工身份必須由 Firestore 帳號資料判斷，不能只相信文字裡的 Email。
+ * 3) 一支 LINE 只能綁一種身份；主管 LINE 不可拿去綁員工 Email。
+ *
+ * 支援指令：
+ * - 柚子綁定 user@example.com       → 自動依 Email 在 admins / employees 判斷身份
+ * - 柚子主管綁定 admin@example.com  → 強制只綁主管 / 管理者
+ * - 柚子員工綁定 user@example.com   → 強制只綁員工 / 工讀 / 外聘老師
+ * ========================================================= */
+function lineReplyToken(row = {}) {
+  return clean(row.replyToken || row.reply_token || '');
+}
+
+function lineSourceUserId(event = {}) {
+  const source = event.source || {};
+  return clean(source.userId || source.user_id || '');
+}
+
+function lineEventText(event = {}) {
+  const msg = event.message || {};
+  if (msg.type !== 'text') return '';
+  return clean(msg.text || '');
+}
+
+function lowerLineText(value) {
+  return clean(value).toLowerCase();
+}
+
+function truthyLineValue(value) {
+  const s = lowerLineText(value);
+  return value === true || value === 1 || ['1', 'true', 'yes', 'y', 'on', '是', '啟用', '開啟', 'active', 'enabled'].includes(s);
+}
+
+function lineEmailOf(data = {}) {
+  return lowerLineText(data.email || data.Email || data['Email'] || data.loginAccount || data['登入帳號']);
+}
+
+function lineNameOf(data = {}) {
+  return clean(data.name || data['姓名'] || data.displayName || data.lineDisplayName || data['LINE 顯示名稱'] || data.email || data.loginAccount || '');
+}
+
+function lineAccountIdOf(data = {}, docId = '') {
+  return clean(data.employeeId || data.adminId || data.managerId || data.userId || data.id || data['員工ID'] || data['管理者代碼'] || docId);
+}
+
+function lineUserIdOfRecord(data = {}) {
+  return clean(data.lineUserId || data['LINE User ID'] || data.targetLineUserId || data.toLineUserId || '');
+}
+
+function isManagerLineAccount(data = {}, collection = '', docId = '') {
+  if (collection === 'admins') return true;
+  const role = lowerLineText(data.role || data['角色']);
+  const identity = lowerLineText(data.identityType || data.identityLabel || data['身分類型'] || data['身份類型']);
+  const id = lineAccountIdOf(data, docId);
+  if (id === 'PRIMARY_MANAGER_LINE' || docId === 'PRIMARY_MANAGER_LINE') return true;
+  if (['admin', 'manager', '主管', '管理者'].includes(role)) return true;
+  if (['admin', 'manager', '主管', '管理者', '主管收件人'].includes(identity)) return true;
+  return truthyLineValue(data.showSettingsZone || data.canViewSettings || data.isManagerAccount || data['管理區權限'] || data['管理權限'] || data['可看設定區']);
+}
+
+function makeLineAccount(doc, collection) {
+  const data = (doc && typeof doc.data === 'function') ? (doc.data() || {}) : (doc || {});
+  const docId = clean(doc && doc.id ? doc.id : data.__id);
+  const kind = isManagerLineAccount(data, collection, docId) ? 'manager' : 'employee';
+  return {
+    ref: doc && doc.ref ? doc.ref : null,
+    collection,
+    docId,
+    id: lineAccountIdOf(data, docId),
+    email: lineEmailOf(data),
+    name: lineNameOf(data),
+    lineUserId: lineUserIdOfRecord(data),
+    kind,
+    data,
+  };
+}
+
+function sameLineAccount(a, b) {
+  return a && b && a.collection === b.collection && clean(a.docId) === clean(b.docId);
+}
+
+function describeLineAccount(account) {
+  if (!account) return '未知帳號';
+  const role = account.kind === 'manager' ? '主管/管理者' : '員工';
+  const name = clean(account.name || account.email || account.id || account.docId || '未命名');
+  const email = clean(account.email);
+  return `${role}「${name}${email ? ' / ' + email : ''}」`;
+}
+
+function verifyLineSignature(req) {
+  const secret = clean(process.env.LINE_CHANNEL_SECRET || process.env.LINE_BOT_CHANNEL_SECRET || process.env.LINE_SECRET || '');
+  if (!secret) return true; // 未設定 secret 時不阻擋，但正式環境建議設定。
+  const sig = clean(req.get('x-line-signature') || req.get('X-Line-Signature') || '');
+  if (!sig || !req.rawBody) return false;
+  const digest = crypto.createHmac('sha256', secret).update(req.rawBody).digest('base64');
+  try {
+    return crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(digest));
+  } catch (err) {
+    return false;
+  }
+}
+
+async function replyLineMessage(replyToken, text) {
+  const token = await getLineAccessToken();
+  if (!replyToken || !token) return false;
+  const res = await fetch('https://api.line.me/v2/bot/message/reply', {
     method: 'POST',
     headers: {
+      Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`
     },
-    body: JSON.stringify({
-      replyToken,
-      messages: [{ type: 'text', text: message }]
-    })
+    body: JSON.stringify({ replyToken, messages: [{ type: 'text', text: String(text || '').slice(0, 4900) }] }),
   });
+  return res.ok;
+}
 
-  if (!response.ok) {
-    const body = await response.text();
-    console.error('LINE reply failed:', response.status, body);
+function parseLineBindCommand(text) {
+  const raw = clean(text).replace(/\s+/g, ' ');
+  const m = raw.match(/^柚子(主管|員工)?綁定\s+([^\s]+@[^\s]+)$/i);
+  if (!m) return null;
+  const kindWord = clean(m[1]);
+  return {
+    requestedKind: kindWord === '主管' ? 'manager' : (kindWord === '員工' ? 'employee' : ''),
+    email: clean(m[2]).toLowerCase(),
+  };
+}
+
+async function getCollectionRowsForLine(collection, limit = 1000) {
+  const snap = await db.collection(collection).limit(limit).get();
+  const rows = [];
+  snap.forEach((doc) => rows.push(makeLineAccount(doc, collection)));
+  return rows;
+}
+
+async function findLineAccountsByEmail(email) {
+  const targetEmail = lowerLineText(email);
+  const rows = [];
+  const seen = new Set();
+  const add = (account) => {
+    if (!account || !account.docId) return;
+    const key = `${account.collection}/${account.docId}`;
+    if (seen.has(key)) return;
+    if (account.email !== targetEmail) return;
+    seen.add(key);
+    rows.push(account);
+  };
+
+  // 先用索引查，再掃描備援，避免 Email 大小寫或欄位名稱不同找不到。
+  const queryDefs = [
+    ['admins', 'email'], ['admins', 'loginAccount'], ['admins', 'Email'],
+    ['employees', 'email'], ['employees', 'Email'],
+  ];
+  for (const [collection, field] of queryDefs) {
+    try {
+      const snap = await db.collection(collection).where(field, '==', targetEmail).limit(10).get();
+      snap.forEach((doc) => add(makeLineAccount(doc, collection)));
+    } catch (err) {
+      // Firestore 欄位不存在或索引問題時，下面還有掃描備援。
+    }
+  }
+
+  for (const collection of ['admins', 'employees']) {
+    try {
+      const all = await getCollectionRowsForLine(collection, 1000);
+      all.forEach(add);
+    } catch (err) {
+      // ignore collection not existing
+    }
+  }
+
+  rows.sort((a, b) => {
+    if (a.kind === 'manager' && b.kind !== 'manager') return -1;
+    if (a.kind !== 'manager' && b.kind === 'manager') return 1;
+    return clean(a.name).localeCompare(clean(b.name), 'zh-Hant');
+  });
+  return rows;
+}
+
+async function findLineAccountsByLineUserId(lineUserId) {
+  const target = clean(lineUserId);
+  if (!target) return [];
+  const rows = [];
+  const seen = new Set();
+  const add = (account) => {
+    if (!account || !account.docId) return;
+    const key = `${account.collection}/${account.docId}`;
+    if (seen.has(key)) return;
+    if (clean(account.lineUserId) !== target) return;
+    seen.add(key);
+    rows.push(account);
+  };
+  for (const collection of ['admins', 'employees']) {
+    try {
+      const all = await getCollectionRowsForLine(collection, 1000);
+      all.forEach(add);
+    } catch (err) {
+      // ignore collection not existing
+    }
+  }
+  rows.sort((a, b) => {
+    if (a.kind === 'manager' && b.kind !== 'manager') return -1;
+    if (a.kind !== 'manager' && b.kind === 'manager') return 1;
+    return clean(a.name).localeCompare(clean(b.name), 'zh-Hant');
+  });
+  return rows;
+}
+
+async function findTargetAccountForLineBind(email, requestedKind) {
+  const matches = await findLineAccountsByEmail(email);
+  if (!matches.length) return { ok: false, reason: 'not_found', matches: [] };
+  if (requestedKind === 'manager') {
+    const managers = matches.filter((x) => x.kind === 'manager');
+    if (!managers.length) return { ok: false, reason: 'not_manager', matches };
+    return { ok: true, target: managers[0], matches };
+  }
+  if (requestedKind === 'employee') {
+    const employees = matches.filter((x) => x.kind === 'employee');
+    if (!employees.length) return { ok: false, reason: 'not_employee', matches };
+    return { ok: true, target: employees[0], matches };
+  }
+
+  // 沒指定時：Email 若屬於 admins / manager，就當主管；否則才當員工。
+  const manager = matches.find((x) => x.kind === 'manager');
+  if (manager) return { ok: true, target: manager, matches };
+  return { ok: true, target: matches[0], matches };
+}
+
+async function validateLineCanBindToTarget(lineUserId, target) {
+  const existing = await findLineAccountsByLineUserId(lineUserId);
+  const same = existing.filter((x) => sameLineAccount(x, target));
+  const others = existing.filter((x) => !sameLineAccount(x, target));
+  const otherManagers = others.filter((x) => x.kind === 'manager');
+  const otherEmployees = others.filter((x) => x.kind === 'employee');
+
+  if (target.kind === 'employee') {
+    if (otherManagers.length) {
+      return {
+        ok: false,
+        message: `綁定已擋下：這支 LINE 已被設定為${describeLineAccount(otherManagers[0])}，不能再綁員工 Email。請員工用自己的手機 LINE 綁定。`,
+      };
+    }
+    if (otherEmployees.length) {
+      return {
+        ok: false,
+        message: `綁定已擋下：這支 LINE 已綁在${describeLineAccount(otherEmployees[0])}，不能再綁另一位員工。若綁錯，請先到員工管理清除原本的 LINE 綁定。`,
+      };
+    }
+    const targetOldLine = clean(target.lineUserId);
+    if (targetOldLine && targetOldLine !== clean(lineUserId)) {
+      return {
+        ok: false,
+        message: `綁定已擋下：${describeLineAccount(target)} 已綁定另一支 LINE。請先到員工管理按「清除此員工 LINE 綁定」後，再由本人手機重新綁定。`,
+      };
+    }
+  }
+
+  if (target.kind === 'manager') {
+    if (otherEmployees.length) {
+      return {
+        ok: false,
+        message: `綁定已擋下：這支 LINE 目前綁在${describeLineAccount(otherEmployees[0])}，不能直接改成主管通知帳號。請先清除原本員工 LINE 綁定。`,
+      };
+    }
+  }
+
+  return { ok: true, existing, same };
+}
+
+async function logLineBinding(type, payload = {}) {
+  try {
+    await db.collection('lineBindLogs').add(Object.assign({}, payload, {
+      type,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAtText: new Date().toISOString(),
+      source: 'line-webhook-strict-role-bind',
+    }));
+  } catch (err) {
+    console.warn('[lineBindLogs failed]', err);
   }
 }
 
+async function bindManagerLineAccount(target, lineUserId, email, event) {
+  const name = clean(target.name || email || '柚子樂器主要管理者');
+  const nowText = new Date().toISOString();
+  const managerRow = {
+    employeeId: 'PRIMARY_MANAGER_LINE',
+    id: 'PRIMARY_MANAGER_LINE',
+    name,
+    email,
+    role: 'manager',
+    identityType: 'manager',
+    identityLabel: '主管收件人',
+    showSettingsZone: true,
+    isPrimaryManagerLineRecipient: true,
+    hiddenFromActiveLists: true,
+    accountStatus: 'active',
+    employmentStatus: 'active',
+    lineUserId,
+    'LINE User ID': lineUserId,
+    lineNotifyEnabled: true,
+    'LINE 通知啟用': true,
+    lineBindingRole: 'manager',
+    lineBoundAt: admin.firestore.FieldValue.serverTimestamp(),
+    lineBoundAtText: nowText,
+    lineBindEmail: email,
+    lineBindSource: clean((event.source || {}).type || 'user'),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAtText: nowText,
+    source: 'line-webhook-manager-bind',
+  };
+  await db.collection('employees').doc('PRIMARY_MANAGER_LINE').set(managerRow, { merge: true });
 
-async function pushLineMessage(lineUserId, message) {
-  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
-  if (!token || !lineUserId) return;
+  if (target.ref && target.collection === 'admins') {
+    await target.ref.set({
+      lineUserId,
+      'LINE User ID': lineUserId,
+      lineNotifyEnabled: true,
+      'LINE 通知啟用': true,
+      lineBindingRole: 'manager',
+      lineBoundAt: admin.firestore.FieldValue.serverTimestamp(),
+      lineBoundAtText: nowText,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAtText: nowText,
+      source: 'line-webhook-admin-bind',
+    }, { merge: true });
+  }
+
+  await logLineBinding('manager_bind', {
+    accountCollection: target.collection,
+    accountDocId: target.docId,
+    employeeId: 'PRIMARY_MANAGER_LINE',
+    name,
+    email,
+    lineUserId,
+    eventType: clean(event.type || ''),
+  });
+
+  return { ok: true, kind: 'manager', name, email };
+}
+
+async function bindEmployeeLineAccount(target, lineUserId, email, event) {
+  if (!target.ref) throw new Error('找不到可更新的員工文件');
+  const nowText = new Date().toISOString();
+  await target.ref.set({
+    lineUserId,
+    'LINE User ID': lineUserId,
+    lineNotifyEnabled: true,
+    'LINE 通知啟用': true,
+    lineBindingRole: 'employee',
+    lineBoundAt: admin.firestore.FieldValue.serverTimestamp(),
+    lineBoundAtText: nowText,
+    lineBindEmail: email,
+    lineBindSource: clean((event.source || {}).type || 'user'),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAtText: nowText,
+    source: 'line-webhook-employee-bind',
+  }, { merge: true });
+
+  await logLineBinding('employee_bind', {
+    accountCollection: target.collection,
+    accountDocId: target.docId,
+    employeeId: target.id,
+    name: target.name,
+    email,
+    lineUserId,
+    eventType: clean(event.type || ''),
+  });
+
+  return { ok: true, kind: 'employee', name: target.name, email };
+}
+
+
+/* =========================================================
+ * 設備租賃 Functions 2026-06-14 full link-flow restore
+ * ---------------------------------------------------------
+ * - 第一階段租賃申請
+ * - LINE 配對：租賃申請 RC... 姓名
+ * - 管理端傳送正式資料補填/簽署連結
+ * - 客人補資料後約 1 分鐘透過 notificationQueue 傳付款資訊連結
+ * ========================================================= */
+function rentalText(value) { return clean(value); }
+function rentalNowIsoText() { return new Date().toISOString(); }
+function rentalSendCors(res) {
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+}
+function rentalBody(req) {
+  const b = req.body || {};
+  if (!b || typeof b !== 'object' || Array.isArray(b)) return {};
+  const out = {};
+  for (const [k, v] of Object.entries(b)) {
+    if (typeof v === 'string') out[k] = v.slice(0, 2500000);
+    else out[k] = v;
+  }
+  return out;
+}
+function rentalBaseUrl() {
+  return clean(process.env.PUBLIC_WEB_BASE_URL || 'https://danny700808.github.io/play-card/').replace(/\/?$/, '/');
+}
+function rentalMakeToken(len = 28) {
+  return crypto.randomBytes(Math.ceil(len * 0.75)).toString('base64url').slice(0, len);
+}
+function rentalMakeId(prefix = 'RC') {
+  const d = new Date();
+  const stamp = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+  const rand = Math.random().toString(36).slice(2, 7).toUpperCase();
+  return `${prefix}${stamp}${rand}`;
+}
+function rentalSignUrl(contractId, token) {
+  return `${rentalBaseUrl()}rental-sign.html?contractId=${encodeURIComponent(contractId)}&token=${encodeURIComponent(token)}`;
+}
+function rentalPaymentInfoUrl(contractId, token) {
+  return `${rentalBaseUrl()}rental-payment-info.html?contractId=${encodeURIComponent(contractId)}&token=${encodeURIComponent(token)}`;
+}
+function rentalOfficialContractUrl(contractId, token) {
+  return `${rentalBaseUrl()}rental-contract.html?contractId=${encodeURIComponent(contractId)}&token=${encodeURIComponent(token)}`;
+}
+async function rentalPushLine(lineUserId, message) {
+  const to = clean(lineUserId);
+  if (!to) return { ok: false, reason: 'missing-line-user-id' };
+  const token = await getLineAccessToken();
+  if (!token) return { ok: false, reason: 'missing-line-token' };
   const response = await fetch('https://api.line.me/v2/bot/message/push', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`
-    },
-    body: JSON.stringify({
-      to: lineUserId,
-      messages: [{ type: 'text', text: message }]
-    })
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ to, messages: [{ type: 'text', text: String(message || '').slice(0, 4900) }] })
   });
-  if (!response.ok) {
-    const body = await response.text();
-    console.error('LINE push failed:', response.status, body);
+  const text = await response.text();
+  if (!response.ok) return { ok: false, reason: `LINE API ${response.status}`, responseText: text.slice(0, 500) };
+  return { ok: true, responseStatus: response.status, responseText: text.slice(0, 500) };
+}
+async function rentalFindApplication(applicationKey) {
+  const key = clean(applicationKey);
+  if (!key) return null;
+  const ref = db.collection('rentalApplications').doc(key);
+  const snap = await ref.get();
+  if (snap.exists) return { id: snap.id, ref, data: snap.data() || {} };
+  for (const field of ['applicationNo', 'applicationId', 'rentalApplicationNo']) {
+    const qs = await db.collection('rentalApplications').where(field, '==', key).limit(1).get();
+    if (!qs.empty) {
+      const doc = qs.docs[0];
+      return { id: doc.id, ref: doc.ref, data: doc.data() || {} };
+    }
   }
+  return null;
 }
-
-async function getLineProfile(lineUserId) {
-  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
-  if (!token || !lineUserId) return {};
-  try {
-    const response = await fetch(`https://api.line.me/v2/bot/profile/${encodeURIComponent(lineUserId)}`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    if (!response.ok) return {};
-    return await response.json();
-  } catch (error) {
-    console.error('getLineProfile failed:', error);
-    return {};
+async function rentalFindContract(contractId) {
+  const id = clean(contractId);
+  if (!id) return null;
+  const ref = db.collection('rentalContracts').doc(id);
+  const snap = await ref.get();
+  if (!snap.exists) return null;
+  return { id: snap.id, ref, data: snap.data() || {} };
+}
+function rentalContractTokenValid(data, token) {
+  const expected = clean((data || {}).officialContractToken || (data || {}).customerToken || (data || {}).signToken || (data || {}).token);
+  const actual = clean(token);
+  return !expected || expected === actual;
+}
+async function rentalPrimaryManagerLineUserId() {
+  const ids = ['PRIMARY_MANAGER_LINE', 'ADMIN_DANNY'];
+  for (const id of ids) {
+    const snap = await db.collection('employees').doc(id).get();
+    if (snap.exists) {
+      const data = snap.data() || {};
+      const line = clean(data.lineUserId || data['LINE User ID'] || data.targetLineUserId);
+      if (line) return line;
+    }
   }
+  const q = await db.collection('employees').where('isPrimaryManagerLineRecipient', '==', true).limit(1).get();
+  if (!q.empty) {
+    const d = q.docs[0].data() || {};
+    return clean(d.lineUserId || d['LINE User ID'] || d.targetLineUserId);
+  }
+  return '';
 }
-
-function webBaseUrl() {
-  return String(process.env.PUBLIC_WEB_BASE_URL || 'https://danny700808.github.io/play-card/').replace(/\/?$/, '/');
+function rentalFormalFillMessage(url) {
+  return [
+    '柚子樂器租賃正式資料補填連結',
+    '',
+    '請點選以下連結，補填身分證字號、上傳身分證證明圖片並完成簽名。',
+    url,
+    '',
+    '送出後，柚子樂器會依雙方約定的時間安排安裝／交付設備。',
+    '完成付款並由店家確認後，系統會再傳送正式租賃契約連結給您。'
+  ].join('\n');
 }
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function paymentInfoUrlForContract(contractId, token) {
-  return `${webBaseUrl()}rental-payment-info.html?contractId=${encodeURIComponent(contractId)}&token=${encodeURIComponent(token)}`;
-}
-
 function rentalPaymentNoticeMessage(paymentInfoUrl) {
   return [
     '柚子樂器已收到您補填的租賃資料。',
@@ -114,775 +1136,757 @@ function rentalPaymentNoticeMessage(paymentInfoUrl) {
     '如資料需補正，柚子樂器會再透過 LINE 與您聯繫。'
   ].join('\n');
 }
-
-async function findRentalApplication(applicationKey) {
-  const key = normalizeText(applicationKey);
-  if (!key) return null;
-
-  const byId = await db.collection('rentalApplications').doc(key).get();
-  if (byId.exists) return { id: byId.id, ref: byId.ref, data: byId.data() };
-
-  const fields = ['applicationNo', 'applicationId', 'rentalApplicationNo'];
-  for (const field of fields) {
-    const snap = await db.collection('rentalApplications').where(field, '==', key).limit(1).get();
-    if (!snap.empty) {
-      const doc = snap.docs[0];
-      return { id: doc.id, ref: doc.ref, data: doc.data() };
-    }
+async function handleRentalLineApplicationEvent(event) {
+  const text = lineEventText(event);
+  const m = clean(text).match(/^租賃申請\s+([^\s]+)(?:\s+(.+))?$/i);
+  if (!m) return { handled: false };
+  const replyToken = lineReplyToken(event);
+  const lineUserId = lineSourceUserId(event);
+  if (!lineUserId) {
+    await replyLineMessage(replyToken, '系統沒有取得您的 LINE User ID，請確認是從一般 LINE 帳號與柚子樂器官方帳號對話。');
+    return { handled: true, ok: false, reason: 'missing-line-user-id' };
   }
-  return null;
-}
-
-async function handleRentalApplicationLink({ applicationKey, declaredName, lineUserId, replyToken }) {
-  const app = await findRentalApplication(applicationKey);
+  const app = await rentalFindApplication(m[1]);
   if (!app) {
-    await replyLineMessage(replyToken, `找不到租賃申請編號：${applicationKey}。請確認是否完整複製表單送出後產生的文字。`);
-    return;
+    await replyLineMessage(replyToken, `找不到租賃申請編號：${m[1]}。請確認是否完整複製申請送出後產生的文字。`);
+    return { handled: true, ok: false, reason: 'application-not-found' };
   }
-
-  const profile = await getLineProfile(lineUserId);
-  const lineDisplayName = normalizeText(profile.displayName || '');
   const data = app.data || {};
-  const applicationNo = normalizeText(data.applicationNo || data.applicationId || app.id);
-  const customerName = normalizeText(data.customerName || declaredName || '未填姓名');
+  const applicationNo = clean(data.applicationNo || data.applicationId || app.id);
+  const customerName = clean(data.customerName || m[2] || '');
   const now = admin.firestore.FieldValue.serverTimestamp();
-
   await app.ref.set({
     lineUserId,
     customerLineUserId: lineUserId,
-    lineDisplayName,
     lineLinkStatus: 'linked',
     lineLinkedAt: now,
-    lineLinkedAtText: new Date().toISOString(),
+    lineLinkedAtText: rentalNowIsoText(),
     lineConfirmText: `租賃申請 ${applicationNo} ${customerName}`,
-    status: data.status || '待店家確認',
-    updatedAt: now
+    updatedAt: now,
+    updatedAtText: rentalNowIsoText()
   }, { merge: true });
-
-  await replyLineMessage(replyToken, `已收到您的租賃申請：${applicationNo}\n\n柚子樂器會先在 LINE 與您再次確認租用機型、安裝／配送時間與相關費用。\n\n雙方確認完成後，我們會再傳送正式資料填寫連結，請您補填身分證字號、詳細資料並完成 LINE 綁定，後續才可使用續約與租賃紀錄查詢功能。`);
-
-  const managerLineUserId = await getPrimaryManagerLineUserId();
+  const linkedContractId = clean(data.linkedContractId || data.contractId);
+  if (linkedContractId) {
+    await db.collection('rentalContracts').doc(linkedContractId).set({
+      customerLineUserId: lineUserId,
+      lineUserId,
+      lineLinkStatus: 'linked',
+      updatedAt: now,
+      updatedAtText: rentalNowIsoText()
+    }, { merge: true });
+  }
+  await replyLineMessage(replyToken, `已收到您的租賃申請：${applicationNo}\n\n柚子樂器會先在 LINE 與您再次確認租用機型、安裝／配送時間與相關費用。\n\n雙方確認完成後，我們會再傳送正式資料補填連結，請您補填身分證字號、上傳身分證證明圖片並完成簽名。`);
+  const managerLineUserId = await rentalPrimaryManagerLineUserId();
   if (managerLineUserId && managerLineUserId !== lineUserId) {
-    const adminUrl = `${webBaseUrl()}rental-admin.html?applicationId=${encodeURIComponent(app.id)}`;
-    const equipment = normalizeText(data.otherEquipmentNeed || data.equipmentName || data.rentalType || '');
-    const message = [
+    const adminUrl = `${rentalBaseUrl()}rental-admin.html?applicationId=${encodeURIComponent(app.id)}`;
+    await rentalPushLine(managerLineUserId, [
       '有客人完成租賃 LINE 連結',
-      `姓名：${customerName}`,
-      `電話：${normalizeText(data.customerPhone || '')}`,
+      `姓名：${customerName || clean(data.customerName) || '未填寫'}`,
+      `電話：${clean(data.customerPhone || '')}`,
       `申請編號：${applicationNo}`,
-      `租用需求：${equipment || '未填寫'}`,
-      `希望方式：${normalizeText(data.shippingMethod || '')}`,
-      `希望日期：${normalizeText(data.preferredDate || '')} ${normalizeText(data.preferredTime || '')}`.trim(),
+      `租用需求：${clean(data.otherEquipmentNeed || data.equipmentName || data.rentalType || '') || '未填寫'}`,
+      `希望方式：${clean(data.shippingMethod || '') || '未填寫'}`,
+      `希望日期：${`${clean(data.preferredDate || '')} ${clean(data.preferredTime || '')}`.trim() || '未填寫'}`,
       '',
       `查看申請資料：${adminUrl}`,
       '',
       '客人 LINE 配對文字：',
-      `租賃申請 ${applicationNo} ${customerName}`
-    ].join('\n');
-    await pushLineMessage(managerLineUserId, message);
+      `租賃申請 ${applicationNo} ${customerName || clean(data.customerName) || ''}`
+    ].join('\n'));
   }
+  return { handled: true, ok: true, applicationId: app.id };
 }
 
-async function findEmployeeByEmail(email) {
-  const normalizedEmail = normalizeEmail(email);
-  const fields = ['email', 'Email', 'mail', 'loginEmail'];
+async function handleLineBindEvent(event) {
+  const text = lineEventText(event);
+  const command = parseLineBindCommand(text);
+  if (!command) return { handled: false };
 
-  for (const field of fields) {
-    const snap = await db
-      .collection('employees')
-      .where(field, '==', normalizedEmail)
-      .limit(1)
-      .get();
+  const replyToken = lineReplyToken(event);
+  const lineUserId = lineSourceUserId(event);
+  if (!lineUserId) {
+    await replyLineMessage(replyToken, '綁定失敗：系統沒有取得你的 LINE User ID。請確認你是在柚子樂器官方 LINE 內直接傳送綁定文字。');
+    return { handled: true, ok: false, reason: 'missing_line_user_id' };
+  }
 
-    if (!snap.empty) {
-      const doc = snap.docs[0];
-      return { id: doc.id, ref: doc.ref, data: doc.data() };
+  const targetResult = await findTargetAccountForLineBind(command.email, command.requestedKind);
+  if (!targetResult.ok) {
+    let msg = `綁定失敗：找不到 ${command.email} 對應的帳號資料。請確認 Email 是否和員工系統資料完全相同。`;
+    if (targetResult.reason === 'not_manager') msg = `綁定失敗：${command.email} 不是主管/管理者帳號，不能用「柚子主管綁定」。`;
+    if (targetResult.reason === 'not_employee') msg = `綁定失敗：${command.email} 不是員工帳號，不能用「柚子員工綁定」。`;
+    await replyLineMessage(replyToken, msg);
+    return { handled: true, ok: false, reason: targetResult.reason, email: command.email };
+  }
+
+  const target = targetResult.target;
+  const allowed = await validateLineCanBindToTarget(lineUserId, target);
+  if (!allowed.ok) {
+    await replyLineMessage(replyToken, allowed.message);
+    await logLineBinding('blocked_bind', {
+      email: command.email,
+      requestedKind: command.requestedKind,
+      targetKind: target.kind,
+      targetCollection: target.collection,
+      targetDocId: target.docId,
+      targetName: target.name,
+      lineUserId,
+      reason: allowed.message,
+    });
+    return { handled: true, ok: false, blocked: true, reason: allowed.message, email: command.email, targetKind: target.kind };
+  }
+
+  const result = target.kind === 'manager'
+    ? await bindManagerLineAccount(target, lineUserId, command.email, event)
+    : await bindEmployeeLineAccount(target, lineUserId, command.email, event);
+
+  if (result.kind === 'manager') {
+    await replyLineMessage(replyToken, `主管 LINE 綁定成功：${result.name}\n之後主管通知會優先送到這支 LINE。`);
+  } else {
+    await replyLineMessage(replyToken, `員工 LINE 綁定成功：${result.name || result.email}\n之後個人通知會送到這支 LINE。`);
+  }
+  return { handled: true, ok: true, kind: result.kind, email: command.email };
+}
+
+exports.lineWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 60, memory: '256MiB' }, async (req, res) => {
+  if (req.method !== 'POST') {
+    res.status(200).send('LINE webhook is ready. Strict role binding is active.');
+    return;
+  }
+  if (!verifyLineSignature(req)) {
+    res.status(403).send('Invalid LINE signature');
+    return;
+  }
+  const body = req.body || {};
+  const events = Array.isArray(body.events) ? body.events : [];
+  const results = [];
+  for (const event of events) {
+    try {
+      const rentalResult = await handleRentalLineApplicationEvent(event);
+      if (rentalResult && rentalResult.handled) {
+        results.push(rentalResult);
+        continue;
+      }
+      results.push(await handleLineBindEvent(event));
+    } catch (err) {
+      console.error('[lineWebhook failed]', err);
+      const replyToken = lineReplyToken(event);
+      await replyLineMessage(replyToken, '綁定處理失敗：系統暫時無法完成綁定，請稍後再試或通知管理者。');
+      results.push({ handled: true, ok: false, error: err && err.message ? err.message : String(err) });
     }
   }
+  res.status(200).json({ ok: true, results });
+});
 
-  return null;
+
+/* =========================================================
+ * LINE / Email 通知佇列發送器 2026-06-03
+ * ---------------------------------------------------------
+ * 前端會把通知寫入 Firestore：notificationQueue/{queueId}
+ * 這裡負責真的送出：
+ * - channel = line  → LINE Messaging API push message
+ * - channel = email → SendGrid（有設定 SENDGRID_API_KEY 時）
+ *
+ * LINE Token 建議放 functions/.env：
+ * LINE_CHANNEL_ACCESS_TOKEN=你的 LINE Messaging API Channel access token
+ *
+ * 也支援暫時放 Firestore systemSettings：
+ * key/value 其中 key 為「LINE Channel Access Token」或「LINE_CHANNEL_ACCESS_TOKEN」
+ * ========================================================= */
+
+const QUEUE_COLLECTION = 'notificationQueue';
+const SENT_STATUSES = new Set(['sent', '已發送', '已送出', 'done', 'completed', 'success']);
+const SENDING_STATUSES = new Set(['sending', '發送中']);
+const PENDING_STATUSES = new Set(['pending', '待發送', 'queued', 'queue', '待處理', 'retry']);
+
+function safeId(value) {
+  return clean(value).replace(/[\/#?\[\]]/g, '_').slice(0, 180) || db.collection('_ids').doc().id;
 }
 
+function asText(value) {
+  if (value == null) return '';
+  if (value && typeof value.toDate === 'function') return value.toDate().toISOString();
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === 'object') {
+    try { return JSON.stringify(value); } catch (err) { return String(value); }
+  }
+  return String(value);
+}
 
-async function ensureBootstrapAdmin(email) {
-  const normalizedEmail = normalizeEmail(email);
-  if (!isBootstrapAdminEmail(normalizedEmail)) return null;
+function queueStatus(row = {}) {
+  return clean(row.status || row['狀態'] || '待發送');
+}
 
-  const existing = await findEmployeeByEmail(normalizedEmail);
-  if (existing) {
-    await existing.ref.set(
-      {
-        email: normalizedEmail,
-        role: 'admin',
-        identityType: 'admin',
-        canViewSettings: true,
-        showSettingsZone: true,
-        lineNotifyEnabled: true,
-        status: 'active',
-        adminBootstrap: true,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
-      },
-      { merge: true }
-    );
-    return {
-      id: existing.id,
-      ref: existing.ref,
-      data: {
-        ...existing.data,
-        email: normalizedEmail,
-        role: 'admin',
-        identityType: 'admin',
-        canViewSettings: true,
-        showSettingsZone: true,
-        lineNotifyEnabled: true,
-        status: 'active',
-        adminBootstrap: true
+function isPendingQueue(row = {}) {
+  const status = queueStatus(row);
+  if (SENT_STATUSES.has(status) || SENDING_STATUSES.has(status)) return false;
+  return !status || PENDING_STATUSES.has(status) || /^fail|失敗|error/i.test(status);
+}
+
+function queueChannel(row = {}) {
+  return clean(row.channel || row.type || row.notifyType || row['發送方式']).toLowerCase();
+}
+
+function queueTargetLineUserId(row = {}) {
+  return clean(row.targetLineUserId || row.lineUserId || row.toLineUserId || row['LINE User ID']);
+}
+
+function queueTargetEmail(row = {}) {
+  return clean(row.targetEmail || row.email || row.toEmail || row['Email']).toLowerCase();
+}
+
+function queueTitle(row = {}) {
+  return clean(row.title || row.subject || row.eventName || '柚子樂器通知');
+}
+
+function queueBody(row = {}) {
+  const body = clean(row.body || row.message || row.content || row.text || row['訊息內容']);
+  if (body) return body;
+  const title = queueTitle(row);
+  return title || '您有一則新的通知。';
+}
+
+async function getSystemSettingValue(names) {
+  const wanted = (Array.isArray(names) ? names : [names]).map(clean).filter(Boolean);
+  for (const name of wanted) {
+    try {
+      const snap = await db.collection('systemSettings').doc(name).get();
+      if (snap.exists) {
+        const data = snap.data() || {};
+        const value = clean(data.value || data.token || data.accessToken || data.secret || data.text);
+        if (value) return value;
       }
-    };
+    } catch (err) {
+      // ignore and try list scan below
+    }
   }
-
-  const ref = db.collection('employees').doc(DEFAULT_ADMIN_DOC_ID);
-  const data = {
-    name: '黃銘廷',
-    email: normalizedEmail,
-    role: 'admin',
-    identityType: 'admin',
-    canViewSettings: true,
-    showSettingsZone: true,
-    lineNotifyEnabled: true,
-    status: 'active',
-    adminBootstrap: true,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    updatedAt: admin.firestore.FieldValue.serverTimestamp()
-  };
-  await ref.set(data, { merge: true });
-  return { id: DEFAULT_ADMIN_DOC_ID, ref, data };
-}
-
-function isManagerData(data, docId) {
-  if (!data) return false;
-
-  const role = String(data.role || data.userRole || data.permissionRole || '').toLowerCase();
-  const identityType = String(data.identityType || data.type || '').toLowerCase();
-  const level = String(data.level || '').toLowerCase();
-  const email = normalizeEmail(data.email || data.Email || data.mail || data.loginEmail || '');
-
-  return (
-    isBootstrapAdminEmail(email) ||
-    docId === 'PRIMARY_MANAGER_LINE' ||
-    role === 'admin' ||
-    role === 'manager' ||
-    role === '主管' ||
-    role === '管理者' ||
-    identityType === 'admin' ||
-    identityType === 'manager' ||
-    identityType === '主管' ||
-    identityType === '管理者' ||
-    level === 'admin' ||
-    level === 'manager' ||
-    data.showSettingsZone === true ||
-    data.canViewSettings === true ||
-    data.isAdmin === true ||
-    data.isManager === true
-  );
-}
-
-async function getPrimaryManagerLineUserId() {
-  const doc = await db.collection('employees').doc('PRIMARY_MANAGER_LINE').get();
-  if (!doc.exists) return '';
-  return String(doc.data().lineUserId || '');
-}
-
-async function hasThisLineBoundToAnotherEmployee(lineUserId, currentEmployeeId) {
-  if (!lineUserId) return false;
-
-  const snap = await db
-    .collection('employees')
-    .where('lineUserId', '==', lineUserId)
-    .limit(5)
-    .get();
-
-  return snap.docs.some((doc) => doc.id !== currentEmployeeId && doc.id !== 'PRIMARY_MANAGER_LINE');
-}
-
-async function handleEmployeeBinding({ email, lineUserId, replyToken }) {
-  if (isBootstrapAdminEmail(email)) {
-    await replyLineMessage(replyToken, '這個 Email 已設定為系統管理者，不能使用員工綁定指令。主管請使用：柚子主管綁定 your@email.com');
-    return;
-  }
-
-  const employee = await findEmployeeByEmail(email);
-
-  if (!employee) {
-    await replyLineMessage(replyToken, `找不到這個員工 Email：${email}`);
-    return;
-  }
-
-  if (isManagerData(employee.data, employee.id)) {
-    await replyLineMessage(replyToken, '這個帳號是主管或管理者帳號，不能使用員工綁定指令。主管請使用：柚子主管綁定 your@email.com');
-    return;
-  }
-
-  const primaryManagerLineUserId = await getPrimaryManagerLineUserId();
-  if (primaryManagerLineUserId && primaryManagerLineUserId === lineUserId) {
-    await replyLineMessage(replyToken, '這支 LINE 已被設定為主管通知帳號，不能綁定員工帳號。請員工使用自己的手機 LINE 綁定。');
-    return;
-  }
-
-  if (employee.data.lineUserId && employee.data.lineUserId !== lineUserId) {
-    await replyLineMessage(replyToken, '這位員工已綁定其他 LINE。若要重新綁定，請先由主管到員工管理清除此員工 LINE 綁定。');
-    return;
-  }
-
-  const isAlreadyBoundElsewhere = await hasThisLineBoundToAnotherEmployee(lineUserId, employee.id);
-  if (isAlreadyBoundElsewhere) {
-    await replyLineMessage(replyToken, '這支 LINE 已綁定其他員工帳號，不能重複綁定。請先由主管清除原本的 LINE 綁定。');
-    return;
-  }
-
-  await employee.ref.set(
-    {
-      lineUserId,
-      lineNotifyEnabled: true,
-      lineBoundAt: admin.firestore.FieldValue.serverTimestamp(),
-      lineBindingEmail: email,
-      lineBindingRole: 'employee'
-    },
-    { merge: true }
-  );
-
-  await replyLineMessage(replyToken, `員工 LINE 綁定成功：${employee.data.name || employee.data.displayName || email}`);
-}
-
-async function handleManagerBinding({ email, lineUserId, replyToken }) {
-  const employee = isBootstrapAdminEmail(email)
-    ? await ensureBootstrapAdmin(email)
-    : await findEmployeeByEmail(email);
-
-  if (!employee || !isManagerData(employee.data, employee.id)) {
-    await replyLineMessage(replyToken, '這個 Email 不是主管或管理者帳號，不能設定為主管 LINE。');
-    return;
-  }
-
-  await db.collection('employees').doc('PRIMARY_MANAGER_LINE').set(
-    {
-      lineUserId,
-      email,
-      name: employee.data.name || employee.data.displayName || email,
-      lineNotifyEnabled: true,
-      lineBoundAt: admin.firestore.FieldValue.serverTimestamp(),
-      lineBindingRole: 'manager'
-    },
-    { merge: true }
-  );
-
-  await replyLineMessage(replyToken, `主管 LINE 綁定成功：${employee.data.name || employee.data.displayName || email}`);
-}
-
-
-
-
-function todayYmdCompact() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}${m}${day}`;
-}
-
-function nowIsoText() {
-  return new Date().toISOString();
-}
-
-function randomCode(len = 5) {
-  return Math.random().toString(36).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, len).padEnd(len, '0');
-}
-
-function makeRentalId(prefix = 'RC') {
-  return `${prefix}${todayYmdCompact()}${randomCode(5)}`;
-}
-
-function makeToken(len = 32) {
-  return cryptoRandom(len);
-}
-
-function cryptoRandom(len = 32) {
   try {
-    return require('crypto').randomBytes(Math.ceil(len / 2)).toString('hex').slice(0, len);
-  } catch (e) {
-    return Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+    const snap = await db.collection('systemSettings').limit(200).get();
+    let found = '';
+    snap.forEach((doc) => {
+      if (found) return;
+      const data = doc.data() || {};
+      const key = clean(data.key || data.name || doc.id);
+      if (wanted.includes(key)) found = clean(data.value || data.token || data.accessToken || data.secret || data.text);
+    });
+    return found;
+  } catch (err) {
+    return '';
   }
 }
 
-function signUrlForContract(contractId, token) {
-  return `${webBaseUrl()}rental-sign.html?contractId=${encodeURIComponent(contractId)}&token=${encodeURIComponent(token)}`;
+async function getLineAccessToken() {
+  const token = clean(
+    process.env.LINE_CHANNEL_ACCESS_TOKEN ||
+    process.env.LINE_MESSAGING_ACCESS_TOKEN ||
+    process.env.LINE_ACCESS_TOKEN ||
+    process.env.LINE_BOT_CHANNEL_ACCESS_TOKEN ||
+    ''
+  );
+  if (token) return token;
+  return await getSystemSettingValue([
+    'LINE_CHANNEL_ACCESS_TOKEN',
+    'LINE Channel Access Token',
+    'LINE Messaging API Token',
+    'LINE Access Token',
+    'LINE Bot Access Token',
+    'LINE_TOKEN'
+  ]);
 }
 
-function officialUrlForContract(contractId, token) {
-  return `${webBaseUrl()}rental-contract.html?contractId=${encodeURIComponent(contractId)}&token=${encodeURIComponent(token)}`;
+async function sendLinePush(row) {
+  const to = queueTargetLineUserId(row);
+  if (!to) throw new Error('缺少 LINE User ID，無法發送 LINE。');
+  const token = await getLineAccessToken();
+  if (!token) throw new Error('缺少 LINE_CHANNEL_ACCESS_TOKEN，尚未設定 LINE Messaging API Channel access token。');
+
+  const title = queueTitle(row);
+  const body = queueBody(row);
+  const text = title && body && title !== body ? `${title}\n${body}` : (body || title || '柚子樂器通知');
+  const res = await fetch('https://api.line.me/v2/bot/message/push', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      to,
+      messages: [{ type: 'text', text: text.slice(0, 4900) }],
+    }),
+  });
+  const responseText = await res.text();
+  if (!res.ok) {
+    throw new Error(`LINE API ${res.status}：${responseText.slice(0, 500)}`);
+  }
+  return { provider: 'line-messaging-api', responseStatus: res.status, responseText: responseText.slice(0, 500) };
 }
 
-function safePublicBody(req) {
-  if (req.method === 'OPTIONS') return null;
-  return req.body && typeof req.body === 'object' ? req.body : {};
+async function sendEmailViaSendGrid(row) {
+  const to = queueTargetEmail(row);
+  if (!to) throw new Error('缺少 Email，無法發送 Email。');
+  const apiKey = clean(process.env.SENDGRID_API_KEY || '');
+  const from = clean(process.env.SENDGRID_FROM_EMAIL || process.env.MAIL_FROM || '');
+  const fromName = clean(process.env.SENDGRID_FROM_NAME || '柚子樂器');
+  if (!apiKey || !from) throw new Error('Email 尚未設定 SENDGRID_API_KEY / SENDGRID_FROM_EMAIL。');
+
+  const res = await fetch('https://api.sendgrid.com/v3/mail/send', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      personalizations: [{ to: [{ email: to, name: clean(row.targetName) || undefined }] }],
+      from: { email: from, name: fromName },
+      subject: queueTitle(row),
+      content: [{ type: 'text/plain', value: queueBody(row) }],
+    }),
+  });
+  const responseText = await res.text();
+  if (res.status < 200 || res.status >= 300) {
+    throw new Error(`SendGrid API ${res.status}：${responseText.slice(0, 500)}`);
+  }
+  return { provider: 'sendgrid', responseStatus: res.status, responseText: responseText.slice(0, 500) };
 }
 
-function sendCors(res) {
-  res.set('Access-Control-Allow-Origin', '*');
-  res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+async function markQueue(docRef, data) {
+  await docRef.set(Object.assign({}, data, {
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }), { merge: true });
 }
 
-async function findRentalContract(contractId) {
-  const id = normalizeText(contractId);
-  if (!id) return null;
-  const ref = db.collection('rentalContracts').doc(id);
-  const snap = await ref.get();
-  if (!snap.exists) return null;
-  return { id, ref, data: snap.data() || {} };
+async function appendNotificationLog(queueId, data) {
+  const id = `${safeId(queueId)}_${Date.now()}`;
+  await db.collection('notificationLogs').doc(id).set(Object.assign({
+    logId: id,
+    queueId,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, data || {}), { merge: true });
 }
 
-function assertContractToken(data, token) {
-  const expected = normalizeText(data.officialContractToken || data.customerToken || data.signToken || data.token);
-  const actual = normalizeText(token);
-  return !expected || expected === actual;
+
+function queueNotBeforeMillis(row = {}) {
+  const raw = row.notBeforeAt || row.scheduledAt || row.sendAfterAt || row.nextSendAt || null;
+  if (!raw) return 0;
+  if (raw && typeof raw.toDate === 'function') return raw.toDate().getTime();
+  if (raw instanceof Date) return raw.getTime();
+  const n = Number(raw);
+  if (Number.isFinite(n) && n > 0) return n;
+  const d = new Date(String(raw));
+  return Number.isFinite(d.getTime()) ? d.getTime() : 0;
 }
 
-exports.rentalSubmitApplicationHttp = onRequest(
-  { region: 'us-central1', cors: true, timeoutSeconds: 60 },
-  async (req, res) => {
-    try {
-      sendCors(res);
-      if (req.method === 'OPTIONS') return res.status(204).send('');
-      if (req.method !== 'POST') return res.status(405).json({ ok: false, message: 'Method Not Allowed' });
+async function processNotificationQueueDoc(docRef, row, options = {}) {
+  row = row || {};
+  const queueId = clean(row.queueId || docRef.id);
+  const channel = queueChannel(row);
+  if (!isPendingQueue(row)) return { ok: true, skipped: true, reason: `狀態不是待發送：${queueStatus(row)}` };
+  if (!['line', 'email'].includes(channel)) {
+    await markQueue(docRef, { status: '發送失敗', lastError: `不支援的發送方式：${channel || '(空白)'}` });
+    return { ok: false, skipped: true, reason: 'unsupported-channel' };
+  }
 
-      const body = safePublicBody(req);
-      const customerName = normalizeText(body.customerName);
-      const customerPhone = normalizeText(body.customerPhone);
-      if (!customerName) return res.status(400).json({ ok: false, message: '請填寫姓名。' });
-      if (!customerPhone) return res.status(400).json({ ok: false, message: '請填寫電話。' });
+  const notBefore = queueNotBeforeMillis(row);
+  if (notBefore && Date.now() < notBefore) {
+    return { ok: true, skipped: true, reason: 'not-yet-due', notBeforeAt: new Date(notBefore).toISOString() };
+  }
 
-      let applicationId = makeRentalId('RC');
-      let ref = db.collection('rentalApplications').doc(applicationId);
-      // 極低機率撞號時重產一次。
-      const exists = await ref.get();
-      if (exists.exists) {
-        applicationId = makeRentalId('RC');
-        ref = db.collection('rentalApplications').doc(applicationId);
-      }
+  await markQueue(docRef, {
+    queueId,
+    status: '發送中',
+    sendStartedAt: admin.firestore.FieldValue.serverTimestamp(),
+    attemptCount: admin.firestore.FieldValue.increment(1),
+    processor: options.processor || 'cloud-function',
+  });
 
-      const lineConfirmText = `租賃申請 ${applicationId} ${customerName}`;
-      const now = admin.firestore.FieldValue.serverTimestamp();
-      const data = {
-        ...body,
-        applicationId,
-        applicationNo: applicationId,
-        rentalApplicationNo: applicationId,
-        customerName,
-        customerPhone,
-        customerEmail: normalizeText(body.customerEmail),
-        customerAddress: normalizeText(body.customerAddress),
-        rentalType: normalizeText(body.rentalType),
-        periods: normalizeText(body.periods),
-        otherEquipmentNeed: normalizeText(body.otherEquipmentNeed),
-        shippingMethod: normalizeText(body.shippingMethod),
-        preferredDate: normalizeText(body.preferredDate),
-        preferredTime: normalizeText(body.preferredTime),
-        floorNote: normalizeText(body.floorNote),
-        note: normalizeText(body.note),
-        source: normalizeText(body.source || 'customer-inquiry-web'),
-        status: '待店家確認',
-        stage: 'inquiry',
-        lineLinkStatus: 'pending',
-        lineConfirmText,
-        createdAt: now,
-        updatedAt: now,
-        createdAtText: nowIsoText(),
-        updatedAtText: nowIsoText()
-      };
-      await ref.set(data, { merge: true });
+  try {
+    const result = channel === 'line' ? await sendLinePush(row) : await sendEmailViaSendGrid(row);
+    await markQueue(docRef, {
+      status: '已發送',
+      sentAt: admin.firestore.FieldValue.serverTimestamp(),
+      sentAtText: new Date().toISOString(),
+      provider: result.provider,
+      responseStatus: result.responseStatus,
+      responseText: result.responseText || '',
+      lastError: '',
+    });
+    await appendNotificationLog(queueId, {
+      status: '已發送',
+      channel,
+      provider: result.provider,
+      targetEmployeeId: clean(row.targetEmployeeId),
+      targetName: clean(row.targetName),
+      targetEmail: queueTargetEmail(row),
+      targetLineUserId: queueTargetLineUserId(row),
+      title: queueTitle(row),
+      body: queueBody(row),
+    });
+    return { ok: true, sent: true, channel, queueId };
+  } catch (err) {
+    const msg = err && err.message ? err.message : String(err);
+    await markQueue(docRef, {
+      status: '發送失敗',
+      failedAt: admin.firestore.FieldValue.serverTimestamp(),
+      failedAtText: new Date().toISOString(),
+      lastError: msg,
+    });
+    await appendNotificationLog(queueId, {
+      status: '發送失敗',
+      channel,
+      error: msg,
+      targetEmployeeId: clean(row.targetEmployeeId),
+      targetName: clean(row.targetName),
+      targetEmail: queueTargetEmail(row),
+      targetLineUserId: queueTargetLineUserId(row),
+      title: queueTitle(row),
+      body: queueBody(row),
+    });
+    console.error('[notificationQueue send failed]', queueId, msg);
+    return { ok: false, error: msg, channel, queueId };
+  }
+}
 
-      const managerLineUserId = await getPrimaryManagerLineUserId();
-      if (managerLineUserId) {
-        const adminUrl = `${webBaseUrl()}rental-admin.html?applicationId=${encodeURIComponent(applicationId)}`;
-        const msg = [
-          '有新的設備租賃申請',
-          `姓名：${customerName}`,
-          `電話：${customerPhone}`,
-          `申請編號：${applicationId}`,
-          `租用需求：${normalizeText(body.otherEquipmentNeed || body.rentalType || '') || '未填寫'}`,
-          `希望方式：${normalizeText(body.shippingMethod) || '未填寫'}`,
-          `希望日期：${`${normalizeText(body.preferredDate)} ${normalizeText(body.preferredTime)}`.trim() || '未填寫'}`,
-          '',
-          `查看申請資料：${adminUrl}`,
-          '',
-          '客人 LINE 配對文字：',
-          lineConfirmText
-        ].join('\n');
-        await pushLineMessage(managerLineUserId, msg);
-      }
+exports.sendNotificationQueueOnCreate = onDocumentCreated(`${QUEUE_COLLECTION}/{queueId}`, async (event) => {
+  const snap = event.data;
+  if (!snap) return null;
+  return await processNotificationQueueDoc(snap.ref, snap.data() || {}, { processor: 'onCreate' });
+});
 
-      res.status(200).json({ ok: true, applicationId, applicationNo: applicationId, lineConfirmText });
-    } catch (error) {
-      console.error('rentalSubmitApplicationHttp error:', error);
-      res.status(500).json({ ok: false, message: error && error.message ? error.message : '送出失敗' });
+exports.flushNotificationQueue = onSchedule({ schedule: 'every 1 minutes', timeoutSeconds: 120, memory: '512MiB' }, async () => {
+  const snap = await db.collection(QUEUE_COLLECTION).where('status', 'in', ['待發送', 'pending', 'queued', 'retry']).limit(50).get();
+  const results = [];
+  for (const doc of snap.docs) {
+    results.push(await processNotificationQueueDoc(doc.ref, doc.data() || {}, { processor: 'scheduler' }));
+  }
+  return results;
+});
+
+exports.processNotificationQueueNow = onCall(Object.assign({}, HTTPS_CALLABLE_OPTIONS, { timeoutSeconds: 120, memory: '512MiB' }), async (request) => {
+  const data = request.data || {};
+  const queueId = clean(data.queueId || '');
+  const limit = Math.max(1, Math.min(Number(data.limit || 20) || 20, 50));
+  if (queueId) {
+    const ref = db.collection(QUEUE_COLLECTION).doc(queueId);
+    const snap = await ref.get();
+    if (!snap.exists) return { ok: false, message: '找不到通知佇列資料。' };
+    const result = await processNotificationQueueDoc(ref, snap.data() || {}, { processor: 'callable' });
+    return Object.assign({ ok: result.ok !== false }, result);
+  }
+  const snap = await db.collection(QUEUE_COLLECTION).where('status', 'in', ['待發送', 'pending', 'queued', 'retry']).limit(limit).get();
+  const results = [];
+  for (const doc of snap.docs) {
+    results.push(await processNotificationQueueDoc(doc.ref, doc.data() || {}, { processor: 'callable' }));
+  }
+  return { ok: true, count: results.length, results };
+});
+
+
+exports.rentalSubmitApplicationHttp = onRequest({ region: 'us-central1', cors: true, timeoutSeconds: 60 }, async (req, res) => {
+  try {
+    rentalSendCors(res);
+    if (req.method === 'OPTIONS') return res.status(204).send('');
+    if (req.method !== 'POST') return res.status(405).json({ ok: false, message: 'Method Not Allowed' });
+    const body = rentalBody(req);
+    const customerName = clean(body.customerName);
+    const customerPhone = clean(body.customerPhone);
+    if (!customerName) return res.status(400).json({ ok: false, message: '請填寫姓名。' });
+    if (!customerPhone) return res.status(400).json({ ok: false, message: '請填寫電話。' });
+    let applicationId = rentalMakeId('RC');
+    let ref = db.collection('rentalApplications').doc(applicationId);
+    if ((await ref.get()).exists) {
+      applicationId = rentalMakeId('RC');
+      ref = db.collection('rentalApplications').doc(applicationId);
     }
-  }
-);
-
-exports.rentalSaveContractHttp = onRequest(
-  { region: 'us-central1', cors: true, timeoutSeconds: 90 },
-  async (req, res) => {
-    try {
-      sendCors(res);
-      if (req.method === 'OPTIONS') return res.status(204).send('');
-      if (req.method !== 'POST') return res.status(405).json({ ok: false, message: 'Method Not Allowed' });
-      const body = safePublicBody(req);
-      const contractId = normalizeText(body.contractId) || makeRentalId('RC');
-      const token = normalizeText(body.signToken || body.customerToken || body.token) || makeToken(32);
-      let customerLineUserId = normalizeText(body.customerLineUserId || body.lineUserId);
-
-      const applicationId = normalizeText(body.applicationId);
-      if (applicationId && !customerLineUserId) {
-        const appSnap = await db.collection('rentalApplications').doc(applicationId).get();
-        if (appSnap.exists) {
-          const app = appSnap.data() || {};
-          customerLineUserId = normalizeText(app.customerLineUserId || app.lineUserId);
-        }
-      }
-
-      const makeSignLink = !!body.makeSignLink;
-      const status = makeSignLink ? '待客人補資料' : normalizeText(body.status || '草稿');
-      const payload = {
-        ...body,
-        contractId,
-        status,
-        customerLineUserId,
-        lineUserId: customerLineUserId || normalizeText(body.lineUserId),
-        signToken: token,
-        customerToken: normalizeText(body.customerToken) || token,
-        token: normalizeText(body.token) || token,
-        signUrl: signUrlForContract(contractId, token),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAtText: nowIsoText()
-      };
-      if (!body.createdAtText) {
-        payload.createdAt = admin.firestore.FieldValue.serverTimestamp();
-        payload.createdAtText = nowIsoText();
-      }
-      await db.collection('rentalContracts').doc(contractId).set(payload, { merge: true });
-
-      if (applicationId) {
-        await db.collection('rentalApplications').doc(applicationId).set({
-          status: '已轉正式契約',
-          linkedContractId: contractId,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          updatedAtText: nowIsoText()
-        }, { merge: true });
-      }
-
-      res.status(200).json({ ok: true, contractId, signToken: token, customerToken: token, token, signUrl: payload.signUrl });
-    } catch (error) {
-      console.error('rentalSaveContractHttp error:', error);
-      res.status(500).json({ ok: false, message: error && error.message ? error.message : '儲存合約失敗' });
-    }
-  }
-);
-
-exports.rentalSendContractToCustomerHttp = onRequest(
-  { region: 'us-central1', cors: true, timeoutSeconds: 90 },
-  async (req, res) => {
-    try {
-      sendCors(res);
-      if (req.method === 'OPTIONS') return res.status(204).send('');
-      if (req.method !== 'POST') return res.status(405).json({ ok: false, message: 'Method Not Allowed' });
-      const body = safePublicBody(req);
-      const found = await findRentalContract(body.contractId);
-      if (!found) return res.status(404).json({ ok: false, message: '找不到合約資料' });
-      const c = found.data;
-      const token = normalizeText(c.signToken || c.customerToken || c.token) || makeToken(32);
-      const url = signUrlForContract(found.id, token);
-      const lineUserId = normalizeText(c.customerLineUserId || c.lineUserId);
-      const msg = [
-        '柚子樂器租賃資料填寫連結',
+    const lineConfirmText = `租賃申請 ${applicationId} ${customerName}`;
+    const now = admin.firestore.FieldValue.serverTimestamp();
+    const data = Object.assign({}, body, {
+      applicationId,
+      applicationNo: applicationId,
+      rentalApplicationNo: applicationId,
+      customerName,
+      customerPhone,
+      customerEmail: clean(body.customerEmail),
+      customerAddress: clean(body.customerAddress),
+      rentalType: clean(body.rentalType),
+      periods: clean(body.periods),
+      otherEquipmentNeed: clean(body.otherEquipmentNeed),
+      shippingMethod: clean(body.shippingMethod),
+      preferredDate: clean(body.preferredDate),
+      preferredTime: clean(body.preferredTime),
+      floorNote: clean(body.floorNote),
+      note: clean(body.note),
+      source: clean(body.source || 'customer-inquiry-web'),
+      status: '待店家確認',
+      stage: 'inquiry',
+      lineLinkStatus: 'pending',
+      lineConfirmText,
+      createdAt: now,
+      updatedAt: now,
+      createdAtText: rentalNowIsoText(),
+      updatedAtText: rentalNowIsoText()
+    });
+    await ref.set(data, { merge: true });
+    const managerLineUserId = await rentalPrimaryManagerLineUserId();
+    let managerNoticeSent = false;
+    if (managerLineUserId) {
+      const adminUrl = `${rentalBaseUrl()}rental-admin.html?applicationId=${encodeURIComponent(applicationId)}`;
+      const result = await rentalPushLine(managerLineUserId, [
+        '有新的設備租賃申請',
+        `姓名：${customerName}`,
+        `電話：${customerPhone}`,
+        `申請編號：${applicationId}`,
+        `租用需求：${clean(body.otherEquipmentNeed || body.rentalType || '') || '未填寫'}`,
+        `希望方式：${clean(body.shippingMethod) || '未填寫'}`,
+        `希望日期：${`${clean(body.preferredDate)} ${clean(body.preferredTime)}`.trim() || '未填寫'}`,
         '',
-        '請點選以下連結，補填身分證字號、上傳身分證證明圖片並完成簽名。',
-        url,
+        `查看申請資料：${adminUrl}`,
         '',
-        '填寫完成後，店家會依雙方約定的時間前往安裝／交付設備。'
-      ].join('\n');
-      let sent = false;
-      if (lineUserId) {
-        await pushLineMessage(lineUserId, msg);
-        sent = true;
+        '客人 LINE 配對文字：',
+        lineConfirmText
+      ].join('\n'));
+      managerNoticeSent = !!result.ok;
+      await ref.set({ managerNoticeSent, managerNoticeResult: result, updatedAtText: rentalNowIsoText() }, { merge: true });
+    }
+    res.status(200).json({ ok: true, applicationId, applicationNo: applicationId, lineConfirmText, managerNoticeSent });
+  } catch (error) {
+    console.error('rentalSubmitApplicationHttp error:', error);
+    res.status(500).json({ ok: false, message: error && error.message ? error.message : '送出失敗' });
+  }
+});
+
+exports.rentalSaveContractHttp = onRequest({ region: 'us-central1', cors: true, timeoutSeconds: 90 }, async (req, res) => {
+  try {
+    rentalSendCors(res);
+    if (req.method === 'OPTIONS') return res.status(204).send('');
+    if (req.method !== 'POST') return res.status(405).json({ ok: false, message: 'Method Not Allowed' });
+    const body = rentalBody(req);
+    const contractId = clean(body.contractId) || rentalMakeId('RC');
+    const token = clean(body.signToken || body.customerToken || body.token) || rentalMakeToken(32);
+    let customerLineUserId = clean(body.customerLineUserId || body.lineUserId);
+    const applicationId = clean(body.applicationId);
+    if (applicationId) {
+      const appSnap = await db.collection('rentalApplications').doc(applicationId).get();
+      if (appSnap.exists) {
+        const app = appSnap.data() || {};
+        if (!customerLineUserId) customerLineUserId = clean(app.customerLineUserId || app.lineUserId);
       }
-      await found.ref.set({
-        signToken: token,
-        customerToken: normalizeText(c.customerToken) || token,
-        token: normalizeText(c.token) || token,
-        signUrl: url,
-        signLinkSentAt: admin.firestore.FieldValue.serverTimestamp(),
-        signLinkSentAtText: nowIsoText(),
-        signLinkSentByFunction: sent,
-        status: '待客人補資料',
+    }
+    const makeSignLink = !!body.makeSignLink;
+    const status = makeSignLink ? '待客人補資料' : clean(body.status || '草稿');
+    const payload = Object.assign({}, body, {
+      contractId,
+      status,
+      customerLineUserId,
+      lineUserId: customerLineUserId || clean(body.lineUserId),
+      signToken: token,
+      customerToken: clean(body.customerToken) || token,
+      token: clean(body.token) || token,
+      signUrl: rentalSignUrl(contractId, token),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAtText: rentalNowIsoText()
+    });
+    if (!clean(body.createdAtText)) {
+      payload.createdAt = admin.firestore.FieldValue.serverTimestamp();
+      payload.createdAtText = rentalNowIsoText();
+    }
+    await db.collection('rentalContracts').doc(contractId).set(payload, { merge: true });
+    if (applicationId) {
+      await db.collection('rentalApplications').doc(applicationId).set({
+        status: '已轉正式契約',
+        linkedContractId: contractId,
+        customerLineUserId: customerLineUserId || admin.firestore.FieldValue.delete(),
+        lineUserId: customerLineUserId || admin.firestore.FieldValue.delete(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAtText: nowIsoText()
+        updatedAtText: rentalNowIsoText()
       }, { merge: true });
-      res.status(200).json({ ok: true, sent, url, signUrl: url });
-    } catch (error) {
-      console.error('rentalSendContractToCustomerHttp error:', error);
-      res.status(500).json({ ok: false, message: error && error.message ? error.message : '傳送合約連結失敗' });
     }
+    res.status(200).json({ ok: true, contractId, signToken: token, customerToken: token, token, signUrl: payload.signUrl, hasLineUserId: !!customerLineUserId });
+  } catch (error) {
+    console.error('rentalSaveContractHttp error:', error);
+    res.status(500).json({ ok: false, message: error && error.message ? error.message : '儲存合約失敗' });
   }
-);
+});
 
-exports.rentalCompleteReturnHttp = onRequest(
-  { region: 'us-central1', cors: true, timeoutSeconds: 60 },
-  async (req, res) => {
-    try {
-      sendCors(res);
-      if (req.method === 'OPTIONS') return res.status(204).send('');
-      if (req.method !== 'POST') return res.status(405).json({ ok: false, message: 'Method Not Allowed' });
-      const found = await findRentalContract((req.body || {}).contractId);
-      if (!found) return res.status(404).json({ ok: false, message: '找不到合約資料' });
-      await found.ref.set({ status: '已退租', returnedAt: admin.firestore.FieldValue.serverTimestamp(), returnedAtText: nowIsoText(), updatedAtText: nowIsoText() }, { merge: true });
-      const lineUserId = normalizeText(found.data.customerLineUserId || found.data.lineUserId);
-      if (lineUserId) await pushLineMessage(lineUserId, '柚子樂器已完成設備退租紀錄。感謝您的租用。');
-      res.status(200).json({ ok: true });
-    } catch (error) {
-      console.error('rentalCompleteReturnHttp error:', error);
-      res.status(500).json({ ok: false, message: error && error.message ? error.message : '退租處理失敗' });
+exports.rentalSendContractToCustomerHttp = onRequest({ region: 'us-central1', cors: true, timeoutSeconds: 90 }, async (req, res) => {
+  try {
+    rentalSendCors(res);
+    if (req.method === 'OPTIONS') return res.status(204).send('');
+    if (req.method !== 'POST') return res.status(405).json({ ok: false, message: 'Method Not Allowed' });
+    const body = rentalBody(req);
+    const found = await rentalFindContract(body.contractId);
+    if (!found) return res.status(404).json({ ok: false, message: '找不到合約資料' });
+    const c = found.data || {};
+    const token = clean(c.signToken || c.customerToken || c.token) || rentalMakeToken(32);
+    const url = rentalSignUrl(found.id, token);
+    const lineUserId = clean(c.customerLineUserId || c.lineUserId);
+    const msg = rentalFormalFillMessage(url);
+    let sent = false;
+    let sendResult = { ok: false, reason: lineUserId ? 'not-sent' : 'missing-line-user-id' };
+    if (lineUserId) {
+      sendResult = await rentalPushLine(lineUserId, msg);
+      sent = !!sendResult.ok;
     }
+    await found.ref.set({
+      signToken: token,
+      customerToken: clean(c.customerToken) || token,
+      token: clean(c.token) || token,
+      signUrl: url,
+      signLinkSentAt: admin.firestore.FieldValue.serverTimestamp(),
+      signLinkSentAtText: rentalNowIsoText(),
+      signLinkSentByFunction: sent,
+      signLinkLastSendResult: sendResult,
+      signLinkLastSendError: sent ? '' : (sendResult.reason || 'LINE 未送出'),
+      status: '待客人補資料',
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAtText: rentalNowIsoText()
+    }, { merge: true });
+    res.status(200).json({ ok: true, sent, sendResult, url, signUrl: url, message: sent ? '已透過 LINE 傳送正式資料補填連結。' : `已產生連結但 LINE 未送出：${sendResult.reason || '未知原因'}` });
+  } catch (error) {
+    console.error('rentalSendContractToCustomerHttp error:', error);
+    res.status(500).json({ ok: false, message: error && error.message ? error.message : '傳送正式資料補填連結失敗' });
   }
-);
+});
 
-exports.rentalSubmitRenewalRequestHttp = onRequest(
-  { region: 'us-central1', cors: true, timeoutSeconds: 60 },
-  async (req, res) => {
-    try {
-      sendCors(res);
-      if (req.method === 'OPTIONS') return res.status(204).send('');
-      if (req.method !== 'POST') return res.status(405).json({ ok: false, message: 'Method Not Allowed' });
-      const body = safePublicBody(req);
-      const found = await findRentalContract(body.contractId);
-      if (!found) return res.status(404).json({ ok: false, message: '找不到合約資料' });
-      if (!assertContractToken(found.data, body.token)) return res.status(403).json({ ok: false, message: '連結驗證失敗' });
+exports.rentalSignContractHttp = onRequest({ region: 'us-central1', cors: true, timeoutSeconds: 120 }, async (req, res) => {
+  try {
+    rentalSendCors(res);
+    if (req.method === 'OPTIONS') return res.status(204).send('');
+    if (req.method !== 'POST') return res.status(405).json({ ok: false, message: 'Method Not Allowed' });
+    const body = rentalBody(req);
+    const contractId = clean(body.contractId);
+    const token = clean(body.token);
+    if (!contractId || !token) return res.status(400).json({ ok: false, message: '缺少合約編號或驗證碼' });
+    const found = await rentalFindContract(contractId);
+    if (!found) return res.status(404).json({ ok: false, message: '找不到合約資料' });
+    if (!rentalContractTokenValid(found.data, token)) return res.status(403).json({ ok: false, message: '合約連結驗證失敗' });
+    const paymentInfoUrl = clean(body.paymentInfoUrl) || rentalPaymentInfoUrl(contractId, token);
+    const noticeText = rentalPaymentNoticeMessage(paymentInfoUrl);
+    const update = {
+      customerIdNumber: clean(body.customerIdNumber || found.data.customerIdNumber),
+      customerSubmittedFormalAt: admin.firestore.FieldValue.serverTimestamp(),
+      customerSignedAt: admin.firestore.FieldValue.serverTimestamp(),
+      customerSubmittedFormalAtText: rentalNowIsoText(),
+      formalReceivedNoticeText: noticeText,
+      paymentInfoUrl,
+      paymentInfoNoticeDelaySeconds: 60,
+      status: '待店家確認',
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAtText: rentalNowIsoText()
+    };
+    if (body.signatureDataUrl) {
+      update.customerSignatureDataUrl = body.signatureDataUrl;
+      update.signatureDataUrl = body.signatureDataUrl;
+    }
+    if (body.customerIdImageWatermarkedDataUrl) {
+      update.customerIdImageWatermarkedDataUrl = body.customerIdImageWatermarkedDataUrl;
+      update.idImageWatermarkedDataUrl = body.customerIdImageWatermarkedDataUrl;
+    }
+    await found.ref.set(update, { merge: true });
+    const freshSnap = await found.ref.get();
+    const fresh = freshSnap.data() || found.data || {};
+    const lineUserId = clean(fresh.customerLineUserId || fresh.lineUserId);
+    let queued = false;
+    let queueId = '';
+    let queueReason = '';
+    if (lineUserId) {
+      queueId = `rental-payment-info-${safeId(contractId)}-${Date.now()}`;
+      await db.collection(QUEUE_COLLECTION).doc(queueId).set({
+        queueId,
+        channel: 'line',
+        targetLineUserId: lineUserId,
+        targetName: clean(fresh.customerName || fresh.partyAName),
+        targetEmail: clean(fresh.customerEmail),
+        title: '租賃資料已收到與付款資訊',
+        body: noticeText,
+        message: noticeText,
+        status: '待發送',
+        notBeforeAt: admin.firestore.Timestamp.fromMillis(Date.now() + 60000),
+        notBeforeAtText: new Date(Date.now() + 60000).toISOString(),
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAtText: rentalNowIsoText(),
+        source: 'rental-formal-received-payment-info',
+        contractId
+      }, { merge: true });
+      queued = true;
       await found.ref.set({
-        status: '續約待確認',
-        customerRenewalRequest: { periods: normalizeText(body.periods || '1'), note: normalizeText(body.note), requestedAtText: nowIsoText() },
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAtText: nowIsoText()
-      }, { merge: true });
-      const managerLineUserId = await getPrimaryManagerLineUserId();
-      if (managerLineUserId) await pushLineMessage(managerLineUserId, `客人提出租賃續約申請\n合約：${found.id}\n姓名：${normalizeText(found.data.customerName)}\n期數：${normalizeText(body.periods || '1')}\n備註：${normalizeText(body.note) || '無'}`);
-      res.status(200).json({ ok: true });
-    } catch (error) {
-      console.error('rentalSubmitRenewalRequestHttp error:', error);
-      res.status(500).json({ ok: false, message: error && error.message ? error.message : '續約申請送出失敗' });
-    }
-  }
-);
-
-exports.rentalSubmitReturnRequestHttp = onRequest(
-  { region: 'us-central1', cors: true, timeoutSeconds: 60 },
-  async (req, res) => {
-    try {
-      sendCors(res);
-      if (req.method === 'OPTIONS') return res.status(204).send('');
-      if (req.method !== 'POST') return res.status(405).json({ ok: false, message: 'Method Not Allowed' });
-      const body = safePublicBody(req);
-      const found = await findRentalContract(body.contractId);
-      if (!found) return res.status(404).json({ ok: false, message: '找不到合約資料' });
-      if (!assertContractToken(found.data, body.token)) return res.status(403).json({ ok: false, message: '連結驗證失敗' });
-      await found.ref.set({
-        status: '待歸還',
-        customerReturnRequest: { returnDate: normalizeText(body.returnDate), returnTime: normalizeText(body.returnTime), note: normalizeText(body.note), requestedAtText: nowIsoText() },
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAtText: nowIsoText()
-      }, { merge: true });
-      const managerLineUserId = await getPrimaryManagerLineUserId();
-      if (managerLineUserId) await pushLineMessage(managerLineUserId, `客人提出退租申請\n合約：${found.id}\n姓名：${normalizeText(found.data.customerName)}\n希望退租：${normalizeText(body.returnDate)} ${normalizeText(body.returnTime)}\n備註：${normalizeText(body.note) || '無'}`);
-      res.status(200).json({ ok: true });
-    } catch (error) {
-      console.error('rentalSubmitReturnRequestHttp error:', error);
-      res.status(500).json({ ok: false, message: error && error.message ? error.message : '退租申請送出失敗' });
-    }
-  }
-);
-
-exports.rentalSignContractHttp = onRequest(
-  {
-    region: 'us-central1',
-    cors: true,
-    timeoutSeconds: 120
-  },
-  async (req, res) => {
-    try {
-      if (req.method === 'OPTIONS') {
-        res.status(204).send('');
-        return;
-      }
-      if (req.method !== 'POST') {
-        res.status(405).json({ ok: false, message: 'Method Not Allowed' });
-        return;
-      }
-
-      const body = req.body || {};
-      const contractId = normalizeText(body.contractId);
-      const token = normalizeText(body.token);
-      if (!contractId || !token) {
-        res.status(400).json({ ok: false, message: '缺少合約編號或驗證碼' });
-        return;
-      }
-
-      const ref = db.collection('rentalContracts').doc(contractId);
-      const snap = await ref.get();
-      if (!snap.exists) {
-        res.status(404).json({ ok: false, message: '找不到合約資料' });
-        return;
-      }
-
-      const data = snap.data() || {};
-      const validToken = normalizeText(data.signToken || data.token || data.customerToken || data.officialContractToken);
-      if (validToken && validToken !== token) {
-        res.status(403).json({ ok: false, message: '合約連結驗證失敗' });
-        return;
-      }
-
-      const paymentInfoUrl = normalizeText(body.paymentInfoUrl) || paymentInfoUrlForContract(contractId, token);
-      const formalReceivedNoticeText = rentalPaymentNoticeMessage(paymentInfoUrl);
-
-      const update = {
-        customerIdNumber: normalizeText(body.customerIdNumber || data.customerIdNumber),
-        customerSubmittedFormalAt: admin.firestore.FieldValue.serverTimestamp(),
-        customerSignedAt: admin.firestore.FieldValue.serverTimestamp(),
-        customerSubmittedFormalAtText: new Date().toISOString(),
-        formalReceivedNoticeText,
         formalReceivedNoticeQueuedAt: admin.firestore.FieldValue.serverTimestamp(),
-        formalReceivedNoticeQueuedAtText: new Date().toISOString(),
-        paymentInfoUrl,
-        paymentInfoNoticeDelaySeconds: 60,
-        status: '待店家確認'
-      };
-
-      if (body.signatureDataUrl) {
-        update.customerSignatureDataUrl = body.signatureDataUrl;
-        update.signatureDataUrl = body.signatureDataUrl;
-      }
-      if (body.customerIdImageWatermarkedDataUrl) {
-        update.customerIdImageWatermarkedDataUrl = body.customerIdImageWatermarkedDataUrl;
-        update.idImageWatermarkedDataUrl = body.customerIdImageWatermarkedDataUrl;
-      }
-
-      await ref.set(update, { merge: true });
-
-      const freshSnap = await ref.get();
-      const fresh = freshSnap.data() || data;
-      const lineUserId = normalizeText(fresh.customerLineUserId || fresh.lineUserId);
-
-      res.status(200).json({ ok: true, paymentInfoUrl, lineNoticeDelaySeconds: 60 });
-
-      if (lineUserId) {
-        setTimeout(async () => {
-          try {
-            await pushLineMessage(lineUserId, formalReceivedNoticeText);
-            await ref.set({
-              formalReceivedNoticeSentAt: admin.firestore.FieldValue.serverTimestamp(),
-              formalReceivedNoticeSentAtText: new Date().toISOString(),
-              paymentInfoSentAt: admin.firestore.FieldValue.serverTimestamp(),
-              paymentInfoSentAtText: new Date().toISOString()
-            }, { merge: true });
-          } catch (e) {
-            console.error('delayed rental payment LINE failed:', e);
-          }
-        }, 60000);
-      }
-    } catch (error) {
-      console.error('rentalSignContractHttp error:', error);
-      res.status(500).json({ ok: false, message: error && error.message ? error.message : '送出失敗' });
+        formalReceivedNoticeQueuedAtText: rentalNowIsoText(),
+        formalReceivedNoticeQueueId: queueId,
+        paymentInfoNoticeMode: 'notificationQueue-delay',
+        paymentInfoNoticeStatus: 'queued'
+      }, { merge: true });
+    } else {
+      queueReason = 'missing-line-user-id';
+      await found.ref.set({ paymentInfoNoticeStatus: 'not-queued', paymentInfoNoticeLastError: queueReason }, { merge: true });
     }
+    res.status(200).json({ ok: true, paymentInfoUrl, queued, queueId, queueReason, lineNoticeDelaySeconds: 60 });
+  } catch (error) {
+    console.error('rentalSignContractHttp error:', error);
+    res.status(500).json({ ok: false, message: error && error.message ? error.message : '送出失敗' });
   }
-);
+});
 
-exports.lineWebhook = onRequest(
-  {
-    region: 'us-central1',
-    cors: false
-  },
-  async (req, res) => {
-    try {
-      if (req.method === 'GET') {
-        res.status(200).send('LINE webhook is ready. Strict role binding is active.');
-        return;
-      }
-
-      if (req.method !== 'POST') {
-        res.status(405).send('Method Not Allowed');
-        return;
-      }
-
-      const events = Array.isArray(req.body && req.body.events) ? req.body.events : [];
-
-      for (const event of events) {
-        if (event.type !== 'message') continue;
-        if (!event.message || event.message.type !== 'text') continue;
-
-        const text = normalizeText(event.message.text);
-        const lineUserId = event.source && event.source.userId;
-        const replyToken = event.replyToken;
-
-        const rentalMatch = text.match(/^租賃申請\s+([^\s]+)(?:\s+(.+))?$/i);
-        const employeeMatch = text.match(/^柚子員工綁定\s+([^\s]+@[^\s]+)$/i);
-        const managerMatch = text.match(/^柚子主管綁定\s+([^\s]+@[^\s]+)$/i);
-        const oldMatch = text.match(/^柚子綁定\s+([^\s]+@[^\s]+)$/i);
-
-        if (!lineUserId) {
-          await replyLineMessage(replyToken, '無法取得 LINE 使用者 ID，請確認是從一般 LINE 帳號與官方帳號對話。');
-          continue;
-        }
-
-        if (rentalMatch) {
-          await handleRentalApplicationLink({
-            applicationKey: normalizeText(rentalMatch[1]),
-            declaredName: normalizeText(rentalMatch[2] || ''),
-            lineUserId,
-            replyToken
-          });
-          continue;
-        }
-
-        if (oldMatch) {
-          await replyLineMessage(replyToken, '舊版綁定指令已停用。員工請輸入：柚子員工綁定 your@email.com；主管請輸入：柚子主管綁定 your@email.com');
-          continue;
-        }
-
-        if (employeeMatch) {
-          await handleEmployeeBinding({
-            email: normalizeEmail(employeeMatch[1]),
-            lineUserId,
-            replyToken
-          });
-          continue;
-        }
-
-        if (managerMatch) {
-          await handleManagerBinding({
-            email: normalizeEmail(managerMatch[1]),
-            lineUserId,
-            replyToken
-          });
-          continue;
-        }
-
-        if (text.includes('綁定')) {
-          await replyLineMessage(replyToken, '綁定格式錯誤。員工請輸入：柚子員工綁定 your@email.com；主管請輸入：柚子主管綁定 your@email.com');
-        }
-      }
-
-      res.status(200).send('OK');
-    } catch (error) {
-      console.error('lineWebhook error:', error);
-      res.status(200).send('OK');
-    }
+exports.rentalCompleteReturnHttp = onRequest({ region: 'us-central1', cors: true, timeoutSeconds: 60 }, async (req, res) => {
+  try {
+    rentalSendCors(res);
+    if (req.method === 'OPTIONS') return res.status(204).send('');
+    if (req.method !== 'POST') return res.status(405).json({ ok: false, message: 'Method Not Allowed' });
+    const found = await rentalFindContract((req.body || {}).contractId);
+    if (!found) return res.status(404).json({ ok: false, message: '找不到合約資料' });
+    await found.ref.set({ status: '已退租', returnedAt: admin.firestore.FieldValue.serverTimestamp(), returnedAtText: rentalNowIsoText(), updatedAtText: rentalNowIsoText() }, { merge: true });
+    const lineUserId = clean(found.data.customerLineUserId || found.data.lineUserId);
+    if (lineUserId) await rentalPushLine(lineUserId, '柚子樂器已完成設備退租紀錄。感謝您的租用。');
+    res.status(200).json({ ok: true });
+  } catch (error) {
+    console.error('rentalCompleteReturnHttp error:', error);
+    res.status(500).json({ ok: false, message: error && error.message ? error.message : '退租處理失敗' });
   }
-);
+});
+
+exports.rentalSubmitRenewalRequestHttp = onRequest({ region: 'us-central1', cors: true, timeoutSeconds: 60 }, async (req, res) => {
+  try {
+    rentalSendCors(res);
+    if (req.method === 'OPTIONS') return res.status(204).send('');
+    if (req.method !== 'POST') return res.status(405).json({ ok: false, message: 'Method Not Allowed' });
+    const body = rentalBody(req);
+    const found = await rentalFindContract(body.contractId);
+    if (!found) return res.status(404).json({ ok: false, message: '找不到合約資料' });
+    if (!rentalContractTokenValid(found.data, body.token)) return res.status(403).json({ ok: false, message: '連結驗證失敗' });
+    await found.ref.set({
+      status: '續約待確認',
+      customerRenewalRequest: { periods: clean(body.periods || '1'), note: clean(body.note), requestedAtText: rentalNowIsoText() },
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAtText: rentalNowIsoText()
+    }, { merge: true });
+    const managerLineUserId = await rentalPrimaryManagerLineUserId();
+    if (managerLineUserId) await rentalPushLine(managerLineUserId, `客人提出租賃續約申請\n合約：${found.id}\n姓名：${clean(found.data.customerName)}\n期數：${clean(body.periods || '1')}\n備註：${clean(body.note) || '無'}`);
+    res.status(200).json({ ok: true });
+  } catch (error) {
+    console.error('rentalSubmitRenewalRequestHttp error:', error);
+    res.status(500).json({ ok: false, message: error && error.message ? error.message : '續約申請送出失敗' });
+  }
+});
+
+exports.rentalSubmitReturnRequestHttp = onRequest({ region: 'us-central1', cors: true, timeoutSeconds: 60 }, async (req, res) => {
+  try {
+    rentalSendCors(res);
+    if (req.method === 'OPTIONS') return res.status(204).send('');
+    if (req.method !== 'POST') return res.status(405).json({ ok: false, message: 'Method Not Allowed' });
+    const body = rentalBody(req);
+    const found = await rentalFindContract(body.contractId);
+    if (!found) return res.status(404).json({ ok: false, message: '找不到合約資料' });
+    if (!rentalContractTokenValid(found.data, body.token)) return res.status(403).json({ ok: false, message: '連結驗證失敗' });
+    await found.ref.set({
+      status: '待歸還',
+      customerReturnRequest: { returnDate: clean(body.returnDate), returnTime: clean(body.returnTime), note: clean(body.note), requestedAtText: rentalNowIsoText() },
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAtText: rentalNowIsoText()
+    }, { merge: true });
+    const managerLineUserId = await rentalPrimaryManagerLineUserId();
+    if (managerLineUserId) await rentalPushLine(managerLineUserId, `客人提出退租申請\n合約：${found.id}\n姓名：${clean(found.data.customerName)}\n希望退租：${clean(body.returnDate)} ${clean(body.returnTime)}\n備註：${clean(body.note) || '無'}`);
+    res.status(200).json({ ok: true });
+  } catch (error) {
+    console.error('rentalSubmitReturnRequestHttp error:', error);
+    res.status(500).json({ ok: false, message: error && error.message ? error.message : '退租申請送出失敗' });
+  }
+});
+
