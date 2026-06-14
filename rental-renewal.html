@@ -69,7 +69,7 @@
   <script src="config.js?v=rental-renewal-20260614"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="rental-common.js?v=rental-renewal-20260614"></script>
+  <script src="rental-common.js?v=rental-fix-20260614b"></script>
   <script>
     const R=window.YZRental;
     const params=new URLSearchParams(location.search);
@@ -81,7 +81,7 @@
     function customerLineId(c){ return R.clean(c.customerLineUserId||c.lineUserId); }
     function customerEmail(c){ return R.clean(c.customerEmail||c.email).toLowerCase(); }
     function rentPerPeriod(c){ const v=R.num(c.renewalRentFee||c.rentFee||c.rentalFee); return v||0; }
-    function currentPeriodDays(){ return Math.max(1, Number(contract.periodDays||90)||90); }
+    function currentPeriodDays(){ return Math.max(1, Number(contract.periodDays||R.cachedTemplate(contract.rentalType).periodDays||90)||90); }
     function recalcRenewal(){
       const periods=Math.max(1, Number(R.val('renewPeriods')||1)||1);
       const start=dateAdd(contract.endDate,1) || R.ymd(new Date());
@@ -132,6 +132,7 @@
         if(!contract) throw new Error('找不到這份租賃契約。');
         const tokens=[contract.renewalToken,contract.officialContractToken,contract.customerToken,contract.signToken,contract.token].map(R.clean).filter(Boolean);
         if(!tokens.includes(R.clean(token))) throw new Error('連結驗證失敗，請使用店家提供的最新連結。');
+        await R.loadTemplateSettings(contract.rentalType).catch(()=>{});
         const equipment=R.clean(contract.equipmentName || (R.parseEquipmentItems(contract)[0]||{}).name || '租賃設備');
         R.qs('summary').innerHTML=`<span class="status-pill">${R.esc(contract.status||'租賃中')}</span><br><b>承租人：</b>${R.esc(contract.customerName||'')}<br><b>租賃設備：</b>${R.esc(equipment)}<br><b>目前租期：</b>${R.esc(contract.startDate||'')} ～ ${R.esc(contract.endDate||'')}<br><b>續租說明：</b>續租起日會自動接在目前到期日的下一天。`;
         R.qs('choiceCard').style.display='block';

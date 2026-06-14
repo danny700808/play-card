@@ -23,7 +23,7 @@
   <script src="config.js?v=rental-contract-view-20260613"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="rental-common.js?v=rental-contract-view-20260613"></script>
+  <script src="rental-common.js?v=rental-fix-20260614b"></script>
   <script>
     const R=window.YZRental;
     const params=new URLSearchParams(location.search);
@@ -52,7 +52,8 @@
           c=await R.get('rentalContracts',contractId);
         }
         if(!c) throw new Error('找不到契約資料。');
-        document.getElementById('contractArea').innerHTML=R.renderContractHtml(c);
+        await R.loadTemplateSettings(c.rentalType).catch(()=>{});
+        document.getElementById('contractArea').innerHTML=R.renderContractHtml(c,{officialView:true});
         renderActions(c);
         showMsg('正式契約已載入。');
       }catch(e){

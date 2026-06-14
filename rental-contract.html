@@ -28,7 +28,7 @@
   <script src="config.js?v=rental-contract-20260614-a4"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="rental-common.js?v=rental-contract-20260614-a4"></script>
+  <script src="rental-common.js?v=rental-fix-20260614b"></script>
   <script>
     const R=window.YZRental;
     const params=new URLSearchParams(location.search);
@@ -69,12 +69,15 @@
         if(!contract) throw new Error('找不到這份契約。');
         const validTokens=[contract.officialContractToken,contract.customerToken,contract.signToken,contract.token].map(R.clean).filter(Boolean);
         if(!validTokens.includes(R.clean(token))) throw new Error('契約連結驗證失敗。');
+        await R.loadTemplateSettings(contract.rentalType).catch(()=>{});
         const allowed=['租賃中','已簽署','待配送 / 待安裝','續約詢問中','續約待付款','續約待確認','待歸還','已退租'];
         if(!allowed.includes(R.clean(contract.status||'')) && !contract.officialConfirmedAt && !contract.officialContractUrl){
           throw new Error('這份契約尚未正式確認成立，暫時無法查看正式契約。');
         }
         const display=Object.assign({_officialPreview:true}, contract);
-        R.qs('summary').innerHTML=`<div class="summary-line"><span class="status">${R.esc(contract.status||'租賃中')}</span><br><b>客戶：</b>${R.esc(contract.customerName||'')}<br><b>租期：</b>${R.esc(contract.startDate||'')} ～ ${R.esc(contract.endDate||'')}<br><b>契約編號：</b>${R.esc(contract.contractNo||contract.contractId||contract.__id||contractId)}</div>`;
+        const pdfLink=contract.officialPdfUrl?`<div class="btn-row"><a class="btn" href="${R.esc(contract.officialPdfUrl)}" target="_blank" rel="noopener">下載 / 查看正式 PDF</a></div>`:'';
+        const pdfWarning=(!contract.officialPdfUrl && contract.officialPdfError)?`<div class="msg bad">正式 PDF 尚未產生，但此頁面的正式契約內容仍可查看、列印或截圖保存。</div>`:'';
+        R.qs('summary').innerHTML=`<div class="summary-line"><span class="status">${R.esc(contract.status||'租賃中')}</span><br><b>客戶：</b>${R.esc(contract.customerName||'')}<br><b>租期：</b>${R.esc(contract.startDate||'')} ～ ${R.esc(contract.endDate||'')}<br><b>契約編號：</b>${R.esc(contract.contractNo||contract.contractId||contract.__id||contractId)}</div>${pdfLink}${pdfWarning}`;
         R.qs('contractPreview').innerHTML=R.renderContractHtml(display,{officialView:true});
         R.qs('contractPreview').querySelectorAll('img').forEach(img=>{ img.addEventListener('load', fitContractToA4); img.addEventListener('error', fitContractToA4); });
         setTimeout(fitContractToA4, 80);

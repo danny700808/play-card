@@ -40,7 +40,7 @@
   <script src="config.js?v=rental-sign-20260614-payment"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="rental-common.js?v=rental-sign-20260614-payment"></script>
+  <script src="rental-common.js?v=rental-fix-20260614b"></script>
   <script>
     const R=window.YZRental; const params=new URLSearchParams(location.search); const contractId=params.get('contractId')||''; const token=params.get('token')||''; let contract=null; let signed=false; let watermarkedIdImage='';
     const PAYMENT_INFO_TEXT = `付款方式可擇一：
@@ -81,8 +81,11 @@ ${PAYMENT_INFO_TEXT}
     }
     async function load(){
       try{
+        if(!contractId || !token) throw new Error('合約連結不完整，請確認是否複製完整網址。');
         contract=await R.get('rentalContracts', contractId); if(!contract) throw new Error('找不到合約');
-        if(R.clean(contract.signToken||contract.token)!==R.clean(token)) throw new Error('合約連結驗證失敗');
+        const signTokens=[contract.signToken,contract.token,contract.customerToken].map(R.clean).filter(Boolean);
+        if(!signTokens.includes(R.clean(token))) throw new Error('合約連結驗證失敗');
+        await R.loadTemplateSettings(contract.rentalType).catch(()=>{});
         signed=!!contract.customerSignedAt;
         R.setVal('customerIdNumber', contract.customerIdNumber||contract.customerTaxId||'');
         watermarkedIdImage=contract.customerIdImageWatermarkedDataUrl||contract.idImageWatermarkedDataUrl||'';

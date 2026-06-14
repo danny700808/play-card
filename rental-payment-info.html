@@ -46,7 +46,7 @@
   <script src="config.js?v=rental-payment-info-20260614-linkflow-fix"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="rental-common.js?v=rental-payment-info-20260614-linkflow-fix"></script>
+  <script src="rental-common.js?v=rental-fix-20260614b"></script>
   <script>
     const R=window.YZRental;
     const params=new URLSearchParams(location.search);
@@ -58,8 +58,8 @@
         if(!contractId || !token) throw new Error('付款資訊連結缺少必要資料。');
         const contract=await R.get('rentalContracts', contractId);
         if(!contract) throw new Error('找不到租賃資料。');
-        const valid=R.clean(contract.signToken||contract.token||contract.customerToken||contract.officialContractToken);
-        if(valid && valid!==R.clean(token)) throw new Error('付款資訊連結驗證失敗。');
+        const validTokens=[contract.signToken,contract.token,contract.customerToken,contract.officialContractToken].map(R.clean).filter(Boolean);
+        if(validTokens.length && !validTokens.includes(R.clean(token))) throw new Error('付款資訊連結驗證失敗。');
         R.qs('contentCard').style.display='block';
         showMsg('付款資訊已開啟。', true);
       }catch(e){

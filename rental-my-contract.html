@@ -15,10 +15,21 @@
     <section class="card2 print-area"><div id="contractPreview"></div></section>
     <section class="card2"><button class="btn secondary" onclick="window.print()">列印 / 另存 PDF</button></section>
   </div>
-  <script src="config.js?v=rental-20260606"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script><script src="rental-common.js?v=rental-20260606"></script>
+  <script src="config.js?v=rental-20260606"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script><script src="rental-common.js?v=rental-fix-20260614b"></script>
   <script>
     const R=window.YZRental, params=new URLSearchParams(location.search), contractId=params.get('contractId')||'', token=params.get('token')||''; let contract=null;
-    async function load(){ try{ contract=await R.get('rentalContracts',contractId); if(!contract) throw new Error('找不到合約'); const ok=[contract.customerToken,contract.signToken,contract.token].map(R.clean).includes(R.clean(token)); if(!ok) throw new Error('連結驗證失敗'); R.qs('summary').innerHTML=`<span class="status">${R.esc(contract.status||'租賃中')}</span><div style="margin-top:12px;line-height:1.9"><b>設備：</b>${R.esc(contract.equipmentName||'')}<br><b>租期：</b>${R.esc(contract.startDate||'')} ～ ${R.esc(contract.endDate||'')}<br><b>租金：</b>${R.fmtMoney(contract.rentFee)}　<b>運費：</b>${R.fmtMoney(contract.shippingFee)}</div>`; R.qs('contractPreview').innerHTML=R.renderContractHtml(contract); }catch(err){ R.toast(err.message||String(err), false); }}
+    async function load(){
+      try{
+        if(!contractId || !token) throw new Error('合約連結不完整，請確認是否複製完整網址。');
+        contract=await R.get('rentalContracts',contractId);
+        if(!contract) throw new Error('找不到合約');
+        const ok=[contract.customerToken,contract.signToken,contract.token,contract.officialContractToken].map(R.clean).filter(Boolean).includes(R.clean(token));
+        if(!ok) throw new Error('連結驗證失敗');
+        await R.loadTemplateSettings(contract.rentalType).catch(()=>{});
+        R.qs('summary').innerHTML=`<span class="status">${R.esc(contract.status||'租賃中')}</span><div style="margin-top:12px;line-height:1.9"><b>設備：</b>${R.esc(contract.equipmentName||'')}<br><b>租期：</b>${R.esc(contract.startDate||'')} ～ ${R.esc(contract.endDate||'')}<br><b>租金：</b>${R.fmtMoney(contract.rentFee)}　<b>運費：</b>${R.fmtMoney(contract.shippingFee)}</div>`;
+        R.qs('contractPreview').innerHTML=R.renderContractHtml(contract,{officialView:true});
+      }catch(err){ R.toast(err.message||String(err), false); }
+    }
     R.qs('renewBtn').onclick=async()=>{ try{ await R.call('rentalSubmitRenewalRequestHttp',{contractId,token,periods:R.val('renewPeriods'),note:R.val('renewNote')}); R.toast('續約申請已送出，請等待官方 LINE 確認。', true); }catch(err){ R.toast(err.message||String(err), false); } };
     R.qs('returnBtn').onclick=async()=>{ if(!R.val('returnDate')) return R.toast('請選擇希望退租日期。', false); if(!confirm('確認送出退租申請？提早退租依合約條款全數不退款。')) return; try{ await R.call('rentalSubmitReturnRequestHttp',{contractId,token,returnDate:R.val('returnDate'),returnTime:R.val('returnTime'),note:R.val('returnNote')}); R.toast('退租申請已送出，請等待官方 LINE 確認。', true); }catch(err){ R.toast(err.message||String(err), false); } };
     load();
