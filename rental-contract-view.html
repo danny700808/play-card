@@ -3,43 +3,141 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>設備租賃正式契約</title>
-  <link rel="stylesheet" href="style.css?v=rental-contract-view-20260613">
+  <link rel="stylesheet" href="style.css?v=rental-contract-view-20260614-png">
   <style>
-    body{background:#eef3f7;color:#18314a;margin:0;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.wrap{max-width:980px;margin:0 auto;padding:18px 12px 50px}.card{background:#fff;border:1px solid #dbe5ef;border-radius:22px;padding:16px;margin-bottom:14px;box-shadow:0 8px 22px rgba(15,23,42,.04)}.title{font-size:26px;font-weight:950;margin:0 0 8px}.muted{color:#64748b;line-height:1.8}.btn{border:0;border-radius:14px;background:#1f7a5a;color:#fff;font-weight:950;padding:11px 15px;text-decoration:none;display:inline-flex;margin:6px 6px 0 0}.btn.secondary{background:#e2e8f0;color:#18314a}.desktop-print{display:inline-flex}.msg{padding:12px;border-radius:14px;font-weight:900;line-height:1.7}.msg.bad{background:#fff0f0;color:#b42318}.msg.ok{background:#e8fff4;color:#146c43}.a4-wrap{overflow-x:auto;padding:8px 0}@media(max-width:840px){.desktop-print{display:none}.a4-wrap{transform-origin:top left}.rental-contract-sheet{width:210mm!important;min-height:297mm!important;transform:scale(.44);transform-origin:top left;margin-bottom:-155mm!important}.rental-contract-sheet.period-sheet{margin-top:10mm!important}}@media print{body *{visibility:hidden}.contractArea,.contractArea *{visibility:visible}.contractArea{position:absolute;left:0;top:0;width:100%}.card:not(.contractPrint){display:none!important}.rental-contract-sheet{border:none!important;box-shadow:none!important;margin:0!important;width:210mm!important;min-height:297mm!important}@page{size:A4;margin:0}}
+    body{background:#eef3f7;color:#18314a;margin:0;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    .wrap{max-width:980px;margin:0 auto;padding:18px 12px 50px}
+    .card{background:#fff;border:1px solid #dbe5ef;border-radius:22px;padding:16px;margin-bottom:14px;box-shadow:0 8px 22px rgba(15,23,42,.04)}
+    .title{font-size:26px;font-weight:950;margin:0 0 8px}
+    .muted{color:#64748b;line-height:1.8}
+    .btn{border:0;border-radius:14px;background:#1f7a5a;color:#fff;font-weight:950;padding:11px 15px;text-decoration:none;display:inline-flex;margin:6px 6px 0 0;cursor:pointer}
+    .btn.secondary{background:#e2e8f0;color:#18314a}
+    .msg{padding:12px;border-radius:14px;font-weight:900;line-height:1.7}
+    .msg.bad{background:#fff0f0;color:#b42318}
+    .msg.ok{background:#e8fff4;color:#146c43}
+    .msg.info{background:#eff6ff;color:#1d4ed8}
+    .a4-wrap{overflow-x:auto;padding:8px 0}
+    .png-grid{display:grid;gap:16px;margin-top:14px}
+    .png-item{background:#f8fafc;border:1px solid #dbe5ef;border-radius:18px;padding:12px}
+    .png-item-title{font-weight:950;margin-bottom:8px}
+    .png-item img{width:100%;height:auto;display:block;border-radius:12px;border:1px solid #cbd5e1;background:#fff}
+    .small-tip{font-size:12px;color:#64748b;line-height:1.7;margin-top:8px}
+    .hidden-capture-wrap{position:fixed;left:-99999px;top:0;pointer-events:none;opacity:0}
+    @media(max-width:840px){.a4-wrap{transform-origin:top left}.rental-contract-sheet{width:210mm!important;min-height:297mm!important;transform:scale(.44);transform-origin:top left;margin-bottom:-155mm!important}.rental-contract-sheet.period-sheet{margin-top:10mm!important}}
+    @media print{body *{visibility:hidden}.contractArea,.contractArea *{visibility:visible}.contractArea{position:absolute;left:0;top:0;width:100%}.card:not(.contractPrint){display:none!important}.rental-contract-sheet{border:none!important;box-shadow:none!important;margin:0!important;width:210mm!important;min-height:297mm!important}@page{size:A4;margin:0}}
   </style>
 </head>
 <body>
   <div class="wrap">
     <section class="card">
       <h1 class="title">設備租賃正式契約</h1>
-      <div class="muted">本頁為柚子樂器設備租賃正式契約查看頁。此連結日後仍可再次開啟；請優先下載正式 PDF 保存到手機，若 LINE 內無法下載，請點右上角以瀏覽器開啟。</div>
+      <div class="muted">本頁為柚子樂器設備租賃正式契約查看頁。下方會自動產生 PNG 圖片版，手機可直接長按圖片儲存到相簿。</div>
       <div id="msg" style="margin-top:10px"></div>
       <div id="actions" style="margin-top:10px"></div>
     </section>
     <section class="card contractPrint">
       <div id="contractArea" class="contractArea a4-wrap">讀取中...</div>
     </section>
+    <section class="card" id="pngSection">
+      <h2 class="title" style="font-size:22px">正式契約 PNG 圖片版</h2>
+      <div id="pngStatus" class="msg info" style="margin-top:10px">正在產生 PNG 圖片版，請稍候…</div>
+      <div id="pngImages" class="png-grid"></div>
+    </section>
   </div>
-  <script src="config.js?v=rental-contract-view-20260613"></script>
+  <script src="config.js?v=rental-contract-view-20260614-png"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="rental-common.js?v=rental-fix-20260614b"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" referrerpolicy="no-referrer"></script>
+  <script src="rental-common.js?v=rental-contract-view-20260614-png"></script>
   <script>
     const R=window.YZRental;
     const params=new URLSearchParams(location.search);
     const contractId=params.get('contractId')||params.get('id')||'';
     const token=params.get('token')||'';
     function showMsg(text, ok=true){ const el=document.getElementById('msg'); el.className='msg '+(ok?'ok':'bad'); el.textContent=text; }
-    function renderActions(c){
+    function setPngStatus(text, type='info'){ const el=document.getElementById('pngStatus'); el.className='msg '+type; el.textContent=text; }
+    function renderActions(){
       const box=document.getElementById('actions');
-      const pdf=c.officialPdfUrl||'';
-      const pdfBtn = pdf ? `<a class="btn" href="${R.esc(pdf)}" target="_blank" rel="noopener" download>下載正式 PDF 保存</a>` : '<span class="muted">正式 PDF 尚未產生，請洽柚子樂器。</span>';
-      const openBrowser = `<button class="btn secondary" type="button" onclick="openInBrowserHint()">手機無法下載時</button>`;
-      const printBtn = `<button class="btn secondary desktop-print" type="button" onclick="window.print()">列印契約</button>`;
-      box.innerHTML = `${pdfBtn}${openBrowser}${printBtn}<div class="muted" style="margin-top:10px">本連結可日後再次開啟查看；手機上也可截圖留存。若 LINE 內建瀏覽器無法下載 PDF，請點右上角選「以瀏覽器開啟」後再下載。</div>`;
+      const pngBtn = `<button class="btn" type="button" onclick="document.getElementById('pngSection').scrollIntoView({behavior:'smooth'})">查看 PNG 圖片版</button>`;
+      const lineBtn = `<a class="btn secondary" href="https://lin.ee/Fx5Y2mL" target="_blank" rel="noopener">回到官方 LINE</a>`;
+      box.innerHTML = `${pngBtn}${lineBtn}<div class="muted" style="margin-top:10px">若您要保存合約，建議直接長按下方 PNG 圖片儲存到手機。iPhone 可長按後選「加入照片」；Android 可長按後選「下載圖片」。</div>`;
     }
-    function openInBrowserHint(){
-      alert('若 LINE 內無法下載或畫面空白，請點右上角「⋯」或分享按鈕，選擇「以瀏覽器開啟」，再按「下載正式 PDF 保存」。');
+    function waitForImage(img){
+      return new Promise(resolve=>{
+        if(!img) return resolve();
+        if(img.complete) return resolve();
+        img.addEventListener('load', ()=>resolve(), {once:true});
+        img.addEventListener('error', ()=>resolve(), {once:true});
+      });
+    }
+    async function imageUrlToDataUrl(url){
+      const clean=R.clean(url);
+      if(!clean || clean.startsWith('data:')) return clean;
+      try{
+        const res=await fetch(clean, {mode:'cors'});
+        const blob=await res.blob();
+        return await new Promise((resolve,reject)=>{
+          const reader=new FileReader();
+          reader.onload=()=>resolve(reader.result);
+          reader.onerror=()=>reject(new Error('讀取圖片失敗'));
+          reader.readAsDataURL(blob);
+        });
+      }catch(err){
+        console.warn('圖片轉 dataURL 失敗：', clean, err);
+        return clean;
+      }
+    }
+    async function prepareCloneForCapture(node){
+      const clone=node.cloneNode(true);
+      const imgs=[...clone.querySelectorAll('img')];
+      for(const img of imgs){
+        const newSrc=await imageUrlToDataUrl(img.getAttribute('src') || img.src || '');
+        if(newSrc) img.src=newSrc;
+      }
+      const host=document.createElement('div');
+      host.className='hidden-capture-wrap';
+      host.appendChild(clone);
+      document.body.appendChild(host);
+      await Promise.all([...clone.querySelectorAll('img')].map(waitForImage));
+      await new Promise(r=>setTimeout(r,80));
+      return {host, clone};
+    }
+    async function buildPngImages(){
+      const preview=document.getElementById('contractArea');
+      const pngBox=document.getElementById('pngImages');
+      pngBox.innerHTML='';
+      const sheets=[...preview.querySelectorAll('.rental-contract-sheet')];
+      if(!sheets.length){
+        setPngStatus('尚未找到可轉換的契約頁面。', 'bad');
+        return;
+      }
+      setPngStatus('正在產生 PNG 圖片版，請稍候…', 'info');
+      for(let i=0;i<sheets.length;i++){
+        const {host, clone}=await prepareCloneForCapture(sheets[i]);
+        try{
+          const canvas=await html2canvas(clone, {
+            backgroundColor:'#ffffff',
+            scale:2,
+            useCORS:true,
+            allowTaint:true,
+            logging:false,
+            width:clone.scrollWidth,
+            height:clone.scrollHeight,
+            windowWidth:clone.scrollWidth,
+            windowHeight:clone.scrollHeight,
+            scrollX:0,
+            scrollY:0
+          });
+          const dataUrl=canvas.toDataURL('image/png');
+          const item=document.createElement('div');
+          item.className='png-item';
+          item.innerHTML='<div class="png-item-title">正式契約第 '+(i+1)+' 頁</div><img src="'+dataUrl+'" alt="正式契約第 '+(i+1)+' 頁 PNG 圖片"><div class="small-tip">可直接長按上方圖片儲存到手機。</div>';
+          pngBox.appendChild(item);
+        } finally {
+          host.remove();
+        }
+      }
+      setPngStatus('PNG 圖片版已產生完成，可直接長按圖片儲存。', 'ok');
     }
     async function load(){
       try{
@@ -52,13 +150,14 @@
           c=await R.get('rentalContracts',contractId);
         }
         if(!c) throw new Error('找不到契約資料。');
-        await R.loadTemplateSettings(c.rentalType).catch(()=>{});
-        document.getElementById('contractArea').innerHTML=R.renderContractHtml(c,{officialView:true});
+        document.getElementById('contractArea').innerHTML=R.renderContractHtml(c);
         renderActions(c);
-        showMsg('正式契約已載入。');
+        showMsg('正式契約已載入。系統會自動產生 PNG 圖片版。');
+        await buildPngImages();
       }catch(e){
         document.getElementById('contractArea').innerHTML='';
         showMsg(e.message||String(e), false);
+        setPngStatus('目前無法產生 PNG 圖片版。', 'bad');
       }
     }
     load();
