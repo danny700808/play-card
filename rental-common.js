@@ -84,12 +84,6 @@
     const base=location.origin+location.pathname.replace(/[^\/]*$/,'');
     return base+'rental-contract.html?contractId='+encodeURIComponent(id)+'&token='+encodeURIComponent(token);
   }
-  function renewalUrl(contract){
-    const id=clean(contract.contractId||contract.__id);
-    const token=clean(contract.renewalToken||contract.officialContractToken||contract.customerToken||contract.signToken||contract.token);
-    const base=location.origin+location.pathname.replace(/[^\/]*$/,'');
-    return base+'rental-renewal.html?contractId='+encodeURIComponent(id)+'&token='+encodeURIComponent(token);
-  }
   function renderContractHtml(contract, opts){
     contract=contract||{}; opts=opts||{};
     const type=clean(contract.rentalType||contract.type);
@@ -157,7 +151,7 @@
     return `
       <style>
         .rental-contract-sheet{page-break-after:always;break-after:page;position:relative;overflow:hidden;background:#fff;color:#111827;width:210mm;height:297mm;min-height:297mm;margin:0 auto 10mm;padding:9mm 11mm;box-sizing:border-box;border:1px solid #d1d5db;box-shadow:0 8px 20px rgba(0,0,0,.05);font-size:12.2px;line-height:1.48}.rental-contract-sheet h1{text-align:center;font-size:21px;margin:0 0 4mm;letter-spacing:2px}.party-line{font-weight:800;margin-bottom:1.3mm;position:relative}.intro{margin:2mm 0}.clauses{padding-left:18px;margin:0}.clauses li{margin-bottom:1.15mm}.equipment-list-contract{margin:1mm 0 0 0;padding-left:18px}.equipment-list-contract li{margin:.4mm 0}.eq-note-contract{color:#475569}.sign-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:8px;margin-top:3mm}.sign-card{border:1px solid #94a3b8;border-radius:12px;padding:8px;min-height:40mm;position:relative}.sign-card.party-a{min-height:43mm}.party-a-line{display:block;margin:1.4mm 0}.wide-line{display:block;margin-top:1.2mm;min-height:7mm}.sig-box{margin-top:2mm;min-height:14mm;display:flex;align-items:center;gap:8px;flex-wrap:wrap}.sig-label{font-weight:900;white-space:nowrap}.sig-img{max-width:105px;max-height:52px;object-fit:contain}.official-stamps-rental{position:relative;height:24mm;margin-top:1mm}.seal-company-rental{position:absolute;left:0;top:0;width:27mm;height:22mm;object-fit:contain}.seal-owner-rental{position:absolute;left:30mm;top:7mm;width:14mm;height:14mm;object-fit:contain}.contract-date{text-align:center;margin-top:3mm;font-weight:800}.rental-page-no{position:absolute;right:11mm;bottom:6mm;font-size:10.5px;color:#64748b}.rental-contract-sheet.period-sheet h1{text-align:center}.period-table{width:100%;border-collapse:collapse;margin-top:3mm;font-size:12px}.period-table th,.period-table td{border:1px solid #333;padding:3px;text-align:center;height:7mm}.period-table th{background:#f3f4f6}.period-bottom{position:absolute;left:11mm;right:11mm;bottom:11mm;display:grid;grid-template-columns:1.15fr .85fr;gap:8mm;align-items:end}.id-card-block{border:1px solid #94a3b8;border-radius:12px;padding:7px;min-height:42mm}.id-card-title{font-weight:950;margin-bottom:1.6mm}.id-card-meta{font-size:11.5px;margin-bottom:1.6mm}.id-card-body{height:29mm;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:8px}.id-card-img{max-width:100%;max-height:29mm;object-fit:contain;filter:grayscale(100%)}.id-placeholder{font-size:11.5px;color:#64748b;text-align:center;padding:3mm}.period-stamp-block{border:1px solid #94a3b8;border-radius:12px;padding:7px;min-height:42mm}.period-stamp-title{font-weight:950;margin-bottom:1.6mm}
-        @media(max-width:840px){.rental-contract-sheet{width:100%;min-height:auto;padding:16px}.sign-grid,.period-bottom{grid-template-columns:1fr;position:static}.rental-page-no{position:static;text-align:right;margin-top:8px}}
+        @media(max-width:840px){.rental-contract-sheet{width:210mm!important;height:297mm!important;min-height:297mm!important;padding:9mm 11mm!important}.sign-grid{display:grid!important;grid-template-columns:1.1fr .9fr!important}.period-bottom{position:absolute!important;left:11mm!important;right:11mm!important;bottom:11mm!important;display:grid!important;grid-template-columns:1.15fr .85fr!important}.rental-page-no{position:absolute!important;right:11mm!important;bottom:6mm!important;text-align:left!important;margin-top:0!important}}
         @media print{.rental-contract-sheet{width:210mm!important;height:297mm!important;min-height:297mm!important;border:none!important;box-shadow:none!important;margin:0!important;page-break-after:always!important;break-after:page!important}.period-bottom{position:absolute!important;left:12mm!important;right:12mm!important;bottom:12mm!important;grid-template-columns:1.15fr .85fr!important}@page{size:A4;margin:0}}
       </style>
       <div class="rental-contract-sheet">
@@ -193,6 +187,6 @@
         <div class="contract-date">中華民國 ${esc(dateText)}</div><div class="rental-page-no">第 2 頁 / 共 2 頁</div>
       </div>`;
   }
-  Object.assign(Rental,{clean,num,ymd,rocDate,addDays,fmtMoney,normalizeDeliveryMethod,esc,qs,val,checked,setVal,show,hide,toast,user,isManager,requireManager,db,call,all,get,set,nowText,contractStatus,applicationStatus,rentalTypeLabel,defaultIncludedItems,parseEquipmentItems,defaultTitle,calcEndDate,signUrl,myContractUrl,officialContractUrl,renewalUrl,renderContractHtml,functionUrl});
+  Object.assign(Rental,{clean,num,ymd,rocDate,addDays,fmtMoney,normalizeDeliveryMethod,esc,qs,val,checked,setVal,show,hide,toast,user,isManager,requireManager,db,call,all,get,set,nowText,contractStatus,applicationStatus,rentalTypeLabel,defaultIncludedItems,parseEquipmentItems,defaultTitle,calcEndDate,signUrl,myContractUrl,officialContractUrl,renderContractHtml,functionUrl});
   global.YZRental = Rental;
 })(window);
