@@ -28,14 +28,13 @@ jobs:
       - name: Prepare Firebase credentials
         run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 }}' > $HOME/firebase-service-account.json
 
-      - name: Configure Gmail email settings
+      - name: Create Functions Gmail env file
         run: |
-          export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
-          firebase functions:config:set \
-            email.gmail_user="${{ secrets.GMAIL_USER }}" \
-            email.gmail_app_password="${{ secrets.GMAIL_APP_PASSWORD }}" \
-            email.email_from="${{ secrets.EMAIL_FROM }}" \
-            --project youzi-c1b74
+          cat > functions/.env <<EOF
+          GMAIL_USER="${{ secrets.GMAIL_USER }}"
+          GMAIL_APP_PASSWORD="${{ secrets.GMAIL_APP_PASSWORD }}"
+          EMAIL_FROM="${{ secrets.EMAIL_FROM }}"
+          EOF
 
       - name: Deploy Hosting, Firestore rules, Storage rules and Functions
         run: |
