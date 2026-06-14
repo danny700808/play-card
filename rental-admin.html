@@ -15,7 +15,7 @@
     <section class="card2"><div class="section-hd"><div><h1 class="title">設備租賃管理</h1><div class="muted">客人先送出租用基本資料；店家確認設備、金額與預估安裝日期後，再產生正式資料填寫連結。真正的正式契約會在安裝完成、店家確認正式起租日後再產生並傳送。</div></div></div><div id="stats" class="stat-grid"></div><div id="msg"></div></section>
     <div class="layout"><section class="card2"><h2 style="margin-top:0">租賃申請管理 / 契約列表</h2><div class="tabs"><button class="tab active" data-filter="all">主要列表</button><button class="tab" data-filter="new">待店家確認</button><button class="tab" data-filter="sign">待客人補資料</button><button class="tab" data-filter="active">租用中</button><button class="tab" data-filter="renew7">7天內待處理</button><button class="tab" data-filter="renewPay">續約待付款</button><button class="tab" data-filter="return">退租</button><button class="tab" data-filter="cancelled">已取消</button></div><div id="list" class="list" style="margin-top:12px">讀取中...</div></section><main><section class="card2" id="detailBox"><h2 style="margin-top:0">請選擇左側案件</h2><div class="muted">可由客人申請轉正式契約，也可按「店家代填租賃單」直接建立。設備欄位只保留「設備名稱 / 備註」，可新增多列。</div></section><section class="card2 print-area"><div id="contractPreview"></div></section></main></div>
   </div>
-  <script src="config.js?v=rental-flow-20260611"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script><script src="firebase-client.js?v=rental-flow-20260611"></script><script src="app.js?v=rental-flow-20260611"></script><script src="rental-common.js?v=rental-flow-20260611"></script><script src="global-nav.js?v=20260603unified1"></script>
+  <script src="config.js?v=rental-flow-20260611"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script><script src="firebase-client.js?v=rental-flow-20260611"></script><script src="app.js?v=rental-flow-20260611"></script><script src="rental-common.js?v=rental-admin-20260614-today-new-fix"></script><script src="global-nav.js?v=20260603unified1"></script>
   <script>
     const R=window.YZRental; let applications=[],contracts=[],selected=null,filter='all';
     async function initPage(){ if(typeof fillHeader==='function') fillHeader(); const u=R.requireManager(); if(!u) return; document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active')); b.classList.add('active'); filter=b.dataset.filter; renderList();}); await loadAll(); const params=new URLSearchParams(location.search); const appId=params.get('applicationId')||params.get('appId'); const contractId=params.get('contractId'); const anyId=params.get('id'); if(appId){ selectItem('application', appId); } else if(contractId){ selectItem('contract', contractId); } else if(anyId){ const app=applications.find(x=>x.__id===anyId||x.applicationNo===anyId); const c=contracts.find(x=>x.__id===anyId||x.contractNo===anyId); if(app) selectItem('application', app.__id); else if(c) selectItem('contract', c.__id); } }
@@ -24,12 +24,41 @@
     function passFilter(x){ const st=R.clean(x.status); const converted=(x.kind==='application' && (['已轉正式契約','converted'].includes(st) || x.linkedContractId || x.contractId)); const left=x.kind==='contract'?daysLeft(x.endDate):999999; if(filter==='all') return !converted && !['已取消','取消申請'].includes(st); if(filter==='new') return x.kind==='application' && !converted && !['已取消','取消申請'].includes(st) && (['待店家確認','主管確認中','新申請','草稿',''].includes(st)||!st); if(filter==='sign') return x.kind==='contract' && ['待客人補資料','待客人簽署','待簽署'].includes(st); if(filter==='active') return x.kind==='contract' && ['已簽署','待配送 / 待安裝','租賃中','續約詢問中'].includes(st); if(filter==='renew7') return x.kind==='contract' && !['已退租','已取消','待歸還','續約待付款'].includes(st) && left<=7; if(filter==='renewPay') return x.kind==='contract' && ['續約待付款','續約待確認'].includes(st); if(filter==='return') return x.kind==='contract' && ['退租申請中','待收回','已退租','待歸還'].includes(st); if(filter==='cancelled') return ['已取消','取消申請'].includes(st); return true; }
     function renderStats(){ const active=contracts.filter(c=>['已簽署','待配送 / 待安裝','租賃中','續約詢問中'].includes(R.clean(c.status))).length; const exp=contracts.filter(c=>!['已退租','已取消','待歸還'].includes(R.clean(c.status)) && daysLeft(c.endDate)<=7).length; const renewPay=contracts.filter(c=>['續約待付款','續約待確認'].includes(R.clean(c.status))).length; const returned=contracts.filter(c=>['已退租','待歸還'].includes(R.clean(c.status))).length; R.qs('stats').innerHTML=`<div class="stat"><b>${active}</b><span>租用中</span></div><div class="stat"><b>${exp}</b><span>7天內待處理</span></div><div class="stat"><b>${renewPay}</b><span>續約待付款</span></div><div class="stat"><b>${returned}</b><span>待歸還/已退租</span></div>`; }
     function renderList(){ const list=R.qs('list'); const rows=[...applications.map(x=>Object.assign({kind:'application'},x)),...contracts.map(x=>Object.assign({kind:'contract'},x))].filter(passFilter); if(!rows.length){ list.innerHTML='<div class="muted">目前沒有資料。</div>'; return;} list.innerHTML=rows.map((r)=>{ const left=r.kind==='contract'?daysLeft(r.endDate):999999; const cls=left<0?'pill-bad':left<=30?'pill-warn':''; return `<div class="item" onclick="selectItem('${r.kind}','${R.esc(r.__id)}')"><div class="item-title">${r.kind==='application'?'申請':'合約'}｜${R.esc(r.customerName||r.partyAName||'未填姓名')}</div><div class="item-sub"><span class="status ${cls}">${R.esc(r.status||'待店家確認')}</span> ${R.esc(R.rentalTypeLabel(r.rentalType))}｜${R.esc(r.applicationNo||r.contractNo||r.__id||'')}<br>${R.esc(r.customerPhone||'')}｜${R.esc(r.preferredDate||r.startDate||'尚未確認起租日')} ${R.esc(r.preferredTime||'')} ${r.endDate?`｜到期 ${R.esc(r.endDate)}（${left} 天）`:''}<br>來源：${R.esc(r.source||'')}｜LINE：${(r.customerLineUserId||r.lineUserId)?'已連結':'未連結'}</div></div>`; }).join(''); }
-    window.selectItem=function(kind,id){ selected=kind==='application'?applications.find(x=>x.__id===id):contracts.find(x=>x.__id===id); if(!selected) return; if(kind==='application') renderApplication(selected); else renderContract(selected); };
+    window.selectItem=async function(kind,id){
+      try{
+        selected = kind==='application' ? applications.find(x=>x.__id===id) : contracts.find(x=>x.__id===id);
+        if(!selected && id){
+          selected = await R.get(kind==='application'?'rentalApplications':'rentalContracts', id);
+          if(selected) selected.__id = id;
+        }
+        if(!selected){
+          R.qs('detailBox').innerHTML='<h2 style="margin-top:0">找不到案件資料</h2><div class="msg bad">左側列表有資料，但點選後找不到完整文件。請重新整理後再試。</div>';
+          R.qs('contractPreview').innerHTML='';
+          return;
+        }
+        if(kind==='application') renderApplication(selected); else renderContract(selected);
+      }catch(e){
+        R.qs('detailBox').innerHTML='<h2 style="margin-top:0">案件開啟失敗</h2><div class="msg bad">'+R.esc(e.message||String(e))+'</div>';
+        R.qs('contractPreview').innerHTML='';
+      }
+    };
     function equipmentFromNeed(app){ const type=R.clean(app.rentalType); const t=R.clean(app.otherEquipmentNeed); if(type==='other' && t) return [{name:t,note:'客人初步需求'}]; const defaults=R.parseEquipmentItems({rentalType:type}); if(t && !defaults.some(x=>R.clean(x.name)===t)) defaults.unshift({name:t,note:'客人初步需求'}); return defaults; }
     function applicationToContract(app){ const type=R.clean(app.rentalType); const start=R.clean(app.confirmedStartDate||app.preferredDate)||''; const periods=Number(app.periods||1)||1; return { applicationId:app.__id, applicationNo:app.applicationNo, source:'application', stage:'formal-draft', rentalType:type, contractTitle:R.defaultTitle(type), customerName:app.customerName, customerPhone:app.customerPhone, customerEmail:app.customerEmail, customerAddress:app.customerAddress, customerIdNumber:app.customerIdNumber||'', customerLineUserId:app.customerLineUserId||app.lineUserId||'', lineDisplayName:app.lineDisplayName, equipmentName:type==='other'?app.otherEquipmentNeed:'', serialNo:'', periods, periodDays:90, rentalMethod:'實體租用', startDate:start, endDate:start?R.calcEndDate(start,periods,type,periods*90):'', rentFee:'', shippingFee:0, depositFee:'', shippingMethod:app.shippingMethod, shippingAddress:app.shippingAddress||app.customerAddress, deliveryDate:app.preferredDate, deliveryTime:app.preferredTime, equipmentItems:equipmentFromNeed(app), includedItems:app.otherEquipmentNeed||R.defaultIncludedItems(type), status:'待客人補資料', adminNote:app.note||''}; }
     function startAdminDraft(){ const c={source:'admin',stage:'draft',rentalType:'digitalPiano',contractTitle:R.defaultTitle('digitalPiano'),customerName:'',customerPhone:'',customerEmail:'',customerAddress:'',periods:1,periodDays:90,rentalMethod:'實體租用',startDate:'',endDate:'',rentFee:'',shippingFee:0,depositFee:'',equipmentItems:R.parseEquipmentItems({rentalType:'digitalPiano'}),status:'草稿'}; renderContract(c); R.toast('已開啟店家代填租賃單。',true); }
     function renderApplication(app){ const c=applicationToContract(app); const linkInfo=`<div class="msg ok"><b>租賃申請 LINE 連結狀態：</b>${(app.customerLineUserId||app.lineUserId)?'已連結':'尚未連結'}<br><b>LINE 留言文字：</b>${R.esc(app.lineConfirmText || ('租賃申請 '+(app.applicationNo||app.__id)+' '+(app.customerName||'')))}<br><span class="muted">客人加入官方 LINE 後貼上這段文字，系統會自動把 LINE 與這筆申請配對，並通知主管。</span></div>`; R.qs('detailBox').innerHTML=linkInfo+editorHtml(c, 'application'); R.qs('contractPreview').innerHTML=R.renderContractHtml(c); bindEditorPreview(); }
-    function renderContract(c){ R.qs('detailBox').innerHTML=editorHtml(c, c.__id||c.contractId?'contract':'adminDraft'); R.qs('contractPreview').innerHTML=R.renderContractHtml(c); bindEditorPreview(); }
+    function renderContract(c){
+      try{
+        const sourceKind = c.__id||c.contractId ? 'contract' : 'adminDraft';
+        const official = isFinalConfirmStage(c);
+        const display = official ? officializeContract(c) : c;
+        R.qs('detailBox').innerHTML = editorHtml(c, sourceKind);
+        R.qs('contractPreview').innerHTML = R.renderContractHtml(display, {officialView: official});
+        bindEditorPreview();
+      }catch(e){
+        R.qs('detailBox').innerHTML = '<h2 style="margin-top:0">此案件讀取失敗</h2><div class="msg bad">'+R.esc(e.message||String(e))+'</div><div class="muted">資料已存在，但這筆案件可能是新舊欄位混用。請先重新整理；若仍失敗，請回報此畫面。</div>';
+        R.qs('contractPreview').innerHTML = '';
+      }
+    }
     function equipmentRows(items){ items=Array.isArray(items)&&items.length?items:[{name:'',note:''}]; return items.map((x,i)=>`<div class="equipment-row" data-eq-row><div class="field"><label>設備名稱</label><input class="eq-name" value="${R.esc(x.name||x.equipmentName||'')}" placeholder="例如：Roland FP-30X"></div><div class="field"><label>備註</label><input class="eq-note" value="${R.esc(x.note||x.remark||'')}" placeholder="例如：含琴椅、電源線"></div><button class="btn danger" type="button" onclick="removeEquipmentRow(this)">刪除</button></div>`).join(''); }
 
     function actionButtons(source,c){
@@ -37,22 +66,20 @@
       const isApp=source==='application';
       const hasLine=!!(c.customerLineUserId||c.lineUserId);
       const isCancelled=['已取消','取消申請','cancelled'].includes(st);
-      const isReturned=['已退租','returned','待歸還'].includes(st);
+      const isReturned=['已退租','returned'].includes(st);
       const isActive=['租賃中','租用中','已成立','active','待配送 / 待安裝','續約詢問中','續約待付款','續約待確認'].includes(st);
       const isWaitingCustomer=['待客人補資料','待客人簽署','待簽署','formal_sent','pending_customer'].includes(st);
       const isWaitingShop=['客人已送出','待店家確認','待付款確認','待店家確認成立','customer_submitted','pending_shop_confirm','已簽署'].includes(st);
       const parts=[];
       const b=(cls,fn,txt)=>parts.push(`<button class="btn ${cls||''}" type="button" onclick="${fn}">${txt}</button>`);
-      const addDelete=()=>b('danger','deleteRentalRecord()','永久刪除');
       if(isCancelled){
         b('secondary','previewCustomerView()','查看資料');
-        addDelete();
+        if(isApp) b('danger','deleteApplication()','永久刪除');
         return `<div class="btn-row">${parts.join('')}</div>`;
       }
       if(isReturned){
         b('secondary','previewOfficialContract()','查看契約');
         b('secondary','printRentalContract()','預覽 / 列印 / PDF');
-        addDelete();
         return `<div class="btn-row">${parts.join('')}</div>`;
       }
       if(isActive){
@@ -66,7 +93,6 @@
           b('danger','markNoRenewal()','標記不續約/待歸還');
         }
         b('danger','completeReturn()','確認退租完成');
-        addDelete();
         return `<div class="btn-row">${parts.join('')}</div>`;
       }
       if(isWaitingShop){
@@ -74,21 +100,30 @@
         b('secondary','printRentalContract()','預覽 / 列印 / PDF');
         b('','markDelivered()','確認租用成立');
         if(isApp) b('secondary','cancelApplication()','取消申請');
-        addDelete();
         return `<div class="btn-row">${parts.join('')}</div>`;
       }
       if(isWaitingCustomer){
         b('secondary','previewCustomerView()','客戶視角預覽');
-        b('','sendToCustomerForFill()','重新傳給客人填寫');
+        b('','sendToCustomerForFill()','重新傳送正式資料補填連結');
         if(isApp) b('secondary','cancelApplication()','取消申請');
-        addDelete();
+        return `<div class="btn-row">${parts.join('')}</div>`;
+      }
+      if(isActive && !isApp){
+        b('secondary','printRentalContract()','預覽 / 列印 / PDF');
+        b('secondary','sendRenewalQuestion()','傳送續約詢問');
+        b('secondary','saveRenewalPlan()','儲存續約資料');
+        b('','sendRenewalPaymentNotice()','傳送續約金額');
+        b('','confirmRenewalPaid()','確認續約成立');
+        b('danger','markNoRenewal()','標記不續約/待歸還');
         return `<div class="btn-row">${parts.join('')}</div>`;
       }
       b('secondary','saveContract(false)','儲存資料');
       b('secondary','previewCustomerView()','客戶視角預覽');
-      b(hasLine?'':'secondary','sendToCustomerForFill()','傳給客人填寫');
-      if(isApp) b('secondary','cancelApplication()','取消申請');
-      addDelete();
+      b(hasLine?'':'secondary','sendToCustomerForFill()','傳送正式資料補填連結');
+      if(isApp){
+        b('secondary','cancelApplication()','取消申請');
+        b('danger','deleteApplication()','永久刪除');
+      }
       return `<div class="btn-row">${parts.join('')}</div>`;
     }
     function isFinalConfirmStage(c){ const st=R.clean((c&&c.status)||''); return !!(c && (c.customerSubmittedFormalAt || c.customerSignatureDataUrl || c.signatureDataUrl || c.customerIdImageWatermarkedDataUrl || c.idImageWatermarkedDataUrl || ['客人已送出','待店家確認','待付款確認','待店家確認成立','customer_submitted','pending_shop_confirm','已簽署','租賃中','續約詢問中','續約待付款','續約待確認','已退租','待歸還'].includes(st)) && (c.contractId || c.__id || R.val('contractId'))); }
@@ -112,7 +147,7 @@
         <div class="field"><label>內部備註（不傳給客人）</label><textarea id="renewalAdminNote">${R.esc(pr.adminNote||'')}</textarea></div>
       </div>`;
     }
-    function editorHtml(c, source){ const items=R.parseEquipmentItems(c); const finalStage=isFinalConfirmStage(c); const startLabel=finalStage?'正式起租日':'預估起租日'; const installLabel=finalStage?'確認安裝日期':'預估安裝日期'; const installHint=finalStage?'此日期會作為正式契約的確認安裝日期與正式起租日；正式契約只顯示日期，不顯示時間。':'此日期只作為寄給客人填寫資料前的預估日期；正式契約會在店家最後確認後產生並傳送。'; const flowText=finalStage?'客人已補完身分證資料與簽名；請在下方確認安裝日期、租金、押金與契約內容，確認後產生正式契約網頁連結並傳送給客人。':'流程：先確認基本資料 → 補預估安裝日期/租金/設備 → 客戶視角預覽 → 傳給客人填寫身分證字號與詳細資料。'; return `<h2 style="margin-top:0">${source==='application'?'由申請建立正式資料':source==='adminDraft'?'店家代填租賃單':'編輯租賃契約'}</h2><div class="muted">${flowText}</div><input type="hidden" id="sourceKind" value="${source}"><input type="hidden" id="applicationId" value="${R.esc(c.applicationId||'')}"><input type="hidden" id="contractId" value="${R.esc(c.contractId||c.__id||'')}"><input type="hidden" id="periodDays" value="90">
+    function editorHtml(c, source){ const items=R.parseEquipmentItems(c); const finalStage=isFinalConfirmStage(c); const startLabel=finalStage?'正式起租日':'預估起租日'; const installLabel=finalStage?'確認安裝日期':'預估安裝日期'; const installHint=finalStage?'此日期會作為正式契約的確認安裝日期與正式起租日；正式契約只顯示日期，不顯示時間。':'此日期只作為寄給客人填寫資料前的預估日期；正式契約會在店家最後確認後產生並傳送。'; const flowText=finalStage?'客人已補完身分證資料與簽名；請在下方確認安裝日期、租金、押金與契約內容，確認後產生正式契約網頁連結並傳送給客人。':'流程：先確認基本資料 → 補預估安裝日期/租金/設備 → 客戶視角預覽 → 傳送正式資料補填連結，請客人補填身分證字號、上傳身分證證明圖片並完成簽名。'; return `<h2 style="margin-top:0">${source==='application'?'由申請建立正式資料':source==='adminDraft'?'店家代填租賃單':'編輯租賃契約'}</h2><div class="muted">${flowText}</div><input type="hidden" id="sourceKind" value="${source}"><input type="hidden" id="applicationId" value="${R.esc(c.applicationId||'')}"><input type="hidden" id="contractId" value="${R.esc(c.contractId||c.__id||'')}"><input type="hidden" id="periodDays" value="90">
       <div class="row2"><div class="field"><label>合約類型</label><select id="rentalType"><option value="digitalPiano" ${c.rentalType==='digitalPiano'?'selected':''}>電鋼琴</option><option value="electronicDrum" ${c.rentalType==='electronicDrum'?'selected':''}>電子鼓</option><option value="other" ${c.rentalType==='other'?'selected':''}>其他設備</option></select></div><div class="field"><label>狀態</label><select id="status"><option ${c.status==='草稿'?'selected':''}>草稿</option><option ${c.status==='待店家確認'?'selected':''}>待店家確認</option><option ${c.status==='待客人補資料'?'selected':''}>待客人補資料</option><option ${c.status==='待付款確認'?'selected':''}>待付款確認</option><option ${c.status==='租賃中'?'selected':''}>租賃中</option><option ${c.status==='續約詢問中'?'selected':''}>續約詢問中</option><option ${c.status==='續約待付款'?'selected':''}>續約待付款</option><option ${c.status==='待歸還'?'selected':''}>待歸還</option><option ${c.status==='已退租'?'selected':''}>已退租</option><option ${c.status==='已取消'?'selected':''}>已取消</option></select></div></div>
       <div class="row2"><div class="field"><label>客人姓名 / 公司</label><input id="customerName" value="${R.esc(c.customerName)}"></div><div class="field"><label>電話</label><input id="customerPhone" value="${R.esc(c.customerPhone)}"></div></div><div class="row2"><div class="field"><label>Email</label><input id="customerEmail" value="${R.esc(c.customerEmail)}"></div><div class="field"><label>LINE User ID（正式資料階段需綁定）</label><input id="customerLineUserId" value="${R.esc(c.customerLineUserId)}"></div></div><div class="row2"><div class="field"><label>身分證 / 統編</label><input id="customerIdNumber" value="${R.esc(c.customerIdNumber)}"></div><div class="field"><label>地址</label><input id="customerAddress" value="${R.esc(c.customerAddress)}"></div></div>
       <h3>乙方提供設備</h3><div class="muted">只填「設備名稱 / 備註」即可；可按新增設備繼續增加。</div><div id="equipmentRows">${equipmentRows(items)}</div><button class="btn secondary" type="button" onclick="addEquipmentRow()">＋新增設備</button>
@@ -169,10 +204,10 @@
       win.document.close();
     };
 
-    window.saveContract=async function(makeLink, opts){ opts=opts||{}; try{ const payload=collect(); payload.makeSignLink=!!makeLink; if(makeLink && !payload.startDate){ R.toast('請先填預估安裝日期，才能產生資料填寫連結。', false); return null; } const res=await R.call('rentalSaveContractHttp', payload); if(res && res.contractId) R.setVal('contractId',res.contractId); if(payload.applicationId && res && res.contractId){ try{ await R.db().collection('rentalApplications').doc(payload.applicationId).set({status:'已轉正式契約', linkedContractId:res.contractId, updatedAtText:R.nowText()}, {merge:true}); }catch(_){} } if(!opts.silent) R.toast(makeLink?'資料已儲存，資料填寫連結已準備完成。':'資料已儲存。', true); await loadAll(); return res||{}; }catch(e){ R.toast(e.message||String(e), false); return null; } };
+    window.saveContract=async function(makeLink, opts){ opts=opts||{}; try{ const payload=collect(); payload.makeSignLink=!!makeLink; if(makeLink && !payload.startDate){ R.toast('請先填預估安裝日期，才能產生資料填寫連結。', false); return null; } const res=await R.call('rentalSaveContractHttp', payload); if(res && res.contractId) R.setVal('contractId',res.contractId); if(payload.applicationId && res && res.contractId){ try{ await R.db().collection('rentalApplications').doc(payload.applicationId).set({status:'已轉正式契約', linkedContractId:res.contractId, updatedAtText:R.nowText()}, {merge:true}); }catch(_){} } if(!opts.silent) R.toast(makeLink?'資料已儲存，正式資料補填連結已準備完成。':'資料已儲存。', true); await loadAll(); return res||{}; }catch(e){ R.toast(e.message||String(e), false); return null; } };
     window.copySignLink=async function(){ const id=R.val('contractId'); if(!id) return R.toast('請先儲存合約。', false); const c=await R.get('rentalContracts', id); if(!c) return; const url=R.signUrl(c); await navigator.clipboard.writeText(url); R.toast('已複製正式資料填寫連結。', true); };
-    window.sendContractLink=async function(){ const id=R.val('contractId'); if(!id) return R.toast('請先儲存合約。', false); try{ await R.call('rentalSendContractToCustomerHttp',{contractId:id}); R.toast('已建立傳送通知；若客人 LINE 尚未綁定，請複製連結手動傳送。', true); await loadAll(); }catch(e){ R.toast(e.message||String(e), false); } };
-    window.sendToCustomerForFill=async function(){ const c=collect(); if(!c.customerLineUserId){ return R.toast('此申請尚未完成 LINE 連結，請先請客人貼上租賃申請留言文字，或先手動複製資料填寫連結給客人。', false); } const res=await saveContract(true,{silent:true}); if(!res) return; try{ await sendContractLink(); R.toast('已儲存資料並將資料填寫連結傳給客人。', true); }catch(e){ R.toast(e.message||String(e), false); } };
+    window.sendContractLink=async function(){ const id=R.val('contractId'); if(!id) return R.toast('請先儲存合約。', false); try{ const res=await R.call('rentalSendContractToCustomerHttp',{contractId:id}); if(res && res.sent){ R.toast('已透過 LINE 傳送正式資料補填連結給客人。', true); } else { const reason=(res&&res.sendResult&&(res.sendResult.reason||res.sendResult.responseText))||'客人尚未完成 LINE 綁定或 LINE 發送失敗'; R.toast('已產生正式資料補填連結，但 LINE 未送出：'+reason+'。可複製連結手動傳送。', false); } await loadAll(); return res||{}; }catch(e){ R.toast(e.message||String(e), false); return null; } };
+    window.sendToCustomerForFill=async function(){ const c=collect(); if(!c.customerLineUserId){ return R.toast('此申請尚未完成 LINE 連結，請先請客人貼上租賃申請留言文字，或先手動複製正式資料補填連結給客人。', false); } const res=await saveContract(true,{silent:true}); if(!res) return; const sendRes=await sendContractLink(); if(sendRes && sendRes.sent){ R.toast('已儲存資料，並已透過 LINE 傳送正式資料補填連結給客人。', true); } };
     function showRentalProgress(title){
       let mask=document.getElementById('rentalProgressMask');
       if(!mask){
@@ -327,41 +362,29 @@
         R.qs('contractPreview').innerHTML='';
       }catch(e){ R.toast(e.message||String(e), false); }
     };
-    window.deleteRentalRecord=async function(){
-      const source=R.val('sourceKind');
-      const appId=R.val('applicationId');
-      const contractId=R.val('contractId');
-      const isContract=!!contractId && source!=='application';
-      const id=isContract?contractId:appId;
-      const collectionName=isContract?'rentalContracts':'rentalApplications';
-      const label=isContract?'租賃契約':'租賃申請';
-      if(!id) return R.toast('找不到資料 ID，無法刪除。', false);
-      const customer=R.val('customerName') || (selected&&selected.customerName) || '未填姓名';
-      const no=(selected&&(selected.contractNo||selected.applicationNo)) || id;
-      const linkedAppId=isContract ? R.clean((selected&&selected.applicationId)||appId) : '';
-      const linkedContractId=!isContract ? R.clean((selected&&(selected.linkedContractId||selected.contractId))||contractId) : '';
-      let warn=`確定要永久刪除這筆${label}嗎？\n\n姓名：${customer}\n編號：${no}\n\n此動作無法復原。`;
-      if(isContract && linkedAppId) warn += '\n\n此契約有來源申請，系統也會一併刪除該來源申請紀錄。';
-      if(!isContract && linkedContractId) warn += '\n\n注意：這筆申請已連到正式契約；本次只會刪除申請紀錄，不會刪除正式契約。若要刪正式契約，請先打開契約再按永久刪除。';
-      if(!confirm(warn)) return;
-      if(!confirm('再次確認：永久刪除後無法復原，確定繼續？')) return;
+    window.deleteApplication=async function(){
+      const id=R.val('applicationId');
+      if(!id) return R.toast('找不到申請資料，無法刪除。', false);
+      const app=applications.find(x=>x.__id===id);
+      if(app && ['已轉正式契約','converted'].includes(R.clean(app.status))){
+        if(!confirm('這筆申請看起來已轉成正式契約。仍要只刪除申請紀錄嗎？正式合約不會被刪除。')) return;
+      }else{
+        if(!confirm('確定要永久刪除此租賃申請嗎？此動作無法復原。')) return;
+        if(!confirm('再次確認：永久刪除後無法復原，請確認不是誤觸。')) return;
+      }
       const check=prompt('請輸入「刪除」以確認永久刪除：');
       if(check!=='刪除') return R.toast('未輸入確認文字，已取消永久刪除。', false);
       try{
-        const db=R.db();
-        await db.collection(collectionName).doc(id).delete();
-        if(isContract && linkedAppId){
-          try{ await db.collection('rentalApplications').doc(linkedAppId).delete(); }catch(_e){}
-        }
-        R.toast(`已永久刪除${label}。`, true);
+        await R.db().collection('rentalApplications').doc(id).delete();
+        R.toast('已永久刪除租賃申請。', true);
         selected=null;
         await loadAll();
-        R.qs('detailBox').innerHTML='<h2 style="margin-top:0">請選擇左側案件</h2><div class="muted">資料已永久刪除。</div>';
+        R.qs('detailBox').innerHTML='<h2 style="margin-top:0">請選擇左側案件</h2><div class="muted">申請已永久刪除。</div>';
         R.qs('contractPreview').innerHTML='';
       }catch(e){ R.toast(e.message||String(e), false); }
     };
-    window.deleteApplication=window.deleteRentalRecord;
 
+    
     function collectRenewal(){
       const start=R.val('renewalStartDate');
       const end=R.val('renewalEndDate');

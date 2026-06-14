@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>設備租賃資料確認與合約簽署</title>
-  <link rel="stylesheet" href="style.css?v=rental-sign-20260614-payment-delay">
+  <link rel="stylesheet" href="style.css?v=rental-sign-20260614-linkflow-fix">
   <style>
     body{background:#eef3f7;color:#18314a}.wrap{max-width:980px;margin:0 auto;padding:22px 14px 54px}.card2{background:#fff;border:1px solid #dbe5ef;border-radius:24px;padding:20px;margin-bottom:16px;box-shadow:0 10px 28px rgba(15,23,42,.04)}.title{font-size:30px;font-weight:950;margin:0 0 10px}.small{font-size:13px;color:#64748b;line-height:1.8}.btn{border:0;border-radius:14px;background:#1f7a5a;color:#fff;font-weight:950;padding:12px 18px;cursor:pointer}.btn.secondary{background:#e2e8f0;color:#18314a}.btn:disabled{opacity:.6;cursor:not-allowed}.btn-row{display:flex;gap:10px;flex-wrap:wrap}.msg{margin-top:12px;border-radius:14px;padding:12px 14px;font-weight:900;line-height:1.7}.msg.ok{background:#e8fff4;color:#146c43}.msg.bad{background:#fff0f0;color:#b42318}.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}.field{margin-bottom:12px}.field label{display:block;font-weight:950;margin-bottom:6px}.field input{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:14px;padding:11px 12px;font-size:15px}.field.required-missing input,.field.required-missing canvas{border-color:#dc2626!important;box-shadow:0 0 0 3px rgba(220,38,38,.12)}.error-note{display:none;color:#b42318;font-weight:900;font-size:13px;margin-top:4px}.field.required-missing .error-note{display:block}.hint{font-size:13px;color:#64748b;line-height:1.8}.preview-img{max-width:100%;max-height:220px;border:1px solid #cbd5e1;border-radius:12px;background:#f8fafc;margin-top:8px}.agree{display:flex;gap:10px;line-height:1.8;font-weight:900}#signatureCanvas{width:100%;height:230px;border:2px dashed #94a3b8;border-radius:16px;background:#fff;touch-action:none}#signatureCanvas.signature-locked{background:#f8fafc;border-style:solid;cursor:not-allowed}.sig-confirm-note{display:none;margin-top:8px;background:#e8fff4;color:#146c43;border-radius:12px;padding:8px 10px;font-weight:900}.contractNotice{background:#fff7ed;border:1px solid #fdba74;color:#9a3412;border-radius:16px;padding:12px 14px;font-weight:900;line-height:1.7;margin-bottom:14px}.paymentNotice{background:#f8fafc;border:1px solid #cbd5e1;border-radius:18px;padding:14px 16px;margin-top:12px;line-height:1.8;color:#334155}.paymentNotice b{color:#18314a}.paymentNotice .bank-line{font-weight:950;color:#0f172a}.paymentNotice .copyText{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:16px;font-weight:950;letter-spacing:.02em}.contractPreviewShell{overflow-x:hidden;max-width:100%}.submitBox{border:1px solid #dbe5ef;border-radius:18px;padding:14px;background:#f8fafc}.progressWrap{display:none;margin-top:12px;background:#e2e8f0;border-radius:999px;overflow:hidden;height:14px}.progressBar{width:0%;height:100%;background:#1f7a5a;transition:width .28s ease}.progressText{font-size:13px;font-weight:950;margin-top:6px;color:#475569}.dialogMask{display:none;position:fixed;inset:0;background:rgba(15,23,42,.48);z-index:9999;align-items:center;justify-content:center;padding:18px}.dialogBox{background:#fff;border-radius:22px;max-width:520px;width:100%;padding:22px;box-shadow:0 24px 80px rgba(15,23,42,.35)}.dialogTitle{font-size:22px;font-weight:950;margin:0 0 10px}.dialogText{line-height:1.8;color:#334155}.dialogText ul{margin:8px 0 0 20px}.dialogActions{text-align:right;margin-top:18px}.section-title{margin-top:0}.required-tag{display:inline-block;margin-left:6px;color:#dc2626;font-size:12px;font-weight:950}.print-area{overflow:hidden}@media(max-width:840px){.row2{grid-template-columns:1fr}.wrap{padding:12px 8px}.title{font-size:24px}#signatureCanvas{height:260px}.card2{padding:16px;border-radius:18px}}@media print{body *{visibility:hidden}.print-area,.print-area *{visibility:visible}.print-area{position:absolute;left:0;top:0;width:100%}.card2:not(.print-area){display:none}.rental-contract-sheet{border:none!important;box-shadow:none!important;margin:0!important;width:210mm!important;min-height:297mm!important}@page{size:A4;margin:0}}
   </style>
@@ -37,17 +37,17 @@
 
   <div id="dialogMask" class="dialogMask"><div class="dialogBox"><h3 id="dialogTitle" class="dialogTitle"></h3><div id="dialogText" class="dialogText"></div><div class="dialogActions"><button class="btn" type="button" onclick="closeDialog()">知道了</button></div></div></div>
 
-  <script src="config.js?v=rental-sign-20260614-payment-delay"></script>
+  <script src="config.js?v=rental-sign-20260614-linkflow-fix"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="rental-common.js?v=rental-sign-20260614-payment-delay"></script>
+  <script src="rental-common.js?v=rental-sign-20260614-linkflow-fix"></script>
   <script>
     const R=window.YZRental; const params=new URLSearchParams(location.search); const contractId=params.get('contractId')||''; const token=params.get('token')||''; let contract=null; let signed=false; let watermarkedIdImage='';
     function paymentInfoUrl(){
       const base=location.origin+location.pathname.replace(/[^\/]*$/,'');
       return base+'rental-payment-info.html?contractId='+encodeURIComponent(contractId)+'&token='+encodeURIComponent(token);
     }
-    const SIMPLE_SUCCESS_HTML = '<h2>資料已送出</h2><p class="small">柚子樂器已收到您的租賃資料，資料處理中。</p><p class="small">後續付款方式與說明會在約 1 分鐘內透過官方 LINE 傳送給您。</p>';
+    const SIMPLE_SUCCESS_HTML = '<h2>資料已送出</h2><p class="small">柚子樂器已收到您的租賃資料，資料處理中。</p><p class="small">後續付款方式與說明會透過官方 LINE 傳送給您；若 1～5 分鐘內未收到，請回到官方 LINE 告知店家。</p>';
     function successHtml(){ return SIMPLE_SUCCESS_HTML; }
     function showDialog(title, html){ R.qs('dialogTitle').textContent=title; R.qs('dialogText').innerHTML=html; R.qs('dialogMask').style.display='flex'; }
     function closeDialog(){ R.qs('dialogMask').style.display='none'; }
@@ -148,13 +148,22 @@
       const btn=R.qs('submitSigBtn'); btn.disabled=true; btn.textContent='送出中...'; setProgress(8,'準備送出資料...');
       try{
         setProgress(30,'儲存身分證資料與簽名...');
-        await R.db().collection('rentalContracts').doc(contractId).set({ customerIdNumber:R.val('customerIdNumber'), customerIdImageWatermarkedDataUrl:watermarkedIdImage, customerIdImageUpdatedAt:R.nowText(), customerSubmittedFormalAt:R.nowText(), paymentInfoUrl:paymentInfoUrl(), status:'待店家確認' }, {merge:true});
+        await R.db().collection('rentalContracts').doc(contractId).set({ customerIdNumber:R.val('customerIdNumber'), customerIdImageWatermarkedDataUrl:watermarkedIdImage, idImageWatermarkedDataUrl:watermarkedIdImage, customerIdImageDataUrl:watermarkedIdImage, idImageDataUrl:watermarkedIdImage, customerSignatureDataUrl:signatureDataUrl, signatureDataUrl:signatureDataUrl, customerIdImageUpdatedAt:R.nowText(), customerSignatureUpdatedAt:R.nowText(), customerSubmittedFormalAt:R.nowText(), paymentInfoUrl:paymentInfoUrl(), status:'待店家確認' }, {merge:true});
         setProgress(68,'送出確認資料...');
-        await R.call('rentalSignContractHttp',{contractId,token,signatureDataUrl,customerIdNumber:R.val('customerIdNumber'),customerIdImageWatermarkedDataUrl:watermarkedIdImage, paymentInfoUrl:paymentInfoUrl()});
+        let apiNoticeOk=false; let apiNoticeError='';
+        try{
+          const apiRes=await R.call('rentalSignContractHttp',{contractId,token,signatureDataUrl,customerIdNumber:R.val('customerIdNumber'),customerIdImageWatermarkedDataUrl:watermarkedIdImage, paymentInfoUrl:paymentInfoUrl()});
+          apiNoticeOk=!!(apiRes && (apiRes.queued || apiRes.sent || apiRes.ok));
+        }catch(apiErr){
+          apiNoticeError=apiErr.message||String(apiErr);
+          console.warn('rentalSignContractHttp failed after local save:', apiErr);
+          await R.db().collection('rentalContracts').doc(contractId).set({ paymentInfoNoticeStatus:'api-error', paymentInfoNoticeLastError:apiNoticeError, updatedAtText:R.nowText() }, {merge:true});
+        }
         setProgress(82,'建立後續 LINE 通知...');
         await savePaymentNoticeSchedule();
         setProgress(100,'送出完成');
-        showDialog('資料已送出','柚子樂器已收到您的租賃資料，資料處理中。<br><br>後續付款方式與說明會在約 1 分鐘內透過官方 LINE 傳送給您。');
+        const extra = apiNoticeOk ? '後續付款方式與說明會透過官方 LINE 傳送給您；若 1～5 分鐘內未收到，請回到官方 LINE 告知店家。' : '資料已儲存，但 LINE 通知建立可能失敗，請回到官方 LINE 告知店家已完成資料送出。';
+        showDialog('資料已送出','柚子樂器已收到您的租賃資料，資料處理中。<br><br>'+extra);
         await load(); window.scrollTo({top:0,behavior:'smooth'});
       }catch(err){ showDialog('送出失敗', R.esc(err.message||String(err))); }
       finally{ btn.disabled=false; btn.textContent='送出確認資料與簽名'; setTimeout(()=>{ R.qs('progressWrap').style.display='none'; R.qs('progressBar').style.width='0%'; R.qs('progressText').textContent=''; },1600); }
