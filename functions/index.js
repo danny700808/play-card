@@ -1019,10 +1019,12 @@ exports.rentalSubmitApplicationHttp = httpEndpoint(async (data) => {
         '',
         `申請編號：${applicationNo}`,
         '',
-        '請點選以下連結確認 Email，確認後後續租賃通知會依您選擇的方式寄送：',
+        '打開這封信本身不會自動確認；請點選以下連結確認 Email，連到確認頁後才會完成確認：',
         emailVerificationUrl,
         '',
         wantsLine ? `若您也要使用 LINE 通知，請到柚子樂器官方 LINE 貼上：設備租賃申請 ${applicationNo}` : '您已選擇只用 Email 通知，不需要完成 LINE 配對。',
+        '',
+        '柚子樂器官網：https://www.mingtinghuang.com/',
       ].join('\n');
       await createNotificationQueue({
         queueId: `rental-email-verify-${safeId(applicationId)}-${Date.now()}`,
