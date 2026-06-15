@@ -107,7 +107,7 @@
   }
 
   function deliveryLabelPair(contract) {
-    const method = normalizeDeliveryMethod((contract && (contract.deliveryMethod || contract.deliveryType || contract.delivery || contract.preferredDeliveryMethod)) || '');
+    const method = normalizeDeliveryMethod((contract && (contract.deliveryMethod || contract.shippingMethod || contract.deliveryType || contract.delivery || contract.preferredDeliveryMethod)) || '');
     const official = isOfficialContract(contract || {});
     if (method === '自取自運') {
       return {
@@ -142,16 +142,15 @@
     const ship=fmtMoney(contract.shippingFee);
     const deposit=fmtMoney(contract.depositFee);
     const deliveryText=clean(contract.deliveryDate||contract.confirmedDeliveryDate||contract.deliveryDateTime||'').slice(0,10);
-    const deliveryTimeText = clean(contract.deliveryTime || contract.preferredTime || contract.installTime || contract.pickupTime || contract.desiredTime || '');
     const deliveryMethod=normalizeDeliveryMethod(contract.shippingMethod||contract.deliveryMethod);
     const deliveryInfo = deliveryLabelPair(contract);
-    const isSelfPickup=deliveryMethod==='自取自載';
+    const isSelfPickup=deliveryInfo.method==='自取自運';
     const status=clean(contract.status||contract.contractStatus);
     const hasFormalData=!!(contract.customerSubmittedFormalAt || contract.customerSignatureDataUrl || contract.signatureDataUrl || contract.customerIdImageWatermarkedDataUrl || contract.idImageWatermarkedDataUrl || contract.customerIdImageDataUrl || contract.idImageDataUrl);
     const isOfficial=!!(opts.officialView || contract._officialPreview || hasFormalData || contract.officialPdfUrl || contract.officialConfirmedAt || contract.officialStartDate || ['租賃中','已退租','待歸還','續約詢問中','續約待付款','續約待確認'].includes(status));
     const deliveryLabel = deliveryInfo.dateLabel;
     const startLabel=isOfficial?'正式起租日':'預估起租日';
-    const startFallback=isOfficial?'____年__月__日':'依實際安裝完成後確認';
+    const startFallback=isOfficial?'____年__月__日':'依實際交付完成後確認';
     const endFallback=isOfficial?'____年__月__日':'依正式起租日重新計算';
     const preliminaryNote=isOfficial?'':'實際正式起租日與租賃期間，會在店家最後確認後另行產生並傳送正式契約。';
     const dateText=clean(contract.contractDate)||ymd(new Date());
@@ -202,7 +201,7 @@
         ${!isOfficialContract(contract)?'<div style="border:1px solid #f59e0b;background:#fffbeb;color:#92400e;border-radius:10px;padding:6px 8px;margin:0 0 2mm;font-weight:900;line-height:1.45">此為租賃契約預覽，尚未正式成立。正式契約將於店家確認款項與實際交付日期後成立。</div>':''}<p class="intro">甲方向乙方租賃設備，雙方同意簽訂本契約，條款如下：</p>
         <ol class="clauses">
           <li>${typeLine}<br>租賃期間：詳如第二頁「租賃期間明細表」。一期固定 ${esc(periodDays)} 天，續租起日為上一期到期日之隔日。</li>
-          <li>租金：${esc(rent)}。押金：${esc(deposit)}。運費：${esc(ship)}。交付方式：${esc(deliveryInfo.method)}。${esc(deliveryInfo.dateLabel)}：${esc(deliveryText || '依店家最後確認')}${deliveryTimeText?'　時間：'+esc(deliveryTimeText):''}。${preliminaryNote?`<br><b>${esc(preliminaryNote)}</b>`:''}</li>
+          <li>租金：${esc(rent)}。押金：${esc(deposit)}。運費：${esc(ship)}。交付方式：${esc(deliveryInfo.method)}。${esc(deliveryInfo.dateLabel)}：${esc(deliveryText || '依店家最後確認')}。${preliminaryNote?`<br><b>${esc(preliminaryNote)}</b>`:''}</li>
           <li>乙方提供設備包括：${itemHtml}</li>
           <li>退租需提早告知；未告知超過 3 天，視同原簽約方案續約。</li>
           <li>租約使用開始後，若提早退租，全數不退款。</li>
