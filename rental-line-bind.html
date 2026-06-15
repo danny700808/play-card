@@ -3,28 +3,23 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>租賃申請下一步｜LINE 配對</title>
-  <link rel="stylesheet" href="style.css?v=rental-line-bind-20260615">
+  <link rel="stylesheet" href="style.css?v=rental-line-bind-20260615b">
   <style>
-    body{background:#eef3f7;color:#18314a;margin:0;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.wrap{max-width:760px;margin:0 auto;padding:24px 14px 54px}.card{background:#fff;border:1px solid #dbe5ef;border-radius:24px;padding:22px;box-shadow:0 10px 28px rgba(15,23,42,.06);margin-bottom:14px}.title{font-size:28px;font-weight:950;margin:0 0 10px;text-align:center}.sub{font-size:14px;color:#64748b;line-height:1.8;text-align:center;margin-bottom:14px}.step-title{font-size:20px;font-weight:950;margin:0 0 10px}.note{border:1px solid #dbe5ef;background:#f8fafc;border-radius:16px;padding:14px;line-height:1.9;color:#334155}.ok{border-color:#1f7a5a;background:#f0fff7}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:18px;font-weight:950;background:#fff;border:2px dashed #1f7a5a;border-radius:14px;padding:14px;width:100%;box-sizing:border-box;min-height:58px;resize:none}.btn-row{display:grid;grid-template-columns:1fr;gap:12px;margin-top:14px}.btn{border:0;border-radius:16px;background:#1f7a5a;color:#fff;font-weight:950;padding:15px 18px;text-decoration:none;display:flex;align-items:center;justify-content:center;text-align:center;font-size:17px;cursor:pointer;min-height:54px;box-sizing:border-box}.btn.secondary{background:#e2e8f0;color:#18314a}.btn.line{background:#06c755;color:#fff}.small{font-size:13px;color:#64748b;line-height:1.8}.hide{display:none!important}@media(max-width:520px){.wrap{padding:16px 10px 40px}.card{padding:18px;border-radius:20px}.title{font-size:25px}.btn{font-size:16px}}
+    body{background:#eef3f7;color:#18314a;margin:0;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.wrap{max-width:760px;margin:0 auto;padding:24px 14px 54px}.card{background:#fff;border:1px solid #dbe5ef;border-radius:24px;padding:22px;box-shadow:0 10px 28px rgba(15,23,42,.06);margin-bottom:14px}.title{font-size:28px;font-weight:950;margin:0 0 10px;text-align:center}.sub{font-size:14px;color:#64748b;line-height:1.8;text-align:center;margin-bottom:14px}.lead{font-size:18px;font-weight:900;text-align:center;margin:0 0 14px;color:#18314a}.step-title{font-size:20px;font-weight:950;margin:0 0 10px}.note{border:1px solid #dbe5ef;background:#f8fafc;border-radius:16px;padding:14px;line-height:1.9;color:#334155}.ok{border-color:#1f7a5a;background:#f0fff7}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:18px;font-weight:950;background:#fff;border:2px dashed #1f7a5a;border-radius:14px;padding:14px;width:100%;box-sizing:border-box;min-height:58px;resize:none}.btn-row{display:grid;grid-template-columns:1fr;gap:12px;margin-top:14px}.btn{border:0;border-radius:16px;background:#1f7a5a;color:#fff;font-weight:950;padding:15px 18px;text-decoration:none;display:flex;align-items:center;justify-content:center;text-align:center;font-size:17px;cursor:pointer;min-height:54px;box-sizing:border-box}.btn.secondary{background:#e2e8f0;color:#18314a}.btn.line{background:#06c755;color:#fff}.small{font-size:13px;color:#64748b;line-height:1.8}.hide{display:none!important}@media(max-width:520px){.wrap{padding:16px 10px 40px}.card{padding:18px;border-radius:20px}.title{font-size:25px}.btn{font-size:16px}}
   </style>
 </head>
 <body>
   <div class="wrap">
-    <section class="card">
-      <h1 class="title">租賃申請已送出</h1>
-      <div class="sub">請依照下方步驟完成通知配對，店家收到後會再與您確認設備、金額與日期。</div>
-      <div class="note ok"><b>申請編號：</b><span id="applicationNo">讀取中...</span></div>
-    </section>
-
     <section id="lineCard" class="card">
-      <h2 class="step-title">下一步：完成官方 LINE 配對</h2>
-      <div class="note">1. 點選「複製官方 LINE 配對文字」。<br>2. 點選「加入柚子樂器 LINE」。<br>3. 到官方 LINE 聊天室貼上剛剛複製的文字。</div>
+      <h1 class="title">請綁定 LINE</h1>
+      <div class="lead">請完成下面步驟</div>
+      <div class="note">1. 請先點選「複製官方 LINE 配對文字」。<br>2. 請點選「加入柚子樂器 LINE」，開啟官方 LINE 聊天室。<br>3. 請在官方 LINE 的聊天室，直接貼上複製文字。</div>
       <textarea id="lineConfirmText" class="mono" readonly></textarea>
       <div class="btn-row">
         <button id="copyLineTextBtn" class="btn" type="button">複製官方 LINE 配對文字</button>
         <a class="btn line" href="https://lin.ee/Fx5Y2mL" target="_blank" rel="noopener">加入柚子樂器 LINE</a>
       </div>
-      <div class="small" style="margin-top:10px">貼上完成後，系統會回覆配對成功；正式填寫與簽署連結會由店家確認後再傳送。</div>
+      <div class="small" style="margin-top:10px">配對文字送出後，系統會通知柚子樂器官方，官方會跟您確定訊息，並用 LINE 聯絡您。</div>
     </section>
 
     <section id="emailCard" class="card hide">
@@ -32,15 +27,11 @@
       <div class="note">系統已寄出 Email 確認信。打開信件本身不會自動確認，請點選信件中的確認連結，連到確認頁後才會完成 Email 確認。</div>
       <div class="small" style="margin-top:10px">若沒有看到信件，請檢查垃圾郵件、促銷內容或所有郵件。</div>
     </section>
-
-    <section class="card">
-      <div class="btn-row"><a class="btn secondary" href="https://www.mingtinghuang.com/">前往柚子樂器官網</a></div>
-    </section>
   </div>
-  <script src="config.js?v=rental-line-bind-20260615"></script>
+  <script src="config.js?v=rental-line-bind-20260615b"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="rental-common.js?v=rental-line-bind-20260615"></script>
+  <script src="rental-common.js?v=rental-line-bind-20260615b"></script>
   <script>
     const R=window.YZRental;
     const params=new URLSearchParams(location.search);
