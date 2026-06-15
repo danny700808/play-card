@@ -182,79 +182,84 @@
     });
   </script>
 
+
 <script>
 (function(){
-  function clean(v){ return String(v||'').trim(); }
+  function clean(v){ return String(v || '').trim(); }
   function q(sel){ return document.querySelector(sel); }
   function qa(sel){ return Array.from(document.querySelectorAll(sel)); }
+
   function byNames(names){
     for(const name of names){
-      const el = q('#'+name) || q('[name="'+name+'"]') || q('[data-field="'+name+'"]');
+      const el = q('#' + name) || q('[name="' + name + '"]') || q('[data-field="' + name + '"]');
       if(el) return el;
     }
     return null;
   }
+
   function findInputByLabel(words){
     const labels = qa('label');
     for(const lb of labels){
-      const t = clean(lb.textContent);
-      if(words.some(w => t.includes(w))){
-        const forId = lb.getAttribute('for');
-        if(forId && q('#'+CSS.escape(forId))) return q('#'+CSS.escape(forId));
-        const input = lb.querySelector('input,select,textarea');
+      const text = clean(lb.textContent);
+      if(!words.some(w => text.includes(w))) continue;
+      const forId = lb.getAttribute('for');
+      if(forId && q('#' + CSS.escape(forId))) return q('#' + CSS.escape(forId));
+      const inner = lb.querySelector('input,select,textarea');
+      if(inner) return inner;
+      const wrap = lb.closest('.field,.form-row,.form-group,.input-row,.control,.card,section,div');
+      if(wrap){
+        const input = wrap.querySelector('input,select,textarea');
         if(input) return input;
-        const wrap = lb.closest('.field,.form-row,.form-group,.card,div');
-        if(wrap){
-          const next = wrap.querySelector('input,select,textarea');
-          if(next) return next;
-        }
       }
     }
     return null;
   }
-  function fieldWrap(el){
+
+  function wrapOf(el){
     if(!el) return null;
     return el.closest('.field,.form-row,.form-group,.input-row,.control,section,div') || el.parentElement;
   }
+
   function setLabel(el, text){
     if(!el) return;
     const id = el.id;
-    let lb = id ? q('label[for="'+CSS.escape(id)+'"]') : null;
+    let lb = id ? q('label[for="' + CSS.escape(id) + '"]') : null;
     if(!lb){
-      const wrap = fieldWrap(el);
+      const wrap = wrapOf(el);
       if(wrap) lb = wrap.querySelector('label');
     }
     if(lb) lb.textContent = text;
     el.setAttribute('aria-label', text);
     if(el.placeholder) el.placeholder = text;
   }
-  function setRequired(el, yes){
+
+  function setRequired(el, required){
     if(!el) return;
-    if(yes) el.setAttribute('required','required');
-    else el.removeAttribute('required');
-  }
-  function setHidden(el, hidden){
-    const wrap = fieldWrap(el);
-    if(wrap) wrap.classList.toggle('hidden-by-delivery', !!hidden);
-    if(hidden) setRequired(el,false);
-  }
-  function deliveryValue(){
-    const delivery = byNames(['deliveryMethod','deliveryType','delivery','preferredDeliveryMethod']) || findInputByLabel(['交付方式','希望方式']);
-    if(!delivery) return '到府安裝';
-    if(delivery.type === 'radio'){
-      const checked = q('[name="'+delivery.name+'"]:checked');
-      return clean(checked ? checked.value : delivery.value);
+    if(required){
+      el.required = true;
+      el.setAttribute('required', 'required');
+    }else{
+      el.required = false;
+      el.removeAttribute('required');
     }
-    if(delivery.tagName === 'SELECT') return clean(delivery.value || delivery.options[delivery.selectedIndex]?.text);
-    const checked = delivery.name ? q('input[name="'+delivery.name+'"]:checked') : null;
-    return clean(checked ? checked.value : delivery.value);
   }
-  function isPickup(){
-    return /自取|自運|自行|自己/.test(deliveryValue());
+
+  function setHidden(el, hidden){
+    const wrap = wrapOf(el);
+    if(wrap) wrap.classList.toggle('hidden-by-delivery', !!hidden);
+    if(el){
+      el.disabled = !!hidden;
+      if(hidden){
+        setRequired(el, false);
+        el.value = '';
+      }
+    }
   }
-  function findFields(){
+
+  function getFields(){
     return {
       delivery: byNames(['deliveryMethod','deliveryType','delivery','preferredDeliveryMethod']) || findInputByLabel(['交付方式','希望方式']),
+      equipment: byNames(['equipmentName','equipment','model','rentalItem','deviceName']) || findInputByLabel(['設備','機型','租用']),
       address: byNames(['customerAddress','address','installAddress','deliveryAddress']) || findInputByLabel(['地址','安裝地址','聯絡地址']),
       floor: byNames(['floorInfo','floor','elevatorInfo','floorElevator','deliveryFloor']) || findInputByLabel(['樓層','電梯']),
       date: byNames(['preferredDate','deliveryDate','installDate','pickupDate','desiredDate']) || findInputByLabel(['日期','安裝日期','自取日期','運送抵達日期']),
@@ -262,84 +267,154 @@
       name: byNames(['customerName','name']) || findInputByLabel(['姓名','客戶姓名']),
       phone: byNames(['customerPhone','phone','tel']) || findInputByLabel(['電話','手機']),
       email: byNames(['customerEmail','email']) || findInputByLabel(['Email','信箱','電子信箱']),
-      equipment: byNames(['equipmentName','equipment','model','rentalItem']) || findInputByLabel(['設備','機型','租用']),
       notification: byNames(['notificationPreference','notifyMethod','contactMethod']) || findInputByLabel(['通知方式'])
     };
   }
-  function notificationWantsEmail(f){
-    const n = f.notification;
-    if(!n) return false;
-    let v = '';
-    if(n.type === 'radio'){
-      const checked = q('[name="'+n.name+'"]:checked');
-      v = clean(checked ? checked.value : '');
+
+  function deliveryValue(){
+    const f = getFields();
+    const el = f.delivery;
+    if(!el) return '到府安裝';
+    if(el.type === 'radio'){
+      const checked = el.name ? q('input[name="' + el.name + '"]:checked') : null;
+      return clean(checked ? checked.value : el.value);
+    }
+    if(el.tagName === 'SELECT'){
+      return clean(el.value || (el.options[el.selectedIndex] ? el.options[el.selectedIndex].text : ''));
+    }
+    if(el.name){
+      const checked = q('input[name="' + el.name + '"]:checked');
+      if(checked) return clean(checked.value);
+    }
+    return clean(el.value);
+  }
+
+  function isPickup(){
+    return /自取|自運|自行|自己/.test(deliveryValue());
+  }
+
+  function notificationNeedsEmail(f){
+    const el = f.notification;
+    if(!el) return false;
+    let value = '';
+    if(el.type === 'radio'){
+      const checked = el.name ? q('input[name="' + el.name + '"]:checked') : null;
+      value = clean(checked ? checked.value : '');
+    }else if(el.tagName === 'SELECT'){
+      value = clean(el.value || (el.options[el.selectedIndex] ? el.options[el.selectedIndex].text : ''));
     }else{
-      v = clean(n.value || '');
+      value = clean(el.value);
     }
-    return /email|both|Email|信箱/i.test(v);
+    return /email|both|信箱|電子/i.test(value);
   }
+
+  function visible(el){
+    if(!el) return false;
+    const wrap = wrapOf(el) || el;
+    if(el.disabled) return false;
+    if(wrap.classList && wrap.classList.contains('hidden-by-delivery')) return false;
+    return wrap.offsetParent !== null || getComputedStyle(wrap).display !== 'none';
+  }
+
   function applyDeliveryUi(){
-    const f = findFields();
-    if(f.delivery) setRequired(f.delivery,true);
-    if(f.name) setRequired(f.name,true);
-    if(f.phone) setRequired(f.phone,true);
-    if(f.equipment) setRequired(f.equipment,true);
-    if(f.address) {
-      setRequired(f.address,true);
-      setHidden(f.address,false);
-      setLabel(f.address, isPickup() ? '聯絡地址' : '安裝地址');
+    const f = getFields();
+    const pickup = isPickup();
+
+    if(f.delivery) setRequired(f.delivery, true);
+    if(f.equipment) setRequired(f.equipment, true);
+    if(f.name) setRequired(f.name, true);
+    if(f.phone) setRequired(f.phone, true);
+
+    if(f.address){
+      setHidden(f.address, false);
+      setLabel(f.address, pickup ? '聯絡地址' : '安裝地址');
+      setRequired(f.address, true);
     }
-    if(f.date) {
-      setRequired(f.date,true);
-      setHidden(f.date,false);
-      setLabel(f.date, isPickup() ? '自取日期' : '運送抵達日期');
+
+    if(f.date){
+      setHidden(f.date, false);
+      setLabel(f.date, pickup ? '自取日期' : '運送抵達日期');
+      setRequired(f.date, true);
     }
-    if(f.time) {
-      setRequired(f.time,true);
-      setHidden(f.time,false);
-      setLabel(f.time, isPickup() ? '自取時間' : '運送抵達時間');
+
+    if(f.time){
+      setHidden(f.time, false);
+      setLabel(f.time, pickup ? '自取時間' : '運送抵達時間');
+      setRequired(f.time, true);
     }
-    if(f.floor) {
-      setHidden(f.floor, isPickup());
-      setRequired(f.floor, !isPickup());
-      if(!isPickup()) setLabel(f.floor, '樓層 / 電梯資訊');
+
+    if(f.floor){
+      if(pickup){
+        setHidden(f.floor, true);
+        setRequired(f.floor, false);
+      }else{
+        setHidden(f.floor, false);
+        setLabel(f.floor, '樓層 / 電梯資訊');
+        setRequired(f.floor, true);
+      }
     }
-    if(f.email) setRequired(f.email, notificationWantsEmail(f));
+
+    if(f.email){
+      setRequired(f.email, notificationNeedsEmail(f));
+    }
   }
-  function validateRequired(){
+
+  function validateVisibleRequired(){
     applyDeliveryUi();
-    const f = findFields();
-    const required = [f.delivery,f.name,f.phone,f.equipment,f.address,f.date,f.time].filter(Boolean);
-    if(!isPickup() && f.floor) required.push(f.floor);
-    if(f.email && notificationWantsEmail(f)) required.push(f.email);
-    const missing = required.filter(el => !clean(el.value));
-    if(missing.length){
-      const first = missing[0];
-      first.focus();
-      alert('請完整填寫必填欄位。');
-      return false;
+    const f = getFields();
+    const candidates = [
+      f.delivery,
+      f.equipment,
+      f.address,
+      f.date,
+      f.time,
+      f.name,
+      f.phone,
+      f.notification
+    ].filter(Boolean);
+
+    if(f.floor && !isPickup()) candidates.push(f.floor);
+    if(f.email && notificationNeedsEmail(f)) candidates.push(f.email);
+
+    for(const el of candidates){
+      if(visible(el) && !clean(el.value)){
+        el.focus();
+        alert('請完整填寫必填欄位。');
+        return false;
+      }
     }
     return true;
   }
-  document.addEventListener('change', function(e){
-    const f = findFields();
-    if(e.target === f.delivery || e.target === f.notification || (f.delivery && e.target.name && e.target.name === f.delivery.name) || (f.notification && e.target.name && e.target.name === f.notification.name)) applyDeliveryUi();
-  });
-  document.addEventListener('DOMContentLoaded', applyDeliveryUi);
-  setTimeout(applyDeliveryUi, 300);
-  setTimeout(applyDeliveryUi, 1000);
-  const form = q('form') || q('#rentalOrderForm');
-  if(form && !form.dataset.deliveryRequiredPatched){
-    form.dataset.deliveryRequiredPatched='1';
-    form.addEventListener('submit', function(e){
-      if(!validateRequired()){
-        e.preventDefault();
-        e.stopPropagation();
+
+  function bind(){
+    applyDeliveryUi();
+
+    document.addEventListener('change', function(e){
+      const f = getFields();
+      if(e.target === f.delivery || e.target === f.notification || (f.delivery && e.target.name && e.target.name === f.delivery.name) || (f.notification && e.target.name && e.target.name === f.notification.name)){
+        applyDeliveryUi();
       }
-    }, true);
+    });
+
+    const form = q('form') || q('#rentalOrderForm');
+    if(form && !form.dataset.visibleRequiredPatched){
+      form.dataset.visibleRequiredPatched = '1';
+      form.addEventListener('submit', function(e){
+        if(!validateVisibleRequired()){
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      }, true);
+    }
   }
-  window.YZRentalOrderValidateRequired = validateRequired;
+
+  document.addEventListener('DOMContentLoaded', bind);
+  setTimeout(bind, 300);
+  setTimeout(applyDeliveryUi, 800);
+  setTimeout(applyDeliveryUi, 1500);
+
   window.YZRentalOrderApplyDeliveryUi = applyDeliveryUi;
+  window.YZRentalOrderValidateRequired = validateVisibleRequired;
 })();
 </script>
 
