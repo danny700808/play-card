@@ -252,6 +252,7 @@
       if(!el) return false;
       if(el.type === 'button' || el.type === 'submit' || el.type === 'reset' || el.type === 'hidden' || el.type === 'file') return false;
       if(el.closest('[data-no-required]')) return false;
+      if(isOptionalRemarkField(el)) return false;
       const form = mainForm();
       return form === document.body || form.contains(el);
     });
@@ -270,6 +271,27 @@
     const wrap = wrapOf(el);
     if(wrap) return wrap.querySelector('label');
     return null;
+  }
+
+
+  function isOptionalRemarkField(el){
+    if(!el) return false;
+    const keys = [
+      el.id,
+      el.name,
+      el.getAttribute('data-field'),
+      el.getAttribute('placeholder'),
+      el.getAttribute('aria-label')
+    ].map(v => String(v || '')).join(' ');
+    if(/remark|remarks|note|notes|memo|comment|comments|special|request|需求|備註|備注|說明|其他/i.test(keys)) return true;
+
+    const wrap = wrapOf(el);
+    const label = labelOf(el);
+    const text = [
+      label ? label.textContent : '',
+      wrap ? wrap.textContent : ''
+    ].map(v => String(v || '')).join(' ');
+    return /特殊需求|備註|備注|其他說明|補充說明/i.test(text);
   }
 
   function setLabelText(el, text){
@@ -497,6 +519,30 @@
   setTimeout(removeRentalRequiredStars, 500);
   setTimeout(removeRentalRequiredStars, 1200);
   window.YZRentalRemoveRequiredStars = removeRentalRequiredStars;
+})();
+</script>
+
+
+<script>
+(function(){
+  function clearRemarkRequired(){
+    document.querySelectorAll('input, textarea, select').forEach(el=>{
+      const text = [
+        el.id || '',
+        el.name || '',
+        el.placeholder || '',
+        el.getAttribute('aria-label') || '',
+        el.closest('.field,.form-row,.form-group,.input-row,.control,section,div')?.textContent || ''
+      ].join(' ');
+      if(/remark|remarks|note|notes|memo|comment|comments|special|request|特殊需求|備註|備注|補充說明|其他說明/i.test(text)){
+        el.required = false;
+        el.removeAttribute('required');
+      }
+    });
+  }
+  document.addEventListener('DOMContentLoaded', clearRemarkRequired);
+  setTimeout(clearRemarkRequired, 300);
+  setTimeout(clearRemarkRequired, 1000);
 })();
 </script>
 
