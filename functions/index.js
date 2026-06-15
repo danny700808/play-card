@@ -542,6 +542,26 @@ function isPendingQueue(row = {}) {
   return !status || PENDING_STATUSES.has(status) || /^fail|失敗|error/i.test(status);
 }
 
+function queueScheduledAtMillis(row = {}) {
+  const raw = row.sendAfterAt || row.scheduledAt || row.notBeforeAt || row.deliverAfterAt;
+  if (!raw) return 0;
+  if (typeof raw.toDate === 'function') return raw.toDate().getTime();
+  if (raw instanceof Date) return raw.getTime();
+  if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+  const parsed = Date.parse(String(raw));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function formatDateTimeTextFromMillis(ms) {
+  const d = new Date(ms);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
 function queueChannel(row = {}) {
   return clean(row.channel || row.type || row.notifyType || row['發送方式']).toLowerCase();
 }
@@ -563,6 +583,77 @@ function queueBody(row = {}) {
   if (body) return body;
   return queueTitle(row) || '您有一則新的通知。';
 }
+
+function normalizeNotificationPreference(value, hasEmail) {
+  const v = clean(value).toLowerCase();
+  if (['email', 'email_only', 'email-only', 'mail', '只用email', '只用 email', '只用信箱', '信箱'].includes(v)) return 'email';
+  if (['line', 'line_only', 'line-only', '只用line', '只用 line'].includes(v)) return 'line';
+  if (['both', 'line_email', 'line+email', 'line + email', 'all', '雙軌'].includes(v)) return 'both';
+  return hasEmail ? 'both' : 'line';
+}
+function wantsLineByPreference(pref) {
+  return pref === 'line' || pref === 'both';
+}
+function wantsEmailByPreference(pref) {
+  return pref === 'email' || pref === 'both';
+}
+function isCustomerEmailVerified(row = {}) {
+  return row.emailVerified === true || clean(row.emailLinkStatus).toLowerCase() === 'verified' || !!clean(row.emailVerifiedAtText);
+}
+function customerEmailOf(row = {}) {
+  return queueTargetEmail(row);
+}
+async function createCustomerNotificationQueues({ row, title, body, source, contractId, applicationId, sendAfterAt, sendAfterMs, signUrl, officialContractUrl }) {
+  row = row || {};
+  const email = customerEmailOf(row);
+  const pref = normalizeNotificationPreference(row.notificationPreference || row.preferredContactMethod, email);
+  const lineId = queueTargetLineUserId(row);
+  const targetName = clean(row.customerName || row.partyAName || row.targetName || '客人');
+  const baseId = `${safeId(source || 'rental-customer-notice')}-${safeId(contractId || applicationId || row.contractId || row.applicationId || 'rental')}-${Date.now()}`;
+  const results = { line: false, email: false, count: 0, queueIds: [], preference: pref };
+  const common = stripUndefined({
+    targetName,
+    title,
+    body,
+    message: body,
+    status: '待發送',
+    sendAfterAt,
+    sendAfterMs,
+    source,
+    contractId,
+    applicationId,
+    notificationPreference: pref,
+    emailVerified: isCustomerEmailVerified(row),
+    signUrl,
+    officialContractUrl,
+  });
+  if (wantsLineByPreference(pref) && lineId) {
+    const queueId = `${baseId}-line`;
+    await createNotificationQueue(Object.assign({}, common, {
+      queueId,
+      channel: 'line',
+      targetLineUserId: lineId,
+      targetEmail: email,
+    }));
+    results.line = true;
+    results.count += 1;
+    results.queueIds.push(queueId);
+  }
+  if (wantsEmailByPreference(pref) && email) {
+    const queueId = `${baseId}-email`;
+    await createNotificationQueue(Object.assign({}, common, {
+      queueId,
+      channel: 'email',
+      targetEmail: email,
+      targetLineUserId: lineId,
+    }));
+    results.email = true;
+    results.count += 1;
+    results.queueIds.push(queueId);
+  }
+  return results;
+}
+
 
 async function sendLinePush(row) {
   const to = queueTargetLineUserId(row);
@@ -653,8 +744,31 @@ async function appendNotificationLog(queueId, data) {
 async function processNotificationQueueDoc(docRef, row, options = {}) {
   row = row || {};
   const queueId = clean(row.queueId || docRef.id);
-  const channel = queueChannel(row);
   if (!isPendingQueue(row)) return { ok: true, skipped: true, reason: `狀態不是待發送：${queueStatus(row)}` };
+
+  const scheduledAt = queueScheduledAtMillis(row);
+  const nowMs = Date.now();
+  if (scheduledAt && scheduledAt > nowMs) {
+    const delayMs = scheduledAt - nowMs;
+    await markQueue(docRef, {
+      queueId,
+      status: '待發送',
+      scheduledForText: formatDateTimeTextFromMillis(scheduledAt),
+      scheduledRemainingMs: delayMs,
+      schedulerNote: '尚未到預定發送時間，先保留待發送。',
+    });
+    if (options.processor === 'onCreate' && delayMs <= 90000) {
+      await sleep(delayMs);
+      const freshSnap = await docRef.get();
+      if (!freshSnap.exists) return { ok: true, skipped: true, reason: 'queue-deleted-before-scheduled-time' };
+      row = freshSnap.data() || {};
+      if (!isPendingQueue(row)) return { ok: true, skipped: true, reason: `等待期間狀態已變更：${queueStatus(row)}` };
+    } else {
+      return { ok: true, skipped: true, scheduled: true, queueId, sendAfterAt: formatDateTimeTextFromMillis(scheduledAt) };
+    }
+  }
+
+  const channel = queueChannel(row);
   if (!['line', 'email'].includes(channel)) {
     await markQueue(docRef, { status: '發送失敗', lastError: `不支援的發送方式：${channel || '(空白)'}` });
     return { ok: false, skipped: true, reason: 'unsupported-channel' };
@@ -781,7 +895,12 @@ async function getContractForToken(contractId, token, options = {}) {
   return { ref: snap.ref, contract };
 }
 
-exports.sendNotificationQueueOnCreate = onDocumentCreated(`${QUEUE_COLLECTION}/{queueId}`, async (event) => {
+exports.sendNotificationQueueOnCreate = onDocumentCreated({
+  document: `${QUEUE_COLLECTION}/{queueId}`,
+  region: 'us-central1',
+  timeoutSeconds: 180,
+  memory: '512MiB',
+}, async (event) => {
   const snap = event.data;
   if (!snap) return null;
   return await processNotificationQueueDoc(snap.ref, snap.data() || {}, { processor: 'onCreate' });
@@ -835,16 +954,31 @@ exports.emailSendCheckHttp = httpEndpoint(async (data) => {
 exports.rentalSubmitApplicationHttp = httpEndpoint(async (data) => {
   const applicationId = clean(data.applicationId || data.applicationNo) || randomId('RA');
   const customerName = clean(data.customerName || data.partyAName || '未填姓名');
+  const customerEmail = normalizeEmail(data.customerEmail || data.email || '');
+  const notificationPreference = normalizeNotificationPreference(data.notificationPreference || data.preferredContactMethod, customerEmail);
   const applicationNo = clean(data.applicationNo || applicationId);
   const now = admin.firestore.FieldValue.serverTimestamp();
   const ref = db.collection('rentalApplications').doc(applicationId);
-  const exists = (await ref.get()).exists;
+  const currentSnap = await ref.get();
+  const current = currentSnap.exists ? (currentSnap.data() || {}) : {};
+  const exists = currentSnap.exists;
+  const emailVerifyToken = clean(data.emailVerifyToken || current.emailVerifyToken) || randomToken(18);
+  const emailVerificationUrl = `${webBaseUrl()}rental-email-verify.html?applicationId=${encodeURIComponent(applicationId)}&token=${encodeURIComponent(emailVerifyToken)}`;
+  const wantsLine = wantsLineByPreference(notificationPreference);
+  const wantsEmail = wantsEmailByPreference(notificationPreference);
   const row = stripUndefined(Object.assign({}, data, {
     applicationId,
     applicationNo,
     customerName,
-    lineConfirmText: clean(data.lineConfirmText) || `設備租賃申請 ${applicationNo}`, 
-    lineLinkStatus: clean(data.lineLinkStatus || 'pending'),
+    customerEmail,
+    notificationPreference,
+    preferredContactMethod: notificationPreference,
+    emailVerifyToken,
+    emailVerificationUrl,
+    emailVerified: current.emailVerified === true ? true : false,
+    emailLinkStatus: wantsEmail ? (current.emailVerified === true ? 'verified' : clean(current.emailLinkStatus || 'pending')) : 'not_required',
+    lineConfirmText: clean(data.lineConfirmText) || `設備租賃申請 ${applicationNo}`,
+    lineLinkStatus: wantsLine ? clean(data.lineLinkStatus || current.lineLinkStatus || 'pending') : 'not_required',
     status: clean(data.status || '待店家確認'),
     updatedAt: now,
     updatedAtText: nowText(),
@@ -855,12 +989,15 @@ exports.rentalSubmitApplicationHttp = httpEndpoint(async (data) => {
   }
   await ref.set(row, { merge: true });
 
+  let emailVerificationQueued = false;
   try {
     const adminUrl = `${webBaseUrl()}rental-admin.html?applicationId=${encodeURIComponent(applicationId)}`;
     const body = [
       '收到新的設備租賃申請',
       `姓名：${customerName}`,
       `電話：${clean(data.customerPhone || '')}`,
+      `Email：${customerEmail || '未填'}`,
+      `通知方式：${notificationPreference === 'email' ? '只用 Email' : notificationPreference === 'line' ? '只用 LINE' : 'LINE + Email'}`,
       `設備需求：${clean(data.otherEquipmentNeed || data.equipmentName || data.rentalType || '未填寫')}`,
       `希望方式：${clean(data.shippingMethod || '')}`,
       `希望日期：${clean(data.preferredDate || '')} ${clean(data.preferredTime || '')}`.trim(),
@@ -868,14 +1005,86 @@ exports.rentalSubmitApplicationHttp = httpEndpoint(async (data) => {
       `申請編號：${applicationNo}`,
       `查看申請資料：${adminUrl}`,
       '',
-      `請客人加入官方 LINE 後貼上：設備租賃申請 ${applicationNo}`
+      wantsLine ? `LINE 配對文字：設備租賃申請 ${applicationNo}` : '客人選擇不使用 LINE 配對。'
     ].join('\n');
     await queueManagerNotification({ title: '新的設備租賃申請', body, source: 'rental-application', applicationId });
   } catch (err) {
     console.error('[rentalSubmitApplicationHttp queue manager notice failed]', err);
   }
 
-  return { applicationId, applicationNo, lineConfirmText: row.lineConfirmText };
+  if (wantsEmail && customerEmail) {
+    try {
+      const verifyBody = [
+        `${customerName} 您好，柚子樂器已收到您的設備租賃申請。`,
+        '',
+        `申請編號：${applicationNo}`,
+        '',
+        '請點選以下連結確認 Email，確認後後續租賃通知會依您選擇的方式寄送：',
+        emailVerificationUrl,
+        '',
+        wantsLine ? `若您也要使用 LINE 通知，請到柚子樂器官方 LINE 貼上：設備租賃申請 ${applicationNo}` : '您已選擇只用 Email 通知，不需要完成 LINE 配對。',
+      ].join('\n');
+      await createNotificationQueue({
+        queueId: `rental-email-verify-${safeId(applicationId)}-${Date.now()}`,
+        channel: 'email',
+        targetEmail: customerEmail,
+        targetName: customerName,
+        title: '請確認柚子樂器租賃通知 Email',
+        body: verifyBody,
+        message: verifyBody,
+        source: 'rental-email-verify',
+        applicationId,
+        notificationPreference,
+        emailVerificationUrl,
+      });
+      emailVerificationQueued = true;
+      await ref.set({ emailVerificationQueuedAtText: nowText() }, { merge: true });
+    } catch (err) {
+      console.error('[rentalSubmitApplicationHttp queue email verification failed]', err);
+      await ref.set({ emailVerificationQueueError: err && err.message ? err.message : String(err) }, { merge: true });
+    }
+  }
+
+  return { applicationId, applicationNo, lineConfirmText: row.lineConfirmText, notificationPreference, emailVerificationQueued, emailVerificationUrl: wantsEmail ? emailVerificationUrl : '' };
+});
+
+exports.rentalVerifyEmailHttp = httpEndpoint(async (data) => {
+  const applicationId = clean(data.applicationId || data.id || data.applicationNo);
+  const token = clean(data.token || data.emailVerifyToken);
+  if (!applicationId || !token) throw new Error('Email 確認連結不完整。');
+  const ref = db.collection('rentalApplications').doc(applicationId);
+  let snap = await ref.get();
+  if (!snap.exists) {
+    const found = await findRentalApplication(applicationId);
+    if (!found) throw new Error('找不到租賃申請資料。');
+    snap = await found.ref.get();
+  }
+  const app = Object.assign({ __id: snap.id }, snap.data() || {});
+  if (clean(app.emailVerifyToken) !== token) throw new Error('Email 確認連結驗證失敗。');
+  const update = {
+    emailVerified: true,
+    emailLinkStatus: 'verified',
+    emailVerifiedAt: admin.firestore.FieldValue.serverTimestamp(),
+    emailVerifiedAtText: nowText(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAtText: nowText(),
+  };
+  await snap.ref.set(update, { merge: true });
+  const contractSnap = await db.collection('rentalContracts').where('applicationId', '==', snap.id).limit(5).get();
+  const batch = db.batch();
+  contractSnap.forEach((doc) => batch.set(doc.ref, update, { merge: true }));
+  if (!contractSnap.empty) await batch.commit();
+  try {
+    await queueManagerNotification({
+      title: '租賃客人已完成 Email 確認',
+      body: [`客人已完成租賃 Email 確認。`, `姓名：${clean(app.customerName)}`, `Email：${clean(app.customerEmail)}`, `申請編號：${clean(app.applicationNo || snap.id)}`].join('\n'),
+      source: 'rental-email-verified',
+      applicationId: snap.id,
+    });
+  } catch (err) {
+    console.warn('queue manager notification for rentalVerifyEmailHttp failed:', err);
+  }
+  return { applicationId: snap.id, applicationNo: clean(app.applicationNo || snap.id), customerEmail: clean(app.customerEmail) };
 });
 
 exports.rentalSaveContractHttp = httpEndpoint(async (data) => {
@@ -942,8 +1151,14 @@ exports.rentalSignContractHttp = httpEndpoint(async (data) => {
     customerIdNumber: clean(data.customerIdNumber || contract.customerIdNumber),
     customerIdImageWatermarkedDataUrl: clean(data.customerIdImageWatermarkedDataUrl || data.idImageWatermarkedDataUrl || contract.customerIdImageWatermarkedDataUrl),
     idImageWatermarkedDataUrl: clean(data.customerIdImageWatermarkedDataUrl || data.idImageWatermarkedDataUrl || contract.idImageWatermarkedDataUrl),
+    customerIdImageUrl: clean(data.customerIdImageUrl || data.idImageUrl || contract.customerIdImageUrl || contract.idImageUrl),
+    idImageUrl: clean(data.idImageUrl || data.customerIdImageUrl || contract.idImageUrl || contract.customerIdImageUrl),
     signatureDataUrl,
     customerSignatureDataUrl: signatureDataUrl,
+    customerSignatureUrl: clean(data.customerSignatureUrl || data.signatureUrl || contract.customerSignatureUrl || contract.signatureUrl),
+    signatureUrl: clean(data.signatureUrl || data.customerSignatureUrl || contract.signatureUrl || contract.customerSignatureUrl),
+    notificationPreference: clean(data.notificationPreference || contract.notificationPreference || contract.preferredContactMethod),
+    emailVerified: contract.emailVerified === true,
     customerSubmittedFormalAt: clean(data.customerSubmittedFormalAt || nowText()),
     customerSignedAt: clean(data.customerSignedAt || nowText()),
     formalReceivedNoticeText: clean(data.formalReceivedNoticeText || contract.formalReceivedNoticeText),
@@ -952,6 +1167,24 @@ exports.rentalSignContractHttp = httpEndpoint(async (data) => {
     updatedAtText: nowText(),
   });
   await ref.set(update, { merge: true });
+  try {
+    const customerName = clean(contract.customerName || contract.partyAName || contract.name || '客人');
+    const body = [
+      `客人已完成身分證資料、證明圖片與簽名送出。`,
+      `客人：${customerName}`,
+      `契約編號：${clean(contract.contractNo || contract.contractId || contractId)}`,
+      `狀態：待店家確認`,
+    ].join('\n');
+    await queueManagerNotification({
+      title: '租賃客人已送出正式資料',
+      body,
+      source: 'rental-formal-signed',
+      contractId,
+      applicationId: clean(contract.applicationId),
+    });
+  } catch (notifyErr) {
+    console.warn('queue manager notification for rentalSignContractHttp failed:', notifyErr);
+  }
   return { contractId, status: '待店家確認' };
 });
 
@@ -1042,23 +1275,15 @@ exports.rentalCompleteReturnHttp = httpEndpoint(async (data) => {
     updatedAtText: nowText(),
   }, { merge: true });
 
-  let queueId = '';
-  const lineId = clean(contract.customerLineUserId || contract.lineUserId);
-  if (lineId) {
-    const body = [`您的租賃設備已完成退租收回。`, `契約編號：${clean(contract.contractNo || contract.contractId || snap.id)}`, `完成時間：${nowText()}`, '', '感謝您使用柚子樂器設備租賃服務。'].join('\n');
-    queueId = await createNotificationQueue({
-      channel: 'line',
-      targetLineUserId: lineId,
-      targetName: clean(contract.customerName),
-      targetEmail: clean(contract.customerEmail),
-      title: '租賃退租完成通知',
-      body,
-      message: body,
-      source: 'rental-complete-return',
-      contractId,
-    });
-  }
-  return { contractId, status: '已退租', queueId };
+  const body = [`您的租賃設備已完成退租收回。`, `契約編號：${clean(contract.contractNo || contract.contractId || snap.id)}`, `完成時間：${nowText()}`, '', '感謝您使用柚子樂器設備租賃服務。'].join('\n');
+  const notifyResult = await createCustomerNotificationQueues({
+    row: Object.assign({}, contract, { contractId }),
+    title: '租賃退租完成通知',
+    body,
+    source: 'rental-complete-return',
+    contractId,
+  });
+  return { contractId, status: '已退租', queueId: notifyResult.queueIds[0] || '', notificationResult: notifyResult };
 });
 
 exports.lineWebhook = onRequest(
