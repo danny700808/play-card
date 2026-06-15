@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>電鋼琴 電子鼓 租賃申請表</title>
-  <link rel="stylesheet" href="style.css?v=rental-order-notify-20260615">
+  <link rel="stylesheet" href="style.css?v=rental-order-line-step-20260615">
   <style>
     body{background:#eef3f7;color:#18314a}.wrap{max-width:960px;margin:0 auto;padding:22px 14px 54px}.hero{background:#fff;border:1px solid #dbe5ef;border-radius:28px;padding:24px;box-shadow:0 10px 28px rgba(15,23,42,.06);margin-bottom:16px}.hero h1{margin:0 0 10px;font-size:32px;font-weight:950}.card2{background:#fff;border:1px solid #dbe5ef;border-radius:24px;padding:20px;margin-bottom:16px;box-shadow:0 10px 28px rgba(15,23,42,.04)}.section-title{font-size:22px;font-weight:950;margin:0 0 12px}.field{margin-bottom:14px}.field label{display:block;font-weight:900;margin-bottom:7px}.field input,.field select,.field textarea{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:14px;padding:12px 14px;background:#fff;font-size:16px}.field textarea{min-height:92px}.row2{display:grid;grid-template-columns:1fr 1fr;gap:14px}.checkline{display:flex;align-items:flex-start;gap:10px;line-height:1.7;font-weight:850}.rules{border:1px solid #dbe5ef;background:#f8fafc;border-radius:18px;padding:16px;line-height:1.9;white-space:pre-wrap}.btn-row{display:flex;gap:10px;flex-wrap:wrap}.btn{border:0;border-radius:14px;background:#1f7a5a;color:#fff;font-weight:950;padding:13px 18px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}.btn.secondary{background:#e2e8f0;color:#18314a}.msg{margin-top:12px;border-radius:14px;padding:12px 14px;font-weight:900;line-height:1.7}.msg.ok{background:#e8fff4;color:#146c43}.msg.bad{background:#fff0f0;color:#b42318}.success-box{display:none;border:2px solid #1f7a5a;background:#f0fff7;border-radius:24px;padding:20px;line-height:1.9}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-weight:950;background:#fff;border:1px dashed #1f7a5a;border-radius:12px;padding:8px 10px;display:inline-block}.small{font-size:13px;color:#64748b;line-height:1.8}.note-box{border:1px solid #dbe5ef;background:#f8fafc;border-radius:16px;padding:12px 14px;color:#334155;font-size:14px;line-height:1.8;margin-top:4px}.radio-group{display:grid;gap:8px}.radio-option{border:1px solid #dbe5ef;background:#f8fafc;border-radius:14px;padding:10px 12px;display:flex;gap:10px;align-items:flex-start;line-height:1.7;font-weight:850}.radio-option small{display:block;color:#64748b;font-weight:500}.success-section{display:none}@media(max-width:720px){.row2{grid-template-columns:1fr}.hero h1{font-size:26px}.wrap{padding:14px 10px 40px}.card2,.hero{padding:16px;border-radius:20px}}
   .hidden-by-delivery{display:none!important}
@@ -80,7 +80,7 @@
   display:none!important;
 }
 
-#successBox{display:none!important}
+/* successBox 不再強制隱藏；送出後改導向 LINE / Email 下一步頁 */
 
 /* 20260615：送出區按鈕滿版排列 */
 .submit-actions{
@@ -138,7 +138,7 @@
       <div id="emailNextBox" class="note-box success-section" style="margin-top:12px"><b>請確認 Email：</b><br>系統已寄出 Email 確認信，請到信箱點選確認連結。完成確認後，後續租賃通知會依您選擇的方式寄送。<br><span class="small">若沒有看到信件，請檢查垃圾郵件、促銷內容或所有郵件。</span></div>
       <div class="small">正式租用確認後，店家才會提供正式填寫 / 簽署連結；正式階段才需要身分證證明上傳。</div><div class="btn-row" style="margin-top:12px"><button class="btn success-section" id="copyLineTextBtn" type="button">複製官方 LINE 配對文字</button><a class="btn secondary success-section" id="lineAddBtn" href="https://lin.ee/Fx5Y2mL" target="_blank">加入柚子樂器 LINE</a><a class="btn secondary" href="index.html">返回首頁</a></div></section>
   </div>
-  <script src="config.js?v=rental-order-notify-20260615"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script><script src="rental-common.js?v=rental-order-notify-20260615"></script>
+  <script src="config.js?v=rental-order-line-step-20260615"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script><script src="rental-common.js?v=rental-order-line-step-20260615"></script>
   <script>
     const R=window.YZRental;
     function setSubmitProgress(percent){
@@ -237,6 +237,27 @@
       await R.set('rentalApplications', applicationId, data, true);
       return { ok:true, applicationId, applicationNo:applicationId, lineConfirmText, fallbackSaved:true };
     }
+    function goToRentalNextStep(res, payload){
+      const appNo=res.applicationNo || res.applicationId || '已送出';
+      const pref=R.notificationPreference(payload.notificationPreference, payload.customerEmail);
+      const lineText=normalizeLineConfirmText(res.lineConfirmText, appNo);
+      const needLine=R.wantsLine(pref, payload.customerEmail);
+      const needEmail=R.wantsEmail(pref, payload.customerEmail);
+      const nextData={
+        applicationId:res.applicationId || '',
+        applicationNo:appNo,
+        lineConfirmText:lineText,
+        notificationPreference:pref,
+        needLine,
+        needEmail,
+        emailVerificationQueued:!!res.emailVerificationQueued,
+        customerEmail:payload.customerEmail || ''
+      };
+      try{ sessionStorage.setItem('rentalNextStep', JSON.stringify(nextData)); }catch(e){}
+      const url='rental-line-bind.html?applicationId='+encodeURIComponent(nextData.applicationId || appNo)+'&applicationNo='+encodeURIComponent(appNo)+'&pref='+encodeURIComponent(pref);
+      window.location.href=url;
+    }
+
     function showSuccess(res, payload){
       const appNo=res.applicationNo || res.applicationId || '已送出';
       const pref=R.notificationPreference(payload.notificationPreference, payload.customerEmail);
@@ -249,8 +270,8 @@
       showSuccessSection('lineConfirmText', needLine);
       showSuccessInline('copyLineTextBtn', needLine);
       showSuccessInline('lineAddBtn', needLine);
-      showSuccessSection('emailNextBox', false);
-      R.hide('successBox');
+      showSuccessSection('emailNextBox', needEmail);
+      R.show('successBox');
       R.qs('copyLineTextBtn').onclick=()=>copyLineConfirmText(lineText);
     }
     document.getElementById('rentalForm').addEventListener('submit', async (e)=>{
@@ -300,8 +321,8 @@
         }catch(e){ console.warn('save lineConfirmText failed', e); }
         setSubmitProgress(100);
         btn.dataset.done='1';
-        setSubmitButtonLabel('送出完成');
-        showSuccess(Object.assign({}, res, {lineConfirmText}), payload);
+        setSubmitButtonLabel('完成');
+        setTimeout(()=>goToRentalNextStep(Object.assign({}, res, {lineConfirmText}), payload), 350);
       }catch(err){
         console.error('rental submit failed:', err);
         setSubmitProgress(100);
