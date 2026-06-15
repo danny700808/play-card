@@ -116,6 +116,10 @@ function webBaseUrl() {
   return String(process.env.PUBLIC_WEB_BASE_URL || 'https://danny700808.github.io/play-card/').replace(/\/?$/, '/');
 }
 
+function rentalAdminApplicationUrl(applicationId) {
+  return `${webBaseUrl()}rental-admin.html?applicationId=${encodeURIComponent(applicationId)}`;
+}
+
 async function findRentalApplication(applicationKey) {
   const key = normalizeText(applicationKey);
   if (!key) return null;
@@ -168,10 +172,10 @@ async function handleRentalApplicationLink({ applicationKey, declaredName, lineU
 
   const managerLineUserId = await getPrimaryManagerLineUserId();
   if (managerLineUserId && managerLineUserId !== lineUserId) {
-    const adminUrl = `${webBaseUrl()}rental-admin.html?applicationId=${encodeURIComponent(app.id)}`;
+    const adminUrl = rentalAdminApplicationUrl(app.id);
     const equipment = normalizeText(data.otherEquipmentNeed || data.equipmentName || data.rentalType || '');
     const message = [
-      '有客人完成租賃 LINE 連結',
+      '客人已完成租賃 LINE 綁定',
       `姓名：${customerName}`,
       `電話：${normalizeText(data.customerPhone || '')}`,
       `申請編號：${applicationNo}`,
@@ -179,7 +183,8 @@ async function handleRentalApplicationLink({ applicationKey, declaredName, lineU
       `希望方式：${normalizeText(data.shippingMethod || '')}`,
       `希望日期：${normalizeText(data.preferredDate || '')} ${normalizeText(data.preferredTime || '')}`.trim(),
       '',
-      `查看申請資料：${adminUrl}`
+      '請進入系統處理這一筆租賃申請：',
+      adminUrl
     ].join('\n');
     await pushLineMessage(managerLineUserId, message);
   }
@@ -991,7 +996,6 @@ exports.rentalSubmitApplicationHttp = httpEndpoint(async (data) => {
 
   let emailVerificationQueued = false;
   try {
-    const adminUrl = `${webBaseUrl()}rental-admin.html?applicationId=${encodeURIComponent(applicationId)}`;
     const body = [
       '收到新的設備租賃申請',
       `姓名：${customerName}`,
@@ -1003,7 +1007,6 @@ exports.rentalSubmitApplicationHttp = httpEndpoint(async (data) => {
       `希望日期：${clean(data.preferredDate || '')} ${clean(data.preferredTime || '')}`.trim(),
       '',
       `申請編號：${applicationNo}`,
-      `查看申請資料：${adminUrl}`,
       '',
       wantsLine ? `LINE 配對文字：設備租賃申請 ${applicationNo}` : '客人選擇不使用 LINE 配對。'
     ].join('\n');
@@ -1077,9 +1080,17 @@ exports.rentalVerifyEmailHttp = httpEndpoint(async (data) => {
   contractSnap.forEach((doc) => batch.set(doc.ref, update, { merge: true }));
   if (!contractSnap.empty) await batch.commit();
   try {
+    const adminUrl = rentalAdminApplicationUrl(snap.id);
     await queueManagerNotification({
       title: '租賃客人已完成 Email 確認',
-      body: [`客人已完成租賃 Email 確認。`, `姓名：${clean(app.customerName)}`, `Email：${clean(app.customerEmail)}`, `申請編號：${clean(app.applicationNo || snap.id)}`].join('\n'),
+      body: [
+        `姓名：${clean(app.customerName)}`,
+        `Email：${clean(app.customerEmail)}`,
+        `申請編號：${clean(app.applicationNo || snap.id)}`,
+        '',
+        '請進入系統處理這一筆租賃申請：',
+        adminUrl
+      ].join('\n'),
       source: 'rental-email-verified',
       applicationId: snap.id,
     });
