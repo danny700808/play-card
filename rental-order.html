@@ -546,5 +546,65 @@
 })();
 </script>
 
+
+<script>
+(function(){
+  function clean(v){ return String(v || '').trim(); }
+  function wrapOf(el){
+    if(!el) return null;
+    return el.closest('.field,.form-row,.form-group,.input-row,.control,.card-field,.field-wrap,.form-control,section,div') || el.parentElement;
+  }
+  function labelText(el){
+    if(!el) return '';
+    const id = el.id;
+    let label = id ? document.querySelector('label[for="' + CSS.escape(id) + '"]') : null;
+    const wrap = wrapOf(el);
+    if(!label && wrap) label = wrap.querySelector('label');
+    return clean([
+      label ? label.textContent : '',
+      el.placeholder || '',
+      el.getAttribute('aria-label') || '',
+      el.id || '',
+      el.name || '',
+      el.getAttribute('data-field') || '',
+      wrap ? wrap.textContent : ''
+    ].join(' '));
+  }
+  function isRentalOptionalText(el){
+    if(!el) return false;
+    const text = labelText(el);
+    return /設備需求|備註|備注|其他補充|其他說明|補充說明|特殊需求|remark|remarks|note|notes|memo|comment|comments|special|request/i.test(text);
+  }
+  function clearOptionalRequired(){
+    document.querySelectorAll('textarea,input,select').forEach(el=>{
+      if(isRentalOptionalText(el)){
+        el.required = false;
+        el.removeAttribute('required');
+        el.setAttribute('data-no-required','true');
+      }
+    });
+  }
+  document.addEventListener('DOMContentLoaded', clearOptionalRequired);
+  setTimeout(clearOptionalRequired, 50);
+  setTimeout(clearOptionalRequired, 300);
+  setTimeout(clearOptionalRequired, 800);
+  setTimeout(clearOptionalRequired, 1500);
+  window.YZRentalClearOptionalRequired = clearOptionalRequired;
+})();
+</script>
+
+
+<script>
+(function(){
+  document.addEventListener('submit', function(){
+    if(window.YZRentalClearOptionalRequired) window.YZRentalClearOptionalRequired();
+  }, true);
+  document.addEventListener('click', function(e){
+    const btn = e.target && e.target.closest ? e.target.closest('button, input[type="submit"]') : null;
+    if(btn && window.YZRentalClearOptionalRequired) window.YZRentalClearOptionalRequired();
+  }, true);
+})();
+</script>
+
 </body>
 </html>
