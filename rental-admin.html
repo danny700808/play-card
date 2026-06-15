@@ -22,7 +22,7 @@
       .wrap>.card2:first-of-type .section-hd{display:block!important}
       .layout{display:block!important;width:100%!important;max-width:100%!important;min-width:0!important;grid-template-columns:none!important;gap:0!important}
       .layout>section,.layout>main,main,#detailBox,.print-area{display:block!important;width:100%!important;max-width:100%!important;min-width:0!important;box-sizing:border-box!important;position:static!important;float:none!important;clear:both!important}
-      .print-area{overflow-x:auto!important;-webkit-overflow-scrolling:touch!important}
+      .print-area{overflow-x:hidden!important;-webkit-overflow-scrolling:touch!important}
       .layout h2{font-size:19px!important;line-height:1.35!important;margin:0 0 10px!important}
       .stat-grid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:6px!important;width:100%!important;flex-wrap:initial!important}
       .stat{display:flex!important;align-items:center!important;justify-content:flex-start!important;padding:6px 8px!important;border-radius:10px!important;gap:4px!important;min-width:0!important;overflow:hidden!important}
@@ -48,14 +48,15 @@
       .muted{font-size:12px!important;line-height:1.65!important;word-break:break-word!important;white-space:normal!important}
       .section-hd{display:block!important}
       [data-send-fill-btn]{width:100%!important;min-width:0!important}
-      #contractPreview{width:100%!important;max-width:100%!important;min-width:0!important;overflow-x:auto!important;-webkit-overflow-scrolling:touch!important}
-      .rental-contract-sheet{width:100%!important;max-width:100%!important;min-width:0!important;min-height:auto!important;height:auto!important;box-sizing:border-box!important;padding:12px!important;margin:0 0 10px!important;border-radius:12px!important;overflow:hidden!important;font-size:12px!important}
-      .rental-contract-sheet *{max-width:100%!important;box-sizing:border-box!important;word-break:break-word!important}
-      table{width:100%!important;max-width:100%!important;table-layout:fixed!important}
-      img,canvas,svg{max-width:100%!important;height:auto!important}
+      #contractPreview{width:100%!important;max-width:100%!important;min-width:0!important;overflow-x:hidden!important;-webkit-overflow-scrolling:touch!important}
+      .rental-contract-mobile-page{display:block!important;position:relative!important;margin:0 auto 14px!important;overflow:hidden!important;max-width:100%!important}
+      #contractPreview .rental-contract-sheet{max-width:none!important;box-sizing:border-box!important;margin:0!important;border-radius:12px!important;overflow:hidden!important}
+      #contractPreview .rental-contract-sheet *{box-sizing:border-box!important}
+      #contractPreview table{table-layout:fixed!important}
+      #contractPreview img,#contractPreview canvas,#contractPreview svg{height:auto!important}
     }
 
-    @media print{body *{visibility:hidden}.print-area,.print-area *{visibility:visible}.print-area{position:absolute;left:0;top:0;width:100%}.card2:not(.print-area){display:none}.rental-contract-sheet{border:none!important;box-shadow:none!important;margin:0!important;width:210mm!important;min-height:297mm!important}@page{size:A4;margin:0}}
+    @media print{body *{visibility:hidden}.print-area,.print-area *{visibility:visible}.print-area{position:absolute;left:0;top:0;width:100%}.card2:not(.print-area){display:none}.rental-contract-mobile-page{width:auto!important;height:auto!important;overflow:visible!important;margin:0!important}.rental-contract-mobile-page .rental-contract-sheet{position:relative!important;left:auto!important;top:auto!important;transform:none!important}.rental-contract-sheet{border:none!important;box-shadow:none!important;margin:0!important;width:210mm!important;min-height:297mm!important}@page{size:A4;margin:0}}
   </style>
 </head>
 <body onload="initPage()">
@@ -67,7 +68,67 @@
   <script src="config.js?v=rental-flow-20260611"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" referrerpolicy="no-referrer"></script><script src="firebase-client.js?v=20260614-rental-queue-delete-fix"></script><script src="app.js?v=rental-flow-20260611"></script><script src="rental-common.js?v=rental-notify-20260615"></script><script src="global-nav.js?v=20260603unified1"></script>
   <script>
     const R=window.YZRental; let applications=[],contracts=[],selected=null,filter='all';
-    async function initPage(){ if(typeof fillHeader==='function') fillHeader(); const u=R.requireManager(); if(!u) return; document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active')); b.classList.add('active'); filter=b.dataset.filter; renderList();}); await loadAll(); const params=new URLSearchParams(location.search); const appId=params.get('applicationId')||params.get('appId'); const contractId=params.get('contractId'); const anyId=params.get('id'); if(appId){ selectItem('application', appId); } else if(contractId){ selectItem('contract', contractId); } else if(anyId){ const app=applications.find(x=>x.__id===anyId||x.applicationNo===anyId); const c=contracts.find(x=>x.__id===anyId||x.contractNo===anyId); if(app) selectItem('application', app.__id); else if(c) selectItem('contract', c.__id); } }
+    function setupContractPreviewScaler(){
+      const box=R.qs('contractPreview');
+      if(!box || box.__rentalPreviewScalerReady) return;
+      box.__rentalPreviewScalerReady=true;
+      const run=()=>requestAnimationFrame(applyContractPreviewScale);
+      new MutationObserver(run).observe(box,{childList:true,subtree:false});
+      window.addEventListener('resize', run);
+      window.addEventListener('orientationchange', ()=>setTimeout(applyContractPreviewScale, 350));
+      window.addEventListener('beforeprint', resetContractPreviewScale);
+      window.addEventListener('afterprint', applyContractPreviewScale);
+      run();
+    }
+    function resetContractPreviewScale(){
+      const box=R.qs('contractPreview'); if(!box) return;
+      box.querySelectorAll('.rental-contract-mobile-page').forEach(w=>{
+        const s=w.querySelector('.rental-contract-sheet');
+        if(!s) return;
+        s.style.position=''; s.style.left=''; s.style.top=''; s.style.transform=''; s.style.transformOrigin=''; s.style.margin=''; s.style.width=''; s.style.height=''; s.style.minHeight='';
+        w.style.position=''; w.style.width=''; w.style.height=''; w.style.margin=''; w.style.overflow='';
+      });
+    }
+    function applyContractPreviewScale(){
+      const box=R.qs('contractPreview'); if(!box) return;
+      const mobile=window.matchMedia('(max-width:760px)').matches;
+      const sheets=Array.from(box.querySelectorAll('.rental-contract-sheet'));
+      if(!sheets.length) return;
+      sheets.forEach(sheet=>{
+        let wrap=sheet.parentElement;
+        if(!wrap || !wrap.classList.contains('rental-contract-mobile-page')){
+          wrap=document.createElement('div');
+          wrap.className='rental-contract-mobile-page';
+          sheet.parentNode.insertBefore(wrap,sheet);
+          wrap.appendChild(sheet);
+        }
+      });
+      if(!mobile){ resetContractPreviewScale(); box.style.overflowX=''; return; }
+      box.style.overflowX='hidden';
+      const available=Math.max(260,(box.clientWidth||window.innerWidth)-2);
+      Array.from(box.querySelectorAll('.rental-contract-sheet')).forEach(sheet=>{
+        const wrap=sheet.parentElement;
+        sheet.style.transform='none';
+        sheet.style.position='absolute';
+        sheet.style.left='0';
+        sheet.style.top='0';
+        sheet.style.margin='0';
+        sheet.style.width='210mm';
+        sheet.style.height='297mm';
+        sheet.style.minHeight='297mm';
+        const w=sheet.offsetWidth || 794;
+        const h=sheet.offsetHeight || 1123;
+        const scale=Math.min(1, available / w);
+        wrap.style.position='relative';
+        wrap.style.width=Math.ceil(w*scale)+'px';
+        wrap.style.height=Math.ceil(h*scale)+'px';
+        wrap.style.margin='0 auto 14px';
+        wrap.style.overflow='hidden';
+        sheet.style.transformOrigin='top left';
+        sheet.style.transform='scale('+scale.toFixed(4)+')';
+      });
+    }
+    async function initPage(){ if(typeof fillHeader==='function') fillHeader(); setupContractPreviewScaler(); const u=R.requireManager(); if(!u) return; document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active')); b.classList.add('active'); filter=b.dataset.filter; renderList();}); await loadAll(); const params=new URLSearchParams(location.search); const appId=params.get('applicationId')||params.get('appId'); const contractId=params.get('contractId'); const anyId=params.get('id'); if(appId){ selectItem('application', appId); } else if(contractId){ selectItem('contract', contractId); } else if(anyId){ const app=applications.find(x=>x.__id===anyId||x.applicationNo===anyId); const c=contracts.find(x=>x.__id===anyId||x.contractNo===anyId); if(app) selectItem('application', app.__id); else if(c) selectItem('contract', c.__id); } }
     async function loadAll(){ try{ applications=await R.all('rentalApplications',800); contracts=await R.all('rentalContracts',800); applications.sort((a,b)=>R.clean(b.createdAtText||'').localeCompare(R.clean(a.createdAtText||''))); contracts.sort((a,b)=>R.clean(b.updatedAtText||b.createdAtText||'').localeCompare(R.clean(a.updatedAtText||a.createdAtText||''))); renderStats(); renderList(); R.toast('資料已更新。', true); }catch(e){ R.toast(e.message||String(e), false); } }
     function daysLeft(endDate){ if(!endDate) return 999999; const today=new Date(); today.setHours(0,0,0,0); const d=new Date(endDate+'T00:00:00'); return Math.ceil((d-today)/86400000); }
     function passFilter(x){ const st=R.clean(x.status); const converted=(x.kind==='application' && (['已轉正式契約','converted'].includes(st) || x.linkedContractId || x.contractId)); if(filter==='all') return !converted && !['已取消','取消申請'].includes(st); if(filter==='new') return x.kind==='application' && !converted && !['已取消','取消申請'].includes(st) && (['待店家確認','主管確認中','新申請','草稿',''].includes(st)||!st); if(filter==='sign') return x.kind==='contract' && ['待客人補資料','待客人簽署','待簽署'].includes(st); if(filter==='active') return x.kind==='contract' && ['已簽署','待配送 / 待安裝','租賃中','到期提醒中','續約待確認'].includes(st); if(filter==='expiring') return x.kind==='contract' && !['已退租','已取消'].includes(st) && daysLeft(x.endDate)<=30; if(filter==='return') return x.kind==='contract' && ['退租申請中','待收回','已退租'].includes(st); if(filter==='cancelled') return ['已取消','取消申請'].includes(st); return true; }
