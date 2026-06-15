@@ -43,7 +43,28 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script>
   <script src="rental-common.js?v=rental-sign-20260615-notify-progress"></script>
   <script>
-    const R=window.YZRental; const params=new URLSearchParams(location.search); const contractId=params.get('contractId')||''; const token=params.get('token')||''; let contract=null; let signed=false; let watermarkedIdImage='';
+    const R=window.YZRental;
+
+    function hasSubmittedIdentityAndSignature(contract){
+      return !!(contract && R.clean(contract.identityNo || contract.customerIdNo || contract.idNumber) && R.clean(contract.idImageUrl || contract.idImageDataUrl || contract.idImage) && R.clean(contract.customerSignatureUrl || contract.signatureDataUrl || contract.signature));
+    }
+    function showAlreadySubmitted(contract){
+      const main = document.querySelector('form') || document.getElementById('signForm') || document.querySelector('.sign-form');
+      if(main) main.style.display='none';
+      const msgBox = document.getElementById('msg') || document.getElementById('statusMsg') || document.createElement('div');
+      msgBox.className = 'msg ok';
+      msgBox.style.marginTop = '12px';
+      msgBox.innerHTML = '您已完成正式資料送出。<br>系統已收到您的身分證資料與簽名，請等待柚子樂器確認後續款項與交付安排。<br>如需修改資料，請直接聯繫柚子樂器官方 LINE 或等待店家協助處理。';
+      if(!msgBox.parentNode) document.body.prepend(msgBox);
+      const submitBtn = document.querySelector('button[type="submit"], #submitBtn, #submitSignBtn');
+      if(submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = '已完成送出';
+      }
+    }
+ const params=new URLSearchParams(location.search); const contractId=params.get('contractId')||''; const token=params.get('token')||''; let contract=null; 
+        if(hasSubmittedIdentityAndSignature(contract)){ showAlreadySubmitted(contract); }
+let signed=false; let watermarkedIdImage='';
     const PAYMENT_INFO_TEXT = `付款方式可擇一：
 
 1. 先行匯款
@@ -77,7 +98,7 @@ ${PAYMENT_INFO_TEXT}
       const btn=R.qs('submitSigBtn');
       if(btn){ btn.classList.add('progressing'); btn.textContent = pct>=100 ? '已完成 100%' : '送出中 '+pct+'%'; }
     }
-    function finishProgress(){ const btn=R.qs('submitSigBtn'); if(btn){ btn.classList.remove('progressing'); btn.classList.add('done'); btn.textContent='已完成'; } setProgress(100,'送出完成，系統已收到資料。'); }
+    function finishProgress(){ const btn=R.qs('submitSigBtn'); if(btn){ btn.classList.remove('progressing'); btn.classList.add('done'); btn.textContent='已完成'; } setProgress(100,'資料已送出完成。系統已收到您的身分證資料、證明圖片與簽名。付款資訊將於約 1 分鐘後透過您選擇的通知方式傳送。目前契約尚未正式成立，待店家確認款項與實際交付日期後，才會傳送正式契約連結。'); }
     function resetProgressButton(){ const btn=R.qs('submitSigBtn'); if(btn){ btn.classList.remove('progressing','done'); btn.disabled=false; btn.textContent='送出確認資料與簽名'; } }
     function clearValidation(){ ['idNumberField','idImageField','signatureField'].forEach(id=>R.qs(id)?.classList.remove('required-missing')); R.qs('agreeError').style.display='none'; }
     function validateForm(){
@@ -342,7 +363,7 @@ ${PAYMENT_INFO_TEXT}
         await queueFormalReceivedNotice(assetUpdates);
 
         finishProgress();
-        R.toast('送出完成，系統已收到資料。', true);
+        R.toast('資料已送出完成。系統已收到您的身分證資料、證明圖片與簽名。付款資訊將於約 1 分鐘後透過您選擇的通知方式傳送。目前契約尚未正式成立，待店家確認款項與實際交付日期後，才會傳送正式契約連結。', true);
         showDialog('確認送出完成','柚子樂器已收到您的身分證資料與照片。<br><br>系統會約 1 分鐘後依您選擇的通知方式傳送付款資訊。若資料無誤，我們會依約定時間安裝／交付設備。<br><br>正式完成付款與安裝／交付後，店家會再依您選擇的通知方式傳送正式合約書給您。'+paymentInfoHtml());
         await load(); window.scrollTo({top:0,behavior:'smooth'});
       }catch(err){
