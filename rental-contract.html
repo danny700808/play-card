@@ -28,7 +28,7 @@
   <script src="config.js?v=rental-contract-20260614-screenshot"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="rental-common.js?v=20260616-remove-orange-preview-v4"></script>
+  <script src="rental-common.js?v=20260616-final-rental-contract-text-v2"></script>
   <script>
     const R=window.YZRental;
     const params=new URLSearchParams(location.search);
@@ -80,7 +80,7 @@
         setTimeout(fitContractToA4, 80);
         const endText=contract.endDate||'契約到期日前';
         R.qs('renewalNote').style.display='block';
-        R.qs('renewalNote').innerHTML=`<b>續約與到期提醒</b><br>本租賃目前到期日：${R.esc(endText)}。若您需要續約，可提前透過官方 LINE 告知。店家確認續約租金與收到款項後，會更新本契約的續約紀錄，並再次傳送正式契約連結給您。若不續約，請於到期前與柚子樂器確認歸還方式。`;
+        R.qs('renewalNote').innerHTML=`<b>續約與到期提醒</b><br><br>本租賃目前到期日：<br>${R.esc(endText)}。若您需要提早續約，可提前透過官方 LINE 告知。<br><br>系統會在到期前五天提醒您續約或退租。`;
       }catch(err){
         R.qs('contractPreview').innerHTML='';
         R.toast(err.message||String(err), false);
