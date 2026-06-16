@@ -156,25 +156,35 @@
       ? `租賃設備：${esc(equipment || '__________')}`
       : `租賃${esc(rentalTypeLabel(type))}：${esc(equipment || '__________')}${serial?'　編號：'+esc(serial):''}`;
     const itemHtml = items.length ? `<ol class="equipment-list-contract">${items.map(x=>`<li>${esc(x.name)}${x.note?`<span class="eq-note-contract">（${esc(x.note)}）</span>`:''}</li>`).join('')}</ol>` : '依雙方確認設備清單';
+    function calcDaysText(ps, pe){
+      ps=clean(ps); pe=clean(pe);
+      if(!ps || !pe) return '';
+      const a=new Date(ps+'T00:00:00');
+      const b=new Date(pe+'T00:00:00');
+      if(isNaN(a.getTime()) || isNaN(b.getTime())) return '';
+      return String(Math.max(1, Math.round((b-a)/86400000)+1))+' 天';
+    }
     function periodRows(){
       const rows=[];
       const periodEntries=Array.isArray(contract.periodEntries)?contract.periodEntries:[];
       const renewalEntries=Array.isArray(contract.renewalEntries)?contract.renewalEntries:[];
-      if(start){
-        const totalDays=Number(contract.rentDays || contract.totalDays || (periods*periodDays));
-        rows.push({ method:clean(contract.rentalMethod||'實體租用'), start:start, end:end, days:(totalDays ? totalDays+' 天' : ''), note:periods>1 ? `初次租用 ${periods} 期（${totalDays} 天）` : '初次租用' });
+      const initialStart=clean(contract.initialStartDate||contract.firstStartDate||contract.officialStartDate)||start;
+      const initialEnd=clean(contract.initialEndDate||contract.firstEndDate||contract.officialEndDate)||((renewalEntries.length&&periodEntries.length)?clean(periodEntries[0].endDate):end);
+      if(initialStart){
+        const totalDays=clean(contract.initialDays || contract.firstPeriodDays) || calcDaysText(initialStart, initialEnd) || (Number(contract.rentDays || contract.totalDays || (periods*periodDays)) ? Number(contract.rentDays || contract.totalDays || (periods*periodDays))+' 天' : '');
+        rows.push({ method:clean(contract.rentalMethod||'實體租用'), start:initialStart, end:initialEnd, days:totalDays, note:periods>1 ? `初次租用 ${periods} 期（${totalDays}）` : '初次租用' });
       }
       if(periodEntries.length){
         periodEntries.forEach(p=>{
           const ps=clean(p.startDate); const pe=clean(p.endDate);
-          if(ps===start && pe===end) return;
-          const pd=clean(p.days || p.rentDays || (ps && pe ? String(Math.max(1, Math.round((new Date(pe+'T00:00:00')-new Date(ps+'T00:00:00'))/86400000)+1))+' 天' : ''));
+          if(ps===initialStart && pe===initialEnd) return;
+          const pd=clean(p.days || p.rentDays || calcDaysText(ps, pe));
           rows.push({method:clean(p.method||p.rentalMethod||'線上續租'), start:ps, end:pe, days:pd, note:clean(p.note||p.remark)});
         });
       }
       renewalEntries.forEach((p,i)=>{
         const ps=clean(p.startDate); const pe=clean(p.endDate);
-        const pd=clean(p.days || p.rentDays || (ps && pe ? String(Math.max(1, Math.round((new Date(pe+'T00:00:00')-new Date(ps+'T00:00:00'))/86400000)+1))+' 天' : ''));
+        const pd=clean(p.days || p.rentDays || calcDaysText(ps, pe));
         const fee=p.rentFee?`續約租金 ${fmtMoney(p.rentFee)}`:'';
         const memo=clean(p.note||p.remark);
         rows.push({method:clean(p.method||`第 ${p.renewalNo||i+1} 次續約`), start:ps, end:pe, days:pd, note:[fee,memo].filter(Boolean).join('；')});
