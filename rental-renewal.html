@@ -151,7 +151,7 @@
         await R.db().collection('rentalContracts').doc(contractId).set({pendingRenewal:renewal,status:'續約待確認',customerRenewalSubmittedAt:R.nowText(),updatedAtText:R.nowText()},{merge:true});
         const customerBody=`已收到您的續約申請。\n\n續約期數：${periods} 期\n續約金額：${amount?amount.toLocaleString('zh-TW')+' 元':'請洽店家確認'}\n續約期間：${renewal.startDate} 至 ${renewal.endDate}\n\n請完成匯款後，將匯款截圖貼在官方 LINE 聊天記錄。\n柚子樂器確認款項後，會傳送更新後正式契約給您。`;
         await queueCustomer('已收到續約申請', customerBody, 'rental-renewal-customer-ack');
-        const adminBody=`客人已送出續約申請\n\n客人：${R.clean(contract.customerName)}\n電話：${R.clean(contract.customerPhone)}\n租賃品項：${R.clean(contract.equipmentName || ((R.parseEquipmentItems(contract)[0]||{}).name))}\n契約編號：${R.clean(contract.contractNo||contract.contractId||contractId)}\n\n原到期日：${R.clean(contract.endDate)}\n續約期數：${periods} 期\n續約金額：${amount?amount.toLocaleString('zh-TW')+' 元':'請洽店家確認'}\n續約後到期日：${renewal.endDate}\n客人備註：${renewal.customerNote||'無'}\n\n請確認客人匯款截圖與入帳狀況後，進入後台按「確認續約成立」：\n${adminUrl('renewal')}`;
+        const adminBody=`客人：${R.clean(contract.customerName)}\n電話：${R.clean(contract.customerPhone)}\n租賃品項：${R.clean(contract.equipmentName || ((R.parseEquipmentItems(contract)[0]||{}).name))}\n契約編號：${R.clean(contract.contractNo||contract.contractId||contractId)}\n\n原到期日：${R.clean(contract.endDate)}\n續約期數：${periods} 期\n續約金額：${amount?amount.toLocaleString('zh-TW')+' 元':'請洽店家確認'}\n續約後到期日：${renewal.endDate}\n客人備註：${renewal.customerNote||'無'}\n\n請確認客人匯款截圖與入帳狀況後，進入後台按「確認續約成立」：\n${adminUrl('renewal')}`;
         await queueManagerNotice('客人已送出續約申請',adminBody,'rental-renewal-manager-notice');
         R.toast('續約申請已送出。請完成匯款後，將截圖貼在官方 LINE 聊天記錄。', true);
         window.scrollTo({top:0,behavior:'smooth'});
@@ -166,7 +166,7 @@
         await R.db().collection('rentalContracts').doc(contractId).set({returnRequest:req,status:'退租待安排',customerReturnSubmittedAt:R.nowText(),updatedAtText:R.nowText()},{merge:true});
         const customerBody=`已收到您的退租申請。\n\n柚子樂器會透過官方 LINE 與您約定設備回收／歸還時間。\n\n正式完成設備點收後，系統會更新租賃狀態。`;
         await queueCustomer('已收到退租申請', customerBody, 'rental-return-customer-ack');
-        const adminBody=`客人已選擇退租\n\n客人：${R.clean(contract.customerName)}\n電話：${R.clean(contract.customerPhone)}\n租賃品項：${R.clean(contract.equipmentName || ((R.parseEquipmentItems(contract)[0]||{}).name))}\n契約編號：${R.clean(contract.contractNo||contract.contractId||contractId)}\n目前到期日：${R.clean(contract.endDate)}\n\n回收地址：${address || '請與客人確認'}\n\n請進入後台查看，並透過官方 LINE 與客人約定設備回收／歸還時間：\n${adminUrl('return')}`;
+        const adminBody=`客人：${R.clean(contract.customerName)}\n電話：${R.clean(contract.customerPhone)}\n租賃品項：${R.clean(contract.equipmentName || ((R.parseEquipmentItems(contract)[0]||{}).name))}\n契約編號：${R.clean(contract.contractNo||contract.contractId||contractId)}\n目前到期日：${R.clean(contract.endDate)}\n\n回收地址：${address}\n希望日期：${req.returnDate||'未指定'}\n希望時段：${req.returnTime||'未指定'}\n客人備註：${req.note||'無'}\n\n請進入後台查看，並透過官方 LINE 與客人約定設備回收／歸還日期：\n${adminUrl('return')}`;
         await queueManagerNotice('客人已選擇退租',adminBody,'rental-return-manager-notice');
         R.toast('已收到您的退租申請。柚子樂器會再與您聯繫安排設備回收／歸還時間。', true);
         window.scrollTo({top:0,behavior:'smooth'});
