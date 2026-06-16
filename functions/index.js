@@ -886,6 +886,36 @@ function buildOfficialContractUrl(contract) {
   return `${base}rental-contract.html?contractId=${encodeURIComponent(clean(contract.contractId || contract.__id))}&token=${encodeURIComponent(token)}`;
 }
 
+function buildRenewalReturnUrl(contract) {
+  const base = webBaseUrl();
+  const token = clean(contract.renewalToken || contract.officialContractToken || contract.customerToken || contract.signToken || contract.token);
+  return `${base}rental-renewal.html?contractId=${encodeURIComponent(clean(contract.contractId || contract.__id))}&token=${encodeURIComponent(token)}`;
+}
+
+function todayYmdTaipei() {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
+  const map = {};
+  parts.forEach((p) => { if (p.type !== 'literal') map[p.type] = p.value; });
+  return `${map.year}-${map.month}-${map.day}`;
+}
+
+function daysBetweenYmd(startYmd, endYmd) {
+  const a = Date.parse(`${clean(startYmd)}T00:00:00Z`);
+  const b = Date.parse(`${clean(endYmd)}T00:00:00Z`);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return 999999;
+  return Math.round((b - a) / 86400000);
+}
+
+async function ensureRenewalToken(docRef, contract) {
+  let token = clean(contract.renewalToken || contract.officialContractToken || contract.customerToken || contract.signToken || contract.token);
+  if (token) return token;
+  token = randomToken(18);
+  await docRef.set({ renewalToken: token, updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedAtText: nowText() }, { merge: true });
+  contract.renewalToken = token;
+  return token;
+}
+
+
 async function getContractForToken(contractId, token, options = {}) {
   const id = clean(contractId);
   if (!id) throw new Error('缺少契約編號。');
@@ -919,6 +949,46 @@ exports.flushNotificationQueue = onSchedule({ schedule: 'every 5 minutes', regio
     results.push(await processNotificationQueueDoc(doc.ref, doc.data() || {}, { processor: 'scheduler' }));
   }
   return results;
+});
+
+exports.rentalExpiryReminderDaily = onSchedule({ schedule: '0 10 * * *', timeZone: 'Asia/Taipei', region: 'us-central1', timeoutSeconds: 180, memory: '512MiB' }, async () => {
+  const activeStatuses = ['租賃中', '到期提醒中', '續約待確認', '續約待付款'];
+  const today = todayYmdTaipei();
+  const snap = await db.collection('rentalContracts').where('status', 'in', activeStatuses).limit(300).get();
+  const results = [];
+  for (const doc of snap.docs) {
+    const contract = Object.assign({ __id: doc.id, contractId: doc.id }, doc.data() || {});
+    const endDate = clean(contract.endDate || contract.officialEndDate || contract.currentEndDate);
+    const left = daysBetweenYmd(today, endDate);
+    if (left < 0 || left > 5) continue;
+    if (clean(contract.expiryReminderSentForEndDate) === endDate) {
+      results.push({ contractId: doc.id, skipped: true, reason: 'already-sent-for-endDate', endDate });
+      continue;
+    }
+    await ensureRenewalToken(doc.ref, contract);
+    const url = buildRenewalReturnUrl(contract);
+    const body = [`續約與退租提醒`, ``, `您的租賃目前到期日：${endDate || '未設定'}`, ``, `請點選以下連結，選擇「續約」或「退租」：`, url].join('\n');
+    const notifyResult = await createCustomerNotificationQueues({
+      row: Object.assign({}, contract, { contractId: doc.id }),
+      title: '續約與退租提醒',
+      body,
+      source: 'rental-expiry-renewal-return-reminder',
+      contractId: doc.id,
+      officialContractUrl: url,
+    });
+    await doc.ref.set({
+      status: clean(contract.status) === '租賃中' ? '到期提醒中' : clean(contract.status || '到期提醒中'),
+      renewalReturnLinkUrl: url,
+      expiryReminderSentAt: admin.firestore.FieldValue.serverTimestamp(),
+      expiryReminderSentAtText: nowText(),
+      expiryReminderSentForEndDate: endDate,
+      expiryReminderDaysLeft: left,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAtText: nowText(),
+    }, { merge: true });
+    results.push({ contractId: doc.id, endDate, daysLeft: left, notificationResult: notifyResult });
+  }
+  return { today, count: results.length, results };
 });
 
 exports.processNotificationQueueNowHttp = httpEndpoint(async (data) => {
