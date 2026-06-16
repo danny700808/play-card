@@ -668,7 +668,8 @@ async function sendLinePush(row) {
 
   const title = queueTitle(row);
   const body = queueBody(row);
-  const text = title && body && title !== body ? `${title}\n${body}` : (body || title || '柚子樂器通知');
+  const directLineText = clean(row.lineText || row.lineMessage || row.lineBody);
+  const text = directLineText || (title && body && title !== body ? `${title}\n${body}` : (body || title || '柚子樂器通知'));
   const response = await fetch('https://api.line.me/v2/bot/message/push', {
     method: 'POST',
     headers: {
@@ -1182,11 +1183,15 @@ exports.rentalSignContractHttp = httpEndpoint(async (data) => {
   await ref.set(update, { merge: true });
   try {
     const customerName = clean(contract.customerName || contract.partyAName || contract.name || '客人');
+    const adminUrl = `${webBaseUrl()}rental-admin.html?contractId=${encodeURIComponent(contract.contractId || contract.__id || contractId)}`;
     const body = [
-      `客人已完成身分證資料、證明圖片與簽名送出。`,
+      `客人已回傳身分證字號、證明圖片與簽名。`,
       `客人：${customerName}`,
       `契約編號：${clean(contract.contractNo || contract.contractId || contractId)}`,
       `狀態：待店家確認`,
+      ``,
+      `請直接進入後台查看或修改這筆租賃資料：`,
+      adminUrl,
     ].join('\n');
     await queueManagerNotification({
       title: '租賃客人已送出正式資料',
