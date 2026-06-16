@@ -231,61 +231,16 @@
     function renewalReturnUrl(c){ const id=R.clean(c.contractId||c.__id||R.val('contractId')); const token=renewalReturnToken(c); return adminBaseUrl()+'rental-renewal.html?contractId='+encodeURIComponent(id)+'&token='+encodeURIComponent(token); }
     function calcDaysText(ps, pe){ ps=R.clean(ps); pe=R.clean(pe); if(!ps||!pe) return ''; const a=new Date(ps+'T00:00:00'); const b=new Date(pe+'T00:00:00'); if(isNaN(a.getTime())||isNaN(b.getTime())) return ''; return String(Math.max(1, Math.round((b-a)/86400000)+1))+' 天'; }
     function formatMoneyInline(v){ const n=R.num(v); return n ? n.toLocaleString('zh-TW')+' 元' : '未填'; }
-    function readPendingRenewalFromAdmin(base){
-      const old=(base&&base.pendingRenewal)||{};
-      const hasForm=!!document.getElementById('pendingRenewalStartDate');
-      if(!hasForm) return old;
-      const periods=Math.max(1, Number(R.val('pendingRenewalPeriods')||old.periods||1)||1);
-      const startDate=R.clean(R.val('pendingRenewalStartDate')||old.startDate);
-      const endDate=R.clean(R.val('pendingRenewalEndDate')||old.endDate);
-      const rentFee=R.clean(R.val('pendingRenewalRentFee')||old.rentFee);
-      const adminNote=R.clean(R.val('pendingRenewalAdminNote')||old.adminNote||old.note);
-      const days=calcDaysText(startDate,endDate);
-      return Object.assign({}, old, {periods, startDate, endDate, rentFee, adminNote, days, status:'待店家確認'});
-    }
-    function refreshPendingRenewalPreview(recalcEnd){
-      const old=(selected&&selected.pendingRenewal)||{};
-      if(recalcEnd){
-        const p=Math.max(1, Number(R.val('pendingRenewalPeriods')||old.periods||1)||1);
-        const st=R.clean(R.val('pendingRenewalStartDate')||old.startDate);
-        if(st) R.setVal('pendingRenewalEndDate', R.calcEndDate(st,p,'renewal',p*90));
-      }
-      const c=collect();
-      R.qs('contractPreview').innerHTML=R.renderContractHtml(c);
-    }
-    async function savePendingRenewalEdit(){
-      const id=R.val('contractId') || (selected&&(selected.contractId||selected.__id)) || '';
-      if(!id) return R.toast('請先選擇契約。', false);
-      const pending=readPendingRenewalFromAdmin(selected||{});
-      if(!pending.startDate || !pending.endDate) return R.toast('請先確認續約起日與到期日。', false);
-      try{
-        await R.db().collection('rentalContracts').doc(id).set({
-          pendingRenewal:pending,
-          status:'續約待確認',
-          updatedAtText:R.nowText()
-        },{merge:true});
-        selected=Object.assign({}, selected||{}, {pendingRenewal:pending, status:'續約待確認'});
-        R.qs('contractPreview').innerHTML=R.renderContractHtml(collect());
-        R.toast('已儲存續約修改。', true);
-      }catch(e){ R.toast(e.message||String(e), false); }
-    }
-    window.savePendingRenewalEdit=savePendingRenewalEdit;
     function renewalAdminHtml(c){
       c=c||{};
       const p=c.pendingRenewal||{};
       const r=c.returnRequest||{};
       const blocks=[];
       if(p && p.startDate){
-        const periods=Math.max(1, Number(p.periods||1)||1);
-        const rentFee=R.clean(p.rentFee||'');
-        const startDate=R.clean(p.startDate||'');
-        const endDate=R.clean(p.endDate||'');
-        const adminNote=R.clean(p.adminNote||p.note||'');
-        const customerNote=R.clean(p.customerNote||'無');
-        blocks.push(`<div class="msg ok"><b>續約申請待確認</b><div class="muted" style="margin:4px 0 10px">客人送出後會先顯示在下方租賃期間明細表；確認匯款後再按「確認續約成立」。如金額或日期有私下調整，可先修改並儲存。</div><div class="row2"><div class="field"><label>續約期數</label><input id="pendingRenewalPeriods" type="number" min="1" max="10" value="${R.esc(periods)}" onchange="refreshPendingRenewalPreview(true)" oninput="refreshPendingRenewalPreview(false)"></div><div class="field"><label>續約金額</label><input id="pendingRenewalRentFee" type="number" value="${R.esc(rentFee)}" oninput="refreshPendingRenewalPreview(false)"></div></div><div class="row2"><div class="field"><label>續約起日</label><input id="pendingRenewalStartDate" type="date" value="${R.esc(startDate)}" onchange="refreshPendingRenewalPreview(true)"></div><div class="field"><label>續約到期日</label><input id="pendingRenewalEndDate" type="date" value="${R.esc(endDate)}" oninput="refreshPendingRenewalPreview(false)"></div></div><div class="field"><label>管理備註</label><textarea id="pendingRenewalAdminNote" oninput="refreshPendingRenewalPreview(false)" placeholder="例如：特別優惠價、已與客人 LINE 確認">${R.esc(adminNote)}</textarea></div><div class="muted">客人備註：${R.esc(customerNote)}</div><button class="btn secondary" type="button" onclick="savePendingRenewalEdit()">儲存續約修改</button></div>`);
+        blocks.push(`<div class="msg ok"><b>續約申請待確認</b><br>續約期數：${R.esc(p.periods||'')} 期<br>續約金額：${R.esc(formatMoneyInline(p.rentFee))}<br>續約期間：${R.esc(p.startDate)} 至 ${R.esc(p.endDate)}<br>客人備註：${R.esc(p.customerNote||p.note||'無')}<br><span class="muted">確認客人匯款截圖與入帳後，請按「確認續約成立」。</span></div>`);
       }
       if(r && (r.returnAddress || r.customerSubmittedAt || r.status)){
-        blocks.push(`<div class="msg bad"><b>退租待安排</b><br>回收地址：${R.esc(r.returnAddress||c.shippingAddress||c.customerAddress||'')}<br>希望日期：${R.esc(r.returnDate||'未指定')}　希望時段：${R.esc(r.returnTime||'未指定')}<br>客人備註：${R.esc(r.note||'無')}<br><span class="muted">請透過官方 LINE 與客人約定設備回收／歸還日期，完成點收後再按「確認退租完成」。</span></div>`);
+        blocks.push(`<div class="msg bad"><b>退租待安排</b><br><br>客人已選擇退租。<br><br><span class="muted">請透過官方 LINE 與客人約定設備回收／歸還時間。</span></div>`);
       }
       return blocks.join('');
     }
@@ -329,7 +284,7 @@
     function readEquipmentItems(){ return Array.from(document.querySelectorAll('[data-eq-row]')).map(row=>({name:R.clean(row.querySelector('.eq-name')?.value),note:R.clean(row.querySelector('.eq-note')?.value)})).filter(x=>x.name||x.note); }
     window.addEquipmentRow=function(){ const box=R.qs('equipmentRows'); box.insertAdjacentHTML('beforeend', equipmentRows([{name:'',note:''}])); bindEditorPreview(); };
     window.removeEquipmentRow=function(btn){ btn.closest('[data-eq-row]')?.remove(); R.qs('contractPreview').innerHTML=R.renderContractHtml(collect()); };
-    function collect(){ const type=R.val('rentalType'); const items=readEquipmentItems(); const deliveryDate=R.val('deliveryDate'); const startDate=R.val('startDate')||deliveryDate; const periods=R.val('periods')||1; const signed=selected||{}; const sig=signed.customerSignatureDataUrl||signed.signatureDataUrl||signed.customerSignatureUrl||signed.signatureUrl||signed.signDataUrl||''; const idImg=signed.customerIdImageWatermarkedDataUrl||signed.idImageWatermarkedDataUrl||signed.customerIdImageDataUrl||signed.idImageDataUrl||signed.idCardImageDataUrl||signed.customerIdImageUrl||signed.idImageUrl||signed.idCardImageUrl||''; const rentalItem=R.clean(R.val('rentalItem')||R.rentalTypeLabel(type)); const equipmentBrand=R.clean(R.val('equipmentBrand')); const equipmentModel=R.clean(R.val('equipmentModel')); const primaryEquipment=[equipmentBrand,equipmentModel].filter(Boolean).join(' ') || items[0]?.name || rentalItem; const payload={ sourceKind:R.val('sourceKind'), applicationId:R.val('applicationId'), contractId:R.val('contractId'), source:R.val('sourceKind')==='adminDraft'?'admin':'application', stage:'formal-draft', rentalType:type, status:R.val('status')||'草稿', contractTitle:R.defaultTitle(type), rentalItem:rentalItem, equipmentCategory:rentalItem, equipmentBrand:equipmentBrand, brand:equipmentBrand, equipmentModel:equipmentModel, modelName:equipmentModel, customerName:R.val('customerName'), customerPhone:R.val('customerPhone'), customerEmail:R.val('customerEmail'), customerLineUserId:R.val('customerLineUserId'), notificationPreference:notifyPref({notificationPreference:R.val('notificationPreference'),customerEmail:R.val('customerEmail')}), preferredContactMethod:notifyPref({notificationPreference:R.val('notificationPreference'),customerEmail:R.val('customerEmail')}), emailVerified:R.val('emailVerified')==='true'||(selected&&selected.emailVerified===true), emailLinkStatus:R.val('emailLinkStatus')||(selected&&selected.emailLinkStatus)||'', emailVerifyToken:R.val('emailVerifyToken')||(selected&&selected.emailVerifyToken)||'', customerIdNumber:R.val('customerIdNumber'), customerAddress:R.val('customerAddress'), customerSignatureDataUrl:sig, signatureDataUrl:sig, customerSignatureUrl:signed.customerSignatureUrl||signed.signatureUrl||'', signatureUrl:signed.signatureUrl||signed.customerSignatureUrl||'', customerIdImageWatermarkedDataUrl:idImg, idImageWatermarkedDataUrl:idImg, customerIdImageDataUrl:idImg, idImageDataUrl:idImg, customerIdImageUrl:signed.customerIdImageUrl||signed.idImageUrl||signed.idCardImageUrl||'', idImageUrl:signed.idImageUrl||signed.customerIdImageUrl||signed.idCardImageUrl||'', equipmentName:primaryEquipment, serialNo:items[0]?.note||'', equipmentItems:items, includedItems:items.map(x=>`${x.name}${x.note?' / '+x.note:''}`).join('\n'), periods:periods, periodDays:90, rentDays:Number(periods||1)*90, rentalMethod:'實體租用', startDate:startDate, endDate:R.val('endDate')||R.calcEndDate(startDate,periods,type,Number(periods||1)*90), rentFee:R.val('rentFee'), shippingFee:R.val('shippingFee'), depositFee:R.val('depositFee'), shippingMethod:R.normalizeDeliveryMethod(R.val('shippingMethod')), deliveryMethod:R.normalizeDeliveryMethod(R.val('shippingMethod')), deliveryDate:deliveryDate||startDate, deliveryTime:'', deliveryDateTime:deliveryDate||startDate, adminNote:R.val('adminNote'), customerSubmittedFormalAt:signed.customerSubmittedFormalAt||'', pendingRenewal:readPendingRenewalFromAdmin(signed), returnRequest:signed.returnRequest||{} }; return isFinalConfirmStage(Object.assign({}, signed, payload)) ? officializeContract(payload) : payload; }
+    function collect(){ const type=R.val('rentalType'); const items=readEquipmentItems(); const deliveryDate=R.val('deliveryDate'); const startDate=R.val('startDate')||deliveryDate; const periods=R.val('periods')||1; const signed=selected||{}; const sig=signed.customerSignatureDataUrl||signed.signatureDataUrl||signed.customerSignatureUrl||signed.signatureUrl||signed.signDataUrl||''; const idImg=signed.customerIdImageWatermarkedDataUrl||signed.idImageWatermarkedDataUrl||signed.customerIdImageDataUrl||signed.idImageDataUrl||signed.idCardImageDataUrl||signed.customerIdImageUrl||signed.idImageUrl||signed.idCardImageUrl||''; const rentalItem=R.clean(R.val('rentalItem')||R.rentalTypeLabel(type)); const equipmentBrand=R.clean(R.val('equipmentBrand')); const equipmentModel=R.clean(R.val('equipmentModel')); const primaryEquipment=[equipmentBrand,equipmentModel].filter(Boolean).join(' ') || items[0]?.name || rentalItem; const payload={ sourceKind:R.val('sourceKind'), applicationId:R.val('applicationId'), contractId:R.val('contractId'), source:R.val('sourceKind')==='adminDraft'?'admin':'application', stage:'formal-draft', rentalType:type, status:R.val('status')||'草稿', contractTitle:R.defaultTitle(type), rentalItem:rentalItem, equipmentCategory:rentalItem, equipmentBrand:equipmentBrand, brand:equipmentBrand, equipmentModel:equipmentModel, modelName:equipmentModel, customerName:R.val('customerName'), customerPhone:R.val('customerPhone'), customerEmail:R.val('customerEmail'), customerLineUserId:R.val('customerLineUserId'), notificationPreference:notifyPref({notificationPreference:R.val('notificationPreference'),customerEmail:R.val('customerEmail')}), preferredContactMethod:notifyPref({notificationPreference:R.val('notificationPreference'),customerEmail:R.val('customerEmail')}), emailVerified:R.val('emailVerified')==='true'||(selected&&selected.emailVerified===true), emailLinkStatus:R.val('emailLinkStatus')||(selected&&selected.emailLinkStatus)||'', emailVerifyToken:R.val('emailVerifyToken')||(selected&&selected.emailVerifyToken)||'', customerIdNumber:R.val('customerIdNumber'), customerAddress:R.val('customerAddress'), customerSignatureDataUrl:sig, signatureDataUrl:sig, customerSignatureUrl:signed.customerSignatureUrl||signed.signatureUrl||'', signatureUrl:signed.signatureUrl||signed.customerSignatureUrl||'', customerIdImageWatermarkedDataUrl:idImg, idImageWatermarkedDataUrl:idImg, customerIdImageDataUrl:idImg, idImageDataUrl:idImg, customerIdImageUrl:signed.customerIdImageUrl||signed.idImageUrl||signed.idCardImageUrl||'', idImageUrl:signed.idImageUrl||signed.customerIdImageUrl||signed.idCardImageUrl||'', equipmentName:primaryEquipment, serialNo:items[0]?.note||'', equipmentItems:items, includedItems:items.map(x=>`${x.name}${x.note?' / '+x.note:''}`).join('\n'), periods:periods, periodDays:90, rentDays:Number(periods||1)*90, rentalMethod:'實體租用', startDate:startDate, endDate:R.val('endDate')||R.calcEndDate(startDate,periods,type,Number(periods||1)*90), rentFee:R.val('rentFee'), shippingFee:R.val('shippingFee'), depositFee:R.val('depositFee'), shippingMethod:R.normalizeDeliveryMethod(R.val('shippingMethod')), deliveryMethod:R.normalizeDeliveryMethod(R.val('shippingMethod')), deliveryDate:deliveryDate||startDate, deliveryTime:'', deliveryDateTime:deliveryDate||startDate, adminNote:R.val('adminNote'), customerSubmittedFormalAt:signed.customerSubmittedFormalAt||'' }; return isFinalConfirmStage(Object.assign({}, signed, payload)) ? officializeContract(payload) : payload; }
     function syncRentalDatesFromDelivery(changedId){ const type=R.val('rentalType'); const periods=R.val('periods')||1; if(changedId==='deliveryDate' && R.val('deliveryDate')) R.setVal('startDate', R.val('deliveryDate')); if((changedId==='startDate'||changedId==='deliveryDate'||changedId==='periods') && (R.val('startDate')||R.val('deliveryDate'))){ const st=R.val('startDate')||R.val('deliveryDate'); R.setVal('startDate', st); R.setVal('deliveryDate', R.val('deliveryDate')||st); R.setVal('endDate', R.calcEndDate(st,periods,type,Number(periods||1)*90)); } }
     function updateDeliveryLabels(){
       const c=collect();
@@ -439,7 +394,7 @@
           try{ await R.db().collection('rentalApplications').doc(payload.applicationId).set({status:'已轉正式契約', linkedContractId:res.contractId, contractId:res.contractId, updatedAtText:R.nowText()}, {merge:true}); }catch(_){}
         }
         if(!opts.silent) R.toast(makeLink?'資料已儲存，資料填寫連結已準備完成。':'資料已儲存。', true);
-        if(!opts.skipReload) await loadAll();
+        await loadAll();
         return res||{};
       }catch(e){
         R.toast(e.message||String(e), false);
@@ -458,7 +413,7 @@ ${url}
       await R.db().collection('rentalContracts').doc(contract.contractId||contract.__id).set({status:'待客人補資料', signLinkNoticeQueueCreated:result.count>0, signLinkNoticeQueueCreatedAt: result.count ? R.nowText() : '', signLinkLineQueueCreated:result.line, signLinkEmailQueueCreated:result.email, updatedAtText:R.nowText()},{merge:true});
       return result;
     }
-    window.sendContractLink=async function(opts){ opts=opts||{}; const id=R.val('contractId'); if(!id) return R.toast('請先儲存合約。', false); try{ const c=await R.get('rentalContracts', id); if(!c) throw new Error('找不到合約資料。'); const result=await queueRentalSignLinkNotice(Object.assign({}, c, {contractId:id})); R.toast(notificationResultText(result), result.count>0); if(!opts.skipReload) await loadAll(); return result; }catch(e){ R.toast(e.message||String(e), false); throw e; } };
+    window.sendContractLink=async function(){ const id=R.val('contractId'); if(!id) return R.toast('請先儲存合約。', false); try{ const c=await R.get('rentalContracts', id); if(!c) throw new Error('找不到合約資料。'); const result=await queueRentalSignLinkNotice(Object.assign({}, c, {contractId:id})); R.toast(notificationResultText(result), result.count>0); await loadAll(); }catch(e){ R.toast(e.message||String(e), false); } };
     function runButtonProgress(btn, doneText){
       if(!btn) return Promise.resolve();
       btn.disabled=true;
@@ -481,7 +436,7 @@ ${url}
       });
     }
 
-    window.sendToCustomerForFill=async function(){ const btn=document.querySelector('[data-send-fill-btn]'); const c=collect(); if(!wantsNotifyLine(c) && !wantsNotifyEmail(c)){ return R.toast('請先選擇通知方式。', false); } if(wantsNotifyLine(c) && !R.clean(c.customerLineUserId) && !wantsNotifyEmail(c)){ return R.toast('客人選擇只用 LINE，但尚未完成 LINE 配對。請先請客人到官方 LINE 貼上配對文字，或改選 Email 通知。', false); } if(wantsNotifyEmail(c) && !R.clean(c.customerEmail)){ return R.toast('客人通知方式包含 Email，請先填寫 Email。', false); } if(btn){ btn.textContent=''; btn.style.setProperty('--progress','10%'); btn.classList.add('is-progressing'); btn.disabled=true; } const res=await saveContract(true,{silent:true,skipReload:true}); if(!res){ if(btn){ btn.disabled=false; btn.classList.remove('is-progressing'); btn.textContent='回傳給客人填寫身分證字號'; } return; } try{ await sendContractLink({skipReload:true}); await runButtonProgress(btn,'完成'); R.toast('已建立客人補資料通知。', true); loadAll().catch(e=>console.warn('background loadAll failed', e)); }catch(e){ if(btn){ btn.disabled=false; btn.classList.remove('is-progressing'); btn.textContent='回傳給客人填寫身分證字號'; } R.toast(e.message||String(e), false); } };
+    window.sendToCustomerForFill=async function(){ const btn=document.querySelector('[data-send-fill-btn]'); const c=collect(); if(!wantsNotifyLine(c) && !wantsNotifyEmail(c)){ return R.toast('請先選擇通知方式。', false); } if(wantsNotifyLine(c) && !R.clean(c.customerLineUserId) && !wantsNotifyEmail(c)){ return R.toast('客人選擇只用 LINE，但尚未完成 LINE 配對。請先請客人到官方 LINE 貼上配對文字，或改選 Email 通知。', false); } if(wantsNotifyEmail(c) && !R.clean(c.customerEmail)){ return R.toast('客人通知方式包含 Email，請先填寫 Email。', false); } if(btn){ btn.textContent=''; btn.style.setProperty('--progress','10%'); btn.classList.add('is-progressing'); btn.disabled=true; } const res=await saveContract(true,{silent:true}); if(!res){ if(btn){ btn.disabled=false; btn.classList.remove('is-progressing'); btn.textContent='回傳給客人填寫身分證字號'; } return; } try{ await sendContractLink(); await runButtonProgress(btn,'完成'); }catch(e){ if(btn){ btn.disabled=false; btn.classList.remove('is-progressing'); btn.textContent='回傳給客人填寫身分證字號'; } R.toast(e.message||String(e), false); } };
     function showRentalProgress(title){
       let mask=document.getElementById('rentalProgressMask');
       if(!mask){
@@ -892,8 +847,6 @@ ${url}
       if(!id) return R.toast('請先選擇契約。', false);
       try{
         const c=Object.assign({__id:id}, await R.get('rentalContracts', id) || {});
-        if(selected && selected.pendingRenewal) c.pendingRenewal=Object.assign({}, c.pendingRenewal||{}, selected.pendingRenewal||{});
-        if(document.getElementById('pendingRenewalStartDate')) c.pendingRenewal=readPendingRenewalFromAdmin(c);
         const p=c.pendingRenewal||{};
         if(!p.startDate || !p.endDate) return R.toast('這筆契約沒有待確認的續約資料。', false);
         if(!confirm('確認客人已完成續約付款，並成立這次續約？')) return;
