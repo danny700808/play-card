@@ -108,18 +108,17 @@
 
   function deliveryLabelPair(contract) {
     const method = normalizeDeliveryMethod((contract && (contract.deliveryMethod || contract.shippingMethod || contract.deliveryType || contract.delivery || contract.preferredDeliveryMethod)) || '');
-    const official = isOfficialContract(contract || {});
     if (method === '自取自運') {
       return {
         method,
-        dateLabel: official ? '實際自取日期' : '預估自取日期',
-        actionLabel: official ? '實際自取' : '預估自取'
+        dateLabel: '自取時間',
+        actionLabel: '自取'
       };
     }
     return {
       method: '到府安裝',
-      dateLabel: official ? '實際安裝日期' : '預估安裝日期',
-      actionLabel: official ? '實際安裝' : '預估安裝'
+      dateLabel: '安裝時間',
+      actionLabel: '安裝'
     };
   }
 
@@ -149,7 +148,7 @@
     const hasFormalData=!!(contract.customerSubmittedFormalAt || contract.customerSignatureDataUrl || contract.signatureDataUrl || contract.customerIdImageWatermarkedDataUrl || contract.idImageWatermarkedDataUrl || contract.customerIdImageDataUrl || contract.idImageDataUrl);
     const isOfficial=!!(opts.officialView || contract._officialPreview || hasFormalData || contract.officialPdfUrl || contract.officialConfirmedAt || contract.officialStartDate || ['租賃中','已退租','待歸還','續約詢問中','續約待付款','續約待確認'].includes(status));
     const deliveryLabel = deliveryInfo.dateLabel;
-    const preliminaryNote=isOfficial?'':'實際正式起租日與租賃期間，會在店家最後確認後另行產生並傳送正式契約。';
+    const preliminaryNote='';
     const dateText=clean(contract.contractDate)||ymd(new Date());
     const sig=clean(contract.customerSignatureUrl || contract.signatureUrl || contract.customerSignatureDataUrl || contract.signatureDataUrl || contract.signDataUrl);
     const idImage=clean(contract.customerIdImageUrl||contract.idImageUrl||contract.idCardImageUrl||contract.customerIdImageWatermarkedDataUrl||contract.idImageWatermarkedDataUrl||contract.customerIdImageDataUrl||contract.idImageDataUrl||contract.idCardImageDataUrl);
@@ -195,7 +194,7 @@
         <h1>${esc(title)}</h1>
         <div class="party-line">立契約書人：${esc(partyAName || '__________')}（以下簡稱甲方）</div>
         <div class="party-line">立契約書人：尚品樂器行（以下簡稱乙方）</div>
-        ${!isOfficialContract(contract)?'<div style="border:1px solid #f59e0b;background:#fffbeb;color:#92400e;border-radius:10px;padding:6px 8px;margin:0 0 2mm;font-weight:900;line-height:1.45">此為租賃契約預覽，尚未正式成立。正式契約將於店家確認款項與實際交付日期後成立。</div>':''}<p class="intro">甲方向乙方租賃設備，雙方同意簽訂本契約，條款如下：</p>
+        <p class="intro">甲方向乙方租賃設備，雙方同意簽訂本契約，條款如下：</p>
         <ol class="clauses">
           <li>${typeLine}</li>
           <li>租金：${esc(rent)}。押金：${esc(deposit)}。運費：${esc(ship)}。交付方式：${esc(deliveryInfo.method)}。${esc(deliveryInfo.dateLabel)}：${esc(deliveryText || '依店家最後確認')}。${preliminaryNote?`<br><b>${esc(preliminaryNote)}</b>`:''}</li>
@@ -206,7 +205,7 @@
           <li>因設備老舊或電腦相關線材磨損造成損壞，由乙方吸收；但因人為破壞須賠償，破壞判斷依原廠認定。</li>
           <li>續租方式：線上續租、轉帳付款，請保留相關截圖。</li>
           <li>如雙方發生有關事項之爭議或訴訟，雙方以臺中地方法院為第一審管轄法院。</li>
-          <li>本契約壹式貳份，雙方各執乙份為憑；線上簽署及 PDF 留存具同等效力。</li>
+          <li>本契約壹式貳份，雙方各執乙份為憑；線上簽署及紙本留存具同等效力。</li>
         </ol>
         <div class="sign-grid">
           <div class="sign-card party-a"><b>甲方</b><br><span class="party-a-line">姓名 / 公司：${esc(partyAName)}</span><span class="party-a-line">身分證字號 / 統編：${esc(identity)}</span><span class="wide-line">地址：${esc(customerAddress)}</span><span class="party-a-line">電話：${esc(customerPhone)}</span><div class="sig-box"><span class="sig-label">甲方簽名：</span>${sig?`<img src="${esc(sig)}" class="sig-img" alt="甲方簽名">`:'<span class="sig-empty">尚未簽名</span>'}</div></div>

@@ -66,7 +66,7 @@
     <section class="card2"><div class="section-hd"><div><h1 class="title">設備租賃管理</h1><div class="muted">客人先送出租用基本資料；店家確認設備、金額與預估安裝日期後，再產生正式資料填寫連結。真正的正式契約會在安裝完成、店家確認正式起租日後再產生並傳送。</div></div></div><div id="stats" class="stat-grid"></div><div id="msg"></div></section>
     <div class="layout"><section class="card2"><h2 style="margin-top:0">租賃申請管理 / 契約列表</h2><div class="tabs"><button class="tab active" data-filter="all">主要列表</button><button class="tab" data-filter="new">待店家確認</button><button class="tab" data-filter="sign">待客人補資料</button><button class="tab" data-filter="active">租用中</button><button class="tab" data-filter="expiring">30 天內到期</button><button class="tab" data-filter="return">退租</button><button class="tab" data-filter="cancelled">已取消</button></div><div id="list" class="list" style="margin-top:12px">讀取中...</div></section><main><section class="card2" id="detailBox"><h2 style="margin-top:0">請選擇左側案件</h2><div class="muted">可由客人申請轉正式契約，也可按「店家代填租賃單」直接建立。設備欄位只保留「設備名稱 / 備註」，可新增多列。</div></section><section class="card2 print-area"><div id="contractPreview"></div></section></main></div>
   </div>
-  <script src="config.js?v=rental-flow-20260611"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" referrerpolicy="no-referrer"></script><script src="firebase-client.js?v=20260614-rental-queue-delete-fix"></script><script src="app.js?v=rental-flow-20260611"></script><script src="rental-common.js?v=20260616-remove-period-summary-renewal-v4"></script><script src="global-nav.js?v=20260603unified1"></script>
+  <script src="config.js?v=rental-flow-20260611"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" referrerpolicy="no-referrer"></script><script src="firebase-client.js?v=20260614-rental-queue-delete-fix"></script><script src="app.js?v=rental-flow-20260611"></script><script src="rental-common.js?v=20260616-final-rental-contract-text-v2"></script><script src="global-nav.js?v=20260603unified1"></script>
   <script>
     const R=window.YZRental; let applications=[],contracts=[],selected=null,filter='all';
     function setupContractPreviewScaler(){
@@ -498,7 +498,9 @@ ${url}
 
 合約內容會直接顯示在頁面中，請自行截圖保存。
 
-系統會依您選擇的通知方式，提醒續約或相關退租事宜。`;
+系統會依您選擇的通知方式，提醒續約或相關退租事宜。
+
+感謝您的租用，有任何問題也可以直接在官方 LINE 詢問。`;
       return await queueCustomerNotice(contract,{title:'租賃契約已確認成立',body,source:'rental-official-contract',officialContractUrl:url,contractId:contract.contractId||contract.__id,applicationId:contract.applicationId});
     }
     window.markDelivered=async function(){
