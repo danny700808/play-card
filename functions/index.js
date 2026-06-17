@@ -608,7 +608,7 @@ function isCustomerEmailVerified(row = {}) {
 function customerEmailOf(row = {}) {
   return queueTargetEmail(row);
 }
-async function createCustomerNotificationQueues({ row, title, body, source, contractId, applicationId, sendAfterAt, sendAfterMs, signUrl, officialContractUrl }) {
+async function createCustomerNotificationQueues({ row, title, body, source, contractId, applicationId, sendAfterAt, sendAfterMs, signUrl, officialContractUrl, initialStatus }) {
   row = row || {};
   const email = customerEmailOf(row);
   const pref = normalizeNotificationPreference(row.notificationPreference || row.preferredContactMethod, email);
@@ -621,7 +621,7 @@ async function createCustomerNotificationQueues({ row, title, body, source, cont
     title,
     body,
     message: body,
-    status: '待發送',
+    status: clean(initialStatus) || '待發送',
     sendAfterAt,
     sendAfterMs,
     source,
@@ -750,7 +750,7 @@ async function appendNotificationLog(queueId, data) {
 async function processNotificationQueueDoc(docRef, row, options = {}) {
   row = row || {};
   const queueId = clean(row.queueId || docRef.id);
-  if (!isPendingQueue(row)) return { ok: true, skipped: true, reason: `狀態不是待發送：${queueStatus(row)}` };
+  if (options.force !== true && !isPendingQueue(row)) return { ok: true, skipped: true, reason: `狀態不是待發送：${queueStatus(row)}` };
 
   const scheduledAt = queueScheduledAtMillis(row);
   const nowMs = Date.now();
@@ -1223,6 +1223,87 @@ exports.rentalSaveContractHttp = httpEndpoint(async (data) => {
     signUrl: row.signUrl,
     officialContractUrl: row.officialContractUrl,
   };
+});
+
+
+exports.rentalSendSignLinkHttp = httpEndpoint(async (data) => {
+  const contractId = clean(data.contractId || data.id || data.__id);
+  if (!contractId) throw new Error('缺少契約編號，無法傳送正式資料填寫連結。');
+
+  const ref = db.collection('rentalContracts').doc(contractId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new Error('找不到契約資料，無法傳送正式資料填寫連結。');
+
+  const current = Object.assign({ __id: snap.id, contractId: snap.id }, snap.data() || {});
+  const signToken = clean(current.signToken || current.token) || randomToken(18);
+  const customerToken = clean(current.customerToken) || randomToken(18);
+  const officialContractToken = clean(current.officialContractToken) || randomToken(18);
+  const contractNo = clean(current.contractNo || snap.id);
+  const signUrl = buildSignUrl({ contractId: snap.id, signToken });
+  const officialContractUrl = buildOfficialContractUrl({ contractId: snap.id, officialContractToken, customerToken, signToken });
+  const customerName = clean(current.customerName || current.partyAName || '客人');
+
+  const normalized = stripUndefined({
+    contractId: snap.id,
+    contractNo,
+    signToken,
+    token: signToken,
+    customerToken,
+    officialContractToken,
+    signUrl,
+    officialContractUrl,
+    status: '待客人補資料',
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAtText: nowText(),
+  });
+  await ref.set(normalized, { merge: true });
+
+  const row = Object.assign({}, current, normalized, { __id: snap.id, contractId: snap.id });
+  const body = [
+    `${customerName} 您好，請點選以下連結，補填身分證字號、上傳身分證照片，並完成簽名確認：`,
+    '',
+    signUrl,
+    '',
+    '送出後，柚子樂器會再確認資料，並依約定時間安裝／交付設備。',
+  ].join('\n');
+
+  const notificationResult = await createCustomerNotificationQueues({
+    row,
+    title: '租賃正式資料填寫連結',
+    body,
+    source: 'rental-sign-link',
+    contractId: snap.id,
+    applicationId: clean(row.applicationId),
+    signUrl,
+    initialStatus: 'manual_ready',
+  });
+
+  const sendResults = [];
+  for (const queueId of notificationResult.queueIds || []) {
+    const queueRef = db.collection(QUEUE_COLLECTION).doc(queueId);
+    const queueSnap = await queueRef.get();
+    if (queueSnap.exists) {
+      sendResults.push(await processNotificationQueueDoc(queueRef, queueSnap.data() || {}, { processor: 'rental-sign-link-http', force: true }));
+    }
+  }
+  notificationResult.sendResults = sendResults;
+  notificationResult.sentCount = sendResults.filter((r) => r && r.sent).length;
+  notificationResult.failedCount = sendResults.filter((r) => r && r.ok === false).length;
+
+  await ref.set({
+    signLinkNoticeQueueCreated: notificationResult.count > 0,
+    signLinkNoticeQueueCreatedAt: notificationResult.count ? nowText() : '',
+    signLinkLineQueueCreated: notificationResult.line,
+    signLinkEmailQueueCreated: notificationResult.email,
+    signLinkNoticeQueueIds: notificationResult.queueIds,
+    signLinkNoticeSendResults: sendResults,
+    signLinkNoticeSentCount: notificationResult.sentCount,
+    signLinkNoticeFailedCount: notificationResult.failedCount,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAtText: nowText(),
+  }, { merge: true });
+
+  return { contractId: snap.id, contractNo, signUrl, officialContractUrl, notificationResult };
 });
 
 exports.rentalSignContractHttp = httpEndpoint(async (data) => {
