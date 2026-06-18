@@ -46,17 +46,9 @@ function parseRentalApplicationCommand(text) {
 }
 
 async function replyLineMessage(replyToken, message) {
+  if (!replyToken) throw new Error('缺少 LINE replyToken，無法回覆客人。');
   const token = await getLineAccessToken();
-
-  if (!replyToken) {
-    console.log('Missing replyToken. Message:', message);
-    return;
-  }
-
-  if (!token) {
-    console.log('Missing LINE_CHANNEL_ACCESS_TOKEN. Message:', message);
-    return;
-  }
+  if (!token) throw new Error('LINE Channel access token 未設定或部署時未載入。');
 
   const response = await fetch('https://api.line.me/v2/bot/message/reply', {
     method: 'POST',
@@ -66,20 +58,22 @@ async function replyLineMessage(replyToken, message) {
     },
     body: JSON.stringify({
       replyToken,
-      messages: [{ type: 'text', text: message }]
+      messages: [{ type: 'text', text: String(message || '').slice(0, 4900) }]
     })
   });
-
+  const responseText = await response.text();
   if (!response.ok) {
-    const body = await response.text();
-    console.error('LINE reply failed:', response.status, body);
+    throw new Error(`LINE reply API ${response.status}：${responseText.slice(0, 500)}`);
   }
+  return { provider: 'line-messaging-api', responseStatus: response.status, responseText: responseText.slice(0, 500) };
 }
 
 
 async function pushLineMessage(lineUserId, message) {
+  const to = normalizeText(lineUserId);
+  if (!to) throw new Error('缺少 LINE User ID，無法推播。');
   const token = await getLineAccessToken();
-  if (!token || !lineUserId) return;
+  if (!token) throw new Error('LINE Channel access token 未設定或部署時未載入。');
   const response = await fetch('https://api.line.me/v2/bot/message/push', {
     method: 'POST',
     headers: {
@@ -87,14 +81,15 @@ async function pushLineMessage(lineUserId, message) {
       Authorization: `Bearer ${token}`
     },
     body: JSON.stringify({
-      to: lineUserId,
-      messages: [{ type: 'text', text: message }]
+      to,
+      messages: [{ type: 'text', text: String(message || '').slice(0, 4900) }]
     })
   });
+  const responseText = await response.text();
   if (!response.ok) {
-    const body = await response.text();
-    console.error('LINE push failed:', response.status, body);
+    throw new Error(`LINE push API ${response.status}：${responseText.slice(0, 500)}`);
   }
+  return { provider: 'line-messaging-api', responseStatus: response.status, responseText: responseText.slice(0, 500) };
 }
 
 async function getLineProfile(lineUserId) {
@@ -141,7 +136,11 @@ async function findRentalApplication(applicationKey) {
 async function handleRentalApplicationLink({ applicationKey, declaredName, lineUserId, replyToken }) {
   const app = await findRentalApplication(applicationKey);
   if (!app) {
-    await replyLineMessage(replyToken, `找不到租賃申請編號：${applicationKey}。請確認是否完整複製表單送出後產生的文字。`);
+    try {
+      await replyLineMessage(replyToken, `找不到租賃申請編號：${applicationKey}。請確認是否完整複製表單送出後產生的文字。`);
+    } catch (replyErr) {
+      console.error('[rental line bind not-found reply failed]', replyErr);
+    }
     return;
   }
 
@@ -159,19 +158,33 @@ async function handleRentalApplicationLink({ applicationKey, declaredName, lineU
     lineLinkStatus: 'linked',
     lineLinkedAt: now,
     lineLinkedAtText: new Date().toISOString(),
-    lineConfirmText: `設備租賃申請 ${applicationNo}`, 
+    lineConfirmText: `設備租賃申請 ${applicationNo}`,
     status: data.status || '待店家確認',
     updatedAt: now
   }, { merge: true });
 
-  await replyLineMessage(replyToken, `已收到您的租賃申請：${applicationNo}
+  const customerReplyText = `已收到您的租賃申請：${applicationNo}
 
 柚子樂器會透過此 LINE 先與您確認設備、金額與安裝／交付時間。
 
-確認後會再傳正式資料連結給您。屆時需要填寫身分證字號並上傳身分證照片，請您先準備相關資料。`);
+確認後會再傳正式資料連結給您。屆時需要填寫身分證字號並上傳身分證照片，請您先準備相關資料。`;
 
-  const managerLineUserId = await getPrimaryManagerLineUserId();
-  if (managerLineUserId && managerLineUserId !== lineUserId) {
+  let customerReplyStatus = '已發送';
+  let customerReplyError = '';
+  try {
+    await replyLineMessage(replyToken, customerReplyText);
+  } catch (replyErr) {
+    customerReplyStatus = '發送失敗';
+    customerReplyError = replyErr && replyErr.message ? replyErr.message : String(replyErr);
+    console.error('[rental customer bind reply failed]', app.id, customerReplyError);
+  }
+
+  let managerNoticeStatus = '未設定';
+  let managerNoticeError = '';
+  let managerNoticeQueueId = '';
+  let managerRecipient = null;
+  try {
+    managerRecipient = await getPrimaryManagerLineRecipient();
     const adminUrl = rentalAdminApplicationUrl(app.id);
     const equipment = normalizeText(data.otherEquipmentNeed || data.equipmentName || data.rentalType || '');
     const message = [
@@ -186,8 +199,62 @@ async function handleRentalApplicationLink({ applicationKey, declaredName, lineU
       '請進入系統處理這一筆租賃申請：',
       adminUrl
     ].join('\n');
-    await pushLineMessage(managerLineUserId, message);
+
+    if (!managerRecipient || !managerRecipient.lineUserId) {
+      managerNoticeStatus = '發送失敗';
+      managerNoticeError = '主管 LINE 收件人尚未設定。';
+    } else if (managerRecipient.lineUserId === lineUserId) {
+      managerNoticeStatus = '已略過';
+      managerNoticeError = '主管 LINE 與客人 LINE 相同，為避免把後台連結傳給客人，已略過管理端推播。';
+    } else {
+      managerNoticeQueueId = `rental-line-bind-manager-${safeId(app.id)}-${Date.now()}`;
+      await createNotificationQueue({
+        queueId: managerNoticeQueueId,
+        channel: 'line',
+        targetLineUserId: managerRecipient.lineUserId,
+        targetEmployeeId: managerRecipient.employeeId,
+        targetName: managerRecipient.name || '柚子樂器主管',
+        title: '客人已完成租賃 LINE 綁定',
+        body: message,
+        message,
+        source: 'rental-line-linked-manager',
+        applicationId: app.id,
+        status: 'manual_ready'
+      });
+      const queueRef = db.collection(QUEUE_COLLECTION).doc(managerNoticeQueueId);
+      const queueSnap = await queueRef.get();
+      const result = queueSnap.exists
+        ? await processNotificationQueueDoc(queueRef, queueSnap.data() || {}, { processor: 'rental-line-webhook', force: true })
+        : { ok: false, error: '管理端通知佇列建立後讀取失敗。' };
+      managerNoticeStatus = result && result.sent ? '已發送' : '發送失敗';
+      managerNoticeError = result && result.error ? result.error : (managerNoticeStatus === '已發送' ? '' : 'LINE 管理端推播未成功。');
+    }
+  } catch (managerErr) {
+    managerNoticeStatus = '發送失敗';
+    managerNoticeError = managerErr && managerErr.message ? managerErr.message : String(managerErr);
+    console.error('[rental manager bind notice failed]', app.id, managerNoticeError);
   }
+
+  const lastError = [
+    customerReplyStatus === '發送失敗' ? `客人回覆：${customerReplyError}` : '',
+    managerNoticeStatus === '發送失敗' ? `管理端通知：${managerNoticeError}` : ''
+  ].filter(Boolean).join('；');
+
+  await app.ref.set({
+    customerLineReplyStatus: customerReplyStatus,
+    customerLineReplyError: customerReplyError,
+    customerLineReplyAtText: nowText(),
+    managerLineNoticeStatus: managerNoticeStatus,
+    managerLineNoticeError,
+    managerLineNoticeQueueId,
+    managerLineRecipientId: managerRecipient ? managerRecipient.employeeId : '',
+    managerLineRecipientMasked: managerRecipient ? maskLineUserId(managerRecipient.lineUserId) : '',
+    managerLineNoticeAtText: nowText(),
+    lineLastDeliveryStatus: lastError ? '發送失敗' : '已發送',
+    lineLastDeliveryError: lastError,
+    lineLastDeliveryCheckedAtText: nowText(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
 }
 
 async function findEmployeeByEmail(email) {
@@ -294,10 +361,57 @@ function isManagerData(data, docId) {
   );
 }
 
+function lineUserIdFromRow(data = {}) {
+  return normalizeText(data.lineUserId || data['LINE User ID'] || data.targetLineUserId || data.lineId || '');
+}
+
+function maskLineUserId(value) {
+  const id = normalizeText(value);
+  if (!id) return '';
+  if (id.length <= 10) return `${id.slice(0, 3)}***`;
+  return `${id.slice(0, 6)}…${id.slice(-4)}`;
+}
+
+async function getPrimaryManagerLineRecipient() {
+  const primary = await db.collection('employees').doc('PRIMARY_MANAGER_LINE').get();
+  if (primary.exists) {
+    const data = primary.data() || {};
+    const lineUserId = lineUserIdFromRow(data);
+    if (lineUserId) {
+      return {
+        employeeId: primary.id,
+        name: normalizeText(data.name || data.displayName || '柚子樂器主要管理者'),
+        email: normalizeEmail(data.email || data.Email || ''),
+        lineUserId,
+        source: 'PRIMARY_MANAGER_LINE'
+      };
+    }
+  }
+
+  const snap = await db.collection('employees').limit(300).get();
+  const candidates = [];
+  snap.forEach((doc) => {
+    if (doc.id === 'PRIMARY_MANAGER_LINE') return;
+    const data = doc.data() || {};
+    const lineUserId = lineUserIdFromRow(data);
+    if (!lineUserId || !isManagerData(data, doc.id)) return;
+    const email = normalizeEmail(data.email || data.Email || data.mail || data.loginEmail || '');
+    candidates.push({
+      employeeId: doc.id,
+      name: normalizeText(data.name || data.displayName || email || doc.id),
+      email,
+      lineUserId,
+      source: isBootstrapAdminEmail(email) ? 'bootstrap-admin' : 'manager-fallback',
+      priority: isBootstrapAdminEmail(email) ? 0 : (data.lineNotifyEnabled === false ? 2 : 1)
+    });
+  });
+  candidates.sort((a, b) => a.priority - b.priority || a.employeeId.localeCompare(b.employeeId));
+  return candidates[0] || null;
+}
+
 async function getPrimaryManagerLineUserId() {
-  const doc = await db.collection('employees').doc('PRIMARY_MANAGER_LINE').get();
-  if (!doc.exists) return '';
-  return String(doc.data().lineUserId || '');
+  const recipient = await getPrimaryManagerLineRecipient();
+  return recipient ? recipient.lineUserId : '';
 }
 
 async function hasThisLineBoundToAnotherEmployee(lineUserId, currentEmployeeId) {
@@ -518,16 +632,18 @@ async function getSystemSettingValue(names) {
   }
 }
 
-async function getLineAccessToken() {
-  const token = clean(
-    process.env.LINE_CHANNEL_ACCESS_TOKEN ||
-    process.env.LINE_MESSAGING_ACCESS_TOKEN ||
-    process.env.LINE_ACCESS_TOKEN ||
-    process.env.LINE_BOT_CHANNEL_ACCESS_TOKEN ||
-    ''
-  );
-  if (token) return token;
-  return await getSystemSettingValue([
+async function resolveLineAccessToken() {
+  const envCandidates = [
+    ['LINE_CHANNEL_ACCESS_TOKEN', process.env.LINE_CHANNEL_ACCESS_TOKEN],
+    ['LINE_MESSAGING_ACCESS_TOKEN', process.env.LINE_MESSAGING_ACCESS_TOKEN],
+    ['LINE_ACCESS_TOKEN', process.env.LINE_ACCESS_TOKEN],
+    ['LINE_BOT_CHANNEL_ACCESS_TOKEN', process.env.LINE_BOT_CHANNEL_ACCESS_TOKEN]
+  ];
+  for (const [name, value] of envCandidates) {
+    const token = clean(value || '');
+    if (token) return { token, configured: true, source: `env:${name}` };
+  }
+  const token = await getSystemSettingValue([
     'LINE_CHANNEL_ACCESS_TOKEN',
     'LINE Channel Access Token',
     'LINE Messaging API Token',
@@ -535,6 +651,14 @@ async function getLineAccessToken() {
     'LINE Bot Access Token',
     'LINE_TOKEN'
   ]);
+  return token
+    ? { token, configured: true, source: 'firestore:systemSettings' }
+    : { token: '', configured: false, source: '' };
+}
+
+async function getLineAccessToken() {
+  const resolved = await resolveLineAccessToken();
+  return resolved.token;
 }
 
 function queueStatus(row = {}) {
@@ -615,7 +739,19 @@ async function createCustomerNotificationQueues({ row, title, body, source, cont
   const lineId = queueTargetLineUserId(row);
   const targetName = clean(row.customerName || row.partyAName || row.targetName || '客人');
   const baseId = `${safeId(source || 'rental-customer-notice')}-${safeId(contractId || applicationId || row.contractId || row.applicationId || 'rental')}-${Date.now()}`;
-  const results = { line: false, email: false, count: 0, queueIds: [], preference: pref };
+  const results = {
+    line: false,
+    email: false,
+    count: 0,
+    queueIds: [],
+    preference: pref,
+    lineRequested: wantsLineByPreference(pref),
+    emailRequested: wantsEmailByPreference(pref),
+    lineTargetFound: !!lineId,
+    emailTargetFound: !!email,
+    lineSkippedReason: '',
+    emailSkippedReason: ''
+  };
   const common = stripUndefined({
     targetName,
     title,
@@ -643,6 +779,8 @@ async function createCustomerNotificationQueues({ row, title, body, source, cont
     results.line = true;
     results.count += 1;
     results.queueIds.push(queueId);
+  } else if (wantsLineByPreference(pref)) {
+    results.lineSkippedReason = '客人尚未完成 LINE 配對，契約內沒有 LINE User ID。';
   }
   if (wantsEmailByPreference(pref) && email) {
     const queueId = `${baseId}-email`;
@@ -655,6 +793,8 @@ async function createCustomerNotificationQueues({ row, title, body, source, cont
     results.email = true;
     results.count += 1;
     results.queueIds.push(queueId);
+  } else if (wantsEmailByPreference(pref)) {
+    results.emailSkippedReason = '客人沒有 Email。';
   }
   return results;
 }
@@ -750,7 +890,12 @@ async function appendNotificationLog(queueId, data) {
 async function processNotificationQueueDoc(docRef, row, options = {}) {
   row = row || {};
   const queueId = clean(row.queueId || docRef.id);
-  if (options.force !== true && !isPendingQueue(row)) return { ok: true, skipped: true, reason: `狀態不是待發送：${queueStatus(row)}` };
+  const currentStatus = queueStatus(row);
+  const attemptCount = Number(row.attemptCount || 0) || 0;
+  if (options.force !== true && /發送失敗|fail|error/i.test(currentStatus) && attemptCount >= 5) {
+    return { ok: false, skipped: true, reason: '已達自動重試上限 5 次。', queueId, channel: queueChannel(row) };
+  }
+  if (options.force !== true && !isPendingQueue(row)) return { ok: true, skipped: true, reason: `狀態不是待發送：${currentStatus}` };
 
   const scheduledAt = queueScheduledAtMillis(row);
   const nowMs = Date.now();
@@ -943,7 +1088,7 @@ exports.sendNotificationQueueOnCreate = onDocumentCreated({
 });
 
 exports.flushNotificationQueue = onSchedule({ schedule: 'every 5 minutes', region: 'us-central1', timeoutSeconds: 120, memory: '512MiB' }, async () => {
-  const snap = await db.collection(QUEUE_COLLECTION).where('status', 'in', ['待發送', 'pending', 'queued', 'retry']).limit(50).get();
+  const snap = await db.collection(QUEUE_COLLECTION).where('status', 'in', ['待發送', 'pending', 'queued', 'retry', '發送失敗']).limit(50).get();
   const results = [];
   for (const doc of snap.docs) {
     results.push(await processNotificationQueueDoc(doc.ref, doc.data() || {}, { processor: 'scheduler' }));
@@ -989,6 +1134,42 @@ exports.rentalExpiryReminderDaily = onSchedule({ schedule: '0 10 * * *', timeZon
     results.push({ contractId: doc.id, endDate, daysLeft: left, notificationResult: notifyResult });
   }
   return { today, count: results.length, results };
+});
+
+exports.rentalLineRuntimeStatusHttp = httpEndpoint(async () => {
+  const tokenInfo = await resolveLineAccessToken();
+  const managerRecipient = await getPrimaryManagerLineRecipient();
+  let latestLineFailure = null;
+  try {
+    const snap = await db.collection(QUEUE_COLLECTION).limit(120).get();
+    const failures = [];
+    snap.forEach((doc) => {
+      const row = Object.assign({ queueId: doc.id }, doc.data() || {});
+      if (queueChannel(row) !== 'line') return;
+      const status = queueStatus(row);
+      if (!/發送失敗|fail|error/i.test(status)) return;
+      failures.push({
+        queueId: clean(row.queueId || doc.id),
+        source: clean(row.source),
+        status,
+        lastError: clean(row.lastError),
+        atText: clean(row.failedAtText || row.updatedAtText || row.createdAtText)
+      });
+    });
+    failures.sort((a, b) => clean(b.atText).localeCompare(clean(a.atText)));
+    latestLineFailure = failures[0] || null;
+  } catch (err) {
+    latestLineFailure = { status: '讀取失敗', lastError: err && err.message ? err.message : String(err), atText: nowText() };
+  }
+  return {
+    lineTokenConfigured: tokenInfo.configured,
+    lineTokenSource: tokenInfo.source,
+    managerLineConfigured: !!(managerRecipient && managerRecipient.lineUserId),
+    managerRecipientName: managerRecipient ? managerRecipient.name : '',
+    managerRecipientId: managerRecipient ? managerRecipient.employeeId : '',
+    managerLineUserIdMasked: managerRecipient ? maskLineUserId(managerRecipient.lineUserId) : '',
+    latestLineFailure
+  };
 });
 
 exports.processNotificationQueueNowHttp = httpEndpoint(async (data) => {
@@ -1289,6 +1470,14 @@ exports.rentalSendSignLinkHttp = httpEndpoint(async (data) => {
   notificationResult.sendResults = sendResults;
   notificationResult.sentCount = sendResults.filter((r) => r && r.sent).length;
   notificationResult.failedCount = sendResults.filter((r) => r && r.ok === false).length;
+  const lineResult = sendResults.find((r) => r && r.channel === 'line') || null;
+  const emailResult = sendResults.find((r) => r && r.channel === 'email') || null;
+  notificationResult.lineSent = !!(lineResult && lineResult.sent);
+  notificationResult.emailSent = !!(emailResult && emailResult.sent);
+  notificationResult.lineFailed = !!(notificationResult.lineRequested && !notificationResult.lineSent);
+  notificationResult.emailFailed = !!(notificationResult.emailRequested && !notificationResult.emailSent);
+  notificationResult.lineError = clean((lineResult && lineResult.error) || notificationResult.lineSkippedReason || '');
+  notificationResult.emailError = clean((emailResult && emailResult.error) || notificationResult.emailSkippedReason || '');
 
   await ref.set({
     signLinkNoticeQueueCreated: notificationResult.count > 0,
@@ -1299,6 +1488,10 @@ exports.rentalSendSignLinkHttp = httpEndpoint(async (data) => {
     signLinkNoticeSendResults: sendResults,
     signLinkNoticeSentCount: notificationResult.sentCount,
     signLinkNoticeFailedCount: notificationResult.failedCount,
+    signLinkLineSent: notificationResult.lineSent,
+    signLinkLineError: notificationResult.lineError,
+    signLinkEmailSent: notificationResult.emailSent,
+    signLinkEmailError: notificationResult.emailError,
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     updatedAtText: nowText(),
   }, { merge: true });
