@@ -227,7 +227,7 @@
   <script src="config.js?v=20260529RetroLeaveLockFix"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260530notifyv2final1"></script>
+  <script src="firebase-client.js?v=attendance-flow-20260618"></script>
   <script src="app.js?v=20260530notifyv2final1"></script>
   <script>
 
@@ -414,20 +414,27 @@
         const key = String(s.scheduleKey || s.key || '');
         const isSel = key && key === selected;
         const range = (s.startTime && s.endTime) ? (escapeHtml(s.startTime) + ' - ' + escapeHtml(s.endTime)) : '未設定時間';
+        const originalRange = (s.originalStartTime && s.originalEndTime) ? (s.originalStartTime + ' - ' + s.originalEndTime) : '';
         const openText = s.clockInOpenAt ? (s.clockInOpenAt + ' 後可上班打卡') : '';
         let status = '';
-        if(s.canClockInNow === true) status = '現在可以上班打卡';
+        if(s.hasClockOut) status = '已完成上、下班打卡';
+        else if(s.hasClockIn) status = '已完成上班打卡，等待下班打卡';
+        else if(s.canClockInNow === true) status = '現在可以上班打卡';
         else if(openText) status = openText;
         else status = s.statusText || '';
         const showSelect = rows.length > 1;
+        const splitText = Number(s.splitCount || 0) > 1 ? `分段 ${Number(s.splitIndex || idx + 1)}/${Number(s.splitCount)}` : '';
+        const adjustedText = s.leaveAdjusted && originalRange ? `原班表 ${originalRange}｜核准請假後剩餘` : '';
+        const detailText = [adjustedText, splitText].filter(Boolean).join('｜');
         return `
           <div class="schedule-card ${isSel ? 'selected' : ''}" data-schedule-key="${escapeHtml(key)}">
             <div class="schedule-row">
               <div>
-                ${showSelect ? `<div class="schedule-name">班表 ${idx + 1}${isSel ? '｜已選擇' : ''}</div>` : ''}
+                ${showSelect ? `<div class="schedule-name">班段 ${idx + 1}${isSel ? '｜已選擇' : ''}</div>` : ''}
                 <div class="schedule-time">${range}</div>
+                ${detailText ? `<div class="muted">${escapeHtml(detailText)}</div>` : ''}
               </div>
-              ${showSelect ? `<button type="button" class="schedule-select-btn js-select-schedule" data-key="${escapeHtml(key)}">${isSel ? '已選擇' : '選擇此班表'}</button>` : ''}
+              ${showSelect ? `<button type="button" class="schedule-select-btn js-select-schedule" data-key="${escapeHtml(key)}">${isSel ? '已選擇' : '選擇此班段'}</button>` : ''}
             </div>
             ${status ? '<div class="schedule-status">' + escapeHtml(status) + '</div>' : ''}
           </div>`;
@@ -475,11 +482,20 @@
       if(!info.okToClock){ return { ok:false, message: info.message || '今天沒有可用班表，無法一般打卡。' }; }
       const selected = getSelectedSchedule();
       if(!selected){ return { ok:false, message:'請先選擇今日班表。' }; }
+      if(actionName && actionName.indexOf('上班') >= 0 && selected.hasClockIn){
+        return { ok:false, message:'這個有效班段已經有上班打卡紀錄。' };
+      }
+      if(actionName && actionName.indexOf('下班') >= 0 && selected.hasClockOut){
+        return { ok:false, message:'這個有效班段已經有下班打卡紀錄。' };
+      }
       if(actionName && mode === '標準打卡' && actionName.indexOf('上班') >= 0 && selected.canClockInNow === false){
         return { ok:false, message: selected.statusText || ('尚未到可打卡時間，請於 ' + (selected.clockInOpenAt || '') + ' 後再打卡。') };
       }
+      if(actionName && mode === '標準打卡' && actionName.indexOf('下班') >= 0 && !selected.hasClockIn){
+        return { ok:false, message:'這個有效班段尚未完成上班打卡，不能直接打下班卡；特殊狀況請送補打卡／修正申請。' };
+      }
       if(actionName && mode === '標準打卡' && actionName.indexOf('下班') >= 0 && selected.canClockOutNow === false){
-        return { ok:false, message:'尚未到上班時間，暫不開放下班打卡。' };
+        return { ok:false, message:selected.statusText || '此班段目前尚未開放下班打卡。' };
       }
       return { ok:true, message:'' };
     }
@@ -1078,7 +1094,7 @@
       const d = new Date(String(dateStr||'') + 'T00:00:00');
       if(isNaN(d.getTime())) return '';
       d.setDate(d.getDate() + Number(days||0));
-      return d.toISOString().slice(0,10);
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
     }
 
     function bindClockHistoryRangeAuto_(){
@@ -1105,8 +1121,8 @@ function initRangeDefault(){
       const end = new Date();
       const start = new Date();
       start.setDate(end.getDate() - 69);
-      qs('#rangeStart').value = start.toISOString().slice(0,10);
-      qs('#rangeEnd').value = end.toISOString().slice(0,10);
+      qs('#rangeStart').value = `${start.getFullYear()}-${String(start.getMonth()+1).padStart(2,'0')}-${String(start.getDate()).padStart(2,'0')}`;
+      qs('#rangeEnd').value = `${end.getFullYear()}-${String(end.getMonth()+1).padStart(2,'0')}-${String(end.getDate()).padStart(2,'0')}`;
       bindClockHistoryRangeAuto_();
     }
 

@@ -108,7 +108,7 @@
 
           <div class="mini-line hidden" id="rangeText"></div>
           <div class="mini-line hidden" id="detailText"></div>
-          <div class="payroll-note" id="sourceText">資料來源：Firebase / Firestore，依目前最後有效工讀紀錄與主管核准修正滾動計算；不再讀取 GS。</div>
+          <div class="payroll-note" id="sourceText">資料來源：Firebase / Firestore，依最後有效工讀紀錄、核准支薪假與主管修正滾動計算；支薪假會分開列入薪資，不視為實際出勤打卡。</div>
         </div>
       </div>
     </div>
@@ -117,7 +117,7 @@
   <script src="config.js?v=20260529badgeNotify1"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=admin-final-20260530b"></script>
+  <script src="firebase-client.js?v=attendance-flow-20260618"></script>
 
   <script src="app.js?v=admin-final-20260530b"></script>
   <script>
@@ -262,6 +262,9 @@
         hourlyRate: safeNum(get(['hourlyRate','時薪'])),
         grossPay: safeNum(get(['grossPay','當筆毛額','當日工資'])),
         laborSelfPaySnapshot: safeNum(get(['laborSelfPaySnapshot','勞保自付額快照'])),
+        sourceType: clean(get(['sourceType','資料來源類型'])),
+        isPaidLeave: truthy(get(['isPaidLeave','核准支薪假'])) || clean(get(['sourceType','資料來源類型'])) === 'approvedPaidLeave',
+        paidLeaveHours: safeNum(get(['paidLeaveHours','支薪假時數'])),
         replacementOf: clean(get(['replacementOf','replacesRecordId','取代紀錄ID','原紀錄ID'])),
         replacedByRecordId: clean(get(['replacedByRecordId','supersededBy','被取代紀錄ID'])),
         updatedAt: clean(get(['updatedAt','最後更新時間','reviewedAt','審核時間','createdAt','建立時間'])),
@@ -414,14 +417,16 @@
       if(!user) return;
       const allEmployees = (await fbAll('employees')).map(normalizeEmployeeRow);
       state.employees = allEmployees.filter(e=>e.id && e.identityType === 'parttime' && e.accountStatus !== 'rejected');
-      qs('#monthText').value = new Date().toISOString().slice(0,7);
+      const now = new Date();
+      qs('#monthText').value = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
       if(!isParttimeEmployeeSelectable(selectedEmployee())) state.selectedId = '';
       renderEmployees();
       renderSelected();
     }
 
     function monthRange(monthText){
-      const month = clean(monthText) || new Date().toISOString().slice(0,7);
+      const now = new Date();
+      const month = clean(monthText) || `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
       return { monthText: month, startDate: month + '-01', endDate: month + '-31' };
     }
 
@@ -480,7 +485,9 @@
           netPay,
           recordCount: records.length,
           excludedRecordCount: Math.max(0, allRecords.length - records.length),
-          supplementCount: records.filter(r=>r.status === '補時數' || lower(r.status).includes('臨時出勤')).length
+          supplementCount: records.filter(r=>r.status === '補時數' || lower(r.status).includes('臨時出勤')).length,
+          paidLeaveCount: records.filter(r=>r.isPaidLeave).length,
+          paidLeaveHours: Math.round(records.filter(r=>r.isPaidLeave).reduce((sum,r)=>sum+(Number(r.paidLeaveHours||r.totalHours)||0),0)*100)/100
         }
       };
     }
@@ -499,7 +506,7 @@
         if(!finalResult) throw new Error('查無薪資資料');
         fillSummary(finalResult.summary || {}, finalResult.search || {});
         const s = finalResult.summary || {};
-        setMsgText(`Firebase 已依最後有效結果重新計算。有效工讀紀錄 ${s.recordCount || 0} 筆${s.excludedRecordCount ? '，已排除非有效紀錄 ' + s.excludedRecordCount + ' 筆' : ''}。`, false);
+        setMsgText(`Firebase 已依最後有效結果重新計算。有效工讀／支薪假紀錄 ${s.recordCount || 0} 筆${s.paidLeaveCount ? '，其中核准支薪假 ' + s.paidLeaveCount + ' 筆（' + hoursText(s.paidLeaveHours || 0) + '）' : ''}${s.excludedRecordCount ? '，已排除非有效紀錄 ' + s.excludedRecordCount + ' 筆' : ''}。支薪假為獨立薪資紀錄，不代表實際打卡工時。`, false);
         progress.done('完成');
       }catch(err){
         progress.fail('查詢失敗');

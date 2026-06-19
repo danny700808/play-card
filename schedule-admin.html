@@ -352,7 +352,7 @@
   <script src="config.js?v=20260528ClockMultiSchedule"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=admin-final-20260530b"></script>
+  <script src="firebase-client.js?v=attendance-flow-20260618"></script>
 
   <script src="app.js?v=admin-final-20260530b"></script>
   <script>
@@ -879,7 +879,8 @@
       }
 
       try {
-        await callBackend('saveScheduleTemplate', payload);
+        const result = await callBackend('saveScheduleTemplate', payload);
+        if (!result || result.ok === false) throw new Error((result && result.message) || '儲存班表模板失敗');
         if (progress) progress.done('已儲存');
         showStatus('templateStatus', '班表模板已儲存。', 'success');
         resetTemplateForm();
@@ -930,7 +931,8 @@
       }
 
       try {
-        await callBackend('saveEmployeeSchedule', payload);
+        const result = await callBackend('saveEmployeeSchedule', payload);
+        if (!result || result.ok === false) throw new Error((result && result.message) || '儲存員工套用班表失敗');
         if (progress) progress.done('已儲存');
         showStatus('assignmentStatus', '員工套用班表已儲存。', 'success');
         resetAssignmentForm();
@@ -1050,7 +1052,8 @@
       if (clockType === '標準打卡' && (!payload.startTime || !payload.endTime)) { if (progress) progress.fail('資料不完整', 900); showStatus('singleDayStatus', '標準打卡請填上班時間與下班時間。', 'error'); return; }
       if (clockType === '標準打卡' && payload.endTime <= payload.startTime) { if (progress) progress.fail('時間錯誤', 900); showStatus('singleDayStatus', '下班時間必須晚於上班時間。', 'error'); return; }
       try {
-        await callBackend('saveSingleDaySchedule', payload);
+        const result = await callBackend('saveSingleDaySchedule', payload);
+        if (!result || result.ok === false) throw new Error((result && result.message) || '儲存單日特別班表失敗');
         if (progress) progress.done('已儲存');
         showStatus('singleDayStatus', '單日特別班表已儲存。', 'success');
         resetSingleDayForm();

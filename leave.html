@@ -198,7 +198,7 @@
 <script src="config.js?v=20260529RetroLeaveLockFix"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=admin-final-20260530b"></script>
+  <script src="firebase-client.js?v=attendance-flow-20260618"></script>
 <script src="app.js?v=admin-final-20260530b"></script>
 
 <script>
@@ -525,7 +525,39 @@ async function getLeaveClockRowsForDate_(dateKey){
 }
 function leaveClockConflictMessage_(dateKey, rows){
   const list = (rows || []).map(row => [row.actionName || row['打卡動作'] || '', (row.time || row.clockTime || '').slice(0,5)].filter(Boolean).join(' ')).filter(Boolean).join('、');
-  return (dateKey || '') + ' 已有打卡紀錄' + (list ? '（' + list + '）' : '') + '。這一天不能再用整天或一般部分請假；如果是提早離開或已發生的狀況，請回打卡頁「待處理事項」使用事後補假。';
+  return (dateKey || '') + ' 已有打卡紀錄' + (list ? '（' + list + '）' : '') + '。整天請假不能再送出；部分請假只有在與已發生的出勤時段重疊時才會被阻擋。已發生的重疊時段請回打卡頁「待處理事項」使用事後補假。';
+}
+function leaveClockRowMinute_(row){
+  const raw = String((row && (row.time || row.clockTime || row['打卡時間'])) || '').slice(0,5);
+  const m = raw.match(/^(\d{1,2}):(\d{2})$/);
+  return m ? Number(m[1]) * 60 + Number(m[2]) : NaN;
+}
+function leaveWorkedIntervalsFromRows_(dateKey, rows){
+  const sorted = (rows || []).slice().sort((a,b) => leaveClockRowMinute_(a) - leaveClockRowMinute_(b));
+  const opens = [];
+  const intervals = [];
+  sorted.forEach(row => {
+    const action = String((row && (row.actionName || row['打卡動作'])) || '');
+    const minute = leaveClockRowMinute_(row);
+    if(!Number.isFinite(minute)) return;
+    if(action.indexOf('上班') >= 0){ opens.push(minute); return; }
+    if(action.indexOf('下班') >= 0 && opens.length){
+      const start = opens.shift();
+      if(minute > start) intervals.push([start, minute]);
+    }
+  });
+  const today = localDateInputValue();
+  const now = new Date();
+  const openEnd = dateKey === today ? (now.getHours() * 60 + now.getMinutes()) : 24 * 60;
+  opens.forEach(start => { if(openEnd > start) intervals.push([start, openEnd]); });
+  return intervals;
+}
+function leaveCustomSegmentOverlapsClock_(seg, rows){
+  if(!seg || seg.mode === 'retro') return false;
+  const start = leaveTimeTextToMinutesLocal(seg.startTime);
+  const end = leaveTimeTextToMinutesLocal(seg.endTime);
+  if(!(end > start)) return false;
+  return leaveWorkedIntervalsFromRows_(leaveNormalizeDateKey(seg.leaveDate), rows).some(pair => Math.max(start, pair[0]) < Math.min(end, pair[1]));
 }
 
 async function refreshCustomSegmentContext(segmentId){
@@ -545,10 +577,14 @@ async function refreshCustomSegmentContext(segmentId){
   }
   if(seg.mode !== 'retro'){
     const clockRows = await getLeaveClockRowsForDate_(seg.leaveDate);
-    if(clockRows.length){
+    if(leaveCustomSegmentOverlapsClock_(seg, clockRows)){
       box.className = 'segment-context is-error';
-      box.innerHTML = '<strong>這一天已有打卡紀錄</strong><div>' + escapeHtml(leaveClockConflictMessage_(seg.leaveDate, clockRows)) + '</div>';
+      box.innerHTML = '<strong>請假時段與已發生出勤重疊</strong><div>' + escapeHtml(leaveClockConflictMessage_(seg.leaveDate, clockRows)) + '</div>';
       return;
+    }
+    if(clockRows.length){
+      box.className = 'segment-context is-ok';
+      box.innerHTML = '<strong>當天已有打卡，但未與這段請假重疊</strong><div>仍可送出；後端會再次依實際時段檢查。</div>';
     }
   }
   box.className = 'segment-context';
@@ -1324,12 +1360,13 @@ function retroClockQueryMeta(){
     reason:String(q.get('clockReason') || '提早離開，申請剩餘時段事後補假').trim()
   };
 }
-async function submitRetroClockCorrectionIfNeeded(){
+async function submitRetroClockCorrectionIfNeeded(linkMeta){
   const meta = retroClockQueryMeta();
   if(!meta) return { ok:true, skipped:true };
   const user = requireLogin();
   if(!user) return { ok:false, message:'缺少員工資料' };
   const reasonText = qs('#note') ? String(qs('#note').value || '').trim() : '';
+  const linked = linkMeta || {};
   return await api('submitClockCorrection', {
     userId:user.id,
     requestKind:'missingClock',
@@ -1348,6 +1385,8 @@ async function submitRetroClockCorrectionIfNeeded(){
     correctTime:meta.clockTime,
     correctAction:meta.clockAction,
     correctionType:'標準打卡',
+    relatedLeaveRequestId:String(linked.requestId || '').trim(),
+    caseId:String(linked.caseId || '').trim(),
     reason: meta.reason + (reasonText ? ('｜請假原因：' + reasonText) : '')
   });
 }
@@ -1772,7 +1811,7 @@ function leaveDateRangeList(startDate, endDate){
   if(isNaN(start.getTime()) || isNaN(end.getTime()) || end < start) return [s];
   let cur = new Date(start.getTime());
   while(cur <= end && out.length < 45){
-    out.push(cur.toISOString().slice(0,10));
+    out.push(`${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}-${String(cur.getDate()).padStart(2,'0')}`);
     cur.setDate(cur.getDate() + 1);
   }
   return out;
@@ -1792,22 +1831,23 @@ function leaveClockGuardDates(){
   return Array.from(dates).sort();
 }
 async function validateLeaveClockConflictBeforeSubmit(user){
-  const allRetro = (leaveSegmentsState || []).length > 0 && (leaveSegmentsState || []).every(seg => seg.mode === 'retro');
-  if(allRetro) return {ok:true};
-  const dates = leaveClockGuardDates();
-  if(!dates.length) return {ok:true};
-  const startDate = dates[0];
-  const endDate = dates[dates.length - 1];
-  const dateSet = new Set(dates);
+  const segments = leaveSegmentsState || [];
+  if(!segments.length || segments.every(seg => seg.mode === 'retro')) return {ok:true};
   try{
-    const r = await api('getClockHistoryRange', { userId:user.id, employeeId:user.id, startDate, endDate });
-    const rows = (r && r.rows) || [];
-    const hit = rows.find(row => dateSet.has(leaveNormalizeDateKey(row.date || row.clockDate || row['打卡日期'])));
-    if(hit){
-      return {
-        ok:false,
-        message:'這一天已經有打卡紀錄，不能再送一般整天請假或一般部分請假。若是已發生的出勤異常，請回打卡頁「待處理事項」使用事後補假流程。'
-      };
+    for(const seg of segments){
+      if(!seg || seg.mode === 'retro') continue;
+      if(seg.mode === 'custom'){
+        const rows = await getLeaveClockRowsForDate_(seg.leaveDate);
+        if(leaveCustomSegmentOverlapsClock_(seg, rows)){
+          return {ok:false, message:`${leaveNormalizeDateKey(seg.leaveDate)} ${seg.startTime}-${seg.endTime} 與已發生的出勤時間重疊，請改用事後補假流程。`};
+        }
+      }else{
+        const dates = leaveDateRangeList(seg.startDate, seg.endDate || seg.startDate);
+        for(const dateKey of dates){
+          const rows = await getLeaveClockRowsForDate_(dateKey);
+          if(rows.length) return {ok:false, message:leaveClockConflictMessage_(dateKey, rows)};
+        }
+      }
     }
   }catch(err){
     return {ok:false, message:'無法確認當日打卡狀態，請稍後再試。'};
@@ -1816,22 +1856,8 @@ async function validateLeaveClockConflictBeforeSubmit(user){
 }
 
 async function validateLeaveClockConflictsBeforeSubmit_(){
-  if(isRetroLockedMode()) return {ok:true};
-  const segments = leaveSegmentsState || [];
-  for(const seg of segments){
-    if(!seg || seg.mode === 'retro') continue;
-    if(seg.mode === 'custom'){
-      const rows = await getLeaveClockRowsForDate_(seg.leaveDate);
-      if(rows.length) return {ok:false, message:leaveClockConflictMessage_(seg.leaveDate, rows)};
-    }else{
-      const dates = leaveDatesBetween(seg.startDate, seg.endDate || seg.startDate);
-      for(const dateKey of dates){
-        const rows = await getLeaveClockRowsForDate_(dateKey);
-        if(rows.length) return {ok:false, message:leaveClockConflictMessage_(dateKey, rows)};
-      }
-    }
-  }
-  return {ok:true};
+  const user = requireLogin();
+  return user ? validateLeaveClockConflictBeforeSubmit(user) : {ok:false,message:'缺少員工資料'};
 }
 
 async function submitLeave(){
@@ -1853,6 +1879,9 @@ async function submitLeave(){
   const relation = qs('#reason').value === '喪假'
     ? (eventMeta.mode === 'continue' && eventMeta.candidate ? (eventMeta.candidate.relation || '') : (qs('#bereavementRelation').value || ''))
     : '';
+  const retroMeta = retroClockQueryMeta();
+  const queryCaseId = String(leaveQuery().get('caseId') || '').trim();
+  const attendanceCaseId = retroMeta ? (queryCaseId || `ATTCASE_${String(user.id || 'USER').replace(/[^A-Za-z0-9_-]/g,'_')}_${Date.now()}`) : '';
   const payload = {
     userId:user.id,
     reason:qs('#reason').value,
@@ -1861,6 +1890,8 @@ async function submitLeave(){
     eventMode: eventMeta.mode || '',
     eventId: eventMeta.candidate ? eventMeta.candidate.eventId : '',
     segments: collectSegmentPayload(),
+    caseId: attendanceCaseId,
+    attendanceCaseId: attendanceCaseId,
     requestType: (leaveSegmentsState || []).some(seg => seg.mode === 'retro') ? '事後補假' : '一般請假'
   };
   if(file) payload.attachment = await fileToDataUrl(file);
@@ -1882,10 +1913,10 @@ async function submitLeave(){
     if(r.ok){
       let extraMsg = '';
       try{
-        const clockRes = await submitRetroClockCorrectionIfNeeded();
+        const clockRes = await submitRetroClockCorrectionIfNeeded({requestId:r.requestId,caseId:r.caseId || payload.caseId});
         if(clockRes && !clockRes.skipped){
           extraMsg = clockRes.ok
-            ? '；已同步送出提早離開的下班打卡申請，待主管審核。主管審核會更新，並自動歸位。'
+            ? '；提早離開的下班卡已綁定同一案件，主管會在請假簽核一次完成處理。'
             : '；事後補假已送出，但下班打卡申請同步失敗：' + (clockRes.message || '請回打卡頁重新處理');
         }
       }catch(clockErr){

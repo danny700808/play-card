@@ -60,7 +60,7 @@ body{background:var(--bg);color:var(--ink)}
     <div id="lawHint" class="law-hint hidden"></div>
     <div class="field" style="margin-top:12px"><label>臨時出勤原因</label><textarea id="reason" placeholder="請填寫原因，例如：主管臨時通知支援、現場臨時加班、主管尚未排班但實際出勤"></textarea></div>
     <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
-      <button class="btn" onclick="submitRequest()">送出臨時出勤申請</button>
+      <button class="btn" id="submitBtn" onclick="submitRequest()">送出臨時出勤申請</button>
     </div>
   </div>
 </div>
@@ -69,10 +69,11 @@ body{background:var(--bg);color:var(--ink)}
 <script src="config.js?v=20260529notifybadge1"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-<script src="firebase-client.js?v=20260607tempattfix1"></script>
+<script src="firebase-client.js?v=attendance-flow-20260618"></script>
 <script src="app.js?v=20260607tempattfix1"></script>
 <script>
 let employees=[];
+let submittingRequest=false;
 let currentEmployee=null;
 let currentAnalysis=null;
 
@@ -153,7 +154,7 @@ function refreshEndOptions(){
 
 async function init(){
   try{
-    qs('#workDate').value=new Date().toISOString().slice(0,10);
+    const nowDate=new Date(); qs('#workDate').value=`${nowDate.getFullYear()}-${String(nowDate.getMonth()+1).padStart(2,'0')}-${String(nowDate.getDate()).padStart(2,'0')}`;
 
     let loginUser=null;
     try{loginUser=(typeof requireLogin==='function')?requireLogin():null}catch(e){loginUser=null}
@@ -435,6 +436,10 @@ function validateSelectedTime(showMessage){
 }
 
 async function submitRequest(){
+  if(submittingRequest) return;
+  const submitBtn=qs('#submitBtn');
+  submittingRequest=true;
+  if(submitBtn){submitBtn.disabled=true;submitBtn.textContent='送出中…';}
   try{
     const emp=currentEmployee;
     const date=clean(qs('#workDate').value),start=clean(qs('#startTime').value),end=clean(qs('#endTime').value);
@@ -492,6 +497,7 @@ async function submitRequest(){
     msg('已送出臨時出勤申請，請等待主管審核。','success');
     qs('#reason').value='';
   }catch(e){msg('送出失敗：'+(e.message||e),'error')}
+  finally{submittingRequest=false;if(submitBtn){submitBtn.disabled=false;submitBtn.textContent='送出臨時出勤申請';}}
 }
 </script>
   <script src="global-nav.js?v=20260603unified1"></script>

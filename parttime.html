@@ -364,7 +364,7 @@
   <script src="config.js?v=20260501uifix2"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260530notifyv2final1"></script>
+  <script src="firebase-client.js?v=attendance-flow-20260618"></script>
 
   <script src="app.js?v=20260530notifyv2final1"></script>
   <script>
@@ -499,7 +499,8 @@
         if(ctx.canRegister){
           const directHours = Number(ctx.remainingRegularHours || ctx.maxDirectHours || ctx.scheduledHours || 0) || 0;
           const usedText = Number(ctx.registeredHours || 0) > 0 ? `已登記 ${formatHoursLabel(ctx.registeredHours)}。` : '';
-          note.innerHTML = (ctx.helperText || '今天有排班，可以登記排班內時數。') + (ctx.scheduledHours ? `<div class="excess-note">今日排班 ${formatHoursLabel(ctx.scheduledHours)}。${usedText}若實際出勤超出可直接登記時數，請先至「打卡 / 補打卡」或「臨時出勤申請」送出超出時段；主管核准後系統會自動計入工讀薪資時數，不需要再回本頁重複登記。</div>` : '');
+          const paidLeaveText = Number(ctx.paidLeaveHours || 0) > 0 ? `<div class="excess-note">另有核准支薪假 ${formatHoursLabel(ctx.paidLeaveHours)}，會以獨立薪資紀錄計入，不要當作實際工讀時數重複登記。</div>` : '';
+          note.innerHTML = (ctx.helperText || '今天有有效出勤班段，可以登記排班內時數。') + (ctx.scheduledHours ? `<div class="excess-note">核准請假扣除後的有效班段共 ${formatHoursLabel(ctx.scheduledHours)}。${usedText}若實際出勤超出可直接登記時數，請先至「打卡 / 補打卡」或「臨時出勤申請」送出超出時段；主管核准後系統會自動計入工讀薪資時數，不需要再回本頁重複登記。</div>` : '') + paidLeaveText;
         }else{
           note.textContent = '今天沒有排班，不能直接登記工讀時數；如為臨時出勤，請先使用「臨時出勤申請」，主管核准後系統會自動計入薪資時數。';
         }

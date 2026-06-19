@@ -62,7 +62,7 @@
   <script src="config.js?v=20260501clockcorrection17"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=admin-final-20260530b"></script>
+  <script src="firebase-client.js?v=attendance-flow-20260618"></script>
 
   <script src="app.js?v=admin-final-20260530b"></script>
   <script>
@@ -149,12 +149,16 @@
 
           <div class="reason-box">
             <strong>原因：</strong>${escapeHtml(r.reason||'')}
+            ${r.caseId ? `<div class="hint" style="margin-top:6px">同案編號：${escapeHtml(r.caseId)}</div>` : ''}
           </div>
 
+          ${r.managedByLeaveApproval ? `
+            <div class="reason-box"><strong>此筆已與事後補假綁定。</strong><div class="hint">請到「請假簽核」一次核准或駁回，系統會同步處理下班卡。</div></div>
+          ` : `
           <div class="actions">
             <button class="btn" onclick="approve('${escapeHtml(r.requestId)}')">同意</button>
             <button class="btn secondary" onclick="rejectOne('${escapeHtml(r.requestId)}')">駁回</button>
-          </div>
+          </div>`}
         </div>`;
     }
 function scheduleIdle_(fn){if(window.requestIdleCallback)requestIdleCallback(fn,{timeout:1200});else setTimeout(fn,160);}
@@ -188,8 +192,9 @@ function scheduleIdle_(fn){if(window.requestIdleCallback)requestIdleCallback(fn,
     async function approve(requestId){
       if(!confirm('確定同意這筆申請？核准後，修正會更新原始打卡紀錄；補打卡與特殊打卡會新增正式打卡紀錄。')) return;
       try{
-        await api('approveClockCorrectionApi',{userId:currentUser.id,requestId});
-        alert('已同意，打卡紀錄已更新');
+        const r=await api('approveClockCorrectionApi',{userId:currentUser.id,requestId});
+        if(!r || !r.ok){ alert((r && r.message) || '同意失敗'); return; }
+        alert(r.message || '已同意，打卡紀錄已更新');
         loadRows();
       }catch(err){ alert(err.message||'同意失敗'); }
     }
@@ -198,8 +203,9 @@ function scheduleIdle_(fn){if(window.requestIdleCallback)requestIdleCallback(fn,
       const rejectReason=prompt('請輸入駁回理由');
       if(rejectReason===null) return;
       try{
-        await api('rejectClockCorrectionApi',{userId:currentUser.id,requestId,rejectReason});
-        alert('已駁回');
+        const r=await api('rejectClockCorrectionApi',{userId:currentUser.id,requestId,rejectReason});
+        if(!r || !r.ok){ alert((r && r.message) || '駁回失敗'); return; }
+        alert(r.message || '已駁回');
         loadRows();
       }catch(err){ alert(err.message||'駁回失敗'); }
     }

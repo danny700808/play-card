@@ -7,7 +7,7 @@
     <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
   </div>
 <div class="container"><div class="card"><div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap"><div><h1 class="title">簽核｜臨時出勤審核</h1><div class="muted">這是簽核事項。核准後會正式補進打卡紀錄、工讀時數與薪資；員工不需要再回工讀時數頁重複登記。</div></div></div><div id="msg" class="message"></div></div><div class="card"><div class="toolbar"><select id="statusFilter" onchange="render()"><option value="待審核">待審核</option><option value="已核准">已核准</option><option value="已駁回">已駁回</option><option value="">全部</option></select><input id="keyword" placeholder="搜尋姓名 / 日期 / 原因" oninput="render()"><button class="btn" onclick="loadRequests()">重新讀取</button></div></div><div class="card"><div class="table-wrap"><table><thead><tr><th>狀態</th><th>員工</th><th>身分</th><th>日期</th><th>申請時間</th><th>申請時數</th><th>時薪</th><th>是否計薪</th><th>原因</th><th>主管備註</th><th>操作</th></tr></thead><tbody id="rows"></tbody></table></div></div></div>
-<script src="config.js?v=20260529notifybadge1"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script><script src="firebase-client.js?v=admin-final-20260530b"></script><script src="app.js?v=admin-final-20260530b"></script>
+<script src="config.js?v=20260529notifybadge1"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script><script src="firebase-client.js?v=attendance-flow-20260618"></script><script src="app.js?v=admin-final-20260530b"></script>
 <script>
 let requests=[];
 
@@ -143,44 +143,24 @@ async function approveRequest(id){
   const rate=safeNum(prompt('核准時薪：',String(safeNum(r.hourlyRate||r.時薪||196)))||r.hourlyRate||r.時薪||196)||196;
   const note=prompt('主管備註：','臨時出勤，主管核准');
   if(note===null)return;
-  const empId=clean(r.employeeId||r.員工ID);
-  const name=clean(r.name||r.姓名);
-  const employeeType=clean(r.employeeType||r.員工身分||'');
-  const gross=Math.round(hours*rate);
-  const now=new Date().toISOString();
-
-  await fb().collection('temporaryAttendanceRequests').doc(id).set({
-    status:'已核准',狀態:'已核准',
-    approvedStartTime:start,核准上班時間:start,
-    approvedEndTime:end,核准下班時間:end,
-    approvedHours:hours,核准時數:hours,
-    approvedHourlyRate:rate,核准時薪:rate,
-    managerNote:note,主管備註:note,
-    reviewedAt:now,審核時間:now
-  },{merge:true});
-
-  const clockInId=`TEMP_CLOCK_${empId}_${date.replace(/-/g,'')}_IN_${Date.now()}`;
-  const clockOutId=`TEMP_CLOCK_${empId}_${date.replace(/-/g,'')}_OUT_${Date.now()}`;
-  const baseClock={employeeId:empId,員工ID:empId,name:name,姓名:name,clockDate:date,打卡日期:date,clockType:'臨時出勤',打卡方式:'臨時出勤',status:'臨時出勤核准',狀態:'臨時出勤核准',sourceIp:'臨時出勤核准',來源IP:'臨時出勤核准',lateMinutes:0,遲到分鐘:0,earlyLeaveMinutes:0,早退分鐘:0,note:note,備註:note,isSupplement:true,是否補登:'是',scheduleLinked:false,sourceType:'temporaryAttendanceApproved',臨時出勤核准:true,temporaryAttendanceRequestId:id,updatedAt:now};
-  await fb().collection('clockRecords').doc(clockInId).set(Object.assign({},baseClock,{recordId:clockInId,紀錄ID:clockInId,clockTime:start+':00',打卡時間:start+':00',actionName:'上班打卡',打卡動作:'上班打卡'}),{merge:true});
-  await fb().collection('clockRecords').doc(clockOutId).set(Object.assign({},baseClock,{recordId:clockOutId,紀錄ID:clockOutId,clockTime:end+':00',打卡時間:end+':00',actionName:'下班打卡',打卡動作:'下班打卡'}),{merge:true});
-
-  if(employeeType.includes('工讀') || lower(employeeType)==='parttime'){
-    const ptId=`PT_TEMP_${empId}_${date.replace(/-/g,'')}_${Date.now()}`;
-    await fb().collection('parttimeRecords').doc(ptId).set({recordId:ptId,紀錄ID:ptId,employeeId:empId,員工ID:empId,name:name,姓名:name,date:date,workDate:date,日期:date,hours:hours,totalHours:hours,時數:hours,總時數:hours,hourlyRate:rate,時薪:rate,grossPay:gross,當日工資:gross,status:'臨時出勤核准',狀態:'臨時出勤核准',note:note,備註:note,dataCenterEdited:true,主管已修改:true,sourceType:'temporaryAttendanceApproved',臨時出勤核准:true,temporaryAttendanceRequestId:id,updatedAt:now},{merge:true});
-  }
-  try{await api('queueFeatureNotification',{featureCode:'temporaryAttendance',direction:'employee',employeeId:empId,email:clean(r.email||r.Email||r.Email),notificationMessage:`【臨時出勤】${date} ${start}-${end} 已核准，已自動計入工讀薪資時數，不需要再回工讀時數頁重複登記。`});}catch(e){}
-  msg((employeeType.includes('工讀')||lower(employeeType)==='parttime')?'已核准，並已補進打卡紀錄、工讀時數與薪資計算資料。':'已核准，並已補進正式打卡紀錄。','success');
-  await loadRequests();
+  try{
+    msg('核准中…','notice');
+    const res=await api('reviewTemporaryAttendance',{requestId:id,decision:'approve',date,startTime:start,endTime:end,hourlyRate:rate,managerNote:note});
+    if(!res || !res.ok){msg((res&&res.message)||'核准失敗。','error');return;}
+    msg(res.message||'已核准，並以同一筆交易建立正式打卡與工讀薪資資料。','success');
+    await loadRequests();
+  }catch(e){msg('核准失敗：'+(e.message||e),'error');}
 }
 async function rejectRequest(id){
   const note=prompt('駁回原因：','主管駁回');
   if(note===null)return;
-  const r=requests.find(x=>x.__id===id)||{};
-  await fb().collection('temporaryAttendanceRequests').doc(id).set({status:'已駁回',狀態:'已駁回',managerNote:note,主管備註:note,reviewedAt:new Date().toISOString(),審核時間:new Date().toISOString()},{merge:true});
-  try{await api('queueFeatureNotification',{featureCode:'temporaryAttendance',direction:'employee',employeeId:clean(r.employeeId||r.員工ID),email:clean(r.email||r.Email||r.Email),notificationMessage:`【臨時出勤】${clean(r.date||r.日期)} 申請已駁回：${note}`});}catch(e){}
-  msg('已駁回。','success');
-  await loadRequests();
+  try{
+    msg('駁回中…','notice');
+    const res=await api('reviewTemporaryAttendance',{requestId:id,decision:'reject',managerNote:note});
+    if(!res || !res.ok){msg((res&&res.message)||'駁回失敗。','error');return;}
+    msg(res.message||'已駁回。','success');
+    await loadRequests();
+  }catch(e){msg('駁回失敗：'+(e.message||e),'error');}
 }
-</script></script>  <script src="global-nav.js?v=20260603unified1"></script>
+</script>  <script src="global-nav.js?v=20260603unified1"></script>
 </body></html>

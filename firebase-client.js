@@ -7001,3 +7001,582 @@
   fb.__manualNotifySafeRecipientFix20260609 = true;
   global.YZFirebase = fb;
 })(window);
+
+/* =========================================================
+ * 出勤流程整合修正 2026-06-18
+ * 班表 - 請假 - 打卡 - 缺卡 - 主管簽核 - 工讀薪資
+ * ========================================================= */
+(function(global){
+  'use strict';
+  const fb = global.YZFirebase || (global.YZFirebase = {});
+  if(!fb.enabled || fb.__attendanceFlowV20260618) return;
+  const previousHandle = fb.handleApi;
+
+  const VERSION = 'attendance-flow-20260618';
+  const PENDING = '待審核';
+  const APPROVED = '已核准';
+  const REJECTED = '已駁回';
+
+  function clean(v){ return String(v == null ? '' : v).trim(); }
+  function lower(v){ return clean(v).toLowerCase(); }
+  function truthy(v){ const s=lower(v); return v===true || v===1 || ['1','true','yes','是','啟用','enabled','active','on'].includes(s); }
+  function pad(n){ return String(n).padStart(2,'0'); }
+  function localDateKey(d){ d=d instanceof Date?d:new Date(d||Date.now()); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
+  function localMonthKey(d){ return localDateKey(d).slice(0,7); }
+  function dateText(v){
+    if(!v) return '';
+    if(v && typeof v.toDate==='function') v=v.toDate();
+    if(v instanceof Date && !isNaN(v.getTime())) return localDateKey(v);
+    const s=clean(v);
+    let m=s.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
+    if(m) return `${m[1]}-${pad(m[2])}-${pad(m[3])}`;
+    const d=new Date(s);
+    return isNaN(d.getTime())?'':localDateKey(d);
+  }
+  function timeText(v){
+    if(!v) return '';
+    if(v && typeof v.toDate==='function') v=v.toDate();
+    if(v instanceof Date && !isNaN(v.getTime())) return `${pad(v.getHours())}:${pad(v.getMinutes())}:${pad(v.getSeconds())}`;
+    const s=clean(v); const m=s.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    return m?`${pad(m[1])}:${m[2]}:${m[3]||'00'}`:s;
+  }
+  function shortTime(v){ const t=timeText(v); return t?t.slice(0,5):''; }
+  function dateTimeText(v){
+    if(!v) return '';
+    if(v && typeof v.toDate==='function') v=v.toDate();
+    const d=v instanceof Date?v:new Date(v);
+    if(!isNaN(d.getTime())) return `${localDateKey(d)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    return clean(v);
+  }
+  function minutes(v){ const m=shortTime(v).match(/^(\d{2}):(\d{2})$/); return m?Number(m[1])*60+Number(m[2]):NaN; }
+  function minToTime(v){ const n=Math.max(0,Math.min(1440,Math.round(Number(v)||0))); return `${pad(Math.floor(n/60))}:${pad(n%60)}`; }
+  function hoursBetween(start,end){ const a=minutes(start),b=minutes(end); return Number.isFinite(a)&&Number.isFinite(b)&&b>a?Math.round(((b-a)/60)*100)/100:0; }
+  function rangesOverlap(a1,a2,b1,b2){ return Number.isFinite(a1)&&Number.isFinite(a2)&&Number.isFinite(b1)&&Number.isFinite(b2)&&Math.max(a1,b1)<Math.min(a2,b2); }
+  function clampInterval(a,b,lo,hi){ const s=Math.max(a,lo),e=Math.min(b,hi); return e>s?[s,e]:null; }
+  function addDays(dateKey,days){ const d=new Date(`${dateKey}T00:00:00`); if(isNaN(d.getTime())) return ''; d.setDate(d.getDate()+Number(days||0)); return localDateKey(d); }
+  function datesBetween(start,end,maxDays){ const out=[]; let d=dateText(start),e=dateText(end||start); const cap=Math.max(1,Number(maxDays||370)); if(!d||!e||e<d) return out; for(let i=0;i<cap&&d<=e;i++,d=addDays(d,1)) out.push(d); return out; }
+  function nowMinutes(){ const d=new Date(); return d.getHours()*60+d.getMinutes(); }
+  function serverTs(){ try{return global.firebase.firestore.FieldValue.serverTimestamp();}catch(e){return new Date().toISOString();} }
+  function db(){
+    if(fb && typeof fb.init==='function') return fb.init();
+    const cfg=global.APP_CONFIG&&global.APP_CONFIG.FIREBASE_CONFIG;
+    if(!global.firebase||!global.firebase.firestore||!cfg) throw new Error('Firebase 尚未啟用');
+    if(!global.firebase.apps.length) global.firebase.initializeApp(cfg);
+    return global.firebase.firestore();
+  }
+  function currentUser(){ try{return JSON.parse(global.localStorage.getItem('employeeUser')||'null')||{};}catch(e){return{};} }
+  function employeeIdFrom(p){ const u=currentUser(); return clean((p&&(p.userId||p.employeeId||p.id))||u.id||u.employeeId||u.userId||global.localStorage.getItem('employeeUserId')); }
+  function stableHash(text){ let h=2166136261>>>0; const s=String(text||''); for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,16777619); } return (h>>>0).toString(36); }
+  function safeId(text){ return clean(text).replace(/[^A-Za-z0-9_-]/g,'_').slice(0,220); }
+  function statusOf(o){
+    const raw=clean((o||{}).status||(o||{})['狀態']||(o||{}).reviewStatus||(o||{}).approvalStatus);
+    const s=lower(raw);
+    if(!raw||['pending','待主管審核','審核中','待簽核'].includes(s)) return PENDING;
+    if(['approved','approve','核准','同意','通過'].includes(s)) return APPROVED;
+    if(['rejected','reject','駁回','退回'].includes(s)) return REJECTED;
+    return raw;
+  }
+  function isActiveRow(o){ const s=statusOf(o); return !['已刪除','刪除','deleted','作廢','已取消'].includes(lower(s)); }
+  async function all(col){ const snap=await db().collection(col).get(); const rows=[]; snap.forEach(doc=>rows.push(Object.assign({__id:doc.id},doc.data()||{}))); return rows; }
+  async function where(col,field,value){ const snap=await db().collection(col).where(field,'==',value).get(); const rows=[]; snap.forEach(doc=>rows.push(Object.assign({__id:doc.id},doc.data()||{}))); return rows; }
+  function mergeRows(rows){ const map=new Map(); (rows||[]).forEach(r=>{ if(!r)return; const k=clean(r.__id||r.recordId||r.requestId||r.assignmentId||r.email)||JSON.stringify(r); map.set(k,r); }); return Array.from(map.values()); }
+  async function rowsByEmployee(col,employeeId){
+    const id=clean(employeeId); if(!id) return [];
+    const chunks=await Promise.all([
+      where(col,'employeeId',id).catch(()=>[]), where(col,'員工ID',id).catch(()=>[]), where(col,'userId',id).catch(()=>[])
+    ]);
+    return mergeRows([].concat(...chunks));
+  }
+  async function findDirectOrQuery(col,id,field){
+    const key=clean(id); if(!key) return null;
+    const direct=await db().collection(col).doc(key).get().catch(()=>null);
+    if(direct&&direct.exists) return Object.assign({__id:direct.id},direct.data()||{});
+    const rows=await where(col,field||'requestId',key).catch(()=>[]);
+    return rows[0]||null;
+  }
+  async function setDoc(col,id,data,merge){ await db().collection(col).doc(clean(id)).set(data||{},{merge:merge!==false}); }
+
+  function scheduleBaseKey(s){
+    s=s||{};
+    return clean(s.originalScheduleKey||s.baseScheduleKey||s.scheduleKey||s.key||[
+      clean(s.source||s.scheduleSource),clean(s.id||s.assignmentId||s.recordId||s.scheduleId),dateText(s.date||s.scheduleDate),shortTime(s.originalStartTime||s.startTime||s.scheduleStartTime),shortTime(s.originalEndTime||s.endTime||s.scheduleEndTime),clean(s.clockType||s.scheduleClockType)
+    ].join('|'));
+  }
+  function scheduleRawKey(s){
+    s=s||{};
+    return clean(s.scheduleKey||s.key)||[
+      clean(s.source||s.scheduleSource),clean(s.id||s.assignmentId||s.recordId||s.scheduleId),dateText(s.date||s.scheduleDate),shortTime(s.startTime||s.scheduleStartTime),shortTime(s.endTime||s.scheduleEndTime),clean(s.clockType||s.scheduleClockType)
+    ].join('|');
+  }
+  function recordKey(r){ return clean((r||{}).scheduleKey||(r||{}).effectiveSegmentKey||(r||{}).originalScheduleKey); }
+  function normalizeClock(r){
+    r=r||{};
+    return {
+      id:clean(r.recordId||r['紀錄ID']||r.__id), __id:clean(r.__id), employeeId:clean(r.employeeId||r['員工ID']),
+      date:dateText(r.clockDate||r.date||r['打卡日期']), time:timeText(r.clockTime||r.time||r['打卡時間']),
+      actionName:clean(r.actionName||r['打卡動作']), clockType:clean(r.clockType||r['打卡方式']||'標準打卡')||'標準打卡',
+      status:clean(r.status||r['狀態']||'正常'), scheduleKey:recordKey(r), originalScheduleKey:clean(r.originalScheduleKey||r.baseScheduleKey),
+      scheduleStartTime:shortTime(r.scheduleStartTime), scheduleEndTime:shortTime(r.scheduleEndTime), raw:r
+    };
+  }
+  async function clockRows(employeeId,dateKey){ return (await rowsByEmployee('clockRecords',employeeId).catch(()=>[])).map(normalizeClock).filter(r=>r.date===dateKey&&isActiveRow(r.raw)); }
+
+  function normalizeSegmentMode(seg){ const raw=lower((seg||{}).mode||(seg||{}).leaveTypeMode||(seg||{}).requestType); if(raw.includes('retro')||raw.includes('事後'))return'retro'; if(raw.includes('custom')||raw.includes('部分'))return'custom'; if(!raw&&((seg||{}).startTime||(seg||{}).endTime||(seg||{})['請假開始時間']||(seg||{})['請假結束時間']))return'custom'; return'schedule'; }
+  function normalizeSegments(raw){
+    raw=raw||{};
+    const src=Array.isArray(raw.normalizedSegments)&&raw.normalizedSegments.length?raw.normalizedSegments:(Array.isArray(raw.segments)&&raw.segments.length?raw.segments:[]);
+    const input=src.length?src:[{
+      mode:(raw.startTime||raw.endTime)?'custom':'schedule', leaveDate:raw.leaveDate||raw.date||raw.startDate,
+      startDate:raw.startDate||raw.leaveDate||raw.date, endDate:raw.endDate||raw.startDate||raw.leaveDate||raw.date,
+      startTime:raw.startTime, endTime:raw.endTime, hours:raw.hours, allDay:raw.allDay
+    }];
+    const out=[];
+    input.forEach((s,idx)=>{
+      s=s||{}; const mode=normalizeSegmentMode(s); const st=shortTime(s.startTime||s['請假開始時間']); const en=shortTime(s.endTime||s['請假結束時間']);
+      const explicitAll=s.allDay===true||truthy(s.allDay)||mode==='schedule'||(!st&&!en&&clean(s.session||raw.session).includes('全天'));
+      if(explicitAll){
+        const start=dateText(s.startDate||s.leaveDate||s.date||raw.startDate||raw.leaveDate); const end=dateText(s.endDate||start||raw.endDate);
+        datesBetween(start,end,370).forEach((d,di)=>out.push({
+          segmentId:clean(s.segmentId)||`SEG_${idx+1}_${di+1}`,mode,leaveTypeMode:mode==='retro'?'事後補假':'整天請假',date:d,leaveDate:d,startDate:d,endDate:d,
+          allDay:true,startTime:'',endTime:'',startMinute:0,endMinute:1440,hours:Number(s.hours||0)||0,scheduleKey:clean(s.scheduleKey),scheduleKeys:Array.isArray(s.scheduleKeys)?s.scheduleKeys.map(clean).filter(Boolean):[],
+          requestedStartTime:shortTime(s.requestedStartTime),requestedEndTime:shortTime(s.requestedEndTime)
+        }));
+      }else{
+        const d=dateText(s.leaveDate||s.date||s.startDate||raw.leaveDate||raw.startDate); const a=minutes(st),b=minutes(en);
+        if(d&&Number.isFinite(a)&&Number.isFinite(b)&&b>a) out.push({
+          segmentId:clean(s.segmentId)||`SEG_${idx+1}`,mode,leaveTypeMode:mode==='retro'?'事後補假':'部分請假',date:d,leaveDate:d,startDate:d,endDate:d,
+          allDay:false,startTime:minToTime(a),endTime:minToTime(b),startMinute:a,endMinute:b,hours:Number(s.hours||0)||Math.round(((b-a)/60)*100)/100,
+          scheduleKey:clean(s.scheduleKey),scheduleKeys:Array.isArray(s.scheduleKeys)?s.scheduleKeys.map(clean).filter(Boolean):[],
+          requestedStartTime:shortTime(s.requestedStartTime||st),requestedEndTime:shortTime(s.requestedEndTime||en)
+        });
+      }
+    });
+    return out.sort((a,b)=>a.date.localeCompare(b.date)||a.startMinute-b.startMinute||a.endMinute-b.endMinute);
+  }
+  function segmentText(s){ return s.allDay?`${s.date} 全天`:`${s.date} ${s.startTime}-${s.endTime}`; }
+  function normalizeLeave(raw){
+    raw=raw||{}; const segments=normalizeSegments(raw); const dates=segments.map(s=>s.date).filter(Boolean).sort();
+    const hoursFromSegments=Math.round(segments.reduce((sum,s)=>sum+(Number(s.hours)||0),0)*100)/100;
+    const reason=clean(raw.reason||raw.leaveName||raw.leaveType||raw['請假原因']||'請假');
+    const status=statusOf(raw); const total=hoursFromSegments||Number(raw.hours||raw.leaveHours||raw['請假時數']||0)||0;
+    const summary=segments.map(segmentText).join('、');
+    return {
+      requestId:clean(raw.requestId||raw.leaveId||raw['請假ID']||raw.__id), __id:clean(raw.__id), employeeId:clean(raw.employeeId||raw.userId||raw['員工ID']),
+      name:clean(raw.name||raw.employeeName||raw['姓名']||'未命名'), email:lower(raw.email||raw.Email||raw['Email']), reason,leaveCode:clean(raw.leaveCode||raw['假別代碼']),
+      status,segments,leaveDate:dates[0]||dateText(raw.leaveDate||raw.startDate),startDate:dates[0]||dateText(raw.startDate||raw.leaveDate),endDate:dates[dates.length-1]||dateText(raw.endDate||raw.startDate||raw.leaveDate),
+      startTime:segments.length===1&&!segments[0].allDay?segments[0].startTime:shortTime(raw.startTime),endTime:segments.length===1&&!segments[0].allDay?segments[0].endTime:shortTime(raw.endTime),
+      hours:total,session:segments.length&&segments.every(s=>s.allDay)?'全天':'部分',note:clean(raw.note||raw['備註']),rejectReason:clean(raw.rejectReason||raw['駁回理由']),
+      requestedAt:dateTimeText(raw.requestedAt||raw.createdAt||raw['建立時間']),createdAt:dateTimeText(raw.createdAt||raw['建立時間']),reviewedAt:dateTimeText(raw.reviewedAt||raw['審核時間']),updatedAt:dateTimeText(raw.updatedAt||raw['更新時間']),
+      caseId:clean(raw.caseId||raw.attendanceCaseId),requestType:clean(raw.requestType||raw['申請類型']),payMode:clean(raw.payMode||raw['支薪方式']),payFactor:Number(raw.payFactor),
+      segmentSummaryText:clean(raw.segmentSummaryText)||summary,simpleText:clean(raw.simpleText)||`${reason}${total?`｜${total}小時`:''}${summary?`｜${summary}`:''}`,raw
+    };
+  }
+  function leaveIntervalsForDate(leaves,dateKey,status){
+    const out=[];
+    (leaves||[]).forEach(l0=>{
+      const l=l0&&l0.segments?l0:normalizeLeave(l0); if(status&&l.status!==status)return;
+      l.segments.filter(s=>s.date===dateKey).forEach(s=>out.push({start:s.allDay?0:s.startMinute,end:s.allDay?1440:s.endMinute,allDay:s.allDay,requestId:l.requestId,reason:l.reason,status:l.status,segment:s,leave:l}));
+    });
+    return out;
+  }
+  function mergeIntervals(intervals){
+    const rows=(intervals||[]).filter(x=>Number.isFinite(x.start)&&Number.isFinite(x.end)&&x.end>x.start).slice().sort((a,b)=>a.start-b.start||a.end-b.end);
+    const out=[]; rows.forEach(x=>{ const last=out[out.length-1]; if(last&&x.start<=last.end){ last.end=Math.max(last.end,x.end); last.items=(last.items||[]).concat(x.items||[x]); }else out.push({start:x.start,end:x.end,items:x.items||[x]}); }); return out;
+  }
+  function subtractIntervals(start,end,blocks){
+    let pieces=[[start,end]]; mergeIntervals(blocks).forEach(b=>{ const next=[]; pieces.forEach(p=>{ if(b.end<=p[0]||b.start>=p[1])next.push(p); else{ if(b.start>p[0])next.push([p[0],Math.min(b.start,p[1])]); if(b.end<p[1])next.push([Math.max(b.end,p[0]),p[1]]); } }); pieces=next; });
+    return pieces.filter(p=>p[1]>p[0]);
+  }
+
+  async function baseScheduleInfo(employeeId,dateKey){
+    if(typeof previousHandle!=='function') return {ok:false,schedules:[],date:dateKey,message:'班表服務尚未啟用'};
+    const res=await previousHandle('getTodaySchedule',{userId:employeeId,employeeId,date:dateKey,clockDate:dateKey,__attendanceBase:true}).catch(e=>({ok:false,schedules:[],message:e&&e.message}));
+    const schedules=Array.isArray(res&&res.schedules)?res.schedules:((res&&res.schedule)?[res.schedule]:[]);
+    return Object.assign({},res||{},{date:dateKey,schedules:schedules.map(s=>Object.assign({},s,{date:dateText(s.date)||dateKey}))});
+  }
+  function decorateEffectiveSchedule(raw,dateKey,start,end,idx,count,approved,pending){
+    const originalKey=scheduleRawKey(raw),key=`${originalKey}::EFF::${minToTime(start).replace(':','')}-${minToTime(end).replace(':','')}`;
+    const today=localDateKey(new Date()),now=nowMinutes(),open=Math.max(0,start-60);
+    const pendingOverlaps=(pending||[]).filter(p=>rangesOverlap(start,end,p.start,p.end));
+    const adjusted=start!==minutes(raw.startTime)||end!==minutes(raw.endTime);
+    let statusText='';
+    if(dateKey<today) statusText='班表日期已過';
+    else if(dateKey>today) statusText='尚未到班表日期';
+    else if(now<open) statusText=`${minToTime(open)} 後可上班打卡`;
+    else statusText=adjusted?'核准請假後剩餘出勤時段':'已到可打卡時間';
+    if(pendingOverlaps.length) statusText += '｜此時段另有請假待審核';
+    return Object.assign({},raw,{
+      date:dateKey,hasSchedule:true,originalScheduleKey:originalKey,baseScheduleKey:originalKey,effectiveSegmentKey:key,scheduleKey:key,key,
+      originalStartTime:shortTime(raw.startTime),originalEndTime:shortTime(raw.endTime),startTime:minToTime(start),endTime:minToTime(end),effectiveStartTime:minToTime(start),effectiveEndTime:minToTime(end),
+      splitIndex:idx+1,splitCount:count,leaveAdjusted:adjusted,approvedLeaveBlocks:(approved||[]).map(x=>({requestId:x.requestId,reason:x.reason,startTime:minToTime(x.start),endTime:minToTime(x.end),allDay:x.allDay})),
+      pendingLeaveBlocks:pendingOverlaps.map(x=>({requestId:x.requestId,reason:x.reason,startTime:minToTime(x.start),endTime:minToTime(x.end),allDay:x.allDay})),
+      allowedClockTypes:['標準打卡','特殊打卡'],clockInOpenMinute:open,clockInOpenAt:minToTime(open),statusText,
+      canClockInNow:dateKey===today&&now>=open,canClockOutNow:dateKey===today&&now>=start,summary:`${minToTime(start)}-${minToTime(end)}`,attendanceFlowVersion:VERSION
+    });
+  }
+  function assignRecords(schedules,records){
+    const used=new Set();
+    const rows=(records||[]).slice();
+    function score(rec,s){
+      const t=minutes(rec.time); const target=rec.actionName.includes('下班')?minutes(s.endTime):minutes(s.startTime);
+      let n=Number.isFinite(t)&&Number.isFinite(target)?Math.abs(t-target):9999;
+      if(rec.scheduleKey===s.scheduleKey)n-=10000;
+      if(rec.scheduleKey&&[s.originalScheduleKey,s.baseScheduleKey].includes(rec.scheduleKey))n-=2000;
+      if(rec.originalScheduleKey&&rec.originalScheduleKey===s.originalScheduleKey)n-=1500;
+      return n;
+    }
+    (schedules||[]).forEach(s=>{ s.clockInRecord=null;s.clockOutRecord=null; });
+    for(const action of ['上班打卡','下班打卡']){
+      const actionRows=rows.filter(r=>r.actionName===action);
+      (schedules||[]).forEach(s=>{
+        const exact=actionRows.find(r=>!used.has(r.id)&&r.scheduleKey===s.scheduleKey);
+        if(exact){ used.add(exact.id); if(action==='上班打卡')s.clockInRecord=exact;else s.clockOutRecord=exact; }
+      });
+      actionRows.filter(r=>!used.has(r.id)).forEach(r=>{
+        const candidates=(schedules||[]).filter(s=>!(action==='上班打卡'?s.clockInRecord:s.clockOutRecord)&&(!r.scheduleKey||r.scheduleKey===s.originalScheduleKey||r.scheduleKey===s.baseScheduleKey||r.originalScheduleKey===s.originalScheduleKey));
+        if(!candidates.length)return; candidates.sort((a,b)=>score(r,a)-score(r,b)); const s=candidates[0]; used.add(r.id); if(action==='上班打卡')s.clockInRecord=r;else s.clockOutRecord=r;
+      });
+    }
+    const today=localDateKey(new Date()),now=nowMinutes();
+    (schedules||[]).forEach(s=>{
+      s.hasClockIn=!!s.clockInRecord; s.hasClockOut=!!s.clockOutRecord;
+      if(s.hasClockIn)s.canClockInNow=false;
+      s.canClockOutNow=s.date===today&&now>=minutes(s.startTime)&&s.hasClockIn&&!s.hasClockOut;
+      if(s.hasClockOut)s.statusText='此班段已完成上下班打卡'; else if(s.hasClockIn)s.statusText='已完成上班打卡，等待下班打卡';
+    });
+    return {schedules,unassigned:rows.filter(r=>!used.has(r.id))};
+  }
+  async function effectiveScheduleInfo(employeeId,dateKey,options){
+    options=options||{}; const base=await baseScheduleInfo(employeeId,dateKey); const rawSchedules=(base.schedules||[]).filter(s=>Number.isFinite(minutes(s.startTime))&&Number.isFinite(minutes(s.endTime))&&minutes(s.endTime)>minutes(s.startTime));
+    let leaveRows=await rowsByEmployee('leaveRequests',employeeId).catch(()=>[]);
+    const leaves=leaveRows.map(normalizeLeave);
+    if(Array.isArray(options.additionalApprovedLeaves)) options.additionalApprovedLeaves.forEach(l=>leaves.push(Object.assign({},l&&l.segments?l:normalizeLeave(l),{status:APPROVED})));
+    const approved=leaveIntervalsForDate(leaves,dateKey,APPROVED),pending=leaveIntervalsForDate(leaves,dateKey,PENDING);
+    const schedules=[],fullyCovered=[];
+    rawSchedules.forEach(raw=>{
+      const start=minutes(raw.startTime),end=minutes(raw.endTime); const blocks=approved.map(x=>{ const c=clampInterval(x.start,x.end,start,end); return c?Object.assign({},x,{start:c[0],end:c[1]}):null; }).filter(Boolean);
+      const pieces=subtractIntervals(start,end,blocks);
+      if(!pieces.length){ fullyCovered.push(Object.assign({},raw,{originalScheduleKey:scheduleRawKey(raw),approvedLeaveBlocks:blocks})); return; }
+      pieces.forEach((p,i)=>schedules.push(decorateEffectiveSchedule(raw,dateKey,p[0],p[1],i,pieces.length,blocks,pending)));
+    });
+    schedules.sort((a,b)=>minutes(a.startTime)-minutes(b.startTime)||minutes(a.endTime)-minutes(b.endTime));
+    let records=[]; if(options.includeClockState!==false){ records=await clockRows(employeeId,dateKey); assignRecords(schedules,records); }
+    const approvedAll=rawSchedules.length>0&&schedules.length===0;
+    const message=!rawSchedules.length?'今天沒有排班，如主管臨時安排出勤，請使用「臨時出勤申請」。':approvedAll?'今天原有班表已被核准請假完整覆蓋，不需要打卡。':`今日有效出勤班段共 ${schedules.length} 段。`;
+    return Object.assign({},base,{
+      ok:true,employeeId,date:dateKey,hasSchedule:rawSchedules.length>0,okToClock:schedules.length>0,originalSchedules:rawSchedules,schedules,schedule:schedules[0]||null,
+      scheduleText:schedules.map(s=>`${s.startTime}-${s.endTime}`).join('\n'),allowedClockTypes:schedules.length?['標準打卡','特殊打卡']:[],leaveBlocks:approved,pendingLeaveBlocks:pending,
+      fullyCoveredSchedules:fullyCovered,approvedAllDay:approvedAll,message,clockRecords:records,attendanceFlowVersion:VERSION
+    });
+  }
+  function chooseEffectiveSchedule(info,key,action,time){
+    const rows=Array.isArray(info&&info.schedules)?info.schedules:[]; if(!rows.length)return null;
+    const k=clean(key); let hit=rows.find(s=>s.scheduleKey===k||s.key===k); if(hit)return hit;
+    const base=rows.filter(s=>s.originalScheduleKey===k||s.baseScheduleKey===k); const pool=base.length?base:rows; const t=minutes(time);
+    return pool.slice().sort((a,b)=>{
+      const ta=action&&action.includes('下班')?minutes(a.endTime):minutes(a.startTime),tb=action&&action.includes('下班')?minutes(b.endTime):minutes(b.startTime);
+      return Math.abs((Number.isFinite(t)?t:ta)-ta)-Math.abs((Number.isFinite(t)?t:tb)-tb);
+    })[0]||null;
+  }
+  function attendanceState(action,clockType,clockTime,schedule,isSupplement){
+    const t=minutes(clockTime),st=minutes(schedule&&schedule.startTime),en=minutes(schedule&&schedule.endTime); let status=isSupplement?'補打卡':'正常',late=0,early=0;
+    if(clean(clockType)==='標準打卡'&&clean(action).includes('上班')&&Number.isFinite(t)&&Number.isFinite(st)&&t>st){late=Math.round(t-st);status='遲到';}
+    if(clean(clockType)==='標準打卡'&&clean(action).includes('下班')&&Number.isFinite(t)&&Number.isFinite(en)&&t<en){early=Math.round(en-t);status='早退';}
+    return {status,lateMinutes:late,earlyLeaveMinutes:early};
+  }
+  function companyClockIp(){ const cfg=global.APP_CONFIG||{}; return clean(cfg.CLOCK_ALLOWED_IP||cfg.COMPANY_CLOCK_IP||'125.229.190.123'); }
+
+  async function clockFlow(payload){
+    const p=payload||{}; if(truthy(p.isSupplement)&&typeof previousHandle==='function') return previousHandle('clock',p);
+    const user=currentUser(),employeeId=employeeIdFrom(p),action=clean(p.actionName),type=clean(p.clockType||'標準打卡')||'標準打卡',date=dateText(p.clockDate||p.supplementDate)||localDateKey(new Date()),clockTime=timeText(p.clockTime||p.supplementTime)||timeText(new Date());
+    if(!employeeId||!action)return{ok:false,message:'缺少打卡資料，請重新登入後再試。'};
+    if(date!==localDateKey(new Date()))return{ok:false,message:'一般打卡只能使用今天日期；補登請使用補打卡申請。'};
+    const info=await effectiveScheduleInfo(employeeId,date,{includeClockState:true}); if(!info.okToClock)return Object.assign({},info,{ok:false,message:info.message||'今天沒有需要打卡的有效班段。'});
+    const s=chooseEffectiveSchedule(info,p.scheduleKey,action,clockTime); if(!s)return{ok:false,message:'找不到選擇的有效班段，請重新整理。'};
+    const now=minutes(clockTime),start=minutes(s.startTime),open=Math.max(0,start-60);
+    if(action.includes('上班')&&now<open)return{ok:false,message:`此班段 ${s.startTime} 上班，請於 ${minToTime(open)} 後再打卡。`};
+    if(action.includes('下班')&&!s.hasClockIn)return{ok:false,message:'此班段尚未完成上班打卡，不能直接打下班卡；特殊狀況請送補打卡／修正申請。'};
+    if(action.includes('上班')&&s.hasClockIn)return{ok:false,message:'此班段已經有上班打卡紀錄。'};
+    if(action.includes('下班')&&s.hasClockOut)return{ok:false,message:'此班段已經有下班打卡紀錄。'};
+
+    if(type==='特殊打卡'){
+      const reason=clean(p.specialReason||p.reason||p.note); if(!reason)return{ok:false,message:'請填寫特殊打卡原因。'};
+      const reqId=`SPCLK_AF_${safeId(employeeId)}_${date.replace(/-/g,'')}_${stableHash(s.scheduleKey)}_${action.includes('下班')?'OUT':'IN'}`;
+      const ref=db().collection('clockCorrections').doc(reqId);
+      const result=await db().runTransaction(async tx=>{ const snap=await tx.get(ref); if(snap.exists&&statusOf(snap.data())!==REJECTED)return{ok:false,message:'這一段班表已經送出特殊打卡申請。',requestId:reqId}; tx.set(ref,{
+        requestId:reqId,requestKind:'specialClock','申請種類':'specialClock',employeeId,'員工ID':employeeId,name:clean(user.name),'姓名':clean(user.name),email:lower(user.email),
+        correctDate:date,'修正日期':date,correctTime:clockTime,'修正時間':clockTime,correctAction:action,'修正動作':action,correctionType:'特殊打卡','修正打卡方式':'特殊打卡',
+        reason,'修正原因':reason,status:PENDING,'狀態':PENDING,scheduleKey:s.scheduleKey,originalScheduleKey:s.originalScheduleKey,scheduleDate:date,scheduleStartTime:s.startTime,scheduleEndTime:s.endTime,
+        scheduleSource:clean(s.source),scheduleSourceLabel:clean(s.sourceLabel),scheduleTemplateName:clean(s.templateName),scheduleSnapshot:s,clientIp:clean(p.clientIp),source:VERSION,createdAt:serverTs(),updatedAt:serverTs()
+      },{merge:true}); return{ok:true,requestId:reqId}; });
+      if(!result.ok)return result;
+      queueNotification('clock','manager',{employeeId,name:user.name,email:user.email,notificationMessage:`【特殊打卡】${user.name||employeeId} ${date} ${clockTime.slice(0,5)} ${action}，待主管審核。`});
+      return{ok:true,message:'特殊打卡申請已送出，待主管審核。',requestId:reqId,specialClockPending:true};
+    }
+    if(type!=='標準打卡')return{ok:false,message:'不支援的打卡方式。'};
+    if(action.includes('上班')){ const allowed=companyClockIp(),ip=clean(p.clientIp); if(!ip)return{ok:false,message:'無法確認公司 Wi-Fi IP，請確認已連上公司 Wi-Fi。'}; if(allowed&&ip!==allowed)return{ok:false,message:`目前偵測 IP 為 ${ip}，不是公司指定 Wi-Fi IP（${allowed}）。`}; }
+    const state=attendanceState(action,type,clockTime,s,false),recordId=`CLK_AF_${safeId(employeeId)}_${date.replace(/-/g,'')}_${stableHash(s.scheduleKey)}_${action.includes('下班')?'OUT':'IN'}`,ref=db().collection('clockRecords').doc(recordId);
+    const result=await db().runTransaction(async tx=>{ const snap=await tx.get(ref); if(snap.exists)return{ok:false,message:'這一段班表已經有相同打卡紀錄。',recordId}; tx.set(ref,{
+      recordId,'紀錄ID':recordId,employeeId,'員工ID':employeeId,name:clean(user.name),'姓名':clean(user.name),email:lower(user.email),clockDate:date,'打卡日期':date,clockTime,'打卡時間':clockTime,
+      actionName:action,'打卡動作':action,clockType:type,'打卡方式':type,status:state.status,'狀態':state.status,lateMinutes:state.lateMinutes,'遲到分鐘':state.lateMinutes,earlyLeaveMinutes:state.earlyLeaveMinutes,'早退分鐘':state.earlyLeaveMinutes,
+      note:clean(p.note),'備註':clean(p.note),sourceIp:clean(p.clientIp),'來源IP':clean(p.clientIp),isSupplement:false,scheduleLinked:true,scheduleKey:s.scheduleKey,effectiveSegmentKey:s.scheduleKey,
+      originalScheduleKey:s.originalScheduleKey,scheduleId:clean(s.id||s.assignmentId||s.recordId),scheduleSource:clean(s.source),scheduleSourceLabel:clean(s.sourceLabel),scheduleDate:date,scheduleClockType:type,
+      scheduleStartTime:s.startTime,scheduleEndTime:s.endTime,originalScheduleStartTime:s.originalStartTime,originalScheduleEndTime:s.originalEndTime,scheduleTemplateId:clean(s.templateId),scheduleTemplateName:clean(s.templateName),
+      attendanceFlowVersion:VERSION,source:VERSION,createdAt:serverTs(),updatedAt:serverTs()
+    }); return{ok:true,recordId}; });
+    if(!result.ok)return result;
+    let message=`${action}成功（${s.startTime}-${s.endTime}）`; if(state.lateMinutes)message+=`，遲到 ${state.lateMinutes} 分鐘`; if(state.earlyLeaveMinutes)message+=`，早退 ${state.earlyLeaveMinutes} 分鐘`;
+    return{ok:true,message,recordId,lateMinutes:state.lateMinutes,earlyLeaveMinutes:state.earlyLeaveMinutes,usedSchedule:s,schedule:info,lateDeductionAmount:0,lateDeductionText:'$0'};
+  }
+
+  async function getPayMode(reason){
+    try{ const snap=await db().collection('leavePolicySettings').doc('default').get(); const bundle=snap.exists&&snap.data()&&snap.data().bundle; const table=bundle&&bundle.leaveTypes; const headers=(table&&table.headers)||[],rows=(table&&table.rows)||[]; const ni=headers.indexOf('假別名稱'),pi=headers.indexOf('支薪方式'); if(ni>=0&&pi>=0){ const hit=rows.find(r=>clean(r&&r[ni])===clean(reason)); if(hit)return clean(hit[pi]); } }catch(e){}
+    return '';
+  }
+  function payFactor(mode){ const s=clean(mode); if(s.includes('半薪'))return .5; if(s.includes('全薪'))return 1; return 0; }
+  async function employeeRow(employeeId){ const direct=await db().collection('employees').doc(employeeId).get().catch(()=>null); if(direct&&direct.exists)return Object.assign({__id:direct.id},direct.data()||{}); return (await where('employees','employeeId',employeeId).catch(()=>[]))[0]||null; }
+  function employeeType(o){ const s=lower((o||{}).identityType||(o||{})['身分類型']||(o||{}).employeeType||(o||{})['員工身分']); return s.includes('parttime')||s.includes('工讀')||truthy((o||{}).isPartTime)?'parttime':(s.includes('external')||s.includes('外聘')?'external':'staff'); }
+  function hourlyRateOf(o){ const vals=[o&&o.hourlyRate,o&&o.parttimeHourlyRate,o&&o.hourRate,o&&o['時薪']]; for(const v of vals){const n=Number(v);if(Number.isFinite(n)&&n>0)return n;} return 0; }
+
+  async function enrichRequestedSegments(employeeId,payload){
+    const rawSegments=normalizeSegments({segments:Array.isArray(payload.segments)?payload.segments:[],leaveDate:payload.leaveDate,startDate:payload.startDate,endDate:payload.endDate,startTime:payload.startTime,endTime:payload.endTime});
+    const out=[]; const cache={};
+    for(const seg of rawSegments){
+      const info=cache[seg.date]||(cache[seg.date]=await baseScheduleInfo(employeeId,seg.date)); const schedules=(info.schedules||[]).filter(s=>Number.isFinite(minutes(s.startTime))&&Number.isFinite(minutes(s.endTime))&&minutes(s.endTime)>minutes(s.startTime));
+      if(seg.allDay){
+        if(!schedules.length)continue;
+        const h=Math.round(schedules.reduce((sum,s)=>sum+hoursBetween(s.startTime,s.endTime),0)*100)/100;
+        out.push(Object.assign({},seg,{hours:h,scheduleKeys:schedules.map(scheduleRawKey),shiftStart:schedules.map(s=>shortTime(s.startTime)).sort()[0]||'',shiftEnd:schedules.map(s=>shortTime(s.endTime)).sort().slice(-1)[0]||''}));
+      }else{
+        const overlaps=schedules.map(s=>{ const c=clampInterval(seg.startMinute,seg.endMinute,minutes(s.startTime),minutes(s.endTime)); return c?{s,c}:null; }).filter(Boolean);
+        if(!overlaps.length) throw new Error(`${seg.date} ${seg.startTime}-${seg.endTime} 沒有與班表重疊，請改用臨時出勤或重新選擇時間。`);
+        overlaps.forEach((x,i)=>out.push(Object.assign({},seg,{
+          segmentId:`${seg.segmentId}_${i+1}`,startMinute:x.c[0],endMinute:x.c[1],startTime:minToTime(x.c[0]),endTime:minToTime(x.c[1]),hours:Math.round(((x.c[1]-x.c[0])/60)*100)/100,
+          scheduleKey:scheduleRawKey(x.s),scheduleKeys:[scheduleRawKey(x.s)],shiftStart:shortTime(x.s.startTime),shiftEnd:shortTime(x.s.endTime),requestedStartTime:seg.startTime,requestedEndTime:seg.endTime
+        })));
+      }
+    }
+    if(!out.length) throw new Error('選擇的日期沒有可請假的班表。');
+    out.sort((a,b)=>a.date.localeCompare(b.date)||a.startMinute-b.startMinute);
+    for(let i=1;i<out.length;i++){ const a=out[i-1],b=out[i]; if(a.date===b.date&&rangesOverlap(a.startMinute,a.endMinute,b.startMinute,b.endMinute))throw new Error(`同一張請假單的 ${a.date} 時段有重疊，請調整後再送出。`); }
+    return out;
+  }
+  function workedIntervals(records){
+    const rows=(records||[]).slice().sort((a,b)=>minutes(a.time)-minutes(b.time)); const open=[]; const out=[];
+    rows.forEach(r=>{ const t=minutes(r.time); if(!Number.isFinite(t))return; if(r.actionName.includes('上班'))open.push(t); else if(r.actionName.includes('下班')){ const st=open.length?open.shift():null; if(Number.isFinite(st)&&t>st)out.push([st,t]); } });
+    open.forEach(st=>out.push([st,localDateKey(new Date())===((records[0]&&records[0].date)||'')?nowMinutes():1440])); return out;
+  }
+  async function validateNewLeave(employeeId,segments,requestId,isRetro){
+    const existing=(await rowsByEmployee('leaveRequests',employeeId).catch(()=>[])).map(normalizeLeave).filter(l=>l.requestId!==clean(requestId)&&[PENDING,APPROVED].includes(l.status));
+    for(const s of segments){
+      for(const l of existing){ for(const e of l.segments.filter(x=>x.date===s.date)){ if(s.allDay||e.allDay||rangesOverlap(s.startMinute,s.endMinute,e.startMinute,e.endMinute))throw new Error(`${s.date} 已有${l.status}請假（${l.reason}），請勿重複申請重疊時段。`); } }
+      if(!isRetro){ const recs=await clockRows(employeeId,s.date); if(recs.length){ if(s.allDay)throw new Error(`${s.date} 已有打卡紀錄，整天請假請改用事後補假流程。`); const worked=workedIntervals(recs); if(worked.some(x=>rangesOverlap(s.startMinute,s.endMinute,x[0],x[1])))throw new Error(`${s.date} ${s.startTime}-${s.endTime} 與已完成的出勤時間重疊；已發生的時段請改用事後補假。`); } }
+    }
+  }
+  function leaveDocFromPayload(payload,segments,existing){
+    const user=currentUser(),id=clean(payload.requestId||payload.leaveId||(existing&&existing.requestId))||`LV_AF_${safeId(employeeIdFrom(payload)||'USER')}_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
+    const dates=segments.map(s=>s.date).sort(),hours=Math.round(segments.reduce((sum,s)=>sum+(Number(s.hours)||0),0)*100)/100,reason=clean(payload.reason||payload.leaveName||(existing&&existing.reason)||'請假');
+    const allDay=segments.every(s=>s.allDay),summary=segments.map(segmentText).join('、');
+    return Object.assign({},existing||{},payload,{
+      requestId:id,leaveId:id,'請假ID':id,employeeId:employeeIdFrom(payload),'員工ID':employeeIdFrom(payload),name:clean((existing&&existing.name)||user.name),'姓名':clean((existing&&existing.name)||user.name),email:lower((existing&&existing.email)||user.email),
+      reason,'請假原因':reason,leaveDate:dates[0],startDate:dates[0],endDate:dates[dates.length-1],startTime:segments.length===1&&!segments[0].allDay?segments[0].startTime:'',endTime:segments.length===1&&!segments[0].allDay?segments[0].endTime:'',
+      session:allDay?'全天':'部分',hours,'請假時數':hours,segments,normalizedSegments:segments,segmentSummaryText:summary,simpleText:`${reason}｜${hours}小時｜${summary}`,
+      status:PENDING,'狀態':PENDING,caseId:clean(payload.caseId||payload.attendanceCaseId||(existing&&existing.caseId)),attendanceCaseId:clean(payload.caseId||payload.attendanceCaseId||(existing&&existing.caseId)),
+      requestType:clean(payload.requestType||(segments.some(s=>s.mode==='retro')?'事後補假':'一般請假')),payMode:clean(payload.payMode||(existing&&existing.payMode)),payFactor:Number(payload.payFactor!=null?payload.payFactor:(existing&&existing.payFactor)),
+      attendanceFlowVersion:VERSION,source:VERSION,updatedAt:serverTs()
+    });
+  }
+  async function submitLeaveFlow(action,payload){
+    payload=payload||{}; const employeeId=employeeIdFrom(payload),id=clean(payload.requestId||payload.leaveId); if(!employeeId)return{ok:false,message:'缺少員工資料，請重新登入。'};
+    if(action==='deleteLeaveRequest'){
+      if(!id)return{ok:false,message:'缺少請假ID。'}; const found=await findDirectOrQuery('leaveRequests',id,'requestId'); if(!found)return{ok:false,message:'找不到請假申請。'}; const ref=db().collection('leaveRequests').doc(found.__id||id); return db().runTransaction(async tx=>{ const s=await tx.get(ref); if(!s.exists)return{ok:false,message:'找不到請假申請。'}; if(statusOf(s.data())!==PENDING)return{ok:false,message:'只有待審核請假可以刪除。'}; tx.set(ref,{status:'已刪除','狀態':'已刪除',deletedAt:serverTs(),updatedAt:serverTs(),source:VERSION},{merge:true}); return{ok:true,message:'請假申請已刪除。'}; });
+    }
+    const existingRaw=id?await findDirectOrQuery('leaveRequests',id,'requestId'):null; const existing=existingRaw?normalizeLeave(existingRaw):null; if(id&&!existing)return{ok:false,message:'找不到要修改的請假申請。'}; if(existing&&existing.status!==PENDING)return{ok:false,message:'已完成簽核的請假不能再修改。'};
+    try{
+      const segments=await enrichRequestedSegments(employeeId,payload); const isRetro=segments.some(s=>s.mode==='retro'); await validateNewLeave(employeeId,segments,id,isRetro);
+      const mode=await getPayMode(payload.reason||payload.leaveName||(existing&&existing.reason)); payload.payMode=mode; payload.payFactor=payFactor(mode);
+      const doc=leaveDocFromPayload(payload,segments,existingRaw||null); delete doc.__id; delete doc.raw; const ref=db().collection('leaveRequests').doc(doc.requestId);
+      const result=await db().runTransaction(async tx=>{ const snap=await tx.get(ref); if(action==='modifyLeaveRequest'&&snap.exists&&statusOf(snap.data())!==PENDING)return{ok:false,message:'這張請假單已經完成簽核，不能修改。'}; tx.set(ref,Object.assign({},doc,{createdAt:snap.exists?(snap.data().createdAt||serverTs()):serverTs(),modifyCount:snap.exists?(Number(snap.data().modifyCount||0)+1):0}),{merge:true}); return{ok:true}; });
+      if(!result.ok)return result;
+      queueNotification('leave','manager',{employeeId,name:doc.name,email:doc.email,requestId:doc.requestId,notificationMessage:`【請假申請】${doc.name} ${doc.segmentSummaryText}，待主管簽核。`});
+      return{ok:true,message:action==='modifyLeaveRequest'?'請假申請已更新並重新送審。':'請假申請已送出。',requestId:doc.requestId,row:normalizeLeave(doc),caseId:doc.caseId};
+    }catch(e){ return{ok:false,message:e&&e.message?e.message:String(e)}; }
+  }
+  async function linkedCorrections(leave){
+    const chunks=[]; if(leave.requestId)chunks.push(where('clockCorrections','relatedLeaveRequestId',leave.requestId).catch(()=>[])); if(leave.caseId)chunks.push(where('clockCorrections','caseId',leave.caseId).catch(()=>[]));
+    return mergeRows([].concat(...(chunks.length?await Promise.all(chunks):[]))).filter(r=>statusOf(r)===PENDING);
+  }
+  function correctionNorm(r){ return {requestId:clean(r.requestId||r.__id),requestKind:clean(r.requestKind||r['申請種類']||'recordCorrection'),employeeId:clean(r.employeeId||r['員工ID']),name:clean(r.name||r['姓名']),email:lower(r.email||r.Email),correctDate:dateText(r.correctDate||r['修正日期']),correctTime:timeText(r.correctTime||r['修正時間']),correctAction:clean(r.correctAction||r['修正動作']),correctionType:clean(r.correctionType||r['修正打卡方式']||'標準打卡'),originalRecordId:clean(r.originalRecordId||r['原始紀錄ID']),scheduleKey:clean(r.scheduleKey),originalScheduleKey:clean(r.originalScheduleKey),scheduleStartTime:shortTime(r.scheduleStartTime),scheduleEndTime:shortTime(r.scheduleEndTime),reason:clean(r.reason||r['修正原因']),raw:r}; }
+  function clockDocFromCorrection(c,s,recordId){ const state=attendanceState(c.correctAction,c.correctionType,c.correctTime,s,true); return {
+    recordId,'紀錄ID':recordId,employeeId:c.employeeId,'員工ID':c.employeeId,name:c.name,'姓名':c.name,email:c.email,clockDate:c.correctDate,'打卡日期':c.correctDate,clockTime:c.correctTime,'打卡時間':c.correctTime,
+    actionName:c.correctAction,'打卡動作':c.correctAction,clockType:c.correctionType||'標準打卡','打卡方式':c.correctionType||'標準打卡',status:state.status,'狀態':state.status,lateMinutes:state.lateMinutes,'遲到分鐘':state.lateMinutes,earlyLeaveMinutes:state.earlyLeaveMinutes,'早退分鐘':state.earlyLeaveMinutes,
+    note:`核准：${c.reason}`,'備註':`核准：${c.reason}`,sourceIp:'主管核准','來源IP':'主管核准',isSupplement:c.requestKind!=='specialClock',scheduleLinked:true,scheduleKey:s.scheduleKey,effectiveSegmentKey:s.scheduleKey,originalScheduleKey:s.originalScheduleKey,
+    scheduleDate:c.correctDate,scheduleStartTime:s.startTime,scheduleEndTime:s.endTime,originalScheduleStartTime:s.originalStartTime||c.scheduleStartTime,originalScheduleEndTime:s.originalEndTime||c.scheduleEndTime,correctionRequestId:c.requestId,attendanceFlowVersion:VERSION,source:VERSION,createdAt:serverTs(),updatedAt:serverTs()
+  }; }
+  async function reviewLeaveFlow(payload){
+    payload=payload||{}; const requestId=clean(payload.requestId||payload.leaveId); if(!requestId)return{ok:false,message:'缺少請假ID。'};
+    const raw=await findDirectOrQuery('leaveRequests',requestId,'requestId'); if(!raw)return{ok:false,message:'找不到請假申請。'}; const leave=normalizeLeave(raw); if(leave.status!==PENDING)return{ok:false,message:'這張請假單已經處理過。'};
+    const approve=!/reject|駁回/i.test(clean(payload.decision||payload.action)); const status=approve?APPROVED:REJECTED; const corrections=await linkedCorrections(leave); const reviewer=currentUser();
+    const planned={}; if(approve){ for(const d of Array.from(new Set(leave.segments.map(s=>s.date)))) planned[d]=await effectiveScheduleInfo(leave.employeeId,d,{includeClockState:false,additionalApprovedLeaves:[leave]}); }
+    const corrPlans=[]; for(const rawC of corrections){ const c=correctionNorm(rawC); const info=planned[c.correctDate]||await effectiveScheduleInfo(c.employeeId,c.correctDate,{includeClockState:false,additionalApprovedLeaves:approve?[leave]:[]}); const s=chooseEffectiveSchedule(info,c.scheduleKey||c.originalScheduleKey,c.correctAction,c.correctTime)||{scheduleKey:c.scheduleKey||c.originalScheduleKey,originalScheduleKey:c.originalScheduleKey||c.scheduleKey,startTime:c.scheduleStartTime,endTime:c.scheduleEndTime}; corrPlans.push({raw:rawC,c,s,recordId:`CLK_COR_${safeId(c.requestId)}`}); }
+    const emp=await employeeRow(leave.employeeId).catch(()=>null),isPt=employeeType(emp)==='parttime',rate=hourlyRateOf(emp),factor=Number.isFinite(leave.payFactor)?leave.payFactor:payFactor(leave.payMode);
+    try{
+      await db().runTransaction(async tx=>{
+        const leaveRef=db().collection('leaveRequests').doc(raw.__id||requestId); const leaveSnap=await tx.get(leaveRef); if(!leaveSnap.exists||statusOf(leaveSnap.data())!==PENDING)throw new Error('這張請假單已經被其他主管處理。');
+        const reads=[]; for(const p of corrPlans){ const cRef=db().collection('clockCorrections').doc(p.raw.__id||p.c.requestId); const cSnap=await tx.get(cRef); let targetRef=null,targetSnap=null;
+          if(approve&&p.c.requestKind==='recordCorrection'&&p.c.originalRecordId){ targetRef=db().collection('clockRecords').doc(p.c.originalRecordId); targetSnap=await tx.get(targetRef); }
+          else if(approve){ targetRef=db().collection('clockRecords').doc(p.recordId); targetSnap=await tx.get(targetRef); }
+          reads.push({p,cRef,cSnap,targetRef,targetSnap});
+        }
+        tx.set(leaveRef,{status,'狀態':status,rejectReason:approve?'':clean(payload.rejectReason||payload.reason),reviewedAt:serverTs(),'審核時間':serverTs(),reviewedBy:clean(reviewer.id||reviewer.employeeId||reviewer.adminId),updatedAt:serverTs(),source:VERSION},{merge:true});
+        const recordRef=db().collection('leaveRecords').doc(requestId); const snapshot=Object.assign({},leave.raw||{},{status,'狀態':status,segments:leave.segments,normalizedSegments:leave.segments,hours:leave.hours,leaveDate:leave.leaveDate,startDate:leave.startDate,endDate:leave.endDate,reviewedAt:serverTs(),reviewedBy:clean(reviewer.id||reviewer.employeeId||reviewer.adminId),attendanceFlowVersion:VERSION,source:VERSION}); delete snapshot.__id; delete snapshot.raw; tx.set(recordRef,snapshot,{merge:true});
+        for(const item of reads){ const p=item.p; if(!item.cSnap.exists||statusOf(item.cSnap.data())!==PENDING)continue; if(!approve){tx.set(item.cRef,{status:REJECTED,'狀態':REJECTED,rejectReason:clean(payload.rejectReason||payload.reason)||'相關請假已駁回',reviewedAt:serverTs(),reviewedBy:clean(reviewer.id||reviewer.employeeId),updatedAt:serverTs(),source:VERSION},{merge:true});continue;}
+          if(p.c.requestKind==='recordCorrection'&&item.targetRef&&item.targetSnap&&item.targetSnap.exists){ const state=attendanceState(p.c.correctAction,p.c.correctionType,p.c.correctTime,p.s,false); tx.set(item.targetRef,{clockDate:p.c.correctDate,'打卡日期':p.c.correctDate,clockTime:p.c.correctTime,'打卡時間':p.c.correctTime,actionName:p.c.correctAction,'打卡動作':p.c.correctAction,clockType:p.c.correctionType,'打卡方式':p.c.correctionType,status:state.status,'狀態':state.status,lateMinutes:state.lateMinutes,'遲到分鐘':state.lateMinutes,earlyLeaveMinutes:state.earlyLeaveMinutes,'早退分鐘':state.earlyLeaveMinutes,scheduleKey:p.s.scheduleKey,originalScheduleKey:p.s.originalScheduleKey,correctionApplied:true,correctionRequestId:p.c.requestId,correctedAt:serverTs(),updatedAt:serverTs(),source:VERSION},{merge:true}); }
+          else if(item.targetRef&&!item.targetSnap.exists) tx.set(item.targetRef,clockDocFromCorrection(p.c,p.s,p.recordId));
+          tx.set(item.cRef,{status:APPROVED,'狀態':APPROVED,reviewedAt:serverTs(),reviewedBy:clean(reviewer.id||reviewer.employeeId),appliedRecordId:(p.c.requestKind==='recordCorrection'?p.c.originalRecordId:p.recordId),updatedAt:serverTs(),source:VERSION},{merge:true});
+        }
+        if(approve&&isPt&&factor>0&&rate>0){ const perDate={}; leave.segments.forEach(s=>{perDate[s.date]=(perDate[s.date]||0)+(Number(s.hours)||0);}); Object.keys(perDate).forEach(d=>{ const paid=Math.round(perDate[d]*factor*100)/100,id=`PT_LEAVE_${safeId(requestId)}_${d.replace(/-/g,'')}`; tx.set(db().collection('parttimeRecords').doc(id),{recordId:id,'紀錄ID':id,employeeId:leave.employeeId,'員工ID':leave.employeeId,name:leave.name,'姓名':leave.name,email:leave.email,date:d,workDate:d,'日期':d,hours:0,actualWorkHours:0,totalHours:paid,'時數':0,'總時數':paid,paidLeaveHours:paid,leaveHours:perDate[d],payMode:leave.payMode,payFactor:factor,hourlyRate:rate,'時薪':rate,grossPay:Math.round(paid*rate),'當日工資':Math.round(paid*rate),status:'核准支薪假','狀態':'核准支薪假',payable:'是','是否計薪':'是',note:`${leave.reason}（${leave.payMode}）`,'備註':`${leave.reason}（${leave.payMode}）`,isPaidLeave:true,leaveRequestId:requestId,sourceType:'approvedPaidLeave',source:VERSION,createdAt:serverTs(),updatedAt:serverTs()},{merge:true}); }); }
+      });
+      for(const d of Array.from(new Set(leave.segments.map(s=>s.date)))) await reconcileAttendance(leave.employeeId,d).catch(()=>null);
+      queueNotification('leave','employee',{employeeId:leave.employeeId,email:leave.email,requestId,notificationMessage:`【請假簽核】${leave.segmentSummaryText} ${status}${approve?'':'：'+clean(payload.rejectReason||payload.reason)}`});
+      return{ok:true,message:approve?(`請假已核准${corrections.length?'，相關補打卡也已一併處理':''}。`):(`請假已駁回${corrections.length?'，相關補打卡也已一併駁回':''}。`),status,linkedCorrectionCount:corrections.length};
+    }catch(e){ return{ok:false,message:e&&e.message?e.message:String(e)}; }
+  }
+
+  async function reconcileAttendance(employeeId,dateKey){
+    const info=await effectiveScheduleInfo(employeeId,dateKey,{includeClockState:true}); const batch=db().batch(); const matched=new Map();
+    (info.schedules||[]).forEach(s=>{ if(s.clockInRecord)matched.set(s.clockInRecord.id,{s,action:'上班打卡'}); if(s.clockOutRecord)matched.set(s.clockOutRecord.id,{s,action:'下班打卡'}); });
+    (info.clockRecords||[]).forEach(r=>{ const m=matched.get(r.id),ref=db().collection('clockRecords').doc(r.__id||r.id); if(m){ const st=attendanceState(r.actionName,r.clockType,r.time,m.s,false); batch.set(ref,{status:st.status,'狀態':st.status,lateMinutes:st.lateMinutes,'遲到分鐘':st.lateMinutes,earlyLeaveMinutes:st.earlyLeaveMinutes,'早退分鐘':st.earlyLeaveMinutes,scheduleKey:m.s.scheduleKey,effectiveSegmentKey:m.s.scheduleKey,originalScheduleKey:m.s.originalScheduleKey,scheduleStartTime:m.s.startTime,scheduleEndTime:m.s.endTime,attendanceReconciledAt:serverTs(),attendanceConflictWithLeave:false,updatedAt:serverTs(),source:VERSION},{merge:true}); }else batch.set(ref,{attendanceConflictWithLeave:info.fullyCoveredSchedules.length>0,attendanceReviewNote:info.fullyCoveredSchedules.length?'此打卡目前沒有對應的有效班段，請主管確認是否與核准請假重疊。':'',attendanceReconciledAt:serverTs(),updatedAt:serverTs()},{merge:true}); });
+    const total=Math.round((info.schedules||[]).reduce((sum,s)=>sum+hoursBetween(s.startTime,s.endTime),0)*100)/100; const ptRows=await rowsByEmployee('parttimeRecords',employeeId).catch(()=>[]); ptRows.filter(r=>dateText(r.date||r.workDate||r['日期'])===dateKey&&!truthy(r.isPaidLeave)).forEach(r=>batch.set(db().collection('parttimeRecords').doc(r.__id||r.recordId),{scheduledHours:total,'排班時數':total,attendanceReconciledAt:serverTs(),updatedAt:serverTs()},{merge:true}));
+    batch.set(db().collection('attendanceReconciliations').doc(`${safeId(employeeId)}_${dateKey.replace(/-/g,'')}`),{employeeId,date:dateKey,effectiveScheduleCount:(info.schedules||[]).length,effectiveHours:total,approvedLeaveCount:(info.leaveBlocks||[]).length,pendingLeaveCount:(info.pendingLeaveBlocks||[]).length,reconciledAt:serverTs(),source:VERSION},{merge:true});
+    await batch.commit(); return{ok:true,effectiveHours:total};
+  }
+
+  async function getClockIssues(payload){
+    const employeeId=employeeIdFrom(payload); if(!employeeId)return{ok:false,message:'缺少員工資料',rows:[]}; const dates=[localDateKey(new Date()),addDays(localDateKey(new Date()),-1)]; const corrections=(await rowsByEmployee('clockCorrections',employeeId).catch(()=>[])).filter(r=>statusOf(r)===PENDING); const issues=[];
+    for(const dateKey of dates){ const info=await effectiveScheduleInfo(employeeId,dateKey,{includeClockState:true}); for(const s of info.schedules||[]){ const due=[]; const datePast=dateKey<localDateKey(new Date()),now=nowMinutes(); if(!s.hasClockIn&&(datePast||now>=minutes(s.startTime)+5))due.push('上班打卡'); if(!s.hasClockOut&&(datePast||now>=minutes(s.endTime)+5))due.push('下班打卡'); if(!due.length)continue;
+        const pendingActions=[],requiredActions=[]; due.forEach(a=>{ const boundary=a.includes('上班')?minutes(s.startTime):minutes(s.endTime); const covered=(info.pendingLeaveBlocks||[]).some(p=>p.start<=boundary&&p.end>=boundary); (covered?pendingActions:requiredActions).push(a); });
+        const pendingCorr=corrections.find(c=>{ const k=clean(c.scheduleKey||c.originalScheduleKey); return dateText(c.correctDate||c['修正日期'])===dateKey&&[s.scheduleKey,s.originalScheduleKey].includes(k)&&due.includes(clean(c.correctAction||c['修正動作'])); });
+        if(!requiredActions.length&&!pendingActions.length)continue; issues.push({issueKey:`${dateKey}|${s.scheduleKey}`,employeeId,date:dateKey,scheduleKey:s.scheduleKey,originalScheduleKey:s.originalScheduleKey,summary:`${s.startTime} - ${s.endTime}`,scheduleLabel:`${s.startTime} - ${s.endTime}`,startTime:s.startTime,endTime:s.endTime,clockType:clean(s.clockType),defaultClockType:'標準打卡',sourceLabel:clean(s.sourceLabel),schedule:s,missingActions:requiredActions.length?requiredActions:pendingActions,existingClockInTime:s.clockInRecord?shortTime(s.clockInRecord.time):'',existingClockInRecordId:s.clockInRecord?s.clockInRecord.id:'',existingClockOutTime:s.clockOutRecord?shortTime(s.clockOutRecord.time):'',existingClockOutRecordId:s.clockOutRecord?s.clockOutRecord.id:'',canEarlyLeaveRetro:!!(s.clockInRecord&&!s.clockOutRecord&&requiredActions.length===1&&requiredActions[0].includes('下班')),pendingCorrection:!!pendingCorr,pendingCorrectionId:pendingCorr?clean(pendingCorr.requestId||pendingCorr.__id):'',pendingCorrectionAction:pendingCorr?clean(pendingCorr.correctAction||pendingCorr['修正動作']):'',pendingLeave:!requiredActions.length&&pendingActions.length>0,pendingLeaveId:!requiredActions.length&&pendingActions.length?clean((info.pendingLeaveBlocks[0]||{}).requestId):'',pendingLeaveActions:pendingActions});
+      } }
+    return{ok:true,rows:issues,count:issues.length,source:VERSION};
+  }
+
+  async function submitCorrectionLink(payload){
+    const res=typeof previousHandle==='function'?await previousHandle('submitClockCorrection',payload||{}):null; const linked=payload&&(payload.relatedLeaveRequestId||payload.caseId); if(res&&res.requestId&&linked){ await setDoc('clockCorrections',res.requestId,{relatedLeaveRequestId:clean(payload.relatedLeaveRequestId),caseId:clean(payload.caseId),attendanceCaseId:clean(payload.caseId),managedByLeaveApproval:true,updatedAt:serverTs(),source:VERSION},true); if(!res.ok)return Object.assign({},res,{ok:true,message:'既有補打卡申請已綁定到這張事後補假，主管會在請假簽核一次處理。'}); } return res;
+  }
+  async function pendingCorrections(payload){
+    const raw=(await all('clockCorrections').catch(()=>[])).filter(r=>statusOf(r)===PENDING); const rows=[];
+    for(const r of raw){ const c=correctionNorm(r); const related=clean(r.relatedLeaveRequestId); let managed=false; if(related){ const leave=await findDirectOrQuery('leaveRequests',related,'requestId'); managed=!!leave&&statusOf(leave)===PENDING; }
+      rows.push(Object.assign({},c,{status:PENDING,relatedLeaveRequestId:related,caseId:clean(r.caseId),managedByLeaveApproval:managed,originalDate:dateText(r.originalDate),originalTime:timeText(r.originalTime),originalAction:clean(r.originalAction),originalClockType:clean(r.originalClockType),scheduleSourceLabel:clean(r.scheduleSourceLabel),scheduleTemplateName:clean(r.scheduleTemplateName)})); }
+    rows.sort((a,b)=>(b.correctDate+' '+b.correctTime).localeCompare(a.correctDate+' '+a.correctTime)); return{ok:true,rows,list:rows,source:VERSION};
+  }
+  async function reviewCorrection(payload,approve){
+    payload=payload||{}; const id=clean(payload.requestId); if(!id)return{ok:false,message:'缺少修正申請ID。'}; const raw=await findDirectOrQuery('clockCorrections',id,'requestId'); if(!raw)return{ok:false,message:'找不到修正申請。'}; if(statusOf(raw)!==PENDING)return{ok:false,message:'這筆申請已處理過。'};
+    const related=clean(raw.relatedLeaveRequestId); if(related){ const l=await findDirectOrQuery('leaveRequests',related,'requestId'); if(l&&statusOf(l)===PENDING)return{ok:false,message:'這筆補打卡與事後補假屬於同一案件，請到「請假簽核」一次處理。'}; }
+    const c=correctionNorm(raw),reviewer=currentUser(); if(!approve){ await db().runTransaction(async tx=>{ const ref=db().collection('clockCorrections').doc(raw.__id||id),snap=await tx.get(ref); if(!snap.exists||statusOf(snap.data())!==PENDING)throw new Error('這筆申請已被處理。'); tx.set(ref,{status:REJECTED,'狀態':REJECTED,rejectReason:clean(payload.rejectReason),reviewedAt:serverTs(),reviewedBy:clean(reviewer.id||reviewer.employeeId),updatedAt:serverTs(),source:VERSION},{merge:true}); }); return{ok:true,message:'已駁回。'}; }
+    const info=await effectiveScheduleInfo(c.employeeId,c.correctDate,{includeClockState:false}),s=chooseEffectiveSchedule(info,c.scheduleKey||c.originalScheduleKey,c.correctAction,c.correctTime)||{scheduleKey:c.scheduleKey,originalScheduleKey:c.originalScheduleKey||c.scheduleKey,startTime:c.scheduleStartTime,endTime:c.scheduleEndTime}; const recordId=`CLK_COR_${safeId(c.requestId)}`;
+    try{ await db().runTransaction(async tx=>{ const cRef=db().collection('clockCorrections').doc(raw.__id||id),cSnap=await tx.get(cRef); if(!cSnap.exists||statusOf(cSnap.data())!==PENDING)throw new Error('這筆申請已被處理。'); let targetRef,targetSnap;
+        if(c.requestKind==='recordCorrection'&&c.originalRecordId){ targetRef=db().collection('clockRecords').doc(c.originalRecordId); targetSnap=await tx.get(targetRef); if(!targetSnap.exists)throw new Error('找不到原始打卡紀錄。'); }
+        else{ targetRef=db().collection('clockRecords').doc(recordId); targetSnap=await tx.get(targetRef); }
+        if(c.requestKind==='recordCorrection'){ const state=attendanceState(c.correctAction,c.correctionType,c.correctTime,s,false); tx.set(targetRef,{clockDate:c.correctDate,'打卡日期':c.correctDate,clockTime:c.correctTime,'打卡時間':c.correctTime,actionName:c.correctAction,'打卡動作':c.correctAction,clockType:c.correctionType,'打卡方式':c.correctionType,status:state.status,'狀態':state.status,lateMinutes:state.lateMinutes,'遲到分鐘':state.lateMinutes,earlyLeaveMinutes:state.earlyLeaveMinutes,'早退分鐘':state.earlyLeaveMinutes,scheduleKey:s.scheduleKey,originalScheduleKey:s.originalScheduleKey,correctionApplied:true,correctionRequestId:id,correctedAt:serverTs(),updatedAt:serverTs(),source:VERSION},{merge:true}); }
+        else if(!targetSnap.exists)tx.set(targetRef,clockDocFromCorrection(c,s,recordId));
+        tx.set(cRef,{status:APPROVED,'狀態':APPROVED,reviewedAt:serverTs(),reviewedBy:clean(reviewer.id||reviewer.employeeId),appliedRecordId:c.requestKind==='recordCorrection'?c.originalRecordId:recordId,updatedAt:serverTs(),source:VERSION},{merge:true}); });
+      await reconcileAttendance(c.employeeId,c.correctDate).catch(()=>null); return{ok:true,message:c.requestKind==='recordCorrection'?'打卡修正已核准，原始紀錄已更新。':'補打卡已核准，正式打卡紀錄已建立。',appliedRecordId:c.requestKind==='recordCorrection'?c.originalRecordId:recordId};
+    }catch(e){ return{ok:false,message:e&&e.message?e.message:String(e)}; }
+  }
+
+  async function leaveDateContext(payload){
+    const employeeId=employeeIdFrom(payload),date=dateText(payload&&payload.leaveDate); if(!employeeId||!date)return{ok:false,message:'缺少日期或員工資料。'}; const info=await effectiveScheduleInfo(employeeId,date,{includeClockState:false}); const rows=info.originalSchedules||[]; if(!rows.length)return{ok:true,context:{leaveDate:date,canLeave:false,hasSchedule:false,statusLabel:'今日無班',blockedReason:'這一天沒有班表，不需要請假。',scheduleLabel:'無班',shiftStart:'',shiftEnd:''}};
+    const starts=rows.map(s=>shortTime(s.startTime)).filter(Boolean).sort(),ends=rows.map(s=>shortTime(s.endTime)).filter(Boolean).sort(); return{ok:true,context:{leaveDate:date,canLeave:true,hasSchedule:true,statusLabel:'今日有班，可申請請假',scheduleLabel:rows.map(s=>`${shortTime(s.startTime)}-${shortTime(s.endTime)}`).join('、'),shiftStart:starts[0]||'',shiftEnd:ends[ends.length-1]||'',helperText:'請假核准後，打卡頁只會保留未請假的有效班段。',schedules:rows}};
+  }
+  async function leaveRowsForDisplay(mode,payload){
+    const action=mode==='pending'?'getPendingLeaveApprovals':(mode==='all'?'getAdminLeaveRecords':'getLeaveHistory');
+    const base=typeof previousHandle==='function'?await previousHandle(action,payload||{}).catch(()=>null):null;
+    const baseRows=Array.isArray(base&&base.rows)?base.rows:[]; const baseMap=new Map(baseRows.map(r=>[clean(r.requestId||r.leaveId||r.__id),r]));
+    const requestRows=(await all('leaveRequests').catch(()=>[])).map(normalizeLeave).filter(l=>(l.requestId||l.employeeId)&&isActiveRow(l.raw));
+    const mergedMap=new Map(); baseRows.map(normalizeLeave).filter(l=>(l.requestId||l.employeeId)&&isActiveRow(l.raw)).forEach(l=>mergedMap.set(l.requestId||`${l.employeeId}|${l.leaveDate}|${l.reason}`,l)); requestRows.forEach(l=>mergedMap.set(l.requestId||`${l.employeeId}|${l.leaveDate}|${l.reason}`,l));
+    let rows=Array.from(mergedMap.values()); if(mode==='pending')rows=rows.filter(l=>l.status===PENDING); if(mode==='mine'){ const id=employeeIdFrom(payload); rows=rows.filter(l=>l.employeeId===id); }
+    rows=rows.map(l=>Object.assign({},baseMap.get(l.requestId)||{},l));
+    for(const l of rows){ if(mode==='pending')l.reviewHints=await reviewHints(l); l.canEdit=l.status===PENDING;l.canDelete=l.status===PENDING; }
+    rows.sort((a,b)=>(mode==='pending'?clean(a.leaveDate).localeCompare(clean(b.leaveDate)):clean(b.leaveDate).localeCompare(clean(a.leaveDate))));
+    return Object.assign({},base||{},{ok:true,year:(base&&base.year)||new Date().getFullYear(),rows,eventCandidates:Array.isArray(base&&base.eventCandidates)?base.eventCandidates:[],source:VERSION});
+  }
+  async function reviewHints(leave){
+    const lines=[]; const byDate={}; leave.segments.forEach(s=>(byDate[s.date]||(byDate[s.date]=[])).push(s));
+    for(const d of Object.keys(byDate)){ const before=await baseScheduleInfo(leave.employeeId,d); const after=await effectiveScheduleInfo(leave.employeeId,d,{includeClockState:true,additionalApprovedLeaves:[leave]}); const original=(before.schedules||[]).map(s=>`${shortTime(s.startTime)}-${shortTime(s.endTime)}`).join('、')||'無班'; const remain=(after.schedules||[]).map(s=>`${s.startTime}-${s.endTime}`).join('、')||'無需出勤'; const expected=(after.schedules||[]).flatMap(s=>[`${s.startTime} 上班卡`,`${s.endTime} 下班卡`]).join('、')||'不需打卡'; const actual=(after.clockRecords||[]).map(r=>`${r.actionName} ${shortTime(r.time)}`).join('、')||'尚無打卡'; lines.push(`${d}｜原班表：${original}`); lines.push(`申請請假：${byDate[d].map(s=>s.allDay?'全天':`${s.startTime}-${s.endTime}`).join('、')}`); lines.push(`核准後剩餘：${remain}`); lines.push(`預期打卡：${expected}｜目前：${actual}`); }
+    if(leave.caseId)lines.push(`同案編號：${leave.caseId}（請假與補下班卡會一起處理）`); return lines;
+  }
+
+  async function parttimeContext(payload){
+    const employeeId=employeeIdFrom(payload),date=dateText(payload&&(payload.workDate||payload.date))||localDateKey(new Date()); if(!employeeId)return{ok:false,message:'缺少員工資料',context:{workDate:date,canRegister:false}}; const info=await effectiveScheduleInfo(employeeId,date,{includeClockState:false}); const hours=Math.round((info.schedules||[]).reduce((sum,s)=>sum+hoursBetween(s.startTime,s.endTime),0)*100)/100; const paid=(await rowsByEmployee('parttimeRecords',employeeId).catch(()=>[])).filter(r=>dateText(r.date||r.workDate||r['日期'])===date&&truthy(r.isPaidLeave)).reduce((sum,r)=>sum+(Number(r.paidLeaveHours||r.totalHours||r['總時數'])||0),0); const label=(info.schedules||[]).map(s=>`${s.startTime}-${s.endTime}`).join('、'); return{ok:true,context:{workDate:date,date,employeeId,canRegister:hours>0,hasSchedule:hours>0,statusLabel:hours>0?'今日有有效出勤班段':'今日無需出勤',scheduleLabel:label,scheduledHours:hours,maxDirectHours:hours,paidLeaveHours:Math.round(paid*100)/100,schedules:info.schedules||[],helperText:hours>0?`核准請假扣除後，可登記實際工讀 ${hours} 小時。${paid?`另有支薪假 ${paid} 小時，薪資會分開計入。`:''}`:'今天沒有剩餘出勤班段，不能登記實際工讀時數。'}};
+  }
+  async function submitParttimeFlow(payload){
+    const p=payload||{},user=currentUser(),employeeId=employeeIdFrom(p),date=dateText(p.workDate||p.date)||localDateKey(new Date()),selected=Math.round(((Number(p.hours||p.workHours)||0)+(truthy(p.halfHour||p.addHalfHour)?.5:0))*100)/100; if(!employeeId||!selected)return{ok:false,message:'請選擇工讀時數。'}; const ctx=(await parttimeContext({userId:employeeId,workDate:date})).context; if(!ctx.canRegister)return{ok:false,message:'今天沒有剩餘有效出勤班段；如為臨時出勤，請使用臨時出勤申請。'}; if(selected>ctx.scheduledHours+.0001)return{ok:false,blockedBySchedule:true,message:`核准請假扣除後，今天最多可登記 ${ctx.scheduledHours} 小時；你選擇 ${selected} 小時。超出部分請改用臨時出勤申請。`,scheduledHours:ctx.scheduledHours,selectedHours:selected,excessHours:Math.round((selected-ctx.scheduledHours)*100)/100}; const emp=await employeeRow(employeeId),rate=hourlyRateOf(emp),id=`PT_${safeId(employeeId)}_${date.replace(/-/g,'')}`; await setDoc('parttimeRecords',id,{recordId:id,'紀錄ID':id,employeeId,'員工ID':employeeId,name:clean(user.name),'姓名':clean(user.name),email:lower(user.email),date,workDate:date,'日期':date,hours:selected,totalHours:selected,'時數':selected,'總時數':selected,scheduledHours:ctx.scheduledHours,'排班時數':ctx.scheduledHours,hourlyRate:rate,'時薪':rate,grossPay:Math.round(selected*rate),'當日工資':Math.round(selected*rate),status:selected<ctx.scheduledHours?'少於有效班段':'正常','狀態':selected<ctx.scheduledHours?'少於有效班段':'正常',note:selected<ctx.scheduledHours?'登記時數少於核准請假扣除後的有效班段。':'有效班段內時數',source:VERSION,updatedAt:serverTs(),createdAt:serverTs()},true); return{ok:true,message:'工讀時數已送出。',recordId:id,totalHours:selected,monthText:date.slice(0,7)};
+  }
+
+  function timeOverlap(aStart,aEnd,bStart,bEnd){ return rangesOverlap(minutes(aStart),minutes(aEnd),minutes(bStart),minutes(bEnd)); }
+  async function validateAssignmentOverlap(payload){
+    if(!truthy(payload.enabled===undefined?'TRUE':payload.enabled))return null; const employeeId=clean(payload.employeeId),start=dateText(payload.startDate),end=truthy(payload.indefinite)?'9999-12-31':dateText(payload.endDate||payload.startDate); if(!employeeId||!start)return null;
+    const assignments=(await rowsByEmployee('employeeSchedules',employeeId).catch(()=>[])).filter(a=>clean(a.assignmentId||a.__id)!==clean(payload.assignmentId)&&truthy(a.enabled===undefined?'TRUE':a.enabled)); const templates=await all('scheduleTemplates').catch(()=>[]); const newTpl=templates.find(t=>clean(t.templateId||t.__id)===clean(payload.templateId)); if(!newTpl)return null;
+    for(const a of assignments){ const aStart=dateText(a.startDate),aEnd=truthy(a.indefinite)?'9999-12-31':dateText(a.endDate||a.startDate); const lo=start>aStart?start:aStart,hi=end<aEnd?end:aEnd; if(!lo||!hi||hi<lo)continue; const oldTpl=templates.find(t=>clean(t.templateId||t.__id)===clean(a.templateId)); if(!oldTpl)continue; for(let dow=0;dow<7;dow++){ let d=lo; for(let i=0;i<7&&new Date(`${d}T00:00:00`).getDay()!==dow;i++)d=addDays(d,1); if(d>hi)continue; const dayNames=['sunday','monday','tuesday','wednesday','thursday','friday','saturday'],k=dayNames[dow]; const ns=shortTime(newTpl[`${k}StartTime`]||newTpl[`${k}Time`]),ne=shortTime(newTpl[`${k}EndTime`]),os=shortTime(oldTpl[`${k}StartTime`]||oldTpl[`${k}Time`]),oe=shortTime(oldTpl[`${k}EndTime`]); if(ns&&ne&&os&&oe&&timeOverlap(ns,ne,os,oe))return `班表與既有套用「${clean(a.templateName||oldTpl.templateName||a.assignmentId)}」在星期${'日一二三四五六'[dow]} ${os}-${oe} 重疊。`; } }
+    const singles=(await rowsByEmployee('singleDaySchedules',employeeId).catch(()=>[])).filter(r=>truthy(r.enabled===undefined?'TRUE':r.enabled)); const dayNames=['sunday','monday','tuesday','wednesday','thursday','friday','saturday']; for(const one of singles){ const d=dateText(one.date); if(!d||d<start||d>end)continue; const k=dayNames[new Date(`${d}T00:00:00`).getDay()],ns=shortTime(newTpl[`${k}StartTime`]||newTpl[`${k}Time`]),ne=shortTime(newTpl[`${k}EndTime`]); if(ns&&ne&&timeOverlap(ns,ne,one.startTime,one.endTime))return `班表在 ${d} ${ns}-${ne} 與既有單日班表 ${shortTime(one.startTime)}-${shortTime(one.endTime)} 重疊。`; }
+    return null;
+  }
+  async function validateSingleDayOverlap(payload){
+    if(!truthy(payload.enabled===undefined?'TRUE':payload.enabled))return null; const employeeId=clean(payload.employeeId),date=dateText(payload.date),start=shortTime(payload.startTime),end=shortTime(payload.endTime),editingId=clean(payload.recordId); if(!employeeId||!date||!start||!end)return null; const existing=(await rowsByEmployee('singleDaySchedules',employeeId).catch(()=>[])).filter(r=>clean(r.recordId||r.__id)!==editingId&&dateText(r.date)===date&&truthy(r.enabled===undefined?'TRUE':r.enabled)); const hit=existing.find(r=>timeOverlap(start,end,r.startTime,r.endTime)); if(hit)return `這一天已有單日班表 ${shortTime(hit.startTime)}-${shortTime(hit.endTime)}，時間重疊。`; const base=await baseScheduleInfo(employeeId,date); const conflict=(base.schedules||[]).find(s=>{ const sourceId=clean(s.id||s.recordId||s.scheduleId); return sourceId!==editingId&&timeOverlap(start,end,s.startTime,s.endTime); }); if(conflict)return `這一天與既有班表 ${shortTime(conflict.startTime)}-${shortTime(conflict.endTime)} 重疊。`; return null;
+  }
+  async function saveScheduleFlow(action,payload){
+    const err=action==='saveEmployeeSchedule'?await validateAssignmentOverlap(payload||{}):await validateSingleDayOverlap(payload||{}); if(err)return{ok:false,message:err}; const res=typeof previousHandle==='function'?await previousHandle(action,payload||{}):null; return res||{ok:false,message:'班表儲存服務未啟用。'};
+  }
+
+  async function reviewTemporary(payload){
+    payload=payload||{}; const id=clean(payload.requestId||payload.id); if(!id)return{ok:false,message:'缺少臨時出勤申請ID。'}; const raw=await findDirectOrQuery('temporaryAttendanceRequests',id,'requestId'); if(!raw)return{ok:false,message:'找不到臨時出勤申請。'}; if(statusOf(raw)!==PENDING)return{ok:false,message:'這筆申請已處理過。'}; const approve=clean(payload.decision)!=='reject',date=dateText(payload.date||raw.date||raw['日期']),start=shortTime(payload.startTime||raw.startTime||raw['申請上班時間']),end=shortTime(payload.endTime||raw.endTime||raw['申請下班時間']),employeeId=clean(raw.employeeId||raw['員工ID']),name=clean(raw.name||raw['姓名']),type=clean(raw.employeeType||raw['員工身分']),rate=Number(payload.hourlyRate||raw.hourlyRate||raw['時薪']||196)||196,note=clean(payload.managerNote||payload.note||'主管處理'); if(approve&&(!date||!start||!end||minutes(end)<=minutes(start)))return{ok:false,message:'核准時間不正確。'};
+    if(approve){ const info=await effectiveScheduleInfo(employeeId,date,{includeClockState:false}); const overlap=(info.schedules||[]).find(s=>timeOverlap(start,end,s.startTime,s.endTime)); const reqType=clean(raw.requestType||raw['申請類型']); if(overlap&&reqType!=='parttimeExcess')return{ok:false,message:`臨時出勤 ${start}-${end} 與正式有效班段 ${overlap.startTime}-${overlap.endTime} 重疊，請調整時間。`}; const temps=(await rowsByEmployee('temporaryAttendanceRequests',employeeId).catch(()=>[])).filter(r=>clean(r.__id)!==clean(raw.__id)&&statusOf(r)===APPROVED&&dateText(r.date||r['日期'])===date); const dup=temps.find(r=>timeOverlap(start,end,r.approvedStartTime||r.startTime,r.approvedEndTime||r.endTime)); if(dup)return{ok:false,message:'這個時段已經有其他核准的臨時出勤。'}; }
+    const hours=hoursBetween(start,end),gross=Math.round(hours*rate),reviewer=currentUser(),reqRef=db().collection('temporaryAttendanceRequests').doc(raw.__id||id),inId=`TEMP_CLOCK_${safeId(id)}_IN`,outId=`TEMP_CLOCK_${safeId(id)}_OUT`,ptId=`PT_TEMP_${safeId(id)}`;
+    try{ await db().runTransaction(async tx=>{ const snap=await tx.get(reqRef); if(!snap.exists||statusOf(snap.data())!==PENDING)throw new Error('這筆申請已被其他主管處理。'); let inSnap,outSnap,ptSnap; if(approve){ inSnap=await tx.get(db().collection('clockRecords').doc(inId)); outSnap=await tx.get(db().collection('clockRecords').doc(outId)); if(type.includes('工讀')||lower(type)==='parttime')ptSnap=await tx.get(db().collection('parttimeRecords').doc(ptId)); }
+        tx.set(reqRef,{status:approve?APPROVED:REJECTED,'狀態':approve?APPROVED:REJECTED,approvedStartTime:approve?start:'',approvedEndTime:approve?end:'',approvedHours:approve?hours:0,approvedHourlyRate:approve?rate:0,managerNote:note,'主管備註':note,reviewedAt:serverTs(),reviewedBy:clean(reviewer.id||reviewer.employeeId),updatedAt:serverTs(),source:VERSION},{merge:true}); if(!approve)return;
+        const base={employeeId,'員工ID':employeeId,name,'姓名':name,clockDate:date,'打卡日期':date,clockType:'臨時出勤','打卡方式':'臨時出勤',status:'臨時出勤核准','狀態':'臨時出勤核准',sourceIp:'臨時出勤核准','來源IP':'臨時出勤核准',lateMinutes:0,'遲到分鐘':0,earlyLeaveMinutes:0,'早退分鐘':0,note,'備註':note,isSupplement:true,scheduleLinked:false,sourceType:'temporaryAttendanceApproved',temporaryAttendanceRequestId:id,source:VERSION,createdAt:serverTs(),updatedAt:serverTs()}; if(!inSnap.exists)tx.set(db().collection('clockRecords').doc(inId),Object.assign({},base,{recordId:inId,'紀錄ID':inId,clockTime:`${start}:00`,'打卡時間':`${start}:00`,actionName:'上班打卡','打卡動作':'上班打卡'})); if(!outSnap.exists)tx.set(db().collection('clockRecords').doc(outId),Object.assign({},base,{recordId:outId,'紀錄ID':outId,clockTime:`${end}:00`,'打卡時間':`${end}:00`,actionName:'下班打卡','打卡動作':'下班打卡'})); if((type.includes('工讀')||lower(type)==='parttime')&&ptSnap&&!ptSnap.exists)tx.set(db().collection('parttimeRecords').doc(ptId),{recordId:ptId,'紀錄ID':ptId,employeeId,'員工ID':employeeId,name,'姓名':name,date,workDate:date,'日期':date,hours,totalHours:hours,'時數':hours,'總時數':hours,hourlyRate:rate,'時薪':rate,grossPay:gross,'當日工資':gross,status:'臨時出勤核准','狀態':'臨時出勤核准',note,'備註':note,payable:'是','是否計薪':'是',sourceType:'temporaryAttendanceApproved',temporaryAttendanceRequestId:id,source:VERSION,createdAt:serverTs(),updatedAt:serverTs()}); });
+      queueNotification('temporaryAttendance','employee',{employeeId,email:clean(raw.email||raw.Email),notificationMessage:`【臨時出勤】${date} ${approve?`${start}-${end} 已核准`:`已駁回：${note}`}`}); return{ok:true,message:approve?'已核准，正式打卡與工讀薪資資料已以同一交易建立。':'已駁回。'};
+    }catch(e){ return{ok:false,message:e&&e.message?e.message:String(e)}; }
+  }
+
+  async function audit(payload){
+    const employeeId=employeeIdFrom(payload),date=dateText(payload&&payload.date)||localDateKey(new Date()); if(!employeeId)return{ok:false,message:'請選擇員工。'}; const [info,leaves,corrections,parts]=await Promise.all([effectiveScheduleInfo(employeeId,date,{includeClockState:true}),rowsByEmployee('leaveRequests',employeeId),rowsByEmployee('clockCorrections',employeeId),rowsByEmployee('parttimeRecords',employeeId)]); const leaveRows=leaves.map(normalizeLeave).filter(l=>l.segments.some(s=>s.date===date)); const expected=(info.schedules||[]).flatMap(s=>[{scheduleKey:s.scheduleKey,action:'上班打卡',time:s.startTime},{scheduleKey:s.scheduleKey,action:'下班打卡',time:s.endTime}]); const actual=(info.clockRecords||[]).map(r=>({id:r.id,action:r.actionName,time:shortTime(r.time),status:r.status,scheduleKey:r.scheduleKey})); const missing=[]; (info.schedules||[]).forEach(s=>{if(!s.hasClockIn)missing.push(`${s.startTime} 上班卡`);if(!s.hasClockOut)missing.push(`${s.endTime} 下班卡`);}); return{ok:true,employeeId,date,originalSchedules:info.originalSchedules||[],approvedLeaves:leaveRows.filter(l=>l.status===APPROVED),pendingLeaves:leaveRows.filter(l=>l.status===PENDING),effectiveSchedules:info.schedules||[],fullyCoveredSchedules:info.fullyCoveredSchedules||[],expectedPunches:expected,actualPunches:actual,missingPunches:missing,pendingCorrections:corrections.filter(r=>statusOf(r)===PENDING&&dateText(r.correctDate||r['修正日期'])===date),parttimeRecords:parts.filter(r=>dateText(r.date||r.workDate||r['日期'])===date),effectiveHours:Math.round((info.schedules||[]).reduce((sum,s)=>sum+hoursBetween(s.startTime,s.endTime),0)*100)/100,message:info.message,source:VERSION};
+  }
+
+  async function adjustPendingCounts(action,payload){
+    const base=typeof previousHandle==='function'?await previousHandle(action,payload||{}).catch(()=>({ok:true})):({ok:true}); const [leaves,corrs,temps]=await Promise.all([all('leaveRequests').catch(()=>[]),all('clockCorrections').catch(()=>[]),all('temporaryAttendanceRequests').catch(()=>[])]); const pendingLeaveIds=new Set(leaves.filter(r=>statusOf(r)===PENDING).map(r=>clean(r.requestId||r.__id))); const clockCount=corrs.filter(r=>statusOf(r)===PENDING&&!pendingLeaveIds.has(clean(r.relatedLeaveRequestId))).length,tempCount=temps.filter(r=>statusOf(r)===PENDING).length,leaveCount=pendingLeaveIds.size; const counts=Object.assign({},base.counts||base.summary||base,{leaveCount,pendingLeaveCount:leaveCount,leaveApprovalCount:leaveCount,leaves:leaveCount,clockCorrectionCount:clockCount,pendingClockCorrectionCount:clockCount,clocks:clockCount,tempAttendanceCount:tempCount,temporaryAttendanceCount:tempCount}); return Object.assign({},base,counts,{counts});
+  }
+  function queueNotification(featureCode,direction,data){ if(typeof previousHandle!=='function')return; Promise.resolve(previousHandle('queueFeatureNotification',Object.assign({featureCode,direction},data||{}))).catch(()=>null); }
+
+  fb.handleApi=async function(action,payload){
+    const a=clean(action);
+    if(a==='getTodaySchedule'||a==='getTodayClockSchedule')return await effectiveScheduleInfo(employeeIdFrom(payload),dateText(payload&&(payload.date||payload.clockDate))||localDateKey(new Date()),{includeClockState:true});
+    if(a==='clock')return await clockFlow(payload||{});
+    if(['leaveRequest','modifyLeaveRequest','deleteLeaveRequest'].includes(a))return await submitLeaveFlow(a,payload||{});
+    if(a==='reviewLeaveRequest')return await reviewLeaveFlow(payload||{});
+    if(a==='getLeaveDateContext')return await leaveDateContext(payload||{});
+    if(a==='getPendingLeaveApprovals')return await leaveRowsForDisplay('pending',payload||{});
+    if(a==='getAdminLeaveRecords')return await leaveRowsForDisplay('all',payload||{});
+    if(a==='getLeaveHistory')return await leaveRowsForDisplay('mine',payload||{});
+    if(a==='getClockCompletionIssues')return await getClockIssues(payload||{});
+    if(a==='submitClockCorrection')return await submitCorrectionLink(payload||{});
+    if(a==='getPendingClockCorrections')return await pendingCorrections(payload||{});
+    if(a==='approveClockCorrectionApi')return await reviewCorrection(payload||{},true);
+    if(a==='rejectClockCorrectionApi')return await reviewCorrection(payload||{},false);
+    if(a==='getParttimeDateContext')return await parttimeContext(payload||{});
+    if(a==='parttime')return await submitParttimeFlow(payload||{});
+    if(a==='saveEmployeeSchedule'||a==='saveSingleDaySchedule')return await saveScheduleFlow(a,payload||{});
+    if(a==='reviewTemporaryAttendance')return await reviewTemporary(payload||{});
+    if(a==='getAttendanceFlowAudit')return await audit(payload||{});
+    if(a==='reconcileAttendanceDay')return await reconcileAttendance(employeeIdFrom(payload),dateText(payload&&payload.date)||localDateKey(new Date()));
+    if(a==='getDashboardSummary'||a==='getPendingCounts')return await adjustPendingCounts(a,payload||{});
+    if(typeof previousHandle==='function')return await previousHandle(action,payload||{});
+    return null;
+  };
+
+  global.YZAttendanceFlow={VERSION,normalizeSegments,normalizeLeave,subtractIntervals,mergeIntervals,effectiveScheduleInfo,reconcileAttendance,audit};
+  fb.__attendanceFlowV20260618=true;
+  global.YZFirebase=fb;
+})(window);
