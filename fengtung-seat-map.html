@@ -36,7 +36,7 @@
   .mini-wheel{background:#fff4df;border-color:#f5a623;color:#5e3d00}
   .mini-wheel.active{background:#f5a623;color:#231500;border-color:#bc7615}
   .mini-label{position:absolute;left:8px;font-size:10px;color:#5d6976;font-weight:800}
-  #viewport{overflow:auto;padding:18px;flex:1 1 auto;min-height:0;scroll-behavior:smooth}
+  #viewport{overflow:auto;padding:18px;flex:1 1 auto;min-height:0;scroll-behavior:smooth;touch-action:pan-x pan-y}
   #scaled{width:calc(3400px * var(--zoom));height:calc(1920px * var(--zoom));position:relative;margin:auto}
   #chart{position:absolute;left:0;top:0;width:3400px;height:1920px;background:var(--paper);transform:scale(var(--zoom));transform-origin:top left;box-shadow:0 2px 20px #0003}
   .main-title{position:absolute;top:24px;left:0;width:100%;text-align:center;font-size:54px;letter-spacing:16px;font-weight:700}
@@ -457,22 +457,37 @@ const importFile=document.getElementById('importFile');
 if(importFile)importFile.onchange=e=>{const file=e.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=async()=>{try{const d=JSON.parse(reader.result);applySeatData(d);await saveCloud({silent:true});alert('匯入完成，已同步到雲端。')}catch(err){alert('檔案格式不正確。')}};reader.readAsText(file)};
 
 let zoom=.43;
+let activeZoneKey='all';
 const zoneViews={
-  all:{label:'全圖',zoom:.43,x:0,y:0,w:3400,h:1920},
-  z1:{label:'第1區｜一樓左前',zoom:1,x:300,y:250,w:820,h:430},
-  z2:{label:'第2區｜一樓中前',zoom:1,x:1120,y:250,w:1180,h:430},
-  z3:{label:'第3區｜一樓右前',zoom:1,x:2300,y:250,w:820,h:430},
-  z4:{label:'第4區｜一樓左後（含輪椅席）',zoom:1,x:300,y:660,w:820,h:580},
-  z5:{label:'第5區｜一樓中後',zoom:1,x:1120,y:660,w:1180,h:580},
-  z6:{label:'第6區｜一樓右後（含輪椅席）',zoom:1,x:2300,y:660,w:820,h:580},
-  z7:{label:'第7區｜二樓左',zoom:1,x:300,y:1260,w:820,h:620},
-  z8:{label:'第8區｜二樓中',zoom:1,x:1120,y:1260,w:1180,h:620},
-  z9:{label:'第9區｜二樓右',zoom:1,x:2300,y:1260,w:820,h:620}
+  all:{label:'全圖',x:0,y:0,w:3400,h:1920},
+  z1:{label:'第1區｜一樓左前',x:300,y:250,w:820,h:430},
+  z2:{label:'第2區｜一樓中前',x:1120,y:250,w:1180,h:430},
+  z3:{label:'第3區｜一樓右前',x:2300,y:250,w:820,h:430},
+  z4:{label:'第4區｜一樓左後（含輪椅席）',x:300,y:660,w:820,h:580},
+  z5:{label:'第5區｜一樓中後',x:1120,y:660,w:1180,h:580},
+  z6:{label:'第6區｜一樓右後（含輪椅席）',x:2300,y:660,w:820,h:580},
+  z7:{label:'第7區｜二樓左',x:300,y:1260,w:820,h:620},
+  z8:{label:'第8區｜二樓中',x:1120,y:1260,w:1180,h:620},
+  z9:{label:'第9區｜二樓右',x:2300,y:1260,w:820,h:620}
 };
-function setZoom(z){zoom=Math.max(.2,Math.min(2.6,z));document.documentElement.style.setProperty('--zoom',zoom);document.getElementById('zoomLabel').textContent=Math.round(zoom*100)+'%'}
-function fitWhole(){const vw=viewport.clientWidth-36;setZoom(Math.min(.95,vw/3400))}
+function setZoom(z){
+  zoom=Math.max(.18,Math.min(2.6,z));
+  document.documentElement.style.setProperty('--zoom',zoom);
+  document.getElementById('zoomLabel').textContent=Math.round(zoom*100)+'%';
+}
 function clamp(value,min,max){return Math.max(min,Math.min(max,value))}
-function scrollViewportToZoneCenter(zone){
+function fitWhole(){
+  const fitW=(viewport.clientWidth-36)/3400;
+  const fitH=(viewport.clientHeight-36)/1920;
+  setZoom(Math.min(.95,Math.max(.18,Math.min(fitW,fitH))));
+}
+function fitZoomForZone(zone){
+  const padding=36;
+  const fitW=(viewport.clientWidth-padding)/zone.w;
+  const fitH=(viewport.clientHeight-padding)/zone.h;
+  return Math.max(.18,Math.min(2.6,fitW,fitH));
+}
+function scrollViewportToZoneCenter(zone,behavior='smooth'){
   const scaled=document.getElementById('scaled');
   const availableW=viewport.clientWidth;
   const availableH=viewport.clientHeight;
@@ -482,24 +497,79 @@ function scrollViewportToZoneCenter(zone){
   const rawTop=scaled.offsetTop+centerY-availableH/2;
   const maxLeft=Math.max(0,viewport.scrollWidth-viewport.clientWidth);
   const maxTop=Math.max(0,viewport.scrollHeight-viewport.clientHeight);
-  viewport.scrollTo({left:clamp(rawLeft,0,maxLeft),top:clamp(rawTop,0,maxTop),behavior:'smooth'});
+  viewport.scrollTo({left:clamp(rawLeft,0,maxLeft),top:clamp(rawTop,0,maxTop),behavior});
 }
 function centerOnZone(zoneKey){
   const normalizedZoneKey=zoneViews[zoneKey]?zoneKey:'all';
   const zone=zoneViews[normalizedZoneKey];
+  activeZoneKey=normalizedZoneKey;
   document.querySelectorAll('[data-zone]').forEach(el=>el.classList.toggle('active',el.dataset.zone===normalizedZoneKey));
   if(normalizedZoneKey==='all'){
     fitWhole();
     requestAnimationFrame(()=>viewport.scrollTo({left:0,top:0,behavior:'smooth'}));
     return;
   }
-  setZoom(zone.zoom);
+  setZoom(fitZoomForZone(zone));
   requestAnimationFrame(()=>requestAnimationFrame(()=>scrollViewportToZoneCenter(zone)));
 }
-document.getElementById('zoomIn').onclick=()=>setZoom(zoom+.1);document.getElementById('zoomOut').onclick=()=>setZoom(zoom-.1);
+function zoomAroundViewportPoint(newZoom,clientX,clientY){
+  const scaled=document.getElementById('scaled');
+  const rect=viewport.getBoundingClientRect();
+  const localX=clientX-rect.left;
+  const localY=clientY-rect.top;
+  const contentX=(viewport.scrollLeft+localX-scaled.offsetLeft)/zoom;
+  const contentY=(viewport.scrollTop+localY-scaled.offsetTop)/zoom;
+  setZoom(newZoom);
+  requestAnimationFrame(()=>{
+    const maxLeft=Math.max(0,viewport.scrollWidth-viewport.clientWidth);
+    const maxTop=Math.max(0,viewport.scrollHeight-viewport.clientHeight);
+    viewport.scrollLeft=clamp(scaled.offsetLeft+contentX*zoom-localX,0,maxLeft);
+    viewport.scrollTop=clamp(scaled.offsetTop+contentY*zoom-localY,0,maxTop);
+  });
+}
+function zoomFromButton(delta){
+  const rect=viewport.getBoundingClientRect();
+  zoomAroundViewportPoint(zoom+delta,rect.left+rect.width/2,rect.top+rect.height/2);
+}
+let pinchStartDistance=0;
+let pinchStartZoom=zoom;
+function touchDistance(touches){
+  const dx=touches[0].clientX-touches[1].clientX;
+  const dy=touches[0].clientY-touches[1].clientY;
+  return Math.hypot(dx,dy);
+}
+function touchCenter(touches){
+  return {x:(touches[0].clientX+touches[1].clientX)/2,y:(touches[0].clientY+touches[1].clientY)/2};
+}
+viewport.addEventListener('touchstart',e=>{
+  if(e.touches.length===2){
+    pinchStartDistance=touchDistance(e.touches);
+    pinchStartZoom=zoom;
+  }
+},{passive:true});
+viewport.addEventListener('touchmove',e=>{
+  if(e.touches.length===2&&pinchStartDistance){
+    e.preventDefault();
+    const ratio=touchDistance(e.touches)/pinchStartDistance;
+    const center=touchCenter(e.touches);
+    zoomAroundViewportPoint(pinchStartZoom*ratio,center.x,center.y);
+  }
+},{passive:false});
+viewport.addEventListener('touchend',e=>{
+  if(e.touches.length<2){
+    pinchStartDistance=0;
+    pinchStartZoom=zoom;
+  }
+},{passive:true});
+document.getElementById('zoomIn').onclick=()=>zoomFromButton(.1);
+document.getElementById('zoomOut').onclick=()=>zoomFromButton(-.1);
 document.getElementById('fit').onclick=()=>centerOnZone('all');
 document.querySelectorAll('[data-zone]').forEach(el=>el.addEventListener('click',()=>centerOnZone(el.dataset.zone)));
-window.addEventListener('resize',()=>{});
+window.addEventListener('resize',()=>{
+  if(activeZoneKey&&zoneViews[activeZoneKey]){
+    centerOnZone(activeZoneKey);
+  }
+});
 })();
 </script>
 </body>
