@@ -136,7 +136,7 @@
     function daysLeft(endDate){ if(!endDate) return 999999; const today=new Date(); today.setHours(0,0,0,0); const d=new Date(endDate+'T00:00:00'); return Math.ceil((d-today)/86400000); }
     function passFilter(x){ const st=R.clean(x.status); const converted=(x.kind==='application' && (['已轉正式契約','converted'].includes(st) || x.linkedContractId || x.contractId)); if(filter==='all') return !converted && !['已取消','取消申請'].includes(st); if(filter==='new') return x.kind==='application' && !converted && !['已取消','取消申請'].includes(st) && (['待店家確認','主管確認中','新申請','草稿',''].includes(st)||!st); if(filter==='sign') return x.kind==='contract' && ['待客人補資料','待客人簽署','待簽署'].includes(st); if(filter==='active') return x.kind==='contract' && ['已簽署','待配送 / 待安裝','租賃中','到期提醒中','續約待確認','續約待付款'].includes(st); if(filter==='expiring') return x.kind==='contract' && !['已退租','已取消'].includes(st) && daysLeft(x.endDate)<=30; if(filter==='return') return x.kind==='contract' && ['退租申請中','退租待安排','待收回','已退租'].includes(st); if(filter==='cancelled') return ['已取消','取消申請'].includes(st); return true; }
     function renderStats(){ const active=contracts.filter(c=>['已簽署','待配送 / 待安裝','租賃中','到期提醒中','續約待確認','續約待付款'].includes(R.clean(c.status))).length; const exp=contracts.filter(c=>!['已退租','已取消'].includes(R.clean(c.status)) && daysLeft(c.endDate)<=30).length; const pending=applications.filter(a=>['待店家確認','新申請','主管確認中'].includes(R.clean(a.status||'待店家確認'))).length; const returned=contracts.filter(c=>R.clean(c.status)==='已退租').length; R.qs('stats').innerHTML=`<div class="stat"><b>${pending}</b><span>待確認申請</span></div><div class="stat"><b>${active}</b><span>租用中</span></div><div class="stat"><b>${exp}</b><span>30 天內到期</span></div><div class="stat"><b>${returned}</b><span>已退租</span></div>`; }
-    function renderList(){ const list=R.qs('list'); const rows=[...applications.map(x=>Object.assign({kind:'application'},x)),...contracts.map(x=>Object.assign({kind:'contract'},x))].filter(passFilter); if(!rows.length){ list.innerHTML='<div class="muted">目前沒有資料。</div>'; return;} list.innerHTML=rows.map((r)=>{ const left=r.kind==='contract'?daysLeft(r.endDate):999999; const cls=left<0?'pill-bad':left<=30?'pill-warn':''; return `<div class="item" onclick="selectItem('${r.kind}','${R.esc(r.__id)}')"><div class="item-title">${r.kind==='application'?'申請':'合約'}｜${R.esc(r.customerName||r.partyAName||'未填姓名')}</div><div class="item-sub"><span class="status ${cls}">${R.esc(r.status||'待店家確認')}</span> ${R.esc(R.rentalTypeLabel(r.rentalType))}｜${R.esc(r.applicationNo||r.contractNo||r.__id||'')}<br>${R.esc(r.customerPhone||'')}｜${R.esc(r.preferredDate||r.startDate||'尚未確認日期')} ${R.esc(r.preferredTime||'')}</div></div>`; }).join(''); }
+    function renderList(){ const list=R.qs('list'); const rows=[...applications.map(x=>Object.assign({kind:'application'},x)),...contracts.map(x=>Object.assign({kind:'contract'},x))].filter(passFilter); if(!rows.length){ list.innerHTML='<div class="muted">目前沒有資料。</div>'; return;} list.innerHTML=rows.map((r)=>{ const left=r.kind==='contract'?daysLeft(r.endDate):999999; const cls=left<0?'pill-bad':left<=30?'pill-warn':''; const internal=r.kind==='contract'?internalRentalCountSummaryText(r):''; return `<div class="item" onclick="selectItem('${r.kind}','${R.esc(r.__id)}')"><div class="item-title">${r.kind==='application'?'申請':'合約'}｜${R.esc(r.customerName||r.partyAName||'未填姓名')}</div><div class="item-sub"><span class="status ${cls}">${R.esc(r.status||'待店家確認')}</span> ${R.esc(R.rentalTypeLabel(r.rentalType))}｜${R.esc(r.applicationNo||r.contractNo||r.__id||'')}<br>${R.esc(r.customerPhone||'')}｜${R.esc(r.preferredDate||r.startDate||'尚未確認日期')} ${R.esc(r.preferredTime||'')}${internal?'<br>'+R.esc(internal):''}</div></div>`; }).join(''); }
     window.selectItem=function(kind,id){ selected=kind==='application'?applications.find(x=>x.__id===id):contracts.find(x=>x.__id===id); if(!selected) return; if(kind==='application') renderApplication(selected); else renderContract(selected); };
     function equipmentFromNeed(app){ const type=R.clean(app.rentalType); const t=R.clean(app.otherEquipmentNeed); if(type==='other' && t) return [{name:t,note:'客人初步需求'}]; const defaults=R.parseEquipmentItems({rentalType:type}); if(t && !defaults.some(x=>R.clean(x.name)===t)) defaults.unshift({name:t,note:'客人初步需求'}); return defaults; }
     function normalizeLineConfirmText(text, appNo){ const raw=String(text||'').trim(); const key=String(appNo||'').trim(); if(raw && /^設備租賃申請\s+\S+$/i.test(raw)) return raw; const m=raw.match(/(?:設備租賃申請|租賃申請|租賃申請編號|申請編號|訂單編號|訂單)\s*[:：]?\s*([A-Za-z0-9_-]+)/i); return '設備租賃申請 '+((m&&m[1])?m[1].trim():key); }
@@ -183,6 +183,18 @@
     function renderContract(c){ R.qs('detailBox').innerHTML=editorHtml(c, c.__id||c.contractId?'contract':'adminDraft'); R.qs('contractPreview').innerHTML=R.renderContractHtml(c); bindEditorPreview(); }
     function equipmentRows(items){ items=Array.isArray(items)&&items.length?items:[{name:'',note:''}]; return items.map((x,i)=>`<div class="equipment-row" data-eq-row><div class="field"><label>設備名稱</label><input class="eq-name" value="${R.esc(x.name||x.equipmentName||'')}" placeholder="例如：Roland FP-30X"></div><div class="field"><label>備註</label><input class="eq-note" value="${R.esc(x.note||x.remark||'')}" placeholder="例如：含琴椅、電源線"></div><button class="btn danger" type="button" onclick="removeEquipmentRow(this)">刪除</button></div>`).join(''); }
 
+    function countValueOrNull(v){ const raw=R.clean(v); if(raw==='') return null; const n=Number(raw); return Number.isFinite(n) && n>=0 ? Math.floor(n) : null; }
+    function positivePeriodCount(v){ const n=Number(R.clean(v)); return Math.max(1, Math.min(10, Number.isFinite(n)?Math.floor(n):1)); }
+    function confirmedRenewalPeriodTotal(c){ c=c||{}; const entries=Array.isArray(c.renewalEntries)?c.renewalEntries:[]; return entries.reduce((sum,x)=>sum+positivePeriodCount(x&&x.periods),0); }
+    function internalAssetNameValue(c){ c=c||{}; return R.clean(c.internalAssetName||c.internalEquipmentCode||c.internalEquipmentName||c.assetCode||''); }
+    function internalCountBeforeValue(c){ c=c||{}; const keys=['internalRentalCountBefore','rentalCountBefore','assetRentalCountBefore','oldRentalCount']; for(const k of keys){ const n=countValueOrNull(c[k]); if(n!==null) return n; } return null; }
+    function internalRentalCountSnapshot(c,periodOverride){ c=c||{}; const before=internalCountBeforeValue(c); const initial=positivePeriodCount(periodOverride!=null?periodOverride:(c.internalRentalCountInitialPeriods||c.periods||1)); const renewals=confirmedRenewalPeriodTotal(c); const current=before===null?null:before+initial+renewals; return {assetName:internalAssetNameValue(c),before,initial,renewals,current,formula:before===null?'':`${before} + ${initial}${renewals?` + ${renewals}`:''} = ${current}`}; }
+    function internalRentalCountSummaryText(c){ const snap=internalRentalCountSnapshot(c); if(!snap.assetName && snap.before===null) return ''; if(snap.before===null) return `內部設備：${snap.assetName||'未填'}｜出租次數未填`; return `內部設備：${snap.assetName||'未填'}｜租用次數：${snap.formula} 次`; }
+    function internalRentalCountHtml(c){ c=c||{}; const snap=internalRentalCountSnapshot(c); const note=R.clean(c.internalRentalCountNote||c.rentalCountNote||''); return `<div class="pdf-link-box" id="internalRentalCountBox"><b>內部租用次數紀錄</b><br><span class="muted">內部使用，不會出現在客人頁面與正式契約。規則：1 期 90 天 = 1 次；新租幾期就加幾次；續租幾期也加幾次。</span><div class="row2" style="margin-top:10px"><div class="field"><label>內部設備識別</label><input id="internalAssetName" value="${R.esc(snap.assetName)}" placeholder="例如：FP30X白色01、P125舊琴"></div><div class="field"><label>本次前已租用次數</label><input id="internalRentalCountBefore" type="number" min="0" step="1" value="${snap.before===null?'':R.esc(snap.before)}" placeholder="例如：5"></div></div><div class="row3"><div class="field"><label>本次新租期數</label><input id="internalRentalCountInitialPeriods" readonly value="${R.esc(snap.initial)} 期"></div><div class="field"><label>已確認續租增加</label><input id="internalRentalCountRenewalPeriods" readonly value="${R.esc(snap.renewals)} 次"></div><div class="field"><label>目前累計租用次數</label><input id="internalRentalCountCurrent" readonly value="${snap.current===null?'尚未計算':R.esc(snap.current+' 次')}"></div></div><div class="msg ok" id="internalRentalCountPreview" style="margin-top:6px">${snap.before===null?'請填「本次前已租用次數」，系統會依期數自動計算。':'計算式：'+R.esc(snap.formula)+' 次'}</div><div class="field"><label>內部備註</label><textarea id="internalRentalCountNote" placeholder="例如：舊紙本約 5 次，從王小姐這筆開始改線上紀錄">${R.esc(note)}</textarea></div><div class="btn-row"><button class="btn secondary" type="button" onclick="saveInternalRentalCount()">儲存內部租用次數</button></div></div>`; }
+    function readInternalRentalCountPayload(signed,periods){ signed=signed||{}; const before=countValueOrNull(R.val('internalRentalCountBefore')); const initial=positivePeriodCount(periods||R.val('periods')||1); const renewals=confirmedRenewalPeriodTotal(signed); const current=before===null?'':before+initial+renewals; const formula=before===null?'':`${before} + ${initial}${renewals?` + ${renewals}`:''} = ${current}`; return { internalAssetName:R.val('internalAssetName'), internalEquipmentCode:R.val('internalAssetName'), internalRentalCountBefore:before===null?'':before, internalRentalCountInitialPeriods:initial, internalRentalCountRenewalPeriods:renewals, internalRentalCountCurrent:current, internalRentalCountAfter:current, internalRentalCountFormula:formula, internalRentalCountNote:R.val('internalRentalCountNote') }; }
+    function updateInternalRentalCountPreview(){ const box=R.qs('internalRentalCountBox'); if(!box) return; const before=countValueOrNull(R.val('internalRentalCountBefore')); const initial=positivePeriodCount(R.val('periods')||1); const renewals=confirmedRenewalPeriodTotal(selected||{}); const current=before===null?null:before+initial+renewals; const init=R.qs('internalRentalCountInitialPeriods'); const ren=R.qs('internalRentalCountRenewalPeriods'); const cur=R.qs('internalRentalCountCurrent'); const prev=R.qs('internalRentalCountPreview'); if(init) init.value=initial+' 期'; if(ren) ren.value=renewals+' 次'; if(cur) cur.value=current===null?'尚未計算':current+' 次'; if(prev){ prev.className=current===null?'msg bad':'msg ok'; prev.textContent=current===null?'請填「本次前已租用次數」，系統會依期數自動計算。':`計算式：${before} + ${initial}${renewals?` + ${renewals}`:''} = ${current} 次`; } }
+    function validateInternalRentalCountFor(actionText){ const asset=R.val('internalAssetName'); const beforeRaw=R.val('internalRentalCountBefore'); const before=countValueOrNull(beforeRaw); if(!asset){ R.toast('請先完成「內部租用次數紀錄」：請填內部設備識別。', false); const el=R.qs('internalAssetName'); if(el) el.focus(); return false; } if(beforeRaw==='' || before===null){ R.toast('請先完成「內部租用次數紀錄」：請填本次前已租用次數，例如 5。', false); const el=R.qs('internalRentalCountBefore'); if(el) el.focus(); return false; } return true; }
+
     function actionButtons(source,c){
       const st=R.clean(c.status||'');
       const isApp=source==='application';
@@ -203,18 +215,21 @@
         return `<div class="btn-row">${parts.join('')}</div>`;
       }
       if(isReturned){
+        b('secondary','saveInternalRentalCount()','儲存內部租用次數');
         b('secondary','previewOfficialContract()','查看契約');
         b('secondary','printRentalContract()','預覽 / 列印 / PDF');
         deleteWholeCase();
         return `<div class="btn-row">${parts.join('')}</div>`;
       }
       if(isReturnPending){
+        b('secondary','saveInternalRentalCount()','儲存內部租用次數');
         b('secondary','printRentalContract()','預覽 / 列印');
         b('danger','completeReturn()','確認退租完成');
         deleteWholeCase();
         return `<div class="btn-row">${parts.join('')}</div>`;
       }
       if(isActive){
+        b('secondary','saveInternalRentalCount()','儲存內部租用次數');
         b('','sendRenewalReturnLink()','傳送續約 / 退租連結給客人');
         if(isPendingRenewal) b('','confirmRenewal()','確認續約成立');
         b('secondary','printRentalContract()','預覽 / 列印');
@@ -223,6 +238,7 @@
         return `<div class="btn-row">${parts.join('')}</div>`;
       }
       if(isWaitingShop){
+        b('secondary','saveInternalRentalCount()','儲存內部租用次數');
         b('secondary','previewOfficialContract()','預覽正式契約');
         b('secondary','printRentalContract()','預覽 / 列印 / PDF');
         b('','markDelivered()','確認租用成立');
@@ -231,6 +247,7 @@
         return `<div class="btn-row">${parts.join('')}</div>`;
       }
       if(isWaitingCustomer){
+        b('secondary','saveInternalRentalCount()','儲存內部租用次數');
         b('','sendToCustomerForFill()','回傳給客人填寫身分證字號','data-send-fill-btn');
         if(isApp) b('secondary','cancelApplication()','取消申請');
         deleteWholeCase();
@@ -253,7 +270,7 @@
       const r=c.returnRequest||{};
       const blocks=[];
       if(p && p.startDate){
-        blocks.push(`<div class="msg ok"><b>續約申請待確認</b><br>續約期數：${R.esc(p.periods||'')} 期<br>續約金額：${R.esc(formatMoneyInline(p.rentFee))}<br>續約期間：${R.esc(p.startDate)} 至 ${R.esc(p.endDate)}<br>客人備註：${R.esc(p.customerNote||p.note||'無')}<br><span class="muted">確認客人匯款截圖與入帳後，請按「確認續約成立」。</span></div>`);
+        const snap=internalRentalCountSnapshot(c); const add=positivePeriodCount(p.periods||1); const renewalCountText=snap.current===null?'內部租用次數尚未完成，確認續約前請先補上。':`續約會增加 ${add} 次，確認後累計 ${snap.current + add} 次。`; blocks.push(`<div class="msg ok"><b>續約申請待確認</b><br>續約期數：${R.esc(p.periods||'')} 期<br>續約金額：${R.esc(formatMoneyInline(p.rentFee))}<br>續約期間：${R.esc(p.startDate)} 至 ${R.esc(p.endDate)}<br>內部次數：${R.esc(renewalCountText)}<br>客人備註：${R.esc(p.customerNote||p.note||'無')}<br><span class="muted">確認客人匯款截圖與入帳後，請按「確認續約成立」。</span></div>`);
       }
       if(r && (r.returnAddress || r.customerSubmittedAt || r.status)){
         blocks.push(`<div class="msg bad"><b>退租待安排</b><br><br>客人已選擇退租。<br><br><span class="muted">請透過官方 LINE 與客人約定設備回收／歸還時間。</span></div>`);
@@ -295,13 +312,14 @@
       <h3>乙方提供設備</h3><div class="muted hide-admin-note">只填「設備名稱 / 備註」即可；可按新增設備繼續增加。</div><div id="equipmentRows">${equipmentRows(items)}</div><button class="btn secondary" type="button" onclick="addEquipmentRow()">＋新增設備</button>
       <div class="row3"><div class="field"><label>租賃品項</label><input id="rentalItem" value="${R.esc(c.rentalItem||c.equipmentCategory||R.rentalTypeLabel(c.rentalType))}" placeholder="例如：電鋼琴"></div><div class="field"><label>品牌</label><input id="equipmentBrand" value="${R.esc(c.equipmentBrand||c.brand||'')}" placeholder="例如：Roland"></div><div class="field"><label>型號</label><input id="equipmentModel" value="${R.esc(c.equipmentModel||c.modelName||c.equipmentName||'')}" placeholder="例如：FP-30X"></div></div>
       <div class="row3" style="margin-top:12px"><div class="field"><label>期數（1期=90天）</label><input id="periods" type="number" min="1" max="10" value="${R.esc(c.periods||1)}"></div><div class="field"><label>${startLabel}</label><input id="startDate" type="date" value="${R.esc(c.startDate)}"><div class="muted">${finalStage?'正式起租日會依確認安裝日期同步計算到期日。':'此欄先作預估；正式起租日以店家最後確認為準。'}</div></div><div class="field"><label>租賃到期日</label><input id="endDate" type="date" value="${R.esc(c.endDate)}"></div></div>
+      ${internalRentalCountHtml(c)}
       <div class="row3"><div class="field"><label>租金</label><input id="rentFee" type="number" value="${R.esc(c.rentFee||0)}"></div><div class="field"><label>運費</label><input id="shippingFee" type="number" value="${R.esc(c.shippingFee||0)}"></div><div class="field"><label>押金</label><input id="depositFee" type="number" value="${R.esc(c.depositFee||0)}"></div></div>
       <div class="row2"><div class="field"><label>配送 / 自取方式</label><select id="shippingMethod"><option value="到府安裝" ${currentDeliveryMethod==='到府安裝'?'selected':''}>到府安裝</option><option value="自取自運" ${currentDeliveryMethod==='自取自運'?'selected':''}>自取自運</option></select></div><div class="field"><label id="deliveryDateLabel">${installLabel}</label><input id="deliveryDate" type="date" value="${R.esc(c.deliveryDate||c.startDate||'')}"><div class="muted" id="deliveryDateHint">${installHint}</div></div></div><div class="field"><label>備註</label><textarea id="adminNote">${R.esc(c.adminNote||'')}</textarea></div>
       ${renewalAdminHtml(c)}${customerLinkBackupHtml(c,source)}${actionButtons(source,c)}`; }
     function readEquipmentItems(){ return Array.from(document.querySelectorAll('[data-eq-row]')).map(row=>({name:R.clean(row.querySelector('.eq-name')?.value),note:R.clean(row.querySelector('.eq-note')?.value)})).filter(x=>x.name||x.note); }
     window.addEquipmentRow=function(){ const box=R.qs('equipmentRows'); box.insertAdjacentHTML('beforeend', equipmentRows([{name:'',note:''}])); bindEditorPreview(); };
     window.removeEquipmentRow=function(btn){ btn.closest('[data-eq-row]')?.remove(); R.qs('contractPreview').innerHTML=R.renderContractHtml(collect()); };
-    function collect(){ const type=R.val('rentalType'); const items=readEquipmentItems(); const deliveryDate=R.val('deliveryDate'); const startDate=R.val('startDate')||deliveryDate; const periods=R.val('periods')||1; const signed=selected||{}; const sig=signed.customerSignatureDataUrl||signed.signatureDataUrl||signed.customerSignatureUrl||signed.signatureUrl||signed.signDataUrl||''; const idImg=signed.customerIdImageWatermarkedDataUrl||signed.idImageWatermarkedDataUrl||signed.customerIdImageDataUrl||signed.idImageDataUrl||signed.idCardImageDataUrl||signed.customerIdImageUrl||signed.idImageUrl||signed.idCardImageUrl||''; const rentalItem=R.clean(R.val('rentalItem')||R.rentalTypeLabel(type)); const equipmentBrand=R.clean(R.val('equipmentBrand')); const equipmentModel=R.clean(R.val('equipmentModel')); const primaryEquipment=[equipmentBrand,equipmentModel].filter(Boolean).join(' ') || items[0]?.name || rentalItem; const payload={ sourceKind:R.val('sourceKind'), applicationId:R.val('applicationId'), contractId:R.val('contractId'), source:R.val('sourceKind')==='adminDraft'?'admin':'application', stage:'formal-draft', rentalType:type, status:R.val('status')||'草稿', contractTitle:R.defaultTitle(type), rentalItem:rentalItem, equipmentCategory:rentalItem, equipmentBrand:equipmentBrand, brand:equipmentBrand, equipmentModel:equipmentModel, modelName:equipmentModel, customerName:R.val('customerName'), customerPhone:R.val('customerPhone'), customerEmail:R.val('customerEmail'), customerLineUserId:R.val('customerLineUserId'), notificationPreference:notifyPref({notificationPreference:R.val('notificationPreference'),customerEmail:R.val('customerEmail')}), preferredContactMethod:notifyPref({notificationPreference:R.val('notificationPreference'),customerEmail:R.val('customerEmail')}), emailVerified:R.val('emailVerified')==='true'||(selected&&selected.emailVerified===true), emailLinkStatus:R.val('emailLinkStatus')||(selected&&selected.emailLinkStatus)||'', emailVerifyToken:R.val('emailVerifyToken')||(selected&&selected.emailVerifyToken)||'', customerIdNumber:R.val('customerIdNumber'), customerAddress:R.val('customerAddress'), customerSignatureDataUrl:sig, signatureDataUrl:sig, customerSignatureUrl:signed.customerSignatureUrl||signed.signatureUrl||'', signatureUrl:signed.signatureUrl||signed.customerSignatureUrl||'', customerIdImageWatermarkedDataUrl:idImg, idImageWatermarkedDataUrl:idImg, customerIdImageDataUrl:idImg, idImageDataUrl:idImg, customerIdImageUrl:signed.customerIdImageUrl||signed.idImageUrl||signed.idCardImageUrl||'', idImageUrl:signed.idImageUrl||signed.customerIdImageUrl||signed.idCardImageUrl||'', equipmentName:primaryEquipment, serialNo:items[0]?.note||'', equipmentItems:items, includedItems:items.map(x=>`${x.name}${x.note?' / '+x.note:''}`).join('\n'), periods:periods, periodDays:90, rentDays:Number(periods||1)*90, rentalMethod:'實體租用', startDate:startDate, endDate:R.val('endDate')||R.calcEndDate(startDate,periods,type,Number(periods||1)*90), rentFee:R.val('rentFee'), shippingFee:R.val('shippingFee'), depositFee:R.val('depositFee'), shippingMethod:R.normalizeDeliveryMethod(R.val('shippingMethod')), deliveryMethod:R.normalizeDeliveryMethod(R.val('shippingMethod')), deliveryDate:deliveryDate||startDate, deliveryTime:'', deliveryDateTime:deliveryDate||startDate, adminNote:R.val('adminNote'), customerSubmittedFormalAt:signed.customerSubmittedFormalAt||'' }; return isFinalConfirmStage(Object.assign({}, signed, payload)) ? officializeContract(payload) : payload; }
+    function collect(){ const type=R.val('rentalType'); const items=readEquipmentItems(); const deliveryDate=R.val('deliveryDate'); const startDate=R.val('startDate')||deliveryDate; const periods=R.val('periods')||1; const signed=selected||{}; const sig=signed.customerSignatureDataUrl||signed.signatureDataUrl||signed.customerSignatureUrl||signed.signatureUrl||signed.signDataUrl||''; const idImg=signed.customerIdImageWatermarkedDataUrl||signed.idImageWatermarkedDataUrl||signed.customerIdImageDataUrl||signed.idImageDataUrl||signed.idCardImageDataUrl||signed.customerIdImageUrl||signed.idImageUrl||signed.idCardImageUrl||''; const rentalItem=R.clean(R.val('rentalItem')||R.rentalTypeLabel(type)); const equipmentBrand=R.clean(R.val('equipmentBrand')); const equipmentModel=R.clean(R.val('equipmentModel')); const primaryEquipment=[equipmentBrand,equipmentModel].filter(Boolean).join(' ') || items[0]?.name || rentalItem; const payload={ sourceKind:R.val('sourceKind'), applicationId:R.val('applicationId'), contractId:R.val('contractId'), source:R.val('sourceKind')==='adminDraft'?'admin':'application', stage:'formal-draft', rentalType:type, status:R.val('status')||'草稿', contractTitle:R.defaultTitle(type), rentalItem:rentalItem, equipmentCategory:rentalItem, equipmentBrand:equipmentBrand, brand:equipmentBrand, equipmentModel:equipmentModel, modelName:equipmentModel, customerName:R.val('customerName'), customerPhone:R.val('customerPhone'), customerEmail:R.val('customerEmail'), customerLineUserId:R.val('customerLineUserId'), notificationPreference:notifyPref({notificationPreference:R.val('notificationPreference'),customerEmail:R.val('customerEmail')}), preferredContactMethod:notifyPref({notificationPreference:R.val('notificationPreference'),customerEmail:R.val('customerEmail')}), emailVerified:R.val('emailVerified')==='true'||(selected&&selected.emailVerified===true), emailLinkStatus:R.val('emailLinkStatus')||(selected&&selected.emailLinkStatus)||'', emailVerifyToken:R.val('emailVerifyToken')||(selected&&selected.emailVerifyToken)||'', customerIdNumber:R.val('customerIdNumber'), customerAddress:R.val('customerAddress'), customerSignatureDataUrl:sig, signatureDataUrl:sig, customerSignatureUrl:signed.customerSignatureUrl||signed.signatureUrl||'', signatureUrl:signed.signatureUrl||signed.customerSignatureUrl||'', customerIdImageWatermarkedDataUrl:idImg, idImageWatermarkedDataUrl:idImg, customerIdImageDataUrl:idImg, idImageDataUrl:idImg, customerIdImageUrl:signed.customerIdImageUrl||signed.idImageUrl||signed.idCardImageUrl||'', idImageUrl:signed.idImageUrl||signed.customerIdImageUrl||signed.idCardImageUrl||'', equipmentName:primaryEquipment, serialNo:items[0]?.note||'', equipmentItems:items, includedItems:items.map(x=>`${x.name}${x.note?' / '+x.note:''}`).join('\n'), periods:periods, periodDays:90, rentDays:Number(periods||1)*90, rentalMethod:'實體租用', startDate:startDate, endDate:R.val('endDate')||R.calcEndDate(startDate,periods,type,Number(periods||1)*90), rentFee:R.val('rentFee'), shippingFee:R.val('shippingFee'), depositFee:R.val('depositFee'), shippingMethod:R.normalizeDeliveryMethod(R.val('shippingMethod')), deliveryMethod:R.normalizeDeliveryMethod(R.val('shippingMethod')), deliveryDate:deliveryDate||startDate, deliveryTime:'', deliveryDateTime:deliveryDate||startDate, ...readInternalRentalCountPayload(signed,periods), adminNote:R.val('adminNote'), customerSubmittedFormalAt:signed.customerSubmittedFormalAt||'' }; return isFinalConfirmStage(Object.assign({}, signed, payload)) ? officializeContract(payload) : payload; }
     function syncRentalDatesFromDelivery(changedId){ const type=R.val('rentalType'); const periods=R.val('periods')||1; if(changedId==='deliveryDate' && R.val('deliveryDate')) R.setVal('startDate', R.val('deliveryDate')); if((changedId==='startDate'||changedId==='deliveryDate'||changedId==='periods') && (R.val('startDate')||R.val('deliveryDate'))){ const st=R.val('startDate')||R.val('deliveryDate'); R.setVal('startDate', st); R.setVal('deliveryDate', R.val('deliveryDate')||st); R.setVal('endDate', R.calcEndDate(st,periods,type,Number(periods||1)*90)); } }
     function updateDeliveryLabels(){
       const c=collect();
@@ -317,12 +335,14 @@
       document.querySelectorAll('#detailBox input,#detailBox textarea,#detailBox select').forEach(el=>{
         const update=()=>{
           syncRentalDatesFromDelivery(el.id);
+          updateInternalRentalCountPreview();
           updateDeliveryLabels();
           R.qs('contractPreview').innerHTML=R.renderContractHtml(collect());
         };
         el.oninput=update;
         el.onchange=update;
       });
+      updateInternalRentalCountPreview();
       updateDeliveryLabels();
     }
 
@@ -418,6 +438,7 @@
         return null;
       }
     };
+    window.saveInternalRentalCount=async function(){ if(!validateInternalRentalCountFor('儲存內部租用次數')) return; const res=await saveContract(false,{silent:true}); if(res){ R.toast('內部租用次數已儲存。', true); } };
     window.copySignLink=async function(){ return copyRentalCustomerLink('sign'); };
     async function queueRentalSignLinkNotice(contract){
       const url=R.signUrl(contract);
@@ -454,7 +475,7 @@ ${url}
       });
     }
 
-    window.sendToCustomerForFill=async function(){ const btn=document.querySelector('[data-send-fill-btn]'); const c=collect(); if(!wantsNotifyLine(c) && !wantsNotifyEmail(c)){ return R.toast('請先選擇通知方式。', false); } if(wantsNotifyLine(c) && !R.clean(c.customerLineUserId) && !wantsNotifyEmail(c)){ return R.toast('客人選擇只用 LINE，但尚未完成 LINE 配對。請先請客人到官方 LINE 貼上配對文字，或改選 Email 通知。', false); } if(wantsNotifyEmail(c) && !R.clean(c.customerEmail)){ return R.toast('客人通知方式包含 Email，請先填寫 Email。', false); } if(btn){ btn.textContent=''; btn.style.setProperty('--progress','10%'); btn.classList.add('is-progressing'); btn.disabled=true; } const res=await saveContract(true,{silent:true}); if(!res){ if(btn){ btn.disabled=false; btn.classList.remove('is-progressing'); btn.textContent='回傳給客人填寫身分證字號'; } return; } try{ const info=await sendContractLink({silent:true}); await runButtonProgress(btn,'完成'); R.toast((info.assessment&&info.assessment.text)||'客人通知已送出。',true); }catch(e){ if(btn){ btn.disabled=false; btn.classList.remove('is-progressing'); btn.textContent='回傳給客人填寫身分證字號'; } R.toast((e.message||String(e))+' 若系統通知沒有成功，可用「客人連結備援」複製連結手動傳送。', false); } };
+    window.sendToCustomerForFill=async function(){ const btn=document.querySelector('[data-send-fill-btn]'); if(!validateInternalRentalCountFor('回傳給客人填寫身分證字號')) return; const c=collect(); if(!wantsNotifyLine(c) && !wantsNotifyEmail(c)){ return R.toast('請先選擇通知方式。', false); } if(wantsNotifyLine(c) && !R.clean(c.customerLineUserId) && !wantsNotifyEmail(c)){ return R.toast('客人選擇只用 LINE，但尚未完成 LINE 配對。請先請客人到官方 LINE 貼上配對文字，或改選 Email 通知。', false); } if(wantsNotifyEmail(c) && !R.clean(c.customerEmail)){ return R.toast('客人通知方式包含 Email，請先填寫 Email。', false); } if(btn){ btn.textContent=''; btn.style.setProperty('--progress','10%'); btn.classList.add('is-progressing'); btn.disabled=true; } const res=await saveContract(true,{silent:true}); if(!res){ if(btn){ btn.disabled=false; btn.classList.remove('is-progressing'); btn.textContent='回傳給客人填寫身分證字號'; } return; } try{ const info=await sendContractLink({silent:true}); await runButtonProgress(btn,'完成'); R.toast((info.assessment&&info.assessment.text)||'客人通知已送出。',true); }catch(e){ if(btn){ btn.disabled=false; btn.classList.remove('is-progressing'); btn.textContent='回傳給客人填寫身分證字號'; } R.toast((e.message||String(e))+' 若系統通知沒有成功，可用「客人連結備援」複製連結手動傳送。', false); } };
     function showRentalProgress(title){
       let mask=document.getElementById('rentalProgressMask');
       if(!mask){
@@ -554,6 +575,7 @@ ${url}
       if(!id) return R.toast('請先儲存合約。', false);
       syncRentalDatesFromDelivery('deliveryDate');
       const payload=collect();
+      if(!validateInternalRentalCountFor('確認租用成立')) return;
       const missing=[];
       if(!payload.deliveryDate) missing.push(adminDeliveryDateLabel(payload, true));
       if(!payload.customerName) missing.push('客人姓名');
@@ -867,6 +889,8 @@ ${url}
         const c=Object.assign({__id:id}, await R.get('rentalContracts', id) || {});
         const p=c.pendingRenewal||{};
         if(!p.startDate || !p.endDate) return R.toast('這筆契約沒有待確認的續約資料。', false);
+        const countSnap=internalRentalCountSnapshot(c);
+        if(!internalAssetNameValue(c) || countSnap.current===null){ R.toast('確認續約前，請先在「內部租用次數紀錄」補上內部設備識別與本次前已租用次數，並按儲存。', false); return; }
         if(!confirm('確認客人已完成續約付款，並成立這次續約？')) return;
         const oldEnd=R.clean(c.endDate);
         const initialStart=R.clean(c.initialStartDate||c.startDate||c.officialStartDate);
@@ -874,7 +898,10 @@ ${url}
         const entries=Array.isArray(c.renewalEntries)?c.renewalEntries.slice():[];
         const renewalNo=entries.length+1;
         const days=R.clean(p.days).replace(/天$/,'') || calcDaysText(p.startDate,p.endDate).replace(/天$/,'');
-        const entry={renewalNo, method:`第 ${renewalNo} 次續約`, periods:Number(p.periods||1)||1, startDate:R.clean(p.startDate), endDate:R.clean(p.endDate), days:days ? days+' 天' : '', rentFee:R.num(p.rentFee)||'', note:`續約 ${Number(p.periods||1)||1} 期`, confirmedAt:R.nowText()};
+        const renewalAdd=positivePeriodCount(p.periods||1);
+        const countBeforeRenewal=countSnap.current;
+        const countAfterRenewal=countBeforeRenewal+renewalAdd;
+        const entry={renewalNo, method:`第 ${renewalNo} 次續約`, periods:renewalAdd, startDate:R.clean(p.startDate), endDate:R.clean(p.endDate), days:days ? days+' 天' : '', rentFee:R.num(p.rentFee)||'', note:`續約 ${renewalAdd} 期`, internalRentalCountBefore:countBeforeRenewal, internalRentalCountAdd:renewalAdd, internalRentalCountAfter:countAfterRenewal, confirmedAt:R.nowText()};
         entries.push(entry);
         const del=firebase.firestore.FieldValue.delete();
         const officialUrl=R.officialContractUrl(Object.assign({}, c, {contractId:id}));
@@ -886,6 +913,11 @@ ${url}
           officialEndDate:entry.endDate,
           currentEndDate:entry.endDate,
           renewalEntries:entries,
+          internalRentalCountRenewalPeriods:confirmedRenewalPeriodTotal({renewalEntries:entries}),
+          internalRentalCountCurrent:countAfterRenewal,
+          internalRentalCountAfter:countAfterRenewal,
+          internalRentalCountFormula:`${countSnap.before} + ${countSnap.initial}${confirmedRenewalPeriodTotal({renewalEntries:entries})?` + ${confirmedRenewalPeriodTotal({renewalEntries:entries})}`:''} = ${countAfterRenewal}`,
+          internalRentalCountUpdatedAt:R.nowText(),
           pendingRenewal:del,
           latestRenewalConfirmedAt:R.nowText(),
           officialContractUrl:officialUrl,
