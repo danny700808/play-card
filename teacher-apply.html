@@ -19,9 +19,16 @@
     @media(max-width:720px){.apply-shell{padding:10px 0 28px}.apply-head{border-radius:22px;padding:20px 16px}.apply-head h1{font-size:26px}.section-card{padding:18px 14px;border-radius:22px}.form-grid{grid-template-columns:1fr}.check-grid,.check-grid.compact{grid-template-columns:1fr 1fr}.section-title{font-size:20px}}
     @media(max-width:430px){.check-grid,.check-grid.compact{grid-template-columns:1fr}}
   </style>
+  <link rel="stylesheet" href="global-nav.css?v=20260624unified-top-nav">
 </head>
 <body>
-  <div class="container apply-shell">
+  
+  <div class="yz-global-nav" data-yz-global-nav>
+    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
+    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
+  </div>
+
+<div class="container apply-shell">
     <section class="apply-head"><h1>應聘履歷投遞</h1><p>請填寫基本資料、教學專長與作品連結。影片請提供連結，履歷 PDF / Word 與圖片可直接上傳。</p></section>
     <section id="applyPromo" class="promo-card"></section><div id="msg" class="message"></div>
     <form id="applyForm">
@@ -106,4 +113,5 @@
     function buildPayload(uploads){const address=valueOf('address'); const studentTypes=checkedValues('studentTypes'); return {name:valueOf('name'),phone:valueOf('phone'),email:valueOf('email'),city:address,district:'',teachAreas:'',currentStatus:valueOf('currentStatus'),mainSkill:valueOf('mainSkill'),teachItems:valueOf('teachItems'),teachLevels:checkedValues('teachLevels'),teachingYears:valueOf('teachingYears'),childExperience:studentTypes,groupExperience:studentTypes.indexOf('團體課')>=0?'是':'',homeTeaching:'',onlineTeaching:'',companyRules:'',availableTimes:checkedValues('availableTimes'),relatedDepartment:valueOf('relatedDepartment'),teachingSummary:valueOf('teachingSummary')||(qs('#teachingSummaryResume').checked?'詳見履歷附件':''),performanceExperience:valueOf('performanceExperience')||(qs('#performanceResume').checked?'詳見履歷附件':''),selfIntro:valueOf('selfIntro')||(qs('#selfIntroResume').checked?'詳見履歷附件':''),cooperationType:'',expectedHourlyPay:valueOf('expectedHourlyPay'),availableStartDate:'',resumeAttachmentLinks:(uploads.resumeUrls||[]).join('\n'),extraAttachmentLinks:(uploads.extraUrls||[]).join('\n'),imageAttachmentLinks:(uploads.imageUrls||[]).join('\n'),videoLink1:valueOf('videoLink1'),videoLink2:valueOf('videoLink2'),videoLink3:valueOf('videoLink3'),portfolioLink:valueOf('portfolioLink'),otherLink:valueOf('otherLink'),agreeData:qs('#agreeData').checked?'是':'否',agreeContact:qs('#agreeContact').checked?'是':'否',applicantNote:valueOf('applicantNote')}}
     qs('#applyForm').addEventListener('submit',async e=>{e.preventDefault(); const btn=qs('#submitBtn'), originalText='送出應聘履歷'; setMsg(msg,''); btn.disabled=true; try{validateRequired(); btn.textContent='附件檢查中...'; const uploads=await uploadAttachments(); btn.textContent='資料送出中，請稍候...'; const r=await api('submitTeacherApplication',buildPayload(uploads)); if(!r.ok)throw new Error(r.message||'送出失敗'); qs('#applyForm').reset(); btn.textContent='應聘履歷已送出，我們會於審核後聯繫您'; btn.disabled=true;}catch(err){btn.textContent=err.message||'送出失敗，請稍後再試'; btn.disabled=false; setTimeout(()=>{btn.textContent=originalText},3000);}});
   </script>
+  <script src="global-nav.js?v=20260624unified-top-nav"></script>
 </body></html>

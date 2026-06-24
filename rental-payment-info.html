@@ -8,9 +8,16 @@
   <style>
     body{background:#eef3f7;color:#18314a;margin:0}.wrap{max-width:760px;margin:0 auto;padding:18px 14px 54px}.card{background:#fff;border:1px solid #dbe5ef;border-radius:24px;padding:20px;margin-bottom:14px;box-shadow:0 10px 28px rgba(15,23,42,.05)}h1{font-size:28px;margin:0 0 10px;font-weight:950}.small{font-size:14px;color:#64748b;line-height:1.85}.msg{margin-top:12px;border-radius:14px;padding:12px 14px;font-weight:900;line-height:1.7}.msg.ok{background:#e8fff4;color:#146c43}.msg.bad{background:#fff0f0;color:#b42318}.notice{background:#f8fafc;border:1px solid #cbd5e1;border-radius:18px;padding:16px;line-height:1.9;color:#334155}.notice b{color:#18314a}.bankBox{background:#fff;border:1px solid #cbd5e1;border-radius:18px;padding:16px;margin-top:12px;line-height:2}.bankLine{display:grid;grid-template-columns:110px 1fr;gap:8px;border-bottom:1px dashed #e2e8f0;padding:5px 0}.bankLine:last-child{border-bottom:0}.label{font-weight:950;color:#475569}.value{font-weight:950;color:#0f172a}.account{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:18px;letter-spacing:.02em}.btn{border:0;border-radius:14px;background:#1f7a5a;color:#fff;font-weight:950;padding:12px 18px;cursor:pointer}.btn.secondary{background:#e2e8f0;color:#18314a}.btnRow{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}.warn{background:#fff7ed;border:1px solid #fdba74;color:#9a3412;border-radius:16px;padding:12px 14px;font-weight:900;line-height:1.8;margin-top:12px}@media(max-width:560px){.wrap{padding:12px 8px}.card{padding:16px;border-radius:18px}h1{font-size:24px}.bankLine{grid-template-columns:1fr;gap:0}.account{font-size:17px}}
   </style>
+  <link rel="stylesheet" href="global-nav.css?v=20260624unified-top-nav">
 </head>
 <body>
-  <div class="wrap">
+  
+  <div class="yz-global-nav" data-yz-global-nav>
+    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
+    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
+  </div>
+
+<div class="wrap">
     <section class="card">
       <h1>租賃付款方式與後續說明</h1>
       <div class="small">此頁提供租賃資料送出後的付款方式與後續流程。若資料需補正，柚子樂器會再透過官方 LINE 與您聯繫。</div>
@@ -73,5 +80,6 @@
     };
     load();
   </script>
+  <script src="global-nav.js?v=20260624unified-top-nav"></script>
 </body>
 </html>

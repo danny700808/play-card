@@ -352,11 +352,9 @@
       <a class="tile" href="items-hub.html"><strong>公告／交辦／定期 <span class="badge" id="badge-items"></span></strong><span>公告、交辦與定期</span></a>
       <a class="tile" href="notification-settings.html"><strong>LINE 主管通知收件人設定</strong><span>設定主管通知要送到哪一個 LINE，並進入各類提醒項目設定</span></a>
       <a class="tile" href="training-admin.html"><strong>教育訓練管理</strong><span>教材與學習內容</span></a>
-      <a class="tile" href="schedule-admin.html"><strong>班表管理</strong><span>班表與排班設定</span></a>
-      <a class="tile" href="leave-policy-admin.html"><strong>假勤制度設定</strong><span>假別與請假規則</span></a>
-      <a class="tile" href="salary-admin.html"><strong>薪資與投保設定 <span class="badge" id="badge-salary"></span></strong><span>薪資與投保資料</span></a>
-      <a class="tile" href="parttime-payroll-admin.html"><strong>工讀薪資結算</strong><span>工時與薪資結算</span></a>
-      <a class="tile" href="quotation-contract-hub.html"><strong>其他表格 <span class="badge" id="badge-forms"></span></strong><span>表格設定、證明審核與提醒設定</span></a>
+      <a class="tile" href="hr-payroll-settings-hub.html"><strong>人事與薪資設定 <span class="badge" id="badge-hr-payroll"></span></strong><span>班表、假勤制度、薪資投保設定</span></a>
+      <a class="tile" href="rental-system-hub.html"><strong>租賃契約系統 <span class="badge" id="badge-rental"></span></strong><span>租賃申請、契約模板、費用設定與續約退租</span></a>
+      <a class="tile" href="quotation-contract-hub.html"><strong>其他表格 <span class="badge" id="badge-forms"></span></strong><span>估價單、集點卡、證明設定與證明審核</span></a>
     </div>
   </div>
   <script src="config.js?v=20260508frontendperf1"></script>
@@ -416,7 +414,8 @@
         applicationCount: Number(counts.applicationCount || counts.pendingApplicationCount || counts.teacherApplicationCount || counts.applications || 0) || 0,
         salaryCount: Number(counts.salaryCount || counts.pendingSalaryCount || 0) || 0,
         approvalCount: Number(counts.approvalCount || 0) || 0,
-        certificateReviewCount: Number(counts.certificateReviewCount || counts.certificatePendingCount || counts.certificates || 0) || 0
+        certificateReviewCount: Number(counts.certificateReviewCount || counts.certificatePendingCount || counts.certificates || 0) || 0,
+        rentalCount: Number(counts.rentalCount || counts.rentalPendingCount || counts.pendingRentalCount || 0) || 0
       });
     }
     async function fetchPendingCountsFast_(user){
@@ -437,14 +436,15 @@
     }
     function applyBadgeCounts_(r){
       r = normalizePendingCounts_(r);
-      const approval = r.approvalCount || sum_(r.registrationCount, r.leaveCount, r.clockCorrectionCount, r.tempAttendanceCount, r.profileChangeCount);
+      const approval = r.approvalCount || sum_(r.registrationCount, r.leaveCount, r.clockCorrectionCount, r.tempAttendanceCount, r.profileChangeCount, r.parttimeApprovalCount);
       const teacher = 0; // 外聘老師外層不顯示來源不明數字，內層頁再顯示細項。
       const items = sum_(r.taskCount, r.routineCount);
       setBadge('badge-approval', approval);
       setBadge('badge-teacher', teacher);
       setBadge('badge-application', r.applicationCount);
       setBadge('badge-items', items);
-      setBadge('badge-salary', r.salaryCount);
+      setBadge('badge-hr-payroll', r.salaryCount);
+      setBadge('badge-rental', r.rentalCount);
       setBadge('badge-forms', r.certificateReviewCount);
     }
     function sum_(){ return Array.from(arguments).reduce((s,v)=>s+(Number(v||0)||0),0); }

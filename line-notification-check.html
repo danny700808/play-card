@@ -8,11 +8,17 @@
   <style>
     body{background:#f6f8fb}.ln-page{max-width:1100px;margin:0 auto;padding:20px 14px 40px}.ln-card{background:#fff;border:1px solid #dbe5f1;border-radius:22px;padding:18px;margin-bottom:16px;box-shadow:0 10px 28px rgba(15,23,42,.05)}.ln-title{font-size:26px;font-weight:950;color:#18314a;margin:0 0 8px}.ln-sub{color:#64748b;line-height:1.7}.ln-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.ln-stat{border:1px solid #e2e8f0;border-radius:16px;padding:14px;background:#f8fafc}.ln-stat b{display:block;font-size:28px;color:#1f7a5a}.ln-list{display:grid;gap:8px}.ln-row{border:1px solid #e2e8f0;border-radius:14px;padding:10px 12px;background:#fff;display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.ln-row small{display:block;color:#64748b;line-height:1.6}.ln-pill{display:inline-flex;border-radius:999px;padding:5px 9px;font-size:12px;font-weight:950;background:#ecfdf3;color:#166534}.ln-pill.bad{background:#fff1f2;color:#b42318}.ln-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}.ln-actions button,.ln-back{border:0;border-radius:14px;background:#1f7a5a;color:#fff;font-weight:950;padding:11px 14px;cursor:pointer;text-decoration:none;display:inline-flex}.ln-actions .secondary,.ln-back.secondary{background:#eef2f6;color:#18314a}.ln-msg{font-weight:950;margin-top:10px;color:#1f7a5a}.ln-msg.err{color:#b42318}.ln-form{display:grid;gap:8px;margin-top:12px}.ln-form label{font-weight:950;color:#18314a}.ln-form input{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:14px;padding:12px 13px;font-size:16px;background:#fff}@media(max-width:760px){.ln-grid{grid-template-columns:1fr 1fr}.ln-row{display:grid}}@media(max-width:440px){.ln-grid{grid-template-columns:1fr}}
   </style>
+  <link rel="stylesheet" href="global-nav.css?v=20260624unified-top-nav">
 </head>
 <body onload="init()">
-  <div class="ln-page">
+  
+  <div class="yz-global-nav" data-yz-global-nav>
+    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
+    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
+  </div>
+
+<div class="ln-page">
     <div class="ln-card">
-      <a class="ln-back secondary" href="settings.html">回設定區</a>
       <h1 class="ln-title">LINE 自動通知檢查</h1>
       <div class="ln-sub">這裡檢查主管收件人、員工 LINE 綁定、近期 notificationQueue，以及送出一筆測試 LINE。右下角手動 LINE 可用時，這裡可以協助確認「自動通知」會不會找得到主管和員工。</div>
       <div class="ln-actions"><button type="button" id="reloadBtn">重新檢查</button><button class="secondary" type="button" id="setMeManagerBtn">把目前登入帳號設為主管收件人</button><button class="secondary" type="button" id="testMeBtn">測試傳給主要主管</button></div>
@@ -78,5 +84,6 @@
     function saveManualManager(){var name=(document.getElementById('manualManagerName').value||'柚子樂器主要管理者').trim();var lineId=(document.getElementById('manualManagerLineId').value||'').trim();if(!lineId){setMsg('請先填入 LINE User ID。這不是官方帳號名稱，也不是一般 LINE ID。',true);return;}setManager({name:name,employeeId:'PRIMARY_MANAGER_LINE',email:'',lineUserId:lineId,lineNotifyEnabled:true,identityType:'manager',role:'manager'});}
     function init(){var u=typeof requireLogin==='function'?requireLogin():null;if(!u)return;document.getElementById('reloadBtn').onclick=load;document.getElementById('setMeManagerBtn').onclick=function(){setManager(u)};document.getElementById('saveManualManagerBtn').onclick=saveManualManager;document.getElementById('testMeBtn').onclick=function(){test('managers')};load();}
   </script>
+  <script src="global-nav.js?v=20260624unified-top-nav"></script>
 </body>
 </html>

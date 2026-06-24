@@ -41,6 +41,12 @@
   function bind(){
     var nav=document.querySelector('[data-yz-global-nav]');
     if(!nav) return;
+    var user=readUser();
+    // 客人公開頁也可共用此檔；沒有登入員工系統時不顯示管理用返回 / 登出列。
+    if(!user && nav.getAttribute('data-yz-show-without-login')!=='true'){
+      nav.style.display='none';
+      return;
+    }
     var back=nav.querySelector('[data-yz-nav-back]');
     var logout=nav.querySelector('[data-yz-nav-logout]');
     if(back) back.addEventListener('click',goBack);
