@@ -52,6 +52,9 @@
     .empty{padding:18px;border:1px dashed var(--line);border-radius:16px;background:#fff;color:var(--muted)}
     .subtle{font-size:12px;color:var(--muted)}
     .time-cell{line-height:1.45}.time-fix{display:block;color:#b42318;font-weight:900;font-size:12px;margin-top:3px}.reason-small{font-size:12px;color:#6b7280;line-height:1.5}
+    .daily-shared-cell{background:#fafafa;vertical-align:middle!important;border-right:1px solid var(--line)}
+    .daily-shared-cell strong{display:block;white-space:nowrap}
+    .daily-shared-cell .subtle{display:block;margin-top:6px;line-height:1.45}
     @media (min-width:1024px){
       body{overflow-x:auto}
       .container{width:min(96vw,1680px)!important;max-width:1680px!important;margin:0 auto!important}
@@ -84,7 +87,7 @@
       <div class="center-head">
         <div>
           <h1 class="title" style="margin:0">工讀資料管理中心</h1>
-          <div class="muted">先選工讀生，再看同月份的工讀時數、打卡／遲到、請假紀錄。資料狀態與出勤狀態分開顯示，薪資與這裡採用同一套遲到計算規則。</div>
+          <div class="muted">先選工讀生，再看同月份的工讀時數、打卡／遲到、請假紀錄。同一天若有排班內工時、補時數或臨時出勤，工時會分筆列出；日期與當日出勤狀態只顯示一次，薪資與這裡採用同一套遲到計算規則。</div>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap"><a class="btn btn-red" href="temporary-attendance-admin.html">臨時出勤審核</a><a class="btn" href="parttime-payroll-admin.html">回工讀薪資結算</a></div>
       </div>
@@ -171,8 +174,8 @@
           </div>
           <div class="table-wrap" id="parttimeWrap"><table>
             <thead><tr>
-              <th style="width:120px">日期</th><th style="width:95px">登記時數</th><th style="width:90px">時薪</th><th style="width:110px">當日工資</th>
-              <th style="width:135px">資料狀態</th><th style="width:240px">出勤狀態</th><th style="width:230px">備註 / 原因</th><th style="width:140px">操作</th>
+              <th style="width:145px">日期 / 同日合計</th><th style="width:95px">登記時數</th><th style="width:130px">工時來源</th><th style="width:90px">時薪</th><th style="width:110px">本筆工資</th>
+              <th style="width:135px">資料狀態</th><th style="width:260px">當日出勤狀態</th><th style="width:230px">備註 / 原因</th><th style="width:140px">操作</th>
             </tr></thead><tbody id="parttimeRows"></tbody>
           </table></div>
           <div class="empty hidden" id="parttimeEmpty">這個月份沒有工讀時數資料。</div>
@@ -566,11 +569,17 @@
       return {__id:o.__id,employeeId:clean(raw(o,['employeeId','員工ID'])),name:clean(raw(o,['name','姓名','employeeName'])),date:d,time:[s,e].filter(Boolean).join(' - '),type:clean(raw(o,['leaveType','假別','type'])),hours:safeNum(raw(o,['hours','時數','請假時數'])),status:clean(raw(o,['status','狀態','審核狀態'])),reviewer:clean(raw(o,['reviewer','審核人','approver'])),note:clean(raw(o,['note','備註','reason','請假原因'])),raw:o}
     }
     function workSource(r){
-      if(r.status&&r.status!=='正常')return r.status;
-      if(r.raw&&r.raw.dataCenterCreated)return'管理者新增';
-      if(r.raw&&r.raw.dataCenterEdited)return'管理者修正';
-      if(r.note&&(r.note.includes('補')||r.note.includes('超過原訂班表')))return'補時數';
-      return'員工填寫';
+      const status=clean(r&&r.status);
+      const sourceType=clean(r&&r.sourceType);
+      const note=clean(r&&r.note);
+      const src=r&&r.raw||{};
+      if(r&&r.isPaidLeave||sourceType==='approvedPaidLeave')return'核准支薪假';
+      if(sourceType==='temporaryAttendanceApproved'||status.includes('臨時出勤'))return'核准臨時出勤';
+      if(src.dataCenterCreated)return'管理者新增';
+      if(src.dataCenterEdited||src.主管已修改)return'管理者修正';
+      if(sourceType==='parttimeScheduleHours')return'排班內登記';
+      if(sourceType==='parttimeExcessHours'||status.includes('補時數')||note.includes('補時數')||note.includes('加時')||note.includes('追加')||note.includes('超過原訂班表'))return'補時數';
+      return'員工登記';
     }
     function selected(){return state.employees.find(e=>e.id===state.selectedId)}
     function knownEmployees(){return state.allEmployees&&state.allEmployees.length?state.allEmployees:state.employees}
@@ -753,21 +762,53 @@
       return reasons.join('；');
     }
 
+    function parttimeDisplayPriority(r){
+      const source=workSource(r);
+      if(source==='排班內登記'||source==='員工登記')return 0;
+      if(source==='管理者修正')return 1;
+      if(source==='補時數'||source==='管理者新增'||source==='核准臨時出勤')return 2;
+      if(source==='核准支薪假')return 3;
+      return 1;
+    }
+    function groupedParttimeRows(rows){
+      const sorted=(rows||[]).slice().sort((a,b)=>{
+        const dateDiff=clean(a.date).localeCompare(clean(b.date));
+        if(dateDiff)return dateDiff;
+        const priorityDiff=parttimeDisplayPriority(a)-parttimeDisplayPriority(b);
+        if(priorityDiff)return priorityDiff;
+        const hoursDiff=safeNum(b.totalHours||b.hours)-safeNum(a.totalHours||a.hours);
+        if(Math.abs(hoursDiff)>.0001)return hoursDiff;
+        return clean(a.recordId||a.__id).localeCompare(clean(b.recordId||b.__id));
+      });
+      const groups=[];
+      sorted.forEach(r=>{
+        const date=clean(r.date);
+        let group=groups[groups.length-1];
+        if(!group||group.date!==date){group={date,rows:[],totalHours:0,totalGross:0};groups.push(group)}
+        group.rows.push(r);
+        group.totalHours=Math.round((group.totalHours+safeNum(r.totalHours||r.hours))*100)/100;
+        group.totalGross=Math.round(group.totalGross+safeNum(r.grossPay||r.gross));
+      });
+      return groups;
+    }
     function renderParttime(){
-      const rows=effectiveParttimeRows().sort((a,b)=>a.date.localeCompare(b.date));
-      qs('#parttimeWrap').classList.toggle('hidden',rows.length===0); qs('#parttimeEmpty').classList.toggle('hidden',rows.length>0);
-      qs('#parttimeRows').innerHTML=rows.map(r=>{
-        const attendance=attendStatus(r);
-        return `<tr data-pt="${esc(r.__id)}">
-        <td>${esc(r.date)}</td>
+      const groups=groupedParttimeRows(effectiveParttimeRows());
+      const rowCount=groups.reduce((sum,g)=>sum+g.rows.length,0);
+      qs('#parttimeWrap').classList.toggle('hidden',rowCount===0); qs('#parttimeEmpty').classList.toggle('hidden',rowCount>0);
+      qs('#parttimeRows').innerHTML=groups.map(group=>{
+        const attendance=attendStatus(group.rows[0]||{date:group.date});
+        const sharedNote=group.rows.length>1?`同日 ${group.rows.length} 筆工時共用一次出勤判定`:'當日出勤判定';
+        return group.rows.map((r,index)=>`<tr data-pt="${esc(r.__id)}">
+        ${index===0?`<td rowspan="${group.rows.length}" class="daily-shared-cell"><strong>${esc(group.date)}</strong><span class="subtle">合計 ${esc(hours(group.totalHours))}</span></td>`:''}
         <td>${esc(r.totalHours||r.hours)}</td>
+        <td><span class="pill blue">${esc(workSource(r))}</span></td>
         <td>${esc(r.hourlyRate)}</td>
         <td>${money(r.grossPay||r.gross)}</td>
         <td><span class="pill ${parttimeStatusClass(r)}">${esc(parttimeStatusText(r))}</span></td>
-        <td><span class="pill ${attendance.cls}">${esc(attendance.text)}</span></td>
+        ${index===0?`<td rowspan="${group.rows.length}" class="daily-shared-cell"><span class="pill ${attendance.cls}">${esc(attendance.text)}</span><span class="subtle">${esc(sharedNote)}</span></td>`:''}
         <td>${esc(parttimeReasonText(r)||'')}</td>
         <td><div class="row-actions"><button class="btn small" onclick="modifyParttimeRecord('${escjs(r.__id)}')">修改</button></div></td>
-      </tr>`
+      </tr>`).join('');
       }).join('');
     }
     function correctionTimeFor(date, kind){
@@ -1200,14 +1241,14 @@
       const title = `${e.name}｜${start || '不限'}～${end || '不限'}`;
 
       function addParttime(){
-        const rows = [['姓名','日期','登記時數','時薪','當日工資','工時來源','資料狀態','出勤狀態','備註']];
-        effectiveParttimeRows()
-          .filter(r => dateInRange(r.date, start, end))
-          .sort((a,b)=>a.date.localeCompare(b.date))
-          .forEach(r => {
-            const a = attendStatus(r);
-            rows.push([e.name, r.date, r.totalHours||r.hours, r.hourlyRate, r.grossPay||r.gross, workSource(r), parttimeStatusText(r), a.text, parttimeReasonText(r) || '']);
+        const rows = [['姓名','日期','登記時數','時薪','本筆工資','工時來源','資料狀態','當日出勤狀態','備註']];
+        const filtered=effectiveParttimeRows().filter(r => dateInRange(r.date, start, end));
+        groupedParttimeRows(filtered).forEach(group=>{
+          const attendance=attendStatus(group.rows[0]||{date:group.date});
+          group.rows.forEach((r,index)=>{
+            rows.push([e.name, r.date, r.totalHours||r.hours, r.hourlyRate, r.grossPay||r.gross, workSource(r), parttimeStatusText(r), index===0?attendance.text:'同日共用上列出勤狀態', parttimeReasonText(r) || '']);
           });
+        });
         XLSX.utils.book_append_sheet(wb, makeSheet(rows), '工讀時數');
       }
 
@@ -1247,7 +1288,10 @@
     function exportAllCsv(){
       const e=selected(); if(!e){msg('請先選擇工讀生。','error');return}
       const rows=[['類型','姓名','日期','項目1','項目2','狀態','備註','ID']];
-      effectiveParttimeRows().forEach(r=>rows.push(['工讀時數',e.name,r.date,(r.totalHours||r.hours)+' 小時',money(r.grossPay||r.gross),`${parttimeStatusText(r)}／${attendStatus(r).text}`,parttimeReasonText(r),r.recordId]));
+      groupedParttimeRows(effectiveParttimeRows()).forEach(group=>{
+        const attendance=attendStatus(group.rows[0]||{date:group.date});
+        group.rows.forEach((r,index)=>rows.push(['工讀時數',e.name,r.date,(r.totalHours||r.hours)+' 小時',`${money(r.grossPay||r.gross)}／${workSource(r)}`,`${parttimeStatusText(r)}／${index===0?attendance.text:'同日共用上列出勤狀態'}`,parttimeReasonText(r),r.recordId]));
+      });
       mergedClockRows().forEach(r=>rows.push(['打卡紀錄',e.name,r.date,`上班 ${r.clockIn||'-'} / 下班 ${r.clockOut||'-'}`,`未修正遲到 ${r.late} 分／扣款 ${r.lateDeduction||0} 元`,clockStatusText(r),clockReasonText(r),r.__id]));
       empRows(state.leaves).forEach(r=>rows.push(['請假紀錄',e.name,r.date,r.time,r.type,r.status,r.note,r.__id]));
       const csv='\ufeff'+rows.map(row=>row.map(x=>`"${String(x==null?'':x).replace(/"/g,'""')}"`).join(',')).join('\n');
