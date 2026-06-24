@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>工讀資料管理中心</title>
+  <title>工讀薪資結算</title>
   <link rel="stylesheet" href="style.css?v=admin-final-20260530b">
   <style>
     :root{--brand:#1f7a5a;--red:#b42318;--red2:#dc2626;--line:#e5e7eb;--muted:#6b7280;--bg:#f6f8fb;--ink:#111827}
@@ -17,18 +17,19 @@
     .tabs{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
     .tab{border:1px solid var(--line);background:#fff;color:#1f2937;border-radius:999px;padding:10px 14px;font-weight:900;text-decoration:none}
     .tab.active{background:var(--brand);color:#fff;border-color:var(--brand)}
-    .toolbar{display:grid;grid-template-columns:1.3fr 180px auto auto;gap:12px;align-items:end}
+    .side-controls{display:grid;gap:12px;margin:10px 0 14px}
     .employee-layout{display:grid;grid-template-columns:320px 1fr;gap:16px}
-    .employee-list{max-height:560px;overflow:auto;border:1px solid var(--line);border-radius:16px;background:#fff}
+    .employee-list{max-height:620px;overflow:auto;border:1px solid var(--line);border-radius:16px;background:#fff}
     .employee-item{padding:12px 14px;border-bottom:1px solid var(--line);cursor:pointer}
     .employee-item:hover{background:#f9fafb}
     .employee-item.active{background:#eaf8f1;border-left:5px solid var(--brand)}
     .employee-item strong{display:block;font-size:16px}
-    .summary-grid{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:12px;margin-top:14px}
+    .summary-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin-top:14px}
     .summary-card{border:1px solid var(--line);border-radius:18px;padding:14px;background:#fff}
     .summary-card strong{display:block;font-size:13px;color:var(--muted);margin-bottom:8px}
     .summary-card .value{font-size:22px;font-weight:900;color:#1f2d3d}
     .summary-card.final{background:#1f7a5a;color:#fff;border-color:#1f7a5a}.summary-card.final strong,.summary-card.final .value{color:#fff}
+    .summary-card .note{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.45}.summary-card.final .note{color:#eafff5}
     .summary-card.warn{background:#fff7ed;border-color:#fed7aa}
     .section-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px}
     .section-title{font-size:20px;font-weight:900}
@@ -60,6 +61,15 @@
     .daily-filter.active{background:var(--brand);border-color:var(--brand);color:#fff}
     .daily-list{display:grid;gap:16px}
     .daily-card{border:1px solid var(--line);border-radius:20px;background:#fff;overflow:hidden;box-shadow:0 2px 10px rgba(17,24,39,.04)}
+    .daily-list .daily-card:nth-child(4n+1){background:#eff6ff;border-color:#bfdbfe}
+    .daily-list .daily-card:nth-child(4n+1) .daily-card-head{background:#dbeafe;border-color:#bfdbfe}
+    .daily-list .daily-card:nth-child(4n+2){background:#ecfdf3;border-color:#bbf7d0}
+    .daily-list .daily-card:nth-child(4n+2) .daily-card-head{background:#dcfce7;border-color:#bbf7d0}
+    .daily-list .daily-card:nth-child(4n+3){background:#fff1f2;border-color:#fecdd3}
+    .daily-list .daily-card:nth-child(4n+3) .daily-card-head{background:#ffe4e6;border-color:#fecdd3}
+    .daily-list .daily-card:nth-child(4n){background:#fffbeb;border-color:#fde68a}
+    .daily-list .daily-card:nth-child(4n) .daily-card-head{background:#fef3c7;border-color:#fde68a}
+    .daily-list .daily-section,.daily-list .daily-kpi,.daily-list .audit-list{background:rgba(255,255,255,.82)}
     .daily-card-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;padding:16px 18px;background:#f9fafb;border-bottom:1px solid var(--line);flex-wrap:wrap}
     .daily-date{font-size:21px;font-weight:950;letter-spacing:.01em}
     .daily-statuses{display:flex;gap:7px;flex-wrap:wrap;margin-top:8px}
@@ -96,13 +106,12 @@
     @media(max-width:1100px){
       .employee-layout{grid-template-columns:1fr}
       .summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
-      .toolbar{grid-template-columns:1fr 1fr}
       .add-grid{grid-template-columns:1fr 1fr}
       .daily-sections{grid-template-columns:1fr}
       .daily-kpis{grid-template-columns:repeat(2,minmax(0,1fr));width:100%}
     }
     @media(max-width:640px){
-      .toolbar,.add-grid{grid-template-columns:1fr}
+      .add-grid{grid-template-columns:1fr}
       .summary-grid{grid-template-columns:1fr}
       table{min-width:1100px}
       .daily-card-head{padding:14px}
@@ -124,39 +133,9 @@
 
     <div class="card">
       <div class="center-head">
-        <div>
-          <h1 class="title" style="margin:0">工讀資料管理中心</h1>
-          <div class="muted">先選工讀生與月份。工讀時數、上下班打卡、遲到扣款與請假會依日期合併；同一天只顯示一張明細卡，多筆工時會保留分項，避免同一個遲到或請假狀態重複出現。</div>
-        </div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap"><a class="btn btn-red" href="temporary-attendance-admin.html">臨時出勤審核</a><a class="btn" href="parttime-payroll-admin.html">回工讀薪資結算</a></div>
+        <h1 class="title" style="margin:0">工讀薪資結算</h1>
       </div>
       <div id="pageMsg" class="message"></div>
-    </div>
-
-    <div class="card">
-      <div class="toolbar">
-        <div class="field"><label>搜尋工讀生</label><input id="keyword" placeholder="輸入姓名、員工ID 或 Email"></div>
-        <div class="field"><label>月份</label><input id="monthText" type="month"></div>
-        <button class="btn" onclick="reloadAll()">重新查詢</button>
-        <button class="btn secondary" onclick="toggleExportBox()">匯出 Excel</button>
-      </div>
-      <div id="exportBox" class="hidden" style="margin-top:14px;border-top:1px solid var(--line);padding-top:14px">
-        <div class="section-title" style="font-size:18px;margin-bottom:10px">匯出 Excel</div>
-        <div class="add-grid">
-          <div class="field"><label>開始日期</label><input id="exportStart" type="date"></div>
-          <div class="field"><label>結束日期</label><input id="exportEnd" type="date"></div>
-          <div class="field"><label>匯出內容</label>
-            <select id="exportType">
-              <option value="daily">每日整合明細</option>
-              <option value="printA4">A4 列印版（精簡省紙）</option>
-              <option value="audit">異動與審核紀錄</option>
-            </select>
-          </div>
-          <button class="btn" onclick="exportExcel()">下載 Excel</button>
-          <button class="btn gray" onclick="toggleExportBox(false)">取消</button>
-        </div>
-        <div class="muted" style="margin-top:8px">Excel 會依所選工讀生與日期區間匯出；「每日整合明細」會將工時、打卡、遲到、請假與主管處理放在同一列。</div>
-      </div>
     </div>
 
     <div class="employee-layout">
@@ -164,6 +143,10 @@
         <div class="section-head">
           <div class="section-title">工讀生</div>
           <span class="pill" id="employeeCount">0 人</span>
+        </div>
+        <div class="side-controls">
+          <div class="field"><label>月份</label><input id="monthText" type="month"></div>
+          <div class="field"><label>搜尋工讀生</label><input id="keyword" placeholder="輸入姓名、員工ID 或 Email"></div>
         </div>
         <div id="employeeList" class="employee-list"></div>
       </div>
@@ -173,31 +156,19 @@
           <div class="section-head">
             <div>
               <div class="section-title" id="selectedTitle">請先選擇工讀生</div>
-              <div class="muted" id="selectedSub">選擇後會顯示個人本月份資料。</div>
-            <button class="btn small" style="margin-top:10px" onclick="renderSummary()">重算上方摘要</button>
+              <div class="muted" id="selectedSub">選擇後會顯示本月份資料。</div>
             </div>
           </div>
           <div class="summary-grid">
             <div class="summary-card"><strong>總工時</strong><div class="value" id="sumHours">0 小時</div></div>
-            <div class="summary-card"><strong>工讀金額</strong><div class="value" id="sumWage">0 元</div></div>
-            <div class="summary-card"><strong>遲到分鐘</strong><div class="value" id="sumLateMins">0 分</div></div>
-            <div class="summary-card"><strong>遲到扣款</strong><div class="value" id="sumLateFee">0 元</div></div>
-            <div class="summary-card"><strong>請假筆數</strong><div class="value" id="sumLeave">0</div></div>
-            <div class="summary-card warn"><strong>出勤／扣款提醒</strong><div class="value" id="sumAttendanceAlerts">0</div></div>
-            <div class="summary-card warn"><strong>資料異常</strong><div class="value" id="sumDataIssues">0</div></div>
-            <div class="summary-card final"><strong>試算應發</strong><div class="value" id="sumNet">0 元</div></div>
+            <div class="summary-card"><strong>工時金額</strong><div class="value" id="sumWage">0 元</div><div class="note">扣款前</div></div>
+            <div class="summary-card"><strong>遲到扣款</strong><div class="value" id="sumLateFee">0 元</div><div class="note" id="sumLateMins">0 分</div></div>
+            <div class="summary-card warn"><strong>勞保自付額</strong><div class="value" id="sumLabor">未設定</div></div>
+            <div class="summary-card final"><strong>應發金額</strong><div class="value" id="sumNet">0 元</div><div class="note">已扣遲到與勞保</div></div>
           </div>
         </div>
 
         <div class="card" id="dailyPanel">
-          <div class="section-head">
-            <div>
-              <div class="section-title">每日出勤與工讀明細</div>
-              <div class="muted">一天一張卡：工時、打卡驗證、遲到扣款、請假與主管處理集中顯示。主畫面不再顯示模糊的「資料狀態」；實際調整內容放在每一天的「異動與審核紀錄」。打卡驗證只代表外網來源，不是 GPS 或手機型號；下班不限制網路，新打卡會嘗試保存外網 IP。</div>
-            </div>
-            <button class="btn btn-red" onclick="openAddParttime()">新增工讀時數</button>
-          </div>
-
           <div class="daily-filters" aria-label="每日明細篩選">
             <button type="button" class="daily-filter active" data-daily-filter="all" data-label="全部" onclick="setDailyFilter('all')">全部</button>
             <button type="button" class="daily-filter" data-daily-filter="late" data-label="有遲到" onclick="setDailyFilter('late')">有遲到</button>
@@ -222,12 +193,10 @@
 
         <div class="card">
           <div class="section-title">出勤與扣款提醒</div>
-          <div class="muted" style="margin:6px 0 10px">這裡只列尚未修正、會影響薪資扣款的出勤狀況，以及需要確認的請假重疊。</div>
-          <div id="attendanceAlertList" class="muted">請先選擇工讀生。</div>
+          <div id="attendanceAlertList" class="muted" style="margin-top:10px">請先選擇工讀生。</div>
           <div style="border-top:1px solid var(--line);margin:18px 0"></div>
           <div class="section-title">資料異常</div>
-          <div class="muted" style="margin:6px 0 10px">重複紀錄、缺少員工 ID 等資料連結問題才會列在這裡。</div>
-          <div id="dataIssueList" class="muted">請先選擇工讀生。</div>
+          <div id="dataIssueList" class="muted" style="margin-top:10px">請先選擇工讀生。</div>
         </div>
       </div>
     </div>
@@ -236,7 +205,6 @@
   <script src="config.js?v=20260524tempatt1"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="parttime-payroll-common.js?v=20260624dailymerge1"></script>
   <script>
     let state = { employees: [], allEmployees: [], parttime: [], clocks: [], corrections: [], leaves: [], selectedId: '', lateCache: null, dailyFilter: 'all' };
@@ -349,7 +317,9 @@
       const employmentStatus = normalizedEmploymentStatus(o);
       const hidden = isHiddenEmployee(o);
       const active = accountStatus === 'active' && employmentStatus === 'active' && !hidden;
-      return {id,name:clean(raw(o,['name','姓名']))||id,email:lower(raw(o,['email','Email'])),hourlyRate:safeNum(raw(o,['hourlyRate','時薪','時薪金額']))||196,accountStatus,employmentStatus,hiddenFromActiveLists:hidden,active,part,raw:o}
+      const laborSelfPay=safeNum(raw(o,['laborSelfPay','勞保自付額','勞保自付額快照','laborEmployeeSelfPay']));
+      const laborInsuredSalary=safeNum(raw(o,['laborInsuredSalary','勞保投保薪資','目前申報月平均薪資總額']));
+      return {id,name:clean(raw(o,['name','姓名']))||id,email:lower(raw(o,['email','Email'])),hourlyRate:safeNum(raw(o,['hourlyRate','時薪','時薪金額']))||196,laborSelfPay,laborInsuredSalary,accountStatus,employmentStatus,hiddenFromActiveLists:hidden,active,part,raw:o}
     }
     function pt(o){
       const empId=clean(raw(o,['employeeId','員工ID']));
@@ -378,6 +348,7 @@
         note,
         gross:safeNum(raw(o,['grossPay','當筆毛額','當日工資']))||Math.round(total*rate),
         grossPay:safeNum(raw(o,['grossPay','當筆毛額','當日工資']))||Math.round(total*rate),
+        laborSelfPaySnapshot:safeNum(raw(o,['laborSelfPaySnapshot','勞保自付額快照','laborSelfPay','勞保自付額'])),
         sourceType:clean(raw(o,['sourceType','資料來源類型'])),
         isPaidLeave:isTrue(raw(o,['isPaidLeave','核准支薪假']))||clean(raw(o,['sourceType','資料來源類型']))==='approvedPaidLeave',
         replacementOf:clean(raw(o,['replacementOf','replacesRecordId','取代紀錄ID','原紀錄ID'])),
@@ -759,9 +730,7 @@
         qs('#sumWage').textContent='0 元';
         qs('#sumLateMins').textContent='0 分';
         qs('#sumLateFee').textContent='0 元';
-        qs('#sumLeave').textContent='0';
-        qs('#sumAttendanceAlerts').textContent='0';
-        qs('#sumDataIssues').textContent='0';
+        qs('#sumLabor').textContent='未設定';
         qs('#sumNet').textContent='0 元';
         return;
       }
@@ -772,20 +741,17 @@
       const lateResult = currentLateResult();
       const lateM = lateResult.lateMinutes || 0;
       const lateFee = lateResult.lateDeduction || 0;
-      const leaves = effectiveLeaveRows().length;
-      const attendanceAlerts = calcAttendanceAlerts().length;
-      const dataIssues = calcDataIssues().length;
+      const latestLaborSnapshot = pts.slice().reverse().map(r=>safeNum(r.laborSelfPaySnapshot)).find(v=>v>0) || 0;
+      const laborSelfPay = Math.round(safeNum(e.laborSelfPay) || latestLaborSnapshot || 0);
 
       qs('#sumHours').textContent = hours(totalH);
       qs('#sumWage').textContent = money(totalW);
       qs('#sumLateMins').textContent = lateM + ' 分';
       qs('#sumLateFee').textContent = money(lateFee);
-      qs('#sumLeave').textContent = leaves;
-      qs('#sumAttendanceAlerts').textContent = attendanceAlerts;
-      qs('#sumDataIssues').textContent = dataIssues;
-      qs('#sumNet').textContent = money(Math.max(0,totalW-lateFee));
+      qs('#sumLabor').textContent = laborSelfPay > 0 ? money(laborSelfPay) : '未設定';
+      qs('#sumNet').textContent = money(Math.max(0,totalW-lateFee-laborSelfPay));
 
-      console.log('summary v18', {employee:e.name, month:month(), totalH,totalW,lateM,lateFee,leaves,attendanceAlerts,dataIssues});
+      console.log('summary v19', {employee:e.name, month:month(), totalH,totalW,lateM,lateFee,laborSelfPay});
     }
     function parttimeStatusText(r){
       if(r && r.isPaidLeave) return '核准支薪假';
@@ -1081,8 +1047,8 @@
       return day.leaves.map(l=>`<div class="leave-entry"><div class="entry-head"><div><div class="entry-main"><span class="pill ${leavePillClass(l.status)}">${esc(l.status||'未標示狀態')}</span>　${esc(l.type||'請假')}</div><div class="entry-meta">${esc(l.time||'未填時間')}${l.hours?`／${esc(hours(l.hours))}`:''}${l.note?`<br>原因：${esc(l.note)}`:''}${l.reviewer?`<br>審核人：${esc(l.reviewer)}`:''}</div></div></div></div>`).join('');
     }
     function supervisorHtml(day){
-      if(!day.supervisorActions.length)return '<div class="daily-empty-inline">無主管調整或核准。</div>';
-      return day.supervisorActions.map(a=>`<div class="audit-item"><div class="audit-title">${esc(a.text)}</div>${a.reason?`<div class="audit-detail">原因：${esc(a.reason)}</div>`:''}</div>`).join('');
+      if(!day.supervisorActions.length)return '<div class="daily-empty-inline">無</div>';
+      return day.supervisorActions.map(a=>`<div class="audit-item"><div class="audit-title">${esc(a.text)}</div></div>`).join('');
     }
     function auditHtml(day){
       if(!day.auditItems.length)return '<div class="daily-empty-inline">沒有主管異動或審核紀錄。</div>';
@@ -1104,7 +1070,7 @@
           <section class="daily-section"><h3>打卡與出勤</h3>${clockSectionHtml(day)}</section>
           <section class="daily-section"><h3>工讀時數</h3>${workEntriesHtml(day)}<div class="daily-actions"><button class="btn small gray" type="button" onclick="openAddParttime('${escjs(day.date)}')">新增此日工時</button></div></section>
           <section class="daily-section"><h3>請假紀錄</h3>${leavesHtml(day)}</section>
-          <section class="daily-section"><h3>主管處理摘要</h3>${supervisorHtml(day)}${issueHtml}</section>
+          <section class="daily-section"><h3>主管處理</h3>${supervisorHtml(day)}${issueHtml}</section>
         </div>
         <details class="audit-details"><summary>查看異動與審核紀錄</summary><div class="audit-list">${auditHtml(day)}</div></details>
       </article>`;
