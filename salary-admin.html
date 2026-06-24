@@ -196,6 +196,14 @@
                   <option value="6">6%</option>
                 </select>
               </div>
+              <div class="field" id="fieldEmployerRetirementRate">
+                <label for="laborRetirementEmployerRate">公司提繳率</label>
+                <input id="laborRetirementEmployerRate" type="text" readonly value="6%">
+              </div>
+              <div class="field" id="fieldEmployerRetirementAmount">
+                <label for="laborRetirementEmployerAmount">公司提繳金額（不扣薪）</label>
+                <input id="laborRetirementEmployerAmount" type="text" readonly>
+              </div>
             </div>
           </section>
 
@@ -279,6 +287,10 @@
       const n = Number(cleaned);
       return Number.isFinite(n) ? n : 0;
     }
+    function moneyText(value){
+      const n = numberValue(value);
+      return n ? n.toLocaleString('zh-TW') + ' 元' : '';
+    }
     function insuranceIsActive(status){
       const s = String(status || '').trim();
       return s === '在保' || s === '已投保' || s === '投保';
@@ -348,6 +360,53 @@
       });
       return filtered.length ? filtered : list;
     }
+    function closestPlanBySalary(list, salary){
+      const amount = numberValue(salary);
+      if(!(amount > 0)) return null;
+      const rows = (Array.isArray(list) ? list : []).filter(function(x){ return numberValue(x.salary) > 0; }).sort(function(a,b){ return numberValue(a.salary) - numberValue(b.salary); });
+      return rows.find(function(x){ return numberValue(x.salary) >= amount; }) || rows[rows.length - 1] || null;
+    }
+    function currentMonthlyWageForPlan(){
+      const emp = currentEmployee();
+      if(!emp) return 0;
+      if(emp.identityType === 'parttime') return numberValue(qs('#averageSalary').value);
+      return numberValue(qs('#baseSalary').value);
+    }
+    function autoSelectLaborPlanFromWage(force){
+      if(!insuranceIsActive(qs('#laborStatus').value)) return false;
+      const wage = currentMonthlyWageForPlan();
+      if(!(wage > 0)) return false;
+      const el = qs('#laborPlan');
+      if(!force && el.value) return false;
+      const plan = closestPlanBySalary(laborPlanListForCurrent(), wage);
+      if(plan && plan.code){
+        el.value = plan.code;
+        updateEmployerRetirementFields();
+        return true;
+      }
+      return false;
+    }
+    function currentRetirementBaseSalary(){
+      if(!insuranceIsActive(qs('#laborStatus').value)) return 0;
+      const labor = getLaborMeta();
+      return labor ? numberValue(labor.salary) : 0;
+    }
+    function currentEmployerRetirementAmount(){
+      const base = currentRetirementBaseSalary();
+      return base > 0 ? Math.round(base * 0.06) : 0;
+    }
+    function currentSelfRetirementAmount(){
+      const base = currentRetirementBaseSalary();
+      const enabled = qs('#laborRetirementSelfEnabled').value === '是';
+      const rate = numberValue(qs('#laborRetirementSelfRate').value);
+      return base > 0 && enabled && rate > 0 ? Math.round(base * rate / 100) : 0;
+    }
+    function updateEmployerRetirementFields(){
+      const rateEl = qs('#laborRetirementEmployerRate');
+      const amountEl = qs('#laborRetirementEmployerAmount');
+      if(rateEl) rateEl.value = '6%';
+      if(amountEl) amountEl.value = moneyText(currentEmployerRetirementAmount());
+    }
     function resolvePlanCode(list, savedCode, savedSalary, savedText){
       const rows = Array.isArray(list) ? list : [];
       const code = String(savedCode || '').trim();
@@ -368,6 +427,7 @@
       const list = laborPlanListForCurrent();
       const code = resolvePlanCode(list, savedCode, savedSalary, savedText);
       fillSelect('laborPlan', list, code, '請選擇');
+      updateEmployerRetirementFields();
       return code;
     }
     function refreshHealthPlanOptions(savedCode, savedSalary, savedText){
@@ -396,6 +456,7 @@
       const enabled = qs('#laborRetirementSelfEnabled').value === '是';
       qs('#laborRetirementSelfRate').disabled = !enabled;
       if(!enabled) qs('#laborRetirementSelfRate').value = '';
+      updateEmployerRetirementFields();
     }
     function updateInsuranceVisibility(clearInactive){
       const laborActive = insuranceIsActive(qs('#laborStatus').value);
@@ -406,6 +467,8 @@
       qs('#fieldHealthSelfPay').classList.toggle('hidden', !healthActive);
       if(clearInactive && !laborActive){ qs('#laborPlan').value = ''; qs('#laborSelfPay').value = ''; }
       if(clearInactive && !healthActive){ qs('#healthPlan').value = ''; qs('#healthSelfPay').value = ''; }
+      if(clearInactive && laborActive) autoSelectLaborPlanFromWage(false);
+      updateEmployerRetirementFields();
     }
     function createLineItem(name, amount){ return { name:name || '', amount:amount || '' }; }
     function readLineItems(boxSelector, keepEmpty){
@@ -477,6 +540,7 @@
       qs('#laborStatus').value = cfg.laborStatus || '';
       qs('#healthStatus').value = cfg.healthStatus || '';
       refreshLaborPlanOptions(cfg.laborPlan, cfg.laborInsuredSalary || cfg.laborSalary, cfg.laborPlanText);
+      if(!(cfg.laborPlan || cfg.laborInsuredSalary || cfg.laborSalary || cfg.laborPlanText)) autoSelectLaborPlanFromWage(false);
       qs('#laborSelfPay').value = cfg.laborSelfPay !== undefined && cfg.laborSelfPay !== null ? cfg.laborSelfPay : (cfg.laborInsuranceSelfPay || '');
       refreshHealthPlanOptions(cfg.healthPlan, cfg.healthInsuredSalary || cfg.healthSalary, cfg.healthPlanText);
       qs('#healthSelfPay').value = cfg.healthSelfPay !== undefined && cfg.healthSelfPay !== null ? cfg.healthSelfPay : (cfg.healthInsuranceSelfPay || '');
@@ -488,6 +552,7 @@
       renderLineItems('#allowanceList', cfg.allowances || []);
       updateRetirementInputs();
       updateInsuranceVisibility(false);
+      updateEmployerRetirementFields();
       renderEmployeeList();
     }
     function buildPayload(emp){
@@ -510,8 +575,16 @@
         healthInsuredSalary:health ? numberValue(health.salary) : 0,
         laborSelfPay:insuranceIsActive(qs('#laborStatus').value) ? qs('#laborSelfPay').value : '',
         healthSelfPay:insuranceIsActive(qs('#healthStatus').value) ? qs('#healthSelfPay').value : '',
+        retirementEmployerRate:6,
+        laborRetirementEmployerRate:6,
+        retirementEmployerAmount:currentEmployerRetirementAmount(),
+        laborRetirementEmployerAmount:currentEmployerRetirementAmount(),
+        retirementEmployerText:insuranceIsActive(qs('#laborStatus').value) ? ('6%｜' + moneyText(currentEmployerRetirementAmount())) : '',
+        laborRetirementEmployerText:insuranceIsActive(qs('#laborStatus').value) ? ('6%｜' + moneyText(currentEmployerRetirementAmount())) : '',
+        laborRetirementSalary:currentRetirementBaseSalary(),
         selfRetirementEnabled:qs('#laborRetirementSelfEnabled').value,
         selfRetirementRate:qs('#laborRetirementSelfRate').value,
+        selfRetirementAmount:currentSelfRetirementAmount(),
         effectiveDate:qs('#salaryEffectiveDate').value,
         note:(qs('#salaryNote').value || '').trim(),
         jobAllowances:isParttime ? (Array.isArray(cfg.jobAllowances) ? cfg.jobAllowances : []) : readLineItems('#jobAllowanceList'),
@@ -554,8 +627,16 @@
         healthInsuredSalary:numberValue(payload.healthInsuredSalary),
         laborSelfPay:payload.laborSelfPay === '' ? '' : numberValue(payload.laborSelfPay),
         healthSelfPay:payload.healthSelfPay === '' ? '' : numberValue(payload.healthSelfPay),
+        retirementEmployerRate:6,
+        laborRetirementEmployerRate:6,
+        retirementEmployerAmount:numberValue(payload.retirementEmployerAmount),
+        laborRetirementEmployerAmount:numberValue(payload.laborRetirementEmployerAmount),
+        retirementEmployerText:payload.retirementEmployerText || '',
+        laborRetirementEmployerText:payload.laborRetirementEmployerText || '',
+        laborRetirementSalary:numberValue(payload.laborRetirementSalary),
         selfRetirementEnabled:payload.selfRetirementEnabled || '否',
         selfRetirementRate:numberValue(payload.selfRetirementRate),
+        selfRetirementAmount:numberValue(payload.selfRetirementAmount),
         effectiveDate:payload.effectiveDate || '',
         note:payload.note || '',
         jobAllowances:payload.jobAllowances || [],
@@ -641,8 +722,13 @@
       qs('#isParttimePartial').addEventListener('change', function(){
         const previous = getLaborMeta();
         refreshLaborPlanOptions('', previous && previous.salary, '');
+        autoSelectLaborPlanFromWage(true);
       });
+      qs('#laborPlan').addEventListener('change', updateEmployerRetirementFields);
+      qs('#baseSalary').addEventListener('change', function(){ autoSelectLaborPlanFromWage(true); updateEmployerRetirementFields(); });
+      qs('#averageSalary').addEventListener('change', function(){ autoSelectLaborPlanFromWage(true); updateEmployerRetirementFields(); });
       qs('#laborRetirementSelfEnabled').addEventListener('change', updateRetirementInputs);
+      qs('#laborRetirementSelfRate').addEventListener('change', updateEmployerRetirementFields);
       qsa('#formWrap input, #formWrap select, #formWrap textarea').forEach(function(el){
         el.addEventListener('input', function(){ const field = el.closest('.field'); if(field) field.classList.remove('has-error'); });
         el.addEventListener('change', function(){ const field = el.closest('.field'); if(field) field.classList.remove('has-error'); });

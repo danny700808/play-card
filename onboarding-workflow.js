@@ -325,12 +325,15 @@
     return out.split('').sort(()=>Math.random()-.5).join('');
   }
   function moneyText(v){ const n=numberValue(v); return n.toLocaleString('zh-TW')+' 元'; }
+  function retirementEmployerAmount(v){ const n=numberValue(v); return n>0 ? Math.round(n*0.06) : 0; }
   function salaryConfig(app,draft,employeeId){
     const isPart=draft.identityType==='parttime';
     const laborSalary=insuranceActive(draft.laborStatus)?numberValue(draft.laborInsuredSalary):0;
     const healthSalary=insuranceActive(draft.healthStatus)?numberValue(draft.healthInsuredSalary):0;
     const laborSelf=insuranceActive(draft.laborStatus)?numberValue(draft.laborSelfPay):0;
     const healthSelf=insuranceActive(draft.healthStatus)?numberValue(draft.healthSelfPay):0;
+    const employerRetirement=insuranceActive(draft.laborStatus)?retirementEmployerAmount(laborSalary):0;
+    const selfRetirement=insuranceActive(draft.laborStatus)&&clean(draft.selfRetirementEnabled)==='是'?Math.round(laborSalary*numberValue(draft.selfRetirementRate)/100):0;
     return {
       employeeId, name:clean(app.name), email:lower(app.email), identityType:draft.identityType,
       salaryDisplayType:isPart?'PARTTIME_DIRECT':'STAFF_DIRECT', baseSalary:isPart?0:numberValue(draft.baseSalary), hourlyRate:isPart?numberValue(draft.hourlyRate):0,
@@ -339,7 +342,9 @@
       laborSelfPay:laborSelf, laborSelfPayText:insuranceActive(draft.laborStatus)?moneyText(laborSelf):'', laborInsuranceSelfPay:laborSelf,
       healthStatus:draft.healthStatus, healthPlan:healthSalary?`NHI_${healthSalary}`:'', healthPlanText:healthSalary?moneyText(healthSalary):'', healthSalary:healthSalary, healthInsuredSalary:healthSalary,
       healthSelfPay:healthSelf, healthSelfPayText:insuranceActive(draft.healthStatus)?moneyText(healthSelf):'', healthInsuranceSelfPay:healthSelf,
-      selfRetirementEnabled:draft.selfRetirementEnabled||'否', selfRetirementRate:numberValue(draft.selfRetirementRate), retirementEmployerRate:6, retirementEmployerText:'6%',
+      selfRetirementEnabled:draft.selfRetirementEnabled||'否', selfRetirementRate:numberValue(draft.selfRetirementRate), selfRetirementAmount:selfRetirement,
+      retirementEmployerRate:6, laborRetirementEmployerRate:6, retirementEmployerAmount:employerRetirement, laborRetirementEmployerAmount:employerRetirement,
+      retirementEmployerText:insuranceActive(draft.laborStatus)?('6%｜'+moneyText(employerRetirement)):'', laborRetirementEmployerText:insuranceActive(draft.laborStatus)?('6%｜'+moneyText(employerRetirement)):'', laborRetirementSalary:laborSalary,
       effectiveDate:draft.salaryEffectiveDate, salaryEffectiveDate:draft.salaryEffectiveDate, note:draft.managerNote,
       jobAllowances:lineItems(draft.jobAllowances), allowances:lineItems(draft.allowances), salaryConfigured:true, source:VERSION, updatedAt:serverTs(), updatedAtText:nowText()
     };
@@ -605,10 +610,14 @@
     const employeeId=clean(employee.employeeId||employee.__id),docId=clean(employee.__id||employeeId);
     const laborActive=insuranceActive(payload.laborStatus),healthActive=insuranceActive(payload.healthStatus);
     const patch={updatedAt:serverTs(),updatedAtText:nowText(),source:VERSION};
-    if(!laborActive){ Object.assign(patch,{laborInsuredSalary:0,laborSalary:0,laborSelfPay:0,laborInsuranceSelfPay:0,laborSelfPayText:''}); }
+    if(!laborActive){ Object.assign(patch,{laborInsuredSalary:0,laborSalary:0,laborSelfPay:0,laborInsuranceSelfPay:0,laborSelfPayText:'',retirementEmployerAmount:0,laborRetirementEmployerAmount:0,retirementEmployerText:'',laborRetirementEmployerText:'',laborRetirementSalary:0,selfRetirementAmount:0}); }
     else{
-      if(hasNumber(payload.laborInsuredSalary)) Object.assign(patch,{laborInsuredSalary:numberValue(payload.laborInsuredSalary),laborSalary:numberValue(payload.laborInsuredSalary)});
+      const laborSalary=hasNumber(payload.laborInsuredSalary)?numberValue(payload.laborInsuredSalary):numberValue(payload.laborRetirementSalary);
+      const employerAmount=hasNumber(payload.retirementEmployerAmount)?numberValue(payload.retirementEmployerAmount):retirementEmployerAmount(laborSalary);
+      const selfAmount=hasNumber(payload.selfRetirementAmount)?numberValue(payload.selfRetirementAmount):(clean(payload.selfRetirementEnabled)==='是'?Math.round(laborSalary*numberValue(payload.selfRetirementRate)/100):0);
+      if(laborSalary>0) Object.assign(patch,{laborInsuredSalary:laborSalary,laborSalary:laborSalary,laborRetirementSalary:laborSalary});
       if(hasNumber(payload.laborSelfPay)) Object.assign(patch,{laborSelfPay:numberValue(payload.laborSelfPay),laborInsuranceSelfPay:numberValue(payload.laborSelfPay),laborSelfPayText:moneyText(payload.laborSelfPay)});
+      Object.assign(patch,{retirementEmployerRate:6,laborRetirementEmployerRate:6,retirementEmployerAmount:employerAmount,laborRetirementEmployerAmount:employerAmount,retirementEmployerText:'6%｜'+moneyText(employerAmount),laborRetirementEmployerText:'6%｜'+moneyText(employerAmount),selfRetirementAmount:selfAmount});
     }
     if(!healthActive){ Object.assign(patch,{healthInsuredSalary:0,healthSalary:0,healthSelfPay:0,healthInsuranceSelfPay:0,healthSelfPayText:''}); }
     else{
