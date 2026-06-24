@@ -4747,6 +4747,69 @@
     }
     return {ok:true, message:'已送出通知，共 ' + count + ' 筆；LINE 會由後端自動推送。', batchId, count};
   }
+  function compactDate(v){
+    const s = clean(v);
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? (Number(m[2]) + '/' + Number(m[3])) : s;
+  }
+  function compactTime(v){ return clean(v).slice(0,5); }
+  function lineJoin(parts){ return parts.map(clean).filter(Boolean).join('\n'); }
+  function personName(payload, result){
+    payload = payload || {}; result = result || {};
+    const row = result.row || payload.row || payload.request || {};
+    return clean(payload.name || payload.employeeName || row.name || row['姓名'] || currentUser().name || payload.employeeId || payload.userId || '未命名');
+  }
+  function clockKind(payload, result){
+    const row = (result && result.row) || (payload && payload.row) || payload || {};
+    const k = clean(row.requestKind || row['申請種類']);
+    if(k === 'missingClock') return '補打卡申請';
+    if(k === 'specialClock') return '特殊打卡';
+    return '打卡修正';
+  }
+  function clockDateAction(payload, result){
+    const row = (result && result.row) || (payload && payload.row) || payload || {};
+    const d = compactDate(row.correctDate || row['修正日期'] || row.clockDate || row['打卡日期']);
+    const a = clean(row.correctAction || row['修正動作'] || row.actionName || row['打卡動作']);
+    const t = compactTime(row.correctTime || row['修正時間'] || row.clockTime || row['打卡時間']);
+    return clean([d, t, a].filter(Boolean).join(' '));
+  }
+  function compactAutoMessage(featureCode, direction, payload, result){
+    payload = payload || {}; result = result || {};
+    const manual = clean(payload.notificationMessage || payload.message);
+    if(manual) return manual;
+    const name = personName(payload, result);
+    const action = clean(payload.__action);
+    if(featureCode === 'registration'){
+      if(direction === 'manager') return lineJoin(['新註冊申請：' + name, '請至後台審核']);
+      if(action === 'rejectRegistrationApi' || /駁回|未通過/.test(clean(result.message))) return lineJoin(['申請未通過', payload.rejectReason || payload.reason ? ('原因：' + clean(payload.rejectReason || payload.reason)) : '']);
+      return '申請已核准';
+    }
+    if(featureCode === 'leave'){
+      const row = result.row || payload.row || payload;
+      const summary = clean(row.segmentSummaryText || row.leaveSummary || payload.segmentSummaryText || [compactDate(row.leaveDate || row.startDate || payload.leaveDate || payload.startDate), row.startTime && row.endTime ? (compactTime(row.startTime) + '-' + compactTime(row.endTime)) : ''].join(' '));
+      if(direction === 'manager') return lineJoin(['請假申請：' + name, summary, '請至後台審核']);
+      const rejected = action === 'reviewLeaveRequest' && (/reject|駁回/i.test(clean(payload.decision || payload.action)) || /駁回/.test(clean(result.message)));
+      return lineJoin([(rejected ? '請假已駁回：' : '請假已核准：') + summary, rejected && clean(payload.rejectReason || payload.reason) ? ('原因：' + clean(payload.rejectReason || payload.reason)) : '']);
+    }
+    if(featureCode === 'clock'){
+      if(direction === 'manager') return lineJoin([clockKind(payload, result) + '：' + name, clockDateAction(payload, result), '請至後台審核']);
+      const rejected = /reject|駁回/i.test(clean(payload.decision || payload.action)) || /駁回/.test(clean(result.message));
+      return lineJoin([(clockKind(payload, result).replace('申請','') + (rejected ? '已駁回' : '已核准')) + (clockDateAction(payload, result) ? ('：' + clockDateAction(payload, result)) : ''), rejected && clean(payload.rejectReason || payload.reason) ? ('原因：' + clean(payload.rejectReason || payload.reason)) : '']);
+    }
+    if(featureCode === 'temporaryAttendance' || featureCode === 'parttimePayroll'){
+      const date = compactDate(payload.date || payload.workDate || payload['日期']);
+      const hours = clean(payload.excessHours || payload.pendingExcessHours || payload.hours || (result && result.excessHours));
+      if(direction === 'manager') return lineJoin(['工讀超時申請：' + name, [date, hours ? ('超出 ' + hours + ' 小時') : ''].filter(Boolean).join(' '), '請至後台審核']);
+      const rejected = /reject|駁回/i.test(clean(payload.decision || payload.action)) || /駁回/.test(clean(result.message));
+      return lineJoin(['臨時出勤' + (rejected ? '已駁回' : '已核准') + (date ? ('：' + date) : ''), rejected && clean(payload.rejectReason || payload.reason) ? ('原因：' + clean(payload.rejectReason || payload.reason)) : '']);
+    }
+    if(featureCode === 'profileChange'){
+      if(direction === 'manager') return lineJoin(['個資修改：' + name, '請至後台審核']);
+      const rejected = /reject|駁回/i.test(clean(payload.decision || payload.action)) || /駁回/.test(clean(result.message));
+      return lineJoin(['個資修改' + (rejected ? '已駁回' : '已核准'), rejected && clean(payload.rejectReason || payload.reason) ? ('原因：' + clean(payload.rejectReason || payload.reason)) : '']);
+    }
+    return clean(result.message) || '有新的通知';
+  }
   async function enqueueFeatureNotification(featureCode, direction, payload, result){
     try{
       const setting = (await getFeatureNotificationSetting({featureCode})).setting || {};
@@ -4764,22 +4827,21 @@
       }
       if(!targets.length || !channels.length) return null;
       const user = currentUser();
-      const featureNameMap = {clock:'打卡簽核', leave:'請假簽核', temporaryAttendance:'臨時出勤', parttimePayroll:'工讀時數', profileChange:'個資修改', registration:'註冊簽核'};
-      const msg = clean(payload && payload.notificationMessage) || ('【' + (featureNameMap[featureCode] || featureCode) + '】' + (direction === 'manager' ? '有新的待審核事項。' : '主管已處理你的申請。') + ' ' + clean(result && result.message));
+      const msg = compactAutoMessage(featureCode, direction, payload || {}, result || {});
       return await queueManualNotification({targets, channels, message:msg, page:'auto:' + featureCode, senderId:clean(user.id || user.employeeId)});
     }catch(e){ console.warn('[notify queue skipped]', featureCode, direction, e); return null; }
   }
   async function maybeQueueAfterAction(action, payload, result){
     if(!result || result.ok === false) return;
     const a = clean(action);
-    if(a === 'submitClockCorrection') await enqueueFeatureNotification('clock','manager',payload,result);
-    if(a === 'approveClockCorrectionApi' || a === 'rejectClockCorrectionApi') await enqueueFeatureNotification('clock','employee',payload,result);
-    if(a === 'leaveRequest' || a === 'modifyLeaveRequest') await enqueueFeatureNotification('leave','manager',payload,result);
-    if(a === 'reviewLeaveRequest') await enqueueFeatureNotification('leave','employee',payload,result);
-    if(a === 'parttime' && (result.pending || result.pendingExcessHours || result.excessRequestId)) await enqueueFeatureNotification('parttimePayroll','manager',payload,result);
-    if(a === 'submitProfileChangeRequest') await enqueueFeatureNotification('profileChange','manager',payload,result);
-    if(a === 'approveProfileChangeRequest' || a === 'rejectProfileChangeRequest') await enqueueFeatureNotification('profileChange','employee',payload,result);
-    if(a === 'approveRegistrationApi' || a === 'rejectRegistrationApi') await enqueueFeatureNotification('registration','employee',payload,result);
+    if(a === 'submitClockCorrection') await enqueueFeatureNotification('clock','manager',Object.assign({__action:a}, payload || {}),result);
+    if(a === 'approveClockCorrectionApi' || a === 'rejectClockCorrectionApi') await enqueueFeatureNotification('clock','employee',Object.assign({__action:a}, payload || {}),result);
+    if(a === 'leaveRequest' || a === 'modifyLeaveRequest') await enqueueFeatureNotification('leave','manager',Object.assign({__action:a}, payload || {}),result);
+    if(a === 'reviewLeaveRequest') await enqueueFeatureNotification('leave','employee',Object.assign({__action:a}, payload || {}),result);
+    if(a === 'parttime' && (result.pending || result.pendingExcessHours || result.excessRequestId)) await enqueueFeatureNotification('parttimePayroll','manager',Object.assign({__action:a}, payload || {}),result);
+    if(a === 'submitProfileChangeRequest') await enqueueFeatureNotification('profileChange','manager',Object.assign({__action:a}, payload || {}),result);
+    if(a === 'approveProfileChangeRequest' || a === 'rejectProfileChangeRequest') await enqueueFeatureNotification('profileChange','employee',Object.assign({__action:a}, payload || {}),result);
+    if(a === 'approveRegistrationApi' || a === 'rejectRegistrationApi') await enqueueFeatureNotification('registration','employee',Object.assign({__action:a}, payload || {}),result);
   }
 
   async function getDashboardSummaryUnified(payload){
@@ -5170,7 +5232,7 @@
     const requestId='CERT_'+t+'_'+(employeeId||email||'USER')+'_'+Date.now();
     const row={requestId,certificateType:t,certificateTypeLabel:certLabel(t),employeeId,name:clean(payload.name || user.name || f.name || f.teacherName),email,identityType:clean(payload.identityType || user.identityType),identityLabel:clean(payload.identityLabel || identityLabelOf(user)),idNumber:f.idNumber,formData:f,templateSnapshot:payload.templateSnapshot || defaultTemplate(t),status:'待主管審核',submittedAt:serverTs(),submittedAtText:nowText(),createdAt:serverTs(),createdAtText:nowText(),hiddenBy:[],source:'certificate-application'};
     await docSet('certificateApplications', requestId, row);
-    await queueCertNotification('certificateSubmitted','manager',row,`有新的證明申請待審核\n申請人：${row.name}\n類型：${row.certificateTypeLabel}\n請至管理端「證明申請審核」處理。`);
+    await queueCertNotification('certificateSubmitted','manager',row,`證明申請：${row.name}\n${row.certificateTypeLabel}\n請至後台審核`);
     return {ok:true,message:'已送出申請，待主管審核。',requestId,row};
   }
   async function getCertificateApplications(payload){
@@ -5191,8 +5253,8 @@
     else{ update.rejectReason=clean(payload.rejectReason || payload.reason); }
     await docSet('certificateApplications', id, update);
     const app=Object.assign({}, old, update);
-    if(approve) await queueCertNotification('certificateApproved','employee',app,`您的${certLabel(app.certificateType)}申請已核准。請至「表格 → 歷史申請」查看、列印或下載加密 PDF。`);
-    else await queueCertNotification('certificateRejected','employee',app,`您的${certLabel(app.certificateType)}申請已退回。${update.rejectReason ? '退回原因：'+update.rejectReason : '請至「表格 → 歷史申請」查看。'}`);
+    if(approve) await queueCertNotification('certificateApproved','employee',app,`${certLabel(app.certificateType)}已核准\n請至歷史申請查看`);
+    else await queueCertNotification('certificateRejected','employee',app,`${certLabel(app.certificateType)}已退回${update.rejectReason ? '\n原因：'+update.rejectReason : ''}`);
     return {ok:true,message:approve?'證明申請已核准。':'證明申請已退回。',row:app};
   }
   async function hideCertificateApplication(payload){
@@ -7310,7 +7372,7 @@
         scheduleSource:clean(s.source),scheduleSourceLabel:clean(s.sourceLabel),scheduleTemplateName:clean(s.templateName),scheduleSnapshot:s,clientIp:clean(p.clientIp),source:VERSION,createdAt:serverTs(),updatedAt:serverTs()
       },{merge:true}); return{ok:true,requestId:reqId}; });
       if(!result.ok)return result;
-      queueNotification('clock','manager',{employeeId,name:user.name,email:user.email,notificationMessage:`【特殊打卡】${user.name||employeeId} ${date} ${clockTime.slice(0,5)} ${action}，待主管審核。`});
+      queueNotification('clock','manager',{employeeId,name:user.name,email:user.email,notificationMessage:`特殊打卡：${user.name||employeeId}\n${date.slice(5).replace('-','/')} ${clockTime.slice(0,5)} ${action}\n請至後台審核`});
       return{ok:true,message:'特殊打卡申請已送出，待主管審核。',requestId:reqId,specialClockPending:true};
     }
     if(type!=='標準打卡')return{ok:false,message:'不支援的打卡方式。'};
@@ -7398,7 +7460,7 @@
       const doc=leaveDocFromPayload(payload,segments,existingRaw||null); delete doc.__id; delete doc.raw; const ref=db().collection('leaveRequests').doc(doc.requestId);
       const result=await db().runTransaction(async tx=>{ const snap=await tx.get(ref); if(action==='modifyLeaveRequest'&&snap.exists&&statusOf(snap.data())!==PENDING)return{ok:false,message:'這張請假單已經完成簽核，不能修改。'}; tx.set(ref,Object.assign({},doc,{createdAt:snap.exists?(snap.data().createdAt||serverTs()):serverTs(),modifyCount:snap.exists?(Number(snap.data().modifyCount||0)+1):0}),{merge:true}); return{ok:true}; });
       if(!result.ok)return result;
-      queueNotification('leave','manager',{employeeId,name:doc.name,email:doc.email,requestId:doc.requestId,notificationMessage:`【請假申請】${doc.name} ${doc.segmentSummaryText}，待主管簽核。`});
+      queueNotification('leave','manager',{employeeId,name:doc.name,email:doc.email,requestId:doc.requestId,notificationMessage:`請假申請：${doc.name}\n${doc.segmentSummaryText}\n請至後台審核`});
       return{ok:true,message:action==='modifyLeaveRequest'?'請假申請已更新並重新送審。':'請假申請已送出。',requestId:doc.requestId,row:normalizeLeave(doc),caseId:doc.caseId};
     }catch(e){ return{ok:false,message:e&&e.message?e.message:String(e)}; }
   }
@@ -7438,7 +7500,7 @@
         if(approve&&isPt&&factor>0&&rate>0){ const perDate={}; leave.segments.forEach(s=>{perDate[s.date]=(perDate[s.date]||0)+(Number(s.hours)||0);}); Object.keys(perDate).forEach(d=>{ const paid=Math.round(perDate[d]*factor*100)/100,id=`PT_LEAVE_${safeId(requestId)}_${d.replace(/-/g,'')}`; tx.set(db().collection('parttimeRecords').doc(id),{recordId:id,'紀錄ID':id,employeeId:leave.employeeId,'員工ID':leave.employeeId,name:leave.name,'姓名':leave.name,email:leave.email,date:d,workDate:d,'日期':d,hours:0,actualWorkHours:0,totalHours:paid,'時數':0,'總時數':paid,paidLeaveHours:paid,leaveHours:perDate[d],payMode:leave.payMode,payFactor:factor,hourlyRate:rate,'時薪':rate,grossPay:Math.round(paid*rate),'當日工資':Math.round(paid*rate),status:'核准支薪假','狀態':'核准支薪假',payable:'是','是否計薪':'是',note:`${leave.reason}（${leave.payMode}）`,'備註':`${leave.reason}（${leave.payMode}）`,isPaidLeave:true,leaveRequestId:requestId,sourceType:'approvedPaidLeave',source:VERSION,createdAt:serverTs(),updatedAt:serverTs()},{merge:true}); }); }
       });
       for(const d of Array.from(new Set(leave.segments.map(s=>s.date)))) await reconcileAttendance(leave.employeeId,d).catch(()=>null);
-      queueNotification('leave','employee',{employeeId:leave.employeeId,email:leave.email,requestId,notificationMessage:`【請假簽核】${leave.segmentSummaryText} ${status}${approve?'':'：'+clean(payload.rejectReason||payload.reason)}`});
+      queueNotification('leave','employee',{employeeId:leave.employeeId,email:leave.email,requestId,notificationMessage:approve ? `請假已核准：${leave.segmentSummaryText}` : `請假已駁回：${leave.segmentSummaryText}${clean(payload.rejectReason||payload.reason)?'\n原因：'+clean(payload.rejectReason||payload.reason):''}`});
       return{ok:true,message:approve?(`請假已核准${corrections.length?'，相關補打卡也已一併處理':''}。`):(`請假已駁回${corrections.length?'，相關補打卡也已一併駁回':''}。`),status,linkedCorrectionCount:corrections.length};
     }catch(e){ return{ok:false,message:e&&e.message?e.message:String(e)}; }
   }
@@ -7537,7 +7599,7 @@
     try{ await db().runTransaction(async tx=>{ const snap=await tx.get(reqRef); if(!snap.exists||statusOf(snap.data())!==PENDING)throw new Error('這筆申請已被其他主管處理。'); let inSnap,outSnap,ptSnap; if(approve){ inSnap=await tx.get(db().collection('clockRecords').doc(inId)); outSnap=await tx.get(db().collection('clockRecords').doc(outId)); if(type.includes('工讀')||lower(type)==='parttime')ptSnap=await tx.get(db().collection('parttimeRecords').doc(ptId)); }
         tx.set(reqRef,{status:approve?APPROVED:REJECTED,'狀態':approve?APPROVED:REJECTED,approvedStartTime:approve?start:'',approvedEndTime:approve?end:'',approvedHours:approve?hours:0,approvedHourlyRate:approve?rate:0,managerNote:note,'主管備註':note,reviewedAt:serverTs(),reviewedBy:clean(reviewer.id||reviewer.employeeId),updatedAt:serverTs(),source:VERSION},{merge:true}); if(!approve)return;
         const base={employeeId,'員工ID':employeeId,name,'姓名':name,clockDate:date,'打卡日期':date,clockType:'臨時出勤','打卡方式':'臨時出勤',status:'臨時出勤核准','狀態':'臨時出勤核准',sourceIp:'臨時出勤核准','來源IP':'臨時出勤核准',lateMinutes:0,'遲到分鐘':0,earlyLeaveMinutes:0,'早退分鐘':0,note,'備註':note,isSupplement:true,scheduleLinked:false,sourceType:'temporaryAttendanceApproved',temporaryAttendanceRequestId:id,source:VERSION,createdAt:serverTs(),updatedAt:serverTs()}; if(!inSnap.exists)tx.set(db().collection('clockRecords').doc(inId),Object.assign({},base,{recordId:inId,'紀錄ID':inId,clockTime:`${start}:00`,'打卡時間':`${start}:00`,actionName:'上班打卡','打卡動作':'上班打卡'})); if(!outSnap.exists)tx.set(db().collection('clockRecords').doc(outId),Object.assign({},base,{recordId:outId,'紀錄ID':outId,clockTime:`${end}:00`,'打卡時間':`${end}:00`,actionName:'下班打卡','打卡動作':'下班打卡'})); if((type.includes('工讀')||lower(type)==='parttime')&&ptSnap&&!ptSnap.exists)tx.set(db().collection('parttimeRecords').doc(ptId),{recordId:ptId,'紀錄ID':ptId,employeeId,'員工ID':employeeId,name,'姓名':name,date,workDate:date,'日期':date,hours,totalHours:hours,'時數':hours,'總時數':hours,hourlyRate:rate,'時薪':rate,grossPay:gross,'當日工資':gross,status:'臨時出勤核准','狀態':'臨時出勤核准',note,'備註':note,payable:'是','是否計薪':'是',sourceType:'temporaryAttendanceApproved',temporaryAttendanceRequestId:id,source:VERSION,createdAt:serverTs(),updatedAt:serverTs()}); });
-      queueNotification('temporaryAttendance','employee',{employeeId,email:clean(raw.email||raw.Email),notificationMessage:`【臨時出勤】${date} ${approve?`${start}-${end} 已核准`:`已駁回：${note}`}`}); return{ok:true,message:approve?'已核准，正式打卡與工讀薪資資料已以同一交易建立。':'已駁回。'};
+      queueNotification('temporaryAttendance','employee',{employeeId,email:clean(raw.email||raw.Email),notificationMessage:approve ? `臨時出勤已核准：${date.slice(5).replace('-','/')} ${start}-${end}` : `臨時出勤已駁回${note?'\n原因：'+note:''}`}); return{ok:true,message:approve?'已核准，正式打卡與工讀薪資資料已以同一交易建立。':'已駁回。'};
     }catch(e){ return{ok:false,message:e&&e.message?e.message:String(e)}; }
   }
 

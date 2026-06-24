@@ -207,6 +207,14 @@
       applicantResubmissionToken:randomToken(18), source:VERSION, history:[event('submitted','申請人送出基本資料與證件正面')]
     };
     await database().collection(APP_COLLECTION).doc(applicationId).set(row);
+    try{
+      if(typeof previousHandle === 'function'){
+        await previousHandle('queueFeatureNotification',{
+          featureCode:'registration', direction:'manager', name:row.name, email:row.email, applicationId,
+          notificationMessage:`新註冊申請：${row.name}\n請至後台審核`
+        });
+      }
+    }catch(e){ console.warn('[onboarding manager notification skipped]', e); }
     return {ok:true,message:'註冊申請已送出，待主管完成入職建檔。',applicationId};
   }
 
@@ -424,17 +432,17 @@
     const emailBody=[
       `${clean(app.name)}您好：`,
       '',
-      `您的柚子樂器人員申請已完成主管審核。`,
-      `人員身分：${identityLabel(draft.identityType)}`,
+      '您的柚子樂器人員申請已核准。',
+      `身分：${identityLabel(draft.identityType)}`,
       `員工編號：${employeeId}`,
       `登入帳號：${lower(app.email)}`,
       `初始密碼：${initialPassword}`,
       '',
       `登入網址：${loginUrl()}`,
-      '首次登入後請立即修改密碼。'
+      '第一次登入後請立即修改密碼。'
     ].join('\n');
     batch.set(d.collection('notificationQueue').doc(queueId),{
-      queueId,channel:'email',targetEmail:lower(app.email),targetEmployeeId:employeeId,targetName:clean(app.name),title:'柚子樂器人員申請已核准',body:emailBody,message:emailBody,status:'待發送',source:VERSION,createdAt:serverTs(),createdAtText:nowText()
+      queueId,channel:'email',targetEmail:lower(app.email),targetEmployeeId:employeeId,targetName:clean(app.name),title:'人員申請已核准',body:emailBody,message:emailBody,status:'待發送',source:VERSION,createdAt:serverTs(),createdAtText:nowText()
     },{merge:true});
     batch.set(d.collection(APP_COLLECTION).doc(ensured.id),{
       applicationStatus:'approved',status:'已完成入職建檔',accountStatus:'approved',onboardingDraft:draft,onboardingMissing:[],
@@ -453,8 +461,8 @@
     batch.set(d.collection(APP_COLLECTION).doc(ensured.id),{applicationStatus:'rejected',status:'已駁回',accountStatus:'rejected',rejectReason:reason,rejectedAt:serverTs(),rejectedAtText:nowText(),rejectedBy:clean(payload.userId||currentUser().id),updatedAt:serverTs(),updatedAtText:nowText(),history:arrayUnion(event('rejected',reason))},{merge:true});
     if(clean(app.legacyEmployeeDocId)) batch.set(d.collection('employees').doc(clean(app.legacyEmployeeDocId)),{accountStatus:'rejected',employmentStatus:'archived',hiddenFromActiveLists:true,rejectReason:reason,updatedAt:serverTs()},{merge:true});
     const queueId='onboarding-rejected-'+safeId(ensured.id)+'-'+Date.now();
-    const body=`${clean(app.name)}您好：\n\n您的柚子樂器人員申請目前未通過。\n原因：${reason}\n\n如需重新申請，請重新開啟註冊頁填寫。`;
-    batch.set(d.collection('notificationQueue').doc(queueId),{queueId,channel:'email',targetEmail:lower(app.email),targetName:clean(app.name),title:'柚子樂器人員申請審核結果',body,message:body,status:'待發送',source:VERSION,createdAt:serverTs(),createdAtText:nowText()},{merge:true});
+    const body=`${clean(app.name)}您好：\n\n申請未通過。\n原因：${reason}`;
+    batch.set(d.collection('notificationQueue').doc(queueId),{queueId,channel:'email',targetEmail:lower(app.email),targetName:clean(app.name),title:'人員申請未通過',body,message:body,status:'待發送',source:VERSION,createdAt:serverTs(),createdAtText:nowText()},{merge:true});
     await batch.commit();
     return {ok:true,message:'已駁回申請並建立 Email 通知。'};
   }
@@ -469,8 +477,8 @@
     const d=database(); const batch=d.batch();
     batch.set(d.collection(APP_COLLECTION).doc(ensured.id),{applicationStatus:'needs_identity_resubmission',status:'待補件',accountStatus:'pending',resubmissionReason:reason,applicantResubmissionToken:token,resubmissionRequestedAt:serverTs(),resubmissionRequestedAtText:nowText(),updatedAt:serverTs(),updatedAtText:nowText(),history:arrayUnion(event('resubmission_requested',reason))},{merge:true});
     const queueId='onboarding-resubmit-'+safeId(ensured.id)+'-'+Date.now();
-    const body=`${clean(app.name)}您好：\n\n您的柚子樂器人員申請需要補件。\n原因：${reason}\n\n請使用以下連結重新上傳證件正面：\n${url}`;
-    batch.set(d.collection('notificationQueue').doc(queueId),{queueId,channel:'email',targetEmail:lower(app.email),targetName:clean(app.name),title:'柚子樂器人員申請需要補件',body,message:body,status:'待發送',source:VERSION,createdAt:serverTs(),createdAtText:nowText()},{merge:true});
+    const body=`${clean(app.name)}您好：\n\n申請資料需補件。\n原因：${reason}\n\n請重新上傳證件正面：\n${url}`;
+    batch.set(d.collection('notificationQueue').doc(queueId),{queueId,channel:'email',targetEmail:lower(app.email),targetName:clean(app.name),title:'人員申請需補件',body,message:body,status:'待發送',source:VERSION,createdAt:serverTs(),createdAtText:nowText()},{merge:true});
     await batch.commit();
     return {ok:true,message:'已退回補件並建立 Email 通知。'};
   }
