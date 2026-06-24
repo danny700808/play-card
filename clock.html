@@ -961,12 +961,14 @@
       return payload && payload.clockType === '標準打卡' && String(payload.actionName || '').indexOf('上班') >= 0;
     }
 
-    async function getPublicIpCached(timeoutMs){
+    async function getPublicIpCached(timeoutMs, forceRefresh){
       const maxAge = 3 * 60 * 1000;
-      try{
-        const cached = JSON.parse(sessionStorage.getItem('clockPublicIpCache') || 'null');
-        if(cached && cached.ip && Date.now() - Number(cached.t || 0) < maxAge) return cached.ip;
-      }catch(e){}
+      if(!forceRefresh){
+        try{
+          const cached = JSON.parse(sessionStorage.getItem('clockPublicIpCache') || 'null');
+          if(cached && cached.ip && Date.now() - Number(cached.t || 0) < maxAge) return cached.ip;
+        }catch(e){}
+      }
       const fetchIp = (typeof getPublicIp === 'function') ? getPublicIp() : Promise.resolve('');
       const timeout = new Promise(resolve => setTimeout(() => resolve(''), Number(timeoutMs || 2800)));
       const ip = await Promise.race([fetchIp, timeout]);
@@ -1065,6 +1067,15 @@
             return;
           }
           setMsg(msg, '目前偵測外網 IP：' + payload.clientIp + '，正在寫入打卡資料...');
+        }else if(mode === '標準打卡' && String(actionName || '').indexOf('下班') >= 0){
+          // 下班不限制公司 Wi‑Fi，但仍保留當下外網 IP，供主管日後查核來源。
+          progress.set(36, '記錄下班網路中');
+          payload.clientIp = await getPublicIpCached(2800, true);
+          if(payload.clientIp){
+            setMsg(msg, '下班打卡不限制網路；已記錄目前外網 IP，正在寫入打卡資料...');
+          }else{
+            setMsg(msg, '下班打卡不限制網路；本次未取得外網 IP，仍會繼續打卡。');
+          }
         }else{
           payload.clientIp = '';
           setMsg(msg, '正在寫入打卡資料...');

@@ -220,10 +220,22 @@
     const entries = [];
     const correctedEntries = [];
     rows.forEach(r=>{
-      const minutes = Math.max(0, Math.round(number(r.lateMinutes != null ? r.lateMinutes : r.late)));
-      if(minutes <= 0 || !isClockInLike(r)) return;
+      if(!isClockInLike(r)) return;
+      const matchingCorrections = approvedCorrections.filter(c=>correctionMatchesClock(c, r, employee, employees));
       const waived = truthy(r.noLateDeduction || r.lateDeductionWaived || firstValue(r, ['不扣款','免扣款']))
-        || approvedCorrections.some(c=>correctionMatchesClock(c, r, employee, employees));
+        || matchingCorrections.length > 0;
+      let minutes = Math.max(0, Math.round(number(r.lateMinutes != null ? r.lateMinutes : r.late)));
+
+      // 舊版「核准不扣款」曾把遲到分鐘直接改成 0。若資料中仍保留原始分鐘，將它放回
+      // correctedEntries，才能在畫面顯示「原遲到 X 分鐘，主管核准不扣款」，同時不計入扣款。
+      if(minutes <= 0 && waived){
+        const candidates = [
+          number(firstValue(r, ['originalLateMinutes','原始遲到分鐘','原遲到分鐘'])),
+          ...matchingCorrections.map(c=>number(firstValue(c, ['originalLateMinutes','原始遲到分鐘','原遲到分鐘'])))
+        ];
+        minutes = Math.max(0, ...candidates.map(v=>Math.round(v)));
+      }
+      if(minutes <= 0) return;
       const item = {
         id: recordIdOf(r),
         date: clean(r.date),
