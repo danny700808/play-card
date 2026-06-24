@@ -100,7 +100,7 @@
           <div class="summary-grid">
             <div class="summary-card"><strong>總工時</strong><div class="value" id="sumHours">0 小時</div></div>
             <div class="summary-card"><strong>時薪</strong><div class="value" id="sumHourly">0 元</div></div>
-            <div class="summary-card"><strong>工時金額</strong><div class="value" id="sumGross">0 元</div></div>
+            <div class="summary-card"><strong>工時金額（扣款前）</strong><div class="value" id="sumGross">0 元</div></div>
             <div class="summary-card warn"><strong>遲到扣款 / 遲到時間</strong><div class="value" id="sumLate">0 元</div><div class="subvalue" id="sumLateMinutes">遲到 0 分鐘</div></div>
             <div class="summary-card warn"><strong>勞保自付額</strong><div class="value" id="sumLabor">0 元</div></div>
             <div class="summary-card final"><strong>應發金額</strong><div class="value" id="sumNet">0 元</div></div>
@@ -108,7 +108,7 @@
 
           <div class="mini-line hidden" id="rangeText"></div>
           <div class="mini-line hidden" id="detailText"></div>
-          <div class="payroll-note" id="sourceText">資料來源：Firebase / Firestore，依最後有效工讀紀錄、核准支薪假與主管修正滾動計算；支薪假會分開列入薪資，不視為實際出勤打卡。</div>
+          <div class="payroll-note" id="sourceText">資料來源：Firebase / Firestore，依最後有效工讀紀錄、核准支薪假與主管修正滾動計算。工時金額是「時數 × 時薪」的扣款前金額；遲到會另外列在「遲到扣款」，再從應發金額扣除。</div>
         </div>
       </div>
     </div>
@@ -120,6 +120,7 @@
   <script src="firebase-client.js?v=attendance-flow-20260618"></script>
 
   <script src="app.js?v=admin-final-20260530b"></script>
+  <script src="parttime-payroll-common.js?v=20260624latefix1"></script>
   <script>
     let state = { employees: [], selectedId: '', summary: null };
 
@@ -267,7 +268,7 @@
         paidLeaveHours: safeNum(get(['paidLeaveHours','支薪假時數'])),
         replacementOf: clean(get(['replacementOf','replacesRecordId','取代紀錄ID','原紀錄ID'])),
         replacedByRecordId: clean(get(['replacedByRecordId','supersededBy','被取代紀錄ID'])),
-        updatedAt: clean(get(['updatedAt','最後更新時間','reviewedAt','審核時間','createdAt','建立時間'])),
+        updatedAt: get(['updatedAt','最後更新時間','reviewedAt','審核時間','createdAt','建立時間']),
         raw:o
       };
     }
@@ -276,15 +277,23 @@
       const get = (keys)=> rawVal(o, keys) || rawVal(source, keys);
       return {
         id: clean(get(['recordId','紀錄ID']) || o.__id),
+        recordId: clean(get(['recordId','紀錄ID']) || o.__id),
         employeeId: clean(get(['employeeId','員工ID'])),
+        name: clean(get(['name','姓名','employeeName'])),
+        email: lower(get(['email','Email'])),
         date: dateKey(get(['clockDate','date','打卡日期'])),
         time: timeText(get(['clockTime','time','打卡時間'])),
         actionName: clean(get(['actionName','打卡動作'])),
         status: clean(get(['status','狀態']) || '正常'),
         lateMinutes: safeNum(get(['finalLateMinutes','最終遲到分鐘','lateMinutes','遲到分鐘'])),
         originalRecordId: clean(get(['originalRecordId','原始紀錄ID'])),
+        replacementOf: clean(get(['replacementOf','replacesRecordId','取代紀錄ID'])),
+        replacedByRecordId: clean(get(['replacedByRecordId','supersededBy','被取代紀錄ID'])),
+        isSupplement: truthy(get(['isSupplement','是否補登'])),
+        correctionRequestId: clean(get(['correctionRequestId','修正申請ID'])),
+        noLateDeduction: truthy(get(['noLateDeduction','lateDeductionWaived','不扣款','免扣款'])),
         note: clean(get(['note','備註'])),
-        updatedAt: clean(get(['updatedAt','最後更新時間','reviewedAt','審核時間','createdAt','建立時間'])),
+        updatedAt: get(['updatedAt','最後更新時間','reviewedAt','審核時間','createdAt','建立時間']),
         raw:o
       };
     }
@@ -293,11 +302,18 @@
       const get = (keys)=> rawVal(o, keys) || rawVal(source, keys);
       return {
         id: clean(get(['requestId','申請ID']) || o.__id),
+        requestId: clean(get(['requestId','申請ID']) || o.__id),
         employeeId: clean(get(['employeeId','員工ID'])),
+        name: clean(get(['name','姓名','employeeName'])),
+        email: lower(get(['email','Email'])),
+        date: dateKey(get(['correctDate','correctionDate','date','日期','修正日期','originalDate','原日期'])),
+        originalDate: dateKey(get(['originalDate','原日期'])),
         originalRecordId: clean(get(['originalRecordId','原始紀錄ID'])),
         sourceClockId: clean(get(['sourceClockId','clockRecordId','打卡紀錄ID'])),
+        targetRecordId: clean(get(['targetRecordId','目標紀錄ID'])),
         status: clean(get(['status','狀態'])),
         approvedRecordId: clean(get(['approvedRecordId','核准後紀錄ID'])),
+        appliedRecordId: clean(get(['appliedRecordId','套用紀錄ID'])),
         note: clean(get(['note','備註','reason','原因'])),
         raw:o
       };
@@ -323,42 +339,15 @@
       if(emp.accountStatus === 'rejected') return '已駁回';
       return '在職';
     }
-    function isApprovedStatus(s){
-      const v = lower(s);
-      return ['已核准','核准','approved','approve','已同意','通過'].includes(v);
+    function payrollRules(){
+      if(!window.YZParttimePayroll) throw new Error('工讀薪資共用計算規則未載入');
+      return window.YZParttimePayroll;
     }
-    function isBadStatus(s){
-      const v = lower(s);
-      if(!v) return false;
-      return ['待審核','pending','待主管審核','審核中','已駁回','駁回','rejected','已退回','退回','已刪除','刪除','deleted','作廢','void','voided','已取消','取消','cancelled','canceled','被取代','已被取代','superseded','已被修正','不計薪'].includes(v);
-    }
-    function isPayableParttimeRecord(r){
-      if(!r || !r.date) return false;
-      if(isBadStatus(r.status)) return false;
-      if(r.replacedByRecordId) return false;
-      if(truthy(rawVal(r.raw||{}, ['deleted','isDeleted','已刪除','voided','作廢','cancelled','已取消']))) return false;
-      const pay = lower(r.payable);
-      if(['否','no','false','0','不計薪','不支薪'].includes(pay)) return false;
-      return true;
-    }
-    function latestEffectiveParttimeRecords(rows){
-      const good = (rows || []).filter(isPayableParttimeRecord);
-      // 同一 recordId 本來在 Firestore 就只會留下最後版本；這裡再做一次防呆，避免匯入資料有重複。
-      const map = new Map();
-      good.forEach(r=>{
-        const key = r.id || [r.employeeId,r.date,r.note,r.totalHours].join('|');
-        const old = map.get(key);
-        if(!old || clean(r.updatedAt).localeCompare(clean(old.updatedAt)) >= 0) map.set(key, r);
-      });
-      return Array.from(map.values());
-    }
-    function isClockRecordEffectiveForLate(r){
-      if(!r || !r.date) return false;
-      if(isBadStatus(r.status)) return false;
-      if(lower(r.status).includes('已被補登修正')) return false;
-      if(truthy(rawVal(r.raw||{}, ['deleted','isDeleted','已刪除','voided','作廢','cancelled','已取消']))) return false;
-      return true;
-    }
+    function isApprovedStatus(s){ return payrollRules().isApprovedStatus(s); }
+    function isBadStatus(s){ return payrollRules().isBadStatus(s); }
+    function isPayableParttimeRecord(r){ return payrollRules().isPayableParttimeRecord(r); }
+    function latestEffectiveParttimeRecords(rows){ return payrollRules().latestEffectiveParttimeRecords(rows); }
+    function isClockRecordEffectiveForLate(r){ return payrollRules().isClockRecordEffective(r); }
 
     function renderEmployees(){
       const keyword = (qs('#keyword').value || '').trim().toLowerCase();
@@ -405,11 +394,25 @@
       qs('#sumHourly').textContent = moneyText(summary.hourlyRate || 0);
       qs('#sumGross').textContent = moneyText(summary.grossPay || 0);
       qs('#sumLate').textContent = moneyText(summary.lateDeduction || 0);
-      qs('#sumLateMinutes').textContent = `遲到 ${summary.lateMinutes || 0} 分鐘`;
+      qs('#sumLateMinutes').textContent = `未修正遲到 ${summary.lateMinutes || 0} 分鐘`;
       qs('#sumLabor').textContent = moneyText(summary.laborSelfPay || 0);
       qs('#sumNet').textContent = moneyText(summary.netPay || 0);
-      qs('#rangeText').textContent = '';
-      qs('#detailText').textContent = '';
+
+      const rangeEl = qs('#rangeText');
+      rangeEl.textContent = `計算月份：${search.monthText || '-'}。遲到扣款採「整月未修正遲到總分鐘 × 時薪 ÷ 60」後一次四捨五入。`;
+      rangeEl.classList.remove('hidden');
+
+      const details = Array.isArray(summary.lateByDate) ? summary.lateByDate : [];
+      const corrected = Array.isArray(summary.correctedLateByDate) ? summary.correctedLateByDate : [];
+      const detailParts = [];
+      detailParts.push(details.length
+        ? `未修正遲到明細：${details.map(x=>`${x.date} ${x.minutes} 分鐘`).join('、')}`
+        : '本月沒有未修正的遲到扣款。');
+      if(corrected.length) detailParts.push(`已核准不扣款／已修正：${corrected.map(x=>`${x.date} ${x.minutes} 分鐘`).join('、')}`);
+      if(summary.legacyLateMatchCount) detailParts.push(`其中 ${summary.legacyLateMatchCount} 筆舊資料是以 Email 或姓名備援連結，建議補齊員工 ID。`);
+      const detailEl = qs('#detailText');
+      detailEl.textContent = detailParts.join(' ');
+      detailEl.classList.remove('hidden');
     }
 
     async function loadSetup(){
@@ -437,14 +440,10 @@
         fbAll('clockRecords'),
         fbAll('clockCorrections').catch(()=>[])
       ]);
+      const rules = payrollRules();
       const allRecords = ptRaw.map(normalizeParttimeRow)
-        .filter(r=>{
-          const sameEmployee = (r.employeeId && r.employeeId === emp.id)
-            || (r.email && emp.email && r.email === emp.email)
-            || (!r.employeeId && r.name && emp.name && r.name === emp.name);
-          return sameEmployee && String(r.date || '').slice(0,7) === range.monthText;
-        });
-      const records = latestEffectiveParttimeRecords(allRecords);
+        .filter(r=>rules.sameEmployee(r, emp, state.employees) && String(r.date || '').slice(0,7) === range.monthText);
+      const records = rules.latestEffectiveParttimeRecords(allRecords);
       const hourlyRate = emp.hourlyRate || records.map(r=>r.hourlyRate).find(v=>v>0) || 196;
       const totalHours = Math.round(records.reduce((sum,r)=>sum + (Number(r.totalHours)||0),0) * 100) / 100;
       const grossPay = Math.round(records.reduce((sum,r)=>{
@@ -454,24 +453,18 @@
       const latestLaborSnapshot = records.slice().reverse().map(r=>r.laborSelfPaySnapshot).find(v=>Number(v||0)>0) || 0;
       const laborSelfPay = Math.round(Number(emp.laborSelfPay || latestLaborSnapshot || 0) || 0);
 
-      const approvedCorrectionRecordIds = new Set();
-      correctionRaw.map(normalizeCorrectionRow)
-        .filter(c=>c.employeeId === emp.id && isApprovedStatus(c.status))
-        .forEach(c=>{
-          [c.originalRecordId, c.sourceClockId].forEach(id=>{ if(id) approvedCorrectionRecordIds.add(id); });
-        });
-      const lateRows = clockRaw.map(normalizeClockRow).filter(r=>{
-        const sameEmployee = (r.employeeId && r.employeeId === emp.id);
-        if(!sameEmployee) return false;
-        if(r.date.slice(0,7) !== range.monthText) return false;
-        if(!r.lateMinutes || r.lateMinutes <= 0) return false;
-        if(!isClockRecordEffectiveForLate(r)) return false;
-        if(approvedCorrectionRecordIds.has(r.id)) return false;
-        if(approvedCorrectionRecordIds.has(r.originalRecordId)) return false;
-        return true;
+      const clocks = clockRaw.map(normalizeClockRow);
+      const corrections = correctionRaw.map(normalizeCorrectionRow);
+      const lateResult = rules.calculateLate({
+        clockRows:clocks,
+        corrections,
+        employee:emp,
+        employees:state.employees,
+        month:range.monthText,
+        hourlyRate
       });
-      const lateMinutes = Math.round(lateRows.reduce((sum,r)=>sum+(Number(r.lateMinutes)||0),0));
-      const lateDeduction = Math.round((hourlyRate / 60) * lateMinutes);
+      const lateMinutes = lateResult.lateMinutes;
+      const lateDeduction = lateResult.lateDeduction;
       const netPay = Math.max(0, Math.round(grossPay - laborSelfPay - lateDeduction));
       return {
         search: range,
@@ -482,6 +475,9 @@
           laborSelfPay,
           lateMinutes,
           lateDeduction,
+          lateByDate: lateResult.byDate.map(x=>({date:x.date, minutes:x.minutes})),
+          correctedLateByDate: lateResult.correctedByDate.map(x=>({date:x.date, minutes:x.minutes})),
+          legacyLateMatchCount: lateResult.legacyMatchCount || 0,
           netPay,
           recordCount: records.length,
           excludedRecordCount: Math.max(0, allRecords.length - records.length),
@@ -506,7 +502,7 @@
         if(!finalResult) throw new Error('查無薪資資料');
         fillSummary(finalResult.summary || {}, finalResult.search || {});
         const s = finalResult.summary || {};
-        setMsgText(`Firebase 已依最後有效結果重新計算。有效工讀／支薪假紀錄 ${s.recordCount || 0} 筆${s.paidLeaveCount ? '，其中核准支薪假 ' + s.paidLeaveCount + ' 筆（' + hoursText(s.paidLeaveHours || 0) + '）' : ''}${s.excludedRecordCount ? '，已排除非有效紀錄 ' + s.excludedRecordCount + ' 筆' : ''}。支薪假為獨立薪資紀錄，不代表實際打卡工時。`, false);
+        setMsgText(`Firebase 已依同一套出勤規則重新計算。有效工讀／支薪假紀錄 ${s.recordCount || 0} 筆${s.paidLeaveCount ? '，其中核准支薪假 ' + s.paidLeaveCount + ' 筆（' + hoursText(s.paidLeaveHours || 0) + '）' : ''}${s.excludedRecordCount ? '，已排除非有效紀錄 ' + s.excludedRecordCount + ' 筆' : ''}；本月未修正遲到 ${s.lateMinutes || 0} 分鐘，扣款 ${moneyText(s.lateDeduction || 0)}。工時金額為扣款前金額，遲到與勞保會在應發金額中另行扣除。`, false);
         progress.done('完成');
       }catch(err){
         progress.fail('查詢失敗');
