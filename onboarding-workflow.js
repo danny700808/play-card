@@ -252,8 +252,8 @@
       identityType:clean(p.identityType),
       startDate:dateText(p.startDate||p.hireDate||p.cooperationStartDate),
       baseSalary:numberValue(p.baseSalary), hourlyRate:numberValue(p.hourlyRate), isPartialHours:clean(p.isPartialHours||'否'), averageSalary:numberValue(p.averageSalary),
-      laborStatus:clean(p.laborStatus), laborInsuredSalary:numberValue(p.laborInsuredSalary), laborSelfPay:hasNumber(p.laborSelfPay)?numberValue(p.laborSelfPay):'',
-      healthStatus:clean(p.healthStatus), healthInsuredSalary:numberValue(p.healthInsuredSalary), healthSelfPay:hasNumber(p.healthSelfPay)?numberValue(p.healthSelfPay):'',
+      laborStatus:clean(p.laborStatus), laborInsuredSalary:numberValue(p.laborInsuredSalary), laborSelfPay:hasNumber(p.laborSelfPay)?numberValue(p.laborSelfPay):'', laborTotalPremium:numberValue(p.laborTotalPremium), laborEmployerPay:numberValue(p.laborEmployerPay), laborGovernmentPay:numberValue(p.laborGovernmentPay),
+      healthStatus:clean(p.healthStatus), healthInsuredSalary:numberValue(p.healthInsuredSalary), healthDependents:numberValue(p.healthDependents), healthSelfPay:hasNumber(p.healthSelfPay)?numberValue(p.healthSelfPay):'', healthTotalPremium:numberValue(p.healthTotalPremium), healthEmployerPay:numberValue(p.healthEmployerPay), healthGovernmentPay:numberValue(p.healthGovernmentPay),
       selfRetirementEnabled:clean(p.selfRetirementEnabled||'否'), selfRetirementRate:numberValue(p.selfRetirementRate),
       salaryEffectiveDate:dateText(p.salaryEffectiveDate||p.effectiveDate),
       scheduleMode:clean(p.scheduleMode), scheduleTemplateId:clean(p.scheduleTemplateId||p.templateId), scheduleTemplateName:clean(p.scheduleTemplateName||p.templateName), scheduleEffectiveDate:dateText(p.scheduleEffectiveDate),
@@ -279,11 +279,9 @@
       if(!draft.healthStatus) r.push('尚未選擇健保狀態');
       if(insuranceActive(draft.laborStatus)){
         if(!(draft.laborInsuredSalary>0)) r.push('勞保在保但未填寫投保薪資／級距');
-        if(draft.laborSelfPay==='' || draft.laborSelfPay===null || draft.laborSelfPay===undefined) r.push('勞保在保但未填寫員工自付額');
       }
       if(insuranceActive(draft.healthStatus)){
         if(!(draft.healthInsuredSalary>0)) r.push('健保在保但未填寫投保薪資／級距');
-        if(draft.healthSelfPay==='' || draft.healthSelfPay===null || draft.healthSelfPay===undefined) r.push('健保在保但未填寫本人自付額');
       }
       if(!['template','none'].includes(draft.scheduleMode)) r.push('尚未選擇固定班表或無固定班表');
       if(draft.scheduleMode==='template'){
@@ -333,13 +331,35 @@
     return out.split('').sort(()=>Math.random()-.5).join('');
   }
   function moneyText(v){ const n=numberValue(v); return n.toLocaleString('zh-TW')+' 元'; }
+  function feeRound(v){ return Math.round(numberValue(v)); }
+  function laborFeeBreakdown(salary){
+    const s=numberValue(salary);
+    if(!(s>0)) return {total:0,employee:0,employer:0,government:0};
+    const ordinaryRate=0.115, employmentRate=0.01;
+    const employee=feeRound(s*ordinaryRate*0.20)+feeRound(s*employmentRate*0.20);
+    const employer=feeRound(s*ordinaryRate*0.70)+feeRound(s*employmentRate*0.70);
+    const government=feeRound(s*ordinaryRate*0.10)+feeRound(s*employmentRate*0.10);
+    return {total:employee+employer+government,employee,employer,government};
+  }
+  function healthFeeBreakdown(salary,dependents){
+    const s=numberValue(salary);
+    if(!(s>0)) return {total:0,employee:0,employer:0,government:0,dependents:0};
+    const dep=Math.max(0,Math.min(3,Math.floor(numberValue(dependents))));
+    const base=s*0.0517;
+    const employee=feeRound(base*0.30*(1+dep));
+    const employer=feeRound(base*0.60*1.56);
+    const government=feeRound(base*0.10*1.56);
+    return {total:employee+employer+government,employee,employer,government,dependents:dep};
+  }
   function retirementEmployerAmount(v){ const n=numberValue(v); return n>0 ? Math.round(n*0.06) : 0; }
   function salaryConfig(app,draft,employeeId){
     const isPart=draft.identityType==='parttime';
     const laborSalary=insuranceActive(draft.laborStatus)?numberValue(draft.laborInsuredSalary):0;
     const healthSalary=insuranceActive(draft.healthStatus)?numberValue(draft.healthInsuredSalary):0;
-    const laborSelf=insuranceActive(draft.laborStatus)?numberValue(draft.laborSelfPay):0;
-    const healthSelf=insuranceActive(draft.healthStatus)?numberValue(draft.healthSelfPay):0;
+    const laborFees=insuranceActive(draft.laborStatus)?laborFeeBreakdown(laborSalary):{total:0,employee:0,employer:0,government:0};
+    const healthFees=insuranceActive(draft.healthStatus)?healthFeeBreakdown(healthSalary,draft.healthDependents):{total:0,employee:0,employer:0,government:0,dependents:0};
+    const laborSelf=insuranceActive(draft.laborStatus)?(hasNumber(draft.laborSelfPay)?numberValue(draft.laborSelfPay):laborFees.employee):0;
+    const healthSelf=insuranceActive(draft.healthStatus)?(hasNumber(draft.healthSelfPay)?numberValue(draft.healthSelfPay):healthFees.employee):0;
     const employerRetirement=insuranceActive(draft.laborStatus)?retirementEmployerAmount(laborSalary):0;
     const selfRetirement=insuranceActive(draft.laborStatus)&&clean(draft.selfRetirementEnabled)==='是'?Math.round(laborSalary*numberValue(draft.selfRetirementRate)/100):0;
     return {
@@ -347,9 +367,9 @@
       salaryDisplayType:isPart?'PARTTIME_DIRECT':'STAFF_DIRECT', baseSalary:isPart?0:numberValue(draft.baseSalary), hourlyRate:isPart?numberValue(draft.hourlyRate):0,
       isPartialHours:isPart?(draft.isPartialHours||'否'):'否', averageSalary:isPart?numberValue(draft.averageSalary):0,
       laborStatus:draft.laborStatus, laborPlan:laborSalary?`LAB_${laborSalary}`:'', laborPlanText:laborSalary?moneyText(laborSalary):'', laborSalary:laborSalary, laborInsuredSalary:laborSalary,
-      laborSelfPay:laborSelf, laborSelfPayText:insuranceActive(draft.laborStatus)?moneyText(laborSelf):'', laborInsuranceSelfPay:laborSelf,
+      laborSelfPay:laborSelf, laborEmployeeSelfPay:laborSelf, laborSelfPayText:insuranceActive(draft.laborStatus)?moneyText(laborSelf):'', laborInsuranceSelfPay:laborSelf, laborTotalPremium:laborFees.total, laborEmployerPay:laborFees.employer, laborGovernmentPay:laborFees.government, laborFeeSource:'BLI_115_GENERAL_LABOR_EMPLOYMENT',
       healthStatus:draft.healthStatus, healthPlan:healthSalary?`NHI_${healthSalary}`:'', healthPlanText:healthSalary?moneyText(healthSalary):'', healthSalary:healthSalary, healthInsuredSalary:healthSalary,
-      healthSelfPay:healthSelf, healthSelfPayText:insuranceActive(draft.healthStatus)?moneyText(healthSelf):'', healthInsuranceSelfPay:healthSelf,
+      healthDependents:numberValue(draft.healthDependents), healthSelfPay:healthSelf, healthEmployeeSelfPay:healthSelf, healthSelfPayText:insuranceActive(draft.healthStatus)?moneyText(healthSelf):'', healthInsuranceSelfPay:healthSelf, healthTotalPremium:healthFees.total, healthEmployerPay:healthFees.employer, healthGovernmentPay:healthFees.government, healthFeeSource:'NHI_115_EMPLOYEE',
       selfRetirementEnabled:draft.selfRetirementEnabled||'否', selfRetirementRate:numberValue(draft.selfRetirementRate), selfRetirementAmount:selfRetirement,
       retirementEmployerRate:6, laborRetirementEmployerRate:6, retirementEmployerAmount:employerRetirement, laborRetirementEmployerAmount:employerRetirement,
       retirementEmployerText:insuranceActive(draft.laborStatus)?('6%｜'+moneyText(employerRetirement)):'', laborRetirementEmployerText:insuranceActive(draft.laborStatus)?('6%｜'+moneyText(employerRetirement)):'', laborRetirementSalary:laborSalary,
@@ -404,8 +424,8 @@
     const salary=(draft.identityType==='staff'||draft.identityType==='parttime')?salaryConfig(app,draft,employeeId):null;
     if(salary) Object.assign(employee,{
       baseSalary:salary.baseSalary,hourlyRate:salary.hourlyRate,isPartialHours:salary.isPartialHours,averageSalary:salary.averageSalary,
-      laborStatus:salary.laborStatus,laborPlan:salary.laborPlan,laborPlanText:salary.laborPlanText,laborInsuredSalary:salary.laborInsuredSalary,laborSelfPay:salary.laborSelfPay,laborSelfPayText:salary.laborSelfPayText,
-      healthStatus:salary.healthStatus,healthPlan:salary.healthPlan,healthPlanText:salary.healthPlanText,healthInsuredSalary:salary.healthInsuredSalary,healthSelfPay:salary.healthSelfPay,healthSelfPayText:salary.healthSelfPayText,
+      laborStatus:salary.laborStatus,laborPlan:salary.laborPlan,laborPlanText:salary.laborPlanText,laborInsuredSalary:salary.laborInsuredSalary,laborSelfPay:salary.laborSelfPay,laborEmployeeSelfPay:salary.laborEmployeeSelfPay,laborSelfPayText:salary.laborSelfPayText,laborInsuranceSelfPay:salary.laborInsuranceSelfPay,laborTotalPremium:salary.laborTotalPremium,laborEmployerPay:salary.laborEmployerPay,laborGovernmentPay:salary.laborGovernmentPay,
+      healthStatus:salary.healthStatus,healthPlan:salary.healthPlan,healthPlanText:salary.healthPlanText,healthInsuredSalary:salary.healthInsuredSalary,healthDependents:salary.healthDependents,healthSelfPay:salary.healthSelfPay,healthEmployeeSelfPay:salary.healthEmployeeSelfPay,healthSelfPayText:salary.healthSelfPayText,healthInsuranceSelfPay:salary.healthInsuranceSelfPay,healthTotalPremium:salary.healthTotalPremium,healthEmployerPay:salary.healthEmployerPay,healthGovernmentPay:salary.healthGovernmentPay,
       salaryEffectiveDate:salary.salaryEffectiveDate,salaryConfigured:true
     });
 
@@ -618,19 +638,24 @@
     const employeeId=clean(employee.employeeId||employee.__id),docId=clean(employee.__id||employeeId);
     const laborActive=insuranceActive(payload.laborStatus),healthActive=insuranceActive(payload.healthStatus);
     const patch={updatedAt:serverTs(),updatedAtText:nowText(),source:VERSION};
-    if(!laborActive){ Object.assign(patch,{laborInsuredSalary:0,laborSalary:0,laborSelfPay:0,laborInsuranceSelfPay:0,laborSelfPayText:'',retirementEmployerAmount:0,laborRetirementEmployerAmount:0,retirementEmployerText:'',laborRetirementEmployerText:'',laborRetirementSalary:0,selfRetirementAmount:0}); }
+    if(!laborActive){ Object.assign(patch,{laborInsuredSalary:0,laborSalary:0,laborSelfPay:0,laborEmployeeSelfPay:0,laborInsuranceSelfPay:0,laborSelfPayText:'',laborTotalPremium:0,laborEmployerPay:0,laborGovernmentPay:0,retirementEmployerAmount:0,laborRetirementEmployerAmount:0,retirementEmployerText:'',laborRetirementEmployerText:'',laborRetirementSalary:0,selfRetirementAmount:0}); }
     else{
       const laborSalary=hasNumber(payload.laborInsuredSalary)?numberValue(payload.laborInsuredSalary):numberValue(payload.laborRetirementSalary);
+      const laborFees=laborFeeBreakdown(laborSalary);
       const employerAmount=hasNumber(payload.retirementEmployerAmount)?numberValue(payload.retirementEmployerAmount):retirementEmployerAmount(laborSalary);
       const selfAmount=hasNumber(payload.selfRetirementAmount)?numberValue(payload.selfRetirementAmount):(clean(payload.selfRetirementEnabled)==='是'?Math.round(laborSalary*numberValue(payload.selfRetirementRate)/100):0);
       if(laborSalary>0) Object.assign(patch,{laborInsuredSalary:laborSalary,laborSalary:laborSalary,laborRetirementSalary:laborSalary});
-      if(hasNumber(payload.laborSelfPay)) Object.assign(patch,{laborSelfPay:numberValue(payload.laborSelfPay),laborInsuranceSelfPay:numberValue(payload.laborSelfPay),laborSelfPayText:moneyText(payload.laborSelfPay)});
+      const laborEmployee=hasNumber(payload.laborSelfPay)?numberValue(payload.laborSelfPay):laborFees.employee;
+      Object.assign(patch,{laborSelfPay:laborEmployee,laborEmployeeSelfPay:laborEmployee,laborInsuranceSelfPay:laborEmployee,laborSelfPayText:moneyText(laborEmployee),laborTotalPremium:hasNumber(payload.laborTotalPremium)?numberValue(payload.laborTotalPremium):laborFees.total,laborEmployerPay:hasNumber(payload.laborEmployerPay)?numberValue(payload.laborEmployerPay):laborFees.employer,laborGovernmentPay:hasNumber(payload.laborGovernmentPay)?numberValue(payload.laborGovernmentPay):laborFees.government,laborFeeSource:'BLI_115_GENERAL_LABOR_EMPLOYMENT'});
       Object.assign(patch,{retirementEmployerRate:6,laborRetirementEmployerRate:6,retirementEmployerAmount:employerAmount,laborRetirementEmployerAmount:employerAmount,retirementEmployerText:'6%｜'+moneyText(employerAmount),laborRetirementEmployerText:'6%｜'+moneyText(employerAmount),selfRetirementAmount:selfAmount});
     }
-    if(!healthActive){ Object.assign(patch,{healthInsuredSalary:0,healthSalary:0,healthSelfPay:0,healthInsuranceSelfPay:0,healthSelfPayText:''}); }
+    if(!healthActive){ Object.assign(patch,{healthInsuredSalary:0,healthSalary:0,healthDependents:0,healthSelfPay:0,healthEmployeeSelfPay:0,healthInsuranceSelfPay:0,healthSelfPayText:'',healthTotalPremium:0,healthEmployerPay:0,healthGovernmentPay:0}); }
     else{
-      if(hasNumber(payload.healthInsuredSalary)) Object.assign(patch,{healthInsuredSalary:numberValue(payload.healthInsuredSalary),healthSalary:numberValue(payload.healthInsuredSalary)});
-      if(hasNumber(payload.healthSelfPay)) Object.assign(patch,{healthSelfPay:numberValue(payload.healthSelfPay),healthInsuranceSelfPay:numberValue(payload.healthSelfPay),healthSelfPayText:moneyText(payload.healthSelfPay)});
+      const healthSalary=numberValue(payload.healthInsuredSalary);
+      const healthFees=healthFeeBreakdown(healthSalary,payload.healthDependents);
+      if(hasNumber(payload.healthInsuredSalary)) Object.assign(patch,{healthInsuredSalary:healthSalary,healthSalary:healthSalary});
+      const healthEmployee=hasNumber(payload.healthSelfPay)?numberValue(payload.healthSelfPay):healthFees.employee;
+      Object.assign(patch,{healthDependents:numberValue(payload.healthDependents),healthSelfPay:healthEmployee,healthEmployeeSelfPay:healthEmployee,healthInsuranceSelfPay:healthEmployee,healthSelfPayText:moneyText(healthEmployee),healthTotalPremium:hasNumber(payload.healthTotalPremium)?numberValue(payload.healthTotalPremium):healthFees.total,healthEmployerPay:hasNumber(payload.healthEmployerPay)?numberValue(payload.healthEmployerPay):healthFees.employer,healthGovernmentPay:hasNumber(payload.healthGovernmentPay)?numberValue(payload.healthGovernmentPay):healthFees.government,healthFeeSource:'NHI_115_EMPLOYEE'});
     }
     if(Array.isArray(payload.jobAllowances)) patch.jobAllowances=lineItems(payload.jobAllowances);
     if(Array.isArray(payload.allowances)) patch.allowances=lineItems(payload.allowances);

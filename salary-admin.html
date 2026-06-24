@@ -27,6 +27,7 @@
     .field.full{grid-column:1/-1}
     .field label{display:block;margin-bottom:7px;font-weight:800;color:#37506a}
     .field input,.field select,.field textarea{width:100%;box-sizing:border-box;margin:0;border:1px solid #cfd9e4;border-radius:12px;background:#fff}
+    .field input[readonly]{background:#f8fafc;color:#344054;font-weight:800}
     .field textarea{min-height:100px;resize:vertical}
     .field.has-error input,.field.has-error select,.field.has-error textarea{border-color:#d92d20;box-shadow:0 0 0 2px rgba(217,45,32,.08)}
     .line-list{display:grid;gap:10px}
@@ -129,7 +130,7 @@
           </section>
 
           <section class="settings-section">
-            <h2 class="settings-section-title">勞保</h2>
+            <h2 class="settings-section-title">勞保／就保</h2>
             <div class="form-grid">
               <div class="field" id="fieldLaborStatus">
                 <label for="laborStatus">勞保狀態</label>
@@ -144,9 +145,21 @@
                 <label for="laborPlan">勞保投保薪資</label>
                 <select id="laborPlan"></select>
               </div>
+              <div class="field" id="fieldLaborTotalPremium">
+                <label for="laborTotalPremium">勞保＋就保合計保費</label>
+                <input id="laborTotalPremium" type="text" readonly>
+              </div>
               <div class="field" id="fieldLaborSelfPay">
-                <label for="laborSelfPay">員工自付額</label>
-                <input id="laborSelfPay" type="number" min="0" step="1">
+                <label for="laborSelfPay">員工負擔</label>
+                <input id="laborSelfPay" type="number" min="0" step="1" readonly>
+              </div>
+              <div class="field" id="fieldLaborEmployerPay">
+                <label for="laborEmployerPay">公司負擔</label>
+                <input id="laborEmployerPay" type="text" readonly>
+              </div>
+              <div class="field" id="fieldLaborGovernmentPay">
+                <label for="laborGovernmentPay">政府負擔</label>
+                <input id="laborGovernmentPay" type="text" readonly>
               </div>
             </div>
           </section>
@@ -167,9 +180,30 @@
                 <label for="healthPlan">健保投保薪資</label>
                 <select id="healthPlan"></select>
               </div>
+              <div class="field" id="fieldHealthDependents">
+                <label for="healthDependents">眷屬人數</label>
+                <select id="healthDependents">
+                  <option value="0">0</option>
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                  <option value="3">3</option>
+                </select>
+              </div>
+              <div class="field" id="fieldHealthTotalPremium">
+                <label for="healthTotalPremium">健保合計保費</label>
+                <input id="healthTotalPremium" type="text" readonly>
+              </div>
               <div class="field" id="fieldHealthSelfPay">
-                <label for="healthSelfPay">本人自付額</label>
-                <input id="healthSelfPay" type="number" min="0" step="1">
+                <label for="healthSelfPay">員工負擔</label>
+                <input id="healthSelfPay" type="number" min="0" step="1" readonly>
+              </div>
+              <div class="field" id="fieldHealthEmployerPay">
+                <label for="healthEmployerPay">公司負擔</label>
+                <input id="healthEmployerPay" type="text" readonly>
+              </div>
+              <div class="field" id="fieldHealthGovernmentPay">
+                <label for="healthGovernmentPay">政府補助</label>
+                <input id="healthGovernmentPay" type="text" readonly>
               </div>
             </div>
           </section>
@@ -204,6 +238,10 @@
                 <label for="laborRetirementEmployerAmount">公司提繳金額（不扣薪）</label>
                 <input id="laborRetirementEmployerAmount" type="text" readonly>
               </div>
+              <div class="field" id="fieldSelfRetirementAmount">
+                <label for="laborRetirementSelfAmount">員工自願提繳金額</label>
+                <input id="laborRetirementSelfAmount" type="text" readonly>
+              </div>
             </div>
           </section>
 
@@ -234,7 +272,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="firebase-client.js?v=admin-final-20260530b"></script>
   <script src="app.js?v=admin-final-20260530b"></script>
-  <script src="onboarding-workflow.js?v=20260624v2"></script>
+  <script src="onboarding-workflow.js?v=20260624insurance1"></script>
   <script>
     let setup = null;
     let selectedId = '';
@@ -271,7 +309,7 @@
       { code:'LAB_REG_43900', name:'第 10 級｜43,900 元', salary:43900, salaryText:'43,900 元', selfPayText:'依勞保局級距計算', group:'regular' },
       { code:'LAB_REG_45800', name:'第 11 級｜45,800 元', salary:45800, salaryText:'45,800 元', selfPayText:'依勞保局級距計算', group:'regular' }
     ];
-    const DEFAULT_HEALTH_PLANS = [28590,28800,30300,31800,33300,34800,36300,38200,40100,42000,43900,45800,48200,50600,53000,55400,57800,60800,63800,66800,69800,72800,76500,80200,83900,87600,92100,96600,101100,105600,110100,115500,120900,126300,131700,137100,142500,147900,150000].map(function(v, i){ return { code:'NHI_' + v, name:'健保｜第 ' + (i + 1) + ' 級｜' + v.toLocaleString('zh-TW') + ' 元', salary:v, salaryText:v.toLocaleString('zh-TW') + ' 元', selfPayText:'依健保署級距計算' }; });
+    const DEFAULT_HEALTH_PLANS = [29500,30300,31800,33300,34800,36300,38200,40100,42000,43900,45800,48200,50600,53000,55400,57800,60800,63800,66800,69800,72800,76500,80200,83900,87600,92100,96600,101100,105600,110100,115500,120900,126300,131700,137100,142500,147900,150000,156400,162800,169200,175600,182000,189500,197000,204500,212000,219500,228200,236900,245600,254300,263000,272700,282400,292100,301800,313000].map(function(v, i){ return { code:'NHI_' + v, name:'健保｜第 ' + (i + 1) + ' 級｜' + v.toLocaleString('zh-TW') + ' 元', salary:v, salaryText:v.toLocaleString('zh-TW') + ' 元', selfPayText:'依健保署級距計算' }; });
 
     function escapeHtml(value){
       return String(value == null ? '' : value)
@@ -294,6 +332,31 @@
     function insuranceIsActive(status){
       const s = String(status || '').trim();
       return s === '在保' || s === '已投保' || s === '投保';
+    }
+    function feeRound(value){ return Math.round(numberValue(value)); }
+    function laborFeeBreakdown(salary){
+      const s = numberValue(salary);
+      if(!(s > 0)) return { total:0, employee:0, employer:0, government:0 };
+      const ordinaryRate = 0.115;
+      const employmentRate = 0.01;
+      const employee = feeRound(s * ordinaryRate * 0.20) + feeRound(s * employmentRate * 0.20);
+      const employer = feeRound(s * ordinaryRate * 0.70) + feeRound(s * employmentRate * 0.70);
+      const government = feeRound(s * ordinaryRate * 0.10) + feeRound(s * employmentRate * 0.10);
+      return { total:employee + employer + government, employee, employer, government };
+    }
+    function healthFeeBreakdown(salary, dependents){
+      const s = numberValue(salary);
+      if(!(s > 0)) return { total:0, employee:0, employer:0, government:0, dependents:0 };
+      const dep = Math.max(0, Math.min(3, Math.floor(numberValue(dependents))));
+      const base = s * 0.0517;
+      const employee = feeRound(base * 0.30 * (1 + dep));
+      const employer = feeRound(base * 0.60 * 1.56);
+      const government = feeRound(base * 0.10 * 1.56);
+      return { total:employee + employer + government, employee, employer, government, dependents:dep };
+    }
+    function setReadOnlyMoney(id, value){
+      const el = qs('#' + id);
+      if(el) el.value = moneyText(value) || '0 元';
     }
     function normalizePlanOption(x, prefix, index){
       const salary = numberValue(x && (x.salary || x.insuredSalary || x.amount || x.value));
@@ -402,10 +465,26 @@
       return base > 0 && enabled && rate > 0 ? Math.round(base * rate / 100) : 0;
     }
     function updateEmployerRetirementFields(){
+      const laborActive = insuranceIsActive(qs('#laborStatus').value);
+      const healthActive = insuranceIsActive(qs('#healthStatus').value);
+      const labor = getLaborMeta();
+      const health = getHealthMeta();
+      const laborFees = laborActive && labor ? laborFeeBreakdown(labor.salary) : { total:0, employee:0, employer:0, government:0 };
+      const healthFees = healthActive && health ? healthFeeBreakdown(health.salary, qs('#healthDependents').value) : { total:0, employee:0, employer:0, government:0 };
+      if(qs('#laborSelfPay')) qs('#laborSelfPay').value = laborActive ? laborFees.employee : '';
+      setReadOnlyMoney('laborTotalPremium', laborActive ? laborFees.total : 0);
+      setReadOnlyMoney('laborEmployerPay', laborActive ? laborFees.employer : 0);
+      setReadOnlyMoney('laborGovernmentPay', laborActive ? laborFees.government : 0);
+      if(qs('#healthSelfPay')) qs('#healthSelfPay').value = healthActive ? healthFees.employee : '';
+      setReadOnlyMoney('healthTotalPremium', healthActive ? healthFees.total : 0);
+      setReadOnlyMoney('healthEmployerPay', healthActive ? healthFees.employer : 0);
+      setReadOnlyMoney('healthGovernmentPay', healthActive ? healthFees.government : 0);
       const rateEl = qs('#laborRetirementEmployerRate');
       const amountEl = qs('#laborRetirementEmployerAmount');
+      const selfAmountEl = qs('#laborRetirementSelfAmount');
       if(rateEl) rateEl.value = '6%';
-      if(amountEl) amountEl.value = moneyText(currentEmployerRetirementAmount());
+      if(amountEl) amountEl.value = moneyText(currentEmployerRetirementAmount()) || '0 元';
+      if(selfAmountEl) selfAmountEl.value = moneyText(currentSelfRetirementAmount()) || '0 元';
     }
     function resolvePlanCode(list, savedCode, savedSalary, savedText){
       const rows = Array.isArray(list) ? list : [];
@@ -461,12 +540,10 @@
     function updateInsuranceVisibility(clearInactive){
       const laborActive = insuranceIsActive(qs('#laborStatus').value);
       const healthActive = insuranceIsActive(qs('#healthStatus').value);
-      qs('#fieldLaborPlan').classList.toggle('hidden', !laborActive);
-      qs('#fieldLaborSelfPay').classList.toggle('hidden', !laborActive);
-      qs('#fieldHealthPlan').classList.toggle('hidden', !healthActive);
-      qs('#fieldHealthSelfPay').classList.toggle('hidden', !healthActive);
+      ['fieldLaborPlan','fieldLaborTotalPremium','fieldLaborSelfPay','fieldLaborEmployerPay','fieldLaborGovernmentPay'].forEach(function(id){ const el = qs('#' + id); if(el) el.classList.toggle('hidden', !laborActive); });
+      ['fieldHealthPlan','fieldHealthDependents','fieldHealthTotalPremium','fieldHealthSelfPay','fieldHealthEmployerPay','fieldHealthGovernmentPay'].forEach(function(id){ const el = qs('#' + id); if(el) el.classList.toggle('hidden', !healthActive); });
       if(clearInactive && !laborActive){ qs('#laborPlan').value = ''; qs('#laborSelfPay').value = ''; }
-      if(clearInactive && !healthActive){ qs('#healthPlan').value = ''; qs('#healthSelfPay').value = ''; }
+      if(clearInactive && !healthActive){ qs('#healthPlan').value = ''; qs('#healthSelfPay').value = ''; qs('#healthDependents').value = '0'; }
       if(clearInactive && laborActive) autoSelectLaborPlanFromWage(false);
       updateEmployerRetirementFields();
     }
@@ -543,6 +620,7 @@
       if(!(cfg.laborPlan || cfg.laborInsuredSalary || cfg.laborSalary || cfg.laborPlanText)) autoSelectLaborPlanFromWage(false);
       qs('#laborSelfPay').value = cfg.laborSelfPay !== undefined && cfg.laborSelfPay !== null ? cfg.laborSelfPay : (cfg.laborInsuranceSelfPay || '');
       refreshHealthPlanOptions(cfg.healthPlan, cfg.healthInsuredSalary || cfg.healthSalary, cfg.healthPlanText);
+      qs('#healthDependents').value = String(numberValue(cfg.healthDependents || cfg.healthDependentsCount || 0));
       qs('#healthSelfPay').value = cfg.healthSelfPay !== undefined && cfg.healthSelfPay !== null ? cfg.healthSelfPay : (cfg.healthInsuranceSelfPay || '');
       qs('#laborRetirementSelfEnabled').value = cfg.selfRetirementEnabled || '否';
       qs('#laborRetirementSelfRate').value = cfg.selfRetirementRate || '';
@@ -574,7 +652,16 @@
         laborInsuredSalary:labor ? numberValue(labor.salary) : 0,
         healthInsuredSalary:health ? numberValue(health.salary) : 0,
         laborSelfPay:insuranceIsActive(qs('#laborStatus').value) ? qs('#laborSelfPay').value : '',
+        laborEmployeeSelfPay:insuranceIsActive(qs('#laborStatus').value) ? qs('#laborSelfPay').value : '',
+        laborTotalPremium:insuranceIsActive(qs('#laborStatus').value) ? numberValue(qs('#laborTotalPremium').value) : 0,
+        laborEmployerPay:insuranceIsActive(qs('#laborStatus').value) ? numberValue(qs('#laborEmployerPay').value) : 0,
+        laborGovernmentPay:insuranceIsActive(qs('#laborStatus').value) ? numberValue(qs('#laborGovernmentPay').value) : 0,
+        healthDependents:insuranceIsActive(qs('#healthStatus').value) ? numberValue(qs('#healthDependents').value) : 0,
         healthSelfPay:insuranceIsActive(qs('#healthStatus').value) ? qs('#healthSelfPay').value : '',
+        healthEmployeeSelfPay:insuranceIsActive(qs('#healthStatus').value) ? qs('#healthSelfPay').value : '',
+        healthTotalPremium:insuranceIsActive(qs('#healthStatus').value) ? numberValue(qs('#healthTotalPremium').value) : 0,
+        healthEmployerPay:insuranceIsActive(qs('#healthStatus').value) ? numberValue(qs('#healthEmployerPay').value) : 0,
+        healthGovernmentPay:insuranceIsActive(qs('#healthStatus').value) ? numberValue(qs('#healthGovernmentPay').value) : 0,
         retirementEmployerRate:6,
         laborRetirementEmployerRate:6,
         retirementEmployerAmount:currentEmployerRetirementAmount(),
@@ -626,7 +713,16 @@
         laborInsuredSalary:numberValue(payload.laborInsuredSalary),
         healthInsuredSalary:numberValue(payload.healthInsuredSalary),
         laborSelfPay:payload.laborSelfPay === '' ? '' : numberValue(payload.laborSelfPay),
+        laborEmployeeSelfPay:payload.laborEmployeeSelfPay === '' ? '' : numberValue(payload.laborEmployeeSelfPay),
+        laborTotalPremium:numberValue(payload.laborTotalPremium),
+        laborEmployerPay:numberValue(payload.laborEmployerPay),
+        laborGovernmentPay:numberValue(payload.laborGovernmentPay),
+        healthDependents:numberValue(payload.healthDependents),
         healthSelfPay:payload.healthSelfPay === '' ? '' : numberValue(payload.healthSelfPay),
+        healthEmployeeSelfPay:payload.healthEmployeeSelfPay === '' ? '' : numberValue(payload.healthEmployeeSelfPay),
+        healthTotalPremium:numberValue(payload.healthTotalPremium),
+        healthEmployerPay:numberValue(payload.healthEmployerPay),
+        healthGovernmentPay:numberValue(payload.healthGovernmentPay),
         retirementEmployerRate:6,
         laborRetirementEmployerRate:6,
         retirementEmployerAmount:numberValue(payload.retirementEmployerAmount),
@@ -680,7 +776,7 @@
         const laborPlans = mergePlanOptions(res.laborPlans, DEFAULT_LABOR_PLANS, 'LAB').sort(function(a,b){
           return (laborOrder[a.group] || 9) - (laborOrder[b.group] || 9) || numberValue(a.salary) - numberValue(b.salary);
         });
-        const healthPlans = mergePlanOptions(res.healthPlans, DEFAULT_HEALTH_PLANS, 'NHI').sort(function(a,b){ return numberValue(a.salary) - numberValue(b.salary); });
+        const healthPlans = mergePlanOptions(res.healthPlans, DEFAULT_HEALTH_PLANS, 'NHI').filter(function(x){ return numberValue(x.salary) >= 29500; }).sort(function(a,b){ return numberValue(a.salary) - numberValue(b.salary); });
         setup = Object.assign({}, res, { employees, employeeConfigMap:configMap, laborPlans, healthPlans });
         selectedMap = {};
         employees.forEach(function(row){ selectedMap[row.id] = row; });
@@ -725,6 +821,8 @@
         autoSelectLaborPlanFromWage(true);
       });
       qs('#laborPlan').addEventListener('change', updateEmployerRetirementFields);
+      qs('#healthPlan').addEventListener('change', updateEmployerRetirementFields);
+      qs('#healthDependents').addEventListener('change', updateEmployerRetirementFields);
       qs('#baseSalary').addEventListener('change', function(){ autoSelectLaborPlanFromWage(true); updateEmployerRetirementFields(); });
       qs('#averageSalary').addEventListener('change', function(){ autoSelectLaborPlanFromWage(true); updateEmployerRetirementFields(); });
       qs('#laborRetirementSelfEnabled').addEventListener('change', updateRetirementInputs);
