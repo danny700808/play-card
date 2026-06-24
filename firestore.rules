@@ -29,6 +29,7 @@ service cloud.firestore {
 
         // 員工 / 管理者 / 註冊 / 個資
         'employees',
+        'registrationApplications',
         'admins',
         'applications',
         'teacherApplications',

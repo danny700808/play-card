@@ -20,6 +20,10 @@
     .info-value{font-size:15px;color:var(--text);font-weight:900;line-height:1.55;word-break:break-word;white-space:pre-line;text-align:left}
     .empty-note{font-size:14px;color:var(--muted);line-height:1.8;background:#f8fbff;border:1px dashed var(--line);border-radius:14px;padding:12px}
     .edit-grid{display:grid;grid-template-columns:1fr;gap:12px}
+    .identity-doc-box{border:1px solid var(--line);border-radius:16px;overflow:hidden;background:#eef3f0}
+    .identity-doc-box img{display:block;width:100%;max-height:430px;object-fit:contain}
+    .identity-doc-meta{padding:11px 12px;background:#fff;display:grid;gap:6px;font-size:14px;line-height:1.65}
+    .identity-doc-notice{padding:10px 12px;background:#edf9f3;color:#285d4a;font-size:13px;font-weight:800;line-height:1.7}
     .edit-grid .full{grid-column:1 / -1}
     @media(max-width:520px){
       .info-row{grid-template-columns:minmax(92px,38%) 1fr;padding:10px}
@@ -76,7 +80,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="firebase-client.js?v=20260529canonical1"></script>
-  <script src="app.js"></script>
+  <script src="app.js?v=onboarding-20260624"></script>
+  <script src="onboarding-workflow.js?v=20260624v1"></script>
   <script>
     function $(id){ return document.getElementById(id); }
     function safeText(v){
@@ -130,6 +135,17 @@
       const html = rows.filter(Boolean).join('');
       if(!html) return '';
       return '<div class="data-section"><div class="section-title-line"><div class="section-title">' + escapeHtml(title) + '</div></div><div class="data-list">' + html + '</div></div>';
+    }
+    function identityDocumentSection(p){
+      p = p || {};
+      const url = safeText(p.identityDocumentUrl);
+      const status = p.identityDocumentVerified === true || safeText(p.identityVerificationStatus) === 'verified' ? '主管已核對' : (url ? '等待主管核對' : '尚未上傳');
+      if(!url && status === '尚未上傳') return '';
+      const type = safeText(p.identityDocumentTypeLabel) || '身分證明文件';
+      const verifiedAt = safeText(p.identityVerifiedAtText);
+      const notice = safeText(p.identityDocumentUseNotice) || '僅供柚子樂器人事身分核對、建檔、契約及投保作業使用。';
+      const image = url ? '<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener"><img src="' + escapeHtml(url) + '" alt="本人證件正面"></a>' : '';
+      return '<div class="data-section"><div class="section-title-line"><div class="section-title">身分驗證</div></div><div class="identity-doc-box">' + image + '<div class="identity-doc-meta"><div><b>證件類型：</b>' + escapeHtml(type) + '</div><div><b>核對狀態：</b>' + escapeHtml(status) + '</div>' + (verifiedAt ? '<div><b>核對時間：</b>' + escapeHtml(verifiedAt) + '</div>' : '') + '</div><div class="identity-doc-notice">' + escapeHtml(notice) + '</div></div></div>';
     }
     function cacheKey(user){
       const id = safeText(user && (user.employeeId || user.id || user.email)) || 'unknown';
@@ -262,6 +278,7 @@
 
       const html = [
         section('基本資料', basic),
+        identityDocumentSection(p),
         section('聯絡資料', contact),
         section('薪資資訊', salary),
         section('勞保 / 勞退資訊', labor),

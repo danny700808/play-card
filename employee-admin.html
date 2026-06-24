@@ -65,10 +65,21 @@
     .save{border:0;border-radius:18px;min-height:56px;width:min(420px,100%);background:var(--green);color:#fff;font-size:19px;font-weight:950}
     .danger{border:0;border-radius:18px;min-height:52px;background:#b42318;color:#fff;font-size:17px;font-weight:950;padding:10px 18px}
     .hint{font-size:14px;color:#66768a;margin-top:8px;line-height:1.5}
+    .cat-secondary{font-size:14px;color:#526477;font-weight:850;margin-top:5px}
+    .data-notice{display:none;border-radius:14px;padding:11px 13px;margin:-4px 0 12px;background:#fff8e8;border:1px solid #efd59e;color:#7a5100;font-weight:800;line-height:1.65}
+    .summary-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+    .summary-card{border:1px solid #dfe8ef;border-radius:16px;padding:12px;background:#fff}
+    .summary-card span{display:block;font-size:13px;color:#66768a;font-weight:850;margin-bottom:5px}
+    .summary-card strong{display:block;font-size:17px;color:#173b30;line-height:1.45;word-break:break-word}
+    .summary-card.ok{background:#f0faf5;border-color:#c9ead8}.summary-card.warn{background:#fff8e8;border-color:#efd59e}.summary-card.bad{background:#fff1f1;border-color:#f3caca}
+    .link-actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:12px}
+    .link-btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;border-radius:14px;padding:9px 14px;background:#1f7a5a;color:#fff;text-decoration:none;font-weight:900;border:0;cursor:pointer}
+    .link-btn.secondary{background:#304052}.link-btn.light{background:#edf7fb;color:#28728f;border:1px solid #cbe3ed}
+    .doc-preview-link{display:inline-flex;align-items:center;gap:7px;font-weight:900;color:#1f7a5a;text-decoration:none}
     @media(max-width:760px){
       .wrap{padding:0 12px 38px}.title{font-size:34px}
       .panel{padding:18px;border-radius:22px}
-      .category-grid,.list-grid,.form-grid,.toolbar{grid-template-columns:1fr}
+      .category-grid,.list-grid,.form-grid,.toolbar,.summary-grid{grid-template-columns:1fr}
       .topline{align-items:flex-start}
       .person-title{font-size:29px}
     }
@@ -83,6 +94,7 @@
 
   <div class="wrap">
     <h1 class="title">員工管理</h1>
+    <div id="dataNotice" class="data-notice"></div>
 
     <section class="panel" id="layer1">
       <h2 class="layer-title"><span class="badge">1</span>選擇人員類別</h2>
@@ -93,7 +105,7 @@
       <h2 class="layer-title"><span class="badge">2</span><span id="listTitle">人員名單</span></h2>
       <div class="toolbar">
         <input id="keyword" type="search" placeholder="搜尋姓名或 Email" oninput="debouncedRenderList()">
-        <label class="toggle"><input id="includeHidden" type="checkbox" onchange="renderList()"> 顯示隱藏</label>
+        <label class="toggle"><input id="includeHidden" type="checkbox" onchange="renderList()"> 顯示離職／停用／封存</label>
       </div>
       <div id="employeeList" class="list-grid"><div class="empty">請先選擇類別。</div></div>
       <div style="margin-top:16px"><button class="ghost" type="button" onclick="showLayer(1)">回到類別</button></div>
@@ -106,7 +118,8 @@
   </div>
 
   <script src="app.js"></script>
-  <script src="firebase-client.js"></script>
+  <script src="firebase-client.js?v=onboarding-20260624"></script>
+  <script src="onboarding-workflow.js?v=20260624v2"></script>
   <script>
     let currentUser = null;
     let allEmployees = [];
@@ -194,6 +207,29 @@
     }
     function canShowDaily(e){ return !/離職|停用|隱藏|封存|駁回/.test(statusLabel(e)); }
 
+    function isSystemRecord(e){
+      const raw=rawOf(e);const id=empId(e);
+      return id==='PRIMARY_MANAGER_LINE' || lower(firstValue(e,['recordType']))==='system_setting' || lower(firstValue(e,['identityType']))==='system' || lower(raw.recordType)==='system_setting';
+    }
+    function employeeQuality(e){
+      let score=canShowDaily(e)?100:20;
+      if(firstValue(e,['onboardingCompleted']))score+=20;
+      if(firstValue(e,['idNumber','身分證字號']))score+=5;
+      if(firstValue(e,['mobilePhone','行動電話']))score+=3;
+      return score;
+    }
+    function dedupeEmployees(rows){
+      const map=new Map();let duplicateCount=0;
+      (rows||[]).filter(e=>!isSystemRecord(e)).forEach(e=>{
+        const key=emailOf(e)?('email:'+emailOf(e)):('id:'+empId(e));
+        if(!key||key==='id:')return;
+        const old=map.get(key);
+        if(!old)map.set(key,e);
+        else{duplicateCount++;if(employeeQuality(e)>employeeQuality(old))map.set(key,e)}
+      });
+      return {rows:Array.from(map.values()),duplicateCount};
+    }
+
     async function init(){
       currentUser = requireLogin();
       if(!currentUser) return;
@@ -204,19 +240,26 @@
 
     async function loadEmployees(){
       const res = await api('getEmployeeManagementData', { userId: currentUser.id, statusMode:'all' });
-      allEmployees = (res.rows || []).filter(e => empId(e) || emailOf(e));
+      const cleaned=dedupeEmployees((res.rows || []).filter(e => empId(e) || emailOf(e)));
+      allEmployees = cleaned.rows;
+      const duplicateCount=Math.max(cleaned.duplicateCount,Array.isArray(res.duplicateGroups)?res.duplicateGroups.length:0);
+      const notice=$('#dataNotice');
+      if(duplicateCount){notice.style.display='block';notice.textContent=`系統偵測到 ${duplicateCount} 組可能重複的人員主檔；目前名單已合併顯示，正式刪除前仍應先核對歷史薪資、班表與打卡資料。`;}
+      else{notice.style.display='none';notice.textContent='';}
       renderCategories();
     }
 
     function renderCategories(){
-      const counts = {staff:0, parttime:0, external:0};
-      allEmployees.forEach(e => counts[identityType(e)]++);
+      const active = {staff:0, parttime:0, external:0};
+      const inactive = {staff:0, parttime:0, external:0};
+      allEmployees.forEach(e => (canShowDaily(e)?active:inactive)[identityType(e)]++);
       $('#categoryCards').innerHTML = [
         ['staff','員工','staff'], ['parttime','工讀生','parttime'], ['external','外聘','external']
       ].map(([type,title,cls]) => `
         <div class="category-card ${cls}" onclick="openCategory('${type}')">
           <div class="cat-title">${title}</div>
-          <div class="cat-count">${counts[type] || 0}<span>人</span></div>
+          <div class="cat-count">${active[type] || 0}<span>人</span></div>
+          <div class="cat-secondary">離職／停用／封存：${inactive[type] || 0} 人</div>
         </div>
       `).join('');
     }
@@ -280,12 +323,16 @@
         const key = empId(base) || firstValue(base, ['id','__id','userId']) || id;
         const email = emailOf(base);
         const payload = { employeeId:key, userId:key, id:key, email:email };
-        const profileRes = await apiTimeout(api('getMyProfileFull', payload).catch(()=>null), 3500);
-        const salaryRes = await apiTimeout(api('getMySalaryInfo', payload).catch(()=>null), 3500);
-        if(!profileRes && !salaryRes) return;
+        const [profileRes,salaryRes,lifecycleRes] = await Promise.all([
+          apiTimeout(api('getMyProfileFull', payload).catch(()=>null), 3500),
+          apiTimeout(api('getMySalaryInfo', payload).catch(()=>null), 3500),
+          apiTimeout(api('getEmployeeLifecycleSummary', payload).catch(()=>null), 3500)
+        ]);
+        if(!profileRes && !salaryRes && !lifecycleRes) return;
         const enriched = Object.assign({}, base, {
           profile: (profileRes && profileRes.profile) || {},
           salary: (salaryRes && (salaryRes.salary || salaryRes.info)) || (profileRes && (profileRes.salary || profileRes.info)) || {},
+          lifecycle: (lifecycleRes && lifecycleRes.ok!==false) ? lifecycleRes : {},
           raw: Object.assign({}, rawOf(base), (profileRes && profileRes.profile) || {}, (salaryRes && ((salaryRes.salary && salaryRes.salary.rawConfig) || (salaryRes.info && salaryRes.info.rawConfig))) || {})
         });
         renderDetail(enriched);
@@ -306,6 +353,9 @@
       return s || fallback;
     }
 
+    function summaryCard(label,value,state){return `<div class="summary-card ${state||''}"><span>${esc(label)}</span><strong>${esc(value||'尚未設定')}</strong></div>`}
+    function encode(v){return encodeURIComponent(clean(v))}
+
     function renderDetail(e){
       const type = identityType(e);
       const identity = identityText(type);
@@ -318,6 +368,12 @@
         : firstValue(e, ['staffBaseSalaryText','baseSalaryText','baseSalary','staffBaseSalary','monthlySalary','salary','本薪','本薪金額']);
       const laborStatus = firstValue(e, ['laborStatus','laborInsuranceStatus','laborInsurance','勞保狀態']);
       const healthStatus = firstValue(e, ['healthStatus','healthInsuranceStatus','healthInsurance','健保狀態']);
+      const lifecycle=(e && e.lifecycle)||{};const schedule=(lifecycle&&lifecycle.schedule)||{};
+      const targetId=empId(e)||emailOf(e);const docUrl=firstValue(e,['identityDocumentUrl']);
+      const identityVerified=firstValue(e,['identityDocumentVerified','identityVerificationStatus'])===true || clean(firstValue(e,['identityVerificationStatus']))==='verified';
+      const salaryReady=clean(mainAmount)!=='' && clean(laborStatus)!=='' && clean(healthStatus)!=='';
+      const scheduleText=type==='external'?'不適用':(schedule.templateName||firstValue(e,['currentScheduleTemplateName'])||'尚未設定');
+      const dataSource=firstValue(e,['registrationApplicationId'])?'註冊審核暨入職建檔':'既有人員主檔';
 
       $('#detailPanel').innerHTML = `
         <div class="topline">
@@ -340,10 +396,26 @@
           ${field('身分證字號', firstValue(e, ['idNumber','nationalId','idNo','idNumberMasked','身分證字號','身份證字號']))}
           ${field('出生年月日', firstValue(e, ['birthDate','birthday','出生年月日','生日']))}
           ${field('行動電話', firstValue(e, ['mobilePhone','phone','手機','行動電話','聯絡電話']))}
-          ${field('到職日', firstValue(e, ['hireDate','joinDate','startDate','到職日','任職日期']))}
+          ${field(type === 'external' ? '合作起始日' : '到職日', firstValue(e, ['hireDate','cooperationStartDate','joinDate','startDate','到職日','任職日期']))}
           ${field('聯絡地址', firstValue(e, ['address','contactAddress','聯絡地址','地址']), true)}
           ${field('緊急聯絡人', firstValue(e, ['emergencyContact','緊急聯絡人']))}
           ${field('緊急聯絡人電話', firstValue(e, ['emergencyPhone','emergencyContactPhone','緊急聯絡人電話','緊急聯絡電話']))}
+          ${field('資料來源', dataSource)}
+          ${field('證件核對', identityVerified ? '主管已核對' : (docUrl ? '等待主管核對' : '尚未上傳'))}
+        </div>
+        ${docUrl ? `<div class="link-actions"><a class="link-btn light" href="${esc(docUrl)}" target="_blank" rel="noopener">查看本人證件正面</a></div>` : ''}
+
+        <div class="section-title">資料完整度與關聯</div>
+        <div class="summary-grid">
+          ${summaryCard('基本資料', nameOf(e)&&emailOf(e)&&firstValue(e,['idNumber','身分證字號'])?'已完成':'尚未完成',nameOf(e)&&emailOf(e)?'ok':'warn')}
+          ${summaryCard('身分驗證', identityVerified?'已核對':'尚未完成',identityVerified?'ok':'warn')}
+          ${summaryCard('目前班表', scheduleText,type==='external'||scheduleText!=='尚未設定'?'ok':'warn')}
+          ${summaryCard('薪資投保', type==='external'?'不適用':(salaryReady?'已設定':'尚未完成'),type==='external'||salaryReady?'ok':'warn')}
+          ${summaryCard('LINE 綁定', firstValue(e,['lineUserId','LINE User ID'])?'已綁定':'尚未綁定',firstValue(e,['lineUserId','LINE User ID'])?'ok':'warn')}
+          ${summaryCard('帳號狀態', status,canShowDaily(e)?'ok':'bad')}
+        </div>
+        <div class="link-actions">
+          ${type!=='external'?`<a class="link-btn" href="salary-admin.html?employeeId=${encode(targetId)}">查看／調整薪資投保</a><a class="link-btn secondary" href="schedule-admin.html?employeeId=${encode(targetId)}&panel=assignment">查看／調整班表</a>`:''}
         </div>
 
         <div class="section-title">LINE 資料</div>
@@ -390,6 +462,8 @@
         </div>
 
         <div class="actions"><button class="save" type="button" onclick="saveEmployeeStatus()">儲存資料</button></div>
+        <div class="actions" style="margin-top:10px"><button class="danger" type="button" onclick="archiveEmployee()">${type==='external'?'結束合作並封存':'離職並封存人員'}</button></div>
+        <div class="hint">封存後不再出現在班表、薪資及工讀日常名單，但歷史打卡、請假與薪資紀錄仍會保留。</div>
         <div id="msg" class="msg"></div>`;
 
       const acc = lower(firstValue(e, ['accountStatus','帳號狀態'])) || 'active';
@@ -418,6 +492,19 @@
       }catch(err){
         msg.classList.add('error'); msg.textContent = err.message || '清除 LINE 綁定失敗';
       }
+    }
+
+    async function archiveEmployee(){
+      const e=currentEmployee();if(!e)return;const external=identityType(e)==='external';
+      const label=external?'結束合作並封存':'辦理離職並封存';
+      if(!confirm(`確定要${label}「${nameOf(e)||emailOf(e)}」嗎？\n\n完成後將停止登入、隱藏於日常名單並關閉目前班表；歷史資料不會刪除。`))return;
+      const reason=prompt('請輸入封存原因：',external?'合作結束':'離職');if(reason===null)return;
+      const msg=$('#msg');msg.style.display='block';msg.classList.remove('error');msg.textContent='處理中...';
+      try{
+        const res=await api('archiveEmployeeLifecycle',{userId:currentUser.id,employeeId:empId(e),email:emailOf(e),reason:reason.trim()});
+        if(!res||res.ok===false)throw new Error((res&&res.message)||'封存失敗');
+        msg.textContent=res.message||'已封存。';await loadEmployees();showLayer(1);
+      }catch(err){msg.classList.add('error');msg.textContent=err.message||'封存失敗';}
     }
 
     async function saveEmployeeStatus(){

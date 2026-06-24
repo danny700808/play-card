@@ -374,6 +374,11 @@
       employees: []
     };
 
+    const scheduleQuery = new URLSearchParams(location.search || '');
+    const requestedEmployeeId = scheduleQuery.get('employeeId') || '';
+    const requestedPanel = scheduleQuery.get('panel') || '';
+    let requestedSelectionApplied = false;
+
     document.addEventListener('DOMContentLoaded', () => {
       buildDayFields();
       buildSingleDayTimeSelects();
@@ -626,9 +631,24 @@
         renderEmployeeOptions();
         renderSingleDayEmployeeOptions();
         renderTemplateOptions();
+        applyRequestedEmployeeSelection();
       } catch (err) {
         showStatus('templateStatus', (err && err.message) || '讀取班表設定資料失敗', 'error');
       }
+    }
+
+    function applyRequestedEmployeeSelection(){
+      if(requestedSelectionApplied || !requestedEmployeeId) return;
+      const exists=pageData.employees.some(emp=>String(emp.employeeId||emp.id||'')===String(requestedEmployeeId));
+      if(!exists) return;
+      const employeeSelect=document.getElementById('employeeId');
+      if(employeeSelect) employeeSelect.value=requestedEmployeeId;
+      const singleSelect=document.getElementById('singleDayEmployeeId');
+      if(singleSelect) singleSelect.value=requestedEmployeeId;
+      if(requestedPanel==='singleDay') switchSchedulePanel('singleDayPanel');
+      else switchSchedulePanel('assignmentPanel');
+      requestedSelectionApplied=true;
+      const form=document.getElementById('assignmentForm');if(form)form.scrollIntoView({behavior:'smooth',block:'start'});
     }
 
     function renderEmployeeOptions() {

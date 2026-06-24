@@ -168,13 +168,22 @@
             <select id="laborPlan"></select>
             <div id="laborPlanHint" class="hint-box">勞保狀態為在保時，才需要選擇勞保級距。</div>
           </div>
+          <div class="field" id="fieldLaborSelfPay">
+            <label>勞保員工自付額</label>
+            <input id="laborSelfPay" type="number" min="0" step="1" placeholder="輸入薪資結算每月實際扣款金額">
+            <div class="hint-box">這個數字會直接提供工讀薪資結算扣除；不能只留下「依級距計算」文字。</div>
+          </div>
 
           <div class="field" id="fieldHealthPlan">
             <label>健保級距</label>
             <select id="healthPlan"></select>
             <div id="healthPlanHint" class="hint-box">健保狀態為在保時，才需要選擇健保級距。</div>
           </div>
-          <div id="healthHint" class="hint-box">健保若為在保，會依投保金額顯示健保自付額。</div>
+          <div class="field" id="fieldHealthSelfPay">
+            <label>健保本人自付額</label>
+            <input id="healthSelfPay" type="number" min="0" step="1" placeholder="輸入每月實際扣款金額">
+          </div>
+          <div id="healthHint" class="hint-box">健保若為在保，請同時確認級距與本人自付額。</div>
 
 
 
@@ -220,12 +229,14 @@
   <script src="firebase-client.js?v=admin-final-20260530b"></script>
 
   <script src="app.js?v=admin-final-20260530b"></script>
+  <script src="onboarding-workflow.js?v=20260624v2"></script>
   <script>
     let setup = null;
     let selectedId = '';
     let selectedMap = {};
     let statusFilter = 'all';
     let typeFilter = 'all';
+    const requestedEmployeeId = new URLSearchParams(location.search || '').get('employeeId') || '';
 
     const DEFAULT_LABOR_PLANS = [
       { code:'LAB_PART_11100', name:'第 1 級｜11,100 元', salary:11100, salaryText:'11,100 元', selfPayText:'依勞保局級距計算', group:'partial' },
@@ -412,7 +423,9 @@
       if(!String(cfg.laborStatus || '').trim()) reasons.push('未設定勞保狀態');
       if(!String(cfg.healthStatus || '').trim()) reasons.push('未設定健保狀態');
       if(insuranceIsActive(cfg.laborStatus) && !String(cfg.laborPlan || '').trim()) reasons.push('勞保在保但未設定勞保級距');
+      if(insuranceIsActive(cfg.laborStatus) && (cfg.laborSelfPay === undefined || cfg.laborSelfPay === null || cfg.laborSelfPay === '')) reasons.push('勞保在保但未設定員工自付額');
       if(insuranceIsActive(cfg.healthStatus) && !String(cfg.healthPlan || '').trim()) reasons.push('健保在保但未設定健保級距');
+      if(insuranceIsActive(cfg.healthStatus) && (cfg.healthSelfPay === undefined || cfg.healthSelfPay === null || cfg.healthSelfPay === '')) reasons.push('健保在保但未設定本人自付額');
       if(String(cfg.selfRetirementEnabled || '否') === '是' && !String(cfg.selfRetirementRate || '').trim()) reasons.push('勞退自提已開啟但未設定比率');
       return reasons;
     }
@@ -555,9 +568,11 @@
       const healthActive = insuranceIsActive(healthStatus);
 
       qs('#fieldLaborPlan').classList.toggle('hidden', !laborActive);
+      qs('#fieldLaborSelfPay').classList.toggle('hidden', !laborActive);
       qs('#fieldHealthPlan').classList.toggle('hidden', !healthActive);
-      if(!laborActive) qs('#laborPlan').value = '';
-      if(!healthActive) qs('#healthPlan').value = '';
+      qs('#fieldHealthSelfPay').classList.toggle('hidden', !healthActive);
+      if(!laborActive){ qs('#laborPlan').value = ''; qs('#laborSelfPay').value = ''; }
+      if(!healthActive){ qs('#healthPlan').value = ''; qs('#healthSelfPay').value = ''; }
 
       qs('#laborStatusHint').textContent = laborActive
         ? '勞保目前為在保，請在下方選擇勞保級距。'
@@ -569,16 +584,18 @@
       const labor = getLaborMeta();
       const health = getHealthMeta();
       const modeHint = qs('#laborPlanHint').dataset.modeHint || '';
+      const laborSelfPayValue = Number(qs('#laborSelfPay').value || 0) || 0;
       const laborText = !laborActive
         ? '勞保狀態不是在保，不需選擇勞保級距。'
-        : (labor ? `${modeHint ? modeHint + '｜' : ''}投保薪資：${String(labor.salaryText || '-')}｜勞保自付額：${String(labor.selfPayText || '-')}` : `${modeHint ? modeHint + '｜' : ''}請選擇勞保級距，系統會顯示投保薪資與勞保自付額。`);
+        : (labor ? `${modeHint ? modeHint + '｜' : ''}投保薪資：${String(labor.salaryText || '-')}｜薪資結算自付額：${laborSelfPayValue ? moneyText(laborSelfPayValue) : '尚未填寫'}` : `${modeHint ? modeHint + '｜' : ''}請選擇勞保級距，並填寫實際自付額。`);
       qs('#laborPlanHint').textContent = laborText;
 
+      const healthSelfPayValue = Number(qs('#healthSelfPay').value || 0) || 0;
       const healthPlanText = !healthActive
         ? '健保狀態不是在保，不需選擇健保級距。'
-        : (health ? `投保金額：${String(health.salaryText || '-')}｜健保本人自付：${String(health.selfPayText || '-')}` : '請選擇健保級距，系統會顯示投保金額與健保本人自付額。');
+        : (health ? `投保金額：${String(health.salaryText || '-')}｜健保本人自付：${healthSelfPayValue ? moneyText(healthSelfPayValue) : '尚未填寫'}` : '請選擇健保級距，並填寫實際本人自付額。');
       qs('#healthPlanHint').textContent = healthPlanText;
-      qs('#healthHint').textContent = (healthActive && health) ? `健保本人自付：${String(health.selfPayText || '-')}` : (healthActive ? '健保為在保，請選擇健保級距。' : '健保未投保 / 暫停時，健保級距與自付額會顯示為不適用。');
+      qs('#healthHint').textContent = (healthActive && health) ? `健保本人自付：${healthSelfPayValue ? moneyText(healthSelfPayValue) : '尚未填寫'}` : (healthActive ? '健保為在保，請選擇健保級距與自付額。' : '健保未投保 / 暫停時，健保級距與自付額會顯示為不適用。');
 
       const base = getRetirementBase();
       const employer = Math.round(base * 0.06);
@@ -623,8 +640,10 @@
       qs('#healthStatus').value = cfg.healthStatus || '';
       refreshLaborPlanOptions(false);
       qs('#laborPlan').value = activeOrEmptyPlan(qs('#laborStatus').value, cfg.laborPlan || '');
+      qs('#laborSelfPay').value = (cfg.laborSelfPay !== undefined && cfg.laborSelfPay !== null) ? cfg.laborSelfPay : (cfg.laborInsuranceSelfPay || '');
       refreshHealthPlanOptions(false);
       qs('#healthPlan').value = activeOrEmptyPlan(qs('#healthStatus').value, cfg.healthPlan || '');
+      qs('#healthSelfPay').value = (cfg.healthSelfPay !== undefined && cfg.healthSelfPay !== null) ? cfg.healthSelfPay : (cfg.healthInsuranceSelfPay || '');
       qs('#laborRetirementSelfEnabled').value = cfg.selfRetirementEnabled || '否';
       qs('#laborRetirementSelfRate').value = cfg.selfRetirementRate || '';
       qs('#salaryEffectiveDate').value = cfg.effectiveDate || '';
@@ -647,6 +666,10 @@
         healthPlan: activeOrEmptyPlan(qs('#healthStatus').value, qs('#healthPlan').value),
         laborStatus: qs('#laborStatus').value,
         healthStatus: qs('#healthStatus').value,
+        laborInsuredSalary: (getLaborMeta() && Number(getLaborMeta().salary || 0)) || 0,
+        healthInsuredSalary: (getHealthMeta() && Number(getHealthMeta().salary || 0)) || 0,
+        laborSelfPay: qs('#laborSelfPay').value,
+        healthSelfPay: qs('#healthSelfPay').value,
         selfRetirementEnabled: qs('#laborRetirementSelfEnabled').value,
         selfRetirementRate: qs('#laborRetirementSelfRate').value,
         effectiveDate: qs('#salaryEffectiveDate').value,
@@ -662,7 +685,9 @@
       if(!payload.laborStatus) return '請先選擇勞保狀態。';
       if(!payload.healthStatus) return '請先選擇健保狀態。';
       if(payload.laborStatus === '在保' && !payload.laborPlan) return '勞保為在保時，請選擇勞保級距。';
+      if(payload.laborStatus === '在保' && payload.laborSelfPay === '') return '勞保為在保時，請填寫員工自付額，工讀薪資結算才可正確扣除。';
       if(payload.healthStatus === '在保' && !payload.healthPlan) return '健保為在保時，請選擇健保級距。';
+      if(payload.healthStatus === '在保' && payload.healthSelfPay === '') return '健保為在保時，請填寫本人自付額。';
       if(payload.selfRetirementEnabled === '是' && !payload.selfRetirementRate) return '已開啟勞退自提時，請選擇自提比率。';
       return '';
     }
@@ -674,7 +699,9 @@
       if(!payload.laborStatus) reasons.push('未設定勞保狀態');
       if(!payload.healthStatus) reasons.push('未設定健保狀態');
       if(payload.laborStatus === '在保' && !payload.laborPlan) reasons.push('勞保在保但未設定勞保級距');
+      if(payload.laborStatus === '在保' && payload.laborSelfPay === '') reasons.push('勞保在保但未設定員工自付額');
       if(payload.healthStatus === '在保' && !payload.healthPlan) reasons.push('健保在保但未設定健保級距');
+      if(payload.healthStatus === '在保' && payload.healthSelfPay === '') reasons.push('健保在保但未設定本人自付額');
       const isParttime = emp.identityType === 'parttime';
       setup.employeeConfigMap[emp.id] = {
         salaryDisplayType: isParttime ? 'PARTTIME_DIRECT' : 'STAFF_DIRECT',
@@ -686,6 +713,10 @@
         healthPlan: payload.healthPlan || '',
         laborStatus: payload.laborStatus || '',
         healthStatus: payload.healthStatus || '',
+        laborInsuredSalary: Number(payload.laborInsuredSalary || 0) || 0,
+        healthInsuredSalary: Number(payload.healthInsuredSalary || 0) || 0,
+        laborSelfPay: payload.laborSelfPay === '' ? '' : (Number(payload.laborSelfPay || 0) || 0),
+        healthSelfPay: payload.healthSelfPay === '' ? '' : (Number(payload.healthSelfPay || 0) || 0),
         selfRetirementEnabled: payload.selfRetirementEnabled || '否',
         selfRetirementRate: Number(payload.selfRetirementRate || 0) || 0,
         effectiveDate: payload.effectiveDate || '',
@@ -731,7 +762,8 @@
         (setup.employees || []).forEach(x => selectedMap[x.id] = x);
         renderSummary();
         renderEmployeeList();
-        if(selectedId && selectedMap[selectedId]) selectEmployee(selectedId);
+        if(requestedEmployeeId && selectedMap[requestedEmployeeId]) selectEmployee(requestedEmployeeId);
+        else if(selectedId && selectedMap[selectedId]) selectEmployee(selectedId);
         else if((setup.employees || []).length) selectEmployee(setup.employees[0].id);
       }catch(err){
         setMsg(qs('#pageMsg'), (err && err.message ? err.message : String(err)) + '（薪資與投保設定目前只讀寫 Firebase / Firestore，不再回退舊系統。）', true);
@@ -802,7 +834,7 @@
       qs('#saveBottomBtn').onclick = saveConfig;
       qs('#addJobAllowanceBtn').onclick = addJobAllowance;
       qs('#addAllowanceBtn').onclick = addAllowance;
-      ['#baseSalary','#hourlyRate','#averageSalary','#laborPlan','#healthPlan','#laborStatus','#healthStatus','#laborRetirementSelfRate'].forEach(sel => {
+      ['#baseSalary','#hourlyRate','#averageSalary','#laborPlan','#healthPlan','#laborStatus','#healthStatus','#laborSelfPay','#healthSelfPay','#laborRetirementSelfRate'].forEach(sel => {
         const el = qs(sel);
         if(el) el.addEventListener('input', updateInsuranceHints);
         if(el) el.addEventListener('change', updateInsuranceHints);
