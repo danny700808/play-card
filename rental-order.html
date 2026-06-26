@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>電鋼琴 電子鼓 租賃申請表</title>
+  <title>電鋼琴 電子鼓 其他設備 租賃申請表</title>
   <link rel="stylesheet" href="style.css?v=rental-order-line-step-20260615">
   <style>
     body{background:#eef3f7;color:#18314a}.wrap{max-width:960px;margin:0 auto;padding:22px 14px 54px}.hero{background:#fff;border:1px solid #dbe5ef;border-radius:28px;padding:24px;box-shadow:0 10px 28px rgba(15,23,42,.06);margin-bottom:16px}.hero h1{margin:0 0 10px;font-size:32px;font-weight:950}.card2{background:#fff;border:1px solid #dbe5ef;border-radius:24px;padding:20px;margin-bottom:16px;box-shadow:0 10px 28px rgba(15,23,42,.04)}.section-title{font-size:22px;font-weight:950;margin:0 0 12px}.field{margin-bottom:14px}.field label{display:block;font-weight:900;margin-bottom:7px}.field input,.field select,.field textarea{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:14px;padding:12px 14px;background:#fff;font-size:16px}.field textarea{min-height:92px}.row2{display:grid;grid-template-columns:1fr 1fr;gap:14px}.checkline{display:flex;align-items:flex-start;gap:10px;line-height:1.7;font-weight:850}.rules{border:1px solid #dbe5ef;background:#f8fafc;border-radius:18px;padding:16px;line-height:1.9;white-space:pre-wrap}.btn-row{display:flex;gap:10px;flex-wrap:wrap}.btn{border:0;border-radius:14px;background:#1f7a5a;color:#fff;font-weight:950;padding:13px 18px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}.btn.secondary{background:#e2e8f0;color:#18314a}.msg{margin-top:12px;border-radius:14px;padding:12px 14px;font-weight:900;line-height:1.7}.msg.ok{background:#e8fff4;color:#146c43}.msg.bad{background:#fff0f0;color:#b42318}.success-box{display:none;border:2px solid #1f7a5a;background:#f0fff7;border-radius:24px;padding:20px;line-height:1.9}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-weight:950;background:#fff;border:1px dashed #1f7a5a;border-radius:12px;padding:8px 10px;display:inline-block}.small{font-size:13px;color:#64748b;line-height:1.8}.note-box{border:1px solid #dbe5ef;background:#f8fafc;border-radius:16px;padding:12px 14px;color:#334155;font-size:14px;line-height:1.8;margin-top:4px}.radio-group{display:grid;gap:8px}.radio-option{border:1px solid #dbe5ef;background:#f8fafc;border-radius:14px;padding:10px 12px;display:flex;gap:10px;align-items:flex-start;line-height:1.7;font-weight:850}.radio-option small{display:block;color:#64748b;font-weight:500}.success-section{display:none}@media(max-width:720px){.row2{grid-template-columns:1fr}.hero h1{font-size:26px}.wrap{padding:14px 10px 40px}.card2,.hero{padding:16px;border-radius:20px}}
@@ -122,14 +122,14 @@
   </div>
 
 <div class="wrap">
-    <section class="hero"><h1><span class="title-line-main">電鋼琴　電子鼓</span><span class="title-line-sub">租賃申請表</span></h1></section>
+    <section class="hero"><h1><span class="title-line-main">電鋼琴　電子鼓　其他設備</span><span class="title-line-sub">租賃申請表</span></h1></section>
     <form id="rentalForm" novalidate>
       <section class="card2"><h2 class="section-title">租用流程說明</h2><div class="rules">1. 填寫租用需求與聯絡資料。
 2. 店家確認設備、金額、運費與日期。
 3. 店家傳送正式填寫 / 簽署連結。
 4. 客人補資料並完成簽名。
 5. 店家確認款項與交付日期後，正式成立契約。</div></section>
-      <section class="card2"><h2 class="section-title">租用需求</h2><div class="row2"><div class="field"><label>想租用的類型</label><select id="rentalType" required><option value="">請選擇</option><option value="digitalPiano">電鋼琴</option><option value="electronicDrum">電子鼓</option><option value="other">其他設備</option></select></div><div class="field"><label>預計租用期數</label><select id="periods"><option value="1">1 期 90 天</option><option value="2">2 期 180 天</option><option value="3">3 期 270 天</option></select></div></div><div class="field"><label>備註</label><textarea id="otherEquipmentNeed" data-no-required="true" placeholder="其他需求"></textarea></div></section>
+      <section class="card2"><h2 class="section-title">租用需求</h2><div class="row2"><div class="field"><label>想租用的類型</label><select id="rentalType" required><option value="">請選擇</option><option value="digitalPiano">電鋼琴</option><option value="electronicDrum">電子鼓</option><option value="other">其他設備</option></select></div><div class="field" id="periodField"><label>預計租用期數</label><select id="periods"><option value="1">1 期 90 天</option><option value="2">2 期 180 天</option><option value="3">3 期 270 天</option></select></div><div class="field" id="otherPeriodNotice" style="display:none"><label>其他設備租用期間</label><div class="note-box">依雙方確認之租用期間為準</div></div></div><div class="field"><label>備註</label><textarea id="otherEquipmentNeed" data-no-required="true" placeholder="其他需求"></textarea></div></section>
       <section class="card2"><h2 class="section-title">預計配送 / 自取</h2><div class="row2"><div class="field"><label>交付方式</label><select id="shippingMethod"><option value="到府安裝">到府安裝</option><option value="自取自運">自取自運</option></select></div><div class="field"><label>運送抵達日期</label><input id="preferredDate" type="date"></div></div><div class="field"><label>安裝地址</label><input id="customerAddress" placeholder="請填寫地址；若自取，請填寫聯絡地址"></div><div class="field" id="buildingNameField"><label>大樓名稱</label><input id="buildingName" data-no-required="true" placeholder="例如：XX社區、XX大樓；無可留空"><div class="optional-small">選填</div></div><div class="row2"><div class="field"><label>運送抵達時間</label><select id="preferredTime"><option value="">請選擇</option><option>09:00</option><option>10:00</option><option>11:00</option><option>12:00</option><option>13:00</option><option>14:00</option><option>15:00</option><option>16:00</option><option>17:00</option><option>18:00</option><option>19:00</option><option>20:00</option></select></div><div class="field"><label>樓層 / 電梯資訊</label><select id="floorNote"><option value="有電梯">有電梯</option><option value="無電梯 1～2樓">無電梯 1～2樓</option><option value="無電梯 3樓">無電梯 3樓</option><option value="無電梯 4～5樓">無電梯 4～5樓</option><option value="其他">其他，請於補充說明填寫</option></select></div></div><div class="note-box">註：自載免運費，不含搬運（需要休旅車）。山區或特殊地點需加價。透天 3 樓 +200 元，4 樓～5 樓 +400 元。</div><div class="field" style="margin-top:14px"><label>備註</label><textarea id="note" data-no-required="true" placeholder="其他需求"></textarea></div></section>
 
       <section class="card2"><h2 class="section-title">聯絡資料</h2><div class="row2"><div class="field"><label>姓名 / 公司名稱</label><input id="customerName" required></div><div class="field"><label>聯絡電話</label><input id="customerPhone" required placeholder="09xx 或市話"></div></div><div class="field"><label>Email 信箱</label><input id="customerEmail" type="email" placeholder="選擇 Email 通知時必填"></div><div class="field"><label>後續通知方式</label><div class="radio-group compact-notify">
@@ -145,7 +145,7 @@
       <div id="emailNextBox" class="note-box success-section" style="margin-top:12px"><b>請確認 Email：</b><br>系統已寄出 Email 確認信，請到信箱點選確認連結。完成確認後，後續租賃通知會依您選擇的方式寄送。<br><span class="small">若沒有看到信件，請檢查垃圾郵件、促銷內容或所有郵件。</span></div>
       <div class="small">正式租用確認後，店家才會提供正式填寫 / 簽署連結；正式階段才需要身分證證明上傳。</div><div class="btn-row" style="margin-top:12px"><button class="btn success-section" id="copyLineTextBtn" type="button">複製官方 LINE 配對文字</button><a class="btn secondary success-section" id="lineAddBtn" href="https://lin.ee/Fx5Y2mL" target="_blank">加入柚子樂器 LINE</a><a class="btn secondary" href="index.html">返回首頁</a></div></section>
   </div>
-  <script src="config.js?v=rental-order-line-step-20260615"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script><script src="rental-common.js?v=rental-order-line-step-20260615"></script>
+  <script src="config.js?v=rental-order-line-step-20260615"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script><script src="rental-common.js?v=20260626-other-equipment-period"></script>
   <script>
     const R=window.YZRental;
     function setSubmitProgress(percent){
@@ -293,7 +293,8 @@
       try{
         const payload={
           rentalType:R.val('rentalType'),
-          periods:R.val('periods'),
+          periods:R.val('rentalType')==='other'?'':R.val('periods'),
+          rentalPeriodText:R.val('rentalType')==='other'?'依雙方確認之租用期間為準':'',
           otherEquipmentNeed:R.val('otherEquipmentNeed'),
           customerName:R.val('customerName'),
           customerPhone:R.val('customerPhone'),
@@ -771,6 +772,43 @@
   setTimeout(applyDeliveryTextAndOptional, 500);
   setTimeout(applyDeliveryTextAndOptional, 1200);
   window.YZRentalApplyOrderLayout = applyDeliveryTextAndOptional;
+})();
+</script>
+
+
+<script>
+(function(){
+  function q(sel){ return document.querySelector(sel); }
+  function isOtherEquipment(){ const el=q('#rentalType'); return el && el.value === 'other'; }
+  function applyRentalTypePeriodUi(){
+    const other=isOtherEquipment();
+    const periodField=q('#periodField');
+    const periodNotice=q('#otherPeriodNotice');
+    const periods=q('#periods');
+    if(periodField) periodField.style.display = other ? 'none' : '';
+    if(periodNotice) periodNotice.style.display = other ? 'block' : 'none';
+    if(periods){
+      periods.disabled = !!other;
+      if(other){
+        periods.required = false;
+        periods.removeAttribute('required');
+      }else{
+        periods.disabled = false;
+        periods.required = true;
+        periods.setAttribute('required','required');
+        if(!periods.value) periods.value = '1';
+      }
+    }
+    if(window.YZRentalOrderApplyDeliveryUi) setTimeout(window.YZRentalOrderApplyDeliveryUi, 0);
+  }
+  document.addEventListener('change', function(e){
+    if(e.target && (e.target.id === 'rentalType' || e.target.name === 'rentalType')) applyRentalTypePeriodUi();
+  });
+  document.addEventListener('DOMContentLoaded', applyRentalTypePeriodUi);
+  setTimeout(applyRentalTypePeriodUi, 100);
+  setTimeout(applyRentalTypePeriodUi, 500);
+  setTimeout(applyRentalTypePeriodUi, 1200);
+  window.YZRentalOrderApplyTypeUi = applyRentalTypePeriodUi;
 })();
 </script>
 
