@@ -6,6 +6,7 @@
   <title>註冊審核暨入職建檔</title>
   <link rel="stylesheet" href="style.css?v=onboarding-20260624">
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
+  <link rel="stylesheet" href="approval-common.css?v=20260626approval1">
   <style>
     .onboarding-grid{display:grid;grid-template-columns:minmax(270px,350px) minmax(0,1fr);gap:14px;align-items:start}
     .application-list{display:grid;gap:10px;max-height:calc(100vh - 230px);overflow:auto;padding-right:2px}
@@ -64,8 +65,7 @@
     <div class="card">
       <div class="topbar">
         <div>
-          <h1 class="title" style="margin:0">註冊審核暨入職建檔</h1>
-          <div class="welcome">申請人只提供基本資料；主管在此一次完成身分、薪資投保及班表設定。</div>
+          <h1 class="title" style="margin:0">簽核｜註冊</h1>
         </div>
       </div>
       <div id="pageMsg" class="message" style="margin-top:12px"></div>
@@ -74,14 +74,21 @@
     <div id="approvalResult" class="approval-result"></div>
 
     <div class="onboarding-grid">
-      <div class="card">
-        <div class="topbar"><h2 class="title" style="font-size:20px;margin:0">待建檔申請</h2><div class="muted" id="countText">讀取中…</div></div>
-        <div class="field" style="margin-top:10px"><label for="keyword">搜尋申請人</label><input id="keyword" placeholder="姓名、Email、證件號碼"></div>
-        <div id="list" class="application-list"></div>
+      <div class="card" id="registrationListCard">
+        <div class="approval-toolbar">
+          <label for="keyword">搜尋<input id="keyword" placeholder="姓名 / Email / 證件號碼"></label>
+          <button class="btn secondary" type="button" id="refreshBtn" style="width:auto;padding:11px 16px">重新整理</button>
+        </div>
+        <div class="approval-tabs">
+          <button class="approval-tab active" type="button" id="pendingTab">未處理（0）</button>
+          <button class="approval-tab" type="button" id="historyTab">歷史紀錄</button>
+        </div>
+        <div id="countText" class="muted" style="margin-top:10px">讀取中…</div>
+        <div id="list" class="application-list approval-list"></div>
       </div>
 
       <div class="card">
-        <div id="editorEmpty" class="editor-empty">請先從左側選擇一筆申請，開始入職建檔。</div>
+        <div id="editorEmpty" class="editor-empty">未選擇申請</div>
         <div id="editor" class="editor">
           <div class="topbar">
             <div><h2 class="title" id="selectedName" style="font-size:23px;margin:0">-</h2><div class="muted" id="selectedStatus"></div></div>
@@ -182,15 +189,43 @@
   <script src="app.js?v=onboarding-20260624"></script>
   <script src="onboarding-workflow.js?v=20260624v1"></script>
   <script>
-    let rows=[];let selected=null;let scheduleTemplates=[];
+    let rows=[];let historyRows=[];let selected=null;let scheduleTemplates=[];let activeTab='pending';
     const $=id=>document.getElementById(id);
     function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]))}
     function statusClass(row){return row.applicationStatus==='draft'?'draft':(row.applicationStatus==='needs_identity_resubmission'?'resubmit':'')}
+    function isRegistrationPending(row){const s=String((row&&row.applicationStatus)||'').trim();return !['approved','rejected','archived','deleted','已核准','已駁回'].includes(s)}
+    function setRegistrationTab(tab){activeTab=tab==='history'?'history':'pending';$('pendingTab').classList.toggle('active',activeTab==='pending');$('historyTab').classList.toggle('active',activeTab==='history');$('editor').style.display='none';$('editorEmpty').style.display=activeTab==='pending'?'block':'none';selected=null;renderList();if(activeTab==='history'&&!historyRows.length)loadRegistrationHistory();}
+    function renderTabs(){
+      const pendingCount=rows.length;
+      $('pendingTab').textContent=`未處理（${pendingCount}）`;
+      $('historyTab').textContent=historyRows.length?`歷史紀錄（${historyRows.length}）`:'歷史紀錄';
+    }
     function renderList(){
-      const kw=String($('keyword').value||'').trim().toLowerCase();const list=rows.filter(r=>!kw||[r.name,r.email,r.idNumber,r.idNumberMasked].join(' ').toLowerCase().includes(kw));
-      $('countText').textContent=list.length?`${list.length} 筆待處理`:'目前沒有待處理申請';
-      $('list').innerHTML=list.map(r=>`<button type="button" class="application-card ${selected&&selected.applicationId===r.applicationId?'active':''}" data-app-id="${esc(r.applicationId)}"><strong>${esc(r.name||'未命名')}</strong><div class="application-meta">${esc(r.email||'')}<br>${esc(r.idNumberMasked||'未填證件號碼')}｜${esc(r.createdAtText||'')}</div><span class="status-tag ${statusClass(r)}">${esc(r.applicationStatusLabel||r.statusLabel||'待主管建檔')}</span></button>`).join('')||'<div class="editor-empty">沒有符合的申請。</div>';
+      renderTabs();
+      const kw=String($('keyword').value||'').trim().toLowerCase();
+      const source=activeTab==='history'?historyRows:rows;
+      const list=source.filter(r=>!kw||[r.name,r.email,r.idNumber,r.idNumberMasked,r.applicationStatusLabel,r.statusLabel,r.createdAtText,r.updatedAtText].join(' ').toLowerCase().includes(kw));
+      $('countText').textContent=activeTab==='pending'?(list.length?`${list.length} 筆未處理`:'目前沒有未處理申請'):(list.length?`${list.length} 筆歷史紀錄`:'目前沒有歷史紀錄');
+      if(activeTab==='history'){
+        $('list').innerHTML=list.map(r=>`<article class="approval-card"><div class="approval-head"><div><div class="approval-name">${esc(r.name||'未命名')}</div><div class="approval-meta">${esc(r.email||'')}｜${esc(r.idNumberMasked||'未填證件號碼')}</div></div><span class="approval-pill ${String(r.applicationStatus)==='rejected'?'rejected':'approved'}">${esc(r.applicationStatusLabel||r.statusLabel||'已處理')}</span></div><div class="approval-grid"><div class="approval-field"><div class="approval-label">申請時間</div><div class="approval-value">${esc(r.createdAtText||'—')}</div></div><div class="approval-field"><div class="approval-label">最後更新</div><div class="approval-value">${esc(r.updatedAtText||'—')}</div></div></div>${r.resubmissionReason?`<div class="approval-note">${esc(r.resubmissionReason)}</div>`:''}</article>`).join('')||'<div class="approval-empty">目前沒有資料</div>';
+        return;
+      }
+      $('list').innerHTML=list.map(r=>`<button type="button" class="application-card approval-card ${selected&&selected.applicationId===r.applicationId?'active':''}" data-app-id="${esc(r.applicationId)}"><div class="approval-head"><div><div class="approval-name">${esc(r.name||'未命名')}</div><div class="approval-meta">${esc(r.email||'')}<br>${esc(r.idNumberMasked||'未填證件號碼')}｜${esc(r.createdAtText||'')}</div></div><span class="approval-pill pending">${esc(r.applicationStatusLabel||r.statusLabel||'待主管建檔')}</span></div></button>`).join('')||'<div class="approval-empty">目前沒有資料</div>';
       document.querySelectorAll('[data-app-id]').forEach(btn=>btn.addEventListener('click',()=>selectRow(btn.dataset.appId)));
+    }
+    function registrationDb(){
+      if(window.YZFirebase&&typeof window.YZFirebase.init==='function') return window.YZFirebase.init();
+      if(window.APP_CONFIG&&window.APP_CONFIG.FIREBASE_CONFIG&&window.firebase&&firebase.firestore){if(!firebase.apps.length)firebase.initializeApp(window.APP_CONFIG.FIREBASE_CONFIG);return firebase.firestore();}
+      throw new Error('Firebase 尚未啟用。');
+    }
+    async function loadRegistrationHistory(){
+      try{
+        const snap=await registrationDb().collection('registrationApplications').get();
+        const out=[];
+        snap.forEach(doc=>{const raw=Object.assign({__id:doc.id},doc.data()||{});const row=window.YZOnboarding&&window.YZOnboarding.normalizeApplication?window.YZOnboarding.normalizeApplication(raw):raw;if(!isRegistrationPending(row))out.push(row);});
+        historyRows=out.sort((a,b)=>String(b.updatedAtText||b.createdAtText||'').localeCompare(String(a.updatedAtText||a.createdAtText||'')));
+        renderList();
+      }catch(err){historyRows=[];renderList();setMsg($('pageMsg'),err.message||String(err),true)}
     }
     function info(label,value){return `<div class="info-cell"><span>${esc(label)}</span><strong>${esc(value||'—')}</strong></div>`}
     function draftValue(d,key,fallback=''){const v=d&&d[key];return v===undefined||v===null?fallback:v}
@@ -230,14 +265,14 @@
     function renderChecklist(){if(!selected)return;const m=missing();$('checklist').innerHTML=m.length?m.map(x=>`<div class="check-item">尚未完成：${esc(x)}</div>`).join(''):'<div class="check-item ok">所有必要資料已完成，可以進行核准與建檔。</div>';$('approveBtn').disabled=m.length>0}
     async function loadRows(preselect){
       const user=requireLogin();if(!user)return;setMsg($('pageMsg'),'讀取申請資料中…');
-      try{const [r,opt]=await Promise.all([api('getPendingRegistrations',{userId:user.id}),api('getOnboardingSetupOptions',{userId:user.id})]);rows=r&&r.ok!==false?(r.rows||r.list||[]):[];scheduleTemplates=opt&&opt.ok!==false?(opt.scheduleTemplates||[]):[];$('scheduleTemplateId').innerHTML='<option value="">請選擇班表模板</option>'+scheduleTemplates.map(t=>`<option value="${esc(t.templateId)}">${esc(t.templateName)}</option>`).join('');setMsg($('pageMsg'),'');renderList();if(preselect&&rows.some(x=>x.applicationId===preselect))selectRow(preselect);else if(selected&&rows.some(x=>x.applicationId===selected.applicationId))selectRow(selected.applicationId);else if(rows[0])selectRow(rows[0].applicationId);else{selected=null;$('editor').style.display='none';$('editorEmpty').style.display='block'}}catch(err){setMsg($('pageMsg'),err.message||String(err),true)}
+      try{const [r,opt]=await Promise.all([api('getPendingRegistrations',{userId:user.id}),api('getOnboardingSetupOptions',{userId:user.id})]);rows=r&&r.ok!==false?(r.rows||r.list||[]):[];scheduleTemplates=opt&&opt.ok!==false?(opt.scheduleTemplates||[]):[];$('scheduleTemplateId').innerHTML='<option value="">請選擇班表模板</option>'+scheduleTemplates.map(t=>`<option value="${esc(t.templateId)}">${esc(t.templateName)}</option>`).join('');setMsg($('pageMsg'),'');renderList();if(historyRows.length||activeTab==='history')loadRegistrationHistory();if(activeTab!=='pending')return;if(preselect&&rows.some(x=>x.applicationId===preselect))selectRow(preselect);else if(selected&&rows.some(x=>x.applicationId===selected.applicationId))selectRow(selected.applicationId);else if(rows[0])selectRow(rows[0].applicationId);else{selected=null;$('editor').style.display='none';$('editorEmpty').style.display='block'}}catch(err){setMsg($('pageMsg'),err.message||String(err),true)}
     }
     async function saveDraft(){if(!selected)return;const user=requireLogin();const btn=$('saveDraftBtn'),progress=startActionButtonProgress(btn,{label:'儲存中'});try{const r=await api('saveRegistrationOnboardingDraft',{userId:user.id,applicationId:selected.applicationId,onboardingDraft:buildDraft()});if(!r||r.ok===false)throw new Error((r&&r.message)||'儲存失敗');progress.done('已儲存',500,true);setMsg($('pageMsg'),r.message||'已儲存草稿');await loadRows(r.row&&r.row.applicationId)}catch(err){progress.fail('儲存失敗');setMsg($('pageMsg'),err.message||String(err),true)}}
     async function approve(){if(!selected)return;const m=missing();if(m.length){setMsg($('pageMsg'),'尚有資料未完成：'+m.join('、'),true);return}if(!confirm(`確定完成 ${selected.name||'此申請人'} 的入職建檔嗎？`))return;const user=requireLogin();const btn=$('approveBtn'),progress=startActionButtonProgress(btn,{label:'建檔中',maxPct:88});try{const r=await api('approveRegistrationOnboarding',{userId:user.id,applicationId:selected.applicationId,onboardingDraft:buildDraft()});if(!r||r.ok===false)throw new Error((r&&r.message)||'核准失敗');progress.done('已完成',600,true);showApprovalResult(r);selected=null;await loadRows()}catch(err){progress.fail('核准失敗');setMsg($('pageMsg'),err.message||String(err),true)}}
     function showApprovalResult(r){const box=$('approvalResult');box.style.display='block';box.innerHTML=`<h2>入職建檔完成</h2><div>${esc(r.message||'員工資料已建立。')}</div><div class="credential-box"><div><div class="muted">員工編號</div><code>${esc(r.employeeId||'')}</code></div><button class="btn secondary" type="button" data-copy="${esc(r.employeeId||'')}">複製</button></div><div class="credential-box"><div><div class="muted">初始密碼</div><code>${esc(r.initialPassword||'')}</code></div><button class="btn secondary" type="button" data-copy="${esc(r.initialPassword||'')}">複製</button></div><div class="muted" style="margin-top:8px">系統已建立 Email 通知佇列；若寄信服務尚未設定，請由主管安全提供初始密碼。</div>`;box.querySelectorAll('[data-copy]').forEach(b=>b.onclick=async()=>{await navigator.clipboard.writeText(b.dataset.copy||'');b.textContent='已複製'});box.scrollIntoView({behavior:'smooth',block:'start'})}
     async function reject(){if(!selected)return;const reason=prompt('請輸入駁回理由：','資料不完整，請重新申請');if(reason===null)return;if(!reason.trim()){alert('請填寫駁回理由。');return}if(!confirm('確定駁回這筆申請嗎？'))return;const user=requireLogin();const btn=$('rejectBtn'),progress=startActionButtonProgress(btn,{label:'處理中'});try{const r=await api('rejectRegistrationApi',{userId:user.id,applicationId:selected.applicationId,rejectReason:reason.trim()});if(!r||r.ok===false)throw new Error((r&&r.message)||'駁回失敗');progress.done('已駁回',500,true);selected=null;await loadRows();setMsg($('pageMsg'),r.message||'已駁回申請')}catch(err){progress.fail('駁回失敗');setMsg($('pageMsg'),err.message||String(err),true)}}
     async function requestResubmission(){if(!selected)return;const defaultReason=$('identityVerificationNote').value.trim()||'證件影像不清楚，請重新拍攝正面。';const reason=prompt('請輸入補件原因：',defaultReason);if(reason===null)return;if(!reason.trim()){alert('請填寫補件原因。');return}const user=requireLogin();const btn=$('resubmitBtn'),progress=startActionButtonProgress(btn,{label:'處理中'});try{const r=await api('requestRegistrationResubmission',{userId:user.id,applicationId:selected.applicationId,reason:reason.trim()});if(!r||r.ok===false)throw new Error((r&&r.message)||'退回補件失敗');progress.done('已退回',500,true);await loadRows(selected.applicationId);setMsg($('pageMsg'),r.message||'已退回補件')}catch(err){progress.fail('處理失敗');setMsg($('pageMsg'),err.message||String(err),true)}}
-    function init(){fillHeader();const user=requireLogin();if(!user)return;if(!hasSettingsZoneAccess(user)){location.href='dashboard.html';return}setPortalMode('settings');$('keyword').addEventListener('input',renderList);['identityVerificationStatus','identityType','laborStatus','healthStatus','selfRetirementEnabled','scheduleMode'].forEach(id=>$(id).addEventListener('change',updateVisibility));document.querySelectorAll('#editor input,#editor select,#editor textarea').forEach(el=>{el.addEventListener('input',renderChecklist);el.addEventListener('change',renderChecklist)});$('openIdentityBtn').onclick=()=>{if(selected&&selected.identityDocumentUrl)window.open(selected.identityDocumentUrl,'_blank','noopener')};$('saveDraftBtn').onclick=saveDraft;$('approveBtn').onclick=approve;$('rejectBtn').onclick=reject;$('resubmitBtn').onclick=requestResubmission;$('addJobAllowanceBtn').onclick=()=>addLineItem('jobAllowanceList','職務加給');$('addAllowanceBtn').onclick=()=>addLineItem('allowanceList','其他津貼');loadRows()}
+    function init(){fillHeader();const user=requireLogin();if(!user)return;if(!hasSettingsZoneAccess(user)){location.href='dashboard.html';return}setPortalMode('settings');$('keyword').addEventListener('input',renderList);$('pendingTab').onclick=()=>setRegistrationTab('pending');$('historyTab').onclick=()=>setRegistrationTab('history');$('refreshBtn').onclick=()=>{if(activeTab==='history')loadRegistrationHistory();loadRows()};['identityVerificationStatus','identityType','laborStatus','healthStatus','selfRetirementEnabled','scheduleMode'].forEach(id=>$(id).addEventListener('change',updateVisibility));document.querySelectorAll('#editor input,#editor select,#editor textarea').forEach(el=>{el.addEventListener('input',renderChecklist);el.addEventListener('change',renderChecklist)});$('openIdentityBtn').onclick=()=>{if(selected&&selected.identityDocumentUrl)window.open(selected.identityDocumentUrl,'_blank','noopener')};$('saveDraftBtn').onclick=saveDraft;$('approveBtn').onclick=approve;$('rejectBtn').onclick=reject;$('resubmitBtn').onclick=requestResubmission;$('addJobAllowanceBtn').onclick=()=>addLineItem('jobAllowanceList','職務加給');$('addAllowanceBtn').onclick=()=>addLineItem('allowanceList','其他津貼');loadRows()}
   </script>
   <script src="global-nav.js?v=20260603unified1"></script>
 </body>

@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>請假系統</title>
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="approval-common.css?v=20260626approval1">
   <style>
     .page-progress{margin-top:12px;border-radius:999px;background:#e5efe7;overflow:hidden;height:32px;display:none;position:relative}
     .page-progress.is-loading,.page-progress.has-text{display:block}
@@ -169,29 +170,23 @@
     </div>
 
     <div class="card hidden" id="approvalAdminCard">
-      <div class="leave-admin-tabs">
-        <button class="leave-admin-tab active" type="button" id="leavePendingTab">待簽核請假單</button>
-        <button class="leave-admin-tab" type="button" id="leaveHistoryTab">歷史紀錄</button>
+      <div class="approval-toolbar">
+        <label for="leaveApprovalSearch">搜尋<input id="leaveApprovalSearch" placeholder="姓名 / 假別 / 日期 / 狀態"></label>
+        <button class="btn secondary" type="button" id="leaveApprovalRefreshBtn" style="width:auto;padding:11px 16px">重新整理</button>
       </div>
-      <div class="leave-admin-panel" id="approvalCard">
-        <div class="topbar"><h2 class="title" style="font-size:20px;margin:0">待簽核請假單</h2><div class="muted" id="approvalCountText">目前沒有待簽核請假單</div></div>
+      <div class="approval-tabs">
+        <button class="approval-tab active" type="button" id="leavePendingTab">未處理（0）</button>
+        <button class="approval-tab" type="button" id="leaveHistoryTab">歷史紀錄</button>
+      </div>
+      <div class="approval-panel" id="approvalCard">
+        <div class="muted" id="approvalCountText" style="margin-top:12px">目前沒有未處理請假單</div>
         <div id="approvalMsg" class="message local-message"></div>
-        <div id="approvalList" class="list" style="margin-top:12px"></div>
+        <div id="approvalList" class="approval-list"></div>
       </div>
-      <div class="leave-admin-panel hidden" id="approvalRecordCard">
-        <div class="topbar"><h2 class="title" style="font-size:20px;margin:0">請假歷史紀錄</h2><div class="muted" id="approvalRecordCountText">讀取中…</div></div>
-        <div class="leave-record-toolbar">
-          <input id="leaveRecordSearch" placeholder="搜尋姓名 / 假別 / 狀態">
-          <select id="leaveRecordStatusFilter">
-            <option value="">全部狀態</option>
-            <option value="已核准">已核准</option>
-            <option value="已駁回">已駁回</option>
-            <option value="待審核">待審核</option>
-            <option value="已刪除">已刪除</option>
-          </select>
-        </div>
+      <div class="approval-panel hidden" id="approvalRecordCard">
+        <div class="muted" id="approvalRecordCountText" style="margin-top:12px">讀取中…</div>
         <div id="approvalRecordMsg" class="message local-message"></div>
-        <div id="approvalRecordList" class="list" style="margin-top:12px"></div>
+        <div id="approvalRecordList" class="approval-list"></div>
       </div>
     </div>
   </div>
@@ -244,9 +239,7 @@ function applyLeaveMode(){
   qs('#approvalAdminCard').classList.toggle('hidden', !leaveApprovalMode);
   const notifyCard = qs('#leaveNotifyCard'); if(notifyCard) notifyCard.classList.toggle('hidden', !leaveApprovalMode);
   qs('#leavePageTitle').textContent = leaveApprovalMode ? '請假簽核' : '請假申請單';
-  qs('#pageHint').textContent = leaveApprovalMode
-    ? '這一頁只負責簽核員工送出的請假申請與修改後重送的請假單。'
-    : '';
+  qs('#pageHint').textContent = '';
   const oldLeaveHomeLink = qs('#leaveHomeLink');
   if(oldLeaveHomeLink){ oldLeaveHomeLink.href = leaveApprovalMode ? 'approval-hub.html' : userHomeHref(currentUser); oldLeaveHomeLink.textContent = leaveApprovalMode ? '返回簽核' : userHomeLabel(currentUser); }
   if(leaveApprovalMode){
@@ -254,10 +247,10 @@ function applyLeaveMode(){
     const hTab = qs('#leaveHistoryTab');
     if(pTab) pTab.onclick = () => setLeaveAdminTab('pending');
     if(hTab) hTab.onclick = () => setLeaveAdminTab('history');
-    const search = qs('#leaveRecordSearch');
-    const filter = qs('#leaveRecordStatusFilter');
-    if(search) search.oninput = () => renderApprovalRecordRows(approvalHistoryRows);
-    if(filter) filter.onchange = () => renderApprovalRecordRows(approvalHistoryRows);
+    const search = qs('#leaveApprovalSearch');
+    const refresh = qs('#leaveApprovalRefreshBtn');
+    if(search) search.oninput = () => { renderApprovalRows(approvalRows); renderApprovalRecordRows(approvalHistoryRows); };
+    if(refresh) refresh.onclick = () => Promise.all([loadApprovalList(), loadApprovalRecords()]);
     setLeaveAdminTab('pending');
   }
   applyParttimeLeaveUi_();
@@ -1435,24 +1428,30 @@ function renderHistory(rows){
 function renderSummaryCards(cards){
   return;
 }
+function leaveSearchText(){ return (qs('#leaveApprovalSearch') ? qs('#leaveApprovalSearch').value : '').trim().toLowerCase(); }
+function renderLeaveApprovalCard(x, history){
+  const status = history ? (x.status || '—') : '待審核';
+  const cls = status === '已核准' ? 'approved' : (status === '已駁回' || status === '已刪除' ? 'rejected' : 'pending');
+  const dateRange = x.endDate && x.endDate !== x.startDate ? `${escapeHtml(x.startDate || x.leaveDate || '')} ~ ${escapeHtml(x.endDate)}` : escapeHtml(x.leaveDate || x.startDate || '—');
+  return `<div class="approval-card">
+    <div class="approval-head"><div><div class="approval-name">${escapeHtml(x.name || '')}</div><div class="approval-meta">${dateRange}｜${escapeHtml(x.simpleText || x.reason || '請假')}</div></div><span class="approval-pill ${cls}">${escapeHtml(status)}</span></div>
+    <div class="approval-grid">
+      <div class="approval-field"><div class="approval-label">申請時間</div><div class="approval-value">${escapeHtml(x.requestedAt || x.createdAt || '—')}</div></div>
+      ${history ? `<div class="approval-field"><div class="approval-label">審核時間</div><div class="approval-value">${escapeHtml(x.reviewedAt || x.updatedAt || '—')}</div></div>` : ''}
+      ${x.hours ? `<div class="approval-field"><div class="approval-label">時數</div><div class="approval-value">${escapeHtml(String(x.hours))} 小時</div></div>` : ''}
+    </div>
+    ${x.note ? `<div class="approval-note">備註：${escapeHtml(x.note)}</div>` : ''}
+    ${x.rejectReason ? `<div class="approval-note">駁回原因：${escapeHtml(x.rejectReason)}</div>` : ''}
+    ${history ? '' : `<div class="approval-actions"><button class="btn mini-btn" type="button" data-approve-id="${escapeHtml(x.requestId)}">同意</button><button class="btn secondary mini-btn" type="button" data-reject-id="${escapeHtml(x.requestId)}">駁回</button></div>`}
+  </div>`;
+}
 function renderApprovalRows(rows){
   approvalRows = rows || [];
-  qs('#approvalCountText').textContent = approvalRows.length ? `你有 ${approvalRows.length} 筆待簽核請假單` : '目前沒有待簽核請假單';
-  qs('#approvalList').innerHTML = approvalRows.map(x => {
-    const hints = Array.isArray(x.reviewHints) ? x.reviewHints : [];
-    const hintHtml = hints.length ? `<div class="summary-box" style="margin-top:8px">${hints.map(h => `<div>${escapeHtml(h)}</div>`).join('')}</div>` : '';
-    return `
-    <div class="item">
-      <div class="top"><strong>${escapeHtml(x.name)}｜${escapeHtml(x.leaveDate)}｜${escapeHtml(x.simpleText)}</strong><span class="tag pending">待審核</span></div>
-      <div class="muted">申請時間：${escapeHtml(x.requestedAt || x.createdAt || '—')}</div>
-      ${hintHtml}
-      ${x.note ? `<div class="muted">備註：${escapeHtml(x.note)}</div>` : ''}
-      <div class="item-actions">
-        <button class="btn mini-btn" type="button" data-approve-id="${escapeHtml(x.requestId)}">同意</button>
-        <button class="btn secondary mini-btn" type="button" data-reject-id="${escapeHtml(x.requestId)}">駁回</button>
-      </div>
-    </div>`;
-  }).join('') || '<div class="muted">目前沒有待簽核請假單</div>';
+  const q = leaveSearchText();
+  const list = approvalRows.filter(x => !q || [x.name,x.reason,x.status,x.simpleText,x.leaveDate,x.startDate,x.endDate,x.note].some(v => String(v || '').toLowerCase().indexOf(q) >= 0));
+  qs('#leavePendingTab').textContent = `未處理（${approvalRows.length}）`;
+  qs('#approvalCountText').textContent = list.length ? `${list.length} 筆未處理` : '目前沒有未處理請假單';
+  qs('#approvalList').innerHTML = list.map(x => renderLeaveApprovalCard(x, false)).join('') || '<div class="approval-empty">目前沒有資料</div>';
   qsa('[data-approve-id]').forEach(btn => btn.onclick = () => handleApproval(btn.dataset.approveId, 'approve', btn));
   qsa('[data-reject-id]').forEach(btn => btn.onclick = () => handleApproval(btn.dataset.rejectId, 'reject', btn));
 }
@@ -1460,25 +1459,16 @@ function renderApprovalRows(rows){
 function leaveRecordDateText(x){ return x.leaveDate || x.startDate || x.date || x.createdAt || ''; }
 function renderApprovalRecordRows(rows){
   approvalHistoryRows = Array.isArray(rows) ? rows : [];
-  const q = (qs('#leaveRecordSearch') ? qs('#leaveRecordSearch').value : '').trim().toLowerCase();
-  const statusFilter = qs('#leaveRecordStatusFilter') ? qs('#leaveRecordStatusFilter').value : '';
-  let list = approvalHistoryRows.slice();
-  if(statusFilter) list = list.filter(x => String(x.status || '').indexOf(statusFilter) >= 0);
+  const q = leaveSearchText();
+  let list = approvalHistoryRows.filter(x => String(x.status || '') !== '待審核');
   if(q){
     list = list.filter(x => [x.name,x.reason,x.status,x.simpleText,x.leaveDate,x.startDate,x.endDate,x.note].some(v => String(v || '').toLowerCase().indexOf(q) >= 0));
   }
   list.sort((a,b) => String(leaveRecordDateText(b) || '').localeCompare(String(leaveRecordDateText(a) || '')) || String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
-  qs('#approvalRecordCountText').textContent = list.length ? `共 ${list.length} 筆紀錄` : '目前沒有歷史紀錄';
-  qs('#approvalRecordList').innerHTML = list.map(x => {
-    const dateRange = x.endDate && x.endDate !== x.startDate ? `${escapeHtml(x.startDate || x.leaveDate || '')} ~ ${escapeHtml(x.endDate)}` : escapeHtml(x.leaveDate || x.startDate || '—');
-    return `<div class="item">
-      <div class="top"><strong>${escapeHtml(x.name || '')}｜${dateRange}｜${escapeHtml(x.simpleText || x.reason || '請假')}</strong><span class="leave-record-status">${escapeHtml(x.status || '—')}</span></div>
-      <div class="muted">申請時間：${escapeHtml(x.requestedAt || x.createdAt || '—')}　審核時間：${escapeHtml(x.reviewedAt || x.updatedAt || '—')}</div>
-      ${x.hours ? `<div class="muted">請假時數：${escapeHtml(String(x.hours))} 小時</div>` : ''}
-      ${x.note ? `<div class="muted">備註：${escapeHtml(x.note)}</div>` : ''}
-      ${x.rejectReason ? `<div class="muted">退回 / 駁回原因：${escapeHtml(x.rejectReason)}</div>` : ''}
-    </div>`;
-  }).join('') || '<div class="muted">目前沒有歷史紀錄</div>';
+  const allHistoryCount = approvalHistoryRows.filter(x => String(x.status || '') !== '待審核').length;
+  qs('#leaveHistoryTab').textContent = allHistoryCount ? `歷史紀錄（${allHistoryCount}）` : '歷史紀錄';
+  qs('#approvalRecordCountText').textContent = list.length ? `${list.length} 筆歷史紀錄` : '目前沒有歷史紀錄';
+  qs('#approvalRecordList').innerHTML = list.map(x => renderLeaveApprovalCard(x, true)).join('') || '<div class="approval-empty">目前沒有資料</div>';
 }
 
 function setLeaveAdminTab(tab){

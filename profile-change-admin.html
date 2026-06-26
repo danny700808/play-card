@@ -5,14 +5,9 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>簽核｜個資修改</title>
   <link rel="stylesheet" href="style.css?v=admin-final-20260530b">
-  <style>
-    :root{--brand:#1f7a5a;--red:#b42318;--line:#dbe5f1;--muted:#64748b;--bg:#f3f6fb;--ink:#18314a}
-    body{background:var(--bg);color:var(--ink)}
-    .container{width:min(96vw,1200px);margin:0 auto;padding:16px}
-    .card{background:#fff;border:1px solid var(--line);border-radius:22px;padding:18px;margin-bottom:16px;box-shadow:0 10px 28px rgba(15,23,42,.05)}
-    .top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}.title{margin:0;font-size:28px;font-weight:900}.muted{color:var(--muted);line-height:1.7}.btn{display:inline-flex;align-items:center;justify-content:center;border:none;border-radius:14px;background:var(--brand);color:#fff;padding:10px 14px;font-weight:900;text-decoration:none;cursor:pointer}.btn.secondary{background:#eef2f6;color:#18314a}.btn.red{background:var(--red);color:#fff}.toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:end}.toolbar label{display:grid;gap:6px;font-weight:900}.toolbar select,.toolbar input{border:1px solid #cbd5e1;border-radius:14px;padding:10px 12px;font-size:15px}.list{display:grid;gap:12px}.request-card{border:1px solid #dbe5f1;border-radius:18px;padding:14px;background:#fff}.request-head{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}.name{font-size:20px;font-weight:900}.pill{display:inline-flex;align-items:center;border-radius:999px;padding:6px 10px;font-weight:900;font-size:13px;background:#fff7ed;color:#9a3412}.pill.done{background:#ecfdf3;color:#166534}.pill.bad{background:#fff1f2;color:#991b1b}.changes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:12px}.item{border:1px solid #e2e8f0;border-radius:14px;padding:10px;background:#f8fafc}.item .label{font-size:12px;color:#64748b;font-weight:900}.item .value{margin-top:4px;font-weight:900;word-break:break-word}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.msg{margin-top:10px}.notice{padding:12px 14px;border-radius:14px;background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;font-weight:900}.success{padding:12px 14px;border-radius:14px;background:#ecfdf3;border:1px solid #bbf7d0;color:#166534;font-weight:900}.error{padding:12px 14px;border-radius:14px;background:#fff1f2;border:1px solid #fecaca;color:#991b1b;font-weight:900}@media(max-width:700px){.changes{grid-template-columns:1fr}.toolbar{display:grid}.toolbar label,.toolbar .btn{width:100%}}
-  </style>
+  <link rel="stylesheet" href="approval-common.css?v=20260626approval1">
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
+  <style>.container{width:min(96vw,1200px);margin:0 auto;padding:16px}.msg{margin-top:12px}.success{padding:12px 14px;border-radius:14px;background:#ecfdf3;border:1px solid #bbf7d0;color:#166534;font-weight:900}.error{padding:12px 14px;border-radius:14px;background:#fff1f2;border:1px solid #fecaca;color:#991b1b;font-weight:900}.notice{padding:12px 14px;border-radius:14px;background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;font-weight:900}</style>
 </head>
 <body onload="init()" class="admin-wide-page">
   <div class="yz-global-nav" data-yz-global-nav>
@@ -21,64 +16,52 @@
   </div>
 
   <div class="container">
-    <div class="card top">
-      <div>
-        <h1 class="title">簽核｜個資修改</h1>
-        <div class="muted">審核員工行動電話、聯絡地址、Email、緊急聯絡人與緊急聯絡人電話修改申請。</div>
-      </div>
-    </div>
     <div class="card">
-      <div class="toolbar">
-        <label>狀態<select id="statusFilter" onchange="render()"><option value="待審核">待審核</option><option value="已核准">已核准</option><option value="已駁回">已駁回</option><option value="">全部</option></select></label>
-        <label>搜尋<input id="keyword" placeholder="姓名 / Email / 電話" oninput="render()"></label>
-        <button class="btn" type="button" onclick="loadRequests()">重新讀取</button>
+      <h1 class="title" style="margin:0">簽核｜個資修改</h1>
+      <div class="approval-toolbar">
+        <label for="keyword">搜尋<input id="keyword" placeholder="姓名 / Email / 電話 / 地址"></label>
+        <button class="btn secondary" type="button" id="refreshBtn" style="width:auto;padding:11px 16px">重新整理</button>
+      </div>
+      <div class="approval-tabs">
+        <button class="approval-tab active" type="button" id="pendingTab">未處理（0）</button>
+        <button class="approval-tab" type="button" id="historyTab">歷史紀錄</button>
       </div>
       <div id="msg" class="msg"></div>
+      <div id="requestList" class="approval-list"></div>
     </div>
-    <div class="card"><div class="list" id="requestList"></div></div>
   </div>
+
   <script src="config.js?v=20260529notifybadge1"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="firebase-client.js?v=admin-final-20260530b"></script>
   <script src="app.js?v=admin-final-20260530b"></script>
   <script>
-    let rows=[];
+    let rows=[];let activeTab='pending';
     function $(id){return document.getElementById(id)}
     function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
     function clean(v){return String(v==null?'':v).trim()}
+    function lower(v){return clean(v).toLowerCase()}
     function setMsg(t,type){$('msg').innerHTML=t?`<div class="${type||'success'}">${esc(t)}</div>`:''}
-    function pill(status){const s=clean(status||'待審核');const cls=s==='已核准'?'done':(s==='已駁回'?'bad':'');return `<span class="pill ${cls}">${esc(s)}</span>`}
-    function item(label,value){return clean(value)?`<div class="item"><div class="label">${esc(label)}</div><div class="value">${esc(value)}</div></div>`:''}
-    async function init(){
-      fillHeader();
-      const user=requireLogin();
-      if(!user) return;
-      if(!hasSettingsZoneAccess(user)){location.href='dashboard.html';return;}
-      setPortalMode('settings');
-      await loadRequests();
-    }
-    async function loadRequests(){
-      try{setMsg('讀取中...','notice');const r=await api('getProfileChangeRequests',{});rows=(r&&r.rows)||[];render();setMsg('');}catch(e){setMsg('讀取失敗：'+(e.message||e),'error')}
-    }
+    function isPending(row){return clean(row&&row.status||'待審核')==='待審核'}
+    function pill(status){const s=clean(status||'待審核');const cls=s==='已核准'?'approved':(s==='已駁回'?'rejected':(s==='待審核'?'pending':'history'));return `<span class="approval-pill ${cls}">${esc(s)}</span>`}
+    function field(label,value){return clean(value)?`<div class="approval-field"><div class="approval-label">${esc(label)}</div><div class="approval-value">${esc(value)}</div></div>`:''}
+    function renderTabs(){const p=rows.filter(isPending).length,h=rows.filter(r=>!isPending(r)).length;$('pendingTab').textContent=`未處理（${p}）`;$('historyTab').textContent=h?`歷史紀錄（${h}）`:'歷史紀錄'}
+    function setTab(tab){activeTab=tab==='history'?'history':'pending';$('pendingTab').classList.toggle('active',activeTab==='pending');$('historyTab').classList.toggle('active',activeTab==='history');render()}
+    async function init(){fillHeader();const user=requireLogin();if(!user)return;if(!hasSettingsZoneAccess(user)){location.href='dashboard.html';return}setPortalMode('settings');$('keyword').addEventListener('input',render);$('refreshBtn').onclick=loadRequests;$('pendingTab').onclick=()=>setTab('pending');$('historyTab').onclick=()=>setTab('history');await loadRequests()}
+    async function loadRequests(){try{setMsg('讀取中...','notice');const r=await api('getProfileChangeRequests',{});rows=(r&&r.rows)||[];render();setMsg('')}catch(e){setMsg('讀取失敗：'+(e.message||e),'error')}}
     function render(){
-      const status=clean($('statusFilter').value),kw=clean($('keyword').value).toLowerCase();
-      const list=rows.filter(r=>{const ok=!status||clean(r.status)===status;const text=[r.name,r.email,r.mobilePhone,r.address,r.emergencyContact,r.emergencyPhone].join(' ').toLowerCase();return ok&&(!kw||text.includes(kw));});
+      renderTabs();
+      const kw=lower($('keyword').value);
+      const list=rows.filter(r=>activeTab==='pending'?isPending(r):!isPending(r)).filter(r=>{const text=[r.name,r.email,r.mobilePhone,r.address,r.emergencyContact,r.emergencyPhone,r.status].join(' ').toLowerCase();return !kw||text.includes(kw)});
       $('requestList').innerHTML=list.length?list.map(r=>{
-        const can=clean(r.status)==='待審核';
-        const fields=[item('行動電話',r.mobilePhone),item('Email',r.email),item('聯絡地址',r.address),item('緊急聯絡人',r.emergencyContact),item('緊急聯絡人電話',r.emergencyPhone)].filter(Boolean).join('');
-        return `<article class="request-card"><div class="request-head"><div><div class="name">${esc(r.name||'未命名員工')}</div><div class="muted">${esc(r.employeeId||'')}｜${esc(r.createdAt||'')}</div></div>${pill(r.status)}</div><div class="changes">${fields||'<div class="muted">沒有填寫異動欄位</div>'}</div>${r.rejectReason?`<div class="error" style="margin-top:10px">駁回原因：${esc(r.rejectReason)}</div>`:''}<div class="actions" style="${can?'':'display:none'}"><button class="btn" type="button" onclick="approveReq('${esc(r.requestId)}')">核准並更新員工資料</button><button class="btn red" type="button" onclick="rejectReq('${esc(r.requestId)}')">駁回</button></div></article>`;
-      }).join(''):'<div class="muted">目前沒有資料</div>';
+        const can=isPending(r);
+        const fields=[field('行動電話',r.mobilePhone),field('Email',r.email),field('聯絡地址',r.address),field('緊急聯絡人',r.emergencyContact),field('緊急聯絡人電話',r.emergencyPhone)].filter(Boolean).join('');
+        return `<article class="approval-card"><div class="approval-head"><div><div class="approval-name">${esc(r.name||'未命名員工')}</div><div class="approval-meta">${esc(r.employeeId||'')}｜${esc(r.createdAt||'')}</div></div>${pill(r.status)}</div><div class="approval-grid">${fields||'<div class="approval-empty">沒有異動欄位</div>'}</div>${r.rejectReason?`<div class="approval-note">駁回原因：${esc(r.rejectReason)}</div>`:''}${can?`<div class="approval-actions"><button class="btn" type="button" onclick="approveReq('${esc(r.requestId)}')">核准</button><button class="btn secondary" type="button" onclick="rejectReq('${esc(r.requestId)}')">駁回</button></div>`:''}</article>`;
+      }).join(''):'<div class="approval-empty">目前沒有資料</div>';
     }
-    async function approveReq(id){
-      if(!confirm('確定核准這筆個資修改，並更新員工正式資料嗎？')) return;
-      try{const r=await api('approveProfileChangeRequest',{requestId:id});setMsg(r.message||'已核准。');await loadRequests();}catch(e){setMsg(e.message||String(e),'error')}
-    }
-    async function rejectReq(id){
-      const reason=prompt('請輸入駁回原因：','資料需重新確認');
-      if(reason===null) return;
-      try{const r=await api('rejectProfileChangeRequest',{requestId:id,rejectReason:reason});setMsg(r.message||'已駁回。');await loadRequests();}catch(e){setMsg(e.message||String(e),'error')}
-    }
+    async function approveReq(id){if(!confirm('確定核准這筆個資修改，並更新員工正式資料嗎？'))return;try{const r=await api('approveProfileChangeRequest',{requestId:id});setMsg(r.message||'已核准。');await loadRequests()}catch(e){setMsg(e.message||String(e),'error')}}
+    async function rejectReq(id){const reason=prompt('請輸入駁回原因：','資料需重新確認');if(reason===null)return;try{const r=await api('rejectProfileChangeRequest',{requestId:id,rejectReason:reason});setMsg(r.message||'已駁回。');await loadRequests()}catch(e){setMsg(e.message||String(e),'error')}}
   </script>
   <script src="global-nav.js?v=20260603unified1"></script>
 </body>

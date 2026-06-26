@@ -3,25 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>打卡修正／補打卡／特殊打卡審核</title>
+  <title>簽核｜打卡</title>
   <link rel="stylesheet" href="style.css?v=admin-final-20260530b">
-  <style>
-    .page-return-wrap{margin-bottom:16px}
-    .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
-    .correction-card{margin:0;padding:18px;border:1px solid #e5e7eb}
-    .correction-title{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}
-    .person-name{font-weight:900;font-size:20px;color:#111827}
-    .clean-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-top:14px}
-    .clean-field{padding:12px;border:1px solid #e5e7eb;border-radius:14px;background:#f9fafb}
-    .clean-label{font-size:13px;color:#6b7280;margin-bottom:4px}
-    .clean-value{font-weight:800;font-size:18px;color:#111827;word-break:break-word}
-    .change-box{margin-top:14px;padding:14px;border-radius:16px;background:#ecfdf5;border:1px solid #bbf7d0}
-    .change-line{font-weight:900;font-size:20px;color:#065f46}
-    .reason-box{margin-top:12px;padding:12px;border-radius:14px;background:#fff7ed;border:1px solid #fed7aa;line-height:1.7}
-    .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
-    .status-pill{display:inline-flex;align-items:center;border-radius:999px;padding:7px 12px;font-weight:800;background:#fef3c7;color:#92400e}
-  </style>
+  <link rel="stylesheet" href="approval-common.css?v=20260626approval1">
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
+  <style>
+    .container{width:min(96vw,1300px);max-width:1300px;margin:0 auto;padding:16px}
+    .clock-export-card{margin-top:16px}
+  </style>
 </head>
 <body onload="init()" class="admin-wide-page">
   <div class="yz-global-nav" data-yz-global-nav>
@@ -30,32 +19,27 @@
   </div>
 
   <div class="container">
-
     <div class="card">
       <div class="topbar">
         <div class="header" style="margin:0">
-          <h1 class="title" style="margin:0">打卡修正／補打卡／特殊打卡審核</h1>
-          <div class="welcome">歡迎 <span data-user-name></span></div>
-        </div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap">
-          <button class="btn secondary" style="width:auto;padding:10px 14px" onclick="loadRows()">重新整理</button>
+          <h1 class="title" style="margin:0">簽核｜打卡</h1>
         </div>
       </div>
-      <div id="msg" class="hint" style="margin-top:12px"></div>
-      <div id="list" style="display:grid;gap:14px;margin-top:18px"></div>
+      <div class="approval-toolbar">
+        <label for="keyword">搜尋<input id="keyword" placeholder="姓名 / 日期 / 類型 / 原因"></label>
+        <button class="btn secondary" type="button" id="refreshBtn" style="width:auto;padding:11px 16px">重新整理</button>
+      </div>
+      <div class="approval-tabs">
+        <button class="approval-tab active" type="button" id="pendingTab">未處理（0）</button>
+        <button class="approval-tab" type="button" id="historyTab">歷史紀錄</button>
+      </div>
+      <div id="msg" class="message" style="margin-top:12px"></div>
+      <div id="list" class="approval-list"></div>
     </div>
 
-    <div class="card" style="margin-top:16px">
-      <div class="topbar">
-        <div class="header" style="margin:0">
-          <h2 class="title" style="margin:0;font-size:24px">打卡紀錄查詢匯出</h2>
-          <div class="welcome">此區整合在打卡簽核底下</div>
-        </div>
-      </div>
-      <div class="hint" style="margin-top:12px">可依員工與日期區間查詢打卡紀錄，並匯出 A4 可列印 Excel。</div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px">
-        <a class="btn" style="width:auto;padding:12px 18px" href="clock-records-admin.html">前往打卡紀錄查詢匯出</a>
-      </div>
+    <div class="card clock-export-card">
+      <h2 class="title" style="margin:0 0 12px;font-size:22px">打卡紀錄查詢匯出</h2>
+      <a class="btn" style="width:auto;padding:12px 18px" href="clock-records-admin.html">前往查詢匯出</a>
     </div>
   </div>
 
@@ -63,151 +47,99 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="firebase-client.js?v=attendance-flow-20260618"></script>
-
   <script src="app.js?v=admin-final-20260530b"></script>
   <script>
     let currentUser=null;
+    let rows=[];
+    let activeTab='pending';
 
-    function escapeHtml(v){
-      return String(v??'')
-        .replace(/&/g,'&amp;')
-        .replace(/</g,'&lt;')
-        .replace(/>/g,'&gt;')
-        .replace(/"/g,'&quot;')
-        .replace(/'/g,'&#39;');
+    function qs(s){return document.querySelector(s)}
+    function escapeHtml(v){return String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
+    function clean(v){return String(v==null?'':v).trim()}
+    function lower(v){return clean(v).toLowerCase()}
+    function cleanDate(v){const s=clean(v);if(!s)return '—';if(/^\d{4}-\d{2}-\d{2}/.test(s))return s.slice(0,10);const d=new Date(s);if(!isNaN(d.getTime()))return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;return s}
+    function cleanTime(v){const s=clean(v);if(!s)return '—';const m=s.match(/(\d{1,2}):(\d{2})/);if(m)return `${String(m[1]).padStart(2,'0')}:${m[2]}`;const d=new Date(s);if(!isNaN(d.getTime()))return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;return s}
+    function msg(t,type='notice'){qs('#msg').innerHTML=t?`<div class="${type}">${escapeHtml(t)}</div>`:''}
+    function db(){
+      if(window.YZFirebase&&typeof window.YZFirebase.init==='function')return window.YZFirebase.init();
+      if(window.APP_CONFIG&&window.APP_CONFIG.FIREBASE_CONFIG&&window.firebase&&firebase.firestore){if(!firebase.apps.length)firebase.initializeApp(window.APP_CONFIG.FIREBASE_CONFIG);return firebase.firestore();}
+      throw new Error('Firebase 尚未啟用。');
     }
-
-    function cleanDate(v){
-      const s=String(v||'').trim();
-      if(!s) return '-';
-      if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
-      const d=new Date(s);
-      if(!isNaN(d.getTime())){
-        const y=d.getFullYear();
-        const m=String(d.getMonth()+1).padStart(2,'0');
-        const day=String(d.getDate()).padStart(2,'0');
-        return `${y}-${m}-${day}`;
-      }
-      return s;
+    function statusText(v){const s=clean(v);if(!s||lower(s)==='pending')return '待審核';if(lower(s)==='approved')return '已核准';if(lower(s)==='rejected')return '已駁回';return s}
+    function isPendingStatus(v){const s=statusText(v);return s==='待審核'||s==='待主管審核'}
+    function pill(status){const s=statusText(status);const cls=isPendingStatus(s)?'pending':(s==='已核准'?'approved':(s==='已駁回'?'rejected':'history'));return `<span class="approval-pill ${cls}">${escapeHtml(s)}</span>`}
+    function normalize(row){
+      row=row||{};
+      const r=Object.assign({},row);
+      r.requestId=clean(r.requestId||r['申請ID']||r.__id);
+      r.status=statusText(r.status||r['狀態']);
+      r.requestKind=clean(r.requestKind||r['申請種類']||(r.originalRecordId||r['原始紀錄ID']?'recordCorrection':'missingClock'));
+      r.name=clean(r.name||r['姓名']);
+      r.email=clean(r.email||r.Email||r['Email']);
+      r.employeeId=clean(r.employeeId||r['員工ID']);
+      r.originalRecordId=clean(r.originalRecordId||r['原始紀錄ID']);
+      r.originalTime=cleanTime(r.originalTime||r['原時間']);
+      r.correctDate=cleanDate(r.correctDate||r.correctionDate||r['修正日期']);
+      r.correctTime=cleanTime(r.correctTime||r.correctionTime||r['修正時間']);
+      r.correctAction=clean(r.correctAction||r.actionName||r['修正動作']);
+      r.correctionType=clean(r.correctionType||r.clockType||r['修正打卡方式']);
+      r.reason=clean(r.reason||r['修正原因']);
+      r.createdAt=clean(r.createdAtText||r.createdAt||r['建立時間']);
+      r.reviewedAt=clean(r.reviewedAtText||r.reviewedAt||r.updatedAtText||r.updatedAt||'');
+      return r;
     }
-
-    function cleanTime(v){
-      const s=String(v||'').trim();
-      if(!s) return '-';
-      const m=s.match(/(\d{1,2}):(\d{2})/);
-      if(m) return `${String(m[1]).padStart(2,'0')}:${m[2]}`;
-      const d=new Date(s);
-      if(!isNaN(d.getTime())){
-        return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
-      }
-      return s;
+    function mergeRows(list){const map=new Map();(list||[]).forEach(row=>{const r=normalize(row);if(!r.requestId)return;map.set(r.requestId,Object.assign({},map.get(r.requestId)||{},r));});return Array.from(map.values()).sort((a,b)=>String(b.createdAt||b.correctDate||'').localeCompare(String(a.createdAt||a.correctDate||'')));}
+    async function readAllCorrections(){
+      const snap=await db().collection('clockCorrections').get();
+      const out=[];snap.forEach(doc=>out.push(Object.assign({__id:doc.id},doc.data()||{})));return out;
     }
-
-    function rowCard(r){
-      const kind = String(r.requestKind || '');
-      const isMissing = kind === 'missingClock';
-      const isSpecial = kind === 'specialClock';
-      const date=cleanDate(r.correctDate);
-      const oldTime=cleanTime(r.originalTime);
-      const newTime=cleanTime(r.correctTime);
-      const oldText=isSpecial ? '特殊打卡申請' : (isMissing ? '缺少打卡' : ((r.originalRecordId && oldTime!=='-') ? oldTime : '無原始紀錄'));
-      const actionText = isMissing ? ('補' + String(r.correctAction || '打卡').replace('打卡','卡')) : (r.correctAction || '');
-      const typeText = isSpecial ? '特殊打卡' : (isMissing ? '補打卡' : (r.correctionType || ''));
-      const kindText = isSpecial ? '特殊打卡待審核' : (isMissing ? '有班但未打卡' : '已打卡時間修正');
-      const scheduleText = [r.scheduleSourceLabel || '', r.scheduleStartTime && r.scheduleEndTime ? (r.scheduleStartTime + ' - ' + r.scheduleEndTime) : '', r.scheduleTemplateName || ''].filter(Boolean).join('｜');
-      return `
-        <div class="card correction-card">
-          <div class="correction-title">
-            <div>
-              <div class="person-name">${escapeHtml(r.name||'')}</div>
-              <div class="hint">${escapeHtml(r.email||'')}</div>
-            </div>
-            <div class="status-pill">${escapeHtml(kindText)}</div>
-          </div>
-
-          <div class="clean-grid">
-            <div class="clean-field">
-              <div class="clean-label">日期</div>
-              <div class="clean-value">${escapeHtml(date)}</div>
-            </div>
-            <div class="clean-field">
-              <div class="clean-label">動作</div>
-              <div class="clean-value">${escapeHtml(actionText)}</div>
-            </div>
-            <div class="clean-field">
-              <div class="clean-label">申請類型</div>
-              <div class="clean-value">${escapeHtml(typeText)}</div>
-            </div>
-          </div>
-
-          <div class="change-box">
-            <div class="clean-label">申請修改</div>
-            <div class="change-line">${escapeHtml(oldText)} → ${escapeHtml(newTime)}</div>
-            ${scheduleText?`<div class="hint" style="margin-top:6px">班表：${escapeHtml(scheduleText)}</div>`:''}
-            ${r.originalRecordId?`<div class="hint" style="margin-top:6px">原始紀錄ID：${escapeHtml(r.originalRecordId)}</div>`:''}
-          </div>
-
-          <div class="reason-box">
-            <strong>原因：</strong>${escapeHtml(r.reason||'')}
-            ${r.caseId ? `<div class="hint" style="margin-top:6px">同案編號：${escapeHtml(r.caseId)}</div>` : ''}
-          </div>
-
-          ${r.managedByLeaveApproval ? `
-            <div class="reason-box"><strong>此筆已與事後補假綁定。</strong><div class="hint">請到「請假簽核」一次核准或駁回，系統會同步處理下班卡。</div></div>
-          ` : `
-          <div class="actions">
-            <button class="btn" onclick="approve('${escapeHtml(r.requestId)}')">同意</button>
-            <button class="btn secondary" onclick="rejectOne('${escapeHtml(r.requestId)}')">駁回</button>
-          </div>`}
-        </div>`;
+    function setTab(tab){activeTab=tab==='history'?'history':'pending';qs('#pendingTab').classList.toggle('active',activeTab==='pending');qs('#historyTab').classList.toggle('active',activeTab==='history');render();}
+    function renderTabs(){const pending=rows.filter(r=>isPendingStatus(r.status)).length;const history=rows.filter(r=>!isPendingStatus(r.status)).length;qs('#pendingTab').textContent=`未處理（${pending}）`;qs('#historyTab').textContent=history?`歷史紀錄（${history}）`:'歷史紀錄';}
+    function typeLabel(r){if(r.requestKind==='specialClock')return '特殊打卡';if(r.requestKind==='missingClock')return '補打卡';return r.correctionType||'打卡修正'}
+    function changeLine(r){const oldText=r.requestKind==='specialClock'?'特殊打卡申請':(r.requestKind==='missingClock'?'缺少打卡':(r.originalRecordId&&r.originalTime!=='—'?r.originalTime:'無原始紀錄'));return `${oldText} → ${r.correctTime||'—'}`}
+    function card(row){
+      const pending=isPendingStatus(row.status);
+      return `<article class="approval-card">
+        <div class="approval-head"><div><div class="approval-name">${escapeHtml(row.name||'未命名')}</div><div class="approval-meta">${escapeHtml(row.email||row.employeeId||'')}｜${escapeHtml(row.createdAt||'')}</div></div>${pill(row.status)}</div>
+        <div class="approval-grid">
+          <div class="approval-field"><div class="approval-label">日期</div><div class="approval-value">${escapeHtml(row.correctDate||'—')}</div></div>
+          <div class="approval-field"><div class="approval-label">類型</div><div class="approval-value">${escapeHtml(typeLabel(row))}</div></div>
+          <div class="approval-field"><div class="approval-label">動作</div><div class="approval-value">${escapeHtml(row.correctAction||'—')}</div></div>
+          <div class="approval-field"><div class="approval-label">申請修改</div><div class="approval-value">${escapeHtml(changeLine(row))}</div></div>
+        </div>
+        ${row.reason?`<div class="approval-note">原因：${escapeHtml(row.reason)}</div>`:''}
+        ${row.rejectReason?`<div class="approval-note">駁回原因：${escapeHtml(row.rejectReason)}</div>`:''}
+        ${pending&&row.managedByLeaveApproval?`<div class="approval-note">此筆已綁定請假簽核，請至請假簽核處理。</div>`:''}
+        ${pending&&!row.managedByLeaveApproval?`<div class="approval-actions"><button class="btn" type="button" onclick="approve('${escapeHtml(row.requestId)}')">同意</button><button class="btn secondary" type="button" onclick="rejectOne('${escapeHtml(row.requestId)}')">駁回</button></div>`:''}
+      </article>`;
     }
-function scheduleIdle_(fn){if(window.requestIdleCallback)requestIdleCallback(fn,{timeout:1200});else setTimeout(fn,160);}
-
-
+    function render(){
+      renderTabs();
+      const kw=lower(qs('#keyword').value);
+      const list=rows.filter(r=>(activeTab==='pending'?isPendingStatus(r.status):!isPendingStatus(r.status))).filter(r=>!kw||[r.name,r.email,r.employeeId,r.correctDate,r.correctTime,r.correctAction,r.correctionType,r.reason,r.status].join(' ').toLowerCase().includes(kw));
+      qs('#list').innerHTML=list.map(card).join('')||'<div class="approval-empty">目前沒有資料</div>';
+    }
     async function init(){
-      fillHeader();
-      currentUser=requireLogin();
-      if(!currentUser) return;
-      if(!hasSettingsZoneAccess(currentUser)){ location.href='dashboard.html'; return; }
-      const msg=qs('#msg'); if(msg) msg.textContent='打卡修正與補打卡資料稍後載入。';
-      scheduleIdle_(loadRows);
+      fillHeader();currentUser=requireLogin();if(!currentUser)return;if(!hasSettingsZoneAccess(currentUser)){location.href='dashboard.html';return;}
+      qs('#keyword').addEventListener('input',render);qs('#refreshBtn').onclick=loadRows;qs('#pendingTab').onclick=()=>setTab('pending');qs('#historyTab').onclick=()=>setTab('history');
+      await loadRows();
     }
-
     async function loadRows(){
-      const msg=qs('#msg');
-      const list=qs('#list');
-      msg.textContent='讀取中...';
-      list.innerHTML='';
+      msg('讀取中…','notice');
       try{
-        const r=await api('getPendingClockCorrections',{userId:currentUser.id});
-        const rows=Array.isArray(r.rows)?r.rows:[];
-        if(!rows.length){ msg.textContent='目前沒有待審核打卡修正、補打卡或特殊打卡。'; return; }
-        msg.textContent=`目前共有 ${rows.length} 筆待審核打卡申請。`;
-        list.innerHTML=rows.map(rowCard).join('');
-      }catch(err){
-        msg.textContent=err.message||'讀取失敗';
-      }
+        const pendingRes=await api('getPendingClockCorrections',{userId:currentUser.id}).catch(()=>({rows:[]}));
+        const all=await readAllCorrections().catch(()=>[]);
+        rows=mergeRows([].concat(all,pendingRes&&pendingRes.rows||[]));
+        msg('');render();
+      }catch(err){msg(err.message||'讀取失敗','error');rows=[];render();}
     }
-
     async function approve(requestId){
-      if(!confirm('確定同意這筆申請？核准後，修正會更新原始打卡紀錄；補打卡與特殊打卡會新增正式打卡紀錄。')) return;
-      try{
-        const r=await api('approveClockCorrectionApi',{userId:currentUser.id,requestId});
-        if(!r || !r.ok){ alert((r && r.message) || '同意失敗'); return; }
-        alert(r.message || '已同意，打卡紀錄已更新');
-        loadRows();
-      }catch(err){ alert(err.message||'同意失敗'); }
+      if(!confirm('確定同意這筆申請？'))return;
+      try{const r=await api('approveClockCorrectionApi',{userId:currentUser.id,requestId});if(!r||!r.ok){alert((r&&r.message)||'同意失敗');return;}await loadRows();}catch(err){alert(err.message||'同意失敗');}
     }
-
     async function rejectOne(requestId){
-      const rejectReason=prompt('請輸入駁回理由');
-      if(rejectReason===null) return;
-      try{
-        const r=await api('rejectClockCorrectionApi',{userId:currentUser.id,requestId,rejectReason});
-        if(!r || !r.ok){ alert((r && r.message) || '駁回失敗'); return; }
-        alert(r.message || '已駁回');
-        loadRows();
-      }catch(err){ alert(err.message||'駁回失敗'); }
+      const rejectReason=prompt('請輸入駁回理由');if(rejectReason===null)return;
+      try{const r=await api('rejectClockCorrectionApi',{userId:currentUser.id,requestId,rejectReason});if(!r||!r.ok){alert((r&&r.message)||'駁回失敗');return;}await loadRows();}catch(err){alert(err.message||'駁回失敗');}
     }
   </script>
   <script src="global-nav.js?v=20260603unified1"></script>
