@@ -443,7 +443,7 @@
           ${field('勞保狀態', laborStatus, false, '尚未設定')}
           ${field('勞保級距', firstValue(e, ['laborPlanText','laborLevelText','laborPlan','laborPlanCode','laborInsuranceLevel','laborLevel','勞保級距']), false, laborStatus ? '無級距' : '尚未設定')}
           ${field('勞保投保薪資', firstValue(e, ['laborSalaryText','laborInsuranceSalary','laborSalary','勞保投保薪資']), false, laborStatus ? '尚未設定' : '未加保')}
-          ${field('勞保自付額', firstValue(e, ['laborSelfPayText','laborInsuranceSelfPay','laborSelfPay','laborInsuranceSelfAmount','laborInsuranceEmployeeAmount','勞保自付額']), false, laborStatus ? '尚未設定' : '未加保')}
+          ${field('勞保自付額', firstValue(e, ['laborSelfPayText','laborInsuranceSelfPay','laborEmployeeSelfPay','laborSelfPay','laborInsuranceSelfAmount','laborInsuranceEmployeeAmount','laborSelfPayAmount','勞保自付額','勞保員工自付額','勞保員工負擔','員工負擔']), false, laborStatus ? '尚未設定' : '未加保')}
           ${field('雇主提撥勞退', firstValue(e, ['retirementEmployerText','laborRetirementEmployer','雇主提撥勞退']), false, laborStatus ? '尚未設定' : '未加保')}
           ${field('勞退自提', firstValue(e, ['selfRetirementText','selfRetirementRate','laborRetirementSelfRate','勞退自提']), false, '未設定')}
           ${field('健保狀態', healthStatus, false, '尚未設定')}
