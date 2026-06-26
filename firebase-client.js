@@ -3583,26 +3583,64 @@
     payload = payload || {};
     const type = identityTypeOf(Object.assign({}, employee || {}, payload));
     const isParttime = type === 'parttime';
+    const laborStatus = clean(payload.laborStatus);
+    const healthStatus = clean(payload.healthStatus);
+    const laborActive = insuranceActive(laborStatus);
+    const healthActive = insuranceActive(healthStatus);
+    const laborSelf = laborActive ? num(payload.laborSelfPay || payload.laborEmployeeSelfPay || payload.laborInsuranceSelfPay) : 0;
+    const healthSelf = healthActive ? num(payload.healthSelfPay || payload.healthEmployeeSelfPay || payload.healthInsuranceSelfPay) : 0;
+    const laborInsuredSalary = laborActive ? num(payload.laborInsuredSalary || payload.laborSalary || payload.laborInsuranceSalary) : 0;
+    const healthInsuredSalary = healthActive ? num(payload.healthInsuredSalary || payload.healthSalary || payload.healthInsuranceSalary) : 0;
     return {
       salaryDisplayType: isParttime ? 'PARTTIME_DIRECT' : 'STAFF_DIRECT',
       employeeId: clean(payload.employeeId || payload.id || payload.userId || employee && (employee.employeeId || employee.id || employee.__id)),
-      name: clean(employee && employee.name),
+      name: clean(employee && (employee.name || employee.displayName || employee['姓名'])),
       email: lower(payload.email || employee && (employee.email || employee.Email)),
       identityType:type,
       baseSalary: isParttime ? 0 : num(payload.baseSalary),
       hourlyRate: isParttime ? num(payload.hourlyRate) : 0,
       isPartialHours: isParttime ? (clean(payload.isPartialHours) || '否') : '否',
       averageSalary: isParttime ? num(payload.averageSalary) : 0,
-      laborPlan: clean(payload.laborPlan),
-      healthPlan: clean(payload.healthPlan),
-      laborStatus: clean(payload.laborStatus),
-      healthStatus: clean(payload.healthStatus),
+      laborPlan: laborActive ? clean(payload.laborPlan) : '',
+      healthPlan: healthActive ? clean(payload.healthPlan) : '',
+      laborStatus: laborStatus,
+      healthStatus: healthStatus,
+      laborInsuredSalary: laborInsuredSalary,
+      laborSalary: laborInsuredSalary,
+      laborInsuranceSalary: laborInsuredSalary,
+      laborSelfPay: laborSelf,
+      laborEmployeeSelfPay: laborSelf,
+      laborInsuranceSelfPay: laborSelf,
+      laborSelfPayText: laborActive ? money(laborSelf) : '',
+      laborTotalPremium: laborActive ? num(payload.laborTotalPremium) : 0,
+      laborEmployerPay: laborActive ? num(payload.laborEmployerPay) : 0,
+      laborGovernmentPay: laborActive ? num(payload.laborGovernmentPay) : 0,
+      healthInsuredSalary: healthInsuredSalary,
+      healthSalary: healthInsuredSalary,
+      healthInsuranceSalary: healthInsuredSalary,
+      healthDependents: healthActive ? num(payload.healthDependents) : 0,
+      healthSelfPay: healthSelf,
+      healthEmployeeSelfPay: healthSelf,
+      healthInsuranceSelfPay: healthSelf,
+      healthSelfPayText: healthActive ? money(healthSelf) : '',
+      healthTotalPremium: healthActive ? num(payload.healthTotalPremium) : 0,
+      healthEmployerPay: healthActive ? num(payload.healthEmployerPay) : 0,
+      healthGovernmentPay: healthActive ? num(payload.healthGovernmentPay) : 0,
+      retirementEmployerRate:6,
+      laborRetirementEmployerRate:6,
+      retirementEmployerAmount:num(payload.retirementEmployerAmount),
+      laborRetirementEmployerAmount:num(payload.laborRetirementEmployerAmount || payload.retirementEmployerAmount),
+      retirementEmployerText:clean(payload.retirementEmployerText),
+      laborRetirementEmployerText:clean(payload.laborRetirementEmployerText || payload.retirementEmployerText),
+      laborRetirementSalary:num(payload.laborRetirementSalary),
       selfRetirementEnabled: clean(payload.selfRetirementEnabled || '否') || '否',
       selfRetirementRate: num(payload.selfRetirementRate),
+      selfRetirementAmount:num(payload.selfRetirementAmount),
       effectiveDate: fmtDate(payload.effectiveDate) || clean(payload.effectiveDate),
       note: clean(payload.note),
       jobAllowances: Array.isArray(payload.jobAllowances) ? payload.jobAllowances : [],
       allowances: Array.isArray(payload.allowances) ? payload.allowances : [],
+      salaryConfigured:true,
       salaryUpdatedAt: serverTs(),
       updatedAt: serverTs(),
       source:'firebase-mydata-map2'

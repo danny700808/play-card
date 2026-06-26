@@ -118,7 +118,7 @@
   </div>
 
   <script src="app.js"></script>
-  <script src="firebase-client.js?v=onboarding-20260624"></script>
+  <script src="firebase-client.js?v=salary-labor-selfpay-20260626v2"></script>
   <script src="onboarding-workflow.js?v=20260624v2"></script>
   <script>
     let currentUser = null;
@@ -152,6 +152,23 @@
         }
       }
       return '';
+    }
+    function mergeSalaryIntoEmployee(row, salaryMap){
+      salaryMap = salaryMap || {};
+      const keys = [
+        empId(row), clean(row && row.id), clean(row && row.employeeId), clean(row && row.userId), clean(row && row.__id), emailOf(row)
+      ].map(function(x){ return clean(x); }).filter(Boolean);
+      let cfg = {};
+      keys.forEach(function(k){
+        const direct = salaryMap[k] || salaryMap[lower(k)];
+        if(direct && typeof direct === 'object') cfg = Object.assign(cfg, direct);
+      });
+      if(!Object.keys(cfg).length) return row;
+      return Object.assign({}, row, {
+        salary:Object.assign({}, salaryOf(row), cfg),
+        info:Object.assign({}, salaryOf(row), cfg),
+        raw:Object.assign({}, rawOf(row), cfg)
+      }, cfg);
     }
     function displayValue(v, placeholder){
       const out = fmt(v);
@@ -240,7 +257,15 @@
 
     async function loadEmployees(){
       const res = await api('getEmployeeManagementData', { userId: currentUser.id, statusMode:'all' });
-      const cleaned=dedupeEmployees((res.rows || []).filter(e => empId(e) || emailOf(e)));
+      let salaryMap = {};
+      try{
+        const salaryRes = await api('getSalarySetupOptions', { userId: currentUser.id });
+        salaryMap = (salaryRes && salaryRes.employeeConfigMap) || {};
+      }catch(err){
+        console.warn('薪資投保資料讀取失敗，員工管理仍會先顯示基本資料', err);
+      }
+      const mergedRows = (res.rows || []).map(function(row){ return mergeSalaryIntoEmployee(row, salaryMap); });
+      const cleaned=dedupeEmployees(mergedRows.filter(e => empId(e) || emailOf(e)));
       allEmployees = cleaned.rows;
       const duplicateCount=Math.max(cleaned.duplicateCount,Array.isArray(res.duplicateGroups)?res.duplicateGroups.length:0);
       const notice=$('#dataNotice');

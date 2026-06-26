@@ -329,7 +329,9 @@
     function indexSalaryConfig(map, key, cfg){
       key = clean(key);
       if(!key || !cfg) return;
+      const lowerKey = lower(key);
       map[key] = Object.assign({}, map[key] || {}, cfg);
+      map[lowerKey] = Object.assign({}, map[lowerKey] || {}, cfg);
     }
     function buildSalaryConfigMap(configRows, setupRows){
       const map = {};
@@ -360,6 +362,34 @@
       }
       return 0;
     }
+    function insuranceActive(status){
+      const s = clean(status);
+      return ['在保','已投保','投保','加保','有效','是','active','yes','true','1'].includes(s) || ['active','yes','true','1'].includes(lower(s));
+    }
+    function parseLaborPlanSalary(value){
+      const s = clean(value).replace(/,/g,'');
+      const m = s.match(/(\d{4,6})/);
+      return m ? safeNum(m[1]) : 0;
+    }
+    function feeRound(value){ return Math.round(safeNum(value)); }
+    function laborFeeBreakdown(salary){
+      const s = safeNum(salary);
+      if(!(s > 0)) return { total:0, employee:0, employer:0, government:0 };
+      const ordinaryRate = 0.115;
+      const employmentRate = 0.01;
+      const employee = feeRound(s * ordinaryRate * 0.20) + feeRound(s * employmentRate * 0.20);
+      const employer = feeRound(s * ordinaryRate * 0.70) + feeRound(s * employmentRate * 0.70);
+      const government = feeRound(s * ordinaryRate * 0.10) + feeRound(s * employmentRate * 0.10);
+      return { total:employee + employer + government, employee, employer, government };
+    }
+    function laborSelfPayFallback(o){
+      const status = raw(o,['laborStatus','laborInsuranceStatus','laborInsurance','勞保狀態']);
+      const plan = raw(o,['laborPlan','laborPlanCode','laborInsuranceLevel','laborLevel','勞保級距']);
+      const salary = safeNum(raw(o,['laborInsuredSalary','laborSalary','laborInsuranceSalary','勞保投保薪資'])) || parseLaborPlanSalary(plan);
+      if(!(salary > 0)) return 0;
+      if(clean(status) && !insuranceActive(status)) return 0;
+      return laborFeeBreakdown(salary).employee || 0;
+    }
     function employee(o){
       const id=clean(raw(o,['employeeId','員工ID'])||o.__id);
       const part = isTrue(raw(o,['isPartTime','是否工讀生'])) || lower(raw(o,['identityType','身分類型'])).includes('part');
@@ -370,8 +400,8 @@
       const laborSelfPay=firstPositiveNumber(o,[
         'laborSelfPay','laborEmployeeSelfPay','laborInsuranceSelfPay','laborSelfPayAmount','laborInsuranceEmployeeAmount',
         'laborSelfPayText','勞保自付額','勞保員工自付額','勞保員工負擔','員工負擔','勞保自付額快照'
-      ]);
-      const laborInsuredSalary=safeNum(raw(o,['laborInsuredSalary','laborSalary','laborInsuranceSalary','勞保投保薪資','目前申報月平均薪資總額']));
+      ]) || laborSelfPayFallback(o);
+      const laborInsuredSalary=safeNum(raw(o,['laborInsuredSalary','laborSalary','laborInsuranceSalary','勞保投保薪資','目前申報月平均薪資總額'])) || parseLaborPlanSalary(raw(o,['laborPlan','laborPlanCode','laborInsuranceLevel','laborLevel','勞保級距']));
       return {id,name:clean(raw(o,['name','姓名']))||id,email:lower(raw(o,['email','Email'])),hourlyRate:safeNum(raw(o,['hourlyRate','時薪','時薪金額']))||196,laborSelfPay,laborInsuredSalary,accountStatus,employmentStatus,hiddenFromActiveLists:hidden,active,part,raw:o}
     }
     function pt(o){
@@ -736,7 +766,10 @@
       try{
         msg('讀取資料中...','notice');
         const employeeRows = await all('employees');
-        const salaryConfigRows = await all('employeeSalaryConfigs').catch(()=>[]);
+        const salaryConfigRows = (await all('employeeSalaryConfigs').catch(()=>[]))
+          .concat(await all('salaryConfigs').catch(()=>[]))
+          .concat(await all('employeeSalarySettings').catch(()=>[]))
+          .concat(await all('salaryProfiles').catch(()=>[]));
         const salarySetupRows = (await all('salarySetup').catch(()=>[])).concat(await all('salarySettings').catch(()=>[]));
         state.salaryConfigs = buildSalaryConfigMap(salaryConfigRows, salarySetupRows);
         state.allEmployees=employeeRows.map(function(row){ return employee(mergeEmployeeSalaryConfig(row)); });
