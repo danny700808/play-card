@@ -49,7 +49,7 @@
     .success{padding:12px 14px;border-radius:14px;background:#ecfdf3;border:1px solid #bbf7d0;color:#166534}
     .error{padding:12px 14px;border-radius:14px;background:#fff1f2;border:1px solid #fecdd3;color:#9f1239}
     .notice{padding:12px 14px;border-radius:14px;background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af}
-    .add-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;align-items:end}
+    .add-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;align-items:end}
     .empty{padding:18px;border:1px dashed var(--line);border-radius:16px;background:#fff;color:var(--muted)}
     .subtle{font-size:12px;color:var(--muted)}
     .time-cell{line-height:1.45}.time-fix{display:block;color:#b42318;font-weight:900;font-size:12px;margin-top:3px}.reason-small{font-size:12px;color:#6b7280;line-height:1.5}
@@ -169,6 +169,13 @@
         </div>
 
         <div class="card" id="dailyPanel">
+          <div class="section-head">
+            <div>
+              <div class="section-title">每日明細與補時數</div>
+              <div class="muted">主管新增補時數會直接列入工讀薪資，不會產生打卡紀錄。</div>
+            </div>
+            <button class="btn" type="button" onclick="openAddParttime('', '補時數')">主管新增補時數</button>
+          </div>
           <div class="daily-filters" aria-label="每日明細篩選">
             <button type="button" class="daily-filter active" data-daily-filter="all" data-label="全部" onclick="setDailyFilter('all')">全部</button>
             <button type="button" class="daily-filter" data-daily-filter="late" data-label="有遲到" onclick="setDailyFilter('late')">有遲到</button>
@@ -182,8 +189,9 @@
               <div class="field"><label>日期</label><input id="addDate" type="date"></div>
               <div class="field"><label>時數</label><input id="addHours" type="number" step="0.5" min="0"></div>
               <div class="field"><label>工時來源</label><select id="addSource"><option value="管理者新增">主管新增工時</option><option value="補時數">補登工時</option></select></div>
-              <div class="field"><label>新增原因</label><input id="addNote" placeholder="必填，例如：臨時支援漏登"></div>
+              <div class="field"><label>新增原因</label><input id="addNote" placeholder="必填，例如：補班時數由主管確認"></div>
               <button class="btn" onclick="addParttimeRecord()">儲存新增</button>
+              <button class="btn gray" type="button" onclick="closeAddParttime()">取消</button>
             </div>
           </div>
 
@@ -1165,12 +1173,23 @@
         ? dataIssues.map(x=>`<div class="pill ${x.cls}" style="margin:4px">${esc(x.text)}</div>`).join('')
         : '目前沒有明顯的資料連結異常。';
     }
-    function openAddParttime(date){
+    function defaultParttimeAddDate(){
+      const m=clean(qs('#monthText')&&qs('#monthText').value);
+      if(/^\d{4}-\d{2}$/.test(m))return m+'-01';
+      return new Date().toISOString().slice(0,10);
+    }
+    function openAddParttime(date, source){
       if(!selected()){msg('請先選擇工讀生。','error');return}
       const box=qs('#parttimeAddBox');
       box.classList.remove('hidden');
-      qs('#addDate').value=clean(date)||new Date().toISOString().slice(0,10);
+      qs('#addDate').value=clean(date)||defaultParttimeAddDate();
+      if(clean(source))qs('#addSource').value=source;
+      if(clean(source)==='補時數')qs('#addNote').placeholder='必填，例如：補班時數由主管確認';
       box.scrollIntoView({behavior:'smooth',block:'center'});
+    }
+    function closeAddParttime(){
+      const box=qs('#parttimeAddBox');
+      if(box)box.classList.add('hidden');
     }
 
     async function modifyParttimeRecord(id){
