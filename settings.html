@@ -3,136 +3,463 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>薪資與投保資訊</title>
-  <link rel="stylesheet" href="style.css">
+  <title>管理首頁</title>
+  <link rel="stylesheet" href="style.css?v=admin-final-20260530b">
   <style>
-    .page-return-wrap{margin-bottom:16px}
-    .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
-    .salary-section{margin-top:14px}
-    .section-title-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
-    .section-title-row h2{font-size:18px;margin:0;color:var(--brand)}
-    .info-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-    .info-card{border:1px solid var(--line);border-radius:14px;padding:14px;background:#fff}
-    .info-card .label{font-size:13px;color:var(--muted)}
-    .info-card .value{font-size:16px;font-weight:800;margin-top:6px;white-space:pre-wrap;line-height:1.45}
-    .wide{grid-column:1/-1}
-    .hidden{display:none!important}
-    .empty-note{padding:14px;border:1px dashed var(--line);border-radius:14px;color:var(--muted);background:#fff}
-    @media (max-width:560px){.info-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.info-card{padding:12px}.info-card .value{font-size:15px}.wide{grid-column:1/-1}}
+    .tile strong{display:flex;align-items:center;gap:8px;justify-content:space-between}
+    .badge{display:inline-flex;min-width:22px;height:22px;padding:0 6px;border-radius:999px;background:#dc2626;color:#fff;font-size:12px;align-items:center;justify-content:center;font-weight:800}
+    .badge:empty{display:none}
+    .manage-head-card{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;padding:18px 22px;border:1px solid var(--line);border-radius:24px;background:#fff;box-shadow:0 12px 30px rgba(15,23,42,.04);margin-bottom:14px}
+    .manage-head-info .title{margin:0;font-size:28px;line-height:1.15}
+    .manage-head-info .welcome{display:none}
+    .manage-head-tools{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:stretch;width:min(100%,420px)}
+    .head-tool-slot{display:block;min-height:104px;height:100%}
+    .head-tool-slot .line-bind-mini{margin-top:0;height:100%;box-sizing:border-box}
+    .head-tool-slot .line-bind-mini-left{justify-content:center}
+
+    .head-tool-card{height:104px;min-height:104px;border:1px solid var(--line);border-radius:24px;background:#f5f8fc;padding:14px 16px;display:flex;flex-direction:column;justify-content:space-between;align-items:center;text-decoration:none;color:inherit;box-shadow:none;min-width:0;text-align:center}
+    .head-tool-card.logout-card{align-items:center;justify-content:center;background:#1f7a5a;border-color:#1f7a5a}
+    .head-tool-title{font-size:15px;font-weight:900;line-height:1.25;color:#18314a;text-align:center}
+    .head-tool-desc{font-size:13px;line-height:1.45;color:var(--muted);text-align:center}
+    .head-tool-btn{align-self:center;width:auto;padding:9px 14px;font-size:14px;border-radius:16px;white-space:nowrap}
+    .logout-mini-btn{border:none;background:transparent;color:#fff;font-size:16px;font-weight:900;cursor:pointer;white-space:nowrap}
+    @media (max-width:720px){
+      .manage-head-card{padding:22px 18px;border-radius:24px}
+      .manage-head-info{width:100%;text-align:center}
+      .manage-head-info .title{font-size:26px}
+      .manage-head-info .welcome{font-size:20px}
+      .manage-head-tools{width:100%;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+      .head-tool-card{height:96px;min-height:96px;padding:12px 12px;border-radius:22px}
+      .head-tool-title{font-size:14px}
+      .head-tool-desc{font-size:12px}
+      .head-tool-btn,.logout-mini-btn{padding:8px 10px;font-size:13px}
+    }
+  
+/* 管理首頁卡片置中修正 */
+.grid .tile{
+  text-align:center;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:10px;
+  min-height:132px;
+}
+.grid .tile strong{
+  width:100%;
+  justify-content:center!important;
+  text-align:center;
+  line-height:1.35;
+  gap:8px;
+}
+.grid .tile span:not(.badge){
+  text-align:center;
+  line-height:1.55;
+}
+
+
+    .top-tool-card{
+      height:104px;
+      min-height:104px;
+      width:100%;
+      box-sizing:border-box;
+      padding:14px 16px;
+      border:1px solid var(--line);
+      border-radius:24px;
+      background:#f5f8fc;
+      display:flex;
+      flex-direction:column;
+      justify-content:space-between;
+      align-items:center;
+      gap:8px;
+      text-align:center;
+      text-decoration:none;
+      color:inherit;
+      min-width:0;
+    }
+    .top-tool-main{
+      width:100%;
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+      align-items:center;
+      justify-content:flex-start;
+    }
+    .top-tool-title{
+      font-size:15px;
+      font-weight:900;
+      line-height:1.25;
+      color:#18314a;
+      text-align:center;
+    }
+    .top-tool-desc{
+      font-size:13px;
+      font-weight:800;
+      line-height:1.45;
+      color:#5f7086;
+      text-align:center;
+    }
+    .top-tool-actions{
+      display:flex;
+      justify-content:center;
+      align-items:center;
+      width:100%;
+      margin-top:auto;
+    }
+    .top-tool-btn{
+      width:auto;
+      min-width:86px;
+      padding:9px 14px;
+      border-radius:16px;
+      font-size:14px;
+      line-height:1.2;
+      min-height:auto;
+      white-space:nowrap;
+      background:#1f7a5a;
+      color:#fff;
+      border:none;
+      font-weight:900;
+      cursor:pointer;
+      text-decoration:none;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+    }
+    .top-tool-logout{
+      background:#1f7a5a;
+      border-color:#1f7a5a;
+    }
+    .top-tool-logout .top-tool-title,
+    .top-tool-logout .top-tool-desc{
+      color:#fff;
+    }
+    .top-tool-logout .top-tool-desc{
+      opacity:.92;
+    }
+    .top-tool-logout .top-tool-btn{
+      background:rgba(255,255,255,.18);
+      color:#fff;
+    }
+    @media(max-width:560px){
+      .top-tool-card{
+        height:96px;
+        min-height:96px;
+        padding:12px 12px;
+        border-radius:22px;
+        gap:8px;
+      }
+      .top-tool-title{font-size:14px}
+      .top-tool-desc{font-size:12px}
+      .top-tool-btn{padding:8px 12px;font-size:13px}
+    }
+
+  
+    .top-tool-logout{
+      display:flex!important;
+      align-items:center!important;
+      justify-content:center!important;
+      text-align:center!important;
+      background:#1f7a5a!important;
+      border-color:#1f7a5a!important;
+      color:#fff!important;
+      height:96px!important;
+      min-height:96px!important;
+    }
+    @media(min-width:561px){
+      .top-tool-logout{
+        height:104px!important;
+        min-height:104px!important;
+      }
+    }
+    .top-tool-logout .logout-only-text{
+      color:#fff!important;
+      font-size:16px!important;
+      font-weight:900!important;
+      line-height:1.2!important;
+      white-space:nowrap!important;
+    }
+
+  
+    /* 登出卡統一：所有首頁工具列的登出格，外框同大，整格綠底白字置中 */
+    .home-head-tools .top-tool-logout,
+    .hero-tools .top-tool-logout,
+    .manage-head-tools .top-tool-logout,
+    .home-head-tools .logout-card,
+    .hero-tools .logout-card,
+    .manage-head-tools .logout-card{
+      height:96px!important;
+      min-height:96px!important;
+      width:100%!important;
+      box-sizing:border-box!important;
+      border:1px solid #1f7a5a!important;
+      border-radius:22px!important;
+      background:#1f7a5a!important;
+      color:#fff!important;
+      display:flex!important;
+      align-items:center!important;
+      justify-content:center!important;
+      text-align:center!important;
+      padding:12px!important;
+      text-decoration:none!important;
+      overflow:hidden!important;
+    }
+    .home-head-tools .top-tool-logout *,
+    .hero-tools .top-tool-logout *,
+    .manage-head-tools .top-tool-logout *,
+    .home-head-tools .logout-card *,
+    .hero-tools .logout-card *,
+    .manage-head-tools .logout-card *{
+      color:#fff!important;
+    }
+    .logout-only-text,
+    .logout-mini-btn{
+      color:#fff!important;
+      font-size:16px!important;
+      font-weight:900!important;
+      line-height:1.2!important;
+      white-space:nowrap!important;
+      background:transparent!important;
+      border:none!important;
+      padding:0!important;
+      margin:0!important;
+    }
+    @media(min-width:561px){
+      .home-head-tools .top-tool-logout,
+      .hero-tools .top-tool-logout,
+      .manage-head-tools .top-tool-logout,
+      .home-head-tools .logout-card,
+      .hero-tools .logout-card,
+      .manage-head-tools .logout-card{
+        height:104px!important;
+        min-height:104px!important;
+        border-radius:24px!important;
+        padding:14px 16px!important;
+      }
+    }
+
+  
+    .top-tool-logout,
+    .top-tool-logout *,
+    .logout-card,
+    .logout-card *,
+    .top-tool-logout .logout-only-text,
+    .top-tool-logout span,
+    .top-tool-logout button{
+      color:#fff!important;
+      -webkit-text-fill-color:#fff!important;
+    }
+    #clockCount.zero,
+    #clockCount.empty{
+      display:none!important;
+    }
+
+  
+    /* 管理首頁下方功能卡：手機也改成左右兩欄，縮短頁面高度 */
+    .grid{
+      display:grid!important;
+      grid-template-columns:repeat(2,minmax(0,1fr))!important;
+      gap:12px!important;
+      align-items:stretch!important;
+    }
+    .grid .tile{
+      min-height:118px!important;
+      padding:18px 14px!important;
+      border-radius:24px!important;
+      display:flex!important;
+      flex-direction:column!important;
+      align-items:center!important;
+      justify-content:center!important;
+      text-align:center!important;
+      gap:8px!important;
+      box-sizing:border-box!important;
+    }
+    .grid .tile strong{
+      display:flex!important;
+      align-items:center!important;
+      justify-content:center!important;
+      gap:6px!important;
+      font-size:20px!important;
+      line-height:1.25!important;
+      text-align:center!important;
+      width:100%!important;
+    }
+    .grid .tile > span{
+      font-size:13px!important;
+      line-height:1.45!important;
+      color:#64748b!important;
+      text-align:center!important;
+      display:-webkit-box!important;
+      -webkit-line-clamp:2!important;
+      -webkit-box-orient:vertical!important;
+      overflow:hidden!important;
+      max-width:100%!important;
+    }
+    .grid .tile .badge{
+      position:static!important;
+      display:inline-flex!important;
+      align-items:center!important;
+      justify-content:center!important;
+      min-width:24px!important;
+      height:24px!important;
+      padding:0 7px!important;
+      border-radius:999px!important;
+      font-size:14px!important;
+      line-height:1!important;
+      flex:0 0 auto!important;
+    }
+    @media(max-width:420px){
+      .grid{gap:10px!important}
+      .grid .tile{
+        min-height:108px!important;
+        padding:16px 10px!important;
+        border-radius:22px!important;
+      }
+      .grid .tile strong{font-size:18px!important}
+      .grid .tile > span{font-size:12px!important}
+    }
+
+
+    /* 待處理徽章：沒有數字時完全隱藏，避免只剩紅點 */
+    .grid .tile .badge:empty,
+    .grid .tile .badge.is-empty{
+      display:none!important;
+    }
+
   </style>
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
 </head>
-<body onload="init()">
+<body onload="init()" class="admin-wide-page admin-home-page">
   <div class="yz-global-nav" data-yz-global-nav>
     <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
     <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
   </div>
 
   <div class="container">
-    <div class="card">
-      <div class="header" style="margin:0"><h1 class="title">薪資與投保資訊</h1><div class="welcome">歡迎 <span data-user-name></span></div></div>
-      <div id="pageMsg" class="message"></div>
-    </div>
-
-    <div class="card">
-      <div class="section-title">查看資訊</div>
-      <div id="salaryContent"></div>
+    <section class="manage-head-card">
+      <div class="manage-head-info">
+        <h1 class="title">管理首頁</h1>
+        
+      </div>
+      <div class="manage-head-tools">
+        <div id="lineBindArea" class="head-tool-slot"></div>
+      </div>
+    </section>
+    <div class="grid">
+      <a class="tile" href="approval-hub.html"><strong>簽核 <span class="badge" id="badge-approval"></span></strong><span>註冊、打卡、臨時出勤、請假、個資簽核</span></a>
+      <a class="tile" href="employee-admin.html"><strong>員工管理</strong><span>員工基本資料、帳號狀態、離職與隱藏控管</span></a>
+      <a class="tile" href="teacher-hub.html"><strong>外聘老師 <span class="badge" id="badge-teacher"></span></strong><span>合約與拿貨紀錄</span></a>
+      <a class="tile" href="application-admin.html"><strong>應聘管理 <span class="badge" id="badge-application"></span></strong><span>履歷投遞與審核通知</span></a>
+      <a class="tile" href="items-hub.html"><strong>公告／交辦／定期 <span class="badge" id="badge-items"></span></strong><span>公告、交辦與定期</span></a>
+      <a class="tile" href="notification-settings.html"><strong>LINE 主管通知收件人設定</strong><span>設定主管通知要送到哪一個 LINE，並進入各類提醒項目設定</span></a>
+      <a class="tile" href="training-admin.html"><strong>教育訓練管理</strong><span>教材與學習內容</span></a>
+      <a class="tile" href="hr-payroll-settings-hub.html"><strong>人事與薪資設定 <span class="badge" id="badge-hr-payroll"></span></strong><span>班表、假勤制度、薪資投保設定</span></a>
+      <a class="tile" href="rental-system-hub.html"><strong>租賃契約系統 <span class="badge" id="badge-rental"></span></strong><span>租賃申請、契約模板、費用設定與續約退租</span></a>
+      <a class="tile" href="quotation-contract-hub.html"><strong>其他表格 <span class="badge" id="badge-forms"></span></strong><span>估價單、集點卡、證明設定與證明審核</span></a>
     </div>
   </div>
-
-  <script src="config.js?v=20260527salarydisplayfinal"></script>
+  <script src="config.js?v=20260508frontendperf1"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260527salarydisplayfinal"></script>
-  <script src="app.js?v=20260527salarydisplayfinal"></script>
+  <script src="firebase-client.js?v=admin-final-20260530b"></script>
+
+  <script src="app.js?v=admin-final-20260530b"></script>
+  <script src="onboarding-workflow.js?v=20260624onboarding1"></script>
   <script>
-    function cleanText(v){ return String(v == null ? '' : v).trim(); }
-    function hasDisplayValue(v){
-      const s = cleanText(v);
-      return !!s && s !== '-' && s !== '未設定' && s !== '無' && s !== '0 元' && s !== '$0' && s !== '$0 / 小時';
-    }
-    function escapeHtml(value){
-      return String(value == null ? '' : value)
-        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-        .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
-    }
-    async function waitSalaryApi(timeout){
-      const start = Date.now();
-      while(!window.YZFirebase || typeof window.YZFirebase.handleApi !== 'function'){
-        if(Date.now() - start > (timeout || 6000)) throw new Error('Firebase 尚未啟用，無法讀取薪資投保資訊');
-        await new Promise(resolve => setTimeout(resolve, 120));
-      }
-      return window.YZFirebase;
-    }
-    async function callSalaryApi(payload){
-      const api = await waitSalaryApi();
-      const res = await api.handleApi('getMySalaryInfo', payload || {});
-      if(!res || res.ok === false) throw new Error((res && res.message) || '讀取失敗');
-      return res;
-    }
-    function item(label, value, wide){
-      if(!hasDisplayValue(value)) return '';
-      return '<div class="info-card' + (wide ? ' wide' : '') + '"><div class="label">' + escapeHtml(label) + '</div><div class="value">' + escapeHtml(value) + '</div></div>';
-    }
-    function section(title, rows){
-      const body = rows.filter(Boolean).join('');
-      if(!body) return '';
-      return '<div class="salary-section"><div class="section-title-row"><h2>' + escapeHtml(title) + '</h2></div><div class="info-grid">' + body + '</div></div>';
-    }
-    function renderSalary(info){
-      const isParttime = info.identityType === 'parttime';
-      const salaryRows = isParttime ? [
-        item('時薪', info.parttimeHourlyRateText || info.mainAmountText),
-        item('是否部分工時', info.parttimePartialHoursText),
-        item('目前申報月平均薪資總額', info.parttimeAverageSalaryText),
-        item('職務加給', info.jobAllowanceText, true),
-        item('津貼', info.allowanceText, true),
-        item('薪資生效日', info.effectiveDate),
-        item('薪資備註', info.note, true)
-      ] : [
-        item('本薪', info.staffBaseSalaryText || info.mainAmountText),
-        item('職務加給', info.jobAllowanceText, true),
-        item('津貼', info.allowanceText, true),
-        item('薪資生效日', info.effectiveDate),
-        item('薪資備註', info.note, true)
-      ];
-      const laborRows = [
-        item('勞保狀態', info.laborStatus),
-        item('勞保級距', info.laborPlanText || info.laborLevelText || info.laborSalaryText),
-        item('勞保自付額', info.laborSelfPayText),
-        item('雇主提撥勞退 6%', info.retirementEmployerText),
-        item('勞退自提', info.selfRetirementText)
-      ];
-      const healthRows = [
-        item('健保狀態', info.healthStatus),
-        item('健保級距', info.healthPlanText || info.healthLevelText || info.healthSalaryText),
-        item('健保自付額', info.healthSelfPayText)
-      ];
-      const html = [
-        section('薪資資訊', salaryRows),
-        section('勞保／勞退資訊', laborRows),
-        section('健保資訊', healthRows)
-      ].filter(Boolean).join('');
-      qs('#salaryContent').innerHTML = html || '<div class="empty-note">目前尚未設定可顯示的薪資與投保資料。</div>';
-    }
-    async function loadSalaryInfo(){
-      const user = requireLogin();
-      if(!user) return;
-      setMsg(qs('#pageMsg'), '');
-      qs('#salaryContent').innerHTML = '<div class="empty-note">讀取薪資與投保資訊中...</div>';
-      try{
-        const res = await callSalaryApi({ action:'getMySalaryInfo', userId:user.id, email:user.email });
-        renderSalary(res.info || {});
-      }catch(err){
-        setMsg(qs('#pageMsg'), (err && err.message) ? err.message : String(err), true);
-        qs('#salaryContent').innerHTML = '<div class="empty-note">讀取失敗，請稍後再試。</div>';
-      }
-    }
     async function init(){
       fillHeader();
-      const user = requireLogin();
+      const user=requireLogin();
       if(!user) return;
-      await loadSalaryInfo();
+      if(!hasSettingsZoneAccess(user)){location.href='dashboard.html';return;}
+      setPortalMode('settings');
+
+      // 先用本機快取補上徽章，讓管理首頁先顯示，不要卡在讀表。
+      applyBadgeCounts_(readCachedPendingCounts_(user));
+
+      // LINE 設定卡延後載入，不阻塞管理首頁主畫面。
+      scheduleIdle_(async()=>{
+        try{
+          if(typeof renderCompactLineCard_==='function') await renderCompactLineCard_('#lineBindArea', user);
+          else if(typeof renderLineBindPrompt_==='function') await renderLineBindPrompt_('#lineBindArea');
+        }catch(e){}
+      });
+
+      // 待處理數字延後更新；後端已經有快取，前端再避免卡第一屏。
+      scheduleIdle_(async()=>applyBadgeCounts_(await fetchPendingCountsFast_(user)));
+    }
+
+    function pendingCountsCacheKey_(user){ return 'pendingCounts:v3:settings:' + ((user && user.id) || 'guest'); }
+    function readCachedPendingCounts_(user){
+      try{ return JSON.parse(localStorage.getItem(pendingCountsCacheKey_(user)) || '{}') || {}; }catch(e){ return {}; }
+    }
+    function writeCachedPendingCounts_(user, data){
+      try{ localStorage.setItem(pendingCountsCacheKey_(user), JSON.stringify(Object.assign({__cachedAt:Date.now()}, data||{}))); }catch(e){}
+    }
+    function scheduleIdle_(fn){
+      if(window.requestIdleCallback) requestIdleCallback(fn,{timeout:900});
+      else setTimeout(fn, 80);
+    }
+    function normalizePendingCounts_(r){
+      r = r || {};
+      const counts = r.counts || r.summary || r.dashboard || r;
+      return Object.assign({}, r, counts, {
+        registrationCount: Number(counts.registrationCount || counts.pendingRegistrationCount || counts.registrations || 0) || 0,
+        leaveCount: Number(counts.leaveCount || counts.pendingLeaveCount || counts.leaveApprovalCount || counts.leaves || 0) || 0,
+        clockCorrectionCount: Number(counts.clockCorrectionCount || counts.pendingClockCorrectionCount || counts.clockCorrection || counts.clocks || 0) || 0,
+        tempAttendanceCount: Number(counts.tempAttendanceCount || counts.temporaryAttendanceCount || counts.pendingTempAttendanceCount || counts.tempAttendance || 0) || 0,
+        profileChangeCount: Number(counts.profileChangeCount || counts.pendingProfileChangeCount || counts.profileChanges || 0) || 0,
+        parttimeApprovalCount: Number(counts.parttimeApprovalCount || counts.parttimePending || counts.pendingParttimeCount || 0) || 0,
+        contractCount: Number(counts.contractCount || counts.pendingContractCount || counts.contracts || 0) || 0,
+        goodsInquiryCount: Number(counts.goodsInquiryCount || counts.pendingGoodsInquiryCount || counts.goodsInquiries || 0) || 0,
+        taskCount: Number(counts.taskCount || counts.pendingTaskCount || counts.taskReviewCount || counts.tasks || 0) || 0,
+        routineCount: Number(counts.routineCount || counts.pendingRoutineCount || counts.routineReviewCount || counts.routines || 0) || 0,
+        applicationCount: Number(counts.applicationCount || counts.pendingApplicationCount || counts.teacherApplicationCount || counts.applications || 0) || 0,
+        salaryCount: Number(counts.salaryCount || counts.pendingSalaryCount || 0) || 0,
+        approvalCount: Number(counts.approvalCount || 0) || 0,
+        certificateReviewCount: Number(counts.certificateReviewCount || counts.certificatePendingCount || counts.certificates || 0) || 0,
+        rentalCount: Number(counts.rentalCount || counts.rentalPendingCount || counts.pendingRentalCount || 0) || 0
+      });
+    }
+    async function fetchPendingCountsFast_(user){
+      try{
+        let r = await api('getDashboardSummary',{userId:user.id, role:'admin'});
+        if(!r || r.ok === false) r = await api('getPendingCounts',{userId:user.id});
+        const data = normalizePendingCounts_(r);
+        writeCachedPendingCounts_(user, data);
+        return data;
+      }catch(err){
+        try{
+          const r = await api('getPendingCounts',{userId:user.id});
+          const data = normalizePendingCounts_(r);
+          writeCachedPendingCounts_(user, data);
+          return data;
+        }catch(e){ return readCachedPendingCounts_(user); }
+      }
+    }
+    function applyBadgeCounts_(r){
+      r = normalizePendingCounts_(r);
+      const approval = r.approvalCount || sum_(r.registrationCount, r.leaveCount, r.clockCorrectionCount, r.tempAttendanceCount, r.profileChangeCount, r.parttimeApprovalCount);
+      const teacher = 0; // 外聘老師外層不顯示來源不明數字，內層頁再顯示細項。
+      const items = sum_(r.taskCount, r.routineCount);
+      setBadge('badge-approval', approval);
+      setBadge('badge-teacher', teacher);
+      setBadge('badge-application', r.applicationCount);
+      setBadge('badge-items', items);
+      setBadge('badge-hr-payroll', r.salaryCount);
+      setBadge('badge-rental', r.rentalCount);
+      setBadge('badge-forms', r.certificateReviewCount);
+    }
+    function sum_(){ return Array.from(arguments).reduce((s,v)=>s+(Number(v||0)||0),0); }
+    function setBadge(id, count){
+      const el=document.getElementById(id);
+      if(!el) return;
+      const n=Number(count||0)||0;
+      if(n>0){
+        el.textContent=n>99?'99+':String(n);
+        el.classList.remove('is-empty');
+      }else{
+        el.textContent='';
+        el.classList.add('is-empty');
+      }
     }
   </script>
   <script src="global-nav.js?v=20260603unified1"></script>

@@ -1,15 +1,306 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <title>固定事項</title><link rel="stylesheet" href="style.css?v=admin-final-20260530b">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>班表設定</title>
+  <link rel="stylesheet" href="style.css?v=admin-final-20260530b">
   <style>
-    :root{--bg:#f4f7fb;--card:#fff;--text:#182230;--muted:#667085;--line:#e4e7ec;--main:#1f7a5a;--main-dark:#17614a;--warn:#b42318;--blue:#175cd3;--shadow:0 10px 24px rgba(16,24,40,.08);--radius:18px}
-    *{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC",Arial,sans-serif;background:var(--bg);color:var(--text);line-height:1.55}
-    main{max-width:1040px;margin:0 auto;padding:12px 12px 38px}.topbar{position:sticky;top:0;z-index:10;background:transparent;border-bottom:0;padding:12px 12px 0}.topbar-inner{max-width:1040px;margin:0 auto;display:block}.home-link{display:flex;align-items:center;justify-content:center;width:100%;border:0;border-radius:14px;padding:12px 14px;background:var(--main);font-weight:950;color:#fff;text-decoration:none;letter-spacing:.02em;box-shadow:0 7px 14px rgba(31,122,90,.18)}.title{display:none}.title h1{margin:0;font-size:22px;font-weight:950}.title p{margin:3px 0 0;color:var(--muted);font-size:13px}.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px;margin-bottom:12px}.history-search{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end;margin:12px 0}.history-search input{width:100%}@media(max-width:640px){.history-search{grid-template-columns:1fr}}.section-title{font-size:16px;font-weight:950;margin:0 0 10px;display:flex;align-items:center;gap:8px}.num{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--main);color:#fff;font-size:12px;font-weight:950}.grid{display:grid;grid-template-columns:1fr;gap:10px}.wide{grid-column:1/-1}@media(min-width:760px){.grid.two{grid-template-columns:1fr 1fr}.grid.three{grid-template-columns:1fr 1fr 1fr}.upload-grid{grid-template-columns:repeat(4,1fr)}}
-    label{display:block;font-size:13px;font-weight:850;margin:0 0 6px}input,select,textarea{width:100%;border:1px solid #d0d5dd;border-radius:13px;background:#fff;padding:11px 12px;font-size:15px;color:#101828;outline:none}textarea{min-height:92px;resize:vertical}.checkrow{display:grid;grid-template-columns:1fr 1fr;gap:8px}.check{display:flex;align-items:center;justify-content:space-between;gap:8px;border:1px solid var(--line);border-radius:14px;padding:10px;background:#fbfcfe}.check input{width:auto}.upload-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.upload-box{border:1px solid var(--line);border-radius:15px;background:#fbfcfe;padding:10px;min-height:88px}.upload-box input{font-size:13px;padding:8px;border-radius:10px}.rec-line{display:grid;grid-template-columns:auto 54px 1fr;gap:6px;align-items:center}.rec-time{font-weight:950;color:#344054;font-size:13px}.rec-buttons{display:flex;gap:5px;flex-wrap:wrap}.mini-btn{border:0;border-radius:999px;padding:7px 9px;font-size:12px;font-weight:950;background:#e9eef4;color:#26384d;cursor:pointer}.mini-btn.primary{background:var(--main);color:#fff}.mini-btn.danger{background:#fdecec;color:#9d1c1c}.mini-btn:disabled{opacity:.45;cursor:not-allowed}.audio-mini{margin-top:8px;width:100%;height:34px}.hidden{display:none!important}.msg{display:none;margin:10px 0;padding:12px 14px;border-radius:14px;font-weight:850;background:#e8f5ef;color:#17614a}.msg.err{background:#fff0f0;color:#b42318}.msg.ok{display:block}.progress{display:none;height:5px;background:#e7edf2;border-radius:999px;overflow:hidden;margin:8px 0 12px}.progress.on{display:block}.progress span{display:block;height:100%;width:42%;background:var(--main);border-radius:999px;animation:bar 1s ease-in-out infinite}@keyframes bar{0%{transform:translateX(-110%)}100%{transform:translateX(260%)}}
-    .pill{display:inline-flex;align-items:center;border-radius:999px;padding:7px 12px;font-size:13px;font-weight:950;background:#eef7f2;color:#17614a}.pill.warn{background:#fff2e0;color:#9a5b00}.pill.red{background:#fff0f0;color:#b42318}.pill.blue{background:#eef4ff;color:#175cd3}.list,.history-list,.staff-list{display:grid;gap:12px}.item-card{border:1px solid var(--line);border-radius:18px;background:#fff;padding:13px}.tone-0{background:#f1f8f4}.tone-1{background:#eef4ff}.tone-2{background:#fff8e8}.tone-3{background:#f5f0ff}.tone-4{background:#fff1f3}.item-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.item-title{font-weight:1000;font-size:22px;line-height:1.28;color:#101828}.staff-card .item-title{font-size:23px}.due-strong{font-weight:900;color:#b42318;margin-top:6px;font-size:14px}.requirement{white-space:pre-wrap;background:rgba(255,255,255,.66);border:1px solid rgba(208,213,221,.9);border-radius:14px;padding:11px;margin-top:10px;color:#26384d;font-size:15px}.item-meta{color:var(--muted);font-size:13px;margin-top:4px}.item-content{white-space:pre-wrap;background:#f9fafb;border:1px dashed #d0d5dd;border-radius:13px;padding:10px;margin-top:10px;color:#344054}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.routine-actions{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px}.routine-actions .btn{padding:8px 6px;font-size:13px;border-radius:11px;min-width:0}.routine-line{font-weight:900;color:#b42318;margin-top:6px;font-size:14px}.btn{border:0;border-radius:14px;padding:11px 14px;font-size:15px;font-weight:950;background:var(--main);color:#fff;cursor:pointer}.btn.secondary,.btn.warn,.btn.danger{background:var(--main);color:#fff}.btn.full{width:100%;margin-top:10px}.btn:disabled{opacity:.72;cursor:not-allowed}.btn.loading{position:relative}.btn-progress{font-weight:1000;margin-left:4px}.asset-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}.asset-list a{display:inline-flex;border:1px solid var(--line);border-radius:999px;padding:6px 9px;font-size:12px;font-weight:850;background:#fff;color:#344054;text-decoration:none}.reply-box{border-top:1px solid rgba(208,213,221,.9);margin-top:12px;padding-top:12px}.empty{font-size:14px;color:#667085;background:#f9fafb;border:1px dashed #d0d5dd;border-radius:14px;padding:12px}.summary-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.summary-box{border:1px solid var(--line);border-radius:15px;background:#fbfcfe;padding:10px;text-align:center}.summary-box b{display:block;font-size:20px}.tiny-help{font-size:12px;color:#667085;margin-top:4px}@media(max-width:560px){.summary-grid,.checkrow,.upload-grid{grid-template-columns:1fr}.item-head{flex-direction:column}.btn{width:100%}.actions{display:grid}.routine-actions{grid-template-columns:repeat(3,1fr)}.title h1{font-size:20px}}
+    :root {
+      --bg: #f6f8f7;
+      --card: #ffffff;
+      --line: #dbe5df;
+      --text: #183028;
+      --muted: #60756d;
+      --primary: #2f8f6b;
+      --primary-dark: #256f53;
+      --danger: #c94a4a;
+      --soft: #edf7f2;
+      --warning: #fff7e8;
+      --shadow: 0 8px 24px rgba(24, 48, 40, 0.08);
+      --radius: 18px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, "Noto Sans TC", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .page {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 20px 16px 40px;
+    }
+    .hero {
+      background: linear-gradient(135deg, #2f8f6b, #58a17f);
+      color: #fff;
+      padding: 22px 20px;
+      border-radius: 24px;
+      box-shadow: var(--shadow);
+      margin-bottom: 18px;
+    }
+    .hero h1 {
+      margin: 0 0 8px;
+      font-size: 28px;
+    }
+    .hero p {
+      margin: 0;
+      line-height: 1.6;
+      opacity: 0.95;
+    }
+    .top-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 16px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1.08fr 0.92fr;
+      gap: 18px;
+      align-items: start;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 18px;
+    }
+    .section-title {
+      margin: 0 0 6px;
+      font-size: 22px;
+    }
+    .section-desc {
+      margin: 0 0 14px;
+      color: var(--muted);
+      line-height: 1.6;
+      font-size: 14px;
+    }
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .row-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+    label {
+      font-weight: 700;
+      font-size: 14px;
+    }
+    input, select, button, textarea {
+      font: inherit;
+    }
+    input[type="text"], input[type="date"], input[type="time"], select, textarea {
+      width: 100%;
+      padding: 12px 13px;
+      border-radius: 14px;
+      border: 1px solid #cfdad4;
+      background: #fff;
+      outline: none;
+    }
+    textarea {
+      resize: vertical;
+      min-height: 96px;
+    }
+    input:focus, select:focus, textarea:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(47, 143, 107, 0.12);
+    }
+    .btn {
+      border: 0;
+      border-radius: 14px;
+      padding: 12px 16px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: 0.2s ease;
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .btn-primary {
+      background: var(--primary);
+      color: #fff;
+    }
+    .btn-primary:hover { background: var(--primary-dark); }
+    .btn-secondary {
+      background: #eef3f1;
+      color: var(--text);
+    }
+    .btn-danger {
+      background: #ffe9e9;
+      color: var(--danger);
+    }
+    .btn-ghost {
+      background: transparent;
+      border: 1px solid #d7e2dc;
+      color: var(--text);
+    }
+    .actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+    }
+    .day-card {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 12px;
+      background: #fbfcfb;
+    }
+    .day-title {
+      font-weight: 800;
+      margin-bottom: 10px;
+    }
+    .template-list, .assignment-list {
+      display: grid;
+      gap: 12px;
+      margin-top: 8px;
+    }
+    .item {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 14px;
+      background: #fff;
+    }
+    .item-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: flex-start;
+      margin-bottom: 10px;
+    }
+    .item-head h3 {
+      margin: 0;
+      font-size: 18px;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 5px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      background: var(--soft);
+      color: var(--primary-dark);
+      white-space: nowrap;
+    }
+    .pill.off {
+      background: #f1f3f2;
+      color: #657971;
+    }
+    .schedule-mini {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 6px 12px;
+      margin-bottom: 10px;
+      font-size: 14px;
+      color: #2d413a;
+    }
+    .muted {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .empty {
+      border: 1px dashed #c8d7cf;
+      border-radius: 16px;
+      padding: 18px;
+      text-align: center;
+      color: var(--muted);
+      background: #fcfdfc;
+    }
+    .notice {
+      margin-top: 12px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: var(--warning);
+      border: 1px solid #eeddb0;
+      color: #6b5a2c;
+      font-size: 13px;
+      line-height: 1.55;
+    }
+    .toolbar {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .toolbar .right {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .status {
+      margin-top: 14px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      display: none;
+      font-size: 14px;
+      font-weight: 700;
+    }
+    .status.show { display: block; }
+    .status.success { background: #e9f8ef; color: #1d6a45; border: 1px solid #b7e3c7; }
+    .status.error { background: #ffecec; color: #b23838; border: 1px solid #efbcbc; }
+    .hidden { display: none !important; }
+    .checkbox-line {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      font-weight: 700;
+      margin: 2px 0 10px;
+    }
+    @media (max-width: 920px) {
+      .grid, .row, .row-3 {
+        grid-template-columns: 1fr;
+      }
+      .schedule-mini {
+        grid-template-columns: 1fr;
+      }
+    }
+  
+    .section-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:0 0 18px}
+    .section-tab{border:1px solid #d0d5dd;background:#fff;border-radius:16px;padding:14px 16px;cursor:pointer;text-align:left;transition:.2s}
+    .section-tab strong{display:block;font-size:16px;color:#111827;margin-bottom:4px}
+    .section-tab span{display:block;font-size:13px;color:#667085;line-height:1.5}
+    .section-tab.active{border-color:#16a34a;box-shadow:0 0 0 3px rgba(34,197,94,.12)}
+    .schedule-panel{display:none}
+    .schedule-panel.active{display:block}
+
+  
+    .page-return-wrap{margin-bottom:16px}
+    .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800;background:var(--primary);color:#fff;box-shadow:var(--shadow)}
+    .page-return-btn:hover{background:var(--primary-dark)}
+.simple-hero{padding:18px 20px}.simple-hero h1{margin:0}.danger-zone{margin-top:10px;border-top:1px dashed #f0b4b4;padding-top:10px}.section-tab{display:flex;align-items:center;justify-content:center;text-align:center}.section-tab strong{margin:0}
+
+    /* schedule-admin-wide-20260530a */
+    @media (min-width: 900px){
+      body.admin-wide-page .page{
+        width:min(98vw,1760px)!important;
+        max-width:1760px!important;
+        margin-left:auto!important;
+        margin-right:auto!important;
+        padding-left:18px!important;
+        padding-right:18px!important;
+      }
+      body.admin-wide-page .card{width:100%;}
+      body.admin-wide-page .table-wrap,
+      body.admin-wide-page .schedule-table-wrap{max-width:100%!important;overflow-x:auto;}
+      body.admin-wide-page table{width:100%;}
+    }
 </style>
+
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
 </head>
 <body class="admin-wide-page">
@@ -18,116 +309,849 @@
     <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
   </div>
 
-  <main>
-    <div id="progress" class="progress"><span></span></div><div id="msg" class="msg"></div>
-    <section id="adminWrap" class="hidden">
-      <div class="card"><div class="section-title"><span class="num">1</span>固定事項規則</div><div class="grid two">
-        <div><label>分類</label><select id="category"><option>行政</option><option>教學</option><option>清潔</option><option>設備</option><option>庫存</option><option>活動</option><option>合約</option><option>其他</option></select></div>
-        <div><label>負責人</label><select id="ownerId"><option value="">請選擇員工</option></select></div>
-        <div class="wide"><label>事項名稱</label><input id="title" placeholder="例如：每月器材檢查"></div>
-        <div class="wide"><label>事項內容</label><textarea id="content" placeholder="寫清楚每次要完成什麼"></textarea></div>
-        <div><label>循環方式</label><select id="cycleKind" onchange="renderCycleFields()"><option value="daily">每天</option><option value="weekly">每週</option><option value="monthly1" selected>每月</option><option value="monthly2">每 2 個月</option><option value="monthly3">每 3 個月</option><option value="monthlyCustom">自訂每幾個月</option><option value="yearly">每年</option></select></div>
-        <div id="weekWrap" class="hidden"><label>星期幾</label><select id="weekDay"><option value="1">週一</option><option value="2">週二</option><option value="3">週三</option><option value="4">週四</option><option value="5">週五</option><option value="6">週六</option><option value="0">週日</option></select></div>
-        <div id="customMonthWrap" class="hidden"><label>每幾個月一次</label><input id="cycleInterval" type="number" min="1" value="2"><div class="tiny-help">例如 2 表示每 2 個月一次，3 表示每 3 個月一次。</div></div>
-        <div id="monthDayWrap"><label>每次在幾號</label><input id="monthDay" type="number" min="1" max="31" value="1"></div>
-        <div id="yearMonthWrap" class="hidden"><label>每年幾月</label><input id="yearMonth" type="number" min="1" max="12" value="1"></div>
-        <div id="yearDayWrap" class="hidden"><label>每年幾號</label><input id="yearDay" type="number" min="1" max="31" value="1"></div>
-        <div><label>開始日期</label><input id="startDate" type="date"></div>
-        <div><label>幾天內完成</label><input id="periodDueDays" type="number" min="1" value="1"></div>
-        <div><label>截止時間</label><input id="periodDueTime" type="time" value="18:00"></div>
-        <div><label>結束方式</label><select id="endMode" onchange="renderEndFields()"><option value="forever">不設定結束</option><option value="date">指定結束日期</option></select></div>
-        <div id="endDateWrap" class="hidden"><label>結束日期</label><input id="endDate" type="date"></div>
-      </div></div>
-      <div class="card"><div class="section-title"><span class="num">2</span>完成規則</div><div class="checkrow"><label class="check">需要完成回報 <input id="needReport" type="checkbox" checked></label><label class="check">允許留言 <input id="allowComment" type="checkbox" checked></label><label class="check">主管可退回 <input id="allowRedo" type="checkbox" checked></label><label class="check">停用 <input id="disabled" type="checkbox"></label></div></div>
-      <div class="card"><div class="section-title"><span class="num">3</span>附件</div><div class="upload-grid"><div class="upload-box"><label>圖片</label><input id="imageInput" type="file" multiple accept="image/*"></div><div class="upload-box"><label>影片</label><input id="videoInput" type="file" multiple accept="video/*"></div><div class="upload-box"><label>錄音</label><div id="managerRecorder"></div></div><div class="upload-box"><label>文件</label><input id="fileInput" type="file" multiple></div></div><button id="saveBtn" class="btn full" onclick="submitRoutine(this)">儲存</button></div>
-      <div class="card"><div class="section-title"><span class="num">4</span>總覽</div><div id="summary" class="summary-grid"></div></div>
-      <div class="card"><div class="section-title"><span class="num">5</span>啟用 / 待處理固定事項</div><div id="templateList" class="list"><div class="empty">讀取中...</div></div></div>
-      <div class="card"><details><summary class="section-title" style="cursor:pointer;margin:0"><span class="num">6</span>歷史固定事項</summary><div class="history-search"><label>開始日期<input id="routineHistoryStart" type="date"></label><label>結束日期<input id="routineHistoryEnd" type="date"></label><button class="btn secondary" type="button" onclick="loadRoutineHistoryArchive()" style="width:auto">搜尋歷史</button></div><div id="logList" class="list"><div class="empty">請選擇日期後搜尋歷史固定事項。</div></div></details></div>
-    </section>
-    <section id="staffWrap" class="hidden"><div class="card"><div class="section-title"><span class="num">1</span>我的待辦固定事項</div><div id="staffList" class="list"><div class="empty">讀取中...</div></div></div><div class="card"><details><summary class="section-title" style="cursor:pointer;margin:0"><span class="num">2</span>歷史固定事項</summary><div class="history-search"><label>開始日期<input id="staffRoutineHistoryStart" type="date"></label><label>結束日期<input id="staffRoutineHistoryEnd" type="date"></label><button class="btn secondary" type="button" onclick="loadStaffRoutineHistoryArchive()" style="width:auto">搜尋歷史</button></div><div id="staffRoutineHistoryArchive" class="list"><div class="empty">請選擇日期後搜尋歷史固定事項。</div></div></details></div></section>
-  </main>
-  <script src="config.js"></script>
+  <div class="page">
+    <div class="hero simple-hero">
+      <h1>班表管理</h1>
+    </div>
+
+    <div class="section-tabs">
+      <button class="section-tab active" type="button" data-panel-target="templatePanel" onclick="switchSchedulePanel('templatePanel')"><strong>班表模板管理</strong></button>
+      <button class="section-tab" type="button" data-panel-target="assignmentPanel" onclick="switchSchedulePanel('assignmentPanel')"><strong>員工班表套用</strong></button>
+      <button class="section-tab" type="button" data-panel-target="singleDayPanel" onclick="switchSchedulePanel('singleDayPanel')"><strong>單日特別班表</strong></button>
+    </div>
+
+    <div id="templatePanel" class="schedule-panel active">
+      <div class="card">
+        <div class="toolbar"><div><h2 class="section-title">班表模板管理</h2></div><div class="right"><button class="btn btn-secondary" type="button" onclick="resetTemplateForm()">新增模板</button></div></div>
+        <form id="templateForm"><input type="hidden" id="templateId" /><div class="row"><div class="field"><label for="templateName">模板名稱</label><input id="templateName" type="text" placeholder="例如：一般員工標準班" required /></div><div class="field"><label for="templateEnabled">是否啟用</label><select id="templateEnabled"><option value="TRUE">啟用</option><option value="FALSE">停用</option></select></div></div><div id="dayFields" class="row-3"></div><div class="field"><label for="templateNote">備註</label><textarea id="templateNote" placeholder="例如：星期一公休；其他為標準班。"></textarea></div><div class="actions"><button class="btn btn-primary" type="submit">儲存班表模板</button><button class="btn btn-ghost" type="button" onclick="resetTemplateForm()">清空表單</button></div></form>
+        <div id="templateStatus" class="status"></div>
+      </div>
+      <div class="card" style="margin-top:18px;"><h2 class="section-title">已建立的班表模板</h2><div id="templateList" class="template-list"></div></div>
+    </div>
+
+    <div id="assignmentPanel" class="schedule-panel">
+      <div class="card">
+        <div class="toolbar"><div><h2 class="section-title">員工班表套用</h2></div><div class="right"><button class="btn btn-secondary" type="button" onclick="resetAssignmentForm()">新增套用</button></div></div>
+        <form id="assignmentForm"><input type="hidden" id="assignmentId" /><div class="field"><label for="employeeId">員工</label><select id="employeeId" required></select></div><div class="field"><label for="assignTemplateId">班表模板</label><select id="assignTemplateId" required></select></div><div class="row"><div class="field"><label for="assignStartDate">開始日期</label><input id="assignStartDate" type="date" required /></div><div class="field"><label for="assignEndDate">結束日期</label><input id="assignEndDate" type="date" /></div></div><label class="checkbox-line"><input id="assignIndefinite" type="checkbox" onchange="toggleEndDate()" />無期限</label><div class="row"><div class="field"><label for="assignEnabled">是否啟用</label><select id="assignEnabled"><option value="TRUE">啟用</option><option value="FALSE">停用</option></select></div><div class="field"><label for="assignNote">備註</label><input id="assignNote" type="text" placeholder="例如：長期套用" /></div></div><div class="actions"><button class="btn btn-primary" type="submit">儲存員工套用班表</button><button class="btn btn-ghost" type="button" onclick="resetAssignmentForm()">清空表單</button></div></form>
+        <div class="notice">提醒：如果同一位員工同一天有兩筆都啟用中的班表套用資料，系統只會採用最晚建立的一筆。為了避免混亂，建議同時只保留一筆有效資料。</div>
+        <div id="assignmentStatus" class="status"></div>
+      </div>
+      <div class="card" style="margin-top:18px;"><h2 class="section-title">員工目前套用中的班表</h2><div id="assignmentList" class="assignment-list"></div></div>
+    </div>
+
+    <div id="singleDayPanel" class="schedule-panel">
+      <div class="card">
+        <div class="toolbar"><div><h2 class="section-title">單日特別班表 / 單日開放打卡</h2></div><div class="right"><button class="btn btn-secondary" type="button" onclick="resetSingleDayForm()">新增單日特別班表</button></div></div>
+        <form id="singleDayForm"><input type="hidden" id="singleDayId" /><div class="field"><label for="singleDayEmployeeId">員工</label><select id="singleDayEmployeeId" required></select></div><div class="row"><div class="field"><label for="singleDayDate">日期</label><input id="singleDayDate" type="date" required /></div><div class="field"><label for="singleDayType">打卡類型</label><select id="singleDayType" onchange="toggleSingleDayTime()"><option value="標準打卡">標準打卡</option><option value="特殊打卡">特殊打卡</option><option value="無班">無班</option><option value="休息日">休息日（可依法協商出勤）</option><option value="例假日">例假日（原則不得出勤）</option></select></div></div><div class="row" id="singleDayTimeRow"><div class="field"><label for="singleDayStartTime">上班時間</label><select id="singleDayStartTime"></select></div><div class="field"><label for="singleDayEndTime">下班時間</label><select id="singleDayEndTime"></select></div></div><label class="checkbox-line"><input id="singleDayAllowSpecial" type="checkbox" />當天允許「標準打卡＋特殊打卡」共用</label><div class="row"><div class="field"><label for="singleDayEnabled">是否啟用</label><select id="singleDayEnabled"><option value="TRUE">啟用</option><option value="FALSE">停用</option></select></div><div class="field"><label for="singleDayNote">備註</label><input id="singleDayNote" type="text" placeholder="例如：活動日臨時開放打卡" /></div></div><div class="actions"><button class="btn btn-primary" type="submit">儲存單日特別班表</button><button class="btn btn-ghost" type="button" onclick="resetSingleDayForm()">清空表單</button></div></form>
+        <div id="singleDayStatus" class="status"></div>
+      </div>
+      <div class="card" style="margin-top:18px;"><h2 class="section-title">已建立的單日特別班表</h2><div id="singleDayList" class="assignment-list"></div></div>
+    </div>
+  </div>
+
+  <script src="config.js?v=20260528ClockMultiSchedule"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=admin-final-20260530b"></script>
-<script src="app.js"></script>
+  <script src="firebase-client.js?v=attendance-flow-20260618"></script>
+
+  <script src="app.js?v=admin-final-20260530b"></script>
   <script>
 
-    const $=id=>document.getElementById(id);
-    const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-    const user=typeof requireLogin==='function'?requireLogin():null;
-    const currentUser=()=>typeof getUser==='function'?getUser():user;
-    const uid=()=>currentUser()?.id||localStorage.getItem('employeeUserId')||'';
-    let employees=[],loading=false;
-    function showMsg(t,ok=true){const m=$('msg');m.textContent=t||'';m.className='msg '+(ok?'ok':'err');m.style.display=t?'block':'none'}
-    function setButtonBusy(btn,on,text){
-      if(!btn)return;
-      if(on){
-        btn.dataset.oldHtml=btn.innerHTML;
-        btn.dataset.busyText=text||'處理中';
-        btn.innerHTML=`${btn.dataset.busyText} <span class="btn-progress">0%</span>`;
-        btn.classList.add('loading');
-        btn.disabled=true;
-        let steps=[20,40,60,80,95],i=0;
-        btn.dataset.busyTimer=String(setInterval(()=>{const el=btn.querySelector('.btn-progress');if(el){el.textContent=steps[Math.min(i,steps.length-1)]+'%';i++;}},320));
-      }else{
-        if(btn.dataset.busyTimer) clearInterval(Number(btn.dataset.busyTimer));
-        btn.innerHTML=btn.dataset.oldHtml||btn.textContent;
-        btn.classList.remove('loading');
-        btn.disabled=false;
-        delete btn.dataset.oldHtml; delete btn.dataset.busyText; delete btn.dataset.busyTimer;
+    const DAYS = [
+      { key: 'monday', label: '星期一' },
+      { key: 'tuesday', label: '星期二' },
+      { key: 'wednesday', label: '星期三' },
+      { key: 'thursday', label: '星期四' },
+      { key: 'friday', label: '星期五' },
+      { key: 'saturday', label: '星期六' },
+      { key: 'sunday', label: '星期日' }
+    ];
+
+    let pageData = {
+      templates: [],
+      assignments: [],
+      singleDaySchedules: [],
+      employees: []
+    };
+
+    const scheduleQuery = new URLSearchParams(location.search || '');
+    const requestedEmployeeId = scheduleQuery.get('employeeId') || '';
+    const requestedPanel = scheduleQuery.get('panel') || '';
+    let requestedSelectionApplied = false;
+
+    document.addEventListener('DOMContentLoaded', () => {
+      buildDayFields();
+      buildSingleDayTimeSelects();
+      bindForms();
+      toggleSingleDayTime();
+      const currentUser = (typeof getUser === 'function') ? getUser() : null;
+      if (currentUser && typeof hasSettingsZoneAccess === 'function' && !hasSettingsZoneAccess(currentUser)) {
+        window.location.href = 'dashboard.html';
+        return;
+      }
+      const userId = getCurrentUserId();
+      if (!userId) {
+        showStatus('templateStatus', '尚未取得主管登入資訊，請由員工系統管理區進入本頁。', 'error');
+      }
+      reloadPageData();
+    });
+
+    function goBackToSettings() {
+      const ref = document.referrer || '';
+      if (ref && /settings\.html(?:$|[?#])/i.test(ref)) {
+        window.location.href = ref;
+        return;
+      }
+      window.location.href = 'settings.html';
+    }
+
+    function buildDayFields() {
+      const wrap = document.getElementById('dayFields');
+      wrap.innerHTML = DAYS.map(day => `
+        <div class="day-card">
+          <div class="day-title">${day.label}</div>
+          <div class="field">
+            <label for="${day.key}Type">打卡類型</label>
+            <select id="${day.key}Type" onchange="toggleDayTime('${day.key}')">
+              ${buildTypeOptionsHtml()}
+            </select>
+          </div>
+          <div class="field hidden" id="${day.key}TimeWrap">
+            <label for="${day.key}Time">上班時間</label>
+            <select id="${day.key}Time" onchange="updateDayPreview('${day.key}')">${buildTimeOptionsHtml()}</select>
+          </div>
+          <div class="field hidden" id="${day.key}EndTimeWrap">
+            <label for="${day.key}EndTime">下班時間</label>
+            <select id="${day.key}EndTime" onchange="updateDayPreview('${day.key}')">${buildTimeOptionsHtml()}</select>
+          </div>
+          <label class="checkbox-line" style="margin-top:8px;">
+            <input id="${day.key}AllowSpecial" type="checkbox" onchange="updateDayPreview('${day.key}')" />
+            當天允許「標準打卡＋特殊打卡」共用
+          </label>
+          <div class="schedule-preview muted" id="${day.key}Preview" style="margin-top:8px;"></div>
+        </div>
+      `).join('');
+      DAYS.forEach(day => updateDayPreview(day.key));
+    }
+
+    function bindForms() {
+      document.getElementById('templateForm').addEventListener('submit', saveTemplate);
+      document.getElementById('assignmentForm').addEventListener('submit', saveAssignment);
+      document.getElementById('singleDayForm').addEventListener('submit', saveSingleDay);
+    }
+
+    const SHIFT_TYPE_OPTIONS = [
+      { value: '標準打卡', label: '標準打卡' },
+      { value: '特殊打卡', label: '特殊打卡' },
+      { value: '無班', label: '無班' },
+      { value: '休息日', label: '休息日（可依法協商出勤）' },
+      { value: '例假日', label: '例假日（原則不得出勤）' }
+    ];
+
+    function buildTypeOptionsHtml() {
+      return SHIFT_TYPE_OPTIONS.map(opt => `<option value="${escapeHtml(opt.value)}">${escapeHtml(opt.label)}</option>`).join('');
+    }
+
+    function buildTimeOptionsHtml() {
+      let html = '<option value="">請選擇</option>';
+      for (let h = 0; h < 24; h++) {
+        for (const m of ['00', '30']) {
+          const value = `${String(h).padStart(2,'0')}:${m}`;
+          html += `<option value="${value}">${value}</option>`;
+        }
+      }
+      return html;
+    }
+
+    function buildSingleDayTimeSelects() {
+      const start = document.getElementById('singleDayStartTime');
+      const end = document.getElementById('singleDayEndTime');
+      if (start) start.innerHTML = buildTimeOptionsHtml();
+      if (end) end.innerHTML = buildTimeOptionsHtml();
+    }
+
+    function formatShiftTypeLabel(type) {
+      const hit = SHIFT_TYPE_OPTIONS.find(opt => opt.value === type);
+      return hit ? hit.label : (type || '無班');
+    }
+
+    function normalizeTimeValue(value) {
+      const raw = String(value == null ? '' : value).trim();
+      if (!raw) return '';
+      const m1 = raw.match(/^(\d{1,2}):(\d{2})/);
+      if (m1) return `${m1[1].padStart(2,'0')}:${m1[2]}`;
+      const d = new Date(raw);
+      if (!isNaN(d.getTime())) {
+        return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+      }
+      return raw;
+    }
+
+    function timeToMinutes(value) {
+      const norm = normalizeTimeValue(value);
+      if (!norm || !/^\d{2}:\d{2}$/.test(norm)) return NaN;
+      const [h, m] = norm.split(':').map(Number);
+      return h * 60 + m;
+    }
+
+    function minutesToTime(minutes) {
+      const h = Math.floor(minutes / 60);
+      const m = minutes % 60;
+      return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+    }
+
+    function calculateRestBreaks(startTime, endTime) {
+      const start = timeToMinutes(startTime);
+      const end = timeToMinutes(endTime);
+      if (isNaN(start) || isNaN(end) || end <= start) return [];
+      let worked = 0;
+      let cursor = start;
+      const breaks = [];
+      while (true) {
+        const nextThreshold = worked === 0 ? 4 * 60 : worked + 4 * 60;
+        const thresholdClock = start + nextThreshold + breaks.length * 30;
+        if (thresholdClock >= end) break;
+        breaks.push({ start: thresholdClock, end: Math.min(thresholdClock + 30, end) });
+        worked = nextThreshold;
+        cursor = thresholdClock + 30;
+        if (cursor >= end) break;
+      }
+      return breaks.filter(b => b.end > b.start);
+    }
+
+    function buildDaySummary(type, startTime, endTime, allowSpecial) {
+      const label = formatShiftTypeLabel(type || '無班');
+      const normStart = normalizeTimeValue(startTime);
+      const normEnd = normalizeTimeValue(endTime);
+      const parts = [label];
+      if (type === '標準打卡' && normStart && normEnd) {
+        parts.push(`${normStart}-${normEnd}`);
+        const rests = calculateRestBreaks(normStart, normEnd);
+        rests.forEach((r, idx) => parts.push(`休息 ${idx + 1}：${minutesToTime(r.start)}-${minutesToTime(r.end)}`));
+      }
+      if (allowSpecial && type === '標準打卡') parts.push('可標準＋特殊共用');
+      return parts.join('｜');
+    }
+
+    function updateDayPreview(dayKey) {
+      const type = document.getElementById(`${dayKey}Type`)?.value || '無班';
+      const startTime = document.getElementById(`${dayKey}Time`)?.value || '';
+      const endTime = document.getElementById(`${dayKey}EndTime`)?.value || '';
+      const allowSpecial = !!document.getElementById(`${dayKey}AllowSpecial`)?.checked;
+      const el = document.getElementById(`${dayKey}Preview`);
+      if (el) el.textContent = buildDaySummary(type, startTime, endTime, allowSpecial);
+    }
+
+
+    function getStoredUser() {
+      try {
+        const raw = localStorage.getItem('employeeUser') || '';
+        if (!raw) return null;
+        const user = JSON.parse(raw);
+        return user && typeof user === 'object' ? user : null;
+      } catch (err) {
+        return null;
       }
     }
-    async function runBusy(btn,text,fn){if(typeof btn==='string'){fn=text;text=btn;btn=(window.event&&window.event.currentTarget)||null} if(loading)return;loading=true;setButtonBusy(btn,true,text);try{return await fn()}catch(e){showMsg(e.message||String(e),false)}finally{setButtonBusy(btn,false);loading=false}}
-    function managerMode(){const u=currentUser()||{};return !!(u.showSettingsZone||u.isAdmin||String(u.role||'').toLowerCase()==='admin'||u.identityType==='admin')}
-    function initHeader(titleStaff){const u=currentUser(); const admin=managerMode(); const oldHomeLink=$('homeLink'); if(oldHomeLink){oldHomeLink.href=typeof userHomeHref==='function'?userHomeHref(u):(admin?'settings.html':'dashboard.html'); oldHomeLink.textContent=admin?'返回管理首頁':(typeof userHomeLabel==='function'?userHomeLabel(u):'返回員工首頁');}}
-    async function loadEmployees(selectId){try{const res=await api('getEmployeeOptions',{userId:uid()});employees=res.employees||res.rows||[];$(selectId).innerHTML='<option value="">請選擇員工</option>'+employees.map(x=>`<option value="${esc(x.id||x.employeeId||'')}">${esc(x.name||x.employeeName||'')}</option>`).join('')}catch(e){}}
-    const rec={};
-    function recHtml(key){return `<div class="rec-line" data-rec="${key}"><span class="pill blue">錄音</span><span class="rec-time" id="rt_${key}">00:00</span><div class="rec-buttons"><button class="mini-btn primary" type="button" onclick="startRec('${key}')">開始</button><button class="mini-btn" type="button" onclick="stopRec('${key}')" disabled>停止</button><button class="mini-btn danger" type="button" onclick="clearRec('${key}')" disabled>刪除</button></div><audio id="ra_${key}" class="audio-mini hidden" controls></audio></div>`}
-    async function startRec(key){try{const box=document.querySelector(`[data-rec="${key}"]`);const stream=await navigator.mediaDevices.getUserMedia({audio:true});const chunks=[];const mr=new MediaRecorder(stream);rec[key]={mr,stream,chunks,sec:0,file:null,timer:setInterval(()=>{rec[key].sec++;$('rt_'+key).textContent=String(Math.floor(rec[key].sec/60)).padStart(2,'0')+':'+String(rec[key].sec%60).padStart(2,'0')},1000)};mr.ondataavailable=e=>{if(e.data?.size)chunks.push(e.data)};mr.onstop=()=>{clearInterval(rec[key].timer);const blob=new Blob(chunks,{type:mr.mimeType||'audio/webm'});rec[key].file=new File([blob],`record_${Date.now()}.webm`,{type:blob.type});stream.getTracks().forEach(t=>t.stop());const a=$('ra_'+key);a.src=URL.createObjectURL(rec[key].file);a.classList.remove('hidden');box.querySelectorAll('button')[0].disabled=false;box.querySelectorAll('button')[1].disabled=true;box.querySelectorAll('button')[2].disabled=false};mr.start();box.querySelectorAll('button')[0].disabled=true;box.querySelectorAll('button')[1].disabled=false;box.querySelectorAll('button')[2].disabled=true}catch(e){alert('無法啟用錄音：'+(e.message||e))}}
-    function stopRec(key){if(rec[key]?.mr&&rec[key].mr.state!=='inactive')rec[key].mr.stop()}
-    function clearRec(key){if(rec[key]?.stream)rec[key].stream.getTracks().forEach(t=>t.stop());delete rec[key];const t=$('rt_'+key); if(t)t.textContent='00:00';const a=$('ra_'+key); if(a){a.removeAttribute('src');a.classList.add('hidden')}const b=document.querySelector(`[data-rec="${key}"]`);if(b){const boxBtns=b.querySelectorAll('button');boxBtns[0].disabled=false;boxBtns[1].disabled=true;boxBtns[2].disabled=true}}
-    async function uploadList(inputId,folder){const el=$(inputId);const files=Array.from(el?.files||[]);if(!files.length)return[];if(typeof uploadFilesToCloudinary!=='function')throw new Error('缺少上傳功能');const out=await uploadFilesToCloudinary(files,{folder});return out.map((r,i)=>({url:r.secure_url||r.url,name:files[i]?.name||r.originalFilename||''}))}
-    async function uploadAudio(key,folder){if(!rec[key]?.file)return[];if(typeof uploadFileToCloudinary!=='function')throw new Error('缺少上傳功能');const r=await uploadFileToCloudinary(rec[key].file,{folder});return[{url:r.secure_url||r.url,name:rec[key].file.name}]}
-    function assetsHtml(a){a=a||{};const rows=[...(a.images||[]).map(x=>['圖片',x]),...(a.videos||[]).map(x=>['影片',x]),...(a.audios||[]).map(x=>['錄音',x]),...(a.files||[]).map(x=>['文件',x])];return rows.length?`<div class="asset-list">${rows.map(([t,x])=>`<a target="_blank" href="${esc(x.url||'#')}">${t}｜${esc(x.name||'查看')}</a>`).join('')}</div>`:''}
-    function pill(text,cls=''){return `<span class="pill ${cls}">${esc(text||'')}</span>`}
-    function statusPill(r, allowReassign=true){if(allowReassign && r.needsReassign)return pill(r.assigneeStatusLabel||'需重新指定','red');const s=r.status||'待處理';return pill(s,s==='已完成'?'blue':(s==='退回重做'?'warn':(s==='已逾期'?'red':'')))}
-    const WEEKDAY=['日','一','二','三','四','五','六'];
-    function cleanDateKey(v){const s=String(v||'').trim();if(!s)return'';const m=s.match(/(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);if(!m)return'';return `${m[1]}-${String(m[2]).padStart(2,'0')}-${String(m[3]).padStart(2,'0')}`}
-    function humanDate(v){const k=cleanDateKey(v);if(!/^\d{4}-\d{2}-\d{2}$/.test(k))return k;const p=k.split('-').map(Number);const d=new Date(p[0],p[1]-1,p[2]);return `${p[0]}/${String(p[1]).padStart(2,'0')}/${String(p[2]).padStart(2,'0')}（${WEEKDAY[d.getDay()]}）`}
-    function humanTime(v){const s=String(v||'').trim();const m=s.match(/^(\d{1,2}):(\d{2})/);if(!m)return'';const h=Number(m[1]),mm=m[2];let label='上午',hh=h;if(h>=18){label='晚上';hh=h-12}else if(h>=12){label='下午';hh=h===12?12:h-12}else if(h===0){hh=12}return `${label} ${hh}:${mm}`}
-    function dueText(r){const d=cleanDateKey(r&&r.dueDate);if(!d)return'無期限';const t=humanTime(r&&r.dueTime);return humanDate(d)+(t?' '+t:'')}
 
-    function cycleLabelText(r){let raw=String(r&&r.cycleLabel||'').trim();if(raw.includes('/')){raw=raw.replace(/每年\s*(\d{1,2})\/(\d{1,2})\s*號?/, '每年 $1 月 $2 號')}return raw||'固定循環'}
-    function routineDueRuleText(r){const days=Math.max(1,Number(r&&r.periodDueDays||1)||1);const time=humanTime(r&&r.periodDueTime)||humanTime(r&&r.dueTime)||'';return `${days} 天內完成${time?'，截止 '+time:''}`}
-    function routineStartText(r){const d=cleanDateKey(r&&r.startDate);return d?`開始：${humanDate(d)}｜`:''}
-    function routineCycleSummary(r){return `${cycleLabelText(r)}｜${routineStartText(r)}${routineDueRuleText(r)}`}
+    function getCurrentUserId() {
+      const user = getStoredUser();
+      return String(
+        (user && (user.id || user.userId || user.employeeId)) ||
+        localStorage.getItem('employeeUserId') ||
+        ''
+      ).trim();
+    }
 
-    let editingId='';
-    function renderCycleFields(){const k=$('cycleKind').value;$('weekWrap').classList.toggle('hidden',k!=='weekly');$('customMonthWrap').classList.toggle('hidden',k!=='monthlyCustom');$('monthDayWrap').classList.toggle('hidden',!(k==='monthly1'||k==='monthly2'||k==='monthly3'||k==='monthlyCustom'));$('yearMonthWrap').classList.toggle('hidden',k!=='yearly');$('yearDayWrap').classList.toggle('hidden',k!=='yearly')}
-    function renderEndFields(){$('endDateWrap').classList.toggle('hidden',$('endMode').value!=='date')}
-    function cyclePayload(){const k=$('cycleKind').value;if(k==='daily')return{cycleType:'daily',cycleInterval:1,weekDay:'',monthDay:'1'};if(k==='weekly')return{cycleType:'weekly',cycleInterval:1,weekDay:$('weekDay').value,monthDay:'1'};if(k==='yearly')return{cycleType:'yearly',cycleInterval:1,weekDay:'',monthDay:($('yearMonth').value||'1')+'/'+($('yearDay').value||'1')};let n=1;if(k==='monthly2')n=2;else if(k==='monthly3')n=3;else if(k==='monthlyCustom')n=Math.max(1,Number($('cycleInterval').value||1));return{cycleType:'monthly',cycleInterval:n,weekDay:'',monthDay:$('monthDay').value||'1'}}
-    function setCycleFromRow(r){const type=r.cycleType||'monthly';const intv=Number(r.cycleInterval||1)||1;const md=String(r.monthDay||'1');if(type==='daily')$('cycleKind').value='daily';else if(type==='weekly')$('cycleKind').value='weekly';else if(type==='yearly')$('cycleKind').value='yearly';else if(intv===2)$('cycleKind').value='monthly2';else if(intv===3)$('cycleKind').value='monthly3';else if(intv>1){$('cycleKind').value='monthlyCustom';$('cycleInterval').value=intv}else $('cycleKind').value='monthly1';$('weekDay').value=r.weekDay||'1';if(type==='yearly'&&md.indexOf('/')>0){const p=md.split('/');$('yearMonth').value=p[0]||'1';$('yearDay').value=p[1]||'1'}else $('monthDay').value=md||'1';renderCycleFields()}
-    async function submitRoutine(btn){await runBusy(btn,editingId?'修改中...':'儲存中...',async()=>{const sel=$('ownerId');const c=cyclePayload();const payload={userId:uid(),templateId:editingId,category:$('category').value,title:$('title').value,content:$('content').value,ownerId:sel.value,assigneeName:sel.options[sel.selectedIndex]?.text||'',cycleType:c.cycleType,cycleInterval:c.cycleInterval,weekDay:c.weekDay,monthDay:c.monthDay,generateTime:'09:00',periodDueType:'days',periodDueDays:$('periodDueDays').value,periodDueTime:$('periodDueTime').value,startDate:$('startDate').value,endMode:$('endMode').value,endDate:$('endDate').value,needReport:$('needReport').checked,allowComment:$('allowComment').checked,allowRedo:$('allowRedo').checked,disabled:$('disabled').checked,imageAssets:await uploadList('imageInput','routines/images'),videoAssets:await uploadList('videoInput','routines/videos'),audioAssets:await uploadAudio('manager','routines/audio'),fileAssets:await uploadList('fileInput','routines/files')};const res=await api('saveRoutineTemplate',payload);if(!res.ok)throw new Error(res.message||'儲存失敗');showMsg(res.needsReassign?'已儲存，但負責人需重新指定。':'已儲存。',!res.needsReassign);resetForm();await loadAdminData();})}
-    function resetForm(){editingId='';['title','content','endDate','imageInput','videoInput','fileInput'].forEach(id=>$(id).value='');$('category').value='行政';$('ownerId').value='';$('cycleKind').value='monthly1';$('cycleInterval').value='2';$('weekDay').value='1';$('monthDay').value='1';$('yearMonth').value='1';$('yearDay').value='1';$('periodDueDays').value='1';$('periodDueTime').value='18:00';$('startDate').value=new Date().toISOString().slice(0,10);$('endMode').value='forever';$('needReport').checked=true;$('allowComment').checked=true;$('allowRedo').checked=true;$('disabled').checked=false;clearRec('manager');$('saveBtn').textContent='儲存';renderCycleFields();renderEndFields()}
-    function itemStatus(r){return r.needsReassign?pill(r.assigneeStatusLabel||'需重新指定','red'):statusPill(r,true)}
-    function templateCard(r,i){return `<div class="item-card tone-${i%5}"><div class="item-head"><div><div class="item-title">${esc(r.title||'未命名固定事項')}</div><div class="routine-line">週期：${esc(routineCycleSummary(r))}</div><div class="item-meta">${esc(r.category||'')}｜負責人：${esc(r.assigneeName||'未指定')}｜${r.disabled?'停用':'啟用'}</div></div>${itemStatus(r)}</div><div class="requirement"><b>事項內容</b><br>${esc(r.content||'')}</div>${assetsHtml(r.managerAttachments)}<div class="routine-actions"><button class="btn secondary" onclick='editRoutine(${JSON.stringify(r).replace(/'/g,"&#39;")})'>修改</button><button class="btn warn" onclick="toggleRoutine('${esc(r.id)}',${r.disabled?'true':'false'},this)">${r.disabled?'啟用':'停用'}</button><button class="btn danger" onclick="deleteRoutine('${esc(r.id)}',this)">刪除</button></div></div>`}
-    function logCard(r,i){return `<div class="item-card tone-${i%5}"><div class="item-head"><div><div class="item-title">${esc(r.title||r.templateId||'固定事項紀錄')}</div><div class="item-meta">期別：${esc(r.periodKey||'')}｜負責人：${esc(r.assigneeName||'')}</div></div>${itemStatus(r)}</div>${r.replyText?`<div class="item-content"><b>員工回覆</b><br>${esc(r.replyText)}</div>`:''}${assetsHtml(r.replyAttachments)}<div class="actions"><button class="btn warn" onclick="redoRoutine('${esc(r.templateId||r.sourceId)}','${esc(r.periodKey)}',this)">退回重做</button></div></div>`}
-    function staffCard(r,i){const key='routine_'+String((r.templateId||r.sourceId)+'_'+r.periodKey).replace(/[^a-zA-Z0-9]/g,'_');return `<div class="item-card staff-card tone-${i%5}"><div class="item-head"><div><div class="item-title">${esc(r.title||'固定事項')}</div><div class="due-strong">期限：${esc(dueText(r))}</div><div class="item-meta">${esc(r.category||'')}｜${esc(cycleLabelText(r))}</div></div>${itemStatus(r)}</div><div class="requirement"><b>主管要求</b><br>${esc(r.content||'')}</div>${assetsHtml(r.managerAttachments)}${r.replyText?`<div class="item-content"><b>你的回覆</b><br>${esc(r.replyText)}</div>`:''}${assetsHtml(r.replyAttachments)}${r.redoReason?`<div class="item-content"><b>退回原因</b><br>${esc(r.redoReason)}</div>`:''}${r.status==='已完成'?'':`<div class="reply-box"><label>回覆</label><textarea id="note_${key}" placeholder="完成狀況"></textarea><div class="upload-grid" style="margin-top:8px"><div class="upload-box"><label>圖片</label><input id="img_${key}" type="file" multiple accept="image/*"></div><div class="upload-box"><label>影片</label><input id="vid_${key}" type="file" multiple accept="video/*"></div><div class="upload-box"><label>錄音</label>${recHtml(key)}</div><div class="upload-box"><label>文件</label><input id="fil_${key}" type="file" multiple></div></div><button class="btn full" onclick='completeRoutine(${JSON.stringify(r).replace(/'/g,"&#39;")},"${key}",this)'>送出完成</button></div>`}</div>`}
-    function editRoutine(r){editingId=r.id;$('category').value=r.category||'行政';$('title').value=r.title||'';$('content').value=r.content||'';$('ownerId').value=r.assigneeId||'';setCycleFromRow(r);$('periodDueDays').value=r.periodDueDays||1;$('periodDueTime').value=r.periodDueTime||'18:00';$('startDate').value=r.startDate||new Date().toISOString().slice(0,10);$('endMode').value=r.endMode||'forever';$('endDate').value=r.endDate||'';$('needReport').checked=r.needReport!==false;$('allowComment').checked=r.allowComment!==false;$('allowRedo').checked=r.allowRedo!==false;$('disabled').checked=!!r.disabled;$('saveBtn').textContent='儲存修改';renderEndFields();scrollTo({top:0,behavior:'smooth'})}
-    async function toggleRoutine(id,currentlyDisabled,btn){await runBusy(btn,currentlyDisabled?'啟用中...':'停用中...',async()=>{const res=await api('toggleRoutineTemplate',{userId:uid(),templateId:id,enabled:currentlyDisabled});if(!res.ok)throw new Error(res.message||'操作失敗');showMsg(currentlyDisabled?'已啟用。':'已停用。',true);await loadAdminData();})}
-    async function deleteRoutine(id,btn){if(!confirm('確定刪除此固定事項？'))return;await runBusy(btn,'刪除中...',async()=>{const res=await api('deleteRoutineTemplate',{userId:uid(),templateId:id});if(!res.ok)throw new Error(res.message||'刪除失敗');showMsg('已刪除。',true);await loadAdminData();})}
-    async function redoRoutine(id,periodKey,btn){const reason=prompt('退回原因','請重新補充完成回覆。');if(reason===null)return;await runBusy(btn,'退回中...',async()=>{const res=await api('markUnifiedWorkItemRedo',{userId:uid(),sourceType:'routine',templateId:id,periodKey,reason});if(!res.ok)throw new Error(res.message||'退回失敗');showMsg('已退回重做。',true);await loadAdminData();})}
-    async function completeRoutine(r,key,btn){await runBusy(btn,'送出中...',async()=>{const payload={userId:uid(),sourceType:'routine',templateId:r.templateId||r.sourceId,periodKey:r.periodKey,note:$('note_'+key)?.value||'',photoAssets:await uploadList('img_'+key,'routine-replies/images'),videoAssets:await uploadList('vid_'+key,'routine-replies/videos'),audioAssets:await uploadAudio(key,'routine-replies/audio'),fileAssets:await uploadList('fil_'+key,'routine-replies/files')};const res=await api('completeUnifiedWorkItem',payload);if(!res.ok)throw new Error(res.message||'送出失敗');showMsg('已送出完成回覆。',true);await loadStaffData();})}
-    function renderSummary(s){s=s||{};$('summary').innerHTML=[['全部',s.total||0,''],['啟用',s.activeTotal||0,''],['需重新指定',s.needReassignTotal||0,'red'],['停用',s.disabledTotal||0,'warn']].map(x=>`<div class="summary-box"><b>${x[1]}</b><span class="pill ${x[2]}">${x[0]}</span></div>`).join('')}
-    async function loadAdminData(){try{const res=await api('getRoutinePageData',{userId:uid(),role:'admin',historyMode:'否'});const admin=res.admin||{};renderSummary(admin.summary||res.summary);const templates=(admin.templates||res.templates||[]).filter(r=>!isHistoryStatus_(r.status || (r.disabled?'停用':'啟用'),'routine'));$('templateList').innerHTML=templates.length?templates.map(templateCard).join(''):'<div class="empty">目前沒有啟用或待處理固定事項。</div>';$('logList').innerHTML='<div class="empty">請選擇日期後搜尋歷史固定事項。</div>'}catch(e){showMsg(e.message||String(e),false)}}
-    async function loadRoutineHistoryArchive(){const box=$('logList');box.innerHTML='<div class="empty">讀取中...</div>';try{const payload=buildHistoryQueryPayload_?buildHistoryQueryPayload_({userId:uid(),role:'admin'},'#routineHistoryStart','#routineHistoryEnd'):{userId:uid(),role:'admin',historyMode:'是'};const res=await api('getRoutinePageData',payload);const admin=res.admin||{};const logs=admin.logs||res.logs||[];const templates=admin.templates||res.templates||[];const rows=(logs.length?logs:templates).filter(r=>isHistoryStatus_(r.status || (r.disabled?'停用':'啟用'),'routine'));box.innerHTML=rows.length?rows.map(r=>logs.length?logCard(r):templateCard(r)).join(''):'<div class="empty">這個日期區間沒有歷史固定事項。</div>'}catch(e){box.innerHTML='<div class="empty">目前無法讀取歷史固定事項。</div>'}}
-    async function loadStaffData(){const res=await api('getUnifiedWorkItems',{userId:uid(),source:'routine',historyMode:'否'});const rows=(res.rows||[]).filter(r=>!isHistoryStatus_(r.status,'routine'));$('staffList').innerHTML=rows.length?rows.map(staffCard).join(''):'<div class="empty">目前沒有待辦固定事項。</div>'}
-    async function loadStaffRoutineHistoryArchive(){const box=$('staffRoutineHistoryArchive');box.innerHTML='<div class="empty">讀取中...</div>';try{const payload=buildHistoryQueryPayload_?buildHistoryQueryPayload_({userId:uid(),source:'routine'},'#staffRoutineHistoryStart','#staffRoutineHistoryEnd'):{userId:uid(),source:'routine',historyMode:'是'};const res=await api('getUnifiedWorkItems',payload);const rows=(res.rows||[]).filter(r=>isHistoryStatus_(r.status,'routine'));box.innerHTML=rows.length?rows.map(staffCard).join(''):'<div class="empty">這個日期區間沒有歷史固定事項。</div>'}catch(e){box.innerHTML='<div class="empty">目前無法讀取歷史固定事項。</div>'}}
-    function renderMode(){const admin=managerMode();$('adminWrap').classList.toggle('hidden',!admin);$('staffWrap').classList.toggle('hidden',admin);scheduleIdle_(()=>{if(admin){loadEmployees('ownerId');loadAdminData()}else loadStaffData()})}
-    document.addEventListener('DOMContentLoaded',()=>{initHeader('我的固定事項');if(typeof enforceHistoryDateRange_==='function'){enforceHistoryDateRange_('#routineHistoryStart','#routineHistoryEnd');enforceHistoryDateRange_('#staffRoutineHistoryStart','#staffRoutineHistoryEnd');}$('managerRecorder').innerHTML=recHtml('manager');resetForm();renderMode(); if(typeof activateHistoryColoring_==='function'){activateHistoryColoring_('#logList');activateHistoryColoring_('#staffRoutineHistoryArchive');}});
+    function withAdminUser(payload) {
+      const userId = getCurrentUserId();
+      return Object.assign({}, payload || {}, userId ? { userId } : {});
+    }
+
+    async function callBackend(action, payload = {}) {
+      payload = withAdminUser(payload);
+      if (window.YZFirebase && typeof window.YZFirebase.handleApi === 'function') {
+        const firebaseResult = await window.YZFirebase.handleApi(action, payload || {});
+        if (firebaseResult) return firebaseResult;
+      }
+      const inheritedApi = (typeof window !== 'undefined' && typeof window.apiCall === 'function' && window.apiCall !== callBackend) ? window.apiCall : null;
+      if (inheritedApi) {
+        return await inheritedApi(action, payload);
+      }
+      if (typeof window !== 'undefined' && window.parent && window.parent !== window && typeof window.parent.apiCall === 'function') {
+        return await window.parent.apiCall(action, payload);
+      }
+      if (typeof api === 'function') {
+        return await api(action, payload);
+      }
+      if (typeof api !== 'undefined' && api && typeof api.post === 'function') {
+        return await api.post(action, payload);
+      }
+      if (typeof google !== 'undefined' && google.script && google.script.run && typeof google.script.run.doPostProxy === 'function') {
+        return await new Promise((resolve, reject) => {
+          google.script.run
+            .withSuccessHandler(resolve)
+            .withFailureHandler(function(err){ reject(new Error(err && err.message ? err.message : 'GAS 呼叫失敗')); })
+            .doPostProxy(Object.assign({ action: action }, payload));
+        });
+      }
+      const apiBase = (typeof getApiUrl === 'function' && getApiUrl()) || (typeof window !== 'undefined' && (window.API_BASE_URL || localStorage.getItem('EMPLOYEE_SYSTEM_API_BASE'))) || '';
+      if (apiBase) {
+        const res = await fetch(apiBase, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify(Object.assign({ action: action }, payload))
+        });
+        const json = await res.json();
+        if (!json.ok) throw new Error(json.message || '後端回傳失敗');
+        return json;
+      }
+      throw new Error('班表頁尚未接到後端 API，請先確認 config.js 內的 API_URL 是否正確。');
+    }
+
+    async function reloadPageData() {
+      showStatus('templateStatus', '', 'success', false);
+      showStatus('assignmentStatus', '', 'success', false);
+      showStatus('singleDayStatus', '', 'success', false);
+      if (!getCurrentUserId()) {
+        showStatus('templateStatus', '目前抓不到管理者登入資料，請先回到員工系統重新登入後，再進入班表設定。', 'error');
+        renderEmployeeOptions();
+        renderSingleDayEmployeeOptions();
+        return;
+      }
+      try {
+        const res = await callBackend('getScheduleSetupData');
+        pageData.templates = Array.isArray(res.templates) ? res.templates : [];
+        pageData.assignments = Array.isArray(res.assignments) ? res.assignments : [];
+        pageData.singleDaySchedules = Array.isArray(res.singleDaySchedules) ? res.singleDaySchedules : [];
+        pageData.employees = Array.isArray(res.employees) ? res.employees : [];
+        renderTemplateList();
+        renderAssignmentList();
+        renderSingleDayList();
+        renderEmployeeOptions();
+        renderSingleDayEmployeeOptions();
+        renderTemplateOptions();
+        applyRequestedEmployeeSelection();
+      } catch (err) {
+        showStatus('templateStatus', (err && err.message) || '讀取班表設定資料失敗', 'error');
+      }
+    }
+
+    function applyRequestedEmployeeSelection(){
+      if(requestedSelectionApplied || !requestedEmployeeId) return;
+      const exists=pageData.employees.some(emp=>String(emp.employeeId||emp.id||'')===String(requestedEmployeeId));
+      if(!exists) return;
+      const employeeSelect=document.getElementById('employeeId');
+      if(employeeSelect) employeeSelect.value=requestedEmployeeId;
+      const singleSelect=document.getElementById('singleDayEmployeeId');
+      if(singleSelect) singleSelect.value=requestedEmployeeId;
+      if(requestedPanel==='singleDay') switchSchedulePanel('singleDayPanel');
+      else switchSchedulePanel('assignmentPanel');
+      requestedSelectionApplied=true;
+      const form=document.getElementById('assignmentForm');if(form)form.scrollIntoView({behavior:'smooth',block:'start'});
+    }
+
+    function renderEmployeeOptions() {
+      const select = document.getElementById('employeeId');
+      const employees = pageData.employees;
+      if (!employees.length) {
+        select.innerHTML = '<option value="">目前沒有可用員工資料，請先確認你已用主管帳號登入</option>';
+        return;
+      }
+      select.innerHTML = '<option value="">載入員工完成，請選擇</option>' + employees.map(emp => {
+        const id = escapeHtml(emp.employeeId || '');
+        const name = escapeHtml(emp.employeeName || emp.name || '未命名員工');
+        return `<option value="${id}">${name}（${id}）</option>`;
+      }).join('');
+    }
+
+    function renderSingleDayEmployeeOptions() {
+      const select = document.getElementById('singleDayEmployeeId');
+      const employees = pageData.employees;
+      if (!employees.length) {
+        select.innerHTML = '<option value="">目前沒有可用員工資料，請先確認你已用主管帳號登入</option>';
+        return;
+      }
+      select.innerHTML = '<option value="">載入員工完成，請選擇</option>' + employees.map(emp => {
+        const id = escapeHtml(emp.employeeId || '');
+        const name = escapeHtml(emp.employeeName || emp.name || '未命名員工');
+        return `<option value="${id}">${name}（${id}）</option>`;
+      }).join('');
+    }
+
+    function renderTemplateOptions() {
+      const select = document.getElementById('assignTemplateId');
+      const enabledTemplates = pageData.templates.filter(t => String(t.enabled || t.啟用 || 'TRUE') !== 'FALSE');
+      select.innerHTML = '<option value="">載入模板完成，請選擇</option>' + enabledTemplates.map(t => {
+        const id = escapeHtml(t.templateId || t.模板ID || t.__id || '');
+        const name = escapeHtml(t.templateName || t.模板名稱 || '未命名模板');
+        return `<option value="${id}">${name}</option>`;
+      }).join('');
+    }
+
+    function renderTemplateList() {
+      const wrap = document.getElementById('templateList');
+      if (!pageData.templates.length) {
+        wrap.innerHTML = '<div class="empty">目前還沒有班表模板。</div>';
+        return;
+      }
+      wrap.innerHTML = pageData.templates.map((t, index) => {
+        const id = t.templateId || t.模板ID || t.__id || '';
+        const name = t.templateName || t.模板名稱 || '未命名模板';
+        const enabled = String(t.enabled || t.啟用 || 'TRUE') !== 'FALSE';
+        return `
+          <div class="item">
+            <div class="item-head">
+              <div>
+                <h3>${escapeHtml(name)}</h3>
+                <div class="muted">模板ID：${escapeHtml(id)}｜${escapeHtml(t.note || t.備註 || '')}</div>
+              </div>
+              <span class="pill ${enabled ? '' : 'off'}">${enabled ? '啟用中' : '已停用'}</span>
+            </div>
+            <div class="schedule-mini">
+              ${DAYS.map(day => {
+                const type = getTemplateDayValue(t, day, 'type') || '無班';
+                const startTime = getTemplateDayValue(t, day, 'time') || '';
+                const endTime = getTemplateDayValue(t, day, 'endTime') || '';
+                const allowSpecial = !!getTemplateDayValue(t, day, 'allowSpecial');
+                return `<div><b>${day.label}：</b>${escapeHtml(buildDaySummary(type, startTime, endTime, allowSpecial))}</div>`;
+              }).join('')}
+            </div>
+            <div class="actions">
+              <button class="btn btn-secondary" type="button" onclick="editTemplate(${index})">編輯</button>
+              <button class="btn btn-danger" type="button" onclick="deleteTemplate('${escapeJs(id)}')">刪除</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderAssignmentList() {
+      const wrap = document.getElementById('assignmentList');
+      if (!pageData.assignments.length) {
+        wrap.innerHTML = '<div class="empty">目前還沒有員工套用班表資料。</div>';
+        return;
+      }
+      wrap.innerHTML = pageData.assignments.map((a, index) => {
+        const enabled = String(a.enabled || a.啟用 || 'TRUE') !== 'FALSE';
+        const indefinite = String(a.indefinite || a.無期限 || 'FALSE') === 'TRUE';
+        const statusText = enabled ? '啟用中' : '已停用';
+        return `
+          <div class="item">
+            <div class="item-head">
+              <div>
+                <h3>${escapeHtml(a.employeeName || a.員工姓名 || '未命名員工')}</h3>
+                <div class="muted">員工ID：${escapeHtml(a.employeeId || a.員工ID || '')}｜模板：${escapeHtml(a.templateName || a.模板名稱 || '')}</div>
+              </div>
+              <span class="pill ${enabled ? '' : 'off'}">${statusText}</span>
+            </div>
+            <div class="schedule-mini">
+              <div><b>開始日期：</b>${escapeHtml(a.startDate || a.開始日期 || '')}</div>
+              <div><b>結束日期：</b>${indefinite ? '無期限' : escapeHtml(a.endDate || a.結束日期 || '')}</div>
+              <div><b>套用ID：</b>${escapeHtml(a.assignmentId || a.套用ID || a.__id || '')}</div>
+              <div><b>備註：</b>${escapeHtml(a.note || a.備註 || '')}</div>
+            </div>
+            <div class="actions">
+              <button class="btn btn-secondary" type="button" onclick="editAssignment(${index})">編輯</button>
+              <button class="btn btn-danger" type="button" onclick="deleteAssignment('${escapeJs(a.assignmentId || a.套用ID || a.__id || '')}')">刪除</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderSingleDayList() {
+      const wrap = document.getElementById('singleDayList');
+      if (!pageData.singleDaySchedules.length) {
+        wrap.innerHTML = '<div class="empty">目前還沒有單日特別班表。</div>';
+        return;
+      }
+      wrap.innerHTML = pageData.singleDaySchedules.map((a, index) => {
+        const enabled = String(a.enabled || a.啟用 || 'TRUE') !== 'FALSE';
+        const type = a.clockType || a['打卡類型'] || '標準打卡';
+        const start = normalizeTimeValue(a.startTime || a['上班時間'] || '');
+        const end = normalizeTimeValue(a.endTime || a['下班時間'] || '');
+        const allowSpecial = String(a.allowSpecial || a['允許特殊打卡'] || 'FALSE') === 'TRUE';
+        const summary = buildDaySummary(type, start, end, allowSpecial);
+        return `<div class="item"><div class="item-head"><div><h3>${escapeHtml(a.employeeName || a['員工姓名'] || '未命名員工')}</h3><div class="muted">日期：${escapeHtml(a.date || a['日期'] || '')}｜${escapeHtml(summary)}</div></div><span class="pill ${enabled ? '' : 'off'}">${enabled ? '啟用中' : '已停用'}</span></div><div class="schedule-mini"><div><b>單日ID：</b>${escapeHtml(a.recordId || a['單日ID'] || a.__id || '')}</div><div><b>備註：</b>${escapeHtml(a.note || a['備註'] || '')}</div></div><div class="actions"><button class="btn btn-secondary" type="button" onclick="editSingleDay(${index})">編輯</button><button class="btn btn-danger" type="button" onclick="deleteSingleDay('${escapeJs(a.recordId || a['單日ID'] || a.__id || '')}')">刪除</button></div></div>`;
+      }).join('');
+    }
+
+    function getTemplateDayValue(template, day, kind) {
+      const map = {
+        monday: '星期一',
+        tuesday: '星期二',
+        wednesday: '星期三',
+        thursday: '星期四',
+        friday: '星期五',
+        saturday: '星期六',
+        sunday: '星期日'
+      };
+      const zh = map[day.key];
+      const days = Array.isArray(template.days) ? template.days : [];
+      const dayRow = days.find(d => String(d.dayKey || d.key || '') === day.key || String(d.dayLabel || d.label || '') === day.label);
+      if (kind === 'type') return template[`${day.key}Type`] || template[`${zh}類型`] || (dayRow ? (dayRow.type || dayRow.clockType || '') : '') || '';
+      if (kind === 'time') return normalizeTimeValue(template[`${day.key}StartTime`] || template[`${day.key}Time`] || template[`${zh}上班時間`] || (dayRow ? (dayRow.startTime || dayRow.time || '') : '') || '');
+      if (kind === 'endTime') return normalizeTimeValue(template[`${day.key}EndTime`] || template[`${zh}下班時間`] || (dayRow ? (dayRow.endTime || '') : '') || '');
+      if (kind === 'allowSpecial') {
+        const raw = template[`${day.key}AllowSpecial`] != null ? template[`${day.key}AllowSpecial`] : (template[`${zh}允許特殊打卡`] != null ? template[`${zh}允許特殊打卡`] : (dayRow ? dayRow.allowSpecial : ''));
+        return String(raw || '').toUpperCase() === 'TRUE' || raw === true || raw === 'true';
+      }
+      return '';
+    }
+
+    function toggleDayTime(dayKey) {
+      const type = document.getElementById(`${dayKey}Type`).value;
+      const startWrap = document.getElementById(`${dayKey}TimeWrap`);
+      const endWrap = document.getElementById(`${dayKey}EndTimeWrap`);
+      const startInput = document.getElementById(`${dayKey}Time`);
+      const endInput = document.getElementById(`${dayKey}EndTime`);
+      const show = type === '標準打卡';
+      startWrap.classList.toggle('hidden', !show);
+      endWrap.classList.toggle('hidden', !show);
+      if (!show) {
+        startInput.value = '';
+        endInput.value = '';
+      }
+      updateDayPreview(dayKey);
+    }
+
+    function resetTemplateForm() {
+      document.getElementById('templateId').value = '';
+      document.getElementById('templateName').value = '';
+      document.getElementById('templateEnabled').value = 'TRUE';
+      document.getElementById('templateNote').value = '';
+      DAYS.forEach(day => {
+        document.getElementById(`${day.key}Type`).innerHTML = buildTypeOptionsHtml();
+        document.getElementById(`${day.key}Type`).value = '無班';
+        document.getElementById(`${day.key}Time`).value = '';
+        document.getElementById(`${day.key}EndTime`).value = '';
+        document.getElementById(`${day.key}AllowSpecial`).checked = false;
+        toggleDayTime(day.key);
+        updateDayPreview(day.key);
+      });
+    }
+
+    function resetAssignmentForm() {
+      document.getElementById('assignmentId').value = '';
+      document.getElementById('employeeId').value = '';
+      document.getElementById('assignTemplateId').value = '';
+      document.getElementById('assignStartDate').value = '';
+      document.getElementById('assignEndDate').value = '';
+      document.getElementById('assignIndefinite').checked = false;
+      document.getElementById('assignEnabled').value = 'TRUE';
+      document.getElementById('assignNote').value = '';
+      toggleEndDate();
+    }
+
+    function toggleEndDate() {
+      const checked = document.getElementById('assignIndefinite').checked;
+      const endDate = document.getElementById('assignEndDate');
+      endDate.disabled = checked;
+      if (checked) endDate.value = '';
+    }
+
+    async function saveTemplate(evt) {
+      evt.preventDefault();
+      const submitBtn = evt && evt.submitter ? evt.submitter : document.querySelector('#templateForm button[type="submit"]');
+      const progress = startSubmitProgress(submitBtn, '儲存中');
+      const payload = {
+        templateId: document.getElementById('templateId').value.trim(),
+        templateName: document.getElementById('templateName').value.trim(),
+        enabled: document.getElementById('templateEnabled').value,
+        note: document.getElementById('templateNote').value.trim(),
+        days: DAYS.map(day => ({
+          dayKey: day.key,
+          dayLabel: day.label,
+          type: document.getElementById(`${day.key}Type`).value,
+          startTime: document.getElementById(`${day.key}Time`).value,
+          endTime: document.getElementById(`${day.key}EndTime`).value,
+          allowSpecial: document.getElementById(`${day.key}AllowSpecial`).checked
+        }))
+      };
+
+      // Firebase 版班表列表與後續打卡判斷，主要讀取 mondayType / mondayTime / mondayEndTime
+      // 這類攤平欄位；原本只存 days 陣列會造成模板有建立，但每天都顯示「無班」。
+      payload.days.forEach(d => {
+        payload[`${d.dayKey}Type`] = d.type;
+        payload[`${d.dayKey}Time`] = d.startTime;
+        payload[`${d.dayKey}StartTime`] = d.startTime;
+        payload[`${d.dayKey}EndTime`] = d.endTime;
+        payload[`${d.dayKey}AllowSpecial`] = d.allowSpecial ? 'TRUE' : 'FALSE';
+      });
+
+      if (!payload.templateName) {
+        if (progress) progress.fail('請先填寫', 900);
+        showStatus('templateStatus', '請先填寫模板名稱。', 'error');
+        return;
+      }
+      const invalidDay = payload.days.find(d => d.type === '標準打卡' && (!d.startTime || !d.endTime));
+      if (invalidDay) {
+        if (progress) progress.fail('資料不完整', 900);
+        showStatus('templateStatus', `${invalidDay.dayLabel} 選了標準打卡，請填上班時間與下班時間。`, 'error');
+        return;
+      }
+      const invalidEndDay = payload.days.find(d => d.type === '標準打卡' && d.endTime <= d.startTime);
+      if (invalidEndDay) {
+        if (progress) progress.fail('時間錯誤', 900);
+        showStatus('templateStatus', `${invalidEndDay.dayLabel} 的下班時間必須晚於上班時間。`, 'error');
+        return;
+      }
+
+      try {
+        const result = await callBackend('saveScheduleTemplate', payload);
+        if (!result || result.ok === false) throw new Error((result && result.message) || '儲存班表模板失敗');
+        if (progress) progress.done('已儲存');
+        showStatus('templateStatus', '班表模板已儲存。', 'success');
+        resetTemplateForm();
+        await reloadPageData();
+      } catch (err) {
+        if (progress) progress.fail('儲存失敗');
+        showStatus('templateStatus', err.message || '儲存班表模板失敗', 'error');
+      }
+    }
+
+    async function saveAssignment(evt) {
+      evt.preventDefault();
+      const submitBtn = evt && evt.submitter ? evt.submitter : document.querySelector('#assignmentForm button[type="submit"]');
+      const progress = startSubmitProgress(submitBtn, '儲存中');
+      const employeeId = document.getElementById('employeeId').value;
+      const employee = pageData.employees.find(e => String(e.employeeId || '') === String(employeeId));
+      const templateId = document.getElementById('assignTemplateId').value;
+      const template = pageData.templates.find(t => String(t.templateId || t.模板ID || t.__id || '') === String(templateId));
+      const indefinite = document.getElementById('assignIndefinite').checked;
+
+      const payload = {
+        assignmentId: document.getElementById('assignmentId').value.trim(),
+        employeeId,
+        employeeName: employee ? (employee.name || employee.employeeName || '') : '',
+        templateId,
+        templateName: template ? (template.templateName || template.模板名稱 || '') : '',
+        startDate: document.getElementById('assignStartDate').value,
+        endDate: document.getElementById('assignEndDate').value,
+        indefinite: indefinite ? 'TRUE' : 'FALSE',
+        enabled: document.getElementById('assignEnabled').value,
+        note: document.getElementById('assignNote').value.trim()
+      };
+
+      if (!payload.employeeId || !payload.templateId || !payload.startDate) {
+        if (progress) progress.fail('資料不完整', 900);
+        showStatus('assignmentStatus', '請先選員工、模板，並填開始日期。', 'error');
+        return;
+      }
+      if (!indefinite && !payload.endDate) {
+        if (progress) progress.fail('資料不完整', 900);
+        showStatus('assignmentStatus', '若不是無期限，請填結束日期。', 'error');
+        return;
+      }
+      if (!indefinite && payload.endDate < payload.startDate) {
+        if (progress) progress.fail('日期錯誤', 900);
+        showStatus('assignmentStatus', '結束日期不能早於開始日期。', 'error');
+        return;
+      }
+
+      try {
+        const result = await callBackend('saveEmployeeSchedule', payload);
+        if (!result || result.ok === false) throw new Error((result && result.message) || '儲存員工套用班表失敗');
+        if (progress) progress.done('已儲存');
+        showStatus('assignmentStatus', '員工套用班表已儲存。', 'success');
+        resetAssignmentForm();
+        await reloadPageData();
+      } catch (err) {
+        if (progress) progress.fail('儲存失敗');
+        showStatus('assignmentStatus', err.message || '儲存員工套用班表失敗', 'error');
+      }
+    }
+
+    function editTemplate(index) {
+      const t = pageData.templates[index];
+      if (!t) return;
+      document.getElementById('templateId').value = t.templateId || t.模板ID || '';
+      document.getElementById('templateName').value = t.templateName || t.模板名稱 || '';
+      document.getElementById('templateEnabled').value = String(t.enabled || t.啟用 || 'TRUE');
+      document.getElementById('templateNote').value = t.note || t.備註 || '';
+      DAYS.forEach(day => {
+        document.getElementById(`${day.key}Type`).value = getTemplateDayValue(t, day, 'type') || '無班';
+        document.getElementById(`${day.key}Time`).value = getTemplateDayValue(t, day, 'time') || '';
+        document.getElementById(`${day.key}EndTime`).value = getTemplateDayValue(t, day, 'endTime') || '';
+        document.getElementById(`${day.key}AllowSpecial`).checked = !!getTemplateDayValue(t, day, 'allowSpecial');
+        toggleDayTime(day.key);
+      });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function editAssignment(index) {
+      const a = pageData.assignments[index];
+      if (!a) return;
+      document.getElementById('assignmentId').value = a.assignmentId || a.套用ID || a.__id || '';
+      document.getElementById('employeeId').value = a.employeeId || a.員工ID || '';
+      document.getElementById('assignTemplateId').value = a.templateId || a.模板ID || '';
+      document.getElementById('assignStartDate').value = a.startDate || a.開始日期 || '';
+      document.getElementById('assignEndDate').value = a.endDate || a.結束日期 || '';
+      document.getElementById('assignIndefinite').checked = String(a.indefinite || a.無期限 || 'FALSE') === 'TRUE';
+      document.getElementById('assignEnabled').value = String(a.enabled || a.啟用 || 'TRUE');
+      document.getElementById('assignNote').value = a.note || a.備註 || '';
+      toggleEndDate();
+      window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+    }
+
+    async function deleteTemplate(templateId) {
+      if (!templateId) return;
+      if (!confirm('確定要刪除這個班表模板嗎？已套用的員工資料不會一起刪除。')) return;
+      try {
+        await callBackend('deleteScheduleTemplate', { templateId });
+        showStatus('templateStatus', '班表模板已刪除。', 'success');
+        await reloadPageData();
+      } catch (err) {
+        showStatus('templateStatus', err.message || '刪除班表模板失敗', 'error');
+      }
+    }
+
+    async function deleteAssignment(assignmentId) {
+      if (!assignmentId) return;
+      if (!confirm('確定要刪除這筆員工套用班表資料嗎？')) return;
+      try {
+        await callBackend('deleteEmployeeSchedule', { assignmentId });
+        showStatus('assignmentStatus', '員工套用班表已刪除。', 'success');
+        await reloadPageData();
+      } catch (err) {
+        showStatus('assignmentStatus', err.message || '刪除員工套用班表失敗', 'error');
+      }
+    }
+
+    function switchSchedulePanel(panelId) {
+      document.querySelectorAll('.schedule-panel').forEach(el => el.classList.toggle('active', el.id === panelId));
+      document.querySelectorAll('.section-tab').forEach(el => el.classList.toggle('active', el.dataset.panelTarget === panelId));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function toggleSingleDayTime() {
+      const type = document.getElementById('singleDayType').value;
+      const row = document.getElementById('singleDayTimeRow');
+      const show = type === '標準打卡';
+      row.classList.toggle('hidden', !show);
+      if (!show) {
+        document.getElementById('singleDayStartTime').value = '';
+        document.getElementById('singleDayEndTime').value = '';
+      }
+    }
+
+    function resetSingleDayForm() {
+      document.getElementById('singleDayId').value = '';
+      document.getElementById('singleDayEmployeeId').value = '';
+      document.getElementById('singleDayDate').value = '';
+      document.getElementById('singleDayType').value = '標準打卡';
+      document.getElementById('singleDayStartTime').value = '';
+      document.getElementById('singleDayEndTime').value = '';
+      document.getElementById('singleDayAllowSpecial').checked = false;
+      document.getElementById('singleDayEnabled').value = 'TRUE';
+      document.getElementById('singleDayNote').value = '';
+      toggleSingleDayTime();
+    }
+
+    async function saveSingleDay(evt) {
+      evt.preventDefault();
+      const submitBtn = evt && evt.submitter ? evt.submitter : document.querySelector('#singleDayForm button[type="submit"]');
+      const progress = startSubmitProgress(submitBtn, '儲存中');
+      const employeeId = document.getElementById('singleDayEmployeeId').value;
+      const employee = pageData.employees.find(e => String(e.employeeId || '') === String(employeeId));
+      const clockType = document.getElementById('singleDayType').value;
+      const payload = {
+        recordId: document.getElementById('singleDayId').value.trim(),
+        employeeId,
+        employeeName: employee ? (employee.name || employee.employeeName || '') : '',
+        date: document.getElementById('singleDayDate').value,
+        clockType,
+        startTime: document.getElementById('singleDayStartTime').value,
+        endTime: document.getElementById('singleDayEndTime').value,
+        allowSpecial: document.getElementById('singleDayAllowSpecial').checked,
+        enabled: document.getElementById('singleDayEnabled').value,
+        note: document.getElementById('singleDayNote').value.trim()
+      };
+      if (!payload.employeeId || !payload.date) { if (progress) progress.fail('資料不完整', 900); showStatus('singleDayStatus', '請先選員工並填日期。', 'error'); return; }
+      if (clockType === '標準打卡' && (!payload.startTime || !payload.endTime)) { if (progress) progress.fail('資料不完整', 900); showStatus('singleDayStatus', '標準打卡請填上班時間與下班時間。', 'error'); return; }
+      if (clockType === '標準打卡' && payload.endTime <= payload.startTime) { if (progress) progress.fail('時間錯誤', 900); showStatus('singleDayStatus', '下班時間必須晚於上班時間。', 'error'); return; }
+      try {
+        const result = await callBackend('saveSingleDaySchedule', payload);
+        if (!result || result.ok === false) throw new Error((result && result.message) || '儲存單日特別班表失敗');
+        if (progress) progress.done('已儲存');
+        showStatus('singleDayStatus', '單日特別班表已儲存。', 'success');
+        resetSingleDayForm();
+        await reloadPageData();
+      } catch (err) {
+        if (progress) progress.fail('儲存失敗');
+        showStatus('singleDayStatus', err.message || '儲存單日特別班表失敗', 'error');
+      }
+    }
+
+    function editSingleDay(index) {
+      const a = pageData.singleDaySchedules[index];
+      if (!a) return;
+      document.getElementById('singleDayId').value = a.recordId || a['單日ID'] || a.__id || '';
+      document.getElementById('singleDayEmployeeId').value = a.employeeId || a['員工ID'] || '';
+      document.getElementById('singleDayDate').value = a.date || a['日期'] || '';
+      document.getElementById('singleDayType').value = a.clockType || a['打卡類型'] || '標準打卡';
+      document.getElementById('singleDayStartTime').value = a.startTime || a['上班時間'] || '';
+      document.getElementById('singleDayEndTime').value = a.endTime || a['下班時間'] || '';
+      document.getElementById('singleDayAllowSpecial').checked = String(a.allowSpecial || a['允許特殊打卡'] || 'FALSE') === 'TRUE';
+      document.getElementById('singleDayEnabled').value = String(a.enabled || a['啟用'] || 'TRUE');
+      document.getElementById('singleDayNote').value = a.note || a['備註'] || '';
+      toggleSingleDayTime();
+      switchSchedulePanel('singleDayPanel');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    async function deleteSingleDay(recordId) {
+      if (!recordId) return;
+      if (!confirm('確定要刪除這筆單日特別班表嗎？')) return;
+      try {
+        await callBackend('deleteSingleDaySchedule', { recordId });
+        showStatus('singleDayStatus', '單日特別班表已刪除。', 'success');
+        await reloadPageData();
+      } catch (err) {
+        showStatus('singleDayStatus', err.message || '刪除單日特別班表失敗', 'error');
+      }
+    }
+
+
+    async function clearScheduleData(action, statusId, label) {
+      const code = prompt(`這會清除 Firebase 裡的「${label}」。若確定要清除，請輸入：清除`);
+      if (code !== '清除') return;
+      try {
+        const res = await callBackend(action, {});
+        const count = res && (res.count || (res.counts ? JSON.stringify(res.counts) : ''));
+        showStatus(statusId, `${label}已清除${count ? '：' + count : ''}`, 'success');
+        await reloadPageData();
+      } catch (err) {
+        showStatus(statusId, (err && err.message) || `${label}清除失敗`, 'error');
+      }
+    }
+
+    function startSubmitProgress(btn, label) {
+      if (!btn || typeof startActionButtonProgress !== 'function') return null;
+      return startActionButtonProgress(btn, { label: label || '儲存中', sequence:[20,40,60,80], interval:220 });
+    }
+
+    function showStatus(id, message, type, show = true) {
+      const el = document.getElementById(id);
+      el.textContent = message || '';
+      el.className = `status ${type || 'success'} ${show && message ? 'show' : ''}`.trim();
+    }
+
+    function escapeHtml(str) {
+      return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function escapeJs(str) {
+      return String(str || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    }
   
-function scheduleIdle_(fn){if(window.requestIdleCallback)requestIdleCallback(fn,{timeout:1200});else setTimeout(fn,160);}
-</script>
+  </script>
   <script src="global-nav.js?v=20260603unified1"></script>
-</body></html>
+</body>
+</html>

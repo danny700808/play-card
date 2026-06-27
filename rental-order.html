@@ -2,11 +2,116 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>租賃 Email 確認</title>
-  <link rel="stylesheet" href="style.css?v=rental-email-verify-official-20260615">
+  <title>電鋼琴 電子鼓 其他設備 租賃申請表</title>
+  <link rel="stylesheet" href="style.css?v=rental-order-line-step-20260615">
   <style>
-    body{background:#eef3f7;color:#18314a;margin:0;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.wrap{max-width:720px;margin:0 auto;padding:28px 14px}.card{background:#fff;border:1px solid #dbe5ef;border-radius:24px;padding:22px;box-shadow:0 10px 28px rgba(15,23,42,.06)}.title{font-size:28px;font-weight:950;margin:0 0 10px}.msg{margin-top:14px;border-radius:16px;padding:14px 16px;font-weight:900;line-height:1.8}.msg.ok{background:#e8fff4;color:#146c43}.msg.bad{background:#fff0f0;color:#b42318}.muted{font-size:13px;color:#64748b;line-height:1.8}.btn{border:0;border-radius:14px;background:#1f7a5a;color:#fff;font-weight:950;padding:12px 16px;text-decoration:none;display:inline-flex;margin-top:14px}
-  </style>
+    body{background:#eef3f7;color:#18314a}.wrap{max-width:960px;margin:0 auto;padding:22px 14px 54px}.hero{background:#fff;border:1px solid #dbe5ef;border-radius:28px;padding:24px;box-shadow:0 10px 28px rgba(15,23,42,.06);margin-bottom:16px}.hero h1{margin:0 0 10px;font-size:32px;font-weight:950}.card2{background:#fff;border:1px solid #dbe5ef;border-radius:24px;padding:20px;margin-bottom:16px;box-shadow:0 10px 28px rgba(15,23,42,.04)}.section-title{font-size:22px;font-weight:950;margin:0 0 12px}.field{margin-bottom:14px}.field label{display:block;font-weight:900;margin-bottom:7px}.field input,.field select,.field textarea{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:14px;padding:12px 14px;background:#fff;font-size:16px}.field textarea{min-height:92px}.row2{display:grid;grid-template-columns:1fr 1fr;gap:14px}.checkline{display:flex;align-items:flex-start;gap:10px;line-height:1.7;font-weight:850}.rules{border:1px solid #dbe5ef;background:#f8fafc;border-radius:18px;padding:16px;line-height:1.9;white-space:pre-wrap}.btn-row{display:flex;gap:10px;flex-wrap:wrap}.btn{border:0;border-radius:14px;background:#1f7a5a;color:#fff;font-weight:950;padding:13px 18px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}.btn.secondary{background:#e2e8f0;color:#18314a}.msg{margin-top:12px;border-radius:14px;padding:12px 14px;font-weight:900;line-height:1.7}.msg.ok{background:#e8fff4;color:#146c43}.msg.bad{background:#fff0f0;color:#b42318}.success-box{display:none;border:2px solid #1f7a5a;background:#f0fff7;border-radius:24px;padding:20px;line-height:1.9}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-weight:950;background:#fff;border:1px dashed #1f7a5a;border-radius:12px;padding:8px 10px;display:inline-block}.small{font-size:13px;color:#64748b;line-height:1.8}.note-box{border:1px solid #dbe5ef;background:#f8fafc;border-radius:16px;padding:12px 14px;color:#334155;font-size:14px;line-height:1.8;margin-top:4px}.radio-group{display:grid;gap:8px}.radio-option{border:1px solid #dbe5ef;background:#f8fafc;border-radius:14px;padding:10px 12px;display:flex;gap:10px;align-items:flex-start;line-height:1.7;font-weight:850}.radio-option small{display:block;color:#64748b;font-weight:500}.success-section{display:none}@media(max-width:720px){.row2{grid-template-columns:1fr}.hero h1{font-size:26px}.wrap{padding:14px 10px 40px}.card2,.hero{padding:16px;border-radius:20px}}
+  .hidden-by-delivery{display:none!important}
+  
+
+/* 20260615: 租賃申請頁不顯示必填星號；未填時直接跳到欄位 */
+#rentalOrderForm label::after,
+#rentalOrderForm label::before,
+#rentalOrderForm .required::after,
+#rentalOrderForm .required::before,
+#rentalOrderForm .req::after,
+#rentalOrderForm .req::before,
+#rentalOrderForm .field-required::after,
+#rentalOrderForm .field-required::before,
+#rentalOrderForm .required-mark,
+#rentalOrderForm .required-star,
+#rentalOrderForm .req-star,
+#rentalOrderForm .asterisk,
+#rentalOrderForm .required-asterisk-auto,
+#rentalOrderForm .req-star-static {
+  content: "" !important;
+  display: none !important;
+}
+
+
+.submit-progress-box{display:none;margin-top:12px;border-radius:14px;background:#f1f5f9;border:1px solid #cbd5e1;padding:10px 12px}
+.submit-progress-text{font-weight:950;color:#1f7a5a;margin-bottom:8px}
+.submit-progress-track{width:100%;height:10px;background:#e2e8f0;border-radius:999px;overflow:hidden}
+.submit-progress-bar{width:0%;height:100%;background:#1f7a5a;border-radius:999px;transition:width .25s ease}
+
+
+/* 20260615 表單簡化版 */
+.hero{text-align:center}
+.hero h1{font-size:30px!important;line-height:1.3!important;margin-bottom:0!important}
+.title-line-main{display:block;font-weight:950;letter-spacing:.08em}
+.title-line-sub{display:block;font-weight:950;margin-top:4px}
+.radio-group.compact-notify{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.radio-group.compact-notify .radio-option{padding:8px 8px;border-radius:12px;justify-content:center;align-items:center;text-align:center;font-size:14px;line-height:1.35}
+.radio-group.compact-notify .radio-option span{display:block}
+.radio-group.compact-notify .radio-option small{display:none}
+.optional-small{font-size:12px;color:#64748b;margin-top:4px}
+@media(max-width:420px){
+  .radio-group.compact-notify{grid-template-columns:repeat(3,1fr);gap:6px}
+  .radio-group.compact-notify .radio-option{font-size:13px;padding:7px 5px}
+}
+
+
+/* 20260615：送出按鈕內進度條，不顯示百分比文字 */
+#submitBtn{
+  position:relative;
+  overflow:hidden;
+}
+#submitBtn .btn-progress-fill{
+  position:absolute;
+  left:0;
+  top:0;
+  bottom:0;
+  width:0%;
+  background:rgba(255,255,255,.22);
+  transition:width .28s ease;
+  z-index:0;
+}
+#submitBtn .btn-progress-label{
+  position:relative;
+  z-index:1;
+}
+#submitProgressBox{
+  display:none!important;
+}
+#submitProgressText{
+  display:none!important;
+}
+#msg{
+  display:none!important;
+}
+
+/* successBox 不再強制隱藏；送出後改導向 LINE / Email 下一步頁 */
+
+/* 20260615：送出區按鈕滿版排列 */
+.submit-actions{
+  width:100%;
+  display:grid!important;
+  grid-template-columns:1fr!important;
+  gap:14px!important;
+  margin-top:14px!important;
+}
+.submit-actions .btn,
+.submit-actions button,
+.submit-actions a{
+  width:100%!important;
+  max-width:none!important;
+  min-height:58px!important;
+  box-sizing:border-box!important;
+  border-radius:18px!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  text-align:center!important;
+  font-size:18px!important;
+  font-weight:950!important;
+  margin:0!important;
+}
+.submit-actions .btn.secondary{
+  background:#e2e8f0!important;
+  color:#18314a!important;
+}
+
+</style>
   <link rel="stylesheet" href="global-nav.css?v=20260624unified-top-nav">
 </head>
 <body>
@@ -16,26 +121,697 @@
     <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
   </div>
 
-<div class="wrap"><section class="card"><h1 class="title">租賃 Email 確認</h1><div class="muted">系統正在確認您的 Email 通知設定，請稍候。打開 Email 本身不會自動確認，必須點選信件中的確認連結。</div><div id="msg" class="msg ok">確認中...</div><a class="btn" href="https://www.mingtinghuang.com/">前往柚子樂器官網</a></section></div>
-  <script src="config.js?v=rental-email-verify-official-20260615"></script>
-  <script src="rental-common.js?v=rental-email-verify-official-20260615"></script>
+<div class="wrap">
+    <section class="hero"><h1><span class="title-line-main">電鋼琴　電子鼓　其他設備</span><span class="title-line-sub">租賃申請表</span></h1></section>
+    <form id="rentalForm" novalidate>
+      <section class="card2"><h2 class="section-title">租用流程說明</h2><div class="rules">1. 填寫租用需求與聯絡資料。
+2. 店家確認設備、金額、運費與日期。
+3. 店家傳送正式填寫 / 簽署連結。
+4. 客人補資料並完成簽名。
+5. 店家確認款項與交付日期後，正式成立契約。</div></section>
+      <section class="card2"><h2 class="section-title">租用需求</h2><div class="row2"><div class="field"><label>想租用的類型</label><select id="rentalType" required><option value="">請選擇</option><option value="digitalPiano">電鋼琴</option><option value="electronicDrum">電子鼓</option><option value="other">其他設備</option></select></div><div class="field" id="periodField"><label>預計租用期數</label><select id="periods"><option value="1">1 期 90 天</option><option value="2">2 期 180 天</option><option value="3">3 期 270 天</option></select></div><div class="field" id="otherPeriodNotice" style="display:none"><label>其他設備租用期間</label><div class="note-box">依雙方確認之租用期間為準</div></div></div><div class="field"><label>備註</label><textarea id="otherEquipmentNeed" data-no-required="true" placeholder="其他需求"></textarea></div></section>
+      <section class="card2"><h2 class="section-title">預計配送 / 自取</h2><div class="row2"><div class="field"><label>交付方式</label><select id="shippingMethod"><option value="到府安裝">到府安裝</option><option value="自取自運">自取自運</option></select></div><div class="field"><label>運送抵達日期</label><input id="preferredDate" type="date"></div></div><div class="field"><label>安裝地址</label><input id="customerAddress" placeholder="請填寫地址；若自取，請填寫聯絡地址"></div><div class="field" id="buildingNameField"><label>大樓名稱</label><input id="buildingName" data-no-required="true" placeholder="例如：XX社區、XX大樓；無可留空"><div class="optional-small">選填</div></div><div class="row2"><div class="field"><label>運送抵達時間</label><select id="preferredTime"><option value="">請選擇</option><option>09:00</option><option>10:00</option><option>11:00</option><option>12:00</option><option>13:00</option><option>14:00</option><option>15:00</option><option>16:00</option><option>17:00</option><option>18:00</option><option>19:00</option><option>20:00</option></select></div><div class="field"><label>樓層 / 電梯資訊</label><select id="floorNote"><option value="有電梯">有電梯</option><option value="無電梯 1～2樓">無電梯 1～2樓</option><option value="無電梯 3樓">無電梯 3樓</option><option value="無電梯 4～5樓">無電梯 4～5樓</option><option value="其他">其他，請於補充說明填寫</option></select></div></div><div class="note-box">註：自載免運費，不含搬運（需要休旅車）。山區或特殊地點需加價。透天 3 樓 +200 元，4 樓～5 樓 +400 元。</div><div class="field" style="margin-top:14px"><label>備註</label><textarea id="note" data-no-required="true" placeholder="其他需求"></textarea></div></section>
+
+      <section class="card2"><h2 class="section-title">聯絡資料</h2><div class="row2"><div class="field"><label>姓名 / 公司名稱</label><input id="customerName" required></div><div class="field"><label>聯絡電話</label><input id="customerPhone" required placeholder="09xx 或市話"></div></div><div class="field"><label>Email 信箱</label><input id="customerEmail" type="email" placeholder="選擇 Email 通知時必填"></div><div class="field"><label>後續通知方式</label><div class="radio-group compact-notify">
+        <label class="radio-option"><input type="radio" name="notificationPreference" value="both" checked> <span>LINE + Email</span></label>
+        <label class="radio-option"><input type="radio" name="notificationPreference" value="line"> <span>只用 LINE</span></label>
+        <label class="radio-option"><input type="radio" name="notificationPreference" value="email"> <span>只用 Email</span></label>
+      </div><div class="small" style="margin-top:6px">若選 Email，送出後請至信箱點選確認連結。</div></div></div></section>
+      <section class="card2"><h2 class="section-title">送出申請</h2><div class="small">送出後會產生申請編號。系統會依您選擇的通知方式，提示完成 LINE 配對或 Email 確認。</div><div class="submit-actions"><button id="submitBtn" class="btn" type="submit"><span class="btn-progress-fill" id="submitBtnProgressFill"></span><span class="btn-progress-label" id="submitBtnLabel">送出租賃申請</span></button></div><div id="submitProgressBox" class="submit-progress-box"><div id="submitProgressText" class="submit-progress-text">準備送出…</div><div class="submit-progress-track"><div id="submitProgressBar" class="submit-progress-bar"></div></div></div><div id="msg"></div></section>
+    </form>
+    <section id="successBox" class="success-box"><h2 style="margin-top:0">申請已送出</h2><p>您的租賃申請編號：</p><div id="applicationNo" class="mono"></div>
+      <div id="lineNextBox" class="note-box success-section" style="margin-top:12px"><b>下一步請完成官方 LINE 配對：</b><br>1. 先點選「複製官方 LINE 配對文字」。<br>2. 再點選「加入柚子樂器 LINE」加入官方 LINE。<br>3. 到官方 LINE 聊天室貼上剛剛複製的那一行文字。</div>
+      <textarea id="lineConfirmText" class="mono success-section" readonly style="width:100%;box-sizing:border-box;min-height:48px;white-space:normal;margin:12px 0 8px;resize:none"></textarea>
+      <div id="emailNextBox" class="note-box success-section" style="margin-top:12px"><b>請確認 Email：</b><br>系統已寄出 Email 確認信，請到信箱點選確認連結。完成確認後，後續租賃通知會依您選擇的方式寄送。<br><span class="small">若沒有看到信件，請檢查垃圾郵件、促銷內容或所有郵件。</span></div>
+      <div class="small">正式租用確認後，店家才會提供正式填寫 / 簽署連結；正式階段才需要身分證證明上傳。</div><div class="btn-row" style="margin-top:12px"><button class="btn success-section" id="copyLineTextBtn" type="button">複製官方 LINE 配對文字</button><a class="btn secondary success-section" id="lineAddBtn" href="https://lin.ee/Fx5Y2mL" target="_blank">加入柚子樂器 LINE</a><a class="btn secondary" href="index.html">返回首頁</a></div></section>
+  </div>
+  <script src="config.js?v=rental-order-line-step-20260615"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script><script src="rental-common.js?v=20260626-other-equipment-period"></script>
   <script>
     const R=window.YZRental;
-    const params=new URLSearchParams(location.search);
-    const applicationId=params.get('applicationId')||params.get('id')||'';
-    const token=params.get('token')||'';
-    function setMsg(text, ok){ const el=R.qs('msg'); el.className='msg '+(ok?'ok':'bad'); el.textContent=text; }
-    async function verify(){
+    function setSubmitProgress(percent){
+      const fill = R.qs('submitBtnProgressFill');
+      if(fill) fill.style.width = Math.max(0, Math.min(100, Number(percent)||0)) + '%';
+    }
+
+    function setSubmitButtonLabel(text){
+      const label = R.qs('submitBtnLabel');
+      const btn = R.qs('submitBtn');
+      if(label) label.textContent = text;
+      else if(btn) btn.textContent = text;
+    }
+    function resetSubmitButton(){
+      setSubmitProgress(0);
+      setSubmitButtonLabel('送出租賃申請');
+    }
+
+    function resetSubmitProgress(){
+      const box=document.getElementById('submitProgressBox');
+      const bar=document.getElementById('submitProgressBar');
+      const label=document.getElementById('submitProgressText');
+      if(box) box.style.display='none';
+      if(bar) bar.style.width='0%';
+      if(label) label.textContent='準備送出…';
+    }
+
+    function makeRentalApplicationId(){
+      const d=new Date();
+      const pad=n=>String(n).padStart(2,'0');
+      const ymd=String(d.getFullYear())+pad(d.getMonth()+1)+pad(d.getDate());
+      const rand=Math.random().toString(36).slice(2,7).toUpperCase();
+      return 'RC'+ymd+rand;
+    }
+
+    function normalizeLineConfirmText(text, appNo){
+      const raw=String(text||'').trim();
+      const key=String(appNo||'').trim();
+      if(raw && /^設備租賃申請\s+\S+$/i.test(raw)) return raw;
+      if(raw){
+        const m=raw.match(/(?:設備租賃申請|租賃申請|租賃申請編號|申請編號|訂單編號|訂單)\s*[:：]?\s*([A-Za-z0-9_-]+)/i);
+        if(m && m[1]) return '設備租賃申請 '+m[1].trim();
+      }
+      return '設備租賃申請 '+key;
+    }
+    function selectedNotificationPreference(){
+      const checked=document.querySelector('input[name="notificationPreference"]:checked');
+      return checked ? checked.value : 'both';
+    }
+    function showSuccessSection(id, show){ const el=R.qs(id); if(el) el.style.display=show?'block':'none'; }
+    function showSuccessInline(id, show){ const el=R.qs(id); if(el) el.style.display=show?'inline-flex':'none'; }
+
+    function copyLineConfirmText(text){
+      const value=String(text||'').trim();
+      const box=R.qs('lineConfirmText');
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(value).then(()=>alert('已複製。請到柚子樂器官方 LINE 貼上這一行文字。')).catch(()=>{
+          if(box){ box.focus(); box.select(); }
+          alert('自動複製失敗，已幫您選取文字，請手動複製後貼到柚子樂器官方 LINE。');
+        });
+        return;
+      }
+      if(box){ box.focus(); box.select(); document.execCommand('copy'); }
+      alert('已選取配對文字，請貼到柚子樂器官方 LINE。');
+    }
+
+    async function saveApplicationFallback(payload, apiError){
+      const applicationId = makeRentalApplicationId();
+      const customerName = (payload.customerName || '').trim();
+      const lineConfirmText = '設備租賃申請 '+applicationId;
+      const nowText = R.nowText ? R.nowText() : new Date().toISOString();
+      const data = Object.assign({}, payload, {
+        applicationId,
+        applicationNo: applicationId,
+        rentalApplicationNo: applicationId,
+        status: '待店家確認',
+        stage: 'inquiry',
+        source: payload.source || 'customer-inquiry-web',
+        lineConfirmText,
+        lineLinkStatus: R.wantsLine(payload.notificationPreference, payload.customerEmail) ? 'pending' : 'not_required',
+        emailLinkStatus: R.wantsEmail(payload.notificationPreference, payload.customerEmail) ? 'pending' : '',
+        emailVerified: false,
+        managerNoticeSent: false,
+        managerNoticePending: true,
+        submitFallbackUsed: true,
+        submitFunctionError: String(apiError && apiError.message || apiError || ''),
+        createdAtText: nowText,
+        updatedAtText: nowText
+      });
       try{
-        if(!applicationId || !token) throw new Error('確認連結不完整，請重新開啟 Email 內的確認連結。');
-        const res=await R.call('rentalVerifyEmailHttp',{applicationId,token});
-        setMsg('Email 已確認完成。後續租賃通知會依您選擇的方式寄送。申請編號：'+(res.applicationNo||applicationId), true);
-      }catch(e){
-        setMsg(e.message||String(e), false);
+        if(window.firebase && firebase.firestore && firebase.firestore.FieldValue){
+          data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+          data.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+        }
+      }catch(e){}
+      await R.set('rentalApplications', applicationId, data, true);
+      return { ok:true, applicationId, applicationNo:applicationId, lineConfirmText, fallbackSaved:true };
+    }
+    function goToRentalNextStep(res, payload){
+      const appNo=res.applicationNo || res.applicationId || '已送出';
+      const pref=R.notificationPreference(payload.notificationPreference, payload.customerEmail);
+      const lineText=normalizeLineConfirmText(res.lineConfirmText, appNo);
+      const needLine=R.wantsLine(pref, payload.customerEmail);
+      const needEmail=R.wantsEmail(pref, payload.customerEmail);
+      const nextData={
+        applicationId:res.applicationId || '',
+        applicationNo:appNo,
+        lineConfirmText:lineText,
+        notificationPreference:pref,
+        needLine,
+        needEmail,
+        emailVerificationQueued:!!res.emailVerificationQueued,
+        customerEmail:payload.customerEmail || ''
+      };
+      try{ sessionStorage.setItem('rentalNextStep', JSON.stringify(nextData)); }catch(e){}
+      const url='rental-line-bind.html?applicationId='+encodeURIComponent(nextData.applicationId || appNo)+'&applicationNo='+encodeURIComponent(appNo)+'&pref='+encodeURIComponent(pref);
+      window.location.href=url;
+    }
+
+    function showSuccess(res, payload){
+      const appNo=res.applicationNo || res.applicationId || '已送出';
+      const pref=R.notificationPreference(payload.notificationPreference, payload.customerEmail);
+      const lineText=normalizeLineConfirmText(res.lineConfirmText, appNo);
+      R.qs('applicationNo').textContent=appNo;
+      R.qs('lineConfirmText').value=lineText;
+      const needLine=R.wantsLine(pref, payload.customerEmail);
+      const needEmail=R.wantsEmail(pref, payload.customerEmail);
+      showSuccessSection('lineNextBox', needLine);
+      showSuccessSection('lineConfirmText', needLine);
+      showSuccessInline('copyLineTextBtn', needLine);
+      showSuccessInline('lineAddBtn', needLine);
+      showSuccessSection('emailNextBox', needEmail);
+      R.show('successBox');
+      R.qs('copyLineTextBtn').onclick=()=>copyLineConfirmText(lineText);
+    }
+    document.getElementById('rentalForm').addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      if(window.YZRentalOrderValidateRequired && !window.YZRentalOrderValidateRequired()) return;
+      const pref=selectedNotificationPreference();
+      if(R.wantsEmail(pref, R.val('customerEmail')) && !R.val('customerEmail')) return R.toast('您選擇了 Email 通知，請先填寫 Email 信箱。', false);
+      const btn=R.qs('submitBtn');
+      btn.disabled=true;
+      setSubmitButtonLabel('');
+      setSubmitProgress(10);
+      try{
+        const payload={
+          rentalType:R.val('rentalType'),
+          periods:R.val('rentalType')==='other'?'':R.val('periods'),
+          rentalPeriodText:R.val('rentalType')==='other'?'依雙方確認之租用期間為準':'',
+          otherEquipmentNeed:R.val('otherEquipmentNeed'),
+          customerName:R.val('customerName'),
+          customerPhone:R.val('customerPhone'),
+          customerEmail:R.val('customerEmail'),
+          notificationPreference:pref,
+          customerAddress:R.val('customerAddress'), buildingName:R.val('buildingName'),
+          shippingMethod:R.val('shippingMethod'),
+          preferredDate:R.val('preferredDate'),
+          preferredTime:R.val('preferredTime'),
+          floorNote:R.val('floorNote'),
+          note:R.val('note'),
+          source:'customer-inquiry-web',
+          status:'待店家確認',
+          stage:'inquiry'
+        };
+        let res;
+        setSubmitProgress(25);
+        try{
+          res=await R.call('rentalSubmitApplicationHttp', payload);
+          setSubmitProgress(65);
+        }catch(apiErr){
+          console.warn('rentalSubmitApplicationHttp failed; fallback to Firestore save:', apiErr);
+          res=await saveApplicationFallback(payload, apiErr);
+          setSubmitProgress(65);
+        }
+        setSubmitProgress(78);
+        const lineText=normalizeLineConfirmText(res.lineConfirmText, res.applicationNo || res.applicationId);
+        try{
+          if(res.applicationId){
+            await R.set('rentalApplications', res.applicationId, {lineConfirmText:lineText,lineLinkStatus:R.wantsLine(payload.notificationPreference,payload.customerEmail)?'pending':'not_required',emailLinkStatus:R.wantsEmail(payload.notificationPreference,payload.customerEmail)?'pending':'',updatedAtText:R.nowText()}, true);
+          }
+        }catch(e){ console.warn('save lineConfirmText failed', e); }
+        setSubmitProgress(100);
+        btn.dataset.done='1';
+        setSubmitButtonLabel('完成');
+        setTimeout(()=>goToRentalNextStep(Object.assign({}, res, {lineConfirmText}), payload), 350);
+      }catch(err){
+        console.error('rental submit failed:', err);
+        setSubmitProgress(100);
+        R.toast('送出失敗：'+(err.message||String(err))+'。請先截圖此畫面並聯絡柚子樂器。', false);
+      } finally{
+        btn.disabled=false;
+        if(!btn.dataset.done) resetSubmitButton();
+      }
+    });
+  </script>
+
+
+
+
+<script>
+(function(){
+  function clean(v){ return String(v || '').trim(); }
+  function q(sel){ return document.querySelector(sel); }
+  function qa(sel){ return Array.from(document.querySelectorAll(sel)); }
+
+  function mainForm(){
+    return q('#rentalOrderForm') || q('form') || document.body;
+  }
+
+  function controls(){
+    return qa('input, select, textarea').filter(el=>{
+      if(!el) return false;
+      if(el.type === 'button' || el.type === 'submit' || el.type === 'reset' || el.type === 'hidden' || el.type === 'file') return false;
+      if(el.closest('[data-no-required]')) return false;
+      if(isOptionalRemarkField(el)) return false;
+      const form = mainForm();
+      return form === document.body || form.contains(el);
+    });
+  }
+
+  function wrapOf(el){
+    if(!el) return null;
+    return el.closest('.field,.form-row,.form-group,.input-row,.control,.card-field,.field-wrap,.form-control,section,div') || el.parentElement;
+  }
+
+  function labelOf(el){
+    if(!el) return null;
+    const id = el.id;
+    let lb = id ? q('label[for="' + CSS.escape(id) + '"]') : null;
+    if(lb) return lb;
+    const wrap = wrapOf(el);
+    if(wrap) return wrap.querySelector('label');
+    return null;
+  }
+
+
+  function isOptionalRemarkField(el){
+    if(!el) return false;
+    const keys = [
+      el.id,
+      el.name,
+      el.getAttribute('data-field'),
+      el.getAttribute('placeholder'),
+      el.getAttribute('aria-label')
+    ].map(v => String(v || '')).join(' ');
+    if(/remark|remarks|note|notes|memo|comment|comments|special|request|需求|備註|備注|說明|其他/i.test(keys)) return true;
+
+    const wrap = wrapOf(el);
+    const label = labelOf(el);
+    const text = [
+      label ? label.textContent : '',
+      wrap ? wrap.textContent : ''
+    ].map(v => String(v || '')).join(' ');
+    return /特殊需求|備註|備注|其他說明|補充說明/i.test(text);
+  }
+
+  function setLabelText(el, text){
+    const lb = labelOf(el);
+    if(lb) lb.textContent = text;
+    if(el){
+      el.setAttribute('aria-label', text);
+      if(el.placeholder) el.placeholder = text;
+    }
+  }
+
+  function visible(el){
+    if(!el) return false;
+    const wrap = wrapOf(el) || el;
+    if(el.disabled) return false;
+    if(wrap.classList && wrap.classList.contains('hidden-by-delivery')) return false;
+    const style = getComputedStyle(wrap);
+    return style.display !== 'none' && style.visibility !== 'hidden';
+  }
+
+  function byLabel(words){
+    const labels = qa('label');
+    for(const lb of labels){
+      const text = clean(lb.textContent);
+      if(!words.some(w=>text.includes(w))) continue;
+      const forId = lb.getAttribute('for');
+      if(forId && q('#'+CSS.escape(forId))) return q('#'+CSS.escape(forId));
+      const wrap = lb.closest('.field,.form-row,.form-group,.input-row,.control,section,div') || lb.parentElement;
+      if(wrap){
+        const el = wrap.querySelector('input,select,textarea');
+        if(el) return el;
       }
     }
-    verify();
-  </script>
+    return null;
+  }
+
+  function byNames(names){
+    for(const name of names){
+      const el = q('#'+name) || q('[name="'+name+'"]') || q('[data-field="'+name+'"]');
+      if(el) return el;
+    }
+    return null;
+  }
+
+  function getFields(){
+    return {
+      delivery: byNames(['deliveryMethod','deliveryType','delivery','preferredDeliveryMethod']) || byLabel(['交付方式','希望方式']),
+      address: byNames(['customerAddress','address','installAddress','deliveryAddress']) || byLabel(['地址','安裝地址','聯絡地址']),
+      floor: byNames(['floorInfo','floor','elevatorInfo','floorElevator','deliveryFloor']) || byLabel(['樓層','電梯']),
+      date: byNames(['preferredDate','deliveryDate','installDate','pickupDate','desiredDate']) || byLabel(['日期','安裝日期','自取日期','運送抵達日期']),
+      time: byNames(['preferredTime','deliveryTime','installTime','pickupTime','desiredTime']) || byLabel(['時間','運送抵達時間','自取時間'])
+    };
+  }
+
+  function deliveryValue(){
+    const f = getFields();
+    const el = f.delivery;
+    if(!el) return '到府安裝';
+    if(el.type === 'radio'){
+      const checked = el.name ? q('input[name="'+el.name+'"]:checked') : null;
+      return clean(checked ? checked.value : el.value);
+    }
+    if(el.tagName === 'SELECT'){
+      return clean(el.value || (el.options[el.selectedIndex] ? el.options[el.selectedIndex].text : ''));
+    }
+    if(el.name){
+      const checked = q('input[name="'+el.name+'"]:checked');
+      if(checked) return clean(checked.value);
+    }
+    return clean(el.value);
+  }
+
+  function isPickup(){
+    return /自取|自運|自行|自己/.test(deliveryValue());
+  }
+
+  function hideField(el, hide){
+    const wrap = wrapOf(el);
+    if(wrap) wrap.classList.toggle('hidden-by-delivery', !!hide);
+    if(el){
+      el.disabled = !!hide;
+      if(hide){
+        el.required = false;
+        el.removeAttribute('required');
+        el.value = '';
+      }
+    }
+  }
+
+  function setRequiredVisible(el){
+    if(!el) return;
+    if(visible(el)){
+      el.required = true;
+      el.setAttribute('required','required');
+    }else{
+      el.required = false;
+      el.removeAttribute('required');
+    }
+  }
+
+  function applyDeliveryLabels(){
+    const f = getFields();
+    const pickup = isPickup();
+
+    if(f.address) setLabelText(f.address, pickup ? '聯絡地址' : '安裝地址');
+    if(f.date) setLabelText(f.date, pickup ? '自取日期' : '運送抵達日期');
+    if(f.time) setLabelText(f.time, pickup ? '自取時間' : '運送抵達時間');
+
+    if(f.floor){
+      if(pickup){
+        hideField(f.floor, true);
+      }else{
+        hideField(f.floor, false);
+        setLabelText(f.floor, '樓層 / 電梯資訊');
+      }
+    }
+  }
+
+  function applyAllVisibleRequired(){
+    applyDeliveryLabels();
+
+    controls().forEach(el=>{
+      if(el.type === 'radio'){
+        if(el.name){
+          const group = qa('input[type="radio"][name="'+el.name+'"]');
+          group.forEach(r=>{ r.required = true; r.setAttribute('required','required'); });
+        }
+        return;
+      }
+      setRequiredVisible(el);
+    });
+
+    const f = getFields();
+    if(f.floor && isPickup()) hideField(f.floor, true);
+  }
+
+  function focusMissing(el){
+    const wrap = wrapOf(el) || el;
+    try {
+      wrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } catch(e) {
+      wrap.scrollIntoView();
+    }
+    setTimeout(()=>{ try{ el.focus(); }catch(e){} }, 350);
+  }
+
+  function validateAllVisibleRequired(){
+    applyAllVisibleRequired();
+
+    const radioGroups = new Set();
+    for(const el of controls()){
+      if(!visible(el)) continue;
+
+      if(el.type === 'radio'){
+        if(!el.name || radioGroups.has(el.name)) continue;
+        radioGroups.add(el.name);
+        const checked = q('input[type="radio"][name="'+el.name+'"]:checked');
+        if(!checked){
+          focusMissing(el);
+          alert('還有必填欄位尚未填寫，請完成後再送出。');
+          return false;
+        }
+        continue;
+      }
+
+      if(el.required && !clean(el.value)){
+        focusMissing(el);
+        alert('還有必填欄位尚未填寫，請完成後再送出。');
+        return false;
+      }
+    }
+    return true;
+  }
+
+  function bind(){
+    applyAllVisibleRequired();
+
+    document.addEventListener('change', function(e){
+      const f = getFields();
+      if(e.target === f.delivery || (f.delivery && e.target.name && e.target.name === f.delivery.name)){
+        applyAllVisibleRequired();
+      }else{
+        setTimeout(applyAllVisibleRequired, 50);
+      }
+    });
+
+    const form = q('#rentalOrderForm') || q('form');
+    if(form && !form.dataset.noStarRequiredPatched){
+      form.dataset.noStarRequiredPatched = '1';
+      form.addEventListener('submit', function(e){
+        if(!validateAllVisibleRequired()){
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      }, true);
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', bind);
+  setTimeout(bind, 300);
+  setTimeout(applyAllVisibleRequired, 800);
+  setTimeout(applyAllVisibleRequired, 1500);
+
+  window.YZRentalOrderApplyDeliveryUi = applyAllVisibleRequired;
+  window.YZRentalOrderValidateRequired = validateAllVisibleRequired;
+})();
+</script>
+
+
+<script>
+(function(){
+  function removeRentalRequiredStars(){
+    const root = document.querySelector('#rentalOrderForm') || document.body;
+    root.querySelectorAll('.required-mark,.required-star,.req-star,.asterisk,.required-asterisk-auto,.req-star-static').forEach(el=>el.remove());
+    root.querySelectorAll('label').forEach(label=>{
+      label.childNodes.forEach(node=>{
+        if(node.nodeType === Node.TEXT_NODE){
+          node.nodeValue = node.nodeValue.replace(/\s*[*＊]\s*$/g, '');
+        }
+      });
+    });
+  }
+  document.addEventListener('DOMContentLoaded', removeRentalRequiredStars);
+  setTimeout(removeRentalRequiredStars, 100);
+  setTimeout(removeRentalRequiredStars, 500);
+  setTimeout(removeRentalRequiredStars, 1200);
+  window.YZRentalRemoveRequiredStars = removeRentalRequiredStars;
+})();
+</script>
+
+
+<script>
+(function(){
+  function clearRemarkRequired(){
+    document.querySelectorAll('input, textarea, select').forEach(el=>{
+      const text = [
+        el.id || '',
+        el.name || '',
+        el.placeholder || '',
+        el.getAttribute('aria-label') || '',
+        el.closest('.field,.form-row,.form-group,.input-row,.control,section,div')?.textContent || ''
+      ].join(' ');
+      if(/remark|remarks|note|notes|memo|comment|comments|special|request|特殊需求|備註|備注|補充說明|其他說明/i.test(text)){
+        el.required = false;
+        el.removeAttribute('required');
+      }
+    });
+  }
+  document.addEventListener('DOMContentLoaded', clearRemarkRequired);
+  setTimeout(clearRemarkRequired, 300);
+  setTimeout(clearRemarkRequired, 1000);
+})();
+</script>
+
+
+<script>
+(function(){
+  function clean(v){ return String(v || '').trim(); }
+  function wrapOf(el){
+    if(!el) return null;
+    return el.closest('.field,.form-row,.form-group,.input-row,.control,.card-field,.field-wrap,.form-control,section,div') || el.parentElement;
+  }
+  function labelText(el){
+    if(!el) return '';
+    const id = el.id;
+    let label = id ? document.querySelector('label[for="' + CSS.escape(id) + '"]') : null;
+    const wrap = wrapOf(el);
+    if(!label && wrap) label = wrap.querySelector('label');
+    return clean([
+      label ? label.textContent : '',
+      el.placeholder || '',
+      el.getAttribute('aria-label') || '',
+      el.id || '',
+      el.name || '',
+      el.getAttribute('data-field') || '',
+      wrap ? wrap.textContent : ''
+    ].join(' '));
+  }
+  function isRentalOptionalText(el){
+    if(!el) return false;
+    const text = labelText(el);
+    return /設備需求|備註|備注|其他補充|其他說明|補充說明|特殊需求|remark|remarks|note|notes|memo|comment|comments|special|request/i.test(text);
+  }
+  function clearOptionalRequired(){
+    document.querySelectorAll('textarea,input,select').forEach(el=>{
+      if(isRentalOptionalText(el)){
+        el.required = false;
+        el.removeAttribute('required');
+        el.setAttribute('data-no-required','true');
+      }
+    });
+  }
+  document.addEventListener('DOMContentLoaded', clearOptionalRequired);
+  setTimeout(clearOptionalRequired, 50);
+  setTimeout(clearOptionalRequired, 300);
+  setTimeout(clearOptionalRequired, 800);
+  setTimeout(clearOptionalRequired, 1500);
+  window.YZRentalClearOptionalRequired = clearOptionalRequired;
+})();
+</script>
+
+
+<script>
+(function(){
+  document.addEventListener('submit', function(){
+    if(window.YZRentalClearOptionalRequired) window.YZRentalClearOptionalRequired();
+  }, true);
+  document.addEventListener('click', function(e){
+    const btn = e.target && e.target.closest ? e.target.closest('button, input[type="submit"]') : null;
+    if(btn && window.YZRentalClearOptionalRequired) window.YZRentalClearOptionalRequired();
+  }, true);
+})();
+</script>
+
+
+<script>
+(function(){
+  function q(sel){ return document.querySelector(sel); }
+  function clean(v){ return String(v || '').trim(); }
+  function deliveryValue(){
+    const el = q('#shippingMethod') || q('#deliveryMethod') || q('[name="shippingMethod"]') || q('[name="deliveryMethod"]');
+    return clean(el ? el.value : '到府安裝');
+  }
+  function isPickup(){ return /自取|自運|自行|自己/.test(deliveryValue()); }
+  function setLabel(id, text){
+    const el = q('#'+id);
+    if(!el) return;
+    const wrap = el.closest('.field,.form-row,.form-group,div') || el.parentElement;
+    const lb = wrap ? wrap.querySelector('label') : null;
+    if(lb) lb.textContent = text;
+    el.setAttribute('aria-label', text);
+  }
+  function applyDeliveryTextAndOptional(){
+    const pickup = isPickup();
+    const building = q('#buildingNameField');
+    if(building) building.style.display = pickup ? 'none' : '';
+    const buildingInput = q('#buildingName');
+    if(buildingInput){
+      buildingInput.required = false;
+      buildingInput.removeAttribute('required');
+      buildingInput.setAttribute('data-no-required','true');
+    }
+    setLabel('customerAddress', pickup ? '聯絡地址' : '安裝地址');
+    setLabel('preferredDate', pickup ? '自取日期' : '運送抵達日期');
+    setLabel('preferredTime', pickup ? '自取時間' : '運送抵達時間');
+    const floor = q('#floorNote');
+    if(floor){
+      const wrap = floor.closest('.field,.form-row,.form-group,div') || floor.parentElement;
+      if(wrap) wrap.style.display = pickup ? 'none' : '';
+      floor.disabled = pickup;
+      if(pickup){
+        floor.required = false;
+        floor.removeAttribute('required');
+      }
+    }
+    ['otherEquipmentNeed','note'].forEach(id=>{
+      const el=q('#'+id);
+      if(el){
+        el.required=false;
+        el.removeAttribute('required');
+        el.setAttribute('data-no-required','true');
+      }
+    });
+  }
+  document.addEventListener('change', function(e){
+    if(e.target && (e.target.id === 'shippingMethod' || e.target.name === 'shippingMethod')) applyDeliveryTextAndOptional();
+  });
+  document.addEventListener('DOMContentLoaded', applyDeliveryTextAndOptional);
+  setTimeout(applyDeliveryTextAndOptional, 100);
+  setTimeout(applyDeliveryTextAndOptional, 500);
+  setTimeout(applyDeliveryTextAndOptional, 1200);
+  window.YZRentalApplyOrderLayout = applyDeliveryTextAndOptional;
+})();
+</script>
+
+
+<script>
+(function(){
+  function q(sel){ return document.querySelector(sel); }
+  function isOtherEquipment(){ const el=q('#rentalType'); return el && el.value === 'other'; }
+  function applyRentalTypePeriodUi(){
+    const other=isOtherEquipment();
+    const periodField=q('#periodField');
+    const periodNotice=q('#otherPeriodNotice');
+    const periods=q('#periods');
+    if(periodField) periodField.style.display = other ? 'none' : '';
+    if(periodNotice) periodNotice.style.display = other ? 'block' : 'none';
+    if(periods){
+      periods.disabled = !!other;
+      if(other){
+        periods.required = false;
+        periods.removeAttribute('required');
+      }else{
+        periods.disabled = false;
+        periods.required = true;
+        periods.setAttribute('required','required');
+        if(!periods.value) periods.value = '1';
+      }
+    }
+    if(window.YZRentalOrderApplyDeliveryUi) setTimeout(window.YZRentalOrderApplyDeliveryUi, 0);
+  }
+  document.addEventListener('change', function(e){
+    if(e.target && (e.target.id === 'rentalType' || e.target.name === 'rentalType')) applyRentalTypePeriodUi();
+  });
+  document.addEventListener('DOMContentLoaded', applyRentalTypePeriodUi);
+  setTimeout(applyRentalTypePeriodUi, 100);
+  setTimeout(applyRentalTypePeriodUi, 500);
+  setTimeout(applyRentalTypePeriodUi, 1200);
+  window.YZRentalOrderApplyTypeUi = applyRentalTypePeriodUi;
+})();
+</script>
+
   <script src="global-nav.js?v=20260624unified-top-nav"></script>
 </body>
 </html>

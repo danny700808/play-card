@@ -1,965 +1,764 @@
 <!doctype html>
 <html lang="zh-Hant">
 <head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>設備租賃管理</title>
-  <link rel="stylesheet" href="style.css?v=rental-flow-20260611"><link rel="stylesheet" href="global-nav.css?v=20260603unified1">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>合約管理</title>
+  <link rel="stylesheet" href="style.css?v=admin-final-20260530b">
   <style>
-    body{background:#eef3f7;color:#18314a}.wrap{max-width:1500px;margin:0 auto;padding:18px 14px 54px}.card2{background:#fff;border:1px solid #dbe5ef;border-radius:24px;padding:18px;margin-bottom:16px;box-shadow:0 10px 28px rgba(15,23,42,.04)}.title{font-size:30px;font-weight:950;margin:0 0 8px}.layout{display:grid;grid-template-columns:430px minmax(0,1fr);gap:16px;align-items:start}.list{display:grid;gap:10px;max-height:720px;overflow:auto}.item{border:1px solid #dbe5ef;border-radius:16px;padding:12px;cursor:pointer;background:#fff}.item:hover,.item.active{border-color:#1f7a5a;background:#f0fff7}.item-title{font-weight:950;font-size:17px}.item-sub{font-size:13px;color:#64748b;line-height:1.7;margin-top:4px}.status{display:inline-block;border-radius:999px;padding:4px 9px;background:#e8fff4;color:#146c43;font-size:12px;font-weight:950}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.tab{border:0;border-radius:999px;padding:9px 12px;font-weight:950;background:#e2e8f0;color:#18314a;cursor:pointer}.tab.active{background:#1f7a5a;color:#fff}.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}.row3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.field{margin-bottom:12px}.field label{display:block;font-weight:900;margin-bottom:6px}.field input,.field select,.field textarea{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:14px;padding:10px 12px;background:#fff;font-size:15px}.field textarea{min-height:82px}.btn{border:0;border-radius:14px;background:#1f7a5a;color:#fff;font-weight:950;padding:11px 15px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}.btn.secondary{background:#e2e8f0;color:#18314a}.btn.danger{background:#b42318}.btn-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.msg{margin-top:12px;border-radius:14px;padding:12px 14px;font-weight:900;line-height:1.7}.rental-progress-mask{position:fixed;z-index:99999;inset:0;background:rgba(15,23,42,.42);display:flex;align-items:center;justify-content:center;padding:18px}.rental-progress-box{width:min(520px,100%);background:#fff;border-radius:22px;padding:20px;box-shadow:0 24px 60px rgba(0,0,0,.22);border:1px solid #dbe5ef}.rental-progress-title{font-weight:950;font-size:20px;margin-bottom:8px}.rental-progress-text{font-weight:800;color:#334155;line-height:1.7;min-height:28px}.rental-progress-bar{height:14px;background:#e2e8f0;border-radius:999px;overflow:hidden;margin:12px 0}.rental-progress-fill{height:100%;width:0%;background:#1f7a5a;transition:width .25s ease}.rental-progress-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}.pdf-link-box{border:1px dashed #1f7a5a;background:#f0fff7;border-radius:14px;padding:10px 12px;margin-top:10px;line-height:1.7}.pdf-link-box a{font-weight:950;color:#146c43;word-break:break-all}.msg.ok{background:#e8fff4;color:#146c43}.msg.bad{background:#fff0f0;color:#b42318}.muted{font-size:13px;color:#64748b;line-height:1.8}.section-hd{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:14px}.stat{border:1px solid #dbe5ef;background:#f8fafc;border-radius:16px;padding:12px}.stat b{display:block;font-size:24px;color:#18314a}.equipment-row{display:grid;grid-template-columns:1fr 1.3fr auto;gap:8px;align-items:end;margin-bottom:8px}.pill-warn{background:#fff7ed;color:#c2410c}.pill-bad{background:#fff0f0;color:#b42318}@media(max-width:1100px){.layout{grid-template-columns:1fr}.row2,.row3,.stat-grid,.equipment-row{grid-template-columns:1fr}.rental-contract-sheet{width:100%;min-height:auto;padding:16px}}
-    /* 2026-06-15 compact rental admin layout */
-    .wrap>.card2:first-of-type{padding:10px 14px;border-radius:18px;margin-bottom:10px}.wrap>.card2:first-of-type .title{font-size:22px;margin:0}.wrap>.card2:first-of-type .section-hd .muted{display:none}.card2{padding:14px;border-radius:18px;margin-bottom:12px}.layout{grid-template-columns:360px minmax(0,1fr);gap:12px}.layout h2{font-size:18px;margin-bottom:8px}.stat-grid{display:flex;gap:8px;flex-wrap:nowrap;margin-top:8px}.stat{padding:6px 10px;border-radius:12px;display:flex;align-items:center;gap:5px;min-width:0;flex:1}.stat b{display:inline;font-size:17px;line-height:1}.stat span{font-size:12px;white-space:nowrap}.tabs{gap:5px;margin-top:8px}.tab{padding:6px 9px;font-size:12px}.list{gap:6px;max-height:760px}.item{padding:8px 10px;border-radius:12px}.item-title{font-size:14px}.item-sub{font-size:12px;line-height:1.45;margin-top:3px}.status{padding:2px 7px;font-size:11px}.field{margin-bottom:8px}.field label{font-size:13px;margin-bottom:4px}.field input,.field select,.field textarea{padding:7px 9px;border-radius:10px;font-size:14px}.field textarea{min-height:58px}.row2,.row3{gap:8px}.btn{padding:8px 11px;border-radius:10px;font-size:13px}.btn-row{gap:6px;margin-top:8px}.equipment-row{grid-template-columns:1fr 1fr auto;gap:6px;margin-bottom:5px;align-items:center}.equipment-row .field{margin-bottom:0}.equipment-row .btn{padding:7px 9px;font-size:12px}.compact-flow,.hide-admin-note{display:none!important}[data-send-fill-btn]{position:relative;overflow:hidden;min-width:190px}[data-send-fill-btn]::before{content:'';position:absolute;left:0;top:0;bottom:0;width:var(--progress,0%);background:rgba(255,255,255,.35);transition:width .18s ease}[data-send-fill-btn].is-progressing{color:transparent!important}[data-send-fill-btn].is-progressing::after{content:'';position:absolute;left:0;right:0;top:50%;height:4px;transform:translateY(-50%);background:rgba(255,255,255,.35);border-radius:999px}[data-send-fill-btn].done{color:#fff!important;background:#1f7a5a!important}
+    .layout{display:grid;grid-template-columns:minmax(360px,430px) minmax(0,1fr);gap:16px;grid-template-areas:"form preview" "email preview" "history preview";align-items:start}
+    .form-panel{grid-area:form}
+    .email-card{grid-area:email}
+    .history-card{grid-area:history}
+    .preview-panel{grid-area:preview;overflow:visible}
+    .mobile-primary-actions{display:none}
+    .subcard{background:#fff;border:1px solid #e2e8f0;border-radius:18px;padding:16px}
+    .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+    .mini-actions{display:flex;gap:8px;flex-wrap:wrap}
+    .mini-actions .btn{width:auto;padding:10px 14px}
+    .contract-preview-stage{display:block}
+    .contract-sheet{background:#fff;border:1px solid #e2e8f0;border-radius:18px;padding:9mm;box-shadow:0 8px 24px rgba(15,23,42,.06);width:210mm;min-height:297mm;margin:0 auto 12px;box-sizing:border-box;overflow:hidden;position:relative;page-break-after:always;break-after:page}.period-sheet{margin-top:12px}.period-table{width:100%;border-collapse:collapse;margin-top:10mm;font-size:12px}.period-table th,.period-table td{border:1px solid #334155;padding:7px;text-align:center}.period-table th{background:#f8fafc}.contract-page-no{position:absolute;right:9mm;bottom:7mm;font-size:11px;color:#64748b}
+    .contract-title{text-align:center;font-size:24px;font-weight:900;letter-spacing:4px;margin:2mm 0 4mm}
+    .contract-intro{font-size:13px;line-height:1.9;white-space:pre-wrap;margin-bottom:4mm}
+    .contract-section-title{font-size:14px;font-weight:900;margin:0 0 2mm}
+    .contract-box-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 0 4mm}
+    .contract-box{border:1px solid #94a3b8;border-radius:14px;overflow:hidden;background:#fff}
+    .contract-box .hd{background:#f8fafc;padding:8px 10px;font-weight:800;border-bottom:1px solid #cbd5e1}
+    .contract-box .bd{padding:10px 12px;font-size:13px;line-height:1.8;white-space:pre-wrap;word-break:break-word;min-height:76px}
+    .contract-table{width:100%;border-collapse:collapse;margin:0 0 4mm;font-size:12px;background:#fff}
+    .contract-table th,.contract-table td{border:1px solid #94a3b8;padding:7px;vertical-align:top}
+    .contract-table th{background:#f8fafc;text-align:center}
+    .clause-list{display:grid;gap:3mm;margin-top:2mm}
+    .clause-item{font-size:13px;line-height:1.9}
+    .party-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:4mm}
+    .party-card{border:1px solid #94a3b8;border-radius:14px;overflow:hidden;background:#fff}
+    .party-card .hd{background:#f8fafc;padding:8px 10px;font-weight:800;border-bottom:1px solid #cbd5e1;text-align:center}
+    .party-card .bd{padding:10px 12px;line-height:1.7;font-size:12.5px;white-space:pre-wrap}
+    .signature-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:4mm}
+    .signature-box{border:1px solid #94a3b8;border-radius:14px;overflow:hidden;background:#fff;min-height:56mm}
+    .signature-box .hd{background:#f8fafc;padding:8px 10px;font-weight:800;border-bottom:1px solid #cbd5e1;text-align:center}
+    .signature-box .bd{position:relative;padding:12px;min-height:46mm}
+    .stamp-blue{position:absolute;left:8mm;bottom:8mm;width:40mm;height:35mm;object-fit:contain}
+    .stamp-red{position:absolute;left:52mm;bottom:16mm;width:15mm;height:15mm;object-fit:contain}
+    .sign-line{position:absolute;left:10mm;right:10mm;bottom:6mm;border-top:1px solid #64748b}
+    .muted-tip{font-size:12px;color:#64748b;line-height:1.7}
+    .print-only{display:none}
 
-    /* 2026-06-16 mobile single-column readability fix */
-    @media(max-width:760px){
-      html,body{width:100%!important;max-width:100%!important;min-width:0!important;overflow-x:hidden!important;background:#eef3f7!important}
-      body{font-size:15px!important}
-      .yz-global-nav{position:static!important;display:grid!important;grid-template-columns:1fr 1fr!important;gap:8px!important;width:100%!important;box-sizing:border-box!important;padding:8px 10px!important;margin:0!important}
-      .yz-global-nav .yz-nav-btn{width:100%!important;min-width:0!important;border-radius:10px!important;padding:9px 8px!important;font-size:13px!important;text-align:center!important;justify-content:center!important}
-      .wrap{width:100%!important;max-width:100%!important;min-width:0!important;margin:0!important;padding:8px 10px 32px!important;box-sizing:border-box!important}
-      .card2{width:100%!important;max-width:100%!important;min-width:0!important;box-sizing:border-box!important;padding:12px!important;border-radius:16px!important;margin:0 0 10px!important;box-shadow:0 4px 14px rgba(15,23,42,.04)!important}
-      .wrap>.card2:first-of-type{padding:12px!important;border-radius:16px!important;margin-bottom:10px!important}
-      .wrap>.card2:first-of-type .title{font-size:22px!important;line-height:1.25!important;margin:0 0 8px!important}
-      .wrap>.card2:first-of-type .section-hd{display:block!important}
-      .layout{display:block!important;width:100%!important;max-width:100%!important;min-width:0!important;grid-template-columns:none!important;gap:0!important}
-      .layout>section,.layout>main,main,#detailBox,.print-area{display:block!important;width:100%!important;max-width:100%!important;min-width:0!important;box-sizing:border-box!important;position:static!important;float:none!important;clear:both!important}
-      .print-area{overflow-x:hidden!important;-webkit-overflow-scrolling:touch!important}
-      .layout h2{font-size:19px!important;line-height:1.35!important;margin:0 0 10px!important}
-      .stat-grid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:6px!important;width:100%!important;flex-wrap:initial!important}
-      .stat{display:flex!important;align-items:center!important;justify-content:flex-start!important;padding:6px 8px!important;border-radius:10px!important;gap:4px!important;min-width:0!important;overflow:hidden!important}
-      .stat b{font-size:16px!important;line-height:1!important;flex:0 0 auto!important}
-      .stat span{font-size:11px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}
-      .tabs{display:flex!important;gap:5px!important;flex-wrap:wrap!important;margin-top:8px!important;width:100%!important}
-      .tab{padding:6px 8px!important;font-size:12px!important;border-radius:999px!important;white-space:nowrap!important;flex:0 0 auto!important}
-      .list{display:grid!important;gap:7px!important;max-height:none!important;overflow:visible!important;width:100%!important;margin-top:10px!important}
-      .item{width:100%!important;box-sizing:border-box!important;padding:9px 10px!important;border-radius:12px!important;min-width:0!important}
-      .item-title{font-size:14px!important;line-height:1.35!important;word-break:break-word!important}
-      .item-sub{font-size:12px!important;line-height:1.5!important;word-break:break-word!important;white-space:normal!important}
-      .status{font-size:11px!important;padding:2px 6px!important;border-radius:999px!important;white-space:nowrap!important}
-      .row2,.row3,.equipment-row{display:grid!important;grid-template-columns:1fr!important;gap:8px!important;width:100%!important}
-      .field{margin-bottom:8px!important;width:100%!important;min-width:0!important;box-sizing:border-box!important}
-      .field label{font-size:13px!important;line-height:1.35!important;margin-bottom:4px!important;word-break:break-word!important;white-space:normal!important}
-      .field input,.field select,.field textarea{display:block!important;width:100%!important;max-width:100%!important;min-width:0!important;box-sizing:border-box!important;padding:9px 10px!important;border-radius:10px!important;font-size:15px!important;line-height:1.35!important}
-      .field textarea{min-height:74px!important}
-      .btn-row{display:grid!important;grid-template-columns:1fr!important;gap:7px!important;width:100%!important;margin-top:8px!important}
-      .btn{display:flex!important;width:100%!important;max-width:100%!important;min-width:0!important;box-sizing:border-box!important;justify-content:center!important;padding:10px 12px!important;border-radius:11px!important;font-size:14px!important;text-align:center!important;white-space:normal!important;line-height:1.35!important}
-      .equipment-row{padding:8px!important;border:1px solid #dbe5ef!important;border-radius:12px!important;background:#f8fafc!important;margin-bottom:8px!important;align-items:stretch!important}
-      .equipment-row .btn{width:auto!important;justify-self:start!important;padding:7px 10px!important;font-size:12px!important}
-      .msg{font-size:14px!important;padding:10px 12px!important;line-height:1.6!important;border-radius:12px!important}
-      .muted{font-size:12px!important;line-height:1.65!important;word-break:break-word!important;white-space:normal!important}
-      .section-hd{display:block!important}
-      [data-send-fill-btn]{width:100%!important;min-width:0!important}
-      #contractPreview{width:100%!important;max-width:100%!important;min-width:0!important;overflow-x:hidden!important;-webkit-overflow-scrolling:touch!important}
-      .rental-contract-mobile-page{display:block!important;position:relative!important;margin:0 auto 14px!important;overflow:hidden!important;max-width:100%!important}
-      #contractPreview .rental-contract-sheet{max-width:none!important;box-sizing:border-box!important;margin:0!important;border-radius:12px!important;overflow:hidden!important}
-      #contractPreview .rental-contract-sheet *{box-sizing:border-box!important}
-      #contractPreview table{table-layout:fixed!important}
-      #contractPreview img,#contractPreview canvas,#contractPreview svg{height:auto!important}
+    .history-card,.email-card{margin-top:14px}
+    .history-year-group{border:1px solid #d9e0e6;border-radius:16px;overflow:hidden;background:#fff;margin-bottom:12px}
+    .history-year-btn{width:100%;border:none;background:#fff;padding:14px 16px;font-size:18px;font-weight:900;text-align:left;display:flex;justify-content:space-between;align-items:center;cursor:pointer}
+    .history-year-btn.active{background:#f8fafc}
+    .history-year-body{display:none;padding:0 12px 12px}
+    .history-year-body.open{display:grid;gap:8px}
+    .history-item{display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid #e2e8f0;border-radius:14px;padding:10px 12px;background:#fff;margin-top:8px}
+    .history-item-title{font-size:14px;font-weight:800;line-height:1.5}
+    .history-item-actions{display:flex;gap:8px;flex-wrap:wrap}
+    .btn-danger-soft{background:#fdecec;color:#b42318}
+    .btn-danger-soft:hover{background:#f9d9d9}
+    .btn.is-busy{opacity:.8;pointer-events:none}
+
+    @media print{
+      html,body{margin:0!important;padding:0!important;background:#fff!important}
+      body *{visibility:hidden!important}
+      #printArea,#printArea *{visibility:visible!important}
+      #printArea{
+        position:absolute!important;
+        left:0!important;
+        top:0!important;
+        width:100%!important;
+      }
+      .contract-sheet{
+        transform:none!important;
+        box-shadow:none!important;
+        border:none!important;
+        border-radius:0!important;
+        margin:0 auto!important;
+        page-break-after:always!important;
+      }
+      .page-return-wrap,.topbar,.subcard:first-child,.email-card,.history-card,.muted-tip{display:none!important}
+      .contract-box-grid,.party-grid,.signature-grid,.row2{display:grid!important;grid-template-columns:1fr 1fr!important}
+      .row3{display:grid!important;grid-template-columns:1fr 1fr 1fr!important}
+      @page{size:A4 portrait;margin:0}
     }
-
-    @media print{body *{visibility:hidden}.print-area,.print-area *{visibility:visible}.print-area{position:absolute;left:0;top:0;width:100%}.card2:not(.print-area){display:none}.rental-contract-mobile-page{width:auto!important;height:auto!important;overflow:visible!important;margin:0!important}.rental-contract-mobile-page .rental-contract-sheet{position:relative!important;left:auto!important;top:auto!important;transform:none!important}.rental-contract-sheet{border:none!important;box-shadow:none!important;margin:0!important;width:210mm!important;min-height:297mm!important}@page{size:A4;margin:0}}
+    @media (max-width:1180px){
+      .layout{display:flex;flex-direction:column;gap:14px}
+      .form-panel{order:1;width:100%}
+      .preview-panel{order:2;width:100%;overflow:hidden;background:#f8fafc;border:1px solid #e2e8f0;border-radius:18px;padding:10px;box-sizing:border-box}
+      .mobile-primary-actions{order:3;display:flex;gap:8px;flex-wrap:wrap;background:#fff;border:1px solid #e2e8f0;border-radius:18px;padding:14px;width:100%;box-sizing:border-box}
+      .email-card{order:4;width:100%}
+      .history-card{order:5;width:100%}
+      .contract-sheet{width:210mm;min-height:297mm;padding:9mm;transform-origin:top left;border-radius:0;margin:0}
+      .contract-box-grid,.party-grid,.signature-grid,.row2{grid-template-columns:1fr 1fr}
+      .row3{grid-template-columns:1fr 1fr}
+      .subcard{padding:12px}
+      .field{margin-bottom:8px}
+      .field label{font-size:12px}
+      input,select,textarea{font-size:13px;padding:8px 9px}
+      textarea{min-height:70px}
+      .primary-actions{display:none !important}
+      .mobile-primary-actions .btn{width:calc(50% - 4px);padding:10px 8px;font-size:13px}
+    }
   </style>
-<!-- rental-period-line-removed-final2 -->
+  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
 </head>
-<body onload="initPage()">
-  <div class="yz-global-nav" data-yz-global-nav><button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button><button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button></div>
-  <div class="wrap">
-    <section class="card2"><div class="section-hd"><div><h1 class="title">設備租賃管理</h1><div class="muted">客人先送出租用基本資料；店家確認設備、金額與預估安裝日期後，再產生正式資料填寫連結。真正的正式契約會在安裝完成、店家確認正式起租日後再產生並傳送。</div></div></div><div id="stats" class="stat-grid"></div><div id="msg"></div></section>
-    <div class="layout"><section class="card2"><h2 style="margin-top:0">租賃申請管理 / 契約列表</h2><div class="tabs"><button class="tab active" data-filter="all">主要列表</button><button class="tab" data-filter="new">待店家確認</button><button class="tab" data-filter="sign">待客人補資料</button><button class="tab" data-filter="active">租用中</button><button class="tab" data-filter="expiring">30 天內到期</button><button class="tab" data-filter="return">退租</button><button class="tab" data-filter="cancelled">已取消</button></div><div id="list" class="list" style="margin-top:12px">讀取中...</div></section><main><section class="card2" id="detailBox"><h2 style="margin-top:0">請選擇左側案件</h2><div class="muted">可由客人申請轉正式契約，也可按「店家代填租賃單」直接建立。設備欄位只保留「設備名稱 / 備註」，可新增多列。</div></section><section class="card2 print-area"><div id="contractPreview"></div></section></main></div>
+<body onload="initPage()" class="admin-wide-page admin-quote-page">
+  <div class="yz-global-nav" data-yz-global-nav>
+    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
+    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
   </div>
-  <script src="config.js?v=rental-flow-20260611"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" referrerpolicy="no-referrer"></script><script src="firebase-client.js?v=20260614-rental-queue-delete-fix"></script><script src="app.js?v=rental-flow-20260611"></script><script src="rental-common.js?v=20260627-other-equipment-date-internal"></script><script src="global-nav.js?v=20260603unified1"></script>
+
+  <div class="container" style="max-width:1880px">
+    <div class="card">
+      <div class="topbar">
+        <div>
+          <h1 class="title" style="margin:0">合約管理</h1>
+          <div class="welcome">歡迎 <span data-user-name></span></div>
+        </div>
+      </div>
+      <div class="layout">
+        <div class="form-panel">
+          <div class="subcard form-card">
+            <input id="contractId" type="hidden" value="">
+            <div class="muted-tip" style="margin-bottom:12px">這個頁面的操作方式比照估價單：左邊填寫、右邊即時預覽；每次修改儲存都會新增版本（原始版、修改 1、修改 2…）；右邊預覽 = 列印 = 另存 PDF。</div>
+            <div class="field"><label>契約書標題</label><input id="contractTitle" value="設備租賃契約書"></div>
+            <div class="row2">
+              <div class="field"><label>甲方名稱</label><input id="partyAName" value="晟瑞科技股份有限公司"></div>
+              <div class="field"><label>乙方名稱</label><input id="partyBName" value="尚品樂器行"></div>
+            </div>
+            <div class="field"><label>租賃設備和型號</label><input id="equipmentName" value="金嗓 super S600"></div>
+            <div class="row3">
+              <div class="field"><label>租賃天數</label><input id="rentDays" type="number" min="1" value="3"></div>
+              <div class="field"><label>租賃開始日期</label><input id="startDate" type="date"></div>
+              <div class="field"><label>合約日期</label><input id="contractDate" type="date"></div>
+            </div>
+            <div class="row2">
+              <div class="field"><label>租賃費用</label><input id="rentFee" type="number" min="0" value="1050"></div>
+              <div class="field"><label>運費</label><input id="shippingFee" type="number" min="0" value="0"></div>
+            </div>
+            <div class="field"><label>乙方提供設備內容</label><textarea id="includedItems">卡拉 OK 主機 + 攜帶袋子 + 無線麥克風 2 支\n電源線</textarea></div>
+            <div class="field"><label>第一條條款</label><textarea id="clause4">租約使用開始，全數不退款。</textarea></div>
+            <div class="field"><label>第二條條款</label><textarea id="clause5">因設備老舊或電腦相關線材磨損造成損壞，公司全吸收；但因人為破壞須賠償，破壞判斷依原廠認定。</textarea></div>
+            <div class="field"><label>第三條條款</label><textarea id="clause6">如雙方發生有關事項之爭議或訴訟，雙方以臺中地方法院為第一審管轄法院。</textarea></div>
+            <div class="field"><label>第四條條款</label><textarea id="clause7">本契約壹式貳份，雙方各執乙份為憑。</textarea></div>
+            <div style="margin:16px 0 10px"><h2 class="section-title" style="margin:0">雙方資料</h2></div>
+            <div class="row2">
+              <div class="field"><label>甲方統編</label><input id="partyATaxId" value="82784058"></div>
+              <div class="field"><label>乙方統編</label><input id="partyBTaxId" value="99680937"></div>
+            </div>
+            <div class="row2">
+              <div class="field"><label>甲方電話</label><input id="partyAPhone" value="04-2533-2296 分機109"></div>
+              <div class="field"><label>乙方電話</label><input id="partyBPhone" value="04-25227893"></div>
+            </div>
+            <div class="row2">
+              <div class="field"><label>甲方地址</label><input id="partyAAddress" value="427 台中市潭子區中山路三段486號"></div>
+              <div class="field"><label>乙方地址</label><input id="partyBAddress" value="台中市豐原區圓環東路347號4樓"></div>
+            </div>
+            <div class="row2">
+              <div class="field"><label>甲方代表人（選填）</label><input id="partyAOwner" value=""></div>
+              <div class="field"><label>乙方負責人</label><input id="partyBOwner" value="黃銘廷"></div>
+            </div>
+            <div class="mini-actions primary-actions" style="margin-top:16px">
+              <button id="saveContractBtn" class="btn" type="button" onclick="saveCurrentContract()">儲存合約</button>
+              <button id="saveAsNewContractBtn" class="btn" type="button" onclick="saveAsNewContract()">儲存新合約</button>
+              <button id="newBlankContractBtn" class="btn" type="button" onclick="newBlankContract()">新增空白合約</button>
+              <button id="saveContractPdfBtn" class="btn" type="button" onclick="savePdf()">另存 PDF</button>
+              <button id="printContractBtn" class="btn" type="button" onclick="printContract()">列印</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="subcard email-card">
+            <div class="section-title" style="margin:0 0 10px">寄送 Email</div>
+            <div class="row2">
+              <div class="field"><label>收件人 Email</label><input id="emailTo" type="email" placeholder="example@example.com"></div>
+              <div class="field"><label>副本 CC（選填）</label><input id="emailCc" type="email" placeholder=""></div>
+            </div>
+            <div class="field"><label>信件主旨</label><input id="emailSubject" value="設備租賃契約書"></div>
+            <div class="field"><label>信件內容</label><textarea id="emailBody">您好，
+附件為本次設備租賃契約書 PDF，請查收。
+如內容需要調整，請直接回信告知，謝謝。</textarea></div>
+            <div class="mini-actions" style="margin-top:12px">
+              <button id="sendContractBtn" class="btn" type="button" onclick="sendContractEmail()">寄送合約</button>
+            </div>
+          </div>
+
+          <div class="subcard history-card">
+            <div class="section-title" style="margin:0 0 10px">歷史資料</div>
+            <div class="muted-tip" style="margin-bottom:10px">依年份分類顯示，列表先顯示甲方公司名稱與租賃設備名稱。</div>
+            <div id="historyWrap"><div class="muted-tip">目前還沒有合約資料。</div></div>
+          </div>
+        <div id="printArea" class="preview-panel">
+          <div class="contract-preview-stage">
+            <section class="contract-sheet">
+              <div class="contract-title" id="pvContractTitle">設備租賃契約書</div>
+              <div class="contract-intro" id="pvIntro"></div>
+              <table class="contract-table">
+                <tr><th style="width:28%">租賃設備和型號</th><td id="pvEquipment"></td></tr>
+                <tr><th>租賃期間</th><td id="pvRentTerm"></td></tr>
+                <tr><th>租賃費用</th><td id="pvFee"></td></tr>
+                <tr><th>乙方提供設備包括</th><td id="pvIncluded"></td></tr>
+              </table>
+              <div class="clause-list">
+                <div class="clause-item"><strong>第一條：</strong><span id="pvClause4"></span></div>
+                <div class="clause-item"><strong>第二條：</strong><span id="pvClause5"></span></div>
+                <div class="clause-item"><strong>第三條：</strong><span id="pvClause6"></span></div>
+                <div class="clause-item"><strong>第四條：</strong><span id="pvClause7"></span></div>
+              </div>
+              <div class="contract-section-title" style="margin-top:4mm">立約人資料</div>
+              <div class="party-grid">
+                <div class="party-card">
+                  <div class="hd">甲方</div>
+                  <div class="bd" id="pvPartyA"></div>
+                </div>
+                <div class="party-card">
+                  <div class="hd">乙方</div>
+                  <div class="bd" id="pvPartyB"></div>
+                </div>
+              </div>
+              <div class="signature-grid">
+                <div class="signature-box">
+                  <div class="hd">甲方簽章</div>
+                  <div class="bd">
+                    <div class="sign-line"></div>
+                  </div>
+                </div>
+                <div class="signature-box">
+                  <div class="hd">乙方簽章</div>
+                  <div class="bd">
+                    <img class="stamp-blue" src="company_seal_contract_transparent.png" alt="公司章" onerror="this.style.display='none'">
+                    <img class="stamp-red" src="red_stamp_transparent.png" alt="負責人章" onerror="this.style.display='none'">
+                    <div class="sign-line"></div>
+                  </div>
+                </div>
+              </div>
+              <div class="contract-intro" style="text-align:center;margin-top:4mm;margin-bottom:0" id="pvContractDate"></div>
+            </section>
+          </div>
+        </div>
+
+        <div class="mobile-primary-actions" aria-label="手機版操作按鈕">
+          <button class="btn" type="button" onclick="saveCurrentContract()">儲存合約</button>
+          <button class="btn" type="button" onclick="saveAsNewContract()">儲存新合約</button>
+          <button class="btn" type="button" onclick="newBlankContract()">新增空白</button>
+          <button class="btn" type="button" onclick="savePdf()">另存 PDF</button>
+          <button class="btn" type="button" onclick="printContract()">列印</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="config.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="firebase-client.js?v=admin-final-20260530b"></script>
+
+  <script src="app.js"></script>
+  
   <script>
-    const R=window.YZRental; let applications=[],contracts=[],selected=null,filter='all',lineRuntime={loaded:false};
-    function setupContractPreviewScaler(){
-      const box=R.qs('contractPreview');
-      if(!box || box.__rentalPreviewScalerReady) return;
-      box.__rentalPreviewScalerReady=true;
-      const run=()=>requestAnimationFrame(applyContractPreviewScale);
-      new MutationObserver(run).observe(box,{childList:true,subtree:false});
-      window.addEventListener('resize', run);
-      window.addEventListener('orientationchange', ()=>setTimeout(applyContractPreviewScale, 350));
-      window.addEventListener('beforeprint', resetContractPreviewScale);
-      window.addEventListener('afterprint', applyContractPreviewScale);
-      run();
+    let currentUser = null;
+    const defaultValues = {};
+    let historyRows = [];
+    function qs(sel){ return document.querySelector(sel); }
+    function todayStr(){ const d=new Date(); const y=d.getFullYear(); const m=String(d.getMonth()+1).padStart(2,'0'); const day=String(d.getDate()).padStart(2,'0'); return `${y}-${m}-${day}`; }
+    function toRocDate(dateStr){
+      if(!dateStr) return '中華民國　　　年　　月　　日';
+      const d = new Date(dateStr + 'T00:00:00');
+      if(String(d)==='Invalid Date') return dateStr;
+      const y = d.getFullYear() - 1911;
+      return `中華民國 ${y} 年 ${d.getMonth()+1} 月 ${d.getDate()} 日`;
     }
-    function resetContractPreviewScale(){
-      const box=R.qs('contractPreview'); if(!box) return;
-      box.querySelectorAll('.rental-contract-mobile-page').forEach(w=>{
-        const s=w.querySelector('.rental-contract-sheet');
-        if(!s) return;
-        s.style.position=''; s.style.left=''; s.style.top=''; s.style.transform=''; s.style.transformOrigin=''; s.style.margin=''; s.style.width=''; s.style.height=''; s.style.minHeight='';
-        w.style.position=''; w.style.width=''; w.style.height=''; w.style.margin=''; w.style.overflow='';
+    function money(v){ return Number(v||0).toLocaleString('zh-TW'); }
+    function readValues(){
+      return {
+        contractId: qs('#contractId').value.trim(),
+        contractTitle: qs('#contractTitle').value.trim(),
+        partyAName: qs('#partyAName').value.trim(),
+        partyBName: qs('#partyBName').value.trim(),
+        equipmentName: qs('#equipmentName').value.trim(),
+        rentDays: qs('#rentDays').value.trim(),
+        startDate: qs('#startDate').value.trim(),
+        contractDate: qs('#contractDate').value.trim(),
+        rentFee: qs('#rentFee').value.trim(),
+        shippingFee: qs('#shippingFee').value.trim(),
+        includedItems: qs('#includedItems').value.trim(),
+        clause4: qs('#clause4').value.trim(),
+        clause5: qs('#clause5').value.trim(),
+        clause6: qs('#clause6').value.trim(),
+        clause7: qs('#clause7').value.trim(),
+        partyATaxId: qs('#partyATaxId').value.trim(),
+        partyBTaxId: qs('#partyBTaxId').value.trim(),
+        partyAPhone: qs('#partyAPhone').value.trim(),
+        partyBPhone: qs('#partyBPhone').value.trim(),
+        partyAAddress: qs('#partyAAddress').value.trim(),
+        partyBAddress: qs('#partyBAddress').value.trim(),
+        partyAOwner: qs('#partyAOwner').value.trim(),
+        partyBOwner: qs('#partyBOwner').value.trim()
+      };
+    }
+    function applyValues(v, asNew){
+      if(!v) return;
+      const ids = ['contractTitle','partyAName','partyBName','equipmentName','rentDays','startDate','contractDate','rentFee','shippingFee','includedItems','clause4','clause5','clause6','clause7','partyATaxId','partyBTaxId','partyAPhone','partyBPhone','partyAAddress','partyBAddress','partyAOwner','partyBOwner'];
+      ids.forEach(id=>{
+        if(v[id] != null && qs('#'+id)) qs('#'+id).value = v[id];
       });
+      qs('#contractId').value = asNew ? '' : (v.contractId || '');
+      renderPreview();
     }
-    function applyContractPreviewScale(){
-      const box=R.qs('contractPreview'); if(!box) return;
-      const mobile=window.matchMedia('(max-width:760px)').matches;
-      const sheets=Array.from(box.querySelectorAll('.rental-contract-sheet'));
-      if(!sheets.length) return;
-      sheets.forEach(sheet=>{
-        let wrap=sheet.parentElement;
-        if(!wrap || !wrap.classList.contains('rental-contract-mobile-page')){
-          wrap=document.createElement('div');
-          wrap.className='rental-contract-mobile-page';
-          sheet.parentNode.insertBefore(wrap,sheet);
-          wrap.appendChild(sheet);
+    function calcEndDateFixed(startDate, days){
+      if(!startDate) return '';
+      const d = new Date(startDate + 'T00:00:00');
+      if(String(d)==='Invalid Date') return '';
+      d.setDate(d.getDate() + Math.max(1, Number(days||1)) - 1);
+      const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), day=String(d.getDate()).padStart(2,'0');
+      return `${y}-${m}-${day}`;
+    }
+    function periodRows(v){
+      const days = Math.max(1, Number(v.rentDays || 90));
+      const start = v.startDate || '';
+      let rows = '';
+      if(start){
+        const end = calcEndDateFixed(start, days);
+        rows += `<tr><td>第 1 期</td><td>${start}</td><td>${end}</td><td>□實體租用　□線上續租</td><td>${money(v.rentFee)} 元</td><td></td></tr>`;
+        let s = new Date(end + 'T00:00:00');
+        for(let i=2;i<=10;i++){
+          s.setDate(s.getDate()+1);
+          const sy=s.getFullYear(), sm=String(s.getMonth()+1).padStart(2,'0'), sd=String(s.getDate()).padStart(2,'0');
+          const startText=`${sy}-${sm}-${sd}`;
+          const endText=calcEndDateFixed(startText, days);
+          rows += `<tr><td>第 ${i} 期</td><td>${startText}</td><td>${endText}</td><td>□實體租用　□線上續租</td><td></td><td></td></tr>`;
+          s = new Date(endText + 'T00:00:00');
+        }
+      }else{
+        for(let i=1;i<=10;i++) rows += `<tr><td>第 ${i} 期</td><td>　年　月　日</td><td>　年　月　日</td><td>□實體租用　□線上續租</td><td></td><td></td></tr>`;
+      }
+      return rows;
+    }
+    function renderPreview(){
+      const v = readValues();
+      qs('#pvContractTitle').textContent = v.contractTitle || '設備租賃契約書';
+      qs('#pvIntro').textContent = `立契約書人 ${v.partyAName || '甲方'}（以下簡稱甲方）\n立契約書人 ${v.partyBName || '乙方'}（以下簡稱乙方）\n\n甲方向乙方租賃設備，簽訂契約條款如下：`;
+      qs('#pvEquipment').textContent = v.equipmentName || '—';
+      qs('#pvRentTerm').textContent = `租賃期間詳如第二頁「租賃期間明細表」。一期以 ${v.rentDays || 90} 天計算。`;
+      qs('#pvFee').textContent = `租賃費用 ${money(v.rentFee)} 元，運費 ${money(v.shippingFee)} 元`;
+      qs('#pvIncluded').textContent = v.includedItems || '—';
+      qs('#pvClause4').textContent = v.clause4 || '—';
+      qs('#pvClause5').textContent = v.clause5 || '—';
+      qs('#pvClause6').textContent = v.clause6 || '—';
+      qs('#pvClause7').textContent = v.clause7 || '—';
+      qs('#pvPartyA').textContent = [
+        `公司名稱：${v.partyAName || ''}`,
+        v.partyAOwner ? `負 責 人：${v.partyAOwner}` : '',
+        `統一編號：${v.partyATaxId || ''}`,
+        `地址：${v.partyAAddress || ''}`,
+        `聯絡電話：${v.partyAPhone || ''}`
+      ].filter(Boolean).join('\n');
+      qs('#pvPartyB').textContent = [
+        `公司名稱：${v.partyBName || ''}`,
+        `負 責 人：${v.partyBOwner || ''}`,
+        `統一編號：${v.partyBTaxId || ''}`,
+        `地址：${v.partyBAddress || ''}`,
+        `聯絡電話：${v.partyBPhone || ''}`
+      ].filter(Boolean).join('\n');
+      qs('#pvContractDate').textContent = toRocDate(v.contractDate);
+      const firstSheet = document.querySelector('#printArea .contract-sheet:not(.period-sheet)');
+      let periodSheet = document.querySelector('#printArea .period-sheet');
+      if(!periodSheet){
+        periodSheet = document.createElement('section');
+        periodSheet.className = 'contract-sheet period-sheet';
+        firstSheet.parentNode.appendChild(periodSheet);
+      }
+      periodSheet.innerHTML = `<div class="contract-title">租賃期間明細表</div>
+        <div class="contract-intro">契約名稱：${v.contractTitle || '設備租賃契約書'}<br>租賃設備：${v.equipmentName || ''}<br>起租日：${v.startDate || '　年　月　日'}　一期天數：${v.rentDays || 90} 天</div>
+        <table class="period-table"><thead><tr><th style="width:70px">期別</th><th>起租日</th><th>到期日</th><th>租用方式</th><th>金額</th><th>付款日期 / 經收人</th></tr></thead><tbody>${periodRows(v)}</tbody></table>
+        <div class="contract-intro" style="text-align:center;margin-top:12mm">${toRocDate(v.contractDate)}</div><div class="contract-page-no">第 2 頁 / 共 2 頁</div>`;
+      if(!firstSheet.querySelector('.contract-page-no')) firstSheet.insertAdjacentHTML('beforeend','<div class="contract-page-no">第 1 頁 / 共 2 頁</div>');
+      if(!qs('#emailSubject').dataset.touched){
+        qs('#emailSubject').value = `${v.partyAName || '甲方'}｜設備租賃契約書`;
+      }
+    }
+    function bindInputs(){
+      document.querySelectorAll('input, textarea').forEach(el=>{
+        if(el.id !== 'emailSubject' && el.id !== 'emailBody' && el.id !== 'emailTo' && el.id !== 'emailCc'){
+          el.addEventListener('input', renderPreview);
+          el.addEventListener('change', renderPreview);
         }
       });
-      if(!mobile){ resetContractPreviewScale(); box.style.overflowX=''; return; }
-      box.style.overflowX='hidden';
-      const available=Math.max(260,(box.clientWidth||window.innerWidth)-2);
-      Array.from(box.querySelectorAll('.rental-contract-sheet')).forEach(sheet=>{
-        const wrap=sheet.parentElement;
-        sheet.style.transform='none';
-        sheet.style.position='absolute';
-        sheet.style.left='0';
-        sheet.style.top='0';
-        sheet.style.margin='0';
-        sheet.style.width='210mm';
-        sheet.style.height='297mm';
-        sheet.style.minHeight='297mm';
-        const w=sheet.offsetWidth || 794;
-        const h=sheet.offsetHeight || 1123;
-        const scale=Math.min(1, available / w);
-        wrap.style.position='relative';
-        wrap.style.width=Math.ceil(w*scale)+'px';
-        wrap.style.height=Math.ceil(h*scale)+'px';
-        wrap.style.margin='0 auto 14px';
-        wrap.style.overflow='hidden';
-        sheet.style.transformOrigin='top left';
-        sheet.style.transform='scale('+scale.toFixed(4)+')';
-      });
+      qs('#emailSubject').addEventListener('input', ()=>{ qs('#emailSubject').dataset.touched='1'; });
     }
-    async function initPage(){ if(typeof fillHeader==='function') fillHeader(); setupContractPreviewScaler(); const u=R.requireManager(); if(!u) return; document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active')); b.classList.add('active'); filter=b.dataset.filter; renderList();}); await loadLineRuntimeStatus(true); await loadAll(); const params=new URLSearchParams(location.search); const appId=params.get('applicationId')||params.get('appId'); const contractId=params.get('contractId'); const anyId=params.get('id'); if(appId){ selectItem('application', appId); } else if(contractId){ selectItem('contract', contractId); } else if(anyId){ const app=applications.find(x=>x.__id===anyId||x.applicationNo===anyId); const c=contracts.find(x=>x.__id===anyId||x.contractNo===anyId); if(app) selectItem('application', app.__id); else if(c) selectItem('contract', c.__id); } }
-    async function loadLineRuntimeStatus(silent){ try{ const r=await R.call('rentalLineRuntimeStatusHttp',{}); lineRuntime=Object.assign({loaded:true,error:''},r||{}); }catch(e){ lineRuntime={loaded:true,error:e.message||String(e),lineTokenConfigured:null,managerLineConfigured:null}; if(!silent) R.toast('LINE 狀態檢查失敗：'+lineRuntime.error,false); } return lineRuntime; }
-    window.refreshRentalLineRuntime=async function(){ await loadLineRuntimeStatus(false); const box=R.qs('rentalLineRuntimeBox'); if(box) box.outerHTML=lineRuntimeHtml(customerLinkContext({})); if(!lineRuntime.error) R.toast(lineRuntime.lineTokenConfigured?'LINE 執行環境已載入。':'LINE Token 尚未載入，請先修正部署設定。',!!lineRuntime.lineTokenConfigured); };
-    async function loadAll(){ try{ applications=await R.all('rentalApplications',800); contracts=await R.all('rentalContracts',800); applications.sort((a,b)=>R.clean(b.createdAtText||'').localeCompare(R.clean(a.createdAtText||''))); contracts.sort((a,b)=>R.clean(b.updatedAtText||b.createdAtText||'').localeCompare(R.clean(a.updatedAtText||a.createdAtText||''))); renderStats(); renderList(); R.toast('資料已更新。', true); }catch(e){ R.toast(e.message||String(e), false); } }
-    function daysLeft(endDate){ if(!endDate) return 999999; const today=new Date(); today.setHours(0,0,0,0); const d=new Date(endDate+'T00:00:00'); return Math.ceil((d-today)/86400000); }
-    function passFilter(x){ const st=R.clean(x.status); const converted=(x.kind==='application' && (['已轉正式契約','converted'].includes(st) || x.linkedContractId || x.contractId)); if(filter==='all') return !converted && !['已取消','取消申請'].includes(st); if(filter==='new') return x.kind==='application' && !converted && !['已取消','取消申請'].includes(st) && (['待店家確認','主管確認中','新申請','草稿',''].includes(st)||!st); if(filter==='sign') return x.kind==='contract' && ['待客人補資料','待客人簽署','待簽署'].includes(st); if(filter==='active') return x.kind==='contract' && ['已簽署','待配送 / 待安裝','租賃中','到期提醒中','續約待確認','續約待付款'].includes(st); if(filter==='expiring') return x.kind==='contract' && !['已退租','已取消'].includes(st) && daysLeft(x.endDate)<=30; if(filter==='return') return x.kind==='contract' && ['退租申請中','退租待安排','待收回','已退租'].includes(st); if(filter==='cancelled') return ['已取消','取消申請'].includes(st); return true; }
-    function renderStats(){ const active=contracts.filter(c=>['已簽署','待配送 / 待安裝','租賃中','到期提醒中','續約待確認','續約待付款'].includes(R.clean(c.status))).length; const exp=contracts.filter(c=>!['已退租','已取消'].includes(R.clean(c.status)) && daysLeft(c.endDate)<=30).length; const pending=applications.filter(a=>['待店家確認','新申請','主管確認中'].includes(R.clean(a.status||'待店家確認'))).length; const returned=contracts.filter(c=>R.clean(c.status)==='已退租').length; R.qs('stats').innerHTML=`<div class="stat"><b>${pending}</b><span>待確認申請</span></div><div class="stat"><b>${active}</b><span>租用中</span></div><div class="stat"><b>${exp}</b><span>30 天內到期</span></div><div class="stat"><b>${returned}</b><span>已退租</span></div>`; }
-    function renderList(){ const list=R.qs('list'); const rows=[...applications.map(x=>Object.assign({kind:'application'},x)),...contracts.map(x=>Object.assign({kind:'contract'},x))].filter(passFilter); if(!rows.length){ list.innerHTML='<div class="muted">目前沒有資料。</div>'; return;} list.innerHTML=rows.map((r)=>{ const left=r.kind==='contract'?daysLeft(r.endDate):999999; const cls=left<0?'pill-bad':left<=30?'pill-warn':''; const internal=r.kind==='contract'?internalRentalCountSummaryText(r):''; return `<div class="item" onclick="selectItem('${r.kind}','${R.esc(r.__id)}')"><div class="item-title">${r.kind==='application'?'申請':'合約'}｜${R.esc(r.customerName||r.partyAName||'未填姓名')}</div><div class="item-sub"><span class="status ${cls}">${R.esc(r.status||'待店家確認')}</span> ${R.esc(R.rentalTypeLabel(r.rentalType))}｜${R.esc(r.applicationNo||r.contractNo||r.__id||'')}<br>${R.esc(r.customerPhone||'')}｜${R.esc(r.preferredDate||r.startDate||'尚未確認日期')} ${R.esc(r.preferredTime||'')}${internal?'<br>'+R.esc(internal):''}</div></div>`; }).join(''); }
-    window.selectItem=function(kind,id){ selected=kind==='application'?applications.find(x=>x.__id===id):contracts.find(x=>x.__id===id); if(!selected) return; if(kind==='application') renderApplication(selected); else renderContract(selected); };
-    function equipmentFromNeed(app){ const type=R.clean(app.rentalType); const t=R.clean(app.otherEquipmentNeed); if(type==='other' && t) return [{name:t,note:'客人初步需求'}]; const defaults=R.parseEquipmentItems({rentalType:type}); if(t && !defaults.some(x=>R.clean(x.name)===t)) defaults.unshift({name:t,note:'客人初步需求'}); return defaults; }
-    function normalizeLineConfirmText(text, appNo){ const raw=String(text||'').trim(); const key=String(appNo||'').trim(); if(raw && /^設備租賃申請\s+\S+$/i.test(raw)) return raw; const m=raw.match(/(?:設備租賃申請|租賃申請|租賃申請編號|申請編號|訂單編號|訂單)\s*[:：]?\s*([A-Za-z0-9_-]+)/i); return '設備租賃申請 '+((m&&m[1])?m[1].trim():key); }
-
-    function notifyPref(c){ c=c||{}; return R.notificationPreference(c.notificationPreference||c.preferredContactMethod, R.clean(c.customerEmail)); }
-    function wantsNotifyLine(c){ return R.wantsLine(notifyPref(c), R.clean((c||{}).customerEmail)); }
-    function wantsNotifyEmail(c){ return R.wantsEmail(notifyPref(c), R.clean((c||{}).customerEmail)); }
-    function notifyPrefLabel(c){ return R.notificationPreferenceLabel(notifyPref(c), R.clean((c||{}).customerEmail)); }
-    function emailVerifiedText(c){ return R.emailVerified(c) ? 'Email 已確認' : (wantsNotifyEmail(c) ? 'Email 尚未確認' : '未使用 Email 通知'); }
-    function notificationStatusText(c){ c=c||{}; const parts=[]; parts.push('通知方式：'+notifyPrefLabel(c)); if(wantsNotifyLine(c)) parts.push('LINE：'+((c.customerLineUserId||c.lineUserId)?'已連結':'尚未連結')); if(wantsNotifyEmail(c)) parts.push('Email：'+(R.clean(c.customerEmail)||'未填')+'（'+emailVerifiedText(c)+'）'); return parts.join('｜'); }
-    async function queueCustomerNotice(c, options){
-      c=c||{}; options=options||{};
-      const pref=notifyPref(c);
-      const email=R.clean(c.customerEmail);
-      const lineId=R.clean(c.customerLineUserId||c.lineUserId);
-      const id=R.clean(c.contractId||c.__id||options.contractId||c.applicationId||'rental');
-      const source=options.source||'rental-customer-notice';
-      const baseId=source+'-'+id+'-'+Date.now();
-      const results={line:false,email:false,count:0,queueIds:[],preference:pref,lineRequested:R.wantsLine(pref,email),emailRequested:R.wantsEmail(pref,email),lineTargetFound:!!lineId,emailTargetFound:!!email,lineSkippedReason:'',emailSkippedReason:''};
-      const common={targetName:R.clean(c.customerName||c.partyAName),targetEmail:email,title:options.title||'柚子樂器租賃通知',body:options.body||'',message:options.body||'',status:'待發送',createdAt:firebase.firestore.FieldValue.serverTimestamp(),createdAtText:R.nowText(),source,contractId:R.clean(c.contractId||c.__id||options.contractId),applicationId:R.clean(c.applicationId||options.applicationId),notificationPreference:pref,emailVerified:R.emailVerified(c),signUrl:options.signUrl||'',officialContractUrl:options.officialContractUrl||''};
-      if(R.wantsLine(pref,email) && lineId){ const qid=baseId+'-line'; await R.db().collection('notificationQueue').doc(qid).set(Object.assign({},common,{queueId:qid,channel:'line',targetLineUserId:lineId}),{merge:true}); results.line=true; results.count++; results.queueIds.push(qid); }else if(R.wantsLine(pref,email)){ results.lineSkippedReason='客人尚未完成 LINE 配對，契約內沒有 LINE User ID。'; }
-      if(R.wantsEmail(pref,email) && email){ const qid=baseId+'-email'; await R.db().collection('notificationQueue').doc(qid).set(Object.assign({},common,{queueId:qid,channel:'email',targetLineUserId:lineId}),{merge:true}); results.email=true; results.count++; results.queueIds.push(qid); }else if(R.wantsEmail(pref,email)){ results.emailSkippedReason='客人沒有 Email。'; }
-      return results;
+    function resetFormToDefaults(){
+      Object.keys(defaultValues).forEach(id=>{ if(qs('#'+id)) qs('#'+id).value = defaultValues[id]; });
+      qs('#contractId').value = '';
+      delete qs('#emailSubject').dataset.touched;
+      renderPreview();
     }
-    function channelSendResult(res,channel){ return Array.isArray(res&&res.sendResults)?res.sendResults.find(x=>x&&x.channel===channel):null; }
-    function notificationHasSendReport(res){ return !!(res&&(Array.isArray(res.sendResults)||res.sentCount!=null||res.failedCount!=null||res.lineSent!=null||res.emailSent!=null)); }
-    function notificationResultText(res){ res=res||{}; const report=notificationHasSendReport(res); const parts=[]; const lineResult=channelSendResult(res,'line'); const emailResult=channelSendResult(res,'email'); if(res.lineRequested||res.line){ if(report){ if(res.lineSent===true||(lineResult&&lineResult.sent)) parts.push('LINE 已送達'); else parts.push('LINE 失敗：'+R.clean(res.lineError||(lineResult&&lineResult.error)||res.lineSkippedReason||'未送達')); }else if(res.line) parts.push('LINE 通知已排入佇列'); else parts.push('LINE 未建立：'+R.clean(res.lineSkippedReason||'缺少 LINE User ID')); } if(res.emailRequested||res.email){ if(report){ if(res.emailSent===true||(emailResult&&emailResult.sent)) parts.push('Email 已送達'); else parts.push('Email 失敗：'+R.clean(res.emailError||(emailResult&&emailResult.error)||res.emailSkippedReason||'未送達')); }else if(res.email) parts.push('Email 通知已排入佇列'); else parts.push('Email 未建立：'+R.clean(res.emailSkippedReason||'缺少 Email')); } if(!parts.length) return '未建立通知，請確認客人的通知方式、Email 或 LINE 是否完整。'; return parts.join('；')+'。'; }
-    function notificationDeliveryAssessment(res,c){ res=res||{}; c=c||{}; const report=notificationHasSendReport(res); const lineWanted=wantsNotifyLine(c); const emailWanted=wantsNotifyEmail(c); const lineResult=channelSendResult(res,'line'); const emailResult=channelSendResult(res,'email'); const lineOk=!lineWanted||(report?(res.lineSent===true||!!(lineResult&&lineResult.sent)):!!res.line); const emailOk=!emailWanted||(report?(res.emailSent===true||!!(emailResult&&emailResult.sent)):!!res.email); return {ok:lineOk&&emailOk,lineOk,emailOk,text:notificationResultText(res)}; }
-
-    function lineRuntimeHtml(c){ c=c||{}; const token=lineRuntime.lineTokenConfigured; const manager=lineRuntime.managerLineConfigured; const customer=!!R.clean(c.customerLineUserId||c.lineUserId); const bad=token===false||manager===false||(wantsNotifyLine(c)&&!customer); const tokenText=token===true?'已載入':token===false?'未載入':'尚未檢查'; const managerText=manager===true?('已設定'+(lineRuntime.managerRecipientName?'（'+R.esc(lineRuntime.managerRecipientName)+'）':'')):manager===false?'未設定':'尚未檢查'; const latest=lineRuntime.latestLineFailure||{}; const ownError=R.clean(c.lineLastDeliveryError||c.managerLineNoticeError||c.signLinkLineError); const runtimeError=R.clean(lineRuntime.error); const err=ownError||R.clean(latest.lastError)||runtimeError; return `<div id="rentalLineRuntimeBox" class="msg ${bad?'bad':'ok'}"><b>LINE 傳送檢查</b><br>Channel Access Token：${tokenText}<br>管理端 LINE 收件人：${managerText}<br>客人 LINE：${customer?'已完成配對':'尚未配對'}${err?`<br><b>最近錯誤：</b>${R.esc(err)}`:''}<div class="btn-row"><button class="btn secondary" type="button" onclick="refreshRentalLineRuntime()">重新檢查 LINE</button><a class="btn secondary" href="line-notification-check.html">開啟 LINE 通知檢查頁</a></div></div>`; }
-
-    function customerLinkContext(c){ c=Object.assign({}, selected||{}, c||{}); const id=R.val('contractId')||c.contractId||c.__id||''; if(id) c.contractId=id; return c; }
-    function signBackupUrl(c){ c=customerLinkContext(c); const id=R.clean(c.contractId||c.__id); const token=R.clean(c.signToken||c.token); if(id&&token) return adminBaseUrl()+'rental-sign.html?contractId='+encodeURIComponent(id)+'&token='+encodeURIComponent(token); return R.clean(c.signUrl||''); }
-    function officialBackupUrl(c){ c=customerLinkContext(c); const id=R.clean(c.contractId||c.__id); const token=R.clean(c.officialContractToken||c.customerToken||c.signToken||c.token); if(id&&token) return adminBaseUrl()+'rental-contract.html?contractId='+encodeURIComponent(id)+'&token='+encodeURIComponent(token); return R.clean(c.officialContractUrl||''); }
-    function renewalBackupUrl(c){ c=customerLinkContext(c); const id=R.clean(c.contractId||c.__id); const token=renewalReturnToken(c); if(id&&token) return adminBaseUrl()+'rental-renewal.html?contractId='+encodeURIComponent(id)+'&token='+encodeURIComponent(token); return R.clean(c.renewalReturnLinkUrl||''); }
-    function backupLinkRow(label,value,kind,emptyText){ const body=value?`<input readonly value="${R.esc(value)}" onclick="this.select()">`:`<div class="muted">${R.esc(emptyText||'尚未產生')}</div>`; return `<div class="field"><label>${R.esc(label)}</label><div class="row2" style="grid-template-columns:minmax(0,1fr) auto;align-items:center">${body}<button class="btn secondary" type="button" onclick="copyRentalCustomerLink('${kind}')">${value?'複製':'產生 / 複製'}</button></div></div>`; }
-    function customerLinkBackupHtml(c,source){ const ctx=customerLinkContext(c); const st=R.clean(ctx.status); const appNo=R.clean(ctx.applicationNo||ctx.applicationId||ctx.__id); const pairText=appNo?normalizeLineConfirmText(ctx.lineConfirmText||'', appNo):''; const sign=signBackupUrl(ctx); const official=officialBackupUrl(ctx); const renewal=renewalBackupUrl(ctx); const rows=[]; if(pairText) rows.push(backupLinkRow('第一階段 LINE 配對文字',pairText,'pair','')); rows.push(backupLinkRow('第二階段：身分證 / 簽名填寫連結',sign,'sign','尚未產生。按下方「回傳給客人填寫身分證字號」後會產生，也可以直接按右側產生 / 複製。')); const officialReady=official && (ctx.officialConfirmedAt||ctx.officialContractNoticeQueueCreatedAt||['租賃中','到期提醒中','續約待確認','續約待付款','退租申請中','退租待安排','已退租'].includes(st)); if(officialReady) rows.push(backupLinkRow('正式契約查看連結',official,'official','成立租約後才會產生。')); const renewalReady=renewal && (ctx.renewalReturnLinkSentAt||ctx.expiryReminderSentAtText||['租賃中','到期提醒中','續約待確認','續約待付款','退租申請中','退租待安排'].includes(st)); if(renewalReady) rows.push(backupLinkRow('續約 / 退租回覆連結',renewal,'renewal','租用中才會產生。')); return `<div class="pdf-link-box"><b>客人連結備援</b><br><span class="muted">如果 LINE 或 Email 沒有送到，就從這裡複製後手動貼給客人。</span>${rows.join('')}</div>`; }
-    async function copyTextToClipboard(text){ text=R.clean(text); if(!text) throw new Error('目前沒有可複製的內容。'); if(navigator.clipboard&&navigator.clipboard.writeText){ await navigator.clipboard.writeText(text); return; } const ta=document.createElement('textarea'); ta.value=text; ta.style.position='fixed'; ta.style.opacity='0'; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
-    window.copyRentalCustomerLink=async function(kind){ try{ let c=customerLinkContext({}); let label='連結'; let text=''; if(kind==='pair'){ const appNo=R.clean(c.applicationNo||c.applicationId||c.__id||R.val('applicationId')); text=appNo?normalizeLineConfirmText(c.lineConfirmText||'', appNo):''; label='第一階段 LINE 配對文字'; }else{ const id=R.clean(c.contractId||c.__id); if(id){ const stored=await R.get('rentalContracts',id); if(stored) c=customerLinkContext(Object.assign({},c,stored,{contractId:id})); } if(kind==='sign'){ text=signBackupUrl(c); label='第二階段資料填寫連結'; if(!text){ const res=await saveContract(true,{silent:true}); const newId=R.clean((res&&res.contractId)||R.val('contractId')); if(newId){ const stored=await R.get('rentalContracts',newId); if(stored) c=customerLinkContext(Object.assign({},c,stored,{contractId:newId})); text=signBackupUrl(c); } } } if(kind==='official'){ text=officialBackupUrl(c); label='正式契約查看連結'; } if(kind==='renewal'){ let id2=R.clean(c.contractId||c.__id); let token=renewalReturnToken(c); if(id2&&!token){ token=clientRandomToken(); await R.db().collection('rentalContracts').doc(id2).set({renewalToken:token, updatedAtText:R.nowText()},{merge:true}); c.renewalToken=token; } text=renewalBackupUrl(c); label='續約 / 退租回覆連結'; } } if(!text) throw new Error(label+'尚未產生或資料不完整。'); await copyTextToClipboard(text); R.toast('已複製'+label+'，可以直接貼到 LINE 給客人。', true); }catch(e){ R.toast(e.message||String(e), false); } };
-
-    function applicationToContract(app){ const type=R.clean(app.rentalType); const isOther=type==='other'; const start=R.clean(app.confirmedStartDate||app.preferredDate)||''; const periods=isOther?'':(Number(app.periods||1)||1); const endDate=isOther?R.clean(app.confirmedEndDate||app.endDate||''):(start?R.calcEndDate(start,periods,type,periods*90):''); return { applicationId:app.__id, applicationNo:app.applicationNo, source:'application', stage:'formal-draft', rentalType:type, contractTitle:R.defaultTitle(type), customerName:app.customerName, customerPhone:app.customerPhone, customerEmail:app.customerEmail, customerAddress:app.customerAddress, notificationPreference:app.notificationPreference||app.preferredContactMethod||'', emailVerified:app.emailVerified===true, emailLinkStatus:app.emailLinkStatus||'', emailVerifyToken:app.emailVerifyToken||'', customerIdNumber:app.customerIdNumber||'', customerLineUserId:app.customerLineUserId||app.lineUserId||'', lineDisplayName:app.lineDisplayName, lineLastDeliveryStatus:app.lineLastDeliveryStatus||'', lineLastDeliveryError:app.lineLastDeliveryError||'', managerLineNoticeStatus:app.managerLineNoticeStatus||'', managerLineNoticeError:app.managerLineNoticeError||'', customerLineReplyStatus:app.customerLineReplyStatus||'', customerLineReplyError:app.customerLineReplyError||'', equipmentName:type==='other'?app.otherEquipmentNeed:'', serialNo:'', periods, periodDays:isOther?'':90, rentalPeriodText:isOther?'依雙方確認之租用期間為準':'', rentalMethod:isOther?'其他設備租用':'實體租用', startDate:start, endDate:endDate, rentFee:'', shippingFee:0, depositFee:'', shippingMethod:app.shippingMethod, shippingAddress:app.shippingAddress||app.customerAddress, deliveryDate:app.preferredDate, deliveryTime:app.preferredTime, equipmentItems:equipmentFromNeed(app), includedItems:app.otherEquipmentNeed||R.defaultIncludedItems(type), status:'待客人補資料', adminNote:app.note||''}; }
-    function startAdminDraft(){ const c={source:'admin',stage:'draft',rentalType:'digitalPiano',contractTitle:R.defaultTitle('digitalPiano'),customerName:'',customerPhone:'',customerEmail:'',notificationPreference:'both',emailVerified:false,emailLinkStatus:'',customerAddress:'',periods:1,periodDays:90,rentalMethod:'實體租用',startDate:'',endDate:'',rentFee:'',shippingFee:0,depositFee:'',equipmentItems:R.parseEquipmentItems({rentalType:'digitalPiano'}),status:'草稿'}; renderContract(c); R.toast('已開啟店家代填租賃單。',true); }
-    function renderApplication(app){ const c=applicationToContract(app); R.qs('detailBox').innerHTML=editorHtml(c, 'application'); R.qs('contractPreview').innerHTML=R.renderContractHtml(c); bindEditorPreview(); }
-    function renderContract(c){ R.qs('detailBox').innerHTML=editorHtml(c, c.__id||c.contractId?'contract':'adminDraft'); R.qs('contractPreview').innerHTML=R.renderContractHtml(c); bindEditorPreview(); }
-    function equipmentRows(items){ items=Array.isArray(items)&&items.length?items:[{name:'',note:''}]; return items.map((x,i)=>`<div class="equipment-row" data-eq-row><div class="field"><label>設備名稱</label><input class="eq-name" value="${R.esc(x.name||x.equipmentName||'')}" placeholder="例如：Roland FP-30X"></div><div class="field"><label>備註</label><input class="eq-note" value="${R.esc(x.note||x.remark||'')}" placeholder="例如：含琴椅、電源線"></div><button class="btn danger" type="button" onclick="removeEquipmentRow(this)">刪除</button></div>`).join(''); }
-
-    function countValueOrNull(v){ const raw=R.clean(v); if(raw==='') return null; const n=Number(raw); return Number.isFinite(n) && n>=0 ? Math.floor(n) : null; }
-    function positivePeriodCount(v){ const n=Number(R.clean(v)); return Math.max(1, Math.min(10, Number.isFinite(n)?Math.floor(n):1)); }
-    function confirmedRenewalPeriodTotal(c){ c=c||{}; const entries=Array.isArray(c.renewalEntries)?c.renewalEntries:[]; return entries.reduce((sum,x)=>sum+positivePeriodCount(x&&x.periods),0); }
-    function internalAssetNameValue(c){ c=c||{}; return R.clean(c.internalAssetName||c.internalEquipmentCode||c.internalEquipmentName||c.assetCode||''); }
-    function internalCountBeforeValue(c){ c=c||{}; const keys=['internalRentalCountBefore','rentalCountBefore','assetRentalCountBefore','oldRentalCount']; for(const k of keys){ const n=countValueOrNull(c[k]); if(n!==null) return n; } return null; }
-    function internalRentalCountSnapshot(c,periodOverride){ c=c||{}; const isOther=R.clean(c.rentalType)==='other'; const before=internalCountBeforeValue(c); const initial=isOther?1:positivePeriodCount(periodOverride!=null?periodOverride:(c.internalRentalCountInitialPeriods||c.periods||1)); const renewals=confirmedRenewalPeriodTotal(c); const current=before===null?null:before+initial+renewals; return {assetName:internalAssetNameValue(c),before,initial,renewals,current,formula:before===null?'':`${before} + ${initial}${renewals?` + ${renewals}`:''} = ${current}`}; }
-    function internalRentalCountSummaryText(c){ const snap=internalRentalCountSnapshot(c); if(!snap.assetName && snap.before===null) return ''; if(snap.before===null) return `內部設備：${snap.assetName||'未填'}｜出租次數未填`; return `內部設備：${snap.assetName||'未填'}｜租用次數：${snap.formula} 次`; }
-    function internalRentalCountHtml(c){ c=c||{}; const isOther=R.clean(c.rentalType)==='other'; const snap=internalRentalCountSnapshot(c); const note=R.clean(c.internalRentalCountNote||c.rentalCountNote||''); const ruleText=isOther?'內部使用，不會出現在客人頁面與正式契約。其他設備不套用 90 天期數；每一筆租用成立預設增加 1 次。':'內部使用，不會出現在客人頁面與正式契約。規則：1 期 90 天 = 1 次；新租幾期就加幾次；續租幾期也加幾次。'; const initialLabel=isOther?'本次新增租用次數':'本次新租期數'; const initialValue=isOther?(R.esc(snap.initial)+' 次'):(R.esc(snap.initial)+' 期'); const previewText=snap.before===null?(isOther?'請填「本次前已租用次數」，系統會以本次租用自動增加 1 次。':'請填「本次前已租用次數」，系統會依期數自動計算。'):('計算式：'+R.esc(snap.formula)+' 次'); return `<div class="pdf-link-box" id="internalRentalCountBox"><b>內部租用次數紀錄</b><br><span class="muted">${R.esc(ruleText)}</span><div class="row2" style="margin-top:10px"><div class="field"><label>內部設備識別</label><input id="internalAssetName" value="${R.esc(snap.assetName)}" placeholder="例如：FP30X白色01、P125舊琴、音箱A01"></div><div class="field"><label>本次前已租用次數</label><input id="internalRentalCountBefore" type="number" min="0" step="1" value="${snap.before===null?'':R.esc(snap.before)}" placeholder="例如：5"></div></div><div class="row3"><div class="field"><label>${initialLabel}</label><input id="internalRentalCountInitialPeriods" readonly value="${initialValue}"></div><div class="field"><label>已確認續租增加</label><input id="internalRentalCountRenewalPeriods" readonly value="${R.esc(snap.renewals)} 次"></div><div class="field"><label>目前累計租用次數</label><input id="internalRentalCountCurrent" readonly value="${snap.current===null?'尚未計算':R.esc(snap.current+' 次')}"></div></div><div class="msg ok" id="internalRentalCountPreview" style="margin-top:6px">${previewText}</div><div class="field"><label>內部備註</label><textarea id="internalRentalCountNote" placeholder="例如：舊紙本約 5 次，從這筆開始改線上紀錄">${R.esc(note)}</textarea></div><div class="btn-row"><button class="btn secondary" type="button" onclick="saveInternalRentalCount()">儲存內部租用次數</button></div></div>`; }
-    function readInternalRentalCountPayload(signed,periods){ signed=signed||{}; const isOther=R.val('rentalType')==='other'; const before=countValueOrNull(R.val('internalRentalCountBefore')); const initial=isOther?1:positivePeriodCount(periods||R.val('periods')||1); const renewals=confirmedRenewalPeriodTotal(signed); const current=before===null?'':before+initial+renewals; const formula=before===null?'':`${before} + ${initial}${renewals?` + ${renewals}`:''} = ${current}`; return { internalAssetName:R.val('internalAssetName'), internalEquipmentCode:R.val('internalAssetName'), internalRentalCountBefore:before===null?'':before, internalRentalCountInitialPeriods:initial, internalRentalCountRenewalPeriods:renewals, internalRentalCountCurrent:current, internalRentalCountAfter:current, internalRentalCountFormula:formula, internalRentalCountNote:R.val('internalRentalCountNote') }; }
-    function updateInternalRentalCountPreview(){ const box=R.qs('internalRentalCountBox'); if(!box) return; box.style.display=''; const isOther=R.val('rentalType')==='other'; const before=countValueOrNull(R.val('internalRentalCountBefore')); const initial=isOther?1:positivePeriodCount(R.val('periods')||1); const renewals=confirmedRenewalPeriodTotal(selected||{}); const current=before===null?null:before+initial+renewals; const init=R.qs('internalRentalCountInitialPeriods'); const ren=R.qs('internalRentalCountRenewalPeriods'); const cur=R.qs('internalRentalCountCurrent'); const prev=R.qs('internalRentalCountPreview'); if(init) init.value=initial+(isOther?' 次':' 期'); if(ren) ren.value=renewals+' 次'; if(cur) cur.value=current===null?'尚未計算':current+' 次'; if(prev){ prev.className=current===null?'msg bad':'msg ok'; prev.textContent=current===null?(isOther?'請填「本次前已租用次數」，系統會以本次租用自動增加 1 次。':'請填「本次前已租用次數」，系統會依期數自動計算。'):`計算式：${before} + ${initial}${renewals?` + ${renewals}`:''} = ${current} 次`; } }
-    function validateInternalRentalCountFor(actionText){ const asset=R.val('internalAssetName'); const beforeRaw=R.val('internalRentalCountBefore'); const before=countValueOrNull(beforeRaw); if(!asset){ R.toast('請先完成「內部租用次數紀錄」：請填內部設備識別。', false); const el=R.qs('internalAssetName'); if(el) el.focus(); return false; } if(beforeRaw==='' || before===null){ R.toast('請先完成「內部租用次數紀錄」：請填本次前已租用次數，例如 5。', false); const el=R.qs('internalRentalCountBefore'); if(el) el.focus(); return false; } return true; }
-
-    function actionButtons(source,c){
-      const st=R.clean(c.status||'');
-      const isApp=source==='application';
-      const hasLine=!!(c.customerLineUserId||c.lineUserId);
-      const isCancelled=['已取消','取消申請','cancelled'].includes(st);
-      const isReturned=['已退租','returned'].includes(st);
-      const isActive=['租賃中','租用中','已成立','active','待配送 / 待安裝','到期提醒中','續約待確認','續約待付款'].includes(st);
-      const isPendingRenewal=['續約待確認','續約待付款'].includes(st) || !!(c.pendingRenewal && c.pendingRenewal.startDate);
-      const isReturnPending=['退租申請中','退租待安排','待收回'].includes(st) || !!(c.returnRequest && c.returnRequest.status);
-      const isWaitingCustomer=['待客人補資料','待客人簽署','待簽署','formal_sent','pending_customer'].includes(st);
-      const isWaitingShop=['客人已送出','待店家確認','待付款確認','待店家確認成立','customer_submitted','pending_shop_confirm','已簽署'].includes(st);
-      const parts=[];
-      const b=(cls,fn,txt,extra)=>parts.push(`<button class="btn ${cls||''}" type="button" onclick="${fn}" ${extra||''}>${txt}</button>`);
-      const deleteWholeCase=()=>b('danger','deleteRentalCase()','完全刪除案件');
-      if(isCancelled){
-        b('secondary','previewOfficialContract()','查看資料');
-        deleteWholeCase();
-        return `<div class="btn-row">${parts.join('')}</div>`;
+    function startButtonProgress(target, baseText){
+      const btn = typeof target === 'string' ? qs('#' + target) : target;
+      if(!btn) return { set(){}, done(){}, fail(){} };
+      const old = btn.textContent;
+      btn.disabled = true;
+      btn.classList.add('is-busy');
+      let timer = null;
+      function paint(v, text){
+        const pct = Math.max(0, Math.min(100, Number(v) || 0));
+        btn.textContent = `${text || baseText} ${pct}%`;
       }
-      if(isReturned){
-        b('secondary','saveInternalRentalCount()','儲存內部租用次數');
-        b('secondary','previewOfficialContract()','查看契約');
-        b('secondary','printRentalContract()','預覽 / 列印 / PDF');
-        deleteWholeCase();
-        return `<div class="btn-row">${parts.join('')}</div>`;
-      }
-      if(isReturnPending){
-        b('secondary','saveInternalRentalCount()','儲存內部租用次數');
-        b('secondary','printRentalContract()','預覽 / 列印');
-        b('danger','completeReturn()','確認退租完成');
-        deleteWholeCase();
-        return `<div class="btn-row">${parts.join('')}</div>`;
-      }
-      if(isActive){
-        b('secondary','saveInternalRentalCount()','儲存內部租用次數');
-        b('','sendRenewalReturnLink()','傳送續約 / 退租連結給客人');
-        if(isPendingRenewal) b('','confirmRenewal()','確認續約成立');
-        b('secondary','printRentalContract()','預覽 / 列印');
-        b('danger','completeReturn()','確認退租完成');
-        deleteWholeCase();
-        return `<div class="btn-row">${parts.join('')}</div>`;
-      }
-      if(isWaitingShop){
-        b('secondary','saveInternalRentalCount()','儲存內部租用次數');
-        b('secondary','previewOfficialContract()','預覽正式契約');
-        b('secondary','printRentalContract()','預覽 / 列印 / PDF');
-        b('','markDelivered()','確認租用成立');
-        if(isApp) b('secondary','cancelApplication()','取消申請');
-        deleteWholeCase();
-        return `<div class="btn-row">${parts.join('')}</div>`;
-      }
-      if(isWaitingCustomer){
-        b('secondary','saveInternalRentalCount()','儲存內部租用次數');
-        b('','sendToCustomerForFill()','回傳給客人填寫身分證字號','data-send-fill-btn');
-        if(isApp) b('secondary','cancelApplication()','取消申請');
-        deleteWholeCase();
-        return `<div class="btn-row">${parts.join('')}</div>`;
-      }
-      b('secondary','saveContract(false)','儲存資料');
-      b(hasLine?'':'secondary','sendToCustomerForFill()','回傳給客人填寫身分證字號','data-send-fill-btn');
-      if(isApp) b('secondary','cancelApplication()','取消申請');
-      deleteWholeCase();
-      return `<div class="btn-row">${parts.join('')}</div>`;
+      const seq = [10, 22, 36, 52, 68, 82, 92];
+      let i = 0;
+      paint(seq[0], baseText);
+      timer = setInterval(()=>{
+        i += 1;
+        if(i >= seq.length){
+          clearInterval(timer);
+          timer = null;
+          return;
+        }
+        paint(seq[i], baseText);
+      }, 180);
+      return {
+        set(v, text){ paint(v, text || baseText); },
+        done(text){
+          if(timer) clearInterval(timer);
+          paint(100, text || baseText);
+          setTimeout(()=>{
+            btn.textContent = old;
+            btn.disabled = false;
+            btn.classList.remove('is-busy');
+          }, 220);
+        },
+        fail(text){
+          if(timer) clearInterval(timer);
+          btn.textContent = text || old;
+          btn.disabled = false;
+          btn.classList.remove('is-busy');
+        }
+      };
     }
-    function adminBaseUrl(){ return location.origin+location.pathname.replace(/[^\/]*$/,''); }
-    function renewalReturnToken(c){ return R.clean(c.renewalToken||c.officialContractToken||c.customerToken||c.signToken||c.token); }
-    function renewalReturnUrl(c){ const id=R.clean(c.contractId||c.__id||R.val('contractId')); const token=renewalReturnToken(c); return adminBaseUrl()+'rental-renewal.html?contractId='+encodeURIComponent(id)+'&token='+encodeURIComponent(token); }
-    function calcDaysText(ps, pe){ ps=R.clean(ps); pe=R.clean(pe); if(!ps||!pe) return ''; const a=new Date(ps+'T00:00:00'); const b=new Date(pe+'T00:00:00'); if(isNaN(a.getTime())||isNaN(b.getTime())) return ''; return String(Math.max(1, Math.round((b-a)/86400000)+1))+' 天'; }
-    function formatMoneyInline(v){ const n=R.num(v); return n ? n.toLocaleString('zh-TW')+' 元' : '未填'; }
-    function renewalAdminHtml(c){
-      c=c||{};
-      const p=c.pendingRenewal||{};
-      const r=c.returnRequest||{};
-      const blocks=[];
-      if(p && p.startDate){
-        const snap=internalRentalCountSnapshot(c); const add=positivePeriodCount(p.periods||1); const renewalCountText=snap.current===null?'內部租用次數尚未完成，確認續約前請先補上。':`續約會增加 ${add} 次，確認後累計 ${snap.current + add} 次。`; blocks.push(`<div class="msg ok"><b>續約申請待確認</b><br>續約期數：${R.esc(p.periods||'')} 期<br>續約金額：${R.esc(formatMoneyInline(p.rentFee))}<br>續約期間：${R.esc(p.startDate)} 至 ${R.esc(p.endDate)}<br>內部次數：${R.esc(renewalCountText)}<br>客人備註：${R.esc(p.customerNote||p.note||'無')}<br><span class="muted">確認客人匯款截圖與入帳後，請按「確認續約成立」。</span></div>`);
-      }
-      if(r && (r.returnAddress || r.customerSubmittedAt || r.status)){
-        blocks.push(`<div class="msg bad"><b>退租待安排</b><br><br>客人已選擇退租。<br><br><span class="muted">請透過官方 LINE 與客人約定設備回收／歸還時間。</span></div>`);
-      }
-      return blocks.join('');
-    }
-
-    function isFinalConfirmStage(c){ const st=R.clean((c&&c.status)||''); return !!(c && (c.customerSubmittedFormalAt || c.customerSignatureDataUrl || c.signatureDataUrl || c.customerIdImageWatermarkedDataUrl || c.idImageWatermarkedDataUrl || ['客人已送出','待店家確認','待付款確認','待店家確認成立','customer_submitted','pending_shop_confirm','已簽署','租賃中','到期提醒中','續約待確認','續約待付款','退租待安排','已退租'].includes(st)) && (c.contractId || c.__id || R.val('contractId'))); }
-    function adminDeliveryMethod(c){
-      return R.normalizeDeliveryMethod((c && (c.deliveryMethod || c.shippingMethod || c.deliveryType || c.delivery || c.preferredDeliveryMethod)) || R.val('shippingMethod') || '');
-    }
-    function adminDeliveryDateLabel(c, finalStage){
-      const m=adminDeliveryMethod(c);
-      if(m==='自取自運') return finalStage ? '確認自取日期' : '預估自取日期';
-      return finalStage ? '確認安裝日期' : '預估安裝日期';
-    }
-    function adminDeliveryDateHint(c, finalStage){
-      const m=adminDeliveryMethod(c);
-      if(m==='自取自運'){
-        return finalStage ? '此日期會作為正式契約的確認自取日期與正式起租日。' : '此日期只作為寄給客人填寫資料前的預估自取日期；正式契約會在店家最後確認後產生並傳送。';
-      }
-      return finalStage ? '此日期會作為正式契約的確認安裝日期與正式起租日。' : '此日期只作為寄給客人填寫資料前的預估安裝日期；正式契約會在店家最後確認後產生並傳送。';
-    }
-    function officializeContract(c){
-      c=Object.assign({}, c||{});
-      const method=adminDeliveryMethod(c);
-      c.shippingMethod=method;
-      c.deliveryMethod=method;
-      const d=R.clean(c.deliveryDate||c.deliveryDateTime||c.startDate);
-      if(d){ c.deliveryDate=d; c.deliveryDateTime=d; c.startDate=d; }
-      c.deliveryTime='';
-      c._officialPreview=true;
-      return c;
-    }
-    function editorHtml(c, source){ const items=R.parseEquipmentItems(c); const finalStage=isFinalConfirmStage(c); const startLabel=finalStage?'正式起租日':'預估起租日'; const currentDeliveryMethod=adminDeliveryMethod(c); const installLabel=adminDeliveryDateLabel(c, finalStage); const installHint=adminDeliveryDateHint(c, finalStage); const flowText=finalStage?'客人已補完身分證資料與簽名；請在下方確認交付方式、'+installLabel+'、租金、押金與契約內容，確認後傳送正式合約書給客人。':'流程：先確認基本資料 → 補預估交付日期/租金/設備 → 客戶視角預覽 → 傳給客人填寫身分證字號與詳細資料。'; const pref=notifyPref(c); const isOtherType=R.clean(c.rentalType)==='other'; return `<h2 style="margin-top:0">${source==='application'?'由申請建立正式資料':source==='adminDraft'?'店家代填租賃單':'編輯租賃契約'}</h2><div class="muted compact-flow">${flowText}</div><input type="hidden" id="sourceKind" value="${source}"><input type="hidden" id="applicationId" value="${R.esc(c.applicationId||'')}"><input type="hidden" id="contractId" value="${R.esc(c.contractId||c.__id||'')}"><input type="hidden" id="periodDays" value="90">
-      ${lineRuntimeHtml(c)}<div class="muted" style="margin:8px 0 12px">${R.esc(notificationStatusText(c))}</div>
-      <div class="row2"><div class="field"><label>合約類型</label><select id="rentalType"><option value="digitalPiano" ${c.rentalType==='digitalPiano'?'selected':''}>電鋼琴</option><option value="electronicDrum" ${c.rentalType==='electronicDrum'?'selected':''}>電子鼓</option><option value="other" ${c.rentalType==='other'?'selected':''}>其他設備</option></select></div><div class="field"><label>狀態</label><select id="status"><option ${c.status==='草稿'?'selected':''}>草稿</option><option ${c.status==='待店家確認'?'selected':''}>待店家確認</option><option ${c.status==='待客人補資料'?'selected':''}>待客人補資料</option><option ${c.status==='待付款確認'?'selected':''}>待付款確認</option><option ${c.status==='租賃中'?'selected':''}>租賃中</option><option ${c.status==='到期提醒中'?'selected':''}>到期提醒中</option><option ${c.status==='續約待確認'?'selected':''}>續約待確認</option><option ${c.status==='退租待安排'?'selected':''}>退租待安排</option><option ${c.status==='退租申請中'?'selected':''}>退租申請中</option><option ${c.status==='已退租'?'selected':''}>已退租</option><option ${c.status==='已取消'?'selected':''}>已取消</option></select></div></div>
-      <div class="row2"><div class="field"><label>客人姓名 / 公司</label><input id="customerName" value="${R.esc(c.customerName)}"></div><div class="field"><label>電話</label><input id="customerPhone" value="${R.esc(c.customerPhone)}"></div></div><div class="row2"><div class="field"><label>Email</label><input id="customerEmail" value="${R.esc(c.customerEmail)}"></div><div class="field"><label>通知方式</label><select id="notificationPreference"><option value="both" ${pref==='both'?'selected':''}>LINE + Email</option><option value="line" ${pref==='line'?'selected':''}>只用 LINE</option><option value="email" ${pref==='email'?'selected':''}>只用 Email</option></select></div></div><input type="hidden" id="customerLineUserId" value="${R.esc(c.customerLineUserId||c.lineUserId||'')}"><input type="hidden" id="emailVerified" value="${R.emailVerified(c)?'true':'false'}"><input type="hidden" id="emailLinkStatus" value="${R.esc(c.emailLinkStatus||'')}"><input type="hidden" id="emailVerifyToken" value="${R.esc(c.emailVerifyToken||'')}"><div class="row2"><div class="field"><label>身分證 / 統編</label><input id="customerIdNumber" value="${R.esc(c.customerIdNumber)}"></div><div class="field"><label>地址</label><input id="customerAddress" value="${R.esc(c.customerAddress)}"></div></div>
-      <h3>乙方提供設備</h3><div class="muted hide-admin-note">只填「設備名稱 / 備註」即可；可按新增設備繼續增加。</div><div id="equipmentRows">${equipmentRows(items)}</div><button class="btn secondary" type="button" onclick="addEquipmentRow()">＋新增設備</button>
-      <div class="row3"><div class="field"><label>租賃品項</label><input id="rentalItem" value="${R.esc(c.rentalItem||c.equipmentCategory||R.rentalTypeLabel(c.rentalType))}" placeholder="例如：電鋼琴"></div><div class="field"><label>品牌</label><input id="equipmentBrand" value="${R.esc(c.equipmentBrand||c.brand||'')}" placeholder="例如：Roland"></div><div class="field"><label>型號</label><input id="equipmentModel" value="${R.esc(c.equipmentModel||c.modelName||c.equipmentName||'')}" placeholder="例如：FP-30X"></div></div>
-      <div class="row3" style="margin-top:12px"><div class="field" id="periodsField" style="${isOtherType?'display:none':''}"><label>期數（1期=90天）</label><input id="periods" type="number" min="1" max="10" value="${R.esc(isOtherType?'':(c.periods||1))}"></div><div class="field" id="otherPeriodNoticeAdmin" style="${isOtherType?'':'display:none'}"><label>其他設備租用期間</label><div class="muted">依雙方確認之租用期間為準；請在右側填正式起租日與租賃到期日，合約會列出實際日期。</div></div><div class="field"><label>${startLabel}</label><input id="startDate" type="date" value="${R.esc(c.startDate)}"><div class="muted">${isOtherType?'其他設備不使用期數自動計算；起租日與到期日由店家依雙方確認手動填寫。':(finalStage?'正式起租日會依確認安裝日期同步計算到期日。':'此欄先作預估；正式起租日以店家最後確認為準。')}</div></div><div class="field"><label>租賃到期日</label><input id="endDate" type="date" value="${R.esc(c.endDate)}"></div></div>
-      ${internalRentalCountHtml(c)}
-      <div class="row3"><div class="field"><label>租金</label><input id="rentFee" type="number" value="${R.esc(c.rentFee||0)}"></div><div class="field"><label>運費</label><input id="shippingFee" type="number" value="${R.esc(c.shippingFee||0)}"></div><div class="field"><label>押金</label><input id="depositFee" type="number" value="${R.esc(c.depositFee||0)}"></div></div>
-      <div class="row2"><div class="field"><label>配送 / 自取方式</label><select id="shippingMethod"><option value="到府安裝" ${currentDeliveryMethod==='到府安裝'?'selected':''}>到府安裝</option><option value="自取自運" ${currentDeliveryMethod==='自取自運'?'selected':''}>自取自運</option></select></div><div class="field"><label id="deliveryDateLabel">${installLabel}</label><input id="deliveryDate" type="date" value="${R.esc(c.deliveryDate||c.startDate||'')}"><div class="muted" id="deliveryDateHint">${installHint}</div></div></div><div class="field"><label>備註</label><textarea id="adminNote">${R.esc(c.adminNote||'')}</textarea></div>
-      ${renewalAdminHtml(c)}${customerLinkBackupHtml(c,source)}${actionButtons(source,c)}`; }
-    function readEquipmentItems(){ return Array.from(document.querySelectorAll('[data-eq-row]')).map(row=>({name:R.clean(row.querySelector('.eq-name')?.value),note:R.clean(row.querySelector('.eq-note')?.value)})).filter(x=>x.name||x.note); }
-    window.addEquipmentRow=function(){ const box=R.qs('equipmentRows'); box.insertAdjacentHTML('beforeend', equipmentRows([{name:'',note:''}])); bindEditorPreview(); };
-    window.removeEquipmentRow=function(btn){ btn.closest('[data-eq-row]')?.remove(); R.qs('contractPreview').innerHTML=R.renderContractHtml(collect()); };
-    function collect(){ const type=R.val('rentalType'); const items=readEquipmentItems(); const deliveryDate=R.val('deliveryDate'); const startDate=R.val('startDate')||deliveryDate; const periods=type==='other'?'':(R.val('periods')||1); const signed=selected||{}; const sig=signed.customerSignatureDataUrl||signed.signatureDataUrl||signed.customerSignatureUrl||signed.signatureUrl||signed.signDataUrl||''; const idImg=signed.customerIdImageWatermarkedDataUrl||signed.idImageWatermarkedDataUrl||signed.customerIdImageDataUrl||signed.idImageDataUrl||signed.idCardImageDataUrl||signed.customerIdImageUrl||signed.idImageUrl||signed.idCardImageUrl||''; const rentalItem=R.clean(R.val('rentalItem')||R.rentalTypeLabel(type)); const equipmentBrand=R.clean(R.val('equipmentBrand')); const equipmentModel=R.clean(R.val('equipmentModel')); const primaryEquipment=[equipmentBrand,equipmentModel].filter(Boolean).join(' ') || items[0]?.name || rentalItem; const payload={ sourceKind:R.val('sourceKind'), applicationId:R.val('applicationId'), contractId:R.val('contractId'), source:R.val('sourceKind')==='adminDraft'?'admin':'application', stage:'formal-draft', rentalType:type, status:R.val('status')||'草稿', contractTitle:R.defaultTitle(type), rentalItem:rentalItem, equipmentCategory:rentalItem, equipmentBrand:equipmentBrand, brand:equipmentBrand, equipmentModel:equipmentModel, modelName:equipmentModel, customerName:R.val('customerName'), customerPhone:R.val('customerPhone'), customerEmail:R.val('customerEmail'), customerLineUserId:R.val('customerLineUserId'), notificationPreference:notifyPref({notificationPreference:R.val('notificationPreference'),customerEmail:R.val('customerEmail')}), preferredContactMethod:notifyPref({notificationPreference:R.val('notificationPreference'),customerEmail:R.val('customerEmail')}), emailVerified:R.val('emailVerified')==='true'||(selected&&selected.emailVerified===true), emailLinkStatus:R.val('emailLinkStatus')||(selected&&selected.emailLinkStatus)||'', emailVerifyToken:R.val('emailVerifyToken')||(selected&&selected.emailVerifyToken)||'', customerIdNumber:R.val('customerIdNumber'), customerAddress:R.val('customerAddress'), customerSignatureDataUrl:sig, signatureDataUrl:sig, customerSignatureUrl:signed.customerSignatureUrl||signed.signatureUrl||'', signatureUrl:signed.signatureUrl||signed.customerSignatureUrl||'', customerIdImageWatermarkedDataUrl:idImg, idImageWatermarkedDataUrl:idImg, customerIdImageDataUrl:idImg, idImageDataUrl:idImg, customerIdImageUrl:signed.customerIdImageUrl||signed.idImageUrl||signed.idCardImageUrl||'', idImageUrl:signed.idImageUrl||signed.customerIdImageUrl||signed.idCardImageUrl||'', equipmentName:primaryEquipment, serialNo:items[0]?.note||'', equipmentItems:items, includedItems:items.map(x=>`${x.name}${x.note?' / '+x.note:''}`).join('\n'), periods:periods, periodDays:type==='other'?'':90, rentalPeriodText:type==='other'?'依雙方確認之租用期間為準':'', rentDays:type==='other'?'':Number(periods||1)*90, rentalMethod:type==='other'?'其他設備租用':'實體租用', startDate:startDate, endDate:R.val('endDate')||(type==='other'?'':R.calcEndDate(startDate,periods,type,Number(periods||1)*90)), rentFee:R.val('rentFee'), shippingFee:R.val('shippingFee'), depositFee:R.val('depositFee'), shippingMethod:R.normalizeDeliveryMethod(R.val('shippingMethod')), deliveryMethod:R.normalizeDeliveryMethod(R.val('shippingMethod')), deliveryDate:deliveryDate||startDate, deliveryTime:'', deliveryDateTime:deliveryDate||startDate, ...readInternalRentalCountPayload(signed,periods), adminNote:R.val('adminNote'), customerSubmittedFormalAt:signed.customerSubmittedFormalAt||'' }; return isFinalConfirmStage(Object.assign({}, signed, payload)) ? officializeContract(payload) : payload; }
-    function syncRentalDatesFromDelivery(changedId){ const type=R.val('rentalType'); const periods=R.val('periods')||1; if(changedId==='deliveryDate' && R.val('deliveryDate')) R.setVal('startDate', R.val('deliveryDate')); if(type==='other'){ if((changedId==='startDate'||changedId==='deliveryDate') && (R.val('startDate')||R.val('deliveryDate'))){ const st=R.val('startDate')||R.val('deliveryDate'); R.setVal('startDate', st); R.setVal('deliveryDate', R.val('deliveryDate')||st); } return; } if((changedId==='startDate'||changedId==='deliveryDate'||changedId==='periods') && (R.val('startDate')||R.val('deliveryDate'))){ const st=R.val('startDate')||R.val('deliveryDate'); R.setVal('startDate', st); R.setVal('deliveryDate', R.val('deliveryDate')||st); R.setVal('endDate', R.calcEndDate(st,periods,type,Number(periods||1)*90)); } }
-
-    function applyRentalTypeUi(){
-      const isOther=R.val('rentalType')==='other';
-      const periodsField=R.qs('periodsField');
-      const otherNotice=R.qs('otherPeriodNoticeAdmin');
-      const periodsInput=R.qs('periods');
-      if(periodsField) periodsField.style.display=isOther?'none':'';
-      if(otherNotice) otherNotice.style.display=isOther?'block':'none';
-      if(periodsInput){
-        periodsInput.disabled=isOther;
-        if(isOther){ periodsInput.required=false; periodsInput.removeAttribute('required'); }
-        else { periodsInput.disabled=false; if(!periodsInput.value) periodsInput.value='1'; }
-      }
-      updateInternalRentalCountPreview();
-    }
-    function updateDeliveryLabels(){
-      const c=collect();
-      const finalStage=isFinalConfirmStage(Object.assign({}, selected||{}, c));
-      const label=adminDeliveryDateLabel(c, finalStage);
-      const hint=adminDeliveryDateHint(c, finalStage);
-      const labelEl=R.qs('deliveryDateLabel');
-      const hintEl=R.qs('deliveryDateHint');
-      if(labelEl) labelEl.textContent=label;
-      if(hintEl) hintEl.textContent=hint;
-    }
-    function bindEditorPreview(){
-      document.querySelectorAll('#detailBox input,#detailBox textarea,#detailBox select').forEach(el=>{
-        const update=()=>{
-          applyRentalTypeUi();
-          syncRentalDatesFromDelivery(el.id);
-          updateInternalRentalCountPreview();
-          updateDeliveryLabels();
-          R.qs('contractPreview').innerHTML=R.renderContractHtml(collect());
-        };
-        el.oninput=update;
-        el.onchange=update;
-      });
-      applyRentalTypeUi();
-      updateInternalRentalCountPreview();
-      updateDeliveryLabels();
-    }
-
-
-    window.previewOfficialContract=function(){
-      const c=officializeContract(collect());
-      R.qs('contractPreview').innerHTML=R.renderContractHtml(c, {officialView:true});
-      R.toast('已切換為正式契約預覽。', true);
-    };
-
-    window.previewCustomerView=function(){
-      const c=collect();
-      if(isFinalConfirmStage(Object.assign({}, selected||{}, c))){
-        R.qs('contractPreview').innerHTML=R.renderContractHtml(officializeContract(c), {officialView:true});
-        R.toast('已切換為正式契約預覽。', true);
-        return;
-      }
-      const url = c.contractId ? R.signUrl({contractId:c.contractId, signToken:'客人連結Token'}) : '儲存並產生資料填寫連結後，系統會產生客人可開啟的正式資料填寫連結。';
-      R.qs('contractPreview').innerHTML = `<div class="msg ok"><b>客戶視角預覽</b><br>客人打開資料填寫連結後，會先看到已帶入的租賃資料與預估交付日期，再補填身分證字號、上傳身分證證明圖片，並查看下方預覽後送出。<br><b>正式連結：</b>${R.esc(url)}<br><span class="muted">下方契約預覽中，身分證圖片區若尚未上傳會顯示待補提示；客人上傳後會加浮水印並顯示在第二頁最下方。</span></div>` + R.renderContractHtml(c, {customerView:true});
-      R.toast('已切換為客戶視角預覽。', true);
-    };
-
-
-    function printWindowHtml(contract){
-      const official=isFinalConfirmStage(Object.assign({}, selected||{}, contract));
-      const html=R.renderContractHtml(official?officializeContract(contract):contract, {officialView:official});
-      const base=location.href.replace(/[^\/]*$/, '');
-      return `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><base href="${R.esc(base)}"><title>租賃契約列印</title><style>html,body{margin:0!important;padding:0!important;background:#fff!important;}body{width:210mm;}@page{size:A4;margin:0}.rental-contract-sheet{border:0!important;box-shadow:none!important;margin:0!important;width:210mm!important;height:297mm!important;min-height:297mm!important;page-break-after:always!important;break-after:page!important}.rental-contract-sheet:last-child{page-break-after:auto!important;break-after:auto!important}</style><!-- rental-period-line-removed-final2 -->
-</head><body>${html}<script>window.onload=function(){setTimeout(function(){window.focus();window.print();},250)}<\/script></body></html>`;
-    }
-    window.printRentalContract=function(){
-      const c=collect();
-      const official=isFinalConfirmStage(Object.assign({}, selected||{}, c));
-      const display=official?officializeContract(c):c;
-      R.qs('contractPreview').innerHTML=R.renderContractHtml(display, {officialView:official});
-      const win=window.open('', '_blank');
-      if(!win){
-        R.toast('瀏覽器封鎖列印視窗，請允許彈出視窗後再試。', false);
-        return;
-      }
-      win.document.open();
-      win.document.write(printWindowHtml(display));
-      win.document.close();
-    };
-
-    function clientRandomToken(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,14)+Math.random().toString(36).slice(2,14); }
-    function clientRandomId(prefix){ const d=new Date(); const pad=n=>String(n).padStart(2,'0'); return prefix+d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+Math.random().toString(36).slice(2,8).toUpperCase(); }
-    async function saveContractToFirestoreFallback(payload){
-      const contractId=payload.contractId||clientRandomId('RC');
-      let old={};
-      try{ old=await R.get('rentalContracts', contractId)||{}; }catch(_e){}
-      const signToken=payload.signToken||old.signToken||old.token||clientRandomToken();
-      const customerToken=payload.customerToken||old.customerToken||clientRandomToken();
-      const officialContractToken=payload.officialContractToken||old.officialContractToken||clientRandomToken();
-      const row=Object.assign({}, old, payload, {
-        contractId,
-        contractNo:payload.contractNo||old.contractNo||contractId,
-        signToken,
-        token:signToken,
-        customerToken,
-        officialContractToken,
-        status:payload.makeSignLink?'待客人補資料':(payload.status||old.status||'草稿'),
-        signUrl:location.origin+location.pathname.replace(/[^\/]*$/,'')+'rental-sign.html?contractId='+encodeURIComponent(contractId)+'&token='+encodeURIComponent(signToken),
-        officialContractUrl:location.origin+location.pathname.replace(/[^\/]*$/,'')+'rental-contract.html?contractId='+encodeURIComponent(contractId)+'&token='+encodeURIComponent(officialContractToken||customerToken||signToken),
-        updatedAtText:R.nowText()
-      });
-      if(!old.createdAtText) row.createdAtText=R.nowText();
-      await R.db().collection('rentalContracts').doc(contractId).set(row,{merge:true});
-      return {contractId,contractNo:row.contractNo,signToken,token:signToken,customerToken,officialContractToken,signUrl:row.signUrl,officialContractUrl:row.officialContractUrl, fallback:true};
-    }
-    window.saveContract=async function(makeLink, opts){
-      opts=opts||{};
+    async function newBlankContract(){
+      const prog = startButtonProgress('newBlankContractBtn', '建立空白中');
       try{
-        const payload=collect();
-        payload.makeSignLink=!!makeLink;
-        if(makeLink && !payload.startDate){ R.toast('請先填預估交付日期，才能產生資料填寫連結。', false); return null; }
-        let res=null;
-        try{
-          res=await R.call('rentalSaveContractHttp', payload);
-        }catch(apiErr){
-          console.warn('rentalSaveContractHttp failed; 使用 Firestore 備援儲存：', apiErr);
-          res=await saveContractToFirestoreFallback(payload);
-        }
-        if(res && res.contractId) R.setVal('contractId',res.contractId);
-        if(payload.applicationId && res && res.contractId){
-          try{ await R.db().collection('rentalApplications').doc(payload.applicationId).set({status:'已轉正式契約', linkedContractId:res.contractId, contractId:res.contractId, updatedAtText:R.nowText()}, {merge:true}); }catch(_){}
-        }
-        if(!opts.silent) R.toast(makeLink?'資料已儲存，資料填寫連結已準備完成。':'資料已儲存。', true);
-        await loadAll();
-        return res||{};
-      }catch(e){
-        R.toast(e.message||String(e), false);
-        return null;
+        prog.set(24, '清除資料中');
+        resetFormToDefaults();
+        prog.set(86, '整理畫面中');
+        if(window.setLocalMsg) setLocalMsg('已建立新的空白合約。');
+        prog.done('完成');
+      }catch(err){
+        prog.fail('新增空白合約');
+        if(window.setLocalMsg) setLocalMsg(err.message || '建立空白合約失敗', true);
       }
-    };
-    window.saveInternalRentalCount=async function(){ if(!validateInternalRentalCountFor('儲存內部租用次數')) return; const res=await saveContract(false,{silent:true}); if(res){ R.toast('內部租用次數已儲存。', true); } };
-    window.copySignLink=async function(){ return copyRentalCustomerLink('sign'); };
-    async function queueRentalSignLinkNotice(contract){
-      const url=R.signUrl(contract);
-      const body=`請點選以下連結，補填身分證字號、上傳身分證照片，並完成簽名確認：
-
-${url}
-
-送出後，柚子樂器會再確認資料，並依約定時間安裝／交付設備。`;
-      const result=await queueCustomerNotice(contract,{title:'租賃正式資料填寫連結',body,source:'rental-sign-link',signUrl:url,contractId:contract.contractId||contract.__id,applicationId:contract.applicationId});
-      await R.db().collection('rentalContracts').doc(contract.contractId||contract.__id).set({status:'待客人補資料', signUrl:url, signLinkNoticeQueueCreated:result.count>0, signLinkNoticeQueueCreatedAt: result.count ? R.nowText() : '', signLinkLineQueueCreated:result.line, signLinkEmailQueueCreated:result.email, signLinkNoticeQueueIds:result.queueIds||[], updatedAtText:R.nowText()},{merge:true});
-      return {result,url};
     }
-    function noticeResultFromApi(api){ if(!api) return {line:false,email:false,count:0,queueIds:[]}; if(api.notificationResult) return api.notificationResult; if(api.result) return api.result; return {line:!!api.line,email:!!api.email,count:Number(api.count||0)||0,queueIds:api.queueIds||[]}; }
-    window.sendContractLink=async function(opts){ opts=opts||{}; const id=R.val('contractId'); if(!id){ const msg='請先儲存合約。'; if(!opts.silent) R.toast(msg,false); throw new Error(msg); } const deliveryContext=collect(); try{ let info=null; try{ const api=await R.call('rentalSendSignLinkHttp',{contractId:id}); info={result:noticeResultFromApi(api),url:api.signUrl||''}; }catch(apiErr){ console.warn('rentalSendSignLinkHttp failed; 使用前端通知佇列備援：', apiErr); const c=await R.get('rentalContracts', id); if(!c) throw new Error('找不到合約資料。'); info=await queueRentalSignLinkNotice(Object.assign({}, c, {contractId:id})); } const result=info.result||{count:0}; const assessment=notificationDeliveryAssessment(result,deliveryContext); info.assessment=assessment; if(!opts.silent) R.toast(assessment.text,assessment.ok); await loadLineRuntimeStatus(true); await loadAll(); if(!assessment.ok) throw new Error(assessment.text+' 請改用「客人連結備援」複製後手動傳給客人。'); return info; }catch(e){ if(!opts.silent) R.toast(e.message||String(e), false); throw e; } };
-    function runButtonProgress(btn, doneText){
-      if(!btn) return Promise.resolve();
-      btn.disabled=true;
-      btn.classList.add('is-progressing');
-      btn.style.setProperty('--progress','10%');
-      return new Promise(resolve=>{
-        let p=10;
-        const timer=setInterval(()=>{
-          p=Math.min(100,p+10);
-          btn.style.setProperty('--progress',p+'%');
-          if(p>=100){
-            clearInterval(timer);
-            btn.classList.remove('is-progressing');
-            btn.classList.add('done');
-            btn.textContent=doneText||'完成';
-            btn.disabled=false;
-            resolve();
-          }
-        },120);
-      });
-    }
-
-    window.sendToCustomerForFill=async function(){ const btn=document.querySelector('[data-send-fill-btn]'); if(!validateInternalRentalCountFor('回傳給客人填寫身分證字號')) return; const c=collect(); if(!wantsNotifyLine(c) && !wantsNotifyEmail(c)){ return R.toast('請先選擇通知方式。', false); } if(wantsNotifyLine(c) && !R.clean(c.customerLineUserId) && !wantsNotifyEmail(c)){ return R.toast('客人選擇只用 LINE，但尚未完成 LINE 配對。請先請客人到官方 LINE 貼上配對文字，或改選 Email 通知。', false); } if(wantsNotifyEmail(c) && !R.clean(c.customerEmail)){ return R.toast('客人通知方式包含 Email，請先填寫 Email。', false); } if(btn){ btn.textContent=''; btn.style.setProperty('--progress','10%'); btn.classList.add('is-progressing'); btn.disabled=true; } const res=await saveContract(true,{silent:true}); if(!res){ if(btn){ btn.disabled=false; btn.classList.remove('is-progressing'); btn.textContent='回傳給客人填寫身分證字號'; } return; } try{ const info=await sendContractLink({silent:true}); await runButtonProgress(btn,'完成'); R.toast((info.assessment&&info.assessment.text)||'客人通知已送出。',true); }catch(e){ if(btn){ btn.disabled=false; btn.classList.remove('is-progressing'); btn.textContent='回傳給客人填寫身分證字號'; } R.toast((e.message||String(e))+' 若系統通知沒有成功，可用「客人連結備援」複製連結手動傳送。', false); } };
-    function showRentalProgress(title){
-      let mask=document.getElementById('rentalProgressMask');
-      if(!mask){
-        mask=document.createElement('div');
-        mask.id='rentalProgressMask';
-        mask.className='rental-progress-mask';
-        mask.innerHTML=`<div class="rental-progress-box"><div class="rental-progress-title" id="rentalProgressTitle"></div><div class="rental-progress-text" id="rentalProgressText"></div><div class="rental-progress-bar"><div class="rental-progress-fill" id="rentalProgressFill"></div></div><div class="rental-progress-actions" id="rentalProgressActions" style="display:none"><button class="btn secondary" type="button" onclick="document.getElementById('rentalProgressMask').remove()">關閉</button></div></div>`;
-        document.body.appendChild(mask);
-      }
-      document.getElementById('rentalProgressTitle').textContent=title||'處理中';
-      document.getElementById('rentalProgressActions').style.display='none';
-      updateRentalProgress(5,'準備中...');
-    }
-    function updateRentalProgress(percent, text){
-      const fill=document.getElementById('rentalProgressFill');
-      const msg=document.getElementById('rentalProgressText');
-      if(fill) fill.style.width=Math.max(0,Math.min(100,Number(percent||0)))+'%';
-      if(msg) msg.textContent=text||'';
-    }
-    function completeRentalProgress(text){
-      updateRentalProgress(100,text||'完成');
-      const actions=document.getElementById('rentalProgressActions');
-      if(actions) actions.style.display='flex';
-    }
-    function failRentalProgress(text){
-      updateRentalProgress(100,text||'處理失敗');
-      const fill=document.getElementById('rentalProgressFill');
-      if(fill) fill.style.background='#b42318';
-      const actions=document.getElementById('rentalProgressActions');
-      if(actions) actions.style.display='flex';
-    }
-    async function generatePdfBlob(contract){ if(!window.html2pdf) throw new Error('PDF 產生工具尚未載入，請重新整理後再試。'); const wrap=document.createElement('div'); wrap.style.position='fixed'; wrap.style.left='-99999px'; wrap.style.top='0'; wrap.style.width='210mm'; wrap.innerHTML=R.renderContractHtml(contract); document.body.appendChild(wrap); try{ const opt={margin:0, filename:(contract.contractNo||contract.contractId||'rental-contract')+'.pdf', image:{type:'jpeg',quality:0.98}, html2canvas:{scale:2,useCORS:true,allowTaint:true,backgroundColor:'#ffffff'}, jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}, pagebreak:{mode:['css','legacy']}}; const worker=window.html2pdf().set(opt).from(wrap); const blob=await worker.outputPdf('blob'); return blob; } finally{ wrap.remove(); } }
-    async function uploadOfficialPdf(contractId, blob, onProgress){
-      if(!window.firebase || !firebase.storage) throw new Error('Firebase Storage 尚未載入，無法上傳正式 PDF。');
-      if(!blob || !blob.size) throw new Error('PDF 檔案內容為空，無法上傳。');
-      const safe=String(contractId).replace(/[^a-zA-Z0-9_-]/g,'_');
-      const path='rental-contracts/'+safe+'/official-contract.pdf';
-      const storage=firebase.storage();
-      if(typeof storage.setMaxUploadRetryTime==='function') storage.setMaxUploadRetryTime(20000);
-      const ref=storage.ref().child(path);
-      const task=ref.put(blob,{contentType:'application/pdf'});
-      await new Promise((resolve,reject)=>{
-        let done=false;
-        const timer=setTimeout(()=>{
-          if(done) return;
-          done=true;
-          try{ task.cancel(); }catch(_e){}
-          reject(new Error('上傳 Firebase Storage 超過 60 秒沒有完成。請檢查 Storage 規則是否允許登入者上傳，或改用電腦網頁再試。'));
-        },60000);
-        task.on('state_changed',
-          snap=>{
-            if(snap && snap.totalBytes){
-              const pct=Math.max(0,Math.min(100,Math.round((snap.bytesTransferred/snap.totalBytes)*100)));
-              if(typeof onProgress==='function') onProgress(pct, snap);
-            }
-          },
-          err=>{
-            if(done) return;
-            done=true;
-            clearTimeout(timer);
-            const code=err && err.code ? String(err.code) : '';
-            const msg=err && err.message ? String(err.message) : String(err);
-            if(code.includes('unauthorized')) reject(new Error('Firebase Storage 權限不足，PDF 無法上傳。請檢查 Storage 規則。'));
-            else if(code.includes('bucket-not-found')) reject(new Error('找不到 Firebase Storage bucket，請確認 Storage 已啟用。'));
-            else reject(new Error('Firebase Storage 上傳失敗：'+msg));
-          },
-          ()=>{
-            if(done) return;
-            done=true;
-            clearTimeout(timer);
-            resolve();
-          }
-        );
-      });
-      const url=await ref.getDownloadURL();
-      return {url,path};
-    }
-    async function queueOfficialContractLine(contract, contractUrl){
-      const period=(contract.startDate&&contract.endDate)?`${contract.startDate} 至 ${contract.endDate}`:'詳見正式契約';
-      const url=contractUrl || R.clean(contract.officialContractUrl) || R.officialContractUrl(contract);
-      const body=`您的租賃契約已確認成立。
-
-租賃期間：${period}
-
-請點選以下連結查看正式契約：
-${url}
-
-合約內容會直接顯示在頁面中，請自行截圖保存。
-
-系統會依您選擇的通知方式，提醒續約或相關退租事宜。
-
-感謝您的租用，有任何問題也可以直接在官方 LINE 詢問。`;
-      return await queueCustomerNotice(contract,{title:'租賃契約已確認成立',body,source:'rental-official-contract',officialContractUrl:url,contractId:contract.contractId||contract.__id,applicationId:contract.applicationId});
-    }
-    window.markDelivered=async function(){
-      const id=R.val('contractId');
-      if(!id) return R.toast('請先儲存合約。', false);
-      syncRentalDatesFromDelivery('deliveryDate');
-      const payload=collect();
-      if(!validateInternalRentalCountFor('確認租用成立')) return;
-      const missing=[];
-      if(!payload.deliveryDate) missing.push(adminDeliveryDateLabel(payload, true));
-      if(R.clean(payload.rentalType)==='other' && !payload.endDate) missing.push('其他設備租賃到期日');
-      if(!payload.customerName) missing.push('客人姓名');
-      if(!payload.customerSignatureDataUrl) missing.push('甲方簽名');
-      if(!payload.customerIdNumber) missing.push('甲方身分證字號 / 統編');
-      if(!payload.customerIdImageWatermarkedDataUrl && !payload.idImageWatermarkedDataUrl) missing.push('甲方身分證證明圖片');
-      if(missing.length){
-        alert('確認租用成立前，請先完成以下資料：\n\n' + missing.map((x,i)=>(i+1)+'. '+x).join('\n'));
-        return;
-      }
-      if(!confirm('確認款項已收，並以「'+adminDeliveryDateLabel(payload, true)+'」作為正式起租日？\n\n系統會建立正式契約連結，並依客人選擇的通知方式傳送。')) return;
-      showRentalProgress('確認租用成立');
+    async function saveContract(saveAsNew = false, silent = false, target = null, baseText = ''){
+      const prog = target ? startButtonProgress(target, baseText || (saveAsNew ? '儲存新合約中' : '儲存合約中')) : null;
       try{
-        updateRentalProgress(10,'正在計算正式租期...');
-        const isOtherRental=R.clean(payload.rentalType)==='other';
-        payload.startDate=payload.deliveryDate || payload.startDate;
-        if(isOtherRental){
-          payload.periods='';
-          payload.periodDays='';
-          payload.rentDays='';
-          payload.rentalPeriodText='依雙方確認之租用期間為準';
-        }else{
-          payload.endDate=R.calcEndDate(payload.startDate,payload.periods,payload.rentalType,Number(payload.periods||1)*90);
-        }
-        payload.deliveryDateTime=payload.deliveryDate;
-        payload.deliveryTime='';
-        payload.status='租賃中';
-        R.setVal('startDate', payload.startDate);
-        R.setVal('endDate', payload.endDate);
-        R.qs('contractPreview').innerHTML=R.renderContractHtml(payload);
-        updateRentalProgress(28,'正在產生正式 PDF...');
-        let uploaded={url:'',path:'',error:''};
-        try{
-          const pdfBlob=await generatePdfBlob(payload);
-          updateRentalProgress(55,'正在上傳 PDF 到 Firebase Storage... 0%');
-          uploaded=await uploadOfficialPdf(id,pdfBlob,(pct)=>{
-            updateRentalProgress(55+Math.round(pct*0.15),'正在上傳 PDF 到 Firebase Storage... '+pct+'%');
-          });
-        }catch(pdfErr){
-          uploaded={url:'',path:'',error:(pdfErr&&pdfErr.message)?pdfErr.message:String(pdfErr)};
-          console.warn('正式 PDF 產生 / 上傳失敗，改用正式契約頁連結繼續成立與通知：', pdfErr);
-          updateRentalProgress(70,'PDF 暫時無法產生或上傳，改用正式契約頁連結繼續傳送...');
-        }
-        updateRentalProgress(72,'正在寫入合約正式成立資料...');
-        const officialContractUrl=R.officialContractUrl(Object.assign({}, selected||{}, payload, {contractId:id}));
-        const displayPayload=Object.assign({}, payload,{
-          contractId:id,
-          status:'租賃中',
-          officialContractUrl,
-          officialPdfUrl:uploaded.url||'',
-          officialPdfPath:uploaded.path||'',
-          officialPdfGeneratedAt:uploaded.url?R.nowText():'',
-          officialPdfError:uploaded.error||'',
-          officialConfirmedAt:R.nowText(),
-          confirmedDeliveryDate:payload.deliveryDate,
-          officialStartDate:payload.startDate,
-          officialEndDate:payload.endDate,
-          updatedAtText:R.nowText()
+        if(!currentUser) throw new Error('尚未登入');
+        const payload = readValues();
+        prog && prog.set(22, '整理資料中');
+        const res = await api('saveRentalContract', {
+          userId: currentUser.id,
+          saveAsNew: !!saveAsNew,
+          formData: payload,
+          contractId: saveAsNew ? '' : (payload.contractId || '')
         });
-        const savedPayload=Object.assign({}, displayPayload);
-        // Firestore 單筆文件上限約 1MB；若客人簽名與身分證圖片已另外備份到 Firebase Storage URL，正式成立後才清掉大型 dataURL。
-        // 若尚未有 Storage URL，不能直接刪除，否則客人收到的正式契約頁會看不到身分證圖片與甲方簽名。
-        const hasSignatureUrl=!!R.clean(displayPayload.customerSignatureUrl||displayPayload.signatureUrl);
-        const hasIdImageUrl=!!R.clean(displayPayload.customerIdImageUrl||displayPayload.idImageUrl||displayPayload.idCardImageUrl);
-        if(uploaded.url){
-          savedPayload.officialPdfMissing=false;
-          if(hasSignatureUrl && hasIdImageUrl){
-            const del=firebase.firestore.FieldValue.delete();
-            savedPayload.customerSignatureDataUrl=del;
-            savedPayload.signatureDataUrl=del;
-            savedPayload.customerIdImageWatermarkedDataUrl=del;
-            savedPayload.idImageWatermarkedDataUrl=del;
-            savedPayload.customerIdImageDataUrl=del;
-            savedPayload.idImageDataUrl=del;
-            savedPayload.officialInlineAssetsCleared=true;
-            savedPayload.officialInlineAssetsClearedAt=R.nowText();
-          }else{
-            savedPayload.officialInlineAssetsCleared=false;
-            savedPayload.officialInlineAssetsRetainedReason='尚未有 Firebase Storage 圖片網址，保留身分證與簽名 dataURL，避免正式契約頁遺失圖片。';
-          }
-        }else{
-          savedPayload.officialPdfMissing=true;
-          savedPayload.officialPdfError=uploaded.error||'PDF 未產生或未上傳；已改用正式契約頁連結。';
-        }
-        await R.db().collection('rentalContracts').doc(id).set(savedPayload,{merge:true});
-        updateRentalProgress(86,'正在建立客人正式契約通知...');
-        const sent=await queueOfficialContractLine(Object.assign({}, selected||{}, displayPayload, {contractId:id}), officialContractUrl);
-        await R.db().collection('rentalContracts').doc(id).set({
-          officialContractNoticeQueueCreated:sent.count>0,
-          officialContractLineQueueCreated:sent.line,
-          officialContractEmailQueueCreated:sent.email,
-          officialContractNoticeQueueCreatedAt: sent.count ? R.nowText() : '',
-          updatedAtText:R.nowText()
-        },{merge:true});
-        const pdfNote=uploaded.url?'':'（PDF 暫未上傳，已改用正式契約頁連結）';
-        completeRentalProgress('完成：'+notificationResultText(sent)+pdfNote);
-        R.toast('已確認租用成立，'+notificationResultText(sent)+pdfNote, true);
-        await loadAll();
-        R.qs('contractPreview').innerHTML=R.renderContractHtml(displayPayload);
-      }catch(e){
-        const msg=e && e.message ? e.message : String(e);
-        failRentalProgress('失敗：'+msg);
-        R.toast(msg, false);
+        if(!res || !res.ok) throw new Error((res && res.message) || '合約儲存失敗');
+        qs('#contractId').value = res.contractId || '';
+        prog && prog.set(84, '刷新紀錄中');
+        await loadHistory();
+        if(!silent && window.setLocalMsg) setLocalMsg(res.message || (saveAsNew ? '已建立新的合約。' : '合約已儲存。'));
+        prog && prog.done('完成');
+        return res;
+      }catch(err){
+        if(prog) prog.fail(saveAsNew ? '儲存新合約' : '儲存合約');
+        if(!silent && window.setLocalMsg) setLocalMsg(err.message || '合約儲存失敗', true);
+        return { ok:false, message: err.message || '合約儲存失敗' };
       }
-    };
-    window.cancelApplication=async function(){
-      const id=R.val('applicationId');
-      if(!id) return R.toast('找不到申請資料，無法取消。', false);
-      const reason=prompt('請輸入取消原因（可留空）：','客人中途取消 / 未成交');
-      if(reason===null) return;
-      if(!confirm('確定要取消這筆租賃申請？資料會保留，但會移到「已取消」。')) return;
-      if(!confirm('再次確認：取消後此案件不會出現在主要列表，但仍可於「已取消」查看。確定取消？')) return;
-      try{
-        await R.db().collection('rentalApplications').doc(id).set({
-          status:'已取消',
-          cancelledAt:R.nowText(),
-          cancelReason:R.clean(reason),
-          updatedAtText:R.nowText()
-        }, {merge:true});
-        R.toast('已取消申請，資料已移到「已取消」。', true);
-        selected=null;
-        await loadAll();
-        R.qs('detailBox').innerHTML='<h2 style="margin-top:0">請選擇左側案件</h2><div class="muted">申請已取消，可在「已取消」分頁查看。</div>';
-        R.qs('contractPreview').innerHTML='';
-      }catch(e){ R.toast(e.message||String(e), false); }
-    };
-    function confirmPermanentDelete(label, extra){
-      const target=label||'資料';
-      if(extra && !confirm(extra)) return false;
-      if(!confirm('確定要永久刪除「'+target+'」嗎？此動作無法復原。')) return false;
-      if(!confirm('再次確認：永久刪除後無法復原，請確認不是誤觸。')) return false;
-      const check=prompt('請輸入刪除碼「刪除」以確認永久刪除：');
-      return check==='刪除';
     }
-    window.deleteApplication=async function(){
-      const id=R.val('applicationId');
-      if(!id) return R.toast('找不到申請資料，無法刪除。', false);
-      const app=applications.find(x=>x.__id===id);
-      const extra=(app && ['已轉正式契約','converted'].includes(R.clean(app.status)))?'這筆申請看起來已轉成正式契約。按確定後只會刪除申請紀錄，正式合約不會被刪除。':'';
-      if(!confirmPermanentDelete('租賃申請 '+id, extra)) return R.toast('刪除碼不符或已取消永久刪除。', false);
-      try{
-        await R.db().collection('rentalApplications').doc(id).delete();
-        R.toast('已永久刪除租賃申請。', true);
-        selected=null;
-        await loadAll();
-        R.qs('detailBox').innerHTML='<h2 style="margin-top:0">請選擇左側案件</h2><div class="muted">申請已永久刪除。</div>';
-        R.qs('contractPreview').innerHTML='';
-      }catch(e){ R.toast(e.message||String(e), false); }
-    };
-    window.deleteContract=async function(){
-      const id=R.val('contractId') || (selected&&(selected.contractId||selected.__id)) || '';
-      if(!id) return R.toast('找不到合約資料，無法刪除。', false);
-      if(!confirmPermanentDelete('租賃合約 '+id, '此操作會直接刪除合約主檔；若原本由申請轉出，申請紀錄不會一起刪除。')) return R.toast('刪除碼不符或已取消永久刪除。', false);
-      try{
-        await R.db().collection('rentalContracts').doc(id).delete();
-        R.toast('已永久刪除租賃合約。', true);
-        selected=null;
-        await loadAll();
-        R.qs('detailBox').innerHTML='<h2 style="margin-top:0">請選擇左側案件</h2><div class="muted">合約已永久刪除。</div>';
-        R.qs('contractPreview').innerHTML='';
-      }catch(e){ R.toast(e.message||String(e), false); }
-    };
-
-
-    async function deleteStorageRefMaybe(value){
-      const v=R.clean(value);
-      if(!v || v.startsWith('data:')) return false;
-      try{
-        if(v.startsWith('gs://') || v.includes('/o/')){
-          await firebase.storage().refFromURL(v).delete();
-          return true;
-        }
-        if(!/^https?:\/\//i.test(v)){
-          await firebase.storage().ref(v).delete();
-          return true;
-        }
-      }catch(_e){}
-      return false;
+    async function saveCurrentContract(){
+      return saveContract(false, false, 'saveContractBtn', '儲存合約中');
     }
-    function collectStorageCandidates(row){
-      if(!row) return [];
-      const fields=['officialPdfUrl','officialPdfPath','customerIdImageUrl','idImageUrl','idCardImageUrl','customerIdImagePath','idImagePath','idCardImagePath','customerSignatureUrl','signatureUrl','customerSignaturePath','signaturePath'];
-      return fields.map(k=>row[k]).filter(Boolean);
+    async function saveAsNewContract(){
+      return saveContract(true, false, 'saveAsNewContractBtn', '儲存新合約中');
     }
-    async function deleteMatchingDocs(collection, field, value, seen){
-      const v=R.clean(value);
-      if(!v) return 0;
-      seen=seen||{};
-      let count=0;
+    async function buildPdfBlob(){
+      const target = document.querySelector('#printArea .contract-sheet');
+      const canvas = await html2canvas(target, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+      const imgData = canvas.toDataURL('image/png');
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      pdf.addImage(imgData, 'PNG', 0, 0, 210, 297, undefined, 'FAST');
+      const blob = pdf.output('blob');
+      return { pdf, blob };
+    }
+    function buildFileName(){
+      const v = readValues();
+      const name = [v.partyAName || '合約', v.equipmentName || '設備'].join('_').replace(/[\/:*?"<>|]/g,'_');
+      return `${name}.pdf`;
+    }
+    async function printContract(){
+      const prog = startButtonProgress('printContractBtn', '準備列印中');
       try{
-        const snap=await R.db().collection(collection).where(field,'==',v).get();
-        for(const doc of snap.docs){
-          const key=collection+'/'+doc.id;
-          if(seen[key]) continue;
-          seen[key]=true;
-          await doc.ref.delete();
-          count++;
-        }
-      }catch(_e){}
-      return count;
-    }
-    async function gatherRentalCaseIds(){
-      const sourceKind=R.clean(R.val('sourceKind'));
-      const current=selected||{};
-      let appId=R.clean(R.val('applicationId') || current.applicationId || (sourceKind==='application'?current.__id:''));
-      let contractId=R.clean(R.val('contractId') || current.contractId || (sourceKind==='contract'?current.__id:''));
-      let app=null, contract=null;
-      if(appId){
-        app=applications.find(x=>x.__id===appId)||await R.get('rentalApplications', appId).catch(()=>null);
-        const linked=R.clean(app && (app.linkedContractId||app.contractId));
-        if(linked && !contractId) contractId=linked;
+        prog.set(18, '儲存資料中');
+        const saved = await saveContract(false, true, null);
+        if(!saved || !saved.ok) throw new Error((saved && saved.message) || '儲存失敗');
+        renderPreview();
+        prog.set(90, '開啟列印中');
+        window.print();
+        if(window.setLocalMsg) setLocalMsg('已開啟列印視窗。');
+        prog.done('完成');
+      }catch(err){
+        prog.fail('列印');
+        if(window.setLocalMsg) setLocalMsg(err.message || '列印失敗', true);
       }
-      if(contractId){
-        contract=contracts.find(x=>x.__id===contractId||x.contractId===contractId)||await R.get('rentalContracts', contractId).catch(()=>null);
-        const linkedApp=R.clean(contract && contract.applicationId);
-        if(linkedApp && !appId) appId=linkedApp;
-      }
-      if(appId && !contractId){
-        try{
-          const snap=await R.db().collection('rentalContracts').where('applicationId','==',appId).limit(1).get();
-          if(!snap.empty){ contractId=snap.docs[0].id; contract=Object.assign({__id:snap.docs[0].id}, snap.docs[0].data()); }
-        }catch(_e){}
-      }
-      if(contractId && !appId){
-        const loaded=applications.find(x=>R.clean(x.linkedContractId||x.contractId)===contractId);
-        if(loaded){ appId=loaded.__id; app=loaded; }
-      }
-      return {appId,contractId,app,contract,sourceKind};
     }
-    window.deleteRentalCase=async function(){
-      const ids=await gatherRentalCaseIds();
-      if(!ids.appId && !ids.contractId) return R.toast('找不到案件資料，無法完全刪除。', false);
-      const label=ids.appId || ids.contractId;
-      if(!confirm('確定要完全刪除這一筆租賃案件嗎？\n\n此動作會移除申請資料、契約資料、租期紀錄與可對應附件，刪除後無法復原。')) return;
-      if(!confirm('再次確認：這不是取消案件，而是整筆資料永久刪除。確定繼續？')) return;
-      const check=prompt('請輸入刪除碼「刪除」以確認完全刪除：');
-      if(check!=='刪除') return R.toast('刪除碼不符或已取消完全刪除。', false);
+    async function savePdf(){
+      const prog = startButtonProgress('saveContractPdfBtn', '儲存PDF中');
       try{
-        const db=R.db();
-        const seen={};
-        const storageValues=[];
-        let deleted=0;
-        if(ids.appId){
-          const ref=db.collection('rentalApplications').doc(ids.appId);
-          const snap=await ref.get();
-          if(snap.exists){ storageValues.push(...collectStorageCandidates(snap.data())); await ref.delete(); deleted++; seen['rentalApplications/'+ids.appId]=true; }
-        }
-        if(ids.contractId){
-          const ref=db.collection('rentalContracts').doc(ids.contractId);
-          const snap=await ref.get();
-          if(snap.exists){ storageValues.push(...collectStorageCandidates(snap.data())); await ref.delete(); deleted++; seen['rentalContracts/'+ids.contractId]=true; }
-        }
-        if(ids.appId){
-          const qs=await db.collection('rentalContracts').where('applicationId','==',ids.appId).get().catch(()=>null);
-          if(qs){
-            for(const doc of qs.docs){
-              const key='rentalContracts/'+doc.id;
-              if(seen[key]) continue;
-              storageValues.push(...collectStorageCandidates(doc.data()));
-              await doc.ref.delete();
-              seen[key]=true;
-              deleted++;
-            }
-          }
-        }
-        if(ids.contractId){
-          const qs=await db.collection('rentalApplications').where('contractId','==',ids.contractId).get().catch(()=>null);
-          if(qs){
-            for(const doc of qs.docs){
-              const key='rentalApplications/'+doc.id;
-              if(seen[key]) continue;
-              storageValues.push(...collectStorageCandidates(doc.data()));
-              await doc.ref.delete();
-              seen[key]=true;
-              deleted++;
-            }
-          }
-          await deleteMatchingDocs('rentalApplications','linkedContractId',ids.contractId,seen);
-        }
-        if(ids.contractId){
-          deleted+=await deleteMatchingDocs('rentalContractPeriods','contractId',ids.contractId,seen);
-          deleted+=await deleteMatchingDocs('notificationQueue','contractId',ids.contractId,seen);
-        }
-        if(ids.appId){
-          deleted+=await deleteMatchingDocs('rentalContractPeriods','applicationId',ids.appId,seen);
-          deleted+=await deleteMatchingDocs('notificationQueue','applicationId',ids.appId,seen);
-        }
-        for(const v of Array.from(new Set(storageValues))){ await deleteStorageRefMaybe(v); }
-        R.toast('已完全刪除案件 '+label+'。', true);
-        selected=null;
-        await loadAll();
-        R.qs('detailBox').innerHTML='<h2 style="margin-top:0">請選擇左側案件</h2><div class="muted">案件已完全刪除。</div>';
-        R.qs('contractPreview').innerHTML='';
-      }catch(e){ R.toast(e.message||String(e), false); }
-    };
-
-    window.sendRenewalReturnLink=async function(){
-      const id=R.val('contractId') || (selected&&(selected.contractId||selected.__id)) || '';
-      if(!id) return R.toast('請先選擇租用中的契約。', false);
+        prog.set(18, '儲存資料中');
+        const saved = await saveContract(false, true, null);
+        if(!saved || !saved.ok) throw new Error((saved && saved.message) || '儲存失敗');
+        prog.set(60, '建立PDF中');
+        const { pdf } = await buildPdfBlob();
+        pdf.save(buildFileName());
+        if(window.setLocalMsg) setLocalMsg('PDF 已開始下載。');
+        prog.done('完成');
+      }catch(err){
+        prog.fail('儲存 PDF');
+        if(window.setLocalMsg) setLocalMsg(err.message || 'PDF 下載失敗', true);
+      }
+    }
+    async function sendContractEmail(){
+      const prog = startButtonProgress('sendContractBtn', '寄送中');
       try{
-        let c=await R.get('rentalContracts', id);
-        if(!c) throw new Error('找不到契約資料。');
-        c=Object.assign({__id:id}, c);
-        let token=renewalReturnToken(c);
-        if(!token){ token=clientRandomToken(); c.renewalToken=token; await R.db().collection('rentalContracts').doc(id).set({renewalToken:token, updatedAtText:R.nowText()},{merge:true}); }
-        const url=renewalReturnUrl(c);
-        const body=`續約與退租提醒\n\n您的租賃目前到期日：${R.clean(c.endDate)||'未設定'}\n\n請點選以下連結，選擇「續約」或「退租」：\n${url}`;
-        const result=await queueCustomerNotice(c,{title:'續約與退租提醒',body,source:'rental-renewal-return-link',contractId:id,officialContractUrl:url});
-        await R.db().collection('rentalContracts').doc(id).set({renewalReturnLinkSentAt:R.nowText(), renewalReturnLinkUrl:url, updatedAtText:R.nowText()},{merge:true});
-        R.toast(notificationResultText(result), result.count>0);
-        await loadAll();
-      }catch(e){ R.toast(e.message||String(e), false); }
-    };
-
-    window.confirmRenewal=async function(){
-      const id=R.val('contractId') || (selected&&(selected.contractId||selected.__id)) || '';
-      if(!id) return R.toast('請先選擇契約。', false);
+        const to = qs('#emailTo').value.trim();
+        if(!to) throw new Error('請填寫收件人 Email。');
+        prog.set(18, '儲存資料中');
+        const saved = await saveContract(false, true, null);
+        if(!saved || !saved.ok) throw new Error((saved && saved.message) || '儲存失敗');
+        prog.set(58, '建立PDF中');
+        const { blob } = await buildPdfBlob();
+        const base64 = await new Promise((resolve,reject)=>{
+          const fr = new FileReader();
+          fr.onload = ()=> resolve(String(fr.result).split(',')[1] || '');
+          fr.onerror = reject;
+          fr.readAsDataURL(blob);
+        });
+        prog.set(78, '寄送信件中');
+        const res = await api('sendRentalContractEmail', {
+          userId: currentUser.id,
+          contractId: qs('#contractId').value.trim(),
+          formData: readValues(),
+          to: to,
+          cc: qs('#emailCc').value.trim(),
+          subject: qs('#emailSubject').value.trim(),
+          body: qs('#emailBody').value.trim(),
+          pdfBase64: base64,
+          pdfName: buildFileName()
+        });
+        if(!res || !res.ok) throw new Error((res && res.message) || '寄送失敗');
+        await loadHistory();
+        if(window.setLocalMsg) setLocalMsg('合約已寄送到信箱。');
+        prog.done('完成');
+      }catch(err){
+        prog.fail('寄送');
+        if(window.setLocalMsg) setLocalMsg(err.message || '寄送失敗', true);
+      }
+    }
+    function versionActionHtml(row){
+      const stamp = escapeHtml(row.versionCreatedAt || row.updatedAt || row.contractDate || '');
+      return `<div class="history-item">
+        <div>
+          <div class="history-item-title">${escapeHtml(row.versionName || '原始版')}｜${escapeHtml(row.partyAName || '未命名甲方')}｜${escapeHtml(row.equipmentName || '未填設備')}</div>
+          <div class="muted-tip" style="margin-top:4px">${stamp ? stamp + '｜' : ''}${escapeHtml(row.sendStatus || '未寄送')}</div>
+        </div>
+        <div class="history-item-actions">
+          <button class="btn" type="button" onclick="previewContractHistoryItem('${row.contractId}', this)">預覽</button>
+          <button class="btn" type="button" onclick="loadContractHistoryItem('${row.contractId}', this)">修改</button>
+          <button class="btn" type="button" onclick="duplicateContractHistoryItem('${row.contractId}', this)">複製合約</button>
+          <button class="btn btn-danger-soft" type="button" onclick="deleteContractHistoryItem('${row.contractId}', this)">刪除</button>
+        </div>
+      </div>`;
+    }
+    function groupHistoryRowsByYear(rows){
+      const years = {};
+      (rows||[]).forEach(row=>{
+        const y = String((row.year || row.contractDate || '').slice(0,4) || '未分類');
+        if(!years[y]) years[y] = {};
+        const root = row.rootContractId || row.contractId;
+        if(!years[y][root]) years[y][root] = [];
+        years[y][root].push(row);
+      });
+      return Object.keys(years).sort((a,b)=>b.localeCompare(a)).map(year=>({
+        year,
+        groups: Object.keys(years[year]).map(root=>({
+          rootId: root,
+          rows: years[year][root].sort((a,b)=>(Number(a.versionNo||0)-Number(b.versionNo||0)))
+        }))
+      }));
+    }
+    function contractGroupCard(group){
+      const head = group.rows[0] || {};
+      return `<div class="history-item" style="display:block">
+        <div class="history-item-title">${escapeHtml(head.contractTitle || '設備租賃契約書')}</div>
+        <div class="muted-tip" style="margin-top:4px">${escapeHtml(head.partyAName || '未命名甲方')}｜${escapeHtml(head.equipmentName || '未填設備')}｜版本數：${group.rows.length}</div>
+        <div style="margin-top:8px;display:grid;gap:8px">${group.rows.map(versionActionHtml).join('')}</div>
+      </div>`;
+    }
+    async function loadHistory(target){
+      let prog = null;
       try{
-        const c=Object.assign({__id:id}, await R.get('rentalContracts', id) || {});
-        const p=c.pendingRenewal||{};
-        if(!p.startDate || !p.endDate) return R.toast('這筆契約沒有待確認的續約資料。', false);
-        const countSnap=internalRentalCountSnapshot(c);
-        if(!internalAssetNameValue(c) || countSnap.current===null){ R.toast('確認續約前，請先在「內部租用次數紀錄」補上內部設備識別與本次前已租用次數，並按儲存。', false); return; }
-        if(!confirm('確認客人已完成續約付款，並成立這次續約？')) return;
-        const oldEnd=R.clean(c.endDate);
-        const initialStart=R.clean(c.initialStartDate||c.startDate||c.officialStartDate);
-        const initialEnd=R.clean(c.initialEndDate||c.officialEndDate||oldEnd);
-        const entries=Array.isArray(c.renewalEntries)?c.renewalEntries.slice():[];
-        const renewalNo=entries.length+1;
-        const days=R.clean(p.days).replace(/天$/,'') || calcDaysText(p.startDate,p.endDate).replace(/天$/,'');
-        const renewalAdd=positivePeriodCount(p.periods||1);
-        const countBeforeRenewal=countSnap.current;
-        const countAfterRenewal=countBeforeRenewal+renewalAdd;
-        const entry={renewalNo, method:`第 ${renewalNo} 次續約`, periods:renewalAdd, startDate:R.clean(p.startDate), endDate:R.clean(p.endDate), days:days ? days+' 天' : '', rentFee:R.num(p.rentFee)||'', note:`續約 ${renewalAdd} 期`, internalRentalCountBefore:countBeforeRenewal, internalRentalCountAdd:renewalAdd, internalRentalCountAfter:countAfterRenewal, confirmedAt:R.nowText()};
-        entries.push(entry);
-        const del=firebase.firestore.FieldValue.delete();
-        const officialUrl=R.officialContractUrl(Object.assign({}, c, {contractId:id}));
-        await R.db().collection('rentalContracts').doc(id).set({
-          status:'租賃中',
-          initialStartDate:initialStart,
-          initialEndDate:initialEnd,
-          endDate:entry.endDate,
-          officialEndDate:entry.endDate,
-          currentEndDate:entry.endDate,
-          renewalEntries:entries,
-          internalRentalCountRenewalPeriods:confirmedRenewalPeriodTotal({renewalEntries:entries}),
-          internalRentalCountCurrent:countAfterRenewal,
-          internalRentalCountAfter:countAfterRenewal,
-          internalRentalCountFormula:`${countSnap.before} + ${countSnap.initial}${confirmedRenewalPeriodTotal({renewalEntries:entries})?` + ${confirmedRenewalPeriodTotal({renewalEntries:entries})}`:''} = ${countAfterRenewal}`,
-          internalRentalCountUpdatedAt:R.nowText(),
-          pendingRenewal:del,
-          latestRenewalConfirmedAt:R.nowText(),
-          officialContractUrl:officialUrl,
-          updatedAtText:R.nowText()
-        },{merge:true});
-        const body=`您的續約已確認成立。\n\n續約期間：${entry.startDate} 至 ${entry.endDate}\n\n請點選以下連結查看更新後正式契約：\n${officialUrl}\n\n合約內容會直接顯示在頁面中，請自行截圖保存。\n\n感謝您的租用，有任何問題也可以直接在官方 LINE 詢問。`;
-        const result=await queueCustomerNotice(Object.assign({}, c, {contractId:id, officialContractUrl:officialUrl}), {title:'續約已確認成立', body, source:'rental-renewal-confirmed', contractId:id, officialContractUrl:officialUrl});
-        R.toast('已確認續約成立，'+notificationResultText(result), true);
-        await loadAll();
-        const updated=await R.get('rentalContracts', id);
-        selected=Object.assign({__id:id}, updated||{});
-        renderContract(selected);
-      }catch(e){ R.toast(e.message||String(e), false); }
-    };
+        prog = target ? startButtonProgress(target, '讀取中') : null;
+        prog && prog.set(18, '讀取中');
+        const res = await api('getRentalContracts', { userId: currentUser.id });
+        historyRows = (res && res.ok && Array.isArray(res.rows)) ? res.rows : [];
+        prog && prog.set(78, '整理清單中');
+        renderHistory();
+        prog && prog.done('完成');
+      }catch(err){
+        if(prog) prog.fail('讀取失敗');
+        console.warn(err);
+      }
+    }
+    function renderHistory(){
+      const wrap = qs('#historyWrap');
+      if(!historyRows.length){
+        wrap.innerHTML = '<div class="muted-tip">目前還沒有合約資料。</div>';
+        return;
+      }
+      const years = groupHistoryRowsByYear(historyRows);
+      wrap.innerHTML = years.map((year, idx)=>{
+        const bodyId = `history-year-${idx}`;
+        return `<div class="history-year-group">
+          <button class="history-year-btn" type="button" onclick="toggleHistoryYear('${bodyId}', this)">${year.year}<span>＋</span></button>
+          <div id="${bodyId}" class="history-year-body">${year.groups.map(contractGroupCard).join('')}</div>
+        </div>`;
+      }).join('');
+    }
+    function toggleHistoryYear(id, btn){
+      const body = document.getElementById(id);
+      if(!body) return;
+      const open = body.classList.toggle('open');
+      btn.classList.toggle('active', open);
+      const span = btn.querySelector('span');
+      if(span) span.textContent = open ? '－' : '＋';
+    }
+    function escapeHtml(s){
+      return String(s || '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+    }
+    async function previewContractHistoryItem(id, btn){
+      const row = historyRows.find(r=> String(r.contractId||'') === String(id));
+      if(!row) return;
+      const prog = btn ? startButtonProgress(btn, '預覽載入中') : null;
+      try{
+        prog && prog.set(24, '套用資料中');
+        applyValues(row.formData || row, false);
+        if(window.setLocalMsg) setLocalMsg('已載入歷史合約預覽。');
+        prog && prog.done('完成');
+      }catch(err){
+        if(prog) prog.fail('預覽');
+        if(window.setLocalMsg) setLocalMsg(err.message || '預覽失敗', true);
+      }
+    }
+    async function loadContractHistoryItem(id, btn){
+      const row = historyRows.find(r=> String(r.contractId||'') === String(id));
+      if(!row) return;
+      const prog = btn ? startButtonProgress(btn, '載入中') : null;
+      try{
+        prog && prog.set(24, '套用資料中');
+        applyValues(row.formData || row, false);
+        if(window.setLocalMsg) setLocalMsg('已載入合約，可直接修改後再儲存。');
+        prog && prog.done('完成');
+      }catch(err){
+        if(prog) prog.fail('修改');
+        if(window.setLocalMsg) setLocalMsg(err.message || '載入失敗', true);
+      }
+    }
+    async function duplicateContractHistoryItem(id, btn){
+      const row = historyRows.find(r=> String(r.contractId||'') === String(id));
+      if(!row) return;
+      const prog = btn ? startButtonProgress(btn, '複製中') : null;
+      try{
+        const payload = Object.assign({}, row.formData || row, {
+          contractId: '',
+          rootContractId: '',
+          versionNo: 0,
+          versionName: '原始版',
+          contractDate: todayStr()
+        });
+        prog && prog.set(28, '建立新表單中');
+        applyValues(payload, true);
+        if(window.setLocalMsg) setLocalMsg('已複製舊合約內容，接下來儲存會建立新單。');
+        prog && prog.done('完成');
+      }catch(err){
+        if(prog) prog.fail('複製');
+        if(window.setLocalMsg) setLocalMsg(err.message || '複製失敗', true);
+      }
+    }
+    async function deleteContractHistoryItem(id, btn){
+      const row = historyRows.find(r=> String(r.contractId||'') === String(id));
+      if(!row) return;
+      const ok = window.confirm(`是否確定刪除「${row.versionName || '原始版'}」這個合約版本？`);
+      if(!ok) return;
+      const prog = btn ? startButtonProgress(btn, '刪除中') : null;
+      try{
+        prog && prog.set(22, '刪除中');
+        const res = await api('deleteRentalContract', { userId: currentUser.id, contractId: id });
+        if(!res || !res.ok) throw new Error((res && res.message) || '刪除失敗');
+        if(String(qs('#contractId').value || '') === String(id)) qs('#contractId').value = '';
+        prog && prog.set(86, '刷新紀錄中');
+        await loadHistory();
+        if(window.setLocalMsg) setLocalMsg('合約版本已刪除。');
+        prog && prog.done('完成');
+      }catch(err){
+        if(prog) prog.fail('刪除');
+        if(window.setLocalMsg) setLocalMsg(err.message || '刪除失敗', true);
+      }
+    }function scheduleIdle_(fn){if(window.requestIdleCallback)requestIdleCallback(fn,{timeout:1200});else setTimeout(fn,160);}
 
-    window.completeReturn=async function(){ const id=R.val('contractId'); if(!id) return R.toast('請先儲存合約。', false); if(!confirm('確認已收回設備並完成退租？')) return; if(!confirm('再次確認：此操作會將契約標記為已退租，確定繼續？')) return; try{ await R.call('rentalCompleteReturnHttp',{contractId:id}); R.toast('已完成退租並通知客人。', true); await loadAll(); }catch(e){ R.toast(e.message||String(e), false); } };
+    function initPage(){
+      fillHeader();
+      currentUser = requireLogin();
+      if(!currentUser) return;
+      if(!isManager(currentUser)){ location.href='dashboard.html'; return; }
+      if(!qs('#startDate').value) qs('#startDate').value = todayStr();
+      if(!qs('#contractDate').value) qs('#contractDate').value = todayStr();
+      document.querySelectorAll('input, textarea').forEach(el=>{ if(el.id) defaultValues[el.id] = el.value; });
+      bindInputs();
+      renderPreview();
+      scheduleIdle_(loadHistory);
+    }
   </script>
+
+<script>
+(function(){
+  function fitMobileA4Preview(){
+    var panel=document.querySelector('.preview-panel');
+    var sheet=document.querySelector('.contract-sheet');
+    if(!panel||!sheet) return;
+    var isMobile=window.matchMedia && window.matchMedia('(max-width: 1180px)').matches;
+    if(!isMobile){
+      sheet.style.transform='';
+      sheet.style.transformOrigin='';
+      sheet.style.marginLeft='';
+      panel.style.height='';
+      return;
+    }
+    sheet.style.transform='scale(1)';
+    sheet.style.transformOrigin='top left';
+    sheet.style.marginLeft='0px';
+    var available=Math.max(260, panel.clientWidth-20);
+    var natural=sheet.offsetWidth || 794;
+    var scale=Math.min(1, available/natural);
+    var visualWidth=natural*scale;
+    var offset=Math.max(0, Math.floor((available-visualWidth)/2));
+    sheet.style.marginLeft=offset+'px';
+    sheet.style.transform='scale('+scale+')';
+    panel.style.height=Math.ceil((sheet.offsetHeight||1123)*scale+22)+'px';
+  }
+  window.addEventListener('load', function(){ setTimeout(fitMobileA4Preview, 80); setTimeout(fitMobileA4Preview, 400); });
+  window.addEventListener('resize', fitMobileA4Preview);
+  window.fitMobileA4Preview=fitMobileA4Preview;
+})();
+</script>
+  <script src="global-nav.js?v=20260603unified1"></script>
 </body>
 </html>

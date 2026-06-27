@@ -3,60 +3,838 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>柚子樂器系統｜設定新密碼</title>
-  <link rel="stylesheet" href="style.css">
+  <title>薪資與投保設定</title>
+  <link rel="stylesheet" href="style.css?v=admin-final-20260530b">
   <style>
-    .auth-note{margin-top:8px;padding:10px 12px;border-radius:14px;background:#f3f7f4;color:#355f4a;font-size:14px;line-height:1.7}
-    .password-rule{margin-top:6px;font-size:13px;line-height:1.7;color:#6b7280}
+    .admin-grid{display:grid;grid-template-columns:minmax(250px,320px) minmax(0,1fr);gap:16px;align-items:start}
+    .employee-search{margin-bottom:12px}
+    .employee-search input{margin:0;width:100%;box-sizing:border-box}
+    .card-list{display:grid;gap:8px;max-height:calc(100vh - 250px);overflow:auto;padding-right:2px}
+    .card-list .item{cursor:pointer;border:1px solid #dce4ec;border-radius:14px;padding:13px 14px;background:#fff;transition:border-color .15s ease,box-shadow .15s ease,background .15s ease}
+    .card-list .item:hover{border-color:#99b9ab;background:#f8fbf9}
+    .card-list .item.active{border-color:var(--brand);background:#f3f8f5;box-shadow:0 0 0 2px rgba(31,122,90,.08)}
+    .employee-name{font-weight:900;color:#24364a;line-height:1.45}
+    .employee-email{margin-top:4px;color:#667085;font-size:13px;line-height:1.45;overflow-wrap:anywhere}
+    .selected-person{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid #e5eaf0}
+    .selected-person-name{font-size:22px;font-weight:900;color:#24364a;line-height:1.35}
+    .selected-person-email{margin-top:4px;color:#667085;overflow-wrap:anywhere}
+    .settings-section{margin-top:14px;padding:16px;border:1px solid #dce4ec;border-radius:16px;background:#fff}
+    .settings-section:first-of-type{margin-top:0}
+    .settings-section-title{margin:0 0 14px;font-size:17px;font-weight:900;color:#24364a}
+    .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+    .form-grid.single{grid-template-columns:1fr}
+    .field{margin:0;min-width:0}
+    .field.full{grid-column:1/-1}
+    .field label{display:block;margin-bottom:7px;font-weight:800;color:#37506a}
+    .field input,.field select,.field textarea{width:100%;box-sizing:border-box;margin:0;border:1px solid #cfd9e4;border-radius:12px;background:#fff}
+    .field input[readonly]{background:#f8fafc;color:#344054;font-weight:800}
+    .field textarea{min-height:100px;resize:vertical}
+    .field.has-error input,.field.has-error select,.field.has-error textarea{border-color:#d92d20;box-shadow:0 0 0 2px rgba(217,45,32,.08)}
+    .line-list{display:grid;gap:10px}
+    .line-item{border:1px solid #dce4ec;border-radius:14px;padding:12px;background:#fff}
+    .line-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(130px,190px) auto;gap:10px;align-items:end}
+    .line-field{display:grid;gap:7px;min-width:0}
+    .line-label{font-size:13px;font-weight:800;color:#37506a}
+    .line-grid input{margin:0;width:100%;box-sizing:border-box;border:1px solid #cfd9e4;border-radius:12px;background:#fff}
+    .secondary-btn,.danger-btn{border:1px solid #cfd9e4;background:#fff;border-radius:11px;padding:10px 13px;font-weight:800;cursor:pointer}
+    .secondary-btn{margin-top:10px;color:#315b8a}
+    .danger-btn{color:#b42318}
+    .secondary-btn:hover,.danger-btn:hover{background:#f8fafc}
+    .save-row{margin-top:16px;display:flex;justify-content:flex-end}
+    .save-row .btn{width:auto;min-width:150px;padding:12px 22px}
+    .empty-box{padding:14px;border-radius:14px;background:#f8fafc;color:#667085;text-align:center}
+    .loading-box{padding:14px;border:1px solid #dce4ec;border-radius:14px;background:#f8fafc;color:#667085;text-align:center}
+    .hidden{display:none!important}
+    @media (max-width:860px){
+      .admin-grid{grid-template-columns:1fr}
+      .card-list{max-height:360px}
+    }
+    @media (max-width:620px){
+      .form-grid,.line-grid{grid-template-columns:1fr}
+      .field.full{grid-column:auto}
+      .danger-btn{width:100%}
+      .save-row .btn{width:100%}
+    }
   </style>
+  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
 </head>
-<body>
+<body onload="init()" class="admin-wide-page">
+  <div class="yz-global-nav" data-yz-global-nav>
+    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
+    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
+  </div>
+
   <div class="container">
-    <div class="card login-card">
-      <div class="header login-header"><h1 class="title center">柚子樂器系統</h1></div>
-      <div id="msg" class="message"></div>
-      <div class="field"><label>新密碼</label><div class="password-wrap"><input id="newPassword" type="password" placeholder="請輸入新密碼"><button type="button" class="eye" id="eyeBtn1">👁</button></div><div class="password-rule">密碼至少 8 碼，需包含英文大寫、英文小寫與數字。</div></div>
-      <div class="field"><label>確認新密碼</label><div class="password-wrap"><input id="confirmPassword" type="password" placeholder="請再次輸入新密碼"><button type="button" class="eye" id="eyeBtn2">👁</button></div></div>
-      <div class="auth-note">這個連結只能使用一次，且 30 分鐘後失效。</div>
-      <div class="login-actions-stack">
-        <button class="btn login-main-btn" id="submitBtn">設定新密碼</button>
-        <a class="btn secondary" href="index.html">返回登入</a>
+    <div class="card">
+      <div class="header" style="margin:0">
+        <h1 class="title">薪資與投保設定</h1>
+        <div class="welcome">歡迎 <span data-user-name></span></div>
+      </div>
+      <div id="pageMsg" class="message"></div>
+    </div>
+
+    <div class="admin-grid">
+      <div class="card">
+        <div class="section-title">員工清單</div>
+        <div class="employee-search">
+          <input id="keyword" aria-label="搜尋員工" placeholder="搜尋姓名或 Email">
+        </div>
+        <div id="employeeList" class="card-list"></div>
+      </div>
+
+      <div class="card">
+        <div id="selectedHint" class="muted">請先選擇員工。</div>
+        <div id="formWrap" class="hidden">
+          <div class="selected-person">
+            <div>
+              <div id="employeeNameText" class="selected-person-name">-</div>
+              <div id="employeeEmailText" class="selected-person-email">-</div>
+            </div>
+          </div>
+
+          <section class="settings-section">
+            <h2 class="settings-section-title">薪資</h2>
+            <div class="form-grid">
+              <div class="field" id="fieldBaseSalary">
+                <label for="baseSalary">本薪</label>
+                <input id="baseSalary" type="number" min="0" step="1">
+              </div>
+              <div class="field hidden" id="fieldHourlyRate">
+                <label for="hourlyRate">時薪</label>
+                <input id="hourlyRate" type="number" min="0" step="1">
+              </div>
+              <div class="field hidden" id="fieldParttimePartial">
+                <label for="isParttimePartial">部分工時</label>
+                <select id="isParttimePartial">
+                  <option value="否">否</option>
+                  <option value="是">是</option>
+                </select>
+              </div>
+              <div class="field hidden" id="fieldAverageSalary">
+                <label for="averageSalary">申報月平均薪資</label>
+                <input id="averageSalary" type="number" min="0" step="1">
+              </div>
+            </div>
+          </section>
+
+          <section class="settings-section" id="jobAllowanceSection">
+            <h2 class="settings-section-title">職務加給</h2>
+            <div id="jobAllowanceList" class="line-list"></div>
+            <button type="button" class="secondary-btn" id="addJobAllowanceBtn">新增一筆</button>
+          </section>
+
+          <section class="settings-section">
+            <h2 class="settings-section-title">津貼</h2>
+            <div id="allowanceList" class="line-list"></div>
+            <button type="button" class="secondary-btn" id="addAllowanceBtn">新增一筆</button>
+          </section>
+
+          <section class="settings-section">
+            <h2 class="settings-section-title">勞保／就保</h2>
+            <div class="form-grid">
+              <div class="field" id="fieldLaborStatus">
+                <label for="laborStatus">勞保狀態</label>
+                <select id="laborStatus">
+                  <option value="">請選擇</option>
+                  <option value="在保">在保</option>
+                  <option value="未保">未保</option>
+                  <option value="暫停">暫停</option>
+                </select>
+              </div>
+              <div class="field" id="fieldLaborPlan">
+                <label for="laborPlan">勞保投保薪資</label>
+                <select id="laborPlan"></select>
+              </div>
+              <div class="field" id="fieldLaborTotalPremium">
+                <label for="laborTotalPremium">勞保＋就保合計保費</label>
+                <input id="laborTotalPremium" type="text" readonly>
+              </div>
+              <div class="field" id="fieldLaborSelfPay">
+                <label for="laborSelfPay">員工負擔</label>
+                <input id="laborSelfPay" type="number" min="0" step="1" readonly>
+              </div>
+              <div class="field" id="fieldLaborEmployerPay">
+                <label for="laborEmployerPay">公司負擔</label>
+                <input id="laborEmployerPay" type="text" readonly>
+              </div>
+              <div class="field" id="fieldLaborGovernmentPay">
+                <label for="laborGovernmentPay">政府負擔</label>
+                <input id="laborGovernmentPay" type="text" readonly>
+              </div>
+            </div>
+          </section>
+
+          <section class="settings-section">
+            <h2 class="settings-section-title">健保</h2>
+            <div class="form-grid">
+              <div class="field" id="fieldHealthStatus">
+                <label for="healthStatus">健保狀態</label>
+                <select id="healthStatus">
+                  <option value="">請選擇</option>
+                  <option value="在保">在保</option>
+                  <option value="未保">未保</option>
+                  <option value="暫停">暫停</option>
+                </select>
+              </div>
+              <div class="field" id="fieldHealthPlan">
+                <label for="healthPlan">健保投保薪資</label>
+                <select id="healthPlan"></select>
+              </div>
+              <div class="field" id="fieldHealthDependents">
+                <label for="healthDependents">眷屬人數</label>
+                <select id="healthDependents">
+                  <option value="0">0</option>
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                  <option value="3">3</option>
+                </select>
+              </div>
+              <div class="field" id="fieldHealthTotalPremium">
+                <label for="healthTotalPremium">健保合計保費</label>
+                <input id="healthTotalPremium" type="text" readonly>
+              </div>
+              <div class="field" id="fieldHealthSelfPay">
+                <label for="healthSelfPay">員工負擔</label>
+                <input id="healthSelfPay" type="number" min="0" step="1" readonly>
+              </div>
+              <div class="field" id="fieldHealthEmployerPay">
+                <label for="healthEmployerPay">公司負擔</label>
+                <input id="healthEmployerPay" type="text" readonly>
+              </div>
+              <div class="field" id="fieldHealthGovernmentPay">
+                <label for="healthGovernmentPay">政府補助</label>
+                <input id="healthGovernmentPay" type="text" readonly>
+              </div>
+            </div>
+          </section>
+
+          <section class="settings-section">
+            <h2 class="settings-section-title">勞退</h2>
+            <div class="form-grid">
+              <div class="field" id="fieldRetirementEnabled">
+                <label for="laborRetirementSelfEnabled">自提</label>
+                <select id="laborRetirementSelfEnabled">
+                  <option value="否">否</option>
+                  <option value="是">是</option>
+                </select>
+              </div>
+              <div class="field" id="fieldRetirementRate">
+                <label for="laborRetirementSelfRate">自提比率</label>
+                <select id="laborRetirementSelfRate" disabled>
+                  <option value="">請選擇</option>
+                  <option value="1">1%</option>
+                  <option value="2">2%</option>
+                  <option value="3">3%</option>
+                  <option value="4">4%</option>
+                  <option value="5">5%</option>
+                  <option value="6">6%</option>
+                </select>
+              </div>
+              <div class="field" id="fieldEmployerRetirementRate">
+                <label for="laborRetirementEmployerRate">公司提繳率</label>
+                <input id="laborRetirementEmployerRate" type="text" readonly value="6%">
+              </div>
+              <div class="field" id="fieldEmployerRetirementAmount">
+                <label for="laborRetirementEmployerAmount">公司提繳金額（不扣薪）</label>
+                <input id="laborRetirementEmployerAmount" type="text" readonly>
+              </div>
+              <div class="field" id="fieldSelfRetirementAmount">
+                <label for="laborRetirementSelfAmount">員工自願提繳金額</label>
+                <input id="laborRetirementSelfAmount" type="text" readonly>
+              </div>
+            </div>
+          </section>
+
+          <section class="settings-section">
+            <h2 class="settings-section-title">生效資料</h2>
+            <div class="form-grid">
+              <div class="field" id="fieldEffectiveDate">
+                <label for="salaryEffectiveDate">生效日期</label>
+                <input id="salaryEffectiveDate" type="date">
+              </div>
+              <div class="field full">
+                <label for="salaryNote">備註</label>
+                <textarea id="salaryNote"></textarea>
+              </div>
+            </div>
+          </section>
+
+          <div class="save-row">
+            <button class="btn" type="button" id="saveBottomBtn">儲存變更</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
-  <script src="config.js?v=20260423authfull1"></script>
+
+  <script src="config.js?v=20260430insure3"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260523stage5primary"></script>
-
-  <script src="app.js?v=20260423authfull1"></script>
+  <script src="firebase-client.js?v=salary-labor-selfpay-20260626v2"></script>
+  <script src="app.js?v=admin-final-20260530b"></script>
+  <script src="onboarding-workflow.js?v=20260624insurance1"></script>
   <script>
-    const msg = qs('#msg');
-    const params = new URLSearchParams(location.search);
-    const token = (params.get('token') || '').trim();
-    qs('#eyeBtn1').onclick = () => togglePassword('#newPassword', qs('#eyeBtn1'));
-    qs('#eyeBtn2').onclick = () => togglePassword('#confirmPassword', qs('#eyeBtn2'));
-    qs('#submitBtn').onclick = async () => {
-      if (!token) { setMsg(msg, '缺少重設 token，請重新申請忘記密碼。', true); return; }
-      const newPassword = qs('#newPassword').value.trim();
-      const confirmPassword = qs('#confirmPassword').value.trim();
-      if (!newPassword || !confirmPassword) { setMsg(msg, '請輸入新密碼與確認密碼。', true); return; }
-      const btn = qs('#submitBtn');
-      const progress = startActionButtonProgress(btn, { label:'設定中' });
-      try {
-        const r = await api('resetPasswordByToken', { token, newPassword, confirmPassword });
-        setMsg(msg, r.message, !r.ok);
-        if (r.ok) {
-          progress.done('已完成', 500, true);
-          setTimeout(() => location.href = 'index.html', 900);
-        } else {
-          progress.fail('失敗');
-        }
-      } catch (e) {
-        progress.fail('失敗');
-        setMsg(msg, e.message || '密碼設定失敗', true);
+    let setup = null;
+    let selectedId = '';
+    let selectedMap = {};
+    const requestedEmployeeId = new URLSearchParams(location.search || '').get('employeeId') || '';
+
+    const DEFAULT_LABOR_PLANS = [
+      { code:'LAB_PART_11100', name:'第 1 級｜11,100 元', salary:11100, salaryText:'11,100 元', selfPayText:'依勞保局級距計算', group:'partial' },
+      { code:'LAB_PART_12540', name:'第 2 級｜12,540 元', salary:12540, salaryText:'12,540 元', selfPayText:'依勞保局級距計算', group:'partial' },
+      { code:'LAB_LOW_13500', name:'13,500 元', salary:13500, salaryText:'13,500 元', selfPayText:'依勞保局級距計算', group:'partial' },
+      { code:'LAB_LOW_15840', name:'15,840 元', salary:15840, salaryText:'15,840 元', selfPayText:'依勞保局級距計算', group:'partial' },
+      { code:'LAB_LOW_16500', name:'16,500 元', salary:16500, salaryText:'16,500 元', selfPayText:'依勞保局級距計算', group:'partial' },
+      { code:'LAB_LOW_17280', name:'17,280 元', salary:17280, salaryText:'17,280 元', selfPayText:'依勞保局級距計算', group:'partial' },
+      { code:'LAB_LOW_17880', name:'17,880 元', salary:17880, salaryText:'17,880 元', selfPayText:'依勞保局級距計算', group:'partial' },
+      { code:'LAB_LOW_19047', name:'19,047 元', salary:19047, salaryText:'19,047 元', selfPayText:'依勞保局級距計算', group:'partial' },
+      { code:'LAB_LOW_20008', name:'20,008 元', salary:20008, salaryText:'20,008 元', selfPayText:'依勞保局級距計算', group:'partial' },
+      { code:'LAB_LOW_21009', name:'21,009 元', salary:21009, salaryText:'21,009 元', selfPayText:'依勞保局級距計算', group:'partial' },
+      { code:'LAB_LOW_22000', name:'22,000 元', salary:22000, salaryText:'22,000 元', selfPayText:'依勞保局級距計算', group:'partial' },
+      { code:'LAB_LOW_23100', name:'23,100 元', salary:23100, salaryText:'23,100 元', selfPayText:'依勞保局級距計算', group:'partial' },
+      { code:'LAB_LOW_24000', name:'24,000 元', salary:24000, salaryText:'24,000 元', selfPayText:'依勞保局級距計算', group:'partial' },
+      { code:'LAB_LOW_25250', name:'25,250 元', salary:25250, salaryText:'25,250 元', selfPayText:'依勞保局級距計算', group:'partial' },
+      { code:'LAB_LOW_26400', name:'26,400 元', salary:26400, salaryText:'26,400 元', selfPayText:'依勞保局級距計算', group:'partial' },
+      { code:'LAB_LOW_27600', name:'27,600 元', salary:27600, salaryText:'27,600 元', selfPayText:'依勞保局級距計算', group:'partial' },
+      { code:'LAB_LOW_28590', name:'28,590 元', salary:28590, salaryText:'28,590 元', selfPayText:'依勞保局級距計算', group:'partial' },
+      { code:'LAB_REG_29500', name:'第 1 級｜29,500 元', salary:29500, salaryText:'29,500 元', selfPayText:'依勞保局級距計算', group:'regular' },
+      { code:'LAB_REG_30300', name:'第 2 級｜30,300 元', salary:30300, salaryText:'30,300 元', selfPayText:'依勞保局級距計算', group:'regular' },
+      { code:'LAB_REG_31800', name:'第 3 級｜31,800 元', salary:31800, salaryText:'31,800 元', selfPayText:'依勞保局級距計算', group:'regular' },
+      { code:'LAB_REG_33300', name:'第 4 級｜33,300 元', salary:33300, salaryText:'33,300 元', selfPayText:'依勞保局級距計算', group:'regular' },
+      { code:'LAB_REG_34800', name:'第 5 級｜34,800 元', salary:34800, salaryText:'34,800 元', selfPayText:'依勞保局級距計算', group:'regular' },
+      { code:'LAB_REG_36300', name:'第 6 級｜36,300 元', salary:36300, salaryText:'36,300 元', selfPayText:'依勞保局級距計算', group:'regular' },
+      { code:'LAB_REG_38200', name:'第 7 級｜38,200 元', salary:38200, salaryText:'38,200 元', selfPayText:'依勞保局級距計算', group:'regular' },
+      { code:'LAB_REG_40100', name:'第 8 級｜40,100 元', salary:40100, salaryText:'40,100 元', selfPayText:'依勞保局級距計算', group:'regular' },
+      { code:'LAB_REG_42000', name:'第 9 級｜42,000 元', salary:42000, salaryText:'42,000 元', selfPayText:'依勞保局級距計算', group:'regular' },
+      { code:'LAB_REG_43900', name:'第 10 級｜43,900 元', salary:43900, salaryText:'43,900 元', selfPayText:'依勞保局級距計算', group:'regular' },
+      { code:'LAB_REG_45800', name:'第 11 級｜45,800 元', salary:45800, salaryText:'45,800 元', selfPayText:'依勞保局級距計算', group:'regular' }
+    ];
+    const DEFAULT_HEALTH_PLANS = [29500,30300,31800,33300,34800,36300,38200,40100,42000,43900,45800,48200,50600,53000,55400,57800,60800,63800,66800,69800,72800,76500,80200,83900,87600,92100,96600,101100,105600,110100,115500,120900,126300,131700,137100,142500,147900,150000,156400,162800,169200,175600,182000,189500,197000,204500,212000,219500,228200,236900,245600,254300,263000,272700,282400,292100,301800,313000].map(function(v, i){ return { code:'NHI_' + v, name:'健保｜第 ' + (i + 1) + ' 級｜' + v.toLocaleString('zh-TW') + ' 元', salary:v, salaryText:v.toLocaleString('zh-TW') + ' 元', selfPayText:'依健保署級距計算' }; });
+
+    function escapeHtml(value){
+      return String(value == null ? '' : value)
+        .replace(/&/g,'&amp;')
+        .replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;')
+        .replace(/'/g,'&#39;');
+    }
+    function numberValue(value){
+      if(typeof value === 'number') return Number.isFinite(value) ? value : 0;
+      const cleaned = String(value == null ? '' : value).replace(/,/g,'').replace(/[^0-9.-]/g,'');
+      const n = Number(cleaned);
+      return Number.isFinite(n) ? n : 0;
+    }
+    function moneyText(value){
+      const n = numberValue(value);
+      return n ? n.toLocaleString('zh-TW') + ' 元' : '';
+    }
+    function insuranceIsActive(status){
+      const s = String(status || '').trim();
+      return s === '在保' || s === '已投保' || s === '投保';
+    }
+    function feeRound(value){ return Math.round(numberValue(value)); }
+    function laborFeeBreakdown(salary){
+      const s = numberValue(salary);
+      if(!(s > 0)) return { total:0, employee:0, employer:0, government:0 };
+      const ordinaryRate = 0.115;
+      const employmentRate = 0.01;
+      const employee = feeRound(s * ordinaryRate * 0.20) + feeRound(s * employmentRate * 0.20);
+      const employer = feeRound(s * ordinaryRate * 0.70) + feeRound(s * employmentRate * 0.70);
+      const government = feeRound(s * ordinaryRate * 0.10) + feeRound(s * employmentRate * 0.10);
+      return { total:employee + employer + government, employee, employer, government };
+    }
+    function healthFeeBreakdown(salary, dependents){
+      const s = numberValue(salary);
+      if(!(s > 0)) return { total:0, employee:0, employer:0, government:0, dependents:0 };
+      const dep = Math.max(0, Math.min(3, Math.floor(numberValue(dependents))));
+      const base = s * 0.0517;
+      const employee = feeRound(base * 0.30 * (1 + dep));
+      const employer = feeRound(base * 0.60 * 1.56);
+      const government = feeRound(base * 0.10 * 1.56);
+      return { total:employee + employer + government, employee, employer, government, dependents:dep };
+    }
+    function setReadOnlyMoney(id, value){
+      const el = qs('#' + id);
+      if(el) el.value = moneyText(value) || '0 元';
+    }
+    function normalizePlanOption(x, prefix, index){
+      const salary = numberValue(x && (x.salary || x.insuredSalary || x.amount || x.value));
+      const code = String((x && (x.code || x.planCode || x.id)) || (prefix + '_' + salary + '_' + index));
+      const salaryText = x && x.salaryText ? String(x.salaryText) : (salary ? salary.toLocaleString('zh-TW') + ' 元' : '');
+      const name = x && x.name ? String(x.name) : ((prefix === 'NHI' ? '健保' : '勞保') + '｜' + salaryText);
+      let group = String((x && (x.group || x.category || x.laborGroup)) || '').toLowerCase();
+      if(prefix === 'LAB' && !group){
+        if(/PART|LOW|TRAIN/i.test(code) || (salary > 0 && salary < 29500)) group = 'partial';
+        else if(/REG|NORMAL|FULL/i.test(code) || salary >= 29500) group = 'regular';
       }
-    };
+      return Object.assign({}, x || {}, { code, name, salary, salaryText, group });
+    }
+    function mergePlanOptions(apiPlans, fallbackPlans, prefix){
+      const out = [];
+      const seenCode = new Set();
+      const seenSalary = new Set();
+      function add(item, index){
+        const row = normalizePlanOption(item, prefix, index);
+        if(!row.code || seenCode.has(row.code)) return;
+        const salaryKey = row.salary ? (prefix + ':' + row.salary + ':' + (row.group || '')) : '';
+        if(salaryKey && seenSalary.has(salaryKey)) return;
+        seenCode.add(row.code);
+        if(salaryKey) seenSalary.add(salaryKey);
+        out.push(row);
+      }
+      (fallbackPlans || []).forEach(add);
+      (Array.isArray(apiPlans) ? apiPlans : []).forEach(add);
+      return out;
+    }
+    function cleanPlanLabel(id, rawLabel){
+      let label = String(rawLabel || '');
+      if(id === 'laborPlan'){
+        label = label.replace(/^部分工時｜/,'').replace(/^低於基本工資｜/,'').replace(/^一般月薪｜/,'').replace(/^勞保｜/,'');
+      }
+      if(id === 'healthPlan') label = label.replace(/^健保｜/,'');
+      return label;
+    }
+    function fillSelect(id, items, value, placeholder){
+      const el = qs('#' + id);
+      if(!el) return;
+      const list = Array.isArray(items) ? items : [];
+      el.innerHTML = '<option value="">' + escapeHtml(placeholder || '請選擇') + '</option>' + list.map(function(x){
+        const label = cleanPlanLabel(id, x.name || x.label || x.salaryText || x.code || '');
+        return '<option value="' + escapeHtml(x.code || '') + '">' + escapeHtml(label) + '</option>';
+      }).join('');
+      el.value = value || '';
+    }
+    function currentEmployee(){ return selectedMap[selectedId] || null; }
+    function currentConfig(){ return (setup && setup.employeeConfigMap && setup.employeeConfigMap[selectedId]) || {}; }
+    function currentLaborGroup(){
+      const emp = currentEmployee();
+      return emp && emp.identityType === 'parttime' && qs('#isParttimePartial').value === '是' ? 'partial' : 'regular';
+    }
+    function laborPlanListForCurrent(){
+      const list = (setup && setup.laborPlans) || [];
+      const group = currentLaborGroup();
+      const filtered = list.filter(function(x){
+        const g = String(x.group || '').toLowerCase();
+        if(!g) return true;
+        return group === 'partial'
+          ? ['partial','training','parttime_partial','parttime'].includes(g)
+          : ['regular','normal','fulltime'].includes(g);
+      });
+      return filtered.length ? filtered : list;
+    }
+    function closestPlanBySalary(list, salary){
+      const amount = numberValue(salary);
+      if(!(amount > 0)) return null;
+      const rows = (Array.isArray(list) ? list : []).filter(function(x){ return numberValue(x.salary) > 0; }).sort(function(a,b){ return numberValue(a.salary) - numberValue(b.salary); });
+      return rows.find(function(x){ return numberValue(x.salary) >= amount; }) || rows[rows.length - 1] || null;
+    }
+    function currentMonthlyWageForPlan(){
+      const emp = currentEmployee();
+      if(!emp) return 0;
+      if(emp.identityType === 'parttime') return numberValue(qs('#averageSalary').value);
+      return numberValue(qs('#baseSalary').value);
+    }
+    function autoSelectLaborPlanFromWage(force){
+      if(!insuranceIsActive(qs('#laborStatus').value)) return false;
+      const wage = currentMonthlyWageForPlan();
+      if(!(wage > 0)) return false;
+      const el = qs('#laborPlan');
+      if(!force && el.value) return false;
+      const plan = closestPlanBySalary(laborPlanListForCurrent(), wage);
+      if(plan && plan.code){
+        el.value = plan.code;
+        updateEmployerRetirementFields();
+        return true;
+      }
+      return false;
+    }
+    function currentRetirementBaseSalary(){
+      if(!insuranceIsActive(qs('#laborStatus').value)) return 0;
+      const labor = getLaborMeta();
+      return labor ? numberValue(labor.salary) : 0;
+    }
+    function currentEmployerRetirementAmount(){
+      const base = currentRetirementBaseSalary();
+      return base > 0 ? Math.round(base * 0.06) : 0;
+    }
+    function currentSelfRetirementAmount(){
+      const base = currentRetirementBaseSalary();
+      const enabled = qs('#laborRetirementSelfEnabled').value === '是';
+      const rate = numberValue(qs('#laborRetirementSelfRate').value);
+      return base > 0 && enabled && rate > 0 ? Math.round(base * rate / 100) : 0;
+    }
+    function updateEmployerRetirementFields(){
+      const laborActive = insuranceIsActive(qs('#laborStatus').value);
+      const healthActive = insuranceIsActive(qs('#healthStatus').value);
+      const labor = getLaborMeta();
+      const health = getHealthMeta();
+      const laborFees = laborActive && labor ? laborFeeBreakdown(labor.salary) : { total:0, employee:0, employer:0, government:0 };
+      const healthFees = healthActive && health ? healthFeeBreakdown(health.salary, qs('#healthDependents').value) : { total:0, employee:0, employer:0, government:0 };
+      if(qs('#laborSelfPay')) qs('#laborSelfPay').value = laborActive ? laborFees.employee : '';
+      setReadOnlyMoney('laborTotalPremium', laborActive ? laborFees.total : 0);
+      setReadOnlyMoney('laborEmployerPay', laborActive ? laborFees.employer : 0);
+      setReadOnlyMoney('laborGovernmentPay', laborActive ? laborFees.government : 0);
+      if(qs('#healthSelfPay')) qs('#healthSelfPay').value = healthActive ? healthFees.employee : '';
+      setReadOnlyMoney('healthTotalPremium', healthActive ? healthFees.total : 0);
+      setReadOnlyMoney('healthEmployerPay', healthActive ? healthFees.employer : 0);
+      setReadOnlyMoney('healthGovernmentPay', healthActive ? healthFees.government : 0);
+      const rateEl = qs('#laborRetirementEmployerRate');
+      const amountEl = qs('#laborRetirementEmployerAmount');
+      const selfAmountEl = qs('#laborRetirementSelfAmount');
+      if(rateEl) rateEl.value = '6%';
+      if(amountEl) amountEl.value = moneyText(currentEmployerRetirementAmount()) || '0 元';
+      if(selfAmountEl) selfAmountEl.value = moneyText(currentSelfRetirementAmount()) || '0 元';
+    }
+    function resolvePlanCode(list, savedCode, savedSalary, savedText){
+      const rows = Array.isArray(list) ? list : [];
+      const code = String(savedCode || '').trim();
+      const exact = rows.find(function(x){ return String(x.code || '') === code; });
+      if(exact) return String(exact.code || '');
+      const salary = numberValue(savedSalary) || numberValue(savedText) || numberValue(code);
+      if(!salary) return '';
+      const bySalary = rows.find(function(x){ return numberValue(x.salary) === salary; });
+      return bySalary ? String(bySalary.code || '') : '';
+    }
+    function inferredPartialValue(emp, cfg){
+      const explicit = String(cfg.isPartialHours || cfg.isParttimePartial || '').trim();
+      if(explicit === '是' || explicit === '否') return explicit;
+      const salary = numberValue(cfg.laborInsuredSalary || cfg.laborSalary || cfg.laborPlanText || cfg.laborPlan);
+      return emp && emp.identityType === 'parttime' && salary > 0 && salary < 29500 ? '是' : '否';
+    }
+    function refreshLaborPlanOptions(savedCode, savedSalary, savedText){
+      const list = laborPlanListForCurrent();
+      const code = resolvePlanCode(list, savedCode, savedSalary, savedText);
+      fillSelect('laborPlan', list, code, '請選擇');
+      updateEmployerRetirementFields();
+      return code;
+    }
+    function refreshHealthPlanOptions(savedCode, savedSalary, savedText){
+      const list = (setup && setup.healthPlans) || DEFAULT_HEALTH_PLANS;
+      const code = resolvePlanCode(list, savedCode, savedSalary, savedText);
+      fillSelect('healthPlan', list, code, '請選擇');
+      return code;
+    }
+    function getLaborMeta(){
+      const code = qs('#laborPlan').value;
+      return laborPlanListForCurrent().concat((setup && setup.laborPlans) || []).find(function(x){ return String(x.code || '') === code; }) || null;
+    }
+    function getHealthMeta(){
+      const code = qs('#healthPlan').value;
+      return ((setup && setup.healthPlans) || []).find(function(x){ return String(x.code || '') === code; }) || null;
+    }
+    function applyIdentityVisibility(emp){
+      const isParttime = emp && emp.identityType === 'parttime';
+      qs('#fieldBaseSalary').classList.toggle('hidden', isParttime);
+      qs('#fieldHourlyRate').classList.toggle('hidden', !isParttime);
+      qs('#fieldParttimePartial').classList.toggle('hidden', !isParttime);
+      qs('#fieldAverageSalary').classList.toggle('hidden', !isParttime);
+      qs('#jobAllowanceSection').classList.toggle('hidden', isParttime);
+    }
+    function updateRetirementInputs(){
+      const enabled = qs('#laborRetirementSelfEnabled').value === '是';
+      qs('#laborRetirementSelfRate').disabled = !enabled;
+      if(!enabled) qs('#laborRetirementSelfRate').value = '';
+      updateEmployerRetirementFields();
+    }
+    function updateInsuranceVisibility(clearInactive){
+      const laborActive = insuranceIsActive(qs('#laborStatus').value);
+      const healthActive = insuranceIsActive(qs('#healthStatus').value);
+      ['fieldLaborPlan','fieldLaborTotalPremium','fieldLaborSelfPay','fieldLaborEmployerPay','fieldLaborGovernmentPay'].forEach(function(id){ const el = qs('#' + id); if(el) el.classList.toggle('hidden', !laborActive); });
+      ['fieldHealthPlan','fieldHealthDependents','fieldHealthTotalPremium','fieldHealthSelfPay','fieldHealthEmployerPay','fieldHealthGovernmentPay'].forEach(function(id){ const el = qs('#' + id); if(el) el.classList.toggle('hidden', !healthActive); });
+      if(clearInactive && !laborActive){ qs('#laborPlan').value = ''; qs('#laborSelfPay').value = ''; }
+      if(clearInactive && !healthActive){ qs('#healthPlan').value = ''; qs('#healthSelfPay').value = ''; qs('#healthDependents').value = '0'; }
+      if(clearInactive && laborActive) autoSelectLaborPlanFromWage(false);
+      updateEmployerRetirementFields();
+    }
+    function createLineItem(name, amount){ return { name:name || '', amount:amount || '' }; }
+    function readLineItems(boxSelector, keepEmpty){
+      const rows = qsa(boxSelector + ' .line-item').map(function(el){
+        return {
+          name:(el.querySelector('[data-role="name"]').value || '').trim(),
+          amount:numberValue(el.querySelector('[data-role="amount"]').value)
+        };
+      });
+      return keepEmpty ? rows : rows.filter(function(x){ return x.name || x.amount; });
+    }
+    function renderLineItems(boxSelector, items){
+      const box = qs(boxSelector);
+      const rows = Array.isArray(items) ? items.slice() : [];
+      box.innerHTML = rows.map(function(row, index){
+        return '<div class="line-item" data-index="' + index + '">' +
+          '<div class="line-grid">' +
+            '<div class="line-field"><div class="line-label">名稱</div><input data-role="name" value="' + escapeHtml(row.name || '') + '"></div>' +
+            '<div class="line-field"><div class="line-label">金額</div><input data-role="amount" type="number" min="0" step="1" value="' + escapeHtml(row.amount || '') + '"></div>' +
+            '<button type="button" class="danger-btn" data-remove="' + index + '">刪除</button>' +
+          '</div>' +
+        '</div>';
+      }).join('');
+      qsa(boxSelector + ' [data-remove]').forEach(function(btn){
+        btn.onclick = function(){
+          const next = readLineItems(boxSelector, true);
+          next.splice(numberValue(btn.dataset.remove), 1);
+          renderLineItems(boxSelector, next);
+        };
+      });
+    }
+    function renderEmployeeList(){
+      const keyword = (qs('#keyword').value || '').trim().toLowerCase();
+      const rows = ((setup && setup.employees) || []).filter(function(row){
+        if(!keyword) return true;
+        return String(row.name || '').toLowerCase().includes(keyword) || String(row.email || '').toLowerCase().includes(keyword);
+      });
+      qs('#employeeList').innerHTML = rows.map(function(row){
+        return '<div class="item ' + (selectedId === row.id ? 'active' : '') + '" data-id="' + escapeHtml(row.id) + '">' +
+          '<div class="employee-name">' + escapeHtml(row.name || '未命名') + '</div>' +
+          '<div class="employee-email">' + escapeHtml(row.email || '未填寫 Email') + '</div>' +
+        '</div>';
+      }).join('') || '<div class="empty-box">沒有符合的員工</div>';
+      qsa('#employeeList [data-id]').forEach(function(el){ el.onclick = function(){ selectEmployee(el.dataset.id); }; });
+    }
+    function clearValidation(){ qsa('.field.has-error').forEach(function(el){ el.classList.remove('has-error'); }); }
+    function markInvalid(id){
+      const el = qs('#' + id);
+      const field = el && el.closest('.field');
+      if(field) field.classList.add('has-error');
+      return el;
+    }
+    function selectEmployee(id){
+      selectedId = id;
+      const emp = currentEmployee();
+      const cfg = currentConfig();
+      qs('#formWrap').classList.toggle('hidden', !emp);
+      qs('#selectedHint').classList.toggle('hidden', !!emp);
+      if(!emp){ renderEmployeeList(); return; }
+      clearValidation();
+      setMsg(qs('#pageMsg'), '');
+      qs('#employeeNameText').textContent = emp.name || '-';
+      qs('#employeeEmailText').textContent = emp.email || '未填寫 Email';
+      applyIdentityVisibility(emp);
+      qs('#baseSalary').value = cfg.baseSalary || '';
+      qs('#hourlyRate').value = cfg.hourlyRate || '';
+      qs('#isParttimePartial').value = inferredPartialValue(emp, cfg);
+      qs('#averageSalary').value = cfg.averageSalary || '';
+      qs('#laborStatus').value = cfg.laborStatus || '';
+      qs('#healthStatus').value = cfg.healthStatus || '';
+      refreshLaborPlanOptions(cfg.laborPlan, cfg.laborInsuredSalary || cfg.laborSalary, cfg.laborPlanText);
+      if(!(cfg.laborPlan || cfg.laborInsuredSalary || cfg.laborSalary || cfg.laborPlanText)) autoSelectLaborPlanFromWage(false);
+      qs('#laborSelfPay').value = cfg.laborSelfPay !== undefined && cfg.laborSelfPay !== null ? cfg.laborSelfPay : (cfg.laborInsuranceSelfPay || '');
+      refreshHealthPlanOptions(cfg.healthPlan, cfg.healthInsuredSalary || cfg.healthSalary, cfg.healthPlanText);
+      qs('#healthDependents').value = String(numberValue(cfg.healthDependents || cfg.healthDependentsCount || 0));
+      qs('#healthSelfPay').value = cfg.healthSelfPay !== undefined && cfg.healthSelfPay !== null ? cfg.healthSelfPay : (cfg.healthInsuranceSelfPay || '');
+      qs('#laborRetirementSelfEnabled').value = cfg.selfRetirementEnabled || '否';
+      qs('#laborRetirementSelfRate').value = cfg.selfRetirementRate || '';
+      qs('#salaryEffectiveDate').value = cfg.effectiveDate || cfg.salaryEffectiveDate || '';
+      qs('#salaryNote').value = cfg.note || '';
+      renderLineItems('#jobAllowanceList', cfg.jobAllowances || []);
+      renderLineItems('#allowanceList', cfg.allowances || []);
+      updateRetirementInputs();
+      updateInsuranceVisibility(false);
+      updateEmployerRetirementFields();
+      renderEmployeeList();
+    }
+    function buildPayload(emp){
+      const labor = getLaborMeta();
+      const health = getHealthMeta();
+      const cfg = currentConfig();
+      const isParttime = emp.identityType === 'parttime';
+      return {
+        userId:requireLogin().id,
+        employeeId:emp.id,
+        baseSalary:isParttime ? 0 : qs('#baseSalary').value,
+        hourlyRate:isParttime ? qs('#hourlyRate').value : 0,
+        isPartialHours:isParttime ? qs('#isParttimePartial').value : '否',
+        averageSalary:isParttime ? qs('#averageSalary').value : 0,
+        laborPlan:insuranceIsActive(qs('#laborStatus').value) ? qs('#laborPlan').value : '',
+        healthPlan:insuranceIsActive(qs('#healthStatus').value) ? qs('#healthPlan').value : '',
+        laborStatus:qs('#laborStatus').value,
+        healthStatus:qs('#healthStatus').value,
+        laborInsuredSalary:labor ? numberValue(labor.salary) : 0,
+        healthInsuredSalary:health ? numberValue(health.salary) : 0,
+        laborSelfPay:insuranceIsActive(qs('#laborStatus').value) ? qs('#laborSelfPay').value : '',
+        laborEmployeeSelfPay:insuranceIsActive(qs('#laborStatus').value) ? qs('#laborSelfPay').value : '',
+        laborTotalPremium:insuranceIsActive(qs('#laborStatus').value) ? numberValue(qs('#laborTotalPremium').value) : 0,
+        laborEmployerPay:insuranceIsActive(qs('#laborStatus').value) ? numberValue(qs('#laborEmployerPay').value) : 0,
+        laborGovernmentPay:insuranceIsActive(qs('#laborStatus').value) ? numberValue(qs('#laborGovernmentPay').value) : 0,
+        healthDependents:insuranceIsActive(qs('#healthStatus').value) ? numberValue(qs('#healthDependents').value) : 0,
+        healthSelfPay:insuranceIsActive(qs('#healthStatus').value) ? qs('#healthSelfPay').value : '',
+        healthEmployeeSelfPay:insuranceIsActive(qs('#healthStatus').value) ? qs('#healthSelfPay').value : '',
+        healthTotalPremium:insuranceIsActive(qs('#healthStatus').value) ? numberValue(qs('#healthTotalPremium').value) : 0,
+        healthEmployerPay:insuranceIsActive(qs('#healthStatus').value) ? numberValue(qs('#healthEmployerPay').value) : 0,
+        healthGovernmentPay:insuranceIsActive(qs('#healthStatus').value) ? numberValue(qs('#healthGovernmentPay').value) : 0,
+        retirementEmployerRate:6,
+        laborRetirementEmployerRate:6,
+        retirementEmployerAmount:currentEmployerRetirementAmount(),
+        laborRetirementEmployerAmount:currentEmployerRetirementAmount(),
+        retirementEmployerText:insuranceIsActive(qs('#laborStatus').value) ? ('6%｜' + moneyText(currentEmployerRetirementAmount())) : '',
+        laborRetirementEmployerText:insuranceIsActive(qs('#laborStatus').value) ? ('6%｜' + moneyText(currentEmployerRetirementAmount())) : '',
+        laborRetirementSalary:currentRetirementBaseSalary(),
+        selfRetirementEnabled:qs('#laborRetirementSelfEnabled').value,
+        selfRetirementRate:qs('#laborRetirementSelfRate').value,
+        selfRetirementAmount:currentSelfRetirementAmount(),
+        effectiveDate:qs('#salaryEffectiveDate').value,
+        note:(qs('#salaryNote').value || '').trim(),
+        jobAllowances:isParttime ? (Array.isArray(cfg.jobAllowances) ? cfg.jobAllowances : []) : readLineItems('#jobAllowanceList'),
+        allowances:readLineItems('#allowanceList')
+      };
+    }
+    function validatePayload(emp, payload){
+      clearValidation();
+      const invalid = [];
+      function add(id){ const el = markInvalid(id); if(el) invalid.push(el); }
+      if(emp.identityType === 'staff' && !(numberValue(payload.baseSalary) > 0)) add('baseSalary');
+      if(emp.identityType === 'parttime' && !(numberValue(payload.hourlyRate) > 0)) add('hourlyRate');
+      if(emp.identityType === 'parttime' && !(numberValue(payload.averageSalary) > 0)) add('averageSalary');
+      if(!payload.laborStatus) add('laborStatus');
+      if(!payload.healthStatus) add('healthStatus');
+      if(insuranceIsActive(payload.laborStatus) && !payload.laborPlan) add('laborPlan');
+      if(insuranceIsActive(payload.laborStatus) && payload.laborSelfPay === '') add('laborSelfPay');
+      if(insuranceIsActive(payload.healthStatus) && !payload.healthPlan) add('healthPlan');
+      if(insuranceIsActive(payload.healthStatus) && payload.healthSelfPay === '') add('healthSelfPay');
+      if(payload.selfRetirementEnabled === '是' && !payload.selfRetirementRate) add('laborRetirementSelfRate');
+      if(!payload.effectiveDate) add('salaryEffectiveDate');
+      if(invalid.length){
+        setMsg(qs('#pageMsg'), '請完成標示的必填欄位。', true);
+        invalid[0].focus();
+        return false;
+      }
+      return true;
+    }
+    function refreshLocalConfig(emp, payload){
+      setup.employeeConfigMap[emp.id] = Object.assign({}, currentConfig(), {
+        baseSalary:numberValue(payload.baseSalary),
+        hourlyRate:numberValue(payload.hourlyRate),
+        isPartialHours:payload.isPartialHours || '否',
+        averageSalary:numberValue(payload.averageSalary),
+        laborPlan:payload.laborPlan || '',
+        healthPlan:payload.healthPlan || '',
+        laborStatus:payload.laborStatus || '',
+        healthStatus:payload.healthStatus || '',
+        laborInsuredSalary:numberValue(payload.laborInsuredSalary),
+        healthInsuredSalary:numberValue(payload.healthInsuredSalary),
+        laborSelfPay:payload.laborSelfPay === '' ? '' : numberValue(payload.laborSelfPay),
+        laborEmployeeSelfPay:payload.laborEmployeeSelfPay === '' ? '' : numberValue(payload.laborEmployeeSelfPay),
+        laborTotalPremium:numberValue(payload.laborTotalPremium),
+        laborEmployerPay:numberValue(payload.laborEmployerPay),
+        laborGovernmentPay:numberValue(payload.laborGovernmentPay),
+        healthDependents:numberValue(payload.healthDependents),
+        healthSelfPay:payload.healthSelfPay === '' ? '' : numberValue(payload.healthSelfPay),
+        healthEmployeeSelfPay:payload.healthEmployeeSelfPay === '' ? '' : numberValue(payload.healthEmployeeSelfPay),
+        healthTotalPremium:numberValue(payload.healthTotalPremium),
+        healthEmployerPay:numberValue(payload.healthEmployerPay),
+        healthGovernmentPay:numberValue(payload.healthGovernmentPay),
+        retirementEmployerRate:6,
+        laborRetirementEmployerRate:6,
+        retirementEmployerAmount:numberValue(payload.retirementEmployerAmount),
+        laborRetirementEmployerAmount:numberValue(payload.laborRetirementEmployerAmount),
+        retirementEmployerText:payload.retirementEmployerText || '',
+        laborRetirementEmployerText:payload.laborRetirementEmployerText || '',
+        laborRetirementSalary:numberValue(payload.laborRetirementSalary),
+        selfRetirementEnabled:payload.selfRetirementEnabled || '否',
+        selfRetirementRate:numberValue(payload.selfRetirementRate),
+        selfRetirementAmount:numberValue(payload.selfRetirementAmount),
+        effectiveDate:payload.effectiveDate || '',
+        note:payload.note || '',
+        jobAllowances:payload.jobAllowances || [],
+        allowances:payload.allowances || []
+      });
+    }
+    function setSaveLoading(loading){
+      const btn = qs('#saveBottomBtn');
+      btn.disabled = !!loading;
+      btn.textContent = loading ? '儲存中…' : '儲存變更';
+    }
+    async function saveConfig(){
+      const user = requireLogin();
+      const emp = currentEmployee();
+      if(!user || !emp) return;
+      const payload = buildPayload(emp);
+      if(!validatePayload(emp, payload)) return;
+      setMsg(qs('#pageMsg'), '');
+      setSaveLoading(true);
+      try{
+        const res = await api('saveEmployeeSalaryConfig', payload);
+        if(!res || res.ok === false) throw new Error((res && res.message) || '儲存失敗');
+        refreshLocalConfig(emp, payload);
+        setMsg(qs('#pageMsg'), '已儲存' + (emp.name || '此員工') + '的薪資與投保設定。');
+      }catch(err){
+        setMsg(qs('#pageMsg'), err && err.message ? err.message : String(err), true);
+      }finally{
+        setSaveLoading(false);
+      }
+    }
+    async function loadSetup(){
+      const user = requireLogin();
+      if(!user) return;
+      try{
+        const res = await api('getSalarySetupOptions', { userId:user.id });
+        if(!res || res.ok === false) throw new Error((res && res.message) || '讀取失敗');
+        const employees = (res.employees || []).filter(function(row){ return ['staff','parttime'].includes(String(row.identityType || '')); });
+        const configMap = {};
+        employees.forEach(function(row){ configMap[row.id] = (res.employeeConfigMap && res.employeeConfigMap[row.id]) || {}; });
+        const laborOrder = { partial:1,training:2,parttime_partial:2,parttime:2,regular:3,normal:3,fulltime:3 };
+        const laborPlans = mergePlanOptions(res.laborPlans, DEFAULT_LABOR_PLANS, 'LAB').sort(function(a,b){
+          return (laborOrder[a.group] || 9) - (laborOrder[b.group] || 9) || numberValue(a.salary) - numberValue(b.salary);
+        });
+        const healthPlans = mergePlanOptions(res.healthPlans, DEFAULT_HEALTH_PLANS, 'NHI').filter(function(x){ return numberValue(x.salary) >= 29500; }).sort(function(a,b){ return numberValue(a.salary) - numberValue(b.salary); });
+        setup = Object.assign({}, res, { employees, employeeConfigMap:configMap, laborPlans, healthPlans });
+        selectedMap = {};
+        employees.forEach(function(row){ selectedMap[row.id] = row; });
+        renderEmployeeList();
+        if(requestedEmployeeId && selectedMap[requestedEmployeeId]) selectEmployee(requestedEmployeeId);
+        else if(selectedId && selectedMap[selectedId]) selectEmployee(selectedId);
+        else if(employees.length) selectEmployee(employees[0].id);
+        else qs('#selectedHint').textContent = '目前沒有可設定的員工。';
+      }catch(err){
+        qs('#employeeList').innerHTML = '<div class="empty-box">讀取失敗</div>';
+        setMsg(qs('#pageMsg'), err && err.message ? err.message : String(err), true);
+      }
+    }
+    function addJobAllowance(){
+      const next = readLineItems('#jobAllowanceList', true);
+      next.push(createLineItem('', ''));
+      renderLineItems('#jobAllowanceList', next);
+    }
+    function addAllowance(){
+      const next = readLineItems('#allowanceList', true);
+      next.push(createLineItem('', ''));
+      renderLineItems('#allowanceList', next);
+    }
+    function renderInitialState(){
+      qs('#employeeList').innerHTML = '<div class="loading-box">載入中…</div>';
+      qs('#selectedHint').textContent = '載入中…';
+    }
+    async function init(){
+      fillHeader();
+      const user = requireLogin();
+      if(!user) return;
+      if(!isManager(user)){ location.href = 'dashboard.html'; return; }
+      qs('#keyword').addEventListener('input', renderEmployeeList);
+      qs('#saveBottomBtn').onclick = saveConfig;
+      qs('#addJobAllowanceBtn').onclick = addJobAllowance;
+      qs('#addAllowanceBtn').onclick = addAllowance;
+      qs('#laborStatus').addEventListener('change', function(){ updateInsuranceVisibility(true); });
+      qs('#healthStatus').addEventListener('change', function(){ updateInsuranceVisibility(true); });
+      qs('#isParttimePartial').addEventListener('change', function(){
+        const previous = getLaborMeta();
+        refreshLaborPlanOptions('', previous && previous.salary, '');
+        autoSelectLaborPlanFromWage(true);
+      });
+      qs('#laborPlan').addEventListener('change', updateEmployerRetirementFields);
+      qs('#healthPlan').addEventListener('change', updateEmployerRetirementFields);
+      qs('#healthDependents').addEventListener('change', updateEmployerRetirementFields);
+      qs('#baseSalary').addEventListener('change', function(){ autoSelectLaborPlanFromWage(true); updateEmployerRetirementFields(); });
+      qs('#averageSalary').addEventListener('change', function(){ autoSelectLaborPlanFromWage(true); updateEmployerRetirementFields(); });
+      qs('#laborRetirementSelfEnabled').addEventListener('change', updateRetirementInputs);
+      qs('#laborRetirementSelfRate').addEventListener('change', updateEmployerRetirementFields);
+      qsa('#formWrap input, #formWrap select, #formWrap textarea').forEach(function(el){
+        el.addEventListener('input', function(){ const field = el.closest('.field'); if(field) field.classList.remove('has-error'); });
+        el.addEventListener('change', function(){ const field = el.closest('.field'); if(field) field.classList.remove('has-error'); });
+      });
+      renderInitialState();
+      loadSetup();
+    }
   </script>
+  <script src="global-nav.js?v=20260603unified1"></script>
 </body>
 </html>

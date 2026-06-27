@@ -3,81 +3,138 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>租賃契約模板設定</title>
-  <link rel="stylesheet" href="style.css?v=rental-template-formal-20260611">
-  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
+  <title>薪資與投保資訊</title>
+  <link rel="stylesheet" href="style.css">
   <style>
-    :root{--green:#1f7a5a;--line:#dbe5ef;--muted:#64748b;--paper:#fff;--bg:#eef3f7;--ink:#0f172a}
-    body{margin:0;background:var(--bg);color:var(--ink);font-family:Arial,'Noto Sans TC',sans-serif}
-    .wrap{max-width:1460px;margin:0 auto;padding:16px 12px 60px}.top{background:#fff;border:1px solid var(--line);border-radius:24px;padding:18px 20px;margin-bottom:14px;box-shadow:0 10px 28px rgba(15,23,42,.05)}
-    .title{font-size:30px;font-weight:950;margin:0 0 6px}.sub{color:var(--muted);line-height:1.8}.tabs{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}.tab{border:1px solid #cbd5e1;background:#fff;color:#0f172a;border-radius:999px;padding:10px 16px;font-weight:950;cursor:pointer}.tab.active{background:var(--green);color:#fff;border-color:var(--green)}
-    .layout{display:grid;grid-template-columns:minmax(360px,520px) minmax(540px,1fr);gap:14px;align-items:start}.panel{background:#fff;border:1px solid var(--line);border-radius:24px;padding:16px;box-shadow:0 10px 28px rgba(15,23,42,.04)}.panel h2{margin:4px 0 12px;font-size:22px}
-    .field{margin-bottom:12px}.field label{display:block;font-size:14px;font-weight:950;margin-bottom:6px}.field input,.field textarea,.field select{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:14px;padding:11px 12px;font-size:15px;background:#fff}.field textarea{min-height:90px;resize:vertical}.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}.row3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.btns{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}.btn{border:0;border-radius:14px;padding:12px 16px;font-weight:950;cursor:pointer}.primary{background:var(--green);color:#fff}.secondary{background:#e2e8f0;color:#0f172a}.msg{margin-top:12px;border-radius:14px;padding:12px 14px;font-weight:900;line-height:1.7}.ok{background:#e8fff4;color:#146c43}.bad{background:#fff0f0;color:#b42318}.muted-box{background:#f8fafc;border:1px dashed #cbd5e1;border-radius:14px;padding:10px 12px;color:#475569;font-size:13px;line-height:1.7;margin-bottom:12px}.small{font-size:13px;color:#64748b;line-height:1.7}.print-actions{position:sticky;top:0;background:#fff;border-bottom:1px solid #e2e8f0;padding-bottom:10px;margin-bottom:10px;z-index:2}
-    .preview-wrap{overflow:auto;max-height:calc(100vh - 120px);padding:8px;background:#e5edf5;border-radius:20px}.paper{width:794px;min-height:1123px;margin:0 auto 16px;background:#fff;box-shadow:0 8px 24px rgba(15,23,42,.16);box-sizing:border-box;padding:54px 58px;color:#111827;position:relative;font-family:'Times New Roman','Noto Serif TC',serif;page-break-after:always}.paper h1{text-align:center;font-size:30px;margin:0 0 22px;letter-spacing:3px}.contract-line{line-height:2;font-size:17px}.clause{margin:8px 0;line-height:1.85;font-size:16px}.section-title{font-weight:900;margin-top:16px;font-size:17px}.party-grid{display:grid;grid-template-columns:1fr 1fr;gap:28px;margin-top:22px;font-size:16px;line-height:2}.time-table{width:100%;border-collapse:collapse;margin-top:16px;font-size:14px}.time-table th,.time-table td{border:1px solid #333;padding:7px;text-align:center}.time-table th{background:#f3f4f6}.stamp-area{position:relative;min-height:124px;margin-top:8px}.company-seal{position:absolute;left:6px;top:8px;width:118px;height:92px;object-fit:contain}.owner-seal{position:absolute;left:128px;top:45px;width:58px;height:58px;object-fit:contain}.page-no{position:absolute;right:58px;bottom:22px;font-size:12px;color:#64748b}.formal-note{font-size:13px;line-height:1.7;color:#475569;margin-top:8px}
-    @media print{body *{visibility:hidden!important}.preview-wrap,.preview-wrap *{visibility:visible!important}.preview-wrap{position:absolute!important;left:0!important;top:0!important;background:#fff!important;padding:0!important;overflow:visible!important}.paper{box-shadow:none!important;margin:0!important;border:none!important;page-break-after:always!important;width:210mm!important;min-height:297mm!important}.panel,.top{box-shadow:none!important}.print-actions{display:none!important}@page{size:A4 portrait;margin:0}}
-    @media(max-width:980px){.layout{grid-template-columns:1fr}.paper{width:100%;min-height:0;padding:34px 24px}.preview-wrap{max-height:none}.row2,.row3{grid-template-columns:1fr}.wrap{padding:10px 8px}.title{font-size:26px}}
+    .page-return-wrap{margin-bottom:16px}
+    .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
+    .salary-section{margin-top:14px}
+    .section-title-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+    .section-title-row h2{font-size:18px;margin:0;color:var(--brand)}
+    .info-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+    .info-card{border:1px solid var(--line);border-radius:14px;padding:14px;background:#fff}
+    .info-card .label{font-size:13px;color:var(--muted)}
+    .info-card .value{font-size:16px;font-weight:800;margin-top:6px;white-space:pre-wrap;line-height:1.45}
+    .wide{grid-column:1/-1}
+    .hidden{display:none!important}
+    .empty-note{padding:14px;border:1px dashed var(--line);border-radius:14px;color:var(--muted);background:#fff}
+    @media (max-width:560px){.info-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.info-card{padding:12px}.info-card .value{font-size:15px}.wide{grid-column:1/-1}}
   </style>
+  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
 </head>
-<body onload="initPage()">
-  <div class="yz-global-nav" data-yz-global-nav><button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button><button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button></div>
-  <div class="wrap">
-    <section class="top">
-      <h1 class="title">租賃契約模板設定</h1>
-      <div class="sub">這裡統一設定租賃契約模板：固定文字、乙方資料、預設設備、預設租金、運費說明、身分證備查區與印章位置。右側兩張 A4 預覽會盡量呈現客人看到的契約樣式。</div>
-      <div class="tabs"><button class="tab active" data-type="piano" onclick="switchType('piano')">電鋼琴</button><button class="tab" data-type="drum" onclick="switchType('drum')">電子鼓</button><button class="tab" data-type="other" onclick="switchType('other')">其他設備</button></div>
-      <div id="msg"></div>
-    </section>
-    <div class="layout">
-      <section class="panel">
-        <h2 id="editorTitle">電鋼琴設備租賃契約</h2>
-        <div class="muted-box">下方資料是正式契約模板的預設值。單筆租賃案仍可依客人狀況微調，但契約版型、租金運費預設、設備預設與固定說明都從這裡統一管理。</div>
-        <div class="row2"><div class="field"><label>合約標題</label><input id="title" oninput="renderPreview()"></div><div class="field"><label>一期天數</label><input id="periodDays" type="number" oninput="renderPreview()"></div></div>
-        <div class="row2"><div class="field"><label>乙方公司名稱</label><input id="companyName" oninput="renderPreview()"></div><div class="field"><label>負責人</label><input id="ownerName" oninput="renderPreview()"></div></div>
-        <div class="row2"><div class="field"><label>乙方電話</label><input id="companyPhone" oninput="renderPreview()"></div><div class="field"><label>統一編號</label><input id="taxId" oninput="renderPreview()"></div></div>
-        <div class="field"><label>乙方地址</label><input id="companyAddress" oninput="renderPreview()"></div>
-        <div class="field"><label>乙方提供設備預設項目，一行一項（設備名稱 / 備註）</label><textarea id="equipmentList" oninput="renderPreview()"></textarea></div>
-        <div class="field"><label>契約條款，一行一條</label><textarea id="clauses" oninput="renderPreview()"></textarea></div>
-        <div class="row3"><div class="field"><label>預設租金（可由單筆租賃覆蓋）</label><input id="sampleRent" type="number" oninput="renderPreview()"></div><div class="field"><label>預設運費（可由單筆租賃覆蓋）</label><input id="sampleShipping" type="number" oninput="renderPreview()"></div><div class="field"><label>預設押金（可由單筆租賃覆蓋）</label><input id="sampleDeposit" type="number" oninput="renderPreview()"></div></div>
-        <div class="field"><label>運費 / 搬運說明（會套用到申請表提示與契約說明）</label><textarea id="shippingRules" oninput="renderPreview()"></textarea></div>
-        <div class="field"><label>租用流程固定說明</label><textarea id="rentalRules" oninput="renderPreview()"></textarea></div>
-        <div class="field"><label>LINE 聯繫說明</label><textarea id="lineBindText" oninput="renderPreview()"></textarea></div>
-        <div class="row2"><div class="field"><label>A4 模板預覽用起租日</label><input id="sampleStart" type="date" oninput="renderPreview()"></div><div class="field"><label>A4 模板預覽用期數</label><input id="samplePeriods" type="number" min="1" max="10" oninput="renderPreview()"></div></div>
-        <div class="field"><label>頁尾 / 備註文字</label><textarea id="footerNote" oninput="renderPreview()"></textarea></div>
-        <div class="btns"><button class="btn primary" onclick="saveTemplate()">儲存此模板</button><button class="btn secondary" onclick="loadDefault(true)">恢復此類型預設文字</button><button class="btn secondary" onclick="window.print()">列印預覽</button></div>
-      </section>
-      <section class="panel">
-        <div class="print-actions"><h2 style="margin:0 0 4px">A4 合約即時預覽</h2><div class="small">正式章統一使用合約單現有圖片：company_seal_contract_transparent.png / red_stamp_transparent.png。</div></div>
-        <div class="preview-wrap" id="previewWrap"></div>
-      </section>
+<body onload="init()">
+  <div class="yz-global-nav" data-yz-global-nav>
+    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
+    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
+  </div>
+
+  <div class="container">
+    <div class="card">
+      <div class="header" style="margin:0"><h1 class="title">薪資與投保資訊</h1><div class="welcome">歡迎 <span data-user-name></span></div></div>
+      <div id="pageMsg" class="message"></div>
+    </div>
+
+    <div class="card">
+      <div class="section-title">查看資訊</div>
+      <div id="salaryContent"></div>
     </div>
   </div>
-  <script src="config.js?v=rental-template-formal-20260611"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script><script src="firebase-client.js?v=rental-template-formal-20260611"></script><script src="app.js?v=rental-template-formal-20260611"></script><script src="global-nav.js?v=20260603unified1"></script>
+
+  <script src="config.js?v=20260527salarydisplayfinal"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="firebase-client.js?v=20260527salarydisplayfinal"></script>
+  <script src="app.js?v=20260527salarydisplayfinal"></script>
   <script>
-    let db=null,current='piano';
-    const defaults={
-      piano:{title:'電鋼琴設備租賃契約書',periodDays:90,companyName:'尚品樂器行',ownerName:'黃銘廷',companyAddress:'台中市豐原區圓環東路347號4樓',companyPhone:'04-25227893',taxId:'99680937',equipmentList:'電鋼琴主機\n譜架\n原廠腳架\n電鋼琴電源線\n電鋼琴椅子',clauses:'退租需提早告知，未告知超過 3 天視同原簽約方案續約。\n租約使用開始後，提早退租，全數不退款。\n運費為一次性收費，續約租用不再次收費。\n因設備老舊或線材磨損造成損壞由乙方吸收；但因人為破壞，例如琴架斷裂、鍵盤進入液體、椅腳斷裂或惡意破壞，須依原廠認定賠償。\n續租方式為線上續租、轉帳付款，請保留相關截圖。\n如雙方發生有關事項之爭議或訴訟，雙方以臺中地方法院為第一審管轄法院。\n本契約壹式貳份，雙方各執乙份為憑。',sampleRent:'',sampleShipping:'',sampleDeposit:'',shippingRules:'自載免運費，不含搬運（需要休旅車）。山區或特殊地點需加價。透天 3 樓 +200 元，4 樓～5 樓 +400 元。',rentalRules:'客人先送出租用基本資料，店家確認設備、金額與日期後，再提供正式填寫 / 簽署連結。正式租用須完成 LINE 聯繫、身分證資料與付款確認後成立。',lineBindText:'送出租賃申請後，請加入柚子樂器官方 LINE 並貼上系統產生的租賃申請文字，以利店家快速對應申請資料。',sampleStart:'',samplePeriods:1,footerNote:''},
-      drum:{title:'電子鼓器材設備租賃契約書',periodDays:90,companyName:'尚品樂器行',ownerName:'黃銘廷',companyAddress:'台中市豐原區圓環東路347號4樓',companyPhone:'04-25227893',taxId:'99680937',equipmentList:'大鼓感應 X1\n小鼓 X1\nHIHAT X1\nHIHAT 腳踏 X1\nTOM1 X1\nTOM2 X1\n落地鼓 X1\n鈸片 1 X1\n鈸片 2 X1\n操作主機 X1\n電子鼓支架 X1\n連接線 X1\n鼓鎖 X1\n音箱 X1\n音箱導線 X1',clauses:'退租需提早告知，未告知超過 3 天視同原簽約方案續約。\n租約使用開始後，提早退租，全數不退款。\n因設備老舊或線材磨損造成損壞由乙方吸收；但因人為破壞，例如鼓架斷裂、打點網割傷或惡意破壞，須依原廠認定賠償。\n如雙方發生有關事項之爭議或訴訟，雙方以臺中地方法院為第一審管轄法院。\n本契約壹式貳份，雙方各執乙份為憑。',sampleRent:'',sampleShipping:'',sampleDeposit:'',shippingRules:'自載免運費，不含搬運（需要休旅車）。山區或特殊地點需加價。透天 3 樓 +200 元，4 樓～5 樓 +400 元。',rentalRules:'客人先送出租用基本資料，店家確認設備、金額與日期後，再提供正式填寫 / 簽署連結。正式租用須完成 LINE 聯繫、身分證資料與付款確認後成立。',lineBindText:'送出租賃申請後，請加入柚子樂器官方 LINE 並貼上系統產生的租賃申請文字，以利店家快速對應申請資料。',sampleStart:'',samplePeriods:1,footerNote:''},
-      other:{title:'設備租賃契約書',periodDays:90,companyName:'尚品樂器行',ownerName:'黃銘廷',companyAddress:'台中市豐原區圓環東路347號4樓',companyPhone:'04-25227893',taxId:'99680937',equipmentList:'',clauses:'租約使用開始後，全數不退款。\n因設備老舊或線材磨損造成損壞由乙方吸收；但因人為破壞須依原廠認定賠償。\n如雙方發生有關事項之爭議或訴訟，雙方以臺中地方法院為第一審管轄法院。\n本契約壹式貳份，雙方各執乙份為憑。',sampleRent:'',sampleShipping:'',sampleDeposit:'',shippingRules:'自載免運費，不含搬運（需要休旅車）。山區或特殊地點需加價。透天 3 樓 +200 元，4 樓～5 樓 +400 元。',rentalRules:'客人先送出租用基本資料，店家確認設備、金額與日期後，再提供正式填寫 / 簽署連結。正式租用須完成 LINE 聯繫、身分證資料與付款確認後成立。',lineBindText:'送出租賃申請後，請加入柚子樂器官方 LINE 並貼上系統產生的租賃申請文字，以利店家快速對應申請資料。',sampleStart:'',samplePeriods:1,footerNote:''}
-    };
-    const ids=['title','periodDays','companyName','ownerName','companyAddress','companyPhone','taxId','equipmentList','clauses','sampleRent','sampleShipping','sampleDeposit','shippingRules','rentalRules','lineBindText','sampleStart','samplePeriods','footerNote'];
-    function val(id){return document.getElementById(id).value||''} function set(id,v){document.getElementById(id).value=v==null?'':v}
-    function esc(s){return String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
-    function pad(n){return String(n).padStart(2,'0')} function ymd(d){if(!(d instanceof Date)) d=new Date(d); if(isNaN(d)) return ''; return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())}
-    function addDays(dateText,days){if(!dateText) return ''; const d=new Date(dateText+'T00:00:00'); if(isNaN(d)) return ''; d.setDate(d.getDate()+Number(days||0)); return ymd(d)}
-    function toRocDate(dateText){if(!dateText) return '中華民國　　　年　　月　　日'; const d=new Date(dateText+'T00:00:00'); if(isNaN(d)) return dateText; return '中華民國 '+(d.getFullYear()-1911)+' 年 '+(d.getMonth()+1)+' 月 '+d.getDate()+' 日'}
-    function periodRows(start,periods,periodDays,isOther){let rows=''; if(isOther){rows+=`<tr><td>其他設備租用</td><td>${start?esc(start):''}</td><td></td><td></td><td>依雙方確認之租用期間為準</td></tr>`; for(let i=1;i<14;i++){rows+=`<tr><td></td><td>　年　月　日</td><td>　年　月　日</td><td></td><td></td></tr>`;} return rows;} const p=Math.max(1,Math.min(10,Number(periods||1))); const days=Math.max(1,Number(periodDays||90)); if(start){const end=addDays(start,p*days-1); rows+=`<tr><td>實體租用</td><td>${esc(start)}</td><td>${esc(end)}</td><td>${esc(p*days)}</td><td>${p>1?'一次確認 '+p+' 期，每期 '+days+' 天':''}</td></tr>`;} for(let i=rows?1:0;i<14;i++){rows+=`<tr><td></td><td>　年　月　日</td><td>　年　月　日</td><td></td><td></td></tr>`;} return rows;}
-    function getData(){const o={};ids.forEach(id=>o[id]=val(id));return o}
-    function apply(d){ids.forEach(id=>set(id,d[id]??'')); renderPreview()}
-    function switchType(t){current=t; document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.type===t)); document.getElementById('editorTitle').textContent={piano:'電鋼琴設備租賃契約',drum:'電子鼓器材設備租賃契約',other:'其他設備租賃契約'}[t]||'設備租賃契約'; loadTemplate()}
-    function show(m,ok){const el=document.getElementById('msg'); el.innerHTML='<div class="msg '+(ok?'ok':'bad')+'">'+esc(m)+'</div>'}
-    async function initPage(){try{ if(window.APP_CONFIG&&firebase&&!firebase.apps.length) firebase.initializeApp(window.APP_CONFIG.FIREBASE_CONFIG); db=firebase.firestore(); }catch(e){} await loadTemplate();}
-    async function loadTemplate(){try{let d=null; if(db){const doc=await db.collection('rentalTemplateSettings').doc(current).get(); if(doc.exists) d=doc.data()} apply(Object.assign({}, defaults[current], d||{}));}catch(e){apply(defaults[current])}}
-    function loadDefault(){apply(defaults[current]); show('已載入此類型預設正式模板，尚未儲存。',true)}
-    async function saveTemplate(){try{const data=getData(); data.updatedAt=firebase.firestore.FieldValue.serverTimestamp(); data.type=current; if(!db) db=firebase.firestore(); await db.collection('rentalTemplateSettings').doc(current).set(data,{merge:true}); show('已儲存此合約模板。',true)}catch(e){show(e.message||String(e),false)}}
-    function renderPreview(){const d=getData(); const isOther=current==='other'; const typeLabel=current==='piano'?'電鋼琴':current==='drum'?'電子鼓':'設備'; const periodDays=Number(d.periodDays||90); const periods=Math.max(1,Math.min(10,Number(d.samplePeriods||1))); const start=d.sampleStart||''; const end=start?addDays(start,periods*periodDays-1):''; const equipment=(d.equipmentList||'').split(/\n+/).filter(Boolean).map(x=>'<span>□ '+esc(x)+'</span>').join('　') || '依實際租賃設備清單填寫'; const clauses=(d.clauses||'').split(/\n+/).filter(Boolean).map((x,i)=>'<div class="clause">'+toZhNo(i+1)+'、'+esc(x)+'</div>').join(''); document.getElementById('previewWrap').innerHTML=`
-      <section class="paper"><h1>${esc(d.title)}</h1><div class="contract-line">立契約書人：<u>　　　　　　　　　</u>（以下簡稱甲方）</div><div class="contract-line">立契約書人：<u>${esc(d.companyName)}</u>（以下簡稱乙方）</div><div class="contract-line">甲方向乙方租賃${typeLabel}設備，簽訂契約條款如下：</div><div class="clause">一、租賃設備：依下列「乙方提供設備」及單筆租賃資料確認內容為準。</div><div class="clause">二、租賃期間：${isOther?'依雙方確認之租用期間為準。':'詳如第二頁「租賃期間明細表」。一期固定 '+esc(periodDays)+' 天。'}</div><div class="clause">三、租賃費用：租金 <u>${esc(d.sampleRent)||'　　　　'}</u> 元，押金 <u>${esc(d.sampleDeposit)||'　　　　'}</u> 元，運費 <u>${esc(d.sampleShipping)||'　　　　'}</u> 元；單筆租賃如有調整，以店家確認資料為準。</div><div class="section-title">乙方提供設備包括：</div><div class="clause">${equipment}</div>${d.shippingRules?`<div class="clause"><b>運費 / 搬運說明：</b>${esc(d.shippingRules)}</div>`:""}${d.rentalRules?`<div class="clause"><b>租用流程說明：</b>${esc(d.rentalRules)}</div>`:""}${clauses}<div class="party-grid"><div><b>甲方</b><br>姓名 / 公司：＿＿＿＿＿＿＿＿<br>身分證字號 / 統編：＿＿＿＿＿＿＿＿<br>地址：＿＿＿＿＿＿＿＿＿＿＿＿＿＿<br>電話：＿＿＿＿＿＿＿＿<br>簽名：＿＿＿＿＿＿＿＿</div><div><b>乙方</b><br>公司名稱：${esc(d.companyName)}<br>負責人：${esc(d.ownerName)}<br>地址：${esc(d.companyAddress)}<br>電話：${esc(d.companyPhone)}<br>統一編號：${esc(d.taxId)}<div class="stamp-area"><img class="company-seal" src="company_seal_contract_transparent.png" onerror="this.style.display='none'"><img class="owner-seal" src="red_stamp_transparent.png" onerror="this.style.display='none'"></div></div></div>${d.footerNote?`<div class="formal-note">${esc(d.footerNote)}</div>`:""}<div class="page-no">第 1 頁 / 共 2 頁</div></section>
-      <section class="paper"><h1>租賃期間明細表</h1><div class="contract-line">契約名稱：${esc(d.title)}</div><div class="contract-line">${isOther?'租用期間：依雙方確認之租用期間為準':'起租日：'+(start?esc(toRocDate(start)):'中華民國　　　年　　月　　日')+'　預覽天數：'+esc(periods*periodDays)+' 天　一期：'+esc(periodDays)+' 天'}</div><table class="time-table"><thead><tr><th style="width:120px">租用方式</th><th>起租日</th><th>到期日</th><th style="width:80px">天數</th><th>備註</th></tr></thead><tbody>${periodRows(start,periods,periodDays,isOther)}</tbody></table><div style="display:grid;grid-template-columns:1.2fr .8fr;gap:18px;margin-top:22px;align-items:end"><div style="border:1px solid #94a3b8;border-radius:12px;padding:10px;min-height:105px"><b>身分證資料備查</b><br>身分證字號 / 統編：＿＿＿＿＿＿＿＿<br><div style="margin-top:8px;border:1px dashed #cbd5e1;border-radius:8px;height:66px;display:flex;align-items:center;justify-content:center;color:#64748b;font-size:13px">此處顯示客戶上傳之身分證證明圖片<br>限柚子樂器設備租用使用</div></div><div style="border:1px solid #94a3b8;border-radius:12px;padding:10px;min-height:105px"><b>乙方備查章</b><div class="stamp-area"><img class="company-seal" src="company_seal_contract_transparent.png" onerror="this.style.display='none'"><img class="owner-seal" src="red_stamp_transparent.png" onerror="this.style.display='none'"></div></div></div><div class="contract-line" style="text-align:center;margin-top:18px">簽署日期：${start?esc(toRocDate(start)):'中華民國　　　年　　月　　日'}</div><div class="page-no">第 2 頁 / 共 2 頁</div></section>`}
-    function toZhNo(n){return ['','一','二','三','四','五','六','七','八','九','十','十一','十二','十三','十四','十五'][n]||n}
+    function cleanText(v){ return String(v == null ? '' : v).trim(); }
+    function hasDisplayValue(v){
+      const s = cleanText(v);
+      return !!s && s !== '-' && s !== '未設定' && s !== '無' && s !== '0 元' && s !== '$0' && s !== '$0 / 小時';
+    }
+    function escapeHtml(value){
+      return String(value == null ? '' : value)
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    }
+    async function waitSalaryApi(timeout){
+      const start = Date.now();
+      while(!window.YZFirebase || typeof window.YZFirebase.handleApi !== 'function'){
+        if(Date.now() - start > (timeout || 6000)) throw new Error('Firebase 尚未啟用，無法讀取薪資投保資訊');
+        await new Promise(resolve => setTimeout(resolve, 120));
+      }
+      return window.YZFirebase;
+    }
+    async function callSalaryApi(payload){
+      const api = await waitSalaryApi();
+      const res = await api.handleApi('getMySalaryInfo', payload || {});
+      if(!res || res.ok === false) throw new Error((res && res.message) || '讀取失敗');
+      return res;
+    }
+    function item(label, value, wide){
+      if(!hasDisplayValue(value)) return '';
+      return '<div class="info-card' + (wide ? ' wide' : '') + '"><div class="label">' + escapeHtml(label) + '</div><div class="value">' + escapeHtml(value) + '</div></div>';
+    }
+    function section(title, rows){
+      const body = rows.filter(Boolean).join('');
+      if(!body) return '';
+      return '<div class="salary-section"><div class="section-title-row"><h2>' + escapeHtml(title) + '</h2></div><div class="info-grid">' + body + '</div></div>';
+    }
+    function renderSalary(info){
+      const isParttime = info.identityType === 'parttime';
+      const salaryRows = isParttime ? [
+        item('時薪', info.parttimeHourlyRateText || info.mainAmountText),
+        item('是否部分工時', info.parttimePartialHoursText),
+        item('目前申報月平均薪資總額', info.parttimeAverageSalaryText),
+        item('職務加給', info.jobAllowanceText, true),
+        item('津貼', info.allowanceText, true),
+        item('薪資生效日', info.effectiveDate),
+        item('薪資備註', info.note, true)
+      ] : [
+        item('本薪', info.staffBaseSalaryText || info.mainAmountText),
+        item('職務加給', info.jobAllowanceText, true),
+        item('津貼', info.allowanceText, true),
+        item('薪資生效日', info.effectiveDate),
+        item('薪資備註', info.note, true)
+      ];
+      const laborRows = [
+        item('勞保狀態', info.laborStatus),
+        item('勞保級距', info.laborPlanText || info.laborLevelText || info.laborSalaryText),
+        item('勞保自付額', info.laborSelfPayText),
+        item('雇主提撥勞退 6%', info.retirementEmployerText),
+        item('勞退自提', info.selfRetirementText)
+      ];
+      const healthRows = [
+        item('健保狀態', info.healthStatus),
+        item('健保級距', info.healthPlanText || info.healthLevelText || info.healthSalaryText),
+        item('健保自付額', info.healthSelfPayText)
+      ];
+      const html = [
+        section('薪資資訊', salaryRows),
+        section('勞保／勞退資訊', laborRows),
+        section('健保資訊', healthRows)
+      ].filter(Boolean).join('');
+      qs('#salaryContent').innerHTML = html || '<div class="empty-note">目前尚未設定可顯示的薪資與投保資料。</div>';
+    }
+    async function loadSalaryInfo(){
+      const user = requireLogin();
+      if(!user) return;
+      setMsg(qs('#pageMsg'), '');
+      qs('#salaryContent').innerHTML = '<div class="empty-note">讀取薪資與投保資訊中...</div>';
+      try{
+        const res = await callSalaryApi({ action:'getMySalaryInfo', userId:user.id, email:user.email });
+        renderSalary(res.info || {});
+      }catch(err){
+        setMsg(qs('#pageMsg'), (err && err.message) ? err.message : String(err), true);
+        qs('#salaryContent').innerHTML = '<div class="empty-note">讀取失敗，請稍後再試。</div>';
+      }
+    }
+    async function init(){
+      fillHeader();
+      const user = requireLogin();
+      if(!user) return;
+      await loadSalaryInfo();
+    }
   </script>
+  <script src="global-nav.js?v=20260603unified1"></script>
 </body>
 </html>
