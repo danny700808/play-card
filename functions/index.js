@@ -4,9 +4,12 @@ const { onSchedule } = require('firebase-functions/v2/scheduler');
 const nodemailer = require('nodemailer');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
+const { registerExternalTeacherOnboarding, handleExternalTeacherLineEvent } = require('./externalTeacherOnboarding');
 
 if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
+
+registerExternalTeacherOnboarding(exports);
 
 const ADMIN_EMAILS = new Set(['danny700808@gmail.com']);
 const DEFAULT_ADMIN_DOC_ID = 'ADMIN_DANNY';
@@ -1674,6 +1677,10 @@ exports.lineWebhook = onRequest(
         const text = normalizeText(event.message.text);
         const lineUserId = event.source && event.source.userId;
         const replyToken = event.replyToken;
+
+        if (await handleExternalTeacherLineEvent(event)) {
+          continue;
+        }
 
         const rentalCommand = parseRentalApplicationCommand(text);
         const employeeMatch = text.match(/^柚子員工綁定\s+([^\s]+@[^\s]+)$/i);

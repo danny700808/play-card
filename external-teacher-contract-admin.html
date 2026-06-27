@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>外聘老師契約條文管理</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    body{font-family:-apple-system,BlinkMacSystemFont,"Noto Sans TC","Microsoft JhengHei",sans-serif;background:#f7f4ed;margin:0;color:#2c2924}.wrap{max-width:1100px;margin:0 auto;padding:22px}.card{background:white;border-radius:18px;padding:18px;margin:14px 0;box-shadow:0 6px 22px rgba(0,0,0,.08)}input,textarea{width:100%;box-sizing:border-box;border:1px solid #d7d0c3;border-radius:10px;padding:11px;font-size:15px}textarea{min-height:150px;line-height:1.6}label{font-weight:800;display:block;margin:10px 0 5px}.row{display:grid;grid-template-columns:80px 120px 1fr 90px;gap:10px;align-items:end}.btn{border:0;border-radius:12px;padding:11px 14px;margin:8px 8px 0 0;font-weight:900;cursor:pointer}.primary{background:#5f7f62;color:white}.secondary{background:#e8dfd0}.danger{background:#b85f5f;color:white}@media(max-width:720px){.row{grid-template-columns:1fr}}
+  </style>
+  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
+</head>
+<body>
+  <div class="yz-global-nav" data-yz-global-nav><button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button><button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button></div>
+  <div class="wrap"><h1>外聘老師契約條文管理</h1><p>每一條可以單獨修改。已簽合約會保存快照，之後修改不會影響舊合約。</p><div class="card"><label>契約名稱</label><input id="title" value="外聘才藝教師委任契約書"><label>版本</label><input id="version" value="2026-01"><button class="btn secondary" onclick="load()">重新載入</button><button class="btn primary" onclick="save()">儲存條文</button><button class="btn secondary" onclick="addClause()">新增條文</button></div><div id="list"></div></div>
+  <script src="config.js?v=external-teacher-20260627"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
+  <script src="firebase-client.js?v=external-teacher-20260627"></script>
+  <script>
+    let templateId='', clauses=[]; function user(){try{return JSON.parse(localStorage.getItem('employeeUser')||'null')||{}}catch(e){return{}}} function userId(){const u=user();return u.id||u.userId||u.employeeId||localStorage.getItem('employeeUserId')||''}
+    function ensureFirebaseApp(){ if(firebase.apps&&firebase.apps.length)return firebase.apps[0]; return firebase.initializeApp(window.APP_CONFIG.FIREBASE_CONFIG); } function fn(name){ensureFirebaseApp();return firebase.app().functions('us-central1').httpsCallable(name)}
+    async function load(){try{const res=(await fn('externalTeacherListContractTemplate')({userId:userId()})).data;templateId=res.template.id;document.getElementById('title').value=res.template.title||'外聘才藝教師委任契約書';document.getElementById('version').value=res.template.version||'2026-01';clauses=(res.clauses||[]).map(c=>({id:c.id,articleNo:c.articleNo||'',title:c.title||'',content:c.content||'',sortOrder:c.sortOrder||1,enabled:c.enabled!==false}));render()}catch(e){alert(e.message||e)}}
+    function render(){const list=document.getElementById('list');list.innerHTML='';clauses.forEach((c,i)=>{const div=document.createElement('div');div.className='card';div.innerHTML=`<div class="row"><div><label>排序</label><input value="${esc(c.sortOrder)}" onchange="clauses[${i}].sortOrder=Number(this.value||0)"></div><div><label>條號</label><input value="${esc(c.articleNo)}" onchange="clauses[${i}].articleNo=this.value"></div><div><label>標題</label><input value="${esc(c.title)}" onchange="clauses[${i}].title=this.value"></div><div><label>啟用</label><input value="${c.enabled?'是':'否'}" onchange="clauses[${i}].enabled=this.value!=='否'"></div></div><label>內容</label><textarea onchange="clauses[${i}].content=this.value">${esc(c.content)}</textarea><button class="btn secondary" onclick="move(${i},-1)">上移</button><button class="btn secondary" onclick="move(${i},1)">下移</button><button class="btn danger" onclick="removeClause(${i})">刪除</button>`;list.appendChild(div)})}
+    function addClause(){clauses.push({id:'',articleNo:'',title:'',content:'',sortOrder:clauses.length+1,enabled:true});render()} function removeClause(i){if(confirm('確定刪除？')){clauses.splice(i,1);render()}} function move(i,dir){const j=i+dir;if(j<0||j>=clauses.length)return;[clauses[i],clauses[j]]=[clauses[j],clauses[i]];clauses.forEach((c,k)=>c.sortOrder=k+1);render()}
+    async function save(){try{clauses.forEach((c,i)=>c.sortOrder=i+1);await fn('externalTeacherSaveContractTemplate')({userId:userId(),templateId:templateId||'external_teacher_mandate_2026_01',title:document.getElementById('title').value,version:document.getElementById('version').value,clauses});alert('已儲存外聘老師契約條文')}catch(e){alert(e.message||e)}}
+    function esc(v){return String(v??'').replace(/[&<>"']/g,s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]))} load();
+  </script>
+  <script src="global-nav.js?v=20260603unified1"></script>
+</body>
+</html>

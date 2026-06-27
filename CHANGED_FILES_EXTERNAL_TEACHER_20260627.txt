@@ -1,0 +1,15 @@
+新增：
+external-teacher-onboarding.html
+external-teacher-payroll.html
+external-teacher-contract-admin.html
+functions/externalTeacherOnboarding.js
+storage.rules
+外聘老師_Firebase整合說明_20260627.md
+CHANGED_FILES_EXTERNAL_TEACHER_20260627.txt
+
+修改：
+functions/index.js
+teacher-home.html
+teacher-hub.html
+firestore.rules
+firebase.json

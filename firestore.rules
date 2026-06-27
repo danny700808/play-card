@@ -85,7 +85,13 @@ service cloud.firestore {
         'officialWebsiteProducts',
         'easystoreProducts',
         'websiteGoods',
-        'products'
+        'products',
+
+        // 外聘老師 Firebase 新流程
+        'externalTeacherLineBindings',
+        'externalTeacherContractTemplates',
+        'externalTeacherContracts',
+        'externalTeacherFiles'
       ];
     }
 
