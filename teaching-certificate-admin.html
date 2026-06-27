@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>教學證明設定</title>
+  <link rel="stylesheet" href="style.css?v=certificates-20260530">
+  <style>
+    body{background:#f5f7fb}.cert-admin-wrap{max-width:1500px;margin:0 auto;padding:18px}.page-card{background:#fff;border:1px solid #e2e8f0;border-radius:24px;padding:20px;box-shadow:0 10px 30px rgba(15,23,42,.06)}.layout{display:grid;grid-template-columns:minmax(330px,430px) minmax(0,1fr);gap:16px;align-items:start}.subcard{background:#fff;border:1px solid #e2e8f0;border-radius:20px;padding:18px;box-shadow:0 8px 24px rgba(15,23,42,.04)}.field{margin-bottom:12px}.field label{display:block;font-weight:900;color:#17324d;margin-bottom:6px}.field input,.field select,.field textarea{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:12px;padding:10px 12px;font-size:15px;background:#fff}.field textarea{resize:vertical;line-height:1.6}.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}.mini-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.mini-actions .btn{width:auto}.muted-tip{font-size:13px;color:#64748b;line-height:1.8}.preview-shell{background:#f7fafc;border:1px solid #e2e8f0;border-radius:20px;padding:14px;position:sticky;top:16px;overflow:auto}.preview-toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}.history-list{display:grid;gap:8px;margin-top:10px}.history-item{border:1px solid #e2e8f0;border-radius:14px;padding:10px;background:#fbfdff;display:flex;justify-content:space-between;gap:10px;align-items:center}.history-meta{font-size:13px;color:#64748b;line-height:1.7}.message{margin-top:10px;color:#1f7a5a;font-weight:800;font-size:13px}.warning-box{border:1px solid #fed7aa;background:#fff7ed;color:#9a3412;border-radius:14px;padding:12px;font-size:13px;line-height:1.8;margin-bottom:12px}@media(max-width:1120px){.layout{grid-template-columns:1fr}.preview-shell{position:static}}@media(max-width:640px){.row2{grid-template-columns:1fr}.mini-actions .btn{width:100%}}
+  </style>
+  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
+</head>
+<body onload="initPage()" class="admin-wide-page">
+  <div class="yz-global-nav" data-yz-global-nav>
+    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
+    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
+  </div>
+
+  <div class="cert-admin-wrap">
+    <div class="page-card">
+      <div class="topbar">
+        <div><h1 class="title" style="margin:0">教學證明設定</h1><div class="muted-tip">左邊設定範本，右邊即時預覽。這裡只管理表格版型與預設文字；主管填寫與歷史紀錄請回上一層。</div></div>
+      </div>
+      <div class="layout">
+        <div>
+          <div class="subcard">
+            <h2 style="margin-top:0;color:#17324d">範本設定</h2>
+            <div class="field"><label>文件標題</label><input id="title"></div>
+            <div class="field"><label>預設開立單位</label><select id="defaultUnitKey"><option value="shangpin">尚品樂器行</option><option value="kaili">台中市私立凱立音樂短期補習班</option></select></div>
+            <div class="warning-box">教學證明預設使用「台中市私立凱立音樂短期補習班」，授課地點固定為台中市豐原區圓環東路347號。</div>
+            <div class="field"><label>開頭文案</label><textarea id="introText" rows="4"></textarea></div>
+            <div class="field"><label>補充文字</label><textarea id="footerText" rows="3"></textarea></div>
+            <div class="row2"><div class="field"><label>結尾文字</label><input id="closingText"></div><div class="field"><label>顯示柚子樂器 Logo</label><select id="showBrandLogo"><option value="true">顯示</option><option value="false">不顯示</option></select></div></div>
+            <div class="row2"><div class="field"><label>未核准浮水印</label><input id="watermarkPending"></div><div class="field"><label>退回浮水印</label><input id="watermarkRejected"></div></div>
+            <div class="mini-actions"><button class="btn" type="button" onclick="renderPreview()">預覽</button><button class="btn" type="button" onclick="saveTemplate()">儲存範本</button></div>
+            <div id="msg" class="message"></div>
+          </div>
+        </div>
+        <div class="preview-shell">
+          <div class="preview-toolbar"><div><div style="font-size:18px;font-weight:900;color:#17324d">A4 預覽</div><div class="muted-tip">A4 預覽採獨立隔離顯示，避免受到全站表格樣式影響。</div></div></div>
+          <div id="previewArea" class="cert-scale-wrap"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="config.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="firebase-client.js?v=certificates-20260530"></script>
+  <script src="app.js?v=certificates-20260530"></script>
+  <script src="certificate-common.js?v=cert-preview-iframe-fix-20260530"></script>
+  <script>
+    const CERT_TYPE='teaching';
+    let currentTemplate=null;
+    function msg(text, ok=true){ const el=document.getElementById('msg'); el.textContent=text||''; el.style.color=ok?'#1f7a5a':'#b42318'; }
+    function readTemplate(){
+      return {
+        certificateType:CERT_TYPE,
+        title:document.getElementById('title').value.trim(),
+        defaultUnitKey:document.getElementById('defaultUnitKey').value,
+        introText:document.getElementById('introText').value.trim(),
+        footerText:document.getElementById('footerText').value.trim(),
+        closingText:document.getElementById('closingText').value.trim(),
+        showBrandLogo:document.getElementById('showBrandLogo').value==='true',
+        watermarkPending:document.getElementById('watermarkPending').value.trim(),
+        watermarkRejected:document.getElementById('watermarkRejected').value.trim()
+      };
+    }
+    function applyTemplate(t){
+      currentTemplate=YZ_CERT.normalizeTemplate(CERT_TYPE,t||{});
+      ['title','defaultUnitKey','introText','footerText','closingText','watermarkPending','watermarkRejected'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=currentTemplate[id]||''; });
+      document.getElementById('showBrandLogo').value = currentTemplate.showBrandLogo===false?'false':'true';
+      renderPreview();
+    }
+    function sampleData(){
+      if(CERT_TYPE==='teaching') return {type:'teaching',name:'王小明',idNumber:'A123456789',teacherIdentity:'外聘老師',subject:'鋼琴',periodStart:'2024-08-01',periodEnd:'',stillTeaching:true,lessonType:'個別課',location:'台中市豐原區圓環東路347號',unitKey:document.getElementById('defaultUnitKey').value||'kaili',issueDate:YZ_CERT.today()};
+      return {type:'employment',name:'王小明',idNumber:'A123456789',jobTitle:'專職老師',workNature:'教學',hireDate:'2024-08-01',stillWorking:true,unitKey:document.getElementById('defaultUnitKey').value||'shangpin',issueDate:YZ_CERT.today()};
+    }
+    function renderPreview(){
+      const t=readTemplate();
+      YZ_CERT.renderPreviewFrame(document.getElementById('previewArea'), {type:CERT_TYPE,template:t,data:sampleData(),status:'待主管審核',mode:'editing'});
+    }
+    async function loadTemplate(){
+      try{ const r=await api('getCertificateTemplate',{certificateType:CERT_TYPE}); applyTemplate(r.template||r.row||{}); }catch(e){ applyTemplate(YZ_CERT.defaultTemplate(CERT_TYPE)); msg('目前使用預設範本。',true); }
+    }
+    async function saveTemplate(){
+      try{ const user=getUser()||{}; const template=readTemplate(); const r=await api('saveCertificateTemplate',{userId:user.id,certificateType:CERT_TYPE,template}); if(!r.ok) throw new Error(r.message||'儲存失敗'); msg('範本已儲存。'); await loadHistory(); }catch(e){ msg('儲存失敗：'+e.message,false); }
+    }
+    async function loadHistory(){
+      const box=document.getElementById('historyList'); box.innerHTML='<div class="muted-tip">讀取中...</div>';
+      try{ const r=await api('getCertificateTemplateHistory',{certificateType:CERT_TYPE}); const rows=r.rows||[]; if(!rows.length){ box.innerHTML='<div class="muted-tip">目前沒有歷史範本。</div>'; return; }
+        box.innerHTML=rows.map(row=>`<div class="history-item"><div><strong>${YZ_CERT.esc(row.title||'教學證明設定')}</strong><div class="history-meta">${YZ_CERT.esc(row.createdAtText||row.updatedAtText||row.historyId||'')}</div></div><div class="mini-actions" style="margin:0"><button class="btn secondary" type="button" onclick="applyHistory('${YZ_CERT.esc(row.historyId||row.__id)}')">套用</button><button class="btn secondary" type="button" onclick="deleteHistory('${YZ_CERT.esc(row.historyId||row.__id)}')">刪除</button></div></div>`).join('');
+        window.__historyRows=rows;
+      }catch(e){ box.innerHTML='<div class="muted-tip">歷史紀錄讀取失敗。</div>'; }
+    }
+    function applyHistory(id){ const row=(window.__historyRows||[]).find(x=>(x.historyId||x.__id)===id); if(row){ applyTemplate(row.template||row); msg('已套用歷史範本，尚未儲存。'); } }
+    async function deleteHistory(id){ if(!confirm('確定刪除這筆歷史範本？')) return; try{ const r=await api('deleteCertificateTemplateHistory',{certificateType:CERT_TYPE,historyId:id}); if(!r.ok) throw new Error(r.message||'刪除失敗'); await loadHistory(); }catch(e){ alert(e.message); } }
+    async function initPage(){
+      fillHeader(); const user=requireLogin(); if(!user) return; if(!hasSettingsZoneAccess(user)){location.href='dashboard.html';return;} setPortalMode('settings'); YZ_CERT.injectCertificateStyles();
+      ['title','defaultUnitKey','introText','footerText','closingText','showBrandLogo','watermarkPending','watermarkRejected'].forEach(id=>{const el=document.getElementById(id); if(el) el.addEventListener('input',renderPreview); if(el) el.addEventListener('change',renderPreview);});
+      await loadTemplate(); await loadHistory();
+    }
+  </script>
+  <script src="global-nav.js?v=20260603unified1"></script>
+</body>
+</html>

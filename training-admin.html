@@ -1,0 +1,370 @@
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>教育訓練設定</title><link rel="stylesheet" href="style.css?v=admin-final-20260530b"><style>
+:root{
+  --bg:#f4f7fb;--card:#fff;--text:#182230;--muted:#667085;--line:#e4e7ec;
+  --main:#1f7a5a;--main-soft:#e8f5ef;--warn:#b42318;--blue:#175cd3;
+  --shadow:0 10px 24px rgba(16,24,40,.08);--radius:18px
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC",Arial,sans-serif;background:var(--bg);color:var(--text);line-height:1.55}
+header{position:sticky;top:0;z-index:20;background:rgba(244,247,251,.94);backdrop-filter:blur(12px);border-bottom:1px solid var(--line);padding:14px}
+h1{font-size:21px;font-weight:850;margin:0}.sub{font-size:13px;color:var(--muted);margin:5px 0 0}
+main{max-width:920px;margin:0 auto;padding:12px 12px 34px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px;margin-bottom:12px}
+.section-title{font-size:16px;font-weight:850;margin:2px 0 10px;display:flex;align-items:center;gap:8px}
+.num{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--main);color:#fff;font-size:12px;font-weight:800}
+label{display:block;font-size:13px;font-weight:760;margin:0 0 6px}
+input,select,textarea{width:100%;border:1px solid #d0d5dd;border-radius:13px;background:#fff;padding:11px 12px;font-size:15px;color:#101828;outline:none}
+textarea{min-height:96px;resize:vertical}
+.grid{display:grid;grid-template-columns:1fr;gap:10px}.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.hint{font-size:12.5px;color:var(--muted);margin-top:6px}.note{font-size:13px;color:#475467;background:#f9fafb;border:1px dashed #d0d5dd;border-radius:14px;padding:10px}
+.checkrow{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.check{border:1px solid var(--line);border-radius:13px;padding:10px 11px;display:flex;align-items:center;justify-content:space-between;font-size:13px;background:#fcfcfd}
+.box{width:20px;height:20px;border-radius:6px;background:var(--main);display:grid;place-items:center;color:#fff;font-size:14px;font-weight:900}.box.off{background:#fff;border:1px solid #d0d5dd;color:transparent}
+.actions{position:sticky;bottom:0;background:linear-gradient(180deg,rgba(244,247,251,0),var(--bg) 25%);padding:18px 0 0;display:flex;gap:10px}
+.btn{border:0;border-radius:14px;padding:12px 14px;font-size:15px;font-weight:850;cursor:pointer}.btn.primary{background:var(--main);color:#fff;flex:1}.btn.secondary{background:#fff;border:1px solid var(--line);color:#344054}.btn.small{font-size:13px;padding:8px 10px;border-radius:11px}
+.toolbar{display:flex;gap:8px;overflow:auto;padding:10px 14px 6px;background:var(--bg);border-bottom:1px solid var(--line);position:sticky;top:67px;z-index:15}
+.chip{flex:0 0 auto;border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 11px;font-size:13px;color:#344054;text-decoration:none;white-space:nowrap}
+.hidden{display:none!important}.msg{padding:10px 12px;border-radius:14px;margin-bottom:10px;font-size:13px}.msg.ok{background:#e8f5ef;color:#1f7a5a}.msg.err{background:#fef3f2;color:#b42318}
+@media(min-width:720px){.grid{grid-template-columns:1fr 1fr}.wide{grid-column:1/-1}.checkrow{grid-template-columns:repeat(4,1fr)}.cards-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.card{margin-bottom:0}}
+
+/* 手機直接錄音元件 */
+.audio-recorder{
+  border:1px solid var(--line);
+  background:#fff;
+  border-radius:16px;
+  padding:12px;
+}
+.audio-recorder-title{
+  font-size:13px;
+  font-weight:800;
+  margin-bottom:8px;
+  color:#344054;
+}
+.audio-recorder-controls{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  align-items:center;
+}
+.audio-recorder .rec-btn{
+  border:0;
+  border-radius:999px;
+  padding:10px 13px;
+  font-size:14px;
+  font-weight:850;
+  cursor:pointer;
+}
+.rec-start{background:#b42318;color:#fff}
+.rec-stop{background:#344054;color:#fff}
+.rec-delete{background:#fff;border:1px solid #d0d5dd!important;color:#344054}
+.rec-status{
+  flex:1;
+  min-width:120px;
+  font-size:13px;
+  color:var(--muted);
+}
+.wave{
+  height:42px;
+  border-radius:14px;
+  background:#f2f4f7;
+  border:1px solid #eaecf0;
+  margin-top:10px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:3px;
+  overflow:hidden;
+}
+.wave span{
+  display:block;
+  width:4px;
+  height:8px;
+  border-radius:999px;
+  background:#98a2b3;
+  animation:none;
+}
+.audio-recorder.recording .wave span{
+  background:#b42318;
+  animation:wavePulse 800ms ease-in-out infinite;
+}
+.audio-recorder.recording .wave span:nth-child(2n){animation-delay:120ms}
+.audio-recorder.recording .wave span:nth-child(3n){animation-delay:240ms}
+.audio-recorder.recording .wave span:nth-child(4n){animation-delay:360ms}
+@keyframes wavePulse{
+  0%,100%{height:8px;opacity:.55}
+  50%{height:34px;opacity:1}
+}
+.audio-preview{
+  width:100%;
+  margin-top:10px;
+}
+.audio-hidden{display:none!important}
+
+
+.page-return-wrap{margin-bottom:16px}
+.page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800;background:var(--main,#1f7a5a);color:#fff}
+
+
+.actions .btn.primary{width:100%;flex:1}
+.actions{gap:0}
+
+.upload-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.upload-box{background:#f8fafc;border:1px solid #dbe5f1;border-radius:16px;padding:12px}
+.upload-box label{display:block;font-weight:900;margin-bottom:8px;color:#0f172a}
+.upload-box input{width:100%}
+.upload-tip{margin-top:8px;font-size:12px;color:#64748b}
+.record-panel{display:grid;gap:10px}
+.record-visual{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center}
+.record-dot{width:12px;height:12px;border-radius:999px;background:#94a3b8}
+.record-dot.active{background:#dc2626;box-shadow:0 0 0 6px rgba(220,38,38,.12)}
+.record-bar{height:10px;background:#e2e8f0;border-radius:999px;overflow:hidden}
+.record-bar-fill{width:0%;height:100%;background:#1f7a5a;transition:width .15s}
+.record-time{font-size:13px;font-weight:900;color:#334155}
+.record-actions{display:flex;gap:8px;flex-wrap:wrap}
+.record-preview{display:none}
+.record-preview.show{display:block}
+@media(max-width:720px){.upload-grid{grid-template-columns:1fr}}
+
+</style>  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
+</head><body class="admin-wide-page">
+  <div class="yz-global-nav" data-yz-global-nav>
+    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
+    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
+  </div>
+
+
+<main><div id="msg"></div>
+<div class="card"><div class="section-title"><span class="num">1</span>教材基本資料</div><div class="grid">
+<div><label>教材標題</label><input id="trainingTitle" placeholder="例如：新進員工打卡與請假教學"></div>
+<div><label>分類</label><select id="trainingCategory"><option>新進員工</option><option>打卡 / 工讀</option><option>請假制度</option><option>活動執行</option><option>器材教學</option></select></div>
+<div class="wide"><label>教材說明</label><textarea id="trainingDesc" placeholder="這份教材要讓員工學會什麼？"></textarea></div>
+<div><label>狀態</label><select id="trainingStatus"><option value="active">發布</option><option value="draft">草稿</option><option value="disabled">停用</option></select></div>
+<div><label>重要程度</label><select id="trainingPriority"><option>一般</option><option>必讀</option><option>重要</option></select></div>
+</div></div>
+<div class="card"><div class="section-title"><span class="num">2</span>適用對象</div><div class="checkrow">
+<label class="check">專職員工 <input id="targetStaff" type="checkbox" checked></label>
+<label class="check">工讀生 <input id="targetParttime" type="checkbox" checked></label>
+<label class="check">外聘老師 <input id="targetExternal" type="checkbox"></label>
+<label class="check">管理者 <input id="targetManager" type="checkbox"></label>
+</div></div>
+<div class="card"><div class="section-title"><span class="num">3</span>完成要求</div><div class="grid">
+<div><label>是否需要完成確認</label><select id="needComplete" onchange="renderTrainingDue()"><option value="yes">需要</option><option value="no">不需要，只公告</option></select></div>
+<div><label>完成期限設定</label><select id="trainingDueType" onchange="renderTrainingDue()"><option value="none">無期限</option><option value="days">發布後幾天內</option><option value="date">指定日期前</option></select></div>
+<div id="trainingDueDaysWrap" class="hidden"><label>發布後幾天內</label><input id="trainingDueDays" type="number" min="1" placeholder="例如：7"></div>
+<div id="trainingDueDateWrap" class="hidden"><label>指定截止日期</label><input id="trainingDueDate" type="date"></div>
+<div id="trainingDueTimeWrap" class="hidden"><label>截止時間</label><input id="trainingDueTime" type="time" value="18:00"></div>
+<div><label>完成方式</label><select id="completeMode"><option>閱讀確認</option><option>文字回覆</option><option>附件回傳</option></select></div>
+</div><p class="hint">若只是發布教材，可選「不需要，只公告」。</p></div>
+<div class="card"><div class="section-title"><span class="num">4</span>教材內容</div><div class="grid"><div><label>影片連結</label><input id="videoLink" placeholder="貼上 YouTube / Cloudinary / Drive 連結"></div><div class="wide"><label>文字教材</label><textarea id="trainingText" placeholder="也可以直接輸入文字教材。"></textarea></div></div></div><div class="card attachment-card"><div class="section-title"><span class="num">5</span>教材附件</div>
+<p class="hint">圖片、影片、錄音、文件統一使用相同格式；錄音可直接用手機錄完試聽。</p>
+<div class="upload-grid">
+  <div class="upload-box"><label>圖片附件</label><input id="imageInput" type="file" multiple accept="image/*"></div>
+  <div class="upload-box"><label>影片附件</label><input id="videoInput" type="file" multiple accept="video/*"></div>
+  <div class="upload-box">
+    <label>錄音附件</label>
+    <div class="record-panel">
+      <div class="record-visual"><div id="recordDot" class="record-dot"></div><div class="record-bar"><div id="recordBarFill" class="record-bar-fill"></div></div><div id="recordTime" class="record-time">00:00</div></div>
+      <div class="record-actions">
+        <button id="recordBtn" class="btn secondary" type="button" onclick="startRecording()">開始錄音</button>
+        <button id="stopRecordBtn" class="btn secondary" type="button" onclick="stopRecording()" disabled>停止</button>
+        <button id="clearRecordBtn" class="btn secondary" type="button" onclick="clearRecording()" disabled>刪除</button>
+      </div>
+      <div id="recordPreview" class="record-preview"><div style="font-weight:900;margin-bottom:8px">錄音預覽</div><audio id="recordedAudio" controls style="width:100%"></audio></div>
+    </div>
+    <div class="upload-tip">手機可直接錄音；錄完後可確認預覽，或刪除重錄。</div>
+  </div>
+  <div class="upload-box"><label>文件附件</label><input id="fileInput" type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip"></div>
+</div></div>
+
+<div class="card"><div class="section-title"><span class="num">6</span>教育訓練檔案</div><div id="adminTrainingHistory" class="history-list"><div class="note">讀取中...</div></div></div><div class="actions"><button class="btn primary" onclick="submitTraining()">儲存教材</button></div></main>
+<script src="config.js"></script><script>
+const API_URL = String((window.APP_CONFIG && window.APP_CONFIG.API_URL) || window.API_URL || localStorage.getItem('EMPLOYEE_SYSTEM_API_BASE') || '').trim();
+function getUser(){try{return JSON.parse(localStorage.getItem('employeeUser')||'{}')}catch(e){return {}}}
+function userId(){return (getUser()&&getUser().id)||localStorage.getItem('employeeUserId')||''}
+async function api(action, payload){
+  if(!API_URL) throw new Error('尚未設定 API_URL');
+  const res = await fetch(API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(Object.assign({action},payload||{}))});
+  const txt = await res.text();
+  try{return JSON.parse(txt)}catch(e){throw new Error(txt||'API 回應格式錯誤')}
+}
+function $(id){return document.getElementById(id)}
+function val(id){const el=$(id); return el?String(el.value||'').trim():''}
+function checked(id){const el=$(id); return !!(el&&el.checked)}
+function msg(text, ok=true){const m=$('msg'); if(!m)return; m.textContent=text; m.className='msg '+(ok?'ok':'err')}
+function scheduleIdle_(fn){
+  if(window.requestIdleCallback) requestIdleCallback(fn,{timeout:1200});
+  else setTimeout(fn, 180);
+}
+
+function renderTrainingDue(){const need=val('needComplete')==='yes'; const t=val('trainingDueType'); $('trainingDueDaysWrap').classList.toggle('hidden',!(need&&t==='days')); $('trainingDueDateWrap').classList.toggle('hidden',!(need&&t==='date')); $('trainingDueTimeWrap').classList.toggle('hidden',!(need&&t!=='none'));}
+async function submitTraining(){try{const payload={userId:userId(),title:val('trainingTitle'),category:val('trainingCategory'),description:val('trainingDesc'),status:val('trainingStatus'),priority:val('trainingPriority'),targets:{staff:checked('targetStaff'),parttime:checked('targetParttime'),external:checked('targetExternal'),manager:checked('targetManager')},needComplete:val('needComplete'),dueType:val('trainingDueType'),dueDays:val('trainingDueDays'),dueDate:val('trainingDueDate'),dueTime:val('trainingDueTime'),completeMode:val('completeMode'),videoLink:val('videoLink'),text:val('trainingText')}; const res=await api('saveTrainingItem',payload); if(!res.ok)throw new Error(res.message||'儲存失敗'); msg('教育訓練教材已儲存，通知將依萬用表設定處理。',true);}catch(e){msg(e.message,false)}}
+document.addEventListener('DOMContentLoaded',renderTrainingDue);
+
+/* 手機直接錄音：按下錄音 → 停止 → 試聽 → 刪除重錄 */
+const recorderStore = {};
+async function startInlineRecording(key){
+  const box = document.querySelector(`[data-recorder="${key}"]`);
+  if(!box) return;
+  try{
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      throw new Error('這個瀏覽器不支援直接錄音，請改用手機 Chrome / Safari。');
+    }
+    const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+    const chunks = [];
+    const mediaRecorder = new MediaRecorder(stream);
+    recorderStore[key] = {mediaRecorder, stream, chunks, blob:null};
+    mediaRecorder.ondataavailable = e => { if(e.data && e.data.size) chunks.push(e.data); };
+    mediaRecorder.onstop = () => {
+      const blob = new Blob(chunks, {type: mediaRecorder.mimeType || 'audio/webm'});
+      recorderStore[key].blob = blob;
+      const url = URL.createObjectURL(blob);
+      const audio = box.querySelector('audio');
+      audio.src = url;
+      audio.classList.remove('audio-hidden');
+      box.classList.remove('recording');
+      box.querySelector('.rec-status').textContent = '錄音完成，可以先試聽；不滿意可刪除重錄。';
+      box.querySelector('.rec-start').classList.remove('audio-hidden');
+      box.querySelector('.rec-stop').classList.add('audio-hidden');
+      box.querySelector('.rec-delete').classList.remove('audio-hidden');
+      stream.getTracks().forEach(t=>t.stop());
+    };
+    mediaRecorder.start();
+    box.classList.add('recording');
+    box.querySelector('.rec-status').textContent = '錄音中，請直接對著手機說話。';
+    box.querySelector('.rec-start').classList.add('audio-hidden');
+    box.querySelector('.rec-stop').classList.remove('audio-hidden');
+    box.querySelector('.rec-delete').classList.add('audio-hidden');
+    box.querySelector('audio').classList.add('audio-hidden');
+  }catch(err){
+    alert('無法啟用錄音：' + (err.message || err));
+  }
+}
+function stopInlineRecording(key){
+  const rec = recorderStore[key];
+  if(rec && rec.mediaRecorder && rec.mediaRecorder.state !== 'inactive'){
+    rec.mediaRecorder.stop();
+  }
+}
+function deleteInlineRecording(key){
+  const box = document.querySelector(`[data-recorder="${key}"]`);
+  const rec = recorderStore[key];
+  if(rec && rec.stream) rec.stream.getTracks().forEach(t=>t.stop());
+  delete recorderStore[key];
+  if(box){
+    box.classList.remove('recording');
+    const audio = box.querySelector('audio');
+    audio.removeAttribute('src');
+    audio.classList.add('audio-hidden');
+    box.querySelector('.rec-status').textContent = '尚未錄音。';
+    box.querySelector('.rec-start').classList.remove('audio-hidden');
+    box.querySelector('.rec-stop').classList.add('audio-hidden');
+    box.querySelector('.rec-delete').classList.add('audio-hidden');
+  }
+}
+function getInlineRecordingBlob(key){
+  return recorderStore[key] && recorderStore[key].blob ? recorderStore[key].blob : null;
+}
+function recorderHtml(key, title){
+  return `<div class="audio-recorder" data-recorder="${key}">
+    <div class="audio-recorder-title">${title || '錄音說明'}</div>
+    <div class="audio-recorder-controls">
+      <button type="button" class="rec-btn rec-start" onclick="startInlineRecording('${key}')">● 開始錄音</button>
+      <button type="button" class="rec-btn rec-stop audio-hidden" onclick="stopInlineRecording('${key}')">■ 停止錄音</button>
+      <button type="button" class="rec-btn rec-delete audio-hidden" onclick="deleteInlineRecording('${key}')">刪除重錄</button>
+      <div class="rec-status">尚未錄音。</div>
+    </div>
+    <div class="wave">${Array.from({length:24}).map(()=>'<span></span>').join('')}</div>
+    <audio controls class="audio-preview audio-hidden"></audio>
+  </div>`;
+}
+
+function mountInlineRecorderForThisPage(){const m=document.getElementById('trainingAudioRecorderMount'); if(m) m.innerHTML=recorderHtml('trainingAudio','教育訓練錄音教材');}
+
+try{document.addEventListener('DOMContentLoaded', mountInlineRecorderForThisPage);}catch(e){}
+
+function trainingAdminRoleGuard(){
+  const u = getUser();
+  const role = String((u && (u.role || u.roleName || u.identityType)) || '').toLowerCase();
+  const isMgr = !!(u && (u.showSettingsZone || u.isAdmin || role === 'admin' || role === 'manager' || role.includes('主管') || role.includes('管理')));
+  if(!isMgr){
+    document.body.innerHTML = '<main><div class="card"><div class="note">你目前不是主管 / 管理者身分，因此不顯示教材設定表單。</div><div style="margin-top:12px"><a class="btn primary" style="display:block;text-align:center;text-decoration:none" href="training.html">前往教育訓練觀看頁</a></div></div></main>';
+  }
+}
+document.addEventListener('DOMContentLoaded', trainingAdminRoleGuard);
+
+
+let mediaRecorder=null,recordChunks=[],recordTimer=null,recordSeconds=0,recordedAudioFile=null;
+function renderRecordingState(){
+  const preview=document.getElementById('recordPreview');
+  const audio=document.getElementById('recordedAudio');
+  const clearBtn=document.getElementById('clearRecordBtn');
+  if(preview) preview.classList.toggle('show', !!recordedAudioFile);
+  if(clearBtn) clearBtn.disabled=!recordedAudioFile;
+  if(audio && recordedAudioFile) audio.src=URL.createObjectURL(recordedAudioFile);
+}
+function updateRecordClock(){
+  recordSeconds++;
+  const t=document.getElementById('recordTime');
+  const f=document.getElementById('recordBarFill');
+  const mm=String(Math.floor(recordSeconds/60)).padStart(2,'0');
+  const ss=String(recordSeconds%60).padStart(2,'0');
+  if(t) t.textContent=mm+':'+ss;
+  if(f) f.style.width=String((recordSeconds*7)%100)+'%';
+}
+async function startRecording(){
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+    recordChunks=[]; recordedAudioFile=null; recordSeconds=0;
+    mediaRecorder=new MediaRecorder(stream);
+    mediaRecorder.ondataavailable=e=>{ if(e.data&&e.data.size) recordChunks.push(e.data); };
+    mediaRecorder.onstop=()=>{
+      const blob=new Blob(recordChunks,{type:mediaRecorder.mimeType||'audio/webm'});
+      recordedAudioFile=new File([blob], 'recording_'+Date.now()+'.webm', {type:blob.type});
+      stream.getTracks().forEach(t=>t.stop());
+      document.getElementById('recordDot')?.classList.remove('active');
+      document.getElementById('recordBtn').disabled=false;
+      document.getElementById('stopRecordBtn').disabled=true;
+      clearInterval(recordTimer); recordTimer=null;
+      renderRecordingState();
+    };
+    mediaRecorder.start();
+    document.getElementById('recordDot')?.classList.add('active');
+    document.getElementById('recordBtn').disabled=true;
+    document.getElementById('stopRecordBtn').disabled=false;
+    recordTimer=setInterval(updateRecordClock,1000);
+  }catch(e){ alert('無法啟用錄音：'+(e.message||e)); }
+}
+function stopRecording(){
+  if(mediaRecorder && mediaRecorder.state!=='inactive') mediaRecorder.stop();
+}
+function clearRecording(){
+  recordedAudioFile=null; recordChunks=[];
+  const audio=document.getElementById('recordedAudio');
+  if(audio) audio.removeAttribute('src');
+  const t=document.getElementById('recordTime'); if(t)t.textContent='00:00';
+  const f=document.getElementById('recordBarFill'); if(f)f.style.width='0%';
+  renderRecordingState();
+}
+
+
+async function loadAdminTrainingHistory(){
+  const box=document.getElementById('adminTrainingHistory'); if(!box) return;
+  try{
+    const res=await api('getTrainingPageData',{userId:userId(),adminMode:true,includeDisabled:true});
+    const rows=(res.items||res.trainingItems||[]).slice().reverse();
+    if(!rows.length){box.innerHTML='<div class="note">目前尚無教育訓練檔案。</div>';return;}
+    box.innerHTML=rows.map(r=>`<div class="note" style="margin-bottom:8px"><b>${r.title||r.標題||'未命名教材'}</b><br>分類：${r.categoryName||''}　狀態：${r.enabled===false?'停用':'啟用'}<br>${r.description||r.說明||''}</div>`).join('');
+  }catch(e){box.innerHTML='<div class="note">目前無法讀取教育訓練檔案。</div>';}
+}
+document.addEventListener('DOMContentLoaded',function(){
+  const box=document.getElementById('adminTrainingHistory');
+  if(box) box.innerHTML='<div class="note">教育訓練清單稍後載入。</div>';
+  scheduleIdle_(loadAdminTrainingHistory);
+});
+
+</script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="firebase-client.js?v=admin-final-20260530b"></script>
+  <script src="global-nav.js?v=20260603unified1"></script>
+</body></html>

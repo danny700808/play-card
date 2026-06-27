@@ -1,0 +1,695 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>外聘老師首頁</title>
+  <style>
+    :root{
+      --bg:#eef2f6;
+      --card:#ffffff;
+      --line:#d9e2ef;
+      --text:#22364d;
+      --muted:#70829a;
+      --soft:#f2f5f9;
+      --accent:#1f7a5a;
+      --danger:#b42318;
+      --shadow:0 10px 28px rgba(25,46,89,.06);
+      --radius:30px;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--text);font-family:Arial,"Noto Sans TC",sans-serif}
+    .page{max-width:760px;margin:0 auto;padding:18px 16px 36px}
+    .hero{display:flex;justify-content:space-between;align-items:center;gap:20px;background:var(--card);border:1px solid var(--line);border-radius:30px;padding:24px 22px;box-shadow:var(--shadow);flex-wrap:wrap}
+    .hero-main h1{margin:0;font-size:28px;line-height:1.2;color:#18314a;font-weight:900}
+    .welcome{margin-top:8px;font-size:20px;font-weight:800;color:#24384f}
+    .hero-tools{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:stretch;width:min(100%,620px)}
+    .hero-tools #lineBindArea{display:block;height:100%}
+    .hero-tools #lineBindArea:empty{display:block}
+    .tool-card{height:104px;min-height:104px;border:1px solid var(--line);border-radius:24px;background:#f5f8fc;padding:14px 16px;display:flex;flex-direction:column;justify-content:space-between;align-items:center;text-decoration:none;color:inherit;min-width:0;text-align:center}
+    .line-card,.profile-card{width:auto}
+    .logout-card{width:auto;align-items:center;justify-content:center;background:#1f7a5a;border-color:#1f7a5a}
+    .tool-title{font-size:15px;font-weight:900;line-height:1.25;color:#18314a;text-align:center;white-space:nowrap}
+    .tool-card > div:first-child{display:flex;flex-direction:column;gap:6px;align-items:center;justify-content:flex-start}
+    .tool-desc{font-size:13px;font-weight:800;line-height:1.45;color:var(--muted);text-align:center}
+    .btn{border:none;border-radius:18px;padding:14px 18px;font-size:18px;font-weight:900;cursor:pointer;background:var(--accent);color:#fff}
+    .btn:disabled{opacity:.55;cursor:default}
+    .mini-btn{align-self:center;width:auto;min-width:86px;padding:9px 14px;font-size:14px;border-radius:16px;white-space:nowrap;background:#1f7a5a!important;color:#fff!important}
+    .logout-mini-btn{border:none;background:transparent;color:#fff;font-size:16px;font-weight:900;cursor:pointer;white-space:nowrap}
+    .section{margin-top:18px}
+    .status{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:14px 16px;color:var(--muted)}
+    .status.error{color:var(--danger);border-color:#efc8c8;background:#fff6f6}
+    .cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+    .entry-card{display:block;text-decoration:none;color:inherit;background:var(--card);border:1px solid var(--line);border-radius:24px;padding:22px 20px;box-shadow:var(--shadow);min-height:138px;cursor:pointer}
+    .entry-card:hover{transform:translateY(-1px)}
+    .entry-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+    .entry-title{font-size:23px;line-height:1.2;font-weight:900;color:#18314a;margin:0}
+    .entry-desc{margin-top:10px;font-size:15px;line-height:1.5;color:var(--muted)}
+    .entry-count{display:inline-flex;align-items:center;justify-content:center;min-width:34px;height:34px;padding:0 10px;border-radius:999px;background:#edf6f1;color:var(--accent);font-size:18px;line-height:1;font-weight:900;flex-shrink:0}
+    .entry-count.done{font-size:16px;background:#eef2f6;color:#91a2b3}
+
+    @media (max-width:640px){
+      .page{padding:14px 12px 28px}
+      .hero{padding:20px 18px;border-radius:24px}
+      .hero-main{width:100%;text-align:center}
+      .hero-main h1{font-size:24px}
+      .welcome{font-size:19px}
+      .hero-tools{width:100%;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+      .line-card,.profile-card,.logout-card{width:auto}
+      .tool-card{height:96px;min-height:96px;padding:12px 12px;border-radius:22px}
+      .tool-title{font-size:14px}
+      .tool-desc{font-size:12px}
+      .cards{gap:14px}
+      .entry-card{padding:18px 16px;min-height:124px;border-radius:20px}
+      .entry-title{font-size:20px}
+      .entry-desc{font-size:14px;line-height:1.45}
+      .entry-count{min-width:30px;height:30px;font-size:16px;padding:0 8px}
+      .entry-count.done{font-size:14px}
+    }
+  
+    .top-tool-card{
+      height:104px;
+      min-height:104px;
+      width:100%;
+      box-sizing:border-box;
+      padding:14px 16px;
+      border:1px solid var(--line);
+      border-radius:24px;
+      background:#f5f8fc;
+      display:flex;
+      flex-direction:column;
+      justify-content:space-between;
+      align-items:center;
+      gap:8px;
+      text-align:center;
+      text-decoration:none;
+      color:inherit;
+      min-width:0;
+    }
+    .top-tool-main{
+      width:100%;
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+      align-items:center;
+      justify-content:flex-start;
+    }
+    .top-tool-title{
+      font-size:15px;
+      font-weight:900;
+      line-height:1.25;
+      color:#18314a;
+      text-align:center;
+    }
+    .top-tool-desc{
+      font-size:13px;
+      font-weight:800;
+      line-height:1.45;
+      color:#5f7086;
+      text-align:center;
+    }
+    .top-tool-actions{
+      display:flex;
+      justify-content:center;
+      align-items:center;
+      width:100%;
+      margin-top:auto;
+    }
+    .top-tool-btn{
+      width:auto;
+      min-width:86px;
+      padding:9px 14px;
+      border-radius:16px;
+      font-size:14px;
+      line-height:1.2;
+      min-height:auto;
+      white-space:nowrap;
+      background:#1f7a5a;
+      color:#fff;
+      border:none;
+      font-weight:900;
+      cursor:pointer;
+      text-decoration:none;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+    }
+    .top-tool-logout{
+      background:#1f7a5a;
+      border-color:#1f7a5a;
+    }
+    .top-tool-logout .top-tool-title,
+    .top-tool-logout .top-tool-desc{
+      color:#fff;
+    }
+    .top-tool-logout .top-tool-desc{
+      opacity:.92;
+    }
+    .top-tool-logout .top-tool-btn{
+      background:rgba(255,255,255,.18);
+      color:#fff;
+    }
+    @media(max-width:560px){
+      .top-tool-card{
+        height:96px;
+        min-height:96px;
+        padding:12px 12px;
+        border-radius:22px;
+        gap:8px;
+      }
+      .top-tool-title{font-size:14px}
+      .top-tool-desc{font-size:12px}
+      .top-tool-btn{padding:8px 12px;font-size:13px}
+    }
+
+  
+    .top-tool-card{
+      height:96px!important;
+      min-height:96px!important;
+      width:100%!important;
+      box-sizing:border-box!important;
+      border-radius:22px!important;
+    }
+    @media(min-width:561px){
+      .top-tool-card{
+        height:104px!important;
+        min-height:104px!important;
+        border-radius:24px!important;
+      }
+    }
+    .top-tool-title{white-space:nowrap!important}
+    .top-tool-logout{
+      display:flex!important;
+      align-items:center!important;
+      justify-content:center!important;
+      text-align:center!important;
+      background:#1f7a5a!important;
+      border-color:#1f7a5a!important;
+      color:#fff!important;
+      padding:12px!important;
+    }
+    .top-tool-logout .logout-only-text{
+      color:#fff!important;
+      font-size:16px!important;
+      font-weight:900!important;
+      line-height:1.2!important;
+      white-space:nowrap!important;
+    }
+    
+  
+    .home-head-tools > *,
+    .hero-tools > *{
+      height:96px!important;
+      min-height:96px!important;
+      width:100%!important;
+      box-sizing:border-box!important;
+      align-self:stretch!important;
+    }
+    .home-head-tools .top-tool-card,
+    .hero-tools .top-tool-card{
+      height:96px!important;
+      min-height:96px!important;
+      width:100%!important;
+      box-sizing:border-box!important;
+      padding:12px!important;
+      border:1px solid var(--line)!important;
+      border-radius:22px!important;
+      background:#f5f8fc!important;
+      display:flex!important;
+      flex-direction:column!important;
+      justify-content:space-between!important;
+      align-items:center!important;
+      gap:8px!important;
+      text-align:center!important;
+      text-decoration:none!important;
+      color:inherit!important;
+      overflow:hidden!important;
+    }
+    .home-head-tools .top-tool-title,
+    .hero-tools .top-tool-title{
+      font-size:14px!important;
+      font-weight:900!important;
+      line-height:1.25!important;
+      color:#18314a!important;
+      white-space:nowrap!important;
+      text-align:center!important;
+    }
+    .home-head-tools .top-tool-desc,
+    .hero-tools .top-tool-desc{
+      font-size:12px!important;
+      font-weight:800!important;
+      line-height:1.45!important;
+      color:#5f7086!important;
+      white-space:nowrap!important;
+      text-align:center!important;
+    }
+    .home-head-tools .top-tool-btn,
+    .hero-tools .top-tool-btn{
+      min-width:86px!important;
+      padding:8px 12px!important;
+      border-radius:16px!important;
+      background:#1f7a5a!important;
+      color:#fff!important;
+      border:none!important;
+      font-weight:900!important;
+      font-size:13px!important;
+      line-height:1.2!important;
+      display:inline-flex!important;
+      align-items:center!important;
+      justify-content:center!important;
+      text-decoration:none!important;
+    }
+    .home-head-tools .top-tool-logout,
+    .hero-tools .top-tool-logout{
+      background:#1f7a5a!important;
+      border-color:#1f7a5a!important;
+      display:flex!important;
+      align-items:center!important;
+      justify-content:center!important;
+    }
+    .logout-only-text{
+      color:#fff!important;
+      font-size:16px!important;
+      font-weight:900!important;
+      line-height:1.2!important;
+      white-space:nowrap!important;
+    }
+    @media(min-width:561px){
+      .home-head-tools > *,
+      .hero-tools > *,
+      .home-head-tools .top-tool-card,
+      .hero-tools .top-tool-card{
+        height:104px!important;
+        min-height:104px!important;
+        border-radius:24px!important;
+      }
+      .home-head-tools .top-tool-card,
+      .hero-tools .top-tool-card{padding:14px 16px!important}
+      .home-head-tools .top-tool-title,
+      .hero-tools .top-tool-title{font-size:15px!important}
+      .home-head-tools .top-tool-desc,
+      .hero-tools .top-tool-desc{font-size:13px!important}
+      .home-head-tools .top-tool-btn,
+      .hero-tools .top-tool-btn{font-size:14px!important;padding:9px 14px!important}
+    }
+
+  
+    /* 首頁上方三格：完全比照「個人資料」卡片 */
+    .home-head-tools,
+    .hero-tools{
+      display:grid!important;
+      grid-template-columns:repeat(3,minmax(0,1fr))!important;
+      gap:12px!important;
+      align-items:stretch!important;
+      width:min(100%,620px)!important;
+    }
+    .home-head-tools > *,
+    .hero-tools > *,
+    .home-head-tools .top-tool-card,
+    .hero-tools .top-tool-card{
+      height:104px!important;
+      min-height:104px!important;
+      width:100%!important;
+      box-sizing:border-box!important;
+    }
+    .home-head-tools .top-tool-card,
+    .hero-tools .top-tool-card{
+      padding:14px 16px!important;
+      border:1px solid var(--line)!important;
+      border-radius:24px!important;
+      background:#f5f8fc!important;
+      color:inherit!important;
+      display:flex!important;
+      flex-direction:column!important;
+      justify-content:space-between!important;
+      align-items:center!important;
+      gap:8px!important;
+      text-align:center!important;
+      text-decoration:none!important;
+      overflow:hidden!important;
+    }
+    .home-head-tools .top-tool-main,
+    .hero-tools .top-tool-main{
+      width:100%!important;
+      display:flex!important;
+      flex-direction:column!important;
+      gap:6px!important;
+      align-items:center!important;
+      justify-content:flex-start!important;
+      text-align:center!important;
+    }
+    .home-head-tools .top-tool-title,
+    .hero-tools .top-tool-title{
+      font-size:15px!important;
+      font-weight:900!important;
+      line-height:1.25!important;
+      color:#18314a!important;
+      white-space:nowrap!important;
+      text-align:center!important;
+    }
+    .home-head-tools .top-tool-desc,
+    .hero-tools .top-tool-desc{
+      font-size:13px!important;
+      font-weight:800!important;
+      line-height:1.45!important;
+      color:#5f7086!important;
+      white-space:nowrap!important;
+      text-align:center!important;
+    }
+    .home-head-tools .top-tool-actions,
+    .hero-tools .top-tool-actions{
+      display:flex!important;
+      justify-content:center!important;
+      align-items:center!important;
+      width:100%!important;
+      margin-top:auto!important;
+    }
+    .home-head-tools .top-tool-btn,
+    .hero-tools .top-tool-btn{
+      min-width:86px!important;
+      padding:9px 14px!important;
+      border-radius:16px!important;
+      background:#1f7a5a!important;
+      color:#fff!important;
+      border:none!important;
+      font-weight:900!important;
+      font-size:14px!important;
+      line-height:1.2!important;
+      display:inline-flex!important;
+      align-items:center!important;
+      justify-content:center!important;
+      text-decoration:none!important;
+      white-space:nowrap!important;
+    }
+    .home-head-tools .top-tool-logout,
+    .hero-tools .top-tool-logout{
+      background:#f5f8fc!important;
+      border-color:var(--line)!important;
+      color:inherit!important;
+    }
+    .home-head-tools .top-tool-logout .logout-only-text,
+    .hero-tools .top-tool-logout .logout-only-text{
+      color:#18314a!important;
+      font-size:15px!important;
+      font-weight:900!important;
+      line-height:1.25!important;
+      white-space:nowrap!important;
+    }
+    @media(max-width:560px){
+      .home-head-tools,
+      .hero-tools{
+        gap:10px!important;
+        width:100%!important;
+        grid-template-columns:repeat(3,minmax(0,1fr))!important;
+      }
+      .home-head-tools > *,
+      .hero-tools > *,
+      .home-head-tools .top-tool-card,
+      .hero-tools .top-tool-card{
+        height:96px!important;
+        min-height:96px!important;
+      }
+      .home-head-tools .top-tool-card,
+      .hero-tools .top-tool-card{
+        padding:12px!important;
+        border-radius:22px!important;
+      }
+      .home-head-tools .top-tool-title,
+      .hero-tools .top-tool-title,
+      .home-head-tools .top-tool-logout .logout-only-text,
+      .hero-tools .top-tool-logout .logout-only-text{
+        font-size:14px!important;
+      }
+      .home-head-tools .top-tool-desc,
+      .hero-tools .top-tool-desc{
+        font-size:12px!important;
+      }
+      .home-head-tools .top-tool-btn,
+      .hero-tools .top-tool-btn{
+        padding:8px 12px!important;
+        font-size:13px!important;
+      }
+    }
+
+  
+    /* 登出卡統一：所有首頁工具列的登出格，外框同大，整格綠底白字置中 */
+    .home-head-tools .top-tool-logout,
+    .hero-tools .top-tool-logout,
+    .manage-head-tools .top-tool-logout,
+    .home-head-tools .logout-card,
+    .hero-tools .logout-card,
+    .manage-head-tools .logout-card{
+      height:96px!important;
+      min-height:96px!important;
+      width:100%!important;
+      box-sizing:border-box!important;
+      border:1px solid #1f7a5a!important;
+      border-radius:22px!important;
+      background:#1f7a5a!important;
+      color:#fff!important;
+      display:flex!important;
+      align-items:center!important;
+      justify-content:center!important;
+      text-align:center!important;
+      padding:12px!important;
+      text-decoration:none!important;
+      overflow:hidden!important;
+    }
+    .home-head-tools .top-tool-logout *,
+    .hero-tools .top-tool-logout *,
+    .manage-head-tools .top-tool-logout *,
+    .home-head-tools .logout-card *,
+    .hero-tools .logout-card *,
+    .manage-head-tools .logout-card *{
+      color:#fff!important;
+    }
+    .logout-only-text,
+    .logout-mini-btn{
+      color:#fff!important;
+      font-size:16px!important;
+      font-weight:900!important;
+      line-height:1.2!important;
+      white-space:nowrap!important;
+      background:transparent!important;
+      border:none!important;
+      padding:0!important;
+      margin:0!important;
+    }
+    @media(min-width:561px){
+      .home-head-tools .top-tool-logout,
+      .hero-tools .top-tool-logout,
+      .manage-head-tools .top-tool-logout,
+      .home-head-tools .logout-card,
+      .hero-tools .logout-card,
+      .manage-head-tools .logout-card{
+        height:104px!important;
+        min-height:104px!important;
+        border-radius:24px!important;
+        padding:14px 16px!important;
+      }
+    }
+
+  
+    .top-tool-logout,
+    .top-tool-logout *,
+    .logout-card,
+    .logout-card *,
+    .top-tool-logout .logout-only-text,
+    .top-tool-logout span,
+    .top-tool-logout button{
+      color:#fff!important;
+      -webkit-text-fill-color:#fff!important;
+    }
+    #clockCount.zero,
+    #clockCount.empty{
+      display:none!important;
+    }
+
+  </style>
+  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
+</head>
+<body>
+  <div class="yz-global-nav" data-yz-global-nav>
+    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
+    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
+  </div>
+
+  <div class="page">
+    <section class="hero">
+      <div class="hero-main">
+        <h1>外聘老師首頁</h1>
+        <div class="welcome" id="teacherName">讀取中...</div>
+      </div>
+      <div class="hero-tools">
+        <div id="lineBindArea"></div>
+        <a class="top-tool-card" href="profile.html" id="openProfileBtn">
+          <div class="top-tool-main">
+            <div class="top-tool-title">個人資料</div>
+            <div class="top-tool-desc">查看與修改</div>
+          </div>
+          <div class="top-tool-actions"><span class="top-tool-btn">查看</span></div>
+        </a>
+      </div>
+    </section>
+
+    <section class="section" id="statusSection" hidden>
+      <div class="status" id="statusBox"></div>
+    </section>
+
+    <section class="section cards" id="cardsSection">
+      <button class="entry-card" type="button" id="openAnnouncementBtn">
+        <div class="entry-top">
+          <div class="entry-title">公告</div>
+          <div class="entry-count" id="announcementCount">0</div>
+        </div>
+        <div class="entry-desc">最新公告</div>
+      </button>
+
+      <button class="entry-card" type="button" id="openTodoBtn">
+        <div class="entry-top">
+          <div class="entry-title">協助事項</div>
+          <div class="entry-count" id="todoCount">0</div>
+        </div>
+        <div class="entry-desc">待處理與回報</div>
+      </button>
+
+      <button class="entry-card" type="button" id="openGoodsBtn">
+        <div class="entry-top">
+          <div class="entry-title">拿貨 / 詢價</div>
+          <div class="entry-count" id="goodsCount">0</div>
+        </div>
+        <div class="entry-desc">商品與詢價</div>
+      </button>
+
+      <button class="entry-card" type="button" id="openContractBtn">
+        <div class="entry-top">
+          <div class="entry-title">合約</div>
+          <div class="entry-count" id="contractCount">0</div>
+        </div>
+        <div class="entry-desc">簽署狀態</div>
+      </button>
+
+      <button class="entry-card" type="button" id="openFormsBtn">
+        <div class="entry-top">
+          <div class="entry-title">表格</div>
+          <div class="entry-count" id="formsCount">0</div>
+        </div>
+        <div class="entry-desc">集點卡與證明申請</div>
+      </button>
+    </section>
+  </div>
+
+  <script src="config.js?v=20260413fix1"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="firebase-client.js?v=20260530notifyv2final1"></script>
+
+  <script src="app.js?v=20260530notifyv2final1"></script>
+  <script>
+    function getTeacherUser(){
+      return (typeof getUser === 'function') ? getUser() : null;
+    }
+    function getUserId(){
+      const user = getTeacherUser();
+      return (user && (user.id || user.userId || user.employeeId)) || localStorage.getItem('employeeUserId') || '';
+    }
+    function getOpenTargets(){
+      return {
+        announcement: 'announcements.html',
+        todo: 'task.html',
+        contract: 'contract.html',
+        goods: 'teacher-goods.html',
+        forms: 'forms-hub.html'
+      };
+    }
+    function setStatus(message, isError){
+      const box=document.getElementById('statusBox');
+      box.textContent=message||'';
+      box.className=isError ? 'status error' : 'status';
+      document.getElementById('statusSection').hidden=!message;
+    }
+    async function postJson(action,payload){
+      const json=await api(action,payload||{});
+      if(!json.ok) throw new Error(json.message || '讀取失敗');
+      return json;
+    }
+    function setCount(id, value, doneText){
+      const el=document.getElementById(id);
+      const n=Number(value||0)||0;
+      if(doneText && n<=0){
+        el.textContent=doneText;
+        el.classList.add('done');
+      }else{
+        el.textContent=String(n);
+        el.classList.remove('done');
+      }
+    }
+    function renderHome(data){
+      const user=getTeacherUser()||{};
+      const profile=(data&&data.profile)||{};
+      document.getElementById('teacherName').textContent='歡迎 ' + (profile.name || user.name || '老師');
+
+      const counts=(data&&data.counts)||{};
+      const contract=(data&&data.contract)||{};
+      const goods=(data&&data.goods)||{};
+
+      setCount('announcementCount', counts.announcements || 0, '完成');
+      setCount('todoCount', counts.tasks || 0, '完成');
+      setCount('contractCount', contract.pendingCount || (contract.signed ? 0 : 1), contract.signed ? '完成' : '1');
+      setCount('goodsCount', goods.openInquiryCount || goods.newItemCount || goods.total || 0, '完成');
+      setCount('formsCount', counts.formsCount || counts.certificateCount || 0, '完成');
+
+      setStatus('', false);
+    }
+    async function loadHome(){
+      const user=getTeacherUser();
+      if (user && typeof isExternalTeacher === 'function' && !isExternalTeacher(user)) {
+        window.location.href='dashboard.html';
+        return;
+      }
+      const userId=getUserId();
+      if(!userId){
+        setStatus('缺少 userId，請重新登入。', true);
+        return;
+      }
+      renderSimpleLineCard('#lineBindArea');
+      try{
+        const data=await postJson('getDashboardSummary', { userId, role:'external' });
+        renderHome(data);
+      }catch(err){
+        setStatus(err.message || '讀取失敗', true);
+      }
+    }
+
+    async function renderSimpleLineCard(targetSelector){
+      return renderCompactLineCard_(targetSelector, getTeacherUser());
+    }
+
+    function openPage(target){
+      const userId=getUserId();
+      const url=new URL(target, window.location.href);
+      if(userId) url.searchParams.set('userId', userId);
+      if(target.indexOf('contract.html')>=0) url.searchParams.set('source','home');
+      window.location.href=url.toString();
+    }
+    document.getElementById('openAnnouncementBtn').addEventListener('click', function(){ openPage(getOpenTargets().announcement); });
+    document.getElementById('openTodoBtn').addEventListener('click', function(){ openPage(getOpenTargets().todo); });
+    document.getElementById('openContractBtn').addEventListener('click', function(){ openPage(getOpenTargets().contract); });
+    document.getElementById('openGoodsBtn').addEventListener('click', function(){ openPage(getOpenTargets().goods); });
+    document.getElementById('openFormsBtn').addEventListener('click', function(){ openPage(getOpenTargets().forms); });
+    document.getElementById('openProfileBtn').addEventListener('click', function(event){
+      event.preventDefault();
+      const btn = document.querySelector('#openProfileBtn .mini-btn') || document.getElementById('openProfileBtn');
+      let progress = null;
+      try{
+        progress = typeof startActionButtonProgress === 'function'
+          ? startActionButtonProgress(btn,{label:'讀取中',startPct:15,maxPct:82,interval:160})
+          : null;
+      }catch(e){}
+      setTimeout(()=>openPage('profile.html'), progress ? 260 : 0);
+    });
+    loadHome();
+  </script>
+  <script src="global-nav.js?v=20260603unified1"></script>
+</body>
+</html>

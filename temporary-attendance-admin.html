@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>簽核｜補登 / 臨時出勤</title>
+  <link rel="stylesheet" href="style.css?v=admin-final-20260530b">
+  <link rel="stylesheet" href="approval-common.css?v=20260626approval1">
+  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
+  <style>.container{width:min(96vw,1300px);max-width:1300px;margin:0 auto;padding:16px}</style>
+</head>
+<body onload="init()" class="admin-wide-page">
+  <div class="yz-global-nav" data-yz-global-nav>
+    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
+    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
+  </div>
+
+  <div class="container">
+    <div class="card">
+      <h1 class="title" style="margin:0">簽核｜補登 / 臨時出勤</h1>
+      <div class="approval-toolbar">
+        <label for="keyword">搜尋<input id="keyword" placeholder="姓名 / 日期 / 原因 / 備註"></label>
+        <button class="btn secondary" type="button" id="refreshBtn" style="width:auto;padding:11px 16px">重新整理</button>
+      </div>
+      <div class="approval-tabs">
+        <button class="approval-tab active" type="button" id="pendingTab">未處理（0）</button>
+        <button class="approval-tab" type="button" id="historyTab">歷史紀錄</button>
+      </div>
+      <div id="msg" class="message" style="margin-top:12px"></div>
+      <div id="list" class="approval-list"></div>
+    </div>
+  </div>
+
+  <script src="config.js?v=20260529notifybadge1"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="firebase-client.js?v=attendance-flow-20260618"></script>
+  <script src="app.js?v=admin-final-20260530b"></script>
+  <script>
+    let requests=[];let activeTab='pending';
+    function qs(s){return document.querySelector(s)}
+    function clean(v){return String(v==null?'':v).trim()}
+    function lower(v){return clean(v).toLowerCase()}
+    function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+    function safeNum(v){const n=Number(clean(v).replace(/[^\d.\-]/g,''));return Number.isFinite(n)?n:0}
+    function msg(t,type='success'){const el=qs('#msg');if(el)el.innerHTML=t?`<div class="${type}">${esc(t)}</div>`:''}
+    function fb(){if(window.YZFirebase&&typeof window.YZFirebase.init==='function')return window.YZFirebase.init();if(!(window.APP_CONFIG&&window.APP_CONFIG.FIREBASE_CONFIG))throw new Error('找不到 Firebase 設定');if(!window.firebase||!firebase.firestore)throw new Error('Firebase SDK 尚未載入');if(!firebase.apps.length)firebase.initializeApp(window.APP_CONFIG.FIREBASE_CONFIG);return firebase.firestore()}
+    function money(v){return (Math.round(Number(v||0)||0)).toLocaleString('zh-TW')+' 元'}
+    function statusText(v){const s=clean(v);if(!s||lower(s)==='pending')return '待審核';if(lower(s)==='approved')return '已核准';if(lower(s)==='rejected')return '已駁回';return s}
+    function isPendingStatus(v){const s=statusText(v);return !s||s==='待審核'||s==='待主管審核'||lower(s)==='pending'}
+    function rowStatus(r){return statusText(r.status||r.狀態||r.reviewStatus||r['審核狀態'])}
+    function pill(s){const text=statusText(s);const cls=text==='已核准'?'approved':(text==='已駁回'?'rejected':(isPendingStatus(text)?'pending':'history'));return `<span class="approval-pill ${cls}">${esc(text||'待審核')}</span>`}
+    function hoursBetween(date,start,end){if(!date||!start||!end)return 0;const a=new Date(date+'T'+String(start).slice(0,5)+':00');const b=new Date(date+'T'+String(end).slice(0,5)+':00');if(String(a)==='Invalid Date'||String(b)==='Invalid Date')return 0;return Math.max(0,Math.round(((b-a)/3600000)*100)/100)}
+    function normReq(doc){const r=Object.assign({__id:doc.id},doc.data()||{});r.status=rowStatus(r);r.name=clean(r.name||r.姓名||r.employeeName||r['員工姓名']);r.employeeId=clean(r.employeeId||r.員工ID||r.userId||r['申請人ID']);r.employeeType=clean(r.employeeType||r.員工身分||r.identityType||r['身分類型']);r.date=clean(r.date||r.日期||r.workDate||r['出勤日期']);r.startTime=clean(r.startTime||r.申請上班時間||r.appliedStartTime||r['開始時間']).slice(0,5);r.endTime=clean(r.endTime||r.申請下班時間||r.appliedEndTime||r['結束時間']).slice(0,5);r.reason=clean(r.reason||r.原因||r.note||r.備註);r.createdAt=clean(r.createdAtText||r.createdAt||r.建立時間||r.submittedAt||r['申請時間']||'');return r}
+    function renderTabs(){const p=requests.filter(r=>isPendingStatus(rowStatus(r))).length;const h=requests.filter(r=>!isPendingStatus(rowStatus(r))).length;qs('#pendingTab').textContent=`未處理（${p}）`;qs('#historyTab').textContent=h?`歷史紀錄（${h}）`:'歷史紀錄'}
+    function setTab(tab){activeTab=tab==='history'?'history':'pending';qs('#pendingTab').classList.toggle('active',activeTab==='pending');qs('#historyTab').classList.toggle('active',activeTab==='history');render()}
+    function render(){
+      renderTabs();
+      const kw=lower(qs('#keyword').value);
+      const list=requests.filter(r=>activeTab==='pending'?isPendingStatus(rowStatus(r)):!isPendingStatus(rowStatus(r))).filter(r=>{const text=[r.name,r.employeeId,r.employeeType,r.date,r.startTime,r.endTime,r.reason,r.managerNote,r.status].join(' ').toLowerCase();return !kw||text.includes(kw)});
+      qs('#list').innerHTML=list.map(r=>{
+        const status=rowStatus(r),date=clean(r.date||r.日期),start=clean(r.startTime||r.申請上班時間),end=clean(r.endTime||r.申請下班時間);
+        const h=safeNum(r.approvedHours||r.核准時數||r.requestedHours||r.申請時數)||hoursBetween(date,start,end);
+        const rate=safeNum(r.approvedHourlyRate||r.核准時薪||r.hourlyRate||r.時薪||196)||196;
+        const pending=isPendingStatus(status);
+        return `<article class="approval-card"><div class="approval-head"><div><div class="approval-name">${esc(r.name||r.姓名||'未命名')}</div><div class="approval-meta">${esc(r.employeeId||'')}｜${esc(r.employeeType||'')}</div></div>${pill(status)}</div><div class="approval-grid"><div class="approval-field"><div class="approval-label">日期</div><div class="approval-value">${esc(date||'—')}</div></div><div class="approval-field"><div class="approval-label">申請時間</div><div class="approval-value">${esc(start||'—')} ～ ${esc(end||'—')}</div></div><div class="approval-field"><div class="approval-label">申請時數</div><div class="approval-value">${esc(h||'—')}</div></div><div class="approval-field"><div class="approval-label">時薪</div><div class="approval-value">${esc(money(rate))}</div></div><div class="approval-field"><div class="approval-label">是否計薪</div><div class="approval-value">${esc(r.payable||r.是否計薪||'是')}</div></div></div>${r.reason?`<div class="approval-note">原因：${esc(r.reason)}</div>`:''}${r.managerNote?`<div class="approval-note">主管備註：${esc(r.managerNote)}</div>`:''}${pending?`<div class="approval-actions"><button class="btn" type="button" onclick="approveRequest('${esc(r.__id)}')">核准</button><button class="btn secondary" type="button" onclick="rejectRequest('${esc(r.__id)}')">駁回</button></div>`:''}</article>`;
+      }).join('')||'<div class="approval-empty">目前沒有資料</div>';
+    }
+    async function init(){try{fillHeader&&fillHeader();const user=requireLogin?requireLogin():null;if(!user)return;if(typeof hasSettingsZoneAccess==='function'&&!hasSettingsZoneAccess(user)){location.href='dashboard.html';return}}catch(e){}qs('#keyword').addEventListener('input',render);qs('#refreshBtn').onclick=loadRequests;qs('#pendingTab').onclick=()=>setTab('pending');qs('#historyTab').onclick=()=>setTab('history');await loadRequests()}
+    async function loadRequests(){try{msg('讀取中…','notice');const snap=await fb().collection('temporaryAttendanceRequests').get();requests=[];snap.forEach(doc=>requests.push(normReq(doc)));requests.sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||''))||String(b.date||'').localeCompare(String(a.date||'')));render();msg('')}catch(e){requests=[];render();msg('讀取失敗：'+(e.message||e),'error')}}
+    async function approveRequest(id){const r=requests.find(x=>x.__id===id);if(!r)return;const date=clean(r.date||r.日期);const start=prompt('核准上班時間：',clean(r.startTime||r.申請上班時間));if(start===null)return;const end=prompt('核准下班時間：',clean(r.endTime||r.申請下班時間));if(end===null)return;const hours=hoursBetween(date,start,end);if(hours<=0){msg('下班時間必須晚於上班時間。','error');return}const rate=safeNum(prompt('核准時薪：',String(safeNum(r.hourlyRate||r.時薪||196)))||r.hourlyRate||r.時薪||196)||196;const note=prompt('主管備註：','臨時出勤，主管核准');if(note===null)return;try{msg('核准中…','notice');const res=await api('reviewTemporaryAttendance',{requestId:id,decision:'approve',date,startTime:start,endTime:end,hourlyRate:rate,managerNote:note});if(!res||!res.ok){msg((res&&res.message)||'核准失敗。','error');return}msg(res.message||'已核准。','success');await loadRequests()}catch(e){msg('核准失敗：'+(e.message||e),'error')}}
+    async function rejectRequest(id){const note=prompt('駁回原因：','主管駁回');if(note===null)return;try{msg('駁回中…','notice');const res=await api('reviewTemporaryAttendance',{requestId:id,decision:'reject',managerNote:note});if(!res||!res.ok){msg((res&&res.message)||'駁回失敗。','error');return}msg(res.message||'已駁回。','success');await loadRequests()}catch(e){msg('駁回失敗：'+(e.message||e),'error')}}
+  </script>
+  <script src="global-nav.js?v=20260603unified1"></script>
+</body>
+</html>
