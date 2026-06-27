@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>公告列表</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .toolbar{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap}.cards{display:grid;gap:14px}.cardx{background:#fff;border:1px solid #e2e8f0;border-radius:20px;padding:18px}.cardx h3{margin:0 0 8px;font-size:24px;color:#163252}.meta{font-size:14px;color:#64748b;margin-bottom:10px}.badge{display:inline-block;padding:6px 12px;border-radius:999px;font-size:13px;font-weight:900;background:#eef4fb;color:#315b8a;margin-right:8px;margin-bottom:8px}.badge.need{background:#fff5e6;color:#9a5b00}.badge.done{background:#ecf7f1;color:#1f7a5a}.empty{padding:18px;border:1px dashed #cbd5e1;border-radius:16px;color:#64748b;background:#fff}.history-search{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end;margin:14px 0}.history-search label{font-weight:900;font-size:13px}.history-search input{width:100%;border:1px solid #cbd5e1;border-radius:12px;padding:10px 12px}@media(max-width:640px){.history-search{grid-template-columns:1fr}}
+    .asset-section{display:grid;gap:10px;margin-top:14px}.image-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}.image-grid a{display:block;border-radius:14px;overflow:hidden;border:1px solid #e2e8f0;background:#f8fafc}.image-grid img{width:100%;height:150px;object-fit:cover;display:block}.media-box{padding:12px;border:1px solid #e2e8f0;border-radius:14px;background:#f8fafc}.file-list{display:grid;gap:8px}.file-link{display:flex;justify-content:space-between;gap:10px;padding:10px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;color:#0f172a;text-decoration:none}.file-link span:last-child{color:#1d4ed8;font-weight:800;white-space:nowrap}.reply-box{margin-top:14px;padding:14px;border:1px solid #fde68a;border-radius:16px;background:#fffbeb}.reply-box.done{border-color:#bbf7d0;background:#f0fdf4}.reply-box textarea{min-height:96px}.reply-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}.muted-mini{font-size:12px;color:#64748b}
+  
+    .announcement-section-card{
+      background:#fff;
+      border:1px solid #dfe7f1;
+      border-radius:24px;
+      padding:18px;
+      margin-top:16px;
+      box-shadow:0 10px 28px rgba(25,46,89,.05);
+    }
+    .announcement-section-card.history{
+      background:#f8fafc;
+      border-style:dashed;
+    }
+    .announcement-section-title{
+      margin:0 0 14px;
+      font-size:24px;
+      line-height:1.25;
+      font-weight:900;
+      color:#18314a;
+    }
+    .announcement-section-sub{
+      margin:-6px 0 14px;
+      color:#70829a;
+      font-size:14px;
+      line-height:1.5;
+    }
+    .announcement-history-summary{
+      cursor:pointer;
+      list-style:none;
+      display:flex;
+      align-items:center;
+      gap:8px;
+    }
+    .announcement-history-summary::-webkit-details-marker{display:none}
+    .announcement-history-summary:before{
+      content:'▶';
+      font-size:18px;
+      color:#18314a;
+      transform:translateY(-1px);
+    }
+    details[open] .announcement-history-summary:before{content:'▼'}
+    .announcement-toolbar-actions{display:none!important}
+
+  </style>
+  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
+</head>
+<body onload="initPage()">
+  <div class="yz-global-nav" data-yz-global-nav>
+    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
+    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
+  </div>
+
+  <div class="container">
+    <div class="card"><div class="toolbar"><div><h1 class="title" style="margin:0">公告列表</h1><div class="welcome">歡迎 <span data-user-name></span></div></div><div style="display:flex;gap:10px;flex-wrap:wrap"></div></div><div id="msg" class="message"></div>
+        <section class="announcement-section-card">
+          <h2 class="announcement-section-title">未讀 / 待處理公告</h2>
+          <div class="announcement-section-sub">目前需要查看或回覆的公告。</div>
+          <div id="list" class="cards"></div>
+        </section>
+
+        <section class="announcement-section-card history">
+          <details>
+            <summary class="announcement-history-summary">
+              <span class="announcement-section-title" style="margin:0">歷史公告</span>
+            </summary>
+            <div class="announcement-section-sub">已讀或已處理的公告，點開後可依日期搜尋。</div>
+          <div class="history-search">
+            <label>開始日期<input id="historyStart" type="date"></label>
+            <label>結束日期<input id="historyEnd" type="date"></label>
+            <button class="btn secondary" type="button" onclick="loadAnnouncementHistory()" style="width:auto;padding:10px 14px">搜尋歷史</button>
+          </div>
+          <div id="historyList" class="cards"></div>
+          </details>
+        </section>
+      </div>
+  </div>
+  <script src="config.js?v=20260430_announcement_unified"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="firebase-client.js?v=20260523stage5primary"></script>
+
+  <script src="app.js?v=20260430_announcement_unified"></script>
+  <script>
+    let currentUser=null;
+    function escapeHtml(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
+    function imgUrl(u){return typeof optimizedImageUrl==='function'?optimizedImageUrl(u):u}
+    function imageHtml(list){list=Array.isArray(list)?list:[]; if(!list.length)return ''; return `<div class="asset-section"><strong>圖片附件</strong><div class="image-grid">${list.map(x=>`<a href="${escapeHtml(x.url||'#')}" target="_blank" rel="noopener"><img src="${escapeHtml(imgUrl(x.url||''))}" alt="${escapeHtml(x.name||'圖片')}"></a>`).join('')}</div></div>`}
+    function videoHtml(list){list=Array.isArray(list)?list:[]; if(!list.length)return ''; return `<div class="asset-section"><strong>影片附件</strong>${list.map(x=>`<div class="media-box"><video src="${escapeHtml(x.url||'')}" controls style="width:100%;max-height:360px"></video><div class="muted-mini">${escapeHtml(x.name||'影片')}</div></div>`).join('')}</div>`}
+    function audioHtml(list){list=Array.isArray(list)?list:[]; if(!list.length)return ''; return `<div class="asset-section"><strong>錄音附件</strong>${list.map(x=>`<div class="media-box"><audio src="${escapeHtml(x.url||'')}" controls style="width:100%"></audio><div class="muted-mini">${escapeHtml(x.name||'錄音')}</div></div>`).join('')}</div>`}
+    function fileHtml(list){list=Array.isArray(list)?list:[]; if(!list.length)return ''; return `<div class="asset-section"><strong>文件附件</strong><div class="file-list">${list.map(x=>`<a class="file-link" href="${escapeHtml(x.url||'#')}" target="_blank" rel="noopener"><span>${escapeHtml(x.name||'文件')}</span><span>開啟</span></a>`).join('')}</div></div>`}
+    function replyHtml(row){if(!row.requireReply)return ''; if(row.myReply&&row.myReply.replyText){return `<div class="reply-box done"><strong>你已回覆</strong><div class="muted-mini">${escapeHtml(row.myReply.createdAt||'')}</div><div style="white-space:pre-wrap;margin-top:8px">${escapeHtml(row.myReply.replyText||'')}</div></div>`} return `<div class="reply-box"><strong>這則公告需要回覆 / 確認</strong>${row.replyDeadline?`<div class="muted-mini">回覆截止日：${escapeHtml(row.replyDeadline)}</div>`:''}<textarea id="reply_${escapeHtml(row.id)}" placeholder="請輸入回覆內容，例如：已確認、已收到、或需要補充的說明"></textarea><div class="reply-actions"><button class="btn" type="button" id="replyBtn_${escapeHtml(row.id)}" onclick="submitReply('${escapeHtml(row.id)}')" style="width:auto;padding:10px 16px">送出回覆</button></div></div>`}
+    function rowHtml(row){return `<article class="cardx"><div><span class="badge">${escapeHtml(row.category||'公告')}</span><span class="badge">${escapeHtml(row.audienceLabel||'')}</span>${row.pinned?'<span class="badge">置頂</span>':''}${row.requireReply?(row.myReply&&row.myReply.replyText?'<span class="badge done">已回覆</span>':'<span class="badge need">需要回覆</span>'):''}</div><h3>${escapeHtml(row.title||'未命名公告')}</h3><div class="meta">${escapeHtml(row.publishDate||row.date||'')}</div>${String(row.summary||'').trim()?`<div style="font-weight:800;margin-bottom:8px;white-space:pre-wrap">${escapeHtml(row.summary||'')}</div>`:''}<div style="white-space:pre-wrap;line-height:1.75">${escapeHtml(row.content||'')}</div>${imageHtml(row.imageAssets)}${videoHtml(row.videoAssets)}${audioHtml(row.audioAssets)}${fileHtml(row.fileAssets)}${replyHtml(row)}</article>`}
+    async function submitReply(id){const txt=(qs('#reply_'+id)||{}).value||''; if(!txt.trim()){setMsg(qs('#msg'),'請先輸入回覆內容。',true);return} const btn=qs('#replyBtn_'+id); if(btn)btn.disabled=true; try{const r=await api('submitAnnouncementReply',{userId:currentUser.id,announcementId:id,replyText:txt.trim()}); if(!r.ok)throw new Error(r.message||'送出失敗'); setMsg(qs('#msg'),'已送出回覆。'); loadAnnouncements(); if(typeof activateHistoryColoring_==='function')activateHistoryColoring_('#historyList');}catch(e){setMsg(qs('#msg'),e.message||'送出失敗',true); if(btn)btn.disabled=false}}
+    async function loadAnnouncements(){try{const r=await api('getAnnouncements',{userId:currentUser.id,historyMode:'否'}); if(!r.ok)throw new Error(r.message||'讀取失敗'); const rows=(r.rows||[]).filter(x=>!x.isRead && !(x.myReply&&x.myReply.replyText)); qs('#list').innerHTML=rows.length?rows.map(rowHtml).join(''):'<div class="empty">目前沒有未讀或待回覆公告。</div>'; setMsg(qs('#msg'),'');}catch(e){setMsg(qs('#msg'),e.message||'讀取失敗',true); qs('#list').innerHTML='<div class="empty">無法讀取公告</div>'}}
+    async function loadAnnouncementHistory(){const box=qs('#historyList'); box.innerHTML='<div class="empty">讀取中...</div>'; try{const payload=buildHistoryQueryPayload_?buildHistoryQueryPayload_({userId:currentUser.id},'#historyStart','#historyEnd'):{userId:currentUser.id,historyMode:'是'}; const r=await api('getAnnouncements',payload); if(!r.ok)throw new Error(r.message||'讀取失敗'); const rows=(r.rows||[]).filter(x=>x.isRead || (x.myReply&&x.myReply.replyText)); box.innerHTML=rows.length?rows.map(rowHtml).join(''):'<div class="empty">這個日期區間沒有歷史公告。</div>'}catch(e){box.innerHTML='<div class="empty">無法讀取歷史公告。</div>'}}
+    function initPage(){fillHeader(); currentUser=requireLogin(); if(!currentUser)return; const oldBackBtn=qs('#backBtn'); if(oldBackBtn){oldBackBtn.href=userHomeHref(currentUser); oldBackBtn.textContent=userHomeLabel(currentUser);}  if(typeof enforceHistoryDateRange_==='function')enforceHistoryDateRange_('#historyStart','#historyEnd'); loadAnnouncements(); if(typeof activateHistoryColoring_==='function')activateHistoryColoring_('#historyList');}
+  </script>
+  <script src="global-nav.js?v=20260603unified1"></script>
+</body>
+</html>

@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>人事與薪資設定</title>
+  <link rel="stylesheet" href="style.css?v=hr-payroll-hub-20260624">
+  <link rel="stylesheet" href="global-nav.css?v=20260624unified-top-nav">
+  <style>
+    body{background:#eef3f7}.wrap{max-width:1180px;margin:0 auto;padding:18px 14px 56px}.card{background:#fff;border:1px solid #e2e8f0;border-radius:24px;padding:22px;box-shadow:0 10px 28px rgba(15,23,42,.05)}.title{font-size:30px;font-weight:950;margin:0 0 8px;color:#18314a}.sub{color:#64748b;line-height:1.8;font-weight:800}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:18px}.hub-card{display:block;text-decoration:none;color:#0f172a;background:#fff;border:1px solid #dbe5ef;border-radius:22px;padding:22px;box-shadow:0 8px 24px rgba(15,23,42,.04)}.hub-card:hover{transform:translateY(-1px);border-color:#94a3b8}.mark{font-size:13px;color:#0f766e;font-weight:900;margin-bottom:8px}.h{font-size:24px;font-weight:950;margin-bottom:8px;color:#18314a}.d{font-size:14px;line-height:1.8;color:#475569;font-weight:800}@media(max-width:900px){.grid{grid-template-columns:1fr}.wrap{padding:12px 8px}.title{font-size:26px}}
+  </style>
+</head>
+<body onload="initPage()" class="admin-wide-page">
+  <div class="yz-global-nav" data-yz-global-nav>
+    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
+    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
+  </div>
+
+  <div class="wrap">
+    <section class="card">
+      <h1 class="title">人事與薪資設定</h1>
+      <div class="sub">班表、假勤規則、薪資與投保資料集中到同一個入口，管理首頁只保留這一格，避免設定項目散在外面。</div>
+      <div class="grid">
+        <a class="hub-card" href="schedule-admin.html"><div class="mark">項目一</div><div class="h">班表管理</div><div class="d">建立與調整員工班表、排班時段與出勤基礎設定。</div></a>
+        <a class="hub-card" href="leave-policy-admin.html"><div class="mark">項目二</div><div class="h">假勤制度設定</div><div class="d">設定假別、請假規則、特休、喪假與請假流程備註。</div></a>
+        <a class="hub-card" href="salary-admin.html"><div class="mark">項目三</div><div class="h">薪資投保設定</div><div class="d">管理薪資、投保與員工薪資相關基本資料。</div></a>
+      </div>
+    </section>
+  </div>
+
+  <script src="config.js?v=hr-payroll-hub-20260624"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="firebase-client.js?v=admin-final-20260530b"></script>
+  <script src="app.js?v=admin-final-20260530b"></script>
+  <script>function initPage(){ if(typeof fillHeader==='function') fillHeader(); const user=typeof requireLogin==='function'?requireLogin():null; if(!user)return; if(typeof hasSettingsZoneAccess==='function'&&!hasSettingsZoneAccess(user)){location.href='dashboard.html';return;} if(typeof setPortalMode==='function') setPortalMode('settings'); }</script>
+  <script src="global-nav.js?v=20260624unified-top-nav"></script>
+</body>
+</html>

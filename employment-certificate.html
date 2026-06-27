@@ -1,0 +1,1512 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>工讀薪資結算</title>
+  <link rel="stylesheet" href="style.css?v=admin-final-20260530b">
+  <style>
+    :root{--brand:#1f7a5a;--red:#b42318;--red2:#dc2626;--line:#e5e7eb;--muted:#6b7280;--bg:#f6f8fb;--ink:#111827}
+    body{background:var(--bg);color:var(--ink)}
+    .page-return-wrap{margin-bottom:16px}
+    .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:900}
+    .center-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+    .muted{color:var(--muted);line-height:1.7}
+    .btn-red{background:var(--red)!important;color:#fff!important;border:0!important}
+    .btn-red:hover{background:#991b1b!important}
+    .tabs{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+    .tab{border:1px solid var(--line);background:#fff;color:#1f2937;border-radius:999px;padding:10px 14px;font-weight:900;text-decoration:none}
+    .tab.active{background:var(--brand);color:#fff;border-color:var(--brand)}
+    .side-controls{display:grid;gap:12px;margin:10px 0 14px}
+    .employee-layout{display:grid;grid-template-columns:320px 1fr;gap:16px}
+    .employee-list{max-height:620px;overflow:auto;border:1px solid var(--line);border-radius:16px;background:#fff}
+    .employee-item{padding:12px 14px;border-bottom:1px solid var(--line);cursor:pointer}
+    .employee-item:hover{background:#f9fafb}
+    .employee-item.active{background:#eaf8f1;border-left:5px solid var(--brand)}
+    .employee-item strong{display:block;font-size:16px}
+    .summary-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin-top:14px}
+    .summary-card{border:1px solid var(--line);border-radius:18px;padding:14px;background:#fff}
+    .summary-card strong{display:block;font-size:13px;color:var(--muted);margin-bottom:8px}
+    .summary-card .value{font-size:22px;font-weight:900;color:#1f2d3d}
+    .summary-card.final{background:#1f7a5a;color:#fff;border-color:#1f7a5a}.summary-card.final strong,.summary-card.final .value{color:#fff}
+    .summary-card .note{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.45}.summary-card.final .note{color:#eafff5}
+    .summary-card.warn{background:#fff7ed;border-color:#fed7aa}
+    .section-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+    .section-title{font-size:20px;font-weight:900}
+    .table-wrap{overflow:auto;border:1px solid var(--line);border-radius:16px;background:#fff}
+    table{width:100%;border-collapse:collapse;font-size:14px;min-width:1280px}
+    th,td{border-bottom:1px solid var(--line);padding:9px;text-align:left;vertical-align:middle}
+    th{position:sticky;top:0;background:#f9fafb;z-index:1;color:#374151;font-size:13px}
+    td input,td select{width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:10px;padding:8px;background:#fff}
+    .row-actions{display:flex;gap:6px;flex-wrap:wrap}
+    .btn.small{padding:8px 10px;font-size:13px;border-radius:10px;white-space:nowrap}
+    .btn.danger{background:var(--red)}
+    .btn.gray{background:#374151}
+    .pill{display:inline-flex;align-items:center;border-radius:999px;padding:5px 9px;font-size:12px;font-weight:900;background:#f3f4f6;color:#374151}
+    .pill.red{background:#fee2e2;color:#991b1b}.pill.green{background:#dcfce7;color:#166534}.pill.orange{background:#ffedd5;color:#9a3412}.pill.blue{background:#dbeafe;color:#1d4ed8}
+    .hidden{display:none!important}
+    .message{margin-top:12px}
+    .success{padding:12px 14px;border-radius:14px;background:#ecfdf3;border:1px solid #bbf7d0;color:#166534}
+    .error{padding:12px 14px;border-radius:14px;background:#fff1f2;border:1px solid #fecdd3;color:#9f1239}
+    .notice{padding:12px 14px;border-radius:14px;background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af}
+    .add-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;align-items:end}
+    .empty{padding:18px;border:1px dashed var(--line);border-radius:16px;background:#fff;color:var(--muted)}
+    .subtle{font-size:12px;color:var(--muted)}
+    .time-cell{line-height:1.45}.time-fix{display:block;color:#b42318;font-weight:900;font-size:12px;margin-top:3px}.reason-small{font-size:12px;color:#6b7280;line-height:1.5}
+    .daily-shared-cell{background:#fafafa;vertical-align:middle!important;border-right:1px solid var(--line)}
+    .daily-shared-cell strong{display:block;white-space:nowrap}
+    .daily-shared-cell .subtle{display:block;margin-top:6px;line-height:1.45}
+    .daily-filters{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 16px}
+    .daily-filter{border:1px solid var(--line);background:#fff;color:#374151;border-radius:999px;padding:9px 13px;font-weight:900;cursor:pointer}
+    .daily-filter.active{background:var(--brand);border-color:var(--brand);color:#fff}
+    .daily-list{display:grid;gap:16px}
+    .daily-card{border:1px solid var(--line);border-radius:20px;background:#fff;overflow:hidden;box-shadow:0 2px 10px rgba(17,24,39,.04)}
+    .daily-list .daily-card:nth-child(4n+1){background:#eff6ff;border-color:#bfdbfe}
+    .daily-list .daily-card:nth-child(4n+1) .daily-card-head{background:#dbeafe;border-color:#bfdbfe}
+    .daily-list .daily-card:nth-child(4n+2){background:#ecfdf3;border-color:#bbf7d0}
+    .daily-list .daily-card:nth-child(4n+2) .daily-card-head{background:#dcfce7;border-color:#bbf7d0}
+    .daily-list .daily-card:nth-child(4n+3){background:#fff1f2;border-color:#fecdd3}
+    .daily-list .daily-card:nth-child(4n+3) .daily-card-head{background:#ffe4e6;border-color:#fecdd3}
+    .daily-list .daily-card:nth-child(4n){background:#fffbeb;border-color:#fde68a}
+    .daily-list .daily-card:nth-child(4n) .daily-card-head{background:#fef3c7;border-color:#fde68a}
+    .daily-list .daily-section,.daily-list .daily-kpi,.daily-list .audit-list{background:rgba(255,255,255,.82)}
+    .daily-card-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;padding:16px 18px;background:#f9fafb;border-bottom:1px solid var(--line);flex-wrap:wrap}
+    .daily-date{font-size:21px;font-weight:950;letter-spacing:.01em}
+    .daily-statuses{display:flex;gap:7px;flex-wrap:wrap;margin-top:8px}
+    .daily-kpis{display:grid;grid-template-columns:repeat(4,minmax(100px,1fr));gap:8px;min-width:min(100%,520px)}
+    .daily-kpi{border:1px solid var(--line);border-radius:13px;background:#fff;padding:9px 11px;text-align:right}
+    .daily-kpi span{display:block;font-size:11px;color:var(--muted);font-weight:800}
+    .daily-kpi strong{display:block;margin-top:3px;font-size:16px}
+    .daily-kpi.final{background:#ecfdf3;border-color:#bbf7d0}
+    .daily-sections{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;padding:16px 18px}
+    .daily-section{border:1px solid var(--line);border-radius:16px;padding:14px;background:#fff;min-width:0}
+    .daily-section h3{font-size:16px;margin:0 0 10px;font-weight:950}
+    .daily-info{display:grid;gap:8px}
+    .daily-info-row{display:grid;grid-template-columns:105px minmax(0,1fr);gap:10px;align-items:start;line-height:1.55}
+    .daily-info-row>span:first-child{color:var(--muted);font-weight:800}
+    .work-entry,.leave-entry,.audit-item{border-top:1px dashed var(--line);padding-top:10px;margin-top:10px}
+    .work-entry:first-child,.leave-entry:first-child,.audit-item:first-child{border-top:0;padding-top:0;margin-top:0}
+    .entry-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap}
+    .entry-main{font-weight:900;line-height:1.55}
+    .entry-meta{font-size:12px;color:var(--muted);line-height:1.55;margin-top:4px}
+    .daily-empty-inline{color:var(--muted);line-height:1.7;padding:5px 0}
+    .audit-details{border-top:1px solid var(--line);padding:0 18px 16px}
+    .audit-details summary{cursor:pointer;font-weight:900;color:#1f4f3f;padding:14px 0 2px}
+    .audit-list{margin-top:10px;border:1px solid var(--line);border-radius:14px;padding:12px 14px;background:#fafafa}
+    .audit-title{font-weight:900;line-height:1.5}
+    .audit-detail{font-size:13px;color:#4b5563;line-height:1.65;margin-top:3px}
+    .issue-inline{margin-top:12px;padding:10px 12px;border-radius:12px;background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;font-size:13px;line-height:1.6}
+    .daily-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}
+    @media (min-width:1024px){
+      body{overflow-x:auto}
+      .container{width:min(96vw,1680px)!important;max-width:1680px!important;margin:0 auto!important}
+      .card{width:100%!important;box-sizing:border-box}
+      .table-wrap{max-width:100%!important;overflow-x:auto}
+    }
+    @media(max-width:1100px){
+      .employee-layout{grid-template-columns:1fr}
+      .summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+      .add-grid{grid-template-columns:1fr 1fr}
+      .daily-sections{grid-template-columns:1fr}
+      .daily-kpis{grid-template-columns:repeat(2,minmax(0,1fr));width:100%}
+    }
+    @media(max-width:640px){
+      .add-grid{grid-template-columns:1fr}
+      .summary-grid{grid-template-columns:1fr}
+      table{min-width:1100px}
+      .daily-card-head{padding:14px}
+      .daily-sections{padding:14px}
+      .daily-info-row{grid-template-columns:1fr;gap:2px}
+      .daily-kpis{grid-template-columns:1fr 1fr}
+      .audit-details{padding:0 14px 14px}
+    }
+  </style>
+  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
+</head>
+<body onload="init()" class="admin-wide-page">
+  <div class="yz-global-nav" data-yz-global-nav>
+    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
+    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
+  </div>
+
+  <div class="container">
+
+    <div class="card">
+      <div class="center-head">
+        <h1 class="title" style="margin:0">工讀薪資結算</h1>
+      </div>
+      <div id="pageMsg" class="message"></div>
+    </div>
+
+    <div class="employee-layout">
+      <div class="card">
+        <div class="section-head">
+          <div class="section-title">工讀生</div>
+          <span class="pill" id="employeeCount">0 人</span>
+        </div>
+        <div class="side-controls">
+          <div class="field"><label>月份</label><input id="monthText" type="month"></div>
+          <div class="field"><label>搜尋工讀生</label><input id="keyword" placeholder="輸入姓名、員工ID 或 Email"></div>
+        </div>
+        <div id="employeeList" class="employee-list"></div>
+      </div>
+
+      <div>
+        <div class="card">
+          <div class="section-head">
+            <div>
+              <div class="section-title" id="selectedTitle">請先選擇工讀生</div>
+              <div class="muted" id="selectedSub">選擇後會顯示本月份資料。</div>
+            </div>
+          </div>
+          <div class="summary-grid">
+            <div class="summary-card"><strong>總工時</strong><div class="value" id="sumHours">0 小時</div></div>
+            <div class="summary-card"><strong>工時金額</strong><div class="value" id="sumWage">0 元</div><div class="note">扣款前</div></div>
+            <div class="summary-card"><strong>遲到扣款</strong><div class="value" id="sumLateFee">0 元</div><div class="note" id="sumLateMins">0 分</div></div>
+            <div class="summary-card warn"><strong>勞保自付額</strong><div class="value" id="sumLabor">未設定</div><div class="note">自動抓薪資投保的員工負擔</div></div>
+            <div class="summary-card final"><strong>應發金額</strong><div class="value" id="sumNet">0 元</div><div class="note">已扣遲到與勞保</div></div>
+          </div>
+        </div>
+
+        <div class="card" id="dailyPanel">
+          <div class="section-head">
+            <div>
+              <div class="section-title">每日明細與補時數</div>
+              <div class="muted">主管新增補時數會直接列入工讀薪資，不會產生打卡紀錄。</div>
+            </div>
+            <button class="btn" type="button" onclick="openAddParttime('', '補時數')">主管新增補時數</button>
+          </div>
+          <div class="daily-filters" aria-label="每日明細篩選">
+            <button type="button" class="daily-filter active" data-daily-filter="all" data-label="全部" onclick="setDailyFilter('all')">全部</button>
+            <button type="button" class="daily-filter" data-daily-filter="late" data-label="有遲到" onclick="setDailyFilter('late')">有遲到</button>
+            <button type="button" class="daily-filter" data-daily-filter="leave" data-label="有請假" onclick="setDailyFilter('leave')">有請假</button>
+            <button type="button" class="daily-filter" data-daily-filter="supervisor" data-label="有主管處理" onclick="setDailyFilter('supervisor')">有主管處理</button>
+            <button type="button" class="daily-filter" data-daily-filter="issue" data-label="資料需確認" onclick="setDailyFilter('issue')">資料需確認</button>
+          </div>
+
+          <div id="parttimeAddBox" class="hidden" style="margin-bottom:16px;border:1px solid var(--line);border-radius:16px;padding:14px;background:#fafafa">
+            <div class="add-grid">
+              <div class="field"><label>日期</label><input id="addDate" type="date"></div>
+              <div class="field"><label>時數</label><input id="addHours" type="number" step="0.5" min="0"></div>
+              <div class="field"><label>工時來源</label><select id="addSource"><option value="管理者新增">主管新增工時</option><option value="補時數">補登工時</option></select></div>
+              <div class="field"><label>新增原因</label><input id="addNote" placeholder="必填，例如：補班時數由主管確認"></div>
+              <button class="btn" onclick="addParttimeRecord()">儲存新增</button>
+              <button class="btn gray" type="button" onclick="closeAddParttime()">取消</button>
+            </div>
+          </div>
+
+          <div id="dailyList" class="daily-list"></div>
+          <div class="empty hidden" id="dailyEmpty">這個月份沒有工時、打卡或請假資料。</div>
+        </div>
+
+        <div class="card">
+          <div class="section-title">出勤與扣款提醒</div>
+          <div id="attendanceAlertList" class="muted" style="margin-top:10px">請先選擇工讀生。</div>
+          <div style="border-top:1px solid var(--line);margin:18px 0"></div>
+          <div class="section-title">資料異常</div>
+          <div id="dataIssueList" class="muted" style="margin-top:10px">請先選擇工讀生。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="config.js?v=20260524tempatt1"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="parttime-payroll-common.js?v=20260624dailymerge1"></script>
+  <script>
+    let state = { employees: [], allEmployees: [], parttime: [], clocks: [], corrections: [], leaves: [], salaryConfigs: {}, selectedId: '', lateCache: null, dailyFilter: 'all' };
+    const COMPANY_CLOCK_IN_IP = '125.229.190.123';
+
+    function qs(s){return document.querySelector(s)}
+    function qsa(s){return [...document.querySelectorAll(s)]}
+    function clean(v){return String(v==null?'':v).trim()}
+    function lower(v){return clean(v).toLowerCase()}
+    function safeNum(v){const n=Number(clean(v).replace(/[^\d.\-]/g,''));return Number.isFinite(n)?n:0}
+    function money(v){return (Math.round(Number(v||0)||0)).toLocaleString('zh-TW')+' 元'}
+    function hours(v){const n=Number(v||0)||0;return (Math.abs(n-Math.round(n))<.001?String(Math.round(n)):n.toFixed(1).replace(/\.0$/,''))+' 小時'}
+    function msg(t,type='success'){qs('#pageMsg').innerHTML=t?`<div class="${type}">${t}</div>`:''}
+    function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+    function escjs(s){return String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'")}
+    function raw(o,keys){const src=o&&o.source||{};for(const k of keys){if(o&&o[k]!=null&&clean(o[k])!=='')return o[k]}for(const k of keys){if(src&&src[k]!=null&&clean(src[k])!=='')return src[k]}return ''}
+    function isTrue(v){const s=lower(v);return v===true||['是','yes','true','1','啟用','active','enabled'].includes(s)}
+    function excelDate(n){n=Number(n);if(!Number.isFinite(n)||n<20000||n>70000)return'';const d=new Date(Date.UTC(1899,11,30));d.setUTCDate(d.getUTCDate()+Math.floor(n));return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')+'-'+String(d.getUTCDate()).padStart(2,'0')}
+    function dateKey(v){
+      if(v==null||v==='')return''; if(v&&typeof v.toDate==='function')v=v.toDate();
+      if(v instanceof Date&&!isNaN(v.getTime()))return v.getFullYear()+'-'+String(v.getMonth()+1).padStart(2,'0')+'-'+String(v.getDate()).padStart(2,'0');
+      if(typeof v==='number')return excelDate(v)||''; const s=clean(v);
+      if(/^\d{4}-\d{1,2}-\d{1,2}/.test(s)){const p=s.split(/[-\sT]/);return p[0]+'-'+String(p[1]).padStart(2,'0')+'-'+String(p[2]).padStart(2,'0')}
+      if(/^\d{4}\/\d{1,2}\/\d{1,2}/.test(s)){const p=s.split(/[\/\s]/);return p[0]+'-'+String(p[1]).padStart(2,'0')+'-'+String(p[2]).padStart(2,'0')}
+      if(/^\d{4,5}(?:\.\d+)?$/.test(s))return excelDate(Number(s))||s; const d=new Date(s);return isNaN(d.getTime())?s:dateKey(d)
+    }
+    function timeText(v){
+      if(!v)return'';
+      if(v&&typeof v.toDate==='function')v=v.toDate();
+      if(v instanceof Date&&!isNaN(v.getTime()))return String(v.getHours()).padStart(2,'0')+':'+String(v.getMinutes()).padStart(2,'0')+':'+String(v.getSeconds()).padStart(2,'0');
+      return clean(v)
+    }
+    function dateTimeText(v){
+      if(!v)return'';
+      if(v&&typeof v.toDate==='function')v=v.toDate();
+      if(v instanceof Date&&!isNaN(v.getTime())){
+        return dateKey(v)+' '+String(v.getHours()).padStart(2,'0')+':'+String(v.getMinutes()).padStart(2,'0')+':'+String(v.getSeconds()).padStart(2,'0');
+      }
+      const s=clean(v);
+      const d=new Date(s);
+      if(!isNaN(d.getTime()) && /[T:]/.test(s)) return dateKey(d)+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')+':'+String(d.getSeconds()).padStart(2,'0');
+      return s;
+    }
+    function ipJudge(ip){
+      ip=clean(ip);
+      if(!ip)return {text:'未記錄', cls:'orange'};
+      if(ip==='臨時出勤核准')return {text:'臨時核准', cls:'blue'};
+      if(ip===COMPANY_CLOCK_IN_IP)return {text:'公司 IP', cls:'green'};
+      return {text:'非公司 IP', cls:'red'};
+    }
+    function onlyTimeText(v){
+      const s = clean(v);
+      if(!s) return '';
+      const m = s.match(/(\d{1,2}:\d{2}:\d{2})/);
+      if(m) return m[1];
+      const m2 = s.match(/(\d{1,2}:\d{2})/);
+      if(m2) return m2[1] + ':00';
+      return s;
+    }
+    function clockInSourceLabel(ip){
+      const judge = ipJudge(ip);
+      return judge.text === '公司 IP' ? {text:'公司IP', cls:'green'} : judge;
+    }
+    function fb(){ if(!(window.APP_CONFIG&&window.APP_CONFIG.FIREBASE_CONFIG))throw new Error('找不到 Firebase 設定'); if(!firebase.apps.length)firebase.initializeApp(window.APP_CONFIG.FIREBASE_CONFIG); return firebase.firestore(); }
+    async function all(col){const snap=await fb().collection(col).get();const a=[];snap.forEach(d=>a.push(Object.assign({__id:d.id},d.data()||{})));return a}
+    function payrollRules(){ if(!window.YZParttimePayroll) throw new Error('工讀薪資共用計算規則未載入'); return window.YZParttimePayroll; }
+    function currentManager(){
+      try{
+        const u=JSON.parse(localStorage.getItem('employeeUser')||'{}')||{};
+        return {id:clean(u.id||u.employeeId||u.userId),name:clean(u.name||u.displayName||u.email)||'主管'};
+      }catch(e){return {id:'',name:'主管'}}
+    }
+    function nowIso(){return new Date().toISOString()}
+    async function mergeWithAudit(collection,id,patch,historyField,event){
+      const payload=Object.assign({},patch||{});
+      const canArrayUnion=event&&firebase.firestore&&firebase.firestore.FieldValue&&typeof firebase.firestore.FieldValue.arrayUnion==='function';
+      if(canArrayUnion)payload[historyField]=firebase.firestore.FieldValue.arrayUnion(event);
+      try{
+        await fb().collection(collection).doc(id).set(payload,{merge:true});
+      }catch(err){
+        if(!canArrayUnion)throw err;
+        delete payload[historyField];
+        await fb().collection(collection).doc(id).set(payload,{merge:true});
+      }
+    }
+
+    function normalizedAccountStatus(o){
+      const s = lower(raw(o,['accountStatus','帳號狀態','status','狀態']));
+      if(!s || ['active','啟用','正常','已核准','核准','enabled','yes','true','1'].includes(s)) return 'active';
+      if(['inactive','停用','disabled','停權'].includes(s)) return 'inactive';
+      if(['pending','待審核','待主管審核'].includes(s)) return 'pending';
+      if(['rejected','已駁回','駁回','退回'].includes(s)) return 'rejected';
+      if(['archived','封存'].includes(s)) return 'archived';
+      return s;
+    }
+    function normalizedEmploymentStatus(o){
+      const s = lower(raw(o,['employmentStatus','任職狀態','workStatus','在職狀態']));
+      if(!s || ['active','在職','任職中','正常','啟用','yes','true','1'].includes(s)) return 'active';
+      if(['resigned','離職','已離職'].includes(s)) return 'resigned';
+      if(['suspended','暫停任用','停職','暫停'].includes(s)) return 'suspended';
+      if(['contractorended','contractor_ended','合作結束','外聘合作結束'].includes(s)) return 'contractorEnded';
+      if(['archived','封存'].includes(s)) return 'archived';
+      return s;
+    }
+    function isHiddenEmployee(o){ return isTrue(raw(o,['hiddenFromActiveLists','隱藏於日常清單','hidden','隱藏'])); }
+    function salaryConfigKeys(o){
+      o = o || {};
+      const keys = [
+        clean(raw(o,['employeeId','員工ID','id','userId']) || o.__id),
+        lower(raw(o,['email','Email']))
+      ].filter(Boolean);
+      return Array.from(new Set(keys));
+    }
+    function indexSalaryConfig(map, key, cfg){
+      key = clean(key);
+      if(!key || !cfg) return;
+      const lowerKey = lower(key);
+      map[key] = Object.assign({}, map[key] || {}, cfg);
+      map[lowerKey] = Object.assign({}, map[lowerKey] || {}, cfg);
+    }
+    function buildSalaryConfigMap(configRows, setupRows){
+      const map = {};
+      (configRows || []).forEach(function(row){
+        salaryConfigKeys(row).forEach(function(key){ indexSalaryConfig(map, key, row); });
+      });
+      (setupRows || []).forEach(function(row){
+        const containers = [row.employeeConfigMap, row.salaryConfigMap, row.configMap, row.configs, row.employeeConfigs].filter(Boolean);
+        containers.forEach(function(container){
+          Object.keys(container || {}).forEach(function(key){
+            const cfg = container[key] || {};
+            indexSalaryConfig(map, key, cfg);
+            salaryConfigKeys(cfg).forEach(function(extraKey){ indexSalaryConfig(map, extraKey, cfg); });
+          });
+        });
+      });
+      return map;
+    }
+    function mergeEmployeeSalaryConfig(row){
+      const keys = salaryConfigKeys(row);
+      const cfg = keys.map(function(key){ return state.salaryConfigs[key]; }).find(Boolean) || {};
+      return Object.assign({}, row || {}, cfg || {});
+    }
+    function firstPositiveNumber(o, keys){
+      for(const k of keys){
+        const v = safeNum(raw(o, [k]));
+        if(v > 0) return v;
+      }
+      return 0;
+    }
+    function insuranceActive(status){
+      const s = clean(status);
+      return ['在保','已投保','投保','加保','有效','是','active','yes','true','1'].includes(s) || ['active','yes','true','1'].includes(lower(s));
+    }
+    function parseLaborPlanSalary(value){
+      const s = clean(value).replace(/,/g,'');
+      const m = s.match(/(\d{4,6})/);
+      return m ? safeNum(m[1]) : 0;
+    }
+    function feeRound(value){ return Math.round(safeNum(value)); }
+    function laborFeeBreakdown(salary){
+      const s = safeNum(salary);
+      if(!(s > 0)) return { total:0, employee:0, employer:0, government:0 };
+      const ordinaryRate = 0.115;
+      const employmentRate = 0.01;
+      const employee = feeRound(s * ordinaryRate * 0.20) + feeRound(s * employmentRate * 0.20);
+      const employer = feeRound(s * ordinaryRate * 0.70) + feeRound(s * employmentRate * 0.70);
+      const government = feeRound(s * ordinaryRate * 0.10) + feeRound(s * employmentRate * 0.10);
+      return { total:employee + employer + government, employee, employer, government };
+    }
+    function laborSelfPayFallback(o){
+      const status = raw(o,['laborStatus','laborInsuranceStatus','laborInsurance','勞保狀態']);
+      const plan = raw(o,['laborPlan','laborPlanCode','laborInsuranceLevel','laborLevel','勞保級距']);
+      const salary = safeNum(raw(o,['laborInsuredSalary','laborSalary','laborInsuranceSalary','勞保投保薪資'])) || parseLaborPlanSalary(plan);
+      if(!(salary > 0)) return 0;
+      if(clean(status) && !insuranceActive(status)) return 0;
+      return laborFeeBreakdown(salary).employee || 0;
+    }
+    function employee(o){
+      const id=clean(raw(o,['employeeId','員工ID'])||o.__id);
+      const part = isTrue(raw(o,['isPartTime','是否工讀生'])) || lower(raw(o,['identityType','身分類型'])).includes('part');
+      const accountStatus = normalizedAccountStatus(o);
+      const employmentStatus = normalizedEmploymentStatus(o);
+      const hidden = isHiddenEmployee(o);
+      const active = accountStatus === 'active' && employmentStatus === 'active' && !hidden;
+      const laborSelfPay=firstPositiveNumber(o,[
+        'laborSelfPay','laborEmployeeSelfPay','laborInsuranceSelfPay','laborSelfPayAmount','laborInsuranceEmployeeAmount',
+        'laborSelfPayText','勞保自付額','勞保員工自付額','勞保員工負擔','員工負擔','勞保自付額快照'
+      ]) || laborSelfPayFallback(o);
+      const laborInsuredSalary=safeNum(raw(o,['laborInsuredSalary','laborSalary','laborInsuranceSalary','勞保投保薪資','目前申報月平均薪資總額'])) || parseLaborPlanSalary(raw(o,['laborPlan','laborPlanCode','laborInsuranceLevel','laborLevel','勞保級距']));
+      return {id,name:clean(raw(o,['name','姓名']))||id,email:lower(raw(o,['email','Email'])),hourlyRate:safeNum(raw(o,['hourlyRate','時薪','時薪金額']))||196,laborSelfPay,laborInsuredSalary,accountStatus,employmentStatus,hiddenFromActiveLists:hidden,active,part,raw:o}
+    }
+    function pt(o){
+      const empId=clean(raw(o,['employeeId','員工ID']));
+      const email=lower(raw(o,['email','Email']));
+      const name=clean(raw(o,['name','姓名']));
+      let total=safeNum(raw(o,['totalHours','總時數']));
+      if(!total) total=safeNum(raw(o,['hours','時數']))+(isTrue(raw(o,['halfHour','是否加半小時']))?.5:0);
+      const probe={employeeId:empId,email,name};
+      const emp=state.employees.find(e=>payrollRules().sameEmployee(probe,e,knownEmployees()));
+      const rate=safeNum(raw(o,['hourlyRate','時薪']))||(emp?emp.hourlyRate:196);
+      const status=clean(raw(o,['status','狀態']));
+      const note=clean(raw(o,['note','備註','補時數原因']));
+      return {
+        __id:o.__id,
+        id:clean(raw(o,['recordId','紀錄ID'])||o.__id),
+        recordId:clean(raw(o,['recordId','紀錄ID'])||o.__id),
+        employeeId:empId,
+        name:name||(emp?emp.name:''),
+        email:email||(emp?emp.email:''),
+        date:dateKey(raw(o,['workDate','date','日期'])),
+        hours:Math.round(total*100)/100,
+        totalHours:Math.round(total*100)/100,
+        hourlyRate:rate,
+        status,
+        payable:clean(raw(o,['payable','是否計薪'])),
+        note,
+        gross:safeNum(raw(o,['grossPay','當筆毛額','當日工資']))||Math.round(total*rate),
+        grossPay:safeNum(raw(o,['grossPay','當筆毛額','當日工資']))||Math.round(total*rate),
+        laborSelfPaySnapshot:safeNum(raw(o,['laborSelfPaySnapshot','勞保自付額快照','laborSelfPay','勞保自付額'])),
+        sourceType:clean(raw(o,['sourceType','資料來源類型'])),
+        isPaidLeave:isTrue(raw(o,['isPaidLeave','核准支薪假']))||clean(raw(o,['sourceType','資料來源類型']))==='approvedPaidLeave',
+        replacementOf:clean(raw(o,['replacementOf','replacesRecordId','取代紀錄ID','原紀錄ID'])),
+        replacedByRecordId:clean(raw(o,['replacedByRecordId','supersededBy','被取代紀錄ID'])),
+        updatedAt:raw(o,['updatedAt','最後更新時間','reviewedAt','審核時間','createdAt','建立時間']),
+        raw:o
+      }
+    }
+    function flattenRawFields(obj, prefix='', out={}){
+      if(!obj || typeof obj !== 'object') return out;
+      Object.keys(obj).forEach(k=>{
+        const v=obj[k];
+        const key=prefix ? prefix + '.' + k : k;
+        if(v && typeof v === 'object' && !(v instanceof Date) && typeof v.toDate !== 'function'){
+          flattenRawFields(v, key, out);
+        }else{
+          out[key]=v;
+        }
+      });
+      return out;
+    }
+    function pickByKeyWords(o, includeWords, excludeWords=[]){
+      const fields = flattenRawFields(o || {});
+      const candidates = [];
+      Object.entries(fields).forEach(([k,v])=>{
+        const key = lower(k);
+        const hasInclude = includeWords.some(w => key.includes(lower(w)));
+        const hasExclude = excludeWords.some(w => key.includes(lower(w)));
+        if(hasInclude && !hasExclude && clean(v) !== '') candidates.push({key:k,value:v});
+      });
+      // Prefer values that look like a date-time, then any time-like value
+      const scored = candidates.map(c=>{
+        const s=clean(c.value);
+        let score=0;
+        if(/20\d{2}[-/]\d{1,2}[-/]\d{1,2}/.test(s) || (c.value && typeof c.value.toDate === 'function')) score += 10;
+        if(/\d{1,2}:\d{2}/.test(s)) score += 5;
+        if(lower(c.key).includes('time') || c.key.includes('時間')) score += 3;
+        if(lower(c.key).includes('at') || c.key.includes('戳')) score += 2;
+        return {...c,score};
+      }).sort((a,b)=>b.score-a.score);
+      return scored[0] || null;
+    }
+    function pickClockInRaw(o){
+      return raw(o,[
+        'clockIn','clockInTime','inTime','上班打卡','上班時間','上班打卡時間',
+        'clockInAt','上班打卡時間戳','上班打卡送出時間','上班送出時間','punchInAt',
+        '上班簽到時間','簽到時間','clock_in','clockInDateTime'
+      ]) || (pickByKeyWords(o, ['clockin'], ['out']) || {}).value
+         || (pickByKeyWords(o, ['punchin'], ['out']) || {}).value
+         || (pickByKeyWords(o, ['上班'], ['下班','out']) || {}).value
+         || (pickByKeyWords(o, ['簽到'], ['簽退','下班']) || {}).value;
+    }
+    function pickClockOutRaw(o){
+      return raw(o,[
+        'clockOut','clockOutTime','outTime','下班打卡','下班時間','下班打卡時間',
+        'clockOutAt','下班打卡時間戳','下班打卡送出時間','下班送出時間','punchOutAt',
+        '下班簽退時間','簽退時間','clock_out','clockOutDateTime'
+      ]) || (pickByKeyWords(o, ['clockout'], ['in']) || {}).value
+         || (pickByKeyWords(o, ['punchout'], ['in']) || {}).value
+         || (pickByKeyWords(o, ['下班'], ['上班','in']) || {}).value
+         || (pickByKeyWords(o, ['簽退'], ['簽到','上班']) || {}).value;
+    }
+    function rawFieldSummary(o){
+      const fields = flattenRawFields(o || {});
+      return Object.entries(fields).map(([k,v]) => `${k}: ${clean(v)}`).join('\n');
+    }
+
+    function pickClockDate(o){
+      return dateKey(raw(o,['打卡日期','clockDate','date','日期','workDate']) || pickClockInRaw(o) || pickClockOutRaw(o));
+    }
+    function pickClockTime(o){
+      return raw(o,['打卡時間','clockTime','time','時間','punchTime','打卡送出時間','建立時間','createdAt']);
+    }
+    function pickClockAction(o){
+      return clean(raw(o,['打卡動作','actionName','action','clockAction','punchAction','動作','type']));
+    }
+    function formatDateAndTime(d, t){
+      const dk = dateKey(d);
+      if(!t) return '';
+      if(t && typeof t.toDate === 'function') t = t.toDate();
+      if(t instanceof Date && !isNaN(t.getTime())){
+        const hh = String(t.getHours()).padStart(2,'0');
+        const mm = String(t.getMinutes()).padStart(2,'0');
+        const ss = String(t.getSeconds()).padStart(2,'0');
+        return (dk || dateKey(t)) + ' ' + hh + ':' + mm + ':' + ss;
+      }
+      const s = clean(t);
+      const parsed = dateTimeText(s);
+      if(parsed && /20\d{2}/.test(parsed)) return parsed;
+      if(/\d{1,2}:\d{2}/.test(s)) return (dk ? dk + ' ' : '') + s;
+      return s;
+    }
+    function mergedClockRows(){
+      const e = selected();
+      if(!e) return [];
+      const rows = effectiveClockRows();
+      const lateResult = currentLateResult();
+      const unresolvedByDate = new Map(lateResult.byDate.map(x=>[x.date,x]));
+      const correctedByDate = new Map(lateResult.correctedByDate.map(x=>[x.date,x]));
+      const map = {};
+      rows.forEach(r=>{
+        const key = r.date || '';
+        if(!key) return;
+        if(!map[key]) map[key] = {date:key, employeeId:e.id, name:e.name, inRec:null, outRec:null, records:[], note:''};
+        map[key].records.push(r);
+        const action = clean(r.action);
+        if(action.includes('上班') || action.includes('上班打卡') || lower(action).includes('in')){
+          if(!map[key].inRec || clean(r.clockIn) < clean(map[key].inRec.clockIn || '9999')) map[key].inRec = r;
+        }else if(action.includes('下班') || action.includes('下班打卡') || lower(action).includes('out')){
+          if(!map[key].outRec || clean(r.clockOut) > clean(map[key].outRec.clockOut || '')) map[key].outRec = r;
+        }else{
+          if(r.clockIn && !map[key].inRec) map[key].inRec = r;
+          if(r.clockOut && !map[key].outRec) map[key].outRec = r;
+        }
+        map[key].note = [map[key].note, r.note].filter(Boolean).join('；');
+      });
+      return Object.values(map).sort((a,b)=>a.date.localeCompare(b.date)).map(g=>{
+        const inRec = g.inRec || {};
+        const outRec = g.outRec || {};
+        const unresolved = unresolvedByDate.get(g.date) || {minutes:0,entries:[]};
+        const corrected = correctedByDate.get(g.date) || {minutes:0,entries:[]};
+        const lateRecord = unresolved.entries[0] && unresolved.entries[0].record;
+        const ip = clean(inRec.ip || '');
+        const outIp = clean(outRec.ip || outRec.outIp || '');
+        const saveId = clean((lateRecord && (lateRecord.__id || lateRecord.id || lateRecord.recordId)) || inRec.__id || outRec.__id || g.date);
+        return {
+          __id: saveId,
+          inId: clean(inRec.__id || inRec.id || ''),
+          outId: clean(outRec.__id || outRec.id || ''),
+          lateId: clean(lateRecord && (lateRecord.__id || lateRecord.id || lateRecord.recordId)),
+          employeeId:e.id,
+          name:e.name,
+          date:g.date,
+          clockIn: clean(inRec.clockIn || ''),
+          clockOut: clean(outRec.clockOut || ''),
+          ip,
+          outIp,
+          late:unresolved.minutes || 0,
+          correctedLate:corrected.minutes || 0,
+          lateDeduction:Math.round((safeNum(e.hourlyRate)/60)*(unresolved.minutes || 0)),
+          note:g.note || '',
+          records:g.records,
+          raw:{in:inRec.raw || null, out:outRec.raw || null, records:g.records.map(x=>x.raw || null)}
+        };
+      });
+    }
+
+    function clock(o){
+      const empId=clean(raw(o,['employeeId','員工ID']));
+      const action = pickClockAction(o);
+      const dRaw = raw(o,['打卡日期','clockDate','date','日期','workDate']);
+      const tRaw = pickClockTime(o);
+      const date = pickClockDate(o);
+      const explicitTime = formatDateAndTime(dRaw || date, tRaw);
+      const inRaw = pickClockInRaw(o);
+      const outRaw = pickClockOutRaw(o);
+      const inIp = clean(raw(o,['clockInIp','上班IP','上班來源IP','ip','IP','來源IP','sourceIp']));
+      const outIp = clean(raw(o,['clockOutIp','下班IP','下班來源IP']));
+      const recordId=clean(raw(o,['recordId','紀錄ID'])||o.__id);
+      const late=safeNum(raw(o,['finalLateMinutes','最終遲到分鐘','lateMinutes','遲到分鐘','lateMins']));
+      return {
+        __id:o.__id,
+        id:recordId,
+        recordId,
+        employeeId:empId,
+        name:clean(raw(o,['name','姓名','employeeName'])),
+        email:lower(raw(o,['email','Email'])),
+        date,
+        action,
+        actionName:action,
+        time:timeText(tRaw),
+        clockIn: (action.includes('上班') || action.includes('上班打卡') || lower(action).includes('in')) ? (explicitTime || dateTimeText(inRaw)||timeText(inRaw)) : (dateTimeText(inRaw)||timeText(inRaw)),
+        clockOut: (action.includes('下班') || action.includes('下班打卡') || lower(action).includes('out')) ? (explicitTime || dateTimeText(outRaw)||timeText(outRaw)) : (dateTimeText(outRaw)||timeText(outRaw)),
+        clockInRaw: clean(inRaw || tRaw),
+        clockOutRaw: clean(outRaw || tRaw),
+        ip:inIp,
+        outIp:outIp,
+        status:clean(raw(o,['status','狀態'])||'正常'),
+        late,
+        lateMinutes:late,
+        originalRecordId:clean(raw(o,['originalRecordId','原始紀錄ID'])),
+        replacementOf:clean(raw(o,['replacementOf','replacesRecordId','取代紀錄ID'])),
+        replacedByRecordId:clean(raw(o,['replacedByRecordId','supersededBy','被取代紀錄ID'])),
+        isSupplement:isTrue(raw(o,['isSupplement','是否補登'])),
+        correctionRequestId:clean(raw(o,['correctionRequestId','修正申請ID'])),
+        noLateDeduction:isTrue(raw(o,['noLateDeduction','lateDeductionWaived','不扣款','免扣款'])),
+        updatedAt:raw(o,['updatedAt','最後更新時間','reviewedAt','審核時間','createdAt','建立時間']),
+        note:clean(raw(o,['note','備註','reason','原因'])),
+        raw:o
+      }
+    }
+    function correction(o){
+      const status=clean(raw(o,['status','狀態','審核狀態']));
+      const id=clean(raw(o,['requestId','申請ID'])||o.__id);
+      return {
+        __id:o.__id,
+        id,
+        requestId:id,
+        employeeId:clean(raw(o,['employeeId','員工ID'])),
+        name:clean(raw(o,['name','姓名','employeeName'])),
+        email:lower(raw(o,['email','Email'])),
+        date:dateKey(raw(o,['correctDate','correctionDate','date','日期','修正日期','originalDate','原日期','workDate','打卡日期','申請日期'])),
+        originalDate:dateKey(raw(o,['originalDate','原日期'])),
+        originalRecordId:clean(raw(o,['originalRecordId','原始紀錄ID'])),
+        sourceClockId:clean(raw(o,['sourceClockId','clockRecordId','打卡紀錄ID'])),
+        targetRecordId:clean(raw(o,['targetRecordId','目標紀錄ID'])),
+        approvedRecordId:clean(raw(o,['approvedRecordId','核准後紀錄ID'])),
+        appliedRecordId:clean(raw(o,['appliedRecordId','套用紀錄ID'])),
+        approved:payrollRules().isApprovedStatus(status),
+        status,
+        decision:clean(raw(o,['decision','處理結果','審核結果'])),
+        originalLateMinutes:safeNum(raw(o,['originalLateMinutes','原始遲到分鐘','原遲到分鐘'])),
+        reviewerId:clean(raw(o,['reviewerId','審核人ID','approverId'])),
+        reviewer:clean(raw(o,['reviewerName','審核人','approver','approvedByName'])),
+        reviewedAt:raw(o,['reviewedAt','審核時間','approvedAt','updatedAt','createdAt']),
+        note:clean(raw(o,['note','備註','reason','原因','修正原因'])),
+        raw:o
+      }
+    }
+    function leave(o){
+      const d=dateKey(raw(o,['date','日期','leaveDate','請假日期','startDate','開始日期']));
+      const s=clean(raw(o,['startTime','開始時間','請假開始時間']));
+      const e=clean(raw(o,['endTime','結束時間','請假結束時間']));
+      return {__id:o.__id,requestId:clean(raw(o,['requestId','申請ID'])||o.__id),employeeId:clean(raw(o,['employeeId','員工ID'])),name:clean(raw(o,['name','姓名','employeeName'])),email:lower(raw(o,['email','Email'])),date:d,time:[s,e].filter(Boolean).join(' - '),type:clean(raw(o,['leaveType','假別','type'])),hours:safeNum(raw(o,['hours','時數','請假時數'])),status:clean(raw(o,['status','狀態','審核狀態'])),reviewerId:clean(raw(o,['reviewerId','審核人ID','approverId'])),reviewer:clean(raw(o,['reviewerName','reviewer','審核人','approver'])),reviewedAt:raw(o,['reviewedAt','審核時間','approvedAt','updatedAt']),submittedAt:raw(o,['submittedAt','申請時間','createdAt']),note:clean(raw(o,['note','備註','reason','請假原因'])),raw:o}
+    }
+    function workSource(r){
+      const status=clean(r&&r.status);
+      const sourceType=clean(r&&r.sourceType);
+      const note=clean(r&&r.note);
+      const src=r&&r.raw||{};
+      if(r&&r.isPaidLeave||sourceType==='approvedPaidLeave')return'核准支薪假';
+      if(sourceType==='temporaryAttendanceApproved'||status.includes('臨時出勤'))return'核准臨時出勤';
+      if(sourceType==='parttimeScheduleHours')return'排班內登記';
+      if(sourceType==='parttimeExcessHours'||status.includes('補時數')||note.includes('補時數')||note.includes('加時')||note.includes('追加')||note.includes('超過原訂班表'))return'補時數';
+      if(src.dataCenterCreated||sourceType==='managerAdded')return'主管新增';
+      return'員工登記';
+    }
+    function selected(){return state.employees.find(e=>e.id===state.selectedId)}
+    function knownEmployees(){return state.allEmployees&&state.allEmployees.length?state.allEmployees:state.employees}
+    function month(){return clean(qs('#monthText').value)}
+    function inMonth(d){return !month()||String(d||'').slice(0,7)===month()}
+    function matchesSelectedEmployee(record){
+      const e=selected();
+      return !!(e && payrollRules().sameEmployee(record,e,knownEmployees()));
+    }
+    function sameEmp(a,b){
+      const e=selected();
+      return !!(e && payrollRules().sameEmployee(a,e,knownEmployees()) && payrollRules().sameEmployee(b,e,knownEmployees()));
+    }
+    function empRows(arr){
+      if(!selected())return[];
+      return (arr||[]).filter(r=>matchesSelectedEmployee(r)&&inMonth(r.date));
+    }
+    function effectiveParttimeRows(){
+      return payrollRules().latestEffectiveParttimeRecords(empRows(state.parttime));
+    }
+    function effectiveClockRows(){
+      return payrollRules().latestEffectiveClockRecords(empRows(state.clocks));
+    }
+    function leaveStatusRank(status){
+      if(payrollRules().isApprovedStatus(status))return 4;
+      const v=lower(status);
+      if(v.includes('待')||v.includes('pending')||v.includes('審核'))return 3;
+      if(v.includes('駁回')||v.includes('退回')||v.includes('rejected'))return 2;
+      if(v.includes('取消')||v.includes('作廢')||v.includes('deleted'))return 0;
+      return 1;
+    }
+    function effectiveLeaveRows(){
+      const map=new Map();
+      empRows(state.leaves).forEach(r=>{
+        const key=clean(r.requestId||r.__id)||[r.date,r.time,r.type,r.hours,r.note].join('|');
+        const old=map.get(key);
+        if(!old||leaveStatusRank(r.status)>=leaveStatusRank(old.status))map.set(key,r);
+      });
+      return Array.from(map.values()).sort((a,b)=>clean(a.date).localeCompare(clean(b.date))||clean(a.time).localeCompare(clean(b.time)));
+    }
+    function currentLateResult(){
+      const e=selected();
+      if(!e)return {entries:[],correctedEntries:[],byDate:[],correctedByDate:[],lateMinutes:0,lateDeduction:0};
+      const key=`${e.id}|${month()}|${state.clocks.length}|${state.corrections.length}`;
+      if(state.lateCache&&state.lateCache.key===key)return state.lateCache.result;
+      const result=payrollRules().calculateLate({
+        clockRows:state.clocks,
+        corrections:state.corrections,
+        employee:e,
+        employees:knownEmployees(),
+        month:month(),
+        hourlyRate:e.hourlyRate
+      });
+      state.lateCache={key,result};
+      return result;
+    }
+    function lateInfoForDate(date){
+      const result=currentLateResult();
+      const unresolved=result.byDate.find(x=>x.date===date);
+      const corrected=result.correctedByDate.find(x=>x.date===date);
+      const minutes=unresolved?unresolved.minutes:0;
+      const correctedMinutes=corrected?corrected.minutes:0;
+      return {
+        minutes,
+        correctedMinutes,
+        deduct:Math.round((safeNum((selected()||{}).hourlyRate)/60)*minutes),
+        entries:unresolved?unresolved.entries:[],
+        correctedEntries:corrected?corrected.entries:[]
+      };
+    }
+    function approvedFixFor(r){
+      const info=lateInfoForDate(clean(r&&r.date));
+      return info.correctedMinutes>0&&info.minutes===0;
+    }
+    function lateFor(r){return lateInfoForDate(clean(r&&r.date)).minutes}
+    function attendStatus(r){
+      const info=lateInfoForDate(clean(r&&r.date));
+      if(info.minutes>0)return {text:`遲到 ${info.minutes} 分鐘，預計扣 ${info.deduct.toLocaleString('zh-TW')} 元`,cls:'red',deduct:info.deduct,late:info.minutes};
+      if(info.correctedMinutes>0)return {text:`遲到 ${info.correctedMinutes} 分鐘已修正，不扣款`,cls:'green',deduct:0,late:0};
+      const lv=effectiveLeaveRows().some(l=>l.date===r.date&&payrollRules().isApprovedStatus(l.status));
+      if(lv)return {text:'有核准請假，請確認時段',cls:'orange',deduct:0,late:0};
+      return {text:'無遲到扣款',cls:'green',deduct:0,late:0};
+    }
+
+    function setDailyFilter(filter){
+      state.dailyFilter=clean(filter)||'all';
+      qsa('[data-daily-filter]').forEach(btn=>btn.classList.toggle('active',btn.getAttribute('data-daily-filter')===state.dailyFilter));
+      renderDaily();
+    }
+
+    async function init(){
+      qs('#monthText').value=new Date().getFullYear()+'-'+String(new Date().getMonth()+1).padStart(2,'0');
+      await reloadAll();
+    }
+    async function reloadAll(){
+      try{
+        msg('讀取資料中...','notice');
+        const employeeRows = await all('employees');
+        const salaryConfigRows = (await all('employeeSalaryConfigs').catch(()=>[]))
+          .concat(await all('salaryConfigs').catch(()=>[]))
+          .concat(await all('employeeSalarySettings').catch(()=>[]))
+          .concat(await all('salaryProfiles').catch(()=>[]));
+        const salarySetupRows = (await all('salarySetup').catch(()=>[])).concat(await all('salarySettings').catch(()=>[]));
+        state.salaryConfigs = buildSalaryConfigMap(salaryConfigRows, salarySetupRows);
+        state.allEmployees=employeeRows.map(function(row){ return employee(mergeEmployeeSalaryConfig(row)); });
+        state.employees=state.allEmployees.filter(e=>e.part&&e.active).sort((a,b)=>a.name.localeCompare(b.name,'zh-Hant'));
+        state.parttime=(await all('parttimeRecords')).map(pt);
+        state.clocks=(await all('clockRecords')).map(clock);
+        try{state.corrections=(await all('clockCorrections')).map(correction)}catch(e){state.corrections=[]}
+        try{state.leaves=(await all('leaveRecords')).map(leave)}catch(e){state.leaves=[]}
+        try{state.leaves=state.leaves.concat((await all('leaveRequests')).map(leave))}catch(e){}
+        state.lateCache=null;
+        renderEmployees();
+        if(!state.selectedId&&state.employees[0])state.selectedId=state.employees[0].id;
+        renderAll();
+        msg('');
+      }catch(e){msg('讀取失敗：'+(e.message||e),'error')}
+    }
+    function renderEmployees(){
+      const kw=lower(qs('#keyword').value);
+      const list=state.employees.filter(e=>!kw||lower(e.name).includes(kw)||lower(e.id).includes(kw)||lower(e.email).includes(kw));
+      qs('#employeeCount').textContent=list.length+' 人';
+      qs('#employeeList').innerHTML=list.map(e=>`<div class="employee-item ${e.id===state.selectedId?'active':''}" onclick="selectEmp('${escjs(e.id)}')"><strong>${esc(e.name)}</strong><div class="subtle">${money(e.hourlyRate)} / 時</div></div>`).join('')||'<div class="employee-item muted">沒有符合的工讀生</div>';
+    }
+    function selectEmp(id){state.selectedId=id;state.lateCache=null;renderEmployees();renderAll();}
+    function safeRun(label, fn){
+      try{
+        return fn();
+      }catch(err){
+        console.error(label + ' error', err);
+        msg(label + ' 顯示發生問題，但其他資料會繼續顯示。', 'notice');
+        return null;
+      }
+    }
+
+    function renderAll(){
+      const e=selected();
+      if(!e){qs('#selectedTitle').textContent='請先選擇工讀生';return}
+      qs('#selectedTitle').textContent=e.name;
+      qs('#selectedSub').textContent=`${month()||'全部月份'}｜時薪 ${money(e.hourlyRate)}`;
+      safeRun('每日出勤與工讀明細', renderDaily);
+      safeRun('出勤與資料提醒', renderAlerts);
+      safeRun('上方摘要', renderSummary);
+      setTimeout(()=>safeRun('上方摘要', renderSummary), 120);
+    }
+    function renderSummary(){
+      const e = selected();
+      if(!e){
+        qs('#sumHours').textContent='0 小時';
+        qs('#sumWage').textContent='0 元';
+        qs('#sumLateMins').textContent='0 分';
+        qs('#sumLateFee').textContent='0 元';
+        qs('#sumLabor').textContent='未設定';
+        qs('#sumNet').textContent='0 元';
+        return;
+      }
+
+      const pts = effectiveParttimeRows();
+      const totalH = Math.round(pts.reduce((sum,r)=>sum+safeNum(r.totalHours||r.hours),0)*100)/100;
+      const totalW = Math.round(pts.reduce((sum,r)=>sum+safeNum(r.grossPay||r.gross||(safeNum(r.totalHours||r.hours)*safeNum(r.hourlyRate))),0));
+      const lateResult = currentLateResult();
+      const lateM = lateResult.lateMinutes || 0;
+      const lateFee = lateResult.lateDeduction || 0;
+      const latestLaborSnapshot = pts.slice().reverse().map(r=>safeNum(r.laborSelfPaySnapshot)).find(v=>v>0) || 0;
+      const laborSelfPay = Math.round(safeNum(e.laborSelfPay) || latestLaborSnapshot || 0);
+
+      qs('#sumHours').textContent = hours(totalH);
+      qs('#sumWage').textContent = money(totalW);
+      qs('#sumLateMins').textContent = lateM + ' 分';
+      qs('#sumLateFee').textContent = money(lateFee);
+      qs('#sumLabor').textContent = laborSelfPay > 0 ? money(laborSelfPay) : '未設定';
+      qs('#sumNet').textContent = money(Math.max(0,totalW-lateFee-laborSelfPay));
+
+      console.log('summary v20 labor self pay config link', {employee:e.name, month:month(), totalH,totalW,lateM,lateFee,laborSelfPay});
+    }
+    function parttimeStatusText(r){
+      if(r && r.isPaidLeave) return '核准支薪假';
+      if(r && r.raw && (r.raw.dataCenterEdited || r.raw.主管已修改)) return '主管調整';
+      if(r && r.raw && r.raw.dataCenterCreated) return '主管新增';
+      return '原始登記';
+    }
+    function meaningfulText(value){
+      let v=clean(value);
+      if(!v)return '';
+      v=v.replace(/^(?:主管後台修改|主管已修改|主管修改|管理者修正)\s*[：:]?\s*/,'')
+        .replace(/^(?:修正申請已核准[／/]?)?(?:主管核准不扣款)\s*[：:]?\s*/,'')
+        .replace(/^[；;、,，\s]+/,'');
+      const generic=new Set(['主管修改','主管已修改','主管後台修改','管理者修正','修正申請已核准','主管核准不扣款','修正申請已核准／主管核准不扣款','臨時出勤']);
+      const parts=v.split(/[；;|\n]+/).map(x=>clean(x)).filter(x=>x&&!generic.has(x));
+      return Array.from(new Set(parts)).join('；');
+    }
+    function parttimeReasonText(r){
+      const src=r&&r.raw||{};
+      const values=[src.lastAdjustmentReason,src.adjustmentReason,src['調整原因'],r&&r.note,raw(src,['note','備註','reason','原因'])];
+      return Array.from(new Set(values.map(meaningfulText).filter(Boolean))).join('；');
+    }
+    function parttimeAdjustmentSummary(r){
+      const src=r&&r.raw||{};
+      const direct=clean(src.lastAdjustmentSummary||src.adjustmentSummary||src['調整摘要']);
+      if(direct)return direct;
+      const history=Array.isArray(src.adjustmentHistory)?src.adjustmentHistory:[];
+      if(history.length){
+        const last=history[history.length-1]||{};
+        if(clean(last.summary))return clean(last.summary);
+      }
+      if(src.dataCenterEdited||src.主管已修改)return '主管曾調整此筆工時或時薪（舊資料未保留調整前後值）';
+      if(src.dataCenterCreated)return `主管新增 ${hours(r.totalHours||r.hours)}工時`;
+      if(r&&r.isPaidLeave)return '主管核准支薪假';
+      if(clean(r&&r.sourceType)==='temporaryAttendanceApproved'||clean(r&&r.status).includes('臨時出勤'))return '主管核准臨時出勤';
+      return '';
+    }
+    function parttimeDisplayPriority(r){
+      const source=workSource(r);
+      if(source==='排班內登記'||source==='員工登記')return 0;
+      if(source==='主管新增')return 1;
+      if(source==='補時數'||source==='核准臨時出勤')return 2;
+      if(source==='核准支薪假')return 3;
+      return 1;
+    }
+    function groupedParttimeRows(rows){
+      const sorted=(rows||[]).slice().sort((a,b)=>{
+        const dateDiff=clean(a.date).localeCompare(clean(b.date));
+        if(dateDiff)return dateDiff;
+        const priorityDiff=parttimeDisplayPriority(a)-parttimeDisplayPriority(b);
+        if(priorityDiff)return priorityDiff;
+        const hoursDiff=safeNum(b.totalHours||b.hours)-safeNum(a.totalHours||a.hours);
+        if(Math.abs(hoursDiff)>.0001)return hoursDiff;
+        return clean(a.recordId||a.__id).localeCompare(clean(b.recordId||b.__id));
+      });
+      const groups=[];
+      sorted.forEach(r=>{
+        const date=clean(r.date);
+        let group=groups[groups.length-1];
+        if(!group||group.date!==date){group={date,rows:[],totalHours:0,totalGross:0};groups.push(group)}
+        group.rows.push(r);
+        group.totalHours=Math.round((group.totalHours+safeNum(r.totalHours||r.hours))*100)/100;
+        group.totalGross=Math.round(group.totalGross+safeNum(r.grossPay||r.gross));
+      });
+      return groups;
+    }
+    function correctionTimeFor(date, kind){
+      const e = selected();
+      if(!e) return '';
+      const list = (state.corrections || []).filter(c => payrollRules().sameEmployee(c,e,knownEmployees()) && c.date === date && c.approved);
+      for(const c of list){
+        const src = c.raw || {};
+        const keysIn = ['修正上班時間','修正後上班時間','correctedClockIn','correctedIn','newClockIn','newInTime','上班修正時間','補上班時間','clockIn'];
+        const keysOut = ['修正下班時間','修正後下班時間','correctedClockOut','correctedOut','newClockOut','newOutTime','下班修正時間','補下班時間','clockOut'];
+        const val = raw(src, kind === 'in' ? keysIn : keysOut);
+        if(val) return onlyTimeText(dateTimeText(val) || timeText(val) || val);
+      }
+      return '';
+    }
+    function timeDisplayText(original, corrected){
+      const base=onlyTimeText(original)||'-';
+      return corrected?`${base} → ${corrected}（主管核准修正）`:base;
+    }
+    function approvedCorrectionsForRow(r){
+      const e=selected();
+      if(!e||!r)return [];
+      const records=(r.records&&r.records.length)?r.records:[{id:r.__id,recordId:r.__id,date:r.date,employeeId:e.id,name:e.name,email:e.email}];
+      return (state.corrections||[]).filter(c=>c.approved&&records.some(record=>payrollRules().correctionMatchesClock(c,record,e,knownEmployees())));
+    }
+    function hasApprovedCorrectionForRow(r){return approvedCorrectionsForRow(r).length>0}
+    function hasBackendEditedForRow(r){
+      const records=(r&&r.records)||[];
+      if(records.some(x=>x&&x.raw&&(x.raw.dataCenterEdited||x.raw.主管已修改)))return true;
+      const src = r && r.raw || {};
+      const inRaw = src.in || {};
+      const outRaw = src.out || {};
+      return !!(inRaw.dataCenterEdited || outRaw.dataCenterEdited || inRaw.主管已修改 || outRaw.主管已修改);
+    }
+    function clockReasonText(r){
+      const reasons=[];
+      approvedCorrectionsForRow(r).forEach(c=>reasons.push(c.note));
+      const records=(r&&r.records)||[];
+      records.forEach(x=>{
+        const src=x&&x.raw||{};
+        reasons.push(src.lastAdjustmentReason,src.clockAdjustmentReason,src.lateWaiverReason,x&&x.note);
+      });
+      reasons.push(r&&r.note);
+      return Array.from(new Set(reasons.map(meaningfulText).filter(Boolean))).join('；');
+    }
+    function clockDecisionText(r){
+      if(!r)return '無打卡紀錄';
+      if(safeNum(r.correctedLate)>0&&safeNum(r.late)===0)return `原遲到 ${r.correctedLate} 分鐘，主管核准不扣款`;
+      if(hasApprovedCorrectionForRow(r))return '主管已核准打卡修正';
+      if(hasBackendEditedForRow(r)){
+        const records=(r.records||[]);
+        for(const row of records){
+          const src=row&&row.raw||{};
+          const summary=clean(src.lastAdjustmentSummary||src.clockAdjustmentSummary||src['調整摘要']);
+          if(summary)return summary;
+        }
+        return '主管曾調整遲到或打卡資料';
+      }
+      if(safeNum(r.late)>0)return '尚未處理，將依遲到分鐘扣款';
+      return '無主管調整或核准';
+    }
+    function clockInVerification(ip){
+      const v=clean(ip);
+      if(!v)return {text:'未取得上班網路資料',cls:'orange'};
+      if(v==='臨時出勤核准'||v==='特殊打卡核准'||v==='補打卡核准'||v==='主管核准')return {text:'主管核准打卡',cls:'blue'};
+      if(v===COMPANY_CLOCK_IN_IP)return {text:'公司 Wi-Fi 驗證通過',cls:'green'};
+      return {text:'非公司網路',cls:'red'};
+    }
+    function clockOutVerification(ip){
+      const v=clean(ip);
+      if(!v)return {text:'未限制網路（未取得 IP）',cls:'orange'};
+      if(v==='臨時出勤核准'||v==='特殊打卡核准'||v==='補打卡核准'||v==='主管核准')return {text:'主管核准打卡',cls:'blue'};
+      if(v===COMPANY_CLOCK_IN_IP)return {text:'公司網路（已記錄）',cls:'green'};
+      return {text:'非公司網路（已記錄）',cls:'blue'};
+    }
+    function leavePillClass(status){
+      if(payrollRules().isApprovedStatus(status))return 'green';
+      const v=lower(status);
+      if(v.includes('駁回')||v.includes('退回')||v.includes('rejected'))return 'red';
+      if(v.includes('待')||v.includes('pending')||v.includes('審核'))return 'orange';
+      return 'blue';
+    }
+    function formatAuditTime(v){
+      if(!v)return '';
+      if(v&&typeof v.toDate==='function')v=v.toDate();
+      if(v instanceof Date&&!isNaN(v.getTime()))return dateTimeText(v);
+      const text=clean(v),d=new Date(text);
+      if(text&&!isNaN(d.getTime())&&/[T:+Z]/.test(text))return dateTimeText(d);
+      return text;
+    }
+    function weekdayLabel(date){
+      const d=new Date(clean(date)+'T00:00:00');
+      if(isNaN(d.getTime()))return clean(date);
+      return `${clean(date)}（${['日','一','二','三','四','五','六'][d.getDay()]}）`;
+    }
+    function dailyAuditItems(day){
+      const items=[];
+      day.workRows.forEach(r=>{
+        const src=r.raw||{};
+        const history=Array.isArray(src.adjustmentHistory)?src.adjustmentHistory:[];
+        if(history.length){
+          history.forEach(h=>items.push({
+            kind:'工時異動',
+            title:clean(h.summary)||parttimeAdjustmentSummary(r)||`${workSource(r)} ${hours(r.totalHours||r.hours)}`,
+            reason:clean(h.reason)||parttimeReasonText(r),
+            person:clean(h.managerName||h.reviewerName||src.lastAdjustedByName),
+            time:formatAuditTime(h.at||h.adjustedAt||src.lastAdjustedAt)
+          }));
+        }else{
+          const summary=parttimeAdjustmentSummary(r);
+          if(summary)items.push({kind:'工時異動',title:summary,reason:parttimeReasonText(r),person:clean(src.lastAdjustedByName||src.createdByManagerName),time:formatAuditTime(src.lastAdjustedAt||src.createdByManagerAt||r.updatedAt)});
+        }
+      });
+      if(day.clock){
+        const corrections=approvedCorrectionsForRow(day.clock);
+        const hasWaiverCorrection=corrections.some(c=>clean(c.decision).includes('不扣款')||safeNum(c.originalLateMinutes)>0||safeNum(day.clock.correctedLate)>0);
+        corrections.forEach(c=>{
+          const late=safeNum(c.originalLateMinutes)||safeNum(day.clock.correctedLate);
+          const isWaiver=clean(c.decision).includes('不扣款')||late>0;
+          const title=isWaiver&&late>0?`原遲到 ${late} 分鐘，主管核准不扣款`:(clean(c.decision)||'主管核准打卡修正');
+          items.push({kind:'打卡審核',title,reason:c.note,person:c.reviewer,time:formatAuditTime(c.reviewedAt)});
+        });
+        (day.clock.records||[]).forEach(r=>{
+          const src=r.raw||{};
+          const history=Array.isArray(src.adjustmentHistory)?src.adjustmentHistory:[];
+          history.forEach(h=>{
+            const summary=clean(h.summary)||'主管調整打卡資料';
+            if(hasWaiverCorrection&&(clean(h.type)==='lateWaiver'||summary.includes('核准不扣款')))return;
+            items.push({kind:'打卡異動',title:summary,reason:clean(h.reason),person:clean(h.managerName),time:formatAuditTime(h.at)});
+          });
+          if(!history.length&&hasBackendEditedForRow(day.clock)){
+            const summary=clean(src.lastAdjustmentSummary||src.clockAdjustmentSummary||src['調整摘要']);
+            if(summary&&!(hasWaiverCorrection&&summary.includes('核准不扣款')))items.push({kind:'打卡異動',title:summary,reason:clean(src.lastAdjustmentReason||src.clockAdjustmentReason||src.lateWaiverReason),person:clean(src.lastAdjustedByName),time:formatAuditTime(src.lastAdjustedAt||r.updatedAt)});
+          }
+        });
+      }
+      day.leaves.filter(l=>leaveStatusRank(l.status)>=2).forEach(l=>items.push({kind:'請假審核',title:`${l.type||'請假'}：${l.status||'未標示狀態'}`,reason:l.note,person:l.reviewer,time:formatAuditTime(l.reviewedAt||l.submittedAt)}));
+      const seen=new Set();
+      return items.filter(i=>{
+        const key=[i.kind,i.title,i.reason,i.person,i.time].map(clean).join('|');
+        if(seen.has(key))return false;
+        seen.add(key);return true;
+      });
+    }
+    function supervisorActionsForDay(day){
+      const actions=[];
+      day.workRows.forEach(r=>{const t=parttimeAdjustmentSummary(r);if(t)actions.push({text:t,reason:parttimeReasonText(r)})});
+      if(day.clock){
+        const decision=clockDecisionText(day.clock);
+        if(decision!=='無主管調整或核准'&&decision!=='尚未處理，將依遲到分鐘扣款')actions.push({text:decision,reason:clockReasonText(day.clock)});
+      }
+      day.leaves.filter(l=>payrollRules().isApprovedStatus(l.status)).forEach(l=>actions.push({text:`主管核准${l.type||'請假'}`,reason:l.note}));
+      const seen=new Set();
+      return actions.filter(a=>{const k=clean(a.text)+'|'+clean(a.reason);if(seen.has(k))return false;seen.add(k);return true});
+    }
+    function buildDailyRows(){
+      const pts=effectiveParttimeRows();
+      const clocks=mergedClockRows();
+      const leaves=effectiveLeaveRows();
+      const dataIssues=calcDataIssues();
+      const dates=new Set();
+      pts.forEach(r=>r.date&&dates.add(r.date));
+      clocks.forEach(r=>r.date&&dates.add(r.date));
+      leaves.forEach(r=>r.date&&dates.add(r.date));
+      return Array.from(dates).sort().map(date=>{
+        const workRows=pts.filter(r=>r.date===date);
+        const clock=clocks.find(r=>r.date===date)||null;
+        const dayLeaves=leaves.filter(r=>r.date===date);
+        const info=lateInfoForDate(date);
+        const totalHours=Math.round(workRows.reduce((sum,r)=>sum+safeNum(r.totalHours||r.hours),0)*100)/100;
+        const gross=Math.round(workRows.reduce((sum,r)=>sum+safeNum(r.grossPay||r.gross),0));
+        const deduction=info.deduct||0;
+        const day={date,workRows,clock,leaves:dayLeaves,totalHours,gross,deduction,net:Math.max(0,gross-deduction),lateInfo:info,issues:dataIssues.filter(x=>x.date===date)};
+        day.auditItems=dailyAuditItems(day);
+        day.supervisorActions=supervisorActionsForDay(day);
+        return day;
+      });
+    }
+    function dayMatchesFilter(day){
+      const f=state.dailyFilter||'all';
+      if(f==='late')return day.lateInfo.minutes>0||day.lateInfo.correctedMinutes>0;
+      if(f==='leave')return day.leaves.length>0;
+      if(f==='supervisor')return day.supervisorActions.length>0;
+      if(f==='issue')return day.issues.length>0;
+      return true;
+    }
+    function dayStatusPills(day){
+      const pills=[];
+      if(day.lateInfo.minutes>0)pills.push(`<span class="pill red">遲到 ${esc(day.lateInfo.minutes)} 分鐘</span>`);
+      else if(day.lateInfo.correctedMinutes>0)pills.push(`<span class="pill green">原遲到 ${esc(day.lateInfo.correctedMinutes)} 分鐘，已核准不扣款</span>`);
+      else if(day.clock)pills.push('<span class="pill green">無遲到扣款</span>');
+      else pills.push('<span class="pill orange">無標準打卡資料</span>');
+      if(day.leaves.length)pills.push(`<span class="pill orange">請假 ${day.leaves.length} 筆</span>`);
+      if(day.supervisorActions.length)pills.push('<span class="pill blue">有主管處理</span>');
+      if(day.issues.length)pills.push('<span class="pill red">資料需確認</span>');
+      return pills.join('');
+    }
+    function workEntriesHtml(day){
+      if(!day.workRows.length)return '<div class="daily-empty-inline">當日沒有工讀時數紀錄。</div>';
+      return day.workRows.map(r=>{
+        const note=parttimeReasonText(r);
+        return `<div class="work-entry">
+          <div class="entry-head">
+            <div><div class="entry-main"><span class="pill blue">${esc(workSource(r))}</span>　${esc(hours(r.totalHours||r.hours))}</div><div class="entry-meta">時薪 ${money(r.hourlyRate)}／本筆工資 ${money(r.grossPay||r.gross)}${note?`<br>原因：${esc(note)}`:''}</div></div>
+            <button class="btn small" type="button" onclick="modifyParttimeRecord('${escjs(r.__id)}')">調整這筆工時</button>
+          </div>
+        </div>`;
+      }).join('');
+    }
+    function clockSectionHtml(day){
+      const r=day.clock;
+      if(!r)return '<div class="daily-empty-inline">當日沒有打卡紀錄；若是核准支薪假或臨時出勤，請以工時來源與主管處理為準。</div>';
+      const inVerify=clockInVerification(r.ip),outVerify=clockOutVerification(r.outIp);
+      const inTime=timeDisplayText(r.clockIn,correctionTimeFor(r.date,'in'));
+      const outTime=timeDisplayText(r.clockOut,correctionTimeFor(r.date,'out'));
+      const result=day.lateInfo.minutes>0?`遲到 ${day.lateInfo.minutes} 分鐘，預計扣 ${money(day.deduction)}`:day.lateInfo.correctedMinutes>0?`原遲到 ${day.lateInfo.correctedMinutes} 分鐘，主管核准不扣款`:'無遲到扣款';
+      const saveId=r.lateId||r.inId||r.outId||r.__id;
+      const reason=clockReasonText(r);
+      return `<div class="daily-info">
+        <div class="daily-info-row"><span>打卡時間</span><div>上班 ${esc(inTime)}<br>下班 ${esc(outTime)}</div></div>
+        <div class="daily-info-row"><span>打卡驗證</span><div><span class="pill ${inVerify.cls}">上班：${esc(inVerify.text)}</span><br><span class="pill ${outVerify.cls}" style="margin-top:6px">下班：${esc(outVerify.text)}</span></div></div>
+        <div class="daily-info-row"><span>出勤結果</span><div>${esc(result)}</div></div>
+        <div class="daily-info-row"><span>主管處理</span><div>${esc(clockDecisionText(r))}${reason?`<div class="entry-meta">原因：${esc(reason)}</div>`:''}</div></div>
+        <div class="daily-actions"><button class="btn small" type="button" onclick="modifyClockRecord('${escjs(saveId)}')">修正遲到／核准不扣款</button></div>
+      </div>`;
+    }
+    function leavesHtml(day){
+      if(!day.leaves.length)return '<div class="daily-empty-inline">當日沒有請假紀錄。</div>';
+      return day.leaves.map(l=>`<div class="leave-entry"><div class="entry-head"><div><div class="entry-main"><span class="pill ${leavePillClass(l.status)}">${esc(l.status||'未標示狀態')}</span>　${esc(l.type||'請假')}</div><div class="entry-meta">${esc(l.time||'未填時間')}${l.hours?`／${esc(hours(l.hours))}`:''}${l.note?`<br>原因：${esc(l.note)}`:''}${l.reviewer?`<br>審核人：${esc(l.reviewer)}`:''}</div></div></div></div>`).join('');
+    }
+    function supervisorHtml(day){
+      if(!day.supervisorActions.length)return '<div class="daily-empty-inline">無</div>';
+      return day.supervisorActions.map(a=>`<div class="audit-item"><div class="audit-title">${esc(a.text)}</div></div>`).join('');
+    }
+    function auditHtml(day){
+      if(!day.auditItems.length)return '<div class="daily-empty-inline">沒有主管異動或審核紀錄。</div>';
+      return day.auditItems.map(i=>`<div class="audit-item"><div class="audit-title"><span class="pill blue">${esc(i.kind)}</span>　${esc(i.title)}</div><div class="audit-detail">${i.reason?`原因：${esc(i.reason)}<br>`:''}${i.person?`處理人：${esc(i.person)}${i.time?'／':''}`:''}${i.time?`時間：${esc(i.time)}`:''}</div></div>`).join('');
+    }
+    function dailyCardHtml(day){
+      const issueHtml=day.issues.length?`<div class="issue-inline"><strong>資料需確認：</strong><br>${day.issues.map(x=>esc(x.text)).join('<br>')}</div>`:'';
+      return `<article class="daily-card" data-daily-date="${esc(day.date)}">
+        <div class="daily-card-head">
+          <div><div class="daily-date">${esc(weekdayLabel(day.date))}</div><div class="daily-statuses">${dayStatusPills(day)}</div></div>
+          <div class="daily-kpis">
+            <div class="daily-kpi"><span>當日工時</span><strong>${esc(hours(day.totalHours))}</strong></div>
+            <div class="daily-kpi"><span>工時金額（扣款前）</span><strong>${money(day.gross)}</strong></div>
+            <div class="daily-kpi"><span>遲到扣款</span><strong>${money(day.deduction)}</strong></div>
+            <div class="daily-kpi final"><span>當日計薪</span><strong>${money(day.net)}</strong></div>
+          </div>
+        </div>
+        <div class="daily-sections">
+          <section class="daily-section"><h3>打卡與出勤</h3>${clockSectionHtml(day)}</section>
+          <section class="daily-section"><h3>工讀時數</h3>${workEntriesHtml(day)}<div class="daily-actions"><button class="btn small gray" type="button" onclick="openAddParttime('${escjs(day.date)}')">新增此日工時</button></div></section>
+          <section class="daily-section"><h3>請假紀錄</h3>${leavesHtml(day)}</section>
+          <section class="daily-section"><h3>主管處理</h3>${supervisorHtml(day)}${issueHtml}</section>
+        </div>
+        <details class="audit-details"><summary>查看異動與審核紀錄</summary><div class="audit-list">${auditHtml(day)}</div></details>
+      </article>`;
+    }
+    function updateDailyFilterLabels(days){
+      const counts={all:days.length,late:days.filter(d=>d.lateInfo.minutes>0||d.lateInfo.correctedMinutes>0).length,leave:days.filter(d=>d.leaves.length).length,supervisor:days.filter(d=>d.supervisorActions.length).length,issue:days.filter(d=>d.issues.length).length};
+      qsa('[data-daily-filter]').forEach(btn=>{const key=btn.getAttribute('data-daily-filter');btn.textContent=`${btn.getAttribute('data-label')||key} ${counts[key]||0}`});
+    }
+    function renderDaily(){
+      const allDays=buildDailyRows();
+      updateDailyFilterLabels(allDays);
+      const rows=allDays.filter(dayMatchesFilter);
+      qs('#dailyList').innerHTML=rows.map(dailyCardHtml).join('');
+      qs('#dailyEmpty').classList.toggle('hidden',rows.length>0);
+    }
+    function calcAttendanceAlerts(){
+      const alerts=[];
+      const push=(text,cls='orange',date='')=>{
+        const t=clean(text);
+        if(t&&!alerts.some(x=>x.text===t))alerts.push({text:t,cls,date:clean(date)});
+      };
+      const e=selected();
+      if(!e)return alerts;
+      const lateResult=currentLateResult();
+      lateResult.byDate.forEach(item=>{
+        const deduct=Math.round((safeNum(e.hourlyRate)/60)*safeNum(item.minutes));
+        push(`${item.date} 遲到 ${item.minutes} 分鐘，預計扣 ${deduct.toLocaleString('zh-TW')} 元`,'red',item.date);
+      });
+
+      const activityDates=new Set();
+      effectiveParttimeRows().forEach(r=>activityDates.add(r.date));
+      effectiveClockRows().forEach(r=>activityDates.add(r.date));
+      effectiveLeaveRows()
+        .filter(l=>payrollRules().isApprovedStatus(l.status)&&activityDates.has(l.date))
+        .forEach(l=>push(`${l.date} 有核准請假與工讀／打卡資料，需確認時段是否重疊`,'orange',l.date));
+      return alerts;
+    }
+
+    function calcDataIssues(){
+      const issues=[];
+      const push=(text,cls='orange',date='')=>{
+        const t=clean(text);
+        if(t&&!issues.some(x=>x.text===t))issues.push({text:t,cls,date:clean(date)});
+      };
+      const e=selected();
+      if(!e)return issues;
+      const rules=payrollRules();
+      const pts=effectiveParttimeRows();
+      const grouped={};
+      pts.forEach(r=>{if(r.date)(grouped[r.date]||(grouped[r.date]=[])).push(r)});
+      const isApprovedExtraHour=(r)=>{
+        const note=clean(parttimeReasonText(r)||r.note||raw(r.raw||{},['note','備註','reason','原因']));
+        const status=clean(r.status);
+        const src=r&&r.raw||{};
+        return !!(
+          src.dataCenterCreated||src.dataCenterEdited||src.主管已修改||
+          clean(r.sourceType)==='temporaryAttendanceApproved'||
+          status.includes('臨時出勤')||status.includes('補時數')||
+          note.includes('臨時出勤')||note.includes('主管核准')||
+          note.includes('補時數')||note.includes('加時')||note.includes('追加')
+        );
+      };
+      Object.keys(grouped).sort().forEach(date=>{
+        const rows=grouped[date];
+        if(rows.length>1&&!rows.slice(1).every(isApprovedExtraHour))push(`${date} 有重複的有效工讀時數紀錄`,'red',date);
+      });
+
+      const linkRows=[
+        ...pts.map(r=>({kind:'工讀時數',row:r})),
+        ...effectiveClockRows().map(r=>({kind:'打卡',row:r}))
+      ];
+      linkRows.forEach(item=>{
+        const reason=rules.employeeMatchReason(item.row,e,knownEmployees());
+        if(reason==='email')push(`${item.row.date} ${item.kind}缺少正確員工 ID，目前以 Email 備援連結`,'orange',item.row.date);
+        if(reason==='name'||reason==='legacyName')push(`${item.row.date} ${item.kind}缺少或使用舊員工 ID，目前以姓名備援連結`,'orange',item.row.date);
+      });
+
+      (state.corrections||[])
+        .filter(c=>c.approved&&rules.sameEmployee(c,e,knownEmployees())&&inMonth(c.date))
+        .filter(c=>![c.originalRecordId,c.sourceClockId,c.targetRecordId,c.approvedRecordId,c.appliedRecordId].some(clean))
+        .forEach(c=>push(`${c.date||'未標日期'} 的核准修正缺少打卡紀錄 ID，目前以日期備援配對`,'orange'));
+      return issues;
+    }
+
+    function renderAlerts(){
+      const attendance=calcAttendanceAlerts();
+      const dataIssues=calcDataIssues();
+      qs('#attendanceAlertList').innerHTML=attendance.length
+        ? attendance.map(x=>`<div class="pill ${x.cls}" style="margin:4px">${esc(x.text)}</div>`).join('')
+        : '目前沒有未修正的出勤或扣款提醒。';
+      qs('#dataIssueList').innerHTML=dataIssues.length
+        ? dataIssues.map(x=>`<div class="pill ${x.cls}" style="margin:4px">${esc(x.text)}</div>`).join('')
+        : '目前沒有明顯的資料連結異常。';
+    }
+    function defaultParttimeAddDate(){
+      const m=clean(qs('#monthText')&&qs('#monthText').value);
+      if(/^\d{4}-\d{2}$/.test(m))return m+'-01';
+      return new Date().toISOString().slice(0,10);
+    }
+    function openAddParttime(date, source){
+      if(!selected()){msg('請先選擇工讀生。','error');return}
+      const box=qs('#parttimeAddBox');
+      box.classList.remove('hidden');
+      qs('#addDate').value=clean(date)||defaultParttimeAddDate();
+      if(clean(source))qs('#addSource').value=source;
+      if(clean(source)==='補時數')qs('#addNote').placeholder='必填，例如：補班時數由主管確認';
+      box.scrollIntoView({behavior:'smooth',block:'center'});
+    }
+    function closeAddParttime(){
+      const box=qs('#parttimeAddBox');
+      if(box)box.classList.add('hidden');
+    }
+
+    async function modifyParttimeRecord(id){
+      const r = state.parttime.find(x=>x.__id===id);
+      if(!r){ msg('找不到這筆工讀時數資料。','error'); return; }
+      const choice = prompt('請選擇主管要調整的項目：\n\n1：登記時數\n2：時薪\n\n請輸入 1 或 2');
+      if(choice === null) return;
+      const manager=currentManager(),at=nowIso();
+      if(clean(choice) === '1'){
+        const oldHours=safeNum(r.totalHours||r.hours);
+        const hoursText = prompt('請輸入新的登記時數：', String(oldHours));
+        if(hoursText === null) return;
+        const newHours = safeNum(hoursText);
+        if(newHours < 0){ msg('登記時數不能小於 0。','error'); return; }
+        const reason=clean(prompt('請輸入調整原因（必填）：','')||'');
+        if(!reason){msg('未填寫調整原因，因此沒有儲存。','error');return}
+        const gross = Math.round(newHours * safeNum(r.hourlyRate));
+        const summary=`工時由 ${hours(oldHours)}調整為 ${hours(newHours)}`;
+        const event={type:'hours',summary,reason,previousValue:oldHours,newValue:newHours,managerId:manager.id,managerName:manager.name,at};
+        await mergeWithAudit('parttimeRecords',id,{hours:newHours,totalHours:newHours,時數:newHours,總時數:newHours,grossPay:gross,當日工資:gross,updatedAt:at,dataCenterEdited:true,主管已修改:true,lastAdjustmentType:'hours',lastAdjustmentSummary:summary,lastAdjustmentReason:reason,lastAdjustedById:manager.id,lastAdjustedByName:manager.name,lastAdjustedAt:at},'adjustmentHistory',event);
+        msg(`已儲存：${summary}。`); await reloadAll(); return;
+      }
+      if(clean(choice) === '2'){
+        const oldRate=safeNum(r.hourlyRate);
+        const rateText = prompt('請輸入新的時薪：', String(oldRate));
+        if(rateText === null) return;
+        const newRate = safeNum(rateText);
+        if(newRate <= 0){ msg('時薪必須大於 0。','error'); return; }
+        const reason=clean(prompt('請輸入調整原因（必填）：','')||'');
+        if(!reason){msg('未填寫調整原因，因此沒有儲存。','error');return}
+        const gross = Math.round(safeNum(r.hours) * newRate);
+        const summary=`時薪由 ${money(oldRate)}調整為 ${money(newRate)}`;
+        const event={type:'hourlyRate',summary,reason,previousValue:oldRate,newValue:newRate,managerId:manager.id,managerName:manager.name,at};
+        await mergeWithAudit('parttimeRecords',id,{hourlyRate:newRate,時薪:newRate,grossPay:gross,當日工資:gross,updatedAt:at,dataCenterEdited:true,主管已修改:true,lastAdjustmentType:'hourlyRate',lastAdjustmentSummary:summary,lastAdjustmentReason:reason,lastAdjustedById:manager.id,lastAdjustedByName:manager.name,lastAdjustedAt:at},'adjustmentHistory',event);
+        msg(`已儲存：${summary}。`); await reloadAll(); return;
+      }
+      msg('沒有修改，請輸入 1 或 2。','notice');
+    }
+
+    async function addParttimeRecord(){
+      const e=selected(); if(!e){msg('請先選擇工讀生。','error');return}
+      const d=clean(qs('#addDate').value),h=safeNum(qs('#addHours').value),source=clean(qs('#addSource').value),reason=clean(qs('#addNote').value);
+      if(!d||h<=0){msg('日期與大於 0 的時數必填。','error');return}
+      if(!reason){msg('請填寫新增原因。','error');return}
+      const sameDay=effectiveParttimeRows().filter(r=>r.date===d);
+      if(sameDay.length&&!confirm(`${e.name} 在 ${d} 已有 ${sameDay.length} 筆工時。\n這次會新增一筆，不會覆蓋原本資料。\n\n確定新增嗎？`))return;
+      const id=`PT_DC_${e.id}_${d.replace(/-/g,'')}_${Date.now()}`;
+      const gross=Math.round(h*e.hourlyRate),manager=currentManager(),at=nowIso();
+      const sourceType=source==='補時數'?'parttimeExcessHours':'managerAdded';
+      const summary=`主管新增 ${hours(h)}（${source}）`;
+      const event={type:'create',summary,reason,newValue:h,managerId:manager.id,managerName:manager.name,at};
+      await mergeWithAudit('parttimeRecords',id,{recordId:id,紀錄ID:id,employeeId:e.id,員工ID:e.id,name:e.name,姓名:e.name,email:e.email,Email:e.email,workDate:d,date:d,日期:d,hours:h,totalHours:h,時數:h,總時數:h,hourlyRate:e.hourlyRate,時薪:e.hourlyRate,grossPay:gross,當日工資:gross,laborSelfPaySnapshot:e.laborSelfPay||0,勞保自付額快照:e.laborSelfPay||0,status:source,狀態:source,note:reason,備註:reason,payable:'是',是否計薪:'是',sourceType,資料來源類型:sourceType,updatedAt:at,createdAt:at,dataCenterCreated:true,createdByManagerId:manager.id,createdByManagerName:manager.name,createdByManagerAt:at,lastAdjustmentSummary:summary,lastAdjustmentReason:reason,lastAdjustedById:manager.id,lastAdjustedByName:manager.name,lastAdjustedAt:at},'adjustmentHistory',event);
+      qs('#addHours').value=''; qs('#addNote').value=''; qs('#parttimeAddBox').classList.add('hidden'); msg('已新增工讀時數，不會覆蓋同日其他工時。'); await reloadAll();
+    }
+
+    async function saveParttime(id){
+      const tr=qs(`tr[data-pt="${CSS.escape(id)}"]`), r=state.parttime.find(x=>x.__id===id); if(!tr||!r)return;
+      const h=safeNum(tr.querySelector('[data-field="hours"]').value), rate=safeNum(tr.querySelector('[data-field="hourlyRate"]').value)||r.hourlyRate, status=tr.querySelector('[data-field="status"]').value, note=tr.querySelector('[data-field="note"]').value;
+      const gross=Math.round(h*rate);
+      await fb().collection('parttimeRecords').doc(id).set({hours:h,totalHours:h,時數:h,總時數:h,hourlyRate:rate,時薪:rate,grossPay:gross,當日工資:gross,laborSelfPaySnapshot:(selected()&&selected().laborSelfPay)||0,勞保自付額快照:(selected()&&selected().laborSelfPay)||0,status:status,狀態:status,note:note,備註:note,updatedAt:new Date().toISOString(),dataCenterEdited:true},{merge:true});
+      msg('已儲存工讀時數。'); await reloadAll();
+    }
+    async function deleteParttime(id){
+      const r=state.parttime.find(x=>x.__id===id); if(!r)return;
+      if(!confirm(`確定刪除？\n${r.name}｜${r.date}｜${r.hours} 小時`))return;
+      await fb().collection('parttimeRecords').doc(id).delete(); msg('已刪除。'); await reloadAll();
+    }
+    function goClock(date){const card=qs(`[data-daily-date="${CSS.escape(date)}"]`);if(card)card.scrollIntoView({behavior:'smooth',block:'center'});msg(`${date} 的遲到可直接在當日明細的「修正遲到／核准不扣款」處理。`,'notice')}
+
+    async function modifyClockRecord(id){
+      const r = state.clocks.find(x=>x.__id===id);
+      if(!r){ msg('找不到這筆打卡資料。','error'); return; }
+      const choice = prompt('請選擇主管處理方式：\n\n1：核准本次遲到不扣款\n2：調整遲到分鐘\n\n請輸入 1 或 2');
+      if(choice === null) return;
+      if(clean(choice) === '1'){
+        const reason=clean(prompt('請輸入核准不扣款的原因（必填）：','')||'');
+        if(!reason){msg('未填寫原因，因此沒有儲存。','error');return}
+        await setClockNoDeduct(id, reason); return;
+      }
+      if(clean(choice) === '2'){
+        const oldMinutes=Math.max(0,safeNum(r.late));
+        const minutesText = prompt('請輸入新的遲到分鐘數：', String(oldMinutes));
+        if(minutesText === null) return;
+        const minutes = Math.max(0,safeNum(minutesText));
+        const reason=clean(prompt('請輸入調整原因（必填）：','')||'');
+        if(!reason){msg('未填寫調整原因，因此沒有儲存。','error');return}
+        const manager=currentManager(),at=nowIso(),summary=`遲到分鐘由 ${oldMinutes} 分調整為 ${minutes} 分`;
+        const event={type:'lateMinutes',summary,reason,previousValue:oldMinutes,newValue:minutes,managerId:manager.id,managerName:manager.name,at};
+        await mergeWithAudit('clockRecords',id,{lateMinutes:minutes,遲到分鐘:minutes,finalLateMinutes:minutes,最終遲到分鐘:minutes,noLateDeduction:false,lateDeductionWaived:false,不扣款:false,免扣款:false,updatedAt:at,dataCenterEdited:true,主管已修改:true,lastAdjustmentType:'lateMinutes',lastAdjustmentSummary:summary,lastAdjustmentReason:reason,clockAdjustmentReason:reason,lastAdjustedById:manager.id,lastAdjustedByName:manager.name,lastAdjustedAt:at},'adjustmentHistory',event);
+        msg(`已儲存：${summary}。`); await reloadAll(); return;
+      }
+      msg('沒有修改，請輸入 1 或 2。','notice');
+    }
+
+    async function setClockNoDeduct(id, reason){
+      const c = state.clocks.find(x=>x.__id===id),e=selected();
+      if(!c||!e){msg('找不到這筆打卡資料。','error');return}
+      const manager=currentManager(),at=nowIso();
+      const originalLate=Math.max(0,safeNum(c.late)||safeNum(raw(c.raw||{},['originalLateMinutes','原始遲到分鐘','原遲到分鐘'])));
+      const summary=originalLate>0?`原遲到 ${originalLate} 分鐘，主管核准不扣款`:'主管核准此筆打卡不扣款';
+      const cid=`CORR_DC_${id}_${Date.now()}`;
+      await fb().collection('clockCorrections').doc(cid).set({employeeId:e.id,員工ID:e.id,name:e.name,姓名:e.name,date:c.date,日期:c.date,status:'已核准',狀態:'已核准',decision:'主管核准不扣款',處理結果:'主管核准不扣款',reason,note:reason,備註:reason,sourceClockId:id,originalRecordId:id,原始紀錄ID:id,originalLateMinutes:originalLate,原始遲到分鐘:originalLate,reviewerId:manager.id,reviewerName:manager.name,審核人:manager.name,reviewedAt:at,審核時間:at,createdAt:at,dataCenterCreated:true},{merge:true});
+      const event={type:'lateWaiver',summary,reason,previousValue:originalLate,newValue:0,managerId:manager.id,managerName:manager.name,at};
+      await mergeWithAudit('clockRecords',id,{originalLateMinutes:originalLate,原始遲到分鐘:originalLate,noLateDeduction:true,lateDeductionWaived:true,不扣款:true,免扣款:true,lateWaiverReason:reason,updatedAt:at,dataCenterEdited:true,主管已修改:true,lastAdjustmentType:'lateWaiver',lastAdjustmentSummary:summary,lastAdjustmentReason:reason,lastAdjustedById:manager.id,lastAdjustedByName:manager.name,lastAdjustedAt:at},'adjustmentHistory',event);
+      msg(`已儲存：${summary}。`); await reloadAll();
+    }
+
+    async function saveClock(id){
+      const tr=qs(`tr[data-clock="${CSS.escape(id)}"]`), r=state.clocks.find(x=>x.__id===id); if(!tr||!r)return;
+      const late=safeNum(tr.querySelector('[data-field="late"]').value), note=tr.querySelector('[data-field="note"]').value;
+      await fb().collection('clockRecords').doc(id).set({lateMinutes:late,遲到分鐘:late,note:note,備註:note,updatedAt:new Date().toISOString(),dataCenterEdited:true},{merge:true});
+      msg('已儲存遲到分鐘資料。'); await reloadAll();
+    }
+    async function markNoDeduct(id){
+      const reason=clean(prompt('請輸入核准不扣款的原因（必填）：','')||'');
+      if(!reason){msg('未填寫原因，因此沒有儲存。','error');return}
+      await setClockNoDeduct(id,reason);
+    }
+
+
+    function currentPanel(){return 'daily'}
+    function toggleExportBox(force){
+      const box = qs('#exportBox');
+      const willShow = typeof force === 'boolean' ? force : box.classList.contains('hidden');
+      box.classList.toggle('hidden', !willShow);
+      if(willShow){
+        const m = month();
+        if(m && !qs('#exportStart').value) qs('#exportStart').value = m + '-01';
+        if(m && !qs('#exportEnd').value){
+          const [y,mm] = m.split('-').map(Number);
+          const last = new Date(y, mm, 0).getDate();
+          qs('#exportEnd').value = m + '-' + String(last).padStart(2,'0');
+        }
+        qs('#exportType').value = 'daily';
+      }
+    }
+    function dateInRange(d, start, end){
+      d = clean(d);
+      if(!d) return false;
+      if(start && d < start) return false;
+      if(end && d > end) return false;
+      return true;
+    }
+    function autoWidth(rows){
+      const widths = [];
+      rows.forEach(row => row.forEach((v,i)=>{
+        const len = String(v == null ? '' : v).length;
+        widths[i] = Math.min(Math.max(widths[i] || 8, len + 2), 24);
+      }));
+      return widths.map(w => ({wch:w}));
+    }
+    function makeSheet(rows){
+      const ws = XLSX.utils.aoa_to_sheet(rows);
+      ws['!cols'] = autoWidth(rows);
+      return ws;
+    }
+    function setPrintA4(ws){
+      ws['!margins'] = {left:0.25,right:0.25,top:0.35,bottom:0.35,header:0.1,footer:0.1};
+      ws['!pageSetup'] = {paperSize:9, orientation:'portrait', fitToWidth:1, fitToHeight:0};
+    }
+    function dailyWorkText(day){
+      return day.workRows.length?day.workRows.map(r=>`${workSource(r)} ${hours(r.totalHours||r.hours)}（${money(r.grossPay||r.gross)}）`).join('；'):'-';
+    }
+    function dailyClockText(day){
+      if(!day.clock)return '-';
+      return `上班 ${timeDisplayText(day.clock.clockIn,correctionTimeFor(day.date,'in'))}／下班 ${timeDisplayText(day.clock.clockOut,correctionTimeFor(day.date,'out'))}`;
+    }
+    function dailyVerificationText(day){
+      if(!day.clock)return '-';
+      return `上班：${clockInVerification(day.clock.ip).text}；下班：${clockOutVerification(day.clock.outIp).text}`;
+    }
+    function dailyAttendanceText(day){
+      if(day.lateInfo.minutes>0)return `遲到 ${day.lateInfo.minutes} 分鐘，扣款 ${money(day.deduction)}`;
+      if(day.lateInfo.correctedMinutes>0)return `原遲到 ${day.lateInfo.correctedMinutes} 分鐘，主管核准不扣款`;
+      return day.clock?'無遲到扣款':'無標準打卡資料';
+    }
+    function dailyLeaveText(day){
+      return day.leaves.length?day.leaves.map(l=>`${l.type||'請假'} ${l.time||''} ${l.status||''}${l.hours?` ${hours(l.hours)}`:''}`).join('；'):'-';
+    }
+    function dailySupervisorText(day){
+      return day.supervisorActions.length?day.supervisorActions.map(a=>a.text+(a.reason?`（${a.reason}）`:'')).join('；'):'無主管調整或核准';
+    }
+    function addA4PrintSheet(wb, start, end){
+      const e=selected(),rows=[];
+      rows.push(['柚子樂器｜每日出勤與工讀明細']);
+      rows.push(['員工',e.name,'期間',`${start||'不限'}～${end||'不限'}`]);
+      rows.push([]);
+      rows.push(['日期','工時明細','打卡紀錄','出勤／請假','計薪','主管處理']);
+      buildDailyRows().filter(d=>dateInRange(d.date,start,end)).forEach(day=>rows.push([
+        day.date,
+        `${dailyWorkText(day)}；合計 ${hours(day.totalHours)}`,
+        `${dailyClockText(day)}；${dailyVerificationText(day)}`,
+        `${dailyAttendanceText(day)}；請假：${dailyLeaveText(day)}`,
+        `扣款前 ${money(day.gross)}／遲到扣款 ${money(day.deduction)}／當日計薪 ${money(day.net)}`,
+        dailySupervisorText(day)
+      ]));
+      const ws=makeSheet(rows);
+      ws['!cols']=[{wch:11},{wch:28},{wch:36},{wch:32},{wch:30},{wch:36}];
+      setPrintA4(ws);XLSX.utils.book_append_sheet(wb,ws,'A4每日明細');
+    }
+    function addDailySheet(wb,start,end){
+      const e=selected();
+      const rows=[['姓名','日期','出勤結果','上班打卡','下班打卡','打卡驗證','工時明細','當日工時','工時金額（扣款前）','遲到扣款','當日計薪','請假紀錄','主管處理','備註／資料提醒']];
+      buildDailyRows().filter(d=>dateInRange(d.date,start,end)).forEach(day=>rows.push([
+        e.name,day.date,dailyAttendanceText(day),day.clock?timeDisplayText(day.clock.clockIn,correctionTimeFor(day.date,'in')):'',day.clock?timeDisplayText(day.clock.clockOut,correctionTimeFor(day.date,'out')):'',dailyVerificationText(day),dailyWorkText(day),day.totalHours,day.gross,day.deduction,day.net,dailyLeaveText(day),dailySupervisorText(day),[day.workRows.map(parttimeReasonText).filter(Boolean).join('；'),day.clock?clockReasonText(day.clock):'',day.issues.map(x=>x.text).join('；')].filter(Boolean).join('；')
+      ]));
+      XLSX.utils.book_append_sheet(wb,makeSheet(rows),'每日整合明細');
+    }
+    function addAuditSheet(wb,start,end){
+      const e=selected(),rows=[['姓名','日期','類型','異動／審核內容','原因','處理人','時間']];
+      buildDailyRows().filter(d=>dateInRange(d.date,start,end)).forEach(day=>day.auditItems.forEach(i=>rows.push([e.name,day.date,i.kind,i.title,i.reason||'',i.person||'',i.time||''])));
+      XLSX.utils.book_append_sheet(wb,makeSheet(rows),'異動與審核紀錄');
+    }
+    function exportExcel(){
+      const e=selected();if(!e){msg('請先選擇工讀生。','error');return}
+      const start=clean(qs('#exportStart').value),end=clean(qs('#exportEnd').value);
+      if(start&&end&&start>end){msg('開始日期不能晚於結束日期。','error');return}
+      const type=clean(qs('#exportType').value||'daily'),wb=XLSX.utils.book_new();
+      if(type==='printA4')addA4PrintSheet(wb,start,end);
+      else if(type==='audit')addAuditSheet(wb,start,end);
+      else addDailySheet(wb,start,end);
+      wb.Props={Title:`${e.name}｜${start||'不限'}～${end||'不限'}`,Subject:'每日出勤與工讀明細',Author:'YOUZI Employee System',CreatedDate:new Date()};
+      const filename=`${e.name}_${start||month()||'全部'}_${end||''}_每日出勤與工讀明細.xlsx`.replace(/[\/:*?"<>|]/g,'_');
+      XLSX.writeFile(wb,filename);
+    }
+    function exportAllCsv(){
+      const e=selected();if(!e){msg('請先選擇工讀生。','error');return}
+      const rows=[['姓名','日期','出勤結果','工時明細','當日工時','扣款前金額','遲到扣款','當日計薪','打卡','請假','主管處理']];
+      buildDailyRows().forEach(day=>rows.push([e.name,day.date,dailyAttendanceText(day),dailyWorkText(day),day.totalHours,day.gross,day.deduction,day.net,dailyClockText(day),dailyLeaveText(day),dailySupervisorText(day)]));
+      const csv='\ufeff'+rows.map(row=>row.map(x=>`"${String(x==null?'':x).replace(/"/g,'""')}"`).join(',')).join('\n');
+      const blob=new Blob([csv],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`${e.name}_${month()||'全部'}_每日出勤與工讀明細.csv`;a.click();URL.revokeObjectURL(url);
+    }
+    qs('#keyword').addEventListener('input',()=>renderEmployees());
+    qs('#monthText').addEventListener('change',()=>{state.lateCache=null;renderAll();});
+  </script>
+  <script src="global-nav.js?v=20260603unified1"></script>
+</body>
+</html>

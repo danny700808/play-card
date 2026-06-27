@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>我的租賃合約</title>
+  <link rel="stylesheet" href="style.css?v=rental-20260606">
+  <style>
+    body{background:#eef3f7;color:#18314a}.wrap{max-width:980px;margin:0 auto;padding:22px 14px 54px}.card2{background:#fff;border:1px solid #dbe5ef;border-radius:24px;padding:20px;margin-bottom:16px;box-shadow:0 10px 28px rgba(15,23,42,.04)}.title{font-size:30px;font-weight:950;margin:0 0 10px}.row2{display:grid;grid-template-columns:1fr 1fr;gap:14px}.field{margin-bottom:14px}.field label{display:block;font-weight:900;margin-bottom:7px}.field input,.field select,.field textarea{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:14px;padding:12px 14px;background:#fff;font-size:16px}.field textarea{min-height:92px}.btn{border:0;border-radius:14px;background:#1f7a5a;color:#fff;font-weight:950;padding:12px 18px;cursor:pointer}.btn.secondary{background:#e2e8f0;color:#18314a}.btn.danger{background:#b42318}.btn-row{display:flex;gap:10px;flex-wrap:wrap}.msg{margin-top:12px;border-radius:14px;padding:12px 14px;font-weight:900;line-height:1.7}.msg.ok{background:#e8fff4;color:#146c43}.msg.bad{background:#fff0f0;color:#b42318}.status{display:inline-block;border-radius:999px;padding:7px 12px;background:#e8fff4;color:#146c43;font-weight:950}.rental-contract-sheet{background:#fff;color:#111827;width:210mm;min-height:297mm;margin:0 auto;padding:12mm;box-sizing:border-box;border:1px solid #d1d5db;box-shadow:0 8px 20px rgba(0,0,0,.05);font-size:14px;line-height:1.9}.rental-contract-sheet h1{text-align:center;font-size:25px;margin:0 0 7mm}.party-line{font-weight:800;margin-bottom:3mm;position:relative}.clauses{padding-left:22px}.clauses li{margin-bottom:3mm}.seal.top{position:absolute;right:12mm;top:-8mm;width:27mm}.seal.bottom{width:28mm;margin-top:4mm}.sign-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8mm}.sign-card{border:1px solid #94a3b8;border-radius:12px;padding:12px;min-height:54mm}.sig-box{margin-top:14px;border-top:1px solid #64748b;padding-top:6px;min-height:28mm}.sig-img{max-width:100%;max-height:90px}.contract-date{text-align:center;margin-top:10mm;font-weight:800}.small{font-size:13px;color:#64748b;line-height:1.8}@media(max-width:840px){.row2{grid-template-columns:1fr}.rental-contract-sheet{width:100%;min-height:auto;padding:16px}.sign-grid{grid-template-columns:1fr}.seal.top{position:static;display:block;margin-left:auto}.wrap{padding:12px 8px}}@media print{body *{visibility:hidden}.print-area,.print-area *{visibility:visible}.print-area{position:absolute;left:0;top:0;width:100%}.card2:not(.print-area){display:none}.rental-contract-sheet{border:none;box-shadow:none;margin:0;width:210mm;min-height:297mm}@page{size:A4;margin:0}}
+  </style>
+  <link rel="stylesheet" href="global-nav.css?v=20260624unified-top-nav">
+</head>
+<body>
+  
+  <div class="yz-global-nav" data-yz-global-nav>
+    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
+    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
+  </div>
+
+<div class="wrap">
+    <section class="card2"><h1 class="title">我的租賃合約</h1><div id="summary">讀取中...</div><div id="msg"></div></section>
+    <section class="card2"><h2 style="margin-top:0">續約 / 退租</h2><div class="small">如需續約或退租，請送出申請後等待官方 LINE 與您確認。提早退租依合約條款全數不退款。</div><div class="row2" style="margin-top:14px"><div><h3>我要續約</h3><div class="field"><label>續約期數</label><select id="renewPeriods"><option value="1">1 期 90 天</option><option value="2">2 期 180 天</option><option value="3">3 期 270 天</option></select></div><div class="field"><label>備註</label><textarea id="renewNote" placeholder="例如：已匯款、希望續 1 期"></textarea></div><button class="btn" id="renewBtn" type="button">送出續約申請</button></div><div><h3>我要退租</h3><div class="field"><label>希望退租 / 收回日期</label><input id="returnDate" type="date"></div><div class="field"><label>希望時段</label><select id="returnTime"><option value="">請選擇</option><option>09:00</option><option>11:00</option><option>13:00</option><option>15:00</option><option>17:00</option><option>19:00</option><option>20:00</option></select></div><div class="field"><label>收回地址 / 備註</label><textarea id="returnNote"></textarea></div><button class="btn danger" id="returnBtn" type="button">送出退租申請</button></div></div></section>
+    <section class="card2 print-area"><div id="contractPreview"></div></section>
+    <section class="card2"><button class="btn secondary" onclick="window.print()">列印 / 另存 PDF</button></section>
+  </div>
+  <script src="config.js?v=rental-20260606"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script><script src="rental-common.js?v=20260627-other-equipment-date-internal"></script>
+  <script>
+    const R=window.YZRental, params=new URLSearchParams(location.search), contractId=params.get('contractId')||'', token=params.get('token')||''; let contract=null;
+    async function load(){
+      try{
+        if(!contractId || !token) throw new Error('合約連結不完整，請確認是否複製完整網址。');
+        contract=await R.get('rentalContracts',contractId);
+        if(!contract) throw new Error('找不到合約');
+        const ok=[contract.customerToken,contract.signToken,contract.token,contract.officialContractToken].map(R.clean).filter(Boolean).includes(R.clean(token));
+        if(!ok) throw new Error('連結驗證失敗');
+        await R.loadTemplateSettings(contract.rentalType).catch(()=>{});
+        R.qs('summary').innerHTML=`<span class="status">${R.esc(contract.status||'租賃中')}</span><div style="margin-top:12px;line-height:1.9"><b>設備：</b>${R.esc(contract.equipmentName||'')}<br><b>租期：</b>${R.esc(contract.startDate||'')} ～ ${R.esc(contract.endDate||'')}<br><b>租金：</b>${R.fmtMoney(contract.rentFee)}　<b>運費：</b>${R.fmtMoney(contract.shippingFee)}</div>`;
+        R.qs('contractPreview').innerHTML=R.renderContractHtml(contract,{officialView:true});
+      }catch(err){ R.toast(err.message||String(err), false); }
+    }
+    R.qs('renewBtn').onclick=async()=>{ try{ await R.call('rentalSubmitRenewalRequestHttp',{contractId,token,periods:R.val('renewPeriods'),note:R.val('renewNote')}); R.toast('續約申請已送出，請等待官方 LINE 確認。', true); }catch(err){ R.toast(err.message||String(err), false); } };
+    R.qs('returnBtn').onclick=async()=>{ if(!R.val('returnDate')) return R.toast('請選擇希望退租日期。', false); if(!confirm('確認送出退租申請？提早退租依合約條款全數不退款。')) return; try{ await R.call('rentalSubmitReturnRequestHttp',{contractId,token,returnDate:R.val('returnDate'),returnTime:R.val('returnTime'),note:R.val('returnNote')}); R.toast('退租申請已送出，請等待官方 LINE 確認。', true); }catch(err){ R.toast(err.message||String(err), false); } };
+    load();
+  </script>
+  <script src="global-nav.js?v=20260624unified-top-nav"></script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "name": "youzi-line-functions",
+  "description": "LINE webhook functions for Youzi employee system",
+  "main": "index.js",
+  "engines": {
+    "node": "20"
+  },
+  "scripts": {
+    "deploy": "firebase deploy --only functions"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.7.0",
+    "firebase-functions": "^5.1.1",
+    "nodemailer": "^6.9.16"
+  },
+  "private": true
+}

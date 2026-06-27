@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>在職證明申請</title>
+  <link rel="stylesheet" href="style.css?v=certificates-20260530">
+  <style>
+    body{background:#f5f7fb}.cert-wrap{max-width:1500px;margin:0 auto;padding:18px}.page-card{background:#fff;border:1px solid #e2e8f0;border-radius:24px;padding:20px;box-shadow:0 10px 30px rgba(15,23,42,.06)}.layout{display:grid;grid-template-columns:minmax(330px,430px) minmax(0,1fr);gap:16px;align-items:start}.subcard{background:#fff;border:1px solid #e2e8f0;border-radius:20px;padding:18px;box-shadow:0 8px 24px rgba(15,23,42,.04)}.field{margin-bottom:12px}.field label{display:block;font-weight:900;color:#17324d;margin-bottom:6px}.field input,.field select{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:12px;padding:10px 12px;font-size:15px;background:#fff}.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}.mini-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.mini-actions .btn{width:auto}.muted-tip{font-size:13px;color:#64748b;line-height:1.8}.preview-shell{background:#f7fafc;border:1px solid #e2e8f0;border-radius:20px;padding:14px;position:sticky;top:16px;overflow:auto}.preview-toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}.warning-box{border:1px solid #fed7aa;background:#fff7ed;color:#9a3412;border-radius:14px;padding:12px;font-size:13px;line-height:1.8;margin-bottom:12px}.message{margin-top:10px;color:#1f7a5a;font-weight:800;font-size:13px}.modal-mask{position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9999;display:none;align-items:center;justify-content:center;padding:20px}.modal-mask.show{display:flex}.modal-card{max-width:460px;background:#fff;border-radius:24px;padding:24px;box-shadow:0 25px 80px rgba(15,23,42,.35);text-align:center}.modal-card h2{margin:0 0 10px;color:#17324d}.modal-card p{line-height:1.8;color:#475569}@media(max-width:1120px){.layout{grid-template-columns:1fr}.preview-shell{position:static}}@media(max-width:640px){.row2{grid-template-columns:1fr}.mini-actions .btn{width:100%}}
+  </style>
+  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
+</head>
+<body onload="initPage()">
+  <div class="yz-global-nav" data-yz-global-nav>
+    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
+    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
+  </div>
+
+  <div class="cert-wrap">
+    <div class="page-card">
+      <div class="topbar"><div><h1 class="title" style="margin:0">在職證明申請</h1><div class="muted-tip">填寫後可先確認右側預覽。送出後會進入待主管審核，核准後才可列印或下載加密 PDF。</div></div></div>
+      <div class="layout">
+        <div>
+          <div class="subcard">
+            <h2 style="margin-top:0;color:#17324d">申請資料</h2>
+            
+            <div class="field"><label>姓名</label><input id="name" autocomplete="name"></div>
+            <div class="field"><label>身分證字號</label><input id="idNumber" placeholder="英文會自動轉大寫"></div>
+            <div class="row2"><div class="field"><label>職稱</label><input id="jobTitle" placeholder="例：專職老師、行政人員"></div><div class="field"><label>工作性質</label><select id="workNature"><option>教學</option><option>行政</option><option>門市</option><option>教學與行政</option><option>活動支援</option><option>其他</option></select></div></div>
+            <div class="row2"><div class="field"><label>到職日期</label><input id="hireDate" type="date"></div><div class="field"><label>目前狀態</label><label style="display:flex;align-items:center;gap:8px;font-weight:800;margin-top:12px"><input id="stillWorking" type="checkbox" checked style="width:auto"> 現仍在職</label></div></div>
+            <div class="field"><label>開立單位</label><select id="unitKey"><option value="shangpin">尚品樂器行｜統一編號 99680937</option><option value="kaili">台中市私立凱立音樂短期補習班｜證號 1110094357 號</option></select></div>
+            <div class="warning-box">請依實際任職／教學身分選擇開立單位。補習班老師請選「台中市私立凱立音樂短期補習班」；公司／樂器行工作證明請選「尚品樂器行」。開立單位會影響印章，請勿選錯。</div>
+
+            <div class="mini-actions"><button class="btn secondary" type="button" onclick="renderPreview()">預覽確認</button><button class="btn" type="button" onclick="submitApplication()">送出審核</button></div>
+            <div id="msg" class="message"></div>
+          </div>
+        </div>
+        <div class="preview-shell"><div class="preview-toolbar"><div><div style="font-size:18px;font-weight:900;color:#17324d">預覽</div><div class="muted-tip">目前僅供確認資料，不會出現列印或下載按鈕。</div></div></div><div id="previewArea" class="cert-scale-wrap"></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="modal-mask" id="submittedModal"><div class="modal-card"><h2>已送出申請</h2><p>您的證明文件已送出，待主管審核通過後，才可查看正式文件、列印或下載加密 PDF。</p><button class="btn" type="button" onclick="location.href='forms-hub.html'">我知道了</button></div></div>
+  <script src="config.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="firebase-client.js?v=certificates-20260530"></script>
+  <script src="app.js?v=certificates-20260530"></script>
+  <script src="certificate-common.js?v=cert-preview-iframe-fix-20260530"></script>
+  <script>
+    const CERT_TYPE='employment';
+    let currentTemplate=null;
+    function msg(text, ok=true){ const el=document.getElementById('msg'); el.textContent=text||''; el.style.color=ok?'#1f7a5a':'#b42318'; }
+    function fillUserDefaults(user){
+      if(CERT_TYPE==='teaching'){ document.getElementById('teacherName').value = document.getElementById('teacherName').value || (user.name||''); document.getElementById('teacherIdentity').value = YZ_CERT.identityLabelOfUser(user); }
+      else{ document.getElementById('name').value = document.getElementById('name').value || (user.name||''); if(user.hireDate) document.getElementById('hireDate').value = user.hireDate; }
+    }
+    function upperIdInput(e){ e.target.value=YZ_CERT.upperId(e.target.value); renderPreview(); }
+    function readData(){
+      if(CERT_TYPE==='teaching') return {
+        type:'teaching', teacherName:document.getElementById('teacherName').value.trim(), name:document.getElementById('teacherName').value.trim(), idNumber:YZ_CERT.upperId(document.getElementById('idNumber').value), teacherIdentity:document.getElementById('teacherIdentity').value, subject:document.getElementById('subject').value.trim(), periodStart:document.getElementById('periodStart').value, periodEnd:document.getElementById('periodEnd').value, stillTeaching:document.getElementById('stillTeaching').checked, lessonType:document.getElementById('lessonType').value, location:'台中市豐原區圓環東路347號', unitKey:'kaili', issueDate:YZ_CERT.today()
+      };
+      return {
+        type:'employment', name:document.getElementById('name').value.trim(), idNumber:YZ_CERT.upperId(document.getElementById('idNumber').value), jobTitle:document.getElementById('jobTitle').value.trim(), workNature:document.getElementById('workNature').value, hireDate:document.getElementById('hireDate').value, stillWorking:document.getElementById('stillWorking').checked, unitKey:document.getElementById('unitKey').value, issueDate:YZ_CERT.today()
+      };
+    }
+    function validateData(d){
+      if(!d.name && !d.teacherName) return '請填寫姓名。';
+      if(!d.idNumber) return '請填寫身分證字號。';
+      if(CERT_TYPE==='teaching'){ if(!d.subject) return '請填寫任教科目。'; if(!d.periodStart) return '請選擇任教期間起日。'; if(!d.stillTeaching && !d.periodEnd) return '請選擇任教期間迄日，或勾選目前仍任教。'; }
+      else{ if(!d.jobTitle) return '請填寫職稱。'; if(!d.hireDate) return '請選擇到職日期。'; if(!d.unitKey) return '請選擇開立單位。'; }
+      return '';
+    }
+    function renderPreview(){ const d=readData(); YZ_CERT.renderPreviewFrame(document.getElementById('previewArea'), {type:CERT_TYPE,template:currentTemplate||YZ_CERT.defaultTemplate(CERT_TYPE),data:d,status:'待主管審核',mode:'editing'}); }
+    async function loadTemplate(){ try{ const r=await api('getCertificateTemplate',{certificateType:CERT_TYPE}); currentTemplate=YZ_CERT.normalizeTemplate(CERT_TYPE,r.template||r.row||{}); }catch(e){ currentTemplate=YZ_CERT.defaultTemplate(CERT_TYPE); } }
+    async function submitApplication(){
+      const d=readData(); const error=validateData(d); if(error){ msg(error,false); return; }
+      if(!confirm('確認送出審核？送出後需待主管核准，核准後才可列印或下載加密 PDF。')) return;
+      try{ const user=getUser()||{}; const r=await api('submitCertificateApplication',{certificateType:CERT_TYPE,userId:user.id||user.employeeId,email:user.email,name:user.name,identityType:user.identityType,identityLabel:YZ_CERT.identityLabelOfUser(user),idNumber:d.idNumber,formData:d,templateSnapshot:currentTemplate}); if(!r.ok) throw new Error(r.message||'送出失敗'); document.getElementById('submittedModal').classList.add('show'); }catch(e){ msg('送出失敗：'+e.message,false); }
+    }
+    async function initPage(){
+      const user=requireLogin(); if(!user) return; setPortalMode('staff'); YZ_CERT.injectCertificateStyles(); await loadTemplate(); fillUserDefaults(user);
+      Array.from(document.querySelectorAll('input,select')).forEach(el=>{ el.addEventListener('input',renderPreview); el.addEventListener('change',renderPreview); });
+      const idEl=document.getElementById('idNumber'); if(idEl) idEl.addEventListener('input',upperIdInput);
+      renderPreview();
+    }
+  </script>
+  <script src="global-nav.js?v=20260603unified1"></script>
+</body>
+</html>

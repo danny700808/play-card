@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>LINE 主管通知收件人設定</title>
+  <link rel="stylesheet" href="style.css?v=line-manager-clean-20260606">
+  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
+  <style>
+    body{background:#f6f8fb}.settings-intro{margin-bottom:14px}.settings-intro .title{margin:0}.settings-intro .welcome{line-height:1.7}.note-box{border:1px solid #dbe5f1;background:#f8fafc;border-radius:18px;padding:12px 14px;color:#475569;line-height:1.8;font-weight:750}
+    .lm-card{background:#fff;border:1px solid #dbe5f1;border-radius:22px;padding:18px;margin-bottom:16px;box-shadow:0 10px 28px rgba(15,23,42,.05)}
+    .lm-title{font-size:24px;font-weight:950;color:#18314a;margin:0 0 8px}.lm-sub{color:#64748b;line-height:1.8;font-weight:650}.lm-form{display:grid;gap:10px;margin-top:14px}.lm-form label{font-weight:950;color:#18314a}.lm-form input{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:14px;padding:12px 13px;font-size:16px;background:#fff}.lm-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}.lm-actions button,.lm-link{border:0;border-radius:14px;background:#1f7a5a;color:#fff;font-weight:950;padding:11px 14px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center}.lm-actions .secondary,.lm-link.secondary{background:#eef2f6;color:#18314a}.lm-msg{font-weight:950;margin-top:10px;color:#1f7a5a}.lm-msg.err{color:#b42318}.lm-current{border:1px solid #dbe5f1;border-radius:16px;background:#f8fafc;padding:12px 14px;margin-top:12px;line-height:1.8}.lm-current strong{color:#18314a}.lm-pill{display:inline-flex;border-radius:999px;padding:5px 9px;font-size:12px;font-weight:950;background:#ecfdf3;color:#166534;margin-left:6px}.lm-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:12px}.lm-tile{border:1px solid #e2e8f0;border-radius:18px;padding:14px;background:#fff;text-decoration:none;color:#18314a}.lm-tile strong{display:block;font-size:18px;margin-bottom:6px}.lm-tile span{display:block;color:#64748b;line-height:1.7}.lm-note{font-size:13px;color:#64748b;line-height:1.7;margin-top:8px}@media(max-width:760px){.lm-grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body onload="init()" class="admin-wide-page">
+  <div class="yz-global-nav" data-yz-global-nav>
+    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
+    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
+  </div>
+
+  <div class="container">
+    <div class="card settings-intro">
+      <div class="header" style="margin:0">
+        <h1 class="title">LINE 主管通知收件人設定</h1>
+        <div class="welcome">這裡只設定「主管通知要送到哪一個 LINE」。它不會新增員工、不會影響薪資、班表、打卡、請假或外聘老師資料。</div>
+      </div>
+      <div class="note-box">柚子樂器官方 LINE 是發訊息出去的帳號；下方填的是接收主管通知的 LINE User ID。員工或老師回覆 LINE 時，仍會回到柚子樂器官方 LINE 聊天室。</div>
+    </div>
+
+    <section class="lm-card">
+      <h2 class="lm-title">主要主管 LINE 收件人</h2>
+      <div class="lm-sub">目前只保留一個主要收件人。之後如果要改成其他人收，只要把這裡的 LINE User ID 換掉並重新儲存即可。</div>
+      <div id="currentBox" class="lm-current">讀取目前設定中…</div>
+      <div class="lm-form">
+        <label>顯示名稱</label>
+        <input id="managerName" type="text" value="柚子樂器主要管理者" placeholder="例如：柚子樂器主要管理者">
+        <label>LINE User ID</label>
+        <input id="managerLineId" type="text" placeholder="例如：Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">
+        <div class="lm-note">這裡要填的是 LINE User ID，通常以 U 開頭；不是 LINE ID，也不是官方帳號名稱。</div>
+      </div>
+      <div class="lm-actions">
+        <button type="button" id="saveBtn">儲存設定</button>
+        <button class="secondary" type="button" id="testBtn">測試傳送給主要主管</button>
+        <button class="secondary" type="button" id="reloadBtn">重新讀取</button>
+      </div>
+      <div id="msg" class="lm-msg"></div>
+    </section>
+
+    <section class="lm-card">
+      <h2 class="lm-title">通知項目設定</h2>
+      <div class="lm-sub">這一區是「什麼事情要通知」。主管收件人固定看上方主要 LINE 設定；各模組的通知項目仍分開管理。</div>
+      <div class="lm-grid">
+        <a class="lm-tile" href="approval-notification-settings.html"><strong>簽核 / 打卡 / 請假提醒</strong><span>註冊、補打卡、打卡修正、遲到提醒、請假、工讀時數與臨時出勤。</span></a>
+        <a class="lm-tile" href="teacher-notification-settings.html"><strong>外聘老師提醒</strong><span>外聘合約、合約未簽、拿貨詢價與主管回覆詢價。</span></a>
+        <a class="lm-tile" href="certificate-notification-settings.html"><strong>證明提醒</strong><span>在職證明、教學證明送出、核准、退回與逾期未審。</span></a>
+        <a class="lm-tile" href="application-notification-settings.html"><strong>應聘老師提醒</strong><span>應聘資料送出、初審、退回、補件與逾期未審。</span></a>
+      </div>
+      <div class="lm-actions"><a class="lm-link secondary" href="line-notification-check.html">開啟進階 LINE 檢查頁</a></div>
+    </section>
+  </div>
+
+  <script src="config.js?v=20260606lineManagerClean"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
+  <script src="firebase-client.js?v=20260606lineManagerClean"></script>
+  <script src="app.js?v=20260606lineManagerClean"></script>
+  <script>
+    function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+    function setMsg(t,err){var el=document.getElementById('msg'); if(!el)return; el.textContent=t||''; el.className='lm-msg'+(err?' err':'');}
+    function maskLine(id){id=String(id||''); if(id.length<=10)return id; return id.slice(0,6)+'••••••'+id.slice(-5);}
+    async function loadStatus(){
+      try{
+        setMsg('讀取中…');
+        var r=await api('getLineAutoNotificationStatus',{});
+        if(!r||r.ok===false) throw new Error((r&&r.message)||'讀取失敗');
+        var primary=(r.managers||[]).filter(function(x){return x.isPrimaryManagerLineRecipient || x.employeeId==='PRIMARY_MANAGER_LINE';})[0] || (r.managers||[])[0] || null;
+        var box=document.getElementById('currentBox');
+        if(primary && primary.lineUserId){
+          box.innerHTML='<strong>'+esc(primary.name||'主要主管')+'</strong><span class="lm-pill">LINE 可通知</span><br>LINE User ID：'+esc(maskLine(primary.lineUserId));
+          document.getElementById('managerName').value=primary.name||'柚子樂器主要管理者';
+          document.getElementById('managerLineId').value=primary.lineUserId||'';
+        }else{
+          box.innerHTML='目前尚未設定主要主管 LINE 收件人。請在下方填入 LINE User ID 後按「儲存設定」。';
+        }
+        setMsg('讀取完成。');
+      }catch(e){setMsg(e.message||String(e),true);}
+    }
+    async function saveManager(){
+      try{
+        var name=(document.getElementById('managerName').value||'柚子樂器主要管理者').trim();
+        var lineId=(document.getElementById('managerLineId').value||'').trim();
+        if(!lineId) throw new Error('請填入 LINE User ID。');
+        setMsg('儲存中…');
+        var r=await api('setPrimaryManagerLineRecipient',{target:{name:name,employeeId:'PRIMARY_MANAGER_LINE',lineUserId:lineId,lineNotifyEnabled:true,role:'manager',identityType:'manager'}});
+        if(!r||r.ok===false) throw new Error((r&&r.message)||'儲存失敗');
+        setMsg(r.message||'已儲存。');
+        setTimeout(loadStatus,700);
+      }catch(e){setMsg(e.message||String(e),true);}
+    }
+    async function testManager(){
+      try{
+        setMsg('建立測試通知中…');
+        var r=await api('sendLineAutoNotificationTest',{target:'managers',message:'LINE 主管通知測試：如果收到這則訊息，代表主要主管 LINE 收件人設定成功。'});
+        if(!r||r.ok===false) throw new Error((r&&r.message)||'測試失敗');
+        setMsg(r.message||'已送出測試通知。');
+      }catch(e){setMsg(e.message||String(e),true);}
+    }
+    function init(){
+      if(typeof fillHeader==='function') fillHeader();
+      var user=typeof requireLogin==='function'?requireLogin():null;
+      if(!user) return;
+      if(typeof hasSettingsZoneAccess==='function' && !hasSettingsZoneAccess(user)){location.href='dashboard.html'; return;}
+      document.getElementById('saveBtn').onclick=saveManager;
+      document.getElementById('testBtn').onclick=testManager;
+      document.getElementById('reloadBtn').onclick=loadStatus;
+      loadStatus();
+    }
+  </script>
+  <script src="global-nav.js?v=20260603unified1"></script>
+</body>
+</html>

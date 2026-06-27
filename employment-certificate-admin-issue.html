@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>員工管理</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="config.js"></script>
+  <style>
+    :root{
+      --bg:#f6faf7; --card:#fff; --ink:#142235; --muted:#66768a; --line:#dfe8ef;
+      --green:#1f7a5a; --green-soft:#e9f7ef; --orange:#b76a16; --orange-soft:#fff5e8;
+      --blue:#28728f; --blue-soft:#edf7fb; --red:#b42318; --red-soft:#fff0ee;
+      --shadow:0 10px 26px rgba(16,24,40,.07); --radius:22px;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Noto Sans TC","Segoe UI",sans-serif;line-height:1.55}
+    .yz-admin-nav{position:sticky;top:0;z-index:20;background:linear-gradient(to bottom,var(--bg) 80%,rgba(246,250,247,0));padding:12px 16px 18px;display:grid;grid-template-columns:1fr 1fr;gap:12px;max-width:980px;margin:0 auto}
+    .yz-nav-btn{border:0;border-radius:18px;min-height:58px;font-size:20px;font-weight:900;color:#fff}
+    .yz-nav-back{background:#304052}.yz-nav-logout{background:#df2528}
+    .wrap{max-width:980px;margin:0 auto;padding:0 16px 42px}
+    .title{font-size:36px;font-weight:950;color:#104b38;margin:12px 0 16px;letter-spacing:.03em}
+    .panel{background:var(--card);border:1px solid #edf1f4;border-radius:var(--radius);box-shadow:var(--shadow);padding:20px;margin:16px 0}
+    .hide{display:none!important}
+    .layer-title{display:flex;align-items:center;gap:10px;margin:0 0 14px;color:#104b38;font-size:25px;font-weight:950}
+    .badge{width:34px;height:34px;border-radius:999px;background:var(--green);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:15px;font-weight:950}
+    .category-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+    .category-card{border:2px solid var(--line);border-radius:22px;padding:20px;min-height:150px;background:#fff;cursor:pointer;transition:.15s ease}
+    .category-card:hover{transform:translateY(-1px);box-shadow:0 8px 18px rgba(16,24,40,.08)}
+    .category-card.staff{background:var(--green-soft);border-color:#c8e7d6}
+    .category-card.parttime{background:var(--orange-soft);border-color:#f0d2ad}
+    .category-card.external{background:#fff0f7;border-color:#efc9df}
+    .cat-title{font-size:30px;font-weight:950;color:#104b38}
+    .cat-count{font-size:38px;font-weight:950;color:#104b38;margin-top:18px}.cat-count span{font-size:18px;margin-left:3px}
+    .toolbar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;margin-bottom:14px}
+    input,select,textarea{width:100%;border:2px solid #dce5ec;border-radius:16px;min-height:50px;padding:12px 14px;font-size:17px;background:#fff;color:var(--ink)}
+    input[readonly]{background:#fbfcfd;color:#263445}
+    .toggle{display:flex;align-items:center;gap:8px;font-weight:850;color:#33475b;white-space:nowrap}.toggle input{width:22px;height:22px}
+    .list-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+    .emp-card{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;border:2px solid #e3ebf1;border-radius:21px;background:#fff;padding:16px;min-height:88px;cursor:pointer}
+    .emp-card:hover{border-color:#9fd3b3}
+    .emp-name{font-size:25px;font-weight:950;color:#104b38;line-height:1.2}
+    .emp-email{font-size:15px;color:#5e6e7d;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .pill{border-radius:999px;padding:7px 13px;font-size:15px;font-weight:950;white-space:nowrap}
+    .pill.green{background:var(--green-soft);color:var(--green)}
+    .pill.orange{background:var(--orange-soft);color:var(--orange)}
+    .pill.blue{background:var(--blue-soft);color:var(--blue)}
+    .pill.red{background:var(--red-soft);color:var(--red)}
+    .pill.gray{background:#eef2f6;color:#415165}
+    .topline{display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid #edf1f4;padding-bottom:14px;margin-bottom:18px}
+    .person-title{font-size:31px;font-weight:950;color:#104b38;line-height:1.2}
+    .person-sub{font-size:15px;color:#617083;margin-top:4px}
+    .back-row{display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap}
+    .ghost{background:#eef2f6!important;color:#304052!important;border:0;border-radius:14px;min-height:42px;padding:9px 13px;font-size:15px;font-weight:900}
+    .section-title{font-size:24px;font-weight:950;color:#104b38;margin:22px 0 12px}
+    .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+    .field label{display:block;font-size:15px;font-weight:950;color:#24384a;margin:0 0 7px}
+    .field.full{grid-column:1/-1}
+    textarea{min-height:82px;resize:vertical}
+    .empty{border:1px dashed #cbd7e1;border-radius:16px;background:#fbfcfd;color:#617083;padding:18px;text-align:center}
+    .msg{display:none;margin-top:14px;border-radius:14px;padding:12px 14px;background:#eef7f1;color:#1f7a5a;font-weight:850}.msg.error{background:#fff1f3;color:#b42318}
+    .actions{display:flex;justify-content:center;margin-top:20px}
+    .save{border:0;border-radius:18px;min-height:56px;width:min(420px,100%);background:var(--green);color:#fff;font-size:19px;font-weight:950}
+    .danger{border:0;border-radius:18px;min-height:52px;background:#b42318;color:#fff;font-size:17px;font-weight:950;padding:10px 18px}
+    .hint{font-size:14px;color:#66768a;margin-top:8px;line-height:1.5}
+    .cat-secondary{font-size:14px;color:#526477;font-weight:850;margin-top:5px}
+    .data-notice{display:none;border-radius:14px;padding:11px 13px;margin:-4px 0 12px;background:#fff8e8;border:1px solid #efd59e;color:#7a5100;font-weight:800;line-height:1.65}
+    .summary-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+    .summary-card{border:1px solid #dfe8ef;border-radius:16px;padding:12px;background:#fff}
+    .summary-card span{display:block;font-size:13px;color:#66768a;font-weight:850;margin-bottom:5px}
+    .summary-card strong{display:block;font-size:17px;color:#173b30;line-height:1.45;word-break:break-word}
+    .summary-card.ok{background:#f0faf5;border-color:#c9ead8}.summary-card.warn{background:#fff8e8;border-color:#efd59e}.summary-card.bad{background:#fff1f1;border-color:#f3caca}
+    .link-actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:12px}
+    .link-btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;border-radius:14px;padding:9px 14px;background:#1f7a5a;color:#fff;text-decoration:none;font-weight:900;border:0;cursor:pointer}
+    .link-btn.secondary{background:#304052}.link-btn.light{background:#edf7fb;color:#28728f;border:1px solid #cbe3ed}
+    .doc-preview-link{display:inline-flex;align-items:center;gap:7px;font-weight:900;color:#1f7a5a;text-decoration:none}
+    @media(max-width:760px){
+      .wrap{padding:0 12px 38px}.title{font-size:34px}
+      .panel{padding:18px;border-radius:22px}
+      .category-grid,.list-grid,.form-grid,.toolbar,.summary-grid{grid-template-columns:1fr}
+      .topline{align-items:flex-start}
+      .person-title{font-size:29px}
+    }
+  </style>
+  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
+</head>
+<body>
+  <div class="yz-global-nav" data-yz-global-nav>
+    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
+    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
+  </div>
+
+  <div class="wrap">
+    <h1 class="title">員工管理</h1>
+    <div id="dataNotice" class="data-notice"></div>
+
+    <section class="panel" id="layer1">
+      <h2 class="layer-title"><span class="badge">1</span>選擇人員類別</h2>
+      <div class="category-grid" id="categoryCards"><div class="empty">讀取中...</div></div>
+    </section>
+
+    <section class="panel hide" id="layer2">
+      <h2 class="layer-title"><span class="badge">2</span><span id="listTitle">人員名單</span></h2>
+      <div class="toolbar">
+        <input id="keyword" type="search" placeholder="搜尋姓名或 Email" oninput="debouncedRenderList()">
+        <label class="toggle"><input id="includeHidden" type="checkbox" onchange="renderList()"> 顯示離職／停用／封存</label>
+      </div>
+      <div id="employeeList" class="list-grid"><div class="empty">請先選擇類別。</div></div>
+      <div style="margin-top:16px"><button class="ghost" type="button" onclick="showLayer(1)">回到類別</button></div>
+    </section>
+
+    <section class="panel hide" id="layer3">
+      <h2 class="layer-title"><span class="badge">3</span>員工資料</h2>
+      <div id="detailPanel"><div class="empty">請先選擇人員。</div></div>
+    </section>
+  </div>
+
+  <script src="app.js"></script>
+  <script src="firebase-client.js?v=salary-labor-selfpay-20260626v2"></script>
+  <script src="onboarding-workflow.js?v=20260624v2"></script>
+  <script>
+    let currentUser = null;
+    let allEmployees = [];
+    let currentType = '';
+    let selectedId = '';
+    let renderTimer = null;
+    const $ = s => document.querySelector(s);
+
+    function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+    function clean(v){ return String(v == null ? '' : v).trim(); }
+    function lower(v){ return clean(v).toLowerCase(); }
+    function showLayer(n){
+      ['layer1','layer2','layer3'].forEach((id, idx)=>{
+        const el = document.getElementById(id);
+        if(el) el.classList.toggle('hide', idx !== n-1);
+      });
+      window.scrollTo({top:0, behavior:'smooth'});
+    }
+    function debouncedRenderList(){ clearTimeout(renderTimer); renderTimer = setTimeout(renderList, 200); }
+
+    function rawOf(e){ return (e && e.raw && typeof e.raw === 'object') ? e.raw : {}; }
+    function profileOf(e){ return (e && e.profile && typeof e.profile === 'object') ? e.profile : {}; }
+    function salaryOf(e){ return (e && e.salary && typeof e.salary === 'object') ? e.salary : ((e && e.info && typeof e.info === 'object') ? e.info : {}); }
+    function rawConfigOf(e){ const s = salaryOf(e); return (s && s.rawConfig && typeof s.rawConfig === 'object') ? s.rawConfig : {}; }
+    function fromSources(e){ return [e || {}, profileOf(e), salaryOf(e), rawConfigOf(e), rawOf(e)]; }
+    function firstValue(obj, keys){
+      for(const src of fromSources(obj)){
+        for(const k of keys){
+          if(src && src[k] !== undefined && src[k] !== null && clean(src[k]) !== '') return src[k];
+        }
+      }
+      return '';
+    }
+    function mergeSalaryIntoEmployee(row, salaryMap){
+      salaryMap = salaryMap || {};
+      const keys = [
+        empId(row), clean(row && row.id), clean(row && row.employeeId), clean(row && row.userId), clean(row && row.__id), emailOf(row)
+      ].map(function(x){ return clean(x); }).filter(Boolean);
+      let cfg = {};
+      keys.forEach(function(k){
+        const direct = salaryMap[k] || salaryMap[lower(k)];
+        if(direct && typeof direct === 'object') cfg = Object.assign(cfg, direct);
+      });
+      if(!Object.keys(cfg).length) return row;
+      return Object.assign({}, row, {
+        salary:Object.assign({}, salaryOf(row), cfg),
+        info:Object.assign({}, salaryOf(row), cfg),
+        raw:Object.assign({}, rawOf(row), cfg)
+      }, cfg);
+    }
+    function displayValue(v, placeholder){
+      const out = fmt(v);
+      return out || placeholder || '尚未填寫';
+    }
+    function fmt(v){
+      if(v === undefined || v === null) return '';
+      if(typeof v === 'object'){
+        if(typeof v.toDate === 'function'){
+          const d = v.toDate(); if(!isNaN(d.getTime())) return d.toISOString().slice(0,10);
+        }
+        if(v.seconds){
+          const d = new Date(v.seconds * 1000); if(!isNaN(d.getTime())) return d.toISOString().slice(0,10);
+        }
+        return '';
+      }
+      const s = clean(v);
+      if(!s) return '';
+      if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+      return s;
+    }
+
+    function empId(e){ return clean(firstValue(e, ['employeeId','id','userId','員工ID','__id'])); }
+    function nameOf(e){ return clean(firstValue(e, ['name','姓名','employeeName','員工姓名'])); }
+    function emailOf(e){ return lower(firstValue(e, ['email','Email','電子郵件'])); }
+    function identityType(e){
+      const raw = lower(firstValue(e, ['identityType','identity','roleType','身分類型','身份類型','員工身分','employeeType','identityLabel']));
+      const label = clean(firstValue(e, ['identityLabel','身分類型','身份類型','員工身分']));
+      const isPart = firstValue(e,['isPartTime','是否工讀生']);
+      if(raw.includes('parttime') || raw.includes('工讀') || label.includes('工讀') || isPart === true || clean(isPart).toLowerCase()==='yes' || clean(isPart)==='是') return 'parttime';
+      if(raw.includes('external') || raw.includes('teacher') || raw.includes('外聘') || label.includes('外聘')) return 'external';
+      return 'staff';
+    }
+    function identityText(type){ return type === 'parttime' ? '工讀生' : (type === 'external' ? '外聘' : '員工'); }
+    function typeClass(type){ return type === 'parttime' ? 'orange' : (type === 'external' ? 'blue' : 'green'); }
+    function boolLabel(v){
+      if(v === true) return '啟用';
+      const s = clean(v).toLowerCase();
+      if(['true','yes','1','是','啟用','enabled'].includes(s)) return '啟用';
+      if(['false','no','0','否','停用','disabled'].includes(s)) return '停用';
+      return clean(v);
+    }
+    function statusLabel(e){
+      const s = clean(firstValue(e, ['statusLabel']));
+      if(s) return s;
+      const acc = lower(firstValue(e, ['accountStatus','帳號狀態']));
+      const emp = lower(firstValue(e, ['employmentStatus','任職狀態']));
+      const hidden = !!firstValue(e, ['hiddenFromActiveLists','隱藏於日常清單','hidden','隱藏']);
+      if(emp === 'resigned' || emp === '離職') return '離職';
+      if(acc === 'inactive') return hidden ? '停用 / 隱藏' : '停用';
+      if(hidden) return '隱藏';
+      return '在職';
+    }
+    function canShowDaily(e){ return !/離職|停用|隱藏|封存|駁回/.test(statusLabel(e)); }
+
+    function isSystemRecord(e){
+      const raw=rawOf(e);const id=empId(e);
+      return id==='PRIMARY_MANAGER_LINE' || lower(firstValue(e,['recordType']))==='system_setting' || lower(firstValue(e,['identityType']))==='system' || lower(raw.recordType)==='system_setting';
+    }
+    function employeeQuality(e){
+      let score=canShowDaily(e)?100:20;
+      if(firstValue(e,['onboardingCompleted']))score+=20;
+      if(firstValue(e,['idNumber','身分證字號']))score+=5;
+      if(firstValue(e,['mobilePhone','行動電話']))score+=3;
+      return score;
+    }
+    function dedupeEmployees(rows){
+      const map=new Map();let duplicateCount=0;
+      (rows||[]).filter(e=>!isSystemRecord(e)).forEach(e=>{
+        const key=emailOf(e)?('email:'+emailOf(e)):('id:'+empId(e));
+        if(!key||key==='id:')return;
+        const old=map.get(key);
+        if(!old)map.set(key,e);
+        else{duplicateCount++;if(employeeQuality(e)>employeeQuality(old))map.set(key,e)}
+      });
+      return {rows:Array.from(map.values()),duplicateCount};
+    }
+
+    async function init(){
+      currentUser = requireLogin();
+      if(!currentUser) return;
+      if(!hasSettingsZoneAccess(currentUser)){ location.href = 'dashboard.html'; return; }
+      await loadEmployees();
+      showLayer(1);
+    }
+
+    async function loadEmployees(){
+      const res = await api('getEmployeeManagementData', { userId: currentUser.id, statusMode:'all' });
+      let salaryMap = {};
+      try{
+        const salaryRes = await api('getSalarySetupOptions', { userId: currentUser.id });
+        salaryMap = (salaryRes && salaryRes.employeeConfigMap) || {};
+      }catch(err){
+        console.warn('薪資投保資料讀取失敗，員工管理仍會先顯示基本資料', err);
+      }
+      const mergedRows = (res.rows || []).map(function(row){ return mergeSalaryIntoEmployee(row, salaryMap); });
+      const cleaned=dedupeEmployees(mergedRows.filter(e => empId(e) || emailOf(e)));
+      allEmployees = cleaned.rows;
+      const duplicateCount=Math.max(cleaned.duplicateCount,Array.isArray(res.duplicateGroups)?res.duplicateGroups.length:0);
+      const notice=$('#dataNotice');
+      if(duplicateCount){notice.style.display='block';notice.textContent=`系統偵測到 ${duplicateCount} 組可能重複的人員主檔；目前名單已合併顯示，正式刪除前仍應先核對歷史薪資、班表與打卡資料。`;}
+      else{notice.style.display='none';notice.textContent='';}
+      renderCategories();
+    }
+
+    function renderCategories(){
+      const active = {staff:0, parttime:0, external:0};
+      const inactive = {staff:0, parttime:0, external:0};
+      allEmployees.forEach(e => (canShowDaily(e)?active:inactive)[identityType(e)]++);
+      $('#categoryCards').innerHTML = [
+        ['staff','員工','staff'], ['parttime','工讀生','parttime'], ['external','外聘','external']
+      ].map(([type,title,cls]) => `
+        <div class="category-card ${cls}" onclick="openCategory('${type}')">
+          <div class="cat-title">${title}</div>
+          <div class="cat-count">${active[type] || 0}<span>人</span></div>
+          <div class="cat-secondary">離職／停用／封存：${inactive[type] || 0} 人</div>
+        </div>
+      `).join('');
+    }
+
+    function openCategory(type){
+      currentType = type;
+      selectedId = '';
+      $('#listTitle').textContent = identityText(type) + '名單';
+      $('#keyword').value = '';
+      renderList();
+      showLayer(2);
+    }
+
+    function filteredEmployees(){
+      const kw = lower($('#keyword') && $('#keyword').value);
+      const includeHidden = $('#includeHidden') && $('#includeHidden').checked;
+      return allEmployees.filter(e => {
+        if(identityType(e) !== currentType) return false;
+        if(!includeHidden && !canShowDaily(e)) return false;
+        if(!kw) return true;
+        const hay = [nameOf(e), emailOf(e), empId(e), statusLabel(e)].join(' ').toLowerCase();
+        return hay.includes(kw);
+      });
+    }
+
+    function renderList(){
+      const rows = filteredEmployees();
+      if(!rows.length){ $('#employeeList').innerHTML = '<div class="empty">這個分類目前沒有符合條件的人員。</div>'; return; }
+      $('#employeeList').innerHTML = rows.map(e => {
+        const id = empId(e) || emailOf(e);
+        const type = identityType(e);
+        return `
+          <div class="emp-card" onclick="selectEmployee('${esc(id)}')">
+            <div>
+              <div class="emp-name">${esc(nameOf(e) || '未命名')}</div>
+              <div class="emp-email">${esc(emailOf(e) || '無 Email')}</div>
+            </div>
+            <span class="pill ${typeClass(type)}">${esc(identityText(type))}</span>
+          </div>`;
+      }).join('');
+    }
+
+    function apiTimeout(promise, ms){
+      return Promise.race([
+        promise,
+        new Promise(resolve => setTimeout(() => resolve(null), ms || 3500))
+      ]);
+    }
+
+    async function selectEmployee(id){
+      selectedId = id;
+      const base = allEmployees.find(x => (empId(x) || emailOf(x)) === id);
+      if(!base) return;
+
+      // 先用名單中的員工主檔立即顯示，不讓畫面卡在「讀取中」。
+      renderDetail(base);
+      showLayer(3);
+
+      // 再背景補抓薪資 / 投保等完整資料；若 API 慢或無回應，保留目前畫面。
+      try{
+        const key = empId(base) || firstValue(base, ['id','__id','userId']) || id;
+        const email = emailOf(base);
+        const payload = { employeeId:key, userId:key, id:key, email:email };
+        const [profileRes,salaryRes,lifecycleRes] = await Promise.all([
+          apiTimeout(api('getMyProfileFull', payload).catch(()=>null), 3500),
+          apiTimeout(api('getMySalaryInfo', payload).catch(()=>null), 3500),
+          apiTimeout(api('getEmployeeLifecycleSummary', payload).catch(()=>null), 3500)
+        ]);
+        if(!profileRes && !salaryRes && !lifecycleRes) return;
+        const enriched = Object.assign({}, base, {
+          profile: (profileRes && profileRes.profile) || {},
+          salary: (salaryRes && (salaryRes.salary || salaryRes.info)) || (profileRes && (profileRes.salary || profileRes.info)) || {},
+          lifecycle: (lifecycleRes && lifecycleRes.ok!==false) ? lifecycleRes : {},
+          raw: Object.assign({}, rawOf(base), (profileRes && profileRes.profile) || {}, (salaryRes && ((salaryRes.salary && salaryRes.salary.rawConfig) || (salaryRes.info && salaryRes.info.rawConfig))) || {})
+        });
+        renderDetail(enriched);
+      }catch(err){
+        console.warn('[employee-admin detail background load]', err);
+      }
+    }
+
+    function field(label, value, full, placeholder){
+      return `<div class="field ${full ? 'full' : ''}"><label>${esc(label)}</label><input value="${esc(displayValue(value, placeholder))}" readonly></div>`;
+    }
+    function editableSelect(label, id, options){
+      return `<div class="field"><label>${esc(label)}</label><select id="${esc(id)}">${options.map(o=>`<option value="${esc(o[0])}">${esc(o[1])}</option>`).join('')}</select></div>`;
+    }
+
+    function optionValue(raw, fallback){
+      const s = lower(raw);
+      return s || fallback;
+    }
+
+    function summaryCard(label,value,state){return `<div class="summary-card ${state||''}"><span>${esc(label)}</span><strong>${esc(value||'尚未設定')}</strong></div>`}
+    function encode(v){return encodeURIComponent(clean(v))}
+
+    function renderDetail(e){
+      const type = identityType(e);
+      const identity = identityText(type);
+      const status = statusLabel(e);
+      const lineNotify = boolLabel(firstValue(e, ['lineNotifyEnabled','LINE 通知啟用','LINE通知啟用']));
+      const lineBindTime = firstValue(e, ['lineBoundAt','lineBindAt','lineBoundAtText','lineBindTime','LINE 綁定時間','LINE綁定時間']);
+      const lineDisplayName = firstValue(e, ['lineDisplayName','lineName','LINE 顯示名稱','LINE名稱']);
+      const mainAmount = type === 'parttime'
+        ? firstValue(e, ['parttimeHourlyRateText','hourlyRateText','hourlyRate','時薪','時薪金額','hourlyWage','parttimeHourlyWage'])
+        : firstValue(e, ['staffBaseSalaryText','baseSalaryText','baseSalary','staffBaseSalary','monthlySalary','salary','本薪','本薪金額']);
+      const laborStatus = firstValue(e, ['laborStatus','laborInsuranceStatus','laborInsurance','勞保狀態']);
+      const healthStatus = firstValue(e, ['healthStatus','healthInsuranceStatus','healthInsurance','健保狀態']);
+      const lifecycle=(e && e.lifecycle)||{};const schedule=(lifecycle&&lifecycle.schedule)||{};
+      const targetId=empId(e)||emailOf(e);const docUrl=firstValue(e,['identityDocumentUrl']);
+      const identityVerified=firstValue(e,['identityDocumentVerified','identityVerificationStatus'])===true || clean(firstValue(e,['identityVerificationStatus']))==='verified';
+      const salaryReady=clean(mainAmount)!=='' && clean(laborStatus)!=='' && clean(healthStatus)!=='';
+      const scheduleText=type==='external'?'不適用':(schedule.templateName||firstValue(e,['currentScheduleTemplateName'])||'尚未設定');
+      const dataSource=firstValue(e,['registrationApplicationId'])?'註冊審核暨入職建檔':'既有人員主檔';
+
+      $('#detailPanel').innerHTML = `
+        <div class="topline">
+          <div>
+            <div class="person-title">${esc(nameOf(e) || firstValue(e, ['displayName']) || '未命名')}</div>
+            <div class="person-sub">${esc(identity)}｜${esc(emailOf(e) || '無 Email')}</div>
+          </div>
+          <div class="back-row">
+            <span class="pill ${canShowDaily(e) ? 'green' : 'red'}">${esc(status)}</span>
+            <button class="ghost" type="button" onclick="showLayer(2)">回到名單</button>
+          </div>
+        </div>
+
+        <div class="section-title">註冊基本資料</div>
+        <div class="form-grid">
+          ${field('員工 ID', firstValue(e, ['employeeId','id','userId','__id','員工ID']))}
+          ${field('姓名', firstValue(e, ['name','displayName','姓名','employeeName','員工姓名']))}
+          ${field('Email', firstValue(e, ['email','Email','電子郵件','loginAccount','登入帳號']))}
+          ${field('身分類型', identity)}
+          ${field('身分證字號', firstValue(e, ['idNumber','nationalId','idNo','idNumberMasked','身分證字號','身份證字號']))}
+          ${field('出生年月日', firstValue(e, ['birthDate','birthday','出生年月日','生日']))}
+          ${field('行動電話', firstValue(e, ['mobilePhone','phone','手機','行動電話','聯絡電話']))}
+          ${field(type === 'external' ? '合作起始日' : '到職日', firstValue(e, ['hireDate','cooperationStartDate','joinDate','startDate','到職日','任職日期']))}
+          ${field('聯絡地址', firstValue(e, ['address','contactAddress','聯絡地址','地址']), true)}
+          ${field('緊急聯絡人', firstValue(e, ['emergencyContact','緊急聯絡人']))}
+          ${field('緊急聯絡人電話', firstValue(e, ['emergencyPhone','emergencyContactPhone','緊急聯絡人電話','緊急聯絡電話']))}
+          ${field('資料來源', dataSource)}
+          ${field('證件核對', identityVerified ? '主管已核對' : (docUrl ? '等待主管核對' : '尚未上傳'))}
+        </div>
+        ${docUrl ? `<div class="link-actions"><a class="link-btn light" href="${esc(docUrl)}" target="_blank" rel="noopener">查看本人證件正面</a></div>` : ''}
+
+        <div class="section-title">資料完整度與關聯</div>
+        <div class="summary-grid">
+          ${summaryCard('基本資料', nameOf(e)&&emailOf(e)&&firstValue(e,['idNumber','身分證字號'])?'已完成':'尚未完成',nameOf(e)&&emailOf(e)?'ok':'warn')}
+          ${summaryCard('身分驗證', identityVerified?'已核對':'尚未完成',identityVerified?'ok':'warn')}
+          ${summaryCard('目前班表', scheduleText,type==='external'||scheduleText!=='尚未設定'?'ok':'warn')}
+          ${summaryCard('薪資投保', type==='external'?'不適用':(salaryReady?'已設定':'尚未完成'),type==='external'||salaryReady?'ok':'warn')}
+          ${summaryCard('LINE 綁定', firstValue(e,['lineUserId','LINE User ID'])?'已綁定':'尚未綁定',firstValue(e,['lineUserId','LINE User ID'])?'ok':'warn')}
+          ${summaryCard('帳號狀態', status,canShowDaily(e)?'ok':'bad')}
+        </div>
+        <div class="link-actions">
+          ${type!=='external'?`<a class="link-btn" href="salary-admin.html?employeeId=${encode(targetId)}">查看／調整薪資投保</a><a class="link-btn secondary" href="schedule-admin.html?employeeId=${encode(targetId)}&panel=assignment">查看／調整班表</a>`:''}
+        </div>
+
+        <div class="section-title">LINE 資料</div>
+        <div class="form-grid">
+          ${field('LINE User ID', firstValue(e, ['lineUserId','LINE User ID','LINEUserID']), true, '尚未綁定')}
+          ${field('LINE 通知狀態', lineNotify, false, '尚未設定')}
+          ${field('LINE 綁定時間', lineBindTime, false, '尚未綁定')}
+          ${field('LINE 顯示名稱', lineDisplayName, false, '尚未綁定')}
+        </div>
+        <div class="actions" style="justify-content:flex-start;margin-top:12px">
+          <button class="danger" type="button" onclick="clearLineBinding()">清除此員工 LINE 綁定</button>
+        </div>
+        <div class="hint">如果員工 LINE 綁錯到主管手機，先按這顆清掉，再請員工用自己的手機輸入「柚子綁定 Email」。</div>
+
+        <div class="section-title">薪資 / 投保摘要</div>
+        <div class="form-grid">
+          ${field('薪資顯示類型', firstValue(e, ['salaryDisplayType','薪資顯示類型']) || (type === 'parttime' ? '工讀時薪' : '專職本薪'))}
+          ${field(type === 'parttime' ? '時薪' : '本薪', mainAmount, false, '尚未設定')}
+          ${type === 'parttime' ? field('是否部分工時', firstValue(e, ['parttimePartialHoursText','isPartialHours','isPartialWorkingTime','partialWorkingTime','是否部分工時']), false, '尚未設定') : ''}
+          ${type === 'parttime' ? field('目前申報月平均薪資總額', firstValue(e, ['parttimeAverageSalaryText','averageSalary','parttimeAverageSalary','目前申報月平均薪資總額']), false, '尚未設定') : ''}
+          ${field('職務加給', firstValue(e, ['jobAllowanceText','jobAllowance','職務加給']), false, '無')}
+          ${field('津貼', firstValue(e, ['allowanceText','allowance','津貼']), false, '無')}
+          ${field('薪資生效日', firstValue(e, ['effectiveDate','salaryEffectiveDate','生效日期']), false, '尚未設定')}
+          ${field('薪資備註', firstValue(e, ['salaryNote','note','備註']), true, '無')}
+          ${field('勞保狀態', laborStatus, false, '尚未設定')}
+          ${field('勞保級距', firstValue(e, ['laborPlanText','laborLevelText','laborPlan','laborPlanCode','laborInsuranceLevel','laborLevel','勞保級距']), false, laborStatus ? '無級距' : '尚未設定')}
+          ${field('勞保投保薪資', firstValue(e, ['laborSalaryText','laborInsuranceSalary','laborSalary','勞保投保薪資']), false, laborStatus ? '尚未設定' : '未加保')}
+          ${field('勞保自付額', firstValue(e, ['laborSelfPayText','laborInsuranceSelfPay','laborEmployeeSelfPay','laborSelfPay','laborInsuranceSelfAmount','laborInsuranceEmployeeAmount','laborSelfPayAmount','勞保自付額','勞保員工自付額','勞保員工負擔','員工負擔']), false, laborStatus ? '尚未設定' : '未加保')}
+          ${field('雇主提撥勞退', firstValue(e, ['retirementEmployerText','laborRetirementEmployer','雇主提撥勞退']), false, laborStatus ? '尚未設定' : '未加保')}
+          ${field('勞退自提', firstValue(e, ['selfRetirementText','selfRetirementRate','laborRetirementSelfRate','勞退自提']), false, '未設定')}
+          ${field('健保狀態', healthStatus, false, '尚未設定')}
+          ${field('健保級距', firstValue(e, ['healthPlanText','healthLevelText','healthPlan','healthPlanCode','healthInsuranceLevel','healthLevel','健保級距']), false, healthStatus ? '無級距' : '尚未設定')}
+          ${field('健保投保薪資', firstValue(e, ['healthSalaryText','healthInsuranceSalary','healthSalary','健保投保薪資']), false, healthStatus ? '尚未設定' : '未加保')}
+          ${field('健保自付額', firstValue(e, ['healthSelfPayText','healthInsuranceSelfPay','healthSelfPay','healthInsuranceSelfAmount','healthInsuranceEmployeeAmount','健保自付額']), false, healthStatus ? '尚未設定' : '未加保')}
+        </div>
+
+        <div class="section-title">管理設定</div>
+        <div class="form-grid">
+          ${editableSelect('帳號狀態', 'accountStatus', [['active','啟用'],['inactive','停用'],['archived','封存'],['pending','待審核'],['rejected','註冊駁回']])}
+          ${editableSelect('任職狀態', 'employmentStatus', [['active','在職 / 合作中'],['resigned','離職'],['suspended','暫停任用'],['contractorEnded','外聘合作結束'],['archived','封存']])}
+          ${editableSelect('是否隱藏於日常清單', 'hiddenFromActiveLists', [['false','否'],['true','是']])}
+          <div class="field"><label>離職 / 結束日期</label><input id="resignedDate" type="date" value="${esc(fmt(firstValue(e, ['resignedDate','leaveDate','離職日'])))}"></div>
+          <div class="field full"><label>狀態備註</label><textarea id="statusNote" rows="3" placeholder="主管內部備註">${esc(firstValue(e, ['statusNote','狀態備註','note','備註']))}</textarea></div>
+        </div>
+
+        <div class="actions"><button class="save" type="button" onclick="saveEmployeeStatus()">儲存資料</button></div>
+        <div class="actions" style="margin-top:10px"><button class="danger" type="button" onclick="archiveEmployee()">${type==='external'?'結束合作並封存':'離職並封存人員'}</button></div>
+        <div class="hint">封存後不再出現在班表、薪資及工讀日常名單，但歷史打卡、請假與薪資紀錄仍會保留。</div>
+        <div id="msg" class="msg"></div>`;
+
+      const acc = lower(firstValue(e, ['accountStatus','帳號狀態'])) || 'active';
+      $('#accountStatus').value = ['active','inactive','archived','pending','rejected'].includes(acc) ? acc : 'active';
+      const empStatus = lower(firstValue(e, ['employmentStatus','任職狀態'])) || 'active';
+      $('#employmentStatus').value = ['active','resigned','suspended','contractorended','contractorEnded','archived'].includes(empStatus) ? (empStatus === 'contractorended' ? 'contractorEnded' : empStatus) : 'active';
+      $('#hiddenFromActiveLists').value = firstValue(e, ['hiddenFromActiveLists','隱藏於日常清單','hidden','隱藏']) ? 'true' : 'false';
+    }
+
+    function currentEmployee(){ return allEmployees.find(x => (empId(x) || emailOf(x)) === selectedId); }
+
+    async function clearLineBinding(){
+      const e = currentEmployee(); if(!e) return;
+      const employeeName = nameOf(e) || emailOf(e) || selectedId;
+      if(!confirm('確定要清除「' + employeeName + '」的 LINE 綁定嗎？\n\n清除後，這位員工需要用自己的手機 LINE 重新輸入「柚子綁定 Email」。')) return;
+      const msg = $('#msg');
+      msg.style.display = 'block'; msg.classList.remove('error'); msg.textContent = '正在清除 LINE 綁定...';
+      const payload = { employeeId: empId(e), id: empId(e), email: emailOf(e) };
+      try{
+        const res = await api('clearEmployeeLineBinding', payload);
+        if(!res || res.ok === false) throw new Error((res && res.message) || '清除失敗');
+        msg.textContent = (res && res.message) || '已清除此員工 LINE 綁定。';
+        await loadEmployees();
+        const updated = allEmployees.find(x => (empId(x) || emailOf(x)) === selectedId) || allEmployees.find(x => emailOf(x) === emailOf(e));
+        if(updated) await selectEmployee(empId(updated) || emailOf(updated));
+      }catch(err){
+        msg.classList.add('error'); msg.textContent = err.message || '清除 LINE 綁定失敗';
+      }
+    }
+
+    async function archiveEmployee(){
+      const e=currentEmployee();if(!e)return;const external=identityType(e)==='external';
+      const label=external?'結束合作並封存':'辦理離職並封存';
+      if(!confirm(`確定要${label}「${nameOf(e)||emailOf(e)}」嗎？\n\n完成後將停止登入、隱藏於日常名單並關閉目前班表；歷史資料不會刪除。`))return;
+      const reason=prompt('請輸入封存原因：',external?'合作結束':'離職');if(reason===null)return;
+      const msg=$('#msg');msg.style.display='block';msg.classList.remove('error');msg.textContent='處理中...';
+      try{
+        const res=await api('archiveEmployeeLifecycle',{userId:currentUser.id,employeeId:empId(e),email:emailOf(e),reason:reason.trim()});
+        if(!res||res.ok===false)throw new Error((res&&res.message)||'封存失敗');
+        msg.textContent=res.message||'已封存。';await loadEmployees();showLayer(1);
+      }catch(err){msg.classList.add('error');msg.textContent=err.message||'封存失敗';}
+    }
+
+    async function saveEmployeeStatus(){
+      const e = currentEmployee(); if(!e) return;
+      const msg = $('#msg');
+      msg.style.display = 'block'; msg.classList.remove('error'); msg.textContent = '儲存中...';
+      const payload = {
+        employeeId: empId(e),
+        email: emailOf(e),
+        accountStatus: $('#accountStatus').value,
+        employmentStatus: $('#employmentStatus').value,
+        hiddenFromActiveLists: $('#hiddenFromActiveLists').value === 'true',
+        resignedDate: $('#resignedDate').value,
+        statusNote: $('#statusNote').value
+      };
+      try{
+        const res = await api('updateEmployeeAdminStatus', payload);
+        msg.textContent = (res && res.message) || '已儲存。';
+        await loadEmployees();
+        const updated = allEmployees.find(x => (empId(x) || emailOf(x)) === selectedId);
+        if(updated) await selectEmployee(selectedId);
+      }catch(err){
+        msg.classList.add('error'); msg.textContent = err.message || '儲存失敗';
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', init);
+  </script>
+  <script src="global-nav.js?v=20260603unified1"></script>
+</body>
+</html>

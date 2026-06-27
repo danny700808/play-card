@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>證明申請審核</title>
+  <link rel="stylesheet" href="style.css?v=certificates-20260530">
+  <style>
+    .review-wrap{max-width:1400px;margin:0 auto;padding:18px}.section-card{background:#fff;border:1px solid #e2e8f0;border-radius:24px;padding:20px;margin-top:16px;box-shadow:0 10px 30px rgba(15,23,42,.06)}.toolbar-line{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.filters{display:flex;gap:8px;flex-wrap:wrap}.filters .btn{width:auto}.review-list{display:grid;gap:10px;margin-top:14px}.review-item{border:1px solid #e2e8f0;border-radius:16px;padding:14px;background:#fbfdff;display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center}.review-title{font-weight:950;color:#17324d}.review-meta{font-size:13px;color:#64748b;line-height:1.8}.review-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.review-actions .btn{width:auto;padding:9px 12px}.count-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.count-pill{display:inline-flex;align-items:center;border-radius:999px;background:#eef7f2;color:#166534;padding:6px 10px;font-size:13px;font-weight:900}.count-pill.pending{background:#fff7ed;color:#9a3412}.count-pill.rejected{background:#fef2f2;color:#991b1b}.muted-tip{font-size:13px;color:#64748b;line-height:1.8}@media(max-width:900px){.review-item{grid-template-columns:1fr}.review-actions{justify-content:flex-start}}
+  </style>
+  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
+</head>
+<body onload="initPage()" class="admin-wide-page">
+  <div class="yz-global-nav" data-yz-global-nav>
+    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
+    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
+  </div>
+
+  <div class="review-wrap">
+    <div class="section-card" style="margin-top:0">
+      <div class="topbar"><div><h1 class="title" style="margin:0">證明申請審核</h1><div class="muted-tip">這裡只審核在職證明與教學證明申請；範本設定請回「表格設定」。</div></div></div>
+      <div class="toolbar-line"><div class="filters"><button class="btn secondary" onclick="setFilter('all')">全部</button><button class="btn" onclick="setFilter('pending')">待審核</button><button class="btn secondary" onclick="setFilter('approved')">已核准</button><button class="btn secondary" onclick="setFilter('rejected')">已退回</button></div><button class="btn secondary" style="width:auto" onclick="loadRows()">重新整理</button></div>
+      <div class="count-row"><span class="count-pill pending" id="pendingCount">待審核 0</span><span class="count-pill" id="approvedCount">已核准 0</span><span class="count-pill rejected" id="rejectedCount">已退回 0</span></div>
+    </div>
+    <div class="section-card"><div id="reviewList" class="review-list"></div></div>
+  </div>
+  <div class="cert-modal" id="certModal"><div class="cert-modal-panel"><div class="cert-modal-actions"><button class="btn secondary" type="button" onclick="closeModal()">關閉</button><div class="right" id="modalActionButtons"></div></div><div id="modalPreview" class="cert-scale-wrap"></div></div></div>
+  <script src="config.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="firebase-client.js?v=certificates-20260530"></script>
+  <script src="app.js?v=certificates-20260530"></script>
+  <script src="certificate-common-a4reset.js?v=20260530-a4reset-3"></script>
+  <script>
+    let rows=[]; let filter='pending'; let adminUser=null;
+    function setText(id,text){const el=document.getElementById(id); if(el) el.textContent=text;}
+    function setFilter(f){filter=f; renderRows();}
+    function appHtml(app){ const data=YZ_CERT.applicationToDocumentData(app); return YZ_CERT.certificateHtml({type:app.certificateType,template:app.templateSnapshot||app.template||YZ_CERT.defaultTemplate(app.certificateType),data,status:app.status,reviewedAt:app.reviewedAt,reviewerName:app.reviewerName}); }
+    function findApp(id){return rows.find(r=>r.requestId===id);}
+    function renderRows(){
+      const box=document.getElementById('reviewList');
+      const pending=rows.filter(r=>r.status==='待主管審核').length, approved=rows.filter(r=>r.status==='已核准').length, rejected=rows.filter(r=>r.status==='已退回').length;
+      setText('pendingCount','待審核 '+pending); setText('approvedCount','已核准 '+approved); setText('rejectedCount','已退回 '+rejected);
+      let list=rows.slice();
+      if(filter==='pending') list=list.filter(r=>r.status==='待主管審核');
+      if(filter==='approved') list=list.filter(r=>r.status==='已核准');
+      if(filter==='rejected') list=list.filter(r=>r.status==='已退回');
+      if(!list.length){box.innerHTML='<div class="muted-tip">目前沒有資料。</div>'; return;}
+      box.innerHTML=list.map(r=>{
+        const pending=r.status==='待主管審核';
+        const buttons=[`<button class="btn secondary" type="button" onclick="viewApplication('${YZ_CERT.esc(r.requestId)}')">查看</button>`];
+        if(pending){ buttons.push(`<button class="btn" type="button" onclick="approveApplication('${YZ_CERT.esc(r.requestId)}')">核准</button>`); buttons.push(`<button class="btn secondary" type="button" onclick="rejectApplication('${YZ_CERT.esc(r.requestId)}')">退回</button>`); }
+        return `<div class="review-item"><div><div class="review-title">${YZ_CERT.esc(r.certificateTypeLabel)}｜${YZ_CERT.esc(r.name)} ${YZ_CERT.statusPill(r.status)}</div><div class="review-meta">申請時間：${YZ_CERT.esc(r.submittedAtText||'')}｜身分：${YZ_CERT.esc(r.identityLabel||'')}｜身分證：${YZ_CERT.esc((r.idNumber||'').slice(0,1)+'*****'+(r.idNumber||'').slice(-4))}${r.reviewedAtText?`｜審核時間：${YZ_CERT.esc(r.reviewedAtText)}`:''}${r.rejectReason?`｜退回原因：${YZ_CERT.esc(r.rejectReason)}`:''}</div></div><div class="review-actions">${buttons.join('')}</div></div>`;
+      }).join('');
+    }
+    async function loadRows(){
+      const box=document.getElementById('reviewList'); box.innerHTML='<div class="muted-tip">讀取中...</div>';
+      try{ const r=await api('getCertificateApplications',{admin:true,userId:adminUser.id||adminUser.employeeId,role:'admin'}); rows=(r.rows||[]).map(YZ_CERT.normalizeApplication); renderRows(); }
+      catch(e){ box.innerHTML='<div class="muted-tip">讀取失敗：'+YZ_CERT.esc(e.message)+'</div>'; }
+    }
+    function viewApplication(id){ const app=findApp(id); if(!app) return; document.getElementById('modalPreview').innerHTML=appHtml(app); const act=document.getElementById('modalActionButtons'); if(app.status==='待主管審核') act.innerHTML=`<button class="btn" type="button" onclick="approveApplication('${YZ_CERT.esc(app.requestId)}')">核准</button><button class="btn secondary" type="button" onclick="rejectApplication('${YZ_CERT.esc(app.requestId)}')">退回</button>`; else act.innerHTML='<span class="muted-tip">此申請已處理，管理端保留紀錄。</span>'; document.getElementById('certModal').classList.add('show'); }
+    function closeModal(){ document.getElementById('certModal').classList.remove('show'); }
+    async function approveApplication(id){ if(!confirm('確定核准這筆證明申請？核准後申請人即可列印與下載加密 PDF。')) return; try{ const r=await api('reviewCertificateApplication',{requestId:id,decision:'approve',reviewerId:adminUser.id||adminUser.employeeId,reviewerName:adminUser.name}); if(!r.ok) throw new Error(r.message||'核准失敗'); closeModal(); await loadRows(); }catch(e){ alert(e.message); } }
+    async function rejectApplication(id){ const reason=prompt('請輸入退回原因：'); if(reason==null) return; try{ const r=await api('reviewCertificateApplication',{requestId:id,decision:'reject',rejectReason:reason,reviewerId:adminUser.id||adminUser.employeeId,reviewerName:adminUser.name}); if(!r.ok) throw new Error(r.message||'退回失敗'); closeModal(); await loadRows(); }catch(e){ alert(e.message); } }
+    async function initPage(){ fillHeader(); adminUser=requireLogin(); if(!adminUser) return; if(!hasSettingsZoneAccess(adminUser)){location.href='dashboard.html';return;} setPortalMode('settings'); YZ_CERT.injectCertificateStyles(); await loadRows(); }
+  </script>
+  <script src="global-nav.js?v=20260603unified1"></script>
+</body>
+</html>

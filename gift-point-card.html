@@ -1,0 +1,114 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 這裡列出目前網站前端會直接讀寫的頂層集合。
+    // 目的：保留租賃新系統，同時恢復員工、薪資、工讀、提醒數字、各種表格設定。
+    function isClientSideOpenCollection(collectionId) {
+      return collectionId in [
+        // 租賃系統
+        'rentalApplications',
+        'rentalContracts',
+        'rentalContractPeriods',
+        'rentalReminderSettings',
+        'rentalTemplateSettings',
+
+        // LINE / Email / 通知佇列與提醒設定
+        'notificationQueue',
+        'notificationUniversal',
+        'notificationSettings',
+        'notificationFeatureSettings',
+        'moduleNotificationSettings',
+        'notificationV2Settings',
+        'notificationTimeRules',
+        'notificationLogs',
+        'lineBindLogs',
+        'lineBindingLogs',
+        'manualMessages',
+
+        // 員工 / 管理者 / 註冊 / 個資
+        'employees',
+        'registrationApplications',
+        'admins',
+        'applications',
+        'teacherApplications',
+        'profileChangeRequests',
+
+        // 薪資 / 投保 / 工讀
+        'employeeSalaryConfigs',
+        'salarySetup',
+        'salarySettings',
+        'salaryConfigs',
+        'employeeSalarySettings',
+        'salaryProfiles',
+        'parttimeRecords',
+        'parttimeHourRequests',
+
+        // 打卡 / 請假 / 臨時出勤 / 班表
+        'clockRecords',
+        'clockCorrections',
+        'leaveRecords',
+        'leaveRequests',
+        'leavePolicySettings',
+        'temporaryAttendanceRequests',
+        'scheduleTemplates',
+        'employeeSchedules',
+        'singleDaySchedules',
+
+        // 任務 / 公告 / 教材 / 日常工作
+        'tasks',
+        'announcements',
+        'trainingItems',
+        'routines',
+        'routineTemplates',
+
+        // 系統設定 / 表格設定 / 列印模板 / 證明申請
+        'systemSettings',
+        'printTemplates',
+        'certificateApplications',
+        'certificateTemplateHistory',
+        'formSettings',
+        'formSubmissions',
+
+        // 老師合約 / 商品 / 官網商品快取
+        'teacherGoods',
+        'teacherGoodsInquiry',
+        'teacherContractLogs',
+        'teacherContractTemplates',
+        'teacherContractAssignments',
+        'teacherContractSettings',
+        'contractTemplates',
+        'contractLogs',
+        'contracts',
+        'websiteProducts',
+        'officialWebsiteProducts',
+        'easystoreProducts',
+        'websiteGoods',
+        'products'
+      ];
+    }
+
+    // 交接資料：保留你原本比較收斂的規則。
+    match /fengtungHandoverEntries/{entryId} {
+      allow read: if true;
+
+      allow create: if request.auth != null
+        && request.resource.data.ownerUid == request.auth.uid;
+
+      allow update, delete: if request.auth != null
+        && resource.data.ownerUid == request.auth.uid;
+    }
+
+    // 合併開放：上面清單內的集合都允許前端讀寫。
+    // 這一段會讓員工管理、薪資投保、工讀薪資、提醒數字、租賃系統一起恢復。
+    match /{collectionId}/{document=**} {
+      allow read, write: if isClientSideOpenCollection(collectionId);
+    }
+
+    // 其他未知集合先不開放，避免整個資料庫完全裸開。
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

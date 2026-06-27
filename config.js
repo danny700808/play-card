@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>簽核｜打卡</title>
+  <link rel="stylesheet" href="style.css?v=admin-final-20260530b">
+  <link rel="stylesheet" href="approval-common.css?v=20260626approval1">
+  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
+  <style>
+    .container{width:min(96vw,1300px);max-width:1300px;margin:0 auto;padding:16px}
+    .clock-export-card{margin-top:16px}
+  </style>
+</head>
+<body onload="init()" class="admin-wide-page">
+  <div class="yz-global-nav" data-yz-global-nav>
+    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
+    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
+  </div>
+
+  <div class="container">
+    <div class="card">
+      <div class="topbar">
+        <div class="header" style="margin:0">
+          <h1 class="title" style="margin:0">簽核｜打卡</h1>
+        </div>
+      </div>
+      <div class="approval-toolbar">
+        <label for="keyword">搜尋<input id="keyword" placeholder="姓名 / 日期 / 類型 / 原因"></label>
+        <button class="btn secondary" type="button" id="refreshBtn" style="width:auto;padding:11px 16px">重新整理</button>
+      </div>
+      <div class="approval-tabs">
+        <button class="approval-tab active" type="button" id="pendingTab">未處理（0）</button>
+        <button class="approval-tab" type="button" id="historyTab">歷史紀錄</button>
+      </div>
+      <div id="msg" class="message" style="margin-top:12px"></div>
+      <div id="list" class="approval-list"></div>
+    </div>
+
+    <div class="card clock-export-card">
+      <h2 class="title" style="margin:0 0 12px;font-size:22px">打卡紀錄查詢匯出</h2>
+      <a class="btn" style="width:auto;padding:12px 18px" href="clock-records-admin.html">前往查詢匯出</a>
+    </div>
+  </div>
+
+  <script src="config.js?v=20260501clockcorrection17"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="firebase-client.js?v=attendance-flow-20260618"></script>
+  <script src="app.js?v=admin-final-20260530b"></script>
+  <script>
+    let currentUser=null;
+    let rows=[];
+    let activeTab='pending';
+
+    function qs(s){return document.querySelector(s)}
+    function escapeHtml(v){return String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
+    function clean(v){return String(v==null?'':v).trim()}
+    function lower(v){return clean(v).toLowerCase()}
+    function cleanDate(v){const s=clean(v);if(!s)return '—';if(/^\d{4}-\d{2}-\d{2}/.test(s))return s.slice(0,10);const d=new Date(s);if(!isNaN(d.getTime()))return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;return s}
+    function cleanTime(v){const s=clean(v);if(!s)return '—';const m=s.match(/(\d{1,2}):(\d{2})/);if(m)return `${String(m[1]).padStart(2,'0')}:${m[2]}`;const d=new Date(s);if(!isNaN(d.getTime()))return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;return s}
+    function msg(t,type='notice'){qs('#msg').innerHTML=t?`<div class="${type}">${escapeHtml(t)}</div>`:''}
+    function db(){
+      if(window.YZFirebase&&typeof window.YZFirebase.init==='function')return window.YZFirebase.init();
+      if(window.APP_CONFIG&&window.APP_CONFIG.FIREBASE_CONFIG&&window.firebase&&firebase.firestore){if(!firebase.apps.length)firebase.initializeApp(window.APP_CONFIG.FIREBASE_CONFIG);return firebase.firestore();}
+      throw new Error('Firebase 尚未啟用。');
+    }
+    function statusText(v){const s=clean(v);if(!s||lower(s)==='pending')return '待審核';if(lower(s)==='approved')return '已核准';if(lower(s)==='rejected')return '已駁回';return s}
+    function isPendingStatus(v){const s=statusText(v);return s==='待審核'||s==='待主管審核'}
+    function pill(status){const s=statusText(status);const cls=isPendingStatus(s)?'pending':(s==='已核准'?'approved':(s==='已駁回'?'rejected':'history'));return `<span class="approval-pill ${cls}">${escapeHtml(s)}</span>`}
+    function normalize(row){
+      row=row||{};
+      const r=Object.assign({},row);
+      r.requestId=clean(r.requestId||r['申請ID']||r.__id);
+      r.status=statusText(r.status||r['狀態']);
+      r.requestKind=clean(r.requestKind||r['申請種類']||(r.originalRecordId||r['原始紀錄ID']?'recordCorrection':'missingClock'));
+      r.name=clean(r.name||r['姓名']);
+      r.email=clean(r.email||r.Email||r['Email']);
+      r.employeeId=clean(r.employeeId||r['員工ID']);
+      r.originalRecordId=clean(r.originalRecordId||r['原始紀錄ID']);
+      r.originalTime=cleanTime(r.originalTime||r['原時間']);
+      r.correctDate=cleanDate(r.correctDate||r.correctionDate||r['修正日期']);
+      r.correctTime=cleanTime(r.correctTime||r.correctionTime||r['修正時間']);
+      r.correctAction=clean(r.correctAction||r.actionName||r['修正動作']);
+      r.correctionType=clean(r.correctionType||r.clockType||r['修正打卡方式']);
+      r.reason=clean(r.reason||r['修正原因']);
+      r.createdAt=clean(r.createdAtText||r.createdAt||r['建立時間']);
+      r.reviewedAt=clean(r.reviewedAtText||r.reviewedAt||r.updatedAtText||r.updatedAt||'');
+      return r;
+    }
+    function mergeRows(list){const map=new Map();(list||[]).forEach(row=>{const r=normalize(row);if(!r.requestId)return;map.set(r.requestId,Object.assign({},map.get(r.requestId)||{},r));});return Array.from(map.values()).sort((a,b)=>String(b.createdAt||b.correctDate||'').localeCompare(String(a.createdAt||a.correctDate||'')));}
+    async function readAllCorrections(){
+      const snap=await db().collection('clockCorrections').get();
+      const out=[];snap.forEach(doc=>out.push(Object.assign({__id:doc.id},doc.data()||{})));return out;
+    }
+    function setTab(tab){activeTab=tab==='history'?'history':'pending';qs('#pendingTab').classList.toggle('active',activeTab==='pending');qs('#historyTab').classList.toggle('active',activeTab==='history');render();}
+    function renderTabs(){const pending=rows.filter(r=>isPendingStatus(r.status)).length;const history=rows.filter(r=>!isPendingStatus(r.status)).length;qs('#pendingTab').textContent=`未處理（${pending}）`;qs('#historyTab').textContent=history?`歷史紀錄（${history}）`:'歷史紀錄';}
+    function typeLabel(r){if(r.requestKind==='specialClock')return '特殊打卡';if(r.requestKind==='missingClock')return '補打卡';return r.correctionType||'打卡修正'}
+    function changeLine(r){const oldText=r.requestKind==='specialClock'?'特殊打卡申請':(r.requestKind==='missingClock'?'缺少打卡':(r.originalRecordId&&r.originalTime!=='—'?r.originalTime:'無原始紀錄'));return `${oldText} → ${r.correctTime||'—'}`}
+    function card(row){
+      const pending=isPendingStatus(row.status);
+      return `<article class="approval-card">
+        <div class="approval-head"><div><div class="approval-name">${escapeHtml(row.name||'未命名')}</div><div class="approval-meta">${escapeHtml(row.email||row.employeeId||'')}｜${escapeHtml(row.createdAt||'')}</div></div>${pill(row.status)}</div>
+        <div class="approval-grid">
+          <div class="approval-field"><div class="approval-label">日期</div><div class="approval-value">${escapeHtml(row.correctDate||'—')}</div></div>
+          <div class="approval-field"><div class="approval-label">類型</div><div class="approval-value">${escapeHtml(typeLabel(row))}</div></div>
+          <div class="approval-field"><div class="approval-label">動作</div><div class="approval-value">${escapeHtml(row.correctAction||'—')}</div></div>
+          <div class="approval-field"><div class="approval-label">申請修改</div><div class="approval-value">${escapeHtml(changeLine(row))}</div></div>
+        </div>
+        ${row.reason?`<div class="approval-note">原因：${escapeHtml(row.reason)}</div>`:''}
+        ${row.rejectReason?`<div class="approval-note">駁回原因：${escapeHtml(row.rejectReason)}</div>`:''}
+        ${pending&&row.managedByLeaveApproval?`<div class="approval-note">此筆已綁定請假簽核，請至請假簽核處理。</div>`:''}
+        ${pending&&!row.managedByLeaveApproval?`<div class="approval-actions"><button class="btn" type="button" onclick="approve('${escapeHtml(row.requestId)}')">同意</button><button class="btn secondary" type="button" onclick="rejectOne('${escapeHtml(row.requestId)}')">駁回</button></div>`:''}
+      </article>`;
+    }
+    function render(){
+      renderTabs();
+      const kw=lower(qs('#keyword').value);
+      const list=rows.filter(r=>(activeTab==='pending'?isPendingStatus(r.status):!isPendingStatus(r.status))).filter(r=>!kw||[r.name,r.email,r.employeeId,r.correctDate,r.correctTime,r.correctAction,r.correctionType,r.reason,r.status].join(' ').toLowerCase().includes(kw));
+      qs('#list').innerHTML=list.map(card).join('')||'<div class="approval-empty">目前沒有資料</div>';
+    }
+    async function init(){
+      fillHeader();currentUser=requireLogin();if(!currentUser)return;if(!hasSettingsZoneAccess(currentUser)){location.href='dashboard.html';return;}
+      qs('#keyword').addEventListener('input',render);qs('#refreshBtn').onclick=loadRows;qs('#pendingTab').onclick=()=>setTab('pending');qs('#historyTab').onclick=()=>setTab('history');
+      await loadRows();
+    }
+    async function loadRows(){
+      msg('讀取中…','notice');
+      try{
+        const pendingRes=await api('getPendingClockCorrections',{userId:currentUser.id}).catch(()=>({rows:[]}));
+        const all=await readAllCorrections().catch(()=>[]);
+        rows=mergeRows([].concat(all,pendingRes&&pendingRes.rows||[]));
+        msg('');render();
+      }catch(err){msg(err.message||'讀取失敗','error');rows=[];render();}
+    }
+    async function approve(requestId){
+      if(!confirm('確定同意這筆申請？'))return;
+      try{const r=await api('approveClockCorrectionApi',{userId:currentUser.id,requestId});if(!r||!r.ok){alert((r&&r.message)||'同意失敗');return;}await loadRows();}catch(err){alert(err.message||'同意失敗');}
+    }
+    async function rejectOne(requestId){
+      const rejectReason=prompt('請輸入駁回理由');if(rejectReason===null)return;
+      try{const r=await api('rejectClockCorrectionApi',{userId:currentUser.id,requestId,rejectReason});if(!r||!r.ok){alert((r&&r.message)||'駁回失敗');return;}await loadRows();}catch(err){alert(err.message||'駁回失敗');}
+    }
+  </script>
+  <script src="global-nav.js?v=20260603unified1"></script>
+</body>
+</html>
