@@ -66,7 +66,7 @@
     return n?[{name:n,note:clean(contract.serialNo||contract.machineCode)}]:[];
   }
   function defaultTitle(type){ if(type==='digitalPiano') return '電鋼琴設備租賃契約書'; if(type==='electronicDrum') return '電子鼓器材設備租賃契約書'; return '設備租賃契約書'; }
-  function calcEndDate(startDate, periods, type, days){ if(clean(type)==='other' && !Number(days||0)) return ''; return addDays(startDate, Math.max(1, Number(days || (Math.max(1, Number(periods||1))*90)))-1); }
+  function calcEndDate(startDate, periods, type, days){ if(clean(type)==='other') return ''; return addDays(startDate, Math.max(1, Number(days || (Math.max(1, Number(periods||1))*90)))-1); }
   function signUrl(contract){
     const id=clean(contract.contractId||contract.__id); const token=clean(contract.signToken||contract.token);
     const base=location.origin+location.pathname.replace(/[^\/]*$/,'');
@@ -154,8 +154,10 @@
     const dateText=clean(contract.contractDate)||ymd(new Date());
     const sig=clean(contract.customerSignatureUrl || contract.signatureUrl || contract.customerSignatureDataUrl || contract.signatureDataUrl || contract.signDataUrl);
     const idImage=clean(contract.customerIdImageUrl||contract.idImageUrl||contract.idCardImageUrl||contract.customerIdImageWatermarkedDataUrl||contract.idImageWatermarkedDataUrl||contract.customerIdImageDataUrl||contract.idImageDataUrl||contract.idCardImageDataUrl);
+    const otherDateRange = start && end ? `${start} 至 ${end}` : (start ? `${start} 起` : (end ? `至 ${end}` : ''));
+    const otherPeriodDisplay = otherDateRange ? `${otherDateRange}（依雙方確認之租用期間為準）` : '依雙方確認之租用期間為準';
     const typeLine = type==='other'
-      ? `租賃設備：${esc(equipment || '__________')}。租用期間：依雙方確認之租用期間為準。`
+      ? `租賃設備：${esc(equipment || '__________')}。租用期間：${esc(otherPeriodDisplay)}。`
       : `租賃${esc(rentalTypeLabel(type))}：${esc(equipment || '__________')}${serial?'　編號：'+esc(serial):''}`;
     const itemHtml = items.length ? `<ol class="equipment-list-contract">${items.map(x=>`<li>${esc(x.name)}${x.note?`<span class="eq-note-contract">（${esc(x.note)}）</span>`:''}</li>`).join('')}</ol>` : '依雙方確認設備清單';
     function periodRows(){
@@ -165,7 +167,7 @@
       if(isOtherRental){
         const dateDays = (start && end) ? String(Math.max(1, Math.round((new Date(end+'T00:00:00')-new Date(start+'T00:00:00'))/86400000)+1))+' 天' : '';
         const explicitDaysText = explicitRentDays ? explicitRentDays+' 天' : '';
-        rows.push({ method:clean(contract.rentalMethod||'其他設備租用'), start:start, end:end, days:explicitDaysText || dateDays, note:'依雙方確認之租用期間為準' });
+        rows.push({ method:clean(contract.rentalMethod||'其他設備租用'), start:start, end:end, days:explicitDaysText || dateDays, note:(start||end)?'依雙方確認期間':'依雙方確認之租用期間為準' });
       }else if(start){
         const totalDays=Number(contract.rentDays || contract.totalDays || (periods*periodDays));
         rows.push({ method:clean(contract.rentalMethod||'實體租用'), start:start, end:end, days:(totalDays ? totalDays+' 天' : ''), note:periods>1 ? `初次租用 ${periods} 期（${totalDays} 天）` : '初次租用' });
