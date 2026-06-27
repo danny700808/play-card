@@ -4,12 +4,11 @@ const { onSchedule } = require('firebase-functions/v2/scheduler');
 const nodemailer = require('nodemailer');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
-const { registerExternalTeacherOnboarding, handleExternalTeacherLineEvent } = require('./externalTeacherOnboarding');
+const { registerExternalTeacherContractFlow, handleExternalTeacherContractLineEvent } = require('./externalTeacherContractFlow');
 
 if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
-
-registerExternalTeacherOnboarding(exports);
+registerExternalTeacherContractFlow(exports);
 
 const ADMIN_EMAILS = new Set(['danny700808@gmail.com']);
 const DEFAULT_ADMIN_DOC_ID = 'ADMIN_DANNY';
@@ -1678,10 +1677,6 @@ exports.lineWebhook = onRequest(
         const lineUserId = event.source && event.source.userId;
         const replyToken = event.replyToken;
 
-        if (await handleExternalTeacherLineEvent(event)) {
-          continue;
-        }
-
         const rentalCommand = parseRentalApplicationCommand(text);
         const employeeMatch = text.match(/^柚子員工綁定\s+([^\s]+@[^\s]+)$/i);
         const managerMatch = text.match(/^柚子主管綁定\s+([^\s]+@[^\s]+)$/i);
@@ -1689,6 +1684,10 @@ exports.lineWebhook = onRequest(
 
         if (!lineUserId) {
           await replyLineMessage(replyToken, '無法取得 LINE 使用者 ID，請確認是從一般 LINE 帳號與官方帳號對話。');
+          continue;
+        }
+
+        if (await handleExternalTeacherContractLineEvent(event, { replyLineMessage, pushLineMessage })) {
           continue;
         }
 
