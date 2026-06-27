@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="style.css?v=admin-final-20260531notify">
+  <style>
+    .page-return-wrap{margin-bottom:16px}.page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
+    .settings-intro{margin-bottom:14px}.settings-intro .title{margin:0}.settings-intro .welcome{line-height:1.7}.note-box{border:1px solid #dbe5f1;background:#f8fafc;border-radius:18px;padding:12px 14px;color:#475569;line-height:1.8;font-weight:750}
+  </style>
+  <title>簽核提醒設定</title>
+  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
+</head>
+<body onload="init()" class="admin-wide-page">
+  <div class="yz-global-nav" data-yz-global-nav>
+    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
+    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
+  </div>
+
+  <div class="container">
+    <div class="card settings-intro">
+      <div class="header" style="margin:0">
+        <h1 class="title">簽核提醒設定</h1>
+        <div class="welcome">集中設定註冊、打卡修正 / 補登、上下班打卡自動提醒、遲到修正提醒、請假、工讀 / 臨時出勤與個資修改提醒。</div>
+      </div>
+      <div class="note-box">逾期未審提醒預設 1 天；上班前提醒預設 10 分鐘；未打卡、遲到修正與工讀時數未填提醒預設 30 分鐘，皆可在下方欄位修改。</div>
+    </div>
+  </div>
+  <script src="config.js?v=20260606lateReminder"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="firebase-client.js?v=20260606lateReminder"></script>
+  <script src="app.js?v=20260606lateReminder"></script>
+  <script>
+    function init(){
+      if(typeof fillHeader==='function') fillHeader();
+      const user=typeof requireLogin==='function'?requireLogin():null;
+      if(!user) return;
+      if(typeof hasSettingsZoneAccess==='function' && !hasSettingsZoneAccess(user)){location.href='dashboard.html';}
+    }
+  </script>
+  <script src="global-nav.js?v=20260603unified1"></script>
+</body>
+</html>

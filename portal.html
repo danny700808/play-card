@@ -3,11 +3,69 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>工讀薪資結算</title>
-  <meta http-equiv="refresh" content="0;url=data-center.html?module=parttime">
-  <script>location.replace('data-center.html?module=parttime');</script>
+  <title>系統入口</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .portal-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+    .portal-card{display:block;padding:26px;border:1px solid var(--line);border-radius:28px;background:#fff;text-decoration:none;color:inherit;box-shadow:0 12px 30px rgba(15,23,42,.04)}
+    .portal-card h2{margin:0 0 10px;font-size:28px}
+    .portal-card p{margin:0;color:var(--muted);font-size:17px;line-height:1.8}
+    .portal-tag{display:inline-flex;align-items:center;justify-content:center;min-width:72px;padding:6px 12px;border-radius:999px;background:#eef6f1;color:#1f7a5a;font-size:14px;font-weight:800;margin-bottom:14px}
+    .portal-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
+    @media (max-width:700px){.portal-grid{grid-template-columns:1fr}.portal-card h2{font-size:24px}}
+  </style>
+  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
 </head>
-<body>
-  <p>正在前往工讀薪資結算...</p>
+<body onload="init()">
+  <div class="yz-global-nav" data-yz-global-nav>
+    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
+    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
+  </div>
+
+  <div class="container">
+    <div class="card">
+      <div class="topbar">
+        <div class="header" style="margin:0">
+          <h1 class="title" style="margin:0">系統入口</h1>
+          <div class="welcome">歡迎 <span data-user-name></span></div>
+        </div>
+      </div>
+      <div class="muted">請選擇你要前往的首頁入口。</div>
+    </div>
+
+    <div class="portal-grid">
+      <a class="portal-card" id="staffCard" href="dashboard.html">
+        <div class="portal-tag">員工區</div>
+        <h2>員工首頁</h2>
+        <p>打卡、請假、交辦事項、定期事項與教育訓練都從這裡進入。</p>
+      </a>
+      <a class="portal-card" id="settingsCard" href="settings.html">
+        <div class="portal-tag">設定區</div>
+        <h2>管理首頁</h2>
+        <p>註冊審核、請假簽核、教育訓練、班表與外聘老師合約管理都在這裡。</p>
+      </a>
+    </div>
+  </div>
+  <script src="config.js?v=20260413fix1"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="firebase-client.js?v=20260523stage5primary"></script>
+
+  <script src="app.js?v=20260413fix1"></script>
+  <script>
+    function init(){
+      fillHeader();
+      const user=requireLogin();
+      if(!user) return;
+      if(isExternalTeacher(user)){ location.href='teacher-home.html'; return; }
+      const settingsCard = qs('#settingsCard');
+      if(!hasSettingsZoneAccess(user)){
+        settingsCard.style.display='none';
+      }
+      const mode=getPortalMode();
+      if(mode==='settings' && hasSettingsZoneAccess(user)) settingsCard.focus && settingsCard.focus();
+    }
+  </script>
+  <script src="global-nav.js?v=20260603unified1"></script>
 </body>
 </html>

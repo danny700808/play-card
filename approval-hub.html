@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>簽核</title>
+  <link rel="stylesheet" href="style.css?v=admin-final-20260530b">
+  <style>
+    .tile strong{display:flex;align-items:center;gap:8px;justify-content:space-between}
+    .badge{display:inline-flex;min-width:22px;height:22px;padding:0 6px;border-radius:999px;background:#dc2626;color:#fff;font-size:12px;align-items:center;justify-content:center;font-weight:800}
+    .badge:empty{display:none}
+    .page-return-wrap{margin-bottom:16px}
+    .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
+  </style>
+  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
+</head>
+<body onload="init()" class="admin-wide-page">
+  <div class="yz-global-nav" data-yz-global-nav>
+    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
+    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
+  </div>
+
+  <div class="container">
+    <div class="card">
+      <div class="topbar">
+        <div class="header" style="margin:0">
+          <h1 class="title" style="margin:0">簽核</h1>
+          
+        </div>
+      </div>
+      <div class="grid" style="margin-top:18px">
+<a class="tile" href="registration-approval.html"><strong>註冊簽核 <span class="badge" id="badge-registration"></span></strong><span>未處理與歷史紀錄</span></a>
+<a class="tile" href="clock-corrections-admin.html"><strong>打卡簽核 <span class="badge" id="badge-clock"></span></strong><span>未處理與歷史紀錄</span></a>
+<a class="tile" href="temporary-attendance-admin.html"><strong>補登 / 臨時出勤簽核 <span class="badge" id="badge-temp-attendance"></span></strong><span>未處理與歷史紀錄</span></a>
+<a class="tile" href="leave.html?mode=approval"><strong>請假簽核 <span class="badge" id="badge-leave"></span></strong><span>未處理與歷史紀錄</span></a>
+<a class="tile" href="profile-change-admin.html"><strong>個資修改簽核 <span class="badge" id="badge-profile-change"></span></strong><span>未處理與歷史紀錄</span></a>
+<a class="tile" href="data-center.html?module=parttime"><strong>工讀薪資結算 <span class="badge" id="badge-parttime-payroll"></span></strong><span>工讀時數、薪資結算與主管確認集中在簽核區處理</span></a>
+<a class="tile" href="approval-notification-settings.html"><strong>簽核提醒設定</strong><span>集中設定註冊、打卡、補登 / 臨時出勤、請假與個資修改提醒</span></a>
+<a class="tile" href="attendance-flow-check.html"><strong>出勤勾稽檢查</strong><span>逐日比對原班表、請假、有效班段、應打卡、實際打卡、缺卡與工讀薪資資料</span></a>
+</div>
+    </div>
+  </div>
+  <script src="config.js?v=20260529notifybadge1"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="firebase-client.js?v=attendance-flow-20260618"></script>
+  <script src="app.js?v=admin-final-20260530b"></script>
+  <script src="onboarding-workflow.js?v=20260624onboarding1"></script>
+  <script>
+    
+    async function init(){
+      fillHeader();
+      const user=requireLogin();
+      if(!user) return;
+      if(!hasSettingsZoneAccess(user)){location.href='dashboard.html';return;}
+
+      // 先吃管理首頁共用快取，讓中繼入口頁先顯示。
+      applyBadgeCounts_(readCachedPendingCounts_(user));
+
+      // 待處理數字延後更新，不阻塞第一屏。
+      scheduleIdle_(async()=>applyBadgeCounts_(await fetchPendingCountsFast_(user)));
+    }
+
+    function pendingCountsCacheKey_(user){ return 'pendingCounts:v4:settings:' + ((user && user.id) || 'guest'); }
+    function readCachedPendingCounts_(user){
+      try{ return JSON.parse(localStorage.getItem(pendingCountsCacheKey_(user)) || '{}') || {}; }catch(e){ return {}; }
+    }
+    function writeCachedPendingCounts_(user, data){
+      try{ localStorage.setItem(pendingCountsCacheKey_(user), JSON.stringify(Object.assign({__cachedAt:Date.now()}, data||{}))); }catch(e){}
+    }
+    function scheduleIdle_(fn){
+      if(window.requestIdleCallback) requestIdleCallback(fn,{timeout:900});
+      else setTimeout(fn, 80);
+    }
+    function normalizePendingCounts_(r){
+      r = r || {};
+      const counts = r.counts || r.summary || r.dashboard || r;
+      return Object.assign({}, r, counts, {
+        registrationCount: Number(counts.registrationCount || counts.pendingRegistrationCount || counts.registrations || 0) || 0,
+        leaveCount: Number(counts.leaveCount || counts.pendingLeaveCount || counts.leaveApprovalCount || counts.leaves || 0) || 0,
+        clockCorrectionCount: Number(counts.clockCorrectionCount || counts.pendingClockCorrectionCount || counts.clockCorrection || counts.clocks || 0) || 0,
+        tempAttendanceCount: Number(counts.tempAttendanceCount || counts.temporaryAttendanceCount || counts.pendingTempAttendanceCount || counts.tempAttendance || 0) || 0,
+        profileChangeCount: Number(counts.profileChangeCount || counts.pendingProfileChangeCount || counts.profileChanges || 0) || 0,
+        parttimeApprovalCount: Number(counts.parttimeApprovalCount || counts.parttimePending || counts.pendingParttimeCount || 0) || 0,
+        contractCount: Number(counts.contractCount || counts.pendingContractCount || counts.contracts || 0) || 0,
+        goodsInquiryCount: Number(counts.goodsInquiryCount || counts.pendingGoodsInquiryCount || counts.goodsInquiries || 0) || 0,
+        taskCount: Number(counts.taskCount || counts.pendingTaskCount || counts.taskReviewCount || counts.tasks || 0) || 0,
+        routineCount: Number(counts.routineCount || counts.pendingRoutineCount || counts.routineReviewCount || counts.routines || 0) || 0,
+        applicationCount: Number(counts.applicationCount || counts.pendingApplicationCount || counts.teacherApplicationCount || counts.applications || 0) || 0,
+        salaryCount: Number(counts.salaryCount || counts.pendingSalaryCount || 0) || 0,
+        approvalCount: Number(counts.approvalCount || 0) || 0
+      });
+    }
+    async function fetchPendingCountsFast_(user){
+      try{
+        let r = await api('getDashboardSummary',{userId:user.id, role:'admin'});
+        if(!r || r.ok === false) r = await api('getPendingCounts',{userId:user.id});
+        const data = normalizePendingCounts_(r);
+        writeCachedPendingCounts_(user, data);
+        return data;
+      }catch(err){
+        try{
+          const r = await api('getPendingCounts',{userId:user.id});
+          const data = normalizePendingCounts_(r);
+          writeCachedPendingCounts_(user, data);
+          return data;
+        }catch(e){ return readCachedPendingCounts_(user); }
+      }
+    }
+    function setBadge(id, count){
+      const el=document.getElementById(id);
+      if(!el) return;
+      const n=Number(count||0)||0;
+      if(n>0){
+        el.textContent=n>99?'99+':String(n);
+        el.classList.remove('is-empty');
+      }else{
+        el.textContent='';
+        el.classList.add('is-empty');
+      }
+    }
+
+    function applyBadgeCounts_(r){
+      r=normalizePendingCounts_(r);
+      setBadge('badge-registration',r.registrationCount);
+      setBadge('badge-clock',r.clockCorrectionCount);
+      setBadge('badge-temp-attendance',r.tempAttendanceCount);
+      setBadge('badge-leave',r.leaveCount);
+      setBadge('badge-profile-change',r.profileChangeCount);
+      setBadge('badge-parttime-payroll',r.parttimeApprovalCount);
+    }
+  
+  </script>
+  <script src="global-nav.js?v=20260603unified1"></script>
+</body>
+</html>

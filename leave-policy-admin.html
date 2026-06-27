@@ -3,120 +3,353 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>公告／交辦／定期</title>
+  <title>假勤制度設定</title>
   <link rel="stylesheet" href="style.css?v=admin-final-20260530b">
   <style>
-    .tile strong{display:flex;align-items:center;gap:8px;justify-content:space-between}
-    .badge{display:inline-flex;min-width:22px;height:22px;padding:0 6px;border-radius:999px;background:#dc2626;color:#fff;font-size:12px;align-items:center;justify-content:center;font-weight:800}
-    .badge:empty{display:none}
-    .page-return-wrap{margin-bottom:16px}
-    .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
+    .container.leave-policy-wide{max-width:min(1600px, calc(100vw - 24px));}
+    .container.leave-policy-wide .card{padding:18px 18px}
+    @media (min-width:1024px){
+      .container.leave-policy-wide .topbar{align-items:flex-start;gap:16px}
+      .container.leave-policy-wide .topbar>div:last-child{flex:0 0 290px;justify-content:flex-end}
+      .container.leave-policy-wide .policy-table input,.container.leave-policy-wide .policy-table textarea,.container.leave-policy-wide .policy-table select{min-width:52px}
+      .container.leave-policy-wide .policy-table textarea{min-width:96px}
+      .container.leave-policy-wide .policy-table .wide textarea{min-width:132px}
+    }
+    .page-return-wrap{margin-bottom:14px}
+    .page-return-btn{display:block;width:100%;padding:14px 16px;text-align:center;text-decoration:none;border-radius:14px;font-size:18px;font-weight:800}
+    .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-top:14px}
+    .tab-btn{width:auto;padding:8px 10px;border-radius:12px;border:1px solid var(--line);background:#fff;font-weight:800;cursor:pointer;font-size:13px}
+    .tab-btn.active{background:#18314a;color:#fff;border-color:#18314a}
+    .sheet-panel{display:none;margin-top:12px}
+    .sheet-panel.active{display:block}
+    .sheet-head{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;margin-bottom:8px}
+    .sheet-head h2{margin:0;font-size:18px}
+    .sheet-desc{margin-top:4px;color:#6b7c93;line-height:1.6;font-size:13px}
+    .table-wrap{overflow:auto;border:1px solid var(--line);border-radius:14px;background:#fff}
+    table.policy-table{width:max-content;min-width:100%;border-collapse:collapse}
+    .policy-table th,.policy-table td{border-bottom:1px solid #e7edf5;border-right:1px solid #eef2f7;padding:4px;vertical-align:top;background:#fff}
+    .policy-table th{position:sticky;top:0;background:#f8fbff;font-size:11px;z-index:1;white-space:nowrap}
+    .policy-table td:last-child,.policy-table th:last-child{border-right:none}
+    .policy-table tbody tr:nth-child(odd) td{background:#ffffff}
+    .policy-table tbody tr:nth-child(even) td{background:#f6f9fc}
+    .policy-table tbody tr:hover td{background:#eef5fb}
+    .policy-table input,.policy-table textarea,.policy-table select{width:100%;min-width:56px;border:1px solid #d7e1ec;border-radius:8px;padding:5px 6px;font-size:11px;background:rgba(255,255,255,.92);box-sizing:border-box}
+    .policy-table textarea{min-height:34px;resize:vertical;min-width:90px}
+    .policy-table .wide textarea{min-width:124px}
+    .policy-table .code input{min-width:88px}
+    .policy-table .name input{min-width:66px}
+    .policy-table td:nth-child(3) select,.policy-table td:nth-child(4) input,.policy-table td:nth-child(8) input,.policy-table td:nth-child(9) input,.policy-table td:nth-child(10) select,.policy-table td:nth-child(11) select,.policy-table td:nth-child(12) select,.policy-table td:nth-child(13) select,.policy-table td:nth-child(14) select{min-width:42px}
+    .policy-table td:nth-child(5) input,.policy-table td:nth-child(6) select,.policy-table td:nth-child(7) select{min-width:74px}
+    .policy-table .num input{min-width:42px;max-width:56px;text-align:center}
+    .mini{width:auto;padding:6px 8px;border-radius:10px;font-size:11px}
+    .chip-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+    .chip{display:inline-block;padding:6px 9px;border-radius:999px;background:#f3f7fb;border:1px solid #dfe8f2;font-size:12px;color:#2f4256;font-weight:700}
+    .section-note{margin-top:12px;padding:12px 14px;border-radius:14px;background:#fff7e8;border:1px solid #f7d9a1;color:#6f4e0c;line-height:1.7;font-size:13px}
+    .section-note summary{cursor:pointer;list-style:none}
+    .section-note summary::-webkit-details-marker{display:none}
+    .admin-policy-page .sheet-panel .sheet-head{background:#f8fbff;border:1px solid #dce7f3;border-radius:14px;padding:10px 12px}
+    .admin-policy-page .tabs{background:#f7fafc;border:1px solid #e5edf5;border-radius:16px;padding:8px}
+    .admin-policy-page .tab-btn{background:#fff}
+    .admin-policy-page .tab-btn.active{background:#1f7a5a;border-color:#1f7a5a}
+    @media (min-width:1024px){.admin-policy-page .card{padding:16px}.admin-policy-page .table-wrap{max-height:68vh}.admin-policy-page .policy-table th,.admin-policy-page .policy-table td{padding:5px}.admin-policy-page .policy-table input,.admin-policy-page .policy-table textarea,.admin-policy-page .policy-table select{font-size:12px}}
+    .compact-note{margin-top:10px;padding:10px 12px;border-radius:12px;background:#f8fbff;border:1px solid #dce7f3;color:#4b5d73;line-height:1.7;font-size:13px}
+    @media (max-width:640px){
+      .page-return-btn{padding:12px 14px;font-size:16px}
+      .policy-table th,.policy-table td{padding:4px}
+      .policy-table input,.policy-table textarea,.policy-table select{font-size:11px;padding:5px 6px;min-width:64px}
+      .policy-table textarea{min-width:120px;min-height:34px}
+      .tab-btn,.mini{font-size:12px}
+    }
   </style>
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
 </head>
-<body onload="init()" class="admin-wide-page">
+<body onload="init()" class="admin-wide-page admin-policy-page">
   <div class="yz-global-nav" data-yz-global-nav>
     <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
     <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
   </div>
 
-  <div class="container">
+  <div class="container leave-policy-wide">
+    
     <div class="card">
       <div class="topbar">
-        <div class="header" style="margin:0">
-          <h1 class="title" style="margin:0">公告／交辦／定期</h1>
-          
+        <div>
+          <h1 class="title" style="margin:0">假勤制度設定</h1>
+          <div class="welcome">歡迎 <span data-user-name></span></div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn secondary" type="button" id="reloadBtn">重新讀取</button>
+          <button class="btn" type="button" id="saveBtn">儲存全部設定</button>
         </div>
       </div>
-      <div class="grid" style="margin-top:18px">
-<a class="tile" href="announcement-admin.html"><strong>公告管理</strong><span>新增公告、圈選顯示對象、發布通知與管理公告內容</span></a>
-<a class="tile" href="task.html?mode=admin"><strong>交辦任務 <span class="badge" id="badge-task"></span></strong><span>建立交辦事項、查看已建立任務與調整設定</span></a>
-<a class="tile" href="routine.html?mode=admin"><strong>定期事項 <span class="badge" id="badge-routine"></span></strong><span>建立固定週期工作、修改負責人與週期設定</span></a>
-</div>
+
+      <div class="compact-note">
+        本頁直接讀寫 Firebase 的假勤制度設定；假別、特休、喪假、請假申請規則與全域備註都維持原設定欄位，只調整成較緊湊的管理畫面。
+      </div>
+      <div id="pageMsg" class="message local-message"></div>
+
+      <div class="chip-row">
+        <span class="chip">婚假 / 喪假可做事件制</span>
+        <span class="chip">低於法定標準會擋下</span>
+        <span class="chip">手機版已縮窄欄位</span>
+      </div>
+
+      <div class="tabs" id="tabs"></div>
+      <div id="panels"></div>
+
+      <details class="section-note">
+        <summary><strong>假勤制度分區說明</strong></summary>
+        <div style="margin-top:8px;line-height:1.8">
+          1. 假別規則設定：假別本身的額度、附件、半天/小時等。<br>
+          2. 特休週年級距設定：年資到幾個月有幾天。<br>
+          3. 喪假關係設定：親屬別對應 3/6/8 日。<br>
+          4. 請假申請規則：哪些原則提前申請、哪些屬知悉後儘速。<br>
+          5. 制度備註與全域設定：保留公司自己的補充說明。
+        </div>
+      </details>
     </div>
   </div>
-  <script src="config.js?v=20260508frontendperf2"></script>
+
+  <script src="config.js?v=20260412c"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="firebase-client.js?v=admin-final-20260530b"></script>
 
   <script src="app.js?v=admin-final-20260530b"></script>
   <script>
-    
-    async function init(){
-      fillHeader();
-      const user=requireLogin();
-      if(!user) return;
-      if(!hasSettingsZoneAccess(user)){location.href='dashboard.html';return;}
+    let currentUser=null;
+    let currentBundle={};
 
-      // 先吃管理首頁共用快取，讓中繼入口頁先顯示。
-      applyBadgeCounts_(readCachedPendingCounts_(user));
+    const TAB_META = {
+      leaveTypes: { title: '假別規則設定', desc: '設定各假別是否啟用、支薪方式、額度、是否需要附件與是否可半天/小時。' },
+      annualLeave: { title: '特休週年級距設定', desc: '依到職年資設定特休日數；低於法定標準時，系統會禁止儲存。' },
+      bereavement: { title: '喪假關係設定', desc: '依關係別設定喪假天數；低於法定 3/6/8 日時，系統會禁止儲存。' },
+      holidaySummary: { title: '請假申請規則', desc: '可預期假別可設固定提前天數；病假、喪假等臨時性假別建議用「知悉後儘速」。' },
+      globalRules: { title: '制度備註與全域設定', desc: '保留給制度說明、是否遞延、通知與其他全域設定。' }
+    };
+    const TAB_ORDER=['leaveTypes','annualLeave','bereavement','holidaySummary','globalRules'];
 
-      // 待處理數字延後更新，不阻塞第一屏。
-      scheduleIdle_(async()=>applyBadgeCounts_(await fetchPendingCountsFast_(user)));
+    const SELECT_RULES = {
+      '啟用': ['是','否'],
+      '可跨日': ['是','否'],
+      '可半天': ['是','否'],
+      '可小時': ['是','否'],
+      '需附件': ['是','否'],
+      '需證明文件': ['是','否'],
+      '需主管審核': ['是','否'],
+      '例假日與國定假日是否計入假期': ['是','否'],
+      '支薪方式': ['全薪','半薪','無薪','依原假別規則','依性平法','公司自訂'],
+      '扣抵類型': ['扣特休','獨立額度','不扣','併入事假'],
+      '全勤影響方式': ['不影響','影響','依比例'],
+      '適用身分': ['全部','專職','工讀','外聘老師','專職,工讀','專職,工讀,外聘老師'],
+      '申請期限類型': ['固定提前','知悉後儘速','主管個案核准'],
+      '是否允許臨時申請': ['是','否'],
+      '證明文件規則': ['免附','建議附','必要時補證明','建議附結婚證明','建議附訃聞或證明','依實際需要附通知'],
+      '請假年度制度': ['曆年制','週年制','自訂年度']
+    };
+    const MIN_MAP = {
+      marriage_leave: { minDays: 8, label: '婚假法定最低 8 日' },
+      bereavement: { '父母':8,'養父母':8,'繼父母':8,'配偶':8,'祖父母':6,'子女':6,'配偶之父母':6,'配偶之養父母':6,'配偶之繼父母':6,'曾祖父母':3,'兄弟姊妹':3,'配偶之祖父母':3 },
+      annualLeave: {
+        '6-11':3,'12-23':7,'24-35':10,'36-59':14,'60-119':15,'120-131':16,'132-143':17,'144-155':18,'156-167':19,'168-179':20,'180-191':21,'192-203':22,'204-215':23,'216-227':24,'228-239':25,'240-251':26,'252-263':27,'264-275':28,'276-287':29,'288-9999':30
+      }
+    };
+
+    function qs(sel){ return document.querySelector(sel); }
+    function qsa(sel){ return Array.from(document.querySelectorAll(sel)); }
+    function setPageMsg(text,isError){ setMsg(qs('#pageMsg'), text, !!isError); }
+    function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"]/g, ch=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[ch])); }
+    function getBundleKeys(bundle){ return TAB_ORDER.filter(k=>bundle&&bundle[k]).concat(Object.keys(bundle||{}).filter(k=>TAB_ORDER.indexOf(k)<0)); }
+    function getTabTitle(key, part){ return (TAB_META[key] && TAB_META[key].title) || (part && part.name) || key; }
+    function getTabDesc(key){ return (TAB_META[key] && TAB_META[key].desc) || ''; }
+
+    function getSelectOptionsByHeader(header){
+      const key=String(header||'').trim();
+      if(SELECT_RULES[key]) return SELECT_RULES[key];
+      if(/^(啟用|是否)/.test(key)) return ['是','否'];
+      if(/(需附件|需證明|需主管審核|可跨日|可半天|可小時|是否計入假期)$/.test(key)) return ['是','否'];
+      return null;
+    }
+    function isWideHeader(h){ return /說明|備註|標準|規則|期間/.test(h); }
+    function isNumHeader(h){ return /天數|月數|排序/.test(h); }
+    function getCellClass(h){
+      if(/代碼/.test(h)) return 'code';
+      if(/名稱|親屬別/.test(h)) return 'name';
+      if(isNumHeader(h)) return 'num';
+      if(isWideHeader(h)) return 'wide';
+      return '';
+    }
+    function buildSelectHtml(options, value, rowIndex, colIndex){
+      const current=String(value==null?'':value).trim();
+      const opts=['<option value="">請選擇</option>'].concat(options.map(opt=>`<option value="${escapeHtml(opt)}" ${current===String(opt)?'selected':''}>${escapeHtml(opt)}</option>`));
+      if(current && !options.includes(current)) opts.push(`<option value="${escapeHtml(current)}" selected>${escapeHtml(current)}</option>`);
+      return `<select data-row="${rowIndex}" data-col="${colIndex}">${opts.join('')}</select>`;
+    }
+    function cellInputHtml(header, value, rowIndex, colIndex){
+      const options=getSelectOptionsByHeader(header);
+      const safe=escapeHtml(value);
+      if(options) return buildSelectHtml(options, value, rowIndex, colIndex);
+      if(isWideHeader(header)) return `<textarea data-row="${rowIndex}" data-col="${colIndex}">${safe}</textarea>`;
+      return `<input type="${isNumHeader(header)?'number':'text'}" value="${safe}" data-row="${rowIndex}" data-col="${colIndex}">`;
     }
 
-    function pendingCountsCacheKey_(user){ return 'pendingCounts:v3:settings:' + ((user && user.id) || 'guest'); }
-    function readCachedPendingCounts_(user){
-      try{ return JSON.parse(localStorage.getItem(pendingCountsCacheKey_(user)) || '{}') || {}; }catch(e){ return {}; }
+    function renderTabs(bundle){
+      const keys=getBundleKeys(bundle);
+      qs('#tabs').innerHTML=keys.map((key,idx)=>`<button type="button" class="tab-btn ${idx===0?'active':''}" data-tab="${key}">${escapeHtml(getTabTitle(key,bundle[key]))}</button>`).join('');
+      qsa('.tab-btn').forEach(btn=>btn.onclick=()=>activateTab(btn.dataset.tab));
     }
-    function writeCachedPendingCounts_(user, data){
-      try{ localStorage.setItem(pendingCountsCacheKey_(user), JSON.stringify(Object.assign({__cachedAt:Date.now()}, data||{}))); }catch(e){}
+
+    function renderPanels(bundle){
+      const keys=getBundleKeys(bundle);
+      qs('#panels').innerHTML=keys.map((key,idx)=>{
+        const part=bundle[key]||{};
+        const headers=Array.isArray(part.headers)?part.headers:[];
+        const rows=Array.isArray(part.rows)?part.rows:[];
+        const body=rows.map((row,rowIndex)=>`<tr>${headers.map((h,colIndex)=>`<td class="${getCellClass(h)}">${cellInputHtml(h,(row&&row[colIndex])||'',rowIndex,colIndex)}</td>`).join('')}<td><button class="btn secondary mini" type="button" data-delete-row="${key}" data-row-index="${rowIndex}">刪除</button></td></tr>`).join('');
+        return `<section class="sheet-panel ${idx===0?'active':''}" data-panel="${key}">
+          <div class="sheet-head">
+            <div>
+              <h2>${escapeHtml(getTabTitle(key, part))}</h2>
+              <div class="sheet-desc">${escapeHtml(getTabDesc(key))}</div>
+              <div class="muted" style="margin-top:4px">共 ${rows.length} 筆資料</div>
+            </div>
+            <button class="btn secondary mini" type="button" data-add-row="${key}">新增一列</button>
+          </div>
+          <div class="table-wrap">
+            <table class="policy-table">
+              <thead><tr>${headers.map(h=>`<th>${escapeHtml(h)}</th>`).join('')}<th>操作</th></tr></thead>
+              <tbody>${body || `<tr>${headers.map((h,colIndex)=>`<td class="${getCellClass(h)}">${cellInputHtml(h,'',0,colIndex)}</td>`).join('')}<td><button class="btn secondary mini" type="button" data-delete-row="${key}" data-row-index="0">刪除</button></td></tr>`}</tbody>
+            </table>
+          </div>
+        </section>`;
+      }).join('');
+      qsa('[data-add-row]').forEach(btn=>btn.onclick=()=>addRow(btn.dataset.addRow));
+      qsa('[data-delete-row]').forEach(btn=>btn.onclick=()=>deleteRow(btn.dataset.deleteRow, Number(btn.dataset.rowIndex||0)));
     }
-    function scheduleIdle_(fn){
-      if(window.requestIdleCallback) requestIdleCallback(fn,{timeout:900});
-      else setTimeout(fn, 80);
+
+    function activateTab(key){
+      qsa('.tab-btn').forEach(btn=>btn.classList.toggle('active', btn.dataset.tab===key));
+      qsa('.sheet-panel').forEach(panel=>panel.classList.toggle('active', panel.dataset.panel===key));
     }
-    function normalizePendingCounts_(r){
-      r = r || {};
-      const counts = r.counts || r.summary || r.dashboard || r;
-      return Object.assign({}, r, counts, {
-        registrationCount: Number(counts.registrationCount || counts.pendingRegistrationCount || counts.registrations || 0) || 0,
-        leaveCount: Number(counts.leaveCount || counts.pendingLeaveCount || counts.leaveApprovalCount || 0) || 0,
-        clockCorrectionCount: Number(counts.clockCorrectionCount || counts.pendingClockCorrectionCount || counts.clockCorrection || 0) || 0,
-        contractCount: Number(counts.contractCount || counts.pendingContractCount || counts.contracts || 0) || 0,
-        goodsInquiryCount: Number(counts.goodsInquiryCount || counts.pendingGoodsInquiryCount || counts.goodsInquiries || 0) || 0,
-        taskCount: Number(counts.taskCount || counts.pendingTaskCount || counts.taskReviewCount || counts.tasks || 0) || 0,
-        routineCount: Number(counts.routineCount || counts.pendingRoutineCount || counts.routineReviewCount || counts.routines || 0) || 0,
-        applicationCount: Number(counts.applicationCount || counts.pendingApplicationCount || counts.teacherApplicationCount || counts.applications || 0) || 0,
-        salaryCount: Number(counts.salaryCount || counts.pendingSalaryCount || 0) || 0
+
+    function ensurePart(key){
+      if(!currentBundle[key]) currentBundle[key]={name:key,headers:[],rows:[]};
+      currentBundle[key].headers=Array.isArray(currentBundle[key].headers)?currentBundle[key].headers:[];
+      currentBundle[key].rows=Array.isArray(currentBundle[key].rows)?currentBundle[key].rows:[];
+      return currentBundle[key];
+    }
+    function addRow(key){
+      const part=ensurePart(key);
+      part.rows.push(part.headers.map(()=>''));
+      renderPanels(currentBundle);
+      activateTab(key);
+    }
+    function deleteRow(key,rowIndex){
+      const part=ensurePart(key);
+      if(!part.rows.length) return;
+      part.rows.splice(rowIndex,1);
+      renderPanels(currentBundle);
+      activateTab(key);
+    }
+    function collectBundleFromDom(){
+      const keys=getBundleKeys(currentBundle);
+      keys.forEach(key=>{
+        const part=ensurePart(key);
+        const panel=qs(`.sheet-panel[data-panel="${key}"]`);
+        if(!panel) return;
+        const rows=[];
+        panel.querySelectorAll('tbody tr').forEach(tr=>{
+          const row=part.headers.map((h,colIndex)=>{
+            const el=tr.querySelector(`[data-col="${colIndex}"]`);
+            return el ? String(el.value||'').trim() : '';
+          });
+          if(row.some(v=>String(v).trim()!=='')) rows.push(row);
+        });
+        part.rows=rows;
+      });
+      return currentBundle;
+    }
+
+    function validateBundle(bundle){
+      const annual=((bundle.annualLeave||{}).rows)||[];
+      annual.forEach(row=>{
+        const key=`${row[0]||''}-${row[1]||''}`;
+        const min=MIN_MAP.annualLeave[key];
+        const days=Number(row[2]||0)||0;
+        if(min!=null && days<min) throw new Error(`特休級距 ${key} 不可低於法定最低 ${min} 日`);
+      });
+      const bereavement=((bundle.bereavement||{}).rows)||[];
+      bereavement.forEach(row=>{
+        const relation=String(row[0]||'').trim();
+        const min=MIN_MAP.bereavement[relation];
+        const days=Number(row[1]||0)||0;
+        if(min!=null && days<min) throw new Error(`喪假「${relation}」不可低於法定最低 ${min} 日`);
+      });
+      const leaveTypes=((bundle.leaveTypes||{}).rows)||[];
+      leaveTypes.forEach(row=>{
+        if(String(row[0]||'').trim()==='marriage_leave'){
+          const days=Number(row[7]||0)||0;
+          if(days<MIN_MAP.marriage_leave.minDays) throw new Error('婚假不可低於法定最低 8 日');
+        }
+      });
+      const requestRules=((bundle.holidaySummary||{}).rows)||[];
+      requestRules.forEach(row=>{
+        const name=String(row[1]||'請假規則').trim();
+        const type=String(row[4]||'').trim();
+        const minAdvance=String(row[5]||'').trim();
+        if(type==='固定提前' && !minAdvance) throw new Error(`${name} 已設定固定提前，請填最少提前天數`);
+        if(minAdvance && (Number(minAdvance)<0 || Number.isNaN(Number(minAdvance)))) throw new Error(`${name} 的最少提前天數格式不正確`);
       });
     }
-    async function fetchPendingCountsFast_(user){
-      try{
-        let r = await api('getDashboardSummary',{userId:user.id, role:'admin'});
-        if(!r || r.ok === false) r = await api('getPendingCounts',{userId:user.id});
-        const data = normalizePendingCounts_(r);
-        writeCachedPendingCounts_(user, data);
-        return data;
-      }catch(err){
-        try{
-          const r = await api('getPendingCounts',{userId:user.id});
-          const data = normalizePendingCounts_(r);
-          writeCachedPendingCounts_(user, data);
-          return data;
-        }catch(e){ return readCachedPendingCounts_(user); }
-      }
-    }
-    function setBadge(id, count){
-      const el=document.getElementById(id);
-      if(!el) return;
-      const n=Number(count||0)||0;
-      if(n>0){
-        el.textContent=n>99?'99+':String(n);
-        el.classList.remove('is-empty');
-      }else{
-        el.textContent='';
-        el.classList.add('is-empty');
-      }
+
+    async function loadBundle(seedIfNeeded){
+      setPageMsg('');
+      const action=seedIfNeeded?'initLeavePolicySettings':'getLeavePolicySettingsAdmin';
+      const r=await api(action,{userId:currentUser.id});
+      if(!r.ok) throw new Error(r.message||'讀取制度設定失敗');
+      currentBundle=r.bundle||{};
+      renderTabs(currentBundle);
+      renderPanels(currentBundle);
     }
 
-    function applyBadgeCounts_(r){
-      r=normalizePendingCounts_(r);
-      setBadge('badge-task',r.taskCount);
-      setBadge('badge-routine',r.routineCount);
+    async function init(){
+      fillHeader();
+      currentUser=requireLogin();
+      if(!currentUser) return;
+      if(!hasSettingsZoneAccess(currentUser)){ location.href='dashboard.html'; return; }
+      try{
+        await loadBundle(false);
+      }catch(err){
+        try{
+          await loadBundle(true);
+          setPageMsg('已自動建立制度表，現在可直接開始維護新版假勤資料。');
+        }catch(e2){
+          setPageMsg(e2.message||String(e2), true);
+        }
+      }
+      qs('#reloadBtn').onclick=async()=>{
+        try{ await loadBundle(false); setPageMsg('已重新讀取最新設定'); }catch(err){ setPageMsg(err.message||String(err), true); }
+      };
+      qs('#saveBtn').onclick=async()=>{
+        const btn=qs('#saveBtn');
+        try{
+          collectBundleFromDom();
+          validateBundle(currentBundle);
+          btn.disabled=true; btn.textContent='儲存中';
+          const r=await api('saveLeavePolicySettings',{userId:currentUser.id,bundle:currentBundle});
+          setPageMsg(r.message||'', !r.ok);
+          if(r.ok){
+            currentBundle=r.bundle||currentBundle;
+            renderTabs(currentBundle);
+            renderPanels(currentBundle);
+          }
+        }catch(err){
+          setPageMsg(err.message||String(err), true);
+        }finally{
+          btn.disabled=false; btn.textContent='儲存全部設定';
+        }
+      };
     }
-  
   </script>
   <script src="global-nav.js?v=20260603unified1"></script>
 </body>
