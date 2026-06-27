@@ -563,10 +563,10 @@
 
       <button class="entry-card" type="button" id="openContractBtn">
         <div class="entry-top">
-          <div class="entry-title">合約</div>
+          <div class="entry-title">資料與合約</div>
           <div class="entry-count" id="contractCount">0</div>
         </div>
-        <div class="entry-desc">簽署狀態</div>
+        <div class="entry-desc">補資料、綁 LINE、簽委任契約</div>
       </button>
 
       <button class="entry-card" type="button" id="openFormsBtn">
@@ -597,7 +597,7 @@
       return {
         announcement: 'announcements.html',
         todo: 'task.html',
-        contract: 'contract.html',
+        contract: 'external-teacher-onboarding.html',
         goods: 'teacher-goods.html',
         forms: 'forms-hub.html'
       };
@@ -669,6 +669,7 @@
       const userId=getUserId();
       const url=new URL(target, window.location.href);
       if(userId) url.searchParams.set('userId', userId);
+      if(target.indexOf('external-teacher-onboarding.html')>=0) url.searchParams.set('teacherId', userId);
       if(target.indexOf('contract.html')>=0) url.searchParams.set('source','home');
       window.location.href=url.toString();
     }

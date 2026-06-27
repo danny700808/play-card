@@ -1,0 +1,16 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /externalTeachers/{teacherId}/{folder}/{fileName=**} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // 其他路徑先維持開放讀取；若既有系統有上傳需求，可另行加規則。
+    match /{allPaths=**} {
+      allow read: if true;
+      allow write: if false;
+    }
+  }
+}
