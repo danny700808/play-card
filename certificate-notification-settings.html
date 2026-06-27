@@ -1,44 +1,365 @@
-<!doctype html>
-<html lang="zh-Hant">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>證明提醒設定</title>
-  <link rel="stylesheet" href="style.css?v=admin-final-20260531notify">
-  <style>
-    .page-return-wrap{margin-bottom:16px}.page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
-    .settings-intro{margin-bottom:14px}.settings-intro .title{margin:0}.settings-intro .welcome{line-height:1.7}.note-box{border:1px solid #dbe5f1;background:#f8fafc;border-radius:18px;padding:12px 14px;color:#475569;line-height:1.8;font-weight:750}
-  </style>
-  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
-</head>
-<body onload="init()" class="admin-wide-page">
-  <div class="yz-global-nav" data-yz-global-nav>
-    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
-    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
-  </div>
-
-  <div class="container">
-    <div class="card settings-intro">
-      <div class="header" style="margin:0">
-        <h1 class="title">證明提醒設定</h1>
-        <div class="welcome">在職證明與教學證明都套用這裡的送出、核准、退回 / 駁回、逾期未審提醒。</div>
-      </div>
-      <div class="note-box">逾期未審提醒預設 1 天，可在下方欄位調整。</div>
-    </div>
-  </div>
-  <script src="config.js?v=20260531notify"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260531notify"></script>
-  <script src="app.js?v=20260531notify"></script>
-  <script>
-    function init(){
-      if(typeof fillHeader==='function') fillHeader();
-      const user=typeof requireLogin==='function'?requireLogin():null;
-      if(!user) return;
-      if(typeof hasSettingsZoneAccess==='function' && !hasSettingsZoneAccess(user)){location.href='dashboard.html';}
+(function(global){
+  const ORG_UNITS = {
+    shangpin: {
+      key:'shangpin',
+      name:'尚品樂器行',
+      label:'尚品樂器行',
+      identifierLabel:'統一編號',
+      identifier:'99680937',
+      address:'台中市豐原區圓環東路347號4樓',
+      phone:'04-25227893',
+      stamp:'company_seal_contract_transparent.png',
+      stampLabel:'尚品公司章',
+      personalStamp:'red_stamp_transparent.png',
+      tip:'公司／樂器行工作身分請選擇尚品樂器行。'
+    },
+    kaili: {
+      key:'kaili',
+      name:'台中市私立凱立音樂短期補習班',
+      label:'台中市私立凱立音樂短期補習班',
+      identifierLabel:'證號',
+      identifier:'中市教終字第1110094357 號',
+      address:'台中市豐原區圓環東路347號1至2樓',
+      teachingLocation:'台中市豐原區圓環東路347號',
+      phone:'04-25227893',
+      stamp:'blue_stamp_transparent.png',
+      stampLabel:'補習班章',
+      personalStamp:'red_stamp_transparent.png',
+      tip:'補習班老師／教學身分請選擇台中市私立凱立音樂短期補習班。'
     }
-  </script>
-  <script src="global-nav.js?v=20260603unified1"></script>
-</body>
-</html>
+  };
+  const BRAND = { name:'柚子樂器', english:'YOU ZI MUSIC', logo:'yuzu-logo-document-black.png' };
+  const LEGAL_NOTICE = '本證明書僅供申請人告知之用途使用。若有擅自變造、轉借、冒用，或未依原申請用途及雙方約定使用，致生爭議者，應由申請人或實際使用人自行負相關法律責任。';
+  const OLD_DEFAULT_FOOTERS = ['本證明僅作為申請人於本單位服務事實之證明。','本證明僅作為申請人任職事實之證明，不作其他用途。'];
+  const TEACHER_IDENTITY_OPTIONS = ['外聘老師','專職老師','工讀助教'];
+  const LESSON_TYPE_OPTIONS = ['個別課','團體課','活動課','短期課程'];
+  const EMPLOYMENT_WORK_NATURE_OPTIONS = ['教學','行政','門市','教學與行政','活動支援','其他'];
+
+  function clean(v){ return String(v == null ? '' : v).trim(); }
+  function lower(v){ return clean(v).toLowerCase(); }
+  function esc(v){ return clean(v).replace(/[&<>"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch])); }
+  function upperId(v){ return clean(v).toUpperCase().replace(/\s+/g,''); }
+  function pad(n){ return String(n).padStart(2,'0'); }
+  function today(){ const d=new Date(); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
+  function dateOnly(v){
+    if(!v) return '';
+    if(v && typeof v.toDate === 'function') v = v.toDate();
+    if(v instanceof Date && !isNaN(v.getTime())) return `${v.getFullYear()}-${pad(v.getMonth()+1)}-${pad(v.getDate())}`;
+    const s=clean(v).replace(/\//g,'-');
+    if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+    const d=new Date(s); return isNaN(d.getTime()) ? s : `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  }
+  function dateTimeText(v){
+    if(!v) return '';
+    if(v && typeof v.toDate === 'function') v = v.toDate();
+    if(v instanceof Date && !isNaN(v.getTime())) return `${v.getFullYear()}-${pad(v.getMonth()+1)}-${pad(v.getDate())} ${pad(v.getHours())}:${pad(v.getMinutes())}`;
+    const s=clean(v); return s;
+  }
+  function rocDate(v){
+    const s=dateOnly(v); if(!/^\d{4}-\d{2}-\d{2}$/.test(s)) return esc(s);
+    const [y,m,d]=s.split('-').map(Number);
+    return `民國 ${y-1911} 年 ${m} 月 ${d} 日`;
+  }
+  function unitByKey(key){ return ORG_UNITS[clean(key)] || ORG_UNITS.kaili; }
+  function typeLabel(type){ return clean(type)==='teaching' ? '教學證明' : '在職證明'; }
+  function docTitle(type){ return clean(type)==='teaching' ? '教學證明書' : '在職證明書'; }
+  function statusLabel(s){
+    s=clean(s); if(!s) return '待主管審核';
+    if(s==='approved'||s==='已同意') return '已核准';
+    if(s==='rejected'||s==='已駁回') return '已退回';
+    if(s==='pending') return '待主管審核';
+    return s;
+  }
+  function isApprovedStatus(s){ s=statusLabel(s); return s==='已核准'; }
+  function watermarkText(status, mode){
+    if(mode==='editing') return '送出前預覽';
+    const s=statusLabel(status);
+    if(s==='已核准') return '';
+    if(s==='已退回') return '申請已退回\n僅供預覽';
+    return '主管尚未核准\n僅供預覽';
+  }
+  function defaultTemplate(type){
+    const isTeaching = clean(type)==='teaching';
+    return {
+      certificateType:isTeaching?'teaching':'employment',
+      title:isTeaching?'教學證明書':'在職證明書',
+      defaultUnitKey:isTeaching?'kaili':'shangpin',
+      showBrandLogo:true,
+      introText:isTeaching?'茲證明下列教師於本單位擔任教學工作，教學資料如下，特此證明。':'茲證明下列人員現任職於本單位，任職資料如下，特此證明。',
+      footerText:LEGAL_NOTICE,
+      closingText:'特此證明',
+      watermarkPending:'主管尚未核准\n僅供預覽',
+      watermarkRejected:'申請已退回\n僅供預覽',
+      updatedAtText:''
+    };
+  }
+  function normalizeTemplate(type, row){ return Object.assign({}, defaultTemplate(type), row || {}); }
+  function userIdOf(u){ u=u||{}; return clean(u.id || u.employeeId || u.userId || u.email); }
+  function identityTypeOfUser(u){
+    u=u||{}; const raw=lower(u.identityType || u['身分類型']);
+    if(raw==='external'||raw.indexOf('外聘')>=0) return 'external';
+    if(raw==='parttime'||raw.indexOf('工讀')>=0 || u.isPartTime===true) return 'parttime';
+    return 'staff';
+  }
+  function identityLabelOfUser(u){ const t=identityTypeOfUser(u); return t==='external'?'外聘老師':(t==='parttime'?'工讀生':'專職老師'); }
+  function idNumberOfRecord(o){ o=o||{}; return upperId(o.idNumber || o.idNo || o.nationalId || o.idNumberMasked || o['身分證字號'] || o['身份證字號'] || o['身分證'] || o['身份證']); }
+
+  function normalizeApplication(row){
+    row=row||{};
+    const form=row.formData || row.data || row;
+    const type=clean(row.certificateType || form.certificateType || row.type || 'employment')==='teaching'?'teaching':'employment';
+    return Object.assign({}, row, {
+      requestId:clean(row.requestId || row.__id || row.id),
+      certificateType:type,
+      certificateTypeLabel:typeLabel(type),
+      employeeId:clean(row.employeeId || row.userId || form.employeeId || row['員工ID']),
+      name:clean(row.name || row.applicantName || form.name || form.teacherName || row['姓名']),
+      email:clean(row.email || row.Email || row['Email']),
+      idNumber:idNumberOfRecord(Object.assign({}, row, form)),
+      status:statusLabel(row.status || row['狀態']),
+      formData:Object.assign({}, form, {idNumber:idNumberOfRecord(Object.assign({}, row, form))}),
+      submittedAtText:dateTimeText(row.submittedAt || row.createdAt || row['送出時間'] || row['建立時間']),
+      reviewedAtText:dateTimeText(row.reviewedAt || row['審核時間']),
+      hiddenBy:Array.isArray(row.hiddenBy)?row.hiddenBy:[]
+    });
+  }
+
+  function applicationToDocumentData(row){
+    const app=normalizeApplication(row);
+    const f=app.formData || {};
+    if(app.certificateType==='teaching'){
+      return {
+        type:'teaching',
+        name:clean(f.teacherName || app.name),
+        idNumber:upperId(f.idNumber || app.idNumber),
+        teacherIdentity:clean(f.teacherIdentity || app.identityLabel || '外聘老師'),
+        identityType:clean(f.identityType || app.identityType || ''),
+        subject:clean(f.subject),
+        periodStart:dateOnly(f.periodStart),
+        periodEnd:dateOnly(f.periodEnd),
+        stillTeaching:!!f.stillTeaching || clean(f.stillTeaching)==='是',
+        lessonType:clean(f.lessonType || '個別課'),
+        location:ORG_UNITS.kaili.teachingLocation || '台中市豐原區圓環東路347號',
+        unitKey:clean(f.unitKey || 'kaili'),
+        issueDate:dateOnly(f.issueDate || app.approvedDate || app.reviewedAt || today())
+      };
+    }
+    return {
+      type:'employment',
+      name:clean(f.name || app.name),
+      idNumber:upperId(f.idNumber || app.idNumber),
+      identityType:clean(f.identityType || app.identityType || 'staff'),
+      identityLabel:clean(f.identityLabel || app.identityLabel || '專職員工'),
+      jobTitle:clean(f.jobTitle || f.title),
+      workNature:clean(f.workNature || '教學'),
+      hireDate:dateOnly(f.hireDate),
+      stillWorking:f.stillWorking === false ? false : true,
+      cooperationYear:clean(f.cooperationYear),
+      cooperationStart:dateOnly(f.cooperationStart),
+      cooperationEnd:dateOnly(f.cooperationEnd),
+      cooperationContent:clean(f.cooperationContent || f.subject),
+      unitKey:clean(f.unitKey || 'shangpin'),
+      issueDate:dateOnly(f.issueDate || app.approvedDate || app.reviewedAt || today())
+    };
+  }
+
+  function fieldRowsHtml(type, data){
+    const rows = [];
+    if(type==='teaching'){
+      const period = [rocDate(data.periodStart), data.stillTeaching ? '迄今' : rocDate(data.periodEnd)].filter(Boolean).join(' 至 ');
+      rows.push(['教師姓名', data.name], ['身分證字號', data.idNumber], ['教師身分', data.teacherIdentity], ['任教科目', data.subject], ['任教期間', period], ['授課類型', data.lessonType], ['授課地點', data.location || ORG_UNITS.kaili.address]);
+    }else{
+      const identityType = clean(data.identityType || '').toLowerCase();
+      const label = clean(data.identityLabel || (identityType==='external'?'外聘老師':(identityType==='parttime'?'工讀生':'專職員工')));
+      rows.push(['姓名', data.name], ['身分證字號', data.idNumber]);
+      if(identityType==='parttime'){
+        rows.push(['身分', label || '工讀生'], ['工作性質', data.workNature || '工讀 / 兼職'], ['目前狀態', data.stillWorking ? '目前仍在職 / 持續工讀' : '已結束']);
+      }else if(identityType==='external'){
+        const period = [rocDate(data.cooperationStart), data.stillWorking ? '迄今' : rocDate(data.cooperationEnd)].filter(Boolean).join(' 至 ');
+        rows.push(['身分', label || '外聘老師']);
+        if(clean(data.cooperationYear)) rows.push(['合作年度', data.cooperationYear]);
+        if(clean(period)) rows.push(['合作期間', period]);
+        if(clean(data.cooperationContent)) rows.push(['授課 / 合作內容', data.cooperationContent]);
+        rows.push(['目前狀態', data.stillWorking ? '合作中' : '合作已結束']);
+      }else{
+        rows.push(['職稱', data.jobTitle], ['工作性質', data.workNature], ['到職日期', rocDate(data.hireDate)], ['任職狀態', data.stillWorking ? '現仍在職' : '已離職']);
+      }
+    }
+    return rows.filter(([k,v])=>clean(v)).map(([k,v])=>`<div class="cert-info-row"><div class="cert-info-key">${esc(k)}</div><div class="cert-info-val">${esc(v)}</div></div>`).join('');
+  }
+
+  function certificateHtml(opts){
+    opts=opts||{};
+    const type=clean(opts.type)==='teaching'?'teaching':'employment';
+    const template=normalizeTemplate(type, opts.template || {});
+    const data=Object.assign({type, unitKey:template.defaultUnitKey}, opts.data || {});
+    data.unitKey = data.unitKey || template.defaultUnitKey;
+    const unit=unitByKey(data.unitKey);
+    const mark = opts.watermark != null ? clean(opts.watermark) : watermarkText(opts.status, opts.mode);
+    const title=clean(template.title || docTitle(type));
+    const intro=clean(template.introText || defaultTemplate(type).introText);
+    let footer=clean(template.footerText || defaultTemplate(type).footerText);
+    if(!footer || OLD_DEFAULT_FOOTERS.indexOf(footer) >= 0) footer = LEGAL_NOTICE;
+    const closing=clean(template.closingText || '特此證明');
+    const approved = isApprovedStatus(opts.status || '');
+    const reviewLine = approved && opts.reviewedAt ? `<div class="cert-review-line">核准時間：${esc(dateTimeText(opts.reviewedAt))}${opts.reviewerName?`　核准人：${esc(opts.reviewerName)}`:''}</div>` : '';
+    return `
+      <section class="cert-doc ${approved?'cert-approved':'cert-preview'}">
+        ${mark ? `<div class="cert-watermark">${esc(mark).replace(/\n/g,'<br>')}</div>` : ''}
+        <div class="cert-title">${esc(title)}</div>
+        <main class="cert-body">
+          <p class="cert-intro">${esc(intro)}</p>
+          <div class="cert-info-list">${fieldRowsHtml(type, data)}</div>
+          <p class="cert-footer-text">${esc(footer)}</p>
+          <p class="cert-closing">${esc(closing)}</p>
+        </main>
+        <footer class="cert-footer">
+          <div class="cert-bottom-info">
+            <div class="cert-brand-bottom">
+              ${template.showBrandLogo !== false ? `<img class="cert-brand-logo-bottom" src="${esc(BRAND.logo)}" alt="柚子樂器 YOU ZI MUSIC">` : `<div class="cert-brand-text">${esc(BRAND.name)}<span>${esc(BRAND.english)}</span></div>`}
+              <div class="cert-brand-caption">對外商號：${esc(BRAND.name)} / ${esc(BRAND.english)}</div>
+            </div>
+            <div class="cert-issue">
+              <div>實際政府認證單位：${esc(unit.name)}</div>
+              <div>${esc(unit.identifierLabel)}：${esc(unit.identifier)}</div>
+              <div>地址：${esc(unit.address)}</div>
+              <div>電話：${esc(unit.phone || '04-25227893')}</div>
+              <div>開立日期：${rocDate(data.issueDate || today())}</div>
+              ${reviewLine}
+            </div>
+          </div>
+          <div class="cert-stamps">
+            <div class="stamp-box"><img src="${esc(unit.stamp)}" alt="${esc(unit.stampLabel)}"><span>${esc(unit.stampLabel)}</span></div>
+            <div class="stamp-box personal"><img src="${esc(unit.personalStamp)}" alt="個人章"><span>個人章</span></div>
+          </div>
+        </footer>
+      </section>`;
+  }
+
+  function injectCertificateStyles(){
+    if(document.getElementById('certificateCommonStyles')) return;
+    const style=document.createElement('style');
+    style.id='certificateCommonStyles';
+    style.textContent=`
+      .cert-doc{width:210mm;min-height:297mm;background:#fff;color:#111827;box-sizing:border-box;padding:20mm 18mm 15mm;position:relative;box-shadow:0 10px 36px rgba(15,23,42,.16);overflow:hidden;font-family:"Noto Sans TC","Microsoft JhengHei",Arial,sans-serif;}
+      .cert-brand-text{text-align:center;font-size:22px;font-weight:900;letter-spacing:3px}.cert-brand-text span{display:block;font-size:12px;letter-spacing:4px;margin-top:5px}
+      .cert-title{text-align:center;font-size:32px;font-weight:950;letter-spacing:8px;margin:0 0 14mm;}
+      .cert-body{font-size:15px;line-height:2;color:#111827}.cert-intro{width:148mm;max-width:148mm;margin:0 auto 7mm;text-indent:2em}.cert-info-list{display:block!important;width:148mm!important;max-width:148mm!important;min-width:0!important;margin:0 auto 7mm!important;border:1px solid #111!important;border-bottom:0!important;box-sizing:border-box!important;position:static!important;left:auto!important;right:auto!important;float:none!important;clear:both!important;transform:none!important}.cert-info-row{display:grid!important;grid-template-columns:34mm minmax(0,1fr)!important;width:100%!important;min-width:0!important;box-sizing:border-box!important;border-bottom:1px solid #111!important;position:static!important;float:none!important;transform:none!important}.cert-info-key,.cert-info-val{box-sizing:border-box!important;min-width:0!important;max-width:none!important;padding:3.2mm 4mm!important;line-height:1.65!important;white-space:normal!important;overflow-wrap:anywhere!important;word-break:break-word!important;position:static!important;float:none!important;transform:none!important}.cert-info-key{display:flex!important;align-items:center!important;justify-content:center!important;text-align:center!important;background:#f8fafc!important;border-right:1px solid #111!important;font-weight:900!important}.cert-info-val{display:flex!important;align-items:center!important;text-align:left!important}.cert-footer-text{width:148mm;max-width:148mm;margin:3mm auto 8mm;text-indent:2em;font-size:12px;line-height:1.8;color:#374151}.cert-closing{font-size:17px;font-weight:900;letter-spacing:2px;margin-top:8mm;text-align:left}.cert-footer{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8mm;align-items:end;width:160mm;max-width:160mm;margin:9mm auto 0;border-top:1px solid #e5e7eb;padding-top:6mm}.cert-bottom-info{display:flex;flex-direction:column;gap:4mm;min-width:0}.cert-brand-bottom{display:flex;align-items:center;gap:5mm;min-width:0}.cert-brand-logo-bottom{width:50mm;max-width:100%;max-height:18mm;object-fit:contain}.cert-brand-caption{font-size:12px;font-weight:900;letter-spacing:1px;color:#111827}.cert-issue{font-size:13px;line-height:1.75;font-weight:700;color:#111827}.cert-review-line{font-size:12px;color:#374151;margin-top:2mm}.cert-stamps{display:flex;justify-content:flex-end;gap:4mm;align-items:flex-end;min-width:62mm}.stamp-box{text-align:center;font-size:12px;color:#64748b;font-weight:800}.stamp-box img{display:block;width:30mm;height:30mm;object-fit:contain;margin:0 auto 2mm}.stamp-box.personal img{width:15mm;height:15mm}.cert-watermark{position:absolute;left:50%;top:47%;transform:translate(-50%,-50%) rotate(-24deg);font-size:34px;line-height:1.5;font-weight:950;color:rgba(185,28,28,.18);border:4px solid rgba(185,28,28,.16);border-radius:12px;padding:8mm 14mm;text-align:center;letter-spacing:4px;z-index:3;pointer-events:none;white-space:nowrap}.cert-preview .cert-body,.cert-preview .cert-footer{position:relative;z-index:1}.cert-scale-wrap{display:flex;justify-content:center;align-items:flex-start;overflow-x:hidden;overflow-y:auto;background:#f8fafc;border:1px solid #e2e8f0;border-radius:20px;padding:16px;min-height:560px;max-width:100%;box-sizing:border-box;text-align:left}.cert-scale-wrap>.cert-doc{display:block;flex:0 0 auto;text-align:left;vertical-align:top;transform-origin:top center!important;margin:0 auto!important;max-width:none!important;}
+      .cert-modal{position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9999;display:none;align-items:flex-start;justify-content:center;padding:22px;overflow:auto}.cert-modal.show{display:flex}.cert-modal-panel{background:#fff;border-radius:24px;padding:16px;max-width:min(100%,980px);box-shadow:0 25px 70px rgba(15,23,42,.32)}.cert-modal-actions{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px}.cert-modal-actions .right{display:flex;gap:8px;flex-wrap:wrap}.cert-modal-actions button{width:auto}.cert-status-pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:5px 10px;font-size:12px;font-weight:900;background:#eef7f2;color:#166534}.cert-status-pill.pending{background:#fff7ed;color:#9a3412}.cert-status-pill.rejected{background:#fef2f2;color:#991b1b}@media(max-width:780px){.cert-scale-wrap{min-height:430px;padding:10px}.cert-modal{padding:10px}.cert-watermark{font-size:22px}}@media print{html,body{margin:0!important;background:#fff!important}body *{visibility:hidden!important}.print-host,.print-host *{visibility:visible!important}.print-host{position:absolute!important;left:0!important;top:0!important;width:210mm!important}.cert-doc{box-shadow:none!important;margin:0!important;transform:none!important;zoom:1!important}@page{size:A4 portrait;margin:0}}
+    `;
+    document.head.appendChild(style);
+  }
+
+
+  function fitCertificatePreviews(){
+    const wraps = Array.from(document.querySelectorAll('.cert-scale-wrap'));
+    wraps.forEach(wrap => {
+      const doc = wrap.querySelector(':scope > .cert-doc') || wrap.querySelector('.cert-doc');
+      if(!doc) return;
+      const style = global.getComputedStyle ? global.getComputedStyle(wrap) : null;
+      const padX = style ? (parseFloat(style.paddingLeft)||0) + (parseFloat(style.paddingRight)||0) : 32;
+      doc.style.zoom = '';
+      doc.style.transform = 'none';
+      doc.style.marginLeft = 'auto';
+      doc.style.marginRight = 'auto';
+      doc.style.marginBottom = '0px';
+      const paperW = doc.offsetWidth || 794;
+      const paperH = doc.offsetHeight || 1123;
+      const available = Math.max(260, (wrap.clientWidth || paperW) - padX - 8);
+      const scale = Math.min(1, Math.max(0.28, available / paperW));
+      doc.style.transform = `scale(${scale})`;
+      doc.style.marginBottom = `${Math.round(paperH * (scale - 1))}px`;
+      wrap.dataset.certScale = String(scale.toFixed(3));
+    });
+  }
+  function scheduleFitCertificatePreviews(){
+    if(global.__yzCertFitTimer) global.clearTimeout(global.__yzCertFitTimer);
+    global.__yzCertFitTimer = global.setTimeout(fitCertificatePreviews, 40);
+  }
+
+
+  function renderPreviewFrame(container, opts){
+    if(!container) return;
+    injectCertificateStyles();
+    const safeOpts = opts || {};
+    const html = certificateHtml(safeOpts);
+    const css = (document.getElementById('certificateCommonStyles') && document.getElementById('certificateCommonStyles').textContent) || '';
+    const available = Math.max(320, (container.clientWidth || 900) - 24);
+    const paperW = 794;
+    const paperH = 1123;
+    const scale = Math.min(1, Math.max(0.36, available / paperW));
+    const frameW = Math.ceil(paperW * scale);
+    const frameH = Math.ceil(paperH * scale);
+    const doc = `<!doctype html><html><head><meta charset="utf-8"><base href="${esc(location.href.replace(/[^\/]*$/,''))}"><style>${css}
+      html,body{margin:0!important;padding:0!important;background:#fff!important;width:${paperW}px!important;height:${paperH}px!important;overflow:hidden!important;}
+      .cert-doc{box-shadow:none!important;margin:0!important;transform:scale(${scale})!important;transform-origin:top left!important;}
+      @media print{.cert-doc{transform:none!important;}}
+    </style></head><body>${html}</body></html>`;
+    container.innerHTML = '';
+    container.style.textAlign = 'center';
+    container.style.overflow = 'auto';
+    const iframe = document.createElement('iframe');
+    iframe.className = 'cert-preview-frame';
+    iframe.setAttribute('title','A4 證明預覽');
+    iframe.style.width = frameW + 'px';
+    iframe.style.height = frameH + 'px';
+    iframe.style.border = '0';
+    iframe.style.display = 'block';
+    iframe.style.margin = '0 auto';
+    iframe.style.background = '#fff';
+    iframe.style.boxShadow = '0 10px 36px rgba(15,23,42,.16)';
+    iframe.srcdoc = doc;
+    container.appendChild(iframe);
+  }
+
+  async function verifyIdPassword(expected){
+    const exp=upperId(expected);
+    if(!exp){ alert('這筆資料沒有身分證字號，無法驗證。'); return false; }
+    const input=prompt('此文件含有個人資料。請輸入本人身分證字號後繼續（英文會自動轉大寫）。');
+    if(input==null) return false;
+    if(upperId(input) !== exp){ alert('身分證字號不符，無法繼續。'); return false; }
+    return true;
+  }
+  function printHtml(html){
+    const base=location.href.replace(/[^\/]*$/,'');
+    const w=window.open('', '_blank');
+    if(!w){ alert('瀏覽器阻擋彈出視窗，請允許彈出視窗後再試。'); return; }
+    w.document.open();
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><base href="${esc(base)}"><title>列印證明</title><style>${document.getElementById('certificateCommonStyles')?.textContent||''}body{margin:0;background:#fff}.print-host{width:210mm;margin:0 auto}</style></head><body><div class="print-host">${html}</div><script>window.onload=function(){setTimeout(function(){window.print();},350)}<\/script></body></html>`);
+    w.document.close();
+  }
+  async function downloadEncryptedPdfFromElement(el, fileName, password){
+    if(!el) throw new Error('找不到預覽內容。');
+    const pass=upperId(password);
+    if(!pass) throw new Error('缺少 PDF 密碼。');
+    if(!global.html2canvas || !global.jspdf || !global.jspdf.jsPDF){
+      throw new Error('PDF 元件尚未載入，請確認網路後重整頁面。');
+    }
+    const oldZoom = el.style.zoom;
+    const oldTransform = el.style.transform;
+    const oldMarginBottom = el.style.marginBottom;
+    el.style.zoom = '';
+    el.style.transform = 'none';
+    el.style.marginBottom = '0px';
+    try{
+      const canvas = await global.html2canvas(el, {scale:2, useCORS:true, backgroundColor:'#ffffff'});
+      const imgData = canvas.toDataURL('image/jpeg', 0.95);
+      const pdf = new global.jspdf.jsPDF({orientation:'portrait', unit:'mm', format:'a4', encryption:{userPassword:pass, ownerPassword:pass, userPermissions:['print']}});
+      pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
+      pdf.save(fileName || 'certificate.pdf');
+    } finally {
+      el.style.zoom = oldZoom || '';
+      el.style.transform = oldTransform || '';
+      el.style.marginBottom = oldMarginBottom || '';
+      scheduleFitCertificatePreviews();
+    }
+  }
+  function statusPill(status){ const s=statusLabel(status); const cls=s==='已核准'?'':(s==='已退回'?' rejected':' pending'); return `<span class="cert-status-pill${cls}">${esc(s)}</span>`; }
+
+  if(!global.__yzCertResizeBound){
+    global.__yzCertResizeBound = true;
+    global.addEventListener && global.addEventListener('resize', scheduleFitCertificatePreviews);
+  }
+
+  global.YZ_CERT = {ORG_UNITS, BRAND, LEGAL_NOTICE, TEACHER_IDENTITY_OPTIONS, LESSON_TYPE_OPTIONS, EMPLOYMENT_WORK_NATURE_OPTIONS, clean, esc, upperId, today, dateOnly, dateTimeText, rocDate, unitByKey, typeLabel, docTitle, statusLabel, isApprovedStatus, watermarkText, defaultTemplate, normalizeTemplate, normalizeApplication, applicationToDocumentData, certificateHtml, injectCertificateStyles, verifyIdPassword, printHtml, downloadEncryptedPdfFromElement, fitCertificatePreviews, scheduleFitCertificatePreviews, renderPreviewFrame, statusPill, userIdOf, identityTypeOfUser, identityLabelOfUser};
+})(window);

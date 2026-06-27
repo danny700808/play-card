@@ -1,243 +1,279 @@
-(function(global){
-  'use strict';
-  const Rental = {};
-  function clean(v){ return String(v == null ? '' : v).trim(); }
-  function num(v){ const n=Number(String(v==null?'':v).replace(/[^0-9.-]/g,'')); return Number.isFinite(n)?n:0; }
-  function pad(n){ return String(n).padStart(2,'0'); }
-  function ymd(d){ if(!(d instanceof Date)) d=new Date(d); if(isNaN(d.getTime())) return ''; return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
-  function rocDate(dateText){ const d=new Date(clean(dateText)+'T00:00:00'); if(isNaN(d.getTime())) return clean(dateText)||'　年　月　日'; return `民國 ${d.getFullYear()-1911} 年 ${d.getMonth()+1} 月 ${d.getDate()} 日`; }
-  function addDays(dateText, days){ const d=new Date(clean(dateText)+'T00:00:00'); if(isNaN(d.getTime())) return ''; d.setDate(d.getDate()+Number(days||0)); return ymd(d); }
-  function fmtMoney(v){ const n=num(v); return n ? n.toLocaleString('zh-TW')+' 元' : '0 元'; }
-  function normalizeDeliveryMethod(value) {
-    const raw = clean(value);
-    if (/自取|自運|自行|自己/.test(raw)) return '自取自運';
-    if (/到府|安裝|配送|運送|宅配|送達/.test(raw)) return '到府安裝';
-    return raw || '到府安裝';
-  }
-  function esc(s){ return clean(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-  function qs(id){ return document.getElementById(id); }
-  function val(id){ const el=qs(id); return el ? clean(el.value) : ''; }
-  function checked(id){ const el=qs(id); return !!(el && el.checked); }
-  function setVal(id,v){ const el=qs(id); if(el) el.value = v == null ? '' : v; }
-  function show(el, display='block'){ if(typeof el==='string') el=qs(el); if(el) el.style.display=display; }
-  function hide(el){ if(typeof el==='string') el=qs(el); if(el) el.style.display='none'; }
-  function toast(msg, ok=true){ const el=qs('msg') || qs('statusMsg'); if(el){ el.textContent=msg; el.className=ok?'msg ok':'msg bad'; } else alert(msg); }
-  function user(){ try{return JSON.parse(localStorage.getItem('employeeUser')||'null')||{};}catch(e){return{};} }
-  function isManager(u=user()){ const role=clean(u.role).toLowerCase(); return !!(u && (u.showSettingsZone || role==='admin' || role==='manager' || role==='主管')); }
-  function requireManager(){ const u=user(); if(!u || !clean(u.id||u.employeeId||u.email)){ location.href='index.html'; return null; } if(!isManager(u)){ location.href='dashboard.html'; return null; } return u; }
-  function firebaseApp(){
-    const cfg=(global.APP_CONFIG&&global.APP_CONFIG.FIREBASE_CONFIG)||null;
-    if(!cfg || !global.firebase) throw new Error('Firebase 尚未啟用');
-    return global.firebase.apps && global.firebase.apps.length ? global.firebase.app() : global.firebase.initializeApp(cfg);
-  }
-  function db(){ firebaseApp(); return global.firebase.firestore(); }
-  function projectId(){ const cfg=(global.APP_CONFIG&&global.APP_CONFIG.FIREBASE_CONFIG)||{}; return clean(cfg.projectId || 'youzi-c1b74'); }
-  function functionUrl(name){ return 'https://us-central1-'+projectId()+'.cloudfunctions.net/'+name; }
-  async function call(name, payload){
-    const res=await fetch(functionUrl(name), {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload||{})});
-    const text=await res.text(); let json={};
-    try{ json=text?JSON.parse(text):{}; }catch(e){ json={ok:false,message:text||'回傳不是 JSON'}; }
-    if(!res.ok || json.ok===false) throw new Error(json.message || json.error || ('API '+name+' '+res.status));
-    return json;
-  }
-  async function all(collection, limit){ const snap=await db().collection(collection).limit(limit||500).get(); const rows=[]; snap.forEach(doc=>rows.push(Object.assign({__id:doc.id}, doc.data()||{}))); return rows; }
-  async function get(collection,id){ if(!id) return null; const doc=await db().collection(collection).doc(clean(id)).get(); return doc.exists?Object.assign({__id:doc.id},doc.data()||{}):null; }
-  async function set(collection,id,data,merge=true){ await db().collection(collection).doc(clean(id)).set(data||{}, {merge}); }
-  function nowText(){ const d=new Date(); return ymd(d)+' '+pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds()); }
-  function contractStatus(row){ return clean(row.status || row.contractStatus || '草稿'); }
-  function applicationStatus(row){ return clean(row.status || '新申請'); }
-  function rentalTypeLabel(t){ t=clean(t); if(t==='digitalPiano') return '電鋼琴'; if(t==='electronicDrum') return '電子鼓'; if(t==='other') return '其他設備'; return t||'未選擇'; }
-  function defaultIncludedItems(type){
-    if(type==='digitalPiano') return '電鋼琴主機\n譜架\n原廠腳架\n電鋼琴電源線\n電鋼琴椅子';
-    if(type==='electronicDrum') return '大鼓感應 X1\n小鼓 X1\nHIHAT X1\nHIHAT 腳踏 X1\nTOM1 X1\nTOM2 X1\n落地鼓 X1\n鈸片 1 X1\n鈸片 2 X1\n操作主機 X1\n電子鼓支架 X1\n連接線 X1\n鼓鎖 X1\n音箱 X1\n音箱導線 X1';
-    return '';
-  }
-  function parseEquipmentItems(contract){
-    contract=contract||{};
-    if(Array.isArray(contract.equipmentItems) && contract.equipmentItems.length){
-      return contract.equipmentItems.map(x=>({name:clean(x.name||x.equipmentName||x.title), note:clean(x.note||x.remark||x.memo)})).filter(x=>x.name||x.note);
-    }
-    const lines=clean(contract.includedItems).split(/\n|、|,|，/).map(clean).filter(Boolean);
-    if(lines.length) return lines.map(x=>{ const parts=x.split(/\s\/\s/); return {name:clean(parts[0]), note:clean(parts.slice(1).join(' / '))}; });
-    const t=clean(contract.rentalType||contract.type);
-    const defaults=defaultIncludedItems(t).split(/\n/).map(clean).filter(Boolean);
-    if(defaults.length) return defaults.map(x=>({name:x,note:''}));
-    const n=clean(contract.equipmentName||contract.modelName||contract.itemName);
-    return n?[{name:n,note:clean(contract.serialNo||contract.machineCode)}]:[];
-  }
-  function defaultTitle(type){ if(type==='digitalPiano') return '電鋼琴設備租賃契約書'; if(type==='electronicDrum') return '電子鼓器材設備租賃契約書'; return '設備租賃契約書'; }
-  function calcEndDate(startDate, periods, type, days){ if(clean(type)==='other') return ''; return addDays(startDate, Math.max(1, Number(days || (Math.max(1, Number(periods||1))*90)))-1); }
-  function signUrl(contract){
-    const id=clean(contract.contractId||contract.__id); const token=clean(contract.signToken||contract.token);
-    const base=location.origin+location.pathname.replace(/[^\/]*$/,'');
-    return base+'rental-sign.html?contractId='+encodeURIComponent(id)+'&token='+encodeURIComponent(token);
-  }
-  function myContractUrl(contract){
-    const id=clean(contract.contractId||contract.__id); const token=clean(contract.customerToken||contract.signToken||contract.token);
-    const base=location.origin+location.pathname.replace(/[^\/]*$/,'');
-    return base+'rental-my-contract.html?contractId='+encodeURIComponent(id)+'&token='+encodeURIComponent(token);
-  }
-  function officialContractUrl(contract){
-    const id=clean(contract.contractId||contract.__id); const token=clean(contract.officialContractToken||contract.customerToken||contract.signToken||contract.token);
-    const base=location.origin+location.pathname.replace(/[^\/]*$/,'');
-    return base+'rental-contract.html?contractId='+encodeURIComponent(id)+'&token='+encodeURIComponent(token);
-  }
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>註冊審核暨入職建檔</title>
+  <link rel="stylesheet" href="style.css?v=onboarding-20260624">
+  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
+  <link rel="stylesheet" href="approval-common.css?v=20260626approval1">
+  <style>
+    .onboarding-grid{display:grid;grid-template-columns:minmax(270px,350px) minmax(0,1fr);gap:14px;align-items:start}
+    .application-list{display:grid;gap:10px;max-height:calc(100vh - 230px);overflow:auto;padding-right:2px}
+    .application-card{border:1px solid var(--line);border-radius:16px;padding:12px;background:#fff;cursor:pointer;text-align:left;width:100%;color:inherit}
+    .application-card.active{border-color:#1f7a5a;box-shadow:0 0 0 3px rgba(31,122,90,.12);background:#f5fbf8}
+    .application-card strong{display:block;font-size:17px;margin-bottom:5px}
+    .application-meta{font-size:13px;color:var(--muted);line-height:1.65}
+    .status-tag{display:inline-flex;padding:5px 9px;border-radius:999px;font-size:12px;font-weight:900;background:#fff2d9;color:#8a5200;margin-top:7px}
+    .status-tag.draft{background:#eef4ff;color:#175cd3}.status-tag.resubmit{background:#fff0f0;color:#b42318}
+    .editor-empty{padding:28px 16px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:16px}
+    .editor{display:none}
+    .section-box{border:1px solid #dbe5df;border-radius:18px;padding:14px;background:#fbfefc;margin-top:12px}
+    .section-box h2{font-size:19px;margin:0 0 12px;color:#164f3d}
+    .section-note{font-size:13px;line-height:1.7;color:var(--muted);margin-top:-5px;margin-bottom:12px}
+    .info-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+    .info-cell{border:1px solid #dfe7e2;border-radius:13px;padding:10px;background:#fff;min-width:0}
+    .info-cell span{display:block;font-size:12px;color:var(--muted);font-weight:800;margin-bottom:4px}
+    .info-cell strong{display:block;word-break:break-word;line-height:1.5}
+    .identity-layout{display:grid;grid-template-columns:minmax(230px,390px) minmax(0,1fr);gap:14px;align-items:start}
+    .identity-image{border:1px solid var(--line);border-radius:15px;overflow:hidden;background:#eef3f0;min-height:180px;display:flex;align-items:center;justify-content:center}
+    .identity-image img{display:block;width:100%;max-height:390px;object-fit:contain}
+    .identity-missing{padding:25px;text-align:center;color:#b42318;font-weight:900;line-height:1.7}
+    .purpose-note{border-left:5px solid #1f7a5a;background:#edf9f3;border-radius:12px;padding:11px 12px;color:#285d4a;font-size:13px;line-height:1.7;font-weight:750;margin-bottom:10px}
+    .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+    .form-grid .full{grid-column:1/-1}
+    .salary-lines{border:1px solid #dfe7e2;border-radius:14px;padding:11px;background:#fff}
+    .salary-line-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
+    .salary-line-head strong{font-size:15px;color:#24384a}
+    .salary-line-list{display:grid;gap:8px}
+    .salary-line{display:grid;grid-template-columns:minmax(0,1fr) minmax(120px,180px) auto;gap:8px;align-items:center}
+    .salary-line input{min-width:0}
+    .mini-btn{border:0;border-radius:11px;padding:9px 11px;font-weight:900;background:#eef2f6;color:#304052;cursor:pointer}
+    .mini-btn.remove{background:#fff0ee;color:#b42318}
+    .hidden{display:none!important}
+    .checklist{display:grid;gap:8px}
+    .check-item{border-radius:12px;padding:9px 11px;font-weight:800;font-size:14px;background:#fff1f1;color:#b42318;border:1px solid #f3caca}
+    .check-item.ok{background:#ecf8f1;color:#18794e;border-color:#c9ead8}
+    .sticky-actions{position:sticky;bottom:8px;z-index:4;margin-top:14px;padding:10px;border-radius:16px;background:rgba(255,255,255,.96);border:1px solid var(--line);box-shadow:0 10px 30px rgba(20,45,35,.12);display:flex;gap:8px;flex-wrap:wrap}
+    .sticky-actions .btn{width:auto}
+    .btn.danger{background:#b42318}.btn.warn{background:#9a6700}
+    .approval-result{display:none;border:2px solid #1f7a5a;background:#f0faf5;border-radius:16px;padding:14px;margin-bottom:12px}
+    .approval-result h2{margin:0 0 8px;font-size:21px;color:#145c43}
+    .credential-box{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;background:#fff;border:1px solid #cfe3d8;border-radius:12px;padding:10px;margin-top:9px}
+    .credential-box code{font-size:18px;font-weight:900;word-break:break-all}
+    @media(max-width:980px){.onboarding-grid{grid-template-columns:1fr}.application-list{max-height:none}.identity-layout{grid-template-columns:1fr}}
+    @media(max-width:620px){.info-grid,.form-grid{grid-template-columns:1fr}.form-grid .full{grid-column:auto}.salary-line{grid-template-columns:1fr}.sticky-actions{display:grid}.sticky-actions .btn{width:100%}}
+  </style>
+</head>
+<body onload="init()" class="admin-wide-page">
+  <div class="yz-global-nav" data-yz-global-nav>
+    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
+    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
+  </div>
 
-  function notificationPreference(value, hasEmail){
-    const v=clean(value).toLowerCase();
-    if(['email','email_only','mail','email-only','只用email','只用 email','只用信箱','信箱'].includes(v)) return 'email';
-    if(['line','line_only','line-only','只用line','只用 line'].includes(v)) return 'line';
-    if(['both','line_email','line+email','line + email','all','雙軌','line 與 email','line和email'].includes(v)) return 'both';
-    return hasEmail ? 'both' : 'line';
-  }
-  function notificationPreferenceLabel(value, hasEmail){
-    const p=notificationPreference(value, hasEmail);
-    if(p==='email') return '只用 Email';
-    if(p==='line') return '只用 LINE';
-    return 'LINE + Email';
-  }
-  function wantsLine(value, hasEmail){ const p=notificationPreference(value, hasEmail); return p==='line'||p==='both'; }
-  function wantsEmail(value, hasEmail){ const p=notificationPreference(value, hasEmail); return p==='email'||p==='both'; }
-  function emailVerified(row){ row=row||{}; return row.emailVerified===true || clean(row.emailLinkStatus).toLowerCase()==='verified' || clean(row.emailVerifiedAtText); }
-
-
-  function isOfficialContract(contract) {
-    const status = clean(contract && contract.status);
-    return !!(contract && (contract.officialConfirmedAt || contract.officialContractUrl || status === '租賃中' || status === '待歸還' || status === '已退租'));
-  }
-
-  function deliveryLabelPair(contract) {
-    const method = normalizeDeliveryMethod((contract && (contract.deliveryMethod || contract.shippingMethod || contract.deliveryType || contract.delivery || contract.preferredDeliveryMethod)) || '');
-    if (method === '自取自運') {
-      return {
-        method,
-        dateLabel: '自取時間',
-        actionLabel: '自取'
-      };
-    }
-    return {
-      method: '到府安裝',
-      dateLabel: '安裝時間',
-      actionLabel: '安裝'
-    };
-  }
-
-  function renderContractHtml(contract, opts){
-    contract=contract||{}; opts=opts||{};
-    const type=clean(contract.rentalType||contract.type);
-    const isOtherRental=type==='other';
-    const title=clean(contract.contractTitle)||defaultTitle(type);
-    const partyAName=clean(contract.customerName||contract.partyAName||contract.companyName);
-    const identity=clean(contract.customerIdNumber||contract.customerTaxId||contract.taxId);
-    const customerAddress=clean(contract.customerAddress||contract.address);
-    const customerPhone=clean(contract.customerPhone||contract.phone);
-    const items=parseEquipmentItems(contract);
-    const equipment=clean(contract.equipmentName||contract.modelName||contract.itemName||items[0]?.name);
-    const serial=clean(contract.serialNo||contract.machineCode||items[0]?.note);
-    const periods=Math.max(1, Math.min(10, Number(contract.periods||contract.rentalPeriods||1)));
-    const periodDays=Math.max(1, Number(contract.periodDays||90));
-    const start=clean(contract.startDate);
-    const explicitRentDays=Number(contract.rentDays||contract.totalDays||0);
-    const end=clean(contract.endDate)||(isOtherRental?'':calcEndDate(start, periods, type, Number(contract.rentDays||periods*periodDays)));
-    const rent=fmtMoney(contract.rentFee||contract.rentalFee);
-    const ship=fmtMoney(contract.shippingFee);
-    const deposit=fmtMoney(contract.depositFee);
-    const deliveryText=clean(contract.deliveryDate||contract.confirmedDeliveryDate||contract.deliveryDateTime||'').slice(0,10);
-    const deliveryMethod=normalizeDeliveryMethod(contract.shippingMethod||contract.deliveryMethod);
-    const deliveryInfo = deliveryLabelPair(contract);
-    const isSelfPickup=deliveryInfo.method==='自取自運';
-    const status=clean(contract.status||contract.contractStatus);
-    const hasFormalData=!!(contract.customerSubmittedFormalAt || contract.customerSignatureDataUrl || contract.signatureDataUrl || contract.customerIdImageWatermarkedDataUrl || contract.idImageWatermarkedDataUrl || contract.customerIdImageDataUrl || contract.idImageDataUrl);
-    const isOfficial=!!(opts.officialView || contract._officialPreview || hasFormalData || contract.officialPdfUrl || contract.officialConfirmedAt || contract.officialStartDate || ['租賃中','已退租','待歸還','續約詢問中','續約待付款','續約待確認'].includes(status));
-    const deliveryLabel = deliveryInfo.dateLabel;
-    const preliminaryNote='';
-    const dateText=clean(contract.contractDate)||ymd(new Date());
-    const sig=clean(contract.customerSignatureUrl || contract.signatureUrl || contract.customerSignatureDataUrl || contract.signatureDataUrl || contract.signDataUrl);
-    const idImage=clean(contract.customerIdImageUrl||contract.idImageUrl||contract.idCardImageUrl||contract.customerIdImageWatermarkedDataUrl||contract.idImageWatermarkedDataUrl||contract.customerIdImageDataUrl||contract.idImageDataUrl||contract.idCardImageDataUrl);
-    const otherDateRange = start && end ? `${start} 至 ${end}` : (start ? `${start} 起` : (end ? `至 ${end}` : ''));
-    const otherPeriodDisplay = otherDateRange ? `${otherDateRange}（依雙方確認之租用期間為準）` : '依雙方確認之租用期間為準';
-    const typeLine = type==='other'
-      ? `租賃設備：${esc(equipment || '__________')}。租用期間：${esc(otherPeriodDisplay)}。`
-      : `租賃${esc(rentalTypeLabel(type))}：${esc(equipment || '__________')}${serial?'　編號：'+esc(serial):''}`;
-    const itemHtml = items.length ? `<ol class="equipment-list-contract">${items.map(x=>`<li>${esc(x.name)}${x.note?`<span class="eq-note-contract">（${esc(x.note)}）</span>`:''}</li>`).join('')}</ol>` : '依雙方確認設備清單';
-    function periodRows(){
-      const rows=[];
-      const periodEntries=Array.isArray(contract.periodEntries)?contract.periodEntries:[];
-      const renewalEntries=Array.isArray(contract.renewalEntries)?contract.renewalEntries:[];
-      if(isOtherRental){
-        const dateDays = (start && end) ? String(Math.max(1, Math.round((new Date(end+'T00:00:00')-new Date(start+'T00:00:00'))/86400000)+1))+' 天' : '';
-        const explicitDaysText = explicitRentDays ? explicitRentDays+' 天' : '';
-        rows.push({ method:clean(contract.rentalMethod||'其他設備租用'), start:start, end:end, days:explicitDaysText || dateDays, note:(start||end)?'依雙方確認期間':'依雙方確認之租用期間為準' });
-      }else if(start){
-        const totalDays=Number(contract.rentDays || contract.totalDays || (periods*periodDays));
-        rows.push({ method:clean(contract.rentalMethod||'實體租用'), start:start, end:end, days:(totalDays ? totalDays+' 天' : ''), note:periods>1 ? `初次租用 ${periods} 期（${totalDays} 天）` : '初次租用' });
-      }
-      if(periodEntries.length){
-        periodEntries.forEach(p=>{
-          const ps=clean(p.startDate); const pe=clean(p.endDate);
-          if(ps===start && pe===end) return;
-          const pd=clean(p.days || p.rentDays || (ps && pe ? String(Math.max(1, Math.round((new Date(pe+'T00:00:00')-new Date(ps+'T00:00:00'))/86400000)+1))+' 天' : ''));
-          rows.push({method:clean(p.method||p.rentalMethod||'線上續租'), start:ps, end:pe, days:pd, note:clean(p.note||p.remark)});
-        });
-      }
-      renewalEntries.forEach((p,i)=>{
-        const ps=clean(p.startDate); const pe=clean(p.endDate);
-        const pd=clean(p.days || p.rentDays || (ps && pe ? String(Math.max(1, Math.round((new Date(pe+'T00:00:00')-new Date(ps+'T00:00:00'))/86400000)+1))+' 天' : ''));
-        const fee=p.rentFee?`續約租金 ${fmtMoney(p.rentFee)}`:'';
-        const memo=clean(p.note||p.remark);
-        rows.push({method:clean(p.method||`第 ${p.renewalNo||i+1} 次續約`), start:ps, end:pe, days:pd, note:[fee,memo].filter(Boolean).join('；')});
-      });
-      const pending=contract.pendingRenewal||{};
-      if(pending && pending.startDate && pending.endDate){
-        const ps=clean(pending.startDate); const pe=clean(pending.endDate);
-        const pd=clean(pending.days || pending.rentDays || (ps && pe ? String(Math.max(1, Math.round((new Date(pe+'T00:00:00')-new Date(ps+'T00:00:00'))/86400000)+1))+' 天' : ''));
-        const fee=pending.rentFee?`續約金額 ${fmtMoney(pending.rentFee)}`:'';
-        const memo=clean(pending.adminNote||pending.note||pending.remark);
-        rows.push({method:`續約申請待確認${pending.periods?`（${clean(pending.periods)} 期）`:''}`, start:ps, end:pe, days:pd, note:[fee,'待店家確認',memo].filter(Boolean).join('；')});
-      }
-      while(rows.length<12) rows.push({method:'',start:'',end:'',days:'',note:''});
-      return rows.slice(0,16).map(r=>`<tr><td>${esc(r.method)}</td><td>${esc(r.start)}</td><td>${esc(r.end)}</td><td>${esc(r.days)}</td><td>${esc(r.note)}</td></tr>`).join('');
-    }
-    const sealHtml = `<div class="official-stamps-rental"><img class="seal-company-rental" src="company_seal_contract_transparent.png" onerror="this.style.display='none'"><img class="seal-owner-rental" src="red_stamp_transparent.png" onerror="this.style.display='none'"></div>`;
-    const idCardBlock = `<div class="id-card-block"><div class="id-card-title">甲方身分證資料備查</div><div class="id-card-meta">身分證字號 / 統編：${esc(identity || '客人正式填寫後顯示')}</div><div class="id-card-body">${idImage?`<img class="id-card-img" src="${esc(idImage)}" alt="身分證證明圖片">`:`<div class="id-placeholder">客人正式填寫連結上傳身分證證明後，此處會顯示加浮水印後的圖片。</div>`}</div></div>`;
-    return `
-      <style>
-        .rental-contract-sheet{page-break-after:always;break-after:page;position:relative;overflow:hidden;background:#fff;color:#111827;width:210mm;height:297mm;min-height:297mm;margin:0 auto 10mm;padding:9mm 11mm;box-sizing:border-box;border:1px solid #d1d5db;box-shadow:0 8px 20px rgba(0,0,0,.05);font-size:12.2px;line-height:1.48}.rental-contract-sheet h1{text-align:center;font-size:21px;margin:0 0 4mm;letter-spacing:2px}.party-line{font-weight:800;margin-bottom:1.3mm;position:relative}.intro{margin:2mm 0}.clauses{padding-left:18px;margin:0}.clauses li{margin-bottom:1.15mm}.equipment-list-contract{margin:1mm 0 0 0;padding-left:18px}.equipment-list-contract li{margin:.4mm 0}.eq-note-contract{color:#475569}.sign-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:8px;margin-top:3mm}.sign-card{border:1px solid #94a3b8;border-radius:12px;padding:8px;min-height:40mm;position:relative}.sign-card.party-a{min-height:43mm}.party-a-line{display:block;margin:1.4mm 0}.wide-line{display:block;margin-top:1.2mm;min-height:7mm}.sig-box{margin-top:2mm;min-height:14mm;display:flex;align-items:center;gap:8px;flex-wrap:wrap}.sig-label{font-weight:900;white-space:nowrap}.sig-img{max-width:105px;max-height:52px;object-fit:contain}.official-stamps-rental{position:relative;height:24mm;margin-top:1mm}.seal-company-rental{position:absolute;left:0;top:0;width:27mm;height:22mm;object-fit:contain}.seal-owner-rental{position:absolute;left:30mm;top:7mm;width:14mm;height:14mm;object-fit:contain}.contract-date{text-align:center;margin-top:3mm;font-weight:800}.rental-page-no{position:absolute;right:11mm;bottom:6mm;font-size:10.5px;color:#64748b}.rental-contract-sheet.period-sheet h1{text-align:center}.period-table{width:100%;border-collapse:collapse;margin-top:3mm;font-size:12px}.period-table th,.period-table td{border:1px solid #333;padding:3px;text-align:center;height:7mm}.period-table th{background:#f3f4f6}.period-bottom{position:absolute;left:11mm;right:11mm;bottom:11mm;display:grid;grid-template-columns:1.15fr .85fr;gap:8mm;align-items:end}.id-card-block{border:1px solid #94a3b8;border-radius:12px;padding:7px;min-height:42mm}.id-card-title{font-weight:950;margin-bottom:1.6mm}.id-card-meta{font-size:11.5px;margin-bottom:1.6mm}.id-card-body{height:29mm;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:8px}.id-card-img{max-width:100%;max-height:29mm;object-fit:contain;filter:grayscale(100%)}.id-placeholder{font-size:11.5px;color:#64748b;text-align:center;padding:3mm}.period-stamp-block{border:1px solid #94a3b8;border-radius:12px;padding:7px;min-height:42mm}.period-stamp-title{font-weight:950;margin-bottom:1.6mm}
-        @media(max-width:840px){.rental-contract-sheet{width:210mm!important;height:297mm!important;min-height:297mm!important;padding:9mm 11mm!important}.sign-grid{display:grid!important;grid-template-columns:1.1fr .9fr!important}.period-bottom{position:absolute!important;left:11mm!important;right:11mm!important;bottom:11mm!important;display:grid!important;grid-template-columns:1.15fr .85fr!important}.rental-page-no{position:absolute!important;right:11mm!important;bottom:6mm!important;text-align:left!important;margin-top:0!important}}
-        @media print{.rental-contract-sheet{width:210mm!important;height:297mm!important;min-height:297mm!important;border:none!important;box-shadow:none!important;margin:0!important;page-break-after:always!important;break-after:page!important}.period-bottom{position:absolute!important;left:12mm!important;right:12mm!important;bottom:12mm!important;grid-template-columns:1.15fr .85fr!important}@page{size:A4;margin:0}}
-      </style>
-      <div class="rental-contract-sheet">
-        <h1>${esc(title)}</h1>
-        <div class="party-line">立契約書人：${esc(partyAName || '__________')}（以下簡稱甲方）</div>
-        <div class="party-line">立契約書人：尚品樂器行（以下簡稱乙方）</div>
-        <p class="intro">甲方向乙方租賃設備，雙方同意簽訂本契約，條款如下：</p>
-        <ol class="clauses">
-          <li>${typeLine}</li>
-          <li>租金：${esc(rent)}。押金：${esc(deposit)}。運費：${esc(ship)}。交付方式：${esc(deliveryInfo.method)}。${esc(deliveryInfo.dateLabel)}：${esc(deliveryText || '依店家最後確認')}。${preliminaryNote?`<br><b>${esc(preliminaryNote)}</b>`:''}</li>
-          <li>乙方提供設備包括：${itemHtml}</li>
-          <li>退租需提早告知；未告知超過 3 天，視同原簽約方案續約。</li>
-          <li>租約使用開始後，若提早退租，全數不退款。</li>
-          <li>運費為一次性收費；續約租用不再次收費，特殊地區或特殊搬運另依雙方確認。</li>
-          <li>因設備老舊或電腦相關線材磨損造成損壞，由乙方吸收；但因人為破壞須賠償，破壞判斷依原廠認定。</li>
-          <li>續租方式：線上續租、轉帳付款，請保留相關截圖。</li>
-          <li>如雙方發生有關事項之爭議或訴訟，雙方以臺中地方法院為第一審管轄法院。</li>
-          <li>本契約壹式貳份，雙方各執乙份為憑；線上簽署及紙本留存具同等效力。</li>
-        </ol>
-        <div class="sign-grid">
-          <div class="sign-card party-a"><b>甲方</b><br><span class="party-a-line">姓名 / 公司：${esc(partyAName)}</span><span class="party-a-line">身分證字號 / 統編：${esc(identity)}</span><span class="wide-line">地址：${esc(customerAddress)}</span><span class="party-a-line">電話：${esc(customerPhone)}</span><div class="sig-box"><span class="sig-label">甲方簽名：</span>${sig?`<img src="${esc(sig)}" class="sig-img" alt="甲方簽名">`:'<span class="sig-empty">尚未簽名</span>'}</div></div>
-          <div class="sign-card"><b>乙方</b><br>公司名稱：尚品樂器行<br>負責人：黃銘廷<br>地址：台中市豐原區圓環東路 347 號 4 樓<br>電話：04-2522-7893<br>統一編號：99680937<br>${sealHtml}</div>
+  <div class="container">
+    <div class="card">
+      <div class="topbar">
+        <div>
+          <h1 class="title" style="margin:0">簽核｜註冊</h1>
         </div>
-        <div class="contract-date">中華民國 ${esc(dateText)}</div><div class="rental-page-no">第 1 頁 / 共 2 頁</div>
       </div>
-      <div class="rental-contract-sheet period-sheet">
-        <h1>租賃期間明細表</h1>
-        <div class="party-line">契約名稱：${esc(title)}</div>
-        <div class="party-line">租賃設備：${esc(equipment || '__________')}</div>
-        <table class="period-table"><thead><tr><th style="width:26%">租用方式</th><th>起租日</th><th>到期日</th><th style="width:72px">天數</th><th>備註</th></tr></thead><tbody>${periodRows()}</tbody></table>
-        <div class="period-bottom"><div>${idCardBlock}</div><div class="period-stamp-block"><div class="period-stamp-title">乙方簽章</div>${sealHtml}</div></div>
-        <div class="contract-date">中華民國 ${esc(dateText)}</div><div class="rental-page-no">第 2 頁 / 共 2 頁</div>
-      </div>`;
-  }
-  Object.assign(Rental,{clean,num,ymd,rocDate,addDays,fmtMoney,normalizeDeliveryMethod,esc,qs,val,checked,setVal,show,hide,toast,user,isManager,requireManager,db,call,all,get,set,nowText,contractStatus,applicationStatus,rentalTypeLabel,defaultIncludedItems,parseEquipmentItems,defaultTitle,calcEndDate,signUrl,myContractUrl,officialContractUrl,renderContractHtml,deliveryLabelPair,functionUrl,notificationPreference,notificationPreferenceLabel,wantsLine,wantsEmail,emailVerified});
-  global.YZRental = Rental;
-})(window);
+      <div id="pageMsg" class="message" style="margin-top:12px"></div>
+    </div>
+
+    <div id="approvalResult" class="approval-result"></div>
+
+    <div class="onboarding-grid">
+      <div class="card" id="registrationListCard">
+        <div class="approval-toolbar">
+          <label for="keyword">搜尋<input id="keyword" placeholder="姓名 / Email / 證件號碼"></label>
+          <button class="btn secondary" type="button" id="refreshBtn" style="width:auto;padding:11px 16px">重新整理</button>
+        </div>
+        <div class="approval-tabs">
+          <button class="approval-tab active" type="button" id="pendingTab">未處理（0）</button>
+          <button class="approval-tab" type="button" id="historyTab">歷史紀錄</button>
+        </div>
+        <div id="countText" class="muted" style="margin-top:10px">讀取中…</div>
+        <div id="list" class="application-list approval-list"></div>
+      </div>
+
+      <div class="card">
+        <div id="editorEmpty" class="editor-empty">未選擇申請</div>
+        <div id="editor" class="editor">
+          <div class="topbar">
+            <div><h2 class="title" id="selectedName" style="font-size:23px;margin:0">-</h2><div class="muted" id="selectedStatus"></div></div>
+          </div>
+
+          <section class="section-box">
+            <h2>一、申請基本資料</h2>
+            <div class="info-grid" id="basicInfo"></div>
+          </section>
+
+          <section class="section-box">
+            <h2>二、身分證明文件核對</h2>
+            <div class="purpose-note">證件影像僅供柚子樂器辦理人員身分核對、人事建檔、契約及投保相關作業使用。主管應確認姓名、證件號碼及生日與申請資料一致。</div>
+            <div class="identity-layout">
+              <div class="identity-image" id="identityImageBox"></div>
+              <div>
+                <div class="field"><label for="identityVerificationStatus">核對結果</label><select id="identityVerificationStatus"><option value="">請選擇</option><option value="verified">資料相符</option><option value="needs_resubmission">影像或資料不清楚，需補件</option></select></div>
+                <div class="field"><label for="identityVerificationNote">核對備註</label><textarea id="identityVerificationNote" placeholder="例如：姓名、證件號碼與生日皆相符"></textarea></div>
+                <button class="btn secondary" type="button" id="openIdentityBtn">另開證件圖片</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="section-box">
+            <h2>三、主管認定身分</h2>
+            <div class="form-grid">
+              <div class="field"><label for="identityType">人員類型</label><select id="identityType"><option value="">請選擇</option><option value="staff">專職員工</option><option value="parttime">工讀生</option><option value="external">外聘老師</option></select></div>
+              <div class="field"><label for="startDate" id="startDateLabel">到職日／合作起始日</label><input id="startDate" type="date"></div>
+            </div>
+          </section>
+
+          <section class="section-box" id="salarySection">
+            <h2>四、薪資與投保初始設定</h2>
+            <div class="section-note">這裡是第一次設定；核准後仍可在「薪資與投保設定」調整同一份資料。</div>
+            <div class="form-grid">
+              <div class="field" id="baseSalaryField"><label for="baseSalary">本薪</label><input id="baseSalary" type="number" min="0" step="1" placeholder="專職員工月薪"></div>
+              <div class="field hidden" id="hourlyRateField"><label for="hourlyRate">時薪</label><input id="hourlyRate" type="number" min="0" step="1" placeholder="工讀生時薪"></div>
+              <div class="field hidden" id="partialField"><label for="isPartialHours">是否部分工時</label><select id="isPartialHours"><option value="否">否</option><option value="是">是</option></select></div>
+              <div class="field hidden" id="averageSalaryField"><label for="averageSalary">目前申報月平均薪資總額</label><input id="averageSalary" type="number" min="0" step="1"></div>
+              <div class="salary-lines full">
+                <div class="salary-line-head"><strong>職務加給</strong><button class="mini-btn" type="button" id="addJobAllowanceBtn">＋ 新增</button></div>
+                <div id="jobAllowanceList" class="salary-line-list"></div>
+              </div>
+              <div class="salary-lines full">
+                <div class="salary-line-head"><strong>其他津貼</strong><button class="mini-btn" type="button" id="addAllowanceBtn">＋ 新增</button></div>
+                <div id="allowanceList" class="salary-line-list"></div>
+              </div>
+              <div class="field"><label for="salaryEffectiveDate">薪資生效日</label><input id="salaryEffectiveDate" type="date"></div>
+              <div class="field"><label for="laborStatus">勞保狀態</label><select id="laborStatus"><option value="">請選擇</option><option value="在保">在保</option><option value="未保">未保</option><option value="暫停">暫停</option></select></div>
+              <div class="field labor-active"><label for="laborInsuredSalary">勞保投保薪資／級距</label><input id="laborInsuredSalary" type="number" min="0" step="1" placeholder="輸入投保薪資"></div>
+              <div class="field labor-active"><label for="laborSelfPay">勞保員工自付額</label><input id="laborSelfPay" type="number" min="0" step="1" placeholder="實際每月扣款金額"></div>
+              <div class="field"><label for="healthStatus">健保狀態</label><select id="healthStatus"><option value="">請選擇</option><option value="在保">在保</option><option value="未保">未保</option><option value="暫停">暫停</option></select></div>
+              <div class="field health-active"><label for="healthInsuredSalary">健保投保薪資／級距</label><input id="healthInsuredSalary" type="number" min="0" step="1" placeholder="輸入投保薪資"></div>
+              <div class="field health-active"><label for="healthSelfPay">健保本人自付額</label><input id="healthSelfPay" type="number" min="0" step="1" placeholder="實際每月扣款金額"></div>
+              <div class="field"><label for="selfRetirementEnabled">勞退自提</label><select id="selfRetirementEnabled"><option value="否">否</option><option value="是">是</option></select></div>
+              <div class="field" id="retirementRateField"><label for="selfRetirementRate">自提比率</label><select id="selfRetirementRate"><option value="0">0%</option><option value="1">1%</option><option value="2">2%</option><option value="3">3%</option><option value="4">4%</option><option value="5">5%</option><option value="6">6%</option></select></div>
+            </div>
+          </section>
+
+          <section class="section-box" id="scheduleSection">
+            <h2>五、班表初始設定</h2>
+            <div class="form-grid">
+              <div class="field"><label for="scheduleMode">班表方式</label><select id="scheduleMode"><option value="">請選擇</option><option value="template">套用固定班表模板</option><option value="none">無固定班表</option></select></div>
+              <div class="field schedule-template"><label for="scheduleTemplateId">班表模板</label><select id="scheduleTemplateId"><option value="">請選擇班表模板</option></select></div>
+              <div class="field schedule-template"><label for="scheduleEffectiveDate">班表生效日</label><input id="scheduleEffectiveDate" type="date"></div>
+            </div>
+          </section>
+
+          <section class="section-box hidden" id="externalSection">
+            <h2>四、外聘合作設定</h2>
+            <div class="form-grid">
+              <div class="field"><label for="externalContractStatus">合作／契約狀態</label><select id="externalContractStatus"><option value="">請選擇</option><option value="待建立合約">待建立合約</option><option value="合作條件已確認">合作條件已確認</option><option value="契約不適用">契約不適用</option></select></div>
+              <div class="field"><label for="externalAccessEnabled">外聘帳號啟用</label><select id="externalAccessEnabled"><option value="是">是</option><option value="否">否</option></select></div>
+            </div>
+          </section>
+
+          <section class="section-box">
+            <h2>六、主管備註與完整度</h2>
+            <div class="field"><label for="managerNote">主管備註</label><textarea id="managerNote" placeholder="例如：試用期、特殊投保方式、班表說明"></textarea></div>
+            <div id="checklist" class="checklist"></div>
+          </section>
+
+          <div class="sticky-actions">
+            <button class="btn secondary" id="saveDraftBtn" type="button">儲存草稿</button>
+            <button class="btn warn" id="resubmitBtn" type="button">退回補件</button>
+            <button class="btn danger" id="rejectBtn" type="button">駁回申請</button>
+            <button class="btn" id="approveBtn" type="button">完成核准與建檔</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="config.js?v=onboarding-20260624"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="firebase-client.js?v=onboarding-20260624"></script>
+  <script src="app.js?v=onboarding-20260624"></script>
+  <script src="onboarding-workflow.js?v=20260624v1"></script>
+  <script>
+    let rows=[];let historyRows=[];let selected=null;let scheduleTemplates=[];let activeTab='pending';
+    const $=id=>document.getElementById(id);
+    function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]))}
+    function statusClass(row){return row.applicationStatus==='draft'?'draft':(row.applicationStatus==='needs_identity_resubmission'?'resubmit':'')}
+    function isRegistrationPending(row){const s=String((row&&row.applicationStatus)||'').trim();return !['approved','rejected','archived','deleted','已核准','已駁回'].includes(s)}
+    function setRegistrationTab(tab){activeTab=tab==='history'?'history':'pending';$('pendingTab').classList.toggle('active',activeTab==='pending');$('historyTab').classList.toggle('active',activeTab==='history');$('editor').style.display='none';$('editorEmpty').style.display=activeTab==='pending'?'block':'none';selected=null;renderList();if(activeTab==='history'&&!historyRows.length)loadRegistrationHistory();}
+    function renderTabs(){
+      const pendingCount=rows.length;
+      $('pendingTab').textContent=`未處理（${pendingCount}）`;
+      $('historyTab').textContent=historyRows.length?`歷史紀錄（${historyRows.length}）`:'歷史紀錄';
+    }
+    function renderList(){
+      renderTabs();
+      const kw=String($('keyword').value||'').trim().toLowerCase();
+      const source=activeTab==='history'?historyRows:rows;
+      const list=source.filter(r=>!kw||[r.name,r.email,r.idNumber,r.idNumberMasked,r.applicationStatusLabel,r.statusLabel,r.createdAtText,r.updatedAtText].join(' ').toLowerCase().includes(kw));
+      $('countText').textContent=activeTab==='pending'?(list.length?`${list.length} 筆未處理`:'目前沒有未處理申請'):(list.length?`${list.length} 筆歷史紀錄`:'目前沒有歷史紀錄');
+      if(activeTab==='history'){
+        $('list').innerHTML=list.map(r=>`<article class="approval-card"><div class="approval-head"><div><div class="approval-name">${esc(r.name||'未命名')}</div><div class="approval-meta">${esc(r.email||'')}｜${esc(r.idNumberMasked||'未填證件號碼')}</div></div><span class="approval-pill ${String(r.applicationStatus)==='rejected'?'rejected':'approved'}">${esc(r.applicationStatusLabel||r.statusLabel||'已處理')}</span></div><div class="approval-grid"><div class="approval-field"><div class="approval-label">申請時間</div><div class="approval-value">${esc(r.createdAtText||'—')}</div></div><div class="approval-field"><div class="approval-label">最後更新</div><div class="approval-value">${esc(r.updatedAtText||'—')}</div></div></div>${r.resubmissionReason?`<div class="approval-note">${esc(r.resubmissionReason)}</div>`:''}</article>`).join('')||'<div class="approval-empty">目前沒有資料</div>';
+        return;
+      }
+      $('list').innerHTML=list.map(r=>`<button type="button" class="application-card approval-card ${selected&&selected.applicationId===r.applicationId?'active':''}" data-app-id="${esc(r.applicationId)}"><div class="approval-head"><div><div class="approval-name">${esc(r.name||'未命名')}</div><div class="approval-meta">${esc(r.email||'')}<br>${esc(r.idNumberMasked||'未填證件號碼')}｜${esc(r.createdAtText||'')}</div></div><span class="approval-pill pending">${esc(r.applicationStatusLabel||r.statusLabel||'待主管建檔')}</span></div></button>`).join('')||'<div class="approval-empty">目前沒有資料</div>';
+      document.querySelectorAll('[data-app-id]').forEach(btn=>btn.addEventListener('click',()=>selectRow(btn.dataset.appId)));
+    }
+    function registrationDb(){
+      if(window.YZFirebase&&typeof window.YZFirebase.init==='function') return window.YZFirebase.init();
+      if(window.APP_CONFIG&&window.APP_CONFIG.FIREBASE_CONFIG&&window.firebase&&firebase.firestore){if(!firebase.apps.length)firebase.initializeApp(window.APP_CONFIG.FIREBASE_CONFIG);return firebase.firestore();}
+      throw new Error('Firebase 尚未啟用。');
+    }
+    async function loadRegistrationHistory(){
+      try{
+        const snap=await registrationDb().collection('registrationApplications').get();
+        const out=[];
+        snap.forEach(doc=>{const raw=Object.assign({__id:doc.id},doc.data()||{});const row=window.YZOnboarding&&window.YZOnboarding.normalizeApplication?window.YZOnboarding.normalizeApplication(raw):raw;if(!isRegistrationPending(row))out.push(row);});
+        historyRows=out.sort((a,b)=>String(b.updatedAtText||b.createdAtText||'').localeCompare(String(a.updatedAtText||a.createdAtText||'')));
+        renderList();
+      }catch(err){historyRows=[];renderList();setMsg($('pageMsg'),err.message||String(err),true)}
+    }
+    function info(label,value){return `<div class="info-cell"><span>${esc(label)}</span><strong>${esc(value||'—')}</strong></div>`}
+    function draftValue(d,key,fallback=''){const v=d&&d[key];return v===undefined||v===null?fallback:v}
+    function selectRow(id){
+      selected=rows.find(r=>r.applicationId===id)||null;renderList();$('approvalResult').style.display='none';
+      if(!selected){$('editor').style.display='none';$('editorEmpty').style.display='block';return}
+      $('editor').style.display='block';$('editorEmpty').style.display='none';$('selectedName').textContent=selected.name||'未命名';$('selectedStatus').textContent=`${selected.applicationStatusLabel||selected.statusLabel||'待主管建檔'}｜申請編號 ${selected.applicationId}`;
+      $('basicInfo').innerHTML=[info('姓名',selected.name),info('Email',selected.email),info('證件號碼',selected.idNumber),info('出生年月日',selected.birthDate),info('行動電話',selected.mobilePhone),info('聯絡地址',selected.contactAddress),info('緊急聯絡人',selected.emergencyContact),info('緊急聯絡人電話',selected.emergencyPhone)].join('');
+      renderIdentity();fillDraft(selected.onboardingDraft||{});updateVisibility();renderChecklist();window.scrollTo({top:0,behavior:'smooth'});
+    }
+    function renderIdentity(){
+      const box=$('identityImageBox');if(selected&&selected.identityDocumentUrl){box.innerHTML=`<img src="${esc(selected.identityDocumentUrl)}" alt="證件正面">`;$('openIdentityBtn').disabled=false}else{box.innerHTML='<div class="identity-missing">尚未上傳證件正面<br>請退回申請人補件</div>';$('openIdentityBtn').disabled=true}
+    }
+    function fillDraft(d){
+      $('identityVerificationStatus').value=draftValue(d,'identityVerificationStatus','');$('identityVerificationNote').value=draftValue(d,'identityVerificationNote','');$('identityType').value=draftValue(d,'identityType','');$('startDate').value=draftValue(d,'startDate','');
+      $('baseSalary').value=draftValue(d,'baseSalary','')||'';$('hourlyRate').value=draftValue(d,'hourlyRate','')||'';$('isPartialHours').value=draftValue(d,'isPartialHours','否');$('averageSalary').value=draftValue(d,'averageSalary','')||'';$('salaryEffectiveDate').value=draftValue(d,'salaryEffectiveDate','');
+      $('laborStatus').value=draftValue(d,'laborStatus','');$('laborInsuredSalary').value=draftValue(d,'laborInsuredSalary','')||'';$('laborSelfPay').value=draftValue(d,'laborSelfPay','');$('healthStatus').value=draftValue(d,'healthStatus','');$('healthInsuredSalary').value=draftValue(d,'healthInsuredSalary','')||'';$('healthSelfPay').value=draftValue(d,'healthSelfPay','');
+      $('selfRetirementEnabled').value=draftValue(d,'selfRetirementEnabled','否');$('selfRetirementRate').value=String(draftValue(d,'selfRetirementRate',0)||0);
+      $('scheduleMode').value=draftValue(d,'scheduleMode','');$('scheduleTemplateId').value=draftValue(d,'scheduleTemplateId','');$('scheduleEffectiveDate').value=draftValue(d,'scheduleEffectiveDate','');
+      $('externalContractStatus').value=draftValue(d,'externalContractStatus','');$('externalAccessEnabled').value=draftValue(d,'externalAccessEnabled','是');$('managerNote').value=draftValue(d,'managerNote','');
+      renderLineItems('jobAllowanceList',draftValue(d,'jobAllowances',[]),'職務加給');renderLineItems('allowanceList',draftValue(d,'allowances',[]),'其他津貼');
+    }
+    function num(id){const raw=$(id).value;return raw===''?'':Number(raw)}
+    function readLineItems(id){return Array.from($(id).querySelectorAll('.salary-line')).map(row=>({name:(row.querySelector('[data-name]').value||'').trim(),amount:Number(row.querySelector('[data-amount]').value||0)||0})).filter(x=>x.name||x.amount)}
+    function renderLineItems(id,items,label){const box=$(id),rows=Array.isArray(items)?items:[];box.innerHTML=rows.map((row,idx)=>`<div class="salary-line"><input data-name placeholder="${esc(label)}名稱" value="${esc(row.name||'')}"><input data-amount type="number" min="0" step="1" placeholder="金額" value="${Number(row.amount||0)||''}"><button class="mini-btn remove" type="button" data-remove="${idx}">刪除</button></div>`).join('')||`<div class="muted">目前沒有${esc(label)}。</div>`;box.querySelectorAll('[data-remove]').forEach(btn=>btn.onclick=()=>{const next=readLineItems(id);next.splice(Number(btn.dataset.remove||0),1);renderLineItems(id,next,label);renderChecklist()});box.querySelectorAll('input').forEach(el=>{el.addEventListener('input',renderChecklist);el.addEventListener('change',renderChecklist)})}
+    function addLineItem(id,label){const next=readLineItems(id);next.push({name:'',amount:''});renderLineItems(id,next,label);const inputs=$(id).querySelectorAll('input');if(inputs.length)inputs[inputs.length-2].focus()}
+    function buildDraft(){
+      const tpl=scheduleTemplates.find(x=>x.templateId===$('scheduleTemplateId').value);
+      return {identityVerificationStatus:$('identityVerificationStatus').value,identityVerificationNote:$('identityVerificationNote').value.trim(),identityType:$('identityType').value,startDate:$('startDate').value,baseSalary:num('baseSalary'),hourlyRate:num('hourlyRate'),isPartialHours:$('isPartialHours').value,averageSalary:num('averageSalary'),laborStatus:$('laborStatus').value,laborInsuredSalary:num('laborInsuredSalary'),laborSelfPay:num('laborSelfPay'),healthStatus:$('healthStatus').value,healthInsuredSalary:num('healthInsuredSalary'),healthSelfPay:num('healthSelfPay'),selfRetirementEnabled:$('selfRetirementEnabled').value,selfRetirementRate:Number($('selfRetirementRate').value||0),salaryEffectiveDate:$('salaryEffectiveDate').value,scheduleMode:$('scheduleMode').value,scheduleTemplateId:$('scheduleTemplateId').value,scheduleTemplateName:tpl?tpl.templateName:'',scheduleEffectiveDate:$('scheduleEffectiveDate').value,externalContractStatus:$('externalContractStatus').value,externalAccessEnabled:$('externalAccessEnabled').value,jobAllowances:readLineItems('jobAllowanceList'),allowances:readLineItems('allowanceList'),managerNote:$('managerNote').value.trim()};
+    }
+    function insuranceActive(v){return v==='在保'}
+    function updateVisibility(){
+      const type=$('identityType').value,isExternal=type==='external',isPart=type==='parttime';$('salarySection').classList.toggle('hidden',isExternal);$('scheduleSection').classList.toggle('hidden',isExternal);$('externalSection').classList.toggle('hidden',!isExternal);$('baseSalaryField').classList.toggle('hidden',isPart);$('hourlyRateField').classList.toggle('hidden',!isPart);$('partialField').classList.toggle('hidden',!isPart);$('averageSalaryField').classList.toggle('hidden',!isPart);$('startDateLabel').textContent=isExternal?'合作起始日':'到職日';
+      document.querySelectorAll('.labor-active').forEach(x=>x.classList.toggle('hidden',!insuranceActive($('laborStatus').value)));document.querySelectorAll('.health-active').forEach(x=>x.classList.toggle('hidden',!insuranceActive($('healthStatus').value)));document.querySelectorAll('.schedule-template').forEach(x=>x.classList.toggle('hidden',$('scheduleMode').value!=='template'));$('retirementRateField').classList.toggle('hidden',$('selfRetirementEnabled').value!=='是');renderChecklist();
+    }
+    function missing(){if(!selected)return['尚未選擇申請'];const d=buildDraft();if(window.YZOnboarding&&typeof window.YZOnboarding.onboardingMissing==='function')return window.YZOnboarding.onboardingMissing(selected,d);return[]}
+    function renderChecklist(){if(!selected)return;const m=missing();$('checklist').innerHTML=m.length?m.map(x=>`<div class="check-item">尚未完成：${esc(x)}</div>`).join(''):'<div class="check-item ok">所有必要資料已完成，可以進行核准與建檔。</div>';$('approveBtn').disabled=m.length>0}
+    async function loadRows(preselect){
+      const user=requireLogin();if(!user)return;setMsg($('pageMsg'),'讀取申請資料中…');
+      try{const [r,opt]=await Promise.all([api('getPendingRegistrations',{userId:user.id}),api('getOnboardingSetupOptions',{userId:user.id})]);rows=r&&r.ok!==false?(r.rows||r.list||[]):[];scheduleTemplates=opt&&opt.ok!==false?(opt.scheduleTemplates||[]):[];$('scheduleTemplateId').innerHTML='<option value="">請選擇班表模板</option>'+scheduleTemplates.map(t=>`<option value="${esc(t.templateId)}">${esc(t.templateName)}</option>`).join('');setMsg($('pageMsg'),'');renderList();if(historyRows.length||activeTab==='history')loadRegistrationHistory();if(activeTab!=='pending')return;if(preselect&&rows.some(x=>x.applicationId===preselect))selectRow(preselect);else if(selected&&rows.some(x=>x.applicationId===selected.applicationId))selectRow(selected.applicationId);else if(rows[0])selectRow(rows[0].applicationId);else{selected=null;$('editor').style.display='none';$('editorEmpty').style.display='block'}}catch(err){setMsg($('pageMsg'),err.message||String(err),true)}
+    }
+    async function saveDraft(){if(!selected)return;const user=requireLogin();const btn=$('saveDraftBtn'),progress=startActionButtonProgress(btn,{label:'儲存中'});try{const r=await api('saveRegistrationOnboardingDraft',{userId:user.id,applicationId:selected.applicationId,onboardingDraft:buildDraft()});if(!r||r.ok===false)throw new Error((r&&r.message)||'儲存失敗');progress.done('已儲存',500,true);setMsg($('pageMsg'),r.message||'已儲存草稿');await loadRows(r.row&&r.row.applicationId)}catch(err){progress.fail('儲存失敗');setMsg($('pageMsg'),err.message||String(err),true)}}
+    async function approve(){if(!selected)return;const m=missing();if(m.length){setMsg($('pageMsg'),'尚有資料未完成：'+m.join('、'),true);return}if(!confirm(`確定完成 ${selected.name||'此申請人'} 的入職建檔嗎？`))return;const user=requireLogin();const btn=$('approveBtn'),progress=startActionButtonProgress(btn,{label:'建檔中',maxPct:88});try{const r=await api('approveRegistrationOnboarding',{userId:user.id,applicationId:selected.applicationId,onboardingDraft:buildDraft()});if(!r||r.ok===false)throw new Error((r&&r.message)||'核准失敗');progress.done('已完成',600,true);showApprovalResult(r);selected=null;await loadRows()}catch(err){progress.fail('核准失敗');setMsg($('pageMsg'),err.message||String(err),true)}}
+    function showApprovalResult(r){const box=$('approvalResult');box.style.display='block';box.innerHTML=`<h2>入職建檔完成</h2><div>${esc(r.message||'員工資料已建立。')}</div><div class="credential-box"><div><div class="muted">員工編號</div><code>${esc(r.employeeId||'')}</code></div><button class="btn secondary" type="button" data-copy="${esc(r.employeeId||'')}">複製</button></div><div class="credential-box"><div><div class="muted">初始密碼</div><code>${esc(r.initialPassword||'')}</code></div><button class="btn secondary" type="button" data-copy="${esc(r.initialPassword||'')}">複製</button></div><div class="muted" style="margin-top:8px">系統已建立 Email 通知佇列；若寄信服務尚未設定，請由主管安全提供初始密碼。</div>`;box.querySelectorAll('[data-copy]').forEach(b=>b.onclick=async()=>{await navigator.clipboard.writeText(b.dataset.copy||'');b.textContent='已複製'});box.scrollIntoView({behavior:'smooth',block:'start'})}
+    async function reject(){if(!selected)return;const reason=prompt('請輸入駁回理由：','資料不完整，請重新申請');if(reason===null)return;if(!reason.trim()){alert('請填寫駁回理由。');return}if(!confirm('確定駁回這筆申請嗎？'))return;const user=requireLogin();const btn=$('rejectBtn'),progress=startActionButtonProgress(btn,{label:'處理中'});try{const r=await api('rejectRegistrationApi',{userId:user.id,applicationId:selected.applicationId,rejectReason:reason.trim()});if(!r||r.ok===false)throw new Error((r&&r.message)||'駁回失敗');progress.done('已駁回',500,true);selected=null;await loadRows();setMsg($('pageMsg'),r.message||'已駁回申請')}catch(err){progress.fail('駁回失敗');setMsg($('pageMsg'),err.message||String(err),true)}}
+    async function requestResubmission(){if(!selected)return;const defaultReason=$('identityVerificationNote').value.trim()||'證件影像不清楚，請重新拍攝正面。';const reason=prompt('請輸入補件原因：',defaultReason);if(reason===null)return;if(!reason.trim()){alert('請填寫補件原因。');return}const user=requireLogin();const btn=$('resubmitBtn'),progress=startActionButtonProgress(btn,{label:'處理中'});try{const r=await api('requestRegistrationResubmission',{userId:user.id,applicationId:selected.applicationId,reason:reason.trim()});if(!r||r.ok===false)throw new Error((r&&r.message)||'退回補件失敗');progress.done('已退回',500,true);await loadRows(selected.applicationId);setMsg($('pageMsg'),r.message||'已退回補件')}catch(err){progress.fail('處理失敗');setMsg($('pageMsg'),err.message||String(err),true)}}
+    function init(){fillHeader();const user=requireLogin();if(!user)return;if(!hasSettingsZoneAccess(user)){location.href='dashboard.html';return}setPortalMode('settings');$('keyword').addEventListener('input',renderList);$('pendingTab').onclick=()=>setRegistrationTab('pending');$('historyTab').onclick=()=>setRegistrationTab('history');$('refreshBtn').onclick=()=>{if(activeTab==='history')loadRegistrationHistory();loadRows()};['identityVerificationStatus','identityType','laborStatus','healthStatus','selfRetirementEnabled','scheduleMode'].forEach(id=>$(id).addEventListener('change',updateVisibility));document.querySelectorAll('#editor input,#editor select,#editor textarea').forEach(el=>{el.addEventListener('input',renderChecklist);el.addEventListener('change',renderChecklist)});$('openIdentityBtn').onclick=()=>{if(selected&&selected.identityDocumentUrl)window.open(selected.identityDocumentUrl,'_blank','noopener')};$('saveDraftBtn').onclick=saveDraft;$('approveBtn').onclick=approve;$('rejectBtn').onclick=reject;$('resubmitBtn').onclick=requestResubmission;$('addJobAllowanceBtn').onclick=()=>addLineItem('jobAllowanceList','職務加給');$('addAllowanceBtn').onclick=()=>addLineItem('allowanceList','其他津貼');loadRows()}
+  </script>
+  <script src="global-nav.js?v=20260603unified1"></script>
+</body>
+</html>

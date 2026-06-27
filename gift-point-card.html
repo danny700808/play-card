@@ -1,39 +1,114 @@
-<!doctype html>
-<html lang="zh-Hant">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>集點卡</title>
-  <link rel="stylesheet" href="style.css?v=certificates-20260530">
-  <style>
-    body{background:#f5f7fb}.wrap{max-width:1200px;margin:0 auto;padding:18px}.page-card{background:#fff;border:1px solid #e2e8f0;border-radius:24px;padding:20px;box-shadow:0 10px 30px rgba(15,23,42,.06)}.preview-toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}.mini-actions{display:flex;gap:8px;flex-wrap:wrap}.mini-actions .btn{width:auto}.muted-tip{font-size:13px;color:#64748b;line-height:1.8}.sheet-scale-wrap{display:flex;justify-content:center;align-items:flex-start;overflow:auto;padding:8px;min-height:420px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:20px}.a4-sheet{width:210mm;min-height:297mm;background:#fff;box-shadow:0 10px 35px rgba(15,23,42,.12);box-sizing:border-box;padding:10mm 10mm 9mm;display:grid;grid-template-rows:1fr;margin:0 auto}.a4-main-card{position:relative;border:1.5px solid #9ec8b6;border-radius:20px;background:linear-gradient(135deg,#fff 0%,#fff 58%,#fff8d8 100%);padding:10mm 9mm 8mm;box-sizing:border-box;overflow:hidden;display:grid;grid-template-rows:auto auto 1fr auto;gap:5mm;min-height:100%}.a4-main-card:before{content:"";position:absolute;right:-18mm;top:-18mm;width:58mm;height:58mm;border-radius:50%;background:rgba(31,122,90,.10)}.a4-main-card:after{content:"♪";position:absolute;right:11mm;top:8mm;font-size:28px;color:rgba(31,122,90,.20);font-weight:900}.gift-cut{position:absolute;inset:2mm;border:1px dashed rgba(148,163,184,.55);border-radius:18px;pointer-events:none}.gift-head{position:relative;display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.gift-title{font-size:30px;font-weight:950;letter-spacing:1px;color:#17324d;line-height:1.15;margin:0}.gift-subtitle{font-size:15px;color:#5f7086;font-weight:800;margin-top:4px;line-height:1.5}.gift-badge{border:1px solid #f1c453;background:#fff4bf;border-radius:999px;padding:7px 12px;font-size:13px;font-weight:950;color:#7c4a03;white-space:nowrap;transform:rotate(-3deg)}.gift-info{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:#334155;font-weight:800;position:relative}.gift-line-field{border-bottom:1px solid #94a3b8;min-height:20px;padding-bottom:2px;min-width:120px;flex:1 1 180px}.gift-points-grid{display:grid;grid-template-columns:repeat(10,1fr);gap:2.4mm;align-content:start}.gift-point{aspect-ratio:1/1;border:1.5px solid #9ec8b6;border-radius:10px;background:#fff;display:flex;align-items:center;justify-content:center;color:rgba(31,122,90,.38);font-size:14px;font-weight:900;box-shadow:inset 0 0 0 2px rgba(31,122,90,.04)}.gift-rules{position:relative;border-top:1px dashed #bdd6c9;padding-top:4mm;color:#334155;font-size:12px;line-height:1.55;display:grid;gap:1.5mm}.gift-rules-title{font-weight:950;color:#17324d}@media(max-width:760px){.a4-sheet{transform:scale(.46);transform-origin:top left;margin-right:-115mm;margin-bottom:-160mm}.sheet-scale-wrap{justify-content:flex-start}.mini-actions .btn{width:100%}}@media print{html,body{margin:0!important;padding:0!important;background:#fff!important}body *{visibility:hidden!important}#printArea,#printArea *{visibility:visible!important}#printArea{position:absolute!important;left:0!important;top:0!important;width:210mm!important;margin:0!important;padding:0!important;background:#fff!important;box-shadow:none!important;border:none!important;overflow:visible!important}.sheet-scale-wrap{display:block!important;overflow:visible!important;padding:0!important;min-height:0!important}.a4-sheet{width:210mm!important;min-height:297mm!important;padding:10mm 10mm 9mm!important;margin:0!important;box-shadow:none!important;border:none!important;transform:none!important}.wrap,.page-card{padding:0!important;margin:0!important;border:0!important;box-shadow:none!important}.page-return-wrap,.preview-toolbar{display:none!important}@page{size:A4 portrait;margin:0}}
-  </style>
-  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
-</head>
-<body onload="initPage()">
-  <div class="yz-global-nav" data-yz-global-nav>
-    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
-    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
-  </div>
+rules_version = '2';
 
-  <div class="wrap">
-    <div class="page-card">
-      <div class="preview-toolbar"><div><h1 class="title" style="margin:0">集點卡</h1><div class="muted-tip">此頁只顯示預覽，不提供設定欄位。</div></div><div class="mini-actions"><button class="btn" type="button" onclick="window.print()">列印</button><button class="btn secondary" type="button" onclick="window.print()">另存新檔</button></div></div>
-      <div id="printArea" class="sheet-scale-wrap"></div>
-      <div id="msg" class="muted-tip" style="margin-top:10px"></div>
-    </div>
-  </div>
-  <script src="config.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=certificates-20260530"></script>
-  <script src="app.js?v=certificates-20260530"></script>
-  <script>
-    const DEFAULTS={cardTitle:'柚子樂器 集點卡',cardSubtitle:'學生兌換禮物專用',badgeText:'集滿可兌換禮物',fieldA:'姓名',fieldB:'課程',fieldC:'',rules:'1. 不可與其他優惠合併使用。\n2. 本卡遺失，點數一律作廢。\n3. 集點可選擇轉扭蛋，或兌換對應的集點禮物。'};
-    function esc(v){return String(v==null?'':v).trim().replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));}
-    function render(data){data=Object.assign({},DEFAULTS,data||{}); const fields=[data.fieldA,data.fieldB,data.fieldC].filter(Boolean).map(x=>`<div class="gift-line-field">${esc(x)}：</div>`).join(''); const points=Array.from({length:100}).map((_,i)=>`<div class="gift-point">${(i%10)+1}</div>`).join(''); const rules=String(data.rules||'').split(/\n/).filter(Boolean).map(x=>`<div>${esc(x)}</div>`).join(''); document.getElementById('printArea').innerHTML=`<div class="a4-sheet"><div class="a4-main-card"><div class="gift-cut"></div><div class="gift-head"><div><h2 class="gift-title">${esc(data.cardTitle)}</h2><div class="gift-subtitle">${esc(data.cardSubtitle)}</div></div><div class="gift-badge">${esc(data.badgeText)}</div></div><div class="gift-info">${fields}</div><div class="gift-points-grid">${points}</div><div class="gift-rules"><div class="gift-rules-title">注意事項</div>${rules}</div></div></div>`;}
-    async function initPage(){const user=requireLogin(); if(!user) return; try{ const doc=firebase.firestore().collection('printTemplates').doc('giftPointCard'); const snap=await doc.get(); render(snap.exists?snap.data():DEFAULTS); }catch(e){ render(DEFAULTS); document.getElementById('msg').textContent='目前使用預設集點卡。'; }}
-  </script>
-  <script src="global-nav.js?v=20260603unified1"></script>
-</body>
-</html>
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 這裡列出目前網站前端會直接讀寫的頂層集合。
+    // 目的：保留租賃新系統，同時恢復員工、薪資、工讀、提醒數字、各種表格設定。
+    function isClientSideOpenCollection(collectionId) {
+      return collectionId in [
+        // 租賃系統
+        'rentalApplications',
+        'rentalContracts',
+        'rentalContractPeriods',
+        'rentalReminderSettings',
+        'rentalTemplateSettings',
+
+        // LINE / Email / 通知佇列與提醒設定
+        'notificationQueue',
+        'notificationUniversal',
+        'notificationSettings',
+        'notificationFeatureSettings',
+        'moduleNotificationSettings',
+        'notificationV2Settings',
+        'notificationTimeRules',
+        'notificationLogs',
+        'lineBindLogs',
+        'lineBindingLogs',
+        'manualMessages',
+
+        // 員工 / 管理者 / 註冊 / 個資
+        'employees',
+        'registrationApplications',
+        'admins',
+        'applications',
+        'teacherApplications',
+        'profileChangeRequests',
+
+        // 薪資 / 投保 / 工讀
+        'employeeSalaryConfigs',
+        'salarySetup',
+        'salarySettings',
+        'salaryConfigs',
+        'employeeSalarySettings',
+        'salaryProfiles',
+        'parttimeRecords',
+        'parttimeHourRequests',
+
+        // 打卡 / 請假 / 臨時出勤 / 班表
+        'clockRecords',
+        'clockCorrections',
+        'leaveRecords',
+        'leaveRequests',
+        'leavePolicySettings',
+        'temporaryAttendanceRequests',
+        'scheduleTemplates',
+        'employeeSchedules',
+        'singleDaySchedules',
+
+        // 任務 / 公告 / 教材 / 日常工作
+        'tasks',
+        'announcements',
+        'trainingItems',
+        'routines',
+        'routineTemplates',
+
+        // 系統設定 / 表格設定 / 列印模板 / 證明申請
+        'systemSettings',
+        'printTemplates',
+        'certificateApplications',
+        'certificateTemplateHistory',
+        'formSettings',
+        'formSubmissions',
+
+        // 老師合約 / 商品 / 官網商品快取
+        'teacherGoods',
+        'teacherGoodsInquiry',
+        'teacherContractLogs',
+        'teacherContractTemplates',
+        'teacherContractAssignments',
+        'teacherContractSettings',
+        'contractTemplates',
+        'contractLogs',
+        'contracts',
+        'websiteProducts',
+        'officialWebsiteProducts',
+        'easystoreProducts',
+        'websiteGoods',
+        'products'
+      ];
+    }
+
+    // 交接資料：保留你原本比較收斂的規則。
+    match /fengtungHandoverEntries/{entryId} {
+      allow read: if true;
+
+      allow create: if request.auth != null
+        && request.resource.data.ownerUid == request.auth.uid;
+
+      allow update, delete: if request.auth != null
+        && resource.data.ownerUid == request.auth.uid;
+    }
+
+    // 合併開放：上面清單內的集合都允許前端讀寫。
+    // 這一段會讓員工管理、薪資投保、工讀薪資、提醒數字、租賃系統一起恢復。
+    match /{collectionId}/{document=**} {
+      allow read, write: if isClientSideOpenCollection(collectionId);
+    }
+
+    // 其他未知集合先不開放，避免整個資料庫完全裸開。
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

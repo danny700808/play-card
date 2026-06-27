@@ -1,28 +1,97 @@
-:root{
-  --cert-brand:#1f7a5a;
-  --cert-ink:#0f172a;
-  --cert-muted:#64748b;
-  --cert-line:#d7e2ef;
-  --cert-bg:#eef2f6;
-  --cert-card:#ffffff;
-  --cert-danger:#b42318;
-  --cert-warn:#9a6700;
-}
-body.cert-page{background:var(--cert-bg);color:var(--cert-ink)}
-.cert-wrap{width:min(100%,1760px);margin:0 auto;padding:18px 16px 38px;box-sizing:border-box}
-.cert-return{margin-bottom:12px}.cert-return .btn{display:flex;width:100%;min-height:50px;border-radius:16px;font-size:18px;font-weight:900}
-.cert-panel{background:#fff;border:1px solid var(--cert-line);border-radius:26px;padding:20px;box-shadow:0 12px 32px rgba(15,23,42,.06)}
-.cert-top{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:16px}
-.cert-title{margin:0;color:#17324d;font-size:30px;line-height:1.18;font-weight:950}.cert-sub{margin-top:6px;color:var(--cert-muted);line-height:1.7;font-size:14px;font-weight:800}.cert-tools{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
-.cert-layout{display:grid;grid-template-columns:minmax(320px,460px) minmax(0,1fr);gap:16px;align-items:start}.cert-layout.review{grid-template-columns:minmax(330px,520px) minmax(0,1fr)}
-.cert-form-card{background:#fff;border:1px solid var(--cert-line);border-radius:22px;padding:18px;box-shadow:0 8px 24px rgba(15,23,42,.04);margin-bottom:16px}.cert-form-card h2{margin:0 0 14px;color:#17324d;font-size:20px}.cert-section-note{border:1px dashed #b7c5d3;background:#fbfdff;border-radius:16px;padding:12px;color:#475569;font-size:13px;line-height:1.8;margin-bottom:12px}
-.cert-row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}.cert-row3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.cert-field{margin-bottom:12px}.cert-field label{display:block;font-weight:900;color:#17324d;margin-bottom:6px}.cert-field input,.cert-field select,.cert-field textarea{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:13px;padding:10px 12px;font-size:15px;background:#fff;color:#0f172a}.cert-field textarea{resize:vertical;line-height:1.65;min-height:76px}.cert-field input[readonly]{background:#f8fafc;color:#475569}.cert-check{display:flex!important;align-items:center;gap:9px;font-weight:900;color:#17324d;margin:8px 0 12px}.cert-check input{width:19px;height:19px;accent-color:var(--cert-brand)}
-.cert-mini-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.cert-mini-actions .btn{width:auto}.cert-message{display:none;margin-top:10px;padding:10px 12px;border-radius:14px;background:#eef7f2;color:#14532d;font-size:13px;line-height:1.65;font-weight:800}.cert-message.error{background:#fff1f2;color:#b42318}.cert-message.show{display:block}.cert-muted{color:var(--cert-muted);font-size:13px;line-height:1.7}
-.cert-preview-shell{background:#f8fafc;border:1px solid #dbe5ef;border-radius:22px;padding:14px;position:sticky;top:12px;overflow:auto}.cert-preview-toolbar{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}.cert-preview-title{font-size:18px;font-weight:950;color:#17324d}.cert-sheet-wrap{display:flex;justify-content:center;align-items:flex-start;overflow:auto;padding:10px;min-height:520px}.cert-sheet-wrap.left{justify-content:flex-start}
-.certificate-page{position:relative;width:210mm;min-height:297mm;background:#fff;box-sizing:border-box;padding:18mm 18mm 15mm;box-shadow:0 12px 42px rgba(15,23,42,.16);font-family:"Noto Sans TC","Microsoft JhengHei",Arial,sans-serif;color:#111827;overflow:hidden}.certificate-page *{box-sizing:border-box}.certificate-content{position:relative;z-index:2;min-height:264mm;display:flex;flex-direction:column}.cert-logo-wrap{display:none}.cert-logo{width:0;height:0;display:none}.cert-doc-title{text-align:center;font-size:34px;font-weight:950;letter-spacing:10px;margin:0 0 9mm;padding-left:10px;color:#111827}.cert-body-text{font-size:15.5px;line-height:2.05;text-align:left;margin:0 0 6mm;text-indent:2em;color:#111827}.cert-table{width:100%;border-collapse:collapse;margin:0 0 7mm;font-size:15px}.cert-table th,.cert-table td{border:1px solid #9ca3af;padding:9px 10px;line-height:1.65;text-align:left;vertical-align:middle}.cert-table th{width:32%;background:#f3f4f6;font-weight:900;text-align:center;color:#111827}.cert-footer-text{font-size:14px;line-height:1.9;margin-top:3mm;color:#111827}.cert-legal-text{font-size:13.2px;line-height:1.9;margin-top:4mm;color:#111827;border-top:1px solid #e5e7eb;padding-top:3mm}.cert-brand-row{align-items:center}.cert-brand-content{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap}.cert-brand-logo{width:32mm;max-height:10mm;object-fit:contain;vertical-align:middle}.cert-spacer{flex:1}.cert-issuer{margin-top:7mm;font-size:14.5px;line-height:1.95}.cert-issuer-row{display:flex;gap:8px}.cert-issuer-label{width:88px;flex:0 0 88px;font-weight:900}.cert-stamp-zone{height:35mm;margin-top:2mm;position:relative;display:flex;justify-content:flex-end;gap:12mm;align-items:flex-end;padding-right:5mm}.cert-stamp-box{text-align:center;font-size:12px;color:#475569;line-height:1.4}.cert-stamp{display:block;object-fit:contain;margin:0 auto 2mm;opacity:.92}.cert-stamp.unit{width:31mm;max-height:31mm}.cert-stamp.personal{width:24mm;max-height:24mm}.cert-stamp.invoice{width:46mm;max-height:30mm}.cert-approval-line{font-size:12.5px;color:#475569;line-height:1.65;margin-top:3mm;text-align:right}.cert-watermark{position:absolute;z-index:5;left:50%;top:49%;transform:translate(-50%,-50%) rotate(-24deg);font-size:42px;line-height:1.35;font-weight:950;letter-spacing:3px;color:rgba(185,28,28,.17);border:6px solid rgba(185,28,28,.13);border-radius:22px;padding:18px 30px;white-space:pre-line;text-align:center;pointer-events:none}.cert-status-pill{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:5px 10px;font-size:12px;font-weight:950;background:#eef7f2;color:#166534}.cert-status-pill.pending{background:#fff7ed;color:#9a3412}.cert-status-pill.draft{background:#f1f5f9;color:#475569}.cert-status-pill.rejected{background:#fff1f2;color:#b42318}.cert-status-pill.approved{background:#ecfdf3;color:#166534}
-.cert-history-list{display:grid;gap:10px}.cert-history-item{border:1px solid #dbe5ef;border-radius:16px;padding:12px;background:#fbfdff}.cert-history-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.cert-history-title{font-weight:950;color:#17324d;line-height:1.45}.cert-history-meta{font-size:12.5px;color:#64748b;line-height:1.7;margin-top:5px}.cert-history-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.cert-history-actions .btn{padding:8px 10px;border-radius:11px;font-size:13px}.cert-empty{padding:14px;border:1px dashed #cbd5e1;border-radius:16px;color:#64748b;text-align:center;line-height:1.8;background:#fbfdff}.cert-filter-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
-.cert-mini-preview{width:56px;height:78px;border:1px solid #cbd5e1;background:#fff;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;color:#94a3b8;font-size:12px;float:right;margin-left:8px}
-.btn.cert-danger{background:#b42318;color:#fff}.btn.cert-warn{background:#f97316;color:#fff}.btn.cert-ghost{background:#eef2f7;color:#18314a}
-@media(max-width:1180px){.cert-layout,.cert-layout.review{grid-template-columns:1fr}.cert-preview-shell{position:static}.cert-sheet-wrap{justify-content:flex-start}.certificate-page{transform:scale(.72);transform-origin:top left;margin-right:-58mm;margin-bottom:-82mm}.cert-tools{justify-content:flex-start}}
-@media(max-width:680px){.cert-wrap{padding:12px 10px 30px}.cert-panel{padding:14px;border-radius:22px}.cert-title{font-size:25px}.cert-row2,.cert-row3,.cert-filter-row{grid-template-columns:1fr}.cert-mini-actions .btn,.cert-tools .btn{width:100%}.certificate-page{transform:scale(.46);margin-right:-115mm;margin-bottom:-160mm}.cert-sheet-wrap{padding:6px;min-height:420px}.cert-preview-toolbar .cert-mini-actions{width:100%}}
-@media print{html,body{margin:0!important;padding:0!important;background:#fff!important}body *{visibility:hidden!important}body:not(.cert-print-unlocked)::before{content:"請使用頁面上的列印按鈕，並完成身分證驗證後再列印。";visibility:visible!important;display:block!important;position:fixed!important;left:18mm!important;top:28mm!important;right:18mm!important;padding:18mm 12mm!important;border:2px solid #111827!important;border-radius:8mm!important;color:#111827!important;font-size:18pt!important;line-height:1.8!important;text-align:center!important;background:#fff!important}body.cert-print-unlocked #printArea,body.cert-print-unlocked #printArea *{visibility:visible!important}body.cert-print-unlocked #printArea{position:absolute!important;left:0!important;top:0!important;width:210mm!important;margin:0!important;padding:0!important;background:#fff!important;box-shadow:none!important;border:none!important;overflow:visible!important}body.cert-print-unlocked .cert-sheet-wrap{display:block!important;overflow:visible!important;padding:0!important;min-height:0!important}body.cert-print-unlocked .certificate-page{width:210mm!important;min-height:297mm!important;margin:0!important;box-shadow:none!important;border:none!important;transform:none!important;page-break-after:auto!important;break-after:auto!important}.cert-wrap,.cert-panel{padding:0!important;margin:0!important;border:0!important;box-shadow:none!important}.cert-return,.cert-top,.cert-form-card,.cert-preview-toolbar{display:none!important}@page{size:A4 portrait;margin:0}}
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>出勤勾稽檢查</title>
+  <link rel="stylesheet" href="style.css?v=attendance-flow-20260618">
+  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
+  <style>
+    :root{--brand:#1f7a5a;--line:#e5e7eb;--muted:#64748b;--ok:#166534;--warn:#9a3412;--bad:#991b1b}
+    body{background:#f5f7fb;color:#111827}.container{width:min(96vw,1500px);max-width:1500px;margin:0 auto;padding:18px}
+    .card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:18px;margin-bottom:16px;box-shadow:0 8px 30px rgba(15,23,42,.04)}
+    h1{margin:0 0 8px;font-size:28px}.muted{color:var(--muted);line-height:1.7}.toolbar{display:grid;grid-template-columns:minmax(240px,1fr) 180px auto auto;gap:10px;align-items:end}
+    label{display:block;font-size:13px;font-weight:800;margin-bottom:6px}select,input{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:12px;padding:11px 12px;font-size:15px;background:#fff}
+    .btn{border:0;border-radius:12px;padding:11px 15px;background:var(--brand);color:#fff;font-weight:900;cursor:pointer;white-space:nowrap}.btn.secondary{background:#334155}.btn:disabled{opacity:.55;cursor:not-allowed}
+    .message{padding:12px 14px;border-radius:14px;background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;line-height:1.65}.message.error{background:#fff1f2;border-color:#fecdd3;color:var(--bad)}.message.ok{background:#ecfdf3;border-color:#bbf7d0;color:var(--ok)}
+    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.section-title{font-size:18px;font-weight:900;margin-bottom:10px}.rows{display:grid;gap:8px}.row{border:1px solid var(--line);border-radius:13px;padding:11px 12px;background:#fff}.row strong{display:block;margin-bottom:3px}.empty{color:var(--muted);padding:10px 0}
+    .pill{display:inline-flex;border-radius:999px;padding:4px 8px;font-size:12px;font-weight:900;background:#e2e8f0;color:#334155;margin-left:6px}.pill.ok{background:#dcfce7;color:var(--ok)}.pill.warn{background:#ffedd5;color:var(--warn)}.pill.bad{background:#fee2e2;color:var(--bad)}
+    .metrics{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}.metric{border:1px solid var(--line);border-radius:14px;padding:12px}.metric span{display:block;color:var(--muted);font-size:12px}.metric strong{font-size:23px}
+    .full{grid-column:1/-1}.raw-note{font-size:12px;color:var(--muted);margin-top:6px;word-break:break-all}
+    @media(max-width:900px){.toolbar{grid-template-columns:1fr}.grid{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  </style>
+</head>
+<body onload="init()" class="admin-wide-page">
+  <div class="yz-global-nav" data-yz-global-nav>
+    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
+    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
+  </div>
+  <main class="container">
+    <section class="card">
+      <h1>出勤勾稽檢查</h1>
+      <div class="muted">以同一套規則比對「原始班表－已核准請假＝有效出勤班段」，並核對應打卡、實際打卡、待審補卡及工讀薪資資料。</div>
+    </section>
+    <section class="card">
+      <div class="toolbar">
+        <div><label for="employeeId">員工</label><select id="employeeId"><option value="">讀取中…</option></select></div>
+        <div><label for="dateText">日期</label><input id="dateText" type="date"></div>
+        <button class="btn" id="checkBtn" type="button">開始檢查</button>
+        <button class="btn secondary" id="reconcileBtn" type="button">重新勾稽並修正狀態</button>
+      </div>
+      <div id="msg" class="message" style="margin-top:14px">請選擇員工與日期。</div>
+    </section>
+    <section id="result" class="hidden">
+      <div class="card metrics" id="metrics"></div>
+      <div class="grid">
+        <section class="card"><div class="section-title">原始班表</div><div id="originalRows" class="rows"></div></section>
+        <section class="card"><div class="section-title">請假狀態</div><div id="leaveRows" class="rows"></div></section>
+        <section class="card"><div class="section-title">核准後有效班段</div><div id="effectiveRows" class="rows"></div></section>
+        <section class="card"><div class="section-title">應打卡項目</div><div id="expectedRows" class="rows"></div></section>
+        <section class="card"><div class="section-title">實際打卡</div><div id="actualRows" class="rows"></div></section>
+        <section class="card"><div class="section-title">缺卡／待處理</div><div id="issueRows" class="rows"></div></section>
+        <section class="card"><div class="section-title">待審補卡／修正</div><div id="correctionRows" class="rows"></div></section>
+        <section class="card"><div class="section-title">工讀／薪資紀錄</div><div id="parttimeRows" class="rows"></div></section>
+      </div>
+    </section>
+  </main>
+  <script src="config.js?v=20260529notifybadge1"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="firebase-client.js?v=attendance-flow-20260618"></script>
+  <script src="app.js?v=admin-final-20260530b"></script>
+  <script>
+    let currentUser=null;
+    function qs(s){return document.querySelector(s)}
+    function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+    function clean(v){return String(v==null?'':v).trim()}
+    function localDate(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}
+    function setMsg(text,type){const el=qs('#msg');el.textContent=text||'';el.className='message'+(type?' '+type:'')}
+    function db(){if(window.YZFirebase&&typeof YZFirebase.init==='function')return YZFirebase.init();throw new Error('Firebase 尚未啟用')}
+    function rowHtml(title,detail,badge,badgeClass){return `<div class="row"><strong>${esc(title||'—')}${badge?`<span class="pill ${badgeClass||''}">${esc(badge)}</span>`:''}</strong>${detail?`<div class="muted">${esc(detail)}</div>`:''}</div>`}
+    function renderRows(id,html){qs(id).innerHTML=html||'<div class="empty">沒有資料</div>'}
+    function scheduleText(s){return `${clean(s.startTime)||'—'}－${clean(s.endTime)||'—'}`}
+    function leaveText(l){const segs=Array.isArray(l.segments)?l.segments:[];const detail=segs.map(s=>s.allDay?`${s.date} 全天`:`${s.date} ${s.startTime}-${s.endTime}`).join('、');return `${clean(l.reason)||'請假'}｜${detail||clean(l.segmentSummaryText)||'—'}`}
+    async function loadEmployees(){
+      const snap=await db().collection('employees').get();const rows=[];snap.forEach(doc=>{const o=doc.data()||{};const id=clean(o.employeeId||o['員工ID']||doc.id);if(!id||id==='PRIMARY_MANAGER_LINE')return;rows.push({id,name:clean(o.name||o['姓名']||id),status:clean(o.employmentStatus||o['任職狀態']||o.accountStatus||o['帳號狀態'])});});
+      rows.sort((a,b)=>a.name.localeCompare(b.name,'zh-Hant'));qs('#employeeId').innerHTML='<option value="">請選擇員工</option>'+rows.map(r=>`<option value="${esc(r.id)}">${esc(r.name)}｜${esc(r.id)}${r.status?`｜${esc(r.status)}`:''}</option>`).join('');
+    }
+    function renderAudit(r){
+      qs('#result').classList.remove('hidden');
+      const originals=r.originalSchedules||[],approved=r.approvedLeaves||[],pending=r.pendingLeaves||[],effective=r.effectiveSchedules||[],expected=r.expectedPunches||[],actual=r.actualPunches||[],missing=r.missingPunches||[],corrections=r.pendingCorrections||[],parts=r.parttimeRecords||[];
+      qs('#metrics').innerHTML=[['原始班表',originals.length],['核准請假',approved.length],['有效班段',effective.length],['有效時數',`${Number(r.effectiveHours||0)} 小時`],['缺卡',missing.length]].map(x=>`<div class="metric"><span>${esc(x[0])}</span><strong>${esc(x[1])}</strong></div>`).join('');
+      renderRows('#originalRows',originals.map(s=>rowHtml(scheduleText(s),[s.sourceLabel,s.templateName,s.clockType].filter(Boolean).join('｜'),'原始')).join(''));
+      const leaveHtml=approved.map(l=>rowHtml(leaveText(l),`共 ${Number(l.hours||0)} 小時`,'已核准','ok')).concat(pending.map(l=>rowHtml(leaveText(l),`共 ${Number(l.hours||0)} 小時`,'待審核','warn'))).join('');renderRows('#leaveRows',leaveHtml);
+      renderRows('#effectiveRows',effective.map(s=>rowHtml(scheduleText(s),[s.leaveAdjusted&&s.originalStartTime?`原班表 ${s.originalStartTime}-${s.originalEndTime}`:'',Number(s.splitCount||0)>1?`分段 ${s.splitIndex}/${s.splitCount}`:'',s.statusText].filter(Boolean).join('｜'),'應出勤','ok')).join(''));
+      renderRows('#expectedRows',expected.map(x=>rowHtml(`${x.time} ${x.action}`,clean(x.scheduleKey),'應打卡')).join(''));
+      renderRows('#actualRows',actual.map(x=>rowHtml(`${x.time} ${x.action}`,clean(x.scheduleKey),clean(x.status)||'已打卡',clean(x.status).includes('遲到')||clean(x.status).includes('早退')?'bad':'ok')).join(''));
+      renderRows('#issueRows',missing.map(x=>rowHtml(x,'尚未找到對應正式打卡','缺卡','bad')).join(''));
+      renderRows('#correctionRows',corrections.map(x=>rowHtml(`${clean(x.correctDate||x['修正日期'])} ${clean(x.correctTime||x['修正時間']).slice(0,5)} ${clean(x.correctAction||x['修正動作'])}`,clean(x.reason||x['修正原因']),clean(x.status||x['狀態'])||'待審核','warn')).join(''));
+      renderRows('#parttimeRows',parts.map(x=>{const paid=x.isPaidLeave||x.sourceType==='approvedPaidLeave';return rowHtml(`${Number(x.totalHours||x['總時數']||0)} 小時`,clean(x.note||x['備註']),paid?'核准支薪假':'工讀紀錄',paid?'warn':'ok')}).join(''));
+    }
+    async function runCheck(){const employeeId=qs('#employeeId').value,date=qs('#dateText').value;if(!employeeId||!date){setMsg('請先選擇員工與日期。','error');return}const btn=qs('#checkBtn');btn.disabled=true;setMsg('勾稽中…');try{const r=await api('getAttendanceFlowAudit',{employeeId,date});if(!r||!r.ok)throw new Error((r&&r.message)||'勾稽失敗');renderAudit(r);setMsg(r.message||'勾稽完成。','ok')}catch(e){setMsg(e.message||'勾稽失敗','error')}finally{btn.disabled=false}}
+    async function reconcile(){const employeeId=qs('#employeeId').value,date=qs('#dateText').value;if(!employeeId||!date){setMsg('請先選擇員工與日期。','error');return}if(!confirm('將依目前核准請假與有效班段，重新計算這一天的遲到、早退、班段關聯與工讀排班時數。確定繼續？'))return;const btn=qs('#reconcileBtn');btn.disabled=true;setMsg('重新勾稽並寫回狀態中…');try{const r=await api('reconcileAttendanceDay',{employeeId,date});if(!r||!r.ok)throw new Error((r&&r.message)||'重新勾稽失敗');setMsg(`重新勾稽完成，有效出勤 ${Number(r.effectiveHours||0)} 小時。`,'ok');await runCheck()}catch(e){setMsg(e.message||'重新勾稽失敗','error')}finally{btn.disabled=false}}
+    async function init(){fillHeader();currentUser=requireLogin();if(!currentUser)return;if(typeof hasSettingsZoneAccess==='function'&&!hasSettingsZoneAccess(currentUser)){location.href='dashboard.html';return}setPortalMode&&setPortalMode('settings');qs('#dateText').value=localDate();qs('#checkBtn').onclick=runCheck;qs('#reconcileBtn').onclick=reconcile;try{await loadEmployees();setMsg('請選擇員工與日期。')}catch(e){setMsg('員工資料讀取失敗：'+(e.message||e),'error')}}
+  </script>
+  <script src="global-nav.js?v=20260603unified1"></script>
+</body>
+</html>

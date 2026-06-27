@@ -1,315 +1,296 @@
-<!doctype html>
-<html lang="zh-Hant">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>我的資料</title>
-  <link rel="stylesheet" href="style.css">
-  <style>
-    .page-return-wrap{margin-bottom:16px}
-    .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
-    .profile-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
-    .tips{font-size:14px;line-height:1.8;color:var(--muted)}
-    .data-section{margin-top:16px}
-    .data-section:first-child{margin-top:0}
-    .section-title-line{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
-    .section-title-line .section-title{margin:0}
-    .data-list{display:flex;flex-direction:column;gap:8px}
-    .info-row{display:grid;grid-template-columns:minmax(104px,34%) 1fr;gap:10px;align-items:start;border:1px solid var(--line);border-radius:13px;padding:10px 12px;background:#f8fbff;min-width:0}
-    .info-label{font-size:13px;color:var(--muted);font-weight:900;line-height:1.45;word-break:keep-all}
-    .info-value{font-size:15px;color:var(--text);font-weight:900;line-height:1.55;word-break:break-word;white-space:pre-line;text-align:left}
-    .empty-note{font-size:14px;color:var(--muted);line-height:1.8;background:#f8fbff;border:1px dashed var(--line);border-radius:14px;padding:12px}
-    .edit-grid{display:grid;grid-template-columns:1fr;gap:12px}
-    .identity-doc-box{border:1px solid var(--line);border-radius:16px;overflow:hidden;background:#eef3f0}
-    .identity-doc-box img{display:block;width:100%;max-height:430px;object-fit:contain}
-    .identity-doc-meta{padding:11px 12px;background:#fff;display:grid;gap:6px;font-size:14px;line-height:1.65}
-    .identity-doc-notice{padding:10px 12px;background:#edf9f3;color:#285d4a;font-size:13px;font-weight:800;line-height:1.7}
-    .edit-grid .full{grid-column:1 / -1}
-    @media(max-width:520px){
-      .info-row{grid-template-columns:minmax(92px,38%) 1fr;padding:10px}
-      .info-label{font-size:12.5px}
-      .info-value{font-size:14.5px}
-      .edit-grid{grid-template-columns:1fr}
+(function(global){
+  'use strict';
+
+  function clean(v){ return String(v == null ? '' : v).trim(); }
+  function lower(v){ return clean(v).toLowerCase(); }
+  function truthy(v){
+    const s = lower(v);
+    return v === true || ['是','yes','true','1','active','enabled','啟用'].includes(s);
+  }
+  function number(v){
+    if(v && typeof v.toDate === 'function') return 0;
+    if(v instanceof Date) return 0;
+    const n = Number(v || 0);
+    return Number.isFinite(n) ? n : 0;
+  }
+  function firstValue(o, keys){
+    const sources = [o, o && o.source, o && o.raw, o && o.raw && o.raw.source];
+    for(const src of sources){
+      if(!src || typeof src !== 'object') continue;
+      for(const key of keys){
+        if(src[key] != null && clean(src[key]) !== '') return src[key];
+      }
     }
-  </style>
-  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
-</head>
-<body onload="init()">
-  <div class="yz-global-nav" data-yz-global-nav>
-    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
-    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
-  </div>
+    return '';
+  }
+  function recordIdOf(r){
+    return clean(r && (r.id || r.recordId || r.__id || firstValue(r, ['recordId','紀錄ID'])));
+  }
+  function employeeIdOf(r){
+    return clean(r && (r.employeeId || firstValue(r, ['員工ID'])));
+  }
+  function employeeNameOf(r){
+    return clean(r && (r.name || firstValue(r, ['姓名','employeeName']))).replace(/\s+/g, ' ');
+  }
+  function employeeEmailOf(r){
+    return lower(r && (r.email || firstValue(r, ['Email'])));
+  }
+  function knownEmployeeIdSet(employees){
+    return new Set((employees || []).map(e=>clean(e && (e.id || e.employeeId || firstValue(e, ['員工ID'])))).filter(Boolean));
+  }
 
-  <div class="container">
+  // 配對優先順序：員工 ID → Email → 舊資料姓名。
+  // 姓名只在紀錄沒有 ID，或該 ID 已不屬於現有任何員工時才作為備援，避免同名誤配。
+  function employeeMatchReason(record, employee, employees){
+    if(!record || !employee) return '';
+    const rid = employeeIdOf(record);
+    const eid = clean(employee.id || employee.employeeId || firstValue(employee, ['員工ID']));
+    if(rid && eid && rid === eid) return 'id';
 
-    <div class="card">
-      <div class="profile-head">
-        <div class="header" style="margin:0">
-          <h1 class="title">我的資料</h1>
-          <div class="welcome">個人 / 薪資 / 投保　歡迎 <span data-user-name></span></div>
-        </div>
-      </div>
-      <div class="message" id="msg"></div>
-      <div class="tips">此頁只讀取 Firebase employees 內的個人、薪資與投保資料。沒有資料的欄位會自動隱藏。</div>
-    </div>
+    const remail = employeeEmailOf(record);
+    const eemail = lower(employee.email || firstValue(employee, ['Email']));
+    if(remail && eemail && remail === eemail) return 'email';
 
-    <div class="card" id="viewCard">
-      <div class="section-title">資料總覽</div>
-      <div id="profileSections"></div>
-      <div id="emptyProfileNote" class="empty-note" style="display:none">目前沒有可顯示的資料。</div>
-    </div>
+    const rname = employeeNameOf(record);
+    const ename = clean(employee.name || firstValue(employee, ['姓名'])).replace(/\s+/g, ' ');
+    if(!rname || !ename || rname !== ename) return '';
+    if(!rid) return 'name';
 
-    <div class="card">
-      <div class="section-title">申請修改聯絡資料</div>
-      <div class="tips" style="margin-bottom:12px">可申請修改：行動電話、聯絡地址、Email、緊急聯絡人、緊急聯絡人電話。</div>
-      <div class="edit-grid">
-        <div class="field"><label>行動電話</label><input id="mobilePhone" placeholder="請輸入行動電話"></div>
-        <div class="field"><label>Email</label><input id="email" type="email" placeholder="請輸入 Email"></div>
-        <div class="field"><label>緊急聯絡人</label><input id="emergencyContact" placeholder="請輸入緊急聯絡人"></div>
-        <div class="field"><label>緊急聯絡人電話</label><input id="emergencyPhone" placeholder="請輸入緊急聯絡人電話"></div>
-        <div class="field full"><label>聯絡地址</label><input id="address" placeholder="請輸入聯絡地址"></div>
-      </div>
-      <div class="btn-row">
-        <button class="btn secondary" type="button" onclick="loadProfile(true)">重新讀取</button>
-        <button class="btn" type="button" onclick="submitProfileChange()">送出修改申請</button>
-      </div>
-    </div>
-  </div>
+    const knownIds = knownEmployeeIdSet(employees);
+    return knownIds.has(rid) ? '' : 'legacyName';
+  }
+  function sameEmployee(record, employee, employees){
+    return !!employeeMatchReason(record, employee, employees);
+  }
 
-  <script src="config.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260529canonical1"></script>
-  <script src="app.js?v=onboarding-20260624"></script>
-  <script src="onboarding-workflow.js?v=20260624v1"></script>
-  <script>
-    function $(id){ return document.getElementById(id); }
-    function safeText(v){
-      const s = String(v == null ? '' : v).trim();
-      if(!s) return '';
-      if(['-','未設定','無','undefined','null','NaN'].includes(s)) return '';
-      return s;
-    }
-    function escapeHtml(s){
-      return String(s == null ? '' : s).replace(/[&<>'"]/g, function(ch){
-        return {'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch];
+  function isApprovedStatus(status){
+    const s = lower(status);
+    return ['已核准','核准','approved','approve','已同意','通過'].includes(s);
+  }
+  function isBadStatus(status){
+    const s = lower(status);
+    if(!s) return false;
+    const exact = [
+      '待審核','pending','待主管審核','審核中','已駁回','駁回','rejected','已退回','退回',
+      '已刪除','刪除','deleted','作廢','void','voided','已取消','取消','cancelled','canceled',
+      '被取代','已被取代','superseded','已被修正','不計薪','不支薪'
+    ];
+    if(exact.includes(s)) return true;
+    return ['待審核','駁回','退回','已刪除','作廢','已取消','被取代','不計薪','不支薪'].some(x=>s.includes(x));
+  }
+  function isDeletedLike(record){
+    return truthy(firstValue(record, [
+      'deleted','isDeleted','已刪除','voided','isVoided','作廢','cancelled','canceled','isCancelled','已取消'
+    ]));
+  }
+
+  function timestampValue(v){
+    if(v && typeof v.toDate === 'function') v = v.toDate();
+    if(v instanceof Date && !isNaN(v.getTime())) return v.getTime();
+    if(typeof v === 'number' && Number.isFinite(v)) return v;
+    const parsed = Date.parse(clean(v));
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  function updatedValue(record){
+    return timestampValue(record && (record.updatedAt || firstValue(record, ['最後更新時間','reviewedAt','審核時間','createdAt','建立時間'])));
+  }
+
+  function isPayableParttimeRecord(record){
+    if(!record || !clean(record.date)) return false;
+    if(isBadStatus(record.status)) return false;
+    if(clean(record.replacedByRecordId || firstValue(record, ['supersededBy','被取代紀錄ID']))) return false;
+    if(isDeletedLike(record)) return false;
+    const payable = lower(record.payable || firstValue(record, ['是否計薪']));
+    if(['否','no','false','0','不計薪','不支薪'].includes(payable)) return false;
+    return true;
+  }
+
+  function latestEffectiveParttimeRecords(rows){
+    const good = (rows || []).filter(isPayableParttimeRecord);
+    const replacedIds = new Set();
+    good.forEach(r=>{
+      [r.replacementOf, r.replacesRecordId, firstValue(r, ['replacementOf','replacesRecordId','取代紀錄ID','原紀錄ID'])]
+        .map(clean).filter(Boolean).forEach(id=>replacedIds.add(id));
+    });
+    const map = new Map();
+    good.forEach(r=>{
+      const id = recordIdOf(r);
+      if(id && replacedIds.has(id)) return;
+      const key = id || [employeeIdOf(r), clean(r.date), clean(r.note), number(r.totalHours || r.hours)].join('|');
+      const old = map.get(key);
+      if(!old || updatedValue(r) >= updatedValue(old)) map.set(key, r);
+    });
+    return Array.from(map.values());
+  }
+
+  function isClockRecordEffective(record){
+    if(!record || !clean(record.date)) return false;
+    if(isBadStatus(record.status)) return false;
+    if(lower(record.status).includes('已被補登修正')) return false;
+    if(clean(record.replacedByRecordId || firstValue(record, ['supersededBy','被取代紀錄ID']))) return false;
+    if(isDeletedLike(record)) return false;
+    return true;
+  }
+
+  function latestEffectiveClockRecords(rows){
+    const good = (rows || []).filter(isClockRecordEffective);
+    const replacedIds = new Set();
+    good.forEach(r=>{
+      const explicit = [r.replacementOf, r.replacesRecordId, firstValue(r, ['replacementOf','replacesRecordId','取代紀錄ID'])];
+      explicit.map(clean).filter(Boolean).forEach(id=>replacedIds.add(id));
+      const originalId = clean(r.originalRecordId || firstValue(r, ['原始紀錄ID']));
+      const isSupplement = truthy(r.isSupplement || firstValue(r, ['是否補登'])) || lower(r.status).includes('補打卡');
+      if(isSupplement && originalId) replacedIds.add(originalId);
+    });
+    const map = new Map();
+    good.forEach(r=>{
+      const id = recordIdOf(r);
+      if(id && replacedIds.has(id)) return;
+      const key = id || [employeeIdOf(r), clean(r.date), clean(r.actionName || r.action), clean(r.time || r.clockIn || r.clockOut)].join('|');
+      const old = map.get(key);
+      if(!old || updatedValue(r) >= updatedValue(old)) map.set(key, r);
+    });
+    return Array.from(map.values());
+  }
+
+  function clockIds(record){
+    return Array.from(new Set([
+      clean(record && record.id),
+      clean(record && record.recordId),
+      clean(record && record.__id),
+      recordIdOf(record),
+      clean(record && record.originalRecordId),
+      clean(record && record.replacementOf),
+      clean(record && record.sourceClockId),
+      clean(record && record.appliedRecordId)
+    ].filter(Boolean)));
+  }
+  function correctionIds(correction){
+    return [
+      clean(correction && correction.originalRecordId),
+      clean(correction && correction.sourceClockId),
+      clean(correction && correction.clockRecordId),
+      clean(correction && correction.targetRecordId),
+      clean(correction && correction.approvedRecordId),
+      clean(correction && correction.appliedRecordId)
+    ].filter(Boolean);
+  }
+  function correctionDate(correction){
+    return clean(correction && (correction.date || correction.correctDate || correction.originalDate || firstValue(correction, ['日期','修正日期','原日期'])));
+  }
+  function correctionMatchesClock(correction, clockRecord, employee, employees){
+    if(!correction || !clockRecord || !isApprovedStatus(correction.status)) return false;
+    if(employee && !sameEmployee(correction, employee, employees)) return false;
+
+    const requestId = clean(correction.id || correction.requestId || correction.__id);
+    const rowRequestId = clean(clockRecord.correctionRequestId || firstValue(clockRecord, ['correctionRequestId','修正申請ID']));
+    if(requestId && rowRequestId && requestId === rowRequestId) return true;
+
+    const refs = correctionIds(correction);
+    const rowIds = clockIds(clockRecord);
+    if(refs.length) return refs.some(id=>rowIds.includes(id));
+
+    // 舊資料沒有紀錄 ID 時才退回同日配對；新資料有 ID 卻對不到時不會誤把整天都免扣。
+    const cDate = correctionDate(correction);
+    return !!(cDate && cDate === clean(clockRecord.date));
+  }
+
+  function isClockInLike(record){
+    const action = lower(record && (record.actionName || record.action));
+    if(!action) return true;
+    const isOut = action.includes('下班') || action.includes('clockout') || action === 'out' || action.includes('簽退');
+    const isIn = action.includes('上班') || action.includes('clockin') || action === 'in' || action.includes('簽到');
+    if(isOut && !isIn) return false;
+    return true;
+  }
+
+  function calculateLate(options){
+    const opts = options || {};
+    const employee = opts.employee || {};
+    const employees = opts.employees || [];
+    const month = clean(opts.month);
+    const hourlyRate = number(opts.hourlyRate || employee.hourlyRate);
+    const approvedCorrections = (opts.corrections || []).filter(c=>isApprovedStatus(c.status) && sameEmployee(c, employee, employees));
+    const rows = latestEffectiveClockRecords(opts.clockRows || []).filter(r=>{
+      if(!sameEmployee(r, employee, employees)) return false;
+      if(month && clean(r.date).slice(0,7) !== month) return false;
+      return true;
+    });
+
+    const entries = [];
+    const correctedEntries = [];
+    rows.forEach(r=>{
+      if(!isClockInLike(r)) return;
+      const matchingCorrections = approvedCorrections.filter(c=>correctionMatchesClock(c, r, employee, employees));
+      const waived = truthy(r.noLateDeduction || r.lateDeductionWaived || firstValue(r, ['不扣款','免扣款']))
+        || matchingCorrections.length > 0;
+      let minutes = Math.max(0, Math.round(number(r.lateMinutes != null ? r.lateMinutes : r.late)));
+
+      // 舊版「核准不扣款」曾把遲到分鐘直接改成 0。若資料中仍保留原始分鐘，將它放回
+      // correctedEntries，才能在畫面顯示「原遲到 X 分鐘，主管核准不扣款」，同時不計入扣款。
+      if(minutes <= 0 && waived){
+        const candidates = [
+          number(firstValue(r, ['originalLateMinutes','原始遲到分鐘','原遲到分鐘'])),
+          ...matchingCorrections.map(c=>number(firstValue(c, ['originalLateMinutes','原始遲到分鐘','原遲到分鐘'])))
+        ];
+        minutes = Math.max(0, ...candidates.map(v=>Math.round(v)));
+      }
+      if(minutes <= 0) return;
+      const item = {
+        id: recordIdOf(r),
+        date: clean(r.date),
+        minutes,
+        record:r,
+        matchReason:employeeMatchReason(r, employee, employees)
+      };
+      (waived ? correctedEntries : entries).push(item);
+    });
+
+    function groupByDate(list){
+      const map = new Map();
+      list.forEach(item=>{
+        const old = map.get(item.date) || {date:item.date, minutes:0, entries:[]};
+        old.minutes += item.minutes;
+        old.entries.push(item);
+        map.set(item.date, old);
       });
+      return Array.from(map.values()).sort((a,b)=>a.date.localeCompare(b.date));
     }
-    function showMsg(text, isError){
-      const el = $('msg');
-      if(!el) return;
-      el.textContent = text || '';
-      el.className = 'message' + (isError ? ' error' : '');
-      el.style.display = text ? '' : 'none';
-    }
-    function currentUser(){
-      try{ return JSON.parse(localStorage.getItem('employeeUser') || 'null'); }catch(e){ return null; }
-    }
-    function ensureUser(){
-      if(typeof requireLogin === 'function') return requireLogin();
-      const u = currentUser();
-      if(!u){ location.href='login.html'; return null; }
-      return u;
-    }
-    function setHomeLink(user){
-      const link = $('profileHomeLink');
-      if(!link) return;
-      if(typeof userHomeHref === 'function') link.href = userHomeHref(user);
-      else link.href = 'dashboard.html';
-      if(typeof userHomeLabel === 'function') link.textContent = userHomeLabel(user);
-      else link.textContent = '返回員工首頁';
-    }
-    function identityLabel(type, fallback){
-      const t = String(type || '').trim().toLowerCase();
-      if(t === 'parttime') return '工讀生';
-      if(t === 'external') return '外聘老師';
-      if(t === 'admin') return '管理者';
-      return safeText(fallback) || '專職員工';
-    }
-    function row(label, value){
-      const text = safeText(value);
-      if(!text) return '';
-      return '<div class="info-row"><div class="info-label">' + escapeHtml(label) + '</div><div class="info-value">' + escapeHtml(text) + '</div></div>';
-    }
-    function section(title, rows){
-      const html = rows.filter(Boolean).join('');
-      if(!html) return '';
-      return '<div class="data-section"><div class="section-title-line"><div class="section-title">' + escapeHtml(title) + '</div></div><div class="data-list">' + html + '</div></div>';
-    }
-    function identityDocumentSection(p){
-      p = p || {};
-      const url = safeText(p.identityDocumentUrl);
-      const status = p.identityDocumentVerified === true || safeText(p.identityVerificationStatus) === 'verified' ? '主管已核對' : (url ? '等待主管核對' : '尚未上傳');
-      if(!url && status === '尚未上傳') return '';
-      const type = safeText(p.identityDocumentTypeLabel) || '身分證明文件';
-      const verifiedAt = safeText(p.identityVerifiedAtText);
-      const notice = safeText(p.identityDocumentUseNotice) || '僅供柚子樂器人事身分核對、建檔、契約及投保作業使用。';
-      const image = url ? '<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener"><img src="' + escapeHtml(url) + '" alt="本人證件正面"></a>' : '';
-      return '<div class="data-section"><div class="section-title-line"><div class="section-title">身分驗證</div></div><div class="identity-doc-box">' + image + '<div class="identity-doc-meta"><div><b>證件類型：</b>' + escapeHtml(type) + '</div><div><b>核對狀態：</b>' + escapeHtml(status) + '</div>' + (verifiedAt ? '<div><b>核對時間：</b>' + escapeHtml(verifiedAt) + '</div>' : '') + '</div><div class="identity-doc-notice">' + escapeHtml(notice) + '</div></div></div>';
-    }
-    function cacheKey(user){
-      const id = safeText(user && (user.employeeId || user.id || user.email)) || 'unknown';
-      return 'MY_PROFILE_FULL_CACHE_' + id;
-    }
-    function fillForm(profile, user){
-      profile = profile || {};
-      user = user || {};
-      $('mobilePhone').value = profile.mobilePhone || '';
-      $('address').value = profile.address || '';
-      $('email').value = profile.email || user.email || '';
-      $('emergencyContact').value = profile.emergencyContact || '';
-      $('emergencyPhone').value = profile.emergencyPhone || '';
-    }
-    async function waitFirebase(timeout){
-      const start = Date.now();
-      while(!window.YZFirebase || typeof window.YZFirebase.handleApi !== 'function'){
-        if(Date.now() - start > (timeout || 5000)) throw new Error('Firebase 尚未啟用');
-        await new Promise(resolve => setTimeout(resolve, 80));
-      }
-      if(typeof window.YZFirebase.enabled === 'function' && !window.YZFirebase.enabled()){
-        throw new Error('Firebase 尚未啟用');
-      }
-      return window.YZFirebase;
-    }
-    async function firebaseOnly(action, payload){
-      const fb = await waitFirebase(5000);
-      const res = await fb.handleApi(action, payload || {});
-      if(!res) throw new Error('Firebase 無回應');
-      if(res.ok === false) throw new Error(res.message || '讀取失敗');
-      return res;
-    }
-    async function init(){
-      if(typeof fillHeader === 'function') fillHeader();
-      const user = ensureUser();
-      if(!user) return;
-      setHomeLink(user);
-      const nameNode = document.querySelector('[data-user-name]');
-      if(nameNode) nameNode.textContent = user.name || '';
-      await loadProfile(false);
-    }
-    async function loadProfile(force){
-      const user = ensureUser();
-      if(!user) return;
-      setHomeLink(user);
-      const key = cacheKey(user);
-      if(!force){
-        try{
-          const cached = JSON.parse(localStorage.getItem(key) || 'null');
-          if(cached && cached.profile){
-            renderProfileData(cached.profile, cached.salary || {}, user);
-            fillForm(cached.profile, user);
-          }
-        }catch(e){}
-      }
-      showMsg('讀取中…', false);
-      try{
-        const res = await firebaseOnly('getMyProfileFull', {
-          userId:user.id,
-          employeeId:user.employeeId || user.id,
-          id:user.id,
-          email:user.email
-        });
-        const profile = res.profile || {};
-        const salary = res.salary || res.info || {};
-        renderProfileData(profile, salary, user);
-        fillForm(profile, user);
-        try{ localStorage.setItem(key, JSON.stringify({profile:profile, salary:salary, cachedAt:Date.now()})); }catch(e){}
-        showMsg('', false);
-      }catch(err){
-        showMsg(err.message || String(err), true);
-      }
-    }
-    function renderProfileData(p, s, user){
-      p = p || {};
-      s = s || {};
-      user = user || {};
-      const type = safeText(s.identityType || p.identityType || user.identityType || (user.isPartTime ? 'parttime' : 'staff'));
-      const isParttime = type === 'parttime' || /工讀/.test(s.identityLabel || p.identityLabel || user.identityLabel || '');
-      const name = safeText(p.name || s.name || user.name);
-      const email = safeText(p.email || s.email || user.email);
 
-      const basic = [
-        row('姓名', name),
-        row('身分類型', identityLabel(type, s.identityLabel || p.identityLabel || user.identityLabel)),
-        row('Email', email),
-        row('出生年月日', p.birthDate),
-        row('到職日', p.hireDate),
-        row('身分證字號', p.idNumberMasked)
-      ];
+    const byDate = groupByDate(entries);
+    const correctedByDate = groupByDate(correctedEntries);
+    const lateMinutes = Math.round(entries.reduce((sum,item)=>sum + item.minutes, 0));
+    const lateDeduction = Math.round((hourlyRate / 60) * lateMinutes);
+    return {
+      rows,
+      entries,
+      correctedEntries,
+      byDate,
+      correctedByDate,
+      lateMinutes,
+      lateDeduction,
+      hourlyRate,
+      legacyMatchCount: entries.filter(x=>x.matchReason !== 'id').length
+    };
+  }
 
-      const contact = [
-        row('行動電話', p.mobilePhone),
-        row('聯絡地址', p.address),
-        row('緊急聯絡人', p.emergencyContact),
-        row('緊急聯絡人電話', p.emergencyPhone)
-      ];
-
-      const salary = isParttime ? [
-        row('時薪', s.parttimeHourlyRateText || s.mainAmountText || s.hourlyRate),
-        row('是否部分工時', s.parttimePartialHoursText || s.isPartialHours),
-        row('目前申報月平均薪資總額', s.parttimeAverageSalaryText || s.averageSalary),
-        row('職務加給', s.jobAllowanceText),
-        row('津貼', s.allowanceText),
-        row('薪資生效日', s.effectiveDate),
-        row('薪資備註', s.note)
-      ] : [
-        row('本薪', s.staffBaseSalaryText || s.mainAmountText || s.baseSalary),
-        row('職務加給', s.jobAllowanceText),
-        row('津貼', s.allowanceText),
-        row('薪資生效日', s.effectiveDate),
-        row('薪資備註', s.note)
-      ];
-
-      const labor = [
-        row('勞保狀態', s.laborStatus),
-        row('勞保級距', s.laborPlanText || s.laborLevelText),
-        row('勞保投保薪資', s.laborSalaryText),
-        row('勞保自付額', s.laborSelfPayText),
-        row('雇主提撥勞退', s.retirementEmployerText),
-        row('勞退自提', s.selfRetirementText)
-      ];
-
-      const health = [
-        row('健保狀態', s.healthStatus),
-        row('健保級距', s.healthPlanText || s.healthLevelText),
-        row('健保投保薪資', s.healthSalaryText),
-        row('健保自付額', s.healthSelfPayText)
-      ];
-
-      const html = [
-        section('基本資料', basic),
-        identityDocumentSection(p),
-        section('聯絡資料', contact),
-        section('薪資資訊', salary),
-        section('勞保 / 勞退資訊', labor),
-        section('健保資訊', health)
-      ].filter(Boolean).join('');
-
-      $('profileSections').innerHTML = html;
-      $('emptyProfileNote').style.display = html ? 'none' : '';
-    }
-    async function submitProfileChange(){
-      const user = ensureUser();
-      if(!user) return;
-      try{
-        showMsg('送出中…', false);
-        const res = await firebaseOnly('submitProfileChangeRequest', {
-          userId:user.id,
-          employeeId:user.employeeId || user.id,
-          name:user.name || '',
-          mobilePhone:$('mobilePhone').value.trim(),
-          address:$('address').value.trim(),
-          email:$('email').value.trim(),
-          emergencyContact:$('emergencyContact').value.trim(),
-          emergencyPhone:$('emergencyPhone').value.trim(),
-          status:'待審核'
-        });
-        showMsg(res.message || '已送出修改申請。', false);
-      }catch(err){
-        showMsg(err.message || String(err), true);
-      }
-    }
-  </script>
-  <script src="global-nav.js?v=20260603unified1"></script>
-</body>
-</html>
+  global.YZParttimePayroll = Object.freeze({
+    clean,
+    lower,
+    truthy,
+    number,
+    firstValue,
+    recordIdOf,
+    employeeMatchReason,
+    sameEmployee,
+    isApprovedStatus,
+    isBadStatus,
+    isDeletedLike,
+    isPayableParttimeRecord,
+    latestEffectiveParttimeRecords,
+    isClockRecordEffective,
+    latestEffectiveClockRecords,
+    correctionMatchesClock,
+    calculateLate
+  });
+})(window);

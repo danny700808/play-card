@@ -1,100 +1,75 @@
-<!doctype html>
-<html lang="zh-Hant">
-<head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>設備租賃正式契約</title>
-  <link rel="stylesheet" href="style.css?v=rental-contract-20260614-screenshot">
-  <style>
-    body{background:#eef3f7;color:#18314a;margin:0}.wrap{max-width:1100px;margin:0 auto;padding:18px 12px 54px}.card2{background:#fff;border:1px solid #dbe5ef;border-radius:24px;padding:18px;margin-bottom:16px;box-shadow:0 10px 28px rgba(15,23,42,.04)}.title{font-size:28px;font-weight:950;margin:0 0 8px}.muted{font-size:13px;color:#64748b;line-height:1.8}.btn{border:0;border-radius:14px;background:#1f7a5a;color:#fff;font-weight:950;padding:11px 15px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}.btn.secondary{background:#e2e8f0;color:#18314a}.btn-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.msg{margin-top:12px;border-radius:14px;padding:12px 14px;font-weight:900;line-height:1.7}.msg.ok{background:#e8fff4;color:#146c43}.msg.bad{background:#fff0f0;color:#b42318}.status{display:inline-block;border-radius:999px;padding:6px 11px;background:#e8fff4;color:#146c43;font-weight:950}.summary-line{line-height:1.9;margin-top:10px}.contract-shell{overflow:hidden;background:#f8fafc;border-radius:18px;padding:10px;display:flex;justify-content:center;align-items:flex-start}.contract-scale{width:210mm;transform-origin:top center}.contract-scale #contractPreview{width:210mm;margin:0 auto}.renewal-note{background:#fff;border:1px solid #dbe5ef;border-radius:18px;padding:14px;margin-top:12px;line-height:1.8}.renewal-note b{color:#18314a}.mobile-hint{margin-top:8px;font-size:12.5px;color:#64748b;line-height:1.7}.save-notice{margin-top:12px;border-radius:16px;background:#fff7ed;color:#9a3412;padding:12px 14px;font-weight:900;line-height:1.8}@media(max-width:840px){.wrap{padding:10px 6px}.card2{padding:10px;border-radius:16px}.title{font-size:23px}.contract-shell{padding:4px;background:transparent;border-radius:12px}}@media print{body{background:#fff!important}.no-print{display:none!important}.wrap{max-width:none!important;margin:0!important;padding:0!important}.card2{border:0!important;box-shadow:none!important;margin:0!important;padding:0!important}.contract-shell{overflow:visible!important;background:#fff!important;padding:0!important;display:block!important;height:auto!important}.contract-scale{width:auto!important;transform:none!important}.contract-scale #contractPreview{width:auto!important;margin:0!important}#contractPreview{margin:0!important}@page{size:A4;margin:0}}
-  </style>
-  <link rel="stylesheet" href="global-nav.css?v=20260624unified-top-nav">
-</head>
-<body>
-  
-  <div class="yz-global-nav" data-yz-global-nav>
-    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
-    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
-  </div>
+# 租賃續租 / 退租 + Email 發送更新說明
 
-<div class="wrap">
-    <section class="card2 no-print">
-      <h1 class="title">設備租賃正式契約</h1>
-      <div class="muted">此頁為柚子樂器正式契約頁面。合約內容會直接顯示在下方，請自行截圖保存，或保留 LINE 連結日後查看。</div>
-      <div id="summary">讀取中...</div>
-      <div class="save-notice">請自行截圖保存此正式契約頁面。</div>
-      <div class="btn-row">
-        <a class="btn secondary" href="https://lin.ee/Fx5Y2mL" target="_blank" rel="noopener">回到官方 LINE</a>
-      </div>
-      <div class="mobile-hint">手機可直接使用截圖功能保存；此 LINE 連結日後也可再次開啟查看。</div>
-      <div id="msg"></div>
-    </section>
-    <section class="card2">
-      <div id="contractShell" class="contract-shell"><div id="contractScale" class="contract-scale"><div id="contractPreview">讀取中...</div></div></div><div id="renewalNote" class="renewal-note no-print" style="display:none"></div>
-    </section>
-  </div>
-  <script src="config.js?v=rental-contract-20260614-screenshot"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="rental-common.js?v=20260627-other-equipment-date-internal"></script>
-  <script>
-    const R=window.YZRental;
-    const params=new URLSearchParams(location.search);
-    const contractId=params.get('contractId')||params.get('id')||'';
-    const token=params.get('token')||'';
+## 這版新增
 
-    function fitContractToA4(){
-      const shell=R.qs('contractShell');
-      const scaleBox=R.qs('contractScale');
-      const preview=R.qs('contractPreview');
-      if(!shell || !scaleBox || !preview) return;
-      if(window.matchMedia && window.matchMedia('print').matches){
-        shell.style.height='auto';
-        scaleBox.style.transform='none';
-        return;
-      }
-      const naturalWidth=scaleBox.scrollWidth || preview.scrollWidth || 794;
-      const naturalHeight=scaleBox.scrollHeight || preview.scrollHeight || 1123;
-      const available=Math.max(280, shell.clientWidth - 2);
-      const scale=Math.min(1, available / naturalWidth);
-      scaleBox.style.transform='scale('+scale+')';
-      scaleBox.style.transformOrigin='top center';
-      shell.style.height=Math.ceil(naturalHeight * scale)+'px';
-    }
-    window.addEventListener('resize', fitContractToA4);
-    window.addEventListener('orientationchange', ()=>setTimeout(fitContractToA4, 250));
-    window.addEventListener('beforeprint', ()=>{
-      const shell=R.qs('contractShell');
-      const scaleBox=R.qs('contractScale');
-      if(shell) shell.style.height='auto';
-      if(scaleBox) scaleBox.style.transform='none';
-    });
-    window.addEventListener('afterprint', ()=>setTimeout(fitContractToA4, 100));
-    async function load(){
-      try{
-        if(!contractId || !token) throw new Error('契約連結不完整，請確認是否複製完整網址。');
-        const contract=await R.get('rentalContracts',contractId);
-        if(!contract) throw new Error('找不到這份契約。');
-        const validTokens=[contract.officialContractToken,contract.customerToken,contract.signToken,contract.token].map(R.clean).filter(Boolean);
-        if(!validTokens.includes(R.clean(token))) throw new Error('契約連結驗證失敗。');
-        const allowed=['租賃中','已簽署','待配送 / 待安裝','續約詢問中','續約待付款','續約待確認','待歸還','已退租'];
-        if(!allowed.includes(R.clean(contract.status||'')) && !contract.officialConfirmedAt && !contract.officialContractUrl){
-          throw new Error('這份契約尚未正式確認成立，暫時無法查看正式契約。');
-        }
-        const display=Object.assign({_officialPreview:true}, contract);
-        R.qs('summary').innerHTML=`<div class="summary-line"><span class="status">${R.esc(contract.status||'租賃中')}</span><br><b>客戶：</b>${R.esc(contract.customerName||'')}<br><b>租期：</b>${R.esc(contract.startDate||'')} ～ ${R.esc(contract.endDate||'')}<br><b>契約編號：</b>${R.esc(contract.contractNo||contract.contractId||contract.__id||contractId)}</div>`;
-        R.qs('contractPreview').innerHTML=R.renderContractHtml(display,{officialView:true});
-        R.qs('contractPreview').querySelectorAll('img').forEach(img=>{ img.addEventListener('load', fitContractToA4); img.addEventListener('error', fitContractToA4); });
-        setTimeout(fitContractToA4, 80);
-        const endText=contract.endDate||'契約到期日前';
-        R.qs('renewalNote').style.display='block';
-        R.qs('renewalNote').innerHTML=`<b>續約與到期提醒</b><br><br>本租賃目前到期日：<br>${R.esc(endText)}。若您需要提早續約，可提前透過官方 LINE 告知。<br><br>系統會在到期前五天提醒您續約或退租。`;
-      }catch(err){
-        R.qs('contractPreview').innerHTML='';
-        R.toast(err.message||String(err), false);
-      }
-    }
-    load();
-  </script>
-  <script src="global-nav.js?v=20260624unified-top-nav"></script>
-</body>
-</html>
+1. `rental-renewal.html`
+   - 客人點連結後可選「我要續租」或「我要退租」。
+   - 續租可選 1 / 2 / 3 期，自動接目前到期日下一天。
+   - 可填匯款末五碼、上傳付款截圖、送出給管理端確認。
+   - 退租會回寫為 `退租申請中`，管理端會看到紅色待處理數字。
+
+2. `rental-admin.html`
+   - 租用中契約新增「傳送續租 / 退租確認連結」。
+   - 續租付款確認後可按「確認續約成立」，系統會新增第二頁續租明細並傳新契約。
+   - 通知會同時建立 LINE 與 Email 佇列；有 LINE 發 LINE，有 Email 寄 Email。
+
+3. `functions/index.js`
+   - 補上 `notificationQueue` 真正發送器。
+   - LINE 使用 `LINE_CHANNEL_ACCESS_TOKEN`。
+   - Email 使用 SendGrid：`SENDGRID_API_KEY`、`SENDGRID_FROM_EMAIL`。
+   - 每天 10:00 自動檢查 7 天內到期租約，自動發續租 / 退租確認連結。
+
+4. `email-send-check.html`
+   - 可測試 Email 是否真的寄出。
+   - 若未設定 SendGrid，會在畫面顯示 `Email 尚未設定 SENDGRID_API_KEY / SENDGRID_FROM_EMAIL`。
+
+## Email 是否能寄出
+
+從舊檔案判斷：原本目前部署的 `functions/index.js` 只有 LINE webhook，沒有實際 Email 發送器；所以原本即使前端寫入 `notificationQueue` 的 email 項目，也不一定會真正寄出。
+
+這版已補上 Email 發送器，但 Firebase Functions 環境必須設定：
+
+```txt
+SENDGRID_API_KEY=你的 SendGrid API Key
+SENDGRID_FROM_EMAIL=已驗證的寄件 Email
+SENDGRID_FROM_NAME=柚子樂器
+```
+
+設定完成並部署 Functions 後，打開：
+
+```txt
+email-send-check.html
+```
+
+送出測試信。如果狀態變成 `已發送`，代表 Email 可以發出去；如果變成 `發送失敗`，畫面會顯示失敗原因。
+
+## 部署注意
+
+GitHub workflow 已改成部署全部 Functions：
+
+```txt
+firebase deploy --only firestore:rules,storage,functions --project youzi-c1b74
+```
+
+因為這版新增了：
+
+- `sendNotificationQueueOnCreate`
+- `flushNotificationQueue`
+- `rentalAutoRenewalReminder`
+- `emailSendCheckHttp`
+- 多個租賃 HTTP functions
+
+如果只部署 `functions:lineWebhook`，Email 與續租自動提醒不會生效。
+
+
+## 2026-06-14 付款資訊更新
+
+已將續租頁付款區塊改為：
+
+- QR Code 圖檔：`rental-payment-qr.png`
+- 銀行：台新銀行（812）｜敦南分行（0023）
+- 戶名：黃銘廷
+- 帳號：2888-1010-149-129
+- 顯示名稱：柚子樂器帳戶
+
+位置：`rental-renewal.html` 的「匯款資訊」區塊。

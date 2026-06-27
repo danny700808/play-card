@@ -3,121 +3,37 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>公告／交辦／定期</title>
-  <link rel="stylesheet" href="style.css?v=admin-final-20260530b">
+  <title>人事與薪資設定</title>
+  <link rel="stylesheet" href="style.css?v=hr-payroll-hub-20260624">
+  <link rel="stylesheet" href="global-nav.css?v=20260624unified-top-nav">
   <style>
-    .tile strong{display:flex;align-items:center;gap:8px;justify-content:space-between}
-    .badge{display:inline-flex;min-width:22px;height:22px;padding:0 6px;border-radius:999px;background:#dc2626;color:#fff;font-size:12px;align-items:center;justify-content:center;font-weight:800}
-    .badge:empty{display:none}
-    .page-return-wrap{margin-bottom:16px}
-    .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
+    body{background:#eef3f7}.wrap{max-width:1180px;margin:0 auto;padding:18px 14px 56px}.card{background:#fff;border:1px solid #e2e8f0;border-radius:24px;padding:22px;box-shadow:0 10px 28px rgba(15,23,42,.05)}.title{font-size:30px;font-weight:950;margin:0 0 8px;color:#18314a}.sub{color:#64748b;line-height:1.8;font-weight:800}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:18px}.hub-card{display:block;text-decoration:none;color:#0f172a;background:#fff;border:1px solid #dbe5ef;border-radius:22px;padding:22px;box-shadow:0 8px 24px rgba(15,23,42,.04)}.hub-card:hover{transform:translateY(-1px);border-color:#94a3b8}.mark{font-size:13px;color:#0f766e;font-weight:900;margin-bottom:8px}.h{font-size:24px;font-weight:950;margin-bottom:8px;color:#18314a}.d{font-size:14px;line-height:1.8;color:#475569;font-weight:800}@media(max-width:900px){.grid{grid-template-columns:1fr}.wrap{padding:12px 8px}.title{font-size:26px}}
   </style>
-  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
 </head>
-<body onload="init()" class="admin-wide-page">
+<body onload="initPage()" class="admin-wide-page">
   <div class="yz-global-nav" data-yz-global-nav>
     <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
     <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
   </div>
 
-  <div class="container">
-    <div class="card">
-      <div class="topbar">
-        <div class="header" style="margin:0">
-          <h1 class="title" style="margin:0">公告／交辦／定期</h1>
-          
-        </div>
+  <div class="wrap">
+    <section class="card">
+      <h1 class="title">人事與薪資設定</h1>
+      <div class="sub">班表、假勤規則、薪資與投保資料集中到同一個入口，管理首頁只保留這一格，避免設定項目散在外面。</div>
+      <div class="grid">
+        <a class="hub-card" href="schedule-admin.html"><div class="mark">項目一</div><div class="h">班表管理</div><div class="d">建立與調整員工班表、排班時段與出勤基礎設定。</div></a>
+        <a class="hub-card" href="leave-policy-admin.html"><div class="mark">項目二</div><div class="h">假勤制度設定</div><div class="d">設定假別、請假規則、特休、喪假與請假流程備註。</div></a>
+        <a class="hub-card" href="salary-admin.html"><div class="mark">項目三</div><div class="h">薪資投保設定</div><div class="d">管理薪資、投保與員工薪資相關基本資料。</div></a>
       </div>
-      <div class="grid" style="margin-top:18px">
-<a class="tile" href="announcement-admin.html"><strong>公告管理</strong><span>新增公告、圈選顯示對象、發布通知與管理公告內容</span></a>
-<a class="tile" href="task.html?mode=admin"><strong>交辦任務 <span class="badge" id="badge-task"></span></strong><span>建立交辦事項、查看已建立任務與調整設定</span></a>
-<a class="tile" href="routine.html?mode=admin"><strong>定期事項 <span class="badge" id="badge-routine"></span></strong><span>建立固定週期工作、修改負責人與週期設定</span></a>
-</div>
-    </div>
+    </section>
   </div>
-  <script src="config.js?v=20260508frontendperf2"></script>
+
+  <script src="config.js?v=hr-payroll-hub-20260624"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="firebase-client.js?v=admin-final-20260530b"></script>
-
   <script src="app.js?v=admin-final-20260530b"></script>
-  <script>
-    
-    async function init(){
-      fillHeader();
-      const user=requireLogin();
-      if(!user) return;
-      if(!hasSettingsZoneAccess(user)){location.href='dashboard.html';return;}
-
-      // 先吃管理首頁共用快取，讓中繼入口頁先顯示。
-      applyBadgeCounts_(readCachedPendingCounts_(user));
-
-      // 待處理數字延後更新，不阻塞第一屏。
-      scheduleIdle_(async()=>applyBadgeCounts_(await fetchPendingCountsFast_(user)));
-    }
-
-    function pendingCountsCacheKey_(user){ return 'pendingCounts:v3:settings:' + ((user && user.id) || 'guest'); }
-    function readCachedPendingCounts_(user){
-      try{ return JSON.parse(localStorage.getItem(pendingCountsCacheKey_(user)) || '{}') || {}; }catch(e){ return {}; }
-    }
-    function writeCachedPendingCounts_(user, data){
-      try{ localStorage.setItem(pendingCountsCacheKey_(user), JSON.stringify(Object.assign({__cachedAt:Date.now()}, data||{}))); }catch(e){}
-    }
-    function scheduleIdle_(fn){
-      if(window.requestIdleCallback) requestIdleCallback(fn,{timeout:900});
-      else setTimeout(fn, 80);
-    }
-    function normalizePendingCounts_(r){
-      r = r || {};
-      const counts = r.counts || r.summary || r.dashboard || r;
-      return Object.assign({}, r, counts, {
-        registrationCount: Number(counts.registrationCount || counts.pendingRegistrationCount || counts.registrations || 0) || 0,
-        leaveCount: Number(counts.leaveCount || counts.pendingLeaveCount || counts.leaveApprovalCount || 0) || 0,
-        clockCorrectionCount: Number(counts.clockCorrectionCount || counts.pendingClockCorrectionCount || counts.clockCorrection || 0) || 0,
-        contractCount: Number(counts.contractCount || counts.pendingContractCount || counts.contracts || 0) || 0,
-        goodsInquiryCount: Number(counts.goodsInquiryCount || counts.pendingGoodsInquiryCount || counts.goodsInquiries || 0) || 0,
-        taskCount: Number(counts.taskCount || counts.pendingTaskCount || counts.taskReviewCount || counts.tasks || 0) || 0,
-        routineCount: Number(counts.routineCount || counts.pendingRoutineCount || counts.routineReviewCount || counts.routines || 0) || 0,
-        applicationCount: Number(counts.applicationCount || counts.pendingApplicationCount || counts.teacherApplicationCount || counts.applications || 0) || 0,
-        salaryCount: Number(counts.salaryCount || counts.pendingSalaryCount || 0) || 0
-      });
-    }
-    async function fetchPendingCountsFast_(user){
-      try{
-        let r = await api('getDashboardSummary',{userId:user.id, role:'admin'});
-        if(!r || r.ok === false) r = await api('getPendingCounts',{userId:user.id});
-        const data = normalizePendingCounts_(r);
-        writeCachedPendingCounts_(user, data);
-        return data;
-      }catch(err){
-        try{
-          const r = await api('getPendingCounts',{userId:user.id});
-          const data = normalizePendingCounts_(r);
-          writeCachedPendingCounts_(user, data);
-          return data;
-        }catch(e){ return readCachedPendingCounts_(user); }
-      }
-    }
-    function setBadge(id, count){
-      const el=document.getElementById(id);
-      if(!el) return;
-      const n=Number(count||0)||0;
-      if(n>0){
-        el.textContent=n>99?'99+':String(n);
-        el.classList.remove('is-empty');
-      }else{
-        el.textContent='';
-        el.classList.add('is-empty');
-      }
-    }
-
-    function applyBadgeCounts_(r){
-      r=normalizePendingCounts_(r);
-      setBadge('badge-task',r.taskCount);
-      setBadge('badge-routine',r.routineCount);
-    }
-  
-  </script>
-  <script src="global-nav.js?v=20260603unified1"></script>
+  <script>function initPage(){ if(typeof fillHeader==='function') fillHeader(); const user=typeof requireLogin==='function'?requireLogin():null; if(!user)return; if(typeof hasSettingsZoneAccess==='function'&&!hasSettingsZoneAccess(user)){location.href='dashboard.html';return;} if(typeof setPortalMode==='function') setPortalMode('settings'); }</script>
+  <script src="global-nav.js?v=20260624unified-top-nav"></script>
 </body>
 </html>

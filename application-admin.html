@@ -3,307 +3,75 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>應聘管理</title>
+  <title>公告管理</title>
   <link rel="stylesheet" href="style.css?v=admin-final-20260530b">
   <style>
-    .admin-shell{max-width:1180px;margin:0 auto;padding:18px 0 34px}
-    .top-return-wrap{margin-bottom:14px}.top-return-btn{width:100%;max-width:none;min-height:54px;font-size:16px;border-radius:18px}
-    .app-home-card{padding:20px;border:1px solid var(--line);border-radius:24px;background:#fff;box-shadow:0 12px 30px rgba(15,23,42,.04);margin-bottom:14px}.home-title h1{margin:0 0 5px;font-size:30px;color:#18314a}.entry-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:18px}.entry-card{border:1px solid var(--line);background:#fff;border-radius:24px;padding:28px 18px;min-height:135px;cursor:pointer;text-align:center;box-shadow:0 12px 30px rgba(15,23,42,.035)}.entry-card strong{display:block;font-size:24px;color:#18314a;margin-bottom:8px}.entry-card span{display:block;color:#64748b;font-weight:800;line-height:1.5}.entry-card:hover{border-color:#1f7a5a;box-shadow:0 14px 35px rgba(31,122,90,.12)}
-    .sub-head{margin-bottom:12px}.review-panel.hidden{display:none}
-    .top-card{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:18px 20px;border:1px solid var(--line);border-radius:24px;background:#fff;box-shadow:0 12px 30px rgba(15,23,42,.04);margin-bottom:14px}
-    .top-card h1{margin:0;font-size:28px;color:#18314a;line-height:1.2}
-    .filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
-    .filter-btn{border:1px solid var(--line);background:#fff;border-radius:999px;padding:9px 13px;font-weight:900;color:#374151;cursor:pointer}
-    .filter-btn.active{background:#1f7a5a;color:#fff;border-color:#1f7a5a}
-    .filter-count{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;margin-left:5px;padding:0 6px;border-radius:999px;background:#eef2f6;color:#24384f;font-size:12px;font-weight:900}
-    .filter-btn.active .filter-count{background:rgba(255,255,255,.22);color:#fff}
-    .table-card,.detail-card{background:#fff;border:1px solid var(--line);border-radius:24px;padding:16px;box-shadow:0 12px 30px rgba(15,23,42,.035);margin-bottom:14px}
-    .responsive-table{overflow:auto}
-    table{width:100%;border-collapse:collapse;min-width:900px}
-    th,td{border-bottom:1px solid #e5e7eb;padding:11px 9px;text-align:left;vertical-align:top;font-size:14px;line-height:1.45}
-    th{color:#18314a;font-weight:900;background:#f8fafc;white-space:nowrap}
-    td .mini{font-size:12px;color:#64748b;margin-top:4px}
-    .status-pill{display:inline-flex;border-radius:999px;padding:5px 10px;font-size:12px;font-weight:900;background:#eef2f6;color:#475569;white-space:nowrap}
-    .status-pill.ok{background:#e8f7ef;color:#1f7a5a}.status-pill.no{background:#fef2f2;color:#b42318}.status-pill.wait{background:#fff7ed;color:#c2410c}
-    .small-btn{border:none;border-radius:12px;background:#1f7a5a;color:#fff;font-weight:900;padding:8px 11px;cursor:pointer;white-space:nowrap}
-    .small-btn.secondary{background:#eef2f6;color:#24384f}.small-btn.danger{background:#b42318;color:#fff}
-    .return-home-btn{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;background:#1f7a5a!important;color:#fff!important;border:1px solid #1f7a5a!important;border-radius:16px;padding:11px 16px;font-weight:900;min-width:150px}
-    .detail-card.hidden,.app-home-card.hidden{display:none}
-    .detail-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;margin-bottom:12px}
-    .detail-head h2{margin:0;color:#18314a;font-size:24px}
-    .detail-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
-    .info-box{border:1px solid #e5e7eb;border-radius:16px;padding:10px;background:#f8fafc;line-height:1.55}
-    .info-box.full{grid-column:1/-1}.info-box.half{grid-column:span 2}.settings-panel{background:#fff;border:1px solid var(--line);border-radius:24px;padding:16px;box-shadow:0 12px 30px rgba(15,23,42,.035);margin-bottom:14px}.settings-panel.hidden{display:none}.settings-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.promo-preview{max-width:260px;max-height:180px;object-fit:contain;border-radius:14px;border:1px solid #e5e7eb;background:#f8fafc}.history-list{margin-top:10px;display:grid;gap:8px}.history-item{border:1px solid #e5e7eb;border-radius:14px;padding:10px;background:#f8fafc;font-size:13px}.history-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.rule-list{display:grid;gap:8px}.rule-row{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center}.rule-row input{margin:0}.status-select{font-weight:900}.info-label{font-size:12px;color:#64748b;font-weight:900}.info-value{white-space:pre-wrap;font-weight:800;color:#24384f;word-break:break-word}.auto-link{color:#166534;text-decoration:underline;text-underline-offset:2px;font-weight:900}
-    .link-list{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}.link-list a{display:inline-flex;background:#1f7a5a;color:#fff;text-decoration:none;border-radius:12px;padding:8px 10px;font-weight:900;font-size:13px}
-    textarea{min-height:110px;resize:vertical}.action-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.message{white-space:pre-wrap}
-    @media(max-width:900px){.detail-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.settings-grid{grid-template-columns:1fr}.entry-grid{grid-template-columns:1fr}.top-return-btn{max-width:none}}@media(max-width:720px){.admin-shell{padding:10px 0 28px}.top-card h1{font-size:25px}.detail-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.table-card,.detail-card,.top-card,.settings-panel{border-radius:22px;padding:14px}.filters{gap:7px}.filter-btn{padding:8px 11px;font-size:13px}}
+    .page-return-wrap{margin-bottom:16px}.page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
+    .admin-card{background:#fff;border:1px solid #e2e8f0;border-radius:20px;padding:18px;box-shadow:0 8px 24px rgba(15,23,42,.04)}
+    .section-title{margin:0 0 10px;font-size:17px;font-weight:900;color:#0f172a}.section-desc{margin:0 0 12px;color:#64748b;font-size:13px}.stack{display:grid;gap:14px}
+    .field-grid,.setting-grid,.upload-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.option-box,.upload-box{background:#f8fafc;border:1px solid #dbe5f1;border-radius:16px;padding:12px}.option-title{font-size:13px;font-weight:900;color:#334155;margin:0 0 10px}
+    .check-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.check-item{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1px solid #e2e8f0;border-radius:14px;background:#fff;line-height:1.45}.check-item input{margin-top:2px;accent-color:#1d4ed8;width:18px;height:18px;flex:0 0 auto}
+    .upload-box label{display:block;font-weight:900;margin-bottom:8px}.upload-tip{font-size:12px;color:#64748b;margin-top:6px;line-height:1.5}
+    .record-panel{display:grid;gap:10px}.record-visual{display:flex;align-items:center;gap:10px;padding:12px;border:1px solid #dbe5f1;border-radius:14px;background:#fff}.record-dot{width:12px;height:12px;border-radius:999px;background:#cbd5e1;flex:0 0 auto}.record-dot.recording{background:#ef4444;box-shadow:0 0 0 6px rgba(239,68,68,.16)}.record-bar{position:relative;flex:1;height:10px;border-radius:999px;background:linear-gradient(90deg,#dbeafe,#bfdbfe);overflow:hidden}.record-bar-fill{height:100%;width:0%;background:linear-gradient(90deg,#2563eb,#1d4ed8);transition:width .2s ease}.record-time{min-width:70px;text-align:right;font-weight:900;color:#0f172a}.record-actions{display:flex;gap:10px;flex-wrap:wrap}.record-preview{display:none;padding:12px;border:1px solid #dbe5f1;border-radius:14px;background:#fff}.record-preview.open{display:block}
+    .save-wrap{display:grid;gap:10px}.save-progress{display:none;gap:8px}.save-progress.open{display:grid}.save-progress-bar{height:10px;border-radius:999px;background:#dcfce7;overflow:hidden}.save-progress-fill{height:100%;width:0%;background:linear-gradient(90deg,#22c55e,#16a34a);transition:width .25s ease}.save-progress-text{font-size:13px;font-weight:900;color:#166534}.action-row{display:flex;gap:10px;flex-wrap:wrap}
+    .cards{display:grid;gap:16px;margin-top:18px}.cardx{background:#fff;border:1px solid #dbe5f1;border-radius:20px;padding:16px;box-shadow:0 8px 24px rgba(15,23,42,.04)}.card-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.card-title{margin:0;font-size:20px;line-height:1.35}.badge-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.badge{display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;background:#eff6ff;color:#1d4ed8;font-size:12px;font-weight:900}.meta{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:14px 0}.meta .item{background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:10px}.meta .label{font-size:12px;color:#64748b;font-weight:800}.meta .value{font-size:15px;font-weight:800;word-break:break-word;margin-top:4px}.summary-box{background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:12px;margin-top:6px}.status-live{background:#eff6ff;color:#1d4ed8}.status-off{background:#fef2f2;color:#b91c1c}.cardx.offline{border-color:#fecaca;background:#fff7f7}.offline-note{margin-top:10px;padding:10px 12px;border:1px dashed #fca5a5;border-radius:12px;background:#fff1f2;color:#991b1b;font-size:13px;font-weight:800}
+    .expand-btn{width:auto;padding:10px 14px}.detail-panel{display:none;margin-top:14px;padding-top:14px;border-top:1px dashed #cbd5e1}.detail-panel.open{display:block}.detail-block{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:12px;margin-top:10px}.detail-block h4{margin:0 0 8px;font-size:15px}.asset-list{display:grid;gap:8px}.asset-link{display:flex;justify-content:space-between;gap:10px;padding:10px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;color:#0f172a;text-decoration:none}.asset-link span:last-child{color:#1d4ed8;font-weight:800;white-space:nowrap}.reply-list{display:grid;gap:8px}.reply-item{padding:10px 12px;border:1px solid #e2e8f0;border-radius:12px;background:#f8fafc}.reply-name{font-weight:900;color:#163252}.muted-mini{font-size:12px;color:#64748b}.inline-progress{display:none;gap:6px;margin-top:10px}.inline-progress.open{display:grid}.inline-progress-label{font-size:12px;font-weight:900;color:#991b1b}.inline-progress-bar{height:8px;border-radius:999px;background:#fee2e2;overflow:hidden}.inline-progress-fill{height:100%;width:0%;background:linear-gradient(90deg,#f97316,#dc2626);transition:width .25s ease}
+    @media (max-width:900px){.field-grid,.setting-grid,.upload-grid,.meta,.check-grid{grid-template-columns:1fr}.card-head{flex-direction:column}}
   </style>
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
 </head>
-<body onload="init()" class="admin-wide-page">
+<body onload="initPage()" class="admin-wide-page">
   <div class="yz-global-nav" data-yz-global-nav>
     <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
     <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
   </div>
 
-  <div class="container admin-shell">
-
-    <section id="appHome" class="app-home-card">
-      <div class="home-title">
-        <h1>應聘管理</h1>
-        <div class="muted">請先選擇要處理的項目。</div>
+  <div class="container">
+    <div class="card">
+      <div class="topbar"><div><h1 class="title" style="margin:0">公告管理</h1><div class="welcome">歡迎 <span data-user-name></span></div></div></div>
+      <div class="stack">
+        <section class="admin-card"><h2 class="section-title">公告內容</h2><p class="section-desc">公告統一建立，只用發布對象控制誰看得到，不再另外分外聘老師專用公告。</p><div class="stack"><div class="field"><label>公告標題</label><input id="titleInput" placeholder="請輸入公告標題"></div><div class="field-grid"><div class="field"><label>公告等級</label><select id="categoryInput"><option value="重要公告">重要公告</option><option value="一般公告" selected>一般公告</option><option value="資訊提醒">資訊提醒</option></select></div><div class="field"><label>發布日期</label><input id="publishDateInput" type="date"></div></div><div class="field"><label>公告摘要</label><textarea id="summaryInput" placeholder="列表卡片上顯示的短摘要"></textarea></div><div class="field"><label>公告內文</label><textarea id="contentInput" placeholder="請輸入完整公告內容"></textarea></div></div></section>
+        <section class="admin-card"><h2 class="section-title">發布設定</h2><p class="section-desc">需要回覆時，員工 / 老師端才會出現回覆框；不需要回覆時只顯示內容與附件。</p><div class="setting-grid"><div class="option-box"><div class="option-title">發布對象</div><div class="check-grid"><label class="check-item"><input type="checkbox" id="audAll" checked><span>全部對象</span></label><label class="check-item"><input type="checkbox" id="audStaff"><span>專職員工</span></label><label class="check-item"><input type="checkbox" id="audParttime"><span>工讀生</span></label><label class="check-item"><input type="checkbox" id="audExternal"><span>外聘老師</span></label></div></div><div class="option-box"><input type="checkbox" id="pinnedInput" style="display:none"><input type="checkbox" id="publishedInput" style="display:none" checked><input type="checkbox" id="sendEmailInput" style="display:none"><input type="checkbox" id="sendLineInput" style="display:none"><div class="option-title">回覆確認</div><div class="check-grid"><label class="check-item"><input type="checkbox" id="requireReplyInput"><span>需要回覆 / 確認</span></label></div><div class="field" style="margin-top:12px"><label>回覆截止日</label><input id="replyDeadlineInput" type="date"></div></div></div></section>
+        <section class="admin-card"><h2 class="section-title">附件</h2><p class="section-desc">圖片、影片、錄音與文件都會存進同一張公告表，員工端與外聘老師端會一起讀到。</p><div class="upload-grid"><div class="upload-box"><label>圖片附件</label><input id="imageInput" type="file" multiple accept="image/*"></div><div class="upload-box"><label>影片附件</label><input id="videoInput" type="file" multiple accept="video/*"></div><div class="upload-box"><label>錄音附件</label><div class="record-panel"><div class="record-visual"><div id="recordDot" class="record-dot"></div><div class="record-bar"><div id="recordBarFill" class="record-bar-fill"></div></div><div id="recordTime" class="record-time">00:00</div></div><div class="record-actions"><button id="recordBtn" class="btn secondary" type="button" style="width:auto" onclick="startRecording()">開始錄音</button><button id="stopRecordBtn" class="btn secondary" type="button" style="width:auto" onclick="stopRecording()" disabled>停止</button><button id="clearRecordBtn" class="btn secondary" type="button" style="width:auto" onclick="clearRecording()" disabled>刪除</button></div><div id="recordPreview" class="record-preview"><div style="font-weight:900;margin-bottom:8px">錄音預覽</div><audio id="recordedAudio" controls style="width:100%"></audio></div></div><div class="upload-tip">手機可直接開啟錄音；錄完後可確認預覽，或刪除重錄。</div></div><div class="upload-box"><label>文件附件</label><input id="fileInput" type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip"></div></div></section>
+        <section class="admin-card"><div class="save-wrap"><div class="action-row"><button id="saveBtn" class="btn" type="button" onclick="saveAnnouncement()">儲存公告</button><button class="btn secondary" type="button" onclick="resetForm()">清空表單</button></div><div id="saveProgress" class="save-progress"><div class="save-progress-text" id="saveProgressText">準備儲存 0%</div><div class="save-progress-bar"><div id="saveProgressFill" class="save-progress-fill"></div></div></div></div><div id="msg" class="message"></div></section>
+        <section class="admin-card"><h2 class="section-title">已建立公告</h2><p class="section-desc">展開後可查看附件與回覆紀錄。</p><div id="list" class="cards"></div></section>
       </div>
-      <div class="entry-grid">
-        <button class="entry-card" type="button" onclick="showSection('settings')">
-          <strong>應聘首頁設定</strong>
-          <span>設定前台圖片與招募規則</span>
-        </button>
-        <button class="entry-card" type="button" onclick="showSection('review')">
-          <strong>應聘履歷審核</strong>
-          <span>查看投遞資料與寄送通知</span>
-        </button>
-        <button class="entry-card" type="button" onclick="location.href='application-notification-settings.html'">
-          <strong>應聘老師提醒設定</strong>
-          <span>集中設定應聘履歷相關提醒</span>
-        </button>
-      </div>
-    </section>
-
-    <div id="msg" class="message"></div>
-
-    <section id="pageSettings" class="settings-panel hidden">
-      <div class="sub-head"><button class="small-btn secondary" type="button" onclick="showSection('home')">應聘管理首頁</button></div>
-      <div class="detail-head"><div><h2>應聘首頁設定</h2><div class="muted">設定前台應聘頁最上方的招募圖片與規則說明。儲存新設定後，舊設定會保留在歷史清單。</div></div></div>
-      <div class="settings-grid">
-        <div class="field"><label>應聘狀態</label><select id="cfgApplicationStatus" class="status-select"><option>開放中</option><option>暫停應聘</option></select><div class="mini">暫停應聘時，前台會顯示「目前沒有應聘老師的需求。」並隱藏表單。</div></div>
-        <div class="field"><label>招募標題</label><input id="cfgTitle" placeholder="例如：外聘老師招募中"></div>
-        <div class="field"><label>招募圖片</label><input id="cfgImageFile" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"><div class="mini">可不放圖片；放了才會在前台顯示。</div></div>
-        <div class="field full" style="grid-column:1/-1"><label>招募規則</label><div id="cfgRuleList" class="rule-list"></div><div class="action-row"><button class="small-btn secondary" type="button" onclick="addRuleInput('')">＋新增一點</button></div><div class="mini">前台會依序顯示成第一點、第二點、第三點。</div></div>
-        <div id="cfgPreview" class="field full" style="grid-column:1/-1"></div>
-      </div>
-      <div class="action-row"><button class="small-btn" onclick="savePageConfig()">儲存並套用到前台</button><button class="small-btn secondary" onclick="loadPageConfig()">重新讀取</button></div>
-      <div class="history-list" id="cfgHistory"></div>
-    </section>
-
-    <section id="reviewPanel" class="review-panel hidden">
-      <div class="sub-head"><button class="small-btn secondary" type="button" onclick="showSection('home')">應聘管理首頁</button></div>
-      <section class="top-card review-title-card">
-        <div><h1>應聘履歷審核</h1><div class="muted">查看投遞資料、作品連結與附件，並處理審核結果。</div></div>
-      </section>
-      <div class="filters" id="filters"></div>
-      <section class="table-card">
-        <div class="responsive-table"><table><thead><tr><th>送出時間</th><th>狀態</th><th>姓名 / 聯絡</th><th>主修樂器</th><th>可教項目</th><th>相關科系</th><th>教學年資</th><th>操作</th></tr></thead><tbody id="rows"></tbody></table></div>
-      </section>
-      <section id="detailCard" class="detail-card hidden"></section>
-    </section>
+    </div>
   </div>
-  <script src="config.js?v=20260504_apply1"></script>
+  <script src="config.js?v=20260430_announcement_unified"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="firebase-client.js?v=admin-final-20260530b"></script>
 
   <script src="app.js?v=admin-final-20260530b"></script>
   <script>
-    const msg=qs('#msg');
-    let user=null, currentStatus='全部', allRows=[], rows=[], current=null, rowsLoaded=false;
-    let currentConfigImageUrl='';
-    const statuses=['全部','待審核','已同意','未通過','封存'];
-    function showSection(section){
-      qs('#appHome').classList.toggle('hidden', section!=='home');
-      qs('#pageSettings').classList.toggle('hidden', section!=='settings');
-      qs('#reviewPanel').classList.toggle('hidden', section!=='review');
-      qs('#detailCard')?.classList.add('hidden');
-      setMsg(msg,'');
-      if(section==='settings') loadPageConfig();
-      if(section==='review' && !rowsLoaded) loadRows();
-      window.scrollTo({top:0,behavior:'smooth'});
-    }
+    let currentUser=null, editingId='', editingRow=null, mediaRecorder=null, recordingStream=null, recordingChunks=[], recordedAudioFile=null, recordingStartAt=0, recordingTimer=null;
+    function setSaveProgress(percent,text){const wrap=qs('#saveProgress'),fill=qs('#saveProgressFill'),label=qs('#saveProgressText'); if(!wrap||!fill||!label)return; wrap.classList.add('open'); const safe=Math.max(0,Math.min(100,Number(percent||0))); fill.style.width=safe+'%'; label.textContent=`${text||'處理中'} ${safe}%`;}
+    function hideSaveProgress(){const wrap=qs('#saveProgress'),fill=qs('#saveProgressFill'),label=qs('#saveProgressText'); if(!wrap||!fill||!label)return; wrap.classList.remove('open'); fill.style.width='0%'; label.textContent='準備儲存 0%';}
+    function setSaveBusy(busy){const btn=qs('#saveBtn'); if(btn) btn.disabled=!!busy;}
+    function renderRecordingState(){const dot=qs('#recordDot'),fill=qs('#recordBarFill'),time=qs('#recordTime'),preview=qs('#recordPreview'),audio=qs('#recordedAudio'),recordBtn=qs('#recordBtn'),stopBtn=qs('#stopRecordBtn'),clearBtn=qs('#clearRecordBtn'); if(dot)dot.classList.toggle('recording',!!mediaRecorder&&mediaRecorder.state==='recording'); if(fill&&(!mediaRecorder||mediaRecorder.state!=='recording')&&!recordedAudioFile)fill.style.width='0%'; if(time&&!recordedAudioFile&&(!mediaRecorder||mediaRecorder.state!=='recording'))time.textContent='00:00'; if(recordBtn)recordBtn.disabled=!!mediaRecorder&&mediaRecorder.state==='recording'; if(stopBtn)stopBtn.disabled=!(mediaRecorder&&mediaRecorder.state==='recording'); if(clearBtn)clearBtn.disabled=!recordedAudioFile&&!(mediaRecorder&&mediaRecorder.state==='recording'); if(preview)preview.classList.toggle('open',!!recordedAudioFile); if(audio&&!recordedAudioFile){audio.removeAttribute('src');audio.load();}}
+    function formatRecordTime(ms){const total=Math.max(0,Math.floor(ms/1000)); return `${String(Math.floor(total/60)).padStart(2,'0')}:${String(total%60).padStart(2,'0')}`;}
+    function updateRecordingMeter(){const elapsed=Date.now()-recordingStartAt; const time=qs('#recordTime'),fill=qs('#recordBarFill'); if(time)time.textContent=formatRecordTime(elapsed); if(fill)fill.style.width=Math.min(100,((elapsed%15000)/15000)*100)+'%';}
+    async function startRecording(){try{if(mediaRecorder&&mediaRecorder.state==='recording')return; clearRecording(true); const stream=await navigator.mediaDevices.getUserMedia({audio:true}); recordingStream=stream; mediaRecorder=new MediaRecorder(stream); recordingChunks=[]; mediaRecorder.ondataavailable=ev=>{if(ev.data&&ev.data.size)recordingChunks.push(ev.data)}; mediaRecorder.onstop=()=>{const mime=mediaRecorder.mimeType||'audio/webm'; const ext=mime.includes('mp4')||mime.includes('aac')?'m4a':(mime.includes('ogg')?'ogg':'webm'); const blob=new Blob(recordingChunks,{type:mime}); recordedAudioFile=new File([blob],`announcement-audio-${Date.now()}.${ext}`,{type:mime}); const audio=qs('#recordedAudio'); if(audio){audio.src=URL.createObjectURL(blob);audio.load()} if(recordingStream){recordingStream.getTracks().forEach(track=>track.stop());recordingStream=null} mediaRecorder=null; if(recordingTimer){clearInterval(recordingTimer);recordingTimer=null} const fill=qs('#recordBarFill'); if(fill)fill.style.width='100%'; renderRecordingState();}; mediaRecorder.start(); recordingStartAt=Date.now(); updateRecordingMeter(); recordingTimer=setInterval(updateRecordingMeter,200); renderRecordingState();}catch(err){setMsg(qs('#msg'),'無法啟動錄音，請確認瀏覽器已允許麥克風權限。',true)}}
+    function stopRecording(){if(mediaRecorder&&mediaRecorder.state==='recording')mediaRecorder.stop()}
+    function clearRecording(silent){const audio=qs('#recordedAudio'); if(mediaRecorder&&mediaRecorder.state==='recording')mediaRecorder.stop(); if(recordingStream){recordingStream.getTracks().forEach(track=>track.stop());recordingStream=null} if(recordingTimer){clearInterval(recordingTimer);recordingTimer=null} if(audio&&audio.src){try{URL.revokeObjectURL(audio.src)}catch(_){} audio.removeAttribute('src');audio.load()} recordedAudioFile=null;mediaRecorder=null;recordingChunks=[];renderRecordingState(); if(!silent)setMsg(qs('#msg'),'錄音附件已清除。')}
+    function todayStr(){const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+    function audienceValues(){if(qs('#audAll').checked)return['all']; const arr=[]; if(qs('#audStaff').checked)arr.push('staff'); if(qs('#audParttime').checked)arr.push('parttime'); if(qs('#audExternal').checked)arr.push('external'); return arr.length?arr:['all'];}
+    function escapeHtml(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
+    function renderAssetLinks(items,label){if(!items||!items.length)return ''; return `<div class="detail-block"><h4>${label}</h4><div class="asset-list">${items.map(item=>`<a class="asset-link" href="${escapeHtml(item.url||item.secure_url||'#')}" target="_blank" rel="noopener"><span>${escapeHtml(item.name||item.original_filename||'查看附件')}</span><span>開啟</span></a>`).join('')}</div></div>`;}
+    function renderReplies(row){const list=Array.isArray(row.replies)?row.replies:[]; if(!row.requireReply)return ''; if(!list.length)return `<div class="detail-block"><h4>回覆紀錄</h4><div class="muted-mini">目前還沒有人回覆。</div></div>`; return `<div class="detail-block"><h4>回覆紀錄</h4><div class="reply-list">${list.map(r=>`<div class="reply-item"><div class="reply-name">${escapeHtml(r.name||'未命名')} <span class="muted-mini">${escapeHtml(r.roleLabel||'')}</span></div><div class="muted-mini">${escapeHtml(r.createdAt||'')}</div><div style="white-space:pre-wrap;margin-top:6px">${escapeHtml(r.replyText||'')}</div></div>`).join('')}</div></div>`;}
+    async function filesToAssets(inputSel,folder){const files=Array.from(qs(inputSel).files||[]); const assets=[]; for(const file of files){const res=await uploadFileToCloudinary(file,{folder}); assets.push(cloudinaryAssetFromResponse(res));} return assets;}
+    function rowHtml(row){const id=JSON.stringify(row.id||''),published=row.published?'true':'false',detailId=`detail_${row.id||Math.random().toString(36).slice(2)}`; const attachCount=(row.imageAssets||[]).length+(row.videoAssets||[]).length+(row.audioAssets||[]).length+(row.fileAssets||[]).length; return `<article class="cardx ${row.published?'':'offline'}"><div class="card-head"><div><h3 class="card-title">${escapeHtml(row.title||'未命名公告')}</h3><div class="badge-row"><span class="badge">${escapeHtml(row.audienceLabel||'')}</span><span class="badge ${row.published?'status-live':'status-off'}">${row.published?'已發布':'已下架'}</span><span class="badge">${escapeHtml(row.category||'一般公告')}</span>${row.pinned?'<span class="badge">置頂</span>':''}${row.requireReply?'<span class="badge">需要回覆</span>':''}</div>${row.published?'':'<div class="offline-note">目前為下架狀態，不會顯示在前台頁面。</div>'}</div><div class="action-row"><button class="btn secondary expand-btn" type="button" onclick="toggleDetail('${detailId}',this)">展開內容</button><button class="btn secondary" style="width:auto" onclick='editRow(${id})'>編輯</button><button class="btn secondary" style="width:auto;${row.published?'':'background:#fee2e2;border-color:#fecaca;color:#b91c1c'}" onclick='toggleRow(${id},${published})'>${row.published?'下架':'重新發布'}</button><button id="deleteBtn_${row.id}" class="btn secondary" style="width:auto" onclick='deleteRow(${id})'>刪除</button></div></div><div id="deleteProgress_${row.id}" class="inline-progress"><div class="inline-progress-label" id="deleteProgressLabel_${row.id}">刪除中 0%</div><div class="inline-progress-bar"><div class="inline-progress-fill" id="deleteProgressFill_${row.id}"></div></div></div><div class="meta"><div class="item"><div class="label">發布日期</div><div class="value">${escapeHtml(row.publishDate||row.date||'')}</div></div><div class="item"><div class="label">附件數</div><div class="value">${attachCount}</div></div><div class="item"><div class="label">回覆截止日</div><div class="value">${escapeHtml(row.replyDeadline||'無')}</div></div><div class="item"><div class="label">已回覆</div><div class="value">${Number(row.replyCount||0)}</div></div></div><div class="summary-box"><div style="font-weight:900;margin-bottom:6px">摘要</div><div>${escapeHtml(row.summary||'')}</div></div><div id="${detailId}" class="detail-panel"><div class="detail-block"><h4>公告內文</h4><div style="white-space:pre-wrap;line-height:1.75">${escapeHtml(row.content||'')}</div></div>${renderAssetLinks(row.imageAssets,'圖片附件')}${renderAssetLinks(row.videoAssets,'影片附件')}${renderAssetLinks(row.audioAssets,'錄音附件')}${renderAssetLinks(row.fileAssets,'文件附件')}${renderReplies(row)}</div></article>`;}
+    function toggleDetail(id,btn){const panel=document.getElementById(id); if(!panel)return; const open=panel.classList.toggle('open'); if(btn)btn.textContent=open?'收合內容':'展開內容';}
+    async function loadList(){try{const r=await api('getAnnouncementAdminList',{userId:currentUser.id}); if(!r.ok)throw new Error(r.message||'讀取失敗'); window.__rows=r.rows||[]; qs('#list').innerHTML=window.__rows.length?window.__rows.map(rowHtml).join(''):'<div class="muted">目前沒有公告</div>';}catch(e){setMsg(qs('#msg'),e.message||'讀取失敗',true)}}
+    function resetForm(){editingId='';editingRow=null; qs('#titleInput').value=''; qs('#categoryInput').value='一般公告'; qs('#summaryInput').value=''; qs('#contentInput').value=''; ['#imageInput','#videoInput','#fileInput'].forEach(sel=>qs(sel).value=''); clearRecording(true); hideSaveProgress(); setSaveBusy(false); qs('#publishDateInput').value=todayStr(); qs('#replyDeadlineInput').value=''; qs('#audAll').checked=true; qs('#audStaff').checked=false; qs('#audParttime').checked=false; qs('#audExternal').checked=false; qs('#pinnedInput').checked=false; qs('#publishedInput').checked=true; qs('#sendEmailInput').checked=true; qs('#sendLineInput').checked=true; qs('#requireReplyInput').checked=false; setMsg(qs('#msg'),'')}
+    function editRow(id){const row=(window.__rows||[]).find(x=>x.id===id); if(!row)return; editingId=id; editingRow=row; clearRecording(true); qs('#titleInput').value=row.title||''; qs('#categoryInput').value=['重要公告','一般公告','資訊提醒'].includes(row.category)?row.category:'一般公告'; qs('#summaryInput').value=row.summary||''; qs('#contentInput').value=row.content||''; qs('#publishDateInput').value=row.publishDate||row.date||todayStr(); const aud=row.audience||[]; qs('#audAll').checked=aud.includes('all'); qs('#audStaff').checked=aud.includes('staff'); qs('#audParttime').checked=aud.includes('parttime'); qs('#audExternal').checked=aud.includes('external'); qs('#pinnedInput').checked=!!row.pinned; qs('#publishedInput').checked=!!row.published; qs('#sendEmailInput').checked=row.sendEmail!==false; qs('#sendLineInput').checked=row.sendLine!==false; qs('#requireReplyInput').checked=!!row.requireReply; qs('#replyDeadlineInput').value=row.replyDeadline||''; setMsg(qs('#msg'),'已載入公告；若沒有重新上傳附件，會保留原附件。'); window.scrollTo({top:0,behavior:'smooth'});}
+    function setDeleteProgress(id,percent,text){const wrap=document.getElementById(`deleteProgress_${id}`),fill=document.getElementById(`deleteProgressFill_${id}`),label=document.getElementById(`deleteProgressLabel_${id}`),btn=document.getElementById(`deleteBtn_${id}`); if(wrap)wrap.classList.add('open'); if(fill)fill.style.width=`${Math.max(0,Math.min(100,Number(percent||0)))}%`; if(label)label.textContent=`${text||'刪除中'} ${Math.max(0,Math.min(100,Number(percent||0)))}%`; if(btn)btn.disabled=true;}
+    async function toggleRow(id,published){try{const r=await api('toggleAnnouncement',{userId:currentUser.id,announcementId:id,published:!published}); setMsg(qs('#msg'),r.message,!r.ok); if(r.ok)loadList();}catch(e){setMsg(qs('#msg'),e.message||'切換失敗',true)}}
+    async function deleteRow(id){if(!confirm('確定刪除這則公告？'))return; try{setDeleteProgress(id,30,'送出刪除'); const r=await api('deleteAnnouncement',{userId:currentUser.id,announcementId:id}); setDeleteProgress(id,100,'刪除完成'); setMsg(qs('#msg'),r.message,!r.ok); if(r.ok)setTimeout(()=>loadList(),260);}catch(e){setMsg(qs('#msg'),e.message||'刪除失敗',true)}}
+    async function saveAnnouncement(){try{setSaveBusy(true); setSaveProgress(10,'開始處理'); setMsg(qs('#msg'),'準備上傳附件…'); const old=editingRow||{}; const newImages=await filesToAssets('#imageInput','announcements/images'); setSaveProgress(25,'圖片處理中'); const newVideos=await filesToAssets('#videoInput','announcements/videos'); setSaveProgress(45,'影片處理中'); let newAudios=[]; if(recordedAudioFile){const res=await uploadFileToCloudinary(recordedAudioFile,{folder:'announcements/audios'}); newAudios.push(cloudinaryAssetFromResponse(res));} setSaveProgress(65,'錄音處理中'); const newFiles=await filesToAssets('#fileInput','announcements/files'); setSaveProgress(80,'文件處理中'); const payload={userId:currentUser.id,announcementId:editingId,title:qs('#titleInput').value.trim(),category:qs('#categoryInput').value,summary:qs('#summaryInput').value.trim(),content:qs('#contentInput').value.trim(),publishDate:qs('#publishDateInput').value,audience:audienceValues(),pinned:qs('#pinnedInput').checked,published:qs('#publishedInput').checked,sendEmail:qs('#sendEmailInput').checked,sendLine:qs('#sendLineInput').checked,requireReply:qs('#requireReplyInput').checked,replyDeadline:qs('#replyDeadlineInput').value,imageAssets:[...(old.imageAssets||[]),...newImages],videoAssets:[...(old.videoAssets||[]),...newVideos],audioAssets:[...(old.audioAssets||[]),...newAudios],fileAssets:[...(old.fileAssets||[]),...newFiles]}; setSaveProgress(92,'儲存公告中'); const r=await api('saveAnnouncement',payload); setSaveProgress(100,'儲存完成'); setMsg(qs('#msg'),r.message,!r.ok); if(r.ok){resetForm(); loadList();}}catch(e){setMsg(qs('#msg'),e.message||'儲存失敗',true)}finally{setTimeout(()=>{hideSaveProgress(); setSaveBusy(false)},700)}}function scheduleIdle_(fn){if(window.requestIdleCallback)requestIdleCallback(fn,{timeout:1200});else setTimeout(fn,160);}
 
-    function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
-    function linkifyText(v){
-      const safe=esc(v);
-      return safe.replace(/(https?:\/\/[^\s<]+)/g,function(url){
-        const clean=url.replace(/[，。；、）)\]】]+$/,'');
-        const tail=url.slice(clean.length);
-        return '<a class="auto-link" href="'+clean+'" target="_blank" rel="noopener">'+clean+'</a>'+tail;
-      });
-    }
-    function nl(v){return linkifyText(v).replace(/\n/g,'<br>');}
-    function statusClass(s){s=String(s||''); if(s==='已同意') return 'ok'; if(s==='未通過') return 'no'; if(s==='待審核') return 'wait'; return '';}
-    function makeLinks(text, prefix){
-      const list=String(text||'').split(/\n+/).map(x=>x.trim()).filter(Boolean);
-      if(!list.length) return '<span class="muted">無</span>';
-      return '<div class="link-list">'+list.map((url,i)=>'<a href="'+esc(url)+'" target="_blank" rel="noopener">'+esc(prefix||'查看')+(list.length>1?' '+(i+1):'')+'</a>').join('')+'</div>';
-    }
-    function statusCount(s){
-      if(s==='全部') return allRows.length;
-      return allRows.filter(x=>String(x.status||'待審核')===s).length;
-    }
-    function renderFilters(){
-      qs('#filters').innerHTML=statuses.map(s=>{
-        const n=statusCount(s);
-        return '<button class="filter-btn '+(s===currentStatus?'active':'')+'" onclick="setFilter(\''+s+'\')">'+s+'<span class="filter-count">'+n+'</span></button>';
-      }).join('');
-    }
-    function setFilter(s){currentStatus=s; applyFilterAndRender();}
-    async function init(){
-      fillHeader(); user=requireLogin(); if(!user) return; if(!hasSettingsZoneAccess(user)){location.href='dashboard.html';return;} setPortalMode('settings'); showSection('home');
-    }
-    async function loadRows(){
-      setMsg(msg,'讀取中...');
-      try{ const r=await api('getTeacherApplicationsAdmin',{userId:user.id,status:'全部'}); if(!r.ok) throw new Error(r.message||'讀取失敗'); allRows=r.rows||[]; rowsLoaded=true; applyFilterAndRender(); setMsg(msg,''); }
-      catch(e){ setMsg(msg,e.message||'讀取失敗',true); }
-    }
-    function applyFilterAndRender(){
-      rows = currentStatus==='全部' ? allRows.slice() : allRows.filter(x=>String(x.status||'待審核')===currentStatus);
-      renderFilters();
-      renderRows();
-    }
-    function renderRows(){
-      qs('#rows').innerHTML = rows.length ? rows.map(r=>`<tr>
-        <td>${esc(r.submittedAt||'')}</td><td><span class="status-pill ${statusClass(r.status)}">${esc(r.status||'')}</span></td>
-        <td><strong>${esc(r.name||'')}</strong><div class="mini">${esc(r.phone||'')}</div><div class="mini">${esc(r.email||'')}</div></td>
-        <td>${esc(r.mainSkill||'')}</td><td>${esc(r.teachItems||'')}</td><td>${esc(r.relatedDepartment||'')}</td><td>${esc(r.teachingYears||'')}</td>
-        <td><button class="small-btn" onclick="openDetail('${esc(r.applicationId)}')">查看</button></td>
-      </tr>`).join('') : '<tr><td colspan="8">目前沒有資料。</td></tr>';
-    }
-    async function openDetail(id){
-      setMsg(msg,'讀取詳情中...');
-      try{ const r=await api('getTeacherApplicationDetail',{userId:user.id,applicationId:id}); if(!r.ok) throw new Error(r.message||'讀取失敗'); current=r.item; renderDetail(); setMsg(msg,''); window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'}); }
-      catch(e){ setMsg(msg,e.message||'讀取失敗',true); }
-    }
-    function box(label,value,full=false){return `<div class="info-box ${full?'full':''}"><div class="info-label">${esc(label)}</div><div class="info-value">${nl(value||'')}</div></div>`;}
-    function renderDetail(){
-      const x=current||{};
-      qs('#detailCard').classList.remove('hidden');
-      qs('#detailCard').innerHTML=`
-        <div class="detail-head"><div><h2>${esc(x.name||'應聘詳情')}</h2><div class="muted">${esc(x.applicationId||'')}｜${esc(x.submittedAt||'')}</div></div><span class="status-pill ${statusClass(x.status)}">${esc(x.status||'')}</span></div>
-        <div class="detail-grid">
-          ${box('手機',x.phone)}${box('Email',x.email)}${box('目前身分',x.currentStatus)}${box('居住地址',x.city || x.district || '')}${box('主修樂器 / 專長',x.mainSkill)}${box('可教項目',x.teachItems)}${box('可教程度',x.teachLevels)}${box('教學年資',x.teachingYears)}${box('相關科系',x.relatedDepartment)}${box('可教學生類型',x.childExperience || x.groupExperience)}${box('期望鐘點費',x.expectedHourlyPay)}${box('可授課時段',x.availableTimes)}${box('教學經歷摘要',x.teachingSummary,true)}${box('演出 / 比賽 / 證照 / 其他經歷',x.performanceExperience,true)}${box('自我介紹',x.selfIntro,true)}
-          <div class="info-box full"><div class="info-label">履歷附件</div>${makeLinks(x.resumeAttachmentLinks,'查看履歷')}</div>
-          <div class="info-box full"><div class="info-label">補充附件</div>${makeLinks(x.extraAttachmentLinks,'查看附件')}</div>
-          <div class="info-box full"><div class="info-label">圖片附件</div>${makeLinks(x.imageAttachmentLinks,'查看圖片')}</div>
-          <div class="info-box full"><div class="info-label">表演影片 / 作品連結</div>${makeLinks([x.videoLink1,x.videoLink2,x.videoLink3,x.portfolioLink,x.otherLink].filter(Boolean).join('\n'),'開啟連結')}</div>
-          ${box('應聘者備註',x.applicantNote,true)}
-          <div class="info-box full"><div class="info-label">管理者備註</div><textarea id="adminNote">${esc(x.adminNote||'')}</textarea><div class="action-row"><button class="small-btn secondary" onclick="saveNote()">儲存備註</button></div></div>
-          ${box('最近通知紀錄','類型：'+(x.lastEmailType||'')+'\n時間：'+(x.lastEmailAt||'')+'\n人員：'+(x.lastEmailByName||''),true)}
-        </div>
-        <div class="action-row">
-          <button class="small-btn" onclick="sendDecision('accept')">同意</button>
-          <button class="small-btn danger" onclick="sendDecision('reject')">未通過</button>
-          <button class="small-btn secondary" onclick="setStatusOnly('封存')">封存</button>
-          <button class="small-btn secondary" onclick="setStatusOnly('待審核')">改回待審核</button>
-        </div>`;
-    }
-    async function saveNote(){
-      if(!current) return;
-      try{ const r=await api('updateTeacherApplicationAdminNote',{userId:user.id,applicationId:current.applicationId,adminNote:qs('#adminNote').value}); if(!r.ok) throw new Error(r.message||'儲存失敗'); setMsg(msg,'管理備註已儲存。'); current.adminNote=qs('#adminNote').value; await loadRows(); }
-      catch(e){ setMsg(msg,e.message||'儲存失敗',true); }
-    }
-    async function sendDecision(type){
-      if(!current) return;
-      const label=type==='accept'?'同意':'未通過';
-      const nextStatus=type==='accept'?'已同意':'未通過';
-      if(!confirm('確定要將 '+(current.name||'應聘者')+' 設為「'+nextStatus+'」？通知是否寄出會依通知 / 提醒設定執行。')) return;
-      try{ const r=await api('updateTeacherApplicationStatus',{userId:user.id,applicationId:current.applicationId,status:nextStatus,sendResultNotice:true}); if(!r.ok) throw new Error(r.message||'更新失敗'); setMsg(msg,r.message||'狀態已更新。'); await loadRows(); await openDetail(current.applicationId); }
-      catch(e){ setMsg(msg,e.message||'更新失敗',true); }
-    }
-    async function setStatusOnly(status){
-      if(!current) return;
-      try{ const r=await api('updateTeacherApplicationStatus',{userId:user.id,applicationId:current.applicationId,status}); if(!r.ok) throw new Error(r.message||'更新失敗'); setMsg(msg,'狀態已更新。'); await loadRows(); await openDetail(current.applicationId); }
-      catch(e){ setMsg(msg,e.message||'更新失敗',true); }
-    }
-
-    function togglePageSettings(){
-      showSection('settings');
-    }
-    function normalizeRules(input){
-      if(Array.isArray(input)) return input.map(x=>String(x||'').trim()).filter(Boolean);
-      return String(input||'').split(/\n+/).map(x=>x.trim()).filter(Boolean);
-    }
-    function addRuleInput(value){
-      const box=qs('#cfgRuleList');
-      if(!box) return;
-      const row=document.createElement('div');
-      row.className='rule-row';
-      row.innerHTML='<input class="cfg-rule-input" placeholder="輸入一點招募規則" value="'+esc(value||'')+'"><button class="small-btn secondary" type="button">刪除</button>';
-      row.querySelector('button').addEventListener('click',()=>{ row.remove(); if(!document.querySelectorAll('.cfg-rule-input').length) addRuleInput(''); });
-      box.appendChild(row);
-    }
-    function setRuleInputs(rules){
-      const box=qs('#cfgRuleList');
-      if(!box) return;
-      box.innerHTML='';
-      const list=normalizeRules(rules);
-      (list.length?list:['']).forEach(addRuleInput);
-    }
-    function getRuleInputs(){
-      return Array.from(document.querySelectorAll('.cfg-rule-input')).map(x=>x.value.trim()).filter(Boolean);
-    }
-    function renderRulePreview(rules){
-      const list=normalizeRules(rules);
-      return list.length ? '<ol style="margin:8px 0 0 20px;line-height:1.9;font-weight:800;color:#24384f">'+list.map(x=>'<li>'+linkifyText(x)+'</li>').join('')+'</ol>' : '<div class="mini">目前沒有招募規則。</div>';
-    }
-    function loadHistoryToEditor(encoded){
-      try{
-        const cfg=JSON.parse(decodeURIComponent(encoded));
-        qs('#cfgApplicationStatus').value=cfg.applicationStatus||'開放中';
-        qs('#cfgTitle').value=cfg.title||'';
-        currentConfigImageUrl=cfg.imageUrl||'';
-        setRuleInputs(cfg.rulesArray||cfg.rules||[]);
-        qs('#cfgPreview').innerHTML=(currentConfigImageUrl?'<div class="info-label">目前圖片</div><img class="promo-preview" src="'+esc(currentConfigImageUrl)+'">':'<div class="mini">目前沒有圖片。</div>') + renderRulePreview(cfg.rulesArray||cfg.rules||[]);
-        setMsg(msg,'已載入歷史設定，可修改後再儲存套用。');
-        window.scrollTo({top:0,behavior:'smooth'});
-      }catch(e){ setMsg(msg,'歷史設定載入失敗。',true); }
-    }
-    async function deletePageConfig(configId){
-      if(!configId) return;
-      if(!confirm('確定要刪除這筆歷史設定嗎？')) return;
-      try{
-        const r=await api('deleteTeacherApplicationPageConfig',{userId:user.id,configId});
-        if(!r.ok) throw new Error(r.message||'刪除失敗');
-        setMsg(msg,'歷史設定已刪除。');
-        await loadPageConfig();
-      }catch(e){ setMsg(msg,e.message||'刪除失敗',true); }
-    }
-    async function loadPageConfig(){
-      try{
-        const r=await api('getTeacherApplicationPageConfig',{userId:user.id,includeHistory:true});
-        if(!r.ok) throw new Error(r.message||'讀取設定失敗');
-        const cfg=r.config||{};
-        qs('#cfgApplicationStatus').value=cfg.applicationStatus||'開放中';
-        qs('#cfgTitle').value=cfg.title||'';
-        currentConfigImageUrl=cfg.imageUrl||'';
-        setRuleInputs(cfg.rulesArray||cfg.rules||[]);
-        qs('#cfgPreview').innerHTML=(currentConfigImageUrl?'<div class="info-label">目前圖片</div><img class="promo-preview" src="'+esc(currentConfigImageUrl)+'">':'<div class="mini">目前沒有圖片。</div>') + renderRulePreview(cfg.rulesArray||cfg.rules||[]);
-        const history=r.history||[];
-        qs('#cfgHistory').innerHTML=history.length?'<div class="info-label">歷史清單</div>'+history.map(h=>{
-          const payload=encodeURIComponent(JSON.stringify(h));
-          const ruleCount=normalizeRules(h.rulesArray||h.rules||[]).length;
-          return '<div class="history-item"><strong>'+esc(h.createdAt||'')+'</strong>｜'+esc(h.applicationStatus||'')+'｜'+esc(h.title||'未命名')+'<div class="mini">規則 '+ruleCount+' 點｜'+(h.imageUrl?'有圖片':'無圖片')+'</div><div class="history-actions"><button class="small-btn secondary" type="button" onclick="loadHistoryToEditor(\''+payload+'\')">載入編輯</button><button class="small-btn danger" type="button" onclick="deletePageConfig(\''+esc(h.configId||'')+'\')">刪除</button></div></div>';
-        }).join(''):'<div class="mini">尚無歷史設定。</div>';
-      }catch(e){ setMsg(msg,e.message||'讀取設定失敗',true); }
-    }
-    async function uploadConfigImageIfNeeded(){
-      const files=Array.from(qs('#cfgImageFile')?.files||[]);
-      if(!files.length) return '';
-      const res=await uploadFilesToCloudinary(files.slice(0,1),{folder:'teacher-applications/page-config'});
-      return (res[0] && cloudinaryAssetFromResponse(res[0]).url) || '';
-    }
-    async function savePageConfig(){
-      try{
-        setMsg(msg,'應聘頁設定儲存中...');
-        const uploadedImageUrl=await uploadConfigImageIfNeeded();
-        const rulesArray=getRuleInputs();
-        const imageUrl=uploadedImageUrl || currentConfigImageUrl || '';
-        const r=await api('saveTeacherApplicationPageConfig',{userId:user.id,applicationStatus:qs('#cfgApplicationStatus').value,title:qs('#cfgTitle').value,rulesJson:JSON.stringify(rulesArray),rules:rulesArray.join('\n'),imageUrl:imageUrl});
-        if(!r.ok) throw new Error(r.message||'儲存失敗');
-        qs('#cfgImageFile').value='';
-        currentConfigImageUrl=imageUrl;
-        setMsg(msg,'應聘頁設定已儲存，前台會顯示最新版本。');
-        await loadPageConfig();
-      }catch(e){ setMsg(msg,e.message||'儲存失敗',true); }
-    }
+    function initPage(){fillHeader(); currentUser=requireLogin(); if(!currentUser)return; if(!isManager(currentUser)){location.href='dashboard.html';return} qs('#publishDateInput').value=todayStr(); renderRecordingState(); const box=qs('#list'); if(box)box.innerHTML='<div class="empty">公告資料稍後載入。</div>'; scheduleIdle_(loadList);}
   </script>
   <script src="global-nav.js?v=20260603unified1"></script>
 </body>

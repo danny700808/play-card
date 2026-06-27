@@ -3,709 +3,118 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>工讀生時數</title>
-  <link rel="stylesheet" href="style.css">
-  <style>
-    .summary-box{border:1px solid var(--line);border-radius:14px;padding:12px 14px;background:#f8fbff;margin-top:12px}
-    .summary-value{font-size:22px;font-weight:800;margin-top:4px}
-    .inline-note{margin-top:6px}
-    .month-badge{display:inline-block;padding:4px 10px;border-radius:999px;background:#eef7f2;color:#16533f;font-size:12px;font-weight:700}
-  
-    .page-return-wrap{margin-bottom:16px}
-    .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
-    .date-status-box{border:1px solid var(--line);border-radius:14px;padding:12px 14px;background:#f8fbff;margin-top:10px}
-    .date-status-title{font-size:12px;color:var(--muted);font-weight:700}
-    .date-status-main{font-size:18px;font-weight:800;margin-top:4px}
-    .date-status-main.ok{color:#16533f}
-    .date-status-main.bad{color:#b42318}
-
-    /* 工讀生時數：保留原本版面，只把時數改成按鈕格子 */
-    #fieldWorkDate input[type="date"]{
-      width:100%;
-      max-width:100%;
-      min-width:0;
-      box-sizing:border-box;
-      display:block;
-    }
-    #hoursSelect{
-      position:absolute!important;
-      width:1px!important;
-      height:1px!important;
-      opacity:0!important;
-      pointer-events:none!important;
-      margin:0!important;
-      padding:0!important;
-      border:0!important;
-    }
-    .hour-grid{
-      display:grid!important;
-      grid-template-columns:repeat(4,minmax(0,1fr))!important;
-      gap:10px!important;
-      margin-top:0!important;
-    }
-    .hour-choice{
-      min-height:46px!important;
-      border:none!important;
-      border-radius:999px!important;
-      background:#eef2f6!important;
-      color:#18314a!important;
-      font-size:15px!important;
-      font-weight:900!important;
-      cursor:pointer!important;
-      padding:10px 4px!important;
-      line-height:1.2!important;
-      text-align:center!important;
-    }
-    .hour-choice.active{
-      background:#1f7a5a!important;
-      color:#fff!important;
-    }
-    .parttime-selected-total{
-      margin-top:10px;
-      color:#16533f;
-      font-weight:900;
-      font-size:16px;
-      line-height:1.4;
-    }
-    #fieldHalfHour .check-row{display:none!important}
-    #fieldHalfHour .inline-note{display:none!important}
-    .half-hour-choice{
-      width:auto;
-      min-width:150px;
-      min-height:46px;
-      border:none;
-      border-radius:999px;
-      background:#eef2f6;
-      color:#18314a;
-      font-size:15px;
-      font-weight:900;
-      cursor:pointer;
-      padding:10px 16px;
-      line-height:1.2;
-      text-align:center;
-      display:inline-flex;
-      align-items:center;
-      justify-content:center;
-    }
-    .half-hour-choice.active{
-      background:#1f7a5a;
-      color:#fff;
-    }
-    #fieldNote{display:none!important}
-    @media(max-width:420px){
-      .hour-grid{gap:8px!important}
-      .hour-choice{font-size:14px!important;min-height:44px!important}
-    }
-
-
-    /* 修正 iPhone 直向日期欄位右側超出卡片 */
-    #fieldWorkDate{
-      min-width:0!important;
-      overflow:hidden!important;
-    }
-    #fieldWorkDate input[type="date"]{
-      width:100%!important;
-      max-width:100%!important;
-      min-width:0!important;
-      box-sizing:border-box!important;
-      display:block!important;
-      -webkit-appearance:none!important;
-      appearance:none!important;
-      padding-left:14px!important;
-      padding-right:14px!important;
-    }
-    @media(max-width:560px){
-      #fieldWorkDate input[type="date"]{
-        font-size:18px!important;
-        text-align:center!important;
-      }
-    }
-
-
-    #fieldHalfHour .half-hour-choice{
-      width:auto!important;
-      min-width:150px!important;
-      min-height:46px!important;
-      border-radius:999px!important;
-      font-size:15px!important;
-      padding:10px 16px!important;
-      display:inline-flex!important;
-      align-items:center!important;
-      justify-content:center!important;
-    }
-
-
-    #fieldHalfHour .half-hour-choice{
-      width:auto!important;
-      min-width:0!important;
-      min-height:46px!important;
-      border:none!important;
-      border-radius:999px!important;
-      background:#eef2f6!important;
-      color:#18314a!important;
-      font-size:15px!important;
-      font-weight:900!important;
-      cursor:pointer!important;
-      padding:10px 16px!important;
-      line-height:1.2!important;
-      text-align:center!important;
-      display:inline-flex!important;
-      align-items:center!important;
-      justify-content:center!important;
-    }
-    #fieldHalfHour .half-hour-choice.active{
-      background:#1f7a5a!important;
-      color:#fff!important;
-    }
-
-
-    /* 工讀生時數登記：手機緊湊版 */
-    .parttime-compact-header{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:10px;
-      margin-bottom:4px;
-    }
-    .parttime-compact-header .title{
-      font-size:24px;
-      line-height:1.2;
-      margin:0;
-      white-space:nowrap;
-    }
-    .parttime-user-name{
-      color:#16533f;
-      font-size:15px;
-      font-weight:900;
-      text-align:right;
-      white-space:nowrap;
-      max-width:42%;
-      overflow:hidden;
-      text-overflow:ellipsis;
-    }
-    #fieldWorkDate label{display:none!important}
-    #fieldHalfHour{display:none!important}
-    .history-search-panel{
-      border:1px solid var(--line);
-      border-radius:16px;
-      padding:12px 14px;
-      background:#fff;
-    }
-    .history-search-panel summary{
-      cursor:pointer;
-      font-size:18px;
-      font-weight:900;
-      color:#16533f;
-      list-style:none;
-    }
-    .history-search-panel summary::-webkit-details-marker{display:none}
-    .history-grid{
-      display:grid;
-      grid-template-columns:1fr 1fr;
-      gap:10px;
-      margin-top:12px;
-    }
-    .history-actions{margin-top:12px}
-    .history-result{margin-top:12px}
-    .history-result .item{margin-bottom:8px}
-    @media(max-width:520px){
-      .parttime-compact-header .title{font-size:22px}
-      .history-grid{grid-template-columns:1fr}
-    }
-
-
-
-    /* 工讀時數：待處理事項與超出排班提醒 */
-    .pending-panel{border:1px solid #c7ead8;border-radius:16px;background:#f0fbf5;padding:12px 14px;margin-top:10px}
-    .pending-title{font-weight:900;color:#16533f;margin-bottom:6px}
-    .pending-item{border:1px solid #bfe8d3;background:#fff;border-radius:14px;padding:10px 12px;margin-top:8px}
-    .pending-status{display:inline-block;background:#e7f8ee;color:#12623f;border:1px solid #b9e8ce;border-radius:999px;padding:5px 10px;font-weight:900;font-size:13px;margin-top:8px}
-    .excess-note{border:1px solid #ffd8a8;border-radius:14px;background:#fff8ed;color:#7a3f00;padding:10px 12px;margin-top:10px;font-weight:800;line-height:1.5}
-    .pt-modal-mask{position:fixed;inset:0;background:rgba(15,23,42,.55);display:none;align-items:center;justify-content:center;z-index:9999;padding:18px}
-    .pt-modal{width:min(520px,100%);background:#fff;border-radius:22px;padding:18px;box-shadow:0 18px 50px rgba(0,0,0,.25)}
-    .pt-modal h3{margin:0 0 8px;font-size:22px;color:#18314a}
-    .pt-modal .desc{color:#64748b;line-height:1.6;margin-bottom:12px}
-    .mode-grid{display:grid;grid-template-columns:1fr;gap:10px;margin:10px 0}
-    .mode-choice{border:1px solid #d9e2ec;border-radius:14px;background:#f8fbff;color:#18314a;padding:12px;font-weight:900;text-align:left;cursor:pointer}
-    .mode-choice.active{background:#1f7a5a;color:#fff;border-color:#1f7a5a}
-    .pt-modal textarea{width:100%;min-height:88px;border:1px solid #d9e2ec;border-radius:14px;padding:12px;box-sizing:border-box;font:inherit}
-    .pt-modal-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
-    .pt-modal-actions .secondary{background:#e9eef5!important;color:#18314a!important}
-
-</style>
+  <title>LINE 主管通知收件人設定</title>
+  <link rel="stylesheet" href="style.css?v=line-manager-clean-20260606">
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
+  <style>
+    body{background:#f6f8fb}.settings-intro{margin-bottom:14px}.settings-intro .title{margin:0}.settings-intro .welcome{line-height:1.7}.note-box{border:1px solid #dbe5f1;background:#f8fafc;border-radius:18px;padding:12px 14px;color:#475569;line-height:1.8;font-weight:750}
+    .lm-card{background:#fff;border:1px solid #dbe5f1;border-radius:22px;padding:18px;margin-bottom:16px;box-shadow:0 10px 28px rgba(15,23,42,.05)}
+    .lm-title{font-size:24px;font-weight:950;color:#18314a;margin:0 0 8px}.lm-sub{color:#64748b;line-height:1.8;font-weight:650}.lm-form{display:grid;gap:10px;margin-top:14px}.lm-form label{font-weight:950;color:#18314a}.lm-form input{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:14px;padding:12px 13px;font-size:16px;background:#fff}.lm-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}.lm-actions button,.lm-link{border:0;border-radius:14px;background:#1f7a5a;color:#fff;font-weight:950;padding:11px 14px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center}.lm-actions .secondary,.lm-link.secondary{background:#eef2f6;color:#18314a}.lm-msg{font-weight:950;margin-top:10px;color:#1f7a5a}.lm-msg.err{color:#b42318}.lm-current{border:1px solid #dbe5f1;border-radius:16px;background:#f8fafc;padding:12px 14px;margin-top:12px;line-height:1.8}.lm-current strong{color:#18314a}.lm-pill{display:inline-flex;border-radius:999px;padding:5px 9px;font-size:12px;font-weight:950;background:#ecfdf3;color:#166534;margin-left:6px}.lm-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:12px}.lm-tile{border:1px solid #e2e8f0;border-radius:18px;padding:14px;background:#fff;text-decoration:none;color:#18314a}.lm-tile strong{display:block;font-size:18px;margin-bottom:6px}.lm-tile span{display:block;color:#64748b;line-height:1.7}.lm-note{font-size:13px;color:#64748b;line-height:1.7;margin-top:8px}@media(max-width:760px){.lm-grid{grid-template-columns:1fr}}
+  </style>
 </head>
-<body onload="init()">
+<body onload="init()" class="admin-wide-page">
   <div class="yz-global-nav" data-yz-global-nav>
     <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
     <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
   </div>
 
   <div class="container">
-    <div class="card">
-      <div class="topbar">
-        <div>
-          <h1 class="title" style="margin:0">工讀生時數登記</h1>
-          <div class="welcome">歡迎 <span data-user-name></span></div>
-        </div>
-        
+    <div class="card settings-intro">
+      <div class="header" style="margin:0">
+        <h1 class="title">LINE 主管通知收件人設定</h1>
+        <div class="welcome">這裡只設定「主管通知要送到哪一個 LINE」。它不會新增員工、不會影響薪資、班表、打卡、請假或外聘老師資料。</div>
       </div>
-
-      <div id="msg" class="message"></div>
-
-
-      <div class="field" id="fieldWorkDate">
-        <input id="workDate" type="date">
-        <div class="field-error" id="errorWorkDate"></div>
-        <div id="dateStatusBox" class="date-status-box" style="display:none">
-          <div class="date-status-title">當日班表狀態</div>
-          <div id="dateStatusMain" class="date-status-main"></div>
-          <div id="dateStatusNote" class="muted inline-note"></div>
-        </div>
-      </div>
-
-      <div class="field" id="fieldHours">
-        <label for="hoursSelect">時數</label>
-        <select id="hoursSelect" aria-hidden="true" tabindex="-1">
-          <option value="">請選擇時數</option>
-          <option value="0.5">0.5 小時</option>
-          <option value="1">1 小時</option>
-          <option value="2">2 小時</option>
-          <option value="3">3 小時</option>
-          <option value="4">4 小時</option>
-          <option value="5">5 小時</option>
-          <option value="6">6 小時</option>
-          <option value="7">7 小時</option>
-          <option value="8">8 小時</option>
-          <option value="9">9 小時</option>
-          <option value="10">10 小時</option>
-          <option value="11">11 小時</option>
-          <option value="12">12 小時</option>
-        </select>
-        <div id="hoursGrid" class="hour-grid" role="group" aria-label="選擇時數"></div>
-        <div id="parttimeSelectedTotal" class="parttime-selected-total"></div>
-        <div class="field-error" id="errorHours"></div>
-      </div>
-
-      <input id="halfHour" type="checkbox" style="display:none" aria-hidden="true">
-
-      <div class="field" id="fieldNote">
-        <label for="note">備註</label>
-        <textarea id="note" placeholder="有任何問題，可填寫在這裡"></textarea>
-        <div class="field-error" id="errorNote"></div>
-      </div>
-
-      <button class="btn" id="submitBtn">送出時數</button>
+      <div class="note-box">柚子樂器官方 LINE 是發訊息出去的帳號；下方填的是接收主管通知的 LINE User ID。員工或老師回覆 LINE 時，仍會回到柚子樂器官方 LINE 聊天室。</div>
     </div>
 
-    <div class="card" id="parttimePendingCard" style="display:none">
-      <h2 class="title" style="font-size:20px;margin:0 0 8px">待處理事項</h2>
-      <div class="muted">超出排班時數、臨時出勤或工讀時數相關申請會顯示在這裡。</div>
-      <div id="parttimePendingList" class="pending-panel"></div>
-    </div>
-
-    <div class="card">
-      <div class="topbar" style="margin-bottom:10px">
-        <div>
-          <h2 class="title" style="font-size:20px;margin:0">本月時數紀錄</h2>
-          <div class="muted">只顯示當月資料，月份切換後前台不再顯示舊月份。</div>
-        </div>
-        <span id="monthBadge" class="month-badge"></span>
+    <section class="lm-card">
+      <h2 class="lm-title">主要主管 LINE 收件人</h2>
+      <div class="lm-sub">目前只保留一個主要收件人。之後如果要改成其他人收，只要把這裡的 LINE User ID 換掉並重新儲存即可。</div>
+      <div id="currentBox" class="lm-current">讀取目前設定中…</div>
+      <div class="lm-form">
+        <label>顯示名稱</label>
+        <input id="managerName" type="text" value="柚子樂器主要管理者" placeholder="例如：柚子樂器主要管理者">
+        <label>LINE User ID</label>
+        <input id="managerLineId" type="text" placeholder="例如：Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">
+        <div class="lm-note">這裡要填的是 LINE User ID，通常以 U 開頭；不是 LINE ID，也不是官方帳號名稱。</div>
       </div>
-      <div id="list" class="list"></div>
-      <div class="summary-box">
-        <div class="muted">這個月總計</div>
-        <div id="monthTotal" class="summary-value">0 小時</div>
+      <div class="lm-actions">
+        <button type="button" id="saveBtn">儲存設定</button>
+        <button class="secondary" type="button" id="testBtn">測試傳送給主要主管</button>
+        <button class="secondary" type="button" id="reloadBtn">重新讀取</button>
       </div>
-    </div>
+      <div id="msg" class="lm-msg"></div>
+    </section>
 
-    <div class="card">
-      <details class="history-search-panel">
-        <summary>歷史紀錄搜尋</summary>
-        <div class="muted inline-note">一次最多查詢 60 天。</div>
-        <div class="history-grid">
-          <div class="field">
-            <label for="historyStart">開始日期</label>
-            <input id="historyStart" type="date">
-          </div>
-          <div class="field">
-            <label for="historyEnd">結束日期</label>
-            <input id="historyEnd" type="date">
-          </div>
-        </div>
-        <div class="history-actions">
-          <button type="button" class="btn" id="historySearchBtn">搜尋紀錄</button>
-        </div>
-        <div id="historySearchMsg" class="message" style="display:none"></div>
-        <div id="historySearchResult" class="history-result"></div>
-      </details>
-    </div>
+    <section class="lm-card">
+      <h2 class="lm-title">通知項目設定</h2>
+      <div class="lm-sub">這一區是「什麼事情要通知」。主管收件人固定看上方主要 LINE 設定；各模組的通知項目仍分開管理。</div>
+      <div class="lm-grid">
+        <a class="lm-tile" href="approval-notification-settings.html"><strong>簽核 / 打卡 / 請假提醒</strong><span>註冊、補打卡、打卡修正、遲到提醒、請假、工讀時數與臨時出勤。</span></a>
+        <a class="lm-tile" href="teacher-notification-settings.html"><strong>外聘老師提醒</strong><span>外聘合約、合約未簽、拿貨詢價與主管回覆詢價。</span></a>
+        <a class="lm-tile" href="certificate-notification-settings.html"><strong>證明提醒</strong><span>在職證明、教學證明送出、核准、退回與逾期未審。</span></a>
+        <a class="lm-tile" href="application-notification-settings.html"><strong>應聘老師提醒</strong><span>應聘資料送出、初審、退回、補件與逾期未審。</span></a>
+      </div>
+      <div class="lm-actions"><a class="lm-link secondary" href="line-notification-check.html">開啟進階 LINE 檢查頁</a></div>
+    </section>
   </div>
 
-
-  <div id="parttimeExcessModal" class="pt-modal-mask" aria-hidden="true">
-    <div class="pt-modal" role="dialog" aria-modal="true" aria-labelledby="parttimeExcessTitle">
-      <h3 id="parttimeExcessTitle">超出排班時數提醒</h3>
-      <div id="parttimeExcessDesc" class="desc"></div>
-      <div class="mode-grid" id="parttimeExcessModes">
-        <button type="button" class="mode-choice active" data-mode="late">延後下班：超出時數接在班表結束後</button>
-        <button type="button" class="mode-choice" data-mode="early">提前到班：超出時數接在班表開始前</button>
-        <button type="button" class="mode-choice" data-mode="other">其他：交由主管審核時確認</button>
-      </div>
-      <label for="parttimeExcessReason" style="font-weight:900">原因</label>
-      <textarea id="parttimeExcessReason" placeholder="請填寫為什麼超出排班時數，例如：主管臨時交辦、延後收班、臨時支援。"></textarea>
-      <div class="pt-modal-actions">
-        <button type="button" class="btn secondary" id="parttimeExcessCancel">取消</button>
-        <button type="button" class="btn" id="parttimeExcessConfirm">我知道了</button>
-      </div>
-    </div>
-  </div>
-
-  <script src="config.js?v=20260501uifix2"></script>
+  <script src="config.js?v=20260606lineManagerClean"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=attendance-flow-20260618"></script>
-
-  <script src="app.js?v=20260530notifyv2final1"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
+  <script src="firebase-client.js?v=20260606lineManagerClean"></script>
+  <script src="app.js?v=20260606lineManagerClean"></script>
   <script>
-    function localDateInputValue(){
-      const now = new Date();
-      const tzOffset = now.getTimezoneOffset() * 60000;
-      return new Date(now.getTime() - tzOffset).toISOString().slice(0,10);
-    }
-    function sleep(ms){ return new Promise(resolve=>setTimeout(resolve, ms)); }
-    function clean(v){ return String(v == null ? '' : v).trim(); }
-    function formatHoursLabel(v){
-      const n = Number(v || 0);
-      if(!Number.isFinite(n) || n < 0) return '0 小時';
-      if (Math.abs(n - Math.round(n)) < 0.0001) return Math.round(n) + ' 小時';
-      return n.toFixed(1).replace(/\.0$/, '') + ' 小時';
-    }
-
-    function renderHoursGrid(){
-      const grid = qs('#hoursGrid');
-      const select = qs('#hoursSelect');
-      if(!grid || !select) return;
-      const values = ['0.5'].concat(Array.from({length:12}, (_,i)=>String(i+1)));
-      grid.innerHTML = values.map(v => `<button type="button" class="hour-choice" data-hour="${v}">${formatHoursLabel(v)}</button>`).join('');
-      grid.querySelectorAll('.hour-choice').forEach(btn=>{
-        btn.onclick = () => {
-          select.value = btn.dataset.hour;
-          qs('#halfHour').checked = false;
-          updateHoursGrid();
-          clearValidation();
-        };
-      });
-      updateHoursGrid();
-    }
-    function updateHoursGrid(){
-      const grid = qs('#hoursGrid');
-      const select = qs('#hoursSelect');
-      const totalText = qs('#parttimeSelectedTotal');
-      if(grid && select){
-        grid.querySelectorAll('.hour-choice').forEach(btn=>{
-          btn.classList.toggle('active', btn.dataset.hour === select.value);
-        });
-      }
-      const total = Number(select && select.value ? select.value : 0);
-      if(totalText){
-        totalText.textContent = total ? `目前選擇：${formatHoursLabel(total)}` : '';
-      }
-    }
-    function daysBetweenInclusive(startDate, endDate){
-      const s = new Date(startDate + 'T00:00:00');
-      const e = new Date(endDate + 'T00:00:00');
-      if(isNaN(s.getTime()) || isNaN(e.getTime())) return NaN;
-      return Math.floor((e - s) / 86400000) + 1;
-    }
-    async function searchHistoryRange(){
-      const user = requireLogin();
-      if(!user) return;
-      const start = qs('#historyStart').value;
-      const end = qs('#historyEnd').value;
-      const msg = qs('#historySearchMsg');
-      const result = qs('#historySearchResult');
-      if(msg){ msg.style.display='none'; msg.textContent=''; msg.classList.remove('error'); }
-      if(result) result.innerHTML = '';
-      if(!start || !end){
-        if(msg){ msg.style.display=''; setMsg(msg, '請先選擇開始日期與結束日期。', true); }
-        return;
-      }
-      const days = daysBetweenInclusive(start, end);
-      if(!Number.isFinite(days) || days <= 0){
-        if(msg){ msg.style.display=''; setMsg(msg, '結束日期不可早於開始日期。', true); }
-        return;
-      }
-      if(days > 60){
-        if(msg){ msg.style.display=''; setMsg(msg, '一次最多只能搜尋 60 天，請縮短日期區間。', true); }
-        return;
-      }
-      const btn = qs('#historySearchBtn');
-      const oldText = btn ? btn.textContent : '';
-      if(btn){ btn.disabled = true; btn.textContent = '搜尋中...'; }
+    function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+    function setMsg(t,err){var el=document.getElementById('msg'); if(!el)return; el.textContent=t||''; el.className='lm-msg'+(err?' err':'');}
+    function maskLine(id){id=String(id||''); if(id.length<=10)return id; return id.slice(0,6)+'••••••'+id.slice(-5);}
+    async function loadStatus(){
       try{
-        const r = await api('getParttimeHistoryRange', {userId:user.id, startDate:start, endDate:end});
-        const rows = r.rows || [];
-        const total = Number(r.totalHours || 0);
-        if(msg){ msg.style.display=''; setMsg(msg, `查詢完成，共 ${rows.length} 筆，合計 ${formatHoursLabel(total)}。`, false); }
-        if(result){
-          result.innerHTML = rows.map(x=>`<div class="item"><div class="top"><strong>${x.date}</strong><span class="tag">${formatHoursLabel(x.totalHours)}</span></div>${x.note?`<div class="muted">${x.note}</div>`:''}</div>`).join('') || '<div class="muted">這段期間沒有紀錄</div>';
-        }
-      }catch(e){
-        if(msg){ msg.style.display=''; setMsg(msg, '搜尋失敗，請稍後再試。', true); }
-      }finally{
-        if(btn){ btn.disabled = false; btn.textContent = oldText || '搜尋紀錄'; }
-      }
-    }
-    function monthLabel(ym){
-      if(!ym) return '';
-      const m = String(ym).match(/^(\d{4})-(\d{2})$/);
-      return m ? `${m[1]}-${m[2]}` : ym;
-    }
-    function clearValidation(){
-      ['WorkDate','Hours'].forEach(name=>{
-        const field = qs('#field' + name);
-        const err = qs('#error' + name);
-        if(field) field.classList.remove('invalid');
-        if(err) err.textContent = '';
-      });
-    }
-    let currentDateContext = null;
-    function setFieldInvalid(name, message){
-      const field = qs('#field' + name);
-      const err = qs('#error' + name);
-      if(field) field.classList.add('invalid');
-      if(err) err.textContent = message || '';
-    }
-    function renderDateContext(ctx){
-      currentDateContext = ctx || null;
-      const box = qs('#dateStatusBox');
-      const main = qs('#dateStatusMain');
-      const note = qs('#dateStatusNote');
-      const btn = qs('#submitBtn');
-      if(!ctx || !ctx.workDate){
-        if(box) box.style.display = 'none';
-        if(btn) btn.disabled = false;
-        return;
-      }
-      if(box) box.style.display = '';
-      if(main){
-        const directHours = Number(ctx.remainingRegularHours || ctx.maxDirectHours || ctx.scheduledHours || 0) || 0;
-        const hoursText = ctx.scheduledHours ? `｜可直接登記 ${formatHoursLabel(directHours)}` : '';
-        main.textContent = ctx.canRegister ? `${ctx.statusLabel || '今日有排班'}｜${ctx.scheduleLabel || ''}${hoursText}` : '今天沒有排班，不能登記工讀時數。';
-        main.className = 'date-status-main ' + (ctx.canRegister ? 'ok' : 'bad');
-      }
-      if(note){
-        if(ctx.canRegister){
-          const directHours = Number(ctx.remainingRegularHours || ctx.maxDirectHours || ctx.scheduledHours || 0) || 0;
-          const usedText = Number(ctx.registeredHours || 0) > 0 ? `已登記 ${formatHoursLabel(ctx.registeredHours)}。` : '';
-          const paidLeaveText = Number(ctx.paidLeaveHours || 0) > 0 ? `<div class="excess-note">另有核准支薪假 ${formatHoursLabel(ctx.paidLeaveHours)}，會以獨立薪資紀錄計入，不要當作實際工讀時數重複登記。</div>` : '';
-          note.innerHTML = (ctx.helperText || '今天有有效出勤班段，可以登記排班內時數。') + (ctx.scheduledHours ? `<div class="excess-note">核准請假扣除後的有效班段共 ${formatHoursLabel(ctx.scheduledHours)}。${usedText}若實際出勤超出可直接登記時數，請先至「打卡 / 補打卡」或「臨時出勤申請」送出超出時段；主管核准後系統會自動計入工讀薪資時數，不需要再回本頁重複登記。</div>` : '') + paidLeaveText;
+        setMsg('讀取中…');
+        var r=await api('getLineAutoNotificationStatus',{});
+        if(!r||r.ok===false) throw new Error((r&&r.message)||'讀取失敗');
+        var primary=(r.managers||[]).filter(function(x){return x.isPrimaryManagerLineRecipient || x.employeeId==='PRIMARY_MANAGER_LINE';})[0] || (r.managers||[])[0] || null;
+        var box=document.getElementById('currentBox');
+        if(primary && primary.lineUserId){
+          box.innerHTML='<strong>'+esc(primary.name||'主要主管')+'</strong><span class="lm-pill">LINE 可通知</span><br>LINE User ID：'+esc(maskLine(primary.lineUserId));
+          document.getElementById('managerName').value=primary.name||'柚子樂器主要管理者';
+          document.getElementById('managerLineId').value=primary.lineUserId||'';
         }else{
-          note.textContent = '今天沒有排班，不能直接登記工讀時數；如為臨時出勤，請先使用「臨時出勤申請」，主管核准後系統會自動計入薪資時數。';
+          box.innerHTML='目前尚未設定主要主管 LINE 收件人。請在下方填入 LINE User ID 後按「儲存設定」。';
         }
-      }
-      if(btn) btn.disabled = !!(ctx && !ctx.canRegister);
+        setMsg('讀取完成。');
+      }catch(e){setMsg(e.message||String(e),true);}
     }
-    async function loadDateContext(){
-      const user = requireLogin();
-      if(!user) return;
-      const oldParttimeHomeLink = qs('#parttimeHomeLink');
-      if(oldParttimeHomeLink){ oldParttimeHomeLink.href = userHomeHref(user); oldParttimeHomeLink.textContent = userHomeLabel(user); }
-      const workDate = qs('#workDate').value;
-      if(!workDate){
-        renderDateContext(null);
-        return;
-      }
+    async function saveManager(){
       try{
-        const r = await api('getParttimeDateContext',{ userId:user.id, workDate });
-        renderDateContext(r.context || null);
-      }catch(e){
-        renderDateContext(null);
-      }
+        var name=(document.getElementById('managerName').value||'柚子樂器主要管理者').trim();
+        var lineId=(document.getElementById('managerLineId').value||'').trim();
+        if(!lineId) throw new Error('請填入 LINE User ID。');
+        setMsg('儲存中…');
+        var r=await api('setPrimaryManagerLineRecipient',{target:{name:name,employeeId:'PRIMARY_MANAGER_LINE',lineUserId:lineId,lineNotifyEnabled:true,role:'manager',identityType:'manager'}});
+        if(!r||r.ok===false) throw new Error((r&&r.message)||'儲存失敗');
+        setMsg(r.message||'已儲存。');
+        setTimeout(loadStatus,700);
+      }catch(e){setMsg(e.message||String(e),true);}
     }
-    function validateForm(){
-      clearValidation();
-      const errors = [];
-      const workDate = qs('#workDate').value;
-      const hours = qs('#hoursSelect').value;
-      if(!workDate){
-        setFieldInvalid('WorkDate','請先填寫日期');
-        errors.push('#workDate');
-      }
-      if(!hours){
-        setFieldInvalid('Hours','請先選擇時數');
-        errors.push('#hoursSelect');
-      }
-      if(errors.length){
-        setMsg(qs('#msg'),'請先完成必填欄位',true);
-        window.scrollTo({top:0,behavior:'smooth'});
-        const first = qs(errors[0]);
-        if(first) first.focus();
-        return false;
-      }
-      if(currentDateContext && !currentDateContext.canRegister){
-        setMsg(qs('#msg'), '今天沒有排班，不能登記工讀時數。', true);
-        window.scrollTo({top:0,behavior:'smooth'});
-        return false;
-      }
-      return true;
-    }
-    async function loadHistory(monthText=''){
-      const user = requireLogin();
-      if(!user) return;
-      const r = await api('getParttimeHistory',{userId:user.id, monthText});
-      const rows = r.rows || [];
-      qs('#monthBadge').textContent = monthLabel(r.monthText || '');
-      qs('#monthTotal').textContent = formatHoursLabel(r.monthTotalHours || 0);
-      qs('#list').innerHTML = rows.map(x=>`<div class="item"><div class="top"><strong>${x.date}</strong><span class="tag">${formatHoursLabel(x.totalHours)}</span></div>${x.note?`<div class="muted">${x.note}</div>`:''}</div>`).join('') || '<div class="muted">本月目前沒有紀錄</div>';
-    }
-
-    function pendingStatusHtml(text){
-      return `<div class="pending-status">${text || '待主管審核'}<br>主管審核會更新，並自動歸位。</div>`;
-    }
-    async function loadPendingItems(){
-      const user = requireLogin();
-      if(!user) return;
-      const card = qs('#parttimePendingCard');
-      const list = qs('#parttimePendingList');
-      if(card) card.style.display = 'none';
-      if(list) list.innerHTML = '';
+    async function testManager(){
       try{
-        const r = await api('getParttimePendingItems', {userId:user.id});
-        const rows = r.rows || [];
-        if(!rows.length) return;
-        if(card) card.style.display = '';
-        if(list){
-          list.innerHTML = rows.map(x=>{
-            const range = [x.startTime, x.endTime].filter(Boolean).join(' - ');
-            const title = x.title || '工讀時數申請';
-            const detail = [x.date, range, x.hours ? formatHoursLabel(x.hours) : '', x.reason || ''].filter(Boolean).join('｜');
-            return `<div class="pending-item"><div class="pending-title">${title}</div><div class="muted">${detail}</div>${pendingStatusHtml(x.statusText || '待主管審核')}</div>`;
-          }).join('');
-        }
-      }catch(e){
-        console.warn('[parttime pending]', e);
-      }
-    }
-    let __parttimeExcessResolve = null;
-    function openParttimeExcessModal(info){
-      return new Promise(resolve=>{
-        const mask = qs('#parttimeExcessModal');
-        const desc = qs('#parttimeExcessDesc');
-        const reason = qs('#parttimeExcessReason');
-        if(!mask){ resolve(null); return; }
-        __parttimeExcessResolve = resolve;
-        if(desc){
-          desc.innerHTML = `今日排班可直接登記 <strong>${formatHoursLabel(info.scheduledHours)}</strong>，你選擇 <strong>${formatHoursLabel(info.totalHours)}</strong>，超出 <strong>${formatHoursLabel(info.excessHours)}</strong>。<br>超出部分會以臨時出勤申請送主管審核。`;
-        }
-        if(reason) reason.value = '';
-        mask.style.display = 'flex';
-        mask.setAttribute('aria-hidden','false');
-      });
-    }
-    function closeParttimeExcessModal(value){
-      const mask = qs('#parttimeExcessModal');
-      if(mask){ mask.style.display = 'none'; mask.setAttribute('aria-hidden','true'); }
-      const resolve = __parttimeExcessResolve;
-      __parttimeExcessResolve = null;
-      if(resolve) resolve(value || null);
-    }
-    function initParttimeExcessModal(){
-      const modes = qs('#parttimeExcessModes');
-      if(modes){
-        modes.querySelectorAll('.mode-choice').forEach(btn=>{
-          btn.onclick = () => {
-            modes.querySelectorAll('.mode-choice').forEach(x=>x.classList.remove('active'));
-            btn.classList.add('active');
-          };
-        });
-      }
-      const cancel = qs('#parttimeExcessCancel');
-      if(cancel) cancel.onclick = () => closeParttimeExcessModal(null);
-      const confirm = qs('#parttimeExcessConfirm');
-      if(confirm) confirm.onclick = () => {
-        closeParttimeExcessModal({ack:true});
-      };
-    }
-    async function collectExcessInfo(totalHours){
-      const ctx = currentDateContext || {};
-      const directHours = Number(ctx.remainingRegularHours || ctx.maxDirectHours || ctx.scheduledHours || 0) || 0;
-      if(!directHours || totalHours <= directHours + 0.0001) return {};
-      const excessHours = Math.round((totalHours - directHours)*100)/100;
-      const msg = `你選擇的工讀時數已超出目前可直接登記的 ${formatHoursLabel(directHours)}。
-
-超出的 ${formatHoursLabel(excessHours)} 不能在工讀時數頁直接登記薪資。
-請先至「打卡 / 補打卡」或「臨時出勤申請」送出超出時段；主管核准後，系統會自動將核准時段加入工讀薪資時數，不需要再回本頁重複登記。`;
-      alert(msg);
-      setMsg(qs('#msg'), msg.replace(/\n+/g, ' '), true);
-      return {cancelled:true};
-    }
-    async function submitParttime(){
-      if(!validateForm()) return;
-      const user = requireLogin();
-      if(!user) return;
-      const totalHours = Number(qs('#hoursSelect').value || 0) || 0;
-      const excess = await collectExcessInfo(totalHours);
-      if(excess.cancelled) return;
-      const payload = {
-        userId: user.id,
-        workDate: qs('#workDate').value,
-        hours: qs('#hoursSelect').value,
-        halfHour: false,
-        note: '',
-        excessMode: excess.excessMode || '',
-        excessReason: excess.excessReason || '',
-        overScheduledConfirmed: !!excess.excessReason,
-        overScheduledReason: excess.excessReason || ''
-      };
-      const btn = qs('#submitBtn');
-      const progress = startActionButtonProgress(btn, { label:'送出中' });
-      setMsg(qs('#msg'),'');
-      try {
-        progress.set(10, '檢查資料中');
-        await sleep(100);
-        progress.set(30, '整理時數資料');
-        const request = api('parttime', payload);
-        await sleep(120);
-        progress.set(60, '送出時數資料');
-        const r = await request;
-        progress.set(85, r.ok ? '更新畫面中' : '等待系統回應');
-        await sleep(100);
-        setMsg(qs('#msg'), r.message, !r.ok);
-        if(r.ok){
-          qs('#halfHour').checked = false;
-          qs('#hoursSelect').value = '';
-          updateHoursGrid();
-          qs('#workDate').value = localDateInputValue();
-          await loadHistory(r.monthText || '');
-          await loadDateContext();
-          await loadPendingItems();
-          progress.done('送出成功');
-        } else {
-          progress.fail('送出失敗');
-          window.scrollTo({top:0,behavior:'smooth'});
-          return;
-        }
-      } catch (e) {
-        progress.fail('送出失敗');
-        throw e;
-      }
+        setMsg('建立測試通知中…');
+        var r=await api('sendLineAutoNotificationTest',{target:'managers',message:'LINE 主管通知測試：如果收到這則訊息，代表主要主管 LINE 收件人設定成功。'});
+        if(!r||r.ok===false) throw new Error((r&&r.message)||'測試失敗');
+        setMsg(r.message||'已送出測試通知。');
+      }catch(e){setMsg(e.message||String(e),true);}
     }
     function init(){
-      fillHeader();
-      qs('#workDate').value = localDateInputValue();
-      qs('#submitBtn').onclick = submitParttime;
-      qs('#workDate').addEventListener('input', async ()=>{ clearValidation(); await loadDateContext(); });
-      qs('#workDate').addEventListener('change', async ()=>{ clearValidation(); await loadDateContext(); });
-      qs('#hoursSelect').addEventListener('change', ()=>{ clearValidation(); updateHoursGrid(); });
-      const historyBtn = qs('#historySearchBtn');
-      if(historyBtn) historyBtn.onclick = searchHistoryRange;
-      initParttimeExcessModal();
-      renderHoursGrid();
-      loadHistory();
-      loadPendingItems();
-      loadDateContext();
+      if(typeof fillHeader==='function') fillHeader();
+      var user=typeof requireLogin==='function'?requireLogin():null;
+      if(!user) return;
+      if(typeof hasSettingsZoneAccess==='function' && !hasSettingsZoneAccess(user)){location.href='dashboard.html'; return;}
+      document.getElementById('saveBtn').onclick=saveManager;
+      document.getElementById('testBtn').onclick=testManager;
+      document.getElementById('reloadBtn').onclick=loadStatus;
+      loadStatus();
     }
   </script>
   <script src="global-nav.js?v=20260603unified1"></script>

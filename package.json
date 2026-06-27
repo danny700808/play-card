@@ -1,12 +1,78 @@
-{
-  "name": "youzi-easystore-functions",
-  "private": true,
-  "engines": {
-    "node": "20"
-  },
-  "main": "index.js",
-  "dependencies": {
-    "firebase-admin": "^12.7.0",
-    "firebase-functions": "^5.1.1"
-  }
-}
+name: Deploy Firebase Hosting, Rules and Functions on merge
+
+"on":
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  deploy_functions:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+
+      - name: Install Functions dependencies
+        run: npm install
+        working-directory: functions
+
+      - name: Prepare Firebase credentials
+        run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 }}' > $HOME/firebase-service-account.json
+
+      - name: Validate LINE secret and create Functions runtime env file
+        shell: bash
+        env:
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          LINE_MESSAGING_ACCESS_TOKEN: ${{ secrets.LINE_MESSAGING_ACCESS_TOKEN }}
+          LINE_ACCESS_TOKEN: ${{ secrets.LINE_ACCESS_TOKEN }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+        run: |
+          set -euo pipefail
+          LINE_TOKEN="${LINE_CHANNEL_ACCESS_TOKEN:-${LINE_MESSAGING_ACCESS_TOKEN:-${LINE_ACCESS_TOKEN:-}}}"
+
+          if [ -z "$LINE_TOKEN" ]; then
+            echo "::error::缺少 LINE Channel Access Token。請在 GitHub Repository Settings → Secrets and variables → Actions 新增 LINE_CHANNEL_ACCESS_TOKEN。"
+            exit 1
+          fi
+
+          if [ -z "${GMAIL_USER:-}" ] || [ -z "${GMAIL_APP_PASSWORD:-}" ]; then
+            echo "::warning::GMAIL_USER 或 GMAIL_APP_PASSWORD 未設定，Email 通知可能無法寄出。"
+          fi
+
+          export RUNTIME_LINE_TOKEN="$LINE_TOKEN"
+          umask 077
+          node <<'NODE'
+          const fs = require('fs');
+          const rows = {
+            LINE_CHANNEL_ACCESS_TOKEN: process.env.RUNTIME_LINE_TOKEN || '',
+            GMAIL_USER: process.env.GMAIL_USER || '',
+            GMAIL_APP_PASSWORD: process.env.GMAIL_APP_PASSWORD || '',
+            EMAIL_FROM: process.env.EMAIL_FROM || '',
+            PUBLIC_WEB_BASE_URL: 'https://danny700808.github.io/play-card/'
+          };
+          const content = Object.entries(rows)
+            .map(([key, value]) => `${key}=${JSON.stringify(String(value))}`)
+            .join('\n') + '\n';
+          fs.writeFileSync('functions/.env', content, { mode: 0o600 });
+          NODE
+
+          echo "Functions 執行環境檔已建立；LINE Token 僅由 GitHub Secret 注入，不會寫入版本庫。"
+
+      - name: Deploy Hosting, Firestore rules, Storage rules and Functions
+        run: |
+          export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
+          firebase deploy --only hosting,firestore:rules,storage,functions --project youzi-c1b74 --force
