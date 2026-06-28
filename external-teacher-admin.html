@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>外聘老師年度簽約管理</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    body{font-family:-apple-system,BlinkMacSystemFont,"Noto Sans TC","Microsoft JhengHei",sans-serif;background:#f7f4ed;margin:0;color:#2c2924}.wrap{max-width:1160px;margin:0 auto;padding:22px}.card{background:white;border-radius:18px;padding:18px;margin:14px 0;box-shadow:0 6px 22px rgba(0,0,0,.08)}
+    input,select,textarea{width:100%;box-sizing:border-box;border:1px solid #d7d0c3;border-radius:10px;padding:11px;font-size:15px;background:#fff}label{font-weight:800;display:block;margin:10px 0 5px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}.btn{border:0;border-radius:12px;padding:11px 14px;margin:8px 8px 0 0;font-weight:900;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}.primary{background:#5f7f62;color:white}.secondary{background:#e8dfd0;color:#2c2924}.danger{background:#b85f5f;color:white}.muted{color:#6f695f;font-size:14px;line-height:1.7}.ok{background:#edf7ee;border:1px solid #a7cdae;border-radius:12px;padding:12px}.warn{background:#fff7df;border:1px solid #e0ca7f;border-radius:12px;padding:12px}.table{width:100%;border-collapse:collapse}.table th,.table td{border-bottom:1px solid #eee;padding:10px;text-align:left;vertical-align:top}.pill{display:inline-block;border-radius:999px;background:#eee5d6;padding:4px 9px;font-size:12px}.result input{font-size:13px}.tabs a{margin-right:8px}@media(max-width:760px){.grid,.grid2{grid-template-columns:1fr}.table{font-size:13px}}
+    body.loading:after{content:'處理中...';position:fixed;inset:0;background:rgba(255,255,255,.72);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:900;z-index:9999}
+  </style>
+  <link rel="stylesheet" href="global-nav.css?v=external-teacher-independent-1">
+</head>
+<body>
+  <div class="yz-global-nav" data-yz-global-nav><button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button><button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button></div>
+  <div class="wrap">
+    <h1>外聘老師年度簽約管理</h1>
+    <p class="muted">這是獨立模組：只使用 externalTeacherProfiles / externalTeacherContracts / externalTeacherContractTemplates，不會寫入租賃資料。</p>
+    <div class="tabs">
+      <a class="btn secondary" href="external-teacher-contract-admin.html">契約條文管理</a>
+      <a class="btn secondary" href="external-teacher-onboarding.html" target="_blank">老師填寫頁</a>
+    </div>
+
+    <section class="card">
+      <h2>建立老師簽約連結</h2>
+      <div class="grid">
+        <div><label>老師姓名</label><input id="name"></div>
+        <div><label>手機</label><input id="mobile"></div>
+        <div><label>Email</label><input id="email"></div>
+      </div>
+      <div class="grid">
+        <div><label>綁定方式</label><select id="bindingMethod"><option value="line">只綁 LINE</option><option value="email">只綁 Email</option><option value="both">LINE + Email 都綁</option></select></div>
+        <div><label>合約年度</label><select id="contractYear"></select></div>
+        <div><label>授課項目</label><input id="teachingItems" placeholder="鋼琴、爵士鼓、吉他"></div>
+      </div>
+      <div class="grid2">
+        <div><label>鐘點費</label><input id="hourlyRate" type="number"></div>
+        <div><label>付款日</label><input id="paymentDay" type="number" min="1" max="31"></div>
+      </div>
+      <button class="btn primary" onclick="createLink()">產生簽約連結</button>
+      <div id="createResult" class="result" style="display:none;margin-top:14px"></div>
+    </section>
+
+    <section class="card">
+      <h2>年度簽約紀錄</h2>
+      <div class="grid2">
+        <div><label>查看年度</label><select id="filterYear"></select></div>
+        <div style="display:flex;align-items:end"><button class="btn secondary" onclick="loadList()">重新整理</button></div>
+      </div>
+      <div id="summary" class="muted"></div>
+      <div style="overflow:auto"><table class="table"><thead><tr><th>老師</th><th>年度</th><th>期間</th><th>狀態</th><th>合約</th><th>聯絡</th></tr></thead><tbody id="contractBody"></tbody></table></div>
+    </section>
+
+    <section class="card">
+      <h2>尚未完成／處理中</h2>
+      <div style="overflow:auto"><table class="table"><thead><tr><th>老師</th><th>年度</th><th>綁定</th><th>狀態</th><th>填寫連結</th></tr></thead><tbody id="profileBody"></tbody></table></div>
+    </section>
+  </div>
+
+  <script src="config.js?v=external-teacher-independent-1"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
+  <script src="firebase-client.js?v=external-teacher-independent-1"></script>
+  <script>
+    function user(){try{return JSON.parse(localStorage.getItem('employeeUser')||'null')||{}}catch(e){return{}}}
+    function userId(){const u=user();return u.id||u.userId||u.employeeId||localStorage.getItem('employeeUserId')||''}
+    function ensureFirebaseApp(){ if(firebase.apps&&firebase.apps.length)return firebase.apps[0]; return firebase.initializeApp(window.APP_CONFIG.FIREBASE_CONFIG); }
+    function fn(name){ensureFirebaseApp();return firebase.app().functions('us-central1').httpsCallable(name)}
+    async function callFn(name,data){const res=await fn(name)(data||{});return res.data||{}}
+    function val(id){return (document.getElementById(id).value||'').trim()}
+    function setLoading(on){document.body.classList.toggle('loading',!!on)}
+    function esc(v){return String(v??'').replace(/[&<>"']/g,s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]))}
+    async function copyValue(id){const el=document.getElementById(id);el.select();document.execCommand('copy');alert('已複製')}
+    async function copyText(text){await navigator.clipboard.writeText(text||'');alert('已複製')}
+    function rocYear(y){return Number(y)-1911}
+    function initYears(){
+      const now=new Date(); const y=now.getFullYear(); const nextOpen=(now.getMonth()>11)||(now.getMonth()===11&&now.getDate()>=15);
+      const years=[{gy:y,ry:rocYear(y),open:true,label:`民國 ${rocYear(y)} 年（${y}-12-31 到期）`}];
+      years.push({gy:y+1,ry:rocYear(y+1),open:nextOpen,label:`民國 ${rocYear(y+1)} 年（下一年度，12/15 後開放）`});
+      document.getElementById('contractYear').innerHTML=years.map(x=>`<option value="${x.gy}" ${!x.open?'disabled':''}>${esc(x.label)}${!x.open?'｜尚未開放':''}</option>`).join('');
+      document.getElementById('filterYear').innerHTML='<option value="">全部年度</option>'+years.map(x=>`<option value="${x.ry}">民國 ${x.ry} 年</option>`).join('');
+    }
+    async function createLink(){
+      try{
+        setLoading(true);
+        const res=await callFn('externalTeacherCreateBindCode',{userId:userId(),name:val('name'),mobile:val('mobile'),email:val('email'),bindingMethod:val('bindingMethod'),contractYear:val('contractYear'),teachingItems:val('teachingItems'),hourlyRate:val('hourlyRate'),paymentDay:val('paymentDay')});
+        const html=[];
+        html.push(`<div class="ok"><b>已建立外聘老師簽約連結</b><br>合約年度：民國 ${esc(res.contractRocYear)} 年<br>契約期間：${esc(res.contractStartDate)} 至 ${esc(res.contractEndDate)}</div>`);
+        html.push(`<label>老師填寫連結</label><input id="createdUrl" value="${esc(res.onboardingUrl)}" readonly><button class="btn secondary" onclick="copyValue('createdUrl')">複製連結</button>`);
+        if(res.bindText){html.push(`<label>LINE 綁定文字</label><input id="createdBind" value="${esc(res.bindText)}" readonly><button class="btn secondary" onclick="copyValue('createdBind')">複製 LINE 綁定文字</button><p class="muted">請讓老師把這段文字貼到官方 LINE。</p>`)}
+        if(res.emailQueueId){html.push(`<p class="muted">Email 通知已寫入 notificationQueue：${esc(res.emailQueueId)}</p>`)}
+        document.getElementById('createResult').innerHTML=html.join('');
+        document.getElementById('createResult').style.display='block';
+        await loadList();
+      }catch(e){alert(e.message||e)}finally{setLoading(false)}
+    }
+    async function loadList(){
+      try{
+        setLoading(true);
+        const res=await callFn('externalTeacherListContracts',{userId:userId(),rocYear:val('filterYear')});
+        const contracts=res.contracts||[]; const profiles=res.profiles||[];
+        document.getElementById('summary').textContent=`已簽合約 ${contracts.length} 筆；老師資料 ${profiles.length} 筆。`;
+        document.getElementById('contractBody').innerHTML=contracts.length?contracts.map(c=>`<tr><td>${esc(c.teacherName)}</td><td><span class="pill">${esc(c.contractRocYear)} 年</span></td><td>${esc(c.contractStartDate)}<br>至 ${esc(c.contractEndDate)}</td><td>${esc(c.status||'')}</td><td>${c.contractHtmlUrl?`<a class="btn secondary" target="_blank" href="${esc(c.contractHtmlUrl)}">開啟合約</a>`:'-'}</td><td>${esc(c.email||'')}<br>${c.lineUserId?'<span class="pill">LINE 已有 ID</span>':''}</td></tr>`).join(''):`<tr><td colspan="6" class="muted">目前沒有簽約紀錄</td></tr>`;
+        const pending=profiles.filter(p=>p.contractStatus!=='signed' || p.status!=='active');
+        document.getElementById('profileBody').innerHTML=pending.length?pending.map(p=>`<tr><td>${esc(p.name)}<br><span class="muted">${esc(p.mobile)} ${esc(p.email)}</span></td><td>${esc(p.contractRocYear||'')}</td><td>${esc(p.bindingMethod||'')}<br>LINE：${esc(p.lineBindStatus||'')}<br>Email：${esc(p.emailBindStatus||'')}</td><td>${esc(p.status||'')}<br>${esc(p.contractStatus||'')}</td><td><button class="btn secondary" onclick="copyText('${esc((p.onboardingUrl||'').replace(/'/g,'\\\''))}')">複製連結</button></td></tr>`).join(''):`<tr><td colspan="5" class="muted">沒有待完成資料</td></tr>`;
+      }catch(e){alert(e.message||e)}finally{setLoading(false)}
+    }
+    initYears(); loadList();
+  </script>
+  <script src="global-nav.js?v=external-teacher-independent-1"></script>
+</body>
+</html>

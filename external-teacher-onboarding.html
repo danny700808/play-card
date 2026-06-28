@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>外聘老師資料填寫與契約簽署</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    body{font-family:-apple-system,BlinkMacSystemFont,"Noto Sans TC","Microsoft JhengHei",sans-serif;background:#f7f4ed;margin:0;color:#2c2924}
+    .wrap{max-width:920px;margin:0 auto;padding:22px}.card{background:white;border-radius:18px;padding:22px;margin:16px 0;box-shadow:0 6px 22px rgba(0,0,0,.08)}
+    h1{font-size:26px;margin:8px 0 4px}h2{font-size:20px;margin:0 0 14px}label{display:block;font-weight:800;margin:12px 0 6px}
+    input,textarea,select{width:100%;box-sizing:border-box;border:1px solid #d7d0c3;border-radius:12px;padding:13px;font-size:16px;background:white}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:14px}.btn{border:0;border-radius:14px;padding:13px 16px;margin:8px 8px 0 0;font-weight:900;font-size:16px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}
+    .primary{background:#5f7f62;color:white}.secondary{background:#e8dfd0;color:#2c2924}.ghost{background:white;border:1px solid #c9c0b2;color:#2c2924}
+    .hint{font-size:14px;color:#6f695f;line-height:1.7}.warn{background:#fff7df;border:1px solid #e0ca7f;border-radius:12px;padding:12px}.ok{background:#edf7ee;border:1px solid #a7cdae;border-radius:12px;padding:12px}
+    .step{display:none}.step.active{display:block}.bind{font-size:20px;font-weight:900;text-align:center;letter-spacing:.4px;background:#eef6ec;border:1px dashed #6c8a6d;border-radius:14px;padding:18px;word-break:break-all}
+    .contract{white-space:pre-wrap;line-height:1.8;background:#fbfaf7;border:1px solid #ddd5c8;border-radius:12px;padding:18px;max-height:440px;overflow:auto}
+    canvas{width:100%;height:190px;border:1px solid #cfc6b7;border-radius:14px;background:white;touch-action:none}.top{font-size:14px;color:#777}.file-list{font-size:13px;color:#555;margin-top:8px;line-height:1.7}.pill{display:inline-block;background:#eee5d6;border-radius:999px;padding:5px 10px;margin:2px;font-size:13px}.method-row{display:flex;gap:10px;flex-wrap:wrap}.method-row label{display:inline-flex;align-items:center;gap:6px;margin:4px 0;font-weight:800}.method-row input{width:auto}
+    body.loading:after{content:'處理中...';position:fixed;inset:0;background:rgba(255,255,255,.72);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:900;z-index:9999}
+    @media(max-width:720px){.row{grid-template-columns:1fr}}
+  </style>
+  <link rel="stylesheet" href="global-nav.css?v=external-teacher-independent-1">
+</head>
+<body>
+  <div class="yz-global-nav" data-yz-global-nav><button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button><button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button></div>
+  <div class="wrap">
+    <div class="top">外聘老師專用獨立簽約流程</div>
+    <h1>資料填寫與契約簽署</h1>
+    <p class="hint">本流程與租賃系統分開。身分證明文件與簽名會存放於 Firebase Storage，Firestore 只保存網址與年度簽約紀錄。</p>
+
+    <section class="card step active" id="step1">
+      <h2>1. 聯絡方式與綁定</h2>
+      <div class="row">
+        <div><label>姓名</label><input id="name" autocomplete="name"></div>
+        <div><label>手機</label><input id="mobile" autocomplete="tel"></div>
+      </div>
+      <label>Email</label><input id="email" autocomplete="email">
+      <label>綁定方式</label>
+      <div class="method-row">
+        <label><input type="radio" name="bindingMethod" value="line" checked> 只綁 LINE</label>
+        <label><input type="radio" name="bindingMethod" value="email"> 只綁 Email</label>
+        <label><input type="radio" name="bindingMethod" value="both"> LINE + Email 都綁</label>
+      </div>
+      <button class="btn primary" onclick="createOrLoad()">建立／載入簽約流程</button>
+      <div id="bindArea" style="display:none;margin-top:16px">
+        <div class="bind" id="bindText"></div>
+        <p class="hint">請將上方文字貼到柚子樂器官方 LINE。LINE 回覆綁定完成後，再回到本頁繼續填資料。</p>
+        <button class="btn secondary" onclick="copyText('bindText')">複製 LINE 綁定文字</button>
+      </div>
+      <div id="emailArea" style="display:none;margin-top:16px" class="ok">系統已建立 Email 聯絡紀錄；若通知佇列已啟用，會寄出簽約連結。</div>
+      <div id="urlArea" style="display:none;margin-top:16px">
+        <label>簽約連結</label><input id="onboardingUrl" readonly>
+        <button class="btn secondary" onclick="copyInput('onboardingUrl')">複製連結</button>
+        <button class="btn primary" onclick="loadAndNext()">繼續填資料</button>
+      </div>
+    </section>
+
+    <section class="card step" id="step2">
+      <h2>2. 個人資料</h2>
+      <div id="periodInfo" class="warn"></div>
+      <div class="row">
+        <div><label>身分證字號</label><input id="idNumber"></div>
+        <div><label>出生年月日</label><input id="birthDate" type="date"></div>
+      </div>
+      <label>戶籍地址</label><input id="householdAddress">
+      <label>通訊地址</label><input id="mailingAddress">
+      <label>授課項目</label><input id="teachingItems" placeholder="例如：鋼琴、爵士鼓、吉他">
+      <div class="row">
+        <div><label>鐘點費</label><input id="hourlyRate" type="number"></div>
+        <div><label>付款日</label><input id="paymentDay" type="number" min="1" max="31"></div>
+      </div>
+      <label>身分證明文件／證件照片</label>
+      <input id="identityFiles" type="file" accept="image/*" multiple>
+      <div class="hint">上傳前會自動加上浮水印：「僅供柚子樂器外聘教師簽約使用」。</div>
+      <div class="file-list" id="identityFileList"></div>
+      <button class="btn primary" onclick="go(3)">下一步</button>
+    </section>
+
+    <section class="card step" id="step3">
+      <h2>3. 薪資／匯款資料</h2>
+      <div class="warn">此頁可以先略過，不影響本次簽約。若略過，後續可再補填。</div>
+      <label>銀行名稱</label><input id="bankName">
+      <label>分行</label><input id="bankBranch">
+      <label>戶名</label><input id="bankAccountName">
+      <label>帳號</label><input id="bankAccountNumber">
+      <button class="btn primary" onclick="saveProfile(false)">儲存並繼續</button>
+      <button class="btn secondary" onclick="saveProfile(true)">先略過，之後補填</button>
+    </section>
+
+    <section class="card step" id="step4">
+      <h2>4. 契約確認</h2>
+      <div class="contract" id="contractText">契約載入中...</div>
+      <label><input type="checkbox" id="agreeTerms" style="width:auto"> 我已閱讀並同意本契約內容</label>
+      <button class="btn primary" onclick="go(5)">下一步：簽名</button>
+    </section>
+
+    <section class="card step" id="step5">
+      <h2>5. 線上簽名</h2>
+      <canvas id="signature"></canvas>
+      <p class="hint">請在上方空白處簽名。</p>
+      <button class="btn secondary" onclick="clearSignature()">清除簽名</button>
+      <button class="btn primary" onclick="submitContract()">送出完成簽約</button>
+    </section>
+
+    <section class="card step" id="step6">
+      <h2>完成</h2>
+      <div class="ok" id="doneText">外聘老師資料與契約簽署已完成。</div>
+      <p class="hint">後續通知會依照您選擇的 LINE / Email 方式傳送。</p>
+      <a class="btn secondary" href="teacher-home.html">回外聘老師首頁</a>
+    </section>
+  </div>
+
+  <script src="config.js?v=external-teacher-independent-1"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
+  <script src="firebase-client.js?v=external-teacher-independent-1"></script>
+  <script>
+    const params = new URLSearchParams(location.search);
+    let teacherId = params.get('teacherId') || params.get('userId') || localStorage.getItem('employeeUserId') || '';
+    let token = params.get('token') || '';
+    let bindText = '';
+    let currentDates = {};
+
+    function currentUser(){ try{return JSON.parse(localStorage.getItem('employeeUser')||'null')}catch(e){return null} }
+    function ensureFirebaseApp(){
+      if(!window.firebase) throw new Error('Firebase SDK 尚未載入');
+      if(firebase.apps && firebase.apps.length) return firebase.apps[0];
+      const cfg = window.APP_CONFIG && window.APP_CONFIG.FIREBASE_CONFIG;
+      if(!cfg || !cfg.projectId) throw new Error('Firebase 設定不存在');
+      return firebase.initializeApp(cfg);
+    }
+    function fn(name){ ensureFirebaseApp(); return firebase.app().functions('us-central1').httpsCallable(name); }
+    async function callFn(name, data){ const res = await fn(name)(data || {}); return res.data || {}; }
+    function val(id){ return (document.getElementById(id).value || '').trim(); }
+    function setVal(id, v){ if(v !== undefined && v !== null) document.getElementById(id).value = Array.isArray(v) ? v.join('、') : String(v); }
+    function setLoading(on){ document.body.classList.toggle('loading', !!on); }
+    function fail(err){ alert(err && err.message ? err.message : String(err)); document.body.classList.remove('loading'); }
+    function bindingMethod(){ const checked=document.querySelector('input[name="bindingMethod"]:checked'); return checked ? checked.value : 'line'; }
+    function copyInput(id){ const el=document.getElementById(id); el.select(); document.execCommand('copy'); alert('已複製'); }
+    async function copyText(id){ await navigator.clipboard.writeText(document.getElementById(id).textContent || ''); alert('已複製'); }
+
+    function prefillFromLocalUser(){
+      const u = currentUser() || {};
+      if(!teacherId) teacherId = u.id || u.userId || u.employeeId || '';
+      if(!val('name')) setVal('name', u.name || u.displayName || '');
+      if(!val('mobile')) setVal('mobile', u.mobile || u.mobilePhone || u.phone || '');
+      if(!val('email')) setVal('email', u.email || '');
+    }
+
+    function go(n){
+      if(n === 5 && !document.getElementById('agreeTerms').checked){ alert('請先勾選已閱讀並同意契約內容'); return; }
+      document.querySelectorAll('.step').forEach(x=>x.classList.remove('active'));
+      document.getElementById('step'+n).classList.add('active');
+      if(n === 4) loadContract();
+      if(n === 5) setTimeout(resizeCanvas, 100);
+      window.scrollTo({top:0,behavior:'smooth'});
+    }
+
+    async function createOrLoad(){
+      if(teacherId && token){ await loadAndNext(); return; }
+      try{
+        setLoading(true);
+        const res = await callFn('externalTeacherCreateBindCode', { teacherId: teacherId || undefined, name: val('name'), mobile: val('mobile'), email: val('email'), bindingMethod: bindingMethod() });
+        teacherId = res.teacherId; token = res.token; bindText = res.bindText || '';
+        currentDates = res || {};
+        if(bindText){ document.getElementById('bindText').textContent = bindText; document.getElementById('bindArea').style.display = 'block'; }
+        if(res.bindingMethod === 'email' || res.bindingMethod === 'both'){ document.getElementById('emailArea').style.display = 'block'; }
+        document.getElementById('onboardingUrl').value = res.onboardingUrl || location.href;
+        document.getElementById('urlArea').style.display = 'block';
+        history.replaceState(null, '', '?teacherId='+encodeURIComponent(teacherId)+'&token='+encodeURIComponent(token));
+      }catch(e){ fail(e); } finally{ setLoading(false); }
+    }
+
+    async function loadAndNext(){
+      try{
+        setLoading(true);
+        const res = await callFn('externalTeacherGetOnboarding', { teacherId, token });
+        currentDates = res || {};
+        fillTeacher(res.profile || res.teacher || {});
+        renderPeriodInfo(res);
+        go(2);
+      }catch(e){ fail(e); } finally{ setLoading(false); }
+    }
+
+    function renderPeriodInfo(res){
+      document.getElementById('periodInfo').innerHTML = `合約年度：<b>民國 ${res.contractRocYear || ''} 年</b><br>契約期間：<b>${res.contractStartDate || ''} 至 ${res.contractEndDate || ''}</b><br>下一年度續約開放日：每年 12 月 15 日。`;
+    }
+
+    function fillTeacher(t){
+      setVal('name', t.name || t.displayName || '');
+      setVal('mobile', t.mobile || t.phone || '');
+      setVal('email', t.email || '');
+      setVal('idNumber', t.idNumber || ''); setVal('birthDate', t.birthDate || '');
+      setVal('householdAddress', t.householdAddress || ''); setVal('mailingAddress', t.mailingAddress || '');
+      setVal('teachingItems', t.teachingItems || ''); setVal('hourlyRate', t.hourlyRate || ''); setVal('paymentDay', t.paymentDay || '');
+      setVal('bankName', t.bankName || ''); setVal('bankBranch', t.bankBranch || ''); setVal('bankAccountName', t.bankAccountName || ''); setVal('bankAccountNumber', t.bankAccountNumber || '');
+      if(t.bindingMethod){ const input=document.querySelector(`input[name="bindingMethod"][value="${t.bindingMethod}"]`); if(input) input.checked=true; }
+    }
+
+    document.getElementById('identityFiles').addEventListener('change', function(){
+      const files = Array.from(this.files || []);
+      document.getElementById('identityFileList').innerHTML = files.map(f=>`<span class="pill">${escapeHtml(f.name)}</span>`).join('');
+    });
+
+    async function imageFileToWatermarkedDataUrl(file){
+      if(!file.type || !file.type.startsWith('image/')) throw new Error('身分證明文件請上傳圖片格式。');
+      const img = await new Promise((resolve,reject)=>{ const r=new FileReader(); r.onload=()=>{ const i=new Image(); i.onload=()=>resolve(i); i.onerror=reject; i.src=r.result; }; r.onerror=reject; r.readAsDataURL(file); });
+      const max = 1600; let w = img.width, h = img.height;
+      if(Math.max(w,h) > max){ const ratio = max / Math.max(w,h); w = Math.round(w*ratio); h = Math.round(h*ratio); }
+      const canvas = document.createElement('canvas'); canvas.width=w; canvas.height=h;
+      const ctx = canvas.getContext('2d'); ctx.drawImage(img,0,0,w,h);
+      const wm = `僅供柚子樂器外聘教師簽約使用｜${val('name') || '外聘老師'}｜${new Date().toISOString().slice(0,10)}`;
+      ctx.save(); ctx.translate(w/2,h/2); ctx.rotate(-Math.PI/8); ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.font=`${Math.max(22, Math.floor(w/26))}px sans-serif`; ctx.fillStyle='rgba(40,40,40,0.18)';
+      const gapY = Math.max(110, Math.floor(h/5));
+      for(let y=-h; y<=h; y+=gapY){ ctx.fillText(wm,0,y); }
+      ctx.restore();
+      ctx.font=`${Math.max(18, Math.floor(w/34))}px sans-serif`; ctx.fillStyle='rgba(0,0,0,0.55)'; ctx.fillText(wm,18,h-24);
+      return { fileName:file.name.replace(/\.[^.]+$/,'')+'_watermarked.jpg', mimeType:'image/jpeg', dataUrl:canvas.toDataURL('image/jpeg',0.84), watermarkApplied:true, watermarkText:wm };
+    }
+
+    async function readIdentityFiles(){
+      const files = Array.from(document.getElementById('identityFiles').files || []);
+      const out = [];
+      for(const file of files) out.push(await imageFileToWatermarkedDataUrl(file));
+      return out;
+    }
+
+    async function saveProfile(skipPayroll){
+      try{
+        setLoading(true);
+        const identityFilesData = await readIdentityFiles();
+        await callFn('externalTeacherSaveProfile', {
+          teacherId, token, name: val('name'), mobile: val('mobile'), email: val('email'), idNumber: val('idNumber'), birthDate: val('birthDate'),
+          householdAddress: val('householdAddress'), mailingAddress: val('mailingAddress'), teachingItems: val('teachingItems'), hourlyRate: val('hourlyRate'), paymentDay: val('paymentDay'),
+          skipPayroll, bankName: val('bankName'), bankBranch: val('bankBranch'), bankAccountName: val('bankAccountName'), bankAccountNumber: val('bankAccountNumber'), identityFilesData,
+          contractYear: currentDates.contractGregorianYear || currentDates.contractRocYear || ''
+        });
+        go(4);
+      }catch(e){ fail(e); } finally{ setLoading(false); }
+    }
+
+    async function loadContract(){
+      try{
+        const res = await callFn('externalTeacherGetOnboarding', { teacherId, token });
+        currentDates = res || {};
+        renderPeriodInfo(res);
+        document.getElementById('contractText').textContent = res.contractText || '';
+      }catch(e){ fail(e); }
+    }
+
+    async function submitContract(){
+      if(!document.getElementById('agreeTerms').checked){ alert('請先勾選已閱讀並同意契約內容'); return; }
+      try{
+        setLoading(true);
+        const res = await callFn('externalTeacherCompleteContract', { teacherId, token, agreeTerms:true, signatureDataUrl: canvas.toDataURL('image/png'), contractYear: currentDates.contractGregorianYear || '' });
+        document.getElementById('doneText').innerHTML = `外聘老師 ${res.contractRocYear || ''} 年契約簽署已完成。`;
+        go(6);
+      }catch(e){ fail(e); } finally{ setLoading(false); }
+    }
+
+    const canvas = document.getElementById('signature'); const ctx = canvas.getContext('2d'); let drawing=false;
+    function resizeCanvas(){ const r=canvas.getBoundingClientRect(); if(!r.width)return; canvas.width=r.width*devicePixelRatio; canvas.height=r.height*devicePixelRatio; ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0); ctx.lineWidth=2.2; ctx.lineCap='round'; ctx.strokeStyle='#111'; }
+    window.addEventListener('resize', resizeCanvas);
+    function pos(e){ const r=canvas.getBoundingClientRect(); const p=e.touches?e.touches[0]:e; return {x:p.clientX-r.left,y:p.clientY-r.top}; }
+    canvas.addEventListener('mousedown', e=>{drawing=true; const p=pos(e); ctx.beginPath(); ctx.moveTo(p.x,p.y);});
+    canvas.addEventListener('mousemove', e=>{if(!drawing)return; const p=pos(e); ctx.lineTo(p.x,p.y); ctx.stroke();});
+    canvas.addEventListener('mouseup', ()=>drawing=false); canvas.addEventListener('mouseleave', ()=>drawing=false);
+    canvas.addEventListener('touchstart', e=>{drawing=true; const p=pos(e); ctx.beginPath(); ctx.moveTo(p.x,p.y); e.preventDefault();});
+    canvas.addEventListener('touchmove', e=>{if(!drawing)return; const p=pos(e); ctx.lineTo(p.x,p.y); ctx.stroke(); e.preventDefault();}); canvas.addEventListener('touchend', ()=>drawing=false);
+    function clearSignature(){ ctx.clearRect(0,0,canvas.width,canvas.height); }
+    function escapeHtml(v){return String(v??'').replace(/[&<>"']/g,s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));}
+
+    prefillFromLocalUser();
+    if(teacherId && token){ loadAndNext().catch(()=>{}); }
+  </script>
+  <script src="global-nav.js?v=external-teacher-independent-1"></script>
+</body>
+</html>

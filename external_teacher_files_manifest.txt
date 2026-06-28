@@ -1,0 +1,9 @@
+外聘老師獨立簽約模組檔案清單
+
+external-teacher-admin.html                  後台：建立老師簽約連結、年度合約紀錄
+external-teacher-onboarding.html             老師端：填資料、上傳身分證浮水印圖、簽約
+external-teacher-contract-admin.html         後台：修改外聘老師契約條文模板
+external-teacher-payroll.html                老師端：補薪資／匯款資料
+functions/externalTeacherOnboarding.js       後端：獨立外聘老師 callable functions、LINE 綁定、Storage 儲存、年度合約
+functions/index.js                           後端：接上外聘老師 functions，不改租賃頁面
+functions/package.json                       Firebase Functions 依賴設定
