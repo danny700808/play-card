@@ -3,20 +3,21 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>外聘老師</title>
+  <title>外聘老師管理</title>
   <link rel="stylesheet" href="style.css">
   <style>
-    .tile strong{display:flex;align-items:center;gap:8px;justify-content:space-between}
-    .badge{display:inline-flex;min-width:22px;height:22px;padding:0 6px;border-radius:999px;background:#dc2626;color:#fff;font-size:12px;align-items:center;justify-content:center;font-weight:800}
+    body{background:#f6f1e8;color:#1f2933}
+    .hub-wrap{max-width:980px;margin:0 auto;padding:26px 18px 44px}
+    .hub-card{background:#fff;border-radius:20px;padding:24px;box-shadow:0 8px 26px rgba(31,41,51,.08)}
+    .hub-title{margin:0 0 18px;font-size:30px;font-weight:900;color:#1f2933;text-align:center}
+    .hub-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:16px}
+    .hub-tile{display:flex;flex-direction:column;gap:10px;min-height:138px;padding:20px;border-radius:18px;text-decoration:none;color:#1f2933;background:#fbfaf7;border:1px solid #e6dccd;box-shadow:0 5px 16px rgba(31,41,51,.05);transition:.15s ease}
+    .hub-tile:hover{transform:translateY(-2px);box-shadow:0 10px 24px rgba(31,41,51,.11)}
+    .hub-tile strong{font-size:20px;font-weight:900;color:#23402c}
+    .hub-tile span{font-size:14px;line-height:1.7;color:#59636e}
+    .badge{display:inline-flex;min-width:22px;height:22px;padding:0 6px;border-radius:999px;background:#dc2626;color:#fff;font-size:12px;align-items:center;justify-content:center;font-weight:800;margin-left:6px}
     .badge:empty{display:none}
-    .page-return-wrap{margin-bottom:16px}
-    .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
-    .section-title{margin:22px 0 10px;font-size:18px;font-weight:900;color:#0f172a}
-    .section-desc{margin:0 0 12px;color:#64748b;line-height:1.7;font-size:14px}
-    .tile.primary-new{border:2px solid #16a34a;background:linear-gradient(180deg,#f0fdf4,#ffffff)}
-    .tile.primary-new strong{color:#166534}
-    .tag-new{display:inline-flex;align-items:center;border-radius:999px;background:#dcfce7;color:#166534;font-size:12px;padding:4px 8px;font-weight:900}
-    .note-box{margin-top:16px;border:1px solid #bbf7d0;background:#f0fdf4;color:#166534;border-radius:16px;padding:12px 14px;font-size:14px;line-height:1.7;font-weight:700}
+    @media(max-width:760px){.hub-grid{grid-template-columns:1fr}.hub-title{font-size:26px}.hub-tile{min-height:auto}}
   </style>
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
 </head>
@@ -26,122 +27,54 @@
     <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
   </div>
 
-  <div class="container">
-    <div class="card">
-      <div class="topbar">
-        <div class="header" style="margin:0">
-          <h1 class="title" style="margin:0">外聘老師管理</h1>
-          <div class="welcome">新版年度合約簽署與拿貨紀錄入口</div>
-        </div>
-      </div>
-      <div class="note-box">
-        舊版「合約簽署」入口已改成新版外聘老師獨立簽約流程。這裡不再進入舊的 contract-admin.html，避免和舊合約資料混在一起。
-      </div>
-
-      <div class="section-title">年度合約</div>
-      <div class="section-desc">用這裡建立老師專屬簽約連結，透過 LINE / Email 傳給老師填資料、上傳身分證、線上簽名，並依年度保存合約。</div>
-      <div class="grid" style="margin-top:12px">
-        <a class="tile primary-new" href="external-teacher-admin.html?v=teacher-hub-new1">
-          <strong>年度合約簽署管理 <span class="tag-new">新版</span></strong>
-          <span>建立老師簽約連結、複製 LINE 傳送文字、查看 115 / 116 年度簽約狀態與已簽合約。</span>
+  <main class="hub-wrap">
+    <section class="hub-card">
+      <h1 class="hub-title">外聘老師管理</h1>
+      <div class="hub-grid">
+        <a class="hub-tile" href="external-teacher-admin.html?v=external-simple-ui1">
+          <strong>年度合約簽署管理</strong>
+          <span>建立老師專屬簽約連結，透過 LINE 或 Email 傳給老師，並查看年度簽約狀態。</span>
         </a>
-        <a class="tile" href="external-teacher-contract-admin.html?v=teacher-hub-new1">
+        <a class="hub-tile" href="external-teacher-contract-admin.html?v=external-simple-ui1">
           <strong>外聘老師契約條文管理</strong>
-          <span>修改老師簽約頁看到的 A4 契約條文；已簽合約會保存當時版本，不會被新模板覆蓋。</span>
+          <span>修改外聘老師委任契約條文，並預覽老師簽署時看到的 A4 契約版面。</span>
         </a>
-      </div>
-
-      <div class="section-title">拿貨紀錄</div>
-      <div class="section-desc">拿貨與詢價維持原本獨立紀錄，不和年度合約資料混在一起。</div>
-      <div class="grid" style="margin-top:12px">
-        <a class="tile" href="teacher-goods-admin.html">
+        <a class="hub-tile" href="teacher-goods-admin.html">
           <strong>拿貨紀錄 <span class="badge" id="badge-goods"></span></strong>
-          <span>管理商品、回覆詢價與追蹤外聘老師拿貨相關事項。</span>
+          <span>管理外聘老師拿貨、詢價與相關紀錄。</span>
         </a>
       </div>
-    </div>
-  </div>
+    </section>
+  </main>
+
   <script src="config.js?v=20260508frontendperf2"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="firebase-client.js?v=admin-final-20260530b"></script>
-
   <script src="app.js?v=admin-final-20260530b"></script>
   <script>
-    
     async function init(){
-      fillHeader();
-      const user=requireLogin();
+      fillHeader && fillHeader();
+      const user = requireLogin ? requireLogin() : null;
       if(!user) return;
-      if(!hasSettingsZoneAccess(user)){location.href='dashboard.html';return;}
-
-      // 先吃管理首頁共用快取，讓中繼入口頁先顯示。
+      if(typeof hasSettingsZoneAccess === 'function' && !hasSettingsZoneAccess(user)){ location.href='dashboard.html'; return; }
       applyBadgeCounts_(readCachedPendingCounts_(user));
-
-      // 待處理數字延後更新，不阻塞第一屏。
       scheduleIdle_(async()=>applyBadgeCounts_(await fetchPendingCountsFast_(user)));
     }
-
     function pendingCountsCacheKey_(user){ return 'pendingCounts:v3:settings:' + ((user && user.id) || 'guest'); }
-    function readCachedPendingCounts_(user){
-      try{ return JSON.parse(localStorage.getItem(pendingCountsCacheKey_(user)) || '{}') || {}; }catch(e){ return {}; }
-    }
-    function writeCachedPendingCounts_(user, data){
-      try{ localStorage.setItem(pendingCountsCacheKey_(user), JSON.stringify(Object.assign({__cachedAt:Date.now()}, data||{}))); }catch(e){}
-    }
-    function scheduleIdle_(fn){
-      if(window.requestIdleCallback) requestIdleCallback(fn,{timeout:900});
-      else setTimeout(fn, 80);
-    }
+    function readCachedPendingCounts_(user){ try{return JSON.parse(localStorage.getItem(pendingCountsCacheKey_(user))||'{}')||{};}catch(e){return{};} }
+    function writeCachedPendingCounts_(user,data){ try{localStorage.setItem(pendingCountsCacheKey_(user),JSON.stringify(Object.assign({__cachedAt:Date.now()},data||{})));}catch(e){} }
+    function scheduleIdle_(fn){ if(window.requestIdleCallback) requestIdleCallback(fn,{timeout:900}); else setTimeout(fn,80); }
     function normalizePendingCounts_(r){
-      r = r || {};
-      const counts = r.counts || r.summary || r.dashboard || r;
-      return Object.assign({}, r, counts, {
-        registrationCount: Number(counts.registrationCount || counts.pendingRegistrationCount || counts.registrations || 0) || 0,
-        leaveCount: Number(counts.leaveCount || counts.pendingLeaveCount || counts.leaveApprovalCount || 0) || 0,
-        clockCorrectionCount: Number(counts.clockCorrectionCount || counts.pendingClockCorrectionCount || counts.clockCorrection || 0) || 0,
-        contractCount: Number(counts.contractCount || counts.pendingContractCount || counts.contracts || 0) || 0,
-        goodsInquiryCount: Number(counts.goodsInquiryCount || counts.pendingGoodsInquiryCount || counts.goodsInquiries || 0) || 0,
-        taskCount: Number(counts.taskCount || counts.pendingTaskCount || counts.taskReviewCount || counts.tasks || 0) || 0,
-        routineCount: Number(counts.routineCount || counts.pendingRoutineCount || counts.routineReviewCount || counts.routines || 0) || 0,
-        applicationCount: Number(counts.applicationCount || counts.pendingApplicationCount || counts.teacherApplicationCount || counts.applications || 0) || 0,
-        salaryCount: Number(counts.salaryCount || counts.pendingSalaryCount || 0) || 0
-      });
+      r=r||{}; const counts=r.counts||r.summary||r.dashboard||r;
+      return Object.assign({},r,counts,{goodsInquiryCount:Number(counts.goodsInquiryCount||counts.pendingGoodsInquiryCount||counts.goodsInquiries||0)||0});
     }
     async function fetchPendingCountsFast_(user){
-      try{
-        let r = await api('getDashboardSummary',{userId:user.id, role:'admin'});
-        if(!r || r.ok === false) r = await api('getPendingCounts',{userId:user.id});
-        const data = normalizePendingCounts_(r);
-        writeCachedPendingCounts_(user, data);
-        return data;
-      }catch(err){
-        try{
-          const r = await api('getPendingCounts',{userId:user.id});
-          const data = normalizePendingCounts_(r);
-          writeCachedPendingCounts_(user, data);
-          return data;
-        }catch(e){ return readCachedPendingCounts_(user); }
-      }
+      try{ let r=await api('getDashboardSummary',{userId:user.id,role:'admin'}); if(!r||r.ok===false) r=await api('getPendingCounts',{userId:user.id}); const data=normalizePendingCounts_(r); writeCachedPendingCounts_(user,data); return data; }
+      catch(err){ try{ const r=await api('getPendingCounts',{userId:user.id}); const data=normalizePendingCounts_(r); writeCachedPendingCounts_(user,data); return data; }catch(e){ return readCachedPendingCounts_(user); } }
     }
-    function setBadge(id, count){
-      const el=document.getElementById(id);
-      if(!el) return;
-      const n=Number(count||0)||0;
-      if(n>0){
-        el.textContent=n>99?'99+':String(n);
-        el.classList.remove('is-empty');
-      }else{
-        el.textContent='';
-        el.classList.add('is-empty');
-      }
-    }
-
-    function applyBadgeCounts_(r){
-      r=normalizePendingCounts_(r);
-      setBadge('badge-goods',r.goodsInquiryCount);
-    }
-  
+    function setBadge(id,count){ const el=document.getElementById(id); if(!el)return; const n=Number(count||0)||0; el.textContent=n>0?(n>99?'99+':String(n)):''; }
+    function applyBadgeCounts_(r){ r=normalizePendingCounts_(r); setBadge('badge-goods',r.goodsInquiryCount); }
   </script>
   <script src="global-nav.js?v=20260603unified1"></script>
 </body>

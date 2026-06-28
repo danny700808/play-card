@@ -5,17 +5,37 @@
   <title>外聘老師契約條文管理</title>
   <link rel="stylesheet" href="style.css">
   <style>
-    body{font-family:-apple-system,BlinkMacSystemFont,"Noto Sans TC","Microsoft JhengHei",sans-serif;background:#f7f4ed;margin:0;color:#2c2924}.wrap{max-width:1100px;margin:0 auto;padding:22px}.card{background:white;border-radius:18px;padding:18px;margin:14px 0;box-shadow:0 6px 22px rgba(0,0,0,.08)}input,textarea{width:100%;box-sizing:border-box;border:1px solid #d7d0c3;border-radius:10px;padding:11px;font-size:15px}textarea{min-height:150px;line-height:1.6}label{font-weight:800;display:block;margin:10px 0 5px}.row{display:grid;grid-template-columns:80px 120px 1fr 90px;gap:10px;align-items:end}.btn{border:0;border-radius:12px;padding:11px 14px;margin:8px 8px 0 0;font-weight:900;cursor:pointer}.primary{background:#5f7f62;color:white}.secondary{background:#e8dfd0}.danger{background:#b85f5f;color:white}@media(max-width:720px){.row{grid-template-columns:1fr}}
+    body{font-family:-apple-system,BlinkMacSystemFont,"Noto Sans TC","Microsoft JhengHei",sans-serif;background:#f6f1e8;margin:0;color:#2c2924}.wrap{max-width:1180px;margin:0 auto;padding:24px 16px 50px}h1{text-align:center;margin:8px 0 18px}.card{background:#fff;border-radius:18px;padding:20px;margin:14px 0;box-shadow:0 6px 22px rgba(0,0,0,.08)}label{font-weight:900;display:block;margin:10px 0 6px}input,textarea{width:100%;box-sizing:border-box;border:1px solid #d7d0c3;border-radius:10px;padding:11px;font-size:15px;background:#fff}textarea{min-height:440px;line-height:1.75;font-family:"Noto Sans TC","Microsoft JhengHei",sans-serif}.btn{border:0;border-radius:12px;padding:11px 14px;margin:8px 8px 0 0;font-weight:900;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}.primary{background:#5f7f62;color:white}.secondary{background:#e8dfd0;color:#2c2924}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.muted{color:#6f695f;font-size:14px;line-height:1.7}.split{display:grid;grid-template-columns:minmax(0,1fr) minmax(360px,520px);gap:18px;align-items:start}.a4-wrap{background:#e9e1d6;border-radius:18px;padding:16px;overflow:auto}.a4{width:210mm;min-height:297mm;background:white;margin:0 auto;padding:18mm 16mm;box-sizing:border-box;color:#111;box-shadow:0 3px 18px rgba(0,0,0,.18);font-family:"Noto Serif TC","標楷體","PMingLiU",serif;font-size:13.2px;line-height:1.72;position:relative}.a4 h2{text-align:center;font-size:24px;margin:0 0 12px;letter-spacing:2px}.party{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:10px 0 12px}.party-box{border:1px solid #ddd;padding:10px;border-radius:8px;min-height:80px}.contract-body{white-space:pre-wrap}.sign-row{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:24px;align-items:end}.sign-box{border-top:1px solid #333;padding-top:10px;min-height:100px;position:relative}.seal{position:absolute;right:10px;bottom:8px;width:90px;opacity:.86}.small-seal{position:absolute;right:110px;bottom:15px;width:54px;opacity:.86}.signature-demo{height:54px;border:1px dashed #aaa;border-radius:8px;margin-top:10px;display:flex;align-items:center;justify-content:center;color:#777;background:#fafafa}.print-note{text-align:center;color:#777;font-size:12px;margin-top:8px}@media(max-width:980px){.split{grid-template-columns:1fr}.a4{transform:scale(.72);transform-origin:top left;margin-bottom:-85mm}}@media(max-width:620px){.grid,.party,.sign-row{grid-template-columns:1fr}.a4{transform:scale(.48);margin-bottom:-155mm}}body.loading:after{content:'處理中...';position:fixed;inset:0;background:rgba(255,255,255,.72);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:900;z-index:9999}
   </style>
-  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
+  <link rel="stylesheet" href="global-nav.css?v=external-simple-ui1">
 </head>
 <body>
   <div class="yz-global-nav" data-yz-global-nav><button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button><button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button></div>
-  <div class="wrap"><h1>外聘老師契約條文管理</h1><p><a class="btn secondary" href="external-teacher-admin.html">回外聘老師簽約管理</a></p><p>每一條可以單獨修改。已簽合約會保存快照，之後修改不會影響舊合約。</p><div class="card"><label>契約名稱</label><input id="title" value="外聘才藝教師委任契約書"><label>版本</label><input id="version" value="2026-01"><button class="btn secondary" onclick="load()">重新載入</button><button class="btn primary" onclick="save()">儲存條文</button><button class="btn secondary" onclick="addClause()">新增條文</button><button class="btn primary" onclick="applyDefaultClauses()">套用預設委任契約條文</button></div><div id="list"></div></div>
-  <script src="config.js?v=external-teacher-independent-1"></script>
+  <main class="wrap">
+    <h1>外聘老師契約條文管理</h1>
+    <p><a class="btn secondary" href="teacher-hub.html?v=external-simple-ui1">回外聘老師管理</a></p>
+    <section class="split">
+      <div class="card">
+        <h2>契約條文編輯</h2>
+        <div class="grid"><div><label>契約名稱</label><input id="title" value="外聘才藝教師委任契約書"></div><div><label>版本</label><input id="version" value="2026-01"></div></div>
+        <label>條文內容</label>
+        <textarea id="clausesText" oninput="preview()"></textarea>
+        <p class="muted">這裡修改的是老師未來簽約會看到的契約模板；已經簽完的年度合約會保存當下快照，不會被新模板覆蓋。</p>
+        <button class="btn secondary" onclick="loadTemplate()">重新載入</button>
+        <button class="btn primary" onclick="saveTemplate()">儲存契約條文</button>
+        <button class="btn secondary" onclick="applyDefault()">套用預設委任契約條文</button>
+      </div>
+      <div class="card">
+        <h2>A4 契約預覽</h2>
+        <div class="a4-wrap"><div class="a4" id="a4Preview"></div></div>
+        <div class="print-note">此預覽為老師簽署時看到的契約版面示意。</div>
+      </div>
+    </section>
+  </main>
+  <script src="config.js?v=external-simple-ui1"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="firebase-client.js?v=external-teacher-independent-1"></script>
+  <script src="firebase-client.js?v=external-simple-ui1"></script>
   <script>
     const DEFAULT_CONTRACT_CLAUSES = [
   {
@@ -49,7 +69,7 @@
   {
     "articleNo": "第五條",
     "title": "報酬與給付方式",
-    "content": "一、乙方報酬依雙方於後台、書面、LINE、Email 或其他可保存紀錄之方式確認。\n二、報酬計算方式得依鐘點、堂數、課程件數、活動場次或雙方另行約定方式計算。乙方鐘點費如有約定，為每小時新臺幣 {{hourlyRate}} 元整。\n三、甲方得於每月結算乙方已完成之服務內容，並依雙方約定日期給付報酬；約定付款日為每月 {{paymentDay}} 日者，依該約定辦理。\n四、如遇學生請假、課程取消、臨時停課、未達開課人數或其他特殊情形，報酬是否給付及計算方式，依甲乙雙方事前約定或個案協議辦理。\n五、乙方應提供正確之匯款帳戶、身分資料及依法所需文件；如資料錯誤致給付延誤，乙方應自行負責。",
+    "content": "一、乙方報酬依雙方於後台、書面、LINE、Email 或其他可保存紀錄之方式確認。\n二、報酬計算方式得依鐘點、堂數、課程件數、活動場次或雙方另行約定方式計算。\n三、甲方得於每月結算乙方已完成之服務內容，並依雙方約定日期給付報酬。\n四、如遇學生請假、課程取消、臨時停課、未達開課人數或其他特殊情形，報酬是否給付及計算方式，依甲乙雙方事前約定或個案協議辦理。\n五、乙方應提供正確之匯款帳戶、身分資料及依法所需文件；如資料錯誤致給付延誤，乙方應自行負責。",
     "sortOrder": 5,
     "enabled": true
   },
@@ -159,23 +179,58 @@
     "enabled": true
   }
 ];
-    let templateId='', clauses=[]; function user(){try{return JSON.parse(localStorage.getItem('employeeUser')||'null')||{}}catch(e){return{}}} function userId(){const u=user();return u.id||u.userId||u.employeeId||localStorage.getItem('employeeUserId')||''}
-    function ensureFirebaseApp(){ if(firebase.apps&&firebase.apps.length)return firebase.apps[0]; return firebase.initializeApp(window.APP_CONFIG.FIREBASE_CONFIG); } function fn(name){ensureFirebaseApp();return firebase.app().functions('us-central1').httpsCallable(name)}
-    async function load(){try{const res=(await fn('externalTeacherListContractTemplate')({userId:userId()})).data;templateId=res.template.id;document.getElementById('title').value=res.template.title||'外聘才藝教師委任契約書';document.getElementById('version').value=res.template.version||'2026-01';clauses=(res.clauses||[]).map(c=>({id:c.id,articleNo:c.articleNo||'',title:c.title||'',content:c.content||'',sortOrder:c.sortOrder||1,enabled:c.enabled!==false}));render()}catch(e){alert(e.message||e)}}
-    function render(){const list=document.getElementById('list');list.innerHTML='';clauses.forEach((c,i)=>{const div=document.createElement('div');div.className='card';div.innerHTML=`<div class="row"><div><label>排序</label><input value="${esc(c.sortOrder)}" onchange="clauses[${i}].sortOrder=Number(this.value||0)"></div><div><label>條號</label><input value="${esc(c.articleNo)}" onchange="clauses[${i}].articleNo=this.value"></div><div><label>標題</label><input value="${esc(c.title)}" onchange="clauses[${i}].title=this.value"></div><div><label>啟用</label><input value="${c.enabled?'是':'否'}" onchange="clauses[${i}].enabled=this.value!=='否'"></div></div><label>內容</label><textarea onchange="clauses[${i}].content=this.value">${esc(c.content)}</textarea><button class="btn secondary" onclick="move(${i},-1)">上移</button><button class="btn secondary" onclick="move(${i},1)">下移</button><button class="btn danger" onclick="removeClause(${i})">刪除</button>`;list.appendChild(div)})}
-    function addClause(){clauses.push({id:'',articleNo:'',title:'',content:'',sortOrder:clauses.length+1,enabled:true});render()} function removeClause(i){if(confirm('確定刪除？')){clauses.splice(i,1);render()}} function move(i,dir){const j=i+dir;if(j<0||j>=clauses.length)return;[clauses[i],clauses[j]]=[clauses[j],clauses[i]];clauses.forEach((c,k)=>c.sortOrder=k+1);render()}
-    
-    function applyDefaultClauses(){
-      if(!confirm('確定要套用這份預設委任契約條文？畫面上的條文會先被替換，按「儲存條文」後才會正式寫入。')) return;
-      document.getElementById('title').value='外聘才藝教師委任契約書';
-      const y = new Date().getFullYear();
-      document.getElementById('version').value=String(y)+'-teacher-mandate';
-      clauses=DEFAULT_CONTRACT_CLAUSES.map((c,i)=>({id:c.id||'',articleNo:c.articleNo,title:c.title,content:c.content,sortOrder:i+1,enabled:true}));
-      render();
+    let templateId='external_teacher_mandate_2026_01';
+    function user(){try{return JSON.parse(localStorage.getItem('employeeUser')||'null')||{}}catch(e){return{}}}
+    function userId(){const u=user();return u.id||u.userId||u.employeeId||localStorage.getItem('employeeUserId')||''}
+    function ensureFirebaseApp(){ if(firebase.apps&&firebase.apps.length)return firebase.apps[0]; return firebase.initializeApp(window.APP_CONFIG.FIREBASE_CONFIG); }
+    function fn(name){ensureFirebaseApp();return firebase.app().functions('us-central1').httpsCallable(name)}
+    function esc(v){return String(v??'').replace(/[&<>"']/g,s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]))}
+    function setLoading(on){document.body.classList.toggle('loading',!!on)}
+    function clausesToText(clauses){
+      return (clauses||[])
+        .sort((a,b)=>Number(a.sortOrder||0)-Number(b.sortOrder||0))
+        .filter(c=>c.enabled!==false)
+        .map(c=>`${c.articleNo||''}　${c.title||''}\n${c.content||''}`)
+        .join('\n\n');
     }
-    async function save(){try{clauses.forEach((c,i)=>c.sortOrder=i+1);await fn('externalTeacherSaveContractTemplate')({userId:userId(),templateId:templateId||'external_teacher_mandate_2026_01',title:document.getElementById('title').value,version:document.getElementById('version').value,clauses});alert('已儲存外聘老師契約條文')}catch(e){alert(e.message||e)}}
-    function esc(v){return String(v??'').replace(/[&<>"']/g,s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]))} load();
+    function parseClauses(text){
+      const src=String(text||'').replace(/\r/g,'').trim();
+      const re=/^(第[一二三四五六七八九十百零〇]+條)[　\s]+([^\n]+)$/gm;
+      const matches=[...src.matchAll(re)];
+      if(!matches.length) return [{id:'clause_01',articleNo:'第一條',title:'契約條文',content:src,sortOrder:1,enabled:true}];
+      return matches.map((m,i)=>{
+        const start=m.index+m[0].length;
+        const end=i+1<matches.length?matches[i+1].index:src.length;
+        return {id:`clause_${String(i+1).padStart(2,'0')}`,articleNo:m[1],title:m[2].trim(),content:src.slice(start,end).trim(),sortOrder:i+1,enabled:true};
+      });
+    }
+    function applyDefault(){document.getElementById('title').value='外聘才藝教師委任契約書';document.getElementById('version').value='2026-01';document.getElementById('clausesText').value=clausesToText(DEFAULT_CONTRACT_CLAUSES);preview();}
+    async function loadTemplate(){
+      try{setLoading(true);const res=(await fn('externalTeacherListContractTemplate')({userId:userId()})).data||{};templateId=(res.template&&res.template.id)||templateId;document.getElementById('title').value=(res.template&&res.template.title)||'外聘才藝教師委任契約書';document.getElementById('version').value=(res.template&&res.template.version)||'2026-01';document.getElementById('clausesText').value=clausesToText(res.clauses&&res.clauses.length?res.clauses:DEFAULT_CONTRACT_CLAUSES);preview();}
+      catch(e){console.error(e);applyDefault();alert('目前無法從 Firebase 載入模板，已先顯示預設委任契約。請確認已登入管理者帳號與 Functions 已部署。')}finally{setLoading(false)}
+    }
+    async function saveTemplate(){
+      try{setLoading(true);const clauses=parseClauses(document.getElementById('clausesText').value);await fn('externalTeacherSaveContractTemplate')({userId:userId(),templateId:templateId,title:document.getElementById('title').value,version:document.getElementById('version').value,clauses});alert('已儲存外聘老師契約條文');}
+      catch(e){console.error(e);alert('儲存失敗，請確認你已用管理者帳號登入。')}finally{setLoading(false)}
+    }
+    function preview(){
+      const title=esc(document.getElementById('title').value||'外聘才藝教師委任契約書');
+      const body=esc(document.getElementById('clausesText').value||'').replace(/\n/g,'<br>');
+      document.getElementById('a4Preview').innerHTML=`
+        <h2>${title}</h2>
+        <div class="party">
+          <div class="party-box"><b>甲方</b><br>臺中市私立凱立音樂短期補習班<br>代表人：黃銘廷<br>地址：依補習班登記資料</div>
+          <div class="party-box"><b>乙方</b><br>外聘老師姓名：＿＿＿＿＿＿<br>身分證字號：＿＿＿＿＿＿<br>電話：＿＿＿＿＿＿</div>
+        </div>
+        <div style="margin:8px 0 14px"><b>契約期間：</b>民國＿＿＿年＿＿月＿＿日起至民國＿＿＿年 12 月 31 日止</div>
+        <div class="contract-body">${body}</div>
+        <div class="sign-row">
+          <div class="sign-box">甲方：臺中市私立凱立音樂短期補習班<br>代表人：黃銘廷<img class="seal" src="kaili-school-seal.png" onerror="this.style.display='none'"><img class="small-seal" src="personal-seal.png" onerror="this.style.display='none'"></div>
+          <div class="sign-box">乙方：外聘老師<br><div class="signature-demo">乙方線上簽名位置</div></div>
+        </div>`;
+    }
+    loadTemplate();
   </script>
-  <script src="global-nav.js?v=20260603unified1"></script>
+  <script src="global-nav.js?v=external-simple-ui1"></script>
 </body>
 </html>
