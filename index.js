@@ -1100,19 +1100,77 @@ exports.rentalVerifyEmailHttp = httpEndpoint(async (data) => {
   return { applicationId: snap.id, applicationNo: clean(app.applicationNo || snap.id), customerEmail: clean(app.customerEmail) };
 });
 
+
+const RENTAL_INLINE_ASSET_FIELDS = [
+  'customerSignatureDataUrl',
+  'signatureDataUrl',
+  'signDataUrl',
+  'customerIdImageWatermarkedDataUrl',
+  'idImageWatermarkedDataUrl',
+  'customerIdImageDataUrl',
+  'idImageDataUrl',
+  'idCardImageDataUrl'
+];
+function isRentalDataUrl(value) {
+  return /^data:/i.test(String(value || ''));
+}
+function rentalFirstClean(...values) {
+  for (const value of values) {
+    const text = clean(value);
+    if (text) return text;
+  }
+  return '';
+}
+function rentalAssetUrls(row) {
+  row = row || {};
+  const signatureUrl = rentalFirstClean(
+    row.customerSignatureUrl,
+    row.signatureUrl,
+    !isRentalDataUrl(row.customerSignatureDataUrl) ? row.customerSignatureDataUrl : '',
+    !isRentalDataUrl(row.signatureDataUrl) ? row.signatureDataUrl : ''
+  );
+  const idImageUrl = rentalFirstClean(
+    row.customerIdImageUrl,
+    row.idImageUrl,
+    row.idCardImageUrl,
+    !isRentalDataUrl(row.customerIdImageWatermarkedDataUrl) ? row.customerIdImageWatermarkedDataUrl : '',
+    !isRentalDataUrl(row.idImageWatermarkedDataUrl) ? row.idImageWatermarkedDataUrl : ''
+  );
+  return { signatureUrl, idImageUrl };
+}
+function stripRentalInlineAssets(row, options = {}) {
+  const out = Object.assign({}, row || {});
+  const urls = rentalAssetUrls(out);
+  if (urls.signatureUrl) {
+    out.customerSignatureUrl = urls.signatureUrl;
+    out.signatureUrl = urls.signatureUrl;
+  }
+  if (urls.idImageUrl) {
+    out.customerIdImageUrl = urls.idImageUrl;
+    out.idImageUrl = urls.idImageUrl;
+  }
+  RENTAL_INLINE_ASSET_FIELDS.forEach((key) => { delete out[key]; });
+  if (options.deleteInline) {
+    const del = admin.firestore.FieldValue.delete();
+    RENTAL_INLINE_ASSET_FIELDS.forEach((key) => { out[key] = del; });
+  }
+  return out;
+}
+
 exports.rentalSaveContractHttp = httpEndpoint(async (data) => {
   const incomingId = clean(data.contractId || data.id || data.__id);
   const contractId = incomingId || randomId('RC');
   const ref = db.collection('rentalContracts').doc(contractId);
   const currentSnap = await ref.get();
-  const current = currentSnap.exists ? (currentSnap.data() || {}) : {};
+  const current = currentSnap.exists ? stripRentalInlineAssets(currentSnap.data() || {}) : {};
   const signToken = clean(data.signToken || current.signToken || current.token) || randomToken(18);
   const customerToken = clean(data.customerToken || current.customerToken) || randomToken(18);
   const officialContractToken = clean(data.officialContractToken || current.officialContractToken) || randomToken(18);
   const contractNo = clean(data.contractNo || current.contractNo || contractId);
   const status = data.makeSignLink ? '待客人補資料' : clean(data.status || current.status || '草稿');
   const now = admin.firestore.FieldValue.serverTimestamp();
-  const row = stripUndefined(Object.assign({}, current, data, {
+  const safeData = stripRentalInlineAssets(data || {});
+  const row = stripUndefined(Object.assign({}, current, safeData, {
     contractId,
     contractNo,
     signToken,
@@ -1158,27 +1216,27 @@ exports.rentalSignContractHttp = httpEndpoint(async (data) => {
   const contractId = clean(data.contractId || data.id);
   const token = clean(data.token || data.signToken);
   const { ref, contract } = await getContractForToken(contractId, token);
-  const signatureDataUrl = clean(data.signatureDataUrl || data.customerSignatureDataUrl || contract.signatureDataUrl || contract.customerSignatureDataUrl);
-  if (!signatureDataUrl) throw new Error('缺少簽名資料。');
-  const update = stripUndefined({
+  const incoming = Object.assign({}, contract || {}, data || {});
+  const urls = rentalAssetUrls(incoming);
+  if (!urls.signatureUrl) throw new Error('缺少簽名圖片網址。請先將簽名上傳到 Firebase Storage。');
+  if (!urls.idImageUrl) throw new Error('缺少身分證圖片網址。請先將身分證圖片上傳到 Firebase Storage。');
+  const update = stripUndefined(stripRentalInlineAssets({
     customerIdNumber: clean(data.customerIdNumber || contract.customerIdNumber),
-    customerIdImageWatermarkedDataUrl: clean(data.customerIdImageWatermarkedDataUrl || data.idImageWatermarkedDataUrl || contract.customerIdImageWatermarkedDataUrl),
-    idImageWatermarkedDataUrl: clean(data.customerIdImageWatermarkedDataUrl || data.idImageWatermarkedDataUrl || contract.idImageWatermarkedDataUrl),
-    customerIdImageUrl: clean(data.customerIdImageUrl || data.idImageUrl || contract.customerIdImageUrl || contract.idImageUrl),
-    idImageUrl: clean(data.idImageUrl || data.customerIdImageUrl || contract.idImageUrl || contract.customerIdImageUrl),
-    signatureDataUrl,
-    customerSignatureDataUrl: signatureDataUrl,
-    customerSignatureUrl: clean(data.customerSignatureUrl || data.signatureUrl || contract.customerSignatureUrl || contract.signatureUrl),
-    signatureUrl: clean(data.signatureUrl || data.customerSignatureUrl || contract.signatureUrl || contract.customerSignatureUrl),
+    customerIdImageUrl: urls.idImageUrl,
+    idImageUrl: urls.idImageUrl,
+    customerSignatureUrl: urls.signatureUrl,
+    signatureUrl: urls.signatureUrl,
     notificationPreference: clean(data.notificationPreference || contract.notificationPreference || contract.preferredContactMethod),
     emailVerified: contract.emailVerified === true,
     customerSubmittedFormalAt: clean(data.customerSubmittedFormalAt || nowText()),
     customerSignedAt: clean(data.customerSignedAt || nowText()),
     formalReceivedNoticeText: clean(data.formalReceivedNoticeText || contract.formalReceivedNoticeText),
+    customerFormalAssetsStoredInStorage: true,
+    customerFormalAssetsStoredAt: clean(data.customerFormalAssetsStoredAt || nowText()),
     status: '待店家確認',
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     updatedAtText: nowText(),
-  });
+  }, { deleteInline: true }));
   await ref.set(update, { merge: true });
   try {
     const customerName = clean(contract.customerName || contract.partyAName || contract.name || '客人');

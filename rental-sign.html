@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>租賃補填身分證字號與證明文件</title>
-  <link rel="stylesheet" href="style.css?v=rental-sign-20260616-final-15s-watermark">
+  <link rel="stylesheet" href="style.css?v=rental-sign-20260628-storage-url-assets">
   <style>
     body{background:#eef3f7;color:#18314a}.wrap{max-width:980px;margin:0 auto;padding:22px 14px 54px}.card2{background:#fff;border:1px solid #dbe5ef;border-radius:24px;padding:20px;margin-bottom:16px;box-shadow:0 10px 28px rgba(15,23,42,.04)}.title{font-size:30px;font-weight:950;margin:0 0 10px}.small{font-size:13px;color:#64748b;line-height:1.8}.btn{border:0;border-radius:14px;background:#1f7a5a;color:#fff;font-weight:950;padding:12px 18px;cursor:pointer;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;min-height:52px;font-size:16px;text-align:center}.btn.secondary{background:#e2e8f0;color:#18314a}.btn:disabled{opacity:.6;cursor:not-allowed}.btn-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;width:100%}.btn-row .btn{width:100%}.msg{margin-top:12px;border-radius:14px;padding:12px 14px;font-weight:900;line-height:1.7}.msg.ok{background:#e8fff4;color:#146c43}.msg.bad{background:#fff0f0;color:#b42318}.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}.field{margin-bottom:12px}.field label{display:block;font-weight:950;margin-bottom:6px}.field input{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:14px;padding:11px 12px;font-size:15px}.field.required-missing input,.field.required-missing canvas{border-color:#dc2626!important;box-shadow:0 0 0 3px rgba(220,38,38,.12)}.error-note{display:none;color:#b42318;font-weight:900;font-size:13px;margin-top:4px}.field.required-missing .error-note{display:block}.hint{font-size:13px;color:#64748b;line-height:1.8}.preview-img{max-width:100%;max-height:220px;border:1px solid #cbd5e1;border-radius:12px;background:#f8fafc;margin-top:8px}.agree{display:flex;gap:10px;line-height:1.8;font-weight:900}#signatureCanvas{width:100%;height:230px;border:2px dashed #94a3b8;border-radius:16px;background:#fff;touch-action:none}#signatureCanvas.signature-locked{background:#f8fafc;border-style:solid;cursor:not-allowed}.sig-confirm-note{display:none;margin-top:8px;background:#e8fff4;color:#146c43;border-radius:12px;padding:8px 10px;font-weight:900}.contractNotice{background:#fff7ed;border:1px solid #fdba74;color:#9a3412;border-radius:16px;padding:12px 14px;font-weight:900;line-height:1.7;margin-bottom:14px}.paymentNotice{background:#f8fafc;border:1px solid #cbd5e1;border-radius:18px;padding:14px 16px;margin-top:12px;line-height:1.8;color:#334155}.paymentNotice b{color:#18314a}.paymentNotice .bank-line{font-weight:950;color:#0f172a}.paymentNotice .copyText{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:16px;font-weight:950;letter-spacing:.02em}.contractPreviewShell{overflow-x:hidden;max-width:100%}#contractPreview .rental-contract-sheet{position:relative!important}#contractPreview .rental-contract-sheet::after{content:'預覽列印\A非正式契約';white-space:pre;position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) rotate(-22deg);z-index:999;pointer-events:none;text-align:center;font-size:42px;line-height:1.45;font-weight:950;letter-spacing:.14em;color:rgba(180,83,9,.16);border:4px solid rgba(180,83,9,.12);border-radius:18px;padding:24px 34px;-webkit-print-color-adjust:exact;print-color-adjust:exact}.submitBox{border:1px solid #dbe5ef;border-radius:18px;padding:14px;background:#f8fafc}.submitBox .btn{width:100%}.progressWrap{display:none;margin-top:12px;background:#e2e8f0;border-radius:999px;overflow:hidden;height:14px}.progressBar{width:0%;height:100%;background:#1f7a5a;transition:width .28s ease}.progressText{font-size:13px;font-weight:950;margin-top:6px;color:#475569}.btn.progressing{background:#166c4f}.btn.done{background:#12805c}.dialogMask{display:none;position:fixed;inset:0;background:rgba(15,23,42,.48);z-index:9999;align-items:center;justify-content:center;padding:18px}.dialogBox{background:#fff;border-radius:22px;max-width:520px;width:100%;padding:22px;box-shadow:0 24px 80px rgba(15,23,42,.35)}.dialogTitle{font-size:22px;font-weight:950;margin:0 0 10px}.dialogText{line-height:1.8;color:#334155}.dialogText ul{margin:8px 0 0 20px}.dialogActions{text-align:right;margin-top:18px}.section-title{margin-top:0}.required-tag{display:inline-block;margin-left:6px;color:#dc2626;font-size:12px;font-weight:950}.print-area{overflow:hidden}@media(max-width:840px){.row2{grid-template-columns:1fr}.wrap{padding:12px 8px}.title{font-size:24px}#signatureCanvas{height:260px}.card2{padding:16px;border-radius:18px}}@media print{body *{visibility:hidden}.print-area,.print-area *{visibility:visible}.print-area{position:absolute;left:0;top:0;width:100%}.card2:not(.print-area){display:none}.rental-contract-sheet{border:none!important;box-shadow:none!important;margin:0!important;width:210mm!important;min-height:297mm!important}@page{size:A4;margin:0}}
   </style>
@@ -48,12 +48,12 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script>
-  <script src="rental-common.js?v=20260626-other-equipment-period"></script>
+  <script src="rental-common.js?v=20260628-storage-url-assets"></script>
   <script>
     const R=window.YZRental;
 
     function hasSubmittedIdentityAndSignature(contract){
-      return !!(contract && R.clean(contract.identityNo || contract.customerIdNo || contract.idNumber) && R.clean(contract.idImageUrl || contract.idImageDataUrl || contract.idImage) && R.clean(contract.customerSignatureUrl || contract.signatureDataUrl || contract.signature));
+      return !!(contract && R.clean(contract.identityNo || contract.customerIdNo || contract.customerIdNumber || contract.idNumber) && R.clean(contract.customerIdImageUrl || contract.idImageUrl || contract.idCardImageUrl || contract.customerIdImageWatermarkedDataUrl || contract.idImageWatermarkedDataUrl || contract.idImageDataUrl || contract.idImage) && R.clean(contract.customerSignatureUrl || contract.signatureUrl || contract.customerSignatureDataUrl || contract.signatureDataUrl || contract.signature));
     }
     function showAlreadySubmitted(contract){
       const main = document.querySelector('form') || document.getElementById('signForm') || document.querySelector('.sign-form');
@@ -135,7 +135,7 @@ let signed=false; let watermarkedIdImage='';
         if(R.clean(contract.signToken||contract.token)!==R.clean(token)) throw new Error('合約連結驗證失敗');
         signed=!!contract.customerSignedAt;
         R.setVal('customerIdNumber', contract.customerIdNumber||contract.customerTaxId||'');
-        watermarkedIdImage=contract.customerIdImageWatermarkedDataUrl||contract.idImageWatermarkedDataUrl||'';
+        watermarkedIdImage=contract.customerIdImageUrl||contract.idImageUrl||contract.idCardImageUrl||contract.customerIdImageWatermarkedDataUrl||contract.idImageWatermarkedDataUrl||'';
         if(watermarkedIdImage){ const img=R.qs('idPreview'); img.src=watermarkedIdImage; img.style.display='block'; }
         refreshPreview();
         if(signed){ R.qs('identityPanel').style.display='none'; R.qs('signPanel').style.display='none'; R.qs('submitPanel').innerHTML=successHtml(); }
@@ -204,18 +204,25 @@ let signed=false; let watermarkedIdImage='';
       for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
       return new Blob([bytes], {type:mime});
     }
+    function isDataUrl(value){ return /^data:/i.test(String(value||'')); }
+    function isRemoteAssetUrl(value){ return /^(https?:\/\/|gs:\/\/)/i.test(String(value||'')); }
+    function addInlineAssetDeletes(target){
+      const del=firebase.firestore.FieldValue.delete();
+      ['customerIdImageWatermarkedDataUrl','idImageWatermarkedDataUrl','customerIdImageDataUrl','idImageDataUrl','idCardImageDataUrl','customerSignatureDataUrl','signatureDataUrl','signDataUrl'].forEach(k=>{ target[k]=del; });
+      return target;
+    }
     async function uploadFormalAssets(){
-      if(!window.firebase || !firebase.storage) return {};
+      if(!window.firebase || !firebase.storage) throw new Error('Firebase Storage 尚未啟用或尚未載入，無法用標準方式保存圖片。請先確認 Firebase Storage 規則。');
       const updates={};
       const safe=String(contractId||'rental-contract').replace(/[^a-zA-Z0-9_-]/g,'_');
       const storage=firebase.storage();
-      if(typeof storage.setMaxUploadRetryTime==='function') storage.setMaxUploadRetryTime(30000);
+      if(typeof storage.setMaxUploadRetryTime==='function') storage.setMaxUploadRetryTime(60000);
       async function putDataUrl(path, dataUrl, contentType){
         const ref=storage.ref().child(path);
         await ref.put(dataUrlToBlob(dataUrl), {contentType});
         return await ref.getDownloadURL();
       }
-      if(watermarkedIdImage && /^data:/i.test(watermarkedIdImage)){
+      if(isDataUrl(watermarkedIdImage)){
         const path='rental-contracts/'+safe+'/customer-id-watermarked.jpg';
         const url=await putDataUrl(path, watermarkedIdImage, 'image/jpeg');
         Object.assign(updates, {
@@ -224,8 +231,13 @@ let signed=false; let watermarkedIdImage='';
           customerIdImageStoragePath:path,
           idImageStoragePath:path
         });
+      }else if(isRemoteAssetUrl(watermarkedIdImage)){
+        Object.assign(updates, {
+          customerIdImageUrl:watermarkedIdImage,
+          idImageUrl:watermarkedIdImage
+        });
       }
-      if(signatureDataUrl && /^data:/i.test(signatureDataUrl)){
+      if(isDataUrl(signatureDataUrl)){
         const path='rental-contracts/'+safe+'/customer-signature.png';
         const url=await putDataUrl(path, signatureDataUrl, 'image/png');
         Object.assign(updates, {
@@ -234,12 +246,18 @@ let signed=false; let watermarkedIdImage='';
           customerSignatureStoragePath:path,
           signatureStoragePath:path
         });
+      }else if(isRemoteAssetUrl(signatureDataUrl)){
+        Object.assign(updates, {
+          customerSignatureUrl:signatureDataUrl,
+          signatureUrl:signatureDataUrl
+        });
       }
-      if(Object.keys(updates).length){
-        updates.customerFormalAssetsUploadedAt=R.nowText();
-        updates.updatedAtText=R.nowText();
-        await R.db().collection('rentalContracts').doc(contractId).set(updates,{merge:true});
-      }
+      if(!updates.customerIdImageUrl) throw new Error('身分證圖片沒有成功上傳到 Firebase Storage，請重新選擇圖片後再送出。');
+      if(!updates.customerSignatureUrl) throw new Error('簽名圖片沒有成功上傳到 Firebase Storage，請重新簽名後再送出。');
+      updates.customerFormalAssetsUploadedAt=R.nowText();
+      updates.updatedAtText=R.nowText();
+      addInlineAssetDeletes(updates);
+      await R.db().collection('rentalContracts').doc(contractId).set(updates,{merge:true});
       return updates;
     }
     function fifteenSecondsLaterTimestamp(){
@@ -330,28 +348,20 @@ let signed=false; let watermarkedIdImage='';
           setProgress(35);
           assetUpdates=await uploadFormalAssets();
         }catch(assetErr){
-          console.warn('uploadFormalAssets failed; 改用壓縮資料寫入 Firestore：', assetErr);
+          console.warn('uploadFormalAssets failed:', assetErr);
+          throw assetErr;
         }
 
-        const idDataForFirestore = assetUpdates.customerIdImageUrl ? '' : keepSmallDataUrl(watermarkedIdImage);
-        const sigDataForFirestore = assetUpdates.customerSignatureUrl ? '' : keepSmallDataUrl(signatureDataUrl);
-        if(!assetUpdates.customerIdImageUrl && !idDataForFirestore){
-          throw new Error('身分證圖片太大，且圖片備份上傳失敗。請重新選擇較小或較清楚的照片後再送出。');
-        }
-        if(!assetUpdates.customerSignatureUrl && !sigDataForFirestore){
-          throw new Error('簽名資料太大，且簽名備份上傳失敗。請重新簽名後再送出。');
+        if(!assetUpdates.customerIdImageUrl || !assetUpdates.customerSignatureUrl){
+          throw new Error('圖片或簽名尚未成功上傳到 Firebase Storage，系統不會再把大型圖片直接存入 Firestore。');
         }
 
         setProgress(55);
         await R.db().collection('rentalContracts').doc(contractId).set(Object.assign({
           customerIdNumber:R.val('customerIdNumber'),
-          customerIdImageWatermarkedDataUrl:idDataForFirestore,
-          idImageWatermarkedDataUrl:idDataForFirestore,
           customerIdImageUpdatedAt:submittedAt,
           customerSubmittedFormalAt:submittedAt,
           customerSignedAt:submittedAt,
-          signatureDataUrl:sigDataForFirestore,
-          customerSignatureDataUrl:sigDataForFirestore,
           formalReceivedNoticeText:FORMAL_RECEIVED_MESSAGE,
           status:'待店家確認',
           updatedAtText:submittedAt
@@ -362,11 +372,11 @@ let signed=false; let watermarkedIdImage='';
           await R.call('rentalSignContractHttp',{
             contractId,
             token,
-            signatureDataUrl:sigDataForFirestore || signatureDataUrl,
             customerIdNumber:R.val('customerIdNumber'),
-            customerIdImageWatermarkedDataUrl:idDataForFirestore || watermarkedIdImage,
             customerSignatureUrl:assetUpdates.customerSignatureUrl || '',
+            signatureUrl:assetUpdates.signatureUrl || assetUpdates.customerSignatureUrl || '',
             customerIdImageUrl:assetUpdates.customerIdImageUrl || '',
+            idImageUrl:assetUpdates.idImageUrl || assetUpdates.customerIdImageUrl || '',
             formalReceivedNoticeText:FORMAL_RECEIVED_MESSAGE,
             customerSubmittedFormalAt:submittedAt,
             customerSignedAt:submittedAt

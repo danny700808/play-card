@@ -147,7 +147,7 @@
     const deliveryInfo = deliveryLabelPair(contract);
     const isSelfPickup=deliveryInfo.method==='自取自運';
     const status=clean(contract.status||contract.contractStatus);
-    const hasFormalData=!!(contract.customerSubmittedFormalAt || contract.customerSignatureDataUrl || contract.signatureDataUrl || contract.customerIdImageWatermarkedDataUrl || contract.idImageWatermarkedDataUrl || contract.customerIdImageDataUrl || contract.idImageDataUrl);
+    const hasFormalData=!!(contract.customerSubmittedFormalAt || contract.customerSignatureUrl || contract.signatureUrl || contract.customerIdImageUrl || contract.idImageUrl || contract.idCardImageUrl || contract.customerSignatureDataUrl || contract.signatureDataUrl || contract.customerIdImageWatermarkedDataUrl || contract.idImageWatermarkedDataUrl || contract.customerIdImageDataUrl || contract.idImageDataUrl);
     const isOfficial=!!(opts.officialView || contract._officialPreview || hasFormalData || contract.officialPdfUrl || contract.officialConfirmedAt || contract.officialStartDate || ['租賃中','已退租','待歸還','續約詢問中','續約待付款','續約待確認'].includes(status));
     const deliveryLabel = deliveryInfo.dateLabel;
     const preliminaryNote='';

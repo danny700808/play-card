@@ -66,7 +66,7 @@
     <section class="card2"><div class="section-hd"><div><h1 class="title">設備租賃管理</h1><div class="muted">客人先送出租用基本資料；店家確認設備、金額與預估安裝日期後，再產生正式資料填寫連結。真正的正式契約會在安裝完成、店家確認正式起租日後再產生並傳送。</div></div></div><div id="stats" class="stat-grid"></div><div id="msg"></div></section>
     <div class="layout"><section class="card2"><h2 style="margin-top:0">租賃申請管理 / 契約列表</h2><div class="tabs"><button class="tab active" data-filter="all">主要列表</button><button class="tab" data-filter="new">待店家確認</button><button class="tab" data-filter="sign">待客人補資料</button><button class="tab" data-filter="active">租用中</button><button class="tab" data-filter="expiring">30 天內到期</button><button class="tab" data-filter="return">退租</button><button class="tab" data-filter="cancelled">已取消</button></div><div id="list" class="list" style="margin-top:12px">讀取中...</div></section><main><section class="card2" id="detailBox"><h2 style="margin-top:0">請選擇左側案件</h2><div class="muted">可由客人申請轉正式契約，也可按「店家代填租賃單」直接建立。設備欄位只保留「設備名稱 / 備註」，可新增多列。</div></section><section class="card2 print-area"><div id="contractPreview"></div></section></main></div>
   </div>
-  <script src="config.js?v=rental-flow-20260611"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" referrerpolicy="no-referrer"></script><script src="firebase-client.js?v=20260614-rental-queue-delete-fix"></script><script src="app.js?v=rental-flow-20260611"></script><script src="rental-common.js?v=20260626-other-equipment-period"></script><script src="global-nav.js?v=20260603unified1"></script>
+  <script src="config.js?v=rental-flow-20260611"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" referrerpolicy="no-referrer"></script><script src="firebase-client.js?v=20260628-storage-url-assets"></script><script src="app.js?v=rental-flow-20260611"></script><script src="rental-common.js?v=20260628-storage-url-assets"></script><script src="global-nav.js?v=20260603unified1"></script>
   <script>
     const R=window.YZRental; let applications=[],contracts=[],selected=null,filter='all',lineRuntime={loaded:false};
     function setupContractPreviewScaler(){
@@ -408,6 +408,84 @@
 
     function clientRandomToken(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,14)+Math.random().toString(36).slice(2,14); }
     function clientRandomId(prefix){ const d=new Date(); const pad=n=>String(n).padStart(2,'0'); return prefix+d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+Math.random().toString(36).slice(2,8).toUpperCase(); }
+
+    const RENTAL_INLINE_ASSET_KEYS=['customerSignatureDataUrl','signatureDataUrl','signDataUrl','customerIdImageWatermarkedDataUrl','idImageWatermarkedDataUrl','customerIdImageDataUrl','idImageDataUrl','idCardImageDataUrl'];
+    function isRentalDataUrl(value){ return /^data:/i.test(String(value||'')); }
+    function isRentalRemoteUrl(value){ return /^(https?:\/\/|gs:\/\/)/i.test(String(value||'')); }
+    function firstCleanValue(){ for(let i=0;i<arguments.length;i++){ const v=R.clean(arguments[i]); if(v) return v; } return ''; }
+    function firstRentalDataUrl(){ for(let i=0;i<arguments.length;i++){ const v=R.clean(arguments[i]); if(isRentalDataUrl(v)) return v; } return ''; }
+    function extractRentalAssetUrls(source){
+      source=source||{};
+      const signatureUrl=firstCleanValue(source.customerSignatureUrl, source.signatureUrl, (!isRentalDataUrl(source.customerSignatureDataUrl)?source.customerSignatureDataUrl:''), (!isRentalDataUrl(source.signatureDataUrl)?source.signatureDataUrl:''));
+      const idImageUrl=firstCleanValue(source.customerIdImageUrl, source.idImageUrl, source.idCardImageUrl, (!isRentalDataUrl(source.customerIdImageWatermarkedDataUrl)?source.customerIdImageWatermarkedDataUrl:''), (!isRentalDataUrl(source.idImageWatermarkedDataUrl)?source.idImageWatermarkedDataUrl:''));
+      return {signatureUrl,idImageUrl};
+    }
+    function hasSignatureAsset(source){ source=source||{}; const u=extractRentalAssetUrls(source).signatureUrl; return !!(u || firstRentalDataUrl(source.customerSignatureDataUrl, source.signatureDataUrl, source.signDataUrl)); }
+    function hasIdImageAsset(source){ source=source||{}; const u=extractRentalAssetUrls(source).idImageUrl; return !!(u || firstRentalDataUrl(source.customerIdImageWatermarkedDataUrl, source.idImageWatermarkedDataUrl, source.customerIdImageDataUrl, source.idImageDataUrl, source.idCardImageDataUrl)); }
+    function sanitizeRentalContractForFirestore(payload, opts){
+      opts=opts||{};
+      const out=Object.assign({}, payload||{});
+      const urls=extractRentalAssetUrls(out);
+      if(urls.signatureUrl){ out.customerSignatureUrl=urls.signatureUrl; out.signatureUrl=urls.signatureUrl; }
+      if(urls.idImageUrl){ out.customerIdImageUrl=urls.idImageUrl; out.idImageUrl=urls.idImageUrl; }
+      RENTAL_INLINE_ASSET_KEYS.forEach(k=>{ delete out[k]; });
+      if(opts.deleteInline && window.firebase && firebase.firestore && firebase.firestore.FieldValue){
+        const del=firebase.firestore.FieldValue.delete();
+        RENTAL_INLINE_ASSET_KEYS.forEach(k=>{ out[k]=del; });
+      }
+      return out;
+    }
+    function dataUrlToBlobAdmin(dataUrl){
+      const parts=String(dataUrl||'').split(',');
+      if(parts.length<2) throw new Error('圖片資料格式不完整');
+      const meta=parts[0]||'';
+      const mime=(meta.match(/data:([^;]+)/)||[])[1]||'application/octet-stream';
+      const bin=atob(parts[1]);
+      const bytes=new Uint8Array(bin.length);
+      for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+      return new Blob([bytes], {type:mime});
+    }
+    async function uploadRentalDataUrlAsset(path, dataUrl, contentType){
+      if(!window.firebase || !firebase.storage) throw new Error('Firebase Storage 尚未載入，無法保存租賃圖片。');
+      const storage=firebase.storage();
+      if(typeof storage.setMaxUploadRetryTime==='function') storage.setMaxUploadRetryTime(60000);
+      const ref=storage.ref().child(path);
+      await ref.put(dataUrlToBlobAdmin(dataUrl), {contentType});
+      return await ref.getDownloadURL();
+    }
+    async function ensureRentalContractAssetsStored(contractId, source){
+      source=source||{};
+      const safe=String(contractId||'rental-contract').replace(/[^a-zA-Z0-9_-]/g,'_');
+      const existing=extractRentalAssetUrls(source);
+      const updates={};
+      let idUrl=existing.idImageUrl;
+      let sigUrl=existing.signatureUrl;
+      if(!idUrl){
+        const idData=firstRentalDataUrl(source.customerIdImageWatermarkedDataUrl, source.idImageWatermarkedDataUrl, source.customerIdImageDataUrl, source.idImageDataUrl, source.idCardImageDataUrl);
+        if(idData){
+          const path='rental-contracts/'+safe+'/customer-id-watermarked.jpg';
+          idUrl=await uploadRentalDataUrlAsset(path, idData, 'image/jpeg');
+          updates.customerIdImageStoragePath=path;
+          updates.idImageStoragePath=path;
+        }
+      }
+      if(!sigUrl){
+        const sigData=firstRentalDataUrl(source.customerSignatureDataUrl, source.signatureDataUrl, source.signDataUrl);
+        if(sigData){
+          const path='rental-contracts/'+safe+'/customer-signature.png';
+          sigUrl=await uploadRentalDataUrlAsset(path, sigData, 'image/png');
+          updates.customerSignatureStoragePath=path;
+          updates.signatureStoragePath=path;
+        }
+      }
+      if(!idUrl) throw new Error('找不到可用的身分證圖片網址，也無法從舊圖片資料轉存到 Firebase Storage。請請客人重新開啟填寫連結上傳圖片。');
+      if(!sigUrl) throw new Error('找不到可用的簽名圖片網址，也無法從舊簽名資料轉存到 Firebase Storage。請請客人重新開啟填寫連結重新簽名。');
+      Object.assign(updates,{customerIdImageUrl:idUrl,idImageUrl:idUrl,customerSignatureUrl:sigUrl,signatureUrl:sigUrl,customerFormalAssetsStoredInStorage:true,customerFormalAssetsStoredAt:R.nowText(),updatedAtText:R.nowText()});
+      const firestoreUpdates=sanitizeRentalContractForFirestore(updates,{deleteInline:true});
+      await R.db().collection('rentalContracts').doc(contractId).set(firestoreUpdates,{merge:true});
+      return {customerIdImageUrl:idUrl,idImageUrl:idUrl,customerSignatureUrl:sigUrl,signatureUrl:sigUrl};
+    }
+
     async function saveContractToFirestoreFallback(payload){
       const contractId=payload.contractId||clientRandomId('RC');
       let old={};
@@ -415,7 +493,7 @@
       const signToken=payload.signToken||old.signToken||old.token||clientRandomToken();
       const customerToken=payload.customerToken||old.customerToken||clientRandomToken();
       const officialContractToken=payload.officialContractToken||old.officialContractToken||clientRandomToken();
-      const row=Object.assign({}, old, payload, {
+      const row=sanitizeRentalContractForFirestore(Object.assign({}, old, payload, {
         contractId,
         contractNo:payload.contractNo||old.contractNo||contractId,
         signToken,
@@ -426,7 +504,7 @@
         signUrl:location.origin+location.pathname.replace(/[^\/]*$/,'')+'rental-sign.html?contractId='+encodeURIComponent(contractId)+'&token='+encodeURIComponent(signToken),
         officialContractUrl:location.origin+location.pathname.replace(/[^\/]*$/,'')+'rental-contract.html?contractId='+encodeURIComponent(contractId)+'&token='+encodeURIComponent(officialContractToken||customerToken||signToken),
         updatedAtText:R.nowText()
-      });
+      }), {deleteInline:false});
       if(!old.createdAtText) row.createdAtText=R.nowText();
       await R.db().collection('rentalContracts').doc(contractId).set(row,{merge:true});
       return {contractId,contractNo:row.contractNo,signToken,token:signToken,customerToken,officialContractToken,signUrl:row.signUrl,officialContractUrl:row.officialContractUrl, fallback:true};
@@ -434,9 +512,10 @@
     window.saveContract=async function(makeLink, opts){
       opts=opts||{};
       try{
-        const payload=collect();
-        payload.makeSignLink=!!makeLink;
-        if(makeLink && !payload.startDate){ R.toast('請先填預估交付日期，才能產生資料填寫連結。', false); return null; }
+        const rawPayload=collect();
+        rawPayload.makeSignLink=!!makeLink;
+        if(makeLink && !rawPayload.startDate){ R.toast('請先填預估交付日期，才能產生資料填寫連結。', false); return null; }
+        const payload=sanitizeRentalContractForFirestore(rawPayload,{deleteInline:false});
         let res=null;
         try{
           res=await R.call('rentalSaveContractHttp', payload);
@@ -597,9 +676,9 @@ ${url}
       const missing=[];
       if(!payload.deliveryDate) missing.push(adminDeliveryDateLabel(payload, true));
       if(!payload.customerName) missing.push('客人姓名');
-      if(!payload.customerSignatureDataUrl) missing.push('甲方簽名');
+      if(!hasSignatureAsset(payload)) missing.push('甲方簽名');
       if(!payload.customerIdNumber) missing.push('甲方身分證字號 / 統編');
-      if(!payload.customerIdImageWatermarkedDataUrl && !payload.idImageWatermarkedDataUrl) missing.push('甲方身分證證明圖片');
+      if(!hasIdImageAsset(payload)) missing.push('甲方身分證證明圖片');
       if(missing.length){
         alert('確認租用成立前，請先完成以下資料：\n\n' + missing.map((x,i)=>(i+1)+'. '+x).join('\n'));
         return;
@@ -613,6 +692,9 @@ ${url}
         payload.deliveryDateTime=payload.deliveryDate;
         payload.deliveryTime='';
         payload.status='租賃中';
+        updateRentalProgress(22,'正在確認簽名與身分證圖片已保存到 Firebase Storage...');
+        const assetUrls=await ensureRentalContractAssetsStored(id, Object.assign({}, selected||{}, payload));
+        Object.assign(payload, assetUrls);
         R.setVal('startDate', payload.startDate);
         R.setVal('endDate', payload.endDate);
         R.qs('contractPreview').innerHTML=R.renderContractHtml(payload);
@@ -645,27 +727,13 @@ ${url}
           officialEndDate:payload.endDate,
           updatedAtText:R.nowText()
         });
-        const savedPayload=Object.assign({}, displayPayload);
-        // Firestore 單筆文件上限約 1MB；若客人簽名與身分證圖片已另外備份到 Firebase Storage URL，正式成立後才清掉大型 dataURL。
-        // 若尚未有 Storage URL，不能直接刪除，否則客人收到的正式契約頁會看不到身分證圖片與甲方簽名。
-        const hasSignatureUrl=!!R.clean(displayPayload.customerSignatureUrl||displayPayload.signatureUrl);
-        const hasIdImageUrl=!!R.clean(displayPayload.customerIdImageUrl||displayPayload.idImageUrl||displayPayload.idCardImageUrl);
+        const savedPayload=sanitizeRentalContractForFirestore(Object.assign({}, displayPayload, {
+          officialInlineAssetsStoredInStorage:true,
+          officialInlineAssetsCleared:true,
+          officialInlineAssetsClearedAt:R.nowText()
+        }), {deleteInline:true});
         if(uploaded.url){
           savedPayload.officialPdfMissing=false;
-          if(hasSignatureUrl && hasIdImageUrl){
-            const del=firebase.firestore.FieldValue.delete();
-            savedPayload.customerSignatureDataUrl=del;
-            savedPayload.signatureDataUrl=del;
-            savedPayload.customerIdImageWatermarkedDataUrl=del;
-            savedPayload.idImageWatermarkedDataUrl=del;
-            savedPayload.customerIdImageDataUrl=del;
-            savedPayload.idImageDataUrl=del;
-            savedPayload.officialInlineAssetsCleared=true;
-            savedPayload.officialInlineAssetsClearedAt=R.nowText();
-          }else{
-            savedPayload.officialInlineAssetsCleared=false;
-            savedPayload.officialInlineAssetsRetainedReason='尚未有 Firebase Storage 圖片網址，保留身分證與簽名 dataURL，避免正式契約頁遺失圖片。';
-          }
         }else{
           savedPayload.officialPdfMissing=true;
           savedPayload.officialPdfError=uploaded.error||'PDF 未產生或未上傳；已改用正式契約頁連結。';

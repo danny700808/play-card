@@ -1,0 +1,19 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    // 租賃契約附件：身分證浮水印圖、簽名圖、正式契約 PDF。
+    // GitHub Pages 客戶頁沒有 Firebase Auth，因此這裡用檔案大小與 MIME 類型限制風險。
+    match /rental-contracts/{contractId}/{fileName=**} {
+      allow read: if true;
+      allow write: if request.resource != null
+        && request.resource.size < 5242880
+        && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf');
+    }
+
+    // 其他 Storage 路徑先不開放。
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
