@@ -71,6 +71,14 @@ service cloud.firestore {
         'formSettings',
         'formSubmissions',
 
+
+        // 外聘老師獨立簽約系統
+        'externalTeacherProfiles',
+        'externalTeacherContracts',
+        'externalTeacherContractTemplates',
+        'externalTeacherLineBindings',
+        'externalTeacherFiles',
+
         // 老師合約 / 商品 / 官網商品快取
         'teacherGoods',
         'teacherGoodsInquiry',
