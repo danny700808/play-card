@@ -11,6 +11,12 @@
     .badge:empty{display:none}
     .page-return-wrap{margin-bottom:16px}
     .page-return-btn{display:block;width:100%;padding:16px 18px;text-align:center;text-decoration:none;border-radius:16px;font-size:20px;font-weight:800}
+    .section-title{margin:22px 0 10px;font-size:18px;font-weight:900;color:#0f172a}
+    .section-desc{margin:0 0 12px;color:#64748b;line-height:1.7;font-size:14px}
+    .tile.primary-new{border:2px solid #16a34a;background:linear-gradient(180deg,#f0fdf4,#ffffff)}
+    .tile.primary-new strong{color:#166534}
+    .tag-new{display:inline-flex;align-items:center;border-radius:999px;background:#dcfce7;color:#166534;font-size:12px;padding:4px 8px;font-weight:900}
+    .note-box{margin-top:16px;border:1px solid #bbf7d0;background:#f0fdf4;color:#166534;border-radius:16px;padding:12px 14px;font-size:14px;line-height:1.7;font-weight:700}
   </style>
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
 </head>
@@ -24,15 +30,35 @@
     <div class="card">
       <div class="topbar">
         <div class="header" style="margin:0">
-          <h1 class="title" style="margin:0">外聘老師</h1>
-          <div class="welcome">整合外聘老師合約與拿貨紀錄</div>
+          <h1 class="title" style="margin:0">外聘老師管理</h1>
+          <div class="welcome">新版年度合約簽署與拿貨紀錄入口</div>
         </div>
       </div>
-      <div class="grid" style="margin-top:18px">
-<a class="tile" href="contract-admin.html"><strong>合約簽署 <span class="badge" id="badge-contract"></span></strong><span>查看年度簽署狀態、合約資料、PDF 與重寄紀錄</span></a>
-<a class="tile" href="teacher-goods-admin.html"><strong>拿貨紀錄 <span class="badge" id="badge-goods"></span></strong><span>管理商品、回覆詢價與追蹤外聘老師拿貨相關事項</span></a>
-<a class="tile" href="teacher-notification-settings.html"><strong>外聘老師提醒設定</strong><span>集中設定外聘老師合約與拿貨相關提醒</span></a>
-</div>
+      <div class="note-box">
+        舊版「合約簽署」入口已改成新版外聘老師獨立簽約流程。這裡不再進入舊的 contract-admin.html，避免和舊合約資料混在一起。
+      </div>
+
+      <div class="section-title">年度合約</div>
+      <div class="section-desc">用這裡建立老師專屬簽約連結，透過 LINE / Email 傳給老師填資料、上傳身分證、線上簽名，並依年度保存合約。</div>
+      <div class="grid" style="margin-top:12px">
+        <a class="tile primary-new" href="external-teacher-admin.html?v=teacher-hub-new1">
+          <strong>年度合約簽署管理 <span class="tag-new">新版</span></strong>
+          <span>建立老師簽約連結、複製 LINE 傳送文字、查看 115 / 116 年度簽約狀態與已簽合約。</span>
+        </a>
+        <a class="tile" href="external-teacher-contract-admin.html?v=teacher-hub-new1">
+          <strong>外聘老師契約條文管理</strong>
+          <span>修改老師簽約頁看到的 A4 契約條文；已簽合約會保存當時版本，不會被新模板覆蓋。</span>
+        </a>
+      </div>
+
+      <div class="section-title">拿貨紀錄</div>
+      <div class="section-desc">拿貨與詢價維持原本獨立紀錄，不和年度合約資料混在一起。</div>
+      <div class="grid" style="margin-top:12px">
+        <a class="tile" href="teacher-goods-admin.html">
+          <strong>拿貨紀錄 <span class="badge" id="badge-goods"></span></strong>
+          <span>管理商品、回覆詢價與追蹤外聘老師拿貨相關事項。</span>
+        </a>
+      </div>
     </div>
   </div>
   <script src="config.js?v=20260508frontendperf2"></script>
@@ -113,7 +139,6 @@
 
     function applyBadgeCounts_(r){
       r=normalizePendingCounts_(r);
-      setBadge('badge-contract',r.contractCount);
       setBadge('badge-goods',r.goodsInquiryCount);
     }
   
