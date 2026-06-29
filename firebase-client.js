@@ -7703,3 +7703,165 @@
   fb.__attendanceFlowV20260618=true;
   global.YZFirebase=fb;
 })(window);
+
+/* =========================================================
+ * 我的資料與通知設定整合 2026-06-29
+ * - getMyProfileFull 補齊通知方式 / LINE 狀態 / 授課項目
+ * - 員工、工讀、外聘老師共用 LINE / Email 通知設定
+ * - 外聘老師可自行維護授課項目與程度
+ * ========================================================= */
+(function(global){
+  const fb = global.YZFirebase || {};
+  if(fb.__profileNotificationUnified20260629) return;
+  fb.__profileNotificationUnified20260629 = true;
+  const previousHandle = fb.handleApi;
+  function clean(v){ return String(v == null ? '' : v).trim(); }
+  function lower(v){ return clean(v).toLowerCase(); }
+  function truthy(v){ const s=lower(v); return v===true || v===1 || ['1','true','yes','是','啟用','enabled','active','on','已綁定'].indexOf(s)>=0; }
+  function nowText(){ const d=new Date(); const p=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes()); }
+  function db(){ if(fb && typeof fb.init==='function') return fb.init(); if(global.firebase && global.firebase.apps && global.firebase.apps.length) return global.firebase.firestore(); throw new Error('Firebase 尚未啟用'); }
+  function serverTs(){ try{return global.firebase.firestore.FieldValue.serverTimestamp();}catch(e){return new Date().toISOString();} }
+  function localUser(){ try{return JSON.parse(global.localStorage.getItem('employeeUser')||'null')||{};}catch(e){return {};} }
+  function empIdOf(o){ o=o||{}; return clean(o.employeeId || o.userId || o.id || o.adminId || o['員工ID'] || o.__id); }
+  function emailOf(o){ o=o||{}; return lower(o.email || o.Email || o['Email'] || o.loginAccount || o['登入帳號']); }
+  function nameOf(o){ o=o||{}; return clean(o.name || o.displayName || o.employeeName || o['姓名']); }
+  function mobileOf(o){ o=o||{}; return clean(o.mobilePhone || o.mobile || o.phone || o['行動電話']); }
+  function lineOf(o){ o=o||{}; return clean(o.lineUserId || o['LINE User ID'] || o.targetLineUserId); }
+  function notificationPreference(v, row){
+    const s=lower(v || (row&&row.notificationPreference) || (row&&row.notificationMethod) || (row&&row.bindingMethod));
+    if(['line','line_only','line-only','onlyline','只用line','只用 line'].indexOf(s)>=0) return 'line';
+    if(['email','email_only','email-only','onlyemail','只用email','只用 email'].indexOf(s)>=0) return 'email';
+    if(['both','line+email','line_email','line-email','lineemail','all','line + email'].indexOf(s)>=0) return 'both';
+    if(row && lineOf(row) && emailOf(row)) return 'both';
+    if(row && lineOf(row)) return 'line';
+    return 'email';
+  }
+  function prefLabel(pref){ return pref==='line'?'只用 LINE':(pref==='email'?'只用 Email':'LINE + Email'); }
+  function makeCode(){ return 'EMP-' + Math.random().toString(36).slice(2,8).toUpperCase(); }
+  function bindText(code){ return '柚子人員綁定 ' + clean(code); }
+  function uniq(list){ const out=[]; (list||[]).forEach(v=>{ const s=clean(v); if(s&&!out.includes(s)) out.push(s); }); return out; }
+  function abilityList(input, fallback){
+    let list=[];
+    if(Array.isArray(input)) list=input;
+    else if(typeof input==='string' && clean(input)) list=clean(input).split(/[、,，\n]/).map(x=>({item:x.replace(/[（(].*?[）)]/g,'').trim(),level:(x.match(/[（(](.*?)[）)]/)||[])[1]||''}));
+    else if(fallback) list=clean(fallback).split(/[、,，\n]/).map(x=>({item:x.replace(/[（(].*?[）)]/g,'').trim(),level:(x.match(/[（(](.*?)[）)]/)||[])[1]||''}));
+    return list.map(x=>({item:clean(x.item||x.name||x.subject||x.course||x.title), level:clean(x.level||x.degree||x.proficiency)})).filter(x=>x.item);
+  }
+  function abilityText(list){ return abilityList(list).map(x=>x.item+(x.level?'（'+x.level+'）':'')).join('、'); }
+  async function getDoc(col,id){ if(!clean(id)) return null; const snap=await db().collection(col).doc(clean(id)).get(); return snap.exists ? Object.assign({__id:snap.id}, snap.data()||{}) : null; }
+  async function queryOne(col,field,value){ if(!clean(value)) return null; const snap=await db().collection(col).where(field,'==',value).limit(1).get(); return snap.empty ? null : Object.assign({__id:snap.docs[0].id}, snap.docs[0].data()||{}); }
+  async function findEmployee(payload){
+    payload=payload||{}; const user=localUser();
+    const ids=uniq([payload.employeeId,payload.userId,payload.id,user.employeeId,user.id]);
+    for(const id of ids){ const direct=await getDoc('employees',id).catch(()=>null); if(direct) return direct; }
+    for(const id of ids){ const byEmp=await queryOne('employees','employeeId',id).catch(()=>null); if(byEmp) return byEmp; const byId=await queryOne('employees','id',id).catch(()=>null); if(byId) return byId; }
+    const mails=uniq([payload.email,user.email]).map(lower).filter(Boolean);
+    for(const mail of mails){ const byEmail=await queryOne('employees','email',mail).catch(()=>null); if(byEmail) return byEmail; const byEmail2=await queryOne('employees','Email',mail).catch(()=>null); if(byEmail2) return byEmail2; }
+    return null;
+  }
+  function mergeProfileExtras(profile,row){
+    profile=Object.assign({},profile||{}); row=row||{};
+    const pref=notificationPreference(profile.notificationPreference || row.notificationPreference || row.notificationMethod || row.bindingMethod, row);
+    const line=lineOf(row) || clean(profile.lineUserId);
+    const email=emailOf(row) || lower(profile.email);
+    const code=clean(row.employeeBindCode || row.bindingCode || row.lineBindingCode || profile.employeeBindCode);
+    const abilities=abilityList(row.teachingAbilities || row.teachingAbilityList || profile.teachingAbilities, row.teachingItemsText || row.teachingItems || profile.teachingItemsText || profile.teachingItems);
+    profile.employeeId = clean(profile.employeeId || empIdOf(row));
+    profile.name = clean(profile.name || nameOf(row));
+    profile.email = email;
+    profile.mobilePhone = clean(profile.mobilePhone || mobileOf(row));
+    profile.lineUserId = line;
+    profile.lineNotifyEnabled = line ? (row.lineNotifyEnabled===undefined && row['LINE 通知啟用']===undefined ? true : truthy(row.lineNotifyEnabled || row['LINE 通知啟用'])) : false;
+    profile.lineBindStatus = line ? 'bound' : (clean(row.lineBindStatus || profile.lineBindStatus) || 'pending');
+    profile.notificationPreference = pref;
+    profile.notificationPreferenceLabel = prefLabel(pref);
+    profile.notificationMethod = pref;
+    profile.employeeBindCode = code;
+    profile.employeeBindText = clean(row.employeeBindText || profile.employeeBindText) || (code ? bindText(code) : '');
+    profile.teachingAbilities = abilities;
+    profile.teachingItemsText = abilityText(abilities) || clean(row.teachingItemsText || row.teachingItems || profile.teachingItemsText || profile.teachingItems);
+    profile.teachingItems = profile.teachingItemsText;
+    return profile;
+  }
+  async function getMyProfileFullUnified(payload){
+    const base = typeof previousHandle==='function' ? await previousHandle('getMyProfileFull', payload||{}).catch(e=>({ok:false,message:e&&e.message?e.message:String(e)})) : {ok:true,profile:{},salary:{}};
+    const row = await findEmployee(payload||{}).catch(()=>null);
+    if(!row && base && base.ok===false) return base;
+    const profile = mergeProfileExtras((base&&base.profile)||{}, row||{});
+    return Object.assign({}, base||{}, {ok:true, profile, salary:(base&&base.salary)||{}, info:(base&&base.info)||((base&&base.salary)||{}), source:((base&&base.source)||'') + '+profile-notify-unified'});
+  }
+  async function refreshUserFromRow(row){
+    const current=localUser(); const pref=notificationPreference(row.notificationPreference||row.notificationMethod||row.bindingMethod,row); const line=lineOf(row);
+    return Object.assign({}, current, {id:empIdOf(row)||current.id, employeeId:empIdOf(row)||current.employeeId, name:nameOf(row)||current.name, email:emailOf(row)||current.email, identityType:clean(row.identityType||current.identityType), lineUserId:line, lineNotifyEnabled:line ? '是' : '否', notificationPreference:pref, notificationPreferenceLabel:prefLabel(pref), employeeBindCode:clean(row.employeeBindCode||current.employeeBindCode), employeeBindText:clean(row.employeeBindText||current.employeeBindText)});
+  }
+  async function updateEmployeeNotification(payload){
+    const row=await findEmployee(payload||{}); if(!row) return {ok:false,message:'找不到人員資料'};
+    const docId=clean(row.__id||empIdOf(row)); const pref=notificationPreference(payload.notificationPreference,row); const email=lower(payload.email || row.email || row.Email);
+    const line=lineOf(row);
+    if((pref==='email'||pref==='both') && !email) return {ok:false,message:'選擇 Email 通知時，Email 不能空白。'};
+    if(pref==='line' && !line) return {ok:false,message:'選擇只用 LINE 前，請先完成 LINE 綁定。'};
+    const patch={notificationPreference:pref,notificationPreferenceLabel:prefLabel(pref),notificationMethod:pref,email:email||emailOf(row),lineNotifyEnabled:!!line&&(pref==='line'||pref==='both'),'LINE 通知啟用':!!line&&(pref==='line'||pref==='both')?'是':'否',updatedAt:serverTs(),updatedAtText:nowText(),source:'profile-notification-settings'};
+    await db().collection('employees').doc(docId).set(patch,{merge:true});
+    const updated=Object.assign({},row,patch,{__id:docId});
+    return {ok:true,message:'通知設定已儲存。',user:await refreshUserFromRow(updated)};
+  }
+  async function clearLineWithFallback(payload){
+    const row=await findEmployee(payload||{}); if(!row) return {ok:false,message:'找不到人員資料'};
+    const email=lower(payload.email || row.email || row.Email); if(!email) return {ok:false,message:'解除 LINE 前，請先保留 Email，避免完全失去通知方式。'};
+    const docId=clean(row.__id||empIdOf(row));
+    const patch={lineUserId:'','LINE User ID':'',lineDisplayName:'',lineNotifyEnabled:false,'LINE 通知啟用':'否',lineBindStatus:'pending',notificationPreference:'email',notificationPreferenceLabel:'只用 Email',notificationMethod:'email',email,updatedAt:serverTs(),updatedAtText:nowText(),source:'profile-clear-line'};
+    await db().collection('employees').doc(docId).set(patch,{merge:true});
+    const code=clean(row.employeeBindCode||row.bindingCode||row.lineBindingCode);
+    if(code) await db().collection('employeeLineBindings').doc(code).set({status:'pending',lineUserId:'',updatedAt:serverTs(),updatedAtText:nowText(),source:'profile-clear-line'}, {merge:true}).catch(()=>null);
+    const updated=Object.assign({},row,patch,{__id:docId});
+    return {ok:true,message:'已解除 LINE 綁定，並改用 Email 通知。',user:await refreshUserFromRow(updated)};
+  }
+  async function ensureBindCode(payload){
+    const row=await findEmployee(payload||{}); if(!row) return {ok:false,message:'找不到人員資料，無法產生 LINE 綁定文字。'};
+    const docId=clean(row.__id||empIdOf(row)); let code=clean(row.employeeBindCode||row.bindingCode||row.lineBindingCode);
+    if(!code || truthy(payload.forceNew)) code=makeCode();
+    const text=bindText(code); const pref=notificationPreference(payload.notificationPreference||row.notificationPreference,row); const line=lineOf(row);
+    const empId=empIdOf(row)||docId;
+    const patch={employeeBindCode:code,bindingCode:code,employeeBindText:text,notificationPreference:pref,notificationPreferenceLabel:prefLabel(pref),lineBindStatus:line?'bound':'pending',updatedAt:serverTs(),updatedAtText:nowText(),source:'profile-ensure-bind-code'};
+    await db().collection('employees').doc(docId).set(patch,{merge:true});
+    await db().collection('employeeLineBindings').doc(code).set({bindingCode:code,employeeBindCode:code,bindText:text,employeeId:empId,employeeDocId:docId,targetCollection:'employees',status:line?'bound':'pending',name:nameOf(row),email:emailOf(row),mobilePhone:mobileOf(row),notificationPreference:pref,updatedAt:serverTs(),updatedAtText:nowText(),source:'profile-ensure-bind-code'}, {merge:true});
+    return {ok:true,message:'已產生 LINE 綁定文字。',employeeBindCode:code,employeeBindText:text,bindText:text};
+  }
+  async function saveTeachingAbilities(payload){
+    const row=await findEmployee(payload||{}); if(!row) return {ok:false,message:'找不到人員資料'};
+    const identity=lower(row.identityType||row.employeeType||row.identityLabel||row.role); if(!(identity.includes('external')||identity.includes('外聘')||row.isExternalTeacher===true)) return {ok:false,message:'授課項目僅外聘老師可修改。'};
+    const abilities=abilityList(payload.teachingAbilities); if(!abilities.length) return {ok:false,message:'請至少填寫一筆授課項目。'};
+    const text=abilityText(abilities); const docId=clean(row.__id||empIdOf(row)); const empId=empIdOf(row)||docId;
+    const patch={teachingAbilities:abilities,teachingItems:text,teachingItemsText:text,updatedAt:serverTs(),updatedAtText:nowText(),source:'profile-teaching-abilities'};
+    await db().collection('employees').doc(docId).set(patch,{merge:true});
+    const linkedIds=uniq([row.externalTeacherContractId,row.currentExternalContractId,row.externalTeacherProfileId]);
+    for(const id of linkedIds){
+      await db().collection('externalTeacherContracts').doc(id).set(patch,{merge:true}).catch(()=>null);
+      await db().collection('externalTeacherProfiles').doc(id).set(patch,{merge:true}).catch(()=>null);
+    }
+    const collections=['externalTeacherContracts','externalTeacherProfiles'];
+    for(const col of collections){
+      for(const field of ['employeeId','externalTeacherEmployeeId']){
+        try{ const snap=await db().collection(col).where(field,'==',empId).limit(10).get(); const batch=db().batch(); snap.forEach(doc=>batch.set(doc.ref,patch,{merge:true})); if(!snap.empty) await batch.commit(); }catch(e){}
+      }
+    }
+    return {ok:true,message:'授課項目已儲存。',teachingAbilities:abilities,teachingItemsText:text};
+  }
+  async function setLineNotifyPreferenceGuard(payload){
+    payload=payload||{};
+    if(truthy(payload.clearBinding)) return await clearLineWithFallback(payload);
+    return await updateEmployeeNotification({employeeId:payload.userId||payload.employeeId||payload.id,email:payload.email,notificationPreference:truthy(payload.enabled)?'both':'email'});
+  }
+  fb.handleApi=async function(action,payload){
+    const a=clean(action);
+    if(a==='getMyProfileFull' || a==='getMyDataFull') return await getMyProfileFullUnified(payload||{});
+    if(a==='saveMyNotificationSettings') return await updateEmployeeNotification(payload||{});
+    if(a==='clearMyLineBindingWithFallback') return await clearLineWithFallback(payload||{});
+    if(a==='ensureEmployeeLineBindCode') return await ensureBindCode(payload||{});
+    if(a==='saveMyTeachingAbilities') return await saveTeachingAbilities(payload||{});
+    if(a==='setLineNotifyPreference') return await setLineNotifyPreferenceGuard(payload||{});
+    if(typeof previousHandle==='function') return await previousHandle(action,payload||{});
+    return null;
+  };
+  global.YZFirebase=fb;
+})(window);

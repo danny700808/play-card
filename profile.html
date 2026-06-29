@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>我的資料</title>
+  <title>我的資料與通知設定</title>
   <link rel="stylesheet" href="style.css">
   <style>
     .page-return-wrap{margin-bottom:16px}
@@ -25,11 +25,26 @@
     .identity-doc-meta{padding:11px 12px;background:#fff;display:grid;gap:6px;font-size:14px;line-height:1.65}
     .identity-doc-notice{padding:10px 12px;background:#edf9f3;color:#285d4a;font-size:13px;font-weight:800;line-height:1.7}
     .edit-grid .full{grid-column:1 / -1}
+    .notify-summary{display:grid;gap:8px;margin-top:10px}
+    .notify-choice-list{display:grid;gap:10px;margin-top:14px}
+    .notify-choice{display:block;border:1px solid var(--line);border-radius:14px;background:#fff;padding:12px 14px;font-weight:900;line-height:1.6;cursor:pointer}
+    .notify-choice input{width:auto;margin-right:8px}
+    .bind-code-box{margin-top:10px;border:2px dashed #b7d5c4;background:#f7fff9;border-radius:14px;padding:13px;font-size:18px;font-weight:900;letter-spacing:.5px;word-break:break-all;color:#1f5f47}
+    .mini-status{display:inline-flex;align-items:center;border-radius:999px;padding:5px 10px;font-size:13px;font-weight:900;background:#edf6f1;color:#1f7a5a;margin:2px 4px 2px 0}
+    .mini-status.warn{background:#fff7df;color:#8a5a00}
+    .mini-status.danger{background:#fff1f0;color:#b42318}
+    .teach-list{display:grid;gap:10px;margin-top:12px}
+    .teach-row{display:grid;grid-template-columns:minmax(0,1fr) 128px auto;gap:8px;align-items:end;border:1px solid var(--line);border-radius:14px;background:#f8fbff;padding:10px}
+    .teach-row label{font-size:13px;font-weight:900;color:var(--muted);display:block;margin:0 0 4px}
+    .teach-row input,.teach-row select{width:100%}
+    .teach-remove{min-width:72px;padding:10px 12px;border-radius:12px}
     @media(max-width:520px){
       .info-row{grid-template-columns:minmax(92px,38%) 1fr;padding:10px}
       .info-label{font-size:12.5px}
       .info-value{font-size:14.5px}
       .edit-grid{grid-template-columns:1fr}
+      .teach-row{grid-template-columns:1fr}
+      .teach-remove{width:100%}
     }
   </style>
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
@@ -41,16 +56,14 @@
   </div>
 
   <div class="container">
-
     <div class="card">
       <div class="profile-head">
         <div class="header" style="margin:0">
-          <h1 class="title">我的資料</h1>
-          <div class="welcome">個人 / 薪資 / 投保　歡迎 <span data-user-name></span></div>
+          <h1 class="title">我的資料與通知設定</h1>
+          <div class="welcome">基本資料 / LINE / Email　歡迎 <span data-user-name></span></div>
         </div>
       </div>
       <div class="message" id="msg"></div>
-      <div class="tips">此頁只讀取 Firebase employees 內的個人、薪資與投保資料。沒有資料的欄位會自動隱藏。</div>
     </div>
 
     <div class="card" id="viewCard">
@@ -59,8 +72,37 @@
       <div id="emptyProfileNote" class="empty-note" style="display:none">目前沒有可顯示的資料。</div>
     </div>
 
+    <div class="card" id="notificationCard">
+      <div class="section-title">通知設定</div>
+      <div class="tips">請至少保留 LINE 或 Email 其中一種通知方式。</div>
+      <div id="notificationSummary" class="notify-summary"></div>
+      <div class="notify-choice-list">
+        <label class="notify-choice"><input type="radio" name="notificationPreference" value="both">LINE + Email</label>
+        <label class="notify-choice"><input type="radio" name="notificationPreference" value="line">只用 LINE</label>
+        <label class="notify-choice"><input type="radio" name="notificationPreference" value="email">只用 Email</label>
+      </div>
+      <div id="lineBindPanel" class="empty-note" style="margin-top:14px"></div>
+      <div class="btn-row">
+        <button class="btn secondary" type="button" onclick="loadProfile(true)">重新讀取</button>
+        <button class="btn secondary" type="button" onclick="ensureLineBindCode(false)">產生 LINE 綁定文字</button>
+        <button class="btn secondary" type="button" onclick="copyCurrentBindText()">複製 LINE 綁定文字</button>
+        <button class="btn danger" type="button" onclick="clearLineBinding()">解除 LINE 綁定</button>
+        <button class="btn" type="button" onclick="saveNotificationSettings()">儲存通知設定</button>
+      </div>
+    </div>
+
+    <div class="card" id="externalTeachingCard" style="display:none">
+      <div class="section-title">授課項目</div>
+      <div class="tips">請填寫您可授課的項目，可新增多筆。</div>
+      <div id="teachingRows" class="teach-list"></div>
+      <div class="btn-row">
+        <button class="btn secondary" type="button" onclick="addTeachingRow()">＋新增授課項目</button>
+        <button class="btn" type="button" onclick="saveTeachingAbilities()">儲存授課項目</button>
+      </div>
+    </div>
+
     <div class="card">
-      <div class="section-title">申請修改聯絡資料</div>
+      <div class="section-title">聯絡資料修改申請</div>
       <div class="tips" style="margin-bottom:12px">可申請修改：行動電話、聯絡地址、Email、緊急聯絡人、緊急聯絡人電話。</div>
       <div class="edit-grid">
         <div class="field"><label>行動電話</label><input id="mobilePhone" placeholder="請輸入行動電話"></div>
@@ -79,10 +121,16 @@
   <script src="config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260529canonical1"></script>
-  <script src="app.js?v=onboarding-20260624"></script>
-  <script src="onboarding-workflow.js?v=20260624v1"></script>
+  <script src="firebase-client.js?v=20260629profileNotify1"></script>
+  <script src="app.js?v=20260629profileNotify1"></script>
+  <script src="onboarding-workflow.js?v=20260629profileNotify1"></script>
   <script>
+    const TEACHING_LEVELS = ['初學','入門','普通','良好','專業','專精'];
+    let currentProfile = {};
+    let currentSalary = {};
+    let currentUserData = {};
+    let currentBindText = '';
+
     function $(id){ return document.getElementById(id); }
     function safeText(v){
       const s = String(v == null ? '' : v).trim();
@@ -190,6 +238,7 @@
     async function loadProfile(force){
       const user = ensureUser();
       if(!user) return;
+      currentUserData = user || {};
       setHomeLink(user);
       const key = cacheKey(user);
       if(!force){
@@ -211,6 +260,8 @@
         });
         const profile = res.profile || {};
         const salary = res.salary || res.info || {};
+        currentProfile = profile;
+        currentSalary = salary;
         renderProfileData(profile, salary, user);
         fillForm(profile, user);
         try{ localStorage.setItem(key, JSON.stringify({profile:profile, salary:salary, cachedAt:Date.now()})); }catch(e){}
@@ -219,14 +270,34 @@
         showMsg(err.message || String(err), true);
       }
     }
+    function normalizePreference(v, p, user){
+      const raw = String(v || '').trim().toLowerCase();
+      if(['line','line_only','line-only','onlyline','只用 line','只用line'].includes(raw)) return 'line';
+      if(['email','email_only','email-only','onlyemail','只用 email','只用email'].includes(raw)) return 'email';
+      if(['both','line+email','line_email','line-email','lineemail','all'].includes(raw)) return 'both';
+      if(safeText((p||{}).lineUserId || (user||{}).lineUserId) && safeText((p||{}).email || (user||{}).email)) return 'both';
+      if(safeText((p||{}).lineUserId || (user||{}).lineUserId)) return 'line';
+      return 'email';
+    }
+    function preferenceLabel(pref){
+      if(pref === 'line') return '只用 LINE';
+      if(pref === 'email') return '只用 Email';
+      return 'LINE + Email';
+    }
+    function abilityText(list, fallback){
+      const arr = normalizeAbilities(list, fallback);
+      return arr.map(x => x.item + (x.level ? '｜' + x.level : '')).join('\n');
+    }
     function renderProfileData(p, s, user){
       p = p || {};
       s = s || {};
       user = user || {};
       const type = safeText(s.identityType || p.identityType || user.identityType || (user.isPartTime ? 'parttime' : 'staff'));
       const isParttime = type === 'parttime' || /工讀/.test(s.identityLabel || p.identityLabel || user.identityLabel || '');
+      const isExternal = type === 'external' || /外聘/.test(s.identityLabel || p.identityLabel || user.identityLabel || '');
       const name = safeText(p.name || s.name || user.name);
       const email = safeText(p.email || s.email || user.email);
+      const teaching = isExternal ? abilityText(p.teachingAbilities, p.teachingItemsText || p.teachingItems) : '';
 
       const basic = [
         row('姓名', name),
@@ -252,15 +323,15 @@
         row('津貼', s.allowanceText),
         row('薪資生效日', s.effectiveDate),
         row('薪資備註', s.note)
-      ] : [
+      ] : (isExternal ? [] : [
         row('本薪', s.staffBaseSalaryText || s.mainAmountText || s.baseSalary),
         row('職務加給', s.jobAllowanceText),
         row('津貼', s.allowanceText),
         row('薪資生效日', s.effectiveDate),
         row('薪資備註', s.note)
-      ];
+      ]);
 
-      const labor = [
+      const labor = isExternal ? [] : [
         row('勞保狀態', s.laborStatus),
         row('勞保級距', s.laborPlanText || s.laborLevelText),
         row('勞保投保薪資', s.laborSalaryText),
@@ -269,7 +340,7 @@
         row('勞退自提', s.selfRetirementText)
       ];
 
-      const health = [
+      const health = isExternal ? [] : [
         row('健保狀態', s.healthStatus),
         row('健保級距', s.healthPlanText || s.healthLevelText),
         row('健保投保薪資', s.healthSalaryText),
@@ -280,6 +351,7 @@
         section('基本資料', basic),
         identityDocumentSection(p),
         section('聯絡資料', contact),
+        isExternal ? section('授課項目', [row('可授課項目', teaching)]) : '',
         section('薪資資訊', salary),
         section('勞保 / 勞退資訊', labor),
         section('健保資訊', health)
@@ -287,6 +359,174 @@
 
       $('profileSections').innerHTML = html;
       $('emptyProfileNote').style.display = html ? 'none' : '';
+      renderNotificationSettings(p, user);
+      renderTeachingEditor(p, isExternal);
+    }
+    function renderNotificationSettings(p, user){
+      p = p || {};
+      user = user || {};
+      const pref = normalizePreference(p.notificationPreference || p.notificationMethod || p.bindingMethod, p, user);
+      const lineId = safeText(p.lineUserId || user.lineUserId);
+      const email = safeText(p.email || user.email);
+      const bindText = safeText(p.employeeBindText || user.employeeBindText || (p.employeeBindCode ? ('柚子人員綁定 ' + p.employeeBindCode) : ''));
+      currentBindText = bindText;
+      const lineStatus = lineId ? '<span class="mini-status">LINE 已綁定</span>' : '<span class="mini-status warn">LINE 尚未綁定</span>';
+      const emailStatus = email ? '<span class="mini-status">Email：' + escapeHtml(email) + '</span>' : '<span class="mini-status danger">Email 尚未填寫</span>';
+      $('notificationSummary').innerHTML = '<div><b>目前通知方式：</b>' + escapeHtml(preferenceLabel(pref)) + '</div><div>' + lineStatus + emailStatus + '</div>';
+      document.querySelectorAll('input[name="notificationPreference"]').forEach(r => r.checked = r.value === pref);
+      const panel = $('lineBindPanel');
+      if(lineId){
+        panel.innerHTML = 'LINE 目前已完成綁定。如需更換手機或帳號，請先解除後再重新綁定。';
+      }else if(bindText){
+        panel.innerHTML = '請複製下方文字，貼到柚子樂器官方 LINE。<div class="bind-code-box">' + escapeHtml(bindText) + '</div>';
+      }else{
+        panel.innerHTML = '尚未產生 LINE 綁定文字。需要使用 LINE 時，請按「產生 LINE 綁定文字」。';
+      }
+    }
+    async function ensureLineBindCode(forceNew){
+      const user = ensureUser();
+      if(!user) return;
+      try{
+        showMsg('產生 LINE 綁定文字中…', false);
+        const res = await firebaseOnly('ensureEmployeeLineBindCode', {
+          employeeId:user.employeeId || user.id,
+          id:user.id,
+          userId:user.id,
+          email:user.email,
+          notificationPreference: selectedPreference(),
+          forceNew: !!forceNew
+        });
+        currentBindText = res.employeeBindText || res.bindText || '';
+        if(currentBindText) await copyText(currentBindText, false);
+        showMsg(res.message || '已產生 LINE 綁定文字。', false);
+        await loadProfile(true);
+      }catch(err){
+        showMsg(err.message || String(err), true);
+      }
+    }
+    function selectedPreference(){
+      const r = document.querySelector('input[name="notificationPreference"]:checked');
+      return r ? r.value : 'both';
+    }
+    async function copyText(text, popup){
+      const value = safeText(text);
+      if(!value){ if(popup !== false) alert('目前沒有可複製的文字。'); return false; }
+      try{
+        if(navigator.clipboard && navigator.clipboard.writeText) await navigator.clipboard.writeText(value);
+        else{ const ta=document.createElement('textarea'); ta.value=value; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
+        if(popup !== false) alert('已複製');
+        return true;
+      }catch(e){
+        alert('複製失敗，請手動複製：\n' + value);
+        return false;
+      }
+    }
+    function copyCurrentBindText(){ copyText(currentBindText); }
+    async function saveNotificationSettings(){
+      const user = ensureUser();
+      if(!user) return;
+      const pref = selectedPreference();
+      const email = safeText(($('email') && $('email').value) || currentProfile.email || user.email);
+      const hasLine = !!safeText(currentProfile.lineUserId || user.lineUserId);
+      if((pref === 'email' || pref === 'both') && !email){ alert('選擇 Email 通知時，Email 不能空白。'); return; }
+      if(pref === 'line' && !hasLine){ alert('選擇只用 LINE 前，請先完成 LINE 綁定。'); return; }
+      try{
+        showMsg('儲存通知設定中…', false);
+        const res = await firebaseOnly('saveMyNotificationSettings', {
+          employeeId:user.employeeId || user.id,
+          id:user.id,
+          userId:user.id,
+          email,
+          notificationPreference:pref
+        });
+        if(res.user && typeof saveUser === 'function') saveUser(res.user);
+        showMsg(res.message || '通知設定已儲存。', false);
+        await loadProfile(true);
+      }catch(err){
+        showMsg(err.message || String(err), true);
+      }
+    }
+    async function clearLineBinding(){
+      const user = ensureUser();
+      if(!user) return;
+      const email = safeText(currentProfile.email || user.email || ($('email') && $('email').value));
+      if(!safeText(currentProfile.lineUserId || user.lineUserId)){ alert('目前尚未綁定 LINE。'); return; }
+      if(!email){ alert('解除 LINE 前，請先保留 Email，避免完全失去通知方式。'); return; }
+      if(!confirm('確定要解除 LINE 綁定嗎？解除後會改用 Email 通知。')) return;
+      if(!confirm('再次確認：解除後需重新貼 LINE 綁定文字才可恢復 LINE 通知。')) return;
+      try{
+        showMsg('解除 LINE 綁定中…', false);
+        const res = await firebaseOnly('clearMyLineBindingWithFallback', {
+          employeeId:user.employeeId || user.id,
+          id:user.id,
+          userId:user.id,
+          email
+        });
+        if(res.user && typeof saveUser === 'function') saveUser(res.user);
+        showMsg(res.message || '已解除 LINE 綁定，並改用 Email 通知。', false);
+        await loadProfile(true);
+      }catch(err){
+        showMsg(err.message || String(err), true);
+      }
+    }
+    function normalizeAbilities(list, fallback){
+      let arr = [];
+      if(Array.isArray(list)) arr = list;
+      else if(typeof list === 'string' && list.trim()) arr = list.split(/[、,，\n]/).map(x => ({item:x.replace(/[（(].*?[）)]/g,'').trim(), level:(x.match(/[（(](.*?)[）)]/)||[])[1]||''}));
+      else if(fallback) arr = String(fallback).split(/[、,，\n]/).map(x => ({item:x.replace(/[（(].*?[）)]/g,'').trim(), level:(x.match(/[（(](.*?)[）)]/)||[])[1]||''}));
+      return arr.map(x => ({item:safeText(x.item || x.name || x.subject || x.course || x.title), level:safeText(x.level || x.degree || x.proficiency)})).filter(x => x.item);
+    }
+    function levelOptions(selected){
+      return TEACHING_LEVELS.map(l => '<option value="' + escapeHtml(l) + '"' + (l === selected ? ' selected' : '') + '>' + escapeHtml(l) + '</option>').join('');
+    }
+    function renderTeachingEditor(p, isExternal){
+      const card = $('externalTeachingCard');
+      if(!card) return;
+      card.style.display = isExternal ? '' : 'none';
+      if(!isExternal) return;
+      const list = normalizeAbilities(p.teachingAbilities, p.teachingItemsText || p.teachingItems);
+      $('teachingRows').innerHTML = '';
+      (list.length ? list : [{item:'',level:'普通'}]).forEach(addTeachingRow);
+    }
+    function addTeachingRow(data){
+      data = data || {item:'',level:'普通'};
+      const box = $('teachingRows');
+      if(!box) return;
+      const row = document.createElement('div');
+      row.className = 'teach-row';
+      row.innerHTML = '<div><label>授課項目</label><input class="teach-item" value="' + escapeHtml(data.item || '') + '" placeholder="例如：鋼琴"></div>' +
+        '<div><label>程度</label><select class="teach-level">' + levelOptions(data.level || '普通') + '</select></div>' +
+        '<button class="btn secondary teach-remove" type="button">刪除</button>';
+      row.querySelector('.teach-remove').onclick = function(){ row.remove(); if(!box.querySelector('.teach-row')) addTeachingRow(); };
+      box.appendChild(row);
+    }
+    function collectTeachingRows(){
+      return Array.from(document.querySelectorAll('#teachingRows .teach-row')).map(row => ({
+        item:safeText(row.querySelector('.teach-item') && row.querySelector('.teach-item').value),
+        level:safeText(row.querySelector('.teach-level') && row.querySelector('.teach-level').value)
+      })).filter(x => x.item);
+    }
+    async function saveTeachingAbilities(){
+      const user = ensureUser();
+      if(!user) return;
+      const type = safeText(currentProfile.identityType || user.identityType);
+      if(type !== 'external'){ alert('授課項目僅外聘老師可修改。'); return; }
+      const rows = collectTeachingRows();
+      if(!rows.length){ alert('請至少填寫一筆授課項目。'); return; }
+      try{
+        showMsg('儲存授課項目中…', false);
+        const res = await firebaseOnly('saveMyTeachingAbilities', {
+          employeeId:user.employeeId || user.id,
+          id:user.id,
+          userId:user.id,
+          email:user.email,
+          teachingAbilities:rows
+        });
+        showMsg(res.message || '授課項目已儲存。', false);
+        await loadProfile(true);
+      }catch(err){
+        showMsg(err.message || String(err), true);
+      }
     }
     async function submitProfileChange(){
       const user = ensureUser();
