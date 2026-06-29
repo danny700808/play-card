@@ -25,6 +25,7 @@ service cloud.firestore {
         'notificationLogs',
         'lineBindLogs',
         'lineBindingLogs',
+        'employeeLineBindings',
         'manualMessages',
 
         // 員工 / 管理者 / 註冊 / 個資

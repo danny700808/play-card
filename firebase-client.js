@@ -5778,7 +5778,29 @@
         createdAt:serverTs(), createdAtText:nowText(), source:'employee-admin-clear-line'
       });
     }catch(logErr){ console.warn('[clearEmployeeLineBinding log]', logErr); }
-    return {ok:true,message:'已清除此員工的 LINE 綁定。請員工用自己的手機重新輸入「柚子綁定 Email」。',employeeId:empIdOf(target),email:emailOf(target),docId};
+    return {ok:true,message:'已清除此人員的 LINE 綁定。請用自己的手機重新輸入人員綁定文字。',employeeId:empIdOf(target),email:emailOf(target),docId};
+  }
+  function makeEmployeeBindCodeClient(){ return 'EMP-' + Math.random().toString(36).slice(2,10).toUpperCase(); }
+  function employeeBindTextClient(code){ return code ? ('柚子人員綁定 ' + code) : ''; }
+  async function ensureEmployeeLineBindCode(payload){
+    payload=payload||{};
+    const key=clean(payload.employeeId || payload.id || payload.__id || payload.userId);
+    const email=emailOf(payload);
+    let target = key ? await getDoc('employees', key).catch(()=>null) : null;
+    if(!target && (key || email)){
+      const rows=await all('employees');
+      target=rows.find(r=>(key && (empIdOf(r)===key || clean(r.__id)===key || clean(r.userId)===key || clean(r.id)===key)) || (email && emailOf(r)===email)) || null;
+    }
+    if(!target) return {ok:false,message:'找不到人員資料，無法產生 LINE 綁定文字。'};
+    const docId=clean(target.__id || target.employeeId || key);
+    let code=clean(target.employeeBindCode || target.bindingCode || target.lineBindingCode);
+    if(!code || payload.forceNew===true) code=makeEmployeeBindCodeClient();
+    const bindText=employeeBindTextClient(code);
+    const pref=clean(payload.notificationPreference || target.notificationPreference || target.bindingMethod || 'both');
+    const patch={employeeBindCode:code,employeeBindText:bindText,notificationPreference:pref,notificationPreferenceLabel:pref==='email'?'只用 Email':(pref==='line'?'只用 LINE':'LINE + Email'),lineBindStatus:clean(target.lineUserId)?'bound':'pending',updatedAt:serverTs(),updatedAtText:nowText(),source:'employee-admin-line-bind-code'};
+    await setDoc('employees', docId, patch, true);
+    await setDoc('employeeLineBindings', code, {bindingCode:code,employeeBindCode:code,bindText,employeeId:empIdOf(target)||docId,employeeDocId:docId,targetCollection:'employees',status:clean(target.lineUserId)?'bound':'pending',name:nameOf(target),email:emailOf(target),mobilePhone:clean(target.mobilePhone||target.phone),notificationPreference:pref,updatedAt:serverTs(),updatedAtText:nowText(),source:'employee-admin'}, true);
+    return {ok:true,message:'已產生 LINE 綁定文字。',employeeBindCode:code,employeeBindText:bindText,bindText};
   }
   function sameEmployee(row, emp){
     const id=emp.employeeId || emp.id;
@@ -5848,6 +5870,7 @@
     if(a==='getEmployeeManagementData') return await getEmployeeManagementData(payload||{});
     if(a==='updateEmployeeAdminStatus') return await updateEmployeeAdminStatus(payload||{});
     if(a==='clearEmployeeLineBinding') return await clearEmployeeLineBinding(payload||{});
+    if(a==='ensureEmployeeLineBindCode' || a==='generateEmployeeLineBindCode') return await ensureEmployeeLineBindCode(payload||{});
     if(a==='getEmployeeHistorySnapshot') return await getEmployeeHistorySnapshot(payload||{});
     if(a==='getEmployeeOptions') return await getEmployeeOptions(payload||{});
     if(a==='getScheduleSetupData') return await getScheduleSetupData(payload||{});

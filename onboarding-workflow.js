@@ -71,6 +71,12 @@
     return '國民身分證';
   }
   function identityLabel(type){ return type==='parttime'?'工讀生':(type==='external'?'外聘老師':'專職員工'); }
+  function notificationPreference(value, hasEmail){ const v=lower(value); if(['line','line_only','line-only','只用line','只用 line'].includes(v)) return 'line'; if(['email','email_only','email-only','只用email','只用 email'].includes(v)) return 'email'; if(['both','line_email','line+email','line + email','all','雙軌','兩者'].includes(v)) return 'both'; return hasEmail?'both':'line'; }
+  function notificationLabel(pref){ return pref==='email'?'只用 Email':(pref==='line'?'只用 LINE':'LINE + Email'); }
+  function wantsLine(pref){ return pref==='line'||pref==='both'; }
+  function wantsEmail(pref){ return pref==='email'||pref==='both'; }
+  function makeEmployeeBindCode(){ return 'EMP-' + randomToken(4).slice(0,8).toUpperCase(); }
+  function employeeBindText(code){ return code ? ('柚子人員綁定 ' + code) : ''; }
   function maskId(v){ const s=clean(v).toUpperCase(); if(!s) return ''; return s.length<=5 ? s : s.slice(0,1)+'*****'+s.slice(-4); }
   function maskEmail(v){ const s=lower(v); const p=s.split('@'); if(p.length!==2) return s; const local=p[0]; return (local.slice(0,2)||'*')+'***@'+p[1]; }
   function statusKey(row){
@@ -79,7 +85,7 @@
   function isPendingStatus(row){
     const s=statusKey(row);
     if(['approved','active','rejected','archived','deleted','已核准','已啟用','已駁回','封存','刪除'].includes(s)) return false;
-    return !s || ['pending','pending_setup','draft','needs_identity_resubmission','waiting_manager_setup','待審核','待主管建檔','主管建檔草稿','待補件'].includes(s);
+    return !s || ['pending','pending_setup','waiting_line_binding','draft','needs_identity_resubmission','waiting_manager_setup','待審核','等待 line 綁定','等待line綁定','待主管建檔','主管建檔草稿','待補件'].includes(s);
   }
   function isSystemEmployee(row){
     const id=clean(row && (row.employeeId || row.__id));
@@ -89,6 +95,7 @@
     const s=clean(key);
     if(s==='draft') return '主管建檔草稿';
     if(s==='needs_identity_resubmission') return '待申請人補件';
+    if(s==='waiting_line_binding') return '等待 LINE 綁定';
     if(s==='approved') return '已完成入職建檔';
     if(s==='rejected') return '已駁回';
     return '待主管建檔';
@@ -152,6 +159,15 @@
       applicationStatus,
       applicationStatusLabel:applicationStatusLabel(applicationStatus),
       statusLabel:applicationStatusLabel(applicationStatus),
+      requestedIdentityType:clean(raw.requestedIdentityType||raw.registrationType||raw.identityType||''),
+      requestedIdentityLabel:identityLabel(clean(raw.requestedIdentityType||raw.registrationType||raw.identityType||'')),
+      notificationPreference:notificationPreference(raw.notificationPreference||raw.notificationMethod, !!clean(raw.email)),
+      notificationPreferenceLabel:notificationLabel(notificationPreference(raw.notificationPreference||raw.notificationMethod, !!clean(raw.email))),
+      employeeBindCode:clean(raw.employeeBindCode||raw.bindingCode||raw.lineBindingCode),
+      employeeBindText:clean(raw.employeeBindText)||employeeBindText(clean(raw.employeeBindCode||raw.bindingCode||raw.lineBindingCode)),
+      lineBindStatus:clean(raw.lineBindStatus||raw.lineStatus||''),
+      emailBindStatus:clean(raw.emailBindStatus||''),
+      currentStep:clean(raw.currentStep||raw.progressStatus||''),
       onboardingDraft:draft,
       createdAtText:clean(raw.createdAtText)||dateTimeText(raw.createdAt),
       updatedAtText:clean(raw.updatedAtText)||dateTimeText(raw.updatedAt),
@@ -186,36 +202,55 @@
 
   async function createApplication(payload){
     payload=payload||{};
+    const requested=clean(payload.requestedIdentityType||payload.registrationType||payload.identityType);
+    if(!['staff','parttime'].includes(requested)) return {ok:false,message:'請先選擇專職員工或工讀生註冊；外聘老師請使用外聘老師資料與合約入口。'};
     const error=validateApplicant(payload); if(error) return {ok:false,message:error};
     const email=lower(payload.email);
+    const pref=notificationPreference(payload.notificationPreference||payload.notificationMethod, !!email);
     const employeeRows=await employeesByEmail(email);
     if(employeeRows.some(r=>['active','enabled','啟用','正常'].includes(lower(r.accountStatus||r.status||'active')))) return {ok:false,message:'這個 Email 已經是正式人員帳號，請直接登入。'};
     const existing=(await applicationByEmail(email)).filter(r=>!['approved','rejected','archived'].includes(statusKey(r)));
     if(existing.length) return {ok:false,message:'這個 Email 已有尚未完成的申請，請勿重複送出。'};
     const applicationId='REG_'+Date.now()+'_'+randomToken(5).slice(0,10);
+    const bindCode=wantsLine(pref)?makeEmployeeBindCode():'';
+    const bindText=employeeBindText(bindCode);
     const row={
       applicationId,
+      registrationType:requested, requestedIdentityType:requested, requestedIdentityLabel:identityLabel(requested),
       name:clean(payload.name), email, idNumber:clean(payload.idNumber).toUpperCase(), birthDate:dateText(payload.birthDate),
       mobilePhone:clean(payload.mobilePhone), contactAddress:clean(payload.contactAddress), address:clean(payload.contactAddress),
       emergencyContact:clean(payload.emergencyContact), emergencyPhone:clean(payload.emergencyPhone),
+      notificationPreference:pref, notificationPreferenceLabel:notificationLabel(pref), notificationMethod:pref,
+      employeeBindCode:bindCode, employeeBindText:bindText,
+      lineBindStatus:wantsLine(pref)?'pending':'not_required', emailBindStatus:wantsEmail(pref)?'provided':'not_required',
+      currentStep:wantsLine(pref)?'等待 LINE 綁定':'等待主管審核', progressStatus:wantsLine(pref)?'等待 LINE 綁定':'等待主管審核',
       identityDocumentType:clean(payload.identityDocumentType), identityDocumentTypeLabel:identityDocumentTypeLabel(payload.identityDocumentType),
       identityDocumentUrl:clean(payload.identityDocumentUrl), identityDocumentPublicId:clean(payload.identityDocumentPublicId),
       identityDocumentFileName:clean(payload.identityDocumentFileName), identityDocumentUploadedAtText:clean(payload.identityDocumentUploadedAtText)||nowText(),
       identityDocumentWatermark:clean(payload.identityDocumentWatermark), identityDocumentConsent:true,
-      applicationStatus:'pending_setup', status:'待主管建檔', accountStatus:'pending',
-      onboardingDraft:{}, createdAt:serverTs(), createdAtText:nowText(), updatedAt:serverTs(), updatedAtText:nowText(),
-      applicantResubmissionToken:randomToken(18), source:VERSION, history:[event('submitted','申請人送出基本資料與證件正面')]
+      applicationStatus:wantsLine(pref)?'waiting_line_binding':'pending_setup', status:wantsLine(pref)?'等待 LINE 綁定':'待主管建檔', accountStatus:'pending',
+      onboardingDraft:{identityType:requested}, createdAt:serverTs(), createdAtText:nowText(), updatedAt:serverTs(), updatedAtText:nowText(),
+      applicantResubmissionToken:randomToken(18), source:VERSION, history:[event('submitted',`申請人送出${identityLabel(requested)}註冊資料`)]
     };
-    await database().collection(APP_COLLECTION).doc(applicationId).set(row);
+    const d=database(); const batch=d.batch();
+    batch.set(d.collection(APP_COLLECTION).doc(applicationId),row);
+    if(bindCode){
+      batch.set(d.collection('employeeLineBindings').doc(bindCode),{
+        bindingCode:bindCode, employeeBindCode:bindCode, bindText, applicationId, targetCollection:APP_COLLECTION,
+        status:'pending', employeeId:'', name:row.name, email:row.email, mobilePhone:row.mobilePhone,
+        requestedIdentityType:requested, notificationPreference:pref, createdAt:serverTs(), createdAtText:nowText(), updatedAt:serverTs(), source:VERSION
+      },{merge:true});
+    }
+    await batch.commit();
     try{
       if(typeof previousHandle === 'function'){
         await previousHandle('queueFeatureNotification',{
           featureCode:'registration', direction:'manager', name:row.name, email:row.email, applicationId,
-          notificationMessage:`新註冊申請：${row.name}\n請至後台審核`
+          notificationMessage:`新${identityLabel(requested)}註冊申請：${row.name}\n通知方式：${notificationLabel(pref)}\n${bindText?('LINE 綁定文字：'+bindText):'不需 LINE 綁定'}\n請至後台審核`
         });
       }
     }catch(e){ console.warn('[onboarding manager notification skipped]', e); }
-    return {ok:true,message:'註冊申請已送出，待主管完成入職建檔。',applicationId};
+    return {ok:true,message:'註冊申請已送出，後台已建立資料。',applicationId,notificationPreference:pref,employeeBindCode:bindCode,employeeBindText:bindText,lineBindStatus:row.lineBindStatus};
   }
 
   async function ensureApplication(applicationId){
@@ -236,7 +271,7 @@
       mobilePhone:clean(legacy.mobilePhone||legacy['行動電話']), contactAddress:clean(legacy.contactAddress||legacy.address||legacy['聯絡地址']), address:clean(legacy.contactAddress||legacy.address||legacy['聯絡地址']),
       emergencyContact:clean(legacy.emergencyContact||legacy['緊急聯絡人']), emergencyPhone:clean(legacy.emergencyPhone||legacy['緊急聯絡人電話']),
       identityDocumentType:clean(legacy.identityDocumentType||'national_id'), identityDocumentUrl:clean(legacy.identityDocumentUrl), identityDocumentPublicId:clean(legacy.identityDocumentPublicId),
-      applicationStatus:'pending_setup', status:'待主管建檔', accountStatus:'pending', onboardingDraft:{},
+      applicationStatus:'pending_setup', status:'待主管建檔', accountStatus:'pending', notificationPreference:'both', notificationPreferenceLabel:'LINE + Email', lineBindStatus:'pending', emailBindStatus:'provided', onboardingDraft:{},
       applicantResubmissionToken:randomToken(18), createdAt:legacy.createdAt||serverTs(), createdAtText:clean(legacy.createdAtText)||nowText(), updatedAt:serverTs(), updatedAtText:nowText(),
       source:'legacy-employees-migrated', history:[event('legacy_migrated','舊版待審核資料轉入新入職建檔流程')]
     };
@@ -268,7 +303,9 @@
     const r=[];
     if(!clean(app.identityDocumentUrl)) r.push('缺少證件正面');
     if(draft.identityVerificationStatus!=='verified') r.push('主管尚未確認證件與申請資料相符');
-    if(!['staff','parttime','external'].includes(draft.identityType)) r.push('尚未選擇專職、工讀或外聘');
+    if(!['staff','parttime','external'].includes(draft.identityType)) r.push('尚未選擇專職或工讀');
+    const pref=notificationPreference(app.notificationPreference||app.notificationMethod, !!clean(app.email));
+    if(wantsLine(pref) && clean(app.employeeBindCode) && clean(app.lineBindStatus)!=='bound') r.push('申請人尚未完成 LINE 綁定');
     if(!draft.startDate) r.push(draft.identityType==='external'?'尚未填寫合作起始日':'尚未填寫到職日');
     if(draft.identityType==='staff' || draft.identityType==='parttime'){
       if(draft.identityType==='staff' && !(draft.baseSalary>0)) r.push('專職員工尚未填寫本薪');
@@ -383,6 +420,8 @@
     return {
       employeeId, name:clean(app.name), email:lower(app.email), password, role:'staff',
       identityType:draft.identityType, identityLabel:identityLabel(draft.identityType), isPartTime:isPart, isExternalTeacher:isExternal,
+      notificationPreference:notificationPreference(app.notificationPreference||app.notificationMethod, !!clean(app.email)), notificationPreferenceLabel:notificationLabel(notificationPreference(app.notificationPreference||app.notificationMethod, !!clean(app.email))),
+      employeeBindCode:clean(app.employeeBindCode), employeeBindText:clean(app.employeeBindText)||employeeBindText(clean(app.employeeBindCode)), lineBindStatus:clean(app.lineBindStatus||''), emailBindStatus:clean(app.emailBindStatus||''), lineUserId:clean(app.lineUserId||''), lineDisplayName:clean(app.lineDisplayName||''), lineNotifyEnabled:!!clean(app.lineUserId),
       accountStatus:isExternal && draft.externalAccessEnabled==='否'?'inactive':'active', employmentStatus:'active', hiddenFromActiveLists:false,
       idNumber:clean(app.idNumber).toUpperCase(), birthDate:dateText(app.birthDate), mobilePhone:clean(app.mobilePhone), address:clean(app.contactAddress), contactAddress:clean(app.contactAddress),
       emergencyContact:clean(app.emergencyContact), emergencyPhone:clean(app.emergencyPhone),
@@ -448,7 +487,8 @@
     batch.set(d.collection('employees').doc(employeeDocId),employee,{merge:true});
     if(salary) batch.set(d.collection('employeeSalaryConfigs').doc(employeeId),salary,{merge:true});
     if(assignment) batch.set(d.collection('employeeSchedules').doc(assignment.assignmentId),assignment,{merge:true});
-    const queueId='onboarding-approved-'+safeId(employeeId)+'-'+Date.now();
+    const queueIdBase='onboarding-approved-'+safeId(employeeId)+'-'+Date.now();
+    const pref=notificationPreference(app.notificationPreference||app.notificationMethod, !!clean(app.email));
     const emailBody=[
       `${clean(app.name)}您好：`,
       '',
@@ -461,16 +501,26 @@
       `登入網址：${loginUrl()}`,
       '第一次登入後請立即修改密碼。'
     ].join('\n');
-    batch.set(d.collection('notificationQueue').doc(queueId),{
-      queueId,channel:'email',targetEmail:lower(app.email),targetEmployeeId:employeeId,targetName:clean(app.name),title:'人員申請已核准',body:emailBody,message:emailBody,status:'待發送',source:VERSION,createdAt:serverTs(),createdAtText:nowText()
-    },{merge:true});
+    const createdQueueIds=[];
+    if(wantsEmail(pref) && lower(app.email)){
+      const queueId=queueIdBase+'-email'; createdQueueIds.push(queueId);
+      batch.set(d.collection('notificationQueue').doc(queueId),{
+        queueId,channel:'email',targetEmail:lower(app.email),targetEmployeeId:employeeId,targetName:clean(app.name),title:'人員申請已核准',body:emailBody,message:emailBody,status:'待發送',source:VERSION,createdAt:serverTs(),createdAtText:nowText()
+      },{merge:true});
+    }
+    if(wantsLine(pref) && clean(app.lineUserId)){
+      const queueId=queueIdBase+'-line'; createdQueueIds.push(queueId);
+      batch.set(d.collection('notificationQueue').doc(queueId),{
+        queueId,channel:'line',targetLineUserId:clean(app.lineUserId),targetEmployeeId:employeeId,targetName:clean(app.name),title:'人員申請已核准',body:emailBody,message:emailBody,status:'待發送',source:VERSION,createdAt:serverTs(),createdAtText:nowText()
+      },{merge:true});
+    }
     batch.set(d.collection(APP_COLLECTION).doc(ensured.id),{
       applicationStatus:'approved',status:'已完成入職建檔',accountStatus:'approved',onboardingDraft:draft,onboardingMissing:[],
       approvedEmployeeId:employeeId,approvedEmployeeDocId:employeeDocId,approvedAt:serverTs(),approvedAtText:nowText(),approvedBy:clean(payload.userId||currentUser().id),
-      initialPasswordIssued:true,approvalEmailQueueId:queueId,updatedAt:serverTs(),updatedAtText:nowText(),history:arrayUnion(event('approved',`完成入職建檔：${identityLabel(draft.identityType)}`))
+      initialPasswordIssued:true,approvalNotificationQueueIds:createdQueueIds,approvalEmailQueueId:createdQueueIds.find(x=>x.endsWith('-email'))||'',approvalLineQueueId:createdQueueIds.find(x=>x.endsWith('-line'))||'',updatedAt:serverTs(),updatedAtText:nowText(),history:arrayUnion(event('approved',`完成入職建檔：${identityLabel(draft.identityType)}`))
     },{merge:true});
     await batch.commit();
-    return {ok:true,message:'已完成入職建檔，員工、薪資投保與班表已一次建立。',employeeId,initialPassword,emailQueued:true,queueId};
+    return {ok:true,message:'已完成入職建檔，員工、薪資投保與班表已一次建立。',employeeId,initialPassword,notificationQueueIds:createdQueueIds,emailQueued:createdQueueIds.some(x=>x.endsWith('-email')),lineQueued:createdQueueIds.some(x=>x.endsWith('-line'))};
   }
 
   async function reject(payload){
@@ -695,6 +745,25 @@
     return Object.assign({},base||{ok:true},counts,{counts});
   }
 
+
+  async function ensureEmployeeLineBindCode(payload){
+    payload=payload||{};
+    const key=clean(payload.employeeId||payload.id||payload.userId);
+    const email=lower(payload.email);
+    let target=key?await getDoc('employees',key).catch(()=>null):null;
+    if(!target && email){ const rows=await employeesByEmail(email); target=rows[0]||null; }
+    if(!target) return {ok:false,message:'找不到人員資料，無法產生 LINE 綁定碼。'};
+    const docId=clean(target.__id||target.employeeId||key);
+    let code=clean(target.employeeBindCode||target.bindingCode||target.lineBindingCode);
+    if(!code || payload.forceNew===true) code=makeEmployeeBindCode();
+    const pref=notificationPreference(payload.notificationPreference||target.notificationPreference||target.notificationMethod, !!lower(target.email||email));
+    const bindText=employeeBindText(code);
+    const d=database(); const batch=d.batch();
+    batch.set(d.collection('employees').doc(docId),{employeeBindCode:code,employeeBindText:bindText,notificationPreference:pref,notificationPreferenceLabel:notificationLabel(pref),lineBindStatus:clean(target.lineUserId)?'bound':'pending',updatedAt:serverTs(),updatedAtText:nowText(),source:VERSION},{merge:true});
+    batch.set(d.collection('employeeLineBindings').doc(code),{bindingCode:code,employeeBindCode:code,bindText,employeeId:clean(target.employeeId||docId),employeeDocId:docId,targetCollection:'employees',status:clean(target.lineUserId)?'bound':'pending',name:clean(target.name||target.displayName),email:lower(target.email||email),mobilePhone:clean(target.mobilePhone||target.phone),notificationPreference:pref,updatedAt:serverTs(),updatedAtText:nowText(),source:VERSION},{merge:true});
+    await batch.commit();
+    return {ok:true,message:'已產生 LINE 綁定文字。',employeeBindCode:code,employeeBindText:bindText,bindText};
+  }
   fb.handleApi=async function(action,payload){
     const a=clean(action);
     if(a==='register') return await createApplication(payload||{});
@@ -710,6 +779,7 @@
     if(a==='getEmployeeManagementData') return await managementData(payload||{});
     if(a==='getEmployeeLifecycleSummary') return await lifecycleSummary(payload||{});
     if(a==='archiveEmployeeLifecycle') return await archiveLifecycle(payload||{});
+    if(a==='ensureEmployeeLineBindCode' || a==='generateEmployeeLineBindCode') return await ensureEmployeeLineBindCode(payload||{});
     if(a==='saveEmployeeSalaryConfig') return await saveSalaryConfigExtended(payload||{});
     if(a==='getMyProfileFull' || a==='getMyDataFull') return await profileWithIdentity(a,payload||{});
     if(a==='getDashboardSummary' || a==='getPendingCounts') return await countsWithApplications(a,payload||{});
