@@ -2,15 +2,40 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
+    // 租賃契約附件：身分證照片、簽名圖、契約 HTML／PDF。
     match /rental-contracts/{contractId}/{fileName=**} {
       allow read: if true;
       allow write: if request.resource != null
-        && request.resource.size < 5242880
-        && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf');
+        && request.resource.size < 20 * 1024 * 1024
+        && (
+          request.resource.contentType.matches('image/.*') ||
+          request.resource.contentType == 'application/pdf' ||
+          request.resource.contentType == 'text/html'
+        );
     }
 
+    // 現在線上既有外聘老師路徑：維持可讀、不可由前台寫入，避免影響原本公開讀取。
+    match /externalTeachers/{teacherId}/{folder}/{fileName=**} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // 外聘老師簽約附件舊／新路徑：身分證浮水印圖、簽名圖、契約 HTML。
+    match /external-teachers/{contractId}/{fileName=**} {
+      allow read: if true;
+      allow write: if request.resource != null
+        && request.resource.size < 20 * 1024 * 1024
+        && (
+          request.resource.contentType.matches('image/.*') ||
+          request.resource.contentType == 'application/pdf' ||
+          request.resource.contentType == 'text/html'
+        );
+    }
+
+    // 其他路徑維持開放讀取；未特別開放的地方不可上傳。
     match /{allPaths=**} {
-      allow read, write: if false;
+      allow read: if true;
+      allow write: if false;
     }
   }
 }

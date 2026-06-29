@@ -575,6 +575,17 @@ function queueTargetLineUserId(row = {}) {
   return clean(row.targetLineUserId || row.lineUserId || row.toLineUserId || row.customerLineUserId || row['LINE User ID']);
 }
 
+function isValidLinePushTargetId(value) {
+  const v = clean(value);
+  // LINE push 的收件人應為 User/Group/Room ID；租賃客人正常會是 U 開頭的 User ID。
+  return /^[UCR][A-Za-z0-9_-]{20,}$/.test(v);
+}
+
+function isValidCustomerLineUserId(value) {
+  const v = clean(value);
+  return /^U[A-Za-z0-9_-]{20,}$/.test(v);
+}
+
 function queueTargetEmail(row = {}) {
   return clean(row.targetEmail || row.email || row.toEmail || row.customerEmail || row['Email']).toLowerCase();
 }
@@ -612,7 +623,8 @@ async function createCustomerNotificationQueues({ row, title, body, source, cont
   row = row || {};
   const email = customerEmailOf(row);
   const pref = normalizeNotificationPreference(row.notificationPreference || row.preferredContactMethod, email);
-  const lineId = queueTargetLineUserId(row);
+  const rawLineId = queueTargetLineUserId(row);
+  const lineId = isValidCustomerLineUserId(rawLineId) ? rawLineId : '';
   const targetName = clean(row.customerName || row.partyAName || row.targetName || '客人');
   const baseId = `${safeId(source || 'rental-customer-notice')}-${safeId(contractId || applicationId || row.contractId || row.applicationId || 'rental')}-${Date.now()}`;
   const results = { line: false, email: false, count: 0, queueIds: [], preference: pref };
@@ -663,6 +675,7 @@ async function createCustomerNotificationQueues({ row, title, body, source, cont
 async function sendLinePush(row) {
   const to = queueTargetLineUserId(row);
   if (!to) throw new Error('缺少 LINE User ID，無法發送 LINE。');
+  if (!isValidLinePushTargetId(to)) throw new Error('LINE 收件人資料不正確，請重新完成 LINE 配對。');
   const token = await getLineAccessToken();
   if (!token) throw new Error('缺少 LINE_CHANNEL_ACCESS_TOKEN，尚未設定 LINE Messaging API Channel access token。');
 
