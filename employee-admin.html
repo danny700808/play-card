@@ -435,6 +435,83 @@
       }
     }
 
+
+    async function deleteRefOnce(ref, deletedPaths){
+      if(!ref) return 0;
+      const key = ref.path || String(ref);
+      if(deletedPaths && deletedPaths.has(key)) return 0;
+      if(deletedPaths) deletedPaths.add(key);
+      try{ await ref.delete(); return 1; }catch(err){ console.warn('[permanent delete ref failed]', key, err); return 0; }
+    }
+    async function deleteDocIfExists(collectionName, id, deletedPaths){
+      id = clean(id);
+      if(!id) return 0;
+      try{
+        const ref = employeeDb().collection(collectionName).doc(id);
+        const snap = await ref.get();
+        if(!snap.exists) return 0;
+        return await deleteRefOnce(ref, deletedPaths);
+      }catch(err){ console.warn('[permanent delete doc failed]', collectionName, id, err); return 0; }
+    }
+    async function deleteQueryDocs(collectionName, field, value, deletedPaths){
+      value = clean(value);
+      if(!value) return 0;
+      let count = 0;
+      try{
+        const snap = await employeeDb().collection(collectionName).where(field, '==', value).limit(200).get();
+        const jobs = [];
+        snap.forEach(doc => jobs.push(deleteRefOnce(doc.ref, deletedPaths).then(n => { count += n; })));
+        await Promise.all(jobs);
+      }catch(err){ console.warn('[permanent delete query failed]', collectionName, field, err); }
+      return count;
+    }
+    function confirmPermanentDelete(title, details){
+      if(!confirm(title + '\n\n這是永久刪除，不是封存。刪除後後台不會再看到這筆測試資料。\n\n' + (details || '') + '\n\n確定要繼續嗎？')) return false;
+      if(!confirm('再次確認：真的要永久刪除嗎？\n\n正式資料請使用封存，不要永久刪除。\n這個動作主要用來清掉測試檔或建錯的資料。')) return false;
+      const typed = prompt('最後確認：請輸入「刪除」兩個字才會執行。', '');
+      if(clean(typed) !== '刪除'){
+        alert('未輸入「刪除」，已取消。');
+        return false;
+      }
+      return true;
+    }
+    async function deleteExternalTeacherLinkedDataByEmployee(e, deletedPaths){
+      let deleted = 0;
+      const employeeId = empId(e);
+      const email = emailOf(e);
+      const mobile = clean(firstValue(e, ['mobilePhone','phone','mobile','行動電話','聯絡電話']));
+      const contractId = externalContractIdOf(e);
+      deleted += await deleteDocIfExists('externalTeacherContracts', contractId, deletedPaths);
+      deleted += await deleteDocIfExists('externalTeacherProfiles', contractId, deletedPaths);
+      const collections = ['externalTeacherContracts','externalTeacherProfiles'];
+      for(const col of collections){
+        if(employeeId){
+          deleted += await deleteQueryDocs(col, 'employeeId', employeeId, deletedPaths);
+          deleted += await deleteQueryDocs(col, 'externalTeacherEmployeeId', employeeId, deletedPaths);
+        }
+        if(email) deleted += await deleteQueryDocs(col, 'email', email, deletedPaths);
+        if(mobile){
+          deleted += await deleteQueryDocs(col, 'mobile', mobile, deletedPaths);
+          deleted += await deleteQueryDocs(col, 'phone', mobile, deletedPaths);
+        }
+      }
+      const linkedCols = ['externalTeacherLineBindings','externalTeacherFiles'];
+      for(const col of linkedCols){
+        if(contractId){
+          deleted += await deleteQueryDocs(col, 'teacherId', contractId, deletedPaths);
+          deleted += await deleteQueryDocs(col, 'contractId', contractId, deletedPaths);
+          deleted += await deleteDocIfExists(col, contractId, deletedPaths);
+        }
+        if(employeeId){
+          deleted += await deleteQueryDocs(col, 'employeeId', employeeId, deletedPaths);
+          deleted += await deleteQueryDocs(col, 'externalTeacherEmployeeId', employeeId, deletedPaths);
+        }
+        if(email) deleted += await deleteQueryDocs(col, 'email', email, deletedPaths);
+        if(mobile) deleted += await deleteQueryDocs(col, 'mobile', mobile, deletedPaths);
+      }
+      return deleted;
+    }
+
     function renderDetail(e){
       const type = identityType(e);
       const identity = identityText(type);
@@ -545,6 +622,8 @@
         <div class="actions"><button class="save" type="button" onclick="saveEmployeeStatus()">儲存資料</button></div>
         <div class="actions" style="margin-top:10px"><button class="danger" type="button" onclick="archiveEmployee()">${type==='external'?'結束合作並封存':'離職並封存人員'}</button></div>
         <div class="hint">封存後不再出現在班表、薪資及工讀日常名單，但歷史打卡、請假與薪資紀錄仍會保留。</div>
+        <div class="actions" style="margin-top:10px"><button class="danger" type="button" style="background:#7f1d1d" onclick="permanentDeleteEmployee()">永久刪除測試資料</button></div>
+        <div class="hint">永久刪除只建議用於測試檔或建錯資料；系統會要求兩次確認，最後還要輸入「刪除」。</div>
         <div id="msg" class="msg"></div>`;
 
       const acc = lower(firstValue(e, ['accountStatus','帳號狀態'])) || 'active';
@@ -587,6 +666,46 @@
         if(external) await syncExternalTeacherStatusFromEmployee(e,{accountStatus:'archived',employmentStatus:'contractorEnded',hiddenFromActiveLists:true,resignedDate:new Date().toISOString().slice(0,10),statusNote:reason.trim()});
         msg.textContent=res.message||'已封存。';await loadEmployees();showLayer(1);
       }catch(err){msg.classList.add('error');msg.textContent=err.message||'封存失敗';}
+    }
+
+
+    async function permanentDeleteEmployee(){
+      const e = currentEmployee();
+      if(!e) return;
+      const type = identityType(e);
+      const employeeId = empId(e);
+      const email = emailOf(e);
+      const mobile = clean(firstValue(e, ['mobilePhone','phone','mobile','行動電話','聯絡電話']));
+      const name = nameOf(e) || email || employeeId || '未命名人員';
+      const details = '刪除對象：' + name + '\n身分類型：' + identityText(type) + '\n員工 ID：' + (employeeId || '無') + '\nEmail：' + (email || '無') + '\n手機：' + (mobile || '無') + (type === 'external' ? '\n\n外聘老師會同步刪除合約管理裡的關聯資料。' : '');
+      if(!confirmPermanentDelete('永久刪除此筆人員測試資料？', details)) return;
+      const msg = $('#msg');
+      msg.style.display = 'block'; msg.classList.remove('error'); msg.textContent = '正在永久刪除...';
+      try{
+        const deletedPaths = new Set();
+        let deleted = 0;
+        if(type === 'external') deleted += await deleteExternalTeacherLinkedDataByEmployee(e, deletedPaths);
+        if(employeeId) deleted += await deleteDocIfExists('employees', employeeId, deletedPaths);
+        if(!employeeId && email){
+          try{
+            const snap = await employeeDb().collection('employees').where('email', '==', email).limit(20).get();
+            const jobs = [];
+            snap.forEach(doc => {
+              const data = doc.data() || {};
+              const rowType = identityType(Object.assign({employeeId:doc.id}, data));
+              if(rowType === type) jobs.push(deleteRefOnce(doc.ref, deletedPaths).then(n => { deleted += n; }));
+            });
+            await Promise.all(jobs);
+          }catch(err){ console.warn('[permanent delete employee by email failed]', err); }
+        }
+        msg.textContent = '已永久刪除測試資料，清理資料筆數：約 ' + deleted + ' 筆。';
+        await loadEmployees();
+        selectedId = '';
+        showLayer(1);
+      }catch(err){
+        msg.classList.add('error');
+        msg.textContent = err.message || '永久刪除失敗';
+      }
     }
 
     async function saveEmployeeStatus(){
