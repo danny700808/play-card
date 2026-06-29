@@ -221,6 +221,85 @@ async function getLineAccessToken() {
   ]);
 }
 
+
+function normalizeTeachingText(value) {
+  if (Array.isArray(value)) return value.map(clean).filter(Boolean).join('、');
+  return clean(value);
+}
+
+async function syncExternalTeacherEmployee(teacherId, row = {}) {
+  const id = clean(teacherId || row.teacherId || row.id);
+  if (!id) return;
+  const ref = db().collection('employees').doc(id);
+  let old = {};
+  try {
+    const snap = await ref.get();
+    if (snap.exists) old = snap.data() || {};
+  } catch (err) {
+    old = {};
+  }
+
+  const name = clean(row.name || row.teacherName || row.displayName || old.name || old.displayName || '');
+  const email = lower(row.email || old.email || '');
+  const mobile = clean(row.mobile || row.phone || old.mobilePhone || old.phone || '');
+  const lineUserId = clean(row.lineUserId || old.lineUserId || '');
+  const teachingItemsText = normalizeTeachingText(row.teachingItems || old.teachingItems || old.teachingItemsText || '');
+
+  const update = {
+    employeeId: id,
+    id,
+    userId: id,
+    name,
+    displayName: name,
+    employeeName: name,
+    email,
+    mobilePhone: mobile,
+    phone: mobile,
+    identityType: 'external',
+    identityLabel: '外聘老師',
+    employeeType: 'external',
+    role: 'externalTeacher',
+    isExternalTeacher: true,
+    accountStatus: clean(old.accountStatus || 'active'),
+    employmentStatus: clean(old.employmentStatus || 'active'),
+    hiddenFromActiveLists: old.hiddenFromActiveLists === true,
+    lineUserId,
+    lineDisplayName: clean(row.lineDisplayName || old.lineDisplayName || ''),
+    lineNotifyEnabled: !!lineUserId,
+    lineBindStatus: clean(row.lineBindStatus || (lineUserId ? 'bound' : old.lineBindStatus || 'pending')),
+    emailBindStatus: clean(row.emailBindStatus || old.emailBindStatus || ''),
+    bindingMethod: clean(row.bindingMethod || old.bindingMethod || ''),
+    bindingMethodLabel: clean(row.bindingMethodLabel || old.bindingMethodLabel || ''),
+    externalTeacherProfileId: id,
+    externalTeacherContractId: id,
+    currentExternalContractId: clean(row.currentContractId || row.contractId || old.currentExternalContractId || id),
+    externalTeacherStatus: clean(row.status || old.externalTeacherStatus || ''),
+    contractStatus: clean(row.contractStatus || row.status || old.contractStatus || ''),
+    progressStatus: clean(row.progressStatus || old.progressStatus || ''),
+    teachingItems: teachingItemsText,
+    teachingItemsText,
+    cooperationStartDate: clean(row.contractStartDate || old.cooperationStartDate || ''),
+    hireDate: clean(row.contractStartDate || old.hireDate || ''),
+    contractYear: clean(row.contractYear || row.contractGregorianYear || old.contractYear || ''),
+    contractRocYear: clean(row.contractRocYear || old.contractRocYear || ''),
+    contractStartDate: clean(row.contractStartDate || old.contractStartDate || ''),
+    contractEndDate: clean(row.contractEndDate || old.contractEndDate || ''),
+    idNumber: clean(row.idNumber || old.idNumber || ''),
+    birthDate: clean(row.birthDate || old.birthDate || ''),
+    householdAddress: clean(row.householdAddress || old.householdAddress || ''),
+    mailingAddress: clean(row.mailingAddress || old.mailingAddress || ''),
+    address: clean(row.mailingAddress || row.householdAddress || old.address || ''),
+    externalTeacherSyncedAt: nowTs(),
+    updatedAt: nowTs(),
+    source: 'external-teacher-sync'
+  };
+
+  const identityUrl = Array.isArray(row.identityUrls) && row.identityUrls.length ? row.identityUrls[0] : '';
+  if (identityUrl) update.identityDocumentUrl = identityUrl;
+
+  await ref.set(update, { merge: true });
+}
+
 function lineUserIdFromRow(data = {}) {
   return clean(data.lineUserId || data['LINE User ID'] || data.targetLineUserId || data.lineId || '');
 }
@@ -745,6 +824,7 @@ async function handleExternalTeacherLineEvent(event) {
       updatedAt: nowTs()
     }, { merge: true });
   });
+  await syncExternalTeacherEmployee(teacherId, Object.assign({}, profile, { lineUserId, lineDisplayName, lineBindStatus: 'bound', lineNotifyEnabled: true, bindCode }));
 
   await replyLineMessage(replyToken, `外聘老師 LINE 綁定完成 ✅\n\n您好 ${teacherName}，系統已完成您的 LINE 綁定。\n\n請回到外聘老師資料填寫頁，繼續完成基本資料、身分證明文件與契約簽署。\n\n${onboardingUrl(teacherId, token || profile.onboardingToken)}`);
   await pushAdminMessage(`外聘老師 LINE 綁定完成\n\n姓名：${teacherName}\n狀態：待填資料`);
@@ -829,6 +909,7 @@ function registerExternalTeacherOnboarding(exportsObj) {
     };
 
     await externalProfileRef(teacherId).set(profileRow, { merge: true });
+    await syncExternalTeacherEmployee(teacherId, profileRow);
 
     if (bindCode) {
       await db().collection('externalTeacherLineBindings').doc(bindCode).set({
@@ -956,6 +1037,7 @@ function registerExternalTeacherOnboarding(exportsObj) {
     if (identityFiles.length) update.identityFiles = admin.firestore.FieldValue.arrayUnion(...identityFiles);
 
     await externalProfileRef(teacherId).set(update, { merge: true });
+    await syncExternalTeacherEmployee(teacherId, Object.assign({}, profile, update));
     return { ok: true, payrollInfoStatus, paymentMethod, identityFiles, ...dates };
   });
 
@@ -1036,6 +1118,16 @@ function registerExternalTeacherOnboarding(exportsObj) {
       status: 'active',
       updatedAt: nowTs()
     }, { merge: true });
+    await syncExternalTeacherEmployee(teacherId, Object.assign({}, profile, {
+      contractStatus: 'signed',
+      currentContractId: contractId,
+      status: 'active',
+      contractGregorianYear: dates.contractGregorianYear,
+      contractRocYear: dates.contractRocYear,
+      contractYearKey: dates.contractYearKey,
+      contractStartDate: dates.contractStartDate,
+      contractEndDate: dates.contractEndDate
+    }));
 
     const completeBody = `外聘老師資料與契約簽署已完成 ✅\n\n柚子樂器已收到您的資料與簽名。\n\n合約年度：民國 ${dates.contractRocYear} 年\n契約期間：${dates.contractStartDate} 至 ${dates.contractEndDate}`;
     if (wantsLine(profile.bindingMethod) && profile.lineUserId) await pushLineMessage(profile.lineUserId, completeBody);
