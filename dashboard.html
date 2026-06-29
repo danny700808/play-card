@@ -502,11 +502,10 @@
           <div class="welcome">歡迎 <span data-user-name></span></div>
         </div>
         <div class="home-head-tools">
-          <div id="lineBindArea" class="head-tool-slot top-tool-slot"></div>
           <a class="top-tool-card" href="profile.html" id="openProfileBtn">
             <div class="top-tool-main">
-              <div class="top-tool-title">我的資料 <span class="tile-badge empty" id="profileCount" style="min-width:24px;height:24px;font-size:13px;padding:0 7px;vertical-align:middle">&nbsp;</span></div>
-              <div class="top-tool-desc">個人 / 薪資 / 投保</div>
+              <div class="top-tool-title">我的資料與通知設定 <span class="tile-badge empty" id="profileCount" style="min-width:24px;height:24px;font-size:13px;padding:0 7px;vertical-align:middle">&nbsp;</span></div>
+              <div class="top-tool-desc">基本資料 / LINE / Email</div>
             </div>
             <div class="top-tool-actions"><span class="top-tool-btn">查看</span></div>
           </a>
@@ -550,7 +549,6 @@
       if(!guardFeatureAccess('dashboard', user)) return;
       setPortalMode('staff');
       renderHomeTiles(user);
-      await renderSimpleLineCard(user, '#lineBindArea');
       refreshHomeCounts(user);
     }
 
