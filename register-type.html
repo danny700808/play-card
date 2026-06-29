@@ -6,7 +6,7 @@
   <title>柚子人員系統｜選擇註冊類型</title>
   <link rel="stylesheet" href="style.css?v=registration-type-20260629">
   <style>
-    body{background:#f6faf7}.type-card{max-width:920px;margin:22px auto}.intro{line-height:1.85;color:#4b5b68;font-weight:750}.type-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:18px}.type-option{display:flex;flex-direction:column;gap:10px;text-decoration:none;color:inherit;border:2px solid #dfe8ef;border-radius:22px;background:#fff;padding:20px;min-height:210px;box-shadow:0 8px 22px rgba(16,24,40,.06)}.type-option:hover{border-color:#1f7a5a;box-shadow:0 10px 30px rgba(31,122,90,.12);transform:translateY(-1px)}.type-option strong{font-size:26px;color:#104b38}.type-option span{line-height:1.75;color:#596b7a;font-weight:750}.badge{display:inline-flex;align-items:center;justify-content:center;width:42px;height:42px;border-radius:999px;background:#1f7a5a;color:#fff;font-weight:950}.staff{background:#f1fbf5}.parttime{background:#fff8ed}.external{background:#fff3f8}.notice{margin-top:16px;border-left:5px solid #1f7a5a;background:#edf9f3;border-radius:14px;padding:13px 15px;color:#285d4a;line-height:1.75;font-weight:800}@media(max-width:760px){.type-grid{grid-template-columns:1fr}.type-card{margin:10px auto}.type-option{min-height:0}.type-option strong{font-size:24px}}
+    body{background:#f6faf7}.type-card{max-width:920px;margin:22px auto}.type-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:18px}.type-option{display:flex;align-items:center;gap:14px;text-decoration:none;color:inherit;border:2px solid #dfe8ef;border-radius:22px;background:#fff;padding:24px 20px;min-height:112px;box-shadow:0 8px 22px rgba(16,24,40,.06)}.type-option:hover{border-color:#1f7a5a;box-shadow:0 10px 30px rgba(31,122,90,.12);transform:translateY(-1px)}.type-option strong{font-size:26px;color:#104b38;line-height:1.3}.badge{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;width:42px;height:42px;border-radius:999px;background:#1f7a5a;color:#fff;font-weight:950}.staff{background:#f1fbf5}.parttime{background:#fff8ed}.external{background:#fff3f8}.return-link{display:block;width:100%;text-align:center}.btn-row.full{display:block;margin-top:18px}@media(max-width:760px){.type-grid{grid-template-columns:1fr}.type-card{margin:10px auto}.type-option{min-height:0}.type-option strong{font-size:24px}}
   </style>
 </head>
 <body>
@@ -14,27 +14,22 @@
     <div class="card type-card">
       <div class="header">
         <h1 class="title">請選擇註冊類型</h1>
-        <p class="subtitle intro">請先確認自己的身分類型，系統會帶您到對應的資料填寫流程。專職員工與工讀生走入職建檔；外聘老師走資料與年度合約流程。</p>
       </div>
       <div class="type-grid">
         <a class="type-option staff" href="register.html?type=staff">
           <div class="badge">1</div>
           <strong>專職員工註冊</strong>
-          <span>填寫人事基本資料、證件資料與通知方式，送出後由主管完成薪資、投保與班表建檔。</span>
         </a>
         <a class="type-option parttime" href="register.html?type=parttime">
           <div class="badge">2</div>
           <strong>工讀生註冊</strong>
-          <span>填寫人事基本資料、證件資料與通知方式，送出後由主管完成時薪、投保與班表設定。</span>
         </a>
         <a class="type-option external" href="external-teacher-onboarding.html">
           <div class="badge">3</div>
-          <strong>外聘老師資料與合約</strong>
-          <span>建立外聘老師基本資料、LINE / Email 通知方式、年度契約與簽名資料，並同步到員工管理的人員總表。</span>
+          <strong>外聘老師註冊</strong>
         </a>
       </div>
-      <div class="notice">LINE 綁定會統一使用「柚子人員綁定 EMP-編號」格式。若註冊後忘記複製，主管可在後台查看並重新傳給您。</div>
-      <div class="btn-row" style="margin-top:18px"><a class="btn secondary center" href="index.html">回登入頁</a></div>
+      <div class="btn-row full"><a class="btn secondary center return-link" href="index.html">回登入頁</a></div>
     </div>
   </div>
 </body>
