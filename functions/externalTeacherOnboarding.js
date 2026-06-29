@@ -227,10 +227,85 @@ function normalizeTeachingText(value) {
   return clean(value);
 }
 
+function mobileDigits(value) {
+  return clean(value).replace(/\D/g, '');
+}
+
+function hashKey(value) {
+  return crypto.createHash('sha1').update(clean(value).toLowerCase()).digest('hex').slice(0, 12).toUpperCase();
+}
+
+function fallbackExternalEmployeeId(name, email, mobile) {
+  const seed = lower(email) || mobileDigits(mobile) || clean(name) || String(Date.now());
+  return `EXTEMP_${hashKey(seed)}`;
+}
+
+function isExternalEmployeeRow(row = {}) {
+  const raw = lower(row.identityType || row.employeeType || row.identityLabel || row.role || '');
+  return row.isExternalTeacher === true || raw.includes('external') || raw.includes('外聘') || raw.includes('externalteacher');
+}
+
+function isManagerEmployeeRow(row = {}, id = '') {
+  const role = lower(row.role || row.userRole || row.permissionRole || row.identityType || row.employeeType || '');
+  const email = lower(row.email || row.Email || row.mail || row.loginEmail || '');
+  return id === 'PRIMARY_MANAGER_LINE' || BOOTSTRAP_ADMIN_EMAILS.has(email) || row.isAdmin === true || row.isManager === true || row.showSettingsZone === true || ['admin', 'manager', '主管', '管理者'].some((k) => role.includes(k));
+}
+
+async function collectEmployeeCandidate(list, query) {
+  try {
+    const snap = await query.limit(5).get();
+    snap.forEach((doc) => {
+      const data = doc.data() || {};
+      if (!isManagerEmployeeRow(data, doc.id)) list.push({ id: doc.id, data });
+    });
+  } catch (err) {
+    logger.warn('collectEmployeeCandidate failed', err);
+  }
+}
+
+function pickEmployeeCandidate(list) {
+  if (!list.length) return null;
+  const deduped = Array.from(new Map(list.map((x) => [x.id, x])).values());
+  deduped.sort((a, b) => {
+    const ae = isExternalEmployeeRow(a.data) ? 1 : 0;
+    const be = isExternalEmployeeRow(b.data) ? 1 : 0;
+    if (ae !== be) return be - ae;
+    return clean(b.data.externalTeacherSyncedAt || b.data.updatedAt || '').localeCompare(clean(a.data.externalTeacherSyncedAt || a.data.updatedAt || ''));
+  });
+  return deduped[0];
+}
+
+async function findExternalEmployeeByContact(email, mobile) {
+  const candidates = [];
+  const em = lower(email || '');
+  const mob = clean(mobile || '');
+  const digits = mobileDigits(mob);
+  if (em) {
+    await collectEmployeeCandidate(candidates, db().collection('employees').where('email', '==', em));
+    await collectEmployeeCandidate(candidates, db().collection('employees').where('Email', '==', em));
+  }
+  if (mob) {
+    await collectEmployeeCandidate(candidates, db().collection('employees').where('mobilePhone', '==', mob));
+    await collectEmployeeCandidate(candidates, db().collection('employees').where('phone', '==', mob));
+    await collectEmployeeCandidate(candidates, db().collection('employees').where('mobile', '==', mob));
+  }
+  if (digits) await collectEmployeeCandidate(candidates, db().collection('employees').where('mobileDigits', '==', digits));
+  return pickEmployeeCandidate(candidates);
+}
+
+async function resolveExternalEmployeeId(row = {}) {
+  let id = clean(row.employeeId || row.externalTeacherEmployeeId || row.linkedEmployeeId || '');
+  if (id) return id;
+  const existing = await findExternalEmployeeByContact(row.email, row.mobile || row.phone);
+  if (existing) return existing.id;
+  return fallbackExternalEmployeeId(row.name || row.teacherName || row.displayName, row.email, row.mobile || row.phone);
+}
+
 async function syncExternalTeacherEmployee(teacherId, row = {}) {
-  const id = clean(teacherId || row.teacherId || row.id);
-  if (!id) return;
-  const ref = db().collection('employees').doc(id);
+  const contractId = clean(row.contractId || row.currentContractId || row.id || teacherId || '');
+  const employeeId = await resolveExternalEmployeeId(Object.assign({}, row, { employeeId: row.employeeId || row.externalTeacherEmployeeId }));
+  if (!employeeId) return '';
+  const ref = db().collection('employees').doc(employeeId);
   let old = {};
   try {
     const snap = await ref.get();
@@ -246,15 +321,16 @@ async function syncExternalTeacherEmployee(teacherId, row = {}) {
   const teachingItemsText = normalizeTeachingText(row.teachingItems || old.teachingItems || old.teachingItemsText || '');
 
   const update = {
-    employeeId: id,
-    id,
-    userId: id,
+    employeeId,
+    id: employeeId,
+    userId: employeeId,
     name,
     displayName: name,
     employeeName: name,
     email,
     mobilePhone: mobile,
     phone: mobile,
+    mobileDigits: mobileDigits(mobile),
     identityType: 'external',
     identityLabel: '外聘老師',
     employeeType: 'external',
@@ -270,9 +346,9 @@ async function syncExternalTeacherEmployee(teacherId, row = {}) {
     emailBindStatus: clean(row.emailBindStatus || old.emailBindStatus || ''),
     bindingMethod: clean(row.bindingMethod || old.bindingMethod || ''),
     bindingMethodLabel: clean(row.bindingMethodLabel || old.bindingMethodLabel || ''),
-    externalTeacherProfileId: id,
-    externalTeacherContractId: id,
-    currentExternalContractId: clean(row.currentContractId || row.contractId || old.currentExternalContractId || id),
+    externalTeacherProfileId: clean(row.externalTeacherProfileId || old.externalTeacherProfileId || contractId),
+    externalTeacherContractId: contractId || clean(old.externalTeacherContractId || ''),
+    currentExternalContractId: contractId || clean(old.currentExternalContractId || ''),
     externalTeacherStatus: clean(row.status || old.externalTeacherStatus || ''),
     contractStatus: clean(row.contractStatus || row.status || old.contractStatus || ''),
     progressStatus: clean(row.progressStatus || old.progressStatus || ''),
@@ -291,13 +367,26 @@ async function syncExternalTeacherEmployee(teacherId, row = {}) {
     address: clean(row.mailingAddress || row.householdAddress || old.address || ''),
     externalTeacherSyncedAt: nowTs(),
     updatedAt: nowTs(),
-    source: 'external-teacher-sync'
+    source: 'external-teacher-linked-sync'
   };
 
   const identityUrl = Array.isArray(row.identityUrls) && row.identityUrls.length ? row.identityUrls[0] : '';
   if (identityUrl) update.identityDocumentUrl = identityUrl;
+  if (contractId) update.externalTeacherContractIds = admin.firestore.FieldValue.arrayUnion(contractId);
 
   await ref.set(update, { merge: true });
+
+  if (contractId) {
+    const linkPatch = {
+      employeeId,
+      externalTeacherEmployeeId: employeeId,
+      employeeRef: `employees/${employeeId}`,
+      updatedAt: nowTs()
+    };
+    await db().collection('externalTeacherContracts').doc(contractId).set(linkPatch, { merge: true }).catch(() => null);
+    await db().collection('externalTeacherProfiles').doc(contractId).set(linkPatch, { merge: true }).catch(() => null);
+  }
+  return employeeId;
 }
 
 function lineUserIdFromRow(data = {}) {
@@ -426,6 +515,24 @@ async function getExternalTeacherProfile(teacherId) {
   const ref = externalProfileRef(teacherId);
   const snap = await ref.get();
   if (snap.exists) return { ref, snap, profile: { id: snap.id, ...snap.data() } };
+
+  // 向下相容：前端直寫版本會先建立 externalTeacherContracts，再同步 profile。若 profile 尚未建立，先從合約補回。
+  const contractSnap = await db().collection('externalTeacherContracts').doc(teacherId).get();
+  if (contractSnap.exists) {
+    const c = contractSnap.data() || {};
+    const profile = {
+      teacherId,
+      id: teacherId,
+      ...c,
+      displayName: clean(c.displayName || c.name || c.teacherName || ''),
+      profileStatus: clean(c.profileStatus || c.status || 'waiting_bindings'),
+      migratedFromContract: true,
+      updatedAt: nowTs()
+    };
+    await ref.set(profile, { merge: true });
+    const newSnap = await ref.get();
+    return { ref, snap: newSnap, profile: { id: newSnap.id, ...newSnap.data() } };
+  }
 
   // 向下相容：如果早期版本曾把外聘老師資料放 employees，讀取時可轉成獨立 profile。
   const oldSnap = await db().collection('employees').doc(teacherId).get();
@@ -812,7 +919,9 @@ async function handleExternalTeacherLineEvent(event) {
 
   await db().runTransaction(async (tx) => {
     tx.set(bindingRef, { status: 'bound', lineUserId, lineDisplayName, boundAt: nowTs(), updatedAt: nowTs() }, { merge: true });
-    tx.set(ref, {
+    const linePatch = {
+      employeeId: clean(profile.employeeId || profile.externalTeacherEmployeeId || binding.employeeId || ''),
+      externalTeacherEmployeeId: clean(profile.employeeId || profile.externalTeacherEmployeeId || binding.employeeId || ''),
       lineUserId,
       lineNotifyEnabled: true,
       lineBindStatus: 'bound',
@@ -822,9 +931,11 @@ async function handleExternalTeacherLineEvent(event) {
       onboardingToken: token || profile.onboardingToken || '',
       status: profile.status === 'pendingLine' ? 'pendingProfile' : (profile.status || 'pendingProfile'),
       updatedAt: nowTs()
-    }, { merge: true });
+    };
+    tx.set(ref, linePatch, { merge: true });
+    tx.set(db().collection('externalTeacherContracts').doc(teacherId), linePatch, { merge: true });
   });
-  await syncExternalTeacherEmployee(teacherId, Object.assign({}, profile, { lineUserId, lineDisplayName, lineBindStatus: 'bound', lineNotifyEnabled: true, bindCode }));
+  await syncExternalTeacherEmployee(teacherId, Object.assign({}, profile, { contractId: teacherId, lineUserId, lineDisplayName, lineBindStatus: 'bound', lineNotifyEnabled: true, bindCode }));
 
   await replyLineMessage(replyToken, `外聘老師 LINE 綁定完成 ✅\n\n您好 ${teacherName}，系統已完成您的 LINE 綁定。\n\n請回到外聘老師資料填寫頁，繼續完成基本資料、身分證明文件與契約簽署。\n\n${onboardingUrl(teacherId, token || profile.onboardingToken)}`);
   await pushAdminMessage(`外聘老師 LINE 綁定完成\n\n姓名：${teacherName}\n狀態：待填資料`);
@@ -868,7 +979,8 @@ function registerExternalTeacherOnboarding(exportsObj) {
       throw new HttpsError('failed-precondition', '下一年度契約需於每年 12 月 15 日起開放簽署。');
     }
 
-    const teacherId = clean(data.teacherId || data.userId || (request.auth && request.auth.uid) || db().collection('externalTeacherProfiles').doc().id);
+    let teacherId = clean(data.teacherId || data.userId || (request.auth && request.auth.uid) || '');
+    if (!teacherId) teacherId = await resolveExternalEmployeeId({ name, mobile, email });
     const token = makeToken();
     const bindCode = wantsLine(bindingMethod) ? makeBindCode() : '';
     const url = onboardingUrl(teacherId, token);
@@ -877,6 +989,8 @@ function registerExternalTeacherOnboarding(exportsObj) {
     const profileRow = {
       teacherId,
       id: teacherId,
+      employeeId: teacherId,
+      externalTeacherEmployeeId: teacherId,
       name,
       displayName: name,
       mobile,
@@ -915,6 +1029,8 @@ function registerExternalTeacherOnboarding(exportsObj) {
       await db().collection('externalTeacherLineBindings').doc(bindCode).set({
         bindCode,
         teacherId,
+        employeeId: teacherId,
+        externalTeacherEmployeeId: teacherId,
         teacherName: name,
         mobile,
         email,
@@ -1074,6 +1190,8 @@ function registerExternalTeacherOnboarding(exportsObj) {
     const contractDoc = {
       contractId,
       teacherId,
+      employeeId: clean(profile.employeeId || profile.externalTeacherEmployeeId || teacherId),
+      externalTeacherEmployeeId: clean(profile.employeeId || profile.externalTeacherEmployeeId || teacherId),
       teacherName: clean(profile.name || profile.displayName || ''),
       profileRef: `externalTeacherProfiles/${teacherId}`,
       templateId: template.id,
