@@ -202,7 +202,7 @@
       if(raw.includes('external') || raw.includes('teacher') || raw.includes('外聘') || label.includes('外聘')) return 'external';
       return 'staff';
     }
-    function identityText(type){ return type === 'parttime' ? '工讀生' : (type === 'external' ? '外聘' : '員工'); }
+    function identityText(type){ return type === 'parttime' ? '工讀生' : (type === 'external' ? '外聘老師' : '員工'); }
     function typeClass(type){ return type === 'parttime' ? 'orange' : (type === 'external' ? 'blue' : 'green'); }
     function boolLabel(v){
       if(v === true) return '啟用';
@@ -279,7 +279,7 @@
       const inactive = {staff:0, parttime:0, external:0};
       allEmployees.forEach(e => (canShowDaily(e)?active:inactive)[identityType(e)]++);
       $('#categoryCards').innerHTML = [
-        ['staff','員工','staff'], ['parttime','工讀生','parttime'], ['external','外聘','external']
+        ['staff','員工','staff'], ['parttime','工讀生','parttime'], ['external','外聘老師','external']
       ].map(([type,title,cls]) => `
         <div class="category-card ${cls}" onclick="openCategory('${type}')">
           <div class="cat-title">${title}</div>
@@ -380,6 +380,60 @@
 
     function summaryCard(label,value,state){return `<div class="summary-card ${state||''}"><span>${esc(label)}</span><strong>${esc(value||'尚未設定')}</strong></div>`}
     function encode(v){return encodeURIComponent(clean(v))}
+    function externalContractIdOf(e){ return clean(firstValue(e, ['currentExternalContractId','externalTeacherContractId','externalTeacherProfileId','contractId'])); }
+    function employeeDb(){ if(window.firebase && firebase.apps && firebase.apps.length) return firebase.firestore(); throw new Error('Firebase 尚未啟用'); }
+    async function updateDocsByQuery(collectionName, field, value, patch){
+      if(!value) return 0;
+      let count = 0;
+      try{
+        const snap = await employeeDb().collection(collectionName).where(field, '==', value).limit(80).get();
+        const jobs = [];
+        snap.forEach(doc => { count++; jobs.push(doc.ref.set(patch, { merge:true })); });
+        await Promise.all(jobs);
+      }catch(err){ console.warn('[sync external teacher query]', collectionName, field, err); }
+      return count;
+    }
+    async function syncExternalTeacherStatusFromEmployee(e, overrides){
+      if(!e || identityType(e) !== 'external') return;
+      overrides = overrides || {};
+      const employeeId = empId(e);
+      const email = emailOf(e);
+      const contractId = externalContractIdOf(e);
+      const accountStatus = clean(overrides.accountStatus || ($('#accountStatus') && $('#accountStatus').value) || firstValue(e, ['accountStatus','帳號狀態']) || 'active');
+      const employmentStatus = clean(overrides.employmentStatus || ($('#employmentStatus') && $('#employmentStatus').value) || firstValue(e, ['employmentStatus','任職狀態']) || 'active');
+      const hidden = overrides.hiddenFromActiveLists !== undefined ? !!overrides.hiddenFromActiveLists : (($('#hiddenFromActiveLists') && $('#hiddenFromActiveLists').value === 'true') || !!firstValue(e, ['hiddenFromActiveLists','隱藏於日常清單','hidden','隱藏']));
+      const resignedDate = clean(overrides.resignedDate || ($('#resignedDate') && $('#resignedDate').value) || firstValue(e, ['resignedDate','leaveDate','離職日']));
+      const statusNote = clean(overrides.statusNote || ($('#statusNote') && $('#statusNote').value) || firstValue(e, ['statusNote','狀態備註','note','備註']));
+      const personStatus = (accountStatus === 'archived' || employmentStatus === 'archived' || employmentStatus === 'contractorEnded' || hidden) ? 'archived' : 'active';
+      const now = new Date().toISOString();
+      const patch = {
+        employeeId,
+        externalTeacherEmployeeId: employeeId,
+        employeeRef: employeeId ? `employees/${employeeId}` : '',
+        personAccountStatus: accountStatus,
+        personEmploymentStatus: employmentStatus,
+        personHiddenFromActiveLists: hidden,
+        personStatus,
+        personStatusLabel: personStatus === 'archived' ? '員工管理已封存 / 停止合作' : '員工管理啟用中',
+        personStatusNote: statusNote,
+        personResignedDate: resignedDate,
+        personStatusSyncedAt: now,
+        updatedAt: now
+      };
+      if(contractId){
+        await employeeDb().collection('externalTeacherContracts').doc(contractId).set(patch, { merge:true });
+        await employeeDb().collection('externalTeacherProfiles').doc(contractId).set(patch, { merge:true });
+      }
+      let count = 0;
+      if(employeeId){
+        count += await updateDocsByQuery('externalTeacherContracts','employeeId',employeeId,patch);
+        count += await updateDocsByQuery('externalTeacherProfiles','employeeId',employeeId,patch);
+      }
+      if(!count && email){
+        count += await updateDocsByQuery('externalTeacherContracts','email',email,patch);
+        count += await updateDocsByQuery('externalTeacherProfiles','email',email,patch);
+      }
+    }
 
     function renderDetail(e){
       const type = identityType(e);
@@ -398,7 +452,8 @@
       const identityVerified=firstValue(e,['identityDocumentVerified','identityVerificationStatus'])===true || clean(firstValue(e,['identityVerificationStatus']))==='verified';
       const salaryReady=clean(mainAmount)!=='' && clean(laborStatus)!=='' && clean(healthStatus)!=='';
       const scheduleText=type==='external'?'不適用':(schedule.templateName||firstValue(e,['currentScheduleTemplateName'])||'尚未設定');
-      const dataSource=firstValue(e,['registrationApplicationId'])?'註冊審核暨入職建檔':'既有人員主檔';
+      const dataSource=type==='external'?'外聘老師簽約系統':(firstValue(e,['registrationApplicationId'])?'註冊審核暨入職建檔':'既有人員主檔');
+      const externalContractId=externalContractIdOf(e);
 
       $('#detailPanel').innerHTML = `
         <div class="topline">
@@ -438,9 +493,10 @@
           ${summaryCard('薪資投保', type==='external'?'不適用':(salaryReady?'已設定':'尚未完成'),type==='external'||salaryReady?'ok':'warn')}
           ${summaryCard('LINE 綁定', firstValue(e,['lineUserId','LINE User ID'])?'已綁定':'尚未綁定',firstValue(e,['lineUserId','LINE User ID'])?'ok':'warn')}
           ${summaryCard('帳號狀態', status,canShowDaily(e)?'ok':'bad')}
+          ${type==='external'?summaryCard('外聘合約關聯', externalContractId?'已連結':'尚未連結', externalContractId?'ok':'warn'):''}
         </div>
         <div class="link-actions">
-          ${type!=='external'?`<a class="link-btn" href="salary-admin.html?employeeId=${encode(targetId)}">查看／調整薪資投保</a><a class="link-btn secondary" href="schedule-admin.html?employeeId=${encode(targetId)}&panel=assignment">查看／調整班表</a>`:''}
+          ${type!=='external'?`<a class="link-btn" href="salary-admin.html?employeeId=${encode(targetId)}">查看／調整薪資投保</a><a class="link-btn secondary" href="schedule-admin.html?employeeId=${encode(targetId)}&panel=assignment">查看／調整班表</a>`:`<a class="link-btn secondary" href="external-teacher-admin.html">查看外聘老師合約管理</a>`}
         </div>
 
         <div class="section-title">LINE 資料</div>
@@ -528,6 +584,7 @@
       try{
         const res=await api('archiveEmployeeLifecycle',{userId:currentUser.id,employeeId:empId(e),email:emailOf(e),reason:reason.trim()});
         if(!res||res.ok===false)throw new Error((res&&res.message)||'封存失敗');
+        if(external) await syncExternalTeacherStatusFromEmployee(e,{accountStatus:'archived',employmentStatus:'contractorEnded',hiddenFromActiveLists:true,resignedDate:new Date().toISOString().slice(0,10),statusNote:reason.trim()});
         msg.textContent=res.message||'已封存。';await loadEmployees();showLayer(1);
       }catch(err){msg.classList.add('error');msg.textContent=err.message||'封存失敗';}
     }
@@ -547,6 +604,7 @@
       };
       try{
         const res = await api('updateEmployeeAdminStatus', payload);
+        if(identityType(e)==='external') await syncExternalTeacherStatusFromEmployee(e,payload);
         msg.textContent = (res && res.message) || '已儲存。';
         await loadEmployees();
         const updated = allEmployees.find(x => (empId(x) || emailOf(x)) === selectedId);
