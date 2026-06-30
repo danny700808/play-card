@@ -875,7 +875,9 @@ function publicProfile(profile) {
 
 async function handleExternalTeacherLineEvent(event) {
   const text = event && event.message && event.message.type === 'text' ? clean(event.message.text) : '';
-  const match = text.match(/^外聘老師綁定\s+([A-Z0-9-]+)$/i);
+  const legacyMatch = text.match(/^外聘老師綁定\s+([A-Z0-9-]+)$/i);
+  const personnelMatch = text.match(/^柚子人員綁定\s+([A-Z0-9-]+)$/i);
+  const match = legacyMatch || personnelMatch;
   if (!match) return false;
 
   const bindCode = match[1].toUpperCase();
@@ -889,7 +891,8 @@ async function handleExternalTeacherLineEvent(event) {
   const bindingRef = db().collection('externalTeacherLineBindings').doc(bindCode);
   const bindingSnap = await bindingRef.get();
   if (!bindingSnap.exists) {
-    await replyLineMessage(replyToken, '查不到這組外聘老師綁定碼。\n\n請確認文字是否完整，例如：\n外聘老師綁定 EXT-123456');
+    if (personnelMatch) return false;
+    await replyLineMessage(replyToken, '查不到這組外聘老師綁定碼。\n\n請確認文字是否完整，例如：\n柚子人員綁定 EMP-123456');
     return true;
   }
 

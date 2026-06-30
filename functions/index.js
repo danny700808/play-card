@@ -429,6 +429,103 @@ async function hasThisLineBoundToAnotherEmployee(lineUserId, currentEmployeeId) 
   return snap.docs.some((doc) => doc.id !== currentEmployeeId && doc.id !== 'PRIMARY_MANAGER_LINE');
 }
 
+async function findEmployeeByBindCode(bindCode) {
+  const code = normalizeText(bindCode).toUpperCase();
+  if (!code) return null;
+  const bindingRef = db.collection('employeeLineBindings').doc(code);
+  const bindingSnap = await bindingRef.get();
+  let binding = bindingSnap.exists ? (bindingSnap.data() || {}) : null;
+  let employeeId = normalizeText(binding && (binding.employeeId || binding.employeeDocId || binding.targetEmployeeId));
+  let applicationId = normalizeText(binding && binding.applicationId);
+
+  if (!employeeId && applicationId) {
+    const appSnap = await db.collection('registrationApplications').doc(applicationId).get();
+    if (appSnap.exists) {
+      const app = appSnap.data() || {};
+      employeeId = normalizeText(app.approvedEmployeeDocId || app.approvedEmployeeId || app.linkedEmployeeId || '');
+    }
+  }
+
+  if (employeeId) {
+    const employeeSnap = await db.collection('employees').doc(employeeId).get();
+    if (employeeSnap.exists) return { type: 'employee', ref: employeeSnap.ref, id: employeeSnap.id, data: employeeSnap.data() || {}, bindingRef, binding, applicationId };
+  }
+
+  if (applicationId) {
+    const appSnap = await db.collection('registrationApplications').doc(applicationId).get();
+    if (appSnap.exists) return { type: 'application', ref: appSnap.ref, id: appSnap.id, data: appSnap.data() || {}, bindingRef, binding, applicationId };
+  }
+
+  const q = await db.collection('registrationApplications').where('employeeBindCode', '==', code).limit(1).get();
+  if (!q.empty) {
+    const doc = q.docs[0];
+    return { type: 'application', ref: doc.ref, id: doc.id, data: doc.data() || {}, bindingRef, binding, applicationId: doc.id };
+  }
+
+  return null;
+}
+
+async function handleEmployeeCodeBinding({ bindCode, lineUserId, replyToken }) {
+  const code = normalizeText(bindCode).toUpperCase();
+  const target = await findEmployeeByBindCode(code);
+  if (!target) {
+    await replyLineMessage(replyToken, `查不到這組人員 LINE 綁定碼：${code}\n\n請確認是否完整複製後再貼上，或請主管從後台重新提供綁定文字。`);
+    return;
+  }
+
+  const primaryManagerLineUserId = await getPrimaryManagerLineUserId();
+  if (primaryManagerLineUserId && primaryManagerLineUserId === lineUserId) {
+    await replyLineMessage(replyToken, '這支 LINE 已被設定為主管通知帳號，不能綁定人員帳號。請使用本人自己的手機 LINE 綁定。');
+    return;
+  }
+
+  const currentEmployeeId = target.type === 'employee' ? target.id : normalizeText(target.data.approvedEmployeeId || target.data.linkedEmployeeId || target.data.employeeId || target.id);
+  const isAlreadyBoundElsewhere = await hasThisLineBoundToAnotherEmployee(lineUserId, currentEmployeeId);
+  if (isAlreadyBoundElsewhere) {
+    await replyLineMessage(replyToken, '這支 LINE 已綁定其他人員，不能重複綁定。請先由主管清除原本的 LINE 綁定。');
+    return;
+  }
+
+  const profile = await getLineProfile(lineUserId);
+  const lineDisplayName = normalizeText(profile.displayName || '');
+  const patch = {
+    lineUserId,
+    lineDisplayName,
+    lineNotifyEnabled: true,
+    lineBindStatus: 'bound',
+    lineBoundAt: admin.firestore.FieldValue.serverTimestamp(),
+    lineBoundAtText: new Date().toISOString(),
+    employeeBindCode: code,
+    employeeBindText: `柚子人員綁定 ${code}`,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAtText: new Date().toISOString()
+  };
+
+  await target.ref.set(patch, { merge: true });
+  if (target.type === 'application') {
+    await target.ref.set({ applicationStatus: 'pending_setup', status: '待主管建檔', currentStep: '等待主管審核', progressStatus: 'LINE 已綁定，等待主管審核' }, { merge: true });
+  }
+  if (target.bindingRef) {
+    await target.bindingRef.set({ status: 'bound', lineUserId, lineDisplayName, boundAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  }
+
+  const externalTeacherContractId = normalizeText(target.binding && (target.binding.externalTeacherContractId || target.binding.teacherId || target.binding.externalTeacherId));
+  if (externalTeacherContractId) {
+    const externalPatch = {
+      ...patch,
+      externalTeacherEmployeeId: currentEmployeeId || target.id,
+      employeeId: currentEmployeeId || target.id,
+      status: 'waiting_contract',
+      progressStatus: '綁定完成，等待正式資料填寫'
+    };
+    await db.collection('externalTeacherContracts').doc(externalTeacherContractId).set(externalPatch, { merge: true });
+    await db.collection('externalTeacherProfiles').doc(externalTeacherContractId).set(externalPatch, { merge: true });
+  }
+
+  const name = normalizeText(target.data.name || target.data.displayName || target.data.employeeName || target.data.teacherName || target.data.email || code);
+  await replyLineMessage(replyToken, `LINE 綁定成功 ✅\n\n姓名：${name}\n綁定碼：${code}`);
+}
+
 async function handleEmployeeBinding({ email, lineUserId, replyToken }) {
   if (isBootstrapAdminEmail(email)) {
     await replyLineMessage(replyToken, '這個 Email 已設定為系統管理者，不能使用員工綁定指令。主管請使用：柚子主管綁定 your@email.com');
@@ -1756,6 +1853,7 @@ exports.lineWebhook = onRequest(
         }
 
         const rentalCommand = parseRentalApplicationCommand(text);
+        const employeeCodeMatch = text.match(/^柚子人員綁定\s+([A-Z0-9-]+)$/i);
         const employeeMatch = text.match(/^柚子員工綁定\s+([^\s]+@[^\s]+)$/i);
         const managerMatch = text.match(/^柚子主管綁定\s+([^\s]+@[^\s]+)$/i);
         const oldMatch = text.match(/^柚子綁定\s+([^\s]+@[^\s]+)$/i);
@@ -1775,8 +1873,17 @@ exports.lineWebhook = onRequest(
           continue;
         }
 
+        if (employeeCodeMatch) {
+          await handleEmployeeCodeBinding({
+            bindCode: employeeCodeMatch[1],
+            lineUserId,
+            replyToken
+          });
+          continue;
+        }
+
         if (oldMatch) {
-          await replyLineMessage(replyToken, '舊版綁定指令已停用。員工請輸入：柚子員工綁定 your@email.com；主管請輸入：柚子主管綁定 your@email.com');
+          await replyLineMessage(replyToken, '舊版綁定指令已停用。人員請輸入：柚子人員綁定 EMP-編號；主管請輸入：柚子主管綁定 your@email.com');
           continue;
         }
 
@@ -1799,7 +1906,7 @@ exports.lineWebhook = onRequest(
         }
 
         if (text.includes('綁定')) {
-          await replyLineMessage(replyToken, '綁定格式錯誤。員工請輸入：柚子員工綁定 your@email.com；主管請輸入：柚子主管綁定 your@email.com');
+          await replyLineMessage(replyToken, '綁定格式錯誤。人員請輸入：柚子人員綁定 EMP-編號；主管請輸入：柚子主管綁定 your@email.com');
         }
       }
 
