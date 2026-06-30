@@ -107,7 +107,11 @@
   }
 
   function deliveryLabelPair(contract) {
-    const method = normalizeDeliveryMethod((contract && (contract.deliveryMethod || contract.shippingMethod || contract.deliveryType || contract.delivery || contract.preferredDeliveryMethod)) || '');
+    contract = contract || {};
+    const methodType = clean(contract.deliveryMethodType || contract.shippingMethodType);
+    const customMethod = clean(contract.deliveryMethodOtherText || contract.shippingMethodOtherText || contract.otherDeliveryMethod || contract.otherShippingMethod);
+    const rawMethod = clean(contract.deliveryMethod || contract.shippingMethod || contract.deliveryType || contract.delivery || contract.preferredDeliveryMethod);
+    const method = methodType === '其他' ? (customMethod || rawMethod || '其他') : normalizeDeliveryMethod(rawMethod);
     if (method === '自取自運') {
       return {
         method,
@@ -115,10 +119,17 @@
         actionLabel: '自取'
       };
     }
+    if (method === '到府安裝') {
+      return {
+        method: '到府安裝',
+        dateLabel: '安裝時間',
+        actionLabel: '安裝'
+      };
+    }
     return {
-      method: '到府安裝',
-      dateLabel: '安裝時間',
-      actionLabel: '安裝'
+      method: method || '其他',
+      dateLabel: '交付日期',
+      actionLabel: '交付'
     };
   }
 
