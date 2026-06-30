@@ -1,1452 +1,563 @@
-/**
- * 外聘老師獨立簽約模組
- *
- * 原則：
- * - 不寫入租賃集合，不修改 rental* 資料。
- * - 外聘老師資料獨立存在 externalTeacherProfiles。
- * - 合約紀錄獨立存在 externalTeacherContracts。
- * - 合約模板獨立存在 externalTeacherContractTemplates。
- * - 身分證、簽名、合約 HTML 存 Firebase Storage，Firestore 只存 URL 與摘要。
- */
-
-const { onCall, HttpsError } = require('firebase-functions/v2/https');
-const { onSchedule } = require('firebase-functions/v2/scheduler');
-const logger = require('firebase-functions/logger');
-const admin = require('firebase-admin');
-const crypto = require('crypto');
-
-const REGION = process.env.FUNCTIONS_REGION || 'us-central1';
-const DEFAULT_WEB_BASE_URL = 'https://danny700808.github.io/play-card/';
-const BOOTSTRAP_ADMIN_EMAILS = new Set(['danny700808@gmail.com']);
-
-function db() {
-  return admin.firestore();
-}
-
-function bucket() {
-  return admin.storage().bucket();
-}
-
-function clean(value) {
-  return String(value == null ? '' : value).trim();
-}
-
-function lower(value) {
-  return clean(value).toLowerCase();
-}
-
-function nowTs() {
-  return admin.firestore.FieldValue.serverTimestamp();
-}
-
-function pad2(n) {
-  return String(n).padStart(2, '0');
-}
-
-function dateKey(date = new Date()) {
-  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
-}
-
-function todayKey() {
-  return dateKey(new Date());
-}
-
-function currentGregorianYear() {
-  return new Date().getFullYear();
-}
-
-function rocYear(gregorianYear) {
-  return Number(gregorianYear || currentGregorianYear()) - 1911;
-}
-
-function isDec15OrLater(date = new Date()) {
-  return date.getMonth() > 11 || (date.getMonth() === 11 && date.getDate() >= 15);
-}
-
-function nextYearOpenDate(gregorianYear) {
-  return `${Number(gregorianYear || currentGregorianYear())}-12-15`;
-}
-
-function normalizeContractGregorianYear(value) {
-  const raw = clean(value);
-  if (!raw) return currentGregorianYear();
-  const n = Number(raw.replace(/[^0-9]/g, ''));
-  if (!Number.isFinite(n) || !n) return currentGregorianYear();
-  return n < 1911 ? n + 1911 : n;
-}
-
-function contractDatesFromData(data = {}, existing = {}) {
-  const targetYear = normalizeContractGregorianYear(data.contractYear || data.contractGregorianYear || data.gregorianYear || existing.contractGregorianYear || existing.contractYear);
-  const explicitStart = clean(data.contractStartDate || existing.contractStartDate);
-  const explicitEnd = clean(data.contractEndDate || existing.contractEndDate);
-  let contractStartDate = explicitStart;
-  if (!contractStartDate) {
-    contractStartDate = targetYear > currentGregorianYear() ? `${targetYear}-01-01` : todayKey();
-  }
-  const contractEndDate = explicitEnd || `${targetYear}-12-31`;
-  return {
-    contractGregorianYear: targetYear,
-    contractRocYear: rocYear(targetYear),
-    contractYearKey: String(rocYear(targetYear)),
-    contractStartDate,
-    contractEndDate,
-    nextRenewalOpenDate: nextYearOpenDate(targetYear),
-  };
-}
-
-function availableContractYears() {
-  const current = currentGregorianYear();
-  const years = [{ gregorianYear: current, rocYear: rocYear(current), open: true, label: `${rocYear(current)} 年（${current}-12-31 到期）` }];
-  years.push({ gregorianYear: current + 1, rocYear: rocYear(current + 1), open: isDec15OrLater(new Date()), label: `${rocYear(current + 1)} 年（下一年度，12/15 後開放）` });
-  return years;
-}
-
-function makeToken() {
-  return crypto.randomBytes(18).toString('hex');
-}
-
-function makeBindCode() {
-  return `EMP-${Math.random().toString(36).slice(2, 10).toUpperCase()}`;
-}
-
-function makeId(prefix) {
-  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
-}
-
-function safeFileName(name) {
-  return clean(name || 'file').replace(/[\\/:*?"<>|#%{}]/g, '_').slice(0, 120) || 'file';
-}
-
-function normalizeBindingMethod(value, hasEmail) {
-  const v = lower(value || '');
-  if (['line', 'line_only', 'line-only', '只用line', '只用 line'].includes(v)) return 'line';
-  if (['email', 'email_only', 'email-only', 'mail', '只用email', '只用 email', '信箱'].includes(v)) return 'email';
-  if (['both', 'line_email', 'line+email', 'line + email', 'all', '兩者', '雙軌'].includes(v)) return 'both';
-  return hasEmail ? 'both' : 'line';
-}
-
-function wantsLine(method) {
-  return method === 'line' || method === 'both';
-}
-
-function wantsEmail(method) {
-  return method === 'email' || method === 'both';
-}
-
-function webBaseUrl() {
-  return clean(process.env.PUBLIC_WEB_BASE_URL || process.env.APP_BASE_URL || DEFAULT_WEB_BASE_URL).replace(/\/?$/, '/');
-}
-
-function onboardingUrl(teacherId, token) {
-  return `${webBaseUrl()}external-teacher-onboarding.html?teacherId=${encodeURIComponent(teacherId || '')}&token=${encodeURIComponent(token || '')}`;
-}
-
-function payrollUrl(teacherId, token) {
-  return `${webBaseUrl()}external-teacher-payroll.html?teacherId=${encodeURIComponent(teacherId || '')}&token=${encodeURIComponent(token || '')}`;
-}
-
-function contractAdminUrl() {
-  return `${webBaseUrl()}external-teacher-admin.html`;
-}
-
-function isAdminToken(request) {
-  const token = request && request.auth && request.auth.token;
-  if (!token) return false;
-  const role = lower(token.role || token.userRole || token.permissionRole || '');
-  return token.admin === true || token.owner === true || ['admin', 'owner', 'manager'].includes(role);
-}
-
-function isManagerData(data, docId) {
-  data = data || {};
-  const role = lower(data.role || data.userRole || data.permissionRole || '');
-  const identityType = lower(data.identityType || data.type || data.employmentType || '');
-  const level = lower(data.level || '');
-  const email = lower(data.email || data.Email || data.mail || data.loginEmail || '');
-  return (
-    BOOTSTRAP_ADMIN_EMAILS.has(email) ||
-    docId === 'PRIMARY_MANAGER_LINE' ||
-    ['admin', 'manager', '主管', '管理者'].includes(role) ||
-    ['admin', 'manager', '主管', '管理者'].includes(identityType) ||
-    ['admin', 'manager'].includes(level) ||
-    data.showSettingsZone === true ||
-    data.canViewSettings === true ||
-    data.isAdmin === true ||
-    data.isManager === true
-  );
-}
-
-async function isAdminRequest(request, data = {}) {
-  if (isAdminToken(request)) return true;
-  const userId = clean(data.userId || data.adminId || data.employeeId || (request.auth && request.auth.uid));
-  if (!userId) return false;
-  const snap = await db().collection('employees').doc(userId).get();
-  return snap.exists && isManagerData(snap.data() || {}, snap.id);
-}
-
-async function getSystemSettingValue(keys) {
-  const wanted = new Set((keys || []).map(clean).filter(Boolean));
-  if (!wanted.size) return '';
-  try {
-    const snap = await db().collection('systemSettings').limit(300).get();
-    let found = '';
-    snap.forEach((doc) => {
-      if (found) return;
-      const data = doc.data() || {};
-      const key = clean(data.key || data.name || doc.id);
-      if (wanted.has(key)) found = clean(data.value || data.token || data.accessToken || data.secret || data.text);
-    });
-    return found;
-  } catch (err) {
-    logger.warn('getSystemSettingValue failed', err);
-    return '';
-  }
-}
-
-async function getLineAccessToken() {
-  const env = clean(
-    process.env.LINE_CHANNEL_ACCESS_TOKEN ||
-    process.env.LINE_MESSAGING_ACCESS_TOKEN ||
-    process.env.LINE_ACCESS_TOKEN ||
-    process.env.LINE_BOT_CHANNEL_ACCESS_TOKEN ||
-    ''
-  );
-  if (env) return env;
-  return await getSystemSettingValue([
-    'LINE_CHANNEL_ACCESS_TOKEN',
-    'LINE Channel Access Token',
-    'LINE Messaging API Token',
-    'LINE Access Token',
-    'LINE Bot Access Token',
-    'LINE_TOKEN'
-  ]);
-}
-
-
-function normalizeTeachingText(value) {
-  if (Array.isArray(value)) return value.map(clean).filter(Boolean).join('、');
-  return clean(value);
-}
-
-function mobileDigits(value) {
-  return clean(value).replace(/\D/g, '');
-}
-
-function hashKey(value) {
-  return crypto.createHash('sha1').update(clean(value).toLowerCase()).digest('hex').slice(0, 12).toUpperCase();
-}
-
-function fallbackExternalEmployeeId(name, email, mobile) {
-  const seed = lower(email) || mobileDigits(mobile) || clean(name) || String(Date.now());
-  return `EXTEMP_${hashKey(seed)}`;
-}
-
-function isExternalEmployeeRow(row = {}) {
-  const raw = lower(row.identityType || row.employeeType || row.identityLabel || row.role || '');
-  return row.isExternalTeacher === true || raw.includes('external') || raw.includes('外聘') || raw.includes('externalteacher');
-}
-
-function isManagerEmployeeRow(row = {}, id = '') {
-  const role = lower(row.role || row.userRole || row.permissionRole || row.identityType || row.employeeType || '');
-  const email = lower(row.email || row.Email || row.mail || row.loginEmail || '');
-  return id === 'PRIMARY_MANAGER_LINE' || BOOTSTRAP_ADMIN_EMAILS.has(email) || row.isAdmin === true || row.isManager === true || row.showSettingsZone === true || ['admin', 'manager', '主管', '管理者'].some((k) => role.includes(k));
-}
-
-async function collectEmployeeCandidate(list, query) {
-  try {
-    const snap = await query.limit(5).get();
-    snap.forEach((doc) => {
-      const data = doc.data() || {};
-      if (!isManagerEmployeeRow(data, doc.id)) list.push({ id: doc.id, data });
-    });
-  } catch (err) {
-    logger.warn('collectEmployeeCandidate failed', err);
-  }
-}
-
-function pickEmployeeCandidate(list) {
-  if (!list.length) return null;
-  const deduped = Array.from(new Map(list.map((x) => [x.id, x])).values());
-  deduped.sort((a, b) => {
-    const ae = isExternalEmployeeRow(a.data) ? 1 : 0;
-    const be = isExternalEmployeeRow(b.data) ? 1 : 0;
-    if (ae !== be) return be - ae;
-    return clean(b.data.externalTeacherSyncedAt || b.data.updatedAt || '').localeCompare(clean(a.data.externalTeacherSyncedAt || a.data.updatedAt || ''));
-  });
-  return deduped[0];
-}
-
-async function findExternalEmployeeByContact(email, mobile) {
-  const candidates = [];
-  const em = lower(email || '');
-  const mob = clean(mobile || '');
-  const digits = mobileDigits(mob);
-  if (em) {
-    await collectEmployeeCandidate(candidates, db().collection('employees').where('email', '==', em));
-    await collectEmployeeCandidate(candidates, db().collection('employees').where('Email', '==', em));
-  }
-  if (mob) {
-    await collectEmployeeCandidate(candidates, db().collection('employees').where('mobilePhone', '==', mob));
-    await collectEmployeeCandidate(candidates, db().collection('employees').where('phone', '==', mob));
-    await collectEmployeeCandidate(candidates, db().collection('employees').where('mobile', '==', mob));
-  }
-  if (digits) await collectEmployeeCandidate(candidates, db().collection('employees').where('mobileDigits', '==', digits));
-  return pickEmployeeCandidate(candidates);
-}
-
-async function resolveExternalEmployeeId(row = {}) {
-  let id = clean(row.employeeId || row.externalTeacherEmployeeId || row.linkedEmployeeId || '');
-  if (id) return id;
-  const existing = await findExternalEmployeeByContact(row.email, row.mobile || row.phone);
-  if (existing) return existing.id;
-  return fallbackExternalEmployeeId(row.name || row.teacherName || row.displayName, row.email, row.mobile || row.phone);
-}
-
-async function syncExternalTeacherEmployee(teacherId, row = {}) {
-  const contractId = clean(row.contractId || row.currentContractId || row.id || teacherId || '');
-  const employeeId = await resolveExternalEmployeeId(Object.assign({}, row, { employeeId: row.employeeId || row.externalTeacherEmployeeId }));
-  if (!employeeId) return '';
-  const ref = db().collection('employees').doc(employeeId);
-  let old = {};
-  try {
-    const snap = await ref.get();
-    if (snap.exists) old = snap.data() || {};
-  } catch (err) {
-    old = {};
-  }
-
-  const name = clean(row.name || row.teacherName || row.displayName || old.name || old.displayName || '');
-  const email = lower(row.email || old.email || '');
-  const mobile = clean(row.mobile || row.phone || old.mobilePhone || old.phone || '');
-  const lineUserId = clean(row.lineUserId || old.lineUserId || '');
-  const teachingItemsText = normalizeTeachingText(row.teachingItems || old.teachingItems || old.teachingItemsText || '');
-
-  const update = {
-    employeeId,
-    id: employeeId,
-    userId: employeeId,
-    name,
-    displayName: name,
-    employeeName: name,
-    email,
-    mobilePhone: mobile,
-    phone: mobile,
-    mobileDigits: mobileDigits(mobile),
-    identityType: 'external',
-    identityLabel: '外聘老師',
-    employeeType: 'external',
-    role: 'externalTeacher',
-    isExternalTeacher: true,
-    accountStatus: clean(old.accountStatus || 'active'),
-    employmentStatus: clean(old.employmentStatus || 'active'),
-    hiddenFromActiveLists: old.hiddenFromActiveLists === true,
-    lineUserId,
-    lineDisplayName: clean(row.lineDisplayName || old.lineDisplayName || ''),
-    lineNotifyEnabled: !!lineUserId,
-    lineBindStatus: clean(row.lineBindStatus || (lineUserId ? 'bound' : old.lineBindStatus || 'pending')),
-    emailBindStatus: clean(row.emailBindStatus || old.emailBindStatus || ''),
-    bindingMethod: clean(row.bindingMethod || old.bindingMethod || ''),
-    bindingMethodLabel: clean(row.bindingMethodLabel || old.bindingMethodLabel || ''),
-    externalTeacherProfileId: clean(row.externalTeacherProfileId || old.externalTeacherProfileId || contractId),
-    externalTeacherContractId: contractId || clean(old.externalTeacherContractId || ''),
-    currentExternalContractId: contractId || clean(old.currentExternalContractId || ''),
-    externalTeacherStatus: clean(row.status || old.externalTeacherStatus || ''),
-    contractStatus: clean(row.contractStatus || row.status || old.contractStatus || ''),
-    progressStatus: clean(row.progressStatus || old.progressStatus || ''),
-    teachingItems: teachingItemsText,
-    teachingItemsText,
-    cooperationStartDate: clean(row.contractStartDate || old.cooperationStartDate || ''),
-    hireDate: clean(row.contractStartDate || old.hireDate || ''),
-    contractYear: clean(row.contractYear || row.contractGregorianYear || old.contractYear || ''),
-    contractRocYear: clean(row.contractRocYear || old.contractRocYear || ''),
-    contractStartDate: clean(row.contractStartDate || old.contractStartDate || ''),
-    contractEndDate: clean(row.contractEndDate || old.contractEndDate || ''),
-    idNumber: clean(row.idNumber || old.idNumber || ''),
-    birthDate: clean(row.birthDate || old.birthDate || ''),
-    householdAddress: clean(row.householdAddress || old.householdAddress || ''),
-    mailingAddress: clean(row.mailingAddress || old.mailingAddress || ''),
-    address: clean(row.mailingAddress || row.householdAddress || old.address || ''),
-    externalTeacherSyncedAt: nowTs(),
-    updatedAt: nowTs(),
-    source: 'external-teacher-linked-sync'
-  };
-
-  const identityUrl = Array.isArray(row.identityUrls) && row.identityUrls.length ? row.identityUrls[0] : '';
-  if (identityUrl) update.identityDocumentUrl = identityUrl;
-  if (contractId) update.externalTeacherContractIds = admin.firestore.FieldValue.arrayUnion(contractId);
-
-  await ref.set(update, { merge: true });
-
-  if (contractId) {
-    const linkPatch = {
-      employeeId,
-      externalTeacherEmployeeId: employeeId,
-      employeeRef: `employees/${employeeId}`,
-      updatedAt: nowTs()
-    };
-    await db().collection('externalTeacherContracts').doc(contractId).set(linkPatch, { merge: true }).catch(() => null);
-    await db().collection('externalTeacherProfiles').doc(contractId).set(linkPatch, { merge: true }).catch(() => null);
-  }
-  return employeeId;
-}
-
-function lineUserIdFromRow(data = {}) {
-  return clean(data.lineUserId || data['LINE User ID'] || data.targetLineUserId || data.lineId || '');
-}
-
-async function getPrimaryManagerLineRecipient() {
-  const primary = await db().collection('employees').doc('PRIMARY_MANAGER_LINE').get();
-  if (primary.exists) {
-    const data = primary.data() || {};
-    const lineUserId = lineUserIdFromRow(data);
-    if (lineUserId) return { lineUserId, name: clean(data.name || data.displayName || '柚子樂器主要管理者') };
-  }
-
-  const snap = await db().collection('employees').limit(300).get();
-  const candidates = [];
-  snap.forEach((doc) => {
-    if (doc.id === 'PRIMARY_MANAGER_LINE') return;
-    const data = doc.data() || {};
-    const lineUserId = lineUserIdFromRow(data);
-    if (!lineUserId || !isManagerData(data, doc.id)) return;
-    const email = lower(data.email || data.Email || data.mail || data.loginEmail || '');
-    candidates.push({
-      lineUserId,
-      name: clean(data.name || data.displayName || email || doc.id),
-      priority: BOOTSTRAP_ADMIN_EMAILS.has(email) ? 0 : (data.lineNotifyEnabled === false ? 2 : 1)
-    });
-  });
-  candidates.sort((a, b) => a.priority - b.priority);
-  return candidates[0] || null;
-}
-
-async function replyLineMessage(replyToken, text) {
-  if (!replyToken) return;
-  const token = await getLineAccessToken();
-  if (!token) {
-    logger.warn('LINE token not configured, reply skipped');
-    return;
-  }
-  const response = await fetch('https://api.line.me/v2/bot/message/reply', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ replyToken, messages: [{ type: 'text', text: String(text || '').slice(0, 4900) }] })
-  });
-  if (!response.ok) logger.warn('LINE reply failed', { status: response.status, body: await response.text().catch(() => '') });
-}
-
-async function pushLineMessage(lineUserId, text) {
-  const to = clean(lineUserId);
-  if (!to) return;
-  const token = await getLineAccessToken();
-  if (!token) {
-    logger.warn('LINE token not configured, push skipped');
-    return;
-  }
-  const response = await fetch('https://api.line.me/v2/bot/message/push', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ to, messages: [{ type: 'text', text: String(text || '').slice(0, 4900) }] })
-  });
-  if (!response.ok) logger.warn('LINE push failed', { status: response.status, body: await response.text().catch(() => '') });
-}
-
-async function pushAdminMessage(text) {
-  const configured = clean(process.env.ADMIN_LINE_USER_ID || process.env.LINE_ADMIN_USER_ID || '');
-  let target = configured;
-  if (!target) {
-    const manager = await getPrimaryManagerLineRecipient().catch(() => null);
-    target = manager && manager.lineUserId ? manager.lineUserId : '';
-  }
-  if (target) await pushLineMessage(target, text);
-
-  await db().collection('notificationQueue').add({
-    eventCode: 'external_teacher_admin_notice',
-    targetRole: 'admin',
-    channel: 'line',
-    title: '外聘老師通知',
-    body: text,
-    message: text,
-    status: '待發送',
-    createdAt: nowTs(),
-    source: 'external-teacher-onboarding'
-  }).catch((err) => logger.warn('queue admin notice failed', err));
-}
-
-async function queueTeacherEmail({ teacherId, email, title, body, source }) {
-  if (!clean(email)) return null;
-  const ref = db().collection('notificationQueue').doc(`external-teacher-email-${teacherId}-${Date.now()}`);
-  await ref.set({
-    queueId: ref.id,
-    teacherId,
-    channel: 'email',
-    targetEmail: lower(email),
-    title,
-    subject: title,
-    body,
-    message: body,
-    status: '待發送',
-    source: source || 'external-teacher-email',
-    createdAt: nowTs(),
-    updatedAt: nowTs()
-  }, { merge: true });
-  return ref.id;
-}
-
-async function getLineProfile(lineUserId) {
-  const token = await getLineAccessToken();
-  if (!token || !lineUserId) return {};
-  try {
-    const response = await fetch(`https://api.line.me/v2/bot/profile/${encodeURIComponent(lineUserId)}`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    if (!response.ok) return {};
-    return await response.json();
-  } catch (err) {
-    logger.warn('getLineProfile failed', err);
-    return {};
-  }
-}
-
-function externalProfileRef(teacherId) {
-  return db().collection('externalTeacherProfiles').doc(teacherId);
-}
-
-async function getExternalTeacherProfile(teacherId) {
-  const ref = externalProfileRef(teacherId);
-  const snap = await ref.get();
-  if (snap.exists) return { ref, snap, profile: { id: snap.id, ...snap.data() } };
-
-  // 向下相容：前端直寫版本會先建立 externalTeacherContracts，再同步 profile。若 profile 尚未建立，先從合約補回。
-  const contractSnap = await db().collection('externalTeacherContracts').doc(teacherId).get();
-  if (contractSnap.exists) {
-    const c = contractSnap.data() || {};
-    const profile = {
-      teacherId,
-      id: teacherId,
-      ...c,
-      displayName: clean(c.displayName || c.name || c.teacherName || ''),
-      profileStatus: clean(c.profileStatus || c.status || 'waiting_bindings'),
-      migratedFromContract: true,
-      updatedAt: nowTs()
-    };
-    await ref.set(profile, { merge: true });
-    const newSnap = await ref.get();
-    return { ref, snap: newSnap, profile: { id: newSnap.id, ...newSnap.data() } };
-  }
-
-  // 向下相容：如果早期版本曾把外聘老師資料放 employees，讀取時可轉成獨立 profile。
-  const oldSnap = await db().collection('employees').doc(teacherId).get();
-  if (oldSnap.exists) {
-    const old = oldSnap.data() || {};
-    const ext = old.externalTeacher || {};
-    const profile = {
-      teacherId,
-      id: teacherId,
-      name: clean(old.name || old.displayName || ext.name || ''),
-      displayName: clean(old.displayName || old.name || ext.name || ''),
-      mobile: clean(old.mobile || old.phone || ext.mobile || ''),
-      phone: clean(old.phone || old.mobile || ext.mobile || ''),
-      email: clean(old.email || ext.email || ''),
-      role: 'externalTeacher',
-      identityType: 'external',
-      bindingMethod: normalizeBindingMethod(ext.bindingMethod || '', !!clean(old.email || ext.email)),
-      lineUserId: clean(ext.lineUserId || old.lineUserId || ''),
-      lineDisplayName: clean(ext.lineDisplayName || old.lineDisplayName || ''),
-      onboardingToken: clean(ext.onboardingToken || ''),
-      bindCode: clean(ext.bindCode || ''),
-      status: clean(ext.status || ext.profileStatus || 'pendingProfile'),
-      payrollInfoStatus: clean(ext.payrollInfoStatus || 'pending'),
-      contractStatus: clean(ext.contractStatus || 'unsigned'),
-      identityFiles: Array.isArray(ext.identityFiles) ? ext.identityFiles : [],
-      migratedFromEmployees: true,
-      createdAt: nowTs(),
-      updatedAt: nowTs()
-    };
-    await ref.set(profile, { merge: true });
-    const newSnap = await ref.get();
-    return { ref, snap: newSnap, profile: { id: newSnap.id, ...newSnap.data() } };
-  }
-
-  return { ref, snap, profile: null };
-}
-
-async function validateTeacherTokenIfNeeded(request, teacherId, token) {
-  if (!teacherId) throw new HttpsError('invalid-argument', '缺少 teacherId');
-  if (isAdminToken(request)) return;
-  if (request.auth && request.auth.uid === teacherId) return;
-
-  const { profile } = await getExternalTeacherProfile(teacherId);
-  if (!profile) throw new HttpsError('not-found', '找不到外聘老師資料');
-  if (!clean(token) || clean(token) !== clean(profile.onboardingToken)) {
-    throw new HttpsError('permission-denied', '外聘老師連結已失效，請重新產生簽約連結。');
-  }
-}
-
-async function saveDataUrlToStorage({ dataUrl, storagePath, fileName, contentType }) {
-  const raw = String(dataUrl || '');
-  const match = raw.match(/^data:([^;]+);base64,(.+)$/);
-  if (!match) throw new HttpsError('invalid-argument', '檔案格式錯誤');
-
-  const mimeType = contentType || match[1] || 'application/octet-stream';
-  const buffer = Buffer.from(match[2], 'base64');
-  const downloadToken = crypto.randomUUID();
-  const file = bucket().file(storagePath);
-
-  await file.save(buffer, {
-    resumable: false,
-    metadata: {
-      contentType: mimeType,
-      cacheControl: 'private, max-age=0',
-      metadata: { firebaseStorageDownloadTokens: downloadToken }
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>員工管理</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="config.js"></script>
+  <style>
+    :root{
+      --bg:#f6faf7; --card:#fff; --ink:#142235; --muted:#66768a; --line:#dfe8ef;
+      --green:#1f7a5a; --green-soft:#e9f7ef; --orange:#b76a16; --orange-soft:#fff5e8;
+      --blue:#28728f; --blue-soft:#edf7fb; --red:#b42318; --red-soft:#fff0ee;
+      --shadow:0 10px 26px rgba(16,24,40,.07); --radius:22px;
     }
-  });
-
-  return {
-    fileName,
-    storagePath,
-    downloadUrl: `https://firebasestorage.googleapis.com/v0/b/${bucket().name}/o/${encodeURIComponent(storagePath)}?alt=media&token=${downloadToken}`,
-    mimeType,
-    size: buffer.length
-  };
-}
-
-async function recordExternalTeacherFile(row) {
-  const ref = db().collection('externalTeacherFiles').doc();
-  await ref.set(Object.assign({}, row, { fileId: ref.id, createdAt: nowTs() }));
-  return ref.id;
-}
-
-const DEFAULT_CLAUSES = [
-  [
-    "第一條",
-    "契約性質",
-    "一、甲方委任乙方提供才藝教學、課程協助、活動支援或雙方另行約定之專業服務。\n二、乙方係以外聘才藝教師身分受任提供服務，雙方同意本契約性質為委任關係，非僱傭關係。\n三、乙方得依其專業能力、教學方法與課程特性提供服務；惟課程時間、地點、學生安全、教室規範及甲方對外承諾事項，仍應依雙方確認內容及甲方合理管理規範辦理。\n四、本契約如因實際履行情形涉及勞動、承攬或其他法律關係之認定，仍應依主管機關或法院就個案事實之認定為準。"
-  ],
-  [
-    "第二條",
-    "委任期間",
-    "一、本契約期間自 {{contractStartDate}} 起至 {{contractEndDate}} 止。\n二、每年度契約原則上以當年度十二月三十一日為屆滿日。\n三、次年度契約得自每年十二月十五日起，由甲方開放乙方簽署下一年度契約；新年度契約期間原則上自次年度一月一日起至次年度十二月三十一日止。\n四、契約期滿後，如雙方未另行完成續約簽署，乙方不得主張契約自動延長。"
-  ],
-  [
-    "第三條",
-    "委任工作內容",
-    "乙方受任事項如下：\n一、依雙方確認之課程項目提供教學服務。\n二、依學生程度、課程目標及教學需求，進行備課、授課、課程回饋或進度建議。\n三、配合甲方合理通知，參與必要之課程溝通、學生狀況回報、成果活動或教學相關事項。\n四、協助維護教學現場安全、教室秩序及學生學習品質。\n五、其他經雙方書面、LINE、Email 或系統確認之委任事項。"
-  ],
-  [
-    "第四條",
-    "授課時間與地點",
-    "一、乙方授課時間、地點及課程安排，應由甲乙雙方事前確認。\n二、乙方如因故無法依約授課，應儘早通知甲方，以利甲方安排補課、調課或其他處理方式。\n三、甲方如因學生請假、停課、活動異動、天災或其他不可歸責於甲方之事由需調整課程，應儘早通知乙方。\n四、乙方不得未經甲方同意，私自變更授課老師、授課地點、課程內容或將委任事項轉由第三人代為履行。"
-  ],
-  [
-    "第五條",
-    "報酬與給付方式",
-    "一、乙方報酬依雙方於後台、書面、LINE、Email 或其他可保存紀錄之方式確認。\n二、報酬計算方式得依鐘點、堂數、課程件數、活動場次或雙方另行約定方式計算。乙方鐘點費如有約定，為每小時新臺幣 {{hourlyRate}} 元整。\n三、甲方得於每月結算乙方已完成之服務內容，並依雙方約定日期給付報酬；約定付款日為每月 {{paymentDay}} 日者，依該約定辦理。\n四、如遇學生請假、課程取消、臨時停課、未達開課人數或其他特殊情形，報酬是否給付及計算方式，依甲乙雙方事前約定或個案協議辦理。\n五、乙方應提供正確之匯款帳戶、身分資料及依法所需文件；如資料錯誤致給付延誤，乙方應自行負責。"
-  ],
-  [
-    "第六條",
-    "稅務與保險",
-    "一、乙方因本契約所取得之報酬，應依中華民國相關稅法規定辦理所得申報、扣繳或補充保費等事項。\n二、甲方得依法辦理必要之所得扣繳、申報或相關行政作業。\n三、乙方如非甲方正式員工，除法律另有強制規定或雙方另有書面約定外，甲方不負擔乙方勞工保險、就業保險、勞工退休金提繳或其他僱傭關係下之雇主義務。\n四、乙方如需自行投保相關保險，應自行辦理。"
-  ],
-  [
-    "第七條",
-    "乙方基本義務",
-    "乙方應遵守下列事項：\n一、以善良管理人之注意義務提供教學服務。\n二、不得對學生、家長或甲方人員有不當言語、肢體接觸、歧視、騷擾、恐嚇或其他不適當行為。\n三、不得未經甲方同意，私下向甲方學生或家長收費、招生、轉介、推銷課程或移轉至其他場所授課。\n四、不得擅自使用甲方名義、商標、教室、設備、學生資料或課程資料從事與本契約無關之行為。\n五、不得違反兒少保護、個人資料保護、著作權、性騷擾防治、校園及補教相關安全規範。\n六、如發生學生安全、意外、糾紛、家長申訴或其他異常事件，乙方應立即通知甲方。"
-  ],
-  [
-    "第八條",
-    "甲方義務",
-    "甲方應遵守下列事項：\n一、提供雙方約定之授課資訊、課程需求及必要聯絡窗口。\n二、依約給付乙方報酬。\n三、提供合理教學環境或必要設備，惟設備項目仍以雙方約定或現場既有條件為準。\n四、對乙方提供之個人資料、身分證明文件及契約資料，依個人資料保護法及相關規定妥善保管。"
-  ],
-  [
-    "第九條",
-    "身分資料與個人資料使用",
-    "一、乙方同意提供姓名、身分證字號、聯絡方式、通訊地址、匯款帳戶、身分證明文件、簽名影像及其他簽約必要資料。\n二、甲方蒐集乙方資料之目的，限於簽約、身分確認、報酬給付、所得申報、聯絡通知、契約保存及相關管理作業。\n三、乙方上傳之身分證明文件，甲方得加註浮水印，例如「僅供柚子樂器外聘教師簽約使用」及簽署日期，以降低文件遭不當使用之風險。\n四、未經乙方同意，甲方不得將乙方個人資料提供予與本契約目的無關之第三人；但依法令、主管機關要求或辦理必要行政作業者，不在此限。"
-  ],
-  [
-    "第十條",
-    "保密義務",
-    "一、乙方因履行本契約而知悉之學生資料、家長資料、課程價格、營運資訊、教學安排、內部管理資料、系統帳號或其他非公開資訊，均負保密義務。\n二、乙方不得將前項資訊洩漏、交付、轉傳或提供予第三人，亦不得作為本契約以外之用途。\n三、本條保密義務於契約終止或期滿後仍繼續有效。"
-  ],
-  [
-    "第十一條",
-    "教材、著作與肖像使用",
-    "一、乙方自行設計之教材、講義、教學方法或作品，如無另行約定，其著作權歸乙方所有。\n二、甲方提供之教材、講義、圖片、影音、課程資料、品牌素材或內部文件，其權利歸甲方或原權利人所有，乙方不得擅自重製、散布或移作他用。\n三、乙方如同意甲方拍攝授課花絮、成果照片或宣傳素材，應另依雙方確認範圍使用。\n四、涉及學生肖像、姓名、作品或個人資料之使用，應依甲方規範及相關法令辦理。"
-  ],
-  [
-    "第十二條",
-    "不得私下招攬與利益衝突",
-    "一、乙方不得利用甲方提供之學生、家長、課程或營運資訊，私下招攬甲方學生或家長至其他場所、其他單位或個人名義授課。\n二、乙方不得以降低價格、跳過甲方、私下收費或其他方式，破壞甲方與學生或家長之契約關係。\n三、乙方如有其他合作單位或教學安排，應避免與甲方課程安排發生利益衝突；如有疑義，應先與甲方溝通確認。"
-  ],
-  [
-    "第十三條",
-    "課程取消、補課與調課",
-    "一、學生請假、臨時停課、天災、停班停課或不可抗力事件所生之補課、調課或取消，依甲方對學生之課程規範及雙方協議辦理。\n二、乙方因個人因素需調課或請假，應提早通知甲方，並配合甲方安排補課或替代方案。\n三、如乙方無故缺席、臨時取消或嚴重影響學生權益，甲方得視情節調整委任事項、停止排課或終止契約。"
-  ],
-  [
-    "第十四條",
-    "契約終止",
-    "一、任一方欲提前終止本契約，應提前通知他方，並完成已排課程、報酬結算及相關交接。但有重大違約或不可繼續履約之情形者，不在此限。\n二、乙方如有下列情形之一，甲方得立即終止契約：\n（一）提供不實資料或冒用他人身分。\n（二）有重大教學疏失、學生安全疑慮或不當行為。\n（三）未經同意私下招攬學生、收費或轉介課程。\n（四）洩漏學生、家長或甲方非公開資料。\n（五）違反法令、主管機關規範或本契約重大條款。\n三、契約終止後，乙方應返還或刪除甲方提供之非公開資料，並不得繼續使用甲方名義對外招攬或授課。"
-  ],
-  [
-    "第十五條",
-    "違約責任",
-    "一、任一方違反本契約，致他方受有損害者，應負損害賠償責任。\n二、乙方如因故意或重大過失造成學生、家長、甲方或第三人損害，應依法律規定負相關責任。\n三、如因乙方違反保密、個資保護、私下招攬或擅自使用甲方資料等義務，致甲方商譽、營運或法律權益受損，甲方得依法請求損害賠償。"
-  ],
-  [
-    "第十六條",
-    "電子文件與線上簽署",
-    "一、甲乙雙方同意本契約得以電子文件、線上勾選、電子簽名、LINE、Email 或系統紀錄方式成立及保存。\n二、乙方於系統中完成資料填寫、身分證明文件上傳、契約確認及線上簽名後，視為已詳閱並同意本契約內容。\n三、甲方得將乙方簽署完成之契約以網頁、PDF、Email 或 LINE 方式提供乙方查看或保存。"
-  ],
-  [
-    "第十七條",
-    "通知方式",
-    "一、甲乙雙方同意以下列方式之一作為通知方式：LINE、Email、電話、簡訊、系統通知或書面通知。\n二、乙方應確保所留聯絡資料正確，如有變更應主動通知甲方。\n三、乙方因聯絡資料錯誤、未讀取訊息或未更新資料而致通知未能送達或延誤者，由乙方自行負責。"
-  ],
-  [
-    "第十八條",
-    "契約修改",
-    "一、本契約內容如需修改，應經雙方合意。\n二、甲方得因年度營運、課程制度、法令變更或管理需求，調整下一年度契約模板。\n三、乙方已簽署完成之年度契約，除雙方另行合意外，不因甲方後續修改契約模板而當然變更。"
-  ],
-  [
-    "第十九條",
-    "準據法與管轄法院",
-    "一、本契約以中華民國法律為準據法。\n二、因本契約所生爭議，雙方應先本誠信原則協商解決。\n三、如協商不成，雙方同意以甲方所在地之地方法院為第一審管轄法院，但法律另有強制規定者，從其規定。"
-  ],
-  [
-    "第二十條",
-    "其他約定",
-    "一、本契約未盡事宜，依民法、個人資料保護法及其他相關法令辦理。\n二、本契約之標題僅為閱讀便利，不影響條文解釋。\n三、本契約經乙方線上簽署並送出，且經甲方系統保存後生效。"
-  ]
-];
-
-async function ensureActiveTemplate() {
-  const templates = db().collection('externalTeacherContractTemplates');
-  const active = await templates.where('status', '==', 'active').limit(1).get();
-  if (!active.empty) return { id: active.docs[0].id, ...active.docs[0].data() };
-
-  const templateRef = templates.doc('external_teacher_mandate_default');
-  await templateRef.set({
-    title: '外聘才藝教師委任契約書',
-    contractType: 'externalTeacherMandate',
-    version: String(currentGregorianYear()),
-    status: 'active',
-    createdAt: nowTs(),
-    updatedAt: nowTs()
-  }, { merge: true });
-
-  const batch = db().batch();
-  DEFAULT_CLAUSES.forEach((row, index) => {
-    batch.set(templateRef.collection('clauses').doc(`clause_${String(index + 1).padStart(2, '0')}`), {
-      articleNo: row[0],
-      title: row[1],
-      content: row[2],
-      sortOrder: index + 1,
-      enabled: true,
-      createdAt: nowTs(),
-      updatedAt: nowTs()
-    }, { merge: true });
-  });
-  await batch.commit();
-
-  return { id: templateRef.id, title: '外聘才藝教師委任契約書', contractType: 'externalTeacherMandate', version: String(currentGregorianYear()), status: 'active' };
-}
-
-async function getActiveTemplateWithClauses() {
-  const template = await ensureActiveTemplate();
-  const snap = await db().collection('externalTeacherContractTemplates').doc(template.id).collection('clauses').get();
-  const clauses = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
-    .filter((c) => c.enabled !== false)
-    .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
-  return { template, clauses };
-}
-
-function replaceVars(text, values) {
-  let out = String(text || '');
-  Object.keys(values).forEach((key) => {
-    out = out.replace(new RegExp(`{{\\s*${key}\\s*}}`, 'g'), values[key] == null ? '' : String(values[key]));
-  });
-  return out;
-}
-
-function profileTeachingItems(profile) {
-  const value = profile.teachingItems;
-  if (Array.isArray(value)) return value.join('、');
-  return clean(value);
-}
-
-function renderContractText({ profile, template, clauses, contractStartDate, contractEndDate }) {
-  profile = profile || {};
-  const values = {
-    companyName: process.env.COMPANY_NAME || '柚子樂器',
-    companyTaxId: process.env.COMPANY_TAX_ID || '',
-    companyRepresentative: process.env.COMPANY_REPRESENTATIVE || '',
-    companyAddress: process.env.COMPANY_ADDRESS || '',
-    teacherName: clean(profile.name || profile.displayName || ''),
-    teacherIdNumber: clean(profile.idNumber || ''),
-    teacherBirthDate: clean(profile.birthDate || ''),
-    teacherHouseholdAddress: clean(profile.householdAddress || ''),
-    teacherMailingAddress: clean(profile.mailingAddress || ''),
-    teacherMobile: clean(profile.mobile || profile.phone || ''),
-    teacherEmail: clean(profile.email || ''),
-    teachingItems: profileTeachingItems(profile),
-    hourlyRate: profile.hourlyRate || '',
-    paymentDay: profile.paymentDay || '',
-    contractStartDate,
-    contractEndDate
-  };
-
-  let text = `${template.title || '外聘才藝教師委任契約書'}\n\n`;
-  text += `甲方：${values.companyName}\n`;
-  text += `代表人：${values.companyRepresentative}\n`;
-  text += `地址：${values.companyAddress}\n\n`;
-  text += `乙方：${values.teacherName}\n`;
-  text += `身分證字號：${values.teacherIdNumber}\n`;
-  text += `出生年月日：${values.teacherBirthDate}\n`;
-  text += `通訊地址：${values.teacherMailingAddress}\n`;
-  text += `電話：${values.teacherMobile}\n`;
-  text += `Email：${values.teacherEmail}\n\n`;
-
-  clauses.forEach((clause) => {
-    text += `${clause.articleNo || ''}　${clause.title || ''}\n`;
-    text += `${replaceVars(clause.content, values)}\n\n`;
-  });
-
-  text += `立契約書人：\n\n甲方：${values.companyName}\n代表人：${values.companyRepresentative}\n\n乙方：${values.teacherName}\n簽署日期：${todayKey()}\n`;
-  return text;
-}
-
-function contractHtml(contractText, signatureUrl) {
-  const escaped = String(contractText || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const signature = signatureUrl ? `\n\n乙方簽名：\n<img src="${signatureUrl}" style="max-width:320px;border:1px solid #ccc;padding:8px;background:#fff">` : '';
-  return `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>外聘才藝教師委任契約書</title></head><body style="font-family:-apple-system,BlinkMacSystemFont,'Noto Sans TC','Microsoft JhengHei',sans-serif;line-height:1.85;padding:32px;white-space:pre-wrap;color:#111">${escaped}${signature}</body></html>`;
-}
-
-async function saveContractHtml({ teacherId, contractRocYear, contractId, contractText, signatureUrl }) {
-  const token = crypto.randomUUID();
-  const storagePath = `external-teachers/${teacherId}/${contractRocYear}/contracts/${contractId}.html`;
-  const file = bucket().file(storagePath);
-  await file.save(contractHtml(contractText, signatureUrl), {
-    resumable: false,
-    metadata: {
-      contentType: 'text/html; charset=utf-8',
-      cacheControl: 'private, max-age=0',
-      metadata: { firebaseStorageDownloadTokens: token }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Noto Sans TC","Segoe UI",sans-serif;line-height:1.55}
+    .yz-admin-nav{position:sticky;top:0;z-index:20;background:linear-gradient(to bottom,var(--bg) 80%,rgba(246,250,247,0));padding:12px 16px 18px;display:grid;grid-template-columns:1fr 1fr;gap:12px;max-width:980px;margin:0 auto}
+    .yz-nav-btn{border:0;border-radius:18px;min-height:58px;font-size:20px;font-weight:900;color:#fff}
+    .yz-nav-back{background:#304052}.yz-nav-logout{background:#df2528}
+    .wrap{max-width:980px;margin:0 auto;padding:0 16px 42px}
+    .title{font-size:36px;font-weight:950;color:#104b38;margin:12px 0 16px;letter-spacing:.03em}
+    .panel{background:var(--card);border:1px solid #edf1f4;border-radius:var(--radius);box-shadow:var(--shadow);padding:20px;margin:16px 0}
+    .hide{display:none!important}
+    .layer-title{display:flex;align-items:center;gap:10px;margin:0 0 14px;color:#104b38;font-size:25px;font-weight:950}
+    .badge{width:34px;height:34px;border-radius:999px;background:var(--green);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:15px;font-weight:950}
+    .category-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+    .category-card{border:2px solid var(--line);border-radius:22px;padding:20px;min-height:150px;background:#fff;cursor:pointer;transition:.15s ease}
+    .category-card:hover{transform:translateY(-1px);box-shadow:0 8px 18px rgba(16,24,40,.08)}
+    .category-card.staff{background:var(--green-soft);border-color:#c8e7d6}
+    .category-card.parttime{background:var(--orange-soft);border-color:#f0d2ad}
+    .category-card.external{background:#fff0f7;border-color:#efc9df}
+    .cat-title{font-size:30px;font-weight:950;color:#104b38}
+    .cat-count{font-size:38px;font-weight:950;color:#104b38;margin-top:18px}.cat-count span{font-size:18px;margin-left:3px}
+    .toolbar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;margin-bottom:14px}
+    input,select,textarea{width:100%;border:2px solid #dce5ec;border-radius:16px;min-height:50px;padding:12px 14px;font-size:17px;background:#fff;color:var(--ink)}
+    input[readonly]{background:#fbfcfd;color:#263445}
+    .toggle{display:flex;align-items:center;gap:8px;font-weight:850;color:#33475b;white-space:nowrap}.toggle input{width:22px;height:22px}
+    .list-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+    .emp-card{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;border:2px solid #e3ebf1;border-radius:21px;background:#fff;padding:16px;min-height:88px;cursor:pointer}
+    .emp-card:hover{border-color:#9fd3b3}
+    .emp-name{font-size:25px;font-weight:950;color:#104b38;line-height:1.2}
+    .emp-email{font-size:15px;color:#5e6e7d;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .pill{border-radius:999px;padding:7px 13px;font-size:15px;font-weight:950;white-space:nowrap}
+    .pill.green{background:var(--green-soft);color:var(--green)}
+    .pill.orange{background:var(--orange-soft);color:var(--orange)}
+    .pill.blue{background:var(--blue-soft);color:var(--blue)}
+    .pill.red{background:var(--red-soft);color:var(--red)}
+    .pill.gray{background:#eef2f6;color:#415165}
+    .topline{display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid #edf1f4;padding-bottom:14px;margin-bottom:18px}
+    .person-title{font-size:31px;font-weight:950;color:#104b38;line-height:1.2}
+    .person-sub{font-size:15px;color:#617083;margin-top:4px}
+    .back-row{display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap}
+    .ghost{background:#eef2f6!important;color:#304052!important;border:0;border-radius:14px;min-height:42px;padding:9px 13px;font-size:15px;font-weight:900}
+    .section-title{font-size:24px;font-weight:950;color:#104b38;margin:22px 0 12px}
+    .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+    .field label{display:block;font-size:15px;font-weight:950;color:#24384a;margin:0 0 7px}
+    .field.full{grid-column:1/-1}
+    textarea{min-height:82px;resize:vertical}
+    .empty{border:1px dashed #cbd7e1;border-radius:16px;background:#fbfcfd;color:#617083;padding:18px;text-align:center}
+    .msg{display:none;margin-top:14px;border-radius:14px;padding:12px 14px;background:#eef7f1;color:#1f7a5a;font-weight:850}.msg.error{background:#fff1f3;color:#b42318}
+    .actions{display:flex;justify-content:center;margin-top:20px}
+    .save{border:0;border-radius:18px;min-height:56px;width:min(420px,100%);background:var(--green);color:#fff;font-size:19px;font-weight:950}
+    .danger{border:0;border-radius:18px;min-height:52px;background:#b42318;color:#fff;font-size:17px;font-weight:950;padding:10px 18px}
+    .hint{font-size:14px;color:#66768a;margin-top:8px;line-height:1.5}
+    .cat-secondary{font-size:14px;color:#526477;font-weight:850;margin-top:5px}
+    .data-notice{display:none;border-radius:14px;padding:11px 13px;margin:-4px 0 12px;background:#fff8e8;border:1px solid #efd59e;color:#7a5100;font-weight:800;line-height:1.65}
+    .summary-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+    .summary-card{border:1px solid #dfe8ef;border-radius:16px;padding:12px;background:#fff}
+    .summary-card span{display:block;font-size:13px;color:#66768a;font-weight:850;margin-bottom:5px}
+    .summary-card strong{display:block;font-size:17px;color:#173b30;line-height:1.45;word-break:break-word}
+    .summary-card.ok{background:#f0faf5;border-color:#c9ead8}.summary-card.warn{background:#fff8e8;border-color:#efd59e}.summary-card.bad{background:#fff1f1;border-color:#f3caca}
+    .link-actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:12px}
+    .link-btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;border-radius:14px;padding:9px 14px;background:#1f7a5a;color:#fff;text-decoration:none;font-weight:900;border:0;cursor:pointer}
+    .link-btn.secondary{background:#304052}.link-btn.light{background:#edf7fb;color:#28728f;border:1px solid #cbe3ed}
+    .doc-preview-link{display:inline-flex;align-items:center;gap:7px;font-weight:900;color:#1f7a5a;text-decoration:none}
+    @media(max-width:760px){
+      .wrap{padding:0 12px 38px}.title{font-size:34px}
+      .panel{padding:18px;border-radius:22px}
+      .category-grid,.list-grid,.form-grid,.toolbar,.summary-grid{grid-template-columns:1fr}
+      .topline{align-items:flex-start}
+      .person-title{font-size:29px}
     }
-  });
-  return {
-    fileName: `${contractId}.html`,
-    storagePath,
-    downloadUrl: `https://firebasestorage.googleapis.com/v0/b/${bucket().name}/o/${encodeURIComponent(storagePath)}?alt=media&token=${token}`,
-    mimeType: 'text/html'
-  };
-}
+  </style>
+  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
+</head>
+<body>
+  <div class="yz-global-nav" data-yz-global-nav>
+    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
+    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
+  </div>
 
-function normalizeTeachingItems(value) {
-  if (Array.isArray(value)) return value.map(clean).filter(Boolean);
-  return String(value || '').split(/[、,，]/).map(clean).filter(Boolean);
-}
+  <div class="wrap">
+    <h1 class="title">員工管理</h1>
+    <div id="dataNotice" class="data-notice"></div>
 
-function publicProfile(profile) {
-  profile = profile || {};
-  return {
-    id: profile.teacherId || profile.id || '',
-    teacherId: profile.teacherId || profile.id || '',
-    name: profile.name || '',
-    displayName: profile.displayName || profile.name || '',
-    mobile: profile.mobile || profile.phone || '',
-    phone: profile.phone || profile.mobile || '',
-    email: profile.email || '',
-    idNumber: profile.idNumber || '',
-    birthDate: profile.birthDate || '',
-    householdAddress: profile.householdAddress || '',
-    mailingAddress: profile.mailingAddress || '',
-    teachingItems: profile.teachingItems || [],
-    hourlyRate: profile.hourlyRate || '',
-    paymentDay: profile.paymentDay || '',
-    bindingMethod: profile.bindingMethod || '',
-    lineBindStatus: profile.lineBindStatus || '',
-    emailBindStatus: profile.emailBindStatus || '',
-    identityFiles: Array.isArray(profile.identityFiles) ? profile.identityFiles : [],
-    payrollInfoStatus: profile.payrollInfoStatus || '',
-    contractStatus: profile.contractStatus || '',
-    status: profile.status || ''
-  };
-}
+    <section class="panel" id="layer1">
+      <h2 class="layer-title"><span class="badge">1</span>選擇人員類別</h2>
+      <div class="category-grid" id="categoryCards"><div class="empty">讀取中...</div></div>
+    </section>
 
-async function handleExternalTeacherLineEvent(event) {
-  const text = event && event.message && event.message.type === 'text' ? clean(event.message.text) : '';
-  const match = text.match(/^(?:外聘老師綁定|柚子人員綁定)\s+([A-Z0-9-]+)$/i);
-  if (!match) return false;
+    <section class="panel hide" id="layer2">
+      <h2 class="layer-title"><span class="badge">2</span><span id="listTitle">人員名單</span></h2>
+      <div class="toolbar">
+        <input id="keyword" type="search" placeholder="搜尋姓名或 Email" oninput="debouncedRenderList()">
+        <label class="toggle"><input id="includeHidden" type="checkbox" onchange="renderList()"> 顯示離職／停用／封存</label>
+      </div>
+      <div id="employeeList" class="list-grid"><div class="empty">請先選擇類別。</div></div>
+      <div style="margin-top:16px"><button class="ghost" type="button" onclick="showLayer(1)">回到類別</button></div>
+    </section>
 
-  const bindCode = match[1].toUpperCase();
-  const replyToken = event.replyToken;
-  const lineUserId = event.source && event.source.userId;
-  if (!lineUserId) {
-    await replyLineMessage(replyToken, 'LINE 綁定失敗：系統無法取得您的 LINE 使用者 ID。');
-    return true;
-  }
+    <section class="panel hide" id="layer3">
+      <h2 class="layer-title"><span class="badge">3</span>人員資料</h2>
+      <div id="detailPanel"><div class="empty">請先選擇人員。</div></div>
+    </section>
+  </div>
 
-  const bindingRef = db().collection('externalTeacherLineBindings').doc(bindCode);
-  const bindingSnap = await bindingRef.get();
-  if (!bindingSnap.exists) {
-    if(/^柚子人員綁定/i.test(text)) return false;
-    await replyLineMessage(replyToken, '查不到這組外聘老師綁定碼。\n\n請確認文字是否完整，例如：\n柚子人員綁定 EMP-123456');
-    return true;
-  }
+  <script src="app.js"></script>
+  <script src="firebase-client.js?v=salary-labor-selfpay-20260626v2"></script>
+  <script src="onboarding-workflow.js?v=20260624v2"></script>
+  <script>
+    let currentUser = null;
+    let allEmployees = [];
+    let currentType = '';
+    let selectedId = '';
+    let renderTimer = null;
+    const $ = s => document.querySelector(s);
 
-  const binding = bindingSnap.data() || {};
-  const teacherId = clean(binding.teacherId || '');
-  const token = clean(binding.onboardingToken || '');
-  if (!teacherId) {
-    await replyLineMessage(replyToken, '這組外聘老師綁定碼資料不完整，請重新產生綁定碼。');
-    return true;
-  }
-
-  if (binding.expiresAt && binding.expiresAt.toMillis && binding.expiresAt.toMillis() < Date.now()) {
-    await bindingRef.set({ status: 'expired', updatedAt: nowTs() }, { merge: true });
-    await replyLineMessage(replyToken, '這組外聘老師綁定碼已逾期，請重新產生綁定碼。');
-    return true;
-  }
-
-  const { ref, profile } = await getExternalTeacherProfile(teacherId);
-  if (!profile) {
-    await replyLineMessage(replyToken, '系統找不到此外聘老師資料，請重新開啟填寫連結或聯絡柚子樂器官方 LINE。');
-    return true;
-  }
-
-  const lineProfile = await getLineProfile(lineUserId);
-  const lineDisplayName = clean(lineProfile.displayName || '');
-  const teacherName = clean(profile.name || profile.displayName || binding.teacherName || '老師');
-
-  await db().runTransaction(async (tx) => {
-    tx.set(bindingRef, { status: 'bound', lineUserId, lineDisplayName, boundAt: nowTs(), updatedAt: nowTs() }, { merge: true });
-    const linePatch = {
-      employeeId: clean(profile.employeeId || profile.externalTeacherEmployeeId || binding.employeeId || ''),
-      externalTeacherEmployeeId: clean(profile.employeeId || profile.externalTeacherEmployeeId || binding.employeeId || ''),
-      lineUserId,
-      lineNotifyEnabled: true,
-      lineBindStatus: 'bound',
-      lineDisplayName,
-      lineBoundAt: nowTs(),
-      bindCode,
-      onboardingToken: token || profile.onboardingToken || '',
-      status: profile.status === 'pendingLine' ? 'pendingProfile' : (profile.status || 'pendingProfile'),
-      updatedAt: nowTs()
-    };
-    tx.set(ref, linePatch, { merge: true });
-    tx.set(db().collection('externalTeacherContracts').doc(teacherId), linePatch, { merge: true });
-  });
-  await syncExternalTeacherEmployee(teacherId, Object.assign({}, profile, { contractId: teacherId, lineUserId, lineDisplayName, lineBindStatus: 'bound', lineNotifyEnabled: true, bindCode }));
-
-  await replyLineMessage(replyToken, `外聘老師 LINE 綁定完成 ✅\n\n您好 ${teacherName}，系統已完成您的 LINE 綁定。\n\n請回到外聘老師資料填寫頁，繼續完成基本資料、身分證明文件與契約簽署。\n\n${onboardingUrl(teacherId, token || profile.onboardingToken)}`);
-  await pushAdminMessage(`外聘老師 LINE 綁定完成\n\n姓名：${teacherName}\n狀態：待填資料`);
-  return true;
-}
-
-function buildExternalTeacherEmailBody({ name, url, bindText, bindingMethod, contractRocYear, contractStartDate, contractEndDate }) {
-  const lines = [
-    `${name || '老師'} 您好：`,
-    '',
-    '這是柚子樂器外聘老師資料填寫與年度契約簽署連結。',
-    `合約年度：民國 ${contractRocYear} 年`,
-    `契約期間：${contractStartDate} 至 ${contractEndDate}`,
-    '',
-    `填寫連結：${url}`,
-    ''
-  ];
-  if (wantsLine(bindingMethod)) {
-    lines.push('若您選擇 LINE 綁定，請將下列文字貼到柚子樂器官方 LINE：');
-    lines.push(bindText);
-    lines.push('');
-  }
-  lines.push('請依頁面完成基本資料、身分證明文件上傳、契約確認與線上簽名。');
-  return lines.join('\n');
-}
-
-function registerExternalTeacherOnboarding(exportsObj) {
-  exportsObj.externalTeacherCreateBindCode = onCall({ region: REGION }, async (request) => {
-    const data = request.data || {};
-    const name = clean(data.name || '');
-    const mobile = clean(data.mobile || data.phone || '');
-    const email = lower(data.email || '');
-    const bindingMethod = normalizeBindingMethod(data.bindingMethod || data.notificationPreference, !!email);
-    if (!name) throw new HttpsError('invalid-argument', '請輸入姓名');
-    if (!mobile) throw new HttpsError('invalid-argument', '請輸入手機');
-    if (wantsEmail(bindingMethod) && !email) throw new HttpsError('invalid-argument', '選擇 Email 綁定時，請填寫 Email');
-
-    const dates = contractDatesFromData(data, {});
-    const nowYear = currentGregorianYear();
-    if (dates.contractGregorianYear > nowYear && !isDec15OrLater(new Date())) {
-      throw new HttpsError('failed-precondition', '下一年度契約需於每年 12 月 15 日起開放簽署。');
-    }
-
-    let teacherId = clean(data.teacherId || data.userId || (request.auth && request.auth.uid) || '');
-    if (!teacherId) teacherId = await resolveExternalEmployeeId({ name, mobile, email });
-    const token = makeToken();
-    const bindCode = wantsLine(bindingMethod) ? makeBindCode() : '';
-    const url = onboardingUrl(teacherId, token);
-    const bindText = bindCode ? `柚子人員綁定 ${bindCode}` : '';
-
-    const profileRow = {
-      teacherId,
-      id: teacherId,
-      employeeId: teacherId,
-      externalTeacherEmployeeId: teacherId,
-      name,
-      displayName: name,
-      mobile,
-      phone: mobile,
-      email,
-      role: 'externalTeacher',
-      identityType: 'external',
-      bindingMethod,
-      bindCode,
-      onboardingToken: token,
-      onboardingUrl: url,
-      lineBindStatus: wantsLine(bindingMethod) ? 'pending' : 'not_required',
-      emailBindStatus: wantsEmail(bindingMethod) ? 'bound' : 'not_required',
-      status: wantsLine(bindingMethod) ? 'pendingLine' : 'pendingProfile',
-      profileStatus: wantsLine(bindingMethod) ? 'pendingLine' : 'pendingProfile',
-      payrollInfoStatus: 'pending',
-      paymentMethod: 'pending',
-      contractStatus: 'unsigned',
-      contractGregorianYear: dates.contractGregorianYear,
-      contractRocYear: dates.contractRocYear,
-      contractYearKey: dates.contractYearKey,
-      contractStartDate: dates.contractStartDate,
-      contractEndDate: dates.contractEndDate,
-      nextRenewalOpenDate: dates.nextRenewalOpenDate,
-      teachingItems: normalizeTeachingItems(data.teachingItems),
-      hourlyRate: Number(data.hourlyRate || 0),
-      paymentDay: Number(data.paymentDay || 0),
-      createdAt: nowTs(),
-      updatedAt: nowTs()
-    };
-
-    await externalProfileRef(teacherId).set(profileRow, { merge: true });
-    await syncExternalTeacherEmployee(teacherId, profileRow);
-
-    if (bindCode) {
-      await db().collection('externalTeacherLineBindings').doc(bindCode).set({
-        bindCode,
-        bindingCode: bindCode,
-        employeeBindCode: bindCode,
-        bindText,
-        teacherId,
-        employeeId: teacherId,
-        externalTeacherEmployeeId: teacherId,
-        teacherName: name,
-        mobile,
-        email,
-        bindingMethod,
-        onboardingToken: token,
-        onboardingUrl: url,
-        contractGregorianYear: dates.contractGregorianYear,
-        contractRocYear: dates.contractRocYear,
-        contractStartDate: dates.contractStartDate,
-        contractEndDate: dates.contractEndDate,
-        status: 'pending',
-        expiresAt: admin.firestore.Timestamp.fromMillis(Date.now() + 30 * 24 * 60 * 60 * 1000),
-        createdAt: nowTs(),
-        updatedAt: nowTs()
-      }, { merge: true });
-      await db().collection('employeeLineBindings').doc(bindCode).set({
-        bindingCode: bindCode,
-        employeeBindCode: bindCode,
-        bindText,
-        employeeId: teacherId,
-        employeeDocId: teacherId,
-        targetCollection: 'employees',
-        teacherId,
-        externalTeacherContractId: teacherId,
-        status: 'pending',
-        name,
-        teacherName: name,
-        email,
-        mobilePhone: mobile,
-        mobile,
-        notificationPreference: bindingMethod,
-        bindingMethod,
-        onboardingToken: token,
-        onboardingUrl: url,
-        createdAt: nowTs(),
-        updatedAt: nowTs(),
-        source: 'external-teacher-onboarding'
-      }, { merge: true });
-    }
-
-    let emailQueueId = '';
-    if (wantsEmail(bindingMethod) && email) {
-      emailQueueId = await queueTeacherEmail({
-        teacherId,
-        email,
-        title: `柚子樂器外聘老師 ${dates.contractRocYear} 年契約簽署`,
-        body: buildExternalTeacherEmailBody({ name, url, bindText, bindingMethod, ...dates }),
-        source: 'external-teacher-onboarding-link'
-      }) || '';
-    }
-
-    return {
-      ok: true,
-      teacherId,
-      token,
-      bindCode,
-      bindText,
-      bindingMethod,
-      onboardingUrl: url,
-      emailQueueId,
-      availableContractYears: availableContractYears(),
-      ...dates
-    };
-  });
-
-  exportsObj.externalTeacherGetOnboarding = onCall({ region: REGION }, async (request) => {
-    const data = request.data || {};
-    const teacherId = clean(data.teacherId || data.userId || (request.auth && request.auth.uid) || '');
-    const token = clean(data.token || '');
-    await validateTeacherTokenIfNeeded(request, teacherId, token);
-
-    const { profile } = await getExternalTeacherProfile(teacherId);
-    if (!profile) throw new HttpsError('not-found', '找不到外聘老師資料');
-    const dates = contractDatesFromData(data, profile);
-    const { template, clauses } = await getActiveTemplateWithClauses();
-    const contractText = renderContractText({ profile, template, clauses, contractStartDate: dates.contractStartDate, contractEndDate: dates.contractEndDate });
-
-    return { ok: true, teacher: publicProfile(profile), profile: publicProfile(profile), template, clauses, contractText, payrollUrl: payrollUrl(teacherId, token || profile.onboardingToken), availableContractYears: availableContractYears(), ...dates };
-  });
-
-  exportsObj.externalTeacherSaveProfile = onCall({ region: REGION, timeoutSeconds: 120, memory: '512MiB' }, async (request) => {
-    const data = request.data || {};
-    const teacherId = clean(data.teacherId || data.userId || (request.auth && request.auth.uid) || '');
-    const token = clean(data.token || '');
-    await validateTeacherTokenIfNeeded(request, teacherId, token);
-
-    const { profile } = await getExternalTeacherProfile(teacherId);
-    if (!profile) throw new HttpsError('not-found', '找不到外聘老師資料');
-    const dates = contractDatesFromData(data, profile);
-
-    const identityFiles = [];
-    const incomingFiles = Array.isArray(data.identityFilesData) ? data.identityFilesData : [];
-    for (let i = 0; i < incomingFiles.length; i++) {
-      const f = incomingFiles[i] || {};
-      if (!f.dataUrl) continue;
-      const fileName = safeFileName(f.fileName || `identity_${i + 1}.jpg`);
-      const saved = await saveDataUrlToStorage({
-        dataUrl: f.dataUrl,
-        fileName,
-        storagePath: `external-teachers/${teacherId}/${dates.contractRocYear}/identity/${Date.now()}_${i}_${fileName}`,
-        contentType: f.mimeType || ''
+    function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+    function clean(v){ return String(v == null ? '' : v).trim(); }
+    function lower(v){ return clean(v).toLowerCase(); }
+    function showLayer(n){
+      ['layer1','layer2','layer3'].forEach((id, idx)=>{
+        const el = document.getElementById(id);
+        if(el) el.classList.toggle('hide', idx !== n-1);
       });
-      const fileRow = Object.assign({}, saved, { watermarkApplied: f.watermarkApplied === true, watermarkText: clean(f.watermarkText || '') });
-      identityFiles.push(fileRow);
-      await recordExternalTeacherFile({ teacherId, contractId: '', contractRocYear: dates.contractRocYear, contractYearKey: dates.contractYearKey, fileType: 'identityPhoto', ...fileRow });
+      window.scrollTo({top:0, behavior:'smooth'});
     }
+    function debouncedRenderList(){ clearTimeout(renderTimer); renderTimer = setTimeout(renderList, 200); }
 
-    const skipPayroll = data.skipPayroll === true;
-    const hasBank = !!(data.bankName && data.bankAccountName && data.bankAccountNumber);
-    const payrollInfoStatus = skipPayroll ? 'pending' : (hasBank ? 'completed' : 'pending');
-    const paymentMethod = skipPayroll ? 'pending' : (hasBank ? 'bank' : 'pending');
-
-    const update = {
-      name: clean(data.name || profile.name || ''),
-      displayName: clean(data.name || profile.displayName || profile.name || ''),
-      mobile: clean(data.mobile || data.phone || profile.mobile || ''),
-      phone: clean(data.mobile || data.phone || profile.phone || ''),
-      email: lower(data.email || profile.email || ''),
-      idNumber: clean(data.idNumber || ''),
-      birthDate: clean(data.birthDate || ''),
-      householdAddress: clean(data.householdAddress || ''),
-      mailingAddress: clean(data.mailingAddress || ''),
-      teachingItems: normalizeTeachingItems(data.teachingItems),
-      hourlyRate: Number(data.hourlyRate || 0),
-      paymentDay: Number(data.paymentDay || 0),
-      identityPhotoStatus: identityFiles.length ? 'uploaded' : ((Array.isArray(profile.identityFiles) && profile.identityFiles.length) ? 'uploaded' : 'pending'),
-      payrollInfoStatus,
-      paymentMethod,
-      bankName: clean(data.bankName || ''),
-      bankBranch: clean(data.bankBranch || ''),
-      bankAccountName: clean(data.bankAccountName || ''),
-      bankAccountNumber: clean(data.bankAccountNumber || ''),
-      profileStatus: 'pendingContract',
-      status: 'pendingContract',
-      contractGregorianYear: dates.contractGregorianYear,
-      contractRocYear: dates.contractRocYear,
-      contractYearKey: dates.contractYearKey,
-      contractStartDate: dates.contractStartDate,
-      contractEndDate: dates.contractEndDate,
-      nextRenewalOpenDate: dates.nextRenewalOpenDate,
-      updatedAt: nowTs()
-    };
-    if (identityFiles.length) update.identityFiles = admin.firestore.FieldValue.arrayUnion(...identityFiles);
-
-    await externalProfileRef(teacherId).set(update, { merge: true });
-    await syncExternalTeacherEmployee(teacherId, Object.assign({}, profile, update));
-    return { ok: true, payrollInfoStatus, paymentMethod, identityFiles, ...dates };
-  });
-
-  exportsObj.externalTeacherCompleteContract = onCall({ region: REGION, timeoutSeconds: 120, memory: '512MiB' }, async (request) => {
-    const data = request.data || {};
-    const teacherId = clean(data.teacherId || data.userId || (request.auth && request.auth.uid) || '');
-    const token = clean(data.token || '');
-    await validateTeacherTokenIfNeeded(request, teacherId, token);
-
-    if (data.agreeTerms !== true) throw new HttpsError('failed-precondition', '請先勾選同意契約內容');
-    if (!data.signatureDataUrl) throw new HttpsError('invalid-argument', '請先完成簽名');
-
-    const { ref, profile } = await getExternalTeacherProfile(teacherId);
-    if (!profile) throw new HttpsError('not-found', '找不到外聘老師資料');
-    const identityFiles = Array.isArray(profile.identityFiles) ? profile.identityFiles : [];
-    if (!identityFiles.length) throw new HttpsError('failed-precondition', '請先上傳身分證明文件。');
-
-    const dates = contractDatesFromData(data, profile);
-    const contractId = makeId('EXTC');
-    const { template, clauses } = await getActiveTemplateWithClauses();
-    const contractText = renderContractText({ profile, template, clauses, contractStartDate: dates.contractStartDate, contractEndDate: dates.contractEndDate });
-
-    const signatureFile = await saveDataUrlToStorage({
-      dataUrl: data.signatureDataUrl,
-      fileName: `${contractId}_signature.png`,
-      storagePath: `external-teachers/${teacherId}/${dates.contractRocYear}/signatures/${contractId}_signature.png`,
-      contentType: 'image/png'
-    });
-    await recordExternalTeacherFile({ teacherId, contractId, contractRocYear: dates.contractRocYear, contractYearKey: dates.contractYearKey, fileType: 'signature', ...signatureFile });
-
-    const contractHtmlFile = await saveContractHtml({ teacherId, contractRocYear: dates.contractRocYear, contractId, contractText, signatureUrl: signatureFile.downloadUrl });
-    await recordExternalTeacherFile({ teacherId, contractId, contractRocYear: dates.contractRocYear, contractYearKey: dates.contractYearKey, fileType: 'signedContractHtml', ...contractHtmlFile });
-
-    const contractDoc = {
-      contractId,
-      teacherId,
-      employeeId: clean(profile.employeeId || profile.externalTeacherEmployeeId || teacherId),
-      externalTeacherEmployeeId: clean(profile.employeeId || profile.externalTeacherEmployeeId || teacherId),
-      teacherName: clean(profile.name || profile.displayName || ''),
-      profileRef: `externalTeacherProfiles/${teacherId}`,
-      templateId: template.id,
-      templateVersion: template.version || '',
-      contractTitle: template.title || '外聘才藝教師委任契約書',
-      contractGregorianYear: dates.contractGregorianYear,
-      contractRocYear: dates.contractRocYear,
-      contractYearKey: dates.contractYearKey,
-      contractStartDate: dates.contractStartDate,
-      contractEndDate: dates.contractEndDate,
-      nextRenewalOpenDate: dates.nextRenewalOpenDate,
-      teacherSnapshot: publicProfile(profile),
-      clauseSnapshots: clauses,
-      fullContractTextSnapshot: contractText,
-      signatureFile,
-      identityFiles,
-      contractHtmlFile,
-      contractHtmlUrl: contractHtmlFile.downloadUrl,
-      bindingMethod: profile.bindingMethod || '',
-      lineUserId: clean(profile.lineUserId || ''),
-      email: clean(profile.email || ''),
-      status: 'active',
-      signedAt: nowTs(),
-      signedAtText: todayKey(),
-      createdAt: nowTs(),
-      updatedAt: nowTs()
-    };
-
-    await db().collection('externalTeacherContracts').doc(contractId).set(contractDoc);
-    await ref.set({
-      contractStatus: 'signed',
-      currentContractId: contractId,
-      currentContractRocYear: dates.contractRocYear,
-      contractGregorianYear: dates.contractGregorianYear,
-      contractRocYear: dates.contractRocYear,
-      contractYearKey: dates.contractYearKey,
-      contractStartDate: dates.contractStartDate,
-      contractEndDate: dates.contractEndDate,
-      signedAt: nowTs(),
-      signedAtText: todayKey(),
-      profileStatus: 'active',
-      status: 'active',
-      updatedAt: nowTs()
-    }, { merge: true });
-    await syncExternalTeacherEmployee(teacherId, Object.assign({}, profile, {
-      contractStatus: 'signed',
-      currentContractId: contractId,
-      status: 'active',
-      contractGregorianYear: dates.contractGregorianYear,
-      contractRocYear: dates.contractRocYear,
-      contractYearKey: dates.contractYearKey,
-      contractStartDate: dates.contractStartDate,
-      contractEndDate: dates.contractEndDate
-    }));
-
-    const completeBody = `外聘老師資料與契約簽署已完成 ✅\n\n柚子樂器已收到您的資料與簽名。\n\n合約年度：民國 ${dates.contractRocYear} 年\n契約期間：${dates.contractStartDate} 至 ${dates.contractEndDate}`;
-    if (wantsLine(profile.bindingMethod) && profile.lineUserId) await pushLineMessage(profile.lineUserId, completeBody);
-    if (wantsEmail(profile.bindingMethod) && profile.email) {
-      await queueTeacherEmail({ teacherId, email: profile.email, title: `柚子樂器外聘老師 ${dates.contractRocYear} 年契約簽署完成`, body: `${completeBody}\n\n契約檔案：${contractHtmlFile.downloadUrl}`, source: 'external-teacher-contract-completed' });
+    function rawOf(e){ return (e && e.raw && typeof e.raw === 'object') ? e.raw : {}; }
+    function profileOf(e){ return (e && e.profile && typeof e.profile === 'object') ? e.profile : {}; }
+    function salaryOf(e){ return (e && e.salary && typeof e.salary === 'object') ? e.salary : ((e && e.info && typeof e.info === 'object') ? e.info : {}); }
+    function rawConfigOf(e){ const s = salaryOf(e); return (s && s.rawConfig && typeof s.rawConfig === 'object') ? s.rawConfig : {}; }
+    function fromSources(e){ return [e || {}, profileOf(e), salaryOf(e), rawConfigOf(e), rawOf(e)]; }
+    function firstValue(obj, keys){
+      for(const src of fromSources(obj)){
+        for(const k of keys){
+          if(src && src[k] !== undefined && src[k] !== null && clean(src[k]) !== '') return src[k];
+        }
+      }
+      return '';
     }
-    if (clean(profile.payrollInfoStatus || 'pending') === 'pending' && profile.lineUserId) {
-      await pushLineMessage(profile.lineUserId, `提醒您：您的薪資／匯款資料目前尚未補填。\n\n這不影響本次契約簽署完成，但為方便後續鐘點費結算，請之後點選連結補填銀行帳戶資料。\n\n${payrollUrl(teacherId, token || profile.onboardingToken)}`);
-    }
-
-    await pushAdminMessage(`外聘老師簽約完成\n\n姓名：${clean(profile.name || '')}\n合約年度：民國 ${dates.contractRocYear} 年\n契約期間：${dates.contractStartDate} 至 ${dates.contractEndDate}\n\n管理端：${contractAdminUrl()}`);
-
-    return { ok: true, contractId, contractHtmlFile, contractHtmlUrl: contractHtmlFile.downloadUrl, ...dates };
-  });
-
-  exportsObj.externalTeacherSavePayroll = onCall({ region: REGION }, async (request) => {
-    const data = request.data || {};
-    const teacherId = clean(data.teacherId || data.userId || (request.auth && request.auth.uid) || '');
-    const token = clean(data.token || '');
-    await validateTeacherTokenIfNeeded(request, teacherId, token);
-    if (!data.bankName || !data.bankAccountName || !data.bankAccountNumber) throw new HttpsError('invalid-argument', '請至少填寫銀行名稱、戶名與帳號');
-
-    const { ref, profile } = await getExternalTeacherProfile(teacherId);
-    if (!profile) throw new HttpsError('not-found', '找不到外聘老師資料');
-    await ref.set({
-      payrollInfoStatus: 'completed',
-      paymentMethod: 'bank',
-      bankName: clean(data.bankName || ''),
-      bankBranch: clean(data.bankBranch || ''),
-      bankAccountName: clean(data.bankAccountName || ''),
-      bankAccountNumber: clean(data.bankAccountNumber || ''),
-      payrollReminderPaused: true,
-      updatedAt: nowTs()
-    }, { merge: true });
-
-    if (profile.lineUserId) await pushLineMessage(profile.lineUserId, '薪資／匯款資料已補填完成 ✅\n\n柚子樂器已收到您的銀行帳戶資料。');
-    return { ok: true };
-  });
-
-  exportsObj.externalTeacherListContractTemplate = onCall({ region: REGION }, async (request) => {
-    if (!(await isAdminRequest(request, request.data || {}))) throw new HttpsError('permission-denied', '只有管理者可以修改契約條文');
-    const { template, clauses } = await getActiveTemplateWithClauses();
-    return { ok: true, template, clauses };
-  });
-
-  exportsObj.externalTeacherSaveContractTemplate = onCall({ region: REGION }, async (request) => {
-    const data = request.data || {};
-    if (!(await isAdminRequest(request, data))) throw new HttpsError('permission-denied', '只有管理者可以修改契約條文');
-
-    const templateId = clean(data.templateId || 'external_teacher_mandate_default');
-    const templateRef = db().collection('externalTeacherContractTemplates').doc(templateId);
-    await templateRef.set({
-      title: clean(data.title || '外聘才藝教師委任契約書'),
-      contractType: 'externalTeacherMandate',
-      version: clean(data.version || String(currentGregorianYear())),
-      status: 'active',
-      updatedAt: nowTs(),
-      createdAt: nowTs()
-    }, { merge: true });
-
-    const existing = await templateRef.collection('clauses').get();
-    const batch = db().batch();
-    existing.docs.forEach((doc) => batch.delete(doc.ref));
-    const clauses = Array.isArray(data.clauses) ? data.clauses : [];
-    clauses.forEach((c, index) => {
-      const ref = templateRef.collection('clauses').doc(clean(c.id) || `clause_${String(index + 1).padStart(2, '0')}`);
-      batch.set(ref, {
-        articleNo: clean(c.articleNo || ''),
-        title: clean(c.title || ''),
-        content: clean(c.content || ''),
-        sortOrder: Number(c.sortOrder || index + 1),
-        enabled: c.enabled !== false,
-        createdAt: nowTs(),
-        updatedAt: nowTs()
+    function mergeSalaryIntoEmployee(row, salaryMap){
+      salaryMap = salaryMap || {};
+      const keys = [
+        empId(row), clean(row && row.id), clean(row && row.employeeId), clean(row && row.userId), clean(row && row.__id), emailOf(row)
+      ].map(function(x){ return clean(x); }).filter(Boolean);
+      let cfg = {};
+      keys.forEach(function(k){
+        const direct = salaryMap[k] || salaryMap[lower(k)];
+        if(direct && typeof direct === 'object') cfg = Object.assign(cfg, direct);
       });
-    });
-    await batch.commit();
-    return { ok: true };
-  });
-
-  exportsObj.externalTeacherListContracts = onCall({ region: REGION, timeoutSeconds: 60 }, async (request) => {
-    const data = request.data || {};
-    if (!(await isAdminRequest(request, data))) throw new HttpsError('permission-denied', '只有管理者可以查看外聘老師簽約紀錄');
-    const targetRocYear = clean(data.rocYear || data.contractRocYear || '');
-    let contractQuery = db().collection('externalTeacherContracts').orderBy('createdAt', 'desc').limit(300);
-    if (targetRocYear) contractQuery = db().collection('externalTeacherContracts').where('contractYearKey', '==', String(targetRocYear)).limit(300);
-    const contractSnap = await contractQuery.get();
-    const contracts = contractSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
-      .sort((a, b) => String(b.signedAtText || b.contractStartDate || '').localeCompare(String(a.signedAtText || a.contractStartDate || '')))
-      .map((c) => ({
-        id: c.id,
-        contractId: c.contractId || c.id,
-        teacherId: c.teacherId || '',
-        teacherName: c.teacherName || '',
-        contractTitle: c.contractTitle || '',
-        contractRocYear: c.contractRocYear || '',
-        contractYearKey: c.contractYearKey || '',
-        contractStartDate: c.contractStartDate || '',
-        contractEndDate: c.contractEndDate || '',
-        status: c.status || '',
-        signedAtText: c.signedAtText || '',
-        contractHtmlUrl: c.contractHtmlUrl || (c.contractHtmlFile && c.contractHtmlFile.downloadUrl) || '',
-        lineUserId: c.lineUserId || '',
-        email: c.email || ''
-      }));
-
-    let profileQuery = db().collection('externalTeacherProfiles').limit(300);
-    if (targetRocYear) profileQuery = db().collection('externalTeacherProfiles').where('contractYearKey', '==', String(targetRocYear)).limit(300);
-    const profileSnap = await profileQuery.get();
-    const profiles = profileSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })).map((p) => ({
-      id: p.id || p.teacherId || '',
-      teacherId: p.teacherId || p.id || '',
-      name: p.name || p.displayName || '',
-      mobile: p.mobile || p.phone || '',
-      email: p.email || '',
-      bindingMethod: p.bindingMethod || '',
-      lineBindStatus: p.lineBindStatus || '',
-      emailBindStatus: p.emailBindStatus || '',
-      contractRocYear: p.contractRocYear || '',
-      contractYearKey: p.contractYearKey || '',
-      contractStatus: p.contractStatus || '',
-      status: p.status || '',
-      currentContractId: p.currentContractId || '',
-      onboardingUrl: p.onboardingUrl || onboardingUrl(p.teacherId || p.id, p.onboardingToken || '')
-    }));
-
-    return { ok: true, contracts, profiles, availableContractYears: availableContractYears() };
-  });
-
-  exportsObj.externalTeacherPayrollReminderEveryDay = onSchedule({
-    region: REGION,
-    schedule: '0 10 * * *',
-    timeZone: 'Asia/Taipei',
-    timeoutSeconds: 180,
-    memory: '512MiB'
-  }, async () => {
-    const snap = await db().collection('externalTeacherProfiles')
-      .where('status', '==', 'active')
-      .where('payrollInfoStatus', '==', 'pending')
-      .get();
-
-    const now = Date.now();
-    const threeDaysMs = 3 * 24 * 60 * 60 * 1000;
-    let sent = 0;
-    for (const doc of snap.docs) {
-      const profile = doc.data() || {};
-      if (profile.payrollReminderPaused === true) continue;
-      const lineUserId = clean(profile.lineUserId || '');
-      if (!lineUserId) continue;
-      const last = profile.lastPayrollReminderAt && profile.lastPayrollReminderAt.toMillis ? profile.lastPayrollReminderAt.toMillis() : 0;
-      if (last && now - last < threeDaysMs) continue;
-      const msg = `柚子樂器提醒您：\n\n您的外聘教師薪資／匯款資料尚未補填。\n為了方便後續鐘點費結算，請點選下方連結補填銀行帳戶資料。\n\n補填連結：\n${payrollUrl(doc.id, profile.onboardingToken || '')}`;
-      await pushLineMessage(lineUserId, msg);
-      await doc.ref.set({ lastPayrollReminderAt: nowTs(), payrollReminderCount: Number(profile.payrollReminderCount || 0) + 1, updatedAt: nowTs() }, { merge: true });
-      await db().collection('notificationQueue').add({
-        eventCode: 'external_teacher_payroll_reminder',
-        teacherId: doc.id,
-        lineUserId,
-        channel: 'line',
-        title: '外聘老師薪資資料待補',
-        body: msg,
-        message: msg,
-        status: '已發送',
-        sentAt: nowTs(),
-        createdAt: nowTs(),
-        source: 'external-teacher-payroll-reminder'
-      });
-      sent++;
+      if(!Object.keys(cfg).length) return row;
+      return Object.assign({}, row, {
+        salary:Object.assign({}, salaryOf(row), cfg),
+        info:Object.assign({}, salaryOf(row), cfg),
+        raw:Object.assign({}, rawOf(row), cfg)
+      }, cfg);
     }
-    logger.info('externalTeacherPayrollReminderEveryDay completed', { sent });
-  });
-}
+    function displayValue(v, placeholder){
+      const out = fmt(v);
+      return out || placeholder || '尚未填寫';
+    }
+    function fmt(v){
+      if(v === undefined || v === null) return '';
+      if(typeof v === 'object'){
+        if(typeof v.toDate === 'function'){
+          const d = v.toDate(); if(!isNaN(d.getTime())) return d.toISOString().slice(0,10);
+        }
+        if(v.seconds){
+          const d = new Date(v.seconds * 1000); if(!isNaN(d.getTime())) return d.toISOString().slice(0,10);
+        }
+        return '';
+      }
+      const s = clean(v);
+      if(!s) return '';
+      if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+      return s;
+    }
 
-module.exports = {
-  registerExternalTeacherOnboarding,
-  handleExternalTeacherLineEvent
-};
+    function empId(e){ return clean(firstValue(e, ['employeeId','id','userId','員工ID','__id'])); }
+    function nameOf(e){ return clean(firstValue(e, ['name','姓名','employeeName','員工姓名'])); }
+    function emailOf(e){ return lower(firstValue(e, ['email','Email','電子郵件'])); }
+    function identityType(e){
+      const raw = lower(firstValue(e, ['identityType','identity','roleType','身分類型','身份類型','員工身分','employeeType','identityLabel']));
+      const label = clean(firstValue(e, ['identityLabel','身分類型','身份類型','員工身分']));
+      const isPart = firstValue(e,['isPartTime','是否工讀生']);
+      if(raw.includes('parttime') || raw.includes('工讀') || label.includes('工讀') || isPart === true || clean(isPart).toLowerCase()==='yes' || clean(isPart)==='是') return 'parttime';
+      if(raw.includes('external') || raw.includes('teacher') || raw.includes('外聘') || label.includes('外聘')) return 'external';
+      return 'staff';
+    }
+    function identityText(type){ return type === 'parttime' ? '工讀生' : (type === 'external' ? '外聘老師' : '專職人員'); }
+    function typeClass(type){ return type === 'parttime' ? 'orange' : (type === 'external' ? 'blue' : 'green'); }
+    function boolLabel(v){
+      if(v === true) return '啟用';
+      const s = clean(v).toLowerCase();
+      if(['true','yes','1','是','啟用','enabled'].includes(s)) return '啟用';
+      if(['false','no','0','否','停用','disabled'].includes(s)) return '停用';
+      return clean(v);
+    }
+    function statusLabel(e){
+      const s = clean(firstValue(e, ['statusLabel']));
+      if(s) return s;
+      const acc = lower(firstValue(e, ['accountStatus','帳號狀態']));
+      const emp = lower(firstValue(e, ['employmentStatus','任職狀態']));
+      const hidden = !!firstValue(e, ['hiddenFromActiveLists','隱藏於日常清單','hidden','隱藏']);
+      if(emp === 'resigned' || emp === '離職') return '離職';
+      if(acc === 'inactive') return hidden ? '停用 / 隱藏' : '停用';
+      if(hidden) return '隱藏';
+      return '在職';
+    }
+    function canShowDaily(e){ return !/離職|停用|隱藏|封存|駁回/.test(statusLabel(e)); }
+
+    function isSystemRecord(e){
+      const raw=rawOf(e);const id=empId(e);
+      return id==='PRIMARY_MANAGER_LINE' || lower(firstValue(e,['recordType']))==='system_setting' || lower(firstValue(e,['identityType']))==='system' || lower(raw.recordType)==='system_setting';
+    }
+    function employeeQuality(e){
+      let score=canShowDaily(e)?100:20;
+      if(firstValue(e,['onboardingCompleted']))score+=20;
+      if(firstValue(e,['idNumber','身分證字號']))score+=5;
+      if(firstValue(e,['mobilePhone','行動電話']))score+=3;
+      return score;
+    }
+    function dedupeEmployees(rows){
+      const map=new Map();let duplicateCount=0;
+      (rows||[]).filter(e=>!isSystemRecord(e)).forEach(e=>{
+        const key=emailOf(e)?('email:'+emailOf(e)):('id:'+empId(e));
+        if(!key||key==='id:')return;
+        const old=map.get(key);
+        if(!old)map.set(key,e);
+        else{duplicateCount++;if(employeeQuality(e)>employeeQuality(old))map.set(key,e)}
+      });
+      return {rows:Array.from(map.values()),duplicateCount};
+    }
+
+    async function init(){
+      currentUser = requireLogin();
+      if(!currentUser) return;
+      if(!hasSettingsZoneAccess(currentUser)){ location.href = 'dashboard.html'; return; }
+      await loadEmployees();
+      showLayer(1);
+    }
+
+    async function loadEmployees(){
+      const res = await api('getEmployeeManagementData', { userId: currentUser.id, statusMode:'all' });
+      let salaryMap = {};
+      try{
+        const salaryRes = await api('getSalarySetupOptions', { userId: currentUser.id });
+        salaryMap = (salaryRes && salaryRes.employeeConfigMap) || {};
+      }catch(err){
+        console.warn('薪資投保資料讀取失敗，員工管理仍會先顯示基本資料', err);
+      }
+      const mergedRows = (res.rows || []).map(function(row){ return mergeSalaryIntoEmployee(row, salaryMap); });
+      const cleaned=dedupeEmployees(mergedRows.filter(e => empId(e) || emailOf(e)));
+      allEmployees = cleaned.rows;
+      const duplicateCount=Math.max(cleaned.duplicateCount,Array.isArray(res.duplicateGroups)?res.duplicateGroups.length:0);
+      const notice=$('#dataNotice');
+      if(duplicateCount){notice.style.display='block';notice.textContent=`系統偵測到 ${duplicateCount} 組可能重複的人員主檔；目前名單已合併顯示，正式刪除前仍應先核對歷史薪資、班表與打卡資料。`;}
+      else{notice.style.display='none';notice.textContent='';}
+      renderCategories();
+    }
+
+    function renderCategories(){
+      const active = {staff:0, parttime:0, external:0};
+      const inactive = {staff:0, parttime:0, external:0};
+      allEmployees.forEach(e => (canShowDaily(e)?active:inactive)[identityType(e)]++);
+      $('#categoryCards').innerHTML = [
+        ['staff','專職人員','staff'], ['parttime','工讀生','parttime'], ['external','外聘老師','external']
+      ].map(([type,title,cls]) => `
+        <div class="category-card ${cls}" onclick="openCategory('${type}')">
+          <div class="cat-title">${title}</div>
+          <div class="cat-count">${active[type] || 0}<span>人</span></div>
+          <div class="cat-secondary">離職／停用／封存：${inactive[type] || 0} 人</div>
+        </div>
+      `).join('');
+    }
+
+    function openCategory(type){
+      currentType = type;
+      selectedId = '';
+      $('#listTitle').textContent = identityText(type) + '名單';
+      $('#keyword').value = '';
+      renderList();
+      showLayer(2);
+    }
+
+    function filteredEmployees(){
+      const kw = lower($('#keyword') && $('#keyword').value);
+      const includeHidden = $('#includeHidden') && $('#includeHidden').checked;
+      return allEmployees.filter(e => {
+        if(identityType(e) !== currentType) return false;
+        if(!includeHidden && !canShowDaily(e)) return false;
+        if(!kw) return true;
+        const hay = [nameOf(e), emailOf(e), empId(e), statusLabel(e)].join(' ').toLowerCase();
+        return hay.includes(kw);
+      });
+    }
+
+    function renderList(){
+      const rows = filteredEmployees();
+      if(!rows.length){ $('#employeeList').innerHTML = '<div class="empty">這個分類目前沒有符合條件的人員。</div>'; return; }
+      $('#employeeList').innerHTML = rows.map(e => {
+        const id = empId(e) || emailOf(e);
+        const type = identityType(e);
+        return `
+          <div class="emp-card" onclick="selectEmployee('${esc(id)}')">
+            <div>
+              <div class="emp-name">${esc(nameOf(e) || '未命名')}</div>
+              <div class="emp-email">${esc(emailOf(e) || '無 Email')}</div>
+            </div>
+            <span class="pill ${typeClass(type)}">${esc(identityText(type))}</span>
+          </div>`;
+      }).join('');
+    }
+
+    function apiTimeout(promise, ms){
+      return Promise.race([
+        promise,
+        new Promise(resolve => setTimeout(() => resolve(null), ms || 3500))
+      ]);
+    }
+
+    async function selectEmployee(id){
+      selectedId = id;
+      const base = allEmployees.find(x => (empId(x) || emailOf(x)) === id);
+      if(!base) return;
+
+      // 先用名單中的員工主檔立即顯示，不讓畫面卡在「讀取中」。
+      renderDetail(base);
+      showLayer(3);
+
+      // 再背景補抓薪資 / 投保等完整資料；若 API 慢或無回應，保留目前畫面。
+      try{
+        const key = empId(base) || firstValue(base, ['id','__id','userId']) || id;
+        const email = emailOf(base);
+        const payload = { employeeId:key, userId:key, id:key, email:email };
+        const [profileRes,salaryRes,lifecycleRes] = await Promise.all([
+          apiTimeout(api('getMyProfileFull', payload).catch(()=>null), 3500),
+          apiTimeout(api('getMySalaryInfo', payload).catch(()=>null), 3500),
+          apiTimeout(api('getEmployeeLifecycleSummary', payload).catch(()=>null), 3500)
+        ]);
+        if(!profileRes && !salaryRes && !lifecycleRes) return;
+        const enriched = Object.assign({}, base, {
+          profile: (profileRes && profileRes.profile) || {},
+          salary: (salaryRes && (salaryRes.salary || salaryRes.info)) || (profileRes && (profileRes.salary || profileRes.info)) || {},
+          lifecycle: (lifecycleRes && lifecycleRes.ok!==false) ? lifecycleRes : {},
+          raw: Object.assign({}, rawOf(base), (profileRes && profileRes.profile) || {}, (salaryRes && ((salaryRes.salary && salaryRes.salary.rawConfig) || (salaryRes.info && salaryRes.info.rawConfig))) || {})
+        });
+        renderDetail(enriched);
+      }catch(err){
+        console.warn('[employee-admin detail background load]', err);
+      }
+    }
+
+    function field(label, value, full, placeholder){
+      return `<div class="field ${full ? 'full' : ''}"><label>${esc(label)}</label><input value="${esc(displayValue(value, placeholder))}" readonly></div>`;
+    }
+    function editableSelect(label, id, options){
+      return `<div class="field"><label>${esc(label)}</label><select id="${esc(id)}">${options.map(o=>`<option value="${esc(o[0])}">${esc(o[1])}</option>`).join('')}</select></div>`;
+    }
+
+    function optionValue(raw, fallback){
+      const s = lower(raw);
+      return s || fallback;
+    }
+
+    function summaryCard(label,value,state){return `<div class="summary-card ${state||''}"><span>${esc(label)}</span><strong>${esc(value||'尚未設定')}</strong></div>`}
+    function encode(v){return encodeURIComponent(clean(v))}
+
+    function renderDetail(e){
+      const type = identityType(e);
+      const identity = identityText(type);
+      const status = statusLabel(e);
+      const lineNotify = boolLabel(firstValue(e, ['lineNotifyEnabled','LINE 通知啟用','LINE通知啟用']));
+      const lineBindTime = firstValue(e, ['lineBoundAt','lineBindAt','lineBoundAtText','lineBindTime','LINE 綁定時間','LINE綁定時間']);
+      const lineDisplayName = firstValue(e, ['lineDisplayName','lineName','LINE 顯示名稱','LINE名稱']);
+      const mainAmount = type === 'parttime'
+        ? firstValue(e, ['parttimeHourlyRateText','hourlyRateText','hourlyRate','時薪','時薪金額','hourlyWage','parttimeHourlyWage'])
+        : firstValue(e, ['staffBaseSalaryText','baseSalaryText','baseSalary','staffBaseSalary','monthlySalary','salary','本薪','本薪金額']);
+      const laborStatus = firstValue(e, ['laborStatus','laborInsuranceStatus','laborInsurance','勞保狀態']);
+      const healthStatus = firstValue(e, ['healthStatus','healthInsuranceStatus','healthInsurance','健保狀態']);
+      const lifecycle=(e && e.lifecycle)||{};const schedule=(lifecycle&&lifecycle.schedule)||{};
+      const targetId=empId(e)||emailOf(e);const docUrl=firstValue(e,['identityDocumentUrl']);
+      const identityVerified=firstValue(e,['identityDocumentVerified','identityVerificationStatus'])===true || clean(firstValue(e,['identityVerificationStatus']))==='verified';
+      const salaryReady=clean(mainAmount)!=='' && clean(laborStatus)!=='' && clean(healthStatus)!=='';
+      const scheduleText=type==='external'?'不適用':(schedule.templateName||firstValue(e,['currentScheduleTemplateName'])||'尚未設定');
+      const dataSource=firstValue(e,['registrationApplicationId'])?'註冊審核暨入職建檔':'既有人員主檔';
+
+      $('#detailPanel').innerHTML = `
+        <div class="topline">
+          <div>
+            <div class="person-title">${esc(nameOf(e) || firstValue(e, ['displayName']) || '未命名')}</div>
+            <div class="person-sub">${esc(identity)}｜${esc(emailOf(e) || '無 Email')}</div>
+          </div>
+          <div class="back-row">
+            <span class="pill ${canShowDaily(e) ? 'green' : 'red'}">${esc(status)}</span>
+            <button class="ghost" type="button" onclick="showLayer(2)">回到名單</button>
+          </div>
+        </div>
+
+        <div class="section-title">註冊基本資料</div>
+        <div class="form-grid">
+          ${field('員工 ID', firstValue(e, ['employeeId','id','userId','__id','員工ID']))}
+          ${field('姓名', firstValue(e, ['name','displayName','姓名','employeeName','員工姓名']))}
+          ${field('Email', firstValue(e, ['email','Email','電子郵件','loginAccount','登入帳號']))}
+          ${field('身分類型', identity)}
+          ${field('身分證字號', firstValue(e, ['idNumber','nationalId','idNo','idNumberMasked','身分證字號','身份證字號']))}
+          ${field('出生年月日', firstValue(e, ['birthDate','birthday','出生年月日','生日']))}
+          ${field('行動電話', firstValue(e, ['mobilePhone','phone','手機','行動電話','聯絡電話']))}
+          ${field(type === 'external' ? '合作起始日' : '到職日', firstValue(e, ['hireDate','cooperationStartDate','joinDate','startDate','到職日','任職日期']))}
+          ${field('聯絡地址', firstValue(e, ['address','contactAddress','聯絡地址','地址']), true)}
+          ${field('緊急聯絡人', firstValue(e, ['emergencyContact','緊急聯絡人']))}
+          ${field('緊急聯絡人電話', firstValue(e, ['emergencyPhone','emergencyContactPhone','緊急聯絡人電話','緊急聯絡電話']))}
+          ${field('資料來源', dataSource)}
+          ${field('證件核對', identityVerified ? '主管已核對' : (docUrl ? '等待主管核對' : '尚未上傳'))}
+        </div>
+        ${docUrl ? `<div class="link-actions"><a class="link-btn light" href="${esc(docUrl)}" target="_blank" rel="noopener">查看本人證件正面</a></div>` : ''}
+
+        <div class="section-title">資料完整度與關聯</div>
+        <div class="summary-grid">
+          ${summaryCard('基本資料', nameOf(e)&&emailOf(e)&&firstValue(e,['idNumber','身分證字號'])?'已完成':'尚未完成',nameOf(e)&&emailOf(e)?'ok':'warn')}
+          ${summaryCard('身分驗證', identityVerified?'已核對':'尚未完成',identityVerified?'ok':'warn')}
+          ${summaryCard('目前班表', scheduleText,type==='external'||scheduleText!=='尚未設定'?'ok':'warn')}
+          ${summaryCard('薪資投保', type==='external'?'不適用':(salaryReady?'已設定':'尚未完成'),type==='external'||salaryReady?'ok':'warn')}
+          ${summaryCard('LINE 綁定', firstValue(e,['lineUserId','LINE User ID'])?'已綁定':'尚未綁定',firstValue(e,['lineUserId','LINE User ID'])?'ok':'warn')}
+          ${summaryCard('帳號狀態', status,canShowDaily(e)?'ok':'bad')}
+        </div>
+        <div class="link-actions">
+          ${type!=='external'?`<a class="link-btn" href="salary-admin.html?employeeId=${encode(targetId)}">查看／調整薪資投保</a><a class="link-btn secondary" href="schedule-admin.html?employeeId=${encode(targetId)}&panel=assignment">查看／調整班表</a>`:''}
+        </div>
+
+        <div class="section-title">LINE 資料</div>
+        <div class="form-grid">
+          ${field('LINE User ID', firstValue(e, ['lineUserId','LINE User ID','LINEUserID']), true, '尚未綁定')}
+          ${field('LINE 通知狀態', lineNotify, false, '尚未設定')}
+          ${field('LINE 綁定時間', lineBindTime, false, '尚未綁定')}
+          ${field('LINE 顯示名稱', lineDisplayName, false, '尚未綁定')}
+        </div>
+        <div class="actions" style="justify-content:flex-start;margin-top:12px">
+          <button class="danger" type="button" onclick="clearLineBinding()">清除此人員 LINE 綁定</button>
+        </div>
+        <div class="hint">如果人員 LINE 綁錯到主管手機，先按這顆清掉，再請對方用自己的手機重新完成 LINE 綁定。</div>
+
+        <div class="section-title">薪資 / 投保摘要</div>
+        <div class="form-grid">
+          ${field('薪資顯示類型', firstValue(e, ['salaryDisplayType','薪資顯示類型']) || (type === 'parttime' ? '工讀時薪' : '專職本薪'))}
+          ${field(type === 'parttime' ? '時薪' : '本薪', mainAmount, false, '尚未設定')}
+          ${type === 'parttime' ? field('是否部分工時', firstValue(e, ['parttimePartialHoursText','isPartialHours','isPartialWorkingTime','partialWorkingTime','是否部分工時']), false, '尚未設定') : ''}
+          ${type === 'parttime' ? field('目前申報月平均薪資總額', firstValue(e, ['parttimeAverageSalaryText','averageSalary','parttimeAverageSalary','目前申報月平均薪資總額']), false, '尚未設定') : ''}
+          ${field('職務加給', firstValue(e, ['jobAllowanceText','jobAllowance','職務加給']), false, '無')}
+          ${field('津貼', firstValue(e, ['allowanceText','allowance','津貼']), false, '無')}
+          ${field('薪資生效日', firstValue(e, ['effectiveDate','salaryEffectiveDate','生效日期']), false, '尚未設定')}
+          ${field('薪資備註', firstValue(e, ['salaryNote','note','備註']), true, '無')}
+          ${field('勞保狀態', laborStatus, false, '尚未設定')}
+          ${field('勞保級距', firstValue(e, ['laborPlanText','laborLevelText','laborPlan','laborPlanCode','laborInsuranceLevel','laborLevel','勞保級距']), false, laborStatus ? '無級距' : '尚未設定')}
+          ${field('勞保投保薪資', firstValue(e, ['laborSalaryText','laborInsuranceSalary','laborSalary','勞保投保薪資']), false, laborStatus ? '尚未設定' : '未加保')}
+          ${field('勞保自付額', firstValue(e, ['laborSelfPayText','laborInsuranceSelfPay','laborEmployeeSelfPay','laborSelfPay','laborInsuranceSelfAmount','laborInsuranceEmployeeAmount','laborSelfPayAmount','勞保自付額','勞保員工自付額','勞保員工負擔','員工負擔']), false, laborStatus ? '尚未設定' : '未加保')}
+          ${field('雇主提撥勞退', firstValue(e, ['retirementEmployerText','laborRetirementEmployer','雇主提撥勞退']), false, laborStatus ? '尚未設定' : '未加保')}
+          ${field('勞退自提', firstValue(e, ['selfRetirementText','selfRetirementRate','laborRetirementSelfRate','勞退自提']), false, '未設定')}
+          ${field('健保狀態', healthStatus, false, '尚未設定')}
+          ${field('健保級距', firstValue(e, ['healthPlanText','healthLevelText','healthPlan','healthPlanCode','healthInsuranceLevel','healthLevel','健保級距']), false, healthStatus ? '無級距' : '尚未設定')}
+          ${field('健保投保薪資', firstValue(e, ['healthSalaryText','healthInsuranceSalary','healthSalary','健保投保薪資']), false, healthStatus ? '尚未設定' : '未加保')}
+          ${field('健保自付額', firstValue(e, ['healthSelfPayText','healthInsuranceSelfPay','healthSelfPay','healthInsuranceSelfAmount','healthInsuranceEmployeeAmount','健保自付額']), false, healthStatus ? '尚未設定' : '未加保')}
+        </div>
+
+        <div class="section-title">管理設定</div>
+        <div class="form-grid">
+          ${editableSelect('帳號狀態', 'accountStatus', [['active','啟用'],['inactive','停用'],['archived','封存'],['pending','待審核'],['rejected','註冊駁回']])}
+          ${editableSelect('任職狀態', 'employmentStatus', [['active','在職 / 合作中'],['resigned','離職'],['suspended','暫停任用'],['contractorEnded','外聘合作結束'],['archived','封存']])}
+          ${editableSelect('是否隱藏於日常清單', 'hiddenFromActiveLists', [['false','否'],['true','是']])}
+          <div class="field"><label>離職 / 結束日期</label><input id="resignedDate" type="date" value="${esc(fmt(firstValue(e, ['resignedDate','leaveDate','離職日'])))}"></div>
+          <div class="field full"><label>狀態備註</label><textarea id="statusNote" rows="3" placeholder="主管內部備註">${esc(firstValue(e, ['statusNote','狀態備註','note','備註']))}</textarea></div>
+        </div>
+
+        <div class="actions"><button class="save" type="button" onclick="saveEmployeeStatus()">儲存資料</button></div>
+        <div class="actions" style="margin-top:10px"><button class="danger" type="button" onclick="archiveEmployee()">${type==='external'?'結束合作並封存':'離職並封存人員'}</button></div>
+        <div class="hint">封存後不再出現在班表、薪資及工讀日常名單，但歷史打卡、請假與薪資紀錄仍會保留。</div>
+        <div id="msg" class="msg"></div>`;
+
+      const acc = lower(firstValue(e, ['accountStatus','帳號狀態'])) || 'active';
+      $('#accountStatus').value = ['active','inactive','archived','pending','rejected'].includes(acc) ? acc : 'active';
+      const empStatus = lower(firstValue(e, ['employmentStatus','任職狀態'])) || 'active';
+      $('#employmentStatus').value = ['active','resigned','suspended','contractorended','contractorEnded','archived'].includes(empStatus) ? (empStatus === 'contractorended' ? 'contractorEnded' : empStatus) : 'active';
+      $('#hiddenFromActiveLists').value = firstValue(e, ['hiddenFromActiveLists','隱藏於日常清單','hidden','隱藏']) ? 'true' : 'false';
+    }
+
+    function currentEmployee(){ return allEmployees.find(x => (empId(x) || emailOf(x)) === selectedId); }
+
+    async function clearLineBinding(){
+      const e = currentEmployee(); if(!e) return;
+      const employeeName = nameOf(e) || emailOf(e) || selectedId;
+      if(!confirm('確定要清除「' + employeeName + '」的 LINE 綁定嗎？\n\n清除後，這位員工需要用自己的手機 LINE 重新輸入「柚子綁定 Email」。')) return;
+      const msg = $('#msg');
+      msg.style.display = 'block'; msg.classList.remove('error'); msg.textContent = '正在清除 LINE 綁定...';
+      const payload = { employeeId: empId(e), id: empId(e), email: emailOf(e) };
+      try{
+        const res = await api('clearEmployeeLineBinding', payload);
+        if(!res || res.ok === false) throw new Error((res && res.message) || '清除失敗');
+        msg.textContent = (res && res.message) || '已清除此人員 LINE 綁定。';
+        await loadEmployees();
+        const updated = allEmployees.find(x => (empId(x) || emailOf(x)) === selectedId) || allEmployees.find(x => emailOf(x) === emailOf(e));
+        if(updated) await selectEmployee(empId(updated) || emailOf(updated));
+      }catch(err){
+        msg.classList.add('error'); msg.textContent = err.message || '清除 LINE 綁定失敗';
+      }
+    }
+
+    async function archiveEmployee(){
+      const e=currentEmployee();if(!e)return;const external=identityType(e)==='external';
+      const label=external?'結束合作並封存':'辦理離職並封存';
+      if(!confirm(`確定要${label}「${nameOf(e)||emailOf(e)}」嗎？\n\n完成後將停止登入、隱藏於日常名單並關閉目前班表；歷史資料不會刪除。`))return;
+      const reason=prompt('請輸入封存原因：',external?'合作結束':'離職');if(reason===null)return;
+      const msg=$('#msg');msg.style.display='block';msg.classList.remove('error');msg.textContent='處理中...';
+      try{
+        const res=await api('archiveEmployeeLifecycle',{userId:currentUser.id,employeeId:empId(e),email:emailOf(e),reason:reason.trim()});
+        if(!res||res.ok===false)throw new Error((res&&res.message)||'封存失敗');
+        msg.textContent=res.message||'已封存。';await loadEmployees();showLayer(1);
+      }catch(err){msg.classList.add('error');msg.textContent=err.message||'封存失敗';}
+    }
+
+    async function saveEmployeeStatus(){
+      const e = currentEmployee(); if(!e) return;
+      const msg = $('#msg');
+      msg.style.display = 'block'; msg.classList.remove('error'); msg.textContent = '儲存中...';
+      const payload = {
+        employeeId: empId(e),
+        email: emailOf(e),
+        accountStatus: $('#accountStatus').value,
+        employmentStatus: $('#employmentStatus').value,
+        hiddenFromActiveLists: $('#hiddenFromActiveLists').value === 'true',
+        resignedDate: $('#resignedDate').value,
+        statusNote: $('#statusNote').value
+      };
+      try{
+        const res = await api('updateEmployeeAdminStatus', payload);
+        msg.textContent = (res && res.message) || '已儲存。';
+        await loadEmployees();
+        const updated = allEmployees.find(x => (empId(x) || emailOf(x)) === selectedId);
+        if(updated) await selectEmployee(selectedId);
+      }catch(err){
+        msg.classList.add('error'); msg.textContent = err.message || '儲存失敗';
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', init);
+  </script>
+  <script src="global-nav.js?v=20260603unified1"></script>
+</body>
+</html>
