@@ -965,6 +965,309 @@ function buildExternalTeacherEmailBody({ name, url, bindText, bindingMethod, con
   return lines.join('\n');
 }
 
+
+function taipeiYmd(date = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit'
+  }).formatToParts(date).reduce((acc, part) => {
+    if (part.type !== 'literal') acc[part.type] = part.value;
+    return acc;
+  }, {});
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+function ymdParts(ymd) {
+  const m = String(ymd || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  return { year: Number(m[1]), month: Number(m[2]), day: Number(m[3]) };
+}
+
+function ymdToMillisTaipei(ymd) {
+  const p = ymdParts(ymd);
+  if (!p) return 0;
+  return Date.parse(`${ymd}T00:00:00+08:00`);
+}
+
+function daysBetweenYmd(startYmd, endYmd) {
+  const start = ymdToMillisTaipei(startYmd);
+  const end = ymdToMillisTaipei(endYmd);
+  if (!start || !end) return 0;
+  return Math.floor((end - start) / (24 * 60 * 60 * 1000));
+}
+
+function renewalTargetYearForYmd(ymd) {
+  const p = ymdParts(ymd) || ymdParts(taipeiYmd());
+  if (p.month === 12 && p.day >= 15) return p.year + 1;
+  return p.year;
+}
+
+function renewalOpenDateForTargetYear(targetYear) {
+  return `${Number(targetYear) - 1}-12-15`;
+}
+
+function safeDocId(value) {
+  return clean(value).replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 120) || `EXT_${Date.now()}`;
+}
+
+function makeEmployeeBindCode() {
+  return `EMP-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
+}
+
+function externalTeacherContractUrl(contractId, code, verifyEmail = false) {
+  return `${webBaseUrl()}external-teacher-onboarding.html?id=${encodeURIComponent(contractId || '')}&code=${encodeURIComponent(code || '')}${verifyEmail ? '&verify=email' : ''}`;
+}
+
+function renewalContractIdFor(profileId, targetYear) {
+  return `EXTRENEW_${safeDocId(profileId)}_${targetYear}`;
+}
+
+function inactiveTextMatch(value) {
+  const s = lower(value || '');
+  if (!s) return false;
+  const keys = ['archived', 'archive', 'deleted', 'delete', 'cancelled', 'canceled', 'inactive', 'terminated', 'disabled', 'paused', '封存', '已封存', '刪除', '已刪除', '取消', '已取消', '停用', '已停用', '離職', '已離職', '不續聘', '終止', '停聘', '暫停'];
+  return keys.some((key) => s === key || s.includes(key));
+}
+
+function isInactiveExternalTeacher(profile = {}, employee = {}) {
+  if (profile.hiddenFromActiveLists === true || employee.hiddenFromActiveLists === true) return true;
+  if (profile.active === false || profile.enabled === false || employee.active === false || employee.enabled === false) return true;
+  if (clean(profile.externalAccessEnabled) === '否' || clean(employee.externalAccessEnabled) === '否') return true;
+  if (profile.renewalPaused === true || profile.contractRenewalPaused === true || profile.noRenewal === true || employee.renewalPaused === true || employee.contractRenewalPaused === true || employee.noRenewal === true) return true;
+  return [profile.status, profile.profileStatus, profile.contractStatus, profile.accountStatus, profile.employmentStatus, employee.status, employee.accountStatus, employee.employmentStatus, employee.externalTeacherStatus, employee.contractStatus]
+    .some(inactiveTextMatch);
+}
+
+function contractYearMatches(row = {}, targetYear) {
+  const year = normalizeContractGregorianYear(row.contractGregorianYear || row.contractYear || row.gregorianYear || row.renewalTargetYear || '');
+  return Number(year) === Number(targetYear);
+}
+
+function isSignedExternalContract(row = {}, targetYear) {
+  if (!contractYearMatches(row, targetYear)) return false;
+  const s = lower(row.status || row.contractStatus || row.profileStatus || '');
+  const signedWords = ['signed', 'active', 'submitted_pending_admin', 'confirmed', 'contract_effective', 'completed', '已簽署', '已送出', '已確認', '生效', '完成', '管理端已確認'];
+  return signedWords.some((key) => s === key || s.includes(key));
+}
+
+async function getLinkedEmployee(profile = {}) {
+  const employeeId = clean(profile.employeeId || profile.externalTeacherEmployeeId || profile.linkedEmployeeId || profile.userId || '');
+  if (!employeeId) return {};
+  try {
+    const snap = await db().collection('employees').doc(employeeId).get();
+    return snap.exists ? (snap.data() || {}) : {};
+  } catch (err) {
+    logger.warn('getLinkedEmployee failed', err);
+    return {};
+  }
+}
+
+async function queryExternalContractsBy(field, value) {
+  const v = clean(value);
+  if (!field || !v) return [];
+  try {
+    const snap = await db().collection('externalTeacherContracts').where(field, '==', v).limit(50).get();
+    return snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  } catch (err) {
+    logger.warn('queryExternalContractsBy failed', { field, err });
+    return [];
+  }
+}
+
+async function hasSignedContractForYear(profileId, profile = {}, targetYear) {
+  if (isSignedExternalContract(profile, targetYear)) return true;
+  const renewalId = renewalContractIdFor(profileId, targetYear);
+  const rows = [];
+  try {
+    const direct = await db().collection('externalTeacherContracts').doc(renewalId).get();
+    if (direct.exists) rows.push({ id: direct.id, ...direct.data() });
+  } catch (err) {}
+  const ids = Array.from(new Set([
+    profileId,
+    profile.teacherId,
+    profile.id,
+    profile.employeeId,
+    profile.externalTeacherEmployeeId,
+    profile.linkedEmployeeId,
+    profile.currentContractId,
+    profile.externalTeacherContractId
+  ].map(clean).filter(Boolean)));
+  for (const id of ids) {
+    rows.push(...await queryExternalContractsBy('teacherId', id));
+    rows.push(...await queryExternalContractsBy('baseTeacherProfileId', id));
+    rows.push(...await queryExternalContractsBy('employeeId', id));
+    rows.push(...await queryExternalContractsBy('externalTeacherEmployeeId', id));
+  }
+  const deduped = Array.from(new Map(rows.map((row) => [row.id, row])).values());
+  return deduped.some((row) => isSignedExternalContract(row, targetYear));
+}
+
+function shouldSendRenewalReminder(profile = {}, targetYear, todayYmd) {
+  const openDate = renewalOpenDateForTargetYear(targetYear);
+  if (daysBetweenYmd(openDate, todayYmd) < 0) return false;
+  const state = (profile.renewalReminderState && profile.renewalReminderState[String(targetYear)]) || {};
+  const count = Number(state.count || 0) || 0;
+  const lastDate = clean(state.lastReminderDate || '');
+  if (!count) return true;
+  if (count === 1) return daysBetweenYmd(lastDate || openDate, todayYmd) >= 5;
+  return daysBetweenYmd(lastDate || todayYmd, todayYmd) >= 3;
+}
+
+function renewalReminderBody({ name, targetYear, url }) {
+  const roc = rocYear(targetYear);
+  return [
+    `${name || '老師'} 您好：`,
+    '',
+    `柚子樂器外聘老師民國 ${roc} 年契約已開放簽署。`,
+    `契約期間：${targetYear}-01-01 至 ${targetYear}-12-31`,
+    '',
+    '請點選以下連結完成資料確認與契約簽署：',
+    url,
+    '',
+    '若您已完成簽署，請忽略本通知。'
+  ].join('\n');
+}
+
+async function ensureRenewalContractDraft(profileId, profile = {}, targetYear) {
+  const contractId = renewalContractIdFor(profileId, targetYear);
+  const ref = db().collection('externalTeacherContracts').doc(contractId);
+  const snap = await ref.get().catch(() => null);
+  const old = snap && snap.exists ? (snap.data() || {}) : {};
+  const method = normalizeBindingMethod(profile.bindingMethod || profile.notificationPreference || old.bindingMethod || '', !!clean(profile.email || old.email));
+  const lineUserId = clean(profile.lineUserId || old.lineUserId || '');
+  const lineBound = wantsLine(method) ? (!!lineUserId || clean(profile.lineBindStatus || old.lineBindStatus) === 'bound') : false;
+  const code = clean(old.bindingCode || old.onboardingToken || profile.renewalBindCode || '') || makeEmployeeBindCode();
+  const url = externalTeacherContractUrl(contractId, code, false);
+  const emailUrl = externalTeacherContractUrl(contractId, code, true);
+  const name = clean(profile.name || profile.displayName || profile.teacherName || old.name || old.teacherName || '');
+  const email = lower(profile.email || old.email || '');
+  const mobile = clean(profile.mobile || profile.phone || old.mobile || old.phone || '');
+  const employeeId = clean(profile.employeeId || profile.externalTeacherEmployeeId || old.employeeId || old.externalTeacherEmployeeId || profileId);
+  const lineBindStatus = wantsLine(method) ? (lineBound ? 'bound' : 'pending') : 'not_required';
+  const emailBindStatus = wantsEmail(method) ? 'bound' : 'not_required';
+  const status = wantsLine(method) && !lineBound ? 'waiting_bindings' : 'waiting_contract';
+  const row = {
+    id: contractId,
+    teacherId: contractId,
+    baseTeacherProfileId: profileId,
+    baseTeacherEmployeeId: employeeId,
+    isRenewalContractDraft: true,
+    renewalTargetYear: Number(targetYear),
+    employeeId,
+    externalTeacherEmployeeId: employeeId,
+    teacherName: name,
+    name,
+    displayName: name,
+    mobile,
+    phone: mobile,
+    email,
+    teachingItems: profile.teachingItems || profile.teachingItemsText || old.teachingItems || '',
+    teachingItemsText: profile.teachingItemsText || profile.teachingItems || old.teachingItemsText || '',
+    teachingAbilities: Array.isArray(profile.teachingAbilities) ? profile.teachingAbilities : (Array.isArray(old.teachingAbilities) ? old.teachingAbilities : []),
+    bindingMethod: method,
+    bindingMethodLabel: method === 'both' ? 'LINE + Email' : (method === 'email' ? '只用 Email' : '只用 LINE'),
+    bindingCode: code,
+    employeeBindCode: code,
+    employeeBindText: `柚子人員綁定 ${code}`,
+    onboardingToken: code,
+    onboardingUrl: url,
+    emailVerifyUrl: emailUrl,
+    contractYear: Number(targetYear),
+    contractGregorianYear: Number(targetYear),
+    contractRocYear: rocYear(targetYear),
+    contractYearKey: String(rocYear(targetYear)),
+    contractStartDate: `${targetYear}-01-01`,
+    contractEndDate: `${targetYear}-12-31`,
+    nextRenewalOpenDate: renewalOpenDateForTargetYear(Number(targetYear) + 1),
+    lineUserId,
+    lineBindStatus,
+    emailBindStatus,
+    status,
+    progressStatus: status === 'waiting_bindings' ? '等待 LINE 綁定後簽署年度契約' : '等待老師簽署年度契約',
+    createdAt: old.createdAt || nowTs(),
+    updatedAt: nowTs(),
+    source: 'external-teacher-annual-renewal-reminder'
+  };
+  await ref.set(row, { merge: true });
+
+  if (wantsLine(method) && !lineBound) {
+    await db().collection('externalTeacherLineBindings').doc(code).set({
+      bindCode: code,
+      bindingCode: code,
+      employeeBindCode: code,
+      bindText: `柚子人員綁定 ${code}`,
+      teacherId: contractId,
+      employeeId,
+      externalTeacherEmployeeId: employeeId,
+      teacherName: name,
+      mobile,
+      email,
+      bindingMethod: method,
+      onboardingToken: code,
+      onboardingUrl: url,
+      status: 'pending',
+      updatedAt: nowTs(),
+      source: 'external-teacher-renewal-binding'
+    }, { merge: true });
+    await db().collection('employeeLineBindings').doc(code).set({
+      bindingCode: code,
+      employeeBindCode: code,
+      bindText: `柚子人員綁定 ${code}`,
+      employeeId,
+      employeeDocId: employeeId,
+      targetCollection: 'employees',
+      externalTeacherContractId: contractId,
+      teacherId: contractId,
+      status: 'pending',
+      name,
+      teacherName: name,
+      email,
+      mobilePhone: mobile,
+      mobile,
+      bindingMethod: method,
+      notificationPreference: method,
+      onboardingToken: code,
+      onboardingUrl: url,
+      updatedAt: nowTs(),
+      source: 'external-teacher-renewal-binding'
+    }, { merge: true });
+  }
+  return { contractId, code, url, emailUrl, method, lineUserId, email, name };
+}
+
+async function queueExternalTeacherRenewalNotice({ profileId, profile, targetYear, link }) {
+  const title = `柚子樂器外聘老師 ${rocYear(targetYear)} 年契約簽署提醒`;
+  const body = renewalReminderBody({ name: link.name || profile.name || profile.displayName, targetYear, url: link.emailUrl || link.url });
+  const sentChannels = [];
+  if (wantsLine(link.method) && link.lineUserId) {
+    await db().collection('notificationQueue').add({
+      teacherId: profileId,
+      contractId: link.contractId,
+      channel: 'line',
+      targetLineUserId: link.lineUserId,
+      targetName: link.name || clean(profile.name || profile.displayName || '外聘老師'),
+      title,
+      body,
+      message: body,
+      status: '待發送',
+      source: 'external-teacher-annual-renewal-reminder',
+      renewalTargetYear: Number(targetYear),
+      createdAt: nowTs()
+    });
+    sentChannels.push('line');
+  }
+  if (wantsEmail(link.method) && link.email) {
+    await queueTeacherEmail({
+      teacherId: profileId,
+      email: link.email,
+      title,
+      body,
+      source: 'external-teacher-annual-renewal-reminder'
+    });
+    sentChannels.push('email');
+  }
+  return sentChannels;
+}
+
 function registerExternalTeacherOnboarding(exportsObj) {
   exportsObj.externalTeacherCreateBindCode = onCall({ region: REGION }, async (request) => {
     const data = request.data || {};
@@ -1376,6 +1679,62 @@ function registerExternalTeacherOnboarding(exportsObj) {
     }));
 
     return { ok: true, contracts, profiles, availableContractYears: availableContractYears() };
+  });
+
+  exportsObj.externalTeacherAnnualRenewalReminderEveryDay = onSchedule({
+    region: REGION,
+    schedule: '0 10 * * *',
+    timeZone: 'Asia/Taipei',
+    timeoutSeconds: 300,
+    memory: '512MiB'
+  }, async () => {
+    const today = taipeiYmd();
+    const targetYear = renewalTargetYearForYmd(today);
+    const openDate = renewalOpenDateForTargetYear(targetYear);
+    if (daysBetweenYmd(openDate, today) < 0) {
+      logger.info('externalTeacherAnnualRenewalReminderEveryDay not open yet', { today, targetYear, openDate });
+      return { sent: 0, skipped: 0, targetYear, today };
+    }
+
+    const snap = await db().collection('externalTeacherProfiles').limit(500).get();
+    let sent = 0;
+    let skipped = 0;
+    for (const doc of snap.docs) {
+      const profile = { id: doc.id, teacherId: doc.id, ...(doc.data() || {}) };
+      try {
+        if (profile.isRenewalContractDraft === true || clean(profile.baseTeacherProfileId)) { skipped++; continue; }
+        const employee = await getLinkedEmployee(profile);
+        if (isInactiveExternalTeacher(profile, employee)) { skipped++; continue; }
+        if (await hasSignedContractForYear(doc.id, profile, targetYear)) { skipped++; continue; }
+        if (!shouldSendRenewalReminder(profile, targetYear, today)) { skipped++; continue; }
+        const link = await ensureRenewalContractDraft(doc.id, profile, targetYear);
+        const channels = await queueExternalTeacherRenewalNotice({ profileId: doc.id, profile, targetYear, link });
+        if (!channels.length) { skipped++; continue; }
+        const state = (profile.renewalReminderState && profile.renewalReminderState[String(targetYear)]) || {};
+        const count = Number(state.count || 0) || 0;
+        await doc.ref.set({
+          renewalReminderState: {
+            [String(targetYear)]: {
+              count: count + 1,
+              lastReminderDate: today,
+              lastReminderAt: nowTs(),
+              lastReminderChannels: channels,
+              renewalContractId: link.contractId,
+              updatedAt: nowTs()
+            }
+          },
+          lastRenewalReminderAt: nowTs(),
+          lastRenewalReminderDate: today,
+          updatedAt: nowTs()
+        }, { merge: true });
+        sent++;
+      } catch (err) {
+        skipped++;
+        logger.warn('externalTeacherAnnualRenewalReminder profile skipped by error', { teacherId: doc.id, error: err && err.message ? err.message : String(err) });
+      }
+    }
+    logger.info('externalTeacherAnnualRenewalReminderEveryDay completed', { sent, skipped, targetYear, today });
+    return { sent, skipped, targetYear, today };
   });
 
   exportsObj.externalTeacherPayrollReminderEveryDay = onSchedule({
