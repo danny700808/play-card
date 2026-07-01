@@ -1,109 +1,809 @@
-<!doctype html>
-<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>外聘老師註冊</title><style>
-    body{font-family:-apple-system,BlinkMacSystemFont,"Noto Sans TC","Microsoft JhengHei",sans-serif;background:#f6f1e8;margin:0;color:#2c2924}.wrap{max-width:1120px;margin:0 auto;padding:24px 16px 50px}.card{background:#fff;border-radius:18px;padding:20px;margin:14px 0;box-shadow:0 6px 22px rgba(0,0,0,.08)}h1{text-align:center;margin:8px 0 18px}.muted{color:#6f695f;font-size:14px;line-height:1.7}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.birth-select-row{display:grid;grid-template-columns:1.5fr 1fr 1fr;gap:10px}label{font-weight:900;display:block;margin:10px 0 5px}input,select,textarea{width:100%;box-sizing:border-box;border:1px solid #d7d0c3;border-radius:10px;padding:11px;font-size:15px;background:#fff}textarea{line-height:1.75;font-family:"Noto Sans TC","Microsoft JhengHei",sans-serif}.btn{border:0;border-radius:12px;padding:11px 14px;margin:8px 8px 0 0;font-weight:900;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}.primary{background:#5f7f62;color:white}.secondary{background:#e8dfd0;color:#2c2924}.danger{background:#b75b4e;color:white}.ok{background:#edf7ee;border:1px solid #a7cdae;border-radius:12px;padding:12px;margin-top:12px}.warn{background:#fff7df;border:1px solid #e0ca7f;border-radius:12px;padding:12px;margin-top:12px}.info{background:#eef4ff;border:1px solid #a9bee6;border-radius:12px;padding:12px;margin-top:12px}.table{width:100%;border-collapse:collapse}.table th,.table td{border-bottom:1px solid #eee;padding:10px;text-align:left;vertical-align:top}.pill{display:inline-block;border-radius:999px;background:#eee5d6;padding:4px 9px;font-size:12px;margin:2px}.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}.toolbar.vertical{flex-direction:column}.toolbar.vertical .btn{width:100%;margin:8px 0 0 0}.binding-actions{display:flex;flex-direction:column;gap:8px;margin-top:10px}.binding-actions .btn{width:100%;margin:0}.final-actions{margin-top:12px}.final-actions .btn{min-width:160px}.signature-confirm-msg{margin-top:8px;font-weight:900}.split{display:grid;grid-template-columns:minmax(0,1fr) minmax(360px,520px);gap:18px;align-items:start}.a4-wrap{background:#e9e1d6;border-radius:18px;padding:16px;overflow:auto}.a4{width:210mm;min-height:297mm;background:white;margin:0 auto;padding:18mm 16mm;box-sizing:border-box;color:#111;box-shadow:0 3px 18px rgba(0,0,0,.18);font-family:"Noto Serif TC","標楷體","PMingLiU",serif;font-size:13.2px;line-height:1.72;position:relative}.a4 h2{text-align:center;font-size:24px;margin:0 0 12px;letter-spacing:2px}.party{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:10px 0 12px}.party-box{border:1px solid #ddd;padding:10px;border-radius:8px;min-height:80px}.contract-body{white-space:pre-wrap}.sign-row{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:24px;align-items:end}.sign-box{border-top:1px solid #333;padding-top:10px;min-height:105px;position:relative}.seal{position:absolute;right:10px;bottom:8px;width:90px;opacity:.86}.small-seal{position:absolute;right:112px;bottom:15px;width:54px;opacity:.86}.signature-demo{height:54px;border:1px dashed #aaa;border-radius:8px;margin-top:10px;display:flex;align-items:center;justify-content:center;color:#777;background:#fafafa}.signature-img{max-height:70px;max-width:220px;display:block;margin-top:8px}.step{display:none}.step.active{display:block}canvas{width:100%;height:180px;border:1px solid #bbb;border-radius:12px;background:#fff;touch-action:none}.choice{border:1px solid #ddd5ca;border-radius:14px;padding:12px;margin:8px 0;background:#fff}.choice input{width:auto}.codebox{font-size:20px;font-weight:900;letter-spacing:1px;border:2px dashed #9fb28e;background:#f8fff4;border-radius:14px;padding:14px;margin-top:10px;word-break:break-all}@media(max-width:980px){.split{grid-template-columns:1fr}.a4-wrap{overflow-x:hidden}.a4{transform:none;transform-origin:top center;zoom:.72;margin:0 auto}}@media(max-width:760px){.grid,.grid3,.birth-select-row{grid-template-columns:1fr}.a4-wrap{padding:10px}.a4{transform:none;zoom:.44;margin:0 auto;padding:18mm 16mm;font-size:13.2px}.party,.sign-row{grid-template-columns:1fr 1fr}.table{font-size:13px}}body.loading:after{content:'處理中...';position:fixed;inset:0;background:rgba(255,255,255,.72);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:900;z-index:9999}
-.file-list{margin-top:8px}.signature-panel{background:#fff;border:1px solid #d7d0c3;border-radius:16px;padding:12px;margin-top:14px}
-.teaching-box{border:1px solid #ddd5ca;border-radius:14px;padding:12px;margin-top:12px;background:#fff}.teaching-rows{display:grid;gap:10px;margin-top:10px}.teaching-row{display:grid;grid-template-columns:minmax(0,1fr) 130px auto;gap:10px;align-items:end;border:1px solid #eee4d8;border-radius:12px;background:#fffdf9;padding:10px}.teaching-row label{margin:0 0 5px}.teaching-remove{white-space:nowrap}@media(max-width:760px){.teaching-row{grid-template-columns:1fr}.teaching-remove{width:100%}}
-</style></head>
-<body><main class="wrap"><h1>外聘老師註冊</h1>
-<section class="card step active" id="step1"><h2>1. 外聘老師基本資料</h2><div id="periodInfo" class="warn" style="display:none"></div><select id="contractYear" style="display:none"></select><div class="grid"><div><label>姓名</label><input id="name" autocomplete="name"></div><div><label>手機</label><input id="mobile" autocomplete="tel"></div></div><label>Email</label><input id="email" autocomplete="email" placeholder="選擇 Email 或 LINE+Email 時必填"><div class="teaching-box"><label>授課項目</label><p class="muted">請填寫您可授課的項目，可新增多筆。</p><input id="teachingItems" type="hidden"><div id="teachingAbilityRows" class="teaching-rows"></div><button class="btn secondary" type="button" onclick="addTeachingAbilityRow()">＋新增授課項目</button></div><label>綁定／通知方式</label><div class="choice"><label><input type="radio" name="bindingMethod" value="both" checked> LINE + Email</label></div><div class="choice"><label><input type="radio" name="bindingMethod" value="line"> 只用 LINE</label></div><div class="choice"><label><input type="radio" name="bindingMethod" value="email"> 只用 Email</label></div><button class="btn primary" onclick="createOrResumeBinding()">送出基本資料並繼續</button><div id="startMsg" class="muted"></div></section>
-<section class="card step" id="step2"><h2>2. 通知綁定</h2><div id="bindingInstruction"></div><div class="toolbar vertical"><button id="checkBindingBtn" class="btn secondary" onclick="checkBindingAndContinue()">檢查綁定狀態</button><button id="copySignLinkBtn" class="btn primary" onclick="copySignLink()" style="display:none">複製資料填寫連結</button></div><p class="muted" id="bindingHelpText">系統會自動檢查綁定狀態；完成後會進入下一步資料頁。</p><div id="bindStatus" class="muted" style="display:none"></div></section>
-<section class="card step" id="step3"><h2>3. 正式資料填寫</h2><div class="grid"><div><label>身分證字號</label><input id="idNumber"></div><div><label>出生年月日</label><input id="birthDate" type="hidden"><div class="birth-select-row"><select id="birthYear" aria-label="出生年份"><option value="">年份</option></select><select id="birthMonth" aria-label="出生月份"><option value="">月份</option></select><select id="birthDay" aria-label="出生日期"><option value="">日期</option></select></div></div></div><label>戶籍地址</label><input id="householdAddress"><label>通訊地址</label><input id="mailingAddress"><label>身分證明文件／證件照片</label><input id="identityFiles" type="file" accept="image/*" multiple><p class="muted">圖片送出前會自動加上浮水印：「僅供柚子樂器外聘教師簽約使用」。</p><div class="file-list" id="identityFileList"></div><button class="btn primary" onclick="showContractStep()">查看契約並簽名</button><div id="profileMsg" class="muted"></div></section>
-<section class="card step" id="step4"><h2>4. 契約確認與簽名</h2><p class="muted">請先瀏覽下方 A4 契約內容，確認資料無誤後，在最下方完成乙方線上簽名。</p><div class="a4-wrap"><div class="a4" id="contractPreview"></div></div><div class="signature-panel"><b>乙方線上簽名</b><canvas id="signature"></canvas><p class="muted">請在上方空白處簽名。簽名後請先按「確認簽名」，確認後簽名會同步顯示在上方 A4 契約預覽。</p><div class="toolbar"><button class="btn primary" onclick="confirmSignature()">確認簽名</button><button class="btn secondary" onclick="clearSignature()">清除簽名</button></div><div id="signatureConfirmMsg" class="signature-confirm-msg muted"></div></div><label><input type="checkbox" id="agreeTerms" style="width:auto"> 我已閱讀並同意本契約內容</label><div class="toolbar final-actions"><button class="btn secondary" onclick="go(3)">回上一頁修改資料</button><button class="btn primary" onclick="submitContract()">確認送出契約</button></div></section>
-<section class="card step" id="step5"><h2>完成</h2><div id="doneBox" class="ok"></div><p class="muted">如需修改已送出的資料，請聯絡柚子樂器，由管理端退回補件後才能重新修改。</p></section></main>
-<script src="config.js?v=external-teacher-sign-v3"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script><script src="firebase-client.js?v=external-teacher-sign-v3"></script>
-<script>
-const DEFAULT_CONTRACT_TEXT="第一條　契約性質\n一、甲方委任乙方提供才藝教學、課程協助、活動支援或雙方另行約定之專業服務。\n二、乙方係以外聘才藝教師身分受任提供服務，雙方同意本契約性質為委任關係，非僱傭關係。\n三、乙方得依其專業能力、教學方法與課程特性提供服務；惟課程時間、地點、學生安全、教室規範及甲方對外承諾事項，仍應依雙方確認內容及甲方合理管理規範辦理。\n四、本契約如因實際履行情形涉及勞動、承攬或其他法律關係之認定，仍應依主管機關或法院就個案事實之認定為準。\n\n第二條　委任期間\n一、本契約期間自 {{contractStartDate}} 起至 {{contractEndDate}} 止。\n二、每年度契約原則上以當年度十二月三十一日為屆滿日。\n三、次年度契約得自每年十二月十五日起，由甲方開放乙方簽署下一年度契約；新年度契約期間原則上自次年度一月一日起至次年度十二月三十一日止。\n四、契約期滿後，如雙方未另行完成續約簽署，乙方不得主張契約自動延長。\n\n第三條　委任工作內容\n乙方受任事項如下：\n一、依雙方確認之課程項目提供教學服務。\n二、依學生程度、課程目標及教學需求，進行備課、授課、課程回饋或進度建議。\n三、配合甲方合理通知，參與必要之課程溝通、學生狀況回報、成果活動或教學相關事項。\n四、協助維護教學現場安全、教室秩序及學生學習品質。\n五、其他經雙方書面、LINE、Email 或系統確認之委任事項。\n\n第四條　授課時間與地點\n一、乙方授課時間、地點及課程安排，應由甲乙雙方事前確認。\n二、乙方如因故無法依約授課，應儘早通知甲方，以利甲方安排補課、調課或其他處理方式。\n三、甲方如因學生請假、停課、活動異動、天災或其他不可歸責於甲方之事由需調整課程，應儘早通知乙方。\n四、乙方不得未經甲方同意，私自變更授課老師、授課地點、課程內容或將委任事項轉由第三人代為履行。\n\n第五條　報酬與給付方式\n一、乙方報酬依雙方於後台、書面、LINE、Email 或其他可保存紀錄之方式確認。\n二、報酬計算方式得依鐘點、堂數、課程件數、活動場次或雙方另行約定方式計算。\n三、甲方得於每月結算乙方已完成之服務內容，並依雙方約定日期給付報酬。\n四、如遇學生請假、課程取消、臨時停課、未達開課人數或其他特殊情形，報酬是否給付及計算方式，依甲乙雙方事前約定或個案協議辦理。\n五、乙方應提供正確之匯款帳戶、身分資料及依法所需文件；如資料錯誤致給付延誤，乙方應自行負責。\n\n第六條　稅務與保險\n一、乙方因本契約所取得之報酬，應依中華民國相關稅法規定辦理所得申報、扣繳或補充保費等事項。\n二、甲方得依法辦理必要之所得扣繳、申報或相關行政作業。\n三、乙方如非甲方正式員工，除法律另有強制規定或雙方另有書面約定外，甲方不負擔乙方勞工保險、就業保險、勞工退休金提繳或其他僱傭關係下之雇主義務。\n四、乙方如需自行投保相關保險，應自行辦理。\n\n第七條　乙方基本義務\n乙方應遵守下列事項：\n一、以善良管理人之注意義務提供教學服務。\n二、不得對學生、家長或甲方人員有不當言語、肢體接觸、歧視、騷擾、恐嚇或其他不適當行為。\n三、不得未經甲方同意，私下向甲方學生或家長收費、招生、轉介、推銷課程或移轉至其他場所授課。\n四、不得擅自使用甲方名義、商標、教室、設備、學生資料或課程資料從事與本契約無關之行為。\n五、不得違反兒少保護、個人資料保護、著作權、性騷擾防治、校園及補教相關安全規範。\n六、如發生學生安全、意外、糾紛、家長申訴或其他異常事件，乙方應立即通知甲方。\n\n第八條　甲方義務\n甲方應遵守下列事項：\n一、提供雙方約定之授課資訊、課程需求及必要聯絡窗口。\n二、依約給付乙方報酬。\n三、提供合理教學環境或必要設備，惟設備項目仍以雙方約定或現場既有條件為準。\n四、對乙方提供之個人資料、身分證明文件及契約資料，依個人資料保護法及相關規定妥善保管。\n\n第九條　身分資料與個人資料使用\n一、乙方同意提供姓名、身分證字號、聯絡方式、通訊地址、匯款帳戶、身分證明文件、簽名影像及其他簽約必要資料。\n二、甲方蒐集乙方資料之目的，限於簽約、身分確認、報酬給付、所得申報、聯絡通知、契約保存及相關管理作業。\n三、乙方上傳之身分證明文件，甲方得加註浮水印，例如「僅供柚子樂器外聘教師簽約使用」及簽署日期，以降低文件遭不當使用之風險。\n四、未經乙方同意，甲方不得將乙方個人資料提供予與本契約目的無關之第三人；但依法令、主管機關要求或辦理必要行政作業者，不在此限。\n\n第十條　保密義務\n一、乙方因履行本契約而知悉之學生資料、家長資料、課程價格、營運資訊、教學安排、內部管理資料、系統帳號或其他非公開資訊，均負保密義務。\n二、乙方不得將前項資訊洩漏、交付、轉傳或提供予第三人，亦不得作為本契約以外之用途。\n三、本條保密義務於契約終止或期滿後仍繼續有效。\n\n第十一條　教材、著作與肖像使用\n一、乙方自行設計之教材、講義、教學方法或作品，如無另行約定，其著作權歸乙方所有。\n二、甲方提供之教材、講義、圖片、影音、課程資料、品牌素材或內部文件，其權利歸甲方或原權利人所有，乙方不得擅自重製、散布或移作他用。\n三、乙方如同意甲方拍攝授課花絮、成果照片或宣傳素材，應另依雙方確認範圍使用。\n四、涉及學生肖像、姓名、作品或個人資料之使用，應依甲方規範及相關法令辦理。\n\n第十二條　不得私下招攬與利益衝突\n一、乙方不得利用甲方提供之學生、家長、課程或營運資訊，私下招攬甲方學生或家長至其他場所、其他單位或個人名義授課。\n二、乙方不得以降低價格、跳過甲方、私下收費或其他方式，破壞甲方與學生或家長之契約關係。\n三、乙方如有其他合作單位或教學安排，應避免與甲方課程安排發生利益衝突；如有疑義，應先與甲方溝通確認。\n\n第十三條　課程取消、補課與調課\n一、學生請假、臨時停課、天災、停班停課或不可抗力事件所生之補課、調課或取消，依甲方對學生之課程規範及雙方協議辦理。\n二、乙方因個人因素需調課或請假，應提早通知甲方，並配合甲方安排補課或替代方案。\n三、如乙方無故缺席、臨時取消或嚴重影響學生權益，甲方得視情節調整委任事項、停止排課或終止契約。\n\n第十四條　契約終止\n一、任一方欲提前終止本契約，應提前通知他方，並完成已排課程、報酬結算及相關交接。但有重大違約或不可繼續履約之情形者，不在此限。\n二、乙方如有下列情形之一，甲方得立即終止契約：\n（一）提供不實資料或冒用他人身分。\n（二）有重大教學疏失、學生安全疑慮或不當行為。\n（三）未經同意私下招攬學生、收費或轉介課程。\n（四）洩漏學生、家長或甲方非公開資料。\n（五）違反法令、主管機關規範或本契約重大條款。\n三、契約終止後，乙方應返還或刪除甲方提供之非公開資料，並不得繼續使用甲方名義對外招攬或授課。\n\n第十五條　違約責任\n一、任一方違反本契約，致他方受有損害者，應負損害賠償責任。\n二、乙方如因故意或重大過失造成學生、家長、甲方或第三人損害，應依法律規定負相關責任。\n三、如因乙方違反保密、個資保護、私下招攬或擅自使用甲方資料等義務，致甲方商譽、營運或法律權益受損，甲方得依法請求損害賠償。\n\n第十六條　電子文件與線上簽署\n一、甲乙雙方同意本契約得以電子文件、線上勾選、電子簽名、LINE、Email 或系統紀錄方式成立及保存。\n二、乙方於系統中完成資料填寫、身分證明文件上傳、契約確認及線上簽名後，視為已詳閱並同意本契約內容。\n三、甲方得將乙方簽署完成之契約以網頁、PDF、Email 或 LINE 方式提供乙方查看或保存。\n\n第十七條　通知方式\n一、甲乙雙方同意以下列方式之一作為通知方式：LINE、Email、電話、簡訊、系統通知或書面通知。\n二、乙方應確保所留聯絡資料正確，如有變更應主動通知甲方。\n三、乙方因聯絡資料錯誤、未讀取訊息或未更新資料而致通知未能送達或延誤者，由乙方自行負責。\n\n第十八條　契約修改\n一、本契約內容如需修改，應經雙方合意。\n二、甲方得因年度營運、課程制度、法令變更或管理需求，調整下一年度契約模板。\n三、乙方已簽署完成之年度契約，除雙方另行合意外，不因甲方後續修改契約模板而當然變更。\n\n第十九條　準據法與管轄法院\n一、本契約以中華民國法律為準據法。\n二、因本契約所生爭議，雙方應先本誠信原則協商解決。\n三、如協商不成，雙方同意以甲方所在地之地方法院為第一審管轄法院，但法律另有強制規定者，從其規定。\n\n第二十條　其他約定\n一、本契約未盡事宜，依民法、個人資料保護法及其他相關法令辦理。\n二、本契約之標題僅為閱讀便利，不影響條文解釋。\n三、本契約經乙方線上簽署並送出，且經甲方系統保存後生效。";let contractTemplate={title:'外聘才藝教師委任契約書',version:'2026-01',clausesText:DEFAULT_CONTRACT_TEXT};let lastSignatureDataUrl='';let currentId='';let currentCode='';let currentRecord=null;let checkTimer=null;
-function ensureFirebaseApp(){if(firebase.apps&&firebase.apps.length)return firebase.apps[0];return firebase.initializeApp(window.APP_CONFIG.FIREBASE_CONFIG);}
-function db(){ensureFirebaseApp();return firebase.firestore();}function storage(){ensureFirebaseApp();return firebase.storage();}
-function esc(v){return String(v??'').replace(/[&<>"']/g,s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));}
-function val(id){const el=document.getElementById(id);return el?(el.value||'').trim():'';}function setVal(id,value){const el=document.getElementById(id);if(el)el.value=value||'';}function fillBirthOptions(){const y=document.getElementById('birthYear'),m=document.getElementById('birthMonth');if(!y||!m||y.dataset.ready==='1')return;const now=new Date().getFullYear();for(let year=now;year>=1940;year--){const o=document.createElement('option');o.value=String(year);o.textContent=String(year);y.appendChild(o)}for(let month=1;month<=12;month++){const v=String(month).padStart(2,'0');const o=document.createElement('option');o.value=v;o.textContent=month+'月';m.appendChild(o)}y.dataset.ready='1';refreshBirthDays();}function refreshBirthDays(){const y=document.getElementById('birthYear'),m=document.getElementById('birthMonth'),d=document.getElementById('birthDay');if(!y||!m||!d)return;const prev=d.value;d.innerHTML='<option value="">日期</option>';const count=y.value&&m.value?new Date(Number(y.value),Number(m.value),0).getDate():31;for(let day=1;day<=count;day++){const v=String(day).padStart(2,'0');const o=document.createElement('option');o.value=v;o.textContent=day+'日';d.appendChild(o)}if(prev&&Number(prev)<=count)d.value=prev;}function updateBirthDateHidden(){const y=val('birthYear'),m=val('birthMonth'),d=val('birthDay');setVal('birthDate',y&&m&&d?`${y}-${m}-${d}`:'');}function setBirthDateSelect(value){fillBirthOptions();const s=textValue(value);const m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);if(!m){setVal('birthDate','');return;}setVal('birthYear',m[1]);setVal('birthMonth',String(Number(m[2])).padStart(2,'0'));refreshBirthDays();setVal('birthDay',String(Number(m[3])).padStart(2,'0'));updateBirthDateHidden();}function setLoading(on){document.body.classList.toggle('loading',!!on)}
-function method(){return document.querySelector('input[name="bindingMethod"]:checked')?.value||'both'}function normalizeBindingMethod(m){const v=String(m||'both').trim().toLowerCase().replace(/\s+/g,'');if(['line','lineonly','onlyline','line-only','line_only','only_line','只用line','line綁定'].includes(v))return 'line';if(['email','emailonly','onlyemail','email-only','email_only','only_email','只用email','email綁定'].includes(v))return 'email';if(v.includes('line')&&v.includes('email'))return 'both';return 'both'}function wantsLine(m){const v=normalizeBindingMethod(m);return v==='line'||v==='both'}function wantsEmail(m){const v=normalizeBindingMethod(m);return v==='email'||v==='both'}function bindingLabel(m){const v=normalizeBindingMethod(m);return v==='both'?'LINE + Email':(v==='email'?'只用 Email':'只用 LINE')}
-function rocYear(y){return Number(y)-1911}function todayISO(){return new Date().toISOString().slice(0,10)}function nowText(){return new Date().toLocaleString('zh-TW')}
-function contractDates(){const gy=Number(val('contractYear')||new Date().getFullYear());const now=new Date();let start=todayISO();if(gy>now.getFullYear())start=gy+'-01-01';return{gy,roc:rocYear(gy),start,end:gy+'-12-31'}}
-function initYears(){const now=new Date();const y=now.getFullYear();const nextOpen=(now.getMonth()>11)||(now.getMonth()===11&&now.getDate()>=15);let opts=`<option value="${y}">民國 ${rocYear(y)} 年（到 ${y}/12/31）</option>`;opts+=`<option value="${y+1}" ${!nextOpen?'disabled':''}>民國 ${rocYear(y+1)} 年（下一年度）${!nextOpen?'｜每年 12/15 後開放':''}</option>`;document.getElementById('contractYear').innerHTML=opts;renderPeriodInfo();}
-function renderPeriodInfo(){const d=contractDates();document.getElementById('periodInfo').innerHTML=`合約期間：<b>${esc(d.start)}</b> 至 <b>${esc(d.end)}</b><br>下一年度契約每年 12 月 15 日後開放簽署。`;}
-document.addEventListener('change',e=>{if(e.target&&e.target.id==='contractYear'){renderPeriodInfo();renderContractPreview();}if(e.target&&['birthYear','birthMonth','birthDay'].includes(e.target.id)){if(e.target.id!=='birthDay')refreshBirthDays();updateBirthDateHidden();renderContractPreview();}});
-function parseParams(){const p=new URLSearchParams(location.search);return{id:p.get('id')||p.get('teacherId')||'',code:p.get('code')||p.get('token')||'',verify:p.get('verify')||'',step:p.get('step')||''}}
-function makeCode(){return `EMP-${Math.random().toString(36).slice(2,8).toUpperCase()}`;}
-function baseUrl(){return location.origin+location.pathname.replace(/[^/]*$/,'');}
-function signUrl(id=currentId,code=currentCode,extra=''){return `${baseUrl()}external-teacher-onboarding.html?id=${encodeURIComponent(id)}&code=${encodeURIComponent(code)}${extra}`;}
-function isLockedStatus(s){return ['submitted_pending_admin','active','confirmed','已送出','已確認','contract_effective','管理端已確認，契約生效'].includes(String(s||''));}
-function progressLabel(r){if(!r)return '尚未建立資料'; if(r.status==='submitted_pending_admin')return '老師已送出，等待管理端確認'; if(r.status==='active'||r.status==='confirmed')return '管理端已確認，契約生效'; if(r.status==='needs_revision')return '管理端退回補件，請重新修改'; if(r.status==='waiting_contract')return '綁定完成，等待正式資料填寫'; if(r.status==='waiting_bindings'){const m=r.bindingMethod||'both'; if(wantsLine(m)&&r.lineBindStatus!=='bound')return '等待 LINE 綁定'; return '綁定完成，等待正式資料填寫';} return r.progressStatus||r.status||'資料建立中';}
-function showDone(r){go(5);let msg='';const label=progressLabel(r);if(r.status==='submitted_pending_admin'||r.status==='已送出')msg='您已完成外聘老師年度契約填寫與簽署。<br>目前狀態：等待管理端確認。';else if(r.status==='active'||r.status==='confirmed')msg=`您的外聘老師年度契約已確認完成。<br>契約期間：${esc(r.contractStartDate||'')} 至 ${esc(r.contractEndDate||'')}。`;else msg=`目前狀態：${esc(label)}`;document.getElementById('doneBox').innerHTML=msg+(r.submittedAtText?`<br>送出時間：${esc(r.submittedAtText)}`:'');}
-function go(n){document.querySelectorAll('.step').forEach(x=>x.classList.remove('active'));document.getElementById('step'+n).classList.add('active');if(n===4){setTimeout(resizeCanvas,80);renderContractPreview();}window.scrollTo({top:0,behavior:'smooth'})}
-async function loadTemplate(){try{const doc=await db().collection('externalTeacherContractTemplates').doc('current').get();if(doc.exists)contractTemplate={...contractTemplate,...doc.data()};}catch(e){console.warn(e)}}
-async function loadRecord(id,code){if(!id||!code)return null;const snap=await db().collection('externalTeacherContracts').doc(id).get();if(!snap.exists)return null;const r={id:snap.id,...snap.data()};if(String(r.bindingCode||r.onboardingToken||'')!==String(code))return null;return r;}
-async function mirrorLineProfileIfNeeded(r){if(!r||!wantsLine(r.bindingMethod)||r.lineBindStatus==='bound')return r;try{const ps=await db().collection('externalTeacherProfiles').doc(r.id).get();if(ps.exists){const p=ps.data()||{};if(p.lineUserId||p.lineBindStatus==='bound'){const employeeId=textValue(p.employeeId||p.externalTeacherEmployeeId||r.employeeId);const patch={employeeId,externalTeacherEmployeeId:employeeId,lineBindStatus:'bound',lineUserId:p.lineUserId||'',lineDisplayName:p.lineDisplayName||'',status:'waiting_contract',progressStatus:'綁定完成，等待正式資料填寫',updatedAt:new Date().toISOString()};await db().collection('externalTeacherContracts').doc(r.id).set(patch,{merge:true});await db().collection('externalTeacherProfiles').doc(r.id).set(patch,{merge:true});r={...r,...patch};await syncExternalTeacherEmployee({...r,...p,id:r.id,contractId:r.id});}}}catch(e){console.warn(e)}return r;}
-async function queueEmail(to,title,body,source,id){if(!to)return '';try{const ref=db().collection('notificationQueue').doc(`external-teacher-${source||'email'}-${id||Date.now()}-${Date.now()}`);await ref.set({channel:'email',type:'email',to,targetEmail:to,emailTo:to,title,subject:title,body,text:body,status:'pending',source:source||'external-teacher',createdAt:new Date().toISOString()});return ref.id;}catch(e){console.warn(e);return '';}}
-async function queueAdmin(body,source,id){try{await db().collection('notificationQueue').doc(`external-teacher-admin-${id||Date.now()}-${Date.now()}`).set({channel:'line',target:'admin',title:'外聘老師資料通知',body,text:body,status:'pending',source:source||'external-teacher-admin',createdAt:new Date().toISOString()});}catch(e){console.warn(e)}}
-function textValue(v){return String(v==null?'':v).trim();}
-function itemText(v){return Array.isArray(v)?v.map(textValue).filter(Boolean).join('、'):textValue(v);}
-const TEACHING_LEVELS=['初學','入門','普通','良好','專業','專精'];
-function normalizeTeachingAbilities(list,fallback){let arr=[];if(Array.isArray(list))arr=list;else if(textValue(list))arr=textValue(list).split(/[、,，\n]/).map(x=>({item:x.replace(/[（(].*?[）)]/g,'').trim(),level:(x.match(/[（(](.*?)[）)]/)||[])[1]||''}));else if(textValue(fallback))arr=textValue(fallback).split(/[、,，\n]/).map(x=>({item:x.replace(/[（(].*?[）)]/g,'').trim(),level:(x.match(/[（(](.*?)[）)]/)||[])[1]||''}));return arr.map(x=>({item:textValue(x.item||x.name||x.subject||x.course||x.title),level:textValue(x.level||x.degree||x.proficiency)||'普通'})).filter(x=>x.item);}
-function teachingAbilitiesText(list){return normalizeTeachingAbilities(list).map(x=>x.item+(x.level?'（'+x.level+'）':'')).join('、');}
-function teachingLevelOptions(selected){return TEACHING_LEVELS.map(l=>`<option value="${esc(l)}" ${l===selected?'selected':''}>${esc(l)}</option>`).join('');}
-function addTeachingAbilityRow(data={}){const box=document.getElementById('teachingAbilityRows');if(!box)return;const row=document.createElement('div');row.className='teaching-row';row.innerHTML=`<div><label>授課項目</label><input class="teaching-ability-item" value="${esc(data.item||'')}" placeholder="例如：鋼琴"></div><div><label>程度</label><select class="teaching-ability-level">${teachingLevelOptions(data.level||'普通')}</select></div><button class="btn secondary teaching-remove" type="button">刪除</button>`;row.querySelector('.teaching-remove').onclick=()=>{row.remove();if(!box.querySelector('.teaching-row'))addTeachingAbilityRow();syncTeachingItemsHidden();};row.querySelector('.teaching-ability-item').addEventListener('input',syncTeachingItemsHidden);row.querySelector('.teaching-ability-level').addEventListener('change',syncTeachingItemsHidden);box.appendChild(row);syncTeachingItemsHidden();}
-function getTeachingAbilities(){return Array.from(document.querySelectorAll('#teachingAbilityRows .teaching-row')).map(row=>({item:textValue(row.querySelector('.teaching-ability-item')&&row.querySelector('.teaching-ability-item').value),level:textValue(row.querySelector('.teaching-ability-level')&&row.querySelector('.teaching-ability-level').value)||'普通'})).filter(x=>x.item);}
-function syncTeachingItemsHidden(){const el=document.getElementById('teachingItems');if(el)el.value=teachingAbilitiesText(getTeachingAbilities());}
-function setTeachingAbilities(list,fallback){const box=document.getElementById('teachingAbilityRows');if(!box)return;box.innerHTML='';const rows=normalizeTeachingAbilities(list,fallback);(rows.length?rows:[{item:'',level:'普通'}]).forEach(addTeachingAbilityRow);syncTeachingItemsHidden();}
+/*
+ * 註冊審核暨入職建檔 2026-06-24
+ * - 申請人只填基本資料與證件正面。
+ * - 待審核資料獨立存於 registrationApplications。
+ * - 主管完成身分、薪資投保與班表後，使用 Firestore batch 一次建立正式人員。
+ * - 相容舊版 employees 內 accountStatus=pending 的註冊資料，避免再建立第二筆員工。
+ */
+(function(global){
+  'use strict';
 
-function mobileDigits(v){return textValue(v).replace(/\D/g,'');}
-function hashKey(v){let h=0;const s=textValue(v).toLowerCase();for(let i=0;i<s.length;i++){h=((h<<5)-h)+s.charCodeAt(i);h|=0;}return Math.abs(h).toString(36).toUpperCase();}
-function fallbackExternalEmployeeId(name,email,mobile){const seed=textValue(email).toLowerCase()||mobileDigits(mobile)||textValue(name)||String(Date.now());return 'EXTEMP_'+hashKey(seed);}
-function isManagerLikeEmployee(row,id){row=row||{};const role=textValue(row.role||row.userRole||row.permissionRole||row.identityType||row.employeeType).toLowerCase();const email=textValue(row.email||row.Email).toLowerCase();return id==='PRIMARY_MANAGER_LINE'||email==='danny700808@gmail.com'||row.isAdmin===true||row.isManager===true||row.showSettingsZone===true||['admin','manager','主管','管理者'].some(x=>role.includes(x));}
-function isExternalLikeEmployee(row){row=row||{};const raw=textValue(row.identityType||row.employeeType||row.identityLabel||row.role||'').toLowerCase();return row.isExternalTeacher===true||raw.includes('external')||raw.includes('外聘')||raw.includes('externalteacher');}
-async function collectEmployeeCandidate(list,query){try{const snap=await query.limit(5).get();snap.forEach(doc=>{const data=doc.data()||{};if(!isManagerLikeEmployee(data,doc.id))list.push({id:doc.id,data});});}catch(e){console.warn('[find employee query]',e);}}
-function pickEmployeeCandidate(list){if(!list.length)return null;list.sort((a,b)=>{const ae=isExternalLikeEmployee(a.data)?1:0;const be=isExternalLikeEmployee(b.data)?1:0;if(ae!==be)return be-ae;const at=textValue(a.data.externalTeacherSyncedAt||a.data.updatedAt||'');const bt=textValue(b.data.externalTeacherSyncedAt||b.data.updatedAt||'');return bt.localeCompare(at);});return list[0];}
-async function findExternalEmployeeByContact(email,mobile){const candidates=[];const em=textValue(email).toLowerCase();const mob=textValue(mobile);const digits=mobileDigits(mob);if(em){await collectEmployeeCandidate(candidates,db().collection('employees').where('email','==',em));await collectEmployeeCandidate(candidates,db().collection('employees').where('Email','==',em));}if(mob){await collectEmployeeCandidate(candidates,db().collection('employees').where('mobilePhone','==',mob));await collectEmployeeCandidate(candidates,db().collection('employees').where('phone','==',mob));await collectEmployeeCandidate(candidates,db().collection('employees').where('mobile','==',mob));}if(digits)await collectEmployeeCandidate(candidates,db().collection('employees').where('mobileDigits','==',digits));const seen=new Map();candidates.forEach(c=>seen.set(c.id,c));return pickEmployeeCandidate(Array.from(seen.values()));}
-function sameContractYear(row,d){return String(row.contractRocYear||row.rocYear||'')===String(d.roc)||String(row.contractYear||row.contractGregorianYear||'')===String(d.gy);}
-function reusableContractStatus(row){const s=textValue(row.status);return !['deleted','void','cancelled','archived'].includes(s.toLowerCase());}
-async function findReusableExternalContract(employeeId,d,email,mobile){let rows=[];async function pushQuery(q){try{const snap=await q.limit(80).get();snap.forEach(doc=>{const data=doc.data()||{};if(sameContractYear(data,d)&&reusableContractStatus(data))rows.push({id:doc.id,data});});}catch(e){console.warn('[find contract query]',e);}}if(employeeId)await pushQuery(db().collection('externalTeacherContracts').where('employeeId','==',employeeId));const em=textValue(email).toLowerCase();const mob=textValue(mobile);if(!rows.length&&em)await pushQuery(db().collection('externalTeacherContracts').where('email','==',em));if(!rows.length&&mob)await pushQuery(db().collection('externalTeacherContracts').where('mobile','==',mob));const seen=new Map();rows.forEach(r=>seen.set(r.id,r));rows=Array.from(seen.values());if(!rows.length)return null;rows.sort((a,b)=>{const al=isLockedStatus(a.data.status)?1:0;const bl=isLockedStatus(b.data.status)?1:0;if(al!==bl)return bl-al;const at=textValue(a.data.updatedAt||a.data.createdAt||'');const bt=textValue(b.data.updatedAt||b.data.createdAt||'');return bt.localeCompare(at);});return rows[0];}
-async function syncExternalTeacherRecordLinks(contractId,employeeId,row={}){if(!contractId||!employeeId)return;const now=new Date().toISOString();const patch={employeeId,externalTeacherEmployeeId:employeeId,employeeRef:`employees/${employeeId}`,updatedAt:now};if(row.personStatus)patch.personStatus=row.personStatus;await db().collection('externalTeacherContracts').doc(contractId).set(patch,{merge:true});await db().collection('externalTeacherProfiles').doc(contractId).set({...patch,teacherId:contractId,id:contractId},{merge:true});}
-async function syncExternalTeacherEmployee(r,extra={}){try{r={...(r||{}),...(extra||{})};const contractId=textValue(r.contractId||r.id||r.teacherId||currentId);let employeeId=textValue(r.employeeId||r.externalTeacherEmployeeId);const name=textValue(r.name||r.teacherName||r.displayName);const email=textValue(r.email).toLowerCase();const mobile=textValue(r.mobile||r.phone);if(!employeeId){const existing=await findExternalEmployeeByContact(email,mobile);employeeId=existing?existing.id:fallbackExternalEmployeeId(name,email,mobile);}if(!employeeId)return '';const ref=db().collection('employees').doc(employeeId);let old={};try{const os=await ref.get();if(os.exists)old=os.data()||{};}catch(e){}const finalName=name||textValue(old.name||old.displayName);const finalEmail=email||textValue(old.email).toLowerCase();const finalMobile=mobile||textValue(old.mobilePhone||old.phone);const lineUserId=textValue(r.lineUserId||old.lineUserId);const teachingAbilities=normalizeTeachingAbilities(r.teachingAbilities||old.teachingAbilities,r.teachingItems||old.teachingItems||old.teachingItemsText);const teaching=teachingAbilitiesText(teachingAbilities)||itemText(r.teachingItems||old.teachingItems||old.teachingItemsText);const now=new Date().toISOString();const update={employeeId:employeeId,id:employeeId,userId:employeeId,name:finalName,displayName:finalName,employeeName:finalName,email:finalEmail,mobilePhone:finalMobile,phone:finalMobile,mobileDigits:mobileDigits(finalMobile),identityType:'external',identityLabel:'外聘老師',employeeType:'external',role:'externalTeacher',isExternalTeacher:true,accountStatus:textValue(old.accountStatus||'active'),employmentStatus:textValue(old.employmentStatus||'active'),hiddenFromActiveLists:old.hiddenFromActiveLists===true,lineUserId:lineUserId,lineDisplayName:textValue(r.lineDisplayName||old.lineDisplayName),lineNotifyEnabled:!!lineUserId,lineBindStatus:textValue(r.lineBindStatus||(lineUserId?'bound':old.lineBindStatus||'pending')),emailBindStatus:textValue(r.emailBindStatus||old.emailBindStatus),bindingMethod:textValue(r.bindingMethod||old.bindingMethod),bindingMethodLabel:textValue(r.bindingMethodLabel||old.bindingMethodLabel),externalTeacherProfileId:textValue(r.externalTeacherProfileId||old.externalTeacherProfileId||contractId),externalTeacherContractId:contractId||textValue(old.externalTeacherContractId),currentExternalContractId:contractId||textValue(old.currentExternalContractId),externalTeacherStatus:textValue(r.status||old.externalTeacherStatus),contractStatus:textValue(r.contractStatus||r.status||old.contractStatus),progressStatus:textValue(r.progressStatus||old.progressStatus),teachingItems:teaching,teachingItemsText:teaching,teachingAbilities:teachingAbilities,cooperationStartDate:textValue(r.contractStartDate||old.cooperationStartDate),hireDate:textValue(r.contractStartDate||old.hireDate),contractYear:textValue(r.contractYear||old.contractYear),contractRocYear:textValue(r.contractRocYear||old.contractRocYear),contractStartDate:textValue(r.contractStartDate||old.contractStartDate),contractEndDate:textValue(r.contractEndDate||old.contractEndDate),idNumber:textValue(r.idNumber||old.idNumber),birthDate:textValue(r.birthDate||old.birthDate),householdAddress:textValue(r.householdAddress||old.householdAddress),mailingAddress:textValue(r.mailingAddress||old.mailingAddress),address:textValue(r.mailingAddress||r.householdAddress||old.address),identityDocumentUrl:Array.isArray(r.identityUrls)&&r.identityUrls.length?r.identityUrls[0]:textValue(old.identityDocumentUrl),externalTeacherSyncedAt:now,updatedAt:now,updatedAtText:nowText(),source:'external-teacher-linked-sync'};if(contractId&&firebase&&firebase.firestore&&firebase.firestore.FieldValue)update.externalTeacherContractIds=firebase.firestore.FieldValue.arrayUnion(contractId);await ref.set(update,{merge:true});await syncExternalTeacherRecordLinks(contractId,employeeId,r);return employeeId;}catch(e){console.warn('[syncExternalTeacherEmployee]',e);return textValue((r||{}).employeeId||'');}}
-async function createOrResumeBinding(){try{const name=val('name'),mobile=val('mobile'),email=val('email'),teachingAbilities=getTeachingAbilities(),teaching=teachingAbilitiesText(teachingAbilities);const m=method();if(!name||!mobile){alert('請先填寫姓名與手機');return}if(wantsEmail(m)&&!email){alert('你選擇 Email 綁定，請填寫 Email');return}setLoading(true);const d=contractDates();const now=new Date().toISOString();const preliminary={name,teacherName:name,mobile,email,teachingItems:teaching,teachingItemsText:teaching,teachingAbilities,bindingMethod:m,bindingMethodLabel:bindingLabel(m),contractYear:d.gy,contractRocYear:d.roc,contractStartDate:d.start,contractEndDate:d.end};let employeeId=await syncExternalTeacherEmployee(preliminary);const existing=await findReusableExternalContract(employeeId,d,email,mobile);const old=existing?(existing.data||{}):{};const id=existing?existing.id:db().collection('externalTeacherContracts').doc().id;const code=textValue(old.bindingCode||old.onboardingToken)||makeCode();const url=signUrl(id,code,'&verify=email');const bindText=`柚子人員綁定 ${code}`;const locked=isLockedStatus(old.status);const lineStatus=wantsLine(m)?(old.lineBindStatus==='bound'?'bound':'pending'):'not_required';const emailStatus=wantsEmail(m)?'bound':'not_required';const record={...old,employeeId,externalTeacherEmployeeId:employeeId,teacherName:name,name,mobile,email,teachingItems:teaching,teachingItemsText:teaching,teachingAbilities,bindingMethod:m,bindingMethodLabel:bindingLabel(m),bindingCode:code,employeeBindCode:code,employeeBindText:bindText,onboardingToken:code,contractYear:d.gy,contractRocYear:d.roc,contractStartDate:d.start,contractEndDate:d.end,lineBindStatus:lineStatus,emailBindStatus:emailStatus,status:locked?old.status:'waiting_bindings',progressStatus:locked?(old.progressStatus||progressLabel(old)):'已建立基本資料，等待綁定',createdAt:old.createdAt||now,updatedAt:now,createdFrom:old.createdFrom||'external-teacher-sign-v3'};await db().collection('externalTeacherContracts').doc(id).set(record,{merge:true});await db().collection('externalTeacherProfiles').doc(id).set({...record,teacherId:id,id,displayName:name,profileStatus:record.status,onboardingUrl:signUrl(id,code)} ,{merge:true});employeeId=await syncExternalTeacherEmployee({id,contractId:id,...record});if(wantsLine(m)&&lineStatus!=='bound'){await db().collection('externalTeacherLineBindings').doc(code).set({bindCode:code,bindingCode:code,employeeBindCode:code,bindText,teacherId:id,employeeId,externalTeacherEmployeeId:employeeId,teacherName:name,mobile,email,bindingMethod:m,onboardingToken:code,onboardingUrl:signUrl(id,code),status:'pending',createdAt:old.lineBindingCreatedAt||now,updatedAt:now},{merge:true});await db().collection('employeeLineBindings').doc(code).set({bindingCode:code,employeeBindCode:code,bindText,employeeId,employeeDocId:employeeId,targetCollection:'employees',externalTeacherContractId:id,teacherId:id,status:'pending',name,teacherName:name,email,mobilePhone:mobile,mobile,bindingMethod:m,notificationPreference:m,onboardingToken:code,onboardingUrl:signUrl(id,code),createdAt:old.lineBindingCreatedAt||now,updatedAt:now,source:'external-teacher-onboarding'},{merge:true});}if(wantsEmail(m)&&!locked){let body=`您好 ${name} 老師：
+  const fb = global.YZFirebase || {};
+  if(!fb || fb.__onboardingWorkflowV20260624) return;
+  const previousHandle = fb.handleApi;
+  const VERSION = 'onboarding-20260624-v1';
+  const APP_COLLECTION = 'registrationApplications';
 
-請點選下方連結繼續填寫外聘老師正式資料：
-${url}
+  function clean(v){ return String(v == null ? '' : v).trim(); }
+  function lower(v){ return clean(v).toLowerCase(); }
+  function numberValue(v){
+    if(v === '' || v === null || v === undefined) return 0;
+    const n = Number(String(v).replace(/[^\d.-]/g,''));
+    return Number.isFinite(n) ? n : 0;
+  }
+  function hasNumber(v){ return v !== '' && v !== null && v !== undefined && Number.isFinite(Number(String(v).replace(/[^\d.-]/g,''))); }
+  function truthy(v){ const s=lower(v); return v===true || ['是','yes','true','1','active','enabled','啟用','在保','已投保'].includes(s); }
+  function safeId(v){ return clean(v).replace(/[^a-zA-Z0-9_-]/g,'_').slice(0,120); }
+  function randomToken(bytes){
+    const length = Math.max(8, Number(bytes || 16));
+    try{
+      const a = new Uint8Array(length);
+      global.crypto.getRandomValues(a);
+      return Array.from(a).map(x=>x.toString(16).padStart(2,'0')).join('');
+    }catch(e){
+      return Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+    }
+  }
+  function pad(n){ return String(n).padStart(2,'0'); }
+  function nowText(){ const d=new Date(); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; }
+  function dateText(v){
+    if(!v) return '';
+    if(v && typeof v.toDate === 'function') v = v.toDate();
+    if(v instanceof Date && !isNaN(v.getTime())) return `${v.getFullYear()}-${pad(v.getMonth()+1)}-${pad(v.getDate())}`;
+    const s=clean(v); return /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0,10) : s;
+  }
+  function dateTimeText(v){
+    if(!v) return '';
+    if(v && typeof v.toDate === 'function') v = v.toDate();
+    if(v instanceof Date && !isNaN(v.getTime())) return `${v.getFullYear()}-${pad(v.getMonth()+1)}-${pad(v.getDate())} ${pad(v.getHours())}:${pad(v.getMinutes())}`;
+    return clean(v);
+  }
+  function serverTs(){ return global.firebase.firestore.FieldValue.serverTimestamp(); }
+  function arrayUnion(v){ return global.firebase.firestore.FieldValue.arrayUnion(v); }
+  function database(){ try{return fb.init && fb.init();}catch(e){return null;} }
+  function currentUser(){ try{return JSON.parse(global.localStorage.getItem('employeeUser') || 'null') || {};}catch(e){return {};} }
+  function stripUndefined(obj){
+    const out={};
+    Object.keys(obj||{}).forEach(k=>{ if(obj[k] !== undefined) out[k]=obj[k]; });
+    return out;
+  }
+  function lineItems(value){
+    return (Array.isArray(value)?value:[]).map(function(row){
+      row=row||{};
+      return {name:clean(row.name||row.label),amount:numberValue(row.amount||row.value)};
+    }).filter(function(row){ return row.name || row.amount; });
+  }
+  function todayText(){ const d=new Date(); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
+  function identityDocumentTypeLabel(type){
+    const t=clean(type);
+    if(t==='resident_certificate') return '居留證';
+    if(t==='passport') return '護照';
+    return '國民身分證';
+  }
+  function identityLabel(type){ return type==='parttime'?'工讀生':(type==='external'?'外聘老師':'專職員工'); }
+  function notificationPreference(value, hasEmail){ const v=lower(value); if(['line','line_only','line-only','只用line','只用 line'].includes(v)) return 'line'; if(['email','email_only','email-only','只用email','只用 email'].includes(v)) return 'email'; if(['both','line_email','line+email','line + email','all','雙軌','兩者'].includes(v)) return 'both'; return hasEmail?'both':'line'; }
+  function notificationLabel(pref){ return pref==='email'?'只用 Email':(pref==='line'?'只用 LINE':'LINE + Email'); }
+  function wantsLine(pref){ return pref==='line'||pref==='both'; }
+  function wantsEmail(pref){ return pref==='email'||pref==='both'; }
+  function makeEmployeeBindCode(){ return 'EMP-' + randomToken(4).slice(0,8).toUpperCase(); }
+  function employeeBindText(code){ return code ? ('柚子人員綁定 ' + code) : ''; }
+  function maskId(v){ const s=clean(v).toUpperCase(); if(!s) return ''; return s.length<=5 ? s : s.slice(0,1)+'*****'+s.slice(-4); }
+  function maskEmail(v){ const s=lower(v); const p=s.split('@'); if(p.length!==2) return s; const local=p[0]; return (local.slice(0,2)||'*')+'***@'+p[1]; }
+  function statusKey(row){
+    return lower(row && (row.applicationStatus || row.statusKey || row.accountStatus || row.status || row['狀態']));
+  }
+  function isPendingStatus(row){
+    const s=statusKey(row);
+    if(['approved','active','rejected','archived','deleted','已核准','已啟用','已駁回','封存','刪除'].includes(s)) return false;
+    return !s || ['pending','pending_setup','waiting_line_binding','draft','needs_identity_resubmission','waiting_manager_setup','待審核','等待 line 綁定','等待line綁定','待主管建檔','主管建檔草稿','待補件'].includes(s);
+  }
+  function isSystemEmployee(row){
+    const id=clean(row && (row.employeeId || row.__id));
+    return id==='PRIMARY_MANAGER_LINE' || lower(row && row.recordType)==='system_setting' || lower(row && row.identityType)==='system';
+  }
+  function applicationStatusLabel(key){
+    const s=clean(key);
+    if(s==='draft') return '主管建檔草稿';
+    if(s==='needs_identity_resubmission') return '待申請人補件';
+    if(s==='waiting_line_binding') return '等待 LINE 綁定';
+    if(s==='approved') return '已完成入職建檔';
+    if(s==='rejected') return '已駁回';
+    return '待主管建檔';
+  }
+  function event(action, note){
+    const u=currentUser();
+    return {action, note:clean(note), actorId:clean(u.id||u.employeeId), actorName:clean(u.name), atText:nowText(), source:VERSION};
+  }
 
-合約年度：民國 ${d.roc} 年
-契約期間：${d.start} 至 ${d.end}`;if(wantsLine(m)){body+=`
+  async function all(collection){
+    const d=database(); if(!d) throw new Error('Firebase 尚未啟用。');
+    const snap=await d.collection(collection).get();
+    const rows=[]; snap.forEach(doc=>rows.push(Object.assign({__id:doc.id},doc.data()||{})));
+    return rows;
+  }
+  async function getDoc(collection,id){
+    const d=database(); if(!d || !clean(id)) return null;
+    const snap=await d.collection(collection).doc(clean(id)).get();
+    return snap.exists ? Object.assign({__id:snap.id},snap.data()||{}) : null;
+  }
+  async function queryRows(collection,field,value){
+    const d=database(); if(!d) throw new Error('Firebase 尚未啟用。');
+    const snap=await d.collection(collection).where(field,'==',value).get();
+    const rows=[]; snap.forEach(doc=>rows.push(Object.assign({__id:doc.id},doc.data()||{})));
+    return rows;
+  }
+  async function employeesByEmail(email){
+    const e=lower(email); if(!e) return [];
+    const rows=[];
+    for(const field of ['email','Email']){
+      try{ (await queryRows('employees',field,e)).forEach(r=>{ if(!rows.some(x=>x.__id===r.__id)) rows.push(r); }); }catch(err){}
+    }
+    return rows;
+  }
+  async function applicationByEmail(email){
+    const e=lower(email); if(!e) return [];
+    try{return await queryRows(APP_COLLECTION,'email',e);}catch(err){return [];}
+  }
+  function normalizeApplication(raw){
+    raw=raw||{};
+    const applicationId=clean(raw.applicationId||raw.__id);
+    const applicationStatus=clean(raw.applicationStatus||'pending_setup');
+    const draft=(raw.onboardingDraft && typeof raw.onboardingDraft==='object') ? raw.onboardingDraft : {};
+    return Object.assign({},raw,{
+      id:applicationId,
+      applicationId,
+      name:clean(raw.name||raw['姓名']),
+      email:lower(raw.email||raw.Email),
+      idNumber:clean(raw.idNumber||raw['身分證字號']).toUpperCase(),
+      idNumberMasked:maskId(raw.idNumber||raw['身分證字號']),
+      birthDate:dateText(raw.birthDate||raw['出生年月日']),
+      mobilePhone:clean(raw.mobilePhone||raw['行動電話']),
+      contactAddress:clean(raw.contactAddress||raw.address||raw['聯絡地址']),
+      emergencyContact:clean(raw.emergencyContact||raw['緊急聯絡人']),
+      emergencyPhone:clean(raw.emergencyPhone||raw['緊急聯絡人電話']),
+      identityDocumentType:clean(raw.identityDocumentType||'national_id'),
+      identityDocumentTypeLabel:identityDocumentTypeLabel(raw.identityDocumentType),
+      identityDocumentUrl:clean(raw.identityDocumentUrl),
+      identityDocumentPublicId:clean(raw.identityDocumentPublicId),
+      identityDocumentVerified:raw.identityDocumentVerified===true || clean(raw.identityVerificationStatus)==='verified',
+      applicationStatus,
+      applicationStatusLabel:applicationStatusLabel(applicationStatus),
+      statusLabel:applicationStatusLabel(applicationStatus),
+      requestedIdentityType:clean(raw.requestedIdentityType||raw.registrationType||raw.identityType||''),
+      requestedIdentityLabel:identityLabel(clean(raw.requestedIdentityType||raw.registrationType||raw.identityType||'')),
+      notificationPreference:notificationPreference(raw.notificationPreference||raw.notificationMethod, !!clean(raw.email)),
+      notificationPreferenceLabel:notificationLabel(notificationPreference(raw.notificationPreference||raw.notificationMethod, !!clean(raw.email))),
+      employeeBindCode:clean(raw.employeeBindCode||raw.bindingCode||raw.lineBindingCode),
+      employeeBindText:clean(raw.employeeBindText)||employeeBindText(clean(raw.employeeBindCode||raw.bindingCode||raw.lineBindingCode)),
+      lineBindStatus:clean(raw.lineBindStatus||raw.lineStatus||''),
+      emailBindStatus:clean(raw.emailBindStatus||''),
+      currentStep:clean(raw.currentStep||raw.progressStatus||''),
+      onboardingDraft:draft,
+      createdAtText:clean(raw.createdAtText)||dateTimeText(raw.createdAt),
+      updatedAtText:clean(raw.updatedAtText)||dateTimeText(raw.updatedAt),
+      resubmissionReason:clean(raw.resubmissionReason),
+      emailMasked:maskEmail(raw.email)
+    });
+  }
 
-LINE 綁定文字：
-${bindText}
+  async function pendingApplications(){
+    const appRows=(await all(APP_COLLECTION).catch(()=>[])).filter(isPendingStatus).map(normalizeApplication);
+    const linkedLegacy=new Set(appRows.map(x=>clean(x.legacyEmployeeDocId)).filter(Boolean));
+    const appEmails=new Set(appRows.map(x=>lower(x.email)).filter(Boolean));
+    const legacy=(await all('employees').catch(()=>[])).filter(r=>!isSystemEmployee(r) && isPendingStatus(r) && !linkedLegacy.has(clean(r.__id)) && !appEmails.has(lower(r.email||r.Email))).map(r=>normalizeApplication({
+      applicationId:'LEGACY__'+clean(r.__id),
+      legacyEmployeeDocId:clean(r.__id),
+      linkedEmployeeId:clean(r.employeeId||r.__id),
+      name:r.name||r['姓名'], email:r.email||r.Email, idNumber:r.idNumber||r['身分證字號'], birthDate:r.birthDate||r['出生年月日'],
+      mobilePhone:r.mobilePhone||r['行動電話'], contactAddress:r.contactAddress||r.address||r['聯絡地址'], emergencyContact:r.emergencyContact||r['緊急聯絡人'], emergencyPhone:r.emergencyPhone||r['緊急聯絡人電話'],
+      identityDocumentType:r.identityDocumentType||'national_id', identityDocumentUrl:r.identityDocumentUrl||'', identityDocumentPublicId:r.identityDocumentPublicId||'',
+      applicationStatus:'pending_setup', createdAt:r.createdAt, createdAtText:r.createdAtText, source:'legacy-employees-pending'
+    }));
+    return appRows.concat(legacy).sort((a,b)=>clean(b.createdAtText).localeCompare(clean(a.createdAtText)) || clean(a.name).localeCompare(clean(b.name),'zh-Hant'));
+  }
 
-請將上方文字貼到柚子樂器官方 LINE 聊天室完成綁定。`;};await queueEmail(email,`柚子樂器外聘老師 ${d.roc} 年資料填寫`,body,'external-teacher-email-verify',id);}await queueAdmin(`外聘老師已建立基本資料
+  function validateApplicant(payload){
+    const required=[['name','請填寫姓名。'],['email','請填寫 Email。'],['idNumber','請填寫身分證字號或證件號碼。'],['birthDate','請填寫出生年月日。'],['mobilePhone','請填寫行動電話。'],['contactAddress','請填寫聯絡地址。'],['emergencyContact','請填寫緊急聯絡人。'],['emergencyPhone','請填寫緊急聯絡人電話。'],['identityDocumentType','請選擇證件類型。'],['identityDocumentUrl','請上傳證件正面。']];
+    for(const [key,msg] of required){ if(!clean(payload[key])) return msg; }
+    if(!payload.identityDocumentConsent) return '請先勾選證件使用說明。';
+    if(!/^\S+@\S+\.\S+$/.test(lower(payload.email))) return 'Email 格式不正確。';
+    return '';
+  }
 
-姓名：${name}
-手機：${mobile}
-Email：${email||'-'}
-綁定方式：${bindingLabel(m)}
-員工管理關聯：${employeeId}
-狀態：${progressLabel(record)}`, 'external-teacher-created', id);currentId=id;currentCode=code;currentRecord={id,...record,employeeId};localStorage.setItem('externalTeacherCurrentId',id);localStorage.setItem('externalTeacherCurrentCode',code);loadRecordToForm(currentRecord);if(locked){showDone(currentRecord);return;}if(!wantsLine(m)){currentRecord.status='waiting_email_link';currentRecord.progressStatus='已寄出 Email 資料填寫連結，等待老師從信箱開啟';await db().collection('externalTeacherContracts').doc(id).set({status:currentRecord.status,progressStatus:currentRecord.progressStatus,updatedAt:new Date().toISOString()},{merge:true});await db().collection('externalTeacherProfiles').doc(id).set({status:currentRecord.status,profileStatus:currentRecord.status,progressStatus:currentRecord.progressStatus,updatedAt:new Date().toISOString()},{merge:true});await syncExternalTeacherEmployee(currentRecord);loadRecordToForm(currentRecord);renderBindingInstruction(currentRecord);go(2);}else{renderBindingInstruction(currentRecord);go(2);startAutoCheck();}}catch(e){console.error(e);alert('建立基本資料失敗，請稍後再試。')}finally{setLoading(false)}}
-function requiredBindingDone(r){const m=r.bindingMethod||'both';return (!wantsLine(m)||r.lineBindStatus==='bound')}
-function renderBindingInstruction(r){const m=r.bindingMethod||'both';const lineRequired=wantsLine(m);const emailOnly=!lineRequired&&wantsEmail(m);const lineOk=!lineRequired||r.lineBindStatus==='bound';let html='';if(lineRequired){const text=`柚子人員綁定 ${r.bindingCode}`;html+=`<div class="info"><h3>LINE 綁定</h3><p>請複製下方綁定文字，貼到柚子樂器官方 LINE 聊天室。</p><div class="codebox" id="lineBindText">${esc(text)}</div><div class="binding-actions"><button class="btn primary" onclick="copyText('${esc(text)}')">複製 LINE 綁定文字</button><a class="btn secondary" target="_blank" href="https://lin.ee/Fx5Y2mL">開啟官方 LINE</a></div></div>`;}else if(emailOnly){html+=`<div class="info"><h3>Email 資料填寫連結已寄出</h3><p>請至您填寫的 Email 信箱收信，並從信件中的連結繼續完成正式資料填寫與契約簽署。</p><p>若未收到信件，請先檢查垃圾信件匣，或聯絡柚子樂器協助重新寄送。</p></div>`;}else{html=`<div class="ok"><h3>通知方式已確認</h3><p>可以繼續填寫正式資料。</p></div>`;}document.getElementById('bindingInstruction').innerHTML=html;const checkBtn=document.getElementById('checkBindingBtn');if(checkBtn){if(emailOnly){checkBtn.style.display='none';}else{checkBtn.style.display='inline-flex';checkBtn.textContent=lineOk?'綁定完成，進入正式資料填寫':'檢查 LINE 綁定狀態';checkBtn.className=lineOk?'btn primary':'btn secondary';}}const copyBtn=document.getElementById('copySignLinkBtn');if(copyBtn)copyBtn.style.display='none';const help=document.getElementById('bindingHelpText');if(help){help.textContent='';help.style.display='none';}renderBindStatus(r);}
-function renderBindStatus(r){const box=document.getElementById('bindStatus');if(!box)return;box.style.display='none';box.innerHTML='';}
-async function copyText(text){try{await navigator.clipboard.writeText(text);alert('已複製');}catch(e){const ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();alert('已複製');}}
-async function copySignLink(){if(!currentId||!currentCode)return;copyText(signUrl(currentId,currentCode));}
-async function checkBindingAndContinue(){try{setLoading(true);let r=await loadRecord(currentId,currentCode);if(!r)throw new Error('找不到資料');r=await mirrorLineProfileIfNeeded(r);const m=r.bindingMethod||'both';const lineOk=!wantsLine(m)||r.lineBindStatus==='bound';const emailOk=true;currentRecord=r;renderBindingInstruction(r);if(lineOk&&emailOk){r.status='waiting_contract';r.progressStatus='綁定完成，等待正式資料填寫';await db().collection('externalTeacherContracts').doc(r.id).set({status:r.status,progressStatus:r.progressStatus,updatedAt:new Date().toISOString()},{merge:true});await syncExternalTeacherEmployee(r);loadRecordToForm(r);go(3);}else{const box=document.getElementById('bindStatus');if(box){box.style.display='block';box.className='warn';box.textContent='目前還沒有偵測到 LINE 綁定完成。請先到官方 LINE 貼上綁定文字，成功後再回來檢查。';}}}catch(e){console.error(e);alert('目前還沒有確認綁定完成，請稍後再試。')}finally{setLoading(false)}}
-function startAutoCheck(){if(checkTimer)clearInterval(checkTimer);let count=0;checkTimer=setInterval(async()=>{count++;try{let r=await loadRecord(currentId,currentCode);if(r){r=await mirrorLineProfileIfNeeded(r);currentRecord=r;renderBindingInstruction(r);const m=r.bindingMethod||'both';if(!wantsLine(m)||r.lineBindStatus==='bound'){clearInterval(checkTimer);setTimeout(()=>checkBindingAndContinue(),10000);}}}catch(e){console.warn(e)}if(count>60)clearInterval(checkTimer);},5000)}
-function loadRecordToForm(r){if(!r)return;['name','mobile','email','idNumber','householdAddress','mailingAddress','contractYear'].forEach(id=>{if(r[id]&&document.getElementById(id))document.getElementById(id).value=r[id];});setBirthDateSelect(r.birthDate||'');if(document.getElementById('contractYear')){renderPeriodInfo();}setTeachingAbilities(r.teachingAbilities,r.teachingItemsText||r.teachingItems);renderContractPreview();}
-async function verifyEmailIfRequested(){const p=parseParams();if(!p.id||!p.code)return false;currentId=p.id;currentCode=p.code;let r=await loadRecord(p.id,p.code);if(!r){document.getElementById('startMsg').textContent='連結無效或已失效，請重新填寫基本資料。';return false}if(p.verify==='email'&&wantsEmail(r.bindingMethod)&&r.emailBindStatus!=='bound'){await db().collection('externalTeacherContracts').doc(r.id).set({emailBindStatus:'bound',emailVerifiedAt:new Date().toISOString(),updatedAt:new Date().toISOString()},{merge:true});await db().collection('externalTeacherProfiles').doc(r.id).set({emailBindStatus:'bound',emailVerifiedAt:new Date().toISOString(),updatedAt:new Date().toISOString()},{merge:true});r.emailBindStatus='bound';await syncExternalTeacherEmployee(r);}r=await mirrorLineProfileIfNeeded(r);await syncExternalTeacherEmployee(r);currentRecord=r;loadRecordToForm(r);if(isLockedStatus(r.status)){showDone(r);return true}const m=r.bindingMethod||'both';if(!wantsLine(m)||r.lineBindStatus==='bound'){go(3)}else{renderBindingInstruction(r);go(2);startAutoCheck();}return true;}
-async function loadTemplate(){try{const doc=await db().collection('externalTeacherContractTemplates').doc('current').get();if(doc.exists)contractTemplate={...contractTemplate,...doc.data()};}catch(e){console.warn(e)}}
-function renderContractPreview(){const d=contractDates();let text=(contractTemplate.clausesText||DEFAULT_CONTRACT_TEXT).replaceAll('{{contractStartDate}}',d.start).replaceAll('{{contractEndDate}}',d.end);const body=esc(text).replace(/\n/g,'<br>');const sig=lastSignatureDataUrl?`<img class="signature-img" src="${lastSignatureDataUrl}">`:'<div class="signature-demo">乙方線上簽名位置</div>';document.getElementById('contractPreview').innerHTML=`<h2>${esc(contractTemplate.title||'外聘才藝教師委任契約書')}</h2><div class="party"><div class="party-box"><b>甲方</b><br>臺中市私立凱立音樂短期補習班<br>代表人：黃銘廷<br>地址：依補習班登記資料</div><div class="party-box"><b>乙方</b><br>外聘老師姓名：${esc(val('name')||'＿＿＿＿＿＿')}<br>身分證字號：${esc(val('idNumber')||'＿＿＿＿＿＿')}<br>電話：${esc(val('mobile')||'＿＿＿＿＿＿')}</div></div><div style="margin:8px 0 14px"><b>契約期間：</b>${esc(d.start)} 至 ${esc(d.end)}（民國 ${d.roc} 年）</div><div class="contract-body">${body}</div><div class="sign-row"><div class="sign-box">甲方：臺中市私立凱立音樂短期補習班<br>代表人：黃銘廷<img class="seal" src="kaili-school-seal.png" onerror="this.style.display='none'"><img class="small-seal" src="personal-seal.png" onerror="this.style.display='none'"></div><div class="sign-box">乙方：${esc(val('name')||'外聘老師')}${sig}</div></div><div style="margin-top:20px">簽署日期：${esc(todayISO())}</div>`;}
-function validateProfile(){if(!val('idNumber')||!val('birthDate')||!val('householdAddress')){alert('請填寫身分證字號、出生年月日與戶籍地址');return false}if(!document.getElementById('identityFiles').files.length && !(currentRecord&&currentRecord.identityUrls&&currentRecord.identityUrls.length)){alert('請上傳身分證明文件');return false}return true;}
-function showContractStep(){if(!validateProfile())return;go(4)}
-document.getElementById('identityFiles').addEventListener('change',function(){const files=Array.from(this.files||[]);document.getElementById('identityFileList').innerHTML=files.map(f=>`<span class="pill">${esc(f.name)}</span>`).join('')});
-async function imageFileToWatermarkedBlob(file){if(!file.type||!file.type.startsWith('image/'))throw new Error('身分證明文件請上傳圖片格式。');const img=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>{const i=new Image();i.onload=()=>resolve(i);i.onerror=reject;i.src=r.result};r.onerror=reject;r.readAsDataURL(file)});const max=1600;let w=img.width,h=img.height;if(Math.max(w,h)>max){const ratio=max/Math.max(w,h);w=Math.round(w*ratio);h=Math.round(h*ratio)}const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;const ctx=canvas.getContext('2d');ctx.drawImage(img,0,0,w,h);const wm=`僅供柚子樂器外聘教師簽約使用｜${val('name')||'外聘老師'}｜${todayISO()}`;ctx.save();ctx.translate(w/2,h/2);ctx.rotate(-Math.PI/8);ctx.textAlign='center';ctx.textBaseline='middle';ctx.font=`${Math.max(22,Math.floor(w/26))}px sans-serif`;ctx.fillStyle='rgba(40,40,40,0.18)';for(let y=-h;y<=h;y+=Math.max(110,Math.floor(h/5)))ctx.fillText(wm,0,y);ctx.restore();ctx.font=`${Math.max(18,Math.floor(w/34))}px sans-serif`;ctx.fillStyle='rgba(0,0,0,0.55)';ctx.fillText(wm,18,h-24);return await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',0.84));}
-async function uploadBlob(path,blob,type){const ref=storage().ref().child(path);await ref.put(blob,{contentType:type});return await ref.getDownloadURL();}
-function dataUrlToBlob(dataUrl){const arr=dataUrl.split(',');const mime=arr[0].match(/:(.*?);/)[1];const bstr=atob(arr[1]);let n=bstr.length;const u8arr=new Uint8Array(n);while(n--)u8arr[n]=bstr.charCodeAt(n);return new Blob([u8arr],{type:mime})}
-const canvas=document.getElementById('signature'),ctx=canvas.getContext('2d');let drawing=false;let signatureConfirmed=false;
-function setSignatureMsg(text,isOk){const box=document.getElementById('signatureConfirmMsg');if(!box)return;box.textContent=text||'';box.className=isOk?'signature-confirm-msg ok':'signature-confirm-msg muted';}
-function resizeCanvas(){const ratio=window.devicePixelRatio||1;const rect=canvas.getBoundingClientRect();canvas.width=Math.max(1,Math.floor(rect.width*ratio));canvas.height=Math.max(1,Math.floor(180*ratio));ctx.setTransform(ratio,0,0,ratio,0,0);ctx.lineWidth=2.4;ctx.lineCap='round';ctx.strokeStyle='#111'}function pos(e){const r=canvas.getBoundingClientRect();const t=e.touches&&e.touches[0]?e.touches[0]:e;return{x:t.clientX-r.left,y:t.clientY-r.top}}function start(e){drawing=true;signatureConfirmed=false;setSignatureMsg('',false);const p=pos(e);ctx.beginPath();ctx.moveTo(p.x,p.y);e.preventDefault()}function move(e){if(!drawing)return;const p=pos(e);ctx.lineTo(p.x,p.y);ctx.stroke();e.preventDefault()}function end(){if(drawing){drawing=false;lastSignatureDataUrl=canvas.toDataURL('image/png');renderContractPreview();}}canvas.addEventListener('mousedown',start);canvas.addEventListener('mousemove',move);window.addEventListener('mouseup',end);canvas.addEventListener('touchstart',start,{passive:false});canvas.addEventListener('touchmove',move,{passive:false});canvas.addEventListener('touchend',end);function clearSignature(){ctx.clearRect(0,0,canvas.width,canvas.height);lastSignatureDataUrl='';signatureConfirmed=false;setSignatureMsg('',false);renderContractPreview()}function confirmSignature(){if(isSignatureBlank()){alert('請先在簽名框內完成簽名');return}signatureConfirmed=true;lastSignatureDataUrl=canvas.toDataURL('image/png');renderContractPreview();setSignatureMsg('簽名已確認，請再檢查上方 A4 契約預覽，最後按「確認送出契約」。',true)}function isSignatureBlank(){return !lastSignatureDataUrl}
-async function submitContract(){if(!currentId||!currentCode){alert('找不到簽約資料，請重新進入簽約入口。');return}let latest=await loadRecord(currentId,currentCode);if(latest&&isLockedStatus(latest.status)){showDone(latest);return}if(!document.getElementById('agreeTerms').checked){alert('請先勾選已閱讀並同意契約內容');return}if(isSignatureBlank()){alert('請先完成簽名');return}if(!signatureConfirmed){alert('請先按「確認簽名」');return}try{setLoading(true);const d=contractDates();const folder=`external-teachers/${currentId}/${d.roc}`;const files=Array.from(document.getElementById('identityFiles').files||[]);const identityUrls=[];for(let i=0;i<files.length;i++){const blob=await imageFileToWatermarkedBlob(files[i]);const url=await uploadBlob(`${folder}/identity/identity_${i+1}.jpg`,blob,'image/jpeg');identityUrls.push(url)}const sigBlob=dataUrlToBlob(lastSignatureDataUrl);const signatureUrl=await uploadBlob(`${folder}/signatures/signature.png`,sigBlob,'image/png');renderContractPreview();const htmlBlob=new Blob([document.getElementById('contractPreview').outerHTML],{type:'text/html;charset=utf-8'});const contractHtmlUrl=await uploadBlob(`${folder}/contracts/contract.html`,htmlBlob,'text/html');let employeeId=await syncExternalTeacherEmployee({...(latest||{}),id:currentId,contractId:currentId,name:val('name'),mobile:val('mobile'),email:val('email'),teachingItems:teachingAbilitiesText(getTeachingAbilities()),teachingItemsText:teachingAbilitiesText(getTeachingAbilities()),teachingAbilities:getTeachingAbilities()});const update={employeeId,externalTeacherEmployeeId:employeeId,idNumber:val('idNumber'),birthDate:val('birthDate'),householdAddress:val('householdAddress'),mailingAddress:val('mailingAddress'),teachingItems:teachingAbilitiesText(getTeachingAbilities()),teachingItemsText:teachingAbilitiesText(getTeachingAbilities()),teachingAbilities:getTeachingAbilities(),contractYear:d.gy,contractRocYear:d.roc,contractStartDate:d.start,contractEndDate:d.end,status:'submitted_pending_admin',progressStatus:'老師已送出，等待管理端確認',submittedAt:new Date().toISOString(),submittedAtText:nowText(),signedAt:new Date().toISOString(),signedDate:todayISO(),templateTitle:contractTemplate.title,templateVersion:contractTemplate.version,contractText:(contractTemplate.clausesText||DEFAULT_CONTRACT_TEXT),identityUrls,signatureUrl,contractHtmlUrl,updatedAt:new Date().toISOString()};await db().collection('externalTeacherContracts').doc(currentId).set(update,{merge:true});await db().collection('externalTeacherProfiles').doc(currentId).set({...update,teacherId:currentId,id:currentId,profileStatus:'submitted_pending_admin',contractStatus:'submitted_pending_admin'},{merge:true});await syncExternalTeacherEmployee({...(latest||{}),...update,id:currentId,contractId:currentId,name:val('name'),mobile:val('mobile'),email:val('email'),contractStatus:'submitted_pending_admin'});await queueAdmin(`外聘老師已送出契約，等待確認
+  async function createApplication(payload){
+    payload=payload||{};
+    const requested=clean(payload.requestedIdentityType||payload.registrationType||payload.identityType);
+    if(!['staff','parttime'].includes(requested)) return {ok:false,message:'請先選擇專職員工或工讀生註冊；外聘老師請使用外聘老師資料與合約入口。'};
+    const error=validateApplicant(payload); if(error) return {ok:false,message:error};
+    const email=lower(payload.email);
+    const pref=notificationPreference(payload.notificationPreference||payload.notificationMethod, !!email);
+    const employeeRows=await employeesByEmail(email);
+    if(employeeRows.some(r=>['active','enabled','啟用','正常'].includes(lower(r.accountStatus||r.status||'active')))) return {ok:false,message:'這個 Email 已經是正式人員帳號，請直接登入。'};
+    const existing=(await applicationByEmail(email)).filter(r=>!['approved','rejected','archived'].includes(statusKey(r)));
+    if(existing.length) return {ok:false,message:'這個 Email 已有尚未完成的申請，請勿重複送出。'};
+    const applicationId='REG_'+Date.now()+'_'+randomToken(5).slice(0,10);
+    const bindCode=wantsLine(pref)?makeEmployeeBindCode():'';
+    const bindText=employeeBindText(bindCode);
+    const row={
+      applicationId,
+      registrationType:requested, requestedIdentityType:requested, requestedIdentityLabel:identityLabel(requested),
+      name:clean(payload.name), email, idNumber:clean(payload.idNumber).toUpperCase(), birthDate:dateText(payload.birthDate),
+      mobilePhone:clean(payload.mobilePhone), contactAddress:clean(payload.contactAddress), address:clean(payload.contactAddress),
+      emergencyContact:clean(payload.emergencyContact), emergencyPhone:clean(payload.emergencyPhone),
+      notificationPreference:pref, notificationPreferenceLabel:notificationLabel(pref), notificationMethod:pref,
+      employeeBindCode:bindCode, employeeBindText:bindText,
+      lineBindStatus:wantsLine(pref)?'pending':'not_required', emailBindStatus:wantsEmail(pref)?'provided':'not_required',
+      currentStep:wantsLine(pref)?'等待 LINE 綁定':'等待主管審核', progressStatus:wantsLine(pref)?'等待 LINE 綁定':'等待主管審核',
+      identityDocumentType:clean(payload.identityDocumentType), identityDocumentTypeLabel:identityDocumentTypeLabel(payload.identityDocumentType),
+      identityDocumentUrl:clean(payload.identityDocumentUrl), identityDocumentPublicId:clean(payload.identityDocumentPublicId),
+      identityDocumentFileName:clean(payload.identityDocumentFileName), identityDocumentUploadedAtText:clean(payload.identityDocumentUploadedAtText)||nowText(),
+      identityDocumentWatermark:clean(payload.identityDocumentWatermark), identityDocumentConsent:true,
+      applicationStatus:wantsLine(pref)?'waiting_line_binding':'pending_setup', status:wantsLine(pref)?'等待 LINE 綁定':'待主管建檔', accountStatus:'pending',
+      onboardingDraft:{identityType:requested}, createdAt:serverTs(), createdAtText:nowText(), updatedAt:serverTs(), updatedAtText:nowText(),
+      applicantResubmissionToken:randomToken(18), source:VERSION, history:[event('submitted',`申請人送出${identityLabel(requested)}註冊資料`)]
+    };
+    const d=database(); const batch=d.batch();
+    batch.set(d.collection(APP_COLLECTION).doc(applicationId),row);
+    if(bindCode){
+      batch.set(d.collection('employeeLineBindings').doc(bindCode),{
+        bindingCode:bindCode, employeeBindCode:bindCode, bindText, applicationId, targetCollection:APP_COLLECTION,
+        status:'pending', employeeId:'', name:row.name, email:row.email, mobilePhone:row.mobilePhone,
+        requestedIdentityType:requested, notificationPreference:pref, createdAt:serverTs(), createdAtText:nowText(), updatedAt:serverTs(), source:VERSION
+      },{merge:true});
+    }
+    if(wantsEmail(pref)&&email){
+      const applicantQueueId='onboarding-submitted-'+safeId(applicationId)+'-email';
+      const applicantBody=[
+        `${row.name} 您好：`,
+        '',
+        `柚子樂器已收到您的${identityLabel(requested)}註冊申請。`,
+        `通知方式：${notificationLabel(pref)}`,
+        wantsLine(pref)&&bindText?`LINE 綁定文字：${bindText}`:'',
+        '',
+        wantsLine(pref)?'請先完成 LINE 綁定；後續審核、補件或核准通知會依您選擇的方式發送。':'後續審核、補件或核准通知會寄到此 Email 信箱。',
+        '若未看到後續信件，請先檢查垃圾信件匣。'
+      ].filter(Boolean).join('\n');
+      batch.set(d.collection('notificationQueue').doc(applicantQueueId),{
+        queueId:applicantQueueId,channel:'email',targetEmail:email,targetName:row.name,title:'柚子樂器人員註冊申請已收到',body:applicantBody,message:applicantBody,status:'待發送',source:VERSION,applicationId,createdAt:serverTs(),createdAtText:nowText()
+      },{merge:true});
+    }
+    await batch.commit();
+    try{
+      if(typeof previousHandle === 'function'){
+        await previousHandle('queueFeatureNotification',{
+          featureCode:'registration', direction:'manager', name:row.name, email:row.email, applicationId,
+          notificationMessage:`新${identityLabel(requested)}註冊申請：${row.name}\n通知方式：${notificationLabel(pref)}\n${bindText?('LINE 綁定文字：'+bindText):'不需 LINE 綁定'}\n請至後台審核`
+        });
+      }
+    }catch(e){ console.warn('[onboarding manager notification skipped]', e); }
+    return {ok:true,message:'註冊申請已送出，後台已建立資料。',applicationId,notificationPreference:pref,employeeBindCode:bindCode,employeeBindText:bindText,lineBindStatus:row.lineBindStatus};
+  }
 
-姓名：${val('name')}
-年度：民國 ${d.roc} 年
-手機：${val('mobile')}
-員工管理關聯：${employeeId}`, 'external-teacher-submitted', currentId);showDone({...latest,...update});}catch(e){console.error(e);alert('送出失敗，請確認網路與外聘老師資料權限後再試。')}finally{setLoading(false)}}
-(async function(){fillBirthOptions();initYears();setTeachingAbilities([], '');await loadTemplate();const p=parseParams();if(p.id&&p.code){await verifyEmailIfRequested();}else{const lastId=localStorage.getItem('externalTeacherCurrentId');const lastCode=localStorage.getItem('externalTeacherCurrentCode');if(lastId&&lastCode){try{const r=await loadRecord(lastId,lastCode);if(r&&!isLockedStatus(r.status)){currentId=lastId;currentCode=lastCode;}}catch(e){}}}renderContractPreview();})();
-</script></body></html>
+  async function ensureApplication(applicationId){
+    let id=clean(applicationId);
+    if(!id) throw new Error('缺少註冊申請 ID。');
+    let app=await getDoc(APP_COLLECTION,id);
+    if(app) return {id:clean(app.__id),data:app};
+    if(!id.startsWith('LEGACY__')) throw new Error('找不到這筆註冊申請。');
+    const legacyDocId=id.slice('LEGACY__'.length);
+    const legacy=await getDoc('employees',legacyDocId);
+    if(!legacy) throw new Error('找不到舊版待審核資料。');
+    const newId='REG_LEGACY_'+safeId(legacyDocId);
+    const existing=await getDoc(APP_COLLECTION,newId);
+    if(existing) return {id:newId,data:existing};
+    const row={
+      applicationId:newId, legacyEmployeeDocId:legacyDocId, linkedEmployeeId:clean(legacy.employeeId||legacyDocId),
+      name:clean(legacy.name||legacy['姓名']), email:lower(legacy.email||legacy.Email), idNumber:clean(legacy.idNumber||legacy['身分證字號']).toUpperCase(), birthDate:dateText(legacy.birthDate||legacy['出生年月日']),
+      mobilePhone:clean(legacy.mobilePhone||legacy['行動電話']), contactAddress:clean(legacy.contactAddress||legacy.address||legacy['聯絡地址']), address:clean(legacy.contactAddress||legacy.address||legacy['聯絡地址']),
+      emergencyContact:clean(legacy.emergencyContact||legacy['緊急聯絡人']), emergencyPhone:clean(legacy.emergencyPhone||legacy['緊急聯絡人電話']),
+      identityDocumentType:clean(legacy.identityDocumentType||'national_id'), identityDocumentUrl:clean(legacy.identityDocumentUrl), identityDocumentPublicId:clean(legacy.identityDocumentPublicId),
+      applicationStatus:'pending_setup', status:'待主管建檔', accountStatus:'pending', notificationPreference:'both', notificationPreferenceLabel:'LINE + Email', lineBindStatus:'pending', emailBindStatus:'provided', onboardingDraft:{},
+      applicantResubmissionToken:randomToken(18), createdAt:legacy.createdAt||serverTs(), createdAtText:clean(legacy.createdAtText)||nowText(), updatedAt:serverTs(), updatedAtText:nowText(),
+      source:'legacy-employees-migrated', history:[event('legacy_migrated','舊版待審核資料轉入新入職建檔流程')]
+    };
+    await database().collection(APP_COLLECTION).doc(newId).set(row);
+    return {id:newId,data:Object.assign({__id:newId},row)};
+  }
+
+  function normalizedDraft(payload){
+    const p=(payload&&payload.onboardingDraft)||payload||{};
+    return {
+      identityVerificationStatus:clean(p.identityVerificationStatus),
+      identityVerificationNote:clean(p.identityVerificationNote),
+      identityType:clean(p.identityType),
+      startDate:dateText(p.startDate||p.hireDate||p.cooperationStartDate),
+      baseSalary:numberValue(p.baseSalary), hourlyRate:numberValue(p.hourlyRate), isPartialHours:clean(p.isPartialHours||'否'), averageSalary:numberValue(p.averageSalary),
+      laborStatus:clean(p.laborStatus), laborInsuredSalary:numberValue(p.laborInsuredSalary), laborSelfPay:hasNumber(p.laborSelfPay)?numberValue(p.laborSelfPay):'', laborTotalPremium:numberValue(p.laborTotalPremium), laborEmployerPay:numberValue(p.laborEmployerPay), laborGovernmentPay:numberValue(p.laborGovernmentPay),
+      healthStatus:clean(p.healthStatus), healthInsuredSalary:numberValue(p.healthInsuredSalary), healthDependents:numberValue(p.healthDependents), healthSelfPay:hasNumber(p.healthSelfPay)?numberValue(p.healthSelfPay):'', healthTotalPremium:numberValue(p.healthTotalPremium), healthEmployerPay:numberValue(p.healthEmployerPay), healthGovernmentPay:numberValue(p.healthGovernmentPay),
+      selfRetirementEnabled:clean(p.selfRetirementEnabled||'否'), selfRetirementRate:numberValue(p.selfRetirementRate),
+      salaryEffectiveDate:dateText(p.salaryEffectiveDate||p.effectiveDate),
+      scheduleMode:clean(p.scheduleMode), scheduleTemplateId:clean(p.scheduleTemplateId||p.templateId), scheduleTemplateName:clean(p.scheduleTemplateName||p.templateName), scheduleEffectiveDate:dateText(p.scheduleEffectiveDate),
+      externalAccessEnabled:clean(p.externalAccessEnabled||'是'), externalContractStatus:clean(p.externalContractStatus),
+      jobAllowances:lineItems(p.jobAllowances), allowances:lineItems(p.allowances),
+      managerNote:clean(p.managerNote||p.note)
+    };
+  }
+
+  function insuranceActive(status){ return ['在保','已投保','投保','有效'].includes(clean(status)); }
+  function onboardingMissing(app,draft){
+    const r=[];
+    if(!clean(app.identityDocumentUrl)) r.push('缺少證件正面');
+    if(draft.identityVerificationStatus!=='verified') r.push('主管尚未確認證件與申請資料相符');
+    if(!['staff','parttime','external'].includes(draft.identityType)) r.push('尚未選擇專職或工讀');
+    const pref=notificationPreference(app.notificationPreference||app.notificationMethod, !!clean(app.email));
+    if(wantsLine(pref) && clean(app.employeeBindCode) && clean(app.lineBindStatus)!=='bound') r.push('申請人尚未完成 LINE 綁定');
+    if(!draft.startDate) r.push(draft.identityType==='external'?'尚未填寫合作起始日':'尚未填寫到職日');
+    if(draft.identityType==='staff' || draft.identityType==='parttime'){
+      if(draft.identityType==='staff' && !(draft.baseSalary>0)) r.push('專職員工尚未填寫本薪');
+      if(draft.identityType==='parttime' && !(draft.hourlyRate>0)) r.push('工讀生尚未填寫時薪');
+      if(draft.identityType==='parttime' && !(draft.averageSalary>0)) r.push('工讀生尚未填寫目前申報月平均薪資總額');
+      if(!draft.salaryEffectiveDate) r.push('尚未填寫薪資生效日');
+      if(!draft.laborStatus) r.push('尚未選擇勞保狀態');
+      if(!draft.healthStatus) r.push('尚未選擇健保狀態');
+      if(insuranceActive(draft.laborStatus)){
+        if(!(draft.laborInsuredSalary>0)) r.push('勞保在保但未填寫投保薪資／級距');
+      }
+      if(insuranceActive(draft.healthStatus)){
+        if(!(draft.healthInsuredSalary>0)) r.push('健保在保但未填寫投保薪資／級距');
+      }
+      if(!['template','none'].includes(draft.scheduleMode)) r.push('尚未選擇固定班表或無固定班表');
+      if(draft.scheduleMode==='template'){
+        if(!draft.scheduleTemplateId) r.push('尚未選擇班表模板');
+        if(!draft.scheduleEffectiveDate) r.push('尚未填寫班表生效日');
+      }
+    }
+    if(draft.identityType==='external'){
+      if(!draft.externalContractStatus) r.push('尚未設定外聘合作／契約狀態');
+      if(!['是','否'].includes(draft.externalAccessEnabled)) r.push('尚未設定外聘帳號是否啟用');
+    }
+    return r;
+  }
+
+  async function saveDraft(payload){
+    const ensured=await ensureApplication(payload.applicationId);
+    const draft=normalizedDraft(payload);
+    const patch={
+      onboardingDraft:draft, applicationStatus:'draft', status:'主管建檔草稿', accountStatus:'pending',
+      onboardingMissing:onboardingMissing(ensured.data,draft), updatedAt:serverTs(), updatedAtText:nowText(),
+      lastEditedBy:clean(payload.userId||currentUser().id), history:arrayUnion(event('draft_saved','主管儲存入職建檔草稿'))
+    };
+    await database().collection(APP_COLLECTION).doc(ensured.id).set(patch,{merge:true});
+    const next=Object.assign({},ensured.data,patch,{__id:ensured.id});
+    return {ok:true,message:'入職建檔草稿已儲存。',row:normalizeApplication(next),missing:patch.onboardingMissing};
+  }
+
+  async function scheduleTemplates(){
+    const rows=await all('scheduleTemplates').catch(()=>[]);
+    return rows.filter(r=>{
+      const e=r.enabled===undefined?r['是否啟用']:r.enabled;
+      return e===undefined || truthy(e) || ['TRUE','啟用'].includes(clean(e));
+    }).map(r=>({templateId:clean(r.templateId||r['模板ID']||r.__id),templateName:clean(r.templateName||r['模板名稱']||r.name||'未命名班表')})).filter(x=>x.templateId);
+  }
+
+  function generateEmployeeId(type){
+    const prefix=type==='parttime'?'PT':(type==='external'?'EXT':'STF');
+    const d=new Date(); const date=`${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}`;
+    return `${prefix}_${date}_${randomToken(4).slice(0,8).toUpperCase()}`;
+  }
+  function generateInitialPassword(){
+    const letters='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+    const digits='23456789';
+    let out=letters[Math.floor(Math.random()*letters.length)]+digits[Math.floor(Math.random()*digits.length)];
+    const all=letters+digits;
+    while(out.length<8) out+=all[Math.floor(Math.random()*all.length)];
+    return out.split('').sort(()=>Math.random()-.5).join('');
+  }
+  function moneyText(v){ const n=numberValue(v); return n.toLocaleString('zh-TW')+' 元'; }
+  function feeRound(v){ return Math.round(numberValue(v)); }
+  function laborFeeBreakdown(salary){
+    const s=numberValue(salary);
+    if(!(s>0)) return {total:0,employee:0,employer:0,government:0};
+    const ordinaryRate=0.115, employmentRate=0.01;
+    const employee=feeRound(s*ordinaryRate*0.20)+feeRound(s*employmentRate*0.20);
+    const employer=feeRound(s*ordinaryRate*0.70)+feeRound(s*employmentRate*0.70);
+    const government=feeRound(s*ordinaryRate*0.10)+feeRound(s*employmentRate*0.10);
+    return {total:employee+employer+government,employee,employer,government};
+  }
+  function healthFeeBreakdown(salary,dependents){
+    const s=numberValue(salary);
+    if(!(s>0)) return {total:0,employee:0,employer:0,government:0,dependents:0};
+    const dep=Math.max(0,Math.min(3,Math.floor(numberValue(dependents))));
+    const base=s*0.0517;
+    const employee=feeRound(base*0.30*(1+dep));
+    const employer=feeRound(base*0.60*1.56);
+    const government=feeRound(base*0.10*1.56);
+    return {total:employee+employer+government,employee,employer,government,dependents:dep};
+  }
+  function retirementEmployerAmount(v){ const n=numberValue(v); return n>0 ? Math.round(n*0.06) : 0; }
+  function salaryConfig(app,draft,employeeId){
+    const isPart=draft.identityType==='parttime';
+    const laborSalary=insuranceActive(draft.laborStatus)?numberValue(draft.laborInsuredSalary):0;
+    const healthSalary=insuranceActive(draft.healthStatus)?numberValue(draft.healthInsuredSalary):0;
+    const laborFees=insuranceActive(draft.laborStatus)?laborFeeBreakdown(laborSalary):{total:0,employee:0,employer:0,government:0};
+    const healthFees=insuranceActive(draft.healthStatus)?healthFeeBreakdown(healthSalary,draft.healthDependents):{total:0,employee:0,employer:0,government:0,dependents:0};
+    const laborSelf=insuranceActive(draft.laborStatus)?(hasNumber(draft.laborSelfPay)?numberValue(draft.laborSelfPay):laborFees.employee):0;
+    const healthSelf=insuranceActive(draft.healthStatus)?(hasNumber(draft.healthSelfPay)?numberValue(draft.healthSelfPay):healthFees.employee):0;
+    const employerRetirement=insuranceActive(draft.laborStatus)?retirementEmployerAmount(laborSalary):0;
+    const selfRetirement=insuranceActive(draft.laborStatus)&&clean(draft.selfRetirementEnabled)==='是'?Math.round(laborSalary*numberValue(draft.selfRetirementRate)/100):0;
+    return {
+      employeeId, name:clean(app.name), email:lower(app.email), identityType:draft.identityType,
+      salaryDisplayType:isPart?'PARTTIME_DIRECT':'STAFF_DIRECT', baseSalary:isPart?0:numberValue(draft.baseSalary), hourlyRate:isPart?numberValue(draft.hourlyRate):0,
+      isPartialHours:isPart?(draft.isPartialHours||'否'):'否', averageSalary:isPart?numberValue(draft.averageSalary):0,
+      laborStatus:draft.laborStatus, laborPlan:laborSalary?`LAB_${laborSalary}`:'', laborPlanText:laborSalary?moneyText(laborSalary):'', laborSalary:laborSalary, laborInsuredSalary:laborSalary,
+      laborSelfPay:laborSelf, laborEmployeeSelfPay:laborSelf, laborSelfPayText:insuranceActive(draft.laborStatus)?moneyText(laborSelf):'', laborInsuranceSelfPay:laborSelf, laborTotalPremium:laborFees.total, laborEmployerPay:laborFees.employer, laborGovernmentPay:laborFees.government, laborFeeSource:'BLI_115_GENERAL_LABOR_EMPLOYMENT',
+      healthStatus:draft.healthStatus, healthPlan:healthSalary?`NHI_${healthSalary}`:'', healthPlanText:healthSalary?moneyText(healthSalary):'', healthSalary:healthSalary, healthInsuredSalary:healthSalary,
+      healthDependents:numberValue(draft.healthDependents), healthSelfPay:healthSelf, healthEmployeeSelfPay:healthSelf, healthSelfPayText:insuranceActive(draft.healthStatus)?moneyText(healthSelf):'', healthInsuranceSelfPay:healthSelf, healthTotalPremium:healthFees.total, healthEmployerPay:healthFees.employer, healthGovernmentPay:healthFees.government, healthFeeSource:'NHI_115_EMPLOYEE',
+      selfRetirementEnabled:draft.selfRetirementEnabled||'否', selfRetirementRate:numberValue(draft.selfRetirementRate), selfRetirementAmount:selfRetirement,
+      retirementEmployerRate:6, laborRetirementEmployerRate:6, retirementEmployerAmount:employerRetirement, laborRetirementEmployerAmount:employerRetirement,
+      retirementEmployerText:insuranceActive(draft.laborStatus)?('6%｜'+moneyText(employerRetirement)):'', laborRetirementEmployerText:insuranceActive(draft.laborStatus)?('6%｜'+moneyText(employerRetirement)):'', laborRetirementSalary:laborSalary,
+      effectiveDate:draft.salaryEffectiveDate, salaryEffectiveDate:draft.salaryEffectiveDate, note:draft.managerNote,
+      jobAllowances:lineItems(draft.jobAllowances), allowances:lineItems(draft.allowances), salaryConfigured:true, source:VERSION, updatedAt:serverTs(), updatedAtText:nowText()
+    };
+  }
+  function employeeBase(app,draft,employeeId,password){
+    const isPart=draft.identityType==='parttime';
+    const isExternal=draft.identityType==='external';
+    return {
+      employeeId, name:clean(app.name), email:lower(app.email), password, role:'staff',
+      identityType:draft.identityType, identityLabel:identityLabel(draft.identityType), isPartTime:isPart, isExternalTeacher:isExternal,
+      notificationPreference:notificationPreference(app.notificationPreference||app.notificationMethod, !!clean(app.email)), notificationPreferenceLabel:notificationLabel(notificationPreference(app.notificationPreference||app.notificationMethod, !!clean(app.email))),
+      employeeBindCode:clean(app.employeeBindCode), employeeBindText:clean(app.employeeBindText)||employeeBindText(clean(app.employeeBindCode)), lineBindStatus:clean(app.lineBindStatus||''), emailBindStatus:clean(app.emailBindStatus||''), lineUserId:clean(app.lineUserId||''), lineDisplayName:clean(app.lineDisplayName||''), lineNotifyEnabled:!!clean(app.lineUserId),
+      accountStatus:isExternal && draft.externalAccessEnabled==='否'?'inactive':'active', employmentStatus:'active', hiddenFromActiveLists:false,
+      idNumber:clean(app.idNumber).toUpperCase(), birthDate:dateText(app.birthDate), mobilePhone:clean(app.mobilePhone), address:clean(app.contactAddress), contactAddress:clean(app.contactAddress),
+      emergencyContact:clean(app.emergencyContact), emergencyPhone:clean(app.emergencyPhone),
+      hireDate:isExternal?'':draft.startDate, cooperationStartDate:isExternal?draft.startDate:'',
+      identityDocumentType:clean(app.identityDocumentType), identityDocumentTypeLabel:identityDocumentTypeLabel(app.identityDocumentType),
+      identityDocumentUrl:clean(app.identityDocumentUrl), identityDocumentPublicId:clean(app.identityDocumentPublicId), identityDocumentVerified:true,
+      identityVerificationStatus:'verified', identityVerifiedAt:serverTs(), identityVerifiedAtText:nowText(), identityVerifiedBy:clean(currentUser().id||currentUser().employeeId),
+      identityDocumentUseNotice:'僅供柚子樂器人事身分核對、建檔、契約及投保作業使用',
+      registrationApplicationId:clean(app.applicationId||app.__id), onboardingCompleted:true, onboardingCompletedAt:serverTs(), onboardingCompletedAtText:nowText(),
+      externalContractStatus:isExternal?draft.externalContractStatus:'', externalAccessEnabled:isExternal?draft.externalAccessEnabled:'',
+      scheduleMode:isExternal?'not_applicable':draft.scheduleMode, salarySource:isExternal?'not_applicable':'employeeSalaryConfigs',
+      source:VERSION, updatedAt:serverTs(), updatedAtText:nowText()
+    };
+  }
+  async function findScheduleTemplate(id){
+    if(!clean(id)) return null;
+    const direct=await getDoc('scheduleTemplates',id); if(direct) return direct;
+    const rows=await queryRows('scheduleTemplates','templateId',clean(id)).catch(()=>[]); return rows[0]||null;
+  }
+  function loginUrl(){ try{return new URL('index.html',global.location.href).href;}catch(e){return 'index.html';} }
+
+  async function approve(payload){
+    const ensured=await ensureApplication(payload.applicationId);
+    const app=Object.assign({},ensured.data,{applicationId:ensured.id});
+    const draft=normalizedDraft(payload);
+    const missing=onboardingMissing(app,draft);
+    if(missing.length) return {ok:false,message:'尚有必填資料未完成：'+missing.join('、'),missing};
+
+    const sameEmail=await employeesByEmail(app.email);
+    const legacyDocId=clean(app.legacyEmployeeDocId);
+    const conflicting=sameEmail.find(r=>clean(r.__id)!==legacyDocId && !['pending','rejected','inactive','archived'].includes(lower(r.accountStatus||r.status||'active')));
+    if(conflicting) return {ok:false,message:'這個 Email 已綁定其他正式人員，請先處理重複主檔。'};
+    const existing=legacyDocId ? await getDoc('employees',legacyDocId) : (sameEmail.find(r=>['pending','rejected','inactive'].includes(lower(r.accountStatus||r.status)))||null);
+    const employeeId=clean(existing && (existing.employeeId||existing.__id)) || clean(app.linkedEmployeeId) || generateEmployeeId(draft.identityType);
+    const employeeDocId=clean(existing&&existing.__id)||employeeId;
+    const initialPassword=clean(existing&&existing.password)||generateInitialPassword();
+    const employee=employeeBase(app,draft,employeeId,initialPassword);
+    if(!existing){ employee.createdAt=serverTs(); employee.createdAtText=nowText(); }
+    const salary=(draft.identityType==='staff'||draft.identityType==='parttime')?salaryConfig(app,draft,employeeId):null;
+    if(salary) Object.assign(employee,{
+      baseSalary:salary.baseSalary,hourlyRate:salary.hourlyRate,isPartialHours:salary.isPartialHours,averageSalary:salary.averageSalary,
+      laborStatus:salary.laborStatus,laborPlan:salary.laborPlan,laborPlanText:salary.laborPlanText,laborInsuredSalary:salary.laborInsuredSalary,laborSelfPay:salary.laborSelfPay,laborEmployeeSelfPay:salary.laborEmployeeSelfPay,laborSelfPayText:salary.laborSelfPayText,laborInsuranceSelfPay:salary.laborInsuranceSelfPay,laborTotalPremium:salary.laborTotalPremium,laborEmployerPay:salary.laborEmployerPay,laborGovernmentPay:salary.laborGovernmentPay,
+      healthStatus:salary.healthStatus,healthPlan:salary.healthPlan,healthPlanText:salary.healthPlanText,healthInsuredSalary:salary.healthInsuredSalary,healthDependents:salary.healthDependents,healthSelfPay:salary.healthSelfPay,healthEmployeeSelfPay:salary.healthEmployeeSelfPay,healthSelfPayText:salary.healthSelfPayText,healthInsuranceSelfPay:salary.healthInsuranceSelfPay,healthTotalPremium:salary.healthTotalPremium,healthEmployerPay:salary.healthEmployerPay,healthGovernmentPay:salary.healthGovernmentPay,
+      salaryEffectiveDate:salary.salaryEffectiveDate,salaryConfigured:true
+    });
+
+    let template=null, assignment=null;
+    if(draft.scheduleMode==='template'){
+      template=await findScheduleTemplate(draft.scheduleTemplateId);
+      if(!template) return {ok:false,message:'找不到選擇的班表模板，請重新選擇。'};
+      const assignmentId='SCH_ONBOARD_'+safeId(employeeId)+'_'+safeId(draft.scheduleEffectiveDate);
+      assignment={
+        assignmentId, employeeId, employeeName:clean(app.name), templateId:clean(template.templateId||template.__id), templateName:clean(template.templateName||template.name||'班表模板'),
+        startDate:draft.scheduleEffectiveDate, endDate:'', indefinite:'TRUE', enabled:'TRUE', note:'入職建檔初始班表', source:VERSION, createdAt:serverTs(), updatedAt:serverTs()
+      };
+      employee.scheduleConfigured=true; employee.currentScheduleTemplateId=assignment.templateId; employee.currentScheduleTemplateName=assignment.templateName; employee.scheduleEffectiveDate=draft.scheduleEffectiveDate;
+    }else if(draft.identityType!=='external'){
+      employee.scheduleConfigured=true; employee.currentScheduleTemplateId=''; employee.currentScheduleTemplateName='無固定班表'; employee.scheduleEffectiveDate=draft.startDate;
+    }
+
+    const d=database(); if(!d) return {ok:false,message:'Firebase 尚未啟用。'};
+    const batch=d.batch();
+    batch.set(d.collection('employees').doc(employeeDocId),employee,{merge:true});
+    if(salary) batch.set(d.collection('employeeSalaryConfigs').doc(employeeId),salary,{merge:true});
+    if(assignment) batch.set(d.collection('employeeSchedules').doc(assignment.assignmentId),assignment,{merge:true});
+    const queueIdBase='onboarding-approved-'+safeId(employeeId)+'-'+Date.now();
+    const pref=notificationPreference(app.notificationPreference||app.notificationMethod, !!clean(app.email));
+    const emailBody=[
+      `${clean(app.name)}您好：`,
+      '',
+      '您的柚子樂器人員申請已核准。',
+      `身分：${identityLabel(draft.identityType)}`,
+      `員工編號：${employeeId}`,
+      `登入帳號：${lower(app.email)}`,
+      `初始密碼：${initialPassword}`,
+      '',
+      `登入網址：${loginUrl()}`,
+      '第一次登入後請立即修改密碼。'
+    ].join('\n');
+    const createdQueueIds=[];
+    if(wantsEmail(pref) && lower(app.email)){
+      const queueId=queueIdBase+'-email'; createdQueueIds.push(queueId);
+      batch.set(d.collection('notificationQueue').doc(queueId),{
+        queueId,channel:'email',targetEmail:lower(app.email),targetEmployeeId:employeeId,targetName:clean(app.name),title:'人員申請已核准',body:emailBody,message:emailBody,status:'待發送',source:VERSION,createdAt:serverTs(),createdAtText:nowText()
+      },{merge:true});
+    }
+    if(wantsLine(pref) && clean(app.lineUserId)){
+      const queueId=queueIdBase+'-line'; createdQueueIds.push(queueId);
+      batch.set(d.collection('notificationQueue').doc(queueId),{
+        queueId,channel:'line',targetLineUserId:clean(app.lineUserId),targetEmployeeId:employeeId,targetName:clean(app.name),title:'人員申請已核准',body:emailBody,message:emailBody,status:'待發送',source:VERSION,createdAt:serverTs(),createdAtText:nowText()
+      },{merge:true});
+    }
+    batch.set(d.collection(APP_COLLECTION).doc(ensured.id),{
+      applicationStatus:'approved',status:'已完成入職建檔',accountStatus:'approved',onboardingDraft:draft,onboardingMissing:[],
+      approvedEmployeeId:employeeId,approvedEmployeeDocId:employeeDocId,approvedAt:serverTs(),approvedAtText:nowText(),approvedBy:clean(payload.userId||currentUser().id),
+      initialPasswordIssued:true,approvalNotificationQueueIds:createdQueueIds,approvalEmailQueueId:createdQueueIds.find(x=>x.endsWith('-email'))||'',approvalLineQueueId:createdQueueIds.find(x=>x.endsWith('-line'))||'',updatedAt:serverTs(),updatedAtText:nowText(),history:arrayUnion(event('approved',`完成入職建檔：${identityLabel(draft.identityType)}`))
+    },{merge:true});
+    await batch.commit();
+    return {ok:true,message:'已完成入職建檔，員工、薪資投保與班表已一次建立。',employeeId,initialPassword,notificationQueueIds:createdQueueIds,emailQueued:createdQueueIds.some(x=>x.endsWith('-email')),lineQueued:createdQueueIds.some(x=>x.endsWith('-line'))};
+  }
+
+  async function reject(payload){
+    const ensured=await ensureApplication(payload.applicationId||payload.id||payload.email);
+    const app=ensured.data; const reason=clean(payload.rejectReason||payload.reason);
+    if(!reason) return {ok:false,message:'請填寫駁回理由。'};
+    const d=database(); const batch=d.batch();
+    batch.set(d.collection(APP_COLLECTION).doc(ensured.id),{applicationStatus:'rejected',status:'已駁回',accountStatus:'rejected',rejectReason:reason,rejectedAt:serverTs(),rejectedAtText:nowText(),rejectedBy:clean(payload.userId||currentUser().id),updatedAt:serverTs(),updatedAtText:nowText(),history:arrayUnion(event('rejected',reason))},{merge:true});
+    if(clean(app.legacyEmployeeDocId)) batch.set(d.collection('employees').doc(clean(app.legacyEmployeeDocId)),{accountStatus:'rejected',employmentStatus:'archived',hiddenFromActiveLists:true,rejectReason:reason,updatedAt:serverTs()},{merge:true});
+    const queueId='onboarding-rejected-'+safeId(ensured.id)+'-'+Date.now();
+    const body=`${clean(app.name)}您好：\n\n申請未通過。\n原因：${reason}`;
+    batch.set(d.collection('notificationQueue').doc(queueId),{queueId,channel:'email',targetEmail:lower(app.email),targetName:clean(app.name),title:'人員申請未通過',body,message:body,status:'待發送',source:VERSION,createdAt:serverTs(),createdAtText:nowText()},{merge:true});
+    await batch.commit();
+    return {ok:true,message:'已駁回申請並建立 Email 通知。'};
+  }
+
+  async function requestResubmission(payload){
+    const ensured=await ensureApplication(payload.applicationId);
+    const app=ensured.data; const reason=clean(payload.reason||payload.resubmissionReason);
+    if(!reason) return {ok:false,message:'請填寫需要補件的原因。'};
+    const token=randomToken(20);
+    let url='register.html';
+    try{ url=new URL('register.html',global.location.href).href+`?mode=resubmit&applicationId=${encodeURIComponent(ensured.id)}&token=${encodeURIComponent(token)}`; }catch(e){}
+    const d=database(); const batch=d.batch();
+    batch.set(d.collection(APP_COLLECTION).doc(ensured.id),{applicationStatus:'needs_identity_resubmission',status:'待補件',accountStatus:'pending',resubmissionReason:reason,applicantResubmissionToken:token,resubmissionRequestedAt:serverTs(),resubmissionRequestedAtText:nowText(),updatedAt:serverTs(),updatedAtText:nowText(),history:arrayUnion(event('resubmission_requested',reason))},{merge:true});
+    const queueId='onboarding-resubmit-'+safeId(ensured.id)+'-'+Date.now();
+    const body=`${clean(app.name)}您好：\n\n申請資料需補件。\n原因：${reason}\n\n請重新上傳證件正面：\n${url}`;
+    batch.set(d.collection('notificationQueue').doc(queueId),{queueId,channel:'email',targetEmail:lower(app.email),targetName:clean(app.name),title:'人員申請需補件',body,message:body,status:'待發送',source:VERSION,createdAt:serverTs(),createdAtText:nowText()},{merge:true});
+    await batch.commit();
+    return {ok:true,message:'已退回補件並建立 Email 通知。'};
+  }
+
+  async function getResubmission(payload){
+    const id=clean(payload.applicationId), token=clean(payload.token);
+    const app=await getDoc(APP_COLLECTION,id);
+    if(!app || !token || clean(app.applicantResubmissionToken)!==token || statusKey(app)!=='needs_identity_resubmission') return {ok:false,message:'補件連結無效或已失效。'};
+    return {ok:true,application:{applicationId:id,name:clean(app.name),emailMasked:maskEmail(app.email),identityDocumentType:clean(app.identityDocumentType||'national_id'),reason:clean(app.resubmissionReason)}};
+  }
+
+  async function resubmitIdentity(payload){
+    const id=clean(payload.applicationId), token=clean(payload.token);
+    const app=await getDoc(APP_COLLECTION,id);
+    if(!app || !token || clean(app.applicantResubmissionToken)!==token) return {ok:false,message:'補件連結無效或已失效。'};
+    if(!clean(payload.identityDocumentUrl)) return {ok:false,message:'請先上傳證件正面。'};
+    await database().collection(APP_COLLECTION).doc(id).set({
+      identityDocumentType:clean(payload.identityDocumentType||app.identityDocumentType||'national_id'), identityDocumentTypeLabel:identityDocumentTypeLabel(payload.identityDocumentType||app.identityDocumentType),
+      identityDocumentUrl:clean(payload.identityDocumentUrl), identityDocumentPublicId:clean(payload.identityDocumentPublicId), identityDocumentFileName:clean(payload.identityDocumentFileName),
+      identityDocumentUploadedAtText:nowText(), identityDocumentWatermark:clean(payload.identityDocumentWatermark), identityDocumentConsent:true,
+      applicationStatus:'pending_setup',status:'待主管建檔',accountStatus:'pending',resubmissionReason:'',applicantResubmissionToken:'',updatedAt:serverTs(),updatedAtText:nowText(),history:arrayUnion({action:'identity_resubmitted',note:'申請人重新上傳證件正面',actorId:'applicant',actorName:clean(app.name),atText:nowText(),source:VERSION})
+    },{merge:true});
+    return {ok:true,message:'證件已重新送出，請等待主管審核。'};
+  }
+
+  function rawEmployeeId(row){ return clean(row&&((row.employeeId||row.id||row.userId||row.__id))); }
+  function rawEmployeeEmail(row){ return lower(row&&((row.email||row.Email))); }
+  function isSystemEmployeeRow(row){
+    const raw=row&&row.raw&&typeof row.raw==='object'?row.raw:row||{};
+    return isSystemEmployee(Object.assign({},raw,{employeeId:rawEmployeeId(row)}));
+  }
+  function employeeActiveRank(row){
+    const account=lower(row&&(row.accountStatus||row.status));
+    const employment=lower(row&&row.employmentStatus);
+    const hidden=row&&row.hiddenFromActiveLists===true;
+    if(account==='active' && (!employment||employment==='active') && !hidden) return 4;
+    if(account==='pending') return 1;
+    if(account==='rejected') return 0;
+    return 2;
+  }
+  function employeeQuality(row){
+    const raw=row&&row.raw&&typeof row.raw==='object'?row.raw:row||{};
+    return employeeActiveRank(row)*100 + (truthy(raw.onboardingCompleted)?30:0) + (clean(raw.idNumber)?8:0) + (clean(raw.mobilePhone)?4:0) + (clean(raw.hireDate||raw.cooperationStartDate)?2:0);
+  }
+  function dedupeEmployeeRows(rows){
+    const groups=new Map();
+    (rows||[]).filter(function(row){ return !isSystemEmployeeRow(row); }).forEach(function(row){
+      const email=rawEmployeeEmail(row), id=rawEmployeeId(row);
+      const key=email?('email:'+email):('id:'+id);
+      if(!groups.has(key)) groups.set(key,[]);
+      groups.get(key).push(row);
+    });
+    const out=[], duplicateGroups=[];
+    groups.forEach(function(group,key){
+      group.sort(function(a,b){ return employeeQuality(b)-employeeQuality(a); });
+      const chosen=Object.assign({},group[0]);
+      chosen.duplicateRecordCount=Math.max(0,group.length-1);
+      chosen.duplicateRecordIds=group.slice(1).map(rawEmployeeId).filter(Boolean);
+      out.push(chosen);
+      if(group.length>1) duplicateGroups.push({key,count:group.length,keptEmployeeId:rawEmployeeId(chosen),recordIds:group.map(rawEmployeeId).filter(Boolean)});
+    });
+    return {rows:out,duplicateGroups};
+  }
+  async function managementData(payload){
+    const base=typeof previousHandle==='function'?await previousHandle('getEmployeeManagementData',payload||{}):{ok:true,rows:[]};
+    if(!base||base.ok===false) return base;
+    const deduped=dedupeEmployeeRows(base.rows||base.employees||base.list||[]);
+    const rows=deduped.rows;
+    const active=function(row){ return employeeActiveRank(row)===4; };
+    const countsByType={staff:0,parttime:0,external:0};
+    rows.filter(active).forEach(function(row){
+      const type=clean(row.identityType)==='parttime'?'parttime':(clean(row.identityType)==='external'?'external':'staff');
+      countsByType[type]++;
+    });
+    return Object.assign({},base,{rows,employees:rows,list:rows,countsByType,duplicateGroups:deduped.duplicateGroups,systemRecordsExcluded:true});
+  }
+  async function findEmployeeRecord(payload){
+    payload=payload||{};
+    const ids=[clean(payload.employeeId),clean(payload.id),clean(payload.userId)].filter(Boolean);
+    for(const id of ids){
+      let row=await getDoc('employees',id); if(row&&!isSystemEmployee(row)) return row;
+      const q=await queryRows('employees','employeeId',id).catch(()=>[]); if(q[0]&&!isSystemEmployee(q[0])) return q[0];
+    }
+    const email=lower(payload.email);
+    if(email){ const rows=await employeesByEmail(email); const valid=rows.filter(function(r){return !isSystemEmployee(r);}); if(valid[0]) return valid[0]; }
+    return null;
+  }
+  async function findSalaryRecord(employee){
+    if(!employee) return null;
+    const id=clean(employee.employeeId||employee.__id), email=lower(employee.email||employee.Email);
+    let row=id?await getDoc('employeeSalaryConfigs',id):null;
+    if(row) return row;
+    if(id){ const q=await queryRows('employeeSalaryConfigs','employeeId',id).catch(()=>[]); if(q[0]) return q[0]; }
+    if(email){ const q=await queryRows('employeeSalaryConfigs','email',email).catch(()=>[]); if(q[0]) return q[0]; }
+    return null;
+  }
+  function scheduleEnabled(row){
+    const enabled=clean(row&&(row.enabled!==undefined?row.enabled:row['是否啟用'])).toLowerCase();
+    if(['false','0','否','停用','disabled'].includes(enabled)) return false;
+    const end=dateText(row&&(row.endDate||row['結束日期']));
+    return !end || end>=todayText();
+  }
+  async function lifecycleSummary(payload){
+    const employee=await findEmployeeRecord(payload||{});
+    if(!employee) return {ok:false,message:'找不到員工資料。'};
+    const employeeId=clean(employee.employeeId||employee.__id);
+    const [salary,schedules]=await Promise.all([findSalaryRecord(employee),all('employeeSchedules').catch(()=>[])]);
+    const matched=schedules.filter(function(row){ return clean(row.employeeId||row['員工ID'])===employeeId; }).sort(function(a,b){ return dateText(b.startDate||b['開始日期']).localeCompare(dateText(a.startDate||a['開始日期'])); });
+    const current=matched.find(scheduleEnabled)||matched[0]||null;
+    return {ok:true,employeeId,salary:salary||{},schedule:current?{
+      assignmentId:clean(current.assignmentId||current.__id),templateId:clean(current.templateId||current['模板ID']),templateName:clean(current.templateName||current['模板名稱']||'未命名班表'),
+      startDate:dateText(current.startDate||current['開始日期']),endDate:dateText(current.endDate||current['結束日期']),enabled:scheduleEnabled(current)
+    }:{},scheduleCount:matched.length};
+  }
+  async function archiveLifecycle(payload){
+    const employee=await findEmployeeRecord(payload||{});
+    if(!employee) return {ok:false,message:'找不到員工資料。'};
+    const employeeId=clean(employee.employeeId||employee.__id), docId=clean(employee.__id||employeeId);
+    const d=database(); const batch=d.batch(); const endDate=dateText(payload.endDate)||todayText(); const external=clean(employee.identityType)==='external';
+    batch.set(d.collection('employees').doc(docId),{
+      accountStatus:'archived',employmentStatus:external?'contractorEnded':'resigned',hiddenFromActiveLists:true,resignedDate:external?'':endDate,cooperationEndDate:external?endDate:'',
+      lineNotifyEnabled:false,statusNote:clean(payload.reason||payload.statusNote||'由主管執行離職／合作結束並封存'),archivedAt:serverTs(),archivedAtText:nowText(),archivedBy:clean(payload.userId||currentUser().id),updatedAt:serverTs(),updatedAtText:nowText(),source:VERSION
+    },{merge:true});
+    const schedules=await all('employeeSchedules').catch(()=>[]); let closed=0;
+    schedules.filter(function(row){return clean(row.employeeId||row['員工ID'])===employeeId&&scheduleEnabled(row);}).forEach(function(row){
+      const id=clean(row.assignmentId||row.__id); if(!id) return; closed++;
+      batch.set(d.collection('employeeSchedules').doc(id),{enabled:'FALSE',endDate:endDate,closedByArchive:true,updatedAt:serverTs(),updatedAtText:nowText()},{merge:true});
+    });
+    await batch.commit();
+    return {ok:true,message:external?'已結束合作並封存；歷史資料仍保留。':'已辦理離職並封存；歷史資料仍保留。',employeeId,closedSchedules:closed};
+  }
+  async function saveSalaryConfigExtended(payload){
+    const base=typeof previousHandle==='function'?await previousHandle('saveEmployeeSalaryConfig',payload||{}):null;
+    if(base&&base.ok===false) return base;
+    const employee=await findEmployeeRecord(payload||{});
+    if(!employee) return base||{ok:false,message:'找不到員工資料。'};
+    const employeeId=clean(employee.employeeId||employee.__id),docId=clean(employee.__id||employeeId);
+    const laborActive=insuranceActive(payload.laborStatus),healthActive=insuranceActive(payload.healthStatus);
+    const patch={updatedAt:serverTs(),updatedAtText:nowText(),source:VERSION};
+    if(!laborActive){ Object.assign(patch,{laborInsuredSalary:0,laborSalary:0,laborSelfPay:0,laborEmployeeSelfPay:0,laborInsuranceSelfPay:0,laborSelfPayText:'',laborTotalPremium:0,laborEmployerPay:0,laborGovernmentPay:0,retirementEmployerAmount:0,laborRetirementEmployerAmount:0,retirementEmployerText:'',laborRetirementEmployerText:'',laborRetirementSalary:0,selfRetirementAmount:0}); }
+    else{
+      const laborSalary=hasNumber(payload.laborInsuredSalary)?numberValue(payload.laborInsuredSalary):numberValue(payload.laborRetirementSalary);
+      const laborFees=laborFeeBreakdown(laborSalary);
+      const employerAmount=hasNumber(payload.retirementEmployerAmount)?numberValue(payload.retirementEmployerAmount):retirementEmployerAmount(laborSalary);
+      const selfAmount=hasNumber(payload.selfRetirementAmount)?numberValue(payload.selfRetirementAmount):(clean(payload.selfRetirementEnabled)==='是'?Math.round(laborSalary*numberValue(payload.selfRetirementRate)/100):0);
+      if(laborSalary>0) Object.assign(patch,{laborInsuredSalary:laborSalary,laborSalary:laborSalary,laborRetirementSalary:laborSalary});
+      const laborEmployee=hasNumber(payload.laborSelfPay)?numberValue(payload.laborSelfPay):laborFees.employee;
+      Object.assign(patch,{laborSelfPay:laborEmployee,laborEmployeeSelfPay:laborEmployee,laborInsuranceSelfPay:laborEmployee,laborSelfPayText:moneyText(laborEmployee),laborTotalPremium:hasNumber(payload.laborTotalPremium)?numberValue(payload.laborTotalPremium):laborFees.total,laborEmployerPay:hasNumber(payload.laborEmployerPay)?numberValue(payload.laborEmployerPay):laborFees.employer,laborGovernmentPay:hasNumber(payload.laborGovernmentPay)?numberValue(payload.laborGovernmentPay):laborFees.government,laborFeeSource:'BLI_115_GENERAL_LABOR_EMPLOYMENT'});
+      Object.assign(patch,{retirementEmployerRate:6,laborRetirementEmployerRate:6,retirementEmployerAmount:employerAmount,laborRetirementEmployerAmount:employerAmount,retirementEmployerText:'6%｜'+moneyText(employerAmount),laborRetirementEmployerText:'6%｜'+moneyText(employerAmount),selfRetirementAmount:selfAmount});
+    }
+    if(!healthActive){ Object.assign(patch,{healthInsuredSalary:0,healthSalary:0,healthDependents:0,healthSelfPay:0,healthEmployeeSelfPay:0,healthInsuranceSelfPay:0,healthSelfPayText:'',healthTotalPremium:0,healthEmployerPay:0,healthGovernmentPay:0}); }
+    else{
+      const healthSalary=numberValue(payload.healthInsuredSalary);
+      const healthFees=healthFeeBreakdown(healthSalary,payload.healthDependents);
+      if(hasNumber(payload.healthInsuredSalary)) Object.assign(patch,{healthInsuredSalary:healthSalary,healthSalary:healthSalary});
+      const healthEmployee=hasNumber(payload.healthSelfPay)?numberValue(payload.healthSelfPay):healthFees.employee;
+      Object.assign(patch,{healthDependents:numberValue(payload.healthDependents),healthSelfPay:healthEmployee,healthEmployeeSelfPay:healthEmployee,healthInsuranceSelfPay:healthEmployee,healthSelfPayText:moneyText(healthEmployee),healthTotalPremium:hasNumber(payload.healthTotalPremium)?numberValue(payload.healthTotalPremium):healthFees.total,healthEmployerPay:hasNumber(payload.healthEmployerPay)?numberValue(payload.healthEmployerPay):healthFees.employer,healthGovernmentPay:hasNumber(payload.healthGovernmentPay)?numberValue(payload.healthGovernmentPay):healthFees.government,healthFeeSource:'NHI_115_EMPLOYEE'});
+    }
+    if(Array.isArray(payload.jobAllowances)) patch.jobAllowances=lineItems(payload.jobAllowances);
+    if(Array.isArray(payload.allowances)) patch.allowances=lineItems(payload.allowances);
+    const batch=database().batch();
+    batch.set(database().collection('employees').doc(docId),patch,{merge:true});
+    batch.set(database().collection('employeeSalaryConfigs').doc(employeeId),patch,{merge:true});
+    await batch.commit();
+    return Object.assign({},base||{ok:true,message:'薪資設定已儲存。'},{employeeConfig:Object.assign({},base&&base.employeeConfig||{},patch)});
+  }
+
+  async function profileWithIdentity(action,payload){
+    const base=typeof previousHandle==='function' ? await previousHandle(action,payload||{}) : null;
+    if(!base || base.ok===false) return base;
+    let employee=null;
+    const ids=[clean(payload&&payload.employeeId),clean(payload&&payload.userId),clean(payload&&payload.id)].filter(Boolean);
+    for(const id of ids){ employee=await getDoc('employees',id); if(employee) break; try{const rows=await queryRows('employees','employeeId',id); if(rows[0]){employee=rows[0];break;}}catch(e){} }
+    if(!employee && clean(payload&&payload.email)){ const rows=await employeesByEmail(payload.email); employee=rows[0]||null; }
+    if(employee){
+      base.profile=Object.assign({},base.profile||{}, {
+        identityDocumentType:clean(employee.identityDocumentType), identityDocumentTypeLabel:identityDocumentTypeLabel(employee.identityDocumentType),
+        identityDocumentUrl:clean(employee.identityDocumentUrl), identityDocumentVerified:employee.identityDocumentVerified===true,
+        identityVerificationStatus:clean(employee.identityVerificationStatus), identityVerifiedAtText:clean(employee.identityVerifiedAtText),
+        identityDocumentUseNotice:clean(employee.identityDocumentUseNotice)
+      });
+    }
+    return base;
+  }
+
+  async function countsWithApplications(action,payload){
+    const base=typeof previousHandle==='function' ? (await previousHandle(action,payload||{}).catch(()=>({ok:true,counts:{}}))) : {ok:true,counts:{}};
+    const count=(await pendingApplications()).length;
+    const counts=Object.assign({},base&&base.counts||base&&base.summary||base||{});
+    const oldReg=Number(counts.registrationCount||counts.pendingRegistrationCount||counts.registrations||0)||0;
+    const oldApproval=Number(counts.approvalCount||0)||0;
+    counts.registrationCount=count; counts.pendingRegistrationCount=count; counts.registrations=count;
+    if(oldApproval) counts.approvalCount=Math.max(0,oldApproval-oldReg+count);
+    return Object.assign({},base||{ok:true},counts,{counts});
+  }
+
+
+  async function ensureEmployeeLineBindCode(payload){
+    payload=payload||{};
+    const key=clean(payload.employeeId||payload.id||payload.userId);
+    const email=lower(payload.email);
+    let target=key?await getDoc('employees',key).catch(()=>null):null;
+    if(!target && email){ const rows=await employeesByEmail(email); target=rows[0]||null; }
+    if(!target) return {ok:false,message:'找不到人員資料，無法產生 LINE 綁定碼。'};
+    const docId=clean(target.__id||target.employeeId||key);
+    let code=clean(target.employeeBindCode||target.bindingCode||target.lineBindingCode);
+    if(!code || payload.forceNew===true) code=makeEmployeeBindCode();
+    const pref=notificationPreference(payload.notificationPreference||target.notificationPreference||target.notificationMethod, !!lower(target.email||email));
+    const bindText=employeeBindText(code);
+    const d=database(); const batch=d.batch();
+    batch.set(d.collection('employees').doc(docId),{employeeBindCode:code,employeeBindText:bindText,notificationPreference:pref,notificationPreferenceLabel:notificationLabel(pref),lineBindStatus:clean(target.lineUserId)?'bound':'pending',updatedAt:serverTs(),updatedAtText:nowText(),source:VERSION},{merge:true});
+    batch.set(d.collection('employeeLineBindings').doc(code),{bindingCode:code,employeeBindCode:code,bindText,employeeId:clean(target.employeeId||docId),employeeDocId:docId,targetCollection:'employees',status:clean(target.lineUserId)?'bound':'pending',name:clean(target.name||target.displayName),email:lower(target.email||email),mobilePhone:clean(target.mobilePhone||target.phone),notificationPreference:pref,updatedAt:serverTs(),updatedAtText:nowText(),source:VERSION},{merge:true});
+    await batch.commit();
+    return {ok:true,message:'已產生 LINE 綁定文字。',employeeBindCode:code,employeeBindText:bindText,bindText};
+  }
+  fb.handleApi=async function(action,payload){
+    const a=clean(action);
+    if(a==='register') return await createApplication(payload||{});
+    if(a==='getPendingRegistrations'){ const rows=await pendingApplications(); return {ok:true,rows,list:rows}; }
+    if(a==='getOnboardingSetupOptions') return {ok:true,scheduleTemplates:await scheduleTemplates()};
+    if(a==='saveRegistrationOnboardingDraft') return await saveDraft(payload||{});
+    if(a==='approveRegistrationOnboarding') return await approve(payload||{});
+    if(a==='approveRegistrationApi' && (payload&&payload.onboardingDraft)) return await approve(payload||{});
+    if(a==='rejectRegistrationApi') return await reject(payload||{});
+    if(a==='requestRegistrationResubmission') return await requestResubmission(payload||{});
+    if(a==='getRegistrationResubmission') return await getResubmission(payload||{});
+    if(a==='resubmitRegistrationIdentity') return await resubmitIdentity(payload||{});
+    if(a==='getEmployeeManagementData') return await managementData(payload||{});
+    if(a==='getEmployeeLifecycleSummary') return await lifecycleSummary(payload||{});
+    if(a==='archiveEmployeeLifecycle') return await archiveLifecycle(payload||{});
+    if(a==='ensureEmployeeLineBindCode' || a==='generateEmployeeLineBindCode') return await ensureEmployeeLineBindCode(payload||{});
+    if(a==='saveEmployeeSalaryConfig') return await saveSalaryConfigExtended(payload||{});
+    if(a==='getMyProfileFull' || a==='getMyDataFull') return await profileWithIdentity(a,payload||{});
+    if(a==='getDashboardSummary' || a==='getPendingCounts') return await countsWithApplications(a,payload||{});
+    if(typeof previousHandle==='function') return await previousHandle(action,payload||{});
+    return null;
+  };
+
+  fb.__onboardingWorkflowV20260624=true;
+  global.YZOnboarding={VERSION,pendingApplications,onboardingMissing,normalizeApplication};
+  global.YZFirebase=fb;
+})(window);
