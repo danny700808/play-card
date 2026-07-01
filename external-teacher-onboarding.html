@@ -106,5 +106,5 @@ async function submitContract(){if(!currentId||!currentCode){alert('找不到簽
 手機：${val('mobile')}
 員工管理關聯：${employeeId}`, 'external-teacher-submitted', currentId);showDone({...latest,...update});}catch(e){console.error(e);alert('送出失敗，請確認網路與外聘老師資料權限後再試。')}finally{setLoading(false)}}
 (async function(){fillBirthOptions();initYears();setTeachingAbilities([], '');await loadTemplate();const p=parseParams();if(p.id&&p.code){await verifyEmailIfRequested();}else{const lastId=localStorage.getItem('externalTeacherCurrentId');const lastCode=localStorage.getItem('externalTeacherCurrentCode');if(lastId&&lastCode){try{const r=await loadRecord(lastId,lastCode);if(r&&!isLockedStatus(r.status)){currentId=lastId;currentCode=lastCode;}}catch(e){}}}renderContractPreview();})();
-</script>  <script src="ui-action-feedback.js?v=20260701phase2"></script>
+</script>  <script src="ui-action-feedback.js?v=20260701-progress-reset-v1"></script>
 </body></html>
