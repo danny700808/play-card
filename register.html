@@ -22,6 +22,7 @@
     .consent-row{display:flex;gap:10px;align-items:flex-start;border:1px solid #d6e5dc;border-radius:14px;padding:12px;background:#fff;margin-top:12px}
     .consent-row input{width:auto;margin-top:3px}
     .consent-row label{margin:0;line-height:1.65;font-weight:800}
+    .label-row{display:flex;justify-content:space-between;align-items:center;gap:10px}.same-btn{border:0;border-radius:999px;background:#e8dfd0;color:#2c2924;font-weight:900;padding:7px 12px;white-space:nowrap}
     .resubmit-card{display:none;border:1px solid #f0c987;background:#fff9ec;border-radius:16px;padding:14px;margin-bottom:16px}
     .resubmit-card strong{display:block;font-size:18px;margin-bottom:6px;color:#8b5200}
     .status-line{font-size:14px;line-height:1.75;color:#6b4a13}
@@ -88,8 +89,17 @@
             <div class="field-error"></div>
           </div>
 
+          <div class="field" id="field-householdAddress">
+            <label for="householdAddress">戶籍地址<span class="required-mark">*</span></label>
+            <input id="householdAddress" autocomplete="street-address" placeholder="請輸入戶籍地址">
+            <div class="field-error"></div>
+          </div>
+
           <div class="field" id="field-contactAddress">
-            <label for="contactAddress">聯絡地址<span class="required-mark">*</span></label>
+            <div class="label-row">
+              <label for="contactAddress">聯絡地址<span class="required-mark">*</span></label>
+              <button class="same-btn" type="button" id="sameAddressBtn">同上</button>
+            </div>
             <input id="contactAddress" autocomplete="street-address" placeholder="請輸入聯絡地址">
             <div class="field-error"></div>
           </div>
@@ -142,8 +152,8 @@
         </div>
 
         <div class="btn-row">
-          <a class="btn secondary center" href="index.html">回登入</a>
           <button class="btn" id="registerBtn" type="submit">送出註冊申請</button>
+          <a class="btn secondary center" href="index.html">回登入</a>
         </div>
       </form>
     </div>
@@ -172,7 +182,7 @@
     let resubmitApplication=null;
     const watermarkText='僅供柚子樂器人事身分核對使用';
 
-    const fieldMap={name:'#field-name',email:'#field-email',notificationPreference:'#field-notificationPreference',idNumber:'#field-idNumber',birthDate:'#field-birthDate',mobilePhone:'#field-mobilePhone',contactAddress:'#field-contactAddress',emergencyContact:'#field-emergencyContact',emergencyPhone:'#field-emergencyPhone',identityDocumentType:'#field-identityDocumentType',identityDocument:'#field-identityDocument',identityDocumentConsent:'#field-identityDocumentConsent'};
+    const fieldMap={name:'#field-name',email:'#field-email',notificationPreference:'#field-notificationPreference',idNumber:'#field-idNumber',birthDate:'#field-birthDate',mobilePhone:'#field-mobilePhone',householdAddress:'#field-householdAddress',contactAddress:'#field-contactAddress',emergencyContact:'#field-emergencyContact',emergencyPhone:'#field-emergencyPhone',identityDocumentType:'#field-identityDocumentType',identityDocument:'#field-identityDocument',identityDocumentConsent:'#field-identityDocumentConsent'};
     function fillBirthOptions(){
       const y=qs('#birthYear'),m=qs('#birthMonth'); const now=new Date().getFullYear();
       for(let year=now;year>=1940;year--){const o=document.createElement('option');o.value=String(year);o.textContent=String(year);y.appendChild(o)}
@@ -218,8 +228,8 @@
     async function copyResultText(text){try{await navigator.clipboard.writeText(text);alert('已複製');}catch(e){const ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();alert('已複製');}}
     function validateInitial(){
       if(!registrationTypeLabels[registrationType])return['notificationPreference','請先回到註冊類型選擇頁，選擇專職員工或工讀生。'];
-      const p={name:qs('#name').value.trim(),email:qs('#email').value.trim(),idNumber:qs('#idNumber').value.trim(),birthDate:birthDateValue(),mobilePhone:qs('#mobilePhone').value.trim(),contactAddress:qs('#contactAddress').value.trim(),emergencyContact:qs('#emergencyContact').value.trim(),emergencyPhone:qs('#emergencyPhone').value.trim()};
-      for(const [k,t] of [['name','請填寫姓名'],['email','請填寫 Email'],['idNumber','請填寫身分證字號／證件號碼'],['birthDate','請選擇出生年月日'],['mobilePhone','請填寫行動電話'],['contactAddress','請填寫聯絡地址'],['emergencyContact','請填寫緊急聯絡人'],['emergencyPhone','請填寫緊急聯絡人電話']]){if(!p[k])return[k,t]}
+      const p={name:qs('#name').value.trim(),email:qs('#email').value.trim(),idNumber:qs('#idNumber').value.trim(),birthDate:birthDateValue(),mobilePhone:qs('#mobilePhone').value.trim(),householdAddress:qs('#householdAddress').value.trim(),contactAddress:qs('#contactAddress').value.trim(),emergencyContact:qs('#emergencyContact').value.trim(),emergencyPhone:qs('#emergencyPhone').value.trim()};
+      for(const [k,t] of [['name','請填寫姓名'],['email','請填寫 Email'],['idNumber','請填寫身分證字號／證件號碼'],['birthDate','請選擇出生年月日'],['mobilePhone','請填寫行動電話'],['householdAddress','請填寫戶籍地址'],['contactAddress','請填寫聯絡地址'],['emergencyContact','請填寫緊急聯絡人'],['emergencyPhone','請填寫緊急聯絡人電話']]){if(!p[k])return[k,t]}
       if(!/^\S+@\S+\.\S+$/.test(p.email))return['email','Email 格式不正確'];
       return null;
     }
@@ -241,7 +251,7 @@
         let r;
         if(resubmitMode){r=await api('resubmitRegistrationIdentity',Object.assign({applicationId:resubmitApplicationId,token:resubmitToken,identityDocumentType:qs('#identityDocumentType').value},upload));}
         else{
-          r=await api('register',Object.assign({registrationType:registrationType,requestedIdentityType:registrationType,identityType:registrationType,notificationPreference:selectedNotificationPreference(),name:qs('#name').value.trim(),email:qs('#email').value.trim(),idNumber:qs('#idNumber').value.trim().toUpperCase(),birthDate:birthDateValue(),mobilePhone:qs('#mobilePhone').value.trim(),contactAddress:qs('#contactAddress').value.trim(),emergencyContact:qs('#emergencyContact').value.trim(),emergencyPhone:qs('#emergencyPhone').value.trim(),identityDocumentType:qs('#identityDocumentType').value,identityDocumentConsent:true},upload));
+          r=await api('register',Object.assign({registrationType:registrationType,requestedIdentityType:registrationType,identityType:registrationType,notificationPreference:selectedNotificationPreference(),name:qs('#name').value.trim(),email:qs('#email').value.trim(),idNumber:qs('#idNumber').value.trim().toUpperCase(),birthDate:birthDateValue(),mobilePhone:qs('#mobilePhone').value.trim(),householdAddress:qs('#householdAddress').value.trim(),contactAddress:qs('#contactAddress').value.trim(),emergencyContact:qs('#emergencyContact').value.trim(),emergencyPhone:qs('#emergencyPhone').value.trim(),identityDocumentType:qs('#identityDocumentType').value,identityDocumentConsent:true},upload));
         }
         if(!r||r.ok===false)throw new Error((r&&r.message)||'送出失敗');
         progress.done('已送出',800,true);form.style.display='none';qs('#resubmitInfo').style.display='none';registerResult.style.display='block';const pref=(r&&r.notificationPreference)||selectedNotificationPreference();const lineBox=(!resubmitMode&&r&&r.employeeBindText&&wantsLinePreference(pref))?`<div class="info" style="border:1px solid #cfe3d8;background:#f8fff4;border-radius:16px;padding:14px;margin-top:12px"><h3 style="margin:0 0 8px">LINE 綁定</h3><p class="subtitle" style="font-size:15px;line-height:1.8">請複製下方綁定文字，貼到柚子樂器官方 LINE 聊天室。</p><div class="copy-box">${escapeHtml(r.employeeBindText)}</div><div class="binding-actions"><button class="btn" type="button" onclick="copyResultText('${escapeHtml(r.employeeBindText).replace(/'/g,'&#39;')}')">複製 LINE 綁定文字</button><a class="btn secondary center" target="_blank" href="https://lin.ee/Fx5Y2mL">開啟官方 LINE</a></div></div>`:'';const emailOnlyBox=(!resubmitMode&&pref==='email')?`<div class="info" style="border:1px solid #cfe3d8;background:#f8fff4;border-radius:16px;padding:14px;margin-top:12px"><h3 style="margin:0 0 8px">Email 通知</h3><p class="subtitle" style="font-size:15px;line-height:1.8">系統已將申請確認與後續通知寄到您填寫的 Email 信箱。請至信箱收信，並依信件指示繼續後續流程。</p><p class="subtitle" style="font-size:14px;line-height:1.8">若未收到信件，請先檢查垃圾信件匣，或聯絡柚子樂器協助確認。</p></div>`:'';registerResult.innerHTML=`<div class="card" style="margin-top:8px;background:#f7fffb;border:1px solid #c9ead8"><div class="header"><h2 class="title" style="font-size:27px">${resubmitMode?'證件已重新送出':'註冊申請已送出'}</h2><p class="subtitle" style="font-size:16px;line-height:1.9">${escapeHtml(r.message||'請等待主管審核。')}<br>${resubmitMode?'主管會重新核對您的證件。':'後續請依所選通知方式完成 LINE 綁定或查看 Email 通知。'}</p></div>${lineBox}${emailOnlyBox}<div class="btn-row"><a class="btn" href="index.html">回登入頁</a></div></div>`;
@@ -249,6 +259,9 @@
     }
 
     fillBirthOptions();
+
+    const sameAddressBtn=qs('#sameAddressBtn');
+    if(sameAddressBtn){sameAddressBtn.addEventListener('click',()=>{const h=qs('#householdAddress').value.trim();if(!h){fieldError('householdAddress','請先填寫戶籍地址');return;}qs('#contactAddress').value=h;clearError('contactAddress');});}
     qs('#birthYear').addEventListener('change',()=>{refreshBirthDays();clearError('birthDate')});qs('#birthMonth').addEventListener('change',()=>{refreshBirthDays();clearError('birthDate')});qs('#birthDay').addEventListener('change',()=>clearError('birthDate'));
     Object.keys(fieldMap).forEach(key=>{const w=qs(fieldMap[key]);if(!w)return;w.addEventListener('input',()=>clearError(key));w.addEventListener('change',()=>clearError(key))});
     qs('#identityDocumentFile').addEventListener('change',async e=>{try{setMsg(msg,'圖片處理中…');await processIdentityFile(e.target.files&&e.target.files[0]);setMsg(msg,'')}catch(err){resetIdentity();fieldError('identityDocument',err.message||String(err))}});
@@ -256,6 +269,6 @@
     if(!resubmitMode){if(!registrationTypeLabels[registrationType]){location.href='register-type.html';}else{qs('#pageTitle').textContent=registrationTypeLabels[registrationType]+'註冊';qs('#pageSubtitle').textContent='請填寫本人資料；主管會依此完成入職建檔。';qs('#registrationTypeBox').style.display='block';qs('#registrationTypeBox').innerHTML='<h2>目前申請類型：'+escapeHtml(registrationTypeLabels[registrationType])+'</h2><p>'+escapeHtml(registrationTypeHelp[registrationType]||'')+'</p>';}}
     if(resubmitMode)initResubmit().catch(err=>{form.style.display='none';setMsg(msg,err.message||String(err),true)});
   </script>
-  <script src="ui-action-feedback.js?v=20260701-progress-reset-v1"></script>
+  <script src="ui-action-feedback.js?v=20260701safe3"></script>
 </body>
 </html>

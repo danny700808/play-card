@@ -148,6 +148,7 @@
       idNumberMasked:maskId(raw.idNumber||raw['身分證字號']),
       birthDate:dateText(raw.birthDate||raw['出生年月日']),
       mobilePhone:clean(raw.mobilePhone||raw['行動電話']),
+      householdAddress:clean(raw.householdAddress||raw['戶籍地址']),
       contactAddress:clean(raw.contactAddress||raw.address||raw['聯絡地址']),
       emergencyContact:clean(raw.emergencyContact||raw['緊急聯絡人']),
       emergencyPhone:clean(raw.emergencyPhone||raw['緊急聯絡人電話']),
@@ -185,7 +186,7 @@
       legacyEmployeeDocId:clean(r.__id),
       linkedEmployeeId:clean(r.employeeId||r.__id),
       name:r.name||r['姓名'], email:r.email||r.Email, idNumber:r.idNumber||r['身分證字號'], birthDate:r.birthDate||r['出生年月日'],
-      mobilePhone:r.mobilePhone||r['行動電話'], contactAddress:r.contactAddress||r.address||r['聯絡地址'], emergencyContact:r.emergencyContact||r['緊急聯絡人'], emergencyPhone:r.emergencyPhone||r['緊急聯絡人電話'],
+      mobilePhone:r.mobilePhone||r['行動電話'], householdAddress:r.householdAddress||r['戶籍地址'], contactAddress:r.contactAddress||r.address||r['聯絡地址'], emergencyContact:r.emergencyContact||r['緊急聯絡人'], emergencyPhone:r.emergencyPhone||r['緊急聯絡人電話'],
       identityDocumentType:r.identityDocumentType||'national_id', identityDocumentUrl:r.identityDocumentUrl||'', identityDocumentPublicId:r.identityDocumentPublicId||'',
       applicationStatus:'pending_setup', createdAt:r.createdAt, createdAtText:r.createdAtText, source:'legacy-employees-pending'
     }));
@@ -193,7 +194,7 @@
   }
 
   function validateApplicant(payload){
-    const required=[['name','請填寫姓名。'],['email','請填寫 Email。'],['idNumber','請填寫身分證字號或證件號碼。'],['birthDate','請填寫出生年月日。'],['mobilePhone','請填寫行動電話。'],['contactAddress','請填寫聯絡地址。'],['emergencyContact','請填寫緊急聯絡人。'],['emergencyPhone','請填寫緊急聯絡人電話。'],['identityDocumentType','請選擇證件類型。'],['identityDocumentUrl','請上傳證件正面。']];
+    const required=[['name','請填寫姓名。'],['email','請填寫 Email。'],['idNumber','請填寫身分證字號或證件號碼。'],['birthDate','請填寫出生年月日。'],['mobilePhone','請填寫行動電話。'],['householdAddress','請填寫戶籍地址。'],['contactAddress','請填寫聯絡地址。'],['emergencyContact','請填寫緊急聯絡人。'],['emergencyPhone','請填寫緊急聯絡人電話。'],['identityDocumentType','請選擇證件類型。'],['identityDocumentUrl','請上傳證件正面。']];
     for(const [key,msg] of required){ if(!clean(payload[key])) return msg; }
     if(!payload.identityDocumentConsent) return '請先勾選證件使用說明。';
     if(!/^\S+@\S+\.\S+$/.test(lower(payload.email))) return 'Email 格式不正確。';
@@ -218,7 +219,7 @@
       applicationId,
       registrationType:requested, requestedIdentityType:requested, requestedIdentityLabel:identityLabel(requested),
       name:clean(payload.name), email, idNumber:clean(payload.idNumber).toUpperCase(), birthDate:dateText(payload.birthDate),
-      mobilePhone:clean(payload.mobilePhone), contactAddress:clean(payload.contactAddress), address:clean(payload.contactAddress),
+      mobilePhone:clean(payload.mobilePhone), householdAddress:clean(payload.householdAddress), contactAddress:clean(payload.contactAddress), address:clean(payload.contactAddress),
       emergencyContact:clean(payload.emergencyContact), emergencyPhone:clean(payload.emergencyPhone),
       notificationPreference:pref, notificationPreferenceLabel:notificationLabel(pref), notificationMethod:pref,
       employeeBindCode:bindCode, employeeBindText:bindText,
@@ -284,7 +285,7 @@
     const row={
       applicationId:newId, legacyEmployeeDocId:legacyDocId, linkedEmployeeId:clean(legacy.employeeId||legacyDocId),
       name:clean(legacy.name||legacy['姓名']), email:lower(legacy.email||legacy.Email), idNumber:clean(legacy.idNumber||legacy['身分證字號']).toUpperCase(), birthDate:dateText(legacy.birthDate||legacy['出生年月日']),
-      mobilePhone:clean(legacy.mobilePhone||legacy['行動電話']), contactAddress:clean(legacy.contactAddress||legacy.address||legacy['聯絡地址']), address:clean(legacy.contactAddress||legacy.address||legacy['聯絡地址']),
+      mobilePhone:clean(legacy.mobilePhone||legacy['行動電話']), householdAddress:clean(legacy.householdAddress||legacy['戶籍地址']), contactAddress:clean(legacy.contactAddress||legacy.address||legacy['聯絡地址']), address:clean(legacy.contactAddress||legacy.address||legacy['聯絡地址']),
       emergencyContact:clean(legacy.emergencyContact||legacy['緊急聯絡人']), emergencyPhone:clean(legacy.emergencyPhone||legacy['緊急聯絡人電話']),
       identityDocumentType:clean(legacy.identityDocumentType||'national_id'), identityDocumentUrl:clean(legacy.identityDocumentUrl), identityDocumentPublicId:clean(legacy.identityDocumentPublicId),
       applicationStatus:'pending_setup', status:'待主管建檔', accountStatus:'pending', notificationPreference:'both', notificationPreferenceLabel:'LINE + Email', lineBindStatus:'pending', emailBindStatus:'provided', onboardingDraft:{},
@@ -439,7 +440,7 @@
       notificationPreference:notificationPreference(app.notificationPreference||app.notificationMethod, !!clean(app.email)), notificationPreferenceLabel:notificationLabel(notificationPreference(app.notificationPreference||app.notificationMethod, !!clean(app.email))),
       employeeBindCode:clean(app.employeeBindCode), employeeBindText:clean(app.employeeBindText)||employeeBindText(clean(app.employeeBindCode)), lineBindStatus:clean(app.lineBindStatus||''), emailBindStatus:clean(app.emailBindStatus||''), lineUserId:clean(app.lineUserId||''), lineDisplayName:clean(app.lineDisplayName||''), lineNotifyEnabled:!!clean(app.lineUserId),
       accountStatus:isExternal && draft.externalAccessEnabled==='否'?'inactive':'active', employmentStatus:'active', hiddenFromActiveLists:false,
-      idNumber:clean(app.idNumber).toUpperCase(), birthDate:dateText(app.birthDate), mobilePhone:clean(app.mobilePhone), address:clean(app.contactAddress), contactAddress:clean(app.contactAddress),
+      idNumber:clean(app.idNumber).toUpperCase(), birthDate:dateText(app.birthDate), mobilePhone:clean(app.mobilePhone), householdAddress:clean(app.householdAddress), address:clean(app.contactAddress), contactAddress:clean(app.contactAddress),
       emergencyContact:clean(app.emergencyContact), emergencyPhone:clean(app.emergencyPhone),
       hireDate:isExternal?'':draft.startDate, cooperationStartDate:isExternal?draft.startDate:'',
       identityDocumentType:clean(app.identityDocumentType), identityDocumentTypeLabel:identityDocumentTypeLabel(app.identityDocumentType),

@@ -114,5 +114,5 @@
     qs('#applyForm').addEventListener('submit',async e=>{e.preventDefault(); const btn=qs('#submitBtn'), originalText='送出應聘履歷'; setMsg(msg,''); btn.disabled=true; try{validateRequired(); btn.textContent='附件檢查中...'; const uploads=await uploadAttachments(); btn.textContent='資料送出中，請稍候...'; const r=await api('submitTeacherApplication',buildPayload(uploads)); if(!r.ok)throw new Error(r.message||'送出失敗'); qs('#applyForm').reset(); btn.textContent='應聘履歷已送出，我們會於審核後聯繫您'; btn.disabled=true;}catch(err){btn.textContent=err.message||'送出失敗，請稍後再試'; btn.disabled=false; setTimeout(()=>{btn.textContent=originalText},3000);}});
   </script>
   <script src="global-nav.js?v=20260624unified-top-nav"></script>
-  <script src="ui-action-feedback.js?v=20260701-progress-reset-v1"></script>
+  <script src="ui-action-feedback.js?v=20260701safe3"></script>
 </body></html>

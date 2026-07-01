@@ -21,6 +21,6 @@
     async function initPage(){ if(typeof fillHeader==='function') fillHeader(); const u=R.requireManager(); if(!u) return; try{ const row=await R.get('rentalReminderSettings','main')||{}; const s=Object.assign({},defaults,row); Object.keys(defaults).forEach(k=>R.setVal(k,s[k])); }catch(e){ R.toast(e.message||String(e), false); } }
     async function saveSettings(){ try{ const data={}; Object.keys(defaults).forEach(k=>data[k]=R.val(k)); data.updatedAt=window.firebase.firestore.FieldValue.serverTimestamp(); data.updatedBy=(R.user().id||R.user().email||''); await R.set('rentalReminderSettings','main',data,true); R.toast('租賃提醒設定已儲存。', true); }catch(e){ R.toast(e.message||String(e), false); } }
   </script>
-  <script src="ui-action-feedback.js?v=20260701-progress-reset-v1"></script>
+  <script src="ui-action-feedback.js?v=20260701safe3"></script>
 </body>
 </html>

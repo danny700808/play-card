@@ -237,7 +237,7 @@
       selected=rows.find(r=>r.applicationId===id)||null;renderList();$('approvalResult').style.display='none';
       if(!selected){$('editor').style.display='none';$('editorEmpty').style.display='block';return}
       $('editor').style.display='block';$('editorEmpty').style.display='none';$('selectedName').textContent=selected.name||'未命名';$('selectedStatus').textContent=`${selected.applicationStatusLabel||selected.statusLabel||'待主管建檔'}｜${selected.requestedIdentityLabel||''}｜申請編號 ${selected.applicationId}`;
-      $('basicInfo').innerHTML=[info('姓名',selected.name),info('申請類型',selected.requestedIdentityLabel),info('Email',selected.email),info('證件號碼',selected.idNumber),info('出生年月日',selected.birthDate),info('行動電話',selected.mobilePhone),info('聯絡地址',selected.contactAddress),info('緊急聯絡人',selected.emergencyContact),info('緊急聯絡人電話',selected.emergencyPhone)].join('');$('notificationInfo').innerHTML=notificationInfoHtml(selected);
+      $('basicInfo').innerHTML=[info('姓名',selected.name),info('申請類型',selected.requestedIdentityLabel),info('Email',selected.email),info('證件號碼',selected.idNumber),info('出生年月日',selected.birthDate),info('行動電話',selected.mobilePhone),info('戶籍地址',selected.householdAddress),info('聯絡地址',selected.contactAddress),info('緊急聯絡人',selected.emergencyContact),info('緊急聯絡人電話',selected.emergencyPhone)].join('');$('notificationInfo').innerHTML=notificationInfoHtml(selected);
       renderIdentity();fillDraft(selected.onboardingDraft||{});updateVisibility();renderChecklist();window.scrollTo({top:0,behavior:'smooth'});
     }
     function renderIdentity(){
@@ -279,6 +279,6 @@
     function init(){fillHeader();const user=requireLogin();if(!user)return;if(!hasSettingsZoneAccess(user)){location.href='dashboard.html';return}setPortalMode('settings');$('keyword').addEventListener('input',renderList);$('pendingTab').onclick=()=>setRegistrationTab('pending');$('historyTab').onclick=()=>setRegistrationTab('history');$('refreshBtn').onclick=()=>{if(activeTab==='history')loadRegistrationHistory();loadRows()};['identityVerificationStatus','identityType','laborStatus','healthStatus','selfRetirementEnabled','scheduleMode'].forEach(id=>$(id).addEventListener('change',updateVisibility));document.querySelectorAll('#editor input,#editor select,#editor textarea').forEach(el=>{el.addEventListener('input',renderChecklist);el.addEventListener('change',renderChecklist)});$('openIdentityBtn').onclick=()=>{if(selected&&selected.identityDocumentUrl)window.open(selected.identityDocumentUrl,'_blank','noopener')};$('saveDraftBtn').onclick=saveDraft;$('approveBtn').onclick=approve;$('rejectBtn').onclick=reject;$('resubmitBtn').onclick=requestResubmission;$('addJobAllowanceBtn').onclick=()=>addLineItem('jobAllowanceList','職務加給');$('addAllowanceBtn').onclick=()=>addLineItem('allowanceList','其他津貼');loadRows()}
   </script>
   <script src="global-nav.js?v=20260603unified1"></script>
-  <script src="ui-action-feedback.js?v=20260701-progress-reset-v1"></script>
+  <script src="ui-action-feedback.js?v=20260701safe3"></script>
 </body>
 </html>

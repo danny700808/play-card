@@ -28,6 +28,6 @@
   </div>
   <script src="config.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script><script src="firebase-client.js?v=diagnosed-fix-20260613"></script><script src="app.js?v=rental-hub-20260606"></script><script src="global-nav.js?v=20260603unified1"></script>
   <script>async function initPage(){ if(typeof fillHeader==='function') fillHeader(); const user=typeof requireLogin==='function'?requireLogin():null; if(user&&typeof hasSettingsZoneAccess==='function'&&!hasSettingsZoneAccess(user)){location.href='dashboard.html';return;} try{ const r=await api('getDashboardSummary',{userId:user&&user.id, role:'admin'}); const counts=(r&&r.counts)||r||{}; const n=Number(counts.rentalCount||counts.rentalPendingCount||counts.pendingRentalCount||0)||0; const b=document.getElementById('rentalPendingBadge'); if(b) b.textContent=n?(n>99?'99+':String(n)):''; }catch(e){} }</script>
-  <script src="ui-action-feedback.js?v=20260701-progress-reset-v1"></script>
+  <script src="ui-action-feedback.js?v=20260701safe3"></script>
 </body>
 </html>
