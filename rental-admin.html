@@ -1074,6 +1074,6 @@ ${url}
 
     window.completeReturn=async function(){ const id=R.val('contractId'); if(!id) return R.toast('請先儲存合約。', false); if(!confirm('確認已收回設備並完成退租？')) return; if(!confirm('再次確認：此操作會將契約標記為已退租，確定繼續？')) return; try{ await R.call('rentalCompleteReturnHttp',{contractId:id}); R.toast('已完成退租並通知客人。', true); await loadAll(); }catch(e){ R.toast(e.message||String(e), false); } };
   </script>
-  <script src="ui-action-feedback.js?v=20260701phase1"></script>
+  <script src="ui-action-feedback.js?v=20260701phase2"></script>
 </body>
 </html>

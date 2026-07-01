@@ -64,5 +64,6 @@
     async function rejectReq(id){const reason=prompt('請輸入駁回原因：','資料需重新確認');if(reason===null)return;try{const r=await api('rejectProfileChangeRequest',{requestId:id,rejectReason:reason});setMsg(r.message||'已駁回。');await loadRequests()}catch(e){setMsg(e.message||String(e),'error')}}
   </script>
   <script src="global-nav.js?v=20260603unified1"></script>
+  <script src="ui-action-feedback.js?v=20260701phase2"></script>
 </body>
 </html>

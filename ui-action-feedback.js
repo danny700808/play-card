@@ -1,7 +1,7 @@
 (function(){
   'use strict';
-  if(window.__YZ_ACTION_FEEDBACK_V1__) return;
-  window.__YZ_ACTION_FEEDBACK_V1__ = true;
+  if(window.__YZ_ACTION_FEEDBACK_V2__) return;
+  window.__YZ_ACTION_FEEDBACK_V2__ = true;
 
   var GREEN = '#1f7a5a';
   var GREEN_DARK = '#146c43';
@@ -18,7 +18,7 @@
   function isRecent(){ return !!(lastAction && lastAction.button && (now() - lastAction.time) < LAST_TTL); }
   function nearestActionHost(btn){
     if(!btn) return null;
-    return btn.closest('.submit-actions,.login-actions-stack,.btn-row,.btns,.toolbar,.final-actions,.actions,.item-actions,.small-actions,.mini-actions,.rental-actions,.contract-actions,.form-actions,.n2-modal-actions,.mn-actions,.modal-actions') || btn.parentElement || btn;
+    return btn.closest('.submit-actions,.login-actions-stack,.btn-row,.button-row,.btns,.toolbar,.final-actions,.actions,.item-actions,.small-actions,.mini-actions,.rental-actions,.contract-actions,.form-actions,.approval-actions,.cert-actions,.card-actions,.admin-actions,.settings-actions,.quote-actions,.filter-actions,.n2-modal-actions,.mn-actions,.modal-actions') || btn.parentElement || btn;
   }
   function afterAnchor(btn){ return nearestActionHost(btn) || btn; }
   function statusBox(btn){
@@ -56,6 +56,8 @@
     if(/送出|提交|申請/.test(text)) return '送出中';
     if(/儲存|保存/.test(text)) return '儲存中';
     if(/上傳/.test(text)) return '上傳中';
+    if(/下載|PDF|另存/.test(text)) return '檔案產生中';
+    if(/匯出/.test(text)) return '匯出中';
     if(/讀取|載入/.test(text)) return '讀取中';
     if(/搜尋|查詢/.test(text)) return '查詢中';
     if(/檢查|驗證|確認/.test(text)) return '確認中';
@@ -63,6 +65,13 @@
     if(/核准|通過/.test(text)) return '核准中';
     if(/駁回/.test(text)) return '駁回中';
     if(/退回/.test(text)) return '退回中';
+    if(/發布|公告/.test(text)) return '發布中';
+    if(/開立|核發/.test(text)) return '開立中';
+    if(/下載|匯出|PDF|產生/.test(text)) return '產生中';
+    if(/審核|審查/.test(text)) return '審核中';
+    if(/啟用|停用|封存|解封|離職|結束合作/.test(text)) return '更新中';
+    if(/指派|派發|分派/.test(text)) return '指派中';
+    if(/匯入/.test(text)) return '匯入中';
     if(/通知|發送|回傳/.test(text)) return '通知建立中';
     if(/刪除|移除/.test(text)) return '刪除中';
     if(/取消申請|取消案件|取消租賃/.test(text)) return '取消中';
@@ -71,18 +80,21 @@
   }
   function isExcludedButton(btn){
     if(!btn || btn.nodeType!==1) return true;
-    if(btn.matches('[data-yz-nav-back],[data-yz-nav-logout],.yz-nav-btn,.tab,.tabs button,.history-year-btn,[data-close],[data-cancel]')) return true;
+    if(btn.matches('[data-yz-nav-back],[data-yz-nav-logout],.yz-nav-btn,.tab,.tabs button,.approval-tab,.section-tab,.daily-filter,.entry-card,.history-year-btn,[data-close],[data-cancel]')) return true;
     var text = clean(btn.textContent || btn.value || btn.getAttribute('aria-label'));
     if(!text) return true;
-    if(/^(回|返回|回到|上一頁|回登入|回首頁|取消|關閉|列印|預覽|開啟官方 LINE|開啟官方LINE)$/.test(text)) return true;
+    if(/^(回|返回|回到|上一頁|回登入|回首頁|取消|關閉|清空|清空表單|清空條件|停止|開始錄音|預覽|預覽確認|列印|開啟官方 LINE|開啟官方LINE|我知道了)$/.test(text)) return true;
     if(/回上一頁|回到上一頁|返回登入|回登入頁|回首頁|開啟官方 LINE|開啟官方LINE|列印預覽/.test(text)) return true;
+    if(/^(全部|待審核|已核准|已退回|歷史紀錄|未處理|有遲到|有請假|有主管處理|資料需確認)$/.test(text)) return true;
+    if(/^(我要詢價|公司官網詢價|公司優惠|我的紀錄|老師詢價紀錄|公司優惠商品|班表模板管理|員工班表套用|單日特別班表)$/.test(text)) return true;
+    if(/^新增/.test(text) && !/儲存|送出|申請|建立/.test(text)) return true;
     return false;
   }
   function isActionButton(btn){
     if(isExcludedButton(btn)) return false;
     if(btn.dataset && btn.dataset.yzNoFeedback === '1') return false;
     var text = clean(btn.textContent || btn.value || btn.getAttribute('aria-label'));
-    return /(登入|密碼|送出|提交|申請|儲存|保存|寄送|發送|通知|回傳|確認|檢查|驗證|複製|核准|駁回|退回|上傳|刪除|移除|取消申請|成立|完成|結案|搜尋|查詢|讀取|載入|簽名|簽署|建立|新增)/.test(text);
+    return /(登入|密碼|送出|提交|申請|儲存|保存|寄送|發送|通知|回傳|確認|檢查|驗證|複製|核准|駁回|退回|補件|上傳|刪除|移除|取消申請|成立|完成|結案|搜尋|查詢|讀取|載入|簽名|簽署|建立|下載|匯出|PDF|另存|產生|發布|公告|開立|核發|審核|審查|啟用|停用|封存|解封|離職|結束合作|指派|派發|分派|匯入)/.test(text);
   }
   function saveLast(btn){ lastAction = { button: btn, time: now() }; }
   function restore(btn){
@@ -191,13 +203,33 @@
     patched.__yzPatched = true;
     R.toast = patched;
   }
+  function patchNamedMessageFunctions(){
+    ['showMsg','setLocalMsg','setPageMsg','showStatusMessage'].forEach(function(name){
+      var fn = window[name];
+      if(typeof fn !== 'function' || fn.__yzPatched) return;
+      var patched = function(){
+        var r = fn.apply(this, arguments);
+        if(isRecent()){
+          var msg = '';
+          for(var i=0;i<arguments.length;i++){ if(typeof arguments[i] === 'string' && arguments[i].trim()){ msg = arguments[i]; break; } }
+          if(msg){
+            var bad = /失敗|錯誤|無法|尚未|請先|必填|不完整|過期|沒有|找不到|不符/.test(msg);
+            if(bad) fail(lastAction.button, msg); else done(lastAction.button, msg);
+          }
+        }
+        return r;
+      };
+      patched.__yzPatched = true;
+      window[name] = patched;
+    });
+  }
   function observeMessages(){
     var observer = new MutationObserver(function(muts){
       if(!isRecent()) return;
       muts.forEach(function(m){
         var el = m.target && m.target.nodeType===1 ? m.target : (m.target && m.target.parentElement);
         if(!el || !el.matches) return;
-        if(!el.matches('#msg,#statusMsg,.message,.msg,.local-message')) return;
+        if(!el.matches('#msg,#message,#statusMsg,#pageMsg,#localMsg,#formMsg,#saveMsg,#resultMsg,.message,.msg,.local-message,.status-message,.notice-message,.alert-message')) return;
         var txt = clean(el.textContent);
         if(!txt || !isVisible(el)) return;
         relocateMessageElement(el, lastAction.button);
@@ -238,6 +270,31 @@
     }, 0);
   }, false);
 
+  document.addEventListener('submit', function(e){
+    var form = e.target;
+    if(!form || !form.querySelector) return;
+    var btn = form.querySelector('button[type=submit],input[type=submit]');
+    if(btn && isActionButton(btn)){
+      saveLast(btn);
+      setTimeout(function(){ if(document.body.contains(btn)) begin(btn); }, 0);
+    }
+  }, true);
+
+  document.addEventListener('submit', function(e){
+    var form = e.target;
+    if(!form || !form.querySelector) return;
+    var btn = document.activeElement && document.activeElement.tagName === 'BUTTON' && form.contains(document.activeElement) ? document.activeElement : null;
+    if(!btn){
+      btn = form.querySelector('button[type="submit"], button:not([type])');
+    }
+    if(!btn || !isActionButton(btn)) return;
+    saveLast(btn);
+    setTimeout(function(){
+      if(!document.body.contains(btn)) return;
+      begin(btn);
+    }, 0);
+  }, true);
+
   var nativeAlert = window.alert;
   window.alert = function(msg){
     msg = clean(msg);
@@ -265,5 +322,5 @@
   injectStyle();
   patchSetMsg();
   observeMessages();
-  setInterval(function(){ patchSetMsg(); patchRentalToast(); }, 350);
+  setInterval(function(){ patchSetMsg(); patchRentalToast(); patchNamedMessageFunctions(); }, 350);
 })();

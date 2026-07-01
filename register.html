@@ -256,6 +256,6 @@
     if(!resubmitMode){if(!registrationTypeLabels[registrationType]){location.href='register-type.html';}else{qs('#pageTitle').textContent=registrationTypeLabels[registrationType]+'註冊';qs('#pageSubtitle').textContent='請填寫本人資料；主管會依此完成入職建檔。';qs('#registrationTypeBox').style.display='block';qs('#registrationTypeBox').innerHTML='<h2>目前申請類型：'+escapeHtml(registrationTypeLabels[registrationType])+'</h2><p>'+escapeHtml(registrationTypeHelp[registrationType]||'')+'</p>';}}
     if(resubmitMode)initResubmit().catch(err=>{form.style.display='none';setMsg(msg,err.message||String(err),true)});
   </script>
-  <script src="ui-action-feedback.js?v=20260701phase1"></script>
+  <script src="ui-action-feedback.js?v=20260701phase2"></script>
 </body>
 </html>

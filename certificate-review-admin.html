@@ -65,5 +65,6 @@
     async function initPage(){ fillHeader(); adminUser=requireLogin(); if(!adminUser) return; if(!hasSettingsZoneAccess(adminUser)){location.href='dashboard.html';return;} setPortalMode('settings'); YZ_CERT.injectCertificateStyles(); await loadRows(); }
   </script>
   <script src="global-nav.js?v=20260603unified1"></script>
+  <script src="ui-action-feedback.js?v=20260701phase2"></script>
 </body>
 </html>
