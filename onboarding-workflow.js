@@ -75,6 +75,14 @@
   function notificationLabel(pref){ return pref==='email'?'只用 Email':(pref==='line'?'只用 LINE':'LINE + Email'); }
   function wantsLine(pref){ return pref==='line'||pref==='both'; }
   function wantsEmail(pref){ return pref==='email'||pref==='both'; }
+  function statusIsBound(v){ const s=lower(v); return ['bound','verified','email_verified','line_verified','已綁定','已驗證'].includes(s); }
+  function lineVerified(row){ return statusIsBound(row && row.lineBindStatus); }
+  function emailVerified(row){ const s=lower(row && row.emailBindStatus); if(statusIsBound(s)) return true; return s==='provided' && !clean(row && row.applicantEmailVerifyToken); }
+  function verificationSatisfied(row){ row=row||{}; const pref=notificationPreference(row.notificationPreference||row.notificationMethod, !!clean(row.email)); if(pref==='both') return lineVerified(row)||emailVerified(row); if(pref==='line') return lineVerified(row); if(pref==='email') return emailVerified(row); return false; }
+  function verificationWaitStatus(pref){ pref=notificationPreference(pref,''); return pref==='both'?'waiting_verification':(pref==='line'?'waiting_line_binding':'waiting_email_verify'); }
+  function verificationWaitText(pref){ pref=notificationPreference(pref,''); return pref==='both'?'等待 LINE 綁定或 Email 驗證':'等待 '+(pref==='line'?'LINE 綁定':'Email 驗證'); }
+  function registerBaseUrl(){ try{ const u=new URL('register.html', global.location.href); return u.href; }catch(e){ return 'register.html'; } }
+  function emailVerifyUrl(applicationId, token){ return registerBaseUrl()+'?mode=emailVerify&applicationId='+encodeURIComponent(applicationId||'')+'&token='+encodeURIComponent(token||''); }
   function makeEmployeeBindCode(){ return 'EMP-' + randomToken(4).slice(0,8).toUpperCase(); }
   function employeeBindText(code){ return code ? ('柚子人員綁定 ' + code) : ''; }
   function maskId(v){ const s=clean(v).toUpperCase(); if(!s) return ''; return s.length<=5 ? s : s.slice(0,1)+'*****'+s.slice(-4); }
@@ -85,7 +93,7 @@
   function isPendingStatus(row){
     const s=statusKey(row);
     if(['approved','active','rejected','archived','deleted','已核准','已啟用','已駁回','封存','刪除'].includes(s)) return false;
-    return !s || ['pending','pending_setup','waiting_line_binding','draft','needs_identity_resubmission','waiting_manager_setup','待審核','等待 line 綁定','等待line綁定','待主管建檔','主管建檔草稿','待補件'].includes(s);
+    return !s || ['pending','pending_setup','waiting_line_binding','waiting_email_verify','waiting_verification','draft','needs_identity_resubmission','waiting_manager_setup','待審核','等待 line 綁定','等待line綁定','等待 email 驗證','等待email驗證','等待驗證','待主管建檔','主管建檔草稿','待補件'].includes(s);
   }
   function isSystemEmployee(row){
     const id=clean(row && (row.employeeId || row.__id));
@@ -96,6 +104,8 @@
     if(s==='draft') return '主管建檔草稿';
     if(s==='needs_identity_resubmission') return '待申請人補件';
     if(s==='waiting_line_binding') return '等待 LINE 綁定';
+    if(s==='waiting_email_verify') return '等待 Email 驗證';
+    if(s==='waiting_verification') return '等待 LINE 或 Email 驗證';
     if(s==='approved') return '已完成入職建檔';
     if(s==='rejected') return '已駁回';
     return '待主管建檔';
@@ -215,6 +225,10 @@
     const applicationId='REG_'+Date.now()+'_'+randomToken(5).slice(0,10);
     const bindCode=wantsLine(pref)?makeEmployeeBindCode():'';
     const bindText=employeeBindText(bindCode);
+    const emailToken=wantsEmail(pref)?randomToken(18):'';
+    const emailUrl=emailToken?emailVerifyUrl(applicationId,emailToken):'';
+    const waitStatus=verificationWaitStatus(pref);
+    const waitText=verificationWaitText(pref);
     const row={
       applicationId,
       registrationType:requested, requestedIdentityType:requested, requestedIdentityLabel:identityLabel(requested),
@@ -222,14 +236,14 @@
       mobilePhone:clean(payload.mobilePhone), householdAddress:clean(payload.householdAddress), contactAddress:clean(payload.contactAddress), address:clean(payload.contactAddress),
       emergencyContact:clean(payload.emergencyContact), emergencyPhone:clean(payload.emergencyPhone),
       notificationPreference:pref, notificationPreferenceLabel:notificationLabel(pref), notificationMethod:pref,
-      employeeBindCode:bindCode, employeeBindText:bindText,
-      lineBindStatus:wantsLine(pref)?'pending':'not_required', emailBindStatus:wantsEmail(pref)?'provided':'not_required',
-      currentStep:wantsLine(pref)?'等待 LINE 綁定':'等待主管審核', progressStatus:wantsLine(pref)?'等待 LINE 綁定':'等待主管審核',
+      employeeBindCode:bindCode, employeeBindText:bindText, applicantEmailVerifyToken:emailToken, emailVerificationUrl:emailUrl,
+      lineBindStatus:wantsLine(pref)?'pending':'not_required', emailBindStatus:wantsEmail(pref)?'pending':'not_required',
+      currentStep:waitText, progressStatus:waitText,
       identityDocumentType:clean(payload.identityDocumentType), identityDocumentTypeLabel:identityDocumentTypeLabel(payload.identityDocumentType),
       identityDocumentUrl:clean(payload.identityDocumentUrl), identityDocumentPublicId:clean(payload.identityDocumentPublicId),
       identityDocumentFileName:clean(payload.identityDocumentFileName), identityDocumentUploadedAtText:clean(payload.identityDocumentUploadedAtText)||nowText(),
       identityDocumentWatermark:clean(payload.identityDocumentWatermark), identityDocumentConsent:true,
-      applicationStatus:wantsLine(pref)?'waiting_line_binding':'pending_setup', status:wantsLine(pref)?'等待 LINE 綁定':'待主管建檔', accountStatus:'pending',
+      applicationStatus:waitStatus, status:applicationStatusLabel(waitStatus), accountStatus:'pending',
       onboardingDraft:{identityType:requested}, createdAt:serverTs(), createdAtText:nowText(), updatedAt:serverTs(), updatedAtText:nowText(),
       applicantResubmissionToken:randomToken(18), source:VERSION, history:[event('submitted',`申請人送出${identityLabel(requested)}註冊資料`)]
     };
@@ -249,10 +263,11 @@
         '',
         `柚子樂器已收到您的${identityLabel(requested)}註冊申請。`,
         `通知方式：${notificationLabel(pref)}`,
+        emailUrl?`Email 驗證連結：${emailUrl}`:'',
         wantsLine(pref)&&bindText?`LINE 綁定文字：${bindText}`:'',
         '',
-        wantsLine(pref)?'請先完成 LINE 綁定；後續審核、補件或核准通知會依您選擇的方式發送。':'後續審核、補件或核准通知會寄到此 Email 信箱。',
-        '若未看到後續信件，請先檢查垃圾信件匣。'
+        pref==='both'?'請完成 LINE 綁定或點選 Email 驗證連結，任一方式完成後即可進入主管審核。':(pref==='line'?'請先完成 LINE 綁定，完成後才會進入主管審核。':'請先點選 Email 驗證連結，完成後才會進入主管審核。'),
+        '若未看到信件，請先檢查垃圾信件匣。'
       ].filter(Boolean).join('\n');
       batch.set(d.collection('notificationQueue').doc(applicantQueueId),{
         queueId:applicantQueueId,channel:'email',targetEmail:email,targetName:row.name,title:'柚子樂器人員註冊申請已收到',body:applicantBody,message:applicantBody,status:'待發送',source:VERSION,applicationId,createdAt:serverTs(),createdAtText:nowText()
@@ -267,7 +282,22 @@
         });
       }
     }catch(e){ console.warn('[onboarding manager notification skipped]', e); }
-    return {ok:true,message:'註冊申請已送出，後台已建立資料。',applicationId,notificationPreference:pref,employeeBindCode:bindCode,employeeBindText:bindText,lineBindStatus:row.lineBindStatus};
+    return {ok:true,message:'基本資料已送出，請依所選通知方式完成驗證。',applicationId,notificationPreference:pref,employeeBindCode:bindCode,employeeBindText:bindText,lineBindStatus:row.lineBindStatus,emailBindStatus:row.emailBindStatus,emailVerificationQueued:!!emailUrl};
+  }
+
+  async function verifyRegistrationEmail(payload){
+    const applicationId=clean(payload&& (payload.applicationId||payload.id));
+    const token=clean(payload&& (payload.token||payload.emailToken));
+    if(!applicationId||!token) return {ok:false,message:'Email 驗證連結缺少必要資料。'};
+    const app=await getDoc(APP_COLLECTION,applicationId);
+    if(!app) return {ok:false,message:'找不到這筆註冊申請，連結可能已失效。'};
+    if(clean(app.applicantEmailVerifyToken)!==token) return {ok:false,message:'Email 驗證連結不正確或已失效。'};
+    const next=Object.assign({},app,{emailBindStatus:'bound'});
+    const verified=verificationSatisfied(next);
+    const patch={emailBindStatus:'bound',emailVerifiedAt:serverTs(),emailVerifiedAtText:nowText(),updatedAt:serverTs(),updatedAtText:nowText(),history:arrayUnion(event('email_verified','申請人已完成 Email 驗證'))};
+    if(verified){Object.assign(patch,{applicationStatus:'pending_setup',status:'待主管建檔',currentStep:'等待主管審核',progressStatus:'已完成驗證，等待主管審核'});}
+    await database().collection(APP_COLLECTION).doc(applicationId).set(patch,{merge:true});
+    return {ok:true,message:verified?'Email 驗證完成，已進入主管審核流程。':'Email 驗證完成。',applicationId,verified};
   }
 
   async function ensureApplication(applicationId){
@@ -322,7 +352,7 @@
     if(draft.identityVerificationStatus!=='verified') r.push('主管尚未確認證件與申請資料相符');
     if(!['staff','parttime','external'].includes(draft.identityType)) r.push('尚未選擇專職或工讀');
     const pref=notificationPreference(app.notificationPreference||app.notificationMethod, !!clean(app.email));
-    if(wantsLine(pref) && clean(app.employeeBindCode) && clean(app.lineBindStatus)!=='bound') r.push('申請人尚未完成 LINE 綁定');
+    if(!verificationSatisfied(app)) r.push(pref==='both'?'申請人尚未完成 LINE 綁定或 Email 驗證':'申請人尚未完成 '+(pref==='line'?'LINE 綁定':'Email 驗證'));
     if(!draft.startDate) r.push(draft.identityType==='external'?'尚未填寫合作起始日':'尚未填寫到職日');
     if(draft.identityType==='staff' || draft.identityType==='parttime'){
       if(draft.identityType==='staff' && !(draft.baseSalary>0)) r.push('專職員工尚未填寫本薪');
@@ -784,6 +814,7 @@
   fb.handleApi=async function(action,payload){
     const a=clean(action);
     if(a==='register') return await createApplication(payload||{});
+    if(a==='verifyRegistrationEmail') return await verifyRegistrationEmail(payload||{});
     if(a==='getPendingRegistrations'){ const rows=await pendingApplications(); return {ok:true,rows,list:rows}; }
     if(a==='getOnboardingSetupOptions') return {ok:true,scheduleTemplates:await scheduleTemplates()};
     if(a==='saveRegistrationOnboardingDraft') return await saveDraft(payload||{});
