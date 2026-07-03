@@ -931,8 +931,11 @@ async function handleExternalTeacherLineEvent(event) {
       lineDisplayName,
       lineBoundAt: nowTs(),
       bindCode,
-      onboardingToken: token || profile.onboardingToken || '',
-      status: profile.status === 'pendingLine' ? 'pendingProfile' : (profile.status || 'pendingProfile'),
+      onboardingToken: token || profile.onboardingToken || bindCode,
+      status: 'waiting_contract',
+      progressStatus: 'LINE 已綁定，等待老師從 LINE 下一步連結進入正式資料填寫',
+      verifiedBy: 'line',
+      verifiedAt: nowTs(),
       updatedAt: nowTs()
     };
     tx.set(ref, linePatch, { merge: true });
@@ -940,7 +943,8 @@ async function handleExternalTeacherLineEvent(event) {
   });
   await syncExternalTeacherEmployee(teacherId, Object.assign({}, profile, { contractId: teacherId, lineUserId, lineDisplayName, lineBindStatus: 'bound', lineNotifyEnabled: true, bindCode }));
 
-  await replyLineMessage(replyToken, `外聘老師 LINE 綁定完成 ✅\n\n您好 ${teacherName}，系統已完成您的 LINE 綁定。\n\n請回到外聘老師資料填寫頁，繼續完成基本資料、身分證明文件與契約簽署。\n\n${onboardingUrl(teacherId, token || profile.onboardingToken)}`);
+  const nextUrl = externalTeacherContractUrl(teacherId, token || profile.onboardingToken || bindCode, false);
+  await replyLineMessage(replyToken, `外聘老師 LINE 綁定完成 ✅\n\n您好 ${teacherName}，系統已完成您的 LINE 綁定。\n\n請點選下方下一步連結，繼續完成正式資料、身分證明文件與契約簽署。\n\n${nextUrl}`);
   await pushAdminMessage(`外聘老師 LINE 綁定完成\n\n姓名：${teacherName}\n狀態：待填資料`);
   return true;
 }

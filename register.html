@@ -172,6 +172,7 @@
     const registerResult=qs('#registerResult');
     const params=new URLSearchParams(location.search||'');
     const resubmitMode=params.get('mode')==='resubmit';
+    const emailVerifyMode=params.get('mode')==='emailVerify';
     const registrationType=(params.get('type')||'').trim().toLowerCase();
     const registrationTypeLabels={staff:'專職員工',parttime:'工讀生'};
     const registrationTypeHelp={staff:'專職員工需填寫人事基本資料與證件資料，送出後由主管完成薪資、投保與班表建檔。',parttime:'工讀生需填寫人事基本資料與證件資料，送出後由主管完成時薪、投保與班表設定。'};
@@ -225,6 +226,7 @@
     }
     function selectedNotificationPreference(){const el=document.querySelector('input[name="notificationPreference"]:checked');return el?el.value:'both'}
     function wantsLinePreference(v){return v==='line'||v==='both'}
+    function wantsEmailPreference(v){return v==='email'||v==='both'}
     async function copyResultText(text){try{await navigator.clipboard.writeText(text);alert('已複製');}catch(e){const ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();alert('已複製');}}
     function validateInitial(){
       if(!registrationTypeLabels[registrationType])return['notificationPreference','請先回到註冊類型選擇頁，選擇專職員工或工讀生。'];
@@ -240,6 +242,16 @@
       resubmitApplication=r.application||{};qs('#identityDocumentType').value=resubmitApplication.identityDocumentType||'national_id';const box=qs('#resubmitInfo');box.style.display='block';box.innerHTML=`<strong>${escapeHtml(resubmitApplication.name||'申請人')}｜待補件</strong><div class="status-line">帳號：${escapeHtml(resubmitApplication.emailMasked||'')}</div><div class="status-line">退回原因：${escapeHtml(resubmitApplication.reason||'請重新上傳清楚的證件正面')}</div>`;
     }
     function escapeHtml(v){return String(v==null?'':v).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]))}
+    function verificationNote(pref){if(pref==='both')return '請完成 LINE 綁定或 Email 驗證，任一方式完成後即可進入主管審核。';if(pref==='line')return '請完成 LINE 綁定後，系統才會進入主管審核。';return '請至 Email 信箱完成驗證後，系統才會進入主管審核。'}
+    function buildRegisterResultHtml(r,pref){
+      const lineBox=(!resubmitMode&&r&&r.employeeBindText&&wantsLinePreference(pref))?`<div class="info" style="border:1px solid #cfe3d8;background:#f8fff4;border-radius:16px;padding:14px;margin-top:12px"><h3 style="margin:0 0 8px">${pref==='both'?'LINE 驗證（可二擇一）':'LINE 綁定'}</h3><p class="subtitle" style="font-size:15px;line-height:1.8">請複製下方綁定文字，貼到柚子樂器官方 LINE 聊天室。綁定完成後，系統會透過 LINE 回傳下一步通知。</p><div class="copy-box">${escapeHtml(r.employeeBindText)}</div><div class="binding-actions"><button class="btn" type="button" onclick="copyResultText('${escapeHtml(r.employeeBindText).replace(/'/g,'&#39;')}')">複製 LINE 綁定文字</button><a class="btn secondary center" target="_blank" href="https://lin.ee/Fx5Y2mL">開啟官方 LINE</a></div></div>`:'';
+      const emailBox=(!resubmitMode&&wantsEmailPreference(pref))?`<div class="info" style="border:1px solid #cfe3d8;background:#f8fff4;border-radius:16px;padding:14px;margin-top:12px"><h3 style="margin:0 0 8px">${pref==='both'?'Email 驗證（可二擇一）':'Email 驗證'}</h3><p class="subtitle" style="font-size:15px;line-height:1.8">系統已將 Email 驗證通知寄到您填寫的信箱。請至信箱點選驗證連結。</p><p class="subtitle" style="font-size:14px;line-height:1.8">若未收到信件，請先檢查垃圾信件匣，或聯絡柚子樂器協助確認。</p></div>`:'';
+      return `<div class="card" style="margin-top:8px;background:#f7fffb;border:1px solid #c9ead8"><div class="header"><h2 class="title" style="font-size:27px">${resubmitMode?'證件已重新送出':'基本資料已送出'}</h2><p class="subtitle" style="font-size:16px;line-height:1.9">${escapeHtml(r.message||'申請資料已建立。')}<br>${resubmitMode?'主管會重新核對您的證件。':verificationNote(pref)}</p></div>${lineBox}${emailBox}<div class="btn-row"><a class="btn" href="index.html">回登入頁</a></div></div>`;
+    }
+    async function initEmailVerify(){
+      qs('#pageTitle').textContent='Email 驗證';qs('#pageSubtitle').textContent='正在確認您的 Email 驗證連結。';form.style.display='none';qs('#resubmitInfo').style.display='none';registerResult.style.display='block';
+      try{const r=await api('verifyRegistrationEmail',{applicationId:params.get('applicationId')||params.get('id')||'',token:params.get('token')||''});if(!r||r.ok===false)throw new Error((r&&r.message)||'Email 驗證失敗');registerResult.innerHTML=`<div class="card" style="margin-top:8px;background:#f7fffb;border:1px solid #c9ead8"><div class="header"><h2 class="title" style="font-size:27px">Email 驗證完成</h2><p class="subtitle" style="font-size:16px;line-height:1.9">${escapeHtml(r.message||'已完成 Email 驗證。')}</p></div><div class="btn-row"><a class="btn" href="index.html">回登入頁</a></div></div>`;}catch(err){registerResult.innerHTML=`<div class="card" style="margin-top:8px;background:#fff7f7;border:1px solid #fecaca"><div class="header"><h2 class="title" style="font-size:27px">Email 驗證失敗</h2><p class="subtitle" style="font-size:16px;line-height:1.9">${escapeHtml(err.message||String(err))}</p></div><div class="btn-row"><a class="btn" href="register-type.html">重新申請</a><a class="btn secondary center" href="index.html">回登入頁</a></div></div>`;}
+    }
     async function submitForm(e){
       e.preventDefault();clearErrors();setMsg(msg,'');
       if(!resubmitMode){const invalid=validateInitial();if(invalid){fieldError(invalid[0],invalid[1]);return}}
@@ -254,7 +266,7 @@
           r=await api('register',Object.assign({registrationType:registrationType,requestedIdentityType:registrationType,identityType:registrationType,notificationPreference:selectedNotificationPreference(),name:qs('#name').value.trim(),email:qs('#email').value.trim(),idNumber:qs('#idNumber').value.trim().toUpperCase(),birthDate:birthDateValue(),mobilePhone:qs('#mobilePhone').value.trim(),householdAddress:qs('#householdAddress').value.trim(),contactAddress:qs('#contactAddress').value.trim(),emergencyContact:qs('#emergencyContact').value.trim(),emergencyPhone:qs('#emergencyPhone').value.trim(),identityDocumentType:qs('#identityDocumentType').value,identityDocumentConsent:true},upload));
         }
         if(!r||r.ok===false)throw new Error((r&&r.message)||'送出失敗');
-        progress.done('已送出',800,true);form.style.display='none';qs('#resubmitInfo').style.display='none';registerResult.style.display='block';const pref=(r&&r.notificationPreference)||selectedNotificationPreference();const lineBox=(!resubmitMode&&r&&r.employeeBindText&&wantsLinePreference(pref))?`<div class="info" style="border:1px solid #cfe3d8;background:#f8fff4;border-radius:16px;padding:14px;margin-top:12px"><h3 style="margin:0 0 8px">LINE 綁定</h3><p class="subtitle" style="font-size:15px;line-height:1.8">請複製下方綁定文字，貼到柚子樂器官方 LINE 聊天室。</p><div class="copy-box">${escapeHtml(r.employeeBindText)}</div><div class="binding-actions"><button class="btn" type="button" onclick="copyResultText('${escapeHtml(r.employeeBindText).replace(/'/g,'&#39;')}')">複製 LINE 綁定文字</button><a class="btn secondary center" target="_blank" href="https://lin.ee/Fx5Y2mL">開啟官方 LINE</a></div></div>`:'';const emailOnlyBox=(!resubmitMode&&pref==='email')?`<div class="info" style="border:1px solid #cfe3d8;background:#f8fff4;border-radius:16px;padding:14px;margin-top:12px"><h3 style="margin:0 0 8px">Email 通知</h3><p class="subtitle" style="font-size:15px;line-height:1.8">系統已將申請確認與後續通知寄到您填寫的 Email 信箱。請至信箱收信，並依信件指示繼續後續流程。</p><p class="subtitle" style="font-size:14px;line-height:1.8">若未收到信件，請先檢查垃圾信件匣，或聯絡柚子樂器協助確認。</p></div>`:'';registerResult.innerHTML=`<div class="card" style="margin-top:8px;background:#f7fffb;border:1px solid #c9ead8"><div class="header"><h2 class="title" style="font-size:27px">${resubmitMode?'證件已重新送出':'註冊申請已送出'}</h2><p class="subtitle" style="font-size:16px;line-height:1.9">${escapeHtml(r.message||'請等待主管審核。')}<br>${resubmitMode?'主管會重新核對您的證件。':'後續請依所選通知方式完成 LINE 綁定或查看 Email 通知。'}</p></div>${lineBox}${emailOnlyBox}<div class="btn-row"><a class="btn" href="index.html">回登入頁</a></div></div>`;
+        progress.done('已送出',800,true);form.style.display='none';qs('#resubmitInfo').style.display='none';registerResult.style.display='block';const pref=(r&&r.notificationPreference)||selectedNotificationPreference();registerResult.innerHTML=buildRegisterResultHtml(r,pref);
       }catch(err){progress.fail('送出失敗');setMsg(msg,err.message||String(err),true)}
     }
 
@@ -266,7 +278,8 @@
     Object.keys(fieldMap).forEach(key=>{const w=qs(fieldMap[key]);if(!w)return;w.addEventListener('input',()=>clearError(key));w.addEventListener('change',()=>clearError(key))});
     qs('#identityDocumentFile').addEventListener('change',async e=>{try{setMsg(msg,'圖片處理中…');await processIdentityFile(e.target.files&&e.target.files[0]);setMsg(msg,'')}catch(err){resetIdentity();fieldError('identityDocument',err.message||String(err))}});
     qs('#replaceIdentityBtn').addEventListener('click',()=>qs('#identityDocumentFile').click());qs('#removeIdentityBtn').addEventListener('click',resetIdentity);form.addEventListener('submit',submitForm);
-    if(!resubmitMode){if(!registrationTypeLabels[registrationType]){location.href='register-type.html';}else{qs('#pageTitle').textContent=registrationTypeLabels[registrationType]+'註冊';qs('#pageSubtitle').textContent='請填寫本人資料；主管會依此完成入職建檔。';qs('#registrationTypeBox').style.display='block';qs('#registrationTypeBox').innerHTML='<h2>目前申請類型：'+escapeHtml(registrationTypeLabels[registrationType])+'</h2><p>'+escapeHtml(registrationTypeHelp[registrationType]||'')+'</p>';}}
+    if(emailVerifyMode){initEmailVerify().catch(err=>{form.style.display='none';setMsg(msg,err.message||String(err),true)});}
+    else if(!resubmitMode){if(!registrationTypeLabels[registrationType]){location.href='register-type.html';}else{qs('#pageTitle').textContent=registrationTypeLabels[registrationType]+'註冊';qs('#pageSubtitle').textContent='請填寫本人資料；主管會依此完成入職建檔。';qs('#registrationTypeBox').style.display='block';qs('#registrationTypeBox').innerHTML='<h2>目前申請類型：'+escapeHtml(registrationTypeLabels[registrationType])+'</h2><p>'+escapeHtml(registrationTypeHelp[registrationType]||'')+'</p>';}}
     if(resubmitMode)initResubmit().catch(err=>{form.style.display='none';setMsg(msg,err.message||String(err),true)});
   </script>
   <script src="ui-action-feedback.js?v=20260701safe3"></script>

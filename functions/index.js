@@ -118,6 +118,10 @@ function rentalAdminApplicationUrl(applicationId) {
   return `${webBaseUrl()}rental-admin.html?applicationId=${encodeURIComponent(applicationId)}`;
 }
 
+function externalTeacherContractUrl(contractId, code, verifyEmail = false) {
+  return `${webBaseUrl()}external-teacher-onboarding.html?id=${encodeURIComponent(contractId || '')}&code=${encodeURIComponent(code || '')}${verifyEmail ? '&verify=email' : ''}`;
+}
+
 async function findRentalApplication(applicationKey) {
   const key = normalizeText(applicationKey);
   if (!key) return null;
@@ -523,7 +527,15 @@ async function handleEmployeeCodeBinding({ bindCode, lineUserId, replyToken }) {
   }
 
   const name = normalizeText(target.data.name || target.data.displayName || target.data.employeeName || target.data.teacherName || target.data.email || code);
-  await replyLineMessage(replyToken, `LINE 綁定成功 ✅\n\n姓名：${name}\n綁定碼：${code}`);
+  const nextToken = normalizeText(target.binding && (target.binding.onboardingToken || target.binding.bindingCode || target.binding.employeeBindCode)) || code;
+  const nextUrl = externalTeacherContractId ? externalTeacherContractUrl(externalTeacherContractId, nextToken, false) : '';
+  let replyText = `LINE 綁定成功 ✅\n\n姓名：${name}\n綁定碼：${code}`;
+  if (nextUrl) {
+    replyText += `\n\n請點選下方下一步連結，繼續完成正式資料填寫：\n${nextUrl}`;
+  } else if (target.type === 'application') {
+    replyText += '\n\n您的 LINE 驗證已完成，接下來請等待主管審核。';
+  }
+  await replyLineMessage(replyToken, replyText);
 }
 
 async function handleEmployeeBinding({ email, lineUserId, replyToken }) {
