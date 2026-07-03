@@ -1,0 +1,36 @@
+name: Deploy Firebase Functions
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "functions/**"
+      - "firebase.json"
+      - ".firebaserc"
+      - ".github/workflows/firebase-functions-deploy.yml"
+
+jobs:
+  deploy-functions:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        working-directory: functions
+        run: npm install
+
+      - name: Deploy Firebase Functions
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: "${{ secrets.GITHUB_TOKEN }}"
+          firebaseServiceAccount: "${{ secrets.FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 }}"
+          projectId: youzi-c1b74
+          channelId: live
