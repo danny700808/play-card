@@ -135,7 +135,7 @@
         <div class="field upload-panel" id="field-identityDocument">
           <label for="identityDocumentFile">身分證明文件正面<span class="required-mark">*</span></label>
           <input id="identityDocumentFile" type="file" accept="image/jpeg,image/png,image/webp" capture="environment">
-          <div class="upload-help">可直接用手機拍照或從相簿選擇；支援 JPG、PNG、WebP，原始檔 12MB 以下。系統會縮圖並加上「僅供柚子樂器人事身分核對使用」浮水印後再上傳。</div>
+          <div class="upload-help">可直接用手機拍照或從相簿選擇；支援 JPG、PNG、WebP，原始檔 20MB 以下。系統會縮圖並加上「僅供柚子樂器人事身分核對使用」浮水印後再上傳。</div>
           <div id="identityPreviewWrap" class="preview-wrap">
             <img id="identityPreview" alt="證件正面預覽">
             <div class="preview-actions">
@@ -207,7 +207,7 @@
     async function processIdentityFile(file){
       if(!file) return;
       if(!['image/jpeg','image/png','image/webp'].includes(String(file.type||'').toLowerCase())) throw new Error('證件只接受 JPG、PNG 或 WebP 圖片。');
-      if(file.size>12*1024*1024) throw new Error('證件原始檔不可超過 12MB。');
+      if(file.size>20*1024*1024) throw new Error('證件原始檔不可超過 20MB。');
       const img=await loadImage(file); const max=1600; const scale=Math.min(1,max/Math.max(img.naturalWidth||img.width,img.naturalHeight||img.height));
       const width=Math.max(1,Math.round((img.naturalWidth||img.width)*scale)),height=Math.max(1,Math.round((img.naturalHeight||img.height)*scale));
       const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;const ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,width,height);ctx.drawImage(img,0,0,width,height);
