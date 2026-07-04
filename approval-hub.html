@@ -35,6 +35,7 @@
 <a class="tile" href="leave.html?mode=approval"><strong>請假簽核 <span class="badge" id="badge-leave"></span></strong><span>未處理與歷史紀錄</span></a>
 <a class="tile" href="profile-change-admin.html"><strong>個資修改簽核 <span class="badge" id="badge-profile-change"></span></strong><span>未處理與歷史紀錄</span></a>
 <a class="tile" href="data-center.html?module=parttime"><strong>工讀薪資結算 <span class="badge" id="badge-parttime-payroll"></span></strong><span>工讀時數、薪資結算與主管確認集中在簽核區處理</span></a>
+<a class="tile" href="external-teacher-admin.html?v=external-bind-v2"><strong>外聘老師合約確認 <span class="badge" id="badge-external-teacher"></span></strong><span>老師簽署完成後，由管理端確認契約生效</span></a>
 <a class="tile" href="approval-notification-settings.html"><strong>簽核提醒設定</strong><span>集中設定註冊、打卡、補登 / 臨時出勤、請假與個資修改提醒</span></a>
 <a class="tile" href="attendance-flow-check.html"><strong>出勤勾稽檢查</strong><span>逐日比對原班表、請假、有效班段、應打卡、實際打卡、缺卡與工讀薪資資料</span></a>
 </div>
@@ -83,6 +84,7 @@
         profileChangeCount: Number(counts.profileChangeCount || counts.pendingProfileChangeCount || counts.profileChanges || 0) || 0,
         parttimeApprovalCount: Number(counts.parttimeApprovalCount || counts.parttimePending || counts.pendingParttimeCount || 0) || 0,
         contractCount: Number(counts.contractCount || counts.pendingContractCount || counts.contracts || 0) || 0,
+        externalTeacherContractPendingCount: Number(counts.externalTeacherContractPendingCount || counts.externalTeacherPendingContractCount || counts.externalTeacherPendingCount || counts.teacherPendingCount || 0) || 0,
         goodsInquiryCount: Number(counts.goodsInquiryCount || counts.pendingGoodsInquiryCount || counts.goodsInquiries || 0) || 0,
         taskCount: Number(counts.taskCount || counts.pendingTaskCount || counts.taskReviewCount || counts.tasks || 0) || 0,
         routineCount: Number(counts.routineCount || counts.pendingRoutineCount || counts.routineReviewCount || counts.routines || 0) || 0,
@@ -128,6 +130,7 @@
       setBadge('badge-leave',r.leaveCount);
       setBadge('badge-profile-change',r.profileChangeCount);
       setBadge('badge-parttime-payroll',r.parttimeApprovalCount);
+      setBadge('badge-external-teacher',r.externalTeacherContractPendingCount);
     }
   
   </script>

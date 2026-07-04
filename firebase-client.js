@@ -7668,8 +7668,35 @@
     const employeeId=employeeIdFrom(payload),date=dateText(payload&&payload.date)||localDateKey(new Date()); if(!employeeId)return{ok:false,message:'請選擇員工。'}; const [info,leaves,corrections,parts]=await Promise.all([effectiveScheduleInfo(employeeId,date,{includeClockState:true}),rowsByEmployee('leaveRequests',employeeId),rowsByEmployee('clockCorrections',employeeId),rowsByEmployee('parttimeRecords',employeeId)]); const leaveRows=leaves.map(normalizeLeave).filter(l=>l.segments.some(s=>s.date===date)); const expected=(info.schedules||[]).flatMap(s=>[{scheduleKey:s.scheduleKey,action:'上班打卡',time:s.startTime},{scheduleKey:s.scheduleKey,action:'下班打卡',time:s.endTime}]); const actual=(info.clockRecords||[]).map(r=>({id:r.id,action:r.actionName,time:shortTime(r.time),status:r.status,scheduleKey:r.scheduleKey})); const missing=[]; (info.schedules||[]).forEach(s=>{if(!s.hasClockIn)missing.push(`${s.startTime} 上班卡`);if(!s.hasClockOut)missing.push(`${s.endTime} 下班卡`);}); return{ok:true,employeeId,date,originalSchedules:info.originalSchedules||[],approvedLeaves:leaveRows.filter(l=>l.status===APPROVED),pendingLeaves:leaveRows.filter(l=>l.status===PENDING),effectiveSchedules:info.schedules||[],fullyCoveredSchedules:info.fullyCoveredSchedules||[],expectedPunches:expected,actualPunches:actual,missingPunches:missing,pendingCorrections:corrections.filter(r=>statusOf(r)===PENDING&&dateText(r.correctDate||r['修正日期'])===date),parttimeRecords:parts.filter(r=>dateText(r.date||r.workDate||r['日期'])===date),effectiveHours:Math.round((info.schedules||[]).reduce((sum,s)=>sum+hoursBetween(s.startTime,s.endTime),0)*100)/100,message:info.message,source:VERSION};
   }
 
+  function isPendingExternalTeacherContract(row){
+    row=row||{};
+    const s=clean(row.status||row.contractStatus||row.profileStatus||row.progressStatus||row.latestExternalContractStatus).toLowerCase();
+    if(!s)return false;
+    if(['active','confirmed','contract_effective','needs_revision','waiting_contract','waiting_bindings','deleted','archived','void','cancelled'].includes(s))return false;
+    return s==='submitted_pending_admin'||s==='已送出'||/等待.*確認|待主管確認|待管理端確認|老師已送出/.test(s);
+  }
+  async function countExternalTeacherPendingContracts(){
+    try{
+      const rows=await all('externalTeacherContracts').catch(()=>[]);
+      return rows.filter(isPendingExternalTeacherContract).length;
+    }catch(e){return 0;}
+  }
   async function adjustPendingCounts(action,payload){
-    const base=typeof previousHandle==='function'?await previousHandle(action,payload||{}).catch(()=>({ok:true})):({ok:true}); const [leaves,corrs,temps]=await Promise.all([all('leaveRequests').catch(()=>[]),all('clockCorrections').catch(()=>[]),all('temporaryAttendanceRequests').catch(()=>[])]); const pendingLeaveIds=new Set(leaves.filter(r=>statusOf(r)===PENDING).map(r=>clean(r.requestId||r.__id))); const clockCount=corrs.filter(r=>statusOf(r)===PENDING&&!pendingLeaveIds.has(clean(r.relatedLeaveRequestId))).length,tempCount=temps.filter(r=>statusOf(r)===PENDING).length,leaveCount=pendingLeaveIds.size; const counts=Object.assign({},base.counts||base.summary||base,{leaveCount,pendingLeaveCount:leaveCount,leaveApprovalCount:leaveCount,leaves:leaveCount,clockCorrectionCount:clockCount,pendingClockCorrectionCount:clockCount,clocks:clockCount,tempAttendanceCount:tempCount,temporaryAttendanceCount:tempCount}); return Object.assign({},base,counts,{counts});
+    const base=typeof previousHandle==='function'?await previousHandle(action,payload||{}).catch(()=>({ok:true})):({ok:true});
+    const [leaves,corrs,temps,externalTeacherContracts]=await Promise.all([all('leaveRequests').catch(()=>[]),all('clockCorrections').catch(()=>[]),all('temporaryAttendanceRequests').catch(()=>[]),all('externalTeacherContracts').catch(()=>[])]);
+    const baseCounts=Object.assign({},base.counts||base.summary||base);
+    const pendingLeaveIds=new Set(leaves.filter(r=>statusOf(r)===PENDING).map(r=>clean(r.requestId||r.__id)));
+    const clockCount=corrs.filter(r=>statusOf(r)===PENDING&&!pendingLeaveIds.has(clean(r.relatedLeaveRequestId))).length,tempCount=temps.filter(r=>statusOf(r)===PENDING).length,leaveCount=pendingLeaveIds.size;
+    const externalTeacherContractPendingCount=externalTeacherContracts.filter(isPendingExternalTeacherContract).length;
+    const previousExternal=Number(baseCounts.externalTeacherContractPendingCount||baseCounts.externalTeacherPendingContractCount||baseCounts.externalTeacherPendingCount||baseCounts.teacherPendingCount||0)||0;
+    const previousApproval=Number(baseCounts.approvalCount||0)||0;
+    const registrationCount=Number(baseCounts.registrationCount||baseCounts.pendingRegistrationCount||baseCounts.registrations||0)||0;
+    const profileChangeCount=Number(baseCounts.profileChangeCount||baseCounts.pendingProfileChangeCount||baseCounts.profileChanges||0)||0;
+    const parttimeApprovalCount=Number(baseCounts.parttimeApprovalCount||baseCounts.parttimePending||baseCounts.pendingParttimeCount||0)||0;
+    const approvalFallback=registrationCount+profileChangeCount+parttimeApprovalCount+leaveCount+clockCount+tempCount+externalTeacherContractPendingCount;
+    const approvalCount=previousApproval>0?Math.max(0, previousApproval - previousExternal + externalTeacherContractPendingCount):approvalFallback;
+    const counts=Object.assign({},baseCounts,{leaveCount,pendingLeaveCount:leaveCount,leaveApprovalCount:leaveCount,leaves:leaveCount,clockCorrectionCount:clockCount,pendingClockCorrectionCount:clockCount,clocks:clockCount,tempAttendanceCount:tempCount,temporaryAttendanceCount:tempCount,registrationCount,registrations:registrationCount,profileChangeCount,profileChanges:profileChangeCount,parttimeApprovalCount,parttimePending:parttimeApprovalCount,externalTeacherContractPendingCount,externalTeacherPendingContractCount:externalTeacherContractPendingCount,externalTeacherPendingCount:externalTeacherContractPendingCount,teacherPendingCount:externalTeacherContractPendingCount,contractCount:externalTeacherContractPendingCount,pendingContractCount:externalTeacherContractPendingCount,contracts:externalTeacherContractPendingCount,approvalCount});
+    return Object.assign({},base,counts,{counts});
   }
   function queueNotification(featureCode,direction,data){ if(typeof previousHandle!=='function')return; Promise.resolve(previousHandle('queueFeatureNotification',Object.assign({featureCode,direction},data||{}))).catch(()=>null); }
 

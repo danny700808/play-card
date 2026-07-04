@@ -409,6 +409,7 @@
         profileChangeCount: Number(counts.profileChangeCount || counts.pendingProfileChangeCount || counts.profileChanges || 0) || 0,
         parttimeApprovalCount: Number(counts.parttimeApprovalCount || counts.parttimePending || counts.pendingParttimeCount || 0) || 0,
         contractCount: Number(counts.contractCount || counts.pendingContractCount || counts.contracts || 0) || 0,
+        externalTeacherContractPendingCount: Number(counts.externalTeacherContractPendingCount || counts.externalTeacherPendingContractCount || counts.externalTeacherPendingCount || counts.teacherPendingCount || 0) || 0,
         goodsInquiryCount: Number(counts.goodsInquiryCount || counts.pendingGoodsInquiryCount || counts.goodsInquiries || 0) || 0,
         taskCount: Number(counts.taskCount || counts.pendingTaskCount || counts.taskReviewCount || counts.tasks || 0) || 0,
         routineCount: Number(counts.routineCount || counts.pendingRoutineCount || counts.routineReviewCount || counts.routines || 0) || 0,
@@ -437,8 +438,8 @@
     }
     function applyBadgeCounts_(r){
       r = normalizePendingCounts_(r);
-      const approval = r.approvalCount || sum_(r.registrationCount, r.leaveCount, r.clockCorrectionCount, r.tempAttendanceCount, r.profileChangeCount, r.parttimeApprovalCount);
-      const teacher = 0; // 外聘老師外層不顯示來源不明數字，內層頁再顯示細項。
+      const teacher = r.externalTeacherContractPendingCount || 0;
+      const approval = r.approvalCount || sum_(r.registrationCount, r.leaveCount, r.clockCorrectionCount, r.tempAttendanceCount, r.profileChangeCount, r.parttimeApprovalCount, teacher);
       const items = sum_(r.taskCount, r.routineCount);
       setBadge('badge-approval', approval);
       setBadge('badge-teacher', teacher);

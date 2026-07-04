@@ -836,6 +836,72 @@ function queueBody(row = {}) {
   return queueTitle(row) || '您有一則新的通知。';
 }
 
+
+function queueTextBlob(row = {}) {
+  return [
+    row.source,
+    row.eventCode,
+    row.eventKey,
+    row.type,
+    row.notificationType,
+    row.featureCode,
+    row.title,
+    row.subject,
+    row.body,
+    row.text,
+    row.message,
+    row.content
+  ].map((v) => clean(v).toLowerCase()).filter(Boolean).join('|');
+}
+
+function isEmployeeClockAutoReminder(row = {}) {
+  const blob = queueTextBlob(row);
+  if (!blob) return false;
+  if (/clockauto|clock\.work|clock\.late|clock\.off|parttime\.hours|attendance.*reminder|punch.*reminder/.test(blob)) return true;
+  return /上班前提醒|上班後未打卡提醒|下班後未打卡提醒|表定下班時間提醒|上下班打卡自動提醒|上班打卡提醒|下班打卡提醒|請打上班卡|請打下班卡|未打上班卡|未打下班卡|工讀下班後未填時數/.test(blob);
+}
+
+function queueTargetEmployeeId(row = {}) {
+  return clean(row.targetEmployeeId || row.employeeId || row.employeeDocId || row.userId || row.uid || row['員工ID']);
+}
+
+async function queueTargetIsAdminOrManager(row = {}) {
+  const email = normalizeEmail(queueTargetEmail(row) || row.emailTo || row.to || row.loginEmail || '');
+  if (isBootstrapAdminEmail(email)) return true;
+
+  const employeeId = queueTargetEmployeeId(row);
+  if (employeeId === 'PRIMARY_MANAGER_LINE' || employeeId === DEFAULT_ADMIN_DOC_ID) return true;
+
+  const targetLine = queueTargetLineUserId(row);
+  if (targetLine) {
+    try {
+      const primaryLine = await getPrimaryManagerLineUserId();
+      if (primaryLine && primaryLine === targetLine) return true;
+    } catch (err) {
+      // ignore and continue with employee lookup
+    }
+  }
+
+  if (employeeId) {
+    try {
+      const snap = await db.collection('employees').doc(employeeId).get();
+      if (snap.exists) {
+        const data = snap.data() || {};
+        if (isManagerData(data, snap.id)) return true;
+        if (isBootstrapAdminEmail(data.email || data.Email || data.loginEmail || '')) return true;
+      }
+    } catch (err) {
+      // if lookup fails, do not block normal employee notifications
+    }
+  }
+  return false;
+}
+
+async function shouldSuppressQueueDelivery(row = {}) {
+  if (!isEmployeeClockAutoReminder(row)) return false;
+  return await queueTargetIsAdminOrManager(row);
+}
+
 function normalizeNotificationPreference(value, hasEmail) {
   const v = clean(value).toLowerCase();
   if (['email', 'email_only', 'email-only', 'mail', '只用email', '只用 email', '只用信箱', '信箱'].includes(v)) return 'email';
@@ -1050,6 +1116,30 @@ async function processNotificationQueueDoc(docRef, row, options = {}) {
   if (!['line', 'email'].includes(channel)) {
     await markQueue(docRef, { status: '發送失敗', lastError: `不支援的發送方式：${channel || '(空白)'}` });
     return { ok: false, skipped: true, reason: 'unsupported-channel' };
+  }
+
+  if (await shouldSuppressQueueDelivery(row)) {
+    await markQueue(docRef, {
+      queueId,
+      status: '已略過',
+      skippedAt: admin.firestore.FieldValue.serverTimestamp(),
+      skippedAtText: nowText(),
+      lastError: '管理者 / 主管帳號不接收員工上班打卡自動提醒。',
+      processor: options.processor || 'cloud-function',
+    });
+    await appendNotificationLog(queueId, {
+      status: '已略過',
+      channel,
+      provider: 'suppressed',
+      targetEmployeeId: queueTargetEmployeeId(row),
+      targetName: clean(row.targetName),
+      targetEmail: queueTargetEmail(row),
+      targetLineUserId: queueTargetLineUserId(row),
+      title: queueTitle(row),
+      body: queueBody(row),
+      reason: 'admin-manager-clock-reminder-suppressed',
+    });
+    return { ok: true, skipped: true, reason: 'admin-manager-clock-reminder-suppressed', queueId, channel };
   }
 
   await markQueue(docRef, {

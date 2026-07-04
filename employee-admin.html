@@ -216,17 +216,20 @@
       if(s) return s;
       const acc = lower(firstValue(e, ['accountStatus','帳號狀態']));
       const emp = lower(firstValue(e, ['employmentStatus','任職狀態']));
+      const statusText = lower(firstValue(e, ['status','狀態','contractStatus','profileStatus','externalTeacherStatus','latestExternalContractStatus']));
+      const progressText = clean(firstValue(e, ['progressStatus','latestExternalContractProgress']));
       const hidden = !!firstValue(e, ['hiddenFromActiveLists','隱藏於日常清單','hidden','隱藏']);
+      if(/submitted_pending_admin|pending|waiting|待審核|待確認|待主管確認|待管理端確認|等待/.test([acc,emp,statusText,progressText].join('|'))) return '待審核';
       if(emp === 'resigned' || emp === '離職') return '離職';
       if(acc === 'inactive') return hidden ? '停用 / 隱藏' : '停用';
       if(hidden) return '隱藏';
       return '在職';
     }
-    function canShowDaily(e){ return !/離職|停用|隱藏|封存|駁回/.test(statusLabel(e)); }
+    function canShowDaily(e){ return !/離職|停用|隱藏|封存|駁回|待審核|待確認|等待|pending/i.test(statusLabel(e)); }
 
     function isSystemRecord(e){
       const raw=rawOf(e);const id=empId(e);
-      return id==='PRIMARY_MANAGER_LINE' || lower(firstValue(e,['recordType']))==='system_setting' || lower(firstValue(e,['identityType']))==='system' || lower(raw.recordType)==='system_setting';
+      return id==='PRIMARY_MANAGER_LINE' || emailOf(e)==='danny700808@gmail.com' && (lower(firstValue(e,['identityType']))==='admin' || firstValue(e,['showSettingsZone'])===true || firstValue(e,['isAdmin'])===true) || lower(firstValue(e,['recordType']))==='system_setting' || lower(firstValue(e,['identityType']))==='system' || lower(raw.recordType)==='system_setting';
     }
     function employeeQuality(e){
       let score=canShowDaily(e)?100:20;

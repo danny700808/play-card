@@ -923,8 +923,8 @@ async function handleExternalTeacherLineEvent(event) {
   await db().runTransaction(async (tx) => {
     tx.set(bindingRef, { status: 'bound', lineUserId, lineDisplayName, boundAt: nowTs(), updatedAt: nowTs() }, { merge: true });
     const linePatch = {
-      employeeId: clean(profile.employeeId || profile.externalTeacherEmployeeId || binding.employeeId || ''),
-      externalTeacherEmployeeId: clean(profile.employeeId || profile.externalTeacherEmployeeId || binding.employeeId || ''),
+      employeeId: '',
+      externalTeacherEmployeeId: '',
       lineUserId,
       lineNotifyEnabled: true,
       lineBindStatus: 'bound',
@@ -941,7 +941,6 @@ async function handleExternalTeacherLineEvent(event) {
     tx.set(ref, linePatch, { merge: true });
     tx.set(db().collection('externalTeacherContracts').doc(teacherId), linePatch, { merge: true });
   });
-  await syncExternalTeacherEmployee(teacherId, Object.assign({}, profile, { contractId: teacherId, lineUserId, lineDisplayName, lineBindStatus: 'bound', lineNotifyEnabled: true, bindCode }));
 
   const nextUrl = externalTeacherContractUrl(teacherId, token || profile.onboardingToken || bindCode, false);
   await replyLineMessage(replyToken, `外聘老師 LINE 綁定完成 ✅\n\n您好 ${teacherName}，系統已完成您的 LINE 綁定。\n\n請點選下方下一步連結，繼續完成正式資料、身分證明文件與契約簽署。\n\n${nextUrl}`);
@@ -1299,8 +1298,8 @@ function registerExternalTeacherOnboarding(exportsObj) {
     const profileRow = {
       teacherId,
       id: teacherId,
-      employeeId: teacherId,
-      externalTeacherEmployeeId: teacherId,
+      employeeId: '',
+      externalTeacherEmployeeId: '',
       name,
       displayName: name,
       mobile,
@@ -1333,14 +1332,13 @@ function registerExternalTeacherOnboarding(exportsObj) {
     };
 
     await externalProfileRef(teacherId).set(profileRow, { merge: true });
-    await syncExternalTeacherEmployee(teacherId, profileRow);
 
     if (bindCode) {
       await db().collection('externalTeacherLineBindings').doc(bindCode).set({
         bindCode,
         teacherId,
-        employeeId: teacherId,
-        externalTeacherEmployeeId: teacherId,
+        employeeId: '',
+        externalTeacherEmployeeId: '',
         teacherName: name,
         mobile,
         email,
@@ -1463,7 +1461,6 @@ function registerExternalTeacherOnboarding(exportsObj) {
     if (identityFiles.length) update.identityFiles = admin.firestore.FieldValue.arrayUnion(...identityFiles);
 
     await externalProfileRef(teacherId).set(update, { merge: true });
-    await syncExternalTeacherEmployee(teacherId, Object.assign({}, profile, update));
     return { ok: true, payrollInfoStatus, paymentMethod, identityFiles, ...dates };
   });
 
@@ -1500,8 +1497,8 @@ function registerExternalTeacherOnboarding(exportsObj) {
     const contractDoc = {
       contractId,
       teacherId,
-      employeeId: clean(profile.employeeId || profile.externalTeacherEmployeeId || teacherId),
-      externalTeacherEmployeeId: clean(profile.employeeId || profile.externalTeacherEmployeeId || teacherId),
+      employeeId: '',
+      externalTeacherEmployeeId: '',
       teacherName: clean(profile.name || profile.displayName || ''),
       profileRef: `externalTeacherProfiles/${teacherId}`,
       templateId: template.id,
@@ -1523,7 +1520,8 @@ function registerExternalTeacherOnboarding(exportsObj) {
       bindingMethod: profile.bindingMethod || '',
       lineUserId: clean(profile.lineUserId || ''),
       email: clean(profile.email || ''),
-      status: 'active',
+      status: 'submitted_pending_admin',
+      progressStatus: '老師已送出，等待管理端確認',
       signedAt: nowTs(),
       signedAtText: todayKey(),
       createdAt: nowTs(),
@@ -1532,7 +1530,7 @@ function registerExternalTeacherOnboarding(exportsObj) {
 
     await db().collection('externalTeacherContracts').doc(contractId).set(contractDoc);
     await ref.set({
-      contractStatus: 'signed',
+      contractStatus: 'submitted_pending_admin',
       currentContractId: contractId,
       currentContractRocYear: dates.contractRocYear,
       contractGregorianYear: dates.contractGregorianYear,
@@ -1542,31 +1540,21 @@ function registerExternalTeacherOnboarding(exportsObj) {
       contractEndDate: dates.contractEndDate,
       signedAt: nowTs(),
       signedAtText: todayKey(),
-      profileStatus: 'active',
-      status: 'active',
+      profileStatus: 'submitted_pending_admin',
+      status: 'submitted_pending_admin',
       updatedAt: nowTs()
     }, { merge: true });
-    await syncExternalTeacherEmployee(teacherId, Object.assign({}, profile, {
-      contractStatus: 'signed',
-      currentContractId: contractId,
-      status: 'active',
-      contractGregorianYear: dates.contractGregorianYear,
-      contractRocYear: dates.contractRocYear,
-      contractYearKey: dates.contractYearKey,
-      contractStartDate: dates.contractStartDate,
-      contractEndDate: dates.contractEndDate
-    }));
 
-    const completeBody = `外聘老師資料與契約簽署已完成 ✅\n\n柚子樂器已收到您的資料與簽名。\n\n合約年度：民國 ${dates.contractRocYear} 年\n契約期間：${dates.contractStartDate} 至 ${dates.contractEndDate}`;
+    const completeBody = `外聘老師資料與契約簽署已完成 ✅\n\n柚子樂器已收到您的資料與簽名，目前等待管理端確認契約生效。\n\n合約年度：民國 ${dates.contractRocYear} 年\n契約期間：${dates.contractStartDate} 至 ${dates.contractEndDate}`;
     if (wantsLine(profile.bindingMethod) && profile.lineUserId) await pushLineMessage(profile.lineUserId, completeBody);
     if (wantsEmail(profile.bindingMethod) && profile.email) {
       await queueTeacherEmail({ teacherId, email: profile.email, title: `柚子樂器外聘老師 ${dates.contractRocYear} 年契約簽署完成`, body: `${completeBody}\n\n契約檔案：${contractHtmlFile.downloadUrl}`, source: 'external-teacher-contract-completed' });
     }
     if (clean(profile.payrollInfoStatus || 'pending') === 'pending' && profile.lineUserId) {
-      await pushLineMessage(profile.lineUserId, `提醒您：您的薪資／匯款資料目前尚未補填。\n\n這不影響本次契約簽署完成，但為方便後續鐘點費結算，請之後點選連結補填銀行帳戶資料。\n\n${payrollUrl(teacherId, token || profile.onboardingToken)}`);
+      await pushLineMessage(profile.lineUserId, `提醒您：您的薪資／匯款資料目前尚未補填。\n\n這不影響本次資料送出；待管理端確認後，為方便後續鐘點費結算，請之後點選連結補填銀行帳戶資料。\n\n${payrollUrl(teacherId, token || profile.onboardingToken)}`);
     }
 
-    await pushAdminMessage(`外聘老師簽約完成\n\n姓名：${clean(profile.name || '')}\n合約年度：民國 ${dates.contractRocYear} 年\n契約期間：${dates.contractStartDate} 至 ${dates.contractEndDate}\n\n管理端：${contractAdminUrl()}`);
+    await pushAdminMessage(`外聘老師已送出契約，等待確認\n\n姓名：${clean(profile.name || '')}\n合約年度：民國 ${dates.contractRocYear} 年\n契約期間：${dates.contractStartDate} 至 ${dates.contractEndDate}\n\n管理端：${contractAdminUrl()}`);
 
     return { ok: true, contractId, contractHtmlFile, contractHtmlUrl: contractHtmlFile.downloadUrl, ...dates };
   });
