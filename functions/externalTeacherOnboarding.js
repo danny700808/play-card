@@ -150,8 +150,10 @@ function contractAdminUrl() {
 }
 
 function externalTeacherApprovalUrl(contractId = '') {
-  const qs = contractId ? `?from=approval&contractId=${encodeURIComponent(contractId)}` : '?from=approval';
-  return `${webBaseUrl()}external-teacher-admin.html${qs}`;
+  const qs = contractId
+    ? `?target=externalTeacherContract&contractId=${encodeURIComponent(contractId)}`
+    : '?target=externalTeacherContract';
+  return `${webBaseUrl()}approval-hub.html${qs}`;
 }
 
 function isAdminToken(request) {
@@ -1641,7 +1643,7 @@ function registerExternalTeacherOnboarding(exportsObj) {
 合約年度：民國 ${dates.contractRocYear} 年
 契約期間：${dates.contractStartDate} 至 ${dates.contractEndDate}
 
-請由簽核確認契約生效：
+簽核連結（外聘老師合約確認）：
 ${externalTeacherApprovalUrl(contractId)}`);
 
     return { ok: true, contractId, contractHtmlFile, contractHtmlUrl: contractHtmlFile.downloadUrl, ...dates };

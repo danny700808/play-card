@@ -442,7 +442,7 @@
       const approval = r.approvalCount || sum_(r.registrationCount, r.leaveCount, r.clockCorrectionCount, r.tempAttendanceCount, r.profileChangeCount, r.parttimeApprovalCount, teacher);
       const items = sum_(r.taskCount, r.routineCount);
       setBadge('badge-approval', approval);
-      setBadge('badge-teacher', teacher);
+      setBadge('badge-teacher', 0);
       setBadge('badge-application', r.applicationCount);
       setBadge('badge-items', items);
       setBadge('badge-hr-payroll', r.salaryCount);

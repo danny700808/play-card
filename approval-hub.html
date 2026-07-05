@@ -50,6 +50,12 @@
   <script>
     
     async function init(){
+      const params=new URLSearchParams(location.search);
+      if(params.get('target')==='externalTeacherContract'){
+        const cid=params.get('contractId')||'';
+        location.replace('external-teacher-admin.html?from=approval'+(cid?'&contractId='+encodeURIComponent(cid):''));
+        return;
+      }
       fillHeader();
       const user=requireLogin();
       if(!user) return;
