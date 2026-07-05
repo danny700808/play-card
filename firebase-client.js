@@ -5668,8 +5668,17 @@
     }));
     return {ok:true,rows,employees:rows,list:rows,source:'firebase-employee-master-active-filter'};
   }
+  function externalConfirmedForManagement(row){
+    row=row||{};
+    const type=lower(row.identityType||row.employeeType||row.identityLabel||row.role||'');
+    const isExternal=row.isExternalTeacher===true||type.indexOf('external')>=0||type.indexOf('外聘')>=0;
+    if(!isExternal) return true;
+    const statusText=lower([row.latestExternalContractStatus,row.contractStatus,row.externalTeacherStatus,row.status,row.profileStatus,row.accountStatus].join('|'));
+    const progressText=lower([row.latestExternalContractProgress,row.progressStatus].join('|'));
+    return /active|confirmed|contract_effective|已確認|契約生效|管理端已確認/.test(statusText+'|'+progressText);
+  }
   async function getEmployeeManagementData(payload){
-    const allRows=(await employeeRows(Object.assign({}, payload||{}, {includeAll:true}))).filter(r=>r.id || r.email);
+    const allRows=(await employeeRows(Object.assign({}, payload||{}, {includeAll:true}))).filter(r=>r.id || r.email).filter(externalConfirmedForManagement);
     const keyword=lower(payload && payload.keyword);
     const mode=clean(payload && payload.statusMode) || 'active';
     let rows=allRows.filter(r=>matchesKeyword(r,keyword));

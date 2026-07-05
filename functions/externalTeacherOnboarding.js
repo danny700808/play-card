@@ -815,17 +815,32 @@ function renderContractText({ profile, template, clauses, contractStartDate, con
   return text;
 }
 
-function contractHtml(contractText, signatureUrl) {
-  const escaped = String(contractText || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const signature = signatureUrl ? `\n\n乙方簽名：\n<img src="${signatureUrl}" style="max-width:320px;border:1px solid #ccc;padding:8px;background:#fff">` : '';
-  return `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>外聘才藝教師委任契約書</title></head><body style="font-family:-apple-system,BlinkMacSystemFont,'Noto Sans TC','Microsoft JhengHei',sans-serif;line-height:1.85;padding:32px;white-space:pre-wrap;color:#111">${escaped}${signature}</body></html>`;
+function contractHtml(contractText, signatureUrl, identityFiles = [], profile = {}) {
+  const htmlEsc = (value) => String(value == null ? '' : value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const attrEsc = htmlEsc;
+  const text = htmlEsc(contractText || '');
+  const teacherName = htmlEsc(profile.name || profile.displayName || profile.teacherName || '外聘老師');
+  const idNumber = htmlEsc(profile.idNumber || profile.identityNumber || profile.nationalId || '');
+  const mobile = htmlEsc(profile.mobile || profile.mobilePhone || profile.phone || '');
+  const identityUrls = (Array.isArray(identityFiles) ? identityFiles : [])
+    .map((f) => clean(f.downloadUrl || f.url || f.fileUrl || f.storageUrl || ''))
+    .filter(Boolean);
+  const signatureHtml = signatureUrl
+    ? `<img class="signature-img" src="${attrEsc(signatureUrl)}" alt="乙方簽名">`
+    : '<div class="signature-demo">乙方線上簽名</div>';
+  const identityHtml = identityUrls.length
+    ? `<div class="identity-doc-block"><div class="identity-doc-title">乙方身分證明文件／證件照片：</div>${identityUrls.map((u, i) => `<img class="identity-doc-img" src="${attrEsc(u)}" alt="乙方身分證明文件${i + 1}">`).join('')}</div>`
+    : '<div class="identity-doc-note">乙方身分證明文件／證件照片已隨契約資料保存。</div>';
+  return `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>外聘才藝教師委任契約書</title><style>
+body{margin:0;background:#e9e1d6;color:#111}.print-page{padding:20px 0 32px}.a4{width:210mm;min-height:297mm;background:#fff;margin:0 auto;padding:18mm 16mm;box-sizing:border-box;color:#111;font-family:"Noto Serif TC","標楷體","PMingLiU",serif;font-size:13.2px;line-height:1.72;position:relative}.a4 h2{text-align:center;font-size:24px;margin:0 0 12px;letter-spacing:2px}.party{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:10px 0 12px}.party-box{border:1px solid #ddd;padding:10px;border-radius:8px;min-height:80px}.contract-body{white-space:pre-wrap}.sign-row{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:24px;align-items:start}.sign-box{border-top:1px solid #333;padding-top:10px;min-height:105px;position:relative}.identity-row{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:8px;align-items:start}.signature-demo{height:54px;border:1px dashed #aaa;border-radius:8px;margin-top:10px;display:flex;align-items:center;justify-content:center;color:#777;background:#fafafa}.signature-img{max-height:70px;max-width:220px;display:block;margin-top:8px}.identity-doc-block{margin-top:12px;border-top:1px dashed #bbb;padding-top:10px}.identity-doc-title{font-weight:900;margin-bottom:6px}.identity-doc-img{display:block;max-width:100%;max-height:170px;margin-top:8px;border:1px solid #ccc;border-radius:8px;object-fit:contain}.identity-doc-note{margin-top:8px;color:#777;font-size:12px;line-height:1.6}@page{size:A4;margin:0}@media print{body{background:#fff}.print-page{padding:0}.a4{box-shadow:none;margin:0}}@media(max-width:760px){.print-page{padding:10px}.a4{width:100%;min-height:auto;padding:18mm 12mm;font-size:12.5px}.party,.sign-row,.identity-row{grid-template-columns:1fr 1fr}}
+</style></head><body><div class="print-page"><div class="a4"><h2>外聘才藝教師委任契約書</h2><div class="party"><div class="party-box"><b>甲方</b><br>臺中市私立凱立音樂短期補習班<br>代表人：黃銘廷<br>地址：依補習班登記資料</div><div class="party-box"><b>乙方</b><br>外聘老師姓名：${teacherName}<br>身分證字號：${idNumber || '＿＿＿＿＿＿'}<br>電話：${mobile || '＿＿＿＿＿＿'}</div></div><div class="contract-body">${text}</div><div class="sign-row"><div class="sign-box">甲方：臺中市私立凱立音樂短期補習班<br>代表人：黃銘廷</div><div class="sign-box">乙方：${teacherName}${signatureHtml}</div></div><div class="identity-row"><div></div><div>${identityHtml}</div></div><div style="margin-top:20px">簽署日期：${htmlEsc(todayKey())}</div></div></div></body></html>`;
 }
 
-async function saveContractHtml({ teacherId, contractRocYear, contractId, contractText, signatureUrl }) {
+async function saveContractHtml({ teacherId, contractRocYear, contractId, contractText, signatureUrl, identityFiles, profile }) {
   const token = crypto.randomUUID();
   const storagePath = `external-teachers/${teacherId}/${contractRocYear}/contracts/${contractId}.html`;
   const file = bucket().file(storagePath);
-  await file.save(contractHtml(contractText, signatureUrl), {
+  await file.save(contractHtml(contractText, signatureUrl, identityFiles, profile), {
     resumable: false,
     metadata: {
       contentType: 'text/html; charset=utf-8',
@@ -837,7 +852,7 @@ async function saveContractHtml({ teacherId, contractRocYear, contractId, contra
     fileName: `${contractId}.html`,
     storagePath,
     downloadUrl: `https://firebasestorage.googleapis.com/v0/b/${bucket().name}/o/${encodeURIComponent(storagePath)}?alt=media&token=${token}`,
-    mimeType: 'text/html'
+    mimeType: 'text/html; charset=utf-8'
   };
 }
 
@@ -1491,7 +1506,7 @@ function registerExternalTeacherOnboarding(exportsObj) {
     });
     await recordExternalTeacherFile({ teacherId, contractId, contractRocYear: dates.contractRocYear, contractYearKey: dates.contractYearKey, fileType: 'signature', ...signatureFile });
 
-    const contractHtmlFile = await saveContractHtml({ teacherId, contractRocYear: dates.contractRocYear, contractId, contractText, signatureUrl: signatureFile.downloadUrl });
+    const contractHtmlFile = await saveContractHtml({ teacherId, contractRocYear: dates.contractRocYear, contractId, contractText, signatureUrl: signatureFile.downloadUrl, identityFiles, profile });
     await recordExternalTeacherFile({ teacherId, contractId, contractRocYear: dates.contractRocYear, contractYearKey: dates.contractYearKey, fileType: 'signedContractHtml', ...contractHtmlFile });
 
     const contractDoc = {

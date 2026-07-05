@@ -203,6 +203,13 @@
       return 'staff';
     }
     function identityText(type){ return type === 'parttime' ? '工讀生' : (type === 'external' ? '外聘老師' : '專職人員'); }
+    function externalConfirmedForEmployeeAdmin(e){
+      if(identityType(e) !== 'external') return true;
+      const statusText = lower(firstValue(e, ['latestExternalContractStatus','contractStatus','externalTeacherStatus','status','profileStatus','accountStatus']));
+      const progressText = lower(firstValue(e, ['latestExternalContractProgress','progressStatus']));
+      const hay = [statusText, progressText].join('|');
+      return /active|confirmed|contract_effective|已確認|契約生效|管理端已確認/.test(hay);
+    }
     function typeClass(type){ return type === 'parttime' ? 'orange' : (type === 'external' ? 'blue' : 'green'); }
     function boolLabel(v){
       if(v === true) return '啟用';
@@ -267,7 +274,7 @@
       }catch(err){
         console.warn('薪資投保資料讀取失敗，員工管理仍會先顯示基本資料', err);
       }
-      const mergedRows = (res.rows || []).map(function(row){ return mergeSalaryIntoEmployee(row, salaryMap); });
+      const mergedRows = (res.rows || []).map(function(row){ return mergeSalaryIntoEmployee(row, salaryMap); }).filter(externalConfirmedForEmployeeAdmin);
       const cleaned=dedupeEmployees(mergedRows.filter(e => empId(e) || emailOf(e)));
       allEmployees = cleaned.rows;
       const duplicateCount=Math.max(cleaned.duplicateCount,Array.isArray(res.duplicateGroups)?res.duplicateGroups.length:0);
