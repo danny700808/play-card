@@ -149,6 +149,11 @@ function contractAdminUrl() {
   return `${webBaseUrl()}external-teacher-admin.html`;
 }
 
+function externalTeacherApprovalUrl(contractId = '') {
+  const qs = contractId ? `?from=approval&contractId=${encodeURIComponent(contractId)}` : '?from=approval';
+  return `${webBaseUrl()}external-teacher-admin.html${qs}`;
+}
+
 function isAdminToken(request) {
   const token = request && request.auth && request.auth.token;
   if (!token) return false;
@@ -1196,6 +1201,8 @@ async function ensureRenewalContractDraft(profileId, profile = {}, targetYear) {
     contractStartDate: `${targetYear}-01-01`,
     contractEndDate: `${targetYear}-12-31`,
     nextRenewalOpenDate: renewalOpenDateForTargetYear(Number(targetYear) + 1),
+    renewalDueDate: `${targetYear}-01-01`,
+    renewalOverdue: false,
     lineUserId,
     lineBindStatus,
     emailBindStatus,
@@ -1206,6 +1213,18 @@ async function ensureRenewalContractDraft(profileId, profile = {}, targetYear) {
     source: 'external-teacher-annual-renewal-reminder'
   };
   await ref.set(row, { merge: true });
+
+  if (employeeId) {
+    await db().collection('employees').doc(employeeId).set({
+      nextExternalContractId: contractId,
+      nextExternalContractRocYear: rocYear(targetYear),
+      nextExternalContractGregorianYear: Number(targetYear),
+      nextExternalContractStatus: status,
+      externalContractRenewalStatus: status,
+      externalContractRenewalUpdatedAt: nowTs(),
+      updatedAt: nowTs()
+    }, { merge: true }).catch(() => null);
+  }
 
   if (wantsLine(method) && !lineBound) {
     await db().collection('externalTeacherLineBindings').doc(code).set({
@@ -1284,6 +1303,53 @@ async function queueExternalTeacherRenewalNotice({ profileId, profile, targetYea
     sentChannels.push('email');
   }
   return sentChannels;
+}
+
+function isUnsignedRenewalContract(row = {}) {
+  const s = lower(row.status || row.contractStatus || row.profileStatus || '');
+  return ['waiting_contract', 'waiting_bindings', 'unsigned', 'overdue_unsigned'].includes(s) || /等待.*簽署|未簽/.test(s);
+}
+
+async function markRenewalOverdueIfNeeded({ contractId, profileId, employeeId, targetYear, today }) {
+  if (!contractId || !targetYear || daysBetweenYmd(`${targetYear}-01-01`, today) < 0) return false;
+  const ref = db().collection('externalTeacherContracts').doc(contractId);
+  const snap = await ref.get().catch(() => null);
+  if (!snap || !snap.exists) return false;
+  const row = snap.data() || {};
+  if (!isUnsignedRenewalContract(row)) return false;
+  const patch = {
+    status: 'overdue_unsigned',
+    contractStatus: 'overdue_unsigned',
+    progressStatus: '逾期未簽署，請重新通知老師',
+    renewalOverdue: true,
+    overdueSince: `${targetYear}-01-01`,
+    overdueMarkedAt: nowTs(),
+    updatedAt: nowTs()
+  };
+  await ref.set(patch, { merge: true });
+  const empId = clean(employeeId || row.employeeId || row.externalTeacherEmployeeId || '');
+  if (empId) {
+    await db().collection('employees').doc(empId).set({
+      nextExternalContractId: contractId,
+      nextExternalContractRocYear: rocYear(targetYear),
+      nextExternalContractGregorianYear: Number(targetYear),
+      nextExternalContractStatus: 'overdue_unsigned',
+      externalContractRenewalStatus: 'overdue_unsigned',
+      externalContractRenewalUpdatedAt: nowTs(),
+      updatedAt: nowTs()
+    }, { merge: true }).catch(() => null);
+  }
+  const baseId = clean(profileId || row.baseTeacherProfileId || '');
+  if (baseId) {
+    await db().collection('externalTeacherProfiles').doc(baseId).set({
+      nextExternalContractId: contractId,
+      nextExternalContractRocYear: rocYear(targetYear),
+      nextExternalContractStatus: 'overdue_unsigned',
+      contractRenewalStatus: 'overdue_unsigned',
+      updatedAt: nowTs()
+    }, { merge: true }).catch(() => null);
+  }
+  return true;
 }
 
 function registerExternalTeacherOnboarding(exportsObj) {
@@ -1569,7 +1635,14 @@ function registerExternalTeacherOnboarding(exportsObj) {
       await pushLineMessage(profile.lineUserId, `提醒您：您的薪資／匯款資料目前尚未補填。\n\n這不影響本次資料送出；待管理端確認後，為方便後續鐘點費結算，請之後點選連結補填銀行帳戶資料。\n\n${payrollUrl(teacherId, token || profile.onboardingToken)}`);
     }
 
-    await pushAdminMessage(`外聘老師已送出契約，等待確認\n\n姓名：${clean(profile.name || '')}\n合約年度：民國 ${dates.contractRocYear} 年\n契約期間：${dates.contractStartDate} 至 ${dates.contractEndDate}\n\n管理端：${contractAdminUrl()}`);
+    await pushAdminMessage(`外聘老師已送出契約，等待確認
+
+姓名：${clean(profile.name || '')}
+合約年度：民國 ${dates.contractRocYear} 年
+契約期間：${dates.contractStartDate} 至 ${dates.contractEndDate}
+
+請由簽核確認契約生效：
+${externalTeacherApprovalUrl(contractId)}`);
 
     return { ok: true, contractId, contractHtmlFile, contractHtmlUrl: contractHtmlFile.downloadUrl, ...dates };
   });
@@ -1715,6 +1788,7 @@ function registerExternalTeacherOnboarding(exportsObj) {
         if (await hasSignedContractForYear(doc.id, profile, targetYear)) { skipped++; continue; }
         if (!shouldSendRenewalReminder(profile, targetYear, today)) { skipped++; continue; }
         const link = await ensureRenewalContractDraft(doc.id, profile, targetYear);
+        await markRenewalOverdueIfNeeded({ contractId: link.contractId, profileId: doc.id, employeeId: clean(profile.employeeId || profile.externalTeacherEmployeeId || ''), targetYear, today });
         const channels = await queueExternalTeacherRenewalNotice({ profileId: doc.id, profile, targetYear, link });
         if (!channels.length) { skipped++; continue; }
         const state = (profile.renewalReminderState && profile.renewalReminderState[String(targetYear)]) || {};

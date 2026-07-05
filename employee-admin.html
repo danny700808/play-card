@@ -210,6 +210,16 @@
       const hay = [statusText, progressText].join('|');
       return /active|confirmed|contract_effective|已確認|契約生效|管理端已確認/.test(hay);
     }
+    function externalContractStatusLabel(e){
+      const year = firstValue(e, ['nextExternalContractRocYear','latestExternalContractYear','contractRocYear']);
+      const raw = lower(firstValue(e, ['externalContractRenewalStatus','nextExternalContractStatus','latestExternalContractStatus','contractStatus']));
+      const prefix = year ? `民國 ${year} 年：` : '';
+      if(/overdue_unsigned|逾期|未簽/.test(raw)) return {text:prefix+'逾期未簽署', tone:'bad'};
+      if(/waiting_contract|waiting_bindings|unsigned|等待/.test(raw)) return {text:prefix+'等待老師簽署', tone:'warn'};
+      if(/submitted_pending_admin|待確認|待主管確認/.test(raw)) return {text:prefix+'待主管確認', tone:'warn'};
+      if(/active|confirmed|已確認|契約生效/.test(raw)) return {text:prefix+'契約生效', tone:'ok'};
+      return {text:prefix+'尚無年度合約狀態', tone:'warn'};
+    }
     function typeClass(type){ return type === 'parttime' ? 'orange' : (type === 'external' ? 'blue' : 'green'); }
     function boolLabel(v){
       if(v === true) return '啟用';
@@ -408,6 +418,7 @@
       const identityVerified=firstValue(e,['identityDocumentVerified','identityVerificationStatus'])===true || clean(firstValue(e,['identityVerificationStatus']))==='verified';
       const salaryReady=clean(mainAmount)!=='' && clean(laborStatus)!=='' && clean(healthStatus)!=='';
       const scheduleText=type==='external'?'不適用':(schedule.templateName||firstValue(e,['currentScheduleTemplateName'])||'尚未設定');
+      const externalContractStatus=type==='external'?externalContractStatusLabel(e):null;
       const dataSource=firstValue(e,['registrationApplicationId'])?'註冊審核暨入職建檔':'既有人員主檔';
 
       $('#detailPanel').innerHTML = `
@@ -446,6 +457,7 @@
           ${summaryCard('身分驗證', identityVerified?'已核對':'尚未完成',identityVerified?'ok':'warn')}
           ${summaryCard('目前班表', scheduleText,type==='external'||scheduleText!=='尚未設定'?'ok':'warn')}
           ${summaryCard('薪資投保', type==='external'?'不適用':(salaryReady?'已設定':'尚未完成'),type==='external'||salaryReady?'ok':'warn')}
+          ${type==='external'?summaryCard('年度合約', externalContractStatus.text, externalContractStatus.tone):''}
           ${summaryCard('LINE 綁定', firstValue(e,['lineUserId','LINE User ID'])?'已綁定':'尚未綁定',firstValue(e,['lineUserId','LINE User ID'])?'ok':'warn')}
           ${summaryCard('帳號狀態', status,canShowDaily(e)?'ok':'bad')}
         </div>
