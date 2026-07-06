@@ -61,7 +61,7 @@
       const msgBox = document.getElementById('msg') || document.getElementById('statusMsg') || document.createElement('div');
       msgBox.className = 'msg ok';
       msgBox.style.marginTop = '12px';
-      msgBox.innerHTML = '已收到您的身分證字號、證明文件與合約簽名。';
+      msgBox.innerHTML = '已收到您的身分證字號、證明文件與合約簽名。請依收到的付款資訊完成付款，柚子樂器確認款項後才會成立正式契約。';
       if(!msgBox.parentNode) document.body.prepend(msgBox);
       const submitBtn = document.querySelector('button[type="submit"], #submitBtn, #submitSignBtn');
       if(submitBtn) {
@@ -92,7 +92,7 @@ let signed=false; let watermarkedIdImage='';
 正式完成「付款」與「安裝／交付」後，會傳送給您「正式的契約」。`
     const FORMAL_RECEIVED_MESSAGE = PAYMENT_INFO_TEXT;
     function paymentInfoHtml(){ return `<div class="paymentNotice">${R.esc(PAYMENT_INFO_TEXT).replace(/\n/g,'<br>')}</div>`; }
-    function successHtml(){ return '<div class="msg ok">已收到您的身分證字號、證明文件與合約簽名。</div>'; }
+    function successHtml(){ return '<div class="msg ok">已收到您的身分證字號、證明文件與合約簽名。請依收到的付款資訊完成付款，柚子樂器確認款項後才會成立正式契約。</div>'; }
     function closeDialog(){ R.qs('dialogMask').style.display='none'; }
     window.closeDialog=closeDialog;
     function showDialog(title, html){
@@ -363,7 +363,7 @@ let signed=false; let watermarkedIdImage='';
           customerSubmittedFormalAt:submittedAt,
           customerSignedAt:submittedAt,
           formalReceivedNoticeText:FORMAL_RECEIVED_MESSAGE,
-          status:'待店家確認',
+          status:'待付款確認',
           updatedAtText:submittedAt
         }, assetUpdates||{}), {merge:true});
 
@@ -393,7 +393,7 @@ let signed=false; let watermarkedIdImage='';
         await queueFormalReceivedNotice(assetUpdates);
 
         finishProgress();
-        showDialog('', '已收到您的身分證字號、證明文件與合約簽名。');
+        showDialog('', '已收到您的身分證字號、證明文件與合約簽名。請依收到的付款資訊完成付款，柚子樂器確認款項後才會成立正式契約。');
         await load(); window.scrollTo({top:0,behavior:'smooth'});
       }catch(err){
         resetProgressButton();
