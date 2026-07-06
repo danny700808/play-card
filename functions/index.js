@@ -992,6 +992,13 @@ async function createCustomerNotificationQueues({ row, title, body, source, cont
 }
 
 
+function lineImageUrlFromQueue(row = {}) {
+  const url = clean(row.lineImageUrl || row.paymentImageUrl || row.imageUrl || row.imageOriginalUrl || row.originalContentUrl);
+  if (!url) return '';
+  if (!/^https:\/\//i.test(url)) return '';
+  return url;
+}
+
 async function sendLinePush(row) {
   const to = queueTargetLineUserId(row);
   if (!to) throw new Error('缺少 LINE User ID，無法發送 LINE。');
@@ -1003,6 +1010,16 @@ async function sendLinePush(row) {
   const body = queueBody(row);
   const directLineText = clean(row.lineText || row.lineMessage || row.lineBody);
   const text = directLineText || (title && body && title !== body ? `${title}\n${body}` : (body || title || '柚子樂器通知'));
+  const messages = [{ type: 'text', text: text.slice(0, 4900) }];
+  const imageUrl = lineImageUrlFromQueue(row);
+  if (imageUrl) {
+    messages.push({
+      type: 'image',
+      originalContentUrl: imageUrl,
+      previewImageUrl: clean(row.linePreviewImageUrl || row.previewImageUrl) || imageUrl,
+    });
+  }
+
   const response = await fetch('https://api.line.me/v2/bot/message/push', {
     method: 'POST',
     headers: {
@@ -1011,7 +1028,7 @@ async function sendLinePush(row) {
     },
     body: JSON.stringify({
       to,
-      messages: [{ type: 'text', text: text.slice(0, 4900) }],
+      messages,
     }),
   });
   const responseText = await response.text();
