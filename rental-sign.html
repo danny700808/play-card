@@ -72,26 +72,59 @@
  const params=new URLSearchParams(location.search); const contractId=params.get('contractId')||''; const token=params.get('token')||''; let contract=null; 
         if(hasSubmittedIdentityAndSignature(contract)){ showAlreadySubmitted(contract); }
 let signed=false; let watermarkedIdImage='';
-    const PAYMENT_INFO_TEXT = `資料無誤後，我們會依約定時間到府安裝／自取自載。
+    const PAYMENT_IMAGE_URL = 'https://danny700808.github.io/play-card/rental-payment-info.jpg';
+    function moneyNumber(){
+      for(const value of arguments){
+        const raw=R.clean(value);
+        if(!raw) continue;
+        const n=Number(raw.replace(/,/g,'').replace(/[^0-9.-]/g,''));
+        if(Number.isFinite(n)) return n;
+      }
+      return 0;
+    }
+    function moneyText(n){
+      const value=Number(n)||0;
+      return value.toLocaleString('zh-TW')+' 元';
+    }
+    function buildPaymentInfoText(row){
+      const c=row||{};
+      const rent=moneyNumber(c.rentFee,c.rentalFee,c.rentAmount,c.rentalAmount,c.periodRentFee,c.price);
+      const deposit=moneyNumber(c.depositFee,c.deposit,c.depositAmount,c.depositMoney);
+      const shipping=moneyNumber(c.shippingFee,c.deliveryFee,c.freight,c.transportFee,c.shippingAmount);
+      const total=rent+deposit+shipping;
+      const contractNo=R.clean(c.contractNo||c.contractId||contractId);
+      const equipment=R.clean(c.equipmentName||c.rentalItem||c.equipmentCategory||c.rentalType)||'租賃設備';
+      return `柚子樂器租賃付款資訊
+
+您的租賃資料已完成補填，請依下方金額完成付款。
+
+契約編號：${contractNo||'未填'}
+租用設備：${equipment}
+
+本期租金：${moneyText(rent)}
+押金：${moneyText(deposit)}
+運費：${moneyText(shipping)}
+
+應付款總額：${moneyText(total)}
 
 付款方式可擇一：
 
-1. 先行匯款
-    銀行：台新國際商業銀行
-    銀行代碼：812
-    分行：敦南分行
-    分行代碼：0023
-    戶名：黃銘廷
-    帳號：28881010149129
+【方式一｜先行匯款】
+台新銀行（812）敦南分行（0023）
+戶名：黃銘廷
+帳號：2888-1010-149-129
 
-完成匯款後，「截圖匯款資訊貼在官方聊天記錄」
+匯款完成後，請將匯款截圖回傳至柚子樂器官方 LINE。
+我們確認款項後，會正式成立租賃契約並提供正式契約連結。
 
-2. 現場付款
-    可於安裝／自取當下完成付款。
+【方式二｜現場付款】
+若選擇現場付款，請於到府安裝或自取交付時完成付款。
+店家確認付款後，租賃契約正式成立。
 
-正式完成「付款」與「安裝／交付」後，會傳送給您「正式的契約」。`
-    const FORMAL_RECEIVED_MESSAGE = PAYMENT_INFO_TEXT;
-    function paymentInfoHtml(){ return `<div class="paymentNotice">${R.esc(PAYMENT_INFO_TEXT).replace(/\n/g,'<br>')}</div>`; }
+提醒：款項確認前，租賃契約尚未正式成立。`;
+    }
+    function currentPaymentInfoText(row){ return buildPaymentInfoText(row||contract||{}); }
+    function paymentInfoHtml(){ return `<div class="paymentNotice">${R.esc(currentPaymentInfoText(contract||{})).replace(/\n/g,'<br>')}<br><br><img src="${PAYMENT_IMAGE_URL}" alt="柚子樂器收款帳號" style="max-width:100%;border-radius:14px;border:1px solid #cbd5e1"></div>`; }
     function successHtml(){ return '<div class="msg ok">已收到您的身分證字號、證明文件與合約簽名。請依收到的付款資訊完成付款，柚子樂器確認款項後才會成立正式契約。</div>'; }
     function closeDialog(){ R.qs('dialogMask').style.display='none'; }
     window.closeDialog=closeDialog;
@@ -286,6 +319,7 @@ let signed=false; let watermarkedIdImage='';
     async function queueFormalReceivedNotice(assetUpdates){
       try{
         const fresh = await R.get('rentalContracts', contractId) || contract || {};
+        const paymentMessage = currentPaymentInfoText(fresh);
         const pref = R.notificationPreference(fresh.notificationPreference||fresh.preferredContactMethod, fresh.customerEmail);
         const lineId = R.clean(fresh.customerLineUserId || fresh.lineUserId);
         const email = R.clean(fresh.customerEmail);
@@ -296,9 +330,11 @@ let signed=false; let watermarkedIdImage='';
           targetName: R.clean(fresh.customerName || fresh.partyAName),
           targetEmail: email,
           title: '租賃付款資訊',
-          body: FORMAL_RECEIVED_MESSAGE,
-          message: FORMAL_RECEIVED_MESSAGE,
-          lineText: FORMAL_RECEIVED_MESSAGE,
+          body: paymentMessage,
+          message: paymentMessage,
+          lineText: paymentMessage,
+          lineImageUrl: PAYMENT_IMAGE_URL,
+          paymentImageUrl: PAYMENT_IMAGE_URL,
           status: '待發送',
           sendAfterAt: sendAfterAt,
           sendAfterMs: 15000,
@@ -321,7 +357,7 @@ let signed=false; let watermarkedIdImage='';
           emailQueued=true;
         }
         await R.db().collection('rentalContracts').doc(contractId).set(Object.assign({
-          formalReceivedNoticeText: FORMAL_RECEIVED_MESSAGE,
+          formalReceivedNoticeText: paymentMessage,
           formalReceivedNoticeQueuedAt: R.nowText(),
           formalReceivedNoticeDelayMs: 15000,
           formalReceivedLineQueued: lineQueued,
@@ -342,6 +378,7 @@ let signed=false; let watermarkedIdImage='';
       setProgress(10);
       try{
         const submittedAt=R.nowText();
+        const submittedPaymentMessage=currentPaymentInfoText(contract||{});
         setProgress(20);
         let assetUpdates={};
         try{
@@ -362,7 +399,7 @@ let signed=false; let watermarkedIdImage='';
           customerIdImageUpdatedAt:submittedAt,
           customerSubmittedFormalAt:submittedAt,
           customerSignedAt:submittedAt,
-          formalReceivedNoticeText:FORMAL_RECEIVED_MESSAGE,
+          formalReceivedNoticeText:submittedPaymentMessage,
           status:'待付款確認',
           updatedAtText:submittedAt
         }, assetUpdates||{}), {merge:true});
@@ -377,7 +414,7 @@ let signed=false; let watermarkedIdImage='';
             signatureUrl:assetUpdates.signatureUrl || assetUpdates.customerSignatureUrl || '',
             customerIdImageUrl:assetUpdates.customerIdImageUrl || '',
             idImageUrl:assetUpdates.idImageUrl || assetUpdates.customerIdImageUrl || '',
-            formalReceivedNoticeText:FORMAL_RECEIVED_MESSAGE,
+            formalReceivedNoticeText:submittedPaymentMessage,
             customerSubmittedFormalAt:submittedAt,
             customerSignedAt:submittedAt
           });
