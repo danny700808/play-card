@@ -1,98 +1,502 @@
-const { onRequest, onCall, HttpsError } = require('firebase-functions/v2/https');
-const { onDocumentCreated } = require('firebase-functions/v2/firestore');
+/**
+ * 外聘老師獨立簽約模組
+ *
+ * 原則：
+ * - 不寫入租賃集合，不修改 rental* 資料。
+ * - 外聘老師資料獨立存在 externalTeacherProfiles。
+ * - 合約紀錄獨立存在 externalTeacherContracts。
+ * - 合約模板獨立存在 externalTeacherContractTemplates。
+ * - 身分證、簽名、合約 HTML 存 Firebase Storage，Firestore 只存 URL 與摘要。
+ */
+
+const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
-const nodemailer = require('nodemailer');
+const logger = require('firebase-functions/logger');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
-const { registerExternalTeacherOnboarding, handleExternalTeacherLineEvent } = require('./externalTeacherOnboarding');
 
-if (!admin.apps.length) admin.initializeApp();
-const db = admin.firestore();
+const REGION = process.env.FUNCTIONS_REGION || 'us-central1';
+const DEFAULT_WEB_BASE_URL = 'https://danny700808.github.io/play-card/';
+const BOOTSTRAP_ADMIN_EMAILS = new Set(['danny700808@gmail.com']);
 
-registerExternalTeacherOnboarding(exports);
-
-const ADMIN_EMAILS = new Set(['danny700808@gmail.com']);
-const DEFAULT_ADMIN_DOC_ID = 'ADMIN_DANNY';
-
-function normalizeEmail(value) {
-  return String(value || '').trim().toLowerCase();
+function db() {
+  return admin.firestore();
 }
 
-function isBootstrapAdminEmail(email) {
-  return ADMIN_EMAILS.has(normalizeEmail(email));
+function bucket() {
+  return admin.storage().bucket();
 }
 
-function normalizeText(value) {
-  return String(value || '').trim();
+function clean(value) {
+  return String(value == null ? '' : value).trim();
 }
 
-function parseRentalApplicationCommand(text) {
-  const raw = normalizeText(text).replace(/\r/g, '\n');
-  if (!raw) return null;
+function lower(value) {
+  return clean(value).toLowerCase();
+}
 
-  const patterns = [
-    /(?:設備租賃申請|租賃申請|租賃申請編號|租賃訂單|訂單編號|申請編號|訂單)\s*[:：]?\s*([A-Za-z0-9_-]{6,})(?:\s+([^\n]+))?/i,
-    /(?:編號)\s*[:：]?\s*([A-Za-z0-9_-]{6,})(?:\s+([^\n]+))?/i
-  ];
+function nowTs() {
+  return admin.firestore.FieldValue.serverTimestamp();
+}
 
-  for (const pattern of patterns) {
-    const match = raw.match(pattern);
-    if (match && match[1]) {
-      return {
-        applicationKey: normalizeText(match[1]),
-        declaredName: normalizeText(match[2] || '')
-      };
-    }
+function pad2(n) {
+  return String(n).padStart(2, '0');
+}
+
+function dateKey(date = new Date()) {
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+}
+
+function todayKey() {
+  return dateKey(new Date());
+}
+
+function currentGregorianYear() {
+  return new Date().getFullYear();
+}
+
+function rocYear(gregorianYear) {
+  return Number(gregorianYear || currentGregorianYear()) - 1911;
+}
+
+function isDec15OrLater(date = new Date()) {
+  return date.getMonth() > 11 || (date.getMonth() === 11 && date.getDate() >= 15);
+}
+
+function nextYearOpenDate(gregorianYear) {
+  return `${Number(gregorianYear || currentGregorianYear())}-12-15`;
+}
+
+function normalizeContractGregorianYear(value) {
+  const raw = clean(value);
+  if (!raw) return currentGregorianYear();
+  const n = Number(raw.replace(/[^0-9]/g, ''));
+  if (!Number.isFinite(n) || !n) return currentGregorianYear();
+  return n < 1911 ? n + 1911 : n;
+}
+
+function contractDatesFromData(data = {}, existing = {}) {
+  const targetYear = normalizeContractGregorianYear(data.contractYear || data.contractGregorianYear || data.gregorianYear || existing.contractGregorianYear || existing.contractYear);
+  const explicitStart = clean(data.contractStartDate || existing.contractStartDate);
+  const explicitEnd = clean(data.contractEndDate || existing.contractEndDate);
+  let contractStartDate = explicitStart;
+  if (!contractStartDate) {
+    contractStartDate = targetYear > currentGregorianYear() ? `${targetYear}-01-01` : todayKey();
+  }
+  const contractEndDate = explicitEnd || `${targetYear}-12-31`;
+  return {
+    contractGregorianYear: targetYear,
+    contractRocYear: rocYear(targetYear),
+    contractYearKey: String(rocYear(targetYear)),
+    contractStartDate,
+    contractEndDate,
+    nextRenewalOpenDate: nextYearOpenDate(targetYear),
+  };
+}
+
+function availableContractYears() {
+  const current = currentGregorianYear();
+  const years = [{ gregorianYear: current, rocYear: rocYear(current), open: true, label: `${rocYear(current)} 年（${current}-12-31 到期）` }];
+  years.push({ gregorianYear: current + 1, rocYear: rocYear(current + 1), open: isDec15OrLater(new Date()), label: `${rocYear(current + 1)} 年（下一年度，12/15 後開放）` });
+  return years;
+}
+
+function makeToken() {
+  return crypto.randomBytes(18).toString('hex');
+}
+
+function makeBindCode() {
+  return `EXT-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+}
+
+function makeId(prefix) {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+}
+
+function safeFileName(name) {
+  return clean(name || 'file').replace(/[\\/:*?"<>|#%{}]/g, '_').slice(0, 120) || 'file';
+}
+
+function normalizeBindingMethod(value, hasEmail) {
+  const v = lower(value || '');
+  if (['line', 'line_only', 'line-only', '只用line', '只用 line'].includes(v)) return 'line';
+  if (['email', 'email_only', 'email-only', 'mail', '只用email', '只用 email', '信箱'].includes(v)) return 'email';
+  if (['both', 'line_email', 'line+email', 'line + email', 'all', '兩者', '雙軌'].includes(v)) return 'both';
+  return hasEmail ? 'both' : 'line';
+}
+
+function wantsLine(method) {
+  return method === 'line' || method === 'both';
+}
+
+function wantsEmail(method) {
+  return method === 'email' || method === 'both';
+}
+
+function webBaseUrl() {
+  return clean(process.env.PUBLIC_WEB_BASE_URL || process.env.APP_BASE_URL || DEFAULT_WEB_BASE_URL).replace(/\/?$/, '/');
+}
+
+function onboardingUrl(teacherId, token) {
+  return `${webBaseUrl()}external-teacher-onboarding.html?teacherId=${encodeURIComponent(teacherId || '')}&token=${encodeURIComponent(token || '')}`;
+}
+
+function payrollUrl(teacherId, token) {
+  return `${webBaseUrl()}external-teacher-payroll.html?teacherId=${encodeURIComponent(teacherId || '')}&token=${encodeURIComponent(token || '')}`;
+}
+
+function contractAdminUrl() {
+  return `${webBaseUrl()}external-teacher-admin.html`;
+}
+
+function externalTeacherApprovalUrl(contractId = '') {
+  const qs = contractId
+    ? `?target=externalTeacherContract&contractId=${encodeURIComponent(contractId)}`
+    : '?target=externalTeacherContract';
+  return `${webBaseUrl()}approval-hub.html${qs}`;
+}
+
+function isAdminToken(request) {
+  const token = request && request.auth && request.auth.token;
+  if (!token) return false;
+  const role = lower(token.role || token.userRole || token.permissionRole || '');
+  return token.admin === true || token.owner === true || ['admin', 'owner', 'manager'].includes(role);
+}
+
+function isManagerData(data, docId) {
+  data = data || {};
+  const role = lower(data.role || data.userRole || data.permissionRole || '');
+  const identityType = lower(data.identityType || data.type || data.employmentType || '');
+  const level = lower(data.level || '');
+  const email = lower(data.email || data.Email || data.mail || data.loginEmail || '');
+  return (
+    BOOTSTRAP_ADMIN_EMAILS.has(email) ||
+    docId === 'PRIMARY_MANAGER_LINE' ||
+    ['admin', 'manager', '主管', '管理者'].includes(role) ||
+    ['admin', 'manager', '主管', '管理者'].includes(identityType) ||
+    ['admin', 'manager'].includes(level) ||
+    data.showSettingsZone === true ||
+    data.canViewSettings === true ||
+    data.isAdmin === true ||
+    data.isManager === true
+  );
+}
+
+async function isAdminRequest(request, data = {}) {
+  if (isAdminToken(request)) return true;
+  const userId = clean(data.userId || data.adminId || data.employeeId || (request.auth && request.auth.uid));
+  if (!userId) return false;
+  const snap = await db().collection('employees').doc(userId).get();
+  return snap.exists && isManagerData(snap.data() || {}, snap.id);
+}
+
+async function getSystemSettingValue(keys) {
+  const wanted = new Set((keys || []).map(clean).filter(Boolean));
+  if (!wanted.size) return '';
+  try {
+    const snap = await db().collection('systemSettings').limit(300).get();
+    let found = '';
+    snap.forEach((doc) => {
+      if (found) return;
+      const data = doc.data() || {};
+      const key = clean(data.key || data.name || doc.id);
+      if (wanted.has(key)) found = clean(data.value || data.token || data.accessToken || data.secret || data.text);
+    });
+    return found;
+  } catch (err) {
+    logger.warn('getSystemSettingValue failed', err);
+    return '';
+  }
+}
+
+async function getLineAccessToken() {
+  const env = clean(
+    process.env.LINE_CHANNEL_ACCESS_TOKEN ||
+    process.env.LINE_MESSAGING_ACCESS_TOKEN ||
+    process.env.LINE_ACCESS_TOKEN ||
+    process.env.LINE_BOT_CHANNEL_ACCESS_TOKEN ||
+    ''
+  );
+  if (env) return env;
+  return await getSystemSettingValue([
+    'LINE_CHANNEL_ACCESS_TOKEN',
+    'LINE Channel Access Token',
+    'LINE Messaging API Token',
+    'LINE Access Token',
+    'LINE Bot Access Token',
+    'LINE_TOKEN'
+  ]);
+}
+
+
+function normalizeTeachingText(value) {
+  if (Array.isArray(value)) return value.map(clean).filter(Boolean).join('、');
+  return clean(value);
+}
+
+function mobileDigits(value) {
+  return clean(value).replace(/\D/g, '');
+}
+
+function hashKey(value) {
+  return crypto.createHash('sha1').update(clean(value).toLowerCase()).digest('hex').slice(0, 12).toUpperCase();
+}
+
+function fallbackExternalEmployeeId(name, email, mobile) {
+  const seed = lower(email) || mobileDigits(mobile) || clean(name) || String(Date.now());
+  return `EXTEMP_${hashKey(seed)}`;
+}
+
+function isExternalEmployeeRow(row = {}) {
+  const raw = lower(row.identityType || row.employeeType || row.identityLabel || row.role || '');
+  return row.isExternalTeacher === true || raw.includes('external') || raw.includes('外聘') || raw.includes('externalteacher');
+}
+
+function isManagerEmployeeRow(row = {}, id = '') {
+  const role = lower(row.role || row.userRole || row.permissionRole || row.identityType || row.employeeType || '');
+  const email = lower(row.email || row.Email || row.mail || row.loginEmail || '');
+  return id === 'PRIMARY_MANAGER_LINE' || BOOTSTRAP_ADMIN_EMAILS.has(email) || row.isAdmin === true || row.isManager === true || row.showSettingsZone === true || ['admin', 'manager', '主管', '管理者'].some((k) => role.includes(k));
+}
+
+async function collectEmployeeCandidate(list, query) {
+  try {
+    const snap = await query.limit(5).get();
+    snap.forEach((doc) => {
+      const data = doc.data() || {};
+      if (!isManagerEmployeeRow(data, doc.id)) list.push({ id: doc.id, data });
+    });
+  } catch (err) {
+    logger.warn('collectEmployeeCandidate failed', err);
+  }
+}
+
+function pickEmployeeCandidate(list) {
+  if (!list.length) return null;
+  const deduped = Array.from(new Map(list.map((x) => [x.id, x])).values());
+  deduped.sort((a, b) => {
+    const ae = isExternalEmployeeRow(a.data) ? 1 : 0;
+    const be = isExternalEmployeeRow(b.data) ? 1 : 0;
+    if (ae !== be) return be - ae;
+    return clean(b.data.externalTeacherSyncedAt || b.data.updatedAt || '').localeCompare(clean(a.data.externalTeacherSyncedAt || a.data.updatedAt || ''));
+  });
+  return deduped[0];
+}
+
+async function findExternalEmployeeByContact(email, mobile) {
+  const candidates = [];
+  const em = lower(email || '');
+  const mob = clean(mobile || '');
+  const digits = mobileDigits(mob);
+  if (em) {
+    await collectEmployeeCandidate(candidates, db().collection('employees').where('email', '==', em));
+    await collectEmployeeCandidate(candidates, db().collection('employees').where('Email', '==', em));
+  }
+  if (mob) {
+    await collectEmployeeCandidate(candidates, db().collection('employees').where('mobilePhone', '==', mob));
+    await collectEmployeeCandidate(candidates, db().collection('employees').where('phone', '==', mob));
+    await collectEmployeeCandidate(candidates, db().collection('employees').where('mobile', '==', mob));
+  }
+  if (digits) await collectEmployeeCandidate(candidates, db().collection('employees').where('mobileDigits', '==', digits));
+  return pickEmployeeCandidate(candidates);
+}
+
+async function resolveExternalEmployeeId(row = {}) {
+  let id = clean(row.employeeId || row.externalTeacherEmployeeId || row.linkedEmployeeId || '');
+  if (id) return id;
+  const existing = await findExternalEmployeeByContact(row.email, row.mobile || row.phone);
+  if (existing) return existing.id;
+  return fallbackExternalEmployeeId(row.name || row.teacherName || row.displayName, row.email, row.mobile || row.phone);
+}
+
+async function syncExternalTeacherEmployee(teacherId, row = {}) {
+  const contractId = clean(row.contractId || row.currentContractId || row.id || teacherId || '');
+  const employeeId = await resolveExternalEmployeeId(Object.assign({}, row, { employeeId: row.employeeId || row.externalTeacherEmployeeId }));
+  if (!employeeId) return '';
+  const ref = db().collection('employees').doc(employeeId);
+  let old = {};
+  try {
+    const snap = await ref.get();
+    if (snap.exists) old = snap.data() || {};
+  } catch (err) {
+    old = {};
   }
 
-  return null;
+  const name = clean(row.name || row.teacherName || row.displayName || old.name || old.displayName || '');
+  const email = lower(row.email || old.email || '');
+  const mobile = clean(row.mobile || row.phone || old.mobilePhone || old.phone || '');
+  const lineUserId = clean(row.lineUserId || old.lineUserId || '');
+  const teachingItemsText = normalizeTeachingText(row.teachingItems || old.teachingItems || old.teachingItemsText || '');
+
+  const update = {
+    employeeId,
+    id: employeeId,
+    userId: employeeId,
+    name,
+    displayName: name,
+    employeeName: name,
+    email,
+    mobilePhone: mobile,
+    phone: mobile,
+    mobileDigits: mobileDigits(mobile),
+    identityType: 'external',
+    identityLabel: '外聘老師',
+    employeeType: 'external',
+    role: 'externalTeacher',
+    isExternalTeacher: true,
+    accountStatus: clean(old.accountStatus || 'active'),
+    employmentStatus: clean(old.employmentStatus || 'active'),
+    hiddenFromActiveLists: old.hiddenFromActiveLists === true,
+    lineUserId,
+    lineDisplayName: clean(row.lineDisplayName || old.lineDisplayName || ''),
+    lineNotifyEnabled: !!lineUserId,
+    lineBindStatus: clean(row.lineBindStatus || (lineUserId ? 'bound' : old.lineBindStatus || 'pending')),
+    emailBindStatus: clean(row.emailBindStatus || old.emailBindStatus || ''),
+    bindingMethod: clean(row.bindingMethod || old.bindingMethod || ''),
+    bindingMethodLabel: clean(row.bindingMethodLabel || old.bindingMethodLabel || ''),
+    externalTeacherProfileId: clean(row.externalTeacherProfileId || old.externalTeacherProfileId || contractId),
+    externalTeacherContractId: contractId || clean(old.externalTeacherContractId || ''),
+    currentExternalContractId: contractId || clean(old.currentExternalContractId || ''),
+    externalTeacherStatus: clean(row.status || old.externalTeacherStatus || ''),
+    contractStatus: clean(row.contractStatus || row.status || old.contractStatus || ''),
+    progressStatus: clean(row.progressStatus || old.progressStatus || ''),
+    teachingItems: teachingItemsText,
+    teachingItemsText,
+    cooperationStartDate: clean(row.contractStartDate || old.cooperationStartDate || ''),
+    hireDate: clean(row.contractStartDate || old.hireDate || ''),
+    contractYear: clean(row.contractYear || row.contractGregorianYear || old.contractYear || ''),
+    contractRocYear: clean(row.contractRocYear || old.contractRocYear || ''),
+    contractStartDate: clean(row.contractStartDate || old.contractStartDate || ''),
+    contractEndDate: clean(row.contractEndDate || old.contractEndDate || ''),
+    idNumber: clean(row.idNumber || old.idNumber || ''),
+    birthDate: clean(row.birthDate || old.birthDate || ''),
+    householdAddress: clean(row.householdAddress || old.householdAddress || ''),
+    mailingAddress: clean(row.mailingAddress || old.mailingAddress || ''),
+    address: clean(row.mailingAddress || row.householdAddress || old.address || ''),
+    externalTeacherSyncedAt: nowTs(),
+    updatedAt: nowTs(),
+    source: 'external-teacher-linked-sync'
+  };
+
+  const identityUrl = Array.isArray(row.identityUrls) && row.identityUrls.length ? row.identityUrls[0] : '';
+  if (identityUrl) update.identityDocumentUrl = identityUrl;
+  if (contractId) update.externalTeacherContractIds = admin.firestore.FieldValue.arrayUnion(contractId);
+
+  await ref.set(update, { merge: true });
+
+  if (contractId) {
+    const linkPatch = {
+      employeeId,
+      externalTeacherEmployeeId: employeeId,
+      employeeRef: `employees/${employeeId}`,
+      updatedAt: nowTs()
+    };
+    await db().collection('externalTeacherContracts').doc(contractId).set(linkPatch, { merge: true }).catch(() => null);
+    await db().collection('externalTeacherProfiles').doc(contractId).set(linkPatch, { merge: true }).catch(() => null);
+  }
+  return employeeId;
 }
 
-async function replyLineMessage(replyToken, message) {
-  if (!replyToken) throw new Error('缺少 LINE replyToken，無法回覆客人。');
-  const token = await getLineAccessToken();
-  if (!token) throw new Error('LINE Channel access token 未設定或部署時未載入。');
+function lineUserIdFromRow(data = {}) {
+  return clean(data.lineUserId || data['LINE User ID'] || data.targetLineUserId || data.lineId || '');
+}
 
+async function getPrimaryManagerLineRecipient() {
+  const primary = await db().collection('employees').doc('PRIMARY_MANAGER_LINE').get();
+  if (primary.exists) {
+    const data = primary.data() || {};
+    const lineUserId = lineUserIdFromRow(data);
+    if (lineUserId) return { lineUserId, name: clean(data.name || data.displayName || '柚子樂器主要管理者') };
+  }
+
+  const snap = await db().collection('employees').limit(300).get();
+  const candidates = [];
+  snap.forEach((doc) => {
+    if (doc.id === 'PRIMARY_MANAGER_LINE') return;
+    const data = doc.data() || {};
+    const lineUserId = lineUserIdFromRow(data);
+    if (!lineUserId || !isManagerData(data, doc.id)) return;
+    const email = lower(data.email || data.Email || data.mail || data.loginEmail || '');
+    candidates.push({
+      lineUserId,
+      name: clean(data.name || data.displayName || email || doc.id),
+      priority: BOOTSTRAP_ADMIN_EMAILS.has(email) ? 0 : (data.lineNotifyEnabled === false ? 2 : 1)
+    });
+  });
+  candidates.sort((a, b) => a.priority - b.priority);
+  return candidates[0] || null;
+}
+
+async function replyLineMessage(replyToken, text) {
+  if (!replyToken) return;
+  const token = await getLineAccessToken();
+  if (!token) {
+    logger.warn('LINE token not configured, reply skipped');
+    return;
+  }
   const response = await fetch('https://api.line.me/v2/bot/message/reply', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`
-    },
-    body: JSON.stringify({
-      replyToken,
-      messages: [{ type: 'text', text: String(message || '').slice(0, 4900) }]
-    })
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ replyToken, messages: [{ type: 'text', text: String(text || '').slice(0, 4900) }] })
   });
-  const responseText = await response.text();
-  if (!response.ok) {
-    throw new Error(`LINE reply API ${response.status}：${responseText.slice(0, 500)}`);
-  }
-  return { provider: 'line-messaging-api', responseStatus: response.status, responseText: responseText.slice(0, 500) };
+  if (!response.ok) logger.warn('LINE reply failed', { status: response.status, body: await response.text().catch(() => '') });
 }
 
-
-async function pushLineMessage(lineUserId, message) {
-  const to = normalizeText(lineUserId);
-  if (!to) throw new Error('缺少 LINE User ID，無法推播。');
+async function pushLineMessage(lineUserId, text) {
+  const to = clean(lineUserId);
+  if (!to) return;
   const token = await getLineAccessToken();
-  if (!token) throw new Error('LINE Channel access token 未設定或部署時未載入。');
+  if (!token) {
+    logger.warn('LINE token not configured, push skipped');
+    return;
+  }
   const response = await fetch('https://api.line.me/v2/bot/message/push', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`
-    },
-    body: JSON.stringify({
-      to,
-      messages: [{ type: 'text', text: String(message || '').slice(0, 4900) }]
-    })
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ to, messages: [{ type: 'text', text: String(text || '').slice(0, 4900) }] })
   });
-  const responseText = await response.text();
-  if (!response.ok) {
-    throw new Error(`LINE push API ${response.status}：${responseText.slice(0, 500)}`);
+  if (!response.ok) logger.warn('LINE push failed', { status: response.status, body: await response.text().catch(() => '') });
+}
+
+async function pushAdminMessage(text) {
+  const configured = clean(process.env.ADMIN_LINE_USER_ID || process.env.LINE_ADMIN_USER_ID || '');
+  let target = configured;
+  if (!target) {
+    const manager = await getPrimaryManagerLineRecipient().catch(() => null);
+    target = manager && manager.lineUserId ? manager.lineUserId : '';
   }
-  return { provider: 'line-messaging-api', responseStatus: response.status, responseText: responseText.slice(0, 500) };
+  if (target) await pushLineMessage(target, text);
+
+  await db().collection('notificationQueue').add({
+    eventCode: 'external_teacher_admin_notice',
+    targetRole: 'admin',
+    channel: 'line',
+    title: '外聘老師通知',
+    body: text,
+    message: text,
+    status: '待發送',
+    createdAt: nowTs(),
+    source: 'external-teacher-onboarding'
+  }).catch((err) => logger.warn('queue admin notice failed', err));
+}
+
+async function queueTeacherEmail({ teacherId, email, title, body, source }) {
+  if (!clean(email)) return null;
+  const ref = db().collection('notificationQueue').doc(`external-teacher-email-${teacherId}-${Date.now()}`);
+  await ref.set({
+    queueId: ref.id,
+    teacherId,
+    channel: 'email',
+    targetEmail: lower(email),
+    title,
+    subject: title,
+    body,
+    message: body,
+    status: '待發送',
+    source: source || 'external-teacher-email',
+    createdAt: nowTs(),
+    updatedAt: nowTs()
+  }, { merge: true });
+  return ref.id;
 }
 
 async function getLineProfile(lineUserId) {
@@ -104,1832 +508,1363 @@ async function getLineProfile(lineUserId) {
     });
     if (!response.ok) return {};
     return await response.json();
-  } catch (error) {
-    console.error('getLineProfile failed:', error);
+  } catch (err) {
+    logger.warn('getLineProfile failed', err);
     return {};
   }
 }
 
-function webBaseUrl() {
-  return String(process.env.PUBLIC_WEB_BASE_URL || 'https://danny700808.github.io/play-card/').replace(/\/?$/, '/');
+function externalProfileRef(teacherId) {
+  return db().collection('externalTeacherProfiles').doc(teacherId);
 }
 
-function rentalAdminApplicationUrl(applicationId) {
-  return `${webBaseUrl()}rental-admin.html?applicationId=${encodeURIComponent(applicationId)}`;
-}
+async function getExternalTeacherProfile(teacherId) {
+  const ref = externalProfileRef(teacherId);
+  const snap = await ref.get();
+  if (snap.exists) return { ref, snap, profile: { id: snap.id, ...snap.data() } };
 
-async function findRentalApplication(applicationKey) {
-  const key = normalizeText(applicationKey);
-  if (!key) return null;
-
-  const byId = await db.collection('rentalApplications').doc(key).get();
-  if (byId.exists) return { id: byId.id, ref: byId.ref, data: byId.data() };
-
-  const fields = ['applicationNo', 'applicationId', 'rentalApplicationNo'];
-  for (const field of fields) {
-    const snap = await db.collection('rentalApplications').where(field, '==', key).limit(1).get();
-    if (!snap.empty) {
-      const doc = snap.docs[0];
-      return { id: doc.id, ref: doc.ref, data: doc.data() };
-    }
-  }
-  return null;
-}
-
-async function handleRentalApplicationLink({ applicationKey, declaredName, lineUserId, replyToken }) {
-  const app = await findRentalApplication(applicationKey);
-  if (!app) {
-    try {
-      await replyLineMessage(replyToken, `找不到租賃申請編號：${applicationKey}。請確認是否完整複製表單送出後產生的文字。`);
-    } catch (replyErr) {
-      console.error('[rental line bind not-found reply failed]', replyErr);
-    }
-    return;
-  }
-
-  const profile = await getLineProfile(lineUserId);
-  const lineDisplayName = normalizeText(profile.displayName || '');
-  const data = app.data || {};
-  const applicationNo = normalizeText(data.applicationNo || data.applicationId || app.id);
-  const customerName = normalizeText(data.customerName || declaredName || '未填姓名');
-  const now = admin.firestore.FieldValue.serverTimestamp();
-
-  await app.ref.set({
-    lineUserId,
-    customerLineUserId: lineUserId,
-    lineDisplayName,
-    lineLinkStatus: 'linked',
-    lineLinkedAt: now,
-    lineLinkedAtText: new Date().toISOString(),
-    lineConfirmText: `設備租賃申請 ${applicationNo}`,
-    status: data.status || '待店家確認',
-    updatedAt: now
-  }, { merge: true });
-
-  const customerReplyText = `已收到您的租賃申請：${applicationNo}
-
-柚子樂器會透過此 LINE 先與您確認設備、金額與安裝／交付時間。
-
-確認後會再傳正式資料連結給您。屆時需要填寫身分證字號並上傳身分證照片，請您先準備相關資料。`;
-
-  let customerReplyStatus = '已發送';
-  let customerReplyError = '';
-  try {
-    await replyLineMessage(replyToken, customerReplyText);
-  } catch (replyErr) {
-    customerReplyStatus = '發送失敗';
-    customerReplyError = replyErr && replyErr.message ? replyErr.message : String(replyErr);
-    console.error('[rental customer bind reply failed]', app.id, customerReplyError);
-  }
-
-  let managerNoticeStatus = '未設定';
-  let managerNoticeError = '';
-  let managerNoticeQueueId = '';
-  let managerRecipient = null;
-  try {
-    managerRecipient = await getPrimaryManagerLineRecipient();
-    const adminUrl = rentalAdminApplicationUrl(app.id);
-    const equipment = normalizeText(data.otherEquipmentNeed || data.equipmentName || data.rentalType || '');
-    const message = [
-      '客人已完成租賃 LINE 綁定',
-      `姓名：${customerName}`,
-      `電話：${normalizeText(data.customerPhone || '')}`,
-      `申請編號：${applicationNo}`,
-      `租用需求：${equipment || '未填寫'}`,
-      `希望方式：${normalizeText(data.shippingMethod || '')}`,
-      `希望日期：${normalizeText(data.preferredDate || '')} ${normalizeText(data.preferredTime || '')}`.trim(),
-      '',
-      '請進入系統處理這一筆租賃申請：',
-      adminUrl
-    ].join('\n');
-
-    if (!managerRecipient || !managerRecipient.lineUserId) {
-      managerNoticeStatus = '發送失敗';
-      managerNoticeError = '主管 LINE 收件人尚未設定。';
-    } else if (managerRecipient.lineUserId === lineUserId) {
-      managerNoticeStatus = '已略過';
-      managerNoticeError = '主管 LINE 與客人 LINE 相同，為避免把後台連結傳給客人，已略過管理端推播。';
-    } else {
-      managerNoticeQueueId = `rental-line-bind-manager-${safeId(app.id)}-${Date.now()}`;
-      await createNotificationQueue({
-        queueId: managerNoticeQueueId,
-        channel: 'line',
-        targetLineUserId: managerRecipient.lineUserId,
-        targetEmployeeId: managerRecipient.employeeId,
-        targetName: managerRecipient.name || '柚子樂器主管',
-        title: '客人已完成租賃 LINE 綁定',
-        body: message,
-        message,
-        source: 'rental-line-linked-manager',
-        applicationId: app.id,
-        status: 'manual_ready'
-      });
-      const queueRef = db.collection(QUEUE_COLLECTION).doc(managerNoticeQueueId);
-      const queueSnap = await queueRef.get();
-      const result = queueSnap.exists
-        ? await processNotificationQueueDoc(queueRef, queueSnap.data() || {}, { processor: 'rental-line-webhook', force: true })
-        : { ok: false, error: '管理端通知佇列建立後讀取失敗。' };
-      managerNoticeStatus = result && result.sent ? '已發送' : '發送失敗';
-      managerNoticeError = result && result.error ? result.error : (managerNoticeStatus === '已發送' ? '' : 'LINE 管理端推播未成功。');
-    }
-  } catch (managerErr) {
-    managerNoticeStatus = '發送失敗';
-    managerNoticeError = managerErr && managerErr.message ? managerErr.message : String(managerErr);
-    console.error('[rental manager bind notice failed]', app.id, managerNoticeError);
-  }
-
-  const lastError = [
-    customerReplyStatus === '發送失敗' ? `客人回覆：${customerReplyError}` : '',
-    managerNoticeStatus === '發送失敗' ? `管理端通知：${managerNoticeError}` : ''
-  ].filter(Boolean).join('；');
-
-  await app.ref.set({
-    customerLineReplyStatus: customerReplyStatus,
-    customerLineReplyError: customerReplyError,
-    customerLineReplyAtText: nowText(),
-    managerLineNoticeStatus: managerNoticeStatus,
-    managerLineNoticeError,
-    managerLineNoticeQueueId,
-    managerLineRecipientId: managerRecipient ? managerRecipient.employeeId : '',
-    managerLineRecipientMasked: managerRecipient ? maskLineUserId(managerRecipient.lineUserId) : '',
-    managerLineNoticeAtText: nowText(),
-    lineLastDeliveryStatus: lastError ? '發送失敗' : '已發送',
-    lineLastDeliveryError: lastError,
-    lineLastDeliveryCheckedAtText: nowText(),
-    updatedAt: admin.firestore.FieldValue.serverTimestamp()
-  }, { merge: true });
-}
-
-async function findEmployeeByEmail(email) {
-  const normalizedEmail = normalizeEmail(email);
-  const fields = ['email', 'Email', 'mail', 'loginEmail'];
-
-  for (const field of fields) {
-    const snap = await db
-      .collection('employees')
-      .where(field, '==', normalizedEmail)
-      .limit(1)
-      .get();
-
-    if (!snap.empty) {
-      const doc = snap.docs[0];
-      return { id: doc.id, ref: doc.ref, data: doc.data() };
-    }
-  }
-
-  return null;
-}
-
-
-async function ensureBootstrapAdmin(email) {
-  const normalizedEmail = normalizeEmail(email);
-  if (!isBootstrapAdminEmail(normalizedEmail)) return null;
-
-  const existing = await findEmployeeByEmail(normalizedEmail);
-  if (existing) {
-    await existing.ref.set(
-      {
-        email: normalizedEmail,
-        role: 'admin',
-        identityType: 'admin',
-        canViewSettings: true,
-        showSettingsZone: true,
-        lineNotifyEnabled: true,
-        status: 'active',
-        adminBootstrap: true,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
-      },
-      { merge: true }
-    );
-    return {
-      id: existing.id,
-      ref: existing.ref,
-      data: {
-        ...existing.data,
-        email: normalizedEmail,
-        role: 'admin',
-        identityType: 'admin',
-        canViewSettings: true,
-        showSettingsZone: true,
-        lineNotifyEnabled: true,
-        status: 'active',
-        adminBootstrap: true
-      }
+  // 向下相容：前端直寫版本會先建立 externalTeacherContracts，再同步 profile。若 profile 尚未建立，先從合約補回。
+  const contractSnap = await db().collection('externalTeacherContracts').doc(teacherId).get();
+  if (contractSnap.exists) {
+    const c = contractSnap.data() || {};
+    const profile = {
+      teacherId,
+      id: teacherId,
+      ...c,
+      displayName: clean(c.displayName || c.name || c.teacherName || ''),
+      profileStatus: clean(c.profileStatus || c.status || 'waiting_bindings'),
+      migratedFromContract: true,
+      updatedAt: nowTs()
     };
+    await ref.set(profile, { merge: true });
+    const newSnap = await ref.get();
+    return { ref, snap: newSnap, profile: { id: newSnap.id, ...newSnap.data() } };
   }
 
-  const ref = db.collection('employees').doc(DEFAULT_ADMIN_DOC_ID);
-  const data = {
-    name: '黃銘廷',
-    email: normalizedEmail,
-    role: 'admin',
-    identityType: 'admin',
-    canViewSettings: true,
-    showSettingsZone: true,
-    lineNotifyEnabled: true,
-    status: 'active',
-    adminBootstrap: true,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    updatedAt: admin.firestore.FieldValue.serverTimestamp()
-  };
-  await ref.set(data, { merge: true });
-  return { id: DEFAULT_ADMIN_DOC_ID, ref, data };
+  // 向下相容：如果早期版本曾把外聘老師資料放 employees，讀取時可轉成獨立 profile。
+  const oldSnap = await db().collection('employees').doc(teacherId).get();
+  if (oldSnap.exists) {
+    const old = oldSnap.data() || {};
+    const ext = old.externalTeacher || {};
+    const profile = {
+      teacherId,
+      id: teacherId,
+      name: clean(old.name || old.displayName || ext.name || ''),
+      displayName: clean(old.displayName || old.name || ext.name || ''),
+      mobile: clean(old.mobile || old.phone || ext.mobile || ''),
+      phone: clean(old.phone || old.mobile || ext.mobile || ''),
+      email: clean(old.email || ext.email || ''),
+      role: 'externalTeacher',
+      identityType: 'external',
+      bindingMethod: normalizeBindingMethod(ext.bindingMethod || '', !!clean(old.email || ext.email)),
+      lineUserId: clean(ext.lineUserId || old.lineUserId || ''),
+      lineDisplayName: clean(ext.lineDisplayName || old.lineDisplayName || ''),
+      onboardingToken: clean(ext.onboardingToken || ''),
+      bindCode: clean(ext.bindCode || ''),
+      status: clean(ext.status || ext.profileStatus || 'pendingProfile'),
+      payrollInfoStatus: clean(ext.payrollInfoStatus || 'pending'),
+      contractStatus: clean(ext.contractStatus || 'unsigned'),
+      identityFiles: Array.isArray(ext.identityFiles) ? ext.identityFiles : [],
+      migratedFromEmployees: true,
+      createdAt: nowTs(),
+      updatedAt: nowTs()
+    };
+    await ref.set(profile, { merge: true });
+    const newSnap = await ref.get();
+    return { ref, snap: newSnap, profile: { id: newSnap.id, ...newSnap.data() } };
+  }
+
+  return { ref, snap, profile: null };
 }
 
-function isManagerData(data, docId) {
-  if (!data) return false;
+async function validateTeacherTokenIfNeeded(request, teacherId, token) {
+  if (!teacherId) throw new HttpsError('invalid-argument', '缺少 teacherId');
+  if (isAdminToken(request)) return;
+  if (request.auth && request.auth.uid === teacherId) return;
 
-  const role = String(data.role || data.userRole || data.permissionRole || '').toLowerCase();
-  const identityType = String(data.identityType || data.type || '').toLowerCase();
-  const level = String(data.level || '').toLowerCase();
-  const email = normalizeEmail(data.email || data.Email || data.mail || data.loginEmail || '');
-
-  return (
-    isBootstrapAdminEmail(email) ||
-    docId === 'PRIMARY_MANAGER_LINE' ||
-    role === 'admin' ||
-    role === 'manager' ||
-    role === '主管' ||
-    role === '管理者' ||
-    identityType === 'admin' ||
-    identityType === 'manager' ||
-    identityType === '主管' ||
-    identityType === '管理者' ||
-    level === 'admin' ||
-    level === 'manager' ||
-    data.showSettingsZone === true ||
-    data.canViewSettings === true ||
-    data.isAdmin === true ||
-    data.isManager === true
-  );
+  const { profile } = await getExternalTeacherProfile(teacherId);
+  if (!profile) throw new HttpsError('not-found', '找不到外聘老師資料');
+  if (!clean(token) || clean(token) !== clean(profile.onboardingToken)) {
+    throw new HttpsError('permission-denied', '外聘老師連結已失效，請重新產生簽約連結。');
+  }
 }
 
-function lineUserIdFromRow(data = {}) {
-  return normalizeText(data.lineUserId || data['LINE User ID'] || data.targetLineUserId || data.lineId || '');
-}
+async function saveDataUrlToStorage({ dataUrl, storagePath, fileName, contentType }) {
+  const raw = String(dataUrl || '');
+  const match = raw.match(/^data:([^;]+);base64,(.+)$/);
+  if (!match) throw new HttpsError('invalid-argument', '檔案格式錯誤');
 
-function maskLineUserId(value) {
-  const id = normalizeText(value);
-  if (!id) return '';
-  if (id.length <= 10) return `${id.slice(0, 3)}***`;
-  return `${id.slice(0, 6)}…${id.slice(-4)}`;
-}
+  const mimeType = contentType || match[1] || 'application/octet-stream';
+  const buffer = Buffer.from(match[2], 'base64');
+  const downloadToken = crypto.randomUUID();
+  const file = bucket().file(storagePath);
 
-async function getPrimaryManagerLineRecipient() {
-  const primary = await db.collection('employees').doc('PRIMARY_MANAGER_LINE').get();
-  if (primary.exists) {
-    const data = primary.data() || {};
-    const lineUserId = lineUserIdFromRow(data);
-    if (lineUserId) {
-      return {
-        employeeId: primary.id,
-        name: normalizeText(data.name || data.displayName || '柚子樂器主要管理者'),
-        email: normalizeEmail(data.email || data.Email || ''),
-        lineUserId,
-        source: 'PRIMARY_MANAGER_LINE'
-      };
+  await file.save(buffer, {
+    resumable: false,
+    metadata: {
+      contentType: mimeType,
+      cacheControl: 'private, max-age=0',
+      metadata: { firebaseStorageDownloadTokens: downloadToken }
     }
-  }
-
-  const snap = await db.collection('employees').limit(300).get();
-  const candidates = [];
-  snap.forEach((doc) => {
-    if (doc.id === 'PRIMARY_MANAGER_LINE') return;
-    const data = doc.data() || {};
-    const lineUserId = lineUserIdFromRow(data);
-    if (!lineUserId || !isManagerData(data, doc.id)) return;
-    const email = normalizeEmail(data.email || data.Email || data.mail || data.loginEmail || '');
-    candidates.push({
-      employeeId: doc.id,
-      name: normalizeText(data.name || data.displayName || email || doc.id),
-      email,
-      lineUserId,
-      source: isBootstrapAdminEmail(email) ? 'bootstrap-admin' : 'manager-fallback',
-      priority: isBootstrapAdminEmail(email) ? 0 : (data.lineNotifyEnabled === false ? 2 : 1)
-    });
-  });
-  candidates.sort((a, b) => a.priority - b.priority || a.employeeId.localeCompare(b.employeeId));
-  return candidates[0] || null;
-}
-
-async function getPrimaryManagerLineUserId() {
-  const recipient = await getPrimaryManagerLineRecipient();
-  return recipient ? recipient.lineUserId : '';
-}
-
-async function hasThisLineBoundToAnotherEmployee(lineUserId, currentEmployeeId) {
-  if (!lineUserId) return false;
-
-  const snap = await db
-    .collection('employees')
-    .where('lineUserId', '==', lineUserId)
-    .limit(5)
-    .get();
-
-  return snap.docs.some((doc) => doc.id !== currentEmployeeId && doc.id !== 'PRIMARY_MANAGER_LINE');
-}
-
-async function findEmployeeByBindCode(bindCode) {
-  const code = normalizeText(bindCode).toUpperCase();
-  if (!code) return null;
-  const bindingRef = db.collection('employeeLineBindings').doc(code);
-  const bindingSnap = await bindingRef.get();
-  let binding = bindingSnap.exists ? (bindingSnap.data() || {}) : null;
-  let employeeId = normalizeText(binding && (binding.employeeId || binding.employeeDocId || binding.targetEmployeeId));
-  let applicationId = normalizeText(binding && binding.applicationId);
-
-  if (!employeeId && applicationId) {
-    const appSnap = await db.collection('registrationApplications').doc(applicationId).get();
-    if (appSnap.exists) {
-      const app = appSnap.data() || {};
-      employeeId = normalizeText(app.approvedEmployeeDocId || app.approvedEmployeeId || app.linkedEmployeeId || '');
-    }
-  }
-
-  if (employeeId) {
-    const employeeSnap = await db.collection('employees').doc(employeeId).get();
-    if (employeeSnap.exists) return { type: 'employee', ref: employeeSnap.ref, id: employeeSnap.id, data: employeeSnap.data() || {}, bindingRef, binding, applicationId };
-  }
-
-  if (applicationId) {
-    const appSnap = await db.collection('registrationApplications').doc(applicationId).get();
-    if (appSnap.exists) return { type: 'application', ref: appSnap.ref, id: appSnap.id, data: appSnap.data() || {}, bindingRef, binding, applicationId };
-  }
-
-  const q = await db.collection('registrationApplications').where('employeeBindCode', '==', code).limit(1).get();
-  if (!q.empty) {
-    const doc = q.docs[0];
-    return { type: 'application', ref: doc.ref, id: doc.id, data: doc.data() || {}, bindingRef, binding, applicationId: doc.id };
-  }
-
-  return null;
-}
-
-async function handleEmployeeCodeBinding({ bindCode, lineUserId, replyToken }) {
-  const code = normalizeText(bindCode).toUpperCase();
-  const target = await findEmployeeByBindCode(code);
-  if (!target) {
-    await replyLineMessage(replyToken, `查不到這組人員 LINE 綁定碼：${code}\n\n請確認是否完整複製後再貼上，或請主管從後台重新提供綁定文字。`);
-    return;
-  }
-
-  const primaryManagerLineUserId = await getPrimaryManagerLineUserId();
-  if (primaryManagerLineUserId && primaryManagerLineUserId === lineUserId) {
-    await replyLineMessage(replyToken, '這支 LINE 已被設定為主管通知帳號，不能綁定人員帳號。請使用本人自己的手機 LINE 綁定。');
-    return;
-  }
-
-  const currentEmployeeId = target.type === 'employee' ? target.id : normalizeText(target.data.approvedEmployeeId || target.data.linkedEmployeeId || target.data.employeeId || target.id);
-  const isAlreadyBoundElsewhere = await hasThisLineBoundToAnotherEmployee(lineUserId, currentEmployeeId);
-  if (isAlreadyBoundElsewhere) {
-    await replyLineMessage(replyToken, '這支 LINE 已綁定其他人員，不能重複綁定。請先由主管清除原本的 LINE 綁定。');
-    return;
-  }
-
-  const profile = await getLineProfile(lineUserId);
-  const lineDisplayName = normalizeText(profile.displayName || '');
-  const patch = {
-    lineUserId,
-    lineDisplayName,
-    lineNotifyEnabled: true,
-    lineBindStatus: 'bound',
-    lineBoundAt: admin.firestore.FieldValue.serverTimestamp(),
-    lineBoundAtText: new Date().toISOString(),
-    employeeBindCode: code,
-    employeeBindText: `柚子人員綁定 ${code}`,
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    updatedAtText: new Date().toISOString()
-  };
-
-  await target.ref.set(patch, { merge: true });
-  if (target.type === 'application') {
-    await target.ref.set({ applicationStatus: 'pending_setup', status: '待主管建檔', currentStep: '等待主管審核', progressStatus: 'LINE 已綁定，等待主管審核' }, { merge: true });
-  }
-  if (target.bindingRef) {
-    await target.bindingRef.set({ status: 'bound', lineUserId, lineDisplayName, boundAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
-  }
-
-  const name = normalizeText(target.data.name || target.data.displayName || target.data.employeeName || target.data.email || code);
-  await replyLineMessage(replyToken, `LINE 綁定成功 ✅\n\n姓名：${name}\n綁定碼：${code}`);
-}
-
-async function handleEmployeeBinding({ email, lineUserId, replyToken }) {
-  if (isBootstrapAdminEmail(email)) {
-    await replyLineMessage(replyToken, '這個 Email 已設定為系統管理者，不能使用員工綁定指令。主管請使用：柚子主管綁定 your@email.com');
-    return;
-  }
-
-  const employee = await findEmployeeByEmail(email);
-
-  if (!employee) {
-    await replyLineMessage(replyToken, `找不到這個員工 Email：${email}`);
-    return;
-  }
-
-  if (isManagerData(employee.data, employee.id)) {
-    await replyLineMessage(replyToken, '這個帳號是主管或管理者帳號，不能使用員工綁定指令。主管請使用：柚子主管綁定 your@email.com');
-    return;
-  }
-
-  const primaryManagerLineUserId = await getPrimaryManagerLineUserId();
-  if (primaryManagerLineUserId && primaryManagerLineUserId === lineUserId) {
-    await replyLineMessage(replyToken, '這支 LINE 已被設定為主管通知帳號，不能綁定員工帳號。請員工使用自己的手機 LINE 綁定。');
-    return;
-  }
-
-  if (employee.data.lineUserId && employee.data.lineUserId !== lineUserId) {
-    await replyLineMessage(replyToken, '這位員工已綁定其他 LINE。若要重新綁定，請先由主管到員工管理清除此員工 LINE 綁定。');
-    return;
-  }
-
-  const isAlreadyBoundElsewhere = await hasThisLineBoundToAnotherEmployee(lineUserId, employee.id);
-  if (isAlreadyBoundElsewhere) {
-    await replyLineMessage(replyToken, '這支 LINE 已綁定其他員工帳號，不能重複綁定。請先由主管清除原本的 LINE 綁定。');
-    return;
-  }
-
-  await employee.ref.set(
-    {
-      lineUserId,
-      lineNotifyEnabled: true,
-      lineBoundAt: admin.firestore.FieldValue.serverTimestamp(),
-      lineBindingEmail: email,
-      lineBindingRole: 'employee',
-      lineBindStatus: 'bound',
-      lineBoundAtText: new Date().toISOString()
-    },
-    { merge: true }
-  );
-
-  await replyLineMessage(replyToken, `員工 LINE 綁定成功：${employee.data.name || employee.data.displayName || email}`);
-}
-
-async function handleManagerBinding({ email, lineUserId, replyToken }) {
-  const employee = isBootstrapAdminEmail(email)
-    ? await ensureBootstrapAdmin(email)
-    : await findEmployeeByEmail(email);
-
-  if (!employee || !isManagerData(employee.data, employee.id)) {
-    await replyLineMessage(replyToken, '這個 Email 不是主管或管理者帳號，不能設定為主管 LINE。');
-    return;
-  }
-
-  await db.collection('employees').doc('PRIMARY_MANAGER_LINE').set(
-    {
-      lineUserId,
-      email,
-      name: employee.data.name || employee.data.displayName || email,
-      lineNotifyEnabled: true,
-      lineBoundAt: admin.firestore.FieldValue.serverTimestamp(),
-      lineBindingRole: 'manager'
-    },
-    { merge: true }
-  );
-
-  await replyLineMessage(replyToken, `主管 LINE 綁定成功：${employee.data.name || employee.data.displayName || email}`);
-}
-
-
-/* =========================================================
- * 設備租賃 HTTP API 與通知佇列發送器
- * ---------------------------------------------------------
- * 重要：firebase.json 部署的是 functions/ 目錄。
- * rental-*.html 會呼叫這些 HTTPS Function，並將 LINE / Email 通知寫入
- * notificationQueue；這裡負責把佇列真的送出去。
- * ========================================================= */
-
-const QUEUE_COLLECTION = 'notificationQueue';
-const SENT_STATUSES = new Set(['sent', '已發送', '已送出', 'done', 'completed', 'success']);
-const SENDING_STATUSES = new Set(['sending', '發送中']);
-const PENDING_STATUSES = new Set(['pending', '待發送', 'queued', 'queue', '待處理', 'retry', '發送失敗']);
-const HTTP_OPTIONS = { region: 'us-central1', cors: true, timeoutSeconds: 120, memory: '512MiB' };
-
-function clean(value) {
-  return normalizeText(value);
-}
-
-function nowText() {
-  const d = new Date();
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-}
-
-function dateKey() {
-  const d = new Date();
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
-}
-
-function randomToken(bytes = 18) {
-  return crypto.randomBytes(bytes).toString('hex');
-}
-
-function randomId(prefix) {
-  return `${prefix}${dateKey()}${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
-}
-
-function safeId(value) {
-  return clean(value).replace(/[\/#?\[\]]/g, '_').slice(0, 180) || db.collection('_ids').doc().id;
-}
-
-function stripUndefined(value) {
-  if (value === undefined) return null;
-  if (value == null) return value;
-  if (value && typeof value.toDate === 'function') return value;
-  if (value && typeof value.isEqual === 'function') return value;
-  if (value && value._methodName) return value;
-  if (value instanceof Date) return value;
-  if (Array.isArray(value)) return value.map(stripUndefined);
-  if (typeof value === 'object') {
-    const out = {};
-    Object.keys(value).forEach((key) => {
-      if (value[key] !== undefined) out[key] = stripUndefined(value[key]);
-    });
-    return out;
-  }
-  return value;
-}
-
-function setCorsHeaders(res) {
-  res.set('Access-Control-Allow-Origin', '*');
-  res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
-}
-
-function sendJson(res, status, body) {
-  setCorsHeaders(res);
-  res.status(status).json(body || {});
-}
-
-function requestData(req) {
-  if (req.body && typeof req.body === 'object') return req.body;
-  try {
-    const raw = req.rawBody ? req.rawBody.toString('utf8') : '';
-    return raw ? JSON.parse(raw) : {};
-  } catch (err) {
-    return {};
-  }
-}
-
-function httpEndpoint(handler, options = {}) {
-  return onRequest(Object.assign({}, HTTP_OPTIONS, options), async (req, res) => {
-    setCorsHeaders(res);
-    if (req.method === 'OPTIONS') {
-      res.status(204).send('');
-      return;
-    }
-    if (req.method !== 'POST') {
-      sendJson(res, 405, { ok: false, message: 'Method Not Allowed' });
-      return;
-    }
-    try {
-      const result = await handler(requestData(req), req);
-      sendJson(res, 200, Object.assign({ ok: true }, result || {}));
-    } catch (error) {
-      console.error('[httpEndpoint error]', error);
-      sendJson(res, 400, { ok: false, message: error && error.message ? error.message : String(error) });
-    }
-  });
-}
-
-async function getSystemSettingValue(names) {
-  const wanted = (Array.isArray(names) ? names : [names]).map(clean).filter(Boolean);
-  for (const name of wanted) {
-    try {
-      const snap = await db.collection('systemSettings').doc(name).get();
-      if (snap.exists) {
-        const data = snap.data() || {};
-        const value = clean(data.value || data.token || data.accessToken || data.secret || data.text);
-        if (value) return value;
-      }
-    } catch (err) {
-      // keep trying below
-    }
-  }
-  try {
-    const snap = await db.collection('systemSettings').limit(200).get();
-    let found = '';
-    snap.forEach((doc) => {
-      if (found) return;
-      const data = doc.data() || {};
-      const key = clean(data.key || data.name || doc.id);
-      if (wanted.includes(key)) found = clean(data.value || data.token || data.accessToken || data.secret || data.text);
-    });
-    return found;
-  } catch (err) {
-    return '';
-  }
-}
-
-async function resolveLineAccessToken() {
-  const envCandidates = [
-    ['LINE_CHANNEL_ACCESS_TOKEN', process.env.LINE_CHANNEL_ACCESS_TOKEN],
-    ['LINE_MESSAGING_ACCESS_TOKEN', process.env.LINE_MESSAGING_ACCESS_TOKEN],
-    ['LINE_ACCESS_TOKEN', process.env.LINE_ACCESS_TOKEN],
-    ['LINE_BOT_CHANNEL_ACCESS_TOKEN', process.env.LINE_BOT_CHANNEL_ACCESS_TOKEN]
-  ];
-  for (const [name, value] of envCandidates) {
-    const token = clean(value || '');
-    if (token) return { token, configured: true, source: `env:${name}` };
-  }
-  const token = await getSystemSettingValue([
-    'LINE_CHANNEL_ACCESS_TOKEN',
-    'LINE Channel Access Token',
-    'LINE Messaging API Token',
-    'LINE Access Token',
-    'LINE Bot Access Token',
-    'LINE_TOKEN'
-  ]);
-  return token
-    ? { token, configured: true, source: 'firestore:systemSettings' }
-    : { token: '', configured: false, source: '' };
-}
-
-async function getLineAccessToken() {
-  const resolved = await resolveLineAccessToken();
-  return resolved.token;
-}
-
-function queueStatus(row = {}) {
-  return clean(row.status || row['狀態'] || '待發送');
-}
-
-function isPendingQueue(row = {}) {
-  const status = queueStatus(row);
-  if (SENT_STATUSES.has(status) || SENDING_STATUSES.has(status)) return false;
-  return !status || PENDING_STATUSES.has(status) || /^fail|失敗|error/i.test(status);
-}
-
-function queueScheduledAtMillis(row = {}) {
-  const raw = row.sendAfterAt || row.scheduledAt || row.notBeforeAt || row.deliverAfterAt;
-  if (!raw) return 0;
-  if (typeof raw.toDate === 'function') return raw.toDate().getTime();
-  if (raw instanceof Date) return raw.getTime();
-  if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
-  const parsed = Date.parse(String(raw));
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function formatDateTimeTextFromMillis(ms) {
-  const d = new Date(ms);
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-}
-
-function queueChannel(row = {}) {
-  return clean(row.channel || row.type || row.notifyType || row['發送方式']).toLowerCase();
-}
-
-function queueTargetLineUserId(row = {}) {
-  return clean(row.targetLineUserId || row.lineUserId || row.toLineUserId || row.customerLineUserId || row['LINE User ID']);
-}
-
-function isValidLinePushTargetId(value) {
-  const v = clean(value);
-  // LINE push 的收件人應為 User/Group/Room ID；租賃客人正常會是 U 開頭的 User ID。
-  return /^[UCR][A-Za-z0-9_-]{20,}$/.test(v);
-}
-
-function isValidCustomerLineUserId(value) {
-  const v = clean(value);
-  return /^U[A-Za-z0-9_-]{20,}$/.test(v);
-}
-
-function queueTargetEmail(row = {}) {
-  return clean(row.targetEmail || row.email || row.toEmail || row.customerEmail || row['Email']).toLowerCase();
-}
-
-function queueTitle(row = {}) {
-  return clean(row.title || row.subject || row.eventName || '柚子樂器通知');
-}
-
-function queueBody(row = {}) {
-  const body = clean(row.body || row.message || row.content || row.text || row['訊息內容']);
-  if (body) return body;
-  return queueTitle(row) || '您有一則新的通知。';
-}
-
-function normalizeNotificationPreference(value, hasEmail) {
-  const v = clean(value).toLowerCase();
-  if (['email', 'email_only', 'email-only', 'mail', '只用email', '只用 email', '只用信箱', '信箱'].includes(v)) return 'email';
-  if (['line', 'line_only', 'line-only', '只用line', '只用 line'].includes(v)) return 'line';
-  if (['both', 'line_email', 'line+email', 'line + email', 'all', '雙軌'].includes(v)) return 'both';
-  return hasEmail ? 'both' : 'line';
-}
-function wantsLineByPreference(pref) {
-  return pref === 'line' || pref === 'both';
-}
-function wantsEmailByPreference(pref) {
-  return pref === 'email' || pref === 'both';
-}
-function isCustomerEmailVerified(row = {}) {
-  return row.emailVerified === true || clean(row.emailLinkStatus).toLowerCase() === 'verified' || !!clean(row.emailVerifiedAtText);
-}
-function customerEmailOf(row = {}) {
-  return queueTargetEmail(row);
-}
-async function createCustomerNotificationQueues({ row, title, body, source, contractId, applicationId, sendAfterAt, sendAfterMs, signUrl, officialContractUrl, initialStatus }) {
-  row = row || {};
-  const email = customerEmailOf(row);
-  const pref = normalizeNotificationPreference(row.notificationPreference || row.preferredContactMethod, email);
-  const rawLineId = queueTargetLineUserId(row);
-  const lineId = isValidCustomerLineUserId(rawLineId) ? rawLineId : '';
-  const targetName = clean(row.customerName || row.partyAName || row.targetName || '客人');
-  const baseId = `${safeId(source || 'rental-customer-notice')}-${safeId(contractId || applicationId || row.contractId || row.applicationId || 'rental')}-${Date.now()}`;
-  const results = {
-    line: false,
-    email: false,
-    count: 0,
-    queueIds: [],
-    preference: pref,
-    lineRequested: wantsLineByPreference(pref),
-    emailRequested: wantsEmailByPreference(pref),
-    lineTargetFound: !!lineId,
-    emailTargetFound: !!email,
-    lineSkippedReason: '',
-    emailSkippedReason: ''
-  };
-  const common = stripUndefined({
-    targetName,
-    title,
-    body,
-    message: body,
-    status: clean(initialStatus) || '待發送',
-    sendAfterAt,
-    sendAfterMs,
-    source,
-    contractId,
-    applicationId,
-    notificationPreference: pref,
-    emailVerified: isCustomerEmailVerified(row),
-    signUrl,
-    officialContractUrl,
-  });
-  if (wantsLineByPreference(pref) && lineId) {
-    const queueId = `${baseId}-line`;
-    await createNotificationQueue(Object.assign({}, common, {
-      queueId,
-      channel: 'line',
-      targetLineUserId: lineId,
-      targetEmail: email,
-    }));
-    results.line = true;
-    results.count += 1;
-    results.queueIds.push(queueId);
-  } else if (wantsLineByPreference(pref)) {
-    results.lineSkippedReason = rawLineId
-      ? '客人 LINE 配對資料格式不正確，請重新配對 LINE。'
-      : '客人尚未完成 LINE 配對，契約內沒有 LINE User ID。';
-  }
-  if (wantsEmailByPreference(pref) && email) {
-    const queueId = `${baseId}-email`;
-    await createNotificationQueue(Object.assign({}, common, {
-      queueId,
-      channel: 'email',
-      targetEmail: email,
-      targetLineUserId: lineId,
-    }));
-    results.email = true;
-    results.count += 1;
-    results.queueIds.push(queueId);
-  } else if (wantsEmailByPreference(pref)) {
-    results.emailSkippedReason = '客人沒有 Email。';
-  }
-  return results;
-}
-
-
-async function sendLinePush(row) {
-  const to = queueTargetLineUserId(row);
-  if (!to) throw new Error('缺少 LINE User ID，無法發送 LINE。');
-  if (!isValidLinePushTargetId(to)) throw new Error('LINE 收件人資料不正確，請重新完成 LINE 配對。');
-  const token = await getLineAccessToken();
-  if (!token) throw new Error('缺少 LINE_CHANNEL_ACCESS_TOKEN，尚未設定 LINE Messaging API Channel access token。');
-
-  const title = queueTitle(row);
-  const body = queueBody(row);
-  const directLineText = clean(row.lineText || row.lineMessage || row.lineBody);
-  const text = directLineText || (title && body && title !== body ? `${title}\n${body}` : (body || title || '柚子樂器通知'));
-  const response = await fetch('https://api.line.me/v2/bot/message/push', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({
-      to,
-      messages: [{ type: 'text', text: text.slice(0, 4900) }],
-    }),
-  });
-  const responseText = await response.text();
-  if (!response.ok) {
-    throw new Error(`LINE API ${response.status}：${responseText.slice(0, 500)}`);
-  }
-  return { provider: 'line-messaging-api', responseStatus: response.status, responseText: responseText.slice(0, 500) };
-}
-
-async function sendEmailViaGmail(row) {
-  const to = queueTargetEmail(row);
-  if (!to) throw new Error('缺少 Email，無法發送 Email。');
-
-  const gmailUser = clean(process.env.GMAIL_USER || '');
-  const gmailAppPassword = clean(process.env.GMAIL_APP_PASSWORD || '').replace(/\s+/g, '');
-  const from = clean(process.env.EMAIL_FROM || '') || `柚子樂器 <${gmailUser}>`;
-
-  if (!gmailUser || !gmailAppPassword) {
-    throw new Error('Gmail 尚未設定 GMAIL_USER / GMAIL_APP_PASSWORD。');
-  }
-
-  const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-      user: gmailUser,
-      pass: gmailAppPassword,
-    },
-  });
-
-  const subject = queueTitle(row) || '柚子樂器通知';
-  const body = queueBody(row) || '';
-  const html = clean(row.html || row.htmlBody || '') || body.replace(/\n/g, '<br>');
-
-  const info = await transporter.sendMail({
-    from,
-    to,
-    subject,
-    text: body || subject,
-    html,
   });
 
   return {
-    provider: 'gmail',
-    responseStatus: 200,
-    responseText: clean(info && info.messageId ? info.messageId : ''),
+    fileName,
+    storagePath,
+    downloadUrl: `https://firebasestorage.googleapis.com/v0/b/${bucket().name}/o/${encodeURIComponent(storagePath)}?alt=media&token=${downloadToken}`,
+    mimeType,
+    size: buffer.length
   };
 }
 
-async function sendEmailViaSendGrid(row) {
-  // 保留舊函式名稱，讓 notificationQueue 的原本流程不用重寫。
-  // 實際寄信已改為 Gmail SMTP。
-  return await sendEmailViaGmail(row);
+async function recordExternalTeacherFile(row) {
+  const ref = db().collection('externalTeacherFiles').doc();
+  await ref.set(Object.assign({}, row, { fileId: ref.id, createdAt: nowTs() }));
+  return ref.id;
 }
 
-async function markQueue(docRef, data) {
-  await docRef.set(Object.assign({}, data, { updatedAt: admin.firestore.FieldValue.serverTimestamp() }), { merge: true });
-}
-
-async function appendNotificationLog(queueId, data) {
-  const id = `${safeId(queueId)}_${Date.now()}`;
-  await db.collection('notificationLogs').doc(id).set(Object.assign({
-    logId: id,
-    queueId,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    createdAtText: nowText(),
-  }, data || {}), { merge: true });
-}
-
-async function processNotificationQueueDoc(docRef, row, options = {}) {
-  row = row || {};
-  const queueId = clean(row.queueId || docRef.id);
-  const currentStatus = queueStatus(row);
-  const attemptCount = Number(row.attemptCount || 0) || 0;
-  if (options.force !== true && /發送失敗|fail|error/i.test(currentStatus) && attemptCount >= 5) {
-    return { ok: false, skipped: true, reason: '已達自動重試上限 5 次。', queueId, channel: queueChannel(row) };
-  }
-  if (options.force !== true && !isPendingQueue(row)) return { ok: true, skipped: true, reason: `狀態不是待發送：${currentStatus}` };
-
-  const scheduledAt = queueScheduledAtMillis(row);
-  const nowMs = Date.now();
-  if (scheduledAt && scheduledAt > nowMs) {
-    const delayMs = scheduledAt - nowMs;
-    await markQueue(docRef, {
-      queueId,
-      status: '待發送',
-      scheduledForText: formatDateTimeTextFromMillis(scheduledAt),
-      scheduledRemainingMs: delayMs,
-      schedulerNote: '尚未到預定發送時間，先保留待發送。',
-    });
-    if (options.processor === 'onCreate' && delayMs <= 90000) {
-      await sleep(delayMs);
-      const freshSnap = await docRef.get();
-      if (!freshSnap.exists) return { ok: true, skipped: true, reason: 'queue-deleted-before-scheduled-time' };
-      row = freshSnap.data() || {};
-      if (!isPendingQueue(row)) return { ok: true, skipped: true, reason: `等待期間狀態已變更：${queueStatus(row)}` };
-    } else {
-      return { ok: true, skipped: true, scheduled: true, queueId, sendAfterAt: formatDateTimeTextFromMillis(scheduledAt) };
-    }
-  }
-
-  const channel = queueChannel(row);
-  if (!['line', 'email'].includes(channel)) {
-    await markQueue(docRef, { status: '發送失敗', lastError: `不支援的發送方式：${channel || '(空白)'}` });
-    return { ok: false, skipped: true, reason: 'unsupported-channel' };
-  }
-
-  await markQueue(docRef, {
-    queueId,
-    status: '發送中',
-    sendStartedAt: admin.firestore.FieldValue.serverTimestamp(),
-    sendStartedAtText: nowText(),
-    attemptCount: admin.firestore.FieldValue.increment(1),
-    processor: options.processor || 'cloud-function',
-  });
-
-  try {
-    const result = channel === 'line' ? await sendLinePush(row) : await sendEmailViaSendGrid(row);
-    await markQueue(docRef, {
-      status: '已發送',
-      sentAt: admin.firestore.FieldValue.serverTimestamp(),
-      sentAtText: nowText(),
-      provider: result.provider,
-      responseStatus: result.responseStatus,
-      responseText: result.responseText || '',
-      lastError: '',
-    });
-    await appendNotificationLog(queueId, {
-      status: '已發送',
-      channel,
-      provider: result.provider,
-      targetEmployeeId: clean(row.targetEmployeeId),
-      targetName: clean(row.targetName),
-      targetEmail: queueTargetEmail(row),
-      targetLineUserId: queueTargetLineUserId(row),
-      title: queueTitle(row),
-      body: queueBody(row),
-    });
-    return { ok: true, sent: true, channel, queueId };
-  } catch (err) {
-    const msg = err && err.message ? err.message : String(err);
-    await markQueue(docRef, {
-      status: '發送失敗',
-      failedAt: admin.firestore.FieldValue.serverTimestamp(),
-      failedAtText: nowText(),
-      lastError: msg,
-    });
-    await appendNotificationLog(queueId, {
-      status: '發送失敗',
-      channel,
-      error: msg,
-      targetEmployeeId: clean(row.targetEmployeeId),
-      targetName: clean(row.targetName),
-      targetEmail: queueTargetEmail(row),
-      targetLineUserId: queueTargetLineUserId(row),
-      title: queueTitle(row),
-      body: queueBody(row),
-    });
-    console.error('[notificationQueue send failed]', queueId, msg);
-    return { ok: false, error: msg, channel, queueId };
-  }
-}
-
-async function createNotificationQueue(row) {
-  const queueId = clean(row.queueId) || `queue-${Date.now()}-${randomToken(4)}`;
-  await db.collection(QUEUE_COLLECTION).doc(queueId).set(stripUndefined(Object.assign({
-    queueId,
-    status: '待發送',
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    createdAtText: nowText(),
-  }, row || {})), { merge: true });
-  return queueId;
-}
-
-async function queueManagerNotification({ title, body, source, contractId, applicationId }) {
-  const managerLineUserId = await getPrimaryManagerLineUserId();
-  if (managerLineUserId) {
-    return await createNotificationQueue({
-      channel: 'line',
-      targetLineUserId: managerLineUserId,
-      targetName: '柚子樂器主管',
-      title,
-      body,
-      message: body,
-      source,
-      contractId,
-      applicationId,
-    });
-  }
-  return await createNotificationQueue({
-    channel: 'email',
-    targetEmail: 'danny700808@gmail.com',
-    targetName: '柚子樂器管理者',
-    title,
-    body,
-    message: body,
-    source,
-    contractId,
-    applicationId,
-  });
-}
-
-function buildSignUrl(contract) {
-  const base = webBaseUrl();
-  return `${base}rental-sign.html?contractId=${encodeURIComponent(clean(contract.contractId || contract.__id))}&token=${encodeURIComponent(clean(contract.signToken || contract.token))}`;
-}
-
-function buildOfficialContractUrl(contract) {
-  const base = webBaseUrl();
-  const token = clean(contract.officialContractToken || contract.customerToken || contract.signToken || contract.token);
-  return `${base}rental-contract.html?contractId=${encodeURIComponent(clean(contract.contractId || contract.__id))}&token=${encodeURIComponent(token)}`;
-}
-
-function buildRenewalReturnUrl(contract) {
-  const base = webBaseUrl();
-  const token = clean(contract.renewalToken || contract.officialContractToken || contract.customerToken || contract.signToken || contract.token);
-  return `${base}rental-renewal.html?contractId=${encodeURIComponent(clean(contract.contractId || contract.__id))}&token=${encodeURIComponent(token)}`;
-}
-
-function todayYmdTaipei() {
-  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
-  const map = {};
-  parts.forEach((p) => { if (p.type !== 'literal') map[p.type] = p.value; });
-  return `${map.year}-${map.month}-${map.day}`;
-}
-
-function daysBetweenYmd(startYmd, endYmd) {
-  const a = Date.parse(`${clean(startYmd)}T00:00:00Z`);
-  const b = Date.parse(`${clean(endYmd)}T00:00:00Z`);
-  if (!Number.isFinite(a) || !Number.isFinite(b)) return 999999;
-  return Math.round((b - a) / 86400000);
-}
-
-async function ensureRenewalToken(docRef, contract) {
-  let token = clean(contract.renewalToken || contract.officialContractToken || contract.customerToken || contract.signToken || contract.token);
-  if (token) return token;
-  token = randomToken(18);
-  await docRef.set({ renewalToken: token, updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedAtText: nowText() }, { merge: true });
-  contract.renewalToken = token;
-  return token;
-}
-
-
-async function getContractForToken(contractId, token, options = {}) {
-  const id = clean(contractId);
-  if (!id) throw new Error('缺少契約編號。');
-  const snap = await db.collection('rentalContracts').doc(id).get();
-  if (!snap.exists) throw new Error('找不到契約資料。');
-  const contract = Object.assign({ __id: snap.id }, snap.data() || {});
-  const allowed = [contract.officialContractToken, contract.customerToken, contract.signToken, contract.token]
-    .map(clean)
-    .filter(Boolean);
-  if (options.allowNoToken !== true && (!clean(token) || !allowed.includes(clean(token)))) {
-    throw new Error('契約連結驗證失敗。');
-  }
-  return { ref: snap.ref, contract };
-}
-
-exports.sendNotificationQueueOnCreate = onDocumentCreated({
-  document: `${QUEUE_COLLECTION}/{queueId}`,
-  region: 'us-central1',
-  timeoutSeconds: 180,
-  memory: '512MiB',
-}, async (event) => {
-  const snap = event.data;
-  if (!snap) return null;
-  return await processNotificationQueueDoc(snap.ref, snap.data() || {}, { processor: 'onCreate' });
-});
-
-exports.flushNotificationQueue = onSchedule({ schedule: 'every 5 minutes', region: 'us-central1', timeoutSeconds: 120, memory: '512MiB' }, async () => {
-  const snap = await db.collection(QUEUE_COLLECTION).where('status', 'in', ['待發送', 'pending', 'queued', 'retry', '發送失敗']).limit(50).get();
-  const results = [];
-  for (const doc of snap.docs) {
-    results.push(await processNotificationQueueDoc(doc.ref, doc.data() || {}, { processor: 'scheduler' }));
-  }
-  return results;
-});
-
-exports.rentalExpiryReminderDaily = onSchedule({ schedule: '0 10 * * *', timeZone: 'Asia/Taipei', region: 'us-central1', timeoutSeconds: 180, memory: '512MiB' }, async () => {
-  const activeStatuses = ['租賃中', '到期提醒中', '續約待確認', '續約待付款'];
-  const today = todayYmdTaipei();
-  const snap = await db.collection('rentalContracts').where('status', 'in', activeStatuses).limit(300).get();
-  const results = [];
-  for (const doc of snap.docs) {
-    const contract = Object.assign({ __id: doc.id, contractId: doc.id }, doc.data() || {});
-    const endDate = clean(contract.endDate || contract.officialEndDate || contract.currentEndDate);
-    const left = daysBetweenYmd(today, endDate);
-    if (left < 0 || left > 5) continue;
-    if (clean(contract.expiryReminderSentForEndDate) === endDate) {
-      results.push({ contractId: doc.id, skipped: true, reason: 'already-sent-for-endDate', endDate });
-      continue;
-    }
-    await ensureRenewalToken(doc.ref, contract);
-    const url = buildRenewalReturnUrl(contract);
-    const body = [`續約與退租提醒`, ``, `您的租賃目前到期日：${endDate || '未設定'}`, ``, `請點選以下連結，選擇「續約」或「退租」：`, url].join('\n');
-    const notifyResult = await createCustomerNotificationQueues({
-      row: Object.assign({}, contract, { contractId: doc.id }),
-      title: '續約與退租提醒',
-      body,
-      source: 'rental-expiry-renewal-return-reminder',
-      contractId: doc.id,
-      officialContractUrl: url,
-    });
-    await doc.ref.set({
-      status: clean(contract.status) === '租賃中' ? '到期提醒中' : clean(contract.status || '到期提醒中'),
-      renewalReturnLinkUrl: url,
-      expiryReminderSentAt: admin.firestore.FieldValue.serverTimestamp(),
-      expiryReminderSentAtText: nowText(),
-      expiryReminderSentForEndDate: endDate,
-      expiryReminderDaysLeft: left,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAtText: nowText(),
-    }, { merge: true });
-    results.push({ contractId: doc.id, endDate, daysLeft: left, notificationResult: notifyResult });
-  }
-  return { today, count: results.length, results };
-});
-
-exports.rentalLineRuntimeStatusHttp = httpEndpoint(async () => {
-  const tokenInfo = await resolveLineAccessToken();
-  const managerRecipient = await getPrimaryManagerLineRecipient();
-  let latestLineFailure = null;
-  try {
-    const snap = await db.collection(QUEUE_COLLECTION).limit(120).get();
-    const failures = [];
-    snap.forEach((doc) => {
-      const row = Object.assign({ queueId: doc.id }, doc.data() || {});
-      if (queueChannel(row) !== 'line') return;
-      const status = queueStatus(row);
-      if (!/發送失敗|fail|error/i.test(status)) return;
-      failures.push({
-        queueId: clean(row.queueId || doc.id),
-        source: clean(row.source),
-        status,
-        lastError: clean(row.lastError),
-        atText: clean(row.failedAtText || row.updatedAtText || row.createdAtText)
-      });
-    });
-    failures.sort((a, b) => clean(b.atText).localeCompare(clean(a.atText)));
-    latestLineFailure = failures[0] || null;
-  } catch (err) {
-    latestLineFailure = { status: '讀取失敗', lastError: err && err.message ? err.message : String(err), atText: nowText() };
-  }
-  return {
-    lineTokenConfigured: tokenInfo.configured,
-    lineTokenSource: tokenInfo.source,
-    managerLineConfigured: !!(managerRecipient && managerRecipient.lineUserId),
-    managerRecipientName: managerRecipient ? managerRecipient.name : '',
-    managerRecipientId: managerRecipient ? managerRecipient.employeeId : '',
-    managerLineUserIdMasked: managerRecipient ? maskLineUserId(managerRecipient.lineUserId) : '',
-    latestLineFailure
-  };
-});
-
-exports.processNotificationQueueNowHttp = httpEndpoint(async (data) => {
-  const queueId = clean(data.queueId || '');
-  const limit = Math.max(1, Math.min(Number(data.limit || 20) || 20, 50));
-  if (queueId) {
-    const ref = db.collection(QUEUE_COLLECTION).doc(queueId);
-    const snap = await ref.get();
-    if (!snap.exists) throw new Error('找不到通知佇列資料。');
-    const result = await processNotificationQueueDoc(ref, snap.data() || {}, { processor: 'manual-http' });
-    return Object.assign({ ok: result.ok !== false }, result);
-  }
-  const snap = await db.collection(QUEUE_COLLECTION).where('status', 'in', ['待發送', 'pending', 'queued', 'retry', '發送失敗']).limit(limit).get();
-  const results = [];
-  for (const doc of snap.docs) {
-    results.push(await processNotificationQueueDoc(doc.ref, doc.data() || {}, { processor: 'manual-http' }));
-  }
-  return { count: results.length, results };
-});
-
-exports.emailSendCheckHttp = httpEndpoint(async (data) => {
-  const to = clean(data.to || data.email || data.targetEmail);
-  if (!to) throw new Error('請輸入測試收件 Email。');
-  const title = clean(data.title || '柚子樂器 Email 發送測試');
-  const body = clean(data.body || '這是一封柚子樂器系統 Email 發送測試。');
-  const queueId = await createNotificationQueue({
-    queueId: `email-send-check-${Date.now()}`,
-    channel: 'email',
-    targetEmail: to,
-    targetName: clean(data.targetName || '測試收件人'),
-    title,
-    body,
-    message: body,
-    source: 'email-send-check',
-  });
-  return { queueId, message: '已建立 Email 測試佇列。' };
-});
-
-exports.rentalSubmitApplicationHttp = httpEndpoint(async (data) => {
-  const applicationId = clean(data.applicationId || data.applicationNo) || randomId('RA');
-  const customerName = clean(data.customerName || data.partyAName || '未填姓名');
-  const customerEmail = normalizeEmail(data.customerEmail || data.email || '');
-  const notificationPreference = normalizeNotificationPreference(data.notificationPreference || data.preferredContactMethod, customerEmail);
-  const applicationNo = clean(data.applicationNo || applicationId);
-  const now = admin.firestore.FieldValue.serverTimestamp();
-  const ref = db.collection('rentalApplications').doc(applicationId);
-  const currentSnap = await ref.get();
-  const current = currentSnap.exists ? (currentSnap.data() || {}) : {};
-  const exists = currentSnap.exists;
-  const emailVerifyToken = clean(data.emailVerifyToken || current.emailVerifyToken) || randomToken(18);
-  const emailVerificationUrl = `${webBaseUrl()}rental-email-verify.html?applicationId=${encodeURIComponent(applicationId)}&token=${encodeURIComponent(emailVerifyToken)}`;
-  const wantsLine = wantsLineByPreference(notificationPreference);
-  const wantsEmail = wantsEmailByPreference(notificationPreference);
-  const row = stripUndefined(Object.assign({}, data, {
-    applicationId,
-    applicationNo,
-    customerName,
-    customerEmail,
-    notificationPreference,
-    preferredContactMethod: notificationPreference,
-    emailVerifyToken,
-    emailVerificationUrl,
-    emailVerified: current.emailVerified === true ? true : false,
-    emailLinkStatus: wantsEmail ? (current.emailVerified === true ? 'verified' : clean(current.emailLinkStatus || 'pending')) : 'not_required',
-    lineConfirmText: clean(data.lineConfirmText) || `設備租賃申請 ${applicationNo}`,
-    lineLinkStatus: wantsLine ? clean(data.lineLinkStatus || current.lineLinkStatus || 'pending') : 'not_required',
-    status: clean(data.status || '待店家確認'),
-    updatedAt: now,
-    updatedAtText: nowText(),
-  }));
-  if (!exists) {
-    row.createdAt = now;
-    row.createdAtText = clean(data.createdAtText || nowText());
-  }
-  await ref.set(row, { merge: true });
-
-  let emailVerificationQueued = false;
-  try {
-    const body = [
-      '收到新的設備租賃申請',
-      `姓名：${customerName}`,
-      `電話：${clean(data.customerPhone || '')}`,
-      `Email：${customerEmail || '未填'}`,
-      `通知方式：${notificationPreference === 'email' ? '只用 Email' : notificationPreference === 'line' ? '只用 LINE' : 'LINE + Email'}`,
-      `設備需求：${clean(data.otherEquipmentNeed || data.equipmentName || data.rentalType || '未填寫')}`,
-      `希望方式：${clean(data.shippingMethod || '')}`,
-      `希望日期：${clean(data.preferredDate || '')} ${clean(data.preferredTime || '')}`.trim(),
-      '',
-      `申請編號：${applicationNo}`,
-      '',
-      wantsLine ? `LINE 配對文字：設備租賃申請 ${applicationNo}` : '客人選擇不使用 LINE 配對。'
-    ].join('\n');
-    await queueManagerNotification({ title: '新的設備租賃申請', body, source: 'rental-application', applicationId });
-  } catch (err) {
-    console.error('[rentalSubmitApplicationHttp queue manager notice failed]', err);
-  }
-
-  if (wantsEmail && customerEmail) {
-    try {
-      const verifyBody = [
-        `${customerName} 您好，柚子樂器已收到您的設備租賃申請。`,
-        '',
-        `申請編號：${applicationNo}`,
-        '',
-        '打開這封信本身不會自動確認；請點選以下連結確認 Email，連到確認頁後才會完成確認：',
-        emailVerificationUrl,
-        '',
-        wantsLine ? `若您也要使用 LINE 通知，請到柚子樂器官方 LINE 貼上：設備租賃申請 ${applicationNo}` : '您已選擇只用 Email 通知，不需要完成 LINE 配對。',
-        '',
-        '柚子樂器官網：https://www.mingtinghuang.com/',
-      ].join('\n');
-      await createNotificationQueue({
-        queueId: `rental-email-verify-${safeId(applicationId)}-${Date.now()}`,
-        channel: 'email',
-        targetEmail: customerEmail,
-        targetName: customerName,
-        title: '請確認柚子樂器租賃通知 Email',
-        body: verifyBody,
-        message: verifyBody,
-        source: 'rental-email-verify',
-        applicationId,
-        notificationPreference,
-        emailVerificationUrl,
-      });
-      emailVerificationQueued = true;
-      await ref.set({ emailVerificationQueuedAtText: nowText() }, { merge: true });
-    } catch (err) {
-      console.error('[rentalSubmitApplicationHttp queue email verification failed]', err);
-      await ref.set({ emailVerificationQueueError: err && err.message ? err.message : String(err) }, { merge: true });
-    }
-  }
-
-  return { applicationId, applicationNo, lineConfirmText: row.lineConfirmText, notificationPreference, emailVerificationQueued, emailVerificationUrl: wantsEmail ? emailVerificationUrl : '' };
-});
-
-exports.rentalVerifyEmailHttp = httpEndpoint(async (data) => {
-  const applicationId = clean(data.applicationId || data.id || data.applicationNo);
-  const token = clean(data.token || data.emailVerifyToken);
-  if (!applicationId || !token) throw new Error('Email 確認連結不完整。');
-  const ref = db.collection('rentalApplications').doc(applicationId);
-  let snap = await ref.get();
-  if (!snap.exists) {
-    const found = await findRentalApplication(applicationId);
-    if (!found) throw new Error('找不到租賃申請資料。');
-    snap = await found.ref.get();
-  }
-  const app = Object.assign({ __id: snap.id }, snap.data() || {});
-  if (clean(app.emailVerifyToken) !== token) throw new Error('Email 確認連結驗證失敗。');
-  const update = {
-    emailVerified: true,
-    emailLinkStatus: 'verified',
-    emailVerifiedAt: admin.firestore.FieldValue.serverTimestamp(),
-    emailVerifiedAtText: nowText(),
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    updatedAtText: nowText(),
-  };
-  await snap.ref.set(update, { merge: true });
-  const contractSnap = await db.collection('rentalContracts').where('applicationId', '==', snap.id).limit(5).get();
-  const batch = db.batch();
-  contractSnap.forEach((doc) => batch.set(doc.ref, update, { merge: true }));
-  if (!contractSnap.empty) await batch.commit();
-  try {
-    const adminUrl = rentalAdminApplicationUrl(snap.id);
-    await queueManagerNotification({
-      title: '租賃客人已完成 Email 確認',
-      body: [
-        `姓名：${clean(app.customerName)}`,
-        `Email：${clean(app.customerEmail)}`,
-        `申請編號：${clean(app.applicationNo || snap.id)}`,
-        '',
-        '請進入系統處理這一筆租賃申請：',
-        adminUrl
-      ].join('\n'),
-      source: 'rental-email-verified',
-      applicationId: snap.id,
-    });
-  } catch (err) {
-    console.warn('queue manager notification for rentalVerifyEmailHttp failed:', err);
-  }
-  return { applicationId: snap.id, applicationNo: clean(app.applicationNo || snap.id), customerEmail: clean(app.customerEmail) };
-});
-
-
-const RENTAL_INLINE_ASSET_FIELDS = [
-  'customerSignatureDataUrl',
-  'signatureDataUrl',
-  'signDataUrl',
-  'customerIdImageWatermarkedDataUrl',
-  'idImageWatermarkedDataUrl',
-  'customerIdImageDataUrl',
-  'idImageDataUrl',
-  'idCardImageDataUrl'
+const DEFAULT_CLAUSES = [
+  [
+    "第一條",
+    "契約性質",
+    "一、甲方委任乙方提供才藝教學、課程協助、活動支援或雙方另行約定之專業服務。\n二、乙方係以外聘才藝教師身分受任提供服務，雙方同意本契約性質為委任關係，非僱傭關係。\n三、乙方得依其專業能力、教學方法與課程特性提供服務；惟課程時間、地點、學生安全、教室規範及甲方對外承諾事項，仍應依雙方確認內容及甲方合理管理規範辦理。\n四、本契約如因實際履行情形涉及勞動、承攬或其他法律關係之認定，仍應依主管機關或法院就個案事實之認定為準。"
+  ],
+  [
+    "第二條",
+    "委任期間",
+    "一、本契約期間自 {{contractStartDate}} 起至 {{contractEndDate}} 止。\n二、每年度契約原則上以當年度十二月三十一日為屆滿日。\n三、次年度契約得自每年十二月十五日起，由甲方開放乙方簽署下一年度契約；新年度契約期間原則上自次年度一月一日起至次年度十二月三十一日止。\n四、契約期滿後，如雙方未另行完成續約簽署，乙方不得主張契約自動延長。"
+  ],
+  [
+    "第三條",
+    "委任工作內容",
+    "乙方受任事項如下：\n一、依雙方確認之課程項目提供教學服務。\n二、依學生程度、課程目標及教學需求，進行備課、授課、課程回饋或進度建議。\n三、配合甲方合理通知，參與必要之課程溝通、學生狀況回報、成果活動或教學相關事項。\n四、協助維護教學現場安全、教室秩序及學生學習品質。\n五、其他經雙方書面、LINE、Email 或系統確認之委任事項。"
+  ],
+  [
+    "第四條",
+    "授課時間與地點",
+    "一、乙方授課時間、地點及課程安排，應由甲乙雙方事前確認。\n二、乙方如因故無法依約授課，應儘早通知甲方，以利甲方安排補課、調課或其他處理方式。\n三、甲方如因學生請假、停課、活動異動、天災或其他不可歸責於甲方之事由需調整課程，應儘早通知乙方。\n四、乙方不得未經甲方同意，私自變更授課老師、授課地點、課程內容或將委任事項轉由第三人代為履行。"
+  ],
+  [
+    "第五條",
+    "報酬與給付方式",
+    "一、乙方報酬依雙方於後台、書面、LINE、Email 或其他可保存紀錄之方式確認。\n二、報酬計算方式得依鐘點、堂數、課程件數、活動場次或雙方另行約定方式計算。乙方鐘點費如有約定，為每小時新臺幣 {{hourlyRate}} 元整。\n三、甲方得於每月結算乙方已完成之服務內容，並依雙方約定日期給付報酬；約定付款日為每月 {{paymentDay}} 日者，依該約定辦理。\n四、如遇學生請假、課程取消、臨時停課、未達開課人數或其他特殊情形，報酬是否給付及計算方式，依甲乙雙方事前約定或個案協議辦理。\n五、乙方應提供正確之匯款帳戶、身分資料及依法所需文件；如資料錯誤致給付延誤，乙方應自行負責。"
+  ],
+  [
+    "第六條",
+    "稅務與保險",
+    "一、乙方因本契約所取得之報酬，應依中華民國相關稅法規定辦理所得申報、扣繳或補充保費等事項。\n二、甲方得依法辦理必要之所得扣繳、申報或相關行政作業。\n三、乙方如非甲方正式員工，除法律另有強制規定或雙方另有書面約定外，甲方不負擔乙方勞工保險、就業保險、勞工退休金提繳或其他僱傭關係下之雇主義務。\n四、乙方如需自行投保相關保險，應自行辦理。"
+  ],
+  [
+    "第七條",
+    "乙方基本義務",
+    "乙方應遵守下列事項：\n一、以善良管理人之注意義務提供教學服務。\n二、不得對學生、家長或甲方人員有不當言語、肢體接觸、歧視、騷擾、恐嚇或其他不適當行為。\n三、不得未經甲方同意，私下向甲方學生或家長收費、招生、轉介、推銷課程或移轉至其他場所授課。\n四、不得擅自使用甲方名義、商標、教室、設備、學生資料或課程資料從事與本契約無關之行為。\n五、不得違反兒少保護、個人資料保護、著作權、性騷擾防治、校園及補教相關安全規範。\n六、如發生學生安全、意外、糾紛、家長申訴或其他異常事件，乙方應立即通知甲方。"
+  ],
+  [
+    "第八條",
+    "甲方義務",
+    "甲方應遵守下列事項：\n一、提供雙方約定之授課資訊、課程需求及必要聯絡窗口。\n二、依約給付乙方報酬。\n三、提供合理教學環境或必要設備，惟設備項目仍以雙方約定或現場既有條件為準。\n四、對乙方提供之個人資料、身分證明文件及契約資料，依個人資料保護法及相關規定妥善保管。"
+  ],
+  [
+    "第九條",
+    "身分資料與個人資料使用",
+    "一、乙方同意提供姓名、身分證字號、聯絡方式、通訊地址、匯款帳戶、身分證明文件、簽名影像及其他簽約必要資料。\n二、甲方蒐集乙方資料之目的，限於簽約、身分確認、報酬給付、所得申報、聯絡通知、契約保存及相關管理作業。\n三、乙方上傳之身分證明文件，甲方得加註浮水印，例如「僅供柚子樂器外聘教師簽約使用」及簽署日期，以降低文件遭不當使用之風險。\n四、未經乙方同意，甲方不得將乙方個人資料提供予與本契約目的無關之第三人；但依法令、主管機關要求或辦理必要行政作業者，不在此限。"
+  ],
+  [
+    "第十條",
+    "保密義務",
+    "一、乙方因履行本契約而知悉之學生資料、家長資料、課程價格、營運資訊、教學安排、內部管理資料、系統帳號或其他非公開資訊，均負保密義務。\n二、乙方不得將前項資訊洩漏、交付、轉傳或提供予第三人，亦不得作為本契約以外之用途。\n三、本條保密義務於契約終止或期滿後仍繼續有效。"
+  ],
+  [
+    "第十一條",
+    "教材、著作與肖像使用",
+    "一、乙方自行設計之教材、講義、教學方法或作品，如無另行約定，其著作權歸乙方所有。\n二、甲方提供之教材、講義、圖片、影音、課程資料、品牌素材或內部文件，其權利歸甲方或原權利人所有，乙方不得擅自重製、散布或移作他用。\n三、乙方如同意甲方拍攝授課花絮、成果照片或宣傳素材，應另依雙方確認範圍使用。\n四、涉及學生肖像、姓名、作品或個人資料之使用，應依甲方規範及相關法令辦理。"
+  ],
+  [
+    "第十二條",
+    "不得私下招攬與利益衝突",
+    "一、乙方不得利用甲方提供之學生、家長、課程或營運資訊，私下招攬甲方學生或家長至其他場所、其他單位或個人名義授課。\n二、乙方不得以降低價格、跳過甲方、私下收費或其他方式，破壞甲方與學生或家長之契約關係。\n三、乙方如有其他合作單位或教學安排，應避免與甲方課程安排發生利益衝突；如有疑義，應先與甲方溝通確認。"
+  ],
+  [
+    "第十三條",
+    "課程取消、補課與調課",
+    "一、學生請假、臨時停課、天災、停班停課或不可抗力事件所生之補課、調課或取消，依甲方對學生之課程規範及雙方協議辦理。\n二、乙方因個人因素需調課或請假，應提早通知甲方，並配合甲方安排補課或替代方案。\n三、如乙方無故缺席、臨時取消或嚴重影響學生權益，甲方得視情節調整委任事項、停止排課或終止契約。"
+  ],
+  [
+    "第十四條",
+    "契約終止",
+    "一、任一方欲提前終止本契約，應提前通知他方，並完成已排課程、報酬結算及相關交接。但有重大違約或不可繼續履約之情形者，不在此限。\n二、乙方如有下列情形之一，甲方得立即終止契約：\n（一）提供不實資料或冒用他人身分。\n（二）有重大教學疏失、學生安全疑慮或不當行為。\n（三）未經同意私下招攬學生、收費或轉介課程。\n（四）洩漏學生、家長或甲方非公開資料。\n（五）違反法令、主管機關規範或本契約重大條款。\n三、契約終止後，乙方應返還或刪除甲方提供之非公開資料，並不得繼續使用甲方名義對外招攬或授課。"
+  ],
+  [
+    "第十五條",
+    "違約責任",
+    "一、任一方違反本契約，致他方受有損害者，應負損害賠償責任。\n二、乙方如因故意或重大過失造成學生、家長、甲方或第三人損害，應依法律規定負相關責任。\n三、如因乙方違反保密、個資保護、私下招攬或擅自使用甲方資料等義務，致甲方商譽、營運或法律權益受損，甲方得依法請求損害賠償。"
+  ],
+  [
+    "第十六條",
+    "電子文件與線上簽署",
+    "一、甲乙雙方同意本契約得以電子文件、線上勾選、電子簽名、LINE、Email 或系統紀錄方式成立及保存。\n二、乙方於系統中完成資料填寫、身分證明文件上傳、契約確認及線上簽名後，視為已詳閱並同意本契約內容。\n三、甲方得將乙方簽署完成之契約以網頁、PDF、Email 或 LINE 方式提供乙方查看或保存。"
+  ],
+  [
+    "第十七條",
+    "通知方式",
+    "一、甲乙雙方同意以下列方式之一作為通知方式：LINE、Email、電話、簡訊、系統通知或書面通知。\n二、乙方應確保所留聯絡資料正確，如有變更應主動通知甲方。\n三、乙方因聯絡資料錯誤、未讀取訊息或未更新資料而致通知未能送達或延誤者，由乙方自行負責。"
+  ],
+  [
+    "第十八條",
+    "契約修改",
+    "一、本契約內容如需修改，應經雙方合意。\n二、甲方得因年度營運、課程制度、法令變更或管理需求，調整下一年度契約模板。\n三、乙方已簽署完成之年度契約，除雙方另行合意外，不因甲方後續修改契約模板而當然變更。"
+  ],
+  [
+    "第十九條",
+    "準據法與管轄法院",
+    "一、本契約以中華民國法律為準據法。\n二、因本契約所生爭議，雙方應先本誠信原則協商解決。\n三、如協商不成，雙方同意以甲方所在地之地方法院為第一審管轄法院，但法律另有強制規定者，從其規定。"
+  ],
+  [
+    "第二十條",
+    "其他約定",
+    "一、本契約未盡事宜，依民法、個人資料保護法及其他相關法令辦理。\n二、本契約之標題僅為閱讀便利，不影響條文解釋。\n三、本契約經乙方線上簽署並送出，且經甲方系統保存後生效。"
+  ]
 ];
-function isRentalDataUrl(value) {
-  return /^data:/i.test(String(value || ''));
+
+async function ensureActiveTemplate() {
+  const templates = db().collection('externalTeacherContractTemplates');
+  const active = await templates.where('status', '==', 'active').limit(1).get();
+  if (!active.empty) return { id: active.docs[0].id, ...active.docs[0].data() };
+
+  const templateRef = templates.doc('external_teacher_mandate_default');
+  await templateRef.set({
+    title: '外聘才藝教師委任契約書',
+    contractType: 'externalTeacherMandate',
+    version: String(currentGregorianYear()),
+    status: 'active',
+    createdAt: nowTs(),
+    updatedAt: nowTs()
+  }, { merge: true });
+
+  const batch = db().batch();
+  DEFAULT_CLAUSES.forEach((row, index) => {
+    batch.set(templateRef.collection('clauses').doc(`clause_${String(index + 1).padStart(2, '0')}`), {
+      articleNo: row[0],
+      title: row[1],
+      content: row[2],
+      sortOrder: index + 1,
+      enabled: true,
+      createdAt: nowTs(),
+      updatedAt: nowTs()
+    }, { merge: true });
+  });
+  await batch.commit();
+
+  return { id: templateRef.id, title: '外聘才藝教師委任契約書', contractType: 'externalTeacherMandate', version: String(currentGregorianYear()), status: 'active' };
 }
-function rentalFirstClean(...values) {
-  for (const value of values) {
-    const text = clean(value);
-    if (text) return text;
-  }
-  return '';
+
+async function getActiveTemplateWithClauses() {
+  const template = await ensureActiveTemplate();
+  const snap = await db().collection('externalTeacherContractTemplates').doc(template.id).collection('clauses').get();
+  const clauses = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+    .filter((c) => c.enabled !== false)
+    .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
+  return { template, clauses };
 }
-function rentalAssetUrls(row) {
-  row = row || {};
-  const signatureUrl = rentalFirstClean(
-    row.customerSignatureUrl,
-    row.signatureUrl,
-    !isRentalDataUrl(row.customerSignatureDataUrl) ? row.customerSignatureDataUrl : '',
-    !isRentalDataUrl(row.signatureDataUrl) ? row.signatureDataUrl : ''
-  );
-  const idImageUrl = rentalFirstClean(
-    row.customerIdImageUrl,
-    row.idImageUrl,
-    row.idCardImageUrl,
-    !isRentalDataUrl(row.customerIdImageWatermarkedDataUrl) ? row.customerIdImageWatermarkedDataUrl : '',
-    !isRentalDataUrl(row.idImageWatermarkedDataUrl) ? row.idImageWatermarkedDataUrl : ''
-  );
-  return { signatureUrl, idImageUrl };
-}
-function stripRentalInlineAssets(row, options = {}) {
-  const out = Object.assign({}, row || {});
-  const urls = rentalAssetUrls(out);
-  if (urls.signatureUrl) {
-    out.customerSignatureUrl = urls.signatureUrl;
-    out.signatureUrl = urls.signatureUrl;
-  }
-  if (urls.idImageUrl) {
-    out.customerIdImageUrl = urls.idImageUrl;
-    out.idImageUrl = urls.idImageUrl;
-  }
-  RENTAL_INLINE_ASSET_FIELDS.forEach((key) => { delete out[key]; });
-  if (options.deleteInline) {
-    const del = admin.firestore.FieldValue.delete();
-    RENTAL_INLINE_ASSET_FIELDS.forEach((key) => { out[key] = del; });
-  }
+
+function replaceVars(text, values) {
+  let out = String(text || '');
+  Object.keys(values).forEach((key) => {
+    out = out.replace(new RegExp(`{{\\s*${key}\\s*}}`, 'g'), values[key] == null ? '' : String(values[key]));
+  });
   return out;
 }
 
-exports.rentalSaveContractHttp = httpEndpoint(async (data) => {
-  const incomingId = clean(data.contractId || data.id || data.__id);
-  const contractId = incomingId || randomId('RC');
-  const ref = db.collection('rentalContracts').doc(contractId);
-  const currentSnap = await ref.get();
-  const current = currentSnap.exists ? stripRentalInlineAssets(currentSnap.data() || {}) : {};
-  const signToken = clean(data.signToken || current.signToken || current.token) || randomToken(18);
-  const customerToken = clean(data.customerToken || current.customerToken) || randomToken(18);
-  const officialContractToken = clean(data.officialContractToken || current.officialContractToken) || randomToken(18);
-  const contractNo = clean(data.contractNo || current.contractNo || contractId);
-  const status = data.makeSignLink ? '待客人補資料' : clean(data.status || current.status || '草稿');
-  const now = admin.firestore.FieldValue.serverTimestamp();
-  const safeData = stripRentalInlineAssets(data || {});
-  const row = stripUndefined(Object.assign({}, current, safeData, {
-    contractId,
-    contractNo,
-    signToken,
-    token: signToken,
-    customerToken,
-    officialContractToken,
-    signUrl: buildSignUrl({ contractId, signToken }),
-    officialContractUrl: buildOfficialContractUrl({ contractId, officialContractToken, customerToken, signToken }),
-    status,
-    updatedAt: now,
-    updatedAtText: nowText(),
-  }));
-  if (!currentSnap.exists) {
-    row.createdAt = now;
-    row.createdAtText = clean(data.createdAtText || nowText());
+function profileTeachingItems(profile) {
+  const value = profile.teachingItems;
+  if (Array.isArray(value)) return value.join('、');
+  return clean(value);
+}
+
+function renderContractText({ profile, template, clauses, contractStartDate, contractEndDate }) {
+  profile = profile || {};
+  const values = {
+    companyName: process.env.COMPANY_NAME || '柚子樂器',
+    companyTaxId: process.env.COMPANY_TAX_ID || '',
+    companyRepresentative: process.env.COMPANY_REPRESENTATIVE || '',
+    companyAddress: process.env.COMPANY_ADDRESS || '',
+    teacherName: clean(profile.name || profile.displayName || ''),
+    teacherIdNumber: clean(profile.idNumber || ''),
+    teacherBirthDate: clean(profile.birthDate || ''),
+    teacherHouseholdAddress: clean(profile.householdAddress || ''),
+    teacherMailingAddress: clean(profile.mailingAddress || ''),
+    teacherMobile: clean(profile.mobile || profile.phone || ''),
+    teacherEmail: clean(profile.email || ''),
+    teachingItems: profileTeachingItems(profile),
+    hourlyRate: profile.hourlyRate || '',
+    paymentDay: profile.paymentDay || '',
+    contractStartDate,
+    contractEndDate
+  };
+
+  let text = `${template.title || '外聘才藝教師委任契約書'}\n\n`;
+  text += `甲方：${values.companyName}\n`;
+  text += `代表人：${values.companyRepresentative}\n`;
+  text += `地址：${values.companyAddress}\n\n`;
+  text += `乙方：${values.teacherName}\n`;
+  text += `身分證字號：${values.teacherIdNumber}\n`;
+  text += `出生年月日：${values.teacherBirthDate}\n`;
+  text += `通訊地址：${values.teacherMailingAddress}\n`;
+  text += `電話：${values.teacherMobile}\n`;
+  text += `Email：${values.teacherEmail}\n\n`;
+
+  clauses.forEach((clause) => {
+    text += `${clause.articleNo || ''}　${clause.title || ''}\n`;
+    text += `${replaceVars(clause.content, values)}\n\n`;
+  });
+
+  text += `立契約書人：\n\n甲方：${values.companyName}\n代表人：${values.companyRepresentative}\n\n乙方：${values.teacherName}\n簽署日期：${todayKey()}\n`;
+  return text;
+}
+
+function contractHtml(contractText, signatureUrl, identityFiles = [], profile = {}) {
+  const htmlEsc = (value) => String(value == null ? '' : value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const attrEsc = htmlEsc;
+  const text = htmlEsc(contractText || '');
+  const teacherName = htmlEsc(profile.name || profile.displayName || profile.teacherName || '外聘老師');
+  const idNumber = htmlEsc(profile.idNumber || profile.identityNumber || profile.nationalId || '');
+  const mobile = htmlEsc(profile.mobile || profile.mobilePhone || profile.phone || '');
+  const identityUrls = (Array.isArray(identityFiles) ? identityFiles : [])
+    .map((f) => clean(f.downloadUrl || f.url || f.fileUrl || f.storageUrl || ''))
+    .filter(Boolean);
+  const signatureHtml = signatureUrl
+    ? `<img class="signature-img" src="${attrEsc(signatureUrl)}" alt="乙方簽名">`
+    : '<div class="signature-demo">乙方線上簽名</div>';
+  const identityHtml = identityUrls.length
+    ? `<div class="identity-doc-block"><div class="identity-doc-title">乙方身分證明文件／證件照片：</div>${identityUrls.map((u, i) => `<img class="identity-doc-img" src="${attrEsc(u)}" alt="乙方身分證明文件${i + 1}">`).join('')}</div>`
+    : '<div class="identity-doc-note">乙方身分證明文件／證件照片已隨契約資料保存。</div>';
+  return `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>外聘才藝教師委任契約書</title><style>
+body{margin:0;background:#e9e1d6;color:#111}.print-page{padding:20px 0 32px}.a4{width:210mm;min-height:297mm;background:#fff;margin:0 auto;padding:18mm 16mm;box-sizing:border-box;color:#111;font-family:"Noto Serif TC","標楷體","PMingLiU",serif;font-size:13.2px;line-height:1.72;position:relative}.a4 h2{text-align:center;font-size:24px;margin:0 0 12px;letter-spacing:2px}.party{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:10px 0 12px}.party-box{border:1px solid #ddd;padding:10px;border-radius:8px;min-height:80px}.contract-body{white-space:pre-wrap}.sign-row{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:24px;align-items:start}.sign-box{border-top:1px solid #333;padding-top:10px;min-height:105px;position:relative}.identity-row{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:8px;align-items:start}.signature-demo{height:54px;border:1px dashed #aaa;border-radius:8px;margin-top:10px;display:flex;align-items:center;justify-content:center;color:#777;background:#fafafa}.signature-img{max-height:70px;max-width:220px;display:block;margin-top:8px}.identity-doc-block{margin-top:12px;border-top:1px dashed #bbb;padding-top:10px}.identity-doc-title{font-weight:900;margin-bottom:6px}.identity-doc-img{display:block;max-width:100%;max-height:170px;margin-top:8px;border:1px solid #ccc;border-radius:8px;object-fit:contain}.identity-doc-note{margin-top:8px;color:#777;font-size:12px;line-height:1.6}@page{size:A4;margin:0}@media print{body{background:#fff}.print-page{padding:0}.a4{box-shadow:none;margin:0}}@media(max-width:760px){.print-page{padding:10px}.a4{width:100%;min-height:auto;padding:18mm 12mm;font-size:12.5px}.party,.sign-row,.identity-row{grid-template-columns:1fr 1fr}}
+</style></head><body><div class="print-page"><div class="a4"><h2>外聘才藝教師委任契約書</h2><div class="party"><div class="party-box"><b>甲方</b><br>臺中市私立凱立音樂短期補習班<br>代表人：黃銘廷<br>地址：依補習班登記資料</div><div class="party-box"><b>乙方</b><br>外聘老師姓名：${teacherName}<br>身分證字號：${idNumber || '＿＿＿＿＿＿'}<br>電話：${mobile || '＿＿＿＿＿＿'}</div></div><div class="contract-body">${text}</div><div class="sign-row"><div class="sign-box">甲方：臺中市私立凱立音樂短期補習班<br>代表人：黃銘廷</div><div class="sign-box">乙方：${teacherName}${signatureHtml}</div></div><div class="identity-row"><div></div><div>${identityHtml}</div></div><div style="margin-top:20px">簽署日期：${htmlEsc(todayKey())}</div></div></div></body></html>`;
+}
+
+async function saveContractHtml({ teacherId, contractRocYear, contractId, contractText, signatureUrl, identityFiles, profile }) {
+  const token = crypto.randomUUID();
+  const storagePath = `external-teachers/${teacherId}/${contractRocYear}/contracts/${contractId}.html`;
+  const file = bucket().file(storagePath);
+  await file.save(contractHtml(contractText, signatureUrl, identityFiles, profile), {
+    resumable: false,
+    metadata: {
+      contentType: 'text/html; charset=utf-8',
+      cacheControl: 'private, max-age=0',
+      metadata: { firebaseStorageDownloadTokens: token }
+    }
+  });
+  return {
+    fileName: `${contractId}.html`,
+    storagePath,
+    downloadUrl: `https://firebasestorage.googleapis.com/v0/b/${bucket().name}/o/${encodeURIComponent(storagePath)}?alt=media&token=${token}`,
+    mimeType: 'text/html; charset=utf-8'
+  };
+}
+
+function normalizeTeachingItems(value) {
+  if (Array.isArray(value)) return value.map(clean).filter(Boolean);
+  return String(value || '').split(/[、,，]/).map(clean).filter(Boolean);
+}
+
+function publicProfile(profile) {
+  profile = profile || {};
+  return {
+    id: profile.teacherId || profile.id || '',
+    teacherId: profile.teacherId || profile.id || '',
+    name: profile.name || '',
+    displayName: profile.displayName || profile.name || '',
+    mobile: profile.mobile || profile.phone || '',
+    phone: profile.phone || profile.mobile || '',
+    email: profile.email || '',
+    idNumber: profile.idNumber || '',
+    birthDate: profile.birthDate || '',
+    householdAddress: profile.householdAddress || '',
+    mailingAddress: profile.mailingAddress || '',
+    teachingItems: profile.teachingItems || [],
+    hourlyRate: profile.hourlyRate || '',
+    paymentDay: profile.paymentDay || '',
+    bindingMethod: profile.bindingMethod || '',
+    lineBindStatus: profile.lineBindStatus || '',
+    emailBindStatus: profile.emailBindStatus || '',
+    identityFiles: Array.isArray(profile.identityFiles) ? profile.identityFiles : [],
+    payrollInfoStatus: profile.payrollInfoStatus || '',
+    contractStatus: profile.contractStatus || '',
+    status: profile.status || ''
+  };
+}
+
+async function handleExternalTeacherLineEvent(event) {
+  const text = event && event.message && event.message.type === 'text' ? clean(event.message.text) : '';
+  const legacyMatch = text.match(/^外聘老師綁定\s+([A-Z0-9-]+)$/i);
+  const personnelMatch = text.match(/^柚子人員綁定\s+([A-Z0-9-]+)$/i);
+  const match = legacyMatch || personnelMatch;
+  if (!match) return false;
+
+  const bindCode = match[1].toUpperCase();
+  const replyToken = event.replyToken;
+  const lineUserId = event.source && event.source.userId;
+  if (!lineUserId) {
+    await replyLineMessage(replyToken, 'LINE 綁定失敗：系統無法取得您的 LINE 使用者 ID。');
+    return true;
   }
+
+  const bindingRef = db().collection('externalTeacherLineBindings').doc(bindCode);
+  const bindingSnap = await bindingRef.get();
+  if (!bindingSnap.exists) {
+    if (personnelMatch) return false;
+    await replyLineMessage(replyToken, '查不到這組外聘老師綁定碼。\n\n請確認文字是否完整，例如：\n柚子人員綁定 EMP-123456');
+    return true;
+  }
+
+  const binding = bindingSnap.data() || {};
+  const teacherId = clean(binding.teacherId || '');
+  const token = clean(binding.onboardingToken || '');
+  if (!teacherId) {
+    await replyLineMessage(replyToken, '這組外聘老師綁定碼資料不完整，請重新產生綁定碼。');
+    return true;
+  }
+
+  if (binding.expiresAt && binding.expiresAt.toMillis && binding.expiresAt.toMillis() < Date.now()) {
+    await bindingRef.set({ status: 'expired', updatedAt: nowTs() }, { merge: true });
+    await replyLineMessage(replyToken, '這組外聘老師綁定碼已逾期，請重新產生綁定碼。');
+    return true;
+  }
+
+  const { ref, profile } = await getExternalTeacherProfile(teacherId);
+  if (!profile) {
+    await replyLineMessage(replyToken, '系統找不到此外聘老師資料，請重新開啟填寫連結或聯絡柚子樂器官方 LINE。');
+    return true;
+  }
+
+  const lineProfile = await getLineProfile(lineUserId);
+  const lineDisplayName = clean(lineProfile.displayName || '');
+  const teacherName = clean(profile.name || profile.displayName || binding.teacherName || '老師');
+
+  await db().runTransaction(async (tx) => {
+    tx.set(bindingRef, { status: 'bound', lineUserId, lineDisplayName, boundAt: nowTs(), updatedAt: nowTs() }, { merge: true });
+    const linePatch = {
+      employeeId: '',
+      externalTeacherEmployeeId: '',
+      lineUserId,
+      lineNotifyEnabled: true,
+      lineBindStatus: 'bound',
+      lineDisplayName,
+      lineBoundAt: nowTs(),
+      bindCode,
+      onboardingToken: token || profile.onboardingToken || bindCode,
+      status: 'waiting_contract',
+      progressStatus: 'LINE 已綁定，等待老師從 LINE 下一步連結進入正式資料填寫',
+      verifiedBy: 'line',
+      verifiedAt: nowTs(),
+      updatedAt: nowTs()
+    };
+    tx.set(ref, linePatch, { merge: true });
+    tx.set(db().collection('externalTeacherContracts').doc(teacherId), linePatch, { merge: true });
+  });
+
+  const nextUrl = externalTeacherContractUrl(teacherId, token || profile.onboardingToken || bindCode, false);
+  await replyLineMessage(replyToken, `外聘老師 LINE 綁定完成 ✅\n\n您好 ${teacherName}，系統已完成您的 LINE 綁定。\n\n請點選下方下一步連結，繼續完成正式資料、身分證明文件與契約簽署。\n\n${nextUrl}`);
+  await pushAdminMessage(`外聘老師 LINE 綁定完成\n\n姓名：${teacherName}\n狀態：待填資料`);
+  return true;
+}
+
+function buildExternalTeacherEmailBody({ name, url, bindText, bindingMethod, contractRocYear, contractStartDate, contractEndDate }) {
+  const lines = [
+    `${name || '老師'} 您好：`,
+    '',
+    '這是柚子樂器外聘老師資料填寫與年度契約簽署連結。',
+    `合約年度：民國 ${contractRocYear} 年`,
+    `契約期間：${contractStartDate} 至 ${contractEndDate}`,
+    '',
+    `填寫連結：${url}`,
+    ''
+  ];
+  if (wantsLine(bindingMethod)) {
+    lines.push('若您選擇 LINE 綁定，請將下列文字貼到柚子樂器官方 LINE：');
+    lines.push(bindText);
+    lines.push('');
+  }
+  lines.push('請依頁面完成基本資料、身分證明文件上傳、契約確認與線上簽名。');
+  return lines.join('\n');
+}
+
+
+function taipeiYmd(date = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit'
+  }).formatToParts(date).reduce((acc, part) => {
+    if (part.type !== 'literal') acc[part.type] = part.value;
+    return acc;
+  }, {});
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+function ymdParts(ymd) {
+  const m = String(ymd || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  return { year: Number(m[1]), month: Number(m[2]), day: Number(m[3]) };
+}
+
+function ymdToMillisTaipei(ymd) {
+  const p = ymdParts(ymd);
+  if (!p) return 0;
+  return Date.parse(`${ymd}T00:00:00+08:00`);
+}
+
+function daysBetweenYmd(startYmd, endYmd) {
+  const start = ymdToMillisTaipei(startYmd);
+  const end = ymdToMillisTaipei(endYmd);
+  if (!start || !end) return 0;
+  return Math.floor((end - start) / (24 * 60 * 60 * 1000));
+}
+
+function renewalTargetYearForYmd(ymd) {
+  const p = ymdParts(ymd) || ymdParts(taipeiYmd());
+  if (p.month === 12 && p.day >= 15) return p.year + 1;
+  return p.year;
+}
+
+function renewalOpenDateForTargetYear(targetYear) {
+  return `${Number(targetYear) - 1}-12-15`;
+}
+
+function safeDocId(value) {
+  return clean(value).replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 120) || `EXT_${Date.now()}`;
+}
+
+function makeEmployeeBindCode() {
+  return `EMP-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
+}
+
+function externalTeacherContractUrl(contractId, code, verifyEmail = false) {
+  return `${webBaseUrl()}external-teacher-onboarding.html?id=${encodeURIComponent(contractId || '')}&code=${encodeURIComponent(code || '')}${verifyEmail ? '&verify=email' : ''}`;
+}
+
+function renewalContractIdFor(profileId, targetYear) {
+  return `EXTRENEW_${safeDocId(profileId)}_${targetYear}`;
+}
+
+function inactiveTextMatch(value) {
+  const s = lower(value || '');
+  if (!s) return false;
+  const keys = ['archived', 'archive', 'deleted', 'delete', 'cancelled', 'canceled', 'inactive', 'terminated', 'disabled', 'paused', '封存', '已封存', '刪除', '已刪除', '取消', '已取消', '停用', '已停用', '離職', '已離職', '不續聘', '終止', '停聘', '暫停'];
+  return keys.some((key) => s === key || s.includes(key));
+}
+
+function isInactiveExternalTeacher(profile = {}, employee = {}) {
+  if (profile.hiddenFromActiveLists === true || employee.hiddenFromActiveLists === true) return true;
+  if (profile.active === false || profile.enabled === false || employee.active === false || employee.enabled === false) return true;
+  if (clean(profile.externalAccessEnabled) === '否' || clean(employee.externalAccessEnabled) === '否') return true;
+  if (profile.renewalPaused === true || profile.contractRenewalPaused === true || profile.noRenewal === true || employee.renewalPaused === true || employee.contractRenewalPaused === true || employee.noRenewal === true) return true;
+  return [profile.status, profile.profileStatus, profile.contractStatus, profile.accountStatus, profile.employmentStatus, employee.status, employee.accountStatus, employee.employmentStatus, employee.externalTeacherStatus, employee.contractStatus]
+    .some(inactiveTextMatch);
+}
+
+function contractYearMatches(row = {}, targetYear) {
+  const year = normalizeContractGregorianYear(row.contractGregorianYear || row.contractYear || row.gregorianYear || row.renewalTargetYear || '');
+  return Number(year) === Number(targetYear);
+}
+
+function isSignedExternalContract(row = {}, targetYear) {
+  if (!contractYearMatches(row, targetYear)) return false;
+  const s = lower(row.status || row.contractStatus || row.profileStatus || '');
+  const signedWords = ['signed', 'active', 'submitted_pending_admin', 'confirmed', 'contract_effective', 'completed', '已簽署', '已送出', '已確認', '生效', '完成', '管理端已確認'];
+  return signedWords.some((key) => s === key || s.includes(key));
+}
+
+async function getLinkedEmployee(profile = {}) {
+  const employeeId = clean(profile.employeeId || profile.externalTeacherEmployeeId || profile.linkedEmployeeId || profile.userId || '');
+  if (!employeeId) return {};
+  try {
+    const snap = await db().collection('employees').doc(employeeId).get();
+    return snap.exists ? (snap.data() || {}) : {};
+  } catch (err) {
+    logger.warn('getLinkedEmployee failed', err);
+    return {};
+  }
+}
+
+async function queryExternalContractsBy(field, value) {
+  const v = clean(value);
+  if (!field || !v) return [];
+  try {
+    const snap = await db().collection('externalTeacherContracts').where(field, '==', v).limit(50).get();
+    return snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  } catch (err) {
+    logger.warn('queryExternalContractsBy failed', { field, err });
+    return [];
+  }
+}
+
+async function hasSignedContractForYear(profileId, profile = {}, targetYear) {
+  if (isSignedExternalContract(profile, targetYear)) return true;
+  const renewalId = renewalContractIdFor(profileId, targetYear);
+  const rows = [];
+  try {
+    const direct = await db().collection('externalTeacherContracts').doc(renewalId).get();
+    if (direct.exists) rows.push({ id: direct.id, ...direct.data() });
+  } catch (err) {}
+  const ids = Array.from(new Set([
+    profileId,
+    profile.teacherId,
+    profile.id,
+    profile.employeeId,
+    profile.externalTeacherEmployeeId,
+    profile.linkedEmployeeId,
+    profile.currentContractId,
+    profile.externalTeacherContractId
+  ].map(clean).filter(Boolean)));
+  for (const id of ids) {
+    rows.push(...await queryExternalContractsBy('teacherId', id));
+    rows.push(...await queryExternalContractsBy('baseTeacherProfileId', id));
+    rows.push(...await queryExternalContractsBy('employeeId', id));
+    rows.push(...await queryExternalContractsBy('externalTeacherEmployeeId', id));
+  }
+  const deduped = Array.from(new Map(rows.map((row) => [row.id, row])).values());
+  return deduped.some((row) => isSignedExternalContract(row, targetYear));
+}
+
+function shouldSendRenewalReminder(profile = {}, targetYear, todayYmd) {
+  const openDate = renewalOpenDateForTargetYear(targetYear);
+  if (daysBetweenYmd(openDate, todayYmd) < 0) return false;
+  const state = (profile.renewalReminderState && profile.renewalReminderState[String(targetYear)]) || {};
+  const count = Number(state.count || 0) || 0;
+  const lastDate = clean(state.lastReminderDate || '');
+  if (!count) return true;
+  if (count === 1) return daysBetweenYmd(lastDate || openDate, todayYmd) >= 5;
+  return daysBetweenYmd(lastDate || todayYmd, todayYmd) >= 3;
+}
+
+function renewalReminderBody({ name, targetYear, url }) {
+  const roc = rocYear(targetYear);
+  return [
+    `${name || '老師'} 您好：`,
+    '',
+    `柚子樂器外聘老師民國 ${roc} 年契約已開放簽署。`,
+    `契約期間：${targetYear}-01-01 至 ${targetYear}-12-31`,
+    '',
+    '請點選以下連結完成資料確認與契約簽署：',
+    url,
+    '',
+    '若您已完成簽署，請忽略本通知。'
+  ].join('\n');
+}
+
+async function ensureRenewalContractDraft(profileId, profile = {}, targetYear) {
+  const contractId = renewalContractIdFor(profileId, targetYear);
+  const ref = db().collection('externalTeacherContracts').doc(contractId);
+  const snap = await ref.get().catch(() => null);
+  const old = snap && snap.exists ? (snap.data() || {}) : {};
+  const method = normalizeBindingMethod(profile.bindingMethod || profile.notificationPreference || old.bindingMethod || '', !!clean(profile.email || old.email));
+  const lineUserId = clean(profile.lineUserId || old.lineUserId || '');
+  const lineBound = wantsLine(method) ? (!!lineUserId || clean(profile.lineBindStatus || old.lineBindStatus) === 'bound') : false;
+  const code = clean(old.bindingCode || old.onboardingToken || profile.renewalBindCode || '') || makeEmployeeBindCode();
+  const url = externalTeacherContractUrl(contractId, code, false);
+  const emailUrl = externalTeacherContractUrl(contractId, code, true);
+  const name = clean(profile.name || profile.displayName || profile.teacherName || old.name || old.teacherName || '');
+  const email = lower(profile.email || old.email || '');
+  const mobile = clean(profile.mobile || profile.phone || old.mobile || old.phone || '');
+  const employeeId = clean(profile.employeeId || profile.externalTeacherEmployeeId || old.employeeId || old.externalTeacherEmployeeId || profileId);
+  const lineBindStatus = wantsLine(method) ? (lineBound ? 'bound' : 'pending') : 'not_required';
+  const emailBindStatus = wantsEmail(method) ? 'bound' : 'not_required';
+  const status = wantsLine(method) && !lineBound ? 'waiting_bindings' : 'waiting_contract';
+  const row = {
+    id: contractId,
+    teacherId: contractId,
+    baseTeacherProfileId: profileId,
+    baseTeacherEmployeeId: employeeId,
+    isRenewalContractDraft: true,
+    renewalTargetYear: Number(targetYear),
+    employeeId,
+    externalTeacherEmployeeId: employeeId,
+    teacherName: name,
+    name,
+    displayName: name,
+    mobile,
+    phone: mobile,
+    email,
+    teachingItems: profile.teachingItems || profile.teachingItemsText || old.teachingItems || '',
+    teachingItemsText: profile.teachingItemsText || profile.teachingItems || old.teachingItemsText || '',
+    teachingAbilities: Array.isArray(profile.teachingAbilities) ? profile.teachingAbilities : (Array.isArray(old.teachingAbilities) ? old.teachingAbilities : []),
+    bindingMethod: method,
+    bindingMethodLabel: method === 'both' ? 'LINE + Email' : (method === 'email' ? '只用 Email' : '只用 LINE'),
+    bindingCode: code,
+    employeeBindCode: code,
+    employeeBindText: `柚子人員綁定 ${code}`,
+    onboardingToken: code,
+    onboardingUrl: url,
+    emailVerifyUrl: emailUrl,
+    contractYear: Number(targetYear),
+    contractGregorianYear: Number(targetYear),
+    contractRocYear: rocYear(targetYear),
+    contractYearKey: String(rocYear(targetYear)),
+    contractStartDate: `${targetYear}-01-01`,
+    contractEndDate: `${targetYear}-12-31`,
+    nextRenewalOpenDate: renewalOpenDateForTargetYear(Number(targetYear) + 1),
+    renewalDueDate: `${targetYear}-01-01`,
+    renewalOverdue: false,
+    lineUserId,
+    lineBindStatus,
+    emailBindStatus,
+    status,
+    progressStatus: status === 'waiting_bindings' ? '等待 LINE 綁定後簽署年度契約' : '等待老師簽署年度契約',
+    createdAt: old.createdAt || nowTs(),
+    updatedAt: nowTs(),
+    source: 'external-teacher-annual-renewal-reminder'
+  };
   await ref.set(row, { merge: true });
 
-  const applicationId = clean(data.applicationId || current.applicationId);
-  if (applicationId) {
-    await db.collection('rentalApplications').doc(applicationId).set({
-      status: '已轉正式契約',
-      linkedContractId: contractId,
-      contractId,
-      updatedAt: now,
-      updatedAtText: nowText(),
+  if (employeeId) {
+    await db().collection('employees').doc(employeeId).set({
+      nextExternalContractId: contractId,
+      nextExternalContractRocYear: rocYear(targetYear),
+      nextExternalContractGregorianYear: Number(targetYear),
+      nextExternalContractStatus: status,
+      externalContractRenewalStatus: status,
+      externalContractRenewalUpdatedAt: nowTs(),
+      updatedAt: nowTs()
+    }, { merge: true }).catch(() => null);
+  }
+
+  if (wantsLine(method) && !lineBound) {
+    await db().collection('externalTeacherLineBindings').doc(code).set({
+      bindCode: code,
+      bindingCode: code,
+      employeeBindCode: code,
+      bindText: `柚子人員綁定 ${code}`,
+      teacherId: contractId,
+      employeeId,
+      externalTeacherEmployeeId: employeeId,
+      teacherName: name,
+      mobile,
+      email,
+      bindingMethod: method,
+      onboardingToken: code,
+      onboardingUrl: url,
+      status: 'pending',
+      updatedAt: nowTs(),
+      source: 'external-teacher-renewal-binding'
+    }, { merge: true });
+    await db().collection('employeeLineBindings').doc(code).set({
+      bindingCode: code,
+      employeeBindCode: code,
+      bindText: `柚子人員綁定 ${code}`,
+      employeeId,
+      employeeDocId: employeeId,
+      targetCollection: 'employees',
+      externalTeacherContractId: contractId,
+      teacherId: contractId,
+      status: 'pending',
+      name,
+      teacherName: name,
+      email,
+      mobilePhone: mobile,
+      mobile,
+      bindingMethod: method,
+      notificationPreference: method,
+      onboardingToken: code,
+      onboardingUrl: url,
+      updatedAt: nowTs(),
+      source: 'external-teacher-renewal-binding'
     }, { merge: true });
   }
+  return { contractId, code, url, emailUrl, method, lineUserId, email, name };
+}
 
-  return {
-    contractId,
-    contractNo,
-    signToken,
-    token: signToken,
-    customerToken,
-    officialContractToken,
-    signUrl: row.signUrl,
-    officialContractUrl: row.officialContractUrl,
-  };
-});
-
-
-exports.rentalSendSignLinkHttp = httpEndpoint(async (data) => {
-  const contractId = clean(data.contractId || data.id || data.__id);
-  if (!contractId) throw new Error('缺少契約編號，無法傳送正式資料填寫連結。');
-
-  const ref = db.collection('rentalContracts').doc(contractId);
-  const snap = await ref.get();
-  if (!snap.exists) throw new Error('找不到契約資料，無法傳送正式資料填寫連結。');
-
-  const current = Object.assign({ __id: snap.id, contractId: snap.id }, snap.data() || {});
-  const signToken = clean(current.signToken || current.token) || randomToken(18);
-  const customerToken = clean(current.customerToken) || randomToken(18);
-  const officialContractToken = clean(current.officialContractToken) || randomToken(18);
-  const contractNo = clean(current.contractNo || snap.id);
-  const signUrl = buildSignUrl({ contractId: snap.id, signToken });
-  const officialContractUrl = buildOfficialContractUrl({ contractId: snap.id, officialContractToken, customerToken, signToken });
-  const customerName = clean(current.customerName || current.partyAName || '客人');
-
-  const normalized = stripUndefined({
-    contractId: snap.id,
-    contractNo,
-    signToken,
-    token: signToken,
-    customerToken,
-    officialContractToken,
-    signUrl,
-    officialContractUrl,
-    status: '待客人補資料',
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    updatedAtText: nowText(),
-  });
-  await ref.set(normalized, { merge: true });
-
-  const row = Object.assign({}, current, normalized, { __id: snap.id, contractId: snap.id });
-  const body = [
-    `${customerName} 您好，請點選以下連結，補填身分證字號、上傳身分證照片，並完成簽名確認：`,
-    '',
-    signUrl,
-    '',
-    '送出後，柚子樂器會再確認資料，並依約定時間安裝／交付設備。',
-  ].join('\n');
-
-  const notificationResult = await createCustomerNotificationQueues({
-    row,
-    title: '租賃正式資料填寫連結',
-    body,
-    source: 'rental-sign-link',
-    contractId: snap.id,
-    applicationId: clean(row.applicationId),
-    signUrl,
-    initialStatus: 'manual_ready',
-  });
-
-  const sendResults = [];
-  for (const queueId of notificationResult.queueIds || []) {
-    const queueRef = db.collection(QUEUE_COLLECTION).doc(queueId);
-    const queueSnap = await queueRef.get();
-    if (queueSnap.exists) {
-      sendResults.push(await processNotificationQueueDoc(queueRef, queueSnap.data() || {}, { processor: 'rental-sign-link-http', force: true }));
-    }
-  }
-  notificationResult.sendResults = sendResults;
-  notificationResult.sentCount = sendResults.filter((r) => r && r.sent).length;
-  notificationResult.failedCount = sendResults.filter((r) => r && r.ok === false).length;
-  const lineResult = sendResults.find((r) => r && r.channel === 'line') || null;
-  const emailResult = sendResults.find((r) => r && r.channel === 'email') || null;
-  notificationResult.lineSent = !!(lineResult && lineResult.sent);
-  notificationResult.emailSent = !!(emailResult && emailResult.sent);
-  notificationResult.lineFailed = !!(notificationResult.lineRequested && !notificationResult.lineSent);
-  notificationResult.emailFailed = !!(notificationResult.emailRequested && !notificationResult.emailSent);
-  notificationResult.lineError = clean((lineResult && lineResult.error) || notificationResult.lineSkippedReason || '');
-  notificationResult.emailError = clean((emailResult && emailResult.error) || notificationResult.emailSkippedReason || '');
-
-  await ref.set({
-    signLinkNoticeQueueCreated: notificationResult.count > 0,
-    signLinkNoticeQueueCreatedAt: notificationResult.count ? nowText() : '',
-    signLinkLineQueueCreated: notificationResult.line,
-    signLinkEmailQueueCreated: notificationResult.email,
-    signLinkNoticeQueueIds: notificationResult.queueIds,
-    signLinkNoticeSendResults: sendResults,
-    signLinkNoticeSentCount: notificationResult.sentCount,
-    signLinkNoticeFailedCount: notificationResult.failedCount,
-    signLinkLineSent: notificationResult.lineSent,
-    signLinkLineError: notificationResult.lineError,
-    signLinkEmailSent: notificationResult.emailSent,
-    signLinkEmailError: notificationResult.emailError,
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    updatedAtText: nowText(),
-  }, { merge: true });
-
-  return { contractId: snap.id, contractNo, signUrl, officialContractUrl, notificationResult };
-});
-
-exports.rentalSignContractHttp = httpEndpoint(async (data) => {
-  const contractId = clean(data.contractId || data.id);
-  const token = clean(data.token || data.signToken);
-  const { ref, contract } = await getContractForToken(contractId, token);
-  const incoming = Object.assign({}, contract || {}, data || {});
-  const urls = rentalAssetUrls(incoming);
-  if (!urls.signatureUrl) throw new Error('缺少簽名圖片網址。請先將簽名上傳到 Firebase Storage。');
-  if (!urls.idImageUrl) throw new Error('缺少身分證圖片網址。請先將身分證圖片上傳到 Firebase Storage。');
-  const update = stripUndefined(stripRentalInlineAssets({
-    customerIdNumber: clean(data.customerIdNumber || contract.customerIdNumber),
-    customerIdImageUrl: urls.idImageUrl,
-    idImageUrl: urls.idImageUrl,
-    customerSignatureUrl: urls.signatureUrl,
-    signatureUrl: urls.signatureUrl,
-    notificationPreference: clean(data.notificationPreference || contract.notificationPreference || contract.preferredContactMethod),
-    emailVerified: contract.emailVerified === true,
-    customerSubmittedFormalAt: clean(data.customerSubmittedFormalAt || nowText()),
-    customerSignedAt: clean(data.customerSignedAt || nowText()),
-    formalReceivedNoticeText: clean(data.formalReceivedNoticeText || contract.formalReceivedNoticeText),
-    customerFormalAssetsStoredInStorage: true,
-    customerFormalAssetsStoredAt: clean(data.customerFormalAssetsStoredAt || nowText()),
-    status: '待店家確認',
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    updatedAtText: nowText(),
-  }, { deleteInline: true }));
-  await ref.set(update, { merge: true });
-  try {
-    const customerName = clean(contract.customerName || contract.partyAName || contract.name || '客人');
-    const adminUrl = `${webBaseUrl()}rental-admin.html?contractId=${encodeURIComponent(contract.contractId || contract.__id || contractId)}`;
-    const body = [
-      `客人已回傳身分證字號、證明圖片與簽名。`,
-      `客人：${customerName}`,
-      `契約編號：${clean(contract.contractNo || contract.contractId || contractId)}`,
-      `狀態：待店家確認`,
-      ``,
-      `請直接進入後台查看或修改這筆租賃資料：`,
-      adminUrl,
-    ].join('\n');
-    await queueManagerNotification({
-      title: '租賃客人已送出正式資料',
+async function queueExternalTeacherRenewalNotice({ profileId, profile, targetYear, link }) {
+  const title = `柚子樂器外聘老師 ${rocYear(targetYear)} 年契約簽署提醒`;
+  const body = renewalReminderBody({ name: link.name || profile.name || profile.displayName, targetYear, url: link.emailUrl || link.url });
+  const sentChannels = [];
+  if (wantsLine(link.method) && link.lineUserId) {
+    await db().collection('notificationQueue').add({
+      teacherId: profileId,
+      contractId: link.contractId,
+      channel: 'line',
+      targetLineUserId: link.lineUserId,
+      targetName: link.name || clean(profile.name || profile.displayName || '外聘老師'),
+      title,
       body,
-      source: 'rental-formal-signed',
-      contractId,
-      applicationId: clean(contract.applicationId),
+      message: body,
+      status: '待發送',
+      source: 'external-teacher-annual-renewal-reminder',
+      renewalTargetYear: Number(targetYear),
+      createdAt: nowTs()
     });
-  } catch (notifyErr) {
-    console.warn('queue manager notification for rentalSignContractHttp failed:', notifyErr);
+    sentChannels.push('line');
   }
-  return { contractId, status: '待店家確認' };
-});
+  if (wantsEmail(link.method) && link.email) {
+    await queueTeacherEmail({
+      teacherId: profileId,
+      email: link.email,
+      title,
+      body,
+      source: 'external-teacher-annual-renewal-reminder'
+    });
+    sentChannels.push('email');
+  }
+  return sentChannels;
+}
 
-exports.rentalGetContractHttp = httpEndpoint(async (data) => {
-  const { contract } = await getContractForToken(data.contractId || data.id, data.token || data.signToken);
-  return { contract };
-});
+function isUnsignedRenewalContract(row = {}) {
+  const s = lower(row.status || row.contractStatus || row.profileStatus || '');
+  return ['waiting_contract', 'waiting_bindings', 'unsigned', 'overdue_unsigned'].includes(s) || /等待.*簽署|未簽/.test(s);
+}
 
-exports.rentalSubmitRenewalRequestHttp = httpEndpoint(async (data) => {
-  const { ref, contract } = await getContractForToken(data.contractId || data.id, data.token || data.customerToken || data.signToken);
-  const requestId = clean(data.requestId) || randomId('RR');
-  const periods = Math.max(1, Math.min(10, Number(data.periods || 1) || 1));
-  const note = clean(data.note || data.renewNote || '');
-  const row = stripUndefined({
-    requestId,
-    contractId: contract.contractId || contract.__id,
-    contractNo: contract.contractNo || '',
-    customerName: contract.customerName || '',
-    customerPhone: contract.customerPhone || '',
-    customerEmail: contract.customerEmail || '',
-    customerLineUserId: contract.customerLineUserId || contract.lineUserId || '',
-    periods,
-    note,
-    status: '待店家確認',
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    createdAtText: nowText(),
-    source: 'rental-renewal',
-  });
-  await db.collection('rentalRenewalRequests').doc(requestId).set(row, { merge: true });
-  await ref.set({ status: '續約詢問中', latestRenewalRequestId: requestId, updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedAtText: nowText() }, { merge: true });
-  const adminUrl = `${webBaseUrl()}rental-admin.html?contractId=${encodeURIComponent(contract.contractId || contract.__id)}`;
-  await queueManagerNotification({
-    title: '租賃續約申請',
-    body: [`客人送出續約申請`, `姓名：${clean(contract.customerName)}`, `契約：${clean(contract.contractNo || contract.contractId || contract.__id)}`, `續約期數：${periods}`, `備註：${note || '無'}`, '', `查看契約：${adminUrl}`].join('\n'),
-    source: 'rental-renewal-request',
-    contractId: contract.contractId || contract.__id,
-  });
-  return { requestId };
-});
+async function markRenewalOverdueIfNeeded({ contractId, profileId, employeeId, targetYear, today }) {
+  if (!contractId || !targetYear || daysBetweenYmd(`${targetYear}-01-01`, today) < 0) return false;
+  const ref = db().collection('externalTeacherContracts').doc(contractId);
+  const snap = await ref.get().catch(() => null);
+  if (!snap || !snap.exists) return false;
+  const row = snap.data() || {};
+  if (!isUnsignedRenewalContract(row)) return false;
+  const patch = {
+    status: 'overdue_unsigned',
+    contractStatus: 'overdue_unsigned',
+    progressStatus: '逾期未簽署，請重新通知老師',
+    renewalOverdue: true,
+    overdueSince: `${targetYear}-01-01`,
+    overdueMarkedAt: nowTs(),
+    updatedAt: nowTs()
+  };
+  await ref.set(patch, { merge: true });
+  const empId = clean(employeeId || row.employeeId || row.externalTeacherEmployeeId || '');
+  if (empId) {
+    await db().collection('employees').doc(empId).set({
+      nextExternalContractId: contractId,
+      nextExternalContractRocYear: rocYear(targetYear),
+      nextExternalContractGregorianYear: Number(targetYear),
+      nextExternalContractStatus: 'overdue_unsigned',
+      externalContractRenewalStatus: 'overdue_unsigned',
+      externalContractRenewalUpdatedAt: nowTs(),
+      updatedAt: nowTs()
+    }, { merge: true }).catch(() => null);
+  }
+  const baseId = clean(profileId || row.baseTeacherProfileId || '');
+  if (baseId) {
+    await db().collection('externalTeacherProfiles').doc(baseId).set({
+      nextExternalContractId: contractId,
+      nextExternalContractRocYear: rocYear(targetYear),
+      nextExternalContractStatus: 'overdue_unsigned',
+      contractRenewalStatus: 'overdue_unsigned',
+      updatedAt: nowTs()
+    }, { merge: true }).catch(() => null);
+  }
+  return true;
+}
 
-exports.rentalSubmitReturnRequestHttp = httpEndpoint(async (data) => {
-  const { ref, contract } = await getContractForToken(data.contractId || data.id, data.token || data.customerToken || data.signToken);
-  const requestId = clean(data.requestId) || randomId('RT');
-  const returnDate = clean(data.returnDate || data.date);
-  if (!returnDate) throw new Error('請選擇希望退租日期。');
-  const returnTime = clean(data.returnTime || data.time);
-  const note = clean(data.note || data.returnNote || '');
-  const row = stripUndefined({
-    requestId,
-    contractId: contract.contractId || contract.__id,
-    contractNo: contract.contractNo || '',
-    customerName: contract.customerName || '',
-    customerPhone: contract.customerPhone || '',
-    customerEmail: contract.customerEmail || '',
-    customerLineUserId: contract.customerLineUserId || contract.lineUserId || '',
-    returnDate,
-    returnTime,
-    note,
-    status: '待店家確認',
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    createdAtText: nowText(),
-    source: 'rental-return',
-  });
-  await db.collection('rentalReturnRequests').doc(requestId).set(row, { merge: true });
-  await ref.set({ status: '退租申請中', latestReturnRequestId: requestId, requestedReturnDate: returnDate, requestedReturnTime: returnTime, updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedAtText: nowText() }, { merge: true });
-  const adminUrl = `${webBaseUrl()}rental-admin.html?contractId=${encodeURIComponent(contract.contractId || contract.__id)}`;
-  await queueManagerNotification({
-    title: '租賃退租申請',
-    body: [`客人送出退租申請`, `姓名：${clean(contract.customerName)}`, `契約：${clean(contract.contractNo || contract.contractId || contract.__id)}`, `希望日期：${returnDate} ${returnTime}`.trim(), `備註：${note || '無'}`, '', `查看契約：${adminUrl}`].join('\n'),
-    source: 'rental-return-request',
-    contractId: contract.contractId || contract.__id,
-  });
-  return { requestId };
-});
+function registerExternalTeacherOnboarding(exportsObj) {
+  exportsObj.externalTeacherCreateBindCode = onCall({ region: REGION }, async (request) => {
+    const data = request.data || {};
+    const name = clean(data.name || '');
+    const mobile = clean(data.mobile || data.phone || '');
+    const email = lower(data.email || '');
+    const bindingMethod = normalizeBindingMethod(data.bindingMethod || data.notificationPreference, !!email);
+    if (!name) throw new HttpsError('invalid-argument', '請輸入姓名');
+    if (!mobile) throw new HttpsError('invalid-argument', '請輸入手機');
+    if (wantsEmail(bindingMethod) && !email) throw new HttpsError('invalid-argument', '選擇 Email 綁定時，請填寫 Email');
 
-exports.rentalCompleteReturnHttp = httpEndpoint(async (data) => {
-  const contractId = clean(data.contractId || data.id);
-  if (!contractId) throw new Error('缺少契約編號。');
-  const ref = db.collection('rentalContracts').doc(contractId);
-  const snap = await ref.get();
-  if (!snap.exists) throw new Error('找不到契約資料。');
-  const contract = Object.assign({ __id: snap.id }, snap.data() || {});
-  await ref.set({
-    status: '已退租',
-    returnedAt: admin.firestore.FieldValue.serverTimestamp(),
-    returnedAtText: nowText(),
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    updatedAtText: nowText(),
-  }, { merge: true });
-
-  const body = [`您的租賃設備已完成退租收回。`, `契約編號：${clean(contract.contractNo || contract.contractId || snap.id)}`, `完成時間：${nowText()}`, '', '感謝您使用柚子樂器設備租賃服務。'].join('\n');
-  const notifyResult = await createCustomerNotificationQueues({
-    row: Object.assign({}, contract, { contractId }),
-    title: '租賃退租完成通知',
-    body,
-    source: 'rental-complete-return',
-    contractId,
-  });
-  return { contractId, status: '已退租', queueId: notifyResult.queueIds[0] || '', notificationResult: notifyResult };
-});
-
-exports.lineWebhook = onRequest(
-  {
-    region: 'us-central1',
-    cors: false
-  },
-  async (req, res) => {
-    try {
-      if (req.method === 'GET') {
-        res.status(200).send('LINE webhook is ready. Strict role binding is active.');
-        return;
-      }
-
-      if (req.method !== 'POST') {
-        res.status(405).send('Method Not Allowed');
-        return;
-      }
-
-      const events = Array.isArray(req.body && req.body.events) ? req.body.events : [];
-
-      for (const event of events) {
-        if (event.type !== 'message') continue;
-        if (!event.message || event.message.type !== 'text') continue;
-
-        const text = normalizeText(event.message.text);
-        const lineUserId = event.source && event.source.userId;
-        const replyToken = event.replyToken;
-
-        if (await handleExternalTeacherLineEvent(event)) {
-          continue;
-        }
-
-        const rentalCommand = parseRentalApplicationCommand(text);
-        const employeeCodeMatch = text.match(/^柚子人員綁定\s+([A-Z0-9-]+)$/i);
-        const employeeMatch = text.match(/^柚子員工綁定\s+([^\s]+@[^\s]+)$/i);
-        const managerMatch = text.match(/^柚子主管綁定\s+([^\s]+@[^\s]+)$/i);
-        const oldMatch = text.match(/^柚子綁定\s+([^\s]+@[^\s]+)$/i);
-
-        if (!lineUserId) {
-          await replyLineMessage(replyToken, '無法取得 LINE 使用者 ID，請確認是從一般 LINE 帳號與官方帳號對話。');
-          continue;
-        }
-
-        if (rentalCommand) {
-          await handleRentalApplicationLink({
-            applicationKey: rentalCommand.applicationKey,
-            declaredName: rentalCommand.declaredName,
-            lineUserId,
-            replyToken
-          });
-          continue;
-        }
-
-        if (employeeCodeMatch) {
-          await handleEmployeeCodeBinding({
-            bindCode: employeeCodeMatch[1],
-            lineUserId,
-            replyToken
-          });
-          continue;
-        }
-
-        if (oldMatch) {
-          await replyLineMessage(replyToken, '舊版綁定指令已停用。人員請輸入：柚子人員綁定 EMP-編號；主管請輸入：柚子主管綁定 your@email.com');
-          continue;
-        }
-
-        if (employeeMatch) {
-          await handleEmployeeBinding({
-            email: normalizeEmail(employeeMatch[1]),
-            lineUserId,
-            replyToken
-          });
-          continue;
-        }
-
-        if (managerMatch) {
-          await handleManagerBinding({
-            email: normalizeEmail(managerMatch[1]),
-            lineUserId,
-            replyToken
-          });
-          continue;
-        }
-
-        if (text.includes('綁定')) {
-          await replyLineMessage(replyToken, '綁定格式錯誤。人員請輸入：柚子人員綁定 EMP-編號；主管請輸入：柚子主管綁定 your@email.com');
-        }
-      }
-
-      res.status(200).send('OK');
-    } catch (error) {
-      console.error('lineWebhook error:', error);
-      res.status(200).send('OK');
+    const dates = contractDatesFromData(data, {});
+    const nowYear = currentGregorianYear();
+    if (dates.contractGregorianYear > nowYear && !isDec15OrLater(new Date())) {
+      throw new HttpsError('failed-precondition', '下一年度契約需於每年 12 月 15 日起開放簽署。');
     }
-  }
-);
 
+    let teacherId = clean(data.teacherId || data.userId || (request.auth && request.auth.uid) || '');
+    if (!teacherId) teacherId = await resolveExternalEmployeeId({ name, mobile, email });
+    const token = makeToken();
+    const bindCode = wantsLine(bindingMethod) ? makeBindCode() : '';
+    const url = onboardingUrl(teacherId, token);
+    const bindText = bindCode ? `外聘老師綁定 ${bindCode}` : '';
 
-exports.sendGmailTestEmail = onCall({ region: 'us-central1' }, async (request) => {
-  const data = (request && request.data) || {};
-  const to = clean((data && (data.to || data.email)) || '');
-  if (!to) {
-    throw new HttpsError('invalid-argument', '請提供測試收件人 Email。');
-  }
-  try {
-    const result = await sendEmailViaGmail({
-      channel: 'email',
-      targetEmail: to,
-      title: '柚子樂器 Gmail 寄信測試',
-      body: [
-        '這是一封 Gmail SMTP 測試信。',
-        '',
-        '如果你收到這封信，代表 Firebase Functions 已經可以透過 Gmail 寄信。',
-        '寄出時間：' + nowText(),
-      ].join('\n'),
+    const profileRow = {
+      teacherId,
+      id: teacherId,
+      employeeId: '',
+      externalTeacherEmployeeId: '',
+      name,
+      displayName: name,
+      mobile,
+      phone: mobile,
+      email,
+      role: 'externalTeacher',
+      identityType: 'external',
+      bindingMethod,
+      bindCode,
+      onboardingToken: token,
+      onboardingUrl: url,
+      lineBindStatus: wantsLine(bindingMethod) ? 'pending' : 'not_required',
+      emailBindStatus: wantsEmail(bindingMethod) ? 'bound' : 'not_required',
+      status: wantsLine(bindingMethod) ? 'pendingLine' : 'pendingProfile',
+      profileStatus: wantsLine(bindingMethod) ? 'pendingLine' : 'pendingProfile',
+      payrollInfoStatus: 'pending',
+      paymentMethod: 'pending',
+      contractStatus: 'unsigned',
+      contractGregorianYear: dates.contractGregorianYear,
+      contractRocYear: dates.contractRocYear,
+      contractYearKey: dates.contractYearKey,
+      contractStartDate: dates.contractStartDate,
+      contractEndDate: dates.contractEndDate,
+      nextRenewalOpenDate: dates.nextRenewalOpenDate,
+      teachingItems: normalizeTeachingItems(data.teachingItems),
+      hourlyRate: Number(data.hourlyRate || 0),
+      paymentDay: Number(data.paymentDay || 0),
+      createdAt: nowTs(),
+      updatedAt: nowTs()
+    };
+
+    await externalProfileRef(teacherId).set(profileRow, { merge: true });
+
+    if (bindCode) {
+      await db().collection('externalTeacherLineBindings').doc(bindCode).set({
+        bindCode,
+        teacherId,
+        employeeId: '',
+        externalTeacherEmployeeId: '',
+        teacherName: name,
+        mobile,
+        email,
+        bindingMethod,
+        onboardingToken: token,
+        onboardingUrl: url,
+        contractGregorianYear: dates.contractGregorianYear,
+        contractRocYear: dates.contractRocYear,
+        contractStartDate: dates.contractStartDate,
+        contractEndDate: dates.contractEndDate,
+        status: 'pending',
+        expiresAt: admin.firestore.Timestamp.fromMillis(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        createdAt: nowTs(),
+        updatedAt: nowTs()
+      }, { merge: true });
+    }
+
+    let emailQueueId = '';
+    if (wantsEmail(bindingMethod) && email) {
+      emailQueueId = await queueTeacherEmail({
+        teacherId,
+        email,
+        title: `柚子樂器外聘老師 ${dates.contractRocYear} 年契約簽署`,
+        body: buildExternalTeacherEmailBody({ name, url, bindText, bindingMethod, ...dates }),
+        source: 'external-teacher-onboarding-link'
+      }) || '';
+    }
+
+    return {
+      ok: true,
+      teacherId,
+      token,
+      bindCode,
+      bindText,
+      bindingMethod,
+      onboardingUrl: url,
+      emailQueueId,
+      availableContractYears: availableContractYears(),
+      ...dates
+    };
+  });
+
+  exportsObj.externalTeacherGetOnboarding = onCall({ region: REGION }, async (request) => {
+    const data = request.data || {};
+    const teacherId = clean(data.teacherId || data.userId || (request.auth && request.auth.uid) || '');
+    const token = clean(data.token || '');
+    await validateTeacherTokenIfNeeded(request, teacherId, token);
+
+    const { profile } = await getExternalTeacherProfile(teacherId);
+    if (!profile) throw new HttpsError('not-found', '找不到外聘老師資料');
+    const dates = contractDatesFromData(data, profile);
+    const { template, clauses } = await getActiveTemplateWithClauses();
+    const contractText = renderContractText({ profile, template, clauses, contractStartDate: dates.contractStartDate, contractEndDate: dates.contractEndDate });
+
+    return { ok: true, teacher: publicProfile(profile), profile: publicProfile(profile), template, clauses, contractText, payrollUrl: payrollUrl(teacherId, token || profile.onboardingToken), availableContractYears: availableContractYears(), ...dates };
+  });
+
+  exportsObj.externalTeacherSaveProfile = onCall({ region: REGION, timeoutSeconds: 120, memory: '512MiB' }, async (request) => {
+    const data = request.data || {};
+    const teacherId = clean(data.teacherId || data.userId || (request.auth && request.auth.uid) || '');
+    const token = clean(data.token || '');
+    await validateTeacherTokenIfNeeded(request, teacherId, token);
+
+    const { profile } = await getExternalTeacherProfile(teacherId);
+    if (!profile) throw new HttpsError('not-found', '找不到外聘老師資料');
+    const dates = contractDatesFromData(data, profile);
+
+    const identityFiles = [];
+    const incomingFiles = Array.isArray(data.identityFilesData) ? data.identityFilesData : [];
+    for (let i = 0; i < incomingFiles.length; i++) {
+      const f = incomingFiles[i] || {};
+      if (!f.dataUrl) continue;
+      const fileName = safeFileName(f.fileName || `identity_${i + 1}.jpg`);
+      const saved = await saveDataUrlToStorage({
+        dataUrl: f.dataUrl,
+        fileName,
+        storagePath: `external-teachers/${teacherId}/${dates.contractRocYear}/identity/${Date.now()}_${i}_${fileName}`,
+        contentType: f.mimeType || ''
+      });
+      const fileRow = Object.assign({}, saved, { watermarkApplied: f.watermarkApplied === true, watermarkText: clean(f.watermarkText || '') });
+      identityFiles.push(fileRow);
+      await recordExternalTeacherFile({ teacherId, contractId: '', contractRocYear: dates.contractRocYear, contractYearKey: dates.contractYearKey, fileType: 'identityPhoto', ...fileRow });
+    }
+
+    const skipPayroll = data.skipPayroll === true;
+    const hasBank = !!(data.bankName && data.bankAccountName && data.bankAccountNumber);
+    const payrollInfoStatus = skipPayroll ? 'pending' : (hasBank ? 'completed' : 'pending');
+    const paymentMethod = skipPayroll ? 'pending' : (hasBank ? 'bank' : 'pending');
+
+    const update = {
+      name: clean(data.name || profile.name || ''),
+      displayName: clean(data.name || profile.displayName || profile.name || ''),
+      mobile: clean(data.mobile || data.phone || profile.mobile || ''),
+      phone: clean(data.mobile || data.phone || profile.phone || ''),
+      email: lower(data.email || profile.email || ''),
+      idNumber: clean(data.idNumber || ''),
+      birthDate: clean(data.birthDate || ''),
+      householdAddress: clean(data.householdAddress || ''),
+      mailingAddress: clean(data.mailingAddress || ''),
+      teachingItems: normalizeTeachingItems(data.teachingItems),
+      hourlyRate: Number(data.hourlyRate || 0),
+      paymentDay: Number(data.paymentDay || 0),
+      identityPhotoStatus: identityFiles.length ? 'uploaded' : ((Array.isArray(profile.identityFiles) && profile.identityFiles.length) ? 'uploaded' : 'pending'),
+      payrollInfoStatus,
+      paymentMethod,
+      bankName: clean(data.bankName || ''),
+      bankBranch: clean(data.bankBranch || ''),
+      bankAccountName: clean(data.bankAccountName || ''),
+      bankAccountNumber: clean(data.bankAccountNumber || ''),
+      profileStatus: 'pendingContract',
+      status: 'pendingContract',
+      contractGregorianYear: dates.contractGregorianYear,
+      contractRocYear: dates.contractRocYear,
+      contractYearKey: dates.contractYearKey,
+      contractStartDate: dates.contractStartDate,
+      contractEndDate: dates.contractEndDate,
+      nextRenewalOpenDate: dates.nextRenewalOpenDate,
+      updatedAt: nowTs()
+    };
+    if (identityFiles.length) update.identityFiles = admin.firestore.FieldValue.arrayUnion(...identityFiles);
+
+    await externalProfileRef(teacherId).set(update, { merge: true });
+    return { ok: true, payrollInfoStatus, paymentMethod, identityFiles, ...dates };
+  });
+
+  exportsObj.externalTeacherCompleteContract = onCall({ region: REGION, timeoutSeconds: 120, memory: '512MiB' }, async (request) => {
+    const data = request.data || {};
+    const teacherId = clean(data.teacherId || data.userId || (request.auth && request.auth.uid) || '');
+    const token = clean(data.token || '');
+    await validateTeacherTokenIfNeeded(request, teacherId, token);
+
+    if (data.agreeTerms !== true) throw new HttpsError('failed-precondition', '請先勾選同意契約內容');
+    if (!data.signatureDataUrl) throw new HttpsError('invalid-argument', '請先完成簽名');
+
+    const { ref, profile } = await getExternalTeacherProfile(teacherId);
+    if (!profile) throw new HttpsError('not-found', '找不到外聘老師資料');
+    const identityFiles = Array.isArray(profile.identityFiles) ? profile.identityFiles : [];
+    if (!identityFiles.length) throw new HttpsError('failed-precondition', '請先上傳身分證明文件。');
+
+    const dates = contractDatesFromData(data, profile);
+    const contractId = makeId('EXTC');
+    const { template, clauses } = await getActiveTemplateWithClauses();
+    const contractText = renderContractText({ profile, template, clauses, contractStartDate: dates.contractStartDate, contractEndDate: dates.contractEndDate });
+
+    const signatureFile = await saveDataUrlToStorage({
+      dataUrl: data.signatureDataUrl,
+      fileName: `${contractId}_signature.png`,
+      storagePath: `external-teachers/${teacherId}/${dates.contractRocYear}/signatures/${contractId}_signature.png`,
+      contentType: 'image/png'
     });
-    return { ok: true, result };
-  } catch (err) {
-    const msg = err && err.message ? err.message : String(err);
-    console.error('[sendGmailTestEmail failed]', msg);
-    throw new HttpsError('internal', msg);
-  }
-});
+    await recordExternalTeacherFile({ teacherId, contractId, contractRocYear: dates.contractRocYear, contractYearKey: dates.contractYearKey, fileType: 'signature', ...signatureFile });
+
+    const contractHtmlFile = await saveContractHtml({ teacherId, contractRocYear: dates.contractRocYear, contractId, contractText, signatureUrl: signatureFile.downloadUrl, identityFiles, profile });
+    await recordExternalTeacherFile({ teacherId, contractId, contractRocYear: dates.contractRocYear, contractYearKey: dates.contractYearKey, fileType: 'signedContractHtml', ...contractHtmlFile });
+
+    const contractDoc = {
+      contractId,
+      teacherId,
+      employeeId: '',
+      externalTeacherEmployeeId: '',
+      teacherName: clean(profile.name || profile.displayName || ''),
+      profileRef: `externalTeacherProfiles/${teacherId}`,
+      templateId: template.id,
+      templateVersion: template.version || '',
+      contractTitle: template.title || '外聘才藝教師委任契約書',
+      contractGregorianYear: dates.contractGregorianYear,
+      contractRocYear: dates.contractRocYear,
+      contractYearKey: dates.contractYearKey,
+      contractStartDate: dates.contractStartDate,
+      contractEndDate: dates.contractEndDate,
+      nextRenewalOpenDate: dates.nextRenewalOpenDate,
+      teacherSnapshot: publicProfile(profile),
+      clauseSnapshots: clauses,
+      fullContractTextSnapshot: contractText,
+      signatureFile,
+      identityFiles,
+      contractHtmlFile,
+      contractHtmlUrl: contractHtmlFile.downloadUrl,
+      bindingMethod: profile.bindingMethod || '',
+      lineUserId: clean(profile.lineUserId || ''),
+      email: clean(profile.email || ''),
+      status: 'submitted_pending_admin',
+      progressStatus: '老師已送出，等待管理端確認',
+      signedAt: nowTs(),
+      signedAtText: todayKey(),
+      createdAt: nowTs(),
+      updatedAt: nowTs()
+    };
+
+    await db().collection('externalTeacherContracts').doc(contractId).set(contractDoc);
+    await ref.set({
+      contractStatus: 'submitted_pending_admin',
+      currentContractId: contractId,
+      currentContractRocYear: dates.contractRocYear,
+      contractGregorianYear: dates.contractGregorianYear,
+      contractRocYear: dates.contractRocYear,
+      contractYearKey: dates.contractYearKey,
+      contractStartDate: dates.contractStartDate,
+      contractEndDate: dates.contractEndDate,
+      signedAt: nowTs(),
+      signedAtText: todayKey(),
+      profileStatus: 'submitted_pending_admin',
+      status: 'submitted_pending_admin',
+      updatedAt: nowTs()
+    }, { merge: true });
+
+    const completeBody = `外聘老師資料與契約簽署已完成 ✅\n\n柚子樂器已收到您的資料與簽名，目前等待管理端確認契約生效。\n\n合約年度：民國 ${dates.contractRocYear} 年\n契約期間：${dates.contractStartDate} 至 ${dates.contractEndDate}`;
+    if (wantsLine(profile.bindingMethod) && profile.lineUserId) await pushLineMessage(profile.lineUserId, completeBody);
+    if (wantsEmail(profile.bindingMethod) && profile.email) {
+      await queueTeacherEmail({ teacherId, email: profile.email, title: `柚子樂器外聘老師 ${dates.contractRocYear} 年契約簽署完成`, body: `${completeBody}\n\n契約檔案：${contractHtmlFile.downloadUrl}`, source: 'external-teacher-contract-completed' });
+    }
+    if (clean(profile.payrollInfoStatus || 'pending') === 'pending' && profile.lineUserId) {
+      await pushLineMessage(profile.lineUserId, `提醒您：您的薪資／匯款資料目前尚未補填。\n\n這不影響本次資料送出；待管理端確認後，為方便後續鐘點費結算，請之後點選連結補填銀行帳戶資料。\n\n${payrollUrl(teacherId, token || profile.onboardingToken)}`);
+    }
+
+    await pushAdminMessage(`外聘老師已送出契約，等待確認
+
+姓名：${clean(profile.name || '')}
+合約年度：民國 ${dates.contractRocYear} 年
+契約期間：${dates.contractStartDate} 至 ${dates.contractEndDate}
+
+簽核連結（外聘老師合約確認）：
+${externalTeacherApprovalUrl(contractId)}`);
+
+    return { ok: true, contractId, contractHtmlFile, contractHtmlUrl: contractHtmlFile.downloadUrl, ...dates };
+  });
+
+  exportsObj.externalTeacherSavePayroll = onCall({ region: REGION }, async (request) => {
+    const data = request.data || {};
+    const teacherId = clean(data.teacherId || data.userId || (request.auth && request.auth.uid) || '');
+    const token = clean(data.token || '');
+    await validateTeacherTokenIfNeeded(request, teacherId, token);
+    if (!data.bankName || !data.bankAccountName || !data.bankAccountNumber) throw new HttpsError('invalid-argument', '請至少填寫銀行名稱、戶名與帳號');
+
+    const { ref, profile } = await getExternalTeacherProfile(teacherId);
+    if (!profile) throw new HttpsError('not-found', '找不到外聘老師資料');
+    await ref.set({
+      payrollInfoStatus: 'completed',
+      paymentMethod: 'bank',
+      bankName: clean(data.bankName || ''),
+      bankBranch: clean(data.bankBranch || ''),
+      bankAccountName: clean(data.bankAccountName || ''),
+      bankAccountNumber: clean(data.bankAccountNumber || ''),
+      payrollReminderPaused: true,
+      updatedAt: nowTs()
+    }, { merge: true });
+
+    if (profile.lineUserId) await pushLineMessage(profile.lineUserId, '薪資／匯款資料已補填完成 ✅\n\n柚子樂器已收到您的銀行帳戶資料。');
+    return { ok: true };
+  });
+
+  exportsObj.externalTeacherListContractTemplate = onCall({ region: REGION }, async (request) => {
+    if (!(await isAdminRequest(request, request.data || {}))) throw new HttpsError('permission-denied', '只有管理者可以修改契約條文');
+    const { template, clauses } = await getActiveTemplateWithClauses();
+    return { ok: true, template, clauses };
+  });
+
+  exportsObj.externalTeacherSaveContractTemplate = onCall({ region: REGION }, async (request) => {
+    const data = request.data || {};
+    if (!(await isAdminRequest(request, data))) throw new HttpsError('permission-denied', '只有管理者可以修改契約條文');
+
+    const templateId = clean(data.templateId || 'external_teacher_mandate_default');
+    const templateRef = db().collection('externalTeacherContractTemplates').doc(templateId);
+    await templateRef.set({
+      title: clean(data.title || '外聘才藝教師委任契約書'),
+      contractType: 'externalTeacherMandate',
+      version: clean(data.version || String(currentGregorianYear())),
+      status: 'active',
+      updatedAt: nowTs(),
+      createdAt: nowTs()
+    }, { merge: true });
+
+    const existing = await templateRef.collection('clauses').get();
+    const batch = db().batch();
+    existing.docs.forEach((doc) => batch.delete(doc.ref));
+    const clauses = Array.isArray(data.clauses) ? data.clauses : [];
+    clauses.forEach((c, index) => {
+      const ref = templateRef.collection('clauses').doc(clean(c.id) || `clause_${String(index + 1).padStart(2, '0')}`);
+      batch.set(ref, {
+        articleNo: clean(c.articleNo || ''),
+        title: clean(c.title || ''),
+        content: clean(c.content || ''),
+        sortOrder: Number(c.sortOrder || index + 1),
+        enabled: c.enabled !== false,
+        createdAt: nowTs(),
+        updatedAt: nowTs()
+      });
+    });
+    await batch.commit();
+    return { ok: true };
+  });
+
+  exportsObj.externalTeacherListContracts = onCall({ region: REGION, timeoutSeconds: 60 }, async (request) => {
+    const data = request.data || {};
+    if (!(await isAdminRequest(request, data))) throw new HttpsError('permission-denied', '只有管理者可以查看外聘老師簽約紀錄');
+    const targetRocYear = clean(data.rocYear || data.contractRocYear || '');
+    let contractQuery = db().collection('externalTeacherContracts').orderBy('createdAt', 'desc').limit(300);
+    if (targetRocYear) contractQuery = db().collection('externalTeacherContracts').where('contractYearKey', '==', String(targetRocYear)).limit(300);
+    const contractSnap = await contractQuery.get();
+    const contracts = contractSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+      .sort((a, b) => String(b.signedAtText || b.contractStartDate || '').localeCompare(String(a.signedAtText || a.contractStartDate || '')))
+      .map((c) => ({
+        id: c.id,
+        contractId: c.contractId || c.id,
+        teacherId: c.teacherId || '',
+        teacherName: c.teacherName || '',
+        contractTitle: c.contractTitle || '',
+        contractRocYear: c.contractRocYear || '',
+        contractYearKey: c.contractYearKey || '',
+        contractStartDate: c.contractStartDate || '',
+        contractEndDate: c.contractEndDate || '',
+        status: c.status || '',
+        signedAtText: c.signedAtText || '',
+        contractHtmlUrl: c.contractHtmlUrl || (c.contractHtmlFile && c.contractHtmlFile.downloadUrl) || '',
+        lineUserId: c.lineUserId || '',
+        email: c.email || ''
+      }));
+
+    let profileQuery = db().collection('externalTeacherProfiles').limit(300);
+    if (targetRocYear) profileQuery = db().collection('externalTeacherProfiles').where('contractYearKey', '==', String(targetRocYear)).limit(300);
+    const profileSnap = await profileQuery.get();
+    const profiles = profileSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })).map((p) => ({
+      id: p.id || p.teacherId || '',
+      teacherId: p.teacherId || p.id || '',
+      name: p.name || p.displayName || '',
+      mobile: p.mobile || p.phone || '',
+      email: p.email || '',
+      bindingMethod: p.bindingMethod || '',
+      lineBindStatus: p.lineBindStatus || '',
+      emailBindStatus: p.emailBindStatus || '',
+      contractRocYear: p.contractRocYear || '',
+      contractYearKey: p.contractYearKey || '',
+      contractStatus: p.contractStatus || '',
+      status: p.status || '',
+      currentContractId: p.currentContractId || '',
+      onboardingUrl: p.onboardingUrl || onboardingUrl(p.teacherId || p.id, p.onboardingToken || '')
+    }));
+
+    return { ok: true, contracts, profiles, availableContractYears: availableContractYears() };
+  });
+
+  exportsObj.externalTeacherAnnualRenewalReminderEveryDay = onSchedule({
+    region: REGION,
+    schedule: '0 10 * * *',
+    timeZone: 'Asia/Taipei',
+    timeoutSeconds: 300,
+    memory: '512MiB'
+  }, async () => {
+    const today = taipeiYmd();
+    const targetYear = renewalTargetYearForYmd(today);
+    const openDate = renewalOpenDateForTargetYear(targetYear);
+    if (daysBetweenYmd(openDate, today) < 0) {
+      logger.info('externalTeacherAnnualRenewalReminderEveryDay not open yet', { today, targetYear, openDate });
+      return { sent: 0, skipped: 0, targetYear, today };
+    }
+
+    const snap = await db().collection('externalTeacherProfiles').limit(500).get();
+    let sent = 0;
+    let skipped = 0;
+    for (const doc of snap.docs) {
+      const profile = { id: doc.id, teacherId: doc.id, ...(doc.data() || {}) };
+      try {
+        if (profile.isRenewalContractDraft === true || clean(profile.baseTeacherProfileId)) { skipped++; continue; }
+        const employee = await getLinkedEmployee(profile);
+        if (isInactiveExternalTeacher(profile, employee)) { skipped++; continue; }
+        if (await hasSignedContractForYear(doc.id, profile, targetYear)) { skipped++; continue; }
+        if (!shouldSendRenewalReminder(profile, targetYear, today)) { skipped++; continue; }
+        const link = await ensureRenewalContractDraft(doc.id, profile, targetYear);
+        await markRenewalOverdueIfNeeded({ contractId: link.contractId, profileId: doc.id, employeeId: clean(profile.employeeId || profile.externalTeacherEmployeeId || ''), targetYear, today });
+        const channels = await queueExternalTeacherRenewalNotice({ profileId: doc.id, profile, targetYear, link });
+        if (!channels.length) { skipped++; continue; }
+        const state = (profile.renewalReminderState && profile.renewalReminderState[String(targetYear)]) || {};
+        const count = Number(state.count || 0) || 0;
+        await doc.ref.set({
+          renewalReminderState: {
+            [String(targetYear)]: {
+              count: count + 1,
+              lastReminderDate: today,
+              lastReminderAt: nowTs(),
+              lastReminderChannels: channels,
+              renewalContractId: link.contractId,
+              updatedAt: nowTs()
+            }
+          },
+          lastRenewalReminderAt: nowTs(),
+          lastRenewalReminderDate: today,
+          updatedAt: nowTs()
+        }, { merge: true });
+        sent++;
+      } catch (err) {
+        skipped++;
+        logger.warn('externalTeacherAnnualRenewalReminder profile skipped by error', { teacherId: doc.id, error: err && err.message ? err.message : String(err) });
+      }
+    }
+    logger.info('externalTeacherAnnualRenewalReminderEveryDay completed', { sent, skipped, targetYear, today });
+    return { sent, skipped, targetYear, today };
+  });
+
+  exportsObj.externalTeacherPayrollReminderEveryDay = onSchedule({
+    region: REGION,
+    schedule: '0 10 * * *',
+    timeZone: 'Asia/Taipei',
+    timeoutSeconds: 180,
+    memory: '512MiB'
+  }, async () => {
+    const snap = await db().collection('externalTeacherProfiles')
+      .where('status', '==', 'active')
+      .where('payrollInfoStatus', '==', 'pending')
+      .get();
+
+    const now = Date.now();
+    const threeDaysMs = 3 * 24 * 60 * 60 * 1000;
+    let sent = 0;
+    for (const doc of snap.docs) {
+      const profile = doc.data() || {};
+      if (profile.payrollReminderPaused === true) continue;
+      const lineUserId = clean(profile.lineUserId || '');
+      if (!lineUserId) continue;
+      const last = profile.lastPayrollReminderAt && profile.lastPayrollReminderAt.toMillis ? profile.lastPayrollReminderAt.toMillis() : 0;
+      if (last && now - last < threeDaysMs) continue;
+      const msg = `柚子樂器提醒您：\n\n您的外聘教師薪資／匯款資料尚未補填。\n為了方便後續鐘點費結算，請點選下方連結補填銀行帳戶資料。\n\n補填連結：\n${payrollUrl(doc.id, profile.onboardingToken || '')}`;
+      await pushLineMessage(lineUserId, msg);
+      await doc.ref.set({ lastPayrollReminderAt: nowTs(), payrollReminderCount: Number(profile.payrollReminderCount || 0) + 1, updatedAt: nowTs() }, { merge: true });
+      await db().collection('notificationQueue').add({
+        eventCode: 'external_teacher_payroll_reminder',
+        teacherId: doc.id,
+        lineUserId,
+        channel: 'line',
+        title: '外聘老師薪資資料待補',
+        body: msg,
+        message: msg,
+        status: '已發送',
+        sentAt: nowTs(),
+        createdAt: nowTs(),
+        source: 'external-teacher-payroll-reminder'
+      });
+      sent++;
+    }
+    logger.info('externalTeacherPayrollReminderEveryDay completed', { sent });
+  });
+}
+
+module.exports = {
+  registerExternalTeacherOnboarding,
+  handleExternalTeacherLineEvent
+};
