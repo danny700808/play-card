@@ -4,9 +4,12 @@ const { onSchedule } = require('firebase-functions/v2/scheduler');
 const nodemailer = require('nodemailer');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
+const { registerExternalTeacherOnboarding, handleExternalTeacherLineEvent } = require('./externalTeacherOnboarding');
 
 if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
+
+registerExternalTeacherOnboarding(exports);
 
 const ADMIN_EMAILS = new Set(['danny700808@gmail.com']);
 const DEFAULT_ADMIN_DOC_ID = 'ADMIN_DANNY';
@@ -46,17 +49,9 @@ function parseRentalApplicationCommand(text) {
 }
 
 async function replyLineMessage(replyToken, message) {
+  if (!replyToken) throw new Error('缺少 LINE replyToken，無法回覆客人。');
   const token = await getLineAccessToken();
-
-  if (!replyToken) {
-    console.log('Missing replyToken. Message:', message);
-    return;
-  }
-
-  if (!token) {
-    console.log('Missing LINE_CHANNEL_ACCESS_TOKEN. Message:', message);
-    return;
-  }
+  if (!token) throw new Error('LINE Channel access token 未設定或部署時未載入。');
 
   const response = await fetch('https://api.line.me/v2/bot/message/reply', {
     method: 'POST',
@@ -66,20 +61,22 @@ async function replyLineMessage(replyToken, message) {
     },
     body: JSON.stringify({
       replyToken,
-      messages: [{ type: 'text', text: message }]
+      messages: [{ type: 'text', text: String(message || '').slice(0, 4900) }]
     })
   });
-
+  const responseText = await response.text();
   if (!response.ok) {
-    const body = await response.text();
-    console.error('LINE reply failed:', response.status, body);
+    throw new Error(`LINE reply API ${response.status}：${responseText.slice(0, 500)}`);
   }
+  return { provider: 'line-messaging-api', responseStatus: response.status, responseText: responseText.slice(0, 500) };
 }
 
 
 async function pushLineMessage(lineUserId, message) {
+  const to = normalizeText(lineUserId);
+  if (!to) throw new Error('缺少 LINE User ID，無法推播。');
   const token = await getLineAccessToken();
-  if (!token || !lineUserId) return;
+  if (!token) throw new Error('LINE Channel access token 未設定或部署時未載入。');
   const response = await fetch('https://api.line.me/v2/bot/message/push', {
     method: 'POST',
     headers: {
@@ -87,14 +84,15 @@ async function pushLineMessage(lineUserId, message) {
       Authorization: `Bearer ${token}`
     },
     body: JSON.stringify({
-      to: lineUserId,
-      messages: [{ type: 'text', text: message }]
+      to,
+      messages: [{ type: 'text', text: String(message || '').slice(0, 4900) }]
     })
   });
+  const responseText = await response.text();
   if (!response.ok) {
-    const body = await response.text();
-    console.error('LINE push failed:', response.status, body);
+    throw new Error(`LINE push API ${response.status}：${responseText.slice(0, 500)}`);
   }
+  return { provider: 'line-messaging-api', responseStatus: response.status, responseText: responseText.slice(0, 500) };
 }
 
 async function getLineProfile(lineUserId) {
@@ -120,6 +118,10 @@ function rentalAdminApplicationUrl(applicationId) {
   return `${webBaseUrl()}rental-admin.html?applicationId=${encodeURIComponent(applicationId)}`;
 }
 
+function externalTeacherContractUrl(contractId, code, verifyEmail = false) {
+  return `${webBaseUrl()}external-teacher-onboarding.html?id=${encodeURIComponent(contractId || '')}&code=${encodeURIComponent(code || '')}${verifyEmail ? '&verify=email' : ''}`;
+}
+
 async function findRentalApplication(applicationKey) {
   const key = normalizeText(applicationKey);
   if (!key) return null;
@@ -141,7 +143,11 @@ async function findRentalApplication(applicationKey) {
 async function handleRentalApplicationLink({ applicationKey, declaredName, lineUserId, replyToken }) {
   const app = await findRentalApplication(applicationKey);
   if (!app) {
-    await replyLineMessage(replyToken, `找不到租賃申請編號：${applicationKey}。請確認是否完整複製表單送出後產生的文字。`);
+    try {
+      await replyLineMessage(replyToken, `找不到租賃申請編號：${applicationKey}。請確認是否完整複製表單送出後產生的文字。`);
+    } catch (replyErr) {
+      console.error('[rental line bind not-found reply failed]', replyErr);
+    }
     return;
   }
 
@@ -159,19 +165,33 @@ async function handleRentalApplicationLink({ applicationKey, declaredName, lineU
     lineLinkStatus: 'linked',
     lineLinkedAt: now,
     lineLinkedAtText: new Date().toISOString(),
-    lineConfirmText: `設備租賃申請 ${applicationNo}`, 
+    lineConfirmText: `設備租賃申請 ${applicationNo}`,
     status: data.status || '待店家確認',
     updatedAt: now
   }, { merge: true });
 
-  await replyLineMessage(replyToken, `已收到您的租賃申請：${applicationNo}
+  const customerReplyText = `已收到您的租賃申請：${applicationNo}
 
 柚子樂器會透過此 LINE 先與您確認設備、金額與安裝／交付時間。
 
-確認後會再傳正式資料連結給您。屆時需要填寫身分證字號並上傳身分證照片，請您先準備相關資料。`);
+確認後會再傳正式資料連結給您。屆時需要填寫身分證字號並上傳身分證照片，請您先準備相關資料。`;
 
-  const managerLineUserId = await getPrimaryManagerLineUserId();
-  if (managerLineUserId && managerLineUserId !== lineUserId) {
+  let customerReplyStatus = '已發送';
+  let customerReplyError = '';
+  try {
+    await replyLineMessage(replyToken, customerReplyText);
+  } catch (replyErr) {
+    customerReplyStatus = '發送失敗';
+    customerReplyError = replyErr && replyErr.message ? replyErr.message : String(replyErr);
+    console.error('[rental customer bind reply failed]', app.id, customerReplyError);
+  }
+
+  let managerNoticeStatus = '未設定';
+  let managerNoticeError = '';
+  let managerNoticeQueueId = '';
+  let managerRecipient = null;
+  try {
+    managerRecipient = await getPrimaryManagerLineRecipient();
     const adminUrl = rentalAdminApplicationUrl(app.id);
     const equipment = normalizeText(data.otherEquipmentNeed || data.equipmentName || data.rentalType || '');
     const message = [
@@ -186,8 +206,62 @@ async function handleRentalApplicationLink({ applicationKey, declaredName, lineU
       '請進入系統處理這一筆租賃申請：',
       adminUrl
     ].join('\n');
-    await pushLineMessage(managerLineUserId, message);
+
+    if (!managerRecipient || !managerRecipient.lineUserId) {
+      managerNoticeStatus = '發送失敗';
+      managerNoticeError = '主管 LINE 收件人尚未設定。';
+    } else if (managerRecipient.lineUserId === lineUserId) {
+      managerNoticeStatus = '已略過';
+      managerNoticeError = '主管 LINE 與客人 LINE 相同，為避免把後台連結傳給客人，已略過管理端推播。';
+    } else {
+      managerNoticeQueueId = `rental-line-bind-manager-${safeId(app.id)}-${Date.now()}`;
+      await createNotificationQueue({
+        queueId: managerNoticeQueueId,
+        channel: 'line',
+        targetLineUserId: managerRecipient.lineUserId,
+        targetEmployeeId: managerRecipient.employeeId,
+        targetName: managerRecipient.name || '柚子樂器主管',
+        title: '客人已完成租賃 LINE 綁定',
+        body: message,
+        message,
+        source: 'rental-line-linked-manager',
+        applicationId: app.id,
+        status: 'manual_ready'
+      });
+      const queueRef = db.collection(QUEUE_COLLECTION).doc(managerNoticeQueueId);
+      const queueSnap = await queueRef.get();
+      const result = queueSnap.exists
+        ? await processNotificationQueueDoc(queueRef, queueSnap.data() || {}, { processor: 'rental-line-webhook', force: true })
+        : { ok: false, error: '管理端通知佇列建立後讀取失敗。' };
+      managerNoticeStatus = result && result.sent ? '已發送' : '發送失敗';
+      managerNoticeError = result && result.error ? result.error : (managerNoticeStatus === '已發送' ? '' : 'LINE 管理端推播未成功。');
+    }
+  } catch (managerErr) {
+    managerNoticeStatus = '發送失敗';
+    managerNoticeError = managerErr && managerErr.message ? managerErr.message : String(managerErr);
+    console.error('[rental manager bind notice failed]', app.id, managerNoticeError);
   }
+
+  const lastError = [
+    customerReplyStatus === '發送失敗' ? `客人回覆：${customerReplyError}` : '',
+    managerNoticeStatus === '發送失敗' ? `管理端通知：${managerNoticeError}` : ''
+  ].filter(Boolean).join('；');
+
+  await app.ref.set({
+    customerLineReplyStatus: customerReplyStatus,
+    customerLineReplyError: customerReplyError,
+    customerLineReplyAtText: nowText(),
+    managerLineNoticeStatus: managerNoticeStatus,
+    managerLineNoticeError,
+    managerLineNoticeQueueId,
+    managerLineRecipientId: managerRecipient ? managerRecipient.employeeId : '',
+    managerLineRecipientMasked: managerRecipient ? maskLineUserId(managerRecipient.lineUserId) : '',
+    managerLineNoticeAtText: nowText(),
+    lineLastDeliveryStatus: lastError ? '發送失敗' : '已發送',
+    lineLastDeliveryError: lastError,
+    lineLastDeliveryCheckedAtText: nowText(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
 }
 
 async function findEmployeeByEmail(email) {
@@ -294,10 +368,57 @@ function isManagerData(data, docId) {
   );
 }
 
+function lineUserIdFromRow(data = {}) {
+  return normalizeText(data.lineUserId || data['LINE User ID'] || data.targetLineUserId || data.lineId || '');
+}
+
+function maskLineUserId(value) {
+  const id = normalizeText(value);
+  if (!id) return '';
+  if (id.length <= 10) return `${id.slice(0, 3)}***`;
+  return `${id.slice(0, 6)}…${id.slice(-4)}`;
+}
+
+async function getPrimaryManagerLineRecipient() {
+  const primary = await db.collection('employees').doc('PRIMARY_MANAGER_LINE').get();
+  if (primary.exists) {
+    const data = primary.data() || {};
+    const lineUserId = lineUserIdFromRow(data);
+    if (lineUserId) {
+      return {
+        employeeId: primary.id,
+        name: normalizeText(data.name || data.displayName || '柚子樂器主要管理者'),
+        email: normalizeEmail(data.email || data.Email || ''),
+        lineUserId,
+        source: 'PRIMARY_MANAGER_LINE'
+      };
+    }
+  }
+
+  const snap = await db.collection('employees').limit(300).get();
+  const candidates = [];
+  snap.forEach((doc) => {
+    if (doc.id === 'PRIMARY_MANAGER_LINE') return;
+    const data = doc.data() || {};
+    const lineUserId = lineUserIdFromRow(data);
+    if (!lineUserId || !isManagerData(data, doc.id)) return;
+    const email = normalizeEmail(data.email || data.Email || data.mail || data.loginEmail || '');
+    candidates.push({
+      employeeId: doc.id,
+      name: normalizeText(data.name || data.displayName || email || doc.id),
+      email,
+      lineUserId,
+      source: isBootstrapAdminEmail(email) ? 'bootstrap-admin' : 'manager-fallback',
+      priority: isBootstrapAdminEmail(email) ? 0 : (data.lineNotifyEnabled === false ? 2 : 1)
+    });
+  });
+  candidates.sort((a, b) => a.priority - b.priority || a.employeeId.localeCompare(b.employeeId));
+  return candidates[0] || null;
+}
+
 async function getPrimaryManagerLineUserId() {
-  const doc = await db.collection('employees').doc('PRIMARY_MANAGER_LINE').get();
-  if (!doc.exists) return '';
-  return String(doc.data().lineUserId || '');
+  const recipient = await getPrimaryManagerLineRecipient();
+  return recipient ? recipient.lineUserId : '';
 }
 
 async function hasThisLineBoundToAnotherEmployee(lineUserId, currentEmployeeId) {
@@ -310,6 +431,111 @@ async function hasThisLineBoundToAnotherEmployee(lineUserId, currentEmployeeId) 
     .get();
 
   return snap.docs.some((doc) => doc.id !== currentEmployeeId && doc.id !== 'PRIMARY_MANAGER_LINE');
+}
+
+async function findEmployeeByBindCode(bindCode) {
+  const code = normalizeText(bindCode).toUpperCase();
+  if (!code) return null;
+  const bindingRef = db.collection('employeeLineBindings').doc(code);
+  const bindingSnap = await bindingRef.get();
+  let binding = bindingSnap.exists ? (bindingSnap.data() || {}) : null;
+  let employeeId = normalizeText(binding && (binding.employeeId || binding.employeeDocId || binding.targetEmployeeId));
+  let applicationId = normalizeText(binding && binding.applicationId);
+
+  if (!employeeId && applicationId) {
+    const appSnap = await db.collection('registrationApplications').doc(applicationId).get();
+    if (appSnap.exists) {
+      const app = appSnap.data() || {};
+      employeeId = normalizeText(app.approvedEmployeeDocId || app.approvedEmployeeId || app.linkedEmployeeId || '');
+    }
+  }
+
+  if (employeeId) {
+    const employeeSnap = await db.collection('employees').doc(employeeId).get();
+    if (employeeSnap.exists) return { type: 'employee', ref: employeeSnap.ref, id: employeeSnap.id, data: employeeSnap.data() || {}, bindingRef, binding, applicationId };
+  }
+
+  if (applicationId) {
+    const appSnap = await db.collection('registrationApplications').doc(applicationId).get();
+    if (appSnap.exists) return { type: 'application', ref: appSnap.ref, id: appSnap.id, data: appSnap.data() || {}, bindingRef, binding, applicationId };
+  }
+
+  const q = await db.collection('registrationApplications').where('employeeBindCode', '==', code).limit(1).get();
+  if (!q.empty) {
+    const doc = q.docs[0];
+    return { type: 'application', ref: doc.ref, id: doc.id, data: doc.data() || {}, bindingRef, binding, applicationId: doc.id };
+  }
+
+  return null;
+}
+
+async function handleEmployeeCodeBinding({ bindCode, lineUserId, replyToken }) {
+  const code = normalizeText(bindCode).toUpperCase();
+  const target = await findEmployeeByBindCode(code);
+  if (!target) {
+    await replyLineMessage(replyToken, `查不到這組人員 LINE 綁定碼：${code}\n\n請確認是否完整複製後再貼上，或請主管從後台重新提供綁定文字。`);
+    return;
+  }
+
+  const primaryManagerLineUserId = await getPrimaryManagerLineUserId();
+  if (primaryManagerLineUserId && primaryManagerLineUserId === lineUserId) {
+    await replyLineMessage(replyToken, '這支 LINE 已被設定為主管通知帳號，不能綁定人員帳號。請使用本人自己的手機 LINE 綁定。');
+    return;
+  }
+
+  const currentEmployeeId = target.type === 'employee' ? target.id : normalizeText(target.data.approvedEmployeeId || target.data.linkedEmployeeId || target.data.employeeId || target.id);
+  const isAlreadyBoundElsewhere = await hasThisLineBoundToAnotherEmployee(lineUserId, currentEmployeeId);
+  if (isAlreadyBoundElsewhere) {
+    await replyLineMessage(replyToken, '這支 LINE 已綁定其他人員，不能重複綁定。請先由主管清除原本的 LINE 綁定。');
+    return;
+  }
+
+  const profile = await getLineProfile(lineUserId);
+  const lineDisplayName = normalizeText(profile.displayName || '');
+  const patch = {
+    lineUserId,
+    lineDisplayName,
+    lineNotifyEnabled: true,
+    lineBindStatus: 'bound',
+    lineBoundAt: admin.firestore.FieldValue.serverTimestamp(),
+    lineBoundAtText: new Date().toISOString(),
+    employeeBindCode: code,
+    employeeBindText: `柚子人員綁定 ${code}`,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAtText: new Date().toISOString()
+  };
+
+  await target.ref.set(patch, { merge: true });
+  if (target.type === 'application') {
+    await target.ref.set({ applicationStatus: 'pending_setup', status: '待主管建檔', currentStep: '等待主管審核', progressStatus: 'LINE 已綁定，等待主管審核' }, { merge: true });
+  }
+  if (target.bindingRef) {
+    await target.bindingRef.set({ status: 'bound', lineUserId, lineDisplayName, boundAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  }
+
+  const externalTeacherContractId = normalizeText(target.binding && (target.binding.externalTeacherContractId || target.binding.teacherId || target.binding.externalTeacherId));
+  if (externalTeacherContractId) {
+    const externalPatch = {
+      ...patch,
+      externalTeacherEmployeeId: currentEmployeeId || target.id,
+      employeeId: currentEmployeeId || target.id,
+      status: 'waiting_contract',
+      progressStatus: '綁定完成，等待正式資料填寫'
+    };
+    await db.collection('externalTeacherContracts').doc(externalTeacherContractId).set(externalPatch, { merge: true });
+    await db.collection('externalTeacherProfiles').doc(externalTeacherContractId).set(externalPatch, { merge: true });
+  }
+
+  const name = normalizeText(target.data.name || target.data.displayName || target.data.employeeName || target.data.teacherName || target.data.email || code);
+  const nextToken = normalizeText(target.binding && (target.binding.onboardingToken || target.binding.bindingCode || target.binding.employeeBindCode)) || code;
+  const nextUrl = externalTeacherContractId ? externalTeacherContractUrl(externalTeacherContractId, nextToken, false) : '';
+  let replyText = `LINE 綁定成功 ✅\n\n姓名：${name}\n綁定碼：${code}`;
+  if (nextUrl) {
+    replyText += `\n\n請點選下方下一步連結，繼續完成正式資料填寫：\n${nextUrl}`;
+  } else if (target.type === 'application') {
+    replyText += '\n\n您的 LINE 驗證已完成，接下來請等待主管審核。';
+  }
+  await replyLineMessage(replyToken, replyText);
 }
 
 async function handleEmployeeBinding({ email, lineUserId, replyToken }) {
@@ -518,16 +744,18 @@ async function getSystemSettingValue(names) {
   }
 }
 
-async function getLineAccessToken() {
-  const token = clean(
-    process.env.LINE_CHANNEL_ACCESS_TOKEN ||
-    process.env.LINE_MESSAGING_ACCESS_TOKEN ||
-    process.env.LINE_ACCESS_TOKEN ||
-    process.env.LINE_BOT_CHANNEL_ACCESS_TOKEN ||
-    ''
-  );
-  if (token) return token;
-  return await getSystemSettingValue([
+async function resolveLineAccessToken() {
+  const envCandidates = [
+    ['LINE_CHANNEL_ACCESS_TOKEN', process.env.LINE_CHANNEL_ACCESS_TOKEN],
+    ['LINE_MESSAGING_ACCESS_TOKEN', process.env.LINE_MESSAGING_ACCESS_TOKEN],
+    ['LINE_ACCESS_TOKEN', process.env.LINE_ACCESS_TOKEN],
+    ['LINE_BOT_CHANNEL_ACCESS_TOKEN', process.env.LINE_BOT_CHANNEL_ACCESS_TOKEN]
+  ];
+  for (const [name, value] of envCandidates) {
+    const token = clean(value || '');
+    if (token) return { token, configured: true, source: `env:${name}` };
+  }
+  const token = await getSystemSettingValue([
     'LINE_CHANNEL_ACCESS_TOKEN',
     'LINE Channel Access Token',
     'LINE Messaging API Token',
@@ -535,6 +763,14 @@ async function getLineAccessToken() {
     'LINE Bot Access Token',
     'LINE_TOKEN'
   ]);
+  return token
+    ? { token, configured: true, source: 'firestore:systemSettings' }
+    : { token: '', configured: false, source: '' };
+}
+
+async function getLineAccessToken() {
+  const resolved = await resolveLineAccessToken();
+  return resolved.token;
 }
 
 function queueStatus(row = {}) {
@@ -600,6 +836,72 @@ function queueBody(row = {}) {
   return queueTitle(row) || '您有一則新的通知。';
 }
 
+
+function queueTextBlob(row = {}) {
+  return [
+    row.source,
+    row.eventCode,
+    row.eventKey,
+    row.type,
+    row.notificationType,
+    row.featureCode,
+    row.title,
+    row.subject,
+    row.body,
+    row.text,
+    row.message,
+    row.content
+  ].map((v) => clean(v).toLowerCase()).filter(Boolean).join('|');
+}
+
+function isEmployeeClockAutoReminder(row = {}) {
+  const blob = queueTextBlob(row);
+  if (!blob) return false;
+  if (/clockauto|clock\.work|clock\.late|clock\.off|parttime\.hours|attendance.*reminder|punch.*reminder/.test(blob)) return true;
+  return /上班前提醒|上班後未打卡提醒|下班後未打卡提醒|表定下班時間提醒|上下班打卡自動提醒|上班打卡提醒|下班打卡提醒|請打上班卡|請打下班卡|未打上班卡|未打下班卡|工讀下班後未填時數/.test(blob);
+}
+
+function queueTargetEmployeeId(row = {}) {
+  return clean(row.targetEmployeeId || row.employeeId || row.employeeDocId || row.userId || row.uid || row['員工ID']);
+}
+
+async function queueTargetIsAdminOrManager(row = {}) {
+  const email = normalizeEmail(queueTargetEmail(row) || row.emailTo || row.to || row.loginEmail || '');
+  if (isBootstrapAdminEmail(email)) return true;
+
+  const employeeId = queueTargetEmployeeId(row);
+  if (employeeId === 'PRIMARY_MANAGER_LINE' || employeeId === DEFAULT_ADMIN_DOC_ID) return true;
+
+  const targetLine = queueTargetLineUserId(row);
+  if (targetLine) {
+    try {
+      const primaryLine = await getPrimaryManagerLineUserId();
+      if (primaryLine && primaryLine === targetLine) return true;
+    } catch (err) {
+      // ignore and continue with employee lookup
+    }
+  }
+
+  if (employeeId) {
+    try {
+      const snap = await db.collection('employees').doc(employeeId).get();
+      if (snap.exists) {
+        const data = snap.data() || {};
+        if (isManagerData(data, snap.id)) return true;
+        if (isBootstrapAdminEmail(data.email || data.Email || data.loginEmail || '')) return true;
+      }
+    } catch (err) {
+      // if lookup fails, do not block normal employee notifications
+    }
+  }
+  return false;
+}
+
+async function shouldSuppressQueueDelivery(row = {}) {
+  if (!isEmployeeClockAutoReminder(row)) return false;
+  return await queueTargetIsAdminOrManager(row);
+}
+
 function normalizeNotificationPreference(value, hasEmail) {
   const v = clean(value).toLowerCase();
   if (['email', 'email_only', 'email-only', 'mail', '只用email', '只用 email', '只用信箱', '信箱'].includes(v)) return 'email';
@@ -619,7 +921,7 @@ function isCustomerEmailVerified(row = {}) {
 function customerEmailOf(row = {}) {
   return queueTargetEmail(row);
 }
-async function createCustomerNotificationQueues({ row, title, body, source, contractId, applicationId, sendAfterAt, sendAfterMs, signUrl, officialContractUrl }) {
+async function createCustomerNotificationQueues({ row, title, body, source, contractId, applicationId, sendAfterAt, sendAfterMs, signUrl, officialContractUrl, initialStatus }) {
   row = row || {};
   const email = customerEmailOf(row);
   const pref = normalizeNotificationPreference(row.notificationPreference || row.preferredContactMethod, email);
@@ -627,13 +929,25 @@ async function createCustomerNotificationQueues({ row, title, body, source, cont
   const lineId = isValidCustomerLineUserId(rawLineId) ? rawLineId : '';
   const targetName = clean(row.customerName || row.partyAName || row.targetName || '客人');
   const baseId = `${safeId(source || 'rental-customer-notice')}-${safeId(contractId || applicationId || row.contractId || row.applicationId || 'rental')}-${Date.now()}`;
-  const results = { line: false, email: false, count: 0, queueIds: [], preference: pref };
+  const results = {
+    line: false,
+    email: false,
+    count: 0,
+    queueIds: [],
+    preference: pref,
+    lineRequested: wantsLineByPreference(pref),
+    emailRequested: wantsEmailByPreference(pref),
+    lineTargetFound: !!lineId,
+    emailTargetFound: !!email,
+    lineSkippedReason: '',
+    emailSkippedReason: ''
+  };
   const common = stripUndefined({
     targetName,
     title,
     body,
     message: body,
-    status: '待發送',
+    status: clean(initialStatus) || '待發送',
     sendAfterAt,
     sendAfterMs,
     source,
@@ -655,6 +969,10 @@ async function createCustomerNotificationQueues({ row, title, body, source, cont
     results.line = true;
     results.count += 1;
     results.queueIds.push(queueId);
+  } else if (wantsLineByPreference(pref)) {
+    results.lineSkippedReason = rawLineId
+      ? '客人 LINE 配對資料格式不正確，請重新配對 LINE。'
+      : '客人尚未完成 LINE 配對，契約內沒有 LINE User ID。';
   }
   if (wantsEmailByPreference(pref) && email) {
     const queueId = `${baseId}-email`;
@@ -667,6 +985,8 @@ async function createCustomerNotificationQueues({ row, title, body, source, cont
     results.email = true;
     results.count += 1;
     results.queueIds.push(queueId);
+  } else if (wantsEmailByPreference(pref)) {
+    results.emailSkippedReason = '客人沒有 Email。';
   }
   return results;
 }
@@ -681,7 +1001,8 @@ async function sendLinePush(row) {
 
   const title = queueTitle(row);
   const body = queueBody(row);
-  const text = title && body && title !== body ? `${title}\n${body}` : (body || title || '柚子樂器通知');
+  const directLineText = clean(row.lineText || row.lineMessage || row.lineBody);
+  const text = directLineText || (title && body && title !== body ? `${title}\n${body}` : (body || title || '柚子樂器通知'));
   const response = await fetch('https://api.line.me/v2/bot/message/push', {
     method: 'POST',
     headers: {
@@ -762,7 +1083,12 @@ async function appendNotificationLog(queueId, data) {
 async function processNotificationQueueDoc(docRef, row, options = {}) {
   row = row || {};
   const queueId = clean(row.queueId || docRef.id);
-  if (!isPendingQueue(row)) return { ok: true, skipped: true, reason: `狀態不是待發送：${queueStatus(row)}` };
+  const currentStatus = queueStatus(row);
+  const attemptCount = Number(row.attemptCount || 0) || 0;
+  if (options.force !== true && /發送失敗|fail|error/i.test(currentStatus) && attemptCount >= 5) {
+    return { ok: false, skipped: true, reason: '已達自動重試上限 5 次。', queueId, channel: queueChannel(row) };
+  }
+  if (options.force !== true && !isPendingQueue(row)) return { ok: true, skipped: true, reason: `狀態不是待發送：${currentStatus}` };
 
   const scheduledAt = queueScheduledAtMillis(row);
   const nowMs = Date.now();
@@ -790,6 +1116,30 @@ async function processNotificationQueueDoc(docRef, row, options = {}) {
   if (!['line', 'email'].includes(channel)) {
     await markQueue(docRef, { status: '發送失敗', lastError: `不支援的發送方式：${channel || '(空白)'}` });
     return { ok: false, skipped: true, reason: 'unsupported-channel' };
+  }
+
+  if (await shouldSuppressQueueDelivery(row)) {
+    await markQueue(docRef, {
+      queueId,
+      status: '已略過',
+      skippedAt: admin.firestore.FieldValue.serverTimestamp(),
+      skippedAtText: nowText(),
+      lastError: '管理者 / 主管帳號不接收員工上班打卡自動提醒。',
+      processor: options.processor || 'cloud-function',
+    });
+    await appendNotificationLog(queueId, {
+      status: '已略過',
+      channel,
+      provider: 'suppressed',
+      targetEmployeeId: queueTargetEmployeeId(row),
+      targetName: clean(row.targetName),
+      targetEmail: queueTargetEmail(row),
+      targetLineUserId: queueTargetLineUserId(row),
+      title: queueTitle(row),
+      body: queueBody(row),
+      reason: 'admin-manager-clock-reminder-suppressed',
+    });
+    return { ok: true, skipped: true, reason: 'admin-manager-clock-reminder-suppressed', queueId, channel };
   }
 
   await markQueue(docRef, {
@@ -898,6 +1248,36 @@ function buildOfficialContractUrl(contract) {
   return `${base}rental-contract.html?contractId=${encodeURIComponent(clean(contract.contractId || contract.__id))}&token=${encodeURIComponent(token)}`;
 }
 
+function buildRenewalReturnUrl(contract) {
+  const base = webBaseUrl();
+  const token = clean(contract.renewalToken || contract.officialContractToken || contract.customerToken || contract.signToken || contract.token);
+  return `${base}rental-renewal.html?contractId=${encodeURIComponent(clean(contract.contractId || contract.__id))}&token=${encodeURIComponent(token)}`;
+}
+
+function todayYmdTaipei() {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
+  const map = {};
+  parts.forEach((p) => { if (p.type !== 'literal') map[p.type] = p.value; });
+  return `${map.year}-${map.month}-${map.day}`;
+}
+
+function daysBetweenYmd(startYmd, endYmd) {
+  const a = Date.parse(`${clean(startYmd)}T00:00:00Z`);
+  const b = Date.parse(`${clean(endYmd)}T00:00:00Z`);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return 999999;
+  return Math.round((b - a) / 86400000);
+}
+
+async function ensureRenewalToken(docRef, contract) {
+  let token = clean(contract.renewalToken || contract.officialContractToken || contract.customerToken || contract.signToken || contract.token);
+  if (token) return token;
+  token = randomToken(18);
+  await docRef.set({ renewalToken: token, updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedAtText: nowText() }, { merge: true });
+  contract.renewalToken = token;
+  return token;
+}
+
+
 async function getContractForToken(contractId, token, options = {}) {
   const id = clean(contractId);
   if (!id) throw new Error('缺少契約編號。');
@@ -925,12 +1305,88 @@ exports.sendNotificationQueueOnCreate = onDocumentCreated({
 });
 
 exports.flushNotificationQueue = onSchedule({ schedule: 'every 5 minutes', region: 'us-central1', timeoutSeconds: 120, memory: '512MiB' }, async () => {
-  const snap = await db.collection(QUEUE_COLLECTION).where('status', 'in', ['待發送', 'pending', 'queued', 'retry']).limit(50).get();
+  const snap = await db.collection(QUEUE_COLLECTION).where('status', 'in', ['待發送', 'pending', 'queued', 'retry', '發送失敗']).limit(50).get();
   const results = [];
   for (const doc of snap.docs) {
     results.push(await processNotificationQueueDoc(doc.ref, doc.data() || {}, { processor: 'scheduler' }));
   }
   return results;
+});
+
+exports.rentalExpiryReminderDaily = onSchedule({ schedule: '0 10 * * *', timeZone: 'Asia/Taipei', region: 'us-central1', timeoutSeconds: 180, memory: '512MiB' }, async () => {
+  const activeStatuses = ['租賃中', '到期提醒中', '續約待確認', '續約待付款'];
+  const today = todayYmdTaipei();
+  const snap = await db.collection('rentalContracts').where('status', 'in', activeStatuses).limit(300).get();
+  const results = [];
+  for (const doc of snap.docs) {
+    const contract = Object.assign({ __id: doc.id, contractId: doc.id }, doc.data() || {});
+    const endDate = clean(contract.endDate || contract.officialEndDate || contract.currentEndDate);
+    const left = daysBetweenYmd(today, endDate);
+    if (left < 0 || left > 5) continue;
+    if (clean(contract.expiryReminderSentForEndDate) === endDate) {
+      results.push({ contractId: doc.id, skipped: true, reason: 'already-sent-for-endDate', endDate });
+      continue;
+    }
+    await ensureRenewalToken(doc.ref, contract);
+    const url = buildRenewalReturnUrl(contract);
+    const body = [`續約與退租提醒`, ``, `您的租賃目前到期日：${endDate || '未設定'}`, ``, `請點選以下連結，選擇「續約」或「退租」：`, url].join('\n');
+    const notifyResult = await createCustomerNotificationQueues({
+      row: Object.assign({}, contract, { contractId: doc.id }),
+      title: '續約與退租提醒',
+      body,
+      source: 'rental-expiry-renewal-return-reminder',
+      contractId: doc.id,
+      officialContractUrl: url,
+    });
+    await doc.ref.set({
+      status: clean(contract.status) === '租賃中' ? '到期提醒中' : clean(contract.status || '到期提醒中'),
+      renewalReturnLinkUrl: url,
+      expiryReminderSentAt: admin.firestore.FieldValue.serverTimestamp(),
+      expiryReminderSentAtText: nowText(),
+      expiryReminderSentForEndDate: endDate,
+      expiryReminderDaysLeft: left,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAtText: nowText(),
+    }, { merge: true });
+    results.push({ contractId: doc.id, endDate, daysLeft: left, notificationResult: notifyResult });
+  }
+  return { today, count: results.length, results };
+});
+
+exports.rentalLineRuntimeStatusHttp = httpEndpoint(async () => {
+  const tokenInfo = await resolveLineAccessToken();
+  const managerRecipient = await getPrimaryManagerLineRecipient();
+  let latestLineFailure = null;
+  try {
+    const snap = await db.collection(QUEUE_COLLECTION).limit(120).get();
+    const failures = [];
+    snap.forEach((doc) => {
+      const row = Object.assign({ queueId: doc.id }, doc.data() || {});
+      if (queueChannel(row) !== 'line') return;
+      const status = queueStatus(row);
+      if (!/發送失敗|fail|error/i.test(status)) return;
+      failures.push({
+        queueId: clean(row.queueId || doc.id),
+        source: clean(row.source),
+        status,
+        lastError: clean(row.lastError),
+        atText: clean(row.failedAtText || row.updatedAtText || row.createdAtText)
+      });
+    });
+    failures.sort((a, b) => clean(b.atText).localeCompare(clean(a.atText)));
+    latestLineFailure = failures[0] || null;
+  } catch (err) {
+    latestLineFailure = { status: '讀取失敗', lastError: err && err.message ? err.message : String(err), atText: nowText() };
+  }
+  return {
+    lineTokenConfigured: tokenInfo.configured,
+    lineTokenSource: tokenInfo.source,
+    managerLineConfigured: !!(managerRecipient && managerRecipient.lineUserId),
+    managerRecipientName: managerRecipient ? managerRecipient.name : '',
+    managerRecipientId: managerRecipient ? managerRecipient.employeeId : '',
+    managerLineUserIdMasked: managerRecipient ? maskLineUserId(managerRecipient.lineUserId) : '',
+    latestLineFailure
+  };
 });
 
 exports.processNotificationQueueNowHttp = httpEndpoint(async (data) => {
@@ -1225,6 +1681,99 @@ exports.rentalSaveContractHttp = httpEndpoint(async (data) => {
   };
 });
 
+
+exports.rentalSendSignLinkHttp = httpEndpoint(async (data) => {
+  const contractId = clean(data.contractId || data.id || data.__id);
+  if (!contractId) throw new Error('缺少契約編號，無法傳送正式資料填寫連結。');
+
+  const ref = db.collection('rentalContracts').doc(contractId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new Error('找不到契約資料，無法傳送正式資料填寫連結。');
+
+  const current = Object.assign({ __id: snap.id, contractId: snap.id }, snap.data() || {});
+  const signToken = clean(current.signToken || current.token) || randomToken(18);
+  const customerToken = clean(current.customerToken) || randomToken(18);
+  const officialContractToken = clean(current.officialContractToken) || randomToken(18);
+  const contractNo = clean(current.contractNo || snap.id);
+  const signUrl = buildSignUrl({ contractId: snap.id, signToken });
+  const officialContractUrl = buildOfficialContractUrl({ contractId: snap.id, officialContractToken, customerToken, signToken });
+  const customerName = clean(current.customerName || current.partyAName || '客人');
+
+  const normalized = stripUndefined({
+    contractId: snap.id,
+    contractNo,
+    signToken,
+    token: signToken,
+    customerToken,
+    officialContractToken,
+    signUrl,
+    officialContractUrl,
+    status: '待客人補資料',
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAtText: nowText(),
+  });
+  await ref.set(normalized, { merge: true });
+
+  const row = Object.assign({}, current, normalized, { __id: snap.id, contractId: snap.id });
+  const body = [
+    `${customerName} 您好，請點選以下連結，補填身分證字號、上傳身分證照片，並完成簽名確認：`,
+    '',
+    signUrl,
+    '',
+    '送出後，柚子樂器會再確認資料，並依約定時間安裝／交付設備。',
+  ].join('\n');
+
+  const notificationResult = await createCustomerNotificationQueues({
+    row,
+    title: '租賃正式資料填寫連結',
+    body,
+    source: 'rental-sign-link',
+    contractId: snap.id,
+    applicationId: clean(row.applicationId),
+    signUrl,
+    initialStatus: 'manual_ready',
+  });
+
+  const sendResults = [];
+  for (const queueId of notificationResult.queueIds || []) {
+    const queueRef = db.collection(QUEUE_COLLECTION).doc(queueId);
+    const queueSnap = await queueRef.get();
+    if (queueSnap.exists) {
+      sendResults.push(await processNotificationQueueDoc(queueRef, queueSnap.data() || {}, { processor: 'rental-sign-link-http', force: true }));
+    }
+  }
+  notificationResult.sendResults = sendResults;
+  notificationResult.sentCount = sendResults.filter((r) => r && r.sent).length;
+  notificationResult.failedCount = sendResults.filter((r) => r && r.ok === false).length;
+  const lineResult = sendResults.find((r) => r && r.channel === 'line') || null;
+  const emailResult = sendResults.find((r) => r && r.channel === 'email') || null;
+  notificationResult.lineSent = !!(lineResult && lineResult.sent);
+  notificationResult.emailSent = !!(emailResult && emailResult.sent);
+  notificationResult.lineFailed = !!(notificationResult.lineRequested && !notificationResult.lineSent);
+  notificationResult.emailFailed = !!(notificationResult.emailRequested && !notificationResult.emailSent);
+  notificationResult.lineError = clean((lineResult && lineResult.error) || notificationResult.lineSkippedReason || '');
+  notificationResult.emailError = clean((emailResult && emailResult.error) || notificationResult.emailSkippedReason || '');
+
+  await ref.set({
+    signLinkNoticeQueueCreated: notificationResult.count > 0,
+    signLinkNoticeQueueCreatedAt: notificationResult.count ? nowText() : '',
+    signLinkLineQueueCreated: notificationResult.line,
+    signLinkEmailQueueCreated: notificationResult.email,
+    signLinkNoticeQueueIds: notificationResult.queueIds,
+    signLinkNoticeSendResults: sendResults,
+    signLinkNoticeSentCount: notificationResult.sentCount,
+    signLinkNoticeFailedCount: notificationResult.failedCount,
+    signLinkLineSent: notificationResult.lineSent,
+    signLinkLineError: notificationResult.lineError,
+    signLinkEmailSent: notificationResult.emailSent,
+    signLinkEmailError: notificationResult.emailError,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAtText: nowText(),
+  }, { merge: true });
+
+  return { contractId: snap.id, contractNo, signUrl, officialContractUrl, notificationResult };
+});
+
 exports.rentalSignContractHttp = httpEndpoint(async (data) => {
   const contractId = clean(data.contractId || data.id);
   const token = clean(data.token || data.signToken);
@@ -1246,25 +1795,29 @@ exports.rentalSignContractHttp = httpEndpoint(async (data) => {
     formalReceivedNoticeText: clean(data.formalReceivedNoticeText || contract.formalReceivedNoticeText),
     customerFormalAssetsStoredInStorage: true,
     customerFormalAssetsStoredAt: clean(data.customerFormalAssetsStoredAt || nowText()),
-    status: '待店家確認',
+    status: '待付款確認',
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     updatedAtText: nowText(),
   }, { deleteInline: true }));
   await ref.set(update, { merge: true });
   try {
     const customerName = clean(contract.customerName || contract.partyAName || contract.name || '客人');
-    const adminUrl = `${webBaseUrl()}rental-admin.html?contractId=${encodeURIComponent(contract.contractId || contract.__id || contractId)}`;
+    const adminUrl = `${webBaseUrl()}rental-admin.html?contractId=${encodeURIComponent(contract.contractId || contract.__id || contractId)}&filter=payment`;
     const body = [
-      `客人已回傳身分證字號、證明圖片與簽名。`,
-      `客人：${customerName}`,
+      `租賃資料已補完，待確認付款。`,
+      `姓名：${customerName}`,
+      `電話：${clean(contract.customerPhone || contract.phone || '') || '未填'}`,
+      `設備：${clean(contract.equipmentName || contract.rentalItem || contract.equipmentCategory || contract.rentalType || '') || '未填'}`,
       `契約編號：${clean(contract.contractNo || contract.contractId || contractId)}`,
-      `狀態：待店家確認`,
+      `狀態：待付款確認`,
       ``,
-      `請直接進入後台查看或修改這筆租賃資料：`,
+      `客人已完成身分資料、證件照片與簽名。請確認是否已收到款項，確認後再成立正式契約。`,
+      ``,
+      `管理連結：`,
       adminUrl,
     ].join('\n');
     await queueManagerNotification({
-      title: '租賃客人已送出正式資料',
+      title: '租賃資料已補完，待確認付款',
       body,
       source: 'rental-formal-signed',
       contractId,
@@ -1273,7 +1826,7 @@ exports.rentalSignContractHttp = httpEndpoint(async (data) => {
   } catch (notifyErr) {
     console.warn('queue manager notification for rentalSignContractHttp failed:', notifyErr);
   }
-  return { contractId, status: '待店家確認' };
+  return { contractId, status: '待付款確認' };
 });
 
 exports.rentalGetContractHttp = httpEndpoint(async (data) => {
@@ -1401,7 +1954,12 @@ exports.lineWebhook = onRequest(
         const lineUserId = event.source && event.source.userId;
         const replyToken = event.replyToken;
 
+        if (await handleExternalTeacherLineEvent(event)) {
+          continue;
+        }
+
         const rentalCommand = parseRentalApplicationCommand(text);
+        const employeeCodeMatch = text.match(/^柚子人員綁定\s+([A-Z0-9-]+)$/i);
         const employeeMatch = text.match(/^柚子員工綁定\s+([^\s]+@[^\s]+)$/i);
         const managerMatch = text.match(/^柚子主管綁定\s+([^\s]+@[^\s]+)$/i);
         const oldMatch = text.match(/^柚子綁定\s+([^\s]+@[^\s]+)$/i);
@@ -1421,8 +1979,17 @@ exports.lineWebhook = onRequest(
           continue;
         }
 
+        if (employeeCodeMatch) {
+          await handleEmployeeCodeBinding({
+            bindCode: employeeCodeMatch[1],
+            lineUserId,
+            replyToken
+          });
+          continue;
+        }
+
         if (oldMatch) {
-          await replyLineMessage(replyToken, '舊版綁定指令已停用。員工請輸入：柚子員工綁定 your@email.com；主管請輸入：柚子主管綁定 your@email.com');
+          await replyLineMessage(replyToken, '舊版綁定指令已停用。人員請輸入：柚子人員綁定 EMP-編號；主管請輸入：柚子主管綁定 your@email.com');
           continue;
         }
 
@@ -1445,7 +2012,7 @@ exports.lineWebhook = onRequest(
         }
 
         if (text.includes('綁定')) {
-          await replyLineMessage(replyToken, '綁定格式錯誤。員工請輸入：柚子員工綁定 your@email.com；主管請輸入：柚子主管綁定 your@email.com');
+          await replyLineMessage(replyToken, '綁定格式錯誤。人員請輸入：柚子人員綁定 EMP-編號；主管請輸入：柚子主管綁定 your@email.com');
         }
       }
 
