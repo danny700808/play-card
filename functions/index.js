@@ -1795,25 +1795,29 @@ exports.rentalSignContractHttp = httpEndpoint(async (data) => {
     formalReceivedNoticeText: clean(data.formalReceivedNoticeText || contract.formalReceivedNoticeText),
     customerFormalAssetsStoredInStorage: true,
     customerFormalAssetsStoredAt: clean(data.customerFormalAssetsStoredAt || nowText()),
-    status: '待店家確認',
+    status: '待付款確認',
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     updatedAtText: nowText(),
   }, { deleteInline: true }));
   await ref.set(update, { merge: true });
   try {
     const customerName = clean(contract.customerName || contract.partyAName || contract.name || '客人');
-    const adminUrl = `${webBaseUrl()}rental-admin.html?contractId=${encodeURIComponent(contract.contractId || contract.__id || contractId)}`;
+    const adminUrl = `${webBaseUrl()}rental-admin.html?contractId=${encodeURIComponent(contract.contractId || contract.__id || contractId)}&filter=payment`;
     const body = [
-      `客人已回傳身分證字號、證明圖片與簽名。`,
-      `客人：${customerName}`,
+      `租賃資料已補完，待確認付款。`,
+      `姓名：${customerName}`,
+      `電話：${clean(contract.customerPhone || contract.phone || '') || '未填'}`,
+      `設備：${clean(contract.equipmentName || contract.rentalItem || contract.equipmentCategory || contract.rentalType || '') || '未填'}`,
       `契約編號：${clean(contract.contractNo || contract.contractId || contractId)}`,
-      `狀態：待店家確認`,
+      `狀態：待付款確認`,
       ``,
-      `請直接進入後台查看或修改這筆租賃資料：`,
+      `客人已完成身分資料、證件照片與簽名。請確認是否已收到款項，確認後再成立正式契約。`,
+      ``,
+      `管理連結：`,
       adminUrl,
     ].join('\n');
     await queueManagerNotification({
-      title: '租賃客人已送出正式資料',
+      title: '租賃資料已補完，待確認付款',
       body,
       source: 'rental-formal-signed',
       contractId,
@@ -1822,7 +1826,7 @@ exports.rentalSignContractHttp = httpEndpoint(async (data) => {
   } catch (notifyErr) {
     console.warn('queue manager notification for rentalSignContractHttp failed:', notifyErr);
   }
-  return { contractId, status: '待店家確認' };
+  return { contractId, status: '待付款確認' };
 });
 
 exports.rentalGetContractHttp = httpEndpoint(async (data) => {
