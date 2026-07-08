@@ -7677,26 +7677,35 @@
     const employeeId=employeeIdFrom(payload),date=dateText(payload&&payload.date)||localDateKey(new Date()); if(!employeeId)return{ok:false,message:'請選擇員工。'}; const [info,leaves,corrections,parts]=await Promise.all([effectiveScheduleInfo(employeeId,date,{includeClockState:true}),rowsByEmployee('leaveRequests',employeeId),rowsByEmployee('clockCorrections',employeeId),rowsByEmployee('parttimeRecords',employeeId)]); const leaveRows=leaves.map(normalizeLeave).filter(l=>l.segments.some(s=>s.date===date)); const expected=(info.schedules||[]).flatMap(s=>[{scheduleKey:s.scheduleKey,action:'上班打卡',time:s.startTime},{scheduleKey:s.scheduleKey,action:'下班打卡',time:s.endTime}]); const actual=(info.clockRecords||[]).map(r=>({id:r.id,action:r.actionName,time:shortTime(r.time),status:r.status,scheduleKey:r.scheduleKey})); const missing=[]; (info.schedules||[]).forEach(s=>{if(!s.hasClockIn)missing.push(`${s.startTime} 上班卡`);if(!s.hasClockOut)missing.push(`${s.endTime} 下班卡`);}); return{ok:true,employeeId,date,originalSchedules:info.originalSchedules||[],approvedLeaves:leaveRows.filter(l=>l.status===APPROVED),pendingLeaves:leaveRows.filter(l=>l.status===PENDING),effectiveSchedules:info.schedules||[],fullyCoveredSchedules:info.fullyCoveredSchedules||[],expectedPunches:expected,actualPunches:actual,missingPunches:missing,pendingCorrections:corrections.filter(r=>statusOf(r)===PENDING&&dateText(r.correctDate||r['修正日期'])===date),parttimeRecords:parts.filter(r=>dateText(r.date||r.workDate||r['日期'])===date),effectiveHours:Math.round((info.schedules||[]).reduce((sum,s)=>sum+hoursBetween(s.startTime,s.endTime),0)*100)/100,message:info.message,source:VERSION};
   }
 
+  function externalTeacherStatusValues(row){row=row||{};return [row.status,row.contractStatus,row.profileStatus,row.progressStatus,row.latestExternalContractStatus,row.latestExternalContractProgress,row.externalContractRenewalStatus].map(v=>clean(v)).filter(Boolean);}
+  function externalTeacherStatusBlob(row){return externalTeacherStatusValues(row).join('|');}
   function isPendingExternalTeacherContract(row){
     row=row||{};
-    const s=clean(row.status||row.contractStatus||row.profileStatus||row.progressStatus||row.latestExternalContractStatus).toLowerCase();
-    if(!s)return false;
-    if(['active','confirmed','contract_effective','needs_revision','waiting_contract','waiting_bindings','deleted','archived','void','cancelled'].includes(s))return false;
-    return s==='submitted_pending_admin'||s==='已送出'||/等待.*確認|待主管確認|待管理端確認|老師已送出/.test(s);
+    const blob=externalTeacherStatusBlob(row);
+    const pendingRe=/submitted_pending_admin|老師已送出|已送出|待主管確認|待管理端確認|等待.*確認/i;
+    if(!pendingRe.test(blob))return false;
+    const stateVals=[row.status,row.contractStatus,row.profileStatus,row.latestExternalContractStatus].map(v=>clean(v)).filter(Boolean);
+    const terminalRe=/^(active|confirmed|contract_effective|needs_revision|waiting_contract|waiting_bindings|overdue_unsigned|archived|deleted|void|cancelled)$/i;
+    const terminalTextRe=/契約生效|管理端已確認|已確認|退回補件|等待老師簽署|等待合約|等待綁定|逾期未簽|封存|刪除|取消|作廢/;
+    if(stateVals.some(v=>(terminalRe.test(v)||terminalTextRe.test(v))&&!pendingRe.test(v))&&!stateVals.some(v=>pendingRe.test(v)))return false;
+    return true;
   }
+  function externalTeacherRowKey(row){return clean(row&& (row.contractId||row.currentContractId||row.latestExternalContractId||row.__id||row.id||row.profileId||row.teacherId));}
+  function externalTeacherProfileCountRow(row){row=row||{};const id=clean(row.currentContractId||row.contractId||row.latestExternalContractId||row.__id||row.id);return Object.assign({},row,{contractId:clean(row.currentContractId||row.contractId||row.latestExternalContractId||id),id,__id:id||clean(row.__id||row.id)});}
+  function mergeExternalTeacherCountRows(contractRows,profileRows){const map=new Map();function put(row){const key=externalTeacherRowKey(row);if(!key)return;map.set(key,Object.assign({},map.get(key)||{},row));}(profileRows||[]).forEach(r=>put(externalTeacherProfileCountRow(r)));(contractRows||[]).forEach(put);return Array.from(map.values());}
   async function countExternalTeacherPendingContracts(){
     try{
-      const rows=await all('externalTeacherContracts').catch(()=>[]);
-      return rows.filter(isPendingExternalTeacherContract).length;
+      const [contracts,profiles]=await Promise.all([all('externalTeacherContracts').catch(()=>[]),all('externalTeacherProfiles').catch(()=>[])]);
+      return mergeExternalTeacherCountRows(contracts,profiles).filter(isPendingExternalTeacherContract).length;
     }catch(e){return 0;}
   }
   async function adjustPendingCounts(action,payload){
     const base=typeof previousHandle==='function'?await previousHandle(action,payload||{}).catch(()=>({ok:true})):({ok:true});
-    const [leaves,corrs,temps,externalTeacherContracts]=await Promise.all([all('leaveRequests').catch(()=>[]),all('clockCorrections').catch(()=>[]),all('temporaryAttendanceRequests').catch(()=>[]),all('externalTeacherContracts').catch(()=>[])]);
+    const [leaves,corrs,temps,externalTeacherContracts,externalTeacherProfiles]=await Promise.all([all('leaveRequests').catch(()=>[]),all('clockCorrections').catch(()=>[]),all('temporaryAttendanceRequests').catch(()=>[]),all('externalTeacherContracts').catch(()=>[]),all('externalTeacherProfiles').catch(()=>[])]);
     const baseCounts=Object.assign({},base.counts||base.summary||base);
     const pendingLeaveIds=new Set(leaves.filter(r=>statusOf(r)===PENDING).map(r=>clean(r.requestId||r.__id)));
     const clockCount=corrs.filter(r=>statusOf(r)===PENDING&&!pendingLeaveIds.has(clean(r.relatedLeaveRequestId))).length,tempCount=temps.filter(r=>statusOf(r)===PENDING).length,leaveCount=pendingLeaveIds.size;
-    const externalTeacherContractPendingCount=externalTeacherContracts.filter(isPendingExternalTeacherContract).length;
+    const externalTeacherContractPendingCount=mergeExternalTeacherCountRows(externalTeacherContracts,externalTeacherProfiles).filter(isPendingExternalTeacherContract).length;
     const previousExternal=Number(baseCounts.externalTeacherContractPendingCount||baseCounts.externalTeacherPendingContractCount||baseCounts.externalTeacherPendingCount||baseCounts.teacherPendingCount||0)||0;
     const previousApproval=Number(baseCounts.approvalCount||0)||0;
     const registrationCount=Number(baseCounts.registrationCount||baseCounts.pendingRegistrationCount||baseCounts.registrations||0)||0;

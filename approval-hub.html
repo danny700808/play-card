@@ -35,7 +35,7 @@
 <a class="tile" href="leave.html?mode=approval"><strong>請假簽核 <span class="badge" id="badge-leave"></span></strong><span>未處理與歷史紀錄</span></a>
 <a class="tile" href="profile-change-admin.html"><strong>個資修改簽核 <span class="badge" id="badge-profile-change"></span></strong><span>未處理與歷史紀錄</span></a>
 <a class="tile" href="data-center.html?module=parttime"><strong>工讀薪資結算 <span class="badge" id="badge-parttime-payroll"></span></strong><span>工讀時數、薪資結算與主管確認集中在簽核區處理</span></a>
-<a class="tile" href="external-teacher-admin.html?from=approval&filterStatus=submitted_pending_admin&v=external-bind-v2"><strong>外聘老師合約確認 <span class="badge" id="badge-external-teacher"></span></strong><span>老師簽署完成後，由管理端確認契約生效</span></a>
+<a class="tile" href="external-teacher-admin.html?from=approval&filterStatus=submitted_pending_admin&v=external-bind-v3&fresh=1"><strong>外聘老師合約確認 <span class="badge" id="badge-external-teacher"></span></strong><span>老師簽署完成後，由管理端確認契約生效</span></a>
 <a class="tile" href="approval-notification-settings.html"><strong>簽核提醒設定</strong><span>集中設定註冊、打卡、補登 / 臨時出勤、請假與個資修改提醒</span></a>
 <a class="tile" href="attendance-flow-check.html"><strong>出勤勾稽檢查</strong><span>逐日比對原班表、請假、有效班段、應打卡、實際打卡、缺卡與工讀薪資資料</span></a>
 </div>
@@ -44,7 +44,7 @@
   <script src="config.js?v=20260529notifybadge1"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=attendance-flow-20260618"></script>
+  <script src="firebase-client.js?v=external-teacher-pending-v3"></script>
   <script src="app.js?v=admin-final-20260530b"></script>
   <script src="onboarding-workflow.js?v=20260624onboarding1"></script>
   <script>
@@ -53,7 +53,7 @@
       const params=new URLSearchParams(location.search);
       if(params.get('target')==='externalTeacherContract'){
         const cid=params.get('contractId')||'';
-        location.replace('external-teacher-admin.html?from=approval&filterStatus=submitted_pending_admin'+(cid?'&contractId='+encodeURIComponent(cid):''));
+        location.replace('external-teacher-admin.html?from=approval&filterStatus=submitted_pending_admin&v=external-bind-v3&fresh=1'+(cid?'&contractId='+encodeURIComponent(cid):''));
         return;
       }
       fillHeader();
@@ -68,7 +68,7 @@
       scheduleIdle_(async()=>applyBadgeCounts_(await fetchPendingCountsFast_(user)));
     }
 
-    function pendingCountsCacheKey_(user){ return 'pendingCounts:v4:settings:' + ((user && user.id) || 'guest'); }
+    function pendingCountsCacheKey_(user){ return 'pendingCounts:v5:settings:' + ((user && user.id) || 'guest'); }
     function readCachedPendingCounts_(user){
       try{ return JSON.parse(localStorage.getItem(pendingCountsCacheKey_(user)) || '{}') || {}; }catch(e){ return {}; }
     }
