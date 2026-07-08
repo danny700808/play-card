@@ -151,9 +151,9 @@ function contractAdminUrl() {
 
 function externalTeacherApprovalUrl(contractId = '') {
   const qs = contractId
-    ? `?target=externalTeacherContract&contractId=${encodeURIComponent(contractId)}`
-    : '?target=externalTeacherContract';
-  return `${webBaseUrl()}approval-hub.html${qs}`;
+    ? `?from=approval&filterStatus=submitted_pending_admin&contractId=${encodeURIComponent(contractId)}`
+    : '?from=approval&filterStatus=submitted_pending_admin';
+  return `${webBaseUrl()}external-teacher-admin.html${qs}`;
 }
 
 function isAdminToken(request) {
@@ -405,7 +405,8 @@ async function getPrimaryManagerLineRecipient() {
   if (primary.exists) {
     const data = primary.data() || {};
     const lineUserId = lineUserIdFromRow(data);
-    if (lineUserId) return { lineUserId, name: clean(data.name || data.displayName || '柚子樂器主要管理者') };
+    const email = lower(data.email || data.Email || data.mail || data.loginEmail || '');
+    if (lineUserId) return { employeeId: primary.id, lineUserId, name: clean(data.name || data.displayName || '柚子樂器主要管理者'), email, source: 'PRIMARY_MANAGER_LINE' };
   }
 
   const snap = await db().collection('employees').limit(300).get();
@@ -417,12 +418,15 @@ async function getPrimaryManagerLineRecipient() {
     if (!lineUserId || !isManagerData(data, doc.id)) return;
     const email = lower(data.email || data.Email || data.mail || data.loginEmail || '');
     candidates.push({
+      employeeId: doc.id,
       lineUserId,
       name: clean(data.name || data.displayName || email || doc.id),
+      email,
+      source: BOOTSTRAP_ADMIN_EMAILS.has(email) ? 'bootstrap-admin' : 'manager-fallback',
       priority: BOOTSTRAP_ADMIN_EMAILS.has(email) ? 0 : (data.lineNotifyEnabled === false ? 2 : 1)
     });
   });
-  candidates.sort((a, b) => a.priority - b.priority);
+  candidates.sort((a, b) => a.priority - b.priority || clean(a.employeeId).localeCompare(clean(b.employeeId)));
   return candidates[0] || null;
 }
 
@@ -457,26 +461,30 @@ async function pushLineMessage(lineUserId, text) {
   if (!response.ok) logger.warn('LINE push failed', { status: response.status, body: await response.text().catch(() => '') });
 }
 
-async function pushAdminMessage(text) {
+async function pushAdminMessage(text, options = {}) {
   const configured = clean(process.env.ADMIN_LINE_USER_ID || process.env.LINE_ADMIN_USER_ID || '');
-  let target = configured;
-  if (!target) {
-    const manager = await getPrimaryManagerLineRecipient().catch(() => null);
-    target = manager && manager.lineUserId ? manager.lineUserId : '';
-  }
-  if (target) await pushLineMessage(target, text);
-
-  await db().collection('notificationQueue').add({
-    eventCode: 'external_teacher_admin_notice',
+  const manager = configured ? null : await getPrimaryManagerLineRecipient().catch(() => null);
+  const target = configured || (manager && manager.lineUserId ? manager.lineUserId : '');
+  const payload = {
+    eventCode: clean(options.eventCode || 'external_teacher_admin_notice'),
+    target: 'admin',
     targetRole: 'admin',
+    targetEmployeeId: clean((manager && manager.employeeId) || options.targetEmployeeId || 'PRIMARY_MANAGER_LINE'),
+    targetName: clean((manager && manager.name) || options.targetName || '柚子樂器主管'),
     channel: 'line',
-    title: '外聘老師通知',
+    title: clean(options.title || '外聘老師通知'),
     body: text,
+    text,
     message: text,
     status: '待發送',
     createdAt: nowTs(),
-    source: 'external-teacher-onboarding'
-  }).catch((err) => logger.warn('queue admin notice failed', err));
+    source: clean(options.source || 'external-teacher-onboarding')
+  };
+  if (target) payload.targetLineUserId = target;
+  if (manager && manager.email) payload.targetEmail = manager.email;
+  if (options.contractId) payload.contractId = clean(options.contractId);
+  if (options.approvalUrl) payload.approvalUrl = clean(options.approvalUrl);
+  await db().collection('notificationQueue').add(payload).catch((err) => logger.warn('queue admin notice failed', err));
 }
 
 async function queueTeacherEmail({ teacherId, email, title, body, source }) {
@@ -839,8 +847,8 @@ function contractHtml(contractText, signatureUrl, identityFiles = [], profile = 
     ? `<div class="identity-doc-block"><div class="identity-doc-title">乙方身分證明文件／證件照片：</div>${identityUrls.map((u, i) => `<img class="identity-doc-img" src="${attrEsc(u)}" alt="乙方身分證明文件${i + 1}">`).join('')}</div>`
     : '<div class="identity-doc-note">乙方身分證明文件／證件照片已隨契約資料保存。</div>';
   return `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>外聘才藝教師委任契約書</title><style>
-body{margin:0;background:#e9e1d6;color:#111}.print-page{padding:20px 0 32px}.a4{width:210mm;min-height:297mm;background:#fff;margin:0 auto;padding:18mm 16mm;box-sizing:border-box;color:#111;font-family:"Noto Serif TC","標楷體","PMingLiU",serif;font-size:13.2px;line-height:1.72;position:relative}.a4 h2{text-align:center;font-size:24px;margin:0 0 12px;letter-spacing:2px}.party{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:10px 0 12px}.party-box{border:1px solid #ddd;padding:10px;border-radius:8px;min-height:80px}.contract-body{white-space:pre-wrap}.sign-row{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:24px;align-items:start}.sign-box{border-top:1px solid #333;padding-top:10px;min-height:105px;position:relative}.identity-row{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:8px;align-items:start}.signature-demo{height:54px;border:1px dashed #aaa;border-radius:8px;margin-top:10px;display:flex;align-items:center;justify-content:center;color:#777;background:#fafafa}.signature-img{max-height:70px;max-width:220px;display:block;margin-top:8px}.identity-doc-block{margin-top:12px;border-top:1px dashed #bbb;padding-top:10px}.identity-doc-title{font-weight:900;margin-bottom:6px}.identity-doc-img{display:block;max-width:100%;max-height:170px;margin-top:8px;border:1px solid #ccc;border-radius:8px;object-fit:contain}.identity-doc-note{margin-top:8px;color:#777;font-size:12px;line-height:1.6}@page{size:A4;margin:0}@media print{body{background:#fff}.print-page{padding:0}.a4{box-shadow:none;margin:0}}@media(max-width:760px){.print-page{padding:10px}.a4{width:100%;min-height:auto;padding:18mm 12mm;font-size:12.5px}.party,.sign-row,.identity-row{grid-template-columns:1fr 1fr}}
-</style></head><body><div class="print-page"><div class="a4"><h2>外聘才藝教師委任契約書</h2><div class="party"><div class="party-box"><b>甲方</b><br>臺中市私立凱立音樂短期補習班<br>代表人：黃銘廷<br>地址：依補習班登記資料</div><div class="party-box"><b>乙方</b><br>外聘老師姓名：${teacherName}<br>身分證字號：${idNumber || '＿＿＿＿＿＿'}<br>電話：${mobile || '＿＿＿＿＿＿'}</div></div><div class="contract-body">${text}</div><div class="sign-row"><div class="sign-box">甲方：臺中市私立凱立音樂短期補習班<br>代表人：黃銘廷</div><div class="sign-box">乙方：${teacherName}${signatureHtml}</div></div><div class="identity-row"><div></div><div>${identityHtml}</div></div><div style="margin-top:20px">簽署日期：${htmlEsc(todayKey())}</div></div></div></body></html>`;
+body{margin:0;background:#e9e1d6;color:#111}.print-page{padding:20px 0 32px}.a4{width:210mm;min-height:297mm;background:#fff;margin:0 auto;padding:18mm 16mm;box-sizing:border-box;color:#111;font-family:"Noto Serif TC","標楷體","PMingLiU",serif;font-size:13.2px;line-height:1.72;position:relative}.a4 h2{text-align:center;font-size:24px;margin:0 0 12px;letter-spacing:2px}.party{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:10px 0 12px}.party-box{border:1px solid #ddd;padding:10px;border-radius:8px;min-height:80px}.contract-body{white-space:pre-wrap}.sign-row{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:24px;align-items:start}.sign-box{border-top:1px solid #333;padding-top:10px;min-height:105px;position:relative}.identity-row{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:8px;align-items:start}.signature-demo{height:54px;border:1px dashed #aaa;border-radius:8px;margin-top:10px;display:flex;align-items:center;justify-content:center;color:#777;background:#fafafa}.signature-img{max-height:70px;max-width:220px;display:block;margin-top:8px}.identity-doc-block{margin-top:12px;border-top:1px dashed #bbb;padding-top:10px}.identity-doc-title{font-weight:900;margin-bottom:6px}.identity-doc-img{display:block;max-width:100%;max-height:170px;margin-top:8px;border:1px solid #ccc;border-radius:8px;object-fit:contain}.identity-doc-note{margin-top:8px;color:#777;font-size:12px;line-height:1.6}@page{size:A4;margin:0}@media print{body{background:#fff}.print-page{padding:0}.a4{box-shadow:none;margin:0;transform:none!important}}@media(max-width:760px){body{background:#e9e1d6}.print-page{padding:8px;overflow:hidden}.a4{width:210mm;min-width:210mm;min-height:297mm;margin:0;padding:18mm 16mm;font-size:13.2px;line-height:1.72;transform-origin:top left}.party,.sign-row,.identity-row{grid-template-columns:1fr 1fr}.sign-box{min-height:105px}.identity-doc-img{max-height:170px}.signature-img{max-height:70px;max-width:220px}}
+</style></head><body><div class="print-page"><div class="a4"><h2>外聘才藝教師委任契約書</h2><div class="party"><div class="party-box"><b>甲方</b><br>臺中市私立凱立音樂短期補習班<br>代表人：黃銘廷<br>地址：依補習班登記資料</div><div class="party-box"><b>乙方</b><br>外聘老師姓名：${teacherName}<br>身分證字號：${idNumber || '＿＿＿＿＿＿'}<br>電話：${mobile || '＿＿＿＿＿＿'}</div></div><div class="contract-body">${text}</div><div class="sign-row"><div class="sign-box">甲方：臺中市私立凱立音樂短期補習班<br>代表人：黃銘廷</div><div class="sign-box">乙方：${teacherName}${signatureHtml}</div></div><div class="identity-row"><div></div><div>${identityHtml}</div></div><div style="margin-top:20px">簽署日期：${htmlEsc(todayKey())}</div></div></div><script>(function(){function fit(){var wrap=document.querySelector('.print-page'),a4=document.querySelector('.a4');if(!wrap||!a4)return;if(window.innerWidth>760){a4.style.transform='';wrap.style.height='';return;}a4.style.transform='scale(1)';var natural=a4.scrollWidth||a4.offsetWidth||794;var scale=Math.min(1,Math.max(.32,(window.innerWidth-16)/natural));a4.style.transformOrigin='top left';a4.style.transform='scale('+scale+')';wrap.style.height=Math.ceil((a4.scrollHeight||1123)*scale+16)+'px';}window.addEventListener('resize',function(){setTimeout(fit,80)});if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',fit);else fit();setTimeout(fit,250);})();<\/script></body></html>`;
 }
 
 async function saveContractHtml({ teacherId, contractRocYear, contractId, contractText, signatureUrl, identityFiles, profile }) {
@@ -1643,8 +1651,13 @@ function registerExternalTeacherOnboarding(exportsObj) {
 合約年度：民國 ${dates.contractRocYear} 年
 契約期間：${dates.contractStartDate} 至 ${dates.contractEndDate}
 
-簽核連結（外聘老師合約確認）：
-${externalTeacherApprovalUrl(contractId)}`);
+請點選下方連結進入外聘老師合約確認，確認後契約才會生效：
+${externalTeacherApprovalUrl(contractId)}`, {
+      title: '外聘老師合約待確認',
+      source: 'external-teacher-contract-submitted',
+      contractId,
+      approvalUrl: externalTeacherApprovalUrl(contractId)
+    });
 
     return { ok: true, contractId, contractHtmlFile, contractHtmlUrl: contractHtmlFile.downloadUrl, ...dates };
   });

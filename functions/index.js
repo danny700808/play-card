@@ -858,11 +858,56 @@ function isEmployeeClockAutoReminder(row = {}) {
   const blob = queueTextBlob(row);
   if (!blob) return false;
   if (/clockauto|clock\.work|clock\.late|clock\.off|parttime\.hours|attendance.*reminder|punch.*reminder/.test(blob)) return true;
-  return /上班前提醒|上班後未打卡提醒|下班後未打卡提醒|表定下班時間提醒|上下班打卡自動提醒|上班打卡提醒|下班打卡提醒|請打上班卡|請打下班卡|未打上班卡|未打下班卡|工讀下班後未填時數/.test(blob);
+  return /上班前提醒|上班後未打卡提醒|下班後未打卡提醒|表定下班時間提醒|上下班打卡自動提醒|上班打卡提醒|下班打卡提醒|請打上班卡|請打下班卡|未打上班卡|未打下班卡|工讀下班後未填時數|超過表定下班|表定.*下班.*30|完成下班打卡|尚未.*下班打卡|未完成.*下班打卡|下班.*未打卡/.test(blob);
 }
 
 function queueTargetEmployeeId(row = {}) {
   return clean(row.targetEmployeeId || row.employeeId || row.employeeDocId || row.userId || row.uid || row['員工ID']);
+}
+
+function queueTargetsAdminRole(row = {}) {
+  const blob = [
+    row.targetRole,
+    row.target,
+    row.recipientRole,
+    row.toRole,
+    row.role,
+    row.targetType,
+  ].map((v) => clean(v).toLowerCase()).filter(Boolean).join('|');
+  return /admin|manager|主管|管理者/.test(blob);
+}
+
+async function targetLineBelongsToAdminOrManager(lineUserId) {
+  const targetLine = normalizeText(lineUserId);
+  if (!targetLine) return false;
+  try {
+    const snap = await db.collection('employees').limit(500).get();
+    let matched = false;
+    snap.forEach((doc) => {
+      if (matched) return;
+      const data = doc.data() || {};
+      if (lineUserIdFromRow(data) === targetLine && isManagerData(data, doc.id)) matched = true;
+    });
+    return matched;
+  } catch (err) {
+    return false;
+  }
+}
+
+async function resolveAdminLineTargetForQueue(row = {}) {
+  if (queueChannel(row) !== 'line') return row;
+  if (queueTargetLineUserId(row)) return row;
+  if (!queueTargetsAdminRole(row)) return row;
+  const manager = await getPrimaryManagerLineRecipient().catch(() => null);
+  if (!manager || !manager.lineUserId) return row;
+  return Object.assign({}, row, {
+    __resolvedAdminLineTarget: true,
+    targetLineUserId: manager.lineUserId,
+    targetEmployeeId: queueTargetEmployeeId(row) || manager.employeeId || 'PRIMARY_MANAGER_LINE',
+    targetName: clean(row.targetName) || manager.name || '柚子樂器主管',
+    targetEmail: queueTargetEmail(row) || manager.email || '',
+    targetRole: clean(row.targetRole || row.target || 'admin') || 'admin',
+  });
 }
 
 async function queueTargetIsAdminOrManager(row = {}) {
@@ -877,6 +922,11 @@ async function queueTargetIsAdminOrManager(row = {}) {
     try {
       const primaryLine = await getPrimaryManagerLineUserId();
       if (primaryLine && primaryLine === targetLine) return true;
+    } catch (err) {
+      // ignore and continue with employee lookup
+    }
+    try {
+      if (await targetLineBelongsToAdminOrManager(targetLine)) return true;
     } catch (err) {
       // ignore and continue with employee lookup
     }
@@ -1135,13 +1185,27 @@ async function processNotificationQueueDoc(docRef, row, options = {}) {
     return { ok: false, skipped: true, reason: 'unsupported-channel' };
   }
 
+  row = await resolveAdminLineTargetForQueue(row);
+  if (row.__resolvedAdminLineTarget) {
+    await markQueue(docRef, {
+      targetLineUserId: row.targetLineUserId,
+      targetEmployeeId: row.targetEmployeeId,
+      targetName: row.targetName,
+      targetEmail: row.targetEmail,
+      targetRole: row.targetRole,
+      targetResolvedAt: admin.firestore.FieldValue.serverTimestamp(),
+      targetResolvedAtText: nowText(),
+      targetResolvedBy: 'primary-manager-line',
+    });
+  }
+
   if (await shouldSuppressQueueDelivery(row)) {
     await markQueue(docRef, {
       queueId,
       status: '已略過',
       skippedAt: admin.firestore.FieldValue.serverTimestamp(),
       skippedAtText: nowText(),
-      lastError: '管理者 / 主管帳號不接收員工上班打卡自動提醒。',
+      lastError: '管理者 / 主管帳號不接收員工上下班打卡自動提醒。',
       processor: options.processor || 'cloud-function',
     });
     await appendNotificationLog(queueId, {
