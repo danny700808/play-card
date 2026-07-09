@@ -118,6 +118,126 @@ function rentalAdminApplicationUrl(applicationId) {
   return `${webBaseUrl()}rental-admin.html?applicationId=${encodeURIComponent(applicationId)}`;
 }
 
+function rentalTypeLabelForManager(type) {
+  const t = clean(type);
+  if (t === 'digitalPiano') return '電鋼琴';
+  if (t === 'electronicDrum') return '電子鼓';
+  if (t === 'other') return '其他設備';
+  return t || '未填';
+}
+
+function normalizeRentalDeliveryMethod(value) {
+  const raw = clean(value);
+  if (/自取|自運|自行|自己/.test(raw)) return '自取自運';
+  if (/其他/.test(raw)) return '其他';
+  if (/到府|安裝|配送|運送|宅配|送達/.test(raw)) return '到府安裝';
+  return raw || '到府安裝';
+}
+
+function normalizeRentalFloorNote(note) {
+  const s = clean(note);
+  if (!s) return '';
+  if (/其他|特殊|另行/.test(s)) return '其他特殊情況｜另行確認';
+  if (/無電梯/.test(s) && /(4|5|四|五)/.test(s)) return '無電梯 4～5樓｜加收 400 元';
+  if (/無電梯/.test(s) && /(3|三)/.test(s)) return '無電梯 3樓｜加收 200 元';
+  if (/無電梯/.test(s) && /(1|2|一|二)/.test(s)) return '無電梯 1～2樓｜不加收樓層搬運費';
+  if (/有電梯/.test(s)) return '有電梯｜不加收樓層搬運費';
+  return s;
+}
+
+function rentalFloorExtraFee(rowOrNote) {
+  const explicit = typeof rowOrNote === 'object' ? Number(rowOrNote.floorExtraFee || 0) : 0;
+  if (Number.isFinite(explicit) && explicit > 0) return explicit;
+  const note = typeof rowOrNote === 'object' ? normalizeRentalFloorNote(rowOrNote.floorNote || rowOrNote.floorElevatorInfo) : normalizeRentalFloorNote(rowOrNote);
+  if (/400/.test(note) || (/無電梯/.test(note) && /(4|5|四|五)/.test(note))) return 400;
+  if (/200/.test(note) || (/無電梯/.test(note) && /(3|三)/.test(note))) return 200;
+  return 0;
+}
+
+function rentalFloorFeeText(rowOrNote) {
+  const note = typeof rowOrNote === 'object' ? normalizeRentalFloorNote(rowOrNote.floorNote || rowOrNote.floorElevatorInfo) : normalizeRentalFloorNote(rowOrNote);
+  const fee = rentalFloorExtraFee(rowOrNote);
+  if (!note) return '';
+  if (fee) return `加收 ${fee} 元`;
+  if (note.includes('另行確認')) return '另行確認';
+  return '不加收樓層搬運費';
+}
+
+function rentalEquipmentText(row = {}) {
+  return clean(row.equipmentName || row.rentalItem || row.equipmentCategory || row.modelName || row.otherEquipmentNeed || rentalTypeLabelForManager(row.rentalType || row.type));
+}
+
+function rentalPeriodText(row = {}) {
+  const type = clean(row.rentalType || row.type);
+  if (type === 'other') return clean(row.rentalPeriodText || row.rentalPeriod || '依雙方確認之租用期間為準');
+  const p = clean(row.periods || row.rentalPeriods || row.periodCount);
+  return p ? `${p} 期` : '未填';
+}
+
+function rentalDeliveryDateTime(row = {}) {
+  return [clean(row.preferredDate || row.deliveryDate || row.startDate || row.confirmedStartDate), clean(row.preferredTime || row.deliveryTime || row.deliveryHour)].filter(Boolean).join(' ') || '未填';
+}
+
+function buildRentalManagerNotice(row = {}, options = {}) {
+  const method = normalizeRentalDeliveryMethod(row.shippingMethod || row.deliveryMethod || row.preferredDeliveryMethod);
+  const lines = [clean(options.heading || '設備租賃通知')];
+  lines.push(`姓名：${clean(row.customerName || row.partyAName || row.name || '未填')}`);
+  lines.push(`電話：${clean(row.customerPhone || row.phone || '') || '未填'}`);
+  if (options.includeEmail) lines.push(`Email：${clean(row.customerEmail || row.email || '') || '未填'}`);
+  if (options.notificationPreferenceLabel) lines.push(`通知方式：${options.notificationPreferenceLabel}`);
+  lines.push(`設備：${rentalEquipmentText(row) || '未填'}`);
+  lines.push(`租用期數：${rentalPeriodText(row)}`);
+  lines.push(`交付方式：${method}`);
+  lines.push(`${method === '自取自運' ? '希望自取時間' : (method === '到府安裝' ? '希望安裝時間' : '希望交付時間')}：${rentalDeliveryDateTime(row)}`);
+  if (method === '到府安裝') {
+    lines.push(`安裝地址：${clean(row.customerAddress || row.shippingAddress || row.address || '') || '未填'}`);
+    const building = clean(row.buildingName || row.communityName || row.apartmentName || '');
+    if (building) lines.push(`大樓名稱：${building}`);
+    const floor = normalizeRentalFloorNote(row.floorNote || row.floorElevatorInfo);
+    if (floor) lines.push(`樓層／電梯：${floor}`);
+  } else if (method === '自取自運') {
+    const contactAddress = clean(row.customerAddress || row.address || '');
+    if (contactAddress) lines.push(`聯絡地址：${contactAddress}`);
+  } else {
+    const address = clean(row.customerAddress || row.shippingAddress || row.address || '');
+    if (address) lines.push(`交付 / 聯絡地址：${address}`);
+  }
+  const note = clean(row.note || row.adminNote || row.remark || '');
+  if (note) lines.push(`備註：${note}`);
+  if (options.formalStatus) {
+    lines.push('');
+    lines.push('身分資料：');
+    lines.push(`身分證字號：${clean(row.customerIdNumber || options.customerIdNumber) ? '已填寫' : '未確認'}`);
+    lines.push(`證件照片：${clean(row.customerIdImageUrl || row.idImageUrl || options.idImageUrl) ? '已上傳' : '未確認'}`);
+    lines.push(`簽名：${clean(row.customerSignatureUrl || row.signatureUrl || options.signatureUrl) ? '已完成' : '未確認'}`);
+  }
+  if (options.applicationNo) lines.push(`申請編號：${options.applicationNo}`);
+  if (options.contractNo) lines.push(`契約編號：${options.contractNo}`);
+  if (options.statusText) lines.push(`狀態：${options.statusText}`);
+  if (options.linePairText) {
+    lines.push('');
+    lines.push(`LINE 配對文字：${options.linePairText}`);
+  }
+  if (options.adminUrl) {
+    lines.push('');
+    lines.push('管理連結：');
+    lines.push(options.adminUrl);
+  }
+  return lines.join('\n');
+}
+
+async function getRentalApplicationData(applicationId) {
+  const id = clean(applicationId);
+  if (!id) return {};
+  try {
+    const snap = await db.collection('rentalApplications').doc(id).get();
+    return snap.exists ? Object.assign({ applicationDocId: snap.id }, snap.data() || {}) : {};
+  } catch (err) {
+    console.warn('[getRentalApplicationData failed]', id, err && err.message ? err.message : err);
+    return {};
+  }
+}
+
 function externalTeacherContractUrl(contractId, code, verifyEmail = false) {
   return `${webBaseUrl()}external-teacher-onboarding.html?id=${encodeURIComponent(contractId || '')}&code=${encodeURIComponent(code || '')}${verifyEmail ? '&verify=email' : ''}`;
 }
@@ -193,19 +313,11 @@ async function handleRentalApplicationLink({ applicationKey, declaredName, lineU
   try {
     managerRecipient = await getPrimaryManagerLineRecipient();
     const adminUrl = rentalAdminApplicationUrl(app.id);
-    const equipment = normalizeText(data.otherEquipmentNeed || data.equipmentName || data.rentalType || '');
-    const message = [
-      '客人已完成租賃 LINE 綁定',
-      `姓名：${customerName}`,
-      `電話：${normalizeText(data.customerPhone || '')}`,
-      `申請編號：${applicationNo}`,
-      `租用需求：${equipment || '未填寫'}`,
-      `希望方式：${normalizeText(data.shippingMethod || '')}`,
-      `希望日期：${normalizeText(data.preferredDate || '')} ${normalizeText(data.preferredTime || '')}`.trim(),
-      '',
-      '請進入系統處理這一筆租賃申請：',
+    const message = buildRentalManagerNotice(Object.assign({}, data, { customerName, applicationNo }), {
+      heading: '客人已完成租賃 LINE 綁定',
+      applicationNo,
       adminUrl
-    ].join('\n');
+    });
 
     if (!managerRecipient || !managerRecipient.lineUserId) {
       managerNoticeStatus = '發送失敗';
@@ -1521,6 +1633,9 @@ exports.rentalSubmitApplicationHttp = httpEndpoint(async (data) => {
   const emailVerificationUrl = `${webBaseUrl()}rental-email-verify.html?applicationId=${encodeURIComponent(applicationId)}&token=${encodeURIComponent(emailVerifyToken)}`;
   const wantsLine = wantsLineByPreference(notificationPreference);
   const wantsEmail = wantsEmailByPreference(notificationPreference);
+  const shippingMethod = normalizeRentalDeliveryMethod(data.shippingMethod || current.shippingMethod);
+  const floorNote = shippingMethod === '到府安裝' ? normalizeRentalFloorNote(data.floorNote || current.floorNote || '') : '';
+  const floorExtraFee = shippingMethod === '到府安裝' ? rentalFloorExtraFee(Object.assign({}, data, { floorNote })) : 0;
   const row = stripUndefined(Object.assign({}, data, {
     applicationId,
     applicationNo,
@@ -1534,6 +1649,10 @@ exports.rentalSubmitApplicationHttp = httpEndpoint(async (data) => {
     emailLinkStatus: wantsEmail ? (current.emailVerified === true ? 'verified' : clean(current.emailLinkStatus || 'pending')) : 'not_required',
     lineConfirmText: clean(data.lineConfirmText) || `設備租賃申請 ${applicationNo}`,
     lineLinkStatus: wantsLine ? clean(data.lineLinkStatus || current.lineLinkStatus || 'pending') : 'not_required',
+    shippingMethod,
+    floorNote,
+    floorExtraFee,
+    floorExtraFeeText: shippingMethod === '到府安裝' ? rentalFloorFeeText(Object.assign({}, data, { floorNote, floorExtraFee })) : '',
     status: clean(data.status || '待店家確認'),
     updatedAt: now,
     updatedAtText: nowText(),
@@ -1546,20 +1665,13 @@ exports.rentalSubmitApplicationHttp = httpEndpoint(async (data) => {
 
   let emailVerificationQueued = false;
   try {
-    const body = [
-      '收到新的設備租賃申請',
-      `姓名：${customerName}`,
-      `電話：${clean(data.customerPhone || '')}`,
-      `Email：${customerEmail || '未填'}`,
-      `通知方式：${notificationPreference === 'email' ? '只用 Email' : notificationPreference === 'line' ? '只用 LINE' : 'LINE + Email'}`,
-      `設備需求：${clean(data.otherEquipmentNeed || data.equipmentName || data.rentalType || '未填寫')}`,
-      `希望方式：${clean(data.shippingMethod || '')}`,
-      `希望日期：${clean(data.preferredDate || '')} ${clean(data.preferredTime || '')}`.trim(),
-      '',
-      `申請編號：${applicationNo}`,
-      '',
-      wantsLine ? `LINE 配對文字：設備租賃申請 ${applicationNo}` : '客人選擇不使用 LINE 配對。'
-    ].join('\n');
+    const body = buildRentalManagerNotice(row, {
+      heading: '收到新的設備租賃申請',
+      includeEmail: true,
+      notificationPreferenceLabel: notificationPreference === 'email' ? '只用 Email' : notificationPreference === 'line' ? '只用 LINE' : 'LINE + Email',
+      applicationNo,
+      linePairText: wantsLine ? `設備租賃申請 ${applicationNo}` : '',
+    }) + (wantsLine ? '' : '\n\n客人選擇不使用 LINE 配對。');
     await queueManagerNotification({ title: '新的設備租賃申請', body, source: 'rental-application', applicationId });
   } catch (err) {
     console.error('[rentalSubmitApplicationHttp queue manager notice failed]', err);
@@ -1882,21 +1994,19 @@ exports.rentalSignContractHttp = httpEndpoint(async (data) => {
   }, { deleteInline: true }));
   await ref.set(update, { merge: true });
   try {
-    const customerName = clean(contract.customerName || contract.partyAName || contract.name || '客人');
+    const applicationData = await getRentalApplicationData(contract.applicationId);
+    const signedContract = Object.assign({}, applicationData, contract, update);
     const adminUrl = `${webBaseUrl()}rental-admin.html?contractId=${encodeURIComponent(contract.contractId || contract.__id || contractId)}&filter=payment`;
-    const body = [
-      `租賃資料已補完，待確認付款。`,
-      `姓名：${customerName}`,
-      `電話：${clean(contract.customerPhone || contract.phone || '') || '未填'}`,
-      `設備：${clean(contract.equipmentName || contract.rentalItem || contract.equipmentCategory || contract.rentalType || '') || '未填'}`,
-      `契約編號：${clean(contract.contractNo || contract.contractId || contractId)}`,
-      `狀態：待付款確認`,
-      ``,
-      `客人已完成身分資料、證件照片與簽名。請確認是否已收到款項，確認後再成立正式契約。`,
-      ``,
-      `管理連結：`,
-      adminUrl,
-    ].join('\n');
+    const body = buildRentalManagerNotice(signedContract, {
+      heading: '租賃正式資料已補件完成，待確認付款',
+      formalStatus: true,
+      customerIdNumber: update.customerIdNumber,
+      idImageUrl: update.customerIdImageUrl || update.idImageUrl,
+      signatureUrl: update.customerSignatureUrl || update.signatureUrl,
+      contractNo: clean(contract.contractNo || contract.contractId || contractId),
+      statusText: '待付款確認',
+      adminUrl
+    }) + '\n\n客人已完成身分資料、證件照片與簽名。請確認是否已收到款項，確認後再成立正式契約。';
     await queueManagerNotification({
       title: '租賃資料已補完，待確認付款',
       body,
