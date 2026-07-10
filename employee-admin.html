@@ -12,7 +12,8 @@
     :root{
       --bg:#f6faf7; --card:#fff; --ink:#142235; --muted:#66768a; --line:#dfe8ef;
       --green:#1f7a5a; --green-soft:#e9f7ef; --orange:#b76a16; --orange-soft:#fff5e8;
-      --blue:#28728f; --blue-soft:#edf7fb; --red:#b42318; --red-soft:#fff0ee;
+      --blue:#28728f; --blue-soft:#edf7fb; --yellow:#9b6b00; --yellow-soft:#fff9df;
+      --purple:#6650a4; --purple-soft:#f4f0ff; --red:#b42318; --red-soft:#fff0ee;
       --shadow:0 10px 26px rgba(16,24,40,.07); --radius:22px;
     }
     *{box-sizing:border-box}
@@ -26,12 +27,14 @@
     .hide{display:none!important}
     .layer-title{display:flex;align-items:center;gap:10px;margin:0 0 14px;color:#104b38;font-size:25px;font-weight:950}
     .badge{width:34px;height:34px;border-radius:999px;background:var(--green);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:15px;font-weight:950}
-    .category-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+    .category-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
     .category-card{border:2px solid var(--line);border-radius:22px;padding:20px;min-height:150px;background:#fff;cursor:pointer;transition:.15s ease}
     .category-card:hover{transform:translateY(-1px);box-shadow:0 8px 18px rgba(16,24,40,.08)}
     .category-card.staff{background:var(--green-soft);border-color:#c8e7d6}
     .category-card.parttime{background:var(--orange-soft);border-color:#f0d2ad}
     .category-card.external{background:#fff0f7;border-color:#efc9df}
+    .category-card.settings{background:var(--purple-soft);border-color:#d8cff3}
+    .category-card.settings .cat-title,.category-card.settings .cat-count{color:var(--purple)}
     .cat-title{font-size:30px;font-weight:950;color:#104b38}
     .cat-count{font-size:38px;font-weight:950;color:#104b38;margin-top:18px}.cat-count span{font-size:18px;margin-left:3px}
     .toolbar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;margin-bottom:14px}
@@ -76,12 +79,60 @@
     .link-btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;border-radius:14px;padding:9px 14px;background:#1f7a5a;color:#fff;text-decoration:none;font-weight:900;border:0;cursor:pointer}
     .link-btn.secondary{background:#304052}.link-btn.light{background:#edf7fb;color:#28728f;border:1px solid #cbe3ed}
     .doc-preview-link{display:inline-flex;align-items:center;gap:7px;font-weight:900;color:#1f7a5a;text-decoration:none}
+
+    .detail-section{border:1px solid var(--line);border-radius:20px;padding:16px;margin:16px 0}
+    .detail-section .section-title{margin:0 0 13px;font-size:23px}
+    .detail-section.tone-blue{background:var(--blue-soft);border-color:#cbe3ed}
+    .detail-section.tone-orange{background:var(--orange-soft);border-color:#f0d2ad}
+    .detail-section.tone-yellow{background:var(--yellow-soft);border-color:#ead795}
+    .detail-section.tone-green{background:var(--green-soft);border-color:#c8e7d6}
+    .detail-section.tone-purple{background:var(--purple-soft);border-color:#d8cff3}
+    .detail-section.tone-gray{background:#f6f8fa;border-color:#dfe6ec}
+    .detail-section .field input[readonly],.detail-section .field textarea[readonly]{background:rgba(255,255,255,.92)}
+    .field-value-box{width:100%;min-height:50px;border:2px solid #dce5ec;border-radius:16px;padding:12px 14px;font-size:17px;background:rgba(255,255,255,.92);color:var(--ink);white-space:pre-wrap;word-break:break-word}
+    .field-actions{display:flex;gap:9px;flex-wrap:wrap;align-items:center;min-height:50px}
+    .field-actions .empty-inline{color:#66768a;font-weight:800}
+    .settings-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+    .settings-title{font-size:26px;font-weight:950;color:#104b38}
+    .settings-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:14px}
+    .settings-tab{border:2px solid #dfe6ec;border-radius:15px;min-height:50px;background:#fff;color:#304052;font-size:17px;font-weight:950;padding:9px 10px}
+    .settings-tab.active{background:var(--green);border-color:var(--green);color:#fff}
+    .settings-toolbar{display:flex;gap:9px;flex-wrap:wrap;margin-bottom:14px}
+    .settings-action{border:0;border-radius:14px;min-height:44px;padding:9px 14px;background:#eef2f6;color:#304052;font-size:15px;font-weight:950}
+    .settings-action.primary{background:var(--green);color:#fff}
+    .settings-action.warn{background:var(--orange-soft);color:var(--orange);border:1px solid #f0d2ad}
+    .settings-group{border:1px solid var(--line);border-radius:19px;padding:14px;margin:12px 0}
+    .settings-group.tone-blue{background:var(--blue-soft);border-color:#cbe3ed}
+    .settings-group.tone-orange{background:var(--orange-soft);border-color:#f0d2ad}
+    .settings-group.tone-yellow{background:var(--yellow-soft);border-color:#ead795}
+    .settings-group.tone-green{background:var(--green-soft);border-color:#c8e7d6}
+    .settings-group.tone-purple{background:var(--purple-soft);border-color:#d8cff3}
+    .settings-group.tone-gray{background:#f6f8fa;border-color:#dfe6ec}
+    .settings-group-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+    .settings-group-title{font-size:20px;font-weight:950;color:#173b30}
+    .settings-group-toggle{border:0;border-radius:12px;background:rgba(255,255,255,.85);color:#304052;padding:7px 11px;font-weight:900}
+    .field-choice-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+    .field-choice{position:relative;display:flex;align-items:center;gap:10px;min-height:50px;padding:10px 12px;border:1px solid rgba(92,112,130,.22);border-radius:14px;background:rgba(255,255,255,.88);cursor:pointer;font-weight:850;color:#24384a;line-height:1.4}
+    .field-choice input{position:absolute;opacity:0;pointer-events:none;width:1px;height:1px;min-height:0;padding:0;border:0}
+    .check-dot{width:24px;height:24px;border:2px solid #96a7b5;border-radius:999px;background:#fff;display:inline-flex;align-items:center;justify-content:center;flex:0 0 24px;transition:.12s ease}
+    .field-choice input:checked + .check-dot{background:var(--green);border-color:var(--green)}
+    .field-choice input:checked + .check-dot:after{content:'✓';color:#fff;font-size:16px;font-weight:950;line-height:1}
+    .settings-count{font-size:14px;color:#617083;font-weight:850;margin:-5px 0 12px}
+    .settings-save-row{display:flex;justify-content:center;margin-top:18px}
+    .settings-save{border:0;border-radius:18px;min-height:56px;width:min(420px,100%);background:var(--green);color:#fff;font-size:19px;font-weight:950}
+    .settings-msg{display:none;margin-top:12px;border-radius:14px;padding:12px 14px;background:#eef7f1;color:#1f7a5a;font-weight:850}
+    .settings-msg.error{background:#fff1f3;color:#b42318}
+    @media(max-width:900px){.category-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
     @media(max-width:760px){
       .wrap{padding:0 12px 38px}.title{font-size:34px}
       .panel{padding:18px;border-radius:22px}
-      .category-grid,.list-grid,.form-grid,.toolbar,.summary-grid{grid-template-columns:1fr}
+      .list-grid,.form-grid,.toolbar,.summary-grid,.field-choice-grid{grid-template-columns:1fr}
+      .category-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+      .category-card{min-height:126px;padding:15px}.cat-title{font-size:23px}.cat-count{font-size:31px;margin-top:12px}
       .topline{align-items:flex-start}
       .person-title{font-size:29px}
+      .settings-tabs{grid-template-columns:1fr}.settings-tab{min-height:47px}
+      .settings-group{padding:12px}.detail-section{padding:14px}
     }
   </style>
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
@@ -115,6 +166,27 @@
       <h2 class="layer-title"><span class="badge">3</span>人員資料</h2>
       <div id="detailPanel"><div class="empty">請先選擇人員。</div></div>
     </section>
+
+
+    <section class="panel hide" id="layerSettings">
+      <div class="settings-head">
+        <div>
+          <div class="settings-title">欄位顯示設定</div>
+          <div class="cat-secondary">姓名與返回按鈕固定保留；其他資料勾選後顯示，取消勾選後不會出現在人員資料頁。</div>
+        </div>
+        <button class="ghost" type="button" onclick="cancelVisibilitySettings()">回到類別</button>
+      </div>
+      <div class="settings-tabs" id="visibilityTypeTabs"></div>
+      <div class="settings-toolbar">
+        <button class="settings-action primary" type="button" onclick="setAllVisibilityForCurrentType(true)">全部顯示</button>
+        <button class="settings-action" type="button" onclick="setAllVisibilityForCurrentType(false)">全部取消</button>
+        <button class="settings-action warn" type="button" onclick="restoreRecommendedVisibility()">恢復建議設定</button>
+      </div>
+      <div id="visibilitySettingsCount" class="settings-count"></div>
+      <div id="visibilitySettingsGroups"></div>
+      <div class="settings-save-row"><button class="settings-save" type="button" onclick="saveVisibilitySettings()">儲存顯示設定</button></div>
+      <div id="visibilitySettingsMsg" class="settings-msg"></div>
+    </section>
   </div>
 
   <script src="app.js"></script>
@@ -125,16 +197,147 @@
     let allEmployees = [];
     let currentType = '';
     let selectedId = '';
+    let selectedEmployeeDetail = null;
     let renderTimer = null;
+    let visibilitySettingsType = 'staff';
+    let employeeFieldVisibility = null;
+    let visibilityDraft = null;
+    const VISIBILITY_LOCAL_KEY = 'employeeAdminFieldVisibilityV2';
+    const VISIBILITY_DOC_ID = 'employeeAdminFieldVisibility';
     const $ = s => document.querySelector(s);
+
+    const EMPLOYEE_FIELD_GROUPS = [
+      {id:'basic',title:'基本身分與聯絡資料',tone:'blue',fields:[
+        {key:'employeeId',label:'人員編號',types:['staff','parttime','external'],defaults:['staff','parttime','external']},
+        {key:'identityType',label:'身分類型',types:['staff','parttime','external'],defaults:['staff','parttime','external']},
+        {key:'email',label:'Email',types:['staff','parttime','external'],defaults:['staff','parttime','external']},
+        {key:'mobilePhone',label:'行動電話',types:['staff','parttime','external'],defaults:['staff','parttime','external']},
+        {key:'notificationPreference',label:'通知方式',types:['staff','parttime','external'],defaults:['staff','parttime','external']},
+        {key:'idNumber',label:'身分證字號／證件號碼',types:['staff','parttime','external'],defaults:['staff','parttime','external']},
+        {key:'birthDate',label:'出生年月日',types:['staff','parttime','external'],defaults:['staff','parttime','external']},
+        {key:'householdAddress',label:'戶籍地址',types:['staff','parttime','external'],defaults:['staff','parttime','external'],full:true},
+        {key:'contactAddress',label:'聯絡／通訊地址',types:['staff','parttime','external'],defaults:['staff','parttime','external'],full:true},
+        {key:'emergencyContact',label:'緊急聯絡人',types:['staff','parttime','external'],defaults:['staff','parttime','external']},
+        {key:'emergencyPhone',label:'緊急聯絡人電話',types:['staff','parttime','external'],defaults:['staff','parttime','external']},
+        {key:'identityDocumentType',label:'身分證明文件類型',types:['staff','parttime','external'],defaults:['staff','parttime','external']},
+        {key:'identityVerification',label:'證件核對狀態',types:['staff','parttime','external'],defaults:['staff','parttime','external']},
+        {key:'identityDocumentLink',label:'身分證明文件',types:['staff','parttime','external'],defaults:['staff','parttime','external'],full:true,kind:'link'},
+        {key:'dataSource',label:'資料來源',types:['staff','parttime','external'],defaults:[]},
+        {key:'registrationApplicationId',label:'註冊申請編號',types:['staff','parttime'],defaults:[]},
+        {key:'createdAtText',label:'資料建立時間',types:['staff','parttime','external'],defaults:[]},
+        {key:'updatedAtText',label:'最後更新時間',types:['staff','parttime','external'],defaults:[]}
+      ]},
+      {id:'work',title:'任職、合作與班表資料',tone:'orange',fields:[
+        {key:'hireDate',label:'到職日',types:['staff','parttime'],defaults:['staff','parttime']},
+        {key:'cooperationStartDate',label:'合作起始日',types:['external'],defaults:['external']},
+        {key:'accountStatusText',label:'帳號狀態',types:['staff','parttime','external'],defaults:['staff','parttime','external']},
+        {key:'employmentStatusText',label:'任職／合作狀態',types:['staff','parttime','external'],defaults:['staff','parttime','external']},
+        {key:'currentSchedule',label:'目前班表',types:['staff','parttime'],defaults:['staff','parttime']},
+        {key:'scheduleMode',label:'班表方式',types:['staff','parttime'],defaults:[]},
+        {key:'scheduleStartDate',label:'班表生效日',types:['staff','parttime'],defaults:[]},
+        {key:'scheduleEndDate',label:'班表結束日',types:['staff','parttime'],defaults:[]},
+        {key:'hiddenFromActiveListsText',label:'是否隱藏於日常清單',types:['staff','parttime','external'],defaults:[]},
+        {key:'resignedDate',label:'離職日期',types:['staff','parttime'],defaults:[]},
+        {key:'cooperationEndDate',label:'合作結束日期',types:['external'],defaults:[]},
+        {key:'statusNoteRead',label:'主管內部備註',types:['staff','parttime','external'],defaults:[],full:true},
+        {key:'scheduleLink',label:'班表管理',types:['staff','parttime'],defaults:['staff','parttime'],full:true,kind:'link'},
+        {key:'clockRecordsLink',label:'打卡紀錄',types:['staff','parttime'],defaults:['staff','parttime'],full:true,kind:'link'},
+        {key:'parttimeHoursLink',label:'工讀時數／薪資紀錄',types:['parttime'],defaults:['parttime'],full:true,kind:'link'}
+      ]},
+      {id:'salary',title:'薪資、勞保、健保與勞退',tone:'yellow',fields:[
+        {key:'salaryDisplayType',label:'薪資顯示類型',types:['staff','parttime'],defaults:[]},
+        {key:'baseSalary',label:'本薪',types:['staff'],defaults:['staff']},
+        {key:'hourlyRate',label:'時薪',types:['parttime'],defaults:['parttime']},
+        {key:'isPartialHours',label:'是否部分工時',types:['parttime'],defaults:['parttime']},
+        {key:'averageSalary',label:'目前申報月平均薪資總額',types:['parttime'],defaults:['parttime']},
+        {key:'jobAllowance',label:'職務加給',types:['staff','parttime'],defaults:['staff','parttime']},
+        {key:'allowance',label:'津貼',types:['staff','parttime'],defaults:['staff','parttime']},
+        {key:'salaryEffectiveDate',label:'薪資生效日',types:['staff','parttime'],defaults:['staff','parttime']},
+        {key:'salaryNote',label:'薪資備註',types:['staff','parttime'],defaults:[],full:true},
+        {key:'laborStatus',label:'勞保狀態',types:['staff','parttime'],defaults:['staff','parttime']},
+        {key:'laborLevel',label:'勞保級距',types:['staff','parttime'],defaults:['staff','parttime']},
+        {key:'laborSalary',label:'勞保投保薪資',types:['staff','parttime'],defaults:['staff','parttime']},
+        {key:'laborSelfPay',label:'勞保員工自付額',types:['staff','parttime'],defaults:['staff','parttime']},
+        {key:'laborEmployerPay',label:'勞保公司負擔',types:['staff','parttime'],defaults:[]},
+        {key:'laborGovernmentPay',label:'勞保政府負擔',types:['staff','parttime'],defaults:[]},
+        {key:'laborTotalPremium',label:'勞保合計保費',types:['staff','parttime'],defaults:[]},
+        {key:'retirementEmployer',label:'雇主提撥勞退',types:['staff','parttime'],defaults:['staff','parttime']},
+        {key:'selfRetirement',label:'勞退自提',types:['staff','parttime'],defaults:['staff','parttime']},
+        {key:'healthStatus',label:'健保狀態',types:['staff','parttime'],defaults:['staff','parttime']},
+        {key:'healthLevel',label:'健保級距',types:['staff','parttime'],defaults:['staff','parttime']},
+        {key:'healthSalary',label:'健保投保薪資',types:['staff','parttime'],defaults:['staff','parttime']},
+        {key:'healthDependents',label:'健保眷屬人數',types:['staff','parttime'],defaults:[]},
+        {key:'healthSelfPay',label:'健保本人自付額',types:['staff','parttime'],defaults:['staff','parttime']},
+        {key:'healthEmployerPay',label:'健保公司負擔',types:['staff','parttime'],defaults:[]},
+        {key:'healthGovernmentPay',label:'健保政府補助',types:['staff','parttime'],defaults:[]},
+        {key:'healthTotalPremium',label:'健保合計保費',types:['staff','parttime'],defaults:[]},
+        {key:'salaryLink',label:'薪資投保管理',types:['staff','parttime'],defaults:['staff','parttime'],full:true,kind:'link'}
+      ]},
+      {id:'external',title:'外聘老師授課與年度契約',tone:'yellow',fields:[
+        {key:'teachingItems',label:'授課項目與程度',types:['external'],defaults:['external'],full:true},
+        {key:'teachingAbilities',label:'授課能力原始明細',types:['external'],defaults:[],full:true},
+        {key:'bindingMethod',label:'綁定／通知方式',types:['external'],defaults:['external']},
+        {key:'contractRocYear',label:'契約年度',types:['external'],defaults:['external']},
+        {key:'contractStartDate',label:'契約開始日',types:['external'],defaults:['external']},
+        {key:'contractEndDate',label:'契約結束日',types:['external'],defaults:['external']},
+        {key:'contractStatus',label:'年度契約狀態',types:['external'],defaults:['external']},
+        {key:'contractProgress',label:'契約目前進度',types:['external'],defaults:['external'],full:true},
+        {key:'submittedAt',label:'老師送出日期',types:['external'],defaults:['external']},
+        {key:'signedAt',label:'老師簽署日期',types:['external'],defaults:['external']},
+        {key:'confirmedAt',label:'管理者確認日期',types:['external'],defaults:['external']},
+        {key:'contractHtmlLink',label:'正式契約',types:['external'],defaults:['external'],full:true,kind:'link'},
+        {key:'identityFilesLink',label:'外聘老師證件檔案',types:['external'],defaults:['external'],full:true,kind:'link'},
+        {key:'signatureFileLink',label:'簽名檔案',types:['external'],defaults:[],full:true,kind:'link'},
+        {key:'revisionReason',label:'退回補件原因',types:['external'],defaults:[],full:true},
+        {key:'externalContractId',label:'外聘契約資料編號',types:['external'],defaults:[]},
+        {key:'externalAdminLink',label:'年度契約管理',types:['external'],defaults:['external'],full:true,kind:'link'}
+      ]},
+      {id:'line',title:'LINE 與通知資料',tone:'green',fields:[
+        {key:'lineBoundStatus',label:'LINE 狀態',types:['staff','parttime','external'],defaults:['staff','parttime','external']},
+        {key:'emailNotificationStatus',label:'Email 狀態',types:['staff','parttime','external'],defaults:['staff','parttime','external']},
+        {key:'lineNotifyEnabled',label:'LINE 通知是否啟用',types:['staff','parttime','external'],defaults:[]},
+        {key:'lineDisplayName',label:'LINE 顯示名稱',types:['staff','parttime','external'],defaults:[]},
+        {key:'lineBoundAt',label:'LINE 綁定時間',types:['staff','parttime','external'],defaults:[]},
+        {key:'lineUserId',label:'LINE User ID',types:['staff','parttime','external'],defaults:[],full:true},
+        {key:'employeeBindCode',label:'LINE 綁定碼',types:['staff','parttime','external'],defaults:[]},
+        {key:'employeeBindText',label:'LINE 綁定文字',types:['staff','parttime','external'],defaults:[],full:true},
+        {key:'clearLineBindingAction',label:'清除 LINE 綁定按鈕',types:['staff','parttime','external'],defaults:['staff','parttime','external'],full:true,kind:'action'}
+      ]},
+      {id:'summary',title:'資料完整度摘要',tone:'purple',fields:[
+        {key:'basicCompleteness',label:'基本資料完成狀態',types:['staff','parttime','external'],defaults:[],kind:'summary'},
+        {key:'identitySummary',label:'證件核對狀態',types:['staff','parttime','external'],defaults:[],kind:'summary'},
+        {key:'scheduleSummary',label:'班表設定狀態',types:['staff','parttime'],defaults:[],kind:'summary'},
+        {key:'salarySummary',label:'薪資投保設定狀態',types:['staff','parttime'],defaults:[],kind:'summary'},
+        {key:'lineSummary',label:'LINE 綁定狀態',types:['staff','parttime','external'],defaults:[],kind:'summary'},
+        {key:'contractSummary',label:'年度契約狀態',types:['external'],defaults:[],kind:'summary'},
+        {key:'accountSummary',label:'帳號狀態摘要',types:['staff','parttime','external'],defaults:[],kind:'summary'}
+      ]},
+      {id:'advanced',title:'進階系統欄位',tone:'gray',fields:[
+        {key:'employeeDocId',label:'Firestore 人員文件 ID',types:['staff','parttime','external'],defaults:[]},
+        {key:'externalProfileId',label:'外聘老師資料 ID',types:['external'],defaults:[]},
+        {key:'rawRole',label:'系統角色',types:['staff','parttime','external'],defaults:[]},
+        {key:'sourceVersion',label:'資料來源版本',types:['staff','parttime','external'],defaults:[]}
+      ]},
+      {id:'management',title:'管理設定與操作',tone:'gray',fields:[
+        {key:'accountStatusControl',label:'帳號狀態設定',types:['staff','parttime','external'],defaults:['staff','parttime','external'],kind:'control'},
+        {key:'employmentStatusControl',label:'任職／合作狀態設定',types:['staff','parttime','external'],defaults:['staff','parttime','external'],kind:'control'},
+        {key:'hiddenControl',label:'日常清單顯示設定',types:['staff','parttime','external'],defaults:['staff','parttime','external'],kind:'control'},
+        {key:'endDateControl',label:'離職／合作結束日期',types:['staff','parttime','external'],defaults:['staff','parttime','external'],kind:'control'},
+        {key:'statusNoteControl',label:'主管狀態備註',types:['staff','parttime','external'],defaults:['staff','parttime','external'],kind:'control',full:true},
+        {key:'saveStatusAction',label:'儲存資料按鈕',types:['staff','parttime','external'],defaults:['staff','parttime','external'],kind:'action',full:true},
+        {key:'archiveAction',label:'離職／結束合作並封存按鈕',types:['staff','parttime','external'],defaults:['staff','parttime','external'],kind:'action',full:true},
+        {key:'archiveHint',label:'封存說明文字',types:['staff','parttime','external'],defaults:[],kind:'action',full:true}
+      ]}
+    ];
 
     function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
     function clean(v){ return String(v == null ? '' : v).trim(); }
     function lower(v){ return clean(v).toLowerCase(); }
     function showLayer(n){
-      ['layer1','layer2','layer3'].forEach((id, idx)=>{
+      const target = n === 'settings' ? 'layerSettings' : ('layer' + n);
+      ['layer1','layer2','layer3','layerSettings'].forEach(id=>{
         const el = document.getElementById(id);
-        if(el) el.classList.toggle('hide', idx !== n-1);
+        if(el) el.classList.toggle('hide', id !== target);
       });
       window.scrollTo({top:0, behavior:'smooth'});
     }
@@ -142,9 +345,12 @@
 
     function rawOf(e){ return (e && e.raw && typeof e.raw === 'object') ? e.raw : {}; }
     function profileOf(e){ return (e && e.profile && typeof e.profile === 'object') ? e.profile : {}; }
+    function registrationOf(e){ return (e && e.registration && typeof e.registration === 'object') ? e.registration : {}; }
+    function externalProfileOf(e){ return (e && e.externalProfile && typeof e.externalProfile === 'object') ? e.externalProfile : {}; }
+    function externalContractOf(e){ return (e && e.externalContract && typeof e.externalContract === 'object') ? e.externalContract : {}; }
     function salaryOf(e){ return (e && e.salary && typeof e.salary === 'object') ? e.salary : ((e && e.info && typeof e.info === 'object') ? e.info : {}); }
     function rawConfigOf(e){ const s = salaryOf(e); return (s && s.rawConfig && typeof s.rawConfig === 'object') ? s.rawConfig : {}; }
-    function fromSources(e){ return [e || {}, profileOf(e), salaryOf(e), rawConfigOf(e), rawOf(e)]; }
+    function fromSources(e){ return [e || {}, externalContractOf(e), externalProfileOf(e), registrationOf(e), profileOf(e), salaryOf(e), rawConfigOf(e), rawOf(e)]; }
     function firstValue(obj, keys){
       for(const src of fromSources(obj)){
         for(const k of keys){
@@ -243,6 +449,20 @@
       return '在職';
     }
     function canShowDaily(e){ return !/離職|停用|隱藏|封存|駁回|待審核|待確認|等待|pending/i.test(statusLabel(e)); }
+    function accountStatusDisplay(e){
+      const raw=lower(firstValue(e,['accountStatus','帳號狀態']));
+      const map={active:'啟用',inactive:'停用',archived:'封存',pending:'待審核',rejected:'註冊駁回'};
+      return map[raw]||clean(firstValue(e,['accountStatus','帳號狀態']))||statusLabel(e);
+    }
+    function employmentStatusDisplay(e,type){
+      const raw=lower(firstValue(e,['employmentStatus','任職狀態','合作狀態']));
+      if(raw==='active')return type==='external'?'合作中':'在職';
+      if(raw==='resigned')return '離職';
+      if(raw==='suspended')return type==='external'?'暫停合作':'暫停任用';
+      if(raw==='contractorended'||raw==='contractor_ended')return '外聘合作結束';
+      if(raw==='archived')return '封存';
+      return clean(firstValue(e,['employmentStatus','任職狀態','合作狀態']))||statusLabel(e);
+    }
 
     function isSystemRecord(e){
       const raw=rawOf(e);const id=empId(e);
@@ -267,10 +487,128 @@
       return {rows:Array.from(map.values()),duplicateCount};
     }
 
+
+    function allFieldSpecs(){ return EMPLOYEE_FIELD_GROUPS.reduce((out,g)=>out.concat(g.fields||[]),[]); }
+    function applicableSpecs(type){ return allFieldSpecs().filter(s=>(s.types||[]).includes(type)); }
+    function defaultVisibilityForType(type){
+      const out={};
+      applicableSpecs(type).forEach(s=>{ out[s.key]=(s.defaults||[]).includes(type); });
+      return out;
+    }
+    function defaultVisibilitySettings(){ return {staff:defaultVisibilityForType('staff'),parttime:defaultVisibilityForType('parttime'),external:defaultVisibilityForType('external')}; }
+    function normalizeVisibilitySettings(raw){
+      const defaults=defaultVisibilitySettings();
+      const out={staff:{},parttime:{},external:{}};
+      ['staff','parttime','external'].forEach(type=>{
+        applicableSpecs(type).forEach(spec=>{
+          const source=raw&&raw[type]&&typeof raw[type]==='object'?raw[type]:{};
+          out[type][spec.key]=Object.prototype.hasOwnProperty.call(source,spec.key)?source[spec.key]===true:defaults[type][spec.key]===true;
+        });
+      });
+      return out;
+    }
+    function cloneVisibility(v){ return JSON.parse(JSON.stringify(normalizeVisibilitySettings(v||{}))); }
+    function isFieldVisible(type,key){
+      const config=employeeFieldVisibility||defaultVisibilitySettings();
+      return !!(config[type]&&config[type][key]);
+    }
+    function settingsDocData(snap){
+      if(!snap||!snap.exists)return null;
+      const data=snap.data()||{};
+      if(data.fieldVisibility&&typeof data.fieldVisibility==='object')return data.fieldVisibility;
+      if(data.value){try{return JSON.parse(data.value);}catch(e){}}
+      return null;
+    }
+    async function loadVisibilitySettings(){
+      let local=null;
+      try{local=JSON.parse(localStorage.getItem(VISIBILITY_LOCAL_KEY)||'null');}catch(e){}
+      employeeFieldVisibility=normalizeVisibilitySettings(local||{});
+      const d=employeeAdminFirestore();
+      if(!d)return;
+      try{
+        const snap=await d.collection('systemSettings').doc(VISIBILITY_DOC_ID).get();
+        const remote=settingsDocData(snap);
+        if(remote){employeeFieldVisibility=normalizeVisibilitySettings(remote);localStorage.setItem(VISIBILITY_LOCAL_KEY,JSON.stringify(employeeFieldVisibility));}
+      }catch(err){console.warn('讀取員工欄位顯示設定失敗，改用本機設定',err);}
+    }
+    function openVisibilitySettings(){
+      visibilityDraft=cloneVisibility(employeeFieldVisibility||defaultVisibilitySettings());
+      visibilitySettingsType='staff';
+      renderVisibilitySettings();
+      showLayer('settings');
+    }
+    function cancelVisibilitySettings(){ visibilityDraft=null; showLayer(1); }
+    function setVisibilitySettingsType(type){
+      if(!['staff','parttime','external'].includes(type))return;
+      visibilitySettingsType=type;renderVisibilitySettings();
+    }
+    function setDraftVisibility(key,checked){
+      if(!visibilityDraft)visibilityDraft=cloneVisibility(employeeFieldVisibility);
+      if(!visibilityDraft[visibilitySettingsType])visibilityDraft[visibilitySettingsType]={};
+      visibilityDraft[visibilitySettingsType][key]=!!checked;
+      updateVisibilityCount();
+    }
+    function setAllVisibilityForCurrentType(value){
+      if(!visibilityDraft)visibilityDraft=cloneVisibility(employeeFieldVisibility);
+      applicableSpecs(visibilitySettingsType).forEach(s=>visibilityDraft[visibilitySettingsType][s.key]=!!value);
+      renderVisibilitySettings();
+    }
+    function setGroupVisibility(groupId,value){
+      if(!visibilityDraft)visibilityDraft=cloneVisibility(employeeFieldVisibility);
+      const group=EMPLOYEE_FIELD_GROUPS.find(g=>g.id===groupId);if(!group)return;
+      (group.fields||[]).filter(s=>(s.types||[]).includes(visibilitySettingsType)).forEach(s=>visibilityDraft[visibilitySettingsType][s.key]=!!value);
+      renderVisibilitySettings();
+    }
+    function restoreRecommendedVisibility(){
+      if(!visibilityDraft)visibilityDraft=cloneVisibility(employeeFieldVisibility);
+      visibilityDraft[visibilitySettingsType]=defaultVisibilityForType(visibilitySettingsType);
+      renderVisibilitySettings();
+    }
+    function updateVisibilityCount(){
+      const box=$('#visibilitySettingsCount');if(!box)return;
+      const specs=applicableSpecs(visibilitySettingsType);const selected=specs.filter(s=>visibilityDraft&&visibilityDraft[visibilitySettingsType]&&visibilityDraft[visibilitySettingsType][s.key]).length;
+      box.textContent=`目前顯示 ${selected} / ${specs.length} 個項目`;
+    }
+    function renderVisibilitySettings(){
+      if(!visibilityDraft)visibilityDraft=cloneVisibility(employeeFieldVisibility||defaultVisibilitySettings());
+      $('#visibilityTypeTabs').innerHTML=[['staff','專職人員'],['parttime','工讀生'],['external','外聘老師']].map(([type,label])=>`<button type="button" class="settings-tab ${type===visibilitySettingsType?'active':''}" onclick="setVisibilitySettingsType('${type}')">${label}</button>`).join('');
+      const groups=EMPLOYEE_FIELD_GROUPS.map(group=>{
+        const fields=(group.fields||[]).filter(s=>(s.types||[]).includes(visibilitySettingsType));
+        if(!fields.length)return '';
+        const selected=fields.filter(s=>visibilityDraft[visibilitySettingsType]&&visibilityDraft[visibilitySettingsType][s.key]).length;
+        const allOn=selected===fields.length;
+        return `<section class="settings-group tone-${esc(group.tone||'gray')}">
+          <div class="settings-group-head"><div class="settings-group-title">${esc(group.title)}</div><button type="button" class="settings-group-toggle" onclick="setGroupVisibility('${esc(group.id)}',${allOn?'false':'true'})">${allOn?'本區取消':'本區全選'}</button></div>
+          <div class="field-choice-grid">${fields.map(spec=>`<label class="field-choice"><input type="checkbox" ${visibilityDraft[visibilitySettingsType][spec.key]?'checked':''} onchange="setDraftVisibility('${esc(spec.key)}',this.checked)"><span class="check-dot"></span><span>${esc(spec.label)}</span></label>`).join('')}</div>
+        </section>`;
+      }).join('');
+      $('#visibilitySettingsGroups').innerHTML=groups;
+      const msg=$('#visibilitySettingsMsg');if(msg){msg.style.display='none';msg.textContent='';msg.classList.remove('error');}
+      updateVisibilityCount();
+    }
+    async function saveVisibilitySettings(){
+      const msg=$('#visibilitySettingsMsg');if(msg){msg.style.display='block';msg.classList.remove('error');msg.textContent='儲存中...';}
+      const normalized=normalizeVisibilitySettings(visibilityDraft||employeeFieldVisibility||{});
+      employeeFieldVisibility=normalized;
+      try{localStorage.setItem(VISIBILITY_LOCAL_KEY,JSON.stringify(normalized));}catch(e){}
+      try{
+        const d=employeeAdminFirestore();
+        if(!d)throw new Error('Firebase 尚未啟用');
+        const payload={key:VISIBILITY_DOC_ID,fieldVisibility:normalized,value:JSON.stringify(normalized),version:2,updatedAt:firebase.firestore.FieldValue.serverTimestamp(),updatedBy:clean(currentUser&&(currentUser.id||currentUser.employeeId||currentUser.email))};
+        await d.collection('systemSettings').doc(VISIBILITY_DOC_ID).set(payload,{merge:true});
+        visibilityDraft=cloneVisibility(normalized);
+        if(msg)msg.textContent='顯示設定已儲存。';
+      }catch(err){
+        console.warn('顯示設定雲端儲存失敗',err);
+        if(msg){msg.classList.add('error');msg.textContent='已儲存在目前裝置，但雲端同步失敗：'+(err.message||'請稍後再試');}
+      }
+    }
+
     async function init(){
       currentUser = requireLogin();
       if(!currentUser) return;
       if(!hasSettingsZoneAccess(currentUser)){ location.href = 'dashboard.html'; return; }
+      await loadVisibilitySettings();
       await loadEmployees();
       showLayer(1);
     }
@@ -298,7 +636,7 @@
       const active = {staff:0, parttime:0, external:0};
       const inactive = {staff:0, parttime:0, external:0};
       allEmployees.forEach(e => (canShowDaily(e)?active:inactive)[identityType(e)]++);
-      $('#categoryCards').innerHTML = [
+      const peopleCards = [
         ['staff','專職人員','staff'], ['parttime','工讀生','parttime'], ['external','外聘老師','external']
       ].map(([type,title,cls]) => `
         <div class="category-card ${cls}" onclick="openCategory('${type}')">
@@ -307,6 +645,8 @@
           <div class="cat-secondary">離職／停用／封存：${inactive[type] || 0} 人</div>
         </div>
       `).join('');
+      const settingsCard=`<div class="category-card settings" onclick="openVisibilitySettings()"><div class="cat-title">顯示設定</div><div class="cat-count" style="font-size:28px">自訂</div><div class="cat-secondary">勾選各身分要顯示的資料</div></div>`;
+      $('#categoryCards').innerHTML=peopleCards+settingsCard;
     }
 
     function openCategory(type){
@@ -354,30 +694,77 @@
       ]);
     }
 
+
+    function rowTimeValue(row){
+      row=row||{};const values=[row.updatedAt,row.confirmedAt,row.submittedAt,row.signedAt,row.createdAt,row.updatedAtText,row.confirmedAtText,row.submittedAtText,row.createdAtText];
+      for(const v of values){try{if(v&&typeof v.toMillis==='function')return v.toMillis();if(v&&typeof v.toDate==='function')return v.toDate().getTime();const t=Date.parse(String(v||''));if(Number.isFinite(t))return t;}catch(e){}}
+      return 0;
+    }
+    function dedupeDocs(rows){const map=new Map();(rows||[]).forEach(r=>{if(!r)return;const k=clean(r.__id||r.id||r.applicationId||JSON.stringify(r));if(k)map.set(k,r)});return Array.from(map.values());}
+    function latestRow(rows){return dedupeDocs(rows).sort((a,b)=>rowTimeValue(b)-rowTimeValue(a))[0]||{};}
+    async function readDocSafe(collection,id){
+      id=clean(id);const d=employeeAdminFirestore();if(!d||!id)return null;
+      try{const snap=await d.collection(collection).doc(id).get();return snap.exists?Object.assign({__id:snap.id},snap.data()||{}):null;}catch(err){console.warn('readDocSafe',collection,id,err);return null;}
+    }
+    async function queryDocsSafe(collection,field,value,limit){
+      value=clean(value);const d=employeeAdminFirestore();if(!d||!value)return [];
+      try{const snap=await d.collection(collection).where(field,'==',value).limit(limit||20).get();const rows=[];snap.forEach(doc=>rows.push(Object.assign({__id:doc.id},doc.data()||{})));return rows;}catch(err){console.warn('queryDocsSafe',collection,field,err);return [];}
+    }
+    async function loadRegistrationSupplement(e){
+      const rows=[];const directId=clean(firstValue(e,['registrationApplicationId']));
+      if(directId){const direct=await readDocSafe('registrationApplications',directId);if(direct)rows.push(direct);}
+      const eid=empId(e),email=emailOf(e);
+      const jobs=[];
+      if(eid){jobs.push(queryDocsSafe('registrationApplications','approvedEmployeeId',eid,8));jobs.push(queryDocsSafe('registrationApplications','approvedEmployeeDocId',eid,8));jobs.push(queryDocsSafe('registrationApplications','linkedEmployeeId',eid,8));}
+      if(email)jobs.push(queryDocsSafe('registrationApplications','email',email,8));
+      const results=await Promise.all(jobs);results.forEach(list=>rows.push(...list));
+      return latestRow(rows);
+    }
+    async function loadExternalSupplement(e){
+      if(identityType(e)!=='external')return {externalProfile:{},externalContract:{}};
+      const contractRows=[],profileRows=[];
+      const directIds=[firstValue(e,['currentExternalContractId']),firstValue(e,['latestExternalContractId']),firstValue(e,['externalTeacherContractId']),firstValue(e,['externalTeacherProfileId'])].map(clean).filter(Boolean);
+      for(const id of Array.from(new Set(directIds))){const [c,p]=await Promise.all([readDocSafe('externalTeacherContracts',id),readDocSafe('externalTeacherProfiles',id)]);if(c)contractRows.push(c);if(p)profileRows.push(p);}
+      const eid=empId(e),email=emailOf(e),mobile=clean(firstValue(e,['mobilePhone','phone','mobile']));
+      const jobs=[];
+      if(eid){jobs.push(queryDocsSafe('externalTeacherContracts','employeeId',eid,30).then(x=>contractRows.push(...x)));jobs.push(queryDocsSafe('externalTeacherContracts','externalTeacherEmployeeId',eid,30).then(x=>contractRows.push(...x)));jobs.push(queryDocsSafe('externalTeacherProfiles','employeeId',eid,30).then(x=>profileRows.push(...x)));jobs.push(queryDocsSafe('externalTeacherProfiles','externalTeacherEmployeeId',eid,30).then(x=>profileRows.push(...x)));}
+      if(email){jobs.push(queryDocsSafe('externalTeacherContracts','email',email,30).then(x=>contractRows.push(...x)));jobs.push(queryDocsSafe('externalTeacherProfiles','email',email,30).then(x=>profileRows.push(...x)));}
+      if(mobile){jobs.push(queryDocsSafe('externalTeacherContracts','mobile',mobile,30).then(x=>contractRows.push(...x)));jobs.push(queryDocsSafe('externalTeacherProfiles','mobile',mobile,30).then(x=>profileRows.push(...x)));}
+      await Promise.all(jobs);
+      return {externalContract:latestRow(contractRows),externalProfile:latestRow(profileRows)};
+    }
+    async function loadEmployeeSupplement(e){
+      const [registration,external]=await Promise.all([loadRegistrationSupplement(e),loadExternalSupplement(e)]);
+      return {registration:registration||{},externalProfile:(external&&external.externalProfile)||{},externalContract:(external&&external.externalContract)||{}};
+    }
+
     async function selectEmployee(id){
       selectedId = id;
+      selectedEmployeeDetail = null;
       const base = allEmployees.find(x => (empId(x) || emailOf(x)) === id);
       if(!base) return;
 
-      // 先用名單中的員工主檔立即顯示，不讓畫面卡在「讀取中」。
       renderDetail(base);
       showLayer(3);
 
-      // 再背景補抓薪資 / 投保等完整資料；若 API 慢或無回應，保留目前畫面。
       try{
         const key = empId(base) || firstValue(base, ['id','__id','userId']) || id;
         const email = emailOf(base);
         const payload = { employeeId:key, userId:key, id:key, email:email };
-        const [profileRes,salaryRes,lifecycleRes] = await Promise.all([
-          apiTimeout(api('getMyProfileFull', payload).catch(()=>null), 3500),
-          apiTimeout(api('getMySalaryInfo', payload).catch(()=>null), 3500),
-          apiTimeout(api('getEmployeeLifecycleSummary', payload).catch(()=>null), 3500)
+        const [profileRes,salaryRes,lifecycleRes,supplement] = await Promise.all([
+          apiTimeout(api('getMyProfileFull', payload).catch(()=>null), 4000),
+          apiTimeout(api('getMySalaryInfo', payload).catch(()=>null), 4000),
+          apiTimeout(api('getEmployeeLifecycleSummary', payload).catch(()=>null), 4000),
+          apiTimeout(loadEmployeeSupplement(base).catch(()=>null), 5500)
         ]);
-        if(!profileRes && !salaryRes && !lifecycleRes) return;
+        if(!profileRes && !salaryRes && !lifecycleRes && !supplement) return;
         const enriched = Object.assign({}, base, {
           profile: (profileRes && profileRes.profile) || {},
           salary: (salaryRes && (salaryRes.salary || salaryRes.info)) || (profileRes && (profileRes.salary || profileRes.info)) || {},
           lifecycle: (lifecycleRes && lifecycleRes.ok!==false) ? lifecycleRes : {},
+          registration: (supplement && supplement.registration) || {},
+          externalProfile: (supplement && supplement.externalProfile) || {},
+          externalContract: (supplement && supplement.externalContract) || {},
           raw: Object.assign({}, rawOf(base), (profileRes && profileRes.profile) || {}, (salaryRes && ((salaryRes.salary && salaryRes.salary.rawConfig) || (salaryRes.info && salaryRes.info.rawConfig))) || {})
         });
         renderDetail(enriched);
@@ -401,126 +788,225 @@
     function summaryCard(label,value,state){return `<div class="summary-card ${state||''}"><span>${esc(label)}</span><strong>${esc(value||'尚未設定')}</strong></div>`}
     function encode(v){return encodeURIComponent(clean(v))}
 
+    function boolText(v,yes,no){
+      if(v===true)return yes||'是';if(v===false)return no||'否';
+      const s=lower(v);if(['true','yes','1','是','啟用','enabled','active','bound','verified'].includes(s))return yes||'是';
+      if(['false','no','0','否','停用','disabled','inactive','not_required'].includes(s))return no||'否';return clean(v);
+    }
+    function listValue(v){
+      if(!Array.isArray(v))return clean(v);
+      return v.map(x=>{if(x&&typeof x==='object')return clean(x.name||x.label||x.title||x.subject||x.item||x.value);return clean(x)}).filter(Boolean).join('、');
+    }
+    function teachingAbilitiesValue(v){
+      if(!Array.isArray(v))return clean(v);
+      return v.map(x=>{if(!x||typeof x!=='object')return clean(x);const name=clean(x.name||x.label||x.subject||x.item);const level=clean(x.level||x.degree||x.proficiency);return [name,level].filter(Boolean).join('｜')}).filter(Boolean).join('\n');
+    }
+    function urlListFrom(e,keys){
+      const out=[];for(const src of fromSources(e)){for(const key of keys){const v=src&&src[key];if(Array.isArray(v))v.forEach(x=>{if(clean(x))out.push(clean(x))});else if(clean(v))out.push(clean(v));}}
+      return Array.from(new Set(out));
+    }
+    function fieldBox(label,value,full,placeholder){
+      return `<div class="field ${full?'full':''}"><label>${esc(label)}</label><div class="field-value-box">${esc(displayValue(value,placeholder))}</div></div>`;
+    }
+    function linkField(label,links,full,emptyText){
+      links=(links||[]).filter(x=>x&&x.url);
+      return `<div class="field ${full?'full':''}"><label>${esc(label)}</label><div class="field-actions">${links.length?links.map((x,i)=>`<a class="link-btn ${x.secondary?'secondary':'light'}" href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.label||('開啟 '+(i+1)))}</a>`).join(''):`<span class="empty-inline">${esc(emptyText||'尚未建立')}</span>`}</div></div>`;
+    }
+    function notificationPreferenceValue(e){
+      const raw=lower(firstValue(e,['notificationPreference','notificationMethod','bindingMethod']));
+      const label=firstValue(e,['notificationPreferenceLabel','bindingMethodLabel']);if(label)return clean(label);
+      if(raw==='line')return '只用 LINE';if(raw==='email')return '只用 Email';if(raw==='both')return 'LINE + Email';return clean(raw)||'尚未設定';
+    }
+    function wantsLineForEmployee(e){const s=lower(firstValue(e,['notificationPreference','notificationMethod','bindingMethod']));return !s||s==='line'||s==='both';}
+    function wantsEmailForEmployee(e){const s=lower(firstValue(e,['notificationPreference','notificationMethod','bindingMethod']));return s==='email'||s==='both'||(!s&&!!emailOf(e));}
+    function lineBoundForEmployee(e){const status=lower(firstValue(e,['lineBindStatus']));return !!firstValue(e,['lineUserId','LINE User ID'])||['bound','verified','已綁定','已驗證'].includes(status);}
+    function emailBoundForEmployee(e){const status=lower(firstValue(e,['emailBindStatus']));return ['bound','verified','provided','已綁定','已驗證'].includes(status)||!!emailOf(e);}
+    function managementStatusValue(e,key){return firstValue(e,[key]);}
+    function groupById(id){return EMPLOYEE_FIELD_GROUPS.find(g=>g.id===id);}
+    function specValue(spec,e,ctx){
+      const k=spec.key;
+      switch(k){
+        case 'employeeId': return firstValue(e,['employeeId','id','userId','__id','員工ID']);
+        case 'name': return firstValue(e,['name','displayName','teacherName','姓名','employeeName','員工姓名']);
+        case 'identityType': return ctx.identity;
+        case 'email': return firstValue(e,['email','Email','電子郵件','loginAccount','登入帳號']);
+        case 'mobilePhone': return firstValue(e,['mobilePhone','mobile','phone','手機','行動電話','聯絡電話']);
+        case 'notificationPreference': return notificationPreferenceValue(e);
+        case 'idNumber': return firstValue(e,['idNumber','nationalId','idNo','idNumberMasked','身分證字號','身份證字號']);
+        case 'birthDate': return firstValue(e,['birthDate','birthday','出生年月日','生日']);
+        case 'householdAddress': return firstValue(e,['householdAddress','戶籍地址']);
+        case 'contactAddress': return firstValue(e,['mailingAddress','contactAddress','address','聯絡地址','通訊地址','地址']);
+        case 'emergencyContact': return firstValue(e,['emergencyContact','緊急聯絡人']);
+        case 'emergencyPhone': return firstValue(e,['emergencyPhone','emergencyContactPhone','緊急聯絡人電話','緊急聯絡電話']);
+        case 'identityDocumentType': return firstValue(e,['identityDocumentTypeLabel','identityDocumentType','證件類型']);
+        case 'identityVerification': return ctx.identityVerified?'主管已核對':(ctx.identityUrls.length?'等待主管核對':'尚未上傳');
+        case 'dataSource': return ctx.dataSource;
+        case 'registrationApplicationId': return firstValue(e,['registrationApplicationId','applicationId']);
+        case 'createdAtText': return firstValue(e,['createdAtText','createdAt','建立時間']);
+        case 'updatedAtText': return firstValue(e,['updatedAtText','updatedAt','externalTeacherSyncedAt','更新時間']);
+        case 'hireDate': return firstValue(e,['hireDate','joinDate','startDate','到職日','任職日期']);
+        case 'cooperationStartDate': return firstValue(e,['cooperationStartDate','contractStartDate','hireDate']);
+        case 'accountStatusText': return accountStatusDisplay(e);
+        case 'employmentStatusText': return employmentStatusDisplay(e,ctx.type);
+        case 'currentSchedule': return ctx.scheduleText;
+        case 'scheduleMode': return firstValue(e,['scheduleMode'])||ctx.schedule.mode;
+        case 'scheduleStartDate': return firstValue(e,['scheduleStartDate'])||ctx.schedule.startDate;
+        case 'scheduleEndDate': return firstValue(e,['scheduleEndDate'])||ctx.schedule.endDate;
+        case 'hiddenFromActiveListsText': return firstValue(e,['hiddenFromActiveLists','隱藏於日常清單','hidden','隱藏'])?'是':'否';
+        case 'resignedDate': return firstValue(e,['resignedDate','leaveDate','離職日']);
+        case 'cooperationEndDate': return firstValue(e,['cooperationEndDate','contractEndDate','externalTeacherEndedAt']);
+        case 'statusNoteRead': return firstValue(e,['statusNote','狀態備註','managerNote']);
+        case 'salaryDisplayType': return firstValue(e,['salaryDisplayType','薪資顯示類型'])||(ctx.type==='parttime'?'工讀時薪':'專職本薪');
+        case 'baseSalary': return firstValue(e,['staffBaseSalaryText','baseSalaryText','baseSalary','staffBaseSalary','monthlySalary','salary','本薪','本薪金額']);
+        case 'hourlyRate': return firstValue(e,['parttimeHourlyRateText','hourlyRateText','hourlyRate','時薪','時薪金額','hourlyWage','parttimeHourlyWage']);
+        case 'isPartialHours': return firstValue(e,['parttimePartialHoursText','isPartialHours','isPartialWorkingTime','partialWorkingTime','是否部分工時']);
+        case 'averageSalary': return firstValue(e,['parttimeAverageSalaryText','averageSalary','parttimeAverageSalary','目前申報月平均薪資總額']);
+        case 'jobAllowance': return firstValue(e,['jobAllowanceText','jobAllowance','職務加給'])||listValue(firstValue(e,['jobAllowances']));
+        case 'allowance': return firstValue(e,['allowanceText','allowance','津貼'])||listValue(firstValue(e,['allowances']));
+        case 'salaryEffectiveDate': return firstValue(e,['effectiveDate','salaryEffectiveDate','生效日期']);
+        case 'salaryNote': return firstValue(e,['salaryNote','note','薪資備註']);
+        case 'laborStatus': return ctx.laborStatus;
+        case 'laborLevel': return firstValue(e,['laborPlanText','laborLevelText','laborPlan','laborPlanCode','laborInsuranceLevel','laborLevel','勞保級距']);
+        case 'laborSalary': return firstValue(e,['laborSalaryText','laborInsuranceSalary','laborInsuredSalary','laborSalary','勞保投保薪資']);
+        case 'laborSelfPay': return firstValue(e,['laborSelfPayText','laborInsuranceSelfPay','laborEmployeeSelfPay','laborSelfPay','laborInsuranceSelfAmount','laborInsuranceEmployeeAmount','laborSelfPayAmount','勞保自付額','勞保員工自付額']);
+        case 'laborEmployerPay': return firstValue(e,['laborEmployerPay','laborInsuranceEmployerPay','勞保公司負擔']);
+        case 'laborGovernmentPay': return firstValue(e,['laborGovernmentPay','勞保政府負擔']);
+        case 'laborTotalPremium': return firstValue(e,['laborTotalPremium','勞保合計保費']);
+        case 'retirementEmployer': return firstValue(e,['retirementEmployerText','laborRetirementEmployerText','laborRetirementEmployer','retirementEmployerAmount','雇主提撥勞退']);
+        case 'selfRetirement': return firstValue(e,['selfRetirementText','selfRetirementRate','laborRetirementSelfRate','selfRetirementAmount','勞退自提']);
+        case 'healthStatus': return ctx.healthStatus;
+        case 'healthLevel': return firstValue(e,['healthPlanText','healthLevelText','healthPlan','healthPlanCode','healthInsuranceLevel','healthLevel','健保級距']);
+        case 'healthSalary': return firstValue(e,['healthSalaryText','healthInsuranceSalary','healthInsuredSalary','healthSalary','健保投保薪資']);
+        case 'healthDependents': return firstValue(e,['healthDependents','healthInsuranceDependents','健保眷屬人數']);
+        case 'healthSelfPay': return firstValue(e,['healthSelfPayText','healthInsuranceSelfPay','healthSelfPay','healthInsuranceSelfAmount','healthInsuranceEmployeeAmount','健保自付額']);
+        case 'healthEmployerPay': return firstValue(e,['healthEmployerPay','healthInsuranceEmployerPay','健保公司負擔']);
+        case 'healthGovernmentPay': return firstValue(e,['healthGovernmentPay','健保政府補助']);
+        case 'healthTotalPremium': return firstValue(e,['healthTotalPremium','健保合計保費']);
+        case 'teachingItems': return firstValue(e,['teachingItemsText','teachingItems','teachingSubjects','subjects'])||teachingAbilitiesValue(firstValue(e,['teachingAbilities']));
+        case 'teachingAbilities': return teachingAbilitiesValue(firstValue(e,['teachingAbilities']));
+        case 'bindingMethod': return firstValue(e,['bindingMethodLabel'])||notificationPreferenceValue(e);
+        case 'contractRocYear': {const y=firstValue(e,['contractRocYear','latestExternalContractYear','contractYearKey']);return y?`民國 ${y} 年`:'';}
+        case 'contractStartDate': return firstValue(e,['contractStartDate','cooperationStartDate']);
+        case 'contractEndDate': return firstValue(e,['contractEndDate']);
+        case 'contractStatus': return ctx.externalContractStatus?ctx.externalContractStatus.text:firstValue(e,['contractStatus','latestExternalContractStatus','externalTeacherStatus','status']);
+        case 'contractProgress': return firstValue(e,['progressStatus','latestExternalContractProgress','currentStep']);
+        case 'submittedAt': return firstValue(e,['submittedAtText','submittedAt']);
+        case 'signedAt': return firstValue(e,['signedAtText','signedAt','signedDate']);
+        case 'confirmedAt': return firstValue(e,['confirmedAtText','confirmedAt']);
+        case 'revisionReason': return firstValue(e,['revisionReason','resubmissionReason']);
+        case 'externalContractId': return firstValue(e,['contractId','currentExternalContractId','latestExternalContractId','externalTeacherContractId','__id']);
+        case 'lineBoundStatus': return wantsLineForEmployee(e)?(lineBoundForEmployee(e)?'已連結':'未連結'):'不使用 LINE';
+        case 'emailNotificationStatus': return wantsEmailForEmployee(e)?(emailBoundForEmployee(e)?'已設定':'未設定'):'不使用 Email';
+        case 'lineNotifyEnabled': return boolLabel(firstValue(e,['lineNotifyEnabled','LINE 通知啟用','LINE通知啟用']));
+        case 'lineDisplayName': return firstValue(e,['lineDisplayName','lineName','LINE 顯示名稱','LINE名稱']);
+        case 'lineBoundAt': return firstValue(e,['lineBoundAt','lineBindAt','lineBoundAtText','lineBindTime','LINE 綁定時間']);
+        case 'lineUserId': return firstValue(e,['lineUserId','LINE User ID','LINEUserID']);
+        case 'employeeBindCode': return firstValue(e,['employeeBindCode','bindingCode','onboardingToken']);
+        case 'employeeBindText': return firstValue(e,['employeeBindText','bindText']);
+        case 'employeeDocId': return clean(rawOf(e).__id||e.__id||empId(e));
+        case 'externalProfileId': return firstValue(e,['externalTeacherProfileId','teacherId','profileId'])||clean(externalProfileOf(e).__id);
+        case 'rawRole': return firstValue(e,['role','roleLabel','employeeType']);
+        case 'sourceVersion': return firstValue(e,['source','version']);
+        default:return '';
+      }
+    }
+    function renderSpec(spec,e,ctx){
+      const k=spec.key;
+      if(k==='identityDocumentLink'){
+        const links=ctx.identityUrls.map((url,i)=>({url,label:`查看證件${ctx.identityUrls.length>1?' '+(i+1):''}`}));
+        return linkField(spec.label,links,true,'尚未上傳');
+      }
+      if(k==='scheduleLink')return linkField(spec.label,[{url:`schedule-admin.html?employeeId=${encode(ctx.targetId)}&panel=assignment`,label:'查看／調整班表',secondary:true}],true);
+      if(k==='clockRecordsLink')return linkField(spec.label,[{url:`clock-records-admin.html?employeeId=${encode(ctx.targetId)}`,label:'查看打卡紀錄',secondary:true}],true);
+      if(k==='parttimeHoursLink')return linkField(spec.label,[{url:`data-center.html?module=parttime&employeeId=${encode(ctx.targetId)}`,label:'查看工讀時數／薪資',secondary:true}],true);
+      if(k==='salaryLink')return linkField(spec.label,[{url:`salary-admin.html?employeeId=${encode(ctx.targetId)}`,label:'查看／調整薪資投保'}],true);
+      if(k==='contractHtmlLink'){
+        const url=firstValue(e,['contractHtmlUrl','signedContractHtmlUrl','contractFileUrl']);return linkField(spec.label,url?[{url,label:'查看正式契約'}]:[],true,'尚未產生正式契約');
+      }
+      if(k==='identityFilesLink'){
+        const urls=urlListFrom(e,['identityUrls']);return linkField(spec.label,urls.map((url,i)=>({url,label:`查看外聘證件 ${i+1}`})),true,'尚未上傳');
+      }
+      if(k==='signatureFileLink'){
+        const url=firstValue(e,['signatureUrl']);return linkField(spec.label,url?[{url,label:'查看簽名檔案'}]:[],true,'尚未建立');
+      }
+      if(k==='externalAdminLink'){
+        const cid=firstValue(e,['contractId','currentExternalContractId','latestExternalContractId','externalTeacherContractId','__id']);return linkField(spec.label,[{url:`external-teacher-admin.html?contractId=${encode(cid)}`,label:'開啟年度契約管理',secondary:true}],true);
+      }
+      if(k==='clearLineBindingAction')return `<div class="field full"><label>${esc(spec.label)}</label><div class="field-actions"><button class="danger" type="button" onclick="clearLineBinding()">清除此人員 LINE 綁定</button></div></div>`;
+      if(k==='accountStatusControl')return editableSelect('帳號狀態','accountStatus',[['active','啟用'],['inactive','停用'],['archived','封存'],['pending','待審核'],['rejected','註冊駁回']]);
+      if(k==='employmentStatusControl')return editableSelect(ctx.type==='external'?'合作狀態':'任職狀態','employmentStatus',[['active',ctx.type==='external'?'合作中':'在職'],['resigned','離職'],['suspended',ctx.type==='external'?'暫停合作':'暫停任用'],['contractorEnded','外聘合作結束'],['archived','封存']]);
+      if(k==='hiddenControl')return editableSelect('是否隱藏於日常清單','hiddenFromActiveLists',[['false','否'],['true','是']]);
+      if(k==='endDateControl')return `<div class="field"><label>${ctx.type==='external'?'合作結束日期':'離職日期'}</label><input id="resignedDate" type="date" value="${esc(fmt(firstValue(e,['resignedDate','leaveDate','cooperationEndDate','離職日'])))}"></div>`;
+      if(k==='statusNoteControl')return `<div class="field full"><label>主管狀態備註</label><textarea id="statusNote" rows="3" placeholder="主管內部備註">${esc(firstValue(e,['statusNote','狀態備註','managerNote']))}</textarea></div>`;
+      if(k==='saveStatusAction')return `<div class="field full"><div class="actions"><button class="save" type="button" onclick="saveEmployeeStatus()">儲存資料</button></div></div>`;
+      if(k==='archiveAction')return `<div class="field full"><div class="actions" style="margin-top:0"><button class="danger" type="button" onclick="archiveEmployee()">${ctx.type==='external'?'結束合作並封存':'離職並封存人員'}</button></div></div>`;
+      if(k==='archiveHint')return `<div class="field full"><div class="hint">封存後不再出現在日常名單，但歷史打卡、請假、薪資與契約紀錄仍會保留。</div></div>`;
+      if(spec.kind==='summary'){
+        let value='',state='warn';
+        if(k==='basicCompleteness'){const ok=!!(nameOf(e)&&emailOf(e)&&firstValue(e,['idNumber','身分證字號'])&&firstValue(e,['birthDate']));value=ok?'已完成':'尚未完成';state=ok?'ok':'warn';}
+        if(k==='identitySummary'){value=ctx.identityVerified?'已核對':'尚未完成';state=ctx.identityVerified?'ok':'warn';}
+        if(k==='scheduleSummary'){value=ctx.scheduleText;state=ctx.scheduleText!=='尚未設定'?'ok':'warn';}
+        if(k==='salarySummary'){value=ctx.salaryReady?'已設定':'尚未完成';state=ctx.salaryReady?'ok':'warn';}
+        if(k==='lineSummary'){value=lineBoundForEmployee(e)?'已綁定':'尚未綁定';state=lineBoundForEmployee(e)?'ok':'warn';}
+        if(k==='contractSummary'){value=ctx.externalContractStatus?ctx.externalContractStatus.text:'尚無年度合約';state=ctx.externalContractStatus?ctx.externalContractStatus.tone:'warn';}
+        if(k==='accountSummary'){value=ctx.status;state=canShowDaily(e)?'ok':'bad';}
+        return summaryCard(spec.label,value,state);
+      }
+      return fieldBox(spec.label,specValue(spec,e,ctx),!!spec.full,'尚未填寫');
+    }
+    function renderFieldGroup(group,e,ctx){
+      const specs=(group.fields||[]).filter(s=>(s.types||[]).includes(ctx.type)&&isFieldVisible(ctx.type,s.key));
+      if(!specs.length)return '';
+      const content=specs.map(s=>renderSpec(s,e,ctx)).join('');
+      const layout=group.id==='summary'?'summary-grid':'form-grid';
+      return `<section class="detail-section tone-${esc(group.tone||'gray')}"><div class="section-title">${esc(group.title)}</div><div class="${layout}">${content}</div></section>`;
+    }
+
     function renderDetail(e){
+      selectedEmployeeDetail=e;
       const type = identityType(e);
       const identity = identityText(type);
       const status = statusLabel(e);
-      const lineNotify = boolLabel(firstValue(e, ['lineNotifyEnabled','LINE 通知啟用','LINE通知啟用']));
-      const lineBindTime = firstValue(e, ['lineBoundAt','lineBindAt','lineBoundAtText','lineBindTime','LINE 綁定時間','LINE綁定時間']);
-      const lineDisplayName = firstValue(e, ['lineDisplayName','lineName','LINE 顯示名稱','LINE名稱']);
-      const mainAmount = type === 'parttime'
-        ? firstValue(e, ['parttimeHourlyRateText','hourlyRateText','hourlyRate','時薪','時薪金額','hourlyWage','parttimeHourlyWage'])
-        : firstValue(e, ['staffBaseSalaryText','baseSalaryText','baseSalary','staffBaseSalary','monthlySalary','salary','本薪','本薪金額']);
       const laborStatus = firstValue(e, ['laborStatus','laborInsuranceStatus','laborInsurance','勞保狀態']);
       const healthStatus = firstValue(e, ['healthStatus','healthInsuranceStatus','healthInsurance','健保狀態']);
       const lifecycle=(e && e.lifecycle)||{};const schedule=(lifecycle&&lifecycle.schedule)||{};
-      const targetId=empId(e)||emailOf(e);const docUrl=firstValue(e,['identityDocumentUrl']);
+      const targetId=empId(e)||emailOf(e);
+      const identityUrls=urlListFrom(e,['identityDocumentUrl','identityUrls']);
       const identityVerified=firstValue(e,['identityDocumentVerified','identityVerificationStatus'])===true || clean(firstValue(e,['identityVerificationStatus']))==='verified';
+      const mainAmount=type==='parttime'?firstValue(e,['hourlyRate','hourlyRateText','parttimeHourlyRateText']):firstValue(e,['baseSalary','baseSalaryText','staffBaseSalaryText']);
       const salaryReady=clean(mainAmount)!=='' && clean(laborStatus)!=='' && clean(healthStatus)!=='';
-      const scheduleText=type==='external'?'不適用':(schedule.templateName||firstValue(e,['currentScheduleTemplateName'])||'尚未設定');
+      const scheduleText=type==='external'?'不適用':(schedule.templateName||firstValue(e,['currentScheduleTemplateName','scheduleTemplateName'])||'尚未設定');
       const externalContractStatus=type==='external'?externalContractStatusLabel(e):null;
-      const dataSource=firstValue(e,['registrationApplicationId'])?'註冊審核暨入職建檔':'既有人員主檔';
+      const dataSource=firstValue(e,['registrationApplicationId'])?'註冊審核暨入職建檔':(type==='external'?'外聘老師簽約資料':'既有人員主檔');
+      const ctx={type,identity,status,laborStatus,healthStatus,lifecycle,schedule,targetId,identityUrls,identityVerified,salaryReady,scheduleText,externalContractStatus,dataSource};
+      const headerMeta=[];
+      if(isFieldVisible(type,'identityType'))headerMeta.push(identity);
+      if(isFieldVisible(type,'employeeId')&&clean(targetId))headerMeta.push(clean(targetId));
+      if(isFieldVisible(type,'email')&&clean(emailOf(e)))headerMeta.push(clean(emailOf(e)));
+      const showHeaderStatus=isFieldVisible(type,'accountStatusText')||isFieldVisible(type,'employmentStatusText')||isFieldVisible(type,'accountSummary');
 
       $('#detailPanel').innerHTML = `
         <div class="topline">
           <div>
-            <div class="person-title">${esc(nameOf(e) || firstValue(e, ['displayName']) || '未命名')}</div>
-            <div class="person-sub">${esc(identity)}｜${esc(emailOf(e) || '無 Email')}</div>
+            <div class="person-title">${esc(nameOf(e) || firstValue(e, ['displayName','teacherName']) || '未命名')}</div>
+            ${headerMeta.length?`<div class="person-sub">${headerMeta.map(esc).join('｜')}</div>`:''}
           </div>
           <div class="back-row">
-            <span class="pill ${canShowDaily(e) ? 'green' : 'red'}">${esc(status)}</span>
+            ${showHeaderStatus?`<span class="pill ${canShowDaily(e) ? 'green' : 'red'}">${esc(status)}</span>`:''}
             <button class="ghost" type="button" onclick="showLayer(2)">回到名單</button>
           </div>
         </div>
-
-        <div class="section-title">註冊基本資料</div>
-        <div class="form-grid">
-          ${field('員工 ID', firstValue(e, ['employeeId','id','userId','__id','員工ID']))}
-          ${field('姓名', firstValue(e, ['name','displayName','姓名','employeeName','員工姓名']))}
-          ${field('Email', firstValue(e, ['email','Email','電子郵件','loginAccount','登入帳號']))}
-          ${field('身分類型', identity)}
-          ${field('身分證字號', firstValue(e, ['idNumber','nationalId','idNo','idNumberMasked','身分證字號','身份證字號']))}
-          ${field('出生年月日', firstValue(e, ['birthDate','birthday','出生年月日','生日']))}
-          ${field('行動電話', firstValue(e, ['mobilePhone','phone','手機','行動電話','聯絡電話']))}
-          ${field(type === 'external' ? '合作起始日' : '到職日', firstValue(e, ['hireDate','cooperationStartDate','joinDate','startDate','到職日','任職日期']))}
-          ${field('聯絡地址', firstValue(e, ['address','contactAddress','聯絡地址','地址']), true)}
-          ${field('緊急聯絡人', firstValue(e, ['emergencyContact','緊急聯絡人']))}
-          ${field('緊急聯絡人電話', firstValue(e, ['emergencyPhone','emergencyContactPhone','緊急聯絡人電話','緊急聯絡電話']))}
-          ${field('資料來源', dataSource)}
-          ${field('證件核對', identityVerified ? '主管已核對' : (docUrl ? '等待主管核對' : '尚未上傳'))}
-        </div>
-        ${docUrl ? `<div class="link-actions"><a class="link-btn light" href="${esc(docUrl)}" target="_blank" rel="noopener">查看本人證件正面</a></div>` : ''}
-
-        <div class="section-title">資料完整度與關聯</div>
-        <div class="summary-grid">
-          ${summaryCard('基本資料', nameOf(e)&&emailOf(e)&&firstValue(e,['idNumber','身分證字號'])?'已完成':'尚未完成',nameOf(e)&&emailOf(e)?'ok':'warn')}
-          ${summaryCard('身分驗證', identityVerified?'已核對':'尚未完成',identityVerified?'ok':'warn')}
-          ${summaryCard('目前班表', scheduleText,type==='external'||scheduleText!=='尚未設定'?'ok':'warn')}
-          ${summaryCard('薪資投保', type==='external'?'不適用':(salaryReady?'已設定':'尚未完成'),type==='external'||salaryReady?'ok':'warn')}
-          ${type==='external'?summaryCard('年度合約', externalContractStatus.text, externalContractStatus.tone):''}
-          ${summaryCard('LINE 綁定', firstValue(e,['lineUserId','LINE User ID'])?'已綁定':'尚未綁定',firstValue(e,['lineUserId','LINE User ID'])?'ok':'warn')}
-          ${summaryCard('帳號狀態', status,canShowDaily(e)?'ok':'bad')}
-        </div>
-        <div class="link-actions">
-          ${type!=='external'?`<a class="link-btn" href="salary-admin.html?employeeId=${encode(targetId)}">查看／調整薪資投保</a><a class="link-btn secondary" href="schedule-admin.html?employeeId=${encode(targetId)}&panel=assignment">查看／調整班表</a>`:''}
-        </div>
-
-        <div class="section-title">LINE 資料</div>
-        <div class="form-grid">
-          ${field('LINE User ID', firstValue(e, ['lineUserId','LINE User ID','LINEUserID']), true, '尚未綁定')}
-          ${field('LINE 通知狀態', lineNotify, false, '尚未設定')}
-          ${field('LINE 綁定時間', lineBindTime, false, '尚未綁定')}
-          ${field('LINE 顯示名稱', lineDisplayName, false, '尚未綁定')}
-        </div>
-        <div class="actions" style="justify-content:flex-start;margin-top:12px">
-          <button class="danger" type="button" onclick="clearLineBinding()">清除此人員 LINE 綁定</button>
-        </div>
-        <div class="hint">如果人員 LINE 綁錯到主管手機，先按這顆清掉，再請對方用自己的手機重新完成 LINE 綁定。</div>
-
-        <div class="section-title">薪資 / 投保摘要</div>
-        <div class="form-grid">
-          ${field('薪資顯示類型', firstValue(e, ['salaryDisplayType','薪資顯示類型']) || (type === 'parttime' ? '工讀時薪' : '專職本薪'))}
-          ${field(type === 'parttime' ? '時薪' : '本薪', mainAmount, false, '尚未設定')}
-          ${type === 'parttime' ? field('是否部分工時', firstValue(e, ['parttimePartialHoursText','isPartialHours','isPartialWorkingTime','partialWorkingTime','是否部分工時']), false, '尚未設定') : ''}
-          ${type === 'parttime' ? field('目前申報月平均薪資總額', firstValue(e, ['parttimeAverageSalaryText','averageSalary','parttimeAverageSalary','目前申報月平均薪資總額']), false, '尚未設定') : ''}
-          ${field('職務加給', firstValue(e, ['jobAllowanceText','jobAllowance','職務加給']), false, '無')}
-          ${field('津貼', firstValue(e, ['allowanceText','allowance','津貼']), false, '無')}
-          ${field('薪資生效日', firstValue(e, ['effectiveDate','salaryEffectiveDate','生效日期']), false, '尚未設定')}
-          ${field('薪資備註', firstValue(e, ['salaryNote','note','備註']), true, '無')}
-          ${field('勞保狀態', laborStatus, false, '尚未設定')}
-          ${field('勞保級距', firstValue(e, ['laborPlanText','laborLevelText','laborPlan','laborPlanCode','laborInsuranceLevel','laborLevel','勞保級距']), false, laborStatus ? '無級距' : '尚未設定')}
-          ${field('勞保投保薪資', firstValue(e, ['laborSalaryText','laborInsuranceSalary','laborSalary','勞保投保薪資']), false, laborStatus ? '尚未設定' : '未加保')}
-          ${field('勞保自付額', firstValue(e, ['laborSelfPayText','laborInsuranceSelfPay','laborEmployeeSelfPay','laborSelfPay','laborInsuranceSelfAmount','laborInsuranceEmployeeAmount','laborSelfPayAmount','勞保自付額','勞保員工自付額','勞保員工負擔','員工負擔']), false, laborStatus ? '尚未設定' : '未加保')}
-          ${field('雇主提撥勞退', firstValue(e, ['retirementEmployerText','laborRetirementEmployer','雇主提撥勞退']), false, laborStatus ? '尚未設定' : '未加保')}
-          ${field('勞退自提', firstValue(e, ['selfRetirementText','selfRetirementRate','laborRetirementSelfRate','勞退自提']), false, '未設定')}
-          ${field('健保狀態', healthStatus, false, '尚未設定')}
-          ${field('健保級距', firstValue(e, ['healthPlanText','healthLevelText','healthPlan','healthPlanCode','healthInsuranceLevel','healthLevel','健保級距']), false, healthStatus ? '無級距' : '尚未設定')}
-          ${field('健保投保薪資', firstValue(e, ['healthSalaryText','healthInsuranceSalary','healthSalary','健保投保薪資']), false, healthStatus ? '尚未設定' : '未加保')}
-          ${field('健保自付額', firstValue(e, ['healthSelfPayText','healthInsuranceSelfPay','healthSelfPay','healthInsuranceSelfAmount','healthInsuranceEmployeeAmount','健保自付額']), false, healthStatus ? '尚未設定' : '未加保')}
-        </div>
-
-        <div class="section-title">管理設定</div>
-        <div class="form-grid">
-          ${editableSelect('帳號狀態', 'accountStatus', [['active','啟用'],['inactive','停用'],['archived','封存'],['pending','待審核'],['rejected','註冊駁回']])}
-          ${editableSelect('任職狀態', 'employmentStatus', [['active','在職 / 合作中'],['resigned','離職'],['suspended','暫停任用'],['contractorEnded','外聘合作結束'],['archived','封存']])}
-          ${editableSelect('是否隱藏於日常清單', 'hiddenFromActiveLists', [['false','否'],['true','是']])}
-          <div class="field"><label>離職 / 結束日期</label><input id="resignedDate" type="date" value="${esc(fmt(firstValue(e, ['resignedDate','leaveDate','離職日'])))}"></div>
-          <div class="field full"><label>狀態備註</label><textarea id="statusNote" rows="3" placeholder="主管內部備註">${esc(firstValue(e, ['statusNote','狀態備註','note','備註']))}</textarea></div>
-        </div>
-
-        <div class="actions"><button class="save" type="button" onclick="saveEmployeeStatus()">儲存資料</button></div>
-        <div class="actions" style="margin-top:10px"><button class="danger" type="button" onclick="archiveEmployee()">${type==='external'?'結束合作並封存':'離職並封存人員'}</button></div>
-        <div class="hint">封存後不再出現在班表、薪資及工讀日常名單，但歷史打卡、請假與薪資紀錄仍會保留。</div>
+        ${EMPLOYEE_FIELD_GROUPS.map(group=>renderFieldGroup(group,e,ctx)).join('')}
         <div id="msg" class="msg"></div>`;
 
-      const acc = lower(firstValue(e, ['accountStatus','帳號狀態'])) || 'active';
-      $('#accountStatus').value = ['active','inactive','archived','pending','rejected'].includes(acc) ? acc : 'active';
-      const empStatus = lower(firstValue(e, ['employmentStatus','任職狀態'])) || 'active';
-      $('#employmentStatus').value = ['active','resigned','suspended','contractorended','contractorEnded','archived'].includes(empStatus) ? (empStatus === 'contractorended' ? 'contractorEnded' : empStatus) : 'active';
-      $('#hiddenFromActiveLists').value = firstValue(e, ['hiddenFromActiveLists','隱藏於日常清單','hidden','隱藏']) ? 'true' : 'false';
+      const accEl=$('#accountStatus');
+      if(accEl){const acc=lower(firstValue(e,['accountStatus','帳號狀態']))||'active';accEl.value=['active','inactive','archived','pending','rejected'].includes(acc)?acc:'active';}
+      const empEl=$('#employmentStatus');
+      if(empEl){const empStatus=lower(firstValue(e,['employmentStatus','任職狀態']))||'active';empEl.value=['active','resigned','suspended','contractorended','contractorEnded','archived'].includes(empStatus)?(empStatus==='contractorended'?'contractorEnded':empStatus):'active';}
+      const hiddenEl=$('#hiddenFromActiveLists');if(hiddenEl)hiddenEl.value=firstValue(e,['hiddenFromActiveLists','隱藏於日常清單','hidden','隱藏'])?'true':'false';
     }
 
-    function currentEmployee(){ return allEmployees.find(x => (empId(x) || emailOf(x)) === selectedId); }
+    function currentEmployee(){ return selectedEmployeeDetail || allEmployees.find(x => (empId(x) || emailOf(x)) === selectedId); }
 
     function employeeAdminFirestore(){
       try{
@@ -624,14 +1110,15 @@
       const e = currentEmployee(); if(!e) return;
       const msg = $('#msg');
       msg.style.display = 'block'; msg.classList.remove('error'); msg.textContent = '儲存中...';
+      const accountEl=$('#accountStatus'),employmentEl=$('#employmentStatus'),hiddenEl=$('#hiddenFromActiveLists'),dateEl=$('#resignedDate'),noteEl=$('#statusNote');
       const payload = {
         employeeId: empId(e),
         email: emailOf(e),
-        accountStatus: $('#accountStatus').value,
-        employmentStatus: $('#employmentStatus').value,
-        hiddenFromActiveLists: $('#hiddenFromActiveLists').value === 'true',
-        resignedDate: $('#resignedDate').value,
-        statusNote: $('#statusNote').value
+        accountStatus: accountEl ? accountEl.value : (lower(firstValue(e,['accountStatus','帳號狀態'])) || 'active'),
+        employmentStatus: employmentEl ? employmentEl.value : (lower(firstValue(e,['employmentStatus','任職狀態'])) || 'active'),
+        hiddenFromActiveLists: hiddenEl ? hiddenEl.value === 'true' : !!firstValue(e,['hiddenFromActiveLists','隱藏於日常清單','hidden','隱藏']),
+        resignedDate: dateEl ? dateEl.value : fmt(firstValue(e,['resignedDate','leaveDate','cooperationEndDate','離職日'])),
+        statusNote: noteEl ? noteEl.value : clean(firstValue(e,['statusNote','狀態備註','managerNote']))
       };
       try{
         const res = await api('updateEmployeeAdminStatus', payload);
