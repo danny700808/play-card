@@ -325,6 +325,51 @@
       display:none!important;
     }
 
+
+
+    /* 全通路營運中心第一階段入口：僅增加入口，不在管理首頁載入營運資料 */
+    .grid .tile.operations-entry{
+      grid-column:1 / -1!important;
+      min-height:132px!important;
+      padding:22px 24px!important;
+      border:1px solid #b9d7cc!important;
+      background:linear-gradient(135deg,#eff8f4 0%,#ffffff 68%,#edf5fb 100%)!important;
+      box-shadow:0 14px 34px rgba(31,122,90,.10)!important;
+    }
+    .grid .tile.operations-entry strong{
+      font-size:24px!important;
+      color:#135c45!important;
+      letter-spacing:.01em;
+    }
+    .grid .tile.operations-entry > span{
+      max-width:760px!important;
+      font-size:14px!important;
+      color:#53687a!important;
+      -webkit-line-clamp:unset!important;
+      overflow:visible!important;
+    }
+    .operations-entry-badge{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      padding:4px 9px;
+      border-radius:999px;
+      background:#1f7a5a;
+      color:#fff;
+      font-size:12px;
+      font-weight:900;
+      line-height:1.2;
+      white-space:nowrap;
+    }
+    @media(max-width:560px){
+      .grid .tile.operations-entry{
+        min-height:124px!important;
+        padding:18px 14px!important;
+      }
+      .grid .tile.operations-entry strong{font-size:21px!important;}
+      .grid .tile.operations-entry > span{font-size:13px!important;}
+    }
+
   </style>
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
 </head>
@@ -345,6 +390,10 @@
       </div>
     </section>
     <div class="grid">
+      <a class="tile operations-entry" href="operations-hub.html">
+        <strong>全通路營運中心 <span class="operations-entry-badge">第一階段・唯讀</span></strong>
+        <span>查看既有 Firebase 商品圖片、SKU、價格、庫存欄位、成本欄位與租賃概況；目前不會修改原始資料。</span>
+      </a>
       <a class="tile" href="approval-hub.html"><strong>簽核 <span class="badge" id="badge-approval"></span></strong><span>註冊、打卡、臨時出勤、請假、個資簽核</span></a>
       <a class="tile" href="rental-system-hub.html"><strong>租賃契約系統 <span class="badge" id="badge-rental"></span></strong><span>租賃申請、契約模板、費用設定與續約退租</span></a>
       <a class="tile" href="quotation-contract-hub.html"><strong>其他表格 <span class="badge" id="badge-forms"></span></strong><span>估價單、集點卡、證明設定與證明審核</span></a>
