@@ -19,7 +19,9 @@
   const READ_LIMIT = 10000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.07.10-v3-easystore-direct-sync';
+  const VERSION = '2026.07.11-v3.2-fast-dashboard';
+  const DASHBOARD_CACHE_KEY = 'youzi_ops_dashboard_cache_v1';
+  const DASHBOARD_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 
   const state = {
     user:null,
@@ -401,6 +403,39 @@
     return {name:display,originalName:originalName,onlineName:onlineName,sku:sku,imageUrl:images[0]||'',imageUrls:images,onlinePrice:onlinePrice,storePrice:storePrice,originalSalePrice:internal?internal.originalSalePrice:null,averageCost:internal?internal.averageCost:null,nextFifoCost:internal?internal.nextFifoCost:null,latestPurchaseCost:internal?internal.latestPurchaseCost:null,inventoryValue:internal?internal.inventoryValue:0,costIncomplete:internal?internal.costIncomplete:false,currentStock:current,reservedStock:reserved,safetyStock:safety,availableStock:available,margin:margin,status:internal?internal.status:'preview',initialized:!!internal,matchedOnline:!!online||(internal&&internal.easyStoreMatched===true),sourceCollection:(online&&online.sourceCollection)||(internal&&internal.sourceCollection)||'',onlineUrl:(online&&online.url)||(internal&&internal.onlineUrl)||'',brand:(online&&online.brand)||(internal&&internal.brand)||'',category:(online&&online.category)||(internal&&internal.category)||'',variantName:(online&&online.variantName)||(internal&&internal.variantName)||'',saleRewardPercent:internal?internal.saleRewardPercent:null,negativeStock:current<0};
   }
 
+  function saveDashboardCache(){
+    try{
+      const payload={
+        savedAt:Date.now(),
+        loadedAt:state.loadedAt?state.loadedAt.toISOString():new Date().toISOString(),
+        html:renderOverview()
+      };
+      localStorage.setItem(DASHBOARD_CACHE_KEY,JSON.stringify(payload));
+    }catch(error){ console.warn('dashboard cache save failed',error); }
+  }
+  function getDashboardCache(){
+    try{
+      const raw=localStorage.getItem(DASHBOARD_CACHE_KEY); if(!raw)return null;
+      const data=JSON.parse(raw); if(!data||!data.html||!data.savedAt)return null;
+      if(Date.now()-Number(data.savedAt)>DASHBOARD_CACHE_TTL_MS)return null;
+      return data;
+    }catch(error){return null;}
+  }
+  function showCachedDashboard(cache){
+    state.view='overview';
+    setText('opsPageTitle',PAGE_META.overview[0]);
+    setText('opsPageSubtitle',PAGE_META.overview[1]);
+    setText('opsLastReadText','快取資料：'+dateTimeText(cache.loadedAt||cache.savedAt));
+    queryAll('#opsNav a[data-view]').forEach(function(a){ a.classList.toggle('active',a.dataset.view==='overview'); });
+    html('opsContent','<div class="ops-callout"><b>已顯示上次整理結果。</b><br>為避免每次進首頁重讀 5,701 筆商品，系統會直接使用快取；需要最新數字時再按「重新讀取」。</div>'+cache.html);
+    bindViewSpecific();
+  }
+  function ensureDataForCurrentView(){
+    const view=(location.hash||'#overview').replace('#','').split('?')[0]||'overview';
+    if(view!=='overview'&&!state.loadedAt&&!state.loading){ loadAll(false); return true; }
+    return false;
+  }
+
   async function getCollection(name,limit){
     const started=Date.now();
     try{
@@ -458,6 +493,7 @@
       mergeCatalog();
       state.loadedAt=new Date();
       setText('opsLastReadText','最後讀取：'+dateTimeText(state.loadedAt));
+      saveDashboardCache();
       render();
     }catch(error){
       showAlert('資料讀取失敗：'+errorMessage(error),'error');
@@ -809,7 +845,7 @@
     if(!yes) return;
     showAlert('正在從 EasyStore API 讀取全部商品、規格與圖片。商品較多時可能需要數分鐘，請勿重複按同步。','info');
     try{
-      const callable=global.firebase.app().functions('us-central1').httpsCallable('syncEasyStoreCatalog',{timeout:1800000});
+      const callable=global.firebase.app().functions('us-central1').httpsCallable('syncEasyStoreCatalog');
       const response=await callable({force:true});
       const result=(response&&response.data)||{};
       if(!result.ok) throw new Error(result.message||'同步失敗');
@@ -826,7 +862,7 @@
 
   function handleAction(action,el){
     if(action==='sync-easystore-api'){ syncEasyStoreApi(); return; }
-    if(action==='refresh') return loadAll(false);
+    if(action==='refresh'){ try{localStorage.removeItem(DASHBOARD_CACHE_KEY);}catch(err){} return loadAll(false); }
     if(action==='drawer-close') return closeDrawer();
     if(action==='auto-init-products') return autoInitProducts();
     if(action==='product-edit') return openProductEdit(el.dataset.id);
@@ -904,8 +940,8 @@
       else if(event.target.id==='financeRange'){state.financeRange=event.target.value;render();}
       else if(event.target.id==='importFile'){parseImportFile(event.target.files&&event.target.files[0]).catch(function(error){toast('檔案解析失敗',errorMessage(error),'error');});}
     });
-    global.addEventListener('hashchange',function(){render();closeMobileMenu();});
-    byId('opsRefreshBtn').addEventListener('click',function(){loadAll(false);});
+    global.addEventListener('hashchange',function(){closeMobileMenu(); if(!ensureDataForCurrentView())render();});
+    byId('opsRefreshBtn').addEventListener('click',function(){try{localStorage.removeItem(DASHBOARD_CACHE_KEY);}catch(err){} loadAll(false);});
     byId('opsBackBtn').addEventListener('click',function(){history.back();});
     byId('opsLogoutBtn').addEventListener('click',function(){ if(typeof global.logout==='function')global.logout();else location.href='index.html'; });
     byId('opsDrawerClose').addEventListener('click',closeDrawer); byId('opsDrawerBackdrop').addEventListener('click',closeDrawer);
@@ -926,7 +962,11 @@
     if(typeof global.setPortalMode==='function')global.setPortalMode('settings');
     state.user=user; setText('opsUserChip',userLabel());
     try{state.db=initDb();}catch(error){showAlert(errorMessage(error),'error');html('opsContent',emptyHtml('Firebase初始化失敗',errorMessage(error)));return;}
-    bindEvents(); render(); await loadAll(false);
+    bindEvents();
+    const initialView=(location.hash||'#overview').replace('#','').split('?')[0]||'overview';
+    const cache=initialView==='overview'?getDashboardCache():null;
+    if(cache){ showCachedDashboard(cache); }
+    else { render(); await loadAll(false); }
   }
 
   global.OperationsCenterV1={init:init,reload:function(){return loadAll(false);},state:state};
