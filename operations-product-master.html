@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#172b3d">
+  <title>內部商品主檔｜全通路營運中心</title>
+  <link rel="stylesheet" href="style.css?v=admin-final-20260530b">
+  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
+  <link rel="stylesheet" href="operations-phase1.css?v=20260710p1a2">
+  <link rel="stylesheet" href="operations-product-master.css?v=20260710a2">
+</head>
+<body class="ops-page ops-master-page" onload="OperationsProductMaster.init()">
+  <div class="ops-shell">
+    <aside class="ops-sidebar" aria-label="內部商品主檔選單">
+      <div class="ops-brand">
+        <img src="yuzu-logo-green.png" alt="柚子">
+        <div><strong>全通路營運中心</strong><small>Internal Product Master</small></div>
+      </div>
+      <div class="ops-mode-chip ops-mode-write">第一階段 A-2・商品主檔</div>
+
+      <nav class="ops-nav" aria-label="商品主檔功能">
+        <div class="ops-nav-label">商品主檔</div>
+        <button class="ops-nav-btn is-active" type="button" data-master-view="overview">
+          <span class="ops-nav-icon">⌂</span><span class="ops-nav-text">主檔總覽<small>內部資料與 EasyStore 配對</small></span>
+        </button>
+        <button class="ops-nav-btn" type="button" data-master-view="products">
+          <span class="ops-nav-icon">▦</span><span class="ops-nav-text">內部商品主檔<small>兩種名稱、兩種售價、成本</small></span>
+        </button>
+        <button class="ops-nav-btn" type="button" data-master-view="import">
+          <span class="ops-nav-icon">⇩</span><span class="ops-nav-text">Excel 初始匯入<small>先預覽，確認後才寫入</small></span>
+        </button>
+        <button class="ops-nav-btn" type="button" data-master-view="matching">
+          <span class="ops-nav-icon">⇄</span><span class="ops-nav-text">配對狀態<small>相同商品編號自動結合</small></span>
+        </button>
+        <div class="ops-nav-label">返回</div>
+        <a class="ops-nav-btn ops-nav-link" href="operations-hub.html#products">
+          <span class="ops-nav-icon">←</span><span class="ops-nav-text">商品與庫存<small>回到營運中心</small></span>
+        </a>
+      </nav>
+
+      <div class="ops-sidebar-spacer"></div>
+      <a class="ops-back-link" href="settings.html">返回管理首頁</a>
+      <div class="ops-sidebar-note">本頁只寫入新的 <code>opsInternalProducts</code> 商品主檔，不會修改 EasyStore 商品、原租賃合約或原員工資料。</div>
+    </aside>
+
+    <main class="ops-main">
+      <header class="ops-topbar">
+        <div class="ops-heading">
+          <h1 id="masterPageTitle">主檔總覽</h1>
+          <p id="masterPageSubtitle">內部商品名稱、成本與門市售價由這裡管理；EasyStore 只補網路名稱、網路售價與圖片。</p>
+          <div class="ops-read-meta"><span class="ops-live-dot"></span><span id="masterLastLoadedText">等待 Firebase</span></div>
+        </div>
+        <div class="ops-top-actions">
+          <div class="ops-user-pill"><span class="ops-user-avatar" id="masterUserInitial">管</span><span id="masterUserName">管理員</span></div>
+          <button class="ops-btn" type="button" id="masterReloadBtn">↻ 重新讀取</button>
+          <button class="ops-btn primary" type="button" id="masterAddProductBtn">＋ 新增內部商品</button>
+          <div class="ops-nav-actions" data-yz-global-nav>
+            <button class="ops-btn" type="button" data-yz-nav-back>← 上一頁</button>
+            <button class="ops-btn danger" type="button" data-yz-nav-logout>登出</button>
+          </div>
+        </div>
+      </header>
+
+      <div class="ops-content">
+        <section class="ops-view is-active" data-master-view-panel="overview">
+          <div class="ops-banner ops-banner-write">
+            <div class="ops-banner-icon">i</div>
+            <div><strong>兩套商品資料不互相覆蓋</strong>內部主檔保存商品編號、內部名稱、成本與門市售價；EasyStore 保存網路名稱、網路售價、圖片與商品頁。系統只用完全相同的商品編號／SKU 自動配對。</div>
+          </div>
+
+          <div class="ops-kpi-grid master-kpi-grid">
+            <article class="ops-card ops-kpi"><div class="ops-kpi-top"><div class="ops-kpi-label">內部商品主檔</div><div class="ops-kpi-icon">內</div></div><div><div class="ops-kpi-value" id="masterKpiInternal">—</div><div class="ops-kpi-foot">來自 Excel 或線上新增</div></div></article>
+            <article class="ops-card ops-kpi"><div class="ops-kpi-top"><div class="ops-kpi-label">已配對 EasyStore</div><div class="ops-kpi-icon">✓</div></div><div><div class="ops-kpi-value" id="masterKpiMatched">—</div><div class="ops-kpi-foot" id="masterKpiMatchedRate">配對率 —</div></div></article>
+            <article class="ops-card ops-kpi"><div class="ops-kpi-top"><div class="ops-kpi-label">尚待網路建檔</div><div class="ops-kpi-icon">圖</div></div><div><div class="ops-kpi-value" id="masterKpiInternalOnly">—</div><div class="ops-kpi-foot">內部已有，EasyStore 尚無</div></div></article>
+            <article class="ops-card ops-kpi"><div class="ops-kpi-top"><div class="ops-kpi-label">EasyStore 單邊商品</div><div class="ops-kpi-icon">網</div></div><div><div class="ops-kpi-value" id="masterKpiOnlineOnly">—</div><div class="ops-kpi-foot">網路有，但內部主檔尚無</div></div></article>
+            <article class="ops-card ops-kpi"><div class="ops-kpi-top"><div class="ops-kpi-label">成本空白／零</div><div class="ops-kpi-icon">＄</div></div><div><div class="ops-kpi-value" id="masterKpiCostIssue">—</div><div class="ops-kpi-foot">需要確認成本</div></div></article>
+            <article class="ops-card ops-kpi"><div class="ops-kpi-top"><div class="ops-kpi-label">編號重複配對</div><div class="ops-kpi-icon">!</div></div><div><div class="ops-kpi-value" id="masterKpiDuplicate">—</div><div class="ops-kpi-foot">EasyStore 同編號超過一筆</div></div></article>
+          </div>
+
+          <div class="ops-grid-2">
+            <article class="ops-card ops-section">
+              <div class="ops-section-head"><div><h2>新商品的正確流程</h2><p>先建立內部商品，再等待網路編輯完成圖片與商品頁。</p></div></div>
+              <div class="master-flow">
+                <div class="master-flow-step"><span>1</span><div><strong>建立內部商品</strong><small>商品編號、內部名稱、成本、門市售價</small></div></div>
+                <div class="master-flow-arrow">→</div>
+                <div class="master-flow-step"><span>2</span><div><strong>EasyStore 網路建檔</strong><small>使用相同 SKU，編輯網路名稱、售價與圖片</small></div></div>
+                <div class="master-flow-arrow">→</div>
+                <div class="master-flow-step"><span>3</span><div><strong>系統自動配對</strong><small>抓取圖片與網路資料，不覆蓋內部資料</small></div></div>
+              </div>
+            </article>
+
+            <article class="ops-card ops-section">
+              <div class="ops-section-head"><div><h2>第一次資料搬移</h2><p>舊 Excel 只需要匯入一次，之後新商品直接在線上建立。</p></div></div>
+              <div class="master-action-list">
+                <button class="master-action-card" type="button" data-master-view-link="import"><span class="icon">⇩</span><div><strong>匯入舊系統 Excel</strong><small>帶入商品編號、內部名稱、成本、門市售價及舊庫存參考</small></div><span>›</span></button>
+                <button class="master-action-card" type="button" id="overviewAddProductBtn"><span class="icon">＋</span><div><strong>新增一個內部商品</strong><small>適合之後日常建立新商品</small></div><span>›</span></button>
+                <button class="master-action-card" type="button" data-master-view-link="matching"><span class="icon">⇄</span><div><strong>查看自動配對結果</strong><small>確認商品編號是否正確對上 EasyStore</small></div><span>›</span></button>
+              </div>
+            </article>
+          </div>
+
+          <article class="ops-card ops-section">
+            <div class="ops-section-head"><div><h2>資料來源分工</h2><p>同一件商品可同時保留兩種名稱與兩種售價。</p></div></div>
+            <div class="master-source-grid">
+              <div class="master-source-card internal"><div class="tag">內部主檔</div><h3>門市與成本資料</h3><ul><li>商品編號</li><li>內部商品名稱</li><li>商品成本</li><li>門市／實體售價</li><li>舊庫存參考</li></ul></div>
+              <div class="master-source-link">相同商品編號</div>
+              <div class="master-source-card online"><div class="tag">EasyStore</div><h3>網路展示資料</h3><ul><li>網路商品名稱</li><li>網路售價</li><li>商品圖片</li><li>商品規格</li><li>商品網址</li></ul></div>
+            </div>
+          </article>
+        </section>
+
+        <section class="ops-view" data-master-view-panel="products">
+          <div class="ops-banner"><div class="ops-banner-icon">▦</div><div><strong>商品編號是唯一配對依據</strong>名稱不同不會造成錯誤。內部名稱與 EasyStore 網路名稱會並排顯示，門市售價與網路售價也分開保存。</div></div>
+          <div class="ops-toolbar master-toolbar">
+            <div class="ops-toolbar-left">
+              <input class="ops-input search" id="masterProductSearch" type="search" placeholder="搜尋商品編號、內部名稱或網路名稱">
+              <select class="ops-select" id="masterMatchFilter"><option value="all">全部配對狀態</option><option value="matched">已配對</option><option value="internal-only">尚待 EasyStore 建檔</option><option value="online-only">EasyStore 單邊商品</option><option value="duplicate">編號重複</option></select>
+              <select class="ops-select" id="masterCostFilter"><option value="all">全部成本狀態</option><option value="valid">已有成本</option><option value="zero">成本為 0</option><option value="missing">成本空白</option></select>
+              <select class="ops-select" id="masterSort"><option value="code">商品編號</option><option value="internal">內部名稱</option><option value="online">網路名稱</option><option value="cost-desc">成本高到低</option><option value="stock-desc">舊庫存高到低</option></select>
+            </div>
+            <div class="ops-toolbar-right"><span class="ops-result-meta" id="masterProductResultMeta">等待資料</span><button class="ops-btn small" type="button" id="masterClearFilters">清除篩選</button><button class="ops-btn small primary" type="button" id="masterAddProductBtn2">＋ 新增商品</button></div>
+          </div>
+          <div class="master-product-grid" id="masterProductGrid"></div>
+          <div class="ops-load-more"><button class="ops-btn" type="button" id="masterProductLoadMore" hidden>載入更多</button></div>
+        </section>
+
+        <section class="ops-view" data-master-view-panel="import">
+          <div class="ops-banner ops-banner-write"><div class="ops-banner-icon">⇩</div><div><strong>先預覽，再正式匯入</strong>選擇 Excel 後只會在瀏覽器分析。必須勾選確認並按「正式寫入 Firebase」才會建立內部商品主檔；不會修改 EasyStore。</div></div>
+          <div class="master-import-layout">
+            <article class="ops-card ops-section">
+              <div class="ops-section-head"><div><h2>步驟 1｜選擇舊系統 Excel</h2><p>支援欄位：code、name、salePrice、purchasePrice、withoutWarehouseStocks、saleRewardPercent、remark。</p></div></div>
+              <label class="master-file-drop" for="masterExcelFile">
+                <input type="file" id="masterExcelFile" accept=".xlsx,.xls">
+                <span class="master-file-icon">⇩</span>
+                <strong id="masterFileLabel">點這裡選擇 Excel 檔案</strong>
+                <small>檔案只在目前瀏覽器讀取，不會直接上傳整份 Excel。</small>
+              </label>
+              <div class="master-import-status" id="masterImportStatus">尚未選擇檔案。</div>
+            </article>
+
+            <article class="ops-card ops-section">
+              <div class="ops-section-head"><div><h2>步驟 2｜匯入設定</h2><p>第一次建議使用「只新增不存在商品」。</p></div></div>
+              <label class="master-form-field"><span>匯入模式</span><select class="ops-select" id="masterImportMode"><option value="new-only">只新增不存在的商品（最安全）</option><option value="update-existing">更新既有商品的名稱、成本、售價與舊庫存參考</option><option value="cost-price-only">只更新成本與門市售價</option></select></label>
+              <label class="master-check"><input type="checkbox" id="masterImportConfirm"><span>我已確認商品編號是配對基準，並了解舊庫存目前只會保存為「參考值」，不會直接變成正式庫存。</span></label>
+              <button class="ops-btn primary master-wide-btn" type="button" id="masterImportCommitBtn" disabled>正式寫入 Firebase</button>
+              <div class="master-progress" id="masterImportProgress" hidden><div class="bar"><span id="masterImportProgressBar"></span></div><div id="masterImportProgressText">準備中</div></div>
+            </article>
+          </div>
+
+          <div class="master-import-kpis" id="masterImportKpis" hidden>
+            <article class="ops-card"><span>Excel 有效商品</span><strong id="importKpiValid">—</strong></article>
+            <article class="ops-card"><span>可直接新增</span><strong id="importKpiNew">—</strong></article>
+            <article class="ops-card"><span>已存在主檔</span><strong id="importKpiExisting">—</strong></article>
+            <article class="ops-card"><span>可配對 EasyStore</span><strong id="importKpiMatched">—</strong></article>
+            <article class="ops-card warning"><span>成本為 0／空白</span><strong id="importKpiCostIssue">—</strong></article>
+            <article class="ops-card warning"><span>負庫存／缺名稱</span><strong id="importKpiDataIssue">—</strong></article>
+          </div>
+
+          <article class="ops-card ops-section" id="masterImportPreviewSection" hidden>
+            <div class="ops-section-head"><div><h2>Excel 分析結果</h2><p>優先顯示需要注意的資料；正式匯入時會依上方模式處理。</p></div><span class="ops-result-meta" id="masterImportPreviewMeta"></span></div>
+            <div class="ops-table-wrap"><table class="ops-table master-import-table"><thead><tr><th>商品編號</th><th>內部商品名稱</th><th>成本</th><th>門市售價</th><th>舊庫存參考</th><th>EasyStore</th><th>狀態</th></tr></thead><tbody id="masterImportPreviewBody"></tbody></table></div>
+          </article>
+        </section>
+
+        <section class="ops-view" data-master-view-panel="matching">
+          <div class="ops-banner"><div class="ops-banner-icon">⇄</div><div><strong>完全相同的商品編號才會自動配對</strong>商品名稱不參與自動判斷。這可避免內部名稱與網路文案不同時被錯誤合併。</div></div>
+          <div class="master-match-kpis">
+            <button class="ops-card" type="button" data-match-filter="matched"><span>已配對</span><strong id="matchKpiMatched">—</strong></button>
+            <button class="ops-card" type="button" data-match-filter="internal-only"><span>尚待 EasyStore 建檔</span><strong id="matchKpiInternalOnly">—</strong></button>
+            <button class="ops-card" type="button" data-match-filter="online-only"><span>EasyStore 單邊商品</span><strong id="matchKpiOnlineOnly">—</strong></button>
+            <button class="ops-card warning" type="button" data-match-filter="duplicate"><span>編號重複</span><strong id="matchKpiDuplicate">—</strong></button>
+          </div>
+          <div class="ops-toolbar">
+            <div class="ops-toolbar-left"><input class="ops-input search" id="masterMatchSearch" type="search" placeholder="搜尋商品編號、內部名稱或網路名稱"><select class="ops-select" id="masterMatchStatus"><option value="issues">只看需要處理</option><option value="all">全部狀態</option><option value="matched">已配對</option><option value="internal-only">尚待 EasyStore 建檔</option><option value="online-only">EasyStore 單邊商品</option><option value="duplicate">編號重複</option></select></div>
+            <div class="ops-toolbar-right"><span class="ops-result-meta" id="masterMatchResultMeta">等待資料</span></div>
+          </div>
+          <div class="ops-table-wrap"><table class="ops-table master-match-table"><thead><tr><th>商品編號</th><th>內部商品名稱</th><th>EasyStore 網路名稱</th><th>圖片</th><th>狀態</th><th></th></tr></thead><tbody id="masterMatchBody"><tr><td colspan="6">正在讀取...</td></tr></tbody></table></div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <nav class="ops-bottom-nav master-bottom-nav" aria-label="手機版選單">
+    <button class="is-active" type="button" data-master-view="overview"><span>⌂</span><span>總覽</span></button>
+    <button type="button" data-master-view="products"><span>▦</span><span>主檔</span></button>
+    <button type="button" data-master-view="import"><span>⇩</span><span>匯入</span></button>
+    <button type="button" data-master-view="matching"><span>⇄</span><span>配對</span></button>
+  </nav>
+
+  <div class="ops-modal-backdrop" id="masterProductModal" role="dialog" aria-modal="true" aria-labelledby="masterProductModalTitle">
+    <div class="ops-modal master-product-modal">
+      <div class="ops-modal-head"><h2 id="masterProductModalTitle">新增內部商品</h2><button class="ops-modal-close" type="button" id="masterProductModalClose" aria-label="關閉">×</button></div>
+      <form class="ops-modal-body master-product-form" id="masterProductForm">
+        <input type="hidden" id="masterEditOriginalCode">
+        <div class="master-form-grid">
+          <label class="master-form-field"><span>商品編號 <b>*</b></span><input class="ops-input" id="masterFormCode" autocomplete="off" required placeholder="例如 2040466"></label>
+          <label class="master-form-field wide"><span>內部商品名稱 <b>*</b></span><input class="ops-input" id="masterFormInternalName" required placeholder="實體系統使用的名稱"></label>
+          <label class="master-form-field"><span>商品成本</span><input class="ops-input" id="masterFormPurchaseCost" type="number" min="0" step="0.01" placeholder="0"></label>
+          <label class="master-form-field"><span>門市／實體售價</span><input class="ops-input" id="masterFormStorePrice" type="number" min="0" step="0.01" placeholder="0"></label>
+          <label class="master-form-field"><span>舊庫存參考</span><input class="ops-input" id="masterFormLegacyStock" type="number" step="1" placeholder="0"><small>第二階段確認後才會轉成正式庫存。</small></label>
+          <label class="master-form-field"><span>獎金比例</span><input class="ops-input" id="masterFormRewardPercent" type="number" step="0.01" placeholder="可不填"></label>
+          <label class="master-form-field wide"><span>備註</span><textarea class="ops-input master-textarea" id="masterFormRemark" rows="3" placeholder="可不填"></textarea></label>
+        </div>
+        <div class="master-form-message" id="masterFormMessage"></div>
+        <div class="master-form-actions"><button class="ops-btn" type="button" id="masterProductCancelBtn">取消</button><button class="ops-btn primary" type="submit" id="masterProductSaveBtn">儲存內部商品</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div class="ops-modal-backdrop" id="masterDetailModal" role="dialog" aria-modal="true" aria-labelledby="masterDetailModalTitle">
+    <div class="ops-modal master-detail-modal">
+      <div class="ops-modal-head"><h2 id="masterDetailModalTitle">商品完整資料</h2><button class="ops-modal-close" type="button" id="masterDetailModalClose" aria-label="關閉">×</button></div>
+      <div class="ops-modal-body" id="masterDetailModalBody"></div>
+    </div>
+  </div>
+
+  <script src="config.js?v=20260508frontendperf1"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="app.js?v=admin-final-20260530b"></script>
+  <script src="operations-product-master.js?v=20260710a2"></script>
+  <script src="global-nav.js?v=20260603unified1"></script>
+  <script src="ui-action-feedback.js?v=20260701safe3"></script>
+</body>
+</html>

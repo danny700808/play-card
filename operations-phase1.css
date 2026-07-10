@@ -293,3 +293,8 @@ button{cursor:pointer}
   .ops-detail-grid{grid-template-columns:1fr}
   .ops-readiness-item strong{font-size:20px}
 }
+/* 第一階段 A-2：內部商品主檔入口 */
+.ops-nav-link{text-decoration:none;box-sizing:border-box}
+.ops-phase-live{background:#e6f5ef;color:#17634f}
+.ops-banner-split{display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%}
+@media(max-width:720px){.ops-banner-split{display:grid}.ops-banner-split .ops-btn{width:100%;justify-content:center}.ops-nav-link{display:flex}}

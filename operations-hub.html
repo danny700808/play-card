@@ -4,10 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#172b3d">
-  <title>全通路營運中心｜第一階段 A</title>
+  <title>全通路營運中心｜第一階段 A-2</title>
   <link rel="stylesheet" href="style.css?v=admin-final-20260530b">
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
-  <link rel="stylesheet" href="operations-phase1.css?v=20260710p1a">
+  <link rel="stylesheet" href="operations-phase1.css?v=20260710p1a2">
 </head>
 <body class="ops-page" onload="OperationsPhase1.init()">
   <div class="ops-shell">
@@ -16,7 +16,7 @@
         <img src="yuzu-logo-green.png" alt="柚子">
         <div><strong>全通路營運中心</strong><small>Omnichannel Operations</small></div>
       </div>
-      <div class="ops-mode-chip">第一階段 A・唯讀模式</div>
+      <div class="ops-mode-chip">第一階段 A-2・商品主檔已開放</div>
 
       <nav class="ops-nav" aria-label="第一階段功能">
         <div class="ops-nav-label">目前可用</div>
@@ -26,6 +26,9 @@
         <button class="ops-nav-btn" type="button" data-ops-view="products">
           <span class="ops-nav-icon">▦</span><span class="ops-nav-text">商品與庫存<small>圖片、庫存、成本與毛利試算</small></span>
         </button>
+        <a class="ops-nav-btn ops-nav-link" href="operations-product-master.html">
+          <span class="ops-nav-icon">內</span><span class="ops-nav-text">內部商品主檔<small>名稱、成本、門市售價與 Excel 匯入</small></span><span class="ops-phase-tag ops-phase-live">A-2</span>
+        </a>
         <button class="ops-nav-btn" type="button" data-ops-view="rentals">
           <span class="ops-nav-icon">♬</span><span class="ops-nav-text">租賃概況<small>到期、登錄收入與押金</small></span>
         </button>
@@ -123,7 +126,7 @@
         </section>
 
         <section class="ops-view" id="opsView-products" data-ops-view-panel="products">
-          <div class="ops-banner"><div class="ops-banner-icon">▦</div><div><strong>商品資料仍為唯讀</strong>現有欄位會盡可能整理成「目前庫存、可售庫存、安全庫存、最近成本、平均成本與商品毛利試算」。沒有來源欄位時會明確顯示尚未設定。</div></div>
+          <div class="ops-banner"><div class="ops-banner-icon">▦</div><div class="ops-banner-split"><div><strong>網路商品資料仍為唯讀</strong>這裡顯示 EasyStore 圖片與網路資料；商品成本、內部名稱與門市售價請到「內部商品主檔」管理。</div><a class="ops-btn primary" href="operations-product-master.html">開啟內部商品主檔</a></div></div>
           <div class="ops-toolbar">
             <div class="ops-toolbar-left">
               <input class="ops-input search" id="productSearch" type="search" placeholder="搜尋商品名稱、SKU、品牌、分類或商品編號">
@@ -194,7 +197,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="app.js?v=admin-final-20260530b"></script>
-  <script src="operations-phase1.js?v=20260710p1a"></script>
+  <script src="operations-phase1.js?v=20260710p1a2"></script>
   <script src="global-nav.js?v=20260603unified1"></script>
   <script src="ui-action-feedback.js?v=20260701safe3"></script>
 </body>
