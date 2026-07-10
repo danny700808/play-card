@@ -847,8 +847,8 @@ function contractHtml(contractText, signatureUrl, identityFiles = [], profile = 
     ? `<div class="identity-doc-block"><div class="identity-doc-title">乙方身分證明文件／證件照片：</div>${identityUrls.map((u, i) => `<img class="identity-doc-img" src="${attrEsc(u)}" alt="乙方身分證明文件${i + 1}">`).join('')}</div>`
     : '<div class="identity-doc-note">乙方身分證明文件／證件照片已隨契約資料保存。</div>';
   return `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>外聘才藝教師委任契約書</title><style>
-body{margin:0;background:#e9e1d6;color:#111}.print-page{padding:20px 0 32px}.a4{width:210mm;min-height:297mm;background:#fff;margin:0 auto;padding:18mm 16mm;box-sizing:border-box;color:#111;font-family:"Noto Serif TC","標楷體","PMingLiU",serif;font-size:13.2px;line-height:1.72;position:relative}.a4 h2{text-align:center;font-size:24px;margin:0 0 12px;letter-spacing:2px}.party{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:10px 0 12px}.party-box{border:1px solid #ddd;padding:10px;border-radius:8px;min-height:80px}.contract-body{white-space:pre-wrap}.sign-row{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:24px;align-items:start}.sign-box{border-top:1px solid #333;padding-top:10px;min-height:105px;position:relative}.identity-row{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:8px;align-items:start}.signature-demo{height:54px;border:1px dashed #aaa;border-radius:8px;margin-top:10px;display:flex;align-items:center;justify-content:center;color:#777;background:#fafafa}.signature-img{max-height:70px;max-width:220px;display:block;margin-top:8px}.identity-doc-block{margin-top:12px;border-top:1px dashed #bbb;padding-top:10px}.identity-doc-title{font-weight:900;margin-bottom:6px}.identity-doc-img{display:block;max-width:100%;max-height:170px;margin-top:8px;border:1px solid #ccc;border-radius:8px;object-fit:contain}.identity-doc-note{margin-top:8px;color:#777;font-size:12px;line-height:1.6}@page{size:A4;margin:0}@media print{body{background:#fff}.print-page{padding:0}.a4{box-shadow:none;margin:0;transform:none!important}}@media(max-width:760px){body{background:#e9e1d6}.print-page{padding:8px;overflow:hidden}.a4{width:210mm;min-width:210mm;min-height:297mm;margin:0;padding:18mm 16mm;font-size:13.2px;line-height:1.72;transform-origin:top left}.party,.sign-row,.identity-row{grid-template-columns:1fr 1fr}.sign-box{min-height:105px}.identity-doc-img{max-height:170px}.signature-img{max-height:70px;max-width:220px}}
-</style></head><body><div class="print-page"><div class="a4"><h2>外聘才藝教師委任契約書</h2><div class="party"><div class="party-box"><b>甲方</b><br>臺中市私立凱立音樂短期補習班<br>代表人：黃銘廷<br>地址：依補習班登記資料</div><div class="party-box"><b>乙方</b><br>外聘老師姓名：${teacherName}<br>身分證字號：${idNumber || '＿＿＿＿＿＿'}<br>電話：${mobile || '＿＿＿＿＿＿'}</div></div><div class="contract-body">${text}</div><div class="sign-row"><div class="sign-box">甲方：臺中市私立凱立音樂短期補習班<br>代表人：黃銘廷</div><div class="sign-box">乙方：${teacherName}${signatureHtml}</div></div><div class="identity-row"><div></div><div>${identityHtml}</div></div><div style="margin-top:20px">簽署日期：${htmlEsc(todayKey())}</div></div></div><script>(function(){function fit(){var wrap=document.querySelector('.print-page'),a4=document.querySelector('.a4');if(!wrap||!a4)return;if(window.innerWidth>760){a4.style.transform='';wrap.style.height='';return;}a4.style.transform='scale(1)';var natural=a4.scrollWidth||a4.offsetWidth||794;var scale=Math.min(1,Math.max(.32,(window.innerWidth-16)/natural));a4.style.transformOrigin='top left';a4.style.transform='scale('+scale+')';wrap.style.height=Math.ceil((a4.scrollHeight||1123)*scale+16)+'px';}window.addEventListener('resize',function(){setTimeout(fit,80)});if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',fit);else fit();setTimeout(fit,250);})();<\/script></body></html>`;
+body{margin:0;background:#e9e1d6;color:#111}.print-page{padding:20px 0 32px}.a4{width:210mm;min-height:297mm;background:#fff;margin:0 auto;padding:18mm 16mm;box-sizing:border-box;color:#111;font-family:"Noto Serif TC","標楷體","PMingLiU",serif;font-size:13.2px;line-height:1.72;position:relative}.a4 h2{text-align:center;font-size:24px;margin:0 0 12px;letter-spacing:2px}.party{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:10px 0 12px}.party-box{border:1px solid #ddd;padding:10px;border-radius:8px;min-height:80px}.contract-body{white-space:pre-wrap}.sign-row{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:24px;align-items:start}.sign-box{border-top:1px solid #333;padding-top:10px;min-height:105px;position:relative}.identity-row{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:8px;align-items:start}.seal{position:absolute;right:10px;bottom:8px;width:90px;max-width:90px;opacity:.86}.small-seal{position:absolute;right:112px;bottom:15px;width:54px;max-width:54px;opacity:.86}.signature-demo{height:54px;border:1px dashed #aaa;border-radius:8px;margin-top:10px;display:flex;align-items:center;justify-content:center;color:#777;background:#fafafa}.signature-img{max-height:70px;max-width:220px;display:block;margin-top:8px}.identity-doc-block{margin-top:12px;border-top:1px dashed #bbb;padding-top:10px}.identity-doc-title{font-weight:900;margin-bottom:6px}.identity-doc-img{display:block;max-width:100%;max-height:170px;margin-top:8px;border:1px solid #ccc;border-radius:8px;object-fit:contain}.identity-doc-note{margin-top:8px;color:#777;font-size:12px;line-height:1.6}@page{size:A4;margin:0}@media print{body{background:#fff}.print-page{padding:0}.a4{box-shadow:none;margin:0;transform:none!important}}@media(max-width:760px){body{background:#e9e1d6}.print-page{padding:8px;overflow:hidden}.a4{width:210mm;min-width:210mm;min-height:297mm;margin:0;padding:18mm 16mm;font-size:13.2px;line-height:1.72;transform-origin:top left}.party,.sign-row,.identity-row{grid-template-columns:1fr 1fr}.sign-box{min-height:105px}.identity-doc-img{max-height:170px}.signature-img{max-height:70px;max-width:220px}}
+</style></head><body><div class="print-page"><div class="a4"><h2>外聘才藝教師委任契約書</h2><div class="party"><div class="party-box"><b>甲方</b><br>臺中市私立凱立音樂短期補習班<br>代表人：黃銘廷<br>地址：依補習班登記資料</div><div class="party-box"><b>乙方</b><br>外聘老師姓名：${teacherName}<br>身分證字號：${idNumber || '＿＿＿＿＿＿'}<br>電話：${mobile || '＿＿＿＿＿＿'}</div></div><div class="contract-body">${text}</div><div class="sign-row"><div class="sign-box">甲方：臺中市私立凱立音樂短期補習班<br>代表人：黃銘廷<img class="seal" src="https://danny700808.github.io/play-card/kaili-school-seal.png" alt="補習班大章"><img class="small-seal" src="https://danny700808.github.io/play-card/personal-seal.png" alt="負責人小章"></div><div class="sign-box">乙方：${teacherName}${signatureHtml}</div></div><div class="identity-row"><div></div><div>${identityHtml}</div></div><div style="margin-top:20px">簽署日期：${htmlEsc(todayKey())}</div></div></div><script>(function(){function fit(){var wrap=document.querySelector('.print-page'),a4=document.querySelector('.a4');if(!wrap||!a4)return;if(window.innerWidth>760){a4.style.transform='';wrap.style.height='';return;}a4.style.transform='scale(1)';var natural=a4.scrollWidth||a4.offsetWidth||794;var scale=Math.min(1,Math.max(.32,(window.innerWidth-16)/natural));a4.style.transformOrigin='top left';a4.style.transform='scale('+scale+')';wrap.style.height=Math.ceil((a4.scrollHeight||1123)*scale+16)+'px';}window.addEventListener('resize',function(){setTimeout(fit,80)});if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',fit);else fit();setTimeout(fit,250);})();<\/script></body></html>`;
 }
 
 async function saveContractHtml({ teacherId, contractRocYear, contractId, contractText, signatureUrl, identityFiles, profile }) {
@@ -903,6 +903,230 @@ function publicProfile(profile) {
   };
 }
 
+const EXTERNAL_TEACHER_BIND_CODE_FIELDS = ['bindingCode', 'employeeBindCode', 'bindCode', 'onboardingToken'];
+
+function externalTeacherIdFromRow(row = {}, fallbackId = '') {
+  return clean(
+    row.teacherId ||
+    row.externalTeacherContractId ||
+    row.contractId ||
+    row.currentContractId ||
+    row.profileId ||
+    row.id ||
+    fallbackId ||
+    ''
+  );
+}
+
+async function firstExternalTeacherRecordByCode(bindCode) {
+  const code = clean(bindCode).toUpperCase();
+  if (!code) return null;
+  const collectionNames = ['externalTeacherContracts', 'externalTeacherProfiles'];
+
+  for (const collectionName of collectionNames) {
+    for (const field of EXTERNAL_TEACHER_BIND_CODE_FIELDS) {
+      try {
+        const snap = await db().collection(collectionName).where(field, '==', code).limit(1).get();
+        if (!snap.empty) {
+          const doc = snap.docs[0];
+          return { collectionName, id: doc.id, data: doc.data() || {} };
+        }
+      } catch (err) {
+        logger.warn('external teacher bind-code lookup failed', { collectionName, field, code, error: err && err.message });
+      }
+    }
+  }
+
+  // 舊資料有時只留下綁定文字，最後再做一次有限量掃描，避免既有流程卡住。
+  for (const collectionName of collectionNames) {
+    try {
+      const snap = await db().collection(collectionName).limit(800).get();
+      let found = null;
+      snap.forEach((doc) => {
+        if (found) return;
+        const row = doc.data() || {};
+        const values = [
+          row.bindingCode,
+          row.employeeBindCode,
+          row.bindCode,
+          row.onboardingToken,
+          row.employeeBindText,
+          row.bindText
+        ].map((value) => clean(value).toUpperCase());
+        if (values.some((value) => value === code || value === `柚子人員綁定 ${code}`)) {
+          found = { collectionName, id: doc.id, data: row };
+        }
+      });
+      if (found) return found;
+    } catch (err) {
+      logger.warn('external teacher bind-code fallback scan failed', { collectionName, code, error: err && err.message });
+    }
+  }
+  return null;
+}
+
+async function repairExternalTeacherBindingIndex(bindCode, currentBinding = {}) {
+  const code = clean(bindCode).toUpperCase();
+  if (!code) return null;
+
+  const bindingRef = db().collection('externalTeacherLineBindings').doc(code);
+  const employeeBindingRef = db().collection('employeeLineBindings').doc(code);
+  let employeeBinding = {};
+  try {
+    const snap = await employeeBindingRef.get();
+    if (snap.exists) employeeBinding = snap.data() || {};
+  } catch (err) {
+    logger.warn('employee binding lookup failed during repair', { code, error: err && err.message });
+  }
+
+  let teacherId = clean(
+    currentBinding.teacherId ||
+    currentBinding.externalTeacherContractId ||
+    employeeBinding.externalTeacherContractId ||
+    employeeBinding.teacherId ||
+    employeeBinding.externalTeacherId ||
+    ''
+  );
+  let source = null;
+
+  if (teacherId) {
+    for (const collectionName of ['externalTeacherContracts', 'externalTeacherProfiles']) {
+      try {
+        const snap = await db().collection(collectionName).doc(teacherId).get();
+        if (snap.exists) {
+          source = { collectionName, id: snap.id, data: snap.data() || {} };
+          break;
+        }
+      } catch (err) {
+        logger.warn('external teacher direct record lookup failed', { collectionName, teacherId, error: err && err.message });
+      }
+    }
+  }
+
+  if (!source) source = await firstExternalTeacherRecordByCode(code);
+  if (!source && !teacherId) return null;
+
+  const row = (source && source.data) || {};
+  teacherId = teacherId || externalTeacherIdFromRow(row, source && source.id);
+  if (!teacherId) return null;
+
+  const token = clean(
+    currentBinding.onboardingToken ||
+    employeeBinding.onboardingToken ||
+    row.onboardingToken ||
+    row.bindingCode ||
+    row.employeeBindCode ||
+    row.bindCode ||
+    code
+  );
+  const employeeId = clean(
+    currentBinding.employeeId ||
+    currentBinding.externalTeacherEmployeeId ||
+    employeeBinding.employeeId ||
+    employeeBinding.employeeDocId ||
+    row.employeeId ||
+    row.externalTeacherEmployeeId ||
+    ''
+  );
+  const teacherName = clean(currentBinding.teacherName || employeeBinding.teacherName || row.teacherName || row.name || row.displayName || '外聘老師');
+  const mobile = clean(currentBinding.mobile || employeeBinding.mobile || employeeBinding.mobilePhone || row.mobile || row.phone || '');
+  const email = lower(currentBinding.email || employeeBinding.email || row.email || '');
+  const bindingMethod = clean(currentBinding.bindingMethod || employeeBinding.bindingMethod || row.bindingMethod || 'line');
+  const lineUserId = clean(currentBinding.lineUserId || employeeBinding.lineUserId || row.lineUserId || '');
+  const lineDisplayName = clean(currentBinding.lineDisplayName || employeeBinding.lineDisplayName || row.lineDisplayName || '');
+  const status = lineUserId || lower(row.lineBindStatus) === 'bound' ? 'bound' : clean(currentBinding.status || employeeBinding.status || 'pending');
+  const onboardingUrl = clean(currentBinding.onboardingUrl || employeeBinding.onboardingUrl || row.onboardingUrl || externalTeacherContractUrl(teacherId, token, false));
+  const bindText = `柚子人員綁定 ${code}`;
+
+  const bindingPatch = {
+    bindCode: code,
+    bindingCode: code,
+    employeeBindCode: code,
+    bindText,
+    teacherId,
+    externalTeacherContractId: teacherId,
+    employeeId,
+    externalTeacherEmployeeId: employeeId,
+    teacherName,
+    mobile,
+    email,
+    bindingMethod,
+    onboardingToken: token,
+    onboardingUrl,
+    status,
+    lineUserId,
+    lineDisplayName,
+    repairedAt: nowTs(),
+    updatedAt: nowTs(),
+    source: 'external-teacher-binding-self-repair'
+  };
+
+  const employeeBindingPatch = {
+    bindingCode: code,
+    employeeBindCode: code,
+    bindText,
+    employeeId,
+    employeeDocId: employeeId,
+    targetCollection: 'externalTeacherContracts',
+    externalTeacherContractId: teacherId,
+    teacherId,
+    status,
+    name: teacherName,
+    teacherName,
+    email,
+    mobilePhone: mobile,
+    mobile,
+    bindingMethod,
+    notificationPreference: bindingMethod,
+    onboardingToken: token,
+    onboardingUrl,
+    lineUserId,
+    lineDisplayName,
+    repairedAt: nowTs(),
+    updatedAt: nowTs(),
+    source: 'external-teacher-binding-self-repair'
+  };
+
+  const recordPatch = {
+    bindingCode: code,
+    employeeBindCode: code,
+    employeeBindText: bindText,
+    onboardingToken: token,
+    onboardingUrl,
+    updatedAt: nowTs()
+  };
+  if (employeeId) {
+    recordPatch.employeeId = employeeId;
+    recordPatch.externalTeacherEmployeeId = employeeId;
+    recordPatch.employeeRef = `employees/${employeeId}`;
+  }
+
+  await Promise.all([
+    bindingRef.set(bindingPatch, { merge: true }),
+    employeeBindingRef.set(employeeBindingPatch, { merge: true }),
+    db().collection('externalTeacherContracts').doc(teacherId).set(recordPatch, { merge: true }),
+    db().collection('externalTeacherProfiles').doc(teacherId).set({ teacherId, id: teacherId, ...recordPatch }, { merge: true })
+  ]);
+
+  logger.info('external teacher binding index repaired', { code, teacherId, employeeId: employeeId || null });
+  return { bindingRef, binding: { ...currentBinding, ...bindingPatch }, teacherId, token };
+}
+
+function shouldKeepExternalTeacherStatus(profile = {}) {
+  const status = lower(profile.status || profile.contractStatus || profile.profileStatus || '');
+  return [
+    'submitted_pending_admin',
+    'active',
+    'confirmed',
+    'contract_effective',
+    'completed',
+    'needs_revision',
+    'archived',
+    'overdue_unsigned',
+    'signed'
+  ].some((key) => status === key || status.includes(key)) || /已送出|待主管|已確認|生效|完成|補件|封存|逾期|已簽/.test(status);
+}
+
 async function handleExternalTeacherLineEvent(event) {
   const text = event && event.message && event.message.type === 'text' ? clean(event.message.text) : '';
   const legacyMatch = text.match(/^外聘老師綁定\s+([A-Z0-9-]+)$/i);
@@ -919,19 +1143,23 @@ async function handleExternalTeacherLineEvent(event) {
   }
 
   const bindingRef = db().collection('externalTeacherLineBindings').doc(bindCode);
-  const bindingSnap = await bindingRef.get();
-  if (!bindingSnap.exists) {
-    if (personnelMatch) return false;
-    await replyLineMessage(replyToken, '查不到這組外聘老師綁定碼。\n\n請確認文字是否完整，例如：\n柚子人員綁定 EMP-123456');
-    return true;
-  }
+  let bindingSnap = await bindingRef.get();
+  let binding = bindingSnap.exists ? (bindingSnap.data() || {}) : {};
+  let teacherId = clean(binding.teacherId || binding.externalTeacherContractId || '');
+  let token = clean(binding.onboardingToken || '');
 
-  const binding = bindingSnap.data() || {};
-  const teacherId = clean(binding.teacherId || '');
-  const token = clean(binding.onboardingToken || '');
-  if (!teacherId) {
-    await replyLineMessage(replyToken, '這組外聘老師綁定碼資料不完整，請重新產生綁定碼。');
-    return true;
+  // 既有契約可能還在，但綁定索引曾被刪除或未完整建立；收到訊息時自動補回。
+  if (!bindingSnap.exists || !teacherId) {
+    const repaired = await repairExternalTeacherBindingIndex(bindCode, binding);
+    if (!repaired) {
+      if (personnelMatch) return false; // 交由一般員工綁定流程判斷。
+      await replyLineMessage(replyToken, '查不到這組外聘老師綁定碼。\n\n請確認文字是否完整，例如：\n柚子人員綁定 EMP-123456');
+      return true;
+    }
+    binding = repaired.binding || {};
+    teacherId = repaired.teacherId;
+    token = repaired.token;
+    bindingSnap = await bindingRef.get();
   }
 
   if (binding.expiresAt && binding.expiresAt.toMillis && binding.expiresAt.toMillis() < Date.now()) {
@@ -949,32 +1177,108 @@ async function handleExternalTeacherLineEvent(event) {
   const lineProfile = await getLineProfile(lineUserId);
   const lineDisplayName = clean(lineProfile.displayName || '');
   const teacherName = clean(profile.name || profile.displayName || binding.teacherName || '老師');
+  const linkedEmployeeId = clean(
+    binding.employeeId ||
+    binding.externalTeacherEmployeeId ||
+    profile.employeeId ||
+    profile.externalTeacherEmployeeId ||
+    ''
+  );
+  const nextToken = token || clean(profile.onboardingToken || profile.bindingCode || profile.employeeBindCode || bindCode) || bindCode;
+  const keepStatus = shouldKeepExternalTeacherStatus(profile);
+  const currentStatus = clean(profile.status || profile.contractStatus || profile.profileStatus || '');
+  const currentProgress = clean(profile.progressStatus || '');
+  const employeeBindingRef = db().collection('employeeLineBindings').doc(bindCode);
 
   await db().runTransaction(async (tx) => {
-    tx.set(bindingRef, { status: 'bound', lineUserId, lineDisplayName, boundAt: nowTs(), updatedAt: nowTs() }, { merge: true });
+    const boundAt = nowTs();
+    tx.set(bindingRef, {
+      status: 'bound',
+      lineUserId,
+      lineDisplayName,
+      boundAt,
+      updatedAt: nowTs()
+    }, { merge: true });
+
+    tx.set(employeeBindingRef, {
+      bindingCode: bindCode,
+      employeeBindCode: bindCode,
+      bindText: `柚子人員綁定 ${bindCode}`,
+      employeeId: linkedEmployeeId,
+      employeeDocId: linkedEmployeeId,
+      targetCollection: 'externalTeacherContracts',
+      externalTeacherContractId: teacherId,
+      teacherId,
+      status: 'bound',
+      name: teacherName,
+      teacherName,
+      email: lower(profile.email || binding.email || ''),
+      mobilePhone: clean(profile.mobile || profile.phone || binding.mobile || ''),
+      mobile: clean(profile.mobile || profile.phone || binding.mobile || ''),
+      bindingMethod: clean(profile.bindingMethod || binding.bindingMethod || 'line'),
+      notificationPreference: clean(profile.bindingMethod || binding.bindingMethod || 'line'),
+      onboardingToken: nextToken,
+      onboardingUrl: externalTeacherContractUrl(teacherId, nextToken, false),
+      lineUserId,
+      lineDisplayName,
+      boundAt,
+      updatedAt: nowTs(),
+      source: 'external-teacher-line-binding'
+    }, { merge: true });
+
     const linePatch = {
-      employeeId: '',
-      externalTeacherEmployeeId: '',
       lineUserId,
       lineNotifyEnabled: true,
       lineBindStatus: 'bound',
       lineDisplayName,
-      lineBoundAt: nowTs(),
+      lineBoundAt: boundAt,
+      bindingCode: bindCode,
+      employeeBindCode: bindCode,
+      employeeBindText: `柚子人員綁定 ${bindCode}`,
       bindCode,
-      onboardingToken: token || profile.onboardingToken || bindCode,
-      status: 'waiting_contract',
-      progressStatus: 'LINE 已綁定，等待老師從 LINE 下一步連結進入正式資料填寫',
+      onboardingToken: nextToken,
+      onboardingUrl: externalTeacherContractUrl(teacherId, nextToken, false),
+      status: keepStatus ? currentStatus : 'waiting_contract',
+      progressStatus: keepStatus ? currentProgress : 'LINE 已綁定，等待老師從 LINE 下一步連結進入正式資料填寫',
       verifiedBy: 'line',
-      verifiedAt: nowTs(),
+      verifiedAt: boundAt,
       updatedAt: nowTs()
     };
+    if (linkedEmployeeId) {
+      linePatch.employeeId = linkedEmployeeId;
+      linePatch.externalTeacherEmployeeId = linkedEmployeeId;
+      linePatch.employeeRef = `employees/${linkedEmployeeId}`;
+    }
+
     tx.set(ref, linePatch, { merge: true });
     tx.set(db().collection('externalTeacherContracts').doc(teacherId), linePatch, { merge: true });
   });
 
-  const nextUrl = externalTeacherContractUrl(teacherId, token || profile.onboardingToken || bindCode, false);
+  // 既有外聘老師若已經有員工管理資料，只更新現有帳號，不建立新的空白帳號。
+  if (linkedEmployeeId) {
+    try {
+      const employeeRef = db().collection('employees').doc(linkedEmployeeId);
+      const employeeSnap = await employeeRef.get();
+      if (employeeSnap.exists) {
+        await employeeRef.set({
+          lineUserId,
+          lineDisplayName,
+          lineNotifyEnabled: true,
+          lineBindStatus: 'bound',
+          employeeBindCode: bindCode,
+          employeeBindText: `柚子人員綁定 ${bindCode}`,
+          updatedAt: nowTs(),
+          source: 'external-teacher-line-binding'
+        }, { merge: true });
+      }
+    } catch (err) {
+      logger.warn('linked external teacher employee update failed', { linkedEmployeeId, error: err && err.message });
+    }
+  }
+
+  const nextUrl = externalTeacherContractUrl(teacherId, nextToken, false);
   await replyLineMessage(replyToken, `外聘老師 LINE 綁定完成 ✅\n\n您好 ${teacherName}，系統已完成您的 LINE 綁定。\n\n請點選下方下一步連結，繼續完成正式資料、身分證明文件與契約簽署。\n\n${nextUrl}`);
-  await pushAdminMessage(`外聘老師 LINE 綁定完成\n\n姓名：${teacherName}\n狀態：待填資料`);
+  await pushAdminMessage(`外聘老師 LINE 綁定完成\n\n姓名：${teacherName}\n狀態：待填資料`, { contractId: teacherId, source: 'external-teacher-line-bound' });
   return true;
 }
 
