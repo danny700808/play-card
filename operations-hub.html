@@ -4,10 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#172b3d">
-  <title>全通路營運中心｜第一階段 A-2</title>
+  <title>全通路營運中心｜第一階段 A-3</title>
   <link rel="stylesheet" href="style.css?v=admin-final-20260530b">
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
-  <link rel="stylesheet" href="operations-phase1.css?v=20260710p1a2">
+  <link rel="stylesheet" href="operations-phase1.css?v=20260710p1a3">
 </head>
 <body class="ops-page" onload="OperationsPhase1.init()">
   <div class="ops-shell">
@@ -16,7 +16,7 @@
         <img src="yuzu-logo-green.png" alt="柚子">
         <div><strong>全通路營運中心</strong><small>Omnichannel Operations</small></div>
       </div>
-      <div class="ops-mode-chip">第一階段 A-2・商品主檔已開放</div>
+      <div class="ops-mode-chip">第一階段 A-3・商品主檔可自動建立</div>
 
       <nav class="ops-nav" aria-label="第一階段功能">
         <div class="ops-nav-label">目前可用</div>
@@ -27,7 +27,7 @@
           <span class="ops-nav-icon">▦</span><span class="ops-nav-text">商品與庫存<small>圖片、庫存、成本與毛利試算</small></span>
         </button>
         <a class="ops-nav-btn ops-nav-link" href="operations-product-master.html">
-          <span class="ops-nav-icon">內</span><span class="ops-nav-text">內部商品主檔<small>名稱、成本、門市售價與 Excel 匯入</small></span><span class="ops-phase-tag ops-phase-live">A-2</span>
+          <span class="ops-nav-icon">內</span><span class="ops-nav-text">內部商品主檔<small>一鍵建立、名稱、成本與 SKU</small></span><span class="ops-phase-tag ops-phase-live">A-3</span>
         </a>
         <button class="ops-nav-btn" type="button" data-ops-view="rentals">
           <span class="ops-nav-icon">♬</span><span class="ops-nav-text">租賃概況<small>到期、登錄收入與押金</small></span>
@@ -72,7 +72,7 @@
         <section class="ops-view is-active" id="opsView-overview" data-ops-view-panel="overview">
           <div class="ops-banner">
             <div class="ops-banner-icon">i</div>
-            <div><strong>第一階段 A 仍採唯讀整合</strong>本版整理商品資料完整度、庫存與成本欄位、租賃到期及登錄金額。沒有任何新增、修改或刪除 Firestore 的操作，也不會更新 EasyStore、momo 或 Coupang。</div>
+            <div><strong>第一階段 A-3 僅開放內部商品主檔</strong>營運總覽、網路商品與租賃仍採唯讀；只有「內部商品主檔」可新增或編輯 opsInternalProducts，不會修改 EasyStore、momo、Coupang、租賃或員工資料。</div>
           </div>
 
           <div class="ops-kpi-grid">
@@ -197,7 +197,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="app.js?v=admin-final-20260530b"></script>
-  <script src="operations-phase1.js?v=20260710p1a2"></script>
+  <script src="operations-phase1.js?v=20260710p1a3"></script>
   <script src="global-nav.js?v=20260603unified1"></script>
   <script src="ui-action-feedback.js?v=20260701safe3"></script>
 </body>

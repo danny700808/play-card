@@ -9,6 +9,7 @@
   const PAGE_SIZE = 30;
   const BATCH_SIZE = 400;
   const READ_TIMEOUT_MS = 25000;
+  const AUTO_SOURCE_PREFIX = 'src_';
 
   const state = {
     user:null,
@@ -26,11 +27,15 @@
     importSummary:null,
     importFileName:'',
     editingCode:'',
-    activeMatchFilter:''
+    editingDocId:'',
+    editingSourceKey:'',
+    activeMatchFilter:'',
+    autoCreating:false,
+    internalPermissionError:''
   };
 
   const pageMeta = {
-    overview:['主檔總覽','內部商品名稱、成本與門市售價由這裡管理；EasyStore 只補網路名稱、網路售價與圖片。'],
+    overview:['主檔總覽','先把現有網路商品一鍵建立成內部主檔，再逐步補齊 SKU、成本、庫存與安全庫存。'],
     products:['內部商品主檔','同一件商品同時保留內部名稱、網路名稱、門市售價、網路售價與成本。'],
     import:['Excel 初始匯入','先在瀏覽器分析舊系統 Excel，確認後才批次寫入 Firebase。'],
     matching:['商品配對狀態','使用完全相同的商品編號／SKU，自動連結內部主檔與 EasyStore 商品。']
@@ -88,6 +93,22 @@
   function normalizeCode(value){ return clean(value).replace(/^'+/,'').replace(/\u00a0/g,' ').trim().toUpperCase(); }
   function docIdForCode(code){ return encodeURIComponent(normalizeCode(code)); }
   function decodeDocId(value){ try{return decodeURIComponent(clean(value));}catch(err){return clean(value);} }
+  function hashText(value){
+    let hash=2166136261;
+    const text=clean(value);
+    for(let i=0;i<text.length;i+=1){ hash^=text.charCodeAt(i); hash=Math.imul(hash,16777619); }
+    return (hash>>>0).toString(36);
+  }
+  function onlineSourceKey(row){
+    if(!row) return '';
+    return clean(row.sourceCollection)+'::'+clean(row.id||row.docId);
+  }
+  function docIdForOnline(row){
+    const sourceKey=onlineSourceKey(row);
+    const suffix=clean(row.id||row.docId).replace(/[^a-zA-Z0-9_-]+/g,'_').slice(0,38);
+    return AUTO_SOURCE_PREFIX+hashText(sourceKey)+(suffix?'_'+suffix:'');
+  }
+  function userLabel(){ return clean(state.user&& (state.user.id||state.user.employeeId||state.user.email||state.user.name)); }
   function imageFrom(value){
     if(!value) return '';
     if(typeof value==='string') return safeUrl(value);
@@ -148,7 +169,10 @@
     });
   }
   function normalizeInternal(obj,docId){
-    const code=normalizeCode(firstValue(obj,['code','productCode','sku','商品編號'])) || decodeDocId(docId||'');
+    const explicitCode=normalizeCode(firstValue(obj,['code','productCode','sku','商品編號']));
+    const sourceKey=clean(firstValue(obj,['sourceKey','onlineSourceKey']));
+    const fallbackCode=(!sourceKey && !clean(docId).startsWith(AUTO_SOURCE_PREFIX))?decodeDocId(docId||''):'';
+    const code=explicitCode||normalizeCode(fallbackCode);
     const cost=numberInfo(firstValue(obj,['purchaseCost','purchasePrice','cost','商品成本']));
     const storePrice=numberInfo(firstValue(obj,['storePrice','salePrice','retailPrice','門市售價']));
     const legacyStock=numberInfo(firstValue(obj,['legacyStockReference','legacyStock','withoutWarehouseStocks','stockReference','舊庫存參考']));
@@ -167,6 +191,10 @@
       rewardPercent:reward.value,
       remark:clean(firstValue(obj,['remark','note','備註'])),
       source:clean(obj.source||''),
+      sourceKey:sourceKey,
+      sourceCollection:clean(firstValue(obj,['sourceCollection','onlineSourceCollection'])),
+      sourceProductId:clean(firstValue(obj,['sourceProductId','onlineProductId'])),
+      autoCreated:obj.autoCreated===true || clean(obj.source)==='onlineAutoCreate',
       createdAt:obj.createdAt||obj.createdAtText||'',
       updatedAt:obj.updatedAt||obj.updatedAtText||'',
       raw:obj
@@ -204,53 +232,60 @@
     }
   }
   async function loadInternalProducts(){
-    const start=Date.now(); state.internalProducts=[];
+    const start=Date.now(); state.internalProducts=[]; state.internalPermissionError='';
     try{
       const snap=await withTimeout(state.db.collection(INTERNAL_COLLECTION).limit(INTERNAL_LIMIT).get(),INTERNAL_COLLECTION);
       snap.forEach(function(doc){ state.internalProducts.push(normalizeInternal(doc.data()||{},doc.id)); });
       recordDiagnostic(INTERNAL_COLLECTION,state.internalProducts.length?'ok':'empty',state.internalProducts.length,state.internalProducts.length?'已讀取內部商品主檔':'尚未建立內部商品主檔',Date.now()-start);
     }catch(err){
-      recordDiagnostic(INTERNAL_COLLECTION,'error',0,err.message||String(err),Date.now()-start);
-      throw err;
+      state.internalPermissionError=err.message||String(err);
+      recordDiagnostic(INTERNAL_COLLECTION,'error',0,state.internalPermissionError,Date.now()-start);
     }
   }
 
   function buildCatalog(){
     const onlineByCode=new Map();
-    const onlineWithoutCode=[];
+    const onlineBySourceKey=new Map();
     state.onlineProducts.forEach(function(row){
-      const key=normalizeCode(row.code);
-      if(!key){ onlineWithoutCode.push(row); return; }
-      if(!onlineByCode.has(key)) onlineByCode.set(key,[]);
-      onlineByCode.get(key).push(row);
+      const code=normalizeCode(row.code);
+      const sourceKey=onlineSourceKey(row);
+      if(code){ if(!onlineByCode.has(code)) onlineByCode.set(code,[]); onlineByCode.get(code).push(row); }
+      if(sourceKey) onlineBySourceKey.set(sourceKey,row);
     });
-    const internalByCode=new Map();
-    state.internalProducts.forEach(function(row){ if(row.code) internalByCode.set(normalizeCode(row.code),row); });
 
+    const consumedOnlineIds=new Set();
     const combined=[];
     state.internalProducts.forEach(function(internal){
-      const key=normalizeCode(internal.code);
-      const matches=onlineByCode.get(key)||[];
+      let matches=[];
+      if(internal.sourceKey && onlineBySourceKey.has(internal.sourceKey)){
+        matches=[onlineBySourceKey.get(internal.sourceKey)];
+      }else if(internal.code && onlineByCode.has(normalizeCode(internal.code))){
+        matches=onlineByCode.get(normalizeCode(internal.code))||[];
+      }
+      matches.forEach(function(row){ consumedOnlineIds.add(row.id); });
       const online=matches[0]||null;
       const status=matches.length>1?'duplicate':(matches.length===1?'matched':'internal-only');
       combined.push(makeCatalogRow(internal,online,matches,status));
     });
-    onlineByCode.forEach(function(matches,key){
-      if(internalByCode.has(key)) return;
-      if(matches.length>1){
-        combined.push(makeCatalogRow(null,matches[0],matches,'duplicate'));
-      }else{
-        combined.push(makeCatalogRow(null,matches[0],matches,'online-only'));
-      }
+
+    state.onlineProducts.forEach(function(row){
+      if(consumedOnlineIds.has(row.id)) return;
+      const sameCode=row.code?onlineByCode.get(normalizeCode(row.code))||[row]:[row];
+      const status=sameCode.length>1?'duplicate':'online-only';
+      combined.push(makeCatalogRow(null,row,sameCode,status));
     });
-    onlineWithoutCode.forEach(function(row){ combined.push(makeCatalogRow(null,row,[row],'online-only')); });
+
     state.catalog=combined.sort(function(a,b){
-      return clean(a.code).localeCompare(clean(b.code),'zh-Hant',{numeric:true}) || clean(a.internalName||a.onlineName).localeCompare(clean(b.internalName||b.onlineName),'zh-Hant');
+      const codeCompare=clean(a.code).localeCompare(clean(b.code),'zh-Hant',{numeric:true});
+      if(codeCompare) return codeCompare;
+      return clean(a.internalName||a.onlineName).localeCompare(clean(b.internalName||b.onlineName),'zh-Hant');
     });
   }
   function makeCatalogRow(internal,online,matches,status){
+    const internalId=internal?clean(internal.docId):'';
+    const onlineId=online?onlineSourceKey(online):'';
     return {
-      id:(internal?'internal:':'online:')+clean((internal&&internal.code)||(online&&online.id)||Math.random()),
+      id:internal?('internal:'+internalId):('online:'+onlineId),
       code:clean((internal&&internal.code)||(online&&online.code)),
       internal:internal,
       online:online,
@@ -270,7 +305,8 @@
       legacyStockFound:!!(internal&&internal.legacyStockFound),
       legacyStock:internal?internal.legacyStock:0,
       url:online?online.url:'',
-      sourceCollection:online?online.sourceCollection:'',
+      sourceCollection:online?online.sourceCollection:(internal?internal.sourceCollection:''),
+      sourceKey:internal&&internal.sourceKey?internal.sourceKey:(online?onlineSourceKey(online):''),
       remark:internal?internal.remark:''
     };
   }
@@ -292,6 +328,55 @@
     const costIssue=state.internalProducts.filter(function(r){return !r.purchaseCostFound || Number(r.purchaseCost)===0;}).length;
     return {internal:internal,matched:matched,internalOnly:internalOnly,onlineOnly:onlineOnly,duplicate:duplicate,costIssue:costIssue};
   }
+  function pendingAutoCreateRows(){
+    const internalSourceKeys=new Set(state.internalProducts.map(function(row){return clean(row.sourceKey);}).filter(Boolean));
+    const internalCodes=new Set(state.internalProducts.map(function(row){return normalizeCode(row.code);}).filter(Boolean));
+    return state.onlineProducts.filter(function(row){
+      const sourceKey=onlineSourceKey(row);
+      const code=normalizeCode(row.code);
+      if(sourceKey && internalSourceKeys.has(sourceKey)) return false;
+      if(code && internalCodes.has(code)) return false;
+      return true;
+    });
+  }
+  function renderAutoCreateState(){
+    const targets=pendingAutoCreateRows();
+    const button=document.getElementById('masterAutoCreateBtn');
+    const status=document.getElementById('masterAutoCreateStatus');
+    const count=document.getElementById('masterAutoCreateCount');
+    if(count) count.textContent=targets.length.toLocaleString('zh-TW');
+    if(!button || !status) return;
+    if(state.internalPermissionError){
+      button.disabled=true;
+      button.textContent='需先更新 Firestore 規則';
+      status.className='master-import-status bad';
+      status.textContent='目前無法讀寫 opsInternalProducts：'+state.internalPermissionError;
+      return;
+    }
+    if(state.autoCreating){
+      button.disabled=true;
+      button.textContent='建立中...';
+      return;
+    }
+    if(!state.onlineProducts.length){
+      button.disabled=true;
+      button.textContent='尚無網路商品';
+      status.className='master-import-status';
+      status.textContent='尚未讀到 websiteProducts／EasyStore 商品資料。';
+      return;
+    }
+    if(!targets.length){
+      button.disabled=true;
+      button.textContent='商品主檔已建立完成';
+      status.className='master-import-status ok';
+      status.textContent='目前沒有需要新增的網路商品；已存在的內部主檔不會被覆蓋。';
+      return;
+    }
+    button.disabled=false;
+    button.textContent='一鍵建立 '+targets.length.toLocaleString('zh-TW')+' 筆商品主檔';
+    status.className='master-import-status';
+    status.textContent='只會新增尚未建立的商品；名稱與圖片來源會保留，SKU、成本、庫存先留空。';
+  }
 
   function renderOverview(){
     const s=catalogStats();
@@ -302,6 +387,7 @@
     setText('masterKpiOnlineOnly',s.onlineOnly.toLocaleString('zh-TW'));
     setText('masterKpiCostIssue',s.costIssue.toLocaleString('zh-TW'));
     setText('masterKpiDuplicate',s.duplicate.toLocaleString('zh-TW'));
+    renderAutoCreateState();
   }
 
   function filteredCatalog(){
@@ -325,14 +411,19 @@
     });
     return rows;
   }
+  function editButton(row,label){
+    const text=label||'編輯內部資料';
+    if(!row || !row.internal) return '';
+    return '<button class="ops-btn small" type="button" data-master-edit-doc="'+escapeHtml(row.internal.docId)+'">'+escapeHtml(text)+'</button>';
+  }
   function productCard(row){
     const image=row.imageUrl?'<img loading="lazy" src="'+escapeHtml(row.imageUrl)+'" alt="'+escapeHtml(row.onlineName||row.internalName)+'">':'<div class="master-product-placeholder"><div><strong>尚無圖片</strong><br>EasyStore 完成建檔後會自動出現</div></div>';
     const internalName=row.internalName||'尚未建立內部商品';
     const onlineName=row.onlineName||'EasyStore 尚未建檔';
-    const edit=row.internal?'<button class="ops-btn small" type="button" data-master-edit="'+escapeHtml(row.code)+'">編輯內部資料</button>':'<button class="ops-btn small primary" type="button" data-master-create-from-online="'+escapeHtml(row.id)+'">建立內部商品</button>';
+    const edit=row.internal?editButton(row,'編輯內部資料'):'<button class="ops-btn small primary" type="button" data-master-create-from-online="'+escapeHtml(row.id)+'">建立內部商品</button>';
     return '<article class="ops-card master-product-card">'+
       '<div class="master-product-media">'+image+'<span class="master-match-chip '+escapeHtml(row.matchStatus)+'">'+escapeHtml(statusLabel(row.matchStatus))+'</span></div>'+
-      '<div class="master-product-body"><div class="master-code">商品編號：'+escapeHtml(row.code||'未提供')+'</div>'+
+      '<div class="master-product-body"><div class="master-code">商品編號：'+escapeHtml(row.code||'尚未設定')+'</div>'+
       '<div class="master-name-block internal"><span>內部商品名稱</span><strong>'+escapeHtml(internalName)+'</strong></div>'+
       '<div class="master-name-block online"><span>EasyStore 網路名稱</span><strong>'+escapeHtml(onlineName)+'</strong></div>'+
       '<div class="master-price-grid">'+
@@ -372,7 +463,7 @@
     const body=document.getElementById('masterMatchBody'); if(!body) return;
     body.innerHTML=rows.length?rows.slice(0,500).map(function(row){
       const image=row.imageUrl?'<img class="thumb" src="'+escapeHtml(row.imageUrl)+'" alt="">':'—';
-      const action=row.internal?'<button class="ops-btn small" type="button" data-master-edit="'+escapeHtml(row.code)+'">編輯</button>':'<button class="ops-btn small primary" type="button" data-master-create-from-online="'+escapeHtml(row.id)+'">建立內部商品</button>';
+      const action=row.internal?editButton(row,'編輯'):'<button class="ops-btn small primary" type="button" data-master-create-from-online="'+escapeHtml(row.id)+'">建立內部商品</button>';
       return '<tr><td><strong>'+escapeHtml(row.code||'未提供')+'</strong></td><td>'+escapeHtml(row.internalName||'—')+'</td><td>'+escapeHtml(row.onlineName||'—')+(row.onlineMatches.length>1?'<div class="master-row-note">同編號 '+row.onlineMatches.length+' 筆</div>':'')+'</td><td>'+image+'</td><td><span class="master-row-state '+(row.matchStatus==='matched'?'ok':row.matchStatus==='duplicate'?'bad':row.matchStatus==='online-only'?'info':'warn')+'">'+escapeHtml(statusLabel(row.matchStatus))+'</span></td><td>'+action+'</td></tr>';
     }).join(''):'<tr><td colspan="6"><div class="ops-empty"><strong>沒有符合條件的配對資料</strong></div></td></tr>';
   }
@@ -559,13 +650,97 @@
     }
   }
 
+  async function autoCreateMasterProducts(){
+    if(state.autoCreating) return;
+    if(state.internalPermissionError){
+      alert('目前 Firestore 規則尚未允許 opsInternalProducts。請先貼上 A-3 提供的完整規則並發布。');
+      return;
+    }
+    const targets=pendingAutoCreateRows();
+    if(!targets.length){ alert('目前沒有需要建立的商品主檔。'); return; }
+    const message='即將把 '+targets.length.toLocaleString('zh-TW')+' 筆網路商品建立成內部商品主檔。\n\n'+
+      '只新增尚未建立的商品，不會修改 websiteProducts、EasyStore、租賃、員工或其他資料。\n'+
+      'SKU、成本與庫存會先留空，之後再逐步補齊。\n\n確定繼續嗎？';
+    if(!global.confirm(message)) return;
+
+    state.autoCreating=true;
+    const button=document.getElementById('masterAutoCreateBtn');
+    const status=document.getElementById('masterAutoCreateStatus');
+    const progress=document.getElementById('masterAutoCreateProgress');
+    const bar=document.getElementById('masterAutoCreateProgressBar');
+    const text=document.getElementById('masterAutoCreateProgressText');
+    if(progress) progress.hidden=false;
+    if(button){button.disabled=true;button.textContent='建立中...';}
+    if(status){status.className='master-import-status';status.textContent='正在建立商品主檔，請不要關閉頁面。';}
+    let completed=0;
+    const batchId='AUTO-'+new Date().toISOString().replace(/[-:.TZ]/g,'').slice(0,14);
+    try{
+      for(let start=0;start<targets.length;start+=BATCH_SIZE){
+        const batch=state.db.batch();
+        const slice=targets.slice(start,start+BATCH_SIZE);
+        slice.forEach(function(row){
+          const ref=state.db.collection(INTERNAL_COLLECTION).doc(docIdForOnline(row));
+          const payload={
+            internalName:row.onlineName||'未命名商品',
+            source:'onlineAutoCreate',
+            sourceKey:onlineSourceKey(row),
+            sourceCollection:row.sourceCollection||state.onlineSource,
+            sourceProductId:clean(row.id),
+            sourceDocumentId:clean(row.docId),
+            sourceImageUrl:row.imageUrl||'',
+            sourceProductUrl:row.url||'',
+            sourceOnlinePrice:row.onlinePriceFound?row.onlinePrice:null,
+            code:row.code||'',
+            autoCreated:true,
+            masterStatus:'draft',
+            createdAt:global.firebase.firestore.FieldValue.serverTimestamp(),
+            createdAtText:new Date().toISOString(),
+            createdBy:userLabel(),
+            updatedAt:global.firebase.firestore.FieldValue.serverTimestamp(),
+            updatedAtText:new Date().toISOString(),
+            updatedBy:userLabel(),
+            autoCreateBatchId:batchId
+          };
+          batch.set(ref,payload,{merge:true});
+        });
+        await batch.commit();
+        completed+=slice.length;
+        const percent=Math.round(completed/targets.length*100);
+        if(bar) bar.style.width=percent+'%';
+        if(text) text.textContent='已完成 '+completed.toLocaleString('zh-TW')+'／'+targets.length.toLocaleString('zh-TW')+' 筆（'+percent+'%）';
+      }
+      await state.db.collection(IMPORT_COLLECTION).doc(batchId).set({
+        importBatchId:batchId,
+        type:'onlineAutoCreate',
+        sourceCollection:state.onlineSource,
+        writtenRows:targets.length,
+        createdAt:global.firebase.firestore.FieldValue.serverTimestamp(),
+        createdAtText:new Date().toISOString(),
+        createdBy:userLabel()
+      },{merge:true});
+      if(status){status.className='master-import-status ok';status.textContent='建立完成：已新增 '+targets.length.toLocaleString('zh-TW')+' 筆商品主檔。正在重新讀取...';}
+      await reload();
+      switchView('products');
+      alert('商品主檔建立完成。接下來可以逐筆補上 SKU、成本與庫存參考。');
+    }catch(err){
+      if(status){status.className='master-import-status bad';status.textContent='建立失敗：'+(err.message||String(err));}
+      alert('建立失敗：'+(err.message||String(err))+'\n\n若顯示 Missing or insufficient permissions，請先更新 Firestore 規則。');
+    }finally{
+      state.autoCreating=false;
+      renderAutoCreateState();
+    }
+  }
+
   function openProductForm(row){
+    state.editingDocId=row&&row.internal?row.internal.docId:'';
     state.editingCode=row&&row.internal?row.code:'';
-    setText('masterProductModalTitle',state.editingCode?'編輯內部商品':'新增內部商品');
+    state.editingSourceKey=row?row.sourceKey:'';
+    const isEditing=!!state.editingDocId;
+    setText('masterProductModalTitle',isEditing?'編輯內部商品':'新增內部商品');
     document.getElementById('masterEditOriginalCode').value=state.editingCode;
     document.getElementById('masterFormCode').value=row?row.code:'';
-    document.getElementById('masterFormCode').readOnly=!!state.editingCode;
-    document.getElementById('masterFormInternalName').value=row&&row.internalName?row.internalName:'';
+    document.getElementById('masterFormCode').readOnly=!!(isEditing&&state.editingCode);
+    document.getElementById('masterFormInternalName').value=row&&(row.internalName||row.onlineName)?(row.internalName||row.onlineName):'';
     document.getElementById('masterFormPurchaseCost').value=row&&row.purchaseCostFound?row.purchaseCost:'';
     document.getElementById('masterFormStorePrice').value=row&&row.storePriceFound?row.storePrice:'';
     document.getElementById('masterFormLegacyStock').value=row&&row.legacyStockFound?row.legacyStock:'';
@@ -586,12 +761,11 @@
     const remark=clean(document.getElementById('masterFormRemark').value);
     const msg=document.getElementById('masterFormMessage'); const button=document.getElementById('masterProductSaveBtn');
     if(!code||!internalName){ if(msg){msg.className='master-form-message bad';msg.textContent='請輸入商品編號與內部商品名稱。';} return; }
-    if(!state.editingCode){
-      const existing=state.internalProducts.some(function(r){return normalizeCode(r.code)===code;});
-      if(existing){ if(msg){msg.className='master-form-message bad';msg.textContent='此商品編號已存在，請改用編輯功能。';} return; }
-    }
+    const duplicate=state.internalProducts.some(function(r){return normalizeCode(r.code)===code && clean(r.docId)!==clean(state.editingDocId);});
+    if(duplicate){ if(msg){msg.className='master-form-message bad';msg.textContent='此商品編號已存在於其他商品，請使用不同編號。';} return; }
     if(button){button.disabled=true;button.textContent='儲存中...';}
     try{
+      const isEditing=!!state.editingDocId;
       const payload={
         code:code,
         internalName:internalName,
@@ -600,13 +774,19 @@
         legacyStockReference:stock.found?stock.value:null,
         saleRewardPercent:reward.found?reward.value:null,
         remark:remark,
-        source:state.editingCode?'manualEdit':'manualCreate',
+        source:isEditing?'manualEdit':'manualCreate',
         updatedAt:global.firebase.firestore.FieldValue.serverTimestamp(),
         updatedAtText:new Date().toISOString(),
-        updatedBy:clean(state.user&& (state.user.id||state.user.employeeId||state.user.email||state.user.name))
+        updatedBy:userLabel()
       };
-      if(!state.editingCode) payload.createdAt=global.firebase.firestore.FieldValue.serverTimestamp();
-      await state.db.collection(INTERNAL_COLLECTION).doc(docIdForCode(code)).set(payload,{merge:true});
+      if(state.editingSourceKey) payload.sourceKey=state.editingSourceKey;
+      if(!isEditing) payload.createdAt=global.firebase.firestore.FieldValue.serverTimestamp();
+      let targetDocId=state.editingDocId;
+      if(!targetDocId){
+        const sourceRow=state.catalog.find(function(r){return r.sourceKey===state.editingSourceKey && r.online;});
+        targetDocId=sourceRow?docIdForOnline(sourceRow.online):docIdForCode(code);
+      }
+      await state.db.collection(INTERNAL_COLLECTION).doc(targetDocId).set(payload,{merge:true});
       if(msg){msg.className='master-form-message ok';msg.textContent='儲存完成。';}
       await reload(); closeProductForm(); switchView('products');
     }catch(err){
@@ -616,6 +796,7 @@
 
   function rowById(id){ return state.catalog.find(function(r){return r.id===id;}); }
   function rowByCode(code){ return state.catalog.find(function(r){return r.internal&&normalizeCode(r.code)===normalizeCode(code);}); }
+  function rowByInternalDocId(docId){ return state.catalog.find(function(r){return r.internal&&clean(r.internal.docId)===clean(docId);}); }
   function openCreateFromOnline(id){
     const row=rowById(id); if(!row)return;
     openProductForm(row);
@@ -625,9 +806,9 @@
   function openDetail(id){
     const row=rowById(id); if(!row)return;
     const image=row.imageUrl?'<img src="'+escapeHtml(row.imageUrl)+'" alt="">':'<div class="master-product-placeholder"><strong>尚無圖片</strong></div>';
-    const internal='<div class="master-detail-group internal"><h3>內部主檔</h3>'+detailRow('商品編號',row.code||'未提供')+detailRow('內部商品名稱',row.internalName||'尚未建立')+detailRow('商品成本',row.purchaseCostFound?money(row.purchaseCost):'未設定')+detailRow('門市／實體售價',row.storePriceFound?money(row.storePrice):'未設定')+detailRow('舊庫存參考',row.legacyStockFound?String(row.legacyStock):'未提供')+detailRow('備註',row.remark||'—')+'</div>';
+    const internal='<div class="master-detail-group internal"><h3>內部主檔</h3>'+detailRow('商品編號',row.code||'尚未設定')+detailRow('內部商品名稱',row.internalName||'尚未建立')+detailRow('商品成本',row.purchaseCostFound?money(row.purchaseCost):'未設定')+detailRow('門市／實體售價',row.storePriceFound?money(row.storePrice):'未設定')+detailRow('舊庫存參考',row.legacyStockFound?String(row.legacyStock):'未提供')+detailRow('備註',row.remark||'—')+'</div>';
     const online='<div class="master-detail-group online"><h3>EasyStore 網路資料</h3>'+detailRow('網路商品名稱',row.onlineName||'尚未建檔')+detailRow('網路售價',row.onlinePriceFound?money(row.onlinePrice):'未提供')+detailRow('EasyStore 庫存',row.onlineStockFound?String(row.onlineStock):'未提供')+detailRow('資料來源',row.sourceCollection||'—')+detailRow('配對狀態',statusLabel(row.matchStatus))+'</div>';
-    const edit=row.internal?'<button class="ops-btn primary" type="button" data-detail-edit="'+escapeHtml(row.code)+'">編輯內部資料</button>':'<button class="ops-btn primary" type="button" data-detail-create="'+escapeHtml(row.id)+'">建立內部商品</button>';
+    const edit=row.internal?'<button class="ops-btn primary" type="button" data-detail-edit-doc="'+escapeHtml(row.internal.docId)+'">編輯內部資料</button>':'<button class="ops-btn primary" type="button" data-detail-create="'+escapeHtml(row.id)+'">建立內部商品</button>';
     document.getElementById('masterDetailModalBody').innerHTML='<div class="master-detail-layout"><div><div class="master-detail-image">'+image+'</div><div class="master-detail-actions">'+edit+(row.url?'<a class="ops-btn" href="'+escapeHtml(row.url)+'" target="_blank" rel="noopener noreferrer">開啟網路商品</a>':'')+'</div></div><div class="master-detail-columns">'+internal+online+'</div></div>';
     document.getElementById('masterDetailModal').classList.add('is-open'); document.body.style.overflow='hidden';
   }
@@ -671,6 +852,7 @@
     document.querySelectorAll('[data-master-view-link]').forEach(function(el){el.addEventListener('click',function(){switchView(el.getAttribute('data-master-view-link'));});});
     ['masterAddProductBtn','masterAddProductBtn2','overviewAddProductBtn'].forEach(function(id){const el=document.getElementById(id);if(el)el.addEventListener('click',function(){openProductForm(null);});});
     const reloadBtn=document.getElementById('masterReloadBtn'); if(reloadBtn)reloadBtn.addEventListener('click',reload);
+    const autoCreateBtn=document.getElementById('masterAutoCreateBtn'); if(autoCreateBtn)autoCreateBtn.addEventListener('click',autoCreateMasterProducts);
     ['masterProductSearch','masterMatchFilter','masterCostFilter','masterSort'].forEach(function(id){const el=document.getElementById(id);if(el)el.addEventListener(id==='masterProductSearch'?'input':'change',function(){state.visibleCount=PAGE_SIZE;renderProducts();});});
     document.getElementById('masterClearFilters').addEventListener('click',clearFilters);
     document.getElementById('masterProductLoadMore').addEventListener('click',function(){state.visibleCount+=PAGE_SIZE;renderProducts();});
@@ -687,9 +869,9 @@
     document.getElementById('masterDetailModal').addEventListener('click',function(e){if(e.target===e.currentTarget)closeDetail();});
     document.addEventListener('click',function(event){
       const detail=event.target.closest('[data-master-detail]'); if(detail){openDetail(detail.getAttribute('data-master-detail'));return;}
-      const edit=event.target.closest('[data-master-edit]'); if(edit){const row=rowByCode(edit.getAttribute('data-master-edit'));if(row)openProductForm(row);return;}
+      const editDoc=event.target.closest('[data-master-edit-doc]'); if(editDoc){const row=rowByInternalDocId(editDoc.getAttribute('data-master-edit-doc'));if(row)openProductForm(row);return;}
       const create=event.target.closest('[data-master-create-from-online]'); if(create){openCreateFromOnline(create.getAttribute('data-master-create-from-online'));return;}
-      const detailEdit=event.target.closest('[data-detail-edit]'); if(detailEdit){closeDetail();const row=rowByCode(detailEdit.getAttribute('data-detail-edit'));if(row)openProductForm(row);return;}
+      const detailEditDoc=event.target.closest('[data-detail-edit-doc]'); if(detailEditDoc){closeDetail();const row=rowByInternalDocId(detailEditDoc.getAttribute('data-detail-edit-doc'));if(row)openProductForm(row);return;}
       const detailCreate=event.target.closest('[data-detail-create]'); if(detailCreate){closeDetail();openCreateFromOnline(detailCreate.getAttribute('data-detail-create'));}
     });
     document.addEventListener('keydown',function(event){if(event.key==='Escape'){closeProductForm();closeDetail();}});

@@ -4,11 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#172b3d">
-  <title>內部商品主檔｜全通路營運中心</title>
+  <title>內部商品主檔 A-3｜全通路營運中心</title>
   <link rel="stylesheet" href="style.css?v=admin-final-20260530b">
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
-  <link rel="stylesheet" href="operations-phase1.css?v=20260710p1a2">
-  <link rel="stylesheet" href="operations-product-master.css?v=20260710a2">
+  <link rel="stylesheet" href="operations-phase1.css?v=20260710p1a3">
+  <link rel="stylesheet" href="operations-product-master.css?v=20260710a3">
 </head>
 <body class="ops-page ops-master-page" onload="OperationsProductMaster.init()">
   <div class="ops-shell">
@@ -17,7 +17,7 @@
         <img src="yuzu-logo-green.png" alt="柚子">
         <div><strong>全通路營運中心</strong><small>Internal Product Master</small></div>
       </div>
-      <div class="ops-mode-chip ops-mode-write">第一階段 A-2・商品主檔</div>
+      <div class="ops-mode-chip ops-mode-write">第一階段 A-3・自動建立主檔</div>
 
       <nav class="ops-nav" aria-label="商品主檔功能">
         <div class="ops-nav-label">商品主檔</div>
@@ -41,7 +41,7 @@
 
       <div class="ops-sidebar-spacer"></div>
       <a class="ops-back-link" href="settings.html">返回管理首頁</a>
-      <div class="ops-sidebar-note">本頁只寫入新的 <code>opsInternalProducts</code> 商品主檔，不會修改 EasyStore 商品、原租賃合約或原員工資料。</div>
+      <div class="ops-sidebar-note">本頁只新增或編輯 <code>opsInternalProducts</code>，並記錄 <code>opsInternalProductImports</code>。不會修改 websiteProducts、EasyStore、租賃、員工或其他既有集合。</div>
     </aside>
 
     <main class="ops-main">
@@ -69,6 +69,15 @@
             <div><strong>兩套商品資料不互相覆蓋</strong>內部主檔保存商品編號、內部名稱、成本與門市售價；EasyStore 保存網路名稱、網路售價、圖片與商品頁。系統只用完全相同的商品編號／SKU 自動配對。</div>
           </div>
 
+          <article class="ops-card ops-section" id="masterAutoCreateSection">
+            <div class="ops-section-head"><div><h2>第一次建立內部商品主檔</h2><p>系統已讀到的網路商品，可以一次建立成內部主檔；既有資料不會被覆蓋。</p></div><div class="ops-result-meta">待建立 <strong id="masterAutoCreateCount">—</strong> 筆</div></div>
+            <div class="master-action-list">
+              <button class="master-action-card" type="button" id="masterAutoCreateBtn"><span class="icon">＋</span><div><strong>一鍵建立商品主檔</strong><small>帶入網路商品名稱與來源連結；SKU、成本、庫存先保留空白，之後再補。</small></div><span>›</span></button>
+            </div>
+            <div class="master-import-status" id="masterAutoCreateStatus">正在確認可建立的商品數量。</div>
+            <div class="master-progress" id="masterAutoCreateProgress" hidden><div class="bar"><span id="masterAutoCreateProgressBar"></span></div><div id="masterAutoCreateProgressText">準備中</div></div>
+          </article>
+
           <div class="ops-kpi-grid master-kpi-grid">
             <article class="ops-card ops-kpi"><div class="ops-kpi-top"><div class="ops-kpi-label">內部商品主檔</div><div class="ops-kpi-icon">內</div></div><div><div class="ops-kpi-value" id="masterKpiInternal">—</div><div class="ops-kpi-foot">來自 Excel 或線上新增</div></div></article>
             <article class="ops-card ops-kpi"><div class="ops-kpi-top"><div class="ops-kpi-label">已配對 EasyStore</div><div class="ops-kpi-icon">✓</div></div><div><div class="ops-kpi-value" id="masterKpiMatched">—</div><div class="ops-kpi-foot" id="masterKpiMatchedRate">配對率 —</div></div></article>
@@ -91,7 +100,7 @@
             </article>
 
             <article class="ops-card ops-section">
-              <div class="ops-section-head"><div><h2>第一次資料搬移</h2><p>舊 Excel 只需要匯入一次，之後新商品直接在線上建立。</p></div></div>
+              <div class="ops-section-head"><div><h2>其他建立方式</h2><p>一鍵建立適合目前的網路商品；舊 Excel 與單筆新增仍保留作為補充。</p></div></div>
               <div class="master-action-list">
                 <button class="master-action-card" type="button" data-master-view-link="import"><span class="icon">⇩</span><div><strong>匯入舊系統 Excel</strong><small>帶入商品編號、內部名稱、成本、門市售價及舊庫存參考</small></div><span>›</span></button>
                 <button class="master-action-card" type="button" id="overviewAddProductBtn"><span class="icon">＋</span><div><strong>新增一個內部商品</strong><small>適合之後日常建立新商品</small></div><span>›</span></button>
@@ -194,7 +203,7 @@
       <form class="ops-modal-body master-product-form" id="masterProductForm">
         <input type="hidden" id="masterEditOriginalCode">
         <div class="master-form-grid">
-          <label class="master-form-field"><span>商品編號 <b>*</b></span><input class="ops-input" id="masterFormCode" autocomplete="off" required placeholder="例如 2040466"></label>
+          <label class="master-form-field"><span>商品編號／內部 SKU <b>*</b></span><input class="ops-input" id="masterFormCode" autocomplete="off" required placeholder="例如 2040466"><small>自動建立的商品會先空白，第一次編輯時再補上。</small></label>
           <label class="master-form-field wide"><span>內部商品名稱 <b>*</b></span><input class="ops-input" id="masterFormInternalName" required placeholder="實體系統使用的名稱"></label>
           <label class="master-form-field"><span>商品成本</span><input class="ops-input" id="masterFormPurchaseCost" type="number" min="0" step="0.01" placeholder="0"></label>
           <label class="master-form-field"><span>門市／實體售價</span><input class="ops-input" id="masterFormStorePrice" type="number" min="0" step="0.01" placeholder="0"></label>
@@ -220,7 +229,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="app.js?v=admin-final-20260530b"></script>
-  <script src="operations-product-master.js?v=20260710a2"></script>
+  <script src="operations-product-master.js?v=20260710a3"></script>
   <script src="global-nav.js?v=20260603unified1"></script>
   <script src="ui-action-feedback.js?v=20260701safe3"></script>
 </body>
