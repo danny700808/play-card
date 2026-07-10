@@ -19,7 +19,7 @@
   const READ_LIMIT = 10000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.07.10-v2-central-master-fifo';
+  const VERSION = '2026.07.10-v2.1-sku-image-pos';
 
   const state = {
     user:null,
@@ -259,12 +259,39 @@
   }
   function closeDrawer(){ byId('opsDrawer').classList.remove('open'); byId('opsDrawerBackdrop').classList.remove('open'); }
 
+  function recursiveValuesByKeys(value,keys,depth,seen){
+    depth=depth==null?0:depth; seen=seen||new Set(); if(value==null||depth>7) return [];
+    if(typeof value!=='object') return [];
+    if(seen.has(value)) return []; seen.add(value);
+    const wanted=new Set(keys.map(function(k){return lower(k);})); const results=[];
+    Object.keys(value).forEach(function(key){
+      const child=value[key]; if(wanted.has(lower(key)) && child!==undefined && child!==null && clean(child)!=='') results.push(child);
+      if(child&&typeof child==='object') results.push.apply(results,recursiveValuesByKeys(child,keys,depth+1,seen));
+    });
+    return results;
+  }
+  function recursiveFirstCode(obj){
+    const vals=recursiveValuesByKeys(obj,['sku','SKU','code','productCode','itemCode','internalCode','variantSku','商品編號','貨號'],0,new Set());
+    for(const value of vals){ const code=normalizeCode(value); if(code && code.length<=80) return code; }
+    return '';
+  }
+  function recursiveVariantCandidates(obj){
+    const result=[],seen=new Set();
+    function walk(value,depth){
+      if(!value||typeof value!=='object'||depth>7||seen.has(value)) return; seen.add(value);
+      const code=recursiveFirstCode(value), imgs=collectImageUrls(value), name=decodeReadable(firstValue(value,['name','title','variantName','optionName','specification','規格']));
+      if(code && (imgs.length||name||firstNumber(value,['price','salePrice','variantPrice']).found)) result.push(value);
+      Object.keys(value).forEach(function(k){const child=value[k]; if(child&&typeof child==='object') walk(child,depth+1);});
+    }
+    walk(obj,0);
+    const unique=[],codes=new Set(); result.forEach(function(v){const c=recursiveFirstCode(v); if(c&&!codes.has(c)){codes.add(c);unique.push(v);}}); return unique;
+  }
   function normalizeOnlineBase(obj,collection,docId){
     obj=unwrapOnlineObject(obj||{});
     const price=firstNumber(obj,['price','marketPrice','salePrice','websiteOriginalPrice','regularPrice','variantPrice','compareAtPrice','官網價格','價格']);
     const stock=firstNumber(obj,['availableQuantity','availableStock','inventoryQuantity','stockQuantity','quantity','stock','inventory','庫存','庫存數量']);
     const name=decodeReadable(firstValue(obj,['name','title','itemName','productName','商品名稱']))||'未命名網路商品';
-    const sku=normalizeCode(firstValue(obj,['sku','SKU','productCode','itemCode','internalCode','variantSku','商品編號']));
+    const sku=normalizeCode(firstValue(obj,['sku','SKU','productCode','itemCode','internalCode','variantSku','商品編號','code','貨號']))||recursiveFirstCode(obj);
     const sourceId=clean(firstValue(obj,['productId','websiteProductId','itemId','id','__id']))||docId;
     const images=collectImageUrls(obj);
     return {
@@ -277,14 +304,14 @@
     };
   }
   function normalizeOnlineDoc(obj,collection,docId){
-    const root=unwrapOnlineObject(obj||{}); const base=normalizeOnlineBase(root,collection,docId); const variants=onlineVariantList(root);
+    const root=unwrapOnlineObject(obj||{}); const base=normalizeOnlineBase(root,collection,docId); let variants=onlineVariantList(root); if(!variants.length) variants=recursiveVariantCandidates(root);
     if(!variants.length) return [base];
     return variants.map(function(variant,index){
       variant=unwrapOnlineObject(variant||{});
       const row=normalizeOnlineBase(Object.assign({},root,variant),collection,docId+'::'+index);
       row.sourceKey=collection+'::'+docId+'::'+clean(firstValue(variant,['id','variantId','variationId','sku','name','title'])||index);
       row.sourceProductId=base.sourceProductId; row.sourceVariantId=clean(firstValue(variant,['id','variantId','variationId','optionId']))||row.sourceVariantId;
-      row.onlineName=base.onlineName; row.sku=row.sku||normalizeCode(firstValue(variant,['sku','SKU','code','productCode']))||base.sku;
+      row.onlineName=base.onlineName; row.sku=row.sku||normalizeCode(firstValue(variant,['sku','SKU','code','productCode','itemCode','variantSku','貨號']))||recursiveFirstCode(variant)||base.sku;
       row.onlinePrice=row.onlinePrice==null?base.onlinePrice:row.onlinePrice; row.onlineStock=row.onlineStock==null?base.onlineStock:row.onlineStock;
       const variantImages=collectImageUrls(variant); row.imageUrls=[]; variantImages.concat(base.imageUrls||[]).forEach(function(url){if(url&&!row.imageUrls.includes(url))row.imageUrls.push(url);});
       row.imageUrl=row.imageUrls[0]||base.imageUrl; row.url=row.url||base.url; row.brand=row.brand||base.brand; row.category=row.category||base.category;
@@ -556,17 +583,21 @@
   function renderProducts(){
     const rows=productFiltered(),visible=rows.slice(0,state.productVisible),central=state.matchingStats.central,matched=state.matchingStats.matched,noImage=state.catalog.filter(function(p){return !p.imageUrls.length;}).length,negative=state.catalog.filter(function(p){return p.currentStock<0;}).length;
     const banner=central?'<div class="ops-banner"><div class="icon">▦</div><div><h3>中央商品主檔以原始 Excel 為準</h3><p>'+formatNumber(central)+' 筆商品全部保留；相同 SKU 才補上網路名稱、價格與圖片。未上架商品照常顯示，只是沒有圖片。</p></div></div>':'<div class="ops-callout red"><b>現在看到的 '+state.matchingStats.onlineRows+' 筆只是網路商品快取。</b><br>請按「匯入原始商品 Excel」，選擇含 code、name、salePrice、purchasePrice、withoutWarehouseStocks 的檔案，建立完整中央主檔。</div>';
-    return banner+'<div class="ops-kpi-grid">'+kpi('中央商品',formatNumber(central),central?'原始 Excel 商品數':'尚未匯入','▦')+kpi('網路商品／規格',formatNumber(state.matchingStats.onlineRows),'來源 '+(state.onlineSource||'未找到'),'網')+kpi('SKU 配對成功',formatNumber(matched),'補入網路名稱、價格與圖片','鏈')+kpi('未配對／未上架',formatNumber(state.matchingStats.unmatchedCentral),'仍保留在中央主檔','—')+kpi('沒有圖片',formatNumber(noImage),'未上架或 EasyStore 無圖片','圖')+kpi('負庫存異常',formatNumber(negative),'保留原始數字，待盤點修正','!')+'</div><section class="ops-card"><div class="ops-card-head"><div><h2>商品與庫存</h2><p>顯示 '+visible.length+' / '+rows.length+' 筆中央商品。</p></div><div class="ops-card-actions"><button class="ops-button soft" data-action="download-product-template">下載中央主檔 CSV</button><button class="ops-button primary" data-action="open-import">'+(central?'重新匯入／更新原始 Excel':'匯入原始商品 Excel')+'</button></div></div><div class="ops-toolbar"><input class="ops-input grow" id="productSearch" placeholder="搜尋原始名稱、網路名稱、SKU、品牌或分類" value="'+attr(state.productSearch)+'"><select class="ops-select" id="productFilter"><option value="all">全部中央商品</option><option value="matched">已配對網路商品</option><option value="unmatched">未上架／未配對</option><option value="no-image">沒有圖片</option><option value="missing-cost">缺少成本</option><option value="low">低庫存／缺貨</option><option value="in-stock">有庫存</option><option value="negative">負庫存異常</option></select><select class="ops-select" id="productSort"><option value="name">依原始名稱</option><option value="sku">依 SKU</option><option value="stock">依庫存</option><option value="cost">依 FIFO 成本</option><option value="price">依原始定價</option></select></div>'+(visible.length?'<div class="ops-products-grid">'+visible.map(productCard).join('')+'</div>'+(visible.length<rows.length?'<div class="ops-pagination"><button class="ops-button ghost" data-action="load-more-products">顯示更多</button></div>':''):emptyHtml(central?'找不到符合條件的商品':'尚未建立中央商品主檔',central?'請調整搜尋或篩選條件。':'請先匯入原始 Excel。','<button class="ops-button primary" data-action="open-import">匯入原始商品 Excel</button>'))+'</section>';
+    return banner+'<div class="ops-kpi-grid">'+kpi('中央商品',formatNumber(central),central?'原始 Excel 商品數':'尚未匯入','▦')+kpi('網路快取解析列',formatNumber(state.matchingStats.onlineRows),'僅供 SKU／圖片配對；不是中央商品數','網')+kpi('SKU 配對成功',formatNumber(matched),'補入網路名稱、價格與圖片','鏈')+kpi('未配對／未上架',formatNumber(state.matchingStats.unmatchedCentral),'仍保留在中央主檔','—')+kpi('沒有圖片',formatNumber(noImage),'未上架或 EasyStore 無圖片','圖')+kpi('負庫存異常',formatNumber(negative),'保留原始數字，待盤點修正','!')+'</div><section class="ops-card ops-pairing-card"><div class="ops-card-head"><div><h2>SKU 圖片配對狀態</h2><p>中央商品以 Excel code 為準；只在網路快取找到完全相同 SKU 時補入網路名稱、價格與圖片。</p></div><button class="ops-button ghost" data-action="refresh">重新解析網路快取</button></div><div class="ops-summary-list"><div class="ops-summary-line"><span>中央商品總數</span><b>'+formatNumber(central)+'</b></div><div class="ops-summary-line"><span>已找到相同 SKU</span><b>'+formatNumber(matched)+'</b></div><div class="ops-summary-line"><span>未上架／未配對</span><b>'+formatNumber(state.matchingStats.unmatchedCentral)+'</b></div><div class="ops-summary-line"><span>成功取得圖片</span><b>'+formatNumber(state.catalog.filter(function(p){return p.imageUrls.length;}).length)+'</b></div><div class="ops-summary-line"><span>網路快取來源</span><b>'+escapeHtml(state.onlineSource||'未找到')+'</b></div></div><div class="ops-callout"><b>49 的意義：</b>它只是目前 Firebase 網路快取中的父商品文件數；不代表商品數，也不會取代 5,701 筆中央商品。</div></section><section class="ops-card"><div class="ops-card-head"><div><h2>商品與庫存</h2><p>顯示 '+visible.length+' / '+rows.length+' 筆中央商品。</p></div><div class="ops-card-actions"><button class="ops-button soft" data-action="download-product-template">下載中央主檔 CSV</button><button class="ops-button primary" data-action="open-import">'+(central?'重新匯入／更新原始 Excel':'匯入原始商品 Excel')+'</button></div></div><div class="ops-toolbar"><input class="ops-input grow" id="productSearch" placeholder="搜尋原始名稱、網路名稱、SKU、品牌或分類" value="'+attr(state.productSearch)+'"><select class="ops-select" id="productFilter"><option value="all">全部中央商品</option><option value="matched">已配對網路商品</option><option value="unmatched">未上架／未配對</option><option value="no-image">沒有圖片</option><option value="missing-cost">缺少成本</option><option value="low">低庫存／缺貨</option><option value="in-stock">有庫存</option><option value="negative">負庫存異常</option></select><select class="ops-select" id="productSort"><option value="name">依原始名稱</option><option value="sku">依 SKU</option><option value="stock">依庫存</option><option value="cost">依 FIFO 成本</option><option value="price">依原始定價</option></select></div>'+(visible.length?'<div class="ops-products-grid">'+visible.map(productCard).join('')+'</div>'+(visible.length<rows.length?'<div class="ops-pagination"><button class="ops-button ghost" data-action="load-more-products">顯示更多</button></div>':''):emptyHtml(central?'找不到符合條件的商品':'尚未建立中央商品主檔',central?'請調整搜尋或篩選條件。':'請先匯入原始 Excel。','<button class="ops-button primary" data-action="open-import">匯入原始商品 Excel</button>'))+'</section>';
   }
 
   function estimateFifoCostForProduct(p,qty){if(!p||!p.internal)return 0;try{return consumeFifo(p.internal,qty).costTotal;}catch(err){return qty*Number(p.nextFifoCost||p.averageCost||0);}}
   function estimateCartCost(){return sum(state.cart,function(item){const p=catalogById(item.productId);return estimateFifoCostForProduct(p,item.qty);});}
   function renderSales(){
-    const products=state.catalog.filter(function(p){return p.initialized&&p.status!=='inactive';}); const term=lower(state.posSearch); const choices=products.filter(function(p){return !term||lower([p.originalName,p.onlineName,p.sku].join(' ')).includes(term);}).slice(0,100);
+    const products=state.catalog.filter(function(p){return p.initialized&&p.status!=='inactive';}); const term=lower(state.posSearch).trim();
+    const choices=term.length>=1?products.filter(function(p){return lower([p.originalName,p.onlineName,p.sku,p.barcode,p.brand,p.category].join(' ')).includes(term);}).slice(0,30):[];
     const cartSubtotal=sum(state.cart,function(x){return x.qty*x.unitPrice;}); const cartCost=estimateCartCost(); const todaySales=todayRows(state.sales,function(x){return x.soldAt;}); const todayIncome=todayRows(state.incomes,function(x){return x.occurredAt;});
-    const productHtml=choices.length?choices.map(function(p){return '<button class="ops-pos-item" data-action="cart-add" data-id="'+attr(p.docId)+'"><img src="'+attr(p.imageUrl||'yuzu-logo-green.png')+'" alt=""><div><b>'+escapeHtml(p.originalName||p.name)+'</b><small>SKU '+escapeHtml(p.sku||'未設定')+'・庫存 '+formatNumber(p.currentStock)+'・'+money(p.storePrice)+'</small></div></button>';}).join(''):emptyHtml('沒有中央商品','請先匯入原始商品 Excel。');
-    const cartHtml=state.cart.length?state.cart.map(function(item,index){const p=catalogById(item.productId);return '<div class="ops-cart-row"><div><b>'+escapeHtml(item.name)+'</b><small>庫存 '+formatNumber(p?p.currentStock:item.currentStock)+'・下一件 FIFO '+money(p?p.nextFifoCost:null)+'</small></div><input type="number" min="1" step="1" value="'+item.qty+'" data-cart-qty="'+index+'"><input type="number" min="0" step="1" value="'+item.unitPrice+'" data-cart-price="'+index+'"><button class="ops-icon-button" data-action="cart-remove" data-index="'+index+'">×</button></div>';}).join(''):emptyHtml('銷售清單是空的','點左側商品加入本次現場銷售。');
-    return '<div class="ops-kpi-grid">'+kpi('今日現場銷售',money(sum(todaySales,function(x){return x.total;})),todaySales.length+' 筆','＄')+kpi('今日快速收入',money(sum(todayIncome,function(x){return x.amount;})),todayIncome.length+' 筆','＋')+kpi('今日銷貨成本',money(sum(todaySales,function(x){return x.costTotal;})),'依 FIFO 批次','成本')+kpi('今日暫估毛利',money(sum(todaySales,function(x){return x.grossProfit;})+sum(todayIncome,function(x){return x.amount;})),'未扣一般支出','↗')+kpi('本次銷售小計',money(cartSubtotal),state.cart.length+' 個品項','單')+kpi('本次預估 FIFO 成本',money(cartCost),'依目前成本層','庫')+'</div><div class="ops-tabs"><button class="ops-tab active" data-sales-tab="product">商品銷售</button><button class="ops-tab" data-action="open-quick-income">＋ 快速收入</button><button class="ops-tab" data-action="show-sales-history">銷售紀錄</button></div><div class="ops-pos-layout"><section class="ops-card"><div class="ops-card-head"><div><h2>選擇商品</h2><p>可用原始名稱、網路名稱或 SKU 搜尋。</p></div></div><div class="ops-toolbar"><input class="ops-input grow" id="posSearch" placeholder="搜尋現場商品" value="'+attr(state.posSearch)+'"></div><div class="ops-pos-products">'+productHtml+'</div></section><section class="ops-card"><div class="ops-card-head"><div><h2>本次銷售</h2><p>完成後依 FIFO 扣除最早成本批次與庫存。</p></div><button class="ops-button small ghost" data-action="cart-clear">清空</button></div><div class="ops-cart">'+cartHtml+'</div><div class="ops-summary-list" style="margin-top:13px"><div class="ops-summary-line"><span>商品小計</span><b id="cartSubtotal">'+money(cartSubtotal)+'</b></div><div class="ops-summary-line"><span>預估 FIFO 成本</span><b id="cartCost">'+money(cartCost)+'</b></div></div><div style="margin-top:13px"><button class="ops-button primary wide" data-action="checkout" '+(state.cart.length?'':'disabled')+'>結帳並扣庫存</button></div></section></div>';
+    let productHtml='';
+    if(!term) productHtml=emptyHtml('請先搜尋商品','輸入商品編號、原始名稱、網路名稱或條碼後，才會顯示可選商品。');
+    else if(choices.length) productHtml=choices.map(function(p){const img=p.imageUrl||'';return '<button class="ops-pos-item" data-action="cart-add" data-id="'+attr(p.docId)+'">'+(img?'<img loading="lazy" src="'+attr(img)+'" alt="" onerror="this.style.display=\'none\'">':'<div class="ops-pos-no-image">無圖</div>')+'<div><b>'+escapeHtml(p.originalName||p.name)+'</b>'+(p.onlineName?'<small class="ops-pos-online">網路：'+escapeHtml(p.onlineName)+'</small>':'')+'<small>SKU '+escapeHtml(p.sku||'未設定')+'・庫存 '+formatNumber(p.currentStock)+'・'+money(p.storePrice)+'</small></div></button>';}).join('');
+    else productHtml=emptyHtml('搜尋不到商品','請改用完整 SKU、原始名稱或網路名稱搜尋。');
+    const cartHtml=state.cart.length?state.cart.map(function(item,index){const p=catalogById(item.productId);return '<div class="ops-cart-row"><div><b>'+escapeHtml(item.name)+'</b><small>SKU '+escapeHtml(item.sku||'')+'・庫存 '+formatNumber(p?p.currentStock:item.currentStock)+'・下一件 FIFO '+money(p?p.nextFifoCost:null)+'</small></div><input type="number" min="1" step="1" value="'+item.qty+'" data-cart-qty="'+index+'"><input type="number" min="0" step="1" value="'+item.unitPrice+'" data-cart-price="'+index+'"><button class="ops-icon-button" data-action="cart-remove" data-index="'+index+'">×</button></div>';}).join(''):emptyHtml('本次銷售尚無商品','先在左側搜尋商品，再點選加入。');
+    return '<div class="ops-kpi-grid">'+kpi('今日現場銷售',money(sum(todaySales,function(x){return x.total;})),todaySales.length+' 筆','＄')+kpi('今日快速收入',money(sum(todayIncome,function(x){return x.amount;})),todayIncome.length+' 筆','＋')+kpi('今日銷貨成本',money(sum(todaySales,function(x){return x.costTotal;})),'依 FIFO 批次','成本')+kpi('今日暫估毛利',money(sum(todaySales,function(x){return x.grossProfit;})+sum(todayIncome,function(x){return x.amount;})),'未扣一般支出','↗')+kpi('本次銷售小計',money(cartSubtotal),state.cart.length+' 個品項','單')+kpi('本次預估 FIFO 成本',money(cartCost),'依目前成本層','庫')+'</div><div class="ops-tabs"><button class="ops-tab active" data-sales-tab="product">商品銷售</button><button class="ops-tab" data-action="open-quick-income">＋ 快速收入</button><button class="ops-tab" data-action="show-sales-history">銷售紀錄</button></div><div class="ops-pos-layout"><section class="ops-card"><div class="ops-card-head"><div><h2>搜尋商品加入銷售</h2><p>不預先列出 5,701 筆商品；輸入關鍵字後最多顯示 30 筆。</p></div></div><div class="ops-toolbar"><input class="ops-input grow ops-pos-search" id="posSearch" autofocus placeholder="輸入 SKU、商品名稱、網路名稱或條碼" value="'+attr(state.posSearch)+'"><button class="ops-button ghost" data-action="pos-clear-search">清除</button></div><div class="ops-pos-products">'+productHtml+'</div></section><section class="ops-card"><div class="ops-card-head"><div><h2>本次銷售</h2><p>點選商品後加入；結帳才依 FIFO 扣庫存。</p></div><button class="ops-button small ghost" data-action="cart-clear">清空</button></div><div class="ops-cart">'+cartHtml+'</div><div class="ops-summary-list" style="margin-top:13px"><div class="ops-summary-line"><span>商品小計</span><b id="cartSubtotal">'+money(cartSubtotal)+'</b></div><div class="ops-summary-line"><span>預估 FIFO 成本</span><b id="cartCost">'+money(cartCost)+'</b></div></div><div style="margin-top:13px"><button class="ops-button primary wide" data-action="checkout" '+(state.cart.length?'':'disabled')+'>結帳並扣庫存</button></div></section></div>';
   }
 
   function renderPurchases(){
@@ -781,7 +812,8 @@
     if(action==='load-more-products'){state.productVisible+=PRODUCT_PAGE_SIZE;return render();}
     if(action==='cart-add') return addCartProduct(el.dataset.id);
     if(action==='cart-remove'){state.cart.splice(Number(el.dataset.index),1);return render();}
-    if(action==='cart-clear'){state.cart=[];return render();}
+    if(action==='pos-clear-search'){state.posSearch='';return render();}
+      if(action==='cart-clear'){state.cart=[];return render();}
     if(action==='checkout') return checkoutDrawer();
     if(action==='open-quick-income') return openQuickIncome();
     if(action==='show-sales-history') return openSalesHistory();
