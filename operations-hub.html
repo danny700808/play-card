@@ -6,33 +6,29 @@
   <meta name="theme-color" content="#173247">
   <title>全通路營運中心</title>
   <link rel="icon" href="yuzu-logo-green.png">
-  <link rel="stylesheet" href="operations-phase1.css?v=20260711compact3">
+  <link rel="stylesheet" href="operations-phase1.css?v=20260711compact2">
 </head>
 <body class="ops-body">
   <div class="ops-shell" id="opsShell">
     <main class="ops-main">
       <header class="ops-topbar">
-        <div class="ops-top-brand">
-          <img src="yuzu-logo-green.png" alt="柚子樂器">
-          <div class="ops-title-wrap">
-            <strong>全通路營運中心</strong>
-            <h1 id="opsPageTitle">營運總覽</h1>
-          </div>
+        <div class="ops-title-wrap">
+          <h1 id="opsPageTitle">營運總覽</h1>
         </div>
         <div class="ops-top-actions">
           <button class="ops-button danger-outline" id="opsLogoutBtn" type="button">登出</button>
         </div>
       </header>
 
-      <nav class="ops-nav ops-home-nav" id="opsNav" aria-label="全通路營運中心功能">
+      <nav class="ops-quick-nav" id="opsNav" aria-label="全通路營運中心功能">
         <a href="#overview" data-view="overview"><span>⌂</span><b>營運總覽</b></a>
         <a href="#products" data-view="products"><span>▦</span><b>商品庫存</b></a>
         <a href="#sales" data-view="sales"><span>＄</span><b>現場銷售</b></a>
-        <a href="#purchases" data-view="purchases"><span>⇧</span><b>進貨異動</b></a>
+        <a href="#purchases" data-view="purchases"><span>⇧</span><b>進貨庫存</b></a>
         <a href="#rentals" data-view="rentals"><span>♫</span><b>租賃損益</b></a>
         <a href="#cases" data-view="cases"><span>▣</span><b>案件管理</b></a>
         <a href="#finance" data-view="finance"><span>◫</span><b>毛利收支</b></a>
-        <a href="#sync" data-view="sync"><span>↻</span><b>訂單同步</b></a>
+        <a href="#sync" data-view="sync"><span>↻</span><b>平台訂單</b></a>
         <a href="#connection" data-view="connection"><span>●</span><b>資料備份</b></a>
       </nav>
 
@@ -63,7 +59,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="app.js?v=admin-final-20260530b"></script>
-  <script src="operations-phase1.js?v=20260711compact3"></script>
+  <script src="operations-phase1.js?v=20260711compact2"></script>
   <script src="ui-action-feedback.js?v=20260701safe3"></script>
 </body>
 </html>
