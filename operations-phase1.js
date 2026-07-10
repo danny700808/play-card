@@ -1,7 +1,7 @@
 (function(global){
   'use strict';
 
-  const ONLINE_COLLECTIONS = []; // V2.2：不再讀取舊 websiteProducts 49 筆快取
+  const ONLINE_COLLECTIONS = []; // V3：網路資料只由 EasyStore API 提供
   const COLLECTIONS = {
     products:'opsInternalProducts',
     inventory:'opsInventoryTransactions',
@@ -19,7 +19,7 @@
   const READ_LIMIT = 10000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.07.10-v2.2-easystore-api';
+  const VERSION = '2026.07.10-v3-easystore-direct-sync';
 
   const state = {
     user:null,
@@ -581,7 +581,7 @@
   function renderProducts(){
     const rows=productFiltered(),visible=rows.slice(0,state.productVisible),central=state.matchingStats.central,matched=state.matchingStats.matched,noImage=state.catalog.filter(function(p){return !p.imageUrls.length;}).length,negative=state.catalog.filter(function(p){return p.currentStock<0;}).length;
     const banner=central?'<div class="ops-banner"><div class="icon">▦</div><div><h3>中央商品主檔以原始 Excel 為準</h3><p>'+formatNumber(central)+' 筆商品全部保留；相同 SKU 才補上網路名稱、價格與圖片。未上架商品照常顯示，只是沒有圖片。</p></div></div>':'<div class="ops-callout red"><b>尚未建立中央商品主檔。</b><br>請按「匯入原始商品 Excel」，選擇含 code、name、salePrice、purchasePrice、withoutWarehouseStocks 的檔案，建立完整中央主檔。</div>';
-    return banner+'<div class="ops-kpi-grid">'+kpi('中央商品',formatNumber(central),central?'原始 Excel 商品數':'尚未匯入','▦')+kpi('EasyStore API 規格',formatNumber(state.easyStoreSync.variantCount||0),'直接由 EasyStore API 同步','網')+kpi('SKU 配對成功',formatNumber(matched),'補入網路名稱、價格與圖片','鏈')+kpi('未配對／未上架',formatNumber(state.matchingStats.unmatchedCentral),'仍保留在中央主檔','—')+kpi('沒有圖片',formatNumber(noImage),'未上架或 EasyStore 無圖片','圖')+kpi('負庫存異常',formatNumber(negative),'保留原始數字，待盤點修正','!')+'</div><section class="ops-card ops-pairing-card"><div class="ops-card-head"><div><h2>SKU 圖片配對狀態</h2><p>中央商品以 Excel code 為準；由後端直接讀取 EasyStore API，再以完全相同 SKU 補入網路名稱、價格與圖片。</p></div><button class="ops-button primary" data-action="sync-easystore-api">從 EasyStore API 同步圖片</button></div><div class="ops-summary-list"><div class="ops-summary-line"><span>中央商品總數</span><b>'+formatNumber(central)+'</b></div><div class="ops-summary-line"><span>已找到相同 SKU</span><b>'+formatNumber(matched)+'</b></div><div class="ops-summary-line"><span>未上架／未配對</span><b>'+formatNumber(state.matchingStats.unmatchedCentral)+'</b></div><div class="ops-summary-line"><span>成功取得圖片</span><b>'+formatNumber(state.catalog.filter(function(p){return p.imageUrls.length;}).length)+'</b></div><div class="ops-summary-line"><span>EasyStore 父商品數</span><b>'+formatNumber(state.easyStoreSync.productCount||0)+'</b></div><div class="ops-summary-line"><span>最後 API 同步</span><b>'+escapeHtml(dateTimeText(state.easyStoreSync.completedAt||state.easyStoreSync.updatedAt)||'尚未同步')+'</b></div></div><div class="ops-callout green"><b>正式資料來源：</b>不再讀取 websiteProducts 的 49 筆舊快取。按上方按鈕後，Firebase Function 會直接讀取 EasyStore API 全部商品與規格，再以 SKU 對照中央商品。</div></section><section class="ops-card"><div class="ops-card-head"><div><h2>商品與庫存</h2><p>顯示 '+visible.length+' / '+rows.length+' 筆中央商品。</p></div><div class="ops-card-actions"><button class="ops-button soft" data-action="download-product-template">下載中央主檔 CSV</button><button class="ops-button primary" data-action="open-import">'+(central?'重新匯入／更新原始 Excel':'匯入原始商品 Excel')+'</button></div></div><div class="ops-toolbar"><input class="ops-input grow" id="productSearch" placeholder="搜尋原始名稱、網路名稱、SKU、品牌或分類" value="'+attr(state.productSearch)+'"><select class="ops-select" id="productFilter"><option value="all">全部中央商品</option><option value="matched">已配對網路商品</option><option value="unmatched">未上架／未配對</option><option value="no-image">沒有圖片</option><option value="missing-cost">缺少成本</option><option value="low">低庫存／缺貨</option><option value="in-stock">有庫存</option><option value="negative">負庫存異常</option></select><select class="ops-select" id="productSort"><option value="name">依原始名稱</option><option value="sku">依 SKU</option><option value="stock">依庫存</option><option value="cost">依 FIFO 成本</option><option value="price">依原始定價</option></select></div>'+(visible.length?'<div class="ops-products-grid">'+visible.map(productCard).join('')+'</div>'+(visible.length<rows.length?'<div class="ops-pagination"><button class="ops-button ghost" data-action="load-more-products">顯示更多</button></div>':''):emptyHtml(central?'找不到符合條件的商品':'尚未建立中央商品主檔',central?'請調整搜尋或篩選條件。':'請先匯入原始 Excel。','<button class="ops-button primary" data-action="open-import">匯入原始商品 Excel</button>'))+'</section>';
+    return banner+'<div class="ops-kpi-grid">'+kpi('中央商品',formatNumber(central),central?'原始 Excel 商品數':'尚未匯入','▦')+kpi('EasyStore API 規格',formatNumber(state.easyStoreSync.variantCount||0),'直接由 EasyStore API 同步','網')+kpi('SKU 配對成功',formatNumber(matched),'補入網路名稱、價格與圖片','鏈')+kpi('未配對／未上架',formatNumber(state.matchingStats.unmatchedCentral),'仍保留在中央主檔','—')+kpi('沒有圖片',formatNumber(noImage),'未上架或 EasyStore 無圖片','圖')+kpi('負庫存異常',formatNumber(negative),'保留原始數字，待盤點修正','!')+'</div><section class="ops-card ops-pairing-card"><div class="ops-card-head"><div><h2>SKU 圖片配對狀態</h2><p>中央商品以 Excel code 為準；由後端直接讀取 EasyStore API，再以完全相同 SKU 補入網路名稱、價格與圖片。</p></div><button class="ops-button primary" data-action="sync-easystore-api">從 EasyStore API 同步圖片</button></div><div class="ops-summary-list"><div class="ops-summary-line"><span>中央商品總數</span><b>'+formatNumber(central)+'</b></div><div class="ops-summary-line"><span>已找到相同 SKU</span><b>'+formatNumber(matched)+'</b></div><div class="ops-summary-line"><span>未上架／未配對</span><b>'+formatNumber(state.matchingStats.unmatchedCentral)+'</b></div><div class="ops-summary-line"><span>成功取得圖片</span><b>'+formatNumber(state.catalog.filter(function(p){return p.imageUrls.length;}).length)+'</b></div><div class="ops-summary-line"><span>EasyStore 父商品數</span><b>'+formatNumber(state.easyStoreSync.productCount||0)+'</b></div><div class="ops-summary-line"><span>最後 API 同步</span><b>'+escapeHtml(dateTimeText(state.easyStoreSync.completedAt||state.easyStoreSync.updatedAt)||'尚未同步')+'</b></div></div><div class="ops-callout green"><b>正式資料來源：</b>按上方按鈕後，Firebase Function 會直接讀取 EasyStore API 全部商品與規格，再以完全相同 SKU 對照中央商品。</div></section><section class="ops-card"><div class="ops-card-head"><div><h2>商品與庫存</h2><p>顯示 '+visible.length+' / '+rows.length+' 筆中央商品。</p></div><div class="ops-card-actions"><button class="ops-button soft" data-action="download-product-template">下載中央主檔 CSV</button><button class="ops-button primary" data-action="open-import">'+(central?'重新匯入／更新原始 Excel':'匯入原始商品 Excel')+'</button></div></div><div class="ops-toolbar"><input class="ops-input grow" id="productSearch" placeholder="搜尋原始名稱、網路名稱、SKU、品牌或分類" value="'+attr(state.productSearch)+'"><select class="ops-select" id="productFilter"><option value="all">全部中央商品</option><option value="matched">已配對網路商品</option><option value="unmatched">未上架／未配對</option><option value="no-image">沒有圖片</option><option value="missing-cost">缺少成本</option><option value="low">低庫存／缺貨</option><option value="in-stock">有庫存</option><option value="negative">負庫存異常</option></select><select class="ops-select" id="productSort"><option value="name">依原始名稱</option><option value="sku">依 SKU</option><option value="stock">依庫存</option><option value="cost">依 FIFO 成本</option><option value="price">依原始定價</option></select></div>'+(visible.length?'<div class="ops-products-grid">'+visible.map(productCard).join('')+'</div>'+(visible.length<rows.length?'<div class="ops-pagination"><button class="ops-button ghost" data-action="load-more-products">顯示更多</button></div>':''):emptyHtml(central?'找不到符合條件的商品':'尚未建立中央商品主檔',central?'請調整搜尋或篩選條件。':'請先匯入原始 Excel。','<button class="ops-button primary" data-action="open-import">匯入原始商品 Excel</button>'))+'</section>';
   }
 
   function estimateFifoCostForProduct(p,qty){if(!p||!p.internal)return 0;try{return consumeFifo(p.internal,qty).costTotal;}catch(err){return qty*Number(p.nextFifoCost||p.averageCost||0);}}
@@ -805,23 +805,22 @@
     if(!(global.firebase&&global.firebase.functions)) return toast('無法同步','頁面未載入 Firebase Functions SDK。','warning');
     const central=state.internalProducts.length;
     if(!central) return toast('尚無中央商品','請先匯入原始商品 Excel。','warning');
-    const syncKey=global.prompt('請輸入 EasyStore 同步密碼（部署 Function 時設定的 OPERATIONS_SYNC_KEY）：','');
-    if(syncKey===null) return;
-    if(!clean(syncKey)) return toast('未輸入同步密碼','已取消同步。','warning');
-    const yes=await confirmAction('從 EasyStore API 同步','將直接讀取 EasyStore 全部商品與規格，以 SKU 對照 '+central+' 筆中央商品並回寫網路名稱、售價與圖片。這不會修改 EasyStore 商品。','開始同步');
+    const yes=await confirmAction('從 EasyStore API 同步','將直接讀取 EasyStore 全部商品與規格，以完全相同 SKU 對照 '+central+' 筆中央商品，補入網路名稱、售價與圖片。這個動作只讀 EasyStore，不會修改 EasyStore 商品或庫存。','開始同步');
     if(!yes) return;
-    showAlert('正在從 EasyStore API 讀取全部商品、規格與圖片。商品較多時可能需要數分鐘，請勿關閉頁面。','info');
+    showAlert('正在從 EasyStore API 讀取全部商品、規格與圖片。商品較多時可能需要數分鐘，請勿重複按同步。','info');
     try{
       const callable=global.firebase.app().functions('us-central1').httpsCallable('syncEasyStoreCatalog');
-      const response=await callable({syncKey:syncKey});
+      const response=await callable({force:true});
       const result=(response&&response.data)||{};
       if(!result.ok) throw new Error(result.message||'同步失敗');
+      clearAlert();
       toast('EasyStore API 同步完成','父商品 '+formatNumber(result.productCount)+'、規格 SKU '+formatNumber(result.variantCount)+'、配對 '+formatNumber(result.matchedCount)+'、有圖片 '+formatNumber(result.imageMatchedCount),'success');
       await loadAll(true);
     }catch(error){
       console.error(error);
-      toast('EasyStore API 同步失敗',errorMessage(error),'warning');
-      showAlert('EasyStore API 同步失敗：'+errorMessage(error),'error');
+      const message=errorMessage(error);
+      toast('EasyStore API 同步失敗',message,'warning');
+      showAlert('EasyStore API 同步失敗：'+message,'error');
     }
   }
 

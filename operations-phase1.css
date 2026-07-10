@@ -284,3 +284,11 @@ a{color:inherit;text-decoration:none}
 
 /* V2：中央商品主檔、雙名稱與圖片圖庫 */
 .ops-product-online-name{font-size:12px;color:#48657a;line-height:1.45;margin-top:5px;min-height:34px}.ops-product-online-name.muted{color:#8b99a5}.ops-detail-gallery{width:220px;display:grid;grid-template-columns:1fr 1fr;gap:7px;align-self:start}.ops-detail-gallery img{width:100%;height:78px;object-fit:contain;border:1px solid #dbe5ec;border-radius:10px;background:#fff}.ops-detail-gallery img.main{grid-column:1/-1;height:165px}.ops-detail-no-image{grid-column:1/-1;height:165px;border:1px dashed #cbd8e1;border-radius:12px;display:grid;place-items:center;color:#8293a0;background:#f7fafc}@media(max-width:720px){.ops-detail-gallery{width:100%;max-width:320px}.ops-detail-gallery img.main{height:190px}}
+
+/* V2.1：SKU 圖片配對與搜尋式 POS */
+.ops-pairing-card{margin-bottom:15px;border:1px solid rgba(36,139,104,.22)}
+.ops-pos-search{font-size:17px;font-weight:700;min-height:48px}
+.ops-pos-no-image{width:58px;height:58px;border-radius:12px;background:#eef2ef;display:grid;place-items:center;color:#78847d;font-size:12px;flex:0 0 auto}
+.ops-pos-online{display:block;color:#287f65;margin:3px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ops-pos-item{align-items:center}
+@media(max-width:720px){.ops-pos-search{font-size:16px}.ops-pos-products{max-height:46vh}.ops-pos-item img,.ops-pos-no-image{width:52px;height:52px}}
