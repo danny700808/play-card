@@ -1,0 +1,60 @@
+--- /mnt/data/phase1_work/settings.original.html	2026-07-10 10:49:09.869474900 +0000
++++ /mnt/data/phase1_work/play-card-main/settings.html	2026-07-10 10:49:10.944729905 +0000
+@@ -325,6 +325,39 @@
+       display:none!important;
+     }
+ 
++
++    /* 全通路營運中心第一階段入口：只增加連結，不在管理首頁載入商品或租賃資料。 */
++    .operations-entry-card{
++      display:flex;
++      align-items:center;
++      justify-content:space-between;
++      gap:18px;
++      margin:0 0 14px;
++      padding:22px 24px;
++      border-radius:26px;
++      background:linear-gradient(135deg,#173b4c 0%,#1f7a5a 72%,#2d8a69 100%);
++      color:#fff;
++      text-decoration:none;
++      box-shadow:0 16px 34px rgba(23,59,76,.20);
++      border:1px solid rgba(255,255,255,.16);
++      transition:transform .18s ease,box-shadow .18s ease;
++    }
++    .operations-entry-card:hover{transform:translateY(-2px);box-shadow:0 20px 40px rgba(23,59,76,.25)}
++    .operations-entry-main{display:flex;align-items:center;gap:16px;min-width:0}
++    .operations-entry-icon{width:56px;height:56px;flex:0 0 auto;border-radius:18px;background:rgba(255,255,255,.14);display:grid;place-items:center;font-size:25px;font-weight:900;border:1px solid rgba(255,255,255,.18)}
++    .operations-entry-title{font-size:23px;font-weight:950;line-height:1.25}
++    .operations-entry-desc{margin-top:6px;color:rgba(255,255,255,.82);font-size:13px;line-height:1.65}
++    .operations-entry-side{display:flex;align-items:center;gap:10px;flex:0 0 auto}
++    .operations-phase-badge{display:inline-flex;align-items:center;min-height:30px;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,.13);border:1px solid rgba(255,255,255,.18);font-size:11px;font-weight:900;white-space:nowrap}
++    .operations-entry-arrow{width:38px;height:38px;border-radius:13px;background:#fff;color:#1f6f54;display:grid;place-items:center;font-size:20px;font-weight:950}
++    @media(max-width:620px){
++      .operations-entry-card{padding:18px 16px;border-radius:24px;align-items:flex-start}
++      .operations-entry-icon{width:48px;height:48px;border-radius:16px;font-size:21px}
++      .operations-entry-title{font-size:19px}
++      .operations-entry-desc{font-size:12px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
++      .operations-entry-side{flex-direction:column;align-items:flex-end;gap:8px}
++      .operations-entry-arrow{width:34px;height:34px;border-radius:12px}
++    }
+   </style>
+   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
+ </head>
+@@ -344,6 +377,17 @@
+         <div id="lineBindArea" class="head-tool-slot"></div>
+       </div>
+     </section>
++
++    <a class="operations-entry-card" href="operations-hub.html" aria-label="進入全通路營運中心第一階段唯讀版">
++      <div class="operations-entry-main">
++        <div class="operations-entry-icon">◎</div>
++        <div>
++          <div class="operations-entry-title">全通路營運中心</div>
++          <div class="operations-entry-desc">商品圖片、SKU、成本欄位與租賃概況；第一階段只讀取既有 Firebase 資料，不修改原系統。</div>
++        </div>
++      </div>
++      <div class="operations-entry-side"><span class="operations-phase-badge">第一階段・唯讀</span><span class="operations-entry-arrow">→</span></div>
++    </a>
+     <div class="grid">
+       <a class="tile" href="approval-hub.html"><strong>簽核 <span class="badge" id="badge-approval"></span></strong><span>註冊、打卡、臨時出勤、請假、個資簽核</span></a>
+       <a class="tile" href="rental-system-hub.html"><strong>租賃契約系統 <span class="badge" id="badge-rental"></span></strong><span>租賃申請、契約模板、費用設定與續約退租</span></a>
