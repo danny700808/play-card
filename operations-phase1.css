@@ -280,3 +280,7 @@ a{color:inherit;text-decoration:none}
   .ops-sidebar,.ops-topbar,.ops-button,.ops-card-actions,.ops-toolbar{display:none!important}
   .ops-shell{display:block}.ops-main{padding:0}.ops-card{box-shadow:none;break-inside:avoid}
 }
+
+
+/* V2：中央商品主檔、雙名稱與圖片圖庫 */
+.ops-product-online-name{font-size:12px;color:#48657a;line-height:1.45;margin-top:5px;min-height:34px}.ops-product-online-name.muted{color:#8b99a5}.ops-detail-gallery{width:220px;display:grid;grid-template-columns:1fr 1fr;gap:7px;align-self:start}.ops-detail-gallery img{width:100%;height:78px;object-fit:contain;border:1px solid #dbe5ec;border-radius:10px;background:#fff}.ops-detail-gallery img.main{grid-column:1/-1;height:165px}.ops-detail-no-image{grid-column:1/-1;height:165px;border:1px dashed #cbd8e1;border-radius:12px;display:grid;place-items:center;color:#8293a0;background:#f7fafc}@media(max-width:720px){.ops-detail-gallery{width:100%;max-width:320px}.ops-detail-gallery img.main{height:190px}}
