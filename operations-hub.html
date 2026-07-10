@@ -3,201 +3,84 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#172b3d">
-  <title>全通路營運中心｜第一階段 A-3</title>
-  <link rel="stylesheet" href="style.css?v=admin-final-20260530b">
+  <meta name="theme-color" content="#173247">
+  <title>全通路營運中心</title>
+  <link rel="icon" href="yuzu-logo-green.png">
+  <link rel="stylesheet" href="operations-phase1.css?v=20260710v1">
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
-  <link rel="stylesheet" href="operations-phase1.css?v=20260710p1a3">
 </head>
-<body class="ops-page" onload="OperationsPhase1.init()">
-  <div class="ops-shell">
-    <aside class="ops-sidebar" aria-label="全通路營運中心選單">
+<body class="ops-body">
+  <div class="ops-shell" id="opsShell">
+    <aside class="ops-sidebar" id="opsSidebar" aria-label="全通路營運中心選單">
       <div class="ops-brand">
         <img src="yuzu-logo-green.png" alt="柚子">
-        <div><strong>全通路營運中心</strong><small>Omnichannel Operations</small></div>
+        <div><strong>全通路營運中心</strong><span>Omnichannel Operations</span></div>
       </div>
-      <div class="ops-mode-chip">第一階段 A-3・商品主檔可自動建立</div>
-
-      <nav class="ops-nav" aria-label="第一階段功能">
-        <div class="ops-nav-label">目前可用</div>
-        <button class="ops-nav-btn is-active" type="button" data-ops-view="overview">
-          <span class="ops-nav-icon">⌂</span><span class="ops-nav-text">營運總覽<small>資料完整度與租賃到期</small></span>
-        </button>
-        <button class="ops-nav-btn" type="button" data-ops-view="products">
-          <span class="ops-nav-icon">▦</span><span class="ops-nav-text">商品與庫存<small>圖片、庫存、成本與毛利試算</small></span>
-        </button>
-        <a class="ops-nav-btn ops-nav-link" href="operations-product-master.html">
-          <span class="ops-nav-icon">內</span><span class="ops-nav-text">內部商品主檔<small>一鍵建立、名稱、成本與 SKU</small></span><span class="ops-phase-tag ops-phase-live">A-3</span>
-        </a>
-        <button class="ops-nav-btn" type="button" data-ops-view="rentals">
-          <span class="ops-nav-icon">♬</span><span class="ops-nav-text">租賃概況<small>到期、登錄收入與押金</small></span>
-        </button>
-        <button class="ops-nav-btn" type="button" data-ops-view="connection">
-          <span class="ops-nav-icon">◎</span><span class="ops-nav-text">資料連線狀態<small>確認 Firebase 來源</small></span>
-        </button>
-
-        <div class="ops-nav-label">後續階段</div>
-        <button class="ops-nav-btn" type="button" disabled aria-disabled="true">
-          <span class="ops-nav-icon">＋</span><span class="ops-nav-text">現場銷售／進貨<small>第二階段開放</small></span><span class="ops-phase-tag">P2</span>
-        </button>
-        <button class="ops-nav-btn" type="button" disabled aria-disabled="true">
-          <span class="ops-nav-icon">↻</span><span class="ops-nav-text">平台訂單／同步<small>第三階段開放</small></span><span class="ops-phase-tag">P3</span>
-        </button>
+      <div class="ops-stage"><span class="ops-stage-dot"></span>營運中心完整第一版 V1</div>
+      <nav class="ops-nav" id="opsNav">
+        <div class="ops-nav-label">每日營運</div>
+        <a href="#overview" data-view="overview"><span>⌂</span><div><b>營運總覽</b><small>收入、毛利、待處理事項</small></div></a>
+        <a href="#products" data-view="products"><span>▦</span><div><b>商品與庫存</b><small>圖片、SKU、成本、庫存</small></div></a>
+        <a href="#sales" data-view="sales"><span>＄</span><div><b>現場銷售／收入</b><small>商品銷售與快速收入</small></div></a>
+        <a href="#purchases" data-view="purchases"><span>⇧</span><div><b>進貨與庫存異動</b><small>驗收入庫、盤點與流水帳</small></div></a>
+        <div class="ops-nav-label">其他收入與分析</div>
+        <a href="#rentals" data-view="rentals"><span>♫</span><div><b>租賃損益</b><small>沿用既有租賃合約</small></div></a>
+        <a href="#cases" data-view="cases"><span>▣</span><div><b>案件管理</b><small>案件收入、成本與應收</small></div></a>
+        <a href="#finance" data-view="finance"><span>◫</span><div><b>毛利與收支</b><small>彙整各類收入與成本</small></div></a>
+        <div class="ops-nav-label">系統</div>
+        <a href="#sync" data-view="sync"><span>↻</span><div><b>平台訂單／同步</b><small>預覽、工作佇列與連線準備</small></div></a>
+        <a href="#connection" data-view="connection"><span>●</span><div><b>資料連線與備份</b><small>Firebase狀態、匯出與紀錄</small></div></a>
       </nav>
-
-      <div class="ops-sidebar-spacer"></div>
-      <a class="ops-back-link" href="settings.html">返回管理首頁</a>
-      <div class="ops-sidebar-note">本頁只讀取既有 Firestore 資料，不會修改商品、庫存、合約或平台資料。</div>
+      <div class="ops-sidebar-footer">
+        <a class="ops-back-admin" href="settings.html">返回管理首頁</a>
+        <p>營運資料寫入獨立的 <code>ops…</code> 集合，不修改員工、打卡、薪資或原租賃合約。</p>
+      </div>
     </aside>
 
     <main class="ops-main">
       <header class="ops-topbar">
-        <div class="ops-heading">
+        <button class="ops-menu-btn" id="opsMenuBtn" type="button" aria-label="開啟選單">☰</button>
+        <div class="ops-title-wrap">
           <h1 id="opsPageTitle">營運總覽</h1>
-          <p id="opsPageSubtitle">把既有商品、圖片、庫存欄位與租賃資料整理成每天可閱讀的營運畫面。</p>
-          <div class="ops-read-meta"><span class="ops-live-dot"></span><span id="opsLastLoadedText">等待 Firebase</span></div>
+          <p id="opsPageSubtitle">把商品、庫存、現場銷售、進貨、租賃與案件集中在同一個畫面。</p>
+          <div class="ops-last-read"><span></span><b id="opsLastReadText">尚未讀取</b></div>
         </div>
         <div class="ops-top-actions">
-          <div class="ops-user-pill"><span class="ops-user-avatar" id="opsUserInitial">管</span><span id="opsUserName">管理員</span></div>
-          <button class="ops-btn" type="button" id="opsReloadBtn">↻ 重新讀取</button>
-          <a class="ops-btn primary" href="settings.html">管理首頁</a>
-          <div class="ops-nav-actions" data-yz-global-nav>
-            <button class="ops-btn" type="button" data-yz-nav-back>← 上一頁</button>
-            <button class="ops-btn danger" type="button" data-yz-nav-logout>登出</button>
-          </div>
+          <span class="ops-user-chip" id="opsUserChip">管理者</span>
+          <button class="ops-button ghost" id="opsRefreshBtn" type="button">重新讀取</button>
+          <a class="ops-button primary" href="settings.html">管理首頁</a>
+          <button class="ops-button ghost" id="opsBackBtn" type="button">上一頁</button>
+          <button class="ops-button danger-outline" id="opsLogoutBtn" type="button">登出</button>
         </div>
       </header>
 
-      <div class="ops-content">
-        <section class="ops-view is-active" id="opsView-overview" data-ops-view-panel="overview">
-          <div class="ops-banner">
-            <div class="ops-banner-icon">i</div>
-            <div><strong>第一階段 A-3 僅開放內部商品主檔</strong>營運總覽、網路商品與租賃仍採唯讀；只有「內部商品主檔」可新增或編輯 opsInternalProducts，不會修改 EasyStore、momo、Coupang、租賃或員工資料。</div>
-          </div>
-
-          <div class="ops-kpi-grid">
-            <article class="ops-card ops-kpi"><div class="ops-kpi-top"><div class="ops-kpi-label">已載入商品／規格</div><div class="ops-kpi-icon">▦</div></div><div><div class="ops-kpi-value" id="kpiProductCount">—</div><div class="ops-kpi-foot" id="kpiProductSource">等待 Firebase</div></div></article>
-            <article class="ops-card ops-kpi is-clickable" data-product-quick-filter="sku-missing" tabindex="0"><div class="ops-kpi-top"><div class="ops-kpi-label">尚未提供 SKU</div><div class="ops-kpi-icon">#</div></div><div><div class="ops-kpi-value" id="kpiMissingSku">—</div><div class="ops-kpi-foot">點此直接查看</div></div></article>
-            <article class="ops-card ops-kpi is-clickable" data-product-quick-filter="stock-known" tabindex="0"><div class="ops-kpi-top"><div class="ops-kpi-label">已有庫存數量</div><div class="ops-kpi-icon">庫</div></div><div><div class="ops-kpi-value" id="kpiStockKnown">—</div><div class="ops-kpi-foot" id="kpiStockRate">數量覆蓋率 —</div></div></article>
-            <article class="ops-card ops-kpi is-clickable" data-product-quick-filter="cost-missing" tabindex="0"><div class="ops-kpi-top"><div class="ops-kpi-label">尚未建立成本</div><div class="ops-kpi-icon">＄</div></div><div><div class="ops-kpi-value" id="kpiMissingCost">—</div><div class="ops-kpi-foot">第二階段進貨後建立</div></div></article>
-            <article class="ops-card ops-kpi"><div class="ops-kpi-top"><div class="ops-kpi-label">進行中／有效租賃</div><div class="ops-kpi-icon">♬</div></div><div><div class="ops-kpi-value" id="kpiActiveRentals">—</div><div class="ops-kpi-foot" id="kpiRentalTotal">合約共 — 筆</div></div></article>
-            <article class="ops-card ops-kpi"><div class="ops-kpi-top"><div class="ops-kpi-label">30 日內到期</div><div class="ops-kpi-icon">!</div></div><div><div class="ops-kpi-value" id="kpiExpiringRentals">—</div><div class="ops-kpi-foot" id="kpiOverdueRentals">逾期 — 筆</div></div></article>
-          </div>
-
-          <div class="ops-grid-2">
-            <article class="ops-card ops-section">
-              <div class="ops-section-head"><div><h2>商品資料完整度</h2><p>先看目前哪些商品可以直接沿用，哪些欄位要在第二階段補建。</p></div><button class="ops-btn small" type="button" data-ops-view-link="products">查看商品</button></div>
-              <div class="ops-readiness-grid" id="productReadinessGrid">
-                <button class="ops-readiness-item" type="button" data-product-quick-filter="image-missing"><span>無圖片</span><strong id="readinessMissingImage">—</strong><small>點此篩選</small></button>
-                <button class="ops-readiness-item" type="button" data-product-quick-filter="sku-missing"><span>無 SKU</span><strong id="readinessMissingSku">—</strong><small>點此篩選</small></button>
-                <button class="ops-readiness-item" type="button" data-product-quick-filter="stock-unknown"><span>庫存未提供</span><strong id="readinessUnknownStock">—</strong><small>點此篩選</small></button>
-                <button class="ops-readiness-item" type="button" data-product-quick-filter="cost-missing"><span>成本未設定</span><strong id="readinessMissingCost">—</strong><small>點此篩選</small></button>
-              </div>
-              <div class="ops-status-list compact" id="overviewStatusList">
-                <div class="ops-status-row"><div><strong>Firebase</strong><small>正在連線...</small></div><div class="ops-status-value"><span class="ops-status-dot warn"></span>讀取中</div></div>
-              </div>
-            </article>
-
-            <article class="ops-card ops-section">
-              <div class="ops-section-head"><div><h2>有效租賃登錄金額</h2><p>僅統計進行中／有效合約；仍不是銀行實收或正式毛利。</p></div><button class="ops-btn small" type="button" data-ops-view-link="rentals">查看合約</button></div>
-              <div class="ops-money-list">
-                <div class="ops-money-row"><span>租金欄位合計</span><strong id="summaryRentFee">—</strong></div>
-                <div class="ops-money-row"><span>運費收入欄位合計</span><strong id="summaryShippingFee">—</strong></div>
-                <div class="ops-money-row emphasis"><span>租金＋運費登錄收入</span><strong id="summaryRegisteredIncome">—</strong></div>
-                <div class="ops-money-row"><span>押金欄位合計</span><strong id="summaryDepositFee">—</strong></div>
-              </div>
-              <div class="ops-money-note">押金不列入營業收入。搬運成本、維修成本、已收款與未收款若原資料沒有欄位，本版會顯示「尚未建立」，不會自行推定。</div>
-            </article>
-          </div>
-
-          <article class="ops-card ops-section" style="margin-bottom:16px">
-            <div class="ops-section-head"><div><h2>最近到期／已逾期的租賃</h2><p>依原合約到期日排序；已逾期案件會優先顯示。</p></div><button class="ops-btn small" type="button" data-ops-view-link="rentals">全部租賃</button></div>
-            <div class="ops-table-wrap"><table class="ops-table ops-rental-table"><thead><tr><th>合約／客戶</th><th>設備</th><th>期間／到期</th><th>登錄收入</th><th>押金</th><th>狀態</th><th></th></tr></thead><tbody id="overviewRentalBody"><tr><td colspan="7">正在讀取...</td></tr></tbody></table></div>
-          </article>
-
-          <article class="ops-card ops-section">
-            <div class="ops-section-head"><div><h2>三階段建置範圍</h2><p>先把每天需要看的資料整理清楚，再逐步開啟會寫入資料的功能。</p></div></div>
-            <div class="ops-roadmap">
-              <div class="ops-roadmap-card current"><div class="phase">第一階段 A｜現在</div><h3>商品、庫存欄位與租賃營運檢視</h3><p>改善商品詳細資料、資料完整度、成本與毛利試算、租賃到期及登錄收入，全部維持唯讀。</p></div>
-              <div class="ops-roadmap-card"><div class="phase">第二階段</div><h3>現場銷售、快速收入、進貨與成本</h3><p>建立獨立營運集合、庫存異動帳、移動平均成本、收付款與租賃損益。</p></div>
-              <div class="ops-roadmap-card"><div class="phase">第三階段</div><h3>網路訂單與平台庫存同步</h3><p>接入 EasyStore、momo、Coupang；先預覽差異，再確認寫入並保留完整紀錄。</p></div>
-            </div>
-          </article>
-        </section>
-
-        <section class="ops-view" id="opsView-products" data-ops-view-panel="products">
-          <div class="ops-banner"><div class="ops-banner-icon">▦</div><div class="ops-banner-split"><div><strong>網路商品資料仍為唯讀</strong>這裡顯示 EasyStore 圖片與網路資料；商品成本、內部名稱與門市售價請到「內部商品主檔」管理。</div><a class="ops-btn primary" href="operations-product-master.html">開啟內部商品主檔</a></div></div>
-          <div class="ops-toolbar">
-            <div class="ops-toolbar-left">
-              <input class="ops-input search" id="productSearch" type="search" placeholder="搜尋商品名稱、SKU、品牌、分類或商品編號">
-              <select class="ops-select" id="productImageFilter"><option value="all">全部圖片</option><option value="with">有圖片</option><option value="without">無圖片</option></select>
-              <select class="ops-select" id="productSkuFilter"><option value="all">全部 SKU</option><option value="with">有 SKU</option><option value="without">無 SKU</option></select>
-              <select class="ops-select" id="productStockFilter"><option value="all">全部庫存狀態</option><option value="known">已提供庫存數量</option><option value="in">有庫存</option><option value="out">缺貨／零庫存</option><option value="unknown">庫存未提供</option></select>
-              <select class="ops-select" id="productCostFilter"><option value="all">全部成本</option><option value="with">已有成本</option><option value="without">尚未設定成本</option></select>
-              <select class="ops-select" id="productSort"><option value="name">依商品名稱</option><option value="stock-low">庫存少的優先</option><option value="price-high">售價高的優先</option><option value="margin-high">毛利率高的優先</option><option value="cost-missing">未設定成本優先</option><option value="updated-new">最近更新優先</option></select>
-            </div>
-            <div class="ops-toolbar-right"><button class="ops-btn small" type="button" id="productClearFilters">清除篩選</button><span class="ops-result-meta" id="productResultMeta">等待資料</span></div>
-          </div>
-          <div class="ops-active-filter" id="productActiveFilter" hidden></div>
-          <div class="ops-product-grid" id="productGrid"></div>
-          <div class="ops-load-more"><button class="ops-btn" type="button" id="productLoadMore" hidden>載入更多</button></div>
-        </section>
-
-        <section class="ops-view" id="opsView-rentals" data-ops-view-panel="rentals">
-          <div class="ops-banner"><div class="ops-banner-icon">♬</div><div><strong>直接連結原租賃系統</strong>本頁整理到期、租金、運費、押金及原資料中已存在的收款／成本欄位。合約修改、續約與退租仍回原租賃管理頁處理。</div></div>
-          <div class="ops-mini-kpi-grid">
-            <article class="ops-card ops-mini-kpi"><span>有效租賃</span><strong id="rentalKpiActive">—</strong><small>進行中／有效</small></article>
-            <article class="ops-card ops-mini-kpi"><span>30 日內到期</span><strong id="rentalKpiExpiring">—</strong><small>含今天到期</small></article>
-            <article class="ops-card ops-mini-kpi danger"><span>已逾期</span><strong id="rentalKpiOverdue">—</strong><small>尚未結束的合約</small></article>
-            <article class="ops-card ops-mini-kpi"><span>有效合約登錄收入</span><strong id="rentalKpiIncome">—</strong><small>租金＋運費，不含押金</small></article>
-          </div>
-          <div class="ops-toolbar">
-            <div class="ops-toolbar-left">
-              <input class="ops-input search" id="rentalSearch" type="search" placeholder="搜尋合約編號、客戶、設備、品牌或型號">
-              <select class="ops-select" id="rentalStatusFilter"><option value="all">全部狀態</option><option value="active">進行中／有效</option><option value="expiring">30 日內到期</option><option value="overdue">已逾期</option><option value="closed">已結束／取消</option></select>
-            </div>
-            <div class="ops-toolbar-right"><span class="ops-result-meta" id="rentalResultMeta">等待資料</span><a class="ops-btn small primary" href="rental-admin.html">開啟原租賃管理</a></div>
-          </div>
-          <div class="ops-table-wrap rental-table"><table class="ops-table ops-rental-table"><thead><tr><th>合約／客戶</th><th>設備</th><th>期間／到期</th><th>登錄收入</th><th>押金</th><th>狀態</th><th></th></tr></thead><tbody id="rentalTableBody"><tr><td colspan="7">正在讀取...</td></tr></tbody></table></div>
-          <div class="ops-rental-mobile" id="rentalMobileList"></div>
-        </section>
-
-        <section class="ops-view" id="opsView-connection" data-ops-view-panel="connection">
-          <div class="ops-banner"><div class="ops-banner-icon">◎</div><div><strong>連線診斷</strong>本頁只執行 Firestore 讀取，不會呼叫任何寫入方法。若顯示無資料，代表集合為空、名稱不同，或 Firestore 規則不允許讀取。</div></div>
-          <div class="ops-connection-grid">
-            <article class="ops-card ops-connection-card"><h3>Firebase 專案</h3><div class="value" id="connectionProjectId">—</div><p>沿用原主系統的 Firebase 專案設定。</p></article>
-            <article class="ops-card ops-connection-card"><h3>商品主要來源</h3><div class="value" id="connectionProductSource">尚未判定</div><p>依序尋找 easystoreProducts、websiteProducts、officialWebsiteProducts、websiteGoods、products。</p></article>
-            <article class="ops-card ops-connection-card"><h3>租賃來源</h3><div class="value">rentalContracts</div><p>只讀取合約摘要，不修改原租賃流程。</p></article>
-            <article class="ops-card ops-connection-card"><h3>最後讀取時間</h3><div class="value" id="connectionLoadedAt">—</div><p>按「重新讀取」可重新抓取 Firebase。</p></article>
-          </div>
-          <article class="ops-card ops-section">
-            <div class="ops-section-head"><div><h2>集合讀取結果</h2><p>顯示本次實際嘗試過的集合、筆數、耗時與錯誤訊息。</p></div></div>
-            <div class="ops-diagnostic-list" id="diagnosticList"><div class="ops-empty"><strong>等待讀取</strong>連線完成後會在這裡顯示結果。</div></div>
-          </article>
-        </section>
-      </div>
+      <div class="ops-alert hidden" id="opsGlobalAlert" role="alert"></div>
+      <section class="ops-content" id="opsContent" aria-live="polite"></section>
     </main>
   </div>
 
-  <nav class="ops-bottom-nav" aria-label="手機版選單">
-    <button class="is-active" type="button" data-ops-view="overview"><span>⌂</span><span>總覽</span></button>
-    <button type="button" data-ops-view="products"><span>▦</span><span>商品</span></button>
-    <button type="button" data-ops-view="rentals"><span>♬</span><span>租賃</span></button>
-    <button type="button" data-ops-view="connection"><span>◎</span><span>連線</span></button>
-  </nav>
+  <div class="ops-drawer-backdrop" id="opsDrawerBackdrop"></div>
+  <aside class="ops-drawer" id="opsDrawer" aria-label="資料編輯視窗">
+    <header><div><h2 id="opsDrawerTitle">資料編輯</h2><p id="opsDrawerSubtitle"></p></div><button id="opsDrawerClose" type="button" aria-label="關閉">×</button></header>
+    <div class="ops-drawer-body" id="opsDrawerBody"></div>
+  </aside>
 
-  <div class="ops-modal-backdrop" id="productModal" role="dialog" aria-modal="true" aria-labelledby="productModalTitle">
-    <div class="ops-modal">
-      <div class="ops-modal-head"><h2 id="productModalTitle">商品資料</h2><button class="ops-modal-close" type="button" id="productModalClose" aria-label="關閉">×</button></div>
-      <div class="ops-modal-body" id="productModalBody"></div>
+  <div class="ops-modal-backdrop" id="opsConfirmModal" role="dialog" aria-modal="true" aria-labelledby="opsConfirmTitle">
+    <div class="ops-modal ops-confirm-modal">
+      <header><h2 id="opsConfirmTitle">確認操作</h2><button id="opsConfirmClose" type="button" aria-label="關閉">×</button></header>
+      <div class="ops-modal-body"><p id="opsConfirmMessage"></p></div>
+      <footer><button class="ops-button ghost" id="opsConfirmCancel" type="button">取消</button><button class="ops-button primary" id="opsConfirmOk" type="button">確認</button></footer>
     </div>
   </div>
+
+  <div class="ops-toast-stack" id="opsToastStack" aria-live="polite"></div>
 
   <script src="config.js?v=20260508frontendperf1"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="app.js?v=admin-final-20260530b"></script>
-  <script src="operations-phase1.js?v=20260710p1a3"></script>
+  <script src="operations-phase1.js?v=20260710v1"></script>
   <script src="global-nav.js?v=20260603unified1"></script>
   <script src="ui-action-feedback.js?v=20260701safe3"></script>
 </body>
