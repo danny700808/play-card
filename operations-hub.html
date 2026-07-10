@@ -6,53 +6,35 @@
   <meta name="theme-color" content="#173247">
   <title>全通路營運中心</title>
   <link rel="icon" href="yuzu-logo-green.png">
-  <link rel="stylesheet" href="operations-phase1.css?v=20260710v3api">
-  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
+  <link rel="stylesheet" href="operations-phase1.css?v=20260711compact3">
 </head>
 <body class="ops-body">
   <div class="ops-shell" id="opsShell">
-    <aside class="ops-sidebar" id="opsSidebar" aria-label="全通路營運中心選單">
-      <div class="ops-brand">
-        <img src="yuzu-logo-green.png" alt="柚子">
-        <div><strong>全通路營運中心</strong><span>Omnichannel Operations</span></div>
-      </div>
-      <div class="ops-stage"><span class="ops-stage-dot"></span>中央商品主檔＋EasyStore API 正式同步 V3</div>
-      <nav class="ops-nav" id="opsNav">
-        <div class="ops-nav-label">每日營運</div>
-        <a href="#overview" data-view="overview"><span>⌂</span><div><b>營運總覽</b><small>收入、毛利、待處理事項</small></div></a>
-        <a href="#products" data-view="products"><span>▦</span><div><b>商品與庫存</b><small>圖片、SKU、成本、庫存</small></div></a>
-        <a href="#sales" data-view="sales"><span>＄</span><div><b>現場銷售／收入</b><small>商品銷售與快速收入</small></div></a>
-        <a href="#purchases" data-view="purchases"><span>⇧</span><div><b>進貨與庫存異動</b><small>驗收入庫、盤點與流水帳</small></div></a>
-        <div class="ops-nav-label">其他收入與分析</div>
-        <a href="#rentals" data-view="rentals"><span>♫</span><div><b>租賃損益</b><small>沿用既有租賃合約</small></div></a>
-        <a href="#cases" data-view="cases"><span>▣</span><div><b>案件管理</b><small>案件收入、成本與應收</small></div></a>
-        <a href="#finance" data-view="finance"><span>◫</span><div><b>毛利與收支</b><small>彙整各類收入與成本</small></div></a>
-        <div class="ops-nav-label">系統</div>
-        <a href="#sync" data-view="sync"><span>↻</span><div><b>平台訂單／同步</b><small>預覽、工作佇列與連線準備</small></div></a>
-        <a href="#connection" data-view="connection"><span>●</span><div><b>資料連線與備份</b><small>Firebase狀態、匯出與紀錄</small></div></a>
-      </nav>
-      <div class="ops-sidebar-footer">
-        <a class="ops-back-admin" href="settings.html">返回管理首頁</a>
-        <p>營運資料寫入獨立的 <code>ops…</code> 集合，不修改員工、打卡、薪資或原租賃合約。</p>
-      </div>
-    </aside>
-
     <main class="ops-main">
       <header class="ops-topbar">
-        <button class="ops-menu-btn" id="opsMenuBtn" type="button" aria-label="開啟選單">☰</button>
-        <div class="ops-title-wrap">
-          <h1 id="opsPageTitle">營運總覽</h1>
-          <p id="opsPageSubtitle">把商品、庫存、現場銷售、進貨、租賃與案件集中在同一個畫面。</p>
-          <div class="ops-last-read"><span></span><b id="opsLastReadText">尚未讀取</b></div>
+        <div class="ops-top-brand">
+          <img src="yuzu-logo-green.png" alt="柚子樂器">
+          <div class="ops-title-wrap">
+            <strong>全通路營運中心</strong>
+            <h1 id="opsPageTitle">營運總覽</h1>
+          </div>
         </div>
         <div class="ops-top-actions">
-          <span class="ops-user-chip" id="opsUserChip">管理者</span>
-          <button class="ops-button ghost" id="opsRefreshBtn" type="button">重新讀取</button>
-          <a class="ops-button primary" href="settings.html">管理首頁</a>
-          <button class="ops-button ghost" id="opsBackBtn" type="button">上一頁</button>
           <button class="ops-button danger-outline" id="opsLogoutBtn" type="button">登出</button>
         </div>
       </header>
+
+      <nav class="ops-nav ops-home-nav" id="opsNav" aria-label="全通路營運中心功能">
+        <a href="#overview" data-view="overview"><span>⌂</span><b>營運總覽</b></a>
+        <a href="#products" data-view="products"><span>▦</span><b>商品庫存</b></a>
+        <a href="#sales" data-view="sales"><span>＄</span><b>現場銷售</b></a>
+        <a href="#purchases" data-view="purchases"><span>⇧</span><b>進貨異動</b></a>
+        <a href="#rentals" data-view="rentals"><span>♫</span><b>租賃損益</b></a>
+        <a href="#cases" data-view="cases"><span>▣</span><b>案件管理</b></a>
+        <a href="#finance" data-view="finance"><span>◫</span><b>毛利收支</b></a>
+        <a href="#sync" data-view="sync"><span>↻</span><b>訂單同步</b></a>
+        <a href="#connection" data-view="connection"><span>●</span><b>資料備份</b></a>
+      </nav>
 
       <div class="ops-alert hidden" id="opsGlobalAlert" role="alert"></div>
       <section class="ops-content" id="opsContent" aria-live="polite"></section>
@@ -81,8 +63,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="app.js?v=admin-final-20260530b"></script>
-  <script src="operations-phase1.js?v=20260710v3api"></script>
-  <script src="global-nav.js?v=20260603unified1"></script>
+  <script src="operations-phase1.js?v=20260711compact3"></script>
   <script src="ui-action-feedback.js?v=20260701safe3"></script>
 </body>
 </html>
