@@ -809,7 +809,7 @@
     if(!yes) return;
     showAlert('正在從 EasyStore API 讀取全部商品、規格與圖片。商品較多時可能需要數分鐘，請勿重複按同步。','info');
     try{
-      const callable=global.firebase.app().functions('us-central1').httpsCallable('syncEasyStoreCatalog');
+      const callable=global.firebase.app().functions('us-central1').httpsCallable('syncEasyStoreCatalog',{timeout:1800000});
       const response=await callable({force:true});
       const result=(response&&response.data)||{};
       if(!result.ok) throw new Error(result.message||'同步失敗');
