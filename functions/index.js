@@ -5,11 +5,13 @@ const nodemailer = require('nodemailer');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
 const { registerExternalTeacherOnboarding, handleExternalTeacherLineEvent } = require('./externalTeacherOnboarding');
+const { registerEasyStoreCatalogSync } = require('./easystoreCatalogSync');
 
 if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
 
 registerExternalTeacherOnboarding(exports);
+registerEasyStoreCatalogSync(exports);
 
 const ADMIN_EMAILS = new Set(['danny700808@gmail.com']);
 const DEFAULT_ADMIN_DOC_ID = 'ADMIN_DANNY';
