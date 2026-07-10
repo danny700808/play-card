@@ -195,6 +195,25 @@
     return !!(cDate && cDate === clean(clockRecord.date));
   }
 
+  function isExplicitLateWaiver(correction){
+    if(!correction) return false;
+
+    const flagValues = [
+      correction.noLateDeduction,
+      correction.lateDeductionWaived,
+      firstValue(correction, ['noLateDeduction','lateDeductionWaived','不扣款','免扣款'])
+    ];
+    if(flagValues.some(truthy)) return true;
+
+    // 只有主管明確選擇「不扣款／免扣款」才算免扣。
+    // 不讀取員工填寫的原因或備註，避免一般打卡修正被誤判為免扣款。
+    const decision = lower([
+      correction.decision,
+      firstValue(correction, ['decision','處理結果','審核結果','waiverDecision','lastAdjustmentType','調整類型'])
+    ].filter(Boolean).join('|'));
+    return decision.includes('不扣款') || decision.includes('免扣款') || decision.includes('latewaiver') || decision.includes('late waiver');
+  }
+
   function isClockInLike(record){
     const action = lower(record && (record.actionName || record.action));
     if(!action) return true;
@@ -222,8 +241,13 @@
     rows.forEach(r=>{
       if(!isClockInLike(r)) return;
       const matchingCorrections = approvedCorrections.filter(c=>correctionMatchesClock(c, r, employee, employees));
-      const waived = truthy(r.noLateDeduction || r.lateDeductionWaived || firstValue(r, ['不扣款','免扣款']))
-        || matchingCorrections.length > 0;
+      const recordWaived = [
+        r.noLateDeduction,
+        r.lateDeductionWaived,
+        firstValue(r, ['noLateDeduction','lateDeductionWaived','不扣款','免扣款'])
+      ].some(truthy);
+      const correctionWaived = matchingCorrections.some(isExplicitLateWaiver);
+      const waived = recordWaived || correctionWaived;
       let minutes = Math.max(0, Math.round(number(r.lateMinutes != null ? r.lateMinutes : r.late)));
 
       // 舊版「核准不扣款」曾把遲到分鐘直接改成 0。若資料中仍保留原始分鐘，將它放回
@@ -291,6 +315,7 @@
     isClockRecordEffective,
     latestEffectiveClockRecords,
     correctionMatchesClock,
+    isExplicitLateWaiver,
     calculateLate
   });
 })(window);
