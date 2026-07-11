@@ -454,6 +454,15 @@ a{color:inherit;text-decoration:none}
 .ops-selected-member strong{color:var(--ops-green-2);margin-left:auto}
 .ops-inline-checkout{margin-top:14px;padding-top:14px;border-top:1px solid var(--ops-line)}
 .ops-inline-checkout h3{margin:0 0 12px;font-size:18px}
+.ops-member-payment-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin:0 0 12px;padding:10px;border:1px solid #bee4d2;border-radius:12px;background:var(--ops-green-soft)}
+.ops-member-payment-summary>div{min-width:0}
+.ops-member-payment-summary span{display:block;color:var(--ops-muted);font-size:10px}
+.ops-member-payment-summary b{display:block;margin-top:2px;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ops-green-2)}
+.ops-return-items{display:flex;flex-direction:column;gap:8px;margin:14px 0}
+.ops-return-row{display:grid;grid-template-columns:minmax(0,1fr) 100px 110px;gap:8px;align-items:end;padding:9px;border:1px solid var(--ops-line);border-radius:11px}
+.ops-return-row b,.ops-return-row span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ops-return-row span{font-size:10px;color:var(--ops-muted)}
+.ops-return-row label{font-size:10px;color:var(--ops-muted);font-weight:800}
 .ops-checkout-block{margin-bottom:12px}
 .ops-checkout-block>label{display:block;font-size:12px;font-weight:800;margin-bottom:6px;color:#435762}
 .ops-checkout-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-bottom:12px}
@@ -489,6 +498,9 @@ a{color:inherit;text-decoration:none}
   .ops-checkout-fields{grid-template-columns:1fr}
   .ops-invoice-rows>button{grid-template-columns:38px minmax(0,1fr) 72px 38px;padding:8px 6px;gap:5px;font-size:11px}
   .ops-sale-edit-row{grid-template-columns:minmax(0,1fr) 62px 76px;gap:5px;padding:7px}
+  .ops-member-payment-summary{grid-template-columns:1fr 1fr;gap:5px;padding:8px}
+  .ops-member-payment-summary b{font-size:11px}
+  .ops-return-row{grid-template-columns:minmax(0,1fr) 62px 82px;gap:5px;padding:7px}
 }
 @media print{
   .ops-sidebar,.ops-topbar,.ops-button,.ops-card-actions,.ops-toolbar{display:none!important}
