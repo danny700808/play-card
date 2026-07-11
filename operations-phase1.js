@@ -19,13 +19,14 @@
     points:'opsPointTransactions',
     receivables:'opsReceivables',
     receivablePayments:'opsReceivablePayments',
-    salesReturns:'opsSalesReturns'
+    salesReturns:'opsSalesReturns',
+    educationDaily:'opsEducationDaily'
   };
   const READ_LIMIT = 10000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.07.11-v5.3-sale-returns-points';
-  const DASHBOARD_CACHE_KEY = 'youzi_ops_dashboard_member_full_v3';
+  const VERSION = '2026.07.11-v5.4-injiaoyun-sync';
+  const DASHBOARD_CACHE_KEY = 'youzi_ops_dashboard_member_full_v4';
   const DASHBOARD_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
   const DEFAULT_MEMBERSHIP_SETTINGS = {
     enabled:true,
@@ -66,6 +67,7 @@
     receivables:[],
     receivablePayments:[],
     salesReturns:[],
+    educationDaily:[],
     diagnostics:[],
     productVisible:PRODUCT_PAGE_SIZE,
     productSearch:'',
@@ -98,6 +100,7 @@
     overviewSearch:'',
     overviewFrom:'',
     overviewTo:'',
+    injiaoyunRequestId:'',
     importRows:[],
     importFileName:'',
     importMode:'initial',
@@ -535,7 +538,8 @@
         getCollection(COLLECTIONS.points,3000),
         getCollection(COLLECTIONS.receivables,3000),
         getCollection(COLLECTIONS.receivablePayments,3000),
-        getCollection(COLLECTIONS.salesReturns,3000)
+        getCollection(COLLECTIONS.salesReturns,3000),
+        getCollection(COLLECTIONS.educationDaily,800)
       ]);
       state.internalProducts=results[0].map(function(row){ return normalizeInternal(row,row.__id); });
       state.rentals=results[1].map(normalizeRental);
@@ -553,6 +557,7 @@
       state.receivables=results[13].map(normalizeReceivable);
       state.receivablePayments=results[14].map(normalizeReceivablePayment);
       state.salesReturns=results[15].map(normalizeSaleReturn);
+      state.educationDaily=results[16].map(normalizeEducationDaily);
       mergeCatalog();
       state.loadedAt=new Date();
       setText('opsLastReadText','最後讀取：'+dateTimeText(state.loadedAt));
@@ -598,6 +603,32 @@
   function normalizeReceivable(obj){const total=firstNumber(obj,['totalAmount']).value,received=firstNumber(obj,['receivedAmount']).value;return {id:clean(obj.__id),receivableNo:clean(obj.receivableNo)||clean(obj.__id),sourceType:clean(obj.sourceType)||(obj.incomeId?'income':'sale'),saleId:clean(obj.saleId),saleNo:clean(obj.saleNo),incomeId:clean(obj.incomeId),incomeNo:clean(obj.incomeNo),customerId:clean(obj.customerId),customerName:clean(obj.customerName)||'未指定客戶',totalAmount:total,receivedAmount:received,outstandingAmount:Math.max(0,firstNumber(obj,['outstandingAmount']).found?firstNumber(obj,['outstandingAmount']).value:total-received),status:clean(obj.status)||'unpaid',dueDate:obj.dueDate||'',createdAt:obj.createdAt||''};}
   function normalizeReceivablePayment(obj){return {id:clean(obj.__id),receivableId:clean(obj.receivableId),sourceType:clean(obj.sourceType),saleId:clean(obj.saleId),incomeId:clean(obj.incomeId),customerId:clean(obj.customerId),amount:firstNumber(obj,['amount']).value,paymentMethod:clean(obj.paymentMethod),paidAt:obj.paidAt||obj.createdAt||'',note:clean(obj.note)};}
   function normalizeSaleReturn(obj){return {id:clean(obj.__id),returnNo:clean(obj.returnNo)||clean(obj.__id),saleId:clean(obj.saleId),saleNo:clean(obj.saleNo),customerId:clean(obj.customerId),customerName:clean(obj.customerName),items:Array.isArray(obj.items)?obj.items:[],refundAmount:firstNumber(obj,['refundAmount']).value,restockedCost:firstNumber(obj,['restockedCost']).value,pointsRestored:firstNumber(obj,['pointsRestored']).value,pointsReversed:firstNumber(obj,['pointsReversed']).value,pointRecoveryAmount:firstNumber(obj,['pointRecoveryAmount']).value,createdAt:obj.createdAt||'',status:clean(obj.status)||'completed'};}
+  function normalizeEducationDaily(obj){
+    const summary=obj&&typeof obj.summary==='object'?obj.summary:{};
+    return {
+      id:clean(obj.__id),
+      source:'injiaoyun',
+      studioId:clean(obj.studioId),
+      studioName:clean(obj.studioName),
+      dateKey:clean(obj.dateKey),
+      businessDate:obj.businessDate||clean(obj.dateKey),
+      includeUnpaid:obj.includeUnpaid===true,
+      sessions:Array.isArray(obj.sessions)?obj.sessions:[],
+      teachers:Array.isArray(obj.teachers)?obj.teachers:[],
+      tuitionReceipts:Array.isArray(obj.tuitionReceipts)?obj.tuitionReceipts:[],
+      roomRentals:Array.isArray(obj.roomRentals)?obj.roomRentals:[],
+      summary:{
+        lessonCount:firstNumber(summary,['lessonCount']).value,
+        lessonGross:firstNumber(summary,['lessonGross']).value,
+        teacherPayable:firstNumber(summary,['teacherPayable']).value,
+        schoolShare:firstNumber(summary,['schoolShare']).value,
+        tuitionReceived:firstNumber(summary,['tuitionReceived']).value,
+        roomRentalReceived:firstNumber(summary,['roomRentalReceived']).value
+      },
+      capturedAt:obj.capturedAt||'',
+      importedAt:obj.importedAt||''
+    };
+  }
   function normalizeIncome(obj){
     return {id:clean(obj.__id),incomeNo:clean(obj.incomeNo)||clean(obj.__id),occurredAt:obj.occurredAt||obj.createdAt||'',category:clean(obj.category)||'其他收入',amount:firstNumber(obj,['amount']).value,paymentMethod:clean(obj.paymentMethod),paymentStatus:clean(obj.paymentStatus)||'paid',receivedAmount:firstNumber(obj,['receivedAmount']).found?firstNumber(obj,['receivedAmount']).value:firstNumber(obj,['amount']).value,customerId:clean(obj.customerId),customerName:clean(obj.customerName),note:clean(obj.note),createdAt:obj.createdAt||''};
   }
@@ -677,6 +708,7 @@
     const incomes=state.incomes.filter(function(income){return inRange(income.occurredAt);});
     const rentals=state.rentals.filter(function(rental){return inRange(rental.incomeRecognizedAt);});
     const returns=state.salesReturns.filter(function(row){return inRange(row.createdAt);});
+    const educationRows=state.educationDaily.filter(function(row){return inRange(row.businessDate||row.dateKey);});
     let productRows=[];
     sales.forEach(function(sale){
       const saleSubtotal=Number(sale.subtotal||0)||sum(sale.items||[],function(item){return Number(item.lineTotal!=null?item.lineTotal:Number(item.qty||1)*Number(item.unitPrice||0));});
@@ -696,9 +728,30 @@
     const cost=Math.max(0,sum(productRows,function(row){return row.cost;})-sum(returns,function(row){return row.restockedCost||0;}));
     const profit=revenue-cost;
     const qty=sum(productRows,function(row){return row.qty;});
+    const educationSummary={
+      lessonCount:sum(educationRows,function(row){return row.summary.lessonCount;}),
+      lessonGross:sum(educationRows,function(row){return row.summary.lessonGross;}),
+      teacherPayable:sum(educationRows,function(row){return row.summary.teacherPayable;}),
+      schoolShare:sum(educationRows,function(row){return row.summary.schoolShare;}),
+      tuitionReceived:sum(educationRows,function(row){return row.summary.tuitionReceived;}),
+      roomRentalReceived:sum(educationRows,function(row){return row.summary.roomRentalReceived;})
+    };
+    const teacherMap=new Map();
+    educationRows.forEach(function(row){
+      (row.teachers||[]).forEach(function(teacher){
+        const key=clean(teacher.teacherId)||clean(teacher.name)||'未命名';
+        const current=teacherMap.get(key)||{name:clean(teacher.name)||'未命名老師',lessonCount:0,amount:0};
+        current.lessonCount+=Number(teacher.lessonCount||0);
+        current.amount+=Number(teacher.finalAmount!=null?teacher.finalAmount:teacher.amount||0);
+        teacherMap.set(key,current);
+      });
+    });
+    const teacherRows=Array.from(teacherMap.values()).sort(function(a,b){return b.amount-a.amount;});
     const tabs='<div class="ops-range-tabs"><button class="'+(state.overviewRange==='today'?'active':'')+'" data-action="overview-range" data-range="today">今天</button><button class="'+(state.overviewRange==='month'?'active':'')+'" data-action="overview-range" data-range="month">本月</button><button class="'+(state.overviewRange==='year'?'active':'')+'" data-action="overview-range" data-range="year">今年</button><button class="'+(state.overviewRange==='custom'?'active':'')+'" data-action="overview-range" data-range="custom">自訂區間</button></div>';
     const custom=state.overviewRange==='custom'?'<div class="ops-range-custom"><label>開始日期<input class="ops-input" id="overviewFrom" type="date" value="'+attr(state.overviewFrom)+'"></label><label>結束日期<input class="ops-input" id="overviewTo" type="date" value="'+attr(state.overviewTo)+'"></label></div>':'';
-    return tabs+custom+'<div class="ops-kpi-grid ops-today-kpis">'+kpi('商品銷售',money(productRevenue),'','＄')+kpi('維修收入',money(repairRevenue),'','修')+kpi('其他收入',money(otherRevenue),'','＋')+kpi('租賃收益',money(rentalRevenue),'','租')+kpi('總收入',money(revenue),'','合')+kpi('商品成本',money(cost),'','成本')+kpi(bounds.label+'賺多少',money(profit),'','↗')+kpi('賣出數量',formatNumber(qty),'','件')+'</div>';
+    const teacherHtml=teacherRows.length?'<div class="ops-education-teachers">'+teacherRows.map(function(teacher){return '<div><b>'+escapeHtml(teacher.name)+'</b><span>'+formatNumber(teacher.lessonCount)+' 堂</span><strong>'+money(teacher.amount)+'</strong></div>';}).join('')+'</div>':emptyHtml('尚未匯入課務資料','請先在音教雲同步工具讀取日期，再回到這裡匯入。');
+    const educationHtml='<section class="ops-card ops-education-section"><div class="ops-card-head"><div><h2>音教雲課務</h2></div><button class="ops-button primary" data-action="injiaoyun-import">匯入音教雲</button></div><div class="ops-kpi-grid ops-education-kpis">'+kpi('上課堂數',formatNumber(educationSummary.lessonCount),'','堂')+kpi('課堂金額',money(educationSummary.lessonGross),'','課')+kpi('老師拆帳',money(educationSummary.teacherPayable),'','師')+kpi('教室保留',money(educationSummary.schoolShare),'','留')+kpi('學費實收',money(educationSummary.tuitionReceived),'','收')+kpi('教室租用',money(educationSummary.roomRentalReceived),'','租')+'</div>'+teacherHtml+'</section>';
+    return tabs+custom+'<div class="ops-kpi-grid ops-today-kpis">'+kpi('商品銷售',money(productRevenue),'','＄')+kpi('維修收入',money(repairRevenue),'','修')+kpi('其他收入',money(otherRevenue),'','＋')+kpi('租賃收益',money(rentalRevenue),'','租')+kpi('總收入',money(revenue),'','合')+kpi('商品成本',money(cost),'','成本')+kpi(bounds.label+'賺多少',money(profit),'','↗')+kpi('賣出數量',formatNumber(qty),'','件')+'</div>'+educationHtml;
   }
   function productCompletenessHtml(){
     const total=state.catalog.length||1; const image=state.catalog.filter(function(p){return p.imageUrls&&p.imageUrls.length;}).length; const cost=state.catalog.filter(function(p){return p.averageCost!=null||p.nextFifoCost!=null;}).length; const matched=state.catalog.filter(function(p){return p.matchedOnline;}).length; const nonNegative=state.catalog.filter(function(p){return p.currentStock>=0;}).length;
@@ -1116,7 +1169,7 @@
     const csv='\uFEFF'+[header].concat(rows).map(function(r){return r.map(csvCell).join(',');}).join('\r\n'); downloadBlob('營運中心_商品主檔匯入範本_'+dateText(new Date())+'.csv',csv,'text/csv;charset=utf-8');
   }
   function exportBackup(){
-    const payload={exportedAt:new Date().toISOString(),version:VERSION,projectId:(global.APP_CONFIG&&APP_CONFIG.FIREBASE_CONFIG&&APP_CONFIG.FIREBASE_CONFIG.projectId)||'',onlineSource:state.onlineSource,data:{internalProducts:state.internalProducts,sales:state.sales,salesReturns:state.salesReturns,incomes:state.incomes,customers:state.customers,pointTransactions:state.pointTransactions,receivables:state.receivables,receivablePayments:state.receivablePayments,membershipSettings:state.membershipSettings,purchases:state.purchases,inventoryTransactions:state.inventory,rentalLedgers:state.rentalLedgers,cases:state.cases,expenses:state.expenses,syncJobs:state.syncJobs,auditLogs:state.audit}};
+    const payload={exportedAt:new Date().toISOString(),version:VERSION,projectId:(global.APP_CONFIG&&APP_CONFIG.FIREBASE_CONFIG&&APP_CONFIG.FIREBASE_CONFIG.projectId)||'',onlineSource:state.onlineSource,data:{internalProducts:state.internalProducts,sales:state.sales,salesReturns:state.salesReturns,incomes:state.incomes,customers:state.customers,pointTransactions:state.pointTransactions,receivables:state.receivables,receivablePayments:state.receivablePayments,membershipSettings:state.membershipSettings,purchases:state.purchases,inventoryTransactions:state.inventory,rentalLedgers:state.rentalLedgers,cases:state.cases,expenses:state.expenses,syncJobs:state.syncJobs,educationDaily:state.educationDaily,auditLogs:state.audit}};
     downloadBlob('全通路營運中心_備份_'+dateText(new Date())+'.json',JSON.stringify(payload,null,2),'application/json;charset=utf-8'); toast('備份已下載','請妥善保存 JSON 檔。','success');
   }
   function exportFinance(){
@@ -1175,9 +1228,123 @@
     }
   }
 
+  function limitText(value,max){return clean(value).slice(0,max||160);}
+  function safeSyncNumber(value){const number=Number(value);return Number.isFinite(number)?number:0;}
+  function safeSyncRows(rows,max,map){return (Array.isArray(rows)?rows:[]).slice(0,max).map(map);}
+  function sanitizeInjiaoyunPayload(raw){
+    if(!raw||typeof raw!=='object')throw new Error('同步資料格式不正確');
+    const dateKey=clean(raw.dateKey);
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(dateKey))throw new Error('同步日期格式不正確');
+    const studioId=limitText(raw.studioId,80);
+    if(!studioId)throw new Error('找不到音教雲機構編號');
+    const sessions=safeSyncRows(raw.sessions,500,function(row,index){return {
+      sourceId:limitText(row.sourceId,120)||('session_'+index),
+      occurredAt:limitText(row.occurredAt,40)||dateKey,
+      subject:limitText(row.subject,80),
+      teacherId:limitText(row.teacherId,80),
+      teacherName:limitText(row.teacherName,80)||'未命名老師',
+      studentId:limitText(row.studentId,80),
+      studentName:limitText(row.studentName,80)||'未命名學生',
+      chargeName:limitText(row.chargeName,120),
+      lessonPrice:safeSyncNumber(row.lessonPrice),
+      allotRate:safeSyncNumber(row.allotRate),
+      hourlyFee:safeSyncNumber(row.hourlyFee),
+      teacherAmount:safeSyncNumber(row.teacherAmount),
+      schoolShare:safeSyncNumber(row.schoolShare)
+    };});
+    const teachers=safeSyncRows(raw.teachers,150,function(row,index){return {
+      teacherId:limitText(row.teacherId,80)||('teacher_'+index),
+      name:limitText(row.name,80)||'未命名老師',
+      lessonCount:Math.max(0,Math.floor(safeSyncNumber(row.lessonCount))),
+      baseAmount:safeSyncNumber(row.baseAmount),
+      rewards:safeSyncNumber(row.rewards),
+      reductions:safeSyncNumber(row.reductions),
+      finalAmount:safeSyncNumber(row.finalAmount)
+    };});
+    const tuitionReceipts=safeSyncRows(raw.tuitionReceipts,500,function(row,index){return {
+      sourceId:limitText(row.sourceId,120)||('tuition_'+index),
+      paidAt:limitText(row.paidAt,40)||dateKey,
+      studentId:limitText(row.studentId,80),
+      studentName:limitText(row.studentName,80)||'未命名學生',
+      subject:limitText(row.subject,80),
+      amount:safeSyncNumber(row.amount),
+      paymentMethod:limitText(row.paymentMethod,40)||'未標示',
+      isRevenue:row.isRevenue!==false
+    };});
+    const roomRentals=safeSyncRows(raw.roomRentals,200,function(row,index){return {
+      sourceId:limitText(row.sourceId,120)||('rental_'+index),
+      startAt:limitText(row.startAt,40)||dateKey,
+      endAt:limitText(row.endAt,40),
+      clientName:limitText(row.clientName,80)||'未命名租用人',
+      roomName:limitText(row.roomName,80),
+      amount:safeSyncNumber(row.amount),
+      operatorName:limitText(row.operatorName,80)
+    };});
+    const lessonGross=sum(sessions,function(row){return row.lessonPrice;});
+    const teacherPayable=teachers.length?sum(teachers,function(row){return row.finalAmount;}):sum(sessions,function(row){return row.teacherAmount;});
+    return {
+      schemaVersion:1,
+      source:'injiaoyun',
+      studioId:studioId,
+      studioName:limitText(raw.studioName,120),
+      dateKey:dateKey,
+      includeUnpaid:raw.includeUnpaid===true,
+      sessions:sessions,
+      teachers:teachers,
+      tuitionReceipts:tuitionReceipts,
+      roomRentals:roomRentals,
+      summary:{
+        lessonCount:sessions.length,
+        lessonGross:lessonGross,
+        teacherPayable:teacherPayable,
+        schoolShare:lessonGross-teacherPayable,
+        tuitionReceived:sum(tuitionReceipts,function(row){return row.isRevenue?row.amount:0;}),
+        roomRentalReceived:sum(roomRentals,function(row){return row.amount;})
+      },
+      capturedAt:dateFrom(raw.capturedAt)?new Date(raw.capturedAt).toISOString():new Date().toISOString()
+    };
+  }
+  async function importInjiaoyunPayload(raw){
+    const payload=sanitizeInjiaoyunPayload(raw);
+    const docId='injiaoyun_'+hashText(payload.studioId)+'_'+payload.dateKey;
+    const businessDate=new Date(payload.dateKey+'T12:00:00');
+    await state.db.collection(COLLECTIONS.educationDaily).doc(docId).set(Object.assign({},payload,{businessDate:businessDate,importedAt:serverTimestamp(),importedBy:userLabel(),version:VERSION}));
+    await writeAudit('匯入音教雲課務','educationDaily',docId,payload.dateKey+'｜'+payload.summary.lessonCount+' 堂｜老師拆帳 '+money(payload.summary.teacherPayable));
+    return payload;
+  }
+  function requestInjiaoyunImport(){
+    const requestId='injiaoyun_'+Date.now()+'_'+Math.random().toString(36).slice(2,8);
+    state.injiaoyunRequestId=requestId;
+    toast('正在讀取同步資料','請稍候','info');
+    global.postMessage({type:'YOUZI_REQUEST_INJIAOYUN_DATA',requestId:requestId},global.location.origin);
+    setTimeout(function(){
+      if(state.injiaoyunRequestId===requestId){
+        state.injiaoyunRequestId='';
+        toast('找不到音教雲同步工具','請先安裝 Chrome 同步工具並完成資料讀取。','warning');
+      }
+    },2200);
+  }
+  async function handleInjiaoyunBridgeMessage(event){
+    if(event.source!==global||event.origin!==global.location.origin)return;
+    const message=event.data||{};
+    if(message.type!=='YOUZI_INJIAOYUN_DATA'||!message.requestId||message.requestId!==state.injiaoyunRequestId)return;
+    state.injiaoyunRequestId='';
+    if(message.error||!message.payload){toast('尚無可匯入資料',message.error||'請先在音教雲同步工具讀取日期。','warning');return;}
+    try{
+      const payload=await importInjiaoyunPayload(message.payload);
+      global.postMessage({type:'YOUZI_INJIAOYUN_IMPORT_RESULT',requestId:message.requestId,ok:true,dateKey:payload.dateKey},global.location.origin);
+      toast('音教雲匯入完成',payload.dateKey+'｜'+payload.summary.lessonCount+' 堂｜租用 '+money(payload.summary.roomRentalReceived),'success');
+      await loadAll(true);
+    }catch(error){
+      global.postMessage({type:'YOUZI_INJIAOYUN_IMPORT_RESULT',requestId:message.requestId,ok:false,error:errorMessage(error)},global.location.origin);
+      toast('音教雲匯入失敗',errorMessage(error),'error');
+    }
+  }
+
   function handleAction(action,el){
     if(action==='sync-easystore-api'){ syncEasyStoreApi(); return; }
     if(action==='refresh'){ try{localStorage.removeItem(DASHBOARD_CACHE_KEY);}catch(err){} return loadAll(false); }
+    if(action==='injiaoyun-import') return requestInjiaoyunImport();
     if(action==='drawer-close') return closeDrawer();
     if(action==='overview-range'){state.overviewRange=el.dataset.range||'today';return render();}
     if(action==='sales-mode'){state.salesMode=el.dataset.mode||'product';return render();}
@@ -1304,6 +1471,7 @@
       else if(event.target.id==='importFile'){parseImportFile(event.target.files&&event.target.files[0]).catch(function(error){toast('檔案解析失敗',errorMessage(error),'error');});}
     });
     global.addEventListener('hashchange',function(){closeMobileMenu(); if(!ensureDataForCurrentView())render();});
+    global.addEventListener('message',handleInjiaoyunBridgeMessage);
     const refreshBtn=byId('opsRefreshBtn'); if(refreshBtn)refreshBtn.addEventListener('click',function(){try{localStorage.removeItem(DASHBOARD_CACHE_KEY);}catch(err){} loadAll(false);});
     const backBtn=byId('opsBackBtn'); if(backBtn)backBtn.addEventListener('click',function(){history.back();});
     const logoutBtn=byId('opsLogoutBtn'); if(logoutBtn)logoutBtn.addEventListener('click',function(){ if(typeof global.logout==='function')global.logout();else location.href='index.html'; });

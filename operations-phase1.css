@@ -523,6 +523,17 @@ a{color:inherit;text-decoration:none}
 .ops-body #manualNotifyTabsBtn,.ops-body #manualNotifyTabsModal{display:none!important}
 html,body.ops-body{max-width:100%;overflow-x:hidden}
 
+/* V5.4：音教雲課務同步 */
+.ops-education-section{margin-top:15px;border:1px solid rgba(36,139,104,.22)}
+.ops-education-kpis{grid-template-columns:repeat(6,minmax(0,1fr));margin-bottom:12px}
+.ops-education-teachers{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.ops-education-teachers>div{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:9px;align-items:center;padding:10px 12px;border:1px solid var(--ops-line);border-radius:11px;background:#fff;min-width:0}
+.ops-education-teachers b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ops-education-teachers span{color:var(--ops-muted);white-space:nowrap}
+.ops-education-teachers strong{color:var(--ops-green-2);white-space:nowrap}
+@media(max-width:1080px){.ops-education-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.ops-education-teachers{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:620px){.ops-education-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.ops-education-teachers{grid-template-columns:1fr}.ops-education-teachers>div{padding:9px}}
+
 /* V4：先選客戶，再進行銷售 */
 .ops-pos-customer{display:grid;grid-template-columns:minmax(240px,1fr) auto auto minmax(180px,auto);gap:9px;align-items:center;margin-bottom:12px;padding:12px}
 .ops-pos-customer-info{display:flex;align-items:center;justify-content:flex-end;gap:8px;min-width:0}
