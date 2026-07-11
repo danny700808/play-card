@@ -544,6 +544,19 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
 @media(max-width:1080px){.ops-education-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.ops-education-teachers{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:620px){.ops-education-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.ops-education-teachers{grid-template-columns:1fr}.ops-education-teachers>button{padding:9px}.ops-education-detail-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.ops-education-session-row{grid-template-columns:repeat(2,minmax(0,1fr))}.ops-education-session-main{grid-column:1/-1}}
 
+/* V5.8：門市、網路、音教雲與全部營運分區 */
+.ops-overview-source,.ops-overview-total{margin-top:15px}
+.ops-overview-source>.ops-kpi-grid,.ops-overview-total>.ops-kpi-grid{margin-bottom:0}
+.ops-overview-kpis{grid-template-columns:repeat(4,minmax(0,1fr))}
+.ops-overview-network{grid-template-columns:repeat(3,minmax(0,1fr))}
+.ops-overview-network .ops-kpi strong{font-size:19px;color:var(--ops-muted)}
+.ops-overview-total{border:2px solid rgba(17,53,72,.18);background:#fbfdfd}
+.ops-overview-total-grid{grid-template-columns:repeat(6,minmax(0,1fr))}
+.ops-overview-total-grid .ops-kpi:last-child{border-color:#78b69f;background:var(--ops-green-soft)}
+.ops-education-section .ops-education-kpis{grid-template-columns:repeat(4,minmax(0,1fr))}
+@media(max-width:1080px){.ops-overview-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.ops-overview-total-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.ops-education-section .ops-education-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:620px){.ops-overview-kpis,.ops-overview-network,.ops-overview-total-grid,.ops-education-section .ops-education-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
 /* V4：先選客戶，再進行銷售 */
 .ops-pos-customer{display:grid;grid-template-columns:minmax(240px,1fr) auto auto minmax(180px,auto);gap:9px;align-items:center;margin-bottom:12px;padding:12px}
 .ops-pos-customer-info{display:flex;align-items:center;justify-content:flex-end;gap:8px;min-width:0}
