@@ -19,8 +19,8 @@
   const READ_LIMIT = 10000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.07.11-v3.7-classic-sales';
-  const DASHBOARD_CACHE_KEY = 'youzi_ops_dashboard_today_first_v1';
+  const VERSION = '2026.07.11-v3.8-sales-history';
+  const DASHBOARD_CACHE_KEY = 'youzi_ops_dashboard_sales_history_v1';
   const DASHBOARD_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 
   const state = {
@@ -58,6 +58,10 @@
     rentalSearch:'',
     caseSearch:'',
     inventorySearch:'',
+    overviewRange:'today',
+    overviewSearch:'',
+    overviewFrom:'',
+    overviewTo:'',
     importRows:[],
     importFileName:'',
     importMode:'initial',
@@ -471,7 +475,7 @@
         getCollection(COLLECTIONS.products,10000),
         getCollection('rentalContracts',1000),
         getCollection(COLLECTIONS.rentalLedgers,1000),
-        getCollection(COLLECTIONS.sales,1200),
+        getCollection(COLLECTIONS.sales,10000),
         getCollection(COLLECTIONS.incomes,1200),
         getCollection(COLLECTIONS.purchases,1200),
         getCollection(COLLECTIONS.inventory,10000),
@@ -576,26 +580,30 @@
     state.cases.forEach(function(x){ rows.push({date:x.updatedAt||x.createdAt,type:'案件',icon:'▣',title:x.name,sub:'已收 '+money(x.receivedAmount)}); });
     return rows.sort(function(a,b){ return (dateFrom(b.date)||0)-(dateFrom(a.date)||0); }).slice(0,8);
   }
+  function overviewBounds(){
+    const now=new Date();let start=null,end=null,label='今天';
+    if(state.overviewRange==='today'){start=startOfDay(now);end=endOfDay(now);}
+    else if(state.overviewRange==='month'){start=new Date(now.getFullYear(),now.getMonth(),1);end=endOfDay(new Date(now.getFullYear(),now.getMonth()+1,0));label='本月';}
+    else if(state.overviewRange==='year'){start=new Date(now.getFullYear(),0,1);end=endOfDay(new Date(now.getFullYear(),11,31));label='今年';}
+    else{label='自訂區間';if(state.overviewFrom)start=new Date(state.overviewFrom+'T00:00:00');if(state.overviewTo)end=new Date(state.overviewTo+'T23:59:59');}
+    return {start:start,end:end,label:label};
+  }
   function renderOverview(){
-    const todaySales=todayRows(state.sales,function(x){return x.soldAt;});
-    const todayIncome=todayRows(state.incomes,function(x){return x.occurredAt;});
-    const productRevenue=sum(todaySales,function(x){return x.total;});
-    const otherRevenue=sum(todayIncome,function(x){return x.amount;});
-    const todayCost=sum(todaySales,function(x){return x.costTotal;});
-    const todayRevenue=productRevenue+otherRevenue;
-    const todayProfit=sum(todaySales,function(x){return x.grossProfit;})+otherRevenue;
-    const rows=[];
-    todaySales.forEach(function(sale){
-      (sale.items||[]).forEach(function(item){
-        const product=catalogById(clean(item.productId));
-        rows.push({date:sale.soldAt,type:'商品',name:clean(item.name)||'未命名商品',sku:clean(item.sku),qty:Number(item.qty||1),amount:Number(item.lineTotal!=null?item.lineTotal:Number(item.qty||1)*Number(item.unitPrice||0)),image:clean(item.imageUrl)||(product&&product.imageUrl)||'',sub:sale.saleNo});
-      });
-    });
-    todayIncome.forEach(function(item){rows.push({date:item.occurredAt,type:'收入',name:item.category,sku:'',qty:1,amount:item.amount,image:'',sub:item.incomeNo});});
+    const bounds=overviewBounds();
+    const sales=state.sales.filter(function(sale){const date=dateFrom(sale.soldAt);return date&&(!bounds.start||date>=bounds.start)&&(!bounds.end||date<=bounds.end);});
+    let rows=[];
+    sales.forEach(function(sale){(sale.items||[]).forEach(function(item){rows.push({date:sale.soldAt,saleNo:sale.saleNo,name:clean(item.name)||'未命名商品',sku:clean(item.sku),qty:Number(item.qty||1),amount:Number(item.lineTotal!=null?item.lineTotal:Number(item.qty||1)*Number(item.unitPrice||0)),cost:Number(item.lineCost||0)});});});
+    const term=lower(state.overviewSearch).trim();
+    if(term)rows=rows.filter(function(row){return lower([row.name,row.sku,row.saleNo].join(' ')).includes(term);});
     rows.sort(function(a,b){return (dateFrom(b.date)||0)-(dateFrom(a.date)||0);});
-    const list=rows.length?'<div class="ops-today-list">'+rows.map(function(row){return '<div class="ops-today-row"><div class="no-image">'+(row.type==='收入'?'收入':'商品')+'</div><div><b>'+escapeHtml(row.name)+'</b><small>'+escapeHtml((row.sku?'編號 '+row.sku+'・':'')+(row.type==='商品'?'數量 '+row.qty+'・':'')+dateTimeText(row.date))+'</small></div><strong>'+money(row.amount)+'</strong></div>';}).join('')+'</div>':emptyHtml('今天還沒有收入','完成商品銷售或新增其他收入後會顯示。');
-    return '<div class="ops-kpi-grid ops-today-kpis">'+kpi('今天賺多少',money(todayProfit),'收入扣除商品成本','↗')+kpi('今日總收入',money(todayRevenue),'全部收入','＄')+kpi('商品銷售',money(productRevenue),todaySales.length+' 筆銷售','單')+kpi('其他收入',money(otherRevenue),todayIncome.length+' 筆收入','＋')+'</div>'+
-      '<div class="ops-grid-2"><section class="ops-card"><div class="ops-card-head"><div><h2>今天賣了什麼</h2></div><button class="ops-button small primary" data-nav="sales">前往銷售</button></div>'+list+'</section><section class="ops-card"><div class="ops-card-head"><div><h2>快速收入</h2></div></div><div class="ops-income-shortcuts"><button class="ops-button soft" data-action="open-quick-income" data-category="學費收入">學費收入</button><button class="ops-button soft" data-action="open-quick-income" data-category="教室收入">教室收入</button><button class="ops-button soft" data-action="open-quick-income" data-category="其他收入">其他收入</button></div><div class="ops-summary-list"><div class="ops-summary-line"><span>商品收入</span><b>'+money(productRevenue)+'</b></div><div class="ops-summary-line"><span>其他收入</span><b>'+money(otherRevenue)+'</b></div><div class="ops-summary-line"><span>商品成本</span><b>'+money(todayCost)+'</b></div><div class="ops-summary-line total"><span>今天賺多少</span><b>'+money(todayProfit)+'</b></div></div></section></div>';
+    const revenue=term?sum(rows,function(row){return row.amount;}):sum(sales,function(sale){return sale.total;});
+    const cost=term?sum(rows,function(row){return row.cost;}):sum(sales,function(sale){return sale.costTotal;});
+    const profit=revenue-cost;
+    const qty=sum(rows,function(row){return row.qty;});
+    const tabs='<div class="ops-range-tabs"><button class="'+(state.overviewRange==='today'?'active':'')+'" data-action="overview-range" data-range="today">今天</button><button class="'+(state.overviewRange==='month'?'active':'')+'" data-action="overview-range" data-range="month">本月</button><button class="'+(state.overviewRange==='year'?'active':'')+'" data-action="overview-range" data-range="year">今年</button><button class="'+(state.overviewRange==='custom'?'active':'')+'" data-action="overview-range" data-range="custom">自訂區間</button></div>';
+    const custom=state.overviewRange==='custom'?'<div class="ops-range-custom"><label>開始日期<input class="ops-input" id="overviewFrom" type="date" value="'+attr(state.overviewFrom)+'"></label><label>結束日期<input class="ops-input" id="overviewTo" type="date" value="'+attr(state.overviewTo)+'"></label></div>':'';
+    const list=rows.length?'<div class="ops-today-list">'+rows.map(function(row){return '<div class="ops-today-row"><div class="no-image">商品</div><div><b>'+escapeHtml(row.name)+'</b><small>'+escapeHtml((row.sku?'編號 '+row.sku+'・':'')+'數量 '+row.qty+'・'+dateTimeText(row.date))+'</small></div><strong>'+money(row.amount)+'</strong></div>';}).join('')+'</div>':emptyHtml('這段期間沒有商品銷售',term?'請更換搜尋文字。':'完成現場商品銷售後會顯示。');
+    return tabs+custom+'<div class="ops-kpi-grid ops-today-kpis">'+kpi(bounds.label+'銷售收入',money(revenue),term?rows.length+' 個符合品項':sales.length+' 筆銷售','＄')+kpi('商品成本',money(cost),'已售商品成本','成本')+kpi(bounds.label+'賺多少',money(profit),'銷售收入－商品成本','↗')+kpi('賣出數量',formatNumber(qty),term?'符合目前搜尋':'全部賣出數量','件')+'</div><section class="ops-card"><div class="ops-card-head"><div><h2>'+bounds.label+'賣了什麼</h2></div><button class="ops-button small primary" data-nav="sales">前往銷售</button></div><input class="ops-input ops-overview-search" id="overviewSearch" placeholder="搜尋商品名稱、編號或銷售單號" value="'+attr(state.overviewSearch)+'">'+list+'</section>';
   }
   function productCompletenessHtml(){
     const total=state.catalog.length||1; const image=state.catalog.filter(function(p){return p.imageUrls&&p.imageUrls.length;}).length; const cost=state.catalog.filter(function(p){return p.averageCost!=null||p.nextFifoCost!=null;}).length; const matched=state.catalog.filter(function(p){return p.matchedOnline;}).length; const nonNegative=state.catalog.filter(function(p){return p.currentStock>=0;}).length;
@@ -647,7 +655,7 @@
     else if(term) productHtml='<div class="ops-no-result">找不到商品</div>';
     const cartHtml=state.cart.length?state.cart.map(function(item,index){const p=catalogById(item.productId);return '<div class="ops-cart-row"><div><b>'+escapeHtml(item.name)+'</b><small>編號 '+escapeHtml(item.sku||'')+'・庫存 '+formatNumber(p?p.currentStock:item.currentStock)+'</small></div><input aria-label="數量" type="number" min="1" step="1" value="'+item.qty+'" data-cart-qty="'+index+'"><input aria-label="售價" type="number" min="0" step="1" value="'+item.unitPrice+'" data-cart-price="'+index+'"><button class="ops-icon-button" data-action="cart-remove" data-index="'+index+'">×</button></div>';}).join(''):'<div class="ops-empty"><strong>尚未選商品</strong></div>';
     const productRevenue=sum(todaySales,function(x){return x.total;});const otherRevenue=sum(todayIncome,function(x){return x.amount;});const todayProfit=sum(todaySales,function(x){return x.grossProfit;})+otherRevenue;
-    return '<div class="ops-pos-layout"><section class="ops-card"><div class="ops-toolbar"><input class="ops-input grow ops-pos-search" id="posSearch" placeholder="商品編號／名稱" value="'+attr(state.posSearch)+'"><button class="ops-button ghost" data-action="pos-clear-search">清除</button></div><div class="ops-pos-products">'+productHtml+'</div></section><section class="ops-card"><div class="ops-card-head"><div><h2>要賣的商品</h2></div><button class="ops-button small ghost" data-action="cart-clear">清空</button></div><div class="ops-cart">'+cartHtml+'</div>'+(state.cart.length?'<div class="ops-summary-line total" style="margin-top:12px"><span>這次應收金額</span><b id="cartSubtotal">'+money(cartSubtotal)+'</b></div>':'')+'<div style="margin-top:13px"><button class="ops-button primary wide" data-action="checkout" '+(state.cart.length?'':'disabled')+'>前往結帳</button></div></section></div><div class="ops-income-shortcuts" style="margin-top:15px"><button class="ops-button soft" data-action="open-quick-income" data-category="維修收入">＋ 維修收入</button><button class="ops-button soft" data-action="open-quick-income" data-category="學費收入">＋ 學費收入</button><button class="ops-button soft" data-action="open-quick-income" data-category="其他收入">＋ 其他收入</button></div><section class="ops-card"><div class="ops-card-head"><div><h2>今天收入</h2></div><button class="ops-button small ghost" data-action="show-sales-history">查看銷售紀錄</button></div><div class="ops-kpi-grid" style="margin-bottom:0">'+kpi('商品銷售',money(productRevenue),todaySales.length+' 筆','＄')+kpi('其他收入',money(otherRevenue),todayIncome.length+' 筆','＋')+kpi('今天賺多少',money(todayProfit),'收入扣除商品成本','↗')+'</div></section>';
+    return '<div class="ops-pos-layout"><section class="ops-card"><div class="ops-toolbar"><input class="ops-input grow ops-pos-search" id="posSearch" placeholder="商品編號／名稱" value="'+attr(state.posSearch)+'"><button class="ops-button ghost" data-action="pos-clear-search">清除</button></div><div class="ops-pos-products">'+productHtml+'</div></section><section class="ops-card"><div class="ops-card-head"><div><h2>要賣的商品</h2></div><button class="ops-button small ghost" data-action="cart-clear">清空</button></div><div class="ops-cart">'+cartHtml+'</div>'+(state.cart.length?'<div class="ops-summary-line total" style="margin-top:12px"><span>這次應收金額</span><b id="cartSubtotal">'+money(cartSubtotal)+'</b></div>':'')+'<div style="margin-top:13px"><button class="ops-button primary wide" data-action="checkout" '+(state.cart.length?'':'disabled')+'>前往結帳</button></div></section></div><div class="ops-income-shortcuts" style="margin-top:15px"><button class="ops-button soft" data-action="open-quick-income" data-category="維修收入">＋ 維修收入</button><button class="ops-button soft" data-action="open-quick-income" data-category="未登錄商品">＋ 未登錄商品</button><button class="ops-button soft" data-action="open-quick-income" data-category="其他收入">＋ 其他收入</button></div><section class="ops-card"><div class="ops-card-head"><div><h2>今天收入</h2></div><button class="ops-button small ghost" data-action="show-sales-history">查看銷售紀錄</button></div><div class="ops-kpi-grid" style="margin-bottom:0">'+kpi('商品銷售',money(productRevenue),todaySales.length+' 筆','＄')+kpi('其他收入',money(otherRevenue),todayIncome.length+' 筆','＋')+kpi('今天賺多少',money(todayProfit),'收入扣除商品成本','↗')+'</div></section>';
   }
 
   function renderPurchases(){
@@ -881,6 +889,7 @@
     if(action==='sync-easystore-api'){ syncEasyStoreApi(); return; }
     if(action==='refresh'){ try{localStorage.removeItem(DASHBOARD_CACHE_KEY);}catch(err){} return loadAll(false); }
     if(action==='drawer-close') return closeDrawer();
+    if(action==='overview-range'){state.overviewRange=el.dataset.range||'today';return render();}
     if(action==='sales-mode'){state.salesMode=el.dataset.mode||'product';return render();}
     if(action==='pos-key'){
       const key=el.dataset.key||'';
@@ -952,6 +961,7 @@
     document.addEventListener('input',function(event){
       if(event.target.id==='productSearch'){state.productSearch=event.target.value;state.productVisible=PRODUCT_PAGE_SIZE;rerenderKeepingFocus('productSearch',state.productSearch);}
       else if(event.target.id==='posSearch'){state.posSearch=event.target.value;rerenderKeepingFocus('posSearch',state.posSearch);}
+      else if(event.target.id==='overviewSearch'){state.overviewSearch=event.target.value;rerenderKeepingFocus('overviewSearch',state.overviewSearch);}
       else if(event.target.id==='rentalSearch'){state.rentalSearch=event.target.value;rerenderKeepingFocus('rentalSearch',state.rentalSearch);}
       else if(event.target.id==='caseSearch'){state.caseSearch=event.target.value;rerenderKeepingFocus('caseSearch',state.caseSearch);}
       else if(event.target.id==='inventorySearch'){state.inventorySearch=event.target.value;rerenderKeepingFocus('inventorySearch',state.inventorySearch);}
@@ -962,6 +972,8 @@
       if(event.target.id==='productFilter'){state.productFilter=event.target.value;state.productVisible=PRODUCT_PAGE_SIZE;render();}
       else if(event.target.id==='productSort'){state.productSort=event.target.value;render();}
       else if(event.target.id==='financeRange'){state.financeRange=event.target.value;render();}
+      else if(event.target.id==='overviewFrom'){state.overviewFrom=event.target.value;render();}
+      else if(event.target.id==='overviewTo'){state.overviewTo=event.target.value;render();}
       else if(event.target.id==='importFile'){parseImportFile(event.target.files&&event.target.files[0]).catch(function(error){toast('檔案解析失敗',errorMessage(error),'error');});}
     });
     global.addEventListener('hashchange',function(){closeMobileMenu(); if(!ensureDataForCurrentView())render();});
@@ -989,7 +1001,7 @@
     bindEvents();
     const initialView=(location.hash||'#overview').replace('#','').split('?')[0]||'overview';
     const cache=initialView==='overview'?getDashboardCache():null;
-    if(cache){ showCachedDashboard(cache); }
+    if(cache){ showCachedDashboard(cache); await loadAll(true); }
     else { render(); await loadAll(false); }
   }
 
