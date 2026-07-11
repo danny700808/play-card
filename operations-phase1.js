@@ -25,7 +25,7 @@
   const READ_LIMIT = 10000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.07.11-v5.4-injiaoyun-sync';
+  const VERSION = '2026.07.11-v5.5-injiaoyun-month-sync';
   const DASHBOARD_CACHE_KEY = 'youzi_ops_dashboard_member_full_v4';
   const DASHBOARD_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
   const DEFAULT_MEMBERSHIP_SETTINGS = {
@@ -482,10 +482,12 @@
     return false;
   }
 
-  async function getCollection(name,limit){
+  async function getCollection(name,limit,orderField,orderDirection){
     const started=Date.now();
     try{
-      const snap=await state.db.collection(name).limit(limit||READ_LIMIT).get();
+      let request=state.db.collection(name);
+      if(orderField)request=request.orderBy(orderField,orderDirection||'desc');
+      const snap=await request.limit(limit||READ_LIMIT).get();
       state.diagnostics.push({collection:name,ok:true,count:snap.size,ms:Date.now()-started});
       return snap.docs.map(function(doc){ return Object.assign({__id:doc.id},doc.data()||{}); });
     }catch(error){
@@ -539,7 +541,7 @@
         getCollection(COLLECTIONS.receivables,3000),
         getCollection(COLLECTIONS.receivablePayments,3000),
         getCollection(COLLECTIONS.salesReturns,3000),
-        getCollection(COLLECTIONS.educationDaily,800)
+        getCollection(COLLECTIONS.educationDaily,800,'businessDate','desc')
       ]);
       state.internalProducts=results[0].map(function(row){ return normalizeInternal(row,row.__id); });
       state.rentals=results[1].map(normalizeRental);
@@ -749,7 +751,7 @@
     const teacherRows=Array.from(teacherMap.values()).sort(function(a,b){return b.amount-a.amount;});
     const tabs='<div class="ops-range-tabs"><button class="'+(state.overviewRange==='today'?'active':'')+'" data-action="overview-range" data-range="today">今天</button><button class="'+(state.overviewRange==='month'?'active':'')+'" data-action="overview-range" data-range="month">本月</button><button class="'+(state.overviewRange==='year'?'active':'')+'" data-action="overview-range" data-range="year">今年</button><button class="'+(state.overviewRange==='custom'?'active':'')+'" data-action="overview-range" data-range="custom">自訂區間</button></div>';
     const custom=state.overviewRange==='custom'?'<div class="ops-range-custom"><label>開始日期<input class="ops-input" id="overviewFrom" type="date" value="'+attr(state.overviewFrom)+'"></label><label>結束日期<input class="ops-input" id="overviewTo" type="date" value="'+attr(state.overviewTo)+'"></label></div>':'';
-    const teacherHtml=teacherRows.length?'<div class="ops-education-teachers">'+teacherRows.map(function(teacher){return '<div><b>'+escapeHtml(teacher.name)+'</b><span>'+formatNumber(teacher.lessonCount)+' 堂</span><strong>'+money(teacher.amount)+'</strong></div>';}).join('')+'</div>':emptyHtml('尚未匯入課務資料','請先在音教雲同步工具讀取日期，再回到這裡匯入。');
+    const teacherHtml=teacherRows.length?'<div class="ops-education-teachers">'+teacherRows.map(function(teacher){return '<div><b>'+escapeHtml(teacher.name)+'</b><span>'+formatNumber(teacher.lessonCount)+' 堂</span><strong>'+money(teacher.amount)+'</strong></div>';}).join('')+'</div>':educationRows.length?emptyHtml('此期間沒有上課資料',''):emptyHtml('尚未匯入課務資料','請先在音教雲同步工具讀取本月資料，再回到這裡匯入。');
     const educationHtml='<section class="ops-card ops-education-section"><div class="ops-card-head"><div><h2>音教雲課務</h2></div><button class="ops-button primary" data-action="injiaoyun-import">匯入音教雲</button></div><div class="ops-kpi-grid ops-education-kpis">'+kpi('上課堂數',formatNumber(educationSummary.lessonCount),'','堂')+kpi('課堂金額',money(educationSummary.lessonGross),'','課')+kpi('老師拆帳',money(educationSummary.teacherPayable),'','師')+kpi('教室保留',money(educationSummary.schoolShare),'','留')+kpi('學費實收',money(educationSummary.tuitionReceived),'','收')+kpi('教室租用',money(educationSummary.roomRentalReceived),'','租')+'</div>'+teacherHtml+'</section>';
     return tabs+custom+'<div class="ops-kpi-grid ops-today-kpis">'+kpi('商品銷售',money(productRevenue),'','＄')+kpi('維修收入',money(repairRevenue),'','修')+kpi('其他收入',money(otherRevenue),'','＋')+kpi('租賃收益',money(rentalRevenue),'','租')+kpi('總收入',money(revenue),'','合')+kpi('商品成本',money(cost),'','成本')+kpi(bounds.label+'賺多少',money(profit),'','↗')+kpi('賣出數量',formatNumber(qty),'','件')+'</div>'+educationHtml;
   }
@@ -1231,10 +1233,29 @@
   function limitText(value,max){return clean(value).slice(0,max||160);}
   function safeSyncNumber(value){const number=Number(value);return Number.isFinite(number)?number:0;}
   function safeSyncRows(rows,max,map){return (Array.isArray(rows)?rows:[]).slice(0,max).map(map);}
+  function validSyncDateKey(value){
+    const dateKey=clean(value),match=dateKey.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if(!match)return false;
+    const year=Number(match[1]),month=Number(match[2]),day=Number(match[3]);
+    const date=new Date(year,month-1,day,12,0,0,0);
+    return date.getFullYear()===year&&date.getMonth()===month-1&&date.getDate()===day;
+  }
+  function syncDateKeys(startDateKey,endDateKey){
+    if(!validSyncDateKey(startDateKey)||!validSyncDateKey(endDateKey))throw new Error('同步日期格式不正確');
+    if(startDateKey.slice(0,7)!==endDateKey.slice(0,7)||startDateKey>endDateKey)throw new Error('同步範圍必須是同一個月份');
+    const startParts=startDateKey.split('-').map(Number),endParts=endDateKey.split('-').map(Number);
+    const cursor=new Date(startParts[0],startParts[1]-1,startParts[2],12,0,0,0),end=new Date(endParts[0],endParts[1]-1,endParts[2],12,0,0,0),keys=[];
+    while(cursor<=end&&keys.length<32){
+      keys.push(cursor.getFullYear()+'-'+String(cursor.getMonth()+1).padStart(2,'0')+'-'+String(cursor.getDate()).padStart(2,'0'));
+      cursor.setDate(cursor.getDate()+1);
+    }
+    if(!keys.length||keys.length>31)throw new Error('同步日期範圍不正確');
+    return keys;
+  }
   function sanitizeInjiaoyunPayload(raw){
     if(!raw||typeof raw!=='object')throw new Error('同步資料格式不正確');
     const dateKey=clean(raw.dateKey);
-    if(!/^\d{4}-\d{2}-\d{2}$/.test(dateKey))throw new Error('同步日期格式不正確');
+    if(!validSyncDateKey(dateKey))throw new Error('同步日期格式不正確');
     const studioId=limitText(raw.studioId,80);
     if(!studioId)throw new Error('找不到音教雲機構編號');
     const sessions=safeSyncRows(raw.sessions,500,function(row,index){return {
@@ -1246,6 +1267,10 @@
       studentId:limitText(row.studentId,80),
       studentName:limitText(row.studentName,80)||'未命名學生',
       chargeName:limitText(row.chargeName,120),
+      packageAmount:safeSyncNumber(row.packageAmount),
+      packageCourseCount:Math.max(0,Math.floor(safeSyncNumber(row.packageCourseCount))),
+      discount:safeSyncNumber(row.discount),
+      payByDiscount:row.payByDiscount===true,
       lessonPrice:safeSyncNumber(row.lessonPrice),
       allotRate:safeSyncNumber(row.allotRate),
       hourlyFee:safeSyncNumber(row.hourlyFee),
@@ -1283,7 +1308,7 @@
     const lessonGross=sum(sessions,function(row){return row.lessonPrice;});
     const teacherPayable=teachers.length?sum(teachers,function(row){return row.finalAmount;}):sum(sessions,function(row){return row.teacherAmount;});
     return {
-      schemaVersion:1,
+      schemaVersion:2,
       source:'injiaoyun',
       studioId:studioId,
       studioName:limitText(raw.studioName,120),
@@ -1304,13 +1329,63 @@
       capturedAt:dateFrom(raw.capturedAt)?new Date(raw.capturedAt).toISOString():new Date().toISOString()
     };
   }
+  function sanitizeInjiaoyunMonthPayload(raw){
+    if(!raw||typeof raw!=='object')throw new Error('同步資料格式不正確');
+    const startDateKey=clean(raw.startDateKey),endDateKey=clean(raw.endDateKey);
+    const requiredKeys=syncDateKeys(startDateKey,endDateKey);
+    if(startDateKey.slice(8)!=='01')throw new Error('本月同步必須從 1 日開始');
+    if(!Array.isArray(raw.days))throw new Error('找不到本月每日同步資料');
+    if(raw.days.length!==requiredKeys.length)throw new Error('本月每日資料不完整，請重新讀取');
+    const studioId=limitText(raw.studioId,80),studioName=limitText(raw.studioName,120);
+    if(!studioId)throw new Error('找不到音教雲機構編號');
+    const dayMap=new Map();
+    raw.days.forEach(function(day){
+      const dateKey=clean(day&&day.dateKey);
+      if(dayMap.has(dateKey))throw new Error('本月同步資料含有重複日期');
+      dayMap.set(dateKey,day);
+    });
+    const days=requiredKeys.map(function(dateKey){
+      const day=dayMap.get(dateKey);
+      if(!day)throw new Error('本月同步缺少 '+dateKey+' 的資料');
+      return sanitizeInjiaoyunPayload(Object.assign({},day,{studioId:studioId,studioName:studioName,dateKey:dateKey,includeUnpaid:raw.includeUnpaid===true,capturedAt:raw.capturedAt||day.capturedAt}));
+    });
+    return {
+      schemaVersion:2,
+      source:'injiaoyun',
+      studioId:studioId,
+      studioName:studioName,
+      startDateKey:startDateKey,
+      endDateKey:endDateKey,
+      includeUnpaid:raw.includeUnpaid===true,
+      days:days,
+      summary:{
+        lessonCount:sum(days,function(day){return day.summary.lessonCount;}),
+        lessonGross:sum(days,function(day){return day.summary.lessonGross;}),
+        teacherPayable:sum(days,function(day){return day.summary.teacherPayable;}),
+        schoolShare:sum(days,function(day){return day.summary.schoolShare;}),
+        tuitionReceived:sum(days,function(day){return day.summary.tuitionReceived;}),
+        roomRentalReceived:sum(days,function(day){return day.summary.roomRentalReceived;})
+      },
+      capturedAt:dateFrom(raw.capturedAt)?new Date(raw.capturedAt).toISOString():new Date().toISOString()
+    };
+  }
   async function importInjiaoyunPayload(raw){
-    const payload=sanitizeInjiaoyunPayload(raw);
-    const docId='injiaoyun_'+hashText(payload.studioId)+'_'+payload.dateKey;
-    const businessDate=new Date(payload.dateKey+'T12:00:00');
-    await state.db.collection(COLLECTIONS.educationDaily).doc(docId).set(Object.assign({},payload,{businessDate:businessDate,importedAt:serverTimestamp(),importedBy:userLabel(),version:VERSION}));
-    await writeAudit('匯入音教雲課務','educationDaily',docId,payload.dateKey+'｜'+payload.summary.lessonCount+' 堂｜老師拆帳 '+money(payload.summary.teacherPayable));
-    return payload;
+    if(raw&&Array.isArray(raw.days)){
+      const month=sanitizeInjiaoyunMonthPayload(raw),batch=state.db.batch();
+      month.days.forEach(function(day){
+        const docId='injiaoyun_'+hashText(month.studioId)+'_'+day.dateKey;
+        const ref=state.db.collection(COLLECTIONS.educationDaily).doc(docId);
+        batch.set(ref,Object.assign({},day,{businessDate:new Date(day.dateKey+'T12:00:00'),importedAt:serverTimestamp(),importedBy:userLabel(),version:VERSION}));
+      });
+      await batch.commit();
+      await writeAudit('匯入音教雲本月課務','educationDaily',hashText(month.studioId)+'_'+month.startDateKey.slice(0,7),month.startDateKey+'～'+month.endDateKey+'｜'+month.summary.lessonCount+' 堂｜老師拆帳 '+money(month.summary.teacherPayable));
+      return month;
+    }
+    const day=sanitizeInjiaoyunPayload(raw);
+    const docId='injiaoyun_'+hashText(day.studioId)+'_'+day.dateKey;
+    await state.db.collection(COLLECTIONS.educationDaily).doc(docId).set(Object.assign({},day,{businessDate:new Date(day.dateKey+'T12:00:00'),importedAt:serverTimestamp(),importedBy:userLabel(),version:VERSION}));
+    await writeAudit('匯入音教雲課務','educationDaily',docId,day.dateKey+'｜'+day.summary.lessonCount+' 堂｜老師拆帳 '+money(day.summary.teacherPayable));
+    return Object.assign({startDateKey:day.dateKey,endDateKey:day.dateKey,days:[day]},day);
   }
   function requestInjiaoyunImport(){
     const requestId='injiaoyun_'+Date.now()+'_'+Math.random().toString(36).slice(2,8);
@@ -1329,11 +1404,11 @@
     const message=event.data||{};
     if(message.type!=='YOUZI_INJIAOYUN_DATA'||!message.requestId||message.requestId!==state.injiaoyunRequestId)return;
     state.injiaoyunRequestId='';
-    if(message.error||!message.payload){toast('尚無可匯入資料',message.error||'請先在音教雲同步工具讀取日期。','warning');return;}
+    if(message.error||!message.payload){toast('尚無可匯入資料',message.error||'請先在音教雲同步工具讀取本月資料。','warning');return;}
     try{
       const payload=await importInjiaoyunPayload(message.payload);
-      global.postMessage({type:'YOUZI_INJIAOYUN_IMPORT_RESULT',requestId:message.requestId,ok:true,dateKey:payload.dateKey},global.location.origin);
-      toast('音教雲匯入完成',payload.dateKey+'｜'+payload.summary.lessonCount+' 堂｜租用 '+money(payload.summary.roomRentalReceived),'success');
+      global.postMessage({type:'YOUZI_INJIAOYUN_IMPORT_RESULT',requestId:message.requestId,ok:true,startDateKey:payload.startDateKey,endDateKey:payload.endDateKey},global.location.origin);
+      toast('音教雲匯入完成',payload.startDateKey+'～'+payload.endDateKey+'｜'+payload.summary.lessonCount+' 堂｜學費 '+money(payload.summary.tuitionReceived)+'｜租用 '+money(payload.summary.roomRentalReceived),'success');
       await loadAll(true);
     }catch(error){
       global.postMessage({type:'YOUZI_INJIAOYUN_IMPORT_RESULT',requestId:message.requestId,ok:false,error:errorMessage(error)},global.location.origin);
