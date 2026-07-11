@@ -25,7 +25,7 @@
   const READ_LIMIT = 10000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.07.11-v5.5-injiaoyun-month-sync';
+  const VERSION = '2026.07.11-v5.7-education-class-detail';
   const DASHBOARD_CACHE_KEY = 'youzi_ops_dashboard_member_full_v4';
   const DASHBOARD_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
   const DEFAULT_MEMBERSHIP_SETTINGS = {
@@ -100,6 +100,7 @@
     overviewSearch:'',
     overviewFrom:'',
     overviewTo:'',
+    overviewMonth:(function(){const now=new Date();return now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');})(),
     injiaoyunRequestId:'',
     importRows:[],
     importFileName:'',
@@ -450,7 +451,9 @@
   }
 
   function saveDashboardCache(){
+    const previousRange=state.overviewRange;
     try{
+      state.overviewRange='today';
       const payload={
         savedAt:Date.now(),
         loadedAt:state.loadedAt?state.loadedAt.toISOString():new Date().toISOString(),
@@ -458,6 +461,7 @@
       };
       localStorage.setItem(DASHBOARD_CACHE_KEY,JSON.stringify(payload));
     }catch(error){ console.warn('dashboard cache save failed',error); }
+    finally{state.overviewRange=previousRange;}
   }
   function getDashboardCache(){
     try{
@@ -541,7 +545,7 @@
         getCollection(COLLECTIONS.receivables,3000),
         getCollection(COLLECTIONS.receivablePayments,3000),
         getCollection(COLLECTIONS.salesReturns,3000),
-        getCollection(COLLECTIONS.educationDaily,800,'businessDate','desc')
+        getCollection(COLLECTIONS.educationDaily,3000,'businessDate','desc')
       ]);
       state.internalProducts=results[0].map(function(row){ return normalizeInternal(row,row.__id); });
       state.rentals=results[1].map(normalizeRental);
@@ -681,7 +685,12 @@
   function overviewBounds(){
     const now=new Date();let start=null,end=null,label='今天';
     if(state.overviewRange==='today'){start=startOfDay(now);end=endOfDay(now);}
-    else if(state.overviewRange==='month'){start=new Date(now.getFullYear(),now.getMonth(),1);end=endOfDay(new Date(now.getFullYear(),now.getMonth()+1,0));label='本月';}
+    else if(state.overviewRange==='month'){
+      const currentKey=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+      const selected=/^\d{4}-(0[1-9]|1[0-2])$/.test(clean(state.overviewMonth))&&state.overviewMonth<=currentKey?state.overviewMonth:currentKey;
+      const parts=selected.split('-').map(Number);state.overviewMonth=selected;
+      start=new Date(parts[0],parts[1]-1,1);end=selected===currentKey?endOfDay(now):endOfDay(new Date(parts[0],parts[1],0));label=selected===currentKey?'本月':parts[0]+' 年 '+parts[1]+' 月';
+    }
     else if(state.overviewRange==='year'){start=new Date(now.getFullYear(),0,1);end=endOfDay(new Date(now.getFullYear(),11,31));label='今年';}
     else{label='自訂區間';if(state.overviewFrom)start=new Date(state.overviewFrom+'T00:00:00');if(state.overviewTo)end=new Date(state.overviewTo+'T23:59:59');}
     return {start:start,end:end,label:label};
@@ -698,10 +707,11 @@
     const cost=term?sum(rows,function(row){return row.cost;}):sum(sales,function(sale){return sale.costTotal;});
     const profit=revenue-cost;
     const qty=sum(rows,function(row){return row.qty;});
-    const tabs='<div class="ops-range-tabs"><button class="'+(state.overviewRange==='today'?'active':'')+'" data-action="overview-range" data-range="today">今天</button><button class="'+(state.overviewRange==='month'?'active':'')+'" data-action="overview-range" data-range="month">本月</button><button class="'+(state.overviewRange==='year'?'active':'')+'" data-action="overview-range" data-range="year">今年</button><button class="'+(state.overviewRange==='custom'?'active':'')+'" data-action="overview-range" data-range="custom">自訂區間</button></div>';
+    const tabs='<div class="ops-range-tabs"><button class="'+(state.overviewRange==='today'?'active':'')+'" data-action="overview-range" data-range="today">今天</button><button class="'+(state.overviewRange==='month'?'active':'')+'" data-action="overview-range" data-range="month">月份</button><button class="'+(state.overviewRange==='year'?'active':'')+'" data-action="overview-range" data-range="year">今年</button><button class="'+(state.overviewRange==='custom'?'active':'')+'" data-action="overview-range" data-range="custom">自訂區間</button></div>';
+    const monthPicker=state.overviewRange==='month'?'<div class="ops-range-custom"><label>查看月份<input class="ops-input" id="overviewMonth" type="month" max="'+attr(dateText(new Date()).slice(0,7))+'" value="'+attr(state.overviewMonth)+'"></label></div>':'';
     const custom=state.overviewRange==='custom'?'<div class="ops-range-custom"><label>開始日期<input class="ops-input" id="overviewFrom" type="date" value="'+attr(state.overviewFrom)+'"></label><label>結束日期<input class="ops-input" id="overviewTo" type="date" value="'+attr(state.overviewTo)+'"></label></div>':'';
     const list=rows.length?'<div class="ops-today-list">'+rows.map(function(row){return '<div class="ops-today-row"><div class="no-image">商品</div><div><b>'+escapeHtml(row.name)+'</b><small>'+escapeHtml((row.sku?'編號 '+row.sku+'・':'')+'數量 '+row.qty+'・'+dateTimeText(row.date))+'</small></div><strong>'+money(row.amount)+'</strong></div>';}).join('')+'</div>':emptyHtml('這段期間沒有商品銷售',term?'請更換搜尋文字。':'完成現場商品銷售後會顯示。');
-    return tabs+custom+'<div class="ops-kpi-grid ops-today-kpis">'+kpi(bounds.label+'銷售收入',money(revenue),term?rows.length+' 個符合品項':sales.length+' 筆銷售','＄')+kpi('商品成本',money(cost),'已售商品成本','成本')+kpi(bounds.label+'賺多少',money(profit),'銷售收入－商品成本','↗')+kpi('賣出數量',formatNumber(qty),term?'符合目前搜尋':'全部賣出數量','件')+'</div><section class="ops-card"><div class="ops-card-head"><div><h2>'+bounds.label+'賣了什麼</h2></div><button class="ops-button small primary" data-nav="sales">前往銷售</button></div><input class="ops-input ops-overview-search" id="overviewSearch" placeholder="搜尋商品名稱、編號或銷售單號" value="'+attr(state.overviewSearch)+'">'+list+'</section>';
+    return tabs+monthPicker+custom+'<div class="ops-kpi-grid ops-today-kpis">'+kpi(bounds.label+'銷售收入',money(revenue),term?rows.length+' 個符合品項':sales.length+' 筆銷售','＄')+kpi('商品成本',money(cost),'已售商品成本','成本')+kpi(bounds.label+'賺多少',money(profit),'銷售收入－商品成本','↗')+kpi('賣出數量',formatNumber(qty),term?'符合目前搜尋':'全部賣出數量','件')+'</div><section class="ops-card"><div class="ops-card-head"><div><h2>'+bounds.label+'賣了什麼</h2></div><button class="ops-button small primary" data-nav="sales">前往銷售</button></div><input class="ops-input ops-overview-search" id="overviewSearch" placeholder="搜尋商品名稱、編號或銷售單號" value="'+attr(state.overviewSearch)+'">'+list+'</section>';
   }
   function renderOverviewV6(){
     const bounds=overviewBounds();
@@ -730,30 +740,60 @@
     const cost=Math.max(0,sum(productRows,function(row){return row.cost;})-sum(returns,function(row){return row.restockedCost||0;}));
     const profit=revenue-cost;
     const qty=sum(productRows,function(row){return row.qty;});
+    const educationSessions=[];
+    educationRows.forEach(function(row){(row.sessions||[]).forEach(function(session){educationSessions.push(session);});});
     const educationSummary={
-      lessonCount:sum(educationRows,function(row){return row.summary.lessonCount;}),
-      lessonGross:sum(educationRows,function(row){return row.summary.lessonGross;}),
-      teacherPayable:sum(educationRows,function(row){return row.summary.teacherPayable;}),
-      schoolShare:sum(educationRows,function(row){return row.summary.schoolShare;}),
+      lessonCount:educationSessions.length,
+      lessonGross:sum(educationSessions,function(session){return session.lessonPrice;}),
+      teacherPayable:sum(educationSessions,function(session){return session.teacherAmount;}),
+      schoolShare:sum(educationSessions,function(session){return hasValue(session.schoolShare)?session.schoolShare:Number(session.lessonPrice||0)-Number(session.teacherAmount||0);}),
       tuitionReceived:sum(educationRows,function(row){return row.summary.tuitionReceived;}),
       roomRentalReceived:sum(educationRows,function(row){return row.summary.roomRentalReceived;})
     };
     const teacherMap=new Map();
-    educationRows.forEach(function(row){
-      (row.teachers||[]).forEach(function(teacher){
-        const key=clean(teacher.teacherId)||clean(teacher.name)||'未命名';
-        const current=teacherMap.get(key)||{name:clean(teacher.name)||'未命名老師',lessonCount:0,amount:0};
-        current.lessonCount+=Number(teacher.lessonCount||0);
-        current.amount+=Number(teacher.finalAmount!=null?teacher.finalAmount:teacher.amount||0);
+    educationSessions.forEach(function(session){
+        const key=clean(session.teacherId)||clean(session.teacherName)||'未命名';
+        const current=teacherMap.get(key)||{key:key,name:clean(session.teacherName)||'未命名老師',lessonCount:0,amount:0};
+        current.lessonCount+=1;
+        current.amount+=Number(session.teacherAmount||0);
         teacherMap.set(key,current);
-      });
     });
     const teacherRows=Array.from(teacherMap.values()).sort(function(a,b){return b.amount-a.amount;});
-    const tabs='<div class="ops-range-tabs"><button class="'+(state.overviewRange==='today'?'active':'')+'" data-action="overview-range" data-range="today">今天</button><button class="'+(state.overviewRange==='month'?'active':'')+'" data-action="overview-range" data-range="month">本月</button><button class="'+(state.overviewRange==='year'?'active':'')+'" data-action="overview-range" data-range="year">今年</button><button class="'+(state.overviewRange==='custom'?'active':'')+'" data-action="overview-range" data-range="custom">自訂區間</button></div>';
+    const tabs='<div class="ops-range-tabs"><button class="'+(state.overviewRange==='today'?'active':'')+'" data-action="overview-range" data-range="today">今天</button><button class="'+(state.overviewRange==='month'?'active':'')+'" data-action="overview-range" data-range="month">月份</button><button class="'+(state.overviewRange==='year'?'active':'')+'" data-action="overview-range" data-range="year">今年</button><button class="'+(state.overviewRange==='custom'?'active':'')+'" data-action="overview-range" data-range="custom">自訂區間</button></div>';
+    const monthPicker=state.overviewRange==='month'?'<div class="ops-range-custom"><label>查看月份<input class="ops-input" id="overviewMonth" type="month" max="'+attr(dateText(new Date()).slice(0,7))+'" value="'+attr(state.overviewMonth)+'"></label></div>':'';
     const custom=state.overviewRange==='custom'?'<div class="ops-range-custom"><label>開始日期<input class="ops-input" id="overviewFrom" type="date" value="'+attr(state.overviewFrom)+'"></label><label>結束日期<input class="ops-input" id="overviewTo" type="date" value="'+attr(state.overviewTo)+'"></label></div>':'';
-    const teacherHtml=teacherRows.length?'<div class="ops-education-teachers">'+teacherRows.map(function(teacher){return '<div><b>'+escapeHtml(teacher.name)+'</b><span>'+formatNumber(teacher.lessonCount)+' 堂</span><strong>'+money(teacher.amount)+'</strong></div>';}).join('')+'</div>':educationRows.length?emptyHtml('此期間沒有上課資料',''):emptyHtml('尚未匯入課務資料','請先在音教雲同步工具讀取本月資料，再回到這裡匯入。');
-    const educationHtml='<section class="ops-card ops-education-section"><div class="ops-card-head"><div><h2>音教雲課務</h2></div><button class="ops-button primary" data-action="injiaoyun-import">匯入音教雲</button></div><div class="ops-kpi-grid ops-education-kpis">'+kpi('上課堂數',formatNumber(educationSummary.lessonCount),'','堂')+kpi('課堂金額',money(educationSummary.lessonGross),'','課')+kpi('老師拆帳',money(educationSummary.teacherPayable),'','師')+kpi('教室保留',money(educationSummary.schoolShare),'','留')+kpi('學費實收',money(educationSummary.tuitionReceived),'','收')+kpi('教室租用',money(educationSummary.roomRentalReceived),'','租')+'</div>'+teacherHtml+'</section>';
-    return tabs+custom+'<div class="ops-kpi-grid ops-today-kpis">'+kpi('商品銷售',money(productRevenue),'','＄')+kpi('維修收入',money(repairRevenue),'','修')+kpi('其他收入',money(otherRevenue),'','＋')+kpi('租賃收益',money(rentalRevenue),'','租')+kpi('總收入',money(revenue),'','合')+kpi('商品成本',money(cost),'','成本')+kpi(bounds.label+'賺多少',money(profit),'','↗')+kpi('賣出數量',formatNumber(qty),'','件')+'</div>'+educationHtml;
+    const teacherHtml=teacherRows.length?'<div class="ops-education-teachers">'+teacherRows.map(function(teacher){return '<button type="button" data-action="education-teacher-detail" data-teacher-key="'+attr(teacher.key)+'"><b>'+escapeHtml(teacher.name)+'</b><span>'+formatNumber(teacher.lessonCount)+' 堂</span><strong>'+money(teacher.amount)+'</strong></button>';}).join('')+'</div>':educationRows.length?emptyHtml('此期間沒有上課資料',''):emptyHtml('尚未匯入課務資料','請先在音教雲同步工具選擇月份並讀取，再回到這裡匯入。');
+    const educationHtml='<section class="ops-card ops-education-section"><div class="ops-card-head"><div><h2>音教雲課務</h2></div><button class="ops-button primary" data-action="injiaoyun-import">匯入音教雲</button></div><div class="ops-kpi-grid ops-education-kpis">'+kpi('上課堂數',formatNumber(educationSummary.lessonCount),'','堂')+kpi('課堂金額',money(educationSummary.lessonGross),'','課')+kpi('課堂拆帳',money(educationSummary.teacherPayable),'','師')+kpi('教室保留',money(educationSummary.schoolShare),'','留')+kpi('學費實收',money(educationSummary.tuitionReceived),'','收')+kpi('教室租用',money(educationSummary.roomRentalReceived),'','租')+'</div>'+teacherHtml+'</section>';
+    return tabs+monthPicker+custom+'<div class="ops-kpi-grid ops-today-kpis">'+kpi('商品銷售',money(productRevenue),'','＄')+kpi('維修收入',money(repairRevenue),'','修')+kpi('其他收入',money(otherRevenue),'','＋')+kpi('租賃收益',money(rentalRevenue),'','租')+kpi('總收入',money(revenue),'','合')+kpi('商品成本',money(cost),'','成本')+kpi(bounds.label+'賺多少',money(profit),'','↗')+kpi('賣出數量',formatNumber(qty),'','件')+'</div>'+educationHtml;
+  }
+  function educationSessionTeacherKey(session){return clean(session&&session.teacherId)||clean(session&&session.teacherName)||'未命名';}
+  function educationSplitText(session){
+    const hourly=Number(session&&session.hourlyFee||0),rate=Number(session&&session.allotRate||0);
+    if(hourly>0)return '固定 '+money(hourly);
+    if(rate>0)return percentage(rate>1?rate:rate*100);
+    return '未標示';
+  }
+  function openEducationTeacherDetail(teacherKey){
+    const bounds=overviewBounds(),sessions=[];
+    state.educationDaily.forEach(function(day){
+      const businessDate=dateFrom(day.businessDate||day.dateKey);
+      if(!businessDate||(bounds.start&&businessDate<bounds.start)||(bounds.end&&businessDate>bounds.end))return;
+      (day.sessions||[]).forEach(function(session){if(educationSessionTeacherKey(session)===teacherKey)sessions.push(session);});
+    });
+    sessions.sort(function(a,b){return (dateFrom(a.occurredAt)||0)-(dateFrom(b.occurredAt)||0);});
+    if(!sessions.length)return toast('找不到課堂資料','請重新整理後再試。','warning');
+    const teacherName=clean(sessions[0].teacherName)||'未命名老師';
+    const students=new Set(sessions.map(function(session){return clean(session.studentId)||clean(session.studentName);}).filter(Boolean));
+    const lessonGross=sum(sessions,function(session){return session.lessonPrice;});
+    const teacherShare=sum(sessions,function(session){return session.teacherAmount;});
+    const schoolShare=sum(sessions,function(session){return hasValue(session.schoolShare)?session.schoolShare:Number(session.lessonPrice||0)-Number(session.teacherAmount||0);});
+    const summary='<div class="ops-education-detail-summary"><div><span>堂數</span><b>'+formatNumber(sessions.length)+'</b></div><div><span>學生</span><b>'+formatNumber(students.size)+'</b></div><div><span>課堂金額</span><b>'+money(lessonGross)+'</b></div><div><span>老師拆帳</span><b>'+money(teacherShare)+'</b></div><div><span>教室保留</span><b>'+money(schoolShare)+'</b></div></div>';
+    const rows='<div class="ops-education-session-list">'+sessions.map(function(session){
+      const labels=[];if(clean(session.subject))labels.push(clean(session.subject));if(clean(session.chargeName)&&!labels.includes(clean(session.chargeName)))labels.push(clean(session.chargeName));
+      const retained=hasValue(session.schoolShare)?Number(session.schoolShare):Number(session.lessonPrice||0)-Number(session.teacherAmount||0);
+      return '<article class="ops-education-session-row"><div class="ops-education-session-main"><span>'+escapeHtml(dateText(session.occurredAt))+'</span><b>'+escapeHtml(session.studentName||'未命名學生')+'</b><em>'+escapeHtml(labels.join('｜')||'未標示課程')+'</em></div><div><span>單堂學費</span><b>'+money(session.lessonPrice)+'</b></div><div><span>拆帳方式</span><b>'+escapeHtml(educationSplitText(session))+'</b></div><div><span>老師分得</span><b>'+money(session.teacherAmount)+'</b></div><div><span>教室保留</span><b>'+money(retained)+'</b></div></article>';
+    }).join('')+'</div>';
+    openDrawer(teacherName,bounds.label+'課堂明細｜不含獎勵與扣薪',summary+rows+'<div class="ops-drawer-footer"><button class="ops-button primary" type="button" data-action="drawer-close">關閉</button></div>');
   }
   function productCompletenessHtml(){
     const total=state.catalog.length||1; const image=state.catalog.filter(function(p){return p.imageUrls&&p.imageUrls.length;}).length; const cost=state.catalog.filter(function(p){return p.averageCost!=null||p.nextFifoCost!=null;}).length; const matched=state.catalog.filter(function(p){return p.matchedOnline;}).length; const nonNegative=state.catalog.filter(function(p){return p.currentStock>=0;}).length;
@@ -1391,7 +1431,7 @@
     const requestId='injiaoyun_'+Date.now()+'_'+Math.random().toString(36).slice(2,8);
     state.injiaoyunRequestId=requestId;
     toast('正在讀取同步資料','請稍候','info');
-    global.postMessage({type:'YOUZI_REQUEST_INJIAOYUN_DATA',requestId:requestId},global.location.origin);
+    global.postMessage({type:'YOUZI_REQUEST_INJIAOYUN_DATA',requestId:requestId,schemaVersion:2,appVersion:VERSION},global.location.origin);
     setTimeout(function(){
       if(state.injiaoyunRequestId===requestId){
         state.injiaoyunRequestId='';
@@ -1409,6 +1449,7 @@
       const payload=await importInjiaoyunPayload(message.payload);
       global.postMessage({type:'YOUZI_INJIAOYUN_IMPORT_RESULT',requestId:message.requestId,ok:true,startDateKey:payload.startDateKey,endDateKey:payload.endDateKey},global.location.origin);
       toast('音教雲匯入完成',payload.startDateKey+'～'+payload.endDateKey+'｜'+payload.summary.lessonCount+' 堂｜學費 '+money(payload.summary.tuitionReceived)+'｜租用 '+money(payload.summary.roomRentalReceived),'success');
+      state.overviewRange='month';state.overviewMonth=payload.startDateKey.slice(0,7);
       await loadAll(true);
     }catch(error){
       global.postMessage({type:'YOUZI_INJIAOYUN_IMPORT_RESULT',requestId:message.requestId,ok:false,error:errorMessage(error)},global.location.origin);
@@ -1420,6 +1461,7 @@
     if(action==='sync-easystore-api'){ syncEasyStoreApi(); return; }
     if(action==='refresh'){ try{localStorage.removeItem(DASHBOARD_CACHE_KEY);}catch(err){} return loadAll(false); }
     if(action==='injiaoyun-import') return requestInjiaoyunImport();
+    if(action==='education-teacher-detail') return openEducationTeacherDetail(el.dataset.teacherKey||'');
     if(action==='drawer-close') return closeDrawer();
     if(action==='overview-range'){state.overviewRange=el.dataset.range||'today';return render();}
     if(action==='sales-mode'){state.salesMode=el.dataset.mode||'product';return render();}
@@ -1539,6 +1581,7 @@
       if(event.target.id==='productFilter'){state.productFilter=event.target.value;state.productVisible=PRODUCT_PAGE_SIZE;render();}
       else if(event.target.id==='productSort'){state.productSort=event.target.value;render();}
       else if(event.target.id==='financeRange'){state.financeRange=event.target.value;render();}
+      else if(event.target.id==='overviewMonth'&&/^\d{4}-(0[1-9]|1[0-2])$/.test(event.target.value)){state.overviewMonth=event.target.value;state.overviewRange='month';render();}
       else if(event.target.id==='overviewFrom'){state.overviewFrom=event.target.value;render();}
       else if(event.target.id==='overviewTo'){state.overviewTo=event.target.value;render();}
       else if(event.target.id==='posCustomerSelect'){state.selectedCustomerId=event.target.value;render();}

@@ -527,12 +527,22 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
 .ops-education-section{margin-top:15px;border:1px solid rgba(36,139,104,.22)}
 .ops-education-kpis{grid-template-columns:repeat(6,minmax(0,1fr));margin-bottom:12px}
 .ops-education-teachers{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
-.ops-education-teachers>div{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:9px;align-items:center;padding:10px 12px;border:1px solid var(--ops-line);border-radius:11px;background:#fff;min-width:0}
+.ops-education-teachers>button{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:9px;align-items:center;padding:10px 12px;border:1px solid var(--ops-line);border-radius:11px;background:#fff;color:var(--ops-navy);min-width:0;text-align:left;cursor:pointer;font:inherit}
+.ops-education-teachers>button:hover{border-color:#75b39c;background:var(--ops-green-soft)}
 .ops-education-teachers b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ops-education-teachers span{color:var(--ops-muted);white-space:nowrap}
 .ops-education-teachers strong{color:var(--ops-green-2);white-space:nowrap}
+.ops-education-detail-summary{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px;margin-bottom:14px}
+.ops-education-detail-summary>div{padding:10px;border:1px solid var(--ops-line);border-radius:11px;background:var(--ops-green-soft);min-width:0}
+.ops-education-detail-summary span,.ops-education-session-row span{display:block;color:var(--ops-muted);font-size:10px}
+.ops-education-detail-summary b{display:block;margin-top:3px;font-size:14px;color:var(--ops-green-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ops-education-session-list{display:flex;flex-direction:column;gap:8px}
+.ops-education-session-row{display:grid;grid-template-columns:minmax(135px,1.45fr) repeat(4,minmax(72px,.8fr));gap:8px;align-items:center;padding:10px;border:1px solid var(--ops-line);border-radius:11px;background:#fff}
+.ops-education-session-row>div{min-width:0}
+.ops-education-session-row b{display:block;margin-top:2px;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ops-education-session-main em{display:block;margin-top:2px;color:var(--ops-muted);font-size:10px;font-style:normal;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 @media(max-width:1080px){.ops-education-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.ops-education-teachers{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:620px){.ops-education-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.ops-education-teachers{grid-template-columns:1fr}.ops-education-teachers>div{padding:9px}}
+@media(max-width:620px){.ops-education-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.ops-education-teachers{grid-template-columns:1fr}.ops-education-teachers>button{padding:9px}.ops-education-detail-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.ops-education-session-row{grid-template-columns:repeat(2,minmax(0,1fr))}.ops-education-session-main{grid-column:1/-1}}
 
 /* V4：先選客戶，再進行銷售 */
 .ops-pos-customer{display:grid;grid-template-columns:minmax(240px,1fr) auto auto minmax(180px,auto);gap:9px;align-items:center;margin-bottom:12px;padding:12px}
