@@ -397,3 +397,38 @@ a{color:inherit;text-decoration:none}
 /* 此頁不顯示全站手動通知浮動按鈕。 */
 .ops-body #manualNotifyTabsBtn,.ops-body #manualNotifyTabsModal{display:none!important}
 html,body.ops-body{max-width:100%;overflow-x:hidden}
+
+/* V4：先選客戶，再進行銷售 */
+.ops-pos-customer{display:grid;grid-template-columns:minmax(240px,1fr) auto auto minmax(180px,auto);gap:9px;align-items:center;margin-bottom:12px;padding:12px}
+.ops-pos-customer-info{display:flex;align-items:center;justify-content:flex-end;gap:8px;min-width:0}
+.ops-pos-customer-info b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ops-pos-customer-info span{color:var(--ops-muted);white-space:nowrap}
+.ops-pos-customer-info strong{color:var(--ops-green-2);white-space:nowrap}
+.ops-sales-total{margin-top:15px}
+.ops-sales-total .ops-kpi-grid{grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:0}
+.ops-direct-income{max-width:none}
+.ops-direct-income .wide,.ops-pos-layout .wide{width:100%;margin-top:12px}
+.ops-checkout-person{display:flex;align-items:center;gap:9px;background:var(--ops-green-soft);border-radius:12px;padding:12px;margin-bottom:14px}
+.ops-checkout-person span{color:var(--ops-muted)}
+.ops-checkout-person strong{margin-left:auto;color:var(--ops-green-2)}
+.ops-checkout-summary{margin-top:15px}
+.ops-customer-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+.ops-customer-stats>div{padding:12px;background:#f5f8fa;border-radius:12px}
+.ops-customer-stats span{display:block;color:var(--ops-muted);font-size:11px}
+.ops-customer-stats b{display:block;font-size:18px;margin-top:3px}
+.ops-history-block{border:1px solid var(--ops-line);border-radius:12px;padding:11px;margin-top:10px}
+.ops-history-block summary{font-weight:900;cursor:pointer;margin-bottom:10px}
+
+@media(max-width:780px){
+  .ops-pos-customer{grid-template-columns:1fr 1fr}
+  .ops-pos-customer select,.ops-pos-customer-info{grid-column:1/-1}
+  .ops-pos-customer-info{justify-content:flex-start}
+  .ops-sales-total .ops-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:520px){
+  .ops-pos-customer{gap:7px;padding:9px}
+  .ops-pos-customer .ops-button{width:100%;padding:8px 5px}
+  .ops-customer-stats{grid-template-columns:1fr 1fr 1fr;gap:5px}
+  .ops-customer-stats>div{padding:8px 5px}
+  .ops-customer-stats b{font-size:14px}
+}
