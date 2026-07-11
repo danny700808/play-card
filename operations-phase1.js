@@ -19,8 +19,8 @@
   const READ_LIMIT = 10000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.07.11-v3.3-compact-three-column';
-  const DASHBOARD_CACHE_KEY = 'youzi_ops_dashboard_cache_v2_compact';
+  const VERSION = '2026.07.11-v3.4-today-first';
+  const DASHBOARD_CACHE_KEY = 'youzi_ops_dashboard_today_first_v1';
   const DASHBOARD_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 
   const state = {
@@ -50,7 +50,7 @@
     productVisible:PRODUCT_PAGE_SIZE,
     productSearch:'',
     productFilter:'all',
-    productSort:'name',
+    productSort:'image',
     posSearch:'',
     cart:[],
     financeRange:'month',
@@ -65,15 +65,15 @@
   };
 
   const PAGE_META = {
-    overview:['營運總覽','把商品、庫存、現場銷售、進貨、租賃與案件集中在同一個畫面。'],
-    products:['商品庫存','商品圖片、價格與庫存。'],
-    sales:['現場銷售','建立商品銷售或快速收入。'],
-    purchases:['進貨異動','進貨、盤點與庫存紀錄。'],
+    overview:['今日營運',''],
+    products:['商品庫存',''],
+    sales:['現場銷售',''],
+    purchases:['進貨庫存',''],
     rentals:['租賃損益','沿用既有 rentalContracts，只在獨立帳冊補收款與直接成本。'],
     cases:['案件管理','記錄案件報價、已收款、成本、應收與案件毛利。'],
-    finance:['毛利收支','彙整各類收入與成本。'],
-    sync:['訂單同步','查看平台同步狀態。'],
-    connection:['資料備份','下載備份與查看操作紀錄。']
+    finance:['毛利收支',''],
+    sync:['平台訂單',''],
+    connection:['資料備份','']
   };
 
   function clean(value){ return String(value == null ? '' : value).trim(); }
@@ -216,27 +216,7 @@
   function userLabel(){ return clean(state.user && (state.user.id||state.user.employeeId||state.user.email||state.user.name||state.user.displayName)) || '管理者'; }
   function fieldValue(){ return global.firebase && firebase.firestore && firebase.firestore.FieldValue ? firebase.firestore.FieldValue : null; }
   function serverTimestamp(){ const fv=fieldValue(); return fv?fv.serverTimestamp():new Date().toISOString(); }
-  const FRIENDLY_TEXT_REPLACEMENTS = [
-    ['本次預估 FIFO 成本','本次預估成本'],['今日銷貨成本（FIFO）','今日銷貨成本'],
-    ['下一件 FIFO 成本','商品成本'],['預估 FIFO 成本','預估成本'],
-    ['FIFO 剩餘成本批次','剩餘成本紀錄'],['尚無 FIFO 成本批次','尚無成本紀錄'],
-    ['依 FIFO 批次','依進貨成本'],['扣 FIFO 庫存','扣除庫存'],
-    ['FIFO 庫存價值','庫存總成本'],['FIFO 成本批次','成本紀錄'],
-    ['下一件 FIFO','商品成本'],['FIFO 成本','商品成本'],['FIFO 批次','成本紀錄'],
-    ['商品與庫存','商品庫存'],['現場銷售／收入','現場銷售'],
-    ['進貨與庫存異動','進貨異動'],['平台訂單／同步','訂單同步'],['資料連線與備份','資料備份']
-  ];
-  function friendlyText(value){
-    let text=String(value==null?'':value);
-    FRIENDLY_TEXT_REPLACEMENTS.forEach(function(pair){text=text.split(pair[0]).join(pair[1]);});
-    return text;
-  }
-  function simplifyVisibleTerms(root){
-    if(!root||!document.createTreeWalker)return;
-    const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT); let node;
-    while((node=walker.nextNode())) node.nodeValue=friendlyText(node.nodeValue);
-  }
-  function setText(id,value){ const el=document.getElementById(id); if(el) el.textContent=friendlyText(value); }
+  function setText(id,value){ const el=document.getElementById(id); if(el) el.textContent=value; }
   function html(id,value){ const el=document.getElementById(id); if(el) el.innerHTML=value; }
   function byId(id){ return document.getElementById(id); }
   function query(selector,root){ return (root||document).querySelector(selector); }
@@ -249,13 +229,13 @@
   function toast(title,message,type){
     const stack=byId('opsToastStack'); if(!stack) return;
     const el=document.createElement('div'); el.className='ops-toast '+(type||'');
-    el.innerHTML='<b>'+escapeHtml(friendlyText(title))+'</b><span>'+escapeHtml(friendlyText(message||''))+'</span>';
+    el.innerHTML='<b>'+escapeHtml(title)+'</b><span>'+escapeHtml(message||'')+'</span>';
     stack.appendChild(el);
     setTimeout(function(){ el.remove(); },4200);
   }
   function showAlert(message,type){
     const el=byId('opsGlobalAlert'); if(!el) return;
-    el.className='ops-alert '+(type||''); el.textContent=friendlyText(message); el.classList.remove('hidden');
+    el.className='ops-alert '+(type||''); el.textContent=message; el.classList.remove('hidden');
   }
   function clearAlert(){ const el=byId('opsGlobalAlert'); if(el) el.classList.add('hidden'); }
   function loadingHtml(text){ return '<div class="ops-loading"><div class="ops-spinner"></div>'+escapeHtml(text||'資料讀取中…')+'</div>'; }
@@ -278,7 +258,6 @@
   }
   function openDrawer(title,subtitle,body){
     setText('opsDrawerTitle',title||'資料編輯'); setText('opsDrawerSubtitle',subtitle||''); html('opsDrawerBody',body||'');
-    simplifyVisibleTerms(byId('opsDrawer'));
     byId('opsDrawer').classList.add('open'); byId('opsDrawerBackdrop').classList.add('open');
   }
   function closeDrawer(){ byId('opsDrawer').classList.remove('open'); byId('opsDrawerBackdrop').classList.remove('open'); }
@@ -448,8 +427,7 @@
     setText('opsPageSubtitle',PAGE_META.overview[1]);
     setText('opsLastReadText','快取資料：'+dateTimeText(cache.loadedAt||cache.savedAt));
     queryAll('#opsNav a[data-view]').forEach(function(a){ a.classList.toggle('active',a.dataset.view==='overview'); });
-    html('opsContent','<div class="ops-callout"><b>已顯示上次整理結果。</b> 需要最新數字時，直接重新整理網頁即可。</div>'+cache.html);
-    simplifyVisibleTerms(byId('opsContent'));
+    html('opsContent','<div class="ops-callout"><b>已顯示上次整理結果。</b><br>為避免每次進首頁重讀 5,701 筆商品，系統會直接使用快取；需要最新數字時再按「重新讀取」。</div>'+cache.html);
     bindViewSpecific();
   }
   function ensureDataForCurrentView(){
@@ -584,7 +562,6 @@
     if(state.loading && !state.loadedAt){ content.innerHTML=loadingHtml(); return; }
     const renderers={overview:renderOverview,products:renderProducts,sales:renderSales,purchases:renderPurchases,rentals:renderRentals,cases:renderCases,finance:renderFinance,sync:renderSync,connection:renderConnection};
     content.innerHTML=(renderers[state.view]||renderOverview)();
-    simplifyVisibleTerms(content);
     bindViewSpecific();
   }
 
@@ -599,19 +576,25 @@
     return rows.sort(function(a,b){ return (dateFrom(b.date)||0)-(dateFrom(a.date)||0); }).slice(0,8);
   }
   function renderOverview(){
-    const todaySales=todayRows(state.sales,function(x){return x.soldAt;}); const todayIncome=todayRows(state.incomes,function(x){return x.occurredAt;});
-    const todayRevenue=sum(todaySales,function(x){return x.total;})+sum(todayIncome,function(x){return x.amount;}); const todayProfit=sum(todaySales,function(x){return x.grossProfit;})+sum(todayIncome,function(x){return x.amount;});
-    const low=state.catalog.filter(function(p){return p.initialized&&p.currentStock<=p.safetyStock;}); const negative=state.catalog.filter(function(p){return p.currentStock<0;});
-    const due=state.rentals.filter(function(r){const d=daysUntil(r.endDate);return d!==null&&d>=0&&d<=30;}); const caseOutstanding=sum(state.cases,function(c){return c.outstanding;});
-    const invValue=sum(state.catalog,function(p){return p.inventoryValue||0;}); const activities=recentActivity();
-    const days=[]; const now=new Date(); for(let i=6;i>=0;i-=1){const d=new Date(now);d.setDate(now.getDate()-i);d.setHours(0,0,0,0);const end=endOfDay(d);const sales=state.sales.filter(function(x){const dt=dateFrom(x.soldAt);return dt&&dt>=d&&dt<=end;});const inc=state.incomes.filter(function(x){const dt=dateFrom(x.occurredAt);return dt&&dt>=d&&dt<=end;});days.push({label:(d.getMonth()+1)+'/'+d.getDate(),value:sum(sales,function(x){return x.total;})+sum(inc,function(x){return x.amount;})});}
-    const max=Math.max.apply(null,days.map(function(x){return x.value;}))||1; const bars=days.map(function(x){return '<div class="ops-chart-bar"><b>'+compactMoney(x.value)+'</b><i style="height:'+Math.max(2,Math.round(x.value/max*115))+'px"></i><span>'+x.label+'</span></div>';}).join('');
-    const activityHtml=activities.length?'<div class="ops-activity-list">'+activities.map(function(x){return '<div class="ops-activity"><span>'+escapeHtml(x.icon)+'</span><div><b>'+escapeHtml(x.type+'｜'+x.title)+'</b><small>'+escapeHtml(dateTimeText(x.date))+'</small></div><strong>'+escapeHtml(x.sub)+'</strong></div>';}).join('')+'</div>':emptyHtml('尚無營運紀錄','建立銷售、收入、進貨或案件後會顯示。');
-    const central=state.matchingStats.central; const importNeeded=central===0;
-    return (importNeeded?'<div class="ops-callout red"><b>尚未匯入商品。</b> 請到「商品庫存」按「匯入商品」。</div>':'')+
-      '<div class="ops-kpi-grid">'+kpi('商品庫存',formatNumber(central),'','▦')+kpi('庫存總件數',formatNumber(sum(state.catalog,function(p){return p.currentStock;})),'','庫')+kpi('庫存總成本',money(invValue),'','＄')+kpi('租賃合約',formatNumber(state.rentals.length),'','♫')+kpi('即將到期',formatNumber(due.length),'','!')+'</div>'+
-      '<div class="ops-grid-2"><section class="ops-card"><div class="ops-card-head"><div><h2>今日營運</h2></div></div><div class="ops-summary-list"><div class="ops-summary-line"><span>今日收入</span><b>'+money(todayRevenue)+'</b></div><div class="ops-summary-line"><span>今日銷貨成本</span><b>'+money(sum(todaySales,function(x){return x.costTotal;}))+'</b></div><div class="ops-summary-line total"><span>今日暫估毛利</span><b>'+money(todayProfit)+'</b></div><div class="ops-summary-line"><span>低庫存／缺貨</span><b>'+low.length+' 項</b></div><div class="ops-summary-line"><span>進行中案件待收</span><b>'+money(caseOutstanding)+'</b></div></div></section><section class="ops-card"><div class="ops-card-head"><div><h2>最近 7 日收入</h2></div><button class="ops-button small soft" data-nav="sales">新增銷售</button></div><div class="ops-chart-bars">'+bars+'</div></section></div>'+
-      '<section class="ops-card" style="margin-top:15px"><div class="ops-card-head"><div><h2>最近活動</h2></div></div>'+activityHtml+'</section>';
+    const todaySales=todayRows(state.sales,function(x){return x.soldAt;});
+    const todayIncome=todayRows(state.incomes,function(x){return x.occurredAt;});
+    const productRevenue=sum(todaySales,function(x){return x.total;});
+    const otherRevenue=sum(todayIncome,function(x){return x.amount;});
+    const todayCost=sum(todaySales,function(x){return x.costTotal;});
+    const todayRevenue=productRevenue+otherRevenue;
+    const todayProfit=sum(todaySales,function(x){return x.grossProfit;})+otherRevenue;
+    const rows=[];
+    todaySales.forEach(function(sale){
+      (sale.items||[]).forEach(function(item){
+        const product=catalogById(clean(item.productId));
+        rows.push({date:sale.soldAt,type:'商品',name:clean(item.name)||'未命名商品',sku:clean(item.sku),qty:Number(item.qty||1),amount:Number(item.lineTotal!=null?item.lineTotal:Number(item.qty||1)*Number(item.unitPrice||0)),image:clean(item.imageUrl)||(product&&product.imageUrl)||'',sub:sale.saleNo});
+      });
+    });
+    todayIncome.forEach(function(item){rows.push({date:item.occurredAt,type:'收入',name:item.category,sku:'',qty:1,amount:item.amount,image:'',sub:item.incomeNo});});
+    rows.sort(function(a,b){return (dateFrom(b.date)||0)-(dateFrom(a.date)||0);});
+    const list=rows.length?'<div class="ops-today-list">'+rows.map(function(row){return '<div class="ops-today-row">'+(row.image?'<img loading="lazy" src="'+attr(row.image)+'" alt="" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'grid\'"><div class="no-image" style="display:none">無圖</div>':'<div class="no-image">'+(row.type==='收入'?'收入':'無圖')+'</div>')+'<div><b>'+escapeHtml(row.name)+'</b><small>'+escapeHtml((row.sku?'編號 '+row.sku+'・':'')+(row.type==='商品'?'數量 '+row.qty+'・':'')+dateTimeText(row.date))+'</small></div><strong>'+money(row.amount)+'</strong></div>';}).join('')+'</div>':emptyHtml('今天還沒有收入','完成商品銷售或新增其他收入後會顯示。');
+    return '<div class="ops-kpi-grid ops-today-kpis">'+kpi('今天賺多少',money(todayProfit),'收入扣除商品成本','↗')+kpi('今日總收入',money(todayRevenue),'全部收入','＄')+kpi('商品銷售',money(productRevenue),todaySales.length+' 筆銷售','單')+kpi('其他收入',money(otherRevenue),todayIncome.length+' 筆收入','＋')+'</div>'+
+      '<div class="ops-grid-2"><section class="ops-card"><div class="ops-card-head"><div><h2>今天賣了什麼</h2></div><button class="ops-button small primary" data-nav="sales">前往銷售</button></div>'+list+'</section><section class="ops-card"><div class="ops-card-head"><div><h2>快速收入</h2></div></div><div class="ops-income-shortcuts"><button class="ops-button soft" data-action="open-quick-income" data-category="學費收入">學費收入</button><button class="ops-button soft" data-action="open-quick-income" data-category="教室收入">教室收入</button><button class="ops-button soft" data-action="open-quick-income" data-category="其他收入">其他收入</button></div><div class="ops-summary-list"><div class="ops-summary-line"><span>商品收入</span><b>'+money(productRevenue)+'</b></div><div class="ops-summary-line"><span>其他收入</span><b>'+money(otherRevenue)+'</b></div><div class="ops-summary-line"><span>商品成本</span><b>'+money(todayCost)+'</b></div><div class="ops-summary-line total"><span>今天賺多少</span><b>'+money(todayProfit)+'</b></div></div></section></div>';
   }
   function productCompletenessHtml(){
     const total=state.catalog.length||1; const image=state.catalog.filter(function(p){return p.imageUrls&&p.imageUrls.length;}).length; const cost=state.catalog.filter(function(p){return p.averageCost!=null||p.nextFifoCost!=null;}).length; const matched=state.catalog.filter(function(p){return p.matchedOnline;}).length; const nonNegative=state.catalog.filter(function(p){return p.currentStock>=0;}).length;
@@ -631,17 +614,18 @@
       if(state.productFilter==='negative'&&p.currentStock>=0)return false;
       return true;
     });
-    rows.sort(function(a,b){if(state.productSort==='stock')return b.currentStock-a.currentStock;if(state.productSort==='cost')return (b.nextFifoCost||b.averageCost||0)-(a.nextFifoCost||a.averageCost||0);if(state.productSort==='price')return (b.storePrice||0)-(a.storePrice||0);if(state.productSort==='sku')return a.sku.localeCompare(b.sku,'zh-Hant',{numeric:true});return a.name.localeCompare(b.name,'zh-Hant');}); return rows;
+    rows.sort(function(a,b){if(state.productSort==='image'){const imageDiff=Number(Boolean(b.imageUrls.length))-Number(Boolean(a.imageUrls.length));if(imageDiff)return imageDiff;return a.name.localeCompare(b.name,'zh-Hant');}if(state.productSort==='stock')return b.currentStock-a.currentStock;if(state.productSort==='cost')return (b.nextFifoCost||b.averageCost||0)-(a.nextFifoCost||a.averageCost||0);if(state.productSort==='price')return (b.storePrice||0)-(a.storePrice||0);if(state.productSort==='sku')return a.sku.localeCompare(b.sku,'zh-Hant',{numeric:true});return a.name.localeCompare(b.name,'zh-Hant');}); return rows;
   }
   function productCard(p){
-    const stockClass=p.currentStock<0?'out':(p.currentStock<=p.safetyStock?'low':''); const image=p.imageUrls[0]||'';
-    return '<article class="ops-product-card"><div class="ops-product-image">'+(image?'<img loading="lazy" src="'+attr(image)+'" alt="'+attr(p.originalName||p.name)+'" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'grid\'"><div class="placeholder" style="display:none">尚無圖片</div>':'<div class="placeholder">尚無圖片</div>')+'<span class="ops-source-badge">'+escapeHtml(p.matchedOnline?'有圖片':'商品庫存')+'</span><span class="ops-stock-badge '+stockClass+'">庫存 '+escapeHtml(formatNumber(p.currentStock))+'</span></div><div class="ops-product-body"><div class="ops-product-name">'+escapeHtml(p.originalName||p.name)+'</div>'+(p.onlineName?'<div class="ops-product-online-name">網路：'+escapeHtml(p.onlineName)+'</div>':'')+'<div class="ops-product-meta">商品編號：'+escapeHtml(p.sku||'尚未設定')+(p.variantName?'・'+escapeHtml(p.variantName):'')+'</div><div class="ops-product-values"><div class="ops-value-box"><span>售價</span><b>'+money(p.storePrice)+'</b></div><div class="ops-value-box"><span>網路售價</span><b>'+money(p.onlinePrice)+'</b></div><div class="ops-value-box"><span>商品成本</span><b>'+money(p.nextFifoCost)+'</b></div><div class="ops-value-box"><span>可銷售</span><b>'+formatNumber(p.availableStock)+'</b></div></div><div class="ops-product-actions"><button class="ops-button small ghost" data-action="product-detail" data-id="'+attr(p.docId)+'">查看</button><button class="ops-button small primary" data-action="product-edit" data-id="'+attr(p.docId)+'">編輯</button></div></div></article>';
+    const image=p.imageUrls[0]||'';
+    return '<button type="button" class="ops-product-card" data-action="product-edit" data-id="'+attr(p.docId)+'"><div class="ops-product-image">'+(image?'<img loading="lazy" src="'+attr(image)+'" alt="'+attr(p.originalName||p.name)+'" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'grid\'"><div class="placeholder" style="display:none">尚無圖片</div>':'<div class="placeholder">尚無圖片</div>')+'</div><div class="ops-product-body"><div class="ops-product-key"><div><span>商品編號</span><b>'+escapeHtml(p.sku||'未設定')+'</b></div><div><span>庫存</span><b>'+escapeHtml(formatNumber(p.currentStock))+'</b></div></div><div class="ops-product-text"><span>門市名稱</span><b>'+escapeHtml(p.originalName||p.name||'未命名')+'</b></div><div class="ops-product-text online"><span>網路名稱</span><b>'+escapeHtml(p.onlineName||'未配對')+'</b></div></div></button>';
   }
   function renderProducts(){
     const rows=productFiltered(),visible=rows.slice(0,state.productVisible),central=state.matchingStats.central;
-    const productList='<section class="ops-card ops-product-list-card"><div class="ops-card-head"><div><h2>商品庫存</h2></div><div class="ops-card-actions"><button class="ops-button primary" data-action="sync-easystore-api">同步圖片</button><button class="ops-button soft" data-action="open-import">匯入商品</button></div></div><div class="ops-toolbar"><input class="ops-input grow" id="productSearch" placeholder="搜尋商品名稱或商品編號" value="'+attr(state.productSearch)+'"><select class="ops-select" id="productFilter"><option value="all">全部商品</option><option value="matched">有網路圖片</option><option value="unmatched">沒有網路圖片</option><option value="no-image">沒有圖片</option><option value="missing-cost">缺少成本</option><option value="low">低庫存／缺貨</option><option value="in-stock">有庫存</option><option value="negative">負庫存</option></select><select class="ops-select" id="productSort"><option value="name">依名稱</option><option value="sku">依商品編號</option><option value="stock">依庫存</option><option value="cost">依成本</option><option value="price">依售價</option></select></div>'+(visible.length?'<div class="ops-products-grid">'+visible.map(productCard).join('')+'</div>'+(visible.length<rows.length?'<div class="ops-pagination"><button class="ops-button ghost" data-action="load-more-products">顯示更多</button></div>':''):emptyHtml(central?'找不到符合條件的商品':'尚未匯入商品',central?'請調整搜尋或篩選條件。':'請按上方「匯入商品」。','<button class="ops-button primary" data-action="open-import">匯入商品</button>'))+'</section>';
-    const tools='<details class="ops-card ops-pairing-card ops-product-tools"><summary>商品資料工具</summary><div class="ops-product-tools-body"><div class="ops-summary-list"><div class="ops-summary-line"><span>商品總數</span><b>'+formatNumber(central)+'</b></div><div class="ops-summary-line"><span>已有圖片</span><b>'+formatNumber(state.catalog.filter(function(p){return p.imageUrls.length;}).length)+'</b></div><div class="ops-summary-line"><span>最後同步</span><b>'+escapeHtml(dateTimeText(state.easyStoreSync.completedAt||state.easyStoreSync.updatedAt)||'尚未同步')+'</b></div></div><div class="ops-card-actions"><button class="ops-button primary" data-action="sync-easystore-api">同步圖片</button><button class="ops-button ghost" data-action="download-product-template">下載商品 CSV</button><button class="ops-button soft" data-action="open-import">匯入商品 Excel</button></div></div></details>';
-    return (central?'':'<div class="ops-callout red"><b>尚未匯入商品。</b> 請按「匯入商品」。</div>')+productList+tools;
+    const stockTotal=sum(state.catalog,function(p){return p.currentStock;});
+    const inventoryValue=sum(state.catalog,function(p){return p.inventoryValue||0;});
+    const low=state.catalog.filter(function(p){return p.initialized&&p.currentStock<=p.safetyStock;}).length;
+    return '<div class="ops-kpi-grid">'+kpi('商品總數',formatNumber(central),'全部商品','▦')+kpi('庫存總件數',formatNumber(stockTotal),'目前庫存','庫')+kpi('低庫存／缺貨',formatNumber(low),'需要注意','!')+kpi('庫存成本總額',money(inventoryValue),'目前庫存成本','＄')+'</div><section class="ops-card ops-product-section"><div class="ops-card-head"><div><h2>商品庫存</h2></div><div class="ops-card-actions"><button class="ops-button soft" data-action="sync-easystore-api">同步圖片</button><button class="ops-button primary" data-action="open-import">'+(central?'更新商品資料':'匯入商品資料')+'</button></div></div><div class="ops-toolbar"><input class="ops-input grow" id="productSearch" placeholder="搜尋名稱或商品編號" value="'+attr(state.productSearch)+'"><select class="ops-select" id="productFilter"><option value="all">全部商品</option><option value="unmatched">尚未配對</option><option value="no-image">沒有圖片</option><option value="missing-cost">缺少成本</option><option value="low">低庫存／缺貨</option><option value="in-stock">有庫存</option><option value="negative">負庫存</option></select><select class="ops-select" id="productSort"><option value="image">有圖片優先</option><option value="name">依名稱</option><option value="sku">依商品編號</option><option value="stock">依庫存</option><option value="cost">依成本</option><option value="price">依售價</option></select></div>'+(visible.length?'<div class="ops-products-grid">'+visible.map(productCard).join('')+'</div>'+(visible.length<rows.length?'<div class="ops-pagination"><button class="ops-button ghost" data-action="load-more-products">顯示更多</button></div>':''):emptyHtml(central?'找不到商品':'尚未匯入商品',central?'請調整搜尋條件。':'請先匯入商品資料。','<button class="ops-button primary" data-action="open-import">匯入商品資料</button>'))+'</section>';
   }
 
   function estimateFifoCostForProduct(p,qty){if(!p||!p.internal)return 0;try{return consumeFifo(p.internal,qty).costTotal;}catch(err){return qty*Number(p.nextFifoCost||p.averageCost||0);}}
@@ -649,13 +633,14 @@
   function renderSales(){
     const products=state.catalog.filter(function(p){return p.initialized&&p.status!=='inactive';}); const term=lower(state.posSearch).trim();
     const choices=term.length>=1?products.filter(function(p){return lower([p.originalName,p.onlineName,p.sku,p.barcode,p.brand,p.category].join(' ')).includes(term);}).slice(0,30):[];
-    const cartSubtotal=sum(state.cart,function(x){return x.qty*x.unitPrice;}); const cartCost=estimateCartCost(); const todaySales=todayRows(state.sales,function(x){return x.soldAt;}); const todayIncome=todayRows(state.incomes,function(x){return x.occurredAt;});
+    const cartSubtotal=sum(state.cart,function(x){return x.qty*x.unitPrice;}); const todaySales=todayRows(state.sales,function(x){return x.soldAt;}); const todayIncome=todayRows(state.incomes,function(x){return x.occurredAt;});
     let productHtml='';
     if(!term) productHtml=emptyHtml('請先搜尋商品','輸入商品編號、原始名稱、網路名稱或條碼後，才會顯示可選商品。');
     else if(choices.length) productHtml=choices.map(function(p){const img=p.imageUrl||'';return '<button class="ops-pos-item" data-action="cart-add" data-id="'+attr(p.docId)+'">'+(img?'<img loading="lazy" src="'+attr(img)+'" alt="" onerror="this.style.display=\'none\'">':'<div class="ops-pos-no-image">無圖</div>')+'<div><b>'+escapeHtml(p.originalName||p.name)+'</b>'+(p.onlineName?'<small class="ops-pos-online">網路：'+escapeHtml(p.onlineName)+'</small>':'')+'<small>SKU '+escapeHtml(p.sku||'未設定')+'・庫存 '+formatNumber(p.currentStock)+'・'+money(p.storePrice)+'</small></div></button>';}).join('');
     else productHtml=emptyHtml('搜尋不到商品','請改用完整 SKU、原始名稱或網路名稱搜尋。');
-    const cartHtml=state.cart.length?state.cart.map(function(item,index){const p=catalogById(item.productId);return '<div class="ops-cart-row"><div><b>'+escapeHtml(item.name)+'</b><small>SKU '+escapeHtml(item.sku||'')+'・庫存 '+formatNumber(p?p.currentStock:item.currentStock)+'・下一件 FIFO '+money(p?p.nextFifoCost:null)+'</small></div><input type="number" min="1" step="1" value="'+item.qty+'" data-cart-qty="'+index+'"><input type="number" min="0" step="1" value="'+item.unitPrice+'" data-cart-price="'+index+'"><button class="ops-icon-button" data-action="cart-remove" data-index="'+index+'">×</button></div>';}).join(''):emptyHtml('本次銷售尚無商品','先在左側搜尋商品，再點選加入。');
-    return '<div class="ops-kpi-grid">'+kpi('今日現場銷售',money(sum(todaySales,function(x){return x.total;})),todaySales.length+' 筆','＄')+kpi('今日快速收入',money(sum(todayIncome,function(x){return x.amount;})),todayIncome.length+' 筆','＋')+kpi('今日銷貨成本',money(sum(todaySales,function(x){return x.costTotal;})),'依 FIFO 批次','成本')+kpi('今日暫估毛利',money(sum(todaySales,function(x){return x.grossProfit;})+sum(todayIncome,function(x){return x.amount;})),'未扣一般支出','↗')+kpi('本次銷售小計',money(cartSubtotal),state.cart.length+' 個品項','單')+kpi('本次預估 FIFO 成本',money(cartCost),'依目前成本層','庫')+'</div><div class="ops-tabs"><button class="ops-tab active" data-sales-tab="product">商品銷售</button><button class="ops-tab" data-action="open-quick-income">＋ 快速收入</button><button class="ops-tab" data-action="show-sales-history">銷售紀錄</button></div><div class="ops-pos-layout"><section class="ops-card"><div class="ops-card-head"><div><h2>搜尋商品加入銷售</h2><p>不預先列出 5,701 筆商品；輸入關鍵字後最多顯示 30 筆。</p></div></div><div class="ops-toolbar"><input class="ops-input grow ops-pos-search" id="posSearch" autofocus placeholder="輸入 SKU、商品名稱、網路名稱或條碼" value="'+attr(state.posSearch)+'"><button class="ops-button ghost" data-action="pos-clear-search">清除</button></div><div class="ops-pos-products">'+productHtml+'</div></section><section class="ops-card"><div class="ops-card-head"><div><h2>本次銷售</h2><p>點選商品後加入；結帳才依 FIFO 扣庫存。</p></div><button class="ops-button small ghost" data-action="cart-clear">清空</button></div><div class="ops-cart">'+cartHtml+'</div><div class="ops-summary-list" style="margin-top:13px"><div class="ops-summary-line"><span>商品小計</span><b id="cartSubtotal">'+money(cartSubtotal)+'</b></div><div class="ops-summary-line"><span>預估 FIFO 成本</span><b id="cartCost">'+money(cartCost)+'</b></div></div><div style="margin-top:13px"><button class="ops-button primary wide" data-action="checkout" '+(state.cart.length?'':'disabled')+'>結帳並扣庫存</button></div></section></div>';
+    const cartHtml=state.cart.length?state.cart.map(function(item,index){const p=catalogById(item.productId);const image=item.imageUrl||(p&&p.imageUrl)||'';return '<div class="ops-cart-row"><div class="ops-cart-product">'+(image?'<img class="ops-cart-thumb" loading="lazy" src="'+attr(image)+'" alt="">':'<div class="ops-cart-no-image">無圖</div>')+'<div><b>'+escapeHtml(item.name)+'</b><small>編號 '+escapeHtml(item.sku||'')+'・庫存 '+formatNumber(p?p.currentStock:item.currentStock)+'</small></div></div><input aria-label="數量" type="number" min="1" step="1" value="'+item.qty+'" data-cart-qty="'+index+'"><input aria-label="售價" type="number" min="0" step="1" value="'+item.unitPrice+'" data-cart-price="'+index+'"><button class="ops-icon-button" data-action="cart-remove" data-index="'+index+'">×</button></div>';}).join(''):emptyHtml('尚未選商品','搜尋商品後，點一下商品就會加入這裡。');
+    const productRevenue=sum(todaySales,function(x){return x.total;});const otherRevenue=sum(todayIncome,function(x){return x.amount;});const todayProfit=sum(todaySales,function(x){return x.grossProfit;})+otherRevenue;
+    return '<div class="ops-pos-layout"><section class="ops-card"><div class="ops-card-head"><div><h2>搜尋商品</h2></div></div><div class="ops-toolbar"><input class="ops-input grow ops-pos-search" id="posSearch" autofocus placeholder="輸入商品編號、名稱或條碼" value="'+attr(state.posSearch)+'"><button class="ops-button ghost" data-action="pos-clear-search">清除</button></div><div class="ops-pos-products">'+productHtml+'</div></section><section class="ops-card"><div class="ops-card-head"><div><h2>要賣的商品</h2></div><button class="ops-button small ghost" data-action="cart-clear">清空</button></div><div class="ops-cart">'+cartHtml+'</div>'+(state.cart.length?'<div class="ops-summary-line total" style="margin-top:12px"><span>這次應收金額</span><b id="cartSubtotal">'+money(cartSubtotal)+'</b></div>':'')+'<div style="margin-top:13px"><button class="ops-button primary wide" data-action="checkout" '+(state.cart.length?'':'disabled')+'>前往結帳</button></div></section></div><div class="ops-income-shortcuts" style="margin-top:15px"><button class="ops-button soft" data-action="open-quick-income" data-category="學費收入">＋ 學費收入</button><button class="ops-button soft" data-action="open-quick-income" data-category="教室收入">＋ 教室收入</button><button class="ops-button soft" data-action="open-quick-income" data-category="其他收入">＋ 其他收入</button></div><section class="ops-card"><div class="ops-card-head"><div><h2>今天收入</h2></div><button class="ops-button small ghost" data-action="show-sales-history">查看銷售紀錄</button></div><div class="ops-kpi-grid" style="margin-bottom:0">'+kpi('商品銷售',money(productRevenue),todaySales.length+' 筆','＄')+kpi('其他收入',money(otherRevenue),todayIncome.length+' 筆','＋')+kpi('今天賺多少',money(todayProfit),'收入扣除商品成本','↗')+'</div></section>';
   }
 
   function renderPurchases(){
@@ -700,7 +685,7 @@
     const salesRevenue=sum(sales,function(x){return x.total;}); const quick=sum(incomes,function(x){return x.amount;}); const cogs=sum(sales,function(x){return x.costTotal;}); const general=sum(expenses,function(x){return x.amount;}); const profit=salesRevenue+quick-cogs-general;
     const expenseTable=expenses.length?'<div class="ops-table-wrap"><table class="ops-table"><thead><tr><th>日期</th><th>類別</th><th class="num">金額</th><th>付款方式</th><th>備註</th></tr></thead><tbody>'+expenses.sort(function(a,b){return (dateFrom(b.occurredAt)||0)-(dateFrom(a.occurredAt)||0);}).map(function(x){return '<tr><td>'+escapeHtml(dateText(x.occurredAt))+'</td><td>'+escapeHtml(x.category)+'</td><td class="num">'+money(x.amount)+'</td><td>'+escapeHtml(x.paymentMethod||'—')+'</td><td>'+escapeHtml(x.note||'')+'</td></tr>';}).join('')+'</tbody></table></div>':emptyHtml('這段期間沒有一般支出','按「新增支出」登錄廣告、租金、耗材或其他費用。');
     const sourceRows=[['現場商品銷售',salesRevenue],['快速收入',quick],['商品成本',-cogs],['一般支出',-general]];
-    return '<div class="ops-toolbar"><select class="ops-select" id="financeRange"><option value="today">今天</option><option value="7d">最近 7 天</option><option value="month">本月</option><option value="year">本年</option></select><button class="ops-button primary" data-action="expense-new">新增支出</button><button class="ops-button ghost" data-action="export-finance">匯出收支 CSV</button></div><div class="ops-kpi-grid">'+kpi('商品銷售收入',money(salesRevenue),sales.length+' 筆現場銷售','＄')+kpi('快速收入',money(quick),incomes.length+' 筆非商品收入','＋')+kpi('商品成本',money(cogs),'售出商品 FIFO 成本','成本')+kpi('一般支出',money(general),expenses.length+' 筆支出','－')+kpi('期間暫估損益',money(profit),'收入－成本－一般支出','↗')+kpi('商品毛利率',percentage(salesRevenue?((salesRevenue-cogs)/salesRevenue*100):0),'不含快速收入與一般支出','%')+'</div><div class="ops-grid-2"><section class="ops-card"><div class="ops-card-head"><div><h2>期間損益結構</h2><p>租賃與案件因收款日期未完整記錄，另於各自頁面呈現。</p></div></div><div class="ops-summary-list">'+sourceRows.map(function(x,i){return '<div class="ops-summary-line '+(i===sourceRows.length-1?'':'')+'"><span>'+escapeHtml(x[0])+'</span><b>'+money(x[1])+'</b></div>';}).join('')+'<div class="ops-summary-line total"><span>暫估損益</span><b>'+money(profit)+'</b></div></div></section><section class="ops-card"><div class="ops-card-head"><div><h2>租賃與案件概況</h2><p>不強制混入期間損益，避免日期不明造成誤判。</p></div></div><div class="ops-summary-list"><div class="ops-summary-line"><span>租賃已收款</span><b>'+money(sum(state.rentalLedgers,function(x){return x.receivedAmount;}))+'</b></div><div class="ops-summary-line"><span>租賃直接成本</span><b>'+money(sum(state.rentalLedgers,function(x){return x.deliveryCost+x.maintenanceCost+x.otherCost;}))+'</b></div><div class="ops-summary-line"><span>案件已收款</span><b>'+money(sum(state.cases,function(x){return x.receivedAmount;}))+'</b></div><div class="ops-summary-line"><span>案件直接成本</span><b>'+money(sum(state.cases,function(x){return x.totalCost;}))+'</b></div></div></section></div><section class="ops-card" style="margin-top:15px"><div class="ops-card-head"><div><h2>一般支出明細</h2><p>廣告、租金、耗材、人事以外的直接登錄費用。</p></div></div>'+expenseTable+'</section>';
+    return '<div class="ops-toolbar"><select class="ops-select" id="financeRange"><option value="today">今天</option><option value="7d">最近 7 天</option><option value="month">本月</option><option value="year">本年</option></select><button class="ops-button primary" data-action="expense-new">新增支出</button><button class="ops-button ghost" data-action="export-finance">匯出收支 CSV</button></div><div class="ops-kpi-grid">'+kpi('商品銷售收入',money(salesRevenue),sales.length+' 筆現場銷售','＄')+kpi('快速收入',money(quick),incomes.length+' 筆非商品收入','＋')+kpi('商品成本',money(cogs),'售出商品成本','成本')+kpi('一般支出',money(general),expenses.length+' 筆支出','－')+kpi('期間暫估損益',money(profit),'收入－成本－一般支出','↗')+kpi('商品毛利率',percentage(salesRevenue?((salesRevenue-cogs)/salesRevenue*100):0),'不含快速收入與一般支出','%')+'</div><div class="ops-grid-2"><section class="ops-card"><div class="ops-card-head"><div><h2>期間損益結構</h2></div></div><div class="ops-summary-list">'+sourceRows.map(function(x,i){return '<div class="ops-summary-line '+(i===sourceRows.length-1?'':'')+'"><span>'+escapeHtml(x[0])+'</span><b>'+money(x[1])+'</b></div>';}).join('')+'<div class="ops-summary-line total"><span>暫估損益</span><b>'+money(profit)+'</b></div></div></section><section class="ops-card"><div class="ops-card-head"><div><h2>租賃與案件概況</h2></div></div><div class="ops-summary-list"><div class="ops-summary-line"><span>租賃已收款</span><b>'+money(sum(state.rentalLedgers,function(x){return x.receivedAmount;}))+'</b></div><div class="ops-summary-line"><span>租賃直接成本</span><b>'+money(sum(state.rentalLedgers,function(x){return x.deliveryCost+x.maintenanceCost+x.otherCost;}))+'</b></div><div class="ops-summary-line"><span>案件已收款</span><b>'+money(sum(state.cases,function(x){return x.receivedAmount;}))+'</b></div><div class="ops-summary-line"><span>案件直接成本</span><b>'+money(sum(state.cases,function(x){return x.totalCost;}))+'</b></div></div></section></div><section class="ops-card" style="margin-top:15px"><div class="ops-card-head"><div><h2>一般支出明細</h2></div></div>'+expenseTable+'</section>';
   }
 
   function renderSync(){
@@ -747,18 +732,19 @@
   async function autoInitProducts(){ return openImport(); }
 
   function addCartProduct(id){const p=catalogById(id);if(!p||!p.initialized)return;const existing=state.cart.find(function(x){return x.productId===id;});if(existing)existing.qty+=1;else state.cart.push({productId:id,name:p.originalName||p.name,sku:p.sku,imageUrl:p.imageUrl,qty:1,unitPrice:Number(p.storePrice||0),currentStock:p.currentStock});render();}
-  function checkoutDrawer(){const subtotal=sum(state.cart,function(x){return x.qty*x.unitPrice;}),cost=estimateCartCost();openDrawer('現場銷售結帳','完成後依 FIFO 扣除最早成本批次與庫存。','<form id="checkoutForm"><div class="ops-summary-list"><div class="ops-summary-line"><span>品項</span><b>'+state.cart.length+' 項</b></div><div class="ops-summary-line"><span>商品小計</span><b>'+money(subtotal)+'</b></div><div class="ops-summary-line"><span>預估 FIFO 成本</span><b>'+money(cost)+'</b></div></div><div class="ops-form-grid" style="margin-top:15px"><div class="ops-field"><label class="ops-required">成交時間</label><input class="ops-input" type="datetime-local" name="soldAt" value="'+inputDateTime(new Date())+'" required></div><div class="ops-field"><label class="ops-required">付款方式</label><select class="ops-select" name="paymentMethod" required><option value="現金">現金</option><option value="信用卡">信用卡</option><option value="轉帳">轉帳</option><option value="LINE Pay">LINE Pay</option><option value="其他">其他</option></select></div><div class="ops-field"><label>整單折扣</label><input class="ops-input" type="number" min="0" step="1" name="discount" value="0"></div><div class="ops-field"><label>客戶姓名</label><input class="ops-input" name="customerName"></div><div class="ops-field full"><label>備註</label><textarea class="ops-textarea" name="note"></textarea></div></div><div class="ops-callout">若商品庫存不足，系統會停止整張銷售。缺少成本的數量會標記在銷售紀錄中。</div><div class="ops-drawer-footer"><button class="ops-button ghost" type="button" data-action="drawer-close">取消</button><button class="ops-button primary" type="submit">確認收款並扣 FIFO 庫存</button></div></form>');}
+  function checkoutDrawer(){const subtotal=sum(state.cart,function(x){return x.qty*x.unitPrice;});openDrawer('現場銷售結帳','','<form id="checkoutForm"><div class="ops-summary-list"><div class="ops-summary-line"><span>商品數量</span><b>'+sum(state.cart,function(x){return x.qty;})+' 件</b></div><div class="ops-summary-line total"><span>應收金額</span><b>'+money(subtotal)+'</b></div></div><div class="ops-form-grid" style="margin-top:15px"><div class="ops-field"><label class="ops-required">成交時間</label><input class="ops-input" type="datetime-local" name="soldAt" value="'+inputDateTime(new Date())+'" required></div><div class="ops-field"><label class="ops-required">付款方式</label><select class="ops-select" name="paymentMethod" required><option value="現金">現金</option><option value="信用卡">信用卡</option><option value="轉帳">轉帳</option><option value="LINE Pay">LINE Pay</option><option value="其他">其他</option></select></div><div class="ops-field"><label>折扣</label><input class="ops-input" type="number" min="0" step="1" name="discount" value="0"></div><div class="ops-field"><label>客戶姓名</label><input class="ops-input" name="customerName"></div><div class="ops-field full"><label>備註</label><textarea class="ops-textarea" name="note"></textarea></div></div><div class="ops-drawer-footer"><button class="ops-button ghost" type="button" data-action="drawer-close">取消</button><button class="ops-button primary" type="submit">確認收款並扣庫存</button></div></form>');}
   async function saveCheckout(form){
     if(!state.cart.length)throw new Error('銷售清單是空的');const data=new FormData(form),discount=numberOrNull(data.get('discount'))||0,soldAt=new Date(clean(data.get('soldAt')));if(Number.isNaN(soldAt.getTime()))throw new Error('成交時間格式不正確');const saleNo=uid('SALE'),saleRef=state.db.collection(COLLECTIONS.sales).doc();
     await state.db.runTransaction(async function(tx){const refs=state.cart.map(function(item){return state.db.collection(COLLECTIONS.products).doc(item.productId);}),snaps=[];for(const ref of refs)snaps.push(await tx.get(ref));const prepared=[];let subtotal=0,costTotal=0,unknownCostQty=0;
       snaps.forEach(function(snap,index){if(!snap.exists)throw new Error('商品主檔不存在：'+state.cart[index].name);const raw=snap.data()||{},item=state.cart[index],current=Number(raw.currentStock||0),qty=Math.max(1,Math.round(Number(item.qty||0)));if(current<qty)throw new Error(item.name+' 庫存不足，目前 '+current+'，本次需要 '+qty);const unitPrice=Math.max(0,Number(item.unitPrice||0)),fifo=consumeFifo(raw,qty);subtotal+=qty*unitPrice;costTotal+=fifo.costTotal;unknownCostQty+=fifo.unknownCostQty;prepared.push({ref:refs[index],raw:raw,item:item,qty:qty,current:current,unitPrice:unitPrice,fifo:fifo});});
-      const total=Math.max(0,subtotal-discount),grossProfit=total-costTotal;tx.set(saleRef,{saleNo:saleNo,soldAt:soldAt,items:prepared.map(function(x){return {productId:x.item.productId,name:x.item.name,sku:x.item.sku,qty:x.qty,unitPrice:x.unitPrice,lineTotal:x.qty*x.unitPrice,lineCost:x.fifo.costTotal,fifoBreakdown:x.fifo.breakdown,unknownCostQty:x.fifo.unknownCostQty};}),subtotal:subtotal,discount:discount,total:total,costTotal:costTotal,grossProfit:grossProfit,unknownCostQty:unknownCostQty,costMethod:'FIFO',paymentMethod:clean(data.get('paymentMethod')),customerName:clean(data.get('customerName')),note:clean(data.get('note')),status:'completed',createdAt:serverTimestamp(),createdBy:userLabel(),version:VERSION});
+      const total=Math.max(0,subtotal-discount),grossProfit=total-costTotal;tx.set(saleRef,{saleNo:saleNo,soldAt:soldAt,items:prepared.map(function(x){return {productId:x.item.productId,name:x.item.name,sku:x.item.sku,imageUrl:x.item.imageUrl||'',qty:x.qty,unitPrice:x.unitPrice,lineTotal:x.qty*x.unitPrice,lineCost:x.fifo.costTotal,fifoBreakdown:x.fifo.breakdown,unknownCostQty:x.fifo.unknownCostQty};}),subtotal:subtotal,discount:discount,total:total,costTotal:costTotal,grossProfit:grossProfit,unknownCostQty:unknownCostQty,costMethod:'FIFO',paymentMethod:clean(data.get('paymentMethod')),customerName:clean(data.get('customerName')),note:clean(data.get('note')),status:'completed',createdAt:serverTimestamp(),createdBy:userLabel(),version:VERSION});
       prepared.forEach(function(x){const after=x.current-x.qty;tx.update(x.ref,{currentStock:after,costLayers:x.fifo.layers,averageCost:x.fifo.averageCost,inventoryValue:x.fifo.inventoryValue,costIncomplete:x.fifo.costIncomplete,updatedAt:serverTimestamp(),updatedBy:userLabel()});const tRef=state.db.collection(COLLECTIONS.inventory).doc();tx.set(tRef,{type:'sale',productId:x.item.productId,productName:x.item.name,sku:x.item.sku,qtyChange:-x.qty,beforeStock:x.current,afterStock:after,unitCost:x.qty?x.fifo.costTotal/x.qty:null,costMethod:'FIFO',fifoBreakdown:x.fifo.breakdown,referenceType:'storeSale',referenceId:saleNo,note:'現場銷售',occurredAt:soldAt,createdAt:serverTimestamp(),createdBy:userLabel(),version:VERSION});});
     });
     await writeAudit('完成現場銷售','storeSale',saleRef.id,saleNo+'｜'+money(sum(state.cart,function(x){return x.qty*x.unitPrice;})-discount)+'｜FIFO');state.cart=[];closeDrawer();toast('現場銷售完成',saleNo,'success');await loadAll(true);
   }
-  function openQuickIncome(){
-    openDrawer('新增快速收入','適用於調音、搬運、服務費或其他不扣商品庫存的收入。','<form id="quickIncomeForm"><div class="ops-form-grid"><div class="ops-field"><label class="ops-required">收入日期</label><input class="ops-input" type="datetime-local" name="occurredAt" value="'+inputDateTime(new Date())+'" required></div><div class="ops-field"><label class="ops-required">收入類別</label><input class="ops-input" name="category" placeholder="例如：調音服務" required></div><div class="ops-field"><label class="ops-required">金額</label><input class="ops-input" type="number" min="0" step="1" name="amount" required></div><div class="ops-field"><label>付款方式</label><select class="ops-select" name="paymentMethod"><option>現金</option><option>信用卡</option><option>轉帳</option><option>LINE Pay</option><option>其他</option></select></div><div class="ops-field"><label>客戶姓名</label><input class="ops-input" name="customerName"></div><div class="ops-field full"><label>備註</label><textarea class="ops-textarea" name="note"></textarea></div></div><div class="ops-callout">未登錄成本時，這筆金額會先視為暫估毛利；相關支出可在「毛利與收支」新增。</div><div class="ops-drawer-footer"><button class="ops-button ghost" type="button" data-action="drawer-close">取消</button><button class="ops-button primary" type="submit">儲存收入</button></div></form>');
+  function openQuickIncome(category){
+    const preset=clean(category);
+    openDrawer(preset||'新增其他收入','','<form id="quickIncomeForm"><div class="ops-form-grid"><div class="ops-field"><label class="ops-required">收入日期</label><input class="ops-input" type="datetime-local" name="occurredAt" value="'+inputDateTime(new Date())+'" required></div><div class="ops-field"><label class="ops-required">收入類別</label><input class="ops-input" name="category" value="'+attr(preset)+'" placeholder="例如：維修收入" required></div><div class="ops-field"><label class="ops-required">金額</label><input class="ops-input" type="number" min="0" step="1" name="amount" required></div><div class="ops-field"><label>付款方式</label><select class="ops-select" name="paymentMethod"><option>現金</option><option>信用卡</option><option>轉帳</option><option>LINE Pay</option><option>其他</option></select></div><div class="ops-field"><label>客戶姓名</label><input class="ops-input" name="customerName"></div><div class="ops-field full"><label>備註</label><textarea class="ops-textarea" name="note"></textarea></div></div><div class="ops-drawer-footer"><button class="ops-button ghost" type="button" data-action="drawer-close">取消</button><button class="ops-button primary" type="submit">儲存收入</button></div></form>');
   }
   async function saveQuickIncome(form){
     const data=new FormData(form); const amount=numberOrNull(data.get('amount')); if(amount==null||amount<0) throw new Error('請填寫正確金額'); const no=uid('INC');
@@ -897,7 +883,7 @@
     if(action==='pos-clear-search'){state.posSearch='';return render();}
       if(action==='cart-clear'){state.cart=[];return render();}
     if(action==='checkout') return checkoutDrawer();
-    if(action==='open-quick-income') return openQuickIncome();
+    if(action==='open-quick-income') return openQuickIncome(el.dataset.category||'');
     if(action==='show-sales-history') return openSalesHistory();
     if(action==='open-purchase') return openPurchase();
     if(action==='purchase-this') return openPurchase(el.dataset.id);
@@ -938,8 +924,7 @@
   }
   function updateCartTotals(){
     const subtotal=sum(state.cart,function(x){return x.qty*x.unitPrice;});
-    const cost=estimateCartCost();
-    setText('cartSubtotal',money(subtotal)); setText('cartCost',money(cost));
+    setText('cartSubtotal',money(subtotal));
   }
 
   function bindEvents(){
