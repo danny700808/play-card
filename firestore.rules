@@ -94,7 +94,25 @@ service cloud.firestore {
         'officialWebsiteProducts',
         'easystoreProducts',
         'websiteGoods',
-        'products'
+        'products',
+
+        // 全通路營運中心
+        'opsInternalProducts',
+        'opsInventoryTransactions',
+        'opsStoreSales',
+        'opsQuickIncomes',
+        'opsPurchases',
+        'opsRentalLedgers',
+        'opsCases',
+        'opsExpenses',
+        'opsSyncJobs',
+        'opsAuditLogs',
+        'opsInternalProductImports',
+        'opsSettings',
+        'opsCustomers',
+        'opsPointTransactions',
+        'opsReceivables',
+        'opsReceivablePayments'
       ];
     }
 
