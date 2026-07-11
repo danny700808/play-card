@@ -377,6 +377,64 @@ a{color:inherit;text-decoration:none}
   .ops-payment-grid{grid-template-columns:1fr}
   .ops-payment-grid .full{grid-column:auto}
 }
+
+/* V5：方格選擇、同頁結帳與今日單據 */
+.ops-pos-customer-v5{margin-bottom:12px;padding:12px}
+.ops-customer-mode-grid,.ops-choice-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.ops-customer-mode-grid button,.ops-choice-grid button,.ops-radio-tile span{border:1px solid var(--ops-line);background:#fff;color:var(--ops-navy);border-radius:12px;min-height:46px;padding:8px;font-weight:900;cursor:pointer;display:grid;place-items:center;text-align:center}
+.ops-customer-mode-grid button.active,.ops-choice-grid button.active,.ops-radio-tile input:checked+span{background:var(--ops-green);border-color:var(--ops-green);color:#fff}
+.ops-choice-grid.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+.ops-choice-grid.one{grid-template-columns:1fr}
+.ops-radio-tile{display:block}
+.ops-radio-tile input{position:absolute;opacity:0;pointer-events:none}
+.ops-member-finder{margin-top:10px}
+.ops-member-results{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-top:8px}
+.ops-member-results button{border:1px solid var(--ops-line);border-radius:11px;background:#fff;padding:9px;text-align:left;cursor:pointer;min-width:0}
+.ops-member-results button.active{border-color:var(--ops-green);background:var(--ops-green-soft)}
+.ops-member-results b,.ops-member-results span,.ops-member-results strong{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ops-member-results span{font-size:10px;color:var(--ops-muted)}
+.ops-member-results strong{font-size:11px;color:var(--ops-green-2);margin-top:2px}
+.ops-selected-member{display:flex;align-items:center;gap:9px;margin-top:9px;padding:9px 11px;background:var(--ops-green-soft);border-radius:11px}
+.ops-selected-member span{color:var(--ops-muted)}
+.ops-selected-member strong{color:var(--ops-green-2);margin-left:auto}
+.ops-inline-checkout{margin-top:14px;padding-top:14px;border-top:1px solid var(--ops-line)}
+.ops-inline-checkout h3{margin:0 0 12px;font-size:18px}
+.ops-checkout-block{margin-bottom:12px}
+.ops-checkout-block>label{display:block;font-size:12px;font-weight:800;margin-bottom:6px;color:#435762}
+.ops-checkout-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-bottom:12px}
+.ops-number-clean{-moz-appearance:textfield}
+.ops-number-clean::-webkit-outer-spin-button,.ops-number-clean::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.ops-invoice-list{margin-top:15px}
+.ops-invoice-list>.ops-input{margin-bottom:10px}
+.ops-invoice-rows{display:flex;flex-direction:column;gap:7px}
+.ops-invoice-rows>button{display:grid;grid-template-columns:55px minmax(145px,.8fr) minmax(110px,1fr) 110px 52px;gap:9px;align-items:center;border:1px solid var(--ops-line);background:#fff;border-radius:11px;padding:10px;text-align:left;cursor:pointer}
+.ops-invoice-rows>button:hover{border-color:#75b39c;background:#fbfffd}
+.ops-invoice-rows span{color:var(--ops-muted)}
+.ops-invoice-rows b,.ops-invoice-rows em{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ops-invoice-rows em{font-style:normal}
+.ops-invoice-rows strong{text-align:right;color:var(--ops-green-2)}
+.ops-invoice-rows i{font-style:normal;text-align:right;font-weight:900;color:var(--ops-green)}
+.ops-sale-edit-items{display:flex;flex-direction:column;gap:8px;margin-bottom:15px}
+.ops-sale-edit-row{display:grid;grid-template-columns:minmax(0,1fr) 85px 110px;gap:8px;align-items:end;padding:9px;border:1px solid var(--ops-line);border-radius:11px}
+.ops-sale-edit-row b,.ops-sale-edit-row span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ops-sale-edit-row span{color:var(--ops-muted);font-size:10px}
+.ops-sale-edit-row label{font-size:10px;color:var(--ops-muted);font-weight:800}
+
+@media(max-width:780px){
+  .ops-member-results{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .ops-invoice-rows>button{grid-template-columns:45px minmax(0,1fr) 80px 45px}
+  .ops-invoice-rows em{display:none}
+}
+@media(max-width:520px){
+  .ops-customer-mode-grid,.ops-choice-grid{gap:5px}
+  .ops-customer-mode-grid button,.ops-choice-grid button,.ops-radio-tile span{padding:7px 3px;min-height:43px;font-size:12px}
+  .ops-member-results{grid-template-columns:1fr}
+  .ops-selected-member{flex-wrap:wrap}
+  .ops-selected-member strong{margin-left:0}
+  .ops-checkout-fields{grid-template-columns:1fr}
+  .ops-invoice-rows>button{grid-template-columns:38px minmax(0,1fr) 72px 38px;padding:8px 6px;gap:5px;font-size:11px}
+  .ops-sale-edit-row{grid-template-columns:minmax(0,1fr) 62px 76px;gap:5px;padding:7px}
+}
 @media print{
   .ops-sidebar,.ops-topbar,.ops-button,.ops-card-actions,.ops-toolbar{display:none!important}
   .ops-shell{display:block}.ops-main{padding:0}.ops-card{box-shadow:none;break-inside:avoid}
