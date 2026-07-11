@@ -873,6 +873,8 @@ ${url}
         }
         updateRentalProgress(72,'正在寫入合約正式成立資料...');
         const officialContractUrl=R.officialContractUrl(Object.assign({}, selected||{}, payload, {contractId:id}));
+        const firstConfirmedAt=R.clean((selected&&selected.rentalIncomeRecognizedAt)||(selected&&selected.officialConfirmedAt))||R.nowText();
+        const rentalIncomeAmount=R.num(payload.rentFee)+R.num(payload.shippingFee);
         const displayPayload=Object.assign({}, payload,{
           contractId:id,
           status:'租賃中',
@@ -881,7 +883,11 @@ ${url}
           officialPdfPath:uploaded.path||'',
           officialPdfGeneratedAt:uploaded.url?R.nowText():'',
           officialPdfError:uploaded.error||'',
-          officialConfirmedAt:R.nowText(),
+          officialConfirmedAt:firstConfirmedAt,
+          rentalIncomeRecognizedAt:firstConfirmedAt,
+          rentalIncomeAmount:rentalIncomeAmount,
+          rentalIncomeReceived:true,
+          rentalIncomeSource:'official-confirmation',
           confirmedDeliveryDate:payload.deliveryDate,
           officialStartDate:payload.startDate,
           officialEndDate:payload.endDate,
