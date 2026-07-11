@@ -19,7 +19,7 @@
   const READ_LIMIT = 10000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.07.11-v3.4-today-first';
+  const VERSION = '2026.07.11-v3.5-direct-sales';
   const DASHBOARD_CACHE_KEY = 'youzi_ops_dashboard_today_first_v1';
   const DASHBOARD_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 
@@ -52,6 +52,7 @@
     productFilter:'all',
     productSort:'image',
     posSearch:'',
+    salesMode:'product',
     cart:[],
     financeRange:'month',
     rentalSearch:'',
@@ -592,7 +593,7 @@
     });
     todayIncome.forEach(function(item){rows.push({date:item.occurredAt,type:'收入',name:item.category,sku:'',qty:1,amount:item.amount,image:'',sub:item.incomeNo});});
     rows.sort(function(a,b){return (dateFrom(b.date)||0)-(dateFrom(a.date)||0);});
-    const list=rows.length?'<div class="ops-today-list">'+rows.map(function(row){return '<div class="ops-today-row">'+(row.image?'<img loading="lazy" src="'+attr(row.image)+'" alt="" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'grid\'"><div class="no-image" style="display:none">無圖</div>':'<div class="no-image">'+(row.type==='收入'?'收入':'無圖')+'</div>')+'<div><b>'+escapeHtml(row.name)+'</b><small>'+escapeHtml((row.sku?'編號 '+row.sku+'・':'')+(row.type==='商品'?'數量 '+row.qty+'・':'')+dateTimeText(row.date))+'</small></div><strong>'+money(row.amount)+'</strong></div>';}).join('')+'</div>':emptyHtml('今天還沒有收入','完成商品銷售或新增其他收入後會顯示。');
+    const list=rows.length?'<div class="ops-today-list">'+rows.map(function(row){return '<div class="ops-today-row"><div class="no-image">'+(row.type==='收入'?'收入':'商品')+'</div><div><b>'+escapeHtml(row.name)+'</b><small>'+escapeHtml((row.sku?'編號 '+row.sku+'・':'')+(row.type==='商品'?'數量 '+row.qty+'・':'')+dateTimeText(row.date))+'</small></div><strong>'+money(row.amount)+'</strong></div>';}).join('')+'</div>':emptyHtml('今天還沒有收入','完成商品銷售或新增其他收入後會顯示。');
     return '<div class="ops-kpi-grid ops-today-kpis">'+kpi('今天賺多少',money(todayProfit),'收入扣除商品成本','↗')+kpi('今日總收入',money(todayRevenue),'全部收入','＄')+kpi('商品銷售',money(productRevenue),todaySales.length+' 筆銷售','單')+kpi('其他收入',money(otherRevenue),todayIncome.length+' 筆收入','＋')+'</div>'+
       '<div class="ops-grid-2"><section class="ops-card"><div class="ops-card-head"><div><h2>今天賣了什麼</h2></div><button class="ops-button small primary" data-nav="sales">前往銷售</button></div>'+list+'</section><section class="ops-card"><div class="ops-card-head"><div><h2>快速收入</h2></div></div><div class="ops-income-shortcuts"><button class="ops-button soft" data-action="open-quick-income" data-category="學費收入">學費收入</button><button class="ops-button soft" data-action="open-quick-income" data-category="教室收入">教室收入</button><button class="ops-button soft" data-action="open-quick-income" data-category="其他收入">其他收入</button></div><div class="ops-summary-list"><div class="ops-summary-line"><span>商品收入</span><b>'+money(productRevenue)+'</b></div><div class="ops-summary-line"><span>其他收入</span><b>'+money(otherRevenue)+'</b></div><div class="ops-summary-line"><span>商品成本</span><b>'+money(todayCost)+'</b></div><div class="ops-summary-line total"><span>今天賺多少</span><b>'+money(todayProfit)+'</b></div></div></section></div>';
   }
@@ -630,17 +631,23 @@
 
   function estimateFifoCostForProduct(p,qty){if(!p||!p.internal)return 0;try{return consumeFifo(p.internal,qty).costTotal;}catch(err){return qty*Number(p.nextFifoCost||p.averageCost||0);}}
   function estimateCartCost(){return sum(state.cart,function(item){const p=catalogById(item.productId);return estimateFifoCostForProduct(p,item.qty);});}
+  function renderDirectIncomeForm(mode){
+    const repair=mode==='repair';
+    const title=repair?'維修收入':'未登錄商品／其他收入';
+    const category=repair?'維修收入':'';
+    return '<section class="ops-card ops-direct-income"><div class="ops-card-head"><div><h2>'+title+'</h2></div></div><form id="quickIncomeForm"><input type="hidden" name="occurredAt" value="'+inputDateTime(new Date())+'"><div class="ops-form-grid"><div class="ops-field full"><label class="ops-required">'+(repair?'維修項目':'收入項目')+'</label><input class="ops-input" name="category" value="'+attr(category)+'" placeholder="'+(repair?'例如：吉他維修':'例如：未登錄商品、搬運費')+'" required></div><div class="ops-field"><label class="ops-required">金額</label><input class="ops-input" type="number" inputmode="decimal" min="0" step="1" name="amount" required></div><div class="ops-field"><label>付款方式</label><select class="ops-select" name="paymentMethod"><option>現金</option><option>信用卡</option><option>轉帳</option><option>LINE Pay</option><option>其他</option></select></div><div class="ops-field"><label>客戶姓名</label><input class="ops-input" name="customerName"></div><div class="ops-field full"><label>備註</label><textarea class="ops-textarea" name="note"></textarea></div></div><button class="ops-button primary wide" type="submit">確認收款</button></form></section>';
+  }
   function renderSales(){
     const products=state.catalog.filter(function(p){return p.initialized&&p.status!=='inactive';}); const term=lower(state.posSearch).trim();
     const choices=term.length>=1?products.filter(function(p){return lower([p.originalName,p.onlineName,p.sku,p.barcode,p.brand,p.category].join(' ')).includes(term);}).slice(0,30):[];
-    const cartSubtotal=sum(state.cart,function(x){return x.qty*x.unitPrice;}); const todaySales=todayRows(state.sales,function(x){return x.soldAt;}); const todayIncome=todayRows(state.incomes,function(x){return x.occurredAt;});
-    let productHtml='';
-    if(!term) productHtml=emptyHtml('請先搜尋商品','輸入商品編號、原始名稱、網路名稱或條碼後，才會顯示可選商品。');
-    else if(choices.length) productHtml=choices.map(function(p){const img=p.imageUrl||'';return '<button class="ops-pos-item" data-action="cart-add" data-id="'+attr(p.docId)+'">'+(img?'<img loading="lazy" src="'+attr(img)+'" alt="" onerror="this.style.display=\'none\'">':'<div class="ops-pos-no-image">無圖</div>')+'<div><b>'+escapeHtml(p.originalName||p.name)+'</b>'+(p.onlineName?'<small class="ops-pos-online">網路：'+escapeHtml(p.onlineName)+'</small>':'')+'<small>SKU '+escapeHtml(p.sku||'未設定')+'・庫存 '+formatNumber(p.currentStock)+'・'+money(p.storePrice)+'</small></div></button>';}).join('');
-    else productHtml=emptyHtml('搜尋不到商品','請改用完整 SKU、原始名稱或網路名稱搜尋。');
-    const cartHtml=state.cart.length?state.cart.map(function(item,index){const p=catalogById(item.productId);const image=item.imageUrl||(p&&p.imageUrl)||'';return '<div class="ops-cart-row"><div class="ops-cart-product">'+(image?'<img class="ops-cart-thumb" loading="lazy" src="'+attr(image)+'" alt="">':'<div class="ops-cart-no-image">無圖</div>')+'<div><b>'+escapeHtml(item.name)+'</b><small>編號 '+escapeHtml(item.sku||'')+'・庫存 '+formatNumber(p?p.currentStock:item.currentStock)+'</small></div></div><input aria-label="數量" type="number" min="1" step="1" value="'+item.qty+'" data-cart-qty="'+index+'"><input aria-label="售價" type="number" min="0" step="1" value="'+item.unitPrice+'" data-cart-price="'+index+'"><button class="ops-icon-button" data-action="cart-remove" data-index="'+index+'">×</button></div>';}).join(''):emptyHtml('尚未選商品','搜尋商品後，點一下商品就會加入這裡。');
-    const productRevenue=sum(todaySales,function(x){return x.total;});const otherRevenue=sum(todayIncome,function(x){return x.amount;});const todayProfit=sum(todaySales,function(x){return x.grossProfit;})+otherRevenue;
-    return '<div class="ops-pos-layout"><section class="ops-card"><div class="ops-card-head"><div><h2>搜尋商品</h2></div></div><div class="ops-toolbar"><input class="ops-input grow ops-pos-search" id="posSearch" autofocus placeholder="輸入商品編號、名稱或條碼" value="'+attr(state.posSearch)+'"><button class="ops-button ghost" data-action="pos-clear-search">清除</button></div><div class="ops-pos-products">'+productHtml+'</div></section><section class="ops-card"><div class="ops-card-head"><div><h2>要賣的商品</h2></div><button class="ops-button small ghost" data-action="cart-clear">清空</button></div><div class="ops-cart">'+cartHtml+'</div>'+(state.cart.length?'<div class="ops-summary-line total" style="margin-top:12px"><span>這次應收金額</span><b id="cartSubtotal">'+money(cartSubtotal)+'</b></div>':'')+'<div style="margin-top:13px"><button class="ops-button primary wide" data-action="checkout" '+(state.cart.length?'':'disabled')+'>前往結帳</button></div></section></div><div class="ops-income-shortcuts" style="margin-top:15px"><button class="ops-button soft" data-action="open-quick-income" data-category="學費收入">＋ 學費收入</button><button class="ops-button soft" data-action="open-quick-income" data-category="教室收入">＋ 教室收入</button><button class="ops-button soft" data-action="open-quick-income" data-category="其他收入">＋ 其他收入</button></div><section class="ops-card"><div class="ops-card-head"><div><h2>今天收入</h2></div><button class="ops-button small ghost" data-action="show-sales-history">查看銷售紀錄</button></div><div class="ops-kpi-grid" style="margin-bottom:0">'+kpi('商品銷售',money(productRevenue),todaySales.length+' 筆','＄')+kpi('其他收入',money(otherRevenue),todayIncome.length+' 筆','＋')+kpi('今天賺多少',money(todayProfit),'收入扣除商品成本','↗')+'</div></section>';
+    const modes='<div class="ops-sales-modes"><button class="'+(state.salesMode==='product'?'active':'')+'" data-action="sales-mode" data-mode="product">商品銷售</button><button class="'+(state.salesMode==='repair'?'active':'')+'" data-action="sales-mode" data-mode="repair">維修收入</button><button class="'+(state.salesMode==='other'?'active':'')+'" data-action="sales-mode" data-mode="other">未登錄／其他</button></div>';
+    if(state.salesMode!=='product') return modes+renderDirectIncomeForm(state.salesMode);
+    const cartSubtotal=sum(state.cart,function(x){return x.qty*x.unitPrice;});
+    const productHtml=term?(choices.length?'<div class="ops-direct-results">'+choices.map(function(p){return '<button class="ops-direct-result" data-action="cart-add" data-id="'+attr(p.docId)+'"><b>'+escapeHtml((p.sku?p.sku+'｜':'')+(p.originalName||p.name))+'</b><span>庫存 '+formatNumber(p.currentStock)+'・售價 '+money(p.storePrice)+(p.onlineName?'・網路 '+escapeHtml(p.onlineName):'')+'</span></button>';}).join('')+'</div>':'<div class="ops-no-result">找不到商品</div>'):'';
+    const keypad=['1','2','3','4','5','6','7','8','9','clear','0','back'].map(function(key){const label=key==='clear'?'清除':(key==='back'?'←':key);return '<button type="button" data-action="pos-key" data-key="'+key+'">'+label+'</button>';}).join('');
+    const cartHtml=state.cart.length?'<div class="ops-selected-list">'+state.cart.map(function(item,index){const p=catalogById(item.productId);return '<div class="ops-sale-line"><div><b>'+escapeHtml(item.name)+'</b><small>編號 '+escapeHtml(item.sku||'')+'・庫存 '+formatNumber(p?p.currentStock:item.currentStock)+'</small></div><label><span>數量</span><input type="number" min="1" step="1" value="'+item.qty+'" data-cart-qty="'+index+'"></label><label><span>售價</span><input type="number" min="0" step="1" value="'+item.unitPrice+'" data-cart-price="'+index+'"></label><button class="ops-icon-button" type="button" data-action="cart-remove" data-index="'+index+'">×</button></div>';}).join('')+'</div>':'';
+    const paymentHtml=state.cart.length?'<form id="checkoutForm" class="ops-payment-panel"><input type="hidden" name="soldAt" value="'+inputDateTime(new Date())+'"><div class="ops-payment-total"><span>應收金額</span><b id="cartSubtotal">'+money(cartSubtotal)+'</b></div><div class="ops-payment-grid"><div class="ops-field"><label>付款方式</label><select class="ops-select" name="paymentMethod" required><option value="現金">現金</option><option value="信用卡">信用卡</option><option value="轉帳">轉帳</option><option value="LINE Pay">LINE Pay</option><option value="其他">其他</option></select></div><div class="ops-field"><label>客戶姓名</label><input class="ops-input" name="customerName"></div><div class="ops-field full"><label>備註</label><input class="ops-input" name="note"></div></div><button class="ops-button primary wide" type="submit">確認收款並完成銷售</button></form>':'';
+    return modes+'<section class="ops-card ops-sale-flow"><input class="ops-input ops-pos-search" id="posSearch" enterkeyhint="search" placeholder="商品編號／名稱" value="'+attr(state.posSearch)+'"><div class="ops-number-pad">'+keypad+'</div>'+productHtml+cartHtml+paymentHtml+'</section>';
   }
 
   function renderPurchases(){
@@ -749,7 +756,7 @@
   async function saveQuickIncome(form){
     const data=new FormData(form); const amount=numberOrNull(data.get('amount')); if(amount==null||amount<0) throw new Error('請填寫正確金額'); const no=uid('INC');
     const ref=await state.db.collection(COLLECTIONS.incomes).add({incomeNo:no,occurredAt:new Date(clean(data.get('occurredAt'))),category:clean(data.get('category')),amount:amount,paymentMethod:clean(data.get('paymentMethod')),customerName:clean(data.get('customerName')),note:clean(data.get('note')),createdAt:serverTimestamp(),createdBy:userLabel(),version:VERSION});
-    await writeAudit('新增快速收入','quickIncome',ref.id,no+'｜'+money(amount)); closeDrawer(); toast('快速收入已儲存',no,'success'); await loadAll(true);
+    await writeAudit('新增快速收入','quickIncome',ref.id,no+'｜'+money(amount)); state.salesMode='product'; closeDrawer(); toast('收入已儲存',no,'success'); await loadAll(true);
   }
   function openSalesHistory(){
     const rows=state.sales.sort(function(a,b){return (dateFrom(b.soldAt)||0)-(dateFrom(a.soldAt)||0);}).slice(0,100);
@@ -874,6 +881,14 @@
     if(action==='sync-easystore-api'){ syncEasyStoreApi(); return; }
     if(action==='refresh'){ try{localStorage.removeItem(DASHBOARD_CACHE_KEY);}catch(err){} return loadAll(false); }
     if(action==='drawer-close') return closeDrawer();
+    if(action==='sales-mode'){state.salesMode=el.dataset.mode||'product';return render();}
+    if(action==='pos-key'){
+      const key=el.dataset.key||'';
+      if(key==='clear')state.posSearch='';
+      else if(key==='back')state.posSearch=state.posSearch.slice(0,-1);
+      else state.posSearch+=key;
+      return render();
+    }
     if(action==='auto-init-products') return autoInitProducts();
     if(action==='product-edit') return openProductEdit(el.dataset.id);
     if(action==='product-detail') return openProductDetail(el.dataset.id);
