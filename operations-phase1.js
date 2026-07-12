@@ -25,7 +25,7 @@
   const READ_LIMIT = 10000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.07.12-v6.0-tutoring-overview-details';
+  const VERSION = '2026.07.12-v6.1-sales-ui-refresh';
   const DASHBOARD_CACHE_KEY = 'youzi_ops_dashboard_overview_v5';
   const DASHBOARD_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
   const DEFAULT_MEMBERSHIP_SETTINGS = {
@@ -91,6 +91,8 @@
     incomeCategory:'未登錄商品',
     directIncomeAmount:'',
     saleInvoiceSearch:'',
+    saleInvoiceFrom:'',
+    saleInvoiceTo:'',
     membershipSettings:Object.assign({},DEFAULT_MEMBERSHIP_SETTINGS),
     cart:[],
     financeRange:'month',
@@ -1011,10 +1013,17 @@
     return posCustomerBar()+'<div class="ops-sales-modes"><button data-action="sales-mode" data-mode="product" class="'+(state.salesMode==='product'?'active':'')+'">商品銷售</button><button data-action="sales-mode" data-mode="repair" class="'+(state.salesMode==='repair'?'active':'')+'">維修收入</button><button data-action="sales-mode" data-mode="other" class="'+(state.salesMode==='other'?'active':'')+'">其他收入</button></div>'+main+'<section class="ops-card ops-sales-total"><div class="ops-kpi-grid">'+kpi('商品銷售',money(productRevenue),'','＄')+kpi('維修收入',money(repairRevenue),'','修')+kpi('其他收入',money(otherRevenue),'','＋')+kpi('今日總計',money(productRevenue+repairRevenue+otherRevenue),'','合')+'</div></section>';
   }
   function posChoiceButtons(name,current,items){return '<div class="ops-choice-grid '+(items.length===2?'two':'')+'">'+items.map(function(item){return '<button type="button" class="'+(item.value===current?'active':'')+'" data-action="pos-choice" data-name="'+attr(name)+'" data-value="'+attr(item.value)+'">'+escapeHtml(item.label)+'</button>';}).join('')+'</div>';}
-  function posCustomerBarV5(){
-    const c=selectedCustomer(),term=lower(state.posMemberSearch),members=state.customers.filter(function(x){return x.enabled&&x.customerType==='member'&&(!term||lower([x.name,x.phone,x.memberNo].join(' ')).includes(term));}).slice(0,12),results=state.posCustomerMode==='member'?'<div class="ops-member-finder"><input class="ops-input" id="posMemberSearch" inputmode="tel" placeholder="輸入電話或姓名" value="'+attr(state.posMemberSearch)+'"><div class="ops-member-results">'+(term?members.map(function(x){return '<button type="button" class="'+(x.id===state.selectedCustomerId?'active':'')+'" data-action="pos-member-select" data-id="'+attr(x.id)+'"><b>'+escapeHtml(x.name)+'</b><span>'+escapeHtml(x.phone||x.memberNo||'')+'</span><strong>'+formatNumber(x.pointBalance)+' 點</strong></button>';}).join(''):'')+'</div></div>':'';
-    return '<section class="ops-card ops-pos-customer-v5"><div class="ops-customer-mode-grid"><button type="button" class="'+(state.posCustomerMode==='walkin'?'active':'')+'" data-action="pos-customer-mode" data-mode="walkin">門市散客</button><button type="button" class="'+(state.posCustomerMode==='member'?'active':'')+'" data-action="pos-customer-mode" data-mode="member">'+(c?escapeHtml(c.name):'選擇會員')+'</button><button type="button" data-action="pos-customer-new">新增會員</button></div>'+results+(c&&state.posCustomerMode==='member'?'<div class="ops-selected-member"><b>'+escapeHtml(c.name)+'</b><span>'+escapeHtml(c.phone||c.memberNo||'')+'</span><strong>'+formatNumber(c.pointBalance)+' 點</strong><button type="button" class="ops-button small ghost" data-action="customer-history" data-id="'+attr(c.id)+'">消費紀錄</button></div>':'')+'</section>';
-  }
+
+function posCustomerBarV5(){
+  const c=selectedCustomer(),term=lower(state.posMemberSearch),members=state.customers.filter(function(x){return x.enabled&&x.customerType==='member'&&(!term||lower([x.name,x.phone,x.memberNo].join(' ')).includes(term));}).slice(0,12),isMemberMode=state.posCustomerMode==='member';
+  let resultsHtml='';
+  if(!isMemberMode) resultsHtml='<div class="ops-member-placeholder">切換到「選擇會員」後，可在這裡搜尋會員姓名、電話或會員編號。</div>';
+  else if(term) resultsHtml=members.length?members.map(function(x){return '<button type="button" class="'+(x.id===state.selectedCustomerId?'active':'')+'" data-action="pos-member-select" data-id="'+attr(x.id)+'"><b>'+escapeHtml(x.name)+'</b><span>'+escapeHtml(x.phone||x.memberNo||'')+'</span><strong>'+formatNumber(x.pointBalance)+' 點</strong></button>';}).join(''):'<div class="ops-member-placeholder">找不到符合的會員，請換個關鍵字試試看。</div>';
+  else resultsHtml='<div class="ops-member-placeholder">請輸入會員姓名、電話或會員編號。</div>';
+  const selectedHtml=c&&isMemberMode?'<div class="ops-selected-member"><div class="ops-selected-member-copy"><b>已選會員：'+escapeHtml(c.name)+'</b><span>'+escapeHtml(c.phone||c.memberNo||'')+'</span></div><strong>'+formatNumber(c.pointBalance)+' 點</strong><button type="button" class="ops-button small ghost" data-action="customer-history" data-id="'+attr(c.id)+'">消費紀錄</button></div>':'<div class="ops-selected-member placeholder"><div class="ops-selected-member-copy"><b>目前未選擇會員</b><span>若不指定會員，可直接使用「門市散客」。</span></div></div>';
+  return '<section class="ops-card ops-pos-customer-v5"><div class="ops-block-caption"><span>第一區</span><b>先選擇客戶</b></div><div class="ops-customer-mode-grid"><button type="button" class="'+(state.posCustomerMode==='walkin'?'active':'')+'" data-action="pos-customer-mode" data-mode="walkin">門市散客</button><button type="button" class="'+(state.posCustomerMode==='member'?'active':'')+'" data-action="pos-customer-mode" data-mode="member">'+(c&&isMemberMode?escapeHtml(c.name):'選擇會員')+'</button><button type="button" data-action="pos-customer-new">新增會員</button></div><div class="ops-pos-customer-panels"><div class="ops-member-finder '+(isMemberMode?'active':'inactive')+'"><label class="ops-member-search-label" for="posMemberSearch">會員搜尋</label><input class="ops-input" id="posMemberSearch" inputmode="tel" placeholder="輸入電話、姓名或會員編號" value="'+attr(state.posMemberSearch)+'" '+(isMemberMode?'':'disabled')+'><div class="ops-member-results">'+resultsHtml+'</div></div>'+selectedHtml+'</div></section>';
+}
+
   function renderInlineCheckout(){
     if(!state.cart.length)return '';
     const subtotal=sum(state.cart,function(x){return x.qty*x.unitPrice;}),c=selectedCustomer(),walkin=!c||state.posCustomerMode==='walkin',settings=membershipRuleForDate(new Date()),manualDiscount=Math.max(0,Number(state.checkoutDiscount||0)),maxPoints=walkin?0:maxRedeemablePoints(c,Math.max(0,subtotal-manualDiscount));
@@ -1028,15 +1037,33 @@
   function renderDirectIncomeV5(mode){
     const repair=mode==='repair',c=selectedCustomer(),walkin=!c||state.posCustomerMode==='walkin',status=walkin?'paid':state.checkoutPaymentStatus;if(walkin)state.checkoutPaymentStatus='paid';return '<section class="ops-card ops-direct-income"><form id="quickIncomeForm"><input type="hidden" name="occurredAt" value="'+inputDateTime(new Date())+'"><input type="hidden" name="customerId" value="'+attr(walkin?'':c.id)+'"><input type="hidden" name="paymentMethod" value="'+attr(state.checkoutPaymentMethod)+'"><input type="hidden" name="paymentStatus" value="'+attr(status)+'"><div class="ops-form-grid"><div class="ops-field full"><label>'+(repair?'維修項目':'收入項目')+'</label>'+(repair?'<input class="ops-input" name="category" value="維修收入" required>':'<div class="ops-choice-grid two"><button type="button" class="'+(state.incomeCategory==='未登錄商品'?'active':'')+'" data-action="income-category" data-value="未登錄商品">未登錄商品</button><button type="button" class="'+(state.incomeCategory==='其他收入'?'active':'')+'" data-action="income-category" data-value="其他收入">其他收入</button></div><input type="hidden" id="incomeCategory" name="category" value="'+attr(state.incomeCategory)+'">')+'</div><div class="ops-field full"><label>金額</label><input class="ops-input ops-number-clean" type="number" inputmode="decimal" min="0" step="1" name="amount" value="'+attr(state.directIncomeAmount)+'" required></div></div><div class="ops-checkout-block"><label>付款方式</label>'+posChoiceButtons('paymentMethod',state.checkoutPaymentMethod,[{value:'現金',label:'現金'},{value:'信用卡',label:'信用卡'},{value:'轉帳',label:'轉帳'}])+'</div><div class="ops-checkout-block"><label>收款狀態</label>'+posChoiceButtons('paymentStatus',status,walkin?[{value:'paid',label:'已收清'}]:[{value:'paid',label:'已收清'},{value:'partial',label:'部分收款'},{value:'unpaid',label:'未收款'}])+'</div>'+(status==='partial'?'<div class="ops-field"><label>本次已收</label><input class="ops-input ops-number-clean" type="number" inputmode="decimal" min="0" step="1" name="receivedAmount" value="'+attr(state.checkoutReceived)+'"></div>':'')+'<button class="ops-button primary wide" type="submit">確認</button></form></section>';
   }
-  function renderTodayInvoices(){
-    const term=lower(state.saleInvoiceSearch),rows=state.sales.filter(function(x){const customer=state.customers.find(function(row){return row.id===x.customerId;});return !term||lower([x.saleNo,x.customerName,x.paymentMethod,customer&&customer.phone].concat(x.items.map(function(i){return i.name+' '+i.sku;})).join(' ')).includes(term);}).sort(function(a,b){return (dateFrom(b.soldAt)||0)-(dateFrom(a.soldAt)||0);}).slice(0,80);
-    return '<section class="ops-card ops-invoice-list"><div class="ops-card-head"><h2>銷售紀錄</h2></div><input class="ops-input" id="saleInvoiceSearch" placeholder="搜尋單號、會員、電話或商品" value="'+attr(state.saleInvoiceSearch)+'"><div class="ops-invoice-rows">'+(rows.length?rows.map(function(x){return '<button type="button" data-action="sale-edit" data-id="'+attr(x.id)+'"><span>'+escapeHtml(dateText(x.soldAt))+'</span><b>'+escapeHtml(x.saleNo)+'</b><em>'+escapeHtml(x.customerName||'門市散客')+(x.returnStatus?'・已退貨':'')+'</em><strong>'+money(x.total)+'</strong><i>處理</i></button>';}).join(''):'<div class="ops-empty"><strong>尚無單據</strong></div>')+'</div></section>';
-  }
-  function renderSalesV5(){
-    const products=state.catalog.filter(function(p){return p.initialized&&p.status!=='inactive';}),term=lower(state.posSearch).trim(),choices=term?products.filter(function(p){return lower([p.originalName,p.onlineName,p.sku,p.barcode,p.brand,p.category].join(' ')).includes(term);}).slice(0,30):[],cartSubtotal=sum(state.cart,function(x){return x.qty*x.unitPrice;}),todaySales=todayRows(state.sales,function(x){return x.soldAt;}),todayIncome=todayRows(state.incomes,function(x){return x.occurredAt;}),repairIncome=todayIncome.filter(function(x){return x.category==='維修收入';}),otherIncome=todayIncome.filter(function(x){return x.category!=='維修收入';});let main='';
-    if(state.salesMode==='product'){let productHtml='';if(choices.length)productHtml=choices.map(function(p){const image=p.imageUrl||'';return '<button class="ops-pos-item" data-action="cart-add" data-id="'+attr(p.docId)+'">'+(image?'<img loading="lazy" src="'+attr(image)+'" alt="" onerror="this.style.display=\'none\'">':'<div class="ops-pos-no-image">無圖</div>')+'<div><b>'+escapeHtml(p.originalName||p.name)+'</b><small>編號 '+escapeHtml(p.sku||'未設定')+'・庫存 '+formatNumber(p.currentStock)+'・'+money(p.storePrice)+'</small></div></button>';}).join('');else if(term)productHtml='<div class="ops-no-result">找不到商品</div>';const cartHtml=state.cart.length?state.cart.map(function(item,index){const p=catalogById(item.productId);return '<div class="ops-cart-row"><div><b>'+escapeHtml(item.name)+'</b><small>編號 '+escapeHtml(item.sku||'')+'・庫存 '+formatNumber(p?p.currentStock:item.currentStock)+'</small></div><input class="ops-number-clean" aria-label="數量" type="number" min="1" step="1" value="'+item.qty+'" data-cart-qty="'+index+'"><input class="ops-number-clean" aria-label="售價" type="number" min="0" step="1" value="'+item.unitPrice+'" data-cart-price="'+index+'"><button class="ops-icon-button" data-action="cart-remove" data-index="'+index+'">×</button></div>';}).join(''):'<div class="ops-empty"><strong>尚未選商品</strong></div>';main='<div class="ops-pos-layout"><section class="ops-card"><div class="ops-toolbar"><input class="ops-input grow ops-pos-search" id="posSearch" placeholder="商品編號／名稱" value="'+attr(state.posSearch)+'"><button class="ops-button ghost" data-action="pos-clear-search">清除</button></div><div class="ops-pos-products">'+productHtml+'</div></section><section class="ops-card"><div class="ops-card-head"><h2>要賣的商品</h2><button class="ops-button small ghost" data-action="cart-clear">清空</button></div><div class="ops-cart">'+cartHtml+'</div>'+(state.cart.length?'<div class="ops-summary-line total"><span>商品金額</span><b id="cartSubtotal">'+money(cartSubtotal)+'</b></div>':'')+renderInlineCheckout()+'</section></div>';}else main=renderDirectIncomeV5(state.salesMode);
-    const productRevenue=sum(todaySales,function(x){return x.total;}),repairRevenue=sum(repairIncome,function(x){return x.amount;}),otherRevenue=sum(otherIncome,function(x){return x.amount;});return posCustomerBarV5()+'<section class="ops-sale-workspace"><div class="ops-sales-modes"><button data-action="sales-mode" data-mode="product" class="'+(state.salesMode==='product'?'active':'')+'">商品銷售</button><button data-action="sales-mode" data-mode="repair" class="'+(state.salesMode==='repair'?'active':'')+'">維修收入</button><button data-action="sales-mode" data-mode="other" class="'+(state.salesMode==='other'?'active':'')+'">其他收入</button></div>'+main+'</section><section class="ops-card ops-sales-total"><div class="ops-kpi-grid">'+kpi('商品銷售',money(productRevenue),'','＄')+kpi('維修收入',money(repairRevenue),'','修')+kpi('其他收入',money(otherRevenue),'','＋')+kpi('今日總計',money(productRevenue+repairRevenue+otherRevenue),'','合')+'</div></section>'+renderTodayInvoices();
-  }
+
+function renderTodayInvoices(){
+  const term=lower(state.saleInvoiceSearch).trim(),from=state.saleInvoiceFrom?new Date(state.saleInvoiceFrom+'T00:00:00'):null,to=state.saleInvoiceTo?new Date(state.saleInvoiceTo+'T23:59:59'):null;
+  const rows=state.sales.filter(function(x){
+    const soldAt=dateFrom(x.soldAt),customer=state.customers.find(function(row){return row.id===x.customerId;});
+    if(from&&(!soldAt||soldAt<from)) return false;
+    if(to&&(!soldAt||soldAt>to)) return false;
+    return !term||lower([x.saleNo,x.customerName,x.paymentMethod,customer&&customer.phone].concat(x.items.map(function(i){return i.name+' '+i.sku;})).join(' ')).includes(term);
+  }).sort(function(a,b){return (dateFrom(b.soldAt)||0)-(dateFrom(a.soldAt)||0);}).slice(0,120);
+  return '<section class="ops-card ops-invoice-list"><div class="ops-card-head"><div><h2>銷售記錄</h2><p>可用關鍵字或日期區間搜尋。</p></div><div class="ops-invoice-count">'+(rows.length?('目前顯示 '+formatNumber(rows.length)+' 筆'):'目前沒有符合條件的資料')+'</div></div><div class="ops-history-toolbar"><input class="ops-input grow" id="saleInvoiceSearch" placeholder="搜尋單號、會員、電話或商品" value="'+attr(state.saleInvoiceSearch)+'"><label class="ops-inline-field"><span>開始日期</span><input class="ops-input" id="saleInvoiceFrom" type="date" value="'+attr(state.saleInvoiceFrom)+'"></label><label class="ops-inline-field"><span>結束日期</span><input class="ops-input" id="saleInvoiceTo" type="date" value="'+attr(state.saleInvoiceTo)+'"></label><button class="ops-button ghost" data-action="sale-history-reset-range">清除區間</button></div><div class="ops-invoice-rows">'+(rows.length?rows.map(function(x){return '<button type="button" data-action="sale-edit" data-id="'+attr(x.id)+'"><span>'+escapeHtml(dateText(x.soldAt))+'</span><b>'+escapeHtml(x.saleNo)+'</b><em>'+escapeHtml(x.customerName||'門市散客')+(x.returnStatus?'・已退貨':'')+'</em><strong>'+money(x.total)+'</strong><i>處理</i></button>';}).join(''):emptyHtml('找不到符合條件的銷售記錄','請調整搜尋文字或日期區間。'))+'</div></section>';
+}
+
+
+function renderSalesV5(){
+  const products=state.catalog.filter(function(p){return p.initialized&&p.status!=='inactive';}),term=lower(state.posSearch).trim(),choices=term?products.filter(function(p){return lower([p.originalName,p.onlineName,p.sku,p.barcode,p.brand,p.category].join(' ')).includes(term);}).slice(0,30):[],cartSubtotal=sum(state.cart,function(x){return x.qty*x.unitPrice;}),todaySales=todayRows(state.sales,function(x){return x.soldAt;}),todayIncome=todayRows(state.incomes,function(x){return x.occurredAt;}),repairIncome=todayIncome.filter(function(x){return x.category==='維修收入';}),otherIncome=todayIncome.filter(function(x){return x.category!=='維修收入';});let main='';
+  if(state.salesMode==='product'){
+    let productHtml='';
+    if(choices.length) productHtml=choices.map(function(p){const image=p.imageUrl||'';return '<button class="ops-pos-item" data-action="cart-add" data-id="'+attr(p.docId)+'">'+(image?'<img loading="lazy" src="'+attr(image)+'" alt="" onerror="this.style.display=&quot;none&quot;">':'<div class="ops-pos-no-image">無圖</div>')+'<div><b>'+escapeHtml(p.originalName||p.name)+'</b><small>編號 '+escapeHtml(p.sku||'未設定')+'・庫存 '+formatNumber(p.currentStock)+'・'+money(p.storePrice)+'</small></div></button>';}).join('');
+    else if(term) productHtml='<div class="ops-no-result">找不到商品</div>';
+    const cartHtml=state.cart.length?state.cart.map(function(item,index){const p=catalogById(item.productId);return '<div class="ops-cart-row"><div><b>'+escapeHtml(item.name)+'</b><small>編號 '+escapeHtml(item.sku||'')+'・庫存 '+formatNumber(p?p.currentStock:item.currentStock)+'</small></div><input class="ops-number-clean" aria-label="數量" type="number" min="1" step="1" value="'+item.qty+'" data-cart-qty="'+index+'"><input class="ops-number-clean" aria-label="售價" type="number" min="0" step="1" value="'+item.unitPrice+'" data-cart-price="'+index+'"><button class="ops-icon-button" data-action="cart-remove" data-index="'+index+'">×</button></div>';}).join(''):'<div class="ops-empty"><strong>尚未選商品</strong></div>';
+    main='<div class="ops-pos-layout"><section class="ops-card"><div class="ops-toolbar"><input class="ops-input grow ops-pos-search" id="posSearch" placeholder="商品編號／名稱" value="'+attr(state.posSearch)+'"><button class="ops-button ghost" data-action="pos-clear-search">清除</button></div><div class="ops-pos-products">'+productHtml+'</div></section><section class="ops-card"><div class="ops-card-head"><h2>要賣的商品</h2><button class="ops-button small ghost" data-action="cart-clear">清空</button></div><div class="ops-cart">'+cartHtml+'</div>'+(state.cart.length?'<div class="ops-summary-line total"><span>商品金額</span><b id="cartSubtotal">'+money(cartSubtotal)+'</b></div>':'')+renderInlineCheckout()+'</section></div>';
+  }else main=renderDirectIncomeV5(state.salesMode);
+  const productRevenue=sum(todaySales,function(x){return x.total;}),repairRevenue=sum(repairIncome,function(x){return x.amount;}),otherRevenue=sum(otherIncome,function(x){return x.amount;});
+  const totals='<section class="ops-card ops-sales-total"><div class="ops-kpi-grid">'+kpi('商品銷售',money(productRevenue),'','＄')+kpi('維修收入',money(repairRevenue),'','修')+kpi('其他收入',money(otherRevenue),'','＋')+kpi('今日總計',money(productRevenue+repairRevenue+otherRevenue),'','合')+'</div></section>';
+  return '<section class="ops-stage-panel ops-stage-panel-choice"><div class="ops-stage-header"><div><h2>先選擇客戶與銷售方式</h2><p>先決定門市散客或會員，再選擇商品銷售、維修收入或其他收入。</p></div></div>'+posCustomerBarV5()+'<div class="ops-sales-mode-panel"><div class="ops-block-caption"><span>第二步</span><b>選擇收入類型</b></div><div class="ops-sales-modes"><button data-action="sales-mode" data-mode="product" class="'+(state.salesMode==='product'?'active':'')+'">商品銷售</button><button data-action="sales-mode" data-mode="repair" class="'+(state.salesMode==='repair'?'active':'')+'">維修收入</button><button data-action="sales-mode" data-mode="other" class="'+(state.salesMode==='other'?'active':'')+'">其他收入</button></div></div></section><section class="ops-stage-panel ops-stage-panel-main"><div class="ops-stage-header"><div><h2>主要銷售區</h2><p>搜尋商品、加入清單、確認金額與完成結帳。</p></div></div><div class="ops-sale-workspace"><div class="ops-sale-main-body">'+main+'</div>'+totals+'</div></section><section class="ops-stage-panel ops-stage-panel-history"><div class="ops-stage-header"><div><h2>銷售記錄查詢</h2><p>除了關鍵字搜尋，也可以直接用日期區間找單據。</p></div></div>'+renderTodayInvoices()+'</section>';
+}
+
   function posNumberPadHtml(){return '<div class="ops-number-pad ops-pos-number-pad" aria-label="商品編號數字鍵盤">'+['1','2','3','4','5','6','7','8','9','clear','0','back'].map(function(key){const label=key==='clear'?'清除':key==='back'?'⌫':key;return '<button type="button" data-action="pos-key" data-key="'+key+'">'+label+'</button>';}).join('')+'</div>';}
   function renderSalesV6(){return renderSalesV5().replace('<div class="ops-pos-products">',posNumberPadHtml()+'<div class="ops-pos-products">');}
   function renderCustomersV4(){
@@ -1595,17 +1622,17 @@
     if(action==='education-teacher-detail') return openEducationTeacherDetail(el.dataset.teacherKey||'');
     if(action==='drawer-close') return closeDrawer();
     if(action==='overview-range'){state.overviewRange=el.dataset.range||'today';return render();}
-    if(action==='sales-mode'){state.salesMode=el.dataset.mode||'product';return render();}
-    if(action==='pos-customer-mode'){state.posCustomerMode=el.dataset.mode||'walkin';if(state.posCustomerMode==='walkin'){state.selectedCustomerId='';state.posMemberSearch='';state.checkoutPaymentStatus='paid';state.checkoutPoints=0;state.checkoutPointsTouched=false;state.checkoutEarnPoints=true;}return render();}
-    if(action==='pos-member-select'){state.selectedCustomerId=el.dataset.id||'';state.posCustomerMode='member';state.checkoutPaymentStatus='paid';state.checkoutPoints=0;state.checkoutPointsTouched=false;state.checkoutEarnPoints=true;return render();}
-    if(action==='pos-choice'){const name=el.dataset.name,value=el.dataset.value;if(name==='paymentMethod')state.checkoutPaymentMethod=value;if(name==='paymentStatus')state.checkoutPaymentStatus=value;if(name==='earnPointsEnabled')state.checkoutEarnPoints=value==='earn';if(name==='paymentStatus'&&value!=='partial')state.checkoutReceived='';return render();}
+    if(action==='sales-mode'){state.salesMode=el.dataset.mode||'product';return renderKeepingViewport();}
+    if(action==='pos-customer-mode'){state.posCustomerMode=el.dataset.mode||'walkin';if(state.posCustomerMode==='walkin'){state.selectedCustomerId='';state.posMemberSearch='';state.checkoutPaymentStatus='paid';state.checkoutPoints=0;state.checkoutPointsTouched=false;state.checkoutEarnPoints=true;}return renderKeepingViewport();}
+    if(action==='pos-member-select'){state.selectedCustomerId=el.dataset.id||'';state.posCustomerMode='member';state.checkoutPaymentStatus='paid';state.checkoutPoints=0;state.checkoutPointsTouched=false;state.checkoutEarnPoints=true;return renderKeepingViewport();}
+    if(action==='pos-choice'){const name=el.dataset.name,value=el.dataset.value;if(name==='paymentMethod')state.checkoutPaymentMethod=value;if(name==='paymentStatus')state.checkoutPaymentStatus=value;if(name==='earnPointsEnabled')state.checkoutEarnPoints=value==='earn';if(name==='paymentStatus'&&value!=='partial')state.checkoutReceived='';return renderKeepingViewport();}
     if(action==='income-category'){state.incomeCategory=el.dataset.value||'其他收入';const input=byId('incomeCategory');if(input)input.value=state.incomeCategory;queryAll('[data-action="income-category"]').forEach(function(btn){btn.classList.toggle('active',btn===el);});return;}
     if(action==='pos-key'){
       const key=el.dataset.key||'';
       if(key==='clear')state.posSearch='';
       else if(key==='back')state.posSearch=state.posSearch.slice(0,-1);
       else state.posSearch+=key;
-      return render();
+      return renderKeepingViewport();
     }
     if(action==='auto-init-products') return autoInitProducts();
     if(action==='product-new') return openProductEdit('');
@@ -1613,9 +1640,9 @@
     if(action==='product-detail') return openProductDetail(el.dataset.id);
     if(action==='load-more-products'){state.productVisible+=PRODUCT_PAGE_SIZE;return render();}
     if(action==='cart-add') return addCartProduct(el.dataset.id);
-    if(action==='cart-remove'){state.cart.splice(Number(el.dataset.index),1);return render();}
-    if(action==='pos-clear-search'){state.posSearch='';return render();}
-      if(action==='cart-clear'){state.cart=[];return render();}
+    if(action==='cart-remove'){state.cart.splice(Number(el.dataset.index),1);return renderKeepingViewport();}
+    if(action==='pos-clear-search'){state.posSearch='';return renderKeepingViewport();}
+      if(action==='cart-clear'){state.cart=[];return renderKeepingViewport();}
     if(action==='checkout') return;
     if(action==='customer-new') return openCustomerV4();
     if(action==='pos-customer-new') return openCustomerV4('',true,'member');
@@ -1628,6 +1655,7 @@
     if(action==='sale-return') return openSaleReturn(el.dataset.id);
     if(action==='open-quick-income') return openQuickIncome(el.dataset.category||'');
     if(action==='show-sales-history') return openSalesHistory();
+    if(action==='sale-history-reset-range'){state.saleInvoiceFrom='';state.saleInvoiceTo='';return renderKeepingViewport();}
     if(action==='open-purchase') return openPurchase();
     if(action==='purchase-this') return openPurchase(el.dataset.id);
     if(action==='purchase-add-row'){const box=byId('purchaseItems'); if(box) box.insertAdjacentHTML('beforeend',purchaseRowHtml('',queryAll('.purchase-row',box).length)); return;}
@@ -1665,13 +1693,26 @@
     }catch(error){ toast('無法儲存',errorMessage(error),'error'); if(submit) submit.disabled=false; }
   }
 
-  function rerenderKeepingFocus(id,value){
-    render();
-    setTimeout(function(){
-      const input=byId(id);
-      if(input){ input.focus(); const len=clean(value).length; try{input.setSelectionRange(len,len);}catch(err){} }
-    },0);
-  }
+
+function renderKeepingViewport(){
+  const y=global.scrollY||global.pageYOffset||0;
+  render();
+  setTimeout(function(){ try{global.scrollTo(0,y);}catch(err){} },0);
+}
+function rerenderKeepingFocus(id,value){
+  const y=global.scrollY||global.pageYOffset||0;
+  render();
+  setTimeout(function(){
+    try{global.scrollTo(0,y);}catch(err){}
+    const input=byId(id);
+    if(input){
+      try{ input.focus({preventScroll:true}); }catch(err){ input.focus(); }
+      const len=clean(value).length;
+      try{input.setSelectionRange(len,len);}catch(err){}
+    }
+  },0);
+}
+
   function updateCartTotals(){
     const subtotal=sum(state.cart,function(x){return x.qty*x.unitPrice;});
     setText('cartSubtotal',money(subtotal));
@@ -1732,6 +1773,8 @@
       if(event.target.id==='productFilter'){state.productFilter=event.target.value;state.productVisible=PRODUCT_PAGE_SIZE;render();}
       else if(event.target.id==='productSort'){state.productSort=event.target.value;render();}
       else if(event.target.id==='financeRange'){state.financeRange=event.target.value;render();}
+      else if(event.target.id==='saleInvoiceFrom'){state.saleInvoiceFrom=event.target.value;renderKeepingViewport();}
+      else if(event.target.id==='saleInvoiceTo'){state.saleInvoiceTo=event.target.value;renderKeepingViewport();}
       else if(event.target.id==='overviewMonth'&&/^\d{4}-(0[1-9]|1[0-2])$/.test(event.target.value)){state.overviewMonth=event.target.value;state.overviewRange='month';render();}
       else if(event.target.id==='overviewFrom'){state.overviewFrom=event.target.value;render();}
       else if(event.target.id==='overviewTo'){state.overviewTo=event.target.value;render();}
