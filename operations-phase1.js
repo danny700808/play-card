@@ -25,7 +25,7 @@
   const READ_LIMIT = 10000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.07.12-v6.1-sales-ui-refresh';
+  const VERSION = '2026.07.12-v6.4-overview-store-ui-refine';
   const DASHBOARD_CACHE_KEY = 'youzi_ops_dashboard_overview_v5';
   const DASHBOARD_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
   const DEFAULT_MEMBERSHIP_SETTINGS = {
@@ -117,7 +117,7 @@
   const PAGE_META = {
     overview:['營運總覽',''],
     products:['商品庫存',''],
-    sales:['現場銷售',''],
+    sales:['門市銷售',''],
     customers:['客戶會員','會員、老師與一般客戶共用同一份客戶資料。'],
     receivables:['未收款','未收款會連回客戶與原始銷售。'],
     purchases:['進貨庫存',''],
@@ -807,55 +807,58 @@
     const educationHtml='<section class="ops-card ops-education-section"><div class="ops-card-head"><div><h2>音教雲課務</h2></div><button class="ops-button primary" data-action="injiaoyun-import">匯入音教雲</button></div><div class="ops-kpi-grid ops-education-kpis">'+kpi('上課堂數',formatNumber(educationSummary.lessonCount),'','堂')+kpi('課堂金額',money(educationSummary.lessonGross),'','課')+kpi('課堂拆帳',money(educationSummary.teacherPayable),'','師')+kpi('教室保留',money(educationSummary.schoolShare),'','留')+kpi('學費實收',money(educationSummary.tuitionReceived),'','收')+kpi('教室租用',money(educationSummary.roomRentalReceived),'','租')+'</div>'+teacherHtml+'</section>';
     return tabs+monthPicker+custom+'<div class="ops-kpi-grid ops-today-kpis">'+kpi('商品銷售',money(productRevenue),'','＄')+kpi('維修收入',money(repairRevenue),'','修')+kpi('其他收入',money(otherRevenue),'','＋')+kpi('租賃收益',money(rentalRevenue),'','租')+kpi('總收入',money(revenue),'','合')+kpi('商品成本',money(cost),'','成本')+kpi(bounds.label+'賺多少',money(profit),'','↗')+kpi('賣出數量',formatNumber(qty),'','件')+'</div>'+educationHtml;
   }
-  function renderOverviewV7(){
-    const bounds=overviewBounds();
-    function inRange(value){const date=dateFrom(value);return date&&(!bounds.start||date>=bounds.start)&&(!bounds.end||date<=bounds.end);}
-    const sales=state.sales.filter(function(sale){return inRange(sale.soldAt);});
-    const incomes=state.incomes.filter(function(income){return inRange(income.occurredAt);});
-    const rentals=state.rentals.filter(function(rental){return inRange(rental.incomeRecognizedAt);});
-    const returns=state.salesReturns.filter(function(row){return inRange(row.createdAt);});
-    const paymentsInRange=state.receivablePayments.filter(function(payment){return inRange(payment.paidAt);});
-    const paymentBySale=new Map(),paymentByIncome=new Map();
-    state.receivablePayments.forEach(function(payment){
-      if(payment.saleId)paymentBySale.set(payment.saleId,Number(paymentBySale.get(payment.saleId)||0)+Number(payment.amount||0));
-      if(payment.incomeId)paymentByIncome.set(payment.incomeId,Number(paymentByIncome.get(payment.incomeId)||0)+Number(payment.amount||0));
-    });
-    const productRevenue=sum(sales,function(sale){return Math.max(0,Number(sale.receivedAmount||0)-Number(paymentBySale.get(sale.id)||0));})+sum(paymentsInRange.filter(function(payment){return payment.saleId||payment.sourceType==='sale';}),function(payment){return payment.amount;});
-    const incomeCash={repair:0,other:0,refund:0};
-    function incomeKind(income){const category=clean(income&&income.category);if(category.includes('商品退貨退款'))return 'refund';if(category.includes('維修'))return 'repair';return 'other';}
-    function addIncomeCash(income,amount){incomeCash[incomeKind(income)]+=Number(amount||0);}
-    incomes.forEach(function(income){addIncomeCash(income,Number(income.receivedAmount||0)-Number(paymentByIncome.get(income.id)||0));});
-    paymentsInRange.filter(function(payment){return payment.incomeId||payment.sourceType==='income';}).forEach(function(payment){addIncomeCash(state.incomes.find(function(income){return income.id===payment.incomeId;})||{},payment.amount);});
-    const repairRevenue=incomeCash.repair,otherRevenue=incomeCash.other,returnRefund=Math.max(0,-incomeCash.refund);
-    const rentalRevenue=sum(rentals,function(rental){return rental.incomeAmount;});
-    const storeCash=productRevenue+repairRevenue+otherRevenue+rentalRevenue-returnRefund;
-    const productCost=sum(sales,function(sale){return sale.costTotal;})-sum(returns,function(row){return row.restockedCost||0;});
-    const storeBalance=storeCash-productCost;
 
-    const educationRows=state.educationDaily.filter(function(row){return inRange(row.businessDate||row.dateKey);}),educationSessions=[];
-    educationRows.forEach(function(row){(row.sessions||[]).forEach(function(session){educationSessions.push(session);});});
-    const educationSummary={
-      lessonCount:educationSessions.length,
-      lessonGross:sum(educationSessions,function(session){return session.lessonPrice;}),
-      teacherPayable:sum(educationSessions,function(session){return session.teacherAmount;}),
-      schoolShare:sum(educationSessions,function(session){return hasValue(session.schoolShare)?session.schoolShare:Number(session.lessonPrice||0)-Number(session.teacherAmount||0);}),
-      tuitionReceived:sum(educationRows,function(row){return row.summary.tuitionReceived;}),
-      roomRentalReceived:sum(educationRows,function(row){return row.summary.roomRentalReceived;})
-    };
-    const educationCash=educationSummary.tuitionReceived+educationSummary.roomRentalReceived;
-    const tabs='<div class="ops-range-tabs"><button class="'+(state.overviewRange==='today'?'active':'')+'" data-action="overview-range" data-range="today">今天</button><button class="'+(state.overviewRange==='month'?'active':'')+'" data-action="overview-range" data-range="month">月份</button><button class="'+(state.overviewRange==='year'?'active':'')+'" data-action="overview-range" data-range="year">今年</button><button class="'+(state.overviewRange==='custom'?'active':'')+'" data-action="overview-range" data-range="custom">自訂區間</button></div>';
-    const monthPicker=state.overviewRange==='month'?'<div class="ops-range-custom"><label>查看月份<input class="ops-input" id="overviewMonth" type="month" max="'+attr(dateText(new Date()).slice(0,7))+'" value="'+attr(state.overviewMonth)+'"></label></div>':'';
-    const custom=state.overviewRange==='custom'?'<div class="ops-range-custom"><label>開始日期<input class="ops-input" id="overviewFrom" type="date" value="'+attr(state.overviewFrom)+'"></label><label>結束日期<input class="ops-input" id="overviewTo" type="date" value="'+attr(state.overviewTo)+'"></label></div>':'';
-    const storeHtml='<section class="ops-card ops-overview-source"><div class="ops-card-head"><div><h2>門市營運</h2></div><button class="ops-button soft" data-nav="sales">前往現場銷售</button></div><div class="ops-kpi-grid ops-overview-kpis">'+kpi('商品銷售',money(productRevenue),'','＄')+kpi('維修收入',money(repairRevenue),'','修')+kpi('其他收入',money(otherRevenue),'','＋')+kpi('租賃收益',money(rentalRevenue),'','租')+kpi('退貨退款',money(returnRefund),'','退')+kpi('門市實收',money(storeCash),'','收')+kpi('商品成本／退貨沖回',money(productCost),'','成本')+kpi('門市結餘',money(storeBalance),'','結')+'</div></section>';
-    const networkHtml='<section class="ops-card ops-overview-source"><div class="ops-card-head"><div><h2>網路營運</h2></div><button class="ops-button soft" data-nav="sync">前往平台訂單</button></div><div class="ops-kpi-grid ops-overview-network">'+kpi('網路訂單收入','尚未同步','','網')+kpi('網路退貨退款','尚未同步','','退')+kpi('網路實收','尚未同步','','收')+'</div></section>';
-    const sync=state.injiaoyunCloudSync||{};
-    const syncRange=clean(sync.lastStartDateKey)&&clean(sync.lastEndDateKey)?clean(sync.lastStartDateKey)+'～'+clean(sync.lastEndDateKey):'';
-    const syncText=sync.status==='success'&&sync.lastSucceededAt?'最後同步：'+dateTimeText(sync.lastSucceededAt)+(syncRange?'｜資料範圍：'+syncRange:''):'尚未取得自動同步紀錄';
-    const educationHtml='<section class="ops-card ops-education-section ops-overview-source"><div class="ops-card-head"><div><h2>補習班營運</h2><p>'+escapeHtml(syncText)+'</p></div><button class="ops-button primary" data-action="injiaoyun-import">手動同步</button></div><div class="ops-kpi-grid ops-education-kpis">'+kpiAction('學費實收',money(educationSummary.tuitionReceived),'查看每筆收款','收','education-tuition-detail')+kpiAction('教室租用',money(educationSummary.roomRentalReceived),'查看每日租用','租','education-rental-detail')+kpiAction('老師拆帳',money(educationSummary.teacherPayable),'查看各老師拆帳','師','education-teacher-summary')+kpiAction('教室保留',money(educationSummary.schoolShare),'查看課程拆帳保留','留','education-school-share-detail')+'</div></section>';
-    const allCash=storeCash+educationCash,knownDirectCost=productCost+educationSummary.teacherPayable,allBalance=allCash-knownDirectCost;
-    const totalHtml='<section class="ops-card ops-overview-total"><div class="ops-card-head"><div><h2>全部營運合計</h2></div></div><div class="ops-kpi-grid ops-overview-total-grid">'+kpi('門市實收',money(storeCash),'','店')+kpi('網路實收','尚未同步','','網')+kpi('補習班實收',money(educationCash),'','教')+kpi('目前已匯入實收',money(allCash),'','合')+kpi('已知直接成本',money(knownDirectCost),'','成本')+kpi('累計結餘',money(allBalance),'','結')+'</div></section>';
-    return tabs+monthPicker+custom+storeHtml+networkHtml+educationHtml+totalHtml;
-  }
+function renderOverviewV7(){
+  const bounds=overviewBounds();
+  function inRange(value){const date=dateFrom(value);return date&&(!bounds.start||date>=bounds.start)&&(!bounds.end||date<=bounds.end);}
+  const sales=state.sales.filter(function(sale){return inRange(sale.soldAt);});
+  const incomes=state.incomes.filter(function(income){return inRange(income.occurredAt);});
+  const rentals=state.rentals.filter(function(rental){return inRange(rental.incomeRecognizedAt);});
+  const returns=state.salesReturns.filter(function(row){return inRange(row.createdAt);});
+  const paymentsInRange=state.receivablePayments.filter(function(payment){return inRange(payment.paidAt);});
+  const paymentBySale=new Map(),paymentByIncome=new Map();
+  state.receivablePayments.forEach(function(payment){
+    if(payment.saleId)paymentBySale.set(payment.saleId,Number(paymentBySale.get(payment.saleId)||0)+Number(payment.amount||0));
+    if(payment.incomeId)paymentByIncome.set(payment.incomeId,Number(paymentByIncome.get(payment.incomeId)||0)+Number(payment.amount||0));
+  });
+  const productRevenue=sum(sales,function(sale){return Math.max(0,Number(sale.receivedAmount||0)-Number(paymentBySale.get(sale.id)||0));})+sum(paymentsInRange.filter(function(payment){return payment.saleId||payment.sourceType==='sale';}),function(payment){return payment.amount;});
+  const incomeCash={repair:0,other:0,refund:0};
+  function incomeKind(income){const category=clean(income&&income.category);if(category.includes('商品退貨退款'))return 'refund';if(category.includes('維修'))return 'repair';return 'other';}
+  function addIncomeCash(income,amount){incomeCash[incomeKind(income)]+=Number(amount||0);}
+  incomes.forEach(function(income){addIncomeCash(income,Number(income.receivedAmount||0)-Number(paymentByIncome.get(income.id)||0));});
+  paymentsInRange.filter(function(payment){return payment.incomeId||payment.sourceType==='income';}).forEach(function(payment){addIncomeCash(state.incomes.find(function(income){return income.id===payment.incomeId;})||{},payment.amount);});
+  const repairRevenue=incomeCash.repair,otherRevenue=incomeCash.other,returnRefund=Math.max(0,-incomeCash.refund);
+  const rentalRevenue=sum(rentals,function(rental){return rental.incomeAmount;});
+  const storeCash=productRevenue+repairRevenue+otherRevenue+rentalRevenue-returnRefund;
+  const productCost=sum(sales,function(sale){return sale.costTotal;})-sum(returns,function(row){return row.restockedCost||0;});
+  const storeBalance=storeCash-productCost;
+
+  const educationRows=state.educationDaily.filter(function(row){return inRange(row.businessDate||row.dateKey);}),educationSessions=[];
+  educationRows.forEach(function(row){(row.sessions||[]).forEach(function(session){educationSessions.push(session);});});
+  const educationSummary={
+    lessonCount:educationSessions.length,
+    lessonGross:sum(educationSessions,function(session){return session.lessonPrice;}),
+    teacherPayable:sum(educationSessions,function(session){return session.teacherAmount;}),
+    schoolShare:sum(educationSessions,function(session){return hasValue(session.schoolShare)?session.schoolShare:Number(session.lessonPrice||0)-Number(session.teacherAmount||0);}),
+    tuitionReceived:sum(educationRows,function(row){return row.summary.tuitionReceived;}),
+    roomRentalReceived:sum(educationRows,function(row){return row.summary.roomRentalReceived;})
+  };
+  const educationCash=educationSummary.tuitionReceived+educationSummary.roomRentalReceived;
+  const tabs='<div class="ops-range-tabs"><button class="'+(state.overviewRange==='today'?'active':'')+'" data-action="overview-range" data-range="today">今天</button><button class="'+(state.overviewRange==='month'?'active':'')+'" data-action="overview-range" data-range="month">月份</button><button class="'+(state.overviewRange==='year'?'active':'')+'" data-action="overview-range" data-range="year">今年</button><button class="'+(state.overviewRange==='custom'?'active':'')+'" data-action="overview-range" data-range="custom">自訂區間</button></div>';
+  const monthPicker=state.overviewRange==='month'?'<div class="ops-range-custom"><label>查看月份<input class="ops-input" id="overviewMonth" type="month" max="'+attr(dateText(new Date()).slice(0,7))+'" value="'+attr(state.overviewMonth)+'"></label></div>':'';
+  const custom=state.overviewRange==='custom'?'<div class="ops-range-custom"><label>開始日期<input class="ops-input" id="overviewFrom" type="date" value="'+attr(state.overviewFrom)+'"></label><label>結束日期<input class="ops-input" id="overviewTo" type="date" value="'+attr(state.overviewTo)+'"></label></div>':'';
+  const sync=state.injiaoyunCloudSync||{};
+  const syncRange=clean(sync.lastStartDateKey)&&clean(sync.lastEndDateKey)?clean(sync.lastStartDateKey)+'～'+clean(sync.lastEndDateKey):'';
+  const syncText=sync.status==='success'&&sync.lastSucceededAt?'最後同步：'+dateTimeText(sync.lastSucceededAt)+(syncRange?'｜資料範圍：'+syncRange:''):'尚未取得自動同步紀錄';
+
+  const allCash=storeCash+educationCash,knownDirectCost=productCost+educationSummary.teacherPayable,allBalance=allCash-knownDirectCost;
+  const heroHtml='<section class="ops-card ops-overview-hero"><div class="ops-card-head"><div><h2>全部營運</h2></div></div>'+tabs+monthPicker+custom+'<div class="ops-kpi-grid ops-overview-total-grid">'+kpi('門市實收',money(storeCash),'','店')+kpi('網路實收','尚未同步','','網')+kpi('補習班實收',money(educationCash),'','教')+kpi('目前已匯入實收',money(allCash),'','合')+kpi('已知直接成本',money(knownDirectCost),'','成本')+kpi('累計結餘',money(allBalance),'','結')+'</div></section>';
+  const storeHtml='<section class="ops-card ops-overview-source ops-overview-store"><div class="ops-card-head"><div><h2>門市營運</h2></div><button class="ops-button soft" data-nav="sales">前往門市銷售</button></div><div class="ops-kpi-grid ops-overview-kpis">'+kpi('商品銷售',money(productRevenue),'','＄')+kpi('維修收入',money(repairRevenue),'','修')+kpi('其他收入',money(otherRevenue),'','＋')+kpi('租賃收益',money(rentalRevenue),'','租')+kpi('退貨退款',money(returnRefund),'','退')+kpi('門市實收',money(storeCash),'','收')+kpi('商品成本／退貨沖回',money(productCost),'','成本')+kpi('門市結餘',money(storeBalance),'','結')+'</div></section>';
+  const networkHtml='<section class="ops-card ops-overview-source ops-overview-network-card"><div class="ops-card-head"><div><h2>網路營運</h2></div><button class="ops-button soft" data-nav="sync">前往平台訂單</button></div><div class="ops-kpi-grid ops-overview-network">'+kpi('網路訂單收入','尚未同步','','網')+kpi('網路退貨退款','尚未同步','','退')+kpi('網路實收','尚未同步','','收')+'</div></section>';
+  const educationHtml='<section class="ops-card ops-education-section ops-overview-source ops-overview-education"><div class="ops-card-head"><div><h2>補習班營運</h2><p>'+escapeHtml(syncText)+'</p></div><button class="ops-button primary" data-action="injiaoyun-import">手動同步</button></div><div class="ops-kpi-grid ops-education-kpis">'+kpiAction('學費實收',money(educationSummary.tuitionReceived),'查看每筆收款','收','education-tuition-detail')+kpiAction('教室租用',money(educationSummary.roomRentalReceived),'查看每日租用','租','education-rental-detail')+kpiAction('老師拆帳',money(educationSummary.teacherPayable),'查看各老師拆帳','師','education-teacher-summary')+kpiAction('教室保留',money(educationSummary.schoolShare),'查看課程拆帳保留','留','education-school-share-detail')+'</div></section>';
+  return heroHtml+storeHtml+networkHtml+educationHtml;
+}
+
   function educationSessionTeacherKey(session){return clean(session&&session.teacherId)||clean(session&&session.teacherName)||'未命名';}
   function educationRowsInOverviewRange(){
     const bounds=overviewBounds();
@@ -1050,8 +1053,10 @@ function renderTodayInvoices(){
 }
 
 
+
 function renderSalesV5(){
-  const products=state.catalog.filter(function(p){return p.initialized&&p.status!=='inactive';}),term=lower(state.posSearch).trim(),choices=term?products.filter(function(p){return lower([p.originalName,p.onlineName,p.sku,p.barcode,p.brand,p.category].join(' ')).includes(term);}).slice(0,30):[],cartSubtotal=sum(state.cart,function(x){return x.qty*x.unitPrice;}),todaySales=todayRows(state.sales,function(x){return x.soldAt;}),todayIncome=todayRows(state.incomes,function(x){return x.occurredAt;}),repairIncome=todayIncome.filter(function(x){return x.category==='維修收入';}),otherIncome=todayIncome.filter(function(x){return x.category!=='維修收入';});let main='';
+  const products=state.catalog.filter(function(p){return p.initialized&&p.status!=='inactive';}),term=lower(state.posSearch).trim(),choices=term?products.filter(function(p){return lower([p.originalName,p.onlineName,p.sku,p.barcode,p.brand,p.category].join(' ')).includes(term);}).slice(0,30):[],cartSubtotal=sum(state.cart,function(x){return x.qty*x.unitPrice;}),todaySales=todayRows(state.sales,function(x){return x.soldAt;}),todayIncome=todayRows(state.incomes,function(x){return x.occurredAt;}),repairIncome=todayIncome.filter(function(x){return x.category==='維修收入';}),otherIncome=todayIncome.filter(function(x){return x.category!=='維修收入';});
+  let main='';
   if(state.salesMode==='product'){
     let productHtml='';
     if(choices.length) productHtml=choices.map(function(p){const image=p.imageUrl||'';return '<button class="ops-pos-item" data-action="cart-add" data-id="'+attr(p.docId)+'">'+(image?'<img loading="lazy" src="'+attr(image)+'" alt="" onerror="this.style.display=&quot;none&quot;">':'<div class="ops-pos-no-image">無圖</div>')+'<div><b>'+escapeHtml(p.originalName||p.name)+'</b><small>編號 '+escapeHtml(p.sku||'未設定')+'・庫存 '+formatNumber(p.currentStock)+'・'+money(p.storePrice)+'</small></div></button>';}).join('');
@@ -1060,8 +1065,8 @@ function renderSalesV5(){
     main='<div class="ops-pos-layout"><section class="ops-card"><div class="ops-toolbar"><input class="ops-input grow ops-pos-search" id="posSearch" placeholder="商品編號／名稱" value="'+attr(state.posSearch)+'"><button class="ops-button ghost" data-action="pos-clear-search">清除</button></div><div class="ops-pos-products">'+productHtml+'</div></section><section class="ops-card"><div class="ops-card-head"><h2>要賣的商品</h2><button class="ops-button small ghost" data-action="cart-clear">清空</button></div><div class="ops-cart">'+cartHtml+'</div>'+(state.cart.length?'<div class="ops-summary-line total"><span>商品金額</span><b id="cartSubtotal">'+money(cartSubtotal)+'</b></div>':'')+renderInlineCheckout()+'</section></div>';
   }else main=renderDirectIncomeV5(state.salesMode);
   const productRevenue=sum(todaySales,function(x){return x.total;}),repairRevenue=sum(repairIncome,function(x){return x.amount;}),otherRevenue=sum(otherIncome,function(x){return x.amount;});
-  const totals='<section class="ops-card ops-sales-total"><div class="ops-kpi-grid">'+kpi('商品銷售',money(productRevenue),'','＄')+kpi('維修收入',money(repairRevenue),'','修')+kpi('其他收入',money(otherRevenue),'','＋')+kpi('今日總計',money(productRevenue+repairRevenue+otherRevenue),'','合')+'</div></section>';
-  return '<section class="ops-stage-panel ops-stage-panel-choice"><div class="ops-stage-header"><div><h2>先選擇客戶與銷售方式</h2><p>先決定門市散客或會員，再選擇商品銷售、維修收入或其他收入。</p></div></div>'+posCustomerBarV5()+'<div class="ops-sales-mode-panel"><div class="ops-block-caption"><span>第二步</span><b>選擇收入類型</b></div><div class="ops-sales-modes"><button data-action="sales-mode" data-mode="product" class="'+(state.salesMode==='product'?'active':'')+'">商品銷售</button><button data-action="sales-mode" data-mode="repair" class="'+(state.salesMode==='repair'?'active':'')+'">維修收入</button><button data-action="sales-mode" data-mode="other" class="'+(state.salesMode==='other'?'active':'')+'">其他收入</button></div></div></section><section class="ops-stage-panel ops-stage-panel-main"><div class="ops-stage-header"><div><h2>主要銷售區</h2><p>搜尋商品、加入清單、確認金額與完成結帳。</p></div></div><div class="ops-sale-workspace"><div class="ops-sale-main-body">'+main+'</div>'+totals+'</div></section><section class="ops-stage-panel ops-stage-panel-history"><div class="ops-stage-header"><div><h2>銷售記錄查詢</h2><p>除了關鍵字搜尋，也可以直接用日期區間找單據。</p></div></div>'+renderTodayInvoices()+'</section>';
+  const totals='<section class="ops-card ops-sales-total compact-total"><div class="ops-kpi-grid">'+kpi('商品銷售',money(productRevenue),'','＄')+kpi('維修收入',money(repairRevenue),'','修')+kpi('其他收入',money(otherRevenue),'','＋')+kpi('今日總計',money(productRevenue+repairRevenue+otherRevenue),'','合')+'</div></section>';
+  return '<section class="ops-store-sales-shell"><div class="ops-store-sales-top"><div class="ops-store-sales-title">門市銷售</div></div><section class="ops-card ops-sales-choice-card">'+posCustomerBarV5()+'</section><section class="ops-card ops-sales-mode-card"><div class="ops-sales-modes compact"><button data-action="sales-mode" data-mode="product" class="'+(state.salesMode==='product'?'active':'')+'">商品銷售</button><button data-action="sales-mode" data-mode="repair" class="'+(state.salesMode==='repair'?'active':'')+'">維修收入</button><button data-action="sales-mode" data-mode="other" class="'+(state.salesMode==='other'?'active':'')+'">其他收入</button></div></section><section class="ops-card ops-main-sales-card"><div class="ops-card-head ops-main-sales-head"><h2>主要銷售區</h2><div class="ops-sales-clock" id="opsSalesClock">'+formatSalesClock(new Date())+'</div></div><div class="ops-sale-workspace">'+main+'</div>'+totals+'</section><section class="ops-card ops-sales-history-card">'+renderTodayInvoices()+'</section></section>';
 }
 
   function posNumberPadHtml(){return '<div class="ops-number-pad ops-pos-number-pad" aria-label="商品編號數字鍵盤">'+['1','2','3','4','5','6','7','8','9','clear','0','back'].map(function(key){const label=key==='clear'?'清除':key==='back'?'⌫':key;return '<button type="button" data-action="pos-key" data-key="'+key+'">'+label+'</button>';}).join('')+'</div>';}
@@ -1169,10 +1174,31 @@ function renderSalesV5(){
     return '<div class="ops-grid-2"><section class="ops-card"><div class="ops-card-head"><div><h2>Firebase 與集合狀態</h2><p>專案：'+escapeHtml((global.APP_CONFIG&&APP_CONFIG.FIREBASE_CONFIG&&APP_CONFIG.FIREBASE_CONFIG.projectId)||'未辨識')+'・版本 '+VERSION+'</p></div><button class="ops-button ghost" data-action="refresh">重新讀取</button></div>'+diagnostics+'</section><section class="ops-card"><div class="ops-card-head"><div><h2>備份與匯入</h2><p>可先下載營運資料備份，再進行大量匯入或調整。</p></div></div><div class="ops-summary-list"><div class="ops-summary-line"><span>網路商品來源</span><b>'+escapeHtml(state.onlineSource||'未找到')+'</b></div><div class="ops-summary-line"><span>內部商品主檔</span><b>'+state.internalProducts.length+' 筆</b></div><div class="ops-summary-line"><span>營運集合</span><b>'+Object.keys(COLLECTIONS).length+' 個</b></div></div><div class="ops-card-actions" style="margin-top:14px;justify-content:flex-start"><button class="ops-button primary" data-action="export-backup">下載 JSON 備份</button><button class="ops-button ghost" data-action="open-import">Excel 匯入商品主檔</button><button class="ops-button ghost" data-action="download-product-template">下載 CSV 範本</button></div></section></div><section class="ops-card" style="margin-top:15px"><div class="ops-card-head"><div><h2>最近營運操作</h2><p>只顯示 opsAuditLogs，不會混入原系統操作。</p></div></div>'+auditHtml+'</section>';
   }
 
+
+function formatSalesClock(now){
+  const roc=now.getFullYear()-1911,m=now.getMonth()+1,d=now.getDate();
+  const hh=String(now.getHours()).padStart(2,'0'),mm=String(now.getMinutes()).padStart(2,'0'),ss=String(now.getSeconds()).padStart(2,'0');
+  return roc+'年'+m+'月'+d+'日 '+hh+':'+mm+':'+ss;
+}
+function updateSalesClock(){
+  const el=byId('opsSalesClock');
+  if(el) el.textContent=formatSalesClock(new Date());
+}
+function ensureSalesClock(){
+  if(state.view==='sales'){
+    updateSalesClock();
+    if(!global.__opsSalesClockTimer) global.__opsSalesClockTimer=global.setInterval(updateSalesClock,1000);
+  }else if(global.__opsSalesClockTimer){
+    global.clearInterval(global.__opsSalesClockTimer);
+    global.__opsSalesClockTimer=null;
+  }
+}
+
   function bindViewSpecific(){
     const productFilter=byId('productFilter'); if(productFilter) productFilter.value=state.productFilter;
     const productSort=byId('productSort'); if(productSort) productSort.value=state.productSort;
     const financeRange=byId('financeRange'); if(financeRange) financeRange.value=state.financeRange;
+    ensureSalesClock();
   }
 
   function catalogById(id){ return state.catalog.find(function(p){return p.docId===id;})||null; }
