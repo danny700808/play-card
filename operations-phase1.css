@@ -779,3 +779,41 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
   .ops-sales-main-label .ops-sales-clock{width:auto!important;text-align:left!important;font-size:14px!important}
   .ops-member-popover .ops-member-results{grid-template-columns:1fr}
 }
+
+/* V7：三平台訂單、中央庫存與網路營運 */
+.ops-overview-network-live{grid-template-columns:repeat(3,minmax(0,1fr))}
+.ops-platform-summary{border:2px solid #7da78f;background:#eef8f2}
+.ops-platform-schedule{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin-top:12px}
+.ops-platform-schedule>div{padding:11px 12px;border:1px solid #c9ddd2;border-radius:12px;background:#fff;min-width:0}
+.ops-platform-schedule span{display:block;color:var(--ops-muted);font-size:10px}
+.ops-platform-schedule b{display:block;margin-top:3px;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ops-platform-status-grid{margin-top:15px}
+.ops-platform-status-card{min-height:118px}
+.ops-platform-status-card h3{margin:0}
+.ops-platform-status-card p{margin:4px 0 0;color:var(--ops-muted);font-size:11px}
+.ops-platform-error{margin-top:8px;padding:8px;border-radius:9px;background:#fff0ee;color:#9d3832;font-size:10px;line-height:1.45;overflow-wrap:anywhere}
+.ops-platform-order-list,.ops-platform-runs{margin-top:15px}
+.ops-platform-range{margin-bottom:11px}
+.ops-platform-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}
+.ops-platform-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin:12px 0}
+.ops-platform-tabs button{border:1px solid var(--ops-line);border-radius:11px;min-height:40px;padding:7px;background:#fff;color:var(--ops-navy);font-weight:900;cursor:pointer}
+.ops-platform-tabs button.active{background:var(--ops-green);border-color:var(--ops-green);color:#fff}
+.ops-platform-search{margin-bottom:11px}
+.ops-platform-orders-table .ops-table{min-width:1120px}
+.ops-platform-orders-table td small{color:var(--ops-muted);line-height:1.45}
+.ops-text-danger{color:#a7352f!important}
+.ops-platform-runs .ops-table{min-width:900px}
+@media(max-width:960px){
+  .ops-platform-schedule{grid-template-columns:1fr 1fr}
+  .ops-platform-schedule>div:last-child{grid-column:1/-1}
+  .ops-platform-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:620px){
+  .ops-overview-network-live{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .ops-platform-summary .ops-card-head{align-items:stretch}
+  .ops-platform-summary .ops-card-head .ops-button{width:100%}
+  .ops-platform-schedule{grid-template-columns:1fr}
+  .ops-platform-schedule>div:last-child{grid-column:auto}
+  .ops-platform-tabs{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .ops-platform-kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+}

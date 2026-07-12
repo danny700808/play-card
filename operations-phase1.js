@@ -20,12 +20,14 @@
     receivables:'opsReceivables',
     receivablePayments:'opsReceivablePayments',
     salesReturns:'opsSalesReturns',
-    educationDaily:'opsEducationDaily'
+    educationDaily:'opsEducationDaily',
+    platformOrders:'opsPlatformOrders',
+    platformSyncRuns:'opsPlatformSyncRuns'
   };
   const READ_LIMIT = 10000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.07.12-v6.5-store-sales-simple';
+  const VERSION = '2026.07.12-v7.0-platform-orders-phase1';
   const DASHBOARD_CACHE_KEY = 'youzi_ops_dashboard_overview_v5';
   const DASHBOARD_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
   const DEFAULT_MEMBERSHIP_SETTINGS = {
@@ -71,6 +73,8 @@
     receivablePayments:[],
     salesReturns:[],
     educationDaily:[],
+    platformOrders:[],
+    platformSyncRuns:[],
     diagnostics:[],
     productVisible:PRODUCT_PAGE_SIZE,
     productSearch:'',
@@ -97,6 +101,9 @@
     membershipSettings:Object.assign({},DEFAULT_MEMBERSHIP_SETTINGS),
     cart:[],
     financeRange:'month',
+    platformOrderRange:'month',
+    platformOrderPlatform:'all',
+    platformOrderSearch:'',
     rentalSearch:'',
     caseSearch:'',
     inventorySearch:'',
@@ -583,7 +590,9 @@
         getCollection(COLLECTIONS.receivables,3000),
         getCollection(COLLECTIONS.receivablePayments,3000),
         getCollection(COLLECTIONS.salesReturns,3000),
-        getCollection(COLLECTIONS.educationDaily,3000,'businessDate','desc')
+        getCollection(COLLECTIONS.educationDaily,3000,'businessDate','desc'),
+        getCollection(COLLECTIONS.platformOrders,10000,'orderedAt','desc'),
+        getCollection(COLLECTIONS.platformSyncRuns,500,'startedAt','desc')
       ]);
       state.internalProducts=results[0].map(function(row){ return normalizeInternal(row,row.__id); });
       state.rentals=results[1].map(normalizeRental);
@@ -602,6 +611,8 @@
       state.receivablePayments=results[14].map(normalizeReceivablePayment);
       state.salesReturns=results[15].map(normalizeSaleReturn);
       state.educationDaily=results[16].map(normalizeEducationDaily);
+      state.platformOrders=results[17].map(normalizePlatformOrder);
+      state.platformSyncRuns=results[18].map(normalizePlatformSyncRun);
       mergeCatalog();
       state.loadedAt=new Date();
       setText('opsLastReadText','最後讀取：'+dateTimeText(state.loadedAt));
@@ -690,6 +701,14 @@
   }
   function normalizeExpense(obj){ return {id:clean(obj.__id),expenseNo:clean(obj.expenseNo)||clean(obj.__id),occurredAt:obj.occurredAt||obj.createdAt||'',category:clean(obj.category)||'其他支出',amount:firstNumber(obj,['amount']).value,paymentMethod:clean(obj.paymentMethod),referenceType:clean(obj.referenceType),referenceId:clean(obj.referenceId),note:clean(obj.note),createdAt:obj.createdAt||''}; }
   function normalizeSyncJob(obj){ return {id:clean(obj.__id),jobNo:clean(obj.jobNo)||clean(obj.__id),type:clean(obj.type),status:clean(obj.status)||'preview',platforms:Array.isArray(obj.platforms)?obj.platforms:[],productCount:firstNumber(obj,['productCount']).value,createdAt:obj.createdAt||'',createdBy:clean(obj.createdBy),note:clean(obj.note)}; }
+  function normalizePlatformOrder(obj){
+    return {
+      id:clean(obj.__id),platform:clean(obj.platform),externalOrderId:clean(obj.externalOrderId),externalOrderNo:clean(obj.externalOrderNo)||clean(obj.externalOrderId),externalLineId:clean(obj.externalLineId),orderedAt:obj.orderedAt||obj.createdAt||'',sku:clean(obj.sku),productName:clean(obj.productName)||'未命名商品',variantName:clean(obj.variantName),quantity:firstNumber(obj,['quantity']).value,unitPrice:firstNumber(obj,['unitPrice']).value,grossAmount:firstNumber(obj,['grossAmount']).value,estimatedNetAmount:firstNumber(obj,['estimatedNetAmount']).value,costTotal:firstNumber(obj,['costTotal']).value,estimatedProfit:firstNumber(obj,['estimatedProfit']).value,orderStatus:clean(obj.orderStatus),paymentStatus:clean(obj.paymentStatus),customerName:clean(obj.customerName),processingStatus:clean(obj.processingStatus),inventoryApplied:obj.inventoryApplied===true,inventoryBefore:firstNumber(obj,['inventoryBefore']).value,inventoryAfter:firstNumber(obj,['inventoryAfter']).value,productId:clean(obj.productId),processingError:clean(obj.processingError),lastSeenAt:obj.lastSeenAt||'',syncRunId:clean(obj.syncRunId)
+    };
+  }
+  function normalizePlatformSyncRun(obj){
+    return {id:clean(obj.__id),runId:clean(obj.runId)||clean(obj.__id),trigger:clean(obj.trigger),status:clean(obj.status),startedAt:obj.startedAt||'',finishedAt:obj.finishedAt||'',summary:obj.summary&&typeof obj.summary==='object'?obj.summary:{},error:clean(obj.error)};
+  }
   function normalizeAudit(obj){ return {id:clean(obj.__id),action:clean(obj.action),entityType:clean(obj.entityType),entityId:clean(obj.entityId),summary:clean(obj.summary),createdAt:obj.createdAt||'',createdBy:clean(obj.createdBy)}; }
 
   async function writeAudit(action,entityType,entityId,summary){
@@ -845,6 +864,13 @@ function renderOverviewV7(){
     roomRentalReceived:sum(educationRows,function(row){return row.summary.roomRentalReceived;})
   };
   const educationCash=educationSummary.tuitionReceived+educationSummary.roomRentalReceived;
+  const networkRows=state.platformOrders.filter(function(row){return row.inventoryApplied===true&&inRange(row.orderedAt);});
+  const networkGross=sum(networkRows,function(row){return row.grossAmount;});
+  const networkNet=sum(networkRows,function(row){return row.estimatedNetAmount;});
+  const networkCost=sum(networkRows,function(row){return row.costTotal;});
+  const networkProfit=networkNet-networkCost;
+  const networkQty=sum(networkRows,function(row){return row.quantity;});
+  const networkOrderCount=new Set(networkRows.map(function(row){return row.platform+'|'+row.externalOrderNo;})).size;
   const tabs='<div class="ops-range-tabs"><button class="'+(state.overviewRange==='today'?'active':'')+'" data-action="overview-range" data-range="today">今天</button><button class="'+(state.overviewRange==='month'?'active':'')+'" data-action="overview-range" data-range="month">月份</button><button class="'+(state.overviewRange==='year'?'active':'')+'" data-action="overview-range" data-range="year">今年</button><button class="'+(state.overviewRange==='custom'?'active':'')+'" data-action="overview-range" data-range="custom">自訂區間</button></div>';
   const monthPicker=state.overviewRange==='month'?'<div class="ops-range-custom"><label>查看月份<input class="ops-input" id="overviewMonth" type="month" max="'+attr(dateText(new Date()).slice(0,7))+'" value="'+attr(state.overviewMonth)+'"></label></div>':'';
   const custom=state.overviewRange==='custom'?'<div class="ops-range-custom"><label>開始日期<input class="ops-input" id="overviewFrom" type="date" value="'+attr(state.overviewFrom)+'"></label><label>結束日期<input class="ops-input" id="overviewTo" type="date" value="'+attr(state.overviewTo)+'"></label></div>':'';
@@ -852,10 +878,10 @@ function renderOverviewV7(){
   const syncRange=clean(sync.lastStartDateKey)&&clean(sync.lastEndDateKey)?clean(sync.lastStartDateKey)+'～'+clean(sync.lastEndDateKey):'';
   const syncText=sync.status==='success'&&sync.lastSucceededAt?'最後同步：'+dateTimeText(sync.lastSucceededAt)+(syncRange?'｜資料範圍：'+syncRange:''):'尚未取得自動同步紀錄';
 
-  const allCash=storeCash+educationCash,knownDirectCost=productCost+educationSummary.teacherPayable,allBalance=allCash-knownDirectCost;
-  const heroHtml='<section class="ops-card ops-overview-hero"><div class="ops-card-head"><div><h2>全部營運</h2></div></div>'+tabs+monthPicker+custom+'<div class="ops-kpi-grid ops-overview-total-grid">'+kpi('門市實收',money(storeCash),'','店')+kpi('網路實收','尚未同步','','網')+kpi('補習班實收',money(educationCash),'','教')+kpi('目前已匯入實收',money(allCash),'','合')+kpi('已知直接成本',money(knownDirectCost),'','成本')+kpi('累計結餘',money(allBalance),'','結')+'</div></section>';
+  const allCash=storeCash+networkNet+educationCash,knownDirectCost=productCost+networkCost+educationSummary.teacherPayable,allBalance=allCash-knownDirectCost;
+  const heroHtml='<section class="ops-card ops-overview-hero"><div class="ops-card-head"><div><h2>全部營運</h2></div></div>'+tabs+monthPicker+custom+'<div class="ops-kpi-grid ops-overview-total-grid">'+kpi('門市實收',money(storeCash),'','店')+kpi('網路預估入帳',money(networkNet),networkOrderCount+' 筆訂單','網')+kpi('補習班實收',money(educationCash),'','教')+kpi('目前營運收入',money(allCash),'','合')+kpi('已知直接成本',money(knownDirectCost),'','成本')+kpi('累計結餘',money(allBalance),'','結')+'</div></section>';
   const storeHtml='<section class="ops-card ops-overview-source ops-overview-store"><div class="ops-card-head"><div><h2>門市營運</h2></div><button class="ops-button soft" data-nav="sales">前往門市銷售</button></div><div class="ops-kpi-grid ops-overview-kpis">'+kpi('商品銷售',money(productRevenue),'','＄')+kpi('維修收入',money(repairRevenue),'','修')+kpi('其他收入',money(otherRevenue),'','＋')+kpi('租賃收益',money(rentalRevenue),'','租')+kpi('退貨退款',money(returnRefund),'','退')+kpi('門市實收',money(storeCash),'','收')+kpi('商品成本／退貨沖回',money(productCost),'','成本')+kpi('門市結餘',money(storeBalance),'','結')+'</div></section>';
-  const networkHtml='<section class="ops-card ops-overview-source ops-overview-network-card"><div class="ops-card-head"><div><h2>網路營運</h2></div><button class="ops-button soft" data-nav="sync">前往平台訂單</button></div><div class="ops-kpi-grid ops-overview-network">'+kpi('網路訂單收入','尚未同步','','網')+kpi('網路退貨退款','尚未同步','','退')+kpi('網路實收','尚未同步','','收')+'</div></section>';
+  const networkHtml='<section class="ops-card ops-overview-source ops-overview-network-card"><div class="ops-card-head"><div><h2>網路營運</h2></div><button class="ops-button soft" data-nav="sync">前往平台訂單</button></div><div class="ops-kpi-grid ops-overview-network ops-overview-network-live">'+kpi('成交金額',money(networkGross),'三平台訂單總額','網')+kpi('預估平台入帳',money(networkNet),'成交金額 × 0.87','收')+kpi('商品成本',money(networkCost),'中央 FIFO 成本','成本')+kpi('預估毛利',money(networkProfit),'預估入帳－商品成本','利')+kpi('訂單數',formatNumber(networkOrderCount),'不重複訂單','單')+kpi('銷售件數',formatNumber(networkQty),'商品明細數量','件')+'</div></section>';
   const educationHtml='<section class="ops-card ops-education-section ops-overview-source ops-overview-education"><div class="ops-card-head"><div><h2>補習班營運</h2><p>'+escapeHtml(syncText)+'</p></div><button class="ops-button primary" data-action="injiaoyun-import">手動同步</button></div><div class="ops-kpi-grid ops-education-kpis">'+kpiAction('學費實收',money(educationSummary.tuitionReceived),'查看每筆收款','收','education-tuition-detail')+kpiAction('教室租用',money(educationSummary.roomRentalReceived),'查看每日租用','租','education-rental-detail')+kpiAction('老師拆帳',money(educationSummary.teacherPayable),'查看各老師拆帳','師','education-teacher-summary')+kpiAction('教室保留',money(educationSummary.schoolShare),'查看課程拆帳保留','留','education-school-share-detail')+'</div></section>';
   return heroHtml+storeHtml+networkHtml+educationHtml;
 }
@@ -1162,11 +1188,46 @@ function renderSalesV5(){
     return '<div class="ops-toolbar"><select class="ops-select" id="financeRange"><option value="today">今天</option><option value="7d">最近 7 天</option><option value="month">本月</option><option value="year">本年</option></select><button class="ops-button primary" data-action="expense-new">新增支出</button><button class="ops-button ghost" data-action="export-finance">匯出收支 CSV</button></div><div class="ops-kpi-grid">'+kpi('商品銷售收入',money(salesRevenue),sales.length+' 筆現場銷售','＄')+kpi('快速收入',money(quick),incomes.length+' 筆非商品收入','＋')+kpi('商品成本',money(cogs),'售出商品成本','成本')+kpi('一般支出',money(general),expenses.length+' 筆支出','－')+kpi('期間暫估損益',money(profit),'收入－成本－一般支出','↗')+kpi('商品毛利率',percentage(salesRevenue?((salesRevenue-cogs)/salesRevenue*100):0),'不含快速收入與一般支出','%')+'</div><div class="ops-grid-2"><section class="ops-card"><div class="ops-card-head"><div><h2>期間損益結構</h2></div></div><div class="ops-summary-list">'+sourceRows.map(function(x,i){return '<div class="ops-summary-line '+(i===sourceRows.length-1?'':'')+'"><span>'+escapeHtml(x[0])+'</span><b>'+money(x[1])+'</b></div>';}).join('')+'<div class="ops-summary-line total"><span>暫估損益</span><b>'+money(profit)+'</b></div></div></section><section class="ops-card"><div class="ops-card-head"><div><h2>租賃與案件概況</h2></div></div><div class="ops-summary-list"><div class="ops-summary-line"><span>租賃已收款</span><b>'+money(sum(state.rentalLedgers,function(x){return x.receivedAmount;}))+'</b></div><div class="ops-summary-line"><span>租賃直接成本</span><b>'+money(sum(state.rentalLedgers,function(x){return x.deliveryCost+x.maintenanceCost+x.otherCost;}))+'</b></div><div class="ops-summary-line"><span>案件已收款</span><b>'+money(sum(state.cases,function(x){return x.receivedAmount;}))+'</b></div><div class="ops-summary-line"><span>案件直接成本</span><b>'+money(sum(state.cases,function(x){return x.totalCost;}))+'</b></div></div></section></div><section class="ops-card" style="margin-top:15px"><div class="ops-card-head"><div><h2>一般支出明細</h2></div></div>'+expenseTable+'</section>';
   }
 
-  function renderSync(){
-    const jobs=state.syncJobs.sort(function(a,b){return (dateFrom(b.createdAt)||0)-(dateFrom(a.createdAt)||0);});
-    const table=jobs.length?'<div class="ops-table-wrap"><table class="ops-table"><thead><tr><th>建立時間</th><th>工作編號</th><th>類型</th><th>平台</th><th class="num">商品數</th><th>狀態</th><th>建立者</th></tr></thead><tbody>'+jobs.map(function(x){return '<tr><td>'+escapeHtml(dateTimeText(x.createdAt))+'</td><td>'+escapeHtml(x.jobNo)+'</td><td>'+escapeHtml(x.type||'庫存同步預覽')+'</td><td>'+escapeHtml(x.platforms.join('、')||'尚未指定')+'</td><td class="num">'+formatNumber(x.productCount)+'</td><td>'+statusTag(x.status,x.status==='completed'?'green':(x.status==='failed'?'red':'yellow'))+'</td><td>'+escapeHtml(x.createdBy||'—')+'</td></tr>';}).join('')+'</tbody></table></div>':emptyHtml('尚無同步工作','目前尚未建立平台同步預覽。');
-    return '<div class="ops-callout"><b>目前尚未讀取網路訂單與退貨。</b><br>營運總覽不會把未知的網路金額算入收入；正式串接後會以收款日記收入、以實際退貨日記退款，即使二十天後退貨也能在正確日期沖回。</div><div class="ops-callout red"><b>平台密鑰不能放在 GitHub 或瀏覽器。</b><br>本頁先完成同步預覽、商品資料完整度與工作紀錄。EasyStore／momo／Coupang 的正式讀寫必須由 Firebase Cloud Functions 或 Cloud Run 執行，設定密鑰後才會啟用。</div><div class="ops-grid-3"><section class="ops-card"><div class="ops-card-head"><div><h3>EasyStore</h3><p>目前只有商品與圖片 API；訂單與退款尚未串接。</p></div>'+statusTag(state.easyStoreSync.completedAt?'商品已連線':'待首次同步',state.easyStoreSync.completedAt?'green':'yellow')+'</div></section><section class="ops-card"><div class="ops-card-head"><div><h3>momo</h3><p>需要平台 API 帳號、權限與來源 IP 驗證。</p></div>'+statusTag('待設定後端','yellow')+'</div></section><section class="ops-card"><div class="ops-card-head"><div><h3>Coupang</h3><p>需要 Vendor ID、Access Key 與 Secret Key。</p></div>'+statusTag('待設定後端','yellow')+'</div></section></div><section class="ops-card" style="margin-top:15px"><div class="ops-card-head"><div><h2>同步工作預覽</h2><p>只建立工作紀錄，不會直接更動任何平台庫存。</p></div><button class="ops-button primary" data-action="create-sync-preview">建立庫存同步預覽</button></div><div class="ops-summary-list" style="margin-bottom:13px"><div class="ops-summary-line"><span>已建立內部主檔</span><b>'+state.catalog.filter(function(p){return p.initialized;}).length+' 項</b></div><div class="ops-summary-line"><span>有 SKU</span><b>'+state.catalog.filter(function(p){return p.initialized&&p.sku;}).length+' 項</b></div><div class="ops-summary-line"><span>有庫存數字</span><b>'+state.catalog.filter(function(p){return p.initialized;}).length+' 項</b></div><div class="ops-summary-line"><span>可進入同步預覽</span><b>'+state.catalog.filter(function(p){return p.initialized&&p.sku;}).length+' 項</b></div></div>'+table+'</section>';
-  }
+
+function platformOrderBounds(){
+  const now=new Date();let start=null,end=endOfDay(now),label='本月';
+  if(state.platformOrderRange==='today'){start=startOfDay(now);label='今天';}
+  else if(state.platformOrderRange==='7d'){start=startOfDay(new Date(now.getTime()-6*24*60*60*1000));label='最近 7 天';}
+  else if(state.platformOrderRange==='all'){start=null;end=null;label='全部';}
+  else{start=new Date(now.getFullYear(),now.getMonth(),1);label='本月';}
+  return {start:start,end:end,label:label};
+}
+function platformOrderProcessingLabel(row){
+  const map={'inventory-applied':'已扣中央庫存','already-applied':'已處理','dry-run':'測試未扣庫存','unmatched-sku':'SKU 未配對','duplicate-sku':'SKU 重複','missing-sku':'缺少 SKU','ignored':'已排除','manual-return-review':'退貨請手動處理','error':'處理失敗'};
+  return map[row.processingStatus]||row.processingStatus||'待處理';
+}
+function platformOrderProcessingColor(row){
+  if(row.inventoryApplied)return 'green';
+  if(row.processingStatus==='ignored'||row.processingStatus==='manual-return-review')return 'yellow';
+  if(row.processingStatus==='unmatched-sku'||row.processingStatus==='duplicate-sku'||row.processingStatus==='missing-sku'||row.processingStatus==='error')return 'red';
+  return 'blue';
+}
+function nextPlatformSyncText(){
+  const now=new Date(),next=new Date(now);next.setHours(23,0,0,0);if(next<=now)next.setDate(next.getDate()+1);return dateTimeText(next);
+}
+function renderSync(){
+  const bounds=platformOrderBounds(),term=lower(state.platformOrderSearch).trim();
+  let rows=state.platformOrders.filter(function(row){
+    const date=dateFrom(row.orderedAt);if(bounds.start&&(!date||date<bounds.start))return false;if(bounds.end&&(!date||date>bounds.end))return false;
+    if(state.platformOrderPlatform!=='all'&&lower(row.platform)!==lower(state.platformOrderPlatform))return false;
+    return !term||lower([row.platform,row.externalOrderNo,row.sku,row.productName,row.variantName,row.customerName,row.orderStatus,row.processingStatus].join(' ')).includes(term);
+  }).sort(function(a,b){return (dateFrom(b.orderedAt)||0)-(dateFrom(a.orderedAt)||0);});
+  const validRows=rows.filter(function(row){return row.inventoryApplied===true;});
+  const gross=sum(validRows,function(row){return row.grossAmount;}),net=sum(validRows,function(row){return row.estimatedNetAmount;}),cost=sum(validRows,function(row){return row.costTotal;}),profit=net-cost,qty=sum(validRows,function(row){return row.quantity;}),orderCount=new Set(validRows.map(function(row){return row.platform+'|'+row.externalOrderNo;})).size;
+  const latestRun=state.platformSyncRuns.slice().sort(function(a,b){return (dateFrom(b.startedAt)||0)-(dateFrom(a.startedAt)||0);})[0]||null;
+  const runSummary=latestRun&&latestRun.summary||{},platformFetch=runSummary.platformFetch||{};
+  function platformCard(name){const info=platformFetch[name]||{},status=info.status==='success'?'同步成功':info.status==='error'?'同步失敗':'等待首次同步',color=info.status==='success'?'green':info.status==='error'?'red':'yellow';return '<section class="ops-card ops-platform-status-card"><div class="ops-card-head"><div><h3>'+escapeHtml(name)+'</h3><p>'+(info.lines!=null?'讀取 '+formatNumber(info.lines)+' 筆商品明細':'尚無同步紀錄')+'</p></div>'+statusTag(status,color)+'</div>'+(info.error?'<div class="ops-platform-error">'+escapeHtml(info.error)+'</div>':'')+'</section>';}
+  const rangeTabs='<div class="ops-range-tabs ops-platform-range"><button class="'+(state.platformOrderRange==='today'?'active':'')+'" data-action="platform-order-range" data-range="today">今天</button><button class="'+(state.platformOrderRange==='7d'?'active':'')+'" data-action="platform-order-range" data-range="7d">最近 7 天</button><button class="'+(state.platformOrderRange==='month'?'active':'')+'" data-action="platform-order-range" data-range="month">本月</button><button class="'+(state.platformOrderRange==='all'?'active':'')+'" data-action="platform-order-range" data-range="all">全部</button></div>';
+  const platformTabs='<div class="ops-platform-tabs"><button class="'+(state.platformOrderPlatform==='all'?'active':'')+'" data-action="platform-order-platform" data-platform="all">全部平台</button><button class="'+(state.platformOrderPlatform==='EasyStore'?'active':'')+'" data-action="platform-order-platform" data-platform="EasyStore">EasyStore</button><button class="'+(state.platformOrderPlatform==='MOMO'?'active':'')+'" data-action="platform-order-platform" data-platform="MOMO">MOMO</button><button class="'+(state.platformOrderPlatform==='Coupang'?'active':'')+'" data-action="platform-order-platform" data-platform="Coupang">Coupang</button></div>';
+  const orderTable=rows.length?'<div class="ops-table-wrap ops-platform-orders-table"><table class="ops-table"><thead><tr><th>平台／時間</th><th>訂單</th><th>商品</th><th class="num">數量</th><th class="num">成交</th><th class="num">預估入帳</th><th class="num">成本</th><th>中央庫存</th></tr></thead><tbody>'+rows.slice(0,500).map(function(row){return '<tr><td>'+statusTag(row.platform,row.platform==='EasyStore'?'green':row.platform==='MOMO'?'blue':'yellow')+'<br><small>'+escapeHtml(dateTimeText(row.orderedAt))+'</small></td><td><b>'+escapeHtml(row.externalOrderNo||'—')+'</b><br><small>'+escapeHtml(row.customerName||row.orderStatus||'')+'</small></td><td><b>'+escapeHtml(row.productName)+'</b><br><small>'+escapeHtml((row.sku?'SKU '+row.sku:'缺少 SKU')+(row.variantName?'・'+row.variantName:''))+'</small>'+(row.processingError?'<br><small class="ops-text-danger">'+escapeHtml(row.processingError)+'</small>':'')+'</td><td class="num">'+formatNumber(row.quantity)+'</td><td class="num">'+money(row.grossAmount)+'</td><td class="num">'+money(row.estimatedNetAmount)+'</td><td class="num">'+money(row.costTotal)+'</td><td>'+statusTag(platformOrderProcessingLabel(row),platformOrderProcessingColor(row))+(row.inventoryApplied?'<br><small>'+formatNumber(row.inventoryBefore)+' → '+formatNumber(row.inventoryAfter)+'</small>':'')+'</td></tr>';}).join('')+'</tbody></table></div>':emptyHtml('目前沒有符合條件的平台訂單','完成首次同步後，EasyStore、MOMO 與 Coupang 訂單會顯示在這裡。');
+  const runRows=state.platformSyncRuns.slice().sort(function(a,b){return (dateFrom(b.startedAt)||0)-(dateFrom(a.startedAt)||0);}).slice(0,20),runTable=runRows.length?'<div class="ops-table-wrap"><table class="ops-table"><thead><tr><th>執行時間</th><th>方式</th><th>結果</th><th>訂單明細</th><th>新扣庫存</th><th>變動商品</th><th>訊息</th></tr></thead><tbody>'+runRows.map(function(run){const summary=run.summary||{},processing=summary.processing||{};return '<tr><td>'+escapeHtml(dateTimeText(run.startedAt))+'</td><td>'+escapeHtml(run.trigger||'排程')+'</td><td>'+statusTag(run.status||'—',run.status==='completed'?'green':run.status==='completed-with-errors'?'yellow':'red')+'</td><td>'+formatNumber(summary.fetchedLines||0)+'</td><td>'+formatNumber(processing.applied||0)+'</td><td>'+formatNumber(summary.changedProducts||0)+'</td><td><small>'+escapeHtml(run.error||((processing.errors||0)?'有 '+processing.errors+' 筆處理異常':'完成'))+'</small></td></tr>';}).join('')+'</tbody></table></div>':emptyHtml('尚無同步紀錄','每天 23:00 或手動執行後會出現。');
+  return '<section class="ops-card ops-platform-summary"><div class="ops-card-head"><div><h2>平台訂單同步</h2><p>每天 23:00 讀取三平台新訂單，先扣中央庫存，再把中央庫存寫回三平台。退貨目前維持手動處理。</p></div><button class="ops-button primary" data-action="platform-sync-now">立即同步</button></div><div class="ops-platform-schedule"><div><span>上次同步</span><b>'+(latestRun?escapeHtml(dateTimeText(latestRun.startedAt)):'尚未執行')+'</b></div><div><span>下次同步</span><b>'+escapeHtml(nextPlatformSyncText())+'</b></div><div><span>預估入帳比例</span><b>87%</b></div></div></section><div class="ops-grid-3 ops-platform-status-grid">'+platformCard('EasyStore')+platformCard('MOMO')+platformCard('Coupang')+'</div><section class="ops-card ops-platform-order-list"><div class="ops-card-head"><div><h2>'+escapeHtml(bounds.label)+'網路銷售</h2></div></div>'+rangeTabs+'<div class="ops-kpi-grid ops-platform-kpis">'+kpi('成交金額',money(gross),orderCount+' 筆訂單','＄')+kpi('預估平台入帳',money(net),'成交金額 × 0.87','收')+kpi('商品成本',money(cost),'中央 FIFO 成本','成本')+kpi('預估毛利',money(profit),'預估入帳－成本','利')+kpi('銷售件數',formatNumber(qty),'已扣中央庫存','件')+kpi('待處理異常',formatNumber(rows.filter(function(row){return !row.inventoryApplied&&row.processingStatus!=='ignored';}).length),'SKU 或同步問題','!')+'</div>'+platformTabs+'<div class="ops-toolbar ops-platform-search"><input class="ops-input grow" id="platformOrderSearch" placeholder="搜尋訂單編號、SKU、商品或客戶" value="'+attr(state.platformOrderSearch)+'"></div>'+orderTable+'</section><section class="ops-card ops-platform-runs"><div class="ops-card-head"><div><h2>同步紀錄</h2></div></div>'+runTable+'</section>';
+}
 
   function renderConnection(){
     const diagnostics=state.diagnostics.map(function(d){return '<div class="ops-status-row"><div><b>'+escapeHtml(d.collection)+'</b><small>'+d.count+' 筆・'+d.ms+' ms'+(d.error?'・'+escapeHtml(d.error):'')+'</small></div><span class="ops-status-dot '+(d.ok?'':'error')+'">'+(d.ok?'已連線':'讀取失敗')+'</span></div>';}).join('');
@@ -1638,9 +1699,28 @@ function ensureSalesClock(){
     }
   }
 
+  async function syncPlatformOrdersNow(){
+    if(!(global.firebase&&global.firebase.functions))return toast('無法同步','頁面未載入 Firebase Functions SDK。','warning');
+    const yes=await confirmAction('立即同步三平台訂單','系統會讀取 EasyStore、MOMO、Coupang 最近 4 天的訂單；新訂單會扣中央庫存，接著把中央庫存寫回三平台。已處理過的訂單不會重複扣庫存。退貨仍由你手動處理。','開始同步');
+    if(!yes)return;
+    showAlert('正在同步三平台訂單與中央庫存。第一次執行或訂單較多時可能需要數分鐘，請勿重複按按鈕。','info');
+    try{
+      const callable=global.firebase.app().functions('us-central1').httpsCallable('syncPlatformOrdersNow');
+      const response=await callable({source:'operations-hub'}),result=(response&&response.data)||{};
+      if(!result.ok)throw new Error((result.summary&&result.summary.error)||'平台同步失敗');
+      clearAlert();
+      const summary=result.summary||{},processing=summary.processing||{};
+      toast('平台訂單同步完成','讀取 '+formatNumber(summary.fetchedLines||0)+' 筆明細；新扣中央庫存 '+formatNumber(processing.applied||0)+' 筆；異常 '+formatNumber(processing.errors||0)+' 筆。',result.status==='completed'?'success':'warning');
+      await loadAll(true);
+    }catch(error){showAlert('平台訂單同步失敗：'+errorMessage(error),'error');toast('同步未完成',errorMessage(error),'error');}
+  }
+
   function handleAction(action,el){
     if(action==='sync-easystore-api'){ syncEasyStoreApi(); return; }
     if(action==='refresh'){ try{localStorage.removeItem(DASHBOARD_CACHE_KEY);}catch(err){} return loadAll(false); }
+    if(action==='platform-sync-now') return syncPlatformOrdersNow();
+    if(action==='platform-order-range'){state.platformOrderRange=el.dataset.range||'month';return renderKeepingViewport();}
+    if(action==='platform-order-platform'){state.platformOrderPlatform=el.dataset.platform||'all';return renderKeepingViewport();}
     if(action==='injiaoyun-import') return requestInjiaoyunImport();
     if(action==='education-tuition-detail') return openEducationTuitionDetail();
     if(action==='education-rental-detail') return openEducationRentalDetail();
@@ -1781,6 +1861,7 @@ function rerenderKeepingFocus(id,value){
       else if(event.target.id==='saleInvoiceSearch'){state.saleInvoiceSearch=event.target.value;rerenderKeepingFocus('saleInvoiceSearch',state.saleInvoiceSearch);}
       else if(event.target.id==='overviewSearch'){state.overviewSearch=event.target.value;rerenderKeepingFocus('overviewSearch',state.overviewSearch);}
       else if(event.target.id==='customerSearch'){state.customerSearch=event.target.value;rerenderKeepingFocus('customerSearch',state.customerSearch);}
+      else if(event.target.id==='platformOrderSearch'){state.platformOrderSearch=event.target.value;rerenderKeepingFocus('platformOrderSearch',state.platformOrderSearch);}
       else if(event.target.id==='receivableSearch'){state.receivableSearch=event.target.value;rerenderKeepingFocus('receivableSearch',state.receivableSearch);}
       else if(event.target.id==='rentalSearch'){state.rentalSearch=event.target.value;rerenderKeepingFocus('rentalSearch',state.rentalSearch);}
       else if(event.target.id==='caseSearch'){state.caseSearch=event.target.value;rerenderKeepingFocus('caseSearch',state.caseSearch);}
