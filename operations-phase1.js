@@ -25,7 +25,7 @@
   const READ_LIMIT = 10000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.07.11-v5.8-operations-overview';
+  const VERSION = '2026.07.12-v5.9-injiaoyun-auto-refresh';
   const DASHBOARD_CACHE_KEY = 'youzi_ops_dashboard_overview_v5';
   const DASHBOARD_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
   const DEFAULT_MEMBERSHIP_SETTINGS = {
@@ -48,6 +48,9 @@
     onlineSource:'EasyStore API',
     onlineProducts:[],
     easyStoreSync:{},
+    injiaoyunCloudSync:{},
+    injiaoyunCloudSyncSignature:'',
+    injiaoyunCloudSyncUnsubscribe:null,
     onlineOrphans:[],
     matchingStats:{central:0,onlineRows:0,matched:0,unmatchedCentral:0,unmatchedOnline:0},
     internalProducts:[],
@@ -519,13 +522,47 @@
       state.diagnostics.push({collection:COLLECTIONS.settings+'/membershipPoints',ok:false,count:0,ms:0,error:errorMessage(error)});
     }
   }
+  async function loadInjiaoyunCloudSync(){
+    try{
+      const doc=await state.db.collection(COLLECTIONS.settings).doc('injiaoyunCloudSync').get();
+      state.injiaoyunCloudSync=doc.exists?(doc.data()||{}):{};
+      state.injiaoyunCloudSyncSignature=syncTimestampSignature(state.injiaoyunCloudSync.lastSucceededAt);
+      state.diagnostics.push({collection:COLLECTIONS.settings+'/injiaoyunCloudSync',ok:true,count:doc.exists?1:0,ms:0});
+    }catch(error){
+      state.injiaoyunCloudSync={};
+      state.diagnostics.push({collection:COLLECTIONS.settings+'/injiaoyunCloudSync',ok:false,count:0,ms:0,error:errorMessage(error)});
+    }
+  }
+  function syncTimestampSignature(value){
+    if(!value)return '';
+    if(typeof value.toMillis==='function')return String(value.toMillis());
+    if(value.seconds!=null)return String(value.seconds)+':'+String(value.nanoseconds||0);
+    return String(value);
+  }
+  function watchInjiaoyunCloudSync(){
+    if(state.injiaoyunCloudSyncUnsubscribe)return;
+    let initialized=false;
+    state.injiaoyunCloudSyncUnsubscribe=state.db.collection(COLLECTIONS.settings).doc('injiaoyunCloudSync').onSnapshot(function(doc){
+      const next=doc.exists?(doc.data()||{}):{};
+      const signature=syncTimestampSignature(next.lastSucceededAt);
+      const changed=initialized&&next.status==='success'&&signature&&signature!==state.injiaoyunCloudSyncSignature;
+      state.injiaoyunCloudSync=next;
+      state.injiaoyunCloudSyncSignature=signature;
+      initialized=true;
+      if(changed&&!state.loading){
+        try{localStorage.removeItem(DASHBOARD_CACHE_KEY);}catch(error){}
+        toast('音教雲同步完成','營運資料已自動更新','success');
+        loadAll(true);
+      }
+    },function(error){console.warn('音教雲同步狀態監聽失敗',error);});
+  }
   async function loadAll(silent){
     if(state.loading) return;
     state.loading=true; clearAlert();
     if(!silent) html('opsContent',loadingHtml('正在整理商品、庫存、銷售、租賃與案件資料…'));
     state.diagnostics=[];
     try{
-      await Promise.all([loadOnlineProducts(),loadMembershipSettings()]);
+      await Promise.all([loadOnlineProducts(),loadMembershipSettings(),loadInjiaoyunCloudSync()]);
       const results=await Promise.all([
         getCollection(COLLECTIONS.products,10000),
         getCollection('rentalContracts',1000),
@@ -1378,9 +1415,9 @@
       name:limitText(row.name,80)||'未命名老師',
       lessonCount:Math.max(0,Math.floor(safeSyncNumber(row.lessonCount))),
       baseAmount:safeSyncNumber(row.baseAmount),
-      rewards:safeSyncNumber(row.rewards),
-      reductions:safeSyncNumber(row.reductions),
-      finalAmount:safeSyncNumber(row.finalAmount)
+      rewards:0,
+      reductions:0,
+      finalAmount:safeSyncNumber(row.baseAmount)
     };});
     const tuitionReceipts=safeSyncRows(raw.tuitionReceipts,500,function(row,index){return {
       sourceId:limitText(row.sourceId,120)||('tuition_'+index),
@@ -1668,6 +1705,7 @@
     if(typeof global.setPortalMode==='function')global.setPortalMode('settings');
     state.user=user; setText('opsUserChip',userLabel());
     try{state.db=initDb();}catch(error){showAlert(errorMessage(error),'error');html('opsContent',emptyHtml('Firebase初始化失敗',errorMessage(error)));return;}
+    watchInjiaoyunCloudSync();
     bindEvents();
     const initialView=(location.hash||'#overview').replace('#','').split('?')[0]||'overview';
     const cache=initialView==='overview'?getDashboardCache():null;
