@@ -9,6 +9,7 @@ on:
       - "firebase.json"
       - ".firebaserc"
       - ".github/workflows/firebase-functions-deploy.yml"
+  workflow_dispatch:
 
 jobs:
   deploy-functions:
@@ -30,11 +31,25 @@ jobs:
         working-directory: functions
         run: npm install
 
+      - name: Verify platform order function exports
+        working-directory: functions
+        run: |
+          node - <<'NODE'
+          const deployed = require('./index.js');
+          const required = ['platformOrderSyncDaily', 'syncPlatformOrdersNow'];
+          const missing = required.filter((name) => !deployed[name]);
+          if (missing.length) {
+            console.error('Missing Firebase Function exports:', missing.join(', '));
+            process.exit(1);
+          }
+          console.log('Verified Firebase Function exports:', required.join(', '));
+          NODE
+
       - name: Create service account file
         run: |
-          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 }}' > service-account.json
+          printf '%s' '${{ secrets.FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 }}' > service-account.json
 
       - name: Deploy Firebase Functions
         env:
           GOOGLE_APPLICATION_CREDENTIALS: service-account.json
-        run: firebase deploy --only functions --project youzi-c1b74
+        run: firebase deploy --only functions --project youzi-c1b74 --non-interactive
