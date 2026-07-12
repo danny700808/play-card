@@ -112,7 +112,11 @@ service cloud.firestore {
         'opsCustomers',
         'opsPointTransactions',
         'opsReceivables',
-        'opsReceivablePayments'
+        'opsReceivablePayments',
+        'opsSalesReturns',
+        'opsEducationDaily',
+        'opsPlatformOrders',
+        'opsPlatformSyncRuns'
       ];
     }
 
