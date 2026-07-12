@@ -84,6 +84,9 @@ a{color:inherit;text-decoration:none}
 .ops-banner p{margin:0;color:var(--ops-muted);font-size:12px}
 .ops-kpi-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;margin-bottom:15px}
 .ops-kpi{background:var(--ops-card);border:1px solid var(--ops-line);border-radius:16px;padding:14px;min-width:0;box-shadow:0 8px 20px rgba(24,55,72,.04)}
+.ops-kpi-action{appearance:none;width:100%;font:inherit;text-align:left;cursor:pointer;color:inherit;transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease}
+.ops-kpi-action:hover{transform:translateY(-2px);border-color:#78b69f;box-shadow:0 10px 24px rgba(24,55,72,.1)}
+.ops-kpi-action:focus-visible{outline:3px solid rgba(27,132,93,.22);outline-offset:2px}
 .ops-kpi-head{display:flex;justify-content:space-between;gap:8px;align-items:center;color:var(--ops-muted);font-size:12px}
 .ops-kpi-icon{width:30px;height:30px;border-radius:10px;background:var(--ops-green-soft);display:grid;place-items:center;color:var(--ops-green);font-weight:900}
 .ops-kpi strong{display:block;margin-top:7px;font-size:25px;line-height:1.05;letter-spacing:-.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -532,6 +535,11 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
 .ops-education-teachers b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ops-education-teachers span{color:var(--ops-muted);white-space:nowrap}
 .ops-education-teachers strong{color:var(--ops-green-2);white-space:nowrap}
+.ops-education-teacher-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:9px;align-items:center;width:100%;padding:11px 12px;border:1px solid var(--ops-line);border-radius:11px;background:#fff;color:var(--ops-navy);min-width:0;text-align:left;cursor:pointer;font:inherit;margin-bottom:8px}
+.ops-education-teacher-row:hover{border-color:#75b39c;background:var(--ops-green-soft)}
+.ops-education-teacher-row b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ops-education-teacher-row span{color:var(--ops-muted);white-space:nowrap}
+.ops-education-teacher-row strong{color:var(--ops-green-2);white-space:nowrap}
 .ops-education-detail-summary{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px;margin-bottom:14px}
 .ops-education-detail-summary>div{padding:10px;border:1px solid var(--ops-line);border-radius:11px;background:var(--ops-green-soft);min-width:0}
 .ops-education-detail-summary span,.ops-education-session-row span{display:block;color:var(--ops-muted);font-size:10px}

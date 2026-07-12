@@ -25,7 +25,7 @@
   const READ_LIMIT = 10000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.07.12-v5.9-injiaoyun-auto-refresh';
+  const VERSION = '2026.07.12-v6.0-tutoring-overview-details';
   const DASHBOARD_CACHE_KEY = 'youzi_ops_dashboard_overview_v5';
   const DASHBOARD_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
   const DEFAULT_MEMBERSHIP_SETTINGS = {
@@ -696,6 +696,9 @@
   function kpi(title,value,sub,icon){
     return '<article class="ops-kpi"><div class="ops-kpi-head"><span>'+escapeHtml(title)+'</span><span class="ops-kpi-icon">'+escapeHtml(icon||'•')+'</span></div><strong>'+escapeHtml(value)+'</strong><small>'+escapeHtml(sub||'')+'</small></article>';
   }
+  function kpiAction(title,value,sub,icon,action){
+    return '<button type="button" class="ops-kpi ops-kpi-action" data-action="'+attr(action)+'"><div class="ops-kpi-head"><span>'+escapeHtml(title)+'</span><span class="ops-kpi-icon">'+escapeHtml(icon||'•')+'</span></div><strong>'+escapeHtml(value)+'</strong><small>'+escapeHtml(sub||'')+'</small></button>';
+  }
   function render(){
     state.view=(location.hash||'#overview').replace('#','').split('?')[0]||'overview';
     if(!PAGE_META[state.view]) state.view='overview';
@@ -838,22 +841,53 @@
       roomRentalReceived:sum(educationRows,function(row){return row.summary.roomRentalReceived;})
     };
     const educationCash=educationSummary.tuitionReceived+educationSummary.roomRentalReceived;
-    const teacherMap=new Map();
-    educationSessions.forEach(function(session){const key=educationSessionTeacherKey(session),current=teacherMap.get(key)||{key:key,name:clean(session.teacherName)||'未命名老師',lessonCount:0,amount:0};current.lessonCount+=1;current.amount+=Number(session.teacherAmount||0);teacherMap.set(key,current);});
-    const teacherRows=Array.from(teacherMap.values()).sort(function(a,b){return b.amount-a.amount;});
-    const teacherHtml=teacherRows.length?'<div class="ops-education-teachers">'+teacherRows.map(function(teacher){return '<button type="button" data-action="education-teacher-detail" data-teacher-key="'+attr(teacher.key)+'"><b>'+escapeHtml(teacher.name)+'</b><span>'+formatNumber(teacher.lessonCount)+' 堂</span><strong>'+money(teacher.amount)+'</strong></button>';}).join('')+'</div>':educationRows.length?emptyHtml('此期間沒有上課資料',''):emptyHtml('尚未匯入課務資料','請先在音教雲同步工具選擇月份並讀取，再回到這裡匯入。');
-
     const tabs='<div class="ops-range-tabs"><button class="'+(state.overviewRange==='today'?'active':'')+'" data-action="overview-range" data-range="today">今天</button><button class="'+(state.overviewRange==='month'?'active':'')+'" data-action="overview-range" data-range="month">月份</button><button class="'+(state.overviewRange==='year'?'active':'')+'" data-action="overview-range" data-range="year">今年</button><button class="'+(state.overviewRange==='custom'?'active':'')+'" data-action="overview-range" data-range="custom">自訂區間</button></div>';
     const monthPicker=state.overviewRange==='month'?'<div class="ops-range-custom"><label>查看月份<input class="ops-input" id="overviewMonth" type="month" max="'+attr(dateText(new Date()).slice(0,7))+'" value="'+attr(state.overviewMonth)+'"></label></div>':'';
     const custom=state.overviewRange==='custom'?'<div class="ops-range-custom"><label>開始日期<input class="ops-input" id="overviewFrom" type="date" value="'+attr(state.overviewFrom)+'"></label><label>結束日期<input class="ops-input" id="overviewTo" type="date" value="'+attr(state.overviewTo)+'"></label></div>':'';
     const storeHtml='<section class="ops-card ops-overview-source"><div class="ops-card-head"><div><h2>門市營運</h2></div><button class="ops-button soft" data-nav="sales">前往現場銷售</button></div><div class="ops-kpi-grid ops-overview-kpis">'+kpi('商品銷售',money(productRevenue),'','＄')+kpi('維修收入',money(repairRevenue),'','修')+kpi('其他收入',money(otherRevenue),'','＋')+kpi('租賃收益',money(rentalRevenue),'','租')+kpi('退貨退款',money(returnRefund),'','退')+kpi('門市實收',money(storeCash),'','收')+kpi('商品成本／退貨沖回',money(productCost),'','成本')+kpi('門市結餘',money(storeBalance),'','結')+'</div></section>';
     const networkHtml='<section class="ops-card ops-overview-source"><div class="ops-card-head"><div><h2>網路營運</h2></div><button class="ops-button soft" data-nav="sync">前往平台訂單</button></div><div class="ops-kpi-grid ops-overview-network">'+kpi('網路訂單收入','尚未同步','','網')+kpi('網路退貨退款','尚未同步','','退')+kpi('網路實收','尚未同步','','收')+'</div></section>';
-    const educationHtml='<section class="ops-card ops-education-section ops-overview-source"><div class="ops-card-head"><div><h2>音教雲課務</h2></div><button class="ops-button primary" data-action="injiaoyun-import">匯入音教雲</button></div><div class="ops-kpi-grid ops-education-kpis">'+kpi('學費實收',money(educationSummary.tuitionReceived),'','收')+kpi('教室租用',money(educationSummary.roomRentalReceived),'','租')+kpi('音教雲實收',money(educationCash),'','合')+kpi('上課堂數',formatNumber(educationSummary.lessonCount),'','堂')+kpi('已上課金額',money(educationSummary.lessonGross),'','課')+kpi('老師拆帳',money(educationSummary.teacherPayable),'','師')+kpi('教室保留',money(educationSummary.schoolShare),'','留')+'</div>'+teacherHtml+'</section>';
+    const sync=state.injiaoyunCloudSync||{};
+    const syncRange=clean(sync.lastStartDateKey)&&clean(sync.lastEndDateKey)?clean(sync.lastStartDateKey)+'～'+clean(sync.lastEndDateKey):'';
+    const syncText=sync.status==='success'&&sync.lastSucceededAt?'最後同步：'+dateTimeText(sync.lastSucceededAt)+(syncRange?'｜資料範圍：'+syncRange:''):'尚未取得自動同步紀錄';
+    const educationHtml='<section class="ops-card ops-education-section ops-overview-source"><div class="ops-card-head"><div><h2>補習班營運</h2><p>'+escapeHtml(syncText)+'</p></div><button class="ops-button primary" data-action="injiaoyun-import">手動同步</button></div><div class="ops-kpi-grid ops-education-kpis">'+kpiAction('學費實收',money(educationSummary.tuitionReceived),'查看每筆收款','收','education-tuition-detail')+kpiAction('教室租用',money(educationSummary.roomRentalReceived),'查看每日租用','租','education-rental-detail')+kpiAction('老師拆帳',money(educationSummary.teacherPayable),'查看各老師拆帳','師','education-teacher-summary')+kpiAction('教室保留',money(educationSummary.schoolShare),'查看課程拆帳保留','留','education-school-share-detail')+'</div></section>';
     const allCash=storeCash+educationCash,knownDirectCost=productCost+educationSummary.teacherPayable,allBalance=allCash-knownDirectCost;
-    const totalHtml='<section class="ops-card ops-overview-total"><div class="ops-card-head"><div><h2>全部營運合計</h2></div></div><div class="ops-kpi-grid ops-overview-total-grid">'+kpi('門市實收',money(storeCash),'','店')+kpi('網路實收','尚未同步','','網')+kpi('音教雲實收',money(educationCash),'','教')+kpi('目前已匯入實收',money(allCash),'','合')+kpi('已知直接成本',money(knownDirectCost),'','成本')+kpi('累計結餘',money(allBalance),'','結')+'</div></section>';
+    const totalHtml='<section class="ops-card ops-overview-total"><div class="ops-card-head"><div><h2>全部營運合計</h2></div></div><div class="ops-kpi-grid ops-overview-total-grid">'+kpi('門市實收',money(storeCash),'','店')+kpi('網路實收','尚未同步','','網')+kpi('補習班實收',money(educationCash),'','教')+kpi('目前已匯入實收',money(allCash),'','合')+kpi('已知直接成本',money(knownDirectCost),'','成本')+kpi('累計結餘',money(allBalance),'','結')+'</div></section>';
     return tabs+monthPicker+custom+storeHtml+networkHtml+educationHtml+totalHtml;
   }
   function educationSessionTeacherKey(session){return clean(session&&session.teacherId)||clean(session&&session.teacherName)||'未命名';}
+  function educationRowsInOverviewRange(){
+    const bounds=overviewBounds();
+    return state.educationDaily.filter(function(day){const value=dateFrom(day.businessDate||day.dateKey);return value&&(!bounds.start||value>=bounds.start)&&(!bounds.end||value<=bounds.end);});
+  }
+  function educationSessionsInOverviewRange(){
+    const rows=[];educationRowsInOverviewRange().forEach(function(day){(day.sessions||[]).forEach(function(session){rows.push(session);});});return rows;
+  }
+  function educationDrawerRows(rows,emptyTitle,emptyText){
+    return rows.length?rows:emptyHtml(emptyTitle,emptyText||'');
+  }
+  function openEducationTuitionDetail(){
+    const rows=[];educationRowsInOverviewRange().forEach(function(day){(day.tuitionReceipts||[]).forEach(function(item){if(item.isRevenue!==false)rows.push(item);});});
+    rows.sort(function(a,b){return (dateFrom(b.paidAt)||0)-(dateFrom(a.paidAt)||0);});
+    const body=educationDrawerRows(rows.map(function(item){return '<article class="ops-education-session-row"><div class="ops-education-session-main"><span>'+escapeHtml(dateText(item.paidAt))+'</span><b>'+escapeHtml(item.studentName||'未命名學生')+'</b><em>'+escapeHtml(item.subject||'學費收款')+'</em></div><div><span>付款方式</span><b>'+escapeHtml(item.paymentMethod||'未標示')+'</b></div><div><span>實收金額</span><b>'+money(item.amount)+'</b></div></article>';}).join(''),'此期間沒有學費實收','');
+    openDrawer('學費實收',overviewBounds().label+'｜學生實際繳費明細',body+'<div class="ops-drawer-footer"><button class="ops-button primary" type="button" data-action="drawer-close">關閉</button></div>');
+  }
+  function openEducationRentalDetail(){
+    const rows=[];educationRowsInOverviewRange().forEach(function(day){(day.roomRentals||[]).forEach(function(item){rows.push(item);});});
+    rows.sort(function(a,b){return (dateFrom(b.startAt)||0)-(dateFrom(a.startAt)||0);});
+    const body=educationDrawerRows(rows.map(function(item){return '<article class="ops-education-session-row"><div class="ops-education-session-main"><span>'+escapeHtml(dateText(item.startAt))+'</span><b>'+escapeHtml(item.clientName||'未命名租用人')+'</b><em>'+escapeHtml(item.roomName||'教室租用')+'</em></div><div><span>租用金額</span><b>'+money(item.amount)+'</b></div></article>';}).join(''),'此期間沒有教室租用收入','');
+    openDrawer('教室租用',overviewBounds().label+'｜每日教室租用明細',body+'<div class="ops-drawer-footer"><button class="ops-button primary" type="button" data-action="drawer-close">關閉</button></div>');
+  }
+  function openEducationTeacherSummary(){
+    const teachers=new Map();educationSessionsInOverviewRange().forEach(function(session){const key=educationSessionTeacherKey(session),row=teachers.get(key)||{key:key,name:clean(session.teacherName)||'未命名老師',lessonCount:0,amount:0};row.lessonCount+=1;row.amount+=Number(session.teacherAmount||0);teachers.set(key,row);});
+    const rows=Array.from(teachers.values()).sort(function(a,b){return b.amount-a.amount;});
+    const body=educationDrawerRows(rows.map(function(row){return '<button type="button" class="ops-education-teacher-row" data-action="education-teacher-detail" data-teacher-key="'+attr(row.key)+'"><b>'+escapeHtml(row.name)+'</b><span>'+formatNumber(row.lessonCount)+' 堂</span><strong>'+money(row.amount)+'</strong></button>';}).join(''),'此期間沒有老師拆帳資料','');
+    openDrawer('老師拆帳',overviewBounds().label+'｜點選老師可查看每堂課的拆帳',body+'<div class="ops-drawer-footer"><button class="ops-button primary" type="button" data-action="drawer-close">關閉</button></div>');
+  }
+  function openEducationSchoolShareDetail(){
+    const rows=educationSessionsInOverviewRange().sort(function(a,b){return (dateFrom(b.occurredAt)||0)-(dateFrom(a.occurredAt)||0);});
+    const body=educationDrawerRows(rows.map(function(session){const retained=hasValue(session.schoolShare)?Number(session.schoolShare):Number(session.lessonPrice||0)-Number(session.teacherAmount||0);const label=clean(session.subject)||clean(session.chargeName)||'未標示課程';return '<article class="ops-education-session-row"><div class="ops-education-session-main"><span>'+escapeHtml(dateText(session.occurredAt))+'</span><b>'+escapeHtml(session.studentName||'未命名學生')+'</b><em>'+escapeHtml(label)+'</em></div><div><span>單堂金額</span><b>'+money(session.lessonPrice)+'</b></div><div><span>老師拆帳</span><b>'+money(session.teacherAmount)+'</b></div><div><span>教室保留</span><b>'+money(retained)+'</b></div></article>';}).join(''),'此期間沒有課程拆帳資料','');
+    openDrawer('教室保留',overviewBounds().label+'｜單堂金額扣除老師拆帳後的保留金額',body+'<div class="ops-drawer-footer"><button class="ops-button primary" type="button" data-action="drawer-close">關閉</button></div>');
+  }
   function educationSplitText(session){
     const hourly=Number(session&&session.hourlyFee||0),rate=Number(session&&session.allotRate||0);
     if(hourly>0)return '固定 '+money(hourly);
@@ -1554,6 +1588,10 @@
     if(action==='sync-easystore-api'){ syncEasyStoreApi(); return; }
     if(action==='refresh'){ try{localStorage.removeItem(DASHBOARD_CACHE_KEY);}catch(err){} return loadAll(false); }
     if(action==='injiaoyun-import') return requestInjiaoyunImport();
+    if(action==='education-tuition-detail') return openEducationTuitionDetail();
+    if(action==='education-rental-detail') return openEducationRentalDetail();
+    if(action==='education-teacher-summary') return openEducationTeacherSummary();
+    if(action==='education-school-share-detail') return openEducationSchoolShareDetail();
     if(action==='education-teacher-detail') return openEducationTeacherDetail(el.dataset.teacherKey||'');
     if(action==='drawer-close') return closeDrawer();
     if(action==='overview-range'){state.overviewRange=el.dataset.range||'today';return render();}
