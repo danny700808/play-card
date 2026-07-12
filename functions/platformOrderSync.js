@@ -1,6 +1,6 @@
 'use strict';
 
-const { onCall, HttpsError } = require('firebase-functions/v2/https');
+const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
@@ -20,7 +20,7 @@ const MOMO_ORDER_URL = 'https://api3p.momo.com.tw/VendorApi/OrderQuery';
 const MOMO_PRODUCT_URL = 'https://api3p.momo.com.tw/VendorApi/GoodsQueryByMethod';
 const MOMO_STOCK_URL = 'https://api3p.momo.com.tw/VendorApi/GoodsStockModify';
 const COUPANG_HOST = 'https://api-gateway.coupang.com';
-const VERSION = '2026.07.12-platform-orders-phase1-authfix';
+const VERSION = '2026.07.12-platform-orders-local-agent-21';
 const LOCK_MS = 20 * 60 * 1000;
 const DEFAULT_LOOKBACK_DAYS = 4;
 const DEFAULT_NET_RATE = 0.87;
@@ -1350,41 +1350,191 @@ function assertSafeDryRunCaller(request) {
   throw new HttpsError('permission-denied', '目前只允許從全通路營運中心執行安全測試同步。');
 }
 
+
+function agentRawBody(req) {
+  if (req && req.rawBody) return Buffer.from(req.rawBody);
+  return Buffer.from(JSON.stringify((req && req.body) || {}), 'utf8');
+}
+
+function verifyLocalAgentRequest(req) {
+  const timestamp = clean(req && req.headers && req.headers['x-youzi-timestamp']);
+  const signature = clean(req && req.headers && req.headers['x-youzi-signature']).toLowerCase();
+  const seconds = Number(timestamp || 0);
+  if (!Number.isFinite(seconds) || Math.abs(Date.now() / 1000 - seconds) > 10 * 60) {
+    throw new Error('本機同步驗證時間已失效。');
+  }
+  const secret = clean(COUPANG_SECRET_KEY.value());
+  if (!secret) throw new Error('Coupang Secret Key 尚未設定。');
+  const body = agentRawBody(req);
+  const expected = crypto.createHmac('sha256', secret).update(`${timestamp}.`).update(body).digest('hex');
+  const a = Buffer.from(expected, 'utf8');
+  const b = Buffer.from(signature, 'utf8');
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) throw new Error('本機同步驗證失敗。');
+}
+
+function inventoryTargetsForProducts(products, productIds) {
+  const wanted = productIds instanceof Set ? productIds : new Set(productIds || []);
+  return products
+    .filter((product) => wanted.has(product.id) && product.sku)
+    .map((product) => ({
+      productId: product.id,
+      sku: product.sku,
+      targetStock: Math.round(Number(product.raw.currentStock || 0)),
+      productName: clean(product.raw.internalName || product.raw.originalName || product.raw.name || ''),
+    }));
+}
+
+async function runPlatformOrderSyncFromAgent(payload) {
+  if (!admin.apps.length) admin.initializeApp();
+  const db = admin.firestore();
+  const trigger = clean(payload && payload.trigger) || 'local-agent';
+  const lock = await acquireLock(db, trigger);
+  const runRef = db.collection(RUN_COLLECTION).doc(lock.runId);
+  const startedAt = new Date();
+  let finalResult = { status: 'failed', summary: {} };
+  await runRef.set({
+    runId: lock.runId,
+    trigger,
+    status: 'running',
+    startedAt: admin.firestore.FieldValue.serverTimestamp(),
+    source: 'store-windows-agent',
+    version: VERSION,
+  });
+  try {
+    const settings = await readSettings(db);
+    if (!settings.enabled) {
+      finalResult = { status: 'disabled', summary: { message: '平台訂單同步已停用' } };
+      await runRef.set({ status: 'disabled', finishedAt: admin.firestore.FieldValue.serverTimestamp(), settings }, { merge: true });
+      return { ...finalResult, applyInventory: settings.applyInventory, inventoryTargets: [] };
+    }
+    const rawLines = Array.isArray(payload && payload.lines) ? payload.lines : [];
+    const unique = new Map();
+    rawLines.forEach((row) => {
+      const line = normalizeLine(row || {});
+      unique.set(line.id, line);
+    });
+    const lines = [...unique.values()];
+    const products = await loadProducts(db);
+    const productMap = buildProductMap(products);
+    const processing = { applied: 0, alreadyApplied: 0, ignored: 0, unmatched: 0, missingSku: 0, dryRun: 0, errors: 0 };
+    const changedProductIds = new Set();
+    for (const line of lines) {
+      try {
+        const result = await applyOrderLine(db, line, productMap, settings, lock.runId);
+        if (result.productId && (result.status === 'applied' || result.status === 'already-applied')) changedProductIds.add(result.productId);
+        if (result.status === 'applied') processing.applied += 1;
+        else if (result.status === 'already-applied') processing.alreadyApplied += 1;
+        else if (result.status === 'ignored' || result.status === 'manual-return-review') processing.ignored += 1;
+        else if (result.status === 'missing-sku') processing.missingSku += 1;
+        else if (result.status === 'unmatched-sku' || result.status === 'duplicate-sku') processing.unmatched += 1;
+        else if (result.status === 'dry-run') processing.dryRun += 1;
+      } catch (error) {
+        processing.errors += 1;
+        await db.collection(ORDER_COLLECTION).doc(line.id).set({
+          ...line,
+          orderedAt: admin.firestore.Timestamp.fromDate(line.orderedAt),
+          processingStatus: 'error',
+          processingError: clean(error.message).slice(0, 800),
+          inventoryApplied: false,
+          lastSeenAt: admin.firestore.FieldValue.serverTimestamp(),
+          syncRunId: lock.runId,
+          version: VERSION,
+        }, { merge: true });
+      }
+    }
+    const refreshedProducts = await loadProducts(db);
+    const inventoryTargets = settings.applyInventory
+      ? inventoryTargetsForProducts(refreshedProducts, changedProductIds)
+      : [];
+    const platformFetch = payload && payload.platformFetch && typeof payload.platformFetch === 'object' ? payload.platformFetch : {};
+    const status = processing.errors ? 'completed-with-errors' : 'completed';
+    const summary = {
+      queryFrom: clean(payload && payload.queryFrom),
+      queryTo: clean(payload && payload.queryTo),
+      fetchedLines: lines.length,
+      platformFetch,
+      processing,
+      changedProducts: changedProductIds.size,
+      applyInventory: settings.applyInventory,
+      executionMode: 'store-windows-agent',
+      durationSeconds: Math.round((Date.now() - startedAt.getTime()) / 1000),
+    };
+    await runRef.set({
+      status,
+      finishedAt: admin.firestore.FieldValue.serverTimestamp(),
+      summary,
+      settings,
+      source: 'store-windows-agent',
+      version: VERSION,
+    }, { merge: true });
+    await db.collection('opsSyncJobs').doc(lock.runId).set({
+      jobNo: lock.runId,
+      type: 'platformOrderInventorySync',
+      status,
+      platforms: Object.keys(platformFetch),
+      productCount: changedProductIds.size,
+      orderLineCount: lines.length,
+      note: `本機代理讀取訂單 ${lines.length} 筆；新扣庫存 ${processing.applied} 筆；異常 ${processing.errors} 筆`,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdBy: trigger,
+      source: 'store-windows-agent',
+      version: VERSION,
+    }, { merge: true });
+    finalResult = { status, summary };
+    return { status, summary, applyInventory: settings.applyInventory, inventoryTargets, runId: lock.runId };
+  } catch (error) {
+    const message = clean(error.message || error).slice(0, 1200);
+    await runRef.set({ status: 'failed', error: message, finishedAt: admin.firestore.FieldValue.serverTimestamp(), version: VERSION }, { merge: true });
+    finalResult = { status: 'failed', summary: { error: message } };
+    throw error;
+  } finally {
+    await releaseLock(lock, finalResult).catch((error) => console.error('release local-agent sync lock failed', error));
+  }
+}
+
 function registerPlatformOrderSync(target) {
-  const secrets = [EASYSTORE_ACCESS_TOKEN, MOMO_API_TOKEN, COUPANG_VENDOR_ID, COUPANG_ACCESS_KEY, COUPANG_SECRET_KEY];
+  const cloudSecrets = [EASYSTORE_ACCESS_TOKEN, MOMO_API_TOKEN, COUPANG_VENDOR_ID, COUPANG_ACCESS_KEY, COUPANG_SECRET_KEY];
+
+  // 保留原函式名稱，但排程改由店內 Windows 代理程式在每天 21:00 執行。
+  // 這裡只留下健康紀錄，不再從 Google Cloud 呼叫受固定 IP 限制的平台。
   target.platformOrderSyncDaily = onSchedule({
     schedule: '0 23 * * *',
     timeZone: TIME_ZONE,
     region: REGION,
-    timeoutSeconds: 540,
-    memory: '1GiB',
-    secrets
+    timeoutSeconds: 60,
+    memory: '256MiB',
   }, async () => {
-    const result = await runPlatformOrderSync('scheduler-23:00');
-    console.log('platformOrderSyncDaily', JSON.stringify(result));
+    console.log('platformOrderSyncDaily skipped: executionMode=store-windows-agent-21:00');
   });
 
   target.syncPlatformOrdersNow = onCall({
     region: REGION,
+    timeoutSeconds: 60,
+    memory: '256MiB',
+  }, async () => ({
+    ok: false,
+    status: 'local-agent-required',
+    message: 'MOMO 與 Coupang 限制固定 IP，請使用店內電腦的「立即同步一次」或每天 21:00 自動排程。',
+  }));
+
+  target.platformOrderAgentBridge = onRequest({
+    region: REGION,
     timeoutSeconds: 540,
     memory: '1GiB',
-    secrets
-  }, async (request) => {
-    const db = admin.firestore();
-    const settings = await readSettings(db);
-
-    // 目前系統使用自建登入（localStorage），不是 Firebase Authentication。
-    // 在 applyInventory=false 的安全測試模式，只允許從正式的全通路營運中心網域呼叫；
-    // 一旦開啟正式庫存異動，仍必須通過 Firebase 管理者驗證，避免公開網頁被濫用。
-    if (settings.applyInventory) await assertAdmin(request);
-    else if (request.auth && request.auth.uid) await assertAdmin(request);
-    else assertSafeDryRunCaller(request);
-
+    secrets: [COUPANG_SECRET_KEY],
+    cors: false,
+  }, async (req, res) => {
+    if (req.method !== 'POST') {
+      res.status(405).json({ ok: false, message: 'Method Not Allowed' });
+      return;
+    }
     try {
-      const result = await runPlatformOrderSync('manual');
-      return { ok: true, ...result };
+      verifyLocalAgentRequest(req);
+      const result = await runPlatformOrderSyncFromAgent(req.body || {});
+      res.status(200).json({ ok: true, ...result });
     } catch (error) {
-      throw new HttpsError('internal', clean(error.message || error).slice(0, 900));
+      console.error('[platformOrderAgentBridge]', error);
+      res.status(401).json({ ok: false, message: clean(error.message || error).slice(0, 1000) });
     }
   });
 }
