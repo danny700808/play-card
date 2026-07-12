@@ -20,7 +20,7 @@ const MOMO_ORDER_URL = 'https://api3p.momo.com.tw/VendorApi/OrderQuery';
 const MOMO_PRODUCT_URL = 'https://api3p.momo.com.tw/VendorApi/GoodsQueryByMethod';
 const MOMO_STOCK_URL = 'https://api3p.momo.com.tw/VendorApi/GoodsStockModify';
 const COUPANG_HOST = 'https://api-gateway.coupang.com';
-const VERSION = '2026.07.12-platform-orders-phase1';
+const VERSION = '2026.07.12-platform-orders-phase1-authfix';
 const LOCK_MS = 20 * 60 * 1000;
 const DEFAULT_LOOKBACK_DAYS = 4;
 const DEFAULT_NET_RATE = 0.87;
@@ -1319,13 +1319,35 @@ async function runPlatformOrderSync(trigger) {
 }
 
 async function assertAdmin(request) {
-  if (!request.auth || !request.auth.uid) throw new HttpsError('unauthenticated', '請先登入管理者帳號。');
+  if (!request.auth || !request.auth.uid) throw new HttpsError('unauthenticated', '請先登入 Firebase 管理者帳號。');
   const email = clean(request.auth.token && request.auth.token.email).toLowerCase();
   if (ADMIN_EMAILS.has(email)) return;
   const db = admin.firestore();
   const adminSnap = await db.collection('admins').doc(request.auth.uid).get();
   if (adminSnap.exists && adminSnap.data().enabled !== false) return;
   throw new HttpsError('permission-denied', '只有管理者可以執行平台同步。');
+}
+
+function requestOrigin(request) {
+  const headers = request && request.rawRequest && request.rawRequest.headers || {};
+  const direct = clean(headers.origin).toLowerCase();
+  if (direct) return direct.replace(/\/$/, '');
+  const referer = clean(headers.referer || headers.referrer);
+  if (!referer) return '';
+  try { return new URL(referer).origin.toLowerCase().replace(/\/$/, ''); }
+  catch (_) { return ''; }
+}
+
+function assertSafeDryRunCaller(request) {
+  const source = clean(request && request.data && request.data.source).toLowerCase();
+  const origin = requestOrigin(request);
+  const allowedOrigins = new Set([
+    'https://danny700808.github.io',
+    'https://www.mingtinghuang.com',
+    'https://mingtinghuang.com'
+  ]);
+  if (source === 'operations-hub' && allowedOrigins.has(origin)) return;
+  throw new HttpsError('permission-denied', '目前只允許從全通路營運中心執行安全測試同步。');
 }
 
 function registerPlatformOrderSync(target) {
@@ -1348,7 +1370,16 @@ function registerPlatformOrderSync(target) {
     memory: '1GiB',
     secrets
   }, async (request) => {
-    await assertAdmin(request);
+    const db = admin.firestore();
+    const settings = await readSettings(db);
+
+    // 目前系統使用自建登入（localStorage），不是 Firebase Authentication。
+    // 在 applyInventory=false 的安全測試模式，只允許從正式的全通路營運中心網域呼叫；
+    // 一旦開啟正式庫存異動，仍必須通過 Firebase 管理者驗證，避免公開網頁被濫用。
+    if (settings.applyInventory) await assertAdmin(request);
+    else if (request.auth && request.auth.uid) await assertAdmin(request);
+    else assertSafeDryRunCaller(request);
+
     try {
       const result = await runPlatformOrderSync('manual');
       return { ok: true, ...result };
