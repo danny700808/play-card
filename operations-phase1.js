@@ -1687,9 +1687,28 @@
       const navLink=event.target.closest('#opsNav a[data-view]'); if(navLink){ closeMobileMenu(); }
     });
     document.addEventListener('submit',function(event){const form=event.target.closest('form'); if(!form)return; event.preventDefault();handleSubmit(form);});
+    document.addEventListener('compositionstart',function(event){
+      if(event.target&&event.target.id==='posSearch') event.target.dataset.opsImeComposing='1';
+    });
+    document.addEventListener('compositionend',function(event){
+      if(!event.target||event.target.id!=='posSearch') return;
+      const input=event.target;
+      delete input.dataset.opsImeComposing;
+      state.posSearch=input.value;
+      // Chrome 通常會在 compositionend 後再送出一次 input；若沒有，這裡補做搜尋。
+      setTimeout(function(){
+        if(byId('posSearch')===input) rerenderKeepingFocus('posSearch',state.posSearch);
+      },0);
+    });
     document.addEventListener('input',function(event){
       if(event.target.id==='productSearch'){state.productSearch=event.target.value;state.productVisible=PRODUCT_PAGE_SIZE;rerenderKeepingFocus('productSearch',state.productSearch);}
-      else if(event.target.id==='posSearch'){state.posSearch=event.target.value;rerenderKeepingFocus('posSearch',state.posSearch);}
+      else if(event.target.id==='posSearch'){
+        state.posSearch=event.target.value;
+        // 中文注音／倉頡等輸入法在組字期間會連續觸發 input。
+        // 此時若立刻 render()，輸入框會被替換，導致尚未完成的中文字被中斷。
+        if(event.isComposing||event.target.dataset.opsImeComposing==='1') return;
+        rerenderKeepingFocus('posSearch',state.posSearch);
+      }
       else if(event.target.id==='posMemberSearch'){state.posMemberSearch=event.target.value;rerenderKeepingFocus('posMemberSearch',state.posMemberSearch);}
       else if(event.target.id==='saleInvoiceSearch'){state.saleInvoiceSearch=event.target.value;rerenderKeepingFocus('saleInvoiceSearch',state.saleInvoiceSearch);}
       else if(event.target.id==='overviewSearch'){state.overviewSearch=event.target.value;rerenderKeepingFocus('overviewSearch',state.overviewSearch);}
