@@ -817,3 +817,11 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
   .ops-platform-tabs{grid-template-columns:repeat(2,minmax(0,1fr))}
   .ops-platform-kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
 }
+
+
+/* VPS 正式版：平台費用與同步狀態 */
+.ops-platform-fee-mini{margin-top:8px;padding:8px 10px;border-radius:10px;background:rgba(20,55,75,.06);font-size:12px;font-weight:800;color:#526874}
+.ops-platform-fee-form-card{padding:14px;margin-bottom:12px;border:1px solid var(--ops-border);border-radius:16px;background:#f8fafb}
+.ops-platform-fee-form-card h3{margin:0 0 12px;color:var(--ops-navy)}
+.ops-platform-summary .ops-card-actions{display:flex;gap:8px;flex-wrap:wrap}
+@media(max-width:720px){.ops-platform-summary .ops-card-head{align-items:flex-start}.ops-platform-summary .ops-card-actions{width:100%}.ops-platform-summary .ops-card-actions .ops-button{flex:1}}

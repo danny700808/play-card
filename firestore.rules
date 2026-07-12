@@ -116,7 +116,9 @@ service cloud.firestore {
         'opsSalesReturns',
         'opsEducationDaily',
         'opsPlatformOrders',
-        'opsPlatformSyncRuns'
+        'opsPlatformSyncRuns',
+        'opsPlatformSyncRequests',
+        'opsPlatformInventoryQueue'
       ];
     }
 
