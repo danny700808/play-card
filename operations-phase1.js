@@ -1877,37 +1877,49 @@ function rerenderKeepingFocus(id,value){
       const navLink=event.target.closest('#opsNav a[data-view]'); if(navLink){ closeMobileMenu(); }
     });
     document.addEventListener('submit',function(event){const form=event.target.closest('form'); if(!form)return; event.preventDefault();handleSubmit(form);});
+    const opsSearchStateMap={
+      productSearch:'productSearch',
+      posSearch:'posSearch',
+      posMemberSearch:'posMemberSearch',
+      saleInvoiceSearch:'saleInvoiceSearch',
+      overviewSearch:'overviewSearch',
+      customerSearch:'customerSearch',
+      platformOrderSearch:'platformOrderSearch',
+      receivableSearch:'receivableSearch',
+      rentalSearch:'rentalSearch',
+      caseSearch:'caseSearch',
+      inventorySearch:'inventorySearch'
+    };
+    function isOpsSearchInput(target){return !!(target&&opsSearchStateMap[target.id]);}
+    function applyOpsSearchInput(input,shouldRender){
+      if(!isOpsSearchInput(input)) return false;
+      const stateKey=opsSearchStateMap[input.id];
+      state[stateKey]=input.value;
+      if(input.id==='productSearch') state.productVisible=PRODUCT_PAGE_SIZE;
+      if(shouldRender) rerenderKeepingFocus(input.id,state[stateKey]);
+      return true;
+    }
     document.addEventListener('compositionstart',function(event){
-      if(event.target&&['posSearch','posMemberSearch'].includes(event.target.id)) event.target.dataset.opsImeComposing='1';
+      if(isOpsSearchInput(event.target)) event.target.dataset.opsImeComposing='1';
     });
     document.addEventListener('compositionend',function(event){
-      if(!event.target||!['posSearch','posMemberSearch'].includes(event.target.id)) return;
+      if(!isOpsSearchInput(event.target)) return;
       const input=event.target;
       delete input.dataset.opsImeComposing;
-      if(input.id==='posSearch')state.posSearch=input.value;else state.posMemberSearch=input.value;
-      // Chrome 通常會在 compositionend 後再送出一次 input；若沒有，這裡補做搜尋。
+      applyOpsSearchInput(input,false);
+      // 中文輸入法完成選字後才重新整理，避免輸入框在組字途中被替換。
       setTimeout(function(){
-        if(byId(input.id)===input) rerenderKeepingFocus(input.id,input.id==='posSearch'?state.posSearch:state.posMemberSearch);
+        if(byId(input.id)===input) applyOpsSearchInput(input,true);
       },0);
     });
     document.addEventListener('input',function(event){
-      if(event.target.id==='productSearch'){state.productSearch=event.target.value;state.productVisible=PRODUCT_PAGE_SIZE;rerenderKeepingFocus('productSearch',state.productSearch);}
-      else if(event.target.id==='posSearch'){
-        state.posSearch=event.target.value;
-        // 中文注音／倉頡等輸入法在組字期間會連續觸發 input。
-        // 此時若立刻 render()，輸入框會被替換，導致尚未完成的中文字被中斷。
+      if(isOpsSearchInput(event.target)){
+        applyOpsSearchInput(event.target,false);
+        // 注音、倉頡、拼音等輸入法在組字期間會連續觸發 input。
+        // 組字完成前不可 render，否則中文字會被中斷或消失。
         if(event.isComposing||event.target.dataset.opsImeComposing==='1') return;
-        rerenderKeepingFocus('posSearch',state.posSearch);
+        applyOpsSearchInput(event.target,true);
       }
-      else if(event.target.id==='posMemberSearch'){state.posMemberSearch=event.target.value;if(event.isComposing||event.target.dataset.opsImeComposing==='1')return;rerenderKeepingFocus('posMemberSearch',state.posMemberSearch);}
-      else if(event.target.id==='saleInvoiceSearch'){state.saleInvoiceSearch=event.target.value;rerenderKeepingFocus('saleInvoiceSearch',state.saleInvoiceSearch);}
-      else if(event.target.id==='overviewSearch'){state.overviewSearch=event.target.value;rerenderKeepingFocus('overviewSearch',state.overviewSearch);}
-      else if(event.target.id==='customerSearch'){state.customerSearch=event.target.value;rerenderKeepingFocus('customerSearch',state.customerSearch);}
-      else if(event.target.id==='platformOrderSearch'){state.platformOrderSearch=event.target.value;rerenderKeepingFocus('platformOrderSearch',state.platformOrderSearch);}
-      else if(event.target.id==='receivableSearch'){state.receivableSearch=event.target.value;rerenderKeepingFocus('receivableSearch',state.receivableSearch);}
-      else if(event.target.id==='rentalSearch'){state.rentalSearch=event.target.value;rerenderKeepingFocus('rentalSearch',state.rentalSearch);}
-      else if(event.target.id==='caseSearch'){state.caseSearch=event.target.value;rerenderKeepingFocus('caseSearch',state.caseSearch);}
-      else if(event.target.id==='inventorySearch'){state.inventorySearch=event.target.value;rerenderKeepingFocus('inventorySearch',state.inventorySearch);}
       else if(event.target.matches('[data-cart-qty]')){const item=state.cart[Number(event.target.dataset.cartQty)];if(item){item.qty=Math.max(1,Math.round(Number(event.target.value||1)));updateCartTotals();updateInlineCheckoutTotals();}}
       else if(event.target.matches('[data-cart-price]')){const item=state.cart[Number(event.target.dataset.cartPrice)];if(item){item.unitPrice=Math.max(0,Number(event.target.value||0));updateCartTotals();updateInlineCheckoutTotals();}}
       else if(event.target.closest('#checkoutFormInline')&&event.target.name==='discount'){state.checkoutDiscount=Math.max(0,Number(event.target.value||0));if(state.checkoutDiscount>0){state.checkoutEarnPoints=false;const earnInput=query('[name="earnPointsEnabled"]',event.target.closest('#checkoutFormInline'));if(earnInput)earnInput.value='false';queryAll('[data-name="earnPointsEnabled"]').forEach(function(button){button.classList.toggle('active',button.dataset.value==='none');});}updateInlineCheckoutTotals();}
