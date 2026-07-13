@@ -1858,8 +1858,8 @@ async function syncPlatformOrdersNow(){const yes=await confirmAction('要求 VPS
     if(action==='auto-init-products') return autoInitProducts();
     if(action==='product-new') return openProductEdit('');
     if(action==='product-edit') return openProductEdit(el.dataset.id);
-    if(action==='product-series'){state.productSeries=el.dataset.series||'all';state.productFilter='all';state.productVisible=PRODUCT_PAGE_SIZE;return renderKeepingViewport();}
-    if(action==='product-low-stock'){state.productFilter=state.productFilter==='low'?'all':'low';state.productSeries='all';state.productVisible=PRODUCT_PAGE_SIZE;return renderKeepingViewport();}
+    if(action==='product-series'){state.productSeries=el.dataset.series||'all';state.productFilter='all';state.productSearch='';state.productVisible=PRODUCT_PAGE_SIZE;return renderKeepingViewport();}
+    if(action==='product-low-stock'){state.productFilter=state.productFilter==='low'?'all':'low';state.productSeries='all';state.productSearch='';state.productVisible=PRODUCT_PAGE_SIZE;return renderKeepingViewport();}
     if(action==='product-edit-cancel'){state.productEditId='';state.productPreviewImages=[];state.productPreviewIndex=0;state.productPreviewTitle='';return renderKeepingViewport();}
     if(action==='product-preview-open'){const p=state.productEditId&&state.productEditId!=='__new__'?catalogById(state.productEditId):null;state.productPreviewImages=productEditorImages(p);state.productPreviewIndex=Math.max(0,Number(el.dataset.index)||0);state.productPreviewTitle=(p&&((p.originalName)||(p.onlineName)||(p.name)))||'商品圖片';return renderKeepingViewport();}
     if(action==='product-preview-close'){state.productPreviewImages=[];state.productPreviewIndex=0;return renderKeepingViewport();}
@@ -1976,7 +1976,11 @@ function rerenderKeepingFocus(id,value){
       const key=opsSearchStateMap[input.id];
       if(!key)return;
       state[key]=input.value;
-      if(input.id==='productSearch')state.productVisible=PRODUCT_PAGE_SIZE;
+      if(input.id==='productSearch'){
+        state.productSeries='all';
+        state.productFilter='all';
+        state.productVisible=PRODUCT_PAGE_SIZE;
+      }
       rerenderKeepingFocus(input.id,state[key]);
     }
     document.addEventListener('compositionstart',function(event){
@@ -2009,7 +2013,7 @@ function rerenderKeepingFocus(id,value){
       else if(event.target.closest('#checkoutFormV4')&&(event.target.name==='discount'||event.target.name==='pointsToRedeem')) updateCheckoutPreview();
     });
     document.addEventListener('change',function(event){
-      if(event.target.id==='productFilter'){state.productFilter=event.target.value;state.productVisible=PRODUCT_PAGE_SIZE;render();}
+      if(event.target.id==='productFilter'){state.productFilter=event.target.value;state.productSeries='all';state.productSearch='';state.productVisible=PRODUCT_PAGE_SIZE;render();}
       else if(event.target.id==='productSort'){state.productSort=event.target.value;render();}
       else if(event.target.id==='financeRange'){state.financeRange=event.target.value;render();}
       else if(event.target.id==='saleInvoiceFrom'){state.saleInvoiceFrom=event.target.value;renderKeepingViewport();}
