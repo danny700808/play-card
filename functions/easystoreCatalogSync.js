@@ -161,7 +161,7 @@ function buildCatalog(products) {
       if (!sku) return;
       const variantImages = collectImages(variant);
       const imageUrls = [];
-      [...variantImages, ...parentImages].forEach((url) => {
+      [...parentImages, ...variantImages].forEach((url) => {
         if (url && !imageUrls.includes(url)) imageUrls.push(url);
       });
 
@@ -173,6 +173,8 @@ function buildCatalog(products) {
         variantName: rowVariantName(variant),
         price: rowPrice(variant, product),
         productUrl: pUrl,
+        parentImageUrls: parentImages.slice(0, 8),
+        variantImageUrls: variantImages.slice(0, 8),
         imageUrls: imageUrls.slice(0, 8)
       };
       rows.push(row);
@@ -399,6 +401,8 @@ async function matchCentralProducts(db, catalogRows, duplicateSkus) {
         onlineUrl: row.productUrl,
         imageUrl: row.imageUrls[0] || '',
         imageUrls: row.imageUrls,
+        parentImageUrls: row.parentImageUrls || [],
+        variantImageUrls: row.variantImageUrls || [],
         easyStoreSyncedAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
       };
@@ -425,6 +429,8 @@ async function matchCentralProducts(db, catalogRows, duplicateSkus) {
           onlineUrl: admin.firestore.FieldValue.delete(),
           imageUrl: admin.firestore.FieldValue.delete(),
           imageUrls: admin.firestore.FieldValue.delete(),
+          parentImageUrls: admin.firestore.FieldValue.delete(),
+          variantImageUrls: admin.firestore.FieldValue.delete(),
           easyStoreSyncedAt: admin.firestore.FieldValue.serverTimestamp(),
           updatedAt: admin.firestore.FieldValue.serverTimestamp()
         };
