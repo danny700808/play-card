@@ -146,6 +146,7 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
 
   function clean(value){ return String(value == null ? '' : value).trim(); }
   function lower(value){ return clean(value).toLowerCase(); }
+  function displayOnlineName(value){ return clean(value).replace(/柚子樂器/g,'').replace(/^[\s｜|·・:：—-]+|[\s｜|·・:：—-]+$/g,'').replace(/\s{2,}/g,' ').trim(); }
   function escapeHtml(value){
     return clean(value).replace(/[&<>"']/g,function(ch){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]; });
   }
@@ -384,7 +385,10 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
       row.sourceProductId=base.sourceProductId; row.sourceVariantId=clean(firstValue(variant,['id','variantId','variationId','optionId']))||row.sourceVariantId;
       row.onlineName=base.onlineName; row.sku=row.sku||normalizeCode(firstValue(variant,['sku','SKU','code','productCode','itemCode','variantSku','貨號']))||recursiveFirstCode(variant)||base.sku;
       row.onlinePrice=row.onlinePrice==null?base.onlinePrice:row.onlinePrice; row.onlineStock=row.onlineStock==null?base.onlineStock:row.onlineStock;
-      const variantImages=collectImageUrls(variant); row.imageUrls=[]; variantImages.concat(base.imageUrls||[]).forEach(function(url){if(url&&!row.imageUrls.includes(url))row.imageUrls.push(url);});
+      const variantImages=collectImageUrls(variant), baseImages=(base.imageUrls||[]).slice();
+      row.parentImageUrls=baseImages;
+      row.variantImageUrls=variantImages;
+      row.imageUrls=[]; baseImages.concat(variantImages).forEach(function(url){if(url&&!row.imageUrls.includes(url))row.imageUrls.push(url);});
       row.imageUrl=row.imageUrls[0]||base.imageUrl; row.url=row.url||base.url; row.brand=row.brand||base.brand; row.category=row.category||base.category;
       row.variantName=decodeReadable(firstValue(variant,['name','title','optionName','variantName','sku','optionsText']))||base.variantName;
       return row;
@@ -442,7 +446,7 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
       docId:docId,sourceKey:clean(obj.sourceKey),sourceCollection:clean(obj.sourceCollection),sourceProductId:clean(obj.sourceProductId),sourceVariantId:clean(obj.sourceVariantId),
       internalSku:normalizeCode(firstValue(obj,['internalSku','sku','code','productCode','商品編號'])),barcode:clean(firstValue(obj,['barcode','ean','條碼'])),
       internalName:clean(firstValue(obj,['internalName','originalName','name','商品名稱'])),originalName:clean(firstValue(obj,['originalName','internalName','name'])),onlineName:clean(obj.onlineName),
-      imageUrl:safeUrl(obj.imageUrl),imageUrls:Array.isArray(obj.imageUrls)?obj.imageUrls.map(safeUrl).filter(Boolean):[],onlineUrl:safeUrl(obj.onlineUrl),brand:clean(obj.brand),category:clean(obj.category),variantName:clean(obj.variantName),
+      imageUrl:safeUrl(obj.imageUrl),imageUrls:Array.isArray(obj.imageUrls)?obj.imageUrls.map(safeUrl).filter(Boolean):[],parentImageUrls:Array.isArray(obj.parentImageUrls)?obj.parentImageUrls.map(safeUrl).filter(Boolean):[],variantImageUrls:Array.isArray(obj.variantImageUrls)?obj.variantImageUrls.map(safeUrl).filter(Boolean):[],onlineUrl:safeUrl(obj.onlineUrl),brand:clean(obj.brand),category:clean(obj.category),variantName:clean(obj.variantName),
       onlinePrice:numberOrNull(obj.onlinePrice),storePrice:numberOrNull(firstValue(obj,['storePrice','originalSalePrice','salePrice','retailPrice'])),originalSalePrice:numberOrNull(firstValue(obj,['originalSalePrice','storePrice','salePrice'])),
       latestPurchaseCost:numberOrNull(firstValue(obj,['latestPurchaseCost','referencePurchaseCost','purchaseCost','purchasePrice'])),averageCost:stats.averageCost!=null?stats.averageCost:numberOrNull(firstValue(obj,['averageCost','avgCost','movingAverageCost'])),
       nextFifoCost:stats.nextFifoCost,inventoryValue:stats.inventoryValue,costIncomplete:stats.costIncomplete,costLayers:layers,
@@ -464,11 +468,13 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
   function buildCatalogValues(online,internal){
     const originalName=(internal&&internal.internalName)||''; const onlineName=(online&&online.onlineName)||(internal&&internal.onlineName)||''; const display=originalName||onlineName||'未命名商品';
     const sku=(internal&&internal.internalSku)||(online&&online.sku)||''; const images=[];
-    ((online&&online.imageUrls)||[]).concat((internal&&internal.imageUrls)||[]).concat([(online&&online.imageUrl)||(internal&&internal.imageUrl)||'']).forEach(function(url){url=safeUrl(url);if(url&&!images.includes(url))images.push(url);});
+    const parentImages=((online&&online.parentImageUrls)||(internal&&internal.parentImageUrls)||[]).map(safeUrl).filter(Boolean);
+    const variantImages=((online&&online.variantImageUrls)||(internal&&internal.variantImageUrls)||[]).map(safeUrl).filter(Boolean);
+    parentImages.concat(variantImages).concat((online&&online.imageUrls)||[]).concat((internal&&internal.imageUrls)||[]).concat([(online&&online.imageUrl)||(internal&&internal.imageUrl)||'']).forEach(function(url){url=safeUrl(url);if(url&&!images.includes(url))images.push(url);});
     const onlinePrice=online&&online.onlinePrice!=null?online.onlinePrice:(internal&&internal.onlinePrice!=null?internal.onlinePrice:null); const storePrice=internal&&internal.storePrice!=null?internal.storePrice:null;
     const current=internal?Number(internal.currentStock||0):0; const reserved=internal?Number(internal.reservedStock||0):0; const safety=internal?Number(internal.safetyStock||0):0; const available=Math.max(0,current-reserved-safety);
     const costForMargin=internal?(internal.nextFifoCost!=null?internal.nextFifoCost:internal.averageCost):null; const margin=(storePrice!=null&&costForMargin!=null&&storePrice!==0)?((storePrice-costForMargin)/storePrice*100):null;
-    return {name:display,originalName:originalName,onlineName:onlineName,sku:sku,imageUrl:images[0]||'',imageUrls:images,onlinePrice:onlinePrice,storePrice:storePrice,originalSalePrice:internal?internal.originalSalePrice:null,averageCost:internal?internal.averageCost:null,nextFifoCost:internal?internal.nextFifoCost:null,latestPurchaseCost:internal?internal.latestPurchaseCost:null,inventoryValue:internal?internal.inventoryValue:0,costIncomplete:internal?internal.costIncomplete:false,currentStock:current,reservedStock:reserved,safetyStock:safety,availableStock:available,margin:margin,status:internal?internal.status:'preview',initialized:!!internal,matchedOnline:!!online||(internal&&internal.easyStoreMatched===true),sourceCollection:(online&&online.sourceCollection)||(internal&&internal.sourceCollection)||'',onlineUrl:(online&&online.url)||(internal&&internal.onlineUrl)||'',brand:(online&&online.brand)||(internal&&internal.brand)||'',category:(online&&online.category)||(internal&&internal.category)||'',variantName:(online&&online.variantName)||(internal&&internal.variantName)||'',saleRewardPercent:internal?internal.saleRewardPercent:null,negativeStock:current<0};
+    return {name:display,originalName:originalName,onlineName:onlineName,sku:sku,imageUrl:images[0]||'',imageUrls:images,parentImageUrls:parentImages,variantImageUrls:variantImages,onlinePrice:onlinePrice,storePrice:storePrice,originalSalePrice:internal?internal.originalSalePrice:null,averageCost:internal?internal.averageCost:null,nextFifoCost:internal?internal.nextFifoCost:null,latestPurchaseCost:internal?internal.latestPurchaseCost:null,inventoryValue:internal?internal.inventoryValue:0,costIncomplete:internal?internal.costIncomplete:false,currentStock:current,reservedStock:reserved,safetyStock:safety,availableStock:available,margin:margin,status:internal?internal.status:'preview',initialized:!!internal,matchedOnline:!!online||(internal&&internal.easyStoreMatched===true),sourceCollection:(online&&online.sourceCollection)||(internal&&internal.sourceCollection)||'',onlineUrl:(online&&online.url)||(internal&&internal.onlineUrl)||'',brand:(online&&online.brand)||(internal&&internal.brand)||'',category:(online&&online.category)||(internal&&internal.category)||'',variantName:(online&&online.variantName)||(internal&&internal.variantName)||'',saleRewardPercent:internal?internal.saleRewardPercent:null,negativeStock:current<0};
   }
 
   function saveDashboardCache(){
@@ -997,9 +1003,16 @@ function renderOverviewV7(){
     rows.sort(function(a,b){if(state.productSort==='image'){const imageDiff=Number(Boolean(b.imageUrls.length))-Number(Boolean(a.imageUrls.length));if(imageDiff)return imageDiff;return a.name.localeCompare(b.name,'zh-Hant');}if(state.productSort==='stock')return b.currentStock-a.currentStock;if(state.productSort==='cost')return (b.nextFifoCost||b.averageCost||0)-(a.nextFifoCost||a.averageCost||0);if(state.productSort==='price')return (b.storePrice||0)-(a.storePrice||0);if(state.productSort==='sku')return a.sku.localeCompare(b.sku,'zh-Hant',{numeric:true});return a.name.localeCompare(b.name,'zh-Hant');}); return rows;
   }
   function productCard(p){
-    const urls=Array.from(new Set((p.imageUrls||[]).concat(p.imageUrl?[p.imageUrl]:[]).filter(Boolean))).slice(0,2),reward=p.saleRewardPercent==null?membershipRuleForDate(new Date()).rewardPercent:p.saleRewardPercent;
-    const imageHtml=urls.length?urls.map(function(url){return '<img loading="lazy" src="'+attr(url)+'" alt="'+attr(p.originalName||p.name)+'" onerror="this.style.display=\'none\'">';}).join(''):'<div class="placeholder">無圖</div>';
-    return '<button type="button" class="ops-product-card ops-product-card-full" data-action="product-edit" data-id="'+attr(p.docId)+'"><div class="ops-product-image-grid '+(urls.length<2?'single':'')+'">'+imageHtml+'</div><div class="ops-product-body"><div class="ops-product-key"><div><span>商品編號</span><b>'+escapeHtml(p.sku||'未設定')+'</b></div><div><span>庫存</span><b>'+escapeHtml(formatNumber(p.currentStock))+'</b></div></div><div class="ops-product-name-rows"><b>'+escapeHtml(p.originalName||p.name||'未命名')+'</b><b>'+escapeHtml(p.onlineName||'未配對')+'</b></div><div class="ops-product-detail-grid"><div><span>門市定價</span><b>'+money(p.storePrice)+'</b></div><div><span>網路售價</span><b>'+money(p.onlinePrice)+'</b></div><div><span>進貨成本</span><b>'+money(p.latestPurchaseCost)+'</b></div><div><span>平均成本</span><b>'+money(p.averageCost)+'</b></div><div><span>會員回饋</span><b>'+formatNumber(reward)+'%</b></div></div></div></button>';
+    const allImages=Array.from(new Set((p.imageUrls||[]).concat(p.imageUrl?[p.imageUrl]:[]).filter(Boolean)));
+    const parentImages=Array.from(new Set((p.parentImageUrls||[]).filter(Boolean)));
+    const variantImages=Array.from(new Set((p.variantImageUrls||[]).filter(Boolean)));
+    const mainImage=parentImages[0]||allImages[0]||'';
+    const variantImage=variantImages.find(function(url){return url!==mainImage;})||allImages.find(function(url){return url!==mainImage;})||'';
+    const urls=[mainImage,variantImage].filter(Boolean),reward=p.saleRewardPercent==null?membershipRuleForDate(new Date()).rewardPercent:p.saleRewardPercent;
+    const cleanOnline=displayOnlineName(p.onlineName)||displayOnlineName(p.originalName)||'未命名商品';
+    const variant=clean(p.variantName);
+    const imageHtml=urls.length?urls.map(function(url,index){return '<img loading="lazy" src="'+attr(url)+'" alt="'+attr(index===1&&variant?variant:cleanOnline)+'" onerror="this.style.display=\'none\'">';}).join(''):'<div class="placeholder">無圖</div>';
+    return '<button type="button" class="ops-product-card ops-product-card-full" data-action="product-edit" data-id="'+attr(p.docId)+'"><div class="ops-product-image-grid '+(urls.length<2?'single':'')+'">'+imageHtml+'</div><div class="ops-product-body"><div class="ops-product-key"><div><span>商品編號</span><b>'+escapeHtml(p.sku||'未設定')+'</b></div><div><span>庫存</span><b>'+escapeHtml(formatNumber(p.currentStock))+'</b></div></div><div class="ops-product-name-rows"><b>'+escapeHtml(cleanOnline)+'</b>'+(variant?'<b class="ops-product-variant-name">'+escapeHtml(variant)+'</b>':'')+'</div><div class="ops-product-detail-grid"><div><span>門市定價</span><b>'+money(p.storePrice)+'</b></div><div><span>網路售價</span><b>'+money(p.onlinePrice)+'</b></div><div><span>進貨成本</span><b>'+money(p.latestPurchaseCost)+'</b></div><div><span>平均成本</span><b>'+money(p.averageCost)+'</b></div><div><span>會員回饋</span><b>'+formatNumber(reward)+'%</b></div></div></div></button>';
   }
   function renderProducts(){
     const rows=productFiltered(),visible=rows.slice(0,state.productVisible),central=state.matchingStats.central;
@@ -1891,34 +1904,30 @@ function rerenderKeepingFocus(id,value){
       inventorySearch:'inventorySearch'
     };
     function isOpsSearchInput(target){return !!(target&&opsSearchStateMap[target.id]);}
-    function applyOpsSearchInput(input,shouldRender){
-      if(!isOpsSearchInput(input)) return false;
-      const stateKey=opsSearchStateMap[input.id];
-      state[stateKey]=input.value;
-      if(input.id==='productSearch') state.productVisible=PRODUCT_PAGE_SIZE;
-      if(shouldRender) rerenderKeepingFocus(input.id,state[stateKey]);
-      return true;
+    function applyOpsSearchInput(input){
+      const key=opsSearchStateMap[input.id];
+      if(!key)return;
+      state[key]=input.value;
+      if(input.id==='productSearch')state.productVisible=PRODUCT_PAGE_SIZE;
+      rerenderKeepingFocus(input.id,state[key]);
     }
     document.addEventListener('compositionstart',function(event){
       if(isOpsSearchInput(event.target)) event.target.dataset.opsImeComposing='1';
-    });
+    },true);
     document.addEventListener('compositionend',function(event){
       if(!isOpsSearchInput(event.target)) return;
       const input=event.target;
       delete input.dataset.opsImeComposing;
-      applyOpsSearchInput(input,false);
-      // 中文輸入法完成選字後才重新整理，避免輸入框在組字途中被替換。
+      // iPhone 注音在組字完成前不可重建輸入框，否則中文字會被中斷。
       setTimeout(function(){
-        if(byId(input.id)===input) applyOpsSearchInput(input,true);
+        if(document.contains(input)) applyOpsSearchInput(input);
       },0);
-    });
+    },true);
     document.addEventListener('input',function(event){
       if(isOpsSearchInput(event.target)){
-        applyOpsSearchInput(event.target,false);
-        // 注音、倉頡、拼音等輸入法在組字期間會連續觸發 input。
-        // 組字完成前不可 render，否則中文字會被中斷或消失。
+        // iOS Safari 的注音組字期間會觸發 input；此時完全不重新 render。
         if(event.isComposing||event.target.dataset.opsImeComposing==='1') return;
-        applyOpsSearchInput(event.target,true);
+        applyOpsSearchInput(event.target);
       }
       else if(event.target.matches('[data-cart-qty]')){const item=state.cart[Number(event.target.dataset.cartQty)];if(item){item.qty=Math.max(1,Math.round(Number(event.target.value||1)));updateCartTotals();updateInlineCheckoutTotals();}}
       else if(event.target.matches('[data-cart-price]')){const item=state.cart[Number(event.target.dataset.cartPrice)];if(item){item.unitPrice=Math.max(0,Number(event.target.value||0));updateCartTotals();updateInlineCheckoutTotals();}}
