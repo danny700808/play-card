@@ -72,6 +72,8 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
     incomes:[],
     purchases:[],
     inventory:[],
+    suppliers:[],
+    inventoryCountSettings:{enabled:true,pinHash:'',updatedAt:''},
     cases:[],
     expenses:[],
     syncJobs:[],
@@ -122,9 +124,21 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
     purchaseEntryCart:[],
     purchaseEntryReceivedAt:'',
     purchaseEntrySupplier:'',
+    purchaseEntrySupplierId:'',
     purchaseEntryExternalNo:'',
     purchaseEntryExtraCost:0,
     purchaseEntryNote:'',
+    purchaseEntryPaymentStatus:'unpaid',
+    purchaseEntryPaymentDate:'',
+    purchaseEntryPaymentMethod:'',
+    purchaseEditId:'',
+    stocktakeSearch:'',
+    stocktakeSeries:'all',
+    stocktakeSort:'sku',
+    stocktakeCart:[],
+    stocktakeOperator:'',
+    stocktakeNote:'',
+    stocktakeCorrectionId:'',
     membershipSettings:Object.assign({},DEFAULT_MEMBERSHIP_SETTINGS),
     cart:[],
     financeRange:'month',
@@ -157,6 +171,7 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
     receivables:['未收款','未收款會連回客戶與原始銷售。'],
     purchases:['進貨庫存',''],
     'purchase-entry':['進貨入庫工作台',''],
+    stocktake:['庫存盤點工作台',''],
     rentals:['租賃損益','沿用既有 rentalContracts，只在獨立帳冊補收款與直接成本。'],
     sync:['平台訂單',''],
     connection:['資料備份','']
@@ -615,13 +630,31 @@ async function loadPlatformFeeSettings(){
   }
 }
 
+  async function loadSupplierDirectory(){
+    const started=Date.now();
+    try{
+      const snap=await state.db.collection(COLLECTIONS.settings).doc('suppliers').collection('directory').limit(1000).get();
+      state.suppliers=snap.docs.map(function(doc){const raw=doc.data()||{};return {id:doc.id,name:clean(raw.name),contactName:clean(raw.contactName),phone:clean(raw.phone),mobile:clean(raw.mobile),email:clean(raw.email),address:clean(raw.address),taxId:clean(raw.taxId),paymentInfo:clean(raw.paymentInfo),note:clean(raw.note),enabled:raw.enabled!==false,createdAt:raw.createdAt||'',updatedAt:raw.updatedAt||''};}).filter(function(row){return row.enabled!==false;}).sort(function(a,b){return a.name.localeCompare(b.name,'zh-Hant');});
+      state.diagnostics.push({collection:'opsSettings/suppliers/directory',ok:true,count:state.suppliers.length,ms:Date.now()-started});
+    }catch(error){state.suppliers=[];state.diagnostics.push({collection:'opsSettings/suppliers/directory',ok:false,count:0,ms:Date.now()-started,error:errorMessage(error)});}
+  }
+  async function loadInventoryCountSettings(){
+    const started=Date.now();
+    try{
+      const snap=await state.db.collection(COLLECTIONS.settings).doc('inventoryCount').get();
+      const raw=snap.exists?(snap.data()||{}):{};
+      state.inventoryCountSettings={enabled:raw.enabled!==false,pinHash:clean(raw.pinHash),updatedAt:raw.updatedAt||''};
+      state.diagnostics.push({collection:'opsSettings/inventoryCount',ok:true,count:snap.exists?1:0,ms:Date.now()-started});
+    }catch(error){state.inventoryCountSettings={enabled:true,pinHash:'',updatedAt:''};state.diagnostics.push({collection:'opsSettings/inventoryCount',ok:false,count:0,ms:Date.now()-started,error:errorMessage(error)});}
+  }
+
   async function loadAll(silent){
     if(state.loading) return;
     state.loading=true; clearAlert();
     if(!silent) html('opsContent',loadingHtml('正在整理商品、庫存、銷售、租賃與案件資料…'));
     state.diagnostics=[];
     try{
-      await Promise.all([loadOnlineProducts(),loadMembershipSettings(),loadInjiaoyunCloudSync(),loadPlatformFeeSettings()]);
+      await Promise.all([loadOnlineProducts(),loadMembershipSettings(),loadInjiaoyunCloudSync(),loadPlatformFeeSettings(),loadSupplierDirectory(),loadInventoryCountSettings()]);
       const results=await Promise.all([
         getCollection(COLLECTIONS.products,10000),
         getCollection('rentalContracts',1000),
@@ -738,10 +771,10 @@ async function loadPlatformFeeSettings(){
     return {id:clean(obj.__id),incomeNo:clean(obj.incomeNo)||clean(obj.__id),occurredAt:obj.occurredAt||obj.createdAt||'',category:clean(obj.category)||'其他收入',amount:firstNumber(obj,['amount']).value,paymentMethod:clean(obj.paymentMethod),paymentStatus:clean(obj.paymentStatus)||'paid',receivedAmount:firstNumber(obj,['receivedAmount']).found?firstNumber(obj,['receivedAmount']).value:firstNumber(obj,['amount']).value,customerId:clean(obj.customerId),customerName:clean(obj.customerName),note:clean(obj.note),createdAt:obj.createdAt||''};
   }
   function normalizePurchase(obj){
-    return {id:clean(obj.__id),purchaseNo:clean(obj.purchaseNo)||clean(obj.__id),receivedAt:obj.receivedAt||obj.createdAt||'',supplier:clean(obj.supplier),items:Array.isArray(obj.items)?obj.items:[],subtotal:firstNumber(obj,['subtotal']).value,extraCost:firstNumber(obj,['extraCost']).value,totalCost:firstNumber(obj,['totalCost']).value,note:clean(obj.note),createdAt:obj.createdAt||''};
+    return {id:clean(obj.__id),purchaseNo:clean(obj.purchaseNo)||clean(obj.__id),externalNo:clean(obj.externalNo),receivedAt:obj.receivedAt||obj.createdAt||'',supplierId:clean(obj.supplierId),supplier:clean(obj.supplier),items:Array.isArray(obj.items)?obj.items:[],subtotal:firstNumber(obj,['subtotal']).value,extraCost:firstNumber(obj,['extraCost']).value,totalCost:firstNumber(obj,['totalCost']).value,paymentStatus:clean(obj.paymentStatus)||'unpaid',paymentDate:obj.paymentDate||'',paymentMethod:clean(obj.paymentMethod),note:clean(obj.note),revisionHistory:Array.isArray(obj.revisionHistory)?obj.revisionHistory:[],createdAt:obj.createdAt||'',updatedAt:obj.updatedAt||''};
   }
   function normalizeInventory(obj){
-    return {id:clean(obj.__id),type:clean(obj.type),productId:clean(obj.productId),productName:clean(obj.productName),sku:clean(obj.sku),qtyChange:firstNumber(obj,['qtyChange']).value,beforeStock:firstNumber(obj,['beforeStock']).value,afterStock:firstNumber(obj,['afterStock']).value,unitCost:numberOrNull(obj.unitCost),referenceType:clean(obj.referenceType),referenceId:clean(obj.referenceId),note:clean(obj.note),occurredAt:obj.occurredAt||obj.createdAt||'',createdAt:obj.createdAt||''};
+    return {id:clean(obj.__id),type:clean(obj.type),productId:clean(obj.productId),productName:clean(obj.productName),sku:clean(obj.sku),qtyChange:firstNumber(obj,['qtyChange']).value,beforeStock:firstNumber(obj,['beforeStock']).value,afterStock:firstNumber(obj,['afterStock']).value,unitCost:numberOrNull(obj.unitCost),referenceType:clean(obj.referenceType),referenceId:clean(obj.referenceId),stocktakeNo:clean(obj.stocktakeNo),counterName:clean(obj.counterName||obj.operatorName),source:clean(obj.source),correctionOf:clean(obj.correctionOf),note:clean(obj.note),occurredAt:obj.occurredAt||obj.createdAt||'',createdAt:obj.createdAt||'',correctedAt:obj.correctedAt||'',correctedTo:firstNumber(obj,['correctedTo']).found?firstNumber(obj,['correctedTo']).value:null};
   }
   function normalizeCase(obj){
     const quoted=firstNumber(obj,['quotedAmount']).value; const received=firstNumber(obj,['receivedAmount']).value;
@@ -777,11 +810,11 @@ function queueInventorySyncInTransaction(tx,productId,sku,stock,reason){const re
     state.view=(location.hash||'#overview').replace('#','').split('?')[0]||'overview';
     if(!PAGE_META[state.view]) state.view='overview';
     const meta=PAGE_META[state.view]; setText('opsPageTitle',meta[0]); setText('opsPageSubtitle',meta[1]);
-    const navView=state.view==='purchase-entry'?'purchases':state.view;
+    const navView=(state.view==='purchase-entry'||state.view==='stocktake')?'purchases':state.view;
     queryAll('#opsNav a[data-view]').forEach(function(a){ a.classList.toggle('active',a.dataset.view===navView); });
     const content=byId('opsContent'); if(!content) return;
     if(state.loading && !state.loadedAt){ content.innerHTML=loadingHtml(); return; }
-    const renderers={overview:renderOverviewV7,products:renderProducts,sales:renderSalesV7,customers:renderCustomersV6,receivables:renderReceivablesV5,purchases:renderPurchases,'purchase-entry':renderPurchaseEntry,rentals:renderRentals,sync:renderSync,connection:renderConnection};
+    const renderers={overview:renderOverviewV7,products:renderProducts,sales:renderSalesV7,customers:renderCustomersV6,receivables:renderReceivablesV5,purchases:renderPurchases,'purchase-entry':renderPurchaseEntry,stocktake:renderStocktakeWorkspace,rentals:renderRentals,sync:renderSync,connection:renderConnection};
     content.innerHTML=(renderers[state.view]||renderOverview)();
     bindViewSpecific();
   }
@@ -1306,18 +1339,53 @@ function renderSalesV5(){
     if(existing)existing.qty+=1;
     else state.purchaseEntryCart.push({productId:productId,qty:1,unitCost:purchaseEntryCost(product)});
   }
+  function supplierById(id){return state.suppliers.find(function(row){return row.id===id;})||null;}
+  function supplierSelectOptions(selectedId){
+    return '<option value="">直接輸入供應商名稱</option>'+state.suppliers.map(function(row){return '<option value="'+attr(row.id)+'" '+(row.id===selectedId?'selected':'')+'>'+escapeHtml(row.name)+(row.contactName?'｜'+escapeHtml(row.contactName):'')+'</option>';}).join('');
+  }
   function resetPurchaseEntry(){
     state.purchaseEntrySearch='';state.purchaseEntrySeries='all';state.purchaseEntrySort='sku';state.purchaseEntryCart=[];
-    state.purchaseEntryReceivedAt='';state.purchaseEntrySupplier='';state.purchaseEntryExternalNo='';state.purchaseEntryExtraCost=0;state.purchaseEntryNote='';
+    state.purchaseEntryReceivedAt='';state.purchaseEntrySupplier='';state.purchaseEntrySupplierId='';state.purchaseEntryExternalNo='';state.purchaseEntryExtraCost=0;state.purchaseEntryNote='';
+    state.purchaseEntryPaymentStatus='unpaid';state.purchaseEntryPaymentDate='';state.purchaseEntryPaymentMethod='';state.purchaseEditId='';
   }
   function openPurchaseWorkspace(preselectedId){
-    if(!state.purchaseEntryReceivedAt)state.purchaseEntryReceivedAt=inputDateTime(new Date());
+    resetPurchaseEntry();
+    state.purchaseEntryReceivedAt=inputDateTime(new Date());
     if(preselectedId)addPurchaseEntryProduct(preselectedId);
     location.hash='purchase-entry';
   }
+  function startPurchaseEdit(id){
+    const purchase=state.purchases.find(function(row){return row.id===id;});if(!purchase)return toast('找不到進貨單','請重新讀取資料。','error');
+    state.purchaseEditId=purchase.id;
+    state.purchaseEntryCart=(purchase.items||[]).map(function(item){return {productId:clean(item.productId),qty:Math.max(1,Math.round(Number(item.qty||1))),unitCost:Math.max(0,Number(item.unitCost||0))};}).filter(function(item){return item.productId&&catalogById(item.productId);});
+    state.purchaseEntryReceivedAt=inputDateTime(purchase.receivedAt||new Date());
+    state.purchaseEntrySupplierId=purchase.supplierId||((state.suppliers.find(function(row){return row.name===purchase.supplier;})||{}).id||'');
+    state.purchaseEntrySupplier=purchase.supplier||((supplierById(state.purchaseEntrySupplierId)||{}).name||'');
+    state.purchaseEntryExternalNo=purchase.externalNo||'';state.purchaseEntryExtraCost=Number(purchase.extraCost||0);state.purchaseEntryNote=purchase.note||'';
+    state.purchaseEntryPaymentStatus=purchase.paymentStatus||'unpaid';state.purchaseEntryPaymentDate=purchase.paymentDate&&dateText(purchase.paymentDate)!=='—'?dateText(purchase.paymentDate):'';state.purchaseEntryPaymentMethod=purchase.paymentMethod||'';
+    state.purchaseEntrySearch='';state.purchaseEntrySeries='all';state.purchaseEntrySort='sku';location.hash='purchase-entry';
+  }
+  function openSupplierManager(id){
+    const row=id?supplierById(id):null,s=row||{id:'',name:'',contactName:'',phone:'',mobile:'',email:'',address:'',taxId:'',paymentInfo:'',note:''};
+    const list=state.suppliers.length?'<div class="ops-supplier-directory">'+state.suppliers.map(function(item){return '<button type="button" class="ops-supplier-directory-row" data-action="supplier-edit" data-id="'+attr(item.id)+'"><div><b>'+escapeHtml(item.name)+'</b><small>'+escapeHtml([item.contactName,item.phone||item.mobile].filter(Boolean).join('｜')||'尚未填聯絡資料')+'</small></div><span>編輯</span></button>';}).join('')+'</div>':emptyHtml('尚無供應商','建立後可在每張進貨單快速選擇。');
+    openDrawer(row?'編輯供應商':'供應商資料庫','供應商名稱必填，其餘聯絡及付款資訊皆可選填。','<form id="supplierForm" data-id="'+attr(s.id)+'"><div class="ops-form-grid"><div class="ops-field full"><label class="ops-required">供應商名稱</label><input class="ops-input" name="name" value="'+attr(s.name)+'" required></div><div class="ops-field"><label>聯絡人</label><input class="ops-input" name="contactName" value="'+attr(s.contactName)+'"></div><div class="ops-field"><label>電話</label><input class="ops-input" name="phone" value="'+attr(s.phone)+'"></div><div class="ops-field"><label>手機</label><input class="ops-input" name="mobile" value="'+attr(s.mobile)+'"></div><div class="ops-field"><label>Email</label><input class="ops-input" type="email" name="email" value="'+attr(s.email)+'"></div><div class="ops-field"><label>統一編號</label><input class="ops-input" name="taxId" value="'+attr(s.taxId)+'"></div><div class="ops-field full"><label>地址</label><input class="ops-input" name="address" value="'+attr(s.address)+'"></div><div class="ops-field full"><label>匯款／付款資訊</label><textarea class="ops-textarea" name="paymentInfo">'+escapeHtml(s.paymentInfo)+'</textarea></div><div class="ops-field full"><label>備註</label><textarea class="ops-textarea" name="note">'+escapeHtml(s.note)+'</textarea></div></div><div class="ops-drawer-footer"><button class="ops-button ghost" type="button" data-action="drawer-close">取消</button><button class="ops-button primary" type="submit">儲存供應商</button></div></form><div class="ops-section-title">既有供應商</div>'+list);
+  }
+  async function saveSupplier(form){
+    const id=clean(form.dataset.id),data=new FormData(form),payload={name:clean(data.get('name')),contactName:clean(data.get('contactName')),phone:clean(data.get('phone')),mobile:clean(data.get('mobile')),email:clean(data.get('email')),address:clean(data.get('address')),taxId:clean(data.get('taxId')),paymentInfo:clean(data.get('paymentInfo')),note:clean(data.get('note')),enabled:true,updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION};
+    if(!payload.name)throw new Error('請填寫供應商名稱');
+    const duplicate=state.suppliers.find(function(row){return row.id!==id&&row.name===payload.name;});if(duplicate)throw new Error('已經有相同名稱的供應商');
+    const base=state.db.collection(COLLECTIONS.settings).doc('suppliers').collection('directory');let ref;
+    if(id){ref=base.doc(id);await ref.set(payload,{merge:true});}else{payload.createdAt=serverTimestamp();payload.createdBy=userLabel();ref=await base.add(payload);}
+    state.purchaseEntrySupplierId=ref.id;state.purchaseEntrySupplier=payload.name;await writeAudit(id?'更新供應商':'新增供應商','supplier',ref.id,payload.name);closeDrawer();toast('供應商已儲存',payload.name,'success');await loadAll(true);
+  }
+  function purchaseSupplierSummary(){
+    const supplier=supplierById(state.purchaseEntrySupplierId);if(!supplier)return '';
+    const contact=[supplier.contactName,supplier.phone||supplier.mobile,supplier.email].filter(Boolean).join('｜');
+    return '<div class="ops-purchase-supplier-summary"><b>'+escapeHtml(supplier.name)+'</b><span>'+escapeHtml(contact||'尚未填聯絡資料')+'</span>'+(supplier.paymentInfo?'<small>'+escapeHtml(supplier.paymentInfo)+'</small>':'')+'</div>';
+  }
   function renderPurchaseEntry(){
     if(!state.purchaseEntryReceivedAt)state.purchaseEntryReceivedAt=inputDateTime(new Date());
-    const rows=purchaseEntryFilteredProducts().slice(0,240);
+    const rows=purchaseEntryFilteredProducts().slice(0,240),editing=state.purchaseEditId?state.purchases.find(function(row){return row.id===state.purchaseEditId;}):null;
     const productHtml=rows.length?rows.map(function(product){
       const image=product.imageUrl?'<img loading="lazy" src="'+attr(product.imageUrl)+'" alt="'+attr(product.originalName||product.name)+'">':'<div class="ops-purchase-entry-no-image">無圖</div>';
       return '<button type="button" class="ops-purchase-entry-product" data-action="purchase-entry-add" data-id="'+attr(product.docId)+'"><div class="ops-purchase-entry-thumb">'+image+'</div><div class="ops-purchase-entry-product-body"><div class="ops-purchase-entry-sku">'+escapeHtml(product.sku||'未設定')+'</div><b>'+escapeHtml(product.originalName||product.name||'未命名商品')+'</b><div class="ops-purchase-entry-product-meta"><span>庫存 '+formatNumber(product.currentStock)+'</span><span>最近成本 '+money(purchaseEntryCost(product))+'</span></div></div></button>';
@@ -1326,42 +1394,98 @@ function renderSalesV5(){
     const cartHtml=state.purchaseEntryCart.length?state.purchaseEntryCart.map(function(item,index){
       const product=catalogById(item.productId);if(!product)return '';
       const qty=Math.max(1,Math.round(Number(item.qty||1))),unitCost=Math.max(0,Number(item.unitCost||0));qtyTotal+=qty;subtotal+=qty*unitCost;
-      return '<div class="ops-purchase-entry-cart-row purchase-row" data-index="'+index+'"><input type="hidden" name="productId" value="'+attr(item.productId)+'"><div class="ops-purchase-entry-cart-title"><div><b>'+escapeHtml(product.originalName||product.name)+'</b><small>SKU '+escapeHtml(product.sku||'未設定')+'</small></div><strong>'+money(qty*unitCost)+'</strong></div><div class="ops-purchase-entry-cart-fields"><label><span>數量</span><input class="ops-input" type="number" min="1" step="1" name="qty" value="'+qty+'" data-purchase-entry-qty="'+index+'" required></label><label><span>單位成本</span><input class="ops-input" type="number" min="0" step="0.01" name="unitCost" value="'+unitCost+'" data-purchase-entry-cost="'+index+'" required></label><button class="ops-icon-button" type="button" data-action="purchase-entry-remove" data-index="'+index+'" aria-label="移除商品">×</button></div></div>';
+      return '<div class="ops-purchase-entry-cart-row purchase-row" data-index="'+index+'"><input type="hidden" name="productId" value="'+attr(item.productId)+'"><div class="ops-purchase-entry-cart-title"><div><b>'+escapeHtml(product.originalName||product.name)+'</b><small>SKU '+escapeHtml(product.sku||'未設定')+'｜目前庫存 '+formatNumber(product.currentStock)+'</small></div><strong>'+money(qty*unitCost)+'</strong></div><div class="ops-purchase-entry-cart-fields"><label><span>數量</span><input class="ops-input" type="number" min="1" step="1" name="qty" value="'+qty+'" data-purchase-entry-qty="'+index+'" required></label><label><span>單位成本</span><input class="ops-input" type="number" min="0" step="0.01" name="unitCost" value="'+unitCost+'" data-purchase-entry-cost="'+index+'" required></label><button class="ops-icon-button" type="button" data-action="purchase-entry-remove" data-index="'+index+'" aria-label="移除商品">×</button></div></div>';
     }).join(''):emptyHtml('尚未加入進貨商品','請從左側搜尋並點選商品。');
     const extra=Math.max(0,Number(state.purchaseEntryExtraCost||0)),grand=subtotal+extra;
-    return '<div class="ops-purchase-entry-top"><button class="ops-button ghost" type="button" data-action="purchase-entry-back">← 返回進貨庫存</button><div><h2>進貨入庫工作台</h2><p>左側快速找商品，右側整理本次進貨數量與成本。</p></div></div><form id="purchaseWorkspaceForm"><div class="ops-purchase-entry-layout"><section class="ops-card ops-purchase-entry-products"><div class="ops-v8-section-head"><div><h2>選擇進貨商品</h2><p>可輸入 SKU、名稱、品牌或分類</p></div><span class="ops-tag green">'+formatNumber(rows.length)+' 項</span></div>'+purchaseEntrySeriesTabs()+'<div class="ops-purchase-entry-search-row"><input class="ops-input" id="purchaseEntrySearch" placeholder="輸入 SKU、商品名稱、品牌或分類" value="'+attr(state.purchaseEntrySearch)+'"><select class="ops-select" id="purchaseEntrySort"><option value="sku" '+(state.purchaseEntrySort==='sku'?'selected':'')+'>依商品編號</option><option value="stock" '+(state.purchaseEntrySort==='stock'?'selected':'')+'>庫存少的優先</option><option value="name" '+(state.purchaseEntrySort==='name'?'selected':'')+'>依名稱</option></select><button class="ops-button soft" type="button" data-action="purchase-entry-new-product">新增商品主檔</button></div><div class="ops-purchase-entry-grid">'+productHtml+'</div></section><section class="ops-card ops-purchase-entry-cart"><div class="ops-v8-section-head"><div><h2>本次進貨</h2><p>填寫供應商、到貨時間與進貨成本</p></div><button class="ops-button small ghost" type="button" data-action="purchase-entry-clear">清空</button></div><div class="ops-purchase-entry-info"><div class="ops-field"><label class="ops-required">到貨時間</label><input class="ops-input" type="datetime-local" name="receivedAt" id="purchaseEntryReceivedAt" value="'+attr(state.purchaseEntryReceivedAt)+'" required></div><div class="ops-field"><label class="ops-required">供應商</label><input class="ops-input" name="supplier" id="purchaseEntrySupplier" value="'+attr(state.purchaseEntrySupplier)+'" required></div><div class="ops-field"><label>進貨單號／外部編號</label><input class="ops-input" name="externalNo" id="purchaseEntryExternalNo" value="'+attr(state.purchaseEntryExternalNo)+'"></div><div class="ops-field"><label>額外費用</label><input class="ops-input" type="number" min="0" step="1" name="extraCost" id="purchaseEntryExtraCost" value="'+attr(extra)+'"><small>運費、關稅會按商品金額比例分攤。</small></div><div class="ops-field full"><label>備註</label><textarea class="ops-textarea" name="note" id="purchaseEntryNote">'+escapeHtml(state.purchaseEntryNote)+'</textarea></div></div><div class="ops-purchase-entry-cart-list">'+cartHtml+'</div><div class="ops-purchase-entry-summary"><div><span>商品種類</span><b>'+formatNumber(state.purchaseEntryCart.length)+'</b></div><div><span>進貨總件數</span><b>'+formatNumber(qtyTotal)+'</b></div><div><span>商品成本小計</span><b>'+money(subtotal)+'</b></div><div><span>額外費用</span><b>'+money(extra)+'</b></div><div class="total"><span>本次進貨總成本</span><b>'+money(grand)+'</b></div></div><button class="ops-button primary ops-purchase-entry-submit" type="submit" '+(state.purchaseEntryCart.length?'':'disabled')+'>確認驗收入庫</button></section></div></form>';
+    const title=editing?'修改進貨單 '+escapeHtml(editing.purchaseNo):'進貨入庫工作台';
+    const submitText=editing?'儲存修改並同步庫存':'確認驗收入庫';
+    return '<div class="ops-purchase-entry-top"><button class="ops-button ghost" type="button" data-action="purchase-entry-back">← 返回進貨庫存</button><div><h2>'+title+'</h2><p>'+(editing?'修改數量後，系統會依差異同步更正庫存並保留修改紀錄。':'左側快速找商品，右側整理本次進貨數量與成本。')+'</p></div></div><form id="purchaseWorkspaceForm" data-id="'+attr(state.purchaseEditId)+'"><div class="ops-purchase-entry-layout"><section class="ops-card ops-purchase-entry-products"><div class="ops-v8-section-head"><div><h2>選擇進貨商品</h2><p>可輸入 SKU、名稱、品牌或分類</p></div><span class="ops-tag green">'+formatNumber(rows.length)+' 項</span></div>'+purchaseEntrySeriesTabs()+'<div class="ops-purchase-entry-search-row"><input class="ops-input" id="purchaseEntrySearch" placeholder="輸入 SKU、商品名稱、品牌或分類" value="'+attr(state.purchaseEntrySearch)+'"><select class="ops-select" id="purchaseEntrySort"><option value="sku" '+(state.purchaseEntrySort==='sku'?'selected':'')+'>依商品編號</option><option value="stock" '+(state.purchaseEntrySort==='stock'?'selected':'')+'>庫存少的優先</option><option value="name" '+(state.purchaseEntrySort==='name'?'selected':'')+'>依名稱</option></select><button class="ops-button soft" type="button" data-action="purchase-entry-new-product">新增商品主檔</button></div><div class="ops-purchase-entry-grid">'+productHtml+'</div></section><section class="ops-card ops-purchase-entry-cart"><div class="ops-v8-section-head"><div><h2>本次進貨</h2><p>供應商、付款狀態與商品成本</p></div><button class="ops-button small ghost" type="button" data-action="purchase-entry-clear">清空商品</button></div><div class="ops-purchase-entry-info"><div class="ops-field"><label class="ops-required">到貨時間</label><input class="ops-input" type="datetime-local" name="receivedAt" id="purchaseEntryReceivedAt" value="'+attr(state.purchaseEntryReceivedAt)+'" required></div><div class="ops-field"><label>選擇既有供應商</label><div class="ops-inline-control"><select class="ops-select" name="supplierId" id="purchaseEntrySupplierId">'+supplierSelectOptions(state.purchaseEntrySupplierId)+'</select><button class="ops-button soft" type="button" data-action="supplier-manager">管理</button></div></div><div class="ops-field full"><label class="ops-required">供應商名稱</label><input class="ops-input" name="supplier" id="purchaseEntrySupplier" value="'+attr(state.purchaseEntrySupplier)+'" placeholder="可直接輸入新供應商" required>'+purchaseSupplierSummary()+'</div><div class="ops-field"><label>進貨單號／外部編號</label><input class="ops-input" name="externalNo" id="purchaseEntryExternalNo" value="'+attr(state.purchaseEntryExternalNo)+'"></div><div class="ops-field"><label>額外費用</label><input class="ops-input" type="number" min="0" step="1" name="extraCost" id="purchaseEntryExtraCost" value="'+attr(extra)+'"><small>運費、關稅會按商品金額比例分攤。</small></div><div class="ops-field"><label>付款狀態</label><select class="ops-select" name="paymentStatus" id="purchaseEntryPaymentStatus"><option value="unpaid" '+(state.purchaseEntryPaymentStatus!=='paid'?'selected':'')+'>未付款</option><option value="paid" '+(state.purchaseEntryPaymentStatus==='paid'?'selected':'')+'>已付款</option></select></div><div class="ops-field"><label>付款日期</label><input class="ops-input" type="date" name="paymentDate" id="purchaseEntryPaymentDate" value="'+attr(state.purchaseEntryPaymentDate)+'"></div><div class="ops-field"><label>付款方式</label><select class="ops-select" name="paymentMethod" id="purchaseEntryPaymentMethod"><option value="">未設定</option><option '+(state.purchaseEntryPaymentMethod==='轉帳'?'selected':'')+'>轉帳</option><option '+(state.purchaseEntryPaymentMethod==='現金'?'selected':'')+'>現金</option><option '+(state.purchaseEntryPaymentMethod==='信用卡'?'selected':'')+'>信用卡</option><option '+(state.purchaseEntryPaymentMethod==='其他'?'selected':'')+'>其他</option></select></div><div class="ops-field full"><label>備註</label><textarea class="ops-textarea" name="note" id="purchaseEntryNote">'+escapeHtml(state.purchaseEntryNote)+'</textarea></div></div><div class="ops-purchase-entry-cart-list">'+cartHtml+'</div><div class="ops-purchase-entry-summary"><div><span>商品種類</span><b>'+formatNumber(state.purchaseEntryCart.length)+'</b></div><div><span>進貨總件數</span><b>'+formatNumber(qtyTotal)+'</b></div><div><span>商品成本小計</span><b>'+money(subtotal)+'</b></div><div><span>額外費用</span><b>'+money(extra)+'</b></div><div class="total"><span>本次進貨總成本</span><b>'+money(grand)+'</b></div></div><button class="ops-button primary ops-purchase-entry-submit" type="submit" '+(state.purchaseEntryCart.length?'':'disabled')+'>'+submitText+'</button></section></div></form>';
   }
-
+  function revisePurchaseLayers(raw,purchaseNo,oldItem,newItem,effectiveUnit,receivedAt){
+    const oldQty=Math.max(0,Math.round(Number(oldItem&&oldItem.qty||0))),newQty=Math.max(0,Math.round(Number(newItem&&newItem.qty||0)));
+    const oldLayerId=clean(oldItem&&oldItem.layerId),layers=materializeCostLayers(raw),matched=layers.filter(function(layer){return (layer.referenceType==='purchase'&&layer.referenceId===purchaseNo)||(oldLayerId&&layer.layerId===oldLayerId);});
+    const remainingOld=sum(matched,function(layer){return layer.qtyRemaining;}),soldQty=Math.max(0,oldQty-remainingOld);
+    if(newQty<soldQty)throw new Error((clean(raw.internalName)||clean(raw.originalName)||'商品')+' 已有 '+soldQty+' 件從此進貨批次售出，進貨量不可改低於已售數量');
+    const next=layers.filter(function(layer){return !matched.includes(layer);}),remainingNew=Math.max(0,newQty-soldQty);
+    if(remainingNew>0)next.push({layerId:oldLayerId||purchaseNo+'-'+clean(raw.internalSku||newItem.productId),qtyRemaining:remainingNew,originalQty:newQty,unitCost:effectiveUnit,costKnown:effectiveUnit!=null,receivedAt:receivedAt.toISOString(),referenceType:'purchase',referenceId:purchaseNo});
+    const stats=statsFromLayers(next);return {layers:stats.layers,averageCost:stats.averageCost,nextFifoCost:stats.nextFifoCost,inventoryValue:stats.inventoryValue,costIncomplete:stats.costIncomplete,soldQty:soldQty};
+  }
+  async function savePurchase(form){
+    const data=new FormData(form),rowEls=queryAll('.purchase-row',form),items=[];rowEls.forEach(function(row){const productId=clean(query('[name="productId"]',row).value),qty=numberOrNull(query('[name="qty"]',row).value),unitCost=numberOrNull(query('[name="unitCost"]',row).value);if(productId&&qty>0&&unitCost!=null)items.push({productId:productId,qty:Math.round(qty),unitCost:unitCost});});
+    if(!items.length)throw new Error('至少需要一個有效進貨商品');const duplicate=new Set();for(const item of items){if(duplicate.has(item.productId))throw new Error('同一商品請合併成一列');duplicate.add(item.productId);}
+    const extraCost=numberOrNull(data.get('extraCost'))||0,receivedAt=new Date(clean(data.get('receivedAt')));if(Number.isNaN(receivedAt.getTime()))throw new Error('到貨時間不正確');
+    const supplierId=clean(data.get('supplierId')),selectedSupplier=supplierById(supplierId),supplierName=clean(data.get('supplier'))||(selectedSupplier&&selectedSupplier.name)||'';if(!supplierName)throw new Error('請填寫供應商');
+    const paymentStatus=clean(data.get('paymentStatus'))==='paid'?'paid':'unpaid',paymentDate=paymentStatus==='paid'?(clean(data.get('paymentDate'))||dateText(new Date())):'',paymentMethod=paymentStatus==='paid'?clean(data.get('paymentMethod')):'';
+    const editingId=clean(form.dataset.id),editing=editingId?state.purchases.find(function(row){return row.id===editingId;}):null;
+    if(!editing){
+      const purchaseNo=uid('PUR'),purchaseRef=state.db.collection(COLLECTIONS.purchases).doc();
+      await state.db.runTransaction(async function(tx){const refs=items.map(function(item){return state.db.collection(COLLECTIONS.products).doc(item.productId);}),snaps=[];for(const ref of refs)snaps.push(await tx.get(ref));const subtotal=sum(items,function(i){return i.qty*i.unitCost;}),prepared=[];snaps.forEach(function(snap,index){if(!snap.exists)throw new Error('商品主檔不存在');const raw=snap.data()||{},item=items[index],before=Number(raw.currentStock||0),base=item.qty*item.unitCost,allocated=subtotal>0?extraCost*(base/subtotal):0,effectiveUnit=item.unitCost+(item.qty?allocated/item.qty:0),after=before+item.qty,added=addFifoLayer(raw,item.qty,effectiveUnit,{layerId:purchaseNo+'-'+index,receivedAt:receivedAt.toISOString(),referenceType:'purchase',referenceId:purchaseNo});prepared.push({ref:refs[index],raw:raw,item:item,before:before,after:after,allocated:allocated,effectiveUnit:effectiveUnit,added:added});});
+        tx.set(purchaseRef,{purchaseNo:purchaseNo,externalNo:clean(data.get('externalNo')),receivedAt:receivedAt,supplierId:supplierId,supplier:supplierName,items:prepared.map(function(x){return {productId:x.item.productId,name:clean(x.raw.internalName||x.raw.originalName||x.raw.onlineName),sku:clean(x.raw.internalSku),qty:x.item.qty,unitCost:x.item.unitCost,allocatedExtraCost:x.allocated,effectiveUnitCost:x.effectiveUnit,lineTotal:x.item.qty*x.item.unitCost,layerId:x.added.layers[x.added.layers.length-1].layerId};}),subtotal:subtotal,extraCost:extraCost,totalCost:subtotal+extraCost,paymentStatus:paymentStatus,paymentDate:paymentDate?new Date(paymentDate+'T12:00:00'):'',paymentMethod:paymentMethod,costMethod:'FIFO',note:clean(data.get('note')),revisionHistory:[],createdAt:serverTimestamp(),createdBy:userLabel(),version:VERSION});
+        prepared.forEach(function(x){tx.update(x.ref,{currentStock:x.after,latestPurchaseCost:x.item.unitCost,costLayers:x.added.layers,averageCost:x.added.averageCost,inventoryValue:x.added.inventoryValue,costIncomplete:x.added.costIncomplete,updatedAt:serverTimestamp(),updatedBy:userLabel()});queueInventorySyncInTransaction(tx,x.item.productId,clean(x.raw.internalSku),x.after,'purchase');const tRef=state.db.collection(COLLECTIONS.inventory).doc();tx.set(tRef,{type:'purchase',productId:x.item.productId,productName:clean(x.raw.internalName||x.raw.originalName||x.raw.onlineName),sku:clean(x.raw.internalSku),qtyChange:x.item.qty,beforeStock:x.before,afterStock:x.after,unitCost:x.effectiveUnit,costMethod:'FIFO',referenceType:'purchase',referenceId:purchaseNo,note:'進貨入庫｜'+supplierName,occurredAt:receivedAt,createdAt:serverTimestamp(),createdBy:userLabel(),version:VERSION});});
+      });await writeAudit('進貨驗收入庫','purchase',purchaseRef.id,purchaseNo+'｜'+supplierName+'｜'+items.length+'項｜FIFO');resetPurchaseEntry();state.purchaseWorkspaceTab='inbound';location.hash='purchases';toast('進貨入庫完成',purchaseNo,'success');await loadAll(true);return;
+    }
+    const purchaseRef=state.db.collection(COLLECTIONS.purchases).doc(editing.id),purchaseNo=editing.purchaseNo;
+    await state.db.runTransaction(async function(tx){
+      const purchaseSnap=await tx.get(purchaseRef);if(!purchaseSnap.exists)throw new Error('進貨單不存在');const rawPurchase=purchaseSnap.data()||{},oldItems=Array.isArray(rawPurchase.items)?rawPurchase.items:[];
+      const ids=Array.from(new Set(oldItems.map(function(item){return clean(item.productId);}).concat(items.map(function(item){return item.productId;})).filter(Boolean))),refs=ids.map(function(id){return state.db.collection(COLLECTIONS.products).doc(id);}),snaps=[];for(const ref of refs)snaps.push(await tx.get(ref));
+      const rawById=new Map();snaps.forEach(function(snap,index){if(!snap.exists)throw new Error('商品主檔不存在');rawById.set(ids[index],snap.data()||{});});
+      const oldMap=new Map(oldItems.map(function(item){return [clean(item.productId),item];})),newMap=new Map(items.map(function(item){return [item.productId,item];})),subtotal=sum(items,function(item){return item.qty*item.unitCost;}),newStoredItems=[];
+      ids.forEach(function(productId,index){const raw=rawById.get(productId),oldItem=oldMap.get(productId)||{productId:productId,qty:0,unitCost:0},newItem=newMap.get(productId)||{productId:productId,qty:0,unitCost:0},base=newItem.qty*newItem.unitCost,allocated=subtotal>0?extraCost*(base/subtotal):0,effectiveUnit=newItem.qty?newItem.unitCost+allocated/newItem.qty:null,delta=newItem.qty-oldItem.qty,before=Number(raw.currentStock||0),after=before+delta;if(after<0)throw new Error((clean(raw.internalName)||'商品')+' 庫存不足，無法套用此次修改');const revised=revisePurchaseLayers(raw,purchaseNo,oldItem,newItem,effectiveUnit,receivedAt),ref=refs[index];
+        tx.update(ref,{currentStock:after,latestPurchaseCost:newItem.qty?newItem.unitCost:(numberOrNull(raw.latestPurchaseCost)),costLayers:revised.layers,averageCost:revised.averageCost,inventoryValue:revised.inventoryValue,costIncomplete:revised.costIncomplete,updatedAt:serverTimestamp(),updatedBy:userLabel()});queueInventorySyncInTransaction(tx,productId,clean(raw.internalSku),after,'purchaseCorrection');
+        const oldEffective=numberOrNull(oldItem.effectiveUnitCost),costChanged=newItem.qty&&Math.abs(Number(effectiveUnit||0)-Number(oldEffective||0))>.0001;if(delta!==0||costChanged){const tRef=state.db.collection(COLLECTIONS.inventory).doc();tx.set(tRef,{type:'purchaseCorrection',productId:productId,productName:clean(raw.internalName||raw.originalName||raw.onlineName),sku:clean(raw.internalSku),qtyChange:delta,beforeStock:before,afterStock:after,unitCost:effectiveUnit,costMethod:'FIFO',referenceType:'purchaseCorrection',referenceId:purchaseNo,note:'修改進貨單｜'+supplierName,occurredAt:new Date(),createdAt:serverTimestamp(),createdBy:userLabel(),version:VERSION});}
+        if(newItem.qty>0)newStoredItems.push({productId:productId,name:clean(raw.internalName||raw.originalName||raw.onlineName),sku:clean(raw.internalSku),qty:newItem.qty,unitCost:newItem.unitCost,allocatedExtraCost:allocated,effectiveUnitCost:effectiveUnit,lineTotal:newItem.qty*newItem.unitCost,layerId:clean(oldItem.layerId)||purchaseNo+'-'+index});
+      });
+      const history=Array.isArray(rawPurchase.revisionHistory)?rawPurchase.revisionHistory.slice():[];history.push({changedAt:new Date().toISOString(),changedBy:userLabel(),supplier:clean(rawPurchase.supplier),subtotal:Number(rawPurchase.subtotal||0),extraCost:Number(rawPurchase.extraCost||0),totalCost:Number(rawPurchase.totalCost||0),paymentStatus:clean(rawPurchase.paymentStatus)||'unpaid',items:oldItems.map(function(item){return {productId:clean(item.productId),sku:clean(item.sku),qty:Number(item.qty||0),unitCost:Number(item.unitCost||0)};})});
+      tx.update(purchaseRef,{externalNo:clean(data.get('externalNo')),receivedAt:receivedAt,supplierId:supplierId,supplier:supplierName,items:newStoredItems,subtotal:subtotal,extraCost:extraCost,totalCost:subtotal+extraCost,paymentStatus:paymentStatus,paymentDate:paymentDate?new Date(paymentDate+'T12:00:00'):'',paymentMethod:paymentMethod,note:clean(data.get('note')),revisionHistory:history,updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION});
+    });await writeAudit('修改進貨單','purchase',editing.id,purchaseNo+'｜'+supplierName+'｜同步庫存');resetPurchaseEntry();state.purchaseWorkspaceTab='inbound';location.hash='purchases';toast('進貨單已修改',purchaseNo,'success');await loadAll(true);
+  }
+  function stocktakeFilteredProducts(){
+    const term=lower(state.stocktakeSearch).trim();let rows=state.catalog.filter(function(product){if(!product.initialized)return false;if(state.stocktakeSeries!=='all'&&!clean(product.sku).startsWith(state.stocktakeSeries))return false;return !term||lower([product.sku,product.originalName,product.onlineName,product.name,product.brand,product.category].join(' ')).includes(term);});
+    rows.sort(function(a,b){if(state.stocktakeSort==='stock')return Number(a.currentStock||0)-Number(b.currentStock||0);if(state.stocktakeSort==='name')return clean(a.originalName||a.name).localeCompare(clean(b.originalName||b.name),'zh-Hant');return clean(a.sku).localeCompare(clean(b.sku),'zh-Hant',{numeric:true});});return rows;
+  }
+  function addStocktakeProduct(productId,counted){const product=catalogById(productId);if(!product)return;const existing=state.stocktakeCart.find(function(item){return item.productId===productId;});if(existing){if(counted!==undefined)existing.countedStock=counted;}else state.stocktakeCart.push({productId:productId,countedStock:counted===undefined?'':counted});}
+  function resetStocktake(){state.stocktakeSearch='';state.stocktakeSeries='all';state.stocktakeSort='sku';state.stocktakeCart=[];state.stocktakeOperator='';state.stocktakeNote='';state.stocktakeCorrectionId='';}
+  function openStocktakeWorkspace(){resetStocktake();location.hash='stocktake';}
+  function startStocktakeCorrection(id){const row=state.inventory.find(function(item){return item.id===id;});if(!row)return toast('找不到盤點紀錄','','error');resetStocktake();state.stocktakeCorrectionId=row.id;state.stocktakeOperator=userLabel();state.stocktakeNote='更正盤點：'+(row.note||'');addStocktakeProduct(row.productId,row.afterStock);location.hash='stocktake';}
+  function stocktakeSeriesTabs(){return '<div class="ops-purchase-series-tabs"><button type="button" class="'+(state.stocktakeSeries==='all'?'active':'')+'" data-action="stocktake-series" data-series="all">全部</button>'+PRODUCT_SERIES.map(function(row){return '<button type="button" class="'+(state.stocktakeSeries===row[0]?'active':'')+'" data-action="stocktake-series" data-series="'+row[0]+'">'+row[0]+' '+escapeHtml(row[1])+'</button>';}).join('')+'</div>';}
+  function renderStocktakeWorkspace(){
+    const rows=stocktakeFilteredProducts().slice(0,240),correction=state.stocktakeCorrectionId?state.inventory.find(function(row){return row.id===state.stocktakeCorrectionId;}):null;
+    const products=rows.length?rows.map(function(product){const image=product.imageUrl?'<img src="'+attr(product.imageUrl)+'" alt="'+attr(product.originalName||product.name)+'">':'<div class="ops-purchase-entry-no-image">無圖</div>';return '<button type="button" class="ops-stocktake-product" data-action="stocktake-add" data-id="'+attr(product.docId)+'"><div class="ops-purchase-entry-thumb">'+image+'</div><div><b>'+escapeHtml(product.sku||'未設定')+'</b><span>'+escapeHtml(product.originalName||product.name)+'</span><strong>目前 '+formatNumber(product.currentStock)+'</strong></div></button>';}).join(''):emptyHtml('找不到商品','請更換 SKU 或商品名稱。');
+    let diffCount=0;
+    const cart=state.stocktakeCart.length?state.stocktakeCart.map(function(item,index){const product=catalogById(item.productId);if(!product)return '';const counted=item.countedStock,has=counted!==''&&counted!=null&&!Number.isNaN(Number(counted)),diff=has?Number(counted)-Number(product.currentStock||0):0;if(has&&diff!==0)diffCount+=1;return '<div class="ops-stocktake-cart-row"><div class="ops-stocktake-cart-product"><b>'+escapeHtml(product.originalName||product.name)+'</b><small>SKU '+escapeHtml(product.sku||'未設定')+'</small></div><div class="ops-stocktake-current"><span>系統數量</span><b>'+formatNumber(product.currentStock)+'</b></div><label><span>實際盤點</span><input class="ops-input" type="number" min="0" step="1" name="countedStock" value="'+attr(counted)+'" data-stocktake-count="'+index+'" placeholder="留白不修改"></label><div class="ops-stocktake-diff '+(diff>0?'plus':diff<0?'minus':'')+'"><span>差異</span><b>'+(has?(diff>0?'+':'')+formatNumber(diff):'—')+'</b></div><button class="ops-icon-button" type="button" data-action="stocktake-remove" data-index="'+index+'">×</button></div>';}).join(''):emptyHtml('尚未加入盤點商品','請從左側搜尋並點選商品。');
+    return '<div class="ops-purchase-entry-top"><button class="ops-button ghost" type="button" data-action="stocktake-back">← 返回進貨庫存</button><div><h2>'+(correction?'更正盤點紀錄':'庫存盤點工作台')+'</h2><p>'+(correction?'輸入原盤點應有的正確數量，系統會以差額補正目前庫存。':'左側選商品，右側輸入實際盤點數量；留白的商品不會異動。')+'</p></div></div><form id="stocktakeForm"><div class="ops-stocktake-layout"><section class="ops-card"><div class="ops-v8-section-head"><div><h2>選擇盤點商品</h2><p>可輸入 SKU、名稱或品牌</p></div><span class="ops-tag green">'+formatNumber(rows.length)+' 項</span></div>'+stocktakeSeriesTabs()+'<div class="ops-purchase-entry-search-row"><input class="ops-input" id="stocktakeSearch" placeholder="輸入 SKU 或商品名稱" value="'+attr(state.stocktakeSearch)+'"><select class="ops-select" id="stocktakeSort"><option value="sku" '+(state.stocktakeSort==='sku'?'selected':'')+'>依商品編號</option><option value="stock" '+(state.stocktakeSort==='stock'?'selected':'')+'>庫存少的優先</option><option value="name" '+(state.stocktakeSort==='name'?'selected':'')+'>依名稱</option></select></div><div class="ops-stocktake-product-grid">'+products+'</div></section><section class="ops-card"><div class="ops-v8-section-head"><div><h2>本次盤點</h2><p>'+formatNumber(state.stocktakeCart.length)+' 項商品｜'+formatNumber(diffCount)+' 項有差異</p></div><button class="ops-button small ghost" type="button" data-action="stocktake-clear">清空</button></div><div class="ops-form-grid"><div class="ops-field"><label class="ops-required">盤點人</label><input class="ops-input" name="operatorName" id="stocktakeOperator" value="'+attr(state.stocktakeOperator)+'" required></div><div class="ops-field full"><label>盤點備註</label><input class="ops-input" name="note" id="stocktakeNote" value="'+attr(state.stocktakeNote)+'"></div></div><div class="ops-stocktake-cart">'+cart+'</div><button class="ops-button primary ops-purchase-entry-submit" type="submit" '+(state.stocktakeCart.length?'':'disabled')+'>'+(correction?'確認盤點更正':'確認完成盤點')+'</button></section></div></form>';
+  }
+  async function saveStocktake(form){
+    const operator=clean(new FormData(form).get('operatorName')),note=clean(new FormData(form).get('note'));if(!operator)throw new Error('請填寫盤點人');
+    const entries=state.stocktakeCart.map(function(item){const value=item.countedStock;return {productId:item.productId,countedStock:value===''||value==null?null:Math.max(0,Math.round(Number(value)))};}).filter(function(item){return item.countedStock!=null&&!Number.isNaN(item.countedStock);});if(!entries.length)throw new Error('至少輸入一項實際盤點數量');
+    const correction=state.stocktakeCorrectionId?state.inventory.find(function(row){return row.id===state.stocktakeCorrectionId;}):null,stocktakeNo=correction?(correction.stocktakeNo||uid('COUNT-CORR')):uid('COUNT');
+    await state.db.runTransaction(async function(tx){const refs=entries.map(function(item){return state.db.collection(COLLECTIONS.products).doc(item.productId);}),snaps=[];for(const ref of refs)snaps.push(await tx.get(ref));
+      snaps.forEach(function(snap,index){if(!snap.exists)throw new Error('商品主檔不存在');const raw=snap.data()||{},entry=entries[index],current=Number(raw.currentStock||0),target=correction&&correction.productId===entry.productId?current+(entry.countedStock-Number(correction.afterStock||0)):entry.countedStock;if(target<0)throw new Error('更正後庫存不可小於 0');const latest=numberOrNull(firstValue(raw,['latestPurchaseCost','averageCost'])),adjusted=adjustFifoLayers(raw,target,latest,{layerId:uid('COUNT-LAYER'),receivedAt:new Date().toISOString(),referenceType:correction?'stocktakeCorrection':'stocktakeIncrease',referenceId:stocktakeNo}),ref=refs[index];tx.update(ref,{currentStock:target,costLayers:adjusted.layers,averageCost:adjusted.averageCost,inventoryValue:adjusted.inventoryValue,costIncomplete:adjusted.costIncomplete,updatedAt:serverTimestamp(),updatedBy:operator});queueInventorySyncInTransaction(tx,entry.productId,clean(raw.internalSku),target,correction?'stocktakeCorrection':'stocktake');const tRef=state.db.collection(COLLECTIONS.inventory).doc();tx.set(tRef,{type:'adjustment',productId:entry.productId,productName:clean(raw.internalName||raw.originalName||raw.onlineName),sku:clean(raw.internalSku),qtyChange:target-current,beforeStock:current,afterStock:target,unitCost:latest,costMethod:'FIFO',referenceType:correction?'stocktakeCorrection':'stocktake',referenceId:stocktakeNo,stocktakeNo:stocktakeNo,counterName:operator,source:'admin',correctionOf:correction?correction.id:'',note:note||'庫存盤點',occurredAt:new Date(),createdAt:serverTimestamp(),createdBy:userLabel(),version:VERSION});});
+      if(correction){const oldRef=state.db.collection(COLLECTIONS.inventory).doc(correction.id);tx.set(oldRef,{correctedAt:serverTimestamp(),correctedBy:operator,correctedTo:entries[0].countedStock},{merge:true});}
+    });await writeAudit(correction?'更正盤點紀錄':'完成庫存盤點','inventory',stocktakeNo,operator+'｜'+entries.length+' 項');resetStocktake();state.purchaseWorkspaceTab='adjust';location.hash='purchases';toast(correction?'盤點已更正':'盤點已完成',stocktakeNo,'success');await loadAll(true);
+  }
+  async function sha256Text(value){const bytes=new TextEncoder().encode(clean(value)),hash=await crypto.subtle.digest('SHA-256',bytes);return Array.from(new Uint8Array(hash)).map(function(byte){return byte.toString(16).padStart(2,'0');}).join('');}
+  function openInventoryCountSettings(){
+    const url=new URL('inventory-count.html',location.href).href;
+    openDrawer('手機盤點入口','獨立入口只提供盤點。初始密碼為 0000，建議正式使用前修改。','<form id="inventoryCountSettingsForm"><div class="ops-callout green"><b>盤點網址</b><br><span class="ops-break-url">'+escapeHtml(url)+'</span></div><div class="ops-form-grid"><div class="ops-field full"><label>入口狀態</label><select class="ops-select" name="enabled"><option value="true" '+(state.inventoryCountSettings.enabled!==false?'selected':'')+'>啟用</option><option value="false" '+(state.inventoryCountSettings.enabled===false?'selected':'')+'>停用</option></select></div><div class="ops-field full"><label>設定新密碼</label><input class="ops-input" type="password" inputmode="numeric" minlength="4" name="pin" placeholder="留白代表不變；尚未設定時為 0000"></div></div><div class="ops-card-actions" style="justify-content:flex-start;margin-top:12px"><button class="ops-button ghost" type="button" data-action="inventory-count-copy">複製網址</button><button class="ops-button ghost" type="button" data-action="inventory-count-open">開啟手機盤點</button></div><div class="ops-drawer-footer"><button class="ops-button ghost" type="button" data-action="drawer-close">取消</button><button class="ops-button primary" type="submit">儲存設定</button></div></form>');
+  }
+  async function saveInventoryCountSettings(form){const data=new FormData(form),pin=clean(data.get('pin')),payload={enabled:data.get('enabled')!=='false',updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION};if(pin){if(!/^\d{4,12}$/.test(pin))throw new Error('盤點密碼請輸入 4 至 12 位數字');payload.pinHash=await sha256Text(pin);}else if(!state.inventoryCountSettings.pinHash){payload.pinHash=await sha256Text('0000');}await state.db.collection(COLLECTIONS.settings).doc('inventoryCount').set(payload,{merge:true});closeDrawer();toast('手機盤點設定已儲存','入口密碼已更新','success');await loadAll(true);}
   function renderPurchases(){
-    const lowAll=state.catalog.filter(function(product){return product.initialized&&Number(product.currentStock||0)<=Number(product.safetyStock||0);}).sort(function(a,b){const outA=Number(a.currentStock||0)<=0?0:1,outB=Number(b.currentStock||0)<=0?0:1;if(outA!==outB)return outA-outB;return Number(a.currentStock||0)-Number(b.currentStock||0);});
-    const lowTerm=lower(state.purchaseLowSearch).trim(),lowRows=lowAll.filter(function(product){return !lowTerm||lower([product.originalName,product.onlineName,product.name,product.sku,product.brand,product.category].join(' ')).includes(lowTerm);});
-    const inventoryRows=state.inventory.filter(function(row){const term=lower(state.inventorySearch);return !term||lower([row.productName,row.sku,row.referenceId,row.note].join(' ')).includes(term);}).sort(function(a,b){return (dateFrom(b.occurredAt)||0)-(dateFrom(a.occurredAt)||0);}).slice(0,120);
-    const typeName={opening:'期初庫存',purchase:'進貨入庫',sale:'現場銷售',adjustment:'盤點調整',return:'退貨入庫',saleReturn:'退貨回庫',saleReturnScrap:'退貨報廢',saleCorrection:'銷售修改'};
-    const currentPurchases=currentMonthRows(state.purchases,function(row){return row.receivedAt;}),monthPurchaseTotal=sum(currentPurchases,function(row){return row.totalCost;}),inventoryValue=sum(state.catalog,function(product){return Number(product.inventoryValue||0)||Number(product.averageCost||0)*Number(product.currentStock||0);}),todayInventory=todayRows(state.inventory,function(row){return row.occurredAt;});
-    const recentPurchases=state.purchases.slice().sort(function(a,b){return (dateFrom(b.receivedAt)||0)-(dateFrom(a.receivedAt)||0);}).slice(0,30);
-    const adjustments=state.inventory.filter(function(row){return row.type==='adjustment';}).sort(function(a,b){return (dateFrom(b.occurredAt)||0)-(dateFrom(a.occurredAt)||0);}).slice(0,12);
-    const allowedTabs=['low','inbound','adjust','history'];if(!allowedTabs.includes(state.purchaseWorkspaceTab))state.purchaseWorkspaceTab='low';
-
+    const lowAll=state.catalog.filter(function(product){return product.initialized&&Number(product.currentStock||0)<=Number(product.safetyStock||0);}).sort(function(a,b){return Number(a.currentStock||0)-Number(b.currentStock||0);}),lowTerm=lower(state.purchaseLowSearch).trim(),lowRows=lowAll.filter(function(product){return !lowTerm||lower([product.originalName,product.name,product.sku].join(' ')).includes(lowTerm);});
+    const currentPurchases=currentMonthRows(state.purchases,function(row){return row.receivedAt;}),monthPurchaseTotal=sum(currentPurchases,function(row){return row.totalCost;}),inventoryValue=sum(state.catalog,function(product){return Number(product.inventoryValue||0)||Number(product.averageCost||0)*Number(product.currentStock||0);}),todayInventory=todayRows(state.inventory,function(row){return row.occurredAt;}),recentPurchases=state.purchases.slice().sort(function(a,b){return (dateFrom(b.receivedAt)||0)-(dateFrom(a.receivedAt)||0);}).slice(0,40),adjustments=state.inventory.filter(function(row){return row.type==='adjustment';}).sort(function(a,b){return (dateFrom(b.occurredAt)||0)-(dateFrom(a.occurredAt)||0);}).slice(0,30),allowedTabs=['low','inbound','adjust','history'];if(!allowedTabs.includes(state.purchaseWorkspaceTab))state.purchaseWorkspaceTab='low';
     function workTab(tab,label,count){return '<button type="button" class="'+(state.purchaseWorkspaceTab===tab?'active':'')+'" data-action="purchase-worktab" data-tab="'+tab+'">'+escapeHtml(label)+(count!=null?'<span>'+formatNumber(count)+'</span>':'')+'</button>';}
-    function inventoryTable(rows){return rows.length?'<div class="ops-table-wrap"><table class="ops-table"><thead><tr><th>時間</th><th>類型</th><th>商品</th><th class="num">異動</th><th class="num">異動後</th><th>來源／備註</th></tr></thead><tbody>'+rows.map(function(row){return '<tr><td>'+escapeHtml(dateTimeText(row.occurredAt))+'</td><td>'+statusTag(typeName[row.type]||row.type,row.qtyChange>=0?'green':'yellow')+'</td><td><b>'+escapeHtml(row.productName||'未命名')+'</b><br><small>'+escapeHtml(row.sku||'')+'</small></td><td class="num"><b>'+(row.qtyChange>0?'+':'')+formatNumber(row.qtyChange)+'</b></td><td class="num">'+formatNumber(row.afterStock)+'</td><td>'+escapeHtml(row.referenceId||'')+'<br><small>'+escapeHtml(row.note||'')+'</small></td></tr>';}).join('')+'</tbody></table></div>':emptyHtml('尚無庫存流水','完成進貨、銷售或盤點後會自動建立紀錄。');}
-
     let panel='';
     if(state.purchaseWorkspaceTab==='low'){
-      const lowHtml=lowRows.length?'<div class="ops-v8-low-stock-list">'+lowRows.slice(0,80).map(function(product){const out=Number(product.currentStock||0)<=0;return '<div class="ops-v8-low-stock-row"><div><b>'+escapeHtml(product.originalName||product.name)+'</b><small>SKU '+escapeHtml(product.sku||'未設定')+'</small></div><strong class="'+(out?'danger':'warning')+'">'+formatNumber(product.currentStock)+' / 安全 '+formatNumber(product.safetyStock)+'</strong><span class="ops-tag '+(out?'red':'yellow')+'">'+(out?'缺貨':'偏低')+'</span><button class="ops-button small primary" data-action="purchase-this" data-id="'+attr(product.docId)+'">進貨</button></div>';}).join('')+'</div>':emptyHtml(lowTerm?'找不到低庫存商品':'目前沒有低庫存商品',lowTerm?'請更換搜尋文字。':'所有已建立商品都高於安全庫存。');
-      panel='<div class="ops-v8-purchase-panel"><div class="ops-toolbar"><input class="ops-input grow" id="purchaseLowSearch" placeholder="搜尋低庫存商品或 SKU" value="'+attr(state.purchaseLowSearch)+'"><span class="ops-v8-panel-count">目前 '+formatNumber(lowRows.length)+' 項</span></div>'+lowHtml+'</div>';
+      const html=lowRows.length?'<div class="ops-v8-low-stock-list">'+lowRows.slice(0,80).map(function(product){const out=Number(product.currentStock||0)<=0;return '<div class="ops-v8-low-stock-row"><div><b>'+escapeHtml(product.originalName||product.name)+'</b><small>SKU '+escapeHtml(product.sku||'未設定')+'</small></div><strong class="'+(out?'danger':'warning')+'">'+formatNumber(product.currentStock)+' / 安全 '+formatNumber(product.safetyStock)+'</strong><span class="ops-tag '+(out?'red':'yellow')+'">'+(out?'缺貨':'偏低')+'</span><button class="ops-button small primary" data-action="purchase-this" data-id="'+attr(product.docId)+'">進貨</button></div>';}).join('')+'</div>':emptyHtml('目前沒有低庫存商品','所有商品都高於安全庫存。');panel='<div class="ops-v8-purchase-panel"><div class="ops-toolbar"><input class="ops-input grow" id="purchaseLowSearch" placeholder="搜尋低庫存商品或 SKU" value="'+attr(state.purchaseLowSearch)+'"></div>'+html+'</div>';
     }else if(state.purchaseWorkspaceTab==='inbound'){
-      const purchaseTable=recentPurchases.length?'<div class="ops-table-wrap"><table class="ops-table"><thead><tr><th>到貨時間</th><th>進貨單</th><th>供應商</th><th class="num">品項／件數</th><th class="num">總成本</th></tr></thead><tbody>'+recentPurchases.map(function(row){const qty=sum(row.items||[],function(item){return item.qty;});return '<tr><td>'+escapeHtml(dateTimeText(row.receivedAt))+'</td><td><b>'+escapeHtml(row.purchaseNo||row.id)+'</b></td><td>'+escapeHtml(row.supplier||'未填供應商')+'</td><td class="num">'+formatNumber((row.items||[]).length)+' 項／'+formatNumber(qty)+' 件</td><td class="num"><b>'+money(row.totalCost)+'</b></td></tr>';}).join('')+'</tbody></table></div>':emptyHtml('尚無進貨單','按「新增進貨」建立第一張進貨單。');
-      panel='<div class="ops-v8-purchase-panel"><div class="ops-v8-inbound-summary"><div><span>本月進貨</span><b>'+money(monthPurchaseTotal)+'</b><small>'+formatNumber(currentPurchases.length)+' 張進貨單</small></div><div><span>歷史供應商</span><b>'+formatNumber(new Set(state.purchases.map(function(row){return row.supplier;}).filter(Boolean)).size)+' 家</b><small>依既有進貨紀錄統計</small></div><button class="ops-button primary" data-action="open-purchase">開始新增進貨</button></div><div class="ops-v8-subsection-head"><h3>最近進貨單</h3></div>'+purchaseTable+'</div>';
+      const table=recentPurchases.length?'<div class="ops-purchase-card-list">'+recentPurchases.map(function(row){const qty=sum(row.items||[],function(item){return item.qty;}),paid=row.paymentStatus==='paid';return '<article class="ops-purchase-history-card"><div class="ops-purchase-history-main"><div><b>'+escapeHtml(row.purchaseNo||row.id)+'</b><small>'+escapeHtml(dateTimeText(row.receivedAt))+(row.externalNo?'｜外部 '+escapeHtml(row.externalNo):'')+'</small></div><div><span>供應商</span><strong>'+escapeHtml(row.supplier||'未填供應商')+'</strong></div><div><span>品項／件數</span><strong>'+formatNumber((row.items||[]).length)+' 項／'+formatNumber(qty)+' 件</strong></div><div><span>總成本</span><strong>'+money(row.totalCost)+'</strong></div><div>'+statusTag(paid?'已付款':'未付款',paid?'green':'yellow')+(paid&&row.paymentDate?'<small>'+escapeHtml(dateText(row.paymentDate))+'</small>':'')+'</div><button class="ops-button small primary" data-action="purchase-edit" data-id="'+attr(row.id)+'">修改</button></div></article>';}).join('')+'</div>':emptyHtml('尚無進貨單','按「新增進貨」建立第一張進貨單。');panel='<div class="ops-v8-purchase-panel"><div class="ops-v8-inbound-summary"><div><span>本月進貨</span><b>'+money(monthPurchaseTotal)+'</b><small>'+formatNumber(currentPurchases.length)+' 張進貨單</small></div><div><span>供應商資料庫</span><b>'+formatNumber(state.suppliers.length)+' 家</b><small>可快速選擇聯絡與付款資訊</small></div><button class="ops-button ghost" data-action="supplier-manager">管理供應商</button><button class="ops-button primary" data-action="open-purchase">開始新增進貨</button></div><div class="ops-v8-subsection-head"><h3>最近進貨單</h3></div>'+table+'</div>';
     }else if(state.purchaseWorkspaceTab==='adjust'){
-      const adjustmentRows=adjustments.length?'<div class="ops-v8-adjustment-list">'+adjustments.map(function(row){return '<div class="ops-status-row"><div><b>'+escapeHtml(row.productName||'未命名商品')+'</b><small>'+escapeHtml(dateTimeText(row.occurredAt))+'・'+escapeHtml(row.sku||'')+'・'+escapeHtml(row.note||'盤點調整')+'</small></div><strong>'+(row.qtyChange>0?'+':'')+formatNumber(row.qtyChange)+'</strong></div>';}).join('')+'</div>':emptyHtml('尚無盤點紀錄','完成盤點後會顯示最近調整。');
-      panel='<div class="ops-v8-purchase-panel"><div class="ops-v8-adjust-callout"><span>盤</span><div><b>盤點／庫存調整</b><p>輸入盤點後實際庫存；系統會留下調整前後數量與原因。</p></div><button class="ops-button primary" data-action="open-adjustment">開始盤點</button></div><div class="ops-v8-subsection-head"><h3>最近盤點調整</h3></div>'+adjustmentRows+'</div>';
+      const rows=adjustments.length?'<div class="ops-purchase-card-list">'+adjustments.map(function(row){return '<article class="ops-stocktake-history-card"><div><b>'+escapeHtml(row.productName||'未命名商品')+'</b><small>'+escapeHtml(dateTimeText(row.occurredAt))+'｜'+escapeHtml(row.sku||'')+'｜盤點人 '+escapeHtml(row.counterName||row.createdBy||'管理者')+'</small></div><strong class="'+(row.qtyChange>0?'plus':row.qtyChange<0?'minus':'')+'">'+(row.qtyChange>0?'+':'')+formatNumber(row.qtyChange)+'</strong><span>'+formatNumber(row.beforeStock)+' → '+formatNumber(row.afterStock)+'</span><button class="ops-button small ghost" data-action="stocktake-edit" data-id="'+attr(row.id)+'">更正</button></article>';}).join('')+'</div>':emptyHtml('尚無盤點紀錄','完成盤點後會顯示。');panel='<div class="ops-v8-purchase-panel"><div class="ops-stocktake-entry-actions"><div><b>庫存盤點</b><p>管理端可一次盤點多項；工讀生可使用手機專用入口。</p></div><button class="ops-button ghost" data-action="inventory-count-settings">手機入口／密碼</button><button class="ops-button primary" data-action="open-adjustment">開始盤點</button></div><div class="ops-v8-subsection-head"><h3>最近盤點紀錄</h3></div>'+rows+'</div>';
     }else{
-      panel='<div class="ops-v8-purchase-panel"><div class="ops-toolbar"><input class="ops-input grow" id="inventorySearch" placeholder="搜尋商品、SKU、來源或備註" value="'+attr(state.inventorySearch)+'"><span class="ops-v8-panel-count">最近 '+formatNumber(inventoryRows.length)+' 筆</span></div>'+inventoryTable(inventoryRows)+'</div>';
+      const inventoryRows=state.inventory.filter(function(row){const term=lower(state.inventorySearch);return !term||lower([row.productName,row.sku,row.referenceId,row.note].join(' ')).includes(term);}).sort(function(a,b){return (dateFrom(b.occurredAt)||0)-(dateFrom(a.occurredAt)||0);}).slice(0,160);panel='<div class="ops-v8-purchase-panel"><div class="ops-toolbar"><input class="ops-input grow" id="inventorySearch" placeholder="搜尋商品、SKU、來源或備註" value="'+attr(state.inventorySearch)+'"></div>'+(inventoryRows.length?'<div class="ops-table-wrap"><table class="ops-table"><thead><tr><th>時間</th><th>類型</th><th>商品</th><th class="num">異動</th><th class="num">異動後</th><th>來源／備註</th></tr></thead><tbody>'+inventoryRows.map(function(row){return '<tr><td>'+escapeHtml(dateTimeText(row.occurredAt))+'</td><td>'+escapeHtml(row.referenceType||row.type)+'</td><td><b>'+escapeHtml(row.productName)+'</b><br><small>'+escapeHtml(row.sku)+'</small></td><td class="num">'+(row.qtyChange>0?'+':'')+formatNumber(row.qtyChange)+'</td><td class="num">'+formatNumber(row.afterStock)+'</td><td>'+escapeHtml(row.referenceId)+'<br><small>'+escapeHtml(row.note)+'</small></td></tr>';}).join('')+'</tbody></table></div>':emptyHtml('尚無庫存流水',''))+'</div>';
     }
-
-    const metrics='<div class="ops-kpi-grid ops-v8-purchase-kpis">'+kpi('低庫存待補',formatNumber(lowAll.length),'優先確認補貨','!')+kpi('本月進貨',money(monthPurchaseTotal),currentPurchases.length+' 張進貨單','⇧')+kpi('庫存價值',money(inventoryValue),'目前庫存成本','＄')+kpi('今日異動',formatNumber(todayInventory.length),'入庫、銷售與調整','↕')+'</div>';
-    const tabs='<div class="ops-v8-worktabs">'+workTab('low','補貨待辦',lowAll.length)+workTab('inbound','進貨入庫')+workTab('adjust','盤點調整')+workTab('history','異動紀錄')+'</div>';
-    return metrics+'<section class="ops-card ops-v8-purchase-workbench"><div class="ops-v8-section-head"><div><h2>進貨與庫存作業台</h2><p>一次只顯示一種工作，避免待辦、表單與流水全部擠在同一頁</p></div><div class="ops-card-actions"><button class="ops-button ghost" data-action="open-adjustment">盤點調整</button><button class="ops-button primary" data-action="open-purchase">新增進貨</button></div></div>'+tabs+panel+'</section>';
+    const metrics='<div class="ops-kpi-grid ops-v8-purchase-kpis">'+kpi('低庫存待補',formatNumber(lowAll.length),'優先確認補貨','!')+kpi('本月進貨',money(monthPurchaseTotal),currentPurchases.length+' 張進貨單','⇧')+kpi('庫存價值',money(inventoryValue),'目前庫存成本','＄')+kpi('今日異動',formatNumber(todayInventory.length),'入庫、銷售與盤點','↕')+'</div>',tabs='<div class="ops-v8-worktabs">'+workTab('low','補貨待辦',lowAll.length)+workTab('inbound','進貨入庫')+workTab('adjust','盤點調整')+workTab('history','異動紀錄')+'</div>';
+    return metrics+'<section class="ops-card ops-v8-purchase-workbench"><div class="ops-v8-section-head"><div><h2>進貨與庫存作業台</h2><p>進貨單、供應商、付款狀態與盤點紀錄集中管理</p></div><div class="ops-card-actions"><button class="ops-button ghost" data-action="open-adjustment">庫存盤點</button><button class="ops-button primary" data-action="open-purchase">新增進貨</button></div></div>'+tabs+panel+'</section>';
   }
 
   function mergedRentals(){
@@ -2045,9 +2169,21 @@ async function syncPlatformOrdersNow(){const yes=await confirmAction('要求 VPS
     if(action==='purchase-entry-remove'){state.purchaseEntryCart.splice(Math.max(0,Number(el.dataset.index)||0),1);return renderKeepingViewport();}
     if(action==='purchase-entry-clear'){state.purchaseEntryCart=[];return renderKeepingViewport();}
     if(action==='purchase-entry-new-product'){location.hash='products';setTimeout(function(){openProductEdit('');},0);return;}
+    if(action==='purchase-edit') return startPurchaseEdit(el.dataset.id);
+    if(action==='supplier-manager') return openSupplierManager('');
+    if(action==='supplier-edit') return openSupplierManager(el.dataset.id);
     if(action==='purchase-add-row'){const box=byId('purchaseItems'); if(box) box.insertAdjacentHTML('beforeend',purchaseRowHtml('',queryAll('.purchase-row',box).length)); return;}
     if(action==='purchase-remove-row'){const row=el.closest('.purchase-row'); if(row&&queryAll('.purchase-row').length>1)row.remove();return;}
-    if(action==='open-adjustment') return openAdjustment();
+    if(action==='open-adjustment') return openStocktakeWorkspace();
+    if(action==='stocktake-back'){location.hash='purchases';return;}
+    if(action==='stocktake-series'){state.stocktakeSeries=el.dataset.series||'all';state.stocktakeSearch='';return renderKeepingViewport();}
+    if(action==='stocktake-add'){addStocktakeProduct(el.dataset.id);return renderKeepingViewport();}
+    if(action==='stocktake-remove'){state.stocktakeCart.splice(Math.max(0,Number(el.dataset.index)||0),1);return renderKeepingViewport();}
+    if(action==='stocktake-clear'){state.stocktakeCart=[];return renderKeepingViewport();}
+    if(action==='stocktake-edit') return startStocktakeCorrection(el.dataset.id);
+    if(action==='inventory-count-settings') return openInventoryCountSettings();
+    if(action==='inventory-count-open'){global.open('inventory-count.html','_blank','noopener');return;}
+    if(action==='inventory-count-copy'){const url=new URL('inventory-count.html',location.href).href;if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(url).then(function(){toast('已複製盤點網址',url,'success');});else{const input=document.createElement('textarea');input.value=url;document.body.appendChild(input);input.select();document.execCommand('copy');input.remove();toast('已複製盤點網址',url,'success');}return;}
     if(action==='rental-edit') return openRentalEdit(el.dataset.id);
     if(action==='case-new') return openCase();
     if(action==='case-edit') return openCase(el.dataset.id);
@@ -2074,6 +2210,9 @@ async function syncPlatformOrdersNow(){const yes=await confirmAction('要求 VPS
       else if(form.id==='receivablePaymentForm') await saveReceivablePayment(form);
       else if(form.id==='quickIncomeForm') await saveQuickIncome(form);
       else if(form.id==='purchaseForm'||form.id==='purchaseWorkspaceForm') await savePurchase(form);
+      else if(form.id==='supplierForm') await saveSupplier(form);
+      else if(form.id==='stocktakeForm') await saveStocktake(form);
+      else if(form.id==='inventoryCountSettingsForm') await saveInventoryCountSettings(form);
       else if(form.id==='adjustmentForm') await saveAdjustment(form);
       else if(form.id==='rentalLedgerForm') await saveRentalLedger(form);
       else if(form.id==='caseForm') await saveCase(form);
@@ -2129,7 +2268,8 @@ function rerenderKeepingFocus(id,value){
       caseSearch:'caseSearch',
       inventorySearch:'inventorySearch',
       purchaseLowSearch:'purchaseLowSearch',
-      purchaseEntrySearch:'purchaseEntrySearch'
+      purchaseEntrySearch:'purchaseEntrySearch',
+      stocktakeSearch:'stocktakeSearch'
     };
     function isOpsSearchInput(target){return !!(target&&opsSearchStateMap[target.id]);}
     function applyOpsSearchInput(input){
@@ -2142,6 +2282,7 @@ function rerenderKeepingFocus(id,value){
         state.productVisible=PRODUCT_PAGE_SIZE;
       }
       if(input.id==='purchaseEntrySearch')state.purchaseEntrySeries='all';
+      if(input.id==='stocktakeSearch')state.stocktakeSeries='all';
       rerenderKeepingFocus(input.id,state[key]);
     }
     document.addEventListener('compositionstart',function(event){
@@ -2179,6 +2320,10 @@ function rerenderKeepingFocus(id,value){
       else if(event.target.id==='purchaseEntryExternalNo'){state.purchaseEntryExternalNo=event.target.value;}
       else if(event.target.id==='purchaseEntryExtraCost'){state.purchaseEntryExtraCost=Math.max(0,Number(event.target.value||0));}
       else if(event.target.id==='purchaseEntryNote'){state.purchaseEntryNote=event.target.value;}
+      else if(event.target.id==='purchaseEntryPaymentDate'){state.purchaseEntryPaymentDate=event.target.value;}
+      else if(event.target.id==='stocktakeOperator'){state.stocktakeOperator=event.target.value;}
+      else if(event.target.id==='stocktakeNote'){state.stocktakeNote=event.target.value;}
+      else if(event.target.matches('[data-stocktake-count]')){const item=state.stocktakeCart[Number(event.target.dataset.stocktakeCount)];if(item)item.countedStock=event.target.value;}
     });
     document.addEventListener('change',function(event){
       if(event.target.id==='productFilter'){state.productFilter=event.target.value;state.productSeries='all';state.productSearch='';state.productVisible=PRODUCT_PAGE_SIZE;render();}
@@ -2187,6 +2332,11 @@ function rerenderKeepingFocus(id,value){
       else if(event.target.matches('[data-purchase-entry-qty]')){const item=state.purchaseEntryCart[Number(event.target.dataset.purchaseEntryQty)];if(item)item.qty=Math.max(1,Math.round(Number(event.target.value||1)));renderKeepingViewport();}
       else if(event.target.matches('[data-purchase-entry-cost]')){const item=state.purchaseEntryCart[Number(event.target.dataset.purchaseEntryCost)];if(item)item.unitCost=Math.max(0,Number(event.target.value||0));renderKeepingViewport();}
       else if(event.target.id==='purchaseEntryExtraCost'){state.purchaseEntryExtraCost=Math.max(0,Number(event.target.value||0));renderKeepingViewport();}
+      else if(event.target.id==='purchaseEntrySupplierId'){state.purchaseEntrySupplierId=event.target.value;const supplier=supplierById(state.purchaseEntrySupplierId);if(supplier)state.purchaseEntrySupplier=supplier.name;renderKeepingViewport();}
+      else if(event.target.id==='purchaseEntryPaymentStatus'){state.purchaseEntryPaymentStatus=event.target.value;if(state.purchaseEntryPaymentStatus==='paid'&&!state.purchaseEntryPaymentDate)state.purchaseEntryPaymentDate=dateText(new Date());renderKeepingViewport();}
+      else if(event.target.id==='purchaseEntryPaymentMethod'){state.purchaseEntryPaymentMethod=event.target.value;}
+      else if(event.target.id==='stocktakeSort'){state.stocktakeSort=event.target.value;renderKeepingViewport();}
+      else if(event.target.matches('[data-stocktake-count]')){const item=state.stocktakeCart[Number(event.target.dataset.stocktakeCount)];if(item)item.countedStock=event.target.value;renderKeepingViewport();}
       else if(event.target.id==='financeRange'){state.financeRange=event.target.value;render();}
       else if(event.target.id==='saleInvoiceFrom'){state.saleInvoiceFrom=event.target.value;renderKeepingViewport();}
       else if(event.target.id==='saleInvoiceTo'){state.saleInvoiceTo=event.target.value;renderKeepingViewport();}
