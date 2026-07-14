@@ -359,3 +359,6 @@ body.yz-login-page .auth-note{background:#e8f5ef;color:#315e4c;border:1px solid 
   body.yz-login-page .login-header .title{font-size:24px}
   body.yz-login-page .auth-sub-actions{grid-template-columns:1fr!important}
 }
+
+
+body.yz-portal-page{background:linear-gradient(180deg,#f4f7fb 0%,#edf3f5 100%) fixed}

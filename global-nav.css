@@ -205,3 +205,34 @@ body.yz-internal-theme .auth-note{
   body.yz-internal-theme .hub-card,
   body.yz-internal-theme .menu>a{border-radius:16px!important}
 }
+
+
+/* 系統入口頁：更簡潔、現代的頂部操作列 */
+body.yz-portal-page .yz-global-nav{
+  position:sticky;
+  top:12px;
+  z-index:9999;
+  width:min(calc(100% - 36px),1120px);
+  margin:16px auto 0;
+  padding:6px;
+  background:rgba(255,255,255,.88);
+  backdrop-filter:blur(14px);
+  -webkit-backdrop-filter:blur(14px);
+  border:1px solid rgba(20,50,70,.08);
+  border-radius:18px;
+  box-shadow:0 12px 28px rgba(24,55,72,.08);
+}
+body.yz-portal-page .yz-nav-btn{
+  min-height:44px;
+  padding:11px 14px;
+  border-radius:12px;
+  font-size:14px;
+  font-weight:800;
+}
+body.yz-portal-page .yz-nav-back{background:#173247!important}
+body.yz-portal-page .yz-nav-back:active{background:#102739!important}
+body.yz-portal-page .yz-nav-logout{background:#c45b3e!important}
+body.yz-portal-page .yz-nav-logout:active{background:#ad4d35!important}
+@media(max-width:720px){
+  body.yz-portal-page .yz-global-nav{width:calc(100% - 20px);top:8px;margin-top:10px;padding:6px}
+}
