@@ -29,7 +29,7 @@
   const READ_LIMIT = 10000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.07.14-v8.6-sync-anomaly-rental-ops';
+  const VERSION = '2026.07.14-v8.7-course-calendar-rental-restore';
   const DASHBOARD_CACHE_KEY = 'youzi_ops_dashboard_overview_v6_sync_rental';
   const DASHBOARD_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
   const DEFAULT_MEMBERSHIP_SETTINGS = {
@@ -170,6 +170,7 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
 
   const PAGE_META = {
     overview:['營運總覽',''],
+    'course-calendar':['課程日表','音教雲每日課表；可在系統內直接嘗試登入與操作。'],
     products:['商品庫存',''],
     sales:['現場銷售',''],
     customers:['客戶會員','會員、老師與一般客戶共用同一份客戶資料。'],
@@ -732,24 +733,29 @@ async function loadPlatformLocalAgent(){
   }
 
   function normalizeRental(obj){
-    const start=firstValue(obj,['startDate','rentalStartDate','contractStartDate','開始日期']);
-    const end=firstValue(obj,['endDate','rentalEndDate','contractEndDate','到期日期']);
+    const start=firstValue(obj,['officialStartDate','startDate','rentalStartDate','contractStartDate','deliveryDate','開始日期']);
+    const end=firstValue(obj,['officialEndDate','endDate','rentalEndDate','contractEndDate','到期日期']);
+    const equipmentItems=Array.isArray(obj.equipmentItems)?obj.equipmentItems:[];
+    const firstEquipment=equipmentItems.length?(clean(equipmentItems[0]&&equipmentItems[0].name)||clean(equipmentItems[0]&&equipmentItems[0].title)):'';
+    const rentInfo=firstNumber(obj,['rentalIncomeAmount','rentFee','rentalFee','monthlyRent','租金']);
+    const rentFee=firstNumber(obj,['rentFee','rentalFee','monthlyRent','租金']).value;
+    const shippingFee=firstNumber(obj,['shippingFee','deliveryFee','floorExtraFee','運費']).value;
     return {
       id:clean(obj.__id),
-      contractNo:clean(firstValue(obj,['contractNo','contractId','rentalContractNo','編號']))||clean(obj.__id),
+      contractNo:clean(firstValue(obj,['contractNo','contractId','rentalContractNo','applicationNo','編號']))||clean(obj.__id),
       customer:clean(firstValue(obj,['customerName','name','applicantName','承租人','客戶']))||'未提供',
-      phone:clean(firstValue(obj,['phone','customerPhone','mobile','電話'])),
-      equipment:clean(firstValue(obj,['equipmentName','instrumentName','productName','deviceName','equipmentType','設備']))||'未提供',
-      brand:clean(firstValue(obj,['brand','equipmentBrand','品牌'])),
-      model:clean(firstValue(obj,['model','equipmentModel','型號'])),
+      phone:clean(firstValue(obj,['customerPhone','phone','customerMobile','mobile','電話'])),
+      equipment:clean(firstValue(obj,['equipmentName','rentalItem','equipmentCategory','instrumentName','productName','deviceName','equipmentType','設備']))||firstEquipment||'未提供',
+      brand:clean(firstValue(obj,['equipmentBrand','brand','品牌'])),
+      model:clean(firstValue(obj,['equipmentModel','modelName','model','型號'])),
       assetNo:clean(firstValue(obj,['equipmentNo','assetNo','serialNo','設備編號'])),
       startDate:start,
       endDate:end,
-      rentFee:firstNumber(obj,['rentFee','rentalFee','monthlyRent','租金']).value,
-      shippingFee:firstNumber(obj,['shippingFee','deliveryFee','運費']).value,
+      rentFee:rentFee,
+      shippingFee:shippingFee,
       depositFee:firstNumber(obj,['depositFee','deposit','押金']).value,
-      incomeRecognizedAt:firstValue(obj,['rentalIncomeRecognizedAt','officialConfirmedAt','confirmedAt','officialPdfGeneratedAt']),
-      incomeAmount:firstNumber(obj,['rentalIncomeAmount']).found?firstNumber(obj,['rentalIncomeAmount']).value:(firstNumber(obj,['rentFee','rentalFee','monthlyRent','租金']).value+firstNumber(obj,['shippingFee','deliveryFee','運費']).value),
+      incomeRecognizedAt:firstValue(obj,['rentalIncomeRecognizedAt','officialConfirmedAt','officialContractNoticeQueueCreatedAt','officialContractNoticeSentAt','confirmedAt','officialPdfGeneratedAt']),
+      incomeAmount:firstNumber(obj,['rentalIncomeAmount']).found?firstNumber(obj,['rentalIncomeAmount']).value:(rentFee+shippingFee),
       status:clean(firstValue(obj,['status','contractStatus','rentalStatus','狀態']))||'未設定',
       raw:obj
     };
@@ -875,6 +881,15 @@ function queueInventorySyncInTransaction(tx,productId,sku,stock,reason){const re
   function kpiAction(title,value,sub,icon,action){
     return '<button type="button" class="ops-kpi ops-kpi-action" data-action="'+attr(action)+'"><div class="ops-kpi-head"><span>'+escapeHtml(title)+'</span><span class="ops-kpi-icon">'+escapeHtml(icon||'•')+'</span></div><strong>'+escapeHtml(value)+'</strong><small>'+escapeHtml(sub||'')+'</small></button>';
   }
+  const INJIAOYUN_DAILY_CALENDAR_URL='https://www.injiaoyun.com/dashboard/#/app/roomCalendar/day';
+  function renderCourseCalendar(){
+    return '<section class="ops-card ops-course-calendar-card">'
+      +'<div class="ops-course-calendar-head"><div><h2>課程日表</h2><p>先嘗試直接在全通路營運中心內開啟音教雲。已登入時會直接進入日課表；若顯示登入頁，可在框內登入。</p></div><div class="ops-card-actions"><a class="ops-button ghost" href="'+attr(INJIAOYUN_DAILY_CALENDAR_URL)+'" target="_blank" rel="noopener noreferrer">另開音教雲</a></div></div>'
+      +'<div class="ops-course-calendar-note"><b>測試內嵌模式</b><span>若下方完全空白、一直停在登入畫面，或按鈕無法操作，請按右上角「另開音教雲」。帳號密碼不會寫入 GitHub 網頁。</span></div>'
+      +'<div class="ops-course-calendar-frame-wrap"><iframe id="injiaoyunDailyCalendarFrame" class="ops-course-calendar-frame" src="'+attr(INJIAOYUN_DAILY_CALENDAR_URL)+'" title="音教雲課程日表" loading="eager" allow="clipboard-read; clipboard-write" referrerpolicy="strict-origin-when-cross-origin"></iframe></div>'
+      +'</section>';
+  }
+
   function render(){
     state.view=(location.hash||'#overview').replace('#','').split('?')[0]||'overview';
     if(!PAGE_META[state.view]) state.view='overview';
@@ -883,7 +898,7 @@ function queueInventorySyncInTransaction(tx,productId,sku,stock,reason){const re
     queryAll('#opsNav a[data-view]').forEach(function(a){ a.classList.toggle('active',a.dataset.view===navView); });
     const content=byId('opsContent'); if(!content) return;
     if(state.loading && !state.loadedAt){ content.innerHTML=loadingHtml(); return; }
-    const renderers={overview:renderOverviewV7,products:renderProducts,sales:renderSalesV7,customers:renderCustomersV6,receivables:renderReceivablesV5,purchases:renderPurchases,'purchase-entry':renderPurchaseEntry,stocktake:renderStocktakeWorkspace,rentals:renderRentals,sync:renderSync,connection:renderConnection};
+    const renderers={overview:renderOverviewV7,'course-calendar':renderCourseCalendar,products:renderProducts,sales:renderSalesV7,customers:renderCustomersV6,receivables:renderReceivablesV5,purchases:renderPurchases,'purchase-entry':renderPurchaseEntry,stocktake:renderStocktakeWorkspace,rentals:renderRentals,sync:renderSync,connection:renderConnection};
     content.innerHTML=(renderers[state.view]||renderOverview)();
     bindViewSpecific();
   }
@@ -1573,18 +1588,19 @@ function renderSalesV5(){
   function rentalStatusText(rental){
     const status=clean(rental&&rental.status),days=daysUntil(rental&&rental.endDate);
     if(days!==null&&days<0)return '已到期';
-    if(days!==null&&days<=30)return '即將到期';
-    return status||'租用中';
+    if(days!==null&&days<=30&&rentalIsEstablished(rental))return '即將到期';
+    return status||'未設定';
   }
   function rentalIsCancelled(rental){
     const text=lower([rental&&rental.status,rental&&rental.raw&&rental.raw.stage].filter(Boolean).join(' '));
-    return ['取消','已取消','作廢','草稿','待確認申請','申請中','cancelled','canceled','draft'].some(function(word){return text.includes(word);});
+    return ['已取消','取消申請','作廢','已封存','封存','archived','cancelled','canceled'].some(function(word){return text.includes(word);});
   }
   function rentalIsEstablished(rental){
     if(!rental||rentalIsCancelled(rental))return false;
-    if(rental.incomeRecognizedAt)return true;
+    const raw=rental.raw||{};
+    if(rental.incomeRecognizedAt||raw.rentalIncomeReceived===true||raw.officialConfirmedAt||raw.rentalIncomeRecognizedAt||raw.officialContractNoticeQueueCreatedAt||raw.officialContractNoticeSentAt)return true;
     const text=lower(rental.status);
-    return ['租賃中','待歸還','已退租','到期提醒中','續約詢問中','續約待付款','續約待確認','退租申請中','退租待安排','active','confirmed','completed','returned'].some(function(word){return text.includes(word);});
+    return ['租賃中','租用中','已成立','待配送 / 待安裝','待配送','待安裝','到期提醒中','續約詢問中','續約待付款','續約待確認','退租申請中','退租待安排','已退租','active','confirmed','completed','returned'].some(function(word){return text.includes(word);});
   }
   function rentalIsActive(rental){
     if(!rentalIsEstablished(rental))return false;
@@ -1599,10 +1615,10 @@ function renderSalesV5(){
   }
   function renderRentals(){
     const term=lower(state.rentalSearch);
-    const rows=mergedRentals().filter(rentalIsEstablished).filter(function(r){return !term||lower([r.contractNo,r.customer,r.equipment,r.brand,r.model,r.assetNo,r.status].join(' ')).includes(term);}).sort(function(a,b){return (dateFrom(b.incomeRecognizedAt)||0)-(dateFrom(a.incomeRecognizedAt)||0);});
-    const totalIncome=sum(rows,function(r){return r.expectedIncome;}),active=rows.filter(rentalIsActive),due=active.filter(function(r){const d=daysUntil(r.endDate);return d!==null&&d>=0&&d<=30;});
-    const table=rows.length?'<div class="ops-table-wrap"><table class="ops-table ops-rental-operations-table"><thead><tr><th>成立日期／合約</th><th>客戶</th><th>設備</th><th>租期／到期</th><th class="num">租賃收入</th><th>狀態</th></tr></thead><tbody>'+rows.map(function(r){const d=daysUntil(r.endDate),status=rentalStatusText(r),color=d!==null&&d<0?'blue':d!==null&&d<=30?'yellow':'green';return '<tr><td>'+escapeHtml(dateText(r.incomeRecognizedAt))+'<br><small>'+escapeHtml(r.contractNo)+'</small></td><td><b>'+escapeHtml(r.customer)+'</b><br><small>'+escapeHtml(r.phone)+'</small></td><td><b>'+escapeHtml([r.brand,r.model].filter(Boolean).join(' ')||r.equipment)+'</b><br><small>'+escapeHtml(r.assetNo||r.equipment)+'</small></td><td>'+escapeHtml(dateText(r.startDate))+'<br><small>至 '+escapeHtml(dateText(r.endDate))+'</small></td><td class="num"><b>'+money(r.expectedIncome)+'</b><br><small>租金 '+money(r.rentFee)+'＋運費 '+money(r.shippingFee)+'；押金不計</small></td><td>'+statusTag(status,color)+'</td></tr>';}).join('')+'</tbody></table></div>':emptyHtml('尚無已成立租賃合約','正式合約送出後，租金與運費會列入租賃營運。');
-    return '<div class="ops-kpi-grid ops-rental-kpis">'+kpi('租賃收入',money(totalIncome),'正式合約租金＋運費','＄')+kpi('成立合約',formatNumber(rows.length),'押金不列入收入','約')+kpi('租用中',formatNumber(active.length),'目前仍在租期內','租')+kpi('30 日內到期',formatNumber(due.length),'需要安排續租或退租','!')+'</div><section class="ops-card"><div class="ops-card-head"><div><h2>租賃營運</h2><p>正式合約送出即代表租賃成立並認列收入；不再另外登錄已收款、直接成本或租賃損益。</p></div><div class="ops-card-actions">'+(due.length?statusTag('30 日內到期 '+due.length+' 件','yellow'):'')+'<a class="ops-button ghost" href="rental-admin.html">原租賃管理</a></div></div><div class="ops-toolbar"><input class="ops-input grow" id="rentalSearch" placeholder="搜尋合約、客戶、設備、品牌或型號" value="'+attr(state.rentalSearch)+'"></div>'+table+'</section>';
+    const rows=mergedRentals().filter(function(r){return !rentalIsCancelled(r);}).filter(function(r){return !term||lower([r.contractNo,r.customer,r.equipment,r.brand,r.model,r.assetNo,r.status].join(' ')).includes(term);}).sort(function(a,b){return (dateFrom(b.incomeRecognizedAt||b.raw&&b.raw.updatedAtText||b.startDate)||0)-(dateFrom(a.incomeRecognizedAt||a.raw&&a.raw.updatedAtText||a.startDate)||0);});
+    const established=rows.filter(rentalIsEstablished),totalIncome=sum(established,function(r){return r.expectedIncome;}),active=established.filter(rentalIsActive),due=active.filter(function(r){const d=daysUntil(r.endDate);return d!==null&&d>=0&&d<=30;});
+    const table=rows.length?'<div class="ops-table-wrap"><table class="ops-table ops-rental-operations-table"><thead><tr><th>日期／合約</th><th>客戶</th><th>設備</th><th>租期／到期</th><th class="num">租賃收入</th><th>狀態</th></tr></thead><tbody>'+rows.map(function(r){const isEstablished=rentalIsEstablished(r),d=daysUntil(r.endDate),status=rentalStatusText(r),color=!isEstablished?'gray':d!==null&&d<0?'blue':d!==null&&d<=30?'yellow':'green';return '<tr><td>'+escapeHtml(dateText(r.incomeRecognizedAt||r.raw&&r.raw.updatedAtText||r.startDate))+'<br><small>'+escapeHtml(r.contractNo)+'</small></td><td><b>'+escapeHtml(r.customer)+'</b><br><small>'+escapeHtml(r.phone)+'</small></td><td><b>'+escapeHtml([r.brand,r.model].filter(Boolean).join(' ')||r.equipment)+'</b><br><small>'+escapeHtml(r.assetNo||r.equipment)+'</small></td><td>'+escapeHtml(dateText(r.startDate))+'<br><small>至 '+escapeHtml(dateText(r.endDate))+'</small></td><td class="num">'+(isEstablished?'<b>'+money(r.expectedIncome)+'</b><br><small>租金 '+money(r.rentFee)+'＋運費 '+money(r.shippingFee)+'；押金不計</small>':'<b>—</b><br><small>流程中，尚未列入收入</small>')+'</td><td>'+statusTag(status,color)+(isEstablished?'<small class="ops-rental-income-note">已列入租賃收入</small>':'<small class="ops-rental-income-note muted">保留顯示，尚未成立</small>')+'</td></tr>';}).join('')+'</tbody></table></div>':emptyHtml('尚無租賃合約資料','目前 rentalContracts 沒有可顯示的合約；可按右上角進入原租賃管理確認。');
+    return '<div class="ops-kpi-grid ops-rental-kpis">'+kpi('租賃收入',money(totalIncome),'已成立合約的租金＋運費','＄')+kpi('成立合約',formatNumber(established.length),'押金不列入收入','約')+kpi('租用中',formatNumber(active.length),'目前仍在租期內','租')+kpi('30 日內到期',formatNumber(due.length),'需要安排續租或退租','!')+'</div><section class="ops-card"><div class="ops-card-head"><div><h2>租賃營運</h2><p>已成立合約才計入租賃收入；流程中的合約仍保留在清單，不會再整頁顯示空白。</p></div><div class="ops-card-actions">'+(due.length?statusTag('30 日內到期 '+due.length+' 件','yellow'):'')+'<a class="ops-button ghost" href="rental-system-hub.html">原租賃管理</a></div></div><div class="ops-toolbar"><input class="ops-input grow" id="rentalSearch" placeholder="搜尋合約、客戶、設備、品牌或型號" value="'+attr(state.rentalSearch)+'"></div>'+table+'</section>';
   }
 
   function renderCases(){

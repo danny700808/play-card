@@ -1241,3 +1241,24 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
   .ops-sync-anomaly-actions .ops-button{width:100%}
   .ops-rental-kpis{grid-template-columns:1fr 1fr}
 }
+
+
+/* 2026-07-14｜課程日表內嵌測試與租賃清單恢復 */
+.ops-course-calendar-card{padding:0;overflow:hidden}
+.ops-course-calendar-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:16px 18px;border-bottom:1px solid var(--ops-line);background:#fff}
+.ops-course-calendar-head h2{margin:0 0 5px}
+.ops-course-calendar-head p{margin:0;color:var(--ops-muted);font-size:12px;line-height:1.55}
+.ops-course-calendar-note{display:flex;gap:10px;align-items:flex-start;padding:10px 18px;background:#fff8e7;border-bottom:1px solid #ead9a8;color:#705a22;font-size:11px;line-height:1.55}
+.ops-course-calendar-note b{white-space:nowrap}
+.ops-course-calendar-frame-wrap{min-height:720px;background:#edf2f5}
+.ops-course-calendar-frame{display:block;width:100%;height:calc(100vh - 205px);min-height:720px;border:0;background:#fff}
+.ops-rental-income-note{display:block;margin-top:5px;color:var(--ops-green-2);font-size:9px;font-weight:800}
+.ops-rental-income-note.muted{color:var(--ops-muted)}
+@media(max-width:760px){
+  .ops-course-calendar-head{flex-direction:column;padding:13px}
+  .ops-course-calendar-head .ops-card-actions,.ops-course-calendar-head .ops-button{width:100%}
+  .ops-course-calendar-note{display:block;padding:10px 13px}
+  .ops-course-calendar-note b{display:block;margin-bottom:3px}
+  .ops-course-calendar-frame-wrap{min-height:680px}
+  .ops-course-calendar-frame{height:calc(100vh - 230px);min-height:680px}
+}
