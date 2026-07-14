@@ -15,3 +15,19 @@ body.bp-body{margin:0;background:var(--bp-bg);color:var(--bp-text);font-family:-
 @media(max-width:880px){.bp-products{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:620px){.bp-header{grid-template-columns:42px minmax(0,1fr);padding-top:max(10px,env(safe-area-inset-top))}.bp-service{grid-column:2;justify-self:start;margin-top:-3px}.bp-search-card{top:94px}.bp-products{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.bp-card{border-radius:15px}.bp-card-body{padding:9px}.bp-name{min-height:40px;font-size:14px}.bp-price{font-size:17px}.bp-print-btn{height:40px}.bp-main{padding-top:11px}}
 @media(max-width:360px){.bp-products{grid-template-columns:1fr 1fr}.bp-title h1{font-size:19px}.bp-name{font-size:13px}.bp-sku{font-size:12px}}
+
+
+/* Password entry */
+.bp-login-screen{min-height:100vh;display:grid;place-items:center;padding:24px;background:linear-gradient(145deg,#eff8f4,#dff1e9)}
+.bp-login-screen[hidden],.bp-app[hidden]{display:none!important}
+.bp-login-card{width:min(420px,100%);background:#fff;border-radius:24px;padding:30px;box-shadow:0 18px 55px rgba(19,72,54,.16);border:1px solid rgba(31,122,90,.12)}
+.bp-login-logo{font-weight:900;color:#1f7a5a;letter-spacing:.08em;margin-bottom:8px}
+.bp-login-card h1{margin:0 0 8px;font-size:28px;color:#153f32}
+.bp-login-card p{margin:0 0 24px;color:#65766f}
+.bp-login-card label{display:block;font-weight:800;margin-bottom:8px;color:#29473d}
+.bp-login-card input{width:100%;box-sizing:border-box;border:2px solid #d7e6df;border-radius:14px;padding:14px 15px;font-size:20px;outline:none}
+.bp-login-card input:focus{border-color:#1f7a5a;box-shadow:0 0 0 4px rgba(31,122,90,.12)}
+.bp-login-card button{width:100%;margin-top:14px;border:0;border-radius:14px;padding:14px;background:#1f7a5a;color:#fff;font-size:18px;font-weight:900;cursor:pointer}
+.bp-login-card button:disabled{opacity:.6;cursor:wait}
+.bp-login-error{min-height:22px;margin-top:8px;color:#c0392b;font-weight:800}
+.bp-locked{overflow:hidden}

@@ -3,7 +3,9 @@
   const PRINT_BASE='http://127.0.0.1:18181';
   const COLLECTION='opsInternalProducts';
   const PAGE_SIZE=80;
-  const state={db:null,user:null,products:[],filtered:[],visible:PAGE_SIZE,selected:null,serviceReady:false};
+  const PASSWORD_HASH='d4545a1d89bd09146b761851c9326dd8dfab58ae23da62d9788fa3ee31545d15';
+  const SESSION_KEY='yuzuBarcodePrintUnlocked';
+  const state={db:null,products:[],filtered:[],visible:PAGE_SIZE,selected:null,serviceReady:false};
   const $=function(id){return document.getElementById(id);};
   function clean(v){return String(v==null?'':v).trim();}
   function lower(v){return clean(v).toLowerCase();}
@@ -25,7 +27,45 @@
     return {id:doc.id,sku:sku,name:name,onlineName:online,variant:variant,price:price,imageUrl:images[0]||'',enabled:raw.enabled!==false,status:clean(raw.status)||'active'};
   }
   function formatMoney(v){return 'NT$ '+Math.round(Number(v||0)).toLocaleString('zh-TW');}
-  function userType(user){if(typeof global.identityTypeOf==='function')return global.identityTypeOf(user);const raw=lower(user&&(user.identityType||user.identityLabel||user.role));if(raw.indexOf('external')>=0||raw.indexOf('外聘')>=0)return'external';if(raw.indexOf('part')>=0||raw.indexOf('工讀')>=0)return'parttime';return'staff';}
+  async function sha256(value){
+    const data=new TextEncoder().encode(String(value||''));
+    const digest=await crypto.subtle.digest('SHA-256',data);
+    return Array.from(new Uint8Array(digest)).map(function(b){return b.toString(16).padStart(2,'0');}).join('');
+  }
+  function showApp(){
+    document.body.classList.remove('bp-locked');
+    const login=$('bpLoginScreen');
+    const app=$('bpApp');
+    if(login)login.hidden=true;
+    if(app)app.hidden=false;
+  }
+  function bindLogin(){
+    const form=$('bpLoginForm');
+    const input=$('bpPassword');
+    const error=$('bpLoginError');
+    if(!form||!input)return;
+    form.addEventListener('submit',async function(event){
+      event.preventDefault();
+      error.textContent='';
+      const submit=form.querySelector('button[type="submit"]');
+      submit.disabled=true;
+      submit.textContent='確認中…';
+      try{
+        const hash=await sha256(input.value);
+        if(hash!==PASSWORD_HASH){
+          error.textContent='密碼錯誤，請重新輸入。';
+          input.select();
+          return;
+        }
+        sessionStorage.setItem(SESSION_KEY,'1');
+        showApp();
+        await initApp();
+      }finally{
+        submit.disabled=false;
+        submit.textContent='進入條碼列印';
+      }
+    });
+  }
   function initDb(){const cfg=global.APP_CONFIG&&global.APP_CONFIG.FIREBASE_CONFIG;if(!cfg||!cfg.projectId)throw new Error('找不到 Firebase 設定');if(!global.firebase.apps.length)global.firebase.initializeApp(cfg);return global.firebase.firestore();}
   function toast(text){const el=$('bpToast');el.textContent=text;el.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(function(){el.classList.remove('show');},2600);}
   function setService(ready,text){state.serviceReady=ready;const el=$('bpServiceStatus');el.className='bp-service '+(ready?'ready':'offline');el.textContent=text;}
@@ -77,13 +117,19 @@
     $('bpCopies').addEventListener('input',function(){document.querySelectorAll('[data-copies]').forEach(function(x){x.classList.toggle('active',x.dataset.copies===$('bpCopies').value);});});
     $('bpPrintForm').addEventListener('submit',printSelected);document.addEventListener('keydown',function(e){if(e.key==='Escape')closeModal();});
   }
-  async function init(){
-    const user=typeof global.requireLogin==='function'?global.requireLogin():null;if(!user)return;
-    if(userType(user)==='external'){location.href='teacher-home.html';return;}
-    state.user=user;bind();
+  let appInitialized=false;
+  async function initApp(){
+    if(appInitialized)return;
+    appInitialized=true;
+    bind();
     try{state.db=initDb();const snap=await state.db.collection(COLLECTION).limit(10000).get();state.products=snap.docs.map(normalize).filter(function(p){return p.enabled&&p.status!=='inactive'&&p.status!=='discontinued';}).sort(function(a,b){const imageDiff=Number(!!b.imageUrl)-Number(!!a.imageUrl);return imageDiff||a.name.localeCompare(b.name,'zh-Hant',{numeric:true});});state.filtered=state.products.slice();render();$('bpSearch').focus();}
     catch(err){$('bpProducts').innerHTML='<div class="bp-empty">商品資料讀取失敗：'+esc(err.message||err)+'</div>';$('bpSearchHelp').textContent='請確認網路與 Firebase 權限';}
     checkService();setInterval(checkService,30000);
+  }
+  function init(){
+    bindLogin();
+    if(sessionStorage.getItem(SESSION_KEY)==='1'){showApp();initApp();}
+    else{const input=$('bpPassword');if(input)setTimeout(function(){input.focus();},50);}
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 })(window);

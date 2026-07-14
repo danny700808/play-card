@@ -9,9 +9,21 @@
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="barcode-print.css?v=20260714-staff1">
 </head>
-<body class="bp-body">
+<body class="bp-body bp-locked">
+  <section class="bp-login-screen" id="bpLoginScreen" aria-labelledby="bpLoginTitle">
+    <form class="bp-login-card" id="bpLoginForm">
+      <div class="bp-login-logo">柚子樂器</div>
+      <h1 id="bpLoginTitle">條碼列印系統</h1>
+      <p>請輸入專用密碼後進入</p>
+      <label for="bpPassword">密碼</label>
+      <input id="bpPassword" type="password" autocomplete="current-password" inputmode="text" placeholder="請輸入密碼" required>
+      <div class="bp-login-error" id="bpLoginError" role="alert"></div>
+      <button type="submit">進入條碼列印</button>
+    </form>
+  </section>
+
+  <div class="bp-app" id="bpApp" hidden>
   <header class="bp-header">
-    <a class="bp-back" href="dashboard.html" aria-label="返回員工首頁">←</a>
     <div class="bp-title">
       <h1>商品條碼列印</h1>
       <p>只提供商品搜尋與條碼列印</p>
@@ -57,7 +69,7 @@
   <script src="config.js?v=20260508frontendperf1"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="app.js?v=admin-final-20260530b"></script>
-  <script src="barcode-print.js?v=20260714-staff1"></script>
+  <script src="barcode-print.js?v=20260714-password1"></script>
+  </div>
 </body>
 </html>
