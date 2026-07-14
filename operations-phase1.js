@@ -29,7 +29,7 @@
   const READ_LIMIT = 10000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.07.14-v8.7-course-calendar-rental-restore';
+  const VERSION = '2026.07.14-v8.8-course-calendar-external';
   const DASHBOARD_CACHE_KEY = 'youzi_ops_dashboard_overview_v6_sync_rental';
   const DASHBOARD_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
   const DEFAULT_MEMBERSHIP_SETTINGS = {
@@ -170,7 +170,7 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
 
   const PAGE_META = {
     overview:['營運總覽',''],
-    'course-calendar':['課程日表','音教雲每日課表；可在系統內直接嘗試登入與操作。'],
+    'course-calendar':['課程日表','音教雲每日課表；改用獨立分頁開啟，避免內嵌畫面不完整。'],
     products:['商品庫存',''],
     sales:['現場銷售',''],
     customers:['客戶會員','會員、老師與一般客戶共用同一份客戶資料。'],
@@ -883,10 +883,9 @@ function queueInventorySyncInTransaction(tx,productId,sku,stock,reason){const re
   }
   const INJIAOYUN_DAILY_CALENDAR_URL='https://www.injiaoyun.com/dashboard/#/app/roomCalendar/day';
   function renderCourseCalendar(){
-    return '<section class="ops-card ops-course-calendar-card">'
-      +'<div class="ops-course-calendar-head"><div><h2>課程日表</h2><p>先嘗試直接在全通路營運中心內開啟音教雲。已登入時會直接進入日課表；若顯示登入頁，可在框內登入。</p></div><div class="ops-card-actions"><a class="ops-button ghost" href="'+attr(INJIAOYUN_DAILY_CALENDAR_URL)+'" target="_blank" rel="noopener noreferrer">另開音教雲</a></div></div>'
-      +'<div class="ops-course-calendar-note"><b>測試內嵌模式</b><span>若下方完全空白、一直停在登入畫面，或按鈕無法操作，請按右上角「另開音教雲」。帳號密碼不會寫入 GitHub 網頁。</span></div>'
-      +'<div class="ops-course-calendar-frame-wrap"><iframe id="injiaoyunDailyCalendarFrame" class="ops-course-calendar-frame" src="'+attr(INJIAOYUN_DAILY_CALENDAR_URL)+'" title="音教雲課程日表" loading="eager" allow="clipboard-read; clipboard-write" referrerpolicy="strict-origin-when-cross-origin"></iframe></div>'
+    return '<section class="ops-card">'
+      +'<div class="ops-card-head"><div><h2>課程日表</h2><p>音教雲在內嵌模式下只載入左側選單，主課表區會空白，因此改用獨立分頁開啟。</p></div></div>'
+      +'<div class="ops-empty"><strong>請在音教雲原始頁面開啟課程日表</strong><p>已登入時會直接進入每日課表；未登入時先登入一次即可。帳號密碼不會存入 GitHub 網頁。</p><a class="ops-button primary" href="'+attr(INJIAOYUN_DAILY_CALENDAR_URL)+'" target="_blank" rel="noopener noreferrer">開啟課程日表</a></div>'
       +'</section>';
   }
 
