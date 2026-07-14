@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#173247">
   <title>柚子樂器系統｜系統入口</title>
-  <link rel="stylesheet" href="style.css?v=20260715-portal-refine-v2">
-  <link rel="stylesheet" href="global-nav.css?v=20260715-portal-refine-v2">
+  <link rel="stylesheet" href="style.css?v=20260715-portal-refine-v4">
+  <link rel="stylesheet" href="global-nav.css?v=20260715-portal-refine-v4">
   <style>
     .portal-shell{max-width:1120px;margin:0 auto;padding:20px 18px 52px}
     .portal-hero{padding:28px 30px;border-radius:24px;background:linear-gradient(135deg,#102739 0%,#18374d 72%,#1d4360 100%);color:#fff;box-shadow:0 18px 44px rgba(15,37,55,.14);border:1px solid rgba(255,255,255,.06);position:relative;overflow:hidden}
@@ -18,16 +18,18 @@
     .portal-card{min-height:210px;padding:28px;border-radius:24px;display:flex;flex-direction:column;justify-content:flex-end;gap:12px;text-decoration:none;position:relative;overflow:hidden;transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease;background:#fff;border:1px solid #dce6ec;box-shadow:0 12px 30px rgba(24,55,72,.07)}
     .portal-card:before{content:"";position:absolute;left:0;top:0;width:100%;height:5px;background:#16845f}
     .portal-card:after{content:"";position:absolute;right:-35px;bottom:-35px;width:120px;height:120px;border-radius:50%;background:radial-gradient(circle,rgba(22,132,95,.10),rgba(22,132,95,0) 70%)}
-    .portal-card.operations{background:linear-gradient(145deg,#18364b,#1f4863);border-color:#173247;color:#fff}
-    .portal-card.operations:before{background:#5ce2af}
-    .portal-card.operations:after{background:radial-gradient(circle,rgba(255,255,255,.16),rgba(255,255,255,0) 70%)}
+    .portal-card.operations{background:#fff;border-color:#dce6ec;color:#173247}
+    .portal-card.operations:before{background:#16845f}
+    .portal-card.operations:after{background:radial-gradient(circle,rgba(22,132,95,.10),rgba(22,132,95,0) 70%)}
     .portal-card:hover{transform:translateY(-3px);box-shadow:0 18px 36px rgba(24,55,72,.12);border-color:#96c8b3}
     .portal-card-label{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:#6a7d88;position:relative;z-index:1}
-    .portal-card.operations .portal-card-label{color:rgba(255,255,255,.65)}
-    .portal-card h2{margin:0;font-size:34px;letter-spacing:.02em;color:#173247!important;position:relative;z-index:1}
-    .portal-card.operations h2{color:#fff!important}
+    .portal-card.operations .portal-card-label{color:#6a7d88}
+    .portal-card h2{margin:0;font-size:34px;letter-spacing:.02em;color:#173247!important;position:relative;z-index:1;display:block!important;opacity:1!important;visibility:visible!important}
+    .portal-card.operations{background:#fff!important;color:#173247!important;border-color:#dce6ec!important}
+    .portal-card.operations h2{color:#173247!important}
+    .portal-hero h1{display:block!important;color:#fff!important;opacity:1!important;visibility:visible!important}
     .portal-card p{margin:0;line-height:1.7;font-size:15px;color:#637684;position:relative;z-index:1;max-width:32ch}
-    .portal-card.operations p{color:rgba(255,255,255,.78)}
+    .portal-card.operations p{color:#637684}
     @media(max-width:720px){
       .portal-shell{padding:16px 12px 34px}
       .portal-hero{padding:24px 20px;border-radius:20px}
@@ -39,7 +41,7 @@
     }
   </style>
 </head>
-<body onload="init()" class="yz-portal-page yz-internal-theme">
+<body onload="init()" class="yz-portal-page">
   <div class="yz-global-nav" data-yz-global-nav>
     <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
     <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
@@ -81,7 +83,7 @@
       setPortalMode('settings');
     }
   </script>
-  <script src="global-nav.js?v=20260715-portal-refine-v2"></script>
+  <script src="global-nav.js?v=20260715-portal-refine-v4"></script>
   <script src="ui-action-feedback.js?v=20260701safe3"></script>
 </body>
 </html>
