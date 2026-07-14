@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#1f7a5a">
+  <title>商品條碼列印｜柚子樂器</title>
+  <link rel="icon" href="yuzu-logo-green.png">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="barcode-print.css?v=20260714-staff1">
+</head>
+<body class="bp-body">
+  <header class="bp-header">
+    <a class="bp-back" href="dashboard.html" aria-label="返回員工首頁">←</a>
+    <div class="bp-title">
+      <h1>商品條碼列印</h1>
+      <p>只提供商品搜尋與條碼列印</p>
+    </div>
+    <div class="bp-service checking" id="bpServiceStatus">檢查條碼機</div>
+  </header>
+
+  <main class="bp-main">
+    <section class="bp-search-card">
+      <label for="bpSearch">搜尋商品</label>
+      <div class="bp-search-row">
+        <input id="bpSearch" type="search" autocomplete="off" inputmode="search" placeholder="輸入商品名稱、型號或商品編號">
+        <button id="bpClear" type="button">清除</button>
+      </div>
+      <div class="bp-search-help" id="bpSearchHelp">正在讀取商品資料…</div>
+    </section>
+
+    <section class="bp-products" id="bpProducts" aria-live="polite"></section>
+    <button class="bp-load-more hidden" id="bpLoadMore" type="button">顯示更多商品</button>
+  </main>
+
+  <div class="bp-modal-backdrop" id="bpModal" role="dialog" aria-modal="true" aria-labelledby="bpModalTitle">
+    <div class="bp-modal">
+      <button class="bp-modal-close" id="bpModalClose" type="button" aria-label="關閉">×</button>
+      <div class="bp-modal-product" id="bpModalProduct"></div>
+      <form id="bpPrintForm">
+        <label class="bp-copies-label" for="bpCopies">列印張數</label>
+        <div class="bp-copy-presets">
+          <button type="button" data-copies="1">1</button>
+          <button type="button" data-copies="2">2</button>
+          <button type="button" data-copies="5">5</button>
+          <button type="button" data-copies="10">10</button>
+        </div>
+        <input id="bpCopies" name="copies" type="number" inputmode="numeric" min="1" max="500" step="1" value="1" required>
+        <div class="bp-modal-status" id="bpModalStatus"></div>
+        <button class="bp-print-submit" id="bpPrintSubmit" type="submit">確定列印</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="bp-toast" id="bpToast" role="status" aria-live="polite"></div>
+
+  <script src="config.js?v=20260508frontendperf1"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="app.js?v=admin-final-20260530b"></script>
+  <script src="barcode-print.js?v=20260714-staff1"></script>
+</body>
+</html>
