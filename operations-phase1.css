@@ -1262,3 +1262,20 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
   .ops-course-calendar-frame-wrap{min-height:680px}
   .ops-course-calendar-frame{height:calc(100vh - 230px);min-height:680px}
 }
+
+
+/* 2026-07-14：銷售、總覽與庫存作業版面修正 */
+.ops-v8-sales-modes{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:8px!important}
+.ops-v8-sales-modes button{width:100%;max-width:none!important;min-width:0!important}
+.ops-series-grid-tabs{display:grid!important;grid-template-columns:repeat(15,minmax(0,1fr))!important;gap:7px!important;overflow:visible!important;padding:10px!important}
+.ops-series-grid-tabs button{white-space:normal!important;min-width:0!important;min-height:48px!important;padding:6px 4px!important;border-radius:9px!important;line-height:1.2!important;font-size:10px!important}
+.ops-v8-overview-bottom-single{display:block!important}
+.ops-v8-overview-bottom-single>.ops-card{width:100%}
+.ops-v8-hero-secondary-simple{display:flex!important;flex-direction:column;justify-content:center}
+.ops-v8-hero-secondary-simple .ops-v8-summary-box{width:100%}
+@media(max-width:1180px){.ops-series-grid-tabs{grid-template-columns:repeat(8,minmax(0,1fr))!important}}
+@media(max-width:720px){
+  .ops-v8-sales-modes{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .ops-series-grid-tabs{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:6px!important}
+  .ops-series-grid-tabs button{font-size:11px!important;min-height:44px!important}
+}
