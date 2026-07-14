@@ -29,7 +29,7 @@
   const READ_LIMIT = 10000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.07.14-v8.9-sales-records-overview-layout';
+  const VERSION = '2026.07.14-v8.10-label-print';
   const DASHBOARD_CACHE_KEY = 'youzi_ops_dashboard_overview_v6_sync_rental';
   const DASHBOARD_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
   const DEFAULT_MEMBERSHIP_SETTINGS = {
@@ -1184,8 +1184,67 @@ function renderOverviewV7(){
     const variant=clean(p.variantName);
     const imageHtml=urls.length?urls.map(function(url,index){return '<img loading="lazy" src="'+attr(url)+'" alt="'+attr(index===1&&variant?variant:cleanOnline)+'" onerror="this.style.display=\'none\'">';}).join(''):'<div class="placeholder">無圖</div>';
     const active=state.productEditId===p.docId?' active':'';
-    return '<button type="button" class="ops-product-card ops-product-card-full'+active+'" data-action="product-edit" data-id="'+attr(p.docId)+'"><div class="ops-product-image-grid '+(urls.length<2?'single':'')+'">'+imageHtml+'</div><div class="ops-product-body"><div class="ops-product-sku-row"><b>'+escapeHtml(p.sku||'未設定')+'</b><span class="ops-product-inline-stock">庫存 <strong>'+escapeHtml(formatNumber(p.currentStock))+'</strong></span></div><div class="ops-product-name-rows"><b>'+escapeHtml(cleanOnline)+'</b></div>'+(variant?'<div class="ops-product-variant-row"><b>'+escapeHtml(variant)+'</b></div>':'')+'<div class="ops-product-detail-grid"><div><span>門市定價</span><b>'+money(p.storePrice)+'</b></div><div><span>網路售價</span><b>'+money(p.onlinePrice)+'</b></div><div><span>進貨成本</span><b>'+money(p.latestPurchaseCost)+'</b></div><div><span>平均成本</span><b>'+money(p.averageCost)+'</b></div></div></div></button>';
+    return '<article class="ops-product-card ops-product-card-full'+active+'" data-action="product-edit" data-id="'+attr(p.docId)+'" role="button" tabindex="0"><div class="ops-product-image-grid '+(urls.length<2?'single':'')+'">'+imageHtml+'</div><div class="ops-product-body"><div class="ops-product-sku-row"><div class="ops-product-sku-main"><b>'+escapeHtml(p.sku||'未設定')+'</b>'+(p.sku?'<button type="button" class="ops-label-print-button" data-action="product-print-label" data-id="'+attr(p.docId)+'">列印條碼</button>':'')+'</div><span class="ops-product-inline-stock">庫存 <strong>'+escapeHtml(formatNumber(p.currentStock))+'</strong></span></div><div class="ops-product-name-rows"><b>'+escapeHtml(cleanOnline)+'</b></div>'+(variant?'<div class="ops-product-variant-row"><b>'+escapeHtml(variant)+'</b></div>':'')+'<div class="ops-product-detail-grid"><div><span>門市定價</span><b>'+money(p.storePrice)+'</b></div><div><span>網路售價</span><b>'+money(p.onlinePrice)+'</b></div><div><span>進貨成本</span><b>'+money(p.latestPurchaseCost)+'</b></div><div><span>平均成本</span><b>'+money(p.averageCost)+'</b></div></div></div></article>';
   }
+
+  const LABEL_PRINT_ENDPOINTS=['http://127.0.0.1:18181','http://localhost:18181'];
+  let labelPrintEndpoint='';
+  function labelPrintProductData(product){
+    const name=clean(product&&(product.originalName||product.onlineName||product.name))||'未命名商品';
+    const variant=clean(product&&product.variantName);
+    const storePrice=numberOrNull(product&&product.storePrice);
+    const onlinePrice=numberOrNull(product&&product.onlinePrice);
+    return {productId:clean(product&&product.docId),sku:clean(product&&product.sku),name:name,variant:variant,price:Math.round(storePrice!=null?storePrice:(onlinePrice!=null?onlinePrice:0))};
+  }
+  async function labelPrintFetch(path,options){
+    const endpoints=labelPrintEndpoint?[labelPrintEndpoint].concat(LABEL_PRINT_ENDPOINTS.filter(function(url){return url!==labelPrintEndpoint;})):LABEL_PRINT_ENDPOINTS.slice();
+    let lastError=null;
+    for(const endpoint of endpoints){
+      try{
+        const controller=typeof AbortController!=='undefined'?new AbortController():null;
+        const timer=controller?setTimeout(function(){controller.abort();},3500):null;
+        let response;
+        try{response=await fetch(endpoint+path,Object.assign({cache:'no-store',mode:'cors'},options||{},controller?{signal:controller.signal}:{}));}
+        finally{if(timer)clearTimeout(timer);}
+        const text=await response.text();let payload={};
+        try{payload=text?JSON.parse(text):{};}catch(err){payload={message:text};}
+        if(!response.ok)throw new Error(clean(payload.error||payload.message)||('列印服務回應 '+response.status));
+        labelPrintEndpoint=endpoint;return payload;
+      }catch(error){lastError=error;}
+    }
+    throw lastError||new Error('找不到條碼列印服務');
+  }
+  function labelPreviewHalf(data){
+    const second=data.variant?'<span>'+escapeHtml(data.variant)+'</span>':'';
+    return '<div class="ops-label-preview-half"><div class="ops-label-preview-qr"><i></i><b>'+escapeHtml(data.sku)+'</b></div><div class="ops-label-preview-price"><b>'+escapeHtml(String(data.price))+'</b><img src="yuzu-label-icon.png" alt="柚子樂器圖示"></div><div class="ops-label-preview-name"><b>'+escapeHtml(data.name)+'</b>'+second+'</div></div>';
+  }
+  function openProductLabelPrint(productId){
+    const product=catalogById(productId);if(!product)return toast('找不到商品','請重新讀取商品資料。','error');
+    const data=labelPrintProductData(product);if(!data.sku)return toast('無法列印條碼','這項商品尚未設定商品編號。','warning');
+    const body='<form id="labelPrintForm" data-product-id="'+attr(productId)+'"><div class="ops-label-print-summary"><div><span>商品編號</span><b>'+escapeHtml(data.sku)+'</b></div><div><span>門市售價</span><b>'+money(data.price)+'</b></div><div class="full"><span>商品名稱</span><b>'+escapeHtml(data.name)+(data.variant?'｜'+escapeHtml(data.variant):'')+'</b></div></div><div class="ops-label-preview">'+labelPreviewHalf(data)+labelPreviewHalf(data)+'</div><p class="ops-label-print-note">每一張為 35 × 25 mm，上半部與下半部內容完全相同；QR 內容維持商品編號。</p><div class="ops-label-service-status checking" id="labelPrintServiceStatus">正在確認這台電腦的 TSC 列印服務…</div><div class="ops-field"><label class="ops-required">列印張數</label><input class="ops-input ops-label-copies" name="copies" type="number" inputmode="numeric" min="1" max="500" step="1" value="1" required></div><button class="ops-button primary wide" id="labelPrintSubmit" type="submit">列印條碼</button></form>';
+    openDrawer('列印條碼','TSC TTP-244 Plus｜35 × 25 mm 雙聯標籤',body);
+    setTimeout(checkLabelPrintService,30);
+  }
+  async function checkLabelPrintService(){
+    const status=byId('labelPrintServiceStatus');if(!status)return;
+    try{
+      const result=await labelPrintFetch('/health',{method:'GET'});
+      if(result.printerInstalled===false)throw new Error('Windows 找不到 '+clean(result.printerName||'TSC TTP-244 Plus'));
+      status.className='ops-label-service-status ready';
+      status.textContent='已連線：'+clean(result.printerName||'TSC TTP-244 Plus')+'，可以直接列印。';
+    }catch(error){
+      status.className='ops-label-service-status offline';
+      status.textContent='尚未連線。請在接有條碼機的 Windows 電腦先執行「01_啟動列印服務.bat」。';
+    }
+  }
+  async function saveLabelPrint(form){
+    const product=catalogById(form.dataset.productId);if(!product)throw new Error('找不到商品資料');
+    const data=labelPrintProductData(product);const formData=new FormData(form);const copies=Math.max(1,Math.min(500,Math.round(Number(formData.get('copies')||1))));
+    const status=byId('labelPrintServiceStatus');if(status){status.className='ops-label-service-status checking';status.textContent='正在送出列印工作…';}
+    const result=await labelPrintFetch('/print',{method:'POST',headers:{'Content-Type':'text/plain;charset=UTF-8'},body:JSON.stringify({sku:data.sku,name:data.name,variant:data.variant,price:data.price,copies:copies})});
+    closeDrawer();toast('條碼已送出',data.sku+'｜'+copies+' 張｜'+clean(result.printerName||'TSC TTP-244 Plus'),'success');
+  }
+
   function renderProducts(){
     const rows=productFiltered(),visible=rows.slice(0,state.productVisible),central=state.matchingStats.central;
     const inventoryValue=sum(state.catalog,function(p){return p.inventoryValue||0;});
@@ -2376,6 +2435,7 @@ async function syncPlatformOrdersNow(){const yes=await confirmAction('要求店�
     if(action==='auto-init-products') return autoInitProducts();
     if(action==='product-new') return openProductEdit('');
     if(action==='product-edit') return openProductEdit(el.dataset.id);
+    if(action==='product-print-label') return openProductLabelPrint(el.dataset.id);
     if(action==='product-series'){state.productSeries=el.dataset.series||'all';state.productFilter='all';state.productSearch='';state.productVisible=PRODUCT_PAGE_SIZE;return renderKeepingViewport();}
     if(action==='product-low-stock'){state.productFilter=state.productFilter==='low'?'all':'low';state.productSeries='all';state.productSearch='';state.productVisible=PRODUCT_PAGE_SIZE;return renderKeepingViewport();}
     if(action==='product-edit-cancel'){state.productEditId='';state.productPreviewImages=[];state.productPreviewIndex=0;state.productPreviewTitle='';return renderKeepingViewport();}
@@ -2443,6 +2503,7 @@ async function syncPlatformOrdersNow(){const yes=await confirmAction('要求店�
     const submit=query('[type="submit"]',form); if(submit) submit.disabled=true;
     try{
       if(form.id==='productForm') await saveProduct(form);
+      else if(form.id==='labelPrintForm') await saveLabelPrint(form);
       else if(form.id==='checkoutFormInline') await saveCheckoutV4(form);
       else if(form.id==='stockUsageForm') await saveStockUsage(form);
       else if(form.id==='platformFeeSettingsForm') await savePlatformFeeSettings(form);
