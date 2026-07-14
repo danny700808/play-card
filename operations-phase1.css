@@ -1194,3 +1194,50 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
   .ops-stock-usage-banner .ops-v8-sales-clock{text-align:left}
   .ops-stock-usage-form .ops-stock-usage-reasons{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
+
+/* 2026-07-14｜同步異常、四區營運總覽與租賃營運 */
+.ops-v8-channel-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.ops-v8-channel-rental .ops-v8-channel-accent{background:#9a7642}
+.ops-v8-channel-rental .ops-v8-channel-summary{background:#fbf7ef}
+
+.ops-platform-schedule{grid-template-columns:repeat(auto-fit,minmax(190px,1fr));align-items:stretch}
+.ops-platform-schedule-card,
+.ops-platform-schedule>div,
+.ops-platform-schedule>button{padding:12px;border:1px solid #c9ddd2;border-radius:12px;background:#fff;min-width:0;text-align:left;color:inherit;font:inherit}
+.ops-platform-schedule-card span{display:block;color:var(--ops-muted);font-size:10px}
+.ops-platform-schedule-card b{display:block;margin-top:4px;font-size:14px;white-space:normal;overflow:visible;text-overflow:clip}
+.ops-platform-schedule-card small{display:block;margin-top:6px;color:var(--ops-muted);line-height:1.45}
+.ops-platform-schedule-action{cursor:pointer;transition:border-color .16s ease,box-shadow .16s ease,transform .16s ease}
+.ops-platform-schedule-action:hover{border-color:#6eaa91;box-shadow:0 8px 20px rgba(24,70,54,.09);transform:translateY(-1px)}
+.ops-platform-schedule-action.active{border-color:#2f8a62;box-shadow:0 0 0 3px rgba(47,138,98,.12)}
+.ops-platform-schedule-action.has-error{border-color:#d9a29c;background:#fff8f7}
+.ops-platform-schedule-action.has-error.active{border-color:#b84e45;box-shadow:0 0 0 3px rgba(184,78,69,.12)}
+.ops-platform-schedule-action em{display:block;margin-top:7px;color:var(--ops-green-2);font-size:11px;font-style:normal;font-weight:900}
+.ops-platform-schedule-action.has-error em{color:#a63d37}
+
+.ops-platform-expand-panel{margin-top:15px;border:1px solid #bdd8ca;background:#fbfefd}
+.ops-platform-error-panel{border-color:#e2b9b4;background:#fffafa}
+.ops-sync-anomaly-list{display:grid;gap:10px}
+.ops-sync-anomaly-row{display:grid;grid-template-columns:90px minmax(0,1fr) auto;gap:13px;align-items:start;padding:13px;border:1px solid #e4d0cd;border-radius:13px;background:#fff}
+.ops-sync-anomaly-main b{display:block;font-size:14px}
+.ops-sync-anomaly-main small{display:block;margin-top:3px;color:var(--ops-muted);line-height:1.45}
+.ops-sync-anomaly-main strong{display:block;margin-top:7px;color:#9c3f37;font-size:13px}
+.ops-sync-anomaly-main p{margin:5px 0 0;color:#6c4c48;font-size:12px;line-height:1.55;overflow-wrap:anywhere}
+.ops-sync-anomaly-actions{display:flex;align-items:center;min-height:38px}
+.ops-rental-operations-table{min-width:940px}
+.ops-rental-kpis{grid-template-columns:repeat(4,minmax(0,1fr))}
+
+@media(max-width:900px){
+  .ops-v8-channel-grid{grid-template-columns:1fr 1fr}
+  .ops-sync-anomaly-row{grid-template-columns:76px minmax(0,1fr)}
+  .ops-sync-anomaly-actions{grid-column:2}
+  .ops-rental-kpis{grid-template-columns:1fr 1fr}
+}
+@media(max-width:620px){
+  .ops-v8-channel-grid{grid-template-columns:1fr}
+  .ops-platform-schedule{grid-template-columns:1fr}
+  .ops-sync-anomaly-row{grid-template-columns:1fr}
+  .ops-sync-anomaly-actions{grid-column:auto}
+  .ops-sync-anomaly-actions .ops-button{width:100%}
+  .ops-rental-kpis{grid-template-columns:1fr 1fr}
+}
