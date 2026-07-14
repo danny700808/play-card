@@ -278,3 +278,84 @@ body.admin-wide-page .status-card {
     width: auto;
   }
 }
+
+
+/* yuzu-unified-theme-20260714: 登入入口改為全通路營運中心風格 */
+body.yz-login-page{
+  min-height:100vh;
+  background:
+    radial-gradient(circle at 12% 12%,rgba(22,132,95,.24),transparent 28%),
+    radial-gradient(circle at 88% 18%,rgba(255,255,255,.10),transparent 24%),
+    linear-gradient(150deg,#0f2537 0%,#173247 52%,#23465d 100%);
+  color:#17252f;
+  padding:28px 0;
+}
+body.yz-login-page .container{max-width:560px;padding:18px}
+body.yz-login-page .login-card{
+  max-width:540px;
+  margin:0 auto;
+  padding:0 24px 24px;
+  overflow:hidden;
+  border:1px solid rgba(255,255,255,.28);
+  border-radius:24px;
+  background:#fff;
+  box-shadow:0 24px 70px rgba(4,20,31,.28);
+}
+.yz-login-brand{
+  margin:0 -24px 22px;
+  padding:24px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:13px;
+  color:#fff;
+  background:linear-gradient(135deg,#0f2537,#173247);
+  border-bottom:4px solid #16845f;
+}
+.yz-login-mark{
+  width:48px;
+  height:48px;
+  border-radius:14px;
+  display:grid;
+  place-items:center;
+  background:#fff;
+  color:#16845f;
+  font-size:24px;
+  font-weight:900;
+  box-shadow:0 8px 20px rgba(0,0,0,.15);
+}
+body.yz-login-page .login-header{margin:0}
+body.yz-login-page .login-header .title{color:#fff;margin:0;font-size:28px;letter-spacing:.04em}
+body.yz-login-page .field label{color:#435762}
+body.yz-login-page .field input{
+  border:1px solid #cfdbe1;
+  border-radius:12px;
+  background:#fff;
+}
+body.yz-login-page .field input:focus{
+  outline:none;
+  border-color:#61aa8f;
+  box-shadow:0 0 0 3px rgba(22,132,95,.10);
+}
+body.yz-login-page .login-main-btn,
+body.yz-login-page .btn-link{background:#16845f;color:#fff;border-radius:12px}
+body.yz-login-page .login-main-btn:hover,
+body.yz-login-page .btn-link:hover{background:#0f6b4d}
+body.yz-login-page .btn.secondary{
+  background:#f7faf9;
+  color:#173247;
+  border:1px solid #dbe4e9;
+  border-radius:12px;
+}
+body.yz-login-page .external-entry-zone{border-top-color:#dbe4e9}
+body.yz-login-page .external-entry-title{color:#697a85}
+body.yz-login-page .auth-note{background:#e8f5ef;color:#315e4c;border:1px solid #c9e4d7}
+@media(max-width:560px){
+  body.yz-login-page{padding:10px 0}
+  body.yz-login-page .container{padding:10px}
+  body.yz-login-page .login-card{padding:0 16px 18px;border-radius:20px}
+  .yz-login-brand{margin:0 -16px 18px;padding:20px 16px}
+  .yz-login-mark{width:43px;height:43px;border-radius:12px;font-size:21px}
+  body.yz-login-page .login-header .title{font-size:24px}
+  body.yz-login-page .auth-sub-actions{grid-template-columns:1fr!important}
+}

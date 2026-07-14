@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>管理首頁</title>
-  <link rel="stylesheet" href="style.css?v=admin-final-20260530b">
+  <title>內部系統</title>
+  <link rel="stylesheet" href="style.css?v=20260714-unified-theme-v1">
   <style>
     .tile strong{display:flex;align-items:center;gap:8px;justify-content:space-between}
     .badge{display:inline-flex;min-width:22px;height:22px;padding:0 6px;border-radius:999px;background:#dc2626;color:#fff;font-size:12px;align-items:center;justify-content:center;font-weight:800}
@@ -370,8 +370,19 @@
       .grid .tile.operations-entry > span{font-size:13px!important;}
     }
 
+    .yz-internal-home-head{padding:24px 26px!important;background:linear-gradient(135deg,#0f2537,#173247)!important;border:0!important;border-bottom:5px solid #16845f!important;color:#fff!important;box-shadow:0 16px 38px rgba(15,37,55,.16)!important}
+    .yz-internal-home-head .title,.yz-internal-home-head .welcome{color:#fff!important}
+    .yz-internal-home-head .welcome{opacity:.75;margin-top:6px}
+    .yz-internal-home-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:14px!important}
+    .yz-internal-home-grid .yz-feature-tile{min-height:146px!important;padding:20px!important;justify-content:flex-start!important;position:relative;overflow:hidden}
+    .yz-internal-home-grid .yz-feature-tile:before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:#16845f}
+    .yz-internal-home-grid .yz-feature-tile strong{font-size:20px!important;color:#173247!important}
+    .yz-internal-home-grid .yz-feature-tile>span{font-size:13px!important;line-height:1.6!important}
+    @media(max-width:1000px){.yz-internal-home-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+    @media(max-width:560px){.yz-internal-home-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important}.yz-internal-home-grid .yz-feature-tile{min-height:122px!important;padding:15px 13px 14px 16px!important}.yz-internal-home-grid .yz-feature-tile strong{font-size:17px!important}.yz-internal-home-grid .yz-feature-tile>span{font-size:11px!important;line-height:1.45!important}.yz-internal-home-head{padding:20px 18px!important}}
+
   </style>
-  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
+  <link rel="stylesheet" href="global-nav.css?v=20260714-unified-theme-v1">
 </head>
 <body onload="init()" class="admin-wide-page admin-home-page">
   <div class="yz-global-nav" data-yz-global-nav>
@@ -380,30 +391,23 @@
   </div>
 
   <div class="container">
-    <section class="manage-head-card">
+    <section class="manage-head-card yz-internal-home-head">
       <div class="manage-head-info">
-        <h1 class="title">管理首頁</h1>
-        
-      </div>
-      <div class="manage-head-tools">
-        <div id="lineBindArea" class="head-tool-slot"></div>
+        <h1 class="title">內部系統</h1>
+        <div class="welcome">歡迎 <span data-user-name></span></div>
       </div>
     </section>
-    <div class="grid">
-      <a class="tile operations-entry" href="operations-hub.html">
-        <strong>全通路營運中心 <span class="operations-entry-badge">第一階段・唯讀</span></strong>
-        <span>查看既有 Firebase 商品圖片、SKU、價格、庫存欄位、成本欄位與租賃概況；目前不會修改原始資料。</span>
-      </a>
-      <a class="tile" href="approval-hub.html"><strong>簽核 <span class="badge" id="badge-approval"></span></strong><span>註冊、打卡、臨時出勤、請假、個資簽核</span></a>
-      <a class="tile" href="rental-system-hub.html"><strong>租賃契約系統 <span class="badge" id="badge-rental"></span></strong><span>租賃申請、契約模板、費用設定與續約退租</span></a>
-      <a class="tile" href="quotation-contract-hub.html"><strong>其他表格 <span class="badge" id="badge-forms"></span></strong><span>估價單、集點卡、證明設定與證明審核</span></a>
-      <a class="tile" href="items-hub.html"><strong>公告／交辦／定期 <span class="badge" id="badge-items"></span></strong><span>公告、交辦與定期</span></a>
-      <a class="tile" href="training-admin.html"><strong>教育訓練管理</strong><span>教材與學習內容</span></a>
-      <a class="tile" href="employee-admin.html"><strong>員工管理</strong><span>員工基本資料、帳號狀態、離職與隱藏控管</span></a>
-      <a class="tile" href="teacher-hub.html"><strong>外聘老師 <span class="badge" id="badge-teacher"></span></strong><span>合約與拿貨紀錄</span></a>
-      <a class="tile" href="application-admin.html"><strong>應聘管理 <span class="badge" id="badge-application"></span></strong><span>履歷投遞與審核通知</span></a>
-      <a class="tile" href="notification-settings.html"><strong>LINE 主管通知收件人設定</strong><span>設定主管通知要送到哪一個 LINE，並進入各類提醒項目設定</span></a>
-      <a class="tile" href="hr-payroll-settings-hub.html"><strong>人事與薪資設定 <span class="badge" id="badge-hr-payroll"></span></strong><span>班表、假勤制度、薪資投保設定</span></a>
+    <div class="grid yz-internal-home-grid">
+      <a class="tile yz-feature-tile" href="dashboard.html"><strong>員工系統</strong><span>打卡、請假、公告、交辦、定期事項與個人資料</span></a>
+      <a class="tile yz-feature-tile" href="approval-hub.html"><strong>簽核 <span class="badge" id="badge-approval"></span></strong><span>註冊、打卡、臨時出勤、請假、個資簽核</span></a>
+      <a class="tile yz-feature-tile" href="rental-system-hub.html"><strong>租賃契約系統 <span class="badge" id="badge-rental"></span></strong><span>租賃申請、契約模板、費用設定與續約退租</span></a>
+      <a class="tile yz-feature-tile" href="quotation-contract-hub.html"><strong>其他表格 <span class="badge" id="badge-forms"></span></strong><span>估價單、集點卡、證明設定與證明審核</span></a>
+      <a class="tile yz-feature-tile" href="items-hub.html"><strong>公告／交辦／定期 <span class="badge" id="badge-items"></span></strong><span>公告、交辦與定期</span></a>
+      <a class="tile yz-feature-tile" href="training-admin.html"><strong>教育訓練管理</strong><span>教材與學習內容</span></a>
+      <a class="tile yz-feature-tile" href="employee-admin.html"><strong>員工管理</strong><span>員工基本資料、帳號狀態、離職與隱藏控管</span></a>
+      <a class="tile yz-feature-tile" href="teacher-hub.html"><strong>外聘老師 <span class="badge" id="badge-teacher"></span></strong><span>合約與拿貨紀錄</span></a>
+      <a class="tile yz-feature-tile" href="application-admin.html"><strong>應聘管理 <span class="badge" id="badge-application"></span></strong><span>履歷投遞與審核通知</span></a>
+      <a class="tile yz-feature-tile" href="hr-payroll-settings-hub.html"><strong>人事與薪資設定 <span class="badge" id="badge-hr-payroll"></span></strong><span>班表、假勤制度、薪資投保設定</span></a>
     </div>
   </div>
   <script src="config.js?v=20260508frontendperf1"></script>
@@ -411,7 +415,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="firebase-client.js?v=admin-final-20260530b"></script>
 
-  <script src="app.js?v=admin-final-20260530b"></script>
+  <script src="app.js?v=20260714-unified-entry-v1"></script>
   <script src="onboarding-workflow.js?v=20260624onboarding1"></script>
   <script>
     async function init(){
@@ -421,16 +425,8 @@
       if(!hasSettingsZoneAccess(user)){location.href='dashboard.html';return;}
       setPortalMode('settings');
 
-      // 先用本機快取補上徽章，讓管理首頁先顯示，不要卡在讀表。
+      // 先用本機快取補上徽章，讓內部系統先顯示，不要卡在讀表。
       applyBadgeCounts_(readCachedPendingCounts_(user));
-
-      // LINE 設定卡延後載入，不阻塞管理首頁主畫面。
-      scheduleIdle_(async()=>{
-        try{
-          if(typeof renderCompactLineCard_==='function') await renderCompactLineCard_('#lineBindArea', user);
-          else if(typeof renderLineBindPrompt_==='function') await renderLineBindPrompt_('#lineBindArea');
-        }catch(e){}
-      });
 
       // 待處理數字延後更新；後端已經有快取，前端再避免卡第一屏。
       scheduleIdle_(async()=>applyBadgeCounts_(await fetchPendingCountsFast_(user)));
@@ -512,7 +508,7 @@
       }
     }
   </script>
-  <script src="global-nav.js?v=20260603unified1"></script>
+  <script src="global-nav.js?v=20260714-unified-theme-v1"></script>
   <script src="ui-action-feedback.js?v=20260701safe3"></script>
 </body>
 </html>

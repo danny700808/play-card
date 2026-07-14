@@ -29,7 +29,7 @@ function settingsHomeHref(){return 'settings.html'}
 function staffHomeHref(){return 'dashboard.html'}
 function teacherHomeHref(){return 'teacher-home.html'}
 function userHomeHref(user=getUser()){if(isExternalTeacher(user)) return teacherHomeHref(); return isManager(user)&&isSettingsMode() ? settingsHomeHref() : staffHomeHref()}
-function userHomeLabel(user=getUser()){if(isExternalTeacher(user)) return '返回老師首頁'; if(isPartTimeUser(user)) return '返回工讀首頁'; return isManager(user)&&isSettingsMode() ? '返回管理首頁' : '返回員工首頁'}
+function userHomeLabel(user=getUser()){if(isExternalTeacher(user)) return '返回老師首頁'; if(isPartTimeUser(user)) return '返回工讀首頁'; return isManager(user)&&isSettingsMode() ? '返回內部系統' : '返回員工首頁'}
 function portalSwitchLabel(user=getUser()){return hasSettingsZoneAccess(user) ? '切換入口' : '系統入口'}
 function getUser(){try{return JSON.parse(localStorage.getItem('employeeUser')||'null')}catch(e){return null}}
 function getApiUrl(){return API_URL}
@@ -901,7 +901,7 @@ function shouldShowTeacherContractCard(res){
 }
 
 function fillHeader(){const user=requireLogin(); if(!user) return; const manager=isManager(user); const homeTitleEl=qs('#homeTitle'); if(homeTitleEl){ homeTitleEl.textContent=isPartTimeUser(user)?'工讀首頁':'員工首頁'; } if(document.title==='員工首頁' || document.title==='工讀首頁'){ document.title=isPartTimeUser(user)?'工讀首頁':'員工首頁'; } qsa('[data-user-name]').forEach(el=>el.textContent=user.name||'員工'); qsa('[data-if-parttime]').forEach(el=>el.style.display=isPartTimeUser(user)?'':'none'); qsa('[data-if-admin]').forEach(el=>el.style.display=manager?'':'none'); qsa('[data-if-staff-view]').forEach(el=>el.style.display=manager?'none':'');}
-function redirectAfterLogin(user){saveUser(user); if(hasSettingsZoneAccess(user)){setPortalMode('settings'); location.href='settings.html'; return;} if(isExternalTeacher(user)){ location.href='teacher-home.html'; return; } setPortalMode('staff'); location.href='dashboard.html';}
+function redirectAfterLogin(user){saveUser(user); if(isExternalTeacher(user)){ location.href='teacher-home.html'; return; } if(hasSettingsZoneAccess(user)){setPortalMode('settings'); location.href='portal.html'; return;} setPortalMode('staff'); location.href='dashboard.html';}
 function saveLoginPref(email,password,remember=true){if(!remember){localStorage.removeItem('employeeSavedLogin');return;}localStorage.setItem('employeeSavedLogin',JSON.stringify({email:email||'',password:password||'',remember:true}));}
 function getSavedLogin(){try{return JSON.parse(localStorage.getItem('employeeSavedLogin')||'null')}catch(e){return null}}
 function applySavedLogin(emailSel='#email',passwordSel='#password',rememberSel='#rememberLogin'){const s=getSavedLogin();if(!s)return;const e=qs(emailSel),p=qs(passwordSel),r=qs(rememberSel);if(e)e.value=s.email||'';if(p)p.value=s.password||'';if(r)r.checked=!!s.remember;}
