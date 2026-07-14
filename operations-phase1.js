@@ -29,7 +29,7 @@
   const READ_LIMIT = 10000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.07.14-v8.4-platform-finance-reconcile';
+  const VERSION = '2026.07.14-v8.5-cancel-hidden-dedupe';
   const DASHBOARD_CACHE_KEY = 'youzi_ops_dashboard_overview_v5';
   const DASHBOARD_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
   const DEFAULT_MEMBERSHIP_SETTINGS = {
@@ -966,7 +966,7 @@ function renderOverviewV7(){
     roomRentalReceived:sum(educationRows,function(row){return row.summary.roomRentalReceived;})
   };
   const educationCash=educationSummary.tuitionReceived+educationSummary.roomRentalReceived;
-  const networkRows=state.platformOrders.filter(function(row){return platformOrderIsEffective(row)&&inRange(row.orderedAt);}),networkFeeMetrics=platformFeeMetrics(networkRows);
+  const networkRows=visiblePlatformOrders(state.platformOrders).filter(function(row){return platformOrderIsEffective(row)&&inRange(row.orderedAt);}),networkFeeMetrics=platformFeeMetrics(networkRows);
   const networkGross=networkFeeMetrics.gross,networkNet=networkFeeMetrics.net,networkCost=networkFeeMetrics.cost,networkProfit=networkFeeMetrics.profit;
   const networkQty=sum(networkRows,function(row){return row.quantity;});
   const networkOrderCount=new Set(networkRows.map(function(row){return row.platform+'|'+row.externalOrderNo;})).size;
@@ -980,7 +980,7 @@ function renderOverviewV7(){
   const syncText=sync.status==='success'&&sync.lastSucceededAt?'最後同步：'+dateTimeText(sync.lastSucceededAt)+(syncRange?'｜資料範圍：'+syncRange:''):'尚未取得自動同步紀錄';
 
   const allCash=storeCash+networkNet+educationCash,knownDirectCost=productCost+networkCost+educationSummary.teacherPayable,allBalance=allCash-knownDirectCost;
-  const pendingPlatformRows=state.platformOrders.filter(platformOrderNeedsAttention),pendingPlatform=pendingPlatformRows.length;
+  const pendingPlatformRows=visiblePlatformOrders(state.platformOrders).filter(platformOrderNeedsAttention),pendingPlatform=pendingPlatformRows.length;
   const openReceivables=state.receivables.filter(function(row){return row.status!=='paid'&&Number(row.outstandingAmount||0)>0;});
   const outstanding=sum(openReceivables,function(row){return row.outstandingAmount;});
   const lowStock=state.catalog.filter(function(product){return product.initialized&&Number(product.currentStock||0)<=Number(product.safetyStock||0);});
@@ -1561,11 +1561,48 @@ function platformOrderGross(row){
   return Math.max(0,Number(row&&row.unitPrice||0)*Math.max(0,Number(row&&row.quantity||0)));
 }
 function platformOrderCost(row){return Math.max(0,Number(row&&row.costTotal||0));}
+const PLATFORM_CANCEL_KEYWORDS=['取消','客戶取消','買家取消','賣家取消','已取消','取消完成','作廢','已作廢','無效','未成立','交易失敗','付款失敗','未付款','付款逾期','逾期未付','cancel','canceled','cancelled','cancellation','void','voided','failed','failure','expired','unpaid','payment failed'];
+function platformOrderStatusText(row){return lower([row&&row.orderStatus,row&&row.paymentStatus,row&&row.note,row&&row.reversalReason,row&&row.cancellationReason].filter(Boolean).join(' '));}
+function platformOrderIsCancelledState(row){
+  if(!row)return false;
+  if(row.reversalApplied===true||row.inventoryReversed===true)return true;
+  if(['ignored-cancelled','inventory-reversed'].includes(clean(row.processingStatus)))return true;
+  return PLATFORM_CANCEL_KEYWORDS.some(function(keyword){return platformOrderStatusText(row).includes(keyword);});
+}
+function platformOrderIsHidden(row){
+  if(!row)return true;
+  const status=clean(row.processingStatus);
+  if(platformOrderIsCancelledState(row))return true;
+  return ['ignored','ignored-freight','ignored-return','dry-run'].includes(status);
+}
+function platformOrderRevisionTime(row){
+  const value=row&&(row.statusUpdatedAt||row.lastSeenAt||row.updatedAt||row.reversedAt||row.orderedAt),date=dateFrom(value);
+  return date?date.getTime():0;
+}
+function platformOrderDisplayKey(row){
+  const platform=lower(row&&row.platform),order=clean(row&&(row.externalOrderNo||row.externalOrderId||row.id)),sku=lower(row&&(row.sku||row.productName)),variant=lower(row&&row.variantName);
+  return [platform,order,sku,variant].join('|');
+}
+function dedupePlatformOrders(rows){
+  const map=new Map();
+  (rows||[]).forEach(function(row){
+    const key=platformOrderDisplayKey(row),previous=map.get(key);
+    if(!previous){map.set(key,row);return;}
+    const previousCancelled=platformOrderIsCancelledState(previous),currentCancelled=platformOrderIsCancelledState(row);
+    if(currentCancelled&&!previousCancelled){map.set(key,row);return;}
+    if(previousCancelled&&!currentCancelled)return;
+    const previousTime=platformOrderRevisionTime(previous),currentTime=platformOrderRevisionTime(row);
+    if(currentTime>previousTime){map.set(key,row);return;}
+    if(currentTime===previousTime&&row.inventoryApplied===true&&previous.inventoryApplied!==true)map.set(key,row);
+  });
+  return Array.from(map.values());
+}
+function visiblePlatformOrders(rows){return dedupePlatformOrders(rows).filter(function(row){return !platformOrderIsHidden(row);});}
 function platformOrderIsEffective(row){
-  return !!row&&row.inventoryApplied===true&&row.reversalApplied!==true&&row.inventoryReversed!==true&&clean(row.processingStatus)!=='inventory-reversed';
+  return !!row&&!platformOrderIsHidden(row)&&row.inventoryApplied===true&&row.reversalApplied!==true&&row.inventoryReversed!==true&&clean(row.processingStatus)!=='inventory-reversed';
 }
 function platformOrderNeedsAttention(row){
-  return ['missing-sku','unmatched-sku','duplicate-sku','error','missing-from-platform-review','reversal-error','manual-return-review'].includes(clean(row&&row.processingStatus));
+  return !platformOrderIsHidden(row)&&['missing-sku','unmatched-sku','duplicate-sku','error','missing-from-platform-review','reversal-error','manual-return-review'].includes(clean(row&&row.processingStatus));
 }
 function platformOrderProcessingLabel(row){
   const map={'inventory-applied':'已扣中央庫存','already-applied':'已處理','dry-run':'測試未扣庫存','unmatched-sku':'SKU 未配對','duplicate-sku':'SKU 重複','missing-sku':'缺少 SKU','ignored':'已排除','ignored-freight':'運費已排除','ignored-cancelled':'未成交／取消，未扣庫存','ignored-return':'退貨狀態，未扣庫存','manual-return-review':'退貨／退款請手動處理','missing-from-platform-review':'平台本次未再出現，等待複核','inventory-reversed':'取消／未付款，庫存已回補','reversal-error':'取消回補失敗','error':'處理失敗'};
@@ -1589,7 +1626,7 @@ function platformFeeConfig(name){return Object.assign({},DEFAULT_PLATFORM_FEE_SE
 function platformMonthKey(value){const d=dateFrom(value);if(!d)return '';return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');}
 function platformOrderGroupKey(row){return clean(row.platform)+'|'+(clean(row.externalOrderNo)||clean(row.externalOrderId)||clean(row.id));}
 function platformFeeMetrics(rows){
-  const allValid=state.platformOrders.filter(platformOrderIsEffective),monthGroups={};
+  const allValid=visiblePlatformOrders(state.platformOrders).filter(platformOrderIsEffective),monthGroups={};
   allValid.forEach(function(row){const key=row.platform+'|'+platformMonthKey(row.orderedAt);if(!monthGroups[key])monthGroups[key]=[];monthGroups[key].push(row);});
   let gross=0,variableFees=0,fixedFees=0,cost=0,profit=0;
   const perRow=new Map(),monthlyOnlyApplied=new Set();
@@ -1609,7 +1646,7 @@ function platformFeeMetrics(rows){
 
 function renderSync(){
   const bounds=platformOrderBounds(),term=lower(state.platformOrderSearch).trim();
-  let rows=state.platformOrders.filter(function(row){
+  let rows=visiblePlatformOrders(state.platformOrders).filter(function(row){
     const date=dateFrom(row.orderedAt);if(bounds.start&&(!date||date<bounds.start))return false;if(bounds.end&&(!date||date>bounds.end))return false;
     if(state.platformOrderPlatform!=='all'&&lower(row.platform)!==lower(state.platformOrderPlatform))return false;
     return !term||lower([row.platform,row.externalOrderNo,row.sku,row.productName,row.variantName,row.customerName,row.orderStatus,row.paymentStatus,row.processingStatus,row.reversalReason].join(' ')).includes(term);
@@ -1635,7 +1672,7 @@ function renderSync(){
     return '<tr><td>'+statusTag(row.platform,row.platform==='EasyStore'?'green':row.platform==='MOMO'?'blue':'yellow')+'<br><small>'+escapeHtml(dateTimeText(row.orderedAt))+'</small>'+statusExtra+'</td><td><b>'+escapeHtml(row.externalOrderNo||'—')+'</b><br><small>'+escapeHtml([row.customerName,row.paymentStatus,row.orderStatus].filter(Boolean).join('・'))+'</small></td><td><b>'+escapeHtml(row.productName)+'</b><br><small>'+escapeHtml((row.sku?'SKU '+row.sku:'缺少 SKU')+(row.variantName?'・'+row.variantName:''))+'</small>'+(row.reversalReason?'<br><small>'+escapeHtml(row.reversalReason)+'</small>':'')+(row.processingError?'<br><small class="ops-text-danger">'+escapeHtml(row.processingError)+'</small>':'')+'</td><td class="num">'+formatNumber(row.quantity)+'</td><td class="num">'+money(m.gross)+'</td><td class="num">'+money(m.variableFee)+'</td><td class="num">'+money(m.fixedFee)+'</td><td class="num">'+money(m.cost)+costNote+'</td><td class="num">'+profitHtml+'</td><td>'+stockHtml+'</td></tr>';
   }).join('')+'</tbody></table></div>':emptyHtml('目前沒有符合條件的平台訂單','店內電腦完成首次同步後，EasyStore、MOMO 與 Coupang 訂單會顯示在這裡。');
   const runRows=state.platformSyncRuns.slice().sort(function(a,b){return (dateFrom(b.startedAt)||0)-(dateFrom(a.startedAt)||0);}).slice(0,20),runTable=runRows.length?'<div class="ops-table-wrap"><table class="ops-table"><thead><tr><th>執行時間</th><th>方式</th><th>結果</th><th>訂單明細</th><th>新扣庫存</th><th>取消回補</th><th>待複核</th><th>差異商品</th><th>訊息</th></tr></thead><tbody>'+runRows.map(function(run){const summary=run.summary||{},processing=summary.processing||{},reconciliation=summary.reconciliation||{};return '<tr><td>'+escapeHtml(dateTimeText(run.startedAt))+'</td><td>'+escapeHtml(run.trigger||'排程')+'</td><td>'+statusTag(run.status||'—',run.status==='completed'?'green':run.status==='completed-with-errors'?'yellow':'red')+'</td><td>'+formatNumber(summary.fetchedLines||0)+'</td><td>'+formatNumber(processing.applied||0)+'</td><td>'+formatNumber(processing.reversed||reconciliation.reversed||0)+'</td><td>'+formatNumber(reconciliation.reviewed||0)+'</td><td>'+formatNumber(summary.changedProducts||0)+'</td><td><small>'+escapeHtml(run.error||((processing.errors||0)?'有 '+processing.errors+' 筆處理異常':'完成'))+'</small></td></tr>';}).join('')+'</tbody></table></div>':emptyHtml('尚無同步紀錄','每天 14:00、20:30 或按立即同步後會出現。');
-  return '<section class="ops-card ops-platform-summary"><div class="ops-card-head"><div><h2>平台訂單、毛利與差異庫存同步</h2><p>成交金額、平台費、固定費攤提、FIFO 成本與預估毛利使用同一批有效訂單；營運總覽同步採用相同數字。取消、未付款會自動回補庫存；平台成功同步後連續兩次未再出現也會回補，退貨／退款仍保留人工確認。</p></div><div class="ops-card-actions"><button class="ops-button ghost" data-action="platform-fee-settings">費用設定</button><button class="ops-button primary" data-action="platform-sync-now">立即同步</button></div></div><div class="ops-platform-schedule"><div><span>上次同步</span><b>'+(latestRun?escapeHtml(dateTimeText(latestRun.startedAt)):'尚未執行')+'</b></div><div><span>下次同步</span><b>'+escapeHtml(nextPlatformSyncText())+'</b></div><div><span>執行位置</span><b>店內 Windows 電腦（固定 IP）</b></div><div><span>同步程式狀態</span>'+statusTag(agentLabel,agentColor)+'<small>'+escapeHtml(agentSub)+'</small></div></div></section><div class="ops-grid-3 ops-platform-status-grid">'+platformCard('EasyStore')+platformCard('MOMO')+platformCard('Coupang')+'</div><section class="ops-card ops-platform-order-list"><div class="ops-card-head"><div><h2>'+escapeHtml(bounds.label)+'網路銷售</h2><p>只合計已確認有效、且尚未被取消回補的訂單。</p></div></div>'+rangeTabs+'<div class="ops-kpi-grid ops-platform-kpis">'+kpi('成交金額',money(fees.gross),orderCount+' 筆訂單','＄')+kpi('平台與金流費',money(fees.variableFees),'依各平台設定','費')+kpi('固定費用攤提',money(fees.fixedFees),'月費＋廣告費','固')+kpi('商品成本',money(fees.cost),'中央 FIFO／估算成本','成本')+kpi('預估毛利',money(fees.profit),'成交－全部費用－成本','利')+kpi('銷售件數',formatNumber(qty),'有效成交數量','件')+'</div>'+platformTabs+'<div class="ops-toolbar ops-platform-search"><input class="ops-input grow" id="platformOrderSearch" placeholder="搜尋訂單編號、SKU、商品、客戶或狀態" value="'+attr(state.platformOrderSearch)+'"></div>'+orderTable+'</section><section class="ops-card ops-platform-runs"><div class="ops-card-head"><div><h2>同步紀錄</h2></div></div>'+runTable+'</section>';
+  return '<section class="ops-card ops-platform-summary"><div class="ops-card-head"><div><h2>平台訂單、毛利與差異庫存同步</h2><p>只顯示目前仍有效的訂單，並依平台、訂單編號、商品與規格自動去除重複。確定取消或未付款後會從清單移除；若先前已扣庫存，系統會回補並同步各平台。退貨／退款仍保留人工確認。</p></div><div class="ops-card-actions"><button class="ops-button ghost" data-action="platform-fee-settings">費用設定</button><button class="ops-button primary" data-action="platform-sync-now">立即同步</button></div></div><div class="ops-platform-schedule"><div><span>上次同步</span><b>'+(latestRun?escapeHtml(dateTimeText(latestRun.startedAt)):'尚未執行')+'</b></div><div><span>下次同步</span><b>'+escapeHtml(nextPlatformSyncText())+'</b></div><div><span>執行位置</span><b>店內 Windows 電腦（固定 IP）</b></div><div><span>同步程式狀態</span>'+statusTag(agentLabel,agentColor)+'<small>'+escapeHtml(agentSub)+'</small></div></div></section><div class="ops-grid-3 ops-platform-status-grid">'+platformCard('EasyStore')+platformCard('MOMO')+platformCard('Coupang')+'</div><section class="ops-card ops-platform-order-list"><div class="ops-card-head"><div><h2>'+escapeHtml(bounds.label)+'網路銷售</h2><p>只顯示並合計目前有效的訂單；已取消、未付款、測試資料與重複明細不會出現在這裡。</p></div></div>'+rangeTabs+'<div class="ops-kpi-grid ops-platform-kpis">'+kpi('成交金額',money(fees.gross),orderCount+' 筆訂單','＄')+kpi('平台與金流費',money(fees.variableFees),'依各平台設定','費')+kpi('固定費用攤提',money(fees.fixedFees),'月費＋廣告費','固')+kpi('商品成本',money(fees.cost),'中央 FIFO／估算成本','成本')+kpi('預估毛利',money(fees.profit),'成交－全部費用－成本','利')+kpi('銷售件數',formatNumber(qty),'有效成交數量','件')+'</div>'+platformTabs+'<div class="ops-toolbar ops-platform-search"><input class="ops-input grow" id="platformOrderSearch" placeholder="搜尋訂單編號、SKU、商品、客戶或狀態" value="'+attr(state.platformOrderSearch)+'"></div>'+orderTable+'</section><section class="ops-card ops-platform-runs"><div class="ops-card-head"><div><h2>同步紀錄</h2></div></div>'+runTable+'</section>';
 }
 
 
