@@ -20,7 +20,7 @@ const MOMO_ORDER_URL = 'https://api3p.momo.com.tw/VendorApi/OrderQuery';
 const MOMO_PRODUCT_URL = 'https://api3p.momo.com.tw/VendorApi/GoodsQueryByMethod';
 const MOMO_STOCK_URL = 'https://api3p.momo.com.tw/VendorApi/GoodsStockModify';
 const COUPANG_HOST = 'https://api-gateway.coupang.com';
-const VERSION = '2026.07.12-platform-orders-local-agent-21';
+const VERSION = '2026.07.13-platform-orders-store-windows-agent';
 const LOCK_MS = 20 * 60 * 1000;
 const DEFAULT_LOOKBACK_DAYS = 4;
 const DEFAULT_NET_RATE = 0.87;
@@ -1495,16 +1495,16 @@ async function runPlatformOrderSyncFromAgent(payload) {
 function registerPlatformOrderSync(target) {
   const cloudSecrets = [EASYSTORE_ACCESS_TOKEN, MOMO_API_TOKEN, COUPANG_VENDOR_ID, COUPANG_ACCESS_KEY, COUPANG_SECRET_KEY];
 
-  // 保留原函式名稱，但排程改由店內 Windows 代理程式在每天 21:00 執行。
-  // 這裡只留下健康紀錄，不再從 Google Cloud 呼叫受固定 IP 限制的平台。
+  // 保留原函式名稱只是為了相容既有部署。真正排程由店內 Windows 電腦在 14:00、20:30 執行。
+  // Google Cloud 不再呼叫受固定 IP 限制的平台 API。
   target.platformOrderSyncDaily = onSchedule({
-    schedule: '0 23 * * *',
+    schedule: '0 0 1 1 *',
     timeZone: TIME_ZONE,
     region: REGION,
     timeoutSeconds: 60,
     memory: '256MiB',
   }, async () => {
-    console.log('platformOrderSyncDaily skipped: executionMode=store-windows-agent-21:00');
+    console.log('platformOrderSyncDaily compatibility check only: executionMode=store-windows-agent-14:00-20:30');
   });
 
   target.syncPlatformOrdersNow = onCall({
@@ -1514,7 +1514,7 @@ function registerPlatformOrderSync(target) {
   }, async () => ({
     ok: false,
     status: 'local-agent-required',
-    message: 'MOMO 與 Coupang 限制固定 IP，請使用店內電腦的「立即同步一次」或每天 21:00 自動排程。',
+    message: 'MOMO 與 Coupang 限制固定 IP，請使用全通路營運中心的「立即同步」，或由店內電腦每天 14:00、20:30 自動執行。',
   }));
 
   target.platformOrderAgentBridge = onRequest({
