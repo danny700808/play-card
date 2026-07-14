@@ -20,7 +20,7 @@ const MOMO_ORDER_URL = 'https://api3p.momo.com.tw/VendorApi/OrderQuery';
 const MOMO_PRODUCT_URL = 'https://api3p.momo.com.tw/VendorApi/GoodsQueryByMethod';
 const MOMO_STOCK_URL = 'https://api3p.momo.com.tw/VendorApi/GoodsStockModify';
 const COUPANG_HOST = 'https://api-gateway.coupang.com';
-const VERSION = '2026.07.14-platform-finance-reconcile-v2';
+const VERSION = '2026.07.14-platform-order-normal-deduct-v4';
 const LOCK_MS = 20 * 60 * 1000;
 const DEFAULT_LOOKBACK_DAYS = 4;
 const DEFAULT_NET_RATE = 0.87;
@@ -579,6 +579,7 @@ async function readSettings(db) {
   return {
     enabled: raw.enabled !== false,
     applyInventory: raw.applyInventory !== false,
+    officialInventoryStartAt: parseDate(raw.officialInventoryStartAt),
     lookbackDays: Math.min(30, Math.max(1, Number(raw.lookbackDays || DEFAULT_LOOKBACK_DAYS))),
     estimatedNetRate: Math.min(1, Math.max(0, Number(raw.estimatedNetRate || DEFAULT_NET_RATE))),
     initializeBaselineOnFirstRun: raw.initializeBaselineOnFirstRun !== false,
@@ -589,6 +590,28 @@ async function readSettings(db) {
       Coupang: !(raw.platforms && raw.platforms.Coupang === false)
     }
   };
+}
+
+async function ensureOfficialInventoryMode(db) {
+  const ref = db.collection(SETTINGS_COLLECTION).doc(SETTINGS_DOC);
+  return db.runTransaction(async (transaction) => {
+    const snap = await transaction.get(ref);
+    const raw = snap.exists ? snap.data() || {} : {};
+    const patch = {};
+    if (raw.applyInventory !== true) patch.applyInventory = true;
+    if (raw.backfillUnappliedValidOrders !== true) patch.backfillUnappliedValidOrders = true;
+    if (!parseDate(raw.officialInventoryStartAt)) {
+      patch.officialInventoryStartAt = admin.firestore.FieldValue.serverTimestamp();
+    }
+    if (Object.keys(patch).length) {
+      patch.officialInventoryModeEnabledAt = admin.firestore.FieldValue.serverTimestamp();
+      patch.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+      patch.updatedBy = 'platform-order-sync-normal-deduct-migration';
+      patch.version = VERSION;
+      transaction.set(ref, patch, { merge: true });
+    }
+    return true;
+  });
 }
 
 async function acquireLock(db, trigger) {
@@ -711,7 +734,7 @@ function orderCostSnapshot(existing, inventoryRow, productRaw, quantity) {
     return { costTotal: inventoryCost, estimated: false, source: 'inventory-transaction' };
   }
   const unit = productFallbackUnitCost(productRaw);
-  if (unit != null && qty > 0 && (existingCost == null || Number(existing.unknownCostQty || 0) > 0 || clean(existing.costSource) === 'unknown')) {
+  if (unit != null && qty > 0 && (existingCost == null || existingCost <= 0 || Number(existing.unknownCostQty || 0) > 0 || clean(existing.costSource) === 'unknown')) {
     return { costTotal: unit * qty, estimated: true, source: 'current-product-estimate' };
   }
   if (existingCost != null) return { costTotal: existingCost, estimated: existing.costEstimated === true, source: clean(existing.costSource) || 'order' };
@@ -966,6 +989,9 @@ async function applyOrderLine(db, line, productMap, settings, runId) {
     const existing = orderSnap.exists ? orderSnap.data() || {} : {};
     const raw = productSnap.exists ? productSnap.data() || {} : {};
     const previousInventory = inventorySnap.exists ? inventorySnap.data() || {} : {};
+    // 所有目前仍有效、且尚未扣過中央庫存的訂單，都按正式訂單扣庫存。
+    // order document 的 inventoryApplied 是冪等鎖：同一筆訂單再次同步不會重複扣除。
+    const applyInventoryNow = settings.applyInventory;
     if (existing.inventoryApplied === true && existing.reversalApplied !== true && existing.inventoryReversed !== true) {
       const cost = orderCostSnapshot(existing, previousInventory, raw, line.quantity);
       transaction.set(orderRef, {
@@ -994,15 +1020,20 @@ async function applyOrderLine(db, line, productMap, settings, runId) {
     }
     if (!productSnap.exists) throw new Error(`中央商品不存在：${line.sku}`);
     const fifo = consumeFifoAllowNegative(raw, line.quantity);
+    const fallbackUnitCost = productFallbackUnitCost(raw);
+    const estimatedQty = fallbackUnitCost != null ? Math.max(0, Number(fifo.unknownCostQty || 0)) : 0;
+    const effectiveCostTotal = Number(fifo.costTotal || 0) + estimatedQty * Number(fallbackUnitCost || 0);
+    const costEstimated = estimatedQty > 0;
+    const remainingUnknownCostQty = Math.max(0, Number(fifo.unknownCostQty || 0) - estimatedQty);
     const platformMappings = mergePlatformMappings(raw.platformMappings, platformMappingPatch(line));
-    const estimatedProfit = estimatedNetAmount - fifo.costTotal;
+    const estimatedProfit = estimatedNetAmount - effectiveCostTotal;
     const productPatch = {
       platformMappings,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedBy: 'platform-order-sync',
       version: VERSION
     };
-    if (settings.applyInventory) {
+    if (applyInventoryNow) {
       productPatch.currentStock = fifo.after;
       productPatch.costLayers = fifo.layers;
       productPatch.averageCost = fifo.averageCost;
@@ -1017,29 +1048,29 @@ async function applyOrderLine(db, line, productMap, settings, runId) {
       statusUpdatedAt: line.statusUpdatedAt ? admin.firestore.Timestamp.fromDate(line.statusUpdatedAt) : null,
       productId: product.id,
       matchStatus: 'matched',
-      processingStatus: settings.applyInventory ? 'inventory-applied' : 'dry-run',
-      inventoryApplied: settings.applyInventory,
+      processingStatus: applyInventoryNow ? 'inventory-applied' : 'dry-run',
+      inventoryApplied: applyInventoryNow,
       inventoryReversed: false,
       reversalApplied: false,
       reversalReason: '',
       inventoryBefore: fifo.before,
-      inventoryAfter: settings.applyInventory ? fifo.after : fifo.before,
-      costTotal: fifo.costTotal,
-      costEstimated: false,
-      costSource: 'fifo',
-      unknownCostQty: fifo.unknownCostQty,
+      inventoryAfter: applyInventoryNow ? fifo.after : fifo.before,
+      costTotal: effectiveCostTotal,
+      costEstimated,
+      costSource: costEstimated ? 'fifo+current-product-estimate' : 'fifo',
+      unknownCostQty: remainingUnknownCostQty,
       estimatedNetRate: settings.estimatedNetRate,
       estimatedNetAmount,
       estimatedProfit,
       missingFromPlatformCount: 0,
       firstSeenAt: existing.firstSeenAt || admin.firestore.FieldValue.serverTimestamp(),
       lastSeenAt: admin.firestore.FieldValue.serverTimestamp(),
-      inventoryAppliedAt: settings.applyInventory ? admin.firestore.FieldValue.serverTimestamp() : null,
+      inventoryAppliedAt: applyInventoryNow ? admin.firestore.FieldValue.serverTimestamp() : null,
       financialUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
       syncRunId: runId,
       version: VERSION
     }, { merge: true });
-    if (settings.applyInventory) {
+    if (applyInventoryNow) {
       transaction.set(inventoryRef, {
         type: 'onlineSale',
         platform: line.platform,
@@ -1049,10 +1080,10 @@ async function applyOrderLine(db, line, productMap, settings, runId) {
         qtyChange: -line.quantity,
         beforeStock: fifo.before,
         afterStock: fifo.after,
-        unitCost: line.quantity > 0 ? fifo.costTotal / line.quantity : null,
-        costTotal: fifo.costTotal,
-        unknownCostQty: fifo.unknownCostQty,
-        costMethod: 'FIFO',
+        unitCost: line.quantity > 0 ? effectiveCostTotal / line.quantity : null,
+        costTotal: effectiveCostTotal,
+        unknownCostQty: remainingUnknownCostQty,
+        costMethod: costEstimated ? 'FIFO_OR_CURRENT_COST_ESTIMATE' : 'FIFO',
         fifoBreakdown: fifo.breakdown,
         referenceType: 'platformOrder',
         referenceId: line.externalOrderNo,
@@ -1065,11 +1096,11 @@ async function applyOrderLine(db, line, productMap, settings, runId) {
       }, { merge: true });
     }
     return {
-      status: settings.applyInventory ? 'applied' : 'dry-run',
+      status: applyInventoryNow ? 'applied' : 'dry-run',
       lineId: line.id,
       productId: product.id,
       before: fifo.before,
-      after: settings.applyInventory ? fifo.after : fifo.before
+      after: applyInventoryNow ? fifo.after : fifo.before
     };
   });
 }
@@ -1538,6 +1569,7 @@ async function runPlatformOrderSync(trigger) {
     version: VERSION
   });
   try {
+    await ensureOfficialInventoryMode(db);
     const settings = await readSettings(db);
     if (!settings.enabled) {
       finalResult = { status: 'disabled', summary: { message: '平台訂單同步已停用' } };
@@ -1556,7 +1588,7 @@ async function runPlatformOrderSync(trigger) {
     const products = await loadProducts(db);
     const productMap = buildProductMap(products);
     const fetched = await fetchAllPlatformLines(settings, credentials, start, end);
-    const processing = { applied: 0, alreadyApplied: 0, reversed: 0, returnReview: 0, ignored: 0, unmatched: 0, missingSku: 0, dryRun: 0, errors: 0 };
+    const processing = { applied: 0, alreadyApplied: 0, historical: 0, reversed: 0, returnReview: 0, ignored: 0, unmatched: 0, missingSku: 0, dryRun: 0, errors: 0 };
     const changedProductIds = new Set();
     for (const line of fetched.lines) {
       try {
@@ -1564,6 +1596,7 @@ async function runPlatformOrderSync(trigger) {
         if (result.productId && (result.status === 'applied' || result.status === 'reversed')) changedProductIds.add(result.productId);
         if (result.status === 'applied') processing.applied += 1;
         else if (result.status === 'already-applied') processing.alreadyApplied += 1;
+        else if (result.status === 'historical') processing.historical += 1;
         else if (result.status === 'reversed') processing.reversed += 1;
         else if (result.status === 'return-review') processing.returnReview += 1;
         else if (result.status === 'ignored' || result.status === 'cancelled-ignored' || result.status === 'already-reversed') processing.ignored += 1;
@@ -1624,7 +1657,7 @@ async function runPlatformOrderSync(trigger) {
       platforms: Object.keys(settings.platforms).filter((platform) => settings.platforms[platform]),
       productCount: changedProductIds.size,
       orderLineCount: fetched.lines.length,
-      note: `訂單 ${fetched.lines.length} 筆；新扣庫存 ${processing.applied} 筆；取消回補 ${processing.reversed} 筆；異常 ${processing.errors + platformErrors} 筆`,
+      note: `訂單 ${fetched.lines.length} 筆；本次正式扣庫存 ${processing.applied} 筆；取消回補 ${processing.reversed} 筆；異常 ${processing.errors + platformErrors} 筆`,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       createdBy: trigger,
       version: VERSION
@@ -1729,6 +1762,7 @@ async function runPlatformOrderSyncFromAgent(payload) {
     version: VERSION,
   });
   try {
+    await ensureOfficialInventoryMode(db);
     const settings = await readSettings(db);
     if (!settings.enabled) {
       finalResult = { status: 'disabled', summary: { message: '平台訂單同步已停用' } };
@@ -1744,7 +1778,7 @@ async function runPlatformOrderSyncFromAgent(payload) {
     const lines = [...unique.values()];
     const products = await loadProducts(db);
     const productMap = buildProductMap(products);
-    const processing = { applied: 0, alreadyApplied: 0, reversed: 0, returnReview: 0, ignored: 0, unmatched: 0, missingSku: 0, dryRun: 0, errors: 0 };
+    const processing = { applied: 0, alreadyApplied: 0, historical: 0, reversed: 0, returnReview: 0, ignored: 0, unmatched: 0, missingSku: 0, dryRun: 0, errors: 0 };
     const changedProductIds = new Set();
     for (const line of lines) {
       try {
@@ -1752,6 +1786,7 @@ async function runPlatformOrderSyncFromAgent(payload) {
         if (result.productId && (result.status === 'applied' || result.status === 'reversed')) changedProductIds.add(result.productId);
         if (result.status === 'applied') processing.applied += 1;
         else if (result.status === 'already-applied') processing.alreadyApplied += 1;
+        else if (result.status === 'historical') processing.historical += 1;
         else if (result.status === 'reversed') processing.reversed += 1;
         else if (result.status === 'return-review') processing.returnReview += 1;
         else if (result.status === 'ignored' || result.status === 'cancelled-ignored' || result.status === 'already-reversed') processing.ignored += 1;
@@ -1811,7 +1846,7 @@ async function runPlatformOrderSyncFromAgent(payload) {
       platforms: Object.keys(platformFetch),
       productCount: changedProductIds.size,
       orderLineCount: lines.length,
-      note: `本機代理讀取訂單 ${lines.length} 筆；新扣庫存 ${processing.applied} 筆；取消回補 ${processing.reversed} 筆；異常 ${processing.errors} 筆`,
+      note: `本機代理讀取訂單 ${lines.length} 筆；本次正式扣庫存 ${processing.applied} 筆；取消回補 ${processing.reversed} 筆；異常 ${processing.errors} 筆`,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       createdBy: trigger,
       source: 'store-windows-agent',
