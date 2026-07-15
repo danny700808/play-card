@@ -1,0 +1,203 @@
+/* 柚子樂器 Mobile UI v1
+   只在手機寬度生效，桌機版不改動。 */
+@media (max-width:780px){
+  /* 搜尋區：輸入框獨立一列 */
+  .ops-product-toolbar,
+  .ops-purchase-entry-search-row{
+    display:grid!important;
+    grid-template-columns:1fr 1fr!important;
+    gap:10px!important;
+  }
+  .ops-product-toolbar .ops-input,
+  .ops-purchase-entry-search-row .ops-input{
+    grid-column:1/-1!important;
+    width:100%!important;
+  }
+
+  /* 手機專用數字鍵盤：3 × 4，不再擠成一排 */
+  .ops-mobile-search-pad{
+    display:grid!important;
+    grid-template-columns:repeat(3,minmax(0,1fr))!important;
+    grid-auto-flow:row!important;
+    gap:10px!important;
+    width:100%!important;
+    margin:12px 0 16px!important;
+  }
+  .ops-mobile-search-pad button{
+    display:flex!important;
+    align-items:center!important;
+    justify-content:center!important;
+    width:100%!important;
+    min-width:0!important;
+    min-height:58px!important;
+    padding:0 8px!important;
+    border:1px solid #c7d8d0!important;
+    border-radius:16px!important;
+    background:#fff!important;
+    color:#173247!important;
+    font-size:22px!important;
+    font-weight:900!important;
+    line-height:1!important;
+    box-shadow:0 3px 10px rgba(23,50,71,.07)!important;
+    touch-action:manipulation;
+  }
+  .ops-mobile-search-pad button:active{
+    background:#e7f5ef!important;
+    transform:scale(.98);
+  }
+
+  /* 商品資訊：手機直式改為一排一個、內容橫向 */
+  .ops-products-grid{
+    grid-template-columns:1fr!important;
+    gap:12px!important;
+  }
+  .ops-product-card-full{
+    display:grid!important;
+    grid-template-columns:122px minmax(0,1fr)!important;
+    min-height:160px!important;
+    align-items:stretch!important;
+    border-radius:15px!important;
+  }
+  .ops-product-image-grid,
+  .ops-product-image-grid.single{
+    display:grid!important;
+    grid-template-rows:1fr!important;
+    width:122px!important;
+    min-width:122px!important;
+    height:100%!important;
+    min-height:160px!important;
+    padding:7px!important;
+    border-right:1px solid var(--ops-line)!important;
+    border-bottom:0!important;
+    background:#f7f9fa!important;
+  }
+  .ops-product-image-grid img,
+  .ops-product-image-grid .placeholder{
+    width:100%!important;
+    height:100%!important;
+    object-fit:contain!important;
+  }
+  .ops-product-card-full .ops-product-body{
+    display:flex!important;
+    flex-direction:column!important;
+    min-width:0!important;
+    padding:10px!important;
+    gap:7px!important;
+  }
+  .ops-product-sku-row{
+    display:flex!important;
+    align-items:flex-start!important;
+    justify-content:space-between!important;
+    gap:8px!important;
+    min-width:0!important;
+  }
+  .ops-product-sku-main{
+    display:flex!important;
+    align-items:center!important;
+    gap:6px!important;
+    flex-wrap:wrap!important;
+    min-width:0!important;
+  }
+  .ops-product-sku-main>b{
+    font-size:14px!important;
+    line-height:1.3!important;
+    white-space:normal!important;
+    overflow:visible!important;
+    text-overflow:clip!important;
+    overflow-wrap:anywhere!important;
+  }
+  .ops-label-print-button{
+    min-height:31px!important;
+    padding:5px 8px!important;
+    border-radius:8px!important;
+    font-size:11px!important;
+  }
+  .ops-product-inline-stock{
+    flex:0 0 auto!important;
+    font-size:12px!important;
+  }
+  .ops-product-inline-stock strong{font-size:14px!important}
+  .ops-product-name-rows b,
+  .ops-product-variant-row b{
+    display:block!important;
+    white-space:normal!important;
+    overflow:visible!important;
+    text-overflow:clip!important;
+    overflow-wrap:anywhere!important;
+    line-height:1.4!important;
+  }
+  .ops-product-name-rows b{font-size:14px!important}
+  .ops-product-variant-row b{font-size:12px!important;color:#287f65!important}
+  .ops-product-detail-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+    gap:7px!important;
+    margin-top:auto!important;
+  }
+  .ops-product-detail-grid>div{
+    min-width:0!important;
+    padding:8px!important;
+    border-radius:10px!important;
+  }
+  .ops-product-detail-grid span{
+    display:block!important;
+    margin-bottom:3px!important;
+    font-size:10px!important;
+    line-height:1.25!important;
+  }
+  .ops-product-detail-grid b{
+    display:block!important;
+    font-size:13px!important;
+    line-height:1.35!important;
+    white-space:normal!important;
+    overflow:visible!important;
+    text-overflow:clip!important;
+    overflow-wrap:anywhere!important;
+  }
+
+  /* 進貨與盤點：手機一排一項，避免左右滑動 */
+  .ops-purchase-entry-grid,
+  .ops-stocktake-product-grid{
+    grid-template-columns:1fr!important;
+    gap:10px!important;
+    max-height:none!important;
+    overflow:visible!important;
+  }
+  .ops-purchase-entry-product,
+  .ops-stocktake-product{
+    display:grid!important;
+    grid-template-columns:76px minmax(0,1fr)!important;
+    gap:10px!important;
+    min-height:88px!important;
+    padding:8px!important;
+  }
+  .ops-purchase-entry-thumb,
+  .ops-stocktake-product .ops-purchase-entry-thumb{
+    width:76px!important;
+    height:76px!important;
+  }
+  input[type="number"]{
+    min-height:48px;
+    font-size:18px!important;
+  }
+
+  /* 條碼視窗在手機上仍保持清楚 */
+  .ops-label-print-summary{grid-template-columns:1fr!important}
+  .ops-label-print-summary>div.full{grid-column:auto!important}
+  .ops-label-preview-half{
+    grid-template-columns:70px 42px minmax(0,1fr)!important;
+    height:100px!important;
+    padding:6px!important;
+    gap:6px!important;
+  }
+  .ops-label-preview-qr i{width:52px!important;height:52px!important;background-size:10px 10px!important}
+  .ops-label-preview-qr b{font-size:10px!important}
+  .ops-label-preview-price>b{font-size:14px!important}
+  .ops-label-preview-price img{width:25px!important;height:34px!important}
+  .ops-label-preview-name b,.ops-label-preview-name span{font-size:12px!important}
+}
+
+@media (max-width:390px){
+  .ops-product-card-full{grid-template-columns:104px minmax(0,1fr)!important}
+  .ops-product-image-grid,.ops-product-image-grid.single{width:104px!important;min-width:104px!important}
+  .ops-mobile-search-pad button{min-height:54px!important;font-size:21px!important}
+}
