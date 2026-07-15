@@ -56,6 +56,7 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
     view:'overview',
     loading:false,
     loadedAt:null,
+    fullLoadedAt:null,
     onlineSource:'EasyStore API',
     onlineProducts:[],
     easyStoreSync:{},
@@ -550,7 +551,11 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
   }
   function ensureDataForCurrentView(){
     const view=(location.hash||'#overview').replace('#','').split('?')[0]||'overview';
-    if(view!=='overview'&&!state.loadedAt&&!state.loading){ loadAll(false); return true; }
+    if(view==='products'){
+      if(!state.loadedAt&&!state.loading){ loadProductsOnly(false); return true; }
+      return false;
+    }
+    if(!state.fullLoadedAt&&!state.loading){ loadAll(false); return true; }
     return false;
   }
 
@@ -676,6 +681,25 @@ async function loadPlatformLocalAgent(){
     }catch(error){state.platformInventoryQueue=[];state.diagnostics.push({collection:COLLECTIONS.platformInventoryQueue+'(errors)',ok:false,count:0,ms:Date.now()-started,error:errorMessage(error)});}
   }
 
+  async function loadProductsOnly(silent){
+    if(state.loading) return;
+    state.loading=true; clearAlert();
+    if(!silent) html('opsContent',loadingHtml('正在讀取商品資料…'));
+    state.diagnostics=[];
+    try{
+      await loadOnlineProducts();
+      const rows=await getCollection(COLLECTIONS.products,10000);
+      state.internalProducts=rows.map(function(row){ return normalizeInternal(row,row.__id); });
+      mergeCatalog();
+      state.loadedAt=new Date();
+      setText('opsLastReadText','商品最後讀取：'+dateTimeText(state.loadedAt));
+      render();
+    }catch(error){
+      showAlert('商品資料讀取失敗：'+errorMessage(error),'error');
+      html('opsContent',emptyHtml('無法載入商品資料','請確認網路、Firebase設定與Firestore規則後重新讀取。','<button class="ops-button primary" data-action="refresh">重新讀取</button>'));
+    }finally{ state.loading=false; }
+  }
+
   async function loadAll(silent){
     if(state.loading) return;
     state.loading=true; clearAlert();
@@ -725,6 +749,7 @@ async function loadPlatformLocalAgent(){
       state.platformSyncRuns=results[18].map(normalizePlatformSyncRun);
       mergeCatalog();
       state.loadedAt=new Date();
+      state.fullLoadedAt=state.loadedAt;
       setText('opsLastReadText','最後讀取：'+dateTimeText(state.loadedAt));
       saveDashboardCache();
       render();
@@ -1936,7 +1961,7 @@ function ensureSalesClock(){
     if(!p){payload.createdAt=serverTimestamp();payload.createdBy=userLabel();payload.openingStock=newStock;payload.openingUnitCost=latest;}
     await ref.set(payload,{merge:true});
     if(newStock!==oldStock){await state.db.collection(COLLECTIONS.inventory).add({type:p?'adjustment':'opening',productId:id,productName:name,sku:sku,qtyChange:newStock-oldStock,beforeStock:oldStock,afterStock:newStock,unitCost:latest,referenceType:'productMaster',referenceId:id,note:p?'商品主檔直接調整；成本層同步修正':'新增商品期初庫存',occurredAt:serverTimestamp(),createdAt:serverTimestamp(),createdBy:userLabel(),version:VERSION});await state.db.collection(COLLECTIONS.platformInventoryQueue).doc(id).set({productId:id,sku:sku,targetStock:newStock,status:'pending',reason:p?'productEdit':'productCreate',updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION},{merge:true});}
-    state.productEditId=id;state.productPreviewImages=[];state.productPreviewIndex=0;state.productPreviewTitle=name;await writeAudit(p?'儲存商品主檔':'新增商品','product',id,name+'｜'+sku);toast(p?'商品已儲存':'商品已新增',name,'success');await loadAll(true);
+    state.productEditId=id;state.productPreviewImages=[];state.productPreviewIndex=0;state.productPreviewTitle=name;await writeAudit(p?'儲存商品主檔':'新增商品','product',id,name+'｜'+sku);toast(p?'商品已儲存':'商品已新增',name,'success');await loadProductsOnly(true);
   }
   async function autoInitProducts(){ return openImport(); }
 
@@ -2390,7 +2415,7 @@ async function syncPlatformOrdersNow(){const yes=await confirmAction('要求店�
 
   function handleAction(action,el){
     if(action==='sync-easystore-api'){ syncEasyStoreApi(); return; }
-    if(action==='refresh'){ try{localStorage.removeItem(DASHBOARD_CACHE_KEY);}catch(err){} return loadAll(false); }
+    if(action==='refresh'){ try{localStorage.removeItem(DASHBOARD_CACHE_KEY);}catch(err){} return state.view==='products'?loadProductsOnly(false):loadAll(false); }
     if(action==='platform-sync-now') return syncPlatformOrdersNow();
     if(action==='platform-fee-settings') return openPlatformFeeSettings();
     if(action==='platform-order-range'){state.platformOrderRange=el.dataset.range||'month';return renderKeepingViewport();}
@@ -2647,7 +2672,7 @@ function rerenderKeepingFocus(id,value){
     });
     global.addEventListener('hashchange',function(){closeMobileMenu(); if(!ensureDataForCurrentView())render();});
     global.addEventListener('message',handleInjiaoyunBridgeMessage);
-    const refreshBtn=byId('opsRefreshBtn'); if(refreshBtn)refreshBtn.addEventListener('click',function(){try{localStorage.removeItem(DASHBOARD_CACHE_KEY);}catch(err){} loadAll(false);});
+    const refreshBtn=byId('opsRefreshBtn'); if(refreshBtn)refreshBtn.addEventListener('click',function(){try{localStorage.removeItem(DASHBOARD_CACHE_KEY);}catch(err){} if(state.view==='products')loadProductsOnly(false);else loadAll(false);});
     const backBtn=byId('opsBackBtn'); if(backBtn)backBtn.addEventListener('click',function(){history.back();});
     const logoutBtn=byId('opsLogoutBtn'); if(logoutBtn)logoutBtn.addEventListener('click',function(){ if(typeof global.logout==='function')global.logout();else location.href='index.html'; });
     byId('opsDrawerClose').addEventListener('click',closeDrawer); byId('opsDrawerBackdrop').addEventListener('click',closeDrawer);
@@ -2672,8 +2697,16 @@ function rerenderKeepingFocus(id,value){
     bindEvents();
     const initialView=(location.hash||'#overview').replace('#','').split('?')[0]||'overview';
     const cache=initialView==='overview'?getDashboardCache():null;
-    if(cache){ showCachedDashboard(cache); await loadAll(true); }
-    else { render(); await loadAll(false); }
+    if(initialView==='products'){
+      render();
+      await loadProductsOnly(false);
+    }else if(cache){
+      showCachedDashboard(cache);
+      await loadAll(true);
+    }else{
+      render();
+      await loadAll(false);
+    }
   }
 
   global.OperationsCenterV1={init:init,reload:function(){return loadAll(false);},state:state};
