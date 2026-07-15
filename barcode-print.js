@@ -3,8 +3,8 @@
   const PRINT_BASE='http://127.0.0.1:18181';
   const COLLECTION='opsInternalProducts';
   const PAGE_SIZE=80;
-  const PASSWORD_HASH='d4545a1d89bd09146b761851c9326dd8dfab58ae23da62d9788fa3ee31545d15';
-  const SESSION_KEY='yuzuBarcodePrintUnlocked';
+  const PASSWORD_HASH='c52cbddc9be708cc43aea50035588b91743634605dd20b46cd8a4855b87270aa';
+  const SESSION_KEY='yuzuBarcodePrintUnlockedV3';
   const state={db:null,products:[],filtered:[],visible:PAGE_SIZE,selected:null,serviceReady:false};
   const $=function(id){return document.getElementById(id);};
   function clean(v){return String(v==null?'':v).trim();}
