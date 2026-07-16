@@ -20,7 +20,7 @@ const MOMO_ORDER_URL = 'https://api3p.momo.com.tw/VendorApi/OrderQuery';
 const MOMO_PRODUCT_URL = 'https://api3p.momo.com.tw/VendorApi/GoodsQueryByMethod';
 const MOMO_STOCK_URL = 'https://api3p.momo.com.tw/VendorApi/GoodsStockModify';
 const COUPANG_HOST = 'https://api-gateway.coupang.com';
-const VERSION = '2026.07.14-platform-order-normal-deduct-v4';
+const VERSION = '2026.07.16-platform-price-sync-v1';
 const LOCK_MS = 20 * 60 * 1000;
 const DEFAULT_LOOKBACK_DAYS = 4;
 const DEFAULT_NET_RATE = 0.87;
@@ -1214,6 +1214,135 @@ async function easyStoreUpdateProduct(product, targetStock, token) {
   return { status: 'success', message: `已同步 ${variantIds.length} 個規格`, mapping: { productId, variantIds } };
 }
 
+function priceSyncState(product) {
+  return product.raw.platformPriceSync && typeof product.raw.platformPriceSync === 'object'
+    ? product.raw.platformPriceSync
+    : {};
+}
+
+function platformTargetPrice(product, platform) {
+  const field = platform === 'EasyStore' ? 'easyStorePrice' : (platform === 'MOMO' ? 'momoPrice' : 'coupangPrice');
+  const value = numberOrNull(product.raw[field]);
+  return value == null ? null : Math.max(0, Math.round(value));
+}
+
+async function updateProductPriceState(product, platform, result, targetPrice, runId = '') {
+  const current = priceSyncState(product);
+  const next = Object.assign({}, current);
+  next[platform] = Object.assign({}, current[platform] || {}, result, {
+    targetPrice,
+    lastAttemptAt: admin.firestore.FieldValue.serverTimestamp(),
+    runId: clean(runId)
+  });
+  if (result.status === 'success' || result.status === 'same') {
+    next[platform].lastSyncedPrice = targetPrice;
+    next[platform].lastSucceededAt = admin.firestore.FieldValue.serverTimestamp();
+  }
+  next.lastUpdatedAt = admin.firestore.FieldValue.serverTimestamp();
+  await product.ref.set({ platformPriceSync: next }, { merge: true });
+  product.raw.platformPriceSync = next;
+}
+
+async function easyStoreUpdateProductPrice(product, targetPrice, token) {
+  const mapping = product.raw.platformMappings && product.raw.platformMappings.easyStore || {};
+  const productId = clean(mapping.productId || product.raw.sourceProductId);
+  const variantIds = [...new Set([...(asArray(mapping.variantIds)), clean(product.raw.sourceVariantId)].map(clean).filter(Boolean))];
+  if (!productId || !variantIds.length) return { status: 'unmapped', message: '缺少 EasyStore productId／variantId' };
+  if (!clean(token)) return { status: 'error', message: 'EasyStore Access Token 尚未設定' };
+  const url = `${EASYSTORE_URL}${EASYSTORE_API_BASE}/products/${encodeURIComponent(productId)}/variants.json`;
+  await fetchJson(url, {
+    method: 'PUT',
+    headers: {
+      'EasyStore-Access-Token': token,
+      Accept: 'application/json',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ variants: variantIds.map((id) => ({ id, price: targetPrice })) })
+  }, 'EasyStore 售價');
+  return { status: 'success', message: `已更新 ${variantIds.length} 個規格售價`, mapping: { productId, variantIds } };
+}
+
+async function coupangUpdateProductPrice(product, targetPrice, config) {
+  const vendorItemIds = await resolveCoupangItems(product, config);
+  if (!vendorItemIds.length) return { status: 'unmapped', message: '找不到 Coupang vendorItemId' };
+  const messages = [];
+  for (const vendorItemId of vendorItemIds) {
+    let current = null;
+    try {
+      const inventoryPath = `/v2/providers/seller_api/apis/api/v1/marketplace/vendor-items/${encodeURIComponent(vendorItemId)}/inventories`;
+      const payload = await coupangRequest(config, 'GET', inventoryPath, {}, null, 'Coupang 售價查詢');
+      current = numberOrNull(deepValue(payload, ['data', 'salePrice'])) ?? numberOrNull(firstValue(payload.data || {}, ['salePrice', 'price']));
+    } catch (error) {
+      current = null;
+    }
+    if (current != null && Number(current) === Number(targetPrice)) {
+      messages.push(`${vendorItemId}:已相同`);
+      continue;
+    }
+    const updatePath = `/v2/providers/seller_api/apis/api/v1/marketplace/vendor-items/${encodeURIComponent(vendorItemId)}/prices/${encodeURIComponent(targetPrice)}`;
+    await coupangRequest(config, 'PUT', updatePath, { forceSalePriceUpdate: 'true' }, null, 'Coupang 售價更新');
+    messages.push(`${vendorItemId}:${current == null ? '?' : current}→${targetPrice}`);
+    await sleep(80);
+  }
+  return { status: messages.every((message) => message.includes('已相同')) ? 'same' : 'success', message: messages.join('；').slice(0, 600), mapping: { vendorItemIds } };
+}
+
+function priceSyncErrorCount(summary) {
+  return ['EasyStore', 'MOMO', 'Coupang'].reduce((total, platform) => {
+    const row = summary && summary[platform] || {};
+    return total + Number(row.error || 0) + Number(row.unmapped || 0) + Number(row.unsupported || 0);
+  }, 0);
+}
+
+async function syncCandidatePrices(db, products, settings, credentials, runId = '') {
+  const summary = {
+    candidates: 0,
+    EasyStore: { success: 0, same: 0, error: 0, unmapped: 0, unsupported: 0 },
+    MOMO: { success: 0, same: 0, error: 0, unmapped: 0, unsupported: 0 },
+    Coupang: { success: 0, same: 0, error: 0, unmapped: 0, unsupported: 0 }
+  };
+  const config = {
+    vendorId: credentials.coupangVendorId,
+    accessKey: credentials.coupangAccessKey,
+    secretKey: credentials.coupangSecretKey
+  };
+  for (const product of products) {
+    if (!product.sku) continue;
+    const state = priceSyncState(product);
+    for (const platform of ['EasyStore', 'MOMO', 'Coupang']) {
+      if (!settings.platforms[platform]) continue;
+      const targetPrice = platformTargetPrice(product, platform);
+      if (targetPrice == null) continue;
+      const platformState = state[platform] && typeof state[platform] === 'object' ? state[platform] : {};
+      const status = clean(platformState.status).toLowerCase();
+      const lastSyncedPrice = numberOrNull(platformState.lastSyncedPrice);
+      const stateTarget = numberOrNull(platformState.targetPrice);
+      const shouldRun = !status || status === 'pending' || status === 'error' || status === 'unmapped' || stateTarget !== targetPrice || lastSyncedPrice !== targetPrice && !['unsupported', 'cleared'].includes(status);
+      if (!shouldRun) continue;
+      summary.candidates += 1;
+      let result;
+      try {
+        if (platform === 'EasyStore') result = await easyStoreUpdateProductPrice(product, targetPrice, credentials.easyStoreToken);
+        else if (platform === 'Coupang') result = await coupangUpdateProductPrice(product, targetPrice, config);
+        else result = { status: 'unsupported', message: '目前使用中的 MOMO 同步程式只有訂單與庫存 API，尚未取得可用的官方改價端點／權限。' };
+      } catch (error) {
+        result = { status: 'error', message: clean(error.message).slice(0, 600) };
+      }
+      const bucket = result.status === 'unmapped' ? 'unmapped' : (result.status === 'unsupported' ? 'unsupported' : (result.status === 'same' ? 'same' : (result.status === 'success' ? 'success' : 'error')));
+      summary[platform][bucket] += 1;
+      await updateProductPriceState(product, platform, result, targetPrice, runId);
+      if (result.mapping) {
+        const key = platform === 'EasyStore' ? 'easyStore' : 'coupang';
+        const mappings = mergePlatformMappings(product.raw.platformMappings, { [key]: result.mapping });
+        await product.ref.set({ platformMappings: mappings }, { merge: true });
+        product.raw.platformMappings = mappings;
+      }
+      await sleep(60);
+    }
+  }
+  return summary;
+}
+
 async function fetchMomoProducts(token) {
   const rows = [];
   for (let page = 1; page <= 100; page += 1) {
@@ -1627,9 +1756,11 @@ async function runPlatformOrderSync(trigger) {
     const inventorySync = settings.applyInventory
       ? await syncCandidateProducts(db, refreshedProducts, changedProductIds, settings, credentials, runtime)
       : { skipped: true, reason: 'applyInventory=false' };
+    const priceSync = await syncCandidatePrices(db, refreshedProducts, settings, credentials, lock.runId);
     await lock.ref.set({ baselineCompleted: true, baselineCompletedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
     const platformErrors = Object.values(fetched.platforms).filter((row) => row.status === 'error').length;
-    const status = processing.errors || platformErrors ? 'completed-with-errors' : 'completed';
+    const priceErrors = priceSyncErrorCount(priceSync);
+    const status = processing.errors || platformErrors || priceErrors ? 'completed-with-errors' : 'completed';
     const summary = {
       queryFrom: start.toISOString(),
       queryTo: end.toISOString(),
@@ -1639,6 +1770,7 @@ async function runPlatformOrderSync(trigger) {
       reconciliation: { reviewed: reconciliation.reviewed, reversed: reconciliation.reversed, errors: reconciliation.errors },
       changedProducts: changedProductIds.size,
       inventorySync,
+      priceSync,
       estimatedNetRate: settings.estimatedNetRate,
       applyInventory: settings.applyInventory,
       durationSeconds: Math.round((Date.now() - startedAt.getTime()) / 1000)
@@ -1657,7 +1789,7 @@ async function runPlatformOrderSync(trigger) {
       platforms: Object.keys(settings.platforms).filter((platform) => settings.platforms[platform]),
       productCount: changedProductIds.size,
       orderLineCount: fetched.lines.length,
-      note: `訂單 ${fetched.lines.length} 筆；本次正式扣庫存 ${processing.applied} 筆；取消回補 ${processing.reversed} 筆；異常 ${processing.errors + platformErrors} 筆`,
+      note: `訂單 ${fetched.lines.length} 筆；本次正式扣庫存 ${processing.applied} 筆；取消回補 ${processing.reversed} 筆；價格同步異常 ${priceErrors} 項；其他異常 ${processing.errors + platformErrors} 筆`,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       createdBy: trigger,
       version: VERSION
@@ -1818,7 +1950,16 @@ async function runPlatformOrderSyncFromAgent(payload) {
     const inventoryTargets = settings.applyInventory
       ? inventoryTargetsForProducts(refreshedProducts, changedProductIds)
       : [];
-    const status = processing.errors ? 'completed-with-errors' : 'completed';
+    const credentials = {
+      easyStoreToken: EASYSTORE_ACCESS_TOKEN.value(),
+      momoToken: MOMO_API_TOKEN.value(),
+      coupangVendorId: COUPANG_VENDOR_ID.value(),
+      coupangAccessKey: COUPANG_ACCESS_KEY.value(),
+      coupangSecretKey: COUPANG_SECRET_KEY.value()
+    };
+    const priceSync = await syncCandidatePrices(db, refreshedProducts, settings, credentials, lock.runId);
+    const priceErrors = priceSyncErrorCount(priceSync);
+    const status = processing.errors || priceErrors ? 'completed-with-errors' : 'completed';
     const summary = {
       queryFrom,
       queryTo,
@@ -1828,6 +1969,7 @@ async function runPlatformOrderSyncFromAgent(payload) {
       reconciliation: { reviewed: reconciliation.reviewed, reversed: reconciliation.reversed, errors: reconciliation.errors },
       changedProducts: changedProductIds.size,
       applyInventory: settings.applyInventory,
+      priceSync,
       executionMode: 'store-windows-agent',
       durationSeconds: Math.round((Date.now() - startedAt.getTime()) / 1000),
     };
@@ -1846,7 +1988,7 @@ async function runPlatformOrderSyncFromAgent(payload) {
       platforms: Object.keys(platformFetch),
       productCount: changedProductIds.size,
       orderLineCount: lines.length,
-      note: `本機代理讀取訂單 ${lines.length} 筆；本次正式扣庫存 ${processing.applied} 筆；取消回補 ${processing.reversed} 筆；異常 ${processing.errors} 筆`,
+      note: `本機代理讀取訂單 ${lines.length} 筆；本次正式扣庫存 ${processing.applied} 筆；取消回補 ${processing.reversed} 筆；價格同步異常 ${priceErrors} 項；其他異常 ${processing.errors} 筆`,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       createdBy: trigger,
       source: 'store-windows-agent',
