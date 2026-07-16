@@ -9,6 +9,8 @@
   const $=function(id){return document.getElementById(id);};
   function clean(v){return String(v==null?'':v).trim();}
   function lower(v){return clean(v).toLowerCase();}
+  function formatLabelSku(value){const raw=clean(value).replace(/\s+/g,'');if(!raw)return '';if(/^\d{3}-/.test(raw))return raw;const match=raw.match(/^(\d{3})(\d{4})(.*)$/);return match?match[1]+'-'+match[2]+match[3]:raw;}
+  function compactCode(value){return lower(value).replace(/[^a-z0-9]/g,'');}
   function esc(v){return clean(v).replace(/[&<>"']/g,function(ch){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch];});}
   function attr(v){return esc(v).replace(/`/g,'&#96;');}
   function number(v){const n=Number(String(v==null?'':v).replace(/,/g,'').replace(/[^0-9.\-]/g,''));return Number.isFinite(n)?n:null;}
@@ -80,12 +82,12 @@
   }
   function applySearch(){
     const term=lower($('bpSearch').value);state.visible=PAGE_SIZE;
-    state.filtered=state.products.filter(function(p){if(!term)return true;return lower([p.name,p.onlineName,p.variant,p.sku].join(' ')).indexOf(term)>=0;});
+    state.filtered=state.products.filter(function(p){if(!term)return true;const hay=lower([p.name,p.onlineName,p.variant,p.sku,formatLabelSku(p.sku)].join(' '));return hay.indexOf(term)>=0||compactCode(hay).indexOf(compactCode(term))>=0;});
     render();
   }
   function productCard(p){
     const image=p.imageUrl?'<img loading="lazy" src="'+attr(p.imageUrl)+'" alt="" onerror="this.parentNode.innerHTML=\'<div class=&quot;bp-no-image&quot;>沒有圖片</div>\'">':'<div class="bp-no-image">沒有圖片</div>';
-    return '<article class="bp-card"><div class="bp-image">'+image+'</div><div class="bp-card-body"><h2 class="bp-name">'+esc(p.name)+'</h2>'+(p.variant?'<div class="bp-variant">'+esc(p.variant)+'</div>':'')+'<div class="bp-sku">'+esc(p.sku||'未設定編號')+'</div><div class="bp-price">'+formatMoney(p.price)+'</div><button class="bp-print-btn" type="button" data-print="'+attr(p.id)+'" '+(!p.sku?'disabled':'')+'>列印條碼</button></div></article>';
+    return '<article class="bp-card"><div class="bp-image">'+image+'</div><div class="bp-card-body"><h2 class="bp-name">'+esc(p.name)+'</h2>'+(p.variant?'<div class="bp-variant">'+esc(p.variant)+'</div>':'')+'<div class="bp-sku">'+esc(formatLabelSku(p.sku)||'未設定編號')+'</div><div class="bp-price">'+formatMoney(p.price)+'</div><button class="bp-print-btn" type="button" data-print="'+attr(p.id)+'" '+(!p.sku?'disabled':'')+'>列印條碼</button></div></article>';
   }
   function render(){
     const rows=state.filtered.slice(0,state.visible);const wrap=$('bpProducts');
@@ -95,7 +97,7 @@
   }
   function openModal(product){
     state.selected=product;$('bpCopies').value='1';document.querySelectorAll('[data-copies]').forEach(function(b){b.classList.toggle('active',b.dataset.copies==='1');});
-    $('bpModalProduct').innerHTML='<h2 id="bpModalTitle">'+esc(product.name)+'</h2>'+(product.variant?'<p>'+esc(product.variant)+'</p>':'')+'<p>商品編號：'+esc(product.sku)+'</p><strong>'+formatMoney(product.price)+'</strong>';
+    $('bpModalProduct').innerHTML='<h2 id="bpModalTitle">'+esc(product.name)+'</h2>'+(product.variant?'<p>'+esc(product.variant)+'</p>':'')+'<p>商品編號：'+esc(formatLabelSku(product.sku))+'</p><strong>'+formatMoney(product.price)+'</strong>';
     $('bpModalStatus').className='bp-modal-status';$('bpModalStatus').textContent=state.serviceReady?'條碼機已連線，可以直接列印。':'條碼機尚未連線，請先完成電腦端的一次安裝。';
     $('bpPrintSubmit').disabled=!state.serviceReady;$('bpModal').classList.add('open');setTimeout(function(){$('bpCopies').select();},80);
   }
@@ -103,7 +105,7 @@
   async function printSelected(event){
     event.preventDefault();const p=state.selected;if(!p)return;const copies=Math.max(1,Math.min(500,Math.round(Number($('bpCopies').value||1))));
     const btn=$('bpPrintSubmit');btn.disabled=true;btn.textContent='列印中…';$('bpModalStatus').className='bp-modal-status';$('bpModalStatus').textContent='正在送到 TSC TTP-244 Plus…';
-    try{await localFetch('/print',{method:'POST',headers:{'Content-Type':'text/plain;charset=UTF-8'},body:JSON.stringify({sku:p.sku,name:p.name,variant:p.variant,price:p.price,copies:copies})});closeModal();toast(p.sku+' 已列印 '+copies+' 張');}
+    try{const displaySku=formatLabelSku(p.sku);await localFetch('/print',{method:'POST',headers:{'Content-Type':'text/plain;charset=UTF-8'},body:JSON.stringify({sku:displaySku,rawSku:p.sku,displaySku:displaySku,name:p.name,variant:p.variant,price:p.price,copies:copies,labelLayoutVersion:'20260716-v2'})});closeModal();toast(displaySku+' 已列印 '+copies+' 張');}
     catch(err){state.serviceReady=false;setService(false,'條碼機未連線');$('bpModalStatus').className='bp-modal-status error';$('bpModalStatus').textContent='列印失敗：'+clean(err.message||err);btn.disabled=false;}
     finally{btn.textContent='確定列印';if(state.serviceReady)btn.disabled=false;}
   }
