@@ -1434,3 +1434,25 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
 .ops-order-detail-note{margin:8px 0 0;color:var(--ops-muted);font-size:11px;line-height:1.55}
 .ops-order-items{display:grid;gap:9px}.ops-order-item-detail{padding:11px;border:1px solid var(--ops-line);border-radius:12px;background:#fff}.ops-order-item-main{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.ops-order-item-main b{display:block;font-size:14px}.ops-order-item-main small{display:block;margin-top:3px;color:var(--ops-muted);font-size:11px}.ops-order-item-numbers{text-align:right;white-space:nowrap}.ops-order-item-numbers span{display:block;font-size:11px;color:var(--ops-muted)}.ops-order-item-numbers b{display:block;margin-top:3px;font-size:14px}.ops-order-item-status{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}.ops-order-item-detail>p{margin:8px 0;color:var(--ops-muted);font-size:11px;line-height:1.5}.ops-order-item-detail>.ops-button{margin-top:9px}
 @media(max-width:780px){.ops-platform-return-alert{align-items:stretch;flex-direction:column}.ops-order-basic-grid,.ops-order-money-grid{grid-template-columns:1fr}.ops-order-item-main{display:grid}.ops-order-item-numbers{text-align:left;display:flex;gap:10px;align-items:center}.ops-order-timeline-row{align-items:flex-start;flex-direction:column;gap:3px}.ops-order-timeline-row b{text-align:left}}
+
+/* 2026-07-17：同步異常改為依商品彙整，同商品的平台問題集中顯示 */
+.ops-sync-product-anomaly{overflow:hidden;border:1px solid #dfe6e9;border-radius:15px;background:#fff;box-shadow:0 2px 8px rgba(31,55,64,.04)}
+.ops-sync-product-anomaly>header{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:14px 15px;background:#f7fafb;border-bottom:1px solid #e5ecef}
+.ops-sync-product-anomaly>header b{display:block;font-size:15px;line-height:1.45;color:var(--ops-ink);overflow-wrap:anywhere}
+.ops-sync-product-anomaly>header small{display:block;margin-top:4px;color:var(--ops-muted);line-height:1.45;overflow-wrap:anywhere}
+.ops-sync-product-count{flex:0 0 auto;padding:5px 9px;border-radius:999px;background:#edf3f5;color:#35515c;font-size:12px;font-weight:800;white-space:nowrap}
+.ops-sync-product-issues{display:grid}
+.ops-sync-platform-issue{display:grid;grid-template-columns:126px minmax(0,1fr) auto;gap:13px;align-items:start;padding:13px 15px;border-top:1px solid #edf1f3}
+.ops-sync-platform-issue:first-child{border-top:0}
+.ops-sync-platform-issue-head{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.ops-sync-platform-issue-body strong{display:block;color:#9c3f37;font-size:13px;line-height:1.5}
+.ops-sync-platform-issue-body small{display:block;margin-top:4px;color:var(--ops-muted);line-height:1.5}
+.ops-sync-platform-issue-body p{margin:5px 0 0;color:#6c4c48;font-size:12px;line-height:1.55;overflow-wrap:anywhere}
+.ops-sync-platform-issue .ops-sync-anomaly-actions{min-height:0}
+@media(max-width:780px){
+  .ops-sync-product-anomaly>header{align-items:stretch;flex-direction:column;gap:8px}
+  .ops-sync-product-count{align-self:flex-start}
+  .ops-sync-platform-issue{grid-template-columns:1fr;gap:8px}
+  .ops-sync-platform-issue .ops-sync-anomaly-actions{grid-column:auto}
+  .ops-sync-platform-issue .ops-sync-anomaly-actions .ops-button{width:100%}
+}
