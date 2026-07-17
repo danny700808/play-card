@@ -20,7 +20,7 @@ const MOMO_ORDER_URL = 'https://api3p.momo.com.tw/VendorApi/OrderQuery';
 const MOMO_PRODUCT_URL = 'https://api3p.momo.com.tw/VendorApi/GoodsQueryByMethod';
 const MOMO_STOCK_URL = 'https://api3p.momo.com.tw/VendorApi/GoodsStockModify';
 const COUPANG_HOST = 'https://api-gateway.coupang.com';
-const VERSION = '2026.07.17-order-date-and-platform-price-v9';
+const VERSION = '2026.07.17-order-date-and-platform-price-v10-fast-order-sync';
 const LOCK_MS = 20 * 60 * 1000;
 const DEFAULT_LOOKBACK_DAYS = 4;
 const DEFAULT_NET_RATE = 0.87;
@@ -2314,8 +2314,15 @@ async function runPlatformOrderSyncFromAgent(payload) {
       coupangAccessKey: COUPANG_ACCESS_KEY.value(),
       coupangSecretKey: COUPANG_SECRET_KEY.value()
     };
-    const priceSync = await syncCandidatePrices(db, refreshedProducts, settings, credentials, lock.runId, { deferCoupangToAgent: true });
-    const priceTargets = priceTargetsForAgent(refreshedProducts);
+    // 訂單同步只處理本次明確要求改價的商品；掃描整個商品目錄會讓回應超過 540 秒。
+    const requestedPriceIds = new Set(asArray(payload && payload.priceProductIds).map(clean).filter(Boolean));
+    const priceProducts = requestedPriceIds.size
+      ? refreshedProducts.filter((product) => requestedPriceIds.has(product.id))
+      : [];
+    const priceSync = await syncCandidatePrices(db, priceProducts, settings, credentials, lock.runId, { deferCoupangToAgent: true });
+    priceSync.requestedProducts = priceProducts.length;
+    priceSync.skippedForNormalOrderSync = requestedPriceIds.size === 0;
+    const priceTargets = priceTargetsForAgent(priceProducts);
     const priceErrors = priceSyncErrorCount(priceSync);
     const status = processing.errors || priceErrors ? 'completed-with-errors' : 'completed';
     const summary = {
