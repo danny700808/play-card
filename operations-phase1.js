@@ -29,7 +29,7 @@
   const READ_LIMIT = 10000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.07.17-order-date-and-platform-price-v8';
+  const VERSION = '2026.07.17-order-date-and-platform-price-v9';
   const DASHBOARD_CACHE_KEY = 'youzi_ops_dashboard_overview_v7_order_detail';
   const DASHBOARD_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
   const DEFAULT_MEMBERSHIP_SETTINGS = {
@@ -2381,6 +2381,8 @@ function ensureSalesClock(){
       const seed=[prices.easyStorePrice,prices.momoPrice,prices.coupangPrice,p&&p.onlinePrice].find(function(value){return value!=null;});
       if(seed!=null){if(prices.easyStorePrice==null)prices.easyStorePrice=seed;if(prices.momoPrice==null)prices.momoPrice=seed;if(prices.coupangPrice==null)prices.coupangPrice=seed;}
     }
+    // 酷澎台灣站 API 只接受 10 元倍數；初始化帶入的共用網路售價也必須先檢查。
+    if(prices.coupangPrice!=null&&(!Number.isInteger(prices.coupangPrice)||prices.coupangPrice%10!==0))throw new Error('酷澎售價必須是 10 元倍數（例如 390、400）。請修改後再儲存。');
     const currentPriceSync=p&&p.internal&&p.internal.platformPriceSync&&typeof p.internal.platformPriceSync==='object'?p.internal.platformPriceSync:{},nextPriceSync=Object.assign({},currentPriceSync);let priceChanged=false,needsSyncRequest=false;
     [['EasyStore','easyStorePrice'],['MOMO','momoPrice'],['Coupang','coupangPrice']].forEach(function(pair){
       const platform=pair[0],field=pair[1],oldPrice=p&&p[field]!=null?Number(p[field]):null,newPrice=prices[field];
