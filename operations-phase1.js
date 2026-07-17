@@ -1029,9 +1029,28 @@ function queueInventorySyncInTransaction(tx,productId,sku,stock,reason){const re
   function weekdayText(value){ return '日一二三四五六'[new Date(value).getDay()]||''; }
   function overviewDateLabel(dateKey){ return dateKey.replace(/-/g,'/')+'（'+weekdayText(dateKey)+'）'; }
   function overviewDayNavigatorHtml(){
-    if(state.overviewRange!=='today') return '';
     const current=overviewDateKey(),today=todayDateKey(),next=dateKeyShift(current,1),disableNext=next>today;
-    return '<div class="ops-overview-day-nav"><button type="button" class="ops-button ghost" data-action="overview-day-shift" data-step="-1">← 前一天</button><div class="ops-overview-day-label"><span>查詢日期</span><b>'+escapeHtml(overviewDateLabel(current))+'</b></div><button type="button" class="ops-button ghost" data-action="overview-day-shift" data-step="1" '+(disableNext?'disabled':'')+'>後一天 →</button></div>';
+    return '<div class="ops-overview-day-nav"><button type="button" class="ops-button ghost" data-action="overview-day-shift" data-step="-1">← 前一天</button><label class="ops-overview-day-label"><span>查詢日期</span><input class="ops-input" id="overviewDate" type="date" max="'+attr(today)+'" value="'+attr(current)+'"></label><button type="button" class="ops-button ghost" data-action="overview-day-shift" data-step="1" '+(disableNext?'disabled':'')+'>後一天 →</button></div>';
+  }
+  function overviewMonthSelectHtml(){
+    const now=new Date(),year=now.getFullYear(),currentMonth=now.getMonth()+1,selected=clean(state.overviewMonth)||year+'-'+String(currentMonth).padStart(2,'0');
+    const options=[];
+    for(let month=1;month<=12;month+=1){
+      const key=year+'-'+String(month).padStart(2,'0');
+      options.push('<option value="'+attr(key)+'" '+(key===selected?'selected':'')+' '+(month>currentMonth?'disabled':'')+'>'+year+' 年 '+month+' 月</option>');
+    }
+    return '<label class="ops-overview-month-select '+(state.overviewRange==='month'?'active':'')+'"><span>月份</span><select class="ops-select" id="overviewMonth">'+options.join('')+'</select></label>';
+  }
+  function overviewRangeControlsHtml(){
+    const todayActive=state.overviewRange==='today'&&overviewDateKey()===todayDateKey();
+    const customLabel=state.overviewFrom&&state.overviewTo?'自訂區間':'自訂區間';
+    return '<div class="ops-v8-overview-range">'
+      +'<button type="button" class="ops-button ops-overview-today '+(todayActive?'primary':'ghost')+'" data-action="overview-range" data-range="today">今天</button>'
+      +overviewDayNavigatorHtml()
+      +overviewMonthSelectHtml()
+      +'<button type="button" class="ops-button '+(state.overviewRange==='year'?'primary':'ghost')+'" data-action="overview-range" data-range="year">今年</button>'
+      +'<details class="ops-overview-dropdown"><summary class="ops-button '+(state.overviewRange==='custom'?'primary':'ghost')+'">'+escapeHtml(customLabel)+'</summary><div class="ops-overview-dropdown-panel"><label>開始日期<input class="ops-input" id="overviewFrom" type="date" value="'+attr(state.overviewFrom)+'"></label><label>結束日期<input class="ops-input" id="overviewTo" type="date" value="'+attr(state.overviewTo)+'"></label><button type="button" class="ops-button primary wide" data-action="overview-custom-apply">套用區間</button></div></details>'
+      +'</div>';
   }
   function mobileSearchPadHtml(targetId){
     if(!isCompactMobile()) return '';
@@ -1200,9 +1219,7 @@ function renderOverviewV7(){
   const networkOrderCount=new Set(networkRows.map(function(row){return row.platform+'|'+row.externalOrderNo;})).size;
   const networkFees=networkFeeMetrics.variableFees,networkFixedFees=networkFeeMetrics.fixedFees;
 
-  const tabs='<div class="ops-range-tabs"><button class="'+(state.overviewRange==='today'?'active':'')+'" data-action="overview-range" data-range="today">今天</button><button class="'+(state.overviewRange==='month'?'active':'')+'" data-action="overview-range" data-range="month">月份</button><button class="'+(state.overviewRange==='year'?'active':'')+'" data-action="overview-range" data-range="year">今年</button><button class="'+(state.overviewRange==='custom'?'active':'')+'" data-action="overview-range" data-range="custom">自訂區間</button></div>';
-  const monthPicker=state.overviewRange==='month'?'<div class="ops-range-custom"><label>查看月份<input class="ops-input" id="overviewMonth" type="month" max="'+attr(dateText(new Date()).slice(0,7))+'" value="'+attr(state.overviewMonth)+'"></label></div>':'';
-  const custom=state.overviewRange==='custom'?'<div class="ops-range-custom"><label>開始日期<input class="ops-input" id="overviewFrom" type="date" value="'+attr(state.overviewFrom)+'"></label><label>結束日期<input class="ops-input" id="overviewTo" type="date" value="'+attr(state.overviewTo)+'"></label></div>':'';
+  const rangeControls=overviewRangeControlsHtml();
   const sync=state.injiaoyunCloudSync||{};
   const syncRange=clean(sync.lastStartDateKey)&&clean(sync.lastEndDateKey)?clean(sync.lastStartDateKey)+'～'+clean(sync.lastEndDateKey):'';
   const syncText=sync.status==='success'&&sync.lastSucceededAt?'最後同步：'+dateTimeText(sync.lastSucceededAt)+(syncRange?'｜資料範圍：'+syncRange:''):'尚未取得自動同步紀錄';
@@ -1221,7 +1238,7 @@ function renderOverviewV7(){
   function metricRow(label,value){return '<div class="ops-v8-metric-row"><span>'+escapeHtml(label)+'</span><b>'+value+'</b></div>';}
   function metricAction(label,value,action){return '<button type="button" class="ops-v8-metric-row ops-v8-metric-action" data-action="'+attr(action)+'"><span>'+escapeHtml(label)+'</span><b>'+value+'</b></button>';}
 
-  const rangeHtml='<div class="ops-v8-overview-range">'+tabs+overviewDayNavigatorHtml()+monthPicker+custom+'<span>'+escapeHtml(bounds.label)+'資料</span></div>';
+  const rangeHtml=rangeControls;
   const heroHtml='<section class="ops-card ops-v8-overview-hero"><div class="ops-v8-hero-primary"><span>全通路預估淨利</span><strong class="'+(allBalance<0?'negative':'')+'">'+money(allBalance)+'</strong></div><div class="ops-v8-hero-secondary ops-v8-hero-secondary-simple">'+summaryBox('現金流狀態',escapeHtml(cashStatus),openReceivables.length?'warning':'success')+'<small class="ops-v8-cash-note">'+escapeHtml(cashSub)+'</small></div></section>';
 
   const storeHtml='<section class="ops-card ops-v8-channel-card ops-v8-channel-store"><div class="ops-v8-channel-accent"></div><div class="ops-v8-channel-head"><div><h2>門市營運</h2><p>現場商品、維修與其他收入</p></div><button class="ops-button small soft" data-nav="sales">前往銷售</button></div><div class="ops-v8-channel-summary">'+summaryBox('門市實收',money(storeCash))+summaryBox('預估毛利',money(storeBalance),storeBalance<0?'warning':'success')+'</div><div class="ops-v8-metric-list">'+metricRow('商品銷售',money(productRevenue))+metricRow('維修／其他',money(repairRevenue+otherRevenue))+metricRow('商品成本',money(productCost))+metricRow('退貨退款',money(returnRefund))+'</div></section>';
@@ -2753,8 +2770,18 @@ async function syncPlatformOrdersNow(){const yes=await confirmAction('要求店�
     if(action==='education-school-share-detail') return openEducationSchoolShareDetail();
     if(action==='education-teacher-detail') return openEducationTeacherDetail(el.dataset.teacherKey||'');
     if(action==='drawer-close') return closeDrawer();
-    if(action==='overview-range'){state.overviewRange=el.dataset.range||'today';if(state.overviewRange==='today'&&!state.overviewDate)state.overviewDate=todayDateKey();return render();}
+    if(action==='overview-range'){
+      const nextRange=el.dataset.range||'today';
+      state.overviewRange=nextRange;
+      if(nextRange==='today')state.overviewDate=todayDateKey();
+      return render();
+    }
     if(action==='overview-day-shift'){const step=Number(el.dataset.step||0);state.overviewDate=dateKeyShift(overviewDateKey(),step);if(state.overviewDate>todayDateKey())state.overviewDate=todayDateKey();state.overviewRange='today';return render();}
+    if(action==='overview-custom-apply'){
+      if(!state.overviewFrom||!state.overviewTo){toast('請選擇完整日期','開始日期與結束日期都需要選擇。','warning');return;}
+      if(state.overviewFrom>state.overviewTo){toast('日期範圍不正確','開始日期不能晚於結束日期。','warning');return;}
+      state.overviewRange='custom';return render();
+    }
     if(action==='mobile-key') return applyMobileKeyInput(el.dataset.target,el.dataset.key);
     if(action==='overview-low-stock'){state.productFilter='low';state.productSeries='all';state.productSearch='';state.productVisible=PRODUCT_PAGE_SIZE;location.hash='products';return;}
     if(action==='sales-mode'){const nextMode=el.dataset.mode||'product';if(nextMode==='usage'){state.cart.forEach(function(item){item.unitPrice=0;});state.checkoutDiscount=0;state.checkoutPoints=0;state.checkoutPointsTouched=false;state.checkoutEarnPoints=false;}else if(state.salesMode==='usage'){state.cart.forEach(function(item){const product=catalogById(item.productId);item.unitPrice=Number(product&&product.storePrice||0);});state.checkoutEarnPoints=true;}state.salesMode=nextMode;return renderKeepingViewport();}
@@ -3001,9 +3028,10 @@ function rerenderKeepingFocus(id,value){
       else if(event.target.id==='financeRange'){state.financeRange=event.target.value;render();}
       else if(event.target.id==='saleInvoiceFrom'){state.saleInvoiceFrom=event.target.value;renderKeepingViewport();}
       else if(event.target.id==='saleInvoiceTo'){state.saleInvoiceTo=event.target.value;renderKeepingViewport();}
+      else if(event.target.id==='overviewDate'&&/^\d{4}-\d{2}-\d{2}$/.test(event.target.value)){state.overviewDate=event.target.value>todayDateKey()?todayDateKey():event.target.value;state.overviewRange='today';render();}
       else if(event.target.id==='overviewMonth'&&/^\d{4}-(0[1-9]|1[0-2])$/.test(event.target.value)){state.overviewMonth=event.target.value;state.overviewRange='month';render();}
-      else if(event.target.id==='overviewFrom'){state.overviewFrom=event.target.value;render();}
-      else if(event.target.id==='overviewTo'){state.overviewTo=event.target.value;render();}
+      else if(event.target.id==='overviewFrom'){state.overviewFrom=event.target.value;}
+      else if(event.target.id==='overviewTo'){state.overviewTo=event.target.value;}
       else if(event.target.id==='posCustomerSelect'){state.selectedCustomerId=event.target.value;render();}
       else if(event.target.closest('#saleEditForm')&&event.target.name==='paymentStatus'){const field=byId('saleEditReceivedField');if(field)field.classList.toggle('hidden',event.target.value!=='partial');}
       else if(event.target.id==='importFile'){parseImportFile(event.target.files&&event.target.files[0]).catch(function(error){toast('檔案解析失敗',errorMessage(error),'error');});}

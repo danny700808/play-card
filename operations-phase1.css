@@ -1456,3 +1456,110 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
   .ops-sync-platform-issue .ops-sync-anomaly-actions{grid-column:auto}
   .ops-sync-platform-issue .ops-sync-anomaly-actions .ops-button{width:100%}
 }
+
+/* 2026-07-17：營運總覽日期列重新排列 */
+.ops-v8-overview-range{
+  display:flex;
+  align-items:stretch;
+  gap:8px;
+  flex-wrap:wrap;
+  margin-bottom:14px;
+}
+.ops-v8-overview-range>.ops-button{min-height:44px;white-space:nowrap}
+.ops-v8-overview-range .ops-overview-day-nav{
+  display:flex;
+  align-items:stretch;
+  gap:8px;
+  flex-wrap:nowrap;
+  margin:0;
+}
+.ops-v8-overview-range .ops-overview-day-nav .ops-button{min-width:96px;min-height:44px;white-space:nowrap}
+.ops-v8-overview-range .ops-overview-day-label,
+.ops-overview-month-select{
+  display:flex;
+  align-items:center;
+  gap:7px;
+  min-width:176px;
+  padding:5px 8px 5px 10px;
+  border:1px solid var(--ops-line);
+  border-radius:12px;
+  background:#fff;
+}
+.ops-v8-overview-range .ops-overview-day-label span,
+.ops-overview-month-select span{
+  flex:0 0 auto;
+  color:var(--ops-muted);
+  font-size:11px;
+  font-weight:800;
+  white-space:nowrap;
+}
+.ops-v8-overview-range .ops-overview-day-label .ops-input,
+.ops-overview-month-select .ops-select{
+  min-width:0;
+  height:32px;
+  min-height:32px;
+  padding:4px 7px;
+  border:0;
+  background:transparent;
+  box-shadow:none;
+  font-size:12px;
+  font-weight:800;
+}
+.ops-overview-month-select.active{
+  border-color:var(--ops-green);
+  background:var(--ops-green-soft);
+}
+.ops-overview-dropdown{position:relative}
+.ops-overview-dropdown>summary{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  min-height:44px;
+  list-style:none;
+  cursor:pointer;
+  white-space:nowrap;
+}
+.ops-overview-dropdown>summary::-webkit-details-marker{display:none}
+.ops-overview-dropdown-panel{
+  position:absolute;
+  z-index:30;
+  top:calc(100% + 7px);
+  right:0;
+  width:310px;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:9px;
+  padding:12px;
+  border:1px solid var(--ops-line);
+  border-radius:14px;
+  background:#fff;
+  box-shadow:0 14px 34px rgba(19,48,65,.18);
+}
+.ops-overview-dropdown-panel label{font-size:11px;font-weight:800;color:var(--ops-muted)}
+.ops-overview-dropdown-panel label .ops-input{margin-top:5px}
+.ops-overview-dropdown-panel .wide{grid-column:1/-1}
+
+@media(max-width:980px){
+  .ops-v8-overview-range{align-items:stretch}
+  .ops-v8-overview-range .ops-overview-day-nav{order:2;width:100%}
+  .ops-v8-overview-range .ops-overview-day-nav .ops-overview-day-label{flex:1}
+  .ops-overview-month-select{min-width:190px}
+}
+@media(max-width:620px){
+  .ops-v8-overview-range{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+  .ops-v8-overview-range>.ops-button,.ops-overview-dropdown>summary{width:100%;min-width:0;padding-left:7px;padding-right:7px}
+  .ops-v8-overview-range .ops-overview-day-nav{grid-column:1/-1;display:grid;grid-template-columns:1fr 1.35fr 1fr;gap:7px;order:0}
+  .ops-v8-overview-range .ops-overview-day-nav .ops-button{min-width:0;width:100%;padding-left:4px;padding-right:4px}
+  .ops-v8-overview-range .ops-overview-day-label{min-width:0;padding:5px 6px;display:grid;gap:1px}
+  .ops-v8-overview-range .ops-overview-day-label span{font-size:9px}
+  .ops-v8-overview-range .ops-overview-day-label .ops-input{width:100%;padding:2px;font-size:11px}
+  .ops-overview-month-select{min-width:0;padding:5px 6px;grid-column:span 1}
+  .ops-overview-month-select span{display:none}
+  .ops-overview-month-select .ops-select{width:100%;padding:3px;font-size:11px}
+  .ops-overview-dropdown{position:static}
+  .ops-overview-dropdown-panel{position:absolute;left:10px;right:10px;width:auto;top:auto;margin-top:7px}
+}
+@media(max-width:620px){
+  .ops-overview-dropdown{position:relative}
+  .ops-overview-dropdown-panel{left:auto;right:0;width:min(310px,calc(100vw - 32px));}
+}
