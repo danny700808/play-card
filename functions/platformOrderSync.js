@@ -20,7 +20,7 @@ const MOMO_ORDER_URL = 'https://api3p.momo.com.tw/VendorApi/OrderQuery';
 const MOMO_PRODUCT_URL = 'https://api3p.momo.com.tw/VendorApi/GoodsQueryByMethod';
 const MOMO_STOCK_URL = 'https://api3p.momo.com.tw/VendorApi/GoodsStockModify';
 const COUPANG_HOST = 'https://api-gateway.coupang.com';
-const VERSION = '2026.07.17-order-date-and-platform-price-v8';
+const VERSION = '2026.07.17-order-date-and-platform-price-v9';
 const LOCK_MS = 20 * 60 * 1000;
 const DEFAULT_LOOKBACK_DAYS = 4;
 const DEFAULT_NET_RATE = 0.87;
@@ -2161,6 +2161,46 @@ function priceTargetsForAgent(products) {
   return targets;
 }
 
+async function recordAgentCoupangPriceResults(db, results, originalRunId, reportRunId) {
+  const summary = { reported: 0, success: 0, errors: 0, ignored: 0 };
+  for (const raw of asArray(results)) {
+    const productId = clean(raw && raw.productId);
+    const targetPrice = numberOrNull(raw && raw.targetPrice);
+    if (!productId || targetPrice == null) {
+      summary.ignored += 1;
+      continue;
+    }
+    const ref = db.collection(PRODUCT_COLLECTION).doc(productId);
+    const snap = await ref.get();
+    if (!snap.exists) {
+      summary.ignored += 1;
+      continue;
+    }
+    const product = { id: productId, ref, raw: snap.data() || {} };
+    // 不可讓延遲到達的舊回報覆寫使用者剛改的新售價。
+    if (platformTargetPrice(product, 'Coupang') !== Math.round(targetPrice)) {
+      summary.ignored += 1;
+      continue;
+    }
+    const status = clean(raw && raw.status).toLowerCase();
+    const result = {
+      status: ['success', 'same', 'error', 'manual-required', 'unmapped'].includes(status) ? status : 'error',
+      message: clean(raw && raw.message).slice(0, 700),
+      executionMode: 'store-windows-agent'
+    };
+    const vendorItemIds = asArray(raw && raw.vendorItemIds).map(clean).filter(Boolean);
+    await updateProductPriceState(product, 'Coupang', result, Math.round(targetPrice), originalRunId || reportRunId);
+    if (vendorItemIds.length) {
+      const mappings = mergePlatformMappings(product.raw.platformMappings, { coupang: { vendorItemIds } });
+      await ref.set({ platformMappings: mappings }, { merge: true });
+    }
+    summary.reported += 1;
+    if (result.status === 'success' || result.status === 'same') summary.success += 1;
+    else if (result.status === 'error') summary.errors += 1;
+  }
+  return summary;
+}
+
 async function runPlatformOrderSyncFromAgent(payload) {
   if (!admin.apps.length) admin.initializeApp();
   const db = admin.firestore();
@@ -2184,6 +2224,20 @@ async function runPlatformOrderSyncFromAgent(payload) {
       finalResult = { status: 'disabled', summary: { message: '平台訂單同步已停用' } };
       await runRef.set({ status: 'disabled', finishedAt: admin.firestore.FieldValue.serverTimestamp(), settings }, { merge: true });
       return { ...finalResult, applyInventory: settings.applyInventory, inventoryTargets: [] };
+    }
+    // 改價回報是一個獨立、極小的工作：不得再抓訂單或依「資料缺席」做取消處理。
+    if (payload && payload.priceReportOnly === true) {
+      const priceReport = await recordAgentCoupangPriceResults(
+        db,
+        payload.priceResults,
+        clean(payload.priceRunId),
+        lock.runId
+      );
+      const status = priceReport.errors ? 'completed-with-errors' : 'completed';
+      const summary = { priceReport, executionMode: 'store-windows-agent', durationSeconds: Math.round((Date.now() - startedAt.getTime()) / 1000) };
+      await runRef.set({ status, finishedAt: admin.firestore.FieldValue.serverTimestamp(), summary, source: 'store-windows-agent-price-report', version: VERSION }, { merge: true });
+      finalResult = { status, summary };
+      return { status, summary, runId: lock.runId, inventoryTargets: [], priceTargets: [] };
     }
     const queryToDate = parseDate(payload && payload.queryTo) || new Date();
     const queryFromDate = parseDate(payload && payload.queryFrom) || new Date(queryToDate.getTime() - settings.lookbackDays * 24 * 60 * 60 * 1000);
