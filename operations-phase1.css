@@ -1563,3 +1563,269 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
   .ops-overview-dropdown{position:relative}
   .ops-overview-dropdown-panel{left:auto;right:0;width:min(310px,calc(100vw - 32px));}
 }
+
+/* 2026-07-17：現場銷售主操作區與銷售紀錄區分色 */
+.ops-v9-sales-main-zone{
+  margin-bottom:16px;
+  padding:16px;
+  border:2px solid #8eb4d2;
+  border-radius:18px;
+  background:linear-gradient(180deg,#e7f2f9 0%,#f2f8fb 100%);
+  box-shadow:0 8px 22px rgba(39,91,123,.08);
+}
+.ops-v9-sales-main-zone .ops-v8-sales-customer-row>.ops-pos-customer-v5,
+.ops-v9-sales-main-zone .ops-v8-sales-clock,
+.ops-v9-sales-main-zone .ops-v8-sales-search-card,
+.ops-v9-sales-main-zone .ops-v8-sales-cart-card,
+.ops-v9-sales-main-zone .ops-direct-income,
+.ops-v9-sales-main-zone .ops-stock-usage-banner{
+  border-color:#b7d0e0;
+  background:rgba(255,255,255,.84);
+  box-shadow:none;
+}
+.ops-v9-sales-main-zone .ops-v8-sales-modes{
+  margin:0 0 14px;
+  padding:8px;
+  border:1px solid #b7d0e0;
+  border-radius:14px;
+  background:rgba(255,255,255,.58);
+}
+.ops-v9-sales-main-zone .ops-v8-sales-modes button:not(.active){
+  background:#fff;
+  border-color:#b7d0e0;
+}
+.ops-v9-sales-main-zone .ops-v8-sales-totals{
+  margin:14px 0 0;
+}
+.ops-v9-sales-main-zone .ops-v8-sales-totals .ops-kpi{
+  border-color:#b7d0e0;
+  box-shadow:none;
+}
+.ops-v8-sales-history{
+  margin-top:0;
+  padding:16px;
+  border:2px solid #cf9f63;
+  border-radius:18px;
+  background:linear-gradient(180deg,#f8e8d1 0%,#fff9f0 100%);
+  box-shadow:0 8px 22px rgba(121,78,27,.08);
+}
+.ops-v8-sales-history>.ops-v8-section-head{
+  margin-bottom:10px;
+}
+.ops-v8-sales-history>.ops-v8-section-head h2{
+  color:#704517;
+}
+.ops-v8-sales-history-tools{
+  padding:10px;
+  border:1px solid #dfbf94;
+  border-radius:13px;
+  background:rgba(255,255,255,.78);
+}
+.ops-v8-sales-history>.ops-table-wrap{
+  max-height:560px;
+  overflow:auto;
+  border:1px solid #e3c9a7;
+  border-radius:13px;
+  background:#fff;
+}
+.ops-v8-sales-history-table thead th{
+  position:sticky;
+  top:0;
+  z-index:2;
+  background:#fff8ed;
+}
+@media(max-width:780px){
+  .ops-v9-sales-main-zone,.ops-v8-sales-history{padding:10px;border-radius:15px}
+  .ops-v8-sales-history-tools{align-items:stretch}
+  .ops-v8-sales-history-tools .grow{flex-basis:100%;min-width:100%}
+  .ops-v8-sales-history-tools label{flex:1;min-width:130px}
+}
+
+/* 2026-07-17：現場銷售簡潔直接操作版（四種交易類型共用同一介面） */
+.ops-v10-sales-zone{
+  margin-bottom:16px;
+  overflow:visible;
+  border:1px solid #cbdbe1;
+  border-top:6px solid #207d75;
+  border-radius:19px;
+  background:#fff;
+  box-shadow:0 8px 24px rgba(27,50,62,.08);
+}
+.ops-v10-sales-top{
+  padding:14px 15px;
+  border-radius:13px 13px 0 0;
+  border-bottom:1px solid #cfe1dd;
+  background:#eef8f6;
+}
+.ops-v10-sales-top-grid{
+  display:grid;
+  grid-template-columns:minmax(300px,.9fr) minmax(470px,1.35fr) auto;
+  gap:12px;
+  align-items:end;
+}
+.ops-v10-sales-customer-block,
+.ops-v10-sales-type-block{
+  min-width:0;
+}
+.ops-v10-sales-label{
+  display:block;
+  margin:0 0 7px;
+  color:#56736e;
+  font-size:12px;
+  font-weight:900;
+}
+.ops-v10-sales-customer-block>.ops-pos-customer-v5{
+  margin:0;
+  padding:0;
+  border:0;
+  border-radius:0;
+  background:transparent;
+  box-shadow:none;
+}
+.ops-v10-sales-customer-block .ops-customer-mode-grid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:7px;
+}
+.ops-v10-sales-customer-block .ops-customer-mode-grid button,
+.ops-v10-sales-type-block .ops-v8-sales-modes button{
+  min-width:0;
+  min-height:42px;
+  padding:8px 7px;
+  border:1px solid #9dc9c2;
+  border-radius:11px;
+  background:#fff;
+  color:#315d58;
+  font-size:13px;
+  font-weight:900;
+  white-space:nowrap;
+}
+.ops-v10-sales-customer-block .ops-customer-mode-grid button.active,
+.ops-v10-sales-type-block .ops-v8-sales-modes button.active,
+.ops-v10-sales-type-block .ops-v8-sales-modes button[data-mode].active{
+  border-color:#207d75!important;
+  background:#207d75!important;
+  color:#fff!important;
+}
+.ops-v10-sales-type-block .ops-v8-sales-modes{
+  display:grid!important;
+  grid-template-columns:repeat(4,minmax(0,1fr))!important;
+  gap:7px!important;
+  margin:0!important;
+  padding:0!important;
+  border:0!important;
+  border-radius:0!important;
+  background:transparent!important;
+}
+.ops-v10-sales-clock{
+  min-width:166px;
+  padding:8px 3px;
+  border:0!important;
+  border-radius:0!important;
+  background:transparent!important;
+  box-shadow:none!important;
+  text-align:right;
+}
+.ops-v10-sales-clock span{
+  color:#6d7d86;
+}
+.ops-v10-usage-note{
+  display:block;
+  margin-top:5px;
+  color:#6d7d86;
+  font-size:10px;
+  line-height:1.35;
+}
+.ops-v10-sales-body{
+  padding:14px;
+  border-radius:0 0 18px 18px;
+  background:#eef5f9;
+}
+.ops-v10-sales-body .ops-v8-sales-search-card,
+.ops-v10-sales-body .ops-v8-sales-cart-card,
+.ops-v10-sales-body .ops-direct-income{
+  border:1px solid #ccd9df;
+  border-radius:15px;
+  background:#fff;
+  box-shadow:none;
+}
+.ops-v10-sales-body .ops-v8-sales-income-mode{
+  width:100%;
+  max-width:none;
+  margin:0;
+}
+.ops-v10-direct-income{
+  width:100%;
+  max-width:none;
+  padding:16px;
+}
+.ops-v10-direct-income .ops-v8-section-head{
+  margin-bottom:14px;
+}
+.ops-v10-direct-income .ops-v8-section-head h2{
+  margin:0;
+  color:#173b52;
+}
+.ops-v10-direct-income .ops-v8-section-head p{
+  margin:4px 0 0;
+  color:#6d7d86;
+  font-size:12px;
+}
+.ops-v10-sales-body .ops-v8-sales-totals{
+  margin:12px 0 0;
+}
+.ops-v10-sales-body .ops-v8-sales-totals .ops-kpi{
+  border-color:#cad8df;
+  background:#fff;
+  box-shadow:none;
+}
+.ops-v10-sales-body .ops-v8-sales-totals .ops-kpi:last-child{
+  border-color:#207d75;
+  background:#207d75;
+}
+.ops-v10-sales-top .ops-member-popover{
+  z-index:35;
+}
+
+@media(max-width:1050px){
+  .ops-v10-sales-top-grid{
+    grid-template-columns:1fr 1.25fr;
+  }
+  .ops-v10-sales-clock{
+    grid-column:1/-1;
+    min-width:0;
+    padding:0;
+    text-align:left;
+  }
+}
+@media(max-width:780px){
+  .ops-v10-sales-zone{
+    border-radius:15px;
+  }
+  .ops-v10-sales-top,
+  .ops-v10-sales-body{
+    padding:10px;
+  }
+  .ops-v10-sales-top-grid{
+    grid-template-columns:1fr;
+    gap:10px;
+  }
+  .ops-v10-sales-type-block .ops-v8-sales-modes{
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  }
+  .ops-v10-sales-clock{
+    grid-column:auto;
+  }
+}
+@media(max-width:430px){
+  .ops-v10-sales-customer-block .ops-customer-mode-grid{
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:5px;
+  }
+  .ops-v10-sales-customer-block .ops-customer-mode-grid button,
+  .ops-v10-sales-type-block .ops-v8-sales-modes button{
+    min-height:38px;
+    padding:6px 4px;
+    font-size:11px;
+  }
+}
