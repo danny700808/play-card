@@ -20,7 +20,7 @@ const MOMO_ORDER_URL = 'https://api3p.momo.com.tw/VendorApi/OrderQuery';
 const MOMO_PRODUCT_URL = 'https://api3p.momo.com.tw/VendorApi/GoodsQueryByMethod';
 const MOMO_STOCK_URL = 'https://api3p.momo.com.tw/VendorApi/GoodsStockModify';
 const COUPANG_HOST = 'https://api-gateway.coupang.com';
-const VERSION = '2026.07.17-platform-order-fetch-and-group-v6';
+const VERSION = '2026.07.17-order-date-and-platform-price-v8';
 const LOCK_MS = 20 * 60 * 1000;
 const DEFAULT_LOOKBACK_DAYS = 4;
 const DEFAULT_NET_RATE = 0.87;
@@ -48,6 +48,11 @@ function normalizeSku(value) {
 function numberOrNull(value) {
   if (value === null || value === undefined || clean(value) === '') return null;
   if (typeof value === 'object') {
+    if (value.units !== undefined) {
+      const units = Number(value.units);
+      const nanos = Number(value.nanos || 0);
+      if (Number.isFinite(units) && Number.isFinite(nanos)) return units + nanos / 1000000000;
+    }
     for (const key of ['amount', 'value', 'price', 'total', 'quantity']) {
       if (value[key] !== undefined) return numberOrNull(value[key]);
     }
@@ -113,6 +118,14 @@ function parseDate(value) {
   if (compact) {
     const [, year, month, day, hour = '00', minute = '00', second = '00'] = compact;
     const date = new Date(`${year}-${month}-${day}T${hour}:${minute}:${second}+08:00`);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  // Coupang 有些台灣回傳值沒有時區；後端位於 UTC，必須明確視為台灣時間，否則會多加八小時甚至跨日。
+  const taiwanLocal = raw.match(/^(\d{4})[-/](\d{2})[-/](\d{2})[ T](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d+))?)?$/);
+  if (taiwanLocal) {
+    const [, year, month, day, hour, minute, second = '00', fraction = ''] = taiwanLocal;
+    const millis = fraction ? `.${fraction.slice(0, 3).padEnd(3, '0')}` : '';
+    const date = new Date(`${year}-${month}-${day}T${hour}:${minute}:${second}${millis}+08:00`);
     return Number.isNaN(date.getTime()) ? null : date;
   }
   const normalized = /^\d{4}[-/]\d{2}[-/]\d{2}(?: \d{2}:\d{2}(?::\d{2})?)?$/.test(raw)
@@ -275,17 +288,39 @@ function normalizeLine(base) {
   const quantity = Math.max(0, Math.round(Number(base.quantity || 0)));
   const unitPrice = Math.max(0, Number(base.unitPrice || 0));
   const grossAmount = Math.max(0, Number(base.grossAmount != null ? base.grossAmount : unitPrice * quantity));
-  const parsedOrderedAt = parseDate(base.orderedAt);
+  const platform = clean(base.platform);
+  const externalOrderId = clean(base.externalOrderId || base.externalOrderNo);
+  const reportedOrderedAt = parseDate(base.orderedAt);
+  const momoInferredAt = platform === 'MOMO' ? inferMomoOrderDateFromNumber(externalOrderId, reportedOrderedAt || new Date()) : null;
+  const incomingDateSource = clean(base.orderDateSource);
+  const normalizedIncomingDateSource = incomingDateSource.toLowerCase();
+  const momoTrustedTimestamp = normalizedIncomingDateSource === 'momo-api-order-date';
+  const momoDateMismatch = !!(momoInferredAt && (!reportedOrderedAt || isoDay(momoInferredAt) !== isoDay(reportedOrderedAt)));
+  const useMomoInferredDate = !!(momoInferredAt && (momoDateMismatch || !momoTrustedTimestamp || base.orderTimeEstimated === true));
+  const syncReferenceAt = parseDate(base.syncReferenceAt);
+  const trustedDateSource = (platform === 'EasyStore' && normalizedIncomingDateSource === 'easystore-created-at')
+    || (platform === 'Coupang' && normalizedIncomingDateSource === 'coupang-ordered-at')
+    || (platform === 'MOMO' && momoTrustedTimestamp);
+  const looksLikeSyncTimestamp = !!(reportedOrderedAt && syncReferenceAt && Math.abs(reportedOrderedAt.getTime() - syncReferenceAt.getTime()) <= 15 * 60 * 1000);
+  const explicitlyUntrustedSource = ['sync', 'sync-time', 'synchronized-at', 'legacy-sync', 'missing', 'unknown'].includes(normalizedIncomingDateSource);
+  const validatedAgentTimestamp = platform !== 'MOMO' && !!reportedOrderedAt && !looksLikeSyncTimestamp && !explicitlyUntrustedSource;
+  const rejectUntrustedTimestamp = platform !== 'MOMO' && !trustedDateSource && !validatedAgentTimestamp;
+  const parsedOrderedAt = platform === 'MOMO'
+    ? (useMomoInferredDate ? momoInferredAt : (momoTrustedTimestamp ? reportedOrderedAt : null))
+    : (rejectUntrustedTimestamp ? null : reportedOrderedAt);
   // 不可再用 new Date() 補下單時間，否則舊訂單會全部變成「本次同步時間」。
   const orderedAt = parsedOrderedAt || new Date(0);
   const line = {
-    platform: clean(base.platform),
-    externalOrderId: clean(base.externalOrderId || base.externalOrderNo),
+    platform,
+    externalOrderId,
     externalOrderNo: clean(base.externalOrderNo || base.externalOrderId),
     externalLineId: clean(base.externalLineId),
     orderedAt,
     hasOriginalOrderDate: !!parsedOrderedAt,
-    orderDateSource: clean(base.orderDateSource) || (parsedOrderedAt ? 'platform' : 'missing'),
+    orderDateSource: rejectUntrustedTimestamp ? (looksLikeSyncTimestamp ? 'sync-time-rejected' : 'untrusted-time-rejected') : (useMomoInferredDate ? 'momo-order-number-inferred' : (trustedDateSource ? normalizedIncomingDateSource : (validatedAgentTimestamp ? 'agent-order-time-validated' : 'missing'))),
+    orderTimeEstimated: useMomoInferredDate || base.orderTimeEstimated === true,
+    orderDateRepaired: useMomoInferredDate && !!reportedOrderedAt,
+    reportedOrderedAt: (useMomoInferredDate || rejectUntrustedTimestamp) && reportedOrderedAt ? reportedOrderedAt.toISOString() : clean(base.reportedOrderedAt),
     statusUpdatedAt: parseDate(base.statusUpdatedAt) || null,
     sku: normalizeSku(base.sku),
     productName: clean(base.productName),
@@ -315,6 +350,53 @@ function normalizeLine(base) {
   return line;
 }
 
+function orderDateTrust(row) {
+  const date = parseDate(row && row.orderedAt);
+  if (!date) return 0;
+  const source = clean(row && row.orderDateSource).toLowerCase();
+  if (['easystore-created-at', 'coupang-ordered-at', 'momo-api-order-date'].includes(source)) return 4;
+  if (source === 'momo-order-number-inferred') return 3;
+  if (source === 'agent-order-time-validated') return 2;
+  if (source === 'platform' && row && row.hasOriginalOrderDate === true) {
+    const seen = parseDate(row.firstSeenAt || row.lastSeenAt);
+    if (seen && Math.abs(date.getTime() - seen.getTime()) > 15 * 60 * 1000) return 1;
+  }
+  return 0;
+}
+
+function resolvedOrderDateFields(existing, incoming) {
+  const existingTrust = orderDateTrust(existing);
+  const incomingTrust = orderDateTrust(incoming);
+  const useExisting = existingTrust > 0 && existingTrust >= incomingTrust;
+  const selected = useExisting ? existing : incoming;
+  const selectedDate = parseDate(selected && selected.orderedAt) || new Date(0);
+  return {
+    orderedAt: admin.firestore.Timestamp.fromDate(selectedDate),
+    hasOriginalOrderDate: orderDateTrust(selected) > 0,
+    orderDateSource: clean(selected && selected.orderDateSource) || 'missing',
+    orderTimeEstimated: selected && selected.orderTimeEstimated === true,
+    orderDateRepaired: selected && selected.orderDateRepaired === true,
+    reportedOrderedAt: clean(selected && selected.reportedOrderedAt)
+  };
+}
+
+function lineWithExistingOrderDate(line, existing) {
+  if (line && line.hasOriginalOrderDate === true) return line;
+  if (orderDateTrust(existing) <= 0) return line;
+  const hydrated = {
+    ...line,
+    orderedAt: parseDate(existing.orderedAt),
+    hasOriginalOrderDate: true,
+    orderDateSource: clean(existing.orderDateSource),
+    orderTimeEstimated: existing.orderTimeEstimated === true,
+    orderDateRepaired: existing.orderDateRepaired === true,
+    reportedOrderedAt: clean(existing.reportedOrderedAt)
+  };
+  hydrated.lifecycle = isFreightLine(hydrated) ? 'freight' : orderLifecycle(hydrated);
+  hydrated.validSale = validLine(hydrated);
+  return hydrated;
+}
+
 async function fetchEasyStoreOrders(start, end, token) {
   if (!clean(token)) throw new Error('EasyStore Access Token 尚未設定');
   const lines = [];
@@ -339,22 +421,38 @@ async function fetchEasyStoreOrders(start, end, token) {
     const orders = extractOrders(payload);
     if (!orders.length) break;
     let added = 0;
-    for (const order of orders) {
+    for (const listedOrder of orders) {
+      let order = listedOrder;
       const orderId = clean(firstValue(order, ['id', 'order_id', 'number', 'order_number', 'name']));
       if (!orderId || seen.has(orderId)) continue;
       seen.add(orderId);
       added += 1;
       const orderNo = clean(firstValue(order, ['number', 'order_number', 'name', 'ref', 'reference'])) || orderId;
+      let items = extractLineItems(order);
+      if (!items.length) {
+        const detailUrl = `${EASYSTORE_URL}${EASYSTORE_API_BASE}/orders/${encodeURIComponent(orderId)}.json`;
+        const detailPayload = await fetchJson(detailUrl, {
+          method: 'GET',
+          headers: {
+            'EasyStore-Access-Token': token,
+            Accept: 'application/json',
+            'Content-Type': 'application/json'
+          }
+        }, `EasyStore 訂單 ${orderId} 明細`);
+        const detailOrder = detailPayload && (detailPayload.order || detailPayload.data || detailPayload);
+        if (detailOrder && typeof detailOrder === 'object') order = { ...order, ...detailOrder };
+        items = extractLineItems(order);
+      }
+      if (!items.length) throw new Error(`EasyStore 訂單 ${orderNo} 沒有商品明細，不能宣告本次抓取完整。`);
       // 只用原始下單時間；updated_at 是物流／付款狀態的更新時間，不能當成今天新訂單。
       const orderedAt = firstValue(order, ['created_at', 'created_on', 'createdAt', 'order_date', 'date']);
-      if (!parseDate(orderedAt)) continue;
+      if (!parseDate(orderedAt)) throw new Error(`EasyStore 訂單 ${orderNo} 缺少 created_at，不能用同步時間代替。`);
       const orderStatus = firstValue(order, ['status', 'order_status', 'fulfillment_status']);
       const paymentStatus = firstValue(order, ['financial_status', 'payment_status', 'paid_status']);
       const customerName = clean([
         deepValue(order, ['customer', 'first_name']),
         deepValue(order, ['customer', 'last_name'])
       ].filter(Boolean).join(' ')) || clean(firstValue(order, ['customer_name', 'buyer_name']));
-      const items = extractLineItems(order);
       items.forEach((item, index) => {
         const product = item.product && typeof item.product === 'object' ? item.product : {};
         const variant = item.variant && typeof item.variant === 'object' ? item.variant : {};
@@ -393,6 +491,7 @@ async function fetchEasyStoreOrders(start, end, token) {
         }));
       });
     }
+    if (page === 50 && orders.length >= 100 && added > 0) throw new Error('EasyStore 訂單超過 50 頁，已停止以避免把不完整結果當成完整同步。');
     if (orders.length < 100 || added === 0) break;
     await sleep(120);
   }
@@ -440,7 +539,7 @@ async function fetchMomoOrders(start, end, token) {
       // 但 lastProcDate、shipDate 等流程更新時間一律不得改寫下單日。
       const platformOrderDate = firstValue(order, ['orderDate', 'orderTime', 'createdAt', 'date']) || firstValue(items[0] || {}, ['orderDate', 'orderTime', 'createdAt', 'date']);
       const orderedAt = platformOrderDate || inferMomoOrderDateFromNumber(orderId, end);
-      const orderDateSource = platformOrderDate ? 'platform' : 'order-number-inferred';
+      const orderDateSource = platformOrderDate ? 'momo-api-order-date' : 'momo-order-number-inferred';
       if (!parseDate(orderedAt)) continue;
       items.forEach((item, index) => {
         const quantity = numberOrNull(firstValue(item, ['quantity', 'qty', 'orderQty', 'salesQty'])) || 0;
@@ -455,7 +554,7 @@ async function fetchMomoOrders(start, end, token) {
           externalOrderNo: orderId,
           externalLineId: firstValue(item, ['orderSeq', 'orderDtlNo', 'lineId']) || `${goodsCode}|${goodsdtCode}|${index + 1}`,
           orderedAt: firstValue(item, ['orderDate']) || orderedAt,
-          orderDateSource: firstValue(item, ['orderDate']) ? 'platform' : orderDateSource,
+          orderDateSource: firstValue(item, ['orderDate']) ? 'momo-api-order-date' : orderDateSource,
           paidAt: firstValue(item, ['paymentDate', 'payDate', 'paidDate']) || firstValue(order, ['paymentDate', 'payDate', 'paidAt']),
           shippedAt: firstValue(item, ['shipDate', 'shippingDate', 'outboundDate']) || firstValue(order, ['shipDate', 'shippingDate']),
           completedAt: firstValue(item, ['deliveryCompleteDate', 'finishDate', 'completeDate']) || firstValue(order, ['deliveryCompleteDate', 'finishDate', 'completeDate']),
@@ -480,6 +579,7 @@ async function fetchMomoOrders(start, end, token) {
         }));
       });
     }
+    if (page === 30 && orders.length >= 100) throw new Error('MOMO 訂單超過 30 頁，已停止以避免把不完整結果當成完整同步。');
     if (orders.length < 100) break;
     await sleep(120);
   }
@@ -557,6 +657,7 @@ async function fetchCoupangOrders(start, end, config) {
         all.push(order);
       }
       if (!parsed.nextToken || parsed.nextToken === nextToken) break;
+      if (page === 30) throw new Error(`Coupang ${status} 訂單超過 30 頁，已停止以避免把不完整結果當成完整同步。`);
       nextToken = parsed.nextToken;
       await sleep(120);
     }
@@ -885,7 +986,7 @@ async function reverseCancelledOrder(db, line, productMap, settings, runId, reas
   if (pre.reversalApplied === true || pre.inventoryReversed === true) {
     await orderRef.set({
       ...line,
-      orderedAt: admin.firestore.Timestamp.fromDate(line.orderedAt),
+      ...resolvedOrderDateFields(pre, line),
       statusUpdatedAt: line.statusUpdatedAt ? admin.firestore.Timestamp.fromDate(line.statusUpdatedAt) : null,
       processingStatus: 'inventory-reversed',
       inventoryApplied: false,
@@ -900,7 +1001,7 @@ async function reverseCancelledOrder(db, line, productMap, settings, runId, reas
   if (pre.inventoryApplied !== true) {
     await orderRef.set({
       ...line,
-      orderedAt: admin.firestore.Timestamp.fromDate(line.orderedAt),
+      ...resolvedOrderDateFields(pre, line),
       statusUpdatedAt: line.statusUpdatedAt ? admin.firestore.Timestamp.fromDate(line.statusUpdatedAt) : null,
       processingStatus: 'ignored-cancelled',
       inventoryApplied: false,
@@ -919,7 +1020,7 @@ async function reverseCancelledOrder(db, line, productMap, settings, runId, reas
   if (!productId) {
     await orderRef.set({
       ...line,
-      orderedAt: admin.firestore.Timestamp.fromDate(line.orderedAt),
+      ...resolvedOrderDateFields(pre, line),
       processingStatus: 'reversal-error',
       processingError: '訂單已取消，但找不到原中央商品，無法自動回補庫存。',
       lastSeenAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -943,7 +1044,7 @@ async function reverseCancelledOrder(db, line, productMap, settings, runId, reas
     if (existing.inventoryApplied !== true) {
       transaction.set(orderRef, {
         ...line,
-        orderedAt: admin.firestore.Timestamp.fromDate(line.orderedAt),
+        ...resolvedOrderDateFields(existing, line),
         processingStatus: 'ignored-cancelled',
         inventoryApplied: false,
         cancellationReason: clean(reason),
@@ -989,7 +1090,7 @@ async function reverseCancelledOrder(db, line, productMap, settings, runId, reas
     }, { merge: true });
     transaction.set(orderRef, {
       ...line,
-      orderedAt: admin.firestore.Timestamp.fromDate(line.orderedAt),
+      ...resolvedOrderDateFields(existing, line),
       statusUpdatedAt: line.statusUpdatedAt ? admin.firestore.Timestamp.fromDate(line.statusUpdatedAt) : null,
       productId,
       inventoryApplied: false,
@@ -1040,9 +1141,12 @@ async function applyOrderLine(db, line, productMap, settings, runId) {
   if (line.hasOriginalOrderDate !== true) {
     const existingSnap = await orderRef.get();
     const existing = existingSnap.exists ? existingSnap.data() || {} : {};
+    line = lineWithExistingOrderDate(line, existing);
+    // 狀態更新可以沿用同一筆訂單先前已驗證的下單時間；新訂單則不能拿同步時間冒充。
+    if (line.hasOriginalOrderDate === true) return applyOrderLine(db, line, productMap, settings, runId);
     await orderRef.set({
       ...line,
-      orderedAt: admin.firestore.Timestamp.fromDate(line.orderedAt),
+      ...resolvedOrderDateFields(existing, line),
       processingStatus: 'ignored-missing-order-date',
       processingError: '平台未提供可靠下單時間，已排除，避免誤列為本次同步的新訂單。',
       inventoryApplied: existing.inventoryApplied === true,
@@ -1059,7 +1163,7 @@ async function applyOrderLine(db, line, productMap, settings, runId) {
     const existing = existingSnap.exists ? existingSnap.data() || {} : {};
     await orderRef.set({
       ...line,
-      orderedAt: admin.firestore.Timestamp.fromDate(line.orderedAt),
+      ...resolvedOrderDateFields(existing, line),
       processingStatus: 'ignored-freight',
       inventoryApplied: existing.inventoryApplied === true,
       lastSeenAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -1079,7 +1183,7 @@ async function applyOrderLine(db, line, productMap, settings, runId) {
     }
     await orderRef.set({
       ...line,
-      orderedAt: admin.firestore.Timestamp.fromDate(line.orderedAt),
+      ...resolvedOrderDateFields(existing, line),
       statusUpdatedAt: line.statusUpdatedAt ? admin.firestore.Timestamp.fromDate(line.statusUpdatedAt) : null,
       processingStatus: existing.returnHandlingStatus === 'completed' ? 'return-processed' : (existing.inventoryApplied === true ? 'manual-return-review' : 'ignored-return'),
       inventoryApplied: existing.inventoryApplied === true,
@@ -1094,9 +1198,11 @@ async function applyOrderLine(db, line, productMap, settings, runId) {
     return reverseCancelledOrder(db, line, productMap, settings, runId, clean(line.orderStatus || line.paymentStatus || line.note) || '平台顯示取消／未付款');
   }
   if (!line.sku) {
+    const existingSnap = await orderRef.get();
+    const existing = existingSnap.exists ? existingSnap.data() || {} : {};
     await orderRef.set({
       ...line,
-      orderedAt: admin.firestore.Timestamp.fromDate(line.orderedAt),
+      ...resolvedOrderDateFields(existing, line),
       processingStatus: 'missing-sku',
       inventoryApplied: false,
       lastSeenAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -1108,9 +1214,11 @@ async function applyOrderLine(db, line, productMap, settings, runId) {
   }
   const matches = productMap.get(line.sku) || [];
   if (matches.length !== 1) {
+    const existingSnap = await orderRef.get();
+    const existing = existingSnap.exists ? existingSnap.data() || {} : {};
     await orderRef.set({
       ...line,
-      orderedAt: admin.firestore.Timestamp.fromDate(line.orderedAt),
+      ...resolvedOrderDateFields(existing, line),
       processingStatus: matches.length > 1 ? 'duplicate-sku' : 'unmatched-sku',
       inventoryApplied: false,
       matchCount: matches.length,
@@ -1140,7 +1248,7 @@ async function applyOrderLine(db, line, productMap, settings, runId) {
       transaction.set(orderRef, {
         ...line,
         grossAmount,
-        orderedAt: admin.firestore.Timestamp.fromDate(line.orderedAt),
+        ...resolvedOrderDateFields(existing, line),
         statusUpdatedAt: line.statusUpdatedAt ? admin.firestore.Timestamp.fromDate(line.statusUpdatedAt) : null,
         estimatedNetRate: settings.estimatedNetRate,
         estimatedNetAmount,
@@ -1187,7 +1295,7 @@ async function applyOrderLine(db, line, productMap, settings, runId) {
     transaction.set(orderRef, {
       ...line,
       grossAmount,
-      orderedAt: admin.firestore.Timestamp.fromDate(line.orderedAt),
+      ...resolvedOrderDateFields(existing, line),
       statusUpdatedAt: line.statusUpdatedAt ? admin.firestore.Timestamp.fromDate(line.statusUpdatedAt) : null,
       productId: product.id,
       matchStatus: 'matched',
@@ -1260,7 +1368,10 @@ async function reconcileMissingPlatformOrders(db, lines, platformFetch, queryFro
   });
   for (const platform of ['EasyStore', 'MOMO', 'Coupang']) {
     const fetchInfo = platformFetch && platformFetch[platform] || {};
-    if (clean(fetchInfo.status).toLowerCase() !== 'success') continue;
+    // 只有平台明確保證查詢區間與所有分頁完整，才可用「本次缺席」判斷取消；單純 status=success 不足以回補庫存。
+    if (clean(fetchInfo.status).toLowerCase() !== 'success' || fetchInfo.complete !== true) continue;
+    // Coupang 訂單清單不含已完成退貨；未同時完成 returnRequests 查詢前，缺席不能判成取消。
+    if (platform === 'Coupang' && fetchInfo.returnsComplete !== true) continue;
     const seen = observed.get(platform) || new Set();
     const snap = await db.collection(ORDER_COLLECTION).where('platform', '==', platform).get();
     for (const doc of snap.docs) {
@@ -1365,7 +1476,12 @@ function priceSyncState(product) {
 
 function platformTargetPrice(product, platform) {
   const field = platform === 'EasyStore' ? 'easyStorePrice' : (platform === 'MOMO' ? 'momoPrice' : 'coupangPrice');
-  const value = numberOrNull(product.raw[field]);
+  let value = numberOrNull(product.raw[field]);
+  if (value == null && product.raw.platformPricesInitialized !== true) {
+    value = ['easyStorePrice', 'onlinePrice', 'momoPrice', 'coupangPrice']
+      .map((key) => numberOrNull(product.raw[key]))
+      .find((candidate) => candidate != null);
+  }
   return value == null ? null : Math.max(0, Math.round(value));
 }
 
@@ -1433,16 +1549,16 @@ async function coupangUpdateProductPrice(product, targetPrice, config) {
 function priceSyncErrorCount(summary) {
   return ['EasyStore', 'MOMO', 'Coupang'].reduce((total, platform) => {
     const row = summary && summary[platform] || {};
-    return total + Number(row.error || 0) + Number(row.unmapped || 0) + Number(row.unsupported || 0);
+    return total + Number(row.error || 0) + Number(row.unmapped || 0);
   }, 0);
 }
 
-async function syncCandidatePrices(db, products, settings, credentials, runId = '') {
+async function syncCandidatePrices(db, products, settings, credentials, runId = '', options = {}) {
   const summary = {
     candidates: 0,
-    EasyStore: { success: 0, same: 0, error: 0, unmapped: 0, unsupported: 0 },
-    MOMO: { success: 0, same: 0, error: 0, unmapped: 0, unsupported: 0 },
-    Coupang: { success: 0, same: 0, error: 0, unmapped: 0, unsupported: 0 }
+    EasyStore: { success: 0, same: 0, error: 0, unmapped: 0, manualRequired: 0 },
+    MOMO: { success: 0, same: 0, error: 0, unmapped: 0, manualRequired: 0 },
+    Coupang: { success: 0, same: 0, error: 0, unmapped: 0, manualRequired: 0 }
   };
   const config = {
     vendorId: credentials.coupangVendorId,
@@ -1460,18 +1576,20 @@ async function syncCandidatePrices(db, products, settings, credentials, runId = 
       const status = clean(platformState.status).toLowerCase();
       const lastSyncedPrice = numberOrNull(platformState.lastSyncedPrice);
       const stateTarget = numberOrNull(platformState.targetPrice);
-      const shouldRun = !status || status === 'pending' || status === 'error' || status === 'unmapped' || stateTarget !== targetPrice || lastSyncedPrice !== targetPrice && !['unsupported', 'cleared'].includes(status);
+      const shouldRun = !status || status === 'pending' || status === 'error' || status === 'unmapped' || stateTarget !== targetPrice || lastSyncedPrice !== targetPrice && !['manual-required', 'agent-required', 'unsupported', 'cleared'].includes(status);
       if (!shouldRun) continue;
       summary.candidates += 1;
       let result;
       try {
         if (platform === 'EasyStore') result = await easyStoreUpdateProductPrice(product, targetPrice, credentials.easyStoreToken);
-        else if (platform === 'Coupang') result = await coupangUpdateProductPrice(product, targetPrice, config);
-        else result = { status: 'unsupported', message: '目前使用中的 MOMO 同步程式只有訂單與庫存 API，尚未取得可用的官方改價端點／權限。' };
+        else if (platform === 'MOMO') result = { status: 'manual-required', message: '已保存 MOMO 目標售價；尚未取得可驗證的官方改價端點／權限。' };
+        else if (targetPrice % 10 !== 0) result = { status: 'manual-required', message: '酷澎台灣售價須為 10 元倍數，請調整目標售價後再同步。' };
+        else if (options.deferCoupangToAgent === true) result = { status: 'agent-required', message: '酷澎改價必須由店內固定 IP 代理執行；目標已回傳給本機代理。' };
+        else result = await coupangUpdateProductPrice(product, targetPrice, config);
       } catch (error) {
         result = { status: 'error', message: clean(error.message).slice(0, 600) };
       }
-      const bucket = result.status === 'unmapped' ? 'unmapped' : (result.status === 'unsupported' ? 'unsupported' : (result.status === 'same' ? 'same' : (result.status === 'success' ? 'success' : 'error')));
+      const bucket = result.status === 'unmapped' ? 'unmapped' : (['manual-required', 'agent-required', 'unsupported'].includes(result.status) ? 'manualRequired' : (result.status === 'same' ? 'same' : (result.status === 'success' ? 'success' : 'error')));
       summary[platform][bucket] += 1;
       await updateProductPriceState(product, platform, result, targetPrice, runId);
       if (result.mapping) {
@@ -1787,7 +1905,7 @@ async function fetchAllPlatformLines(settings, credentials, start, end) {
       try {
         const lines = await fetchEasyStoreOrders(start, end, credentials.easyStoreToken);
         result.lines.push(...lines);
-        result.platforms.EasyStore = { status: 'success', lines: lines.length };
+        result.platforms.EasyStore = { status: 'success', lines: lines.length, complete: true };
       } catch (error) {
         result.platforms.EasyStore = { status: 'error', error: clean(error.message).slice(0, 800), lines: 0 };
       }
@@ -1798,7 +1916,7 @@ async function fetchAllPlatformLines(settings, credentials, start, end) {
       try {
         const lines = await fetchMomoOrders(start, end, credentials.momoToken);
         result.lines.push(...lines);
-        result.platforms.MOMO = { status: 'success', lines: lines.length };
+        result.platforms.MOMO = { status: 'success', lines: lines.length, complete: true };
       } catch (error) {
         result.platforms.MOMO = { status: 'error', error: clean(error.message).slice(0, 800), lines: 0 };
       }
@@ -1813,7 +1931,7 @@ async function fetchAllPlatformLines(settings, credentials, start, end) {
           secretKey: credentials.coupangSecretKey
         });
         result.lines.push(...lines);
-        result.platforms.Coupang = { status: 'success', lines: lines.length };
+        result.platforms.Coupang = { status: 'success', lines: lines.length, complete: true };
       } catch (error) {
         result.platforms.Coupang = { status: 'error', error: clean(error.message).slice(0, 800), lines: 0 };
       }
@@ -1877,9 +1995,12 @@ async function runPlatformOrderSync(trigger) {
         else if (result.status === 'dry-run') processing.dryRun += 1;
       } catch (error) {
         processing.errors += 1;
-        await db.collection(ORDER_COLLECTION).doc(line.id).set({
+        const errorRef = db.collection(ORDER_COLLECTION).doc(line.id);
+        const errorSnap = await errorRef.get();
+        const existing = errorSnap.exists ? errorSnap.data() || {} : {};
+        await errorRef.set({
           ...line,
-          orderedAt: admin.firestore.Timestamp.fromDate(line.orderedAt),
+          ...resolvedOrderDateFields(existing, line),
           processingStatus: 'error',
           processingError: clean(error.message).slice(0, 800),
           inventoryApplied: false,
@@ -1899,7 +2020,8 @@ async function runPlatformOrderSync(trigger) {
     const inventorySync = settings.applyInventory
       ? await syncCandidateProducts(db, refreshedProducts, changedProductIds, settings, credentials, runtime)
       : { skipped: true, reason: 'applyInventory=false' };
-    const priceSync = await syncCandidatePrices(db, refreshedProducts, settings, credentials, lock.runId);
+    const priceSync = await syncCandidatePrices(db, refreshedProducts, settings, credentials, lock.runId, { deferCoupangToAgent: true });
+    const priceTargets = priceTargetsForAgent(refreshedProducts);
     await lock.ref.set({ baselineCompleted: true, baselineCompletedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
     const platformErrors = Object.values(fetched.platforms).filter((row) => row.status === 'error').length;
     const priceErrors = priceSyncErrorCount(priceSync);
@@ -2020,6 +2142,25 @@ function inventoryTargetsForProducts(products, productIds) {
     }));
 }
 
+function priceTargetsForAgent(products) {
+  const targets = [];
+  for (const product of products) {
+    if (!product.sku) continue;
+    const state = priceSyncState(product);
+    const coupangState = state.Coupang && typeof state.Coupang === 'object' ? state.Coupang : {};
+    const targetPrice = platformTargetPrice(product, 'Coupang');
+    if (clean(coupangState.status).toLowerCase() !== 'agent-required' || targetPrice == null || targetPrice % 10 !== 0) continue;
+    targets.push({
+      productId: product.id,
+      sku: product.sku,
+      platform: 'Coupang',
+      targetPrice,
+      platformMappings: product.raw.platformMappings && product.raw.platformMappings.coupang || {}
+    });
+  }
+  return targets;
+}
+
 async function runPlatformOrderSyncFromAgent(payload) {
   if (!admin.apps.length) admin.initializeApp();
   const db = admin.firestore();
@@ -2044,10 +2185,29 @@ async function runPlatformOrderSyncFromAgent(payload) {
       await runRef.set({ status: 'disabled', finishedAt: admin.firestore.FieldValue.serverTimestamp(), settings }, { merge: true });
       return { ...finalResult, applyInventory: settings.applyInventory, inventoryTargets: [] };
     }
-    const rawLines = Array.isArray(payload && payload.lines) ? payload.lines : [];
+    const queryToDate = parseDate(payload && payload.queryTo) || new Date();
+    const queryFromDate = parseDate(payload && payload.queryFrom) || new Date(queryToDate.getTime() - settings.lookbackDays * 24 * 60 * 60 * 1000);
+    const queryFrom = queryFromDate.toISOString();
+    const queryTo = queryToDate.toISOString();
+    const platformFetch = payload && payload.platformFetch && typeof payload.platformFetch === 'object' ? { ...payload.platformFetch } : {};
+    const rawLines = Array.isArray(payload && payload.lines) ? payload.lines.slice() : [];
+    // EasyStore 不受 MOMO／Coupang 固定 IP 限制，由橋接函式直接再抓官方 created_at。
+    // 即使店內代理漏掉剛成立的 EasyStore 訂單，這裡仍會補齊並以官方下單時間覆蓋同一筆資料。
+    if (settings.platforms.EasyStore) {
+      try {
+        const easyStoreLines = await fetchEasyStoreOrders(queryFromDate, queryToDate, EASYSTORE_ACCESS_TOKEN.value());
+        rawLines.push(...easyStoreLines);
+        platformFetch.EasyStore = { status: 'success', lines: easyStoreLines.length, complete: true, source: 'cloud-official-api' };
+      } catch (error) {
+        const previous = platformFetch.EasyStore && typeof platformFetch.EasyStore === 'object' ? platformFetch.EasyStore : {};
+        platformFetch.EasyStore = clean(previous.status).toLowerCase() === 'success'
+          ? { ...previous, supplementError: clean(error.message).slice(0, 800) }
+          : { status: 'error', error: clean(error.message).slice(0, 800), lines: 0, source: 'cloud-official-api' };
+      }
+    }
     const unique = new Map();
     rawLines.forEach((row) => {
-      const line = normalizeLine(row || {});
+      const line = normalizeLine({ ...(row || {}), syncReferenceAt: queryToDate });
       unique.set(line.id, line);
     });
     const lines = [...unique.values()];
@@ -2070,9 +2230,12 @@ async function runPlatformOrderSyncFromAgent(payload) {
         else if (result.status === 'dry-run') processing.dryRun += 1;
       } catch (error) {
         processing.errors += 1;
-        await db.collection(ORDER_COLLECTION).doc(line.id).set({
+        const errorRef = db.collection(ORDER_COLLECTION).doc(line.id);
+        const errorSnap = await errorRef.get();
+        const existing = errorSnap.exists ? errorSnap.data() || {} : {};
+        await errorRef.set({
           ...line,
-          orderedAt: admin.firestore.Timestamp.fromDate(line.orderedAt),
+          ...resolvedOrderDateFields(existing, line),
           processingStatus: 'error',
           processingError: clean(error.message).slice(0, 800),
           inventoryApplied: false,
@@ -2082,9 +2245,6 @@ async function runPlatformOrderSyncFromAgent(payload) {
         }, { merge: true });
       }
     }
-    const queryFrom = clean(payload && payload.queryFrom);
-    const queryTo = clean(payload && payload.queryTo);
-    const platformFetch = payload && payload.platformFetch && typeof payload.platformFetch === 'object' ? payload.platformFetch : {};
     const reconciliation = await reconcileMissingPlatformOrders(db, lines, platformFetch, queryFrom, queryTo, productMap, settings, lock.runId);
     reconciliation.changedProductIds.forEach((id) => changedProductIds.add(id));
     processing.reversed += reconciliation.reversed;
@@ -2100,7 +2260,8 @@ async function runPlatformOrderSyncFromAgent(payload) {
       coupangAccessKey: COUPANG_ACCESS_KEY.value(),
       coupangSecretKey: COUPANG_SECRET_KEY.value()
     };
-    const priceSync = await syncCandidatePrices(db, refreshedProducts, settings, credentials, lock.runId);
+    const priceSync = await syncCandidatePrices(db, refreshedProducts, settings, credentials, lock.runId, { deferCoupangToAgent: true });
+    const priceTargets = priceTargetsForAgent(refreshedProducts);
     const priceErrors = priceSyncErrorCount(priceSync);
     const status = processing.errors || priceErrors ? 'completed-with-errors' : 'completed';
     const summary = {
@@ -2138,7 +2299,7 @@ async function runPlatformOrderSyncFromAgent(payload) {
       version: VERSION,
     }, { merge: true });
     finalResult = { status, summary };
-    return { status, summary, applyInventory: settings.applyInventory, inventoryTargets, runId: lock.runId };
+    return { status, summary, applyInventory: settings.applyInventory, inventoryTargets, priceTargets, runId: lock.runId };
   } catch (error) {
     const message = clean(error.message || error).slice(0, 1200);
     await runRef.set({ status: 'failed', error: message, finishedAt: admin.firestore.FieldValue.serverTimestamp(), version: VERSION }, { merge: true });
@@ -2178,7 +2339,7 @@ function registerPlatformOrderSync(target) {
     region: REGION,
     timeoutSeconds: 540,
     memory: '1GiB',
-    secrets: [COUPANG_SECRET_KEY],
+    secrets: [EASYSTORE_ACCESS_TOKEN, MOMO_API_TOKEN, COUPANG_VENDOR_ID, COUPANG_ACCESS_KEY, COUPANG_SECRET_KEY],
     cors: false,
   }, async (req, res) => {
     if (req.method !== 'POST') {
@@ -2203,6 +2364,12 @@ module.exports = {
     validLine,
     orderLifecycle,
     normalizeSku,
+    parseDate,
+    inferMomoOrderDateFromNumber,
+    orderDateTrust,
+    resolvedOrderDateFields,
+    platformTargetPrice,
+    priceSyncErrorCount,
     consumeFifoAllowNegative,
     extractOrders,
     extractLineItems

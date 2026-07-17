@@ -389,6 +389,16 @@ async function matchCentralProducts(db, catalogRows, duplicateSkus) {
       const row = rows[0];
       matchedCount += 1;
       if (row.imageUrls.length) imageMatchedCount += 1;
+      const existingMappings = existing.platformMappings && typeof existing.platformMappings === 'object'
+        ? existing.platformMappings
+        : {};
+      const previousEasyStoreMapping = existingMappings.easyStore && typeof existingMappings.easyStore === 'object'
+        ? existingMappings.easyStore
+        : {};
+      const variantIds = [...new Set([
+        ...(Array.isArray(previousEasyStoreMapping.variantIds) ? previousEasyStoreMapping.variantIds : []),
+        row.variantId
+      ].map(clean).filter(Boolean))];
       update = {
         easyStoreMatched: true,
         easyStoreMatchStatus: 'matched',
@@ -403,9 +413,24 @@ async function matchCentralProducts(db, catalogRows, duplicateSkus) {
         imageUrls: row.imageUrls,
         parentImageUrls: row.parentImageUrls || [],
         variantImageUrls: row.variantImageUrls || [],
+        platformMappings: {
+          ...existingMappings,
+          easyStore: {
+            ...previousEasyStoreMapping,
+            productId: row.productId,
+            variantIds
+          }
+        },
         easyStoreSyncedAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
       };
+      // 舊資料第一次只有 EasyStore／網路價時，以該價格補齊三平台；完成初始化後不再覆蓋個別平台價格。
+      if (row.price != null && existing.platformPricesInitialized !== true) {
+        update.easyStorePrice = numberOrNull(existing.easyStorePrice) ?? row.price;
+        update.momoPrice = numberOrNull(existing.momoPrice) ?? row.price;
+        update.coupangPrice = numberOrNull(existing.coupangPrice) ?? row.price;
+        update.platformPricesInitialized = true;
+      }
     } else if (rows.length > 1 || duplicateSkus.has(sku)) {
       duplicateMatchCount += 1;
       update = {
