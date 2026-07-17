@@ -1854,3 +1854,50 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
   .ops-sales-history-fields label{flex:1;min-width:130px}
   .ops-sales-history-quick button{flex:1;min-width:92px}
 }
+
+
+/* Platform orders compact toolbar — 2026-07-17 */
+.ops-platform-control-card{padding:14px 16px;border:1px solid var(--ops-line);background:#fff}
+.ops-platform-control-title{display:flex;align-items:center;margin-bottom:10px}
+.ops-platform-control-title h2{margin:0;font-size:20px;color:var(--ops-navy)}
+.ops-platform-control-row{display:flex;align-items:center;gap:14px;min-width:0}
+.ops-platform-date-tools,.ops-platform-sync-tools{display:flex;align-items:center;gap:7px;flex-wrap:wrap;min-width:0}
+.ops-platform-date-tools{flex:1 1 auto}
+.ops-platform-sync-tools{flex:0 1 auto;justify-content:flex-end}
+.ops-platform-control-divider{align-self:stretch;width:1px;min-height:38px;background:var(--ops-line);flex:0 0 1px}
+.ops-platform-quick-button{min-height:38px;padding:7px 12px;border:1px solid var(--ops-line);border-radius:10px;background:#fff;color:var(--ops-navy);font-weight:900;cursor:pointer}
+.ops-platform-quick-button:hover{border-color:#8aa4b5;background:#f7fafb}
+.ops-platform-quick-button.active{border-color:var(--ops-green);background:var(--ops-green);color:#fff}
+.ops-platform-date-input,.ops-platform-month-select{display:flex;align-items:center;gap:7px;min-height:38px;padding:4px 9px;border:1px solid var(--ops-line);border-radius:10px;background:#fff}
+.ops-platform-date-input.active,.ops-platform-month-select.active{border-color:var(--ops-green);box-shadow:0 0 0 2px rgba(41,123,87,.09)}
+.ops-platform-date-input span,.ops-platform-month-select span{font-size:11px;font-weight:900;color:var(--ops-muted);white-space:nowrap}
+.ops-platform-date-input input,.ops-platform-month-select select{border:0;outline:0;background:transparent;color:var(--ops-navy);font:inherit;font-weight:850;min-width:0}
+.ops-platform-last-sync{display:inline-flex;align-items:center;gap:6px;min-height:38px;padding:7px 10px;border-radius:10px;background:#f5f8fa;color:var(--ops-muted);font-size:11px;white-space:nowrap}
+.ops-platform-last-sync b{color:var(--ops-navy);font-size:12px}
+.ops-platform-sync-anomaly{min-height:38px;padding:7px 11px;border:1px solid var(--ops-line);border-radius:10px;background:#fff;color:var(--ops-navy);font-weight:900;cursor:pointer;white-space:nowrap}
+.ops-platform-sync-anomaly.has-error{border-color:#dfaaa3;background:#fff6f4;color:#a13d35}
+.ops-platform-sync-anomaly.active{box-shadow:0 0 0 3px rgba(161,61,53,.1)}
+.ops-platform-custom-range{display:flex;align-items:flex-end;gap:9px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px dashed var(--ops-line)}
+.ops-platform-custom-range label{display:grid;gap:5px;color:var(--ops-muted);font-size:11px;font-weight:900}
+.ops-platform-custom-range>span{align-self:center;color:var(--ops-muted);font-weight:900}
+.ops-platform-tabs-compact{grid-template-columns:repeat(5,minmax(0,1fr));margin-top:0}
+.ops-platform-tabs-compact .ops-platform-return-tab{border-color:#e0b084;background:#fff8ef;color:#9a4a16}
+.ops-platform-tabs-compact .ops-platform-return-tab.active{border-color:#b95f23;background:#b95f23;color:#fff}
+.ops-platform-order-list-compact{margin-top:14px}
+.ops-platform-order-list-compact .ops-platform-kpis{margin-top:12px}
+@media(max-width:1180px){
+  .ops-platform-control-row{align-items:stretch;flex-direction:column;gap:10px}
+  .ops-platform-control-divider{width:100%;height:1px;min-height:1px}
+  .ops-platform-sync-tools{justify-content:flex-start}
+}
+@media(max-width:760px){
+  .ops-platform-control-card{padding:12px}
+  .ops-platform-date-tools,.ops-platform-sync-tools{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:100%}
+  .ops-platform-date-input,.ops-platform-month-select,.ops-platform-last-sync{grid-column:span 2;justify-content:space-between}
+  .ops-platform-date-input input,.ops-platform-month-select select{width:100%}
+  .ops-platform-sync-tools .ops-button,.ops-platform-sync-anomaly{width:100%}
+  .ops-platform-tabs-compact{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .ops-platform-tabs-compact .ops-platform-return-tab{grid-column:1/-1}
+  .ops-platform-custom-range{display:grid;grid-template-columns:1fr;align-items:stretch}
+  .ops-platform-custom-range>span{display:none}
+}
