@@ -5,12 +5,14 @@
   const PAGE_SIZE=80;
   const PASSWORD_HASH='c52cbddc9be708cc43aea50035588b91743634605dd20b46cd8a4855b87270aa';
   const SESSION_KEY='yuzuBarcodePrintUnlockedV3';
-  const state={db:null,products:[],filtered:[],visible:PAGE_SIZE,selected:null,serviceReady:false};
+  const state={db:null,products:[],filtered:[],visible:PAGE_SIZE,selected:null,serviceReady:false,searchComposing:false};
   const $=function(id){return document.getElementById(id);};
   function clean(v){return String(v==null?'':v).trim();}
   function lower(v){return clean(v).toLowerCase();}
   function formatLabelSku(value){const raw=clean(value).replace(/\s+/g,'');if(!raw)return '';if(/^\d{3}-/.test(raw))return raw;const match=raw.match(/^(\d{3})(\d{4})(.*)$/);return match?match[1]+'-'+match[2]+match[3]:raw;}
-  function compactCode(value){return lower(value).replace(/[^a-z0-9]/g,'');}
+  // 原本只保留英數，中文會被清成空字串，造成「中文搜尋」變成所有商品都符合。
+  // 僅移除 SKU 常見分隔符，保留中文、英文與數字一起比對。
+  function compactCode(value){return lower(value).replace(/[\s\-_.\/\\]/g,'');}
   function esc(v){return clean(v).replace(/[&<>"']/g,function(ch){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch];});}
   function attr(v){return esc(v).replace(/`/g,'&#96;');}
   function number(v){const n=Number(String(v==null?'':v).replace(/,/g,'').replace(/[^0-9.\-]/g,''));return Number.isFinite(n)?n:null;}
@@ -82,7 +84,12 @@
   }
   function applySearch(){
     const term=lower($('bpSearch').value);state.visible=PAGE_SIZE;
-    state.filtered=state.products.filter(function(p){if(!term)return true;const hay=lower([p.name,p.onlineName,p.variant,p.sku,formatLabelSku(p.sku)].join(' '));return hay.indexOf(term)>=0||compactCode(hay).indexOf(compactCode(term))>=0;});
+    const compactTerm=compactCode(term);
+    state.filtered=state.products.filter(function(p){
+      if(!term)return true;
+      const hay=lower([p.name,p.onlineName,p.variant,p.sku,formatLabelSku(p.sku)].join(' '));
+      return hay.indexOf(term)>=0||(compactTerm!==''&&compactCode(hay).indexOf(compactTerm)>=0);
+    });
     render();
   }
   function productCard(p){
@@ -110,7 +117,13 @@
     finally{btn.textContent='確定列印';if(state.serviceReady)btn.disabled=false;}
   }
   function bind(){
-    let searchTimer;$('bpSearch').addEventListener('input',function(){clearTimeout(searchTimer);searchTimer=setTimeout(applySearch,120);});
+    let searchTimer;
+    function queueSearch(delay){clearTimeout(searchTimer);searchTimer=setTimeout(applySearch,delay==null?120:delay);}
+    // 中文輸入法組字中不重繪搜尋結果；組字完成或按 Enter 才送出完整關鍵字。
+    $('bpSearch').addEventListener('compositionstart',function(){state.searchComposing=true;clearTimeout(searchTimer);});
+    $('bpSearch').addEventListener('compositionend',function(){state.searchComposing=false;queueSearch(0);});
+    $('bpSearch').addEventListener('input',function(){if(!state.searchComposing)queueSearch(120);});
+    $('bpSearch').addEventListener('keydown',function(event){if(event.key==='Enter'&&!state.searchComposing){event.preventDefault();queueSearch(0);}});
     $('bpClear').addEventListener('click',function(){$('bpSearch').value='';applySearch();$('bpSearch').focus();});
     $('bpLoadMore').addEventListener('click',function(){state.visible+=PAGE_SIZE;render();});
     $('bpProducts').addEventListener('click',function(e){const b=e.target.closest('[data-print]');if(!b)return;const p=state.products.find(function(x){return x.id===b.dataset.print;});if(p)openModal(p);});
