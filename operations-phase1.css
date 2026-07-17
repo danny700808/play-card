@@ -1829,3 +1829,28 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
     font-size:11px;
   }
 }
+
+
+/* 2026-07-17：現場銷售分區、快速日期與安全刪除 */
+.ops-title-with-clock{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.ops-page-clock{color:#536a75;font-size:14px;font-weight:800;letter-spacing:.02em}
+.ops-page-clock.hidden{display:none}
+.ops-v10-sales-top-grid{grid-template-columns:minmax(300px,.9fr) minmax(470px,1.35fr)}
+.ops-v10-sales-type-block{border-left:1px solid #9fc6bf;padding-left:13px}
+.ops-v8-sales-history-tools{display:block}
+.ops-sales-history-quick{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:9px}
+.ops-sales-history-quick>span{margin-right:2px;color:#7d5c34;font-size:11px;font-weight:900}
+.ops-sales-history-quick button{min-height:32px;padding:6px 10px;border:1px solid #d8b789;border-radius:9px;background:#fff;color:#704517;font-size:12px;font-weight:900;cursor:pointer}
+.ops-sales-history-quick button:hover,.ops-sales-history-quick button.active{border-color:#9b6428;background:#9b6428;color:#fff}
+.ops-sales-history-fields{display:flex;align-items:end;gap:8px;flex-wrap:wrap}
+.ops-sales-history-fields .grow{flex:1;min-width:220px}
+.ops-sales-history-fields label{display:grid;gap:3px;color:var(--ops-muted);font-size:10px;font-weight:800}
+.ops-drawer-footer .danger-outline{margin-right:auto}
+@media(max-width:780px){
+  .ops-title-with-clock{gap:7px}.ops-page-clock{width:100%;font-size:12px}
+  .ops-v10-sales-type-block{border-left:0;border-top:1px solid #9fc6bf;padding-left:0;padding-top:10px}
+  .ops-sales-history-fields{align-items:stretch}
+  .ops-sales-history-fields .grow{flex-basis:100%;min-width:100%}
+  .ops-sales-history-fields label{flex:1;min-width:130px}
+  .ops-sales-history-quick button{flex:1;min-width:92px}
+}
