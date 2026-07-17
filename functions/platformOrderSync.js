@@ -20,7 +20,7 @@ const MOMO_ORDER_URL = 'https://api3p.momo.com.tw/VendorApi/OrderQuery';
 const MOMO_PRODUCT_URL = 'https://api3p.momo.com.tw/VendorApi/GoodsQueryByMethod';
 const MOMO_STOCK_URL = 'https://api3p.momo.com.tw/VendorApi/GoodsStockModify';
 const COUPANG_HOST = 'https://api-gateway.coupang.com';
-const VERSION = '2026.07.17-platform-order-detail-v1';
+const VERSION = '2026.07.17-platform-order-post-shipment-return-v3';
 const LOCK_MS = 20 * 60 * 1000;
 const DEFAULT_LOOKBACK_DAYS = 4;
 const DEFAULT_NET_RATE = 0.87;
@@ -170,10 +170,24 @@ const CANCELLED_ORDER_KEYWORDS = [
   'failed', 'failure', 'expired', 'unpaid', 'payment failed'
 ];
 
+// 「退貨」必須是商品已出庫後的退回；尚未出貨前的退款／不要商品，一律視為取消訂單。
+const FULFILLMENT_EVIDENCE_KEYWORDS = [
+  '出貨確認', '已出貨', '出貨完成', '配送中', '配送結束', '已配送', '送達', '已送達', '已收貨', '已簽收',
+  'shipped', 'shipping', 'departure', 'delivering', 'delivered', 'final_delivery', 'final delivery', 'delivery completed'
+];
+
+function hasFulfillmentEvidence(line) {
+  if (!line) return false;
+  if (parseDate(line.shippedAt) || parseDate(line.completedAt)) return true;
+  const text = [line.orderStatus, line.paymentStatus, line.note]
+    .map((value) => clean(value).toLowerCase()).join(' ');
+  return FULFILLMENT_EVIDENCE_KEYWORDS.some((keyword) => text.includes(keyword));
+}
+
 function orderLifecycle(line) {
   const text = [line.orderStatus, line.paymentStatus, line.note]
     .map((value) => clean(value).toLowerCase()).join(' ');
-  if (RETURN_REVIEW_KEYWORDS.some((keyword) => text.includes(keyword))) return 'return-review';
+  if (RETURN_REVIEW_KEYWORDS.some((keyword) => text.includes(keyword))) return 'return-candidate';
   if (CANCELLED_ORDER_KEYWORDS.some((keyword) => text.includes(keyword))) return 'cancelled';
   const quantity = Math.round(Number(line.quantity || 0));
   const gross = Number(line.grossAmount || 0);
@@ -272,7 +286,9 @@ async function fetchEasyStoreOrders(start, end, token) {
       seen.add(orderId);
       added += 1;
       const orderNo = clean(firstValue(order, ['number', 'order_number', 'name', 'ref', 'reference'])) || orderId;
-      const orderedAt = firstValue(order, ['created_at', 'created_on', 'createdAt', 'order_date', 'date', 'updated_at']);
+      // 只用原始下單時間；updated_at 是物流／付款狀態的更新時間，不能當成今天新訂單。
+      const orderedAt = firstValue(order, ['created_at', 'created_on', 'createdAt', 'order_date', 'date']);
+      if (!parseDate(orderedAt)) continue;
       const orderStatus = firstValue(order, ['status', 'order_status', 'fulfillment_status']);
       const paymentStatus = firstValue(order, ['financial_status', 'payment_status', 'paid_status']);
       const customerName = clean([
@@ -360,6 +376,10 @@ async function fetchMomoOrders(start, end, token) {
       const orderId = clean(firstValue(order, ['orderNo', 'orderCode', 'orderId', 'id']));
       let items = extractLineItems(order);
       if (!items.length && ['goodsNo', 'goodsCode', 'goodsdtCode', 'entpGoodsNo', 'goodsName'].some((key) => order[key] !== undefined)) items = [order];
+      // 僅接受 MOMO 的原始下單欄位；部分回傳把 orderDate 放在商品明細，
+      // 但 lastProcDate、shipDate 等流程更新時間一律不得改寫下單日。
+      const orderedAt = firstValue(order, ['orderDate', 'orderTime', 'createdAt', 'date']) || firstValue(items[0] || {}, ['orderDate', 'orderTime', 'createdAt', 'date']);
+      if (!parseDate(orderedAt)) continue;
       items.forEach((item, index) => {
         const quantity = numberOrNull(firstValue(item, ['quantity', 'qty', 'orderQty', 'salesQty'])) || 0;
         const subtotal = numberOrNull(firstValue(item, ['orderAmount', 'totalPrice', 'subtotal', 'amount']));
@@ -372,7 +392,7 @@ async function fetchMomoOrders(start, end, token) {
           externalOrderId: orderId,
           externalOrderNo: orderId,
           externalLineId: firstValue(item, ['orderSeq', 'orderDtlNo', 'lineId']) || `${goodsCode}|${goodsdtCode}|${index + 1}`,
-          orderedAt: firstValue(item, ['orderDate']) || firstValue(order, ['orderDate', 'orderTime', 'createdAt', 'date']) || firstValue(item, ['lastProcDate', 'planShipDate', 'shipDate']),
+          orderedAt: firstValue(item, ['orderDate']) || orderedAt,
           paidAt: firstValue(item, ['paymentDate', 'payDate', 'paidDate']) || firstValue(order, ['paymentDate', 'payDate', 'paidAt']),
           shippedAt: firstValue(item, ['shipDate', 'shippingDate', 'outboundDate']) || firstValue(order, ['shipDate', 'shippingDate']),
           completedAt: firstValue(item, ['deliveryCompleteDate', 'finishDate', 'completeDate']) || firstValue(order, ['deliveryCompleteDate', 'finishDate', 'completeDate']),
@@ -482,6 +502,9 @@ async function fetchCoupangOrders(start, end, config) {
   for (const order of all) {
     const orderId = clean(firstValue(order, ['orderId', 'id']) || firstValue(order, ['shipmentBoxId']));
     const shipmentBoxId = clean(firstValue(order, ['shipmentBoxId']));
+    // paidAt 只是付款完成；沒有真正下單時間的資料不可被誤當成今天下單。
+    const orderedAt = firstValue(order, ['orderedAt', 'createdAt', 'order_date']);
+    if (!parseDate(orderedAt)) continue;
     const items = Array.isArray(order.orderItems) ? order.orderItems : extractLineItems(order);
     items.forEach((item, index) => {
       const quantity = numberOrNull(firstValue(item, ['shippingCount', 'quantity', 'qty'])) || 0;
@@ -493,7 +516,7 @@ async function fetchCoupangOrders(start, end, config) {
         externalOrderId: orderId || shipmentBoxId,
         externalOrderNo: orderId || shipmentBoxId,
         externalLineId: vendorItemId || `${index + 1}`,
-        orderedAt: firstValue(order, ['orderedAt', 'createdAt', 'order_date', 'paidAt']),
+        orderedAt,
         paidAt: firstValue(order, ['paidAt', 'paymentCompletedAt']),
         shippedAt: firstValue(order, ['shippedAt', 'departureAt', 'shipmentAt']),
         completedAt: firstValue(order, ['deliveredAt', 'completedAt', 'finalDeliveryAt']),
@@ -966,9 +989,14 @@ async function applyOrderLine(db, line, productMap, settings, runId) {
     }, { merge: true });
     return { status: 'ignored', lineId: line.id };
   }
-  if (lifecycle === 'return-review') {
+  if (lifecycle === 'return-candidate') {
     const existingSnap = await orderRef.get();
     const existing = existingSnap.exists ? existingSnap.data() || {} : {};
+    // 只要沒有出貨／配送／送達的證據，即使平台寫「退貨、退款」，也只是尚未成交的取消。
+    // 已經離開庫存的訂單才留給人工確認商品是否退回、要回補到哪一種庫存。
+    if (!hasFulfillmentEvidence(Object.assign({}, existing, line))) {
+      return reverseCancelledOrder(db, line, productMap, settings, runId, '未出貨前取消／退款，不列為退貨');
+    }
     await orderRef.set({
       ...line,
       orderedAt: admin.firestore.Timestamp.fromDate(line.orderedAt),
