@@ -29,7 +29,7 @@
   const READ_LIMIT = 10000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.07.17-platform-orders-post-shipment-return-v3';
+  const VERSION = '2026.07.17-platform-orders-real-order-date-all-platforms-v5';
   const DASHBOARD_CACHE_KEY = 'youzi_ops_dashboard_overview_v7_order_detail';
   const DASHBOARD_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
   const DEFAULT_MEMBERSHIP_SETTINGS = {
@@ -872,7 +872,7 @@ async function loadPlatformLocalAgent(){
   function normalizePlatformOrder(obj){
     const quantity=firstNumber(obj,['quantity']).value,unitPrice=firstNumber(obj,['unitPrice']).value,grossAmount=firstNumber(obj,['grossAmount']).value,costTotal=firstNumber(obj,['costTotal']).value;
     return {
-      id:clean(obj.__id),platform:clean(obj.platform),externalOrderId:clean(obj.externalOrderId),externalOrderNo:clean(obj.externalOrderNo)||clean(obj.externalOrderId),externalLineId:clean(obj.externalLineId),orderedAt:obj.orderedAt||obj.createdAt||'',paidAt:obj.paidAt||'',shippedAt:obj.shippedAt||'',completedAt:obj.completedAt||'',settledAt:obj.settledAt||'',refundedAt:obj.refundedAt||'',cancelledAt:obj.cancelledAt||'',statusUpdatedAt:obj.statusUpdatedAt||'',sku:clean(obj.sku),productName:clean(obj.productName)||'未命名商品',variantName:clean(obj.variantName),quantity:quantity,unitPrice:unitPrice,grossAmount:grossAmount,estimatedNetAmount:firstNumber(obj,['estimatedNetAmount']).value,actualSettledAmount:numberOrNull(obj.actualSettledAmount),refundAmount:numberOrNull(obj.refundAmount),costTotal:costTotal,costEstimated:obj.costEstimated===true,costSource:clean(obj.costSource),estimatedProfit:firstNumber(obj,['estimatedProfit']).value,orderStatus:clean(obj.orderStatus),paymentStatus:clean(obj.paymentStatus),customerName:clean(obj.customerName),processingStatus:clean(obj.processingStatus),inventoryApplied:obj.inventoryApplied===true,inventoryReversed:obj.inventoryReversed===true,reversalApplied:obj.reversalApplied===true,reversalReason:clean(obj.reversalReason||obj.cancellationReason),reversalQuantity:firstNumber(obj,['reversalQuantity']).value,reversalCostTotal:firstNumber(obj,['reversalCostTotal']).value,inventoryBefore:firstNumber(obj,['inventoryBefore']).value,inventoryAfter:firstNumber(obj,['inventoryAfter']).value,inventoryBeforeReversal:firstNumber(obj,['inventoryBeforeReversal']).value,inventoryAfterReversal:firstNumber(obj,['inventoryAfterReversal']).value,missingFromPlatformCount:firstNumber(obj,['missingFromPlatformCount']).value,productId:clean(obj.productId),processingError:clean(obj.processingError),lastSeenAt:obj.lastSeenAt||'',reversedAt:obj.reversedAt||'',syncRunId:clean(obj.syncRunId),returnHandlingStatus:clean(obj.returnHandlingStatus),returnDisposition:clean(obj.returnDisposition),returnQuantity:firstNumber(obj,['returnQuantity']).value,returnNote:clean(obj.returnNote),returnedReceivedAt:obj.returnedReceivedAt||'',returnProcessedAt:obj.returnProcessedAt||'',returnInventoryApplied:obj.returnInventoryApplied===true
+      id:clean(obj.__id),platform:clean(obj.platform),externalOrderId:clean(obj.externalOrderId),externalOrderNo:clean(obj.externalOrderNo)||clean(obj.externalOrderId),externalLineId:clean(obj.externalLineId),orderedAt:obj.orderedAt||obj.createdAt||'',hasOriginalOrderDate:obj.hasOriginalOrderDate!==false,orderDateSource:clean(obj.orderDateSource),paidAt:obj.paidAt||'',shippedAt:obj.shippedAt||'',completedAt:obj.completedAt||'',settledAt:obj.settledAt||'',refundedAt:obj.refundedAt||'',cancelledAt:obj.cancelledAt||'',statusUpdatedAt:obj.statusUpdatedAt||'',sku:clean(obj.sku),productName:clean(obj.productName)||'未命名商品',variantName:clean(obj.variantName),quantity:quantity,unitPrice:unitPrice,grossAmount:grossAmount,estimatedNetAmount:firstNumber(obj,['estimatedNetAmount']).value,actualSettledAmount:numberOrNull(obj.actualSettledAmount),refundAmount:numberOrNull(obj.refundAmount),costTotal:costTotal,costEstimated:obj.costEstimated===true,costSource:clean(obj.costSource),estimatedProfit:firstNumber(obj,['estimatedProfit']).value,orderStatus:clean(obj.orderStatus),paymentStatus:clean(obj.paymentStatus),customerName:clean(obj.customerName),processingStatus:clean(obj.processingStatus),inventoryApplied:obj.inventoryApplied===true,inventoryReversed:obj.inventoryReversed===true,reversalApplied:obj.reversalApplied===true,reversalReason:clean(obj.reversalReason||obj.cancellationReason),reversalQuantity:firstNumber(obj,['reversalQuantity']).value,reversalCostTotal:firstNumber(obj,['reversalCostTotal']).value,inventoryBefore:firstNumber(obj,['inventoryBefore']).value,inventoryAfter:firstNumber(obj,['inventoryAfter']).value,inventoryBeforeReversal:firstNumber(obj,['inventoryBeforeReversal']).value,inventoryAfterReversal:firstNumber(obj,['inventoryAfterReversal']).value,missingFromPlatformCount:firstNumber(obj,['missingFromPlatformCount']).value,productId:clean(obj.productId),processingError:clean(obj.processingError),firstSeenAt:obj.firstSeenAt||'',lastSeenAt:obj.lastSeenAt||'',reversedAt:obj.reversedAt||'',syncRunId:clean(obj.syncRunId),returnHandlingStatus:clean(obj.returnHandlingStatus),returnDisposition:clean(obj.returnDisposition),returnQuantity:firstNumber(obj,['returnQuantity']).value,returnNote:clean(obj.returnNote),returnedReceivedAt:obj.returnedReceivedAt||'',returnProcessedAt:obj.returnProcessedAt||'',returnInventoryApplied:obj.returnInventoryApplied===true
     };
   }
   function normalizePlatformSyncRun(obj){
@@ -1952,11 +1952,20 @@ function platformOrderIsCancelledState(row){
   if(platformOrderHasReturnRequest(row)&&!platformOrderHasFulfillment(row)&&clean(row.returnHandlingStatus)!=='completed')return true;
   return PLATFORM_CANCEL_KEYWORDS.some(function(keyword){return platformOrderStatusText(row).includes(keyword);});
 }
+function platformOrderHasReliableOrderDate(row){
+  if(!row||row.hasOriginalOrderDate===false)return false;
+  // 新版同步會寫來源；舊資料沒有來源時，若下單時間與首次／最後同步時間幾乎相同，
+  // 即代表先前曾以同步當下時間補值，不能再當作真正的下單日期。
+  if(clean(row.orderDateSource))return true;
+  const ordered=dateFrom(row.orderedAt),seen=dateFrom(row.firstSeenAt||row.lastSeenAt);
+  return !(ordered&&seen&&Math.abs(ordered.getTime()-seen.getTime())<=15*60*1000);
+}
 function platformOrderIsHidden(row){
   if(!row)return true;
   const status=clean(row.processingStatus);
+  if(!platformOrderHasReliableOrderDate(row))return true;
   if(platformOrderIsCancelledState(row))return true;
-  return ['ignored','ignored-freight'].includes(status);
+  return ['ignored','ignored-freight','ignored-missing-order-date'].includes(status);
 }
 function platformOrderRevisionTime(row){
   const value=row&&(row.statusUpdatedAt||row.lastSeenAt||row.updatedAt||row.reversedAt||row.orderedAt),date=dateFrom(value);
