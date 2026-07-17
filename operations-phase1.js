@@ -29,7 +29,7 @@
   const READ_LIMIT = 10000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.07.17-platform-orders-compact-v1';
+  const VERSION = '2026.07.17-platform-orders-post-shipment-return-v3';
   const DASHBOARD_CACHE_KEY = 'youzi_ops_dashboard_overview_v7_order_detail';
   const DASHBOARD_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
   const DEFAULT_MEMBERSHIP_SETTINGS = {
@@ -1934,11 +1934,22 @@ function platformOrderGross(row){
 }
 function platformOrderCost(row){return Math.max(0,Number(row&&row.costTotal||0));}
 const PLATFORM_CANCEL_KEYWORDS=['取消','客戶取消','買家取消','賣家取消','已取消','取消完成','作廢','已作廢','無效','未成立','交易失敗','付款失敗','未付款','付款逾期','逾期未付','cancel','canceled','cancelled','cancellation','void','voided','failed','failure','expired','unpaid','payment failed'];
+const PLATFORM_RETURN_KEYWORDS=['退貨','退款','拒收','退回','refund','refunded','return','returned'];
+const PLATFORM_FULFILLMENT_KEYWORDS=['出貨確認','已出貨','出貨完成','配送中','配送結束','已配送','送達','已送達','已收貨','已簽收','shipped','shipping','departure','delivering','delivered','final_delivery','final delivery','delivery completed'];
 function platformOrderStatusText(row){return lower([row&&row.orderStatus,row&&row.paymentStatus,row&&row.note,row&&row.reversalReason,row&&row.cancellationReason].filter(Boolean).join(' '));}
+function platformOrderHasFulfillment(row){
+  if(!row)return false;
+  if(dateFrom(row.shippedAt)||dateFrom(row.completedAt))return true;
+  const text=platformOrderStatusText(row);
+  return PLATFORM_FULFILLMENT_KEYWORDS.some(function(keyword){return text.includes(keyword);});
+}
+function platformOrderHasReturnRequest(row){return !!row&&PLATFORM_RETURN_KEYWORDS.some(function(keyword){return platformOrderStatusText(row).includes(keyword);});}
 function platformOrderIsCancelledState(row){
   if(!row)return false;
   if(row.reversalApplied===true||row.inventoryReversed===true)return true;
   if(['ignored-cancelled','inventory-reversed'].includes(clean(row.processingStatus)))return true;
+  // 未出貨的「退貨／退款」就是取消訂單，不能留在今天或退貨清單。
+  if(platformOrderHasReturnRequest(row)&&!platformOrderHasFulfillment(row)&&clean(row.returnHandlingStatus)!=='completed')return true;
   return PLATFORM_CANCEL_KEYWORDS.some(function(keyword){return platformOrderStatusText(row).includes(keyword);});
 }
 function platformOrderIsHidden(row){
@@ -1971,7 +1982,8 @@ function dedupePlatformOrders(rows){
 }
 function visiblePlatformOrders(rows){return dedupePlatformOrders(rows).filter(function(row){return !platformOrderIsHidden(row);});}
 function platformOrderIsEffective(row){
-  return !!row&&!platformOrderIsHidden(row)&&row.reversalApplied!==true&&row.inventoryReversed!==true&&!['inventory-reversed','ignored-return'].includes(clean(row.processingStatus));
+  // 一般「今天」訂單只代表當日仍成立的成交；退貨、退款、取消都不再混入。
+  return !!row&&!platformOrderIsHidden(row)&&!platformOrderHasReturn(row)&&row.reversalApplied!==true&&row.inventoryReversed!==true&&!['inventory-reversed','ignored-return'].includes(clean(row.processingStatus));
 }
 function platformOrderNeedsAttention(row){
   return !platformOrderIsHidden(row)&&['missing-sku','unmatched-sku','duplicate-sku','error','missing-from-platform-review','reversal-error','manual-return-review'].includes(clean(row&&row.processingStatus));
@@ -1980,12 +1992,14 @@ function platformOrderProcessingLabel(row){
   const map={'inventory-applied':'已扣中央庫存','already-applied':'已處理','dry-run':'有效訂單／尚未扣庫存','unmatched-sku':'SKU 未配對','duplicate-sku':'SKU 重複','missing-sku':'缺少 SKU','ignored':'已排除','ignored-freight':'運費已排除','ignored-cancelled':'未成交／取消，未扣庫存','ignored-return':'退貨狀態，未扣庫存','manual-return-review':'退貨／退款請手動處理','return-processed':'退貨已完成處理','missing-from-platform-review':'平台本次未再出現，等待複核','inventory-reversed':'取消／未付款，庫存已回補','reversal-error':'取消回補失敗','error':'處理失敗'};
   return map[row.processingStatus]||row.processingStatus||'待處理';
 }
-const PLATFORM_RETURN_KEYWORDS=['退貨','退款','拒收','退回','refund','refunded','return','returned'];
 function platformOrderHasReturn(row){
   if(!row)return false;
-  if(clean(row.processingStatus)==='manual-return-review'||clean(row.processingStatus)==='return-processed'||clean(row.returnHandlingStatus))return true;
-  const text=lower([row.orderStatus,row.paymentStatus,row.note,row.reversalReason].filter(Boolean).join(' '));
-  return PLATFORM_RETURN_KEYWORDS.some(function(keyword){return text.includes(keyword);});
+  if(clean(row.processingStatus)==='return-processed'||clean(row.returnHandlingStatus)==='completed')return true;
+  return platformOrderHasFulfillment(row)&&platformOrderHasReturnRequest(row);
+}
+function platformReturnRows(rows){
+  // 退貨是獨立待處理工作，不受一般成交清單的「有效訂單」規則影響。
+  return dedupePlatformOrders(rows).filter(function(row){return !platformOrderIsCancelledState(row)&&platformOrderHasReturn(row);});
 }
 function platformReturnDispositionLabel(value){
   return ({waiting:'尚未收到商品',restock:'恢復正常庫存',defective:'瑕疵品／展示品',inspect:'待檢查／送修',scrap:'報廢',supplier:'退回供應商'})[clean(value)]||'尚未處理';
@@ -2095,10 +2109,13 @@ async function savePlatformReturn(form){
 
 function renderSync(){
   const bounds=platformOrderBounds(),term=lower(state.platformOrderSearch).trim();
-  let rows=visiblePlatformOrders(state.platformOrders).filter(function(row){
-    const date=dateFrom(row.orderedAt);if(bounds.start&&(!date||date<bounds.start))return false;if(bounds.end&&(!date||date>bounds.end))return false;
+  // 一般清單只放指定日期「下單且仍有效」的成交。退貨改由獨立頁籤集中處理，
+  // 不會再和今天的新訂單混在一起。
+  const showingReturns=state.platformOrderIssueFilter==='returns';
+  let rows=(showingReturns?platformReturnRows(state.platformOrders):visiblePlatformOrders(state.platformOrders).filter(platformOrderIsEffective)).filter(function(row){
+    // 退貨頁籤保留待處理退貨，不以原下單日隱藏；一般列表則嚴格以原下單日篩選。
+    const date=dateFrom(row.orderedAt);if(!showingReturns&&bounds.start&&(!date||date<bounds.start))return false;if(!showingReturns&&bounds.end&&(!date||date>bounds.end))return false;
     if(state.platformOrderPlatform!=='all'&&lower(row.platform)!==lower(state.platformOrderPlatform))return false;
-    if(state.platformOrderIssueFilter==='returns'&&!platformOrderHasReturn(row))return false;
     return !term||lower([row.platform,row.externalOrderNo,row.sku,row.productName,row.variantName,row.customerName,row.orderStatus,row.paymentStatus,row.processingStatus,row.reversalReason,row.returnNote].join(' ')).includes(term);
   }).sort(function(a,b){return (dateFrom(b.orderedAt)||0)-(dateFrom(a.orderedAt)||0);});
   const validRows=rows.filter(platformOrderIsEffective),fees=platformFeeMetrics(validRows),qty=sum(validRows,function(row){return row.quantity;}),orderCount=new Set(validRows.map(platformOrderGroupKey)).size;
@@ -2121,12 +2138,12 @@ function renderSync(){
     return '<article class="ops-sync-product-anomaly"><header><div><b>'+escapeHtml(group.productName||'未命名商品')+'</b><small>SKU：'+escapeHtml(group.sku||'未設定')+'</small></div><span class="ops-sync-product-count">'+formatNumber(platformCount)+' 個平台／'+formatNumber(issueCount)+' 項問題</span></header><div class="ops-sync-product-issues">'+issuesHtml+'</div></article>';
   }).join('')+'</div>':emptyHtml('目前沒有平台同步異常','下一次同步若成功，原本的庫存或價格異常會自動從這裡消失。');
   const errorPanel=state.platformSyncPanel==='errors'?'<section class="ops-card ops-platform-expand-panel ops-platform-error-panel"><div class="ops-card-head"><div><h2>同步異常明細</h2><p>'+escapeHtml(errorSub)+'。完成商品配對、權限或價格修正後，下一次同步會自動重試。</p></div><button class="ops-button small ghost" data-action="platform-sync-panel" data-panel="errors">收合</button></div>'+errorList+'</section>':'';
-  const allReturnRows=visiblePlatformOrders(state.platformOrders).filter(function(row){return platformOrderHasReturn(row)&&clean(row.returnHandlingStatus)!=='completed';}),returnOrderCount=new Set(allReturnRows.map(platformOrderGroupKey)).size;
+  const allReturnRows=platformReturnRows(state.platformOrders).filter(function(row){return clean(row.returnHandlingStatus)!=='completed';}),returnOrderCount=new Set(allReturnRows.map(platformOrderGroupKey)).size;
   const platformTabs='<div class="ops-platform-tabs ops-platform-tabs-compact"><button class="'+(state.platformOrderPlatform==='all'&&state.platformOrderIssueFilter!=='returns'?'active':'')+'" data-action="platform-order-platform" data-platform="all">全部平台</button><button class="'+(state.platformOrderPlatform==='EasyStore'&&state.platformOrderIssueFilter!=='returns'?'active':'')+'" data-action="platform-order-platform" data-platform="EasyStore">EASY STORE</button><button class="'+(state.platformOrderPlatform==='MOMO'&&state.platformOrderIssueFilter!=='returns'?'active':'')+'" data-action="platform-order-platform" data-platform="MOMO">MOMO</button><button class="'+(state.platformOrderPlatform==='Coupang'&&state.platformOrderIssueFilter!=='returns'?'active':'')+'" data-action="platform-order-platform" data-platform="Coupang">Coupang／酷澎</button><button class="ops-platform-return-tab '+(state.platformOrderIssueFilter==='returns'?'active':'')+'" data-action="platform-return-filter">查看退貨'+(returnOrderCount?' '+formatNumber(returnOrderCount):'')+'</button></div>';
-  const orderTable=rows.length?'<div class="ops-table-wrap ops-platform-orders-table"><table class="ops-table"><thead><tr><th>平台／成交時間</th><th>訂單</th><th>商品</th><th class="num">數量</th><th class="num">成交</th><th class="num">平台費</th><th class="num">固定費攤提</th><th class="num">成本</th><th class="num">預估毛利</th><th>中央庫存</th><th>細項</th></tr></thead><tbody>'+rows.slice(0,500).map(function(row){
-    const effective=platformOrderIsEffective(row),m=fees.perRow.get(row.id)||{gross:platformOrderGross(row),variableFee:0,fixedFee:0,cost:platformOrderCost(row),profit:0},statusExtra=row.statusUpdatedAt&&dateTimeText(row.statusUpdatedAt)!==dateTimeText(row.orderedAt)?'<br><small>狀態更新 '+escapeHtml(dateTimeText(row.statusUpdatedAt))+'</small>':'',costNote=row.costEstimated?'<br><small>目前成本估算</small>':'',profitHtml=effective?'<b>'+money(m.profit)+'</b>':'<small>不列入有效成交</small>';let stockHtml=statusTag(platformOrderProcessingLabel(row),platformOrderProcessingColor(row));
+  const orderTable=rows.length?'<div class="ops-table-wrap ops-platform-orders-table"><table class="ops-table"><thead><tr><th>平台／下單時間</th><th>訂單</th><th>商品</th><th class="num">數量</th><th class="num">成交</th><th class="num">平台費</th><th class="num">固定費攤提</th><th class="num">成本</th><th class="num">預估毛利</th><th>中央庫存</th><th>細項</th></tr></thead><tbody>'+rows.slice(0,500).map(function(row){
+    const effective=platformOrderIsEffective(row),m=fees.perRow.get(row.id)||{gross:platformOrderGross(row),variableFee:0,fixedFee:0,cost:platformOrderCost(row),profit:0},costNote=row.costEstimated?'<br><small>目前成本估算</small>':'',profitHtml=effective?'<b>'+money(m.profit)+'</b>':'<small>不列入有效成交</small>';let stockHtml=statusTag(platformOrderProcessingLabel(row),platformOrderProcessingColor(row));
     if(row.processingStatus==='inventory-reversed')stockHtml+='<br><small>'+formatNumber(row.inventoryBeforeReversal)+' → '+formatNumber(row.inventoryAfterReversal)+'（已回補）</small>';else if(row.inventoryApplied)stockHtml+='<br><small>'+formatNumber(row.inventoryBefore)+' → '+formatNumber(row.inventoryAfter)+'</small>';if(row.missingFromPlatformCount)stockHtml+='<br><small>未出現 '+formatNumber(row.missingFromPlatformCount)+' 次</small>';
-    return '<tr><td>'+statusTag(row.platform,row.platform==='EasyStore'?'green':row.platform==='MOMO'?'blue':'yellow')+'<br><small>'+escapeHtml(dateTimeText(row.orderedAt))+'</small>'+statusExtra+'</td><td><b>'+escapeHtml(row.externalOrderNo||'—')+'</b><br><small>'+escapeHtml([row.customerName,row.paymentStatus,row.orderStatus].filter(Boolean).join('・'))+'</small></td><td><b>'+escapeHtml(row.productName)+'</b><br><small>'+escapeHtml((row.sku?'SKU '+row.sku:'缺少 SKU')+(row.variantName?'・'+row.variantName:''))+'</small>'+(platformOrderHasReturn(row)?'<br><small class="ops-text-danger">'+escapeHtml(row.returnHandlingStatus==='completed'?'退貨已處理':'退貨待處理')+'</small>':'')+(row.reversalReason?'<br><small>'+escapeHtml(row.reversalReason)+'</small>':'')+(row.processingError?'<br><small class="ops-text-danger">'+escapeHtml(row.processingError)+'</small>':'')+'</td><td class="num">'+formatNumber(row.quantity)+'</td><td class="num">'+money(m.gross)+'</td><td class="num">'+money(m.variableFee)+'</td><td class="num">'+money(m.fixedFee)+'</td><td class="num">'+money(m.cost)+costNote+'</td><td class="num">'+profitHtml+'</td><td>'+stockHtml+'</td><td><button class="ops-button small ghost" data-action="platform-order-detail" data-key="'+attr(platformOrderGroupKey(row))+'">查看</button></td></tr>';
+    return '<tr><td>'+statusTag(row.platform,row.platform==='EasyStore'?'green':row.platform==='MOMO'?'blue':'yellow')+'<br><small>'+escapeHtml(dateTimeText(row.orderedAt))+'</small></td><td><b>'+escapeHtml(row.externalOrderNo||'—')+'</b><br><small>'+escapeHtml(row.customerName||'')+'</small></td><td><b>'+escapeHtml(row.productName)+'</b><br><small>'+escapeHtml((row.sku?'SKU '+row.sku:'缺少 SKU')+(row.variantName?'・'+row.variantName:''))+'</small>'+(showingReturns?'<br><small class="ops-text-danger">'+escapeHtml(row.returnHandlingStatus==='completed'?'退貨已處理':'退貨待處理')+'</small>':'')+(row.processingError?'<br><small class="ops-text-danger">'+escapeHtml(row.processingError)+'</small>':'')+'</td><td class="num">'+formatNumber(row.quantity)+'</td><td class="num">'+money(m.gross)+'</td><td class="num">'+money(m.variableFee)+'</td><td class="num">'+money(m.fixedFee)+'</td><td class="num">'+money(m.cost)+costNote+'</td><td class="num">'+profitHtml+'</td><td>'+stockHtml+'</td><td><button class="ops-button small ghost" data-action="platform-order-detail" data-key="'+attr(platformOrderGroupKey(row))+'">查看</button></td></tr>';
   }).join('')+'</tbody></table></div>':emptyHtml('目前沒有符合條件的平台訂單','請更換日期、平台或搜尋條件。');
   return '<section class="ops-card ops-platform-control-card"><div class="ops-platform-control-title"><h2>平台訂單</h2></div><div class="ops-platform-control-row">'+quickDate+'<span class="ops-platform-control-divider" aria-hidden="true"></span>'+syncTools+'</div>'+customPanel+'</section>'+errorPanel+'<section class="ops-card ops-platform-order-list ops-platform-order-list-compact">'+platformTabs+'<div class="ops-kpi-grid ops-platform-kpis">'+kpi('成交金額',money(fees.gross),orderCount+' 筆訂單','＄')+kpi('平台與金流費',money(fees.variableFees),'依各平台設定','費')+kpi('固定費用攤提',money(fees.fixedFees),'月費＋廣告費','固')+kpi('商品成本',money(fees.cost),'中央 FIFO／估算成本','成本')+kpi('預估毛利',money(fees.profit),'成交－全部費用－成本','利')+kpi('銷售件數',formatNumber(qty),'有效成交數量','件')+'</div><div class="ops-toolbar ops-platform-search"><input class="ops-input grow" id="platformOrderSearch" placeholder="搜尋訂單編號、SKU、商品、客戶或狀態" value="'+attr(state.platformOrderSearch)+'"></div>'+orderTable+'</section>';
 }
