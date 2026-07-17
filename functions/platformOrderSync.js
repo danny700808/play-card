@@ -20,7 +20,7 @@ const MOMO_ORDER_URL = 'https://api3p.momo.com.tw/VendorApi/OrderQuery';
 const MOMO_PRODUCT_URL = 'https://api3p.momo.com.tw/VendorApi/GoodsQueryByMethod';
 const MOMO_STOCK_URL = 'https://api3p.momo.com.tw/VendorApi/GoodsStockModify';
 const COUPANG_HOST = 'https://api-gateway.coupang.com';
-const VERSION = '2026.07.17-platform-order-real-order-date-all-platforms-v5';
+const VERSION = '2026.07.17-platform-order-fetch-and-group-v6';
 const LOCK_MS = 20 * 60 * 1000;
 const DEFAULT_LOOKBACK_DAYS = 4;
 const DEFAULT_NET_RATE = 0.87;
@@ -143,6 +143,20 @@ function isoDay(date) {
 
 function formatTaiwanDayForCoupang(date) {
   return `${isoDay(date)}+08:00`;
+}
+
+function formatTaiwanDateTime(date) {
+  const source = date instanceof Date ? date : parseDate(date);
+  if (!source || Number.isNaN(source.getTime())) return '';
+  const fields = new Intl.DateTimeFormat('en-CA', {
+    timeZone: TIME_ZONE,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
+  }).formatToParts(source).reduce((all, part) => {
+    if (part.type !== 'literal') all[part.type] = part.value;
+    return all;
+  }, {});
+  return `${fields.year}-${fields.month}-${fields.day} ${fields.hour}:${fields.minute}:${fields.second}`;
 }
 
 function inferMomoOrderDateFromNumber(orderNo, referenceDate = new Date()) {
@@ -309,8 +323,9 @@ async function fetchEasyStoreOrders(start, end, token) {
     const params = new URLSearchParams({
       page: String(page),
       limit: '100',
-      created_at_min: start.toISOString(),
-      created_at_max: end.toISOString()
+      // EasyStore 文件要求以店鋪時間的 YYYY-MM-DD HH:mm:ss 篩選，不能傳 UTC ISO 字串。
+      created_at_min: formatTaiwanDateTime(start),
+      created_at_max: formatTaiwanDateTime(end)
     });
     const url = `${EASYSTORE_URL}${EASYSTORE_API_BASE}/orders.json?${params.toString()}`;
     const payload = await fetchJson(url, {
