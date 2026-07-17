@@ -20,7 +20,7 @@ const MOMO_ORDER_URL = 'https://api3p.momo.com.tw/VendorApi/OrderQuery';
 const MOMO_PRODUCT_URL = 'https://api3p.momo.com.tw/VendorApi/GoodsQueryByMethod';
 const MOMO_STOCK_URL = 'https://api3p.momo.com.tw/VendorApi/GoodsStockModify';
 const COUPANG_HOST = 'https://api-gateway.coupang.com';
-const VERSION = '2026.07.17-platform-order-post-shipment-return-v3';
+const VERSION = '2026.07.17-platform-order-real-order-date-all-platforms-v5';
 const LOCK_MS = 20 * 60 * 1000;
 const DEFAULT_LOOKBACK_DAYS = 4;
 const DEFAULT_NET_RATE = 0.87;
@@ -109,20 +109,60 @@ function parseDate(value) {
   if (value && typeof value.toDate === 'function') return value.toDate();
   const raw = clean(value);
   if (!raw) return null;
-  const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(raw) ? raw.replace(' ', 'T') + '+08:00' : raw;
+  const compact = raw.match(/^(\d{4})(\d{2})(\d{2})(?:[ T]?(\d{2})(\d{2})(\d{2})?)?$/);
+  if (compact) {
+    const [, year, month, day, hour = '00', minute = '00', second = '00'] = compact;
+    const date = new Date(`${year}-${month}-${day}T${hour}:${minute}:${second}+08:00`);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  const normalized = /^\d{4}[-/]\d{2}[-/]\d{2}(?: \d{2}:\d{2}(?::\d{2})?)?$/.test(raw)
+    ? (raw.includes(' ') ? raw.replace(/\//g, '-').replace(' ', 'T') + '+08:00' : raw.replace(/\//g, '-') + 'T00:00:00+08:00')
+    : raw;
   const date = new Date(normalized);
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+function taiwanDateParts(value) {
+  const date = value instanceof Date ? value : parseDate(value);
+  if (!date || Number.isNaN(date.getTime())) return null;
+  const fields = new Intl.DateTimeFormat('en-CA', {
+    timeZone: TIME_ZONE,
+    year: 'numeric', month: '2-digit', day: '2-digit'
+  }).formatToParts(date).reduce((all, part) => {
+    if (part.type !== 'literal') all[part.type] = part.value;
+    return all;
+  }, {});
+  return { year: Number(fields.year), month: Number(fields.month), day: Number(fields.day) };
+}
+
 function isoDay(date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  const parts = taiwanDateParts(date);
+  if (!parts) return '';
+  return `${parts.year}-${String(parts.month).padStart(2, '0')}-${String(parts.day).padStart(2, '0')}`;
 }
 
 function formatTaiwanDayForCoupang(date) {
   return `${isoDay(date)}+08:00`;
+}
+
+function inferMomoOrderDateFromNumber(orderNo, referenceDate = new Date()) {
+  // MOMO 訂單編號如 66071500721372 的第 3～6 碼為 MMDD；僅在 API 沒帶 orderDate 時使用，
+  // 絕不以「本次同步時間」替代。跨年時若推得日期落在未來，回推一年。
+  const digits = clean(orderNo).replace(/\D/g, '');
+  const match = digits.match(/^\d{2}(\d{2})(\d{2})\d{6,}$/);
+  if (!match) return null;
+  const month = Number(match[1]), day = Number(match[2]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  const referenceParts = taiwanDateParts(referenceDate);
+  if (!referenceParts) return null;
+  let year = referenceParts.year;
+  let candidate = parseDate(`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`);
+  const candidateParts = taiwanDateParts(candidate);
+  if (!candidateParts || candidateParts.month !== month || candidateParts.day !== day) return null;
+  if (candidate.getTime() > referenceDate.getTime() + 2 * 24 * 60 * 60 * 1000) {
+    candidate = parseDate(`${year - 1}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`);
+  }
+  return candidate;
 }
 
 function sleep(ms) {
@@ -221,13 +261,17 @@ function normalizeLine(base) {
   const quantity = Math.max(0, Math.round(Number(base.quantity || 0)));
   const unitPrice = Math.max(0, Number(base.unitPrice || 0));
   const grossAmount = Math.max(0, Number(base.grossAmount != null ? base.grossAmount : unitPrice * quantity));
-  const orderedAt = parseDate(base.orderedAt) || new Date();
+  const parsedOrderedAt = parseDate(base.orderedAt);
+  // 不可再用 new Date() 補下單時間，否則舊訂單會全部變成「本次同步時間」。
+  const orderedAt = parsedOrderedAt || new Date(0);
   const line = {
     platform: clean(base.platform),
     externalOrderId: clean(base.externalOrderId || base.externalOrderNo),
     externalOrderNo: clean(base.externalOrderNo || base.externalOrderId),
     externalLineId: clean(base.externalLineId),
     orderedAt,
+    hasOriginalOrderDate: !!parsedOrderedAt,
+    orderDateSource: clean(base.orderDateSource) || (parsedOrderedAt ? 'platform' : 'missing'),
     statusUpdatedAt: parseDate(base.statusUpdatedAt) || null,
     sku: normalizeSku(base.sku),
     productName: clean(base.productName),
@@ -252,7 +296,7 @@ function normalizeLine(base) {
   if (actualSettledAmount != null) line.actualSettledAmount = Math.max(0, actualSettledAmount);
   if (refundAmount != null) line.refundAmount = Math.max(0, refundAmount);
   line.lifecycle = isFreightLine(line) ? 'freight' : orderLifecycle(line);
-  line.validSale = validLine(line);
+  line.validSale = line.hasOriginalOrderDate && validLine(line);
   line.id = lineKey(line);
   return line;
 }
@@ -308,6 +352,7 @@ async function fetchEasyStoreOrders(start, end, token) {
           externalOrderNo: orderNo,
           externalLineId: firstValue(item, ['id', 'line_item_id', 'item_id']) || `${index + 1}`,
           orderedAt,
+          orderDateSource: 'easystore-created-at',
           paidAt: firstValue(order, ['paid_at', 'paidAt', 'payment_paid_at', 'processed_at']),
           shippedAt: firstValue(order, ['shipped_at', 'fulfilled_at', 'fulfillment_at', 'shipment_at']),
           completedAt: firstValue(order, ['completed_at', 'closed_at', 'delivered_at']),
@@ -378,7 +423,9 @@ async function fetchMomoOrders(start, end, token) {
       if (!items.length && ['goodsNo', 'goodsCode', 'goodsdtCode', 'entpGoodsNo', 'goodsName'].some((key) => order[key] !== undefined)) items = [order];
       // 僅接受 MOMO 的原始下單欄位；部分回傳把 orderDate 放在商品明細，
       // 但 lastProcDate、shipDate 等流程更新時間一律不得改寫下單日。
-      const orderedAt = firstValue(order, ['orderDate', 'orderTime', 'createdAt', 'date']) || firstValue(items[0] || {}, ['orderDate', 'orderTime', 'createdAt', 'date']);
+      const platformOrderDate = firstValue(order, ['orderDate', 'orderTime', 'createdAt', 'date']) || firstValue(items[0] || {}, ['orderDate', 'orderTime', 'createdAt', 'date']);
+      const orderedAt = platformOrderDate || inferMomoOrderDateFromNumber(orderId, end);
+      const orderDateSource = platformOrderDate ? 'platform' : 'order-number-inferred';
       if (!parseDate(orderedAt)) continue;
       items.forEach((item, index) => {
         const quantity = numberOrNull(firstValue(item, ['quantity', 'qty', 'orderQty', 'salesQty'])) || 0;
@@ -393,6 +440,7 @@ async function fetchMomoOrders(start, end, token) {
           externalOrderNo: orderId,
           externalLineId: firstValue(item, ['orderSeq', 'orderDtlNo', 'lineId']) || `${goodsCode}|${goodsdtCode}|${index + 1}`,
           orderedAt: firstValue(item, ['orderDate']) || orderedAt,
+          orderDateSource: firstValue(item, ['orderDate']) ? 'platform' : orderDateSource,
           paidAt: firstValue(item, ['paymentDate', 'payDate', 'paidDate']) || firstValue(order, ['paymentDate', 'payDate', 'paidAt']),
           shippedAt: firstValue(item, ['shipDate', 'shippingDate', 'outboundDate']) || firstValue(order, ['shipDate', 'shippingDate']),
           completedAt: firstValue(item, ['deliveryCompleteDate', 'finishDate', 'completeDate']) || firstValue(order, ['deliveryCompleteDate', 'finishDate', 'completeDate']),
@@ -517,6 +565,7 @@ async function fetchCoupangOrders(start, end, config) {
         externalOrderNo: orderId || shipmentBoxId,
         externalLineId: vendorItemId || `${index + 1}`,
         orderedAt,
+        orderDateSource: 'coupang-ordered-at',
         paidAt: firstValue(order, ['paidAt', 'paymentCompletedAt']),
         shippedAt: firstValue(order, ['shippedAt', 'departureAt', 'shipmentAt']),
         completedAt: firstValue(order, ['deliveredAt', 'completedAt', 'finalDeliveryAt']),
@@ -973,6 +1022,22 @@ async function reverseCancelledOrder(db, line, productMap, settings, runId, reas
 
 async function applyOrderLine(db, line, productMap, settings, runId) {
   const orderRef = db.collection(ORDER_COLLECTION).doc(line.id);
+  if (line.hasOriginalOrderDate !== true) {
+    const existingSnap = await orderRef.get();
+    const existing = existingSnap.exists ? existingSnap.data() || {} : {};
+    await orderRef.set({
+      ...line,
+      orderedAt: admin.firestore.Timestamp.fromDate(line.orderedAt),
+      processingStatus: 'ignored-missing-order-date',
+      processingError: '平台未提供可靠下單時間，已排除，避免誤列為本次同步的新訂單。',
+      inventoryApplied: existing.inventoryApplied === true,
+      lastSeenAt: admin.firestore.FieldValue.serverTimestamp(),
+      firstSeenAt: existing.firstSeenAt || admin.firestore.FieldValue.serverTimestamp(),
+      syncRunId: runId,
+      version: VERSION
+    }, { merge: true });
+    return { status: 'ignored', lineId: line.id, productId: clean(existing.productId) };
+  }
   const lifecycle = line.lifecycle || orderLifecycle(line);
   if (lifecycle === 'freight') {
     const existingSnap = await orderRef.get();
