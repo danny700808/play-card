@@ -20,7 +20,7 @@ const MOMO_ORDER_URL = 'https://api3p.momo.com.tw/VendorApi/OrderQuery';
 const MOMO_PRODUCT_URL = 'https://api3p.momo.com.tw/VendorApi/GoodsQueryByMethod';
 const MOMO_STOCK_URL = 'https://api3p.momo.com.tw/VendorApi/GoodsStockModify';
 const COUPANG_HOST = 'https://api-gateway.coupang.com';
-const VERSION = '2026.07.16-platform-price-sync-v1';
+const VERSION = '2026.07.17-platform-order-detail-v1';
 const LOCK_MS = 20 * 60 * 1000;
 const DEFAULT_LOOKBACK_DAYS = 4;
 const DEFAULT_NET_RATE = 0.87;
@@ -228,6 +228,15 @@ function normalizeLine(base) {
     note: clean(base.note),
     platformIds: base.platformIds && typeof base.platformIds === 'object' ? base.platformIds : {}
   };
+  const dateFields = ['paidAt', 'shippedAt', 'completedAt', 'settledAt', 'refundedAt', 'cancelledAt'];
+  dateFields.forEach((field) => {
+    const value = parseDate(base[field]);
+    if (value) line[field] = value;
+  });
+  const actualSettledAmount = numberOrNull(base.actualSettledAmount);
+  const refundAmount = numberOrNull(base.refundAmount);
+  if (actualSettledAmount != null) line.actualSettledAmount = Math.max(0, actualSettledAmount);
+  if (refundAmount != null) line.refundAmount = Math.max(0, refundAmount);
   line.lifecycle = isFreightLine(line) ? 'freight' : orderLifecycle(line);
   line.validSale = validLine(line);
   line.id = lineKey(line);
@@ -283,6 +292,14 @@ async function fetchEasyStoreOrders(start, end, token) {
           externalOrderNo: orderNo,
           externalLineId: firstValue(item, ['id', 'line_item_id', 'item_id']) || `${index + 1}`,
           orderedAt,
+          paidAt: firstValue(order, ['paid_at', 'paidAt', 'payment_paid_at', 'processed_at']),
+          shippedAt: firstValue(order, ['shipped_at', 'fulfilled_at', 'fulfillment_at', 'shipment_at']),
+          completedAt: firstValue(order, ['completed_at', 'closed_at', 'delivered_at']),
+          settledAt: firstValue(order, ['settled_at', 'payout_at', 'paid_out_at', 'remitted_at']),
+          refundedAt: firstValue(order, ['refunded_at', 'refund_at']),
+          cancelledAt: firstValue(order, ['cancelled_at', 'canceled_at']),
+          actualSettledAmount: firstValue(order, ['actual_settlement_amount', 'payout_amount', 'paid_out_amount', 'remittance_amount']),
+          refundAmount: firstValue(order, ['total_refunded', 'refund_amount', 'refunded_amount']),
           sku: firstValue(item, ['sku', 'code', 'product_sku', 'variant_sku']) || firstValue(variant, ['sku', 'code']) || firstValue(product, ['sku', 'code']),
           productName: firstValue(item, ['title', 'name', 'product_title', 'product_name']) || firstValue(product, ['title', 'name']),
           variantName: firstValue(item, ['variant_title', 'variant_name', 'option', 'option_name']) || firstValue(variant, ['title', 'name']),
@@ -355,7 +372,16 @@ async function fetchMomoOrders(start, end, token) {
           externalOrderId: orderId,
           externalOrderNo: orderId,
           externalLineId: firstValue(item, ['orderSeq', 'orderDtlNo', 'lineId']) || `${goodsCode}|${goodsdtCode}|${index + 1}`,
-          orderedAt: firstValue(item, ['orderDate', 'lastProcDate', 'planShipDate', 'shipDate']) || firstValue(order, ['orderDate', 'orderTime', 'createdAt', 'date']),
+          orderedAt: firstValue(item, ['orderDate']) || firstValue(order, ['orderDate', 'orderTime', 'createdAt', 'date']) || firstValue(item, ['lastProcDate', 'planShipDate', 'shipDate']),
+          paidAt: firstValue(item, ['paymentDate', 'payDate', 'paidDate']) || firstValue(order, ['paymentDate', 'payDate', 'paidAt']),
+          shippedAt: firstValue(item, ['shipDate', 'shippingDate', 'outboundDate']) || firstValue(order, ['shipDate', 'shippingDate']),
+          completedAt: firstValue(item, ['deliveryCompleteDate', 'finishDate', 'completeDate']) || firstValue(order, ['deliveryCompleteDate', 'finishDate', 'completeDate']),
+          settledAt: firstValue(item, ['settlementDate', 'remittanceDate', 'payOutDate']) || firstValue(order, ['settlementDate', 'remittanceDate', 'payOutDate']),
+          refundedAt: firstValue(item, ['refundDate', 'returnCompleteDate']) || firstValue(order, ['refundDate', 'returnCompleteDate']),
+          cancelledAt: firstValue(item, ['cancelDate', 'cancelledAt']) || firstValue(order, ['cancelDate', 'cancelledAt']),
+          actualSettledAmount: firstValue(item, ['settlementAmount', 'remittanceAmount', 'actualSettlementAmount']) || firstValue(order, ['settlementAmount', 'remittanceAmount', 'actualSettlementAmount']),
+          refundAmount: firstValue(item, ['refundAmount', 'returnAmount']) || firstValue(order, ['refundAmount', 'returnAmount']),
+          statusUpdatedAt: firstValue(item, ['lastProcDate', 'statusUpdatedAt']) || firstValue(order, ['lastProcDate', 'updatedAt']),
           sku: entpGoodsNo || (goodsCode && goodsdtCode ? `${goodsCode}-${goodsdtCode}` : goodsCode || goodsdtCode),
           productName: firstValue(item, ['goodsName', 'productName', 'name']),
           variantName: [firstValue(item, ['goodsInfo1', 'goodsdtInfo', 'optionName', 'specName']), firstValue(item, ['goodsInfo2'])].filter(Boolean).join(' / '),
@@ -467,7 +493,16 @@ async function fetchCoupangOrders(start, end, config) {
         externalOrderId: orderId || shipmentBoxId,
         externalOrderNo: orderId || shipmentBoxId,
         externalLineId: vendorItemId || `${index + 1}`,
-        orderedAt: firstValue(order, ['paidAt', 'orderedAt', 'createdAt', 'order_date']),
+        orderedAt: firstValue(order, ['orderedAt', 'createdAt', 'order_date', 'paidAt']),
+        paidAt: firstValue(order, ['paidAt', 'paymentCompletedAt']),
+        shippedAt: firstValue(order, ['shippedAt', 'departureAt', 'shipmentAt']),
+        completedAt: firstValue(order, ['deliveredAt', 'completedAt', 'finalDeliveryAt']),
+        settledAt: firstValue(order, ['settledAt', 'payoutAt', 'remittanceAt']),
+        refundedAt: firstValue(order, ['refundedAt', 'returnedAt', 'refundCompletedAt']),
+        cancelledAt: firstValue(order, ['cancelledAt', 'canceledAt']),
+        actualSettledAmount: firstValue(order, ['actualSettlementAmount', 'payoutAmount', 'remittanceAmount']),
+        refundAmount: firstValue(order, ['refundAmount', 'refundedAmount']),
+        statusUpdatedAt: firstValue(order, ['updatedAt', 'statusUpdatedAt']),
         sku: firstValue(item, ['externalVendorSkuCode', 'externalVendorSku', 'externalVendorSKU', 'sellerProductItemCode', 'sellerProductCode']) || vendorItemId,
         productName: firstValue(item, ['sellerProductName', 'vendorItemName', 'productName', 'name']),
         variantName: firstValue(item, ['sellerProductItemName', 'vendorItemPackageName', 'itemName', 'optionName']),
@@ -938,7 +973,7 @@ async function applyOrderLine(db, line, productMap, settings, runId) {
       ...line,
       orderedAt: admin.firestore.Timestamp.fromDate(line.orderedAt),
       statusUpdatedAt: line.statusUpdatedAt ? admin.firestore.Timestamp.fromDate(line.statusUpdatedAt) : null,
-      processingStatus: existing.inventoryApplied === true ? 'manual-return-review' : 'ignored-return',
+      processingStatus: existing.returnHandlingStatus === 'completed' ? 'return-processed' : (existing.inventoryApplied === true ? 'manual-return-review' : 'ignored-return'),
       inventoryApplied: existing.inventoryApplied === true,
       lastSeenAt: admin.firestore.FieldValue.serverTimestamp(),
       firstSeenAt: existing.firstSeenAt || admin.firestore.FieldValue.serverTimestamp(),
@@ -1008,7 +1043,7 @@ async function applyOrderLine(db, line, productMap, settings, runId) {
         inventoryApplied: true,
         inventoryReversed: false,
         reversalApplied: false,
-        processingStatus: 'inventory-applied',
+        processingStatus: existing.returnHandlingStatus === 'completed' ? 'return-processed' : 'inventory-applied',
         processingError: '',
         missingFromPlatformCount: 0,
         lastSeenAt: admin.firestore.FieldValue.serverTimestamp(),
