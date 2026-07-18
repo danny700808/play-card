@@ -29,7 +29,9 @@
   const READ_LIMIT = 10000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.07.18-injiaoyun-cloud-manual-sync-v13';
+  const VERSION = '2026.07.18-easystore-catalog-timeout-v14';
+  // 後端最長執行 30 分鐘；瀏覽器多留 1 分鐘接收後端的最終成功／失敗回應。
+  const EASYSTORE_CATALOG_CLIENT_TIMEOUT_MS = 31 * 60 * 1000;
   const DASHBOARD_CACHE_KEY = 'youzi_ops_dashboard_overview_v7_order_detail';
   const DASHBOARD_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
   const DEFAULT_MEMBERSHIP_SETTINGS = {
@@ -60,6 +62,7 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
     onlineSource:'EasyStore API',
     onlineProducts:[],
     easyStoreSync:{},
+    easyStoreSyncPending:false,
     injiaoyunCloudSync:{},
     injiaoyunCloudSyncSignature:'',
     injiaoyunCloudStatusSignature:'',
@@ -1565,7 +1568,7 @@ function renderOverviewV7(){
     const listHtml=visible.length
       ?(state.productDisplayMode==='text'?'<div class="ops-product-text-list">'+visible.map(productTextRow).join('')+'</div>':'<div class="ops-products-grid">'+visible.map(productCard).join('')+'</div>')+(visible.length<rows.length?'<div class="ops-pagination"><button class="ops-button ghost" data-action="load-more-products">顯示更多</button></div>':'')
       :emptyHtml(central?'找不到商品':'尚未建立商品',central?'請調整搜尋條件。':'請先新增商品或匯入商品資料。','<button class="ops-button primary" data-action="product-new">新增商品</button>');
-    return '<section class="ops-card ops-product-section"><div class="ops-product-title-row"><div class="ops-product-title-group"><h2>商品庫存</h2><div class="ops-product-title-stat">庫存成本總額：<b>'+money(inventoryValue)+'</b></div><button type="button" class="ops-product-low-button '+(lowActive?'active':'')+'" data-action="product-low-stock">低於安全庫存：<b>'+formatNumber(low)+' 項</b></button></div><div class="ops-card-actions"><button class="ops-button primary" data-action="product-new">新增商品</button><button class="ops-button soft" data-action="sync-easystore-api">同步圖片</button><button class="ops-button soft" data-action="open-import">'+(central?'更新商品資料':'匯入商品資料')+'</button></div></div>'+productSeriesTabs()+'<div class="ops-product-toolbar"><input class="ops-input" id="productSearch" placeholder="搜尋商品名稱或 SKU" value="'+attr(state.productSearch)+'">'+displayModeToggleHtml('product-display-mode',state.productDisplayMode,'商品顯示方式')+'</div>'+mobileSearchPadHtml('productSearch')+editorHtml+listHtml+'</section>'+previewHtml;
+    return '<section class="ops-card ops-product-section"><div class="ops-product-title-row"><div class="ops-product-title-group"><h2>商品庫存</h2><div class="ops-product-title-stat">庫存成本總額：<b>'+money(inventoryValue)+'</b></div><button type="button" class="ops-product-low-button '+(lowActive?'active':'')+'" data-action="product-low-stock">低於安全庫存：<b>'+formatNumber(low)+' 項</b></button></div><div class="ops-card-actions"><button class="ops-button primary" data-action="product-new">新增商品</button><button class="ops-button soft" data-action="sync-easystore-api" '+(state.easyStoreSyncPending?'disabled aria-busy="true"':'')+'>'+(state.easyStoreSyncPending?'圖片同步中…':'同步圖片')+'</button><button class="ops-button soft" data-action="open-import">'+(central?'更新商品資料':'匯入商品資料')+'</button></div></div>'+productSeriesTabs()+'<div class="ops-product-toolbar"><input class="ops-input" id="productSearch" placeholder="搜尋商品名稱或 SKU" value="'+attr(state.productSearch)+'">'+displayModeToggleHtml('product-display-mode',state.productDisplayMode,'商品顯示方式')+'</div>'+mobileSearchPadHtml('productSearch')+editorHtml+listHtml+'</section>'+previewHtml;
   }
 
   function estimateFifoCostForProduct(p,qty){if(!p||!p.internal)return 0;try{return consumeFifo(p.internal,qty).costTotal;}catch(err){return qty*Number(p.nextFifoCost||p.averageCost||0);}}
@@ -2801,14 +2804,17 @@ function ensureSalesClock(){
 
   async function syncEasyStoreApi(){
     if(!(global.firebase&&global.firebase.functions)) return toast('無法同步','頁面未載入 Firebase Functions SDK。','warning');
+    if(state.easyStoreSyncPending) return toast('圖片仍在同步','請等待目前這次同步完成，不要重複按。','warning');
     const central=state.internalProducts.length;
     if(!central) return toast('尚無中央商品','請先匯入原始商品 Excel。','warning');
     const yes=await confirmAction('從 EasyStore API 同步','將直接讀取 EasyStore 全部商品與規格，以完全相同 SKU 對照 '+central+' 筆中央商品，補入網路名稱、售價與圖片。這個動作只讀 EasyStore，不會修改 EasyStore 商品或庫存。','開始同步');
     if(!yes) return;
-    showAlert('正在從 EasyStore API 讀取全部商品、規格與圖片。商品較多時可能需要數分鐘，請勿重複按同步。','info');
+    state.easyStoreSyncPending=true;
+    if(state.view==='products')render();
+    showAlert('正在從 EasyStore API 讀取全部商品、規格與圖片。約需數分鐘，完成前請勿關閉頁面或重複按同步。','info');
     try{
-      const callable=global.firebase.app().functions('us-central1').httpsCallable('syncEasyStoreCatalog');
-      const response=await callable({force:true});
+      const callable=global.firebase.app().functions('us-central1').httpsCallable('syncEasyStoreCatalog',{timeout:EASYSTORE_CATALOG_CLIENT_TIMEOUT_MS});
+      const response=await callable({force:false});
       const result=(response&&response.data)||{};
       if(!result.ok) throw new Error(result.message||'同步失敗');
       clearAlert();
@@ -2817,8 +2823,19 @@ function ensureSalesClock(){
     }catch(error){
       console.error(error);
       const message=errorMessage(error);
-      toast('EasyStore API 同步失敗',message,'warning');
-      showAlert('EasyStore API 同步失敗：'+message,'error');
+      if(message.indexOf('deadline-exceeded')!==-1){
+        toast('同步仍可能在雲端執行','請勿重複按；稍候數分鐘後重新整理商品資料。','warning');
+        showAlert('網頁等待時間已到，但雲端同步仍可能繼續執行。請勿重複按，稍候數分鐘後重新整理商品資料。','info');
+      }else if(message.indexOf('already-exists')!==-1||message.indexOf('正在執行')!==-1){
+        toast('已有圖片同步正在執行','請等待目前這次完成。','warning');
+        showAlert('已有 EasyStore 圖片同步正在執行，請勿重複按；稍候數分鐘後重新整理。','info');
+      }else{
+        toast('EasyStore API 同步失敗',message,'warning');
+        showAlert('EasyStore API 同步失敗：'+message,'error');
+      }
+    }finally{
+      state.easyStoreSyncPending=false;
+      if(state.view==='products')render();
     }
   }
 
