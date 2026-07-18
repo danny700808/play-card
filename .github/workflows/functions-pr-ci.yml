@@ -92,7 +92,9 @@ jobs:
         working-directory: functions
         shell: bash
         run: |
-          set -uo pipefail
+          # GitHub invokes bash with -e. Temporarily disable it so npm audit's
+          # expected non-zero status can be parsed and evaluated by severity.
+          set +e
           npm audit --omit=dev --json > npm-audit.json
           audit_status=$?
           set -e
