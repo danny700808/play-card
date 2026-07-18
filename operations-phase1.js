@@ -29,7 +29,7 @@
   const READ_LIMIT = 10000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.07.18-pos-checkout-subtotal-v19';
+  const VERSION = '2026.07.18-education-retained-rental-v20';
   // 後端最長執行 30 分鐘；瀏覽器多留 1 分鐘接收後端的最終成功／失敗回應。
   const EASYSTORE_CATALOG_CLIENT_TIMEOUT_MS = 31 * 60 * 1000;
   const DASHBOARD_CACHE_KEY = 'youzi_ops_dashboard_overview_v7_order_detail';
@@ -1317,6 +1317,7 @@ function renderOverviewV7(){
     roomRentalReceived:sum(educationRows,function(row){return row.summary.roomRentalReceived;})
   };
   const educationCash=educationSummary.tuitionReceived+educationSummary.roomRentalReceived;
+  const educationRetainedWithRental=educationSummary.schoolShare+educationSummary.roomRentalReceived;
   const networkRows=visiblePlatformOrders(state.platformOrders).filter(function(row){return platformOrderIsEffective(row)&&inRange(row.orderedAt);}),networkFeeMetrics=platformFeeMetrics(networkRows);
   const networkGross=networkFeeMetrics.gross,networkNet=networkFeeMetrics.net,networkCost=networkFeeMetrics.cost,networkProfit=networkFeeMetrics.profit;
   const networkQty=sum(networkRows,function(row){return row.quantity;});
@@ -1334,7 +1335,7 @@ function renderOverviewV7(){
   else if(syncStatus==='error')syncText='同步失敗'+(sync.lastFailedAt?'（'+dateTimeText(sync.lastFailedAt)+'）':'')+'：'+(clean(sync.lastError)||'請查看雲端執行記錄。').slice(0,180);
   else if(syncStatus==='success'&&sync.lastSucceededAt)syncText='最後同步：'+dateTimeText(sync.lastSucceededAt)+(syncRange?'｜資料範圍：'+syncRange:'')+(clean(sync.lastTrigger)==='manual'?'｜手動':'｜22:00 自動');
 
-  const allCash=storeCash+networkNet+rentalRevenue+educationCash,knownDirectCost=productCost+networkCost+educationSummary.teacherPayable,allBalance=allCash-knownDirectCost;
+  const allBalance=storeBalance+networkProfit+rentalRevenue+educationRetainedWithRental;
   const syncAnomalies=platformSyncAnomalies(),syncAnomalyGroups=platformSyncAnomalyGroups(syncAnomalies),syncAnomalyCount=syncAnomalyGroups.length;
   const pendingPlatformRows=visiblePlatformOrders(state.platformOrders).filter(function(row){return platformOrderNeedsAttention(row)&&clean(row.processingStatus)!=='manual-return-review';}),pendingPlatform=pendingPlatformRows.length;
   const openReceivables=state.receivables.filter(function(row){return row.status!=='paid'&&Number(row.outstandingAmount||0)>0;});
@@ -1354,7 +1355,7 @@ function renderOverviewV7(){
   const storeHtml='<section class="ops-card ops-v8-channel-card ops-v8-channel-store"><div class="ops-v8-channel-accent"></div><div class="ops-v8-channel-head"><div><h2>門市營運</h2><p>現場商品、維修與其他收入</p></div><button class="ops-button small soft" data-nav="sales">前往銷售</button></div><div class="ops-v8-channel-summary">'+summaryBox('門市實收',money(storeCash))+summaryBox('預估毛利',money(storeBalance),storeBalance<0?'warning':'success')+'</div><div class="ops-v8-metric-list">'+metricRow('商品銷售',money(productRevenue))+metricRow('維修／其他',money(repairRevenue+otherRevenue))+metricRow('商品成本',money(productCost))+metricRow('退貨退款',money(returnRefund))+'</div></section>';
   const networkHtml='<section class="ops-card ops-v8-channel-card ops-v8-channel-network"><div class="ops-v8-channel-accent"></div><div class="ops-v8-channel-head"><div><h2>網路營運</h2><p>EasyStore、MOMO、Coupang</p></div><button class="ops-button small ghost" data-nav="sync">平台訂單</button></div><div class="ops-v8-channel-summary">'+summaryBox('預估入帳',money(networkNet))+summaryBox('預估毛利',money(networkProfit),networkProfit<0?'warning':'success')+'</div><div class="ops-v8-metric-list">'+metricRow('成交金額',money(networkGross))+metricRow('平台與金流費',money(networkFees))+metricRow('固定費用攤提',money(networkFixedFees))+metricRow('商品成本',money(networkCost))+metricRow('訂單／件數',formatNumber(networkOrderCount)+' 單／'+formatNumber(networkQty)+' 件')+'</div></section>';
   const rentalHtml='<section class="ops-card ops-v8-channel-card ops-v8-channel-rental"><div class="ops-v8-channel-accent"></div><div class="ops-v8-channel-head"><div><h2>租賃營運</h2><p>依上方選擇的日期區間統計</p></div><button class="ops-button small ghost" data-nav="rentals">查看租賃</button></div><div class="ops-v8-channel-summary">'+summaryBox('租賃收入',money(rentalRevenue))+summaryBox(rentalCountLabel,formatNumber(rentals.length)+' 件','success')+'</div><div class="ops-v8-metric-list">'+metricRow(bounds.label+'成立合約',formatNumber(rentals.length)+' 件')+'</div></section>';
-  const educationHtml='<section class="ops-card ops-v8-channel-card ops-v8-channel-school"><div class="ops-v8-channel-accent"></div><div class="ops-v8-channel-head"><div><h2>補習班營運</h2><p>'+escapeHtml(syncText)+'</p></div><button class="ops-button small primary" data-action="injiaoyun-import" '+(syncBusy?'disabled':'')+'>'+(syncBusy?'同步中…':'手動同步')+'</button></div><div class="ops-v8-channel-summary">'+summaryBox('補習班實收',money(educationCash))+summaryBox('教室保留',money(educationSummary.schoolShare),'success')+'</div><div class="ops-v8-metric-list">'+metricAction('學費實收',money(educationSummary.tuitionReceived),'education-tuition-detail')+metricAction('教室租用',money(educationSummary.roomRentalReceived),'education-rental-detail')+metricAction('老師拆帳',money(educationSummary.teacherPayable),'education-teacher-summary')+metricAction('教室保留明細',money(educationSummary.schoolShare),'education-school-share-detail')+'</div></section>';
+  const educationHtml='<section class="ops-card ops-v8-channel-card ops-v8-channel-school"><div class="ops-v8-channel-accent"></div><div class="ops-v8-channel-head"><div><h2>補習班營運</h2><p>'+escapeHtml(syncText)+'</p></div><button class="ops-button small primary" data-action="injiaoyun-import" '+(syncBusy?'disabled':'')+'>'+(syncBusy?'同步中…':'手動同步')+'</button></div><div class="ops-v8-channel-summary">'+summaryBox('補習班實收',money(educationCash))+summaryBox('教室保留＋教室租用',money(educationRetainedWithRental),'success')+'</div><div class="ops-v8-metric-list">'+metricAction('學費實收',money(educationSummary.tuitionReceived),'education-tuition-detail')+metricAction('教室租用',money(educationSummary.roomRentalReceived),'education-rental-detail')+metricAction('老師拆帳',money(educationSummary.teacherPayable),'education-teacher-summary')+metricAction('教室保留明細',money(educationSummary.schoolShare),'education-school-share-detail')+'</div></section>';
 
   const alerts=[];
   if(syncAnomalyCount){const counts={};syncAnomalies.forEach(function(row){counts[row.platform]=Number(counts[row.platform]||0)+1;});const detail=Object.keys(counts).sort().map(function(name){return name+' '+counts[name]+' 項';}).join('、');alerts.push('<button type="button" class="ops-v8-attention-row" data-action="overview-sync-errors"><span class="ops-v8-attention-icon danger">同</span><span><b>平台同步異常</b><small>'+formatNumber(syncAnomalyCount)+' 件商品'+(detail?'：'+escapeHtml(detail):'')+'</small></span><em>查看明細</em></button>');}
