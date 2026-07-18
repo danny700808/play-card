@@ -29,7 +29,7 @@
   const READ_LIMIT = 10000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.07.17-order-date-and-platform-price-v9';
+  const VERSION = '2026.07.18-easystore-cod-and-stable-order-date-v11';
   const DASHBOARD_CACHE_KEY = 'youzi_ops_dashboard_overview_v7_order_detail';
   const DASHBOARD_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
   const DEFAULT_MEMBERSHIP_SETTINGS = {
@@ -900,7 +900,10 @@ async function loadPlatformLocalAgent(){
     const quantity=firstNumber(obj,['quantity']).value,unitPrice=firstNumber(obj,['unitPrice']).value,grossAmount=firstNumber(obj,['grossAmount']).value,costTotal=firstNumber(obj,['costTotal']).value;
     const platform=clean(obj.platform),externalOrderId=clean(obj.externalOrderId),externalOrderNo=clean(obj.externalOrderNo)||externalOrderId,storedOrderedAt=obj.orderedAt||'';
     const initialSource=lower(obj.orderDateSource),knownSource=['easystore-created-at','coupang-ordered-at','momo-api-order-date','momo-order-number-inferred','agent-order-time-validated'].includes(initialSource);
-    let orderedAt=storedOrderedAt,hasOriginalOrderDate=obj.hasOriginalOrderDate===true||(obj.hasOriginalOrderDate!==false&&knownSource&&!!dateFrom(storedOrderedAt)),orderDateSource=clean(obj.orderDateSource),orderTimeEstimated=obj.orderTimeEstimated===true,orderDateRepaired=obj.orderDateRepaired===true;
+    // 可信的平台原始下單時間優先於舊版留下的 hasOriginalOrderDate=false。
+    // 舊資料可能已經有 EasyStore created_at，但在舊同步流程中被標成 false；
+    // 不能因此把真正當天下單的訂單全部從畫面隱藏。
+    let orderedAt=storedOrderedAt,hasOriginalOrderDate=(knownSource&&!!dateFrom(storedOrderedAt))||obj.hasOriginalOrderDate===true,orderDateSource=clean(obj.orderDateSource),orderTimeEstimated=obj.orderTimeEstimated===true,orderDateRepaired=obj.orderDateRepaired===true;
     if(platform==='MOMO'){
       const inferred=inferMomoOrderDateFromNumber(externalOrderNo||externalOrderId,storedOrderedAt||obj.firstSeenAt||obj.lastSeenAt),storedDate=dateFrom(storedOrderedAt),source=lower(orderDateSource);
       const dateMismatch=!!(inferred&&(!storedDate||dateText(storedDate)!==dateText(inferred)));
@@ -2000,7 +2003,8 @@ function platformOrderGross(row){
   return Math.max(0,Number(row&&row.unitPrice||0)*Math.max(0,Number(row&&row.quantity||0)));
 }
 function platformOrderCost(row){return Math.max(0,Number(row&&row.costTotal||0));}
-const PLATFORM_CANCEL_KEYWORDS=['取消','客戶取消','買家取消','賣家取消','已取消','取消完成','作廢','已作廢','無效','未成立','交易失敗','付款失敗','未付款','付款逾期','逾期未付','cancel','canceled','cancelled','cancellation','void','voided','failed','failure','expired','unpaid','payment failed'];
+// 未付款／unpaid 可能只是 EasyStore 貨到付款的正常付款進度，不能當成取消。
+const PLATFORM_CANCEL_KEYWORDS=['取消','客戶取消','買家取消','賣家取消','已取消','取消完成','作廢','已作廢','無效','未成立','交易失敗','付款失敗','付款逾期','逾期未付','cancel','canceled','cancelled','cancellation','void','voided','failed','failure','expired','payment failed'];
 const PLATFORM_RETURN_KEYWORDS=['退貨','退款','拒收','退回','refund','refunded','return','returned'];
 const PLATFORM_FULFILLMENT_KEYWORDS=['出貨確認','已出貨','出貨完成','配送中','配送結束','已配送','送達','已送達','已收貨','已簽收','shipped','shipping','departure','delivering','delivered','final_delivery','final delivery','delivery completed'];
 function platformOrderStatusText(row){return lower([row&&row.orderStatus,row&&row.paymentStatus,row&&row.note,row&&row.reversalReason,row&&row.cancellationReason].filter(Boolean).join(' '));}
@@ -2020,10 +2024,13 @@ function platformOrderIsCancelledState(row){
   return PLATFORM_CANCEL_KEYWORDS.some(function(keyword){return platformOrderStatusText(row).includes(keyword);});
 }
 function platformOrderHasReliableOrderDate(row){
-  if(!row||row.hasOriginalOrderDate===false)return false;
+  if(!row)return false;
   const ordered=dateFrom(row.orderedAt);if(!ordered)return false;
   const source=lower(row.orderDateSource);
+  // 平台明確提供的原始時間（尤其 EasyStore created_at）本身就是可信依據；
+  // 不再讓舊資料的 false 標記覆蓋它。
   if(['easystore-created-at','coupang-ordered-at','momo-api-order-date','momo-order-number-inferred','agent-order-time-validated'].includes(source))return true;
+  if(row.hasOriginalOrderDate===false)return false;
   // 舊版只寫 platform 時，僅在能證明它不是同步當下時間時暫時保留；其餘來源一律不進入「今天」。
   if(source==='platform'&&row.hasOriginalOrderDate===true){const seen=dateFrom(row.firstSeenAt||row.lastSeenAt);return !!seen&&!platformOrderLooksLikeSyncTime(row,row.orderedAt);}
   return false;
@@ -2038,7 +2045,8 @@ function platformOrderIsHidden(row){
   const status=clean(row.processingStatus);
   if(!platformOrderHasReliableOrderDate(row))return true;
   if(platformOrderIsCancelledState(row))return true;
-  return ['ignored','ignored-freight','ignored-missing-order-date','missing-from-platform-review'].includes(status);
+  // 單次同步暫時漏抓時仍保留原成交紀錄；只有明確取消，或後端連續確認不存在並完成回補後才移除。
+  return ['ignored','ignored-freight','ignored-missing-order-date'].includes(status);
 }
 function platformOrderRevisionTime(row){
   const value=row&&(row.statusUpdatedAt||row.lastSeenAt||row.updatedAt||row.reversedAt||row.orderedAt),date=dateFrom(value);
