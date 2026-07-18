@@ -11,25 +11,73 @@ on:
       - ".github/workflows/firebase-functions-deploy.yml"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: firebase-functions-youzi-c1b74
+  cancel-in-progress: false
+
+env:
+  FIREBASE_PROJECT_ID: youzi-c1b74
+  FIREBASE_TOOLS_VERSION: 15.24.0
+
 jobs:
   deploy-functions:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
 
-      - name: Install Firebase CLI
-        run: npm install -g firebase-tools
+      - name: Validate deployment configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const firebase = JSON.parse(fs.readFileSync('firebase.json', 'utf8'));
+          const rc = JSON.parse(fs.readFileSync('.firebaserc', 'utf8'));
+          const functionSources = Array.isArray(firebase.functions)
+            ? firebase.functions.map((entry) => entry && entry.source)
+            : [firebase.functions && firebase.functions.source];
+
+          if (!functionSources.includes('functions')) {
+            throw new Error('firebase.json must deploy the canonical Functions source: functions/');
+          }
+          if (rc.projects?.default !== process.env.FIREBASE_PROJECT_ID) {
+            throw new Error(`.firebaserc default project must be ${process.env.FIREBASE_PROJECT_ID}`);
+          }
+          console.log('Deployment configuration is valid. This workflow deploys Functions only.');
+          NODE
 
       - name: Install functions dependencies
         working-directory: functions
         run: npm ci
+
+      - name: Check functions JavaScript syntax
+        working-directory: functions
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -d '' files < <(find . -type f -name '*.js' -not -path './node_modules/*' -print0)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "::error::No Functions JavaScript files were found."
+            exit 1
+          fi
+          for file in "${files[@]}"; do
+            node --check "$file"
+          done
 
       - name: Verify required function exports
         working-directory: functions
@@ -45,11 +93,69 @@ jobs:
           console.log('Verified Firebase Function exports:', required.join(', '));
           NODE
 
-      - name: Create service account file
+      - name: Install pinned Firebase CLI
+        shell: bash
         run: |
-          printf '%s' '${{ secrets.FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 }}' > service-account.json
+          set -euo pipefail
+          npm install --global "firebase-tools@${FIREBASE_TOOLS_VERSION}"
+          installed_version="$(firebase --version)"
+          if [ "$installed_version" != "$FIREBASE_TOOLS_VERSION" ]; then
+            echo "::error::Expected firebase-tools ${FIREBASE_TOOLS_VERSION}, got ${installed_version}."
+            exit 1
+          fi
+
+      - name: Validate and prepare Firebase credentials
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 }}
+          CREDENTIALS_FILE: ${{ runner.temp }}/firebase-service-account.json
+        run: |
+          set -euo pipefail
+          if [ -z "${FIREBASE_SERVICE_ACCOUNT_JSON:-}" ]; then
+            echo "::error::FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 is missing or empty."
+            exit 1
+          fi
+
+          node - <<'NODE'
+          const value = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+          let account;
+          try {
+            account = JSON.parse(value);
+          } catch {
+            throw new Error('Firebase service-account secret is not valid JSON.');
+          }
+          for (const key of ['type', 'project_id', 'client_email', 'private_key']) {
+            if (typeof account[key] !== 'string' || !account[key].trim()) {
+              throw new Error(`Firebase service-account secret is missing ${key}.`);
+            }
+          }
+          if (account.type !== 'service_account') {
+            throw new Error('Firebase credential must be a service account.');
+          }
+          if (account.project_id !== process.env.FIREBASE_PROJECT_ID) {
+            throw new Error(`Firebase service account belongs to ${account.project_id}, not ${process.env.FIREBASE_PROJECT_ID}.`);
+          }
+          console.log('Firebase service-account structure and project ID are valid.');
+          NODE
+
+          umask 077
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$CREDENTIALS_FILE"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$CREDENTIALS_FILE" >> "$GITHUB_ENV"
 
       - name: Deploy Firebase Functions
+        shell: bash
+        run: |
+          set -euo pipefail
+          firebase deploy \
+            --only functions \
+            --project "$FIREBASE_PROJECT_ID" \
+            --non-interactive
+
+      - name: Remove temporary Firebase credentials
+        if: always()
+        shell: bash
         env:
-          GOOGLE_APPLICATION_CREDENTIALS: service-account.json
-        run: firebase deploy --only functions --project youzi-c1b74 --non-interactive
+          CREDENTIALS_FILE: ${{ runner.temp }}/firebase-service-account.json
+        run: |
+          set -euo pipefail
+          rm -f -- "$CREDENTIALS_FILE"
