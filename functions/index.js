@@ -7,6 +7,7 @@ const crypto = require('crypto');
 const { registerExternalTeacherOnboarding, handleExternalTeacherLineEvent } = require('./externalTeacherOnboarding');
 const { registerEasyStoreCatalogSync } = require('./easystoreCatalogSync');
 const { registerPlatformOrderSync } = require('./platformOrderSync');
+const { registerInjiaoyunManualSync } = require('./injiaoyunManualSync');
 
 if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
@@ -14,6 +15,7 @@ const db = admin.firestore();
 registerExternalTeacherOnboarding(exports);
 registerEasyStoreCatalogSync(exports);
 registerPlatformOrderSync(exports);
+registerInjiaoyunManualSync(exports);
 
 const ADMIN_EMAILS = new Set(['danny700808@gmail.com']);
 const DEFAULT_ADMIN_DOC_ID = 'ADMIN_DANNY';
