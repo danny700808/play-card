@@ -1034,7 +1034,12 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
 .ops-v8-sales-history-tools{display:flex;align-items:end;gap:8px;flex-wrap:wrap;margin-bottom:10px}
 .ops-v8-sales-history-tools .grow{flex:1;min-width:220px}
 .ops-v8-sales-history-tools label{display:grid;gap:3px;color:var(--ops-muted);font-size:10px;font-weight:800}
-.ops-v8-sales-history-table{min-width:900px}
+.ops-v8-sales-history-table{min-width:1180px}
+.ops-sales-item-analysis{display:grid;gap:2px;padding:4px 0;border-bottom:1px dashed #ead8c1}
+.ops-sales-item-analysis:last-child{border-bottom:0}
+.ops-sales-item-analysis b{font-size:12px;color:var(--ops-text)}
+.ops-sales-item-analysis small{color:var(--ops-muted);line-height:1.45}
+.ops-sales-return-note{margin-top:5px;color:var(--ops-danger);font-size:11px;font-weight:800}
 
 /* 2026-07：進貨庫存 B（分頁作業台） */
 .ops-v8-purchase-kpis{grid-template-columns:repeat(4,minmax(0,1fr))}
