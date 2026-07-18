@@ -20,7 +20,7 @@ const MOMO_ORDER_URL = 'https://api3p.momo.com.tw/VendorApi/OrderQuery';
 const MOMO_PRODUCT_URL = 'https://api3p.momo.com.tw/VendorApi/GoodsQueryByMethod';
 const MOMO_STOCK_URL = 'https://api3p.momo.com.tw/VendorApi/GoodsStockModify';
 const COUPANG_HOST = 'https://api-gateway.coupang.com';
-const VERSION = '2026.07.17-order-date-and-platform-price-v10-fast-order-sync';
+const VERSION = '2026.07.18-easystore-cod-and-stable-order-date-v11';
 const LOCK_MS = 20 * 60 * 1000;
 const DEFAULT_LOOKBACK_DAYS = 4;
 const DEFAULT_NET_RATE = 0.87;
@@ -232,10 +232,13 @@ const RETURN_REVIEW_KEYWORDS = [
 
 const CANCELLED_ORDER_KEYWORDS = [
   '取消', '客戶取消', '買家取消', '賣家取消', '已取消', '取消完成',
-  '作廢', '已作廢', '無效', '未成立', '交易失敗', '付款失敗', '未付款', '付款逾期', '逾期未付',
+  '作廢', '已作廢', '無效', '未成立', '交易失敗', '付款失敗', '付款逾期', '逾期未付',
   'cancel', 'canceled', 'cancelled', 'cancellation', 'void', 'voided',
-  'failed', 'failure', 'expired', 'unpaid', 'payment failed'
+  'failed', 'failure', 'expired', 'payment failed'
 ];
+
+// 「未付款／unpaid」只是付款進度，不代表訂單取消。
+// EasyStore 貨到付款在出貨、送達前都可能維持 unpaid，仍是有效成交訂單。
 
 // 「退貨」必須是商品已出庫後的退回；尚未出貨前的退款／不要商品，一律視為取消訂單。
 const FULFILLMENT_EVIDENCE_KEYWORDS = [
