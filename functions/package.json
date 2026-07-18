@@ -6,7 +6,9 @@
     "node": "20"
   },
   "scripts": {
-    "deploy": "firebase deploy --only functions"
+    "deploy": "firebase deploy --only functions",
+    "test": "node --test test/*.test.js",
+    "check": "node --check index.js && node --check platformOrderSync.js"
   },
   "dependencies": {
     "firebase-admin": "^12.7.0",
