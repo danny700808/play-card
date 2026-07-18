@@ -9,8 +9,10 @@ const EASYSTORE_ACCESS_TOKEN = defineSecret('EASYSTORE_ACCESS_TOKEN');
 const STORE_URL = 'https://www.mingtinghuang.com';
 const API_BASE_PATH = '/api/3.0';
 const REGION = 'us-central1';
-const SYNC_LOCK_MS = 15 * 60 * 1000;
+const SYNC_LOCK_MS = 35 * 60 * 1000;
 const MIN_SYNC_INTERVAL_MS = 60 * 1000;
+const API_REQUEST_TIMEOUT_MS = 60 * 1000;
+const MAX_TRANSIENT_RETRIES = 3;
 
 function clean(value) {
   return String(value == null ? '' : value).trim();
@@ -210,14 +212,26 @@ function isAllowedCaller(request) {
 }
 
 async function apiRequest(url, token, attempt = 0) {
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'EasyStore-Access-Token': token,
-      Accept: 'application/json',
-      'Content-Type': 'application/json'
+  let response;
+  try {
+    response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'EasyStore-Access-Token': token,
+        Accept: 'application/json',
+        'Content-Type': 'application/json'
+      },
+      signal: AbortSignal.timeout(API_REQUEST_TIMEOUT_MS)
+    });
+  } catch (error) {
+    const isTimeout = error && (error.name === 'TimeoutError' || error.name === 'AbortError');
+    if (attempt < MAX_TRANSIENT_RETRIES) {
+      await new Promise((resolve) => setTimeout(resolve, Math.min(8000, 1000 * (2 ** attempt))));
+      return apiRequest(url, token, attempt + 1);
     }
-  });
+    if (isTimeout) throw new Error('EasyStore API 單頁讀取超過 60 秒，已停止本次同步。');
+    throw new Error(`EasyStore API 連線失敗：${clean(error && error.message ? error.message : error) || '未知錯誤'}`);
+  }
 
   const text = await response.text();
   if (response.status === 429 && attempt < 5) {
@@ -226,6 +240,11 @@ async function apiRequest(url, token, attempt = 0) {
       ? retryAfter * 1000
       : Math.min(30000, 1000 * (2 ** attempt));
     await new Promise((resolve) => setTimeout(resolve, waitMs));
+    return apiRequest(url, token, attempt + 1);
+  }
+
+  if ([408, 425, 500, 502, 503, 504].includes(response.status) && attempt < MAX_TRANSIENT_RETRIES) {
+    await new Promise((resolve) => setTimeout(resolve, Math.min(8000, 1000 * (2 ** attempt))));
     return apiRequest(url, token, attempt + 1);
   }
 
@@ -486,6 +505,7 @@ function registerEasyStoreCatalogSync(exportsObject) {
     timeoutSeconds: 1800,
     memory: '1GiB',
     maxInstances: 1,
+    concurrency: 1,
     secrets: [EASYSTORE_ACCESS_TOKEN]
   }, async (request) => {
     if (!isAllowedCaller(request)) {
