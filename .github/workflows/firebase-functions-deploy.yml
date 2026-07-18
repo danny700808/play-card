@@ -29,14 +29,14 @@ jobs:
 
       - name: Install functions dependencies
         working-directory: functions
-        run: npm install
+        run: npm ci
 
-      - name: Verify platform order function exports
+      - name: Verify required function exports
         working-directory: functions
         run: |
           node - <<'NODE'
           const deployed = require('./index.js');
-          const required = ['platformOrderSyncDaily', 'syncPlatformOrdersNow', 'platformOrderAgentBridge'];
+          const required = ['platformOrderSyncDaily', 'syncPlatformOrdersNow', 'platformOrderAgentBridge', 'runInjiaoyunSyncNow'];
           const missing = required.filter((name) => !deployed[name]);
           if (missing.length) {
             console.error('Missing Firebase Function exports:', missing.join(', '));
