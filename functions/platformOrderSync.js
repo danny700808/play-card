@@ -20,7 +20,7 @@ const MOMO_ORDER_URL = 'https://api3p.momo.com.tw/VendorApi/OrderQuery';
 const MOMO_PRODUCT_URL = 'https://api3p.momo.com.tw/VendorApi/GoodsQueryByMethod';
 const MOMO_STOCK_URL = 'https://api3p.momo.com.tw/VendorApi/GoodsStockModify';
 const COUPANG_HOST = 'https://api-gateway.coupang.com';
-const VERSION = '2026.07.18-easystore-cod-and-stable-order-date-v11';
+const VERSION = '2026.07.18-platform-inventory-idempotency-v12';
 const LOCK_MS = 20 * 60 * 1000;
 const DEFAULT_LOOKBACK_DAYS = 4;
 const DEFAULT_NET_RATE = 0.87;
@@ -254,6 +254,11 @@ function hasFulfillmentEvidence(line) {
   return FULFILLMENT_EVIDENCE_KEYWORDS.some((keyword) => text.includes(keyword));
 }
 
+function missingOrderReconciliationPolicy(line,count){
+  const missingCount=Math.max(1,Math.round(Number(count||1))),fulfilled=hasFulfillmentEvidence(line);
+  return {action:'review-only',missingCount,fulfilled,message:fulfilled?`此訂單已有出貨／送達證據，但連續 ${missingCount} 次未出現在平台清單；已保留庫存扣除，請人工確認。`:`連續 ${missingCount} 次未出現在平台清單；缺席不等於取消，已保留庫存扣除並等待人工確認。`};
+}
+
 function orderLifecycle(line) {
   const text = [line.orderStatus, line.paymentStatus, line.note]
     .map((value) => clean(value).toLowerCase()).join(' ');
@@ -287,6 +292,50 @@ function lineKey(line) {
   ].join('|'));
 }
 
+function fallbackLineId(item) {
+  const product = item && item.product && typeof item.product === 'object' ? item.product : {};
+  const variant = item && item.variant && typeof item.variant === 'object' ? item.variant : {};
+  const platformIds = item && item.platformIds && typeof item.platformIds === 'object' ? item.platformIds : {};
+  const sku = normalizeSku(
+    firstValue(item || {}, ['sku', 'code', 'product_sku', 'variant_sku', 'entpGoodsNo', 'vendorItemId'])
+      || firstValue(variant, ['sku', 'code'])
+      || firstValue(product, ['sku', 'code'])
+  );
+  const productCode = clean(firstValue(item || {}, ['goodsNo', 'goodsCode', 'productCode', 'product_id', 'productId']) || firstValue(product, ['id', 'product_id']) || firstValue(platformIds, ['productId', 'goodsCode']));
+  const variantCode = clean(firstValue(item || {}, ['goodsdtCode', 'variant_id', 'variantId', 'optionId']) || firstValue(variant, ['id', 'variant_id']) || firstValue(platformIds, ['variantId', 'vendorItemId', 'goodsdtCode']));
+  const name = clean(firstValue(item || {}, ['goodsName', 'productName', 'title', 'name', 'product_title']));
+  const variantName = clean(firstValue(item || {}, ['variantName', 'variant_title', 'variant_name', 'goodsInfo1', 'goodsdtInfo', 'optionName', 'specName']));
+  // 平台沒給明細 ID 時，不可使用陣列 index；API 只要換排序就會被誤認為新訂單行。
+  // 有平台商品／規格代碼時只用穩定代碼，避免平台修正名稱或 SKU 後產生另一筆訂單並重複扣庫存。
+  const identity = productCode || variantCode ? [productCode, variantCode] : [sku, name, variantName];
+  return `fallback_${stableId(identity.join('|'), 28)}`;
+}
+
+function collapseFallbackLines(lines) {
+  const collapsed = new Map();
+  for (const line of lines || []) {
+    const previous = collapsed.get(line.id);
+    if (!previous) {
+      collapsed.set(line.id, { ...line });
+      continue;
+    }
+    if (!clean(line.externalLineId).startsWith('fallback_')) {
+      // 官方明細 ID 相同代表同一筆資料重送，不可把數量再相加。
+      collapsed.set(line.id, { ...previous, ...line });
+      continue;
+    }
+    // fallback 行無法分辨「同一頁重送」與「兩個內容完全相同的明細」。相加可能重複扣庫存，
+    // 覆蓋又可能少扣；保留最後觀測並標記人工確認，平台應提供正式明細 ID 才能自動入帳。
+    collapsed.set(line.id, {
+      ...previous,
+      ...line,
+      identityAmbiguous: true,
+      identityAmbiguityReason: '平台未提供明細 ID，且同一訂單出現相同商品識別，已停止自動扣庫存。'
+    });
+  }
+  return [...collapsed.values()];
+}
+
 function normalizeLine(base) {
   const quantity = Math.max(0, Math.round(Number(base.quantity || 0)));
   const unitPrice = Math.max(0, Number(base.unitPrice || 0));
@@ -297,9 +346,9 @@ function normalizeLine(base) {
   const momoInferredAt = platform === 'MOMO' ? inferMomoOrderDateFromNumber(externalOrderId, reportedOrderedAt || new Date()) : null;
   const incomingDateSource = clean(base.orderDateSource);
   const normalizedIncomingDateSource = incomingDateSource.toLowerCase();
-  const momoTrustedTimestamp = normalizedIncomingDateSource === 'momo-api-order-date';
-  const momoDateMismatch = !!(momoInferredAt && (!reportedOrderedAt || isoDay(momoInferredAt) !== isoDay(reportedOrderedAt)));
-  const useMomoInferredDate = !!(momoInferredAt && (momoDateMismatch || !momoTrustedTimestamp || base.orderTimeEstimated === true));
+  const momoTrustedTimestamp = normalizedIncomingDateSource === 'momo-api-order-date' && !!reportedOrderedAt;
+  // MOMO 官方 orderDate 永遠優先；只有 API 完全沒有下單時間時才可從訂單號推算。
+  const useMomoInferredDate = !!(!momoTrustedTimestamp && momoInferredAt);
   const syncReferenceAt = parseDate(base.syncReferenceAt);
   const trustedDateSource = (platform === 'EasyStore' && normalizedIncomingDateSource === 'easystore-created-at')
     || (platform === 'Coupang' && normalizedIncomingDateSource === 'coupang-ordered-at')
@@ -317,12 +366,12 @@ function normalizeLine(base) {
     platform,
     externalOrderId,
     externalOrderNo: clean(base.externalOrderNo || base.externalOrderId),
-    externalLineId: clean(base.externalLineId),
+    externalLineId: clean(base.externalLineId) || fallbackLineId(base),
     orderedAt,
     hasOriginalOrderDate: !!parsedOrderedAt,
     orderDateSource: rejectUntrustedTimestamp ? (looksLikeSyncTimestamp ? 'sync-time-rejected' : 'untrusted-time-rejected') : (useMomoInferredDate ? 'momo-order-number-inferred' : (trustedDateSource ? normalizedIncomingDateSource : (validatedAgentTimestamp ? 'agent-order-time-validated' : 'missing'))),
-    orderTimeEstimated: useMomoInferredDate || base.orderTimeEstimated === true,
-    orderDateRepaired: useMomoInferredDate && !!reportedOrderedAt,
+    orderTimeEstimated: useMomoInferredDate,
+    orderDateRepaired: false,
     reportedOrderedAt: (useMomoInferredDate || rejectUntrustedTimestamp) && reportedOrderedAt ? reportedOrderedAt.toISOString() : clean(base.reportedOrderedAt),
     statusUpdatedAt: parseDate(base.statusUpdatedAt) || null,
     sku: normalizeSku(base.sku),
@@ -400,6 +449,84 @@ function lineWithExistingOrderDate(line, existing) {
   return hydrated;
 }
 
+function inventoryApplicationDelta(existing, incomingQuantity, incomingProductId) {
+  const previousQuantity = Math.max(0, Math.round(Number(existing && existing.appliedQuantity != null ? existing.appliedQuantity : existing && existing.quantity || 0)));
+  const previousProductId = clean(existing && (existing.appliedProductId || existing.productId));
+  const nextQuantity = Math.max(0, Math.round(Number(incomingQuantity || 0)));
+  const nextProductId = clean(incomingProductId);
+  const productChanged = !!previousProductId && previousProductId !== nextProductId;
+  return {previousQuantity,previousProductId,nextQuantity,nextProductId,quantityDelta:nextQuantity-previousQuantity,productChanged,inventoryChanged:productChanged||nextQuantity!==previousQuantity};
+}
+
+function appliedInventorySnapshot(existing,inventory){
+  const order=existing||{},ledger=inventory||{},ledgerQty=Number(ledger.qtyChange),hasLedgerQty=Number.isFinite(ledgerQty)&&ledgerQty!==0;
+  const quantity=Math.max(0,Math.round(Number(order.appliedQuantity!=null?order.appliedQuantity:(hasLedgerQty?Math.abs(ledgerQty):order.quantity||0))));
+  const productId=clean(order.appliedProductId||ledger.productId||order.productId);
+  const quantityReliable=order.appliedQuantity!=null||hasLedgerQty,productReliable=!!clean(order.appliedProductId||ledger.productId);
+  return {...order,appliedQuantity:quantity,appliedProductId:productId,appliedSnapshotReliable:quantityReliable&&productReliable};
+}
+
+function hasProcessedReturn(order){
+  const row=order||{},quantity=Math.max(0,Math.round(Number(row.returnProcessedQuantity!=null?row.returnProcessedQuantity:(row.returnHandlingStatus==='completed'?row.returnQuantity||0:0))));
+  return row.returnInventoryApplied===true||clean(row.returnHandlingStatus)==='completed'||quantity>0;
+}
+
+function legacyFallbackIdentityDecision(oldRow,newLine){
+  const oldIds=oldRow&&oldRow.platformIds&&typeof oldRow.platformIds==='object'?oldRow.platformIds:{},newIds=newLine&&newLine.platformIds&&typeof newLine.platformIds==='object'?newLine.platformIds:{};
+  const oldPlatformId=clean(oldIds.variantId||oldIds.vendorItemId||oldIds.goodsdtCode||oldIds.productId||oldIds.goodsCode),newPlatformId=clean(newIds.variantId||newIds.vendorItemId||newIds.goodsdtCode||newIds.productId||newIds.goodsCode);
+  if(oldPlatformId&&newPlatformId)return oldPlatformId===newPlatformId?'match':'different';
+  const oldSku=normalizeSku(oldRow&&oldRow.sku),newSku=normalizeSku(newLine&&newLine.sku);
+  if(oldSku&&newSku)return oldSku===newSku?'match':'different';
+  const sameName=clean(oldRow&&oldRow.productName)===clean(newLine&&newLine.productName)&&clean(oldRow&&oldRow.variantName)===clean(newLine&&newLine.variantName);
+  if(!oldSku&&!newSku)return sameName?'match':'different';
+  return sameName?'ambiguous':'different';
+}
+
+function stablePlatformLineIdentity(row){
+  const ids=row&&row.platformIds&&typeof row.platformIds==='object'?row.platformIds:{},product=clean(ids.productId||ids.goodsCode),variant=clean(ids.variantId||ids.vendorItemId||ids.goodsdtCode);
+  return variant?[product,variant].join('|'):(product?product:'');
+}
+
+function fallbackLineRelation(oldRow,newLine){
+  const oldIds=oldRow&&oldRow.platformIds&&typeof oldRow.platformIds==='object'?oldRow.platformIds:{},newIds=newLine&&newLine.platformIds&&typeof newLine.platformIds==='object'?newLine.platformIds:{};
+  const oldProduct=clean(oldIds.productId||oldIds.goodsCode),newProduct=clean(newIds.productId||newIds.goodsCode),oldVariant=clean(oldIds.variantId||oldIds.vendorItemId||oldIds.goodsdtCode),newVariant=clean(newIds.variantId||newIds.vendorItemId||newIds.goodsdtCode);
+  if(oldVariant&&newVariant)return oldVariant!==newVariant?'distinct':'ambiguous';
+  if(oldProduct&&newProduct)return oldProduct!==newProduct?'distinct':'ambiguous';
+  return 'ambiguous';
+}
+
+function queryReachedSafetyLimit(size,limit){return Math.max(0,Number(size||0))>=Math.max(1,Number(limit||1));}
+
+function lockRunMatches(currentRunId,runId){return !!clean(runId)&&clean(currentRunId)===clean(runId);}
+
+async function resolveLegacyFallbackOrderRef(db,line){
+  let ref=db.collection(ORDER_COLLECTION).doc(line.id),snap=await ref.get();
+  if(snap.exists){
+    const row=snap.data()||{};
+    if(row.identityResolutionRequired===true||clean(row.processingStatus)==='manual-identity-review'){
+      line.identityAmbiguous=true;line.identityResolutionRequired=true;
+      line.identityAmbiguityReason=clean(row.processingError)||'舊版訂單明細無法安全遷移，請人工核對。';
+    }
+    return ref;
+  }
+  if(!clean(line.externalLineId).startsWith('fallback_')||!clean(line.externalOrderId))return ref;
+  const ambiguousDocs=[],queryLimit=50;
+  const query=await db.collection(ORDER_COLLECTION).where('externalOrderId','==',clean(line.externalOrderId)).limit(queryLimit).get();
+  query.forEach((doc)=>{
+    const row=doc.data()||{};
+    if(clean(row.platform)!==clean(line.platform))return;
+    // 舊版 index-based 行永遠無法自動 alias。兩個新版 fallback 行只有在雙方都有可比較、
+    // 且明確不同的平台商品／規格 ID 時，才可安全視為同訂單的不同商品行。
+    if(!clean(row.externalLineId).startsWith('fallback_')||fallbackLineRelation(row,line)!=='distinct')ambiguousDocs.push(doc);
+  });
+  const queryMayBeTruncated=queryReachedSafetyLimit(query.size,queryLimit);
+  if(ambiguousDocs.length||queryMayBeTruncated){
+    line.identityAmbiguous=true;line.identityResolutionRequired=true;
+    line.identityAmbiguityReason=queryMayBeTruncated?'同一訂單明細已達安全查詢上限，無法確認是否仍有相關舊資料，已停止自動扣庫存。':`同一訂單已有 ${ambiguousDocs.length} 筆無法可靠區分的明細，已停止自動扣庫存。`;
+  }
+  return ref;
+}
+
 async function fetchEasyStoreOrders(start, end, token) {
   if (!clean(token)) throw new Error('EasyStore Access Token 尚未設定');
   const lines = [];
@@ -466,7 +593,7 @@ async function fetchEasyStoreOrders(start, end, token) {
           platform: 'EasyStore',
           externalOrderId: orderId,
           externalOrderNo: orderNo,
-          externalLineId: firstValue(item, ['id', 'line_item_id', 'item_id']) || `${index + 1}`,
+          externalLineId: firstValue(item, ['id', 'line_item_id', 'item_id']) || fallbackLineId(item),
           orderedAt,
           orderDateSource: 'easystore-created-at',
           paidAt: firstValue(order, ['paid_at', 'paidAt', 'payment_paid_at', 'processed_at']),
@@ -498,7 +625,7 @@ async function fetchEasyStoreOrders(start, end, token) {
     if (orders.length < 100 || added === 0) break;
     await sleep(120);
   }
-  return lines;
+  return collapseFallbackLines(lines);
 }
 
 function momoHeaders(token) {
@@ -520,6 +647,7 @@ async function momoPost(url, token, body, label) {
 
 async function fetchMomoOrders(start, end, token) {
   const lines = [];
+  const seenPayloadOrders = new Set();
   for (let page = 1; page <= 30; page += 1) {
     const body = {
       queryDateType: 'OrderDate',
@@ -535,6 +663,9 @@ async function fetchMomoOrders(start, end, token) {
     const orders = extractOrders(payload);
     if (!orders.length) break;
     for (const order of orders) {
+      const payloadMarker = stableId(JSON.stringify(order), 32);
+      if (seenPayloadOrders.has(payloadMarker)) continue;
+      seenPayloadOrders.add(payloadMarker);
       const orderId = clean(firstValue(order, ['orderNo', 'orderCode', 'orderId', 'id']));
       let items = extractLineItems(order);
       if (!items.length && ['goodsNo', 'goodsCode', 'goodsdtCode', 'entpGoodsNo', 'goodsName'].some((key) => order[key] !== undefined)) items = [order];
@@ -555,9 +686,10 @@ async function fetchMomoOrders(start, end, token) {
           platform: 'MOMO',
           externalOrderId: orderId,
           externalOrderNo: orderId,
-          externalLineId: firstValue(item, ['orderSeq', 'orderDtlNo', 'lineId']) || `${goodsCode}|${goodsdtCode}|${index + 1}`,
-          orderedAt: firstValue(item, ['orderDate']) || orderedAt,
-          orderDateSource: firstValue(item, ['orderDate']) ? 'momo-api-order-date' : orderDateSource,
+          externalLineId: firstValue(item, ['orderSeq', 'orderDtlNo', 'lineId']) || fallbackLineId(item),
+          // 訂單層或明細層的官方 orderDate 都優先；編號推算只在兩者皆缺少時使用。
+          orderedAt: firstValue(item, ['orderDate']) || platformOrderDate || orderedAt,
+          orderDateSource: firstValue(item, ['orderDate']) || platformOrderDate ? 'momo-api-order-date' : orderDateSource,
           paidAt: firstValue(item, ['paymentDate', 'payDate', 'paidDate']) || firstValue(order, ['paymentDate', 'payDate', 'paidAt']),
           shippedAt: firstValue(item, ['shipDate', 'shippingDate', 'outboundDate']) || firstValue(order, ['shipDate', 'shippingDate']),
           completedAt: firstValue(item, ['deliveryCompleteDate', 'finishDate', 'completeDate']) || firstValue(order, ['deliveryCompleteDate', 'finishDate', 'completeDate']),
@@ -586,7 +718,7 @@ async function fetchMomoOrders(start, end, token) {
     if (orders.length < 100) break;
     await sleep(120);
   }
-  return lines;
+  return collapseFallbackLines(lines);
 }
 
 function coupangSignedDate() {
@@ -682,7 +814,7 @@ async function fetchCoupangOrders(start, end, config) {
         platform: 'Coupang',
         externalOrderId: orderId || shipmentBoxId,
         externalOrderNo: orderId || shipmentBoxId,
-        externalLineId: vendorItemId || `${index + 1}`,
+        externalLineId: vendorItemId || fallbackLineId(item),
         orderedAt,
         orderDateSource: 'coupang-ordered-at',
         paidAt: firstValue(order, ['paidAt', 'paymentCompletedAt']),
@@ -708,7 +840,7 @@ async function fetchCoupangOrders(start, end, config) {
       }));
     });
   }
-  return lines;
+  return collapseFallbackLines(lines);
 }
 
 function normalizeCostLayers(value) {
@@ -799,6 +931,40 @@ function consumeFifoAllowNegative(raw, quantity) {
   };
 }
 
+function addPositiveInventoryDelta(raw, quantity, unitCost, meta = {}) {
+  const before = Number(raw && raw.currentStock || 0);
+  const delta = Math.max(0, Math.round(Number(quantity || 0)));
+  const after = before + delta;
+  // 先沖銷負庫存；只有跨過 0 之後真正成為可售庫存的數量才建立 FIFO 成本層。
+  const layerQuantity = Math.max(0, after) - Math.max(0, before);
+  const layers = materializeCostLayers(raw || {});
+  if (layerQuantity > 0) {
+    layers.push({
+      layerId: clean(meta.layerId) || `positive_${stableId(`${before}|${after}|${meta.referenceId || ''}`, 18)}`,
+      qtyRemaining: layerQuantity,
+      originalQty: layerQuantity,
+      unitCost: numberOrNull(unitCost),
+      costKnown: numberOrNull(unitCost) != null,
+      receivedAt: meta.receivedAt || new Date().toISOString(),
+      referenceType: clean(meta.referenceType) || 'inventoryRestore',
+      referenceId: clean(meta.referenceId)
+    });
+  }
+  const normalized = normalizeCostLayers(layers);
+  const knownValue = normalized.reduce((total, layer) => total + (layer.unitCost == null ? 0 : layer.qtyRemaining * layer.unitCost), 0);
+  const knownQty = normalized.reduce((total, layer) => total + (layer.unitCost == null ? 0 : layer.qtyRemaining), 0);
+  const totalQty = normalized.reduce((total, layer) => total + layer.qtyRemaining, 0);
+  return {
+    before,
+    after,
+    layerQuantity,
+    layers: normalized,
+    averageCost: totalQty > 0 && knownQty === totalQty ? knownValue / totalQty : null,
+    inventoryValue: knownValue,
+    costIncomplete: totalQty > knownQty
+  };
+}
+
 async function readSettings(db) {
   const snap = await db.collection(SETTINGS_COLLECTION).doc(SETTINGS_DOC).get();
   const raw = snap.exists ? snap.data() || {} : {};
@@ -862,16 +1028,24 @@ async function acquireLock(db, trigger) {
 }
 
 async function releaseLock(lock, result) {
-  await lock.ref.set({
-    lockedUntil: admin.firestore.Timestamp.fromMillis(0),
-    lockedUntilMs: 0,
-    currentRunId: admin.firestore.FieldValue.delete(),
-    lastRunId: lock.runId,
-    lastStatus: result.status,
-    lastSummary: result.summary || {},
-    lastFinishedAt: admin.firestore.FieldValue.serverTimestamp(),
-    version: VERSION
-  }, { merge: true });
+  const db = lock.ref.firestore;
+  return db.runTransaction(async (transaction) => {
+    const snap = await transaction.get(lock.ref);
+    const current = snap.exists ? snap.data() || {} : {};
+    // 舊工作逾時後可能已有新工作取得鎖；舊工作不得把新工作的鎖清掉。
+    if (!lockRunMatches(current.currentRunId,lock.runId)) return false;
+    transaction.set(lock.ref, {
+      lockedUntil: admin.firestore.Timestamp.fromMillis(0),
+      lockedUntilMs: 0,
+      currentRunId: admin.firestore.FieldValue.delete(),
+      lastRunId: lock.runId,
+      lastStatus: result.status,
+      lastSummary: result.summary || {},
+      lastFinishedAt: admin.firestore.FieldValue.serverTimestamp(),
+      version: VERSION
+    }, { merge: true });
+    return true;
+  });
 }
 
 async function loadProducts(db) {
@@ -982,95 +1156,83 @@ function summarizeCostLayers(layers) {
   };
 }
 
-async function reverseCancelledOrder(db, line, productMap, settings, runId, reason) {
-  const orderRef = db.collection(ORDER_COLLECTION).doc(line.id);
-  const preSnap = await orderRef.get();
-  const pre = preSnap.exists ? preSnap.data() || {} : {};
-  if (pre.reversalApplied === true || pre.inventoryReversed === true) {
-    await orderRef.set({
-      ...line,
-      ...resolvedOrderDateFields(pre, line),
-      statusUpdatedAt: line.statusUpdatedAt ? admin.firestore.Timestamp.fromDate(line.statusUpdatedAt) : null,
-      processingStatus: 'inventory-reversed',
-      inventoryApplied: false,
-      reversalApplied: true,
-      reversalReason: clean(reason) || clean(pre.reversalReason),
-      lastSeenAt: admin.firestore.FieldValue.serverTimestamp(),
-      syncRunId: runId,
-      version: VERSION
-    }, { merge: true });
-    return { status: 'already-reversed', lineId: line.id, productId: clean(pre.productId) };
-  }
-  if (pre.inventoryApplied !== true) {
-    await orderRef.set({
-      ...line,
-      ...resolvedOrderDateFields(pre, line),
-      statusUpdatedAt: line.statusUpdatedAt ? admin.firestore.Timestamp.fromDate(line.statusUpdatedAt) : null,
-      processingStatus: 'ignored-cancelled',
-      inventoryApplied: false,
-      cancellationReason: clean(reason),
-      missingFromPlatformCount: 0,
-      lastSeenAt: admin.firestore.FieldValue.serverTimestamp(),
-      firstSeenAt: pre.firstSeenAt || admin.firestore.FieldValue.serverTimestamp(),
-      syncRunId: runId,
-      version: VERSION
-    }, { merge: true });
-    return { status: 'cancelled-ignored', lineId: line.id };
-  }
-
-  const matchedBySku = line.sku ? (productMap.get(line.sku) || []) : [];
-  const productId = clean(pre.productId) || (matchedBySku.length === 1 ? matchedBySku[0].id : '');
-  if (!productId) {
-    await orderRef.set({
-      ...line,
-      ...resolvedOrderDateFields(pre, line),
-      processingStatus: 'reversal-error',
-      processingError: '訂單已取消，但找不到原中央商品，無法自動回補庫存。',
-      lastSeenAt: admin.firestore.FieldValue.serverTimestamp(),
-      syncRunId: runId,
-      version: VERSION
-    }, { merge: true });
-    return { status: 'reversal-error', lineId: line.id };
-  }
-
-  const productRef = db.collection(PRODUCT_COLLECTION).doc(productId);
-  const originalInventoryRef = db.collection(INVENTORY_COLLECTION).doc(`online_${line.id}`);
-  const reversalInventoryRef = db.collection(INVENTORY_COLLECTION).doc(`online_reversal_${line.id}`);
+async function reverseCancelledOrder(db, line, productMap, settings, runId, reason, resolvedOrderRef) {
+  const orderRef = resolvedOrderRef || db.collection(ORDER_COLLECTION).doc(line.id);
+  const stableOrderLineId=orderRef.id;
+  const originalInventoryRef = db.collection(INVENTORY_COLLECTION).doc(`online_${stableOrderLineId}`);
+  const reversalInventoryRef = db.collection(INVENTORY_COLLECTION).doc(`online_reversal_${stableOrderLineId}`);
   return db.runTransaction(async (transaction) => {
-    const [orderSnap, productSnap, originalInventorySnap] = await Promise.all([
-      transaction.get(orderRef), transaction.get(productRef), transaction.get(originalInventoryRef)
-    ]);
+    // 訂單的退貨、套用商品與取消狀態都必須在同一個 transaction 快照內判斷，
+    // 否則退貨可能在預檢與回補之間完成，造成同一批商品被回補兩次。
+    const orderSnap = await transaction.get(orderRef);
     const existing = orderSnap.exists ? orderSnap.data() || {} : {};
     if (existing.reversalApplied === true || existing.inventoryReversed === true) {
+      const productId=clean(existing.appliedProductId||existing.productId);
+      transaction.set(orderRef,{
+        ...line,...resolvedOrderDateFields(existing,line),
+        statusUpdatedAt:line.statusUpdatedAt?admin.firestore.Timestamp.fromDate(line.statusUpdatedAt):null,
+        processingStatus:'inventory-reversed',inventoryApplied:false,reversalApplied:true,
+        reversalReason:clean(reason)||clean(existing.reversalReason),lastSeenAt:admin.firestore.FieldValue.serverTimestamp(),
+        syncRunId:runId,version:VERSION
+      },{merge:true});
       return { status: 'already-reversed', lineId: line.id, productId };
     }
     if (existing.inventoryApplied !== true) {
       transaction.set(orderRef, {
         ...line,
         ...resolvedOrderDateFields(existing, line),
+        statusUpdatedAt: line.statusUpdatedAt ? admin.firestore.Timestamp.fromDate(line.statusUpdatedAt) : null,
         processingStatus: 'ignored-cancelled',
         inventoryApplied: false,
         cancellationReason: clean(reason),
         missingFromPlatformCount: 0,
         lastSeenAt: admin.firestore.FieldValue.serverTimestamp(),
+        firstSeenAt: existing.firstSeenAt || admin.firestore.FieldValue.serverTimestamp(),
         syncRunId: runId,
         version: VERSION
       }, { merge: true });
       return { status: 'cancelled-ignored', lineId: line.id };
     }
+    const originalInventorySnap=await transaction.get(originalInventoryRef),originalInventory=originalInventorySnap.exists?originalInventorySnap.data()||{}:{};
+    const appliedSnapshot=appliedInventorySnapshot(existing,originalInventory);
+    const processedReturnQuantity=Math.max(0,Math.round(Number(existing.returnProcessedQuantity!=null?existing.returnProcessedQuantity:(existing.returnHandlingStatus==='completed'?existing.returnQuantity||0:0))));
+    if(hasProcessedReturn(existing)){
+      const productId=clean(appliedSnapshot.appliedProductId||existing.productId),returnSummary=processedReturnQuantity>0?`已有 ${processedReturnQuantity} 件退貨完成處理`:'退貨已完成處理';
+      transaction.set(orderRef,{
+        ...line,...resolvedOrderDateFields(existing,line),
+        statusUpdatedAt:line.statusUpdatedAt?admin.firestore.Timestamp.fromDate(line.statusUpdatedAt):null,
+        processingStatus:'manual-return-review',
+        processingError:returnSummary+'；取消訂單不自動回補，請人工核對可售／瑕疵庫存。',
+        inventoryApplied:true,
+        ...(appliedSnapshot.appliedSnapshotReliable?{appliedQuantity:appliedSnapshot.appliedQuantity,appliedProductId:appliedSnapshot.appliedProductId}:{}),
+        ...(clean(existing.appliedSku)?{appliedSku:clean(existing.appliedSku)}:{}),
+        lastSeenAt:admin.firestore.FieldValue.serverTimestamp(),syncRunId:runId,version:VERSION
+      },{merge:true});
+      return {status:'return-review',lineId:line.id,productId};
+    }
+    if(appliedSnapshot.appliedSnapshotReliable!==true){
+      transaction.set(orderRef,{
+        ...line,...resolvedOrderDateFields(existing,line),processingStatus:'manual-correction-review',
+        processingError:'舊訂單缺少原始扣庫存數量或商品的可靠紀錄；取消訂單未自動回補，請人工核對。',
+        inventoryApplied:true,lastSeenAt:admin.firestore.FieldValue.serverTimestamp(),syncRunId:runId,version:VERSION
+      },{merge:true});
+      return {status:'legacy-reversal-review',lineId:line.id,productId:clean(existing.productId)};
+    }
+    const productId=appliedSnapshot.appliedProductId;
+    const productRef=db.collection(PRODUCT_COLLECTION).doc(productId);
+    const productSnap=await transaction.get(productRef);
     if (!productSnap.exists) throw new Error(`取消訂單回補失敗，中央商品不存在：${productId}`);
     const raw = productSnap.data() || {};
-    const quantity = Math.max(0, Math.round(Number(existing.quantity || line.quantity || 0)));
+    const quantity = appliedSnapshot.appliedQuantity;
     const before = Number(raw.currentStock || 0);
     const after = before + quantity;
-    const originalInventory = originalInventorySnap.exists ? originalInventorySnap.data() || {} : {};
     const cost = orderCostSnapshot(existing, originalInventory, raw, quantity);
     const unitCost = quantity > 0 && Number.isFinite(cost.costTotal) ? cost.costTotal / quantity : null;
     const layers = materializeCostLayers(raw);
     const positiveRestored = Math.max(0, after) - Math.max(0, before);
     if (positiveRestored > 0) {
       layers.push({
-        layerId: `REV-${line.id}`,
+        layerId: `REV-${stableOrderLineId}`,
         qtyRemaining: positiveRestored,
         originalQty: positiveRestored,
         unitCost,
@@ -1128,7 +1290,7 @@ async function reverseCancelledOrder(db, line, productMap, settings, runId, reas
       costMethod: 'ORIGINAL_ORDER_OR_ESTIMATE',
       referenceType: 'platformOrderCancellation',
       referenceId: clean(line.externalOrderNo || existing.externalOrderNo),
-      orderLineId: line.id,
+      orderLineId: stableOrderLineId,
       note: clean(reason) || '平台訂單取消／未付款，自動回補庫存',
       occurredAt: admin.firestore.FieldValue.serverTimestamp(),
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -1140,7 +1302,7 @@ async function reverseCancelledOrder(db, line, productMap, settings, runId, reas
 }
 
 async function applyOrderLine(db, line, productMap, settings, runId) {
-  const orderRef = db.collection(ORDER_COLLECTION).doc(line.id);
+  const orderRef = await resolveLegacyFallbackOrderRef(db,line);
   if (line.hasOriginalOrderDate !== true) {
     const existingSnap = await orderRef.get();
     const existing = existingSnap.exists ? existingSnap.data() || {} : {};
@@ -1159,6 +1321,21 @@ async function applyOrderLine(db, line, productMap, settings, runId) {
       version: VERSION
     }, { merge: true });
     return { status: 'ignored', lineId: line.id, productId: clean(existing.productId) };
+  }
+  if(line.identityAmbiguous===true){
+    const existingSnap=await orderRef.get();
+    const existing=existingSnap.exists?existingSnap.data()||{}:{};
+    await orderRef.set({
+      ...line,...resolvedOrderDateFields(existing,line),processingStatus:'manual-identity-review',
+      processingError:clean(line.identityAmbiguityReason)||'平台訂單明細識別重複，已停止自動扣庫存。',
+      inventoryApplied:existing.inventoryApplied===true,
+      ...(existing.appliedQuantity!=null?{appliedQuantity:Math.max(0,Number(existing.appliedQuantity))}:{}),
+      ...(clean(existing.appliedProductId)?{appliedProductId:clean(existing.appliedProductId)}:{}),
+      ...(clean(existing.appliedSku)?{appliedSku:clean(existing.appliedSku)}:{}),
+      lastSeenAt:admin.firestore.FieldValue.serverTimestamp(),firstSeenAt:existing.firstSeenAt||admin.firestore.FieldValue.serverTimestamp(),
+      syncRunId:runId,version:VERSION
+    },{merge:true});
+    return {status:'identity-review',lineId:line.id,productId:clean(existing.appliedProductId||existing.productId)};
   }
   const lifecycle = line.lifecycle || orderLifecycle(line);
   if (lifecycle === 'freight') {
@@ -1182,7 +1359,7 @@ async function applyOrderLine(db, line, productMap, settings, runId) {
     // 只要沒有出貨／配送／送達的證據，即使平台寫「退貨、退款」，也只是尚未成交的取消。
     // 已經離開庫存的訂單才留給人工確認商品是否退回、要回補到哪一種庫存。
     if (!hasFulfillmentEvidence(Object.assign({}, existing, line))) {
-      return reverseCancelledOrder(db, line, productMap, settings, runId, '未出貨前取消／退款，不列為退貨');
+      return reverseCancelledOrder(db, line, productMap, settings, runId, '未出貨前取消／退款，不列為退貨',orderRef);
     }
     await orderRef.set({
       ...line,
@@ -1198,7 +1375,7 @@ async function applyOrderLine(db, line, productMap, settings, runId) {
     return { status: existing.inventoryApplied === true ? 'return-review' : 'ignored', lineId: line.id, productId: clean(existing.productId) };
   }
   if (lifecycle === 'cancelled' || !line.validSale) {
-    return reverseCancelledOrder(db, line, productMap, settings, runId, clean(line.orderStatus || line.paymentStatus || line.note) || '平台顯示取消／未付款');
+    return reverseCancelledOrder(db, line, productMap, settings, runId, clean(line.orderStatus || line.paymentStatus || line.note) || '平台顯示取消／未付款',orderRef);
   }
   if (!line.sku) {
     const existingSnap = await orderRef.get();
@@ -1207,7 +1384,10 @@ async function applyOrderLine(db, line, productMap, settings, runId) {
       ...line,
       ...resolvedOrderDateFields(existing, line),
       processingStatus: 'missing-sku',
-      inventoryApplied: false,
+      inventoryApplied: existing.inventoryApplied === true,
+      ...(existing.appliedQuantity!=null?{appliedQuantity:Math.max(0,Number(existing.appliedQuantity))}:{}),
+      ...(clean(existing.appliedProductId)?{appliedProductId:clean(existing.appliedProductId)}:{}),
+      ...(clean(existing.appliedSku)?{appliedSku:clean(existing.appliedSku)}:{}),
       lastSeenAt: admin.firestore.FieldValue.serverTimestamp(),
       firstSeenAt: admin.firestore.FieldValue.serverTimestamp(),
       syncRunId: runId,
@@ -1223,7 +1403,10 @@ async function applyOrderLine(db, line, productMap, settings, runId) {
       ...line,
       ...resolvedOrderDateFields(existing, line),
       processingStatus: matches.length > 1 ? 'duplicate-sku' : 'unmatched-sku',
-      inventoryApplied: false,
+      inventoryApplied: existing.inventoryApplied === true,
+      ...(existing.appliedQuantity!=null?{appliedQuantity:Math.max(0,Number(existing.appliedQuantity))}:{}),
+      ...(clean(existing.appliedProductId)?{appliedProductId:clean(existing.appliedProductId)}:{}),
+      ...(clean(existing.appliedSku)?{appliedSku:clean(existing.appliedSku)}:{}),
       matchCount: matches.length,
       lastSeenAt: admin.firestore.FieldValue.serverTimestamp(),
       firstSeenAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -1233,36 +1416,147 @@ async function applyOrderLine(db, line, productMap, settings, runId) {
     return { status: matches.length > 1 ? 'duplicate-sku' : 'unmatched-sku', lineId: line.id };
   }
   const product = matches[0];
-  const inventoryRef = db.collection(INVENTORY_COLLECTION).doc(`online_${line.id}`);
+  const inventoryRef = db.collection(INVENTORY_COLLECTION).doc(`online_${orderRef.id}`);
   const grossAmount = Math.max(0, Number(line.grossAmount || (line.unitPrice * line.quantity) || 0));
   const estimatedNetAmount = Math.round(grossAmount * settings.estimatedNetRate);
   return db.runTransaction(async (transaction) => {
-    const [orderSnap, productSnap, inventorySnap] = await Promise.all([
-      transaction.get(orderRef), transaction.get(product.ref), transaction.get(inventoryRef)
-    ]);
-    const existing = orderSnap.exists ? orderSnap.data() || {} : {};
+    const orderSnap=await transaction.get(orderRef);
+    const existingBeforeReads=orderSnap.exists?orderSnap.data()||{}:{};
+    const [productSnap,inventorySnap]=await Promise.all([transaction.get(product.ref),transaction.get(inventoryRef)]);
+    const existing = existingBeforeReads;
     const raw = productSnap.exists ? productSnap.data() || {} : {};
     const previousInventory = inventorySnap.exists ? inventorySnap.data() || {} : {};
     // 所有目前仍有效、且尚未扣過中央庫存的訂單，都按正式訂單扣庫存。
     // order document 的 inventoryApplied 是冪等鎖：同一筆訂單再次同步不會重複扣除。
     const applyInventoryNow = settings.applyInventory;
     if (existing.inventoryApplied === true && existing.reversalApplied !== true && existing.inventoryReversed !== true) {
-      const cost = orderCostSnapshot(existing, previousInventory, raw, line.quantity);
+      const appliedSnapshot=appliedInventorySnapshot(existing,previousInventory);
+      if(appliedSnapshot.appliedSnapshotReliable!==true){
+        transaction.set(orderRef,{
+          ...line,grossAmount,...resolvedOrderDateFields(existing,line),productId:clean(existing.productId||product.id),
+          inventoryApplied:true,processingStatus:'manual-correction-review',
+          processingError:'舊訂單缺少原始扣庫存數量或商品的可靠紀錄，已停止自動補正，請人工核對。',
+          lastSeenAt:admin.firestore.FieldValue.serverTimestamp(),syncRunId:runId,version:VERSION
+        },{merge:true});
+        return {status:'legacy-inventory-review',lineId:line.id,productId:clean(existing.productId||product.id),changedProductIds:[]};
+      }
+      const deltaPlan = inventoryApplicationDelta(appliedSnapshot,line.quantity,product.id);
+      const previousQuantity = deltaPlan.previousQuantity;
+      const previousProductId = deltaPlan.previousProductId;
+      const quantityDelta = deltaPlan.quantityDelta;
+      const productChanged = deltaPlan.productChanged;
+      const inventoryChanged = deltaPlan.inventoryChanged;
+      const processedReturnQuantity=Math.max(0,Math.round(Number(existing.returnProcessedQuantity!=null?existing.returnProcessedQuantity:(existing.returnHandlingStatus==='completed'?existing.returnQuantity||0:0))));
+      if(inventoryChanged&&hasProcessedReturn(existing)){
+        const returnSummary=processedReturnQuantity>0?`已有 ${processedReturnQuantity} 件退貨完成處理`:'退貨已完成處理';
+        transaction.set(orderRef,{
+          ...line,grossAmount,...resolvedOrderDateFields(existing,line),
+          productId:clean(existing.productId),appliedProductId:previousProductId,appliedQuantity:previousQuantity,appliedSku:clean(existing.appliedSku||existing.sku),
+          inventoryApplied:true,processingStatus:'manual-correction-review',
+          processingError:returnSummary+'；商品或數量異動已暫停自動補正，請人工核對。',
+          lastSeenAt:admin.firestore.FieldValue.serverTimestamp(),syncRunId:runId,version:VERSION
+        },{merge:true});
+        return {status:'return-review',lineId:line.id,productId:previousProductId,changedProductIds:[]};
+      }
+      // 減量或改配商品需要依原 FIFO 明細逐層回建；資料不足時寧可停住人工確認，不用平均成本猜測。
+      if(productChanged||quantityDelta<0){
+        transaction.set(orderRef,{
+          ...line,grossAmount,...resolvedOrderDateFields(existing,line),
+          productId:clean(existing.productId),appliedProductId:previousProductId,appliedQuantity:previousQuantity,appliedSku:clean(existing.appliedSku||existing.sku),
+          inventoryApplied:true,processingStatus:'manual-correction-review',
+          processingError:productChanged?'平台訂單商品配對已變更；為保留原 FIFO 成本，請人工確認後執行商品移轉。':'平台訂單數量減少；為保留原 FIFO 成本，請人工確認後執行回補。',
+          lastSeenAt:admin.firestore.FieldValue.serverTimestamp(),syncRunId:runId,version:VERSION
+        },{merge:true});
+        return {status:'return-review',lineId:line.id,productId:previousProductId,changedProductIds:[]};
+      }
+      if (!inventoryChanged) {
+        const cost = orderCostSnapshot(existing, previousInventory, raw, line.quantity);
+        transaction.set(orderRef, {
+          ...line,
+          grossAmount,
+          ...resolvedOrderDateFields(existing, line),
+          statusUpdatedAt: line.statusUpdatedAt ? admin.firestore.Timestamp.fromDate(line.statusUpdatedAt) : null,
+          productId: product.id,
+          appliedProductId: product.id,
+          appliedQuantity: line.quantity,
+          appliedSku: line.sku,
+          estimatedNetRate: settings.estimatedNetRate,
+          estimatedNetAmount,
+          costTotal: cost.costTotal,
+          costEstimated: cost.estimated,
+          costSource: cost.source,
+          estimatedProfit: estimatedNetAmount - cost.costTotal,
+          inventoryApplied: true,
+          inventoryReversed: false,
+          reversalApplied: false,
+          processingStatus: existing.returnHandlingStatus === 'completed' ? 'return-processed' : 'inventory-applied',
+          processingError: '',
+          missingFromPlatformCount: 0,
+          lastSeenAt: admin.firestore.FieldValue.serverTimestamp(),
+          financialUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          syncRunId: runId,
+          version: VERSION
+        }, { merge: true });
+        return { status: 'already-applied', lineId: line.id, productId: product.id, changedProductIds: [] };
+      }
+
+      if (!productSnap.exists) throw new Error(`中央商品不存在：${line.sku}`);
+      const oldCostTotal = Math.max(0, Number(existing.costTotal || previousInventory.costTotal || 0));
+      let nextCostTotal = oldCostTotal;
+      let nextUnknownCostQty = Math.max(0, Number(existing.unknownCostQty || 0));
+      let nextCostEstimated=existing.costEstimated===true;
+      const changedProductIds = new Set();
+      const inventoryRevision = Math.max(0,Math.round(Number(existing.inventoryRevision||0)))+1;
+      const revisionKey = `r${inventoryRevision}_${stableId(`${previousProductId}|${previousQuantity}|${product.id}|${line.quantity}`, 18)}`;
+      const consumed = consumeFifoAllowNegative(raw, quantityDelta);
+      const fallbackUnitCost = productFallbackUnitCost(raw);
+      const estimatedQty = fallbackUnitCost != null ? Math.max(0, Number(consumed.unknownCostQty || 0)) : 0;
+      const addedCost = Number(consumed.costTotal || 0) + estimatedQty * Number(fallbackUnitCost || 0);
+      nextCostTotal += addedCost;
+      const addedUnknownCostQty=Math.max(0,Number(consumed.unknownCostQty||0)-estimatedQty);
+      nextUnknownCostQty += addedUnknownCostQty;
+      nextCostEstimated=nextCostEstimated||estimatedQty>0||nextUnknownCostQty>0;
+      const inventoryBefore=consumed.before,inventoryAfter=consumed.after;
+      transaction.set(product.ref, {
+        currentStock: consumed.after, costLayers: consumed.layers, averageCost: consumed.averageCost,
+        inventoryValue: consumed.inventoryValue, costIncomplete: consumed.costIncomplete,
+        platformMappings: mergePlatformMappings(raw.platformMappings, platformMappingPatch(line)),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: 'platform-order-sync-correction', version: VERSION
+      }, { merge: true });
+      changedProductIds.add(product.id);
+      transaction.set(db.collection(INVENTORY_COLLECTION).doc(`online_adjust_${line.id}_${revisionKey}`), {
+        type: 'onlineSaleCorrection', platform: line.platform, productId: product.id,
+        productName: clean(raw.internalName || raw.originalName || line.productName), sku: line.sku,
+        qtyChange: -quantityDelta, beforeStock: inventoryBefore, afterStock: inventoryAfter,
+        unitCost: quantityDelta > 0 ? addedCost / quantityDelta : null,
+        costEstimated:estimatedQty>0||addedUnknownCostQty>0,costIncomplete:addedUnknownCostQty>0,referenceType: 'platformOrderCorrection', referenceId: line.externalOrderNo,
+        orderLineId: line.id, note: `平台訂單數量增加：${previousQuantity} → ${line.quantity}`,
+        occurredAt: admin.firestore.FieldValue.serverTimestamp(), createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdBy: 'platform-order-sync', version: VERSION
+      }, { merge: true });
       transaction.set(orderRef, {
         ...line,
         grossAmount,
         ...resolvedOrderDateFields(existing, line),
         statusUpdatedAt: line.statusUpdatedAt ? admin.firestore.Timestamp.fromDate(line.statusUpdatedAt) : null,
+        productId: product.id,
+        appliedProductId: product.id,
+        appliedQuantity: line.quantity,
+        appliedSku: line.sku,
+        inventoryRevision,
         estimatedNetRate: settings.estimatedNetRate,
         estimatedNetAmount,
-        costTotal: cost.costTotal,
-        costEstimated: cost.estimated,
-        costSource: cost.source,
-        estimatedProfit: estimatedNetAmount - cost.costTotal,
+        costTotal: nextCostTotal,
+        costEstimated: nextCostEstimated,
+        costSource: nextUnknownCostQty>0?'fifo-incomplete':(nextCostEstimated?'fifo+current-product-estimate':'fifo-corrected'),
+        unknownCostQty: nextUnknownCostQty,
+        estimatedProfit: estimatedNetAmount - nextCostTotal,
         inventoryApplied: true,
         inventoryReversed: false,
         reversalApplied: false,
-        processingStatus: existing.returnHandlingStatus === 'completed' ? 'return-processed' : 'inventory-applied',
+        inventoryBefore,
+        inventoryAfter,
+        processingStatus: existing.returnHandlingStatus === 'completed' ? 'return-processed' : 'inventory-adjusted',
         processingError: '',
         missingFromPlatformCount: 0,
         lastSeenAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -1270,7 +1564,7 @@ async function applyOrderLine(db, line, productMap, settings, runId) {
         syncRunId: runId,
         version: VERSION
       }, { merge: true });
-      return { status: 'already-applied', lineId: line.id, productId: product.id };
+      return { status: 'adjusted', lineId: line.id, productId: product.id, previousProductId, changedProductIds: [...changedProductIds] };
     }
     if (!productSnap.exists) throw new Error(`中央商品不存在：${line.sku}`);
     const fifo = consumeFifoAllowNegative(raw, line.quantity);
@@ -1301,6 +1595,10 @@ async function applyOrderLine(db, line, productMap, settings, runId) {
       ...resolvedOrderDateFields(existing, line),
       statusUpdatedAt: line.statusUpdatedAt ? admin.firestore.Timestamp.fromDate(line.statusUpdatedAt) : null,
       productId: product.id,
+      appliedProductId: applyInventoryNow ? product.id : clean(existing.appliedProductId),
+      appliedQuantity: applyInventoryNow ? line.quantity : Math.max(0, Number(existing.appliedQuantity || 0)),
+      appliedSku: applyInventoryNow ? line.sku : clean(existing.appliedSku),
+      inventoryRevision: Math.max(0,Math.round(Number(existing.inventoryRevision||0))),
       matchStatus: 'matched',
       processingStatus: applyInventoryNow ? 'inventory-applied' : 'dry-run',
       inventoryApplied: applyInventoryNow,
@@ -1385,42 +1683,18 @@ async function reconcileMissingPlatformOrders(db, lines, platformFetch, queryFro
       if (row.inventoryApplied !== true || row.reversalApplied === true || row.inventoryReversed === true) continue;
       if (clean(row.processingStatus) === 'manual-return-review') continue;
       const count = Math.max(0, Number(row.missingFromPlatformCount || 0)) + 1;
-      if (count < settings.missingBeforeReverse) {
-        await doc.ref.set({
-          processingStatus: 'missing-from-platform-review',
-          missingFromPlatformCount: count,
-          missingFromPlatformAt: admin.firestore.FieldValue.serverTimestamp(),
-          processingError: `平台成功同步但本次未再讀到此訂單；連續 ${settings.missingBeforeReverse} 次未出現才自動回補庫存。`,
-          syncRunId: runId,
-          version: VERSION
-        }, { merge: true });
-        output.reviewed += 1;
-        continue;
-      }
-      try {
-        const synthetic = normalizeLine({
-          ...row,
-          orderedAt,
-          orderStatus: clean(row.orderStatus) || 'missing-from-platform',
-          note: `連續 ${count} 次平台成功同步未再出現`,
-        });
-        synthetic.id = doc.id;
-        synthetic.lifecycle = 'cancelled';
-        synthetic.validSale = false;
-        const result = await reverseCancelledOrder(db, synthetic, productMap, settings, runId, `連續 ${count} 次平台成功同步未再出現，視為未成交／取消`);
-        if (result.status === 'reversed') {
-          output.reversed += 1;
-          if (result.productId) output.changedProductIds.add(result.productId);
-        } else if (result.status === 'reversal-error') output.errors += 1;
-      } catch (error) {
-        output.errors += 1;
-        await doc.ref.set({
-          processingStatus: 'reversal-error',
-          processingError: clean(error.message || error).slice(0, 800),
-          syncRunId: runId,
-          version: VERSION
-        }, { merge: true });
-      }
+      const policy = missingOrderReconciliationPolicy(row,count);
+      // 清單「本次沒出現」不是取消證據：API 狀態篩選、保留期或分頁都可能讓有效訂單缺席。
+      // 無論連續缺席幾次都只告警，必須等平台明確回傳 cancelled/void 才可回補庫存。
+      await doc.ref.set({
+        processingStatus: 'missing-from-platform-review',
+        missingFromPlatformCount: count,
+        missingFromPlatformAt: admin.firestore.FieldValue.serverTimestamp(),
+        processingError: policy.message,
+        syncRunId: runId,
+        version: VERSION
+      }, { merge: true });
+      output.reviewed += 1;
     }
   }
   return output;
@@ -1941,9 +2215,7 @@ async function fetchAllPlatformLines(settings, credentials, start, end) {
     })());
   }
   await Promise.all(tasks);
-  const unique = new Map();
-  result.lines.forEach((line) => unique.set(line.id, line));
-  result.lines = [...unique.values()];
+  result.lines = collapseFallbackLines(result.lines);
   return result;
 }
 
@@ -1981,17 +2253,20 @@ async function runPlatformOrderSync(trigger) {
     const products = await loadProducts(db);
     const productMap = buildProductMap(products);
     const fetched = await fetchAllPlatformLines(settings, credentials, start, end);
-    const processing = { applied: 0, alreadyApplied: 0, historical: 0, reversed: 0, returnReview: 0, ignored: 0, unmatched: 0, missingSku: 0, dryRun: 0, errors: 0 };
+    const processing = { applied: 0, adjusted: 0, alreadyApplied: 0, historical: 0, reversed: 0, returnReview: 0, manualReview:0, ignored: 0, unmatched: 0, missingSku: 0, dryRun: 0, errors: 0 };
     const changedProductIds = new Set();
     for (const line of fetched.lines) {
       try {
         const result = await applyOrderLine(db, line, productMap, settings, lock.runId);
-        if (result.productId && (result.status === 'applied' || result.status === 'reversed')) changedProductIds.add(result.productId);
+        if (result.productId && ['applied', 'adjusted', 'reversed'].includes(result.status)) changedProductIds.add(result.productId);
+        asArray(result.changedProductIds).forEach((id) => { if (clean(id)) changedProductIds.add(clean(id)); });
         if (result.status === 'applied') processing.applied += 1;
+        else if (result.status === 'adjusted') processing.adjusted += 1;
         else if (result.status === 'already-applied') processing.alreadyApplied += 1;
         else if (result.status === 'historical') processing.historical += 1;
         else if (result.status === 'reversed') processing.reversed += 1;
         else if (result.status === 'return-review') processing.returnReview += 1;
+        else if (['identity-review','legacy-inventory-review','legacy-reversal-review'].includes(result.status)) processing.manualReview += 1;
         else if (result.status === 'ignored' || result.status === 'cancelled-ignored' || result.status === 'already-reversed') processing.ignored += 1;
         else if (result.status === 'missing-sku') processing.missingSku += 1;
         else if (result.status === 'unmatched-sku' || result.status === 'duplicate-sku') processing.unmatched += 1;
@@ -2006,7 +2281,11 @@ async function runPlatformOrderSync(trigger) {
           ...resolvedOrderDateFields(existing, line),
           processingStatus: 'error',
           processingError: clean(error.message).slice(0, 800),
-          inventoryApplied: false,
+          // 錯誤只記錄狀態；既有冪等鎖不可清除，否則下次同步會重複扣庫存。
+          inventoryApplied: existing.inventoryApplied === true,
+          ...(existing.appliedQuantity!=null?{appliedQuantity:Math.max(0,Number(existing.appliedQuantity))}:{}),
+          ...(clean(existing.appliedProductId)?{appliedProductId:clean(existing.appliedProductId)}:{}),
+          ...(clean(existing.appliedSku)?{appliedSku:clean(existing.appliedSku)}:{}),
           lastSeenAt: admin.firestore.FieldValue.serverTimestamp(),
           syncRunId: lock.runId,
           version: VERSION
@@ -2247,12 +2526,14 @@ async function runPlatformOrderSyncFromAgent(payload) {
     const queryFrom = queryFromDate.toISOString();
     const queryTo = queryToDate.toISOString();
     const platformFetch = payload && payload.platformFetch && typeof payload.platformFetch === 'object' ? { ...payload.platformFetch } : {};
-    const rawLines = Array.isArray(payload && payload.lines) ? payload.lines.slice() : [];
+    let rawLines = Array.isArray(payload && payload.lines) ? payload.lines.slice() : [];
     // EasyStore 不受 MOMO／Coupang 固定 IP 限制，由橋接函式直接再抓官方 created_at。
     // 即使店內代理漏掉剛成立的 EasyStore 訂單，這裡仍會補齊並以官方下單時間覆蓋同一筆資料。
     if (settings.platforms.EasyStore) {
       try {
         const easyStoreLines = await fetchEasyStoreOrders(queryFromDate, queryToDate, EASYSTORE_ACCESS_TOKEN.value());
+        // Cloud 官方 API 成功時，以完整的 EasyStore created_at/line ID 結果取代 agent 副本，不能相加。
+        rawLines = rawLines.filter((row) => clean(row && row.platform).toLowerCase() !== 'easystore');
         rawLines.push(...easyStoreLines);
         platformFetch.EasyStore = { status: 'success', lines: easyStoreLines.length, complete: true, source: 'cloud-official-api' };
       } catch (error) {
@@ -2262,25 +2543,23 @@ async function runPlatformOrderSyncFromAgent(payload) {
           : { status: 'error', error: clean(error.message).slice(0, 800), lines: 0, source: 'cloud-official-api' };
       }
     }
-    const unique = new Map();
-    rawLines.forEach((row) => {
-      const line = normalizeLine({ ...(row || {}), syncReferenceAt: queryToDate });
-      unique.set(line.id, line);
-    });
-    const lines = [...unique.values()];
+    const lines = collapseFallbackLines(rawLines.map((row) => normalizeLine({ ...(row || {}), syncReferenceAt: queryToDate })));
     const products = await loadProducts(db);
     const productMap = buildProductMap(products);
-    const processing = { applied: 0, alreadyApplied: 0, historical: 0, reversed: 0, returnReview: 0, ignored: 0, unmatched: 0, missingSku: 0, dryRun: 0, errors: 0 };
+    const processing = { applied: 0, adjusted: 0, alreadyApplied: 0, historical: 0, reversed: 0, returnReview: 0, manualReview:0, ignored: 0, unmatched: 0, missingSku: 0, dryRun: 0, errors: 0 };
     const changedProductIds = new Set();
     for (const line of lines) {
       try {
         const result = await applyOrderLine(db, line, productMap, settings, lock.runId);
-        if (result.productId && (result.status === 'applied' || result.status === 'reversed')) changedProductIds.add(result.productId);
+        if (result.productId && ['applied', 'adjusted', 'reversed'].includes(result.status)) changedProductIds.add(result.productId);
+        asArray(result.changedProductIds).forEach((id) => { if (clean(id)) changedProductIds.add(clean(id)); });
         if (result.status === 'applied') processing.applied += 1;
+        else if (result.status === 'adjusted') processing.adjusted += 1;
         else if (result.status === 'already-applied') processing.alreadyApplied += 1;
         else if (result.status === 'historical') processing.historical += 1;
         else if (result.status === 'reversed') processing.reversed += 1;
         else if (result.status === 'return-review') processing.returnReview += 1;
+        else if (['identity-review','legacy-inventory-review','legacy-reversal-review'].includes(result.status)) processing.manualReview += 1;
         else if (result.status === 'ignored' || result.status === 'cancelled-ignored' || result.status === 'already-reversed') processing.ignored += 1;
         else if (result.status === 'missing-sku') processing.missingSku += 1;
         else if (result.status === 'unmatched-sku' || result.status === 'duplicate-sku') processing.unmatched += 1;
@@ -2295,7 +2574,11 @@ async function runPlatformOrderSyncFromAgent(payload) {
           ...resolvedOrderDateFields(existing, line),
           processingStatus: 'error',
           processingError: clean(error.message).slice(0, 800),
-          inventoryApplied: false,
+          // 錯誤只記錄狀態；既有冪等鎖不可清除，否則下次同步會重複扣庫存。
+          inventoryApplied: existing.inventoryApplied === true,
+          ...(existing.appliedQuantity!=null?{appliedQuantity:Math.max(0,Number(existing.appliedQuantity))}:{}),
+          ...(clean(existing.appliedProductId)?{appliedProductId:clean(existing.appliedProductId)}:{}),
+          ...(clean(existing.appliedSku)?{appliedSku:clean(existing.appliedSku)}:{}),
           lastSeenAt: admin.firestore.FieldValue.serverTimestamp(),
           syncRunId: lock.runId,
           version: VERSION,
@@ -2435,6 +2718,18 @@ module.exports = {
     platformTargetPrice,
     priceSyncErrorCount,
     consumeFifoAllowNegative,
+    addPositiveInventoryDelta,
+    fallbackLineId,
+    collapseFallbackLines,
+    inventoryApplicationDelta,
+    appliedInventorySnapshot,
+    hasProcessedReturn,
+    legacyFallbackIdentityDecision,
+    stablePlatformLineIdentity,
+    fallbackLineRelation,
+    queryReachedSafetyLimit,
+    lockRunMatches,
+    missingOrderReconciliationPolicy,
     extractOrders,
     extractLineItems
   }

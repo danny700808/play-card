@@ -9,7 +9,7 @@
   const $=function(id){return document.getElementById(id);};
   function clean(v){return String(v==null?'':v).trim();}
   function lower(v){return clean(v).toLowerCase();}
-  function formatLabelSku(value){const raw=clean(value).replace(/\s+/g,'');if(!raw)return '';if(/^\d{3}-/.test(raw))return raw;const match=raw.match(/^(\d{3})(\d{4})(.*)$/);return match?match[1]+'-'+match[2]+match[3]:raw;}
+  function formatLabelSku(value){const raw=clean(value).replace(/\s+/g,'');if(!raw)return '';if(/^\d{3}-/.test(raw))return raw;const match=raw.match(/^(\d{3})(\d{4})(.*)$/),suffix=match&&clean(match[3]).replace(/^-+/,'');return match?match[1]+'-'+match[2]+(suffix?'-'+suffix:''):raw;}
   // 原本只保留英數，中文會被清成空字串，造成「中文搜尋」變成所有商品都符合。
   // 僅移除 SKU 常見分隔符，保留中文、英文與數字一起比對。
   function compactCode(value){return lower(value).replace(/[\s\-_.\/\\]/g,'');}
