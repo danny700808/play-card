@@ -29,7 +29,7 @@
   const READ_LIMIT = 10000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.07.18-inventory-workbench-range-anomaly-v12';
+  const VERSION = '2026.07.18-injiaoyun-cloud-manual-sync-v13';
   const DASHBOARD_CACHE_KEY = 'youzi_ops_dashboard_overview_v7_order_detail';
   const DASHBOARD_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
   const DEFAULT_MEMBERSHIP_SETTINGS = {
@@ -62,7 +62,10 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
     easyStoreSync:{},
     injiaoyunCloudSync:{},
     injiaoyunCloudSyncSignature:'',
+    injiaoyunCloudStatusSignature:'',
     injiaoyunCloudSyncUnsubscribe:null,
+    injiaoyunCloudStatusTimer:null,
+    injiaoyunManualRequestPending:false,
     onlineOrphans:[],
     matchingStats:{central:0,onlineRows:0,matched:0,unmatchedCentral:0,unmatchedOnline:0},
     internalProducts:[],
@@ -660,6 +663,7 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
       const doc=await state.db.collection(COLLECTIONS.settings).doc('injiaoyunCloudSync').get();
       state.injiaoyunCloudSync=doc.exists?(doc.data()||{}):{};
       state.injiaoyunCloudSyncSignature=syncTimestampSignature(state.injiaoyunCloudSync.lastSucceededAt);
+      state.injiaoyunCloudStatusSignature=injiaoyunStatusSignature(state.injiaoyunCloudSync);
       state.diagnostics.push({collection:COLLECTIONS.settings+'/injiaoyunCloudSync',ok:true,count:doc.exists?1:0,ms:0});
     }catch(error){
       state.injiaoyunCloudSync={};
@@ -672,20 +676,58 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
     if(value.seconds!=null)return String(value.seconds)+':'+String(value.nanoseconds||0);
     return String(value);
   }
+  function injiaoyunStatusSignature(value){
+    const row=value||{};
+    return [clean(row.status),syncTimestampSignature(row.lastStartedAt),syncTimestampSignature(row.lastSucceededAt),syncTimestampSignature(row.lastFailedAt),clean(row.lastError),clean(row.manualRequestId)].join('|');
+  }
+  function syncTimestampMillis(value){
+    if(!value)return 0;
+    if(typeof value.toMillis==='function')return value.toMillis();
+    if(value.seconds!=null)return Number(value.seconds)*1000;
+    const date=dateFrom(value);
+    return date?date.getTime():0;
+  }
+  function injiaoyunSyncIsBusy(value){
+    const row=value||{},status=lower(row.status);
+    if(status!=='queued'&&status!=='running')return false;
+    const started=status==='queued'?syncTimestampMillis(row.manualRequestedAt):syncTimestampMillis(row.lastStartedAt);
+    if(!started)return state.injiaoyunManualRequestPending;
+    return Date.now()-started<(status==='queued'?16*60*1000:25*60*1000);
+  }
+  function scheduleInjiaoyunStatusRefresh(value){
+    if(state.injiaoyunCloudStatusTimer){clearTimeout(state.injiaoyunCloudStatusTimer);state.injiaoyunCloudStatusTimer=null;}
+    const row=value||{},status=lower(row.status);
+    if(status!=='queued'&&status!=='running')return;
+    const started=status==='queued'?syncTimestampMillis(row.manualRequestedAt):syncTimestampMillis(row.lastStartedAt);
+    if(!started)return;
+    const remaining=(status==='queued'?16*60*1000:25*60*1000)-(Date.now()-started)+1000;
+    if(remaining<=0)return;
+    state.injiaoyunCloudStatusTimer=setTimeout(function(){state.injiaoyunCloudStatusTimer=null;if(state.view==='overview')renderKeepingViewport();},remaining);
+  }
   function watchInjiaoyunCloudSync(){
     if(state.injiaoyunCloudSyncUnsubscribe)return;
     let initialized=false;
     state.injiaoyunCloudSyncUnsubscribe=state.db.collection(COLLECTIONS.settings).doc('injiaoyunCloudSync').onSnapshot(function(doc){
       const next=doc.exists?(doc.data()||{}):{};
       const signature=syncTimestampSignature(next.lastSucceededAt);
-      const changed=initialized&&next.status==='success'&&signature&&signature!==state.injiaoyunCloudSyncSignature;
+      const statusSignature=injiaoyunStatusSignature(next);
+      const successChanged=initialized&&next.status==='success'&&signature&&signature!==state.injiaoyunCloudSyncSignature;
+      const failureChanged=initialized&&next.status==='error'&&statusSignature!==state.injiaoyunCloudStatusSignature;
+      const statusChanged=initialized&&statusSignature!==state.injiaoyunCloudStatusSignature;
       state.injiaoyunCloudSync=next;
       state.injiaoyunCloudSyncSignature=signature;
+      state.injiaoyunCloudStatusSignature=statusSignature;
+      scheduleInjiaoyunStatusRefresh(next);
       initialized=true;
-      if(changed&&!state.loading){
+      if(successChanged&&!state.loading){
         try{localStorage.removeItem(DASHBOARD_CACHE_KEY);}catch(error){}
-        toast('音教雲同步完成','營運資料已自動更新','success');
+        toast('音教雲同步完成',(clean(next.lastStartDateKey)&&clean(next.lastEndDateKey)?clean(next.lastStartDateKey)+'～'+clean(next.lastEndDateKey)+'｜':'')+'營運資料已更新','success');
         loadAll(true);
+      }else if(failureChanged&&!state.loading){
+        toast('音教雲同步失敗',clean(next.lastError)||'請查看雲端同步記錄。','error');
+        if(state.view==='overview')renderKeepingViewport();
+      }else if(statusChanged&&!state.loading&&state.view==='overview'){
+        renderKeepingViewport();
       }
     },function(error){console.warn('音教雲同步狀態監聽失敗',error);});
   }
@@ -1227,8 +1269,9 @@ function queueInventorySyncInTransaction(tx,productId,sku,stock,reason){const re
     const tabs='<div class="ops-range-tabs"><button class="'+(state.overviewRange==='today'?'active':'')+'" data-action="overview-range" data-range="today">今天</button><button class="'+(state.overviewRange==='month'?'active':'')+'" data-action="overview-range" data-range="month">月份</button><button class="'+(state.overviewRange==='year'?'active':'')+'" data-action="overview-range" data-range="year">今年</button><button class="'+(state.overviewRange==='custom'?'active':'')+'" data-action="overview-range" data-range="custom">自訂區間</button></div>';
     const monthPicker=state.overviewRange==='month'?'<div class="ops-range-custom"><label>查看月份<input class="ops-input" id="overviewMonth" type="month" max="'+attr(dateText(new Date()).slice(0,7))+'" value="'+attr(state.overviewMonth)+'"></label></div>':'';
     const custom=state.overviewRange==='custom'?'<div class="ops-range-custom"><label>開始日期<input class="ops-input" id="overviewFrom" type="date" value="'+attr(state.overviewFrom)+'"></label><label>結束日期<input class="ops-input" id="overviewTo" type="date" value="'+attr(state.overviewTo)+'"></label></div>':'';
-    const teacherHtml=teacherRows.length?'<div class="ops-education-teachers">'+teacherRows.map(function(teacher){return '<button type="button" data-action="education-teacher-detail" data-teacher-key="'+attr(teacher.key)+'"><b>'+escapeHtml(teacher.name)+'</b><span>'+formatNumber(teacher.lessonCount)+' 堂</span><strong>'+money(teacher.amount)+'</strong></button>';}).join('')+'</div>':educationRows.length?emptyHtml('此期間沒有上課資料',''):emptyHtml('尚未匯入課務資料','請先在音教雲同步工具選擇月份並讀取，再回到這裡匯入。');
-    const educationHtml='<section class="ops-card ops-education-section"><div class="ops-card-head"><div><h2>音教雲課務</h2></div><button class="ops-button primary" data-action="injiaoyun-import">匯入音教雲</button></div><div class="ops-kpi-grid ops-education-kpis">'+kpi('上課堂數',formatNumber(educationSummary.lessonCount),'','堂')+kpi('課堂金額',money(educationSummary.lessonGross),'','課')+kpi('課堂拆帳',money(educationSummary.teacherPayable),'','師')+kpi('教室保留',money(educationSummary.schoolShare),'','留')+kpi('學費實收',money(educationSummary.tuitionReceived),'','收')+kpi('教室租用',money(educationSummary.roomRentalReceived),'','租')+'</div>'+teacherHtml+'</section>';
+    const educationSyncBusy=state.injiaoyunManualRequestPending||injiaoyunSyncIsBusy(state.injiaoyunCloudSync);
+    const teacherHtml=teacherRows.length?'<div class="ops-education-teachers">'+teacherRows.map(function(teacher){return '<button type="button" data-action="education-teacher-detail" data-teacher-key="'+attr(teacher.key)+'"><b>'+escapeHtml(teacher.name)+'</b><span>'+formatNumber(teacher.lessonCount)+' 堂</span><strong>'+money(teacher.amount)+'</strong></button>';}).join('')+'</div>':educationRows.length?emptyHtml('此期間沒有上課資料',''):emptyHtml('尚未取得課務資料','請按上方手動同步，或等待每天 22:00 自動同步。');
+    const educationHtml='<section class="ops-card ops-education-section"><div class="ops-card-head"><div><h2>音教雲課務</h2></div><button class="ops-button primary" data-action="injiaoyun-import" '+(educationSyncBusy?'disabled':'')+'>'+(educationSyncBusy?'同步中…':'手動同步')+'</button></div><div class="ops-kpi-grid ops-education-kpis">'+kpi('上課堂數',formatNumber(educationSummary.lessonCount),'','堂')+kpi('課堂金額',money(educationSummary.lessonGross),'','課')+kpi('課堂拆帳',money(educationSummary.teacherPayable),'','師')+kpi('教室保留',money(educationSummary.schoolShare),'','留')+kpi('學費實收',money(educationSummary.tuitionReceived),'','收')+kpi('教室租用',money(educationSummary.roomRentalReceived),'','租')+'</div>'+teacherHtml+'</section>';
     return tabs+monthPicker+custom+'<div class="ops-kpi-grid ops-today-kpis">'+kpi('商品銷售',money(productRevenue),'','＄')+kpi('維修收入',money(repairRevenue),'','修')+kpi('其他收入',money(otherRevenue),'','＋')+kpi('租賃收益',money(rentalRevenue),'','租')+kpi('總收入',money(revenue),'','合')+kpi('商品成本',money(cost),'','成本')+kpi(bounds.label+'賺多少',money(profit),'','↗')+kpi('賣出數量',formatNumber(qty),'','件')+'</div>'+educationHtml;
   }
 
@@ -1279,7 +1322,13 @@ function renderOverviewV7(){
   const rangeControls=overviewRangeControlsHtml();
   const sync=state.injiaoyunCloudSync||{};
   const syncRange=clean(sync.lastStartDateKey)&&clean(sync.lastEndDateKey)?clean(sync.lastStartDateKey)+'～'+clean(sync.lastEndDateKey):'';
-  const syncText=sync.status==='success'&&sync.lastSucceededAt?'最後同步：'+dateTimeText(sync.lastSucceededAt)+(syncRange?'｜資料範圍：'+syncRange:''):'尚未取得自動同步紀錄';
+  const syncStatus=lower(sync.status),syncBusy=state.injiaoyunManualRequestPending||injiaoyunSyncIsBusy(sync),syncStale=(syncStatus==='queued'||syncStatus==='running')&&!syncBusy;
+  let syncText='尚未取得同步紀錄';
+  if(syncStale)syncText='上次同步可能中斷或逾時，可重新按「手動同步」。';
+  else if(syncStatus==='queued')syncText='手動同步已排隊，正在等待雲端工作啟動…';
+  else if(syncStatus==='running')syncText='音教雲正在同步中'+(clean(sync.currentStartDateKey)&&clean(sync.currentEndDateKey)?'｜資料範圍：'+clean(sync.currentStartDateKey)+'～'+clean(sync.currentEndDateKey):'')+'…';
+  else if(syncStatus==='error')syncText='同步失敗'+(sync.lastFailedAt?'（'+dateTimeText(sync.lastFailedAt)+'）':'')+'：'+(clean(sync.lastError)||'請查看雲端執行記錄。').slice(0,180);
+  else if(syncStatus==='success'&&sync.lastSucceededAt)syncText='最後同步：'+dateTimeText(sync.lastSucceededAt)+(syncRange?'｜資料範圍：'+syncRange:'')+(clean(sync.lastTrigger)==='manual'?'｜手動':'｜22:00 自動');
 
   const allCash=storeCash+networkNet+rentalRevenue+educationCash,knownDirectCost=productCost+networkCost+educationSummary.teacherPayable,allBalance=allCash-knownDirectCost;
   const syncAnomalies=platformSyncAnomalies(),syncAnomalyGroups=platformSyncAnomalyGroups(syncAnomalies),syncAnomalyCount=syncAnomalyGroups.length;
@@ -1301,7 +1350,7 @@ function renderOverviewV7(){
   const storeHtml='<section class="ops-card ops-v8-channel-card ops-v8-channel-store"><div class="ops-v8-channel-accent"></div><div class="ops-v8-channel-head"><div><h2>門市營運</h2><p>現場商品、維修與其他收入</p></div><button class="ops-button small soft" data-nav="sales">前往銷售</button></div><div class="ops-v8-channel-summary">'+summaryBox('門市實收',money(storeCash))+summaryBox('預估毛利',money(storeBalance),storeBalance<0?'warning':'success')+'</div><div class="ops-v8-metric-list">'+metricRow('商品銷售',money(productRevenue))+metricRow('維修／其他',money(repairRevenue+otherRevenue))+metricRow('商品成本',money(productCost))+metricRow('退貨退款',money(returnRefund))+'</div></section>';
   const networkHtml='<section class="ops-card ops-v8-channel-card ops-v8-channel-network"><div class="ops-v8-channel-accent"></div><div class="ops-v8-channel-head"><div><h2>網路營運</h2><p>EasyStore、MOMO、Coupang</p></div><button class="ops-button small ghost" data-nav="sync">平台訂單</button></div><div class="ops-v8-channel-summary">'+summaryBox('預估入帳',money(networkNet))+summaryBox('預估毛利',money(networkProfit),networkProfit<0?'warning':'success')+'</div><div class="ops-v8-metric-list">'+metricRow('成交金額',money(networkGross))+metricRow('平台與金流費',money(networkFees))+metricRow('固定費用攤提',money(networkFixedFees))+metricRow('商品成本',money(networkCost))+metricRow('訂單／件數',formatNumber(networkOrderCount)+' 單／'+formatNumber(networkQty)+' 件')+'</div></section>';
   const rentalHtml='<section class="ops-card ops-v8-channel-card ops-v8-channel-rental"><div class="ops-v8-channel-accent"></div><div class="ops-v8-channel-head"><div><h2>租賃營運</h2><p>依上方選擇的日期區間統計</p></div><button class="ops-button small ghost" data-nav="rentals">查看租賃</button></div><div class="ops-v8-channel-summary">'+summaryBox('租賃收入',money(rentalRevenue))+summaryBox(rentalCountLabel,formatNumber(rentals.length)+' 件','success')+'</div><div class="ops-v8-metric-list">'+metricRow(bounds.label+'成立合約',formatNumber(rentals.length)+' 件')+'</div></section>';
-  const educationHtml='<section class="ops-card ops-v8-channel-card ops-v8-channel-school"><div class="ops-v8-channel-accent"></div><div class="ops-v8-channel-head"><div><h2>補習班營運</h2><p>'+escapeHtml(syncText)+'</p></div><button class="ops-button small primary" data-action="injiaoyun-import">手動同步</button></div><div class="ops-v8-channel-summary">'+summaryBox('補習班實收',money(educationCash))+summaryBox('教室保留',money(educationSummary.schoolShare),'success')+'</div><div class="ops-v8-metric-list">'+metricAction('學費實收',money(educationSummary.tuitionReceived),'education-tuition-detail')+metricAction('教室租用',money(educationSummary.roomRentalReceived),'education-rental-detail')+metricAction('老師拆帳',money(educationSummary.teacherPayable),'education-teacher-summary')+metricAction('教室保留明細',money(educationSummary.schoolShare),'education-school-share-detail')+'</div></section>';
+  const educationHtml='<section class="ops-card ops-v8-channel-card ops-v8-channel-school"><div class="ops-v8-channel-accent"></div><div class="ops-v8-channel-head"><div><h2>補習班營運</h2><p>'+escapeHtml(syncText)+'</p></div><button class="ops-button small primary" data-action="injiaoyun-import" '+(syncBusy?'disabled':'')+'>'+(syncBusy?'同步中…':'手動同步')+'</button></div><div class="ops-v8-channel-summary">'+summaryBox('補習班實收',money(educationCash))+summaryBox('教室保留',money(educationSummary.schoolShare),'success')+'</div><div class="ops-v8-metric-list">'+metricAction('學費實收',money(educationSummary.tuitionReceived),'education-tuition-detail')+metricAction('教室租用',money(educationSummary.roomRentalReceived),'education-rental-detail')+metricAction('老師拆帳',money(educationSummary.teacherPayable),'education-teacher-summary')+metricAction('教室保留明細',money(educationSummary.schoolShare),'education-school-share-detail')+'</div></section>';
 
   const alerts=[];
   if(syncAnomalyCount){const counts={};syncAnomalies.forEach(function(row){counts[row.platform]=Number(counts[row.platform]||0)+1;});const detail=Object.keys(counts).sort().map(function(name){return name+' '+counts[name]+' 項';}).join('、');alerts.push('<button type="button" class="ops-v8-attention-row" data-action="overview-sync-errors"><span class="ops-v8-attention-icon danger">同</span><span><b>平台同步異常</b><small>'+formatNumber(syncAnomalyCount)+' 件商品'+(detail?'：'+escapeHtml(detail):'')+'</small></span><em>查看明細</em></button>');}
@@ -2930,17 +2979,47 @@ function ensureSalesClock(){
     await writeAudit('匯入音教雲課務','educationDaily',docId,day.dateKey+'｜'+day.summary.lessonCount+' 堂｜老師拆帳 '+money(day.summary.teacherPayable));
     return Object.assign({startDateKey:day.dateKey,endDateKey:day.dateKey,days:[day]},day);
   }
-  function requestInjiaoyunImport(){
-    const requestId='injiaoyun_'+Date.now()+'_'+Math.random().toString(36).slice(2,8);
-    state.injiaoyunRequestId=requestId;
-    toast('正在讀取同步資料','請稍候','info');
-    global.postMessage({type:'YOUZI_REQUEST_INJIAOYUN_DATA',requestId:requestId,schemaVersion:2,appVersion:VERSION},global.location.origin);
-    setTimeout(function(){
-      if(state.injiaoyunRequestId===requestId){
-        state.injiaoyunRequestId='';
-        toast('找不到音教雲同步工具','請先安裝 Chrome 同步工具並完成資料讀取。','warning');
+  function getInjiaoyunManualSyncPin(){
+    const key='youzi_injiaoyun_manual_sync_pin';
+    let value='';
+    try{value=clean(sessionStorage.getItem(key));}catch(error){}
+    if(value)return value;
+    value=clean(global.prompt('請輸入音教雲「手動同步密碼」：')||'');
+    if(!value)return '';
+    if(value.length<12||value.length>64){toast('密碼格式不正確','手動同步密碼應為 12～64 碼。','warning');return '';}
+    try{sessionStorage.setItem(key,value);}catch(error){}
+    return value;
+  }
+  function clearInjiaoyunManualSyncPin(){try{sessionStorage.removeItem('youzi_injiaoyun_manual_sync_pin');}catch(error){}}
+  async function requestInjiaoyunImport(){
+    if(state.injiaoyunManualRequestPending||injiaoyunSyncIsBusy(state.injiaoyunCloudSync)){
+      toast('音教雲正在同步','請等待本次同步完成。','info');return;
+    }
+    const manualSyncPin=getInjiaoyunManualSyncPin();
+    if(!manualSyncPin)return;
+    if(!global.firebase||!global.firebase.app||!global.firebase.functions){toast('同步功能尚未載入','請重新整理頁面後再試。','error');return;}
+    state.injiaoyunManualRequestPending=true;
+    if(state.view==='overview')renderKeepingViewport();
+    toast('正在啟動音教雲同步','雲端會讀取本月 1 日到今天，請稍候。','info');
+    try{
+      const callable=global.firebase.app().functions('us-central1').httpsCallable('runInjiaoyunSyncNow');
+      const response=await callable({source:'operations-hub',requestedBy:userLabel(),manualSyncPin:manualSyncPin,appVersion:VERSION});
+      const result=response&&response.data||{};
+      if(result.status==='cooldown'){
+        toast('剛剛已執行過同步',result.message||'請稍後再試。','info');return;
       }
-    },2200);
+      state.injiaoyunCloudSync=Object.assign({},state.injiaoyunCloudSync,{status:'queued',manualRequestId:result.requestId||'',manualRequestedAt:new Date(),requestedEndDateKey:result.requestedEndDateKey||todayDateKey(),lastError:''});
+      state.injiaoyunCloudStatusSignature=injiaoyunStatusSignature(state.injiaoyunCloudSync);
+      scheduleInjiaoyunStatusRefresh(state.injiaoyunCloudSync);
+      toast(result.status==='already-running'?'同步已在執行':'手動同步已啟動',result.message||'完成後畫面會自動更新。','success');
+    }catch(error){
+      const message=errorMessage(error);
+      if(message.includes('密碼')||clean(error&&error.code).includes('permission-denied'))clearInjiaoyunManualSyncPin();
+      toast('音教雲手動同步失敗',message,'error');
+    }finally{
+      state.injiaoyunManualRequestPending=false;
+      if(state.view==='overview')renderKeepingViewport();
+    }
   }
   async function handleInjiaoyunBridgeMessage(event){
     if(event.source!==global||event.origin!==global.location.origin)return;
