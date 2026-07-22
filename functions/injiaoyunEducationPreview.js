@@ -11,7 +11,7 @@ if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
 const FUNCTION_REGION = 'us-central1';
 const COLLECTION_PREFIX = 'opsInjiaoyunTest';
-const VERSION = '2026.07.22-v3-education-relational-preview';
+const VERSION = '2026.07.22-v4-education-time-safe-preview';
 const MANUAL_SYNC_PIN = defineSecret('INJIAOYUN_MANUAL_SYNC_PIN');
 const ALLOWED_ORIGINS = new Set([
   'https://danny700808.github.io',
@@ -57,7 +57,11 @@ function array(value) {
 }
 
 function firstValue(...values) {
-  return values.find((value) => value !== undefined && value !== null && value !== '');
+  return values.find((value) => (
+    value !== undefined &&
+    value !== null &&
+    (typeof value !== 'string' || value.trim() !== '')
+  ));
 }
 
 function requestOrigin(request) {
@@ -142,16 +146,93 @@ function dateKey(value) {
 function timeKey(value) {
   if (value && typeof value === 'object') {
     if (typeof value.toDate === 'function') value = value.toDate();
-    else value = firstValue(value.time, value.start, value.startsAt, value.date, value.value);
+    else if (Number.isFinite(Number(firstValue(value.seconds, value._seconds)))) {
+      value = new Date(Number(firstValue(value.seconds, value._seconds)) * 1000);
+    }
+    else if (value.hour !== undefined) {
+      value = `${value.hour}:${value.minute === undefined ? '00' : value.minute}`;
+    }
+    else value = firstValue(
+      value.time, value.start, value.startsAt, value.startTime,
+      value.date, value.datetime, value.timestamp, value.iso, value.$date, value.value
+    );
   }
-  const text = clean(value);
-  const direct = text.match(/(?:^|T|\s)([0-2]?\d):([0-5]\d)/);
-  if (direct) return `${String(Number(direct[1])).padStart(2, '0')}:${direct[2]}`;
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return '';
-  return new Intl.DateTimeFormat('en-GB', {
+  const formatDate = (date) => new Intl.DateTimeFormat('en-GB', {
     timeZone: 'Asia/Taipei', hour: '2-digit', minute: '2-digit', hour12: false
-  }).format(date);
+  }).format(date).replace(/^24:/, '00:');
+  if (value instanceof Date) {
+    return Number.isFinite(value.getTime()) ? formatDate(value) : '';
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    if (value >= 1e12) return formatDate(new Date(value));
+    if (value >= 1e9) return formatDate(new Date(value * 1000));
+    if (value >= 0 && value < 24) {
+      const hour = Math.floor(value);
+      const minute = Math.round((value - hour) * 60);
+      return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+    }
+  }
+  let text = clean(value)
+    .replace(/[：︰]/g, ':')
+    .replace(/[時时點点]/g, ':')
+    .replace(/分/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!text) return '';
+
+  // 只有日期、沒有時間時視為未辨識；否則 Date 會自行補成午夜，造成另一種假課表。
+  if (/^\d{4}[-\/]\d{1,2}[-\/]\d{1,2}$/.test(text) || /^\d{8}$/.test(text)) return '';
+  const dotNetDate = text.match(/^\/Date\((\d{10,13})(?:[+-]\d+)?\)\/$/);
+  if (dotNetDate) {
+    const stamp = Number(dotNetDate[1]);
+    return formatDate(new Date(dotNetDate[1].length === 10 ? stamp * 1000 : stamp));
+  }
+
+  // 帶有時區的完整日期必須先換算為台北時間，不能直接截取字面上的小時。
+  if (/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:?\d{2})$/i.test(text)) {
+    const zonedDate = new Date(text);
+    if (Number.isFinite(zonedDate.getTime())) return formatDate(zonedDate);
+  }
+  if (/^\d{10,13}$/.test(text)) {
+    const stamp = Number(text);
+    const stampedDate = new Date(text.length === 10 ? stamp * 1000 : stamp);
+    if (Number.isFinite(stampedDate.getTime())) return formatDate(stampedDate);
+  }
+
+  const period = (text.match(/上午|下午|凌晨|中午|\bam\b|\bpm\b/i) || [])[0] || '';
+  const clock = text.match(/(?:^|[^\d])([0-2]?\d):([0-5]\d)(?:[^\d]|$)/);
+  if (clock) {
+    let hour = Number(clock[1]);
+    const minute = Number(clock[2]);
+    if (hour > 23) return '';
+    if (/下午|中午|pm/i.test(period) && hour < 12) hour += 12;
+    if (/上午|凌晨|am/i.test(period) && hour === 12) hour = 0;
+    return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+  }
+  const compact = text.match(/^([0-2]?\d)([0-5]\d)$/);
+  if (compact && Number(compact[1]) <= 23) {
+    return `${String(Number(compact[1])).padStart(2, '0')}:${compact[2]}`;
+  }
+  const hourOnly = text.match(/^(?:上午|下午|凌晨|中午|am|pm)?\s*([0-2]?\d)\s*(?:上午|下午|凌晨|中午|am|pm)?$/i);
+  if (hourOnly) {
+    let hour = Number(hourOnly[1]);
+    if (hour > 23) return '';
+    if (/下午|中午|pm/i.test(period) && hour < 12) hour += 12;
+    if (/上午|凌晨|am/i.test(period) && hour === 12) hour = 0;
+    return `${String(hour).padStart(2, '0')}:00`;
+  }
+  const date = new Date(text);
+  return Number.isFinite(date.getTime()) ? formatDate(date) : '';
+}
+
+function resolvedTime(row, fields) {
+  for (const field of fields) {
+    const raw = row && row[field];
+    if (raw === undefined || raw === null || (typeof raw === 'string' && raw.trim() === '')) continue;
+    const time = timeKey(raw);
+    if (time) return { time, field };
+  }
+  return { time: '', field: '' };
 }
 
 function durationMinutes(startsAt, endsAt, explicit) {
@@ -559,15 +640,27 @@ function courseRow(row, type, lookups, leavesByCourse) {
   const room = lookups.roomInfo.add(row.room, nameOf(row.room));
   const roomId = room && room.id || idOf(row.room);
   const id = idOf(row) || clean(row._migrationSourceId) || `${type}_${roomId}_${clean(row.startDate)}_${clean(row.startsAt)}`;
-  const startsAt = firstValue(row.startsAt, row.startTime, row.time, row.startDate, row.date);
-  const endsAt = firstValue(row.endsAt, row.endTime, row.finishTime);
+  const startResult = resolvedTime(row, [
+    'startsAt', 'startTime', 'startAt', 'start', 'time',
+    'beginAt', 'beginTime', 'startDate', 'date'
+  ]);
+  const endResult = resolvedTime(row, [
+    'endsAt', 'endTime', 'endAt', 'end', 'finishTime', 'finishAt'
+  ]);
+  const startsAt = startResult.time;
+  const endsAt = endResult.time;
   return {
     id,
     type,
     active: row.end !== true && row.off !== true && row.cancel !== true,
     date: dateKey(firstValue(row.startDate, row.date, row.startsAt, row.created)),
-    start: timeKey(startsAt) || '10:00',
-    duration: durationMinutes(startsAt, endsAt, firstValue(row.minute, row.duration, row.hourly_fee)),
+    start: startsAt,
+    timeResolved: Boolean(startsAt),
+    timeSource: startResult.field,
+    timeIssue: startsAt ? '' : 'unrecognized-start-time',
+    duration: durationMinutes(startsAt, endsAt, firstValue(
+      row.minute, row.minutes, row.duration, row.durationMinutes, row.hours, row.hour
+    )),
     frequencyWeeks: type === 'fixed' ? frequencyWeeks(firstValue(row.frequency, row.week, row.every)) : 0,
     frequency: clean(firstValue(row.frequency, row.week, row.every)),
     roomId,
@@ -677,13 +770,25 @@ function buildRoomRentals(data, lookups) {
   data.roomRentals.concat(data.roomRentalsAll).forEach((row, index) => {
     const id = idOf(row) || clean(row._migrationSourceId) || `rental_${index + 1}`;
     const room = lookups.roomInfo.add(row.room, nameOf(row.room));
-    const startsAt = firstValue(row.startsAt, row.startTime, row.startDate, row.date);
+    const startResult = resolvedTime(row, [
+      'startsAt', 'startTime', 'startAt', 'start', 'time',
+      'beginAt', 'beginTime', 'startDate', 'date'
+    ]);
+    const endResult = resolvedTime(row, [
+      'endsAt', 'endTime', 'endAt', 'end', 'finishTime', 'finishAt'
+    ]);
+    const startsAt = startResult.time;
     map.set(id, {
       id,
       type: 'rental',
       date: dateKey(firstValue(row.startDate, row.date, row.startsAt, row.created)),
-      start: timeKey(startsAt) || '10:00',
-      duration: durationMinutes(startsAt, firstValue(row.endsAt, row.endTime), firstValue(row.minute, row.duration)),
+      start: startsAt,
+      timeResolved: Boolean(startsAt),
+      timeSource: startResult.field,
+      timeIssue: startsAt ? '' : 'unrecognized-start-time',
+      duration: durationMinutes(startsAt, endResult.time, firstValue(
+        row.minute, row.minutes, row.duration, row.durationMinutes, row.hours, row.hour
+      )),
       roomId: room && room.id || idOf(row.room),
       roomName: room && room.name || referenceName(row.room, lookups.rooms, ''),
       clientName: nameOf(firstValue(row.client, row.customer)) || clean(firstValue(row.name, row.clientName, '教室租用')),
@@ -733,6 +838,18 @@ async function buildPreview(runId) {
   const attendance = buildAttendance(data, allCourses, tuitionPeriods);
   const teachers = buildTeachers(data, subjectInfo, allCourses);
   const roomRentals = buildRoomRentals(data, lookups);
+  const unresolvedFixedCourses = fixedCourses.filter((row) => !row.timeResolved).length;
+  const unresolvedTemporaryCourses = temporaryCourses.filter((row) => !row.timeResolved).length;
+  const unresolvedRoomRentals = roomRentals.filter((row) => !row.timeResolved).length;
+  const dataQuality = {
+    totalTimeRecords: fixedCourses.length + temporaryCourses.length + roomRentals.length,
+    resolvedTimeRecords: fixedCourses.length + temporaryCourses.length + roomRentals.length -
+      unresolvedFixedCourses - unresolvedTemporaryCourses - unresolvedRoomRentals,
+    unresolvedTimeRecords: unresolvedFixedCourses + unresolvedTemporaryCourses + unresolvedRoomRentals,
+    unresolvedFixedCourses,
+    unresolvedTemporaryCourses,
+    unresolvedRoomRentals
+  };
   const leaveReasons = data.leaveReasons.map((row, index) => ({
     id: idOf(row) || `leave_${index + 1}`,
     name: nameOf(row) || clean(row.reason) || '其他',
@@ -749,6 +866,7 @@ async function buildPreview(runId) {
     version: VERSION,
     loadedAt: new Date().toISOString(),
     counts: Object.fromEntries(Object.entries(data).map(([key, rows]) => [key, rows.length])),
+    dataQuality,
     rooms: roomInfo.rows,
     subjects: subjectInfo.rows,
     feePlans,
