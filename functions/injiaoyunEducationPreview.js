@@ -11,7 +11,7 @@ if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
 const FUNCTION_REGION = 'us-central1';
 const COLLECTION_PREFIX = 'opsInjiaoyunTest';
-const VERSION = '2026.07.22-v4-education-time-safe-preview';
+const VERSION = '2026.07.22-v6-education-schedule-status-preview';
 const MANUAL_SYNC_PIN = defineSecret('INJIAOYUN_MANUAL_SYNC_PIN');
 const ALLOWED_ORIGINS = new Set([
   'https://danny700808.github.io',
@@ -256,6 +256,42 @@ function frequencyWeeks(value) {
   return 1;
 }
 
+function latestDate(values) {
+  return array(values).map(dateKey).filter(Boolean).sort().pop() || '';
+}
+
+function weekdayName(value) {
+  const key = dateKey(value);
+  if (!key) return '';
+  const names = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+  const date = new Date(`${key}T12:00:00+08:00`);
+  return Number.isFinite(date.getTime()) ? names[date.getDay()] : '';
+}
+
+function inactiveRecord(row) {
+  row = row || {};
+  const status = clean(firstValue(row.status, row.state, row.courseStatus, row.studentStatus)).toLowerCase();
+  return row.active === false || row.end === true || row.off === true || row.stop === true ||
+    row.stopped === true || row.cancel === true || row.cancelled === true ||
+    /停課|停止|暫停|inactive|stopped|suspend|paused|cancelled/.test(status);
+}
+
+// 有些舊固定課的建立日期不是實際上課星期。以歷史簽到／請假紀錄中最常出現的星期
+// 校正週期錨點，可避免星期六固定課被錯排到其他天。
+function recurringAnchorDate(sourceDate, statusDates) {
+  const dates = array(statusDates).map(dateKey).filter(Boolean).sort();
+  if (!dates.length) return dateKey(sourceDate);
+  const counts = dates.reduce((result, date) => {
+    const day = weekdayName(date);
+    if (day) result[day] = (result[day] || 0) + 1;
+    return result;
+  }, {});
+  const dominant = Object.keys(counts).sort((left, right) => counts[right] - counts[left])[0] || '';
+  const source = dateKey(sourceDate);
+  if (source && weekdayName(source) === dominant) return source;
+  return dates.find((date) => weekdayName(date) === dominant) || source || dates[0];
+}
+
 function sourceBuffer(value) {
   if (!value) return null;
   if (Buffer.isBuffer(value)) return value;
@@ -467,9 +503,19 @@ function normalizeRoomPolicies(room) {
       const value = slot && typeof slot === 'object' ? slot : { time: slot };
       const time = timeKey(firstValue(value.time, value.start, value.startsAt, value.hour));
       if (!time) return;
+      const allowSchedule = firstValue(
+        value.allowSchedule, value.canSchedule, value.scheduleAllowed, value.openForSchedule
+      );
+      const allowRental = firstValue(
+        value.allowRental, value.canRent, value.rentalAllowed, value.openForRental
+      );
       output[day][time] = {
-        blockSchedule: booleanOf(firstValue(value.blockSchedule, value.noCourse, value.forbidCourse), false),
-        blockRental: booleanOf(firstValue(value.blockRental, value.noRent, value.forbidRent), false),
+        blockSchedule: allowSchedule == null
+          ? booleanOf(firstValue(value.blockSchedule, value.noCourse, value.forbidCourse), false)
+          : !booleanOf(allowSchedule, true),
+        blockRental: allowRental == null
+          ? booleanOf(firstValue(value.blockRental, value.noRent, value.forbidRent), false)
+          : !booleanOf(allowRental, true),
         subjectIds: referenceIds(firstValue(value.subjectIds, value.subjects, value.subject))
       };
     });
@@ -498,7 +544,7 @@ function buildStudents(data) {
       phone: clean(firstValue(merged.phone, merged.mobile, merged.tel)),
       line: clean(firstValue(merged.line_user_id, merged.lineUserId)) ? true : null,
       note: clean(firstValue(merged.remark, merged.note, merged.specialReminder)),
-      active: merged.end !== true && merged.off !== true && merged.stop !== true
+      active: !inactiveRecord(merged)
     });
   };
   data.students.forEach(add);
@@ -649,11 +695,33 @@ function courseRow(row, type, lookups, leavesByCourse) {
   ]);
   const startsAt = startResult.time;
   const endsAt = endResult.time;
+  const statusByDate = courseStatusMap(row, leavesByCourse.get(id) || []);
+  const linkedStudents = studentValues.map((value) => {
+    if (value && typeof value === 'object') return value;
+    return lookups.students.get(idOf(value)) || {};
+  }).filter((value) => Object.keys(value).length);
+  // 課程本身仍被標成啟用、但所有關聯學生都已停課時，不可再把固定課延伸到未來。
+  const studentsStillActive = !linkedStudents.length || linkedStudents.some((student) => !inactiveRecord(student));
+  const active = !inactiveRecord(row) && studentsStillActive;
+  const explicitStopDate = dateKey(firstValue(
+    row.stopDate, row.stoppedAt, row.endedAt, row.endDate, row.offDate, row.cancelDate,
+    row.pauseDate, row.suspendedAt, row.inactiveAt
+  ));
+  // 舊資料常只有 end=true，沒有獨立停課日。此時才用最後一筆實際出席／請假紀錄
+  // 作為歷史課表的終點；仍在上課的固定課不可被最後簽到日截斷。
+  const stopDate = active ? '' : (explicitStopDate || latestDate(Object.keys(statusByDate)) ||
+    dateKey(firstValue(row.updated, row.created, row.startDate)));
   return {
     id,
     type,
-    active: row.end !== true && row.off !== true && row.cancel !== true,
-    date: dateKey(firstValue(row.startDate, row.date, row.startsAt, row.created)),
+    active,
+    stopDate,
+    date: type === 'fixed'
+      ? recurringAnchorDate(
+        firstValue(row.startDate, row.date, row.startsAt, row.created),
+        Object.keys(statusByDate)
+      )
+      : dateKey(firstValue(row.startDate, row.date, row.startsAt, row.created)),
     start: startsAt,
     timeResolved: Boolean(startsAt),
     timeSource: startResult.field,
@@ -672,7 +740,7 @@ function courseRow(row, type, lookups, leavesByCourse) {
     teacherName: referenceName(row.teacher, lookups.teachers, ''),
     subjectId,
     subjectName: subject && subject.name || referenceName(row.subject, lookups.subjects, ''),
-    statusByDate: courseStatusMap(row, leavesByCourse.get(id) || []),
+    statusByDate,
     note: clean(firstValue(row.remark, row.note)),
     source: 'injiaoyun-migration'
   };
@@ -841,6 +909,11 @@ async function buildPreview(runId) {
   const unresolvedFixedCourses = fixedCourses.filter((row) => !row.timeResolved).length;
   const unresolvedTemporaryCourses = temporaryCourses.filter((row) => !row.timeResolved).length;
   const unresolvedRoomRentals = roomRentals.filter((row) => !row.timeResolved).length;
+  const countWeekdays = (rows) => rows.reduce((counts, row) => {
+    const day = weekdayName(row.date);
+    if (day) counts[day] = (counts[day] || 0) + 1;
+    return counts;
+  }, { sun: 0, mon: 0, tue: 0, wed: 0, thu: 0, fri: 0, sat: 0 });
   const dataQuality = {
     totalTimeRecords: fixedCourses.length + temporaryCourses.length + roomRentals.length,
     resolvedTimeRecords: fixedCourses.length + temporaryCourses.length + roomRentals.length -
@@ -848,7 +921,10 @@ async function buildPreview(runId) {
     unresolvedTimeRecords: unresolvedFixedCourses + unresolvedTemporaryCourses + unresolvedRoomRentals,
     unresolvedFixedCourses,
     unresolvedTemporaryCourses,
-    unresolvedRoomRentals
+    unresolvedRoomRentals,
+    fixedCourseWeekdays: countWeekdays(fixedCourses),
+    activeFixedCourseWeekdays: countWeekdays(fixedCourses.filter((row) => row.active)),
+    temporaryCourseWeekdays: countWeekdays(temporaryCourses)
   };
   const leaveReasons = data.leaveReasons.map((row, index) => ({
     id: idOf(row) || `leave_${index + 1}`,
