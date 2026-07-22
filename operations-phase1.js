@@ -196,7 +196,7 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
 
   const PAGE_META = {
     overview:['營運總覽',''],
-    'course-calendar':['課程日表','音教雲每日課表；改用獨立分頁開啟，避免內嵌畫面不完整。'],
+    'course-calendar':['課程日表','保留舊版音教雲，同時提供新版排課系統設計預覽。'],
     products:['商品資訊',''],
     sales:['現場銷售',''],
     customers:['客戶會員','會員、老師與一般客戶共用同一份客戶資料。'],
@@ -1100,10 +1100,11 @@ function queueInventorySyncInTransaction(tx,productId,sku,stock,reason){const re
   }
   const INJIAOYUN_DAILY_CALENDAR_URL='https://www.injiaoyun.com/dashboard/#/app/roomCalendar/day';
   function renderCourseCalendar(){
-    return '<section class="ops-card">'
-      +'<div class="ops-card-head"><div><h2>課程日表</h2><p>音教雲在內嵌模式下只載入左側選單，主課表區會空白，因此改用獨立分頁開啟。</p></div></div>'
-      +'<div class="ops-empty"><strong>請在音教雲原始頁面開啟課程日表</strong><p>已登入時會直接進入每日課表；未登入時先登入一次即可。帳號密碼不會存入 GitHub 網頁。</p><a class="ops-button primary" href="'+attr(INJIAOYUN_DAILY_CALENDAR_URL)+'" target="_blank" rel="noopener noreferrer">開啟課程日表</a></div>'
-      +'</section>';
+    return '<section class="ops-banner"><div class="icon">日</div><div><h3>請選擇要使用的課程日表</h3><p>舊版仍維持原本的音教雲流程；新版目前是可操作的設計預覽，資料只會存在這台裝置的瀏覽器，不會寫入正式課務資料。</p></div></section>'
+      +'<div class="ops-grid-equal">'
+      +'<section class="ops-card"><div class="ops-card-head"><div><span class="ops-tag blue">現行正式系統</span><h2 style="margin-top:10px">舊版課程日表（音教雲）</h2><p>沿用目前的排課、學生簽到與課務資料。</p></div></div><div class="ops-status-row"><div><b>資料來源</b><small>音教雲正式資料</small></div><span class="ops-status-dot">正式使用</span></div><p style="color:var(--ops-muted);font-size:12px;min-height:56px">會在新分頁開啟音教雲。未登入時先登入一次即可；帳號密碼不會存入 GitHub 網頁。</p><a class="ops-button dark" href="'+attr(INJIAOYUN_DAILY_CALENDAR_URL)+'" target="_blank" rel="noopener noreferrer">開啟舊版音教雲</a></section>'
+      +'<section class="ops-card"><div class="ops-card-head"><div><span class="ops-tag green">第一版設計預覽</span><h2 style="margin-top:10px">新版排課系統</h2><p>30 分鐘格線、教室排程、衝突檢查、簽到與基本資料。</p></div></div><div class="ops-status-row"><div><b>資料來源</b><small>瀏覽器本機測試資料</small></div><span class="ops-status-dot warn">尚未連正式資料</span></div><p style="color:var(--ops-muted);font-size:12px;min-height:56px">可直接新增、調整與點選課程測試操作。確認版面與流程後，再接上 Firebase、正式學生資料與 LINE 預約。</p><a class="ops-button primary" href="course-scheduler.html">開啟新版排課預覽</a></section>'
+      +'</div>';
   }
 
   function render(){
