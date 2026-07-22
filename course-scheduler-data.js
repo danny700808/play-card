@@ -20,6 +20,14 @@
     return date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0')+'-'+String(date.getDate()).padStart(2,'0');
   }
   function todayKey(){return dateKey(new Date());}
+  function weekdayKey(value){var key=dateKey(value),date=new Date(key+'T12:00:00'),names=['sun','mon','tue','wed','thu','fri','sat'];return key&&Number.isFinite(date.getTime())?names[date.getDay()]:'';}
+  function recurringAnchorDate(sourceDate,statusDates){
+    var dates=array(statusDates).map(dateKey).filter(Boolean).sort(),source=dateKey(sourceDate);if(!dates.length)return source;
+    var counts={};dates.forEach(function(date){var day=weekdayKey(date);if(day)counts[day]=(counts[day]||0)+1;});
+    var dominant=Object.keys(counts).sort(function(left,right){return counts[right]-counts[left];})[0]||'';
+    if(source&&weekdayKey(source)===dominant)return source;
+    return dates.find(function(date){return weekdayKey(date)===dominant;})||source||dates[0];
+  }
   function timeToMin(value){var parts=clean(value||'00:00').split(':');return numberOf(parts[0])*60+numberOf(parts[1]);}
   function clone(value){return JSON.parse(JSON.stringify(value==null?{}:value));}
 
@@ -132,13 +140,14 @@
   }
 
   function courseEvent(course,date,status,resolvePeriod){
-    return {id:safeId('course',course.id,0)+'@'+date,sourceCourseId:clean(course.id),seriesId:clean(course.id),date:date,roomId:clean(course.roomId),start:clean(course.start),duration:Math.max(30,numberOf(course.duration)||60),type:clean(course.type)||'fixed',frequency:numberOf(course.frequencyWeeks)>=2?'biweekly':course.type==='fixed'?'weekly':'once',studentIds:unique(course.studentIds),teacherId:clean(course.teacherId),subjectId:clean(course.subjectId),tuitionPeriodId:resolvePeriod(course),clientName:'',rentalFee:0,status:clean(status)||'scheduled',note:clean(course.note),readOnly:true};
+    return {id:safeId('course',course.id,0)+'@'+date,sourceCourseId:clean(course.id),seriesId:clean(course.id),date:date,roomId:clean(course.roomId),start:clean(course.start),duration:Math.max(30,numberOf(course.duration)||60),type:clean(course.type)||'fixed',frequency:numberOf(course.frequencyWeeks)>=2?'biweekly':course.type==='fixed'?'weekly':'once',studentIds:unique(course.studentIds),teacherId:clean(course.teacherId),subjectId:clean(course.subjectId),tuitionPeriodId:resolvePeriod(course),clientName:'',rentalFee:0,status:clean(status)||'scheduled',note:clean(course.note),readOnly:true,source:'injiaoyun-migration'};
   }
 
   function fixedCourseEvents(course,rangeStart,rangeEnd,resolvePeriod){
-    var events=[],start=dateKey(course.date),step=numberOf(course.frequencyWeeks)>=2?14:7,statuses=course.statusByDate||{};
+    var events=[],statuses=course.statusByDate||{},allStatusDates=Object.keys(statuses).map(dateKey).filter(Boolean).sort(),start=recurringAnchorDate(course.date,allStatusDates),step=numberOf(course.frequencyWeeks)>=2?14:7;
     if(!start||!clean(course.start)||!clean(course.roomId))return events;
-    var statusDates=Object.keys(statuses).filter(function(key){return key>=rangeStart&&key<=rangeEnd;}).sort(),stop=course.active===false?(statusDates[statusDates.length-1]||start):rangeEnd,cursor=start,guard=0;
+    var statusDates=allStatusDates.filter(function(key){return key>=rangeStart&&key<=rangeEnd;}),stop=course.active===false?(dateKey(course.stopDate)||allStatusDates[allStatusDates.length-1]||start):rangeEnd,cursor=start,guard=0;
+    if(stop<start)stop=start;
     while(cursor<rangeStart&&guard<1500){cursor=shiftDate(cursor,step);guard++;}
     while(cursor<=rangeEnd&&cursor<=stop&&guard<1700){events.push(courseEvent(course,cursor,statuses[cursor]||'scheduled',resolvePeriod));cursor=shiftDate(cursor,step);guard++;}
     statusDates.forEach(function(key){if(!events.some(function(event){return event.date===key;}))events.push(courseEvent(course,key,statuses[key],resolvePeriod));});
@@ -151,7 +160,7 @@
       events=array(payload.events).map(function(row,index){return Object.assign({id:safeId('event',row.id,index),seriesId:'',date:'',roomId:'',start:'',duration:60,type:'fixed',frequency:'once',studentIds:[],teacherId:'',subjectId:'',tuitionPeriodId:'',clientName:'',rentalFee:0,note:'',status:'scheduled',readOnly:true},row,{date:dateKey(row.date),start:clean(row.start),studentIds:unique(row.studentIds)});});
     }else{
       array(payload.fixedCourses).forEach(function(row){events=events.concat(fixedCourseEvents(row,rangeStart,rangeEnd,resolvePeriod));});
-      array(payload.temporaryCourses).forEach(function(row){var date=dateKey(row.date);if(date&&clean(row.start)&&clean(row.roomId)&&date>=rangeStart&&date<=rangeEnd)events.push(courseEvent(row,date,clean(row.statusByDate&&row.statusByDate[date])||'scheduled',resolvePeriod));});
+      array(payload.temporaryCourses).filter(function(row){return row.active!==false;}).forEach(function(row){var date=dateKey(row.date);if(date&&clean(row.start)&&clean(row.roomId)&&date>=rangeStart&&date<=rangeEnd)events.push(courseEvent(row,date,clean(row.statusByDate&&row.statusByDate[date])||'scheduled',resolvePeriod));});
       array(payload.roomRentals).forEach(function(row,index){var date=dateKey(row.date);if(date&&clean(row.start)&&clean(row.roomId)&&date>=rangeStart&&date<=rangeEnd)events.push({id:safeId('rental',row.id,index)+'@'+date,seriesId:'',date:date,roomId:clean(row.roomId),start:clean(row.start),duration:Math.max(30,numberOf(row.duration)||60),type:'rental',frequency:'once',studentIds:[],teacherId:'',subjectId:'',tuitionPeriodId:'',clientName:clean(row.clientName)||'教室租用',rentalFee:numberOf(row.amount||row.rentalFee),status:clean(row.status)||'scheduled',note:clean(row.note),readOnly:true});});
     }
     return events.filter(function(row){return row.date&&row.roomId&&row.start&&row.date>=rangeStart&&row.date<=rangeEnd;}).sort(function(left,right){return (left.date+left.start+left.roomId).localeCompare(right.date+right.start+right.roomId);});
@@ -177,7 +186,8 @@
     var anchor=dateKey(anchorDate)||todayKey(),rangeStart=shiftDate(anchor,-240),rangeEnd=shiftDate(anchor,420),subjects=makeSubjectRows(payload),feePlans=normalizeFeePlans(payload,subjects),students=normalizeStudents(payload),teachers=normalizeTeachers(payload,subjects),rooms=normalizeRooms(payload),periods=normalizePeriods(payload,feePlans),events=normalizeEvents(payload,periods,rangeStart,rangeEnd),attendance=normalizeAttendance(payload,events,periods);
     periods.forEach(function(period){period.usedCount=attendance.filter(function(row){return row.periodId===period.id&&row.deducted===true;}).length;});
     var earliest=events.reduce(function(value,row){return Math.min(value,timeToMin(row.start));},10*60),latest=events.reduce(function(value,row){return Math.max(value,timeToMin(row.start)+numberOf(row.duration));},22*60);
-    return {version:3,currentDate:anchor,settings:{startHour:Math.max(6,Math.min(10,Math.floor(earliest/60))),endHour:Math.min(24,Math.max(22,Math.ceil(latest/60))),interval:30,defaultLessons:4},rooms:rooms,subjects:subjects.rows,teachers:teachers,feePlans:feePlans,students:students,tuitionPeriods:periods,events:events,attendance:attendance,leaveReasons:normalizeLeaveReasons(payload),teacherAdjustments:array(payload.teacherAdjustments),clipboard:null,readOnly:true,dataMode:'migration',dataMeta:{runId:clean(payload.runId),loadedAt:clean(payload.loadedAt),version:clean(payload.version),counts:payload.counts||{},dataQuality:payload.dataQuality||{},rangeStart:rangeStart,rangeEnd:rangeEnd}};
+    var visibleWeekdays=events.reduce(function(counts,row){var date=new Date(row.date+'T12:00:00'),day=['sun','mon','tue','wed','thu','fri','sat'][date.getDay()];counts[day]=(counts[day]||0)+1;return counts;},{sun:0,mon:0,tue:0,wed:0,thu:0,fri:0,sat:0});
+    return {version:3,currentDate:anchor,settings:{startHour:Math.max(6,Math.min(10,Math.floor(earliest/60))),endHour:Math.min(24,Math.max(22,Math.ceil(latest/60))),interval:30,defaultLessons:4},rooms:rooms,subjects:subjects.rows,teachers:teachers,feePlans:feePlans,students:students,tuitionPeriods:periods,events:events,attendance:attendance,leaveReasons:normalizeLeaveReasons(payload),teacherAdjustments:array(payload.teacherAdjustments),clipboard:null,readOnly:true,dataMode:'migration',dataMeta:{runId:clean(payload.runId),loadedAt:clean(payload.loadedAt),version:clean(payload.version),counts:payload.counts||{},dataQuality:Object.assign({},payload.dataQuality||{},{visibleEventWeekdays:visibleWeekdays}),rangeStart:rangeStart,rangeEnd:rangeEnd}};
   }
 
   function firebaseFunctions(){

@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#233b35">
   <title>新版排課系統｜柚子樂器</title>
   <link rel="icon" href="yuzu-logo-green.png">
-  <link rel="stylesheet" href="course-scheduler.css?v=20260722-relational-v3">
+  <link rel="stylesheet" href="course-scheduler.css?v=20260722-relational-v6">
 </head>
 <body>
   <div class="app-shell">
@@ -30,12 +30,12 @@
 
     <main class="main-content">
       <header class="page-header">
-        <div><h1 id="pageTitle">課程日表</h1><p id="pageSubtitle">教室為欄、30 分鐘為一格；點空白格即可排課。</p></div>
-        <div class="header-actions"><span class="save-state" id="saveState">✓ 已儲存於本機</span><button class="btn primary" type="button" id="topNewEvent">＋ 新增排課</button></div>
+        <div><h1 id="pageTitle">課程日表</h1><p class="hidden" id="pageSubtitle"></p></div>
+        <div class="header-actions hidden"><span class="save-state" id="saveState"></span><button class="btn primary" type="button" id="topNewEvent">＋ 新增排課</button></div>
       </header>
 
       <section class="data-mode card" id="dataModePanel">
-        <div class="data-mode-copy"><span class="data-mode-icon" id="dataModeIcon">示</span><div><strong id="dataModeTitle">示範資料模式（可操作）</strong><p id="dataModeDescription">可測試排課、簽到、學費與設定；不會寫入音教雲。</p><small id="dataModeMeta">未載入已移轉資料</small></div></div>
+        <div class="data-mode-copy"><span class="data-mode-icon" id="dataModeIcon">示</span><div><strong id="dataModeTitle">示範資料</strong><p id="dataModeDescription">課務測試資料</p><small id="dataModeMeta">尚未載入資料</small></div></div>
         <div class="data-mode-actions"><span class="tag" id="dataModeChip">示範</span><button class="btn secondary" type="button" id="loadMigratedDataBtn">載入已移轉課務資料</button></div>
       </section>
 
@@ -59,11 +59,11 @@
         </div>
 
         <div class="legend card">
-          <b>顏色說明</b><span><i class="fixed"></i>固定課</span><span><i class="single"></i>調課／單堂</span><span><i class="rental"></i>教室租用</span><span><i class="trial"></i>體驗課</span><span><i class="attended"></i>已簽到</span><span><i class="leave"></i>請假／停課</span>
+          <b>課表標示</b><span><i class="fixed"></i>固定課</span><span><i class="single"></i>老師調課</span><span><i class="rental"></i>教室租用</span><span><i class="trial"></i>體驗課</span><span class="legend-attended">左側深色條＝已簽到</span><span class="legend-muted">半透明＝請假／停課</span>
         </div>
 
         <section class="schedule-card card">
-          <div class="schedule-instructions"><span><b>操作：</b>點空白格新增；點課程看學費與簽到；剪下後點新格子即可調課。</span><span id="calendarHint">30 分鐘／格</span></div>
+          <div class="schedule-instructions hidden"><span id="calendarHint"></span></div>
           <div class="clipboard-bar hidden" id="clipboardBar"><span id="clipboardText"></span><button class="btn small outline" type="button" id="cancelClipboard">取消</button></div>
           <div class="schedule-scroll"><div class="schedule-grid" id="scheduleGrid"></div></div>
         </section>
@@ -156,7 +156,7 @@
   </div>
 
   <div class="modal-backdrop" id="studentModal" role="dialog" aria-modal="true" aria-labelledby="studentModalTitle">
-    <div class="modal extra-large"><div class="modal-head"><div><h2 id="studentModalTitle">學生資料</h2><p id="studentModalSubtitle"></p></div><button class="modal-close" type="button" data-close-modal="studentModal">×</button></div><div class="record-tabs" id="studentTabs"></div><div class="modal-body" id="studentModalBody"></div><div class="modal-foot spread" id="studentModalFoot"></div></div>
+    <div class="modal extra-large"><div class="modal-head"><div><h2 id="studentModalTitle">學生資料</h2><p id="studentModalSubtitle"></p></div><button class="modal-close" type="button" data-close-modal="studentModal">×</button></div><div class="record-tabs hidden" id="studentTabs"></div><div class="modal-body student-sheet" id="studentModalBody"></div><div class="modal-foot spread" id="studentModalFoot"></div></div>
   </div>
 
   <div class="modal-backdrop" id="tuitionModal" role="dialog" aria-modal="true" aria-labelledby="tuitionModalTitle">
@@ -172,7 +172,7 @@
   </div>
 
   <div class="modal-backdrop" id="policyModal" role="dialog" aria-modal="true" aria-labelledby="policyModalTitle">
-    <div class="modal extra-large"><div class="modal-head"><div><h2 id="policyModalTitle">教室時段規則</h2><p>每個跨越的 30 分鐘時段都必須符合規則，才允許排課或租用。</p></div><button class="modal-close" type="button" data-close-modal="policyModal">×</button></div><div class="policy-toolbar"><select class="control" id="policyWeekday"></select><span>適用科目留白代表全部科目均可使用。</span></div><div class="modal-body policy-body" id="policyModalBody"></div><div class="modal-foot"><button class="btn outline" type="button" data-close-modal="policyModal">取消</button><button class="btn primary" type="button" id="savePolicyBtn">儲存時段規則</button></div></div>
+    <div class="modal extra-large"><div class="modal-head"><div><h2 id="policyModalTitle">教室時段規則</h2><p>勾選「可排課」或「可租用」；未勾選的時段不開放。</p></div><button class="modal-close" type="button" data-close-modal="policyModal">×</button></div><div class="policy-toolbar"><select class="control" id="policyWeekday"></select><span>適用科目留白代表所有科目。</span></div><div class="modal-body policy-body" id="policyModalBody"></div><div class="modal-foot"><button class="btn outline" type="button" data-close-modal="policyModal">取消</button><button class="btn primary" type="button" id="savePolicyBtn">儲存時段規則</button></div></div>
   </div>
 
   <div class="toast-stack" id="toastStack" aria-live="polite"></div>
@@ -180,7 +180,7 @@
   <script src="config.js?v=20260722-course-scheduler-v2"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="course-scheduler-data.js?v=20260722-education-relational-v3"></script>
-  <script src="course-scheduler.js?v=20260722-relational-v3"></script>
+  <script src="course-scheduler-data.js?v=20260722-education-relational-v6"></script>
+  <script src="course-scheduler.js?v=20260722-relational-v6"></script>
 </body>
 </html>
