@@ -36,11 +36,14 @@ label{display:block;font-size:12px;font-weight:850;color:#4d6370;margin:12px 0 5
 .search-results{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:8px}
 .result-card{min-width:0;border:1px solid var(--line);border-radius:12px;background:#fff;padding:6px;cursor:pointer;text-align:left;color:inherit;box-shadow:0 3px 10px rgba(20,48,66,.04)}
 .result-card:active,.result-card:focus{border-color:#5aa589;background:#f1faf6;outline:none}
-.result-picture{width:100%;aspect-ratio:1/1;border-radius:9px;background:#f4f7f8;display:grid;place-items:center;overflow:hidden}
+.result-picture{width:100%;height:72px;border-radius:9px;background:#f4f7f8;display:grid;place-items:center;overflow:hidden}
 .result-picture img{width:100%;height:100%;object-fit:contain;background:#fff}
 .result-picture span{font-size:10px;color:var(--muted)}
-.result-name{display:block;margin-top:5px;font-size:11px;line-height:1.35;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.result-sku{display:block;margin-top:2px;color:var(--muted);font-size:9px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.result-sku{display:block;margin-top:6px;color:#173247;font-size:14px;line-height:1.2;font-weight:950;white-space:normal;overflow-wrap:anywhere}
+.result-name{display:block;margin-top:4px;font-size:10px;line-height:1.35;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#425965}
+.result-stock{display:flex;align-items:baseline;justify-content:space-between;gap:5px;margin-top:6px;padding:4px 6px;border-radius:8px;background:#edf8f3;color:var(--green2)}
+.result-stock span{font-size:9px;font-weight:800;white-space:nowrap}
+.result-stock b{font-size:17px;line-height:1;font-weight:950}
 .result-empty{grid-column:1/-1;padding:14px 8px;border:1px dashed var(--line);border-radius:12px;text-align:center;color:var(--muted);font-size:12px}
 .product{display:grid;grid-template-columns:110px minmax(0,1fr);gap:13px;margin-top:14px}
 .picture{height:110px;border:1px solid var(--line);border-radius:13px;background:#f7f9fa;display:grid;place-items:center;overflow:hidden}
@@ -74,9 +77,11 @@ label{display:block;font-size:12px;font-weight:850;color:#4d6370;margin:12px 0 5
   .picture{height:90px}
   .search-results{gap:6px}
   .result-card{padding:5px;border-radius:10px}
-  .result-picture{border-radius:7px}
+  .result-picture{height:64px;border-radius:7px}
   .result-name{font-size:10px}
-  .result-sku{font-size:8px}
+  .result-sku{font-size:13px}
+  .result-stock{margin-top:5px;padding:4px 5px}
+  .result-stock b{font-size:16px}
 }
 </style>
 </head>
@@ -172,8 +177,8 @@ function renderSearchResults(rows){
   $('searchResults').classList.remove('hidden');
   if(!rows.length){$('searchResults').innerHTML='<div class="result-empty">找不到符合的商品，請更換中文名稱、編號或條碼。</div>';return;}
   $('searchResults').innerHTML=rows.slice(0,60).map(p=>{
-    const name=productName(p),sku=productSku(p)||'未設定編號',image=productImage(p),picture=image?'<img loading="lazy" src="'+escapeHtml(image)+'" alt="'+escapeHtml(name)+'">':'<span>無圖</span>';
-    return '<button type="button" class="result-card" data-product-id="'+escapeHtml(p.id)+'" title="'+escapeHtml(name)+'"><span class="result-picture">'+picture+'</span><span class="result-name">'+escapeHtml(name)+'</span><span class="result-sku">'+escapeHtml(sku)+'</span></button>';
+    const name=productName(p),sku=productSku(p)||'未設定編號',stock=Number(p.currentStock||0).toLocaleString('zh-TW'),image=productImage(p),picture=image?'<img loading="lazy" src="'+escapeHtml(image)+'" alt="'+escapeHtml(name)+'">':'<span>無圖</span>';
+    return '<button type="button" class="result-card" data-product-id="'+escapeHtml(p.id)+'" title="'+escapeHtml(name)+'"><span class="result-picture">'+picture+'</span><span class="result-sku">編號 '+escapeHtml(sku)+'</span><span class="result-stock"><span>目前庫存</span><b>'+escapeHtml(stock)+'</b></span><span class="result-name">'+escapeHtml(name)+'</span></button>';
   }).join('');
 }
 function findProduct(){
