@@ -1100,10 +1100,10 @@ function queueInventorySyncInTransaction(tx,productId,sku,stock,reason){const re
   }
   const INJIAOYUN_DAILY_CALENDAR_URL='https://www.injiaoyun.com/dashboard/#/app/roomCalendar/day';
   function renderCourseCalendar(){
-    return '<section class="ops-banner"><div class="icon">日</div><div><h3>請選擇要使用的課程日表</h3><p>舊版仍維持原本的音教雲流程；新版目前是可操作的設計預覽，資料只會存在這台裝置的瀏覽器，不會寫入正式課務資料。</p></div></section>'
+    return '<section class="ops-banner"><div class="icon">日</div><div><h3>請選擇要使用的課程日表</h3><p>舊版仍維持原本的音教雲流程；新版以相近日課表與操作方式重建，並可載入已移轉的課務資料進行唯讀核對。</p></div></section>'
       +'<div class="ops-grid-equal">'
       +'<section class="ops-card"><div class="ops-card-head"><div><span class="ops-tag blue">現行正式系統</span><h2 style="margin-top:10px">舊版課程日表（音教雲）</h2><p>沿用目前的排課、學生簽到與課務資料。</p></div></div><div class="ops-status-row"><div><b>資料來源</b><small>音教雲正式資料</small></div><span class="ops-status-dot">正式使用</span></div><p style="color:var(--ops-muted);font-size:12px;min-height:56px">會在新分頁開啟音教雲。未登入時先登入一次即可；帳號密碼不會存入 GitHub 網頁。</p><a class="ops-button dark" href="'+attr(INJIAOYUN_DAILY_CALENDAR_URL)+'" target="_blank" rel="noopener noreferrer">開啟舊版音教雲</a></section>'
-      +'<section class="ops-card"><div class="ops-card-head"><div><span class="ops-tag green">第一版設計預覽</span><h2 style="margin-top:10px">新版排課系統</h2><p>30 分鐘格線、教室排程、衝突檢查、簽到與基本資料。</p></div></div><div class="ops-status-row"><div><b>資料來源</b><small>瀏覽器本機測試資料</small></div><span class="ops-status-dot warn">尚未連正式資料</span></div><p style="color:var(--ops-muted);font-size:12px;min-height:56px">可直接新增、調整與點選課程測試操作。確認版面與流程後，再接上 Firebase、正式學生資料與 LINE 預約。</p><a class="ops-button primary" href="course-scheduler.html">開啟新版排課預覽</a></section>'
+      +'<section class="ops-card"><div class="ops-card-head"><div><span class="ops-tag green">新版高還原預覽</span><h2 style="margin-top:10px">新版排課系統</h2><p>30 分鐘格線、教室排程、衝突檢查、簽到、學生繳費與老師資料。</p></div></div><div class="ops-status-row"><div><b>資料來源</b><small>示範資料／已移轉課務資料</small></div><span class="ops-status-dot warn">真實資料唯讀</span></div><p style="color:var(--ops-muted);font-size:12px;min-height:56px">示範模式可直接操作；輸入手動同步密碼後，可唯讀核對學生、繳費、老師、教室與排課。新版不讀取商品、庫存或銷售資料。</p><a class="ops-button primary" href="course-scheduler.html">開啟新版排課預覽</a></section>'
       +'</div>';
   }
 

@@ -65,7 +65,7 @@
     .time-label.hour{color:var(--ink);font-weight:900}
     .slot{border-right:1px solid #e6eeeb;border-bottom:1px dashed #e3ebe8;background:#fff;min-height:34px;transition:.12s}
     .slot.hour{border-bottom-style:solid;border-bottom-color:#d8e4df}.slot:hover{background:#edf8f3;box-shadow:inset 0 0 0 1px #87c1aa;cursor:pointer}
-    .event{z-index:4;margin:2px 3px;border:0;border-radius:8px;padding:5px 7px;text-align:left;color:#fff;overflow:hidden;box-shadow:0 4px 10px rgba(19,47,42,.15);min-height:28px;position:relative}
+    .event{z-index:4;margin:1px 2px;border:0;border-radius:3px;padding:4px 6px;text-align:left;color:#fff;overflow:hidden;box-shadow:none;min-height:28px;position:relative}
     .event:hover{filter:brightness(.97);transform:translateY(-1px);z-index:7}.event.fixed{background:linear-gradient(135deg,#2878c8,#2269b2)}.event.single{background:linear-gradient(135deg,#168c77,#117263)}.event.rental{background:linear-gradient(135deg,#c33e75,#a92f62)}.event.trial{background:linear-gradient(135deg,#d68921,#bd6d0c)}
     .event.attended{background:linear-gradient(135deg,#087063,#075649)}.event.leave{background:#87938f;color:#fff}.event.absent{background:#a14c49;color:#fff}
     .event.conflict{outline:3px solid #f05a50;outline-offset:-2px}
@@ -90,10 +90,11 @@
     .detail-hero{display:grid;grid-template-columns:1.1fr .9fr;gap:12px}.detail-block{border:1px solid var(--line);border-radius:14px;padding:13px}.detail-block h3{margin:0 0 9px;font-size:14px}.detail-line{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid #edf2f0;font-size:11px}.detail-line:last-child{border:0}.detail-line span{color:var(--muted)}.detail-line b{text-align:right}
     .status-actions{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:12px}.status-actions button{border:1px solid var(--line);background:#fff;border-radius:11px;padding:10px 6px;font-weight:900;font-size:11px}.status-actions button:hover{border-color:#67a88f;background:#f1f8f5}
     .log-list{margin-top:12px}.log-item{display:flex;gap:9px;padding:8px 0;border-bottom:1px solid #edf2f0;font-size:11px}.log-item i{width:8px;height:8px;border-radius:50%;background:var(--green);margin-top:5px}.log-item small{display:block;color:var(--muted)}
+    .data-mode{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 15px;margin-bottom:12px;border-left:5px solid #6f8d83;background:#fff}.data-mode.actual{border-left-color:#16775d;background:#f7fcfa}.data-mode-main{display:flex;align-items:center;gap:11px;min-width:0}.data-mode-icon{width:36px;height:36px;flex:0 0 36px;border-radius:50%;display:grid;place-items:center;background:#eef3f1;color:#526760;font-weight:900}.data-mode.actual .data-mode-icon{background:#dff2e9;color:#126149}.data-mode h2{font-size:14px;margin:0}.data-mode p{font-size:11px;color:var(--muted);margin:2px 0 0}.data-mode-meta{font-size:10px;color:#527268;margin-top:4px;font-variant-numeric:tabular-nums}.data-mode-actions{display:flex;align-items:center;gap:8px;flex:0 0 auto}.mode-chip{display:inline-flex;align-items:center;border-radius:999px;padding:5px 9px;background:#eef3f1;color:#5d716b;font-size:10px;font-weight:900}.actual .mode-chip{background:#dff2e9;color:#126149}.btn[disabled],button[disabled],input[disabled],select[disabled],textarea[disabled]{cursor:not-allowed;opacity:.55;transform:none!important}.readonly-note{padding:10px 12px;border:1px solid #cde4da;background:#edf8f3;color:#17654e;font-size:11px;margin-bottom:12px}.readonly-note b{display:block}.loading-dot{display:inline-block;width:10px;height:10px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .7s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
     .toast-stack{position:fixed;right:18px;bottom:18px;z-index:120;display:grid;gap:8px;width:min(360px,calc(100vw - 36px))}.toast{background:#173b37;color:#fff;border-radius:13px;padding:11px 13px;box-shadow:var(--shadow);animation:toastin .2s ease}.toast.error{background:#9e3e39}.toast b{display:block}.toast span{font-size:11px;opacity:.78}@keyframes toastin{from{opacity:0;transform:translateY(8px)}}
     @media(max-width:1100px){.kpis{grid-template-columns:repeat(2,1fr)}.teacher-cards{grid-template-columns:repeat(2,1fr)}.settings-grid{grid-template-columns:1fr}}
     @media(max-width:820px){
-      .app{display:block}.side{position:sticky;top:0;width:auto;height:auto;padding:8px;display:block;z-index:50}.brand,.preview-badge,.side-foot{display:none}.nav{flex-direction:row;overflow:auto}.nav button{padding:7px 10px;white-space:nowrap}.nav button span{width:25px;height:25px}.main{padding:0 10px 28px}.top{position:relative;padding:14px 3px 10px}.top h1{font-size:20px}.top p,.save-state{display:none}.toolbar{align-items:flex-start;flex-direction:column}.date-controls,.toolbar-actions{width:100%}.toolbar-actions .btn{flex:1}.schedule-scroll{max-height:70vh}.teacher-cards{grid-template-columns:1fr}.metric-grid{grid-template-columns:1fr}.modal-backdrop{padding:0;align-items:flex-end}.modal{border-radius:18px 18px 0 0;max-height:96vh}.form-grid,.form-grid.cols-3,.detail-hero{grid-template-columns:1fr}.status-actions{grid-template-columns:repeat(2,1fr)}.inline-create{grid-template-columns:1fr}.kpis{gap:7px}.kpi{padding:10px}.kpi strong{font-size:18px}.date-title{min-width:0;flex:1}.top-actions .btn.ghost{display:none}
+      .app{display:block}.side{position:sticky;top:0;width:auto;height:auto;padding:8px;display:block;z-index:50}.brand,.preview-badge,.side-foot{display:none}.nav{flex-direction:row;overflow:auto}.nav button{padding:7px 10px;white-space:nowrap}.nav button span{width:25px;height:25px}.main{padding:0 10px 28px}.top{position:relative;padding:14px 3px 10px}.top h1{font-size:20px}.top p,.save-state{display:none}.data-mode{align-items:flex-start;flex-direction:column}.data-mode-actions{width:100%}.data-mode-actions .btn{flex:1}.toolbar{align-items:flex-start;flex-direction:column}.date-controls,.toolbar-actions{width:100%}.toolbar-actions .btn{flex:1}.schedule-scroll{max-height:70vh}.teacher-cards{grid-template-columns:1fr}.metric-grid{grid-template-columns:1fr}.modal-backdrop{padding:0;align-items:flex-end}.modal{border-radius:18px 18px 0 0;max-height:96vh}.form-grid,.form-grid.cols-3,.detail-hero{grid-template-columns:1fr}.status-actions{grid-template-columns:repeat(2,1fr)}.inline-create{grid-template-columns:1fr}.kpis{gap:7px}.kpi{padding:10px}.kpi strong{font-size:18px}.date-title{min-width:0;flex:1}.top-actions .btn.ghost{display:none}
     }
   </style>
 </head>
@@ -101,7 +102,7 @@
   <div class="app">
     <aside class="side">
       <div class="brand"><div class="brand-mark">♫</div><div><strong>新版排課系統</strong><small>柚子樂器課務管理</small></div></div>
-      <div class="preview-badge">設計預覽・本機測試資料</div>
+      <div class="preview-badge" id="sideModeBadge">示範資料・可操作</div>
       <nav class="nav" aria-label="排課系統選單">
         <button type="button" class="active" data-view="calendar"><span>日</span>課程日表</button>
         <button type="button" data-view="students"><span>生</span>學生與繳費</button>
@@ -114,8 +115,13 @@
     <main class="main">
       <header class="top">
         <div><h1 id="pageTitle">課程日表</h1><p id="pageSubtitle">依教室查看每日課程，時間以 30 分鐘為一格。</p></div>
-        <div class="top-actions"><span class="save-state" id="saveState">✓ 測試資料已儲存於本機</span><a class="btn ghost" href="operations-hub.html#course-calendar">返回雙入口</a><button class="btn primary" type="button" id="topNewEvent">＋ 新增排課</button></div>
+        <div class="top-actions"><span class="save-state" id="saveState">✓ 示範資料已儲存於本機</span><a class="btn ghost" href="operations-hub.html#course-calendar">返回雙入口</a><button class="btn primary" type="button" id="topNewEvent">＋ 新增排課</button></div>
       </header>
+
+      <section class="card data-mode" id="dataModePanel">
+        <div class="data-mode-main"><div class="data-mode-icon" id="dataModeIcon">示</div><div><h2 id="dataModeTitle">示範資料模式（可操作）</h2><p id="dataModeDescription">可測試新增、排課、簽到與繳費；資料只存在這台裝置。</p><div class="data-mode-meta" id="dataModeMeta">未連接音教雲移轉資料</div></div></div>
+        <div class="data-mode-actions"><span class="mode-chip" id="dataModeChip">示範</span><button class="btn primary" type="button" id="loadMigratedDataBtn">載入已移轉課務資料</button></div>
+      </section>
 
       <section class="page active" id="calendarPage">
         <div class="card toolbar">
@@ -166,7 +172,7 @@
           <div>
             <section class="card settings-card"><h3>請假原因</h3><p>點選課程辦理請假時使用。</p><div class="chip-list" id="leaveChips"></div><button class="btn small soft" type="button" id="addLeaveReasonBtn" style="margin-top:10px">＋ 新增原因</button></section>
             <section class="card future-card"><span class="tag green">下一階段</span><h3 style="margin-top:10px">LINE 剩餘時段預約</h3><p>學生從 LINE 查看可預約空格，送出後直接進入待確認清單，確認後寫入這張課程日表。</p><ul><li>只顯示老師與教室都可用的時段</li><li>依學生科目、剩餘堂數與期限判斷</li><li>預約、取消與候補通知留存紀錄</li></ul></section>
-            <section class="card settings-card" style="margin-top:12px"><h3>預覽資料</h3><p>目前所有操作只儲存在這台裝置的瀏覽器，不會寫入正式 Firebase。</p><button class="btn danger" type="button" id="resetPreviewBtn">恢復預設測試資料</button></section>
+            <section class="card settings-card" style="margin-top:12px"><h3 id="previewDataTitle">示範資料</h3><p id="previewDataDescription">示範模式的操作只儲存在這台裝置，不會寫入正式 Firebase。</p><button class="btn danger" type="button" id="resetPreviewBtn">恢復預設示範資料</button></section>
           </div>
         </div>
       </section>
@@ -211,17 +217,22 @@
   </div>
   <div class="toast-stack" id="toastStack" aria-live="polite"></div>
 
+  <script src="config.js?v=20260722-course-scheduler-v1"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
+  <script src="course-scheduler-data.js?v=20260722-education-readonly-v1"></script>
   <script>
   (function(){
     'use strict';
-    var STORAGE_KEY='youzi_course_scheduler_preview_v1';
+    var STORAGE_KEY='youzi_course_scheduler_preview_v2';
+    var PIN_SESSION_KEY='youzi_injiaoyun_manual_sync_pin';
     var viewMeta={
       calendar:['課程日表','依教室查看每日課程，時間以 30 分鐘為一格。'],
       students:['學生與繳費','剩餘堂數、繳費與上課資料放在同一份學生資料中。'],
       teachers:['老師與薪資','實際上課拆帳與獎勵、扣薪分開計算。'],
       settings:['基本設定','先設定教室、時間、科目與收費方式，再開始排課。']
     };
-    var currentView='calendar',state=loadState(),studentSearchTimer=null,teacherSearchTimer=null;
+    var currentView='calendar',state=loadState(),studentSearchTimer=null,teacherSearchTimer=null,loadingMigratedData=false;
 
     function todayKey(){var d=new Date(),y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');return y+'-'+m+'-'+day;}
     function shiftDate(key,days){var d=new Date(key+'T12:00:00');d.setDate(d.getDate()+Number(days||0));return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
@@ -232,6 +243,8 @@
     function minToTime(value){var h=Math.floor(value/60),m=value%60;return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0');}
     function typeName(value){return {fixed:'固定課程',single:'單堂課程',rental:'租用空間',trial:'體驗課'}[value]||value;}
     function statusName(value){return {scheduled:'已排課',attended:'已簽到',leave:'學生請假',absent:'缺席'}[value]||value;}
+    function lineStatusText(value){return value===true?'已綁定':value===false?'未綁定':'移轉資料未提供';}
+    function lineStatusTag(value){return '<span class="tag '+(value===true?'green':value===false?'red':'blue')+'">LINE '+lineStatusText(value)+'</span>';}
     function weekday(key){return ['星期日','星期一','星期二','星期三','星期四','星期五','星期六'][new Date(key+'T12:00:00').getDay()];}
     function zhDate(key){var p=key.split('-');return Number(p[0])+' 年 '+Number(p[1])+' 月 '+Number(p[2])+' 日';}
     function defaultState(){
@@ -245,29 +258,29 @@
         {id:'r6',name:'吉他教室',note:'租用 100 元'}
       ];
       var students=[
-        {id:'s1',name:'林采彤',phone:'0975-482595',line:true,subject:'鋼琴',teacher:'張鈺捷',remaining:5,tuition:2800,paid:2800,expiry:'2026-09-30',note:'固定週三'},
-        {id:'s2',name:'黃宇晶',phone:'0988-678526',line:false,subject:'木吉他',teacher:'張洵齊',remaining:3,tuition:2800,paid:1400,expiry:'2026-08-31',note:'需提醒繳費'},
-        {id:'s3',name:'蔡旻諭',phone:'0966-526958',line:true,subject:'電吉他',teacher:'張洵齊',remaining:7,tuition:2800,paid:2800,expiry:'2026-10-15',note:''},
-        {id:'s4',name:'林哲宇',phone:'0920-218861',line:true,subject:'爵士鼓',teacher:'張洵慈',remaining:4,tuition:2400,paid:2400,expiry:'2026-09-20',note:'固定程度 1st'},
-        {id:'s5',name:'劉尹蓁',phone:'0931-798183',line:false,subject:'鋼琴',teacher:'林珮慈',remaining:2,tuition:2800,paid:2800,expiry:'2026-08-15',note:'信箱尚未填寫'},
-        {id:'s6',name:'陳宇翔',phone:'0917-123123',line:true,subject:'爵士鼓',teacher:'楊雅雯',remaining:6,tuition:2400,paid:2400,expiry:'2026-10-01',note:''}
+        {id:'s1',name:'示範學生 A',phone:'0912-000-001',line:true,subject:'鋼琴',teacher:'示範老師 A',remaining:5,tuition:2800,paid:2800,expiry:'2026-09-30',note:'固定週三'},
+        {id:'s2',name:'示範學生 B',phone:'0912-000-002',line:false,subject:'木吉他',teacher:'示範老師 B',remaining:3,tuition:2800,paid:1400,expiry:'2026-08-31',note:'需提醒繳費'},
+        {id:'s3',name:'示範學生 C',phone:'0912-000-003',line:true,subject:'電吉他',teacher:'示範老師 B',remaining:7,tuition:2800,paid:2800,expiry:'2026-10-15',note:''},
+        {id:'s4',name:'示範學生 D',phone:'0912-000-004',line:true,subject:'爵士鼓',teacher:'示範老師 C',remaining:4,tuition:2400,paid:2400,expiry:'2026-09-20',note:'固定程度 1st'},
+        {id:'s5',name:'示範學生 E',phone:'0912-000-005',line:false,subject:'鋼琴',teacher:'示範老師 D',remaining:2,tuition:2800,paid:2800,expiry:'2026-08-15',note:'信箱尚未填寫'},
+        {id:'s6',name:'示範學生 F',phone:'0912-000-006',line:true,subject:'爵士鼓',teacher:'示範老師 E',remaining:6,tuition:2400,paid:2400,expiry:'2026-10-01',note:''}
       ];
       var teachers=[
-        {id:'t1',name:'張鈺捷',phone:'0930-090066',subjects:['鋼琴'],reward:0,deduction:0,note:''},
-        {id:'t2',name:'張洵齊',phone:'0921-730123',subjects:['木吉他','電吉他'],reward:75,deduction:0,note:'外聘'},
-        {id:'t3',name:'張洵慈',phone:'0974-027542',subjects:['爵士鼓'],reward:0,deduction:50,note:''},
-        {id:'t4',name:'林珮慈',phone:'0920-354639',subjects:['鋼琴'],reward:96,deduction:0,note:''},
-        {id:'t5',name:'楊雅雯',phone:'0988-373027',subjects:['爵士鼓'],reward:0,deduction:0,note:''}
+        {id:'t1',name:'示範老師 A',phone:'0922-000-001',subjects:['鋼琴'],reward:0,deduction:0,note:''},
+        {id:'t2',name:'示範老師 B',phone:'0922-000-002',subjects:['木吉他','電吉他'],reward:75,deduction:0,note:'外聘'},
+        {id:'t3',name:'示範老師 C',phone:'0922-000-003',subjects:['爵士鼓'],reward:0,deduction:50,note:''},
+        {id:'t4',name:'示範老師 D',phone:'0922-000-004',subjects:['鋼琴'],reward:96,deduction:0,note:''},
+        {id:'t5',name:'示範老師 E',phone:'0922-000-005',subjects:['爵士鼓'],reward:0,deduction:0,note:''}
       ];
       var events=[
-        {id:'e1',date:date,roomId:'r1',start:'13:00',duration:300,type:'rental',frequency:'once',student:'郭素娥',teacher:'',subject:'教室租用',status:'scheduled',fee:1000,salary:0,note:'團練空間租用',createdAt:new Date().toISOString()},
-        {id:'e2',date:date,roomId:'r2',start:'14:00',duration:60,type:'fixed',frequency:'weekly',student:'林采彤',teacher:'張鈺捷',subject:'鋼琴',status:'scheduled',fee:700,salary:420,note:'固定週三',createdAt:new Date().toISOString()},
-        {id:'e3',date:date,roomId:'r2',start:'15:00',duration:60,type:'fixed',frequency:'weekly',student:'黃宇晶',teacher:'張洵齊',subject:'木吉他',status:'scheduled',fee:700,salary:420,note:'',createdAt:new Date().toISOString()},
-        {id:'e4',date:date,roomId:'r3',start:'15:00',duration:90,type:'rental',frequency:'once',student:'蔡旻諭',teacher:'',subject:'教室租用',status:'scheduled',fee:300,salary:0,note:'',createdAt:new Date().toISOString()},
-        {id:'e5',date:date,roomId:'r4',start:'15:00',duration:60,type:'fixed',frequency:'weekly',student:'林哲宇',teacher:'張洵慈',subject:'爵士鼓',status:'attended',fee:600,salary:360,note:'程度 1st',createdAt:new Date().toISOString()},
-        {id:'e6',date:date,roomId:'r5',start:'16:00',duration:60,type:'fixed',frequency:'weekly',student:'劉尹蓁',teacher:'林珮慈',subject:'鋼琴',status:'scheduled',fee:700,salary:420,note:'',createdAt:new Date().toISOString()},
-        {id:'e7',date:date,roomId:'r6',start:'17:00',duration:60,type:'single',frequency:'once',student:'陳宇翔',teacher:'楊雅雯',subject:'爵士鼓',status:'leave',fee:600,salary:0,note:'學生事假',createdAt:new Date().toISOString()},
-        {id:'e8',date:date,roomId:'r4',start:'18:00',duration:60,type:'trial',frequency:'once',student:'王小安',teacher:'張洵慈',subject:'爵士鼓',status:'scheduled',fee:500,salary:300,note:'第一次體驗',createdAt:new Date().toISOString()}
+        {id:'e1',date:date,roomId:'r1',start:'13:00',duration:300,type:'rental',frequency:'once',student:'示範租用客戶',teacher:'',subject:'教室租用',status:'scheduled',fee:1000,salary:0,note:'團練空間租用',createdAt:new Date().toISOString()},
+        {id:'e2',date:date,roomId:'r2',start:'14:00',duration:60,type:'fixed',frequency:'weekly',student:'示範學生 A',teacher:'示範老師 A',subject:'鋼琴',status:'scheduled',fee:700,salary:420,note:'固定週三',createdAt:new Date().toISOString()},
+        {id:'e3',date:date,roomId:'r2',start:'15:00',duration:60,type:'fixed',frequency:'weekly',student:'示範學生 B',teacher:'示範老師 B',subject:'木吉他',status:'scheduled',fee:700,salary:420,note:'',createdAt:new Date().toISOString()},
+        {id:'e4',date:date,roomId:'r3',start:'15:00',duration:90,type:'rental',frequency:'once',student:'示範租用客戶 B',teacher:'',subject:'教室租用',status:'scheduled',fee:300,salary:0,note:'',createdAt:new Date().toISOString()},
+        {id:'e5',date:date,roomId:'r4',start:'15:00',duration:60,type:'fixed',frequency:'weekly',student:'示範學生 D',teacher:'示範老師 C',subject:'爵士鼓',status:'attended',fee:600,salary:360,note:'程度 1st',createdAt:new Date().toISOString()},
+        {id:'e6',date:date,roomId:'r5',start:'16:00',duration:60,type:'fixed',frequency:'weekly',student:'示範學生 E',teacher:'示範老師 D',subject:'鋼琴',status:'scheduled',fee:700,salary:420,note:'',createdAt:new Date().toISOString()},
+        {id:'e7',date:date,roomId:'r6',start:'17:00',duration:60,type:'single',frequency:'once',student:'示範學生 F',teacher:'示範老師 E',subject:'爵士鼓',status:'leave',fee:600,salary:0,note:'學生事假',createdAt:new Date().toISOString()},
+        {id:'e8',date:date,roomId:'r4',start:'18:00',duration:60,type:'trial',frequency:'once',student:'示範學生 G',teacher:'示範老師 C',subject:'爵士鼓',status:'scheduled',fee:500,salary:300,note:'第一次體驗',createdAt:new Date().toISOString()}
       ];
       return {
         version:1,currentDate:date,settings:{startHour:10,endHour:22,interval:30},
@@ -278,27 +291,74 @@
           {id:'c2',subject:'鋼琴',name:'每期 2800',lessons:4,tuition:2800,teacherPay:420},
           {id:'c3',subject:'爵士鼓',name:'每期 2400',lessons:4,tuition:2400,teacherPay:360}
         ],
-        students:students,teachers:teachers,events:events,logs:[]
+        students:students,teachers:teachers,events:events,logs:[],readOnly:false,dataMode:'demo',dataMeta:{}
       };
     }
     function loadState(){
       try{
         var parsed=JSON.parse(localStorage.getItem(STORAGE_KEY)||'null');
         if(parsed&&parsed.version===1&&Array.isArray(parsed.rooms)&&Array.isArray(parsed.events)){
-          parsed.currentDate=parsed.currentDate||todayKey();parsed.logs=Array.isArray(parsed.logs)?parsed.logs:[];return parsed;
+          parsed.currentDate=parsed.currentDate||todayKey();parsed.logs=Array.isArray(parsed.logs)?parsed.logs:[];parsed.readOnly=false;parsed.dataMode='demo';parsed.dataMeta={};return parsed;
         }
       }catch(error){}
       return defaultState();
     }
+    function isReadOnly(){return state&&state.readOnly===true;}
     function saveState(message){
+      var el=document.getElementById('saveState');
+      if(isReadOnly()){if(el)el.textContent='唯讀・不會寫回移轉資料';return;}
       localStorage.setItem(STORAGE_KEY,JSON.stringify(state));
-      var el=document.getElementById('saveState');if(el){el.textContent='✓ '+(message||'測試資料已儲存於本機');}
+      if(el){el.textContent='✓ '+(message||'示範資料已儲存於本機');}
     }
     function toast(title,message,type){
       var stack=document.getElementById('toastStack'),item=document.createElement('div');item.className='toast'+(type==='error'?' error':'');item.innerHTML='<b>'+esc(title)+'</b><span>'+esc(message||'')+'</span>';stack.appendChild(item);setTimeout(function(){item.remove();},3600);
     }
     function openModal(id){document.getElementById(id).classList.add('open');document.body.style.overflow='hidden';}
     function closeModal(id){document.getElementById(id).classList.remove('open');if(!document.querySelector('.modal-backdrop.open'))document.body.style.overflow='';}
+    function requireWritable(action){
+      if(!isReadOnly())return true;
+      toast('目前是唯讀預覽',(action||'這項操作')+'尚未開放；切回示範模式即可測試。','error');return false;
+    }
+    function dataCount(name){return Number(state.dataMeta&&state.dataMeta.counts&&state.dataMeta.counts[name]||0);}
+    function updateDataModeUI(){
+      var actual=isReadOnly(),panel=document.getElementById('dataModePanel'),button=document.getElementById('loadMigratedDataBtn');
+      panel.classList.toggle('actual',actual);document.getElementById('dataModeIcon').textContent=actual?'唯':'示';
+      document.getElementById('sideModeBadge').textContent=actual?'已移轉課務・唯讀':'示範資料・可操作';
+      document.getElementById('dataModeTitle').textContent=actual?'已移轉課務資料（唯讀）':'示範資料模式（可操作）';
+      document.getElementById('dataModeDescription').textContent=actual?'只讀取學生、繳費、老師、教室與排課；不包含商品、庫存或銷售。':'可測試新增、排課、簽到與繳費；資料只存在這台裝置。';
+      document.getElementById('dataModeChip').textContent=actual?'唯讀':'示範';
+      button.textContent=actual?'回到示範模式':'載入已移轉課務資料';button.disabled=loadingMigratedData;
+      if(actual){
+        var meta=state.dataMeta||{},loaded=meta.loadedAt?new Date(meta.loadedAt).toLocaleString('zh-TW'):'剛剛';
+        var range=meta.rangeStart&&meta.rangeEnd?('・課表範圍 '+meta.rangeStart+'～'+meta.rangeEnd):'';
+        document.getElementById('dataModeMeta').textContent='批次 '+(meta.runId||'未提供')+'・學生 '+state.students.length+'・老師 '+state.teachers.length+'・固定課 '+dataCount('fixedCourses')+range+'・載入 '+loaded;
+        document.getElementById('saveState').textContent='唯讀・不會寫回移轉資料';
+        document.getElementById('previewDataTitle').textContent='已移轉課務資料';document.getElementById('previewDataDescription').textContent='此模式只讀，不會新增、修改或刪除音教雲及 Firebase 測試資料。';
+      }else{
+        document.getElementById('dataModeMeta').textContent='未連接音教雲移轉資料';document.getElementById('saveState').textContent='✓ 示範資料已儲存於本機';
+        document.getElementById('previewDataTitle').textContent='示範資料';document.getElementById('previewDataDescription').textContent='示範模式的操作只儲存在這台裝置，不會寫入正式 Firebase。';
+      }
+      ['topNewEvent','sideNewEvent','calendarNewEvent','addStudentBtn','addTeacherBtn','saveSettingsBtn','addRoomBtn','addSubjectBtn','addLeaveReasonBtn','addChargeBtn','resetPreviewBtn'].forEach(function(id){var element=document.getElementById(id);if(element)element.disabled=actual;});
+    }
+    function renderCurrentView(){refreshFormOptions();updateDataModeUI();switchView(currentView);}
+    async function toggleMigratedData(){
+      if(loadingMigratedData)return;
+      if(isReadOnly()){state=loadState();renderCurrentView();toast('已回到示範模式','可繼續測試新增、簽到與繳費。');return;}
+      if(!window.YouziCoursePreviewData||typeof window.YouziCoursePreviewData.load!=='function'){toast('資料元件尚未載入','請確認網路後重新整理頁面。','error');return;}
+      var pin='';try{pin=sessionStorage.getItem(PIN_SESSION_KEY)||'';}catch(error){}
+      if(!pin)pin=(window.prompt('請輸入音教雲手動同步密碼：')||'').trim();if(!pin)return;
+      if(pin.length<12||pin.length>64){toast('密碼格式不正確','手動同步密碼應為 12～64 碼。','error');return;}
+      loadingMigratedData=true;var button=document.getElementById('loadMigratedDataBtn');button.disabled=true;button.innerHTML='<span class="loading-dot"></span> 正在載入課務';
+      try{
+        state=await window.YouziCoursePreviewData.load({manualSyncPin:pin,anchorDate:state.currentDate||todayKey()});
+        try{sessionStorage.setItem(PIN_SESSION_KEY,pin);}catch(error){}
+        renderCurrentView();toast('課務資料已載入','目前是唯讀模式，不會改動來源資料。');
+      }catch(error){
+        var message=String(error&&error.message||'無法讀取課務資料。').replace(/^Firebase:\s*/,'');
+        if(/permission|密碼|unauth|denied/i.test(message)){try{sessionStorage.removeItem(PIN_SESSION_KEY);}catch(ignore){}}
+        toast('課務資料載入失敗',message.slice(0,180),'error');
+      }finally{loadingMigratedData=false;updateDataModeUI();}
+    }
     function switchView(view){
       currentView=viewMeta[view]?view:'calendar';
       document.querySelectorAll('.page').forEach(function(page){page.classList.toggle('active',page.id===currentView+'Page');});
@@ -345,7 +405,8 @@
       document.getElementById('kpiAttended').textContent=events.filter(function(row){return row.status==='attended';}).length;
       document.getElementById('kpiRooms').textContent=usedRooms.size+' / '+state.rooms.length;
       document.getElementById('kpiWarnings').textContent=Object.keys(conflicts).length+events.filter(function(row){return row.status==='leave'||row.status==='absent';}).length;
-      document.getElementById('calendarHint').textContent=state.settings.interval+' 分鐘／格・'+state.rooms.length+' 間教室';
+      document.getElementById('calendarHint').textContent=state.settings.interval+' 分鐘／格・'+state.rooms.length+' 間教室'+(isReadOnly()?'・唯讀':'');
+      document.querySelector('.schedule-note span:first-child').innerHTML=isReadOnly()?'<b>唯讀檢視：</b>點彩色課程查看學生、繳費、老師與簽到資料；空白格暫不寫入。':'<b>操作方式：</b>點空白格新增排課；點彩色課程查看學生、老師與簽到資料。';
       var start=state.settings.startHour*60,end=state.settings.endHour*60,slots=[];
       for(var min=start;min<end;min+=state.settings.interval)slots.push(min);
       var grid=document.getElementById('scheduleGrid');
@@ -365,7 +426,7 @@
         var badge=event.status==='attended'?'✓':event.status==='leave'?'假':event.status==='absent'?'缺':typeName(event.type).slice(0,1);
         html+='<button type="button" class="event '+esc(event.type)+' '+esc(statusClass)+(conflicts[event.id]?' conflict':'')+'" data-event-id="'+esc(event.id)+'" style="grid-column:'+(roomIndex+2)+';grid-row:'+(slotIndex+2)+'/span '+span+'"><span class="event-top"><span>'+esc(event.start)+'–'+esc(minToTime(timeToMin(event.start)+Number(event.duration)))+'</span><b>'+esc(badge)+'</b></span><span class="event-main">'+esc(event.student||event.subject||typeName(event.type))+'</span><span class="event-sub">'+esc(event.subject)+(event.teacher?'・'+esc(event.teacher):'')+'</span></button>';
       });
-      if(!events.length)html+='<div class="empty-day"><b>這一天尚未排課</b><span>點任一空白格即可新增</span></div>';
+      if(!events.length)html+='<div class="empty-day"><b>這一天尚未排課</b><span>'+(isReadOnly()?'已移轉資料中沒有這一天的課程':'點任一空白格即可新增')+'</span></div>';
       grid.innerHTML=html;
     }
     function refreshFormOptions(){
@@ -379,6 +440,7 @@
       document.getElementById('scheduleForm').reset();document.getElementById('eventId').value='';document.getElementById('eventDuration').value='60';document.getElementById('eventType').value='fixed';document.getElementById('eventFrequency').value='once';document.getElementById('eventFee').value='700';document.getElementById('eventSalary').value='420';document.getElementById('quickStudentPanel').classList.add('hidden');document.getElementById('repeatUntilField').classList.add('hidden');
     }
     function openScheduleModal(options){
+      if(!requireWritable('新增或編輯排課'))return;
       options=options||{};refreshFormOptions();clearScheduleForm();
       var source=options.event||options.copy||null,isEdit=!!options.event;
       document.getElementById('scheduleModalTitle').textContent=isEdit?'編輯本次課程':options.copy?'複製排課':'新增排課';
@@ -413,7 +475,7 @@
       box.className='conflict-box has-conflict';box.innerHTML='<b>發現 '+conflicts.length+' 個衝突，暫時無法儲存</b><span>'+lines.map(esc).join('<br>')+(conflicts.length>4?'<br>其餘 '+(conflicts.length-4)+' 項未顯示':'')+'</span>';
     }
     function saveSchedule(event){
-      event.preventDefault();var base=formEvent(),editId=document.getElementById('eventId').value;
+      event.preventDefault();if(!requireWritable('儲存排課'))return;var base=formEvent(),editId=document.getElementById('eventId').value;
       if(!base.date||!base.roomId||!base.start){toast('資料尚未完成','日期、時間與教室為必填。','error');return;}
       if(base.type!=='rental'&&(!base.student||!base.teacher)){toast('資料尚未完成','一般課程需要選擇學生與老師。','error');return;}
       if(timeToMin(base.start)+base.duration>state.settings.endHour*60){toast('超出可排課時間','請縮短時數，或到基本設定延後結束時間。','error');return;}
@@ -430,31 +492,33 @@
       state.currentDate=base.date;saveState();closeModal('scheduleModal');renderCalendar();toast('排課已儲存',base.student+'・'+base.date+' '+base.start);
     }
     function roomName(id){var room=state.rooms.find(function(row){return row.id===id;});return room?room.name:'未設定教室';}
+    function eventHasStudent(event,student){return !!event&&!!student&&(event.student===student.name||(Array.isArray(event.studentIds)&&event.studentIds.indexOf(student.id)>=0));}
     function addLog(eventId,action,note){state.logs.unshift({id:uid('log'),eventId:eventId,action:action,note:note||'',at:new Date().toISOString()});state.logs=state.logs.slice(0,200);}
     function openEventDetail(id){
       var event=state.events.find(function(row){return row.id===id;});if(!event)return;
-      var student=state.students.find(function(row){return row.name===event.student;})||{},teacher=state.teachers.find(function(row){return row.name===event.teacher;})||{},logs=state.logs.filter(function(row){return row.eventId===id;}).slice(0,8);
+      var student=state.students.find(function(row){return eventHasStudent(event,row);})||{},teacher=state.teachers.find(function(row){return row.name===event.teacher;})||{},logs=state.logs.filter(function(row){return row.eventId===id;}).slice(0,8);
       document.getElementById('detailModalTitle').textContent=(event.student||event.subject)+'・'+typeName(event.type);
-      var studentInfo=event.type==='rental'?'<div class="detail-line"><span>承租人</span><b>'+esc(event.student||'未填')+'</b></div>':'<div class="detail-line"><span>手機</span><b>'+esc(student.phone||'未填')+'</b></div><div class="detail-line"><span>LINE</span><b>'+(student.line?'已綁定':'未綁定')+'</b></div><div class="detail-line"><span>剩餘堂數</span><b>'+Number(student.remaining||0)+' 堂</b></div><div class="detail-line"><span>繳費</span><b>'+money(student.paid||0)+' / '+money(student.tuition||0)+'</b></div><div class="detail-line"><span>期限</span><b>'+esc(student.expiry||'未設定')+'</b></div>';
+      var studentInfo=event.type==='rental'?'<div class="detail-line"><span>承租人</span><b>'+esc(event.student||'未填')+'</b></div>':'<div class="detail-line"><span>上課學生</span><b>'+esc(event.student||'未填')+'</b></div><div class="detail-line"><span>主要聯絡手機</span><b>'+esc(student.phone||'未填')+'</b></div><div class="detail-line"><span>LINE</span><b>'+esc(lineStatusText(student.line))+'</b></div><div class="detail-line"><span>剩餘堂數</span><b>'+Number(student.remaining||0)+' 堂</b></div><div class="detail-line"><span>繳費</span><b>'+money(student.paid||0)+' / '+money(student.tuition||0)+'</b></div><div class="detail-line"><span>期限</span><b>'+esc(student.expiry||'未設定')+'</b></div>';
       var teacherInfo=event.teacher?'<div class="detail-line"><span>老師</span><b>'+esc(event.teacher)+'</b></div><div class="detail-line"><span>手機</span><b>'+esc(teacher.phone||'未填')+'</b></div><div class="detail-line"><span>本堂拆帳</span><b>'+money(event.salary)+'</b></div>':'<div class="detail-line"><span>老師</span><b>不適用</b></div>';
       var logHtml=logs.length?logs.map(function(log){return '<div class="log-item"><i></i><div><b>'+esc(log.action)+'</b><small>'+new Date(log.at).toLocaleString('zh-TW')+(log.note?'・'+esc(log.note):'')+'</small></div></div>';}).join(''):'<p style="color:var(--muted);font-size:11px">尚無其他操作紀錄。</p>';
-      document.getElementById('detailBody').innerHTML='<div class="detail-hero"><section class="detail-block"><h3>課程資料</h3><div class="detail-line"><span>日期時間</span><b>'+esc(event.date+' '+event.start+'–'+minToTime(timeToMin(event.start)+event.duration))+'</b></div><div class="detail-line"><span>教室</span><b>'+esc(roomName(event.roomId))+'</b></div><div class="detail-line"><span>類型／頻率</span><b>'+esc(typeName(event.type)+'・'+(event.frequency==='weekly'?'每週':event.frequency==='biweekly'?'隔週':'單次'))+'</b></div><div class="detail-line"><span>科目</span><b>'+esc(event.subject)+'</b></div><div class="detail-line"><span>狀態</span><b>'+esc(statusName(event.status))+'</b></div><div class="detail-line"><span>備註</span><b>'+esc(event.note||'無')+'</b></div></section><section class="detail-block"><h3>'+(event.type==='rental'?'租用資料':'學生與繳費')+'</h3>'+studentInfo+teacherInfo+'</section></div><div class="status-actions"><button type="button" data-event-status="attended" data-event-id="'+esc(id)+'">✓ 學生簽到</button><button type="button" data-event-status="leave" data-event-id="'+esc(id)+'">學生請假</button><button type="button" data-event-status="absent" data-event-id="'+esc(id)+'">登記缺席</button><button type="button" data-event-payment="'+esc(id)+'">學生繳費</button></div><section class="detail-block log-list"><h3>近期操作紀錄</h3>'+logHtml+'</section>';
-      document.getElementById('detailFoot').innerHTML='<button class="btn danger" type="button" data-delete-event="'+esc(id)+'">刪除本次</button><button class="btn ghost" type="button" data-copy-event="'+esc(id)+'">複製</button><button class="btn primary" type="button" data-edit-event="'+esc(id)+'">編輯本次</button>';
+      var actionHtml=isReadOnly()?'<div class="readonly-note"><b>這是已移轉課務的唯讀預覽</b>目前不會把簽到、請假、繳費或排課修改寫回任何資料庫。</div>':'<div class="status-actions"><button type="button" data-event-status="attended" data-event-id="'+esc(id)+'">✓ 學生簽到</button><button type="button" data-event-status="leave" data-event-id="'+esc(id)+'">學生請假</button><button type="button" data-event-status="absent" data-event-id="'+esc(id)+'">登記缺席</button><button type="button" data-event-payment="'+esc(id)+'">學生繳費</button></div>';
+      document.getElementById('detailBody').innerHTML=actionHtml+'<div class="detail-hero"><section class="detail-block"><h3>課程資料</h3><div class="detail-line"><span>日期時間</span><b>'+esc(event.date+' '+event.start+'–'+minToTime(timeToMin(event.start)+event.duration))+'</b></div><div class="detail-line"><span>教室</span><b>'+esc(roomName(event.roomId))+'</b></div><div class="detail-line"><span>類型／頻率</span><b>'+esc(typeName(event.type)+'・'+(event.frequency==='weekly'?'每週':event.frequency==='biweekly'?'隔週':'單次'))+'</b></div><div class="detail-line"><span>科目</span><b>'+esc(event.subject)+'</b></div><div class="detail-line"><span>狀態</span><b>'+esc(statusName(event.status))+'</b></div><div class="detail-line"><span>備註</span><b>'+esc(event.note||'無')+'</b></div></section><section class="detail-block"><h3>'+(event.type==='rental'?'租用資料':'學生與繳費')+'</h3>'+studentInfo+teacherInfo+'</section></div><section class="detail-block log-list"><h3>近期操作紀錄</h3>'+logHtml+'</section>';
+      document.getElementById('detailFoot').innerHTML=isReadOnly()?'<button class="btn primary" type="button" data-close-modal="detailModal">完成</button>':'<button class="btn danger" type="button" data-delete-event="'+esc(id)+'">刪除本次</button><button class="btn ghost" type="button" data-copy-event="'+esc(id)+'">複製</button><button class="btn primary" type="button" data-edit-event="'+esc(id)+'">編輯本次</button>';
       openModal('detailModal');
     }
     function setEventStatus(id,status){
-      var event=state.events.find(function(row){return row.id===id;});if(!event)return;var previous=event.status;event.status=status;
-      var student=state.students.find(function(row){return row.name===event.student;});
+      if(!requireWritable('簽到或請假'))return;var event=state.events.find(function(row){return row.id===id;});if(!event)return;var previous=event.status;event.status=status;
+      var student=state.students.find(function(row){return eventHasStudent(event,row);});
       if(status==='attended'&&previous!=='attended'&&student&&student.remaining>0)student.remaining--;
       if(previous==='attended'&&status!=='attended'&&student)student.remaining=Number(student.remaining||0)+1;
       addLog(id,statusName(status),status==='leave'?(state.leaveReasons[0]||'請假'):'');saveState();renderCalendar();openEventDetail(id);toast('課程狀態已更新',statusName(status));
     }
     function addPaymentForEvent(id){
-      var event=state.events.find(function(row){return row.id===id;}),student=event&&state.students.find(function(row){return row.name===event.student;});if(!student)return toast('找不到學生資料','請先建立學生資料。','error');
+      if(!requireWritable('登記學生繳費'))return;var event=state.events.find(function(row){return row.id===id;}),student=event&&state.students.find(function(row){return eventHasStudent(event,row);});if(!student)return toast('找不到學生資料','請先建立學生資料。','error');
       var amount=Number(window.prompt('輸入本次收款金額：',String(Math.max(0,student.tuition-student.paid)))||0);if(amount<=0)return;student.paid=Number(student.paid||0)+amount;addLog(id,'學生繳費',money(amount));saveState();openEventDetail(id);toast('收款已登記',student.name+'・'+money(amount));
     }
-    function nextEventForStudent(name){
-      return state.events.filter(function(row){return row.student===name&&row.date>=todayKey()&&row.status!=='leave';}).sort(function(a,b){return (a.date+a.start).localeCompare(b.date+b.start);})[0]||null;
+    function nextEventForStudent(student){
+      return state.events.filter(function(row){return eventHasStudent(row,student)&&row.date>=todayKey()&&row.status!=='leave';}).sort(function(a,b){return (a.date+a.start).localeCompare(b.date+b.start);})[0]||null;
     }
     function renderStudents(){
       var totalDue=state.students.reduce(function(sum,row){return sum+Math.max(0,Number(row.tuition||0)-Number(row.paid||0));},0),low=state.students.filter(function(row){return Number(row.remaining||0)<=2;}).length,line=state.students.filter(function(row){return row.line;}).length;
@@ -464,16 +528,16 @@
     function renderStudentRows(){
       var term=(document.getElementById('studentSearch').value||'').trim().toLowerCase(),filter=document.getElementById('studentPaymentFilter').value;
       var rows=state.students.filter(function(row){var due=Number(row.paid||0)<Number(row.tuition||0);if(filter==='due'&&!due)return false;if(filter==='paid'&&due)return false;return !term||[row.name,row.phone,row.subject,row.teacher].join(' ').toLowerCase().includes(term);});
-      document.getElementById('studentRows').innerHTML=rows.length?rows.map(function(row){var next=nextEventForStudent(row.name),due=Math.max(0,Number(row.tuition||0)-Number(row.paid||0));return '<tr><td><b>'+esc(row.name)+'</b><small>'+esc(row.note||'')+'</small></td><td>'+esc(row.phone||'未填')+'<br><span class="tag '+(row.line?'green':'red')+'">'+(row.line?'LINE 已綁定':'LINE 未綁定')+'</span></td><td><b>'+esc(row.subject||'未設定')+'</b><small>'+esc(row.teacher||'未設定老師')+'</small></td><td><span class="tag '+(row.remaining<=2?'yellow':'green')+'">'+Number(row.remaining||0)+' 堂</span><small>期限 '+esc(row.expiry||'未設定')+'</small></td><td><b>'+money(row.paid||0)+' / '+money(row.tuition||0)+'</b><small>'+(due?'尚欠 '+money(due):'已繳清')+'</small></td><td>'+(next?esc(next.date+' '+next.start):'尚無安排')+'</td><td><button class="btn small ghost" type="button" data-student-detail="'+esc(row.id)+'">查看</button></td></tr>';}).join(''):'<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:35px">找不到符合的學生。</td></tr>';
+      document.getElementById('studentRows').innerHTML=rows.length?rows.map(function(row){var next=nextEventForStudent(row),due=Math.max(0,Number(row.tuition||0)-Number(row.paid||0));return '<tr><td><b>'+esc(row.name)+'</b><small>'+esc(row.note||'')+'</small></td><td>'+esc(row.phone||'未填')+'<br>'+lineStatusTag(row.line)+'</td><td><b>'+esc(row.subject||'未設定')+'</b><small>'+esc(row.teacher||'未設定老師')+'</small></td><td><span class="tag '+(row.remaining<=2?'yellow':'green')+'">'+Number(row.remaining||0)+' 堂</span><small>期限 '+esc(row.expiry||'未設定')+'</small></td><td><b>'+money(row.paid||0)+' / '+money(row.tuition||0)+'</b><small>'+(due?'尚欠 '+money(due):'已繳清')+'</small></td><td>'+(next?esc(next.date+' '+next.start):'尚無安排')+'</td><td><button class="btn small ghost" type="button" data-student-detail="'+esc(row.id)+'">查看</button></td></tr>';}).join(''):'<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:35px">找不到符合的學生。</td></tr>';
     }
     function openStudentDetail(id){
-      var row=state.students.find(function(item){return item.id===id;});if(!row)return;var events=state.events.filter(function(event){return event.student===row.name;}).sort(function(a,b){return (b.date+b.start).localeCompare(a.date+a.start);}).slice(0,8);
+      var row=state.students.find(function(item){return item.id===id;});if(!row)return;var events=state.events.filter(function(event){return eventHasStudent(event,row);}).sort(function(a,b){return (b.date+b.start).localeCompare(a.date+a.start);}).slice(0,8);
       document.getElementById('infoModalTitle').textContent=row.name+'・學生資料';document.getElementById('infoModalSub').textContent='聯絡、繳費、剩餘堂數與近期排課';
-      document.getElementById('infoBody').innerHTML='<div class="detail-hero"><section class="detail-block"><h3>基本資料</h3><div class="detail-line"><span>手機</span><b>'+esc(row.phone||'未填')+'</b></div><div class="detail-line"><span>LINE</span><b>'+(row.line?'已綁定':'未綁定')+'</b></div><div class="detail-line"><span>科目／老師</span><b>'+esc(row.subject+'・'+row.teacher)+'</b></div><div class="detail-line"><span>備註</span><b>'+esc(row.note||'無')+'</b></div></section><section class="detail-block"><h3>本期資料</h3><div class="detail-line"><span>剩餘堂數</span><b>'+row.remaining+' 堂</b></div><div class="detail-line"><span>學費</span><b>'+money(row.paid)+' / '+money(row.tuition)+'</b></div><div class="detail-line"><span>期限</span><b>'+esc(row.expiry)+'</b></div></section></div><section class="detail-block log-list"><h3>近期排課</h3>'+(events.length?events.map(function(event){return '<div class="log-item"><i></i><div><b>'+esc(event.date+' '+event.start+'・'+event.subject)+'</b><small>'+esc(roomName(event.roomId)+'・'+statusName(event.status))+'</small></div></div>';}).join(''):'<p style="color:var(--muted)">尚無排課。</p>')+'</section>';
+      document.getElementById('infoBody').innerHTML='<div class="detail-hero"><section class="detail-block"><h3>基本資料</h3><div class="detail-line"><span>手機</span><b>'+esc(row.phone||'未填')+'</b></div><div class="detail-line"><span>LINE</span><b>'+esc(lineStatusText(row.line))+'</b></div><div class="detail-line"><span>科目／老師</span><b>'+esc(row.subject+'・'+row.teacher)+'</b></div><div class="detail-line"><span>備註</span><b>'+esc(row.note||'無')+'</b></div></section><section class="detail-block"><h3>本期資料</h3><div class="detail-line"><span>剩餘堂數</span><b>'+row.remaining+' 堂</b></div><div class="detail-line"><span>學費</span><b>'+money(row.paid)+' / '+money(row.tuition)+'</b></div><div class="detail-line"><span>期限</span><b>'+esc(row.expiry||'未設定')+'</b></div></section></div><section class="detail-block log-list"><h3>近期排課</h3>'+(events.length?events.map(function(event){return '<div class="log-item"><i></i><div><b>'+esc(event.date+' '+event.start+'・'+event.subject)+'</b><small>'+esc(roomName(event.roomId)+'・'+statusName(event.status))+'</small></div></div>';}).join(''):'<p style="color:var(--muted)">尚無排課。</p>')+'</section>';
       openModal('infoModal');
     }
     function addStudent(){
-      var name=(window.prompt('學生姓名：')||'').trim();if(!name)return;if(state.students.some(function(row){return row.name===name;}))return toast('學生已存在','請直接使用現有學生資料。','error');
+      if(!requireWritable('新增學生'))return;var name=(window.prompt('學生姓名：')||'').trim();if(!name)return;if(state.students.some(function(row){return row.name===name;}))return toast('學生已存在','請直接使用現有學生資料。','error');
       var phone=(window.prompt('手機號碼：')||'').trim();state.students.push({id:uid('stu'),name:name,phone:phone,line:false,subject:state.subjects[0]||'',teacher:'',remaining:0,tuition:0,paid:0,expiry:'',note:''});saveState();renderStudents();toast('學生已新增',name);
     }
     function teacherStats(teacher){
@@ -482,42 +546,44 @@
     }
     function renderTeachers(){
       var stats=state.teachers.map(teacherStats),split=stats.reduce(function(sum,row){return sum+row.split;},0),reward=state.teachers.reduce(function(sum,row){return sum+Number(row.reward||0);},0),deduction=state.teachers.reduce(function(sum,row){return sum+Number(row.deduction||0);},0);
-      document.getElementById('teacherMetrics').innerHTML='<article class="card metric"><span>老師人數</span><strong>'+state.teachers.length+' 人</strong></article><article class="card metric"><span>實際上課拆帳</span><strong>'+money(split)+'</strong></article><article class="card metric"><span>獎勵－扣薪</span><strong>'+money(reward-deduction)+'</strong></article>';renderTeacherCards();
+      var splitLabel=isReadOnly()?'已載入拆帳估算':'實際上課拆帳',adjustLabel=isReadOnly()?'移轉獎勵－扣薪':'獎勵－扣薪';
+      document.getElementById('teacherMetrics').innerHTML='<article class="card metric"><span>老師人數</span><strong>'+state.teachers.length+' 人</strong></article><article class="card metric"><span>'+splitLabel+'</span><strong>'+money(split)+'</strong></article><article class="card metric"><span>'+adjustLabel+'</span><strong>'+money(reward-deduction)+'</strong></article>';renderTeacherCards();
     }
     function renderTeacherCards(){
       var term=(document.getElementById('teacherSearch').value||'').trim().toLowerCase(),teachers=state.teachers.filter(function(row){return !term||[row.name,(row.subjects||[]).join(' ')].join(' ').toLowerCase().includes(term);});
-      document.getElementById('teacherCards').innerHTML=teachers.length?teachers.map(function(row){var stats=teacherStats(row);return '<article class="card teacher-card"><div class="teacher-card-head"><div style="display:flex;gap:10px"><div class="avatar">'+esc(row.name.slice(-1))+'</div><div><h3>'+esc(row.name)+'</h3><p>'+esc((row.subjects||[]).join('、'))+'・'+esc(row.phone||'未填手機')+'</p></div></div><span class="tag green">今日 '+stats.today+' 堂</span></div><div class="teacher-money"><span>本期應付</span><strong>'+money(stats.total)+'</strong></div><div class="detail-line"><span>實際上課拆帳</span><b>'+money(stats.split)+'</b></div><div class="detail-line"><span>獎勵</span><b>'+money(row.reward||0)+'</b></div><div class="detail-line"><span>扣薪</span><b>'+money(row.deduction||0)+'</b></div><div style="display:flex;gap:7px;margin-top:11px"><button class="btn small soft" type="button" data-teacher-adjust="'+esc(row.id)+'" data-adjust-type="reward">＋ 獎勵</button><button class="btn small ghost" type="button" data-teacher-adjust="'+esc(row.id)+'" data-adjust-type="deduction">＋ 扣薪</button></div></article>';}).join(''):'<div class="card" style="padding:35px;text-align:center;color:var(--muted)">找不到符合的老師。</div>';
+      document.getElementById('teacherCards').innerHTML=teachers.length?teachers.map(function(row){var stats=teacherStats(row),actual=isReadOnly(),actions=actual?'<div class="readonly-note" style="margin-top:11px;margin-bottom:0">獎勵與扣薪為唯讀資料；金額請再依正式薪資週期核對。</div>':'<div style="display:flex;gap:7px;margin-top:11px"><button class="btn small soft" type="button" data-teacher-adjust="'+esc(row.id)+'" data-adjust-type="reward">＋ 獎勵</button><button class="btn small ghost" type="button" data-teacher-adjust="'+esc(row.id)+'" data-adjust-type="deduction">＋ 扣薪</button></div>';return '<article class="card teacher-card"><div class="teacher-card-head"><div style="display:flex;gap:10px"><div class="avatar">'+esc(row.name.slice(-1))+'</div><div><h3>'+esc(row.name)+'</h3><p>'+esc((row.subjects||[]).join('、'))+'・'+esc(row.phone||'未填手機')+'</p></div></div><span class="tag green">今日 '+stats.today+' 堂</span></div><div class="teacher-money"><span>'+(actual?'已載入應付估算':'本期應付')+'</span><strong>'+money(stats.total)+'</strong></div><div class="detail-line"><span>'+(actual?'拆帳估算':'實際上課拆帳')+'</span><b>'+money(stats.split)+'</b></div><div class="detail-line"><span>獎勵</span><b>'+money(row.reward||0)+'</b></div><div class="detail-line"><span>扣薪</span><b>'+money(row.deduction||0)+'</b></div>'+actions+'</article>';}).join(''):'<div class="card" style="padding:35px;text-align:center;color:var(--muted)">找不到符合的老師。</div>';
     }
     function addTeacher(){
-      var name=(window.prompt('老師姓名：')||'').trim();if(!name)return;if(state.teachers.some(function(row){return row.name===name;}))return toast('老師已存在','請直接使用現有老師資料。','error');
+      if(!requireWritable('新增老師'))return;var name=(window.prompt('老師姓名：')||'').trim();if(!name)return;if(state.teachers.some(function(row){return row.name===name;}))return toast('老師已存在','請直接使用現有老師資料。','error');
       var phone=(window.prompt('手機號碼：')||'').trim();state.teachers.push({id:uid('tea'),name:name,phone:phone,subjects:[state.subjects[0]||''],reward:0,deduction:0,note:''});saveState();renderTeachers();toast('老師已新增',name);
     }
     function adjustTeacher(id,type){
-      var teacher=state.teachers.find(function(row){return row.id===id;});if(!teacher)return;var label=type==='reward'?'獎勵':'扣薪',amount=Number(window.prompt('輸入'+label+'金額：','0')||0);if(amount<=0)return;teacher[type]=Number(teacher[type]||0)+amount;saveState();renderTeachers();toast(label+'已登記',teacher.name+'・'+money(amount));
+      if(!requireWritable('老師獎勵或扣薪'))return;var teacher=state.teachers.find(function(row){return row.id===id;});if(!teacher)return;var label=type==='reward'?'獎勵':'扣薪',amount=Number(window.prompt('輸入'+label+'金額：','0')||0);if(amount<=0)return;teacher[type]=Number(teacher[type]||0)+amount;saveState();renderTeachers();toast(label+'已登記',teacher.name+'・'+money(amount));
     }
     function renderSettings(){
       var start=document.getElementById('startHour'),end=document.getElementById('endHour'),hours='';for(var h=6;h<=23;h++)hours+='<option value="'+h+'">'+String(h).padStart(2,'0')+':00</option>';start.innerHTML=hours;end.innerHTML=hours;start.value=String(state.settings.startHour);end.value=String(state.settings.endHour);
-      document.getElementById('roomSettings').innerHTML=state.rooms.map(function(room,index){return '<div class="room-row"><span>'+(index+1)+'</span><input data-room-name="'+esc(room.id)+'" value="'+esc(room.name)+'"><button class="btn small danger" type="button" data-remove-room="'+esc(room.id)+'">移除</button></div>';}).join('');
-      document.getElementById('subjectChips').innerHTML=state.subjects.map(function(subject){return '<span class="chip">'+esc(subject)+' <button type="button" data-remove-subject="'+esc(subject)+'">×</button></span>';}).join('');
+      start.disabled=isReadOnly();end.disabled=isReadOnly();
+      document.getElementById('roomSettings').innerHTML=state.rooms.map(function(room,index){return '<div class="room-row"><span>'+(index+1)+'</span><input data-room-name="'+esc(room.id)+'" value="'+esc(room.name)+'" '+(isReadOnly()?'disabled':'')+'>'+(isReadOnly()?'<small class="tag green">唯讀</small>':'<button class="btn small danger" type="button" data-remove-room="'+esc(room.id)+'">移除</button>')+'</div>';}).join('');
+      document.getElementById('subjectChips').innerHTML=state.subjects.map(function(subject){return '<span class="chip">'+esc(subject)+(isReadOnly()?'':' <button type="button" data-remove-subject="'+esc(subject)+'">×</button>')+'</span>';}).join('');
       document.getElementById('leaveChips').innerHTML=state.leaveReasons.map(function(reason){return '<span class="chip">'+esc(reason)+'</span>';}).join('');
       document.getElementById('chargeRows').innerHTML=state.chargePlans.map(function(row){return '<tr><td>'+esc(row.subject)+'</td><td><b>'+esc(row.name)+'</b></td><td>'+Number(row.lessons||0)+'</td><td>'+money(row.tuition)+'</td><td>'+money(row.teacherPay)+'</td></tr>';}).join('');
     }
     function saveSettings(){
-      var start=Number(document.getElementById('startHour').value),end=Number(document.getElementById('endHour').value);if(end<=start+2)return toast('時間範圍不正確','結束時間至少要晚於開始時間 3 小時。','error');
+      if(!requireWritable('儲存基本設定'))return;var start=Number(document.getElementById('startHour').value),end=Number(document.getElementById('endHour').value);if(end<=start+2)return toast('時間範圍不正確','結束時間至少要晚於開始時間 3 小時。','error');
       state.settings.startHour=start;state.settings.endHour=end;document.querySelectorAll('[data-room-name]').forEach(function(input){var room=state.rooms.find(function(row){return row.id===input.dataset.roomName;});if(room&&input.value.trim())room.name=input.value.trim();});saveState('設定已儲存');renderSettings();toast('基本設定已儲存','課程日表會立即使用新的教室名稱與時間。');
     }
-    function addRoom(){var name=(window.prompt('新教室名稱：')||'').trim();if(!name)return;state.rooms.push({id:uid('room'),name:name,note:''});saveState();renderSettings();toast('教室已新增',name);}
-    function removeRoom(id){var room=state.rooms.find(function(row){return row.id===id;});if(!room)return;if(state.events.some(function(row){return row.roomId===id;}))return toast('目前不能移除','請先將這間教室的測試課程移到其他教室。','error');if(state.rooms.length<=1)return;state.rooms=state.rooms.filter(function(row){return row.id!==id;});saveState();renderSettings();}
-    function addSubject(){var name=(window.prompt('新科目名稱：')||'').trim();if(!name||state.subjects.indexOf(name)>=0)return;state.subjects.push(name);saveState();renderSettings();}
-    function removeSubject(name){if(state.events.some(function(row){return row.subject===name;}))return toast('目前不能移除','已有課程使用這個科目。','error');state.subjects=state.subjects.filter(function(row){return row!==name;});saveState();renderSettings();}
-    function addLeaveReason(){var name=(window.prompt('新增請假原因：')||'').trim();if(!name||state.leaveReasons.indexOf(name)>=0)return;state.leaveReasons.push(name);saveState();renderSettings();}
-    function addChargePlan(){var subject=(window.prompt('科目：',state.subjects[0]||'')||'').trim();if(!subject)return;var name=(window.prompt('方案名稱：','每期方案')||'').trim(),lessons=Number(window.prompt('堂數：','4')||0),tuition=Number(window.prompt('學費：','2800')||0),teacherPay=Number(window.prompt('老師每堂拆帳：','420')||0);state.chargePlans.push({id:uid('charge'),subject:subject,name:name,lessons:lessons,tuition:tuition,teacherPay:teacherPay});saveState();renderSettings();}
+    function addRoom(){if(!requireWritable('新增教室'))return;var name=(window.prompt('新教室名稱：')||'').trim();if(!name)return;state.rooms.push({id:uid('room'),name:name,note:''});saveState();renderSettings();toast('教室已新增',name);}
+    function removeRoom(id){if(!requireWritable('移除教室'))return;var room=state.rooms.find(function(row){return row.id===id;});if(!room)return;if(state.events.some(function(row){return row.roomId===id;}))return toast('目前不能移除','請先將這間教室的示範課程移到其他教室。','error');if(state.rooms.length<=1)return;state.rooms=state.rooms.filter(function(row){return row.id!==id;});saveState();renderSettings();}
+    function addSubject(){if(!requireWritable('新增科目'))return;var name=(window.prompt('新科目名稱：')||'').trim();if(!name||state.subjects.indexOf(name)>=0)return;state.subjects.push(name);saveState();renderSettings();}
+    function removeSubject(name){if(!requireWritable('移除科目'))return;if(state.events.some(function(row){return row.subject===name;}))return toast('目前不能移除','已有課程使用這個科目。','error');state.subjects=state.subjects.filter(function(row){return row!==name;});saveState();renderSettings();}
+    function addLeaveReason(){if(!requireWritable('新增請假原因'))return;var name=(window.prompt('新增請假原因：')||'').trim();if(!name||state.leaveReasons.indexOf(name)>=0)return;state.leaveReasons.push(name);saveState();renderSettings();}
+    function addChargePlan(){if(!requireWritable('新增收費方案'))return;var subject=(window.prompt('科目：',state.subjects[0]||'')||'').trim();if(!subject)return;var name=(window.prompt('方案名稱：','每期方案')||'').trim(),lessons=Number(window.prompt('堂數：','4')||0),tuition=Number(window.prompt('學費：','2800')||0),teacherPay=Number(window.prompt('老師每堂拆帳：','420')||0);state.chargePlans.push({id:uid('charge'),subject:subject,name:name,lessons:lessons,tuition:tuition,teacherPay:teacherPay});saveState();renderSettings();}
     function checkCurrentConflicts(){
       var events=state.events.filter(function(row){return row.date===state.currentDate;}),ids=dayConflictIds(events),count=Object.keys(ids).length;
       if(!count)toast('檢查完成','今天沒有教室、老師或學生衝突。');else toast('發現排課衝突',count+' 筆課程已用紅框標示，請逐筆調整。','error');renderCalendar();
     }
     function quickAddStudent(){
-      var name=document.getElementById('quickStudentName').value.trim(),phone=document.getElementById('quickStudentPhone').value.trim();if(!name)return toast('請輸入學生姓名','','error');if(!state.students.some(function(row){return row.name===name;}))state.students.push({id:uid('stu'),name:name,phone:phone,line:false,subject:document.getElementById('eventSubject').value,teacher:document.getElementById('eventTeacher').value,remaining:0,tuition:0,paid:0,expiry:'',note:''});saveState();refreshFormOptions();document.getElementById('eventStudent').value=name;document.getElementById('quickStudentPanel').classList.add('hidden');toast('學生已加入',name);
+      if(!requireWritable('快速新增學生'))return;var name=document.getElementById('quickStudentName').value.trim(),phone=document.getElementById('quickStudentPhone').value.trim();if(!name)return toast('請輸入學生姓名','','error');if(!state.students.some(function(row){return row.name===name;}))state.students.push({id:uid('stu'),name:name,phone:phone,line:false,subject:document.getElementById('eventSubject').value,teacher:document.getElementById('eventTeacher').value,remaining:0,tuition:0,paid:0,expiry:'',note:''});saveState();refreshFormOptions();document.getElementById('eventStudent').value=name;document.getElementById('quickStudentPanel').classList.add('hidden');toast('學生已加入',name);
     }
     function bindEvents(){
       document.addEventListener('click',function(event){
@@ -530,7 +596,7 @@
         var status=event.target.closest('[data-event-status]');if(status){setEventStatus(status.dataset.eventId,status.dataset.eventStatus);return;}
         var edit=event.target.closest('[data-edit-event]');if(edit){var editEvent=state.events.find(function(row){return row.id===edit.dataset.editEvent;});closeModal('detailModal');openScheduleModal({event:editEvent});return;}
         var copy=event.target.closest('[data-copy-event]');if(copy){var copyEvent=state.events.find(function(row){return row.id===copy.dataset.copyEvent;});closeModal('detailModal');openScheduleModal({copy:copyEvent});return;}
-        var del=event.target.closest('[data-delete-event]');if(del){if(window.confirm('確定刪除這一次課程嗎？')){state.events=state.events.filter(function(row){return row.id!==del.dataset.deleteEvent;});saveState();closeModal('detailModal');renderCalendar();toast('本次課程已刪除','其他週次不受影響。');}return;}
+        var del=event.target.closest('[data-delete-event]');if(del){if(!requireWritable('刪除排課'))return;if(window.confirm('確定刪除這一次課程嗎？')){state.events=state.events.filter(function(row){return row.id!==del.dataset.deleteEvent;});saveState();closeModal('detailModal');renderCalendar();toast('本次課程已刪除','其他週次不受影響。');}return;}
         var pay=event.target.closest('[data-event-payment]');if(pay){addPaymentForEvent(pay.dataset.eventPayment);return;}
         var student=event.target.closest('[data-student-detail]');if(student){openStudentDetail(student.dataset.studentDetail);return;}
         var adjust=event.target.closest('[data-teacher-adjust]');if(adjust){adjustTeacher(adjust.dataset.teacherAdjust,adjust.dataset.adjustType);return;}
@@ -541,6 +607,7 @@
       document.getElementById('calendarDate').addEventListener('change',function(){state.currentDate=this.value||todayKey();saveState();renderCalendar();});
       document.getElementById('todayBtn').addEventListener('click',function(){state.currentDate=todayKey();saveState();renderCalendar();});
       document.getElementById('conflictBtn').addEventListener('click',checkCurrentConflicts);
+      document.getElementById('loadMigratedDataBtn').addEventListener('click',toggleMigratedData);
       ['topNewEvent','sideNewEvent','calendarNewEvent'].forEach(function(id){document.getElementById(id).addEventListener('click',function(){openScheduleModal({date:state.currentDate});});});
       document.getElementById('scheduleForm').addEventListener('submit',saveSchedule);
       document.getElementById('eventFrequency').addEventListener('change',function(){toggleRepeatField();updateConflictPreview();});
@@ -553,11 +620,11 @@
       document.getElementById('teacherSearch').addEventListener('input',function(){clearTimeout(teacherSearchTimer);teacherSearchTimer=setTimeout(renderTeacherCards,180);});
       document.getElementById('addStudentBtn').addEventListener('click',addStudent);document.getElementById('addTeacherBtn').addEventListener('click',addTeacher);
       document.getElementById('saveSettingsBtn').addEventListener('click',saveSettings);document.getElementById('addRoomBtn').addEventListener('click',addRoom);document.getElementById('addSubjectBtn').addEventListener('click',addSubject);document.getElementById('addLeaveReasonBtn').addEventListener('click',addLeaveReason);document.getElementById('addChargeBtn').addEventListener('click',addChargePlan);
-      document.getElementById('resetPreviewBtn').addEventListener('click',function(){if(!window.confirm('確定恢復預設測試資料？目前在新版預覽中的修改會清除。'))return;state=defaultState();saveState();renderSettings();renderCalendar();toast('已恢復預設資料','正式系統資料完全不受影響。');});
+      document.getElementById('resetPreviewBtn').addEventListener('click',function(){if(!requireWritable('恢復示範資料'))return;if(!window.confirm('確定恢復預設示範資料？目前在示範模式中的修改會清除。'))return;state=defaultState();saveState();renderCurrentView();toast('已恢復預設示範資料','正式系統資料完全不受影響。');});
       document.addEventListener('keydown',function(event){if(event.key==='Escape'){document.querySelectorAll('.modal-backdrop.open').forEach(function(modal){closeModal(modal.id);});}});
     }
     function init(){
-      refreshFormOptions();bindEvents();switchView('calendar');
+      refreshFormOptions();bindEvents();updateDataModeUI();switchView('calendar');
     }
     if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
   })();
