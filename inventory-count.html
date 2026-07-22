@@ -129,7 +129,7 @@ label{display:block;font-size:12px;font-weight:850;color:#4d6370;margin:12px 0 5
 (function(){
 'use strict';
 const SETTINGS='opsSettings',PRODUCTS='opsInternalProducts',INVENTORY='opsInventoryTransactions',QUEUE='opsPlatformInventoryQueue';
-let db=null,settings={enabled:true,pinHash:''},products=[],operator='',current=null,recent=[],qrScanner=null,scannerStarting=false,scanHandled=false,searchTimer=null;
+let db=null,settings={enabled:true,pinHash:''},products=[],operator='',current=null,recent=[],qrScanner=null,scannerStarting=false,scanHandled=false,searchTimer=null,searchVersion=0;
 const $=id=>document.getElementById(id),clean=v=>String(v==null?'':v).trim(),num=v=>{const n=Number(v);return Number.isFinite(n)?n:null},serverTimestamp=()=>firebase.firestore.FieldValue.serverTimestamp();
 function msg(text,type){$('message').innerHTML=text?'<div class="'+(type||'notice')+'">'+escapeHtml(text)+'</div>':'';}
 function escapeHtml(v){return clean(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
@@ -188,6 +188,21 @@ function findProduct(){
   msg('');
   renderSearchResults(rows);
 }
+function scheduleFindProduct(){
+  clearTimeout(searchTimer);
+  const value=clean($('skuInput').value),version=++searchVersion;
+  if(!value){clearSearchResults();return;}
+  const run=function(){
+    if(searchVersion!==version||clean($('skuInput').value)!==value)return;
+    findProduct();
+  };
+  const timer=globalThis.setTimeout(function(){
+    if(searchVersion!==version)return;
+    if(typeof globalThis.requestIdleCallback==='function')globalThis.requestIdleCallback(run,{timeout:800});
+    else globalThis.setTimeout(run,0);
+  },240);
+  searchTimer=timer;
+}
 function selectProductById(id){
   current=products.find(p=>p.id===id)||null;
   if(!current)return msg('找不到這項商品，請重新搜尋。','error');
@@ -238,7 +253,7 @@ $('pinButton').onclick=verifyPin;
 $('nameButton').onclick=startCount;
 $('searchButton').onclick=findProduct;
 $('skuInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();findProduct();}});
-$('skuInput').addEventListener('input',()=>{clearTimeout(searchTimer);const value=clean($('skuInput').value);if(!value){clearSearchResults();return;}searchTimer=setTimeout(findProduct,220);});
+$('skuInput').addEventListener('input',scheduleFindProduct);
 $('searchResults').addEventListener('click',e=>{const button=e.target.closest('[data-product-id]');if(button)selectProductById(button.dataset.productId);});
 $('countInput').oninput=updateDiff;
 $('saveButton').onclick=saveCount;

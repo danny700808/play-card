@@ -190,6 +190,10 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
     confirmResolve:null
   };
 
+  // 搜尋輸入優先：先接收完整文字，等瀏覽器空閒後才更新結果列表。
+  const deferredSearchTimers = Object.create(null);
+  const SEARCH_IDLE_DELAY_MS = 240;
+
   const PAGE_META = {
     overview:['營運總覽',''],
     'course-calendar':['課程日表','音教雲每日課表；改用獨立分頁開啟，避免內嵌畫面不完整。'],
@@ -1159,6 +1163,30 @@ function queueInventorySyncInTransaction(tx,productId,sku,stock,reason){const re
     if(!isCompactMobile()) return '';
     return '<div class="ops-mobile-search-pad" aria-label="SKU 數字鍵盤">'+['1','2','3','4','5','6','7','8','9','clear','0','back'].map(function(key){const label=key==='clear'?'清除':key==='back'?'⌫':key;return '<button type="button" data-action="mobile-key" data-target="'+attr(targetId)+'" data-key="'+key+'">'+label+'</button>';}).join('')+'</div>';
   }
+  function scheduleDeferredSearchRender(inputId,value,immediate){
+    const previous=deferredSearchTimers[inputId];
+    if(previous){global.clearTimeout(previous);delete deferredSearchTimers[inputId];}
+    const captured=String(value==null?'':value);
+    const run=function(){
+      const input=byId(inputId);
+      if(!input||input.value!==captured)return;
+      rerenderKeepingFocus(inputId,captured);
+    };
+    if(immediate)return run();
+    deferredSearchTimers[inputId]=global.setTimeout(function(){
+      delete deferredSearchTimers[inputId];
+      // 空閒回呼可用時，讓輸入事件、游標及手機鍵盤先完成，再更新大型列表。
+      if(typeof global.requestIdleCallback==='function')global.requestIdleCallback(run,{timeout:800});
+      else global.setTimeout(run,0);
+    },SEARCH_IDLE_DELAY_MS);
+  }
+  function setSearchInputValue(inputId,value){
+    const input=byId(inputId);
+    if(!input)return;
+    input.value=String(value==null?'':value);
+    try{input.focus({preventScroll:true});}catch(error){try{input.focus();}catch(ignore){}}
+    try{input.setSelectionRange(input.value.length,input.value.length);}catch(error){}
+  }
   function applyMobileKeyInput(targetId,key){
     const map={productSearch:'productSearch',purchaseLowSearch:'purchaseLowSearch',purchaseEntrySearch:'purchaseEntrySearch',stocktakeSearch:'stocktakeSearch',inventorySearch:'inventorySearch'};
     const stateKey=map[targetId];
@@ -1173,7 +1201,8 @@ function queueInventorySyncInTransaction(tx,productId,sku,stock,reason){const re
     if(targetId==='productSearch'){ state.productSeries='all'; state.productFilter='all'; state.productVisible=PRODUCT_PAGE_SIZE; }
     if(targetId==='purchaseEntrySearch') state.purchaseEntrySeries='all';
     if(targetId==='stocktakeSearch') state.stocktakeSeries='all';
-    rerenderKeepingFocus(targetId,next);
+    setSearchInputValue(targetId,next);
+    scheduleDeferredSearchRender(targetId,next,false);
   }
   function enhanceMobileNumberInputs(scope){
     if(!isCompactMobile()) return;
@@ -3384,7 +3413,8 @@ function rerenderKeepingFocus(id,value){
       state[key]=nextValue;
       if(input.id==='purchaseEntrySearch')state.purchaseEntrySeries='all';
       if(input.id==='stocktakeSearch')state.stocktakeSeries='all';
-      rerenderKeepingFocus(input.id,state[key]);
+      // 不在每個字元輸入時重繪整頁；先讓輸入框完整接收數字，再更新結果。
+      scheduleDeferredSearchRender(input.id,state[key],false);
     }
     document.addEventListener('compositionstart',function(event){
       if(isOpsSearchInput(event.target)) event.target.dataset.opsImeComposing='1';
@@ -3397,6 +3427,11 @@ function rerenderKeepingFocus(id,value){
       setTimeout(function(){
         if(document.contains(input)) applyOpsSearchInput(input);
       },0);
+    },true);
+    document.addEventListener('keydown',function(event){
+      if(event.key!=='Enter'||!isOpsSearchInput(event.target))return;
+      if(event.target.dataset.opsImeComposing==='1')return;
+      scheduleDeferredSearchRender(event.target.id,event.target.value,true);
     },true);
     document.addEventListener('input',function(event){
       if(isOpsSearchInput(event.target)){
