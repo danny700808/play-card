@@ -7,7 +7,7 @@
 }
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
-body{margin:0;background:var(--page);color:var(--ink);font-family:"Microsoft JhengHei","Noto Sans TC",system-ui,-apple-system,"Segoe UI",sans-serif;font-size:16px;line-height:1.55}
+body{margin:0;background:var(--page);color:var(--ink);font-family:"Noto Sans TC","Microsoft JhengHei",system-ui,-apple-system,"Segoe UI",sans-serif;font-size:17px;line-height:1.6}
 button,input,select,textarea{font:inherit;color:inherit}
 button,a{touch-action:manipulation}
 button{cursor:pointer}
@@ -50,4 +50,87 @@ a{color:inherit;text-decoration:none}
 @media(max-width:1180px){.kpi-grid{grid-template-columns:repeat(2,1fr)}.teacher-grid{grid-template-columns:repeat(2,1fr)}.form-grid.three{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:860px){
   body{font-size:15px}.app-shell{display:block}.sidebar{position:sticky;top:0;width:auto;height:auto;padding:8px;display:block;z-index:50}.brand,.mode-pill,.sidebar-foot{display:none}.main-nav{display:flex;overflow:auto}.main-nav button{padding:8px 10px;white-space:nowrap}.main-nav button span{width:28px;height:28px}.main-content{padding:0 10px 30px}.page-header{position:relative;padding:14px 2px 10px}.page-header h1{font-size:24px}.page-header p,.save-state{display:none}.header-actions .btn{min-height:40px}.data-mode{align-items:flex-start;flex-direction:column}.data-mode-actions{width:100%}.data-mode-actions .btn{flex:1}.calendar-toolbar{align-items:flex-start;flex-direction:column}.date-actions,.toolbar-actions{width:100%}.toolbar-actions .btn{flex:1}.date-heading{min-width:0;flex:1}.schedule-scroll{max-height:72vh}.kpi-grid{gap:7px}.kpi{padding:11px}.kpi strong{font-size:23px}.teacher-grid,.metric-grid{grid-template-columns:1fr}.form-grid,.form-grid.three,.detail-hero{grid-template-columns:1fr}.field.span-2{grid-column:auto}.record-summary{grid-template-columns:repeat(2,1fr)}.status-actions{grid-template-columns:repeat(2,1fr)}.modal-backdrop{padding:0;align-items:flex-end}.modal{border-radius:18px 18px 0 0;max-height:96vh}.policy-row{grid-template-columns:74px 1fr 1fr}.policy-row .policy-subjects{grid-column:1/-1}.section-heading,.panel-actions{align-items:stretch;flex-direction:column}.filters{align-items:stretch;flex-direction:column}.search-control{min-width:0}.schedule-instructions{align-items:flex-start;flex-direction:column}
+}
+
+/* 排課主畫面：課程種類維持固定主色，簽到與請假只作狀態提示。 */
+:root{--slot:54px}
+.data-mode{margin-bottom:9px;padding:8px 12px}
+.data-mode-icon{width:34px;height:34px}
+.data-mode p,.data-mode-actions .tag{display:none}
+.data-mode small{font-size:13px}
+.data-mode-actions .btn{min-height:36px;padding:6px 10px}
+.calendar-toolbar{padding:10px 12px;margin-bottom:9px}
+.kpi-grid{margin-bottom:9px}
+.kpi{padding:10px 13px}
+.kpi strong{font-size:24px}
+.legend{padding:8px 12px;margin-bottom:9px}
+.legend i.attended{position:relative;background:var(--blue)}
+.legend i.attended::before{content:"";position:absolute;inset:0 auto 0 0;width:4px;border-radius:3px 0 0 3px;background:rgba(0,0,0,.42)}
+.legend i.leave{background:var(--blue);opacity:.38}
+.schedule-scroll{max-height:calc(100vh - 250px);min-height:680px}
+.event{min-height:48px;padding:7px 10px}
+.event.fixed,.event.fixed.attended,.event.fixed.leave,.event.fixed.absent{background:linear-gradient(135deg,#2b7dcd,#246bb4)}
+.event.single,.event.single.attended,.event.single.leave,.event.single.absent{background:linear-gradient(135deg,#198b75,#11705f)}
+.event.rental,.event.rental.attended,.event.rental.leave,.event.rental.absent{background:linear-gradient(135deg,#c74379,#a92f61)}
+.event.trial,.event.trial.attended,.event.trial.leave,.event.trial.absent{background:linear-gradient(135deg,#d98b25,#bd6b0d)}
+.event.attended{padding-left:22px}
+.event.attended::before{content:"";position:absolute;inset:0 auto 0 0;width:10%;min-width:9px;max-width:16px;background:rgba(0,0,0,.34)}
+.event.leave,.event.absent,.event.cancelled{opacity:.38;filter:saturate(.5)}
+.event.leave:hover,.event.absent:hover{opacity:.58}
+.event-top{font-size:13px}
+.event-main{font-size:18px}
+.event-sub{font-size:14px}
+
+/* 學生完整資料：單一頁面、依期別由舊至新閱讀。 */
+.student-sheet{background:#f4f8f6}
+.student-overview{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px}
+.student-overview>div{min-width:0;padding:13px 14px;border:1px solid var(--line);border-radius:12px;background:#fff}
+.student-overview span{display:block;color:var(--muted);font-size:13px}
+.student-overview b{display:block;margin-top:3px;font-size:17px;overflow-wrap:anywhere}
+.student-note,.student-section{margin-top:14px;padding:16px;border:1px solid var(--line);border-radius:14px;background:#fff}
+.student-note p{margin:5px 0 0;white-space:pre-wrap}
+.student-section>h3{margin:0 0 12px;font-size:20px}
+.student-periods{display:grid;gap:12px}
+.period-card{overflow:hidden;border:1px solid var(--line);border-radius:13px;background:#fbfdfc}
+.period-card.latest{border-color:#78aa97;box-shadow:0 0 0 2px rgba(24,116,91,.08)}
+.period-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:13px 15px;border-bottom:1px solid var(--line);background:#f0f6f3}
+.period-head span{color:var(--green-dark);font-size:13px;font-weight:900}
+.period-head h4{margin:2px 0;font-size:18px}
+.period-head small{color:var(--muted)}
+.period-count{text-align:right;white-space:nowrap}
+.period-count b{display:block;font-size:19px}
+.period-count span{display:block;color:var(--green-dark);font-size:13px;font-weight:900}
+.period-warning{margin:10px 15px 0;padding:8px 11px;border-radius:9px;background:#fff0ef;color:#a33d37;font-weight:900}
+.period-columns{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:14px 15px}
+.period-columns h5{margin:0 0 8px;font-size:15px}
+.period-list{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.period-list li{display:grid;grid-template-columns:100px 70px minmax(0,1fr);gap:8px;padding:8px 9px;border-radius:8px;background:#eef4f1;font-size:13px}
+.period-list time{font-variant-numeric:tabular-nums}
+.period-list b{color:var(--green-dark)}
+.period-list span{color:var(--muted);overflow-wrap:anywhere}
+.period-list .empty{display:block;color:var(--muted)}
+.student-empty{margin:0;color:var(--muted)}
+.student-schedule{border:1px solid var(--line);border-radius:11px}
+.student-schedule .data-table{min-width:760px}
+
+/* 桌面排課是全天長時間使用的畫面：字級優先於壓縮密度。 */
+@media(min-width:861px){
+  .main-content{padding-left:32px;padding-right:32px}
+  .room-head{font-size:16px}
+  .room-head small{font-size:13px}
+  .time-label{font-size:14px}
+  .time-label.hour{font-size:15px}
+  .event-top{font-size:13px}
+  .event-main{font-size:19px}
+  .event-sub{font-size:15px}
+  .data-table th{font-size:14px}
+  .data-table td{font-size:16px}
+  .field label{font-size:15px}
+}
+
+@media(max-width:860px){
+  .schedule-scroll{min-height:600px}
+  .student-overview{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .period-columns{grid-template-columns:1fr}
+  .period-list li{grid-template-columns:92px 62px minmax(0,1fr)}
 }

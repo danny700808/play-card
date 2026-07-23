@@ -143,14 +143,26 @@
     return {id:safeId('course',course.id,0)+'@'+date,sourceCourseId:clean(course.id),seriesId:clean(course.id),date:date,roomId:clean(course.roomId),start:clean(course.start),duration:Math.max(30,numberOf(course.duration)||60),type:clean(course.type)||'fixed',frequency:numberOf(course.frequencyWeeks)>=2?'biweekly':course.type==='fixed'?'weekly':'once',studentIds:unique(course.studentIds),teacherId:clean(course.teacherId),subjectId:clean(course.subjectId),tuitionPeriodId:resolvePeriod(course),clientName:'',rentalFee:0,status:clean(status)||'scheduled',note:clean(course.note),readOnly:true,source:'injiaoyun-migration'};
   }
 
+  // 舊系統的固定課會同時保留「每週規則」及單日請假／取消紀錄。
+  // 單日請假不是另一堂課，絕對不能再展開成藍色格子或拿去算衝突。
+  function hiddenCourseStatus(status){
+    var value=clean(status).toLowerCase();
+    return ['leave','cancel','cancelled','canceled','skip','skipped','suspended','stopped','inactive','請假','取消','停課'].indexOf(value)>=0;
+  }
+
   function fixedCourseEvents(course,rangeStart,rangeEnd,resolvePeriod){
     var events=[],statuses=course.statusByDate||{},allStatusDates=Object.keys(statuses).map(dateKey).filter(Boolean).sort(),start=recurringAnchorDate(course.date,allStatusDates),step=numberOf(course.frequencyWeeks)>=2?14:7;
     if(!start||!clean(course.start)||!clean(course.roomId))return events;
-    var statusDates=allStatusDates.filter(function(key){return key>=rangeStart&&key<=rangeEnd;}),stop=course.active===false?(dateKey(course.stopDate)||allStatusDates[allStatusDates.length-1]||start):rangeEnd,cursor=start,guard=0;
+    var recurrenceEnd=dateKey(course.recurrenceEndDate),stop=recurrenceEnd||(
+      course.active===false?(dateKey(course.stopDate)||allStatusDates[allStatusDates.length-1]||start):rangeEnd
+    ),cursor=start,guard=0;
     if(stop<start)stop=start;
     while(cursor<rangeStart&&guard<1500){cursor=shiftDate(cursor,step);guard++;}
-    while(cursor<=rangeEnd&&cursor<=stop&&guard<1700){events.push(courseEvent(course,cursor,statuses[cursor]||'scheduled',resolvePeriod));cursor=shiftDate(cursor,step);guard++;}
-    statusDates.forEach(function(key){if(!events.some(function(event){return event.date===key;}))events.push(courseEvent(course,key,statuses[key],resolvePeriod));});
+    while(cursor<=rangeEnd&&cursor<=stop&&guard<1700){
+      var status=statuses[cursor]||'scheduled';
+      if(!hiddenCourseStatus(status))events.push(courseEvent(course,cursor,status,resolvePeriod));
+      cursor=shiftDate(cursor,step);guard++;
+    }
     return events;
   }
 
@@ -163,7 +175,7 @@
       array(payload.temporaryCourses).filter(function(row){return row.active!==false;}).forEach(function(row){var date=dateKey(row.date);if(date&&clean(row.start)&&clean(row.roomId)&&date>=rangeStart&&date<=rangeEnd)events.push(courseEvent(row,date,clean(row.statusByDate&&row.statusByDate[date])||'scheduled',resolvePeriod));});
       array(payload.roomRentals).forEach(function(row,index){var date=dateKey(row.date);if(date&&clean(row.start)&&clean(row.roomId)&&date>=rangeStart&&date<=rangeEnd)events.push({id:safeId('rental',row.id,index)+'@'+date,seriesId:'',date:date,roomId:clean(row.roomId),start:clean(row.start),duration:Math.max(30,numberOf(row.duration)||60),type:'rental',frequency:'once',studentIds:[],teacherId:'',subjectId:'',tuitionPeriodId:'',clientName:clean(row.clientName)||'教室租用',rentalFee:numberOf(row.amount||row.rentalFee),status:clean(row.status)||'scheduled',note:clean(row.note),readOnly:true});});
     }
-    return events.filter(function(row){return row.date&&row.roomId&&row.start&&row.date>=rangeStart&&row.date<=rangeEnd;}).sort(function(left,right){return (left.date+left.start+left.roomId).localeCompare(right.date+right.start+right.roomId);});
+    return events.filter(function(row){return row.date&&row.roomId&&row.start&&row.date>=rangeStart&&row.date<=rangeEnd&&!hiddenCourseStatus(row.status);}).sort(function(left,right){return (left.date+left.start+left.roomId).localeCompare(right.date+right.start+right.roomId);});
   }
 
   function normalizeAttendance(payload,events,periods){
