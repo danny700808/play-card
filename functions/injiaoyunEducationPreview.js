@@ -688,7 +688,8 @@ function courseRow(row, type, lookups, leavesByCourse) {
   const id = idOf(row) || clean(row._migrationSourceId) || `${type}_${roomId}_${clean(row.startDate)}_${clean(row.startsAt)}`;
   const startResult = resolvedTime(row, [
     'startsAt', 'startTime', 'startAt', 'start', 'time',
-    'beginAt', 'beginTime', 'startDate', 'date'
+    // 日期欄只能決定哪一天，不能被當成上課時間；否則缺時間的資料會被錯誤排到同一格。
+    'beginAt', 'beginTime'
   ]);
   const endResult = resolvedTime(row, [
     'endsAt', 'endTime', 'endAt', 'end', 'finishTime', 'finishAt'
@@ -716,6 +717,8 @@ function courseRow(row, type, lookups, leavesByCourse) {
     type,
     active,
     stopDate,
+    // 固定課有明確結束日，即使舊資料仍標成啟用，也不可無限延伸到未來。
+    recurrenceEndDate: explicitStopDate,
     date: type === 'fixed'
       ? recurringAnchorDate(
         firstValue(row.startDate, row.date, row.startsAt, row.created),
@@ -840,7 +843,8 @@ function buildRoomRentals(data, lookups) {
     const room = lookups.roomInfo.add(row.room, nameOf(row.room));
     const startResult = resolvedTime(row, [
       'startsAt', 'startTime', 'startAt', 'start', 'time',
-      'beginAt', 'beginTime', 'startDate', 'date'
+      // 租用也必須有真正的時間欄位，不能從日期欄位猜測時間。
+      'beginAt', 'beginTime'
     ]);
     const endResult = resolvedTime(row, [
       'endsAt', 'endTime', 'endAt', 'end', 'finishTime', 'finishAt'
