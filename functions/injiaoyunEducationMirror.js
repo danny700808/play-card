@@ -5,6 +5,7 @@ const { onDocumentWritten } = require('firebase-functions/v2/firestore');
 const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
+const { GoogleAuth } = require('google-auth-library');
 const {
   buildPreview,
   EDUCATION_PREVIEW_VERSION,
@@ -19,9 +20,12 @@ const db = admin.firestore();
 const FieldValue = admin.firestore.FieldValue;
 const Timestamp = admin.firestore.Timestamp;
 const FUNCTION_REGION = 'us-central1';
-const VERSION = '2026.07.24-v4-force-audit-calendar-refresh';
+const VERSION = '2026.07.24-v5-one-click-daily-refresh';
 const MANUAL_SYNC_PIN = defineSecret('INJIAOYUN_MANUAL_SYNC_PIN');
 const SETTINGS_REF = db.collection('opsSettings').doc('injiaoyunEducationMirror');
+const AUDIT_JOB_REGION = 'asia-east1';
+const AUDIT_JOB_NAME = 'injiaoyun-course-audit-0723-0724-v4';
+const CLOUD_PLATFORM_SCOPE = 'https://www.googleapis.com/auth/cloud-platform';
 const LOCK_MS = 12 * 60 * 1000;
 const MISSING_CONFIRMATIONS = 2;
 const BATCH_SIZE = 350;
@@ -50,6 +54,110 @@ const MIRROR_TYPES = Object.freeze({
 
 function clean(value) {
   return String(value == null ? '' : value).trim();
+}
+
+function dateKey(value) {
+  const match = clean(value).match(/^(\d{4}-\d{2}-\d{2})$/);
+  if (!match) return '';
+  const date = new Date(`${match[1]}T12:00:00+08:00`);
+  if (!Number.isFinite(date.getTime())) return '';
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Taipei',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
+  return formatter.format(date) === match[1] ? match[1] : '';
+}
+
+function sleep(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function projectId() {
+  return clean(
+    process.env.GCLOUD_PROJECT ||
+    process.env.GCP_PROJECT ||
+    (admin.app().options && admin.app().options.projectId) ||
+    'youzi-c1b74'
+  );
+}
+
+async function waitForOperation(authClient, operation, timeoutMs) {
+  let current = operation || {};
+  if (!clean(current.name)) throw new Error('舊音教雲抓取工作沒有回傳執行編號。');
+  const deadline = Date.now() + timeoutMs;
+  while (current && current.done !== true && Date.now() < deadline) {
+    await sleep(5000);
+    const response = await authClient.request({
+      url: `https://run.googleapis.com/v2/${clean(current.name)}`,
+      method: 'GET',
+      timeout: 30000
+    });
+    current = response.data || {};
+  }
+  if (!current || current.done !== true) {
+    throw new Error('舊音教雲抓取時間超過預期；工作仍可能在背景執行，請稍後按「載入上次同步資料」。');
+  }
+  if (current.error) {
+    throw new Error(clean(current.error.message || current.error.status || '舊音教雲抓取工作失敗。'));
+  }
+  return current;
+}
+
+async function runAuditForDate(date) {
+  const selectedDate = dateKey(date);
+  if (!selectedDate) throw new Error('同步日期格式不正確。');
+  const auth = new GoogleAuth({ scopes: [CLOUD_PLATFORM_SCOPE] });
+  const authClient = await auth.getClient();
+  const jobResource = `projects/${projectId()}/locations/${AUDIT_JOB_REGION}/jobs/${AUDIT_JOB_NAME}`;
+  const response = await authClient.request({
+    url: `https://run.googleapis.com/v2/${jobResource}:run`,
+    method: 'POST',
+    timeout: 30000,
+    data: {
+      overrides: {
+        containerOverrides: [{
+          env: [
+            { name: 'AUDIT_START_DATE', value: selectedDate },
+            { name: 'AUDIT_END_DATE', value: selectedDate }
+          ]
+        }]
+      }
+    }
+  });
+  // 保留時間給 Firestore 新結果與鏡像同步；Callable 上限為 540 秒。
+  await waitForOperation(authClient, response.data, 360000);
+  return selectedDate;
+}
+
+async function waitForFreshAudit(previousRunId, selectedDate, timeoutMs = 45000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const info = await latestAuditRunInfo();
+    if (
+      info.runId &&
+      info.runId !== previousRunId &&
+      info.startDate <= selectedDate &&
+      info.endDate >= selectedDate
+    ) return info;
+    await sleep(3000);
+  }
+  throw new Error(`已完成抓取 ${selectedDate}，但尚未找到新的核對結果，請稍後按「載入上次同步資料」。`);
+}
+
+async function waitForMirrorAudit(auditRunId, timeoutMs = 90000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const snapshot = await SETTINGS_REF.get();
+    const settings = snapshot.exists ? snapshot.data() || {} : {};
+    if (
+      clean(settings.status) === 'success' &&
+      clean(settings.auditRunId) === auditRunId
+    ) return settings;
+    await sleep(3000);
+  }
+  return null;
 }
 
 function requestOrigin(request) {
@@ -423,7 +531,24 @@ function registerInjiaoyunEducationMirror(exportsObject) {
     assertAllowedCaller(request);
     assertManualPin(request);
     try {
-      return await syncLatestMirror('manual-course-scheduler');
+      const refreshDate = dateKey(request && request.data && request.data.refreshDate);
+      if (!refreshDate) return await syncLatestMirror('manual-course-scheduler');
+      const before = await latestAuditRunInfo();
+      await runAuditForDate(refreshDate);
+      const freshAudit = await waitForFreshAudit(before.runId, refreshDate);
+      const syncResult = await syncLatestMirror('manual-date-refresh');
+      const mirrored = await waitForMirrorAudit(freshAudit.runId);
+      if (!mirrored) {
+        throw new Error(`${refreshDate} 已抓取完成，但新版課表仍在套用資料，請稍後按「載入上次同步資料」。`);
+      }
+      return {
+        ok: true,
+        status: 'success',
+        refreshDate,
+        auditRunId: freshAudit.runId,
+        runId: clean(syncResult.runId),
+        summary: mirrored.summary || syncResult.summary || {}
+      };
     } catch (error) {
       console.error('[syncInjiaoyunEducationMirrorNow]', error);
       throw new HttpsError('internal', `新版課務同步失敗：${clean(error && error.message).slice(0, 300)}`);
@@ -488,8 +613,10 @@ function registerInjiaoyunEducationMirror(exportsObject) {
 
 module.exports = {
   MIRROR_TYPES,
+  dateKey,
   readMirrorPayload,
   registerInjiaoyunEducationMirror,
+  runAuditForDate,
   sourceHash,
   syncLatestMirror
 };

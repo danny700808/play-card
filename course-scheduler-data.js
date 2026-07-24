@@ -213,8 +213,8 @@
     if(!global.firebase.apps.length)global.firebase.initializeApp(config);return global.firebase.app().functions(FUNCTION_REGION);
   }
 
-  async function call(name,data){
-    var callable=firebaseFunctions().httpsCallable(name),result=await callable(data);
+  async function call(name,data,options){
+    var callable=firebaseFunctions().httpsCallable(name,options||{}),result=await callable(data);
     return result&&result.data||{};
   }
 
@@ -226,7 +226,8 @@
 
   async function sync(options){
     options=options||{};var pin=clean(options.manualSyncPin);if(!pin)throw new Error('請輸入音教雲手動同步密碼。');
-    var result=await call(SYNC_FUNCTION_NAME,{source:'course-scheduler',manualSyncPin:pin});
+    var refreshDate=dateKey(options.refreshDate||options.date);
+    var result=await call(SYNC_FUNCTION_NAME,{source:'course-scheduler',manualSyncPin:pin,refreshDate:refreshDate},{timeout:600000});
     if(!result.ok)throw new Error('課務同步未完成。');
     return result;
   }

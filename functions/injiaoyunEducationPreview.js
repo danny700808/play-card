@@ -12,7 +12,7 @@ const db = admin.firestore();
 const FUNCTION_REGION = 'us-central1';
 const COLLECTION_PREFIX = 'opsInjiaoyunTest';
 const AUDIT_RUNS_COLLECTION = 'opsInjiaoyunCourseAuditV3Runs';
-const VERSION = '2026.07.24-v7-audit-calendar-source';
+const VERSION = '2026.07.24-v8-latest-audit-by-completion';
 const MANUAL_SYNC_PIN = defineSecret('INJIAOYUN_MANUAL_SYNC_PIN');
 const ALLOWED_ORIGINS = new Set([
   'https://danny700808.github.io',
@@ -381,7 +381,9 @@ function auditRelatedCourseId(row) {
 
 async function latestAuditRunInfo() {
   const runs = await db.collection(AUDIT_RUNS_COLLECTION)
-    .orderBy(admin.firestore.FieldPath.documentId(), 'desc')
+    // runId 以「查詢日期」開頭，不能用文件名稱判斷哪一次最後執行。
+    // 例如先抓 7/25、再重抓 7/23 時，7/23 的新結果仍必須成為最新來源。
+    .orderBy('completedAt', 'desc')
     .limit(20)
     .get();
   const runDoc = runs.docs.find((doc) => clean((doc.data() || {}).status).toLowerCase() === 'success');

@@ -143,7 +143,7 @@
     $('dataModeTitle').textContent=review?'7/12～7/15 舊課表核對（唯讀）':actual?'課務資料（唯讀）':'示範資料';$('dataModeDescription').textContent=review?'僅含課表必要資料；不含商品、銷售與完整客戶資料。':actual?'學生、學費與課表':'可操作的測試資料';$('dataModeChip').textContent=review?'核對':actual?'唯讀':'示範';
     if(actual){if(review){$('dataModeMeta').textContent=state.students.length+' 位學生・最後有效課表・核對範圍 7/12～7/15';}else{var meta=state.dataMeta||{},quality=meta.dataQuality||{},visible=quality.visibleEventWeekdays||{},unresolved=numberOf(quality.unresolvedTimeRecords),days='二 '+numberOf(visible.tue)+'・三 '+numberOf(visible.wed)+'・四 '+numberOf(visible.thu)+'・五 '+numberOf(visible.fri)+'・六 '+numberOf(visible.sat);$('dataModeMeta').textContent=state.students.length+' 位學生・'+state.events.length+' 筆課表・'+days+(unresolved?'・'+unresolved+' 筆時間待確認':'')+(meta.runId?'・來源 '+meta.runId:'');}$('loadMigratedDataBtn').textContent='回到示範模式';}
     else{$('dataModeMeta').textContent='尚未載入音教雲同步資料';$('loadMigratedDataBtn').textContent='載入上次同步資料';}
-    if($('syncInjiaoyunBtn'))$('syncInjiaoyunBtn').textContent=loadingMigration?'同步處理中…':'同步並載入音教雲';
+    if($('syncInjiaoyunBtn'))$('syncInjiaoyunBtn').textContent=loadingMigration?'正在抓取並同步…':'抓取並同步本日音教雲';
     ['topNewEvent','sideNewEvent','calendarNewEvent','addStudentBtn','addTeacherBtn','saveSettingsBtn','addRoomBtn','addSubjectBtn','addFeePlanBtn','addLeaveReasonBtn'].forEach(function(id){if($(id))$(id).disabled=actual;});save();
   }
 
@@ -344,10 +344,11 @@
     if(!window.YouziCoursePreviewData||typeof window.YouziCoursePreviewData.sync!=='function'){toast('同步元件尚未載入','請重新整理頁面後再試。','error');return;}
     loadingMigration=true;$('loadMigratedDataBtn').disabled=true;$('syncInjiaoyunBtn').disabled=true;updateModeUI();
     try{
-      var result=await window.YouziCoursePreviewData.sync({manualSyncPin:pin});
+      var selectedDate=state.currentDate;
+      var result=await window.YouziCoursePreviewData.sync({manualSyncPin:pin,refreshDate:selectedDate});
       var summary=result.summary||{};
       await loadMigrationFromMirror(pin);
-      toast(result.status==='current'?'資料已是最新':'同步完成','新增 '+numberOf(summary.created)+'、更新 '+numberOf(summary.updated)+'、未變更 '+numberOf(summary.unchanged)+'；來源 '+clean(result.runId));
+      toast('抓取與同步完成',selectedDate+' 已重新抓取；新增 '+numberOf(summary.created)+'、更新 '+numberOf(summary.updated)+'、未變更 '+numberOf(summary.unchanged));
     }catch(error){
       var message=clean(error&&error.message||'音教雲同步失敗');
       if(message.indexOf('密碼')>=0||message.indexOf('permission-denied')>=0)clearMigrationPin();
