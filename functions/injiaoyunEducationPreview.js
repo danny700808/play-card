@@ -12,7 +12,7 @@ const db = admin.firestore();
 const FUNCTION_REGION = 'us-central1';
 const COLLECTION_PREFIX = 'opsInjiaoyunTest';
 const AUDIT_RUNS_COLLECTION = 'opsInjiaoyunCourseAuditV3Runs';
-const VERSION = '2026.07.24-v8-latest-audit-by-completion';
+const VERSION = '2026.07.24-v9-fixed-course-date-boundary';
 const MANUAL_SYNC_PIN = defineSecret('INJIAOYUN_MANUAL_SYNC_PIN');
 const ALLOWED_ORIGINS = new Set([
   'https://danny700808.github.io',
@@ -396,6 +396,20 @@ async function latestAuditRunInfo() {
   };
 }
 
+// FixedCourse.end=true 代表仍存在於固定課資料；false 才是停用。
+// Student.end 只能描述學生主檔目前狀態，不能單獨判定某一堂固定課已結束。
+// 例如同一位已結束學生可能已有一筆新的固定課，而新課本身沒有 endDate。
+// 有明確 endDate 時，該日期起不再推算；歷史當天若有簽到／請假／缺席證據則仍可補回。
+function fixedCourseFallbackAllowed(raw, date, linkedStatus) {
+  if (linkedStatus) return true;
+  if (!raw || raw.end === false || raw.active === false || raw.off === true ||
+      raw.stop === true || raw.stopped === true || raw.cancel === true || raw.cancelled === true) {
+    return false;
+  }
+  const stopped = dateKey(firstValue(raw.endDate, raw.stoppedAt, raw.cancelledAt));
+  return !stopped || date < stopped;
+}
+
 // 課表同步必須以舊音教雲日表核對程式的最後結果為準。
 // migration collections 只補學生、老師、科目、收費等主檔，不能再自行推算某日課表。
 async function latestAuditSchedule(preferredRunId) {
@@ -511,9 +525,10 @@ async function latestAuditSchedule(preferredRunId) {
       }
       if (candidateFixedKeys.has(`${sourceCourseId}|${date}`)) return;
       const linkedStatus = statusByCourseDate.get(`${sourceCourseId}|${date}`);
-      // 日表沒直接列出的固定課，只在歷史當天有簽到、請假或缺席證據時補回。
-      // 這可保留江威締等歷史有效課，也不會把已結束且當天無紀錄的舊課重新推算進來。
-      if (!linkedStatus) return;
+      // 核對程式可能因 Student.end=true 漏掉一筆仍有效的新固定課。
+      // 以固定課自己的 end/endDate 為界線；學生主檔的結束旗標不能單獨刪課。
+      // 歷史當天有簽到、請假或缺席證據時，即使之後已結束也仍須補回。
+      if (!fixedCourseFallbackAllowed(raw, date, linkedStatus)) return;
       events.push({
         id: `audit_fixed-course_${sourceCourseId}_${date}`,
         sourceCourseId,
@@ -574,6 +589,31 @@ async function latestAuditSchedule(preferredRunId) {
       ? Math.max(0, numberOf(daily.leave))
       : countsByDate[date].leaveEvents;
   });
+  const countMismatches = [];
+  coveredDates.forEach((date) => {
+    const daily = run.daily && run.daily[date] || {};
+    const header = daily.displayedHeader && typeof daily.displayedHeader === 'object'
+      ? daily.displayedHeader
+      : {};
+    // 只有確定畫面日期正確且抓到數字時才檢查，避免把導頁失敗的其他日期誤當真。
+    if (daily.displayedDateMatched === false) return;
+    const expectedStudents = header.students == null || header.students === ''
+      ? null
+      : numberOf(header.students);
+    const expectedFixed = header.fixedCourses == null || header.fixedCourses === ''
+      ? null
+      : numberOf(header.fixedCourses);
+    const actual = countsByDate[date];
+    if (expectedStudents != null && actual.students !== expectedStudents) {
+      countMismatches.push(`${date} 學生 ${actual.students}/${expectedStudents}`);
+    }
+    if (expectedFixed != null && actual.fixed !== expectedFixed) {
+      countMismatches.push(`${date} 固定課 ${actual.fixed}/${expectedFixed}`);
+    }
+  });
+  if (countMismatches.length) {
+    throw new Error(`舊日表完整性檢查未通過：${countMismatches.join('；')}`);
+  }
   return {
     runId: runDoc.id,
     startDate,
@@ -1244,6 +1284,7 @@ module.exports = {
   dateKey,
   durationMinutes,
   frequencyWeeks,
+  fixedCourseFallbackAllowed,
   latestAuditSchedule,
   latestAuditRunInfo,
   latestMigrationRunId,
