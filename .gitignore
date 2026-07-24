@@ -1,0 +1,50 @@
+# Dependencies
+node_modules/
+functions/node_modules/
+
+# Firebase local state and logs
+.firebase/
+firebase-debug.log
+firebase-debug.*.log
+firestore-debug.log
+ui-debug.log
+.runtimeconfig.json
+
+# Runtime configuration and secrets
+.env
+.env.*
+!.env.example
+functions/.env
+functions/.env.*
+!functions/.env.example
+*.local
+
+# Credentials and private keys
+service-account.json
+firebase-service-account*.json
+*service-account-key*.json
+*service_account_key*.json
+credentials.json
+secrets.json
+*.pem
+*.key
+*.p12
+
+# Test, build and package output
+coverage/
+dist/
+build/
+*.tgz
+*.zip
+npm-debug.log*
+npm-audit.json
+yarn-debug.log*
+yarn-error.log*
+
+# Editor and operating-system files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~
