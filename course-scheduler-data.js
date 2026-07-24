@@ -2,7 +2,8 @@
   'use strict';
 
   var FUNCTION_REGION='us-central1';
-  var FUNCTION_NAME='loadInjiaoyunEducationPreview';
+  var LOAD_FUNCTION_NAME='loadInjiaoyunEducationMirror';
+  var SYNC_FUNCTION_NAME='syncInjiaoyunEducationMirrorNow';
 
   function clean(value){return String(value==null?'':value).trim();}
   function numberOf(value){var parsed=Number(value);return Number.isFinite(parsed)?parsed:0;}
@@ -143,11 +144,10 @@
     return {id:safeId('course',course.id,0)+'@'+date,sourceCourseId:clean(course.id),seriesId:clean(course.id),date:date,roomId:clean(course.roomId),start:clean(course.start),duration:Math.max(30,numberOf(course.duration)||60),type:clean(course.type)||'fixed',frequency:numberOf(course.frequencyWeeks)>=2?'biweekly':course.type==='fixed'?'weekly':'once',studentIds:unique(course.studentIds),teacherId:clean(course.teacherId),subjectId:clean(course.subjectId),tuitionPeriodId:resolvePeriod(course),clientName:'',rentalFee:0,status:clean(status)||'scheduled',note:clean(course.note),readOnly:true,source:'injiaoyun-migration'};
   }
 
-  // 舊系統的固定課會同時保留「每週規則」及單日請假／取消紀錄。
-  // 單日請假不是另一堂課，絕對不能再展開成藍色格子或拿去算衝突。
-  function hiddenCourseStatus(status){
+  // 請假要保留成半透明藍色固定課；只有真正取消／停課才不顯示。
+  function cancelledCourseStatus(status){
     var value=clean(status).toLowerCase();
-    return ['leave','cancel','cancelled','canceled','skip','skipped','suspended','stopped','inactive','請假','取消','停課'].indexOf(value)>=0;
+    return ['cancel','cancelled','canceled','suspended','stopped','inactive','取消','停課'].indexOf(value)>=0;
   }
 
   function fixedCourseEvents(course,rangeStart,rangeEnd,resolvePeriod){
@@ -160,7 +160,7 @@
     while(cursor<rangeStart&&guard<1500){cursor=shiftDate(cursor,step);guard++;}
     while(cursor<=rangeEnd&&cursor<=stop&&guard<1700){
       var status=statuses[cursor]||'scheduled';
-      if(!hiddenCourseStatus(status))events.push(courseEvent(course,cursor,status,resolvePeriod));
+      if(!cancelledCourseStatus(status))events.push(courseEvent(course,cursor,status,resolvePeriod));
       cursor=shiftDate(cursor,step);guard++;
     }
     return events;
@@ -175,7 +175,17 @@
       array(payload.temporaryCourses).filter(function(row){return row.active!==false;}).forEach(function(row){var date=dateKey(row.date);if(date&&clean(row.start)&&clean(row.roomId)&&date>=rangeStart&&date<=rangeEnd)events.push(courseEvent(row,date,clean(row.statusByDate&&row.statusByDate[date])||'scheduled',resolvePeriod));});
       array(payload.roomRentals).forEach(function(row,index){var date=dateKey(row.date);if(date&&clean(row.start)&&clean(row.roomId)&&date>=rangeStart&&date<=rangeEnd)events.push({id:safeId('rental',row.id,index)+'@'+date,seriesId:'',date:date,roomId:clean(row.roomId),start:clean(row.start),duration:Math.max(30,numberOf(row.duration)||60),type:'rental',frequency:'once',studentIds:[],teacherId:'',subjectId:'',tuitionPeriodId:'',clientName:clean(row.clientName)||'教室租用',rentalFee:numberOf(row.amount||row.rentalFee),status:clean(row.status)||'scheduled',note:clean(row.note),readOnly:true});});
     }
-    return events.filter(function(row){return row.date&&row.roomId&&row.start&&row.date>=rangeStart&&row.date<=rangeEnd&&!hiddenCourseStatus(row.status);}).sort(function(left,right){return (left.date+left.start+left.roomId).localeCompare(right.date+right.start+right.roomId);});
+    events=events.filter(function(row){return row.date&&row.roomId&&row.start&&row.date>=rangeStart&&row.date<=rangeEnd&&!cancelledCourseStatus(row.status);});
+    // 舊日表中請假卡若同格已有綠色單堂或粉紅租用，會被後來的卡片蓋住。
+    var occupied=events.filter(function(row){return row.type==='single'||row.type==='trial'||row.type==='rental';}).map(function(row){
+      return {date:row.date,roomId:row.roomId,start:timeToMin(row.start),end:timeToMin(row.start)+numberOf(row.duration)};
+    });
+    events=events.filter(function(row){
+      if(row.type!=='fixed'||clean(row.status).toLowerCase()!=='leave')return true;
+      var start=timeToMin(row.start),end=start+numberOf(row.duration);
+      return !occupied.some(function(slot){return slot.date===row.date&&slot.roomId===row.roomId&&start<slot.end&&end>slot.start;});
+    });
+    return events.sort(function(left,right){return (left.date+left.start+left.roomId).localeCompare(right.date+right.start+right.roomId);});
   }
 
   function normalizeAttendance(payload,events,periods){
@@ -208,11 +218,23 @@
     if(!global.firebase.apps.length)global.firebase.initializeApp(config);return global.firebase.app().functions(FUNCTION_REGION);
   }
 
+  async function call(name,data){
+    var callable=firebaseFunctions().httpsCallable(name),result=await callable(data);
+    return result&&result.data||{};
+  }
+
   async function load(options){
     options=options||{};var pin=clean(options.manualSyncPin);if(!pin)throw new Error('請輸入音教雲手動同步密碼。');
-    var callable=firebaseFunctions().httpsCallable(FUNCTION_NAME),result=await callable({source:'course-scheduler-preview',manualSyncPin:pin}),payload=result&&result.data||{};
+    var payload=await call(LOAD_FUNCTION_NAME,{source:'course-scheduler',manualSyncPin:pin});
     if(!payload.ok)throw new Error('課務資料讀取未完成。');return buildState(payload,options.anchorDate);
   }
 
-  global.YouziCoursePreviewData={load:load,buildState:buildState};
+  async function sync(options){
+    options=options||{};var pin=clean(options.manualSyncPin);if(!pin)throw new Error('請輸入音教雲手動同步密碼。');
+    var result=await call(SYNC_FUNCTION_NAME,{source:'course-scheduler',manualSyncPin:pin});
+    if(!result.ok)throw new Error('課務同步未完成。');
+    return result;
+  }
+
+  global.YouziCoursePreviewData={load:load,sync:sync,buildState:buildState};
 })(window);
