@@ -83,6 +83,9 @@
       r.correctTime=cleanTime(r.correctTime||r.correctionTime||r['修正時間']);
       r.correctAction=clean(r.correctAction||r.actionName||r['修正動作']);
       r.correctionType=clean(r.correctionType||r.clockType||r['修正打卡方式']);
+      r.leaveStartTime=cleanTime(r.leaveStartTime||r['請假開始時間']);
+      r.workedHours=r.workedHours==null?r['已工作時數']:r.workedHours;
+      r.leaveHours=r.leaveHours==null?r['請假時數']:r.leaveHours;
       r.reason=clean(r.reason||r['修正原因']);
       r.createdAt=clean(r.createdAtText||r.createdAt||r['建立時間']);
       r.reviewedAt=clean(r.reviewedAtText||r.reviewedAt||r.updatedAtText||r.updatedAt||'');
@@ -95,7 +98,7 @@
     }
     function setTab(tab){activeTab=tab==='history'?'history':'pending';qs('#pendingTab').classList.toggle('active',activeTab==='pending');qs('#historyTab').classList.toggle('active',activeTab==='history');render();}
     function renderTabs(){const pending=rows.filter(r=>isPendingStatus(r.status)).length;const history=rows.filter(r=>!isPendingStatus(r.status)).length;qs('#pendingTab').textContent=`未處理（${pending}）`;qs('#historyTab').textContent=history?`歷史紀錄（${history}）`:'歷史紀錄';}
-    function typeLabel(r){if(r.requestKind==='specialClock')return '特殊打卡';if(r.requestKind==='missingClock')return '補打卡';return r.correctionType||'打卡修正'}
+    function typeLabel(r){if(r.requestKind==='midShiftLeave')return '中途請假（保留已工作時數）';if(r.requestKind==='specialClock')return '特殊打卡';if(r.requestKind==='missingClock')return '補打卡';return r.correctionType||'打卡修正'}
     function changeLine(r){const oldText=r.requestKind==='specialClock'?'特殊打卡申請':(r.requestKind==='missingClock'?'缺少打卡':(r.originalRecordId&&r.originalTime!=='—'?r.originalTime:'無原始紀錄'));return `${oldText} → ${r.correctTime||'—'}`}
     function card(row){
       const pending=isPendingStatus(row.status);
@@ -107,6 +110,7 @@
           <div class="approval-field"><div class="approval-label">動作</div><div class="approval-value">${escapeHtml(row.correctAction||'—')}</div></div>
           <div class="approval-field"><div class="approval-label">申請修改</div><div class="approval-value">${escapeHtml(changeLine(row))}</div></div>
         </div>
+        ${row.requestKind==='midShiftLeave'?`<div class="approval-note">請假開始：${escapeHtml(row.leaveStartTime||row.correctTime||'—')}／已工作：${escapeHtml(row.workedHours==null?'—':row.workedHours+' 小時')}／請假：${escapeHtml(row.leaveHours==null?'—':row.leaveHours+' 小時')}</div>`:''}
         ${row.reason?`<div class="approval-note">原因：${escapeHtml(row.reason)}</div>`:''}
         ${row.rejectReason?`<div class="approval-note">駁回原因：${escapeHtml(row.rejectReason)}</div>`:''}
         ${pending&&row.managedByLeaveApproval?`<div class="approval-note">此筆已綁定請假簽核，請至請假簽核處理。</div>`:''}
