@@ -91,7 +91,7 @@ label{display:block;font-size:12px;font-weight:850;color:#4d6370;margin:12px 0 5
   <div id="message"></div>
   <section class="card" id="pinScreen">
     <h1>輸入盤點密碼</h1><p class="muted">請輸入管理者提供的專用密碼。</p>
-    <label>盤點密碼</label><input class="field" id="pinInput" type="password" inputmode="numeric" autocomplete="one-time-code" placeholder="輸入密碼">
+    <label>盤點密碼</label><input class="field" id="pinInput" type="password" inputmode="text" autocomplete="one-time-code" autocapitalize="none" spellcheck="false" placeholder="輸入密碼">
     <button class="btn primary" id="pinButton" style="margin-top:12px">確認密碼</button>
   </section>
   <section class="card hidden" id="nameScreen">
@@ -129,7 +129,7 @@ label{display:block;font-size:12px;font-weight:850;color:#4d6370;margin:12px 0 5
 (function(){
 'use strict';
 const SETTINGS='opsSettings',PRODUCTS='opsInternalProducts',INVENTORY='opsInventoryTransactions',QUEUE='opsPlatformInventoryQueue';
-let db=null,settings={enabled:true,pinHash:''},products=[],operator='',current=null,recent=[],qrScanner=null,scannerStarting=false,scanHandled=false,searchTimer=null,searchVersion=0;
+let db=null,settings={enabled:true,pinHash:''},products=[],operator='',current=null,recent=[],qrScanner=null,scannerStarting=false,scanHandled=false,searchTimer=null,searchVersion=0,scanAudioContext=null;
 const $=id=>document.getElementById(id),clean=v=>String(v==null?'':v).trim(),num=v=>{const n=Number(v);return Number.isFinite(n)?n:null},serverTimestamp=()=>firebase.firestore.FieldValue.serverTimestamp();
 function msg(text,type){$('message').innerHTML=text?'<div class="'+(type||'notice')+'">'+escapeHtml(text)+'</div>':'';}
 function escapeHtml(v){return clean(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
@@ -164,7 +164,7 @@ function materialize(raw){const target=Math.max(0,Number(raw.currentStock||0));l
 function stats(layers){layers=normalizeLayers(layers);const qty=layers.reduce((s,l)=>s+l.qtyRemaining,0),known=layers.filter(l=>l.costKnown&&l.unitCost!=null),knownQty=known.reduce((s,l)=>s+l.qtyRemaining,0),value=known.reduce((s,l)=>s+l.qtyRemaining*l.unitCost,0);return {layers,averageCost:qty>0&&knownQty===qty?value/qty:null,inventoryValue:value,costIncomplete:qty>knownQty};}
 function adjustLayers(raw,target){const old=Math.max(0,Number(raw.currentStock||0)),latest=num(raw.latestPurchaseCost)!=null?num(raw.latestPurchaseCost):num(raw.averageCost);let layers=materialize(raw);if(target>old){const add=target-old;layers.push({layerId:'COUNT-'+Date.now(),qtyRemaining:add,originalQty:add,unitCost:latest,costKnown:latest!=null,receivedAt:new Date().toISOString(),referenceType:'stocktakeIncrease',referenceId:'MOBILE'});}else if(target<old){let take=old-target;for(const l of layers){if(take<=0)break;const n=Math.min(take,l.qtyRemaining);l.qtyRemaining-=n;take-=n;}layers=layers.filter(l=>l.qtyRemaining>0);}return stats(layers);}
 async function init(){try{const cfg=window.APP_CONFIG&&APP_CONFIG.FIREBASE_CONFIG;if(!cfg||!cfg.projectId)throw new Error('找不到 Firebase 設定');if(!firebase.apps.length)firebase.initializeApp(cfg);db=firebase.firestore();const [settingSnap,productSnap]=await Promise.all([db.collection(SETTINGS).doc('inventoryCount').get(),db.collection(PRODUCTS).limit(10000).get()]);settings=settingSnap.exists?Object.assign({enabled:true,pinHash:''},settingSnap.data()||{}):{enabled:true,pinHash:''};if(settings.enabled===false){msg('盤點入口目前已停用，請洽管理者。','error');$('pinButton').disabled=true;return;}products=productSnap.docs.map(doc=>Object.assign({id:doc.id},doc.data()||{})).filter(p=>p.enabled!==false);const remembered=sessionStorage.getItem('inventoryCountOperator');if(remembered){operator=remembered;$('pinScreen').classList.add('hidden');$('nameScreen').classList.add('hidden');$('countScreen').classList.remove('hidden');$('skuInput').focus();}}catch(e){msg('載入失敗：'+(e.message||e),'error');}}
-async function verifyPin(){const pin=clean($('pinInput').value);if(!pin)return msg('請輸入盤點密碼。','error');const expected=settings.pinHash||await hashText('0000'),actual=await hashText(pin);if(actual!==expected)return msg('盤點密碼不正確。','error');msg('');$('pinScreen').classList.add('hidden');$('nameScreen').classList.remove('hidden');$('nameInput').focus();}
+async function verifyPin(){const pin=clean($('pinInput').value);if(!pin)return msg('請輸入盤點密碼。','error');const legacyDefault=await hashText('0000'),configured=clean(settings.pinHash),expected=!configured||configured===legacyDefault?await hashText('youZI'):configured,actual=await hashText(pin);if(actual!==expected)return msg('盤點密碼不正確。','error');msg('');$('pinScreen').classList.add('hidden');$('nameScreen').classList.remove('hidden');$('nameInput').focus();}
 function startCount(){operator=clean($('nameInput').value);if(!operator)return msg('請輸入盤點人姓名。','error');sessionStorage.setItem('inventoryCountOperator',operator);msg('');$('nameScreen').classList.add('hidden');$('countScreen').classList.remove('hidden');$('skuInput').focus();}
 function clearSearchResults(){
   $('searchResults').innerHTML='';
@@ -217,9 +217,28 @@ async function saveCount(){if(!current)return;const value=$('countInput').value;
 function nextItem(text,type){if(text)msg(text,type||'notice');current=null;$('skuInput').value='';clearSearchResults();$('productCard').classList.add('hidden');$('skuInput').focus();}
 function renderRecent(){$('recentList').innerHTML=recent.length?recent.map(r=>'<div class="recent-row"><div><b>'+escapeHtml(r.name)+'</b><small>'+escapeHtml(r.sku)+'</small></div><strong>'+(r.before+' → '+r.after)+'</strong></div>').join(''):'<p class="muted">尚未送出盤點紀錄。</p>';}
 function scannerMessage(error){const text=clean(error&&((error.message)||(error.name)||error));if(/notallowed|permission|denied/i.test(text))return '相機權限未允許。請在瀏覽器設定中允許相機，再重新開啟；若在 App 內開啟，請改用 Safari 或 Chrome。';if(/notfound|device|camera/i.test(text))return '找不到可使用的相機，請確認手機相機功能正常。';return '無法開啟相機：'+(text||'請改用 Safari 或 Chrome 後再試一次。');}
+function prepareScanFeedback(){
+  try{
+    const AudioContext=window.AudioContext||window.webkitAudioContext;
+    if(AudioContext&&!scanAudioContext)scanAudioContext=new AudioContext();
+    if(scanAudioContext&&scanAudioContext.state==='suspended')void scanAudioContext.resume();
+  }catch(e){}
+}
+function scanSuccessFeedback(){
+  try{
+    if(scanAudioContext&&scanAudioContext.state==='running'){
+      const oscillator=scanAudioContext.createOscillator(),gain=scanAudioContext.createGain(),now=scanAudioContext.currentTime;
+      oscillator.type='sine';oscillator.frequency.setValueAtTime(920,now);
+      gain.gain.setValueAtTime(.0001,now);gain.gain.exponentialRampToValueAtTime(.22,now+.012);gain.gain.exponentialRampToValueAtTime(.0001,now+.14);
+      oscillator.connect(gain);gain.connect(scanAudioContext.destination);oscillator.start(now);oscillator.stop(now+.15);
+    }
+  }catch(e){}
+  try{if(navigator.vibrate)navigator.vibrate(90);}catch(e){}
+}
 async function finishScan(decodedText){
   if(scanHandled)return;
   scanHandled=true;
+  scanSuccessFeedback();
   $('skuInput').value=clean(decodedText);
   await stopScanner();
   const matched=exactProduct(decodedText);
@@ -231,16 +250,17 @@ async function startScanner(){
   if(!window.isSecureContext)return msg('相機掃描必須使用 HTTPS 網址開啟。','error');
   if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)return msg('這個瀏覽器無法開啟相機，請改用 Safari 或 Chrome。','error');
   if(typeof window.Html5Qrcode==='undefined')return msg('掃描元件載入失敗，請確認網路後重新整理頁面。','error');
+  prepareScanFeedback();
   scannerStarting=true;scanHandled=false;$('scanner').classList.remove('hidden');document.body.style.overflow='hidden';
   try{
-    const formats=window.Html5QrcodeSupportedFormats?[Html5QrcodeSupportedFormats.QR_CODE,Html5QrcodeSupportedFormats.CODE_128,Html5QrcodeSupportedFormats.CODE_39,Html5QrcodeSupportedFormats.EAN_13,Html5QrcodeSupportedFormats.EAN_8,Html5QrcodeSupportedFormats.UPC_A,Html5QrcodeSupportedFormats.UPC_E,Html5QrcodeSupportedFormats.ITF]:undefined;
+    const formats=window.Html5QrcodeSupportedFormats?[Html5QrcodeSupportedFormats.QR_CODE]:undefined;
     qrScanner=new Html5Qrcode('scannerReader',formats?{formatsToSupport:formats,verbose:false}:{verbose:false});
     let camera={facingMode:'environment'};
     try{
       const cameras=await Html5Qrcode.getCameras();
       if(cameras&&cameras.length){const preferred=cameras.find(item=>/back|rear|environment|後/i.test(clean(item.label)))||cameras[cameras.length-1];camera=preferred.id;}
     }catch(e){}
-    await qrScanner.start(camera,{fps:12,qrbox:function(width,height){return {width:Math.min(330,Math.floor(width*.82)),height:Math.min(190,Math.floor(height*.34))};},disableFlip:false},finishScan,function(){});
+    await qrScanner.start(camera,{fps:9,qrbox:function(width,height){const size=Math.max(190,Math.min(360,Math.floor(Math.min(width,height)*.78)));return {width:size,height:size};},disableFlip:false},finishScan,function(){});
   }catch(error){await stopScanner();msg(scannerMessage(error),'error');}
   finally{scannerStarting=false;}
 }
