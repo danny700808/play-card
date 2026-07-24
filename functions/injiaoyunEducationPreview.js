@@ -276,6 +276,16 @@ function inactiveRecord(row) {
     /停課|停止|暫停|inactive|stopped|suspend|paused|cancelled/.test(status);
 }
 
+// 音教雲 FixedCourse 的 end 布林語意與 Student 相反：
+// FixedCourse.end=true 是仍在固定課表，false 才是已結束。
+function inactiveFixedCourse(row) {
+  row = row || {};
+  const status = clean(firstValue(row.status, row.state, row.courseStatus)).toLowerCase();
+  return row.active === false || row.end === false || row.off === true || row.stop === true ||
+    row.stopped === true || row.cancel === true || row.cancelled === true ||
+    /停課|停止|暫停|inactive|stopped|suspend|paused|cancelled/.test(status);
+}
+
 // 有些舊固定課的建立日期不是實際上課星期。以歷史簽到／請假紀錄中最常出現的星期
 // 校正週期錨點，可避免星期六固定課被錯排到其他天。
 function recurringAnchorDate(sourceDate, statusDates) {
@@ -703,7 +713,7 @@ function courseRow(row, type, lookups, leavesByCourse) {
   }).filter((value) => Object.keys(value).length);
   // 課程本身仍被標成啟用、但所有關聯學生都已停課時，不可再把固定課延伸到未來。
   const studentsStillActive = !linkedStudents.length || linkedStudents.some((student) => !inactiveRecord(student));
-  const active = !inactiveRecord(row) && studentsStillActive;
+  const active = !(type === 'fixed' ? inactiveFixedCourse(row) : inactiveRecord(row)) && studentsStillActive;
   const explicitStopDate = dateKey(firstValue(
     row.stopDate, row.stoppedAt, row.endedAt, row.endDate, row.offDate, row.cancelDate,
     row.pauseDate, row.suspendedAt, row.inactiveAt
@@ -990,6 +1000,7 @@ function registerInjiaoyunEducationPreview(exportsObject) {
 module.exports = {
   registerInjiaoyunEducationPreview,
   EDUCATION_COLLECTIONS,
+  buildPreview,
   buildAttendance,
   buildFeePlans,
   buildTuitionPeriods,
@@ -997,5 +1008,6 @@ module.exports = {
   dateKey,
   durationMinutes,
   frequencyWeeks,
+  latestMigrationRunId,
   timeKey
 };

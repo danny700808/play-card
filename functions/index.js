@@ -9,6 +9,7 @@ const { registerEasyStoreCatalogSync } = require('./easystoreCatalogSync');
 const { registerPlatformOrderSync } = require('./platformOrderSync');
 const { registerInjiaoyunManualSync } = require('./injiaoyunManualSync');
 const { registerInjiaoyunEducationPreview } = require('./injiaoyunEducationPreview');
+const { registerInjiaoyunEducationMirror } = require('./injiaoyunEducationMirror');
 
 if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
@@ -18,6 +19,7 @@ registerEasyStoreCatalogSync(exports);
 registerPlatformOrderSync(exports);
 registerInjiaoyunManualSync(exports);
 registerInjiaoyunEducationPreview(exports);
+registerInjiaoyunEducationMirror(exports);
 
 const ADMIN_EMAILS = new Set(['danny700808@gmail.com']);
 const DEFAULT_ADMIN_DOC_ID = 'ADMIN_DANNY';
