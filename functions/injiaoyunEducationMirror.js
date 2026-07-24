@@ -7,6 +7,7 @@ const admin = require('firebase-admin');
 const crypto = require('crypto');
 const {
   buildPreview,
+  EDUCATION_PREVIEW_VERSION,
   latestAuditRunInfo,
   latestAuditSchedule,
   latestMigrationRunId
@@ -18,7 +19,7 @@ const db = admin.firestore();
 const FieldValue = admin.firestore.FieldValue;
 const Timestamp = admin.firestore.Timestamp;
 const FUNCTION_REGION = 'us-central1';
-const VERSION = '2026.07.24-v3-audit-candidate-authority';
+const VERSION = '2026.07.24-v4-force-audit-calendar-refresh';
 const MANUAL_SYNC_PIN = defineSecret('INJIAOYUN_MANUAL_SYNC_PIN');
 const SETTINGS_REF = db.collection('opsSettings').doc('injiaoyunEducationMirror');
 const LOCK_MS = 12 * 60 * 1000;
@@ -282,7 +283,8 @@ async function syncLatestMirror(trigger = 'automatic') {
   if (!migrationRunId) throw new Error('找不到已完成的音教雲移轉資料。');
   if (!auditInfo.runId) throw new Error('找不到已完成的音教雲舊日表核對資料。');
   // 納入同步規則版本；即使來源 run 未改變，部署新判定規則後也會重新套用一次。
-  const sourceVersion = `${migrationRunId}|${auditInfo.runId}|${VERSION}`;
+  // 同步版本同時綁定日表判定程式；日表邏輯更新後，即使來源 run 相同也必須重建鏡像。
+  const sourceVersion = `${migrationRunId}|${auditInfo.runId}|${VERSION}|${EDUCATION_PREVIEW_VERSION}`;
   const reservation = await reserveSync(sourceVersion, trigger);
   if (!reservation.accepted) {
     return {
@@ -327,7 +329,9 @@ async function syncLatestMirror(trigger = 'automatic') {
       auditRangeStart: audit.startDate,
       auditRangeEnd: audit.endDate,
       auditCoveredDates,
-      auditEventCount: audit.events.length
+      auditEventCount: audit.events.length,
+      auditCountsByDate: audit.countsByDate || {},
+      auditScheduleVersion: EDUCATION_PREVIEW_VERSION
     });
     await SETTINGS_REF.set({
       status: 'success',

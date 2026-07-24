@@ -548,11 +548,36 @@ async function latestAuditSchedule(preferredRunId) {
     left.sortIndex - right.sortIndex
   ));
   events.forEach((row) => { delete row.sortIndex; });
+  const countsByDate = Object.fromEntries(coveredDates.map((date) => [date, {
+    fixed: 0,
+    single: 0,
+    rental: 0,
+    students: 0,
+    leave: 0,
+    leaveEvents: 0,
+    absent: 0
+  }]));
+  events.forEach((row) => {
+    if (!countsByDate[row.date]) return;
+    if (Object.prototype.hasOwnProperty.call(countsByDate[row.date], row.type)) {
+      countsByDate[row.date][row.type] += 1;
+    }
+    if (row.type !== 'rental') countsByDate[row.date].students += 1;
+    if (row.status === 'leave') countsByDate[row.date].leaveEvents += 1;
+    if (row.status === 'absent') countsByDate[row.date].absent += 1;
+  });
+  coveredDates.forEach((date) => {
+    const daily = run.daily && run.daily[date];
+    countsByDate[date].leave = daily && daily.leave != null
+      ? Math.max(0, numberOf(daily.leave))
+      : countsByDate[date].leaveEvents;
+  });
   return {
     runId: runDoc.id,
     startDate,
     endDate,
     coveredDates,
+    countsByDate,
     events
   };
 }
@@ -1207,6 +1232,7 @@ function registerInjiaoyunEducationPreview(exportsObject) {
 
 module.exports = {
   registerInjiaoyunEducationPreview,
+  EDUCATION_PREVIEW_VERSION: VERSION,
   EDUCATION_COLLECTIONS,
   buildPreview,
   buildAttendance,
