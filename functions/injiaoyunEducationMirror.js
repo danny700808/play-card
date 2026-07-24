@@ -18,7 +18,7 @@ const db = admin.firestore();
 const FieldValue = admin.firestore.FieldValue;
 const Timestamp = admin.firestore.Timestamp;
 const FUNCTION_REGION = 'us-central1';
-const VERSION = '2026.07.24-v2-audit-calendar-mirror';
+const VERSION = '2026.07.24-v3-audit-candidate-authority';
 const MANUAL_SYNC_PIN = defineSecret('INJIAOYUN_MANUAL_SYNC_PIN');
 const SETTINGS_REF = db.collection('opsSettings').doc('injiaoyunEducationMirror');
 const LOCK_MS = 12 * 60 * 1000;
@@ -281,7 +281,8 @@ async function syncLatestMirror(trigger = 'automatic') {
   ]);
   if (!migrationRunId) throw new Error('找不到已完成的音教雲移轉資料。');
   if (!auditInfo.runId) throw new Error('找不到已完成的音教雲舊日表核對資料。');
-  const sourceVersion = `${migrationRunId}|${auditInfo.runId}`;
+  // 納入同步規則版本；即使來源 run 未改變，部署新判定規則後也會重新套用一次。
+  const sourceVersion = `${migrationRunId}|${auditInfo.runId}|${VERSION}`;
   const reservation = await reserveSync(sourceVersion, trigger);
   if (!reservation.accepted) {
     return {

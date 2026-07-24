@@ -412,6 +412,7 @@ async function latestAuditSchedule(preferredRunId) {
   ]);
   const rawBySourceId = new Map();
   const rawFixedCourses = [];
+  const candidateFixedKeys = new Set();
   const statusByCourseDate = new Map();
   const putCourseStatus = (courseId, day, status) => {
     if (!courseId || !day) return;
@@ -447,13 +448,15 @@ async function latestAuditSchedule(preferredRunId) {
   candidateSnapshot.docs.forEach((doc, index) => {
     const row = doc.data() || {};
     const sourceType = clean(row.sourceType).toLowerCase();
-    // 固定課要另外套用「歷史日期有簽到／請假仍有效」規則，不能直接使用目前狀態的候選清單。
-    if (!['adjusted-course', 'rental'].includes(sourceType) || row.cancel === true) return;
+    // 舊日表核對程式已確認當天實際出現的固定課、調課與租用；
+    // 這份日期候選必須優先於學生／課程目前是否已結束的主檔狀態。
+    if (!['fixed-course', 'adjusted-course', 'rental'].includes(sourceType) || row.cancel === true) return;
     const sourceCourseId = clean(row.sourceId);
     const date = dateKey(row.dateKey);
     const start = timeKey(row.startsAt);
     const roomId = clean(row.roomId);
     if (!sourceCourseId || !date || !start || !roomId) return;
+    if (sourceType === 'fixed-course') candidateFixedKeys.add(`${sourceCourseId}|${date}`);
     const raw = rawBySourceId.get(sourceCourseId) || {};
     const linkedStatus = statusByCourseDate.get(`${sourceCourseId}|${date}`);
     const type = sourceType === 'fixed-course' ? 'fixed' : sourceType === 'rental' ? 'rental' : 'single';
@@ -494,15 +497,6 @@ async function latestAuditSchedule(preferredRunId) {
     if (!sourceCourseId || !seed || !start || !roomId) return;
     const students = courseStudentValues(raw);
     const studentIds = unique(students);
-    const studentsStillActive = !students.length || students.some((student) => {
-      const linked = student && typeof student === 'object' ? student : {};
-      return Object.keys(linked).length ? !inactiveRecord(linked) : true;
-    });
-    const currentlyActive = !inactiveFixedCourse(raw) && studentsStillActive;
-    const explicitStopDate = dateKey(firstValue(
-      raw.stopDate, raw.stoppedAt, raw.endedAt, raw.endDate, raw.offDate,
-      raw.cancelDate, raw.cancelledAt, raw.pauseDate, raw.suspendedAt
-    ));
     const seedWeekday = weekdayName(seed);
     const every = frequencyWeeks(firstValue(raw.frequency, raw.week, raw.every));
     coveredDates.forEach((date, dateIndex) => {
@@ -513,12 +507,11 @@ async function latestAuditSchedule(preferredRunId) {
         ) / 86400000);
         if (Math.floor(elapsed / 7) % every !== 0) return;
       }
+      if (candidateFixedKeys.has(`${sourceCourseId}|${date}`)) return;
       const linkedStatus = statusByCourseDate.get(`${sourceCourseId}|${date}`);
-      const hasHistoricalEvidence = Boolean(linkedStatus);
-      const stoppedBeforeDate = Boolean(explicitStopDate && explicitStopDate < date);
-      // 最終核對規則：目前已停用／學生已結束時原則排除；
-      // 但歷史當天若有簽到、請假或缺席，仍是當天有效固定課。
-      if ((!currentlyActive || stoppedBeforeDate) && !hasHistoricalEvidence) return;
+      // 日表沒直接列出的固定課，只在歷史當天有簽到、請假或缺席證據時補回。
+      // 這可保留江威締等歷史有效課，也不會把已結束且當天無紀錄的舊課重新推算進來。
+      if (!linkedStatus) return;
       events.push({
         id: `audit_fixed-course_${sourceCourseId}_${date}`,
         sourceCourseId,
