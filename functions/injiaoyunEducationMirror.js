@@ -7,6 +7,8 @@ const admin = require('firebase-admin');
 const crypto = require('crypto');
 const {
   buildPreview,
+  latestAuditRunInfo,
+  latestAuditSchedule,
   latestMigrationRunId
 } = require('./injiaoyunEducationPreview');
 
@@ -16,7 +18,7 @@ const db = admin.firestore();
 const FieldValue = admin.firestore.FieldValue;
 const Timestamp = admin.firestore.Timestamp;
 const FUNCTION_REGION = 'us-central1';
-const VERSION = '2026.07.24-v1-injiaoyun-education-mirror';
+const VERSION = '2026.07.24-v2-audit-calendar-mirror';
 const MANUAL_SYNC_PIN = defineSecret('INJIAOYUN_MANUAL_SYNC_PIN');
 const SETTINGS_REF = db.collection('opsSettings').doc('injiaoyunEducationMirror');
 const LOCK_MS = 12 * 60 * 1000;
@@ -41,6 +43,7 @@ const MIRROR_TYPES = Object.freeze({
   fixedCourses: 'opsEducationMirrorFixedCourses',
   temporaryCourses: 'opsEducationMirrorTemporaryCourses',
   roomRentals: 'opsEducationMirrorRoomRentals',
+  events: 'opsEducationMirrorEvents',
   leaveReasons: 'opsEducationMirrorLeaveReasons'
 });
 
@@ -176,7 +179,75 @@ async function syncType(type, collectionName, rows, runId) {
   return { sourceCount: rows.length, created, updated, unchanged, missing, deactivated, writes: operations.length, commits };
 }
 
-async function reserveSync(runId, trigger) {
+// 日表核對每次只抓指定日期範圍；範圍外的歷史事件要保留，範圍內則以本次舊系統結果完整覆蓋。
+async function syncScopedEvents(collectionName, rows, auditRunId, coveredDates) {
+  const collection = db.collection(collectionName);
+  const snapshot = await collection.get();
+  const existing = new Map(snapshot.docs.map((doc) => [clean((doc.data() || {}).sourceId), {
+    ref: doc.ref,
+    data: doc.data() || {}
+  }]));
+  const covered = new Set(Array.isArray(coveredDates) ? coveredDates.map(clean).filter(Boolean) : []);
+  const seen = new Set();
+  const operations = [];
+  let created = 0;
+  let updated = 0;
+  let unchanged = 0;
+  let missing = 0;
+  let deactivated = 0;
+
+  rows.forEach((raw, index) => {
+    const id = sourceId(raw, index);
+    const source = jsonValue(raw);
+    const hash = sourceHash(source);
+    const prior = existing.get(id);
+    seen.add(id);
+    if (prior && prior.data.sourceHash === hash && prior.data.sourceActive !== false) {
+      unchanged += 1;
+      return;
+    }
+    const ref = prior ? prior.ref : collection.doc(documentId('events', id));
+    operations.push({
+      ref,
+      data: {
+        sourceId: id,
+        sourceType: 'events',
+        source,
+        sourceHash: hash,
+        sourceActive: true,
+        missingCount: 0,
+        lastChangedRunId: auditRunId,
+        sourceUpdatedAt: FieldValue.serverTimestamp(),
+        version: VERSION
+      }
+    });
+    if (prior) updated += 1;
+    else created += 1;
+  });
+
+  existing.forEach((prior, id) => {
+    if (seen.has(id)) return;
+    const priorDate = clean(prior.data && prior.data.source && prior.data.source.date);
+    if (!covered.has(priorDate)) return;
+    missing += 1;
+    operations.push({
+      ref: prior.ref,
+      data: {
+        sourceActive: false,
+        missingCount: 1,
+        lastMissingRunId: auditRunId,
+        sourceUpdatedAt: FieldValue.serverTimestamp(),
+        version: VERSION
+      }
+    });
+    if (prior.data.sourceActive !== false) deactivated += 1;
+  });
+
+  const commits = await commitOperations(operations);
+  return { sourceCount: rows.length, created, updated, unchanged, missing, deactivated, writes: operations.length, commits };
+}
+
+async function reserveSync(sourceVersion, trigger) {
   const now = Timestamp.now();
   return db.runTransaction(async (transaction) => {
     const snapshot = await transaction.get(SETTINGS_REF);
@@ -184,7 +255,7 @@ async function reserveSync(runId, trigger) {
     const lockUntil = current.lockUntil && typeof current.lockUntil.toMillis === 'function'
       ? current.lockUntil.toMillis()
       : 0;
-    if (clean(current.sourceRunId) === runId && clean(current.status) === 'success') {
+    if (clean(current.sourceVersion) === sourceVersion && clean(current.status) === 'success') {
       return { accepted: false, reason: 'current', current };
     }
     if (clean(current.status) === 'running' && lockUntil > now.toMillis()) {
@@ -193,53 +264,90 @@ async function reserveSync(runId, trigger) {
     transaction.set(SETTINGS_REF, {
       status: 'running',
       trigger: clean(trigger) || 'automatic',
-      pendingRunId: runId,
+      pendingSourceVersion: sourceVersion,
       startedAt: now,
       lockUntil: Timestamp.fromMillis(now.toMillis() + LOCK_MS),
       lastError: '',
       version: VERSION
     }, { merge: true });
-    return { accepted: true };
+    return { accepted: true, current };
   });
 }
 
 async function syncLatestMirror(trigger = 'automatic') {
-  const runId = await latestMigrationRunId();
-  if (!runId) throw new Error('找不到已完成的音教雲移轉資料。');
-  const reservation = await reserveSync(runId, trigger);
+  const [migrationRunId, auditInfo] = await Promise.all([
+    latestMigrationRunId(),
+    latestAuditRunInfo()
+  ]);
+  if (!migrationRunId) throw new Error('找不到已完成的音教雲移轉資料。');
+  if (!auditInfo.runId) throw new Error('找不到已完成的音教雲舊日表核對資料。');
+  const sourceVersion = `${migrationRunId}|${auditInfo.runId}`;
+  const reservation = await reserveSync(sourceVersion, trigger);
   if (!reservation.accepted) {
     return {
       ok: true,
       status: reservation.reason,
-      runId,
+      runId: migrationRunId,
+      auditRunId: auditInfo.runId,
       summary: reservation.current && reservation.current.summary || {}
     };
   }
 
   try {
-    const preview = await buildPreview(runId);
+    // 只有來源版本真的改變時才讀取完整 audit 子集合，避免每次開頁都重抓全部歷史資料。
+    const [preview, audit] = await Promise.all([
+      buildPreview(migrationRunId),
+      latestAuditSchedule(auditInfo.runId)
+    ]);
+    if (!audit.runId) throw new Error('音教雲舊日表核對資料讀取失敗。');
     const results = {};
     for (const [type, collectionName] of Object.entries(MIRROR_TYPES)) {
-      results[type] = await syncType(type, collectionName, Array.isArray(preview[type]) ? preview[type] : [], runId);
+      if (type === 'events') {
+        results[type] = await syncScopedEvents(collectionName, audit.events, audit.runId, audit.coveredDates);
+      } else {
+        results[type] = await syncType(
+          type,
+          collectionName,
+          Array.isArray(preview[type]) ? preview[type] : [],
+          migrationRunId
+        );
+      }
     }
     const summary = Object.values(results).reduce((total, row) => {
       Object.keys(total).forEach((key) => { total[key] += Number(row[key] || 0); });
       return total;
     }, { sourceCount: 0, created: 0, updated: 0, unchanged: 0, missing: 0, deactivated: 0, writes: 0, commits: 0 });
+    const previousCoveredDates = reservation.current && reservation.current.auditCoveredDates;
+    const auditCoveredDates = [...new Set(
+      (Array.isArray(previousCoveredDates) ? previousCoveredDates : []).concat(audit.coveredDates)
+    )].sort();
+    const dataQuality = Object.assign({}, preview.dataQuality || {}, {
+      auditRunId: audit.runId,
+      auditRangeStart: audit.startDate,
+      auditRangeEnd: audit.endDate,
+      auditCoveredDates,
+      auditEventCount: audit.events.length
+    });
     await SETTINGS_REF.set({
       status: 'success',
-      sourceRunId: runId,
+      sourceRunId: migrationRunId,
+      auditRunId: audit.runId,
+      sourceVersion,
       pendingRunId: '',
+      pendingSourceVersion: '',
       completedAt: FieldValue.serverTimestamp(),
       lockUntil: Timestamp.fromMillis(0),
       summary,
       typeResults: results,
-      sourceCounts: preview.counts || {},
-      dataQuality: preview.dataQuality || {},
+      sourceCounts: Object.assign({}, preview.counts || {}, { events: audit.events.length }),
+      dataQuality,
+      auditCoveredDates,
       version: VERSION
     }, { merge: true });
-    await db.collection('opsEducationSyncRuns').doc(runId).set({
-      runId,
+    await db.collection('opsEducationSyncRuns').doc(documentId('syncRun', sourceVersion)).set({
+      runId: migrationRunId,
+      auditRunId: audit.runId,
+      sourceVersion,
       status: 'success',
       trigger: clean(trigger) || 'automatic',
       summary,
@@ -247,12 +355,20 @@ async function syncLatestMirror(trigger = 'automatic') {
       completedAt: FieldValue.serverTimestamp(),
       version: VERSION
     }, { merge: true });
-    return { ok: true, status: 'success', runId, summary, typeResults: results };
+    return {
+      ok: true,
+      status: 'success',
+      runId: migrationRunId,
+      auditRunId: audit.runId,
+      summary,
+      typeResults: results
+    };
   } catch (error) {
     const message = clean(error && error.message || error).slice(0, 1000);
     await SETTINGS_REF.set({
       status: 'error',
       pendingRunId: '',
+      pendingSourceVersion: '',
       failedAt: FieldValue.serverTimestamp(),
       lockUntil: Timestamp.fromMillis(0),
       lastError: message,
@@ -280,6 +396,7 @@ async function readMirrorPayload() {
     dataQuality: settings.dataQuality || {},
     mirrorMeta: {
       status: clean(settings.status),
+      auditRunId: clean(settings.auditRunId),
       completedAt: settings.completedAt || null,
       summary: settings.summary || {}
     }
@@ -318,12 +435,8 @@ function registerInjiaoyunEducationMirror(exportsObject) {
     assertAllowedCaller(request);
     assertManualPin(request);
     try {
-      const latestRunId = await latestMigrationRunId();
-      const settingsSnapshot = await SETTINGS_REF.get();
-      const settings = settingsSnapshot.exists ? settingsSnapshot.data() || {} : {};
-      if (latestRunId && clean(settings.sourceRunId) !== latestRunId) {
-        await syncLatestMirror('load-latest');
-      }
+      // reserveSync 會判斷兩種來源版本是否已是最新；沒有新資料時不會重寫。
+      await syncLatestMirror('load-latest');
       return await readMirrorPayload();
     } catch (error) {
       console.error('[loadInjiaoyunEducationMirror]', error);
@@ -347,6 +460,23 @@ function registerInjiaoyunEducationMirror(exportsObject) {
       await syncLatestMirror('migration-trigger');
     } catch (error) {
       console.error('[applyInjiaoyunEducationMirrorOnMigration]', afterRun, error);
+    }
+  });
+
+  // 舊日表核對抓取完成後，以該次日期範圍的最終結果覆蓋新版課表。
+  exportsObject.applyInjiaoyunEducationMirrorOnAudit = onDocumentWritten({
+    document: 'opsInjiaoyunCourseAuditV3Runs/{runId}',
+    region: FUNCTION_REGION,
+    timeoutSeconds: 540,
+    memory: '2GiB'
+  }, async (event) => {
+    const before = event.data && event.data.before && event.data.before.exists ? event.data.before.data() || {} : {};
+    const after = event.data && event.data.after && event.data.after.exists ? event.data.after.data() || {} : {};
+    if (clean(after.status).toLowerCase() !== 'success' || clean(before.status).toLowerCase() === 'success') return;
+    try {
+      await syncLatestMirror('audit-trigger');
+    } catch (error) {
+      console.error('[applyInjiaoyunEducationMirrorOnAudit]', clean(after.runId || event.params.runId), error);
     }
   });
 }

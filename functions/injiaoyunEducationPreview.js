@@ -11,7 +11,8 @@ if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
 const FUNCTION_REGION = 'us-central1';
 const COLLECTION_PREFIX = 'opsInjiaoyunTest';
-const VERSION = '2026.07.22-v6-education-schedule-status-preview';
+const AUDIT_RUNS_COLLECTION = 'opsInjiaoyunCourseAuditV3Runs';
+const VERSION = '2026.07.24-v7-audit-calendar-source';
 const MANUAL_SYNC_PIN = defineSecret('INJIAOYUN_MANUAL_SYNC_PIN');
 const ALLOWED_ORIGINS = new Set([
   'https://danny700808.github.io',
@@ -347,6 +348,220 @@ async function latestMigrationRunId() {
   const snapshot = await db.collection('opsInjiaoyunMigrationRuns')
     .orderBy(admin.firestore.FieldPath.documentId(), 'desc').limit(1).get();
   return snapshot.empty ? '' : snapshot.docs[0].id;
+}
+
+function auditDateKeys(startDate, endDate) {
+  const start = dateKey(startDate);
+  const end = dateKey(endDate);
+  if (!start || !end || start > end) return [];
+  const rows = [];
+  const cursor = new Date(`${start}T12:00:00+08:00`);
+  const last = new Date(`${end}T12:00:00+08:00`);
+  while (cursor <= last && rows.length < 62) {
+    rows.push(new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Taipei',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return rows;
+}
+
+function auditRelatedCourseId(row) {
+  return idOf(firstValue(
+    row && row.fixCourse,
+    row && row.fixedCourse,
+    row && row.tempCourse,
+    row && row.temporaryCourse,
+    row && row.course
+  ));
+}
+
+async function latestAuditRunInfo() {
+  const runs = await db.collection(AUDIT_RUNS_COLLECTION)
+    .orderBy(admin.firestore.FieldPath.documentId(), 'desc')
+    .limit(20)
+    .get();
+  const runDoc = runs.docs.find((doc) => clean((doc.data() || {}).status).toLowerCase() === 'success');
+  if (!runDoc) return { runId: '', startDate: '', endDate: '' };
+  const run = runDoc.data() || {};
+  return {
+    runId: runDoc.id,
+    startDate: dateKey(run.startDate),
+    endDate: dateKey(run.endDate)
+  };
+}
+
+// 課表同步必須以舊音教雲日表核對程式的最後結果為準。
+// migration collections 只補學生、老師、科目、收費等主檔，不能再自行推算某日課表。
+async function latestAuditSchedule(preferredRunId) {
+  const info = preferredRunId
+    ? { runId: clean(preferredRunId) }
+    : await latestAuditRunInfo();
+  if (!info.runId) return { runId: '', startDate: '', endDate: '', coveredDates: [], events: [] };
+  const runDoc = await db.collection(AUDIT_RUNS_COLLECTION).doc(info.runId).get();
+  if (!runDoc.exists || clean((runDoc.data() || {}).status).toLowerCase() !== 'success') {
+    return { runId: '', startDate: '', endDate: '', coveredDates: [], events: [] };
+  }
+  const run = runDoc.data() || {};
+  const [candidateSnapshot, rawSnapshot] = await Promise.all([
+    runDoc.ref.collection('calendarCandidates').get(),
+    runDoc.ref.collection('rawRecords').get()
+  ]);
+  const rawBySourceId = new Map();
+  const rawFixedCourses = [];
+  const statusByCourseDate = new Map();
+  const putCourseStatus = (courseId, day, status) => {
+    if (!courseId || !day) return;
+    const key = `${courseId}|${day}`;
+    if (status === 'absent' || !statusByCourseDate.has(key)) statusByCourseDate.set(key, status);
+  };
+  rawSnapshot.docs.forEach((doc) => {
+    const envelope = doc.data() || {};
+    const raw = envelope.raw && typeof envelope.raw === 'object' ? envelope.raw : {};
+    const sourceId = clean(envelope.sourceId) || idOf(raw);
+    if (sourceId) rawBySourceId.set(sourceId, raw);
+    const sourceType = clean(envelope.sourceType).toLowerCase();
+    if (sourceType === 'fixed-course') rawFixedCourses.push(raw);
+    if (['fixed-course', 'adjusted-course'].includes(sourceType)) {
+      nestedCheckins(raw).forEach((checkin) => {
+        const day = dateKey(firstValue(checkin.date, checkin.startDate, checkin.created));
+        if (!day || checkin.cancel === true) return;
+        putCourseStatus(sourceId, day, statusForCheckin(checkin));
+      });
+    }
+    if (!['leave', 'checkin-leave', 'checkin-skip'].includes(sourceType)) return;
+    const courseId = auditRelatedCourseId(raw);
+    const day = dateKey(firstValue(raw.date, raw.leaveDate, raw.checkinDate, raw.startDate, raw.created));
+    if (!courseId || !day || raw.cancel === true) return;
+    const status = sourceType === 'checkin-skip' ? 'absent' : 'leave';
+    putCourseStatus(courseId, day, status);
+  });
+
+  const startDate = dateKey(run.startDate);
+  const endDate = dateKey(run.endDate);
+  const coveredDates = auditDateKeys(startDate, endDate);
+  const events = [];
+  candidateSnapshot.docs.forEach((doc, index) => {
+    const row = doc.data() || {};
+    const sourceType = clean(row.sourceType).toLowerCase();
+    // 固定課要另外套用「歷史日期有簽到／請假仍有效」規則，不能直接使用目前狀態的候選清單。
+    if (!['adjusted-course', 'rental'].includes(sourceType) || row.cancel === true) return;
+    const sourceCourseId = clean(row.sourceId);
+    const date = dateKey(row.dateKey);
+    const start = timeKey(row.startsAt);
+    const roomId = clean(row.roomId);
+    if (!sourceCourseId || !date || !start || !roomId) return;
+    const raw = rawBySourceId.get(sourceCourseId) || {};
+    const linkedStatus = statusByCourseDate.get(`${sourceCourseId}|${date}`);
+    const type = sourceType === 'fixed-course' ? 'fixed' : sourceType === 'rental' ? 'rental' : 'single';
+    const status = linkedStatus || (row.alreadyCheckin === true || raw.alreadyCheckin === true ? 'attended' : 'scheduled');
+    events.push({
+      id: `audit_${sourceType}_${sourceCourseId}_${date}`,
+      sourceCourseId,
+      seriesId: sourceCourseId,
+      date,
+      roomId,
+      roomName: clean(row.roomName),
+      start,
+      duration: durationMinutes(start, timeKey(row.endsAt), firstValue(
+        raw.minute, raw.minutes, raw.duration, raw.durationMinutes, raw.hours, raw.hour
+      )),
+      type,
+      frequency: 'once',
+      studentIds: unique(row.studentIds),
+      teacherId: clean(row.teacherId),
+      subjectId: clean(row.subjectId),
+      tuitionPeriodId: '',
+      clientName: type === 'rental' ? (clean(row.clientName) || nameOf(raw.client) || '教室租用') : '',
+      rentalFee: type === 'rental' ? Math.max(0, numberOf(firstValue(raw.money, raw.amount, raw.fee))) : 0,
+      status,
+      note: clean(firstValue(raw.remark, raw.note)),
+      readOnly: true,
+      source: 'injiaoyun-audit',
+      sourceAuditRunId: runDoc.id,
+      sortIndex: index
+    });
+  });
+
+  rawFixedCourses.forEach((raw, rawIndex) => {
+    const sourceCourseId = idOf(raw);
+    const seed = dateKey(firstValue(raw.startDate, raw.startsAt, raw.created));
+    const start = timeKey(firstValue(raw.startsAt, raw.startTime, raw.time));
+    const roomId = idOf(raw.room);
+    if (!sourceCourseId || !seed || !start || !roomId) return;
+    const students = courseStudentValues(raw);
+    const studentIds = unique(students);
+    const studentsStillActive = !students.length || students.some((student) => {
+      const linked = student && typeof student === 'object' ? student : {};
+      return Object.keys(linked).length ? !inactiveRecord(linked) : true;
+    });
+    const currentlyActive = !inactiveFixedCourse(raw) && studentsStillActive;
+    const explicitStopDate = dateKey(firstValue(
+      raw.stopDate, raw.stoppedAt, raw.endedAt, raw.endDate, raw.offDate,
+      raw.cancelDate, raw.cancelledAt, raw.pauseDate, raw.suspendedAt
+    ));
+    const seedWeekday = weekdayName(seed);
+    const every = frequencyWeeks(firstValue(raw.frequency, raw.week, raw.every));
+    coveredDates.forEach((date, dateIndex) => {
+      if (date < seed || weekdayName(date) !== seedWeekday) return;
+      if (every >= 2) {
+        const elapsed = Math.round((
+          new Date(`${date}T12:00:00+08:00`) - new Date(`${seed}T12:00:00+08:00`)
+        ) / 86400000);
+        if (Math.floor(elapsed / 7) % every !== 0) return;
+      }
+      const linkedStatus = statusByCourseDate.get(`${sourceCourseId}|${date}`);
+      const hasHistoricalEvidence = Boolean(linkedStatus);
+      const stoppedBeforeDate = Boolean(explicitStopDate && explicitStopDate < date);
+      // 最終核對規則：目前已停用／學生已結束時原則排除；
+      // 但歷史當天若有簽到、請假或缺席，仍是當天有效固定課。
+      if ((!currentlyActive || stoppedBeforeDate) && !hasHistoricalEvidence) return;
+      events.push({
+        id: `audit_fixed-course_${sourceCourseId}_${date}`,
+        sourceCourseId,
+        seriesId: sourceCourseId,
+        date,
+        roomId,
+        roomName: '',
+        start,
+        duration: durationMinutes(start, timeKey(firstValue(raw.endsAt, raw.endTime)), firstValue(
+          raw.minute, raw.minutes, raw.duration, raw.durationMinutes, raw.hours, raw.hour
+        )),
+        type: 'fixed',
+        frequency: 'once',
+        studentIds,
+        teacherId: idOf(raw.teacher),
+        subjectId: idOf(raw.subject),
+        tuitionPeriodId: '',
+        clientName: '',
+        rentalFee: 0,
+        status: linkedStatus || 'scheduled',
+        note: clean(firstValue(raw.remark, raw.note)),
+        readOnly: true,
+        source: 'injiaoyun-audit',
+        sourceAuditRunId: runDoc.id,
+        sortIndex: candidateSnapshot.size + rawIndex * coveredDates.length + dateIndex
+      });
+    });
+  });
+
+  const priority = { fixed: 0, single: 1, trial: 2, rental: 3 };
+  events.sort((left, right) => (
+    `${left.date}|${left.start}|${left.roomId}`.localeCompare(`${right.date}|${right.start}|${right.roomId}`) ||
+    (priority[left.type] || 0) - (priority[right.type] || 0) ||
+    left.sortIndex - right.sortIndex
+  ));
+  events.forEach((row) => { delete row.sortIndex; });
+  return {
+    runId: runDoc.id,
+    startDate,
+    endDate,
+    coveredDates,
+    events
+  };
 }
 
 async function readCollection(config, runId) {
@@ -1008,6 +1223,8 @@ module.exports = {
   dateKey,
   durationMinutes,
   frequencyWeeks,
+  latestAuditSchedule,
+  latestAuditRunInfo,
   latestMigrationRunId,
   timeKey
 };
