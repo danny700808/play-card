@@ -171,6 +171,10 @@
     <div class="modal large"><div class="modal-head"><div><h2 id="entityModalTitle">編輯資料</h2><p id="entityModalSubtitle"></p></div><button class="modal-close" type="button" data-close-modal="entityModal">×</button></div><form id="entityForm"><div class="modal-body" id="entityModalBody"></div><div class="modal-foot"><button class="btn outline" type="button" data-close-modal="entityModal">取消</button><button class="btn primary" type="submit">儲存</button></div></form></div>
   </div>
 
+  <div class="modal-backdrop" id="teacherPayrollModal" role="dialog" aria-modal="true" aria-labelledby="teacherPayrollTitle">
+    <div class="modal extra-large"><div class="modal-head"><div><h2 id="teacherPayrollTitle">老師上課拆帳與薪資</h2><p id="teacherPayrollSubtitle">只計入老師在音教雲實際完成的簽到。</p></div><button class="modal-close" type="button" data-close-modal="teacherPayrollModal">×</button></div><div class="policy-toolbar"><label>薪資月份 <input class="control" id="teacherPayrollMonth" type="month"></label><span>同日多堂會逐堂列出；註銷與只有排課、沒有簽到的課不計薪。</span></div><div class="modal-body" id="teacherPayrollBody"></div><div class="modal-foot"><button class="btn outline" type="button" data-close-modal="teacherPayrollModal">關閉</button></div></div>
+  </div>
+
   <div class="modal-backdrop" id="policyModal" role="dialog" aria-modal="true" aria-labelledby="policyModalTitle">
     <div class="modal extra-large"><div class="modal-head"><div><h2 id="policyModalTitle">教室時段規則</h2><p>勾選「可排課」或「可租用」；未勾選的時段不開放。</p></div><button class="modal-close" type="button" data-close-modal="policyModal">×</button></div><div class="policy-toolbar"><select class="control" id="policyWeekday"></select><span>適用科目留白代表所有科目。</span></div><div class="modal-body policy-body" id="policyModalBody"></div><div class="modal-foot"><button class="btn outline" type="button" data-close-modal="policyModal">取消</button><button class="btn primary" type="button" id="savePolicyBtn">儲存時段規則</button></div></div>
   </div>
@@ -180,8 +184,8 @@
   <script src="config.js?v=20260722-course-scheduler-v2"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="course-scheduler-data.js?v=20260724-one-click-daily-sync-v3"></script>
+  <script src="course-scheduler-data.js?v=20260725-full-history-payroll-v4"></script>
   <script src="course-scheduler-review-data.js?v=20260723-review-window-v1"></script>
-  <script src="course-scheduler.js?v=20260724-one-click-daily-sync-v3"></script>
+  <script src="course-scheduler.js?v=20260725-full-history-payroll-v4"></script>
 </body>
 </html>

@@ -43,6 +43,8 @@ const MIRROR_TYPES = Object.freeze({
   feePlans: 'opsEducationMirrorFeePlans',
   students: 'opsEducationMirrorStudents',
   teachers: 'opsEducationMirrorTeachers',
+  teacherPayroll: 'opsEducationMirrorTeacherPayroll',
+  teacherAdjustments: 'opsEducationMirrorTeacherAdjustments',
   tuitionPeriods: 'opsEducationMirrorTuitionPeriods',
   attendance: 'opsEducationMirrorAttendance',
   fixedCourses: 'opsEducationMirrorFixedCourses',

@@ -76,6 +76,25 @@
     });
   }
 
+  function normalizeTeacherPayroll(payload){
+    return array(payload.teacherPayroll).map(function(row,index){
+      return {
+        id:safeId('payroll',row.id,index),teacherId:clean(row.teacherId),teacherName:clean(row.teacherName),
+        studentId:clean(row.studentId),studentName:clean(row.studentName),subject:clean(row.subject||row.chargeName),
+        date:dateKey(row.date||row.occurredAt),occurredAt:clean(row.occurredAt),
+        lessonPrice:numberOf(row.lessonPrice),splitType:clean(row.splitType),splitValue:numberOf(row.splitValue),
+        allotRate:numberOf(row.allotRate),hourlyFee:numberOf(row.hourlyFee),
+        teacherAmount:numberOf(row.teacherAmount),schoolShare:numberOf(row.schoolShare)
+      };
+    }).filter(function(row){return row.teacherId&&row.date;});
+  }
+
+  function normalizeTeacherAdjustments(payload){
+    return array(payload.teacherAdjustments).map(function(row,index){
+      return {id:safeId('teacher-adjustment',row.id,index),teacherId:clean(row.teacherId),date:dateKey(row.date),type:clean(row.type),amount:numberOf(row.amount),note:clean(row.note)};
+    }).filter(function(row){return row.teacherId&&row.date;});
+  }
+
   function normalizeRooms(payload){
     var rows=[],seen=new Set();
     function add(room,index){
@@ -117,7 +136,7 @@
   }
 
   function periodResolver(periods){
-    var bySource=new Map(),byStudentSubject=new Map();
+    var bySource=new Map();
     function isNewer(row,prior){
       if(!prior)return true;
       var periodDiff=numberOf(row.periodNo)-numberOf(prior.periodNo);
@@ -128,15 +147,14 @@
     }
     periods.forEach(function(row){
       if(row.sourcePaymentId)bySource.set(row.sourcePaymentId,row);
-      var key=row.studentId+'|'+row.subjectId,prior=byStudentSubject.get(key);
-      if(isNewer(row,prior))byStudentSubject.set(key,row);
     });
     return function(course){
       var ids=unique(array(course.studentPaymentIds).concat([course.studentPaymentId])),matched=[];
       ids.forEach(function(id){if(bySource.has(id))matched.push(bySource.get(id));});
       matched.sort(function(a,b){return isNewer(a,b)?-1:isNewer(b,a)?1:0;});
       if(matched.length)return matched[0].id;
-      var studentId=array(course.studentIds)[0]||'',key=studentId+'|'+clean(course.subjectId),fallback=byStudentSubject.get(key);return fallback&&fallback.id||'';
+      // 沒有舊系統明確付款 ID 時不可猜「最近一期」，否則四堂課會被錯算成五堂以上。
+      return '';
     };
   }
 
@@ -171,7 +189,7 @@
     array(payload.fixedCourses).forEach(function(row){events=events.concat(fixedCourseEvents(row,rangeStart,rangeEnd,resolvePeriod));});
     array(payload.temporaryCourses).filter(function(row){return row.active!==false;}).forEach(function(row){var date=dateKey(row.date);if(date&&clean(row.start)&&clean(row.roomId)&&date>=rangeStart&&date<=rangeEnd)events.push(courseEvent(row,date,clean(row.statusByDate&&row.statusByDate[date])||'scheduled',resolvePeriod));});
     array(payload.roomRentals).forEach(function(row,index){var date=dateKey(row.date);if(date&&clean(row.start)&&clean(row.roomId)&&date>=rangeStart&&date<=rangeEnd)events.push({id:safeId('rental',row.id,index)+'@'+date,seriesId:'',date:date,roomId:clean(row.roomId),start:clean(row.start),duration:Math.max(30,numberOf(row.duration)||60),type:'rental',frequency:'once',studentIds:[],teacherId:'',subjectId:'',tuitionPeriodId:'',clientName:clean(row.clientName)||'教室租用',rentalFee:numberOf(row.amount||row.rentalFee),status:clean(row.status)||'scheduled',note:clean(row.note),readOnly:true});});
-    var auditedEvents=array(payload.events).map(function(row,index){var normalized=Object.assign({id:safeId('event',row.id,index),seriesId:'',date:'',roomId:'',start:'',duration:60,type:'fixed',frequency:'once',studentIds:[],teacherId:'',subjectId:'',tuitionPeriodId:'',clientName:'',rentalFee:0,note:'',status:'scheduled',readOnly:true},row,{date:dateKey(row.date),start:clean(row.start),studentIds:unique(row.studentIds)});if(!clean(normalized.tuitionPeriodId))normalized.tuitionPeriodId=resolvePeriod(normalized);return normalized;});
+    var auditedEvents=array(payload.events).map(function(row,index){return Object.assign({id:safeId('event',row.id,index),seriesId:'',date:'',roomId:'',start:'',duration:60,type:'fixed',frequency:'once',studentIds:[],teacherId:'',subjectId:'',tuitionPeriodId:'',clientName:'',rentalFee:0,note:'',status:'scheduled',readOnly:true},row,{date:dateKey(row.date),start:clean(row.start),studentIds:unique(row.studentIds),tuitionPeriodId:clean(row.tuitionPeriodId)});});
     var coveredDates=unique(array(payload.dataQuality&&payload.dataQuality.auditCoveredDates).map(dateKey).filter(Boolean));
     if(!coveredDates.length&&auditedEvents.length)coveredDates=unique(auditedEvents.map(function(row){return row.date;}));
     if(coveredDates.length){
@@ -186,10 +204,10 @@
   function normalizeAttendance(payload,events,periods){
     var eventBySourceDate=new Map();events.forEach(function(event){eventBySourceDate.set(clean(event.sourceCourseId)+'|'+event.date,event);});
     var rows=array(payload.attendance).map(function(row,index){
-      var event=eventBySourceDate.get(clean(row.sourceCourseId)+'|'+dateKey(row.date)),periodId=clean(row.periodId||row.tuitionPeriodId)||(event&&event.tuitionPeriodId)||'',period=periods.find(function(item){return item.id===periodId;})||{},status=clean(row.status)||'attended';
-      return {id:safeId('attendance',row.id,index),eventId:clean(row.eventId)||(event&&event.id)||'',studentId:clean(row.studentId)||(event&&event.studentIds[0])||'',periodId:periodId,status:status,date:dateKey(row.date)||(event&&event.date)||'',lessonNo:numberOf(row.lessonNo),teacherId:clean(row.teacherId)||(event&&event.teacherId)||'',deducted:row.deducted!=null?row.deducted===true:(status==='attended'||status==='absent'||(status==='leave'&&period.id&&!(period.planSnapshot||{}).leaveNoDeduct)),reasonId:clean(row.reasonId)};
+      var event=eventBySourceDate.get(clean(row.sourceCourseId)+'|'+dateKey(row.date)),periodId=clean(row.periodId||row.tuitionPeriodId),status=clean(row.status)||'attended';
+      return {id:safeId('attendance',row.id,index),eventId:clean(row.eventId)||(event&&event.id)||'',studentId:clean(row.studentId)||(event&&event.studentIds[0])||'',periodId:periodId,status:status,date:dateKey(row.date)||(event&&event.date)||'',lessonNo:numberOf(row.lessonNo),teacherId:clean(row.teacherId)||(event&&event.teacherId)||'',deducted:row.deducted===true&&Boolean(periodId),reasonId:clean(row.reasonId),reconciliationStatus:clean(row.reconciliationStatus)||(periodId?'linked-explicit-payment':'unmatched-no-explicit-payment')};
     });
-    if(!rows.length)events.filter(function(event){return event.type!=='rental'&&event.status!=='scheduled'&&event.status!=='cancelled';}).forEach(function(event,index){rows.push({id:'derived_attendance_'+index,eventId:event.id,studentId:event.studentIds[0]||'',periodId:event.tuitionPeriodId,status:event.status,date:event.date,lessonNo:0,teacherId:event.teacherId,deducted:event.status==='attended'||event.status==='absent',reasonId:''});});
+    // 課表事件不是簽到證據；沒有原始簽到資料時保持空白，不自行產生扣堂紀錄。
     return rows;
   }
 
@@ -204,7 +222,7 @@
     periods.forEach(function(period){period.usedCount=attendance.filter(function(row){return row.periodId===period.id&&row.deducted===true;}).length;});
     var earliest=events.reduce(function(value,row){return Math.min(value,timeToMin(row.start));},10*60),latest=events.reduce(function(value,row){return Math.max(value,timeToMin(row.start)+numberOf(row.duration));},22*60);
     var visibleWeekdays=events.reduce(function(counts,row){var date=new Date(row.date+'T12:00:00'),day=['sun','mon','tue','wed','thu','fri','sat'][date.getDay()];counts[day]=(counts[day]||0)+1;return counts;},{sun:0,mon:0,tue:0,wed:0,thu:0,fri:0,sat:0});
-    return {version:3,currentDate:anchor,settings:{startHour:Math.max(6,Math.min(10,Math.floor(earliest/60))),endHour:Math.min(24,Math.max(22,Math.ceil(latest/60))),interval:30,defaultLessons:4},rooms:rooms,subjects:subjects.rows,teachers:teachers,feePlans:feePlans,students:students,tuitionPeriods:periods,events:events,attendance:attendance,leaveReasons:normalizeLeaveReasons(payload),teacherAdjustments:array(payload.teacherAdjustments),clipboard:null,readOnly:true,dataMode:'migration',dataMeta:{runId:clean(payload.runId),loadedAt:clean(payload.loadedAt),version:clean(payload.version),counts:payload.counts||{},dataQuality:Object.assign({},payload.dataQuality||{},{visibleEventWeekdays:visibleWeekdays}),rangeStart:rangeStart,rangeEnd:rangeEnd}};
+    return {version:3,currentDate:anchor,settings:{startHour:Math.max(6,Math.min(10,Math.floor(earliest/60))),endHour:Math.min(24,Math.max(22,Math.ceil(latest/60))),interval:30,defaultLessons:4},rooms:rooms,subjects:subjects.rows,teachers:teachers,feePlans:feePlans,students:students,tuitionPeriods:periods,events:events,attendance:attendance,leaveReasons:normalizeLeaveReasons(payload),teacherPayroll:normalizeTeacherPayroll(payload),teacherAdjustments:normalizeTeacherAdjustments(payload),clipboard:null,readOnly:true,dataMode:'migration',dataMeta:{runId:clean(payload.runId),loadedAt:clean(payload.loadedAt),version:clean(payload.version),counts:payload.counts||{},dataQuality:Object.assign({},payload.dataQuality||{},{visibleEventWeekdays:visibleWeekdays}),rangeStart:rangeStart,rangeEnd:rangeEnd}};
   }
 
   function firebaseFunctions(){

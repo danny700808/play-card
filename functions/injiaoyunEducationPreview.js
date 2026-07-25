@@ -12,7 +12,7 @@ const db = admin.firestore();
 const FUNCTION_REGION = 'us-central1';
 const COLLECTION_PREFIX = 'opsInjiaoyunTest';
 const AUDIT_RUNS_COLLECTION = 'opsInjiaoyunCourseAuditV3Runs';
-const VERSION = '2026.07.24-v9-fixed-course-date-boundary';
+const VERSION = '2026.07.25-v11-full-history-payroll';
 const MANUAL_SYNC_PIN = defineSecret('INJIAOYUN_MANUAL_SYNC_PIN');
 const ALLOWED_ORIGINS = new Set([
   'https://danny700808.github.io',
@@ -26,10 +26,10 @@ const EDUCATION_COLLECTIONS = Object.freeze({
   students: { suffix: 'Students', limit: 2000 },
   studentDetails: { suffix: 'StudentDetails', limit: 2000 },
   studentCourses: { suffix: 'StudentCourses', limit: 5000 },
-  studentPayments: { suffix: 'StudentPayments', limit: 3000 },
-  studentPaymentsAll: { suffix: 'StudentPaymentsAll', limit: 3000 },
-  studentPaymentsOpen: { suffix: 'StudentPaymentsOpen', limit: 3000 },
-  studentPaymentDetails: { suffix: 'StudentPaymentDetails', limit: 5000 },
+  studentPayments: { suffix: 'StudentPayments', limit: 30000 },
+  studentPaymentsAll: { suffix: 'StudentPaymentsAll', limit: 30000 },
+  studentPaymentsOpen: { suffix: 'StudentPaymentsOpen', limit: 30000 },
+  studentPaymentDetails: { suffix: 'StudentPaymentDetails', limit: 30000 },
   teachers: { suffix: 'Teachers', limit: 500 },
   rooms: { suffix: 'Rooms', limit: 500 },
   subjects: { suffix: 'Subjects', limit: 500 },
@@ -38,9 +38,11 @@ const EDUCATION_COLLECTIONS = Object.freeze({
   fixedCourses: { suffix: 'FixedCourses', limit: 3000 },
   temporaryCourses: { suffix: 'TemporaryCourses', limit: 3000 },
   leaves: { suffix: 'Leaves', limit: 5000 },
+  checkins: { suffix: 'Checkins', limit: 30000 },
   leaveReasons: { suffix: 'LeaveReasons', limit: 500 },
   checkinLeaves: { suffix: 'CheckinLeaves', limit: 5000 },
   checkinSkips: { suffix: 'CheckinSkips', limit: 5000 },
+  teacherAllots: { suffix: 'TeacherAllots', limit: 5000 },
   teacherRewards: { suffix: 'TeacherRewards', limit: 3000 },
   teacherDeductions: { suffix: 'TeacherDeductions', limit: 3000 },
   roomRentals: { suffix: 'RoomRentals', limit: 3000 },
@@ -688,8 +690,13 @@ function transactionRows(payment, periodId, expectedAmount) {
     rows.push({
       id, type, periodId,
       date: dateKey(firstValue(row.date, row.created, row.updated, payment.updated, payment.created)),
+      operatedAt: clean(firstValue(
+        row.operatedAt, row.operationTime, row.createdAt, row.created, row.updatedAt, row.updated,
+        payment.operatedAt, payment.operationTime, payment.createdAt, payment.created
+      )),
       amount,
       method: clean(firstValue(row.method, row.payType, row.paymentMethod, method, '未註明')),
+      operator: nameOf(firstValue(row.operator, row.manager, row.user, payment.operator, payment.manager)),
       note: clean(firstValue(row.note, row.remark, row.reason))
     });
   };
@@ -704,9 +711,7 @@ function transactionRows(payment, periodId, expectedAmount) {
       ['online', '線上繳費'], ['streetPay', '街口支付']
     ].forEach(([field, label], index) => add(payment[field], 'payment', label, index));
   }
-  if (!rows.some((row) => row.type === 'payment') && payment.revenue !== false && expectedAmount > 0) {
-    add({ amount: expectedAmount, date: firstValue(payment.updated, payment.created) }, 'payment', '既有收款', 0);
-  }
+  // 不可把「應收金額」或期別建立時間推算成已付款；歷史同步只接受舊系統實際付款明細。
   return rows;
 }
 
@@ -888,7 +893,8 @@ function buildTuitionPeriods(data, subjects, feePlans) {
     const studentId = idOf(row.student) || clean(row._migrationParentId);
     const sourcePaymentId = idOf(row) || clean(row._migrationSourceId) || `payment_${index + 1}`;
     const lessonCount = Math.max(1, Math.round(numberOf(firstValue(row.courseNumber, charge.courseNumber, plan.lessonCount, 4))));
-    const usedCount = nestedCheckins(row).filter((checkin) => statusForCheckin(checkin) !== 'leave').length;
+    // 扣堂數會在所有簽到來源去重、配對付款期別並檢查堂數上限後統一計算。
+    const usedCount = 0;
     const expectedAmount = Math.max(0, numberOf(firstValue(row.money, row.amount, charge.money, plan.amount)));
     const transactions = transactionRows(row, sourcePaymentId, expectedAmount);
     const paid = transactions.reduce((total, item) => total + (item.type === 'refund' ? -item.amount : item.amount), 0);
@@ -904,6 +910,7 @@ function buildTuitionPeriods(data, subjects, feePlans) {
       planId: planId || plan.id || '',
       periodNo: numberOf(firstValue(row.periodNo, row.period, row.stage, row.number)),
       startDate,
+      paymentDate: transactions.find((item) => item.type === 'payment')?.date || '',
       expiryDate,
       lessonCount,
       usedCount,
@@ -1049,11 +1056,23 @@ function buildAttendance(data, courses, periods) {
     const date = dateKey(firstValue(row.date, row.startDate, row.created, context.date));
     if (!studentId || !date) return;
     const status = statusForCheckin(row, fallbackStatus);
-    const key = `${studentId}|${date}|${courseId || paymentId}|${period.id || ''}`;
+    const sourceRecordId = idOf(row) || clean(row._migrationSourceId);
+    const key = sourceRecordId
+      ? `source|${sourceRecordId}`
+      : `${studentId}|${date}|${courseId || paymentId}|${period.id || ''}|${statusForCheckin(row, fallbackStatus)}`;
     const current = output.get(key);
     if (current && priority[current.status] >= priority[status]) return;
+    const leaveNoDeduct = period.id && period.planSnapshot
+      ? period.planSnapshot.leaveNoDeduct !== false
+      : true;
+    const linked = Boolean(paymentId && period.id);
+    const deducted = linked && (
+      status === 'attended' ||
+      status === 'absent' ||
+      (status === 'leave' && !leaveNoDeduct)
+    );
     output.set(key, {
-      id: idOf(row) || clean(row._migrationSourceId) || `attendance_${output.size + 1}`,
+      id: sourceRecordId || `attendance_${output.size + 1}`,
       sourceCourseId: courseId,
       eventId: '',
       studentId,
@@ -1064,7 +1083,9 @@ function buildAttendance(data, courses, periods) {
       lessonNo: numberOf(firstValue(row.lessonNo, row.courseNumber, context.lessonNo)),
       teacherId: idOf(row.teacher) || clean(context.teacherId) || course.teacherId || '',
       reasonId: idOf(firstValue(row.reason, row.leaveReason)),
-      note: clean(firstValue(row.remark, row.note))
+      note: clean(firstValue(row.remark, row.note)),
+      deducted,
+      reconciliationStatus: linked ? 'linked-explicit-payment' : 'unmatched-no-explicit-payment'
     });
   };
 
@@ -1074,6 +1095,7 @@ function buildAttendance(data, courses, periods) {
   data.fixedCourses.concat(data.temporaryCourses).forEach((course) => nestedCheckins(course).forEach((checkin, index) => add(checkin, 'attended', {
     courseId: idOf(course), studentId: unique(courseStudentValues(course))[0], teacherId: idOf(course.teacher), lessonNo: index + 1
   })));
+  data.checkins.forEach((row) => add(row, 'attended'));
   data.studentDetails.forEach((detail) => {
     const studentId = clean(detail._migrationParentId) || idOf(detail.student) || idOf(detail);
     const context = { studentId };
@@ -1085,7 +1107,30 @@ function buildAttendance(data, courses, periods) {
   data.leaves.forEach((row) => add(row, 'leave'));
   data.checkinLeaves.forEach((row) => add(row, 'leave'));
   data.checkinSkips.forEach((row) => add(row, 'absent'));
-  return [...output.values()];
+  const rows = [...output.values()].sort((left, right) => (
+    `${left.date}|${String(left.lessonNo).padStart(4, '0')}|${left.id}`.localeCompare(
+      `${right.date}|${String(right.lessonNo).padStart(4, '0')}|${right.id}`
+    )
+  ));
+  const usedByPeriod = new Map();
+  const periodById = new Map(periods.map((row) => [row.id, row]));
+  rows.forEach((row) => {
+    if (!row.deducted || !row.periodId) return;
+    const period = periodById.get(row.periodId);
+    if (!period) {
+      row.deducted = false;
+      row.reconciliationStatus = 'unmatched-payment-period';
+      return;
+    }
+    const used = usedByPeriod.get(row.periodId) || 0;
+    if (used >= Math.max(1, numberOf(period.lessonCount))) {
+      row.deducted = false;
+      row.reconciliationStatus = 'over-period-limit-review';
+      return;
+    }
+    usedByPeriod.set(row.periodId, used + 1);
+  });
+  return rows;
 }
 
 function buildTeachers(data, subjects, courseRows) {
@@ -1119,6 +1164,63 @@ function buildTeachers(data, subjects, courseRows) {
       note: clean(firstValue(row.remark, row.note))
     };
   });
+}
+
+async function readEducationDaily() {
+  const snapshot = await db.collection('opsEducationDaily').get();
+  return snapshot.docs.map((doc) => Object.assign({ _id: doc.id }, doc.data() || {}))
+    .filter((row) => clean(row.source) === 'injiaoyun-cloud');
+}
+
+function buildTeacherPayroll(dailyRows) {
+  const output = [];
+  dailyRows.forEach((day) => array(day.sessions).forEach((session, index) => {
+    const teacherId = idOf(session.teacherId || session.teacher);
+    if (!teacherId) return;
+    const date = dateKey(firstValue(session.dateKey, session.occurredAt, day.dateKey));
+    if (!date) return;
+    const hourlyFee = numberOf(session.hourlyFee);
+    const allotRate = numberOf(session.allotRate);
+    output.push({
+      id: clean(session.sourceId) || `${clean(day._id)}_${index + 1}`,
+      teacherId,
+      teacherName: clean(session.teacherName),
+      studentId: idOf(session.studentId || session.student),
+      studentName: clean(session.studentName),
+      subject: clean(firstValue(session.subject, session.chargeName)),
+      chargeName: clean(session.chargeName),
+      date,
+      occurredAt: clean(session.occurredAt),
+      lessonPrice: numberOf(session.lessonPrice),
+      splitType: hourlyFee ? 'fixed' : allotRate ? 'ratio' : 'none',
+      splitValue: hourlyFee || allotRate,
+      allotRate,
+      hourlyFee,
+      teacherAmount: numberOf(session.teacherAmount),
+      schoolShare: numberOf(session.schoolShare)
+    });
+  }));
+  return output;
+}
+
+function buildTeacherAdjustments(data) {
+  const output = [];
+  const add = (row, type, index) => {
+    const teacherId = idOf(row.teacher || row.teacherId);
+    const date = dateKey(firstValue(row.date, row.created, row.createdAt, row.startDate));
+    if (!teacherId || !date) return;
+    output.push({
+      id: idOf(row) || `${type}_${teacherId}_${date}_${index + 1}`,
+      teacherId,
+      date,
+      type,
+      amount: Math.abs(numberOf(firstValue(row.money, row.amount))),
+      note: clean(firstValue(row.remark, row.note, row.reason))
+    });
+  };
+  data.teacherRewards.forEach((row, index) => add(row, 'reward', index));
+  data.teacherDeductions.forEach((row, index) => add(row, 'deduction', index));
+  return output;
 }
 
 function buildRoomRentals(data, lookups) {
@@ -1162,6 +1264,7 @@ async function buildPreview(runId) {
     [key, await readCollection(config, runId)]
   )));
   const data = Object.fromEntries(entries);
+  const educationDaily = await readEducationDaily();
   const subjectInfo = buildSubjects(data);
   const roomInfo = buildRooms(data);
   const students = buildStudents(data);
@@ -1193,7 +1296,23 @@ async function buildPreview(runId) {
   const feePlans = buildFeePlans(data, subjectInfo);
   const tuitionPeriods = buildTuitionPeriods(data, subjectInfo, feePlans);
   const attendance = buildAttendance(data, allCourses, tuitionPeriods);
+  const usedByPeriod = attendance.reduce((counts, row) => {
+    if (row.periodId && row.deducted === true) counts.set(row.periodId, (counts.get(row.periodId) || 0) + 1);
+    return counts;
+  }, new Map());
+  tuitionPeriods.forEach((period) => {
+    period.usedCount = Math.min(period.lessonCount, usedByPeriod.get(period.id) || 0);
+    const paid = period.transactions.reduce(
+      (total, item) => total + (item.type === 'refund' ? -item.amount : item.amount),
+      0
+    );
+    period.status = period.usedCount >= period.lessonCount
+      ? 'completed'
+      : paid < period.expectedAmount ? 'unpaid' : 'active';
+  });
   const teachers = buildTeachers(data, subjectInfo, allCourses);
+  const teacherPayroll = buildTeacherPayroll(educationDaily);
+  const teacherAdjustments = buildTeacherAdjustments(data);
   const roomRentals = buildRoomRentals(data, lookups);
   const unresolvedFixedCourses = fixedCourses.filter((row) => !row.timeResolved).length;
   const unresolvedTemporaryCourses = temporaryCourses.filter((row) => !row.timeResolved).length;
@@ -1213,7 +1332,13 @@ async function buildPreview(runId) {
     unresolvedRoomRentals,
     fixedCourseWeekdays: countWeekdays(fixedCourses),
     activeFixedCourseWeekdays: countWeekdays(fixedCourses.filter((row) => row.active)),
-    temporaryCourseWeekdays: countWeekdays(temporaryCourses)
+    temporaryCourseWeekdays: countWeekdays(temporaryCourses),
+    attendanceCount: attendance.length,
+    attendanceLinkedCount: attendance.filter((row) => row.reconciliationStatus === 'linked-explicit-payment').length,
+    attendanceUnmatchedCount: attendance.filter((row) => row.reconciliationStatus === 'unmatched-no-explicit-payment').length,
+    attendanceOverLimitCount: attendance.filter((row) => row.reconciliationStatus === 'over-period-limit-review').length,
+    paymentTransactionCount: tuitionPeriods.reduce((total, row) => total + row.transactions.length, 0),
+    paymentPeriodsWithoutTransaction: tuitionPeriods.filter((row) => !row.transactions.some((item) => item.type === 'payment')).length
   };
   const leaveReasons = data.leaveReasons.map((row, index) => ({
     id: idOf(row) || `leave_${index + 1}`,
@@ -1238,6 +1363,8 @@ async function buildPreview(runId) {
     charges: feePlans,
     students,
     teachers,
+    teacherPayroll,
+    teacherAdjustments,
     tuitionPeriods,
     attendance,
     fixedCourses,
