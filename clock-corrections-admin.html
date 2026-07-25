@@ -83,6 +83,7 @@
       r.correctTime=cleanTime(r.correctTime||r.correctionTime||r['修正時間']);
       r.correctAction=clean(r.correctAction||r.actionName||r['修正動作']);
       r.correctionType=clean(r.correctionType||r.clockType||r['修正打卡方式']);
+      r.actualClockInTime=cleanTime(r.actualClockInTime||r['實際上班時間']);
       r.leaveStartTime=cleanTime(r.leaveStartTime||r['請假開始時間']);
       r.workedHours=r.workedHours==null?r['已工作時數']:r.workedHours;
       r.leaveHours=r.leaveHours==null?r['請假時數']:r.leaveHours;
@@ -98,8 +99,8 @@
     }
     function setTab(tab){activeTab=tab==='history'?'history':'pending';qs('#pendingTab').classList.toggle('active',activeTab==='pending');qs('#historyTab').classList.toggle('active',activeTab==='history');render();}
     function renderTabs(){const pending=rows.filter(r=>isPendingStatus(r.status)).length;const history=rows.filter(r=>!isPendingStatus(r.status)).length;qs('#pendingTab').textContent=`未處理（${pending}）`;qs('#historyTab').textContent=history?`歷史紀錄（${history}）`:'歷史紀錄';}
-    function typeLabel(r){if(r.requestKind==='midShiftLeave')return '中途請假（保留已工作時數）';if(r.requestKind==='specialClock')return '特殊打卡';if(r.requestKind==='missingClock')return '補打卡';return r.correctionType||'打卡修正'}
-    function changeLine(r){const oldText=r.requestKind==='specialClock'?'特殊打卡申請':(r.requestKind==='missingClock'?'缺少打卡':(r.originalRecordId&&r.originalTime!=='—'?r.originalTime:'無原始紀錄'));return `${oldText} → ${r.correctTime||'—'}`}
+    function typeLabel(r){if(r.requestKind==='earlyLeave')return '提早下班';if(r.requestKind==='midShiftLeave')return '中途請假（保留已工作時數）';if(r.requestKind==='specialClock')return '特殊打卡';if(r.requestKind==='missingClock')return '補打卡';return r.correctionType||'打卡修正'}
+    function changeLine(r){if(r.requestKind==='earlyLeave')return `上班 ${r.actualClockInTime||'—'} → 提早下班 ${r.correctTime||'—'}`;const oldText=r.requestKind==='specialClock'?'特殊打卡申請':(r.requestKind==='missingClock'?'缺少打卡':(r.originalRecordId&&r.originalTime!=='—'?r.originalTime:'無原始紀錄'));return `${oldText} → ${r.correctTime||'—'}`}
     function card(row){
       const pending=isPendingStatus(row.status);
       return `<article class="approval-card">

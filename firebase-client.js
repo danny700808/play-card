@@ -2196,7 +2196,85 @@
     if(!employeeId) return {ok:false, message:'缺少員工資料，請重新登入。'};
     if(!reason) return {ok:false, message:'請填寫原因。'};
     const corrections = await correctionsByEmployee(employeeId).catch(()=>[]);
-    const requestId = clean(p.requestId) || generatedId(requestKind === 'missingClock' ? 'MCLK' : 'CCR');
+    const requestId = clean(p.requestId) || generatedId(requestKind === 'missingClock' ? 'MCLK' : (requestKind === 'earlyLeave' ? 'ELV' : 'CCR'));
+
+    if(requestKind === 'earlyLeave'){
+      const correctDate = dateText(p.correctDate || p.scheduleDate);
+      const correctTime = timeText(p.correctTime);
+      const correctAction = '下班打卡';
+      const scheduleKey = clean(p.scheduleKey);
+      const snap = Object.assign({}, p.scheduleSnapshot || {}, {
+        date:correctDate,
+        scheduleKey,
+        startTime:shortTime(p.scheduleStartTime || (p.scheduleSnapshot && p.scheduleSnapshot.startTime)),
+        endTime:shortTime(p.scheduleEndTime || (p.scheduleSnapshot && p.scheduleSnapshot.endTime)),
+        source:clean(p.scheduleSource || (p.scheduleSnapshot && p.scheduleSnapshot.source)),
+        sourceLabel:clean(p.scheduleSourceLabel || (p.scheduleSnapshot && p.scheduleSnapshot.sourceLabel)),
+        templateName:clean(p.scheduleTemplateName || (p.scheduleSnapshot && p.scheduleSnapshot.templateName))
+      });
+      if(!correctDate || !correctTime || !scheduleKey || !snap.endTime) return {ok:false, message:'缺少提早下班時間或班表資料。'};
+      const pending = corrections.find(r=>{
+        const status = clean(r.status || r['狀態']).toLowerCase();
+        return clean(r.requestKind || r['申請種類']) === 'earlyLeave' &&
+          dateText(r.correctDate || r['修正日期']) === correctDate &&
+          clean(r.scheduleKey) === scheduleKey &&
+          (status.includes('待') || status === 'pending');
+      });
+      if(pending) return {ok:false, message:'這一段班表已經送出提早下班申請，請等待主管審核。', requestId:clean(pending.requestId || pending.__id)};
+      const clockRows = await readClockRows({employeeId, userId:employeeId}).catch(()=>[]);
+      const existingIn = existingRecordFor(snap, '上班打卡', clockRows);
+      const existingOut = existingRecordFor(snap, '下班打卡', clockRows);
+      if(!existingIn) return {ok:false, message:'尚未找到這段班表的上班打卡，不能申請提早下班。'};
+      if(existingOut) return {ok:false, message:'這段班表已經完成下班打卡。'};
+      const actualClockInTime = shortTime(
+        p.actualClockInTime ||
+        existingIn.clockTime ||
+        existingIn.time ||
+        existingIn['打卡時間']
+      );
+      const leaveMinute = minutes(correctTime);
+      const inMinute = minutes(actualClockInTime || snap.startTime);
+      const endMinute = minutes(snap.endTime);
+      if(!Number.isFinite(leaveMinute) || !Number.isFinite(inMinute) || !Number.isFinite(endMinute) || leaveMinute <= inMinute || leaveMinute >= endMinute){
+        return {ok:false, message:`提早下班時間必須晚於實際上班時間 ${actualClockInTime || snap.startTime || '—'}，且早於原定下班時間 ${snap.endTime || '—'}。`};
+      }
+      const row = {
+        requestId,
+        requestKind:'earlyLeave',
+        '申請種類':'earlyLeave',
+        employeeId,
+        '員工ID':employeeId,
+        name:clean(user.name),
+        '姓名':clean(user.name),
+        email:lower(user.email),
+        correctDate,
+        '修正日期':correctDate,
+        correctTime,
+        '修正時間':correctTime,
+        correctAction,
+        '修正動作':correctAction,
+        correctionType:'標準打卡',
+        '修正打卡方式':'標準打卡',
+        actualClockInTime,
+        '實際上班時間':actualClockInTime,
+        reason,
+        '修正原因':reason,
+        scheduleKey,
+        scheduleDate:correctDate,
+        scheduleStartTime:shortTime(snap.startTime),
+        scheduleEndTime:shortTime(snap.endTime),
+        scheduleSource:clean(snap.source || snap.scheduleSource),
+        scheduleSourceLabel:clean(snap.sourceLabel || snap.scheduleSourceLabel),
+        scheduleTemplateName:clean(snap.templateName || snap.scheduleTemplateName),
+        scheduleSnapshot:snap,
+        status:'待審核',
+        '狀態':'待審核',
+        source:'firebase-clock-flow',
+        createdAt:serverTs()
+      };
+      await docSet('clockCorrections', requestId, row);
+      return {ok:true, message:'提早下班申請已送出，主管核准後才會調整當日工時與薪資。', requestId, row};
+    }
 
     if(requestKind === 'missingClock'){
       const correctDate = dateText(p.correctDate || p.scheduleDate);
@@ -7538,11 +7616,11 @@
     const chunks=[]; if(leave.requestId)chunks.push(where('clockCorrections','relatedLeaveRequestId',leave.requestId).catch(()=>[])); if(leave.caseId)chunks.push(where('clockCorrections','caseId',leave.caseId).catch(()=>[]));
     return mergeRows([].concat(...(chunks.length?await Promise.all(chunks):[]))).filter(r=>statusOf(r)===PENDING);
   }
-  function correctionNorm(r){ return {requestId:clean(r.requestId||r.__id),requestKind:clean(r.requestKind||r['申請種類']||'recordCorrection'),employeeId:clean(r.employeeId||r['員工ID']),name:clean(r.name||r['姓名']),email:lower(r.email||r.Email),correctDate:dateText(r.correctDate||r['修正日期']),correctTime:timeText(r.correctTime||r['修正時間']),correctAction:clean(r.correctAction||r['修正動作']),correctionType:clean(r.correctionType||r['修正打卡方式']||'標準打卡'),originalRecordId:clean(r.originalRecordId||r['原始紀錄ID']),scheduleKey:clean(r.scheduleKey),originalScheduleKey:clean(r.originalScheduleKey),scheduleStartTime:shortTime(r.scheduleStartTime),scheduleEndTime:shortTime(r.scheduleEndTime),reason:clean(r.reason||r['修正原因']),raw:r}; }
+  function correctionNorm(r){ return {requestId:clean(r.requestId||r.__id),requestKind:clean(r.requestKind||r['申請種類']||'recordCorrection'),employeeId:clean(r.employeeId||r['員工ID']),name:clean(r.name||r['姓名']),email:lower(r.email||r.Email),correctDate:dateText(r.correctDate||r['修正日期']),correctTime:timeText(r.correctTime||r['修正時間']),correctAction:clean(r.correctAction||r['修正動作']),correctionType:clean(r.correctionType||r['修正打卡方式']||'標準打卡'),originalRecordId:clean(r.originalRecordId||r['原始紀錄ID']),scheduleKey:clean(r.scheduleKey),originalScheduleKey:clean(r.originalScheduleKey),scheduleStartTime:shortTime(r.scheduleStartTime),scheduleEndTime:shortTime(r.scheduleEndTime),actualClockInTime:shortTime(r.actualClockInTime||r['實際上班時間']),reason:clean(r.reason||r['修正原因']),raw:r}; }
   function clockDocFromCorrection(c,s,recordId){ const state=attendanceState(c.correctAction,c.correctionType,c.correctTime,s,true); return {
     recordId,'紀錄ID':recordId,employeeId:c.employeeId,'員工ID':c.employeeId,name:c.name,'姓名':c.name,email:c.email,clockDate:c.correctDate,'打卡日期':c.correctDate,clockTime:c.correctTime,'打卡時間':c.correctTime,
     actionName:c.correctAction,'打卡動作':c.correctAction,clockType:c.correctionType||'標準打卡','打卡方式':c.correctionType||'標準打卡',status:state.status,'狀態':state.status,lateMinutes:state.lateMinutes,'遲到分鐘':state.lateMinutes,earlyLeaveMinutes:state.earlyLeaveMinutes,'早退分鐘':state.earlyLeaveMinutes,
-    note:`核准：${c.reason}`,'備註':`核准：${c.reason}`,sourceIp:'主管核准','來源IP':'主管核准',isSupplement:c.requestKind!=='specialClock',scheduleLinked:true,scheduleKey:s.scheduleKey,effectiveSegmentKey:s.scheduleKey,originalScheduleKey:s.originalScheduleKey,
+    note:`核准：${c.reason}`,'備註':`核准：${c.reason}`,sourceIp:'主管核准','來源IP':'主管核准',isSupplement:c.requestKind!=='specialClock'&&c.requestKind!=='earlyLeave',scheduleLinked:true,sourceType:c.requestKind==='earlyLeave'?'approvedEarlyLeave':'approvedClockCorrection',earlyLeaveApproved:c.requestKind==='earlyLeave',scheduleKey:s.scheduleKey,effectiveSegmentKey:s.scheduleKey,originalScheduleKey:s.originalScheduleKey,
     scheduleDate:c.correctDate,scheduleStartTime:s.startTime,scheduleEndTime:s.endTime,originalScheduleStartTime:s.originalStartTime||c.scheduleStartTime,originalScheduleEndTime:s.originalEndTime||c.scheduleEndTime,correctionRequestId:c.requestId,attendanceFlowVersion:VERSION,source:VERSION,createdAt:serverTs(),updatedAt:serverTs()
   }; }
   async function reviewLeaveFlow(payload){
@@ -7603,6 +7681,37 @@
       rows.push(Object.assign({},c,{status:PENDING,relatedLeaveRequestId:related,caseId:clean(r.caseId),managedByLeaveApproval:managed,originalDate:dateText(r.originalDate),originalTime:timeText(r.originalTime),originalAction:clean(r.originalAction),originalClockType:clean(r.originalClockType),scheduleSourceLabel:clean(r.scheduleSourceLabel),scheduleTemplateName:clean(r.scheduleTemplateName)})); }
     rows.sort((a,b)=>(b.correctDate+' '+b.correctTime).localeCompare(a.correctDate+' '+a.correctTime)); return{ok:true,rows,list:rows,source:VERSION};
   }
+  async function applyEarlyLeavePayroll(c,s){
+    if(c.requestKind!=='earlyLeave')return null;
+    const emp=await employeeRow(c.employeeId).catch(()=>null);
+    if(employeeType(emp)!=='parttime')return null;
+    const rate=hourlyRateOf(emp);
+    let start=shortTime(c.actualClockInTime);
+    if(!start){
+      const clocks=await rowsByEmployee('clockRecords',c.employeeId).catch(()=>[]);
+      const row=clocks.find(r=>dateText(r.clockDate||r.date||r['打卡日期'])===c.correctDate&&clean(r.actionName||r['打卡動作']).includes('上班')&&(!c.scheduleKey||clean(r.scheduleKey)===c.scheduleKey));
+      start=shortTime(row&&(row.clockTime||row.time||row['打卡時間']));
+    }
+    const end=shortTime(c.correctTime),hours=Math.round(hoursBetween(start,end)*100)/100;
+    if(!(hours>0))throw new Error('無法計算提早下班工時，請確認上班打卡時間。');
+    const rows=await rowsByEmployee('parttimeRecords',c.employeeId).catch(()=>[]);
+    const dayRows=rows.filter(r=>{
+      const status=lower(r.status||r['狀態']),source=clean(r.sourceType);
+      return !truthy(r.deleted||r.isDeleted)&&!['主管刪除','已刪除','deleted'].includes(status)&&dateText(r.workDate||r.date||r['日期'])===c.correctDate&&!truthy(r.isPaidLeave)&&!['managerAdded','parttimeExcessHours','temporaryAttendance'].includes(source);
+    });
+    const canonical=`PT_${safeId(c.employeeId)}_${c.correctDate.replace(/-/g,'')}`;
+    const target=dayRows.find(r=>clean(r.recordId||r.__id)===canonical)||dayRows.find(r=>clean(r.sourceType)==='parttimeScheduleHours')||dayRows[0];
+    const recordId=target?clean(target.__id||target.recordId):canonical;
+    await setDoc('parttimeRecords',recordId,{
+      recordId,'紀錄ID':recordId,employeeId:c.employeeId,'員工ID':c.employeeId,name:c.name,'姓名':c.name,email:c.email,
+      date:c.correctDate,workDate:c.correctDate,'日期':c.correctDate,hours,totalHours:hours,'時數':hours,'總時數':hours,
+      hourlyRate:rate,'時薪':rate,grossPay:Math.round(hours*rate),'當日工資':Math.round(hours*rate),
+      status:'提早下班已核准','狀態':'提早下班已核准',sourceType:clean(target&&target.sourceType)||'approvedEarlyLeave',
+      earlyLeaveApproved:true,earlyLeaveRequestId:c.requestId,earlyLeaveTime:end,actualClockInTime:start,
+      updatedAt:serverTs(),createdAt:(target&&target.createdAt)||serverTs(),source:VERSION
+    },true);
+    return{hours,recordId};
+  }
   async function reviewCorrection(payload,approve){
     payload=payload||{}; const id=clean(payload.requestId); if(!id)return{ok:false,message:'缺少修正申請ID。'}; const raw=await findDirectOrQuery('clockCorrections',id,'requestId'); if(!raw)return{ok:false,message:'找不到修正申請。'}; if(statusOf(raw)!==PENDING)return{ok:false,message:'這筆申請已處理過。'};
     const related=clean(raw.relatedLeaveRequestId); if(related){ const l=await findDirectOrQuery('leaveRequests',related,'requestId'); if(l&&statusOf(l)===PENDING)return{ok:false,message:'這筆補打卡與事後補假屬於同一案件，請到「請假簽核」一次處理。'}; }
@@ -7614,7 +7723,8 @@
         if(c.requestKind==='recordCorrection'){ const state=attendanceState(c.correctAction,c.correctionType,c.correctTime,s,false); tx.set(targetRef,{clockDate:c.correctDate,'打卡日期':c.correctDate,clockTime:c.correctTime,'打卡時間':c.correctTime,actionName:c.correctAction,'打卡動作':c.correctAction,clockType:c.correctionType,'打卡方式':c.correctionType,status:state.status,'狀態':state.status,lateMinutes:state.lateMinutes,'遲到分鐘':state.lateMinutes,earlyLeaveMinutes:state.earlyLeaveMinutes,'早退分鐘':state.earlyLeaveMinutes,scheduleKey:s.scheduleKey,originalScheduleKey:s.originalScheduleKey,correctionApplied:true,correctionRequestId:id,correctedAt:serverTs(),updatedAt:serverTs(),source:VERSION},{merge:true}); }
         else if(!targetSnap.exists)tx.set(targetRef,clockDocFromCorrection(c,s,recordId));
         tx.set(cRef,{status:APPROVED,'狀態':APPROVED,reviewedAt:serverTs(),reviewedBy:clean(reviewer.id||reviewer.employeeId),appliedRecordId:c.requestKind==='recordCorrection'?c.originalRecordId:recordId,updatedAt:serverTs(),source:VERSION},{merge:true}); });
-      await reconcileAttendance(c.employeeId,c.correctDate).catch(()=>null); return{ok:true,message:c.requestKind==='recordCorrection'?'打卡修正已核准，原始紀錄已更新。':'補打卡已核准，正式打卡紀錄已建立。',appliedRecordId:c.requestKind==='recordCorrection'?c.originalRecordId:recordId};
+      const payroll=await applyEarlyLeavePayroll(c,s);
+      await reconcileAttendance(c.employeeId,c.correctDate).catch(()=>null); return{ok:true,message:c.requestKind==='earlyLeave'?'提早下班已核准，已更新下班時間與當日工時。':(c.requestKind==='recordCorrection'?'打卡修正已核准，原始紀錄已更新。':'補打卡已核准，正式打卡紀錄已建立。'),appliedRecordId:c.requestKind==='recordCorrection'?c.originalRecordId:recordId,payroll};
     }catch(e){ return{ok:false,message:e&&e.message?e.message:String(e)}; }
   }
 

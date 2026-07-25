@@ -433,6 +433,8 @@
         grossPay:safeNum(raw(o,['grossPay','當筆毛額','當日工資']))||Math.round(total*rate),
         laborSelfPaySnapshot:safeNum(raw(o,['laborSelfPaySnapshot','勞保自付額快照','laborSelfPay','勞保自付額'])),
         sourceType:clean(raw(o,['sourceType','資料來源類型'])),
+        dataCenterCreated:isTrue(raw(o,['dataCenterCreated'])),
+        deleted:isTrue(raw(o,['deleted','isDeleted']))||['主管刪除','已刪除','deleted'].includes(lower(status)),
         isPaidLeave:isTrue(raw(o,['isPaidLeave','核准支薪假']))||clean(raw(o,['sourceType','資料來源類型']))==='approvedPaidLeave',
         replacementOf:clean(raw(o,['replacementOf','replacesRecordId','取代紀錄ID','原紀錄ID'])),
         replacedByRecordId:clean(raw(o,['replacedByRecordId','supersededBy','被取代紀錄ID'])),
@@ -686,7 +688,7 @@
       return (arr||[]).filter(r=>matchesSelectedEmployee(r)&&inMonth(r.date));
     }
     function effectiveParttimeRows(){
-      return payrollRules().latestEffectiveParttimeRecords(empRows(state.parttime));
+      return payrollRules().latestEffectiveParttimeRecords(empRows(state.parttime).filter(r=>!r.deleted));
     }
     function effectiveClockRows(){
       return payrollRules().latestEffectiveClockRecords(empRows(state.clocks));
@@ -1103,6 +1105,10 @@
       if(day.issues.length)pills.push('<span class="pill red">資料需確認</span>');
       return pills.join('');
     }
+    function canDeleteParttime(r){
+      const source=lower(r&&r.sourceType);
+      return !!(r&&r.dataCenterCreated)||source==='manageradded'||source==='parttimeexcesshours';
+    }
     function workEntriesHtml(day){
       if(!day.workRows.length)return '<div class="daily-empty-inline">當日沒有工讀時數紀錄。</div>';
       return day.workRows.map(r=>{
@@ -1110,7 +1116,10 @@
         return `<div class="work-entry">
           <div class="entry-head">
             <div><div class="entry-main"><span class="pill blue">${esc(workSource(r))}</span>　${esc(hours(r.totalHours||r.hours))}</div><div class="entry-meta">時薪 ${money(r.hourlyRate)}／本筆工資 ${money(r.grossPay||r.gross)}${note?`<br>原因：${esc(note)}`:''}</div></div>
-            <button class="btn small" type="button" onclick="modifyParttimeRecord('${escjs(r.__id)}')">調整這筆工時</button>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
+              <button class="btn small" type="button" onclick="modifyParttimeRecord('${escjs(r.__id)}')">調整這筆工時</button>
+              ${canDeleteParttime(r)?`<button class="btn small danger" type="button" onclick="deleteParttime('${escjs(r.__id)}')">刪除這筆</button>`:''}
+            </div>
           </div>
         </div>`;
       }).join('');
@@ -1336,8 +1345,18 @@
     }
     async function deleteParttime(id){
       const r=state.parttime.find(x=>x.__id===id); if(!r)return;
-      if(!confirm(`確定刪除？\n${r.name}｜${r.date}｜${r.hours} 小時`))return;
-      await fb().collection('parttimeRecords').doc(id).delete(); msg('已刪除。'); await reloadAll();
+      if(!canDeleteParttime(r)){msg('系統自動產生的工時不可刪除，只能刪除主管新增或補時數資料。','error');return;}
+      const reason=clean(prompt('請輸入刪除原因：','重複新增')||'');
+      if(!reason)return;
+      if(!confirm(`確定刪除這筆主管新增工時？\n${r.name}｜${r.date}｜${r.hours} 小時\n\n刪除後不列入薪資，但會保留主管操作紀錄。`))return;
+      const manager=currentManager(),at=nowIso();
+      const event={type:'delete',summary:'主管刪除工讀時數',reason,oldValue:{date:r.date,hours:r.hours,sourceType:r.sourceType},managerId:manager.id,managerName:manager.name,at};
+      await mergeWithAudit('parttimeRecords',id,{
+        deleted:true,isDeleted:true,status:'主管刪除',狀態:'主管刪除',
+        deletedReason:reason,刪除原因:reason,deletedByManagerId:manager.id,
+        deletedByManagerName:manager.name,deletedAt:at,updatedAt:at
+      },'adjustmentHistory',event);
+      msg('已刪除這筆主管新增工時，操作紀錄已保留。'); await reloadAll();
     }
     function goClock(date){const card=qs(`[data-daily-date="${CSS.escape(date)}"]`);if(card)card.scrollIntoView({behavior:'smooth',block:'center'});msg(`${date} 的遲到可直接在當日明細的「修正遲到／核准不扣款」處理。`,'notice')}
 

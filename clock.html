@@ -138,6 +138,7 @@
           <button class="clock-mode-btn" type="button" id="modeStandardBtn" onclick="selectClockMode('標準打卡')">標準打卡</button>
           <button class="clock-mode-btn" type="button" id="modeSpecialBtn" onclick="selectClockMode('特殊打卡')">特殊打卡</button>
           <button class="clock-mode-btn" type="button" id="modeTempBtn" onclick="goTemporaryAttendance()">臨時出勤申請</button>
+          <button class="clock-mode-btn hidden" style="grid-column:1/-1" type="button" id="modeEarlyLeaveBtn" onclick="submitEarlyLeave()">提早下班</button>
         </div>
         <div class="muted section-note">請先選擇打卡方式。標準打卡會直接成立；特殊打卡需填寫原因並送主管審核；臨時出勤申請只處理主管尚未排班但實際出勤的情況。</div>
       </div>
@@ -465,15 +466,19 @@
     function updateClockModeButtonsBySchedule(info){
       const standardBtn = qs('#modeStandardBtn');
       const specialBtn = qs('#modeSpecialBtn');
+      const earlyLeaveBtn = qs('#modeEarlyLeaveBtn');
       const loaded = !!(info && info.__loaded);
       if(!loaded){
         if(standardBtn) standardBtn.disabled = false;
         if(specialBtn) specialBtn.disabled = false;
+        if(earlyLeaveBtn) earlyLeaveBtn.classList.add('hidden');
         return;
       }
-      const hasSchedule = !!getSelectedSchedule();
+      const selected = getSelectedSchedule();
+      const hasSchedule = !!selected;
       if(standardBtn) standardBtn.disabled = !hasSchedule;
       if(specialBtn) specialBtn.disabled = !hasSchedule;
+      if(earlyLeaveBtn) earlyLeaveBtn.classList.toggle('hidden', !(selected && selected.hasClockIn && !selected.hasClockOut));
     }
 
     function todayScheduleAllows(mode, actionName){
@@ -549,11 +554,73 @@
       if(qs('#modeStandardBtn')) qs('#modeStandardBtn').classList.add(mode === '標準打卡' ? 'active' : 'hidden');
       if(qs('#modeSpecialBtn')) qs('#modeSpecialBtn').classList.add(mode === '特殊打卡' ? 'active' : 'hidden');
       if(qs('#modeTempBtn')) qs('#modeTempBtn').classList.add('hidden');
+      if(qs('#modeEarlyLeaveBtn')) qs('#modeEarlyLeaveBtn').classList.add('hidden');
 
       updateClockActionNote(mode);
       setActionButtonIdle(qs('#clockInBtn'), '上班打卡');
       setActionButtonIdle(qs('#clockOutBtn'), '下班打卡');
       setMsg(qs('#mainMsg'), '');
+    }
+
+    async function submitEarlyLeave(){
+      const user = requireLogin();
+      const selected = getSelectedSchedule();
+      if(!user || !selected) return;
+      if(!selected.hasClockIn || selected.hasClockOut){
+        setMsg(qs('#mainMsg'), '只有已完成上班打卡、尚未下班的班段可以申請提早下班。', true);
+        return;
+      }
+      const clockInRecord = selected.clockInRecord || {};
+      const actualClockInTime = cleanTime(
+        selected.existingClockInTime ||
+        clockInRecord.clockTime ||
+        clockInRecord.time ||
+        clockInRecord['打卡時間']
+      );
+      const now = new Date();
+      const defaultTime = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+      const correctTime = cleanTime(prompt(`請輸入提早下班時間（原班表下班 ${selected.endTime || '—'}）`, defaultTime) || '');
+      if(!correctTime) return;
+      const toMinutes = value => {
+        const m = String(value || '').match(/^(\d{1,2}):(\d{2})/);
+        return m ? Number(m[1]) * 60 + Number(m[2]) : NaN;
+      };
+      const leaveMinute = toMinutes(correctTime);
+      const inMinute = toMinutes(actualClockInTime || selected.startTime);
+      const endMinute = toMinutes(selected.endTime);
+      if(!Number.isFinite(leaveMinute) || !Number.isFinite(inMinute) || !Number.isFinite(endMinute) || leaveMinute <= inMinute || leaveMinute >= endMinute){
+        setMsg(qs('#mainMsg'), `提早下班時間必須晚於實際上班時間 ${actualClockInTime || selected.startTime || '—'}，且早於原定下班時間 ${selected.endTime || '—'}。`, true);
+        return;
+      }
+      const reason = String(prompt('請填寫提早下班原因（送主管審核）', '') || '').trim();
+      if(!reason){
+        setMsg(qs('#mainMsg'), '請填寫提早下班原因。', true);
+        return;
+      }
+      try{
+        setMsg(qs('#mainMsg'), '正在送出提早下班申請...');
+        const result = await api('submitClockCorrection', {
+          userId:user.id,
+          requestKind:'earlyLeave',
+          scheduleKey:selected.scheduleKey,
+          scheduleDate:selected.date || new Date().toISOString().slice(0,10),
+          scheduleSnapshot:selected,
+          scheduleStartTime:selected.startTime,
+          scheduleEndTime:selected.endTime,
+          correctDate:selected.date || new Date().toISOString().slice(0,10),
+          correctTime,
+          correctAction:'下班打卡',
+          correctionType:'標準打卡',
+          actualClockInTime,
+          reason
+        });
+        if(!result || result.ok === false) throw new Error((result && result.message) || '送出失敗');
+        setMsg(qs('#mainMsg'), result.message || '提早下班申請已送出，主管核准後才會調整薪資。');
+        await loadTodaySchedule();
+        if(typeof loadMissingClockIssues === 'function') await loadMissingClockIssues().catch(()=>null);
+      }catch(e){
+        setMsg(qs('#mainMsg'), friendlyClockMessage(e.message || '送出失敗'), true);
+      }
     }
 
 
@@ -564,6 +631,7 @@
       qs('#modeStandardBtn') && qs('#modeStandardBtn').classList.remove('hidden');
       qs('#modeSpecialBtn') && qs('#modeSpecialBtn').classList.remove('hidden');
       qs('#modeTempBtn') && qs('#modeTempBtn').classList.remove('hidden');
+      updateClockModeButtonsBySchedule(window.__todayClockSchedule || {});
       setMsg(qs('#mainMsg'), '');
     }
 
