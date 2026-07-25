@@ -112,7 +112,7 @@
   async function printSelected(event){
     event.preventDefault();const p=state.selected;if(!p)return;const copies=Math.max(1,Math.min(500,Math.round(Number($('bpCopies').value||1))));
     const btn=$('bpPrintSubmit');btn.disabled=true;btn.textContent='列印中…';$('bpModalStatus').className='bp-modal-status';$('bpModalStatus').textContent='正在送到 TSC TTP-244 Plus…';
-    try{const displaySku=formatLabelSku(p.sku);await localFetch('/print',{method:'POST',headers:{'Content-Type':'text/plain;charset=UTF-8'},body:JSON.stringify({sku:displaySku,rawSku:p.sku,displaySku:displaySku,name:p.name,variant:p.variant,price:p.price,copies:copies,labelLayoutVersion:'20260716-v2'})});closeModal();toast(displaySku+' 已列印 '+copies+' 張');}
+    try{const displaySku=formatLabelSku(p.sku);await localFetch('/print',{method:'POST',headers:{'Content-Type':'text/plain;charset=UTF-8'},body:JSON.stringify({sku:displaySku,rawSku:p.sku,displaySku:displaySku,name:p.name,variant:'',price:p.price,copies:copies,labelLayoutVersion:'20260716-v2'})});closeModal();toast(displaySku+' 已列印 '+copies+' 張');}
     catch(err){state.serviceReady=false;setService(false,'條碼機未連線');$('bpModalStatus').className='bp-modal-status error';$('bpModalStatus').textContent='列印失敗：'+clean(err.message||err);btn.disabled=false;}
     finally{btn.textContent='確定列印';if(state.serviceReady)btn.disabled=false;}
   }
