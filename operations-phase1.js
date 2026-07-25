@@ -1505,6 +1505,12 @@ function renderOverviewV7(){
     });
     rows.sort(compareCatalogSku); return rows;
   }
+  function abbreviatedOnlineProductName(value){
+    const name=displayOnlineName(value);
+    if(!name)return '';
+    const chars=Array.from(name);
+    return chars.slice(0,5).join('')+(chars.length>5?'…':'');
+  }
   function productCard(p){
     const allImages=Array.from(new Set((p.imageUrls||[]).concat(p.imageUrl?[p.imageUrl]:[]).filter(Boolean)));
     const parentImages=Array.from(new Set((p.parentImageUrls||[]).filter(Boolean)));
@@ -1512,11 +1518,13 @@ function renderOverviewV7(){
     const mainImage=parentImages[0]||allImages[0]||'';
     const variantImage=variantImages.find(function(url){return url!==mainImage;})||allImages.find(function(url){return url!==mainImage;})||'';
     const urls=(isCompactMobile()?[mainImage]:[mainImage,variantImage]).filter(Boolean);
-    const cleanOnline=displayOnlineName(p.onlineName)||displayOnlineName(p.originalName)||'未命名商品';
+    const systemName=clean(p.originalName||p.name||p.onlineName)||'未命名商品';
+    const cleanOnline=displayOnlineName(p.onlineName);
     const variant=clean(p.variantName);
-    const imageHtml=urls.length?urls.map(function(url,index){return '<img loading="lazy" src="'+attr(url)+'" alt="'+attr(index===1&&variant?variant:cleanOnline)+'" onerror="this.style.display=\'none\'">';}).join(''):'<div class="placeholder">無圖</div>';
+    const onlineSummary=cleanOnline?'網路：'+abbreviatedOnlineProductName(cleanOnline)+(variant?'（'+variant+'）':''):'';
+    const imageHtml=urls.length?urls.map(function(url,index){return '<img loading="lazy" src="'+attr(url)+'" alt="'+attr(index===1&&variant?variant:systemName)+'" onerror="this.style.display=\'none\'">';}).join(''):'<div class="placeholder">無圖</div>';
     const active=state.productEditId===p.docId?' active':'';
-    return '<article class="ops-product-card ops-product-card-full'+active+'" data-action="product-edit" data-id="'+attr(p.docId)+'" role="button" tabindex="0"><div class="ops-product-image-grid '+(urls.length<2?'single':'')+'">'+imageHtml+'</div><div class="ops-product-body"><div class="ops-product-sku-row"><div class="ops-product-sku-main"><b>'+escapeHtml(p.sku||'未設定')+'</b>'+(p.sku?'<button type="button" class="ops-label-print-button" data-action="product-print-label" data-id="'+attr(p.docId)+'">列印條碼</button>':'')+'</div><span class="ops-product-inline-stock">庫存 <strong>'+escapeHtml(formatNumber(p.currentStock))+'</strong></span></div><div class="ops-product-name-rows"><b>'+escapeHtml(cleanOnline)+'</b></div>'+(variant?'<div class="ops-product-variant-row"><b>'+escapeHtml(variant)+'</b></div>':'')+'<div class="ops-product-detail-grid"><div><span>門市定價</span><b>'+money(p.storePrice)+'</b></div><div><span>網路售價</span><b>'+money(p.onlinePrice)+'</b></div><div><span>進貨成本</span><b>'+money(p.latestPurchaseCost)+'</b></div><div><span>平均成本</span><b>'+money(p.averageCost)+'</b></div></div></div></article>';
+    return '<article class="ops-product-card ops-product-card-full'+active+'" data-action="product-edit" data-id="'+attr(p.docId)+'" role="button" tabindex="0"><div class="ops-product-image-grid '+(urls.length<2?'single':'')+'">'+imageHtml+'</div><div class="ops-product-body"><div class="ops-product-sku-row"><div class="ops-product-sku-main"><b>'+escapeHtml(p.sku||'未設定')+'</b>'+(p.sku?'<button type="button" class="ops-label-print-button" data-action="product-print-label" data-id="'+attr(p.docId)+'">列印條碼</button>':'')+'</div><span class="ops-product-inline-stock">庫存 <strong>'+escapeHtml(formatNumber(p.currentStock))+'</strong></span></div><div class="ops-product-name-rows"><b>'+escapeHtml(systemName)+'</b></div>'+(onlineSummary?'<div class="ops-product-variant-row"><b>'+escapeHtml(onlineSummary)+'</b></div>':'')+'<div class="ops-product-detail-grid"><div><span>門市定價</span><b>'+money(p.storePrice)+'</b></div><div><span>網路售價</span><b>'+money(p.onlinePrice)+'</b></div><div><span>進貨成本</span><b>'+money(p.latestPurchaseCost)+'</b></div><div><span>平均成本</span><b>'+money(p.averageCost)+'</b></div></div></div></article>';
   }
   function productTextRow(p){
     const name=displayOnlineName(p.onlineName)||displayOnlineName(p.originalName)||'未命名商品';
@@ -1528,8 +1536,8 @@ function renderOverviewV7(){
   const LABEL_PRINT_ENDPOINTS=['http://127.0.0.1:18181','http://localhost:18181'];
   let labelPrintEndpoint='';
   function labelPrintProductData(product){
-    const name=clean(product&&(product.originalName||product.onlineName||product.name))||'未命名商品';
-    const variant=clean(product&&product.variantName);
+    const name=clean(product&&(product.originalName||product.name||product.onlineName))||'未命名商品';
+    const variant='';
     const storePrice=numberOrNull(product&&product.storePrice);
     const onlinePrice=numberOrNull(product&&product.onlinePrice);
     const sku=clean(product&&product.sku);
