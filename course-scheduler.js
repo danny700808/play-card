@@ -328,11 +328,29 @@
   function eventDisplayName(event){if(event.type==='rental')return event.clientName||'教室租用';return (event.studentIds||[]).map(function(id){return studentById(id).name;}).filter(Boolean).join('、')||subjectById(event.subjectId).name||typeName(event.type);}
   function dayConflictIds(events){var ids={};events.forEach(function(event){if(eventConflictReasons(event,[event.id]).length)ids[event.id]=true;});return ids;}
   function bindScheduleDrag(){
-    var node=$('scheduleScroll');if(!node)return;var dragging=false,startX=0,startLeft=0,moved=false;
-    node.addEventListener('pointerdown',function(event){if(event.button!=null&&event.button!==0)return;dragging=true;moved=false;startX=event.clientX;startLeft=node.scrollLeft||0;node.classList.add('dragging');if(node.setPointerCapture&&event.pointerId!=null)node.setPointerCapture(event.pointerId);});
-    node.addEventListener('pointermove',function(event){if(!dragging)return;var delta=event.clientX-startX;if(Math.abs(delta)>5)moved=true;if(moved){node.scrollLeft=startLeft-delta;if(event.preventDefault)event.preventDefault();}});
-    function finish(){if(!dragging)return;dragging=false;node.classList.remove('dragging');scheduleDragMoved=moved;if(moved){var room=qs('.room-head',$('scheduleGrid')),width=room&&room.getBoundingClientRect?room.getBoundingClientRect().width:200,target=Math.round((node.scrollLeft||0)/Math.max(1,width))*width;if(node.scrollTo)node.scrollTo({left:target,behavior:'smooth'});else node.scrollLeft=target;setTimeout(function(){scheduleDragMoved=false;},80);}}
-    node.addEventListener('pointerup',finish);node.addEventListener('pointercancel',finish);node.addEventListener('pointerleave',function(event){if(dragging&&event.buttons===0)finish();});
+    var node=$('scheduleScroll');if(!node)return;var dragging=false,startX=0,startLeft=0,moved=false,pointerId=null;
+    node.addEventListener('pointerdown',function(event){
+      if((event.button!=null&&event.button!==0)||event.isPrimary===false)return;
+      dragging=true;moved=false;pointerId=event.pointerId;startX=event.clientX;startLeft=node.scrollLeft||0;scheduleDragMoved=false;
+    });
+    document.addEventListener('pointermove',function(event){
+      if(!dragging||(pointerId!=null&&event.pointerId!=null&&event.pointerId!==pointerId))return;
+      var delta=event.clientX-startX;
+      if(!moved&&Math.abs(delta)>6){moved=true;node.classList.add('dragging');}
+      if(!moved)return;
+      node.scrollLeft=startLeft-delta;
+      if(event.preventDefault)event.preventDefault();
+    });
+    function finish(event){
+      if(!dragging||(pointerId!=null&&event&&event.pointerId!=null&&event.pointerId!==pointerId))return;
+      dragging=false;pointerId=null;node.classList.remove('dragging');
+      if(!moved){scheduleDragMoved=false;return;}
+      scheduleDragMoved=true;
+      var room=qs('.room-head',$('scheduleGrid')),width=room&&room.getBoundingClientRect?room.getBoundingClientRect().width:200,target=Math.round((node.scrollLeft||0)/Math.max(1,width))*width;
+      if(node.scrollTo)node.scrollTo({left:target,behavior:'smooth'});else node.scrollLeft=target;
+      setTimeout(function(){scheduleDragMoved=false;},250);
+    }
+    document.addEventListener('pointerup',finish);document.addEventListener('pointercancel',finish);
   }
 
   function renderCalendar(){
