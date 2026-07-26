@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#24735c">
   <title>教室租用｜柚子樂器</title>
-  <link rel="stylesheet" href="course-portal.css?v=20260726-v2">
+  <link rel="stylesheet" href="course-portal.css?v=20260727-v4">
 </head>
 <body>
   <main class="portal-shell">
@@ -40,11 +40,20 @@
       </div>
 
       <section class="card">
-        <div class="section-title"><div><h2>選擇時間</h2><p class="muted">綠色時段可以預約。</p></div></div>
-        <div class="field">
-          <label>使用項目</label>
-          <select id="subjectSelect"><option value="">全部教室</option></select>
+        <div class="section-title"><div><h2>想使用空間做什麼？</h2><p class="muted">用途只用來排序，不會把其他仍可使用的教室藏起來。</p></div></div>
+        <div class="rental-use-grid" id="rentalUseGrid">
+          <button class="rental-use active" type="button" data-use="guitar">彈吉他／自備樂器</button>
+          <button class="rental-use" type="button" data-use="piano">彈鋼琴</button>
+          <button class="rental-use" type="button" data-use="drums">打鼓</button>
+          <button class="rental-use" type="button" data-use="band">樂團／多人排練</button>
+          <button class="rental-use" type="button" data-use="teaching">教學／會議</button>
+          <button class="rental-use" type="button" data-use="other">其他用途</button>
         </div>
+        <div class="grid two rental-quick-fields">
+          <div class="field"><label>人數</label><select id="partySize"><option value="1">1人</option><option value="2">2人</option><option value="4">3～5人</option><option value="6">6人以上</option></select></div>
+          <div class="field"><label>需要設備</label><select id="equipmentSelect"><option value="own">自備樂器／不指定</option><option value="piano">需要鋼琴</option><option value="acoustic_drums">需要傳統鼓</option><option value="electronic_drums">需要電子鼓</option></select></div>
+        </div>
+        <div class="section-title rental-week-title"><div><h2>一週可租時間</h2><p class="muted">先看整週哪一天有空，再點日期看詳細時間。</p></div><div><button class="btn" id="prevRentalWeek" type="button">上一週</button> <button class="btn soft" id="nextRentalWeek" type="button">下一週</button></div></div>
         <div class="date-strip" id="dateStrip"></div>
         <div class="rental-board" id="rentalBoard"><p class="muted">正在讀取空堂…</p></div>
 
@@ -70,6 +79,8 @@
     let role = '';
     let token = '';
     let selectedDate = todayKey();
+    let weekStart = todayKey();
+    let selectedUseType = 'guitar';
     let selectedStart = '';
     let boardData = null;
     let roomData = null;
@@ -99,20 +110,22 @@
     }
 
     function renderDateStrip() {
-      document.getElementById('dateStrip').innerHTML = Array.from({ length: 7 }, (_, index) => {
-        const key = P.addDays(todayKey(), index);
-        const label = dayLabel(key);
-        return `<button class="btn date-chip ${key === selectedDate ? 'active' : ''}" type="button" data-date="${key}"><strong>${label.weekday}</strong><small>${label.date}</small></button>`;
+      const days = boardData && boardData.days || [];
+      document.getElementById('dateStrip').innerHTML = days.map((day) => {
+        const label = dayLabel(day.date);
+        return `<button class="btn date-chip ${day.date === selectedDate ? 'active' : ''}" type="button" data-date="${day.date}"><strong>${label.weekday}</strong><small>${label.date}</small><em>${day.closed ? '公休' : `${day.availableSlotCount}個空段`}</em></button>`;
       }).join('');
     }
 
     function renderBoard() {
       const node = document.getElementById('rentalBoard');
-      if (boardData.closed) {
+      const day = (boardData.days || []).find((row) => row.date === selectedDate) || boardData.days[0];
+      if (!day) return;
+      if (day.closed) {
         node.innerHTML = '<div class="notice">星期二公休，請選擇其他日期。</div>';
         return;
       }
-      node.innerHTML = boardData.slots.map((slot) => {
+      node.innerHTML = day.slots.map((slot) => {
         const available = slot.availableCount > 0;
         const rooms = slot.rooms.map((room) => room.name).join('、');
         return `
@@ -124,28 +137,19 @@
       }).join('');
     }
 
-    function populateSubjects(subjects) {
-      const select = document.getElementById('subjectSelect');
-      if (select.options.length > 1) return;
-      (subjects || []).forEach((subject) => {
-        const option = document.createElement('option');
-        option.value = subject.id;
-        option.textContent = subject.name;
-        select.appendChild(option);
-      });
-    }
-
     async function loadBoard() {
       document.getElementById('choicePanel').classList.add('hidden');
       selectedStart = '';
       document.getElementById('rentalBoard').innerHTML = '<p class="muted">正在讀取空堂…</p>';
       try {
-        boardData = await P.call('coursePortalRentalDayBoard', {
+        boardData = await P.call('coursePortalRentalWeekBoard', {
           sessionToken: token,
-          date: selectedDate,
-          subjectId: document.getElementById('subjectSelect').value
+          startDate: weekStart,
+          useType: selectedUseType,
+          equipment: document.getElementById('equipmentSelect').value,
+          partySize: document.getElementById('partySize').value
         });
-        populateSubjects(boardData.subjects);
+        if (!(boardData.days || []).some((day) => day.date === selectedDate)) selectedDate = boardData.days[0].date;
         renderDateStrip();
         renderBoard();
       } catch (error) {
@@ -164,16 +168,20 @@
           date: selectedDate,
           startTime: selectedStart,
           durationMinutes: document.getElementById('durationSelect').value,
-          subjectId: document.getElementById('subjectSelect').value
+          useType: selectedUseType,
+          equipment: document.getElementById('equipmentSelect').value,
+          partySize: document.getElementById('partySize').value
         });
-        list.innerHTML = roomData.rooms.filter((room) => room.available).map((room) => `
+        const available = roomData.rooms.filter((room) => room.available);
+        const renderRooms = (rows, label) => rows.length ? `<h4 class="rental-match-heading">${label}</h4>` + rows.map((room) => `
           <article class="list-row">
             <strong>${P.escapeHtml(room.name)}</strong>
-            <span>${P.escapeHtml(room.priceType)}</span>
+            <span>${P.escapeHtml(room.priceType)}・最多${room.capacity}人</span>
             <strong>${P.money(room.price)}</strong>
             <span class="badge">可預約</span>
             <button class="btn primary" type="button" data-book-room="${P.escapeHtml(room.id)}">預約</button>
-          </article>`).join('') || '<div class="notice">這段完整時間沒有可用教室，請縮短時間或選擇其他時段。</div>';
+          </article>`).join('') : '';
+        list.innerHTML = renderRooms(available.filter((room) => room.matchLevel === 'best'), '最適合') + renderRooms(available.filter((room) => room.matchLevel !== 'best'), '也可以使用') || '<div class="notice">這段完整時間沒有可用教室，請縮短時間或選擇其他時段。</div>';
       } catch (error) {
         list.innerHTML = '<p class="muted">讀取失敗。</p>';
         P.toast(error.message, 'error');
@@ -207,10 +215,22 @@
       const button = event.target.closest('[data-date]');
       if (!button) return;
       selectedDate = button.dataset.date;
+      selectedStart = '';
+      document.getElementById('choicePanel').classList.add('hidden');
       renderDateStrip();
+      renderBoard();
+    });
+    document.getElementById('rentalUseGrid').addEventListener('click', (event) => {
+      const button = event.target.closest('[data-use]');
+      if (!button) return;
+      selectedUseType = button.dataset.use;
+      document.querySelectorAll('[data-use]').forEach((node) => node.classList.toggle('active', node === button));
       loadBoard();
     });
-    document.getElementById('subjectSelect').addEventListener('change', loadBoard);
+    document.getElementById('partySize').addEventListener('change', loadBoard);
+    document.getElementById('equipmentSelect').addEventListener('change', loadBoard);
+    document.getElementById('prevRentalWeek').addEventListener('click', () => { weekStart = P.addDays(weekStart, -7); selectedDate = weekStart; loadBoard(); });
+    document.getElementById('nextRentalWeek').addEventListener('click', () => { weekStart = P.addDays(weekStart, 7); selectedDate = weekStart; loadBoard(); });
     document.getElementById('rentalBoard').addEventListener('click', (event) => {
       const button = event.target.closest('[data-slot]');
       if (!button) return;
@@ -233,7 +253,9 @@
           date: selectedDate,
           startTime: selectedStart,
           durationMinutes: document.getElementById('durationSelect').value,
-          subjectId: document.getElementById('subjectSelect').value,
+          useType: selectedUseType,
+          equipment: document.getElementById('equipmentSelect').value,
+          partySize: document.getElementById('partySize').value,
           purpose: document.getElementById('purposeInput').value
         });
         P.toast(`預約完成，現場付款 ${P.money(result.booking.amount)}。`);

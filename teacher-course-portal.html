@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#24735c">
   <title>老師課務入口｜柚子樂器</title>
-  <link rel="stylesheet" href="course-portal.css?v=20260726-v3">
+  <link rel="stylesheet" href="course-portal.css?v=20260727-v4">
 </head>
 <body>
   <main class="portal-shell">
@@ -71,12 +71,17 @@
         <input type="hidden" name="sourceDate">
         <div class="grid two">
           <div class="field"><label>操作</label><select name="action" id="actionType"><option value="extra_lesson">增加一堂課</option><option value="teacher_gift">老師免費送一堂</option><option value="single_move">單次調課</option><option value="permanent_move">永久調課</option></select></div>
+          <div class="field hidden" id="sourceLessonField"><label>要移動的原課程</label><select id="actionSourceLesson"></select></div>
           <div class="field"><label>學生</label><select name="studentId" id="actionStudent" required></select></div>
           <div class="field"><label>科目</label><select name="subjectId" id="actionSubject"></select></div>
           <div class="field"><label>教室</label><select name="roomId" id="actionRoom" required></select></div>
           <div class="field"><label>日期</label><input name="date" id="actionDate" type="date" required></div>
           <div class="field"><label>時間</label><div class="grid two"><input name="startTime" id="actionStart" type="time" required><input name="endTime" id="actionEnd" type="time" required></div></div>
         </div>
+        <section class="quick-availability hidden" id="quickAvailability">
+          <div class="section-title"><div><h3>可直接調入的位置</h3><p class="muted">只顯示老師沒有課、而且有合適空教室的時間。</p></div><button class="btn soft" id="reloadAvailability" type="button">重新找空位</button></div>
+          <div class="availability-suggestions" id="availabilitySuggestions"></div>
+        </section>
         <div class="field"><label>備註</label><input name="note" placeholder="選填"></div>
         <div class="notice" id="giftNotice">「老師免費送一堂」不向學生收費，也不列入老師薪資。</div>
         <button class="btn primary" type="submit">確認並儲存</button>
@@ -127,7 +132,12 @@
       return [...found.values()];
     }
 
-    function lessonCard(event, beginsHere, conflict) {
+    function portalTimeToMinutes(value) {
+      const parts = String(value || '00:00').split(':').map(Number);
+      return (parts[0] || 0) * 60 + (parts[1] || 0);
+    }
+
+    function lessonCard(event, conflict) {
       const names = (event.studentNames || []).join('、') || '未指定學生';
       const studentNames = event.studentNames || [];
       const groupLabel = studentNames.length > 2
@@ -144,8 +154,26 @@
         <button class="${classNames}" type="button" data-event="${P.escapeHtml(event.id)}">
           <span class="lesson-time">${P.escapeHtml(event.startTime)}～${P.escapeHtml(event.endTime)}${groupLabel ? `<em>${groupLabel}</em>` : ''}</span>
           <strong>${P.escapeHtml(names)}</strong>
-          <small>${P.escapeHtml(beginsHere ? details : '課程進行中')}</small>
+          <small>${P.escapeHtml(details)}</small>
         </button>`;
+    }
+
+    function overlapGroups(rows) {
+      const sorted = uniqueLessonRows(rows).slice().sort((a, b) =>
+        String(a.startTime).localeCompare(String(b.startTime)) ||
+        String(a.endTime).localeCompare(String(b.endTime))
+      );
+      const groups = [];
+      sorted.forEach((event) => {
+        const last = groups[groups.length - 1];
+        if (!last || event.startTime >= last.endTime) {
+          groups.push({ events: [event], startTime: event.startTime, endTime: event.endTime });
+        } else {
+          last.events.push(event);
+          if (event.endTime > last.endTime) last.endTime = event.endTime;
+        }
+      });
+      return groups;
     }
 
     function renderWeek() {
@@ -158,6 +186,7 @@
       const events = (data.events || []).filter((event) => event.own);
       let html = '<div class="week-cell head"></div>';
       visibleDays.forEach((day) => { html += `<div class="week-cell head">${P.escapeHtml(dayLabel(day))}</div>`; });
+      const scheduleStart = data.hours.start * 60;
       grid.classList.toggle('mobile-day', mobile);
       for (let minute = data.hours.start * 60; minute < data.hours.end * 60; minute += 30) {
         const slotStart = `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`;
@@ -169,18 +198,6 @@
             event.date === day && event.startTime < slotEnd && slotStart < event.endTime
           ));
           html += '<div class="week-cell">';
-          if (rows.length > 1) {
-            html += `<div class="overlap-note">⚠ 同時${rows.length}堂</div><div class="lesson-cluster conflict">`;
-            rows.forEach((event) => {
-              const beginsHere = event.startTime >= slotStart && event.startTime < slotEnd;
-              html += lessonCard(event, beginsHere, true);
-            });
-            html += '</div>';
-          } else if (rows.length === 1) {
-            const event = rows[0];
-            const beginsHere = event.startTime >= slotStart && event.startTime < slotEnd;
-            html += `<div class="lesson-cluster">${lessonCard(event, beginsHere, false)}</div>`;
-          }
           if (!rows.length && new Date(`${day}T12:00:00`).getDay() !== 2) {
             html += `<button class="empty-slot" type="button" data-empty="${day}|${slotStart}|${slotEnd}">空堂</button>`;
           } else if (!rows.length) {
@@ -189,6 +206,23 @@
           html += '</div>';
         });
       }
+      visibleDays.forEach((day, dayIndex) => {
+        const dayEvents = events.filter((event) => event.date === day);
+        overlapGroups(dayEvents).forEach((group) => {
+          const startMinute = portalTimeToMinutes(group.startTime);
+          const endMinute = portalTimeToMinutes(group.endTime);
+          const rowStart = 2 + Math.max(0, Math.floor((startMinute - scheduleStart) / 30));
+          const rowSpan = Math.max(1, Math.ceil((endMinute - Math.max(startMinute, scheduleStart)) / 30));
+          const placement = `grid-column:${dayIndex + 2};grid-row:${rowStart}/span ${rowSpan}`;
+          if (group.events.length === 1) {
+            html += `<div class="lesson-placement" style="${placement}">${lessonCard(group.events[0], false)}</div>`;
+          } else {
+            html += `<div class="lesson-placement lesson-overlap-placement" style="${placement}"><div class="overlap-note">⚠ 同時${group.events.length}堂</div><div class="lesson-cluster conflict">`;
+            group.events.forEach((event) => { html += lessonCard(event, true); });
+            html += '</div></div>';
+          }
+        });
+      });
       grid.innerHTML = html;
       document.getElementById('mobileDayTabs').innerHTML = days.map((day, index) => `
         <button class="btn ${index === selectedDayIndex ? 'active' : ''}" type="button" data-mobile-day="${index}">${P.escapeHtml(dayLabel(day))}</button>
@@ -236,14 +270,101 @@
       document.getElementById('actionStudent').innerHTML = data.roster.map((row) => `<option value="${P.escapeHtml(row.id)}">${P.escapeHtml(row.name)}</option>`).join('');
       document.getElementById('actionSubject').innerHTML = data.subjects.map((row) => `<option value="${P.escapeHtml(row.id)}">${P.escapeHtml(row.name)}</option>`).join('');
       document.getElementById('actionRoom').innerHTML = data.rooms.map((row) => `<option value="${P.escapeHtml(row.id)}">${P.escapeHtml(row.name)}</option>`).join('');
+      const sourceRows = uniqueLessonRows((data.events || []).filter((row) => row.own)).sort((a, b) =>
+        `${a.date} ${a.startTime}`.localeCompare(`${b.date} ${b.startTime}`)
+      );
+      document.getElementById('actionSourceLesson').innerHTML = '<option value="">請選擇要移動的課程</option>' + sourceRows.map((row) =>
+        `<option value="${P.escapeHtml(row.id)}">${P.escapeHtml(`${row.date} ${row.startTime} ${row.studentNames.join('、')}`)}</option>`
+      ).join('');
       const form = document.getElementById('actionForm');
       form.reset();
       Object.entries(options || {}).forEach(([key, value]) => {
         const input = form.elements[key];
         if (input) input.value = value;
       });
+      form.dataset.vacancyDate = options && options.vacancyDate || '';
+      form.dataset.vacancyStart = options && options.vacancyStart || '';
       document.getElementById('giftNotice').classList.toggle('hidden', form.elements.action.value !== 'teacher_gift');
+      syncActionMode();
       document.getElementById('actionModal').classList.remove('hidden');
+      if (form.elements.sourceEventId.value) loadAvailability();
+    }
+
+    function sourceRow() {
+      const form = document.getElementById('actionForm');
+      const id = form.elements.sourceEventId.value || document.getElementById('actionSourceLesson').value;
+      return (data.events || []).find((row) => row.id === id || row.sourceId === id) || null;
+    }
+
+    function applySource(row) {
+      if (!row) return;
+      const form = document.getElementById('actionForm');
+      form.elements.sourceEventId.value = row.sourceId || row.id;
+      form.elements.sourceCourseId.value = row.fixedCourseId || row.sourceId || row.id;
+      form.elements.sourceDate.value = row.date;
+      form.elements.studentId.value = row.studentIds[0] || '';
+      form.elements.subjectId.value = row.subjectId || '';
+      if (form.dataset.vacancyDate) {
+        form.elements.date.value = form.dataset.vacancyDate;
+        form.elements.startTime.value = form.dataset.vacancyStart;
+        const duration = portalTimeToMinutes(row.endTime) - portalTimeToMinutes(row.startTime);
+        const end = portalTimeToMinutes(form.dataset.vacancyStart) + duration;
+        form.elements.endTime.value = `${String(Math.floor(end / 60)).padStart(2, '0')}:${String(end % 60).padStart(2, '0')}`;
+      }
+    }
+
+    function syncActionMode() {
+      const action = document.getElementById('actionType').value;
+      const moving = action === 'single_move' || action === 'permanent_move';
+      document.getElementById('sourceLessonField').classList.toggle('hidden', !moving || Boolean(document.getElementById('actionForm').elements.sourceEventId.value));
+      document.getElementById('quickAvailability').classList.toggle('hidden', !moving || !sourceRow());
+      document.getElementById('giftNotice').classList.toggle('hidden', action !== 'teacher_gift');
+    }
+
+    async function loadAvailability() {
+      const row = sourceRow();
+      const form = document.getElementById('actionForm');
+      if (!row || !['single_move', 'permanent_move'].includes(form.elements.action.value)) return;
+      const node = document.getElementById('availabilitySuggestions');
+      node.innerHTML = '<p class="muted">正在找未來兩週可用的位置…</p>';
+      document.getElementById('quickAvailability').classList.remove('hidden');
+      try {
+        const result = await P.call('coursePortalTeacherAvailability', {
+          sessionToken: token,
+          startDate: weekStart,
+          days: 14,
+          sourceEventId: row.sourceId || row.id,
+          sourceCourseId: row.fixedCourseId || row.sourceId || row.id,
+          sourceDate: row.date,
+          sourceStartTime: row.startTime,
+          sourceEndTime: row.endTime,
+          subjectId: row.subjectId
+        });
+        const preferredDate = form.dataset.vacancyDate;
+        const preferredStart = form.dataset.vacancyStart;
+        const sorted = result.slots.slice().sort((a, b) => {
+          const aPreferred = a.date === preferredDate && a.startTime === preferredStart ? 0 : 1;
+          const bPreferred = b.date === preferredDate && b.startTime === preferredStart ? 0 : 1;
+          return aPreferred - bPreferred || `${a.date} ${a.startTime}`.localeCompare(`${b.date} ${b.startTime}`);
+        }).slice(0, 30);
+        const preferred = sorted.find((slot) =>
+          slot.date === preferredDate && slot.startTime === preferredStart
+        );
+        if (preferred && preferred.rooms.length) {
+          form.elements.date.value = preferred.date;
+          form.elements.startTime.value = preferred.startTime;
+          form.elements.endTime.value = preferred.endTime;
+          form.elements.roomId.value = preferred.rooms[0].id;
+        }
+        node.innerHTML = sorted.map((slot) => `
+          <button class="availability-option" type="button" data-available-date="${slot.date}" data-available-start="${slot.startTime}" data-available-end="${slot.endTime}" data-available-room="${slot.rooms[0].id}">
+            <strong>${P.escapeHtml(dayLabel(slot.date))}　${P.escapeHtml(slot.startTime)}～${P.escapeHtml(slot.endTime)}</strong>
+            <span>${P.escapeHtml(slot.rooms.map((room) => room.name).join('、'))}</span>
+          </button>`).join('') || '<div class="notice">未來兩週沒有完整可用時段。</div>';
+      } catch (error) {
+        node.innerHTML = '<div class="notice">目前無法讀取空位。</div>';
+        P.toast(error.message, 'error');
+      }
     }
 
     async function load() {
@@ -292,7 +413,7 @@
       const lesson = event.target.closest('[data-event]');
       if (empty) {
         const parts = empty.dataset.empty.split('|');
-        fillAction({ action: 'extra_lesson', date: parts[0], startTime: parts[1], endTime: parts[2] });
+        fillAction({ action: 'single_move', date: parts[0], startTime: parts[1], endTime: parts[2], vacancyDate: parts[0], vacancyStart: parts[1] });
       }
       if (lesson) {
         const row = data.events.find((item) => item.id === lesson.dataset.event);
@@ -314,7 +435,25 @@
       if (button) fillAction({ action: 'extra_lesson', studentId: button.dataset.studentAction, date: P.addDays(weekStart, 0), startTime: '10:00', endTime: '11:00' });
     });
     document.getElementById('actionType').addEventListener('change', (event) => {
-      document.getElementById('giftNotice').classList.toggle('hidden', event.target.value !== 'teacher_gift');
+      syncActionMode();
+      if (['single_move', 'permanent_move'].includes(event.target.value)) loadAvailability();
+    });
+    document.getElementById('actionSourceLesson').addEventListener('change', (event) => {
+      const row = (data.events || []).find((item) => item.id === event.target.value);
+      applySource(row);
+      syncActionMode();
+      loadAvailability();
+    });
+    document.getElementById('reloadAvailability').addEventListener('click', loadAvailability);
+    document.getElementById('availabilitySuggestions').addEventListener('click', (event) => {
+      const button = event.target.closest('[data-available-date]');
+      if (!button) return;
+      const form = document.getElementById('actionForm');
+      form.elements.date.value = button.dataset.availableDate;
+      form.elements.startTime.value = button.dataset.availableStart;
+      form.elements.endTime.value = button.dataset.availableEnd;
+      form.elements.roomId.value = button.dataset.availableRoom;
+      document.querySelectorAll('.availability-option').forEach((node) => node.classList.toggle('selected', node === button));
     });
     document.getElementById('closeModal').addEventListener('click', () => document.getElementById('actionModal').classList.add('hidden'));
     document.getElementById('actionForm').addEventListener('submit', async (event) => {
@@ -322,9 +461,9 @@
       const button = event.submitter;
       P.loading(button, true, '檢查教室並儲存…');
       try {
-        await P.call('coursePortalTeacherAction', Object.assign({ sessionToken: token }, Object.fromEntries(new FormData(event.currentTarget).entries())));
+        const result = await P.call('coursePortalTeacherAction', Object.assign({ sessionToken: token }, Object.fromEntries(new FormData(event.currentTarget).entries())));
         document.getElementById('actionModal').classList.add('hidden');
-        P.toast('課程已儲存。');
+        P.toast(result.message || '課程已儲存。');
         await load();
       } catch (error) { P.toast(error.message, 'error'); }
       finally { P.loading(button, false); }

@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#233b35">
   <title>新版排課系統｜柚子樂器</title>
   <link rel="icon" href="yuzu-logo-green.png">
-  <link rel="stylesheet" href="course-scheduler.css?v=20260726-management-v13">
+  <link rel="stylesheet" href="course-scheduler.css?v=20260727-management-v14">
 </head>
 <body>
   <div class="app-shell">
@@ -182,6 +182,10 @@
     <div class="modal extra-large"><div class="modal-head event-head"><div><span class="event-type-badge" id="eventTypeBadge">固定課</span><h2 id="eventModalTitle">課程明細</h2><p id="eventModalSubtitle"></p></div><button class="modal-close" type="button" data-close-modal="eventModal">×</button></div><div class="modal-body" id="eventModalBody"></div><div class="modal-foot spread" id="eventModalFoot"></div></div>
   </div>
 
+  <div class="modal-backdrop" id="teacherPayOverrideModal" role="dialog" aria-modal="true" aria-labelledby="teacherPayOverrideTitle">
+    <div class="modal"><div class="modal-head"><div><h2 id="teacherPayOverrideTitle">預設本堂特殊老師費用</h2><p>現在先設定；只有老師實際簽到後才會計入薪資。</p></div><button class="modal-close" type="button" data-close-modal="teacherPayOverrideModal">×</button></div><form id="teacherPayOverrideForm"><div class="modal-body"><input id="teacherPayOverrideEventId" type="hidden"><div class="form-grid two"><div class="field"><label>調整方式</label><select id="teacherPayOverrideType"><option value="none">不調整</option><option value="increase">增加老師費用</option><option value="decrease">減少老師費用</option></select></div><div class="field"><label>調整金額</label><input id="teacherPayOverrideAmount" type="number" min="0" step="1" value="0"></div><div class="field full"><label>原因／備註</label><textarea id="teacherPayOverrideReason" placeholder="例如：臨時增加教學準備、特殊代課安排"></textarea></div></div><div class="snapshot-box" id="teacherPayOverridePreview"></div></div><div class="modal-foot"><button class="btn outline" type="button" data-close-modal="teacherPayOverrideModal">取消</button><button class="btn primary" type="submit">儲存本堂設定</button></div></form></div>
+  </div>
+
   <div class="modal-backdrop" id="studentModal" role="dialog" aria-modal="true" aria-labelledby="studentModalTitle">
     <div class="modal extra-large"><div class="modal-head"><div><h2 id="studentModalTitle">學生資料</h2><p id="studentModalSubtitle"></p></div><button class="modal-close" type="button" data-close-modal="studentModal">×</button></div><div class="record-tabs hidden" id="studentTabs"></div><div class="modal-body student-sheet" id="studentModalBody"></div><div class="modal-foot spread" id="studentModalFoot"></div></div>
   </div>
@@ -215,7 +219,7 @@
   </div>
 
   <div class="modal-backdrop" id="policyModal" role="dialog" aria-modal="true" aria-labelledby="policyModalTitle">
-    <div class="modal extra-large"><div class="modal-head"><div><h2 id="policyModalTitle">教室設定</h2><p>同一處設定教室資料、可用科目、可排課與可租用時間。</p></div><button class="modal-close" type="button" data-close-modal="policyModal">×</button></div><div class="modal-body room-policy-general"><div class="form-grid three"><div class="field"><label>教室名稱</label><input id="policyRoomName"></div><div class="field"><label>預設租金</label><input id="policyRentalFee" type="number" min="0"></div><div class="field"><label>狀態</label><select id="policyRoomActive"><option value="true">啟用</option><option value="false">停用</option></select></div><div class="field full"><label>備註</label><input id="policyRoomNote"></div></div><section class="room-subject-section"><div><b>這間教室可以使用的科目</b><small>新教室預設全部可用；取消勾選後，排課時不會再出現這間教室。</small></div><div class="compact-check-grid" id="policySubjectChoices"></div></section></div><div class="policy-toolbar"><select class="control" id="policyWeekday"></select><button class="btn small soft" type="button" data-policy-bulk="open">本日全部開放</button><button class="btn small outline" type="button" data-policy-bulk="schedule">本日只可排課</button><button class="btn small danger" type="button" data-policy-bulk="close">本日全部關閉</button></div><div class="modal-body policy-body" id="policyModalBody"></div><div class="modal-foot"><button class="btn outline" type="button" data-close-modal="policyModal">取消</button><button class="btn primary" type="button" id="savePolicyBtn">儲存教室設定</button></div></div>
+    <div class="modal extra-large"><div class="modal-head"><div><h2 id="policyModalTitle">教室設定</h2><p>同一處設定教室資料、用途、設備、可用科目與開放時間。</p></div><button class="modal-close" type="button" data-close-modal="policyModal">×</button></div><div class="modal-body room-policy-general"><div class="form-grid three"><div class="field"><label>教室名稱</label><input id="policyRoomName"></div><div class="field"><label>預設租金</label><input id="policyRentalFee" type="number" min="0"></div><div class="field"><label>最多容納人數</label><input id="policyRoomCapacity" type="number" min="1" value="3"></div><div class="field"><label>狀態</label><select id="policyRoomActive"><option value="true">啟用</option><option value="false">停用</option></select></div><div class="field full"><label>備註</label><input id="policyRoomNote"></div></div><section class="room-subject-section"><div><b>租用時可做的用途</b><small>一間教室可以同時支援多種用途；符合用途會列為「最適合」，其他仍可用空間會列為「也可以使用」。</small></div><div class="compact-check-grid" id="policyRentalUseChoices"></div></section><section class="room-subject-section"><div><b>教室現有設備</b><small>只有真的有的設備才勾選；自備樂器不受這裡限制。</small></div><div class="compact-check-grid" id="policyRentalEquipmentChoices"></div></section><section class="room-subject-section"><div><b>這間教室可以使用的科目</b><small>新教室預設全部可用；取消勾選後，排課時不會再出現這間教室。</small></div><div class="compact-check-grid" id="policySubjectChoices"></div></section></div><div class="policy-toolbar"><select class="control" id="policyWeekday"></select><button class="btn small soft" type="button" data-policy-bulk="open">本日全部開放</button><button class="btn small outline" type="button" data-policy-bulk="schedule">本日只可排課</button><button class="btn small danger" type="button" data-policy-bulk="close">本日全部關閉</button></div><div class="modal-body policy-body" id="policyModalBody"></div><div class="modal-foot"><button class="btn outline" type="button" data-close-modal="policyModal">取消</button><button class="btn primary" type="button" id="savePolicyBtn">儲存教室設定</button></div></div>
   </div>
 
   <div class="operation-progress hidden" id="operationProgress" aria-live="polite"><div class="operation-progress-track"><i></i></div><b id="operationProgressText">正在處理</b></div>
@@ -226,6 +230,6 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
   <script src="course-scheduler-data.js?v=20260726-sandbox-v1"></script>
   <script src="course-scheduler-review-data.js?v=20260723-review-window-v1"></script>
-  <script src="course-scheduler.js?v=20260726-management-v13"></script>
+  <script src="course-scheduler.js?v=20260727-management-v14"></script>
 </body>
 </html>
