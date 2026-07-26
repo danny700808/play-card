@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#24735c">
+  <title>老師課務入口｜柚子樂器</title>
+  <link rel="stylesheet" href="course-portal.css?v=20260726-v1">
+</head>
+<body>
+  <main class="portal-shell">
+    <header class="portal-head">
+      <div class="head-title"><span class="brand-mark">師</span><div><h1>老師課務入口</h1><p>只顯示自己的學生、課表與薪資</p></div></div>
+      <button class="btn danger hidden" id="logoutBtn" type="button">登出這台裝置</button>
+    </header>
+
+    <section class="card bind-box" id="bindView">
+      <div class="section-title"><div><h2>第一次使用</h2><p class="muted">使用音教雲裡登記的姓名與手機驗證，再到 LINE 完成綁定。</p></div></div>
+      <form class="stack" id="bindForm">
+        <div class="field"><label>老師姓名</label><input name="name" autocomplete="name" required></div>
+        <div class="field"><label>手機號碼</label><input name="phone" inputmode="tel" autocomplete="tel" required></div>
+        <button class="btn primary" type="submit">取得 LINE 綁定文字</button>
+      </form>
+      <div class="bind-result hidden" data-bind-result></div>
+    </section>
+
+    <section class="hidden" id="appView">
+      <div class="summary-grid">
+        <article class="summary"><span>老師</span><strong id="teacherName">—</strong></article>
+        <article class="summary"><span>本週課堂</span><strong id="lessonCount">0</strong></article>
+        <article class="summary"><span>學生</span><strong id="studentCount">0</strong></article>
+        <article class="summary"><span>本月薪資資料</span><strong id="payrollCount">0</strong></article>
+      </div>
+      <nav class="tabs">
+        <button class="btn active" type="button" data-tab="schedule">週課表與調課</button>
+        <button class="btn" type="button" data-tab="students">我的學生</button>
+        <button class="btn" type="button" data-tab="payroll">薪資查詢</button>
+        <a class="btn" href="room-booking.html?from=teacher">租用教室</a>
+      </nav>
+
+      <section class="card tab-panel" data-panel="schedule">
+        <div class="section-title"><div><h2>本週課表</h2><p class="muted">空白時間也完整保留；點空格可為自己的學生增加課程或老師自贈課。</p></div></div>
+        <div class="toolbar">
+          <button class="btn" id="prevWeek" type="button">上一週</button>
+          <button class="btn soft" id="thisWeek" type="button">本週</button>
+          <button class="btn" id="nextWeek" type="button">下一週</button>
+          <span class="badge" id="weekRange"></span>
+        </div>
+        <div class="week-scroll"><div class="week-grid" id="weekGrid"></div></div>
+        <div class="notice" style="margin-top:14px">永久調課會從所選日期起更新固定時段；單次調課只影響那一堂。所有操作都保留老師、時間與原課程稽核紀錄。</div>
+      </section>
+
+      <section class="card tab-panel hidden" data-panel="students">
+        <div class="section-title"><h2>我的學生</h2><span class="badge" id="rosterBadge">0 位</span></div>
+        <div class="list" id="rosterList"></div>
+      </section>
+
+      <section class="card tab-panel hidden" data-panel="payroll">
+        <div class="section-title"><div><h2>薪資查詢</h2><p class="muted">每次只讀取一個月份，獎勵與扣款也會列在同月。</p></div></div>
+        <div class="toolbar"><div class="field"><label>月份</label><input id="payrollMonth" type="month"></div><button class="btn primary" id="loadPayroll" type="button">查詢</button></div>
+        <div class="list" id="payrollList"></div>
+      </section>
+    </section>
+  </main>
+
+  <div class="modal hidden" id="actionModal">
+    <section class="card modal-panel">
+      <div class="section-title"><h2>安排課程</h2><button class="btn" type="button" id="closeModal">關閉</button></div>
+      <form class="stack" id="actionForm">
+        <input type="hidden" name="sourceEventId">
+        <input type="hidden" name="sourceCourseId">
+        <input type="hidden" name="sourceDate">
+        <div class="grid two">
+          <div class="field"><label>操作</label><select name="action" id="actionType"><option value="extra_lesson">增加一堂課</option><option value="teacher_gift">老師免費送一堂</option><option value="single_move">單次調課</option><option value="permanent_move">永久調課</option></select></div>
+          <div class="field"><label>學生</label><select name="studentId" id="actionStudent" required></select></div>
+          <div class="field"><label>科目</label><select name="subjectId" id="actionSubject"></select></div>
+          <div class="field"><label>教室</label><select name="roomId" id="actionRoom" required></select></div>
+          <div class="field"><label>日期</label><input name="date" id="actionDate" type="date" required></div>
+          <div class="field"><label>時間</label><div class="grid two"><input name="startTime" id="actionStart" type="time" required><input name="endTime" id="actionEnd" type="time" required></div></div>
+        </div>
+        <div class="field"><label>備註</label><input name="note" placeholder="選填"></div>
+        <div class="notice" id="giftNotice">「老師免費送一堂」不向學生收費，也不列入老師薪資。</div>
+        <button class="btn primary" type="submit">確認並儲存</button>
+      </form>
+    </section>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
+  <script src="course-portal-common.js?v=20260726-v1"></script>
+  <script>
+  (function () {
+    const P = window.CoursePortal;
+    let token = '';
+    let weekStart = P.monday();
+    let data = null;
+    const bindView = document.getElementById('bindView');
+    const appView = document.getElementById('appView');
+    const logoutBtn = document.getElementById('logoutBtn');
+
+    function monthKey() {
+      const date = new Date();
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    }
+
+    function showBound(active) {
+      bindView.classList.toggle('hidden', active);
+      appView.classList.toggle('hidden', !active);
+      logoutBtn.classList.toggle('hidden', !active);
+    }
+
+    function dayLabel(key) {
+      const date = new Date(`${key}T12:00:00`);
+      return `${date.getMonth() + 1}/${date.getDate()}（${'日一二三四五六'[date.getDay()]}）`;
+    }
+
+    function renderWeek() {
+      const grid = document.getElementById('weekGrid');
+      const days = Array.from({ length: 7 }, (_, index) => P.addDays(weekStart, index));
+      const events = data.events || [];
+      let html = '<div class="week-cell head"></div>';
+      days.forEach((day) => { html += `<div class="week-cell head">${P.escapeHtml(dayLabel(day))}</div>`; });
+      for (let hour = data.hours.start; hour < data.hours.end; hour += 1) {
+        html += `<div class="week-cell time">${String(hour).padStart(2, '0')}:00</div>`;
+        days.forEach((day) => {
+          const rows = events.filter((event) => event.date === day && Number(event.startTime.slice(0, 2)) === hour);
+          html += '<div class="week-cell">';
+          rows.forEach((event) => {
+            const kind = event.type === 'teacher_gift' ? 'gift' : (event.own ? '' : 'busy');
+            const label = event.own
+              ? `${event.startTime} ${event.studentNames.join('、') || '課程'} ${event.roomName || ''}`
+              : `${event.startTime} 教室已使用`;
+            html += `<button class="lesson ${kind}" type="button" ${event.own ? `data-event="${P.escapeHtml(event.id)}"` : 'disabled'}>${P.escapeHtml(label)}</button>`;
+          });
+          if (!rows.length && new Date(`${day}T12:00:00`).getDay() !== 2) {
+            html += `<button class="empty-slot" type="button" data-empty="${day}|${String(hour).padStart(2, '0')}:00">＋</button>`;
+          }
+          html += '</div>';
+        });
+      }
+      grid.innerHTML = html;
+      document.getElementById('weekRange').textContent = `${days[0]} ～ ${days[6]}`;
+      document.getElementById('lessonCount').textContent = events.filter((event) => event.own).length;
+    }
+
+    function renderRoster() {
+      const list = document.getElementById('rosterList');
+      document.getElementById('studentCount').textContent = data.roster.length;
+      document.getElementById('rosterBadge').textContent = `${data.roster.length} 位`;
+      list.innerHTML = data.roster.length ? data.roster.map((student) => `
+        <article class="list-row">
+          <strong>${P.escapeHtml(student.name)}</strong>
+          <span>手機末四碼 ${P.escapeHtml(student.phoneLast4 || '未提供')}</span>
+          <button class="btn soft" type="button" data-student-action="${P.escapeHtml(student.id)}">增加課程</button>
+          <span></span><span></span>
+        </article>`).join('') : '<p class="muted">本週沒有可顯示的學生。</p>';
+    }
+
+    function renderPayroll() {
+      const rows = data.payroll || [];
+      const adjustments = data.adjustments || [];
+      document.getElementById('payrollCount').textContent = rows.length + adjustments.length;
+      const html = [];
+      rows.forEach((row) => html.push(`
+        <article class="list-row">
+          <strong>${P.escapeHtml(row.date || row.courseDate || '薪資')}</strong>
+          <span>${P.escapeHtml(row.studentName || row.subjectName || '')}</span>
+          <span>${P.escapeHtml(row.rate || row.shareRate || '')}</span>
+          <strong>${P.money(row.amount || row.teacherAmount)}</strong><span class="badge">課堂</span>
+        </article>`));
+      adjustments.forEach((row) => html.push(`
+        <article class="list-row">
+          <strong>${P.escapeHtml(row.date || row.month || '調整')}</strong>
+          <span>${P.escapeHtml(row.note || row.reason || '')}</span>
+          <span>${P.escapeHtml(row.type || '獎勵／扣款')}</span>
+          <strong>${P.money(row.amount)}</strong><span class="badge warn">調整</span>
+        </article>`));
+      document.getElementById('payrollList').innerHTML = html.join('') || '<p class="muted">這個月份目前沒有薪資資料。</p>';
+    }
+
+    function fillAction(options) {
+      document.getElementById('actionStudent').innerHTML = data.roster.map((row) => `<option value="${P.escapeHtml(row.id)}">${P.escapeHtml(row.name)}</option>`).join('');
+      document.getElementById('actionSubject').innerHTML = data.subjects.map((row) => `<option value="${P.escapeHtml(row.id)}">${P.escapeHtml(row.name)}</option>`).join('');
+      document.getElementById('actionRoom').innerHTML = data.rooms.map((row) => `<option value="${P.escapeHtml(row.id)}">${P.escapeHtml(row.name)}</option>`).join('');
+      const form = document.getElementById('actionForm');
+      form.reset();
+      Object.entries(options || {}).forEach(([key, value]) => {
+        const input = form.elements[key];
+        if (input) input.value = value;
+      });
+      document.getElementById('giftNotice').classList.toggle('hidden', form.elements.action.value !== 'teacher_gift');
+      document.getElementById('actionModal').classList.remove('hidden');
+    }
+
+    async function load() {
+      const button = document.getElementById('loadPayroll');
+      P.loading(button, true, '讀取中…');
+      try {
+        data = await P.call('coursePortalTeacherData', {
+          sessionToken: token,
+          weekStart,
+          month: document.getElementById('payrollMonth').value || monthKey()
+        });
+        document.getElementById('teacherName').textContent = data.teacher.name;
+        renderWeek();
+        renderRoster();
+        renderPayroll();
+        showBound(true);
+      } catch (error) {
+        if (/登入|綁定|權限|到期/.test(error.message)) {
+          P.setSession('teacher', '');
+          showBound(false);
+        }
+        P.toast(error.message, 'error');
+      } finally {
+        P.loading(button, false);
+      }
+    }
+
+    document.getElementById('bindForm').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const button = event.submitter;
+      P.loading(button, true, '產生中…');
+      try { await P.startBinding('teacher', event.currentTarget); } catch (error) { P.toast(error.message, 'error'); }
+      finally { P.loading(button, false); }
+    });
+    document.querySelectorAll('[data-tab]').forEach((button) => button.addEventListener('click', () => {
+      document.querySelectorAll('[data-tab]').forEach((node) => node.classList.toggle('active', node === button));
+      document.querySelectorAll('[data-panel]').forEach((node) => node.classList.toggle('hidden', node.dataset.panel !== button.dataset.tab));
+    }));
+    document.getElementById('prevWeek').addEventListener('click', () => { weekStart = P.addDays(weekStart, -7); load(); });
+    document.getElementById('nextWeek').addEventListener('click', () => { weekStart = P.addDays(weekStart, 7); load(); });
+    document.getElementById('thisWeek').addEventListener('click', () => { weekStart = P.monday(); load(); });
+    document.getElementById('loadPayroll').addEventListener('click', load);
+    document.getElementById('payrollMonth').value = monthKey();
+    document.getElementById('weekGrid').addEventListener('click', (event) => {
+      const empty = event.target.closest('[data-empty]');
+      const lesson = event.target.closest('[data-event]');
+      if (empty) {
+        const parts = empty.dataset.empty.split('|');
+        fillAction({ action: 'extra_lesson', date: parts[0], startTime: parts[1], endTime: `${String(Number(parts[1].slice(0, 2)) + 1).padStart(2, '0')}:00` });
+      }
+      if (lesson) {
+        const row = data.events.find((item) => item.id === lesson.dataset.event);
+        if (row) fillAction({
+          action: 'single_move', sourceEventId: row.sourceId, sourceCourseId: row.fixedCourseId || row.sourceId, sourceDate: row.date,
+          studentId: row.studentIds[0], subjectId: row.subjectId, roomId: row.roomId,
+          date: row.date, startTime: row.startTime, endTime: row.endTime
+        });
+      }
+    });
+    document.getElementById('rosterList').addEventListener('click', (event) => {
+      const button = event.target.closest('[data-student-action]');
+      if (button) fillAction({ action: 'extra_lesson', studentId: button.dataset.studentAction, date: P.addDays(weekStart, 0), startTime: '10:00', endTime: '11:00' });
+    });
+    document.getElementById('actionType').addEventListener('change', (event) => {
+      document.getElementById('giftNotice').classList.toggle('hidden', event.target.value !== 'teacher_gift');
+    });
+    document.getElementById('closeModal').addEventListener('click', () => document.getElementById('actionModal').classList.add('hidden'));
+    document.getElementById('actionForm').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const button = event.submitter;
+      P.loading(button, true, '檢查教室並儲存…');
+      try {
+        await P.call('coursePortalTeacherAction', Object.assign({ sessionToken: token }, Object.fromEntries(new FormData(event.currentTarget).entries())));
+        document.getElementById('actionModal').classList.add('hidden');
+        P.toast('課程已儲存。');
+        await load();
+      } catch (error) { P.toast(error.message, 'error'); }
+      finally { P.loading(button, false); }
+    });
+    logoutBtn.addEventListener('click', () => { P.setSession('teacher', ''); location.reload(); });
+
+    (async () => {
+      try {
+        token = await P.exchangeAccess('teacher');
+        if (token) await load();
+        else showBound(false);
+      } catch (error) { P.toast(error.message, 'error'); showBound(false); }
+    })();
+  })();
+  </script>
+</body>
+</html>

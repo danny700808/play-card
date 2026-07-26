@@ -139,6 +139,20 @@ service cloud.firestore {
       allow read, write: if isClientSideOpenCollection(collectionId);
     }
 
+    // 手機課務入口的綁定碼、LINE 身分、工作階段、調課與租用資料
+    // 一律只能經過 Cloud Functions 驗證後存取，前端不可直接讀寫。
+    match /coursePortalBindCodes/{document=**} { allow read, write: if false; }
+    match /coursePortalAccessTokens/{document=**} { allow read, write: if false; }
+    match /coursePortalSessions/{document=**} { allow read, write: if false; }
+    match /coursePortalTeacherBindings/{document=**} { allow read, write: if false; }
+    match /coursePortalStudentBindings/{document=**} { allow read, write: if false; }
+    match /coursePortalRenterBindings/{document=**} { allow read, write: if false; }
+    match /coursePortalRenters/{document=**} { allow read, write: if false; }
+    match /coursePortalScheduleChanges/{document=**} { allow read, write: if false; }
+    match /coursePortalRoomBookings/{document=**} { allow read, write: if false; }
+    match /coursePortalRoomSettings/{document=**} { allow read, write: if false; }
+    match /coursePortalReminderLogs/{document=**} { allow read, write: if false; }
+
     // 其他未知集合先不開放，避免整個資料庫完全裸開。
     match /{document=**} {
       allow read, write: if false;

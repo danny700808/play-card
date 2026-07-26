@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#24735c">
+  <title>教室租用｜柚子樂器</title>
+  <link rel="stylesheet" href="course-portal.css?v=20260726-v1">
+</head>
+<body>
+  <main class="portal-shell">
+    <header class="portal-head">
+      <div class="head-title"><span class="brand-mark">租</span><div><h1>教室租用</h1><p>星期一、三～日開放；費用到現場付款</p></div></div>
+      <button class="btn danger hidden" id="logoutBtn" type="button">登出</button>
+    </header>
+
+    <section class="card bind-box" id="entryView">
+      <div class="section-title"><div><h2>請選擇身分</h2><p class="muted">本校學生使用已綁定資料並享學生價；一般客人只需姓名與電話註冊。</p></div></div>
+      <div class="grid two">
+        <button class="btn primary" type="button" id="studentEntry">我是本校學生／家長</button>
+        <button class="btn soft" type="button" id="publicEntry">我不是本校學生</button>
+      </div>
+    </section>
+
+    <section class="card bind-box hidden" id="publicBindView">
+      <div class="section-title"><h2>一般客人註冊</h2><button class="btn" type="button" data-back>返回</button></div>
+      <form class="stack" id="publicBindForm">
+        <div class="field"><label>姓名</label><input name="name" required></div>
+        <div class="field"><label>手機號碼</label><input name="phone" inputmode="tel" required></div>
+        <button class="btn primary" type="submit">取得 LINE 綁定文字</button>
+      </form>
+      <div class="bind-result hidden" data-bind-result></div>
+    </section>
+
+    <section class="hidden" id="bookingView">
+      <div class="summary-grid">
+        <article class="summary"><span>租用身分</span><strong id="rateLabel">一般價格</strong></article>
+        <article class="summary"><span>付款方式</span><strong>現場付款</strong></article>
+        <article class="summary"><span>營業日</span><strong>一、三～日</strong></article>
+        <article class="summary"><span>預約狀態</span><strong id="bookingState">尚未預約</strong></article>
+      </div>
+      <section class="card">
+        <div class="section-title"><div><h2>找空教室</h2><p class="muted">系統會排除已上課、已租用及不適用該科目的教室。</p></div></div>
+        <form class="stack" id="searchForm">
+          <div class="grid three">
+            <div class="field"><label>日期</label><input name="date" type="date" required></div>
+            <div class="field"><label>開始時間</label><input name="startTime" type="time" min="10:00" max="20:30" step="1800" required></div>
+            <div class="field"><label>租用長度</label><select name="durationMinutes"><option value="30">30 分鐘</option><option value="60" selected>1 小時</option><option value="90">1.5 小時</option><option value="120">2 小時</option></select></div>
+            <div class="field"><label>用途／科目</label><select name="subjectId" id="subjectSelect"><option value="">一般空間使用</option></select></div>
+            <div class="field" style="grid-column:span 2"><label>用途說明</label><input name="purpose" placeholder="例如：鋼琴練習、爵士鼓練習"></div>
+          </div>
+          <button class="btn primary" type="submit">搜尋可用教室</button>
+        </form>
+        <div class="list" id="roomList" style="margin-top:16px"></div>
+      </section>
+    </section>
+  </main>
+
+  <script src="config.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
+  <script src="course-portal-common.js?v=20260726-v1"></script>
+  <script>
+  (function () {
+    const P = window.CoursePortal;
+    let role = '';
+    let token = '';
+    let lastSearch = null;
+    const entryView = document.getElementById('entryView');
+    const bindView = document.getElementById('publicBindView');
+    const bookingView = document.getElementById('bookingView');
+
+    function show(view) {
+      [entryView, bindView, bookingView].forEach((node) => node.classList.toggle('hidden', node !== view));
+      document.getElementById('logoutBtn').classList.toggle('hidden', view !== bookingView);
+    }
+
+    function studentToken() {
+      return P.getSession('student');
+    }
+
+    function teacherToken() {
+      return P.getSession('teacher');
+    }
+
+    function openBooking(nextRole, nextToken) {
+      role = nextRole;
+      token = nextToken;
+      document.getElementById('rateLabel').textContent = role === 'student' ? '本校學生半價' : (role === 'teacher' ? '老師租用' : '一般價格');
+      show(bookingView);
+    }
+
+    async function searchRooms(form, button) {
+      P.loading(button, true, '檢查課表中…');
+      try {
+        const values = Object.fromEntries(new FormData(form).entries());
+        lastSearch = await P.call('coursePortalRentalAvailability', Object.assign({ sessionToken: token }, values));
+        const subjectSelect = document.getElementById('subjectSelect');
+        if (subjectSelect.options.length === 1 && Array.isArray(lastSearch.subjects)) {
+          lastSearch.subjects.forEach((subject) => {
+            const option = document.createElement('option');
+            option.value = subject.id;
+            option.textContent = subject.name;
+            subjectSelect.appendChild(option);
+          });
+        }
+        const list = document.getElementById('roomList');
+        list.innerHTML = lastSearch.rooms.map((room) => `
+          <article class="list-row">
+            <strong>${P.escapeHtml(room.name)}</strong>
+            <span>${P.escapeHtml(room.priceType)}</span>
+            <span>${P.money(room.price)}</span>
+            <span class="badge ${room.available ? '' : 'danger'}">${room.available ? '可以預約' : P.escapeHtml(room.reason)}</span>
+            ${room.available ? `<button class="btn primary" type="button" data-book-room="${P.escapeHtml(room.id)}">預約</button>` : '<span></span>'}
+          </article>`).join('') || '<p class="muted">沒有符合條件的教室。</p>';
+      } catch (error) { P.toast(error.message, 'error'); }
+      finally { P.loading(button, false); }
+    }
+
+    document.getElementById('studentEntry').addEventListener('click', () => {
+      const saved = studentToken();
+      if (saved) openBooking('student', saved);
+      else location.href = 'student-course-portal.html?return=room-booking.html';
+    });
+    document.getElementById('publicEntry').addEventListener('click', () => show(bindView));
+    document.querySelector('[data-back]').addEventListener('click', () => show(entryView));
+    document.getElementById('publicBindForm').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const button = event.submitter;
+      P.loading(button, true, '產生中…');
+      try { await P.startBinding('renter', event.currentTarget); } catch (error) { P.toast(error.message, 'error'); }
+      finally { P.loading(button, false); }
+    });
+    document.getElementById('searchForm').addEventListener('submit', (event) => {
+      event.preventDefault();
+      searchRooms(event.currentTarget, event.submitter);
+    });
+    document.getElementById('roomList').addEventListener('click', async (event) => {
+      const button = event.target.closest('[data-book-room]');
+      if (!button || !lastSearch) return;
+      P.loading(button, true, '預約中…');
+      try {
+        const values = Object.fromEntries(new FormData(document.getElementById('searchForm')).entries());
+        const result = await P.call('coursePortalCreateRoomBooking', Object.assign({
+          sessionToken: token,
+          roomId: button.dataset.bookRoom
+        }, values));
+        document.getElementById('bookingState').textContent = '已保留';
+        P.toast(`預約完成：${result.booking.date} ${result.booking.startTime}，費用現場支付 ${P.money(result.booking.amount)}。`);
+        document.getElementById('roomList').innerHTML = '<div class="notice">預約已保留，費用到現場付款。若要取消，請聯絡櫃台。</div>';
+      } catch (error) { P.toast(error.message, 'error'); }
+      finally { P.loading(button, false); }
+    });
+    document.getElementById('logoutBtn').addEventListener('click', () => {
+      if (role === 'renter') P.setSession('renter', '');
+      show(entryView);
+    });
+    const today = new Date();
+    today.setDate(today.getDate() + 1);
+    document.querySelector('[name="date"]').value = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    document.querySelector('[name="startTime"]').value = '10:00';
+
+    (async () => {
+      try {
+        const params = new URLSearchParams(location.search);
+        if (params.get('access')) {
+          token = await P.exchangeAccess('renter');
+          openBooking('renter', token);
+        } else if (params.get('from') === 'student' && studentToken()) {
+          openBooking('student', studentToken());
+        } else if (params.get('from') === 'teacher' && teacherToken()) {
+          openBooking('teacher', teacherToken());
+        } else if (P.getSession('renter')) {
+          openBooking('renter', P.getSession('renter'));
+        } else {
+          show(entryView);
+        }
+      } catch (error) { P.toast(error.message, 'error'); show(entryView); }
+    })();
+  })();
+  </script>
+</body>
+</html>

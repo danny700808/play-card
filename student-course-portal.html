@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#24735c">
+  <title>學生與家長入口｜柚子樂器</title>
+  <link rel="stylesheet" href="course-portal.css?v=20260726-v1">
+</head>
+<body>
+  <main class="portal-shell">
+    <header class="portal-head">
+      <div class="head-title"><span class="brand-mark">生</span><div><h1>學生／家長入口</h1><p>課程、簽到、學費與 LINE 提醒</p></div></div>
+      <button class="btn danger hidden" id="logoutBtn" type="button">登出這台裝置</button>
+    </header>
+
+    <section class="card bind-box" id="bindView">
+      <div class="section-title"><div><h2>綁定學生資料</h2><p class="muted">同一名學生可由本人、父母或其他家長分別綁定，各自保留提醒設定。</p></div></div>
+      <form class="stack" id="bindForm">
+        <div class="field"><label>學生姓名</label><input name="name" required></div>
+        <div class="field"><label>音教雲登記的聯絡電話</label><input name="phone" inputmode="tel" required></div>
+        <div class="field"><label>您與學生的關係</label><select name="relationship"><option>本人</option><option>父親</option><option>母親</option><option>家長</option><option>其他照顧者</option></select></div>
+        <button class="btn primary" type="submit">取得 LINE 綁定文字</button>
+      </form>
+      <div class="bind-result hidden" data-bind-result></div>
+      <p class="notice">若同一支 LINE 還要管理另一名學生，完成登入後可再按「增加另一位學生」。</p>
+    </section>
+
+    <section class="hidden" id="appView">
+      <div class="toolbar">
+        <div class="field"><label>查看學生</label><select id="studentSelect"></select></div>
+        <button class="btn soft" id="addStudentBinding" type="button">＋ 增加另一位學生</button>
+        <a class="btn" href="room-booking.html?from=student">預約教室（本校半價）</a>
+      </div>
+      <div class="summary-grid">
+        <article class="summary"><span>學生</span><strong id="studentName">—</strong></article>
+        <article class="summary"><span>課程期數</span><strong id="periodCount">0</strong></article>
+        <article class="summary"><span>近期課程</span><strong id="upcomingCount">0</strong></article>
+        <article class="summary"><span>簽到紀錄</span><strong id="attendanceCount">0</strong></article>
+      </div>
+      <nav class="tabs">
+        <button class="btn active" type="button" data-tab="courses">課程與學費</button>
+        <button class="btn" type="button" data-tab="upcoming">近期課表</button>
+        <button class="btn" type="button" data-tab="attendance">簽到紀錄</button>
+        <button class="btn" type="button" data-tab="reminders">LINE 提醒</button>
+      </nav>
+
+      <section class="card tab-panel" data-panel="courses">
+        <div class="section-title"><div><h2>課程與學費</h2><p class="muted">一期四堂；未繳清會明確標示，不會把排課當成簽到。</p></div></div>
+        <div class="list" id="periodList"></div>
+      </section>
+      <section class="card tab-panel hidden" data-panel="upcoming">
+        <div class="section-title"><h2>近期課表</h2></div>
+        <div class="list" id="upcomingList"></div>
+      </section>
+      <section class="card tab-panel hidden" data-panel="attendance">
+        <div class="section-title"><h2>實際簽到與請假</h2></div>
+        <div class="list" id="attendanceList"></div>
+      </section>
+      <section class="card tab-panel hidden" data-panel="reminders">
+        <div class="section-title"><div><h2>LINE 提醒</h2><p class="muted">每位家長可各自決定是否接收，不會影響其他綁定者。</p></div></div>
+        <form class="stack" id="reminderForm">
+          <label class="switch-row"><span><strong>最後一堂提醒</strong><small class="muted">本期剩最後一堂時提醒</small></span><input type="checkbox" name="reminderLastLesson"></label>
+          <label class="switch-row"><span><strong>學費提醒</strong><small class="muted">有尚未繳清的期別時提醒</small></span><input type="checkbox" name="reminderPayment"></label>
+          <button class="btn primary" type="submit">儲存我的提醒設定</button>
+        </form>
+      </section>
+    </section>
+  </main>
+
+  <script src="config.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
+  <script src="course-portal-common.js?v=20260726-v1"></script>
+  <script>
+  (function () {
+    const P = window.CoursePortal;
+    let token = '';
+    let data = null;
+    let studentId = '';
+    const bindView = document.getElementById('bindView');
+    const appView = document.getElementById('appView');
+
+    function showBound(active) {
+      bindView.classList.toggle('hidden', active);
+      appView.classList.toggle('hidden', !active);
+      document.getElementById('logoutBtn').classList.toggle('hidden', !active);
+    }
+
+    function paymentState(period) {
+      const paid = Number(period.paidAmount || 0);
+      const expected = Number(period.expectedAmount || 0);
+      if (expected <= 0 || paid >= expected) return '<span class="badge">已繳清</span>';
+      return `<span class="badge danger">未繳 ${P.money(expected - paid)}</span>`;
+    }
+
+    function render() {
+      const student = data.students.find((row) => row.id === studentId) || data.students[0] || {};
+      studentId = student.id || '';
+      const periods = data.periods.filter((row) => row.studentId === studentId);
+      const attendance = data.attendance.filter((row) => row.studentId === studentId);
+      const upcoming = data.upcoming.filter((row) => row.studentIds.includes(studentId));
+      document.getElementById('studentName').textContent = student.name || '—';
+      document.getElementById('periodCount').textContent = periods.length;
+      document.getElementById('upcomingCount').textContent = upcoming.length;
+      document.getElementById('attendanceCount').textContent = attendance.length;
+      document.getElementById('periodList').innerHTML = periods.length ? periods.map((row) => `
+        <article class="list-row">
+          <strong>第 ${row.periodNo || '—'} 期 · ${P.escapeHtml(row.subjectName || '課程')}</strong>
+          <span>${P.escapeHtml(row.teacherName || '老師未指定')}</span>
+          <span>${row.usedCount} / ${row.lessonCount} 堂</span>
+          <span>${paymentState(row)}</span>
+          <span>${P.money(row.paidAmount)} / ${P.money(row.expectedAmount)}</span>
+        </article>`).join('') : '<p class="muted">目前沒有學費期別資料。</p>';
+      document.getElementById('upcomingList').innerHTML = upcoming.length ? upcoming.map((row) => `
+        <article class="list-row">
+          <strong>${P.escapeHtml(row.date)} ${P.escapeHtml(row.startTime)}～${P.escapeHtml(row.endTime)}</strong>
+          <span>${P.escapeHtml(row.subjectName)}</span><span>${P.escapeHtml(row.teacherName)}</span>
+          <span class="badge">${P.escapeHtml(row.status || '已排課')}</span><span></span>
+        </article>`).join('') : '<p class="muted">目前沒有近期課程。</p>';
+      document.getElementById('attendanceList').innerHTML = attendance.length ? attendance.slice().reverse().map((row) => `
+        <article class="list-row">
+          <strong>${P.escapeHtml(row.date || '日期未提供')}</strong>
+          <span>${P.escapeHtml(row.teacherName)}</span><span></span>
+          <span class="badge">${P.escapeHtml(row.status || '簽到')}</span><span></span>
+        </article>`).join('') : '<p class="muted">目前沒有簽到紀錄。</p>';
+      const binding = data.bindings.find((row) => row.studentId === studentId) || {};
+      document.querySelector('[name="reminderLastLesson"]').checked = binding.reminderLastLesson !== false;
+      document.querySelector('[name="reminderPayment"]').checked = binding.reminderPayment !== false;
+    }
+
+    async function load(requested) {
+      try {
+        data = await P.call('coursePortalStudentData', { sessionToken: token, studentId: requested || '' });
+        if (!data.students.length) throw new Error('目前沒有已綁定的學生。');
+        studentId = requested || studentId || data.students[0].id;
+        document.getElementById('studentSelect').innerHTML = data.students.map((row) => `<option value="${P.escapeHtml(row.id)}">${P.escapeHtml(row.name)}</option>`).join('');
+        document.getElementById('studentSelect').value = studentId;
+        render();
+        showBound(true);
+      } catch (error) {
+        if (/登入|綁定|權限|到期/.test(error.message)) {
+          P.setSession('student', '');
+          showBound(false);
+        }
+        P.toast(error.message, 'error');
+      }
+    }
+
+    document.getElementById('bindForm').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const button = event.submitter;
+      P.loading(button, true, '產生中…');
+      try { await P.startBinding('student', event.currentTarget); } catch (error) { P.toast(error.message, 'error'); }
+      finally { P.loading(button, false); }
+    });
+    document.getElementById('studentSelect').addEventListener('change', (event) => { studentId = event.target.value; render(); });
+    document.getElementById('addStudentBinding').addEventListener('click', () => {
+      showBound(false);
+      document.querySelector('[data-bind-result]').classList.add('hidden');
+    });
+    document.querySelectorAll('[data-tab]').forEach((button) => button.addEventListener('click', () => {
+      document.querySelectorAll('[data-tab]').forEach((node) => node.classList.toggle('active', node === button));
+      document.querySelectorAll('[data-panel]').forEach((node) => node.classList.toggle('hidden', node.dataset.panel !== button.dataset.tab));
+    }));
+    document.getElementById('reminderForm').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const button = event.submitter;
+      P.loading(button, true, '儲存中…');
+      try {
+        await P.call('coursePortalUpdateStudentReminder', {
+          sessionToken: token,
+          studentId,
+          reminderLastLesson: event.currentTarget.elements.reminderLastLesson.checked,
+          reminderPayment: event.currentTarget.elements.reminderPayment.checked
+        });
+        P.toast('提醒設定已儲存。');
+        await load(studentId);
+      } catch (error) { P.toast(error.message, 'error'); }
+      finally { P.loading(button, false); }
+    });
+    document.getElementById('logoutBtn').addEventListener('click', () => { P.setSession('student', ''); location.reload(); });
+
+    (async () => {
+      try {
+        token = await P.exchangeAccess('student');
+        if (token) {
+          await load();
+          const params = new URLSearchParams(location.search);
+          if (params.get('return') === 'room-booking.html') {
+            location.href = 'room-booking.html?from=student';
+          }
+        }
+        else showBound(false);
+      } catch (error) { P.toast(error.message, 'error'); showBound(false); }
+    })();
+  })();
+  </script>
+</body>
+</html>
