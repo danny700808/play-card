@@ -35,14 +35,14 @@
       </header>
 
       <section class="data-mode card" id="dataModePanel">
-        <div class="data-mode-copy"><span class="data-mode-icon" id="dataModeIcon">正</span><div><strong id="dataModeTitle">正式資料</strong><p id="dataModeDescription">可完整查看，暫不開放修改</p><small id="dataModeMeta">尚未載入資料</small></div></div>
+        <div class="data-mode-copy"><span class="data-mode-icon" id="dataModeIcon">正</span><div><strong id="dataModeTitle">正式資料</strong><p id="dataModeDescription">正在自動開啟正式資料庫</p><small id="dataModeMeta">第一次使用此瀏覽器時才需要連結一次</small></div></div>
         <div class="data-mode-actions">
           <span class="tag" id="dataModeChip">正式</span>
           <button class="btn outline hidden sandbox-only" type="button" id="sandboxLogBtn">測試紀錄</button>
           <button class="btn outline hidden sandbox-only" type="button" id="undoSandboxBtn">復原上一步</button>
           <button class="btn danger hidden sandbox-only" type="button" id="resetSandboxBtn">重設測試</button>
-          <button class="btn primary" type="button" id="syncInjiaoyunBtn">抓取並同步本日音教雲</button>
-          <button class="btn secondary" type="button" id="loadMigratedDataBtn">載入正式資料</button>
+          <button class="btn primary" type="button" id="syncInjiaoyunBtn">立即更新本日音教雲</button>
+          <button class="btn secondary" type="button" id="loadMigratedDataBtn">第一次連結正式資料</button>
         </div>
       </section>
 
@@ -201,6 +201,6 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
   <script src="course-scheduler-data.js?v=20260726-sandbox-v1"></script>
   <script src="course-scheduler-review-data.js?v=20260723-review-window-v1"></script>
-  <script src="course-scheduler.js?v=20260726-sandbox-v1"></script>
+  <script src="course-scheduler.js?v=20260726-auto-formal-db-v5"></script>
 </body>
 </html>

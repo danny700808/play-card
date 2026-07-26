@@ -2,6 +2,9 @@
   'use strict';
 
   var FORMAL_CACHE_KEY='youzi.courseScheduler.formalCache.v1';
+  var FORMAL_DB_NAME='youzi-course-scheduler';
+  var FORMAL_DB_STORE='formalSnapshots';
+  var FORMAL_DB_KEY='latest';
   var PIN_KEY='youzi.injiaoyun.preview.pin';
   var state=null,formalState=null,currentView='calendar',currentStudentId='',currentTeacherId='',studentTab='profile';
   var entityContext={type:'',id:''},policyRoomId='',loadingMigration=false;
@@ -130,6 +133,43 @@
   }
 
   function readLocalState(key){try{var saved=JSON.parse(localStorage.getItem(key)||'null');if(saved&&saved.version===3)return normalizeState(saved);}catch(_){}return null;}
+  function openFormalDatabase(){
+    return new Promise(function(resolve,reject){
+      if(!window.indexedDB){reject(new Error('IndexedDB unavailable'));return;}
+      var request=window.indexedDB.open(FORMAL_DB_NAME,1);
+      request.onupgradeneeded=function(){var db=request.result;if(!db.objectStoreNames.contains(FORMAL_DB_STORE))db.createObjectStore(FORMAL_DB_STORE);};
+      request.onsuccess=function(){resolve(request.result);};
+      request.onerror=function(){reject(request.error||new Error('IndexedDB open failed'));};
+    });
+  }
+  async function readFormalDatabase(){
+    try{
+      var db=await openFormalDatabase();
+      return await new Promise(function(resolve,reject){
+        var transaction=db.transaction(FORMAL_DB_STORE,'readonly'),request=transaction.objectStore(FORMAL_DB_STORE).get(FORMAL_DB_KEY);
+        request.onsuccess=function(){resolve(request.result||null);};
+        request.onerror=function(){reject(request.error||new Error('IndexedDB read failed'));};
+        transaction.oncomplete=function(){db.close();};
+      });
+    }catch(_){return null;}
+  }
+  async function storeFormalDatabase(source){
+    try{
+      var db=await openFormalDatabase();
+      await new Promise(function(resolve,reject){
+        var transaction=db.transaction(FORMAL_DB_STORE,'readwrite');
+        transaction.objectStore(FORMAL_DB_STORE).put(clone(source),FORMAL_DB_KEY);
+        transaction.oncomplete=resolve;
+        transaction.onerror=function(){reject(transaction.error||new Error('IndexedDB write failed'));};
+        transaction.onabort=function(){reject(transaction.error||new Error('IndexedDB write aborted'));};
+      });
+      db.close();return true;
+    }catch(_){return false;}
+  }
+  function storeFormalCache(source){
+    try{localStorage.setItem(FORMAL_CACHE_KEY,JSON.stringify(source));return true;}
+    catch(_){try{localStorage.removeItem(FORMAL_CACHE_KEY);}catch(__){}return false;}
+  }
   function loadFormalCache(){var cached=readLocalState(FORMAL_CACHE_KEY);if(cached){cached.readOnly=true;cached.dataMode=cached.dataMode==='review'?'review':'migration';formalState=cached;}return cached;}
   function loadInitialState(){
     var cached=loadFormalCache();
@@ -167,7 +207,7 @@
     $('dataModeIcon').textContent=sandbox?'測':'正';
     $('sideModeBadge').textContent=sandbox?'測試模式・不影響正式資料':empty?'尚未載入正式資料':review?'核對課表・正式唯讀':'正式資料・唯讀';
     $('dataModeTitle').textContent=sandbox?'測試模式':empty?'尚未載入正式資料':review?'舊課表核對（正式唯讀）':'正式資料（唯讀）';
-    $('dataModeDescription').textContent=sandbox?'以最新正式資料測試；返回正式或重新整理就會全部清除':empty?'請先載入音教雲同步資料':review?'可查看所有明細，不會寫回音教雲':'學生、學費、簽到與課表皆可查看';
+    $('dataModeDescription').textContent=sandbox?'以最新正式資料測試；返回正式或重新整理就會全部清除':empty?'正在開啟正式資料庫；此瀏覽器第一次使用時才需要連結一次':review?'可查看所有明細，不會寫回音教雲':'正式資料庫會自動顯示；學生、學費、簽到與課表皆可查看';
     $('dataModeChip').textContent=sandbox?'測試':empty?'未載入':review?'核對':'正式';
     if(sandbox){
       var sandboxMeta=state.sandboxMeta||{},logs=sandboxOperationLog();
@@ -175,17 +215,17 @@
       $('loadMigratedDataBtn').textContent='返回正式資料';
       $('undoSandboxBtn').disabled=sandboxUndoStack.length===0;
     }else if(empty){
-      $('dataModeMeta').textContent='尚未載入音教雲同步資料';
-      $('loadMigratedDataBtn').textContent='載入正式資料';
+      $('dataModeMeta').textContent='若此瀏覽器尚未連結過，請執行一次「第一次連結正式資料」';
+      $('loadMigratedDataBtn').textContent='第一次連結正式資料';
     }else if(review){
       $('dataModeMeta').textContent=state.students.length+' 位學生・最後有效課表・核對範圍 7/12～7/15';
       $('loadMigratedDataBtn').textContent='進入測試模式';
     }else{
       var meta=state.dataMeta||{},quality=meta.dataQuality||{},visible=quality.visibleEventWeekdays||{},unresolved=numberOf(quality.unresolvedTimeRecords),days='二 '+numberOf(visible.tue)+'・三 '+numberOf(visible.wed)+'・四 '+numberOf(visible.thu)+'・五 '+numberOf(visible.fri)+'・六 '+numberOf(visible.sat);
-      $('dataModeMeta').textContent=state.students.length+' 位學生・'+state.events.length+' 筆課表・'+days+(unresolved?'・'+unresolved+' 筆時間待確認':'')+(meta.runId?'・來源 '+meta.runId:'');
+      $('dataModeMeta').textContent=state.students.length+' 位學生・'+state.events.length+' 筆課表・'+days+(unresolved?'・'+unresolved+' 筆時間待確認':'')+(meta.runId?'・來源 '+meta.runId:'')+(meta.browserCacheSkipped?'・資料量較大，重新整理後請再次載入':'');
       $('loadMigratedDataBtn').textContent='進入測試模式';
     }
-    if($('syncInjiaoyunBtn'))$('syncInjiaoyunBtn').textContent=loadingMigration?'正在抓取並同步…':'抓取並同步本日音教雲';
+    if($('syncInjiaoyunBtn'))$('syncInjiaoyunBtn').textContent=loadingMigration?'正在更新本日音教雲…':'立即更新本日音教雲';
     if($('syncInjiaoyunBtn'))$('syncInjiaoyunBtn').disabled=loadingMigration||sandbox;
     ['topNewEvent','sideNewEvent','calendarNewEvent','addStudentBtn','addTeacherBtn','saveSettingsBtn','addRoomBtn','addSubjectBtn','addFeePlanBtn','addLeaveReasonBtn'].forEach(function(id){if($(id))$(id).disabled=actual;});save();
   }
@@ -436,8 +476,13 @@
   function renderPolicy(){var room=roomById(policyRoomId),day=$('policyWeekday').value||'mon',dayPolicies=(room.policies||{})[day]||{},html='';for(var min=state.settings.startHour*60;min<state.settings.endHour*60;min+=30){var time=minToTime(min),explicit=Object.prototype.hasOwnProperty.call(dayPolicies,time),policy=dayPolicies[time]||{},allowSchedule=explicit?!policy.blockSchedule:day!=='mon',allowRental=explicit?!policy.blockRental:day!=='mon';html+='<div class="policy-row '+(min%60===0?'hour':'')+'"><strong>'+time+'</strong><label class="check-label"><input type="checkbox" data-policy-schedule="'+time+'" '+(allowSchedule?'checked':'')+'>可排課</label><label class="check-label"><input type="checkbox" data-policy-rental="'+time+'" '+(allowRental?'checked':'')+'>可租用</label><select class="control policy-subjects" data-policy-subjects="'+time+'" multiple size="2"><option value="">全部科目</option>'+activeSubjects().map(function(subject){return '<option value="'+subject.id+'" '+((policy.subjectIds||[]).indexOf(subject.id)>=0?'selected':'')+'>'+esc(subject.name)+'</option>';}).join('')+'</select></div>';}$('policyModalBody').innerHTML=html;}
   function savePolicy(){if(!writable('儲存教室時段規則'))return;var room=roomById(policyRoomId),day=$('policyWeekday').value,body=$('policyModalBody');if(!room.policies[day])room.policies[day]={};$$('[data-policy-schedule]',body).forEach(function(box){var time=box.dataset.policySchedule,rental=qs('[data-policy-rental="'+time+'"]',body),select=qs('[data-policy-subjects="'+time+'"]',body),subjectIds=Array.from(select.selectedOptions).map(function(option){return option.value;}).filter(Boolean);room.policies[day][time]={blockSchedule:!box.checked,blockRental:!rental.checked,subjectIds:subjectIds};});save('教室規則已儲存');closeModal('policyModal');renderCalendar();toast('時段規則已儲存','未勾選的時段不開放排課或租用。');}
 
-  function migrationPin(){
+  function storedMigrationPin(){
     var value='';try{value=clean(sessionStorage.getItem(PIN_KEY));}catch(_){}
+    return value;
+  }
+
+  function migrationPin(){
+    var value=storedMigrationPin();
     if(value)return value;
     value=clean(window.prompt('請輸入音教雲「手動同步密碼」：')||'');
     if(!value)return '';
@@ -448,13 +493,49 @@
 
   function clearMigrationPin(){try{sessionStorage.removeItem(PIN_KEY);}catch(_){}}
 
+  function applyFormalState(source){
+    formalState=normalizeState(source);formalState.readOnly=true;formalState.dataMode=formalState.dataMode==='review'?'review':'migration';
+    state=clone(formalState);updateModeUI();refreshFormOptions();switchView('calendar');
+    return formalState;
+  }
+
+  async function restoreFormalDatabase(){
+    if(formalState&&formalState.dataMode!=='empty'){
+      if(await storeFormalDatabase(formalState)){try{localStorage.removeItem(FORMAL_CACHE_KEY);}catch(_){}}
+      return true;
+    }
+    var cached=await readFormalDatabase();
+    if(cached&&cached.version===3){
+      applyFormalState(cached);
+      toast('正式資料已自動開啟','直接按「進入測試模式」即可；有新資料時再按「立即更新本日音教雲」。');
+      return true;
+    }
+    var pin=storedMigrationPin();
+    if(!pin)return false;
+    loadingMigration=true;updateModeUI();
+    try{
+      await loadMigrationFromMirror(pin);
+      toast('正式資料已自動載入','之後進入課程日表會直接顯示，不需要再手動載入。');
+      return true;
+    }catch(error){
+      var message=clean(error&&error.message||'無法自動讀取正式資料');
+      if(message.indexOf('密碼')>=0||message.indexOf('permission-denied')>=0)clearMigrationPin();
+      return false;
+    }finally{loadingMigration=false;updateModeUI();}
+  }
+
   async function loadMigrationFromMirror(pin){
     if(!window.YouziCoursePreviewData||typeof window.YouziCoursePreviewData.load!=='function')throw new Error('音教雲同步元件尚未載入。');
     var loaded=await window.YouziCoursePreviewData.load({manualSyncPin:pin,anchorDate:state&&state.currentDate||todayKey()});
     formalState=normalizeState(loaded);formalState.readOnly=true;formalState.dataMode=formalState.dataMode==='review'?'review':'migration';
-    localStorage.setItem(FORMAL_CACHE_KEY,JSON.stringify(formalState));
-    state=clone(formalState);updateModeUI();refreshFormOptions();switchView('calendar');
-    return loaded;
+    if(!formalState.dataMeta||typeof formalState.dataMeta!=='object')formalState.dataMeta={};
+    var databaseSaved=await storeFormalDatabase(formalState);
+    if(databaseSaved){
+      try{localStorage.removeItem(FORMAL_CACHE_KEY);}catch(_){}
+      formalState.dataMeta.browserCacheSkipped=false;
+    }else formalState.dataMeta.browserCacheSkipped=!storeFormalCache(formalState);
+    applyFormalState(formalState);
+    return formalState;
   }
 
   function createSandboxFromFormal(){
@@ -501,7 +582,8 @@
     loadingMigration=true;$('loadMigratedDataBtn').disabled=true;$('syncInjiaoyunBtn').disabled=true;updateModeUI();
     try{
       var loaded=await loadMigrationFromMirror(pin);
-      toast('同步課表已載入','來源 '+clean((loaded.dataMeta||{}).runId)+'；音教雲欄位為唯讀。');
+      var memoryOnly=!!((loaded.dataMeta||{}).browserCacheSkipped);
+      toast('同步課表已載入','來源 '+clean((loaded.dataMeta||{}).runId)+'；音教雲欄位為唯讀。'+(memoryOnly?'資料量較大，本次已載入完成；重新整理後請再按一次載入正式資料。':''));
     }catch(error){
       var message=clean(error&&error.message||'無法讀取同步資料');
       if(message.indexOf('密碼')>=0||message.indexOf('permission-denied')>=0)clearMigrationPin();
@@ -544,7 +626,8 @@
   function init(){
     try{localStorage.removeItem('youzi.courseScheduler.sandbox.v1');localStorage.removeItem('youzi.courseScheduler.sandboxUndo.v1');localStorage.removeItem('youzi.courseScheduler.lastMode.v1');}catch(_){}
     state=loadInitialState();if(!formalState&&state.readOnly&&state.dataMode!=='empty')formalState=clone(state);bindEvents();refreshFormOptions();updateModeUI();switchView('calendar');
-    if(window.__YOUZI_COURSE_SCHEDULER_TEST__===true)window.YouziCourseSchedulerTest={snapshot:function(){return clone(state);},eventsForDate:function(date){return clone(eventsForDate(date));},effectiveEventsForDate:function(date){return clone(effectiveEventsForDate(date));}};
+    restoreFormalDatabase();
+    if(window.__YOUZI_COURSE_SCHEDULER_TEST__===true)window.YouziCourseSchedulerTest={snapshot:function(){return clone(state);},eventsForDate:function(date){return clone(eventsForDate(date));},effectiveEventsForDate:function(date){return clone(effectiveEventsForDate(date));},storeFormalCache:function(source){return storeFormalCache(source);},readFormalDatabase:readFormalDatabase,storeFormalDatabase:storeFormalDatabase,restoreFormalDatabase:restoreFormalDatabase};
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 })();
