@@ -363,8 +363,8 @@ async function handleCoursePortalLineEvent(event, helpers = {}) {
     ? 'teacher-course-portal.html'
     : (type === 'student' ? 'student-course-portal.html' : 'room-booking.html');
   const url = `${PORTAL_BASE}/${page}?access=${encodeURIComponent(access)}`;
-  const label = type === 'teacher' ? '老師課務入口' : (type === 'student' ? '學生／家長入口' : '教室租用入口');
-  await reply(replyToken, `綁定完成。\n請開啟「${label}」：\n${url}\n\n此連結只能使用一次，之後這台裝置會保留登入狀態。`);
+  const label = type === 'teacher' ? '老師入口' : (type === 'student' ? '學生入口' : '教室租用入口');
+  await reply(replyToken, `綁定完成。\n請開啟「${label}」：\n${url}\n\n此連結 10 分鐘內有效；登入後這台裝置會保留登入狀態。`);
   return true;
 }
 
@@ -372,15 +372,12 @@ async function exchangeAccessToken(data) {
   const raw = clean(data.accessToken);
   if (!raw) throw new HttpsError('invalid-argument', '缺少一次性登入碼。');
   const ref = db.collection('coursePortalAccessTokens').doc(hash(raw));
-  let source = null;
-  await db.runTransaction(async (tx) => {
-    const snapshot = await tx.get(ref);
-    source = snapshot.exists ? snapshot.data() || {} : null;
-    if (!source || source.status !== 'active' || asMillis(source.expiresAt) < Date.now()) {
-      throw new HttpsError('permission-denied', '登入連結無效或已使用，請重新綁定。');
-    }
-    tx.set(ref, { status: 'used', usedAt: FieldValue.serverTimestamp() }, { merge: true });
-  });
+  const snapshot = await ref.get();
+  const source = snapshot.exists ? snapshot.data() || {} : null;
+  const acceptedStatuses = ['active', 'used', 'exchanged'];
+  if (!source || !acceptedStatuses.includes(clean(source.status)) || asMillis(source.expiresAt) < Date.now()) {
+    throw new HttpsError('permission-denied', '登入連結已逾時，請重新取得綁定連結。');
+  }
 
   const session = randomToken(36);
   const expiresAt = Timestamp.fromMillis(Date.now() + 30 * 24 * 60 * 60 * 1000);
@@ -398,6 +395,13 @@ async function exchangeAccessToken(data) {
     sessionPayload.studentIds = await activeStudentIdsForLine(source.lineUserId);
   }
   await db.collection('coursePortalSessions').doc(hash(session)).set(sessionPayload);
+  // LINE 內建瀏覽器可能會重複載入網址。必須先成功建立裝置登入，
+  // 再記錄交換狀態；短效連結在到期前可安全重新交換，不會卡死使用者。
+  await ref.set({
+    status: 'exchanged',
+    lastExchangedAt: FieldValue.serverTimestamp(),
+    exchangeCount: FieldValue.increment(1)
+  }, { merge: true });
   return {
     ok: true,
     sessionToken: session,
@@ -454,6 +458,19 @@ function eventSubjectId(row) {
 
 function overlaps(aStart, aEnd, bStart, bEnd) {
   return timeMinutes(aStart) < timeMinutes(bEnd) && timeMinutes(bStart) < timeMinutes(aEnd);
+}
+
+function roomSupportsSubject(room, subjectId, bundle, setting = {}) {
+  if (!subjectId) return true;
+  const configured = firstArray(setting, ['allowedSubjectIds']);
+  const sourceConfigured = firstArray(room, ['allowedSubjectIds', 'subjectIds']);
+  const allowed = configured.length ? configured : sourceConfigured;
+  if (allowed.length) return allowed.includes(subjectId);
+  const subject = clean(bundle.maps.subjects[subjectId] && bundle.maps.subjects[subjectId].name).toLowerCase();
+  const roomName = clean(room.name).toLowerCase();
+  if (/爵士鼓|電子鼓|傳統鼓|鼓組/.test(subject)) return /鼓|展演|團練/.test(roomName);
+  if (/鋼琴|電子琴|keyboard|piano/.test(subject)) return /鋼琴|平台|yamaha|kawai|琴房/.test(roomName);
+  return true;
 }
 
 function publicEvent(row, maps, ownTeacherId) {
@@ -702,14 +719,11 @@ async function rentalAvailability(data) {
   const rooms = bundle.rooms.filter(sourceActive).map((room) => {
     const id = sourceId(room);
     const setting = settingsMap[id] || {};
-    const allowed = firstArray(setting, ['allowedSubjectIds']).length
-      ? firstArray(setting, ['allowedSubjectIds'])
-      : firstArray(room, ['allowedSubjectIds', 'subjectIds']);
     const blocked = bundle.events.some((event) =>
       event.roomId === id && event.date === date &&
       overlaps(startTime, endTime, event.startTime, event.endTime)
     );
-    const compatible = !subjectId || !allowed.length || allowed.includes(subjectId);
+    const compatible = roomSupportsSubject(room, subjectId, bundle, setting);
     const baseFee = Number(setting.rentalFee != null ? setting.rentalFee : (room.rentalFee || room.price || 0));
     const studentRate = session.role === 'student';
     return {
@@ -730,6 +744,48 @@ async function rentalAvailability(data) {
     durationMinutes: duration,
     subjects: bundle.subjects.map((row) => ({ id: sourceId(row), name: clean(row.name) })),
     rooms
+  };
+}
+
+async function rentalDayBoard(data) {
+  const session = await requireSession(data, ['student', 'renter', 'teacher']);
+  const date = dateKey(data.date);
+  if (!date) throw new HttpsError('invalid-argument', '請選擇日期。');
+  const bundle = await scheduleBundle(date, date, session.role === 'teacher' ? session.teacherId : '');
+  const subjectId = clean(data.subjectId);
+  const roomSettings = await db.collection('coursePortalRoomSettings').get();
+  const settingsMap = {};
+  roomSettings.docs.forEach((doc) => { settingsMap[doc.id] = doc.data() || {}; });
+  const closed = weekday(date) === 2;
+  const slots = [];
+  for (let minute = 600; minute < 1260; minute += 30) {
+    const startTime = `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`;
+    const next = minute + 30;
+    const endTime = `${String(Math.floor(next / 60)).padStart(2, '0')}:${String(next % 60).padStart(2, '0')}`;
+    const availableRooms = closed ? [] : bundle.rooms.filter(sourceActive).filter((room) => {
+      const id = sourceId(room);
+      const setting = settingsMap[id] || {};
+      if (setting.rentable === false || !roomSupportsSubject(room, subjectId, bundle, setting)) return false;
+      return !bundle.events.some((event) =>
+        event.roomId === id && event.date === date &&
+        overlaps(startTime, endTime, event.startTime, event.endTime)
+      );
+    }).map((room) => ({ id: sourceId(room), name: clean(room.name) }));
+    slots.push({
+      startTime,
+      endTime,
+      availableCount: availableRooms.length,
+      rooms: availableRooms.slice(0, 6)
+    });
+  }
+  return {
+    ok: true,
+    date,
+    closed,
+    role: session.role,
+    priceType: session.role === 'student' ? '本校學生價' : '一般價格',
+    subjects: bundle.subjects.map((row) => ({ id: sourceId(row), name: clean(row.name) })),
+    slots
   };
 }
 
@@ -1019,6 +1075,7 @@ function registerCoursePortal(exportsObject, helpers = {}) {
   exportsObject.coursePortalExchangeAccess = callable(exchangeAccessToken);
   exportsObject.coursePortalTeacherData = callable(teacherPortalData, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalStudentData = callable(studentPortalData, { timeoutSeconds: 180, memory: '1GiB' });
+  exportsObject.coursePortalRentalDayBoard = callable(rentalDayBoard, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalRentalAvailability = callable(rentalAvailability, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalCreateRoomBooking = callable(createRoomBooking, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalTeacherAction = callable(teacherAction, { timeoutSeconds: 180, memory: '1GiB' });
