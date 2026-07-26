@@ -214,6 +214,39 @@
     var dynamic=state.recurringRules.filter(function(rule){return recurringRuleOccurs(rule,date)&&!overrides.has(recurrenceKey(rule.id,date));}).map(function(rule){return recurringOccurrence(rule,date);});
     return stored.concat(dynamic).sort(function(a,b){return timeToMin(a.start)-timeToMin(b.start);});
   }
+  function sameLessonPeople(a,b){
+    var left=(a.studentIds||[]),right=(b.studentIds||[]);
+    if(left.length||right.length)return left.some(function(id){return right.indexOf(id)>=0;});
+    return a.type==='rental'&&b.type==='rental'&&clean(a.clientName)===clean(b.clientName);
+  }
+  function effectiveLayerKey(event){
+    if(event.recurrenceKey)return 'recurrence:'+event.recurrenceKey;
+    if(event.type==='rental')return 'rental:'+event.date+'|'+event.roomId+'|'+event.start+'|'+clean(event.clientName);
+    return 'lesson:'+event.date+'|'+(event.studentIds||[]).slice().sort().join(',')+'|'+event.start;
+  }
+  function effectiveLayerScore(event,index){
+    var score=event.dynamic?0:1000;
+    if(event.status&&event.status!=='scheduled')score+=300;
+    if(event.type==='single'||event.movedFrom)score+=500;
+    return score+index/10000;
+  }
+  function effectiveEventsForDate(date){
+    var rows=eventsForDate(date),superseded=new Set();
+    rows.forEach(function(target){
+      var movedFrom=clean(target.movedFrom);if(!movedFrom)return;
+      rows.forEach(function(source){
+        if(source.id===target.id||source.date+' '+source.start!==movedFrom||!sameLessonPeople(source,target))return;
+        superseded.add(source.id);
+      });
+    });
+    var layers=new Map();
+    rows.forEach(function(event,index){
+      if(superseded.has(event.id))return;
+      var key=effectiveLayerKey(event),existing=layers.get(key),score=effectiveLayerScore(event,index);
+      if(!existing||score>=existing.score)layers.set(key,{event:event,score:score});
+    });
+    return Array.from(layers.values()).map(function(row){return row.event;}).sort(function(a,b){return timeToMin(a.start)-timeToMin(b.start);});
+  }
   function findEvent(eventId){
     return state.events.find(function(row){return row.id===eventId;})||eventsForDate(state.currentDate).find(function(row){return row.id===eventId;})||null;
   }
@@ -227,14 +260,14 @@
     if(state&&state.dataMode==='review')return [];
     var ignored=new Set(ignoreIds||[]),reasons=[],start=timeToMin(candidate.start),end=start+numberOf(candidate.duration),room=roomById(candidate.roomId);
     crossedTimes(candidate.start,candidate.duration).forEach(function(time){var policy=slotPolicy(room,candidate.date,time);if(candidate.type==='rental'&&policy.blockRental)reasons.push(time+' 此教室禁止租用');if(candidate.type!=='rental'&&policy.blockSchedule)reasons.push(time+' 此教室禁止排課');if(candidate.type!=='rental'&&Array.isArray(policy.subjectIds)&&policy.subjectIds.length&&policy.subjectIds.indexOf(candidate.subjectId)<0)reasons.push(time+' 不允許此科目');});
-    eventsForDate(candidate.date).forEach(function(other){if(ignored.has(other.id)||isHiddenEvent(other)||other.status==='leave'||other.status==='absent')return;var a=timeToMin(other.start),b=a+numberOf(other.duration);if(start>=b||end<=a)return;if(other.roomId===candidate.roomId)reasons.push('教室與「'+eventDisplayName(other)+'」重疊');if(candidate.teacherId&&other.teacherId===candidate.teacherId)reasons.push('老師與「'+eventDisplayName(other)+'」重疊');if((candidate.studentIds||[]).some(function(id){return (other.studentIds||[]).indexOf(id)>=0;}))reasons.push('學生與「'+eventDisplayName(other)+'」重疊');});
+    effectiveEventsForDate(candidate.date).forEach(function(other){if(ignored.has(other.id)||isHiddenEvent(other)||other.status==='leave'||other.status==='absent')return;var a=timeToMin(other.start),b=a+numberOf(other.duration);if(start>=b||end<=a)return;if(other.roomId===candidate.roomId)reasons.push('教室與「'+eventDisplayName(other)+'」重疊');if(candidate.teacherId&&other.teacherId===candidate.teacherId)reasons.push('老師與「'+eventDisplayName(other)+'」重疊');if((candidate.studentIds||[]).some(function(id){return (other.studentIds||[]).indexOf(id)>=0;}))reasons.push('學生與「'+eventDisplayName(other)+'」重疊');});
     return unique(reasons);
   }
   function eventDisplayName(event){if(event.type==='rental')return event.clientName||'教室租用';return (event.studentIds||[]).map(function(id){return studentById(id).name;}).filter(Boolean).join('、')||subjectById(event.subjectId).name||typeName(event.type);}
   function dayConflictIds(events){var ids={};events.forEach(function(event){if(eventConflictReasons(event,[event.id]).length)ids[event.id]=true;});return ids;}
 
   function renderCalendar(){
-    var date=state.currentDate,rooms=activeRooms(),events=eventsForDate(date),conflicts=dayConflictIds(events),used=new Set(events.map(function(row){return row.roomId;}));
+    var date=state.currentDate,rooms=activeRooms(),events=effectiveEventsForDate(date),conflicts=dayConflictIds(events),used=new Set(events.map(function(row){return row.roomId;}));
     $('calendarDate').value=date;$('dateTitle').textContent=zhDate(date);$('dateSubtitle').textContent=weekdayName(date)+(date===todayKey()?'・今天':'');$('kpiLessons').textContent=events.filter(function(row){return row.type!=='rental';}).length;$('kpiAttended').textContent=events.filter(function(row){return row.status==='attended';}).length;$('kpiRooms').textContent=used.size+' / '+rooms.length;$('kpiWarnings').textContent=Object.keys(conflicts).length+events.filter(function(row){return row.status==='leave'||row.status==='absent';}).length;$('calendarHint').textContent='30 分鐘／格・'+rooms.length+' 間啟用教室'+(isReadOnly()?'・正式唯讀':isSandbox()?'・測試操作不影響正式資料':'');
     if (isReadOnly() && state.dataMode === 'review') { var sourceStats = ((state.dataMeta || {}).sourceStatsByDate || {})[date] || {}; $('dataModeMeta').textContent = '原始學生紀錄 '+numberOf(sourceStats.studentRecords)+'・請假已定位 '+numberOf(sourceStats.leaveRecords)+'・固定課 '+numberOf(sourceStats.fixedRecords)+'・最後顯示 '+numberOf(sourceStats.visibleRecords)+(numberOf(sourceStats.unresolvedRecords) ? '・待人工核對 '+numberOf(sourceStats.unresolvedRecords) : ''); }
     var slots=[];for(var min=state.settings.startHour*60;min<state.settings.endHour*60;min+=30)slots.push(min);var start=state.settings.startHour*60,grid=$('scheduleGrid');grid.style.gridTemplateColumns='var(--time-col, 90px) repeat('+rooms.length+',var(--room-col, minmax(200px,1fr)))';grid.style.gridTemplateRows='var(--room-head-height, 64px) repeat('+slots.length+',var(--slot))';
@@ -305,7 +338,7 @@
   }
 
   function latestPeriod(studentId){return state.tuitionPeriods.filter(function(row){return row.studentId===studentId;}).sort(function(a,b){return clean(b.startDate).localeCompare(clean(a.startDate))||numberOf(b.periodNo)-numberOf(a.periodNo);})[0]||{};}
-  function nextEvent(studentId){for(var offset=0;offset<=180;offset++){var found=eventsForDate(shiftDate(todayKey(),offset)).find(function(row){return (row.studentIds||[]).indexOf(studentId)>=0&&!isHiddenEvent(row)&&row.status!=='leave'&&row.status!=='absent';});if(found)return found;}return {};}
+  function nextEvent(studentId){for(var offset=0;offset<=180;offset++){var found=effectiveEventsForDate(shiftDate(todayKey(),offset)).find(function(row){return (row.studentIds||[]).indexOf(studentId)>=0&&!isHiddenEvent(row)&&row.status!=='leave'&&row.status!=='absent';});if(found)return found;}return {};}
   function renderStudents(){
     var search=clean($('studentSearch').value).toLowerCase(),filter=$('studentPaymentFilter').value,rows=state.students.filter(function(student){var periods=state.tuitionPeriods.filter(function(row){return row.studentId===student.id;}),hay=(student.name+' '+student.phone+' '+periods.map(function(row){return subjectById(row.subjectId).name;}).join(' ')).toLowerCase(),latest=latestPeriod(student.id);if(search&&hay.indexOf(search)<0)return false;if(filter==='due'&&!periods.some(function(row){return periodBalance(row)>0;}))return false;if(filter==='low'&&!(latest.id&&periodRemaining(latest)<=1))return false;if(filter==='active'&&student.active===false)return false;return true;}).sort(bySort);
     var dueStudents=state.students.filter(function(student){return state.tuitionPeriods.some(function(row){return row.studentId===student.id&&periodBalance(row)>0;});}).length,low=state.students.filter(function(student){var p=latestPeriod(student.id);return p.id&&periodRemaining(p)<=1;}).length;$('studentMetrics').innerHTML=metric('學生總數',state.students.length,'含停課資料')+metric('尚有未繳',dueStudents,'依每一期付款加總')+metric('剩 1 堂以下',low,'建議準備下一期');
@@ -505,13 +538,13 @@
     $('tuitionForm').addEventListener('submit',submitTuition);$('tuitionSubject').addEventListener('change',function(){updateTuitionForm();});$('tuitionPlan').addEventListener('change',renderTuitionSnapshot);$('transactionForm').addEventListener('submit',submitTransaction);$('transactionType').addEventListener('change',renderRefundLessonOptions);
     $('teacherCards').addEventListener('click',function(event){var payroll=event.target.closest('[data-teacher-payroll]'),edit=event.target.closest('[data-teacher-id]');if(payroll)openTeacherPayroll(payroll.dataset.teacherPayroll);if(edit)openEntity('teacher',edit.dataset.teacherId);});$('teacherPayrollMonth').addEventListener('change',renderTeacherPayroll);$('addTeacherBtn').addEventListener('click',function(){openEntity('teacher','');});$('teacherSearch').addEventListener('input',debounce(renderTeachers,280));
     $$('.settings-tabs button').forEach(function(button){button.addEventListener('click',function(){$$('.settings-tabs button').forEach(function(node){node.classList.toggle('active',node===button);});$$('.settings-panel').forEach(function(panel){panel.classList.toggle('active',panel.dataset.settingsPanel===button.dataset.settingsTab);});});});$('saveSettingsBtn').addEventListener('click',function(){if(!writable('儲存設定'))return;var start=numberOf($('startHour').value),end=numberOf($('endHour').value);if(end<=start){toast('時間設定錯誤','結束時間必須晚於開始時間。','error');return;}state.settings.startHour=start;state.settings.endHour=end;state.settings.defaultLessons=numberOf($('defaultLessons').value)||4;save('系統設定已儲存');renderCalendar();toast('設定完成','課程日表格線已重新整理。');});
-    $('addRoomBtn').addEventListener('click',function(){openEntity('room','');});$('addSubjectBtn').addEventListener('click',function(){openEntity('subject','');});$('addFeePlanBtn').addEventListener('click',function(){openEntity('fee','');});$('addLeaveReasonBtn').addEventListener('click',function(){openEntity('leave','');});$('roomRows').addEventListener('click',function(event){var policy=event.target.closest('[data-room-policy]'),edit=event.target.closest('[data-room-edit]');if(policy)openPolicy(policy.dataset.roomPolicy);if(edit)openEntity('room',edit.dataset.roomEdit);});$('subjectRows').addEventListener('click',function(event){var button=event.target.closest('[data-subject-edit]');if(button)openEntity('subject',button.dataset.subjectEdit);});$('feePlanRows').addEventListener('click',function(event){var button=event.target.closest('[data-fee-edit]');if(button)openEntity('fee',button.dataset.feeEdit);});$('leaveReasonRows').addEventListener('click',function(event){var button=event.target.closest('[data-leave-edit]');if(button)openEntity('leave',button.dataset.leaveEdit);});$('feeSubjectFilter').addEventListener('change',renderFeeRows);$('entityForm').addEventListener('submit',submitEntity);$('policyWeekday').addEventListener('change',renderPolicy);$('savePolicyBtn').addEventListener('click',savePolicy);$('loadMigratedDataBtn').addEventListener('click',toggleMigration);$('syncInjiaoyunBtn').addEventListener('click',syncInjiaoyun);$('sandboxLogBtn').addEventListener('click',showSandboxLog);$('undoSandboxBtn').addEventListener('click',undoSandbox);$('resetSandboxBtn').addEventListener('click',resetSandbox);$('conflictBtn').addEventListener('click',function(){var count=Object.keys(dayConflictIds(eventsForDate(state.currentDate).filter(function(row){return row.status!=='leave'&&row.status!=='absent';}))).length;toast(count?'發現排課衝突':'今日沒有衝突',count?'共有 '+count+' 個課程需要調整。':'教室、老師、學生與教室規則均通過。',count?'error':'');});
+    $('addRoomBtn').addEventListener('click',function(){openEntity('room','');});$('addSubjectBtn').addEventListener('click',function(){openEntity('subject','');});$('addFeePlanBtn').addEventListener('click',function(){openEntity('fee','');});$('addLeaveReasonBtn').addEventListener('click',function(){openEntity('leave','');});$('roomRows').addEventListener('click',function(event){var policy=event.target.closest('[data-room-policy]'),edit=event.target.closest('[data-room-edit]');if(policy)openPolicy(policy.dataset.roomPolicy);if(edit)openEntity('room',edit.dataset.roomEdit);});$('subjectRows').addEventListener('click',function(event){var button=event.target.closest('[data-subject-edit]');if(button)openEntity('subject',button.dataset.subjectEdit);});$('feePlanRows').addEventListener('click',function(event){var button=event.target.closest('[data-fee-edit]');if(button)openEntity('fee',button.dataset.feeEdit);});$('leaveReasonRows').addEventListener('click',function(event){var button=event.target.closest('[data-leave-edit]');if(button)openEntity('leave',button.dataset.leaveEdit);});$('feeSubjectFilter').addEventListener('change',renderFeeRows);$('entityForm').addEventListener('submit',submitEntity);$('policyWeekday').addEventListener('change',renderPolicy);$('savePolicyBtn').addEventListener('click',savePolicy);$('loadMigratedDataBtn').addEventListener('click',toggleMigration);$('syncInjiaoyunBtn').addEventListener('click',syncInjiaoyun);$('sandboxLogBtn').addEventListener('click',showSandboxLog);$('undoSandboxBtn').addEventListener('click',undoSandbox);$('resetSandboxBtn').addEventListener('click',resetSandbox);$('conflictBtn').addEventListener('click',function(){var count=Object.keys(dayConflictIds(effectiveEventsForDate(state.currentDate).filter(function(row){return row.status!=='leave'&&row.status!=='absent';}))).length;toast(count?'發現排課衝突':'今日沒有衝突',count?'共有 '+count+' 個課程需要調整。':'教室、老師、學生與教室規則均通過。',count?'error':'');});
   }
 
   function init(){
     try{localStorage.removeItem('youzi.courseScheduler.sandbox.v1');localStorage.removeItem('youzi.courseScheduler.sandboxUndo.v1');localStorage.removeItem('youzi.courseScheduler.lastMode.v1');}catch(_){}
     state=loadInitialState();if(!formalState&&state.readOnly&&state.dataMode!=='empty')formalState=clone(state);bindEvents();refreshFormOptions();updateModeUI();switchView('calendar');
-    if(window.__YOUZI_COURSE_SCHEDULER_TEST__===true)window.YouziCourseSchedulerTest={snapshot:function(){return clone(state);},eventsForDate:function(date){return clone(eventsForDate(date));}};
+    if(window.__YOUZI_COURSE_SCHEDULER_TEST__===true)window.YouziCourseSchedulerTest={snapshot:function(){return clone(state);},eventsForDate:function(date){return clone(eventsForDate(date));},effectiveEventsForDate:function(date){return clone(effectiveEventsForDate(date));}};
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 })();
