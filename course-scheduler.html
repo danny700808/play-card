@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#233b35">
   <title>新版排課系統｜柚子樂器</title>
   <link rel="icon" href="yuzu-logo-green.png">
-  <link rel="stylesheet" href="course-scheduler.css?v=20260726-quick-week-v11">
+  <link rel="stylesheet" href="course-scheduler.css?v=20260726-management-v12">
 </head>
 <body>
   <div class="app-shell">
@@ -93,7 +93,7 @@
         <div class="section-heading"><div><h2>老師與薪資</h2><p>老師可教授科目會直接限制排課選項；獎勵、扣薪與實際授課分開計算。</p></div><button class="btn primary" type="button" id="addTeacherBtn">＋ 新增老師</button></div>
         <div class="metric-grid" id="teacherMetrics"></div>
         <div class="filters"><input class="search-control" id="teacherSearch" placeholder="搜尋老師姓名、電話或教授科目"></div>
-        <div class="teacher-grid" id="teacherCards"></div>
+        <div class="teacher-list card" id="teacherCards"></div>
       </section>
 
       <section class="view" id="settingsPage">
@@ -113,7 +113,7 @@
 
         <div class="settings-panel" data-settings-panel="rooms">
           <div class="panel-actions"><div><h3>教室空間</h3><p>已被課程使用的教室只能停用，避免歷史資料失去名稱。</p></div><button class="btn primary" type="button" id="addRoomBtn">＋ 新增教室</button></div>
-          <div class="table-card card"><table class="data-table"><thead><tr><th>排序</th><th>教室名稱</th><th>預約前台名稱</th><th>預設租金</th><th>狀態</th><th>時段規則</th><th>操作</th></tr></thead><tbody id="roomRows"></tbody></table></div>
+          <div class="table-card card"><table class="data-table"><thead><tr><th>教室名稱</th><th>預設租金</th><th>可用科目</th><th>狀態</th><th>設定</th></tr></thead><tbody id="roomRows"></tbody></table></div>
         </div>
 
         <div class="settings-panel" data-settings-panel="subjects">
@@ -122,9 +122,9 @@
         </div>
 
         <div class="settings-panel" data-settings-panel="fees">
-          <div class="panel-actions"><div><h3>收費方案</h3><p>這裡設定課程名稱、堂數、金額與老師拆帳；付款方式則在實際收費時選擇。</p></div><button class="btn primary" type="button" id="addFeePlanBtn">＋ 新增收費方案</button></div>
+          <div class="panel-actions"><div><h3>收費方案</h3><p>直接拖曳整列調整常用順序；排課與新增期數會沿用此排列。</p></div><button class="btn primary" type="button" id="addFeePlanBtn">＋ 新增收費方案</button></div>
           <div class="filters"><select class="control" id="feeSubjectFilter"><option value="all">全部科目</option></select></div>
-          <div class="table-card card"><table class="data-table"><thead><tr><th>科目</th><th>排序</th><th>方案名稱</th><th>費用／堂數</th><th>老師拆帳</th><th>請假規則</th><th>狀態</th><th>操作</th></tr></thead><tbody id="feePlanRows"></tbody></table></div>
+          <div class="table-card card"><table class="data-table"><thead><tr><th>拖曳</th><th>科目</th><th>方案名稱</th><th>費用／堂數</th><th>老師拆帳</th><th>請假規則</th><th>狀態</th><th>操作</th></tr></thead><tbody id="feePlanRows"></tbody></table></div>
         </div>
 
         <div class="settings-panel" data-settings-panel="leave">
@@ -159,6 +159,9 @@
             <div class="field learning-only" id="subjectField"><label>課程科目</label><select id="eventSubject"></select></div>
             <div class="field learning-only" id="teacherField"><label>上課老師</label><select id="eventTeacher"></select><small id="teacherFilterHint">依科目顯示可授課老師</small></div>
             <div class="field span-2" id="tuitionPeriodField"><label>扣抵學費期別</label><select id="eventTuitionPeriod"></select><small>排課本身不扣堂，簽到後才從此期別扣抵。</small></div>
+            <div class="field single-only hidden" id="singleKindField"><label>單堂課用途</label><select id="eventSingleKind"><option value="normal">一般加課／調課</option><option value="special">贈送／特殊加課</option></select></div>
+            <div class="field special-only hidden"><label>本堂原價</label><input id="eventSpecialLessonPrice" type="number" min="0" step="1"><small>預設帶入學生目前方案的單堂金額。</small></div>
+            <div class="field special-only hidden"><label>老師本堂實領</label><input id="eventSpecialTeacherPay" type="number" min="0" step="1"><small>學生不扣堂、不收費，但老師簽到後仍列入薪資。</small></div>
             <div class="field trial-only hidden"><label>體驗者姓名</label><input id="eventTrialName" placeholder="請輸入姓名"></div>
             <div class="field trial-only hidden"><label>聯絡電話</label><input id="eventTrialPhone" placeholder="手機或市話"></div>
             <div class="field trial-only hidden"><label>體驗費用</label><input id="eventTrialFee" type="number" min="0" step="1"></div>
@@ -212,7 +215,7 @@
   </div>
 
   <div class="modal-backdrop" id="policyModal" role="dialog" aria-modal="true" aria-labelledby="policyModalTitle">
-    <div class="modal extra-large"><div class="modal-head"><div><h2 id="policyModalTitle">教室時段規則</h2><p>勾選「可排課」或「可租用」；未勾選的時段不開放。</p></div><button class="modal-close" type="button" data-close-modal="policyModal">×</button></div><div class="policy-toolbar"><select class="control" id="policyWeekday"></select><span>適用科目留白代表所有科目。</span></div><div class="modal-body policy-body" id="policyModalBody"></div><div class="modal-foot"><button class="btn outline" type="button" data-close-modal="policyModal">取消</button><button class="btn primary" type="button" id="savePolicyBtn">儲存時段規則</button></div></div>
+    <div class="modal extra-large"><div class="modal-head"><div><h2 id="policyModalTitle">教室設定</h2><p>同一處設定教室資料、可用科目、可排課與可租用時間。</p></div><button class="modal-close" type="button" data-close-modal="policyModal">×</button></div><div class="modal-body room-policy-general"><div class="form-grid three"><div class="field"><label>教室名稱</label><input id="policyRoomName"></div><div class="field"><label>預設租金</label><input id="policyRentalFee" type="number" min="0"></div><div class="field"><label>狀態</label><select id="policyRoomActive"><option value="true">啟用</option><option value="false">停用</option></select></div><div class="field full"><label>備註</label><input id="policyRoomNote"></div></div><section class="room-subject-section"><div><b>這間教室可以使用的科目</b><small>新教室預設全部可用；取消勾選後，排課時不會再出現這間教室。</small></div><div class="compact-check-grid" id="policySubjectChoices"></div></section></div><div class="policy-toolbar"><select class="control" id="policyWeekday"></select><button class="btn small soft" type="button" data-policy-bulk="open">本日全部開放</button><button class="btn small outline" type="button" data-policy-bulk="schedule">本日只可排課</button><button class="btn small danger" type="button" data-policy-bulk="close">本日全部關閉</button></div><div class="modal-body policy-body" id="policyModalBody"></div><div class="modal-foot"><button class="btn outline" type="button" data-close-modal="policyModal">取消</button><button class="btn primary" type="button" id="savePolicyBtn">儲存教室設定</button></div></div>
   </div>
 
   <div class="operation-progress hidden" id="operationProgress" aria-live="polite"><div class="operation-progress-track"><i></i></div><b id="operationProgressText">正在處理</b></div>
@@ -223,6 +226,6 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
   <script src="course-scheduler-data.js?v=20260726-sandbox-v1"></script>
   <script src="course-scheduler-review-data.js?v=20260723-review-window-v1"></script>
-  <script src="course-scheduler.js?v=20260726-quick-week-v11"></script>
+  <script src="course-scheduler.js?v=20260726-management-v12"></script>
 </body>
 </html>
