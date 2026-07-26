@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#233b35">
   <title>新版排課系統｜柚子樂器</title>
   <link rel="icon" href="yuzu-logo-green.png">
-  <link rel="stylesheet" href="course-scheduler.css?v=20260726-drag-click-v9">
+  <link rel="stylesheet" href="course-scheduler.css?v=20260726-room-period-v10">
 </head>
 <body>
   <div class="app-shell">
@@ -167,7 +167,7 @@
   </div>
 
   <div class="modal-backdrop" id="tuitionModal" role="dialog" aria-modal="true" aria-labelledby="tuitionModalTitle">
-    <div class="modal large"><div class="modal-head"><div><h2 id="tuitionModalTitle">新增學費期別</h2><p>本次固定新增 1 期；一期堂數與金額由收費方案帶入。</p></div><button class="modal-close" type="button" data-close-modal="tuitionModal">×</button></div><form id="tuitionForm"><div class="modal-body"><input id="tuitionId" type="hidden"><input id="tuitionPeriodNo" type="hidden"><div class="form-grid three"><div class="field"><label class="required">學生</label><select id="tuitionStudent" required></select></div><div class="field"><label class="required">科目</label><select id="tuitionSubject" required></select></div><div class="field"><label>固定老師（沿用上一期，可更換）</label><select id="tuitionTeacher"></select></div><div class="field span-2"><label class="required">收費方案</label><select id="tuitionPlan" required></select></div><div class="field"><label>本次購買期數</label><input id="tuitionPurchasePeriods" type="number" value="1" readonly></div><div class="field"><label>堂數</label><input id="tuitionLessonCount" type="number" min="1"></div><div class="field"><label>應收金額</label><input id="tuitionAmount" type="number" min="0"></div><div class="field"><label>折扣</label><input id="tuitionDiscount" type="number" min="0"></div><div class="field hidden"><label>開始日期</label><input id="tuitionStartDate" type="date"></div><div class="field hidden"><label>到期日期</label><input id="tuitionExpiryDate" type="date"></div><div class="field full"><label>備註</label><textarea id="tuitionNote"></textarea></div></div><div class="snapshot-box" id="tuitionSnapshot"></div></div><div class="modal-foot"><button class="btn outline" type="button" data-close-modal="tuitionModal">取消</button><button class="btn primary" type="submit">儲存 1 期</button></div></form></div>
+    <div class="modal large"><div class="modal-head"><div><h2 id="tuitionModalTitle">新增學費期別</h2><p id="tuitionModalSubtitle">本次固定新增 1 期；一期堂數與金額由收費方案帶入。</p></div><button class="modal-close" type="button" data-close-modal="tuitionModal">×</button></div><form id="tuitionForm"><div class="modal-body"><input id="tuitionId" type="hidden"><input id="tuitionPeriodNo" type="hidden"><div class="form-grid three"><div class="field"><label class="required">學生</label><select id="tuitionStudent" required></select></div><div class="field"><label class="required">科目</label><select id="tuitionSubject" required></select></div><div class="field"><label>固定老師（沿用上一期，可更換）</label><select id="tuitionTeacher"></select></div><div class="field span-2"><label class="required">收費方案</label><select id="tuitionPlan" required></select></div><div class="field"><label>本次購買期數</label><input id="tuitionPurchasePeriods" type="number" value="1" readonly></div><div class="field"><label>堂數</label><input id="tuitionLessonCount" type="number" min="1"></div><div class="field"><label>應收金額</label><input id="tuitionAmount" type="number" min="0"></div><div class="field"><label>折扣</label><input id="tuitionDiscount" type="number" min="0"></div><div class="field full collect-now-field" id="tuitionCollectField"><label><input id="tuitionCollectNow" type="checkbox"> 建立新期數時，同時登記本次收費</label><small>取消勾選時，新一期會先顯示未繳費。</small></div><div class="field" id="tuitionPaymentDateField"><label>本次收費日期</label><input id="tuitionPaymentDate" type="date"></div><div class="field" id="tuitionPaymentAmountField"><label>本次實際收費</label><input id="tuitionPaymentAmount" type="number" min="0"></div><div class="field" id="tuitionPaymentMethodField"><label>收費方式</label><select id="tuitionPaymentMethod"><option>現金</option><option>店面營收</option><option>線上繳費</option><option>轉帳</option><option>街口支付</option><option>刷卡</option></select></div><div class="field hidden"><label>開始日期</label><input id="tuitionStartDate" type="date"></div><div class="field hidden"><label>到期日期</label><input id="tuitionExpiryDate" type="date"></div><div class="field full"><label>備註</label><textarea id="tuitionNote"></textarea></div></div><div class="snapshot-box" id="tuitionSnapshot"></div></div><div class="modal-foot"><button class="btn outline" type="button" data-close-modal="tuitionModal">取消</button><button class="btn primary" type="submit">儲存 1 期</button></div></form></div>
   </div>
 
   <div class="modal-backdrop" id="lessonActionModal" role="dialog" aria-modal="true" aria-labelledby="lessonActionTitle">
@@ -205,6 +205,6 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
   <script src="course-scheduler-data.js?v=20260726-sandbox-v1"></script>
   <script src="course-scheduler-review-data.js?v=20260723-review-window-v1"></script>
-  <script src="course-scheduler.js?v=20260726-drag-click-v9"></script>
+  <script src="course-scheduler.js?v=20260726-room-period-v10"></script>
 </body>
 </html>
