@@ -33,6 +33,7 @@ a{color:inherit;text-decoration:none}
 .btn[disabled],button[disabled],input[disabled],select[disabled],textarea[disabled]{cursor:not-allowed;opacity:.56;transform:none!important}
 .control,.search-control{border:1px solid var(--line-strong);border-radius:10px;background:#fff;min-height:44px;padding:8px 11px;outline:none}.control:focus,.search-control:focus,.field input:focus,.field select:focus,.field textarea:focus{border-color:#559a82;box-shadow:0 0 0 3px rgba(24,116,91,.12)}
 .data-mode{margin-bottom:14px;padding:14px 16px;border-left:5px solid #758a83;display:flex;align-items:center;justify-content:space-between;gap:16px}.data-mode.actual{border-left-color:var(--green);background:#f7fcfa}.data-mode-copy{display:flex;align-items:center;gap:12px;min-width:0}.data-mode-icon{width:42px;height:42px;border-radius:50%;background:#edf2f0;color:#536660;display:grid;place-items:center;font-weight:900;flex:0 0 auto}.data-mode.actual .data-mode-icon{background:#dff3ea;color:var(--green-dark)}.data-mode strong{font-size:16px}.data-mode p{margin:2px 0;color:var(--muted);font-size:13px}.data-mode small{font-size:12px;color:#4f6f64}.data-mode-actions{display:flex;align-items:center;gap:9px}
+.data-mode.sandbox{border-left-color:#dc8318;background:#fff8e9;box-shadow:0 0 0 2px rgba(220,131,24,.10)}.data-mode.sandbox .data-mode-icon{background:#ffebbd;color:#8b5109}.data-mode.sandbox .tag{background:#ffe3a6;color:#7c4707}.sandbox-mode .mode-pill{background:rgba(255,190,75,.18);border-color:rgba(255,210,128,.42);color:#ffe7b5}
 .tag{display:inline-flex;align-items:center;border-radius:999px;padding:5px 9px;background:#edf2f0;color:#536660;font-size:12px;font-weight:900}.tag.green{background:#e2f4eb;color:#146149}.tag.yellow{background:#fff2cf;color:#895a00}.tag.red{background:#ffebe9;color:#a33c37}.tag.blue{background:#e7f1fb;color:#286392}.tag.gray{background:#edf0ef;color:#5f6d69}
 .calendar-toolbar{padding:14px 16px;margin-bottom:13px;display:flex;align-items:center;justify-content:space-between;gap:12px}.date-actions,.toolbar-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap}.date-heading{min-width:210px}.date-heading strong{display:block;font-size:20px}.date-heading span{display:block;color:var(--muted);font-size:13px}.icon-btn{width:44px;height:44px;border:1px solid var(--line-strong);background:#fff;border-radius:11px;font-size:24px;font-weight:900}
 .kpi-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:11px;margin-bottom:13px}.kpi{padding:15px 17px}.kpi span{display:block;color:var(--muted);font-size:13px}.kpi strong{display:block;font-size:28px;line-height:1.25;margin:3px 0}.kpi small{font-size:12px;color:var(--muted)}
@@ -112,6 +113,23 @@ a{color:inherit;text-decoration:none}
 .student-empty{margin:0;color:var(--muted)}
 .student-schedule{border:1px solid var(--line);border-radius:11px}
 .student-schedule .data-table{min-width:760px}
+.student-record-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.student-record-heading h3{margin:0;font-size:20px}.student-record-heading p{margin:2px 0 12px;color:var(--muted);font-size:13px}
+.tuition-table-wrap{overflow:auto;border:1px solid var(--line);border-radius:12px;background:#fff}
+.tuition-record-table{width:100%;min-width:900px;border-collapse:collapse;background:#fff}
+.tuition-record-table th{padding:10px 11px;background:#e9f2ed;color:#395d52;font-size:13px;text-align:left;white-space:nowrap}
+.tuition-record-table td{padding:11px;border-top:1px solid var(--line);vertical-align:middle;font-size:14px}
+.tuition-record-table td small{display:block;margin-top:2px;color:var(--muted);font-size:12px}
+.tuition-period-row.latest td{background:#f4faf7}
+.tuition-period-row td:first-child b{color:var(--green-dark);white-space:nowrap}
+.tuition-due{display:inline-block;padding:4px 7px;border-radius:7px;background:#fff0ef;color:#aa352f;font-size:15px;white-space:nowrap}
+.tuition-paid{color:var(--green-dark);font-weight:900;white-space:nowrap}
+.tuition-readonly{color:var(--muted);font-size:12px;white-space:nowrap}
+.tuition-detail-row.hidden{display:none}
+.tuition-detail-row>td{padding:0;background:#f7faf8}
+.tuition-detail-row .period-details{padding:14px 15px;border-left:4px solid #78aa97}
+.compact-periods{gap:8px}.period-record{border:1px solid var(--line);border-radius:11px;background:#fff;overflow:hidden}.period-record.latest{border-color:#78aa97}.period-record>summary{list-style:none;cursor:pointer}.period-record>summary::-webkit-details-marker{display:none}.period-summary{display:grid;grid-template-columns:78px minmax(190px,1.7fr) repeat(4,minmax(90px,.7fr)) 64px;align-items:center;gap:10px;padding:11px 13px}.period-summary:hover{background:#f4f9f6}.period-summary>b{color:var(--green-dark)}.period-summary span{min-width:0}.period-summary span small{display:block;color:var(--muted);font-size:11px}.period-summary .period-plan{font-weight:800;overflow-wrap:anywhere}.period-summary .due{color:#a43c36;font-weight:900}.period-summary .paid{color:var(--green-dark);font-weight:900}.period-summary>strong{justify-self:end;color:var(--green);font-size:13px}.period-record[open] .period-summary{background:#eef6f2;border-bottom:1px solid var(--line)}.period-record[open] .period-summary>strong::after{content:"中"}.period-details{padding:13px 14px}.period-detail-title{display:flex;justify-content:space-between;gap:12px;margin-bottom:8px}.period-detail-title span{font-weight:900}.period-detail-title small{color:var(--muted)}.attendance-list li{grid-template-columns:70px 100px 70px minmax(0,1fr)}.formal-view-note{width:100%;padding:9px 12px;border-radius:9px;background:#eef4f1;color:var(--muted);font-size:13px;text-align:center}
+.sandbox-log-summary{display:grid;gap:3px;padding:13px 14px;border-radius:11px;background:#fff6df;border:1px solid #efd49a;margin-bottom:12px}.sandbox-log-summary span{font-weight:900;color:#80500f}.sandbox-log-summary small{color:var(--muted)}.sandbox-log-list{display:grid;gap:8px}.sandbox-log-list article{display:grid;grid-template-columns:170px minmax(0,1fr) 80px;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#fbfdfc}.sandbox-log-list time{font-variant-numeric:tabular-nums;color:var(--muted);font-size:13px}.sandbox-log-list span{text-align:right;color:var(--muted);font-size:12px}
+.formal-action-hint{margin:13px 0 0;padding:8px 11px;border-radius:9px;background:#eef3f1;color:var(--muted);font-size:13px}
 
 /* 桌面排課是全天長時間使用的畫面：字級優先於壓縮密度。 */
 @media(min-width:861px){
@@ -133,6 +151,7 @@ a{color:inherit;text-decoration:none}
   .student-overview{grid-template-columns:repeat(2,minmax(0,1fr))}
   .period-columns{grid-template-columns:1fr}
   .period-list li{grid-template-columns:92px 62px minmax(0,1fr)}
+  .period-summary{grid-template-columns:64px minmax(145px,1fr) 80px 62px;gap:7px}.period-summary>span:nth-of-type(1),.period-summary>span:nth-of-type(3),.period-summary>span:nth-of-type(4){display:none}.attendance-list li{grid-template-columns:64px 88px 58px minmax(0,1fr)}.sandbox-log-list article{grid-template-columns:1fr}.sandbox-log-list span{text-align:left}.data-mode-actions{flex-wrap:wrap}.data-mode-actions .sandbox-only{flex:1 1 30%}
 }
 
 /* 桌面版課表密集檢視：保留資料與操作，只縮小畫面佔用，讓教室欄位一次呈現。 */
