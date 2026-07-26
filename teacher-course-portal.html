@@ -5,21 +5,21 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#24735c">
   <title>老師課務入口｜柚子樂器</title>
-  <link rel="stylesheet" href="course-portal.css?v=20260726-v1">
+  <link rel="stylesheet" href="course-portal.css?v=20260726-v2">
 </head>
 <body>
   <main class="portal-shell">
     <header class="portal-head">
-      <div class="head-title"><span class="brand-mark">師</span><div><h1>老師課務入口</h1><p>只顯示自己的學生、課表與薪資</p></div></div>
+      <div class="head-title"><span class="brand-mark">師</span><div><h1>老師入口</h1><p>課表・學生・薪資</p></div></div>
       <button class="btn danger hidden" id="logoutBtn" type="button">登出這台裝置</button>
     </header>
 
     <section class="card bind-box" id="bindView">
-      <div class="section-title"><div><h2>第一次使用</h2><p class="muted">使用音教雲裡登記的姓名與手機驗證，再到 LINE 完成綁定。</p></div></div>
+      <div class="section-title"><div><h2>LINE 綁定</h2><p class="muted">請輸入登記資料。</p></div></div>
       <form class="stack" id="bindForm">
         <div class="field"><label>老師姓名</label><input name="name" autocomplete="name" required></div>
         <div class="field"><label>手機號碼</label><input name="phone" inputmode="tel" autocomplete="tel" required></div>
-        <button class="btn primary" type="submit">取得 LINE 綁定文字</button>
+        <button class="btn primary" type="submit">LINE 綁定</button>
       </form>
       <div class="bind-result hidden" data-bind-result></div>
     </section>
@@ -32,22 +32,21 @@
         <article class="summary"><span>本月薪資資料</span><strong id="payrollCount">0</strong></article>
       </div>
       <nav class="tabs">
-        <button class="btn active" type="button" data-tab="schedule">週課表與調課</button>
+        <button class="btn active" type="button" data-tab="schedule">週課表</button>
         <button class="btn" type="button" data-tab="students">我的學生</button>
         <button class="btn" type="button" data-tab="payroll">薪資查詢</button>
-        <a class="btn" href="room-booking.html?from=teacher">租用教室</a>
       </nav>
 
       <section class="card tab-panel" data-panel="schedule">
-        <div class="section-title"><div><h2>本週課表</h2><p class="muted">空白時間也完整保留；點空格可為自己的學生增加課程或老師自贈課。</p></div></div>
+        <div class="section-title"><div><h2>本週課表</h2><p class="muted">點「空堂」即可排課。</p></div></div>
         <div class="toolbar">
           <button class="btn" id="prevWeek" type="button">上一週</button>
           <button class="btn soft" id="thisWeek" type="button">本週</button>
           <button class="btn" id="nextWeek" type="button">下一週</button>
           <span class="badge" id="weekRange"></span>
         </div>
+        <div class="mobile-day-tabs" id="mobileDayTabs"></div>
         <div class="week-scroll"><div class="week-grid" id="weekGrid"></div></div>
-        <div class="notice" style="margin-top:14px">永久調課會從所選日期起更新固定時段；單次調課只影響那一堂。所有操作都保留老師、時間與原課程稽核紀錄。</div>
       </section>
 
       <section class="card tab-panel hidden" data-panel="students">
@@ -88,13 +87,14 @@
   <script src="config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="course-portal-common.js?v=20260726-v1"></script>
+  <script src="course-portal-common.js?v=20260726-v2"></script>
   <script>
   (function () {
     const P = window.CoursePortal;
     let token = '';
     let weekStart = P.monday();
     let data = null;
+    let selectedDayIndex = (new Date().getDay() + 6) % 7;
     const bindView = document.getElementById('bindView');
     const appView = document.getElementById('appView');
     const logoutBtn = document.getElementById('logoutBtn');
@@ -118,28 +118,44 @@
     function renderWeek() {
       const grid = document.getElementById('weekGrid');
       const days = Array.from({ length: 7 }, (_, index) => P.addDays(weekStart, index));
+      const mobile = window.matchMedia('(max-width: 760px)').matches;
+      const visibleDays = mobile ? [days[selectedDayIndex]] : days;
       const events = data.events || [];
       let html = '<div class="week-cell head"></div>';
-      days.forEach((day) => { html += `<div class="week-cell head">${P.escapeHtml(dayLabel(day))}</div>`; });
-      for (let hour = data.hours.start; hour < data.hours.end; hour += 1) {
-        html += `<div class="week-cell time">${String(hour).padStart(2, '0')}:00</div>`;
-        days.forEach((day) => {
-          const rows = events.filter((event) => event.date === day && Number(event.startTime.slice(0, 2)) === hour);
+      visibleDays.forEach((day) => { html += `<div class="week-cell head">${P.escapeHtml(dayLabel(day))}</div>`; });
+      grid.classList.toggle('mobile-day', mobile);
+      for (let minute = data.hours.start * 60; minute < data.hours.end * 60; minute += 30) {
+        const slotStart = `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`;
+        const slotEndMinute = minute + 30;
+        const slotEnd = `${String(Math.floor(slotEndMinute / 60)).padStart(2, '0')}:${String(slotEndMinute % 60).padStart(2, '0')}`;
+        html += `<div class="week-cell time">${slotStart}</div>`;
+        visibleDays.forEach((day) => {
+          const rows = events.filter((event) =>
+            event.date === day && event.startTime < slotEnd && slotStart < event.endTime
+          );
           html += '<div class="week-cell">';
           rows.forEach((event) => {
             const kind = event.type === 'teacher_gift' ? 'gift' : (event.own ? '' : 'busy');
-            const label = event.own
-              ? `${event.startTime} ${event.studentNames.join('、') || '課程'} ${event.roomName || ''}`
-              : `${event.startTime} 教室已使用`;
+            const beginsHere = event.startTime >= slotStart && event.startTime < slotEnd;
+            const label = beginsHere
+              ? (event.own
+                ? `${event.startTime} ${event.studentNames.join('、') || '課程'} ${event.roomName || ''}`
+                : `${event.startTime} 教室已使用`)
+              : '課程進行中';
             html += `<button class="lesson ${kind}" type="button" ${event.own ? `data-event="${P.escapeHtml(event.id)}"` : 'disabled'}>${P.escapeHtml(label)}</button>`;
           });
           if (!rows.length && new Date(`${day}T12:00:00`).getDay() !== 2) {
-            html += `<button class="empty-slot" type="button" data-empty="${day}|${String(hour).padStart(2, '0')}:00">＋</button>`;
+            html += `<button class="empty-slot" type="button" data-empty="${day}|${slotStart}|${slotEnd}">空堂</button>`;
+          } else if (!rows.length) {
+            html += '<span class="closed-slot">公休</span>';
           }
           html += '</div>';
         });
       }
       grid.innerHTML = html;
+      document.getElementById('mobileDayTabs').innerHTML = days.map((day, index) => `
+        <button class="btn ${index === selectedDayIndex ? 'active' : ''}" type="button" data-mobile-day="${index}">${P.escapeHtml(dayLabel(day))}</button>
+      `).join('');
       document.getElementById('weekRange').textContent = `${days[0]} ～ ${days[6]}`;
       document.getElementById('lessonCount').textContent = events.filter((event) => event.own).length;
     }
@@ -239,7 +255,7 @@
       const lesson = event.target.closest('[data-event]');
       if (empty) {
         const parts = empty.dataset.empty.split('|');
-        fillAction({ action: 'extra_lesson', date: parts[0], startTime: parts[1], endTime: `${String(Number(parts[1].slice(0, 2)) + 1).padStart(2, '0')}:00` });
+        fillAction({ action: 'extra_lesson', date: parts[0], startTime: parts[1], endTime: parts[2] });
       }
       if (lesson) {
         const row = data.events.find((item) => item.id === lesson.dataset.event);
@@ -249,6 +265,12 @@
           date: row.date, startTime: row.startTime, endTime: row.endTime
         });
       }
+    });
+    document.getElementById('mobileDayTabs').addEventListener('click', (event) => {
+      const button = event.target.closest('[data-mobile-day]');
+      if (!button) return;
+      selectedDayIndex = Number(button.dataset.mobileDay || 0);
+      renderWeek();
     });
     document.getElementById('rosterList').addEventListener('click', (event) => {
       const button = event.target.closest('[data-student-action]');
@@ -271,6 +293,11 @@
       finally { P.loading(button, false); }
     });
     logoutBtn.addEventListener('click', () => { P.setSession('teacher', ''); location.reload(); });
+    let resizeTimer = 0;
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => { if (data) renderWeek(); }, 120);
+    });
 
     (async () => {
       try {

@@ -5,53 +5,57 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#24735c">
   <title>教室租用｜柚子樂器</title>
-  <link rel="stylesheet" href="course-portal.css?v=20260726-v1">
+  <link rel="stylesheet" href="course-portal.css?v=20260726-v2">
 </head>
 <body>
   <main class="portal-shell">
     <header class="portal-head">
-      <div class="head-title"><span class="brand-mark">租</span><div><h1>教室租用</h1><p>星期一、三～日開放；費用到現場付款</p></div></div>
+      <div class="head-title"><span class="brand-mark">租</span><div><h1>教室租用</h1><p>查看空堂・直接預約</p></div></div>
       <button class="btn danger hidden" id="logoutBtn" type="button">登出</button>
     </header>
 
-    <section class="card bind-box" id="entryView">
-      <div class="section-title"><div><h2>請選擇身分</h2><p class="muted">本校學生使用已綁定資料並享學生價；一般客人只需姓名與電話註冊。</p></div></div>
-      <div class="grid two">
-        <button class="btn primary" type="button" id="studentEntry">我是本校學生／家長</button>
-        <button class="btn soft" type="button" id="publicEntry">我不是本校學生</button>
+    <section class="card bind-box role-question" id="entryView">
+      <h2>您是柚子樂器的學生嗎？</h2>
+      <div class="role-buttons">
+        <button class="btn primary" type="button" id="studentEntry">是，我是柚子學生</button>
+        <button class="btn soft" type="button" id="publicEntry">不是，我是一般租用者</button>
       </div>
     </section>
 
     <section class="card bind-box hidden" id="publicBindView">
-      <div class="section-title"><h2>一般客人註冊</h2><button class="btn" type="button" data-back>返回</button></div>
+      <div class="section-title"><h2>一般租用者</h2><button class="btn" type="button" data-back>返回</button></div>
       <form class="stack" id="publicBindForm">
         <div class="field"><label>姓名</label><input name="name" required></div>
-        <div class="field"><label>手機號碼</label><input name="phone" inputmode="tel" required></div>
-        <button class="btn primary" type="submit">取得 LINE 綁定文字</button>
+        <div class="field"><label>電話</label><input name="phone" inputmode="tel" required></div>
+        <button class="btn primary" type="submit">LINE 綁定</button>
       </form>
       <div class="bind-result hidden" data-bind-result></div>
     </section>
 
     <section class="hidden" id="bookingView">
-      <div class="summary-grid">
-        <article class="summary"><span>租用身分</span><strong id="rateLabel">一般價格</strong></article>
-        <article class="summary"><span>付款方式</span><strong>現場付款</strong></article>
-        <article class="summary"><span>營業日</span><strong>一、三～日</strong></article>
-        <article class="summary"><span>預約狀態</span><strong id="bookingState">尚未預約</strong></article>
+      <div class="toolbar">
+        <span class="badge" id="rateLabel">一般價格</span>
+        <span class="badge">現場付款</span>
+        <button class="btn soft" id="changeRoleBtn" type="button">切換身分</button>
       </div>
+
       <section class="card">
-        <div class="section-title"><div><h2>找空教室</h2><p class="muted">系統會排除已上課、已租用及不適用該科目的教室。</p></div></div>
-        <form class="stack" id="searchForm">
-          <div class="grid three">
-            <div class="field"><label>日期</label><input name="date" type="date" required></div>
-            <div class="field"><label>開始時間</label><input name="startTime" type="time" min="10:00" max="20:30" step="1800" required></div>
-            <div class="field"><label>租用長度</label><select name="durationMinutes"><option value="30">30 分鐘</option><option value="60" selected>1 小時</option><option value="90">1.5 小時</option><option value="120">2 小時</option></select></div>
-            <div class="field"><label>用途／科目</label><select name="subjectId" id="subjectSelect"><option value="">一般空間使用</option></select></div>
-            <div class="field" style="grid-column:span 2"><label>用途說明</label><input name="purpose" placeholder="例如：鋼琴練習、爵士鼓練習"></div>
+        <div class="section-title"><div><h2>選擇時間</h2><p class="muted">綠色時段可以預約。</p></div></div>
+        <div class="field">
+          <label>使用項目</label>
+          <select id="subjectSelect"><option value="">全部教室</option></select>
+        </div>
+        <div class="date-strip" id="dateStrip"></div>
+        <div class="rental-board" id="rentalBoard"><p class="muted">正在讀取空堂…</p></div>
+
+        <div class="rental-choice-panel hidden" id="choicePanel">
+          <div class="section-title"><div><h3 id="selectedTime">選擇教室</h3><p class="muted">費用依租用時間計算。</p></div></div>
+          <div class="grid two">
+            <div class="field"><label>租用時間</label><select id="durationSelect"><option value="30">30分鐘</option><option value="60" selected>1小時</option><option value="90">1.5小時</option><option value="120">2小時</option></select></div>
+            <div class="field"><label>用途</label><input id="purposeInput" placeholder="例如：鋼琴練習"></div>
           </div>
-          <button class="btn primary" type="submit">搜尋可用教室</button>
-        </form>
-        <div class="list" id="roomList" style="margin-top:16px"></div>
+          <div class="list" id="roomList" style="margin-top:14px"></div>
+        </div>
       </section>
     </section>
   </main>
@@ -59,62 +63,130 @@
   <script src="config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="course-portal-common.js?v=20260726-v1"></script>
+  <script src="course-portal-common.js?v=20260726-v2"></script>
   <script>
   (function () {
     const P = window.CoursePortal;
     let role = '';
     let token = '';
-    let lastSearch = null;
+    let selectedDate = todayKey();
+    let selectedStart = '';
+    let boardData = null;
+    let roomData = null;
     const entryView = document.getElementById('entryView');
     const bindView = document.getElementById('publicBindView');
     const bookingView = document.getElementById('bookingView');
+
+    function todayKey() {
+      const date = new Date();
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    }
 
     function show(view) {
       [entryView, bindView, bookingView].forEach((node) => node.classList.toggle('hidden', node !== view));
       document.getElementById('logoutBtn').classList.toggle('hidden', view !== bookingView);
     }
 
-    function studentToken() {
-      return P.getSession('student');
+    function studentToken() { return P.getSession('student'); }
+    function teacherToken() { return P.getSession('teacher'); }
+
+    function dayLabel(key) {
+      const date = new Date(`${key}T12:00:00`);
+      return {
+        weekday: `週${'日一二三四五六'[date.getDay()]}`,
+        date: `${date.getMonth() + 1}/${date.getDate()}`
+      };
     }
 
-    function teacherToken() {
-      return P.getSession('teacher');
+    function renderDateStrip() {
+      document.getElementById('dateStrip').innerHTML = Array.from({ length: 7 }, (_, index) => {
+        const key = P.addDays(todayKey(), index);
+        const label = dayLabel(key);
+        return `<button class="btn date-chip ${key === selectedDate ? 'active' : ''}" type="button" data-date="${key}"><strong>${label.weekday}</strong><small>${label.date}</small></button>`;
+      }).join('');
     }
 
-    function openBooking(nextRole, nextToken) {
-      role = nextRole;
-      token = nextToken;
-      document.getElementById('rateLabel').textContent = role === 'student' ? '本校學生半價' : (role === 'teacher' ? '老師租用' : '一般價格');
-      show(bookingView);
+    function renderBoard() {
+      const node = document.getElementById('rentalBoard');
+      if (boardData.closed) {
+        node.innerHTML = '<div class="notice">星期二公休，請選擇其他日期。</div>';
+        return;
+      }
+      node.innerHTML = boardData.slots.map((slot) => {
+        const available = slot.availableCount > 0;
+        const rooms = slot.rooms.map((room) => room.name).join('、');
+        return `
+          <button class="rental-slot ${available ? '' : 'unavailable'} ${slot.startTime === selectedStart ? 'selected' : ''}" type="button" ${available ? `data-slot="${slot.startTime}"` : 'disabled'}>
+            <span class="rental-slot-time">${slot.startTime}</span>
+            <span class="rental-slot-count">${available ? `${slot.availableCount}間可租` : '已滿'}</span>
+            <span class="rental-slot-rooms">${P.escapeHtml(rooms || '沒有空教室')}</span>
+          </button>`;
+      }).join('');
     }
 
-    async function searchRooms(form, button) {
-      P.loading(button, true, '檢查課表中…');
+    function populateSubjects(subjects) {
+      const select = document.getElementById('subjectSelect');
+      if (select.options.length > 1) return;
+      (subjects || []).forEach((subject) => {
+        const option = document.createElement('option');
+        option.value = subject.id;
+        option.textContent = subject.name;
+        select.appendChild(option);
+      });
+    }
+
+    async function loadBoard() {
+      document.getElementById('choicePanel').classList.add('hidden');
+      selectedStart = '';
+      document.getElementById('rentalBoard').innerHTML = '<p class="muted">正在讀取空堂…</p>';
       try {
-        const values = Object.fromEntries(new FormData(form).entries());
-        lastSearch = await P.call('coursePortalRentalAvailability', Object.assign({ sessionToken: token }, values));
-        const subjectSelect = document.getElementById('subjectSelect');
-        if (subjectSelect.options.length === 1 && Array.isArray(lastSearch.subjects)) {
-          lastSearch.subjects.forEach((subject) => {
-            const option = document.createElement('option');
-            option.value = subject.id;
-            option.textContent = subject.name;
-            subjectSelect.appendChild(option);
-          });
-        }
-        const list = document.getElementById('roomList');
-        list.innerHTML = lastSearch.rooms.map((room) => `
+        boardData = await P.call('coursePortalRentalDayBoard', {
+          sessionToken: token,
+          date: selectedDate,
+          subjectId: document.getElementById('subjectSelect').value
+        });
+        populateSubjects(boardData.subjects);
+        renderDateStrip();
+        renderBoard();
+      } catch (error) {
+        document.getElementById('rentalBoard').innerHTML = '<p class="muted">讀取失敗。</p>';
+        P.toast(error.message, 'error');
+      }
+    }
+
+    async function loadRooms() {
+      if (!selectedStart) return;
+      const list = document.getElementById('roomList');
+      list.innerHTML = '<p class="muted">正在確認完整租用時間…</p>';
+      try {
+        roomData = await P.call('coursePortalRentalAvailability', {
+          sessionToken: token,
+          date: selectedDate,
+          startTime: selectedStart,
+          durationMinutes: document.getElementById('durationSelect').value,
+          subjectId: document.getElementById('subjectSelect').value
+        });
+        list.innerHTML = roomData.rooms.filter((room) => room.available).map((room) => `
           <article class="list-row">
             <strong>${P.escapeHtml(room.name)}</strong>
             <span>${P.escapeHtml(room.priceType)}</span>
-            <span>${P.money(room.price)}</span>
-            <span class="badge ${room.available ? '' : 'danger'}">${room.available ? '可以預約' : P.escapeHtml(room.reason)}</span>
-            ${room.available ? `<button class="btn primary" type="button" data-book-room="${P.escapeHtml(room.id)}">預約</button>` : '<span></span>'}
-          </article>`).join('') || '<p class="muted">沒有符合條件的教室。</p>';
-      } catch (error) { P.toast(error.message, 'error'); }
-      finally { P.loading(button, false); }
+            <strong>${P.money(room.price)}</strong>
+            <span class="badge">可預約</span>
+            <button class="btn primary" type="button" data-book-room="${P.escapeHtml(room.id)}">預約</button>
+          </article>`).join('') || '<div class="notice">這段完整時間沒有可用教室，請縮短時間或選擇其他時段。</div>';
+      } catch (error) {
+        list.innerHTML = '<p class="muted">讀取失敗。</p>';
+        P.toast(error.message, 'error');
+      }
+    }
+
+    async function openBooking(nextRole, nextToken) {
+      role = nextRole;
+      token = nextToken;
+      document.getElementById('rateLabel').textContent = role === 'student' ? '柚子學生價' : (role === 'teacher' ? '老師租用' : '一般價格');
+      show(bookingView);
+      renderDateStrip();
+      await loadBoard();
     }
 
     document.getElementById('studentEntry').addEventListener('click', () => {
@@ -127,51 +199,67 @@
     document.getElementById('publicBindForm').addEventListener('submit', async (event) => {
       event.preventDefault();
       const button = event.submitter;
-      P.loading(button, true, '產生中…');
+      P.loading(button, true, '處理中…');
       try { await P.startBinding('renter', event.currentTarget); } catch (error) { P.toast(error.message, 'error'); }
       finally { P.loading(button, false); }
     });
-    document.getElementById('searchForm').addEventListener('submit', (event) => {
-      event.preventDefault();
-      searchRooms(event.currentTarget, event.submitter);
+    document.getElementById('dateStrip').addEventListener('click', (event) => {
+      const button = event.target.closest('[data-date]');
+      if (!button) return;
+      selectedDate = button.dataset.date;
+      renderDateStrip();
+      loadBoard();
     });
+    document.getElementById('subjectSelect').addEventListener('change', loadBoard);
+    document.getElementById('rentalBoard').addEventListener('click', (event) => {
+      const button = event.target.closest('[data-slot]');
+      if (!button) return;
+      selectedStart = button.dataset.slot;
+      renderBoard();
+      document.getElementById('selectedTime').textContent = `${selectedDate}　${selectedStart}`;
+      document.getElementById('choicePanel').classList.remove('hidden');
+      loadRooms();
+      document.getElementById('choicePanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    document.getElementById('durationSelect').addEventListener('change', loadRooms);
     document.getElementById('roomList').addEventListener('click', async (event) => {
       const button = event.target.closest('[data-book-room]');
-      if (!button || !lastSearch) return;
+      if (!button || !roomData) return;
       P.loading(button, true, '預約中…');
       try {
-        const values = Object.fromEntries(new FormData(document.getElementById('searchForm')).entries());
-        const result = await P.call('coursePortalCreateRoomBooking', Object.assign({
+        const result = await P.call('coursePortalCreateRoomBooking', {
           sessionToken: token,
-          roomId: button.dataset.bookRoom
-        }, values));
-        document.getElementById('bookingState').textContent = '已保留';
-        P.toast(`預約完成：${result.booking.date} ${result.booking.startTime}，費用現場支付 ${P.money(result.booking.amount)}。`);
-        document.getElementById('roomList').innerHTML = '<div class="notice">預約已保留，費用到現場付款。若要取消，請聯絡櫃台。</div>';
+          roomId: button.dataset.bookRoom,
+          date: selectedDate,
+          startTime: selectedStart,
+          durationMinutes: document.getElementById('durationSelect').value,
+          subjectId: document.getElementById('subjectSelect').value,
+          purpose: document.getElementById('purposeInput').value
+        });
+        P.toast(`預約完成，現場付款 ${P.money(result.booking.amount)}。`);
+        document.getElementById('roomList').innerHTML = `<div class="notice"><strong>預約完成</strong><br>${P.escapeHtml(result.booking.date)}　${P.escapeHtml(result.booking.startTime)}～${P.escapeHtml(result.booking.endTime)}<br>現場付款 ${P.money(result.booking.amount)}</div>`;
+        await loadBoard();
       } catch (error) { P.toast(error.message, 'error'); }
       finally { P.loading(button, false); }
     });
+    document.getElementById('changeRoleBtn').addEventListener('click', () => show(entryView));
     document.getElementById('logoutBtn').addEventListener('click', () => {
       if (role === 'renter') P.setSession('renter', '');
       show(entryView);
     });
-    const today = new Date();
-    today.setDate(today.getDate() + 1);
-    document.querySelector('[name="date"]').value = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-    document.querySelector('[name="startTime"]').value = '10:00';
 
     (async () => {
       try {
         const params = new URLSearchParams(location.search);
         if (params.get('access')) {
           token = await P.exchangeAccess('renter');
-          openBooking('renter', token);
+          await openBooking('renter', token);
         } else if (params.get('from') === 'student' && studentToken()) {
-          openBooking('student', studentToken());
+          await openBooking('student', studentToken());
         } else if (params.get('from') === 'teacher' && teacherToken()) {
-          openBooking('teacher', teacherToken());
+          await openBooking('teacher', teacherToken());
         } else if (P.getSession('renter')) {
-          openBooking('renter', P.getSession('renter'));
+          await openBooking('renter', P.getSession('renter'));
         } else {
           show(entryView);
         }

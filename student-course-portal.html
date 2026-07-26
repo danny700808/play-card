@@ -5,32 +5,30 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#24735c">
   <title>學生與家長入口｜柚子樂器</title>
-  <link rel="stylesheet" href="course-portal.css?v=20260726-v1">
+  <link rel="stylesheet" href="course-portal.css?v=20260726-v2">
 </head>
 <body>
   <main class="portal-shell">
     <header class="portal-head">
-      <div class="head-title"><span class="brand-mark">生</span><div><h1>學生／家長入口</h1><p>課程、簽到、學費與 LINE 提醒</p></div></div>
+      <div class="head-title"><span class="brand-mark">生</span><div><h1>學生入口</h1><p>課程・學費・簽到</p></div></div>
       <button class="btn danger hidden" id="logoutBtn" type="button">登出這台裝置</button>
     </header>
 
     <section class="card bind-box" id="bindView">
-      <div class="section-title"><div><h2>綁定學生資料</h2><p class="muted">同一名學生可由本人、父母或其他家長分別綁定，各自保留提醒設定。</p></div></div>
+      <div class="section-title"><div><h2>LINE 綁定</h2><p class="muted">請輸入學生登記資料。</p></div></div>
       <form class="stack" id="bindForm">
         <div class="field"><label>學生姓名</label><input name="name" required></div>
-        <div class="field"><label>音教雲登記的聯絡電話</label><input name="phone" inputmode="tel" required></div>
-        <div class="field"><label>您與學生的關係</label><select name="relationship"><option>本人</option><option>父親</option><option>母親</option><option>家長</option><option>其他照顧者</option></select></div>
-        <button class="btn primary" type="submit">取得 LINE 綁定文字</button>
+        <div class="field"><label>登記電話</label><input name="phone" inputmode="tel" required></div>
+        <div class="field"><label>您的身分</label><select name="relationship"><option>本人</option><option>父親</option><option>母親</option><option>家長</option><option>其他照顧者</option></select></div>
+        <button class="btn primary" type="submit">LINE 綁定</button>
       </form>
       <div class="bind-result hidden" data-bind-result></div>
-      <p class="notice">若同一支 LINE 還要管理另一名學生，完成登入後可再按「增加另一位學生」。</p>
     </section>
 
     <section class="hidden" id="appView">
       <div class="toolbar">
         <div class="field"><label>查看學生</label><select id="studentSelect"></select></div>
         <button class="btn soft" id="addStudentBinding" type="button">＋ 增加另一位學生</button>
-        <a class="btn" href="room-booking.html?from=student">預約教室（本校半價）</a>
       </div>
       <div class="summary-grid">
         <article class="summary"><span>學生</span><strong id="studentName">—</strong></article>
@@ -71,7 +69,7 @@
   <script src="config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="course-portal-common.js?v=20260726-v1"></script>
+  <script src="course-portal-common.js?v=20260726-v2"></script>
   <script>
   (function () {
     const P = window.CoursePortal;
