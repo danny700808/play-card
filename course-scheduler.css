@@ -47,6 +47,12 @@ a{color:inherit;text-decoration:none}
 .settings-tabs,.record-tabs{display:flex;gap:7px;overflow:auto;margin-bottom:13px;padding:5px;background:#e3ebe7;border-radius:13px}.settings-tabs button,.record-tabs button{border:0;background:transparent;border-radius:9px;padding:9px 13px;font-weight:900;white-space:nowrap}.settings-tabs button.active,.record-tabs button.active{background:#fff;color:var(--green-dark);box-shadow:0 2px 8px rgba(18,53,45,.08)}.settings-panel{display:none}.settings-panel.active{display:block}.settings-card,.notice-card{padding:18px;margin-bottom:13px}.settings-card h3,.notice-card h3{margin:0 0 4px;font-size:20px}.settings-card>p{margin:0 0 14px;color:var(--muted);font-size:14px}.notice-card{border-left:5px solid var(--green)}.notice-card ul{margin:8px 0 0;padding-left:23px}.notice-card li{margin:5px 0}.policy-toolbar{padding:12px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px}.policy-toolbar span{font-size:13px;color:var(--muted)}.policy-body{padding-top:8px!important}.policy-row{display:grid;grid-template-columns:92px 120px 120px minmax(240px,1fr);gap:11px;align-items:center;padding:10px;border-bottom:1px solid #ebf0ee}.policy-row.hour{border-top:1px solid var(--line-strong)}.policy-row strong{font-variant-numeric:tabular-nums}.check-label{display:flex;align-items:center;gap:7px;font-weight:800;font-size:14px}.check-label input{width:19px;height:19px}
 .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}.form-grid.three{grid-template-columns:repeat(3,minmax(0,1fr))}.field{min-width:0}.field.span-2{grid-column:span 2}.field.full{grid-column:1/-1}.field label{display:block;margin-bottom:5px;font-size:14px;font-weight:900;color:#3d554d}.required:after{content:" *";color:var(--red)}.field input,.field select,.field textarea{width:100%;min-height:46px;border:1px solid var(--line-strong);border-radius:10px;background:#fff;padding:9px 11px;outline:none}.field textarea{min-height:88px;resize:vertical}.field small{display:block;margin-top:4px;color:var(--muted);font-size:12px}.text-button{margin-top:5px;border:0;background:transparent;color:var(--green);padding:0;font-weight:900}.validation-box,.snapshot-box{margin-top:14px;padding:12px 14px;border-radius:11px;background:#eaf7f1;color:#156049;border:1px solid #cce8dc;font-size:13px}.validation-box b,.snapshot-box b{display:block}.validation-box span{display:block}.validation-box.has-conflict{background:#fff0ef;color:#a23b36;border-color:#efc4c1}
 .modal-backdrop{position:fixed;inset:0;z-index:90;background:rgba(8,28,24,.62);display:none;align-items:center;justify-content:center;padding:22px}.modal-backdrop.open{display:flex}.modal{width:min(680px,100%);max-height:92vh;background:#fff;border-radius:20px;overflow:auto;box-shadow:0 30px 90px rgba(0,0,0,.28)}.modal.large{width:min(910px,100%)}.modal.extra-large{width:min(1190px,100%)}.modal-head{position:sticky;top:0;z-index:4;background:#fff;border-bottom:1px solid var(--line);padding:17px 20px;display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.modal-head h2{margin:0;font-size:24px}.modal-head p{margin:3px 0 0;color:var(--muted);font-size:13px}.modal-close{border:0;background:#edf2f0;color:#4f625c;width:39px;height:39px;border-radius:10px;font-size:24px}.modal-body{padding:19px 20px}.modal-foot{position:sticky;bottom:0;z-index:4;background:#fff;border-top:1px solid var(--line);padding:13px 20px;display:flex;justify-content:flex-end;gap:9px}.modal-foot.spread{justify-content:space-between;flex-wrap:wrap}.event-head{border-top:9px solid var(--blue)}.event-type-badge{display:inline-flex;padding:4px 8px;border-radius:999px;background:#e8f1fb;color:#2b6391;font-size:12px;font-weight:900}.detail-hero{display:grid;grid-template-columns:1.1fr .9fr;gap:13px}.detail-block{border:1px solid var(--line);border-radius:13px;padding:14px}.detail-block h3{margin:0 0 9px;font-size:18px}.detail-line{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid #edf2f0;font-size:14px}.detail-line:last-child{border:0}.detail-line span{color:var(--muted)}.detail-line b{text-align:right}.status-actions{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin-top:13px}.status-actions button{border:1px solid var(--line-strong);background:#fff;border-radius:10px;padding:11px 7px;font-weight:900}.status-actions button:hover{background:#eff7f3;border-color:#6caa94}.record-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin-bottom:13px}.record-summary article{background:#f2f7f5;border-radius:11px;padding:11px}.record-summary span{display:block;color:var(--muted);font-size:12px}.record-summary strong{font-size:19px}.timeline{display:grid;gap:8px}.timeline-item{border-left:4px solid var(--green);background:#f7faf9;border-radius:0 10px 10px 0;padding:9px 11px}.timeline-item small{color:var(--muted)}
+.event-compact-summary{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px}
+.event-compact-summary>div{min-width:0;padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:#f7faf8}
+.event-compact-summary small{display:block;color:var(--muted);font-size:11px}
+.event-compact-summary b{display:block;margin-top:2px;font-size:14px;overflow-wrap:anywhere}
+.event-note{margin:9px 0 0;padding:8px 10px;border-radius:9px;background:#f4f7f5;color:var(--muted);font-size:13px}
+.event-tuition-section{margin-top:13px;padding-top:12px;border-top:1px solid var(--line)}
 .toast-stack{position:fixed;right:18px;bottom:18px;z-index:150;width:min(390px,calc(100vw - 36px));display:grid;gap:8px}.toast{background:var(--nav);color:#fff;border-radius:13px;padding:12px 14px;box-shadow:var(--shadow);animation:toast-in .2s ease}.toast.error{background:#953d38}.toast b{display:block}.toast span{font-size:13px;opacity:.82}@keyframes toast-in{from{opacity:0;transform:translateY(8px)}}
 @media(max-width:1180px){.kpi-grid{grid-template-columns:repeat(2,1fr)}.teacher-grid{grid-template-columns:repeat(2,1fr)}.form-grid.three{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:860px){
@@ -85,7 +91,7 @@ a{color:inherit;text-decoration:none}
 /* 學生完整資料：單一頁面、依期別由舊至新閱讀。 */
 .student-sheet{background:#f4f8f6}
 .student-overview{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px}
-.student-overview>div{min-width:0;padding:13px 14px;border:1px solid var(--line);border-radius:12px;background:#fff}
+.student-overview>div{min-width:0;padding:9px 11px;border:1px solid var(--line);border-radius:10px;background:#fff}
 .student-overview span{display:block;color:var(--muted);font-size:13px}
 .student-overview b{display:block;margin-top:3px;font-size:17px;overflow-wrap:anywhere}
 .student-note,.student-section{margin-top:14px;padding:16px;border:1px solid var(--line);border-radius:14px;background:#fff}
@@ -115,18 +121,32 @@ a{color:inherit;text-decoration:none}
 .student-schedule .data-table{min-width:760px}
 .student-record-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.student-record-heading h3{margin:0;font-size:20px}.student-record-heading p{margin:2px 0 12px;color:var(--muted);font-size:13px}
 .tuition-table-wrap{overflow:auto;border:1px solid var(--line);border-radius:12px;background:#fff}
-.tuition-record-table{width:100%;min-width:900px;border-collapse:collapse;background:#fff}
+.tuition-record-table{width:100%;min-width:1160px;border-collapse:collapse;background:#fff;table-layout:fixed}
 .tuition-record-table th{padding:10px 11px;background:#e9f2ed;color:#395d52;font-size:13px;text-align:left;white-space:nowrap}
 .tuition-record-table td{padding:11px;border-top:1px solid var(--line);vertical-align:middle;font-size:14px}
 .tuition-record-table td small{display:block;margin-top:2px;color:var(--muted);font-size:12px}
+.tuition-record-table th:nth-child(1),.tuition-record-table td:nth-child(1){width:76px}
+.tuition-record-table th:nth-child(2),.tuition-record-table td:nth-child(2){width:220px}
+.tuition-record-table th:nth-child(3),.tuition-record-table td:nth-child(3){width:116px}
+.tuition-record-table th:nth-child(4),.tuition-record-table td:nth-child(4){width:520px}
+.tuition-record-table th:nth-child(5),.tuition-record-table td:nth-child(5){width:112px}
+.tuition-record-table th:nth-child(6),.tuition-record-table td:nth-child(6){width:116px}
 .tuition-period-row.latest td{background:#f4faf7}
 .tuition-period-row td:first-child b{color:var(--green-dark);white-space:nowrap}
 .tuition-due{display:inline-block;padding:4px 7px;border-radius:7px;background:#fff0ef;color:#aa352f;font-size:15px;white-space:nowrap}
 .tuition-paid{color:var(--green-dark);font-weight:900;white-space:nowrap}
 .tuition-readonly{color:var(--muted);font-size:12px;white-space:nowrap}
+.lesson-slots{display:flex;flex-wrap:nowrap;gap:6px;min-width:max-content}
+.lesson-slot{display:grid;align-content:center;min-width:118px;min-height:58px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:#fff}
+.lesson-slot small{margin:0!important;font-size:10px!important}
+.lesson-slot b{font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.lesson-slot em{color:var(--muted);font-size:10px;font-style:normal}
+.lesson-slot.completed{border-color:#78aa97;background:#edf7f2}.lesson-slot.completed em{color:var(--green-dark);font-weight:900}
+.lesson-slot.pending{border-style:dashed;background:#fafcfa}
 .tuition-detail-row.hidden{display:none}
 .tuition-detail-row>td{padding:0;background:#f7faf8}
-.tuition-detail-row .period-details{padding:14px 15px;border-left:4px solid #78aa97}
+.period-payment-detail{display:grid;grid-template-columns:230px minmax(0,1fr);gap:14px;padding:12px 14px;border-left:4px solid #78aa97}
+.period-payment-detail>div small{display:block;margin-top:3px;color:var(--muted)}
 .compact-periods{gap:8px}.period-record{border:1px solid var(--line);border-radius:11px;background:#fff;overflow:hidden}.period-record.latest{border-color:#78aa97}.period-record>summary{list-style:none;cursor:pointer}.period-record>summary::-webkit-details-marker{display:none}.period-summary{display:grid;grid-template-columns:78px minmax(190px,1.7fr) repeat(4,minmax(90px,.7fr)) 64px;align-items:center;gap:10px;padding:11px 13px}.period-summary:hover{background:#f4f9f6}.period-summary>b{color:var(--green-dark)}.period-summary span{min-width:0}.period-summary span small{display:block;color:var(--muted);font-size:11px}.period-summary .period-plan{font-weight:800;overflow-wrap:anywhere}.period-summary .due{color:#a43c36;font-weight:900}.period-summary .paid{color:var(--green-dark);font-weight:900}.period-summary>strong{justify-self:end;color:var(--green);font-size:13px}.period-record[open] .period-summary{background:#eef6f2;border-bottom:1px solid var(--line)}.period-record[open] .period-summary>strong::after{content:"中"}.period-details{padding:13px 14px}.period-detail-title{display:flex;justify-content:space-between;gap:12px;margin-bottom:8px}.period-detail-title span{font-weight:900}.period-detail-title small{color:var(--muted)}.attendance-list li{grid-template-columns:70px 100px 70px minmax(0,1fr)}.formal-view-note{width:100%;padding:9px 12px;border-radius:9px;background:#eef4f1;color:var(--muted);font-size:13px;text-align:center}
 .sandbox-log-summary{display:grid;gap:3px;padding:13px 14px;border-radius:11px;background:#fff6df;border:1px solid #efd49a;margin-bottom:12px}.sandbox-log-summary span{font-weight:900;color:#80500f}.sandbox-log-summary small{color:var(--muted)}.sandbox-log-list{display:grid;gap:8px}.sandbox-log-list article{display:grid;grid-template-columns:170px minmax(0,1fr) 80px;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#fbfdfc}.sandbox-log-list time{font-variant-numeric:tabular-nums;color:var(--muted);font-size:13px}.sandbox-log-list span{text-align:right;color:var(--muted);font-size:12px}
 .formal-action-hint{margin:13px 0 0;padding:8px 11px;border-radius:9px;background:#eef3f1;color:var(--muted);font-size:13px}
@@ -148,8 +168,10 @@ a{color:inherit;text-decoration:none}
 
 @media(max-width:860px){
   .schedule-scroll{min-height:600px}
+  .event-compact-summary{grid-template-columns:repeat(2,minmax(0,1fr))}
   .student-overview{grid-template-columns:repeat(2,minmax(0,1fr))}
   .period-columns{grid-template-columns:1fr}
+  .period-payment-detail{grid-template-columns:1fr}
   .period-list li{grid-template-columns:92px 62px minmax(0,1fr)}
   .period-summary{grid-template-columns:64px minmax(145px,1fr) 80px 62px;gap:7px}.period-summary>span:nth-of-type(1),.period-summary>span:nth-of-type(3),.period-summary>span:nth-of-type(4){display:none}.attendance-list li{grid-template-columns:64px 88px 58px minmax(0,1fr)}.sandbox-log-list article{grid-template-columns:1fr}.sandbox-log-list span{text-align:left}.data-mode-actions{flex-wrap:wrap}.data-mode-actions .sandbox-only{flex:1 1 30%}
 }
