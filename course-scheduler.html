@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#233b35">
   <title>新版排課系統｜柚子樂器</title>
   <link rel="icon" href="yuzu-logo-green.png">
-  <link rel="stylesheet" href="course-scheduler.css?v=20260726-room-period-v10">
+  <link rel="stylesheet" href="course-scheduler.css?v=20260726-quick-week-v11">
 </head>
 <body>
   <div class="app-shell">
@@ -49,27 +49,33 @@
       <section class="view active" id="calendarPage">
         <div class="calendar-toolbar card">
           <div class="date-actions">
-            <button class="icon-btn" type="button" data-day-step="-1" aria-label="前一天">‹</button>
-            <div class="date-heading"><strong id="dateTitle"></strong><span id="dateSubtitle"></span></div>
-            <button class="icon-btn" type="button" data-day-step="1" aria-label="後一天">›</button>
-            <input class="control" id="calendarDate" type="date">
             <button class="btn soft" type="button" id="todayBtn">今天</button>
+            <button class="icon-btn" type="button" data-day-step="-1" aria-label="前一天">‹</button>
+            <input class="control" id="calendarDate" type="date">
+            <button class="icon-btn" type="button" data-day-step="1" aria-label="後一天">›</button>
+            <button class="btn outline" type="button" id="weekScheduleBtn">週課表</button>
+            <div class="date-heading"><strong id="dateTitle"></strong><span id="dateSubtitle"></span></div>
           </div>
           <div class="toolbar-actions"><button class="btn outline" type="button" id="conflictBtn">檢查衝突</button><button class="btn dark" type="button" data-view-jump="settings">教室與規則</button><button class="btn primary" type="button" id="calendarNewEvent">＋ 新增排課</button></div>
         </div>
 
-        <div class="kpi-grid">
+        <section class="week-schedule card hidden" id="weekSchedulePanel">
+          <div class="week-toolbar"><div><strong>老師週課表</strong><span id="weekRange"></span></div><div class="week-controls"><select class="control" id="weekTeacher"></select><button class="btn outline" type="button" data-week-step="-1">上一週</button><button class="btn soft" type="button" id="thisWeekBtn">本週</button><button class="btn outline" type="button" data-week-step="1">下一週</button><button class="btn dark" type="button" id="closeWeekBtn">返回日表</button></div></div>
+          <div class="week-days" id="weekScheduleDays"></div>
+        </section>
+
+        <div class="kpi-grid" id="dailyKpis">
           <article class="card kpi"><span>今日課程</span><strong id="kpiLessons">0</strong><small>不含教室租用</small></article>
           <article class="card kpi"><span>已簽到</span><strong id="kpiAttended">0</strong><small>完成堂數勾稽</small></article>
           <article class="card kpi"><span>教室使用</span><strong id="kpiRooms">0 / 0</strong><small>有安排／啟用</small></article>
           <article class="card kpi"><span>待處理</span><strong id="kpiWarnings">0</strong><small>衝突、請假或曠課</small></article>
         </div>
 
-        <div class="legend card">
+        <div class="legend card" id="dailyLegend">
           <b>課表標示</b><span><i class="fixed"></i>固定課</span><span><i class="single"></i>老師調課</span><span><i class="rental"></i>教室租用</span><span><i class="trial"></i>體驗課</span><span class="legend-attended">左側深色條＝已簽到</span><span class="legend-muted">半透明＝請假／停課</span>
         </div>
 
-        <section class="schedule-card card">
+        <section class="schedule-card card" id="dailySchedule">
           <div class="schedule-instructions hidden"><span id="calendarHint"></span></div>
           <div class="clipboard-bar hidden" id="clipboardBar"><span id="clipboardText"></span><button class="btn small outline" type="button" id="cancelClipboard">取消</button></div>
           <div class="schedule-scroll" id="scheduleScroll"><div class="schedule-grid" id="scheduleGrid"></div></div>
@@ -135,25 +141,36 @@
       <form id="scheduleForm">
         <div class="modal-body">
           <input type="hidden" id="eventId"><input type="hidden" id="eventSeriesId">
+          <div class="schedule-kind-tabs" id="scheduleTypeTabs">
+            <button type="button" data-schedule-kind="fixed">固定學生課程</button>
+            <button type="button" data-schedule-kind="single">單堂加課</button>
+            <button type="button" data-schedule-kind="rental">教室租用</button>
+            <button type="button" data-schedule-kind="trial">體驗課</button>
+          </div>
           <div class="form-grid three">
             <div class="field"><label class="required">日期</label><input id="eventDate" type="date" required></div>
             <div class="field"><label class="required">開始時間</label><select id="eventStart" required></select></div>
             <div class="field"><label class="required">時數</label><select id="eventDuration"><option value="30">30 分鐘</option><option value="60">60 分鐘</option><option value="90">90 分鐘</option><option value="120">2 小時</option><option value="150">2.5 小時</option><option value="180">3 小時</option><option value="240">4 小時</option></select></div>
             <div class="field"><label class="required">教室</label><select id="eventRoom" required></select></div>
-            <div class="field"><label class="required">類型</label><select id="eventType"><option value="fixed">固定課程</option><option value="single">單堂／調課</option><option value="rental">租用空間</option><option value="trial">體驗課</option></select></div>
+            <div class="field hidden"><label class="required">類型</label><select id="eventType"><option value="fixed">固定課程</option><option value="single">單堂／調課</option><option value="rental">租用空間</option><option value="trial">體驗課</option></select></div>
             <div class="field" id="frequencyField"><label>頻率</label><select id="eventFrequency"><option value="once">只排本次</option><option value="weekly">每週</option><option value="biweekly">隔週</option></select></div>
             <div class="field hidden" id="repeatUntilField"><label>固定課結束日（可留空）</label><input id="eventRepeatUntil" type="date"><small>留空表示持續保留固定時段；系統不會預先建立未來每一堂課。</small></div>
-            <div class="field span-2" id="studentField"><label>上課學生</label><select id="eventStudent"></select><button class="text-button" type="button" id="quickAddStudent">＋ 新增學生</button></div>
-            <div class="field"><label>課程科目</label><select id="eventSubject"></select></div>
-            <div class="field"><label>上課老師</label><select id="eventTeacher"></select><small id="teacherFilterHint">依科目顯示可授課老師</small></div>
+            <div class="field full student-course-only" id="studentField"><label>搜尋既有學生</label><input id="eventStudentSearch" autocomplete="off" placeholder="輸入學生姓名或電話"><select class="hidden" id="eventStudent"></select><div class="student-match-list hidden" id="eventStudentMatches"></div><div class="selected-student hidden" id="eventStudentSelected"></div><button class="text-button" type="button" id="quickAddStudent">＋ 新增學生</button></div>
+            <div class="field learning-only" id="subjectField"><label>課程科目</label><select id="eventSubject"></select></div>
+            <div class="field learning-only" id="teacherField"><label>上課老師</label><select id="eventTeacher"></select><small id="teacherFilterHint">依科目顯示可授課老師</small></div>
             <div class="field span-2" id="tuitionPeriodField"><label>扣抵學費期別</label><select id="eventTuitionPeriod"></select><small>排課本身不扣堂，簽到後才從此期別扣抵。</small></div>
-            <div class="field rental-only hidden"><label>租用客戶</label><input id="eventClient" placeholder="姓名或團體名稱"></div>
-            <div class="field rental-only hidden"><label>租用金額</label><input id="eventRentalFee" type="number" min="0" step="1"></div>
+            <div class="field trial-only hidden"><label>體驗者姓名</label><input id="eventTrialName" placeholder="請輸入姓名"></div>
+            <div class="field trial-only hidden"><label>聯絡電話</label><input id="eventTrialPhone" placeholder="手機或市話"></div>
+            <div class="field trial-only hidden"><label>體驗費用</label><input id="eventTrialFee" type="number" min="0" step="1"></div>
+            <div class="field rental-only hidden"><label>租用客戶／團體</label><input id="eventClient" placeholder="姓名或團體名稱"></div>
+            <div class="field rental-only hidden"><label>聯絡電話</label><input id="eventClientPhone" placeholder="手機或市話"></div>
+            <div class="field rental-only hidden"><label>實際租用金額</label><input id="eventRentalFee" type="number" min="0" step="1"><small>會先帶入教室預設價格，現場仍可直接修改。</small></div>
+            <div class="field rental-only hidden"><label>收款狀態</label><select id="eventRentalPaymentStatus"><option value="unpaid">未收款</option><option value="paid">已收款</option></select></div>
             <div class="field full"><label>備註</label><textarea id="eventNote" placeholder="調課來源、器材需求、特殊提醒等"></textarea></div>
           </div>
           <div class="validation-box" id="conflictBox"><b>尚未發現衝突</b><span>會檢查教室、老師、學生，以及教室每個跨越時段的規則。</span></div>
         </div>
-        <div class="modal-foot"><button class="btn outline" type="button" data-close-modal="scheduleModal">取消</button><button class="btn primary" type="submit">儲存排課</button></div>
+        <div class="modal-foot"><button class="btn outline" type="button" data-close-modal="scheduleModal">取消</button><button class="btn primary progress-button" type="submit" id="scheduleSubmitBtn"><span>儲存排課</span></button></div>
       </form>
     </div>
   </div>
@@ -167,7 +184,7 @@
   </div>
 
   <div class="modal-backdrop" id="tuitionModal" role="dialog" aria-modal="true" aria-labelledby="tuitionModalTitle">
-    <div class="modal large"><div class="modal-head"><div><h2 id="tuitionModalTitle">新增學費期別</h2><p id="tuitionModalSubtitle">本次固定新增 1 期；一期堂數與金額由收費方案帶入。</p></div><button class="modal-close" type="button" data-close-modal="tuitionModal">×</button></div><form id="tuitionForm"><div class="modal-body"><input id="tuitionId" type="hidden"><input id="tuitionPeriodNo" type="hidden"><div class="form-grid three"><div class="field"><label class="required">學生</label><select id="tuitionStudent" required></select></div><div class="field"><label class="required">科目</label><select id="tuitionSubject" required></select></div><div class="field"><label>固定老師（沿用上一期，可更換）</label><select id="tuitionTeacher"></select></div><div class="field span-2"><label class="required">收費方案</label><select id="tuitionPlan" required></select></div><div class="field"><label>本次購買期數</label><input id="tuitionPurchasePeriods" type="number" value="1" readonly></div><div class="field"><label>堂數</label><input id="tuitionLessonCount" type="number" min="1"></div><div class="field"><label>應收金額</label><input id="tuitionAmount" type="number" min="0"></div><div class="field"><label>折扣</label><input id="tuitionDiscount" type="number" min="0"></div><div class="field full collect-now-field" id="tuitionCollectField"><label><input id="tuitionCollectNow" type="checkbox"> 建立新期數時，同時登記本次收費</label><small>取消勾選時，新一期會先顯示未繳費。</small></div><div class="field" id="tuitionPaymentDateField"><label>本次收費日期</label><input id="tuitionPaymentDate" type="date"></div><div class="field" id="tuitionPaymentAmountField"><label>本次實際收費</label><input id="tuitionPaymentAmount" type="number" min="0"></div><div class="field" id="tuitionPaymentMethodField"><label>收費方式</label><select id="tuitionPaymentMethod"><option>現金</option><option>店面營收</option><option>線上繳費</option><option>轉帳</option><option>街口支付</option><option>刷卡</option></select></div><div class="field hidden"><label>開始日期</label><input id="tuitionStartDate" type="date"></div><div class="field hidden"><label>到期日期</label><input id="tuitionExpiryDate" type="date"></div><div class="field full"><label>備註</label><textarea id="tuitionNote"></textarea></div></div><div class="snapshot-box" id="tuitionSnapshot"></div></div><div class="modal-foot"><button class="btn outline" type="button" data-close-modal="tuitionModal">取消</button><button class="btn primary" type="submit">儲存 1 期</button></div></form></div>
+    <div class="modal large"><div class="modal-head"><div><h2 id="tuitionModalTitle">新增學費期別</h2><p id="tuitionModalSubtitle">本次可購買一個或多個期別；每一期會沿用相同方案。</p></div><button class="modal-close" type="button" data-close-modal="tuitionModal">×</button></div><form id="tuitionForm"><div class="modal-body"><input id="tuitionId" type="hidden"><input id="tuitionPeriodNo" type="hidden"><div class="form-grid three"><div class="field"><label class="required">學生</label><select id="tuitionStudent" required></select></div><div class="field"><label class="required">科目</label><select id="tuitionSubject" required></select></div><div class="field"><label>固定老師（沿用上一期，可更換）</label><select id="tuitionTeacher"></select></div><div class="field span-2"><label class="required">收費方案</label><select id="tuitionPlan" required></select></div><div class="field"><label>本次購買期數</label><input id="tuitionPurchasePeriods" type="number" min="1" max="24" value="1"><small>可輸入 1～24 期。</small></div><div class="field"><label>每期堂數</label><input id="tuitionLessonCount" type="number" min="1"></div><div class="field"><label>每期應收金額</label><input id="tuitionAmount" type="number" min="0"></div><div class="field"><label>每期折扣</label><input id="tuitionDiscount" type="number" min="0"></div><div class="field full collect-now-field" id="tuitionCollectField"><label><input id="tuitionCollectNow" type="checkbox"> 建立新期數時，同時登記本次收費</label><small>取消勾選時，新增的期別會先顯示未繳費。</small></div><div class="field" id="tuitionPaymentDateField"><label>本次收費日期</label><input id="tuitionPaymentDate" type="date"></div><div class="field" id="tuitionPaymentAmountField"><label>本次實際收費總額</label><input id="tuitionPaymentAmount" type="number" min="0"></div><div class="field" id="tuitionPaymentMethodField"><label>收費方式</label><select id="tuitionPaymentMethod"><option>現金</option><option>店面營收</option><option>線上繳費</option><option>轉帳</option><option>街口支付</option><option>刷卡</option></select></div><div class="field hidden"><label>開始日期</label><input id="tuitionStartDate" type="date"></div><div class="field hidden"><label>到期日期</label><input id="tuitionExpiryDate" type="date"></div><div class="field full"><label>備註</label><textarea id="tuitionNote"></textarea></div></div><div class="snapshot-box" id="tuitionSnapshot"></div></div><div class="modal-foot"><button class="btn outline" type="button" data-close-modal="tuitionModal">取消</button><button class="btn primary progress-button" type="submit" id="tuitionSubmitBtn"><span>儲存 1 期</span></button></div></form></div>
   </div>
 
   <div class="modal-backdrop" id="lessonActionModal" role="dialog" aria-modal="true" aria-labelledby="lessonActionTitle">
@@ -198,6 +215,7 @@
     <div class="modal extra-large"><div class="modal-head"><div><h2 id="policyModalTitle">教室時段規則</h2><p>勾選「可排課」或「可租用」；未勾選的時段不開放。</p></div><button class="modal-close" type="button" data-close-modal="policyModal">×</button></div><div class="policy-toolbar"><select class="control" id="policyWeekday"></select><span>適用科目留白代表所有科目。</span></div><div class="modal-body policy-body" id="policyModalBody"></div><div class="modal-foot"><button class="btn outline" type="button" data-close-modal="policyModal">取消</button><button class="btn primary" type="button" id="savePolicyBtn">儲存時段規則</button></div></div>
   </div>
 
+  <div class="operation-progress hidden" id="operationProgress" aria-live="polite"><div class="operation-progress-track"><i></i></div><b id="operationProgressText">正在處理</b></div>
   <div class="toast-stack" id="toastStack" aria-live="polite"></div>
 
   <script src="config.js?v=20260722-course-scheduler-v2"></script>
@@ -205,6 +223,6 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
   <script src="course-scheduler-data.js?v=20260726-sandbox-v1"></script>
   <script src="course-scheduler-review-data.js?v=20260723-review-window-v1"></script>
-  <script src="course-scheduler.js?v=20260726-room-period-v10"></script>
+  <script src="course-scheduler.js?v=20260726-quick-week-v11"></script>
 </body>
 </html>
