@@ -411,12 +411,34 @@
     weekMode=!!enabled;$('weekSchedulePanel').classList.toggle('hidden',!weekMode);$('dailyKpis').classList.toggle('hidden',weekMode);$('dailyLegend').classList.toggle('hidden',weekMode);$('dailySchedule').classList.toggle('hidden',weekMode);$('weekScheduleBtn').classList.toggle('active',weekMode);
     if(weekMode){weekAnchor=weekAnchor||state.currentDate||todayKey();renderWeekSchedule();}
   }
+  function uniqueWeekEvents(rows){
+    var seen={};return rows.filter(function(event){var key=[event.id,event.start,event.teacherId,event.roomId].join('|');if(seen[key])return false;seen[key]=true;return true;});
+  }
+  function weekEventCard(event,date,conflict){
+    var studentCount=(event.studentIds||[]).length,groupLabel=studentCount>2?'團體課':studentCount===2?'雙人課':'',end=minToTime(timeToMin(event.start)+numberOf(event.duration));
+    return '<button type="button" class="week-event '+esc(event.type)+(event.specialLesson?' special':'')+(conflict?' week-conflict-event':'')+'" data-week-event-id="'+esc(event.id)+'" data-week-event-date="'+date+'"><time>'+esc(event.start)+'–'+esc(end)+'</time><b>'+esc(eventDisplayName(event))+'</b><span>'+(groupLabel?'<em>'+groupLabel+'</em>':'')+(event.specialLesson?'贈送／特殊加課・':'')+esc(subjectById(event.subjectId).name||typeName(event.type))+'・'+esc(roomById(event.roomId).name||'未設定教室')+'</span></button>';
+  }
   function renderWeekSchedule(){
     if(!weekMode)return;var start=weekStartKey(weekAnchor||state.currentDate),end=shiftDate(start,6),selected=$('weekTeacher').value,teachers=state.teachers.filter(function(row){return row.active!==false;}).sort(teacherSort);
     fillSelect($('weekTeacher'),teachers,function(row){return row.name;},function(row){return row.id;},'請選擇老師');
     if(selected&&teachers.some(function(row){return row.id===selected;}))$('weekTeacher').value=selected;else if(teachers.length)$('weekTeacher').value=teachers[0].id;
     var teacherId=$('weekTeacher').value;$('weekRange').textContent=start.replace(/-/g,'/')+' ～ '+end.replace(/-/g,'/');
-    var html='';for(var offset=0;offset<7;offset++){var date=shiftDate(start,offset),rows=effectiveEventsForDate(date).filter(function(event){return event.teacherId===teacherId&&event.type!=='rental'&&!isHiddenEvent(event);});html+='<section class="week-day'+(date===todayKey()?' today':'')+'"><header><b>'+weekdayName(date)+'</b><time>'+date.replace(/-/g,'/')+'</time></header><div>'+((rows.map(function(event){return '<button type="button" class="week-event '+esc(event.type)+(event.specialLesson?' special':'')+'" data-week-event-id="'+esc(event.id)+'" data-week-event-date="'+date+'"><time>'+esc(event.start)+'–'+esc(minToTime(timeToMin(event.start)+numberOf(event.duration)))+'</time><b>'+esc(eventDisplayName(event))+'</b><span>'+(event.specialLesson?'贈送／特殊加課・':'')+esc(subjectById(event.subjectId).name||typeName(event.type))+'・'+esc(roomById(event.roomId).name||'未設定教室')+'</span></button>';}).join(''))||'<p>本日沒有課程</p>')+'</div></section>';}
+    var dates=[],eventsByDate={};for(var offset=0;offset<7;offset++){var date=shiftDate(start,offset);dates.push(date);eventsByDate[date]=uniqueWeekEvents(effectiveEventsForDate(date).filter(function(event){return event.teacherId===teacherId&&event.type!=='rental'&&!isHiddenEvent(event);}));}
+    var slots=[];for(var min=state.settings.startHour*60;min<state.settings.endHour*60;min+=30)slots.push(min);
+    var html='<div class="teacher-week-grid"><div class="teacher-week-corner">時間</div>';
+    dates.forEach(function(date){html+='<header class="teacher-week-day-head'+(date===todayKey()?' today':'')+'"><b>'+weekdayName(date)+'</b><time>'+date.replace(/-/g,'/')+'</time></header>';});
+    slots.forEach(function(slotMin){
+      var slotTime=minToTime(slotMin);html+='<div class="teacher-week-time'+(slotMin%60===0?' hour':'')+'">'+slotTime+'</div>';
+      dates.forEach(function(date){
+        var rows=eventsByDate[date].filter(function(event){var eventStart=timeToMin(event.start),eventEnd=eventStart+numberOf(event.duration);return eventStart<slotMin+30&&eventEnd>slotMin;});
+        html+='<div class="teacher-week-slot'+(slotMin%60===0?' hour':'')+(rows.length>1?' has-conflict':'')+'">';
+        if(!rows.length)html+='<span class="teacher-week-empty">空堂</span>';
+        else if(rows.length===1)html+=weekEventCard(rows[0],date,false);
+        else{html+='<span class="teacher-week-overlap">⚠ 同時 '+rows.length+' 堂</span><div class="teacher-week-event-stack">';rows.forEach(function(event){html+=weekEventCard(event,date,true);});html+='</div>';}
+        html+='</div>';
+      });
+    });
+    html+='</div>';
     $('weekScheduleDays').innerHTML=html;
   }
 

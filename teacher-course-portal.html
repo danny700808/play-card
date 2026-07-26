@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#24735c">
   <title>老師課務入口｜柚子樂器</title>
-  <link rel="stylesheet" href="course-portal.css?v=20260726-v2">
+  <link rel="stylesheet" href="course-portal.css?v=20260726-v3">
 </head>
 <body>
   <main class="portal-shell">
@@ -115,12 +115,47 @@
       return `${date.getMonth() + 1}/${date.getDate()}（${'日一二三四五六'[date.getDay()]}）`;
     }
 
+    function uniqueLessonRows(rows) {
+      const found = new Map();
+      rows.forEach((event) => {
+        const key = [
+          event.id, event.startTime, event.endTime, event.roomId,
+          (event.studentIds || []).slice().sort().join(',')
+        ].join('|');
+        if (!found.has(key)) found.set(key, event);
+      });
+      return [...found.values()];
+    }
+
+    function lessonCard(event, beginsHere, conflict) {
+      const names = (event.studentNames || []).join('、') || '未指定學生';
+      const studentNames = event.studentNames || [];
+      const groupLabel = studentNames.length > 2
+        ? '團體課'
+        : (studentNames.length === 2 ? '雙人課' : '');
+      const details = [event.subjectName, event.roomName].filter(Boolean).join('・');
+      const classNames = [
+        'lesson',
+        event.type === 'teacher_gift' ? 'gift' : '',
+        groupLabel ? 'group-lesson' : '',
+        conflict ? 'conflict-lesson' : ''
+      ].filter(Boolean).join(' ');
+      return `
+        <button class="${classNames}" type="button" data-event="${P.escapeHtml(event.id)}">
+          <span class="lesson-time">${P.escapeHtml(event.startTime)}～${P.escapeHtml(event.endTime)}${groupLabel ? `<em>${groupLabel}</em>` : ''}</span>
+          <strong>${P.escapeHtml(names)}</strong>
+          <small>${P.escapeHtml(beginsHere ? details : '課程進行中')}</small>
+        </button>`;
+    }
+
     function renderWeek() {
       const grid = document.getElementById('weekGrid');
       const days = Array.from({ length: 7 }, (_, index) => P.addDays(weekStart, index));
       const mobile = window.matchMedia('(max-width: 760px)').matches;
       const visibleDays = mobile ? [days[selectedDayIndex]] : days;
-      const events = data.events || [];
+      // 老師週課表只顯示這位老師自己的課；其他教室是否有空，
+      // 等老師點選空堂準備排課時再由後端檢查。
+      const events = (data.events || []).filter((event) => event.own);
       let html = '<div class="week-cell head"></div>';
       visibleDays.forEach((day) => { html += `<div class="week-cell head">${P.escapeHtml(dayLabel(day))}</div>`; });
       grid.classList.toggle('mobile-day', mobile);
@@ -130,20 +165,22 @@
         const slotEnd = `${String(Math.floor(slotEndMinute / 60)).padStart(2, '0')}:${String(slotEndMinute % 60).padStart(2, '0')}`;
         html += `<div class="week-cell time">${slotStart}</div>`;
         visibleDays.forEach((day) => {
-          const rows = events.filter((event) =>
+          const rows = uniqueLessonRows(events.filter((event) =>
             event.date === day && event.startTime < slotEnd && slotStart < event.endTime
-          );
+          ));
           html += '<div class="week-cell">';
-          rows.forEach((event) => {
-            const kind = event.type === 'teacher_gift' ? 'gift' : (event.own ? '' : 'busy');
+          if (rows.length > 1) {
+            html += `<div class="overlap-note">⚠ 同時${rows.length}堂</div><div class="lesson-cluster conflict">`;
+            rows.forEach((event) => {
+              const beginsHere = event.startTime >= slotStart && event.startTime < slotEnd;
+              html += lessonCard(event, beginsHere, true);
+            });
+            html += '</div>';
+          } else if (rows.length === 1) {
+            const event = rows[0];
             const beginsHere = event.startTime >= slotStart && event.startTime < slotEnd;
-            const label = beginsHere
-              ? (event.own
-                ? `${event.startTime} ${event.studentNames.join('、') || '課程'} ${event.roomName || ''}`
-                : `${event.startTime} 教室已使用`)
-              : '課程進行中';
-            html += `<button class="lesson ${kind}" type="button" ${event.own ? `data-event="${P.escapeHtml(event.id)}"` : 'disabled'}>${P.escapeHtml(label)}</button>`;
-          });
+            html += `<div class="lesson-cluster">${lessonCard(event, beginsHere, false)}</div>`;
+          }
           if (!rows.length && new Date(`${day}T12:00:00`).getDay() !== 2) {
             html += `<button class="empty-slot" type="button" data-empty="${day}|${slotStart}|${slotEnd}">空堂</button>`;
           } else if (!rows.length) {
@@ -157,7 +194,7 @@
         <button class="btn ${index === selectedDayIndex ? 'active' : ''}" type="button" data-mobile-day="${index}">${P.escapeHtml(dayLabel(day))}</button>
       `).join('');
       document.getElementById('weekRange').textContent = `${days[0]} ～ ${days[6]}`;
-      document.getElementById('lessonCount').textContent = events.filter((event) => event.own).length;
+      document.getElementById('lessonCount').textContent = events.length;
     }
 
     function renderRoster() {
