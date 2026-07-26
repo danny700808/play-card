@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#233b35">
   <title>新版排課系統｜柚子樂器</title>
   <link rel="icon" href="yuzu-logo-green.png">
-  <link rel="stylesheet" href="course-scheduler.css?v=20260726-auto-renew-v7">
+  <link rel="stylesheet" href="course-scheduler.css?v=20260726-refund-drag-v8">
 </head>
 <body>
   <div class="app-shell">
@@ -72,7 +72,7 @@
         <section class="schedule-card card">
           <div class="schedule-instructions hidden"><span id="calendarHint"></span></div>
           <div class="clipboard-bar hidden" id="clipboardBar"><span id="clipboardText"></span><button class="btn small outline" type="button" id="cancelClipboard">取消</button></div>
-          <div class="schedule-scroll"><div class="schedule-grid" id="scheduleGrid"></div></div>
+          <div class="schedule-scroll" id="scheduleScroll"><div class="schedule-grid" id="scheduleGrid"></div></div>
         </section>
       </section>
 
@@ -170,8 +170,12 @@
     <div class="modal large"><div class="modal-head"><div><h2 id="tuitionModalTitle">新增學費期別</h2><p>本次固定新增 1 期；一期堂數與金額由收費方案帶入。</p></div><button class="modal-close" type="button" data-close-modal="tuitionModal">×</button></div><form id="tuitionForm"><div class="modal-body"><input id="tuitionId" type="hidden"><input id="tuitionPeriodNo" type="hidden"><div class="form-grid three"><div class="field"><label class="required">學生</label><select id="tuitionStudent" required></select></div><div class="field"><label class="required">科目</label><select id="tuitionSubject" required></select></div><div class="field"><label>固定老師（沿用上一期，可更換）</label><select id="tuitionTeacher"></select></div><div class="field span-2"><label class="required">收費方案</label><select id="tuitionPlan" required></select></div><div class="field"><label>本次購買期數</label><input id="tuitionPurchasePeriods" type="number" value="1" readonly></div><div class="field"><label>堂數</label><input id="tuitionLessonCount" type="number" min="1"></div><div class="field"><label>應收金額</label><input id="tuitionAmount" type="number" min="0"></div><div class="field"><label>折扣</label><input id="tuitionDiscount" type="number" min="0"></div><div class="field hidden"><label>開始日期</label><input id="tuitionStartDate" type="date"></div><div class="field hidden"><label>到期日期</label><input id="tuitionExpiryDate" type="date"></div><div class="field full"><label>備註</label><textarea id="tuitionNote"></textarea></div></div><div class="snapshot-box" id="tuitionSnapshot"></div></div><div class="modal-foot"><button class="btn outline" type="button" data-close-modal="tuitionModal">取消</button><button class="btn primary" type="submit">儲存 1 期</button></div></form></div>
   </div>
 
+  <div class="modal-backdrop" id="lessonActionModal" role="dialog" aria-modal="true" aria-labelledby="lessonActionTitle">
+    <div class="modal"><div class="modal-head"><div><h2 id="lessonActionTitle">課堂處理</h2><p>作廢不改變學費；退款會建立退款紀錄並結束所選堂數。</p></div><button class="modal-close" type="button" data-close-modal="lessonActionModal">×</button></div><div class="modal-body"><input id="lessonActionPeriodId" type="hidden"><input id="lessonActionSlotNo" type="hidden"><div id="lessonActionBody"></div></div><div class="modal-foot spread" id="lessonActionFoot"><button class="btn outline" type="button" data-close-modal="lessonActionModal">取消</button><div><button class="btn secondary" type="button" data-lesson-action="void">作廢這一堂</button> <button class="btn danger" type="button" data-lesson-action="refund">退款這一堂</button></div></div></div>
+  </div>
+
   <div class="modal-backdrop" id="transactionModal" role="dialog" aria-modal="true" aria-labelledby="transactionModalTitle">
-    <div class="modal"><div class="modal-head"><div><h2 id="transactionModalTitle">新增付款／退款</h2><p>每筆異動獨立保存，不直接覆寫已繳金額。</p></div><button class="modal-close" type="button" data-close-modal="transactionModal">×</button></div><form id="transactionForm"><div class="modal-body"><input id="transactionPeriodId" type="hidden"><div class="form-grid two"><div class="field"><label>類型</label><select id="transactionType"><option value="payment">付款</option><option value="refund">退款</option></select></div><div class="field"><label>日期</label><input id="transactionDate" type="date"></div><div class="field"><label>金額</label><input id="transactionAmount" type="number" min="0" required></div><div class="field"><label>付款／退款方式</label><select id="transactionMethod"><option>店面營收</option><option>線上繳費</option><option>轉帳</option><option>街口支付</option><option>刷卡</option><option>現金</option></select></div><div class="field full hidden" id="refundLessonField"><label>退款連動課堂</label><select id="transactionRefundAttendance"></select><small>若選擇一堂課，退款後該堂會在測試資料中註銷，並取消堂數與老師薪資。</small></div><div class="field full"><label>備註／原因</label><textarea id="transactionNote"></textarea></div></div></div><div class="modal-foot"><button class="btn outline" type="button" data-close-modal="transactionModal">取消</button><button class="btn primary" type="submit">儲存紀錄</button></div></form></div>
+    <div class="modal"><div class="modal-head"><div><h2 id="transactionModalTitle">新增收費／退款</h2><p>退款可選擇堂數與指定課堂，金額會依本期單堂費自動計算。</p></div><button class="modal-close" type="button" data-close-modal="transactionModal">×</button></div><form id="transactionForm"><div class="modal-body"><input id="transactionPeriodId" type="hidden"><input id="transactionPreferredSlot" type="hidden"><div class="form-grid two"><div class="field"><label>類型</label><select id="transactionType"><option value="payment">收費</option><option value="refund">退款</option></select></div><div class="field"><label>日期</label><input id="transactionDate" type="date"></div><div class="field"><label>金額</label><input id="transactionAmount" type="number" min="0" required></div><div class="field"><label>收費／退款方式</label><select id="transactionMethod"><option>店面營收</option><option>線上繳費</option><option>轉帳</option><option>街口支付</option><option>刷卡</option><option>現金</option></select></div><div class="field full hidden" id="refundLessonField"><div class="form-grid two"><div class="field"><label>退款堂數</label><select id="transactionRefundCount"></select><small>變更堂數後會自動重新計算退款金額。</small></div><div class="field"><label>本期單堂金額</label><input id="transactionLessonPrice" readonly></div></div><label>指定退款課堂</label><div class="refund-slot-choices" id="refundSlotChoices"></div><input id="transactionRefundAttendance" type="hidden"><small>可直接勾選要退款的課堂；已作廢或已退款的堂數不會重複計算。</small></div><div class="field full"><label>備註／原因</label><textarea id="transactionNote"></textarea></div></div></div><div class="modal-foot"><button class="btn outline" type="button" data-close-modal="transactionModal">取消</button><button class="btn primary" type="submit">儲存紀錄</button></div></form></div>
   </div>
 
   <div class="modal-backdrop" id="sandboxLogModal" role="dialog" aria-modal="true" aria-labelledby="sandboxLogTitle">
@@ -201,6 +205,6 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
   <script src="course-scheduler-data.js?v=20260726-sandbox-v1"></script>
   <script src="course-scheduler-review-data.js?v=20260723-review-window-v1"></script>
-  <script src="course-scheduler.js?v=20260726-auto-renew-v7"></script>
+  <script src="course-scheduler.js?v=20260726-refund-drag-v8"></script>
 </body>
 </html>
