@@ -13,6 +13,7 @@ const {
   latestAuditSchedule,
   latestMigrationRunId
 } = require('./injiaoyunEducationPreview');
+const { appendCoursePortalData } = require('./coursePortal');
 
 if (!admin.apps.length) admin.initializeApp();
 
@@ -519,7 +520,7 @@ async function readMirrorPayload() {
   Object.keys(MIRROR_TYPES).forEach((type, index) => {
     payload[type] = snapshots[index].docs.map((doc) => jsonValue((doc.data() || {}).source)).filter(Boolean);
   });
-  return payload;
+  return appendCoursePortalData(payload);
 }
 
 function registerInjiaoyunEducationMirror(exportsObject) {

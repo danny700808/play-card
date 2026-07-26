@@ -10,6 +10,7 @@ const { registerPlatformOrderSync } = require('./platformOrderSync');
 const { registerInjiaoyunManualSync } = require('./injiaoyunManualSync');
 const { registerInjiaoyunEducationPreview } = require('./injiaoyunEducationPreview');
 const { registerInjiaoyunEducationMirror } = require('./injiaoyunEducationMirror');
+const { registerCoursePortal, handleCoursePortalLineEvent } = require('./coursePortal');
 
 if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
@@ -20,6 +21,7 @@ registerPlatformOrderSync(exports);
 registerInjiaoyunManualSync(exports);
 registerInjiaoyunEducationPreview(exports);
 registerInjiaoyunEducationMirror(exports);
+registerCoursePortal(exports, { pushLineMessage });
 
 const ADMIN_EMAILS = new Set(['danny700808@gmail.com']);
 const DEFAULT_ADMIN_DOC_ID = 'ADMIN_DANNY';
@@ -2156,6 +2158,14 @@ exports.lineWebhook = onRequest(
         const replyToken = event.replyToken;
 
         if (await handleExternalTeacherLineEvent(event)) {
+          continue;
+        }
+
+        if (await handleCoursePortalLineEvent(event, {
+          replyLineMessage,
+          getLineProfile,
+          pushLineMessage
+        })) {
           continue;
         }
 
