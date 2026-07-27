@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#24735c">
   <title>老師課務入口｜柚子樂器</title>
-  <link rel="stylesheet" href="course-portal.css?v=20260727-v4">
+  <link rel="stylesheet" href="course-portal.css?v=20260727-v5">
 </head>
 <body>
   <main class="portal-shell">
@@ -184,20 +184,23 @@
       // 老師週課表只顯示這位老師自己的課；其他教室是否有空，
       // 等老師點選空堂準備排課時再由後端檢查。
       const events = (data.events || []).filter((event) => event.own);
-      let html = '<div class="week-cell head"></div>';
-      visibleDays.forEach((day) => { html += `<div class="week-cell head">${P.escapeHtml(dayLabel(day))}</div>`; });
+      let html = '<div class="week-cell head" style="grid-column:1;grid-row:1"></div>';
+      visibleDays.forEach((day, dayIndex) => {
+        html += `<div class="week-cell head" style="grid-column:${dayIndex + 2};grid-row:1">${P.escapeHtml(dayLabel(day))}</div>`;
+      });
       const scheduleStart = data.hours.start * 60;
       grid.classList.toggle('mobile-day', mobile);
-      for (let minute = data.hours.start * 60; minute < data.hours.end * 60; minute += 30) {
+      for (let minute = data.hours.start * 60, slotIndex = 0; minute < data.hours.end * 60; minute += 30, slotIndex += 1) {
         const slotStart = `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`;
         const slotEndMinute = minute + 30;
         const slotEnd = `${String(Math.floor(slotEndMinute / 60)).padStart(2, '0')}:${String(slotEndMinute % 60).padStart(2, '0')}`;
-        html += `<div class="week-cell time">${slotStart}</div>`;
-        visibleDays.forEach((day) => {
+        const gridRow = slotIndex + 2;
+        html += `<div class="week-cell time" style="grid-column:1;grid-row:${gridRow}">${slotStart}</div>`;
+        visibleDays.forEach((day, dayIndex) => {
           const rows = uniqueLessonRows(events.filter((event) =>
             event.date === day && event.startTime < slotEnd && slotStart < event.endTime
           ));
-          html += '<div class="week-cell">';
+          html += `<div class="week-cell" style="grid-column:${dayIndex + 2};grid-row:${gridRow}">`;
           if (!rows.length && new Date(`${day}T12:00:00`).getDay() !== 2) {
             html += `<button class="empty-slot" type="button" data-empty="${day}|${slotStart}|${slotEnd}">空堂</button>`;
           } else if (!rows.length) {

@@ -80,26 +80,26 @@ a { color: inherit; }
 .badge.danger { background: #fbeaea; color: var(--red); }
 .week-scroll { overflow: auto; border: 1px solid var(--line); border-radius: 15px; background: #fff; }
 .week-grid {
-  min-width: 920px; display: grid; grid-template-columns: 72px repeat(7, 1fr); grid-auto-rows: minmax(52px, auto);
+  min-width: 840px; display: grid; grid-template-columns: 58px repeat(7, 1fr); grid-template-rows: 44px; grid-auto-rows: 42px;
 }
-.week-grid.mobile-day { min-width: 0; grid-template-columns: 72px minmax(220px, 1fr); }
-.week-cell { position: relative; z-index: 0; min-height: 52px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 5px; }
-.week-cell.head { position: sticky; top: 0; z-index: 2; min-height: 46px; background: #f0f5f2; text-align: center; font-weight: 800; }
-.week-cell.time { position: sticky; left: 0; z-index: 1; background: #f8faf8; font-weight: 800; text-align: center; }
+.week-grid.mobile-day { min-width: 0; grid-template-columns: 58px minmax(220px, 1fr); }
+.week-cell { position: relative; z-index: 0; min-height: 0; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 2px; }
+.week-cell.head { position: sticky; top: 0; z-index: 2; min-height: 0; padding: 4px; background: #f0f5f2; text-align: center; font-size: 12px; font-weight: 800; }
+.week-cell.time { position: sticky; left: 0; z-index: 1; padding: 5px 3px; background: #f8faf8; font-size: 10px; font-weight: 800; text-align: center; }
 .lesson-placement {
-  position: relative; z-index: 1; min-width: 0; margin: 3px; align-self: stretch;
+  position: relative; z-index: 1; min-width: 0; margin: 2px; align-self: stretch;
 }
-.lesson-placement > .lesson { height: 100%; box-shadow: 0 2px 7px rgba(18,53,45,.16); }
-.lesson-overlap-placement { padding: 3px; border: 1px solid #e5a49b; border-radius: 9px; background: #fff1ee; overflow: hidden; }
+.lesson-placement > .lesson { height: 100%; box-shadow: 0 1px 4px rgba(18,53,45,.15); }
+.lesson-overlap-placement { padding: 2px; border: 1px solid #e5a49b; border-radius: 7px; background: #fff1ee; overflow: hidden; }
 .lesson {
-  width: 100%; min-width: 0; margin: 0; padding: 7px; border: 0; border-radius: 8px; background: var(--green); color: #fff;
-  font-size: 13px; line-height: 1.3; text-align: left; cursor: pointer;
+  width: 100%; min-width: 0; margin: 0; padding: 4px 5px; border: 0; border-radius: 7px; background: var(--green); color: #fff;
+  font-size: 10px; line-height: 1.15; text-align: left; cursor: pointer;
 }
 .lesson > span, .lesson > strong, .lesson > small { display: block; overflow: hidden; text-overflow: ellipsis; }
-.lesson > strong { margin: 3px 0; font-size: 14px; }
-.lesson > small { white-space: nowrap; opacity: .9; }
+.lesson > strong { margin: 1px 0; font-size: 12px; white-space: nowrap; }
+.lesson > small { font-size: 9px; white-space: nowrap; opacity: .9; }
 .lesson-time { white-space: nowrap; }
-.lesson-time em { display: inline-block; margin-left: 5px; padding: 1px 5px; border-radius: 999px; background: rgba(255,255,255,.22); color: #fff; font-size: 11px; font-style: normal; }
+.lesson-time em { display: inline-block; margin-left: 3px; padding: 0 4px; border-radius: 999px; background: rgba(255,255,255,.22); color: #fff; font-size: 8px; font-style: normal; }
 .lesson.busy { background: #96a49e; }
 .lesson.gift { background: #8a54a4; }
 .lesson.group-lesson { background: #496ca0; }
@@ -108,9 +108,9 @@ a { color: inherit; }
 .lesson-cluster.conflict { display: flex; height: calc(100% - 21px); gap: 5px; overflow-x: auto; }
 .lesson-cluster.conflict .lesson { flex: 1 0 124px; }
 .overlap-note { margin-bottom: 3px; color: #a53f33; font-size: 12px; font-weight: 900; }
-.empty-slot { display: block; width: 100%; min-height: 40px; border: 1px dashed #bed3c8; border-radius: 8px; background: #f7fbf8; color: #5e796e; cursor: pointer; font-weight: 800; }
+.empty-slot { display: block; width: 100%; height: 100%; min-height: 0; border: 1px dashed #d4e2dc; border-radius: 6px; background: #f9fbfa; color: #7c9088; cursor: pointer; font-size: 9px; font-weight: 700; }
 .empty-slot:hover { background: var(--green-soft); color: var(--green); }
-.closed-slot { display: grid; min-height: 40px; place-items: center; color: #a2aaa6; background: #f3f4f3; border-radius: 8px; font-size: 13px; }
+.closed-slot { display: grid; height: 100%; min-height: 0; place-items: center; color: #a2aaa6; background: #f3f4f3; border-radius: 6px; font-size: 9px; }
 .mobile-day-tabs { display: none; gap: 8px; overflow-x: auto; margin: 0 0 10px; padding-bottom: 3px; }
 .mobile-day-tabs .btn { white-space: nowrap; min-height: 40px; padding: 7px 11px; }
 .mobile-day-tabs .btn.active { background: var(--ink); color: #fff; }

@@ -430,13 +430,13 @@
     var teacherId=$('weekTeacher').value;$('weekRange').textContent=start.replace(/-/g,'/')+' ～ '+end.replace(/-/g,'/');
     var dates=[],eventsByDate={};for(var offset=0;offset<7;offset++){var date=shiftDate(start,offset);dates.push(date);eventsByDate[date]=uniqueWeekEvents(effectiveEventsForDate(date).filter(function(event){return event.teacherId===teacherId&&event.type!=='rental'&&!isHiddenEvent(event);}));}
     var scheduleStart=state.settings.startHour*60,slots=[];for(var min=scheduleStart;min<state.settings.endHour*60;min+=30)slots.push(min);
-    var html='<div class="teacher-week-grid"><div class="teacher-week-corner">時間</div>';
-    dates.forEach(function(date){html+='<header class="teacher-week-day-head'+(date===todayKey()?' today':'')+'"><b>'+weekdayName(date)+'</b><time>'+date.replace(/-/g,'/')+'</time></header>';});
-    slots.forEach(function(slotMin){
-      var slotTime=minToTime(slotMin);html+='<div class="teacher-week-time'+(slotMin%60===0?' hour':'')+'">'+slotTime+'</div>';
-      dates.forEach(function(date){
+    var html='<div class="teacher-week-grid"><div class="teacher-week-corner" style="grid-column:1;grid-row:1">時間</div>';
+    dates.forEach(function(date,dateIndex){html+='<header class="teacher-week-day-head'+(date===todayKey()?' today':'')+'" style="grid-column:'+(dateIndex+2)+';grid-row:1"><b>'+weekdayName(date)+'</b><time>'+date.replace(/-/g,'/')+'</time></header>';});
+    slots.forEach(function(slotMin,slotIndex){
+      var gridRow=slotIndex+2,slotTime=minToTime(slotMin);html+='<div class="teacher-week-time'+(slotMin%60===0?' hour':'')+'" style="grid-column:1;grid-row:'+gridRow+'">'+slotTime+'</div>';
+      dates.forEach(function(date,dateIndex){
         var rows=eventsByDate[date].filter(function(event){var eventStart=timeToMin(event.start),eventEnd=eventStart+numberOf(event.duration);return eventStart<slotMin+30&&eventEnd>slotMin;});
-        html+='<div class="teacher-week-slot'+(slotMin%60===0?' hour':'')+'">';
+        html+='<div class="teacher-week-slot'+(slotMin%60===0?' hour':'')+'" style="grid-column:'+(dateIndex+2)+';grid-row:'+gridRow+'">';
         if(!rows.length)html+='<span class="teacher-week-empty">空堂</span>';
         html+='</div>';
       });
