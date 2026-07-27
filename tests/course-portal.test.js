@@ -20,6 +20,22 @@ const pages = [
   'course-portal-admin.html'
 ];
 
+const portalLanding = fs.readFileSync(path.join(root, 'course-portal.html'), 'utf8');
+const portalRoutes = [
+  'student-course-portal.html',
+  'teacher-course-portal.html',
+  'room-booking.html'
+];
+portalRoutes.forEach((route) => {
+  const occurrences = portalLanding.split(`href="${route}"`).length - 1;
+  assert.strictEqual(occurrences, 1, `入口首頁的 ${route} 必須且只能出現一次`);
+});
+assert.strictEqual(
+  (portalLanding.match(/class="card stack"/g) || []).length,
+  3,
+  '入口首頁必須維持三個獨立入口'
+);
+
 const commonSource = fs.readFileSync(path.join(root, 'course-portal-common.js'), 'utf8');
 assert(commonSource.trimStart().startsWith('(function'), 'course-portal-common.js 不是可執行的 JavaScript');
 new vm.Script(commonSource, { filename: 'course-portal-common.js' });
@@ -35,6 +51,18 @@ for (const file of pages) {
     new vm.Script(code, { filename: `${file}:inline-${index + 1}` });
   });
 }
+
+const teacherPortal = fs.readFileSync(path.join(root, 'teacher-course-portal.html'), 'utf8');
+assert(teacherPortal.includes('value="single_move"'), '老師入口缺少單次調課');
+assert(teacherPortal.includes('value="permanent_move"'), '老師入口缺少永久調課');
+assert(!portalLanding.includes('老師調課入口'), '老師調課不可誤拆成第四個入口');
+
+const schedulerHtml = fs.readFileSync(path.join(root, 'course-scheduler.html'), 'utf8');
+const schedulerSource = fs.readFileSync(path.join(root, 'course-scheduler.js'), 'utf8');
+assert(schedulerHtml.includes('id="dataModePanel"'), '正式與測試缺少共用模式面板');
+assert(schedulerHtml.includes('sandbox-only'), '共用排課頁缺少測試模式操作');
+assert(schedulerSource.includes("next.dataMode='sandbox'"), '測試模式未由正式資料建立');
+assert(schedulerSource.includes("state.dataMode=state.dataMode==='review'?'review':'migration'"), '返回正式模式未保留同一套頁面');
 
 const backend = fs.readFileSync(path.join(root, 'functions/coursePortal.js'), 'utf8');
 [
