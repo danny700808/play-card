@@ -124,6 +124,14 @@ function timeMinutes(value) {
   return match ? Number(match[1]) * 60 + Number(match[2]) : 0;
 }
 
+function taipeiDateTimeMillis(date, time) {
+  const key = dateKey(date);
+  const value = clean(time).slice(0, 5);
+  if (!key || !/^\d{2}:\d{2}$/.test(value)) return 0;
+  const parsed = Date.parse(`${key}T${value}:00+08:00`);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 function jsonValue(value) {
   if (value == null) return value;
   if (Array.isArray(value)) return value.map(jsonValue);
@@ -468,6 +476,11 @@ function overlaps(aStart, aEnd, bStart, bEnd) {
   return timeMinutes(aStart) < timeMinutes(bEnd) && timeMinutes(bStart) < timeMinutes(aEnd);
 }
 
+function eventBlocksResource(event) {
+  const status = clean(event && event.status).toLowerCase();
+  return !['leave', '請假', 'cancelled', 'canceled', 'cancel', '註銷', '作廢'].includes(status);
+}
+
 function roomSupportsSubject(room, subjectId, bundle, setting = {}) {
   if (!subjectId) return true;
   const configured = firstArray(setting, ['allowedSubjectIds']);
@@ -542,6 +555,8 @@ function publicEvent(row, maps, ownTeacherId) {
     subjectName: clean(maps.subjects[eventSubjectId(row)] && maps.subjects[eventSubjectId(row)].name),
     status: clean(row.status || 'scheduled'),
     type: clean(row.type || row.kind || 'lesson'),
+    portalAction: clean(row.portalAction),
+    portalChangeId: clean(row.portalChangeId),
     own: isOwn,
     busy: !isOwn
   };
@@ -592,7 +607,7 @@ async function scheduleBundle(startDate, endDate, ownTeacherId) {
     }
   });
   const overlay = changes.docs.map((doc) => Object.assign({ __id: doc.id }, jsonValue(doc.data()) || {}));
-  const removed = new Set(overlay.filter((row) => row.action === 'single_move' || row.action === 'cancel')
+  const removed = new Set(overlay.filter((row) => ['single_move', 'cancel', 'lesson_status'].includes(row.action))
     .flatMap((row) => [
       `${clean(row.sourceEventId)}|${dateKey(row.sourceDate)}`,
       `${clean(row.sourceCourseId)}|${dateKey(row.sourceDate)}`
@@ -610,11 +625,30 @@ async function scheduleBundle(startDate, endDate, ownTeacherId) {
     if (row.action === 'permanent_move' && row.event) {
       for (let key = eventDate(row.event); key && key <= endDate; key = addDays(key, 7)) {
         if (key < startDate || (row.pendingDates || []).includes(key)) continue;
+        const occurrenceStatus = overlay.some((change) =>
+          change.action === 'lesson_status' &&
+          dateKey(change.sourceDate) === key &&
+          (
+            clean(change.sourceCourseId) === clean(row.sourceCourseId || row.sourceEventId) ||
+            clean(change.sourceEventId) === clean(row.event.id)
+          )
+        );
+        if (occurrenceStatus) continue;
         const roomId = clean((row.roomOverrides || {})[key] || row.event.roomId);
-        base.push(Object.assign({}, row.event, { date: key, roomId, __id: `${row.__id}@${key}` }));
+        base.push(Object.assign({}, row.event, {
+          date: key,
+          roomId,
+          __id: `${row.__id}@${key}`,
+          portalAction: row.action,
+          portalChangeId: row.__id
+        }));
       }
     } else if (row.event && eventDate(row.event) >= startDate && eventDate(row.event) <= endDate) {
-      base.push(Object.assign({ __id: row.__id }, row.event));
+      base.push(Object.assign({
+        __id: row.__id,
+        portalAction: clean(row.action),
+        portalChangeId: row.__id
+      }, row.event));
     }
   });
   return {
@@ -706,7 +740,7 @@ async function teacherAvailability(data) {
           event.id === sourceEventId || event.sourceId === sourceEventId ||
           event.fixedCourseId === sourceCourseId
         );
-        return !sourceMatch && overlaps(slotStart, slotEnd, event.startTime, event.endTime);
+        return eventBlocksResource(event) && !sourceMatch && overlaps(slotStart, slotEnd, event.startTime, event.endTime);
       });
       if (blockers.some((event) => event.teacherId === session.teacherId)) continue;
       const rooms = compatibleRooms.filter((room) =>
@@ -812,7 +846,7 @@ async function rentalAvailability(data) {
     const id = sourceId(room);
     const setting = settingsMap[id] || {};
     const blocked = bundle.events.some((event) =>
-      event.roomId === id && event.date === date &&
+      eventBlocksResource(event) && event.roomId === id && event.date === date &&
       overlaps(startTime, endTime, event.startTime, event.endTime)
     );
     const rentalMatch = rentalRoomMatch(room, setting, data);
@@ -865,7 +899,7 @@ async function rentalDayBoard(data) {
       const rentalMatch = rentalRoomMatch(room, setting, data);
       if (setting.rentable === false || (subjectId ? !roomSupportsSubject(room, subjectId, bundle, setting) : !rentalMatch.compatible)) return false;
       return !bundle.events.some((event) =>
-        event.roomId === id && event.date === date &&
+        eventBlocksResource(event) && event.roomId === id && event.date === date &&
         overlaps(startTime, endTime, event.startTime, event.endTime)
       );
     }).map((room) => { const match = rentalRoomMatch(room, settingsMap[sourceId(room)] || {}, data); return { id: sourceId(room), name: match.profile.publicName, matchLevel: match.level }; });
@@ -909,7 +943,7 @@ async function rentalWeekBoard(data) {
         const id = sourceId(room);
         const setting = settingsMap[id] || {};
         const match = rentalRoomMatch(room, setting, data);
-        const blocked = bundle.events.some((event) => event.roomId === id && event.date === date && overlaps(startTime, endTime, event.startTime, event.endTime));
+        const blocked = bundle.events.some((event) => eventBlocksResource(event) && event.roomId === id && event.date === date && overlaps(startTime, endTime, event.startTime, event.endTime));
         return { id, name: match.profile.publicName, matchLevel: match.level, available: setting.rentable !== false && match.compatible && !blocked };
       }).filter((room) => room.available);
       slots.push({ startTime, endTime, availableCount: rooms.length, rooms: rooms.slice(0, 8) });
@@ -922,6 +956,9 @@ async function rentalWeekBoard(data) {
 async function createRoomBooking(data) {
   const session = await requireSession(data, ['student', 'renter', 'teacher']);
   const availability = await rentalAvailability(data);
+  if (taipeiDateTimeMillis(availability.date, availability.startTime) <= Date.now()) {
+    throw new HttpsError('failed-precondition', '只能預約尚未開始的時段。');
+  }
   const room = availability.rooms.find((item) => item.id === clean(data.roomId));
   if (!room || !room.available) throw new HttpsError('failed-precondition', room && room.reason || '這間教室目前不能預約。');
   const id = db.collection('coursePortalRoomBookings').doc().id;
@@ -933,6 +970,7 @@ async function createRoomBooking(data) {
     startTime: availability.startTime,
     endTime: availability.endTime,
     roomId: room.id,
+    roomName: room.name,
     subjectId: clean(data.subjectId),
     purpose: clean(data.purpose),
     useType: clean(data.useType),
@@ -958,6 +996,184 @@ async function createRoomBooking(data) {
     createdAt: FieldValue.serverTimestamp()
   });
   return { ok: true, booking: jsonValue(booking) };
+}
+
+async function rentalMyBookings(data) {
+  const session = await requireSession(data, ['student', 'renter', 'teacher']);
+  const snapshot = await db.collection('coursePortalRoomBookings')
+    .where('lineUserId', '==', session.lineUserId)
+    .get();
+  const bookings = snapshot.docs.map((doc) => {
+    const row = jsonValue(doc.data()) || {};
+    return {
+      id: doc.id,
+      date: dateKey(row.date),
+      startTime: clean(row.startTime).slice(0, 5),
+      endTime: clean(row.endTime).slice(0, 5),
+      roomId: clean(row.roomId),
+      roomName: clean(row.roomName),
+      purpose: clean(row.purpose),
+      useType: clean(row.useType),
+      amount: Number(row.amount || 0),
+      paymentStatus: clean(row.paymentStatus),
+      status: clean(row.status || (row.active === false ? 'cancelled' : 'confirmed')),
+      active: row.active !== false,
+      canCancel: row.active !== false && taipeiDateTimeMillis(row.date, row.startTime) > Date.now(),
+      createdAtText: clean(row.createdAtText),
+      cancelledAtText: clean(row.cancelledAtText)
+    };
+  }).filter((row) => row.date && row.startTime)
+    .sort((a, b) => `${b.date} ${b.startTime}`.localeCompare(`${a.date} ${a.startTime}`))
+    .slice(0, 100);
+
+  if (bookings.some((row) => !row.roomName)) {
+    const rooms = indexById(await mirrorRows('rooms'));
+    bookings.forEach((row) => {
+      if (!row.roomName) row.roomName = clean(rooms[row.roomId] && rooms[row.roomId].name);
+    });
+  }
+  return { ok: true, bookings };
+}
+
+async function cancelRoomBooking(data) {
+  const session = await requireSession(data, ['student', 'renter', 'teacher']);
+  const bookingId = clean(data.bookingId);
+  if (!bookingId) throw new HttpsError('invalid-argument', '缺少租用紀錄。');
+  const bookingRef = db.collection('coursePortalRoomBookings').doc(bookingId);
+  const changeRef = db.collection('coursePortalScheduleChanges').doc(`rental-${bookingId}`);
+  await db.runTransaction(async (tx) => {
+    const snapshot = await tx.get(bookingRef);
+    if (!snapshot.exists) throw new HttpsError('not-found', '找不到這筆租用紀錄。');
+    const booking = snapshot.data() || {};
+    if (clean(booking.lineUserId) !== clean(session.lineUserId)) {
+      throw new HttpsError('permission-denied', '只能取消自己預約的教室。');
+    }
+    if (booking.active === false || clean(booking.status) === 'cancelled') {
+      throw new HttpsError('failed-precondition', '這筆租用已經取消。');
+    }
+    if (taipeiDateTimeMillis(booking.date, booking.startTime) <= Date.now()) {
+      throw new HttpsError('failed-precondition', '課程開始後不能自行取消，請聯絡櫃台。');
+    }
+    tx.set(bookingRef, {
+      active: false,
+      status: 'cancelled',
+      cancelledAt: FieldValue.serverTimestamp(),
+      cancelledAtText: nowText(),
+      cancelledBy: session.role
+    }, { merge: true });
+    tx.set(changeRef, {
+      active: false,
+      status: 'cancelled',
+      cancelledAt: FieldValue.serverTimestamp(),
+      cancelledBy: session.role
+    }, { merge: true });
+  });
+  return { ok: true, bookingId, status: 'cancelled' };
+}
+
+async function teacherLessonState(data) {
+  const session = await requireSession(data, ['teacher']);
+  const state = clean(data.state);
+  const portalChangeId = clean(data.portalChangeId);
+  if (state === 'cancel_change') {
+    if (!portalChangeId) throw new HttpsError('invalid-argument', '這堂課不是老師新增或調整的課程。');
+    const ref = db.collection('coursePortalScheduleChanges').doc(portalChangeId);
+    const snapshot = await ref.get();
+    const row = snapshot.exists ? snapshot.data() || {} : null;
+    if (!row || row.active === false || clean(row.createdByTeacherId) !== clean(session.teacherId)) {
+      throw new HttpsError('permission-denied', '只能取消自己新增或調整的課程。');
+    }
+    await ref.set({
+      active: false,
+      cancelledAt: FieldValue.serverTimestamp(),
+      cancelledAtText: nowText(),
+      cancelledByTeacherId: session.teacherId
+    }, { merge: true });
+    return { ok: true, state: 'cancelled', message: '此次安排已取消。' };
+  }
+
+  if (!['leave', 'absent'].includes(state)) {
+    throw new HttpsError('invalid-argument', '不支援的課程狀態。');
+  }
+  const sourceDate = dateKey(data.sourceDate);
+  const sourceEventId = clean(data.sourceEventId);
+  const sourceCourseId = clean(data.sourceCourseId);
+  if (!sourceDate || (!sourceEventId && !sourceCourseId)) {
+    throw new HttpsError('invalid-argument', '缺少原課程資料。');
+  }
+  const bundle = await scheduleBundle(sourceDate, sourceDate, session.teacherId);
+  const source = bundle.events.find((event) =>
+    event.teacherId === session.teacherId &&
+    event.date === sourceDate &&
+    (
+      event.id === sourceEventId ||
+      event.sourceId === sourceEventId ||
+      event.fixedCourseId === sourceCourseId ||
+      event.portalChangeId === portalChangeId
+    )
+  );
+  if (!source) throw new HttpsError('not-found', '找不到這堂課，請重新整理後再試。');
+
+  const activeChanges = await db.collection('coursePortalScheduleChanges').where('active', '==', true).get();
+  const id = db.collection('coursePortalScheduleChanges').doc().id;
+  const batch = db.batch();
+  activeChanges.docs.forEach((doc) => {
+    const row = doc.data() || {};
+    if (
+      doc.id === portalChangeId &&
+      clean(row.action) !== 'permanent_move' &&
+      clean(row.createdByTeacherId) === clean(session.teacherId)
+    ) {
+      batch.set(doc.ref, { active: false, supersededAt: FieldValue.serverTimestamp() }, { merge: true });
+    }
+    if (
+      row.action === 'lesson_status' &&
+      clean(row.createdByTeacherId) === clean(session.teacherId) &&
+      dateKey(row.sourceDate) === sourceDate &&
+      (
+        clean(row.sourceCourseId) === clean(source.fixedCourseId || sourceCourseId) ||
+        clean(row.sourceEventId) === clean(source.sourceId || sourceEventId)
+      )
+    ) {
+      batch.set(doc.ref, { active: false, supersededAt: FieldValue.serverTimestamp() }, { merge: true });
+    }
+  });
+  const event = {
+    id: randomToken(12),
+    date: sourceDate,
+    startTime: source.startTime,
+    endTime: source.endTime,
+    roomId: source.roomId,
+    teacherId: session.teacherId,
+    studentId: source.studentIds[0] || '',
+    studentIds: source.studentIds,
+    subjectId: source.subjectId,
+    fixedCourseId: source.fixedCourseId || sourceCourseId,
+    type: source.type || 'lesson',
+    status: state,
+    paymentStatus: state === 'absent' ? 'teacher_payable_absence' : 'student_leave',
+    teacherPayable: state === 'absent',
+    note: clean(data.note)
+  };
+  batch.set(db.collection('coursePortalScheduleChanges').doc(id), {
+    id,
+    action: 'lesson_status',
+    active: true,
+    sourceEventId: source.sourceId || sourceEventId,
+    sourceCourseId: source.fixedCourseId || sourceCourseId,
+    sourceDate,
+    event,
+    createdByTeacherId: session.teacherId,
+    createdAt: FieldValue.serverTimestamp(),
+    createdAtText: nowText()
+  });
+  await batch.commit();
+  return {
+    ok: true,
+    id,
+    state,
+    message: state === 'absent' ? '已標示曠課；本堂仍列入老師薪資。' : '已標示請假，該教室時段已釋出。'
+  };
 }
 
 async function teacherAction(data) {
@@ -990,7 +1206,7 @@ async function teacherAction(data) {
     event.id === sourceEventId || event.sourceId === sourceEventId || event.fixedCourseId === sourceCourseId
   );
   const conflict = bundle.events.find((event) =>
-    !ignoredSource(event) && overlaps(startTime, endTime, event.startTime, event.endTime) &&
+    eventBlocksResource(event) && !ignoredSource(event) && overlaps(startTime, endTime, event.startTime, event.endTime) &&
     (event.roomId === roomId || event.teacherId === session.teacherId)
   );
   if (conflict) {
@@ -1027,7 +1243,7 @@ async function teacherAction(data) {
     for (let occurrence = date; occurrence <= horizonEnd; occurrence = addDays(occurrence, 7)) {
       const blockers = future.events.filter((row) => {
         const sourceMatch = row.fixedCourseId === sourceCourseId || row.id === sourceEventId || row.sourceId === sourceEventId;
-        return !sourceMatch && row.date === occurrence && overlaps(startTime, endTime, row.startTime, row.endTime);
+        return eventBlocksResource(row) && !sourceMatch && row.date === occurrence && overlaps(startTime, endTime, row.startTime, row.endTime);
       });
       if (blockers.some((row) => row.teacherId === session.teacherId)) {
         pendingDates.push(occurrence);
@@ -1041,7 +1257,7 @@ async function teacherAction(data) {
       else pendingDates.push(occurrence);
     }
   }
-  await db.collection('coursePortalScheduleChanges').doc(id).set({
+  const changePayload = {
     id,
     action,
     active: true,
@@ -1055,18 +1271,51 @@ async function teacherAction(data) {
     createdByTeacherId: session.teacherId,
     createdAt: FieldValue.serverTimestamp(),
     createdAtText: nowText()
-  });
+  };
+  let cleanedFutureCount = 0;
+  if (action === 'permanent_move') {
+    const activeChanges = await db.collection('coursePortalScheduleChanges').where('active', '==', true).get();
+    const batch = db.batch();
+    activeChanges.docs.forEach((doc) => {
+      const row = doc.data() || {};
+      const rowEvent = row.event || {};
+      const rowDate = dateKey(rowEvent.date || row.sourceDate || row.effectiveDate);
+      const sameStudent = eventStudentIds(rowEvent).includes(studentId);
+      const sameSubject = !event.subjectId || eventSubjectId(rowEvent) === event.subjectId;
+      if (
+        clean(row.createdByTeacherId) === clean(session.teacherId) &&
+        ['single_move', 'extra_lesson', 'teacher_gift', 'lesson_status'].includes(clean(row.action)) &&
+        rowDate >= date &&
+        sameStudent &&
+        sameSubject
+      ) {
+        cleanedFutureCount += 1;
+        batch.set(doc.ref, {
+          active: false,
+          supersededBy: id,
+          supersededAt: FieldValue.serverTimestamp()
+        }, { merge: true });
+      }
+    });
+    batch.set(db.collection('coursePortalScheduleChanges').doc(id), changePayload);
+    await batch.commit();
+  } else {
+    await db.collection('coursePortalScheduleChanges').doc(id).set(changePayload);
+  }
   return {
     ok: true,
     id,
     event,
     roomOverrides,
     pendingDates,
+    cleanedFutureCount,
     message: pendingDates.length
-      ? `永久調課已建立；${pendingDates.length} 個特殊日期目前沒有可用教室，已放入待補排。`
+      ? `永久調課已建立；已清除 ${cleanedFutureCount} 筆後續臨時安排，另有 ${pendingDates.length} 個特殊日期待補排。`
       : (Object.keys(roomOverrides).length
-        ? `永久調課已建立；${Object.keys(roomOverrides).length} 個單次衝突日期已自動改用其他教室。`
-        : '課程已儲存。')
+        ? `永久調課已建立；已清除 ${cleanedFutureCount} 筆後續臨時安排，${Object.keys(roomOverrides).length} 個單次衝突日期已自動改用其他教室。`
+        : (action === 'permanent_move'
+          ? `永久調課已建立；已清除 ${cleanedFutureCount} 筆後續臨時安排。`
+          : '課程已儲存。'))
   };
 }
 
@@ -1277,7 +1526,10 @@ function registerCoursePortal(exportsObject, helpers = {}) {
   exportsObject.coursePortalRentalWeekBoard = callable(rentalWeekBoard, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalRentalAvailability = callable(rentalAvailability, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalCreateRoomBooking = callable(createRoomBooking, { timeoutSeconds: 180, memory: '1GiB' });
+  exportsObject.coursePortalRentalMyBookings = callable(rentalMyBookings);
+  exportsObject.coursePortalCancelRoomBooking = callable(cancelRoomBooking);
   exportsObject.coursePortalTeacherAction = callable(teacherAction, { timeoutSeconds: 180, memory: '1GiB' });
+  exportsObject.coursePortalTeacherLessonState = callable(teacherLessonState, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalUpdateStudentReminder = callable(updateStudentReminder);
   exportsObject.coursePortalAdminData = callable(async (data, request) => {
     assertAdminPin(request);

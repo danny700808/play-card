@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#24735c">
   <title>教室租用｜柚子樂器</title>
-  <link rel="stylesheet" href="course-portal.css?v=20260727-v5">
+  <link rel="stylesheet" href="course-portal.css?v=20260727-mobile-v6">
 </head>
 <body>
   <main class="portal-shell">
@@ -60,11 +60,19 @@
         <div class="rental-choice-panel hidden" id="choicePanel">
           <div class="section-title"><div><h3 id="selectedTime">選擇教室</h3><p class="muted">費用依租用時間計算。</p></div></div>
           <div class="grid two">
-            <div class="field"><label>租用時間</label><select id="durationSelect"><option value="30">30分鐘</option><option value="60" selected>1小時</option><option value="90">1.5小時</option><option value="120">2小時</option></select></div>
+            <div class="field"><label>租用時間</label><select id="durationSelect"><option value="30">30分鐘</option><option value="60" selected>1小時</option><option value="90">1.5小時</option><option value="120">2小時</option><option value="180">3小時</option></select></div>
             <div class="field"><label>用途</label><input id="purposeInput" placeholder="例如：鋼琴練習"></div>
           </div>
           <div class="list" id="roomList" style="margin-top:14px"></div>
         </div>
+      </section>
+
+      <section class="card">
+        <div class="section-title">
+          <div><h2>我的租用</h2><p class="muted">完整顯示日期與時間；開始前可自行取消。</p></div>
+          <button class="btn soft" id="reloadBookings" type="button">重新整理</button>
+        </div>
+        <div class="list" id="myBookingList"><p class="muted">正在讀取租用紀錄…</p></div>
       </section>
     </section>
   </main>
@@ -72,7 +80,7 @@
   <script src="config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="course-portal-common.js?v=20260726-v2"></script>
+  <script src="course-portal-common.js?v=20260727-mobile-v6"></script>
   <script>
   (function () {
     const P = window.CoursePortal;
@@ -84,6 +92,7 @@
     let selectedStart = '';
     let boardData = null;
     let roomData = null;
+    let myBookings = [];
     const entryView = document.getElementById('entryView');
     const bindView = document.getElementById('publicBindView');
     const bookingView = document.getElementById('bookingView');
@@ -188,13 +197,44 @@
       }
     }
 
+    function bookingStatus(row) {
+      if (!row.active || row.status === 'cancelled') return '<span class="badge danger">已取消</span>';
+      if (!row.canCancel) return '<span class="badge">已開始／已完成</span>';
+      return '<span class="badge">已預約</span>';
+    }
+
+    function renderMyBookings() {
+      const node = document.getElementById('myBookingList');
+      node.innerHTML = myBookings.length ? myBookings.map((row) => `
+        <article class="list-row rental-history-row">
+          <strong>${P.escapeHtml(row.date)}　${P.escapeHtml(row.startTime)}～${P.escapeHtml(row.endTime)}</strong>
+          <span>${P.escapeHtml(row.roomName || '教室')}</span>
+          <span>${P.escapeHtml(row.purpose || '空間租用')}</span>
+          <strong>${P.money(row.amount)}</strong>
+          <span>${bookingStatus(row)}${row.canCancel ? ` <button class="btn danger" type="button" data-cancel-booking="${P.escapeHtml(row.id)}">取消租用</button>` : ''}</span>
+        </article>`).join('') : '<p class="muted">目前沒有租用紀錄。</p>';
+    }
+
+    async function loadMyBookings() {
+      const node = document.getElementById('myBookingList');
+      node.innerHTML = '<p class="muted">正在讀取租用紀錄…</p>';
+      try {
+        const result = await P.call('coursePortalRentalMyBookings', { sessionToken: token });
+        myBookings = result.bookings || [];
+        renderMyBookings();
+      } catch (error) {
+        node.innerHTML = '<p class="muted">租用紀錄讀取失敗。</p>';
+        P.toast(error.message, 'error');
+      }
+    }
+
     async function openBooking(nextRole, nextToken) {
       role = nextRole;
       token = nextToken;
       document.getElementById('rateLabel').textContent = role === 'student' ? '柚子學生價' : (role === 'teacher' ? '老師租用' : '一般價格');
       show(bookingView);
       renderDateStrip();
-      await loadBoard();
+      await Promise.all([loadBoard(), loadMyBookings()]);
     }
 
     document.getElementById('studentEntry').addEventListener('click', () => {
@@ -260,9 +300,28 @@
         });
         P.toast(`預約完成，現場付款 ${P.money(result.booking.amount)}。`);
         document.getElementById('roomList').innerHTML = `<div class="notice"><strong>預約完成</strong><br>${P.escapeHtml(result.booking.date)}　${P.escapeHtml(result.booking.startTime)}～${P.escapeHtml(result.booking.endTime)}<br>現場付款 ${P.money(result.booking.amount)}</div>`;
-        await loadBoard();
+        await Promise.all([loadBoard(), loadMyBookings()]);
       } catch (error) { P.toast(error.message, 'error'); }
       finally { P.loading(button, false); }
+    });
+    document.getElementById('reloadBookings').addEventListener('click', loadMyBookings);
+    document.getElementById('myBookingList').addEventListener('click', async (event) => {
+      const button = event.target.closest('[data-cancel-booking]');
+      if (!button) return;
+      if (!window.confirm('確定取消這次教室租用嗎？')) return;
+      P.loading(button, true, '取消中…');
+      try {
+        await P.call('coursePortalCancelRoomBooking', {
+          sessionToken: token,
+          bookingId: button.dataset.cancelBooking
+        });
+        P.toast('租用已取消。');
+        await Promise.all([loadBoard(), loadMyBookings()]);
+      } catch (error) {
+        P.toast(error.message, 'error');
+      } finally {
+        P.loading(button, false);
+      }
     });
     document.getElementById('changeRoleBtn').addEventListener('click', () => show(entryView));
     document.getElementById('logoutBtn').addEventListener('click', () => {

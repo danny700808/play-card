@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#24735c">
   <title>老師課務入口｜柚子樂器</title>
-  <link rel="stylesheet" href="course-portal.css?v=20260727-v5">
+  <link rel="stylesheet" href="course-portal.css?v=20260727-mobile-v6">
 </head>
 <body>
   <main class="portal-shell">
@@ -35,6 +35,7 @@
         <button class="btn active" type="button" data-tab="schedule">週課表</button>
         <button class="btn" type="button" data-tab="students">我的學生</button>
         <button class="btn" type="button" data-tab="payroll">薪資查詢</button>
+        <a class="btn soft" href="room-booking.html?from=teacher">租用教室</a>
       </nav>
 
       <section class="card tab-panel" data-panel="schedule">
@@ -85,6 +86,11 @@
         <div class="field"><label>備註</label><input name="note" placeholder="選填"></div>
         <div class="notice" id="giftNotice">「老師免費送一堂」不向學生收費，也不列入老師薪資。</div>
         <button class="btn primary" type="submit">確認並儲存</button>
+        <div class="teacher-lesson-state-actions hidden" id="lessonStateActions">
+          <button class="btn soft" type="button" data-lesson-state="leave">學生請假</button>
+          <button class="btn danger hidden" id="cancelPortalLesson" type="button" data-lesson-state="cancel_change">取消此次安排</button>
+          <button class="btn danger" type="button" data-lesson-state="absent">標示曠課</button>
+        </div>
       </form>
     </section>
   </div>
@@ -92,7 +98,7 @@
   <script src="config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="course-portal-common.js?v=20260726-v2"></script>
+  <script src="course-portal-common.js?v=20260727-mobile-v6"></script>
   <script>
   (function () {
     const P = window.CoursePortal;
@@ -143,10 +149,13 @@
       const groupLabel = studentNames.length > 2
         ? '團體課'
         : (studentNames.length === 2 ? '雙人課' : '');
-      const details = [event.subjectName, event.roomName].filter(Boolean).join('・');
+      const stateLabel = event.status === 'leave' ? '請假' : (event.status === 'absent' ? '曠課' : '');
+      const details = [event.subjectName, event.roomName, stateLabel].filter(Boolean).join('・');
       const classNames = [
         'lesson',
         event.type === 'teacher_gift' ? 'gift' : '',
+        event.status === 'leave' ? 'leave' : '',
+        event.status === 'absent' ? 'absent' : '',
         groupLabel ? 'group-lesson' : '',
         conflict ? 'conflict-lesson' : ''
       ].filter(Boolean).join(' ');
@@ -251,22 +260,48 @@
       const rows = data.payroll || [];
       const adjustments = data.adjustments || [];
       document.getElementById('payrollCount').textContent = rows.length + adjustments.length;
-      const html = [];
-      rows.forEach((row) => html.push(`
-        <article class="list-row">
-          <strong>${P.escapeHtml(row.date || row.courseDate || '薪資')}</strong>
-          <span>${P.escapeHtml(row.studentName || row.subjectName || '')}</span>
-          <span>${P.escapeHtml(row.rate || row.shareRate || '')}</span>
-          <strong>${P.money(row.amount || row.teacherAmount)}</strong><span class="badge">課堂</span>
-        </article>`));
-      adjustments.forEach((row) => html.push(`
-        <article class="list-row">
-          <strong>${P.escapeHtml(row.date || row.month || '調整')}</strong>
-          <span>${P.escapeHtml(row.note || row.reason || '')}</span>
-          <span>${P.escapeHtml(row.type || '獎勵／扣款')}</span>
-          <strong>${P.money(row.amount)}</strong><span class="badge warn">調整</span>
-        </article>`));
-      document.getElementById('payrollList').innerHTML = html.join('') || '<p class="muted">這個月份目前沒有薪資資料。</p>';
+      const valueOf = (row, keys, fallback = '') => {
+        for (const key of keys) {
+          if (row[key] !== undefined && row[key] !== null && row[key] !== '') return row[key];
+        }
+        return fallback;
+      };
+      const items = rows.map((row) => ({
+        kind: 'lesson',
+        date: valueOf(row, ['date', 'courseDate', 'lessonDate'], document.getElementById('payrollMonth').value),
+        name: valueOf(row, ['studentName', 'subjectName'], '課堂'),
+        subject: valueOf(row, ['subjectName', 'courseName']),
+        collected: Number(valueOf(row, ['tuitionAmount', 'courseAmount', 'feeAmount', 'receivedAmount', 'expectedAmount'], 0)),
+        rate: valueOf(row, ['rate', 'shareRate', 'allotRate', 'percentage'], '依方案'),
+        amount: Number(valueOf(row, ['teacherAmount', 'amount', 'payAmount'], 0))
+      })).concat(adjustments.map((row) => ({
+        kind: 'adjustment',
+        date: valueOf(row, ['date', 'month'], document.getElementById('payrollMonth').value),
+        name: valueOf(row, ['note', 'reason'], '獎勵／扣款'),
+        subject: valueOf(row, ['type'], '調整'),
+        collected: 0,
+        rate: '—',
+        amount: Number(valueOf(row, ['amount'], 0))
+      }))).sort((a, b) => `${a.date}|${a.name}`.localeCompare(`${b.date}|${b.name}`, 'zh-Hant'));
+      const groups = new Map();
+      items.forEach((item) => {
+        const key = item.date || '日期未提供';
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(item);
+      });
+      const html = [...groups.entries()].map(([date, dayRows]) => `
+        <section class="payroll-day">
+          <h3>${P.escapeHtml(date)}</h3>
+          ${dayRows.map((row) => `
+            <article class="list-row">
+              <strong>${P.escapeHtml(row.name)}</strong>
+              <span>${P.escapeHtml(row.subject || (row.kind === 'lesson' ? '課堂' : '調整'))}</span>
+              <span>${row.kind === 'lesson' ? `收費 ${P.money(row.collected)}・分成 ${P.escapeHtml(row.rate)}` : '獎勵／扣款'}</span>
+              <strong>老師所得 ${P.money(row.amount)}</strong>
+              <span class="badge ${row.kind === 'adjustment' ? 'warn' : ''}">${row.kind === 'lesson' ? '課堂' : '調整'}</span>
+            </article>`).join('')}
+        </section>`).join('');
+      document.getElementById('payrollList').innerHTML = html || '<p class="muted">這個月份目前沒有薪資資料。</p>';
     }
 
     function fillAction(options) {
@@ -287,7 +322,11 @@
       });
       form.dataset.vacancyDate = options && options.vacancyDate || '';
       form.dataset.vacancyStart = options && options.vacancyStart || '';
+      form.dataset.portalAction = options && options.portalAction || '';
+      form.dataset.portalChangeId = options && options.portalChangeId || '';
       document.getElementById('giftNotice').classList.toggle('hidden', form.elements.action.value !== 'teacher_gift');
+      document.getElementById('lessonStateActions').classList.toggle('hidden', !form.elements.sourceEventId.value);
+      document.getElementById('cancelPortalLesson').classList.toggle('hidden', !form.dataset.portalChangeId);
       syncActionMode();
       document.getElementById('actionModal').classList.remove('hidden');
       if (form.elements.sourceEventId.value) loadAvailability();
@@ -305,6 +344,8 @@
       form.elements.sourceEventId.value = row.sourceId || row.id;
       form.elements.sourceCourseId.value = row.fixedCourseId || row.sourceId || row.id;
       form.elements.sourceDate.value = row.date;
+      form.dataset.portalAction = row.portalAction || '';
+      form.dataset.portalChangeId = row.portalChangeId || '';
       form.elements.studentId.value = row.studentIds[0] || '';
       form.elements.subjectId.value = row.subjectId || '';
       if (form.dataset.vacancyDate) {
@@ -314,6 +355,8 @@
         const end = portalTimeToMinutes(form.dataset.vacancyStart) + duration;
         form.elements.endTime.value = `${String(Math.floor(end / 60)).padStart(2, '0')}:${String(end % 60).padStart(2, '0')}`;
       }
+      document.getElementById('lessonStateActions').classList.remove('hidden');
+      document.getElementById('cancelPortalLesson').classList.toggle('hidden', !form.dataset.portalChangeId);
     }
 
     function syncActionMode() {
@@ -423,7 +466,8 @@
         if (row) fillAction({
           action: 'single_move', sourceEventId: row.sourceId, sourceCourseId: row.fixedCourseId || row.sourceId, sourceDate: row.date,
           studentId: row.studentIds[0], subjectId: row.subjectId, roomId: row.roomId,
-          date: row.date, startTime: row.startTime, endTime: row.endTime
+          date: row.date, startTime: row.startTime, endTime: row.endTime,
+          portalAction: row.portalAction, portalChangeId: row.portalChangeId
         });
       }
     });
@@ -470,6 +514,37 @@
         await load();
       } catch (error) { P.toast(error.message, 'error'); }
       finally { P.loading(button, false); }
+    });
+    document.getElementById('lessonStateActions').addEventListener('click', async (event) => {
+      const button = event.target.closest('[data-lesson-state]');
+      if (!button) return;
+      const state = button.dataset.lessonState;
+      const messages = {
+        leave: '確定標示學生請假？這個教室時段會釋出。',
+        absent: '確定標示曠課？本堂仍會列入老師薪資。',
+        cancel_change: '確定取消這次由老師新增、贈送或調整的安排？'
+      };
+      if (!window.confirm(messages[state])) return;
+      const form = document.getElementById('actionForm');
+      P.loading(button, true, '處理中…');
+      try {
+        const result = await P.call('coursePortalTeacherLessonState', {
+          sessionToken: token,
+          state,
+          sourceEventId: form.elements.sourceEventId.value,
+          sourceCourseId: form.elements.sourceCourseId.value,
+          sourceDate: form.elements.sourceDate.value,
+          portalChangeId: form.dataset.portalChangeId,
+          note: form.elements.note.value
+        });
+        document.getElementById('actionModal').classList.add('hidden');
+        P.toast(result.message || '課程狀態已更新。');
+        await load();
+      } catch (error) {
+        P.toast(error.message, 'error');
+      } finally {
+        P.loading(button, false);
+      }
     });
     logoutBtn.addEventListener('click', () => { P.setSession('teacher', ''); location.reload(); });
     let resizeTimer = 0;

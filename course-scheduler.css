@@ -193,6 +193,93 @@ a{color:inherit;text-decoration:none}
   .period-summary{grid-template-columns:64px minmax(145px,1fr) 80px 62px;gap:7px}.period-summary>span:nth-of-type(1),.period-summary>span:nth-of-type(3),.period-summary>span:nth-of-type(4){display:none}.attendance-list li{grid-template-columns:64px 88px 58px minmax(0,1fr)}.sandbox-log-list article{grid-template-columns:1fr}.sandbox-log-list span{text-align:left}.data-mode-actions{flex-wrap:wrap}.data-mode-actions .sandbox-only{flex:1 1 30%}
 }
 
+/* 2026-07-27：排課系統手機密集介面；桌機規則完全不變。 */
+@media(max-width:860px){
+  :root{--slot:42px}
+  body{font-size:11px;line-height:1.42}
+  .sidebar{padding:5px 6px}
+  .main-nav{gap:3px}
+  .main-nav button{min-height:34px;padding:4px 7px;border-radius:8px;gap:5px}
+  .main-nav button span{width:24px;height:24px;border-radius:7px;font-size:10px}
+  .main-nav button b{font-size:10px}
+  .main-content{padding:0 7px 20px}
+  .page-header{padding:7px 1px 5px}
+  .page-header h1{font-size:17px}
+  .header-actions{gap:4px}
+  .header-actions .btn{min-height:30px;padding:5px 8px;font-size:9px}
+  .card{border-radius:10px;box-shadow:0 3px 10px rgba(18,53,45,.04)}
+  .btn{min-height:32px;padding:6px 8px;border-radius:8px;font-size:9px}
+  .btn.small{min-height:27px;padding:4px 6px;font-size:8px}
+  .control,.search-control{min-height:33px;padding:5px 7px;border-radius:8px;font-size:10px}
+  .data-mode{margin-bottom:5px;padding:6px 7px;gap:5px}
+  .data-mode-copy{gap:5px}.data-mode-icon{width:25px;height:25px;font-size:10px}
+  .data-mode strong{font-size:10px}.data-mode small{font-size:8px}
+  .data-mode-actions{gap:4px}
+  .data-mode-actions .btn{min-height:29px;padding:4px 6px;font-size:8px}
+  .calendar-toolbar{padding:6px;margin-bottom:5px;gap:5px}
+  .date-actions,.toolbar-actions{gap:4px}
+  .date-heading strong{font-size:13px}.date-heading span{font-size:8px}
+  .icon-btn{width:32px;height:32px;border-radius:8px;font-size:18px}
+  .kpi-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;margin-bottom:5px}
+  .kpi{padding:6px;border-radius:9px}
+  .kpi span{font-size:8px}.kpi strong{font-size:17px}.kpi small{font-size:7px}
+  .legend{gap:3px;padding:5px;margin-bottom:5px}
+  .legend b{font-size:8px}.legend span{gap:3px;padding:2px 4px;font-size:7px}.legend i{width:7px;height:7px}
+  .schedule-scroll{min-height:560px;max-height:72vh}
+  .schedule-grid{--time-col:43px;--room-col:minmax(78px,1fr);--room-head-height:43px}
+  .grid-corner,.room-head{min-height:43px;padding:3px;font-size:9px}
+  .room-head small{font-size:7px}
+  .time-label{padding:3px 4px;font-size:8px}.time-label.hour{font-size:9px}
+  .event{margin:1px 2px;min-height:30px;padding:3px 4px;border-radius:5px}
+  .event.attended{padding-left:10px}
+  .event-top{font-size:9px}.event-main{font-size:12px}.event-sub{font-size:9px}
+  .week-schedule{margin-bottom:5px}
+  .week-toolbar{padding:6px;gap:5px}
+  .week-toolbar>div:first-child strong{font-size:11px}
+  .week-toolbar>div:first-child span{font-size:8px}
+  .week-controls{gap:4px}.week-controls select{min-width:110px}
+  .teacher-week-grid{grid-template-columns:48px repeat(7,minmax(105px,1fr));grid-template-rows:39px;grid-auto-rows:36px;min-width:783px}
+  .teacher-week-day-head b{font-size:10px}.teacher-week-day-head time{font-size:8px}
+  .teacher-week-time{font-size:8px}.teacher-week-time.hour{font-size:9px}
+  .week-event{padding:3px 4px}.week-event time,.week-event span{font-size:7px}.week-event b{font-size:9px}
+  .section-heading,.panel-actions{gap:6px;margin:3px 0 7px}
+  .section-heading h2,.panel-actions h3{font-size:15px}
+  .section-heading p,.panel-actions p{font-size:8px}
+  .metric-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;margin-bottom:6px}
+  .metric{padding:7px}.metric span{font-size:8px}.metric strong{font-size:17px}
+  .filters{gap:5px;margin-bottom:6px}
+  .data-table th,.data-table td{padding:6px;font-size:9px}
+  .data-table small{font-size:7px}
+  .teacher-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+  .teacher-card{padding:8px}.teacher-card h3{font-size:12px}.teacher-card p{font-size:8px}
+  .avatar{width:34px;height:34px;border-radius:9px;font-size:12px}
+  .settings-tabs,.record-tabs{gap:4px;margin-bottom:6px;padding:3px;border-radius:9px}
+  .settings-tabs button,.record-tabs button{padding:5px 7px;border-radius:7px;font-size:9px}
+  .settings-card,.notice-card{padding:8px;margin-bottom:6px}
+  .settings-card h3,.notice-card h3{font-size:13px}
+  .settings-card>p{margin-bottom:7px;font-size:8px}
+  .form-grid,.form-grid.three{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+  .field label{margin-bottom:3px;font-size:9px}
+  .field input,.field select,.field textarea{min-height:34px;padding:6px 7px;border-radius:8px;font-size:11px}
+  .field textarea{min-height:62px}.field small{font-size:7px}
+  .modal-head,.modal-body,.modal-foot{padding:9px}
+  .modal-head h2{font-size:15px}.modal-head p{font-size:8px}
+  .modal-close{width:32px;height:32px;border-radius:8px;font-size:19px}
+  .record-summary{gap:5px;margin-bottom:6px}.record-summary article{padding:7px}.record-summary span{font-size:8px}.record-summary strong{font-size:14px}
+  .status-actions.event-command-row{gap:4px;margin-bottom:6px}.status-actions button{padding:7px 5px;font-size:9px}
+  .student-overview{gap:5px;margin-bottom:7px}.student-overview>div{padding:6px}.student-overview span{font-size:8px}.student-overview b{font-size:11px}
+  .student-note,.student-section{margin-top:7px;padding:8px;border-radius:10px}
+  .student-section>h3,.student-record-heading h3{font-size:13px}
+  .period-summary{padding:7px;font-size:9px}
+  .tuition-record-table th,.tuition-record-table td{padding:6px;font-size:9px}
+  .lesson-slot{min-width:96px;min-height:48px;padding:5px}.lesson-slot b{font-size:10px}.lesson-slot small,.lesson-slot em{font-size:8px!important}
+}
+
+@media(max-width:390px){
+  .kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .form-grid,.form-grid.three{grid-template-columns:1fr}
+}
+
 /* 桌面版課表密集檢視：保留資料與操作，只縮小畫面佔用，讓教室欄位一次呈現。 */
 @media(min-width:861px){
   :root{--slot:38px}

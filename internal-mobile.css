@@ -1,0 +1,558 @@
+/*
+ * 柚子樂器內部系統｜手機密集介面
+ * 所有規則都限制在手機寬度與已登入的內部頁。
+ * 桌機版不會套用此檔案。
+ */
+@media (max-width: 780px) {
+  body.yz-internal-theme {
+    --yz-mobile-ink: #19342d;
+    --yz-mobile-muted: #718079;
+    --yz-mobile-line: #dce8e1;
+    --yz-mobile-soft: #f3f8f5;
+    --yz-mobile-green: #126b52;
+    --yz-mobile-green-2: #1d8465;
+    --yz-mobile-green-soft: #dff2ea;
+    --yz-mobile-red: #c64e49;
+    --yz-mobile-amber: #b97925;
+    min-width: 0 !important;
+    overflow-x: hidden !important;
+    background: #eef4f1 !important;
+    color: var(--yz-mobile-ink) !important;
+    font-size: 11px !important;
+    line-height: 1.45 !important;
+  }
+
+  body.yz-internal-theme * {
+    max-width: 100%;
+    scrollbar-width: thin;
+  }
+
+  body.yz-internal-theme .yz-global-nav {
+    top: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    min-height: 39px !important;
+    margin: 0 !important;
+    padding: 5px 7px !important;
+    gap: 6px !important;
+    border: 0 !important;
+    border-bottom: 1px solid #d9e4de !important;
+    border-radius: 0 !important;
+    background: rgba(247, 250, 248, .96) !important;
+    box-shadow: 0 2px 9px rgba(24, 55, 45, .07) !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+  }
+
+  body.yz-internal-theme .yz-nav-btn {
+    min-height: 29px !important;
+    padding: 5px 9px !important;
+    border: 1px solid #d8e2dd !important;
+    border-radius: 8px !important;
+    font-size: 10px !important;
+    font-weight: 900 !important;
+    line-height: 1.15 !important;
+  }
+
+  body.yz-internal-theme .yz-nav-back {
+    background: #eef2f0 !important;
+    color: #52645d !important;
+    -webkit-text-fill-color: #52645d !important;
+  }
+
+  body.yz-internal-theme .yz-nav-logout {
+    background: #fff1f0 !important;
+    color: #a5443f !important;
+    -webkit-text-fill-color: #a5443f !important;
+    border-color: #ebc9c5 !important;
+  }
+
+  body.yz-internal-theme .container,
+  body.yz-internal-theme .wrap,
+  body.yz-internal-theme .page,
+  body.yz-internal-theme .forms-wrap,
+  body.yz-internal-theme main.wrap,
+  body.yz-internal-theme main {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 auto !important;
+    padding: 8px !important;
+  }
+
+  body.yz-internal-theme .card,
+  body.yz-internal-theme .card2,
+  body.yz-internal-theme .panel,
+  body.yz-internal-theme .subcard,
+  body.yz-internal-theme .section,
+  body.yz-internal-theme .section-card,
+  body.yz-internal-theme .section-box,
+  body.yz-internal-theme .page-card,
+  body.yz-internal-theme .admin-card,
+  body.yz-internal-theme .manage-head-card,
+  body.yz-internal-theme .home-head-card,
+  body.yz-internal-theme .forms-head,
+  body.yz-internal-theme .portal-hero {
+    margin-bottom: 7px !important;
+    padding: 9px !important;
+    border: 1px solid var(--yz-mobile-line) !important;
+    border-radius: 11px !important;
+    box-shadow: 0 3px 12px rgba(24, 55, 45, .045) !important;
+  }
+
+  body.yz-internal-theme .card .card,
+  body.yz-internal-theme .panel .card,
+  body.yz-internal-theme .section .card {
+    margin: 6px 0 !important;
+    padding: 8px !important;
+    box-shadow: none !important;
+  }
+
+  body.yz-internal-theme h1,
+  body.yz-internal-theme .title {
+    margin: 0 0 4px !important;
+    font-size: 18px !important;
+    line-height: 1.25 !important;
+    letter-spacing: -.02em !important;
+  }
+
+  body.yz-internal-theme h2,
+  body.yz-internal-theme .section-title,
+  body.yz-internal-theme .settings-title,
+  body.yz-internal-theme .layer-title {
+    margin: 0 0 5px !important;
+    font-size: 13px !important;
+    line-height: 1.3 !important;
+  }
+
+  body.yz-internal-theme h3,
+  body.yz-internal-theme h4,
+  body.yz-internal-theme .help-title {
+    margin: 0 0 4px !important;
+    font-size: 11px !important;
+    line-height: 1.35 !important;
+  }
+
+  body.yz-internal-theme p {
+    margin-top: 3px !important;
+    margin-bottom: 5px !important;
+  }
+
+  body.yz-internal-theme .welcome,
+  body.yz-internal-theme .subtitle,
+  body.yz-internal-theme .muted,
+  body.yz-internal-theme .helper,
+  body.yz-internal-theme .hint,
+  body.yz-internal-theme .muted-tip,
+  body.yz-internal-theme .cat-secondary,
+  body.yz-internal-theme .tile-desc,
+  body.yz-internal-theme .entry-desc,
+  body.yz-internal-theme .form-card-desc,
+  body.yz-internal-theme .forms-sub {
+    font-size: 8.5px !important;
+    line-height: 1.45 !important;
+  }
+
+  body.yz-internal-theme .topbar,
+  body.yz-internal-theme .toolbar,
+  body.yz-internal-theme .header,
+  body.yz-internal-theme .settings-head,
+  body.yz-internal-theme .approval-toolbar,
+  body.yz-internal-theme .panel-actions,
+  body.yz-internal-theme .card-head,
+  body.yz-internal-theme .item-head {
+    gap: 6px !important;
+    margin-bottom: 6px !important;
+  }
+
+  body.yz-internal-theme .grid,
+  body.yz-internal-theme .home-grid,
+  body.yz-internal-theme .yz-internal-home-grid,
+  body.yz-internal-theme .portal-grid,
+  body.yz-internal-theme .forms-grid,
+  body.yz-internal-theme .cards,
+  body.yz-internal-theme .category-grid,
+  body.yz-internal-theme .check-grid,
+  body.yz-internal-theme .goods-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 7px !important;
+  }
+
+  body.yz-internal-theme .form-grid,
+  body.yz-internal-theme .row2,
+  body.yz-internal-theme .row3,
+  body.yz-internal-theme .approval-grid,
+  body.yz-internal-theme .summary-grid,
+  body.yz-internal-theme .field-grid,
+  body.yz-internal-theme .info-grid,
+  body.yz-internal-theme .detail-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 6px !important;
+  }
+
+  body.yz-internal-theme .full,
+  body.yz-internal-theme .wide,
+  body.yz-internal-theme .span-2 {
+    grid-column: 1 / -1 !important;
+  }
+
+  body.yz-internal-theme .tile,
+  body.yz-internal-theme .yz-feature-tile,
+  body.yz-internal-theme .home-tile,
+  body.yz-internal-theme .entry-card,
+  body.yz-internal-theme .hub-card,
+  body.yz-internal-theme .form-card,
+  body.yz-internal-theme .menu > a,
+  body.yz-internal-theme .category-card {
+    min-width: 0 !important;
+    min-height: 70px !important;
+    margin: 0 !important;
+    padding: 9px !important;
+    gap: 3px !important;
+    border: 1px solid var(--yz-mobile-line) !important;
+    border-radius: 10px !important;
+    background: #fff !important;
+    box-shadow: 0 2px 8px rgba(24, 55, 45, .035) !important;
+  }
+
+  body.yz-internal-theme .tile strong,
+  body.yz-internal-theme .tile-title,
+  body.yz-internal-theme .entry-title,
+  body.yz-internal-theme .form-card-title,
+  body.yz-internal-theme .hub-card .h,
+  body.yz-internal-theme .category-card .cat-title {
+    font-size: 11px !important;
+    line-height: 1.35 !important;
+  }
+
+  body.yz-internal-theme .category-card .cat-count {
+    margin: 2px 0 !important;
+    font-size: 19px !important;
+    line-height: 1 !important;
+  }
+
+  body.yz-internal-theme .tile-badge,
+  body.yz-internal-theme .badge,
+  body.yz-internal-theme .pill,
+  body.yz-internal-theme .tag,
+  body.yz-internal-theme .status-pill,
+  body.yz-internal-theme .approval-pill {
+    min-width: 0 !important;
+    min-height: 16px !important;
+    height: auto !important;
+    padding: 2px 5px !important;
+    border-radius: 999px !important;
+    font-size: 7.5px !important;
+    line-height: 1.25 !important;
+  }
+
+  body.yz-internal-theme .field {
+    min-width: 0 !important;
+    margin-bottom: 6px !important;
+  }
+
+  body.yz-internal-theme .field label,
+  body.yz-internal-theme label {
+    margin-bottom: 3px !important;
+    font-size: 9px !important;
+    line-height: 1.3 !important;
+  }
+
+  body.yz-internal-theme input,
+  body.yz-internal-theme select,
+  body.yz-internal-theme textarea {
+    min-width: 0 !important;
+    min-height: 34px !important;
+    padding: 6px 8px !important;
+    border-radius: 8px !important;
+    font-size: 12px !important;
+    line-height: 1.3 !important;
+  }
+
+  body.yz-internal-theme textarea {
+    min-height: 64px !important;
+  }
+
+  body.yz-internal-theme input[type="checkbox"],
+  body.yz-internal-theme input[type="radio"] {
+    width: 16px !important;
+    min-height: 16px !important;
+    height: 16px !important;
+    padding: 0 !important;
+  }
+
+  body.yz-internal-theme .btn,
+  body.yz-internal-theme button,
+  body.yz-internal-theme .btn-link,
+  body.yz-internal-theme .link-btn,
+  body.yz-internal-theme .small-btn,
+  body.yz-internal-theme .mini-btn,
+  body.yz-internal-theme .top-tool-btn {
+    min-height: 32px !important;
+    padding: 6px 9px !important;
+    border-radius: 8px !important;
+    font-size: 10px !important;
+    line-height: 1.2 !important;
+  }
+
+  body.yz-internal-theme .btn-row,
+  body.yz-internal-theme .actions,
+  body.yz-internal-theme .mini-actions,
+  body.yz-internal-theme .item-actions,
+  body.yz-internal-theme .approval-actions,
+  body.yz-internal-theme .field-actions {
+    gap: 5px !important;
+  }
+
+  body.yz-internal-theme .item,
+  body.yz-internal-theme .item-card,
+  body.yz-internal-theme .approval-card,
+  body.yz-internal-theme .ln-card,
+  body.yz-internal-theme .history-item,
+  body.yz-internal-theme .contract-card,
+  body.yz-internal-theme .goods-card,
+  body.yz-internal-theme .summary-card {
+    margin-bottom: 5px !important;
+    padding: 8px !important;
+    border-radius: 9px !important;
+    box-shadow: none !important;
+  }
+
+  body.yz-internal-theme .list,
+  body.yz-internal-theme .rows,
+  body.yz-internal-theme .approval-list {
+    gap: 5px !important;
+  }
+
+  body.yz-internal-theme .approval-tabs,
+  body.yz-internal-theme .tabs,
+  body.yz-internal-theme .settings-tabs {
+    gap: 4px !important;
+    margin: 5px 0 7px !important;
+    padding: 3px !important;
+    overflow-x: auto !important;
+  }
+
+  body.yz-internal-theme .approval-tab,
+  body.yz-internal-theme .tab,
+  body.yz-internal-theme .settings-tab {
+    min-height: 29px !important;
+    padding: 5px 8px !important;
+    border-radius: 7px !important;
+    font-size: 9px !important;
+    white-space: nowrap !important;
+  }
+
+  body.yz-internal-theme .approval-field,
+  body.yz-internal-theme .info-box,
+  body.yz-internal-theme .summary-box,
+  body.yz-internal-theme .note-box,
+  body.yz-internal-theme .help-box,
+  body.yz-internal-theme .data-notice,
+  body.yz-internal-theme .message,
+  body.yz-internal-theme .hint {
+    padding: 7px !important;
+    border-radius: 8px !important;
+    font-size: 9px !important;
+  }
+
+  body.yz-internal-theme .message {
+    margin-bottom: 6px !important;
+  }
+
+  body.yz-internal-theme .table-wrap,
+  body.yz-internal-theme .table-card,
+  body.yz-internal-theme .preview-shell {
+    max-width: 100% !important;
+    overflow: auto !important;
+    border-radius: 9px !important;
+  }
+
+  body.yz-internal-theme table {
+    width: 100% !important;
+    font-size: 9px !important;
+    line-height: 1.35 !important;
+  }
+
+  body.yz-internal-theme table th,
+  body.yz-internal-theme table td {
+    padding: 6px !important;
+    font-size: 9px !important;
+  }
+
+  body.yz-internal-theme .modal-backdrop,
+  body.yz-internal-theme .overlay {
+    padding: 0 !important;
+    align-items: flex-end !important;
+  }
+
+  body.yz-internal-theme .modal,
+  body.yz-internal-theme .modal-content,
+  body.yz-internal-theme .dialog,
+  body.yz-internal-theme .sheet {
+    width: 100% !important;
+    max-width: none !important;
+    max-height: 94vh !important;
+    border-radius: 16px 16px 0 0 !important;
+  }
+
+  body.yz-internal-theme .modal-head,
+  body.yz-internal-theme .modal-body,
+  body.yz-internal-theme .modal-foot {
+    padding: 9px !important;
+  }
+
+  body.yz-internal-theme .home-head-card,
+  body.yz-internal-theme .manage-head-card {
+    min-height: 0 !important;
+    border-top-width: 3px !important;
+  }
+
+  body.yz-internal-theme .home-head-tools,
+  body.yz-internal-theme .hero-tools {
+    gap: 5px !important;
+  }
+
+  body.yz-internal-theme .top-tool-card,
+  body.yz-internal-theme .head-tool-card {
+    min-height: 56px !important;
+    padding: 7px !important;
+    border-radius: 9px !important;
+  }
+
+  body.yz-internal-theme .top-tool-title,
+  body.yz-internal-theme .head-tool-title,
+  body.yz-internal-theme .person-title,
+  body.yz-internal-theme .approval-name {
+    font-size: 11px !important;
+  }
+
+  body.yz-internal-theme .top-tool-desc,
+  body.yz-internal-theme .head-tool-desc,
+  body.yz-internal-theme .person-sub,
+  body.yz-internal-theme .approval-meta {
+    font-size: 8px !important;
+  }
+
+  body.yz-internal-theme .portal-shell {
+    padding: 8px !important;
+  }
+
+  body.yz-internal-theme .portal-hero {
+    min-height: 0 !important;
+    padding: 12px !important;
+    border-radius: 12px !important;
+  }
+
+  body.yz-internal-theme .portal-hero h1 {
+    font-size: 19px !important;
+  }
+
+  body.yz-internal-theme .portal-eyebrow,
+  body.yz-internal-theme .portal-welcome {
+    margin: 2px 0 !important;
+    font-size: 8px !important;
+  }
+
+  body.yz-internal-theme .portal-grid {
+    margin-top: 7px !important;
+  }
+
+  body.yz-internal-theme .portal-card {
+    min-height: 96px !important;
+    padding: 11px !important;
+    border-radius: 11px !important;
+    gap: 4px !important;
+  }
+
+  body.yz-internal-theme .portal-card h2 {
+    font-size: 17px !important;
+  }
+
+  body.yz-internal-theme .portal-card p,
+  body.yz-internal-theme .portal-card-label {
+    font-size: 8px !important;
+    line-height: 1.4 !important;
+  }
+
+  body.yz-internal-theme .timebox {
+    padding: 5px 0 !important;
+    font-size: 22px !important;
+  }
+
+  body.yz-internal-theme .segment-card,
+  body.yz-internal-theme .policy-card,
+  body.yz-internal-theme .event-box {
+    margin: 5px 0 !important;
+    padding: 8px !important;
+    border-radius: 9px !important;
+  }
+
+  body.yz-internal-theme .segment-grid,
+  body.yz-internal-theme .leave-type-grid {
+    gap: 5px !important;
+  }
+
+  body.yz-internal-theme .employee-search,
+  body.yz-internal-theme .history-search,
+  body.yz-internal-theme .daily-filter {
+    gap: 5px !important;
+    margin-bottom: 6px !important;
+  }
+
+  body.yz-internal-theme .emp-card {
+    min-height: 0 !important;
+    padding: 8px !important;
+    border-radius: 9px !important;
+  }
+
+  body.yz-internal-theme .emp-name {
+    font-size: 11px !important;
+  }
+
+  body.yz-internal-theme .emp-email {
+    font-size: 8px !important;
+  }
+
+  body.yz-internal-theme .cert-scale-wrap,
+  body.yz-internal-theme .contract-page,
+  body.yz-internal-theme .preview {
+    transform-origin: top left !important;
+  }
+
+  body.yz-internal-theme .page-progress {
+    min-height: 4px !important;
+    margin: 4px 0 !important;
+  }
+}
+
+@media (max-width: 390px) {
+  body.yz-internal-theme {
+    font-size: 10px !important;
+  }
+
+  body.yz-internal-theme .container,
+  body.yz-internal-theme .wrap,
+  body.yz-internal-theme .page,
+  body.yz-internal-theme .forms-wrap,
+  body.yz-internal-theme main {
+    padding: 6px !important;
+  }
+
+  body.yz-internal-theme .card,
+  body.yz-internal-theme .panel,
+  body.yz-internal-theme .section,
+  body.yz-internal-theme .page-card {
+    padding: 8px !important;
+  }
+
+  body.yz-internal-theme .tile,
+  body.yz-internal-theme .home-tile,
+  body.yz-internal-theme .entry-card,
+  body.yz-internal-theme .hub-card,
+  body.yz-internal-theme .form-card {
+    min-height: 66px !important;
+    padding: 8px !important;
+  }
+}

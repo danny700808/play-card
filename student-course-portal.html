@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#24735c">
   <title>學生與家長入口｜柚子樂器</title>
-  <link rel="stylesheet" href="course-portal.css?v=20260726-v2">
+  <link rel="stylesheet" href="course-portal.css?v=20260727-mobile-v6">
 </head>
 <body>
   <main class="portal-shell">
@@ -41,10 +41,11 @@
         <button class="btn" type="button" data-tab="upcoming">近期課表</button>
         <button class="btn" type="button" data-tab="attendance">簽到紀錄</button>
         <button class="btn" type="button" data-tab="reminders">LINE 提醒</button>
+        <a class="btn soft" href="room-booking.html?from=student">租用教室</a>
       </nav>
 
       <section class="card tab-panel" data-panel="courses">
-        <div class="section-title"><div><h2>課程與學費</h2><p class="muted">一期四堂；未繳清會明確標示，不會把排課當成簽到。</p></div></div>
+        <div class="section-title"><div><h2>課程與學費</h2><p class="muted">先顯示最近三期；未繳清會明確標示。</p></div><button class="btn soft hidden" id="togglePeriodHistory" type="button">歷史期數</button></div>
         <div class="list" id="periodList"></div>
       </section>
       <section class="card tab-panel hidden" data-panel="upcoming">
@@ -69,13 +70,14 @@
   <script src="config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="course-portal-common.js?v=20260726-v2"></script>
+  <script src="course-portal-common.js?v=20260727-mobile-v6"></script>
   <script>
   (function () {
     const P = window.CoursePortal;
     let token = '';
     let data = null;
     let studentId = '';
+    let showAllPeriods = false;
     const bindView = document.getElementById('bindView');
     const appView = document.getElementById('appView');
 
@@ -95,14 +97,19 @@
     function render() {
       const student = data.students.find((row) => row.id === studentId) || data.students[0] || {};
       studentId = student.id || '';
-      const periods = data.periods.filter((row) => row.studentId === studentId);
+      const periods = data.periods.filter((row) => row.studentId === studentId)
+        .sort((a, b) => Number(b.periodNo || 0) - Number(a.periodNo || 0));
       const attendance = data.attendance.filter((row) => row.studentId === studentId);
       const upcoming = data.upcoming.filter((row) => row.studentIds.includes(studentId));
       document.getElementById('studentName').textContent = student.name || '—';
       document.getElementById('periodCount').textContent = periods.length;
       document.getElementById('upcomingCount').textContent = upcoming.length;
       document.getElementById('attendanceCount').textContent = attendance.length;
-      document.getElementById('periodList').innerHTML = periods.length ? periods.map((row) => `
+      const visiblePeriods = showAllPeriods ? periods : periods.slice(0, 3);
+      const historyButton = document.getElementById('togglePeriodHistory');
+      historyButton.classList.toggle('hidden', periods.length <= 3);
+      historyButton.textContent = showAllPeriods ? '只看最近三期' : `歷史期數（${periods.length}）`;
+      document.getElementById('periodList').innerHTML = visiblePeriods.length ? visiblePeriods.map((row) => `
         <article class="list-row">
           <strong>第 ${row.periodNo || '—'} 期 · ${P.escapeHtml(row.subjectName || '課程')}</strong>
           <span>${P.escapeHtml(row.teacherName || '老師未指定')}</span>
@@ -152,7 +159,15 @@
       try { await P.startBinding('student', event.currentTarget); } catch (error) { P.toast(error.message, 'error'); }
       finally { P.loading(button, false); }
     });
-    document.getElementById('studentSelect').addEventListener('change', (event) => { studentId = event.target.value; render(); });
+    document.getElementById('studentSelect').addEventListener('change', (event) => {
+      studentId = event.target.value;
+      showAllPeriods = false;
+      render();
+    });
+    document.getElementById('togglePeriodHistory').addEventListener('click', () => {
+      showAllPeriods = !showAllPeriods;
+      render();
+    });
     document.getElementById('addStudentBinding').addEventListener('click', () => {
       showBound(false);
       document.querySelector('[data-bind-result]').classList.add('hidden');

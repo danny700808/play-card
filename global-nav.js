@@ -1,5 +1,14 @@
 // 全站統一：回到上一頁 / 登出 / 內部系統視覺主題
 (function(){
+  function loadMobileTheme(){
+    if(!document.head || document.querySelector('link[data-yz-internal-mobile]')) return;
+    var link=document.createElement('link');
+    link.rel='stylesheet';
+    link.href='internal-mobile.css?v=20260727-mobile-v1';
+    link.media='(max-width: 780px)';
+    link.setAttribute('data-yz-internal-mobile','');
+    document.head.appendChild(link);
+  }
   function readUser(){
     try{return JSON.parse(localStorage.getItem('employeeUser')||'null');}
     catch(e){return null;}
@@ -75,6 +84,7 @@
     }
     if(logout) logout.addEventListener('click',doLogout);
   }
+  loadMobileTheme();
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',bind);
   else bind();
   window.yzGlobalBack=goBack;

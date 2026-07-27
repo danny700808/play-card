@@ -201,3 +201,141 @@
   .ops-product-image-grid,.ops-product-image-grid.single{width:104px!important;min-width:104px!important}
   .ops-mobile-search-pad button{min-height:54px!important;font-size:21px!important}
 }
+
+/* 2026-07-27：全通路營運中心手機密集介面。
+   所有調整只在手機寬度生效，桌機畫面與操作維持原樣。 */
+@media (max-width:780px){
+  body.ops-body{
+    --ops-radius:11px;
+    background:#eef4f1!important;
+    color:#19342d!important;
+    font-size:10px!important;
+    line-height:1.4!important;
+  }
+  .ops-main{padding:0 7px 18px!important}
+  .ops-topbar{
+    min-height:46px!important;
+    padding:6px 0!important;
+    gap:7px!important;
+    background:rgba(238,244,241,.96)!important;
+  }
+  .ops-menu-btn{
+    width:34px!important;
+    height:34px!important;
+    border-radius:9px!important;
+    font-size:16px!important;
+    box-shadow:0 2px 8px rgba(24,55,45,.06)!important;
+  }
+  .ops-title-wrap{min-width:0!important}
+  .ops-title-wrap h1{margin:0!important;font-size:16px!important;line-height:1.2!important}
+  .ops-title-wrap p,.ops-last-read{font-size:8px!important}
+  .ops-top-actions{gap:4px!important}
+  .ops-top-actions .ops-button{
+    min-width:0!important;
+    min-height:30px!important;
+    padding:5px 8px!important;
+    border-radius:8px!important;
+    font-size:9px!important;
+  }
+  .ops-content{padding:2px 0 20px!important}
+  .ops-alert,.ops-banner,.ops-callout{
+    margin-bottom:6px!important;
+    padding:8px!important;
+    border-radius:9px!important;
+    font-size:9px!important;
+  }
+  .ops-banner{gap:7px!important}
+  .ops-banner .icon{width:24px!important;height:24px!important;border-radius:7px!important}
+  .ops-banner h3{font-size:11px!important}
+  .ops-banner p{font-size:8px!important}
+  .ops-quick-nav{
+    grid-template-columns:repeat(3,minmax(0,1fr))!important;
+    gap:5px!important;
+    margin-bottom:7px!important;
+  }
+  .ops-quick-nav a{
+    min-height:55px!important;
+    padding:6px 4px!important;
+    gap:3px!important;
+    border-radius:9px!important;
+    box-shadow:0 2px 8px rgba(24,55,45,.035)!important;
+  }
+  .ops-quick-nav a>span{width:25px!important;height:25px!important;border-radius:7px!important;font-size:12px!important}
+  .ops-quick-nav a b{font-size:9px!important}
+  .ops-kpi-grid{
+    grid-template-columns:repeat(3,minmax(0,1fr))!important;
+    gap:5px!important;
+    margin-bottom:7px!important;
+  }
+  .ops-kpi{
+    padding:7px!important;
+    border-radius:9px!important;
+    box-shadow:0 2px 8px rgba(24,55,45,.035)!important;
+  }
+  .ops-kpi-head{font-size:8px!important}
+  .ops-kpi-icon{width:22px!important;height:22px!important;border-radius:7px!important;font-size:9px!important}
+  .ops-kpi strong{margin-top:3px!important;font-size:17px!important}
+  .ops-kpi small{margin-top:2px!important;font-size:7px!important}
+  .ops-grid-2,.ops-grid-equal,.ops-grid-3{gap:7px!important}
+  .ops-card{
+    padding:9px!important;
+    border-radius:11px!important;
+    box-shadow:0 3px 10px rgba(24,55,45,.04)!important;
+  }
+  .ops-card-head{gap:6px!important;margin-bottom:7px!important}
+  .ops-card-head h2,.ops-card-head h3{font-size:13px!important}
+  .ops-card-head p{font-size:8px!important}
+  .ops-card-actions{gap:4px!important}
+  .ops-section-title{margin:10px 0 5px!important;font-size:9px!important}
+  .ops-button{
+    min-height:32px!important;
+    padding:6px 8px!important;
+    border-radius:8px!important;
+    font-size:9px!important;
+  }
+  .ops-button.small{min-height:27px!important;padding:4px 6px!important;font-size:8px!important}
+  .ops-toolbar{gap:5px!important;margin-bottom:7px!important}
+  .ops-input,.ops-select,.ops-textarea{
+    min-height:34px!important;
+    padding:6px 8px!important;
+    border-radius:8px!important;
+    font-size:11px!important;
+  }
+  .ops-field label{margin-bottom:3px!important;font-size:8px!important}
+  .ops-field small{font-size:7px!important}
+  .ops-form-grid,.ops-form-grid.cols-3,.ops-form-grid.cols-4{
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+    gap:6px!important;
+  }
+  .ops-field.full{grid-column:1/-1!important}
+  .ops-tabs{gap:4px!important;margin-bottom:7px!important}
+  .ops-tab{padding:5px 8px!important;font-size:9px!important}
+  .ops-status-row,.ops-today-row,.ops-summary-line,.ops-activity{
+    gap:6px!important;
+    padding:7px!important;
+    border-radius:8px!important;
+  }
+  .ops-status-row b,.ops-activity b,.ops-today-row b{font-size:9px!important}
+  .ops-status-row small,.ops-activity small,.ops-today-row small{font-size:7px!important}
+  .ops-table-wrap{border-radius:9px!important}
+  .ops-table{font-size:8px!important}
+  .ops-table th,.ops-table td{padding:6px!important;font-size:8px!important}
+  .ops-drawer>header{padding:10px!important}
+  .ops-drawer>header h2{font-size:15px!important}
+  .ops-drawer>header p{font-size:8px!important}
+  .ops-drawer>header button{width:31px!important;height:31px!important;border-radius:8px!important}
+  .ops-drawer-body{padding:10px 9px 20px!important}
+  .ops-drawer-footer{gap:5px!important;padding-top:8px!important}
+  .ops-modal-backdrop{padding:0!important;align-items:flex-end!important}
+  .ops-modal{width:100%!important;border-radius:15px 15px 0 0!important}
+  .ops-modal>header,.ops-modal-body,.ops-modal>footer{padding:10px!important}
+  .ops-modal>header h2{font-size:14px!important}
+  .ops-toast-stack{right:8px!important;bottom:8px!important;width:calc(100vw - 16px)!important}
+  .ops-toast{padding:8px 10px!important;border-radius:9px!important}
+  .ops-toast b{font-size:10px!important}.ops-toast span{font-size:8px!important}
+}
+
+@media (max-width:390px){
+  .ops-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .ops-form-grid,.ops-form-grid.cols-3,.ops-form-grid.cols-4{grid-template-columns:1fr!important}
+}
