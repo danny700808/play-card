@@ -80,6 +80,11 @@
       grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 5px;
     }
+    #ops-mobile-preview .ops-grid-5 {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 4px;
+    }
     #ops-mobile-preview .ops-grid-2 {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -293,6 +298,31 @@
       background: var(--ops-primary);
       color: var(--ops-primary-ink);
     }
+    #ops-mobile-preview .ops-date-nav {
+      display: grid;
+      grid-template-columns: 1fr 1.25fr 1fr;
+      gap: 4px;
+    }
+    #ops-mobile-preview .ops-range-nav {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px;
+      margin-top: 4px;
+    }
+    #ops-mobile-preview .ops-date-nav .btn.is-active,
+    #ops-mobile-preview .ops-range-nav .btn.is-active {
+      border-color: var(--ops-primary);
+      background: var(--ops-primary);
+      color: var(--ops-primary-ink);
+    }
+    #ops-mobile-preview .ops-custom-range {
+      display: none;
+      grid-template-columns: 1fr 1fr auto;
+      gap: 4px;
+      margin-top: 5px;
+    }
+    #ops-mobile-preview .ops-custom-range.is-open { display: grid; }
+    #ops-mobile-preview .ops-custom-range .form-control { min-width: 0; }
     #ops-mobile-preview .ops-bottom-nav {
       margin-top: 8px;
       padding-top: 7px;
@@ -510,6 +540,10 @@
     }
     @media (max-width: 380px) {
       #ops-mobile-preview .ops-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      #ops-mobile-preview .ops-grid-5 {
+        grid-template-columns: repeat(5, minmax(64px, 1fr));
+        overflow-x: auto;
+      }
       #ops-mobile-preview .ops-module-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
   </style>
@@ -529,22 +563,33 @@
 
     <section class="ops-view is-active" data-view="overview">
       <div class="ops-stack">
-        <div class="ops-tabs" aria-label="總覽區間">
-          <button class="btn is-active" type="button">今天</button>
-          <button class="btn" type="button">本週</button>
-          <button class="btn" type="button">本月</button>
-          <button class="btn" type="button">自訂</button>
+        <div aria-label="總覽日期與區間">
+          <div class="ops-date-nav">
+            <button class="btn" type="button" data-overview-date="previous" data-toast="已切換至前一天：2026/07/26">← 前一天</button>
+            <button class="btn is-active" type="button" data-overview-date="today" data-toast="已回到今天：2026/07/27">今天 7/27</button>
+            <button class="btn" type="button" data-overview-date="next" data-toast="已切換至後一天：2026/07/28">後一天 →</button>
+          </div>
+          <div class="ops-range-nav">
+            <button class="btn" type="button" data-overview-range="month" data-toast="已切換至 2026 年 7 月">本月</button>
+            <button class="btn" type="button" data-overview-range="custom">自訂日期</button>
+          </div>
+          <div class="ops-custom-range" id="opsOverviewCustomRange">
+            <input class="form-control" type="date" value="2026-07-01" aria-label="自訂開始日期">
+            <input class="form-control" type="date" value="2026-07-27" aria-label="自訂結束日期">
+            <button class="btn btn-primary" type="button" data-custom-query>查詢</button>
+          </div>
         </div>
         <section class="card">
           <div class="ops-section-head">
-            <div><h2>營運收入</h2><p class="ops-sub">點金額可以進入完整報表</p></div>
+            <div><h2>今日毛利</h2><p class="ops-sub">全部通路與營運項目加總</p></div>
             <button class="btn btn-primary" type="button" data-go="reports">完整報表</button>
           </div>
-          <div class="ops-grid-4">
-            <button class="card ops-stat" type="button" data-go="reports"><span>門市收入</span><strong>$18,620</strong></button>
-            <button class="card ops-stat" type="button" data-go="reports"><span>平台入帳</span><strong>$9,480</strong></button>
-            <button class="card ops-stat" type="button" data-go="reports"><span>課程學費</span><strong>$14,000</strong></button>
-            <button class="card ops-stat" type="button" data-go="reports"><span>空間租用</span><strong>$3,200</strong></button>
+          <div class="ops-grid-5">
+            <button class="card ops-stat" type="button" data-go="reports"><span>全部毛利</span><strong>$23,650</strong></button>
+            <button class="card ops-stat" type="button" data-go="reports"><span>門市毛利</span><strong>$7,360</strong></button>
+            <button class="card ops-stat" type="button" data-go="reports"><span>平台毛利</span><strong>$4,180</strong></button>
+            <button class="card ops-stat" type="button" data-go="reports"><span>課程毛利</span><strong>$10,210</strong></button>
+            <button class="card ops-stat" type="button" data-go="reports"><span>租用毛利</span><strong>$1,900</strong></button>
           </div>
         </section>
         <section class="card">
@@ -1129,6 +1174,37 @@
           root.querySelectorAll("[data-schedule-pane]").forEach(function (pane) {
             pane.classList.toggle("is-active", pane.dataset.schedulePane === mode);
           });
+          return;
+        }
+        const overviewDate = event.target.closest("[data-overview-date]");
+        if (overviewDate) {
+          root.querySelectorAll("[data-overview-date]").forEach(function (button) {
+            button.classList.toggle("is-active", button === overviewDate);
+          });
+          root.querySelectorAll("[data-overview-range]").forEach(function (button) {
+            button.classList.remove("is-active");
+          });
+          root.querySelector("#opsOverviewCustomRange").classList.remove("is-open");
+          showToast(overviewDate.dataset.toast);
+          return;
+        }
+        const overviewRange = event.target.closest("[data-overview-range]");
+        if (overviewRange) {
+          root.querySelectorAll("[data-overview-range]").forEach(function (button) {
+            button.classList.toggle("is-active", button === overviewRange);
+          });
+          root.querySelectorAll("[data-overview-date]").forEach(function (button) {
+            button.classList.remove("is-active");
+          });
+          const customRange = root.querySelector("#opsOverviewCustomRange");
+          const isCustom = overviewRange.dataset.overviewRange === "custom";
+          customRange.classList.toggle("is-open", isCustom);
+          if (!isCustom) showToast(overviewRange.dataset.toast);
+          return;
+        }
+        if (event.target.closest("[data-custom-query]")) {
+          const dates = root.querySelectorAll("#opsOverviewCustomRange input");
+          showToast("已查詢 " + dates[0].value.replaceAll("-", "/") + "～" + dates[1].value.replaceAll("-", "/"));
           return;
         }
         const receive = event.target.closest("[data-receive]");
