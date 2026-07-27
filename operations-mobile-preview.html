@@ -216,7 +216,7 @@
     }
     #ops-mobile-preview .ops-product-row {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-columns: 52px minmax(0, 1fr) auto;
       gap: 4px 7px;
       align-items: center;
       padding: 7px 0;
@@ -224,7 +224,37 @@
     }
     #ops-mobile-preview .ops-product-row:last-child { border-bottom: 0; }
     #ops-mobile-preview .ops-product-row strong { font-size: 12px; font-weight: 500; }
-    #ops-mobile-preview .ops-product-row .ops-meta { grid-column: 1; }
+    #ops-mobile-preview .ops-product-row .ops-meta { margin-top: 2px; }
+    #ops-mobile-preview .ops-product-thumb {
+      display: grid;
+      width: 52px;
+      height: 52px;
+      place-items: center;
+      overflow: hidden;
+      border: 1px solid var(--ops-line);
+      border-radius: 9px;
+      background: color-mix(in srgb, var(--ops-soft) 54%, var(--ops-card));
+    }
+    #ops-mobile-preview .ops-product-thumb svg { width: 46px; height: 46px; }
+    #ops-mobile-preview .ops-product-quick {
+      display: grid;
+      grid-template-columns: 45px minmax(0, 1fr) auto;
+      gap: 6px;
+      align-items: center;
+      width: 100%;
+      padding: 6px;
+      border: 1px solid var(--ops-line);
+      border-radius: 9px;
+      background: var(--ops-card);
+      color: var(--ops-ink);
+      text-align: left;
+    }
+    #ops-mobile-preview .ops-product-quick .ops-product-thumb { width: 45px; height: 45px; }
+    #ops-mobile-preview .ops-product-quick .ops-product-thumb svg { width: 40px; height: 40px; }
+    #ops-mobile-preview .ops-product-quick strong,
+    #ops-mobile-preview .ops-product-quick span { display: block; }
+    #ops-mobile-preview .ops-product-quick strong { font-size: 11px; }
+    #ops-mobile-preview .ops-product-quick span { color: var(--ops-muted); font-size: 11px; }
     #ops-mobile-preview .ops-cart {
       border-color: color-mix(in srgb, var(--ops-primary) 45%, var(--ops-line));
       background: color-mix(in srgb, var(--ops-soft) 55%, var(--ops-card));
@@ -312,6 +342,172 @@
       border-color: color-mix(in srgb, var(--ops-primary) 40%, var(--ops-line));
       background: color-mix(in srgb, var(--ops-soft) 65%, var(--ops-card));
     }
+    #ops-mobile-preview .ops-revenue-bar {
+      display: grid;
+      grid-template-columns: 64px minmax(0, 1fr) auto;
+      gap: 6px;
+      align-items: center;
+      margin-top: 6px;
+      font-size: 11px;
+    }
+    #ops-mobile-preview .ops-revenue-track {
+      height: 8px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: var(--ops-line);
+    }
+    #ops-mobile-preview .ops-revenue-fill {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: var(--ops-primary);
+    }
+    #ops-mobile-preview .ops-schedule-controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 5px;
+      margin-bottom: 6px;
+    }
+    #ops-mobile-preview .ops-schedule-controls .btn.is-active {
+      border-color: var(--ops-primary);
+      background: var(--ops-primary);
+      color: var(--ops-primary-ink);
+    }
+    #ops-mobile-preview .ops-schedule-pane { display: none; }
+    #ops-mobile-preview .ops-schedule-pane.is-active { display: block; }
+    #ops-mobile-preview .ops-schedule-scroll {
+      width: 100%;
+      overflow-x: auto;
+      overscroll-behavior-inline: contain;
+      touch-action: pan-x pan-y pinch-zoom;
+      border: 1px solid var(--ops-line);
+      border-radius: 9px;
+      background: var(--ops-card);
+    }
+    #ops-mobile-preview .ops-day-grid,
+    #ops-mobile-preview .ops-week-grid {
+      display: grid;
+      position: relative;
+      width: max-content;
+      min-width: 100%;
+      background: var(--ops-card);
+    }
+    #ops-mobile-preview .ops-day-grid {
+      grid-template-columns: 44px repeat(5, 104px);
+      grid-template-rows: 34px repeat(12, 38px);
+    }
+    #ops-mobile-preview .ops-week-grid {
+      grid-template-columns: 44px repeat(7, 86px);
+      grid-template-rows: 40px repeat(12, 36px);
+    }
+    #ops-mobile-preview .ops-day-grid::before,
+    #ops-mobile-preview .ops-week-grid::before {
+      content: "";
+      z-index: 0;
+      grid-column: 2 / -1;
+      grid-row: 2 / -1;
+      pointer-events: none;
+    }
+    #ops-mobile-preview .ops-day-grid::before {
+      background-image:
+        linear-gradient(to right, var(--ops-line) 1px, transparent 1px),
+        linear-gradient(to bottom, var(--ops-line) 1px, transparent 1px);
+      background-size: 104px 100%, 100% 38px;
+    }
+    #ops-mobile-preview .ops-week-grid::before {
+      background-image:
+        linear-gradient(to right, var(--ops-line) 1px, transparent 1px),
+        linear-gradient(to bottom, var(--ops-line) 1px, transparent 1px);
+      background-size: 86px 100%, 100% 36px;
+    }
+    #ops-mobile-preview .ops-grid-cell {
+      min-width: 0;
+      padding: 3px;
+      border-right: 1px solid var(--ops-line);
+      border-bottom: 1px solid var(--ops-line);
+      color: var(--ops-muted);
+      font-size: 11px;
+      text-align: center;
+    }
+    #ops-mobile-preview .ops-grid-cell.is-head {
+      display: grid;
+      place-items: center;
+      background: color-mix(in srgb, var(--ops-soft) 60%, var(--ops-card));
+      color: var(--ops-ink);
+      font-weight: 500;
+    }
+    #ops-mobile-preview .ops-grid-cell.is-time {
+      display: grid;
+      place-items: start center;
+      padding-top: 4px;
+      background: color-mix(in srgb, var(--ops-soft) 28%, var(--ops-card));
+    }
+    #ops-mobile-preview .ops-grid-cell.is-slot {
+      z-index: 1;
+      cursor: pointer;
+      border: 1px dashed color-mix(in srgb, var(--ops-primary) 35%, var(--ops-line));
+      background: color-mix(in srgb, var(--ops-soft) 22%, transparent);
+      color: var(--ops-primary);
+    }
+    #ops-mobile-preview .ops-grid-cell.is-slot:active {
+      background: var(--ops-soft);
+    }
+    #ops-mobile-preview .ops-schedule-event {
+      z-index: 2;
+      min-width: 0;
+      margin: 2px;
+      padding: 4px;
+      overflow: hidden;
+      border: 1px solid color-mix(in srgb, var(--ops-primary) 65%, var(--ops-line));
+      border-radius: 7px;
+      background: var(--ops-primary);
+      color: var(--ops-primary-ink);
+      cursor: pointer;
+      font-size: 11px;
+      line-height: 1.25;
+      text-align: left;
+    }
+    #ops-mobile-preview .ops-schedule-event strong,
+    #ops-mobile-preview .ops-schedule-event span { display: block; }
+    #ops-mobile-preview .ops-schedule-event strong {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    #ops-mobile-preview .ops-schedule-event span { opacity: .9; }
+    #ops-mobile-preview .ops-schedule-event.is-move {
+      background: color-mix(in srgb, var(--ops-primary) 72%, var(--ops-card));
+      color: var(--ops-ink);
+    }
+    #ops-mobile-preview .ops-schedule-event.is-rental {
+      border-color: color-mix(in srgb, var(--ops-danger) 65%, var(--ops-line));
+      background: color-mix(in srgb, var(--ops-danger) 72%, var(--ops-card));
+      color: var(--ops-ink);
+    }
+    #ops-mobile-preview .ops-schedule-event.is-gift {
+      border-color: color-mix(in srgb, var(--ops-soft-ink) 65%, var(--ops-line));
+      background: var(--ops-soft);
+      color: var(--ops-soft-ink);
+    }
+    #ops-mobile-preview .ops-overlap {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2px;
+      z-index: 3;
+      margin: 1px;
+    }
+    #ops-mobile-preview .ops-overlap .ops-schedule-event { margin: 1px; }
+    #ops-mobile-preview .ops-schedule-actions {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 5px;
+      margin-top: 8px;
+    }
+    #ops-mobile-preview .ops-schedule-hint {
+      margin-top: 5px;
+      color: var(--ops-muted);
+      font-size: 11px;
+    }
     @media (max-width: 380px) {
       #ops-mobile-preview .ops-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       #ops-mobile-preview .ops-module-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -333,66 +529,92 @@
 
     <section class="ops-view is-active" data-view="overview">
       <div class="ops-stack">
-        <section class="card ops-try">
-          <div class="ops-section-head">
-            <div><h2>這一頁可以直接操作</h2><p class="ops-sub">請點選下面任一流程，完成後可以返回總覽。</p></div>
-          </div>
-          <div class="ops-grid-2">
-            <button class="btn btn-primary" type="button" data-go="sales">試用現場結帳</button>
-            <button class="btn" type="button" data-go="platform">試用平台訂單</button>
-            <button class="btn" type="button" data-go="stock">試用庫存作業</button>
-            <button class="btn" type="button" data-go="more">打開全部功能</button>
-          </div>
-        </section>
         <div class="ops-tabs" aria-label="總覽區間">
           <button class="btn is-active" type="button">今天</button>
           <button class="btn" type="button">本週</button>
           <button class="btn" type="button">本月</button>
           <button class="btn" type="button">自訂</button>
         </div>
-        <div class="ops-grid-4">
-          <div class="card ops-stat"><span>門市收入</span><strong>$18,620</strong></div>
-          <div class="card ops-stat"><span>平台預估</span><strong>$9,480</strong></div>
-          <div class="card ops-stat"><span>租賃收入</span><strong>$3,200</strong></div>
-          <div class="card ops-stat"><span>今日訂單</span><strong>17</strong></div>
-        </div>
         <section class="card">
           <div class="ops-section-head">
-            <div><h2>需要處理</h2><p class="ops-sub">只列出真正需要注意的項目</p></div>
-            <span class="viz-badge is-danger">3 項</span>
+            <div><h2>營運收入</h2><p class="ops-sub">點金額可以進入完整報表</p></div>
+            <button class="btn btn-primary" type="button" data-go="reports">完整報表</button>
           </div>
-          <div class="ops-list">
-            <button class="ops-list-row ops-attention" type="button" data-go="platform">
-              <strong>平台訂單待確認</strong><span class="viz-badge is-danger">2 筆</span>
-              <span class="ops-meta">SKU 未配對，點一下直接處理</span>
-            </button>
-            <button class="ops-list-row ops-attention" type="button" data-go="receivables">
-              <strong>應收帳款尚未結清</strong><span class="ops-amount">$5,600</span>
-              <span class="ops-meta">共 3 筆，可以直接收款</span>
-            </button>
-            <button class="ops-list-row" type="button" data-go="stock">
-              <strong>低庫存商品</strong><span class="viz-badge">4 項</span>
-              <span class="ops-meta">鼓棒、導線與琴弦需要補貨</span>
-            </button>
+          <div class="ops-grid-4">
+            <button class="card ops-stat" type="button" data-go="reports"><span>門市收入</span><strong>$18,620</strong></button>
+            <button class="card ops-stat" type="button" data-go="reports"><span>平台入帳</span><strong>$9,480</strong></button>
+            <button class="card ops-stat" type="button" data-go="reports"><span>課程學費</span><strong>$14,000</strong></button>
+            <button class="card ops-stat" type="button" data-go="reports"><span>空間租用</span><strong>$3,200</strong></button>
           </div>
         </section>
         <section class="card">
-          <div class="ops-section-head"><h2>快速操作</h2></div>
+          <div class="ops-section-head">
+            <div><h2>常用功能</h2><p class="ops-sub">全部直接放在首頁，不需要再打開更多</p></div>
+          </div>
           <div class="ops-module-grid">
-            <button class="btn" type="button" data-go="sales">現場收銀</button>
+            <button class="btn btn-primary" type="button" data-go="calendar">課程日／週表</button>
+            <button class="btn btn-primary" type="button" data-go="products">商品搜尋</button>
+            <button class="btn btn-primary" type="button" data-go="sales">現場收銀</button>
+            <button class="btn" type="button" data-go="reports">營運報表</button>
             <button class="btn" type="button" data-go="platform">平台訂單</button>
             <button class="btn" type="button" data-go="stock">進貨盤點</button>
-            <button class="btn" type="button" data-go="products">商品資料</button>
             <button class="btn" type="button" data-go="customers">客戶會員</button>
+            <button class="btn" type="button" data-go="receivables">應收帳款</button>
             <button class="btn" type="button" data-go="rentals">租賃營運</button>
           </div>
         </section>
         <section class="card">
-          <div class="ops-section-head"><h2>最新動態</h2><button class="btn btn-ghost" type="button">全部</button></div>
+          <div class="ops-section-head">
+            <div><h2>今日課表</h2><p class="ops-sub">教室為直欄、時間為橫列；點課程可操作</p></div>
+            <button class="btn" type="button" data-go="calendar">完整課表</button>
+          </div>
+          <div class="ops-schedule-scroll">
+            <div class="ops-day-grid">
+              <div class="ops-grid-cell is-head" style="grid-column:1;grid-row:1">時間</div>
+              <div class="ops-grid-cell is-head" style="grid-column:2;grid-row:1">鼓教室</div>
+              <div class="ops-grid-cell is-head" style="grid-column:3;grid-row:1">YAMAHA</div>
+              <div class="ops-grid-cell is-head" style="grid-column:4;grid-row:1">KAWAI</div>
+              <div class="ops-grid-cell is-head" style="grid-column:5;grid-row:1">家教室</div>
+              <div class="ops-grid-cell is-head" style="grid-column:6;grid-row:1">展演</div>
+              <div class="ops-grid-cell is-time" style="grid-column:1;grid-row:2/4">10:00</div>
+              <div class="ops-grid-cell is-time" style="grid-column:1;grid-row:4/6">11:00</div>
+              <div class="ops-grid-cell is-time" style="grid-column:1;grid-row:6/8">12:00</div>
+              <div class="ops-grid-cell is-time" style="grid-column:1;grid-row:8/10">13:00</div>
+              <div class="ops-grid-cell is-time" style="grid-column:1;grid-row:10/12">14:00</div>
+              <div class="ops-grid-cell is-time" style="grid-column:1;grid-row:12/14">15:00</div>
+              <button class="ops-schedule-event" type="button" style="grid-column:2;grid-row:2/4" data-schedule="10:00～11:00・梁睿恩|鼓教室・爵士鼓|老師：張洵齊|固定課"><strong>梁睿恩</strong><span>張洵齊</span></button>
+              <button class="ops-schedule-event is-move" type="button" style="grid-column:3;grid-row:4/6" data-schedule="11:00～12:00・陳品妤|YAMAHA・鋼琴|老師：王虹婕|本次調課"><strong>陳品妤</strong><span>王虹婕</span></button>
+              <button class="ops-schedule-event" type="button" style="grid-column:4;grid-row:8/10" data-schedule="13:00～14:00・吳夢琳|KAWAI・鋼琴|老師：李曼捷|固定課"><strong>吳夢琳</strong><span>李曼捷</span></button>
+              <button class="ops-schedule-event is-rental" type="button" style="grid-column:6;grid-row:8/12" data-schedule="13:00～15:00・樂團排練|展演空間|空間租用|已預約"><strong>樂團排練</strong><span>租用</span></button>
+            </div>
+          </div>
+        </section>
+        <section class="card">
+          <div class="ops-section-head">
+            <div><h2>快速找商品</h2><p class="ops-sub">圖片、售價與庫存一起確認</p></div>
+            <button class="btn" type="button" data-go="products">全部商品</button>
+          </div>
+          <div class="ops-toolbar"><input class="form-control" id="opsHomeProductSearch" aria-label="首頁搜尋商品" placeholder="商品名稱、SKU、條碼或品牌"></div>
+          <div class="ops-list" id="opsHomeProductList">
+            <button class="ops-product-quick" type="button" data-product-name="Vic Firth 5A 鼓棒 VF-5A" data-quick-sale="680">
+              <span class="ops-product-thumb"><svg viewBox="0 0 48 48" aria-hidden="true"><path d="M12 38 34 9M18 41 40 12" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/><circle cx="35" cy="8" r="3" fill="currentColor"/><circle cx="41" cy="11" r="3" fill="currentColor"/></svg></span>
+              <span><strong>Vic Firth 5A 鼓棒</strong><span>庫存 8・VF-5A</span></span><strong>$680</strong>
+            </button>
+            <button class="ops-product-quick" type="button" data-product-name="Elixir 民謠吉他弦 ELX-11052" data-quick-sale="720">
+              <span class="ops-product-thumb"><svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="16" fill="none" stroke="currentColor" stroke-width="3"/><circle cx="24" cy="24" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M24 8v32M19 9v30M29 9v30" fill="none" stroke="currentColor"/></svg></span>
+              <span><strong>Elixir 民謠吉他弦</strong><span>庫存 5・ELX-11052</span></span><strong>$720</strong>
+            </button>
+            <button class="ops-product-quick" type="button" data-product-name="導線 3 公尺 CBL-3M" data-quick-sale="450">
+              <span class="ops-product-thumb"><svg viewBox="0 0 48 48" aria-hidden="true"><path d="M13 12c23 0 24 25 7 25-12 0-11-13-2-13h13" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><path d="M8 9h8v6H8zm23 12h9v6h-9z" fill="currentColor"/></svg></span>
+              <span><strong>導線 3 公尺</strong><span>庫存 11・CBL-3M</span></span><strong>$450</strong>
+            </button>
+          </div>
+        </section>
+        <section class="card">
+          <div class="ops-section-head"><h2>需要處理</h2><span class="viz-badge is-danger">3 項</span></div>
           <div class="ops-list">
-            <div class="ops-list-row"><strong>門市銷售 S-0727-018</strong><span class="ops-amount">$2,980</span><span class="ops-meta">11:26・電子支付</span></div>
-            <div class="ops-list-row"><strong>平台訂單 ES-10482</strong><span class="ops-amount">$1,280</span><span class="ops-meta">10:48・已同步</span></div>
-            <div class="ops-list-row"><strong>租賃合約 R-0266</strong><span class="ops-amount">$1,600</span><span class="ops-meta">09:15・已成立</span></div>
+            <button class="ops-list-row ops-attention" type="button" data-go="platform"><strong>平台訂單待確認</strong><span class="viz-badge is-danger">2 筆</span><span class="ops-meta">SKU 未配對</span></button>
+            <button class="ops-list-row ops-attention" type="button" data-go="receivables"><strong>應收帳款未結清</strong><span class="ops-amount">$5,600</span><span class="ops-meta">共 3 筆</span></button>
           </div>
         </section>
       </div>
@@ -413,10 +635,22 @@
         <section class="card">
           <div class="ops-section-head"><h2>選擇商品</h2><span class="viz-badge">12 項</span></div>
           <div id="opsProductList">
-            <div class="ops-product-row" data-product-name="Vic Firth 5A 鼓棒"><div><strong>Vic Firth 5A 鼓棒</strong><p class="ops-meta">VF-5A・庫存 8</p></div><button class="btn" type="button" data-add-product="680">＋ $680</button></div>
-            <div class="ops-product-row" data-product-name="Elixir 民謠吉他弦"><div><strong>Elixir 民謠吉他弦</strong><p class="ops-meta">ELX-11052・庫存 5</p></div><button class="btn" type="button" data-add-product="720">＋ $720</button></div>
-            <div class="ops-product-row" data-product-name="導線 3 公尺"><div><strong>導線 3 公尺</strong><p class="ops-meta">CBL-3M・庫存 11</p></div><button class="btn" type="button" data-add-product="450">＋ $450</button></div>
-            <div class="ops-product-row" data-product-name="吉他保養組"><div><strong>吉他保養組</strong><p class="ops-meta">CARE-01・庫存 3</p></div><button class="btn" type="button" data-add-product="580">＋ $580</button></div>
+            <div class="ops-product-row" data-product-name="Vic Firth 5A 鼓棒 VF-5A">
+              <span class="ops-product-thumb"><svg viewBox="0 0 48 48" aria-hidden="true"><path d="M12 38 34 9M18 41 40 12" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/><circle cx="35" cy="8" r="3" fill="currentColor"/><circle cx="41" cy="11" r="3" fill="currentColor"/></svg></span>
+              <div><strong>Vic Firth 5A 鼓棒</strong><p class="ops-meta">VF-5A・庫存 8・成本 $390</p></div><button class="btn" type="button" data-add-product="680">＋ $680</button>
+            </div>
+            <div class="ops-product-row" data-product-name="Elixir 民謠吉他弦 ELX-11052">
+              <span class="ops-product-thumb"><svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="16" fill="none" stroke="currentColor" stroke-width="3"/><circle cx="24" cy="24" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M24 8v32M19 9v30M29 9v30" fill="none" stroke="currentColor"/></svg></span>
+              <div><strong>Elixir 民謠吉他弦</strong><p class="ops-meta">ELX-11052・庫存 5・成本 $410</p></div><button class="btn" type="button" data-add-product="720">＋ $720</button>
+            </div>
+            <div class="ops-product-row" data-product-name="導線 3 公尺 CBL-3M">
+              <span class="ops-product-thumb"><svg viewBox="0 0 48 48" aria-hidden="true"><path d="M13 12c23 0 24 25 7 25-12 0-11-13-2-13h13" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><path d="M8 9h8v6H8zm23 12h9v6h-9z" fill="currentColor"/></svg></span>
+              <div><strong>導線 3 公尺</strong><p class="ops-meta">CBL-3M・庫存 11・成本 $230</p></div><button class="btn" type="button" data-add-product="450">＋ $450</button>
+            </div>
+            <div class="ops-product-row" data-product-name="吉他保養組 CARE-01">
+              <span class="ops-product-thumb"><svg viewBox="0 0 48 48" aria-hidden="true"><path d="M17 8h14v8H17zM13 16h22v25H13z" fill="none" stroke="currentColor" stroke-width="3"/><path d="M18 23h12M18 29h12M18 35h8" stroke="currentColor" stroke-width="2"/></svg></span>
+              <div><strong>吉他保養組</strong><p class="ops-meta">CARE-01・庫存 3・成本 $310</p></div><button class="btn" type="button" data-add-product="580">＋ $580</button>
+            </div>
           </div>
         </section>
         <section class="card ops-cart">
@@ -457,6 +691,38 @@
       </div>
     </section>
 
+    <section class="ops-view" data-view="reports">
+      <div class="ops-stack">
+        <div class="ops-tabs" aria-label="報表區間">
+          <button class="btn is-active" type="button">今天</button>
+          <button class="btn" type="button">本週</button>
+          <button class="btn" type="button">本月</button>
+          <button class="btn" type="button">自訂</button>
+        </div>
+        <div class="ops-grid-4">
+          <div class="card ops-stat"><span>總收入</span><strong>$45,300</strong></div>
+          <div class="card ops-stat"><span>商品毛利</span><strong>$11,820</strong></div>
+          <div class="card ops-stat"><span>待入帳</span><strong>$3,460</strong></div>
+          <div class="card ops-stat"><span>交易筆數</span><strong>29</strong></div>
+        </div>
+        <section class="card">
+          <div class="ops-section-head"><div><h2>收入來源</h2><p class="ops-sub">每個區塊實際帶來多少錢</p></div></div>
+          <div class="ops-revenue-bar"><span>門市商品</span><span class="ops-revenue-track"><span class="ops-revenue-fill" style="width:100%"></span></span><strong>$18,620</strong></div>
+          <div class="ops-revenue-bar"><span>課程學費</span><span class="ops-revenue-track"><span class="ops-revenue-fill" style="width:75%"></span></span><strong>$14,000</strong></div>
+          <div class="ops-revenue-bar"><span>平台訂單</span><span class="ops-revenue-track"><span class="ops-revenue-fill" style="width:51%"></span></span><strong>$9,480</strong></div>
+          <div class="ops-revenue-bar"><span>空間租用</span><span class="ops-revenue-track"><span class="ops-revenue-fill" style="width:17%"></span></span><strong>$3,200</strong></div>
+        </section>
+        <section class="card">
+          <div class="ops-section-head"><h2>款項狀態</h2></div>
+          <div class="ops-list">
+            <button class="ops-list-row" type="button" data-detail="已收款|現金 $12,800|信用卡 $9,420|電子支付 $10,340"><strong>已完成收款</strong><span class="ops-amount">$32,560</span><span class="ops-meta">現金、刷卡與電子支付</span></button>
+            <button class="ops-list-row" type="button" data-go="platform"><strong>平台待入帳</strong><span class="ops-amount">$3,460</span><span class="ops-meta">MOMO、蝦皮與官網金流</span></button>
+            <button class="ops-list-row ops-attention" type="button" data-go="receivables"><strong>應收未結清</strong><span class="ops-amount">$5,600</span><span class="ops-meta">3 筆待收</span></button>
+          </div>
+        </section>
+      </div>
+    </section>
+
     <section class="ops-view" data-view="stock">
       <div class="ops-stack">
         <div class="ops-tabs">
@@ -491,21 +757,24 @@
     <section class="ops-view" data-view="products">
       <div class="ops-stack">
         <div class="ops-toolbar">
-          <input class="form-control" aria-label="搜尋商品資料" placeholder="商品名稱、SKU 或品牌">
+          <input class="form-control" id="opsCatalogSearch" aria-label="搜尋商品資料" placeholder="商品名稱、SKU、條碼或品牌">
           <button class="btn btn-primary" type="button" data-toast="這裡會開啟新增商品">新增</button>
         </div>
         <section class="card">
           <div class="ops-section-head"><h2>商品資料</h2><span class="viz-badge">486 項</span></div>
-          <div class="ops-list">
-            <button class="ops-list-row" type="button" data-detail="Vic Firth 5A 鼓棒|SKU：VF-5A・售價 $680|庫存 8・成本 $390|啟用中">
-              <strong>Vic Firth 5A 鼓棒</strong><span class="ops-amount">$680</span><span class="ops-meta">VF-5A・庫存 8</span>
-            </button>
-            <button class="ops-list-row" type="button" data-detail="Elixir 民謠吉他弦|SKU：ELX-11052・售價 $720|庫存 5・成本 $410|啟用中">
-              <strong>Elixir 民謠吉他弦</strong><span class="ops-amount">$720</span><span class="ops-meta">ELX-11052・庫存 5</span>
-            </button>
-            <button class="ops-list-row" type="button" data-detail="導線 3 公尺|SKU：CBL-3M・售價 $450|庫存 11・成本 $230|啟用中">
-              <strong>導線 3 公尺</strong><span class="ops-amount">$450</span><span class="ops-meta">CBL-3M・庫存 11</span>
-            </button>
+          <div id="opsCatalogList">
+            <div class="ops-product-row" data-catalog-name="Vic Firth 5A 鼓棒 VF-5A">
+              <button class="ops-product-thumb" type="button" data-detail="Vic Firth 5A 鼓棒|SKU：VF-5A|庫存 8・成本 $390|售價 $680"><svg viewBox="0 0 48 48" aria-hidden="true"><path d="M12 38 34 9M18 41 40 12" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/><circle cx="35" cy="8" r="3" fill="currentColor"/><circle cx="41" cy="11" r="3" fill="currentColor"/></svg></button>
+              <div><strong>Vic Firth 5A 鼓棒</strong><p class="ops-meta">VF-5A・庫存 8</p></div><button class="btn btn-primary" type="button" data-catalog-sale="680" data-product-label="Vic Firth 5A 鼓棒">販售 $680</button>
+            </div>
+            <div class="ops-product-row" data-catalog-name="Elixir 民謠吉他弦 ELX-11052">
+              <button class="ops-product-thumb" type="button" data-detail="Elixir 民謠吉他弦|SKU：ELX-11052|庫存 5・成本 $410|售價 $720"><svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="16" fill="none" stroke="currentColor" stroke-width="3"/><circle cx="24" cy="24" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M24 8v32M19 9v30M29 9v30" fill="none" stroke="currentColor"/></svg></button>
+              <div><strong>Elixir 民謠吉他弦</strong><p class="ops-meta">ELX-11052・庫存 5</p></div><button class="btn btn-primary" type="button" data-catalog-sale="720" data-product-label="Elixir 民謠吉他弦">販售 $720</button>
+            </div>
+            <div class="ops-product-row" data-catalog-name="導線 3 公尺 CBL-3M">
+              <button class="ops-product-thumb" type="button" data-detail="導線 3 公尺|SKU：CBL-3M|庫存 11・成本 $230|售價 $450"><svg viewBox="0 0 48 48" aria-hidden="true"><path d="M13 12c23 0 24 25 7 25-12 0-11-13-2-13h13" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><path d="M8 9h8v6H8zm23 12h9v6h-9z" fill="currentColor"/></svg></button>
+              <div><strong>導線 3 公尺</strong><p class="ops-meta">CBL-3M・庫存 11</p></div><button class="btn btn-primary" type="button" data-catalog-sale="450" data-product-label="導線 3 公尺">販售 $450</button>
+            </div>
           </div>
         </section>
       </div>
@@ -595,20 +864,81 @@
           <button class="btn" type="button">‹</button>
           <button class="btn btn-primary" type="button">今天 7/27</button>
           <button class="btn" type="button">›</button>
-          <button class="btn" type="button">週表</button>
+          <button class="btn" type="button" data-toast="日期選擇器會在正式版開啟">選日期</button>
         </div>
         <section class="card">
-          <div class="ops-section-head"><h2>今日課程</h2><span class="viz-badge">18 堂</span></div>
-          <div class="ops-list">
-            <button class="ops-list-row" type="button" data-detail="10:00～11:00・梁睿恩|鼓教室・爵士鼓|張洵齊|固定課">
-              <strong>10:00　梁睿恩</strong><span class="viz-badge">固定課</span><span class="ops-meta">鼓教室・張洵齊</span>
-            </button>
-            <button class="ops-list-row" type="button" data-detail="11:00～12:00・陳品妤|YAMAHA 平台鋼琴教室|王虹婕|調課">
-              <strong>11:00　陳品妤</strong><span class="viz-badge">調課</span><span class="ops-meta">YAMAHA 平台鋼琴教室・王虹婕</span>
-            </button>
-            <button class="ops-list-row" type="button" data-detail="13:00～15:00・空間租用|展演空間|樂團排練|已預約">
-              <strong>13:00　樂團排練</strong><span class="viz-badge">租用</span><span class="ops-meta">展演空間・2 小時</span>
-            </button>
+          <div class="ops-section-head">
+            <div><h2>圖表課表</h2><p class="ops-sub">點有課格子可管理；點空格可新增</p></div>
+            <span class="viz-badge">可雙指放大</span>
+          </div>
+          <div class="ops-schedule-controls">
+            <button class="btn is-active" type="button" data-schedule-mode="day">今日教室表</button>
+            <button class="btn" type="button" data-schedule-mode="week">老師週課表</button>
+          </div>
+
+          <div class="ops-schedule-pane is-active" data-schedule-pane="day">
+            <div class="ops-schedule-scroll">
+              <div class="ops-day-grid">
+                <div class="ops-grid-cell is-head" style="grid-column:1;grid-row:1">時間</div>
+                <div class="ops-grid-cell is-head" style="grid-column:2;grid-row:1">鼓教室</div>
+                <div class="ops-grid-cell is-head" style="grid-column:3;grid-row:1">YAMAHA</div>
+                <div class="ops-grid-cell is-head" style="grid-column:4;grid-row:1">KAWAI</div>
+                <div class="ops-grid-cell is-head" style="grid-column:5;grid-row:1">家教室</div>
+                <div class="ops-grid-cell is-head" style="grid-column:6;grid-row:1">展演</div>
+                <div class="ops-grid-cell is-time" style="grid-column:1;grid-row:2/4">10:00</div>
+                <div class="ops-grid-cell is-time" style="grid-column:1;grid-row:4/6">11:00</div>
+                <div class="ops-grid-cell is-time" style="grid-column:1;grid-row:6/8">12:00</div>
+                <div class="ops-grid-cell is-time" style="grid-column:1;grid-row:8/10">13:00</div>
+                <div class="ops-grid-cell is-time" style="grid-column:1;grid-row:10/12">14:00</div>
+                <div class="ops-grid-cell is-time" style="grid-column:1;grid-row:12/14">15:00</div>
+                <button class="ops-schedule-event" type="button" style="grid-column:2;grid-row:2/4" data-schedule="10:00～11:00・梁睿恩|鼓教室・爵士鼓|老師：張洵齊|固定課"><strong>梁睿恩</strong><span>爵士鼓</span><span>張洵齊</span></button>
+                <button class="ops-schedule-event is-move" type="button" style="grid-column:3;grid-row:4/6" data-schedule="11:00～12:00・陳品妤|YAMAHA・鋼琴|老師：王虹婕|本次調課"><strong>陳品妤</strong><span>鋼琴</span><span>王虹婕</span></button>
+                <button class="ops-schedule-event" type="button" style="grid-column:4;grid-row:8/10" data-schedule="13:00～14:00・吳夢琳|KAWAI・鋼琴|老師：李曼捷|固定課"><strong>吳夢琳</strong><span>鋼琴</span><span>李曼捷</span></button>
+                <div class="ops-overlap" style="grid-column:2;grid-row:8/10">
+                  <button class="ops-schedule-event" type="button" data-schedule="13:00～14:00・林宥嘉|鼓教室・爵士鼓|老師：張洵齊|雙人課"><strong>林宥嘉</strong><span>張洵齊</span></button>
+                  <button class="ops-schedule-event is-gift" type="button" data-schedule="13:00～14:00・陳冠宇|鼓教室・老師贈課|老師：張洵齊|贈送課程"><strong>陳冠宇</strong><span>贈課</span></button>
+                </div>
+                <button class="ops-schedule-event is-rental" type="button" style="grid-column:6;grid-row:8/12" data-schedule="13:00～15:00・樂團排練|展演空間|空間租用|已預約"><strong>樂團排練</strong><span>租用 2 小時</span></button>
+                <button class="ops-grid-cell is-slot" type="button" style="grid-column:3;grid-row:8/10" data-empty-slot="13:00～14:00|YAMAHA 平台鋼琴教室">＋ 空</button>
+                <button class="ops-grid-cell is-slot" type="button" style="grid-column:5;grid-row:4/6" data-empty-slot="11:00～12:00|家教室">＋ 空</button>
+              </div>
+            </div>
+            <p class="ops-schedule-hint">左右滑動查看全部教室；雙指可放大文字與格子。</p>
+          </div>
+
+          <div class="ops-schedule-pane" data-schedule-pane="week">
+            <div class="ops-toolbar">
+              <select class="form-select" aria-label="選擇老師"><option>張洵齊</option><option>王虹婕</option><option>李曼捷</option></select>
+              <button class="btn" type="button">本週</button>
+            </div>
+            <div class="ops-schedule-scroll">
+              <div class="ops-week-grid">
+                <div class="ops-grid-cell is-head" style="grid-column:1;grid-row:1">時間</div>
+                <div class="ops-grid-cell is-head" style="grid-column:2;grid-row:1">一<br>7/27</div>
+                <div class="ops-grid-cell is-head" style="grid-column:3;grid-row:1">二<br>7/28</div>
+                <div class="ops-grid-cell is-head" style="grid-column:4;grid-row:1">三<br>7/29</div>
+                <div class="ops-grid-cell is-head" style="grid-column:5;grid-row:1">四<br>7/30</div>
+                <div class="ops-grid-cell is-head" style="grid-column:6;grid-row:1">五<br>7/31</div>
+                <div class="ops-grid-cell is-head" style="grid-column:7;grid-row:1">六<br>8/1</div>
+                <div class="ops-grid-cell is-head" style="grid-column:8;grid-row:1">日<br>8/2</div>
+                <div class="ops-grid-cell is-time" style="grid-column:1;grid-row:2/4">10:00</div>
+                <div class="ops-grid-cell is-time" style="grid-column:1;grid-row:4/6">11:00</div>
+                <div class="ops-grid-cell is-time" style="grid-column:1;grid-row:6/8">12:00</div>
+                <div class="ops-grid-cell is-time" style="grid-column:1;grid-row:8/10">13:00</div>
+                <div class="ops-grid-cell is-time" style="grid-column:1;grid-row:10/12">14:00</div>
+                <div class="ops-grid-cell is-time" style="grid-column:1;grid-row:12/14">15:00</div>
+                <button class="ops-schedule-event" type="button" style="grid-column:2;grid-row:2/4" data-schedule="週一 10:00～11:00・梁睿恩|鼓教室|老師：張洵齊|固定課"><strong>梁睿恩</strong><span>鼓教室</span></button>
+                <button class="ops-schedule-event" type="button" style="grid-column:4;grid-row:4/6" data-schedule="週三 11:00～12:00・陳星宇|鼓教室|老師：張洵齊|固定課"><strong>陳星宇</strong><span>鼓教室</span></button>
+                <button class="ops-schedule-event is-move" type="button" style="grid-column:5;grid-row:8/10" data-schedule="週四 13:00～14:00・林宥嘉|展演空間|老師：張洵齊|本次調課"><strong>林宥嘉</strong><span>展演</span></button>
+                <div class="ops-overlap" style="grid-column:7;grid-row:10/12">
+                  <button class="ops-schedule-event" type="button" data-schedule="週六 14:00～15:00・吳夢琳|鼓教室|老師：張洵齊|雙人課"><strong>吳夢琳</strong></button>
+                  <button class="ops-schedule-event" type="button" data-schedule="週六 14:00～15:00・吳夢琳家長|鼓教室|老師：張洵齊|雙人課"><strong>家長</strong></button>
+                </div>
+                <button class="ops-grid-cell is-slot" type="button" style="grid-column:3;grid-row:8/10" data-empty-slot="週二 13:00～14:00|可用教室 3 間">＋ 空</button>
+                <button class="ops-grid-cell is-slot" type="button" style="grid-column:6;grid-row:4/6" data-empty-slot="週五 11:00～12:00|可用教室 4 間">＋ 空</button>
+              </div>
+            </div>
+            <p class="ops-schedule-hint">空白時段仍完整保留；同一小時兩堂課會並排顯示，不會拆成兩個半小時。</p>
           </div>
         </section>
       </div>
@@ -644,9 +974,9 @@
 
     <nav class="ops-bottom-nav" aria-label="營運系統主要選單">
       <button class="btn is-active" type="button" data-nav="overview">總覽</button>
+      <button class="btn" type="button" data-nav="calendar">課表</button>
+      <button class="btn" type="button" data-nav="products">商品</button>
       <button class="btn" type="button" data-nav="sales">收銀</button>
-      <button class="btn" type="button" data-nav="platform">訂單</button>
-      <button class="btn" type="button" data-nav="more">更多</button>
     </nav>
   </main>
 
@@ -655,6 +985,7 @@
       const root = document.getElementById("ops-mobile-preview");
       const titles = {
         overview: ["營運總覽", "今天的營運狀況"],
+        reports: ["營運報表", "各項收入與款項狀態"],
         sales: ["現場收銀", "搜尋商品後直接結帳"],
         platform: ["平台訂單", "官網與平台訂單集中處理"],
         stock: ["庫存作業", "進貨、盤點與異動"],
@@ -662,7 +993,7 @@
         receivables: ["應收帳款", "未結清款項集中收款"],
         customers: ["客戶會員", "會員、老師與一般客戶"],
         rentals: ["租賃營運", "合約、租金與到期提醒"],
-        calendar: ["課程日表", "手機只顯示當下需要的資訊"],
+        calendar: ["課程日表", "圖表查看教室、時間與老師週課表"],
         more: ["全部功能", "選擇要處理的營運項目"]
       };
       let current = "overview";
@@ -699,7 +1030,7 @@
         root.querySelector("#opsPreviewSubtitle").textContent = titles[name][1];
         root.querySelector("[data-back]").hidden = name === "overview";
         root.querySelectorAll("[data-nav]").forEach(function (button) {
-          button.classList.toggle("is-active", button.dataset.nav === name || (name !== "overview" && name !== "sales" && name !== "platform" && button.dataset.nav === "more"));
+          button.classList.toggle("is-active", button.dataset.nav === name);
         });
         hideDetail();
       }
@@ -711,12 +1042,43 @@
           return '<div class="ops-list-row"><strong>' + field + '</strong></div>';
         }).join("");
         const actions = root.querySelector("#opsDetailActions");
+        actions.className = type === "schedule" || type === "empty-slot" ? "ops-schedule-actions" : "ops-sheet-actions";
         if (type === "receive") {
           actions.innerHTML = '<button class="btn" type="button" data-sheet-close>取消</button><button class="btn btn-primary" type="button" data-toast="已模擬完成收款">確認收款</button>';
+        } else if (type === "schedule") {
+          actions.innerHTML =
+            '<button class="btn btn-primary" type="button" data-toast="已模擬完成簽到">簽到</button>' +
+            '<button class="btn" type="button" data-toast="已模擬取消簽到">取消簽到</button>' +
+            '<button class="btn" type="button" data-toast="已模擬登記請假">請假</button>' +
+            '<button class="btn" type="button" data-toast="已模擬登記曠課">曠課</button>' +
+            '<button class="btn" type="button" data-toast="已進入調課選位模式">調課</button>' +
+            '<button class="btn" type="button" data-toast="已進入增加課程模式">增加一堂</button>';
+        } else if (type === "empty-slot") {
+          actions.innerHTML =
+            '<button class="btn btn-primary" type="button" data-toast="已開啟學生搜尋">排學生</button>' +
+            '<button class="btn" type="button" data-toast="已建立單堂課草稿">單堂課</button>' +
+            '<button class="btn" type="button" data-toast="已建立租用草稿">租用教室</button>' +
+            '<button class="btn" type="button" data-toast="已建立體驗課草稿">體驗課</button>' +
+            '<button class="btn" type="button" data-sheet-close>取消</button>';
         } else {
           actions.innerHTML = '<button class="btn" type="button" data-toast="已進入編輯模式">編輯</button><button class="btn btn-primary" type="button" data-toast="操作已記錄在預覽中">確認</button>';
         }
         root.querySelector("#opsDetailSheet").classList.add("is-open");
+      }
+
+      function addToCart(name, price) {
+        const found = cart.find(function (item) { return item.name === name; });
+        if (found) found.qty += 1;
+        else cart.push({ name: name, price: Number(price), qty: 1 });
+        renderCart();
+        showToast("已加入 " + name);
+      }
+
+      function filterRows(input, selector) {
+        const query = input.value.trim().toLowerCase();
+        root.querySelectorAll(selector).forEach(function (row) {
+          row.hidden = Boolean(query) && !row.dataset.productName.toLowerCase().includes(query);
+        });
       }
 
       function renderCart() {
@@ -748,6 +1110,27 @@
           openDetail(detail.dataset.detail);
           return;
         }
+        const schedule = event.target.closest("[data-schedule]");
+        if (schedule) {
+          openDetail(schedule.dataset.schedule, "schedule");
+          return;
+        }
+        const emptySlot = event.target.closest("[data-empty-slot]");
+        if (emptySlot) {
+          openDetail("安排空白時段|" + emptySlot.dataset.emptySlot, "empty-slot");
+          return;
+        }
+        const scheduleMode = event.target.closest("[data-schedule-mode]");
+        if (scheduleMode) {
+          const mode = scheduleMode.dataset.scheduleMode;
+          root.querySelectorAll("[data-schedule-mode]").forEach(function (button) {
+            button.classList.toggle("is-active", button.dataset.scheduleMode === mode);
+          });
+          root.querySelectorAll("[data-schedule-pane]").forEach(function (pane) {
+            pane.classList.toggle("is-active", pane.dataset.schedulePane === mode);
+          });
+          return;
+        }
         const receive = event.target.closest("[data-receive]");
         if (receive) {
           const fields = receive.dataset.receive.split("|");
@@ -764,11 +1147,20 @@
         if (add) {
           const name = add.closest("[data-product-name]").dataset.productName;
           const price = Number(add.dataset.addProduct);
-          const found = cart.find(function (item) { return item.name === name; });
-          if (found) found.qty += 1;
-          else cart.push({ name: name, price: price, qty: 1 });
-          renderCart();
-          showToast("已加入 " + name);
+          addToCart(name, price);
+          return;
+        }
+        const quickSale = event.target.closest("[data-quick-sale]");
+        if (quickSale) {
+          const name = quickSale.dataset.productName.split(" ").slice(0, -1).join(" ");
+          addToCart(name, quickSale.dataset.quickSale);
+          showView("sales");
+          return;
+        }
+        const catalogSale = event.target.closest("[data-catalog-sale]");
+        if (catalogSale) {
+          addToCart(catalogSale.dataset.productLabel, catalogSale.dataset.catalogSale);
+          showView("sales");
           return;
         }
         const remove = event.target.closest("[data-remove-cart]");
@@ -797,8 +1189,19 @@
 
       root.querySelector("#opsProductSearch").addEventListener("input", function (event) {
         const query = event.target.value.trim().toLowerCase();
-        root.querySelectorAll("[data-product-name]").forEach(function (row) {
+        root.querySelectorAll("#opsProductList [data-product-name]").forEach(function (row) {
           row.hidden = query && !row.dataset.productName.toLowerCase().includes(query);
+        });
+      });
+
+      root.querySelector("#opsHomeProductSearch").addEventListener("input", function (event) {
+        filterRows(event.target, "#opsHomeProductList [data-product-name]");
+      });
+
+      root.querySelector("#opsCatalogSearch").addEventListener("input", function (event) {
+        const query = event.target.value.trim().toLowerCase();
+        root.querySelectorAll("[data-catalog-name]").forEach(function (row) {
+          row.hidden = Boolean(query) && !row.dataset.catalogName.toLowerCase().includes(query);
         });
       });
 
