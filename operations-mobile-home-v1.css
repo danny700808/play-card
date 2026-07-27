@@ -1,0 +1,388 @@
+@media (max-width: 820px) {
+  body.ops-approved-mobile-home {
+    background: #edf4f1;
+    color: #163d32;
+  }
+
+  body.ops-approved-mobile-home .ops-topbar {
+    display: none !important;
+  }
+
+  body.ops-approved-mobile-home .ops-main,
+  body.ops-approved-mobile-home .ops-content {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+  }
+
+  body.ops-approved-mobile-home .ops-content {
+    padding: 10px 8px 26px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  body.ops-approved-mobile-home .ops-card {
+    border: 1px solid #cfe0da;
+    border-radius: 15px;
+    box-shadow: none;
+    background: #fff;
+  }
+
+  .ops-approved-mobile-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 2px 2px 0;
+  }
+
+  .ops-approved-mobile-head .mark {
+    width: 38px;
+    height: 38px;
+    border-radius: 11px;
+    display: grid;
+    place-items: center;
+    flex: 0 0 auto;
+    background: #177b5d;
+    color: #fff;
+    font-size: 18px;
+    font-weight: 900;
+  }
+
+  .ops-approved-mobile-head .copy {
+    min-width: 0;
+    line-height: 1.2;
+  }
+
+  .ops-approved-mobile-head h1 {
+    margin: 0;
+    color: #173e34;
+    font-size: 19px;
+    letter-spacing: .01em;
+  }
+
+  .ops-approved-mobile-head p {
+    margin: 3px 0 0;
+    color: #748983;
+    font-size: 11px;
+  }
+
+  .ops-approved-mobile-head .mode {
+    margin-left: auto;
+    padding: 6px 9px;
+    border-radius: 999px;
+    background: #e0f0ea;
+    color: #176b53;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  body.ops-approved-mobile-home .ops-range-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    padding: 0;
+    background: transparent;
+    border: 0;
+  }
+
+  body.ops-approved-mobile-home .ops-range-tabs button {
+    min-height: 42px;
+    padding: 8px 6px;
+    border: 1px solid #cbded8;
+    border-radius: 11px;
+    background: #fff;
+    color: #254b41;
+    font-size: 13px;
+    font-weight: 800;
+  }
+
+  body.ops-approved-mobile-home .ops-range-tabs button.active {
+    background: #16845f;
+    border-color: #16845f;
+    color: #fff;
+  }
+
+  body.ops-approved-mobile-home .ops-range-custom {
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+  }
+
+  body.ops-approved-mobile-home .ops-range-custom label {
+    min-width: 0;
+    font-size: 11px;
+  }
+
+  body.ops-approved-mobile-home .ops-range-custom .ops-input {
+    min-height: 41px;
+    padding: 7px 8px;
+    font-size: 12px;
+  }
+
+  body.ops-approved-mobile-home .ops-card-head {
+    align-items: flex-start;
+    gap: 8px;
+    padding: 12px 12px 7px;
+  }
+
+  body.ops-approved-mobile-home .ops-card-head h2 {
+    margin: 0;
+    color: #183f35;
+    font-size: 17px;
+  }
+
+  body.ops-approved-mobile-home .ops-card-head p {
+    margin-top: 2px;
+    color: #758984;
+    font-size: 10px;
+  }
+
+  .ops-approved-report-button,
+  .ops-approved-link-button {
+    min-height: 34px;
+    padding: 7px 10px;
+    border: 1px solid #c7dbd4;
+    border-radius: 9px;
+    background: #fff;
+    color: #214b40;
+    font-size: 11px;
+    font-weight: 800;
+  }
+
+  .ops-approved-report-button {
+    background: #177b5d;
+    border-color: #177b5d;
+    color: #fff;
+  }
+
+  body.ops-approved-mobile-home .ops-mobile-profit-grid {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 5px;
+    padding: 0 10px 11px;
+  }
+
+  body.ops-approved-mobile-home .ops-mobile-profit-box {
+    min-width: 0;
+    min-height: 68px;
+    padding: 8px 5px;
+    border: 1px solid #cfe0da;
+    border-radius: 11px;
+    background: #fbfdfc;
+    color: #173e34;
+    text-align: left;
+  }
+
+  body.ops-approved-mobile-home .ops-mobile-profit-box span {
+    display: block;
+    color: #71867f;
+    font-size: 9px;
+    white-space: nowrap;
+  }
+
+  body.ops-approved-mobile-home .ops-mobile-profit-box strong {
+    display: block;
+    margin-top: 6px;
+    color: #163e33;
+    font-size: clamp(12px, 3.1vw, 16px);
+    line-height: 1.05;
+  }
+
+  body.ops-approved-mobile-home .ops-mobile-direct-nav {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    padding: 0 10px 11px;
+  }
+
+  body.ops-approved-mobile-home .ops-mobile-direct-nav .ops-button {
+    min-width: 0;
+    min-height: 48px;
+    padding: 8px 4px;
+    border-radius: 10px;
+    font-size: 11px;
+    line-height: 1.25;
+    white-space: normal;
+  }
+
+  .ops-approved-schedule-wrap {
+    overflow: auto;
+    padding: 0 9px 10px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .ops-approved-schedule-grid {
+    --slot-height: 31px;
+    display: grid;
+    min-width: max-content;
+    position: relative;
+    grid-template-columns: 54px repeat(var(--room-count), 122px);
+    grid-template-rows: 38px repeat(var(--slot-count), var(--slot-height));
+    border: 1px solid #cdded8;
+    border-radius: 9px;
+    overflow: hidden;
+    background: #fff;
+  }
+
+  .ops-approved-schedule-corner,
+  .ops-approved-schedule-room,
+  .ops-approved-schedule-time,
+  .ops-approved-schedule-cell {
+    border-right: 1px solid #d5e3de;
+    border-bottom: 1px solid #d5e3de;
+    background: #fff;
+  }
+
+  .ops-approved-schedule-corner,
+  .ops-approved-schedule-room {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    display: grid;
+    place-items: center;
+    padding: 4px;
+    background: #edf6f2;
+    color: #244b40;
+    font-size: 10px;
+    font-weight: 900;
+    text-align: center;
+  }
+
+  .ops-approved-schedule-corner {
+    left: 0;
+    z-index: 7;
+  }
+
+  .ops-approved-schedule-time {
+    position: sticky;
+    left: 0;
+    z-index: 4;
+    padding: 5px 4px;
+    background: #f8fbfa;
+    color: #71847e;
+    font-size: 9px;
+    text-align: center;
+  }
+
+  .ops-approved-schedule-cell.half,
+  .ops-approved-schedule-time.half {
+    border-bottom-style: dashed;
+  }
+
+  .ops-approved-schedule-event {
+    z-index: 3;
+    min-width: 0;
+    margin: 2px;
+    padding: 6px 5px;
+    overflow: hidden;
+    border: 0;
+    border-radius: 7px;
+    background: #177b5d;
+    color: #fff;
+    text-align: left;
+    font-size: 9px;
+    line-height: 1.25;
+  }
+
+  .ops-approved-schedule-event b,
+  .ops-approved-schedule-event span {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ops-approved-schedule-event.reschedule {
+    background: #5d9b88;
+  }
+
+  .ops-approved-schedule-event.rental {
+    background: #c87d83;
+  }
+
+  .ops-approved-schedule-event.trial {
+    background: #c9953e;
+  }
+
+  .ops-approved-schedule-empty {
+    padding: 18px 12px 20px;
+    color: #788b85;
+    font-size: 12px;
+    text-align: center;
+  }
+
+  .ops-approved-product-search {
+    display: flex;
+    gap: 7px;
+    padding: 0 10px 9px;
+  }
+
+  .ops-approved-product-search input {
+    width: 100%;
+    min-width: 0;
+    min-height: 39px;
+    padding: 8px 10px;
+    border: 1px solid #cbded8;
+    border-radius: 10px;
+    background: #fff;
+    font-size: 12px;
+  }
+
+  .ops-approved-product-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+    padding: 0 10px 11px;
+  }
+
+  .ops-approved-product {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: 42px 1fr;
+    gap: 7px;
+    align-items: center;
+    padding: 7px;
+    border: 1px solid #d5e3de;
+    border-radius: 10px;
+    background: #fff;
+    color: #173e34;
+    text-align: left;
+  }
+
+  .ops-approved-product img,
+  .ops-approved-product .placeholder {
+    width: 42px;
+    height: 42px;
+    border-radius: 7px;
+    object-fit: cover;
+    background: #edf4f1;
+  }
+
+  .ops-approved-product .placeholder {
+    display: grid;
+    place-items: center;
+    color: #7d918a;
+    font-size: 9px;
+  }
+
+  .ops-approved-product b,
+  .ops-approved-product span {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ops-approved-product b {
+    font-size: 10px;
+  }
+
+  .ops-approved-product span {
+    margin-top: 3px;
+    color: #758983;
+    font-size: 9px;
+  }
+}
