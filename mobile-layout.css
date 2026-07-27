@@ -333,6 +333,135 @@
   .ops-toast-stack{right:8px!important;bottom:8px!important;width:calc(100vw - 16px)!important}
   .ops-toast{padding:8px 10px!important;border-radius:9px!important}
   .ops-toast b{font-size:10px!important}.ops-toast span{font-size:8px!important}
+
+  /* 營運總覽：手機使用核准的密集日期列、五項毛利與直接入口。 */
+  .ops-mobile-overview-range{
+    display:block!important;
+    margin-bottom:7px!important;
+  }
+  .ops-mobile-overview-day-nav{
+    display:grid!important;
+    grid-template-columns:1fr 1.25fr 1fr!important;
+    gap:4px!important;
+    width:100%!important;
+    margin:0!important;
+  }
+  .ops-mobile-overview-day-nav .ops-button{
+    width:100%!important;
+    min-width:0!important;
+    min-height:34px!important;
+    padding:5px 4px!important;
+    font-size:9px!important;
+  }
+  .ops-mobile-overview-day-nav .ops-overview-today{
+    display:grid!important;
+    place-content:center!important;
+    gap:0!important;
+  }
+  .ops-mobile-overview-day-nav .ops-overview-today b{font-size:10px!important}
+  .ops-mobile-overview-day-nav .ops-overview-today small{font-size:7px!important;line-height:1.1!important}
+  .ops-mobile-overview-periods{
+    display:grid!important;
+    grid-template-columns:1fr 1fr!important;
+    gap:4px!important;
+    margin-top:4px!important;
+  }
+  .ops-mobile-overview-periods .ops-overview-month-select{
+    display:grid!important;
+    grid-template-columns:auto minmax(0,1fr)!important;
+    align-items:center!important;
+    gap:4px!important;
+    min-width:0!important;
+    min-height:32px!important;
+    padding:3px 6px!important;
+    border-radius:8px!important;
+  }
+  .ops-mobile-overview-periods .ops-overview-month-select span{
+    display:block!important;
+    font-size:9px!important;
+  }
+  .ops-mobile-overview-periods .ops-overview-month-select .ops-select{
+    width:100%!important;
+    min-height:25px!important;
+    height:25px!important;
+    padding:1px 3px!important;
+    font-size:9px!important;
+  }
+  .ops-mobile-overview-periods .ops-overview-dropdown{
+    position:relative!important;
+    min-width:0!important;
+  }
+  .ops-mobile-overview-periods .ops-overview-dropdown>summary{
+    width:100%!important;
+    min-width:0!important;
+    min-height:32px!important;
+    padding:5px 7px!important;
+    border-radius:8px!important;
+    font-size:9px!important;
+  }
+  .ops-mobile-overview-periods .ops-overview-dropdown-panel{
+    position:absolute!important;
+    z-index:40!important;
+    top:calc(100% + 4px)!important;
+    right:0!important;
+    left:auto!important;
+    width:min(310px,calc(100vw - 20px))!important;
+    margin:0!important;
+    padding:8px!important;
+    border-radius:10px!important;
+    gap:6px!important;
+  }
+  .ops-mobile-overview-periods .ops-overview-dropdown-panel label{font-size:8px!important}
+  .ops-mobile-profit-card,
+  .ops-mobile-direct-card{margin-bottom:7px!important}
+  .ops-mobile-profit-grid{
+    display:grid!important;
+    grid-template-columns:repeat(5,minmax(64px,1fr))!important;
+    gap:4px!important;
+    overflow-x:auto!important;
+    padding-bottom:1px!important;
+  }
+  .ops-mobile-profit-box{
+    min-width:0!important;
+    min-height:52px!important;
+    padding:6px 3px!important;
+    border:1px solid #dbe8e3!important;
+    border-radius:8px!important;
+    background:#f8fbfa!important;
+    color:#19342d!important;
+    text-align:left!important;
+  }
+  button.ops-mobile-profit-box{cursor:pointer!important}
+  .ops-mobile-profit-box span{
+    display:block!important;
+    color:#668078!important;
+    font-size:7px!important;
+    line-height:1.2!important;
+    white-space:nowrap!important;
+  }
+  .ops-mobile-profit-box strong{
+    display:block!important;
+    margin-top:5px!important;
+    font-size:clamp(9px,2.55vw,12px)!important;
+    line-height:1.2!important;
+    font-variant-numeric:tabular-nums!important;
+    white-space:nowrap!important;
+  }
+  .ops-mobile-profit-box strong.negative{color:#b74545!important}
+  .ops-mobile-direct-nav{
+    display:grid!important;
+    grid-template-columns:repeat(3,minmax(0,1fr))!important;
+    gap:5px!important;
+  }
+  .ops-mobile-direct-nav .ops-button{
+    width:100%!important;
+    min-width:0!important;
+    min-height:42px!important;
+    padding:6px 3px!important;
+    white-space:normal!important;
+    line-height:1.2!important;
+  }
+  #opsMobileOverviewDetails{scroll-margin-top:54px!important}
 }
 
 @media (max-width:390px){

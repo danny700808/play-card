@@ -1140,18 +1140,33 @@ function queueInventorySyncInTransaction(tx,productId,sku,stock,reason){const re
     const current=overviewDateKey(),today=todayDateKey(),next=dateKeyShift(current,1),disableNext=next>today;
     return '<div class="ops-overview-day-nav"><button type="button" class="ops-button ghost" data-action="overview-day-shift" data-step="-1">← 前一天</button><label class="ops-overview-day-label"><span>查詢日期</span><input class="ops-input" id="overviewDate" type="date" max="'+attr(today)+'" value="'+attr(current)+'"></label><button type="button" class="ops-button ghost" data-action="overview-day-shift" data-step="1" '+(disableNext?'disabled':'')+'>後一天 →</button></div>';
   }
-  function overviewMonthSelectHtml(){
+  function overviewMonthSelectHtml(labelText){
     const now=new Date(),year=now.getFullYear(),currentMonth=now.getMonth()+1,selected=clean(state.overviewMonth)||year+'-'+String(currentMonth).padStart(2,'0');
     const options=[];
     for(let month=1;month<=12;month+=1){
       const key=year+'-'+String(month).padStart(2,'0');
       options.push('<option value="'+attr(key)+'" '+(key===selected?'selected':'')+' '+(month>currentMonth?'disabled':'')+'>'+year+' 年 '+month+' 月</option>');
     }
-    return '<label class="ops-overview-month-select '+(state.overviewRange==='month'?'active':'')+'"><span>月份</span><select class="ops-select" id="overviewMonth">'+options.join('')+'</select></label>';
+    return '<label class="ops-overview-month-select '+(state.overviewRange==='month'?'active':'')+'"><span>'+escapeHtml(labelText||'月份')+'</span><select class="ops-select" id="overviewMonth">'+options.join('')+'</select></label>';
   }
   function overviewRangeControlsHtml(){
     const todayActive=state.overviewRange==='today'&&overviewDateKey()===todayDateKey();
     const customLabel=state.overviewFrom&&state.overviewTo?'自訂區間':'自訂區間';
+    if(isCompactMobile()){
+      const current=overviewDateKey(),today=todayDateKey(),next=dateKeyShift(current,1),disableNext=next>today;
+      const todayParts=today.split('-');
+      return '<div class="ops-v8-overview-range ops-mobile-overview-range">'
+        +'<div class="ops-overview-day-nav ops-mobile-overview-day-nav">'
+        +'<button type="button" class="ops-button ghost" data-action="overview-day-shift" data-step="-1">← 前一天</button>'
+        +'<button type="button" class="ops-button ops-overview-today '+(todayActive?'primary':'ghost')+'" data-action="overview-range" data-range="today"><b>今天</b><small>'+Number(todayParts[1])+'/'+Number(todayParts[2])+'</small></button>'
+        +'<button type="button" class="ops-button ghost" data-action="overview-day-shift" data-step="1" '+(disableNext?'disabled':'')+'>後一天 →</button>'
+        +'</div>'
+        +'<div class="ops-mobile-overview-periods">'
+        +overviewMonthSelectHtml('本月')
+        +'<details class="ops-overview-dropdown"><summary class="ops-button '+(state.overviewRange==='custom'?'primary':'ghost')+'">自訂日期</summary><div class="ops-overview-dropdown-panel"><label>開始日期<input class="ops-input" id="overviewFrom" type="date" value="'+attr(state.overviewFrom)+'"></label><label>結束日期<input class="ops-input" id="overviewTo" type="date" value="'+attr(state.overviewTo)+'"></label><button type="button" class="ops-button primary wide" data-action="overview-custom-apply">查詢</button></div></details>'
+        +'</div>'
+        +'</div>';
+    }
     return '<div class="ops-v8-overview-range">'
       +'<button type="button" class="ops-button ops-overview-today '+(todayActive?'primary':'ghost')+'" data-action="overview-range" data-range="today">今天</button>'
       +overviewDayNavigatorHtml()
@@ -1381,6 +1396,28 @@ function renderOverviewV7(){
 
   const rangeHtml=rangeControls;
   const heroHtml='<section class="ops-card ops-v8-overview-hero"><div class="ops-v8-hero-primary"><span>全通路預估淨利</span><strong class="'+(allBalance<0?'negative':'')+'">'+money(allBalance)+'</strong></div><div class="ops-v8-hero-secondary ops-v8-hero-secondary-simple">'+summaryBox('現金流狀態',escapeHtml(cashStatus),openReceivables.length?'warning':'success')+'<small class="ops-v8-cash-note">'+escapeHtml(cashSub)+'</small></div></section>';
+  function mobileProfitBox(label,value,nav){
+    const tag=nav?'button':'div',navAttr=nav?' type="button" data-nav="'+attr(nav)+'"':'';
+    return '<'+tag+' class="ops-mobile-profit-box"'+navAttr+'><span>'+escapeHtml(label)+'</span><strong class="'+(value<0?'negative':'')+'">'+money(value)+'</strong></'+tag+'>';
+  }
+  const mobileProfitHtml='<section class="ops-card ops-mobile-profit-card"><div class="ops-card-head"><div><h2>'+escapeHtml(bounds.label)+'毛利</h2><p>全部通路與營運項目加總</p></div></div><div class="ops-mobile-profit-grid">'
+    +mobileProfitBox('全部毛利',allBalance,'')
+    +mobileProfitBox('門市毛利',storeBalance,'sales')
+    +mobileProfitBox('平台毛利',networkProfit,'sync')
+    +mobileProfitBox('課程毛利',educationRetainedWithRental,'course-calendar')
+    +mobileProfitBox('租用毛利',rentalRevenue,'rentals')
+    +'</div></section>';
+  const mobileQuickNavHtml='<section class="ops-card ops-mobile-direct-card"><div class="ops-card-head"><div><h2>常用功能</h2><p>直接開啟，不需要再展開選單</p></div></div><div class="ops-mobile-direct-nav">'
+    +'<button type="button" class="ops-button primary" data-nav="course-calendar">課程日／週表</button>'
+    +'<button type="button" class="ops-button primary" data-nav="products">商品搜尋</button>'
+    +'<button type="button" class="ops-button primary" data-nav="sales">現場收銀</button>'
+    +'<button type="button" class="ops-button ghost" data-action="mobile-overview-details">營運報表</button>'
+    +'<button type="button" class="ops-button ghost" data-nav="sync">平台訂單</button>'
+    +'<button type="button" class="ops-button ghost" data-nav="purchases">進貨盤點</button>'
+    +'<button type="button" class="ops-button ghost" data-nav="customers">客戶會員</button>'
+    +'<button type="button" class="ops-button ghost" data-nav="receivables">應收帳款</button>'
+    +'<button type="button" class="ops-button ghost" data-nav="rentals">租賃營運</button>'
+    +'</div></section>';
 
   const storeHtml='<section class="ops-card ops-v8-channel-card ops-v8-channel-store"><div class="ops-v8-channel-accent"></div><div class="ops-v8-channel-head"><div><h2>門市營運</h2><p>現場商品、維修與其他收入</p></div><button class="ops-button small soft" data-nav="sales">前往銷售</button></div><div class="ops-v8-channel-summary">'+summaryBox('門市實收',money(storeCash))+summaryBox('預估毛利',money(storeBalance),storeBalance<0?'warning':'success')+'</div><div class="ops-v8-metric-list">'+metricRow('商品銷售',money(productRevenue))+metricRow('維修／其他',money(repairRevenue+otherRevenue))+metricRow('商品成本',money(productCost))+metricRow('退貨退款',money(returnRefund))+'</div></section>';
   const networkHtml='<section class="ops-card ops-v8-channel-card ops-v8-channel-network"><div class="ops-v8-channel-accent"></div><div class="ops-v8-channel-head"><div><h2>網路營運</h2><p>EasyStore、MOMO、Coupang</p></div><button class="ops-button small ghost" data-nav="sync">平台訂單</button></div><div class="ops-v8-channel-summary">'+summaryBox('預估入帳',money(networkNet))+summaryBox('預估毛利',money(networkProfit),networkProfit<0?'warning':'success')+'</div><div class="ops-v8-metric-list">'+metricRow('成交金額',money(networkGross))+metricRow('平台與金流費',money(networkFees))+metricRow('固定費用攤提',money(networkFixedFees))+metricRow('商品成本',money(networkCost))+metricRow('訂單／件數',formatNumber(networkOrderCount)+' 單／'+formatNumber(networkQty)+' 件')+'</div></section>';
@@ -1394,6 +1431,7 @@ function renderOverviewV7(){
   if(lowStock.length)alerts.push('<button type="button" class="ops-v8-attention-row" data-action="overview-low-stock"><span class="ops-v8-attention-icon warning">庫</span><span><b>低於安全庫存</b><small>'+formatNumber(lowStock.length)+' 項商品需要確認補貨</small></span><em>處理</em></button>');
   const attentionHtml=alerts.length?alerts.join(''):'<div class="ops-v8-attention-empty"><b>目前沒有需要立即處理的項目</b><span>主要營運與同步狀態正常。</span></div>';
   const bottomHtml='<div class="ops-v8-overview-bottom ops-v8-overview-bottom-single"><section class="ops-card"><div class="ops-v8-section-head"><div><h2>需要注意</h2><p>同步異常、訂單異常、應收帳款與低庫存會集中顯示</p></div>'+(attentionKinds?'<span class="ops-tag yellow">'+formatNumber(attentionKinds)+' 類</span>':'<span class="ops-tag green">正常</span>')+'</div><div class="ops-v8-attention-list">'+attentionHtml+'</div></section></div>';
+  if(isCompactMobile())return rangeHtml+mobileProfitHtml+mobileQuickNavHtml+'<div class="ops-v8-channel-grid" id="opsMobileOverviewDetails">'+storeHtml+networkHtml+rentalHtml+educationHtml+'</div>'+bottomHtml;
   return rangeHtml+heroHtml+'<div class="ops-v8-channel-grid">'+storeHtml+networkHtml+rentalHtml+educationHtml+'</div>'+bottomHtml;
 }
 
@@ -3213,6 +3251,11 @@ async function syncPlatformOrdersNow(){const yes=await confirmAction('要求店�
       if(!state.overviewFrom||!state.overviewTo){toast('請選擇完整日期','開始日期與結束日期都需要選擇。','warning');return;}
       if(state.overviewFrom>state.overviewTo){toast('日期範圍不正確','開始日期不能晚於結束日期。','warning');return;}
       state.overviewRange='custom';return render();
+    }
+    if(action==='mobile-overview-details'){
+      const target=byId('opsMobileOverviewDetails');
+      if(target)target.scrollIntoView({behavior:'smooth',block:'start'});
+      return;
     }
     if(action==='mobile-key') return applyMobileKeyInput(el.dataset.target,el.dataset.key);
     if(action==='overview-low-stock'){state.productFilter='low';state.productSeries='all';state.productSearch='';state.productVisible=PRODUCT_PAGE_SIZE;location.hash='products';return;}
