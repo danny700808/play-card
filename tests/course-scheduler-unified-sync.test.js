@@ -38,6 +38,10 @@ assert(!dataClient.includes('period.usedCount=attendance.filter'), '不可逐期
 assert(mirror.includes('Promise.all(['), '課表核對與營運同步未平行執行');
 assert(mirror.includes('ensureInjiaoyunOperationsSync(refreshDate)'), '未整合營運資料同步');
 assert(mirror.includes('runAuditForRange(refreshRange.startDate, refreshRange.endDate)'), '未依日期範圍同步課表');
+assert(mirror.includes('syncRecentMirror('), '同步完成後未使用近期差異套用');
+assert(mirror.includes("'manual-unified-recent-delta'"), '手動同步仍可能重建完整歷史鏡像');
+assert(!mirror.includes("await syncLatestMirror('load-latest')"), '開啟頁面不應自動重建完整歷史鏡像');
+assert(mirror.includes("settings.unifiedSyncStatus"), '核對觸發器未避免與手動同步重複套用');
 assert(preview.includes('mergeEducationDailyReceipts'), '學生實際付款未併入學費期別');
 assert(preview.includes('reconcileAuditedAttendance') || mirror.includes('reconcileAuditedAttendance'), '最新簽到未重新核對');
 assert(manual.includes("'course-scheduler'"), '營運同步未允許課程日表呼叫');
