@@ -6,6 +6,8 @@ const {
   mergeEducationDailyRentals
 } = require('../functions/injiaoyunEducationPreview');
 const {
+  auditCoversRange,
+  auditIsRecent,
   reconcileAuditedAttendance,
   refreshTuitionUsage
 } = require('../functions/injiaoyunEducationMirror');
@@ -19,6 +21,22 @@ assert.strictEqual(
   '既有音教雲機構編號應可安全沿用'
 );
 assert.strictEqual(validStudioId('not-a-studio-id'), '', '不合法的機構編號不可傳給雲端工作');
+assert.strictEqual(auditCoversRange({
+  runId: 'audit_1',
+  startDate: '2026-07-22',
+  endDate: '2026-07-28'
+}, '2026-07-25', '2026-07-28'), true, '成功核對結果應可涵蓋近期補資料範圍');
+assert.strictEqual(auditCoversRange({
+  runId: 'audit_2',
+  startDate: '2026-07-25',
+  endDate: '2026-07-27'
+}, '2026-07-25', '2026-07-28'), false, '未涵蓋結束日期的核對結果不可沿用');
+assert.strictEqual(auditIsRecent({
+  completedAt: { toMillis: () => Date.now() - (5 * 60 * 1000) }
+}), true, '30 分鐘內完成的核對結果應可沿用');
+assert.strictEqual(auditIsRecent({
+  completedAt: { toMillis: () => Date.now() - (31 * 60 * 1000) }
+}), false, '超過 30 分鐘的核對結果不可直接沿用');
 
 const periods = [{
   id: 'period_old',
