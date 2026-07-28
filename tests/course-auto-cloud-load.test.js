@@ -14,6 +14,7 @@ const reviewData = read('course-scheduler-review-data.js');
 const autoRead = read('functions/injiaoyunEducationAutoRead.js');
 const courseIndex = read('functions/courseIndex.js');
 const portalUtils = read('functions/coursePortalUtils.js');
+const publicAccessScript = read('.github/scripts/course-mirror-public.cjs');
 const packageJson = JSON.parse(read('functions/package.json'));
 const workflow = read('.github/workflows/firebase-functions-deploy.yml');
 const hub = read('operations-hub.html');
@@ -25,6 +26,7 @@ new vm.Script(reviewData, { filename: 'course-scheduler-review-data.js' });
 new vm.Script(autoRead, { filename: 'functions/injiaoyunEducationAutoRead.js' });
 new vm.Script(courseIndex, { filename: 'functions/courseIndex.js' });
 new vm.Script(portalUtils, { filename: 'functions/coursePortalUtils.js' });
+new vm.Script(publicAccessScript, { filename: '.github/scripts/course-mirror-public.cjs' });
 
 assert(bootstrap.includes("AUTO_FUNCTION_NAME = 'loadInjiaoyunEducationMirrorAuto'"), '前端未呼叫唯讀雲端課務資料');
 assert(bootstrap.includes("AUTHENTICATED_FUNCTION_NAME = 'loadInjiaoyunEducationMirror'"), '自動讀取尚未部署時缺少既有唯讀函式相容路徑');
@@ -54,10 +56,11 @@ assert.strictEqual(packageJson.main, 'courseIndex.js', 'Firebase Functions 未�
 assert(courseIndex.includes("require('./index')"), '明確入口未保留既有正式 Functions');
 assert(courseIndex.includes('registerInjiaoyunEducationAutoRead(exports)'), '明確入口未註冊自動課表讀取函式');
 assert(!portalUtils.includes('registerInjiaoyunEducationAutoRead'), '工具模組仍在循環載入期間註冊 Firebase Function');
-assert(workflow.includes('cloudfunctions.googleapis.com/v2/'), '工作流程未從 Cloud Functions API 取得實際 Cloud Run 服務');
-assert(workflow.includes(':setIamPolicy'), '工作流程未設定 Cloud Run 呼叫權限');
-assert(workflow.includes("roles/run.invoker"), '工作流程未授權 Cloud Run Invoker');
-assert(workflow.includes("allUsers"), '工作流程未允許網站匿名呼叫唯讀課表');
+assert(publicAccessScript.includes('cloudfunctions.googleapis.com/v2/'), 'IAM 腳本未從 Cloud Functions API 取得實際 Cloud Run 服務');
+assert(publicAccessScript.includes(':setIamPolicy'), 'IAM 腳本未設定 Cloud Run 呼叫權限');
+assert(publicAccessScript.includes('roles/run.invoker'), 'IAM 腳本未授權 Cloud Run Invoker');
+assert(publicAccessScript.includes('allUsers'), 'IAM 腳本未允許網站匿名呼叫唯讀課表');
+assert(workflow.includes('node .github/scripts/course-mirror-public.cjs'), '工作流程未執行穩定的 Cloud Run 權限腳本');
 assert(workflow.includes('course-mirror-diagnostics'), '驗證失敗時未保留可檢查的診斷紀錄');
 assert(reviewData.includes('loadAutomaticCourseBootstrap'), '獨立課程日表未在初始化前啟動自動復原');
 
