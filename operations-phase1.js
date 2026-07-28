@@ -196,7 +196,7 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
 
   const PAGE_META = {
     overview:['營運總覽',''],
-    'course-calendar':['課程日表','保留舊版音教雲，同時提供新版排課系統設計預覽。'],
+    'course-calendar':['課程日表','直接使用新版排課系統；操作自動儲存，更新時以音教雲最新資料為準。'],
     products:['商品資訊',''],
     sales:['現場銷售',''],
     customers:['客戶會員','會員、老師與一般客戶共用同一份客戶資料。'],
@@ -1098,19 +1098,16 @@ function queueInventorySyncInTransaction(tx,productId,sku,stock,reason){const re
   function kpiAction(title,value,sub,icon,action){
     return '<button type="button" class="ops-kpi ops-kpi-action" data-action="'+attr(action)+'"><div class="ops-kpi-head"><span>'+escapeHtml(title)+'</span><span class="ops-kpi-icon">'+escapeHtml(icon||'•')+'</span></div><strong>'+escapeHtml(value)+'</strong><small>'+escapeHtml(sub||'')+'</small></button>';
   }
-  const INJIAOYUN_DAILY_CALENDAR_URL='https://www.injiaoyun.com/dashboard/#/app/roomCalendar/day';
   function renderCourseCalendar(){
-    return '<section class="ops-banner"><div class="icon">日</div><div><h3>課務、測試與對外入口</h3><p>新版正式資料與測試模式共用完全相同的頁面；只有資料是否可寫入不同，不會維護兩套介面。</p></div></section>'
-      +'<div class="ops-grid-equal">'
-      +'<section class="ops-card"><div class="ops-card-head"><div><span class="ops-tag blue">現行正式系統</span><h2 style="margin-top:10px">舊版課程日表（音教雲）</h2><p>沿用目前的排課、學生簽到與課務資料。</p></div></div><div class="ops-status-row"><div><b>資料來源</b><small>音教雲正式資料</small></div><span class="ops-status-dot">正式使用</span></div><p style="color:var(--ops-muted);font-size:12px;min-height:56px">會在新分頁開啟音教雲。未登入時先登入一次即可；帳號密碼不會存入 GitHub 網頁。</p><a class="ops-button dark" href="'+attr(INJIAOYUN_DAILY_CALENDAR_URL)+'" target="_blank" rel="noopener noreferrer">開啟舊版音教雲</a></section>'
-      +'<section class="ops-card"><div class="ops-card-head"><div><span class="ops-tag green">同一套正式／測試介面</span><h2 style="margin-top:10px">新版排課系統</h2><p>30 分鐘格線、教室規則、衝突檢查、堂數扣抵、學生多期學費與完整課務紀錄。</p></div></div><div class="ops-status-row"><div><b>正式模式</b><small>完整查看正式資料</small></div><span class="ops-status-dot warn">唯讀保護</span></div><div class="ops-status-row"><div><b>測試模式</b><small>複製最新正式資料當底稿</small></div><span class="ops-status-dot">操作不回寫</span></div><p style="color:var(--ops-muted);font-size:12px;min-height:56px">兩種模式的手機與電腦版面完全一致。測試操作只留在目前瀏覽器，返回正式或重新整理就會清除。</p><a class="ops-button primary" href="course-scheduler.html">開啟新版排課系統</a></section>'
-      +'</div>'
+    return '<section class="ops-banner"><div class="icon">日</div><div><h3>新版課程日表</h3><p>新版操作會自動保留；需要更新時，再由音教雲最新資料完整覆蓋課務內容。</p></div></section>'
+      +'<section class="ops-card"><div class="ops-card-head"><div><span class="ops-tag green">目前使用版本</span><h2 style="margin-top:10px">新版排課系統</h2><p>課表、調課、簽到、學費、租用與老師薪資集中在同一頁。</p></div><a class="ops-button primary" href="course-scheduler.html">進入課程日表</a></div></section>'
       +'<section class="ops-card"><div class="ops-card-head"><div><span class="ops-tag green">三個獨立手機入口</span><h2 style="margin-top:10px">學生、老師、租用分開進入</h2><p>老師調課包含在老師入口內，不會另外拆成第四個入口。</p></div><a class="ops-button small soft" href="course-portal.html">查看入口首頁</a></div><div class="ops-grid-equal"><a class="ops-button primary" href="student-course-portal.html">學生／家長入口</a><a class="ops-button primary" href="teacher-course-portal.html">老師入口（含調課）</a><a class="ops-button primary" href="room-booking.html">教室租用入口</a></div></section>';
   }
 
   function render(){
     state.view=(location.hash||'#overview').replace('#','').split('?')[0]||'overview';
     if(!PAGE_META[state.view]) state.view='overview';
+    if(state.view==='course-calendar'){global.location.replace('course-scheduler.html');return;}
     const meta=PAGE_META[state.view]; setText('opsPageTitle',meta[0]); setText('opsPageSubtitle',meta[1]);
     const pageClock=byId('opsPageClock'); if(pageClock) pageClock.classList.toggle('hidden',state.view!=='sales');
     const navView=(state.view==='purchase-entry'||state.view==='stocktake')?'purchases':state.view;
@@ -1828,7 +1825,7 @@ function renderSalesV5(){
       if(choices.length)productHtml=choices.map(function(product){const image=product.imageUrl||'';return '<button class="ops-pos-item ops-v8-pos-item" data-action="cart-add" data-id="'+attr(product.docId)+'">'+(image?'<img loading="lazy" src="'+attr(image)+'" alt="" onerror="this.style.display=&quot;none&quot;">':'<div class="ops-pos-no-image">無圖</div>')+'<div><b>'+escapeHtml(product.originalName||product.name)+'</b><small>編號 '+escapeHtml(product.sku||'未設定')+'・庫存 '+formatNumber(product.currentStock)+'</small></div><strong>'+(usageMode?'加入':money(product.storePrice))+'</strong></button>';}).join('');
       else if(term)productHtml='<div class="ops-no-result">找不到商品</div>';
       else productHtml='<div class="ops-v8-sales-search-empty"><b>輸入商品編號或名稱</b><span>'+(usageMode?'選取要自用、消耗或報廢的商品。':'也可以使用左側數字鍵盤快速輸入 SKU。')+'</span></div>';
-      const cartHtml=state.cart.length?state.cart.map(function(item,index){const product=catalogById(item.productId),lineTotal=Math.max(1,Number(item.qty||1))*Math.max(0,Number(item.unitPrice||0));return '<div class="ops-cart-row"><div><b>'+escapeHtml(item.name)+'</b><small>編號 '+escapeHtml(item.sku||'')+'・庫存 '+formatNumber(product?product.currentStock:item.currentStock)+'</small></div><input class="ops-quantity-spinner" aria-label="數量" title="使用上下箭頭調整數量" type="number" inputmode="numeric" min="1" step="1" value="'+item.qty+'" data-cart-qty="'+index+'">'+'<input class="ops-cart-line-total" aria-label="商品小計" title="數量乘以單價後的商品小計" type="number" value="'+lineTotal+'" data-cart-line-total="'+index+'" readonly>'+'<button class="ops-icon-button" data-action="cart-remove" data-index="'+index+'">×</button></div>';}).join(''):'<div class="ops-v8-cart-empty"><b>尚未選商品</b><span>從左側搜尋結果點選商品後，會加入本次'+(usageMode?'耗用／報廢':'銷售')+'。</span></div>';
+      const cartHtml=state.cart.length?state.cart.map(function(item,index){const product=catalogById(item.productId);return '<div class="ops-cart-row"><div><b>'+escapeHtml(item.name)+'</b><small>編號 '+escapeHtml(item.sku||'')+'・庫存 '+formatNumber(product?product.currentStock:item.currentStock)+'・本次售價可改</small></div><input class="ops-quantity-spinner" aria-label="數量" title="使用上下箭頭調整數量" type="number" inputmode="numeric" min="1" step="1" value="'+item.qty+'" data-cart-qty="'+index+'">'+'<input class="ops-cart-price-editor" aria-label="本次成交單價" title="只修改本次交易，不會改變商品主檔售價" type="number" inputmode="decimal" min="0" step="1" value="'+item.unitPrice+'" data-cart-price="'+index+'">'+'<button class="ops-icon-button" data-action="cart-remove" data-index="'+index+'">×</button></div>';}).join(''):'<div class="ops-v8-cart-empty"><b>尚未選商品</b><span>從左側搜尋結果點選商品後，會加入本次'+(usageMode?'耗用／報廢':'銷售')+'。</span></div>';
       main='<div class="ops-v8-sales-workspace"><section class="ops-card ops-v8-sales-search-card"><div class="ops-v8-section-head"><div><h2>商品搜尋</h2><p>輸入商品編號或名稱，再點選結果加入'+(usageMode?'耗用清單':'銷售')+'</p></div><span class="ops-tag '+(usageMode?'yellow':'green')+'">'+(usageMode?'扣庫存':'主要操作')+'</span></div><div class="ops-toolbar ops-v8-sales-searchbar"><input class="ops-input grow ops-pos-search" id="posSearch" placeholder="商品編號／名稱" value="'+attr(state.posSearch)+'"><button class="ops-button ghost" data-action="pos-clear-search">清除</button></div><div class="ops-v8-sales-search-grid">'+posNumberPadHtml()+'<div class="ops-pos-products">'+productHtml+'</div></div></section><section class="ops-card ops-v8-sales-cart-card"><div class="ops-v8-section-head"><div><h2>'+(usageMode?'本次內部耗用／報廢':'本次銷售')+'</h2><p>'+(usageMode?'記錄金額預設 0 元，可自行修改；商品仍會正常扣庫存':'商品、價格與收款集中在同一區')+'</p></div><button class="ops-button small ghost" data-action="cart-clear">清空</button></div><div class="ops-cart">'+cartHtml+'</div>'+(state.cart.length?'<div class="ops-summary-line total ops-v8-cart-subtotal"><span>'+(usageMode?'帳面收入':'商品金額')+'</span><b id="cartSubtotal">'+money(cartSubtotal)+'</b></div>':'')+(usageMode?renderStockUsageForm():renderInlineCheckout())+'</section></div>';
     }else{
       main='<div class="ops-v8-sales-income-mode">'+renderDirectIncomeV5(state.salesMode)+'</div>';
@@ -3428,7 +3425,7 @@ function rerenderKeepingFocus(id,value){
 
   function bindEvents(){
     document.addEventListener('click',function(event){
-      const nav=event.target.closest('[data-nav]'); if(nav){event.preventDefault();location.hash=nav.dataset.nav;return;}
+      const nav=event.target.closest('[data-nav]'); if(nav){event.preventDefault();if(nav.dataset.nav==='course-calendar'){location.href='course-scheduler.html';return;}location.hash=nav.dataset.nav;return;}
       const actionEl=event.target.closest('[data-action]'); if(actionEl){event.preventDefault();handleAction(actionEl.dataset.action,actionEl);return;}
       const navLink=event.target.closest('#opsNav a[data-view]'); if(navLink){ closeMobileMenu(); }
     });
@@ -3492,7 +3489,7 @@ function rerenderKeepingFocus(id,value){
         if(event.isComposing||event.target.dataset.opsImeComposing==='1') return;
         applyOpsSearchInput(event.target);
       }
-      else if(event.target.matches('[data-cart-qty]')){const item=state.cart[Number(event.target.dataset.cartQty)];if(item){item.qty=Math.max(1,Math.round(Number(event.target.value||1)));const cartRow=event.target.closest('.ops-cart-row'),lineTotalInput=cartRow&&query('[data-cart-line-total]',cartRow);if(lineTotalInput)lineTotalInput.value=String(item.qty*item.unitPrice);updateCartTotals();updateInlineCheckoutTotals();if(state.salesMode==='usage'){const amount=sum(state.cart,function(row){return row.qty*row.unitPrice;}),cost=estimateCartCost();setText('stockUsageAmount',money(amount));setText('stockUsageResult',money(amount-cost));}}}
+      else if(event.target.matches('[data-cart-qty]')){const item=state.cart[Number(event.target.dataset.cartQty)];if(item){item.qty=Math.max(1,Math.round(Number(event.target.value||1)));updateCartTotals();updateInlineCheckoutTotals();if(state.salesMode==='usage'){const amount=sum(state.cart,function(row){return row.qty*row.unitPrice;}),cost=estimateCartCost();setText('stockUsageAmount',money(amount));setText('stockUsageResult',money(amount-cost));}}}
       else if(event.target.matches('[data-cart-price]')){const item=state.cart[Number(event.target.dataset.cartPrice)];if(item){item.unitPrice=Math.max(0,Number(event.target.value||0));updateCartTotals();updateInlineCheckoutTotals();if(state.salesMode==='usage'){const amount=sum(state.cart,function(row){return row.qty*row.unitPrice;}),cost=estimateCartCost();setText('stockUsageAmount',money(amount));setText('stockUsageResult',money(amount-cost));}}}
       else if(event.target.closest('#checkoutFormInline')&&event.target.name==='actualCashReceived'){state.checkoutActualCash=event.target.value;updateInlineCheckoutTotals();if(state.checkoutDiscount>0){state.checkoutEarnPoints=false;const checkoutForm=event.target.closest('#checkoutFormInline'),earnInput=query('[name="earnPointsEnabled"]',checkoutForm);if(earnInput)earnInput.value='false';queryAll('[data-name="earnPointsEnabled"]').forEach(function(button){button.classList.toggle('active',button.dataset.value==='none');});updateInlineCheckoutTotals();}}
       else if(event.target.closest('#checkoutFormInline')&&event.target.name==='discount'){state.checkoutDiscount=Math.max(0,Number(event.target.value||0));const checkoutForm=event.target.closest('#checkoutFormInline'),actualInput=query('[name="actualCashReceived"]',checkoutForm),subtotal=sum(state.cart,function(x){return x.qty*x.unitPrice;}),pointValue=pointDiscount(state.checkoutPoints);if(actualInput){state.checkoutActualCash=String(Math.max(0,subtotal-state.checkoutDiscount-pointValue));actualInput.value=state.checkoutActualCash;}if(state.checkoutDiscount>0){state.checkoutEarnPoints=false;const earnInput=query('[name="earnPointsEnabled"]',checkoutForm);if(earnInput)earnInput.value='false';queryAll('[data-name="earnPointsEnabled"]').forEach(function(button){button.classList.toggle('active',button.dataset.value==='none');});}updateInlineCheckoutTotals();}
@@ -3516,7 +3513,8 @@ function rerenderKeepingFocus(id,value){
       else if(event.target.matches('[data-stocktake-count]')){const item=state.stocktakeCart[Number(event.target.dataset.stocktakeCount)];if(item)item.countedStock=event.target.value;}
     });
     document.addEventListener('change',function(event){
-      if(event.target.matches('[data-cart-qty]')){const item=state.cart[Number(event.target.dataset.cartQty)];if(item){item.qty=Math.max(1,Math.round(Number(event.target.value||1)));event.target.value=String(item.qty);const cartRow=event.target.closest('.ops-cart-row'),lineTotalInput=cartRow&&query('[data-cart-line-total]',cartRow);if(lineTotalInput)lineTotalInput.value=String(item.qty*item.unitPrice);updateCartTotals();updateInlineCheckoutTotals();}return;}
+      if(event.target.matches('[data-cart-qty]')){const item=state.cart[Number(event.target.dataset.cartQty)];if(item){item.qty=Math.max(1,Math.round(Number(event.target.value||1)));event.target.value=String(item.qty);updateCartTotals();updateInlineCheckoutTotals();}return;}
+      if(event.target.matches('[data-cart-price]')){const item=state.cart[Number(event.target.dataset.cartPrice)];if(item){item.unitPrice=Math.max(0,Number(event.target.value||0));event.target.value=String(item.unitPrice);updateCartTotals();updateInlineCheckoutTotals();}return;}
       if(event.target.id==='productFilter'){
         if(!closeProductEditorForListChange()){event.target.value=state.productFilter;return;}
         state.productFilter=event.target.value;state.productSeries='all';state.productSearch='';state.productVisible=PRODUCT_PAGE_SIZE;render();
