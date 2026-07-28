@@ -1611,6 +1611,7 @@ module.exports = {
   buildPreview,
   buildAttendance,
   buildFeePlans,
+  buildTeacherPayroll,
   buildTuitionPeriods,
   courseRow,
   dateKey,
@@ -1622,5 +1623,6 @@ module.exports = {
   latestMigrationRunId,
   mergeEducationDailyReceipts,
   mergeEducationDailyRentals,
+  readEducationDaily,
   timeKey
 };
