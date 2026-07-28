@@ -394,7 +394,8 @@ async function latestAuditRunInfo() {
   return {
     runId: runDoc.id,
     startDate: dateKey(run.startDate),
-    endDate: dateKey(run.endDate)
+    endDate: dateKey(run.endDate),
+    completedAt: run.completedAt || null
   };
 }
 
