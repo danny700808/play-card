@@ -46,6 +46,7 @@ assert(mobileCourse.includes('youzi-course-auto-data-ready'), '自動還原完�
 assert(autoRead.includes('loadInjiaoyunEducationMirrorAuto'), '後端缺少自動讀取函式');
 assert(autoRead.includes('assertAllowedRead'), '後端讀取沒有來源限制');
 assert(autoRead.includes("where('sourceActive', '==', true)"), '後端未優先讀取有效鏡像資料');
+assert(autoRead.includes("invoker: 'public'"), '唯讀課表函式沒有開放給網站呼叫');
 assert(!autoRead.includes('MANUAL_SYNC_PIN'), '一般開頁讀取不應再要求手動同步密碼');
 assert(!autoRead.includes('syncInjiaoyunEducationMirrorNow'), '一般開頁不得觸發音教雲同步');
 
