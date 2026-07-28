@@ -54,7 +54,7 @@ assert(courseIndex.includes("require('./index')"), '明確入口未保留既有�
 assert(courseIndex.includes('registerInjiaoyunEducationAutoRead(exports)'), '明確入口未註冊自動課表讀取函式');
 assert(!portalUtils.includes('registerInjiaoyunEducationAutoRead'), '工具模組仍在循環載入期間註冊 Firebase Function');
 assert(workflow.includes('functions:loadInjiaoyunEducationMirrorAuto'), '部署流程未單獨發布自動課表讀取函式');
-assert(workflow.includes('firebase-course-mirror-diagnostics'), '部署失敗時未保留可檢查的診斷紀錄');
+assert(workflow.includes('course-mirror-diagnostics'), '部署失敗時未保留可檢查的診斷紀錄');
 assert(reviewData.includes('loadAutomaticCourseBootstrap'), '獨立課程日表未在初始化前啟動自動復原');
 
 [hub, portal].forEach((html) => {
