@@ -62,3 +62,74 @@
   }
   window.YouziCourseReviewData = { load: function () { if (cache) return Promise.resolve(clone(cache)); return fetch('course-scheduler-review-0712-0715.csv?v=20260724').then(function (response) { if (!response.ok) throw new Error('找不到 7/12～7/15 核對 CSV（HTTP ' + response.status + '）'); return response.text(); }).then(function (text) { cache = build(parseCSV(text.replace(/^\uFEFF/, ''))); return clone(cache); }); } };
 }());
+
+(function recoverSavedCourseWorkspace(global) {
+  'use strict';
+  var DB_NAME = 'youzi-course-scheduler';
+  var STORE_NAME = 'formalSnapshots';
+  var FORMAL_KEY = 'latest';
+  var WORKSPACE_KEY = 'workspace';
+  var RELOAD_KEY = 'youzi.courseScheduler.localRecoveryReload.v1';
+
+  function meaningful(source) {
+    if (!source || Number(source.version) !== 3) return false;
+    return ['events', 'students', 'teachers', 'tuitionPeriods', 'roomRentals'].some(function (key) {
+      return Array.isArray(source[key]) && source[key].length > 0;
+    });
+  }
+
+  function makeFormal(workspace) {
+    var formal = JSON.parse(JSON.stringify(workspace));
+    formal.readOnly = true;
+    formal.dataMode = 'migration';
+    formal.clipboard = null;
+    return formal;
+  }
+
+  function openDatabase() {
+    return new Promise(function (resolve, reject) {
+      if (!global.indexedDB) { resolve(null); return; }
+      var request = global.indexedDB.open(DB_NAME, 1);
+      request.onupgradeneeded = function () {
+        var db = request.result;
+        if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME);
+      };
+      request.onsuccess = function () { resolve(request.result); };
+      request.onerror = function () { reject(request.error || new Error('IndexedDB open failed')); };
+    });
+  }
+
+  async function recover() {
+    var alreadyReloaded = false;
+    try { alreadyReloaded = global.sessionStorage.getItem(RELOAD_KEY) === '1'; } catch (_) {}
+    if (alreadyReloaded) {
+      try { global.sessionStorage.removeItem(RELOAD_KEY); } catch (_) {}
+      return false;
+    }
+    var db = await openDatabase();
+    if (!db) return false;
+    var rows = await new Promise(function (resolve, reject) {
+      var transaction = db.transaction(STORE_NAME, 'readonly');
+      var store = transaction.objectStore(STORE_NAME);
+      var formalRequest = store.get(FORMAL_KEY);
+      var workspaceRequest = store.get(WORKSPACE_KEY);
+      transaction.oncomplete = function () { resolve({ formal: formalRequest.result || null, workspace: workspaceRequest.result || null }); };
+      transaction.onerror = function () { reject(transaction.error || new Error('IndexedDB read failed')); };
+      transaction.onabort = function () { reject(transaction.error || new Error('IndexedDB read aborted')); };
+    });
+    if (meaningful(rows.formal) || !meaningful(rows.workspace)) { db.close(); return false; }
+    await new Promise(function (resolve, reject) {
+      var transaction = db.transaction(STORE_NAME, 'readwrite');
+      transaction.objectStore(STORE_NAME).put(makeFormal(rows.workspace), FORMAL_KEY);
+      transaction.oncomplete = resolve;
+      transaction.onerror = function () { reject(transaction.error || new Error('IndexedDB recovery write failed')); };
+      transaction.onabort = function () { reject(transaction.error || new Error('IndexedDB recovery write aborted')); };
+    });
+    db.close();
+    try { global.sessionStorage.setItem(RELOAD_KEY, '1'); } catch (_) {}
+    global.location.reload();
+    return true;
+  }
+
+  global.YouziCourseLocalRecoveryReady = recover().catch(function () { return false; });
+})(window);
