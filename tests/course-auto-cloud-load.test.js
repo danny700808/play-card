@@ -12,7 +12,9 @@ const bootstrap = read('course-data-auto-bootstrap-v1.js');
 const mobileCourse = read('operations-mobile-course-fix-v1.js');
 const reviewData = read('course-scheduler-review-data.js');
 const autoRead = read('functions/injiaoyunEducationAutoRead.js');
+const courseIndex = read('functions/courseIndex.js');
 const portalUtils = read('functions/coursePortalUtils.js');
+const packageJson = JSON.parse(read('functions/package.json'));
 const workflow = read('.github/workflows/firebase-functions-deploy.yml');
 const hub = read('operations-hub.html');
 const portal = read('portal.html');
@@ -21,6 +23,7 @@ new vm.Script(bootstrap, { filename: 'course-data-auto-bootstrap-v1.js' });
 new vm.Script(mobileCourse, { filename: 'operations-mobile-course-fix-v1.js' });
 new vm.Script(reviewData, { filename: 'course-scheduler-review-data.js' });
 new vm.Script(autoRead, { filename: 'functions/injiaoyunEducationAutoRead.js' });
+new vm.Script(courseIndex, { filename: 'functions/courseIndex.js' });
 new vm.Script(portalUtils, { filename: 'functions/coursePortalUtils.js' });
 
 assert(bootstrap.includes("AUTO_FUNCTION_NAME = 'loadInjiaoyunEducationMirrorAuto'"), '前端未呼叫唯讀雲端課務資料');
@@ -46,7 +49,10 @@ assert(autoRead.includes("where('sourceActive', '==', true)"), '後端未優先�
 assert(!autoRead.includes('MANUAL_SYNC_PIN'), '一般開頁讀取不應再要求手動同步密碼');
 assert(!autoRead.includes('syncInjiaoyunEducationMirrorNow'), '一般開頁不得觸發音教雲同步');
 
-assert(portalUtils.includes('registerInjiaoyunEducationAutoRead'), 'Firebase Functions 未註冊自動讀取函式');
+assert.strictEqual(packageJson.main, 'courseIndex.js', 'Firebase Functions 未使用明確課務入口');
+assert(courseIndex.includes("require('./index')"), '明確入口未保留既有正式 Functions');
+assert(courseIndex.includes('registerInjiaoyunEducationAutoRead(exports)'), '明確入口未註冊自動課表讀取函式');
+assert(!portalUtils.includes('registerInjiaoyunEducationAutoRead'), '工具模組仍在循環載入期間註冊 Firebase Function');
 assert(workflow.includes('functions:loadInjiaoyunEducationMirrorAuto'), '部署流程未單獨發布自動課表讀取函式');
 assert(workflow.includes('firebase-course-mirror-diagnostics'), '部署失敗時未保留可檢查的診斷紀錄');
 assert(reviewData.includes('loadAutomaticCourseBootstrap'), '獨立課程日表未在初始化前啟動自動復原');
