@@ -46,7 +46,7 @@ assert(mobileCourse.includes('youzi-course-auto-data-ready'), '自動還原完�
 assert(autoRead.includes('loadInjiaoyunEducationMirrorAuto'), '後端缺少自動讀取函式');
 assert(autoRead.includes('assertAllowedRead'), '後端讀取沒有來源限制');
 assert(autoRead.includes("where('sourceActive', '==', true)"), '後端未優先讀取有效鏡像資料');
-assert(autoRead.includes("invoker: 'public'"), '唯讀課表函式沒有開放給網站呼叫');
+assert(autoRead.includes("invoker: 'public'"), '唯讀課表函式沒有宣告網站可公開呼叫');
 assert(!autoRead.includes('MANUAL_SYNC_PIN'), '一般開頁讀取不應再要求手動同步密碼');
 assert(!autoRead.includes('syncInjiaoyunEducationMirrorNow'), '一般開頁不得觸發音教雲同步');
 
@@ -54,8 +54,11 @@ assert.strictEqual(packageJson.main, 'courseIndex.js', 'Firebase Functions 未�
 assert(courseIndex.includes("require('./index')"), '明確入口未保留既有正式 Functions');
 assert(courseIndex.includes('registerInjiaoyunEducationAutoRead(exports)'), '明確入口未註冊自動課表讀取函式');
 assert(!portalUtils.includes('registerInjiaoyunEducationAutoRead'), '工具模組仍在循環載入期間註冊 Firebase Function');
-assert(workflow.includes('functions:loadInjiaoyunEducationMirrorAuto'), '部署流程未單獨發布自動課表讀取函式');
-assert(workflow.includes('course-mirror-diagnostics'), '部署失敗時未保留可檢查的診斷紀錄');
+assert(workflow.includes('cloudfunctions.googleapis.com/v2/'), '工作流程未從 Cloud Functions API 取得實際 Cloud Run 服務');
+assert(workflow.includes(':setIamPolicy'), '工作流程未設定 Cloud Run 呼叫權限');
+assert(workflow.includes("roles/run.invoker"), '工作流程未授權 Cloud Run Invoker');
+assert(workflow.includes("allUsers"), '工作流程未允許網站匿名呼叫唯讀課表');
+assert(workflow.includes('course-mirror-diagnostics'), '驗證失敗時未保留可檢查的診斷紀錄');
 assert(reviewData.includes('loadAutomaticCourseBootstrap'), '獨立課程日表未在初始化前啟動自動復原');
 
 [hub, portal].forEach((html) => {
