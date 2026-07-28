@@ -5,12 +5,13 @@
   var FORMAL_DB_NAME='youzi-course-scheduler';
   var FORMAL_DB_STORE='formalSnapshots';
   var FORMAL_DB_KEY='latest';
+  var WORKSPACE_DB_KEY='workspace';
   var PIN_KEY='youzi.injiaoyun.preview.pin';
   var ROOM_ORDER_KEY='youzi.courseScheduler.roomOrder.v1';
   var FEE_ORDER_KEY='youzi.courseScheduler.feeOrder.v1';
   var state=null,formalState=null,currentView='calendar',currentStudentId='',currentTeacherId='',studentTab='profile';
   var entityContext={type:'',id:''},policyRoomId='',loadingMigration=false,roomDragId='',roomDropSide='before',feeDragId='',feeDropSide='before';
-  var sandboxUndoStack=[],sandboxLastSnapshot=null,weekMode=false,weekAnchor='',scheduleDraftAfterStudent=null,returnToScheduleAfterStudent=false,operationRunning=false;
+  var workspaceSaveTimer=0,weekMode=false,weekAnchor='',scheduleDraftAfterStudent=null,returnToScheduleAfterStudent=false,operationRunning=false;
 
   function $(id){return document.getElementById(id);}
   function qs(selector,root){return (root||document).querySelector(selector);}
@@ -159,23 +160,23 @@
       request.onerror=function(){reject(request.error||new Error('IndexedDB open failed'));};
     });
   }
-  async function readFormalDatabase(){
+  async function readDatabaseSnapshot(key){
     try{
       var db=await openFormalDatabase();
       return await new Promise(function(resolve,reject){
-        var transaction=db.transaction(FORMAL_DB_STORE,'readonly'),request=transaction.objectStore(FORMAL_DB_STORE).get(FORMAL_DB_KEY);
+        var transaction=db.transaction(FORMAL_DB_STORE,'readonly'),request=transaction.objectStore(FORMAL_DB_STORE).get(key);
         request.onsuccess=function(){resolve(request.result||null);};
         request.onerror=function(){reject(request.error||new Error('IndexedDB read failed'));};
         transaction.oncomplete=function(){db.close();};
       });
     }catch(_){return null;}
   }
-  async function storeFormalDatabase(source){
+  async function storeDatabaseSnapshot(key,source){
     try{
       var db=await openFormalDatabase();
       await new Promise(function(resolve,reject){
         var transaction=db.transaction(FORMAL_DB_STORE,'readwrite');
-        transaction.objectStore(FORMAL_DB_STORE).put(clone(source),FORMAL_DB_KEY);
+        transaction.objectStore(FORMAL_DB_STORE).put(source,key);
         transaction.oncomplete=resolve;
         transaction.onerror=function(){reject(transaction.error||new Error('IndexedDB write failed'));};
         transaction.onabort=function(){reject(transaction.error||new Error('IndexedDB write aborted'));};
@@ -183,6 +184,10 @@
       db.close();return true;
     }catch(_){return false;}
   }
+  function readFormalDatabase(){return readDatabaseSnapshot(FORMAL_DB_KEY);}
+  function storeFormalDatabase(source){return storeDatabaseSnapshot(FORMAL_DB_KEY,source);}
+  function readWorkspaceDatabase(){return readDatabaseSnapshot(WORKSPACE_DB_KEY);}
+  function storeWorkspaceDatabase(source){return storeDatabaseSnapshot(WORKSPACE_DB_KEY,source);}
   function storeFormalCache(source){
     try{localStorage.setItem(FORMAL_CACHE_KEY,JSON.stringify(source));return true;}
     catch(_){try{localStorage.removeItem(FORMAL_CACHE_KEY);}catch(__){}return false;}
@@ -196,23 +201,23 @@
   function isReadOnly(){return state&&state.readOnly===true;}
   function isSandbox(){return state&&state.dataMode==='sandbox'&&!isReadOnly();}
   function sandboxRunId(source){return clean((((source||{}).dataMeta||{}).runId)||(((source||{}).sandboxMeta||{}).baselineRunId));}
-  function sandboxOperationLog(){return isSandbox()&&Array.isArray(state.sandboxMeta.operationLog)?state.sandboxMeta.operationLog:[];}
+  function scheduleWorkspaceSave(){
+    if(!isSandbox())return;
+    clearTimeout(workspaceSaveTimer);
+    workspaceSaveTimer=setTimeout(async function(){
+      var saved=await storeWorkspaceDatabase(state);
+      if(!saved&&$('saveState'))$('saveState').textContent='儲存失敗・請重新整理後再試';
+    },650);
+  }
   function save(message){
     if(isSandbox()){
-      if(message){
-        if(sandboxLastSnapshot)sandboxUndoStack.push(clone(sandboxLastSnapshot));
-        sandboxUndoStack=sandboxUndoStack.slice(-20);
-        if(!state.sandboxMeta||typeof state.sandboxMeta!=='object')state.sandboxMeta={};
-        if(!Array.isArray(state.sandboxMeta.operationLog))state.sandboxMeta.operationLog=[];
-        state.sandboxMeta.operationLog.push({id:uid('log'),at:new Date().toISOString(),action:message});
-        state.sandboxMeta.operationLog=state.sandboxMeta.operationLog.slice(-200);
-        state.sandboxMeta.updatedAt=new Date().toISOString();
-        sandboxLastSnapshot=clone(state);
-      }
+      if(!state.sandboxMeta||typeof state.sandboxMeta!=='object')state.sandboxMeta={};
+      state.sandboxMeta.updatedAt=new Date().toISOString();
+      scheduleWorkspaceSave();
     }
-    $('saveState').textContent=isReadOnly()?'正式資料唯讀・可查看明細':'✓ '+(message||'本次測試暫存中');
+    $('saveState').textContent=isReadOnly()?'正在開啟資料':'✓ '+(message||'操作已自動儲存');
   }
-  function writable(action){if(isSandbox())return true;toast('目前是正式資料',(action||'這項操作')+'只能在測試模式操作；正式資料仍可完整查看。','error');return false;}
+  function writable(action){if(isSandbox())return true;toast('資料尚未載入',(action||'這項操作')+'要等同步資料開啟後才能使用。','error');return false;}
   function toast(title,message,type){var node=document.createElement('div');node.className='toast'+(type==='error'?' error':'');node.innerHTML='<b>'+esc(title)+'</b><span>'+esc(message||'')+'</span>';$('toastStack').appendChild(node);setTimeout(function(){node.remove();},4000);}
   function operationButton(button,busy,label){
     if(!button)return;if(busy){button.dataset.originalText=button.textContent;button.disabled=true;button.classList.add('busy');button.innerHTML='<span>'+esc(label||'正在處理')+'</span>';}
@@ -228,33 +233,25 @@
   function closeModal(id){$(id).classList.remove('open');if(!document.querySelector('.modal-backdrop.open'))document.body.style.overflow='';}
 
   function updateModeUI(){
-    var actual=isReadOnly(),sandbox=isSandbox(),empty=state.dataMode==='empty',review=actual&&state.dataMode==='review',panel=$('dataModePanel');
-    panel.classList.toggle('actual',actual&&!empty);panel.classList.toggle('sandbox',sandbox);document.body.classList.toggle('sandbox-mode',sandbox);
-    $$('.sandbox-only').forEach(function(node){node.classList.toggle('hidden',!sandbox);});
-    $('dataModeIcon').textContent=sandbox?'測':'正';
-    $('sideModeBadge').textContent=sandbox?'測試模式・不影響正式資料':empty?'尚未載入正式資料':review?'核對課表・正式唯讀':'正式資料・唯讀';
-    $('dataModeTitle').textContent=sandbox?'測試模式':empty?'尚未載入正式資料':review?'舊課表核對（正式唯讀）':'正式資料（唯讀）';
-    $('dataModeDescription').textContent=sandbox?'以最新正式資料測試；返回正式或重新整理就會全部清除':empty?'正在開啟正式資料庫；此瀏覽器第一次使用時才需要連結一次':review?'可查看所有明細，不會寫回音教雲':'正式資料庫會自動顯示；學生、學費、簽到與課表皆可查看';
-    $('dataModeChip').textContent=sandbox?'測試':empty?'未載入':review?'核對':'正式';
-    if(sandbox){
-      var sandboxMeta=state.sandboxMeta||{},logs=sandboxOperationLog();
-      $('dataModeMeta').textContent=state.students.length+' 位學生・'+state.events.length+' 筆正式課程紀錄・'+state.recurringRules.length+' 條固定課規則・'+logs.length+' 次本次測試操作'+(sandboxMeta.baselineRunId?'・底稿 '+sandboxMeta.baselineRunId:'');
-      $('loadMigratedDataBtn').textContent='返回正式資料';
-      $('undoSandboxBtn').disabled=sandboxUndoStack.length===0;
-    }else if(empty){
-      $('dataModeMeta').textContent='若此瀏覽器尚未連結過，請執行一次「第一次連結正式資料」';
-      $('loadMigratedDataBtn').textContent='第一次連結正式資料';
-    }else if(review){
-      $('dataModeMeta').textContent=state.students.length+' 位學生・最後有效課表・核對範圍 7/12～7/15';
-      $('loadMigratedDataBtn').textContent='進入測試模式';
-    }else{
-      var meta=state.dataMeta||{},quality=meta.dataQuality||{},visible=quality.visibleEventWeekdays||{},unresolved=numberOf(quality.unresolvedTimeRecords),days='二 '+numberOf(visible.tue)+'・三 '+numberOf(visible.wed)+'・四 '+numberOf(visible.thu)+'・五 '+numberOf(visible.fri)+'・六 '+numberOf(visible.sat);
-      $('dataModeMeta').textContent=state.students.length+' 位學生・'+state.events.length+' 筆課表・'+days+(unresolved?'・'+unresolved+' 筆時間待確認':'')+(meta.runId?'・來源 '+meta.runId:'')+(meta.browserCacheSkipped?'・資料量較大，重新整理後請再次載入':'');
-      $('loadMigratedDataBtn').textContent='進入測試模式';
+    var empty=state.dataMode==='empty',meta=state.dataMeta||{},quality=meta.dataQuality||{},visible=quality.visibleEventWeekdays||{},unresolved=numberOf(quality.unresolvedTimeRecords);
+    var days='二 '+numberOf(visible.tue)+'・三 '+numberOf(visible.wed)+'・四 '+numberOf(visible.thu)+'・五 '+numberOf(visible.fri)+'・六 '+numberOf(visible.sat);
+    $('dataModePanel').classList.toggle('actual',false);
+    $('dataModePanel').classList.toggle('sandbox',false);
+    document.body.classList.toggle('sandbox-mode',false);
+    $('dataModeIcon').textContent='同';
+    $('sideModeBadge').textContent=empty?'資料尚未載入':'操作自動儲存';
+    $('dataModeTitle').textContent=loadingMigration?'正在同步音教雲':'資料同步';
+    $('dataModeDescription').textContent=loadingMigration?'正在抓取課表、簽到、學費、租用與老師薪資，請保持頁面開啟。':'操作會自動儲存；同步成功後以舊系統最新資料更新課務內容。';
+    $('dataModeChip').textContent=loadingMigration?'同步中':'自動儲存';
+    $('dataModeMeta').textContent=empty
+      ? '按「同步至選擇日期」即可第一次載入全部資料'
+      : state.students.length+' 位學生・'+state.events.length+' 筆課表・'+days+(unresolved?'・'+unresolved+' 筆時間待確認':'')+(meta.runId?'・來源 '+meta.runId:'');
+    if($('syncInjiaoyunBtn')){
+      $('syncInjiaoyunBtn').textContent=loadingMigration?'同步中，請稍候…':'同步至選擇日期';
+      $('syncInjiaoyunBtn').disabled=loadingMigration;
     }
-    if($('syncInjiaoyunBtn'))$('syncInjiaoyunBtn').textContent=loadingMigration?'正在更新本日音教雲…':'立即更新本日音教雲';
-    if($('syncInjiaoyunBtn'))$('syncInjiaoyunBtn').disabled=loadingMigration||sandbox;
-    ['topNewEvent','sideNewEvent','calendarNewEvent','addStudentBtn','addTeacherBtn','saveSettingsBtn','addRoomBtn','addSubjectBtn','addFeePlanBtn','addLeaveReasonBtn'].forEach(function(id){if($(id))$(id).disabled=actual;});save();
+    ['topNewEvent','sideNewEvent','calendarNewEvent','addStudentBtn','addTeacherBtn','saveSettingsBtn','addRoomBtn','addSubjectBtn','addFeePlanBtn','addLeaveReasonBtn'].forEach(function(id){if($(id))$(id).disabled=empty||loadingMigration;});
+    save();
   }
 
   function switchView(view){
@@ -455,7 +452,7 @@
 
   function renderCalendar(){
     var date=state.currentDate,rooms=activeRooms(),events=effectiveEventsForDate(date),conflicts=dayConflictIds(events),used=new Set(events.map(function(row){return row.roomId;}));
-    $('calendarDate').value=date;$('dateTitle').textContent=zhDate(date);$('dateSubtitle').textContent=weekdayName(date)+(date===todayKey()?'・今天':'');$('kpiLessons').textContent=events.filter(function(row){return row.type!=='rental';}).length;$('kpiAttended').textContent=events.filter(function(row){return normalizedStatus(row.status)==='attended';}).length;$('kpiRooms').textContent=used.size+' / '+rooms.length;$('kpiWarnings').textContent=Object.keys(conflicts).length+events.filter(function(row){var status=normalizedStatus(row.status);return status==='leave'||status==='absent';}).length;$('calendarHint').textContent='30 分鐘／格・'+rooms.length+' 間啟用教室'+(isReadOnly()?'・正式唯讀':isSandbox()?'・測試操作不影響正式資料':'');
+    $('calendarDate').value=date;$('dateTitle').textContent=zhDate(date);$('dateSubtitle').textContent=weekdayName(date)+(date===todayKey()?'・今天':'');$('kpiLessons').textContent=events.filter(function(row){return row.type!=='rental';}).length;$('kpiAttended').textContent=events.filter(function(row){return normalizedStatus(row.status)==='attended';}).length;$('kpiRooms').textContent=used.size+' / '+rooms.length;$('kpiWarnings').textContent=Object.keys(conflicts).length+events.filter(function(row){var status=normalizedStatus(row.status);return status==='leave'||status==='absent';}).length;$('calendarHint').textContent='30 分鐘／格・'+rooms.length+' 間啟用教室'+(isReadOnly()?'・資料尚未載入':isSandbox()?'・操作自動儲存':'');
     if (isReadOnly() && state.dataMode === 'review') { var sourceStats = ((state.dataMeta || {}).sourceStatsByDate || {})[date] || {}; $('dataModeMeta').textContent = '原始學生紀錄 '+numberOf(sourceStats.studentRecords)+'・請假已定位 '+numberOf(sourceStats.leaveRecords)+'・固定課 '+numberOf(sourceStats.fixedRecords)+'・最後顯示 '+numberOf(sourceStats.visibleRecords)+(numberOf(sourceStats.unresolvedRecords) ? '・待人工核對 '+numberOf(sourceStats.unresolvedRecords) : ''); }
     var slots=[];for(var min=state.settings.startHour*60;min<state.settings.endHour*60;min+=30)slots.push(min);var start=state.settings.startHour*60,grid=$('scheduleGrid');grid.style.gridTemplateColumns='var(--time-col, 90px) repeat('+rooms.length+',var(--room-col, minmax(200px,1fr)))';grid.style.gridTemplateRows='var(--room-head-height, 64px) repeat('+slots.length+',var(--slot))';
     var html='<div class="grid-corner" style="grid-column:1;grid-row:1">時間</div>';
@@ -567,11 +564,11 @@
     if(event.note)html+='<p class="event-note"><b>備註：</b>'+esc(event.note)+'</p>';
     if(event.type!=='rental'&&!event.specialLesson){var adjustment=numberOf(event.teacherPayAdjustment),adjustmentText=adjustment>0?'增加 '+money(adjustment):adjustment<0?'減少 '+money(Math.abs(adjustment)):'尚未設定';html+='<section class="event-pay-override '+(adjustment?'configured':'')+'"><div><small>本堂特殊老師費用</small><b>'+esc(adjustmentText)+'</b><span>'+(adjustment?esc(event.teacherPayAdjustmentReason||'未填原因'):'可在上課前先設定，簽到後才計入薪資。')+'</span></div>'+(!isReadOnly()?'<button class="btn small secondary" type="button" data-teacher-pay-override="'+esc(event.id)+'">'+(adjustment?'修改設定':'預先設定')+'</button>':'')+'</section>';}
     if(reasons.length)html+='<div class="validation-box has-conflict"><b>排課衝突</b><span>'+reasons.map(esc).join('<br>')+'</span></div>';
-    if(event.type!=='rental'&&isReadOnly())html+='<p class="formal-action-hint">以上操作可在測試模式實際執行，正式資料目前只供查看。</p>';
+    if(event.type!=='rental'&&isReadOnly())html+='<p class="formal-action-hint">請先同步音教雲資料，再進行課程操作。</p>';
     else if(event.type==='rental')html+='<div class="status-actions"><button data-attendance="attended" '+(isReadOnly()?'disabled':'')+'>✓ 簽退完成</button><button data-attendance="scheduled" '+(isReadOnly()?'disabled':'')+'>恢復未簽退</button></div>';
     if(student.id)html+='<section class="event-tuition-section"><div class="student-record-heading"><div><h3>學生學費紀錄</h3><p>不必再進第二層；每一期與四堂簽到直接顯示在這裡。</p></div></div>'+tuitionTableHtml(student.id,{eventId:event.id,currentPeriodId:event.tuitionPeriodId,fallbackTeacherId:event.teacherId})+'</section>';
     $('eventModalBody').innerHTML=html;
-    $('eventModalFoot').innerHTML='<div class="formal-view-note">'+(isReadOnly()?'正式資料目前只供查看。':'點「第幾期／課程方案」會直接編輯本期期別。')+'</div>';$('eventModal').dataset.eventId=event.id;openModal('eventModal');
+    $('eventModalFoot').innerHTML='<div class="formal-view-note">'+(isReadOnly()?'資料尚未載入。':'點「第幾期／課程方案」會直接編輯本期期別。')+'</div>';$('eventModal').dataset.eventId=event.id;openModal('eventModal');
   }
   function detailLine(label,value){return '<div class="detail-line"><span>'+esc(label)+'</span><b>'+esc(value)+'</b></div>';}
   function teacherPayBase(event){
@@ -611,7 +608,7 @@
     options=options||{};
     var periods=state.tuitionPeriods.filter(function(row){return row.studentId===studentId;}).sort(function(a,b){return numberOf(a.periodNo)-numberOf(b.periodNo);}),latest=periods.length?periods[periods.length-1]:{},rows=periods.map(function(period){
       var transactions=(period.transactions||[]).slice().sort(function(a,b){return clean(a.date).localeCompare(clean(b.date));}),transactionHtml=transactions.map(function(tx){var method=displayTransactionMethod(tx.method);return '<span class="payment-line"><time>'+esc(tx.date||'未填日期')+'</time><b>'+esc(tx.type==='refund'?'退款':'收費')+' '+money(tx.amount)+'</b>'+(method?'<small>'+esc(method)+'</small>':'')+'</span>';}).join('')||'<small class="no-payment">尚無收退款紀錄</small>',planName=clean((period.planSnapshot||{}).name)||clean(feeById(period.planId).name)||'既有收費方案',balance=periodBalance(period),payment=balance>0?'<b class="tuition-due">未繳 '+money(balance)+'</b>':'<span class="tuition-paid">已繳清</span>',current=options.eventId&&period.id===options.currentPeriodId,actions=current&&isSandbox()?'<div class="period-course-actions"><button type="button" class="btn small outline" data-event-action="edit">編輯這一次課程</button><button type="button" class="btn small danger" data-event-action="delete">刪除這一次課程</button></div>':'';
-      return '<tr class="tuition-period-row'+(period.id===latest.id?' latest':'')+'"><td><button type="button" class="period-course-button" '+(isSandbox()?'data-period-edit="'+esc(period.id)+'"':'disabled')+'><b>第 '+esc(period.periodNo)+' 期・'+esc(subjectById(period.subjectId).name||'未設定科目')+'</b><small>'+esc(planName)+'</small></button>'+actions+'</td><td><div class="payment-status-cell">'+payment+transactionHtml+'</div></td><td>'+(isSandbox()?'<button type="button" class="btn small secondary" data-period-pay="'+esc(period.id)+'">收費／退款</button>':'<span class="tuition-readonly">正式唯讀</span>')+'</td><td>'+periodLessonSlots(period)+'</td></tr>';
+      return '<tr class="tuition-period-row'+(period.id===latest.id?' latest':'')+'"><td><button type="button" class="period-course-button" '+(isSandbox()?'data-period-edit="'+esc(period.id)+'"':'disabled')+'><b>第 '+esc(period.periodNo)+' 期・'+esc(subjectById(period.subjectId).name||'未設定科目')+'</b><small>'+esc(planName)+'</small></button>'+actions+'</td><td><div class="payment-status-cell">'+payment+transactionHtml+'</div></td><td>'+(isSandbox()?'<button type="button" class="btn small secondary" data-period-pay="'+esc(period.id)+'">收費／退款</button>':'<span class="tuition-readonly">尚未載入</span>')+'</td><td>'+periodLessonSlots(period)+'</td></tr>';
     }).join('')||'<tr><td colspan="4" class="student-empty">尚未建立學費期別。</td></tr>';
     return '<div class="tuition-table-wrap"><table class="tuition-record-table"><thead><tr><th>期別／課程方案</th><th>繳費狀態與紀錄</th><th>收費／退款</th><th>上課紀錄</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
   }
@@ -620,7 +617,7 @@
     var periods=state.tuitionPeriods.filter(function(row){return row.studentId===student.id;}).sort(function(a,b){return numberOf(a.periodNo)-numberOf(b.periodNo);}),latest=periods.length?periods[periods.length-1]:{},html='<section class="student-overview compact"><div><span>狀態</span><b>'+(student.active===false?'已停課':'上課中')+'</b></div><div><span>電話</span><b>'+esc(student.phone||'未填')+'</b></div><div><span>目前課程</span><b>'+esc(subjectById(latest.subjectId).name||'尚未建立期別')+'</b></div><div><span>目前堂數</span><b>'+(latest.id?'剩 '+periodRemaining(latest)+'／'+latest.lessonCount+' 堂':'—')+'</b></div></section>';
     if(student.note)html+='<section class="student-note"><b>備註</b><p>'+esc(student.note)+'</p></section>';
     html+='<section class="student-section"><div class="student-record-heading"><div><h3>學費紀錄</h3><p>每一期維持同一排；四堂實際簽到日期直接顯示，未繳金額以紅色標示。</p></div></div>'+tuitionTableHtml(student.id)+'</section>';
-    $('studentModalBody').innerHTML=html;$('studentModalFoot').innerHTML=isSandbox()?'<div><button class="btn outline" type="button" data-student-action="edit">編輯基本資料</button></div><div><button class="btn primary" type="button" data-student-action="tuition">＋ 延續／新增學費期別</button></div>':'<div class="formal-view-note">正式資料可查看所有明細；進入測試模式後可測試收費、退費與新增期別。</div>';
+    $('studentModalBody').innerHTML=html;$('studentModalFoot').innerHTML=isSandbox()?'<div><button class="btn outline" type="button" data-student-action="edit">編輯基本資料</button></div><div><button class="btn primary" type="button" data-student-action="tuition">＋ 延續／新增學費期別</button></div>':'<div class="formal-view-note">請先同步音教雲資料，再進行收費、退費或新增期別。</div>';
   }
   function displayTransactionMethod(value){var method=clean(value);return /^(未註明|未設定|N\/A|null|undefined|-+)$/i.test(method)?'':method;}
   function summary(label,value){return '<article><span>'+esc(label)+'</span><strong>'+esc(value)+'</strong></article>';}
@@ -727,121 +724,116 @@
 
   function clearMigrationPin(){try{sessionStorage.removeItem(PIN_KEY);}catch(_){}}
 
-  function applyFormalState(source){
-    formalState=normalizeState(source);formalState.readOnly=true;formalState.dataMode=formalState.dataMode==='review'?'review':'migration';
-    state=clone(formalState);updateModeUI();refreshFormOptions();switchView('calendar');
-    return formalState;
+  function preserveWorkspaceConfiguration(target,previous){
+    if(!previous||previous.dataMode==='empty')return target;
+    target.settings=clone(previous.settings||target.settings||{});
+    var previousRooms={};(previous.rooms||[]).forEach(function(row){previousRooms[row.id]=row;});
+    target.rooms=(target.rooms||[]).map(function(room){
+      var prior=previousRooms[room.id];if(!prior)return room;
+      ['publicName','note','rentalFee','sort','active','allowedSubjectIds','policies','rentalUseTypes','rentalEquipment','capacity'].forEach(function(key){
+        if(Object.prototype.hasOwnProperty.call(prior,key))room[key]=prior[key]&&typeof prior[key]==='object'?clone(prior[key]):prior[key];
+      });
+      return room;
+    });
+    var previousFees={};(previous.feePlans||[]).forEach(function(row){previousFees[row.id]=row;});
+    target.feePlans=(target.feePlans||[]).map(function(row){
+      var prior=previousFees[row.id];if(prior){row.sort=prior.sort;row.listed=prior.listed;}return row;
+    });
+    var previousSubjects={};(previous.subjects||[]).forEach(function(row){previousSubjects[row.id]=row;});
+    target.subjects=(target.subjects||[]).map(function(row){if(previousSubjects[row.id])row.sort=previousSubjects[row.id].sort;return row;});
+    return target;
+  }
+
+  function workspaceFromFormal(source,previous,preserveConfiguration){
+    var next=clone(source);
+    if(preserveConfiguration)next=preserveWorkspaceConfiguration(next,previous);
+    next.currentDate=dateKey(previous&&previous.currentDate)||dateKey(next.currentDate)||todayKey();
+    next.readOnly=false;next.dataMode='sandbox';next.clipboard=null;
+    next.sandboxMeta={
+      createdAt:new Date().toISOString(),
+      updatedAt:new Date().toISOString(),
+      baselineRunId:sandboxRunId(source)||'音教雲同步資料',
+      baselineLoadedAt:clean((source.dataMeta||{}).loadedAt)
+    };
+    next=normalizeState(next);next.readOnly=false;next.dataMode='sandbox';
+    return next;
+  }
+
+  async function applyFormalState(source,options){
+    options=options||{};
+    var previous=options.previousWorkspace||state;
+    formalState=normalizeState(source);formalState.readOnly=true;formalState.dataMode='migration';
+    state=workspaceFromFormal(formalState,previous,options.preserveConfiguration===true);
+    await Promise.all([storeFormalDatabase(formalState),storeWorkspaceDatabase(state)]);
+    updateModeUI();refreshFormOptions();switchView(options.keepView===false?'calendar':currentView);
+    return state;
   }
 
   async function restoreFormalDatabase(){
-    if(formalState&&formalState.dataMode!=='empty'){
-      if(await storeFormalDatabase(formalState)){try{localStorage.removeItem(FORMAL_CACHE_KEY);}catch(_){}}
-      return true;
-    }
-    var cached=await readFormalDatabase();
+    var cached=formalState&&formalState.dataMode!=='empty'?formalState:await readFormalDatabase();
     if(cached&&cached.version===3){
-      applyFormalState(cached);
-      toast('正式資料已自動開啟','直接按「進入測試模式」即可；有新資料時再按「立即更新本日音教雲」。');
+      formalState=normalizeState(cached);formalState.readOnly=true;formalState.dataMode='migration';
+      var workspace=await readWorkspaceDatabase();
+      if(
+        workspace&&workspace.version===3&&
+        clean((workspace.sandboxMeta||{}).baselineRunId)===sandboxRunId(formalState)
+      ){
+        state=normalizeState(workspace);state.readOnly=false;state.dataMode='sandbox';
+      }else{
+        state=workspaceFromFormal(formalState,null,false);
+        await storeWorkspaceDatabase(state);
+      }
+      await storeFormalDatabase(formalState);
+      try{localStorage.removeItem(FORMAL_CACHE_KEY);}catch(_){}
+      updateModeUI();refreshFormOptions();switchView(currentView);
+      toast('資料已自動開啟','上次操作已保留；要取得舊系統最新內容時再按同步。');
       return true;
     }
     var pin=storedMigrationPin();
     if(!pin)return false;
     loadingMigration=true;updateModeUI();
     try{
-      await loadMigrationFromMirror(pin);
-      toast('正式資料已自動載入','之後進入課程日表會直接顯示，不需要再手動載入。');
+      await loadMigrationFromMirror(pin,{preserveConfiguration:false});
+      toast('資料已自動載入','之後開啟課程日表會直接顯示，不需要重複載入。');
       return true;
     }catch(error){
-      var message=clean(error&&error.message||'無法自動讀取正式資料');
+      var message=clean(error&&error.message||'無法自動讀取同步資料');
       if(message.indexOf('密碼')>=0||message.indexOf('permission-denied')>=0)clearMigrationPin();
       return false;
     }finally{loadingMigration=false;updateModeUI();}
   }
 
-  async function loadMigrationFromMirror(pin){
+  async function loadMigrationFromMirror(pin,options){
+    options=options||{};
     if(!window.YouziCoursePreviewData||typeof window.YouziCoursePreviewData.load!=='function')throw new Error('音教雲同步元件尚未載入。');
+    var previous=state;
     var loaded=await window.YouziCoursePreviewData.load({manualSyncPin:pin,anchorDate:state&&state.currentDate||todayKey()});
-    formalState=normalizeState(loaded);formalState.readOnly=true;formalState.dataMode=formalState.dataMode==='review'?'review':'migration';
-    if(!formalState.dataMeta||typeof formalState.dataMeta!=='object')formalState.dataMeta={};
-    var databaseSaved=await storeFormalDatabase(formalState);
-    if(databaseSaved){
-      try{localStorage.removeItem(FORMAL_CACHE_KEY);}catch(_){}
-      formalState.dataMeta.browserCacheSkipped=false;
-    }else formalState.dataMeta.browserCacheSkipped=!storeFormalCache(formalState);
-    applyFormalState(formalState);
-    return formalState;
-  }
-
-  function createSandboxFromFormal(){
-    var source=loadFormalCache()||formalState;
-    if(!source||source.dataMode==='empty'){toast('尚無正式資料','請先載入音教雲同步資料，再建立測試模式。','error');return false;}
-    var next=clone(source);next.readOnly=false;next.dataMode='sandbox';next.clipboard=null;next.sandboxMeta={createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),baselineRunId:sandboxRunId(source)||'本機正式底稿',baselineLoadedAt:clean((source.dataMeta||{}).loadedAt),operationLog:[]};
-    state=normalizeState(next);state.readOnly=false;state.dataMode='sandbox';formalState=source;sandboxUndoStack=[];sandboxLastSnapshot=clone(state);
-    updateModeUI();refreshFormOptions();switchView(currentView);toast('已進入測試模式','目前使用最新正式資料當底稿；返回正式或重新整理後，本次測試就會全部清除。');return true;
-  }
-
-  function enterSandbox(){
-    var source=loadFormalCache()||formalState;
-    if(!source||source.dataMode==='empty'){toast('尚無正式資料','請先載入音教雲同步資料。','error');return;}
-    createSandboxFromFormal();
-  }
-
-  function returnToFormal(){
-    var cached=loadFormalCache()||formalState;if(!cached){toast('找不到正式資料','請重新載入音教雲同步資料。','error');return;}
-    state=clone(cached);state.readOnly=true;state.dataMode=state.dataMode==='review'?'review':'migration';sandboxUndoStack=[];sandboxLastSnapshot=null;updateModeUI();refreshFormOptions();switchView(currentView);toast('已返回正式資料','剛才的測試資料與操作紀錄已全部清除。');
-  }
-
-  function resetSandbox(){
-    if(!isSandbox())return;if(!window.confirm('確定清除目前所有測試操作，並重新載入最新正式資料嗎？'))return;
-    createSandboxFromFormal();toast('測試資料已重設','已重新複製最新正式資料；先前測試異動已清除。');
-  }
-
-  function undoSandbox(){
-    if(!isSandbox())return;if(!sandboxUndoStack.length){toast('沒有可復原的操作','目前已回到最早的測試狀態。');return;}
-    var restored=normalizeState(sandboxUndoStack.pop());restored.readOnly=false;restored.dataMode='sandbox';state=restored;sandboxLastSnapshot=clone(state);updateModeUI();refreshFormOptions();switchView(currentView);toast('已復原上一個測試操作','正式資料沒有受到影響。');
-  }
-
-  function showSandboxLog(){
-    if(!isSandbox())return;var rows=sandboxOperationLog().slice().reverse(),meta=state.sandboxMeta||{};
-    $('sandboxLogBody').innerHTML='<div class="sandbox-log-summary"><b>測試底稿</b><span>'+esc(meta.baselineRunId||'未標示')+'</span><small>建立時間：'+esc(formatDateTime(meta.createdAt))+'</small></div><div class="sandbox-log-list">'+(rows.map(function(row,index){return '<article><time>'+esc(formatDateTime(row.at))+'</time><b>'+esc(row.action||'測試操作')+'</b><span>操作 '+(rows.length-index)+'</span></article>';}).join('')||'<p class="student-empty">目前尚無測試操作。</p>')+'</div>';openModal('sandboxLogModal');
-  }
-
-  function formatDateTime(value){var date=new Date(value);if(!Number.isFinite(date.getTime()))return '—';return date.toLocaleString('zh-TW',{hour12:false});}
-
-  async function toggleMigration(){
-    if(loadingMigration)return;
-    if(isSandbox()){returnToFormal();return;}
-    if(isReadOnly()&&state.dataMode!=='empty'){enterSandbox();return;}
-    var pin=migrationPin();if(!pin)return;
-    loadingMigration=true;$('loadMigratedDataBtn').disabled=true;$('syncInjiaoyunBtn').disabled=true;updateModeUI();
-    try{
-      var loaded=await loadMigrationFromMirror(pin);
-      var memoryOnly=!!((loaded.dataMeta||{}).browserCacheSkipped);
-      toast('同步課表已載入','來源 '+clean((loaded.dataMeta||{}).runId)+'；音教雲欄位為唯讀。'+(memoryOnly?'資料量較大，本次已載入完成；重新整理後請再按一次載入正式資料。':''));
-    }catch(error){
-      var message=clean(error&&error.message||'無法讀取同步資料');
-      if(message.indexOf('密碼')>=0||message.indexOf('permission-denied')>=0)clearMigrationPin();
-      toast('載入失敗',message.slice(0,220),'error');
-    }finally{loadingMigration=false;$('loadMigratedDataBtn').disabled=false;$('syncInjiaoyunBtn').disabled=false;updateModeUI();}
+    if(!loaded.dataMeta||typeof loaded.dataMeta!=='object')loaded.dataMeta={};
+    await applyFormalState(loaded,{
+      previousWorkspace:previous,
+      preserveConfiguration:options.preserveConfiguration===true,
+      keepView:true
+    });
+    try{localStorage.removeItem(FORMAL_CACHE_KEY);}catch(_){}
+    return state;
   }
 
   async function syncInjiaoyun(){
     if(loadingMigration)return;
-    if(isSandbox()){toast('測試模式不直接同步','請先返回正式資料，再抓取並同步音教雲。','error');return;}
     var pin=migrationPin();if(!pin)return;
     if(!window.YouziCoursePreviewData||typeof window.YouziCoursePreviewData.sync!=='function'){toast('同步元件尚未載入','請重新整理頁面後再試。','error');return;}
-    loadingMigration=true;$('loadMigratedDataBtn').disabled=true;$('syncInjiaoyunBtn').disabled=true;updateModeUI();
+    loadingMigration=true;operationRunning=true;$('syncInjiaoyunBtn').disabled=true;$('operationProgressText').textContent='正在同步課表、簽到、學費、租用與老師薪資…';$('operationProgress').classList.remove('hidden');updateModeUI();
     try{
-      var selectedDate=state.currentDate;
+      var selectedDate=dateKey(state.currentDate)||todayKey();
       var result=await window.YouziCoursePreviewData.sync({manualSyncPin:pin,refreshDate:selectedDate});
       var summary=result.summary||{};
-      await loadMigrationFromMirror(pin);
-      toast('抓取與同步完成',selectedDate+' 已重新抓取；新增 '+numberOf(summary.created)+'、更新 '+numberOf(summary.updated)+'、未變更 '+numberOf(summary.unchanged));
+      await loadMigrationFromMirror(pin,{preserveConfiguration:true});
+      toast('全部同步完成',(result.refreshStartDate||selectedDate)+'～'+selectedDate+' 已更新課表、簽到、學費、租用與薪資；新增 '+numberOf(summary.created)+'、更新 '+numberOf(summary.updated)+'。');
     }catch(error){
       var message=clean(error&&error.message||'音教雲同步失敗');
       if(message.indexOf('密碼')>=0||message.indexOf('permission-denied')>=0)clearMigrationPin();
-      toast('同步失敗',message.slice(0,220),'error');
-    }finally{loadingMigration=false;$('loadMigratedDataBtn').disabled=false;$('syncInjiaoyunBtn').disabled=false;updateModeUI();}
+      toast('同步失敗，原資料已保留',message.slice(0,220),'error');
+    }finally{loadingMigration=false;operationRunning=false;$('operationProgress').classList.add('hidden');$('syncInjiaoyunBtn').disabled=false;updateModeUI();}
   }
 
   function bindEvents(){
@@ -850,7 +842,7 @@
     $$('[data-view]').forEach(function(node){node.addEventListener('click',function(){switchView(node.dataset.view);});});$$('[data-view-jump]').forEach(function(node){node.addEventListener('click',function(){switchView(node.dataset.viewJump);});});$$('[data-close-modal]').forEach(function(node){node.addEventListener('click',function(){closeModal(node.dataset.closeModal);});});$$('.modal-backdrop').forEach(function(node){node.addEventListener('click',function(event){if(event.target===node)closeModal(node.id);});});
     ['topNewEvent','sideNewEvent','calendarNewEvent'].forEach(function(id){$(id).addEventListener('click',function(){openSchedule({date:state.currentDate});});});$$('[data-day-step]').forEach(function(node){node.addEventListener('click',function(){state.currentDate=shiftDate(state.currentDate,numberOf(node.dataset.dayStep));if(weekMode)weekAnchor=state.currentDate;renderCalendar();});});$('todayBtn').addEventListener('click',function(){state.currentDate=todayKey();weekAnchor=state.currentDate;renderCalendar();});$('calendarDate').addEventListener('change',function(){state.currentDate=this.value;weekAnchor=this.value;renderCalendar();});$('weekScheduleBtn').addEventListener('click',function(){weekAnchor=state.currentDate;setWeekMode(true);});$('closeWeekBtn').addEventListener('click',function(){setWeekMode(false);});$('thisWeekBtn').addEventListener('click',function(){weekAnchor=todayKey();renderWeekSchedule();});$$('[data-week-step]').forEach(function(button){button.addEventListener('click',function(){weekAnchor=shiftDate(weekStartKey(weekAnchor||state.currentDate),numberOf(button.dataset.weekStep)*7);renderWeekSchedule();});});$('weekTeacher').addEventListener('change',renderWeekSchedule);$('weekScheduleDays').addEventListener('click',function(event){var button=event.target.closest('[data-week-event-id]');if(!button)return;var date=button.dataset.weekEventDate,row=eventsForDate(date).find(function(item){return item.id===button.dataset.weekEventId;});if(row){state.currentDate=date;$('calendarDate').value=date;eventDetails(row);}});$('scheduleForm').addEventListener('submit',submitSchedule);
     $$('[data-schedule-kind]',$('scheduleTypeTabs')).forEach(function(button){button.addEventListener('click',function(){setScheduleKind(button.dataset.scheduleKind);updateScheduleConflict();});});$('eventStudentSearch').addEventListener('input',debounce(renderScheduleStudentMatches,120));$('eventStudentMatches').addEventListener('click',function(event){var button=event.target.closest('[data-schedule-student-id]');if(button)selectScheduleStudent(button.dataset.scheduleStudentId,true);});$('eventStudentSelected').addEventListener('click',function(event){if(event.target.closest('[data-clear-schedule-student]')){selectScheduleStudent('',false);$('eventStudentSearch').value='';$('eventStudentSearch').focus();}});['eventDate','eventStart','eventDuration','eventRoom','eventType','eventTeacher','eventTuitionPeriod'].forEach(function(id){$(id).addEventListener('change',function(){if(id==='eventRoom')updateRentalFields(true);else if(id==='eventType')updateRentalFields(false);if(id==='eventTuitionPeriod')updateSpecialLessonFields(true);updateScheduleConflict();});});$('eventSubject').addEventListener('change',function(){updateTeacherOptions();updateTuitionOptions();updateRoomOptions();updateSpecialLessonFields(true);updateScheduleConflict();});$('eventStudent').addEventListener('change',function(){selectScheduleStudent(this.value,false);});$('eventSingleKind').addEventListener('change',function(){updateSpecialLessonFields(true);updateScheduleConflict();});$('eventFrequency').addEventListener('change',function(){$('repeatUntilField').classList.toggle('hidden',this.value==='once'||$('eventType').value!=='fixed');});$('quickAddStudent').addEventListener('click',function(){scheduleDraftAfterStudent=formEvent();scheduleDraftAfterStudent.frequency=$('eventFrequency').value;scheduleDraftAfterStudent.endDate=$('eventRepeatUntil').value;returnToScheduleAfterStudent=true;closeModal('scheduleModal');openEntity('student','');});
-    $('scheduleGrid').addEventListener('click',function(event){var eventButton=event.target.closest('[data-event-id]');if(eventButton){var row=findEvent(eventButton.dataset.eventId);if(row)eventDetails(row);return;}var slot=event.target.closest('[data-slot-room]');if(slot){if(isReadOnly()){toast('正式資料唯讀','請進入測試模式後再新增或調整課程。','error');return;}if(pasteToSlot(slot.dataset.slotRoom,slot.dataset.slotTime))return;openSchedule({date:state.currentDate,roomId:slot.dataset.slotRoom,start:slot.dataset.slotTime});}});$('cancelClipboard').addEventListener('click',function(){state.clipboard=null;renderCalendar();});
+    $('scheduleGrid').addEventListener('click',function(event){var eventButton=event.target.closest('[data-event-id]');if(eventButton){var row=findEvent(eventButton.dataset.eventId);if(row)eventDetails(row);return;}var slot=event.target.closest('[data-slot-room]');if(slot){if(isReadOnly()){toast('資料尚未載入','請先同步音教雲資料。','error');return;}if(pasteToSlot(slot.dataset.slotRoom,slot.dataset.slotTime))return;openSchedule({date:state.currentDate,roomId:slot.dataset.slotRoom,start:slot.dataset.slotTime});}});$('cancelClipboard').addEventListener('click',function(){state.clipboard=null;renderCalendar();});
     $('eventModalBody').addEventListener('click',function(event){var override=event.target.closest('[data-teacher-pay-override]');if(override){openTeacherPayOverride(override.dataset.teacherPayOverride);return;}var newPeriod=event.target.closest('[data-event-new-period]');if(newPeriod){closeModal('eventModal');openTuition(newPeriod.dataset.eventNewPeriod);return;}var action=event.target.closest('[data-event-action]');if(action){eventAction(action.dataset.eventAction);return;}var editPeriod=event.target.closest('[data-period-edit]');if(editPeriod){closeModal('eventModal');openTuition('',editPeriod.dataset.periodEdit);return;}var lesson=event.target.closest('[data-lesson-period]');if(lesson){openLessonAction(lesson.dataset.lessonPeriod,lesson.dataset.lessonSlot);return;}var pay=event.target.closest('[data-period-pay]');if(pay){closeModal('eventModal');openTransaction(pay.dataset.periodPay);return;}var button=event.target.closest('[data-attendance]');if(!button)return;var status=button.dataset.attendance,reason='';if(status==='leave'){var active=state.leaveReasons.filter(function(row){return row.active!==false;});reason=active.length?(window.prompt('請假原因（可填：'+active.map(function(row){return row.name;}).join('、')+'）')||''):'';var match=active.find(function(row){return row.name===reason;});reason=match?match.id:'';}setAttendance($('eventModal').dataset.eventId,status,reason);});$('eventModalFoot').addEventListener('click',function(event){var button=event.target.closest('[data-event-action]');if(button)eventAction(button.dataset.eventAction);});
     $('teacherPayOverrideType').addEventListener('change',renderTeacherPayOverridePreview);$('teacherPayOverrideAmount').addEventListener('input',renderTeacherPayOverridePreview);$('teacherPayOverrideForm').addEventListener('submit',submitTeacherPayOverride);
     $('studentRows').addEventListener('click',function(event){var button=event.target.closest('[data-student-id]');if(button)openStudent(button.dataset.studentId);});$('studentTabs').addEventListener('click',function(event){var button=event.target.closest('[data-student-tab]');if(button){studentTab=button.dataset.studentTab;renderStudentModal();}});$('studentModalBody').addEventListener('click',function(event){var editPeriod=event.target.closest('[data-period-edit]');if(editPeriod){closeModal('studentModal');openTuition('',editPeriod.dataset.periodEdit);return;}var lesson=event.target.closest('[data-lesson-period]');if(lesson){openLessonAction(lesson.dataset.lessonPeriod,lesson.dataset.lessonSlot);return;}var button=event.target.closest('[data-period-pay]');if(button)openTransaction(button.dataset.periodPay);});$('studentModalFoot').addEventListener('click',function(event){var button=event.target.closest('[data-student-action]');if(!button)return;if(button.dataset.studentAction==='edit'){closeModal('studentModal');openEntity('student',currentStudentId);}else openTuition(currentStudentId);});$('addStudentBtn').addEventListener('click',function(){openEntity('student','');});$('studentSearch').addEventListener('input',debounce(renderStudents,280));$('studentPaymentFilter').addEventListener('change',renderStudents);
@@ -858,14 +850,14 @@
     $('tuitionForm').addEventListener('submit',submitTuition);$('tuitionSubject').addEventListener('change',function(){updateTuitionForm();});$('tuitionPlan').addEventListener('change',renderTuitionSnapshot);$('tuitionPurchasePeriods').addEventListener('input',function(){updateTuitionPurchaseSummary(true);renderTuitionSnapshot();});$('tuitionAmount').addEventListener('input',function(){updateTuitionPurchaseSummary(true);});$('tuitionCollectNow').addEventListener('change',updateTuitionCollectionFields);$('transactionForm').addEventListener('submit',submitTransaction);$('transactionType').addEventListener('change',renderRefundLessonOptions);$('transactionRefundCount').addEventListener('change',function(){syncRefundSelection(true);});$('refundSlotChoices').addEventListener('change',function(){syncRefundSelection(false);});
     $('teacherCards').addEventListener('click',function(event){var payroll=event.target.closest('[data-teacher-payroll]'),edit=event.target.closest('[data-teacher-id]');if(payroll)openTeacherPayroll(payroll.dataset.teacherPayroll);if(edit)openEntity('teacher',edit.dataset.teacherId);});$('teacherPayrollMonth').addEventListener('change',renderTeacherPayroll);$('teacherPayrollBody').addEventListener('click',function(event){var student=event.target.closest('[data-payroll-student]');if(student){closeModal('teacherPayrollModal');openStudent(student.dataset.payrollStudent);}});$('addTeacherBtn').addEventListener('click',function(){openEntity('teacher','');});$('teacherSearch').addEventListener('input',debounce(renderTeachers,280));
     $$('.settings-tabs button').forEach(function(button){button.addEventListener('click',function(){$$('.settings-tabs button').forEach(function(node){node.classList.toggle('active',node===button);});$$('.settings-panel').forEach(function(panel){panel.classList.toggle('active',panel.dataset.settingsPanel===button.dataset.settingsTab);});});});$('saveSettingsBtn').addEventListener('click',function(){if(!writable('儲存設定'))return;var start=numberOf($('startHour').value),end=numberOf($('endHour').value);if(end<=start){toast('時間設定錯誤','結束時間必須晚於開始時間。','error');return;}state.settings.startHour=start;state.settings.endHour=end;state.settings.defaultLessons=numberOf($('defaultLessons').value)||4;save('系統設定已儲存');renderCalendar();toast('設定完成','課程日表格線已重新整理。');});
-    $('addRoomBtn').addEventListener('click',function(){openEntity('room','');});$('addSubjectBtn').addEventListener('click',function(){openEntity('subject','');});$('addFeePlanBtn').addEventListener('click',function(){openEntity('fee','');});$('addLeaveReasonBtn').addEventListener('click',function(){openEntity('leave','');});$('roomRows').addEventListener('click',function(event){var policy=event.target.closest('[data-room-policy]');if(policy)openPolicy(policy.dataset.roomPolicy);});$('subjectRows').addEventListener('click',function(event){var button=event.target.closest('[data-subject-edit]');if(button)openEntity('subject',button.dataset.subjectEdit);});$('feePlanRows').addEventListener('click',function(event){var button=event.target.closest('[data-fee-edit]');if(button)openEntity('fee',button.dataset.feeEdit);});$('leaveReasonRows').addEventListener('click',function(event){var button=event.target.closest('[data-leave-edit]');if(button)openEntity('leave',button.dataset.leaveEdit);});$('feeSubjectFilter').addEventListener('change',renderFeeRows);$('entityForm').addEventListener('submit',submitEntity);$('policyWeekday').addEventListener('change',renderPolicy);$$('[data-policy-bulk]').forEach(function(button){button.addEventListener('click',function(){applyPolicyBulk(button.dataset.policyBulk);});});$('savePolicyBtn').addEventListener('click',savePolicy);$('loadMigratedDataBtn').addEventListener('click',toggleMigration);$('syncInjiaoyunBtn').addEventListener('click',syncInjiaoyun);$('sandboxLogBtn').addEventListener('click',showSandboxLog);$('undoSandboxBtn').addEventListener('click',undoSandbox);$('resetSandboxBtn').addEventListener('click',resetSandbox);$('conflictBtn').addEventListener('click',function(){var count=Object.keys(dayConflictIds(effectiveEventsForDate(state.currentDate).filter(function(row){return !isNonOccupyingEvent(row);}))).length;toast(count?'發現排課衝突':'今日沒有衝突',count?'共有 '+count+' 個課程需要調整。':'教室、老師、學生與教室規則均通過。',count?'error':'');});
+    $('addRoomBtn').addEventListener('click',function(){openEntity('room','');});$('addSubjectBtn').addEventListener('click',function(){openEntity('subject','');});$('addFeePlanBtn').addEventListener('click',function(){openEntity('fee','');});$('addLeaveReasonBtn').addEventListener('click',function(){openEntity('leave','');});$('roomRows').addEventListener('click',function(event){var policy=event.target.closest('[data-room-policy]');if(policy)openPolicy(policy.dataset.roomPolicy);});$('subjectRows').addEventListener('click',function(event){var button=event.target.closest('[data-subject-edit]');if(button)openEntity('subject',button.dataset.subjectEdit);});$('feePlanRows').addEventListener('click',function(event){var button=event.target.closest('[data-fee-edit]');if(button)openEntity('fee',button.dataset.feeEdit);});$('leaveReasonRows').addEventListener('click',function(event){var button=event.target.closest('[data-leave-edit]');if(button)openEntity('leave',button.dataset.leaveEdit);});$('feeSubjectFilter').addEventListener('change',renderFeeRows);$('entityForm').addEventListener('submit',submitEntity);$('policyWeekday').addEventListener('change',renderPolicy);$$('[data-policy-bulk]').forEach(function(button){button.addEventListener('click',function(){applyPolicyBulk(button.dataset.policyBulk);});});$('savePolicyBtn').addEventListener('click',savePolicy);$('syncInjiaoyunBtn').addEventListener('click',syncInjiaoyun);$('conflictBtn').addEventListener('click',function(){var count=Object.keys(dayConflictIds(effectiveEventsForDate(state.currentDate).filter(function(row){return !isNonOccupyingEvent(row);}))).length;toast(count?'發現排課衝突':'今日沒有衝突',count?'共有 '+count+' 個課程需要調整。':'教室、老師、學生與教室規則均通過。',count?'error':'');});
   }
 
   function init(){
     try{localStorage.removeItem('youzi.courseScheduler.sandbox.v1');localStorage.removeItem('youzi.courseScheduler.sandboxUndo.v1');localStorage.removeItem('youzi.courseScheduler.lastMode.v1');}catch(_){}
     state=loadInitialState();if(!formalState&&state.readOnly&&state.dataMode!=='empty')formalState=clone(state);bindEvents();refreshFormOptions();updateModeUI();switchView('calendar');
     restoreFormalDatabase();
-    if(window.__YOUZI_COURSE_SCHEDULER_TEST__===true)window.YouziCourseSchedulerTest={snapshot:function(){return clone(state);},eventsForDate:function(date){return clone(eventsForDate(date));},effectiveEventsForDate:function(date){return clone(effectiveEventsForDate(date));},storeFormalCache:function(source){return storeFormalCache(source);},readFormalDatabase:readFormalDatabase,storeFormalDatabase:storeFormalDatabase,restoreFormalDatabase:restoreFormalDatabase};
+    if(window.__YOUZI_COURSE_SCHEDULER_TEST__===true)window.YouziCourseSchedulerTest={snapshot:function(){return clone(state);},eventsForDate:function(date){return clone(eventsForDate(date));},effectiveEventsForDate:function(date){return clone(effectiveEventsForDate(date));},storeFormalCache:function(source){return storeFormalCache(source);},readFormalDatabase:readFormalDatabase,storeFormalDatabase:storeFormalDatabase,readWorkspaceDatabase:readWorkspaceDatabase,storeWorkspaceDatabase:storeWorkspaceDatabase,restoreFormalDatabase:restoreFormalDatabase};
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 })();
