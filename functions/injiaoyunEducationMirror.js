@@ -29,7 +29,7 @@ const db = admin.firestore();
 const FieldValue = admin.firestore.FieldValue;
 const Timestamp = admin.firestore.Timestamp;
 const FUNCTION_REGION = 'us-central1';
-const VERSION = '2026.07.28-v8-scoped-recent-delta-sync';
+const VERSION = '2026.07.28-v9-reuse-fresh-audit-sync';
 const MANUAL_SYNC_PIN = defineSecret('INJIAOYUN_MANUAL_SYNC_PIN');
 const SETTINGS_REF = db.collection('opsSettings').doc('injiaoyunEducationMirror');
 const OPERATIONS_SYNC_REF = db.collection('opsSettings').doc('injiaoyunCloudSync');
@@ -179,6 +179,40 @@ async function waitForFreshAudit(previousRunId, startDate, endDate, timeoutMs = 
     await sleep(3000);
   }
   throw new Error(`已完成抓取 ${startDate}～${endDate}，但尚未找到新的核對結果，請稍後再按一次同步。`);
+}
+
+function auditCoversRange(info, startDate, endDate) {
+  return Boolean(
+    clean(info && info.runId) &&
+    dateKey(info && info.startDate) &&
+    dateKey(info && info.endDate) &&
+    info.startDate <= startDate &&
+    info.endDate >= endDate
+  );
+}
+
+function auditIsRecent(info, maxAgeMs = 30 * 60 * 1000) {
+  const completedAt = timestampMillis(info && info.completedAt);
+  return completedAt > 0 && Date.now() - completedAt <= maxAgeMs;
+}
+
+async function resolveAuditForRange(previousAudit, startDate, endDate) {
+  if (auditCoversRange(previousAudit, startDate, endDate) && auditIsRecent(previousAudit)) {
+    return Object.assign({}, previousAudit, { reused: true });
+  }
+  try {
+    await runAuditForRange(startDate, endDate);
+    return await waitForFreshAudit(previousAudit.runId, startDate, endDate);
+  } catch (error) {
+    // Cloud Run 偶發退出時，若同一日期範圍剛有成功結果，直接沿用，
+    // 避免使用者重按後再次啟動完全相同的核對工作。
+    const fallback = await latestAuditRunInfo();
+    if (auditCoversRange(fallback, startDate, endDate) && auditIsRecent(fallback, 60 * 60 * 1000)) {
+      console.warn('[resolveAuditForRange reuse after job error]', clean(error && error.message));
+      return Object.assign({}, fallback, { reused: true });
+    }
+    throw error;
+  }
 }
 
 async function waitForMirrorAudit(auditRunId, timeoutMs = 90000) {
@@ -1080,14 +1114,7 @@ function registerInjiaoyunEducationMirror(exportsObject) {
       // 營運資料與課表核對彼此獨立，平行執行可大幅縮短等待時間。
       const [operationsSync, freshAudit] = await Promise.all([
         ensureInjiaoyunOperationsSync(refreshDate),
-        (async () => {
-          await runAuditForRange(refreshRange.startDate, refreshRange.endDate);
-          return waitForFreshAudit(
-            before.runId,
-            refreshRange.startDate,
-            refreshRange.endDate
-          );
-        })()
+        resolveAuditForRange(before, refreshRange.startDate, refreshRange.endDate)
       ]);
       const syncResult = await syncRecentMirror(
         refreshRange.startDate,
@@ -1195,6 +1222,8 @@ function registerInjiaoyunEducationMirror(exportsObject) {
 
 module.exports = {
   MIRROR_TYPES,
+  auditCoversRange,
+  auditIsRecent,
   auditRefreshRange,
   dateKey,
   readMirrorPayload,
