@@ -29,7 +29,7 @@ const db = admin.firestore();
 const FieldValue = admin.firestore.FieldValue;
 const Timestamp = admin.firestore.Timestamp;
 const FUNCTION_REGION = 'us-central1';
-const VERSION = '2026.07.28-v7-recent-delta-sync';
+const VERSION = '2026.07.28-v8-scoped-recent-delta-sync';
 const MANUAL_SYNC_PIN = defineSecret('INJIAOYUN_MANUAL_SYNC_PIN');
 const SETTINGS_REF = db.collection('opsSettings').doc('injiaoyunEducationMirror');
 const OPERATIONS_SYNC_REF = db.collection('opsSettings').doc('injiaoyunCloudSync');
@@ -543,8 +543,10 @@ async function syncRowsFromSnapshot(type, collectionName, rows, runId, snapshot,
   return { sourceCount: rows.length, created, updated, unchanged, missing, deactivated, writes: operations.length, commits };
 }
 
-function refreshTuitionUsage(periods, attendance) {
-  const usedByPeriod = new Map();
+function refreshTuitionUsage(periods, attendance, initialUsedByPeriod) {
+  const usedByPeriod = initialUsedByPeriod instanceof Map
+    ? new Map([...initialUsedByPeriod.entries()].map(([id, count]) => [clean(id), Math.max(0, Number(count) || 0)]))
+    : new Map();
   attendance.forEach((row) => {
     if (!row || row.deducted !== true || !clean(row.periodId)) return;
     usedByPeriod.set(clean(row.periodId), (usedByPeriod.get(clean(row.periodId)) || 0) + 1);
@@ -605,9 +607,9 @@ async function syncRecentMirror(startDate, endDate, preferredAuditRunId, trigger
       rentalSnapshot,
       eventSnapshot
     ] = await Promise.all([
-      readEducationDaily(),
+      readEducationDaily(coveredDates),
       db.collection(MIRROR_TYPES.tuitionPeriods).get(),
-      db.collection(MIRROR_TYPES.attendance).get(),
+      snapshotForDates(MIRROR_TYPES.attendance, coveredDates),
       db.collection(MIRROR_TYPES.rooms).get(),
       snapshotForDates(MIRROR_TYPES.teacherPayroll, coveredDates),
       snapshotForDates(MIRROR_TYPES.roomRentals, coveredDates),
@@ -622,19 +624,26 @@ async function syncRecentMirror(startDate, endDate, preferredAuditRunId, trigger
     const currentAttendance = snapshotSources(attendanceSnapshot);
     const rooms = snapshotSources(roomSnapshot);
     const receiptResult = mergeEducationDailyReceipts(periods, scopedDaily);
-    // 先排除本次將被核對覆蓋的日期，再計算各期既有使用堂數。
-    // 否則舊的近期簽到仍占用堂數，會讓同一批新核對紀錄誤判為超堂或無法配對。
-    refreshTuitionUsage(
-      periods,
-      currentAttendance.filter((row) => !covered.has(dateKey(row.date)))
-    );
+    // 近期同步只讀取指定日期的簽到。以期別原本已用堂數扣除這次將被覆蓋的舊簽到，
+    // 得到範圍外的基準堂數，不必再載入全部歷史簽到。
+    const initialUsedByPeriod = new Map(periods.map((period) => [
+      clean(period.id),
+      Math.max(0, Number(period.usedCount) || 0)
+    ]));
+    currentAttendance.forEach((row) => {
+      const periodId = clean(row && row.periodId);
+      if (!periodId || row.deducted !== true) return;
+      initialUsedByPeriod.set(periodId, Math.max(0, (initialUsedByPeriod.get(periodId) || 0) - 1));
+    });
+    refreshTuitionUsage(periods, [], initialUsedByPeriod);
     const reconciledAttendance = reconcileAuditedAttendance(
       currentAttendance,
       Array.isArray(audit.attendance) ? audit.attendance : [],
       periods,
-      coveredDates
+      coveredDates,
+      { initialUsedByPeriod }
     );
-    refreshTuitionUsage(periods, reconciledAttendance);
+    refreshTuitionUsage(periods, reconciledAttendance, initialUsedByPeriod);
     const recentAttendance = reconciledAttendance.filter((row) => covered.has(dateKey(row.date)));
     const recentPayroll = buildTeacherPayroll(scopedDaily).filter((row) => covered.has(dateKey(row.date)));
     const recentRentals = [];
@@ -712,14 +721,18 @@ async function syncRecentMirror(startDate, endDate, preferredAuditRunId, trigger
       recentRentalUnmatchedCount: rentalResult.unmatched
     });
     const typeResults = Object.assign({}, reservation.current && reservation.current.typeResults || {}, results);
-    const previousAttendanceInRange = currentAttendance.filter((row) => covered.has(dateKey(row.date))).length;
     const sourceCounts = Object.assign({}, previousCounts, {
       events: recentEvents.length,
-      attendance: currentAttendance.length - previousAttendanceInRange + recentAttendance.length,
       tuitionPeriods: periods.length,
       teacherPayrollRecent: recentPayroll.length,
       roomRentalsRecent: recentRentals.length
     });
+    if (previousCounts.attendance != null) {
+      sourceCounts.attendance = Math.max(
+        0,
+        Number(previousCounts.attendance || 0) - currentAttendance.length + recentAttendance.length
+      );
+    }
     await SETTINGS_REF.set({
       status: 'success',
       sourceRunId: migrationRunId,
@@ -799,8 +812,13 @@ async function reserveSync(sourceVersion, trigger) {
   });
 }
 
-function reconcileAuditedAttendance(previewAttendance, auditAttendance, periods, coveredDates) {
+function reconcileAuditedAttendance(previewAttendance, auditAttendance, periods, coveredDates, options = {}) {
   const covered = new Set(Array.isArray(coveredDates) ? coveredDates.map(dateKey).filter(Boolean) : []);
+  const hasInitialUsage = options.initialUsedByPeriod instanceof Map;
+  const initialUsedByPeriod = hasInitialUsage
+    ? new Map([...options.initialUsedByPeriod.entries()].map(([id, count]) => [clean(id), Math.max(0, Number(count) || 0)]))
+    : new Map();
+  const assignedByPeriod = new Map();
   const periodById = new Map(periods.map((row) => [clean(row.id), row]));
   const periodBySource = new Map(periods.map((row) => [clean(row.sourcePaymentId), row]).filter(([id]) => id));
   const periodsByStudentSubject = new Map();
@@ -831,7 +849,11 @@ function reconcileAuditedAttendance(previewAttendance, auditAttendance, periods,
     const subjectCandidates = periodsByStudentSubject.get(`${clean(row.studentId)}|${clean(row.subjectId)}`) || [];
     const inferredPeriod = subjectCandidates.find((candidate) => (
       (!candidate.startDate || candidate.startDate <= date) &&
-      Number(candidate.usedCount || 0) < Math.max(1, Number(candidate.lessonCount) || 4)
+      (
+        hasInitialUsage
+          ? (initialUsedByPeriod.get(clean(candidate.id)) || 0) + (assignedByPeriod.get(clean(candidate.id)) || 0)
+          : Number(candidate.usedCount || 0)
+      ) < Math.max(1, Number(candidate.lessonCount) || 4)
     ));
     const period = explicitPeriod || inferredPeriod || {};
     const status = clean(row.status) || 'attended';
@@ -842,6 +864,9 @@ function reconcileAuditedAttendance(previewAttendance, auditAttendance, periods,
       status === 'absent' ||
       (status === 'leave' && !leaveNoDeduct)
     );
+    if (deducted && hasInitialUsage) {
+      assignedByPeriod.set(clean(period.id), (assignedByPeriod.get(clean(period.id)) || 0) + 1);
+    }
     const id = clean(row.id) || `audit_attendance_${index + 1}`;
     const dedupeKey = `${id}|${date}`;
     if (seen.has(dedupeKey)) return;
@@ -861,7 +886,7 @@ function reconcileAuditedAttendance(previewAttendance, auditAttendance, periods,
     `${dateKey(left.date)}|${String(Number(left.lessonNo) || 0).padStart(4, '0')}|${clean(left.id)}`
       .localeCompare(`${dateKey(right.date)}|${String(Number(right.lessonNo) || 0).padStart(4, '0')}|${clean(right.id)}`)
   ));
-  const usedByPeriod = new Map();
+  const usedByPeriod = hasInitialUsage ? new Map(initialUsedByPeriod) : new Map();
   merged.forEach((row) => {
     if (!row.deducted || !row.periodId) return;
     const period = periodById.get(clean(row.periodId));
