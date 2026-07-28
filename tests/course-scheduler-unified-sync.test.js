@@ -45,5 +45,8 @@ assert(mirror.includes("settings.unifiedSyncStatus"), '核對觸發器未避免�
 assert(preview.includes('mergeEducationDailyReceipts'), '學生實際付款未併入學費期別');
 assert(preview.includes('reconcileAuditedAttendance') || mirror.includes('reconcileAuditedAttendance'), '最新簽到未重新核對');
 assert(manual.includes("'course-scheduler'"), '營運同步未允許課程日表呼叫');
+assert(manual.includes("'INJIAOYUN_STUDIO_ID'"), '雲端同步未帶入既有音教雲機構編號');
+assert(manual.includes('resolveKnownStudioId()'), '雲端同步未自動沿用歷史資料的機構編號');
+assert(manual.includes('invokeCloudRunJob(studioId)'), '啟動工作時未傳入已確認的機構編號');
 
 console.log('course scheduler unified sync tests passed');
