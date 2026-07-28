@@ -1211,10 +1211,24 @@ function buildTeachers(data, subjects, courseRows) {
   });
 }
 
-async function readEducationDaily() {
-  const snapshot = await db.collection('opsEducationDaily').get();
+async function readEducationDaily(coveredDates) {
+  const dates = [...new Set(array(coveredDates).map(dateKey).filter(Boolean))].slice(0, 30);
+  let snapshot;
+  if (dates.length) {
+    try {
+      snapshot = await db.collection('opsEducationDaily').where('dateKey', 'in', dates).get();
+    } catch (error) {
+      console.warn('[readEducationDaily date query fallback]', clean(error && error.message));
+      snapshot = await db.collection('opsEducationDaily').get();
+    }
+  } else {
+    snapshot = await db.collection('opsEducationDaily').get();
+  }
   return snapshot.docs.map((doc) => Object.assign({ _id: doc.id }, doc.data() || {}))
-    .filter((row) => ['injiaoyun-cloud', 'injiaoyun'].includes(clean(row.source)));
+    .filter((row) => (
+      ['injiaoyun-cloud', 'injiaoyun'].includes(clean(row.source)) &&
+      (!dates.length || dates.includes(dateKey(row.dateKey || row._id)))
+    ));
 }
 
 function buildTeacherPayroll(dailyRows) {
