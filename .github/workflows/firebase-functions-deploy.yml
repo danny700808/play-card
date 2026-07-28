@@ -43,7 +43,8 @@ jobs:
             'syncEasyStoreCatalog',
             'runInjiaoyunSyncNow',
             'syncInjiaoyunEducationMirrorNow',
-            'loadInjiaoyunEducationMirror'
+            'loadInjiaoyunEducationMirror',
+            'loadInjiaoyunEducationMirrorAuto'
           ];
           const missing = required.filter((name) => !deployed[name]);
           if (missing.length) {
