@@ -59,10 +59,15 @@ assert(!portalLanding.includes('老師調課入口'), '老師調課不可誤拆�
 
 const schedulerHtml = fs.readFileSync(path.join(root, 'course-scheduler.html'), 'utf8');
 const schedulerSource = fs.readFileSync(path.join(root, 'course-scheduler.js'), 'utf8');
-assert(schedulerHtml.includes('id="dataModePanel"'), '正式與測試缺少共用模式面板');
-assert(schedulerHtml.includes('sandbox-only'), '共用排課頁缺少測試模式操作');
-assert(schedulerSource.includes("next.dataMode='sandbox'"), '測試模式未由正式資料建立');
-assert(schedulerSource.includes("state.dataMode=state.dataMode==='review'?'review':'migration'"), '返回正式模式未保留同一套頁面');
+assert(schedulerHtml.includes('id="dataModePanel"'), '排課頁缺少資料同步面板');
+assert(schedulerHtml.includes('id="syncInjiaoyunBtn"'), '排課頁缺少單一同步按鈕');
+assert(!schedulerHtml.includes('sandboxLogBtn'), '不應保留測試紀錄按鈕');
+assert(!schedulerHtml.includes('undoSandboxBtn'), '不應保留測試復原按鈕');
+assert(!schedulerHtml.includes('resetSandboxBtn'), '不應保留測試重設按鈕');
+assert(!schedulerHtml.includes('loadMigratedDataBtn'), '不應保留另外載入資料按鈕');
+assert(schedulerSource.includes("var WORKSPACE_DB_KEY='workspace'"), '操作資料未使用 IndexedDB 工作區');
+assert(schedulerSource.includes('storeWorkspaceDatabase(state)'), '操作後未自動儲存工作區');
+assert(schedulerSource.includes('workspaceFromFormal'), '同步後未由最新音教雲資料重建工作區');
 
 const backend = fs.readFileSync(path.join(root, 'functions/coursePortal.js'), 'utf8');
 [
