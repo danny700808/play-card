@@ -133,3 +133,18 @@
 
   global.YouziCourseLocalRecoveryReady = recover().catch(function () { return false; });
 })(window);
+
+(function loadAutomaticCourseBootstrap() {
+  'use strict';
+  if (window.__YOUZI_COURSE_AUTO_BOOTSTRAP_REQUESTED__) return;
+  window.__YOUZI_COURSE_AUTO_BOOTSTRAP_REQUESTED__ = true;
+  var source = 'course-data-auto-bootstrap-v1.js?v=20260729-auto-cloud-v2';
+  if (document.readyState === 'loading') {
+    document.write('<script src="' + source + '"><\\/script>');
+    return;
+  }
+  var script = document.createElement('script');
+  script.src = source;
+  script.async = false;
+  document.head.appendChild(script);
+}());
