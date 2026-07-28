@@ -17,7 +17,7 @@ const RUN_REGION = 'asia-east1';
 const RUN_JOB_NAME = 'injiaoyun-cloud-sync';
 const REQUEST_TTL_MS = 15 * 60 * 1000;
 const MIN_REQUEST_INTERVAL_MS = 90 * 1000;
-const VERSION = '2026.07.28-v1.5-unified-course-scheduler-trigger';
+const VERSION = '2026.07.28-v1.6-reuse-known-studio-id';
 const MANUAL_SYNC_PIN = defineSecret('INJIAOYUN_MANUAL_SYNC_PIN');
 const SETTINGS_REF = db.collection('opsSettings').doc('injiaoyunCloudSync');
 const REQUEST_REF = db.collection('opsAutomationRequests').doc('injiaoyunManual');
@@ -111,6 +111,32 @@ function safeLabel(value) {
   return clean(value).replace(/[\r\n\t]/g, ' ').slice(0, 120) || '營運中心管理者';
 }
 
+function validStudioId(value) {
+  const text = clean(value);
+  return /^[a-f0-9]{24}$/i.test(text) ? text : '';
+}
+
+async function resolveKnownStudioId() {
+  const settingsSnapshot = await SETTINGS_REF.get();
+  const settings = settingsSnapshot.exists ? settingsSnapshot.data() || {} : {};
+  const saved = validStudioId(settings.studioId || settings.lastStudioId);
+  if (saved) return saved;
+
+  let snapshot;
+  try {
+    snapshot = await db.collection('opsEducationDaily')
+      .where('source', '==', 'injiaoyun-cloud')
+      .limit(10)
+      .get();
+  } catch (error) {
+    console.warn('[resolveKnownStudioId query fallback]', clean(error && error.message));
+    snapshot = await db.collection('opsEducationDaily').limit(20).get();
+  }
+  const row = snapshot.docs.map((doc) => doc.data() || {})
+    .find((item) => validStudioId(item.studioId));
+  return validStudioId(row && row.studioId);
+}
+
 async function reserveManualRequest(options = {}) {
   const now = Timestamp.now();
   const nowMs = now.toMillis();
@@ -169,13 +195,20 @@ function cloudRunJobUrl() {
   return `https://run.googleapis.com/v2/projects/${encodeURIComponent(projectId)}/locations/${encodeURIComponent(RUN_REGION)}/jobs/${encodeURIComponent(RUN_JOB_NAME)}:run`;
 }
 
-async function invokeCloudRunJob() {
+async function invokeCloudRunJob(studioId) {
   const auth = new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/cloud-platform'] });
   const client = await auth.getClient();
+  const resolvedStudioId = validStudioId(studioId);
   const response = await client.request({
     url: cloudRunJobUrl(),
     method: 'POST',
-    data: {}
+    data: resolvedStudioId ? {
+      overrides: {
+        containerOverrides: [{
+          env: [{ name: 'INJIAOYUN_STUDIO_ID', value: resolvedStudioId }]
+        }]
+      }
+    } : {}
   });
   return response && response.data || {};
 }
@@ -204,9 +237,15 @@ async function startInjiaoyunCloudSync(options = {}) {
     });
   }
 
+  const studioId = await resolveKnownStudioId();
+  if (!studioId) {
+    throw new Error('找不到已保存的音教雲機構編號，原資料已保留。');
+  }
+
   await SETTINGS_REF.set({
     enabled: true,
     status: 'queued',
+    studioId,
     manualRequestId: reservation.requestId,
     manualRequestedAt: FieldValue.serverTimestamp(),
     manualRequestedBy: safeLabel(options.requestedBy),
@@ -216,7 +255,7 @@ async function startInjiaoyunCloudSync(options = {}) {
   }, { merge: true });
 
   try {
-    const operation = await invokeCloudRunJob();
+    const operation = await invokeCloudRunJob(studioId);
     await REQUEST_REF.set({
       operationName: clean(operation.name),
       acceptedAt: FieldValue.serverTimestamp()
@@ -302,8 +341,10 @@ function registerInjiaoyunManualSync(exportsObject) {
 
 module.exports = {
   registerInjiaoyunManualSync,
+  resolveKnownStudioId,
   startInjiaoyunCloudSync,
   waitForInjiaoyunCloudSync,
   taipeiDateKey,
-  validDateKey
+  validDateKey,
+  validStudioId
 };
