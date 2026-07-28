@@ -5,9 +5,11 @@
   var STORE_NAME = 'formalSnapshots';
   var FORMAL_KEY = 'latest';
   var WORKSPACE_KEY = 'workspace';
-  var FUNCTION_NAME = 'loadInjiaoyunEducationMirrorAuto';
-  var FETCH_LOCK_KEY = 'youzi.courseScheduler.autoRead.lock.v1';
-  var RELOAD_KEY = 'youzi.courseScheduler.autoRead.reload.v1';
+  var AUTO_FUNCTION_NAME = 'loadInjiaoyunEducationMirrorAuto';
+  var AUTHENTICATED_FUNCTION_NAME = 'loadInjiaoyunEducationMirror';
+  var PIN_KEY = 'youzi.injiaoyun.preview.pin';
+  var FETCH_LOCK_KEY = 'youzi.courseScheduler.autoRead.lock.v2';
+  var RELOAD_KEY = 'youzi.courseScheduler.autoRead.reload.v2';
   var LOCK_TTL_MS = 45 * 1000;
   var WAIT_MS = 25 * 1000;
   var readyPromise = null;
@@ -20,11 +22,25 @@
     return date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
   }
   function sleep(ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); }
+  function hasRows(source, key) { return Boolean(source && Array.isArray(source[key]) && source[key].length); }
+
+  function hasScheduleData(source) {
+    return ['events', 'recurringRules', 'fixedCourses', 'temporaryCourses', 'roomRentals']
+      .some(function (key) { return hasRows(source, key); });
+  }
+
+  function hasDirectoryData(source) {
+    return hasRows(source, 'rooms') && (
+      hasRows(source, 'students') ||
+      hasRows(source, 'teachers') ||
+      hasRows(source, 'roomRentals') ||
+      hasRows(source, 'events')
+    );
+  }
 
   function meaningful(source) {
     if (!source || Number(source.version) !== 3) return false;
-    return ['events', 'recurringRules', 'students', 'teachers', 'tuitionPeriods', 'teacherPayroll', 'roomRentals']
-      .some(function (key) { return Array.isArray(source[key]) && source[key].length > 0; });
+    return hasScheduleData(source) && hasDirectoryData(source);
   }
 
   function openDatabase() {
@@ -121,7 +137,7 @@
       '#youziCourseAutoOverlay .box{width:min(460px,100%);padding:22px;border:1px solid #cbded7;border-radius:18px;background:#fff;box-shadow:0 18px 48px rgba(25,71,57,.15);color:#173f34;text-align:center}',
       '#youziCourseAutoOverlay .spinner{width:34px;height:34px;margin:0 auto 13px;border:4px solid #d4e8e0;border-right-color:#16845f;border-radius:50%;animation:youziCourseSpin .75s linear infinite}',
       '#youziCourseAutoOverlay strong{display:block;font-size:18px}',
-      '#youziCourseAutoOverlay p{margin:8px 0 0;color:#657d75;font-size:13px;line-height:1.65}',
+      '#youziCourseAutoOverlay p{margin:8px 0 0;color:#657d75;font-size:13px;line-height:1.65;white-space:pre-line}',
       '#youziCourseAutoOverlay button{margin-top:15px;min-height:42px;padding:9px 18px;border:0;border-radius:11px;background:#16845f;color:#fff;font-weight:800}',
       '@keyframes youziCourseSpin{to{transform:rotate(360deg)}}'
     ].join('');
@@ -165,6 +181,15 @@
     } catch (_) {}
   }
 
+  function storedMigrationPin() {
+    var value = '';
+    try { value = clean(global.sessionStorage.getItem(PIN_KEY)); } catch (_) {}
+    if (!value) {
+      try { value = clean(global.localStorage.getItem(PIN_KEY)); } catch (_) {}
+    }
+    return value;
+  }
+
   async function waitForOtherTab() {
     var started = Date.now();
     while (Date.now() - started < WAIT_MS) {
@@ -184,16 +209,49 @@
     return global.firebase.app().functions('us-central1');
   }
 
+  async function callCloudFunction(name, data) {
+    var callable = firebaseFunctions().httpsCallable(name, { timeout: 300000 });
+    var response = await callable(data || {});
+    var payload = response && response.data || {};
+    if (!payload.ok) throw new Error('雲端課務資料尚未完成。');
+    return payload;
+  }
+
+  async function loadCloudPayload() {
+    var automaticError = null;
+    try {
+      return await callCloudFunction(AUTO_FUNCTION_NAME, {
+        source: pageKind() === 'operations' ? 'operations-hub' : 'course-scheduler'
+      });
+    } catch (error) {
+      automaticError = error;
+    }
+
+    var pin = storedMigrationPin();
+    if (pin) {
+      try {
+        return await callCloudFunction(AUTHENTICATED_FUNCTION_NAME, {
+          source: 'course-scheduler',
+          manualSyncPin: pin
+        });
+      } catch (fallbackError) {
+        throw new Error(
+          '自動課表讀取失敗：' + clean(automaticError && automaticError.message || automaticError) +
+          '\n既有課表讀取也失敗：' + clean(fallbackError && fallbackError.message || fallbackError)
+        );
+      }
+    }
+
+    throw new Error(clean(automaticError && automaticError.message || automaticError) || '雲端課表讀取功能尚未完成。');
+  }
+
   async function fetchCloudState(anchorDate) {
     if (!global.YouziCoursePreviewData || typeof global.YouziCoursePreviewData.buildState !== 'function') {
       throw new Error('課務資料轉換元件尚未載入。');
     }
-    var callable = firebaseFunctions().httpsCallable(FUNCTION_NAME, { timeout: 300000 });
-    var response = await callable({ source: pageKind() === 'operations' ? 'operations-hub' : 'course-scheduler' });
-    var payload = response && response.data || {};
-    if (!payload.ok) throw new Error('雲端課務資料尚未完成。');
+    var payload = await loadCloudPayload();
     var state = global.YouziCoursePreviewData.buildState(payload, anchorDate || currentAnchorDate());
-    if (!meaningful(state)) throw new Error('雲端目前沒有可顯示的課程、學生或老師資料。');
+    if (!meaningful(state)) throw new Error('雲端已回傳資料，但沒有任何可顯示的課程事件。');
     return state;
   }
 
@@ -212,7 +270,7 @@
       return { snapshot: recoveredWorkspace, source: 'formal', fetched: false, recovered: true };
     }
 
-    showOverlay('正在開啟課表資料', '直接讀取雲端已同步好的課務資料，不會重新執行音教雲同步。', false);
+    showOverlay('正在還原完整課表', '目前本機只有教室欄位或不完整資料。\n正在讀取雲端已同步好的課程，不會重新執行音教雲同步。', false);
     var lockTime = readLock();
     if (lockTime && Date.now() - lockTime < LOCK_TTL_MS) {
       var waited = await waitForOtherTab();
@@ -230,7 +288,7 @@
       await storeDatabase(formal, workspace);
       var verified = await readDatabase();
       if (!meaningful(verified.workspace) && !meaningful(verified.formal)) {
-        throw new Error('資料已取得，但這個瀏覽器沒有成功保存課務資料庫。');
+        throw new Error('資料已取得，但這個瀏覽器沒有成功保存完整課務資料庫。');
       }
       global.dispatchEvent(new CustomEvent('youzi-course-auto-data-ready', { detail: { snapshot: workspace } }));
       var previousReload = 0;
@@ -243,7 +301,7 @@
       hideOverlay();
       return { snapshot: workspace, source: 'cloud', fetched: true };
     } catch (error) {
-      showOverlay('課表資料讀取失敗', clean(error && error.message || error) || '請稍後重新讀取。', true);
+      showOverlay('完整課表讀取失敗', clean(error && error.message || error) || '請稍後重新讀取。', true);
       throw error;
     } finally {
       writeLock(0);
@@ -259,6 +317,7 @@
   global.YouziCourseAutoData = {
     ensure: start,
     meaningful: meaningful,
+    hasScheduleData: hasScheduleData,
     readDatabase: readDatabase
   };
 
