@@ -29,6 +29,11 @@ assert(html.includes('更新音教雲最新資料'), '同步按鈕未清楚標�
   .forEach((id) => assert(!html.includes(id), `不應保留舊按鈕 ${id}`));
 
 assert(client.includes("var WORKSPACE_DB_KEY='workspace'"), '工作資料未保存至 IndexedDB');
+assert(client.includes('requestPersistentStorage'), '未向瀏覽器要求保留課務資料庫');
+assert(client.includes("embeddedMode=urlOption('embed')==='1'"), '課務頁未支援營運中心內嵌模式');
+assert(client.includes("switchView(requestedView())"), '營運中心無法直接開啟指定的課務子頁');
+assert(client.includes("type:'youzi-course-view-change'"), '課務子頁切換未回報營運中心');
+assert(client.includes('開啟課務管理會直接顯示上次資料'), '畫面未清楚說明不需每次重新同步');
 assert(client.includes('setTimeout(async function()'), '自動儲存未延遲執行，可能造成連續操作卡頓');
 assert(client.includes('同步失敗，原資料已保留'), '同步失敗時未明確保留現有資料');
 assert(client.includes('preserveWorkspaceConfiguration'), '同步未保留系統與教室設定');

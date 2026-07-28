@@ -196,7 +196,10 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
 
   const PAGE_META = {
     overview:['營運總覽',''],
-    'course-calendar':['課程日表','直接使用新版排課系統；操作自動儲存，更新時以音教雲最新資料為準。'],
+    'course-calendar':['課程日表',''],
+    'course-students':['學生與學費',''],
+    'course-teachers':['老師薪資',''],
+    'course-settings':['系統設定',''],
     products:['商品資訊',''],
     sales:['現場銷售',''],
     customers:['客戶會員','會員、老師與一般客戶共用同一份客戶資料。'],
@@ -208,6 +211,25 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
     sync:['平台訂單',''],
     connection:['資料備份','']
   };
+  const COURSE_WORKSPACE_VIEWS = {
+    'course-calendar':'calendar',
+    'course-students':'students',
+    'course-teachers':'teachers',
+    'course-settings':'settings'
+  };
+  const COURSE_WORKSPACE_HASHES = {
+    calendar:'course-calendar',
+    students:'course-students',
+    teachers:'course-teachers',
+    settings:'course-settings'
+  };
+
+  function isCourseWorkspaceView(view){
+    return Object.prototype.hasOwnProperty.call(COURSE_WORKSPACE_VIEWS,view);
+  }
+  function courseWorkspaceView(view){
+    return COURSE_WORKSPACE_VIEWS[view]||'calendar';
+  }
 
   function clean(value){ return String(value == null ? '' : value).trim(); }
   function lower(value){ return clean(value).toLowerCase(); }
@@ -623,6 +645,7 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
   }
   function ensureDataForCurrentView(){
     const view=(location.hash||'#overview').replace('#','').split('?')[0]||'overview';
+    if(isCourseWorkspaceView(view))return false;
     if(view==='products'){
       if(!state.loadedAt&&!state.loading){ loadProductsOnly(false); return true; }
       return false;
@@ -1098,23 +1121,57 @@ function queueInventorySyncInTransaction(tx,productId,sku,stock,reason){const re
   function kpiAction(title,value,sub,icon,action){
     return '<button type="button" class="ops-kpi ops-kpi-action" data-action="'+attr(action)+'"><div class="ops-kpi-head"><span>'+escapeHtml(title)+'</span><span class="ops-kpi-icon">'+escapeHtml(icon||'•')+'</span></div><strong>'+escapeHtml(value)+'</strong><small>'+escapeHtml(sub||'')+'</small></button>';
   }
-  function renderCourseCalendar(){
-    return '<section class="ops-banner"><div class="icon">日</div><div><h3>新版課程日表</h3><p>新版操作會自動保留；需要更新時，再由音教雲最新資料完整覆蓋課務內容。</p></div></section>'
-      +'<section class="ops-card"><div class="ops-card-head"><div><span class="ops-tag green">目前使用版本</span><h2 style="margin-top:10px">新版排課系統</h2><p>課表、調課、簽到、學費、租用與老師薪資集中在同一頁。</p></div><a class="ops-button primary" href="course-scheduler.html">進入課程日表</a></div></section>'
-      +'<section class="ops-card"><div class="ops-card-head"><div><span class="ops-tag green">三個獨立手機入口</span><h2 style="margin-top:10px">學生、老師、租用分開進入</h2><p>老師調課包含在老師入口內，不會另外拆成第四個入口。</p></div><a class="ops-button small soft" href="course-portal.html">查看入口首頁</a></div><div class="ops-grid-equal"><a class="ops-button primary" href="student-course-portal.html">學生／家長入口</a><a class="ops-button primary" href="teacher-course-portal.html">老師入口（含調課）</a><a class="ops-button primary" href="room-booking.html">教室租用入口</a></div></section>';
+  function renderCourseWorkspace(view){
+    const courseView=courseWorkspaceView(view);
+    return '<div class="ops-course-workspace">'
+      +'<iframe id="opsCourseFrame" class="ops-course-frame" data-course-view="'+attr(courseView)+'" title="課務管理" src="course-scheduler.html?embed=1&amp;view='+attr(courseView)+'"></iframe>'
+      +'</div>';
+  }
+  function sendCourseWorkspaceView(frame,view){
+    if(!frame)return;
+    frame.dataset.courseView=view;
+    if(frame.contentWindow){
+      frame.contentWindow.postMessage({type:'youzi-course-view',view:view},global.location.origin);
+    }
+  }
+  function handleCourseWorkspaceMessage(event){
+    if(event.origin!==global.location.origin)return;
+    const data=event.data||{};
+    if(data.type!=='youzi-course-view-change')return;
+    const hash=COURSE_WORKSPACE_HASHES[clean(data.view)];
+    if(!hash||state.view===hash)return;
+    global.location.hash=hash;
   }
 
   function render(){
     state.view=(location.hash||'#overview').replace('#','').split('?')[0]||'overview';
     if(!PAGE_META[state.view]) state.view='overview';
-    if(state.view==='course-calendar'){global.location.replace('course-scheduler.html');return;}
     const meta=PAGE_META[state.view]; setText('opsPageTitle',meta[0]); setText('opsPageSubtitle',meta[1]);
     const pageClock=byId('opsPageClock'); if(pageClock) pageClock.classList.toggle('hidden',state.view!=='sales');
     const navView=(state.view==='purchase-entry'||state.view==='stocktake')?'purchases':state.view;
     queryAll('#opsNav a[data-view]').forEach(function(a){ a.classList.toggle('active',a.dataset.view===navView); });
+    const courseGroup=byId('opsCourseGroup'),courseToggle=byId('opsCourseMenuToggle'),courseViewActive=isCourseWorkspaceView(state.view);
+    if(courseGroup){
+      courseGroup.classList.toggle('active',courseViewActive);
+      if(courseViewActive)courseGroup.classList.add('open');
+    }
+    if(courseToggle)courseToggle.setAttribute('aria-expanded',courseGroup&&courseGroup.classList.contains('open')?'true':'false');
     const content=byId('opsContent'); if(!content) return;
+    content.classList.toggle('ops-course-content',courseViewActive);
+    if(courseViewActive){
+      const courseView=courseWorkspaceView(state.view);
+      let frame=byId('opsCourseFrame');
+      if(!frame){
+        content.innerHTML=renderCourseWorkspace(state.view);
+        frame=byId('opsCourseFrame');
+        if(frame)frame.addEventListener('load',function(){sendCourseWorkspaceView(frame,frame.dataset.courseView||courseView);});
+      }else{
+        sendCourseWorkspaceView(frame,courseView);
+      }
+      return;
+    }
     if(state.loading && !state.loadedAt){ content.innerHTML=loadingHtml(); return; }
-    const renderers={overview:renderOverviewV7,'course-calendar':renderCourseCalendar,products:renderProducts,sales:renderSalesV7,customers:renderCustomersV6,receivables:renderReceivablesV5,purchases:renderPurchases,'purchase-entry':renderPurchaseEntry,stocktake:renderStocktakeWorkspace,rentals:renderRentals,sync:renderSync,connection:renderConnection};
+    const renderers={overview:renderOverviewV7,products:renderProducts,sales:renderSalesV7,customers:renderCustomersV6,receivables:renderReceivablesV5,purchases:renderPurchases,'purchase-entry':renderPurchaseEntry,stocktake:renderStocktakeWorkspace,rentals:renderRentals,sync:renderSync,connection:renderConnection};
     content.innerHTML=(renderers[state.view]||renderOverview)();
     enhanceMobileNumberInputs(content);
     bindViewSpecific();
@@ -3425,7 +3482,7 @@ function rerenderKeepingFocus(id,value){
 
   function bindEvents(){
     document.addEventListener('click',function(event){
-      const nav=event.target.closest('[data-nav]'); if(nav){event.preventDefault();if(nav.dataset.nav==='course-calendar'){location.href='course-scheduler.html';return;}location.hash=nav.dataset.nav;return;}
+      const nav=event.target.closest('[data-nav]'); if(nav){event.preventDefault();location.hash=nav.dataset.nav;return;}
       const actionEl=event.target.closest('[data-action]'); if(actionEl){event.preventDefault();handleAction(actionEl.dataset.action,actionEl);return;}
       const navLink=event.target.closest('#opsNav a[data-view]'); if(navLink){ closeMobileMenu(); }
     });
@@ -3553,12 +3610,20 @@ function rerenderKeepingFocus(id,value){
     });
     global.addEventListener('hashchange',function(){closeMobileMenu(); if(!ensureDataForCurrentView())render();});
     global.addEventListener('message',handleInjiaoyunBridgeMessage);
+    global.addEventListener('message',handleCourseWorkspaceMessage);
     const refreshBtn=byId('opsRefreshBtn'); if(refreshBtn)refreshBtn.addEventListener('click',function(){try{localStorage.removeItem(DASHBOARD_CACHE_KEY);}catch(err){} if(state.view==='products')loadProductsOnly(false);else loadAll(false);});
     const backBtn=byId('opsBackBtn'); if(backBtn)backBtn.addEventListener('click',function(){history.back();});
     const logoutBtn=byId('opsLogoutBtn'); if(logoutBtn)logoutBtn.addEventListener('click',function(){ if(typeof global.logout==='function')global.logout();else location.href='index.html'; });
     byId('opsDrawerClose').addEventListener('click',closeDrawer); byId('opsDrawerBackdrop').addEventListener('click',closeDrawer);
     byId('opsConfirmClose').addEventListener('click',function(){closeConfirm(false);}); byId('opsConfirmCancel').addEventListener('click',function(){closeConfirm(false);}); byId('opsConfirmOk').addEventListener('click',function(){closeConfirm(true);});
     const menuBtn=byId('opsMenuBtn'); if(menuBtn)menuBtn.addEventListener('click',openMobileMenu);
+    const courseMenuToggle=byId('opsCourseMenuToggle');
+    if(courseMenuToggle)courseMenuToggle.addEventListener('click',function(){
+      const group=byId('opsCourseGroup');
+      if(!group)return;
+      group.classList.toggle('open');
+      courseMenuToggle.setAttribute('aria-expanded',group.classList.contains('open')?'true':'false');
+    });
     document.addEventListener('keydown',function(event){if(event.key==='Escape'){closeDrawer();closeConfirm(false);closeMobileMenu();if((state.productPreviewImages||[]).length){state.productPreviewImages=[];state.productPreviewIndex=0;renderKeepingViewport();}}});
   }
   function openMobileMenu(){ const sidebar=byId('opsSidebar'); if(!sidebar)return; sidebar.classList.add('open'); let overlay=query('.ops-mobile-overlay'); if(!overlay){overlay=document.createElement('div');overlay.className='ops-mobile-overlay';overlay.addEventListener('click',closeMobileMenu);document.body.appendChild(overlay);} overlay.classList.add('open'); }
@@ -3578,7 +3643,9 @@ function rerenderKeepingFocus(id,value){
     bindEvents();
     const initialView=(location.hash||'#overview').replace('#','').split('?')[0]||'overview';
     const cache=initialView==='overview'?getDashboardCache():null;
-    if(initialView==='products'){
+    if(isCourseWorkspaceView(initialView)){
+      render();
+    }else if(initialView==='products'){
       render();
       await loadProductsOnly(false);
     }else if(cache){

@@ -2021,3 +2021,39 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
   .ops-inventory-anomaly-actions{grid-column:auto;display:grid;grid-template-columns:1fr;max-width:none}
   .ops-inventory-anomaly-actions .ops-button{width:100%}
 }
+
+/* 2026-07-28：課務管理保留在營運中心同一個側邊導覽內 */
+.ops-nav-group{display:grid;gap:4px}
+.ops-nav-group-toggle{
+  appearance:none;width:100%;border:0;background:transparent;color:rgba(255,255,255,.8);
+  display:grid;grid-template-columns:28px minmax(0,1fr) 20px;gap:8px;align-items:center;
+  padding:10px;border-radius:13px;text-align:left;cursor:pointer;transition:.18s ease
+}
+.ops-nav-group-toggle>span{
+  width:28px;height:28px;border-radius:9px;background:rgba(255,255,255,.08);
+  display:grid;place-items:center;font-size:13px
+}
+.ops-nav-group-toggle b{display:block;font-size:14px;font-weight:700}
+.ops-nav-group-toggle i{font-style:normal;text-align:center;transition:transform .18s ease}
+.ops-nav-group-toggle:hover,.ops-nav-group.open>.ops-nav-group-toggle,.ops-nav-group.active>.ops-nav-group-toggle{
+  background:rgba(255,255,255,.09);color:#fff
+}
+.ops-nav-group.open>.ops-nav-group-toggle i,.ops-nav-group.active>.ops-nav-group-toggle i{transform:rotate(180deg)}
+.ops-nav-submenu{display:none;margin:0 0 3px 19px;padding-left:10px;border-left:1px solid rgba(255,255,255,.18);gap:3px}
+.ops-nav-group.open .ops-nav-submenu,.ops-nav-group.active .ops-nav-submenu{display:grid}
+.ops-nav .ops-nav-submenu a{grid-template-columns:24px minmax(0,1fr);padding:7px 8px;border-radius:10px;gap:7px}
+.ops-nav .ops-nav-submenu a>span{width:24px;height:24px;border-radius:7px;font-size:11px}
+.ops-nav .ops-nav-submenu a b{font-size:12px}
+
+.ops-content.ops-course-content{padding:0 0 16px}
+.ops-course-workspace{
+  height:calc(100dvh - 92px);min-height:620px;overflow:hidden;
+  border:1px solid var(--ops-line);border-radius:16px;background:#edf3f0;
+  box-shadow:0 8px 24px rgba(24,55,72,.045)
+}
+.ops-course-frame{display:block;width:100%;height:100%;border:0;background:#edf3f0}
+
+@media(max-width:780px){
+  .ops-nav-submenu{margin-left:16px}
+  .ops-course-workspace{height:calc(100dvh - 72px);min-height:520px;border-radius:13px}
+}

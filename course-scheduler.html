@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#233b35">
   <title>新版排課系統｜柚子樂器</title>
   <link rel="icon" href="yuzu-logo-green.png">
-  <link rel="stylesheet" href="course-scheduler.css?v=20260727-mobile-v16">
+  <link rel="stylesheet" href="course-scheduler.css?v=20260728-embedded-shell-v17">
 </head>
 <body>
   <div class="app-shell">
@@ -35,7 +35,7 @@
       </header>
 
       <section class="data-mode card" id="dataModePanel">
-        <div class="data-mode-copy"><span class="data-mode-icon" id="dataModeIcon">同</span><div><strong id="dataModeTitle">資料同步</strong><p id="dataModeDescription">新版操作會自動儲存；按更新後以舊音教雲最新資料覆蓋課務內容</p><small id="dataModeMeta">正在自動開啟資料庫</small></div></div>
+        <div class="data-mode-copy"><span class="data-mode-icon" id="dataModeIcon">同</span><div><strong id="dataModeTitle">正式資料已保存</strong><p id="dataModeDescription">開啟課務管理會直接顯示上次資料；只有要取得舊音教雲最新內容時才按更新</p><small id="dataModeMeta">正在自動開啟資料庫</small></div></div>
         <div class="data-mode-actions">
           <span class="tag" id="dataModeChip">自動儲存</span>
           <button class="btn primary" type="button" id="syncInjiaoyunBtn">更新音教雲最新資料</button>
@@ -218,6 +218,6 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
   <script src="course-scheduler-data.js?v=20260728-unified-sync-v1"></script>
   <script src="course-scheduler-review-data.js?v=20260723-review-window-v1"></script>
-  <script src="course-scheduler.js?v=20260728-authoritative-sync-v2"></script>
+  <script src="course-scheduler.js?v=20260728-persistent-shell-v3"></script>
 </body>
 </html>

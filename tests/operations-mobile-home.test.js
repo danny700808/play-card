@@ -11,8 +11,11 @@ test('portal URL opens the operations application directly', () => {
   assert.match(portal, /id="opsContent"/);
   assert.match(portal, /operations-phase1\.js/);
   assert.match(portal, /operations-mobile-home-v1\.js/);
-  assert.match(portal, /href="course-scheduler\.html"><span>日<\/span><div><b>課程日表/);
-  assert.doesNotMatch(portal, /href="#course-calendar" data-view="course-calendar"/);
+  assert.match(portal, /id="opsCourseMenuToggle"/);
+  assert.match(portal, /href="#course-calendar" data-view="course-calendar"/);
+  assert.match(portal, /href="#course-students" data-view="course-students"/);
+  assert.match(portal, /href="#course-teachers" data-view="course-teachers"/);
+  assert.match(portal, /href="#course-settings" data-view="course-settings"/);
   assert.doesNotMatch(portal, /href="operations-hub\.html"/);
 });
 
@@ -20,7 +23,8 @@ test('formal operations route uses the approved mobile home enhancement', () => 
   const hub = read('operations-hub.html');
   assert.match(hub, /operations-mobile-home-v1\.css/);
   assert.match(hub, /operations-mobile-home-v1\.js/);
-  assert.match(hub, /href="course-scheduler\.html"><span>日<\/span><div><b>課程日表/);
+  assert.match(hub, /id="opsCourseGroup"/);
+  assert.match(hub, /href="#course-calendar" data-view="course-calendar"/);
 });
 
 test('mobile home contains live schedule and product search integrations', () => {
@@ -32,10 +36,14 @@ test('mobile home contains live schedule and product search integrations', () =>
   assert.match(source, /正式資料/);
 });
 
-test('course shortcuts open the new scheduler and POS price is editable per sale', () => {
+test('course management stays in the operations shell and POS price is editable per sale', () => {
   const source = read('operations-phase1.js');
-  assert.match(source, /nav\.dataset\.nav==='course-calendar'\)\{location\.href='course-scheduler\.html'/);
-  assert.match(source, /state\.view==='course-calendar'\)\{global\.location\.replace\('course-scheduler\.html'\)/);
+  assert.match(source, /const COURSE_WORKSPACE_VIEWS/);
+  assert.match(source, /course-scheduler\.html\?embed=1&amp;view=/);
+  assert.match(source, /youzi-course-view-change/);
+  assert.match(source, /if\(isCourseWorkspaceView\(view\)\)return false/);
+  assert.doesNotMatch(source, /location\.href='course-scheduler\.html'/);
+  assert.doesNotMatch(source, /global\.location\.replace\('course-scheduler\.html'\)/);
   assert.doesNotMatch(source, /開啟舊版音教雲/);
   assert.match(source, /class="ops-cart-price-editor"[^>]+data-cart-price=/);
   assert.doesNotMatch(source, /data-cart-price="[^"]+"[^>]*readonly/);
