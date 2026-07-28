@@ -15,7 +15,7 @@
         <div class="brand-icon">♫</div>
         <div><strong>新版排課系統</strong><small>柚子樂器課務管理</small></div>
       </div>
-      <div class="mode-pill" id="sideModeBadge">尚未載入正式資料</div>
+      <div class="mode-pill" id="sideModeBadge">資料尚未載入</div>
       <nav class="main-nav" aria-label="排課系統選單">
         <button type="button" class="active" data-view="calendar"><span>日</span><b>課程日表</b></button>
         <button type="button" data-view="students"><span>生</span><b>學生與學費</b></button>
@@ -35,14 +35,10 @@
       </header>
 
       <section class="data-mode card" id="dataModePanel">
-        <div class="data-mode-copy"><span class="data-mode-icon" id="dataModeIcon">正</span><div><strong id="dataModeTitle">正式資料</strong><p id="dataModeDescription">正在自動開啟正式資料庫</p><small id="dataModeMeta">第一次使用此瀏覽器時才需要連結一次</small></div></div>
+        <div class="data-mode-copy"><span class="data-mode-icon" id="dataModeIcon">同</span><div><strong id="dataModeTitle">資料同步</strong><p id="dataModeDescription">操作會自動儲存；同步成功後更新為音教雲最新資料</p><small id="dataModeMeta">正在自動開啟資料庫</small></div></div>
         <div class="data-mode-actions">
-          <span class="tag" id="dataModeChip">正式</span>
-          <button class="btn outline hidden sandbox-only" type="button" id="sandboxLogBtn">測試紀錄</button>
-          <button class="btn outline hidden sandbox-only" type="button" id="undoSandboxBtn">復原上一步</button>
-          <button class="btn danger hidden sandbox-only" type="button" id="resetSandboxBtn">重設測試</button>
-          <button class="btn primary" type="button" id="syncInjiaoyunBtn">立即更新本日音教雲</button>
-          <button class="btn secondary" type="button" id="loadMigratedDataBtn">第一次連結正式資料</button>
+          <span class="tag" id="dataModeChip">自動儲存</span>
+          <button class="btn primary" type="button" id="syncInjiaoyunBtn">同步至選擇日期</button>
         </div>
       </section>
 
@@ -202,14 +198,6 @@
     <div class="modal"><div class="modal-head"><div><h2 id="transactionModalTitle">新增收費／退款</h2><p>退款可選擇堂數與指定課堂，金額會依本期單堂費自動計算。</p></div><button class="modal-close" type="button" data-close-modal="transactionModal">×</button></div><form id="transactionForm"><div class="modal-body"><input id="transactionPeriodId" type="hidden"><input id="transactionPreferredSlot" type="hidden"><div class="form-grid two"><div class="field"><label>類型</label><select id="transactionType"><option value="payment">收費</option><option value="refund">退款</option></select></div><div class="field"><label>日期</label><input id="transactionDate" type="date"></div><div class="field"><label>金額</label><input id="transactionAmount" type="number" min="0" required></div><div class="field"><label>收費／退款方式</label><select id="transactionMethod"><option>店面營收</option><option>線上繳費</option><option>轉帳</option><option>街口支付</option><option>刷卡</option><option>現金</option></select></div><div class="field full hidden" id="refundLessonField"><div class="form-grid two"><div class="field"><label>退款堂數</label><select id="transactionRefundCount"></select><small>變更堂數後會自動重新計算退款金額。</small></div><div class="field"><label>本期單堂金額</label><input id="transactionLessonPrice" readonly></div></div><label>指定退款課堂</label><div class="refund-slot-choices" id="refundSlotChoices"></div><input id="transactionRefundAttendance" type="hidden"><small>可直接勾選要退款的課堂；已作廢或已退款的堂數不會重複計算。</small></div><div class="field full"><label>備註／原因</label><textarea id="transactionNote"></textarea></div></div></div><div class="modal-foot"><button class="btn outline" type="button" data-close-modal="transactionModal">取消</button><button class="btn primary" type="submit">儲存紀錄</button></div></form></div>
   </div>
 
-  <div class="modal-backdrop" id="sandboxLogModal" role="dialog" aria-modal="true" aria-labelledby="sandboxLogTitle">
-    <div class="modal large">
-      <div class="modal-head"><div><h2 id="sandboxLogTitle">測試操作紀錄</h2><p>只記錄這個瀏覽器中的測試操作，不會寫回正式資料或音教雲。</p></div><button class="modal-close" type="button" data-close-modal="sandboxLogModal">×</button></div>
-      <div class="modal-body" id="sandboxLogBody"></div>
-      <div class="modal-foot"><button class="btn outline" type="button" data-close-modal="sandboxLogModal">關閉</button></div>
-    </div>
-  </div>
-
   <div class="modal-backdrop" id="entityModal" role="dialog" aria-modal="true" aria-labelledby="entityModalTitle">
     <div class="modal large"><div class="modal-head"><div><h2 id="entityModalTitle">編輯資料</h2><p id="entityModalSubtitle"></p></div><button class="modal-close" type="button" data-close-modal="entityModal">×</button></div><form id="entityForm"><div class="modal-body" id="entityModalBody"></div><div class="modal-foot"><button class="btn outline" type="button" data-close-modal="entityModal">取消</button><button class="btn primary" type="submit">儲存</button></div></form></div>
   </div>
@@ -228,8 +216,8 @@
   <script src="config.js?v=20260722-course-scheduler-v2"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="course-scheduler-data.js?v=20260726-sandbox-v1"></script>
+  <script src="course-scheduler-data.js?v=20260728-unified-sync-v1"></script>
   <script src="course-scheduler-review-data.js?v=20260723-review-window-v1"></script>
-  <script src="course-scheduler.js?v=20260727-management-v15"></script>
+  <script src="course-scheduler.js?v=20260728-persistent-workspace-v1"></script>
 </body>
 </html>
