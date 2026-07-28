@@ -188,6 +188,20 @@
   function storeFormalDatabase(source){return storeDatabaseSnapshot(FORMAL_DB_KEY,source);}
   function readWorkspaceDatabase(){return readDatabaseSnapshot(WORKSPACE_DB_KEY);}
   function storeWorkspaceDatabase(source){return storeDatabaseSnapshot(WORKSPACE_DB_KEY,source);}
+  async function storeSynchronizedDatabases(formal,workspace){
+    try{
+      var db=await openFormalDatabase();
+      await new Promise(function(resolve,reject){
+        var transaction=db.transaction(FORMAL_DB_STORE,'readwrite'),store=transaction.objectStore(FORMAL_DB_STORE);
+        store.put(formal,FORMAL_DB_KEY);
+        store.put(workspace,WORKSPACE_DB_KEY);
+        transaction.oncomplete=resolve;
+        transaction.onerror=function(){reject(transaction.error||new Error('IndexedDB synchronized write failed'));};
+        transaction.onabort=function(){reject(transaction.error||new Error('IndexedDB synchronized write aborted'));};
+      });
+      db.close();return true;
+    }catch(_){return false;}
+  }
   function storeFormalCache(source){
     try{localStorage.setItem(FORMAL_CACHE_KEY,JSON.stringify(source));return true;}
     catch(_){try{localStorage.removeItem(FORMAL_CACHE_KEY);}catch(__){}return false;}
@@ -241,13 +255,13 @@
     $('dataModeIcon').textContent='同';
     $('sideModeBadge').textContent=empty?'資料尚未載入':'操作自動儲存';
     $('dataModeTitle').textContent=loadingMigration?'正在同步音教雲':'資料同步';
-    $('dataModeDescription').textContent=loadingMigration?'正在抓取課表、簽到、學費、租用與老師薪資，請保持頁面開啟。':'操作會自動儲存；同步成功後以舊系統最新資料更新課務內容。';
+    $('dataModeDescription').textContent=loadingMigration?'正在抓取課表、簽到、學費、租用與老師薪資，請保持頁面開啟。':'新版操作會自動儲存；按更新後以舊音教雲最新資料覆蓋課務內容。';
     $('dataModeChip').textContent=loadingMigration?'同步中':'自動儲存';
     $('dataModeMeta').textContent=empty
-      ? '按「同步至選擇日期」即可第一次載入全部資料'
+      ? '按「更新音教雲最新資料」即可第一次載入全部資料'
       : state.students.length+' 位學生・'+state.events.length+' 筆課表・'+days+(unresolved?'・'+unresolved+' 筆時間待確認':'')+(meta.runId?'・來源 '+meta.runId:'');
     if($('syncInjiaoyunBtn')){
-      $('syncInjiaoyunBtn').textContent=loadingMigration?'同步中，請稍候…':'同步至選擇日期';
+      $('syncInjiaoyunBtn').textContent=loadingMigration?'同步中，請稍候…':'更新音教雲最新資料';
       $('syncInjiaoyunBtn').disabled=loadingMigration;
     }
     ['topNewEvent','sideNewEvent','calendarNewEvent','addStudentBtn','addTeacherBtn','saveSettingsBtn','addRoomBtn','addSubjectBtn','addFeePlanBtn','addLeaveReasonBtn'].forEach(function(id){if($(id))$(id).disabled=empty||loadingMigration;});
@@ -784,9 +798,12 @@
   async function applyFormalState(source,options){
     options=options||{};
     var previous=options.previousWorkspace||state;
-    formalState=normalizeState(source);formalState.readOnly=true;formalState.dataMode='migration';
-    state=workspaceFromFormal(formalState,previous,options.preserveConfiguration===true);
-    await Promise.all([storeFormalDatabase(formalState),storeWorkspaceDatabase(state)]);
+    var nextFormal=normalizeState(clone(source));nextFormal.readOnly=true;nextFormal.dataMode='migration';
+    var nextWorkspace=workspaceFromFormal(nextFormal,previous,options.preserveConfiguration===true);
+    var stored=await storeSynchronizedDatabases(nextFormal,nextWorkspace);
+    if(!stored)throw new Error('最新資料無法安全寫入本機，原資料未變更。');
+    formalState=nextFormal;
+    state=nextWorkspace;
     updateModeUI();refreshFormOptions();switchView(options.keepView===false?'calendar':currentView);
     return state;
   }
@@ -842,15 +859,16 @@
 
   async function syncInjiaoyun(){
     if(loadingMigration)return;
+    if(!window.confirm('更新後，新版目前測試中的課務、調課、簽到與款項紀錄會由舊音教雲最新資料覆蓋；教室排列與新版系統設定會保留。確定更新嗎？'))return;
     var pin=migrationPin();if(!pin)return;
     if(!window.YouziCoursePreviewData||typeof window.YouziCoursePreviewData.sync!=='function'){toast('同步元件尚未載入','請重新整理頁面後再試。','error');return;}
     loadingMigration=true;operationRunning=true;$('syncInjiaoyunBtn').disabled=true;$('operationProgressText').textContent='正在同步課表、簽到、學費、租用與老師薪資…';$('operationProgress').classList.remove('hidden');updateModeUI();
     try{
-      var selectedDate=dateKey(state.currentDate)||todayKey();
-      var result=await window.YouziCoursePreviewData.sync({manualSyncPin:pin,refreshDate:selectedDate});
+      var refreshDate=todayKey();
+      var result=await window.YouziCoursePreviewData.sync({manualSyncPin:pin,refreshDate:refreshDate});
       var summary=result.summary||{};
       await loadMigrationFromMirror(pin,{preserveConfiguration:true});
-      toast('全部同步完成',(result.refreshStartDate||selectedDate)+'～'+selectedDate+' 已更新課表、簽到、學費、租用與薪資；新增 '+numberOf(summary.created)+'、更新 '+numberOf(summary.updated)+'。');
+      toast('全部同步完成',(result.refreshStartDate||refreshDate)+'～'+refreshDate+' 已更新課表、簽到、學費、租用與薪資；新增 '+numberOf(summary.created)+'、更新 '+numberOf(summary.updated)+'。');
     }catch(error){
       var message=clean(error&&error.message||'音教雲同步失敗');
       if(message.indexOf('密碼')>=0||message.indexOf('permission-denied')>=0)clearMigrationPin();
