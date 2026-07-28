@@ -9,6 +9,12 @@ on:
       - "firebase.json"
       - ".firebaserc"
       - ".github/workflows/firebase-functions-deploy.yml"
+      - "course-data-auto-bootstrap-v1.js"
+      - "course-scheduler-review-data.js"
+      - "operations-hub.html"
+      - "portal.html"
+      - "tests/course-auto-cloud-load.test.js"
+      - "tests/course-workspace-persistence.test.js"
   workflow_dispatch:
 
 jobs:
@@ -23,6 +29,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+
+      - name: Test course data startup path
+        run: |
+          node tests/course-auto-cloud-load.test.js
+          node tests/course-workspace-persistence.test.js
 
       - name: Install Firebase CLI
         run: npm install -g firebase-tools
