@@ -69,13 +69,17 @@
   var STORE_NAME = 'formalSnapshots';
   var FORMAL_KEY = 'latest';
   var WORKSPACE_KEY = 'workspace';
-  var RELOAD_KEY = 'youzi.courseScheduler.localRecoveryReload.v1';
+  var RELOAD_KEY = 'youzi.courseScheduler.localRecoveryReload.v2';
+
+  function hasRows(source, key) {
+    return Boolean(source && Array.isArray(source[key]) && source[key].length);
+  }
 
   function meaningful(source) {
     if (!source || Number(source.version) !== 3) return false;
-    return ['events', 'students', 'teachers', 'tuitionPeriods', 'roomRentals'].some(function (key) {
-      return Array.isArray(source[key]) && source[key].length > 0;
-    });
+    var schedule = ['events', 'recurringRules', 'fixedCourses', 'temporaryCourses', 'roomRentals']
+      .some(function (key) { return hasRows(source, key); });
+    return schedule && hasRows(source, 'rooms');
   }
 
   function makeFormal(workspace) {
@@ -138,7 +142,7 @@
   'use strict';
   if (window.__YOUZI_COURSE_AUTO_BOOTSTRAP_REQUESTED__) return;
   window.__YOUZI_COURSE_AUTO_BOOTSTRAP_REQUESTED__ = true;
-  var source = 'course-data-auto-bootstrap-v1.js?v=20260729-auto-cloud-v2';
+  var source = 'course-data-auto-bootstrap-v1.js?v=20260729-auto-cloud-v3';
   if (document.readyState === 'loading') {
     document.write('<script src="' + source + '"><\\/script>');
     return;
