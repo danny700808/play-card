@@ -28,13 +28,13 @@ concurrency:
 jobs:
   deploy-course-mirror-reader:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 15
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Report deployment started
+      - name: Report verification started
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
@@ -54,7 +54,7 @@ jobs:
             body: JSON.stringify({
               state: 'pending',
               context: 'firebase/functions-course-mirror',
-              description: 'Deploying and verifying the automatic course mirror reader',
+              description: 'Opening and verifying the automatic course mirror reader',
               target_url: process.env.RUN_URL
             })
           });
@@ -99,28 +99,68 @@ jobs:
           node -e "const row=require('./service-account.json'); if(row.type!=='service_account'||row.project_id!=='youzi-c1b74'||!row.client_email||!row.private_key){throw new Error('Invalid Firebase service account JSON')}"
           chmod 600 service-account.json
 
-      - name: Install pinned Firebase CLI
-        run: npm install --global firebase-tools@15.24.0
-
-      - name: Deploy automatic course mirror reader
-        id: deploy_reader
+      - name: Make deployed course mirror reader publicly callable
+        id: public_access
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/service-account.json
         run: |
-          set -o pipefail
-          firebase deploy \
-            --only functions:loadInjiaoyunEducationMirrorAuto \
-            --project youzi-c1b74 \
-            --non-interactive \
-            --force \
-            2>&1 | tee /tmp/firebase-course-mirror-deploy.log
+          set -euo pipefail
+          node - <<'NODE' 2>&1 | tee /tmp/course-mirror-public-access.log
+          const { GoogleAuth } = require('./functions/node_modules/google-auth-library');
+          const project = 'youzi-c1b74';
+          const location = 'us-central1';
+          const functionId = 'loadInjiaoyunEducationMirrorAuto';
+          const functionResource = `projects/${project}/locations/${location}/functions/${functionId}`;
+          const auth = new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/cloud-platform'] });
+          const client = await auth.getClient();
+          const functionResponse = await client.request({
+            method: 'GET',
+            url: `https://cloudfunctions.googleapis.com/v2/${functionResource}`
+          });
+          const service = functionResponse.data && functionResponse.data.serviceConfig && functionResponse.data.serviceConfig.service;
+          if (!service) throw new Error('Cloud Functions API did not return the linked Cloud Run service.');
+          console.log('Cloud Run service:', service);
 
-      - name: Verify deployed course mirror returns schedule data
+          const policyResponse = await client.request({
+            method: 'GET',
+            url: `https://run.googleapis.com/v2/${service}:getIamPolicy`
+          });
+          const policy = policyResponse.data || {};
+          policy.bindings = Array.isArray(policy.bindings) ? policy.bindings : [];
+          let binding = policy.bindings.find((row) => row.role === 'roles/run.invoker');
+          if (!binding) {
+            binding = { role: 'roles/run.invoker', members: [] };
+            policy.bindings.push(binding);
+          }
+          binding.members = Array.isArray(binding.members) ? binding.members : [];
+          if (!binding.members.includes('allUsers')) binding.members.push('allUsers');
+
+          await client.request({
+            method: 'POST',
+            url: `https://run.googleapis.com/v2/${service}:setIamPolicy`,
+            data: { policy, updateMask: 'bindings,etag' }
+          });
+
+          const verifiedResponse = await client.request({
+            method: 'GET',
+            url: `https://run.googleapis.com/v2/${service}:getIamPolicy`
+          });
+          const verifiedBindings = Array.isArray(verifiedResponse.data && verifiedResponse.data.bindings)
+            ? verifiedResponse.data.bindings
+            : [];
+          const publicBinding = verifiedBindings.find((row) => row.role === 'roles/run.invoker');
+          if (!publicBinding || !Array.isArray(publicBinding.members) || !publicBinding.members.includes('allUsers')) {
+            throw new Error('Cloud Run public invoker binding was not saved.');
+          }
+          console.log('Verified roles/run.invoker for allUsers.');
+          NODE
+
+      - name: Verify course mirror returns actual schedule data
         id: health_check
         run: |
           set -o pipefail
           response=/tmp/course-mirror-response.json
-          http_code="$(curl --silent --show-error --retry 5 --retry-delay 10 --max-time 300 \
+          http_code="$(curl --silent --show-error --retry 10 --retry-delay 8 --retry-all-errors --max-time 300 \
             -H 'Content-Type: application/json' \
             -H 'Origin: https://danny700808.github.io' \
             --data '{"data":{"source":"operations-hub"}}' \
@@ -155,28 +195,28 @@ jobs:
         with:
           name: course-mirror-diagnostics-${{ github.run_id }}
           path: |
-            /tmp/firebase-course-mirror-deploy.log
+            /tmp/course-mirror-public-access.log
             /tmp/course-mirror-response.json
           if-no-files-found: warn
           retention-days: 7
 
-      - name: Report final deployment status
+      - name: Report final verification status
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
           COMMIT_SHA: ${{ github.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          DEPLOY_OUTCOME: ${{ steps.deploy_reader.outcome }}
+          ACCESS_OUTCOME: ${{ steps.public_access.outcome }}
           HEALTH_OUTCOME: ${{ steps.health_check.outcome }}
         run: |
           set -euo pipefail
           node - <<'NODE'
           const fs = require('fs');
-          const success = process.env.DEPLOY_OUTCOME === 'success' && process.env.HEALTH_OUTCOME === 'success';
+          const success = process.env.ACCESS_OUTCOME === 'success' && process.env.HEALTH_OUTCOME === 'success';
           let description = success
-            ? 'Course mirror reader deployed and returned schedule data'
-            : `deploy=${process.env.DEPLOY_OUTCOME || 'unknown'}, health=${process.env.HEALTH_OUTCOME || 'unknown'}`;
+            ? 'Course mirror is public and returned actual schedule data'
+            : `access=${process.env.ACCESS_OUTCOME || 'unknown'}, health=${process.env.HEALTH_OUTCOME || 'unknown'}`;
           try {
             const responseText = fs.readFileSync('/tmp/course-mirror-response.json', 'utf8').replace(/\nHTTP_STATUS=\d+\n?$/, '');
             const body = JSON.parse(responseText);
@@ -199,7 +239,7 @@ jobs:
             })
           });
           if (!response.ok) throw new Error(`Unable to report final status: ${response.status} ${await response.text()}`);
-          console.log('Reported final deployment status:', success ? 'success' : 'failure', description);
+          console.log('Reported final verification status:', success ? 'success' : 'failure', description);
           NODE
 
       - name: Remove service account file
