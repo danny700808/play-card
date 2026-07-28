@@ -6,7 +6,8 @@ const {
   mergeEducationDailyRentals
 } = require('../functions/injiaoyunEducationPreview');
 const {
-  reconcileAuditedAttendance
+  reconcileAuditedAttendance,
+  refreshTuitionUsage
 } = require('../functions/injiaoyunEducationMirror');
 
 const periods = [{
@@ -77,5 +78,9 @@ const reconciled = reconcileAuditedAttendance([], dates.map((date, index) => ({
 
 assert.strictEqual(reconciled.filter((row) => row.deducted).length, 4, '一期最多只能扣四堂');
 assert.strictEqual(reconciled[4].reconciliationStatus, 'over-period-limit-review');
+
+refreshTuitionUsage(periods, reconciled);
+assert.strictEqual(periods[1].usedCount, 4, '近期差異套用後應重新計算期別已用堂數');
+assert.strictEqual(periods[1].status, 'completed', '四堂都已扣除的期別應結束');
 
 console.log('injiaoyun unified sync model tests passed');
