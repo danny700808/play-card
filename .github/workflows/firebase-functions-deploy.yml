@@ -21,9 +21,14 @@ permissions:
   contents: read
   statuses: write
 
+concurrency:
+  group: firebase-course-mirror-main
+  cancel-in-progress: false
+
 jobs:
-  deploy-functions:
+  deploy-course-mirror-reader:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
 
     steps:
       - name: Checkout repository
@@ -33,87 +38,120 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
 
       - name: Test course data startup path
         run: |
+          set -euo pipefail
           node tests/course-auto-cloud-load.test.js
           node tests/course-workspace-persistence.test.js
-
-      - name: Install Firebase CLI
-        run: npm install -g firebase-tools
 
       - name: Install functions dependencies
         working-directory: functions
         run: npm ci
 
-      - name: Verify required function exports
+      - name: Verify automatic reader export
         working-directory: functions
         run: |
+          set -euo pipefail
           node - <<'NODE'
           const deployed = require('./index.js');
-          const required = [
-            'platformOrderSyncDaily',
-            'syncPlatformOrdersNow',
-            'platformOrderAgentBridge',
-            'syncEasyStoreCatalog',
-            'runInjiaoyunSyncNow',
-            'syncInjiaoyunEducationMirrorNow',
-            'loadInjiaoyunEducationMirror',
-            'loadInjiaoyunEducationMirrorAuto'
-          ];
-          const missing = required.filter((name) => !deployed[name]);
-          if (missing.length) {
-            console.error('Missing Firebase Function exports:', missing.join(', '));
+          const name = 'loadInjiaoyunEducationMirrorAuto';
+          if (!deployed[name]) {
+            console.error(`Missing Firebase Function export: ${name}`);
             process.exit(1);
           }
-          console.log('Verified Firebase Function exports:', required.join(', '));
+          console.log(`Verified Firebase Function export: ${name}`);
           NODE
 
-      - name: Create service account file
-        run: |
-          printf '%s' '${{ secrets.FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 }}' > service-account.json
-
-      - name: Deploy Firebase Functions
+      - name: Validate Firebase service account
         env:
-          GOOGLE_APPLICATION_CREDENTIALS: service-account.json
-        run: firebase deploy --only functions --project youzi-c1b74 --non-interactive
-
-      - name: Verify deployed course mirror data
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 }}
         run: |
-          curl --fail-with-body --retry 3 --retry-delay 8 --max-time 300 \
+          set -euo pipefail
+          if [ -z "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            echo "FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 is empty" >&2
+            exit 1
+          fi
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > service-account.json
+          node -e "const row=require('./service-account.json'); if(row.type!=='service_account'||row.project_id!=='youzi-c1b74'||!row.client_email||!row.private_key){throw new Error('Invalid Firebase service account JSON')}"
+          chmod 600 service-account.json
+
+      - name: Install pinned Firebase CLI
+        run: npm install --global firebase-tools@15.24.0
+
+      - name: Deploy automatic course mirror reader
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/service-account.json
+        run: |
+          set -euo pipefail
+          firebase deploy \
+            --only functions:loadInjiaoyunEducationMirrorAuto \
+            --project youzi-c1b74 \
+            --non-interactive \
+            --force
+
+      - name: Verify deployed course mirror returns schedule data
+        run: |
+          set -euo pipefail
+          response=/tmp/course-mirror-response.json
+          http_code="$(curl --silent --show-error --retry 5 --retry-delay 10 --max-time 300 \
             -H 'Content-Type: application/json' \
             -H 'Origin: https://danny700808.github.io' \
             --data '{"data":{"source":"operations-hub"}}' \
-            'https://us-central1-youzi-c1b74.cloudfunctions.net/loadInjiaoyunEducationMirrorAuto' \
-            --output /tmp/course-mirror-response.json
+            --output "$response" \
+            --write-out '%{http_code}' \
+            'https://us-central1-youzi-c1b74.cloudfunctions.net/loadInjiaoyunEducationMirrorAuto')"
+          echo "Callable HTTP status: $http_code"
+          cat "$response"
+          if [ "$http_code" -lt 200 ] || [ "$http_code" -ge 300 ]; then
+            exit 1
+          fi
           node - <<'NODE'
           const fs = require('fs');
           const body = JSON.parse(fs.readFileSync('/tmp/course-mirror-response.json', 'utf8'));
           const data = body.result || body.data || {};
           const scheduleKeys = ['fixedCourses', 'temporaryCourses', 'events', 'roomRentals'];
           const directoryKeys = ['rooms', 'students', 'teachers'];
-          const scheduleCount = scheduleKeys.reduce((sum, key) => sum + (Array.isArray(data[key]) ? data[key].length : 0), 0);
-          const directoryCount = directoryKeys.reduce((sum, key) => sum + (Array.isArray(data[key]) ? data[key].length : 0), 0);
+          const counts = Object.fromEntries(
+            [...scheduleKeys, ...directoryKeys].map((key) => [key, Array.isArray(data[key]) ? data[key].length : 0])
+          );
+          const scheduleCount = scheduleKeys.reduce((sum, key) => sum + counts[key], 0);
+          const directoryCount = directoryKeys.reduce((sum, key) => sum + counts[key], 0);
           if (!data.ok || scheduleCount < 1 || directoryCount < 1) {
-            console.error('Course mirror health check failed', { ok: data.ok, scheduleCount, directoryCount, error: body.error || null });
+            console.error('Course mirror health check failed', {
+              ok: data.ok,
+              scheduleCount,
+              directoryCount,
+              counts,
+              error: body.error || null
+            });
             process.exit(1);
           }
-          console.log('Course mirror health check passed', { scheduleCount, directoryCount, runId: data.runId || '' });
+          console.log('Course mirror health check passed', {
+            scheduleCount,
+            directoryCount,
+            counts,
+            runId: data.runId || ''
+          });
           NODE
 
-      - name: Report Firebase deployment status
+      - name: Report deployment status
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
           COMMIT_SHA: ${{ github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           JOB_STATUS: ${{ job.status }}
         run: |
+          set -euo pipefail
           node - <<'NODE'
           const state = process.env.JOB_STATUS === 'success' ? 'success' : 'failure';
           const description = state === 'success'
-            ? 'Firebase deployed and course mirror returned schedule data'
-            : 'Firebase deployment or course mirror verification failed';
+            ? 'Course mirror reader deployed and returned schedule data'
+            : 'Course mirror reader deployment or data verification failed';
           const response = await fetch(`https://api.github.com/repos/${process.env.REPOSITORY}/statuses/${process.env.COMMIT_SHA}`, {
             method: 'POST',
             headers: {
@@ -126,12 +164,16 @@ jobs:
               state,
               context: 'firebase/functions-course-mirror',
               description: description.slice(0, 140),
-              target_url: `https://github.com/${process.env.REPOSITORY}/actions`
+              target_url: process.env.RUN_URL
             })
           });
           if (!response.ok) {
             console.error('Unable to report commit status', response.status, await response.text());
             process.exit(1);
           }
-          console.log('Reported deployment status:', state);
+          console.log('Reported deployment status:', state, process.env.RUN_URL);
           NODE
+
+      - name: Remove service account file
+        if: always()
+        run: rm -f service-account.json
