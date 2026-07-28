@@ -1,0 +1,143 @@
+name: Functions PR CI
+
+on:
+  pull_request:
+    paths:
+      - "functions/**"
+      - "firebase.json"
+      - ".firebaserc"
+      - ".github/workflows/functions-pr-ci.yml"
+      - ".github/workflows/firebase-functions-deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: functions-pr-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-functions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies
+        working-directory: functions
+        run: npm ci
+
+      - name: Check all functions JavaScript syntax
+        working-directory: functions
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -d '' files < <(find . -type f -name '*.js' -not -path './node_modules/*' -print0)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "::error::No Functions JavaScript files were found."
+            exit 1
+          fi
+          for file in "${files[@]}"; do
+            echo "Checking ${file}"
+            node --check "$file"
+          done
+
+      - name: Verify Firebase configuration and required exports
+        working-directory: functions
+        env:
+          FIREBASE_PROJECT_ID: youzi-c1b74
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const firebase = JSON.parse(fs.readFileSync('../firebase.json', 'utf8'));
+          const rc = JSON.parse(fs.readFileSync('../.firebaserc', 'utf8'));
+          const functionSources = Array.isArray(firebase.functions)
+            ? firebase.functions.map((entry) => entry && entry.source)
+            : [firebase.functions && firebase.functions.source];
+          if (!functionSources.includes('functions')) {
+            throw new Error('firebase.json must use functions/ as the canonical Functions source.');
+          }
+          if (rc.projects?.default !== process.env.FIREBASE_PROJECT_ID) {
+            throw new Error(`Unexpected Firebase project: ${rc.projects?.default || '(missing)'}`);
+          }
+
+          const deployed = require('./index.js');
+          const required = [
+            'platformOrderSyncDaily',
+            'syncPlatformOrdersNow',
+            'platformOrderAgentBridge',
+            'syncEasyStoreCatalog',
+            'runInjiaoyunSyncNow'
+          ];
+          const missing = required.filter((name) => !deployed[name]);
+          if (missing.length) {
+            throw new Error(`Missing Firebase Function exports: ${missing.join(', ')}`);
+          }
+          console.log('Firebase configuration and required exports are valid.');
+          NODE
+
+      - name: Audit production dependencies
+        working-directory: functions
+        shell: bash
+        run: |
+          # GitHub invokes bash with -e. Temporarily disable it so npm audit's
+          # expected non-zero status can be parsed and evaluated by severity.
+          set +e
+          npm audit --omit=dev --json > npm-audit.json
+          audit_status=$?
+          set -e
+
+          AUDIT_STATUS="$audit_status" node - <<'NODE'
+          const fs = require('node:fs');
+          let report;
+          try {
+            report = JSON.parse(fs.readFileSync('npm-audit.json', 'utf8'));
+          } catch {
+            console.error('::error::npm audit did not return valid JSON.');
+            process.exit(1);
+          }
+          if (report.error) {
+            console.error(`::error::npm audit failed: ${report.error.summary || report.error.message || 'unknown error'}`);
+            process.exit(1);
+          }
+
+          const counts = report.metadata?.vulnerabilities || {};
+          const summary = ['critical', 'high', 'moderate', 'low', 'info']
+            .map((level) => `${level}=${Number(counts[level] || 0)}`)
+            .join(', ');
+          console.log(`Production dependency audit: ${summary}`);
+
+          const total = Number(counts.total || 0);
+          if (total > 0) {
+            console.warn(`::warning::npm audit reported ${total} known production vulnerabilities (${summary}). Review the uploaded audit report.`);
+          }
+          if (Number(counts.critical || 0) > 0) {
+            console.error('::error::Critical production dependency vulnerabilities must be resolved before merge.');
+            process.exit(1);
+          }
+          if (process.env.AUDIT_STATUS !== '0' && total === 0) {
+            console.error(`::error::npm audit exited with status ${process.env.AUDIT_STATUS} without reporting vulnerabilities.`);
+            process.exit(1);
+          }
+          NODE
+
+      - name: Upload dependency audit report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: functions-npm-audit
+          path: functions/npm-audit.json
+          if-no-files-found: warn
+          retention-days: 14
