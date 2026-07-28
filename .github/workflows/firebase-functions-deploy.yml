@@ -36,7 +36,15 @@ jobs:
         run: |
           node - <<'NODE'
           const deployed = require('./index.js');
-          const required = ['platformOrderSyncDaily', 'syncPlatformOrdersNow', 'platformOrderAgentBridge', 'syncEasyStoreCatalog', 'runInjiaoyunSyncNow'];
+          const required = [
+            'platformOrderSyncDaily',
+            'syncPlatformOrdersNow',
+            'platformOrderAgentBridge',
+            'syncEasyStoreCatalog',
+            'runInjiaoyunSyncNow',
+            'syncInjiaoyunEducationMirrorNow',
+            'loadInjiaoyunEducationMirror'
+          ];
           const missing = required.filter((name) => !deployed[name]);
           if (missing.length) {
             console.error('Missing Firebase Function exports:', missing.join(', '));
