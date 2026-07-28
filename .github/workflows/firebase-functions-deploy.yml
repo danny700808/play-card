@@ -84,7 +84,7 @@ jobs:
         run: |
           set -euo pipefail
           node - <<'NODE'
-          const deployed = require('./index.js');
+          const deployed = require('.');
           const name = 'loadInjiaoyunEducationMirrorAuto';
           if (!deployed[name]) {
             console.error(`Missing Firebase Function export: ${name}`);
