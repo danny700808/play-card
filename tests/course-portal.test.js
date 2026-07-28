@@ -59,6 +59,7 @@ assert(!portalLanding.includes('老師調課入口'), '老師調課不可誤拆�
 
 const schedulerHtml = fs.readFileSync(path.join(root, 'course-scheduler.html'), 'utf8');
 const schedulerSource = fs.readFileSync(path.join(root, 'course-scheduler.js'), 'utf8');
+const schedulerCss = fs.readFileSync(path.join(root, 'course-scheduler.css'), 'utf8');
 assert(schedulerHtml.includes('id="dataModePanel"'), '排課頁缺少資料同步面板');
 assert(schedulerHtml.includes('id="syncInjiaoyunBtn"'), '排課頁缺少單一同步按鈕');
 assert(!schedulerHtml.includes('sandboxLogBtn'), '不應保留測試紀錄按鈕');
@@ -68,6 +69,14 @@ assert(!schedulerHtml.includes('loadMigratedDataBtn'), '不應保留另外載入
 assert(schedulerSource.includes("var WORKSPACE_DB_KEY='workspace'"), '操作資料未使用 IndexedDB 工作區');
 assert(schedulerSource.includes('storeWorkspaceDatabase(state)'), '操作後未自動儲存工作區');
 assert(schedulerSource.includes('workspaceFromFormal'), '同步後未由最新音教雲資料重建工作區');
+assert(schedulerSource.includes('slotCoverageClass(events,room.id,min)'), '有課區間未隱藏內部半小時格線');
+assert(schedulerSource.includes('collapseFinalSlotLayers'), '同一教室時段未套用最後成立資料');
+assert(schedulerSource.includes('修改租用金額／資料'), '租用明細缺少金額修改入口');
+assert(schedulerSource.includes("Object.prototype.hasOwnProperty.call(source,'rentalFee')"), '租用金額為 0 時會被錯誤清空');
+assert(schedulerCss.includes('.slot.event-from-prev{border-top-color:transparent}'), '跨半小時課程仍會顯示內部上格線');
+assert(schedulerCss.includes('.slot.event-to-next{border-bottom-color:transparent}'), '跨半小時課程仍會顯示內部下格線');
+assert(!schedulerCss.includes('.event.leave,.event.absent,.event.cancelled{opacity:.38'), '請假／曠課卡片不可再以透明浮水印顯示');
+assert(!schedulerHtml.includes('半透明＝請假／停課'), '課表圖例仍誤導為半透明狀態');
 
 const backend = fs.readFileSync(path.join(root, 'functions/coursePortal.js'), 'utf8');
 [
