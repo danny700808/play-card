@@ -42,6 +42,8 @@ assert(mirror.includes('syncRecentMirror('), '同步完成後未使用近期差�
 assert(mirror.includes("'manual-unified-recent-delta'"), '手動同步仍可能重建完整歷史鏡像');
 assert(!mirror.includes("await syncLatestMirror('load-latest')"), '開啟頁面不應自動重建完整歷史鏡像');
 assert(mirror.includes("settings.unifiedSyncStatus"), '核對觸發器未避免與手動同步重複套用');
+assert(mirror.includes('snapshotForDates(MIRROR_TYPES.attendance, coveredDates)'), '近期同步仍讀取全部歷史簽到');
+assert(mirror.includes('readEducationDaily(coveredDates)'), '近期同步仍讀取全部每日營運資料');
 assert(preview.includes('mergeEducationDailyReceipts'), '學生實際付款未併入學費期別');
 assert(preview.includes('reconcileAuditedAttendance') || mirror.includes('reconcileAuditedAttendance'), '最新簽到未重新核對');
 assert(manual.includes("'course-scheduler'"), '營運同步未允許課程日表呼叫');
