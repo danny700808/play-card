@@ -13,6 +13,10 @@ const {
   latestAuditSchedule,
   latestMigrationRunId
 } = require('./injiaoyunEducationPreview');
+const {
+  startInjiaoyunCloudSync,
+  waitForInjiaoyunCloudSync
+} = require('./injiaoyunManualSync');
 const { appendCoursePortalData } = require('./coursePortal');
 
 if (!admin.apps.length) admin.initializeApp();
@@ -21,9 +25,10 @@ const db = admin.firestore();
 const FieldValue = admin.firestore.FieldValue;
 const Timestamp = admin.firestore.Timestamp;
 const FUNCTION_REGION = 'us-central1';
-const VERSION = '2026.07.24-v5-one-click-daily-refresh';
+const VERSION = '2026.07.28-v6-unified-through-date-sync';
 const MANUAL_SYNC_PIN = defineSecret('INJIAOYUN_MANUAL_SYNC_PIN');
 const SETTINGS_REF = db.collection('opsSettings').doc('injiaoyunEducationMirror');
+const OPERATIONS_SYNC_REF = db.collection('opsSettings').doc('injiaoyunCloudSync');
 const AUDIT_JOB_REGION = 'asia-east1';
 const AUDIT_JOB_NAME = 'injiaoyun-course-audit-0723-0724-v4';
 const CLOUD_PLATFORM_SCOPE = 'https://www.googleapis.com/auth/cloud-platform';
@@ -73,8 +78,28 @@ function dateKey(value) {
   return formatter.format(date) === match[1] ? match[1] : '';
 }
 
+function shiftDate(key, days) {
+  const date = new Date(`${dateKey(key)}T12:00:00+08:00`);
+  if (!Number.isFinite(date.getTime())) return '';
+  date.setDate(date.getDate() + Number(days || 0));
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Taipei',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(date);
+}
+
 function sleep(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function timestampMillis(value) {
+  if (!value) return 0;
+  if (typeof value.toMillis === 'function') return value.toMillis();
+  if (Number.isFinite(Number(value.seconds))) return Number(value.seconds) * 1000;
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function projectId() {
@@ -100,7 +125,7 @@ async function waitForOperation(authClient, operation, timeoutMs) {
     current = response.data || {};
   }
   if (!current || current.done !== true) {
-    throw new Error('舊音教雲抓取時間超過預期；工作仍可能在背景執行，請稍後按「載入上次同步資料」。');
+    throw new Error('舊音教雲抓取時間超過預期；工作仍可能在背景執行，請稍後再按一次同步。');
   }
   if (current.error) {
     throw new Error(clean(current.error.message || current.error.status || '舊音教雲抓取工作失敗。'));
@@ -108,9 +133,12 @@ async function waitForOperation(authClient, operation, timeoutMs) {
   return current;
 }
 
-async function runAuditForDate(date) {
-  const selectedDate = dateKey(date);
-  if (!selectedDate) throw new Error('同步日期格式不正確。');
+async function runAuditForRange(startDate, endDate) {
+  const selectedStartDate = dateKey(startDate);
+  const selectedEndDate = dateKey(endDate);
+  if (!selectedStartDate || !selectedEndDate || selectedStartDate > selectedEndDate) {
+    throw new Error('同步日期範圍不正確。');
+  }
   const auth = new GoogleAuth({ scopes: [CLOUD_PLATFORM_SCOPE] });
   const authClient = await auth.getClient();
   const jobResource = `projects/${projectId()}/locations/${AUDIT_JOB_REGION}/jobs/${AUDIT_JOB_NAME}`;
@@ -122,8 +150,8 @@ async function runAuditForDate(date) {
       overrides: {
         containerOverrides: [{
           env: [
-            { name: 'AUDIT_START_DATE', value: selectedDate },
-            { name: 'AUDIT_END_DATE', value: selectedDate }
+            { name: 'AUDIT_START_DATE', value: selectedStartDate },
+            { name: 'AUDIT_END_DATE', value: selectedEndDate }
           ]
         }]
       }
@@ -131,22 +159,22 @@ async function runAuditForDate(date) {
   });
   // 保留時間給 Firestore 新結果與鏡像同步；Callable 上限為 540 秒。
   await waitForOperation(authClient, response.data, 360000);
-  return selectedDate;
+  return { startDate: selectedStartDate, endDate: selectedEndDate };
 }
 
-async function waitForFreshAudit(previousRunId, selectedDate, timeoutMs = 45000) {
+async function waitForFreshAudit(previousRunId, startDate, endDate, timeoutMs = 45000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const info = await latestAuditRunInfo();
     if (
       info.runId &&
       info.runId !== previousRunId &&
-      info.startDate <= selectedDate &&
-      info.endDate >= selectedDate
+      info.startDate <= startDate &&
+      info.endDate >= endDate
     ) return info;
     await sleep(3000);
   }
-  throw new Error(`已完成抓取 ${selectedDate}，但尚未找到新的核對結果，請稍後按「載入上次同步資料」。`);
+  throw new Error(`已完成抓取 ${startDate}～${endDate}，但尚未找到新的核對結果，請稍後再按一次同步。`);
 }
 
 async function waitForMirrorAudit(auditRunId, timeoutMs = 90000) {
@@ -161,6 +189,65 @@ async function waitForMirrorAudit(auditRunId, timeoutMs = 90000) {
     await sleep(3000);
   }
   return null;
+}
+
+async function waitForMirrorIdle(timeoutMs = 120000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const snapshot = await SETTINGS_REF.get();
+    const settings = snapshot.exists ? snapshot.data() || {} : {};
+    if (clean(settings.status) !== 'running') return settings;
+    await sleep(3000);
+  }
+  throw new Error('前一批資料仍在套用中，請稍後再按一次同步。');
+}
+
+async function auditRefreshRange(endDate) {
+  const selectedEndDate = dateKey(endDate);
+  if (!selectedEndDate) throw new Error('同步日期格式不正確。');
+  const snapshot = await SETTINGS_REF.get();
+  const settings = snapshot.exists ? snapshot.data() || {} : {};
+  const coveredDates = Array.isArray(settings.auditCoveredDates)
+    ? settings.auditCoveredDates.map(dateKey).filter((date) => date && date <= selectedEndDate).sort()
+    : [];
+  const latestCovered = coveredDates[coveredDates.length - 1] || '';
+  const recentStart = shiftDate(selectedEndDate, -6);
+  const firstMissing = latestCovered && latestCovered < selectedEndDate
+    ? shiftDate(latestCovered, 1)
+    : selectedEndDate;
+  let startDate = firstMissing < recentStart ? firstMissing : recentStart;
+  const oldestAllowed = shiftDate(selectedEndDate, -30);
+  if (startDate < oldestAllowed) startDate = oldestAllowed;
+  return { startDate, endDate: selectedEndDate };
+}
+
+async function ensureInjiaoyunOperationsSync(endDate) {
+  const selectedEndDate = dateKey(endDate);
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const started = await startInjiaoyunCloudSync({
+      requestedBy: '課程日表一鍵同步',
+      requestedOrigin: 'internal-course-scheduler',
+      requestedEndDateKey: selectedEndDate
+    });
+    const startedEndDate = dateKey(started.requestedEndDateKey);
+    if (startedEndDate >= selectedEndDate) {
+      return waitForInjiaoyunCloudSync({
+        requestedEndDateKey: selectedEndDate,
+        requestedAtMillis: started.requestedAtMillis,
+        timeoutMs: 390000
+      });
+    }
+    if (startedEndDate) {
+      await waitForInjiaoyunCloudSync({
+        requestedEndDateKey: startedEndDate,
+        requestedAtMillis: started.requestedAtMillis,
+        timeoutMs: 360000
+      });
+    }
+    const delaySeconds = Math.max(2, Number(started.retryAfterSeconds) || 2);
+    await sleep(delaySeconds * 1000);
+  }
+  throw new Error(`音教雲營運資料尚未排程到 ${selectedEndDate}，請稍後再按一次同步。`);
 }
 
 function requestOrigin(request) {
@@ -386,16 +473,101 @@ async function reserveSync(sourceVersion, trigger) {
   });
 }
 
+function reconcileAuditedAttendance(previewAttendance, auditAttendance, periods, coveredDates) {
+  const covered = new Set(Array.isArray(coveredDates) ? coveredDates.map(dateKey).filter(Boolean) : []);
+  const periodById = new Map(periods.map((row) => [clean(row.id), row]));
+  const periodBySource = new Map(periods.map((row) => [clean(row.sourcePaymentId), row]).filter(([id]) => id));
+  const periodsByStudentSubject = new Map();
+  periods.forEach((period) => {
+    const key = `${clean(period.studentId)}|${clean(period.subjectId)}`;
+    if (!periodsByStudentSubject.has(key)) periodsByStudentSubject.set(key, []);
+    periodsByStudentSubject.get(key).push(period);
+  });
+  periodsByStudentSubject.forEach((rows) => rows.sort((left, right) => (
+    `${dateKey(right.startDate)}|${String(Number(right.periodNo) || 0).padStart(6, '0')}`
+      .localeCompare(`${dateKey(left.startDate)}|${String(Number(left.periodNo) || 0).padStart(6, '0')}`)
+  )));
+  const existingById = new Map(previewAttendance.map((row) => [clean(row.id), row]));
+  const existingByCourseDateStudent = new Map();
+  previewAttendance.forEach((row) => {
+    const key = `${clean(row.sourceCourseId)}|${dateKey(row.date)}|${clean(row.studentId)}`;
+    if (!existingByCourseDateStudent.has(key)) existingByCourseDateStudent.set(key, row);
+  });
+  const merged = previewAttendance.filter((row) => !covered.has(dateKey(row.date))).map(jsonValue);
+  const seen = new Set();
+  auditAttendance.forEach((raw, index) => {
+    const row = jsonValue(raw) || {};
+    const date = dateKey(row.date);
+    if (!date || !covered.has(date) || !clean(row.studentId)) return;
+    const fallbackKey = `${clean(row.sourceCourseId)}|${date}|${clean(row.studentId)}`;
+    const prior = existingById.get(clean(row.id)) || existingByCourseDateStudent.get(fallbackKey) || {};
+    const explicitPeriod = periodBySource.get(clean(row.sourcePaymentId)) || periodById.get(clean(prior.periodId));
+    const subjectCandidates = periodsByStudentSubject.get(`${clean(row.studentId)}|${clean(row.subjectId)}`) || [];
+    const inferredPeriod = subjectCandidates.find((candidate) => (
+      (!candidate.startDate || candidate.startDate <= date) &&
+      Number(candidate.usedCount || 0) < Math.max(1, Number(candidate.lessonCount) || 4)
+    ));
+    const period = explicitPeriod || inferredPeriod || {};
+    const status = clean(row.status) || 'attended';
+    const leaveNoDeduct = period.planSnapshot && period.planSnapshot.leaveNoDeduct !== false;
+    const linked = Boolean(period.id);
+    const deducted = linked && (
+      status === 'attended' ||
+      status === 'absent' ||
+      (status === 'leave' && !leaveNoDeduct)
+    );
+    const id = clean(row.id) || `audit_attendance_${index + 1}`;
+    const dedupeKey = `${id}|${date}`;
+    if (seen.has(dedupeKey)) return;
+    seen.add(dedupeKey);
+    merged.push(Object.assign({}, row, {
+      id,
+      date,
+      periodId: clean(period.id),
+      sourcePaymentId: clean(row.sourcePaymentId) || clean(period.sourcePaymentId),
+      deducted,
+      reconciliationStatus: linked
+        ? explicitPeriod ? 'linked-explicit-payment' : 'linked-student-subject-period'
+        : 'unmatched-no-explicit-payment'
+    }));
+  });
+  merged.sort((left, right) => (
+    `${dateKey(left.date)}|${String(Number(left.lessonNo) || 0).padStart(4, '0')}|${clean(left.id)}`
+      .localeCompare(`${dateKey(right.date)}|${String(Number(right.lessonNo) || 0).padStart(4, '0')}|${clean(right.id)}`)
+  ));
+  const usedByPeriod = new Map();
+  merged.forEach((row) => {
+    if (!row.deducted || !row.periodId) return;
+    const period = periodById.get(clean(row.periodId));
+    if (!period) {
+      row.deducted = false;
+      row.reconciliationStatus = 'unmatched-payment-period';
+      return;
+    }
+    const used = usedByPeriod.get(row.periodId) || 0;
+    if (used >= Math.max(1, Number(period.lessonCount) || 4)) {
+      row.deducted = false;
+      row.reconciliationStatus = 'over-period-limit-review';
+      return;
+    }
+    usedByPeriod.set(row.periodId, used + 1);
+  });
+  return merged;
+}
+
 async function syncLatestMirror(trigger = 'automatic') {
-  const [migrationRunId, auditInfo] = await Promise.all([
+  const [migrationRunId, auditInfo, operationsSnapshot] = await Promise.all([
     latestMigrationRunId(),
-    latestAuditRunInfo()
+    latestAuditRunInfo(),
+    OPERATIONS_SYNC_REF.get()
   ]);
   if (!migrationRunId) throw new Error('找不到已完成的音教雲移轉資料。');
   if (!auditInfo.runId) throw new Error('找不到已完成的音教雲舊日表核對資料。');
   // 納入同步規則版本；即使來源 run 未改變，部署新判定規則後也會重新套用一次。
   // 同步版本同時綁定日表判定程式；日表邏輯更新後，即使來源 run 相同也必須重建鏡像。
-  const sourceVersion = `${migrationRunId}|${auditInfo.runId}|${VERSION}|${EDUCATION_PREVIEW_VERSION}`;
+  const operationsSettings = operationsSnapshot.exists ? operationsSnapshot.data() || {} : {};
+  const operationsVersion = `${clean(operationsSettings.lastEndDateKey)}:${timestampMillis(operationsSettings.lastSucceededAt)}`;
+  const sourceVersion = `${migrationRunId}|${auditInfo.runId}|${operationsVersion}|${VERSION}|${EDUCATION_PREVIEW_VERSION}`;
   const reservation = await reserveSync(sourceVersion, trigger);
   if (!reservation.accepted) {
     return {
@@ -414,6 +586,12 @@ async function syncLatestMirror(trigger = 'automatic') {
       latestAuditSchedule(auditInfo.runId)
     ]);
     if (!audit.runId) throw new Error('音教雲舊日表核對資料讀取失敗。');
+    const reconciledAttendance = reconcileAuditedAttendance(
+      Array.isArray(preview.attendance) ? preview.attendance : [],
+      Array.isArray(audit.attendance) ? audit.attendance : [],
+      Array.isArray(preview.tuitionPeriods) ? preview.tuitionPeriods : [],
+      audit.coveredDates
+    );
     const results = {};
     for (const [type, collectionName] of Object.entries(MIRROR_TYPES)) {
       if (type === 'events') {
@@ -422,7 +600,7 @@ async function syncLatestMirror(trigger = 'automatic') {
         results[type] = await syncType(
           type,
           collectionName,
-          Array.isArray(preview[type]) ? preview[type] : [],
+          type === 'attendance' ? reconciledAttendance : (Array.isArray(preview[type]) ? preview[type] : []),
           migrationRunId
         );
       }
@@ -441,6 +619,7 @@ async function syncLatestMirror(trigger = 'automatic') {
       auditRangeEnd: audit.endDate,
       auditCoveredDates,
       auditEventCount: audit.events.length,
+      auditAttendanceCount: reconciledAttendance.length,
       auditCountsByDate: audit.countsByDate || {},
       auditScheduleVersion: EDUCATION_PREVIEW_VERSION
     });
@@ -533,27 +712,68 @@ function registerInjiaoyunEducationMirror(exportsObject) {
   }, async (request) => {
     assertAllowedCaller(request);
     assertManualPin(request);
+    const refreshDate = dateKey(request && request.data && request.data.refreshDate);
     try {
-      const refreshDate = dateKey(request && request.data && request.data.refreshDate);
       if (!refreshDate) return await syncLatestMirror('manual-course-scheduler');
       const before = await latestAuditRunInfo();
-      await runAuditForDate(refreshDate);
-      const freshAudit = await waitForFreshAudit(before.runId, refreshDate);
-      const syncResult = await syncLatestMirror('manual-date-refresh');
+      const refreshRange = await auditRefreshRange(refreshDate);
+      await SETTINGS_REF.set({
+        unifiedSyncStatus: 'running',
+        unifiedSyncStartDate: refreshRange.startDate,
+        unifiedSyncEndDate: refreshRange.endDate,
+        unifiedSyncStartedAt: FieldValue.serverTimestamp(),
+        unifiedSyncLastError: '',
+        version: VERSION
+      }, { merge: true });
+
+      // 營運資料與課表核對彼此獨立，平行執行可大幅縮短等待時間。
+      const [operationsSync, freshAudit] = await Promise.all([
+        ensureInjiaoyunOperationsSync(refreshDate),
+        (async () => {
+          await runAuditForRange(refreshRange.startDate, refreshRange.endDate);
+          return waitForFreshAudit(
+            before.runId,
+            refreshRange.startDate,
+            refreshRange.endDate
+          );
+        })()
+      ]);
+      let syncResult = await syncLatestMirror('manual-unified-through-date');
+      if (clean(syncResult.status) === 'running') {
+        await waitForMirrorIdle();
+        syncResult = await syncLatestMirror('manual-unified-through-date-retry');
+      }
       const mirrored = await waitForMirrorAudit(freshAudit.runId);
       if (!mirrored) {
-        throw new Error(`${refreshDate} 已抓取完成，但新版課表仍在套用資料，請稍後按「載入上次同步資料」。`);
+        throw new Error(`${refreshDate} 已抓取完成，但新版資料仍在套用，請稍後再按一次同步。`);
       }
+      await SETTINGS_REF.set({
+        unifiedSyncStatus: 'success',
+        unifiedSyncStartDate: refreshRange.startDate,
+        unifiedSyncEndDate: refreshRange.endDate,
+        unifiedSyncCompletedAt: FieldValue.serverTimestamp(),
+        unifiedSyncLastError: '',
+        version: VERSION
+      }, { merge: true });
       return {
         ok: true,
         status: 'success',
+        refreshStartDate: refreshRange.startDate,
         refreshDate,
         auditRunId: freshAudit.runId,
         runId: clean(syncResult.runId),
+        operationsEndDate: clean(operationsSync.lastEndDateKey) || refreshDate,
         summary: mirrored.summary || syncResult.summary || {}
       };
     } catch (error) {
       console.error('[syncInjiaoyunEducationMirrorNow]', error);
+      await SETTINGS_REF.set({
+        unifiedSyncStatus: 'error',
+        unifiedSyncEndDate: refreshDate || '',
+        unifiedSyncFailedAt: FieldValue.serverTimestamp(),
+        unifiedSyncLastError: clean(error && error.message).slice(0, 1000),
+        version: VERSION
+      }, { merge: true }).catch(() => {});
       throw new HttpsError('internal', `新版課務同步失敗：${clean(error && error.message).slice(0, 300)}`);
     }
   });
@@ -616,10 +836,12 @@ function registerInjiaoyunEducationMirror(exportsObject) {
 
 module.exports = {
   MIRROR_TYPES,
+  auditRefreshRange,
   dateKey,
   readMirrorPayload,
+  reconcileAuditedAttendance,
   registerInjiaoyunEducationMirror,
-  runAuditForDate,
+  runAuditForRange,
   sourceHash,
   syncLatestMirror
 };
