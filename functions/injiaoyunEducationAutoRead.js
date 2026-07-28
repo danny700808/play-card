@@ -7,7 +7,7 @@ if (!admin.apps.length) admin.initializeApp();
 
 const db = admin.firestore();
 const REGION = 'us-central1';
-const VERSION = '2026.07.29-auto-read-v2';
+const VERSION = '2026.07.29-auto-read-v3-public-invoker';
 const SETTINGS_REF = db.collection('opsSettings').doc('injiaoyunEducationMirror');
 const ALLOWED_ORIGINS = new Set([
   'https://danny700808.github.io',
@@ -134,6 +134,7 @@ function registerInjiaoyunEducationAutoRead(exportsObject) {
     region: REGION,
     timeoutSeconds: 300,
     memory: '2GiB',
+    invoker: 'public',
     cors: [...ALLOWED_ORIGINS, LOCAL_ORIGIN]
   }, async (request) => {
     assertAllowedRead(request);
