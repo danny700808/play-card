@@ -93,4 +93,40 @@ refreshTuitionUsage(periods, reconciled);
 assert.strictEqual(periods[1].usedCount, 4, '近期差異套用後應重新計算期別已用堂數');
 assert.strictEqual(periods[1].status, 'completed', '四堂都已扣除的期別應結束');
 
+const recentPeriod = [{
+  id: 'period_recent',
+  sourcePaymentId: 'recent_payment',
+  studentId: 'student_recent',
+  subjectId: 'piano',
+  lessonCount: 4,
+  usedCount: 4,
+  expectedAmount: 3200,
+  transactions: [{ id: 'recent_payment', type: 'payment', amount: 3200 }],
+  planSnapshot: { leaveNoDeduct: true }
+}];
+const priorRecentRows = [{
+  id: 'old_recent_attendance',
+  periodId: 'period_recent',
+  sourcePaymentId: 'recent_payment',
+  studentId: 'student_recent',
+  subjectId: 'piano',
+  date: '2026-07-28',
+  status: 'attended',
+  deducted: true
+}];
+const baselineUsage = new Map([['period_recent', 3]]);
+refreshTuitionUsage(recentPeriod, [], baselineUsage);
+const replacedRecentRows = reconcileAuditedAttendance(priorRecentRows, [{
+  id: 'new_recent_attendance',
+  sourcePaymentId: 'recent_payment',
+  studentId: 'student_recent',
+  subjectId: 'piano',
+  date: '2026-07-28',
+  status: 'attended'
+}], recentPeriod, ['2026-07-28'], { initialUsedByPeriod: baselineUsage });
+refreshTuitionUsage(recentPeriod, replacedRecentRows, baselineUsage);
+assert.strictEqual(replacedRecentRows.length, 1, '近期同步應只產生指定日期範圍的簽到');
+assert.strictEqual(replacedRecentRows[0].deducted, true, '替換近期簽到時不可重複占用堂數');
+assert.strictEqual(recentPeriod[0].usedCount, 4, '近期差異應接續範圍外既有堂數');
+
 console.log('injiaoyun unified sync model tests passed');
