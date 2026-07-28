@@ -12,7 +12,7 @@ const db = admin.firestore();
 const FUNCTION_REGION = 'us-central1';
 const COLLECTION_PREFIX = 'opsInjiaoyunTest';
 const AUDIT_RUNS_COLLECTION = 'opsInjiaoyunCourseAuditV3Runs';
-const VERSION = '2026.07.25-v11-full-history-payroll';
+const VERSION = '2026.07.28-v12-daily-receipts-rentals-attendance';
 const MANUAL_SYNC_PIN = defineSecret('INJIAOYUN_MANUAL_SYNC_PIN');
 const ALLOWED_ORIGINS = new Set([
   'https://danny700808.github.io',
@@ -418,10 +418,10 @@ async function latestAuditSchedule(preferredRunId) {
   const info = preferredRunId
     ? { runId: clean(preferredRunId) }
     : await latestAuditRunInfo();
-  if (!info.runId) return { runId: '', startDate: '', endDate: '', coveredDates: [], events: [] };
+  if (!info.runId) return { runId: '', startDate: '', endDate: '', coveredDates: [], events: [], attendance: [] };
   const runDoc = await db.collection(AUDIT_RUNS_COLLECTION).doc(info.runId).get();
   if (!runDoc.exists || clean((runDoc.data() || {}).status).toLowerCase() !== 'success') {
-    return { runId: '', startDate: '', endDate: '', coveredDates: [], events: [] };
+    return { runId: '', startDate: '', endDate: '', coveredDates: [], events: [], attendance: [] };
   }
   const run = runDoc.data() || {};
   const [candidateSnapshot, rawSnapshot] = await Promise.all([
@@ -432,6 +432,36 @@ async function latestAuditSchedule(preferredRunId) {
   const rawFixedCourses = [];
   const candidateFixedKeys = new Set();
   const statusByCourseDate = new Map();
+  const attendanceEvidence = [];
+  const attendanceKeys = new Set();
+  const addAttendanceEvidence = (source, fallbackStatus, context = {}) => {
+    const row = source && typeof source === 'object' ? source : {};
+    const date = dateKey(firstValue(row.date, row.startDate, row.checkinDate, row.leaveDate, row.created, context.date));
+    const courseId = idOf(firstValue(row.fixCourse, row.tempCourse, row.course)) || clean(context.courseId);
+    const paymentId = idOf(firstValue(row.studentPayment, row.payment)) || clean(context.paymentId);
+    const studentId = idOf(row.student) || clean(context.studentId);
+    if (!date || !studentId) return;
+    const status = statusForCheckin(row, fallbackStatus);
+    const sourceRecordId = idOf(row) || clean(row._migrationSourceId);
+    const key = sourceRecordId
+      ? `source|${sourceRecordId}`
+      : `${studentId}|${date}|${courseId}|${paymentId}|${status}|${numberOf(context.lessonNo)}`;
+    if (attendanceKeys.has(key)) return;
+    attendanceKeys.add(key);
+    attendanceEvidence.push({
+      id: sourceRecordId || `audit_attendance_${attendanceEvidence.length + 1}`,
+      sourceCourseId: courseId,
+      sourcePaymentId: paymentId,
+      studentId,
+      status,
+      date,
+      lessonNo: numberOf(firstValue(row.lessonNo, row.courseNumber, context.lessonNo)),
+      teacherId: idOf(row.teacher) || clean(context.teacherId),
+      subjectId: idOf(row.subject) || clean(context.subjectId),
+      reasonId: idOf(firstValue(row.reason, row.leaveReason)),
+      note: clean(firstValue(row.remark, row.note))
+    });
+  };
   const putCourseStatus = (courseId, day, status) => {
     if (!courseId || !day) return;
     const key = `${courseId}|${day}`;
@@ -445,10 +475,17 @@ async function latestAuditSchedule(preferredRunId) {
     const sourceType = clean(envelope.sourceType).toLowerCase();
     if (sourceType === 'fixed-course') rawFixedCourses.push(raw);
     if (['fixed-course', 'adjusted-course'].includes(sourceType)) {
+      const studentIds = unique(courseStudentValues(raw));
       nestedCheckins(raw).forEach((checkin) => {
         const day = dateKey(firstValue(checkin.date, checkin.startDate, checkin.created));
         if (!day || checkin.cancel === true) return;
         putCourseStatus(sourceId, day, statusForCheckin(checkin));
+        addAttendanceEvidence(checkin, 'attended', {
+          courseId: sourceId,
+          studentId: idOf(checkin.student) || studentIds[0],
+          teacherId: idOf(raw.teacher),
+          subjectId: idOf(raw.subject)
+        });
       });
     }
     if (!['leave', 'checkin-leave', 'checkin-skip'].includes(sourceType)) return;
@@ -457,6 +494,12 @@ async function latestAuditSchedule(preferredRunId) {
     if (!courseId || !day || raw.cancel === true) return;
     const status = sourceType === 'checkin-skip' ? 'absent' : 'leave';
     putCourseStatus(courseId, day, status);
+    addAttendanceEvidence(raw, status, {
+      courseId,
+      studentId: idOf(raw.student),
+      teacherId: idOf(raw.teacher),
+      subjectId: idOf(raw.subject)
+    });
   });
 
   const startDate = dateKey(run.startDate);
@@ -622,7 +665,8 @@ async function latestAuditSchedule(preferredRunId) {
     endDate,
     coveredDates,
     countsByDate,
-    events
+    events,
+    attendance: attendanceEvidence.filter((row) => coveredDates.includes(row.date))
   };
 }
 
@@ -906,6 +950,7 @@ function buildTuitionPeriods(data, subjects, feePlans) {
       sourcePaymentId,
       studentId,
       subjectId: subject && subject.id || idOf(firstValue(row.subject, charge.subject)),
+      subjectName: subject && subject.name || nameOf(firstValue(row.subject, charge.subject)),
       teacherId: idOf(firstValue(row.teacher, charge.teacher)),
       planId: planId || plan.id || '',
       periodNo: numberOf(firstValue(row.periodNo, row.period, row.stage, row.number)),
@@ -1169,7 +1214,7 @@ function buildTeachers(data, subjects, courseRows) {
 async function readEducationDaily() {
   const snapshot = await db.collection('opsEducationDaily').get();
   return snapshot.docs.map((doc) => Object.assign({ _id: doc.id }, doc.data() || {}))
-    .filter((row) => clean(row.source) === 'injiaoyun-cloud');
+    .filter((row) => ['injiaoyun-cloud', 'injiaoyun'].includes(clean(row.source)));
 }
 
 function buildTeacherPayroll(dailyRows) {
@@ -1201,6 +1246,116 @@ function buildTeacherPayroll(dailyRows) {
     });
   }));
   return output;
+}
+
+function mergeEducationDailyReceipts(periods, dailyRows) {
+  const periodBySource = new Map();
+  const periodByTransaction = new Map();
+  const periodsByStudent = new Map();
+  periods.forEach((period) => {
+    if (period.sourcePaymentId) periodBySource.set(clean(period.sourcePaymentId), period);
+    array(period.transactions).forEach((transaction) => {
+      if (transaction.id) periodByTransaction.set(clean(transaction.id), { period, transaction });
+    });
+    if (!periodsByStudent.has(period.studentId)) periodsByStudent.set(period.studentId, []);
+    periodsByStudent.get(period.studentId).push(period);
+  });
+  const receiptIds = new Set();
+  let linked = 0;
+  let updated = 0;
+  let unmatched = 0;
+  let createdPeriods = 0;
+  dailyRows.forEach((day) => array(day.tuitionReceipts).forEach((receipt, index) => {
+    const sourceId = clean(receipt.sourceId) || `${clean(day._id)}_receipt_${index + 1}`;
+    if (receiptIds.has(sourceId)) return;
+    receiptIds.add(sourceId);
+    const amount = Math.abs(numberOf(receipt.amount));
+    if (!amount) return;
+    const date = dateKey(firstValue(receipt.paidAt, receipt.date, day.dateKey));
+    const transactionType = receipt.isRevenue === false ? 'refund' : 'payment';
+    const directTransaction = periodByTransaction.get(sourceId);
+    if (directTransaction) {
+      Object.assign(directTransaction.transaction, {
+        type: transactionType,
+        date: date || directTransaction.transaction.date,
+        operatedAt: clean(firstValue(receipt.operatedAt, receipt.paidAt, directTransaction.transaction.operatedAt)),
+        amount,
+        method: clean(receipt.paymentMethod) || directTransaction.transaction.method || '未註明',
+        operator: clean(receipt.operatorName) || directTransaction.transaction.operator || ''
+      });
+      updated += 1;
+      return;
+    }
+    let period = periodBySource.get(sourceId);
+    if (!period) {
+      const candidates = array(periodsByStudent.get(idOf(receipt.studentId || receipt.student))).filter((row) => {
+        const receiptSubject = clean(receipt.subject).toLowerCase();
+        const periodSubject = clean(row.subjectName || row.planSnapshot && row.planSnapshot.name).toLowerCase();
+        if (receiptSubject && periodSubject && !periodSubject.includes(receiptSubject) && !receiptSubject.includes(periodSubject)) return false;
+        return !date || !row.startDate || row.startDate <= date;
+      }).sort((left, right) => (
+        `${dateKey(right.startDate)}|${String(numberOf(right.periodNo)).padStart(6, '0')}`
+          .localeCompare(`${dateKey(left.startDate)}|${String(numberOf(left.periodNo)).padStart(6, '0')}`)
+      ));
+      const openCandidates = candidates.filter((candidate) => {
+        const paid = array(candidate.transactions).reduce(
+          (total, row) => total + (row.type === 'refund' ? -numberOf(row.amount) : numberOf(row.amount)),
+          0
+        );
+        return paid < Math.max(0, numberOf(candidate.expectedAmount));
+      });
+      period = openCandidates[0] || (transactionType === 'refund' ? candidates[0] : null);
+      if (!period && transactionType === 'payment' && candidates[0]) {
+        const template = candidates[0];
+        const expectedAmount = Math.max(0, numberOf(template.expectedAmount)) || amount;
+        period = {
+          id: `period_${sourceId}`,
+          sourcePaymentId: sourceId,
+          studentId: template.studentId,
+          subjectId: template.subjectId,
+          subjectName: template.subjectName,
+          teacherId: template.teacherId,
+          planId: template.planId,
+          periodNo: Math.max(...candidates.map((row) => numberOf(row.periodNo)), 0) + 1,
+          startDate: date,
+          paymentDate: date,
+          expiryDate: '',
+          lessonCount: Math.max(1, numberOf(template.lessonCount) || 4),
+          usedCount: 0,
+          expectedAmount,
+          discount: numberOf(template.discount),
+          status: amount < expectedAmount ? 'unpaid' : 'active',
+          note: '由音教雲最新實際收款自動續接',
+          transactions: [],
+          lessonAdjustments: [],
+          planSnapshot: Object.assign({}, template.planSnapshot || {}),
+          inferredFromDailyReceipt: true
+        };
+        periods.push(period);
+        periodBySource.set(sourceId, period);
+        periodsByStudent.get(period.studentId).push(period);
+        createdPeriods += 1;
+      }
+    }
+    if (!period) {
+      unmatched += 1;
+      return;
+    }
+    if (array(period.transactions).some((row) => clean(row.id) === sourceId)) return;
+    period.transactions.push({
+      id: sourceId,
+      type: transactionType,
+      periodId: period.id,
+      date,
+      operatedAt: clean(firstValue(receipt.operatedAt, receipt.paidAt)),
+      amount,
+      method: clean(receipt.paymentMethod) || '未註明',
+      operator: clean(receipt.operatorName),
+      note: clean(firstValue(receipt.note, receipt.remark))
+    });
+    linked += 1;
+  }));
+  return { total: receiptIds.size, linked, updated, unmatched, createdPeriods };
 }
 
 function buildTeacherAdjustments(data) {
@@ -1259,6 +1414,46 @@ function buildRoomRentals(data, lookups) {
   return [...map.values()].filter((row) => row.date && row.roomId);
 }
 
+function mergeEducationDailyRentals(roomRentals, dailyRows, roomInfo) {
+  const byId = new Map(roomRentals.map((row) => [clean(row.id), row]));
+  const roomsByName = new Map((roomInfo.rows || []).map((row) => [clean(row.name).toLowerCase(), row]));
+  let linked = 0;
+  let unmatched = 0;
+  dailyRows.forEach((day) => array(day.roomRentals).forEach((rental, index) => {
+    const id = clean(rental.sourceId) || `${clean(day._id)}_rental_${index + 1}`;
+    const startAt = firstValue(rental.startAt, rental.startsAt, rental.date, day.dateKey);
+    const date = dateKey(startAt);
+    const start = timeKey(startAt);
+    const roomName = clean(rental.roomName);
+    const room = roomsByName.get(roomName.toLowerCase());
+    if (!date || !start || !room) {
+      unmatched += 1;
+      return;
+    }
+    const next = Object.assign({}, byId.get(id) || {}, {
+      id,
+      type: 'rental',
+      date,
+      start,
+      duration: durationMinutes(start, timeKey(rental.endAt), firstValue(
+        rental.minute, rental.minutes, rental.duration, rental.durationMinutes
+      )),
+      roomId: room.id,
+      roomName: room.name,
+      clientName: clean(rental.clientName) || '教室租用',
+      amount: Math.max(0, numberOf(rental.amount)),
+      status: rental.cancel === true ? 'cancelled' : 'scheduled',
+      note: clean(firstValue(rental.note, rental.remark)),
+      source: 'injiaoyun-cloud'
+    });
+    if (!byId.has(id)) roomRentals.push(next);
+    else Object.assign(byId.get(id), next);
+    byId.set(id, next);
+    linked += 1;
+  }));
+  return { total: linked + unmatched, linked, unmatched };
+}
+
 async function buildPreview(runId) {
   const entries = await Promise.all(Object.entries(EDUCATION_COLLECTIONS).map(async ([key, config]) => (
     [key, await readCollection(config, runId)]
@@ -1295,6 +1490,7 @@ async function buildPreview(runId) {
   const allCourses = fixedCourses.concat(temporaryCourses);
   const feePlans = buildFeePlans(data, subjectInfo);
   const tuitionPeriods = buildTuitionPeriods(data, subjectInfo, feePlans);
+  const recentReceiptSync = mergeEducationDailyReceipts(tuitionPeriods, educationDaily);
   const attendance = buildAttendance(data, allCourses, tuitionPeriods);
   const usedByPeriod = attendance.reduce((counts, row) => {
     if (row.periodId && row.deducted === true) counts.set(row.periodId, (counts.get(row.periodId) || 0) + 1);
@@ -1314,6 +1510,7 @@ async function buildPreview(runId) {
   const teacherPayroll = buildTeacherPayroll(educationDaily);
   const teacherAdjustments = buildTeacherAdjustments(data);
   const roomRentals = buildRoomRentals(data, lookups);
+  const recentRentalSync = mergeEducationDailyRentals(roomRentals, educationDaily, roomInfo);
   const unresolvedFixedCourses = fixedCourses.filter((row) => !row.timeResolved).length;
   const unresolvedTemporaryCourses = temporaryCourses.filter((row) => !row.timeResolved).length;
   const unresolvedRoomRentals = roomRentals.filter((row) => !row.timeResolved).length;
@@ -1338,7 +1535,15 @@ async function buildPreview(runId) {
     attendanceUnmatchedCount: attendance.filter((row) => row.reconciliationStatus === 'unmatched-no-explicit-payment').length,
     attendanceOverLimitCount: attendance.filter((row) => row.reconciliationStatus === 'over-period-limit-review').length,
     paymentTransactionCount: tuitionPeriods.reduce((total, row) => total + row.transactions.length, 0),
-    paymentPeriodsWithoutTransaction: tuitionPeriods.filter((row) => !row.transactions.some((item) => item.type === 'payment')).length
+    paymentPeriodsWithoutTransaction: tuitionPeriods.filter((row) => !row.transactions.some((item) => item.type === 'payment')).length,
+    recentReceiptCount: recentReceiptSync.total,
+    recentReceiptLinkedCount: recentReceiptSync.linked,
+    recentReceiptUpdatedCount: recentReceiptSync.updated,
+    recentReceiptUnmatchedCount: recentReceiptSync.unmatched,
+    recentReceiptCreatedPeriodCount: recentReceiptSync.createdPeriods,
+    recentRentalCount: recentRentalSync.total,
+    recentRentalLinkedCount: recentRentalSync.linked,
+    recentRentalUnmatchedCount: recentRentalSync.unmatched
   };
   const leaveReasons = data.leaveReasons.map((row, index) => ({
     id: idOf(row) || `leave_${index + 1}`,
@@ -1415,5 +1620,7 @@ module.exports = {
   latestAuditSchedule,
   latestAuditRunInfo,
   latestMigrationRunId,
+  mergeEducationDailyReceipts,
+  mergeEducationDailyRentals,
   timeKey
 };
