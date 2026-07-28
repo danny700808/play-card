@@ -104,7 +104,6 @@ jobs:
 
       - name: Deploy automatic course mirror reader
         id: deploy_reader
-        continue-on-error: true
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/service-account.json
         run: |
@@ -118,8 +117,6 @@ jobs:
 
       - name: Verify deployed course mirror returns schedule data
         id: health_check
-        if: steps.deploy_reader.outcome == 'success'
-        continue-on-error: true
         run: |
           set -o pipefail
           response=/tmp/course-mirror-response.json
@@ -165,7 +162,6 @@ jobs:
 
       - name: Report final deployment status
         if: always()
-        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
@@ -205,15 +201,6 @@ jobs:
           if (!response.ok) throw new Error(`Unable to report final status: ${response.status} ${await response.text()}`);
           console.log('Reported final deployment status:', success ? 'success' : 'failure', description);
           NODE
-
-      - name: Fail workflow when deployment or health check failed
-        if: steps.deploy_reader.outcome != 'success' || steps.health_check.outcome != 'success'
-        run: |
-          echo "Deployment outcome: ${{ steps.deploy_reader.outcome }}"
-          echo "Health outcome: ${{ steps.health_check.outcome }}"
-          test -f /tmp/firebase-course-mirror-deploy.log && tail -n 80 /tmp/firebase-course-mirror-deploy.log || true
-          test -f /tmp/course-mirror-response.json && cat /tmp/course-mirror-response.json || true
-          exit 1
 
       - name: Remove service account file
         if: always()
