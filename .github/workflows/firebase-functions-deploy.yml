@@ -34,6 +34,34 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Report deployment started
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          COMMIT_SHA: ${{ github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const response = await fetch(`https://api.github.com/repos/${process.env.REPOSITORY}/statuses/${process.env.COMMIT_SHA}`, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${process.env.GH_TOKEN}`,
+              Accept: 'application/vnd.github+json',
+              'X-GitHub-Api-Version': '2022-11-28',
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              state: 'pending',
+              context: 'firebase/functions-course-mirror',
+              description: 'Deploying and verifying the automatic course mirror reader',
+              target_url: process.env.RUN_URL
+            })
+          });
+          if (!response.ok) throw new Error(`Unable to report pending status: ${response.status} ${await response.text()}`);
+          console.log('Reported pending deployment status:', process.env.RUN_URL);
+          NODE
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
