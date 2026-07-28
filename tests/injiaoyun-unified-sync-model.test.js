@@ -9,6 +9,16 @@ const {
   reconcileAuditedAttendance,
   refreshTuitionUsage
 } = require('../functions/injiaoyunEducationMirror');
+const {
+  validStudioId
+} = require('../functions/injiaoyunManualSync');
+
+assert.strictEqual(
+  validStudioId('6312daadfb859900b029d6a3'),
+  '6312daadfb859900b029d6a3',
+  '既有音教雲機構編號應可安全沿用'
+);
+assert.strictEqual(validStudioId('not-a-studio-id'), '', '不合法的機構編號不可傳給雲端工作');
 
 const periods = [{
   id: 'period_old',
