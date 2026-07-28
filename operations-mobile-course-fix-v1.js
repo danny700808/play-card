@@ -30,11 +30,16 @@
     var state = global.OperationsCenterV1 && global.OperationsCenterV1.state || {};
     return dateKey(state.overviewDate) || dateKey(new Date());
   }
+  function hasRows(source, key) {
+    return Boolean(source && Array.isArray(source[key]) && source[key].length);
+  }
+  function hasScheduleData(source) {
+    return ['events', 'recurringRules', 'fixedCourses', 'temporaryCourses', 'roomRentals']
+      .some(function (key) { return hasRows(source, key); });
+  }
   function meaningful(source) {
     if (!source || Number(source.version) !== 3) return false;
-    return ['events','students','teachers','tuitionPeriods','rooms'].some(function (key) {
-      return Array.isArray(source[key]) && source[key].length > 0;
-    });
+    return hasRows(source, 'rooms') && hasScheduleData(source);
   }
   function openDatabase() {
     return new Promise(function (resolve, reject) {
@@ -61,7 +66,7 @@
           var workspace = workspaceRequest.result || null;
           var formal = formalRequest.result || null;
           db.close();
-          resolve(meaningful(workspace) ? workspace : (meaningful(formal) ? formal : workspace || formal));
+          resolve(meaningful(workspace) ? workspace : (meaningful(formal) ? formal : null));
         };
         transaction.onerror = function () { reject(transaction.error || new Error('IndexedDB read failed')); };
         transaction.onabort = function () { reject(transaction.error || new Error('IndexedDB read aborted')); };
@@ -148,12 +153,13 @@
       .trim();
     return label.length > 5 ? label.slice(0, 5) : label;
   }
+  function loadingCardHtml() {
+    return '<section class="ops-card ops-mobile-course-fix-card"><div class="ops-card-head"><div><h2>今日課表</h2><p>正在還原完整課程資料</p></div><button type="button" class="ops-approved-link-button" data-nav="course-calendar">完整課表</button></div><div class="ops-mobile-course-empty">系統正在從雲端已同步資料還原課表；不需要再按音教雲同步。</div></section>';
+  }
   function scheduleCardHtml() {
+    if (!meaningful(snapshot)) return loadingCardHtml();
     var targetDate = selectedDate();
-    var rooms = snapshot && Array.isArray(snapshot.rooms) ? snapshot.rooms.filter(function (room) { return room.active !== false; }).sort(function (a, b) { return numberOf(a.sort) - numberOf(b.sort); }) : [];
-    if (!rooms.length) {
-      return '<section class="ops-card ops-mobile-course-fix-card"><div class="ops-card-head"><div><h2>今日課表</h2><p>尚未找到這台裝置保存的課表資料</p></div><button type="button" class="ops-approved-link-button" data-nav="course-calendar">開啟課表</button></div><div class="ops-mobile-course-empty">第一次使用請在課程日表按一次「更新音教雲最新資料」；之後會直接從本機資料庫開啟。</div></section>';
-    }
+    var rooms = snapshot.rooms.filter(function (room) { return room.active !== false; }).sort(function (a, b) { return numberOf(a.sort) - numberOf(b.sort); });
     var settings = snapshot.settings || {};
     var startHour = Math.max(0, Math.min(23, numberOf(settings.startHour) || 10));
     var endHour = Math.max(startHour + 1, Math.min(24, numberOf(settings.endHour) || 22));
@@ -206,14 +212,38 @@
     renderPending = true;
     global.requestAnimationFrame(render);
   }
+  function acceptSnapshot(value) {
+    if (meaningful(value)) {
+      snapshot = value;
+      readPending = null;
+      scheduleRender(false);
+      return true;
+    }
+    return false;
+  }
   function start() {
     observer = new MutationObserver(function () { scheduleRender(false); });
     observer.observe(document.body, { childList: true, subtree: true });
     global.addEventListener('hashchange', function () { scheduleRender(currentView() === 'overview'); });
     global.addEventListener('focus', function () { if (mobileOverview()) scheduleRender(true); });
     global.addEventListener('pageshow', function () { if (mobileOverview()) scheduleRender(true); });
+    global.addEventListener('youzi-course-auto-data-ready', function (event) {
+      if (!acceptSnapshot(event && event.detail && event.detail.snapshot)) scheduleRender(true);
+    });
     document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible' && mobileOverview()) scheduleRender(true); });
-    readSnapshot().then(function () { scheduleRender(false); });
+    readSnapshot().then(function (value) {
+      scheduleRender(false);
+      if (!meaningful(value) && global.YouziCourseAutoData && typeof global.YouziCourseAutoData.ensure === 'function') {
+        global.YouziCourseAutoData.ensure().then(function (result) {
+          if (!acceptSnapshot(result && result.snapshot)) scheduleRender(true);
+        }).catch(function () { scheduleRender(false); });
+      }
+    });
+    if (global.YouziCourseAutoDataReady && typeof global.YouziCourseAutoDataReady.then === 'function') {
+      global.YouziCourseAutoDataReady.then(function (result) {
+        if (!acceptSnapshot(result && result.snapshot)) scheduleRender(true);
+      }).catch(function () { scheduleRender(false); });
+    }
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
   else start();
