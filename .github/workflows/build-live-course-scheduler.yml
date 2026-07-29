@@ -35,7 +35,7 @@ jobs:
       - name: Build cache-busted live scheduler
         run: node .github/scripts/build-live-course-scheduler.cjs
 
-      - name: Verify one persistent interactive scheduler path
+      - name: Verify one formal scheduler path
         run: |
           node - <<'NODE'
           const fs = require('fs');
@@ -53,6 +53,7 @@ jobs:
           new vm.Script(scheduler, { filename: 'course-scheduler.js' });
 
           const disabledScripts = [
+            'course-data-auto-bootstrap-v1.js',
             'operations-course-persistence-v1.js',
             'operations-course-simple-full-v1.js',
             'operations-course-snapshot-bridge-v1.js',
@@ -60,30 +61,31 @@ jobs:
           ];
 
           for (const source of [hub, portal]) {
-            if (!source.includes('operations-course-authoritative-v1.js?v=20260729-interactive-course-v2')) {
-              throw new Error('Authoritative persistent scheduler route is missing');
+            if (!source.includes('operations-course-authoritative-v1.js?v=20260729-authoritative-course-v3')) {
+              throw new Error('Authoritative scheduler route is missing');
             }
             for (const script of disabledScripts) {
-              if (source.includes(script)) throw new Error(`Conflicting course patch is still enabled: ${script}`);
+              if (source.includes(script)) throw new Error(`Conflicting course layer is still enabled: ${script}`);
             }
           }
 
-          if (!route.includes("VERSION = '20260729-interactive-course-v2'")) throw new Error('Persistent route version missing');
-          if (!route.includes('moveWorkspaceToHost')) throw new Error('Course iframe is not kept alive');
-          if (!route.includes("view=calendar")) throw new Error('Stable iframe URL is missing');
-          if (route.includes('encodeURIComponent(view)')) throw new Error('Course tab changes may still reload the iframe');
-          if (!live.includes('course-scheduler-live-entry-v1.js?v=20260729-course-performance-v1')) {
-            throw new Error('Performance live scheduler entry is missing');
+          if (!route.includes("VERSION = '20260729-authoritative-course-v3'")) throw new Error('Authoritative route version missing');
+          if (!route.includes('removeLegacyCourseWorkspaces')) throw new Error('Legacy workspace cleanup is missing');
+          if (!route.includes('ensureFrame')) throw new Error('Single persistent iframe creation is missing');
+          if (route.includes('moveWorkspaceToHost')) throw new Error('Legacy iframe moving path is still enabled');
+          if (!live.includes('course-scheduler-live-entry-v1.js?v=20260729-formal-data-flow-v2')) {
+            throw new Error('Formal scheduler entry is missing');
           }
-          if (!entry.includes("WORKSPACE_KEY = 'workspace'")) throw new Error('Workspace-first loading is missing');
-          if (!entry.includes('buildStudentListIndexes')) throw new Error('Student list performance index is missing');
-          if (!entry.includes('optimizedTeacherRenderer')) throw new Error('Teacher payroll performance index is missing');
-          if (!entry.includes('__YOUZI_SCHEDULER_BOOTSTRAP_STATE__')) throw new Error('Immediate local workspace bootstrap is missing');
-          if (entry.includes('parentSnapshot(1200)')) throw new Error('Disabled parent bridge still causes a startup delay');
-          if (!scheduler.includes("function syncInjiaoyun()")) throw new Error('Manual sync function is missing');
-          if (!scheduler.includes("preserveConfiguration:true")) throw new Error('Manual sync configuration preservation is missing');
+          if (!entry.includes("LATEST_KEY = 'latest'")) throw new Error('Latest snapshot source is missing');
+          if (!entry.includes("WORKSPACE_KEY = 'workspace'")) throw new Error('Workspace source is missing');
+          if (!entry.includes('buildStudentListIndexes')) throw new Error('Student performance index is missing');
+          if (!entry.includes('__YOUZI_SCHEDULER_BOOTSTRAP_STATE__')) throw new Error('Immediate workspace bootstrap is missing');
+          if (entry.includes('loadInjiaoyunEducationMirrorAuto')) throw new Error('Automatic cloud loading is still enabled');
+          if (entry.includes('cloudSnapshot')) throw new Error('Automatic cloud fallback is still enabled');
+          if (!scheduler.includes('function syncInjiaoyun()')) throw new Error('Manual sync function is missing');
+          if (!scheduler.includes('preserveConfiguration:true')) throw new Error('Manual sync configuration preservation is missing');
 
-          console.log('Persistent performance course scheduler verified');
+          console.log('Single formal course data flow verified');
           NODE
 
       - name: Commit generated entry files
@@ -95,5 +97,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add course-scheduler-live.html operations-hub.html portal.html
-          git commit -m "Publish persistent performance course scheduler"
+          git commit -m "Publish the single formal course scheduler"
           git push origin HEAD:main
