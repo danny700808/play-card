@@ -1,4 +1,4 @@
-name: Verify Interactive Course Scheduler
+name: Build Interactive Course Scheduler
 
 on:
   push:
@@ -12,24 +12,30 @@ on:
       - "course-scheduler-live-entry-v1.js"
       - "course-scheduler.js"
       - "course-scheduler-data.js"
+      - ".github/scripts/build-live-course-scheduler.cjs"
       - ".github/workflows/build-live-course-scheduler.yml"
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: verify-interactive-course-scheduler-main
-  cancel-in-progress: true
+  group: build-interactive-course-scheduler-main
+  cancel-in-progress: false
 
 jobs:
-  verify-interactive-scheduler:
+  build-and-verify-interactive-scheduler:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: main
 
-      - name: Verify one interactive scheduler path
+      - name: Build cache-busted live scheduler
+        run: node .github/scripts/build-live-course-scheduler.cjs
+
+      - name: Verify one persistent interactive scheduler path
         run: |
           node - <<'NODE'
           const fs = require('fs');
@@ -54,23 +60,40 @@ jobs:
           ];
 
           for (const source of [hub, portal]) {
-            if (!source.includes('operations-course-authoritative-v1.js?v=20260729-interactive-course-v1')) {
-              throw new Error('Authoritative interactive scheduler route is missing');
+            if (!source.includes('operations-course-authoritative-v1.js?v=20260729-interactive-course-v2')) {
+              throw new Error('Authoritative persistent scheduler route is missing');
             }
             for (const script of disabledScripts) {
               if (source.includes(script)) throw new Error(`Conflicting course patch is still enabled: ${script}`);
             }
           }
 
-          if (!route.includes('course-scheduler-live.html')) throw new Error('Interactive scheduler route target is missing');
-          if (!live.includes('course-scheduler-live-entry-v1.js?v=20260729-live-full-scheduler-v2')) {
-            throw new Error('Interactive live scheduler entry is missing');
+          if (!route.includes("VERSION = '20260729-interactive-course-v2'")) throw new Error('Persistent route version missing');
+          if (!route.includes('moveWorkspaceToHost')) throw new Error('Course iframe is not kept alive');
+          if (!route.includes("view=calendar")) throw new Error('Stable iframe URL is missing');
+          if (route.includes('encodeURIComponent(view)')) throw new Error('Course tab changes may still reload the iframe');
+          if (!live.includes('course-scheduler-live-entry-v1.js?v=20260729-course-performance-v1')) {
+            throw new Error('Performance live scheduler entry is missing');
           }
           if (!entry.includes("WORKSPACE_KEY = 'workspace'")) throw new Error('Workspace-first loading is missing');
-          if (!entry.includes("FORMAL_KEY = 'latest'")) throw new Error('Formal snapshot fallback is missing');
-          if (!entry.includes("CLOUD_FUNCTION = 'loadInjiaoyunEducationMirrorAuto'")) throw new Error('Cloud fallback is missing');
+          if (!entry.includes('buildStudentListIndexes')) throw new Error('Student list performance index is missing');
+          if (!entry.includes('optimizedTeacherRenderer')) throw new Error('Teacher payroll performance index is missing');
+          if (!entry.includes('__YOUZI_SCHEDULER_BOOTSTRAP_STATE__')) throw new Error('Immediate local workspace bootstrap is missing');
+          if (entry.includes('parentSnapshot(1200)')) throw new Error('Disabled parent bridge still causes a startup delay');
           if (!scheduler.includes("function syncInjiaoyun()")) throw new Error('Manual sync function is missing');
           if (!scheduler.includes("preserveConfiguration:true")) throw new Error('Manual sync configuration preservation is missing');
 
-          console.log('Single interactive course scheduler path verified');
+          console.log('Persistent performance course scheduler verified');
           NODE
+
+      - name: Commit generated entry files
+        run: |
+          if git diff --quiet -- course-scheduler-live.html operations-hub.html portal.html; then
+            echo "Generated scheduler files are already current."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add course-scheduler-live.html operations-hub.html portal.html
+          git commit -m "Publish persistent performance course scheduler"
+          git push origin HEAD:main
