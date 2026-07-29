@@ -31,38 +31,44 @@ jobs:
             fs.writeFileSync(path, text);
           }
 
+          replaceAll('course-scheduler-review-data.js', [
+            ['course-scheduler-startup-gate-v1.js?v=20260729-full-scheduler-v1', 'course-scheduler-startup-gate-v1.js?v=20260729-full-scheduler-v2'],
+            ['course-scheduler.js?v=20260729-full-scheduler-v1', 'course-scheduler.js?v=20260729-full-scheduler-v3']
+          ]);
+
           replaceAll('course-scheduler.html', [
-            ['course-scheduler.css?v=20260728-embedded-shell-v17', 'course-scheduler.css?v=20260729-full-scheduler-v2'],
-            ['course-scheduler-data.js?v=20260728-unified-sync-v1', 'course-scheduler-data.js?v=20260729-full-scheduler-v2'],
-            ['course-scheduler-review-data.js?v=20260723-review-window-v1', 'course-scheduler-review-data.js?v=20260729-full-scheduler-v2'],
-            ['course-scheduler.js?v=20260728-persistent-shell-v3', 'course-scheduler.js?v=20260729-full-scheduler-v2']
+            ['course-scheduler.css?v=20260729-full-scheduler-v2', 'course-scheduler.css?v=20260729-full-scheduler-v3'],
+            ['course-scheduler-data.js?v=20260729-full-scheduler-v2', 'course-scheduler-data.js?v=20260729-full-scheduler-v3'],
+            ['course-scheduler-review-data.js?v=20260729-full-scheduler-v2', 'course-scheduler-review-data.js?v=20260729-full-scheduler-v3'],
+            ['course-scheduler.js?v=20260729-full-scheduler-v2', 'course-scheduler.js?v=20260729-full-scheduler-v3']
           ]);
 
           {
             const path = 'operations-phase1.js';
             let text = fs.readFileSync(path, 'utf8');
+            text = text.replace(/cv=20260729-full-scheduler-v2/g, 'cv=20260729-full-scheduler-v3');
             text = text.replace(
-              /course-scheduler\.html\?(?!cv=20260729-full-scheduler-v2&)/g,
-              'course-scheduler.html?cv=20260729-full-scheduler-v2&'
+              /course-scheduler\.html\?(?!cv=20260729-full-scheduler-v3&)/g,
+              'course-scheduler.html?cv=20260729-full-scheduler-v3&'
             );
             fs.writeFileSync(path, text);
           }
 
           for (const path of ['operations-hub.html', 'portal.html']) {
             replaceAll(path, [
-              ['operations-phase1.js?v=20260728-course-shell-v7', 'operations-phase1.js?v=20260729-full-scheduler-v3']
+              ['operations-phase1.js?v=20260729-full-scheduler-v3', 'operations-phase1.js?v=20260729-full-scheduler-v4']
             ]);
           }
           NODE
 
       - name: Commit cache-bust update
         run: |
-          if git diff --quiet -- course-scheduler.html operations-phase1.js operations-hub.html portal.html; then
+          if git diff --quiet -- course-scheduler-review-data.js course-scheduler.html operations-phase1.js operations-hub.html portal.html; then
             echo "Full scheduler entry already uses the latest versions."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add course-scheduler.html operations-phase1.js operations-hub.html portal.html
-          git commit -m "Open the fixed full scheduler from a versioned iframe URL"
+          git add course-scheduler-review-data.js course-scheduler.html operations-phase1.js operations-hub.html portal.html
+          git commit -m "Start the full scheduler with a seeded course snapshot"
           git push origin HEAD:main
