@@ -11,8 +11,10 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const bootstrap = read('course-data-auto-bootstrap-v1.js');
 const mobileCourse = read('operations-mobile-course-fix-v1.js');
 const reviewData = read('course-scheduler-review-data.js');
+const schedulerGate = read('course-scheduler-startup-gate-v1.js');
 const scheduler = read('course-scheduler.js');
 const schedulerHtml = read('course-scheduler.html');
+const operations = read('operations-phase1.js');
 const autoRead = read('functions/injiaoyunEducationAutoRead.js');
 const courseIndex = read('functions/courseIndex.js');
 const portalUtils = read('functions/coursePortalUtils.js');
@@ -25,6 +27,7 @@ const portal = read('portal.html');
 new vm.Script(bootstrap, { filename: 'course-data-auto-bootstrap-v1.js' });
 new vm.Script(mobileCourse, { filename: 'operations-mobile-course-fix-v1.js' });
 new vm.Script(reviewData, { filename: 'course-scheduler-review-data.js' });
+new vm.Script(schedulerGate, { filename: 'course-scheduler-startup-gate-v1.js' });
 new vm.Script(scheduler, { filename: 'course-scheduler.js' });
 new vm.Script(autoRead, { filename: 'functions/injiaoyunEducationAutoRead.js' });
 new vm.Script(courseIndex, { filename: 'functions/courseIndex.js' });
@@ -48,6 +51,15 @@ assert(bootstrap.includes('return hasScheduleData(source) && hasDirectoryData(so
 assert(!bootstrap.includes('syncInjiaoyunEducationMirrorNow'), '正常開頁不得觸發音教雲同步');
 assert(bootstrap.includes('YouziCoursePreviewData.buildState'), '雲端鏡像未轉換成完整課務狀態');
 assert(bootstrap.includes('global.location.reload()'), '首次自動寫入後未重新開啟完整課表');
+
+assert(schedulerGate.includes("FORMAL_CACHE_KEY = 'youzi.courseScheduler.formalCache.v1'"), '完整課表啟動前未準備同步快照');
+assert(schedulerGate.includes('seedFormalCache(result)'), '完整課表沒有在第一次繪製前寫入課表快照');
+assert(schedulerGate.includes("listener.name === 'init'"), '啟動閘門未鎖定完整課表初始化');
+assert(schedulerGate.includes('schedulerListenerCount > 1'), '舊快取腳本可能重複初始化完整課表');
+assert(reviewData.includes('course-scheduler-startup-gate-v1.js?v=20260729-full-scheduler-v2'), '完整課表未載入最新啟動閘門');
+assert(reviewData.includes('course-scheduler.js?v=20260729-full-scheduler-v3'), '完整課表未載入最新主程式');
+assert(schedulerHtml.includes('course-scheduler-review-data.js?v=20260729-full-scheduler-v3'), '完整課表 HTML 仍可能使用舊資料啟動程式');
+assert(operations.includes('course-scheduler.html?cv=20260729-full-scheduler-v3&'), '營運中心仍可能開啟舊快取的完整課表 HTML');
 
 assert(mobileCourse.includes('function hasScheduleData'), '手機首頁缺少課程事件判斷');
 assert(mobileCourse.includes("if (!meaningful(snapshot)) return loadingCardHtml()"), '手機首頁仍可能用不完整資料畫出空白格線');
@@ -80,6 +92,7 @@ assert(reviewData.includes('loadAutomaticCourseBootstrap'), '獨立課程日表�
   assert(converterIndex >= 0, '營運入口未載入課務資料轉換器');
   assert(bootstrapIndex > converterIndex, '自動復原必須在資料轉換器之後載入');
   assert(operationsIndex > bootstrapIndex, '自動復原必須在營運頁面初始化前載入');
+  assert(html.includes('operations-phase1.js?v=20260729-full-scheduler-v4'), '營運入口仍可能使用舊的完整課表連結');
 });
 
 console.log('automatic course cloud load tests passed');
