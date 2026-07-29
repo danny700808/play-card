@@ -1,4 +1,4 @@
-name: Build Interactive Course Scheduler
+name: Build Formal Course Scheduler
 
 on:
   push:
@@ -10,6 +10,7 @@ on:
       - "operations-course-authoritative-v1.js"
       - "course-scheduler-live.html"
       - "course-scheduler-live-entry-v1.js"
+      - "course-scheduler-formal.js"
       - "course-scheduler.js"
       - "course-scheduler-data.js"
       - ".github/scripts/build-live-course-scheduler.cjs"
@@ -20,11 +21,11 @@ permissions:
   contents: write
 
 concurrency:
-  group: build-interactive-course-scheduler-main
+  group: build-formal-course-scheduler-main
   cancel-in-progress: false
 
 jobs:
-  build-and-verify-interactive-scheduler:
+  build-and-verify-formal-scheduler:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -32,7 +33,7 @@ jobs:
         with:
           ref: main
 
-      - name: Build cache-busted live scheduler
+      - name: Build formal scheduler
         run: node .github/scripts/build-live-course-scheduler.cjs
 
       - name: Verify one formal scheduler path
@@ -46,13 +47,15 @@ jobs:
           const route = fs.readFileSync('operations-course-authoritative-v1.js', 'utf8');
           const live = fs.readFileSync('course-scheduler-live.html', 'utf8');
           const entry = fs.readFileSync('course-scheduler-live-entry-v1.js', 'utf8');
-          const scheduler = fs.readFileSync('course-scheduler.js', 'utf8');
+          const sourceScheduler = fs.readFileSync('course-scheduler.js', 'utf8');
+          const formalScheduler = fs.readFileSync('course-scheduler-formal.js', 'utf8');
 
           new vm.Script(route, { filename: 'operations-course-authoritative-v1.js' });
           new vm.Script(entry, { filename: 'course-scheduler-live-entry-v1.js' });
-          new vm.Script(scheduler, { filename: 'course-scheduler.js' });
+          new vm.Script(sourceScheduler, { filename: 'course-scheduler.js' });
+          new vm.Script(formalScheduler, { filename: 'course-scheduler-formal.js' });
 
-          const disabledScripts = [
+          const legacyScripts = [
             'course-data-auto-bootstrap-v1.js',
             'operations-course-persistence-v1.js',
             'operations-course-simple-full-v1.js',
@@ -60,42 +63,58 @@ jobs:
             'operations-course-live-route-v1.js'
           ];
 
+          for (const legacy of legacyScripts) {
+            if (fs.existsSync(legacy)) throw new Error(`Obsolete course file still exists: ${legacy}`);
+          }
+
           for (const source of [hub, portal]) {
-            if (!source.includes('operations-course-authoritative-v1.js?v=20260729-authoritative-course-v3')) {
+            if (!source.includes('operations-course-authoritative-v1.js?v=20260729-authoritative-course-v4')) {
               throw new Error('Authoritative scheduler route is missing');
             }
-            for (const script of disabledScripts) {
-              if (source.includes(script)) throw new Error(`Conflicting course layer is still enabled: ${script}`);
+            for (const legacy of legacyScripts) {
+              if (source.includes(legacy)) throw new Error(`Conflicting course layer is still enabled: ${legacy}`);
             }
           }
 
-          if (!route.includes("VERSION = '20260729-authoritative-course-v3'")) throw new Error('Authoritative route version missing');
-          if (!route.includes('removeLegacyCourseWorkspaces')) throw new Error('Legacy workspace cleanup is missing');
+          if (!route.includes("VERSION = '20260729-authoritative-course-v4'")) throw new Error('Authoritative route version missing');
           if (!route.includes('ensureFrame')) throw new Error('Single persistent iframe creation is missing');
+          if (!route.includes("contentObserver.observe(content, { childList: true })")) throw new Error('Scoped legacy cleanup observer is missing');
+          if (route.includes('subtree: true')) throw new Error('Whole-page mutation observer is still enabled');
           if (route.includes('moveWorkspaceToHost')) throw new Error('Legacy iframe moving path is still enabled');
-          if (!live.includes('course-scheduler-live-entry-v1.js?v=20260729-formal-data-flow-v2')) {
+
+          if (!live.includes('course-scheduler-live-entry-v1.js?v=20260729-formal-build-v3')) {
             throw new Error('Formal scheduler entry is missing');
           }
+          if (!entry.includes("SCHEDULER_SRC = 'course-scheduler-formal.js?v=' + VERSION")) throw new Error('Prebuilt formal scheduler is not loaded');
           if (!entry.includes("LATEST_KEY = 'latest'")) throw new Error('Latest snapshot source is missing');
           if (!entry.includes("WORKSPACE_KEY = 'workspace'")) throw new Error('Workspace source is missing');
-          if (!entry.includes('buildStudentListIndexes')) throw new Error('Student performance index is missing');
           if (!entry.includes('__YOUZI_SCHEDULER_BOOTSTRAP_STATE__')) throw new Error('Immediate workspace bootstrap is missing');
+          if (entry.includes('patchSchedulerSource')) throw new Error('Runtime scheduler patching is still enabled');
+          if (entry.includes('new Blob')) throw new Error('Runtime Blob scheduler execution is still enabled');
           if (entry.includes('loadInjiaoyunEducationMirrorAuto')) throw new Error('Automatic cloud loading is still enabled');
           if (entry.includes('cloudSnapshot')) throw new Error('Automatic cloud fallback is still enabled');
-          if (!scheduler.includes('function syncInjiaoyun()')) throw new Error('Manual sync function is missing');
-          if (!scheduler.includes('preserveConfiguration:true')) throw new Error('Manual sync configuration preservation is missing');
 
-          console.log('Single formal course data flow verified');
+          if (!formalScheduler.includes("__YOUZI_FORMAL_BUILD_VERSION__='20260729-formal-build-v3'")) throw new Error('Formal build version is missing');
+          if (!formalScheduler.includes("WORKSPACE_BACKUP_DB_KEY='workspaceBackup'")) throw new Error('Workspace backup is missing');
+          if (!formalScheduler.includes('buildStudentListIndexes')) throw new Error('Student list performance index is missing');
+          if (!formalScheduler.includes('payrollByTeacher=new Map()')) throw new Error('Teacher payroll performance index is missing');
+          if (formalScheduler.includes('function nextEvent(studentId)')) throw new Error('Legacy 180-day per-student scan is still present');
+          if (!formalScheduler.includes('async function restoreFormalDatabase(){return false;}')) throw new Error('Automatic restore is not disabled');
+          if (!formalScheduler.includes('function syncInjiaoyun()')) throw new Error('Manual sync function is missing');
+          if (!formalScheduler.includes('preserveConfiguration:true')) throw new Error('Manual sync configuration preservation is missing');
+          if (!formalScheduler.includes('先備份目前 workspace')) throw new Error('Formal sync confirmation is missing');
+
+          console.log('Optimized formal course scheduler verified');
           NODE
 
-      - name: Commit generated entry files
+      - name: Commit generated formal files
         run: |
-          if git diff --quiet -- course-scheduler-live.html operations-hub.html portal.html; then
-            echo "Generated scheduler files are already current."
+          if git diff --quiet -- course-scheduler-formal.js course-scheduler-live.html operations-hub.html portal.html; then
+            echo "Generated formal scheduler files are already current."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add course-scheduler-live.html operations-hub.html portal.html
-          git commit -m "Publish the single formal course scheduler"
+          git add course-scheduler-formal.js course-scheduler-live.html operations-hub.html portal.html
+          git commit -m "Publish optimized formal course scheduler"
           git push origin HEAD:main
