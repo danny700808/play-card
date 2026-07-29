@@ -23,4 +23,11 @@ const scripts = `  <script src="config.js?v=20260722-course-scheduler-v2"></scri
 
 html = html.slice(0, firstScript) + scripts + html.slice(bodyEnd);
 fs.writeFileSync(targetPath, html);
-console.log(`Built ${targetPath}`);
+
+for (const path of ['operations-hub.html', 'portal.html']) {
+  let source = fs.readFileSync(path, 'utf8');
+  source = source.replace(/operations-course-live-route-v1\.js\?v=[^"']+/g, 'operations-course-live-route-v1.js?v=20260729-live-full-scheduler-v2');
+  fs.writeFileSync(path, source);
+}
+
+console.log(`Built ${targetPath} and updated operations route versions`);
