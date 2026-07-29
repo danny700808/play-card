@@ -1,116 +1,69 @@
-name: Build Formal Course Scheduler
+name: Verify Fresh Course Center
 
 on:
   push:
     branches:
       - main
     paths:
+      - "course-center.html"
+      - "course-center.css"
+      - "course-center.js"
+      - "course-scheduler-data.js"
       - "operations-hub.html"
       - "portal.html"
-      - "operations-course-authoritative-v1.js"
-      - "course-scheduler-live.html"
-      - "course-scheduler-live-entry-v1.js"
-      - "course-scheduler-recovery-v1.js"
-      - "course-scheduler.js"
-      - "course-scheduler-data.js"
-      - ".github/scripts/build-live-course-scheduler.cjs"
       - ".github/workflows/build-live-course-scheduler.yml"
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: build-formal-course-scheduler-main
-  cancel-in-progress: false
+  group: verify-fresh-course-center-main
+  cancel-in-progress: true
 
 jobs:
-  build-and-verify-formal-scheduler:
+  verify-fresh-course-center:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          ref: main
 
-      - name: Build formal scheduler entry
-        run: node .github/scripts/build-live-course-scheduler.cjs
-
-      - name: Verify real-data scheduler path
+      - name: Verify standalone course center
         run: |
           node - <<'NODE'
           const fs = require('fs');
           const vm = require('vm');
 
+          const html = fs.readFileSync('course-center.html', 'utf8');
+          const css = fs.readFileSync('course-center.css', 'utf8');
+          const js = fs.readFileSync('course-center.js', 'utf8');
           const hub = fs.readFileSync('operations-hub.html', 'utf8');
           const portal = fs.readFileSync('portal.html', 'utf8');
-          const route = fs.readFileSync('operations-course-authoritative-v1.js', 'utf8');
-          const live = fs.readFileSync('course-scheduler-live.html', 'utf8');
-          const recovery = fs.readFileSync('course-scheduler-recovery-v1.js', 'utf8');
-          const entry = fs.readFileSync('course-scheduler-live-entry-v1.js', 'utf8');
-          const scheduler = fs.readFileSync('course-scheduler.js', 'utf8');
 
-          new vm.Script(route, { filename: 'operations-course-authoritative-v1.js' });
-          new vm.Script(recovery, { filename: 'course-scheduler-recovery-v1.js' });
-          new vm.Script(entry, { filename: 'course-scheduler-live-entry-v1.js' });
-          new vm.Script(scheduler, { filename: 'course-scheduler.js' });
+          new vm.Script(js, { filename: 'course-center.js' });
 
-          const legacyScripts = [
-            'course-data-auto-bootstrap-v1.js',
-            'operations-course-persistence-v1.js',
-            'operations-course-simple-full-v1.js',
-            'operations-course-snapshot-bridge-v1.js',
-            'operations-course-live-route-v1.js'
-          ];
-
-          for (const legacy of legacyScripts) {
-            if (fs.existsSync(legacy)) throw new Error(`Obsolete course file still exists: ${legacy}`);
-          }
+          if (!html.includes('course-center.css?v=20260729-fresh-course-v1')) throw new Error('Fresh course CSS is missing');
+          if (!html.includes('course-center.js?v=20260729-fresh-course-v1')) throw new Error('Fresh course runtime is missing');
+          if (!html.includes('course-scheduler-data.js?v=20260729-fresh-course-v1')) throw new Error('Mirror data adapter is missing');
+          if (!css.includes('.schedule-grid')) throw new Error('Fresh schedule grid styling is missing');
 
           for (const source of [hub, portal]) {
-            const routeTag = 'operations-course-authoritative-v1.js?v=20260729-authoritative-course-v7';
-            const routeIndex = source.indexOf(routeTag);
-            const operationsIndex = source.indexOf('operations-phase1.js');
-            if (routeIndex < 0) throw new Error('Authoritative scheduler route is missing');
-            if (operationsIndex < 0 || routeIndex > operationsIndex) throw new Error('Formal course route must load before operations-phase1.js');
-            for (const legacy of legacyScripts) {
-              if (source.includes(legacy)) throw new Error(`Conflicting course layer is still enabled: ${legacy}`);
+            for (const page of ['calendar','students','teachers','settings']) {
+              if (!source.includes(`course-center.html#${page}`)) throw new Error(`Fresh course link is missing: ${page}`);
             }
+            if (source.includes('operations-course-authoritative-v1.js')) throw new Error('Legacy iframe course route is still enabled');
+            if (source.includes('opsCoursePersistentHost')) throw new Error('Legacy course iframe host is still present');
           }
 
-          if (!route.includes("VERSION = '20260729-authoritative-course-v7'")) throw new Error('Authoritative route version missing');
-          if (!route.includes('applyEmbeddedLayout')) throw new Error('Embedded scheduler layout fix is missing');
-          if (!route.includes('setAttributeIfDifferent')) throw new Error('Idempotent visibility updates are missing');
-          if (!route.includes('var enforcing = false')) throw new Error('Mutation observer re-entry guard is missing');
-          if (route.includes('subtree: true')) throw new Error('Whole-page mutation observer is still enabled');
+          if (!js.includes("WORKSPACE_KEY = 'workspace'")) throw new Error('Workspace source is missing');
+          if (!js.includes("LATEST_KEY = 'latest'")) throw new Error('Latest source is missing');
+          if (!js.includes('readLegacyState')) throw new Error('Legacy real-data recovery is missing');
+          if (!js.includes('demoState')) throw new Error('Demo-data rejection is missing');
+          if (!js.includes('YouziCoursePreviewData.load')) throw new Error('Read-only mirror loading is missing');
+          if (js.includes('YouziCoursePreviewData.sync')) throw new Error('Fresh center must not auto-sync Injiaoyun');
+          if (!js.includes('writeDatabase')) throw new Error('Workspace persistence is missing');
+          if (!js.includes('renderCalendar')) throw new Error('Calendar rendering is missing');
+          if (!js.includes('saveCourse')) throw new Error('Workspace course creation is missing');
 
-          if (!live.includes('course-scheduler-recovery-v1.js?v=20260729-real-data-recovery-v1')) throw new Error('Real-data recovery is missing from live scheduler');
-          if (live.includes('course-scheduler-live-entry-v1.js?v=')) throw new Error('Formal entry must be loaded only after recovery');
-          if (!recovery.includes("LEGACY_FORMAL_KEY = 'youzi.courseScheduler.formalCache.v1'")) throw new Error('Legacy formal cache recovery is missing');
-          if (!recovery.includes("PIN_KEY = 'youzi.injiaoyun.preview.pin'")) throw new Error('Saved mirror credential recovery is missing');
-          if (!recovery.includes('isDemoState')) throw new Error('Demo-data rejection is missing');
-          if (!recovery.includes('YouziCoursePreviewData.load')) throw new Error('Synced mirror recovery is missing');
-          if (recovery.includes('YouziCoursePreviewData.sync')) throw new Error('Recovery must not automatically synchronize Injiaoyun');
-          if (!recovery.includes("store.put(latest, LATEST_KEY)")) throw new Error('Recovered latest snapshot is missing');
-          if (!recovery.includes("store.put(workspace, WORKSPACE_KEY)")) throw new Error('Recovered workspace is missing');
-          if (!recovery.includes('loadFormalEntry')) throw new Error('Formal entry handoff is missing');
-
-          if (!entry.includes("LATEST_KEY = 'latest'")) throw new Error('Latest snapshot source is missing');
-          if (!entry.includes("WORKSPACE_KEY = 'workspace'")) throw new Error('Workspace source is missing');
-          if (!scheduler.includes('function syncInjiaoyun()')) throw new Error('Manual sync function is missing');
-          if (!scheduler.includes('preserveConfiguration:true')) throw new Error('Manual sync configuration preservation is missing');
-
-          console.log('Real course data recovery and embedded scheduler verified');
+          console.log('Fresh standalone course center verified');
           NODE
-
-      - name: Commit generated formal entry files
-        run: |
-          if git diff --quiet -- course-scheduler-live.html operations-hub.html portal.html; then
-            echo "Generated formal scheduler entry files are already current."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "4189828+github-actions[bot]@users.noreply.github.com"
-          git add course-scheduler-live.html operations-hub.html portal.html
-          git commit -m "Publish real-data course scheduler recovery"
-          git push origin HEAD:main
