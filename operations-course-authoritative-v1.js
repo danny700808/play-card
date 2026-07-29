@@ -1,7 +1,7 @@
 (function (global) {
   'use strict';
 
-  var VERSION = '20260729-authoritative-course-v3';
+  var VERSION = '20260729-authoritative-course-v4';
   var VIEW_MAP = {
     'course-calendar': 'calendar',
     'course-students': 'students',
@@ -9,7 +9,7 @@
     'course-settings': 'settings'
   };
   var scheduled = false;
-  var observer = null;
+  var contentObserver = null;
 
   function currentHash() {
     return String(global.location.hash || '#overview').replace(/^#/, '').split('?')[0] || 'overview';
@@ -28,6 +28,7 @@
     if (host) return host;
     host = global.document.createElement('section');
     host.id = 'opsCoursePersistentHost';
+    host.className = 'ops-content ops-course-content';
     host.hidden = true;
     host.setAttribute('aria-hidden', 'true');
     var content = global.document.getElementById('opsContent');
@@ -44,12 +45,16 @@
     });
   }
 
+  function sendView(frame, view) {
+    if (!frame || !view) return;
+    frame.dataset.courseView = view;
+    try {
+      if (frame.contentWindow) frame.contentWindow.postMessage({ type: 'youzi-course-view', view: view }, global.location.origin);
+    } catch (_) {}
+  }
+
   function ensureFrame(host) {
-    var frame = global.document.getElementById('opsCourseFrame');
-    if (frame && frame.parentNode !== host) {
-      if (frame.parentNode) frame.parentNode.removeChild(frame);
-      frame = null;
-    }
+    var frame = host.querySelector('#opsCourseFrame');
     if (!frame) {
       frame = global.document.createElement('iframe');
       frame.id = 'opsCourseFrame';
@@ -57,24 +62,16 @@
       frame.title = '柚子樂器課務管理';
       frame.setAttribute('loading', 'eager');
       frame.setAttribute('src', schedulerUrl());
-      host.appendChild(frame);
       frame.addEventListener('load', function () {
         frame.dataset.authoritativeLoaded = '1';
         sendView(frame, courseView() || 'calendar');
       });
+      host.appendChild(frame);
     } else if (String(frame.getAttribute('src') || '').indexOf('v=' + VERSION) < 0) {
       frame.dataset.authoritativeLoaded = '0';
       frame.setAttribute('src', schedulerUrl());
     }
     return frame;
-  }
-
-  function sendView(frame, view) {
-    if (!frame || !view) return;
-    frame.dataset.courseView = view;
-    try {
-      if (frame.contentWindow) frame.contentWindow.postMessage({ type: 'youzi-course-view', view: view }, global.location.origin);
-    } catch (_) {}
   }
 
   function route() {
@@ -93,16 +90,14 @@
       return;
     }
 
+    removeLegacyCourseWorkspaces();
     if (content) {
       content.hidden = true;
       content.setAttribute('aria-hidden', 'true');
     }
     host.hidden = false;
     host.setAttribute('aria-hidden', 'false');
-
-    removeLegacyCourseWorkspaces();
-    var frame = ensureFrame(host);
-    sendView(frame, view);
+    sendView(ensureFrame(host), view);
   }
 
   function scheduleRoute() {
@@ -123,14 +118,20 @@
     global.document.head.appendChild(style);
   }
 
+  function watchLegacyContent() {
+    var content = global.document.getElementById('opsContent');
+    if (!content || contentObserver) return;
+    contentObserver = new MutationObserver(function () {
+      if (!courseView()) return;
+      removeLegacyCourseWorkspaces();
+    });
+    contentObserver.observe(content, { childList: true });
+  }
+
   function start() {
     installStyle();
     ensureHost();
-    observer = new MutationObserver(function () {
-      if (courseView()) removeLegacyCourseWorkspaces();
-      scheduleRoute();
-    });
-    observer.observe(global.document.body, { childList: true, subtree: true });
+    watchLegacyContent();
     global.addEventListener('hashchange', scheduleRoute);
     global.addEventListener('pageshow', scheduleRoute);
     scheduleRoute();
