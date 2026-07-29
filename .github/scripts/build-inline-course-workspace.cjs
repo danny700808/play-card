@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 
-const VERSION = '20260729-operations-inline-course-v3';
+const VERSION = '20260729-operations-inline-course-v4';
 const schedulerHtmlPath = 'course-scheduler.html';
 const schedulerJsPath = 'course-scheduler.js';
 const operationsPath = 'operations-phase1.js';
@@ -67,6 +67,55 @@ function buildRuntime() {
     "    ['topNewEvent','sideNewEvent','calendarNewEvent'].forEach(function(id){var node=$(id);if(node)node.addEventListener('click',function(){openSchedule({date:state.currentDate});});});",
     'optional removed sidebar quick-add button'
   );
+
+  const studentRenderer = /  function latestPeriod\(studentId\)\{[\s\S]*?  function metric\(label,value,small\)\{/;
+  if (!studentRenderer.test(source)) throw new Error('Unable to locate the original student renderer.');
+  source = source.replace(studentRenderer, `  function latestPeriod(studentId){return state.tuitionPeriods.filter(function(row){return row.studentId===studentId;}).sort(function(a,b){return clean(b.startDate).localeCompare(clean(a.startDate))||numberOf(b.periodNo)-numberOf(a.periodNo);})[0]||{};}
+  function studentPageIndex(){
+    var meta=state.sandboxMeta||{},dataMeta=state.dataMeta||{},today=todayKey();
+    var key=[today,state.students.length,state.tuitionPeriods.length,state.events.length,state.recurringRules.length,state.attendance.length,clean(meta.updatedAt),clean(dataMeta.runId)].join('|');
+    if(studentPageIndex.cache&&studentPageIndex.key===key)return studentPageIndex.cache;
+    var periodsByStudent=new Map(),latestByStudent=new Map(),dueByStudent=new Set(),lowByStudent=new Set();
+    state.tuitionPeriods.forEach(function(period){
+      var studentId=clean(period.studentId),list=periodsByStudent.get(studentId)||[];list.push(period);periodsByStudent.set(studentId,list);
+      if(periodBalance(period)>0)dueByStudent.add(studentId);
+      var prior=latestByStudent.get(studentId),newer=!prior||clean(period.startDate).localeCompare(clean(prior.startDate))>0||(clean(period.startDate)===clean(prior.startDate)&&numberOf(period.periodNo)>numberOf(prior.periodNo));
+      if(newer)latestByStudent.set(studentId,period);
+    });
+    latestByStudent.forEach(function(period,studentId){if(period.id&&periodRemaining(period)<=1)lowByStudent.add(studentId);});
+    var subjectMap=new Map(state.subjects.map(function(row){return [row.id,row];})),teacherMap=new Map(state.teachers.map(function(row){return [row.id,row];}));
+    var scheduledStudentIds=new Set(),end=shiftDate(today,180);
+    state.events.forEach(function(event){var date=dateKey(event.date);if(date<today||date>end||isHiddenEvent(event)||isNonOccupyingEvent(event))return;(event.studentIds||[]).forEach(function(id){scheduledStudentIds.add(id);});});
+    state.recurringRules.forEach(function(rule){if(rule.active===false||(rule.endDate&&rule.endDate<today))return;(rule.studentIds||[]).forEach(function(id){scheduledStudentIds.add(id);});});
+    var nextByStudent=new Map();
+    for(var offset=0;offset<=180&&nextByStudent.size<scheduledStudentIds.size;offset++){
+      effectiveEventsForDate(shiftDate(today,offset)).forEach(function(event){
+        if(isHiddenEvent(event)||isNonOccupyingEvent(event))return;
+        (event.studentIds||[]).forEach(function(id){if(!nextByStudent.has(id))nextByStudent.set(id,event);});
+      });
+    }
+    var rows=state.students.map(function(student){
+      var periods=periodsByStudent.get(student.id)||[],latest=latestByStudent.get(student.id)||{},subject=subjectMap.get(latest.subjectId)||{},teacher=teacherMap.get(latest.teacherId)||{};
+      return {student:student,periods:periods,latest:latest,subject:subject,teacher:teacher,event:nextByStudent.get(student.id)||{},due:dueByStudent.has(student.id),low:lowByStudent.has(student.id),hay:(student.name+' '+(student.phone||'')+' '+periods.map(function(row){return (subjectMap.get(row.subjectId)||{}).name||'';}).join(' ')).toLowerCase()};
+    });
+    var result={rows:rows,latestByStudent:latestByStudent,dueByStudent:dueByStudent,lowByStudent:lowByStudent,nextByStudent:nextByStudent};
+    studentPageIndex.key=key;studentPageIndex.cache=result;return result;
+  }
+  function nextEvent(studentId){return studentPageIndex().nextByStudent.get(studentId)||{};}
+  function renderStudents(){
+    var index=studentPageIndex(),search=clean($('studentSearch').value).toLowerCase(),filter=$('studentPaymentFilter').value;
+    var rows=index.rows.filter(function(item){if(search&&item.hay.indexOf(search)<0)return false;if(filter==='due'&&!item.due)return false;if(filter==='low'&&!item.low)return false;if(filter==='active'&&item.student.active===false)return false;return true;}).sort(function(a,b){return bySort(a.student,b.student);});
+    $('studentMetrics').innerHTML=metric('學生總數',state.students.length,'含停課資料')+metric('尚有未繳',index.dueByStudent.size,'依每一期付款加總')+metric('剩 1 堂以下',index.lowByStudent.size,'建議準備下一期');
+    $('studentRows').innerHTML=rows.map(function(item){var student=item.student,period=item.latest,event=item.event,subject=item.subject,teacher=item.teacher;return '<tr><td><b>'+esc(student.name)+'</b><small>'+(student.active===false?'已停課':'上課中')+'</small></td><td>'+esc(student.phone||'未填')+'<small>LINE：'+(student.line===true?'已綁定':student.line===false?'未綁定':'未確認')+'</small></td><td>'+esc(subject.name||'尚無學費期別')+'<small>'+esc(teacher.name||'未指定老師')+'</small></td><td>'+(period.id?'<b>'+period.usedCount+' / '+period.lessonCount+'</b><small>剩 '+periodRemaining(period)+' 堂</small>':'—')+'</td><td>'+(period.id?'<b>'+money(periodPaid(period))+' / '+money(period.expectedAmount-period.discount)+'</b><small>'+(periodBalance(period)?'尚欠 '+money(periodBalance(period)):'已繳清')+'</small>':'—')+'</td><td>'+(event.id?esc(event.date+' '+event.start):'尚未排課')+'</td><td><button class="btn small secondary" data-student-id="'+esc(student.id)+'">查看學費紀錄</button></td></tr>';}).join('')||'<tr><td colspan="7">沒有符合條件的學生。</td></tr>';
+  }
+  function metric(label,value,small){`);
+
+  source = replaceRequired(
+    source,
+    "      if(data.type==='youzi-course-view')switchView(data.view);",
+    "      if(data.type==='youzi-course-view'){if(data.view==='calendar'){state.currentDate=todayKey();weekAnchor=state.currentDate;if(weekMode)setWeekMode(false);}switchView(data.view);}",
+    'calendar always returns to today'
+  );
   source = replaceRequired(
     source,
     '    restoreFormalDatabase();',
@@ -90,6 +139,22 @@ function patchController() {
   source = source.replace(/\n    var mirror = await readSavedMirror\(\);[\s\S]*?\n    return null;/, '\n    return null;');
   if (source.includes('readSavedMirror') || source.includes('YouziCoursePreviewData.load')) {
     throw new Error('Automatic mirror loading remains in the inline controller.');
+  }
+  if (!source.includes("#opsCourseSubmenu a[data-view]")) {
+    source = replaceRequired(
+      source,
+      '\n  global.YouziOperationsCourseInline = {',
+      `
+  global.document.addEventListener('click', function (event) {
+    var link=event.target.closest&&event.target.closest('#opsCourseSubmenu a[data-view]');
+    if(!link)return;
+    var map={'course-calendar':'calendar','course-students':'students','course-teachers':'teachers','course-settings':'settings'};
+    var view=map[link.dataset.view];if(view)sendView(view);
+  });
+
+  global.YouziOperationsCourseInline = {`,
+      'same-page course navigation listener'
+    );
   }
   fs.writeFileSync(controllerPath, source);
 }
@@ -141,6 +206,55 @@ function patchOperations() {
   } else if (!source.includes('YouziOperationsCourseInline.mount(content,courseView)')) {
     throw new Error('Unable to locate the legacy iframe course render branch.');
   }
+
+  const overviewControls = /  function overviewDayNavigatorHtml\(\)\{[\s\S]*?  function mobileSearchPadHtml\(targetId\)\{/;
+  if (!overviewControls.test(source)) throw new Error('Unable to locate overview date controls.');
+  source = source.replace(overviewControls, `  function overviewDayNavigatorHtml(){
+    const current=overviewDateKey(),today=todayDateKey(),next=dateKeyShift(current,1),disableNext=next>today,todayParts=today.split('-');
+    return '<div class="ops-overview-day-nav">'
+      +'<button type="button" class="ops-button ghost" data-action="overview-day-shift" data-step="-1">← 前一天</button>'
+      +'<button type="button" class="ops-button ops-overview-today '+(state.overviewRange==='today'&&current===today?'primary':'ghost')+'" data-action="overview-range" data-range="today"><b>今天</b><small>'+Number(todayParts[1])+'/'+Number(todayParts[2])+'</small></button>'
+      +'<button type="button" class="ops-button ghost" data-action="overview-day-shift" data-step="1" '+(disableNext?'disabled':'')+'>後一天 →</button>'
+      +'<label class="ops-overview-day-label"><span>查詢日期</span><input class="ops-input" id="overviewDate" type="date" max="'+attr(today)+'" value="'+attr(current)+'"></label>'
+      +'</div>';
+  }
+  function overviewMonthSelectHtml(){
+    const now=new Date(),year=now.getFullYear(),currentMonth=now.getMonth()+1,currentKey=year+'-'+String(currentMonth).padStart(2,'0'),selected=clean(state.overviewMonth)||currentKey;
+    const options=[];
+    for(let month=1;month<=12;month+=1){const key=year+'-'+String(month).padStart(2,'0');options.push('<option value="'+attr(key)+'" '+(key===selected?'selected':'')+' '+(month>currentMonth?'disabled':'')+'>'+year+' 年 '+month+' 月</option>');}
+    return '<button type="button" class="ops-button '+(state.overviewRange==='month'&&selected===currentKey?'primary':'ghost')+'" data-action="overview-current-month">本月</button>'
+      +'<label class="ops-overview-month-select '+(state.overviewRange==='month'?'active':'')+'"><span>選擇月份</span><select class="ops-select" id="overviewMonth">'+options.join('')+'</select></label>';
+  }
+  function overviewRangeControlsHtml(){
+    const customLabel='自訂區間';
+    if(isCompactMobile()){
+      return '<div class="ops-v8-overview-range ops-mobile-overview-range">'
+        +overviewDayNavigatorHtml()
+        +'<div class="ops-mobile-overview-periods">'
+        +overviewMonthSelectHtml()
+        +'<details class="ops-overview-dropdown"><summary class="ops-button '+(state.overviewRange==='custom'?'primary':'ghost')+'">自訂日期</summary><div class="ops-overview-dropdown-panel"><label>開始日期<input class="ops-input" id="overviewFrom" type="date" value="'+attr(state.overviewFrom)+'"></label><label>結束日期<input class="ops-input" id="overviewTo" type="date" value="'+attr(state.overviewTo)+'"></label><button type="button" class="ops-button primary wide" data-action="overview-custom-apply">查詢</button></div></details>'
+        +'</div></div>';
+    }
+    return '<div class="ops-v8-overview-range">'
+      +overviewDayNavigatorHtml()
+      +overviewMonthSelectHtml()
+      +'<button type="button" class="ops-button '+(state.overviewRange==='year'?'primary':'ghost')+'" data-action="overview-range" data-range="year">今年</button>'
+      +'<details class="ops-overview-dropdown"><summary class="ops-button '+(state.overviewRange==='custom'?'primary':'ghost')+'">'+escapeHtml(customLabel)+'</summary><div class="ops-overview-dropdown-panel"><label>開始日期<input class="ops-input" id="overviewFrom" type="date" value="'+attr(state.overviewFrom)+'"></label><label>結束日期<input class="ops-input" id="overviewTo" type="date" value="'+attr(state.overviewTo)+'"></label><button type="button" class="ops-button primary wide" data-action="overview-custom-apply">套用區間</button></div></details>'
+      +'</div>';
+  }
+  function mobileSearchPadHtml(targetId){`);
+
+  const overviewRangeAction = /    if\(action==='overview-range'\)\{[\s\S]*?    \}\n    if\(action==='overview-day-shift'\)/;
+  if (!overviewRangeAction.test(source)) throw new Error('Unable to locate overview range action.');
+  source = source.replace(overviewRangeAction, `    if(action==='overview-range'){
+      const nextRange=el.dataset.range||'today',now=new Date();
+      state.overviewRange=nextRange;
+      if(nextRange==='today')state.overviewDate=todayDateKey();
+      if(nextRange==='month')state.overviewMonth=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+      return render();
+    }
+    if(action==='overview-current-month'){const now=new Date();state.overviewMonth=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');state.overviewRange='month';return render();}
+    if(action==='overview-day-shift')`);
 
   source = source.replace("    global.addEventListener('message',handleCourseWorkspaceMessage);\n", '');
   if (source.includes('<iframe id="opsCourseFrame"')) throw new Error('Legacy course iframe remains in operations-phase1.js');
@@ -233,4 +347,4 @@ for (const obsolete of [
   if (fs.existsSync(obsolete)) fs.unlinkSync(obsolete);
 }
 
-console.log('Built one desktop/mobile course workspace with manual-only Injiaoyun updates.');
+console.log('Built fast students, today-first calendar, and direct overview period controls.');
