@@ -8,6 +8,7 @@ on:
       - "course-center.html"
       - "course-center.css"
       - "course-center.js"
+      - "course-center-bootstrap.js"
       - "course-scheduler-data.js"
       - "operations-hub.html"
       - "portal.html"
@@ -37,13 +38,16 @@ jobs:
           const html = fs.readFileSync('course-center.html', 'utf8');
           const css = fs.readFileSync('course-center.css', 'utf8');
           const js = fs.readFileSync('course-center.js', 'utf8');
+          const bootstrap = fs.readFileSync('course-center-bootstrap.js', 'utf8');
           const hub = fs.readFileSync('operations-hub.html', 'utf8');
           const portal = fs.readFileSync('portal.html', 'utf8');
 
           new vm.Script(js, { filename: 'course-center.js' });
+          new vm.Script(bootstrap, { filename: 'course-center-bootstrap.js' });
 
           if (!html.includes('course-center.css?v=20260729-fresh-course-v1')) throw new Error('Fresh course CSS is missing');
-          if (!html.includes('course-center.js?v=20260729-fresh-course-v1')) throw new Error('Fresh course runtime is missing');
+          if (!html.includes('course-center-bootstrap.js?v=20260729-fresh-course-v2')) throw new Error('Fresh course bootstrap is missing');
+          if (html.includes('<script src="course-center.js?')) throw new Error('Runtime must start only after snapshot protection');
           if (!html.includes('course-scheduler-data.js?v=20260729-fresh-course-v1')) throw new Error('Mirror data adapter is missing');
           if (!css.includes('.schedule-grid')) throw new Error('Fresh schedule grid styling is missing');
 
@@ -51,9 +55,16 @@ jobs:
             for (const page of ['calendar','students','teachers','settings']) {
               if (!source.includes(`course-center.html#${page}`)) throw new Error(`Fresh course link is missing: ${page}`);
             }
+            if (!source.includes("location.replace('course-center.html#'+map[key])")) throw new Error('Legacy course hash redirect is missing');
             if (source.includes('operations-course-authoritative-v1.js')) throw new Error('Legacy iframe course route is still enabled');
             if (source.includes('opsCoursePersistentHost')) throw new Error('Legacy course iframe host is still present');
           }
+
+          if (!bootstrap.includes('removeEmptySnapshots')) throw new Error('Empty snapshot cleanup is missing');
+          if (!bootstrap.includes('hasRealContent')) throw new Error('Real-content validation is missing');
+          if (!bootstrap.includes("store.delete(key)")) throw new Error('Invalid workspace/latest removal is missing');
+          if (!bootstrap.includes('protectMirrorLoader')) throw new Error('Mirror empty-data protection is missing');
+          if (!bootstrap.includes("RUNTIME_SRC = 'course-center.js?v=20260729-fresh-course-v2'")) throw new Error('Protected runtime handoff is missing');
 
           if (!js.includes("WORKSPACE_KEY = 'workspace'")) throw new Error('Workspace source is missing');
           if (!js.includes("LATEST_KEY = 'latest'")) throw new Error('Latest source is missing');
@@ -65,5 +76,5 @@ jobs:
           if (!js.includes('renderCalendar')) throw new Error('Calendar rendering is missing');
           if (!js.includes('saveCourse')) throw new Error('Workspace course creation is missing');
 
-          console.log('Fresh standalone course center verified');
+          console.log('Fresh standalone course center with empty-snapshot protection verified');
           NODE
