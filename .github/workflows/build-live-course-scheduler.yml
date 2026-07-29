@@ -1,0 +1,52 @@
+name: Build Live Course Scheduler
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "course-scheduler.html"
+      - "course-scheduler-live-entry-v1.js"
+      - ".github/scripts/build-live-course-scheduler.cjs"
+      - ".github/workflows/build-live-course-scheduler.yml"
+      - ".github/live-course-scheduler-trigger.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-live-scheduler:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Build live scheduler page
+        run: node .github/scripts/build-live-course-scheduler.cjs
+
+      - name: Verify deterministic startup
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const html = fs.readFileSync('course-scheduler-live.html', 'utf8');
+          if (!html.includes('course-scheduler-live-entry-v1.js?v=20260729-live-full-scheduler-v1')) throw new Error('Live scheduler entry missing');
+          if (html.includes('course-scheduler-startup-gate-v1.js')) throw new Error('Legacy startup gate must not be loaded');
+          if (html.includes('<script src="course-scheduler.js')) throw new Error('Scheduler must be loaded only after data is ready');
+          if (!html.includes("history.replaceState(null,'','course-scheduler.html?live=20260729-v1'")) throw new Error('Scheduler page kind compatibility missing');
+          console.log('Live scheduler page verified');
+          NODE
+
+      - name: Commit generated page
+        run: |
+          if git diff --quiet -- course-scheduler-live.html; then
+            echo "Live scheduler page is already current."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add course-scheduler-live.html
+          git commit -m "Publish deterministic live full scheduler"
+          git push origin HEAD:main
