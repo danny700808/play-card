@@ -38,9 +38,15 @@ jobs:
             ['course-scheduler.js?v=20260728-persistent-shell-v3', 'course-scheduler.js?v=20260729-full-scheduler-v2']
           ]);
 
-          replaceAll('operations-phase1.js', [
-            ['course-scheduler.html?embed=1&view=', 'course-scheduler.html?cv=20260729-full-scheduler-v2&embed=1&view=']
-          ]);
+          {
+            const path = 'operations-phase1.js';
+            let text = fs.readFileSync(path, 'utf8');
+            text = text.replace(
+              /course-scheduler\.html\?(?!cv=20260729-full-scheduler-v2&)/g,
+              'course-scheduler.html?cv=20260729-full-scheduler-v2&'
+            );
+            fs.writeFileSync(path, text);
+          }
 
           for (const path of ['operations-hub.html', 'portal.html']) {
             replaceAll(path, [
@@ -58,5 +64,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add course-scheduler.html operations-phase1.js operations-hub.html portal.html
-          git commit -m "Open the fixed full scheduler from operations without stale cache"
+          git commit -m "Open the fixed full scheduler from a versioned iframe URL"
           git push origin HEAD:main
