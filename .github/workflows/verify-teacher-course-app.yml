@@ -1,0 +1,68 @@
+name: Verify Teacher Course App
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "teacher-course-portal.html"
+      - "teacher-course-portal-v8.js"
+      - "teacher-course-session-v8.js"
+      - "teacher-course-portal-v8.css"
+      - "teacher-home.html"
+      - ".github/workflows/verify-teacher-course-app.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-teacher-course-app-main
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check JavaScript syntax
+        run: |
+          node --check teacher-course-portal-v8.js
+          node --check teacher-course-session-v8.js
+
+      - name: Verify one teacher app shell
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const html = fs.readFileSync('teacher-course-portal.html', 'utf8');
+          const runtime = fs.readFileSync('teacher-course-portal-v8.js', 'utf8');
+          const session = fs.readFileSync('teacher-course-session-v8.js', 'utf8');
+          const css = fs.readFileSync('teacher-course-portal-v8.css', 'utf8');
+          const redirect = fs.readFileSync('teacher-home.html', 'utf8');
+          const internalWorkflow = fs.readFileSync('.github/workflows/build-live-course-scheduler.yml', 'utf8');
+
+          const requiredTabs = ['課表','學生','薪資','租用','其他'];
+          for (const label of requiredTabs) {
+            if (!html.includes(`<b>${label}</b>`)) throw new Error(`Teacher tab is missing: ${label}`);
+          }
+          if ((html.match(/teacher-bottom-tabs/g) || []).length !== 1) throw new Error('Teacher bottom navigation must exist exactly once');
+          if (html.includes('teacherQuickHome') || html.includes('data-teacher-quick')) throw new Error('Duplicate top teacher shortcuts remain');
+          if (!html.includes('id="teacherMoreBackdrop"')) throw new Error('Other bottom sheet is missing');
+          for (const path of ['profile.html','contract.html','announcements.html','task.html','teacher-goods.html','forms-hub.html']) {
+            if (!html.includes(`href="${path}"`)) throw new Error(`Other action is missing: ${path}`);
+          }
+          if (!html.includes('teacher-course-session-v8.js') || !html.includes('teacher-course-portal-v8.js')) throw new Error('Canonical teacher scripts are not loaded');
+          if (!runtime.includes("SESSION_KEY = 'youzi.coursePortal.teacher.session.v1'")) throw new Error('Existing teacher session key is not reused');
+          if (!runtime.includes('tokenFingerprint') || !runtime.includes('youzi.teacherCourseApp.v8.')) throw new Error('Teacher cache is not session-scoped');
+          if (!runtime.includes("coursePortalTeacherData") || !runtime.includes('coursePortalTeacherAction') || !runtime.includes('coursePortalTeacherLessonState')) throw new Error('Teacher course actions are incomplete');
+          if (!session.includes('sessionLoading') || !session.includes('MutationObserver')) throw new Error('Saved-session loading gate is missing');
+          if (!css.includes('grid-template-columns:repeat(5') || !css.includes('.teacher-more-sheet')) throw new Error('Five tabs or Other sheet styles are missing');
+          if (!css.includes('.week-cell.head{position:sticky') || !css.includes('.week-cell.time{position:sticky')) throw new Error('Sticky date or time axes are missing');
+          if (!redirect.includes("location.replace('teacher-course-portal.html?'")) throw new Error('External teacher login does not enter the teacher course app');
+          if (internalWorkflow.includes('refine-course-portals.cjs') || internalWorkflow.includes('teacher-course-portal.html')) throw new Error('Internal course builder still controls the teacher app');
+          if (fs.existsSync('.github/scripts/refine-course-portals.cjs')) throw new Error('Obsolete teacher generator still exists');
+
+          console.log('Canonical teacher course app verified');
+          NODE
