@@ -11,6 +11,8 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const bootstrap = read('course-data-auto-bootstrap-v1.js');
 const mobileCourse = read('operations-mobile-course-fix-v1.js');
 const reviewData = read('course-scheduler-review-data.js');
+const scheduler = read('course-scheduler.js');
+const schedulerHtml = read('course-scheduler.html');
 const autoRead = read('functions/injiaoyunEducationAutoRead.js');
 const courseIndex = read('functions/courseIndex.js');
 const portalUtils = read('functions/coursePortalUtils.js');
@@ -23,10 +25,16 @@ const portal = read('portal.html');
 new vm.Script(bootstrap, { filename: 'course-data-auto-bootstrap-v1.js' });
 new vm.Script(mobileCourse, { filename: 'operations-mobile-course-fix-v1.js' });
 new vm.Script(reviewData, { filename: 'course-scheduler-review-data.js' });
+new vm.Script(scheduler, { filename: 'course-scheduler.js' });
 new vm.Script(autoRead, { filename: 'functions/injiaoyunEducationAutoRead.js' });
 new vm.Script(courseIndex, { filename: 'functions/courseIndex.js' });
 new vm.Script(portalUtils, { filename: 'functions/coursePortalUtils.js' });
 new vm.Script(publicAccessScript, { filename: '.github/scripts/course-mirror-public.cjs' });
+
+const htmlIds = new Set(Array.from(schedulerHtml.matchAll(/\bid=["']([^"']+)["']/g), (match) => match[1]));
+const requiredSchedulerIds = new Set(Array.from(scheduler.matchAll(/\$\(['"]([^'"]+)['"]\)/g), (match) => match[1]));
+const missingSchedulerIds = Array.from(requiredSchedulerIds).filter((id) => !htmlIds.has(id));
+assert.deepStrictEqual(missingSchedulerIds, [], `完整課表 HTML 缺少程式需要的元素：${missingSchedulerIds.join('、')}`);
 
 assert(bootstrap.includes("AUTO_FUNCTION_NAME = 'loadInjiaoyunEducationMirrorAuto'"), '前端未呼叫唯讀雲端課務資料');
 assert(bootstrap.includes("AUTHENTICATED_FUNCTION_NAME = 'loadInjiaoyunEducationMirror'"), '自動讀取尚未部署時缺少既有唯讀函式相容路徑');
