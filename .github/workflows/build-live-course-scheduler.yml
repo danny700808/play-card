@@ -31,6 +31,8 @@ jobs:
           const fs = require('fs');
           const html = fs.readFileSync('course-scheduler-live.html', 'utf8');
           const entry = fs.readFileSync('course-scheduler-live-entry-v1.js', 'utf8');
+          const hub = fs.readFileSync('operations-hub.html', 'utf8');
+          const portal = fs.readFileSync('portal.html', 'utf8');
           if (!html.includes('course-scheduler-live-entry-v1.js?v=20260729-live-full-scheduler-v2')) throw new Error('Live scheduler entry missing');
           if (html.includes('course-scheduler-startup-gate-v1.js')) throw new Error('Legacy startup gate must not be loaded');
           if (html.includes('course-data-auto-bootstrap-v1.js')) throw new Error('Legacy auto reload bootstrap must not be loaded');
@@ -38,17 +40,20 @@ jobs:
           if (html.includes('<script src="course-scheduler.js')) throw new Error('Scheduler must be loaded only after data is ready');
           if (!entry.includes("CLOUD_FUNCTION = 'loadInjiaoyunEducationMirrorAuto'")) throw new Error('Direct cloud fallback missing');
           if (!entry.includes("type: 'youzi-course-snapshot-request'")) throw new Error('Parent snapshot request missing');
+          for (const source of [hub, portal]) {
+            if (!source.includes('operations-course-live-route-v1.js?v=20260729-live-full-scheduler-v2')) throw new Error('Operations live route cache version missing');
+          }
           console.log('Live scheduler page verified');
           NODE
 
-      - name: Commit generated page
+      - name: Commit generated files
         run: |
-          if git diff --quiet -- course-scheduler-live.html; then
-            echo "Live scheduler page is already current."
+          if git diff --quiet -- course-scheduler-live.html operations-hub.html portal.html; then
+            echo "Live scheduler files are already current."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add course-scheduler-live.html
+          git add course-scheduler-live.html operations-hub.html portal.html
           git commit -m "Publish deterministic live full scheduler"
           git push origin HEAD:main
