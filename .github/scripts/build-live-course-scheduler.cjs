@@ -5,7 +5,7 @@ const fs = require('fs');
 const sourcePath = 'course-scheduler.html';
 const targetPath = 'course-scheduler-live.html';
 const runtimeVersion = '20260729-formal-runtime-v4';
-const routeVersion = '20260729-authoritative-course-v4';
+const routeVersion = '20260729-authoritative-course-v5';
 let html = fs.readFileSync(sourcePath, 'utf8');
 
 html = html.replace(/course-scheduler\.css\?v=[^"']+/g, `course-scheduler.css?v=${runtimeVersion}`);
@@ -40,11 +40,20 @@ for (const path of ['operations-hub.html', 'portal.html']) {
     const escaped = legacy.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     source = source.replace(new RegExp(`\\s*<script src="${escaped}\\?v=[^"]+"><\\/script>\\s*`, 'g'), '\n');
   }
+
   source = source.replace(
-    /operations-course-authoritative-v1\.js\?v=[^"']+/g,
-    `operations-course-authoritative-v1.js?v=${routeVersion}`
+    /\s*<script src="operations-course-authoritative-v1\.js\?v=[^"]+"><\/script>\s*/g,
+    '\n'
   );
+
+  const operationsScript = /<script src="operations-phase1\.js\?v=[^"]+"><\/script>/;
+  if (!operationsScript.test(source)) throw new Error(`Unable to locate operations-phase1.js in ${path}`);
+  source = source.replace(
+    operationsScript,
+    match => `<script src="operations-course-authoritative-v1.js?v=${routeVersion}"></script>\n  ${match}`
+  );
+
   fs.writeFileSync(path, source);
 }
 
-console.log(`Built ${targetPath} with ${runtimeVersion} and route ${routeVersion}`);
+console.log(`Built ${targetPath} with ${runtimeVersion} and early route ${routeVersion}`);
