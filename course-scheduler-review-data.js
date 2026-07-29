@@ -143,8 +143,8 @@
   if (window.__YOUZI_COURSE_AUTO_BOOTSTRAP_REQUESTED__) return;
   window.__YOUZI_COURSE_AUTO_BOOTSTRAP_REQUESTED__ = true;
   var bootstrap = 'course-data-auto-bootstrap-v1.js?v=20260729-auto-cloud-v4';
-  var gate = 'course-scheduler-startup-gate-v1.js?v=20260729-full-scheduler-v1';
-  var scheduler = 'course-scheduler.js?v=20260729-full-scheduler-v1';
+  var gate = 'course-scheduler-startup-gate-v1.js?v=20260729-full-scheduler-v2';
+  var scheduler = 'course-scheduler.js?v=20260729-full-scheduler-v3';
   if (document.readyState === 'loading') {
     document.write('<script src="' + bootstrap + '"><\\/script>');
     document.write('<script src="' + gate + '"><\\/script>');
