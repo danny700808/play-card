@@ -4,26 +4,36 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#233b35">
-  <title>新版排課系統｜柚子樂器</title>
+  <title>課務管理｜柚子樂器</title>
   <link rel="icon" href="yuzu-logo-green.png">
-  <link rel="stylesheet" href="course-scheduler.css?v=20260729-full-scheduler-v5">
+  <link rel="stylesheet" href="course-scheduler.css?v=20260729-full-course-standalone-v1">
+  <link rel="stylesheet" href="course-scheduler-standalone.css?v=20260729-full-course-standalone-v1">
 </head>
 <body>
   <div class="app-shell">
     <aside class="sidebar">
-      <div class="brand">
+      <a class="brand" href="portal.html#overview">
         <div class="brand-icon">♫</div>
-        <div><strong>新版排課系統</strong><small>柚子樂器課務管理</small></div>
-      </div>
+        <div><strong>全通路營運中心</strong><small>柚子樂器營運管理</small></div>
+      </a>
       <div class="mode-pill" id="sideModeBadge">資料尚未載入</div>
-      <nav class="main-nav" aria-label="排課系統選單">
+      <nav class="main-nav" aria-label="全通路營運中心選單">
+        <a href="portal.html#overview"><span>⌂</span><b>營運總覽</b></a>
+        <div class="nav-section-title"><span>課</span><b>課務管理</b></div>
         <button type="button" class="active" data-view="calendar"><span>日</span><b>課程日表</b></button>
         <button type="button" data-view="students"><span>生</span><b>學生與學費</b></button>
-        <button type="button" data-view="teachers"><span>師</span><b>老師與薪資</b></button>
+        <button type="button" data-view="teachers"><span>師</span><b>老師薪資</b></button>
         <button type="button" data-view="settings"><span>設</span><b>系統設定</b></button>
+        <a href="portal.html#sales"><span>＄</span><b>現場銷售</b></a>
+        <a href="portal.html#sync"><span>↻</span><b>平台訂單</b></a>
+        <a href="portal.html#products"><span>▦</span><b>商品資訊</b></a>
+        <a href="portal.html#purchases"><span>⇧</span><b>庫存作業</b></a>
+        <a href="portal.html#receivables"><span>帳</span><b>應收帳款</b></a>
+        <a href="portal.html#customers"><span>人</span><b>客戶會員</b></a>
+        <a href="portal.html#rentals"><span>♫</span><b>租賃營運</b></a>
       </nav>
       <div class="sidebar-foot">
-        <a href="portal.html">返回營運中心</a>
+        <a href="settings.html">返回管理首頁</a>
         <button type="button" id="sideNewEvent">＋ 快速新增排課</button>
       </div>
     </aside>
@@ -216,11 +226,7 @@
   <script src="config.js?v=20260722-course-scheduler-v2"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="course-scheduler-data.js?v=20260729-full-scheduler-v5"></script>
-  <script>window.__YOUZI_COURSE_AUTO_BOOTSTRAP_REQUESTED__=true;</script>
-  <script src="course-data-auto-bootstrap-v1.js?v=20260729-auto-cloud-v5"></script>
-  <script src="course-scheduler-review-data.js?v=20260729-full-scheduler-v5"></script>
-  <script src="course-scheduler-startup-gate-v1.js?v=20260729-full-scheduler-v3"></script>
-  <script src="course-scheduler.js?v=20260729-full-scheduler-v4"></script>
+  <script src="course-scheduler-data.js?v=20260729-full-course-standalone-v1"></script>
+  <script src="course-scheduler-full-bootstrap.js?v=20260729-full-course-standalone-v1"></script>
 </body>
 </html>

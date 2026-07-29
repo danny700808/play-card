@@ -10,7 +10,7 @@
     (function(){
       var map={'#course-calendar':'calendar','#course-students':'students','#course-teachers':'teachers','#course-settings':'settings'};
       var key=String(location.hash||'').split('?')[0];
-      if(map[key]) location.replace('course-center.html#'+map[key]);
+      if(map[key]) location.replace('course-scheduler.html?view='+map[key]);
     })();
   </script>
   <link rel="stylesheet" href="operations-phase1.css?v=20260728-course-shell-v20">
@@ -32,10 +32,10 @@
             <span>課</span><div><b>課務管理</b></div><i aria-hidden="true">⌄</i>
           </button>
           <div class="ops-nav-submenu" id="opsCourseSubmenu">
-            <a href="course-center.html#calendar"><span>日</span><div><b>課程日表</b></div></a>
-            <a href="course-center.html#students"><span>生</span><div><b>學生與學費</b></div></a>
-            <a href="course-center.html#teachers"><span>師</span><div><b>老師薪資</b></div></a>
-            <a href="course-center.html#settings"><span>設</span><div><b>系統設定</b></div></a>
+            <a href="course-scheduler.html?view=calendar"><span>日</span><div><b>課程日表</b></div></a>
+            <a href="course-scheduler.html?view=students"><span>生</span><div><b>學生與學費</b></div></a>
+            <a href="course-scheduler.html?view=teachers"><span>師</span><div><b>老師薪資</b></div></a>
+            <a href="course-scheduler.html?view=settings"><span>設</span><div><b>系統設定</b></div></a>
           </div>
         </div>
         <a href="#sales" data-view="sales"><span>＄</span><div><b>現場銷售</b></div></a>

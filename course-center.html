@@ -2,143 +2,15 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#173247">
-  <title>課務管理｜柚子樂器</title>
-  <link rel="icon" href="yuzu-logo-green.png">
-  <link rel="stylesheet" href="course-center.css?v=20260729-fresh-course-v1">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>正在開啟完整課務管理</title>
+  <script>
+    (function(){
+      var view=String(location.hash||'#calendar').replace(/^#/,'').split('?')[0];
+      if(['calendar','students','teachers','settings'].indexOf(view)<0)view='calendar';
+      location.replace('course-scheduler.html?view='+view);
+    })();
+  </script>
 </head>
-<body>
-  <div class="app-shell">
-    <aside class="sidebar">
-      <a class="brand" href="portal.html#overview">
-        <span class="brand-mark">♫</span>
-        <span><b>全通路營運中心</b><small>柚子樂器營運管理</small></span>
-      </a>
-      <nav class="nav" aria-label="主要選單">
-        <a href="portal.html#overview"><span>⌂</span><b>營運總覽</b></a>
-        <div class="nav-group open">
-          <div class="nav-group-title"><span>課</span><b>課務管理</b></div>
-          <a href="#calendar" data-page="calendar"><span>日</span><b>課程日表</b></a>
-          <a href="#students" data-page="students"><span>生</span><b>學生與學費</b></a>
-          <a href="#teachers" data-page="teachers"><span>師</span><b>老師薪資</b></a>
-          <a href="#settings" data-page="settings"><span>設</span><b>系統設定</b></a>
-        </div>
-        <a href="portal.html#sales"><span>＄</span><b>現場銷售</b></a>
-        <a href="portal.html#sync"><span>↻</span><b>平台訂單</b></a>
-        <a href="portal.html#products"><span>▦</span><b>商品資訊</b></a>
-        <a href="portal.html#purchases"><span>⇧</span><b>庫存作業</b></a>
-        <a href="portal.html#receivables"><span>帳</span><b>應收帳款</b></a>
-        <a href="portal.html#customers"><span>人</span><b>客戶會員</b></a>
-        <a href="portal.html#rentals"><span>♫</span><b>租賃營運</b></a>
-      </nav>
-      <a class="back-admin" href="settings.html">返回管理首頁</a>
-    </aside>
-
-    <main class="main">
-      <header class="topbar">
-        <div>
-          <h1 id="pageTitle">課程日表</h1>
-          <p id="pageSubtitle">讀取正式課務資料中</p>
-        </div>
-        <div class="top-actions">
-          <span class="source-badge" id="sourceBadge">尚未載入</span>
-          <button class="button outline" id="reloadButton" type="button">重新讀取</button>
-          <button class="button primary" id="newCourseButton" type="button">＋ 新增排課</button>
-        </div>
-      </header>
-
-      <section class="status-panel" id="statusPanel" aria-live="polite">
-        <div class="status-icon">同</div>
-        <div class="status-copy"><b id="statusTitle">正在尋找正式課務資料</b><span id="statusText">依序檢查 workspace、latest、舊正式快取與音教雲已同步鏡像。</span></div>
-      </section>
-
-      <section class="recovery-panel hidden" id="recoveryPanel">
-        <div>
-          <h2>尚未找到可用的正式課務資料</h2>
-          <p>請輸入音教雲手動同步密碼。這裡只讀取已同步鏡像，不會重新登入或更新舊系統。</p>
-        </div>
-        <form id="recoveryForm">
-          <input id="recoveryPin" type="password" autocomplete="current-password" placeholder="輸入同步密碼" required>
-          <button class="button primary" type="submit">讀取已同步資料</button>
-        </form>
-        <details><summary>資料診斷</summary><pre id="diagnosticText"></pre></details>
-      </section>
-
-      <section class="page active" id="calendarPage">
-        <div class="calendar-toolbar card">
-          <div class="date-controls">
-            <button class="button soft" id="todayButton" type="button">今天</button>
-            <button class="icon-button" data-day="-1" type="button">‹</button>
-            <input id="dateInput" type="date">
-            <button class="icon-button" data-day="1" type="button">›</button>
-            <strong id="dateLabel"></strong>
-          </div>
-          <div class="calendar-actions">
-            <button class="button outline" id="mirrorLoadButton" type="button">讀取已同步鏡像</button>
-            <button class="button primary" id="calendarNewButton" type="button">＋ 新增排課</button>
-          </div>
-        </div>
-
-        <div class="metrics" id="calendarMetrics"></div>
-        <div class="legend card">
-          <b>課表標示</b><span><i class="fixed"></i>固定課</span><span><i class="single"></i>單次／調課</span><span><i class="rental"></i>教室租用</span><span><i class="trial"></i>體驗課</span><span><i class="leave"></i>請假</span>
-        </div>
-        <section class="schedule-card card">
-          <div class="schedule-empty hidden" id="scheduleEmpty"></div>
-          <div class="schedule-scroll"><div class="schedule-grid" id="scheduleGrid"></div></div>
-        </section>
-      </section>
-
-      <section class="page" id="studentsPage">
-        <div class="section-head"><div><h2>學生與學費</h2><p>顯示正式資料中的學生、科目、老師、堂數與學費狀態。</p></div><input class="search" id="studentSearch" placeholder="搜尋姓名、電話或科目"></div>
-        <div class="metrics" id="studentMetrics"></div>
-        <div class="table-card card"><table><thead><tr><th>學生</th><th>電話</th><th>科目／老師</th><th>堂數</th><th>學費狀態</th><th>下次上課</th></tr></thead><tbody id="studentRows"></tbody></table></div>
-      </section>
-
-      <section class="page" id="teachersPage">
-        <div class="section-head"><div><h2>老師薪資</h2><p>依目前月份統計實際授課與老師拆帳。</p></div><input class="search" id="teacherSearch" placeholder="搜尋老師或科目"></div>
-        <div class="metrics" id="teacherMetrics"></div>
-        <div class="teacher-list card" id="teacherList"></div>
-      </section>
-
-      <section class="page" id="settingsPage">
-        <div class="section-head"><div><h2>系統設定</h2><p>目前正式資料中的教室、科目與資料來源。</p></div></div>
-        <div class="settings-grid">
-          <section class="card settings-card"><h3>教室</h3><div id="roomSettings"></div></section>
-          <section class="card settings-card"><h3>科目</h3><div id="subjectSettings"></div></section>
-          <section class="card settings-card"><h3>資料來源</h3><div id="dataSettings"></div></section>
-        </div>
-      </section>
-    </main>
-  </div>
-
-  <div class="modal hidden" id="courseModal" role="dialog" aria-modal="true" aria-labelledby="courseModalTitle">
-    <div class="modal-card">
-      <header><h2 id="courseModalTitle">新增排課</h2><button id="courseModalClose" type="button">×</button></header>
-      <form id="courseForm">
-        <div class="form-grid">
-          <label>日期<input id="courseDate" type="date" required></label>
-          <label>開始時間<input id="courseStart" type="time" step="1800" required></label>
-          <label>時長<select id="courseDuration"><option value="30">30 分鐘</option><option value="60" selected>60 分鐘</option><option value="90">90 分鐘</option><option value="120">120 分鐘</option></select></label>
-          <label>類型<select id="courseType"><option value="single">單次課程</option><option value="trial">體驗課</option><option value="rental">教室租用</option><option value="fixed">固定課</option></select></label>
-          <label>教室<select id="courseRoom" required></select></label>
-          <label>學生<select id="courseStudent"></select></label>
-          <label>老師<select id="courseTeacher"></select></label>
-          <label>科目<select id="courseSubject"></select></label>
-          <label class="wide">備註<input id="courseNote" placeholder="可不填"></label>
-        </div>
-        <footer><button class="button outline" id="courseCancel" type="button">取消</button><button class="button primary" type="submit">儲存到 workspace</button></footer>
-      </form>
-    </div>
-  </div>
-
-  <div class="toast" id="toast" aria-live="polite"></div>
-
-  <script src="config.js?v=20260722-course-center-v1"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="course-scheduler-data.js?v=20260729-fresh-course-v1"></script>
-  <script src="course-center-bootstrap.js?v=20260729-fresh-course-v2"></script>
-</body>
+<body>正在開啟完整課務管理…</body>
 </html>
