@@ -1,7 +1,7 @@
 (function (global) {
   'use strict';
 
-  var VERSION = '20260729-authoritative-course-v6';
+  var VERSION = '20260729-authoritative-course-v7';
   var VIEW_MAP = {
     'course-calendar': 'calendar',
     'course-students': 'students',
@@ -94,6 +94,30 @@
     } catch (_) {}
   }
 
+  function applyEmbeddedLayout(frame) {
+    try {
+      var doc = frame && frame.contentDocument;
+      if (!doc || !doc.head || !doc.body) return;
+      doc.body.classList.add('embedded-in-operations');
+      var style = doc.getElementById('youziEmbeddedSchedulerStyle');
+      if (!style) {
+        style = doc.createElement('style');
+        style.id = 'youziEmbeddedSchedulerStyle';
+        style.textContent = [
+          'html,body{min-height:100%;background:#edf3f0}',
+          'body.embedded-in-operations .app-shell{display:block;min-height:100vh}',
+          'body.embedded-in-operations .sidebar{display:none!important}',
+          'body.embedded-in-operations .main-content{grid-column:auto!important;margin:0!important;padding:0 16px 32px!important;width:100%!important}',
+          'body.embedded-in-operations .page-header{display:none!important}',
+          'body.embedded-in-operations .sidebar-foot{display:none!important}',
+          'body.embedded-in-operations .schedule-scroll{max-height:calc(100vh - 235px);min-height:620px}',
+          '@media(max-width:860px){body.embedded-in-operations .main-content{padding:0 7px 20px!important}}'
+        ].join('');
+        doc.head.appendChild(style);
+      }
+    } catch (_) {}
+  }
+
   function ensureFrame(host) {
     var frame = host.querySelector('#opsCourseFrame');
     if (!frame) {
@@ -105,12 +129,15 @@
       frame.setAttribute('src', schedulerUrl());
       frame.addEventListener('load', function () {
         frame.dataset.authoritativeLoaded = '1';
+        applyEmbeddedLayout(frame);
         sendView(frame, courseView() || 'calendar');
       });
       host.appendChild(frame);
     } else if (String(frame.getAttribute('src') || '').indexOf('v=' + VERSION) < 0) {
       frame.dataset.authoritativeLoaded = '0';
       frame.setAttribute('src', schedulerUrl());
+    } else {
+      applyEmbeddedLayout(frame);
     }
     return frame;
   }
@@ -161,8 +188,8 @@
     style.id = 'opsAuthoritativeCourseStyle';
     style.textContent = [
       '#opsContent[hidden],#opsCoursePersistentHost[hidden]{display:none!important}',
-      '#opsCoursePersistentHost{padding:0;min-height:calc(100dvh - 88px);background:#fff}',
-      '#opsCoursePersistentHost .ops-course-frame{display:block;width:100%;height:calc(100dvh - 88px);min-height:720px;border:0;background:#fff}'
+      '#opsCoursePersistentHost{padding:0;min-height:calc(100dvh - 88px);background:#edf3f0}',
+      '#opsCoursePersistentHost .ops-course-frame{display:block;width:100%;height:calc(100dvh - 88px);min-height:720px;border:0;background:#edf3f0}'
     ].join('');
     global.document.head.appendChild(style);
   }
