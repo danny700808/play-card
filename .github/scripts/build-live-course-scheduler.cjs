@@ -4,9 +4,11 @@ const fs = require('fs');
 
 const sourcePath = 'course-scheduler.html';
 const targetPath = 'course-scheduler-live.html';
+const performanceVersion = '20260729-course-performance-v1';
+const routeVersion = '20260729-interactive-course-v2';
 let html = fs.readFileSync(sourcePath, 'utf8');
 
-html = html.replace(/course-scheduler\.css\?v=[^"']+/g, 'course-scheduler.css?v=20260729-live-full-scheduler-v2');
+html = html.replace(/course-scheduler\.css\?v=[^"']+/g, `course-scheduler.css?v=${performanceVersion}`);
 
 const firstScript = html.indexOf('  <script src="config.js');
 const bodyEnd = html.lastIndexOf('</body>');
@@ -17,8 +19,8 @@ if (firstScript < 0 || bodyEnd < 0 || firstScript >= bodyEnd) {
 const scripts = `  <script src="config.js?v=20260722-course-scheduler-v2"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="course-scheduler-data.js?v=20260729-live-full-scheduler-v2"></script>
-  <script src="course-scheduler-live-entry-v1.js?v=20260729-live-full-scheduler-v2"></script>
+  <script src="course-scheduler-data.js?v=${performanceVersion}"></script>
+  <script src="course-scheduler-live-entry-v1.js?v=${performanceVersion}"></script>
 `;
 
 html = html.slice(0, firstScript) + scripts + html.slice(bodyEnd);
@@ -26,8 +28,11 @@ fs.writeFileSync(targetPath, html);
 
 for (const path of ['operations-hub.html', 'portal.html']) {
   let source = fs.readFileSync(path, 'utf8');
-  source = source.replace(/operations-course-live-route-v1\.js\?v=[^"']+/g, 'operations-course-live-route-v1.js?v=20260729-direct-calendar-v1');
+  source = source.replace(
+    /operations-course-authoritative-v1\.js\?v=[^"']+/g,
+    `operations-course-authoritative-v1.js?v=${routeVersion}`
+  );
   fs.writeFileSync(path, source);
 }
 
-console.log(`Built ${targetPath} and preserved the direct calendar route version`);
+console.log(`Built ${targetPath} with ${performanceVersion} and route ${routeVersion}`);
