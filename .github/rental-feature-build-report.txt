@@ -1,25 +1,12 @@
 BEGIN
-/home/runner/work/play-card/play-card/.github/scripts/extend-rental-attendance-bonus.cjs:72
-// trigger 20260730
-                   
-
-SyntaxError: Unexpected end of input
-    at wrapSafe (node:internal/modules/cjs/loader:1713:18)
-    at Module._compile (node:internal/modules/cjs/loader:1755:20)
-    at Object..js (node:internal/modules/cjs/loader:1913:10)
-    at Module.load (node:internal/modules/cjs/loader:1505:32)
-    at Function._load (node:internal/modules/cjs/loader:1309:12)
-    at wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
-    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5)
-    at node:internal/main/run_main_module:36:49
-
-Node.js v22.23.1
-PATCH_STATUS=1
+CORRECTED_RUN=20260730
+Rental categories, late attendance and teacher bonus features installed.
+PATCH_STATUS=0
 BACKEND_STATUS=0
 TEACHER_STATUS=0
-RENTAL_SETTINGS=1
-LATE_ATTENDANCE=1
-BONUS_REQUEST=1
-ADMIN_LINK=1
-BONUS_MODAL=1
+RENTAL_SETTINGS=0
+LATE_ATTENDANCE=0
+BONUS_REQUEST=0
+ADMIN_LINK=0
+BONUS_MODAL=0
 END

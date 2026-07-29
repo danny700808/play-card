@@ -280,7 +280,7 @@
   function renderRoster() {
     document.getElementById('studentCount').textContent = data.roster.length;
     document.getElementById('rosterBadge').textContent = `${data.roster.length} 位`;
-    document.getElementById('rosterList').innerHTML = data.roster.length ? data.roster.map((student) => `<article class="list-row teacher-roster-row"><strong>${escapeHtml(student.name)}</strong><span>手機末四碼 ${escapeHtml(student.phoneLast4 || '未提供')}</span><button class="btn soft" type="button" data-student-action="${escapeHtml(student.id)}">增加課程</button></article>`).join('') : '<p class="muted">目前沒有可顯示的學生。</p>';
+    document.getElementById('rosterList').innerHTML = data.roster.length ? data.roster.map((student) => `<article class="list-row teacher-roster-row"><strong>${escapeHtml(student.name)}</strong><span>手機末四碼 ${escapeHtml(student.phoneLast4 || '未提供')}</span><span><button class="btn soft" type="button" data-student-action="${escapeHtml(student.id)}">增加課程</button> <button class="btn" type="button" data-bonus-student="${escapeHtml(student.id)}" data-bonus-name="${escapeHtml(student.name)}">教材／商品</button></span></article>`).join('') : '<p class="muted">目前沒有可顯示的學生。</p>';
   }
 
   function renderPayroll() {
@@ -537,7 +537,11 @@
   document.getElementById('rosterList').addEventListener('click', (event) => {
     const button = event.target.closest('[data-student-action]');
     if (button) fillAction({ action: 'extra_lesson', studentId: button.dataset.studentAction, date: weekStart, startTime: '10:00', endTime: '11:00' });
+    const bonus=event.target.closest('[data-bonus-student]');
+    if(bonus){const form=document.getElementById('bonusRequestForm');form.elements.studentId.value=bonus.dataset.bonusStudent;form.elements.studentName.value=bonus.dataset.bonusName;document.getElementById('bonusStudentName').value=bonus.dataset.bonusName;document.getElementById('bonusRequestModal').classList.remove('hidden');}
   });
+  document.getElementById('closeBonusRequest').addEventListener('click',()=>document.getElementById('bonusRequestModal').classList.add('hidden'));
+  document.getElementById('bonusRequestForm').addEventListener('submit',async(event)=>{event.preventDefault();const button=event.submitter;loading(button,true,'送出中…');try{const form=event.currentTarget;let photoData='';const file=document.getElementById('bonusPhoto').files[0];if(file){photoData=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result||''));reader.onerror=reject;reader.readAsDataURL(file);});}const result=await invoke('coursePortalTeacherBonusRequest',{sessionToken:token,studentId:form.elements.studentId.value,studentName:form.elements.studentName.value,description:form.elements.description.value,photoData});document.getElementById('bonusRequestModal').classList.add('hidden');form.reset();toast(result.message||'申請已送出。');}catch(error){toast(error.message,'error');}finally{loading(button,false);}});
 
   document.getElementById('actionType').addEventListener('change', () => { syncActionMode(); loadAvailability(); });
   document.getElementById('actionSourceLesson').addEventListener('change', (event) => { applySource((data.events || []).find((item) => item.id === event.target.value)); syncActionMode(); loadAvailability(); });

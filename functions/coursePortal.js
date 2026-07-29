@@ -38,13 +38,21 @@ const MIRROR = Object.freeze({
   events: 'opsEducationMirrorEvents'
 });
 const RENTAL_USE_OPTIONS = Object.freeze([
-  { id: 'guitar', name: '彈吉他／自備樂器' },
-  { id: 'piano', name: '彈鋼琴' },
-  { id: 'drums', name: '打鼓' },
-  { id: 'band', name: '樂團／多人排練' },
-  { id: 'teaching', name: '教學／會議' },
-  { id: 'other', name: '其他用途' }
+  { id: 'piano', name: '彈鋼琴', roomIds: [] },
+  { id: 'drums', name: '打爵士鼓', roomIds: [] },
+  { id: 'band', name: '團練', roomIds: [] },
+  { id: 'other', name: '其他用途', roomIds: [] }
 ]);
+
+async function rentalUseOptions(){
+  const snap=await db.collection('coursePortalSettings').doc('rentalUses').get();
+  const rows=snap.exists&&Array.isArray(snap.data().items)?snap.data().items:RENTAL_USE_OPTIONS;
+  return rows.map((row,index)=>({id:clean(row.id)||('use-'+(index+1)),name:clean(row.name)||('用途 '+(index+1)),roomIds:Array.isArray(row.roomIds)?row.roomIds.map(clean).filter(Boolean):[],active:row.active!==false})).filter(row=>row.active);
+}
+function rentalUseAllowsRoom(options,useType,roomId){
+  const selected=(options||[]).find(row=>row.id===clean(useType));
+  return !selected||!selected.roomIds.length||selected.roomIds.includes(clean(roomId));
+}
 
 function clean(value) {
   return String(value == null ? '' : value).trim();
@@ -682,10 +690,12 @@ async function teacherPortalData(data) {
     const student = bundle.maps.students[id] || {};
     return { id, name: clean(student.name), phoneLast4: normalizePhone(sourcePhone(student)).slice(-4) };
   }).filter((row) => row.name);
-  const [payroll, adjustments] = await Promise.all([
+  const [payroll, adjustments, portalAdjustmentsSnap] = await Promise.all([
     mirrorRowsByField('teacherPayroll', 'teacherId', session.teacherId),
-    mirrorRowsByField('teacherAdjustments', 'teacherId', session.teacherId)
+    mirrorRowsByField('teacherAdjustments', 'teacherId', session.teacherId),
+    db.collection('coursePortalTeacherAdjustments').where('teacherId','==',session.teacherId).get()
   ]);
+  const portalAdjustments=portalAdjustmentsSnap.docs.map(doc=>Object.assign({__id:doc.id},jsonValue(doc.data())||{}));
   return {
     ok: true,
     teacher: {
@@ -706,7 +716,7 @@ async function teacherPortalData(data) {
     events: bundle.events,
     roster,
     payroll: payroll.filter((row) => clean(row.month || row.payrollMonth || eventDate(row).slice(0, 7)) === month),
-    adjustments: adjustments.filter((row) => clean(row.month || row.payrollMonth || eventDate(row).slice(0, 7)) === month)
+    adjustments: adjustments.concat(portalAdjustments).filter((row) => clean(row.month || row.payrollMonth || eventDate(row).slice(0, 7)) === month)
   };
 }
 
@@ -839,7 +849,7 @@ async function rentalAvailability(data) {
   if (startMinutes < 600 || endMinutes > 1260) throw new HttpsError('failed-precondition', '可預約時間為 10:00～21:00。');
   const bundle = await scheduleBundle(date, date, session.role === 'teacher' ? session.teacherId : '');
   const subjectId = clean(data.subjectId);
-  const roomSettings = await db.collection('coursePortalRoomSettings').get();
+  const [roomSettings,useOptions] = await Promise.all([db.collection('coursePortalRoomSettings').get(),rentalUseOptions()]);
   const settingsMap = {};
   roomSettings.docs.forEach((doc) => { settingsMap[doc.id] = doc.data() || {}; });
   const rooms = bundle.rooms.filter(sourceActive).map((room) => {
@@ -856,7 +866,7 @@ async function rentalAvailability(data) {
     return {
       id,
       name: rentalMatch.profile.publicName,
-      available: !blocked && compatible && setting.rentable !== false,
+      available: !blocked && compatible && rentalUseAllowsRoom(useOptions,data.useType,id) && setting.rentable !== false,
       reason: blocked ? '時段已被使用' : (!compatible ? rentalMatch.reason : ''),
       matchLevel: rentalMatch.level,
       capacity: rentalMatch.profile.capacity,
@@ -873,7 +883,7 @@ async function rentalAvailability(data) {
     endTime,
     durationMinutes: duration,
     subjects: bundle.subjects.map((row) => ({ id: sourceId(row), name: clean(row.name) })),
-    useOptions: RENTAL_USE_OPTIONS,
+    useOptions,
     rooms: rooms.sort((a, b) => (a.matchLevel === 'best' ? 0 : 1) - (b.matchLevel === 'best' ? 0 : 1) || a.name.localeCompare(b.name, 'zh-Hant'))
   };
 }
@@ -884,7 +894,7 @@ async function rentalDayBoard(data) {
   if (!date) throw new HttpsError('invalid-argument', '請選擇日期。');
   const bundle = await scheduleBundle(date, date, session.role === 'teacher' ? session.teacherId : '');
   const subjectId = clean(data.subjectId);
-  const roomSettings = await db.collection('coursePortalRoomSettings').get();
+  const [roomSettings,useOptions] = await Promise.all([db.collection('coursePortalRoomSettings').get(),rentalUseOptions()]);
   const settingsMap = {};
   roomSettings.docs.forEach((doc) => { settingsMap[doc.id] = doc.data() || {}; });
   const closed = weekday(date) === 2;
@@ -897,7 +907,7 @@ async function rentalDayBoard(data) {
       const id = sourceId(room);
       const setting = settingsMap[id] || {};
       const rentalMatch = rentalRoomMatch(room, setting, data);
-      if (setting.rentable === false || (subjectId ? !roomSupportsSubject(room, subjectId, bundle, setting) : !rentalMatch.compatible)) return false;
+      if (setting.rentable === false || !rentalUseAllowsRoom(useOptions,data.useType,id) || (subjectId ? !roomSupportsSubject(room, subjectId, bundle, setting) : !rentalMatch.compatible)) return false;
       return !bundle.events.some((event) =>
         eventBlocksResource(event) && event.roomId === id && event.date === date &&
         overlaps(startTime, endTime, event.startTime, event.endTime)
@@ -917,7 +927,7 @@ async function rentalDayBoard(data) {
     role: session.role,
     priceType: session.role === 'student' ? '本校學生價' : '一般價格',
     subjects: bundle.subjects.map((row) => ({ id: sourceId(row), name: clean(row.name) })),
-    useOptions: RENTAL_USE_OPTIONS,
+    useOptions,
     slots
   };
 }
@@ -928,7 +938,7 @@ async function rentalWeekBoard(data) {
   if (!startDate) throw new HttpsError('invalid-argument', '請選擇週起始日期。');
   const endDate = addDays(startDate, 6);
   const bundle = await scheduleBundle(startDate, endDate, session.role === 'teacher' ? session.teacherId : '');
-  const roomSettings = await db.collection('coursePortalRoomSettings').get();
+  const [roomSettings,useOptions] = await Promise.all([db.collection('coursePortalRoomSettings').get(),rentalUseOptions()]);
   const settingsMap = {};
   roomSettings.docs.forEach((doc) => { settingsMap[doc.id] = doc.data() || {}; });
   const days = [];
@@ -950,7 +960,7 @@ async function rentalWeekBoard(data) {
     }
     days.push({ date, closed, availableSlotCount: slots.filter((slot) => slot.availableCount > 0).length, slots });
   }
-  return { ok: true, startDate, endDate, role: session.role, useOptions: RENTAL_USE_OPTIONS, days };
+  return { ok: true, startDate, endDate, role: session.role, useOptions, days };
 }
 
 async function createRoomBooking(data) {
@@ -1319,6 +1329,55 @@ async function teacherAction(data) {
   };
 }
 
+async function teacherLateAttendance(data){
+  const session=await requireSession(data,['teacher']);
+  const sourceDate=dateKey(data.sourceDate);
+  const sourceEventId=clean(data.sourceEventId);
+  const sourceCourseId=clean(data.sourceCourseId);
+  if(!sourceDate||(!sourceEventId&&!sourceCourseId))throw new HttpsError('invalid-argument','缺少要補簽到的課程。');
+  const today=new Intl.DateTimeFormat('en-CA',{timeZone:TAIPEI,year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+  if(sourceDate>=today)throw new HttpsError('failed-precondition','當日課程請於晚上 12 點前完成正常簽到；隔日後才能使用補簽到。');
+  const bundle=await scheduleBundle(sourceDate,sourceDate,session.teacherId);
+  const event=bundle.events.find(row=>row.teacherId===session.teacherId&&row.date===sourceDate&&(row.id===sourceEventId||row.sourceId===sourceEventId||row.fixedCourseId===sourceCourseId));
+  if(!event)throw new HttpsError('not-found','找不到這堂課。');
+  const key=hash(['late-attendance',session.teacherId,sourceDate,sourceEventId||sourceCourseId].join('|'));
+  const requestRef=db.collection('coursePortalLateAttendance').doc(key);
+  const adjustmentRef=db.collection('coursePortalTeacherAdjustments').doc(key);
+  await db.runTransaction(async tx=>{
+    if((await tx.get(requestRef)).exists)throw new HttpsError('already-exists','這堂課已經補簽到。');
+    tx.set(requestRef,{id:key,teacherId:session.teacherId,date:sourceDate,eventId:sourceEventId,courseId:sourceCourseId,studentIds:event.studentIds||[],status:'approved',administrationFee:50,createdAt:FieldValue.serverTimestamp(),createdAtText:nowText()});
+    tx.set(adjustmentRef,{id:key,teacherId:session.teacherId,month:sourceDate.slice(0,7),date:sourceDate,type:'late_attendance_fee',amount:-50,note:'補簽到行政處理費 NT$50',source:'teacher-portal',createdAt:FieldValue.serverTimestamp(),createdAtText:nowText()});
+  });
+  return {ok:true,message:'補簽到已完成，並已建立行政處理費 NT$50 扣款。'};
+}
+
+async function teacherBonusRequest(data){
+  const session=await requireSession(data,['teacher']);
+  const studentId=clean(data.studentId),description=clean(data.description);
+  if(!studentId||!description)throw new HttpsError('invalid-argument','請選擇學生並填寫申請內容。');
+  const photoData=clean(data.photoData);
+  if(photoData.length>900000)throw new HttpsError('invalid-argument','照片太大，請重新拍攝或縮小後上傳。');
+  const id=db.collection('coursePortalTeacherBonusRequests').doc().id;
+  await db.collection('coursePortalTeacherBonusRequests').doc(id).set({id,teacherId:session.teacherId,studentId,studentName:clean(data.studentName),description,photoData,status:'pending',approvedAmount:0,createdAt:FieldValue.serverTimestamp(),createdAtText:nowText()});
+  return {ok:true,id,message:'申請已送出，待主管確認獎金金額。'};
+}
+
+async function adminBonusRequests(){
+  const [requests,teachers]=await Promise.all([db.collection('coursePortalTeacherBonusRequests').orderBy('createdAt','desc').limit(200).get(),mirrorRows('teachers')]);
+  const map=indexById(teachers);
+  return {ok:true,requests:requests.docs.map(doc=>{const row=jsonValue(doc.data())||{};return Object.assign({},row,{id:doc.id,teacherName:clean(map[clean(row.teacherId)]&&map[clean(row.teacherId)].name)});})};
+}
+async function adminApproveBonus(data){
+  const id=clean(data.id),amount=Math.max(0,Number(data.amount||0));
+  if(!id||!amount)throw new HttpsError('invalid-argument','請輸入核定獎金金額。');
+  const ref=db.collection('coursePortalTeacherBonusRequests').doc(id);
+  await db.runTransaction(async tx=>{const snap=await tx.get(ref);if(!snap.exists)throw new HttpsError('not-found','找不到申請。');const row=snap.data()||{};if(clean(row.status)==='approved')throw new HttpsError('already-exists','這筆申請已核定。');tx.set(ref,{status:'approved',approvedAmount:amount,approvedAt:FieldValue.serverTimestamp(),approvedAtText:nowText()},{merge:true});tx.set(db.collection('coursePortalTeacherAdjustments').doc('bonus-'+id),{id:'bonus-'+id,teacherId:clean(row.teacherId),studentId:clean(row.studentId),studentName:clean(row.studentName),month:new Intl.DateTimeFormat('en-CA',{timeZone:TAIPEI,year:'numeric',month:'2-digit'}).format(new Date()).slice(0,7),date:new Intl.DateTimeFormat('en-CA',{timeZone:TAIPEI,year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()),type:'teacher_bonus',amount,note:clean(row.description),source:'teacher-bonus-request',createdAt:FieldValue.serverTimestamp(),createdAtText:nowText()});});
+  return {ok:true,message:'獎金已核定並寫入老師薪資。'};
+}
+
+async function publicRentalSettings(){return {ok:true,items:await rentalUseOptions()};}
+async function adminSaveRentalSettings(data){const rooms=await mirrorRows('rooms');const allowed=new Set(rooms.map(sourceId));const items=(Array.isArray(data.items)?data.items:[]).map((row,index)=>({id:clean(row.id)||('use-'+(index+1)),name:clean(row.name),roomIds:(Array.isArray(row.roomIds)?row.roomIds:[]).map(clean).filter(id=>allowed.has(id)),active:row.active!==false})).filter(row=>row.name);await db.collection('coursePortalSettings').doc('rentalUses').set({items,updatedAt:FieldValue.serverTimestamp(),updatedAtText:nowText()},{merge:true});return {ok:true,items};}
+
 async function updateStudentReminder(data) {
   const session = await requireSession(data, ['student']);
   const studentId = clean(data.studentId);
@@ -1530,6 +1589,12 @@ function registerCoursePortal(exportsObject, helpers = {}) {
   exportsObject.coursePortalCancelRoomBooking = callable(cancelRoomBooking);
   exportsObject.coursePortalTeacherAction = callable(teacherAction, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalTeacherLessonState = callable(teacherLessonState, { timeoutSeconds: 180, memory: '1GiB' });
+  exportsObject.coursePortalTeacherLateAttendance = callable(teacherLateAttendance, { timeoutSeconds: 180, memory: '1GiB' });
+  exportsObject.coursePortalTeacherBonusRequest = callable(teacherBonusRequest, { timeoutSeconds: 180, memory: '1GiB' });
+  exportsObject.coursePortalRentalUseSettings = callable(publicRentalSettings);
+  exportsObject.coursePortalAdminSaveRentalSettings = callable(async (data,request)=>{assertAdminPin(request);return adminSaveRentalSettings(data);},{secrets:[ADMIN_PIN]});
+  exportsObject.coursePortalAdminBonusRequests = callable(async (data,request)=>{assertAdminPin(request);return adminBonusRequests();},{secrets:[ADMIN_PIN]});
+  exportsObject.coursePortalAdminApproveBonus = callable(async (data,request)=>{assertAdminPin(request);return adminApproveBonus(data);},{secrets:[ADMIN_PIN]});
   exportsObject.coursePortalUpdateStudentReminder = callable(updateStudentReminder);
   exportsObject.coursePortalAdminData = callable(async (data, request) => {
     assertAdminPin(request);

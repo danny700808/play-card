@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#24735c">
   <title>教室租用｜柚子樂器</title>
-  <link rel="stylesheet" href="course-portal.css?v=20260727-mobile-v6">
+  <link rel="stylesheet" href="course-portal.css?v=20260730-rental-settings-v1">
 </head>
 <body>
   <main class="portal-shell">
@@ -41,14 +41,7 @@
 
       <section class="card">
         <div class="section-title"><div><h2>想使用空間做什麼？</h2><p class="muted">用途只用來排序，不會把其他仍可使用的教室藏起來。</p></div></div>
-        <div class="rental-use-grid" id="rentalUseGrid">
-          <button class="rental-use active" type="button" data-use="guitar">彈吉他／自備樂器</button>
-          <button class="rental-use" type="button" data-use="piano">彈鋼琴</button>
-          <button class="rental-use" type="button" data-use="drums">打鼓</button>
-          <button class="rental-use" type="button" data-use="band">樂團／多人排練</button>
-          <button class="rental-use" type="button" data-use="teaching">教學／會議</button>
-          <button class="rental-use" type="button" data-use="other">其他用途</button>
-        </div>
+        <div class="rental-use-grid" id="rentalUseGrid"><p class="muted">正在讀取租用分類…</p></div>
         <div class="grid two rental-quick-fields">
           <div class="field"><label>人數</label><select id="partySize"><option value="1">1人</option><option value="2">2人</option><option value="4">3～5人</option><option value="6">6人以上</option></select></div>
           <div class="field"><label>需要設備</label><select id="equipmentSelect"><option value="own">自備樂器／不指定</option><option value="piano">需要鋼琴</option><option value="acoustic_drums">需要傳統鼓</option><option value="electronic_drums">需要電子鼓</option></select></div>
@@ -88,7 +81,7 @@
     let token = '';
     let selectedDate = todayKey();
     let weekStart = todayKey();
-    let selectedUseType = 'guitar';
+    let selectedUseType = '';
     let selectedStart = '';
     let boardData = null;
     let roomData = null;
@@ -144,6 +137,13 @@
             <span class="rental-slot-rooms">${P.escapeHtml(rooms || '沒有空教室')}</span>
           </button>`;
       }).join('');
+    }
+
+    async function loadUseOptions() {
+      const result=await P.call('coursePortalRentalUseSettings',{});
+      const items=result.items||[];
+      if(!selectedUseType&&items[0])selectedUseType=items[0].id;
+      document.getElementById('rentalUseGrid').innerHTML=items.map(row=>`<button class="rental-use ${row.id===selectedUseType?'active':''}" type="button" data-use="${P.escapeHtml(row.id)}">${P.escapeHtml(row.name)}</button>`).join('')||'<div class="notice">目前尚未設定租用分類，請聯絡管理者。</div>';
     }
 
     async function loadBoard() {
