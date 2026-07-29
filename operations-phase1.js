@@ -1124,7 +1124,7 @@ function queueInventorySyncInTransaction(tx,productId,sku,stock,reason){const re
   function renderCourseWorkspace(view){
     const courseView=courseWorkspaceView(view);
     return '<div class="ops-course-workspace">'
-      +'<iframe id="opsCourseFrame" class="ops-course-frame" data-course-view="'+attr(courseView)+'" title="課務管理" src="course-scheduler.html?embed=1&amp;view='+attr(courseView)+'"></iframe>'
+      +'<iframe id="opsCourseFrame" class="ops-course-frame" data-course-view="'+attr(courseView)+'" title="課務管理" src="course-scheduler.html?cv=20260729-full-scheduler-v2&embed=1&amp;view='+attr(courseView)+'"></iframe>'
       +'</div>';
   }
   function sendCourseWorkspaceView(frame,view){
