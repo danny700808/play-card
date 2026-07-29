@@ -1,7 +1,7 @@
 (function (global) {
   'use strict';
 
-  var LIVE_URL = 'course-scheduler-live.html?v=20260729-live-full-scheduler-v1&embed=1&view=calendar';
+  var LIVE_VERSION = '20260729-live-full-scheduler-v2';
 
   function currentCourseView() {
     var hash = String(global.location.hash || '#overview').replace(/^#/, '').split('?')[0];
@@ -14,7 +14,7 @@
   }
 
   function liveUrl(view) {
-    return 'course-scheduler-live.html?v=20260729-live-full-scheduler-v1&embed=1&view=' + encodeURIComponent(view || 'calendar');
+    return 'course-scheduler-live.html?v=' + LIVE_VERSION + '&embed=1&view=' + encodeURIComponent(view || 'calendar');
   }
 
   function routeFrame() {
@@ -23,9 +23,10 @@
     var frame = global.document.getElementById('opsCourseFrame');
     if (!frame) return;
     var current = frame.getAttribute('src') || '';
-    if (current.indexOf('course-scheduler-live.html') >= 0) return;
+    var expected = liveUrl(view);
+    if (current === expected || current.indexOf('course-scheduler-live.html?v=' + LIVE_VERSION + '&') >= 0 && current.indexOf('view=' + encodeURIComponent(view)) >= 0) return;
     frame.dataset.courseView = view;
-    frame.src = liveUrl(view);
+    frame.src = expected;
   }
 
   function cleanDuplicateSchedules() {
