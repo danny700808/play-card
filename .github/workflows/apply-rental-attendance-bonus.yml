@@ -22,21 +22,38 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: main
-      - run: node .github/scripts/extend-rental-attendance-bonus.cjs
-      - name: Verify generated files
+      - name: Apply and verify
+        shell: bash
         run: |
-          node --check functions/coursePortal.js
-          node --check teacher-course-portal-v8.js
-          grep -q "coursePortalAdminSaveRentalSettings" functions/coursePortal.js
-          grep -q "coursePortalTeacherLateAttendance" functions/coursePortal.js
-          grep -q "coursePortalTeacherBonusRequest" functions/coursePortal.js
-          grep -q "course-portal-settings.html" operations-course-inline-template.html
-          grep -q "bonusRequestModal" teacher-course-portal.html
-      - name: Commit generated feature files
+          set +e
+          {
+            echo "BEGIN"
+            node .github/scripts/extend-rental-attendance-bonus.cjs
+            PATCH_STATUS=$?
+            echo "PATCH_STATUS=$PATCH_STATUS"
+            node --check functions/coursePortal.js
+            BACKEND_STATUS=$?
+            echo "BACKEND_STATUS=$BACKEND_STATUS"
+            node --check teacher-course-portal-v8.js
+            TEACHER_STATUS=$?
+            echo "TEACHER_STATUS=$TEACHER_STATUS"
+            grep -q "coursePortalAdminSaveRentalSettings" functions/coursePortal.js
+            echo "RENTAL_SETTINGS=$?"
+            grep -q "coursePortalTeacherLateAttendance" functions/coursePortal.js
+            echo "LATE_ATTENDANCE=$?"
+            grep -q "coursePortalTeacherBonusRequest" functions/coursePortal.js
+            echo "BONUS_REQUEST=$?"
+            grep -q "course-portal-settings.html" operations-course-inline-template.html
+            echo "ADMIN_LINK=$?"
+            grep -q "bonusRequestModal" teacher-course-portal.html
+            echo "BONUS_MODAL=$?"
+            echo "END"
+          } > .github/rental-feature-build-report.txt 2>&1
+      - name: Commit generated files and report
         run: |
-          if git diff --quiet; then exit 0; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "Publish rental categories late attendance and teacher bonus features"
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Publish rental attendance bonus build report"
           git push origin HEAD:main
