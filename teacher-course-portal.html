@@ -26,6 +26,11 @@
       <div class="bind-result hidden" data-bind-result></div>
     </section>
 
+    <section class="card teacher-session-loading hidden" id="sessionLoading" aria-live="polite">
+      <span class="teacher-session-spinner" aria-hidden="true"></span>
+      <div><strong>正在開啟老師課務</strong><p>正在載入這台裝置保存的課表，不需要再次輸入姓名與電話。</p></div>
+    </section>
+
     <section class="hidden" id="appView">
       <div class="summary-grid teacher-summary-grid">
         <article class="summary"><span>老師</span><strong id="teacherName">—</strong></article>
@@ -117,6 +122,7 @@
   <script src="config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
+  <script src="teacher-course-session-v8.js?v=20260729-teacher-app-v8"></script>
   <script src="teacher-course-portal-v8.js?v=20260729-teacher-app-v8"></script>
 </body>
 </html>
