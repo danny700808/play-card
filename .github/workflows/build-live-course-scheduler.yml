@@ -65,18 +65,24 @@ jobs:
           }
 
           for (const source of [hub, portal]) {
-            if (!source.includes('operations-course-authoritative-v1.js?v=20260729-authoritative-course-v4')) {
-              throw new Error('Authoritative scheduler route is missing');
+            const routeTag = 'operations-course-authoritative-v1.js?v=20260729-authoritative-course-v5';
+            const routeIndex = source.indexOf(routeTag);
+            const operationsIndex = source.indexOf('operations-phase1.js');
+            if (routeIndex < 0) throw new Error('Authoritative scheduler route is missing');
+            if (operationsIndex < 0 || routeIndex > operationsIndex) {
+              throw new Error('Formal course route must load before operations-phase1.js');
             }
             for (const legacy of legacyScripts) {
               if (source.includes(legacy)) throw new Error(`Conflicting course layer is still enabled: ${legacy}`);
             }
           }
 
-          if (!route.includes("VERSION = '20260729-authoritative-course-v4'")) throw new Error('Authoritative route version missing');
+          if (!route.includes("VERSION = '20260729-authoritative-course-v5'")) throw new Error('Authoritative route version missing');
           if (!route.includes('ensureFrame')) throw new Error('Single persistent iframe creation is missing');
-          if (!route.includes("contentObserver.observe(content, { childList: true })")) throw new Error('Scoped legacy cleanup observer is missing');
+          if (!route.includes('stopImmediatePropagation')) throw new Error('Legacy course hash listeners are not blocked');
+          if (!route.includes("attributeFilter: ['hidden', 'aria-hidden']")) throw new Error('Scoped visibility enforcement is missing');
           if (route.includes('subtree: true')) throw new Error('Whole-page mutation observer is still enabled');
+          if (!route.includes('if (global.document.body) start()')) throw new Error('Formal route does not start immediately');
           if (route.includes('moveWorkspaceToHost')) throw new Error('Legacy iframe moving path is still enabled');
 
           if (!live.includes('course-scheduler-live-entry-v1.js?v=20260729-formal-runtime-v4')) {
@@ -90,9 +96,6 @@ jobs:
           if (!entry.includes('buildStudentListIndexes')) throw new Error('Student performance index is missing');
           if (!entry.includes('payrollByTeacher=new Map()')) throw new Error('Teacher payroll performance index is missing');
           if (!entry.includes("WORKSPACE_BACKUP_DB_KEY='workspaceBackup'")) throw new Error('Sync-time workspace backup is missing');
-          if (!entry.includes('function nextEvent(studentId)')) {
-            // This string is intentionally checked only inside the post-transform guard below.
-          }
           if (!entry.includes("source.indexOf('function nextEvent(studentId)')")) throw new Error('Legacy student scan guard is missing');
           if (entry.includes('loadInjiaoyunEducationMirrorAuto')) throw new Error('Automatic cloud loading is still enabled');
           if (entry.includes('cloudSnapshot')) throw new Error('Automatic cloud fallback is still enabled');
@@ -101,7 +104,7 @@ jobs:
           if (!scheduler.includes('function syncInjiaoyun()')) throw new Error('Manual sync function is missing');
           if (!scheduler.includes('preserveConfiguration:true')) throw new Error('Manual sync configuration preservation is missing');
 
-          console.log('Operational single formal course scheduler verified');
+          console.log('Early authoritative formal course scheduler verified');
           NODE
 
       - name: Commit generated formal entry files
@@ -113,5 +116,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add course-scheduler-live.html operations-hub.html portal.html
-          git commit -m "Publish operational formal course scheduler"
+          git commit -m "Publish early authoritative formal scheduler"
           git push origin HEAD:main
