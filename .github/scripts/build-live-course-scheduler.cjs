@@ -5,7 +5,7 @@ const fs = require('fs');
 const sourcePath = 'course-scheduler.html';
 const targetPath = 'course-scheduler-live.html';
 const runtimeVersion = '20260729-formal-runtime-v4';
-const routeVersion = '20260729-authoritative-course-v6';
+const routeVersion = '20260729-authoritative-course-v7';
 let html = fs.readFileSync(sourcePath, 'utf8');
 
 html = html.replace(/course-scheduler\.css\?v=[^"']+/g, `course-scheduler.css?v=${runtimeVersion}`);
