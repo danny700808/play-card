@@ -1,4 +1,4 @@
-name: Publish Full Course Scheduler
+name: Publish In-Place Course Workspace
 
 on:
   push:
@@ -9,15 +9,14 @@ on:
       - "course-scheduler.css"
       - "course-scheduler.js"
       - "course-scheduler-data.js"
-      - "course-scheduler-full-bootstrap.js"
-      - "course-scheduler-standalone.css"
-      - "course-center.html"
-      - "course-center.js"
-      - "course-center.css"
-      - "course-center-bootstrap.js"
+      - "operations-course-inline.js"
+      - "operations-course-inline-template.html"
+      - "operations-course-inline-runtime.js"
+      - "operations-phase1.js"
       - "portal.html"
       - "operations-hub.html"
-      - ".github/scripts/restore-full-course-center.cjs"
+      - "course-center.html"
+      - ".github/scripts/build-inline-course-workspace.cjs"
       - ".github/workflows/build-live-course-scheduler.yml"
   workflow_dispatch:
 
@@ -25,11 +24,11 @@ permissions:
   contents: write
 
 concurrency:
-  group: publish-full-course-scheduler-main
+  group: publish-in-place-course-workspace-main
   cancel-in-progress: false
 
 jobs:
-  publish-and-verify-full-scheduler:
+  publish-and-verify-inline-course:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -37,36 +36,67 @@ jobs:
         with:
           ref: main
 
-      - name: Publish complete standalone scheduler
-        run: node .github/scripts/restore-full-course-center.cjs
+      - name: Build complete in-place course workspace
+        run: node .github/scripts/build-inline-course-workspace.cjs
 
-      - name: Verify complete course functionality and one-page layout
+      - name: Verify one navigation shell and complete course functions
         run: |
           node - <<'NODE'
           const fs = require('fs');
           const vm = require('vm');
 
-          const html = fs.readFileSync('course-scheduler.html', 'utf8');
-          const css = fs.readFileSync('course-scheduler-standalone.css', 'utf8');
-          const bootstrap = fs.readFileSync('course-scheduler-full-bootstrap.js', 'utf8');
+          const operations = fs.readFileSync('operations-phase1.js', 'utf8');
+          const controller = fs.readFileSync('operations-course-inline.js', 'utf8');
+          const runtime = fs.readFileSync('operations-course-inline-runtime.js', 'utf8');
+          const template = fs.readFileSync('operations-course-inline-template.html', 'utf8');
           const scheduler = fs.readFileSync('course-scheduler.js', 'utf8');
-          const center = fs.readFileSync('course-center.html', 'utf8');
           const portal = fs.readFileSync('portal.html', 'utf8');
           const hub = fs.readFileSync('operations-hub.html', 'utf8');
+          const center = fs.readFileSync('course-center.html', 'utf8');
 
-          new vm.Script(bootstrap, { filename: 'course-scheduler-full-bootstrap.js' });
+          new vm.Script(controller, { filename: 'operations-course-inline.js' });
+          new vm.Script(runtime, { filename: 'operations-course-inline-runtime.js' });
           new vm.Script(scheduler, { filename: 'course-scheduler.js' });
 
-          if (!html.includes('course-scheduler-standalone.css?v=20260729-full-course-standalone-v1')) throw new Error('Standalone operations navigation style is missing');
-          if (!html.includes('course-scheduler-full-bootstrap.js?v=20260729-full-course-standalone-v1')) throw new Error('Full scheduler data bootstrap is missing');
-          if (html.includes('course-data-auto-bootstrap-v1.js')) throw new Error('Obsolete automatic bootstrap is still loaded');
-          if (html.includes('course-scheduler-review-data.js')) throw new Error('Review-data overlay is still loaded');
-          if (html.includes('course-scheduler-startup-gate-v1.js')) throw new Error('Startup gate patch is still loaded');
-          if (html.includes('<iframe')) throw new Error('Full course scheduler must not use an iframe');
-          if (!html.includes('course-portal-admin.html')) throw new Error('Entry and binding management is missing');
-          if (!html.includes('id="policyModal"')) throw new Error('Room policy editor is missing');
-          if (!html.includes('id="teacherPayrollModal"')) throw new Error('Teacher payroll details are missing');
-          if (!html.includes('data-settings-tab="rooms"') || !html.includes('data-settings-tab="subjects"') || !html.includes('data-settings-tab="fees"')) throw new Error('Course settings sections are incomplete');
+          if (!operations.includes('YouziOperationsCourseInline.mount(content,courseView)')) throw new Error('Operations center does not mount the inline course workspace');
+          if (operations.includes('<iframe id="opsCourseFrame"')) throw new Error('Legacy course iframe is still present');
+          if (operations.includes('frame.contentWindow.postMessage')) throw new Error('Legacy iframe messaging is still present');
+
+          for (const source of [portal, hub]) {
+            const links = [
+              ['#course-calendar','course-calendar'],
+              ['#course-students','course-students'],
+              ['#course-teachers','course-teachers'],
+              ['#course-settings','course-settings']
+            ];
+            for (const [href, view] of links) {
+              if (!source.includes(`href="${href}" data-view="${view}"`)) throw new Error(`In-place course navigation is missing: ${view}`);
+            }
+            if (!source.includes('operations-course-inline.js?v=20260729-operations-inline-course-v1')) throw new Error('Inline course controller is missing');
+            if (source.includes('location.replace(\'course-scheduler.html')) throw new Error('Course navigation still leaves the operations center');
+            if (source.includes('course-scheduler.html?view=')) throw new Error('Standalone course links are still enabled');
+          }
+
+          if (!controller.includes('attachShadow({ mode: \'open\' })')) throw new Error('Shadow-root isolation is missing');
+          if (!controller.includes("WORKSPACE_KEY = 'workspace'")) throw new Error('Workspace source is missing');
+          if (!controller.includes("LATEST_KEY = 'latest'")) throw new Error('Latest source is missing');
+          if (!controller.includes('isDemo')) throw new Error('Demo-data rejection is missing');
+          if (!controller.includes('YouziCoursePreviewData.load')) throw new Error('Read-only mirror recovery is missing');
+          if (controller.includes('YouziCoursePreviewData.sync')) throw new Error('Opening the page must not automatically synchronize Injiaoyun');
+          if (!runtime.includes('window.__YOUZI_COURSE_INLINE_DOCUMENT__')) throw new Error('Scoped full runtime is missing');
+          if (!runtime.includes('window.__YOUZI_COURSE_INLINE_BOOTSTRAP_STATE__')) throw new Error('Workspace-first runtime startup is missing');
+          if (!runtime.includes("if(!window.__YOUZI_COURSE_INLINE_MODE__)restoreFormalDatabase();")) throw new Error('Duplicate startup restore is still enabled');
+
+          const requiredTemplateIds = [
+            'calendarPage','studentsPage','teachersPage','settingsPage',
+            'scheduleModal','eventModal','studentModal','tuitionModal',
+            'transactionModal','teacherPayrollModal','policyModal'
+          ];
+          for (const id of requiredTemplateIds) {
+            if (!template.includes(`id="${id}"`)) throw new Error(`Full course UI is missing: ${id}`);
+          }
+          if (!template.includes('course-portal-admin.html')) throw new Error('Entry and binding management is missing');
+          if (!template.includes('data-settings-tab="rooms"') || !template.includes('data-settings-tab="subjects"') || !template.includes('data-settings-tab="fees"')) throw new Error('Course settings are incomplete');
 
           const requiredFunctions = [
             'function bindRoomReorder',
@@ -81,41 +111,29 @@ jobs:
             'function submitTransaction'
           ];
           for (const marker of requiredFunctions) {
-            if (!scheduler.includes(marker)) throw new Error(`Full scheduler function is missing: ${marker}`);
+            if (!scheduler.includes(marker) || !runtime.includes(marker)) throw new Error(`Full scheduler function is missing: ${marker}`);
           }
 
-          if (!bootstrap.includes("WORKSPACE_KEY = 'workspace'")) throw new Error('Workspace loading is missing');
-          if (!bootstrap.includes("FORMAL_KEY = 'latest'")) throw new Error('Latest snapshot loading is missing');
-          if (!bootstrap.includes('isDemo')) throw new Error('Demo-data rejection is missing');
-          if (!bootstrap.includes('YouziCoursePreviewData.load')) throw new Error('Read-only mirror recovery is missing');
-          if (bootstrap.includes('YouziCoursePreviewData.sync')) throw new Error('Opening the scheduler must not automatically synchronize Injiaoyun');
-          if (!bootstrap.includes('loadRuntime')) throw new Error('Full scheduler runtime handoff is missing');
-
-          for (const source of [portal, hub]) {
-            for (const view of ['calendar','students','teachers','settings']) {
-              if (!source.includes(`course-scheduler.html?view=${view}`)) throw new Error(`Direct full scheduler link is missing: ${view}`);
-            }
-            if (source.includes('course-center.html#')) throw new Error('Simplified course center link is still enabled');
-            if (source.includes('operations-course-authoritative-v1.js')) throw new Error('Obsolete iframe route is still enabled');
+          if (!center.includes("location.replace('portal.html#'+(map[view]||'course-calendar'))")) throw new Error('Old course-center address does not return to the operations center');
+          for (const obsolete of [
+            'course-scheduler-full-bootstrap.js',
+            'course-scheduler-standalone.css',
+            '.github/scripts/restore-full-course-center.cjs'
+          ]) {
+            if (fs.existsSync(obsolete)) throw new Error(`Obsolete standalone course layer still exists: ${obsolete}`);
           }
 
-          if (!center.includes("location.replace('course-scheduler.html?view='+view)")) throw new Error('Legacy course-center link does not redirect to the full scheduler');
-          for (const obsolete of ['course-center.js','course-center.css','course-center-bootstrap.js']) {
-            if (fs.existsSync(obsolete)) throw new Error(`Simplified course file still exists: ${obsolete}`);
-          }
-          if (!css.includes('.main-nav a')) throw new Error('Full operations navigation links are not styled');
-
-          console.log('Complete standalone course scheduler verified');
+          console.log('Complete in-place course workspace verified');
           NODE
 
-      - name: Commit restored full scheduler
+      - name: Commit generated in-place course files
         run: |
           if git diff --quiet; then
-            echo "Full scheduler files are already current."
+            echo "In-place course workspace files are already current."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "Publish complete standalone course scheduler"
+          git commit -m "Publish complete in-place course workspace"
           git push origin HEAD:main
