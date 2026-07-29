@@ -4,8 +4,8 @@ const fs = require('fs');
 
 const sourcePath = 'course-scheduler.html';
 const targetPath = 'course-scheduler-live.html';
-const performanceVersion = '20260729-course-performance-v1';
-const routeVersion = '20260729-interactive-course-v2';
+const performanceVersion = '20260729-formal-data-flow-v2';
+const routeVersion = '20260729-authoritative-course-v3';
 let html = fs.readFileSync(sourcePath, 'utf8');
 
 html = html.replace(/course-scheduler\.css\?v=[^"']+/g, `course-scheduler.css?v=${performanceVersion}`);
@@ -28,6 +28,7 @@ fs.writeFileSync(targetPath, html);
 
 for (const path of ['operations-hub.html', 'portal.html']) {
   let source = fs.readFileSync(path, 'utf8');
+  source = source.replace(/\s*<script src="course-data-auto-bootstrap-v1\.js\?v=[^"]+"><\/script>\s*/g, '\n');
   source = source.replace(
     /operations-course-authoritative-v1\.js\?v=[^"']+/g,
     `operations-course-authoritative-v1.js?v=${routeVersion}`
