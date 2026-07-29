@@ -576,6 +576,21 @@
   });
 
   document.getElementById('lessonStateActions').addEventListener('click', async (event) => {
+    const lateButton=event.target.closest('[data-late-attendance]');
+    if(lateButton){
+      const form=document.getElementById('actionForm');
+      if(!confirm('補簽到會收取行政處理費 NT$50，並直接列入本月薪資扣款。確定要補簽到嗎？'))return;
+      loading(lateButton,true,'補簽中…');
+      try{
+        const result=await invoke('coursePortalTeacherLateAttendance',{sessionToken:token,sourceEventId:form.elements.sourceEventId.value,sourceCourseId:form.elements.sourceCourseId.value,sourceDate:form.elements.sourceDate.value});
+        document.getElementById('actionModal').classList.add('hidden');
+        clearCache();
+        toast(result.message||'補簽到已完成。');
+        await load(true);
+      }catch(error){toast(error.message,'error');}
+      finally{loading(lateButton,false);}
+      return;
+    }
     const button = event.target.closest('[data-lesson-state]');
     if (!button) return;
     const state = button.dataset.lessonState;

@@ -113,7 +113,7 @@
         <div class="notice" id="giftNotice">「老師免費送一堂」不向學生收費，也不列入老師薪資。</div>
         <button class="btn primary" type="submit">確認並儲存</button>
         <div class="teacher-lesson-state-actions hidden" id="lessonStateActions">
-          <button class="btn soft" type="button" data-lesson-state="leave">學生請假</button>
+          <button class="btn soft" type="button" data-lesson-state="leave">學生請假</button><button class="btn" type="button" data-late-attendance>補簽到</button>
           <button class="btn danger hidden" id="cancelPortalLesson" type="button" data-lesson-state="cancel_change">取消此次安排</button>
           <button class="btn danger" type="button" data-lesson-state="absent">標示曠課</button>
         </div>
@@ -125,6 +125,6 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
   <script src="teacher-course-session-v8.js?v=20260729-teacher-app-v8b"></script>
-  <script src="teacher-course-portal-v8.js?v=20260730-teacher-extra-v1"></script>
+  <script src="teacher-course-portal-v8.js?v=20260730-late-attendance-v1"></script>
 </body>
 </html>
