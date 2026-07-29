@@ -3,10 +3,13 @@
 const fs = require('fs');
 
 async function main() {
-  const success = process.env.ACCESS_OUTCOME === 'success' && process.env.HEALTH_OUTCOME === 'success';
+  const deploy = process.env.DEPLOY_OUTCOME || 'unknown';
+  const access = process.env.ACCESS_OUTCOME || 'unknown';
+  const health = process.env.HEALTH_OUTCOME || 'unknown';
+  const success = deploy === 'success' && access === 'success' && health === 'success';
   let description = success
-    ? 'Course mirror is public and returned actual schedule data'
-    : `access=${process.env.ACCESS_OUTCOME || 'unknown'}, health=${process.env.HEALTH_OUTCOME || 'unknown'}`;
+    ? 'Course mirror deployed, opened, and returned actual schedule data'
+    : `deploy=${deploy}, access=${access}, health=${health}`;
 
   try {
     const responseText = fs.readFileSync('/tmp/course-mirror-response.json', 'utf8')
@@ -38,7 +41,7 @@ async function main() {
   if (!response.ok) {
     throw new Error(`Unable to report final status: ${response.status} ${await response.text()}`);
   }
-  console.log('Reported final verification status:', success ? 'success' : 'failure', description);
+  console.log('Reported final deployment status:', success ? 'success' : 'failure', description);
 }
 
 main().catch((error) => {
