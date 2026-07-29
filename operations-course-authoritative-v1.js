@@ -1,7 +1,7 @@
 (function (global) {
   'use strict';
 
-  var VERSION = '20260729-authoritative-course-v5';
+  var VERSION = '20260729-authoritative-course-v6';
   var VIEW_MAP = {
     'course-calendar': 'calendar',
     'course-students': 'students',
@@ -17,6 +17,7 @@
   var scheduled = false;
   var contentObserver = null;
   var started = false;
+  var enforcing = false;
 
   function currentHash() {
     return String(global.location.hash || '#overview').replace(/^#/, '').split('?')[0] || 'overview';
@@ -28,6 +29,11 @@
 
   function schedulerUrl() {
     return 'course-scheduler-live.html?v=' + VERSION + '&embed=1&view=calendar';
+  }
+
+  function setAttributeIfDifferent(node, name, value) {
+    if (!node || node.getAttribute(name) === value) return;
+    node.setAttribute(name, value);
   }
 
   function ensureHost() {
@@ -54,27 +60,30 @@
 
   function updateShell(view) {
     var title = global.document.getElementById('opsPageTitle');
-    if (title && TITLE_MAP[view]) title.textContent = TITLE_MAP[view];
+    if (title && TITLE_MAP[view] && title.textContent !== TITLE_MAP[view]) title.textContent = TITLE_MAP[view];
     Array.prototype.slice.call(global.document.querySelectorAll('[data-view]')).forEach(function (node) {
       node.classList.toggle('active', VIEW_MAP[node.dataset.view] === view);
     });
     var group = global.document.getElementById('opsCourseGroup');
     var submenu = global.document.getElementById('opsCourseSubmenu');
     var toggle = global.document.getElementById('opsCourseMenuToggle');
-    if (group) group.classList.add('open');
-    if (submenu) submenu.hidden = false;
-    if (toggle) toggle.setAttribute('aria-expanded', 'true');
+    if (group && !group.classList.contains('open')) group.classList.add('open');
+    if (submenu && submenu.hidden) submenu.hidden = false;
+    setAttributeIfDifferent(toggle, 'aria-expanded', 'true');
   }
 
   function setCourseVisibility(active) {
     var content = global.document.getElementById('opsContent');
     var host = ensureHost();
+    var contentHidden = Boolean(active);
+    var hostHidden = !active;
+
     if (content) {
-      if (content.hidden !== active) content.hidden = active;
-      content.setAttribute('aria-hidden', active ? 'true' : 'false');
+      if (content.hidden !== contentHidden) content.hidden = contentHidden;
+      setAttributeIfDifferent(content, 'aria-hidden', active ? 'true' : 'false');
     }
-    if (host.hidden === active) host.hidden = !active;
-    host.setAttribute('aria-hidden', active ? 'false' : 'true');
+    if (host.hidden !== hostHidden) host.hidden = hostHidden;
+    setAttributeIfDifferent(host, 'aria-hidden', active ? 'false' : 'true');
   }
 
   function sendView(frame, view) {
@@ -108,10 +117,15 @@
 
   function enforceCourseHost() {
     var view = courseView();
-    if (!view) return;
-    removeLegacyCourseWorkspaces();
-    setCourseVisibility(true);
-    updateShell(view);
+    if (!view || enforcing) return;
+    enforcing = true;
+    try {
+      removeLegacyCourseWorkspaces();
+      setCourseVisibility(true);
+      updateShell(view);
+    } finally {
+      enforcing = false;
+    }
   }
 
   function route() {
@@ -157,7 +171,7 @@
     var content = global.document.getElementById('opsContent');
     if (!content || contentObserver) return;
     contentObserver = new MutationObserver(function () {
-      if (courseView()) enforceCourseHost();
+      if (courseView() && !enforcing) scheduleRoute();
     });
     contentObserver.observe(content, {
       childList: true,
