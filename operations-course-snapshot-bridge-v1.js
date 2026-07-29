@@ -7,7 +7,7 @@
   var WORKSPACE_KEY = 'workspace';
   var CACHE_KEY = 'youzi.courseScheduler.formalCache.v1';
   var seededPromise = null;
-  var reloadVersion = '20260729-snapshot-bridge-v1';
+  var reloadVersion = '20260729-snapshot-bridge-v2';
 
   function clean(value) {
     return String(value == null ? '' : value).trim();
@@ -108,16 +108,45 @@
     cards.forEach(function (card) { if (card !== keep) card.remove(); });
   }
 
+  function postSnapshot(targetWindow) {
+    if (!targetWindow) return;
+    ensureSeeded().then(function (snapshot) {
+      if (!meaningful(snapshot)) return;
+      try {
+        targetWindow.postMessage({
+          type: 'youzi-course-snapshot-response',
+          version: reloadVersion,
+          snapshot: snapshot
+        }, global.location.origin);
+      } catch (_) {}
+    });
+  }
+
+  function postSnapshotToExistingFrame() {
+    var frame = global.document.getElementById('opsCourseFrame');
+    if (frame && frame.contentWindow) postSnapshot(frame.contentWindow);
+  }
+
   function refreshExistingFrame() {
     if (currentView().indexOf('course-') !== 0) return;
     var frame = global.document.getElementById('opsCourseFrame');
-    if (!frame || frame.dataset.snapshotBridgeReloaded === reloadVersion) return;
-    frame.dataset.snapshotBridgeReloaded = reloadVersion;
-    try {
-      var url = new URL(frame.getAttribute('src') || frame.src, global.location.href);
-      url.searchParams.set('snapshotBridge', reloadVersion);
-      frame.src = url.pathname + url.search;
-    } catch (_) {}
+    if (!frame) return;
+    if (frame.dataset.snapshotBridgeReloaded !== reloadVersion) {
+      frame.dataset.snapshotBridgeReloaded = reloadVersion;
+      try {
+        var url = new URL(frame.getAttribute('src') || frame.src, global.location.href);
+        url.searchParams.set('snapshotBridge', reloadVersion);
+        frame.src = url.pathname + url.search;
+      } catch (_) {}
+    }
+    if (!frame.dataset.snapshotBridgeLoadBound) {
+      frame.dataset.snapshotBridgeLoadBound = '1';
+      frame.addEventListener('load', function () {
+        postSnapshot(frame.contentWindow);
+      });
+    }
+    global.setTimeout(postSnapshotToExistingFrame, 80);
+    global.setTimeout(postSnapshotToExistingFrame, 350);
   }
 
   function openCourseView(view) {
@@ -135,8 +164,16 @@
     openCourseView('course-calendar');
   }
 
+  function onFrameMessage(event) {
+    if (event.origin !== global.location.origin) return;
+    var data = event.data || {};
+    if (data.type !== 'youzi-course-snapshot-request') return;
+    postSnapshot(event.source);
+  }
+
   function start() {
     global.addEventListener('youzi-course-auto-data-ready', seedFromEvent);
+    global.addEventListener('message', onFrameMessage);
     global.document.addEventListener('click', onCaptureClick, true);
     global.addEventListener('hashchange', function () {
       cleanDuplicateSchedules();
@@ -144,6 +181,7 @@
     });
     new MutationObserver(function () {
       cleanDuplicateSchedules();
+      if (currentView().indexOf('course-') === 0) postSnapshotToExistingFrame();
     }).observe(global.document.body, { childList: true, subtree: true });
     ensureSeeded().then(function () {
       cleanDuplicateSchedules();
