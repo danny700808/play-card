@@ -32,9 +32,10 @@ new vm.Script(portalUtils, { filename: 'functions/coursePortalUtils.js' });
 new vm.Script(publicAccessScript, { filename: '.github/scripts/course-mirror-public.cjs' });
 
 const htmlIds = new Set(Array.from(schedulerHtml.matchAll(/\bid=["']([^"']+)["']/g), (match) => match[1]));
-const requiredSchedulerIds = new Set(Array.from(scheduler.matchAll(/\$\(['"]([^'"]+)['"]\)/g), (match) => match[1]));
+const bindEventsSource = (scheduler.match(/function bindEvents\(\)\{([\s\S]*?)\n\s*function init\(\)/) || [])[1] || '';
+const requiredSchedulerIds = new Set(Array.from(bindEventsSource.matchAll(/(?<!\$)\$\(['"]([^'"]+)['"]\)/g), (match) => match[1]));
 const missingSchedulerIds = Array.from(requiredSchedulerIds).filter((id) => !htmlIds.has(id));
-assert.deepStrictEqual(missingSchedulerIds, [], `完整課表 HTML 缺少程式需要的元素：${missingSchedulerIds.join('、')}`);
+assert.deepStrictEqual(missingSchedulerIds, [], `完整課表 HTML 缺少初始化需要的元素：${missingSchedulerIds.join('、')}`);
 
 assert(bootstrap.includes("AUTO_FUNCTION_NAME = 'loadInjiaoyunEducationMirrorAuto'"), '前端未呼叫唯讀雲端課務資料');
 assert(bootstrap.includes("AUTHENTICATED_FUNCTION_NAME = 'loadInjiaoyunEducationMirror'"), '自動讀取尚未部署時缺少既有唯讀函式相容路徑');
