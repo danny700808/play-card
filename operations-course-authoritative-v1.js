@@ -1,15 +1,22 @@
 (function (global) {
   'use strict';
 
-  var VERSION = '20260729-authoritative-course-v4';
+  var VERSION = '20260729-authoritative-course-v5';
   var VIEW_MAP = {
     'course-calendar': 'calendar',
     'course-students': 'students',
     'course-teachers': 'teachers',
     'course-settings': 'settings'
   };
+  var TITLE_MAP = {
+    calendar: '課程日表',
+    students: '學生與學費',
+    teachers: '老師薪資',
+    settings: '系統設定'
+  };
   var scheduled = false;
   var contentObserver = null;
+  var started = false;
 
   function currentHash() {
     return String(global.location.hash || '#overview').replace(/^#/, '').split('?')[0] || 'overview';
@@ -45,6 +52,31 @@
     });
   }
 
+  function updateShell(view) {
+    var title = global.document.getElementById('opsPageTitle');
+    if (title && TITLE_MAP[view]) title.textContent = TITLE_MAP[view];
+    Array.prototype.slice.call(global.document.querySelectorAll('[data-view]')).forEach(function (node) {
+      node.classList.toggle('active', VIEW_MAP[node.dataset.view] === view);
+    });
+    var group = global.document.getElementById('opsCourseGroup');
+    var submenu = global.document.getElementById('opsCourseSubmenu');
+    var toggle = global.document.getElementById('opsCourseMenuToggle');
+    if (group) group.classList.add('open');
+    if (submenu) submenu.hidden = false;
+    if (toggle) toggle.setAttribute('aria-expanded', 'true');
+  }
+
+  function setCourseVisibility(active) {
+    var content = global.document.getElementById('opsContent');
+    var host = ensureHost();
+    if (content) {
+      if (content.hidden !== active) content.hidden = active;
+      content.setAttribute('aria-hidden', active ? 'true' : 'false');
+    }
+    if (host.hidden === active) host.hidden = !active;
+    host.setAttribute('aria-hidden', active ? 'false' : 'true');
+  }
+
   function sendView(frame, view) {
     if (!frame || !view) return;
     frame.dataset.courseView = view;
@@ -74,29 +106,25 @@
     return frame;
   }
 
+  function enforceCourseHost() {
+    var view = courseView();
+    if (!view) return;
+    removeLegacyCourseWorkspaces();
+    setCourseVisibility(true);
+    updateShell(view);
+  }
+
   function route() {
     scheduled = false;
     var view = courseView();
-    var content = global.document.getElementById('opsContent');
     var host = ensureHost();
 
     if (!view) {
-      if (content) {
-        content.hidden = false;
-        content.setAttribute('aria-hidden', 'false');
-      }
-      host.hidden = true;
-      host.setAttribute('aria-hidden', 'true');
+      setCourseVisibility(false);
       return;
     }
 
-    removeLegacyCourseWorkspaces();
-    if (content) {
-      content.hidden = true;
-      content.setAttribute('aria-hidden', 'true');
-    }
-    host.hidden = false;
-    host.setAttribute('aria-hidden', 'false');
+    enforceCourseHost();
     sendView(ensureFrame(host), view);
   }
 
@@ -104,6 +132,13 @@
     if (scheduled) return;
     scheduled = true;
     global.requestAnimationFrame(route);
+  }
+
+  function handleHashChange(event) {
+    if (courseView() && event && typeof event.stopImmediatePropagation === 'function') {
+      event.stopImmediatePropagation();
+    }
+    scheduleRoute();
   }
 
   function installStyle() {
@@ -122,21 +157,26 @@
     var content = global.document.getElementById('opsContent');
     if (!content || contentObserver) return;
     contentObserver = new MutationObserver(function () {
-      if (!courseView()) return;
-      removeLegacyCourseWorkspaces();
+      if (courseView()) enforceCourseHost();
     });
-    contentObserver.observe(content, { childList: true });
+    contentObserver.observe(content, {
+      childList: true,
+      attributes: true,
+      attributeFilter: ['hidden', 'aria-hidden']
+    });
   }
 
   function start() {
+    if (started) return;
+    started = true;
     installStyle();
     ensureHost();
     watchLegacyContent();
-    global.addEventListener('hashchange', scheduleRoute);
+    global.addEventListener('hashchange', handleHashChange, true);
     global.addEventListener('pageshow', scheduleRoute);
-    scheduleRoute();
+    route();
   }
 
-  if (global.document.readyState === 'loading') global.document.addEventListener('DOMContentLoaded', start);
-  else start();
+  if (global.document.body) start();
+  else global.document.addEventListener('DOMContentLoaded', start);
 })(window);
