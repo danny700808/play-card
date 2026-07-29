@@ -167,11 +167,13 @@
   function start() {
     installStyle();
     cacheOverviewCard();
-    observer = new MutationObserver(function () {
-      if (currentHash() === 'overview') cacheOverviewCard();
-      if (isCalendar()) queueRender();
-    });
-    observer.observe(global.document.body, { childList: true, subtree: true });
+    var content = global.document.getElementById('opsContent');
+    if (content) {
+      observer = new MutationObserver(function () {
+        if (currentHash() === 'overview') cacheOverviewCard();
+      });
+      observer.observe(content, { childList: true, subtree: true });
+    }
     global.document.addEventListener('click', function (event) {
       var target = event.target && event.target.closest && event.target.closest('[data-nav="course-calendar"],a[href="#course-calendar"]');
       if (target) cacheOverviewCard();
