@@ -1,205 +1,250 @@
 (function (global) {
   'use strict';
 
-  if (global.__YOUZI_SIMPLE_FULL_COURSE__) return;
-  global.__YOUZI_SIMPLE_FULL_COURSE__ = true;
+  if (global.__YOUZI_SIMPLE_FULL_COURSE_V2__) return;
+  global.__YOUZI_SIMPLE_FULL_COURSE_V2__ = true;
 
-  var VERSION = '20260729-simple-full-v1';
-  var CACHE_KEY = 'youzi.operations.simpleFullScheduleHtml.v1';
+  var VERSION = '20260729-simple-full-v2';
+  var DB_NAME = 'youzi-course-scheduler';
+  var STORE_NAME = 'formalSnapshots';
+  var FORMAL_KEY = 'latest';
+  var WORKSPACE_KEY = 'workspace';
+  var CACHE_KEY = 'youzi.courseScheduler.formalCache.v1';
   var HASH = 'course-calendar';
-  var observer = null;
+  var snapshot = null;
+  var loading = null;
+  var selectedDate = '';
   var queued = false;
-  var cachedHtml = readCache();
 
-  function clean(value) {
-    return String(value == null ? '' : value).trim();
+  function clean(value) { return String(value == null ? '' : value).trim(); }
+  function numberOf(value) { var n = Number(value); return Number.isFinite(n) ? n : 0; }
+  function esc(value) { return clean(value).replace(/[&<>"']/g, function (ch) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]; }); }
+  function pad(value) { return String(value).padStart(2, '0'); }
+  function dateKey(value) {
+    var date = value instanceof Date ? value : new Date(clean(value).slice(0, 10) + 'T12:00:00');
+    if (!Number.isFinite(date.getTime())) return '';
+    return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate());
+  }
+  function todayKey() { return dateKey(new Date()); }
+  function shiftDate(key, days) { var d = new Date(key + 'T12:00:00'); d.setDate(d.getDate() + Number(days || 0)); return dateKey(d); }
+  function timeToMinutes(value) { var parts = clean(value || '00:00').split(':'); return numberOf(parts[0]) * 60 + numberOf(parts[1]); }
+  function minutesToTime(value) { return pad(Math.floor(value / 60)) + ':' + pad(value % 60); }
+  function currentHash() { return clean(global.location.hash || '#overview').replace(/^#/, '').split('?')[0] || 'overview'; }
+  function isCalendar() { return currentHash() === HASH; }
+  function hasRows(source, key) { return Boolean(source && Array.isArray(source[key]) && source[key].length); }
+  function meaningful(source) {
+    if (!source || Number(source.version) !== 3) return false;
+    return hasRows(source, 'rooms') && ['events','recurringRules','fixedCourses','temporaryCourses','roomRentals'].some(function (key) { return hasRows(source, key); });
+  }
+  function byId(rows, id) { return (rows || []).find(function (row) { return clean(row && row.id) === clean(id); }) || {}; }
+
+  function openDatabase() {
+    return new Promise(function (resolve, reject) {
+      if (!global.indexedDB) { resolve(null); return; }
+      var request = global.indexedDB.open(DB_NAME, 1);
+      request.onupgradeneeded = function () { var db = request.result; if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME); };
+      request.onsuccess = function () { resolve(request.result); };
+      request.onerror = function () { reject(request.error || new Error('IndexedDB open failed')); };
+    });
   }
 
-  function currentHash() {
-    return clean(global.location.hash || '#overview').replace(/^#/, '').split('?')[0] || 'overview';
+  async function readSnapshot() {
+    var db = await openDatabase();
+    if (db) {
+      var result = await new Promise(function (resolve, reject) {
+        var tx = db.transaction(STORE_NAME, 'readonly');
+        var store = tx.objectStore(STORE_NAME);
+        var workspaceRequest = store.get(WORKSPACE_KEY);
+        var formalRequest = store.get(FORMAL_KEY);
+        tx.oncomplete = function () {
+          var workspace = workspaceRequest.result || null;
+          var formal = formalRequest.result || null;
+          db.close();
+          resolve(meaningful(workspace) ? workspace : (meaningful(formal) ? formal : null));
+        };
+        tx.onerror = function () { reject(tx.error || new Error('IndexedDB read failed')); };
+        tx.onabort = function () { reject(tx.error || new Error('IndexedDB read aborted')); };
+      }).catch(function () { return null; });
+      if (meaningful(result)) return result;
+    }
+    try {
+      var cached = JSON.parse(global.localStorage.getItem(CACHE_KEY) || 'null');
+      return meaningful(cached) ? cached : null;
+    } catch (_) { return null; }
   }
 
-  function isCalendar() {
-    return currentHash() === HASH;
+  function loadSnapshot(force) {
+    if (loading && !force) return loading;
+    loading = readSnapshot().then(function (value) {
+      snapshot = value;
+      loading = null;
+      return value;
+    });
+    return loading;
   }
 
-  function readCache() {
-    try { return global.localStorage.getItem(CACHE_KEY) || ''; }
-    catch (_) { return ''; }
+  function ruleOccurs(rule, targetDate) {
+    var start = dateKey(rule.startDate), end = dateKey(rule.endDate);
+    if (!start || targetDate < start || (end && targetDate > end) || rule.active === false) return false;
+    var startDate = new Date(start + 'T12:00:00'), target = new Date(targetDate + 'T12:00:00');
+    if (startDate.getDay() !== target.getDay()) return false;
+    var weeks = Math.floor((target - startDate) / 604800000);
+    return weeks >= 0 && weeks % Math.max(1, numberOf(rule.intervalWeeks) || 1) === 0;
   }
 
-  function writeCache(value) {
-    cachedHtml = clean(value);
-    if (!cachedHtml) return;
-    try { global.localStorage.setItem(CACHE_KEY, cachedHtml); } catch (_) {}
+  function normalizedStatus(value) {
+    value = clean(value).toLowerCase();
+    if (['cancel','cancelled','canceled','voided','inactive','取消','停課','註銷'].indexOf(value) >= 0) return 'cancelled';
+    if (['leave','請假','已請假'].indexOf(value) >= 0) return 'leave';
+    if (['absent','曠課','缺席'].indexOf(value) >= 0) return 'absent';
+    if (['attended','checkin','checked-in','已簽到','簽到'].indexOf(value) >= 0) return 'attended';
+    return 'scheduled';
   }
 
-  function overviewCard() {
-    var content = global.document.getElementById('opsContent');
-    if (!content) return null;
-    return content.querySelector('.ops-mobile-course-fix-card') || content.querySelector('.ops-approved-schedule-card');
+  function eventsForDate(targetDate) {
+    if (!snapshot) return [];
+    var stored = (snapshot.events || []).filter(function (row) {
+      return dateKey(row.date) === targetDate && normalizedStatus(row.status) !== 'cancelled';
+    });
+    var overrideKeys = new Set(stored.map(function (row) { return clean(row.recurrenceKey); }).filter(Boolean));
+    var recurring = (snapshot.recurringRules || []).filter(function (rule) {
+      return ruleOccurs(rule, targetDate) && !overrideKeys.has(clean(rule.id) + '@' + targetDate);
+    }).map(function (rule) {
+      return Object.assign({}, rule, { id: 'rec_' + clean(rule.id) + '@' + targetDate, recurrenceKey: clean(rule.id) + '@' + targetDate, date: targetDate, type: rule.type || 'fixed', status: 'scheduled' });
+    });
+    return stored.concat(recurring).sort(function (a, b) { return timeToMinutes(a.start) - timeToMinutes(b.start); });
   }
 
-  function cacheOverviewCard() {
-    var card = overviewCard();
-    if (!card) return false;
-    var hasGrid = card.querySelector('.ops-mobile-course-grid,.ops-approved-schedule-grid');
-    if (!hasGrid) return false;
-    writeCache(card.outerHTML);
-    return true;
+  function eventName(event) {
+    if (clean(event.type) === 'rental') return clean(event.clientName) || '教室租用';
+    var names = (event.studentIds || []).map(function (id) { return clean(byId(snapshot && snapshot.students, id).name); }).filter(Boolean);
+    return names.join('、') || clean(event.clientName) || clean(byId(snapshot && snapshot.subjects, event.subjectId).name) || '課程';
+  }
+
+  function eventClass(event) {
+    var type = clean(event.type).toLowerCase(), status = normalizedStatus(event.status);
+    if (status === 'leave' || status === 'absent') return ' leave';
+    if (type === 'rental') return ' rental';
+    if (type === 'trial') return ' trial';
+    if (type === 'single' || type === 'temporary' || type === 'reschedule' || event.movedFrom) return ' move';
+    return '';
+  }
+
+  function roomLabel(room, index) {
+    var label = clean(room.publicName || room.shortName || room.name) || ('教室 ' + (index + 1));
+    return label.replace(/YAMAHA/gi, 'Y').replace(/KAWAI/gi, 'K').replace(/平台鋼琴教室/g, '平台').replace(/直立鋼琴教室/g, '直立').replace(/教室/g, '').trim() || label;
   }
 
   function installStyle() {
-    if (global.document.getElementById('opsSimpleFullCourseStyle')) return;
+    if (global.document.getElementById('opsSimpleFullCourseStyleV2')) return;
     var style = global.document.createElement('style');
-    style.id = 'opsSimpleFullCourseStyle';
+    style.id = 'opsSimpleFullCourseStyleV2';
     style.textContent = [
-      '#opsSimpleFullCourse{min-height:calc(100dvh - 88px);padding:12px 12px 30px;color:#173f34}',
+      '#opsSimpleFullCourse{min-height:calc(100dvh - 88px);padding:12px;color:#173f34}',
       '#opsSimpleFullCourse *{box-sizing:border-box}',
-      '#opsSimpleFullCourse .simple-full-tabs{position:sticky;top:0;z-index:30;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;padding:9px;border-radius:17px;background:#153f36;box-shadow:0 10px 24px rgba(12,55,45,.14)}',
-      '#opsSimpleFullCourse .simple-full-tabs button{min-height:49px;border:0;border-radius:12px;background:rgba(255,255,255,.08);color:#e9f5f1;font-weight:800;font-size:14px}',
-      '#opsSimpleFullCourse .simple-full-tabs button.active{background:#fff;color:#173f34}',
-      '#opsSimpleFullCourse .simple-full-note{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-top:12px;padding:13px 15px;border:1px solid #cfe0da;border-radius:17px;background:#fff}',
-      '#opsSimpleFullCourse .simple-full-note b{display:block;font-size:17px}',
-      '#opsSimpleFullCourse .simple-full-note span{display:block;margin-top:4px;color:#667d76;font-size:12px;line-height:1.55}',
-      '#opsSimpleFullCourse .simple-full-back{min-height:42px;padding:8px 14px;border:0;border-radius:11px;background:#167e5e;color:#fff;font-weight:800;white-space:nowrap}',
-      '#opsSimpleFullCourse .ops-mobile-course-fix-card,#opsSimpleFullCourse .ops-approved-schedule-card{margin-top:12px!important;overflow:hidden;border:1px solid #cfe0da;border-radius:17px;background:#fff;box-shadow:0 8px 22px rgba(17,73,58,.06)}',
-      '#opsSimpleFullCourse .ops-card-head{padding:15px 16px 12px}',
-      '#opsSimpleFullCourse .ops-card-head h2{font-size:22px}',
-      '#opsSimpleFullCourse .ops-card-head .ops-approved-link-button{display:none!important}',
-      '#opsSimpleFullCourse .ops-mobile-course-wrap,#opsSimpleFullCourse .ops-approved-schedule-wrap{width:100%;padding:0 10px 12px;overflow:auto!important;-webkit-overflow-scrolling:touch}',
-      '#opsSimpleFullCourse .ops-mobile-course-grid{--slot-height:34px!important;min-width:max(920px,100%)!important;grid-template-columns:58px repeat(var(--room-count),minmax(78px,1fr))!important;grid-template-rows:44px repeat(var(--slot-count),var(--slot-height))!important;overflow:visible!important}',
-      '#opsSimpleFullCourse .ops-mobile-course-room,#opsSimpleFullCourse .ops-mobile-course-corner{font-size:11px!important;line-height:1.15!important;padding:5px 3px!important;word-break:normal!important}',
-      '#opsSimpleFullCourse .ops-mobile-course-time{font-size:10px!important;padding-top:5px!important}',
-      '#opsSimpleFullCourse .ops-mobile-course-event{margin:2px!important;padding:5px 3px!important;border-radius:7px!important}',
-      '#opsSimpleFullCourse .ops-mobile-course-event b{font-size:11px!important;line-height:1.15!important;max-height:none!important;word-break:normal!important}',
-      '#opsSimpleFullCourse .ops-approved-schedule-grid{min-width:max(920px,100%)!important}',
-      '#opsSimpleFullCourse .simple-full-empty{display:grid;place-items:center;min-height:520px;margin-top:12px;padding:26px;border:1px solid #cfe0da;border-radius:17px;background:#fff;text-align:center}',
-      '#opsSimpleFullCourse .simple-full-empty b{display:block;font-size:18px}',
-      '#opsSimpleFullCourse .simple-full-empty span{display:block;margin-top:8px;color:#6b817a;line-height:1.6}',
-      '@media(max-width:640px){#opsSimpleFullCourse{padding:8px 8px 24px}#opsSimpleFullCourse .simple-full-tabs{gap:5px;padding:7px}#opsSimpleFullCourse .simple-full-tabs button{min-height:45px;font-size:12px}#opsSimpleFullCourse .simple-full-note{align-items:flex-start;flex-direction:column}#opsSimpleFullCourse .simple-full-back{width:100%}}'
+      '#opsSimpleFullCourse .full-head{position:sticky;top:0;z-index:20;display:flex;flex-wrap:wrap;gap:9px;align-items:center;padding:12px;border-radius:16px;background:#153f36;color:#fff}',
+      '#opsSimpleFullCourse .full-head b{font-size:19px;margin-right:auto}',
+      '#opsSimpleFullCourse .full-head button,#opsSimpleFullCourse .full-head input{min-height:42px;border:1px solid #c7dbd4;border-radius:10px;background:#fff;color:#173f34;font-weight:800;padding:8px 12px}',
+      '#opsSimpleFullCourse .full-note{margin:12px 0;padding:12px 14px;border:1px solid #cfe0da;border-radius:14px;background:#fff;color:#647b74;font-size:12px;line-height:1.6}',
+      '#opsSimpleFullCourse .full-wrap{width:100%;overflow:auto;-webkit-overflow-scrolling:touch;border:1px solid #cfe0da;border-radius:16px;background:#fff}',
+      '#opsSimpleFullCourse .full-grid{--slot-height:38px;display:grid;position:relative;min-width:max(980px,100%);grid-template-columns:62px repeat(var(--room-count),minmax(86px,1fr));grid-template-rows:48px repeat(var(--slot-count),var(--slot-height))}',
+      '#opsSimpleFullCourse .corner,#opsSimpleFullCourse .room,#opsSimpleFullCourse .time,#opsSimpleFullCourse .cell{border-right:1px solid #d7e3df;border-bottom:1px solid #d7e3df}',
+      '#opsSimpleFullCourse .corner,#opsSimpleFullCourse .room{display:grid;place-items:center;padding:4px;background:#edf6f2;font-size:11px;font-weight:800;text-align:center}',
+      '#opsSimpleFullCourse .time{display:grid;place-items:start center;padding-top:5px;background:#f8fbfa;color:#71847e;font-size:10px}',
+      '#opsSimpleFullCourse .half{border-bottom-style:dashed}',
+      '#opsSimpleFullCourse .event{z-index:3;margin:2px;padding:5px 4px;border:0;border-radius:7px;background:#1e7a5d;color:#fff;text-align:left;overflow:hidden}',
+      '#opsSimpleFullCourse .event b{display:block;font-size:12px;line-height:1.15}',
+      '#opsSimpleFullCourse .event span{display:block;margin-top:3px;font-size:9px;opacity:.9}',
+      '#opsSimpleFullCourse .event.move{background:#5d9b88}.event.rental{background:#c87d83}.event.trial{background:#c9953e}.event.leave{background:#8ea9bd;opacity:.75}',
+      '#opsSimpleFullCourse .empty{display:grid;place-items:center;min-height:520px;padding:24px;text-align:center;border:1px solid #cfe0da;border-radius:16px;background:#fff}',
+      '@media(max-width:640px){#opsSimpleFullCourse{padding:8px}#opsSimpleFullCourse .full-head{align-items:stretch}#opsSimpleFullCourse .full-head b{width:100%}#opsSimpleFullCourse .full-head button,#opsSimpleFullCourse .full-head input{flex:1;min-width:72px}}'
     ].join('');
     global.document.head.appendChild(style);
   }
 
-  function tabsHtml() {
-    return '<nav class="simple-full-tabs" aria-label="課務管理">'
-      + '<button type="button" class="active" data-simple-course-hash="course-calendar">課程日表</button>'
-      + '<button type="button" data-simple-course-hash="course-students">學生與學費</button>'
-      + '<button type="button" data-simple-course-hash="course-teachers">老師與薪資</button>'
-      + '<button type="button" data-simple-course-hash="course-settings">系統設定</button>'
-      + '</nav>';
+  function dateFromOperations() {
+    var state = global.OperationsCenterV1 && global.OperationsCenterV1.state || {};
+    return dateKey(state.overviewDate) || selectedDate || todayKey();
   }
 
-  function prepareCard(html) {
-    var box = global.document.createElement('div');
-    box.innerHTML = html;
-    var card = box.querySelector('.ops-mobile-course-fix-card,.ops-approved-schedule-card');
-    if (!card) return '';
-    card.classList.add('simple-full-course-card');
-    var title = card.querySelector('h2');
-    if (title) title.textContent = '完整課表';
-    card.querySelectorAll('[data-nav="course-calendar"],.ops-approved-link-button').forEach(function (node) {
-      if (node.matches('button,a')) node.remove();
-      else node.removeAttribute('data-nav');
+  function gridHtml() {
+    if (!meaningful(snapshot)) return '<section class="empty"><div><b>正在讀取已保存的課表</b><p>完整課表直接讀取本機課務資料庫，不需要先開啟營運總覽，也不會自動同步音教雲。</p></div></section>';
+    var date = selectedDate || dateFromOperations();
+    var rooms = (snapshot.rooms || []).filter(function (room) { return room.active !== false; }).sort(function (a, b) { return numberOf(a.sort) - numberOf(b.sort); });
+    var settings = snapshot.settings || {};
+    var startHour = Math.max(0, Math.min(23, numberOf(settings.startHour) || 8));
+    var endHour = Math.max(startHour + 1, Math.min(24, numberOf(settings.endHour) || 22));
+    var slotCount = (endHour - startHour) * 2;
+    var events = eventsForDate(date);
+    var html = '<div class="full-wrap"><div class="full-grid" style="--room-count:' + rooms.length + ';--slot-count:' + slotCount + '">';
+    html += '<div class="corner" style="grid-column:1;grid-row:1">時間</div>';
+    rooms.forEach(function (room, index) { html += '<div class="room" style="grid-column:' + (index + 2) + ';grid-row:1">' + esc(roomLabel(room, index)) + '</div>'; });
+    for (var slot = 0; slot < slotCount; slot += 1) {
+      var row = slot + 2, minute = startHour * 60 + slot * 30, half = slot % 2 ? ' half' : '';
+      html += '<div class="time' + half + '" style="grid-column:1;grid-row:' + row + '">' + (slot % 2 ? '' : minutesToTime(minute)) + '</div>';
+      rooms.forEach(function (_, roomIndex) { html += '<div class="cell' + half + '" style="grid-column:' + (roomIndex + 2) + ';grid-row:' + row + '"></div>'; });
+    }
+    events.forEach(function (event) {
+      var roomIndex = rooms.findIndex(function (room) { return clean(room.id) === clean(event.roomId); });
+      var start = timeToMinutes(event.start);
+      if (roomIndex < 0 || start < startHour * 60 || start >= endHour * 60) return;
+      var startSlot = Math.floor((start - startHour * 60) / 30);
+      var span = Math.max(1, Math.ceil((numberOf(event.duration) || 60) / 30));
+      var teacher = clean(byId(snapshot.teachers, event.teacherId).name);
+      var subject = clean(byId(snapshot.subjects, event.subjectId).name);
+      html += '<button type="button" class="event' + eventClass(event) + '" style="grid-column:' + (roomIndex + 2) + ';grid-row:' + (startSlot + 2) + ' / span ' + Math.min(span, slotCount - startSlot) + '"><b>' + esc(eventName(event)) + '</b><span>' + esc([subject, teacher, clean(event.start)].filter(Boolean).join(' · ')) + '</span></button>';
     });
-    card.querySelectorAll('.ops-mobile-course-event,.ops-approved-schedule-event').forEach(function (node) {
-      node.removeAttribute('data-nav');
-      node.type = 'button';
-    });
-    return card.outerHTML;
+    return html + '</div></div>';
   }
 
   function shellHtml() {
-    var cardHtml = prepareCard(cachedHtml || readCache());
-    var html = tabsHtml();
-    html += '<section class="simple-full-note"><div><b>完整課表使用營運總覽同一份資料</b><span>目前保留並顯示上次成功保存的課表。只有你主動按「更新音教雲最新資料」且更新成功後，內容才會換成新資料；更新過程不會先清空舊課表。</span></div><button type="button" class="simple-full-back" data-simple-course-home>返回營運總覽</button></section>';
-    if (cardHtml) return html + cardHtml;
-    return html + '<section class="simple-full-empty"><div><b>正在取得營運總覽課表</b><span>請先返回營運總覽，等簡易課表出現後再按「完整課表」。系統會直接把同一張課表放大顯示，不再開啟另一套複雜課表。</span></div></section>';
-  }
-
-  function hostNode() {
-    return global.document.getElementById('opsCoursePersistentHost');
+    var date = selectedDate || dateFromOperations();
+    return '<header class="full-head"><b>完整課表</b><button type="button" data-full-step="-1">‹ 前一天</button><input type="date" data-full-date value="' + esc(date) + '"><button type="button" data-full-step="1">後一天 ›</button><button type="button" data-full-today>今天</button><button type="button" data-full-home>返回營運總覽</button></header>'
+      + '<div class="full-note">目前顯示上次成功保存的課表。只有你主動按「更新音教雲最新資料」且更新成功後，本機資料庫才會換成新資料；更新失敗時舊課表會繼續保留。</div>'
+      + gridHtml();
   }
 
   function render() {
     queued = false;
     if (!isCalendar()) return;
     installStyle();
-    cacheOverviewCard();
-    var host = hostNode();
+    var host = global.document.getElementById('opsCoursePersistentHost');
     if (!host) return;
     host.hidden = false;
-    host.setAttribute('aria-hidden', 'false');
     host.querySelectorAll('.ops-course-workspace').forEach(function (node) { node.remove(); });
     var root = host.querySelector('#opsSimpleFullCourse');
-    if (!root) {
-      root = global.document.createElement('div');
-      root.id = 'opsSimpleFullCourse';
-      host.appendChild(root);
-    }
+    if (!root) { root = global.document.createElement('div'); root.id = 'opsSimpleFullCourse'; host.appendChild(root); }
     root.dataset.version = VERSION;
     root.innerHTML = shellHtml();
-    bind(root);
+    var dateInput = root.querySelector('[data-full-date]');
+    if (dateInput) dateInput.addEventListener('change', function () { selectedDate = dateKey(dateInput.value) || todayKey(); queueRender(); });
+    root.querySelectorAll('[data-full-step]').forEach(function (button) { button.addEventListener('click', function () { selectedDate = shiftDate(selectedDate || dateFromOperations(), numberOf(button.dataset.fullStep)); queueRender(); }); });
+    var today = root.querySelector('[data-full-today]'); if (today) today.addEventListener('click', function () { selectedDate = todayKey(); queueRender(); });
+    var home = root.querySelector('[data-full-home]'); if (home) home.addEventListener('click', function () { global.location.hash = 'overview'; });
   }
 
-  function queueRender() {
-    if (queued) return;
-    queued = true;
-    global.requestAnimationFrame(render);
-  }
+  function queueRender() { if (queued) return; queued = true; global.requestAnimationFrame(render); }
 
-  function bind(root) {
-    root.querySelectorAll('[data-simple-course-hash]').forEach(function (button) {
-      button.addEventListener('click', function () { global.location.hash = button.dataset.simpleCourseHash; });
-    });
-    var home = root.querySelector('[data-simple-course-home]');
-    if (home) home.addEventListener('click', function () { global.location.hash = 'overview'; });
-  }
-
-  function removeWhenInactive() {
-    if (isCalendar()) return;
-    var host = hostNode();
-    var root = host && host.querySelector('#opsSimpleFullCourse');
-    if (root) root.remove();
+  function refreshData() {
+    loadSnapshot(true).then(function () { if (isCalendar()) queueRender(); });
   }
 
   function start() {
     installStyle();
-    cacheOverviewCard();
-    var content = global.document.getElementById('opsContent');
-    if (content) {
-      observer = new MutationObserver(function () {
-        if (currentHash() === 'overview') cacheOverviewCard();
-      });
-      observer.observe(content, { childList: true, subtree: true });
-    }
-    global.document.addEventListener('click', function (event) {
-      var target = event.target && event.target.closest && event.target.closest('[data-nav="course-calendar"],a[href="#course-calendar"]');
-      if (target) cacheOverviewCard();
-    }, true);
-    global.addEventListener('hashchange', function () {
-      if (isCalendar()) queueRender();
-      else removeWhenInactive();
-    });
-    global.addEventListener('pageshow', function () {
-      if (currentHash() === 'overview') cacheOverviewCard();
+    selectedDate = dateFromOperations();
+    loadSnapshot(false).then(function () { if (isCalendar()) queueRender(); });
+    global.addEventListener('hashchange', function () { if (isCalendar()) { selectedDate = dateFromOperations(); refreshData(); } });
+    global.addEventListener('pageshow', function () { if (isCalendar()) refreshData(); });
+    global.addEventListener('focus', function () { if (isCalendar()) refreshData(); });
+    global.addEventListener('youzi-course-auto-data-ready', function (event) {
+      if (meaningful(event && event.detail && event.detail.snapshot)) snapshot = event.detail.snapshot;
+      else refreshData();
       if (isCalendar()) queueRender();
     });
-    global.addEventListener('youzi-course-auto-data-ready', function () {
-      global.setTimeout(function () {
-        cacheOverviewCard();
-        if (isCalendar()) queueRender();
-      }, 60);
-    });
+    global.addEventListener('storage', function (event) { if (event.key === CACHE_KEY && isCalendar()) refreshData(); });
     if (isCalendar()) queueRender();
   }
 
-  global.YouziSimpleFullCourse = {
-    refresh: queueRender,
-    cacheOverview: cacheOverviewCard
-  };
-
-  if (global.document.readyState === 'loading') global.document.addEventListener('DOMContentLoaded', start);
-  else start();
+  global.YouziSimpleFullCourse = { refresh: refreshData };
+  if (global.document.readyState === 'loading') global.document.addEventListener('DOMContentLoaded', start); else start();
 })(window);
