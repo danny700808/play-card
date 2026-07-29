@@ -1,0 +1,59 @@
+name: Apply Operations Fast Start
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/scripts/optimize-operations-fast-start.cjs"
+      - ".github/workflows/apply-operations-fast-start.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-operations-fast-start-main
+  cancel-in-progress: true
+
+jobs:
+  apply-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Apply fast-start cache patch
+        run: node .github/scripts/optimize-operations-fast-start.cjs
+
+      - name: Verify JavaScript and cache markers
+        run: |
+          node --check operations-phase1.js
+          node - <<'NODE'
+          const fs=require('fs');
+          const source=fs.readFileSync('operations-phase1.js','utf8');
+          for(const marker of [
+            "FAST_STATE_DB_NAME = 'youzi-operations-fast-start'",
+            'async function saveFastStateCache()',
+            'async function restoreFastStateCache()',
+            'const restoredFastState=await restoreFastStateCache()',
+            'if(restoredFastState&&state.fullLoadedAt)',
+            'saveFastStateCache();'
+          ]) if(!source.includes(marker)) throw new Error('Missing fast-start marker: '+marker);
+          if(!source.includes('loadAll(true);')) throw new Error('Background refresh is missing');
+          console.log('Operations fast-start cache verified');
+          NODE
+
+      - name: Commit optimized operations runtime
+        run: |
+          if git diff --quiet; then
+            echo "Operations fast-start runtime is already current."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add operations-phase1.js
+          git commit -m "Use cached operations data before background refresh"
+          git push origin HEAD:main
