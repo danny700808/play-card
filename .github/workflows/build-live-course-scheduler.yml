@@ -4,16 +4,14 @@ on:
   push:
     branches:
       - main
-    paths:
-      - "course-scheduler.html"
-      - "course-scheduler-live-entry-v1.js"
-      - ".github/scripts/build-live-course-scheduler.cjs"
-      - ".github/workflows/build-live-course-scheduler.yml"
-      - ".github/live-course-scheduler-trigger.txt"
   workflow_dispatch:
 
 permissions:
   contents: write
+
+concurrency:
+  group: build-live-course-scheduler-main
+  cancel-in-progress: false
 
 jobs:
   build-live-scheduler:
