@@ -14,7 +14,7 @@ const reviewData = read('course-scheduler-review-data.js');
 const schedulerGate = read('course-scheduler-startup-gate-v1.js');
 const scheduler = read('course-scheduler.js');
 const schedulerHtml = read('course-scheduler.html');
-const operations = read('operations-phase1.js');
+const operationsBridge = read('operations-course-snapshot-bridge-v1.js');
 const autoRead = read('functions/injiaoyunEducationAutoRead.js');
 const courseIndex = read('functions/courseIndex.js');
 const portalUtils = read('functions/coursePortalUtils.js');
@@ -29,6 +29,7 @@ new vm.Script(mobileCourse, { filename: 'operations-mobile-course-fix-v1.js' });
 new vm.Script(reviewData, { filename: 'course-scheduler-review-data.js' });
 new vm.Script(schedulerGate, { filename: 'course-scheduler-startup-gate-v1.js' });
 new vm.Script(scheduler, { filename: 'course-scheduler.js' });
+new vm.Script(operationsBridge, { filename: 'operations-course-snapshot-bridge-v1.js' });
 new vm.Script(autoRead, { filename: 'functions/injiaoyunEducationAutoRead.js' });
 new vm.Script(courseIndex, { filename: 'functions/courseIndex.js' });
 new vm.Script(portalUtils, { filename: 'functions/coursePortalUtils.js' });
@@ -56,10 +57,16 @@ assert(schedulerGate.includes("FORMAL_CACHE_KEY = 'youzi.courseScheduler.formalC
 assert(schedulerGate.includes('seedFormalCache(result)'), '完整課表沒有在第一次繪製前寫入課表快照');
 assert(schedulerGate.includes("listener.name === 'init'"), '啟動閘門未鎖定完整課表初始化');
 assert(schedulerGate.includes('schedulerListenerCount > 1'), '舊快取腳本可能重複初始化完整課表');
-assert(reviewData.includes('course-scheduler-startup-gate-v1.js?v=20260729-full-scheduler-v2'), '完整課表未載入最新啟動閘門');
-assert(reviewData.includes('course-scheduler.js?v=20260729-full-scheduler-v3'), '完整課表未載入最新主程式');
-assert(schedulerHtml.includes('course-scheduler-review-data.js?v=20260729-full-scheduler-v3'), '完整課表 HTML 仍可能使用舊資料啟動程式');
-assert(operations.includes('course-scheduler.html?cv=20260729-full-scheduler-v3&'), '營運中心仍可能開啟舊快取的完整課表 HTML');
+assert(reviewData.includes('youzi-course-snapshot-request'), '完整課表沒有向營運總覽要求目前快照');
+assert(reviewData.includes('youzi-course-snapshot-response'), '完整課表沒有接收營運總覽快照');
+assert(reviewData.includes('course-scheduler-startup-gate-v1.js?v=20260729-full-scheduler-v3'), '完整課表未載入最新啟動閘門');
+assert(reviewData.includes('course-scheduler.js?v=20260729-full-scheduler-v4'), '完整課表未載入最新主程式');
+assert(schedulerHtml.includes('course-data-auto-bootstrap-v1.js?v=20260729-auto-cloud-v5'), '完整課表 HTML 未直接載入自動課務資料');
+assert(schedulerHtml.includes('course-scheduler-review-data.js?v=20260729-full-scheduler-v5'), '完整課表 HTML 仍可能使用舊資料接收程式');
+assert(schedulerHtml.includes('course-scheduler-startup-gate-v1.js?v=20260729-full-scheduler-v3'), '完整課表 HTML 未載入啟動閘門');
+assert(operationsBridge.includes('youzi-course-snapshot-request'), '營運總覽沒有接收完整課表快照要求');
+assert(operationsBridge.includes('youzi-course-snapshot-response'), '營運總覽沒有把目前快照送入完整課表');
+assert(operationsBridge.includes('cleanDuplicateSchedules'), '營運總覽沒有移除重複的今日課表');
 
 assert(mobileCourse.includes('function hasScheduleData'), '手機首頁缺少課程事件判斷');
 assert(mobileCourse.includes("if (!meaningful(snapshot)) return loadingCardHtml()"), '手機首頁仍可能用不完整資料畫出空白格線');
@@ -83,7 +90,6 @@ assert(publicAccessScript.includes('roles/run.invoker'), 'IAM 腳本未授權 Cl
 assert(publicAccessScript.includes('allUsers'), 'IAM 腳本未允許網站匿名呼叫唯讀課表');
 assert(workflow.includes('node .github/scripts/course-mirror-public.cjs'), '工作流程未執行穩定的 Cloud Run 權限腳本');
 assert(workflow.includes('course-mirror-diagnostics'), '驗證失敗時未保留可檢查的診斷紀錄');
-assert(reviewData.includes('loadAutomaticCourseBootstrap'), '獨立課程日表未在初始化前啟動自動復原');
 
 [hub, portal].forEach((html) => {
   const converterIndex = html.indexOf('course-scheduler-data.js');
@@ -92,7 +98,7 @@ assert(reviewData.includes('loadAutomaticCourseBootstrap'), '獨立課程日表�
   assert(converterIndex >= 0, '營運入口未載入課務資料轉換器');
   assert(bootstrapIndex > converterIndex, '自動復原必須在資料轉換器之後載入');
   assert(operationsIndex > bootstrapIndex, '自動復原必須在營運頁面初始化前載入');
-  assert(html.includes('operations-phase1.js?v=20260729-full-scheduler-v4'), '營運入口仍可能使用舊的完整課表連結');
+  assert(html.includes('operations-course-snapshot-bridge-v1.js?v=20260729-snapshot-bridge-v2'), '營運入口仍可能使用舊的完整課表橋接程式');
 });
 
 console.log('automatic course cloud load tests passed');
