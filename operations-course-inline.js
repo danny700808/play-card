@@ -3,7 +3,7 @@
 
   if (global.YouziOperationsCourseInline) return;
 
-  var VERSION = '20260729-operations-inline-course-v1';
+  var VERSION = '20260729-operations-inline-course-v3';
   var TEMPLATE_URL = 'operations-course-inline-template.html?v=' + VERSION;
   var RUNTIME_URL = 'operations-course-inline-runtime.js?v=' + VERSION;
   var STYLE_URL = 'course-scheduler.css?v=' + VERSION;
@@ -13,12 +13,6 @@
   var LATEST_KEY = 'latest';
   var CACHE_KEY = 'youzi.courseScheduler.formalCache.v1';
   var LEGACY_KEYS = [CACHE_KEY, 'youzi.courseScheduler.sandbox.v1'];
-  var PIN_KEYS = [
-    'youzi.injiaoyun.preview.pin',
-    'youzi.injiaoyun.manualSyncPin.v1',
-    'youzi.injiaoyun.sync.pin',
-    'injiaoyunMigrationPin'
-  ];
   var HASH_BY_VIEW = {
     calendar: 'course-calendar',
     students: 'course-students',
@@ -131,29 +125,6 @@
     return null;
   }
 
-  function readStoredPin() {
-    for (var index = 0; index < PIN_KEYS.length; index += 1) {
-      try {
-        var pin = clean(global.localStorage.getItem(PIN_KEYS[index]));
-        if (pin) return pin;
-      } catch (_) {}
-    }
-    return '';
-  }
-
-  async function readSavedMirror() {
-    var pin = readStoredPin();
-    if (!pin || !global.YouziCoursePreviewData || typeof global.YouziCoursePreviewData.load !== 'function') return null;
-    try {
-      var loaded = await global.YouziCoursePreviewData.load({
-        manualSyncPin: pin,
-        anchorDate: new Date().toISOString().slice(0, 10)
-      });
-      return hasRealContent(loaded) ? loaded : null;
-    } catch (_) {
-      return null;
-    }
-  }
 
   async function resolveWorkspace() {
     var saved = await readDatabase().catch(function () { return { workspace: null, latest: null }; });
@@ -168,12 +139,6 @@
       var legacyWorkspace = makeWorkspace(legacy);
       await writeDatabase(makeFormal(legacy), legacyWorkspace);
       return legacyWorkspace;
-    }
-    var mirror = await readSavedMirror();
-    if (mirror) {
-      var mirrorWorkspace = makeWorkspace(mirror);
-      await writeDatabase(makeFormal(mirror), mirrorWorkspace);
-      return mirrorWorkspace;
     }
     return null;
   }
