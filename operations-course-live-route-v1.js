@@ -1,12 +1,11 @@
 (function (global) {
   'use strict';
 
-  var LIVE_VERSION = '20260729-live-full-scheduler-v2';
+  var LIVE_VERSION = '20260729-direct-calendar-v1';
 
   function currentCourseView() {
     var hash = String(global.location.hash || '#overview').replace(/^#/, '').split('?')[0];
     return {
-      'course-calendar': 'calendar',
       'course-students': 'students',
       'course-teachers': 'teachers',
       'course-settings': 'settings'
@@ -14,7 +13,7 @@
   }
 
   function liveUrl(view) {
-    return 'course-scheduler-live.html?v=' + LIVE_VERSION + '&embed=1&view=' + encodeURIComponent(view || 'calendar');
+    return 'course-scheduler-live.html?v=' + LIVE_VERSION + '&embed=1&view=' + encodeURIComponent(view || 'students');
   }
 
   function routeFrame() {
@@ -23,10 +22,12 @@
     var frame = global.document.getElementById('opsCourseFrame');
     if (!frame) return;
     var current = frame.getAttribute('src') || '';
-    var expected = liveUrl(view);
-    if (current === expected || current.indexOf('course-scheduler-live.html?v=' + LIVE_VERSION + '&') >= 0 && current.indexOf('view=' + encodeURIComponent(view)) >= 0) return;
+    if (current.indexOf('course-scheduler-live.html') >= 0 && current.indexOf('v=' + LIVE_VERSION) >= 0) {
+      try { frame.contentWindow.postMessage({ type: 'youzi-course-view', view: view }, global.location.origin); } catch (_) {}
+      return;
+    }
     frame.dataset.courseView = view;
-    frame.src = expected;
+    frame.src = liveUrl(view);
   }
 
   function cleanDuplicateSchedules() {
