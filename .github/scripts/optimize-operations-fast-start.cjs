@@ -1,5 +1,6 @@
 'use strict';
 
+// One-time idempotent patch: show cached operations data before background refresh.
 const fs = require('fs');
 const path = 'operations-phase1.js';
 let source = fs.readFileSync(path, 'utf8');
