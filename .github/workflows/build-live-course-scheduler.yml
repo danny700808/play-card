@@ -65,7 +65,7 @@ jobs:
           }
 
           for (const source of [hub, portal]) {
-            const routeTag = 'operations-course-authoritative-v1.js?v=20260729-authoritative-course-v6';
+            const routeTag = 'operations-course-authoritative-v1.js?v=20260729-authoritative-course-v7';
             const routeIndex = source.indexOf(routeTag);
             const operationsIndex = source.indexOf('operations-phase1.js');
             if (routeIndex < 0) throw new Error('Authoritative scheduler route is missing');
@@ -77,11 +77,14 @@ jobs:
             }
           }
 
-          if (!route.includes("VERSION = '20260729-authoritative-course-v6'")) throw new Error('Authoritative route version missing');
+          if (!route.includes("VERSION = '20260729-authoritative-course-v7'")) throw new Error('Authoritative route version missing');
           if (!route.includes('ensureFrame')) throw new Error('Single persistent iframe creation is missing');
           if (!route.includes('stopImmediatePropagation')) throw new Error('Legacy course hash listeners are not blocked');
           if (!route.includes('setAttributeIfDifferent')) throw new Error('Idempotent visibility updates are missing');
           if (!route.includes('var enforcing = false')) throw new Error('Mutation observer re-entry guard is missing');
+          if (!route.includes('applyEmbeddedLayout')) throw new Error('Embedded scheduler layout is missing');
+          if (!route.includes('body.embedded-in-operations .sidebar{display:none!important}')) throw new Error('Nested scheduler sidebar is not hidden');
+          if (!route.includes('body.embedded-in-operations .page-header{display:none!important}')) throw new Error('Nested scheduler header is not hidden');
           if (!route.includes("attributeFilter: ['hidden', 'aria-hidden']")) throw new Error('Scoped visibility enforcement is missing');
           if (route.includes('subtree: true')) throw new Error('Whole-page mutation observer is still enabled');
           if (!route.includes('if (global.document.body) start()')) throw new Error('Formal route does not start immediately');
@@ -106,7 +109,7 @@ jobs:
           if (!scheduler.includes('function syncInjiaoyun()')) throw new Error('Manual sync function is missing');
           if (!scheduler.includes('preserveConfiguration:true')) throw new Error('Manual sync configuration preservation is missing');
 
-          console.log('Non-looping authoritative formal course scheduler verified');
+          console.log('Embedded authoritative formal course scheduler verified');
           NODE
 
       - name: Commit generated formal entry files
@@ -118,5 +121,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add course-scheduler-live.html operations-hub.html portal.html
-          git commit -m "Publish non-looping authoritative formal scheduler"
+          git commit -m "Publish embedded authoritative formal scheduler"
           git push origin HEAD:main
