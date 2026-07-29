@@ -1,7 +1,7 @@
 (function (global) {
   'use strict';
 
-  var VERSION = '20260729-interactive-course-v2';
+  var VERSION = '20260729-authoritative-course-v3';
   var VIEW_MAP = {
     'course-calendar': 'calendar',
     'course-students': 'students',
@@ -19,95 +19,96 @@
     return VIEW_MAP[currentHash()] || '';
   }
 
-  function stableUrl() {
+  function schedulerUrl() {
     return 'course-scheduler-live.html?v=' + VERSION + '&embed=1&view=calendar';
   }
 
-  function nodes() {
-    return {
-      content: global.document.getElementById('opsContent'),
-      host: global.document.getElementById('opsCoursePersistentHost'),
-      frame: global.document.getElementById('opsCourseFrame')
-    };
+  function ensureHost() {
+    var host = global.document.getElementById('opsCoursePersistentHost');
+    if (host) return host;
+    host = global.document.createElement('section');
+    host.id = 'opsCoursePersistentHost';
+    host.hidden = true;
+    host.setAttribute('aria-hidden', 'true');
+    var content = global.document.getElementById('opsContent');
+    if (content && content.parentNode) content.parentNode.insertBefore(host, content.nextSibling);
+    else global.document.body.appendChild(host);
+    return host;
+  }
+
+  function removeLegacyCourseWorkspaces() {
+    var content = global.document.getElementById('opsContent');
+    if (!content) return;
+    Array.prototype.slice.call(content.querySelectorAll('.ops-course-workspace,#opsCourseFrame')).forEach(function (node) {
+      if (node && node.parentNode) node.parentNode.removeChild(node);
+    });
+  }
+
+  function ensureFrame(host) {
+    var frame = global.document.getElementById('opsCourseFrame');
+    if (frame && frame.parentNode !== host) {
+      if (frame.parentNode) frame.parentNode.removeChild(frame);
+      frame = null;
+    }
+    if (!frame) {
+      frame = global.document.createElement('iframe');
+      frame.id = 'opsCourseFrame';
+      frame.className = 'ops-course-frame';
+      frame.title = '柚子樂器課務管理';
+      frame.setAttribute('loading', 'eager');
+      frame.setAttribute('src', schedulerUrl());
+      host.appendChild(frame);
+      frame.addEventListener('load', function () {
+        frame.dataset.authoritativeLoaded = '1';
+        sendView(frame, courseView() || 'calendar');
+      });
+    } else if (String(frame.getAttribute('src') || '').indexOf('v=' + VERSION) < 0) {
+      frame.dataset.authoritativeLoaded = '0';
+      frame.setAttribute('src', schedulerUrl());
+    }
+    return frame;
   }
 
   function sendView(frame, view) {
     if (!frame || !view) return;
     frame.dataset.courseView = view;
     try {
-      if (frame.contentWindow) {
-        frame.contentWindow.postMessage({ type: 'youzi-course-view', view: view }, global.location.origin);
-      }
+      if (frame.contentWindow) frame.contentWindow.postMessage({ type: 'youzi-course-view', view: view }, global.location.origin);
     } catch (_) {}
   }
 
-  function bindFrame(frame) {
-    if (!frame || frame.dataset.authoritativeBound === '1') return;
-    frame.dataset.authoritativeBound = '1';
-    frame.addEventListener('load', function () {
-      frame.dataset.authoritativeLoaded = '1';
-      sendView(frame, courseView());
-    });
-  }
-
-  function ensureStableFrame(frame, view) {
-    if (!frame) return;
-    bindFrame(frame);
-    var src = String(frame.getAttribute('src') || '');
-    var expected = stableUrl();
-    if (src.indexOf('course-scheduler-live.html') < 0 || src.indexOf('v=' + VERSION) < 0) {
-      frame.dataset.authoritativeLoaded = '0';
-      frame.dataset.courseView = view || 'calendar';
-      frame.setAttribute('src', expected);
-      return;
-    }
-    sendView(frame, view);
-  }
-
-  function moveWorkspaceToHost(content, host, frame) {
-    if (!content || !host || !frame) return;
-    var workspace = frame.closest('.ops-course-workspace');
-    if (workspace && workspace.parentNode !== host) host.appendChild(workspace);
-  }
-
-  function routeInteractiveScheduler() {
+  function route() {
     scheduled = false;
     var view = courseView();
-    var current = nodes();
+    var content = global.document.getElementById('opsContent');
+    var host = ensureHost();
 
     if (!view) {
-      if (current.content) {
-        current.content.hidden = false;
-        current.content.setAttribute('aria-hidden', 'false');
+      if (content) {
+        content.hidden = false;
+        content.setAttribute('aria-hidden', 'false');
       }
-      if (current.host) {
-        current.host.hidden = true;
-        current.host.setAttribute('aria-hidden', 'true');
-      }
+      host.hidden = true;
+      host.setAttribute('aria-hidden', 'true');
       return;
     }
 
-    if (!current.frame) {
-      global.setTimeout(scheduleRoute, 24);
-      return;
+    if (content) {
+      content.hidden = true;
+      content.setAttribute('aria-hidden', 'true');
     }
+    host.hidden = false;
+    host.setAttribute('aria-hidden', 'false');
 
-    moveWorkspaceToHost(current.content, current.host, current.frame);
-    if (current.content) {
-      current.content.hidden = true;
-      current.content.setAttribute('aria-hidden', 'true');
-    }
-    if (current.host) {
-      current.host.hidden = false;
-      current.host.setAttribute('aria-hidden', 'false');
-    }
-    ensureStableFrame(current.frame, view);
+    removeLegacyCourseWorkspaces();
+    var frame = ensureFrame(host);
+    sendView(frame, view);
   }
 
   function scheduleRoute() {
     if (scheduled) return;
     scheduled = true;
-    global.requestAnimationFrame(routeInteractiveScheduler);
+    global.requestAnimationFrame(route);
   }
 
   function installStyle() {
@@ -116,24 +117,21 @@
     style.id = 'opsAuthoritativeCourseStyle';
     style.textContent = [
       '#opsContent[hidden],#opsCoursePersistentHost[hidden]{display:none!important}',
-      '#opsCoursePersistentHost{padding-top:0}',
-      '#opsCoursePersistentHost .ops-course-workspace{min-height:calc(100dvh - 88px)}',
-      '#opsCoursePersistentHost .ops-course-frame{display:block;width:100%;min-height:calc(100dvh - 88px);border:0;background:#fff}'
+      '#opsCoursePersistentHost{padding:0;min-height:calc(100dvh - 88px);background:#fff}',
+      '#opsCoursePersistentHost .ops-course-frame{display:block;width:100%;height:calc(100dvh - 88px);min-height:720px;border:0;background:#fff}'
     ].join('');
     global.document.head.appendChild(style);
   }
 
   function start() {
     installStyle();
-    var content = global.document.getElementById('opsContent');
-    if (content) {
-      observer = new MutationObserver(scheduleRoute);
-      observer.observe(content, { childList: true, subtree: true });
-    }
-    global.addEventListener('hashchange', function () {
+    ensureHost();
+    observer = new MutationObserver(function () {
+      if (courseView()) removeLegacyCourseWorkspaces();
       scheduleRoute();
-      global.setTimeout(scheduleRoute, 30);
     });
+    observer.observe(global.document.body, { childList: true, subtree: true });
+    global.addEventListener('hashchange', scheduleRoute);
     global.addEventListener('pageshow', scheduleRoute);
     scheduleRoute();
   }
