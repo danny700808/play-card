@@ -1,4 +1,4 @@
-name: Publish In-Place Course Workspace
+name: Publish Unified Course Workspace
 
 on:
   push:
@@ -13,6 +13,8 @@ on:
       - "operations-course-inline-template.html"
       - "operations-course-inline-runtime.js"
       - "operations-phase1.js"
+      - "operations-mobile-course-fix-v1.js"
+      - "operations-mobile-course-dense-v1.css"
       - "portal.html"
       - "operations-hub.html"
       - "course-center.html"
@@ -24,11 +26,11 @@ permissions:
   contents: write
 
 concurrency:
-  group: publish-in-place-course-workspace-main
+  group: publish-unified-course-workspace-main
   cancel-in-progress: false
 
 jobs:
-  publish-and-verify-inline-course:
+  publish-and-verify-unified-course:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -36,10 +38,10 @@ jobs:
         with:
           ref: main
 
-      - name: Build complete in-place course workspace
+      - name: Build one desktop and mobile course workspace
         run: node .github/scripts/build-inline-course-workspace.cjs
 
-      - name: Verify one navigation shell and complete course functions
+      - name: Verify one navigation shell, one data flow, and complete functions
         run: |
           node - <<'NODE'
           const fs = require('fs');
@@ -50,6 +52,7 @@ jobs:
           const runtime = fs.readFileSync('operations-course-inline-runtime.js', 'utf8');
           const template = fs.readFileSync('operations-course-inline-template.html', 'utf8');
           const scheduler = fs.readFileSync('course-scheduler.js', 'utf8');
+          const schedulerCss = fs.readFileSync('course-scheduler.css', 'utf8');
           const portal = fs.readFileSync('portal.html', 'utf8');
           const hub = fs.readFileSync('operations-hub.html', 'utf8');
           const center = fs.readFileSync('course-center.html', 'utf8');
@@ -72,20 +75,24 @@ jobs:
             for (const [href, view] of links) {
               if (!source.includes(`href="${href}" data-view="${view}"`)) throw new Error(`In-place course navigation is missing: ${view}`);
             }
-            if (!source.includes('operations-course-inline.js?v=20260729-operations-inline-course-v1')) throw new Error('Inline course controller is missing');
+            if (!source.includes('operations-course-inline.js?v=20260729-operations-inline-course-v3')) throw new Error('Unified course controller is missing');
             if (source.includes('location.replace(\'course-scheduler.html')) throw new Error('Course navigation still leaves the operations center');
             if (source.includes('course-scheduler.html?view=')) throw new Error('Standalone course links are still enabled');
+            if (source.includes('operations-mobile-course-fix-v1.js')) throw new Error('Duplicate mobile course JavaScript is still enabled');
+            if (source.includes('operations-mobile-course-dense-v1.css')) throw new Error('Obsolete second mobile course layout is still enabled');
           }
 
           if (!controller.includes('attachShadow({ mode: \'open\' })')) throw new Error('Shadow-root isolation is missing');
           if (!controller.includes("WORKSPACE_KEY = 'workspace'")) throw new Error('Workspace source is missing');
           if (!controller.includes("LATEST_KEY = 'latest'")) throw new Error('Latest source is missing');
           if (!controller.includes('isDemo')) throw new Error('Demo-data rejection is missing');
-          if (!controller.includes('YouziCoursePreviewData.load')) throw new Error('Read-only mirror recovery is missing');
-          if (controller.includes('YouziCoursePreviewData.sync')) throw new Error('Opening the page must not automatically synchronize Injiaoyun');
+          if (controller.includes('YouziCoursePreviewData.load')) throw new Error('Opening the page still reads a mirror automatically');
+          if (controller.includes('YouziCoursePreviewData.sync')) throw new Error('Opening the page still synchronizes Injiaoyun automatically');
           if (!runtime.includes('window.__YOUZI_COURSE_INLINE_DOCUMENT__')) throw new Error('Scoped full runtime is missing');
           if (!runtime.includes('window.__YOUZI_COURSE_INLINE_BOOTSTRAP_STATE__')) throw new Error('Workspace-first runtime startup is missing');
           if (!runtime.includes("if(!window.__YOUZI_COURSE_INLINE_MODE__)restoreFormalDatabase();")) throw new Error('Duplicate startup restore is still enabled');
+          if (!runtime.includes("if($('sideModeBadge'))$('sideModeBadge').textContent")) throw new Error('Removed sidebar status is still a required element');
+          if (!runtime.includes("var node=$(id);if(node)node.addEventListener")) throw new Error('Removed sidebar action is still a required element');
 
           const requiredTemplateIds = [
             'calendarPage','studentsPage','teachersPage','settingsPage',
@@ -113,27 +120,30 @@ jobs:
           for (const marker of requiredFunctions) {
             if (!scheduler.includes(marker) || !runtime.includes(marker)) throw new Error(`Full scheduler function is missing: ${marker}`);
           }
+          if (!schedulerCss.includes('@media(max-width:860px)')) throw new Error('Responsive compact course layout is missing');
 
           if (!center.includes("location.replace('portal.html#'+(map[view]||'course-calendar'))")) throw new Error('Old course-center address does not return to the operations center');
           for (const obsolete of [
             'course-scheduler-full-bootstrap.js',
             'course-scheduler-standalone.css',
+            'operations-mobile-course-fix-v1.js',
+            'operations-mobile-course-dense-v1.css',
             '.github/scripts/restore-full-course-center.cjs'
           ]) {
-            if (fs.existsSync(obsolete)) throw new Error(`Obsolete standalone course layer still exists: ${obsolete}`);
+            if (fs.existsSync(obsolete)) throw new Error(`Obsolete duplicate course layer still exists: ${obsolete}`);
           }
 
-          console.log('Complete in-place course workspace verified');
+          console.log('Unified desktop and mobile course workspace verified');
           NODE
 
-      - name: Commit generated in-place course files
+      - name: Commit generated unified course files
         run: |
           if git diff --quiet; then
-            echo "In-place course workspace files are already current."
+            echo "Unified course workspace files are already current."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "Publish complete in-place course workspace"
+          git commit -m "Publish unified desktop and mobile course workspace"
           git push origin HEAD:main
