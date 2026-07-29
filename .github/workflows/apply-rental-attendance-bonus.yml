@@ -28,6 +28,7 @@ jobs:
           set +e
           {
             echo "BEGIN"
+            echo "CORRECTED_RUN=20260730"
             node .github/scripts/extend-rental-attendance-bonus.cjs
             PATCH_STATUS=$?
             echo "PATCH_STATUS=$PATCH_STATUS"
