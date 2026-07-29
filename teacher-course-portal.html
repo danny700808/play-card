@@ -5,48 +5,51 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#24735c">
   <title>老師課務入口｜柚子樂器</title>
-  <link rel="stylesheet" href="course-portal.css?v=20260727-mobile-v6">
+  <link rel="stylesheet" href="course-portal.css?v=20260729-teacher-app-v8">
+  <link rel="stylesheet" href="teacher-course-portal-v8.css?v=20260729-teacher-app-v8">
 </head>
-<body>
+<body class="teacher-course-app">
   <main class="portal-shell">
     <header class="portal-head">
-      <div class="head-title"><span class="brand-mark">師</span><div><h1>老師入口</h1><p>課表・學生・薪資</p></div></div>
+      <div class="head-title"><span class="brand-mark">師</span><div><h1>老師課務</h1><p>課表・學生・薪資・租用</p></div></div>
       <button class="btn danger hidden" id="logoutBtn" type="button">登出這台裝置</button>
     </header>
 
     <section class="card bind-box" id="bindView">
-      <div class="section-title"><div><h2>LINE 綁定</h2><p class="muted">請輸入登記資料。</p></div></div>
+      <div class="section-title"><div><h2>第一次使用請完成 LINE 綁定</h2><p class="muted">確認身分後，同一台裝置以後登入會直接開啟課表。</p></div></div>
       <form class="stack" id="bindForm">
         <div class="field"><label>老師姓名</label><input name="name" autocomplete="name" required></div>
         <div class="field"><label>手機號碼</label><input name="phone" inputmode="tel" autocomplete="tel" required></div>
         <button class="btn primary" type="submit">LINE 綁定</button>
       </form>
+      <div class="employee-login-bridge" id="employeeLoginBridge"><span>已有外聘老師帳號？</span><a class="btn soft" href="index.html">使用 Email／密碼登入</a><small>登入後會直接回到老師課務；第一次仍需完成一次 LINE 身分確認。</small></div>
       <div class="bind-result hidden" data-bind-result></div>
     </section>
 
     <section class="hidden" id="appView">
-      <div class="summary-grid">
+      <div class="summary-grid teacher-summary-grid">
         <article class="summary"><span>老師</span><strong id="teacherName">—</strong></article>
         <article class="summary"><span>本週課堂</span><strong id="lessonCount">0</strong></article>
         <article class="summary"><span>學生</span><strong id="studentCount">0</strong></article>
         <article class="summary"><span>本月薪資資料</span><strong id="payrollCount">0</strong></article>
       </div>
-      <nav class="tabs">
-        <button class="btn active" type="button" data-tab="schedule">週課表</button>
-        <button class="btn" type="button" data-tab="students">我的學生</button>
-        <button class="btn" type="button" data-tab="payroll">薪資查詢</button>
-        <a class="btn soft" href="room-booking.html?from=teacher">租用教室</a>
+
+      <nav class="tabs teacher-bottom-tabs" aria-label="老師課務功能">
+        <button class="btn active" type="button" data-tab="schedule"><span>表</span><b>課表</b></button>
+        <button class="btn" type="button" data-tab="students"><span>生</span><b>學生</b></button>
+        <button class="btn" type="button" data-tab="payroll"><span>薪</span><b>薪資</b></button>
+        <a class="btn soft" href="room-booking.html?from=teacher"><span>租</span><b>租用</b></a>
+        <button class="btn" id="teacherMoreBtn" type="button"><span>⋯</span><b>其他</b></button>
       </nav>
 
       <section class="card tab-panel" data-panel="schedule">
-        <div class="section-title"><div><h2>本週課表</h2><p class="muted">點「空堂」即可排課。</p></div></div>
-        <div class="toolbar">
+        <div class="section-title"><div><h2>本週課表</h2><p class="muted">日期列與左側時間固定；課表可上下、左右滑動。</p></div></div>
+        <div class="toolbar teacher-week-toolbar">
           <button class="btn" id="prevWeek" type="button">上一週</button>
           <button class="btn soft" id="thisWeek" type="button">本週</button>
           <button class="btn" id="nextWeek" type="button">下一週</button>
           <span class="badge" id="weekRange"></span>
         </div>
-        <div class="mobile-day-tabs" id="mobileDayTabs"></div>
         <div class="week-scroll"><div class="week-grid" id="weekGrid"></div></div>
       </section>
 
@@ -56,12 +59,28 @@
       </section>
 
       <section class="card tab-panel hidden" data-panel="payroll">
-        <div class="section-title"><div><h2>薪資查詢</h2><p class="muted">每次只讀取一個月份，獎勵與扣款也會列在同月。</p></div></div>
+        <div class="section-title"><div><h2>薪資查詢</h2><p class="muted">選擇月份後才更新該月份；不會重新讀取其他頁面。</p></div></div>
         <div class="toolbar"><div class="field"><label>月份</label><input id="payrollMonth" type="month"></div><button class="btn primary" id="loadPayroll" type="button">查詢</button></div>
         <div class="list" id="payrollList"></div>
       </section>
     </section>
   </main>
+
+  <div class="teacher-more-backdrop hidden" id="teacherMoreBackdrop" aria-hidden="true">
+    <section class="teacher-more-sheet" role="dialog" aria-modal="true" aria-labelledby="teacherMoreTitle">
+      <div class="teacher-more-handle" aria-hidden="true"></div>
+      <div class="section-title"><div><h2 id="teacherMoreTitle">其他功能</h2><p class="muted">較少使用的老師功能集中在這裡。</p></div><button class="btn" id="closeTeacherMore" type="button">關閉</button></div>
+      <div class="teacher-more-grid">
+        <a href="profile.html"><span>人</span><b>我的資料</b><small>基本資料與通知設定</small></a>
+        <a href="contract.html"><span>約</span><b>合約</b><small>查看與簽署合約</small></a>
+        <a href="announcements.html"><span>告</span><b>公告</b><small>最新公告與通知</small></a>
+        <a href="task.html"><span>辦</span><b>協助事項</b><small>待處理與回報</small></a>
+        <a href="teacher-goods.html"><span>貨</span><b>拿貨／詢價</b><small>商品與詢價</small></a>
+        <a href="forms-hub.html"><span>表</span><b>表格</b><small>集點卡與證明申請</small></a>
+      </div>
+      <p class="teacher-more-note">這些功能使用原本的老師帳號，不會重新載入或覆蓋課表資料。</p>
+    </section>
+  </div>
 
   <div class="modal hidden" id="actionModal">
     <section class="card modal-panel">
@@ -80,7 +99,7 @@
           <div class="field"><label>時間</label><div class="grid two"><input name="startTime" id="actionStart" type="time" required><input name="endTime" id="actionEnd" type="time" required></div></div>
         </div>
         <section class="quick-availability hidden" id="quickAvailability">
-          <div class="section-title"><div><h3>可直接調入的位置</h3><p class="muted">只顯示老師沒有課、而且有合適空教室的時間。</p></div><button class="btn soft" id="reloadAvailability" type="button">重新找空位</button></div>
+          <div class="section-title"><div><h3>可直接調入的位置</h3><p class="muted">只顯示老師沒有課、且有合適空教室的時間。</p></div><button class="btn soft" id="reloadAvailability" type="button">重新找空位</button></div>
           <div class="availability-suggestions" id="availabilitySuggestions"></div>
         </section>
         <div class="field"><label>備註</label><input name="note" placeholder="選填"></div>
@@ -98,469 +117,6 @@
   <script src="config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="course-portal-common.js?v=20260727-mobile-v6"></script>
-  <script>
-  (function () {
-    const P = window.CoursePortal;
-    let token = '';
-    let weekStart = P.monday();
-    let data = null;
-    let selectedDayIndex = (new Date().getDay() + 6) % 7;
-    const bindView = document.getElementById('bindView');
-    const appView = document.getElementById('appView');
-    const logoutBtn = document.getElementById('logoutBtn');
-
-    function monthKey() {
-      const date = new Date();
-      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-    }
-
-    function showBound(active) {
-      bindView.classList.toggle('hidden', active);
-      appView.classList.toggle('hidden', !active);
-      logoutBtn.classList.toggle('hidden', !active);
-    }
-
-    function dayLabel(key) {
-      const date = new Date(`${key}T12:00:00`);
-      return `${date.getMonth() + 1}/${date.getDate()}（${'日一二三四五六'[date.getDay()]}）`;
-    }
-
-    function uniqueLessonRows(rows) {
-      const found = new Map();
-      rows.forEach((event) => {
-        const key = [
-          event.id, event.startTime, event.endTime, event.roomId,
-          (event.studentIds || []).slice().sort().join(',')
-        ].join('|');
-        if (!found.has(key)) found.set(key, event);
-      });
-      return [...found.values()];
-    }
-
-    function portalTimeToMinutes(value) {
-      const parts = String(value || '00:00').split(':').map(Number);
-      return (parts[0] || 0) * 60 + (parts[1] || 0);
-    }
-
-    function lessonCard(event, conflict) {
-      const names = (event.studentNames || []).join('、') || '未指定學生';
-      const studentNames = event.studentNames || [];
-      const groupLabel = studentNames.length > 2
-        ? '團體課'
-        : (studentNames.length === 2 ? '雙人課' : '');
-      const stateLabel = event.status === 'leave' ? '請假' : (event.status === 'absent' ? '曠課' : '');
-      const details = [event.subjectName, event.roomName, stateLabel].filter(Boolean).join('・');
-      const classNames = [
-        'lesson',
-        event.type === 'teacher_gift' ? 'gift' : '',
-        event.status === 'leave' ? 'leave' : '',
-        event.status === 'absent' ? 'absent' : '',
-        groupLabel ? 'group-lesson' : '',
-        conflict ? 'conflict-lesson' : ''
-      ].filter(Boolean).join(' ');
-      return `
-        <button class="${classNames}" type="button" data-event="${P.escapeHtml(event.id)}">
-          <span class="lesson-time">${P.escapeHtml(event.startTime)}～${P.escapeHtml(event.endTime)}${groupLabel ? `<em>${groupLabel}</em>` : ''}</span>
-          <strong>${P.escapeHtml(names)}</strong>
-          <small>${P.escapeHtml(details)}</small>
-        </button>`;
-    }
-
-    function overlapGroups(rows) {
-      const sorted = uniqueLessonRows(rows).slice().sort((a, b) =>
-        String(a.startTime).localeCompare(String(b.startTime)) ||
-        String(a.endTime).localeCompare(String(b.endTime))
-      );
-      const groups = [];
-      sorted.forEach((event) => {
-        const last = groups[groups.length - 1];
-        if (!last || event.startTime >= last.endTime) {
-          groups.push({ events: [event], startTime: event.startTime, endTime: event.endTime });
-        } else {
-          last.events.push(event);
-          if (event.endTime > last.endTime) last.endTime = event.endTime;
-        }
-      });
-      return groups;
-    }
-
-    function renderWeek() {
-      const grid = document.getElementById('weekGrid');
-      const days = Array.from({ length: 7 }, (_, index) => P.addDays(weekStart, index));
-      const mobile = window.matchMedia('(max-width: 760px)').matches;
-      const visibleDays = mobile ? [days[selectedDayIndex]] : days;
-      // 老師週課表只顯示這位老師自己的課；其他教室是否有空，
-      // 等老師點選空堂準備排課時再由後端檢查。
-      const events = (data.events || []).filter((event) => event.own);
-      let html = '<div class="week-cell head" style="grid-column:1;grid-row:1"></div>';
-      visibleDays.forEach((day, dayIndex) => {
-        html += `<div class="week-cell head" style="grid-column:${dayIndex + 2};grid-row:1">${P.escapeHtml(dayLabel(day))}</div>`;
-      });
-      const scheduleStart = data.hours.start * 60;
-      grid.classList.toggle('mobile-day', mobile);
-      for (let minute = data.hours.start * 60, slotIndex = 0; minute < data.hours.end * 60; minute += 30, slotIndex += 1) {
-        const slotStart = `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`;
-        const slotEndMinute = minute + 30;
-        const slotEnd = `${String(Math.floor(slotEndMinute / 60)).padStart(2, '0')}:${String(slotEndMinute % 60).padStart(2, '0')}`;
-        const gridRow = slotIndex + 2;
-        html += `<div class="week-cell time" style="grid-column:1;grid-row:${gridRow}">${slotStart}</div>`;
-        visibleDays.forEach((day, dayIndex) => {
-          const rows = uniqueLessonRows(events.filter((event) =>
-            event.date === day && event.startTime < slotEnd && slotStart < event.endTime
-          ));
-          html += `<div class="week-cell" style="grid-column:${dayIndex + 2};grid-row:${gridRow}">`;
-          if (!rows.length && new Date(`${day}T12:00:00`).getDay() !== 2) {
-            html += `<button class="empty-slot" type="button" data-empty="${day}|${slotStart}|${slotEnd}">空堂</button>`;
-          } else if (!rows.length) {
-            html += '<span class="closed-slot">公休</span>';
-          }
-          html += '</div>';
-        });
-      }
-      visibleDays.forEach((day, dayIndex) => {
-        const dayEvents = events.filter((event) => event.date === day);
-        overlapGroups(dayEvents).forEach((group) => {
-          const startMinute = portalTimeToMinutes(group.startTime);
-          const endMinute = portalTimeToMinutes(group.endTime);
-          const rowStart = 2 + Math.max(0, Math.floor((startMinute - scheduleStart) / 30));
-          const rowSpan = Math.max(1, Math.ceil((endMinute - Math.max(startMinute, scheduleStart)) / 30));
-          const placement = `grid-column:${dayIndex + 2};grid-row:${rowStart}/span ${rowSpan}`;
-          if (group.events.length === 1) {
-            html += `<div class="lesson-placement" style="${placement}">${lessonCard(group.events[0], false)}</div>`;
-          } else {
-            html += `<div class="lesson-placement lesson-overlap-placement" style="${placement}"><div class="overlap-note">⚠ 同時${group.events.length}堂</div><div class="lesson-cluster conflict">`;
-            group.events.forEach((event) => { html += lessonCard(event, true); });
-            html += '</div></div>';
-          }
-        });
-      });
-      grid.innerHTML = html;
-      document.getElementById('mobileDayTabs').innerHTML = days.map((day, index) => `
-        <button class="btn ${index === selectedDayIndex ? 'active' : ''}" type="button" data-mobile-day="${index}">${P.escapeHtml(dayLabel(day))}</button>
-      `).join('');
-      document.getElementById('weekRange').textContent = `${days[0]} ～ ${days[6]}`;
-      document.getElementById('lessonCount').textContent = events.length;
-    }
-
-    function renderRoster() {
-      const list = document.getElementById('rosterList');
-      document.getElementById('studentCount').textContent = data.roster.length;
-      document.getElementById('rosterBadge').textContent = `${data.roster.length} 位`;
-      list.innerHTML = data.roster.length ? data.roster.map((student) => `
-        <article class="list-row">
-          <strong>${P.escapeHtml(student.name)}</strong>
-          <span>手機末四碼 ${P.escapeHtml(student.phoneLast4 || '未提供')}</span>
-          <button class="btn soft" type="button" data-student-action="${P.escapeHtml(student.id)}">增加課程</button>
-          <span></span><span></span>
-        </article>`).join('') : '<p class="muted">本週沒有可顯示的學生。</p>';
-    }
-
-    function renderPayroll() {
-      const rows = data.payroll || [];
-      const adjustments = data.adjustments || [];
-      document.getElementById('payrollCount').textContent = rows.length + adjustments.length;
-      const valueOf = (row, keys, fallback = '') => {
-        for (const key of keys) {
-          if (row[key] !== undefined && row[key] !== null && row[key] !== '') return row[key];
-        }
-        return fallback;
-      };
-      const items = rows.map((row) => ({
-        kind: 'lesson',
-        date: valueOf(row, ['date', 'courseDate', 'lessonDate'], document.getElementById('payrollMonth').value),
-        name: valueOf(row, ['studentName', 'subjectName'], '課堂'),
-        subject: valueOf(row, ['subjectName', 'courseName']),
-        collected: Number(valueOf(row, ['tuitionAmount', 'courseAmount', 'feeAmount', 'receivedAmount', 'expectedAmount'], 0)),
-        rate: valueOf(row, ['rate', 'shareRate', 'allotRate', 'percentage'], '依方案'),
-        amount: Number(valueOf(row, ['teacherAmount', 'amount', 'payAmount'], 0))
-      })).concat(adjustments.map((row) => ({
-        kind: 'adjustment',
-        date: valueOf(row, ['date', 'month'], document.getElementById('payrollMonth').value),
-        name: valueOf(row, ['note', 'reason'], '獎勵／扣款'),
-        subject: valueOf(row, ['type'], '調整'),
-        collected: 0,
-        rate: '—',
-        amount: Number(valueOf(row, ['amount'], 0))
-      }))).sort((a, b) => `${a.date}|${a.name}`.localeCompare(`${b.date}|${b.name}`, 'zh-Hant'));
-      const groups = new Map();
-      items.forEach((item) => {
-        const key = item.date || '日期未提供';
-        if (!groups.has(key)) groups.set(key, []);
-        groups.get(key).push(item);
-      });
-      const html = [...groups.entries()].map(([date, dayRows]) => `
-        <section class="payroll-day">
-          <h3>${P.escapeHtml(date)}</h3>
-          ${dayRows.map((row) => `
-            <article class="list-row">
-              <strong>${P.escapeHtml(row.name)}</strong>
-              <span>${P.escapeHtml(row.subject || (row.kind === 'lesson' ? '課堂' : '調整'))}</span>
-              <span>${row.kind === 'lesson' ? `收費 ${P.money(row.collected)}・分成 ${P.escapeHtml(row.rate)}` : '獎勵／扣款'}</span>
-              <strong>老師所得 ${P.money(row.amount)}</strong>
-              <span class="badge ${row.kind === 'adjustment' ? 'warn' : ''}">${row.kind === 'lesson' ? '課堂' : '調整'}</span>
-            </article>`).join('')}
-        </section>`).join('');
-      document.getElementById('payrollList').innerHTML = html || '<p class="muted">這個月份目前沒有薪資資料。</p>';
-    }
-
-    function fillAction(options) {
-      document.getElementById('actionStudent').innerHTML = data.roster.map((row) => `<option value="${P.escapeHtml(row.id)}">${P.escapeHtml(row.name)}</option>`).join('');
-      document.getElementById('actionSubject').innerHTML = data.subjects.map((row) => `<option value="${P.escapeHtml(row.id)}">${P.escapeHtml(row.name)}</option>`).join('');
-      document.getElementById('actionRoom').innerHTML = data.rooms.map((row) => `<option value="${P.escapeHtml(row.id)}">${P.escapeHtml(row.name)}</option>`).join('');
-      const sourceRows = uniqueLessonRows((data.events || []).filter((row) => row.own)).sort((a, b) =>
-        `${a.date} ${a.startTime}`.localeCompare(`${b.date} ${b.startTime}`)
-      );
-      document.getElementById('actionSourceLesson').innerHTML = '<option value="">請選擇要移動的課程</option>' + sourceRows.map((row) =>
-        `<option value="${P.escapeHtml(row.id)}">${P.escapeHtml(`${row.date} ${row.startTime} ${row.studentNames.join('、')}`)}</option>`
-      ).join('');
-      const form = document.getElementById('actionForm');
-      form.reset();
-      Object.entries(options || {}).forEach(([key, value]) => {
-        const input = form.elements[key];
-        if (input) input.value = value;
-      });
-      form.dataset.vacancyDate = options && options.vacancyDate || '';
-      form.dataset.vacancyStart = options && options.vacancyStart || '';
-      form.dataset.portalAction = options && options.portalAction || '';
-      form.dataset.portalChangeId = options && options.portalChangeId || '';
-      document.getElementById('giftNotice').classList.toggle('hidden', form.elements.action.value !== 'teacher_gift');
-      document.getElementById('lessonStateActions').classList.toggle('hidden', !form.elements.sourceEventId.value);
-      document.getElementById('cancelPortalLesson').classList.toggle('hidden', !form.dataset.portalChangeId);
-      syncActionMode();
-      document.getElementById('actionModal').classList.remove('hidden');
-      if (form.elements.sourceEventId.value) loadAvailability();
-    }
-
-    function sourceRow() {
-      const form = document.getElementById('actionForm');
-      const id = form.elements.sourceEventId.value || document.getElementById('actionSourceLesson').value;
-      return (data.events || []).find((row) => row.id === id || row.sourceId === id) || null;
-    }
-
-    function applySource(row) {
-      if (!row) return;
-      const form = document.getElementById('actionForm');
-      form.elements.sourceEventId.value = row.sourceId || row.id;
-      form.elements.sourceCourseId.value = row.fixedCourseId || row.sourceId || row.id;
-      form.elements.sourceDate.value = row.date;
-      form.dataset.portalAction = row.portalAction || '';
-      form.dataset.portalChangeId = row.portalChangeId || '';
-      form.elements.studentId.value = row.studentIds[0] || '';
-      form.elements.subjectId.value = row.subjectId || '';
-      if (form.dataset.vacancyDate) {
-        form.elements.date.value = form.dataset.vacancyDate;
-        form.elements.startTime.value = form.dataset.vacancyStart;
-        const duration = portalTimeToMinutes(row.endTime) - portalTimeToMinutes(row.startTime);
-        const end = portalTimeToMinutes(form.dataset.vacancyStart) + duration;
-        form.elements.endTime.value = `${String(Math.floor(end / 60)).padStart(2, '0')}:${String(end % 60).padStart(2, '0')}`;
-      }
-      document.getElementById('lessonStateActions').classList.remove('hidden');
-      document.getElementById('cancelPortalLesson').classList.toggle('hidden', !form.dataset.portalChangeId);
-    }
-
-    function syncActionMode() {
-      const action = document.getElementById('actionType').value;
-      const moving = action === 'single_move' || action === 'permanent_move';
-      document.getElementById('sourceLessonField').classList.toggle('hidden', !moving || Boolean(document.getElementById('actionForm').elements.sourceEventId.value));
-      document.getElementById('quickAvailability').classList.toggle('hidden', !moving || !sourceRow());
-      document.getElementById('giftNotice').classList.toggle('hidden', action !== 'teacher_gift');
-    }
-
-    async function loadAvailability() {
-      const row = sourceRow();
-      const form = document.getElementById('actionForm');
-      if (!row || !['single_move', 'permanent_move'].includes(form.elements.action.value)) return;
-      const node = document.getElementById('availabilitySuggestions');
-      node.innerHTML = '<p class="muted">正在找未來兩週可用的位置…</p>';
-      document.getElementById('quickAvailability').classList.remove('hidden');
-      try {
-        const result = await P.call('coursePortalTeacherAvailability', {
-          sessionToken: token,
-          startDate: weekStart,
-          days: 14,
-          sourceEventId: row.sourceId || row.id,
-          sourceCourseId: row.fixedCourseId || row.sourceId || row.id,
-          sourceDate: row.date,
-          sourceStartTime: row.startTime,
-          sourceEndTime: row.endTime,
-          subjectId: row.subjectId
-        });
-        const preferredDate = form.dataset.vacancyDate;
-        const preferredStart = form.dataset.vacancyStart;
-        const sorted = result.slots.slice().sort((a, b) => {
-          const aPreferred = a.date === preferredDate && a.startTime === preferredStart ? 0 : 1;
-          const bPreferred = b.date === preferredDate && b.startTime === preferredStart ? 0 : 1;
-          return aPreferred - bPreferred || `${a.date} ${a.startTime}`.localeCompare(`${b.date} ${b.startTime}`);
-        }).slice(0, 30);
-        const preferred = sorted.find((slot) =>
-          slot.date === preferredDate && slot.startTime === preferredStart
-        );
-        if (preferred && preferred.rooms.length) {
-          form.elements.date.value = preferred.date;
-          form.elements.startTime.value = preferred.startTime;
-          form.elements.endTime.value = preferred.endTime;
-          form.elements.roomId.value = preferred.rooms[0].id;
-        }
-        node.innerHTML = sorted.map((slot) => `
-          <button class="availability-option" type="button" data-available-date="${slot.date}" data-available-start="${slot.startTime}" data-available-end="${slot.endTime}" data-available-room="${slot.rooms[0].id}">
-            <strong>${P.escapeHtml(dayLabel(slot.date))}　${P.escapeHtml(slot.startTime)}～${P.escapeHtml(slot.endTime)}</strong>
-            <span>${P.escapeHtml(slot.rooms.map((room) => room.name).join('、'))}</span>
-          </button>`).join('') || '<div class="notice">未來兩週沒有完整可用時段。</div>';
-      } catch (error) {
-        node.innerHTML = '<div class="notice">目前無法讀取空位。</div>';
-        P.toast(error.message, 'error');
-      }
-    }
-
-    async function load() {
-      const button = document.getElementById('loadPayroll');
-      P.loading(button, true, '讀取中…');
-      try {
-        data = await P.call('coursePortalTeacherData', {
-          sessionToken: token,
-          weekStart,
-          month: document.getElementById('payrollMonth').value || monthKey()
-        });
-        document.getElementById('teacherName').textContent = data.teacher.name;
-        renderWeek();
-        renderRoster();
-        renderPayroll();
-        showBound(true);
-      } catch (error) {
-        if (/登入|綁定|權限|到期/.test(error.message)) {
-          P.setSession('teacher', '');
-          showBound(false);
-        }
-        P.toast(error.message, 'error');
-      } finally {
-        P.loading(button, false);
-      }
-    }
-
-    document.getElementById('bindForm').addEventListener('submit', async (event) => {
-      event.preventDefault();
-      const button = event.submitter;
-      P.loading(button, true, '產生中…');
-      try { await P.startBinding('teacher', event.currentTarget); } catch (error) { P.toast(error.message, 'error'); }
-      finally { P.loading(button, false); }
-    });
-    document.querySelectorAll('[data-tab]').forEach((button) => button.addEventListener('click', () => {
-      document.querySelectorAll('[data-tab]').forEach((node) => node.classList.toggle('active', node === button));
-      document.querySelectorAll('[data-panel]').forEach((node) => node.classList.toggle('hidden', node.dataset.panel !== button.dataset.tab));
-    }));
-    document.getElementById('prevWeek').addEventListener('click', () => { weekStart = P.addDays(weekStart, -7); load(); });
-    document.getElementById('nextWeek').addEventListener('click', () => { weekStart = P.addDays(weekStart, 7); load(); });
-    document.getElementById('thisWeek').addEventListener('click', () => { weekStart = P.monday(); load(); });
-    document.getElementById('loadPayroll').addEventListener('click', load);
-    document.getElementById('payrollMonth').value = monthKey();
-    document.getElementById('weekGrid').addEventListener('click', (event) => {
-      const empty = event.target.closest('[data-empty]');
-      const lesson = event.target.closest('[data-event]');
-      if (empty) {
-        const parts = empty.dataset.empty.split('|');
-        fillAction({ action: 'single_move', date: parts[0], startTime: parts[1], endTime: parts[2], vacancyDate: parts[0], vacancyStart: parts[1] });
-      }
-      if (lesson) {
-        const row = data.events.find((item) => item.id === lesson.dataset.event);
-        if (row) fillAction({
-          action: 'single_move', sourceEventId: row.sourceId, sourceCourseId: row.fixedCourseId || row.sourceId, sourceDate: row.date,
-          studentId: row.studentIds[0], subjectId: row.subjectId, roomId: row.roomId,
-          date: row.date, startTime: row.startTime, endTime: row.endTime,
-          portalAction: row.portalAction, portalChangeId: row.portalChangeId
-        });
-      }
-    });
-    document.getElementById('mobileDayTabs').addEventListener('click', (event) => {
-      const button = event.target.closest('[data-mobile-day]');
-      if (!button) return;
-      selectedDayIndex = Number(button.dataset.mobileDay || 0);
-      renderWeek();
-    });
-    document.getElementById('rosterList').addEventListener('click', (event) => {
-      const button = event.target.closest('[data-student-action]');
-      if (button) fillAction({ action: 'extra_lesson', studentId: button.dataset.studentAction, date: P.addDays(weekStart, 0), startTime: '10:00', endTime: '11:00' });
-    });
-    document.getElementById('actionType').addEventListener('change', (event) => {
-      syncActionMode();
-      if (['single_move', 'permanent_move'].includes(event.target.value)) loadAvailability();
-    });
-    document.getElementById('actionSourceLesson').addEventListener('change', (event) => {
-      const row = (data.events || []).find((item) => item.id === event.target.value);
-      applySource(row);
-      syncActionMode();
-      loadAvailability();
-    });
-    document.getElementById('reloadAvailability').addEventListener('click', loadAvailability);
-    document.getElementById('availabilitySuggestions').addEventListener('click', (event) => {
-      const button = event.target.closest('[data-available-date]');
-      if (!button) return;
-      const form = document.getElementById('actionForm');
-      form.elements.date.value = button.dataset.availableDate;
-      form.elements.startTime.value = button.dataset.availableStart;
-      form.elements.endTime.value = button.dataset.availableEnd;
-      form.elements.roomId.value = button.dataset.availableRoom;
-      document.querySelectorAll('.availability-option').forEach((node) => node.classList.toggle('selected', node === button));
-    });
-    document.getElementById('closeModal').addEventListener('click', () => document.getElementById('actionModal').classList.add('hidden'));
-    document.getElementById('actionForm').addEventListener('submit', async (event) => {
-      event.preventDefault();
-      const button = event.submitter;
-      P.loading(button, true, '檢查教室並儲存…');
-      try {
-        const result = await P.call('coursePortalTeacherAction', Object.assign({ sessionToken: token }, Object.fromEntries(new FormData(event.currentTarget).entries())));
-        document.getElementById('actionModal').classList.add('hidden');
-        P.toast(result.message || '課程已儲存。');
-        await load();
-      } catch (error) { P.toast(error.message, 'error'); }
-      finally { P.loading(button, false); }
-    });
-    document.getElementById('lessonStateActions').addEventListener('click', async (event) => {
-      const button = event.target.closest('[data-lesson-state]');
-      if (!button) return;
-      const state = button.dataset.lessonState;
-      const messages = {
-        leave: '確定標示學生請假？這個教室時段會釋出。',
-        absent: '確定標示曠課？本堂仍會列入老師薪資。',
-        cancel_change: '確定取消這次由老師新增、贈送或調整的安排？'
-      };
-      if (!window.confirm(messages[state])) return;
-      const form = document.getElementById('actionForm');
-      P.loading(button, true, '處理中…');
-      try {
-        const result = await P.call('coursePortalTeacherLessonState', {
-          sessionToken: token,
-          state,
-          sourceEventId: form.elements.sourceEventId.value,
-          sourceCourseId: form.elements.sourceCourseId.value,
-          sourceDate: form.elements.sourceDate.value,
-          portalChangeId: form.dataset.portalChangeId,
-          note: form.elements.note.value
-        });
-        document.getElementById('actionModal').classList.add('hidden');
-        P.toast(result.message || '課程狀態已更新。');
-        await load();
-      } catch (error) {
-        P.toast(error.message, 'error');
-      } finally {
-        P.loading(button, false);
-      }
-    });
-    logoutBtn.addEventListener('click', () => { P.setSession('teacher', ''); location.reload(); });
-    let resizeTimer = 0;
-    window.addEventListener('resize', () => {
-      clearTimeout(resizeTimer);
-      resizeTimer = setTimeout(() => { if (data) renderWeek(); }, 120);
-    });
-
-    (async () => {
-      try {
-        token = await P.exchangeAccess('teacher');
-        if (token) await load();
-        else showBound(false);
-      } catch (error) { P.toast(error.message, 'error'); showBound(false); }
-    })();
-  })();
-  </script>
+  <script src="teacher-course-portal-v8.js?v=20260729-teacher-app-v8"></script>
 </body>
 </html>
