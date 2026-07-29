@@ -6,6 +6,13 @@
   <meta name="theme-color" content="#173247">
   <title>全通路營運中心</title>
   <link rel="icon" href="yuzu-logo-green.png">
+  <script>
+    (function(){
+      var map={'#course-calendar':'calendar','#course-students':'students','#course-teachers':'teachers','#course-settings':'settings'};
+      var key=String(location.hash||'').split('?')[0];
+      if(map[key]) location.replace('course-center.html#'+map[key]);
+    })();
+  </script>
   <link rel="stylesheet" href="operations-phase1.css?v=20260728-course-shell-v20">
   <link rel="stylesheet" href="mobile-layout.css?v=20260727-formal-mobile-v3">
   <link rel="stylesheet" href="operations-mobile-home-v1.css?v=20260727-approved-mobile-home-v1">
@@ -81,7 +88,6 @@
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="app.js?v=admin-final-20260530b"></script>
   <script src="course-scheduler-data.js?v=20260729-fresh-course-v1"></script>
-  <script src="operations-course-authoritative-v1.js?v=20260729-authoritative-course-v7"></script>
   <script src="operations-phase1.js?v=20260729-formal-data-flow-v2"></script>
   <script src="operations-mobile-home-v1.js?v=20260727-approved-mobile-home-v1"></script>
   <script src="operations-mobile-course-fix-v1.js?v=20260729-mobile-course-fix-v2"></script>
