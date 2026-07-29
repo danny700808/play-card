@@ -1,0 +1,42 @@
+name: Apply Rental Attendance Bonus
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/extend-rental-attendance-bonus.cjs'
+      - '.github/workflows/apply-rental-attendance-bonus.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-rental-attendance-bonus-main
+  cancel-in-progress: true
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - run: node .github/scripts/extend-rental-attendance-bonus.cjs
+      - name: Verify generated files
+        run: |
+          node --check functions/coursePortal.js
+          node --check teacher-course-portal-v8.js
+          grep -q "coursePortalAdminSaveRentalSettings" functions/coursePortal.js
+          grep -q "coursePortalTeacherLateAttendance" functions/coursePortal.js
+          grep -q "coursePortalTeacherBonusRequest" functions/coursePortal.js
+          grep -q "course-portal-settings.html" operations-course-inline-template.html
+          grep -q "bonusRequestModal" teacher-course-portal.html
+      - name: Commit generated feature files
+        run: |
+          if git diff --quiet; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Publish rental categories late attendance and teacher bonus features"
+          git push origin HEAD:main
