@@ -26,8 +26,8 @@ fs.writeFileSync(targetPath, html);
 
 for (const path of ['operations-hub.html', 'portal.html']) {
   let source = fs.readFileSync(path, 'utf8');
-  source = source.replace(/operations-course-live-route-v1\.js\?v=[^"']+/g, 'operations-course-live-route-v1.js?v=20260729-live-full-scheduler-v2');
+  source = source.replace(/operations-course-live-route-v1\.js\?v=[^"']+/g, 'operations-course-live-route-v1.js?v=20260729-direct-calendar-v1');
   fs.writeFileSync(path, source);
 }
 
-console.log(`Built ${targetPath} and updated operations route versions`);
+console.log(`Built ${targetPath} and preserved the direct calendar route version`);
