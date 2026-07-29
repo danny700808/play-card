@@ -1,72 +1,76 @@
-name: Build Live Course Scheduler
+name: Verify Interactive Course Scheduler
 
 on:
   push:
     branches:
       - main
+    paths:
+      - "operations-hub.html"
+      - "portal.html"
+      - "operations-course-authoritative-v1.js"
+      - "course-scheduler-live.html"
+      - "course-scheduler-live-entry-v1.js"
+      - "course-scheduler.js"
+      - "course-scheduler-data.js"
+      - ".github/workflows/build-live-course-scheduler.yml"
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: build-live-course-scheduler-main
-  cancel-in-progress: false
+  group: verify-interactive-course-scheduler-main
+  cancel-in-progress: true
 
 jobs:
-  build-live-scheduler:
+  verify-interactive-scheduler:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          ref: main
 
-      - name: Build live scheduler page
-        run: node .github/scripts/build-live-course-scheduler.cjs
-
-      - name: Verify deterministic startup
+      - name: Verify one interactive scheduler path
         run: |
           node - <<'NODE'
           const fs = require('fs');
           const vm = require('vm');
-          const html = fs.readFileSync('course-scheduler-live.html', 'utf8');
-          const entry = fs.readFileSync('course-scheduler-live-entry-v1.js', 'utf8');
+
           const hub = fs.readFileSync('operations-hub.html', 'utf8');
           const portal = fs.readFileSync('portal.html', 'utf8');
-          const simpleFull = fs.readFileSync('operations-course-simple-full-v1.js', 'utf8');
-          const persistence = fs.readFileSync('operations-course-persistence-v1.js', 'utf8');
-          const route = fs.readFileSync('operations-course-live-route-v1.js', 'utf8');
-          new vm.Script(simpleFull, { filename: 'operations-course-simple-full-v1.js' });
-          new vm.Script(persistence, { filename: 'operations-course-persistence-v1.js' });
-          new vm.Script(route, { filename: 'operations-course-live-route-v1.js' });
-          if (!html.includes('course-scheduler-live-entry-v1.js?v=20260729-live-full-scheduler-v2')) throw new Error('Live scheduler entry missing');
-          if (html.includes('course-scheduler-startup-gate-v1.js')) throw new Error('Legacy startup gate must not be loaded');
-          if (html.includes('course-data-auto-bootstrap-v1.js')) throw new Error('Legacy auto reload bootstrap must not be loaded');
-          if (html.includes('history.replaceState')) throw new Error('Live scheduler must not change back to the old URL');
-          if (html.includes('<script src="course-scheduler.js')) throw new Error('Scheduler must be loaded only after data is ready');
-          if (!entry.includes("CLOUD_FUNCTION = 'loadInjiaoyunEducationMirrorAuto'")) throw new Error('Direct cloud fallback missing');
-          if (!entry.includes("type: 'youzi-course-snapshot-request'")) throw new Error('Parent snapshot request missing');
-          if (!simpleFull.includes("DB_NAME = 'youzi-course-scheduler'")) throw new Error('Full schedule does not read the saved course database');
-          if (!simpleFull.includes('目前顯示上次成功保存的課表')) throw new Error('Saved-data display rule missing');
-          if (!persistence.includes('isDirectCalendar(value)')) throw new Error('Course persistence does not bypass the legacy calendar iframe');
-          if (route.includes("'course-calendar': 'calendar'")) throw new Error('Legacy iframe router still owns the full calendar');
-          for (const source of [hub, portal]) {
-            if (!source.includes('operations-course-simple-full-v1.js?v=20260729-simple-full-v2')) throw new Error('Database-backed full schedule script missing');
-            if (!source.includes('operations-course-live-route-v1.js?v=20260729-direct-calendar-v1')) throw new Error('Direct calendar route cache version missing');
-            if (!source.includes('operations-course-persistence-v1.js?v=20260729-direct-calendar-v1')) throw new Error('Direct calendar persistence cache version missing');
-          }
-          console.log('Live scheduler and database-backed full schedule verified');
-          NODE
+          const route = fs.readFileSync('operations-course-authoritative-v1.js', 'utf8');
+          const live = fs.readFileSync('course-scheduler-live.html', 'utf8');
+          const entry = fs.readFileSync('course-scheduler-live-entry-v1.js', 'utf8');
+          const scheduler = fs.readFileSync('course-scheduler.js', 'utf8');
 
-      - name: Commit generated files
-        run: |
-          if git diff --quiet -- course-scheduler-live.html operations-hub.html portal.html; then
-            echo "Live scheduler files are already current."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add course-scheduler-live.html operations-hub.html portal.html
-          git commit -m "Publish deterministic live full scheduler"
-          git push origin HEAD:main
+          new vm.Script(route, { filename: 'operations-course-authoritative-v1.js' });
+          new vm.Script(entry, { filename: 'course-scheduler-live-entry-v1.js' });
+          new vm.Script(scheduler, { filename: 'course-scheduler.js' });
+
+          const disabledScripts = [
+            'operations-course-persistence-v1.js',
+            'operations-course-simple-full-v1.js',
+            'operations-course-snapshot-bridge-v1.js',
+            'operations-course-live-route-v1.js'
+          ];
+
+          for (const source of [hub, portal]) {
+            if (!source.includes('operations-course-authoritative-v1.js?v=20260729-interactive-course-v1')) {
+              throw new Error('Authoritative interactive scheduler route is missing');
+            }
+            for (const script of disabledScripts) {
+              if (source.includes(script)) throw new Error(`Conflicting course patch is still enabled: ${script}`);
+            }
+          }
+
+          if (!route.includes('course-scheduler-live.html')) throw new Error('Interactive scheduler route target is missing');
+          if (!live.includes('course-scheduler-live-entry-v1.js?v=20260729-live-full-scheduler-v2')) {
+            throw new Error('Interactive live scheduler entry is missing');
+          }
+          if (!entry.includes("WORKSPACE_KEY = 'workspace'")) throw new Error('Workspace-first loading is missing');
+          if (!entry.includes("FORMAL_KEY = 'latest'")) throw new Error('Formal snapshot fallback is missing');
+          if (!entry.includes("CLOUD_FUNCTION = 'loadInjiaoyunEducationMirrorAuto'")) throw new Error('Cloud fallback is missing');
+          if (!scheduler.includes("function syncInjiaoyun()")) throw new Error('Manual sync function is missing');
+          if (!scheduler.includes("preserveConfiguration:true")) throw new Error('Manual sync configuration preservation is missing');
+
+          console.log('Single interactive course scheduler path verified');
+          NODE
