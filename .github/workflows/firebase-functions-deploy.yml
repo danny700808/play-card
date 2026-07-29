@@ -11,10 +11,6 @@ on:
       - ".github/workflows/firebase-functions-deploy.yml"
       - ".github/scripts/course-mirror-public.cjs"
       - ".github/scripts/course-mirror-report.cjs"
-      - "course-data-auto-bootstrap-v1.js"
-      - "course-scheduler-review-data.js"
-      - "operations-hub.html"
-      - "portal.html"
       - "tests/course-auto-cloud-load.test.js"
       - "tests/course-workspace-persistence.test.js"
   workflow_dispatch:
@@ -30,13 +26,13 @@ concurrency:
 jobs:
   deploy-course-mirror-reader:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Report verification started
+      - name: Report deployment started
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
@@ -44,23 +40,28 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
-          node - <<'NODE'
-          const response = await fetch(`https://api.github.com/repos/${process.env.REPOSITORY}/statuses/${process.env.COMMIT_SHA}`, {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${process.env.GH_TOKEN}`,
-              Accept: 'application/vnd.github+json',
-              'X-GitHub-Api-Version': '2022-11-28',
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              state: 'pending',
-              context: 'firebase/functions-course-mirror',
-              description: 'Opening and verifying the automatic course mirror reader',
-              target_url: process.env.RUN_URL
-            })
+          node --input-type=commonjs - <<'NODE'
+          (async () => {
+            const response = await fetch(`https://api.github.com/repos/${process.env.REPOSITORY}/statuses/${process.env.COMMIT_SHA}`, {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${process.env.GH_TOKEN}`,
+                Accept: 'application/vnd.github+json',
+                'X-GitHub-Api-Version': '2022-11-28',
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                state: 'pending',
+                context: 'firebase/functions-course-mirror',
+                description: 'Deploying and verifying the automatic course mirror reader',
+                target_url: process.env.RUN_URL
+              })
+            });
+            if (!response.ok) throw new Error(`Unable to report pending status: ${response.status} ${await response.text()}`);
+          })().catch((error) => {
+            console.error(error && error.stack || error);
+            process.exit(1);
           });
-          if (!response.ok) throw new Error(`Unable to report pending status: ${response.status} ${await response.text()}`);
           NODE
 
       - name: Setup Node.js
@@ -101,16 +102,37 @@ jobs:
           node -e "const row=require('./service-account.json'); if(row.type!=='service_account'||row.project_id!=='youzi-c1b74'||!row.client_email||!row.private_key){throw new Error('Invalid Firebase service account JSON')}"
           chmod 600 service-account.json
 
+      - name: Install pinned Firebase CLI
+        run: npm install --global firebase-tools@15.24.0
+
+      - name: Deploy automatic course mirror reader
+        id: deploy_reader
+        continue-on-error: true
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/service-account.json
+        run: |
+          set -o pipefail
+          firebase deploy \
+            --only functions:loadInjiaoyunEducationMirrorAuto \
+            --project youzi-c1b74 \
+            --non-interactive \
+            --force \
+            2>&1 | tee /tmp/firebase-course-mirror-deploy.log
+
       - name: Make deployed course mirror reader publicly callable
         id: public_access
+        if: steps.deploy_reader.outcome == 'success'
+        continue-on-error: true
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/service-account.json
         run: |
           set -o pipefail
           node .github/scripts/course-mirror-public.cjs 2>&1 | tee /tmp/course-mirror-public-access.log
 
-      - name: Verify course mirror returns actual schedule data
+      - name: Verify deployed course mirror returns actual schedule data
         id: health_check
+        if: steps.deploy_reader.outcome == 'success' && steps.public_access.outcome == 'success'
+        continue-on-error: true
         run: |
           set -o pipefail
           response=/tmp/course-mirror-response.json
@@ -149,21 +171,34 @@ jobs:
         with:
           name: course-mirror-diagnostics-${{ github.run_id }}
           path: |
+            /tmp/firebase-course-mirror-deploy.log
             /tmp/course-mirror-public-access.log
             /tmp/course-mirror-response.json
           if-no-files-found: warn
           retention-days: 7
 
-      - name: Report final verification status
+      - name: Report final deployment status
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
           COMMIT_SHA: ${{ github.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          DEPLOY_OUTCOME: ${{ steps.deploy_reader.outcome }}
           ACCESS_OUTCOME: ${{ steps.public_access.outcome }}
           HEALTH_OUTCOME: ${{ steps.health_check.outcome }}
         run: node .github/scripts/course-mirror-report.cjs
+
+      - name: Fail workflow when deployment, access, or health check failed
+        if: steps.deploy_reader.outcome != 'success' || steps.public_access.outcome != 'success' || steps.health_check.outcome != 'success'
+        run: |
+          echo "Deployment outcome: ${{ steps.deploy_reader.outcome }}"
+          echo "Public access outcome: ${{ steps.public_access.outcome }}"
+          echo "Health outcome: ${{ steps.health_check.outcome }}"
+          test -f /tmp/firebase-course-mirror-deploy.log && tail -n 100 /tmp/firebase-course-mirror-deploy.log || true
+          test -f /tmp/course-mirror-public-access.log && tail -n 100 /tmp/course-mirror-public-access.log || true
+          test -f /tmp/course-mirror-response.json && cat /tmp/course-mirror-response.json || true
+          exit 1
 
       - name: Remove service account file
         if: always()
