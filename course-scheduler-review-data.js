@@ -142,13 +142,17 @@
   'use strict';
   if (window.__YOUZI_COURSE_AUTO_BOOTSTRAP_REQUESTED__) return;
   window.__YOUZI_COURSE_AUTO_BOOTSTRAP_REQUESTED__ = true;
-  var source = 'course-data-auto-bootstrap-v1.js?v=20260729-auto-cloud-v3';
+  var bootstrap = 'course-data-auto-bootstrap-v1.js?v=20260729-auto-cloud-v4';
+  var gate = 'course-scheduler-startup-gate-v1.js?v=20260729-full-scheduler-v1';
+  var scheduler = 'course-scheduler.js?v=20260729-full-scheduler-v1';
   if (document.readyState === 'loading') {
-    document.write('<script src="' + source + '"><\\/script>');
+    document.write('<script src="' + bootstrap + '"><\\/script>');
+    document.write('<script src="' + gate + '"><\\/script>');
+    document.write('<script src="' + scheduler + '"><\\/script>');
     return;
   }
   var script = document.createElement('script');
-  script.src = source;
+  script.src = bootstrap;
   script.async = false;
   document.head.appendChild(script);
 }());
