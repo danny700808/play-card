@@ -4,7 +4,7 @@ const fs = require('fs');
 
 const sourcePath = 'course-scheduler.html';
 const targetPath = 'course-scheduler-live.html';
-const runtimeVersion = '20260729-formal-runtime-v4';
+const runtimeVersion = '20260729-real-data-recovery-v1';
 const routeVersion = '20260729-authoritative-course-v7';
 let html = fs.readFileSync(sourcePath, 'utf8');
 
@@ -20,7 +20,7 @@ const scripts = `  <script src="config.js?v=20260722-course-scheduler-v2"></scri
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
   <script src="course-scheduler-data.js?v=${runtimeVersion}"></script>
-  <script src="course-scheduler-live-entry-v1.js?v=${runtimeVersion}"></script>
+  <script src="course-scheduler-recovery-v1.js?v=${runtimeVersion}"></script>
 `;
 
 html = html.slice(0, firstScript) + scripts + html.slice(bodyEnd);
@@ -56,4 +56,4 @@ for (const path of ['operations-hub.html', 'portal.html']) {
   fs.writeFileSync(path, source);
 }
 
-console.log(`Built ${targetPath} with ${runtimeVersion} and early route ${routeVersion}`);
+console.log(`Built ${targetPath} with ${runtimeVersion}, recovery, and route ${routeVersion}`);
