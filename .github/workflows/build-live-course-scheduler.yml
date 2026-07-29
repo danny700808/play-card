@@ -1,80 +1,121 @@
-name: Verify Fresh Course Center
+name: Publish Full Course Scheduler
 
 on:
   push:
     branches:
       - main
     paths:
-      - "course-center.html"
-      - "course-center.css"
-      - "course-center.js"
-      - "course-center-bootstrap.js"
+      - "course-scheduler.html"
+      - "course-scheduler.css"
+      - "course-scheduler.js"
       - "course-scheduler-data.js"
-      - "operations-hub.html"
+      - "course-scheduler-full-bootstrap.js"
+      - "course-scheduler-standalone.css"
+      - "course-center.html"
+      - "course-center.js"
+      - "course-center.css"
+      - "course-center-bootstrap.js"
       - "portal.html"
+      - "operations-hub.html"
+      - ".github/scripts/restore-full-course-center.cjs"
       - ".github/workflows/build-live-course-scheduler.yml"
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: verify-fresh-course-center-main
-  cancel-in-progress: true
+  group: publish-full-course-scheduler-main
+  cancel-in-progress: false
 
 jobs:
-  verify-fresh-course-center:
+  publish-and-verify-full-scheduler:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: main
 
-      - name: Verify standalone course center
+      - name: Publish complete standalone scheduler
+        run: node .github/scripts/restore-full-course-center.cjs
+
+      - name: Verify complete course functionality and one-page layout
         run: |
           node - <<'NODE'
           const fs = require('fs');
           const vm = require('vm');
 
-          const html = fs.readFileSync('course-center.html', 'utf8');
-          const css = fs.readFileSync('course-center.css', 'utf8');
-          const js = fs.readFileSync('course-center.js', 'utf8');
-          const bootstrap = fs.readFileSync('course-center-bootstrap.js', 'utf8');
-          const hub = fs.readFileSync('operations-hub.html', 'utf8');
+          const html = fs.readFileSync('course-scheduler.html', 'utf8');
+          const css = fs.readFileSync('course-scheduler-standalone.css', 'utf8');
+          const bootstrap = fs.readFileSync('course-scheduler-full-bootstrap.js', 'utf8');
+          const scheduler = fs.readFileSync('course-scheduler.js', 'utf8');
+          const center = fs.readFileSync('course-center.html', 'utf8');
           const portal = fs.readFileSync('portal.html', 'utf8');
+          const hub = fs.readFileSync('operations-hub.html', 'utf8');
 
-          new vm.Script(js, { filename: 'course-center.js' });
-          new vm.Script(bootstrap, { filename: 'course-center-bootstrap.js' });
+          new vm.Script(bootstrap, { filename: 'course-scheduler-full-bootstrap.js' });
+          new vm.Script(scheduler, { filename: 'course-scheduler.js' });
 
-          if (!html.includes('course-center.css?v=20260729-fresh-course-v1')) throw new Error('Fresh course CSS is missing');
-          if (!html.includes('course-center-bootstrap.js?v=20260729-fresh-course-v2')) throw new Error('Fresh course bootstrap is missing');
-          if (html.includes('<script src="course-center.js?')) throw new Error('Runtime must start only after snapshot protection');
-          if (!html.includes('course-scheduler-data.js?v=20260729-fresh-course-v1')) throw new Error('Mirror data adapter is missing');
-          if (!css.includes('.schedule-grid')) throw new Error('Fresh schedule grid styling is missing');
+          if (!html.includes('course-scheduler-standalone.css?v=20260729-full-course-standalone-v1')) throw new Error('Standalone operations navigation style is missing');
+          if (!html.includes('course-scheduler-full-bootstrap.js?v=20260729-full-course-standalone-v1')) throw new Error('Full scheduler data bootstrap is missing');
+          if (html.includes('course-data-auto-bootstrap-v1.js')) throw new Error('Obsolete automatic bootstrap is still loaded');
+          if (html.includes('course-scheduler-review-data.js')) throw new Error('Review-data overlay is still loaded');
+          if (html.includes('course-scheduler-startup-gate-v1.js')) throw new Error('Startup gate patch is still loaded');
+          if (html.includes('<iframe')) throw new Error('Full course scheduler must not use an iframe');
+          if (!html.includes('course-portal-admin.html')) throw new Error('Entry and binding management is missing');
+          if (!html.includes('id="policyModal"')) throw new Error('Room policy editor is missing');
+          if (!html.includes('id="teacherPayrollModal"')) throw new Error('Teacher payroll details are missing');
+          if (!html.includes('data-settings-tab="rooms"') || !html.includes('data-settings-tab="subjects"') || !html.includes('data-settings-tab="fees"')) throw new Error('Course settings sections are incomplete');
 
-          for (const source of [hub, portal]) {
-            for (const page of ['calendar','students','teachers','settings']) {
-              if (!source.includes(`course-center.html#${page}`)) throw new Error(`Fresh course link is missing: ${page}`);
-            }
-            if (!source.includes("location.replace('course-center.html#'+map[key])")) throw new Error('Legacy course hash redirect is missing');
-            if (source.includes('operations-course-authoritative-v1.js')) throw new Error('Legacy iframe course route is still enabled');
-            if (source.includes('opsCoursePersistentHost')) throw new Error('Legacy course iframe host is still present');
+          const requiredFunctions = [
+            'function bindRoomReorder',
+            'function bindFeeReorder',
+            'function setAttendance',
+            'function eventAction',
+            'function openTeacherPayroll',
+            'function openPolicy',
+            'function syncInjiaoyun',
+            'function submitSchedule',
+            'function submitTuition',
+            'function submitTransaction'
+          ];
+          for (const marker of requiredFunctions) {
+            if (!scheduler.includes(marker)) throw new Error(`Full scheduler function is missing: ${marker}`);
           }
 
-          if (!bootstrap.includes('removeEmptySnapshots')) throw new Error('Empty snapshot cleanup is missing');
-          if (!bootstrap.includes('hasRealContent')) throw new Error('Real-content validation is missing');
-          if (!bootstrap.includes("store.delete(key)")) throw new Error('Invalid workspace/latest removal is missing');
-          if (!bootstrap.includes('protectMirrorLoader')) throw new Error('Mirror empty-data protection is missing');
-          if (!bootstrap.includes("RUNTIME_SRC = 'course-center.js?v=20260729-fresh-course-v2'")) throw new Error('Protected runtime handoff is missing');
+          if (!bootstrap.includes("WORKSPACE_KEY = 'workspace'")) throw new Error('Workspace loading is missing');
+          if (!bootstrap.includes("FORMAL_KEY = 'latest'")) throw new Error('Latest snapshot loading is missing');
+          if (!bootstrap.includes('isDemo')) throw new Error('Demo-data rejection is missing');
+          if (!bootstrap.includes('YouziCoursePreviewData.load')) throw new Error('Read-only mirror recovery is missing');
+          if (bootstrap.includes('YouziCoursePreviewData.sync')) throw new Error('Opening the scheduler must not automatically synchronize Injiaoyun');
+          if (!bootstrap.includes('loadRuntime')) throw new Error('Full scheduler runtime handoff is missing');
 
-          if (!js.includes("WORKSPACE_KEY = 'workspace'")) throw new Error('Workspace source is missing');
-          if (!js.includes("LATEST_KEY = 'latest'")) throw new Error('Latest source is missing');
-          if (!js.includes('readLegacyState')) throw new Error('Legacy real-data recovery is missing');
-          if (!js.includes('demoState')) throw new Error('Demo-data rejection is missing');
-          if (!js.includes('YouziCoursePreviewData.load')) throw new Error('Read-only mirror loading is missing');
-          if (js.includes('YouziCoursePreviewData.sync')) throw new Error('Fresh center must not auto-sync Injiaoyun');
-          if (!js.includes('writeDatabase')) throw new Error('Workspace persistence is missing');
-          if (!js.includes('renderCalendar')) throw new Error('Calendar rendering is missing');
-          if (!js.includes('saveCourse')) throw new Error('Workspace course creation is missing');
+          for (const source of [portal, hub]) {
+            for (const view of ['calendar','students','teachers','settings']) {
+              if (!source.includes(`course-scheduler.html?view=${view}`)) throw new Error(`Direct full scheduler link is missing: ${view}`);
+            }
+            if (source.includes('course-center.html#')) throw new Error('Simplified course center link is still enabled');
+            if (source.includes('operations-course-authoritative-v1.js')) throw new Error('Obsolete iframe route is still enabled');
+          }
 
-          console.log('Fresh standalone course center with empty-snapshot protection verified');
+          if (!center.includes("location.replace('course-scheduler.html?view='+view)")) throw new Error('Legacy course-center link does not redirect to the full scheduler');
+          for (const obsolete of ['course-center.js','course-center.css','course-center-bootstrap.js']) {
+            if (fs.existsSync(obsolete)) throw new Error(`Simplified course file still exists: ${obsolete}`);
+          }
+          if (!css.includes('.main-nav a')) throw new Error('Full operations navigation links are not styled');
+
+          console.log('Complete standalone course scheduler verified');
           NODE
+
+      - name: Commit restored full scheduler
+        run: |
+          if git diff --quiet; then
+            echo "Full scheduler files are already current."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Publish complete standalone course scheduler"
+          git push origin HEAD:main
