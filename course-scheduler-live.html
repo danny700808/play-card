@@ -4,50 +4,223 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#233b35">
-  <title>課程日表｜柚子樂器</title>
-  <style>
-    html,body{margin:0;min-height:100%;background:#eef5f2;color:#173f34;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-    .live-loading{min-height:100vh;display:grid;place-items:center;padding:24px;text-align:center}
-    .live-loading div{width:min(420px,100%);padding:24px;border:1px solid #cbded7;border-radius:18px;background:#fff;box-shadow:0 18px 48px rgba(25,71,57,.12)}
-    .live-loading b{display:block;font-size:20px}.live-loading span{display:block;margin-top:10px;color:#657d75;line-height:1.6}
-  </style>
+  <title>新版排課系統｜柚子樂器</title>
+  <link rel="icon" href="yuzu-logo-green.png">
+  <link rel="stylesheet" href="course-scheduler.css?v=20260729-live-full-scheduler-v1">
 </head>
 <body>
-  <main class="live-loading"><div><b>正在開啟完整課表</b><span>先取得目前課程資料，再載入完整課表。</span></div></main>
-  <script>
-  (async function () {
-    'use strict';
-    function failure(error) {
-      var node = document.querySelector('.live-loading span');
-      if (node) node.textContent = '完整課表入口載入失敗：' + String(error && error.message || error || '未知錯誤');
-      try { console.error('[course-scheduler-live]', error); } catch (_) {}
-    }
-    try {
-      var response = await fetch('course-scheduler.html?template=20260729-live-v1-' + Date.now(), { cache: 'no-store' });
-      if (!response.ok) throw new Error('HTTP ' + response.status);
-      var html = await response.text();
-      html = html.replace(/course-scheduler\.css\?v=[^"']+/g, 'course-scheduler.css?v=20260729-live-full-scheduler-v1');
-      var scripts = [
-        '<script>try{history.replaceState(null,"","course-scheduler.html?live=20260729-v1"+location.hash);}catch(_){}</' + 'script>',
-        '<script src="config.js?v=20260722-course-scheduler-v2"></' + 'script>',
-        '<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></' + 'script>',
-        '<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></' + 'script>',
-        '<script src="course-scheduler-data.js?v=20260729-live-full-scheduler-v1"></' + 'script>',
-        '<script src="course-data-auto-bootstrap-v1.js?v=20260729-live-full-scheduler-v1"></' + 'script>',
-        '<script>window.__YOUZI_COURSE_AUTO_BOOTSTRAP_REQUESTED__=true;</' + 'script>',
-        '<script src="course-scheduler-review-data.js?v=20260729-live-full-scheduler-v1"></' + 'script>',
-        '<script src="course-scheduler-live-entry-v1.js?v=20260729-live-full-scheduler-v1"></' + 'script>'
-      ].join('\n  ');
-      var pattern = /\s*<script src="config\.js[^>]*><\/script>[\s\S]*?<\/body>/i;
-      if (!pattern.test(html)) throw new Error('找不到舊課表腳本區塊');
-      html = html.replace(pattern, '\n  ' + scripts + '\n</body>');
-      document.open();
-      document.write(html);
-      document.close();
-    } catch (error) {
-      failure(error);
-    }
-  }());
-  </script>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-icon">♫</div>
+        <div><strong>新版排課系統</strong><small>柚子樂器課務管理</small></div>
+      </div>
+      <div class="mode-pill" id="sideModeBadge">資料尚未載入</div>
+      <nav class="main-nav" aria-label="排課系統選單">
+        <button type="button" class="active" data-view="calendar"><span>日</span><b>課程日表</b></button>
+        <button type="button" data-view="students"><span>生</span><b>學生與學費</b></button>
+        <button type="button" data-view="teachers"><span>師</span><b>老師與薪資</b></button>
+        <button type="button" data-view="settings"><span>設</span><b>系統設定</b></button>
+      </nav>
+      <div class="sidebar-foot">
+        <a href="portal.html">返回營運中心</a>
+        <button type="button" id="sideNewEvent">＋ 快速新增排課</button>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <header class="page-header">
+        <div><h1 id="pageTitle">課程日表</h1><p class="hidden" id="pageSubtitle"></p></div>
+        <div class="header-actions hidden"><span class="save-state" id="saveState"></span><button class="btn primary" type="button" id="topNewEvent">＋ 新增排課</button></div>
+      </header>
+
+      <section class="data-mode card" id="dataModePanel">
+        <div class="data-mode-copy"><span class="data-mode-icon" id="dataModeIcon">同</span><div><strong id="dataModeTitle">正式資料已保存</strong><p id="dataModeDescription">開啟課務管理會直接顯示上次資料；只有要取得舊音教雲最新內容時才按更新</p><small id="dataModeMeta">正在自動開啟資料庫</small></div></div>
+        <div class="data-mode-actions">
+          <span class="tag" id="dataModeChip">自動儲存</span>
+          <button class="btn primary" type="button" id="syncInjiaoyunBtn">更新音教雲最新資料</button>
+        </div>
+      </section>
+
+      <section class="view active" id="calendarPage">
+        <div class="calendar-toolbar card">
+          <div class="date-actions">
+            <button class="btn soft" type="button" id="todayBtn">今天</button>
+            <button class="icon-btn" type="button" data-day-step="-1" aria-label="前一天">‹</button>
+            <input class="control" id="calendarDate" type="date">
+            <button class="icon-btn" type="button" data-day-step="1" aria-label="後一天">›</button>
+            <button class="btn outline" type="button" id="weekScheduleBtn">週課表</button>
+            <div class="date-heading"><strong id="dateTitle"></strong><span id="dateSubtitle"></span></div>
+          </div>
+          <div class="toolbar-actions"><a class="btn outline" href="course-portal-admin.html">入口與綁定</a><button class="btn outline" type="button" id="conflictBtn">檢查衝突</button><button class="btn dark" type="button" data-view-jump="settings">教室與規則</button><button class="btn primary" type="button" id="calendarNewEvent">＋ 新增排課</button></div>
+        </div>
+
+        <section class="week-schedule card hidden" id="weekSchedulePanel">
+          <div class="week-toolbar"><div><strong>老師週課表</strong><span id="weekRange"></span></div><div class="week-controls"><select class="control" id="weekTeacher"></select><button class="btn outline" type="button" data-week-step="-1">上一週</button><button class="btn soft" type="button" id="thisWeekBtn">本週</button><button class="btn outline" type="button" data-week-step="1">下一週</button><button class="btn dark" type="button" id="closeWeekBtn">返回日表</button></div></div>
+          <div class="week-days" id="weekScheduleDays"></div>
+        </section>
+
+        <div class="kpi-grid" id="dailyKpis">
+          <article class="card kpi"><span>今日課程</span><strong id="kpiLessons">0</strong><small>不含教室租用</small></article>
+          <article class="card kpi"><span>已簽到</span><strong id="kpiAttended">0</strong><small>完成堂數勾稽</small></article>
+          <article class="card kpi"><span>教室使用</span><strong id="kpiRooms">0 / 0</strong><small>有安排／啟用</small></article>
+          <article class="card kpi"><span>待處理</span><strong id="kpiWarnings">0</strong><small>衝突、請假或曠課</small></article>
+        </div>
+
+        <div class="legend card" id="dailyLegend">
+          <b>課表標示</b><span><i class="fixed"></i>固定課</span><span><i class="single"></i>老師調課</span><span><i class="rental"></i>教室租用</span><span><i class="trial"></i>體驗課</span><span class="legend-attended">左側深色條＝已簽到</span><span class="legend-muted">「假／曠」標記＝請假／曠課</span>
+        </div>
+
+        <section class="schedule-card card" id="dailySchedule">
+          <div class="schedule-instructions hidden"><span id="calendarHint"></span></div>
+          <div class="clipboard-bar hidden" id="clipboardBar"><span id="clipboardText"></span><button class="btn small outline" type="button" id="cancelClipboard">取消</button></div>
+          <div class="schedule-scroll" id="scheduleScroll"><div class="schedule-grid" id="scheduleGrid"></div></div>
+        </section>
+      </section>
+
+      <section class="view" id="studentsPage">
+        <div class="section-heading"><div><h2>學生與學費</h2><p>每個科目、每一期學費、每堂簽到與請假都獨立保留。</p></div><button class="btn primary" type="button" id="addStudentBtn">＋ 新增學生</button></div>
+        <div class="metric-grid" id="studentMetrics"></div>
+        <div class="filters"><input class="search-control" id="studentSearch" placeholder="搜尋學生姓名、手機或科目"><select class="control" id="studentPaymentFilter"><option value="all">全部學費狀態</option><option value="due">尚有未繳</option><option value="low">剩餘 1 堂以下</option><option value="active">上課中</option></select></div>
+        <div class="table-card card"><table class="data-table"><thead><tr><th>學生</th><th>聯絡方式</th><th>目前科目／老師</th><th>本期堂數</th><th>本期學費</th><th>下次上課</th><th>操作</th></tr></thead><tbody id="studentRows"></tbody></table></div>
+      </section>
+
+      <section class="view" id="teachersPage">
+        <div class="section-heading"><div><h2>老師與薪資</h2><p>老師可教授科目會直接限制排課選項；獎勵、扣薪與實際授課分開計算。</p></div><button class="btn primary" type="button" id="addTeacherBtn">＋ 新增老師</button></div>
+        <div class="metric-grid" id="teacherMetrics"></div>
+        <div class="filters"><input class="search-control" id="teacherSearch" placeholder="搜尋老師姓名、電話或教授科目"></div>
+        <div class="teacher-list card" id="teacherCards"></div>
+      </section>
+
+      <section class="view" id="settingsPage">
+        <div class="section-heading"><div><h2>系統設定</h2><p>先設定排課格線、教室規則、科目、收費方案與請假原因。</p></div><button class="btn primary" type="button" id="saveSettingsBtn">儲存設定</button></div>
+        <div class="settings-tabs" role="tablist">
+          <button class="active" type="button" data-settings-tab="general">排課時間</button>
+          <button type="button" data-settings-tab="rooms">教室空間</button>
+          <button type="button" data-settings-tab="subjects">科目類別</button>
+          <button type="button" data-settings-tab="fees">收費方案</button>
+          <button type="button" data-settings-tab="leave">請假原因</button>
+        </div>
+
+        <div class="settings-panel active" data-settings-panel="general">
+          <section class="card settings-card"><h3>每日排課格線</h3><p>課程日表固定以 30 分鐘為單位；起訖時間可依營業時間調整。</p><div class="form-grid three"><div class="field"><label>開始時間</label><select id="startHour"></select></div><div class="field"><label>結束時間</label><select id="endHour"></select></div><div class="field"><label>預設一期堂數</label><input id="defaultLessons" type="number" min="1" max="99"></div></div></section>
+          <section class="card notice-card"><h3>堂數與固定課原則</h3><ul><li>建立、增加或調課都不會立即扣堂。</li><li>只有老師實際簽到才扣一堂並產生老師薪資；請假與曠課不扣堂、不計薪。</li><li>固定課只保存每週／隔週規則，未來時段會保留，但不預先建立大量正式課程紀錄。</li><li>學生請假只釋放當天教室，不會取消之後的固定時段。</li></ul></section>
+        </div>
+
+        <div class="settings-panel" data-settings-panel="rooms">
+          <div class="panel-actions"><div><h3>教室空間</h3><p>已被課程使用的教室只能停用，避免歷史資料失去名稱。</p></div><button class="btn primary" type="button" id="addRoomBtn">＋ 新增教室</button></div>
+          <div class="table-card card"><table class="data-table"><thead><tr><th>教室名稱</th><th>預設租金</th><th>可用科目</th><th>狀態</th><th>設定</th></tr></thead><tbody id="roomRows"></tbody></table></div>
+        </div>
+
+        <div class="settings-panel" data-settings-panel="subjects">
+          <div class="panel-actions"><div><h3>科目類別</h3><p>科目會勾稽老師可授課範圍、收費方案與教室適用規則。</p></div><button class="btn primary" type="button" id="addSubjectBtn">＋ 新增科目</button></div>
+          <div class="table-card card"><table class="data-table"><thead><tr><th>排序</th><th>科目名稱</th><th>可授課老師</th><th>收費方案</th><th>狀態</th><th>操作</th></tr></thead><tbody id="subjectRows"></tbody></table></div>
+        </div>
+
+        <div class="settings-panel" data-settings-panel="fees">
+          <div class="panel-actions"><div><h3>收費方案</h3><p>直接拖曳整列調整常用順序；排課與新增期數會沿用此排列。</p></div><button class="btn primary" type="button" id="addFeePlanBtn">＋ 新增收費方案</button></div>
+          <div class="filters"><select class="control" id="feeSubjectFilter"><option value="all">全部科目</option></select></div>
+          <div class="table-card card"><table class="data-table"><thead><tr><th>拖曳</th><th>科目</th><th>方案名稱</th><th>費用／堂數</th><th>老師拆帳</th><th>請假規則</th><th>狀態</th><th>操作</th></tr></thead><tbody id="feePlanRows"></tbody></table></div>
+        </div>
+
+        <div class="settings-panel" data-settings-panel="leave">
+          <div class="panel-actions"><div><h3>請假原因</h3><p>請假紀錄會保存當時原因，即使日後停用也不影響歷史。</p></div><button class="btn primary" type="button" id="addLeaveReasonBtn">＋ 新增原因</button></div>
+          <div class="table-card card narrow-table"><table class="data-table"><thead><tr><th>排序</th><th>原因</th><th>狀態</th><th>操作</th></tr></thead><tbody id="leaveReasonRows"></tbody></table></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal-backdrop" id="scheduleModal" role="dialog" aria-modal="true" aria-labelledby="scheduleModalTitle">
+    <div class="modal large">
+      <div class="modal-head"><div><h2 id="scheduleModalTitle">新增排課</h2><p>先選學生與科目，再由系統篩選老師、學費期別並檢查衝突。</p></div><button class="modal-close" type="button" data-close-modal="scheduleModal">×</button></div>
+      <form id="scheduleForm">
+        <div class="modal-body">
+          <input type="hidden" id="eventId"><input type="hidden" id="eventSeriesId">
+          <div class="schedule-kind-tabs" id="scheduleTypeTabs">
+            <button type="button" data-schedule-kind="fixed">固定學生課程</button>
+            <button type="button" data-schedule-kind="single">單堂加課</button>
+            <button type="button" data-schedule-kind="rental">教室租用</button>
+            <button type="button" data-schedule-kind="trial">體驗課</button>
+          </div>
+          <div class="form-grid three">
+            <div class="field"><label class="required">日期</label><input id="eventDate" type="date" required></div>
+            <div class="field"><label class="required">開始時間</label><select id="eventStart" required></select></div>
+            <div class="field"><label class="required">時數</label><select id="eventDuration"><option value="30">30 分鐘</option><option value="60">60 分鐘</option><option value="90">90 分鐘</option><option value="120">2 小時</option><option value="150">2.5 小時</option><option value="180">3 小時</option><option value="240">4 小時</option></select></div>
+            <div class="field"><label class="required">教室</label><select id="eventRoom" required></select></div>
+            <div class="field hidden"><label class="required">類型</label><select id="eventType"><option value="fixed">固定課程</option><option value="single">單堂／調課</option><option value="rental">租用空間</option><option value="trial">體驗課</option></select></div>
+            <div class="field" id="frequencyField"><label>頻率</label><select id="eventFrequency"><option value="once">只排本次</option><option value="weekly">每週</option><option value="biweekly">隔週</option></select></div>
+            <div class="field hidden" id="repeatUntilField"><label>固定課結束日（可留空）</label><input id="eventRepeatUntil" type="date"><small>留空表示持續保留固定時段；系統不會預先建立未來每一堂課。</small></div>
+            <div class="field full student-course-only" id="studentField"><label>搜尋既有學生</label><input id="eventStudentSearch" autocomplete="off" placeholder="輸入學生姓名或電話"><select class="hidden" id="eventStudent"></select><div class="student-match-list hidden" id="eventStudentMatches"></div><div class="selected-student hidden" id="eventStudentSelected"></div><button class="text-button" type="button" id="quickAddStudent">＋ 新增學生</button></div>
+            <div class="field learning-only" id="subjectField"><label>課程科目</label><select id="eventSubject"></select></div>
+            <div class="field learning-only" id="teacherField"><label>上課老師</label><select id="eventTeacher"></select><small id="teacherFilterHint">依科目顯示可授課老師</small></div>
+            <div class="field span-2" id="tuitionPeriodField"><label>扣抵學費期別</label><select id="eventTuitionPeriod"></select><small>排課本身不扣堂，簽到後才從此期別扣抵。</small></div>
+            <div class="field single-only hidden" id="singleKindField"><label>單堂課用途</label><select id="eventSingleKind"><option value="normal">一般加課／調課</option><option value="special">贈送／特殊加課</option></select></div>
+            <div class="field special-only hidden"><label>本堂原價</label><input id="eventSpecialLessonPrice" type="number" min="0" step="1"><small>預設帶入學生目前方案的單堂金額。</small></div>
+            <div class="field special-only hidden"><label>老師本堂實領</label><input id="eventSpecialTeacherPay" type="number" min="0" step="1"><small>學生不扣堂、不收費，但老師簽到後仍列入薪資。</small></div>
+            <div class="field trial-only hidden"><label>體驗者姓名</label><input id="eventTrialName" placeholder="請輸入姓名"></div>
+            <div class="field trial-only hidden"><label>聯絡電話</label><input id="eventTrialPhone" placeholder="手機或市話"></div>
+            <div class="field trial-only hidden"><label>體驗費用</label><input id="eventTrialFee" type="number" min="0" step="1"></div>
+            <div class="field rental-only hidden"><label>租用客戶／團體</label><input id="eventClient" placeholder="姓名或團體名稱"></div>
+            <div class="field rental-only hidden"><label>聯絡電話</label><input id="eventClientPhone" placeholder="手機或市話"></div>
+            <div class="field rental-only hidden"><label>實際租用金額</label><input id="eventRentalFee" type="number" min="0" step="1"><small>會先帶入教室預設價格，現場仍可直接修改。</small></div>
+            <div class="field rental-only hidden"><label>收款狀態</label><select id="eventRentalPaymentStatus"><option value="unpaid">未收款</option><option value="paid">已收款</option></select></div>
+            <div class="field full"><label>備註</label><textarea id="eventNote" placeholder="調課來源、器材需求、特殊提醒等"></textarea></div>
+          </div>
+          <div class="validation-box" id="conflictBox"><b>尚未發現衝突</b><span>會檢查教室、老師、學生，以及教室每個跨越時段的規則。</span></div>
+        </div>
+        <div class="modal-foot"><button class="btn outline" type="button" data-close-modal="scheduleModal">取消</button><button class="btn primary progress-button" type="submit" id="scheduleSubmitBtn"><span>儲存排課</span></button></div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="eventModal" role="dialog" aria-modal="true" aria-labelledby="eventModalTitle">
+    <div class="modal extra-large"><div class="modal-head event-head"><div><span class="event-type-badge" id="eventTypeBadge">固定課</span><h2 id="eventModalTitle">課程明細</h2><p id="eventModalSubtitle"></p></div><button class="modal-close" type="button" data-close-modal="eventModal">×</button></div><div class="modal-body" id="eventModalBody"></div><div class="modal-foot spread" id="eventModalFoot"></div></div>
+  </div>
+
+  <div class="modal-backdrop" id="teacherPayOverrideModal" role="dialog" aria-modal="true" aria-labelledby="teacherPayOverrideTitle">
+    <div class="modal"><div class="modal-head"><div><h2 id="teacherPayOverrideTitle">預設本堂特殊老師費用</h2><p>現在先設定；只有老師實際簽到後才會計入薪資。</p></div><button class="modal-close" type="button" data-close-modal="teacherPayOverrideModal">×</button></div><form id="teacherPayOverrideForm"><div class="modal-body"><input id="teacherPayOverrideEventId" type="hidden"><div class="form-grid two"><div class="field"><label>調整方式</label><select id="teacherPayOverrideType"><option value="none">不調整</option><option value="increase">增加老師費用</option><option value="decrease">減少老師費用</option></select></div><div class="field"><label>調整金額</label><input id="teacherPayOverrideAmount" type="number" min="0" step="1" value="0"></div><div class="field full"><label>原因／備註</label><textarea id="teacherPayOverrideReason" placeholder="例如：臨時增加教學準備、特殊代課安排"></textarea></div></div><div class="snapshot-box" id="teacherPayOverridePreview"></div></div><div class="modal-foot"><button class="btn outline" type="button" data-close-modal="teacherPayOverrideModal">取消</button><button class="btn primary" type="submit">儲存本堂設定</button></div></form></div>
+  </div>
+
+  <div class="modal-backdrop" id="studentModal" role="dialog" aria-modal="true" aria-labelledby="studentModalTitle">
+    <div class="modal extra-large"><div class="modal-head"><div><h2 id="studentModalTitle">學生資料</h2><p id="studentModalSubtitle"></p></div><button class="modal-close" type="button" data-close-modal="studentModal">×</button></div><div class="record-tabs hidden" id="studentTabs"></div><div class="modal-body student-sheet" id="studentModalBody"></div><div class="modal-foot spread" id="studentModalFoot"></div></div>
+  </div>
+
+  <div class="modal-backdrop" id="tuitionModal" role="dialog" aria-modal="true" aria-labelledby="tuitionModalTitle">
+    <div class="modal large"><div class="modal-head"><div><h2 id="tuitionModalTitle">新增學費期別</h2><p id="tuitionModalSubtitle">本次可購買一個或多個期別；每一期會沿用相同方案。</p></div><button class="modal-close" type="button" data-close-modal="tuitionModal">×</button></div><form id="tuitionForm"><div class="modal-body"><input id="tuitionId" type="hidden"><input id="tuitionPeriodNo" type="hidden"><div class="form-grid three"><div class="field"><label class="required">學生</label><select id="tuitionStudent" required></select></div><div class="field"><label class="required">科目</label><select id="tuitionSubject" required></select></div><div class="field"><label>固定老師（沿用上一期，可更換）</label><select id="tuitionTeacher"></select></div><div class="field span-2"><label class="required">收費方案</label><select id="tuitionPlan" required></select></div><div class="field"><label>本次購買期數</label><input id="tuitionPurchasePeriods" type="number" min="1" max="24" value="1"><small>可輸入 1～24 期。</small></div><div class="field"><label>每期堂數</label><input id="tuitionLessonCount" type="number" min="1"></div><div class="field"><label>每期應收金額</label><input id="tuitionAmount" type="number" min="0"></div><div class="field"><label>每期折扣</label><input id="tuitionDiscount" type="number" min="0"></div><div class="field full collect-now-field" id="tuitionCollectField"><label><input id="tuitionCollectNow" type="checkbox"> 建立新期數時，同時登記本次收費</label><small>取消勾選時，新增的期別會先顯示未繳費。</small></div><div class="field" id="tuitionPaymentDateField"><label>本次收費日期</label><input id="tuitionPaymentDate" type="date"></div><div class="field" id="tuitionPaymentAmountField"><label>本次實際收費總額</label><input id="tuitionPaymentAmount" type="number" min="0"></div><div class="field" id="tuitionPaymentMethodField"><label>收費方式</label><select id="tuitionPaymentMethod"><option>現金</option><option>店面營收</option><option>線上繳費</option><option>轉帳</option><option>街口支付</option><option>刷卡</option></select></div><div class="field hidden"><label>開始日期</label><input id="tuitionStartDate" type="date"></div><div class="field hidden"><label>到期日期</label><input id="tuitionExpiryDate" type="date"></div><div class="field full"><label>備註</label><textarea id="tuitionNote"></textarea></div></div><div class="snapshot-box" id="tuitionSnapshot"></div></div><div class="modal-foot"><button class="btn outline" type="button" data-close-modal="tuitionModal">取消</button><button class="btn primary progress-button" type="submit" id="tuitionSubmitBtn"><span>儲存 1 期</span></button></div></form></div>
+  </div>
+
+  <div class="modal-backdrop" id="lessonActionModal" role="dialog" aria-modal="true" aria-labelledby="lessonActionTitle">
+    <div class="modal"><div class="modal-head"><div><h2 id="lessonActionTitle">課堂處理</h2><p>作廢不改變學費；退款會建立退款紀錄並結束所選堂數。</p></div><button class="modal-close" type="button" data-close-modal="lessonActionModal">×</button></div><div class="modal-body"><input id="lessonActionPeriodId" type="hidden"><input id="lessonActionSlotNo" type="hidden"><div id="lessonActionBody"></div></div><div class="modal-foot spread" id="lessonActionFoot"><button class="btn outline" type="button" data-close-modal="lessonActionModal">取消</button><div><button class="btn secondary" type="button" data-lesson-action="void">作廢這一堂</button> <button class="btn danger" type="button" data-lesson-action="refund">退款這一堂</button></div></div></div>
+  </div>
+
+  <div class="modal-backdrop" id="transactionModal" role="dialog" aria-modal="true" aria-labelledby="transactionModalTitle">
+    <div class="modal"><div class="modal-head"><div><h2 id="transactionModalTitle">新增收費／退款</h2><p>退款可選擇堂數與指定課堂，金額會依本期單堂費自動計算。</p></div><button class="modal-close" type="button" data-close-modal="transactionModal">×</button></div><form id="transactionForm"><div class="modal-body"><input id="transactionPeriodId" type="hidden"><input id="transactionPreferredSlot" type="hidden"><div class="form-grid two"><div class="field"><label>類型</label><select id="transactionType"><option value="payment">收費</option><option value="refund">退款</option></select></div><div class="field"><label>日期</label><input id="transactionDate" type="date"></div><div class="field"><label>金額</label><input id="transactionAmount" type="number" min="0" required></div><div class="field"><label>收費／退款方式</label><select id="transactionMethod"><option>店面營收</option><option>線上繳費</option><option>轉帳</option><option>街口支付</option><option>刷卡</option><option>現金</option></select></div><div class="field full hidden" id="refundLessonField"><div class="form-grid two"><div class="field"><label>退款堂數</label><select id="transactionRefundCount"></select><small>變更堂數後會自動重新計算退款金額。</small></div><div class="field"><label>本期單堂金額</label><input id="transactionLessonPrice" readonly></div></div><label>指定退款課堂</label><div class="refund-slot-choices" id="refundSlotChoices"></div><input id="transactionRefundAttendance" type="hidden"><small>可直接勾選要退款的課堂；已作廢或已退款的堂數不會重複計算。</small></div><div class="field full"><label>備註／原因</label><textarea id="transactionNote"></textarea></div></div></div><div class="modal-foot"><button class="btn outline" type="button" data-close-modal="transactionModal">取消</button><button class="btn primary" type="submit">儲存紀錄</button></div></form></div>
+  </div>
+
+  <div class="modal-backdrop" id="entityModal" role="dialog" aria-modal="true" aria-labelledby="entityModalTitle">
+    <div class="modal large"><div class="modal-head"><div><h2 id="entityModalTitle">編輯資料</h2><p id="entityModalSubtitle"></p></div><button class="modal-close" type="button" data-close-modal="entityModal">×</button></div><form id="entityForm"><div class="modal-body" id="entityModalBody"></div><div class="modal-foot"><button class="btn outline" type="button" data-close-modal="entityModal">取消</button><button class="btn primary" type="submit">儲存</button></div></form></div>
+  </div>
+
+  <div class="modal-backdrop" id="teacherPayrollModal" role="dialog" aria-modal="true" aria-labelledby="teacherPayrollTitle">
+    <div class="modal extra-large"><div class="modal-head"><div><h2 id="teacherPayrollTitle">老師上課拆帳與薪資</h2><p id="teacherPayrollSubtitle">只計入老師在音教雲實際完成的簽到。</p></div><button class="modal-close" type="button" data-close-modal="teacherPayrollModal">×</button></div><div class="policy-toolbar"><label>薪資月份 <input class="control" id="teacherPayrollMonth" type="month"></label><span>同日多堂會逐堂列出；註銷與只有排課、沒有簽到的課不計薪。</span></div><div class="modal-body" id="teacherPayrollBody"></div><div class="modal-foot"><button class="btn outline" type="button" data-close-modal="teacherPayrollModal">關閉</button></div></div>
+  </div>
+
+  <div class="modal-backdrop" id="policyModal" role="dialog" aria-modal="true" aria-labelledby="policyModalTitle">
+    <div class="modal extra-large"><div class="modal-head"><div><h2 id="policyModalTitle">教室設定</h2><p>同一處設定教室資料、用途、設備、可用科目與開放時間。</p></div><button class="modal-close" type="button" data-close-modal="policyModal">×</button></div><div class="modal-body room-policy-general"><div class="form-grid three"><div class="field"><label>教室名稱</label><input id="policyRoomName"></div><div class="field"><label>預設租金</label><input id="policyRentalFee" type="number" min="0"></div><div class="field"><label>最多容納人數</label><input id="policyRoomCapacity" type="number" min="1" value="3"></div><div class="field"><label>狀態</label><select id="policyRoomActive"><option value="true">啟用</option><option value="false">停用</option></select></div><div class="field full"><label>備註</label><input id="policyRoomNote"></div></div><section class="room-subject-section"><div><b>租用時可做的用途</b><small>一間教室可以同時支援多種用途；符合用途會列為「最適合」，其他仍可用空間會列為「也可以使用」。</small></div><div class="compact-check-grid" id="policyRentalUseChoices"></div></section><section class="room-subject-section"><div><b>教室現有設備</b><small>只有真的有的設備才勾選；自備樂器不受這裡限制。</small></div><div class="compact-check-grid" id="policyRentalEquipmentChoices"></div></section><section class="room-subject-section"><div><b>這間教室可以使用的科目</b><small>新教室預設全部可用；取消勾選後，排課時不會再出現這間教室。</small></div><div class="compact-check-grid" id="policySubjectChoices"></div></section></div><div class="policy-toolbar"><select class="control" id="policyWeekday"></select><button class="btn small soft" type="button" data-policy-bulk="open">本日全部開放</button><button class="btn small outline" type="button" data-policy-bulk="schedule">本日只可排課</button><button class="btn small danger" type="button" data-policy-bulk="close">本日全部關閉</button></div><div class="modal-body policy-body" id="policyModalBody"></div><div class="modal-foot"><button class="btn outline" type="button" data-close-modal="policyModal">取消</button><button class="btn primary" type="button" id="savePolicyBtn">儲存教室設定</button></div></div>
+  </div>
+
+  <div class="operation-progress hidden" id="operationProgress" aria-live="polite"><div class="operation-progress-track"><i></i></div><b id="operationProgressText">正在處理</b></div>
+  <div class="toast-stack" id="toastStack" aria-live="polite"></div>
+
+  <script>try{history.replaceState(null,'','course-scheduler.html?live=20260729-v1'+location.hash);}catch(_){}</script>
+  <script src="config.js?v=20260722-course-scheduler-v2"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
+  <script src="course-scheduler-data.js?v=20260729-live-full-scheduler-v1"></script>
+  <script src="course-data-auto-bootstrap-v1.js?v=20260729-live-full-scheduler-v1"></script>
+  <script>window.__YOUZI_COURSE_AUTO_BOOTSTRAP_REQUESTED__=true;</script>
+  <script src="course-scheduler-review-data.js?v=20260729-live-full-scheduler-v1"></script>
+  <script src="course-scheduler-live-entry-v1.js?v=20260729-live-full-scheduler-v1"></script>
 </body>
 </html>
