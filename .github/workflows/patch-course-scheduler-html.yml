@@ -7,6 +7,7 @@ on:
     paths:
       - ".github/workflows/patch-course-scheduler-html.yml"
       - ".github/scripts/patch-full-scheduler.cjs"
+      - ".github/scripts/patch-full-scheduler-trigger.txt"
   workflow_dispatch:
 
 permissions:
