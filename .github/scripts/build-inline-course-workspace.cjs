@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 
-const VERSION = '20260729-operations-inline-course-v1';
+const VERSION = '20260729-operations-inline-course-v2';
 const schedulerHtmlPath = 'course-scheduler.html';
 const schedulerJsPath = 'course-scheduler.js';
 const operationsPath = 'operations-phase1.js';
@@ -53,6 +53,18 @@ function buildRuntime() {
     "    embeddedMode=urlOption('embed')==='1';document.body.classList.toggle('embedded-in-operations',embeddedMode);requestPersistentStorage();",
     "    embeddedMode=window.__YOUZI_COURSE_INLINE_MODE__===true||urlOption('embed')==='1';document.body.classList.toggle('embedded-in-operations',embeddedMode);requestPersistentStorage();",
     'inline embedded mode'
+  );
+  source = replaceRequired(
+    source,
+    "    $('sideModeBadge').textContent=empty?'資料尚未載入':'正式資料已保存';",
+    "    if($('sideModeBadge'))$('sideModeBadge').textContent=empty?'資料尚未載入':'正式資料已保存';",
+    'optional removed sidebar status badge'
+  );
+  source = replaceRequired(
+    source,
+    "    ['topNewEvent','sideNewEvent','calendarNewEvent'].forEach(function(id){$(id).addEventListener('click',function(){openSchedule({date:state.currentDate});});});",
+    "    ['topNewEvent','sideNewEvent','calendarNewEvent'].forEach(function(id){var node=$(id);if(node)node.addEventListener('click',function(){openSchedule({date:state.currentDate});});});",
+    'optional removed sidebar quick-add button'
   );
   source = replaceRequired(
     source,
