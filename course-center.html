@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>正在開啟完整課務管理</title>
+  <title>正在返回全通路營運中心</title>
   <script>
     (function(){
       var view=String(location.hash||'#calendar').replace(/^#/,'').split('?')[0];
-      if(['calendar','students','teachers','settings'].indexOf(view)<0)view='calendar';
-      location.replace('course-scheduler.html?view='+view);
+      var map={calendar:'course-calendar',students:'course-students',teachers:'course-teachers',settings:'course-settings'};
+      location.replace('portal.html#'+(map[view]||'course-calendar'));
     })();
   </script>
 </head>
-<body>正在開啟完整課務管理…</body>
+<body>正在返回全通路營運中心…</body>
 </html>

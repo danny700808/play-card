@@ -1123,25 +1123,12 @@ function queueInventorySyncInTransaction(tx,productId,sku,stock,reason){const re
   }
   function renderCourseWorkspace(view){
     const courseView=courseWorkspaceView(view);
-    return '<div class="ops-course-workspace">'
-      +'<iframe id="opsCourseFrame" class="ops-course-frame" data-course-view="'+attr(courseView)+'" title="課務管理" src="course-scheduler.html?cv=20260729-full-scheduler-v3&embed=1&amp;view='+attr(courseView)+'"></iframe>'
-      +'</div>';
+    return '<div class="ops-course-inline-placeholder" data-course-view="'+attr(courseView)+'">正在開啟完整課務功能…</div>';
   }
   function sendCourseWorkspaceView(frame,view){
-    if(!frame)return;
-    frame.dataset.courseView=view;
-    if(frame.contentWindow){
-      frame.contentWindow.postMessage({type:'youzi-course-view',view:view},global.location.origin);
-    }
+    if(global.YouziOperationsCourseInline&&typeof global.YouziOperationsCourseInline.show==='function')global.YouziOperationsCourseInline.show(view);
   }
-  function handleCourseWorkspaceMessage(event){
-    if(event.origin!==global.location.origin)return;
-    const data=event.data||{};
-    if(data.type!=='youzi-course-view-change')return;
-    const hash=COURSE_WORKSPACE_HASHES[clean(data.view)];
-    if(!hash||state.view===hash)return;
-    global.location.hash=hash;
-  }
+  function handleCourseWorkspaceMessage(){}
 
   function render(){
     state.view=(location.hash||'#overview').replace('#','').split('?')[0]||'overview';
@@ -1160,16 +1147,14 @@ function queueInventorySyncInTransaction(tx,productId,sku,stock,reason){const re
     content.classList.toggle('ops-course-content',courseViewActive);
     if(courseViewActive){
       const courseView=courseWorkspaceView(state.view);
-      let frame=byId('opsCourseFrame');
-      if(!frame){
-        content.innerHTML=renderCourseWorkspace(state.view);
-        frame=byId('opsCourseFrame');
-        if(frame)frame.addEventListener('load',function(){sendCourseWorkspaceView(frame,frame.dataset.courseView||courseView);});
+      if(global.YouziOperationsCourseInline&&typeof global.YouziOperationsCourseInline.mount==='function'){
+        global.YouziOperationsCourseInline.mount(content,courseView);
       }else{
-        sendCourseWorkspaceView(frame,courseView);
+        content.innerHTML=renderCourseWorkspace(state.view);
       }
       return;
     }
+    if(global.YouziOperationsCourseInline&&typeof global.YouziOperationsCourseInline.detach==='function')global.YouziOperationsCourseInline.detach();
     if(state.loading && !state.loadedAt){ content.innerHTML=loadingHtml(); return; }
     const renderers={overview:renderOverviewV7,products:renderProducts,sales:renderSalesV7,customers:renderCustomersV6,receivables:renderReceivablesV5,purchases:renderPurchases,'purchase-entry':renderPurchaseEntry,stocktake:renderStocktakeWorkspace,rentals:renderRentals,sync:renderSync,connection:renderConnection};
     content.innerHTML=(renderers[state.view]||renderOverview)();
@@ -3610,7 +3595,6 @@ function rerenderKeepingFocus(id,value){
     });
     global.addEventListener('hashchange',function(){closeMobileMenu(); if(!ensureDataForCurrentView())render();});
     global.addEventListener('message',handleInjiaoyunBridgeMessage);
-    global.addEventListener('message',handleCourseWorkspaceMessage);
     const refreshBtn=byId('opsRefreshBtn'); if(refreshBtn)refreshBtn.addEventListener('click',function(){try{localStorage.removeItem(DASHBOARD_CACHE_KEY);}catch(err){} if(state.view==='products')loadProductsOnly(false);else loadAll(false);});
     const backBtn=byId('opsBackBtn'); if(backBtn)backBtn.addEventListener('click',function(){history.back();});
     const logoutBtn=byId('opsLogoutBtn'); if(logoutBtn)logoutBtn.addEventListener('click',function(){ if(typeof global.logout==='function')global.logout();else location.href='index.html'; });

@@ -6,14 +6,7 @@
   <meta name="theme-color" content="#173247">
   <title>全通路營運中心</title>
   <link rel="icon" href="yuzu-logo-green.png">
-  <script>
-    (function(){
-      var map={'#course-calendar':'calendar','#course-students':'students','#course-teachers':'teachers','#course-settings':'settings'};
-      var key=String(location.hash||'').split('?')[0];
-      if(map[key]) location.replace('course-scheduler.html?view='+map[key]);
-    })();
-  </script>
-  <link rel="stylesheet" href="operations-phase1.css?v=20260728-course-shell-v20">
+<link rel="stylesheet" href="operations-phase1.css?v=20260728-course-shell-v20">
   <link rel="stylesheet" href="mobile-layout.css?v=20260727-formal-mobile-v3">
   <link rel="stylesheet" href="operations-mobile-home-v1.css?v=20260727-approved-mobile-home-v1">
   <link rel="stylesheet" href="operations-mobile-course-dense-v1.css?v=20260728-dense-course-v1">
@@ -32,10 +25,10 @@
             <span>課</span><div><b>課務管理</b></div><i aria-hidden="true">⌄</i>
           </button>
           <div class="ops-nav-submenu" id="opsCourseSubmenu">
-            <a href="course-scheduler.html?view=calendar"><span>日</span><div><b>課程日表</b></div></a>
-            <a href="course-scheduler.html?view=students"><span>生</span><div><b>學生與學費</b></div></a>
-            <a href="course-scheduler.html?view=teachers"><span>師</span><div><b>老師薪資</b></div></a>
-            <a href="course-scheduler.html?view=settings"><span>設</span><div><b>系統設定</b></div></a>
+            <a href="#course-calendar" data-view="course-calendar"><span>日</span><div><b>課程日表</b></div></a>
+            <a href="#course-students" data-view="course-students"><span>生</span><div><b>學生與學費</b></div></a>
+            <a href="#course-teachers" data-view="course-teachers"><span>師</span><div><b>老師薪資</b></div></a>
+            <a href="#course-settings" data-view="course-settings"><span>設</span><div><b>系統設定</b></div></a>
           </div>
         </div>
         <a href="#sales" data-view="sales"><span>＄</span><div><b>現場銷售</b></div></a>
@@ -87,7 +80,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="app.js?v=admin-final-20260530b"></script>
-  <script src="course-scheduler-data.js?v=20260729-fresh-course-v1"></script>
+  <script src="course-scheduler-data.js?v=20260729-operations-inline-course-v1"></script>
+  <script src="operations-course-inline.js?v=20260729-operations-inline-course-v1"></script>
   <script src="operations-phase1.js?v=20260729-formal-data-flow-v2"></script>
   <script src="operations-mobile-home-v1.js?v=20260727-approved-mobile-home-v1"></script>
   <script src="operations-mobile-course-fix-v1.js?v=20260729-mobile-course-fix-v2"></script>
