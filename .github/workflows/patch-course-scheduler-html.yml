@@ -20,30 +20,43 @@ jobs:
         with:
           ref: main
 
-      - name: Update full scheduler asset versions
+      - name: Update full scheduler entry versions
         run: |
           node - <<'NODE'
           const fs = require('fs');
-          const path = 'course-scheduler.html';
-          let html = fs.readFileSync(path, 'utf8');
-          const replacements = new Map([
+
+          function replaceAll(path, replacements) {
+            let text = fs.readFileSync(path, 'utf8');
+            for (const [from, to] of replacements) text = text.split(from).join(to);
+            fs.writeFileSync(path, text);
+          }
+
+          replaceAll('course-scheduler.html', [
             ['course-scheduler.css?v=20260728-embedded-shell-v17', 'course-scheduler.css?v=20260729-full-scheduler-v2'],
             ['course-scheduler-data.js?v=20260728-unified-sync-v1', 'course-scheduler-data.js?v=20260729-full-scheduler-v2'],
             ['course-scheduler-review-data.js?v=20260723-review-window-v1', 'course-scheduler-review-data.js?v=20260729-full-scheduler-v2'],
             ['course-scheduler.js?v=20260728-persistent-shell-v3', 'course-scheduler.js?v=20260729-full-scheduler-v2']
           ]);
-          for (const [from, to] of replacements) html = html.split(from).join(to);
-          fs.writeFileSync(path, html);
+
+          replaceAll('operations-phase1.js', [
+            ['course-scheduler.html?embed=1&view=', 'course-scheduler.html?cv=20260729-full-scheduler-v2&embed=1&view=']
+          ]);
+
+          for (const path of ['operations-hub.html', 'portal.html']) {
+            replaceAll(path, [
+              ['operations-phase1.js?v=20260728-course-shell-v7', 'operations-phase1.js?v=20260729-full-scheduler-v3']
+            ]);
+          }
           NODE
 
       - name: Commit cache-bust update
         run: |
-          if git diff --quiet -- course-scheduler.html; then
-            echo "Course scheduler HTML already uses the latest versions."
+          if git diff --quiet -- course-scheduler.html operations-phase1.js operations-hub.html portal.html; then
+            echo "Full scheduler entry already uses the latest versions."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add course-scheduler.html
-          git commit -m "Load the fixed full course scheduler without stale cache"
+          git add course-scheduler.html operations-phase1.js operations-hub.html portal.html
+          git commit -m "Open the fixed full scheduler from operations without stale cache"
           git push origin HEAD:main
