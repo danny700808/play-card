@@ -1177,38 +1177,32 @@ function queueInventorySyncInTransaction(tx,productId,sku,stock,reason){const re
   function weekdayText(value){ return '日一二三四五六'[new Date(value).getDay()]||''; }
   function overviewDateLabel(dateKey){ return dateKey.replace(/-/g,'/')+'（'+weekdayText(dateKey)+'）'; }
   function overviewDayNavigatorHtml(){
-    const current=overviewDateKey(),today=todayDateKey(),next=dateKeyShift(current,1),disableNext=next>today;
-    return '<div class="ops-overview-day-nav"><button type="button" class="ops-button ghost" data-action="overview-day-shift" data-step="-1">← 前一天</button><label class="ops-overview-day-label"><span>查詢日期</span><input class="ops-input" id="overviewDate" type="date" max="'+attr(today)+'" value="'+attr(current)+'"></label><button type="button" class="ops-button ghost" data-action="overview-day-shift" data-step="1" '+(disableNext?'disabled':'')+'>後一天 →</button></div>';
+    const current=overviewDateKey(),today=todayDateKey(),next=dateKeyShift(current,1),disableNext=next>today,todayParts=today.split('-');
+    return '<div class="ops-overview-day-nav">'
+      +'<button type="button" class="ops-button ghost" data-action="overview-day-shift" data-step="-1">← 前一天</button>'
+      +'<button type="button" class="ops-button ops-overview-today '+(state.overviewRange==='today'&&current===today?'primary':'ghost')+'" data-action="overview-range" data-range="today"><b>今天</b><small>'+Number(todayParts[1])+'/'+Number(todayParts[2])+'</small></button>'
+      +'<button type="button" class="ops-button ghost" data-action="overview-day-shift" data-step="1" '+(disableNext?'disabled':'')+'>後一天 →</button>'
+      +'<label class="ops-overview-day-label"><span>查詢日期</span><input class="ops-input" id="overviewDate" type="date" max="'+attr(today)+'" value="'+attr(current)+'"></label>'
+      +'</div>';
   }
-  function overviewMonthSelectHtml(labelText){
-    const now=new Date(),year=now.getFullYear(),currentMonth=now.getMonth()+1,selected=clean(state.overviewMonth)||year+'-'+String(currentMonth).padStart(2,'0');
+  function overviewMonthSelectHtml(){
+    const now=new Date(),year=now.getFullYear(),currentMonth=now.getMonth()+1,currentKey=year+'-'+String(currentMonth).padStart(2,'0'),selected=clean(state.overviewMonth)||currentKey;
     const options=[];
-    for(let month=1;month<=12;month+=1){
-      const key=year+'-'+String(month).padStart(2,'0');
-      options.push('<option value="'+attr(key)+'" '+(key===selected?'selected':'')+' '+(month>currentMonth?'disabled':'')+'>'+year+' 年 '+month+' 月</option>');
-    }
-    return '<label class="ops-overview-month-select '+(state.overviewRange==='month'?'active':'')+'"><span>'+escapeHtml(labelText||'月份')+'</span><select class="ops-select" id="overviewMonth">'+options.join('')+'</select></label>';
+    for(let month=1;month<=12;month+=1){const key=year+'-'+String(month).padStart(2,'0');options.push('<option value="'+attr(key)+'" '+(key===selected?'selected':'')+' '+(month>currentMonth?'disabled':'')+'>'+year+' 年 '+month+' 月</option>');}
+    return '<button type="button" class="ops-button '+(state.overviewRange==='month'&&selected===currentKey?'primary':'ghost')+'" data-action="overview-current-month">本月</button>'
+      +'<label class="ops-overview-month-select '+(state.overviewRange==='month'?'active':'')+'"><span>選擇月份</span><select class="ops-select" id="overviewMonth">'+options.join('')+'</select></label>';
   }
   function overviewRangeControlsHtml(){
-    const todayActive=state.overviewRange==='today'&&overviewDateKey()===todayDateKey();
-    const customLabel=state.overviewFrom&&state.overviewTo?'自訂區間':'自訂區間';
+    const customLabel='自訂區間';
     if(isCompactMobile()){
-      const current=overviewDateKey(),today=todayDateKey(),next=dateKeyShift(current,1),disableNext=next>today;
-      const todayParts=today.split('-');
       return '<div class="ops-v8-overview-range ops-mobile-overview-range">'
-        +'<div class="ops-overview-day-nav ops-mobile-overview-day-nav">'
-        +'<button type="button" class="ops-button ghost" data-action="overview-day-shift" data-step="-1">← 前一天</button>'
-        +'<button type="button" class="ops-button ops-overview-today '+(todayActive?'primary':'ghost')+'" data-action="overview-range" data-range="today"><b>今天</b><small>'+Number(todayParts[1])+'/'+Number(todayParts[2])+'</small></button>'
-        +'<button type="button" class="ops-button ghost" data-action="overview-day-shift" data-step="1" '+(disableNext?'disabled':'')+'>後一天 →</button>'
-        +'</div>'
+        +overviewDayNavigatorHtml()
         +'<div class="ops-mobile-overview-periods">'
-        +overviewMonthSelectHtml('本月')
+        +overviewMonthSelectHtml()
         +'<details class="ops-overview-dropdown"><summary class="ops-button '+(state.overviewRange==='custom'?'primary':'ghost')+'">自訂日期</summary><div class="ops-overview-dropdown-panel"><label>開始日期<input class="ops-input" id="overviewFrom" type="date" value="'+attr(state.overviewFrom)+'"></label><label>結束日期<input class="ops-input" id="overviewTo" type="date" value="'+attr(state.overviewTo)+'"></label><button type="button" class="ops-button primary wide" data-action="overview-custom-apply">查詢</button></div></details>'
-        +'</div>'
-        +'</div>';
+        +'</div></div>';
     }
     return '<div class="ops-v8-overview-range">'
-      +'<button type="button" class="ops-button ops-overview-today '+(todayActive?'primary':'ghost')+'" data-action="overview-range" data-range="today">今天</button>'
       +overviewDayNavigatorHtml()
       +overviewMonthSelectHtml()
       +'<button type="button" class="ops-button '+(state.overviewRange==='year'?'primary':'ghost')+'" data-action="overview-range" data-range="year">今年</button>'
@@ -3281,11 +3275,13 @@ async function syncPlatformOrdersNow(){const yes=await confirmAction('要求店�
     if(action==='education-teacher-detail') return openEducationTeacherDetail(el.dataset.teacherKey||'');
     if(action==='drawer-close') return closeDrawer();
     if(action==='overview-range'){
-      const nextRange=el.dataset.range||'today';
+      const nextRange=el.dataset.range||'today',now=new Date();
       state.overviewRange=nextRange;
       if(nextRange==='today')state.overviewDate=todayDateKey();
+      if(nextRange==='month')state.overviewMonth=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
       return render();
     }
+    if(action==='overview-current-month'){const now=new Date();state.overviewMonth=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');state.overviewRange='month';return render();}
     if(action==='overview-day-shift'){const step=Number(el.dataset.step||0);state.overviewDate=dateKeyShift(overviewDateKey(),step);if(state.overviewDate>todayDateKey())state.overviewDate=todayDateKey();state.overviewRange='today';return render();}
     if(action==='overview-custom-apply'){
       if(!state.overviewFrom||!state.overviewTo){toast('請選擇完整日期','開始日期與結束日期都需要選擇。','warning');return;}

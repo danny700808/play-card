@@ -642,11 +642,42 @@
   }
 
   function latestPeriod(studentId){return state.tuitionPeriods.filter(function(row){return row.studentId===studentId;}).sort(function(a,b){return clean(b.startDate).localeCompare(clean(a.startDate))||numberOf(b.periodNo)-numberOf(a.periodNo);})[0]||{};}
-  function nextEvent(studentId){for(var offset=0;offset<=180;offset++){var found=effectiveEventsForDate(shiftDate(todayKey(),offset)).find(function(row){return (row.studentIds||[]).indexOf(studentId)>=0&&!isHiddenEvent(row)&&!isNonOccupyingEvent(row);});if(found)return found;}return {};}
+  function studentPageIndex(){
+    var meta=state.sandboxMeta||{},dataMeta=state.dataMeta||{},today=todayKey();
+    var key=[today,state.students.length,state.tuitionPeriods.length,state.events.length,state.recurringRules.length,state.attendance.length,clean(meta.updatedAt),clean(dataMeta.runId)].join('|');
+    if(studentPageIndex.cache&&studentPageIndex.key===key)return studentPageIndex.cache;
+    var periodsByStudent=new Map(),latestByStudent=new Map(),dueByStudent=new Set(),lowByStudent=new Set();
+    state.tuitionPeriods.forEach(function(period){
+      var studentId=clean(period.studentId),list=periodsByStudent.get(studentId)||[];list.push(period);periodsByStudent.set(studentId,list);
+      if(periodBalance(period)>0)dueByStudent.add(studentId);
+      var prior=latestByStudent.get(studentId),newer=!prior||clean(period.startDate).localeCompare(clean(prior.startDate))>0||(clean(period.startDate)===clean(prior.startDate)&&numberOf(period.periodNo)>numberOf(prior.periodNo));
+      if(newer)latestByStudent.set(studentId,period);
+    });
+    latestByStudent.forEach(function(period,studentId){if(period.id&&periodRemaining(period)<=1)lowByStudent.add(studentId);});
+    var subjectMap=new Map(state.subjects.map(function(row){return [row.id,row];})),teacherMap=new Map(state.teachers.map(function(row){return [row.id,row];}));
+    var scheduledStudentIds=new Set(),end=shiftDate(today,180);
+    state.events.forEach(function(event){var date=dateKey(event.date);if(date<today||date>end||isHiddenEvent(event)||isNonOccupyingEvent(event))return;(event.studentIds||[]).forEach(function(id){scheduledStudentIds.add(id);});});
+    state.recurringRules.forEach(function(rule){if(rule.active===false||(rule.endDate&&rule.endDate<today))return;(rule.studentIds||[]).forEach(function(id){scheduledStudentIds.add(id);});});
+    var nextByStudent=new Map();
+    for(var offset=0;offset<=180&&nextByStudent.size<scheduledStudentIds.size;offset++){
+      effectiveEventsForDate(shiftDate(today,offset)).forEach(function(event){
+        if(isHiddenEvent(event)||isNonOccupyingEvent(event))return;
+        (event.studentIds||[]).forEach(function(id){if(!nextByStudent.has(id))nextByStudent.set(id,event);});
+      });
+    }
+    var rows=state.students.map(function(student){
+      var periods=periodsByStudent.get(student.id)||[],latest=latestByStudent.get(student.id)||{},subject=subjectMap.get(latest.subjectId)||{},teacher=teacherMap.get(latest.teacherId)||{};
+      return {student:student,periods:periods,latest:latest,subject:subject,teacher:teacher,event:nextByStudent.get(student.id)||{},due:dueByStudent.has(student.id),low:lowByStudent.has(student.id),hay:(student.name+' '+(student.phone||'')+' '+periods.map(function(row){return (subjectMap.get(row.subjectId)||{}).name||'';}).join(' ')).toLowerCase()};
+    });
+    var result={rows:rows,latestByStudent:latestByStudent,dueByStudent:dueByStudent,lowByStudent:lowByStudent,nextByStudent:nextByStudent};
+    studentPageIndex.key=key;studentPageIndex.cache=result;return result;
+  }
+  function nextEvent(studentId){return studentPageIndex().nextByStudent.get(studentId)||{};}
   function renderStudents(){
-    var search=clean($('studentSearch').value).toLowerCase(),filter=$('studentPaymentFilter').value,rows=state.students.filter(function(student){var periods=state.tuitionPeriods.filter(function(row){return row.studentId===student.id;}),hay=(student.name+' '+student.phone+' '+periods.map(function(row){return subjectById(row.subjectId).name;}).join(' ')).toLowerCase(),latest=latestPeriod(student.id);if(search&&hay.indexOf(search)<0)return false;if(filter==='due'&&!periods.some(function(row){return periodBalance(row)>0;}))return false;if(filter==='low'&&!(latest.id&&periodRemaining(latest)<=1))return false;if(filter==='active'&&student.active===false)return false;return true;}).sort(bySort);
-    var dueStudents=state.students.filter(function(student){return state.tuitionPeriods.some(function(row){return row.studentId===student.id&&periodBalance(row)>0;});}).length,low=state.students.filter(function(student){var p=latestPeriod(student.id);return p.id&&periodRemaining(p)<=1;}).length;$('studentMetrics').innerHTML=metric('學生總數',state.students.length,'含停課資料')+metric('尚有未繳',dueStudents,'依每一期付款加總')+metric('剩 1 堂以下',low,'建議準備下一期');
-    $('studentRows').innerHTML=rows.map(function(student){var period=latestPeriod(student.id),event=nextEvent(student.id),subject=subjectById(period.subjectId),teacher=teacherById(period.teacherId);return '<tr><td><b>'+esc(student.name)+'</b><small>'+(student.active===false?'已停課':'上課中')+'</small></td><td>'+esc(student.phone||'未填')+'<small>LINE：'+(student.line===true?'已綁定':student.line===false?'未綁定':'未確認')+'</small></td><td>'+esc(subject.name||'尚無學費期別')+'<small>'+esc(teacher.name||'未指定老師')+'</small></td><td>'+(period.id?'<b>'+period.usedCount+' / '+period.lessonCount+'</b><small>剩 '+periodRemaining(period)+' 堂</small>':'—')+'</td><td>'+(period.id?'<b>'+money(periodPaid(period))+' / '+money(period.expectedAmount-period.discount)+'</b><small>'+(periodBalance(period)?'尚欠 '+money(periodBalance(period)):'已繳清')+'</small>':'—')+'</td><td>'+(event.id?esc(event.date+' '+event.start):'尚未排課')+'</td><td><button class="btn small secondary" data-student-id="'+esc(student.id)+'">查看學費紀錄</button></td></tr>';}).join('')||'<tr><td colspan="7">沒有符合條件的學生。</td></tr>';
+    var index=studentPageIndex(),search=clean($('studentSearch').value).toLowerCase(),filter=$('studentPaymentFilter').value;
+    var rows=index.rows.filter(function(item){if(search&&item.hay.indexOf(search)<0)return false;if(filter==='due'&&!item.due)return false;if(filter==='low'&&!item.low)return false;if(filter==='active'&&item.student.active===false)return false;return true;}).sort(function(a,b){return bySort(a.student,b.student);});
+    $('studentMetrics').innerHTML=metric('學生總數',state.students.length,'含停課資料')+metric('尚有未繳',index.dueByStudent.size,'依每一期付款加總')+metric('剩 1 堂以下',index.lowByStudent.size,'建議準備下一期');
+    $('studentRows').innerHTML=rows.map(function(item){var student=item.student,period=item.latest,event=item.event,subject=item.subject,teacher=item.teacher;return '<tr><td><b>'+esc(student.name)+'</b><small>'+(student.active===false?'已停課':'上課中')+'</small></td><td>'+esc(student.phone||'未填')+'<small>LINE：'+(student.line===true?'已綁定':student.line===false?'未綁定':'未確認')+'</small></td><td>'+esc(subject.name||'尚無學費期別')+'<small>'+esc(teacher.name||'未指定老師')+'</small></td><td>'+(period.id?'<b>'+period.usedCount+' / '+period.lessonCount+'</b><small>剩 '+periodRemaining(period)+' 堂</small>':'—')+'</td><td>'+(period.id?'<b>'+money(periodPaid(period))+' / '+money(period.expectedAmount-period.discount)+'</b><small>'+(periodBalance(period)?'尚欠 '+money(periodBalance(period)):'已繳清')+'</small>':'—')+'</td><td>'+(event.id?esc(event.date+' '+event.start):'尚未排課')+'</td><td><button class="btn small secondary" data-student-id="'+esc(student.id)+'">查看學費紀錄</button></td></tr>';}).join('')||'<tr><td colspan="7">沒有符合條件的學生。</td></tr>';
   }
   function metric(label,value,small){return '<article class="card metric"><span>'+esc(label)+'</span><strong>'+esc(value)+'</strong><small>'+esc(small)+'</small></article>';}
 
@@ -910,7 +941,7 @@
     window.addEventListener('message',function(event){
       if(event.origin!==window.location.origin)return;
       var data=event.data||{};
-      if(data.type==='youzi-course-view')switchView(data.view);
+      if(data.type==='youzi-course-view'){if(data.view==='calendar'){state.currentDate=todayKey();weekAnchor=state.currentDate;if(weekMode)setWeekMode(false);}switchView(data.view);}
     });
   }
 

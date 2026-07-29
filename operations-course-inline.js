@@ -3,7 +3,7 @@
 
   if (global.YouziOperationsCourseInline) return;
 
-  var VERSION = '20260729-operations-inline-course-v3';
+  var VERSION = '20260729-operations-inline-course-v4';
   var TEMPLATE_URL = 'operations-course-inline-template.html?v=' + VERSION;
   var RUNTIME_URL = 'operations-course-inline-runtime.js?v=' + VERSION;
   var STYLE_URL = 'course-scheduler.css?v=' + VERSION;
@@ -261,6 +261,13 @@
   function detach() {
     if (host && host.parentNode) host.parentNode.removeChild(host);
   }
+
+  global.document.addEventListener('click', function (event) {
+    var link=event.target.closest&&event.target.closest('#opsCourseSubmenu a[data-view]');
+    if(!link)return;
+    var map={'course-calendar':'calendar','course-students':'students','course-teachers':'teachers','course-settings':'settings'};
+    var view=map[link.dataset.view];if(view)sendView(view);
+  });
 
   global.YouziOperationsCourseInline = {
     mount: mount,
