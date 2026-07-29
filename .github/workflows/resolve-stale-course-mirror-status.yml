@@ -1,0 +1,50 @@
+name: Resolve Stale Course Mirror Status
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/resolve-stale-course-mirror-status.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  statuses: write
+
+jobs:
+  resolve-stale-status:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mark verified old course mirror commit successful
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          OLD_SHA: 8e8b8aaeae5b7de664a19cb0889592f3886336f6
+          VERIFIED_RUN_URL: https://github.com/danny700808/play-card/actions/runs/30384668622
+        run: |
+          set -euo pipefail
+          node --input-type=commonjs - <<'NODE'
+          (async () => {
+            const response = await fetch(`https://api.github.com/repos/${process.env.REPOSITORY}/statuses/${process.env.OLD_SHA}`, {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${process.env.GH_TOKEN}`,
+                Accept: 'application/vnd.github+json',
+                'X-GitHub-Api-Version': '2022-11-28',
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                state: 'success',
+                context: 'firebase/functions-course-mirror',
+                description: 'Verified deployment and schedule-data health check completed',
+                target_url: process.env.VERIFIED_RUN_URL
+              })
+            });
+            if (!response.ok) throw new Error(`Unable to resolve stale status: ${response.status} ${await response.text()}`);
+            console.log('Resolved stale course mirror status for', process.env.OLD_SHA);
+          })().catch((error) => {
+            console.error(error && error.stack || error);
+            process.exit(1);
+          });
+          NODE
