@@ -30,10 +30,14 @@ jobs:
           node - <<'NODE'
           const fs = require('fs');
           const html = fs.readFileSync('course-scheduler-live.html', 'utf8');
-          if (!html.includes('course-scheduler-live-entry-v1.js?v=20260729-live-full-scheduler-v1')) throw new Error('Live scheduler entry missing');
+          const entry = fs.readFileSync('course-scheduler-live-entry-v1.js', 'utf8');
+          if (!html.includes('course-scheduler-live-entry-v1.js?v=20260729-live-full-scheduler-v2')) throw new Error('Live scheduler entry missing');
           if (html.includes('course-scheduler-startup-gate-v1.js')) throw new Error('Legacy startup gate must not be loaded');
+          if (html.includes('course-data-auto-bootstrap-v1.js')) throw new Error('Legacy auto reload bootstrap must not be loaded');
+          if (html.includes('history.replaceState')) throw new Error('Live scheduler must not change back to the old URL');
           if (html.includes('<script src="course-scheduler.js')) throw new Error('Scheduler must be loaded only after data is ready');
-          if (!html.includes("history.replaceState(null,'','course-scheduler.html?live=20260729-v1'")) throw new Error('Scheduler page kind compatibility missing');
+          if (!entry.includes("CLOUD_FUNCTION = 'loadInjiaoyunEducationMirrorAuto'")) throw new Error('Direct cloud fallback missing');
+          if (!entry.includes("type: 'youzi-course-snapshot-request'")) throw new Error('Parent snapshot request missing');
           console.log('Live scheduler page verified');
           NODE
 
