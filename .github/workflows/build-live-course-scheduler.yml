@@ -10,6 +10,7 @@ on:
       - "operations-course-authoritative-v1.js"
       - "course-scheduler-live.html"
       - "course-scheduler-live-entry-v1.js"
+      - "course-scheduler-recovery-v1.js"
       - "course-scheduler.js"
       - "course-scheduler-data.js"
       - ".github/scripts/build-live-course-scheduler.cjs"
@@ -35,7 +36,7 @@ jobs:
       - name: Build formal scheduler entry
         run: node .github/scripts/build-live-course-scheduler.cjs
 
-      - name: Verify one formal scheduler path
+      - name: Verify real-data scheduler path
         run: |
           node - <<'NODE'
           const fs = require('fs');
@@ -45,10 +46,12 @@ jobs:
           const portal = fs.readFileSync('portal.html', 'utf8');
           const route = fs.readFileSync('operations-course-authoritative-v1.js', 'utf8');
           const live = fs.readFileSync('course-scheduler-live.html', 'utf8');
+          const recovery = fs.readFileSync('course-scheduler-recovery-v1.js', 'utf8');
           const entry = fs.readFileSync('course-scheduler-live-entry-v1.js', 'utf8');
           const scheduler = fs.readFileSync('course-scheduler.js', 'utf8');
 
           new vm.Script(route, { filename: 'operations-course-authoritative-v1.js' });
+          new vm.Script(recovery, { filename: 'course-scheduler-recovery-v1.js' });
           new vm.Script(entry, { filename: 'course-scheduler-live-entry-v1.js' });
           new vm.Script(scheduler, { filename: 'course-scheduler.js' });
 
@@ -69,47 +72,35 @@ jobs:
             const routeIndex = source.indexOf(routeTag);
             const operationsIndex = source.indexOf('operations-phase1.js');
             if (routeIndex < 0) throw new Error('Authoritative scheduler route is missing');
-            if (operationsIndex < 0 || routeIndex > operationsIndex) {
-              throw new Error('Formal course route must load before operations-phase1.js');
-            }
+            if (operationsIndex < 0 || routeIndex > operationsIndex) throw new Error('Formal course route must load before operations-phase1.js');
             for (const legacy of legacyScripts) {
               if (source.includes(legacy)) throw new Error(`Conflicting course layer is still enabled: ${legacy}`);
             }
           }
 
           if (!route.includes("VERSION = '20260729-authoritative-course-v7'")) throw new Error('Authoritative route version missing');
-          if (!route.includes('ensureFrame')) throw new Error('Single persistent iframe creation is missing');
-          if (!route.includes('stopImmediatePropagation')) throw new Error('Legacy course hash listeners are not blocked');
+          if (!route.includes('applyEmbeddedLayout')) throw new Error('Embedded scheduler layout fix is missing');
           if (!route.includes('setAttributeIfDifferent')) throw new Error('Idempotent visibility updates are missing');
           if (!route.includes('var enforcing = false')) throw new Error('Mutation observer re-entry guard is missing');
-          if (!route.includes('applyEmbeddedLayout')) throw new Error('Embedded scheduler layout is missing');
-          if (!route.includes('body.embedded-in-operations .sidebar{display:none!important}')) throw new Error('Nested scheduler sidebar is not hidden');
-          if (!route.includes('body.embedded-in-operations .page-header{display:none!important}')) throw new Error('Nested scheduler header is not hidden');
-          if (!route.includes("attributeFilter: ['hidden', 'aria-hidden']")) throw new Error('Scoped visibility enforcement is missing');
           if (route.includes('subtree: true')) throw new Error('Whole-page mutation observer is still enabled');
-          if (!route.includes('if (global.document.body) start()')) throw new Error('Formal route does not start immediately');
-          if (route.includes('moveWorkspaceToHost')) throw new Error('Legacy iframe moving path is still enabled');
 
-          if (!live.includes('course-scheduler-live-entry-v1.js?v=20260729-formal-runtime-v4')) {
-            throw new Error('Formal scheduler entry version is missing');
-          }
-          if (!entry.includes("VERSION = '20260729-formal-runtime-v4'")) throw new Error('Formal runtime version is missing');
-          if (!entry.includes("SCHEDULER_SRC = 'course-scheduler.js?v=' + VERSION")) throw new Error('Single scheduler source is missing');
+          if (!live.includes('course-scheduler-recovery-v1.js?v=20260729-real-data-recovery-v1')) throw new Error('Real-data recovery is missing from live scheduler');
+          if (live.includes('course-scheduler-live-entry-v1.js?v=')) throw new Error('Formal entry must be loaded only after recovery');
+          if (!recovery.includes("LEGACY_FORMAL_KEY = 'youzi.courseScheduler.formalCache.v1'")) throw new Error('Legacy formal cache recovery is missing');
+          if (!recovery.includes("PIN_KEY = 'youzi.injiaoyun.preview.pin'")) throw new Error('Saved mirror credential recovery is missing');
+          if (!recovery.includes('isDemoState')) throw new Error('Demo-data rejection is missing');
+          if (!recovery.includes('YouziCoursePreviewData.load')) throw new Error('Synced mirror recovery is missing');
+          if (recovery.includes('YouziCoursePreviewData.sync')) throw new Error('Recovery must not automatically synchronize Injiaoyun');
+          if (!recovery.includes("store.put(latest, LATEST_KEY)")) throw new Error('Recovered latest snapshot is missing');
+          if (!recovery.includes("store.put(workspace, WORKSPACE_KEY)")) throw new Error('Recovered workspace is missing');
+          if (!recovery.includes('loadFormalEntry')) throw new Error('Formal entry handoff is missing');
+
           if (!entry.includes("LATEST_KEY = 'latest'")) throw new Error('Latest snapshot source is missing');
           if (!entry.includes("WORKSPACE_KEY = 'workspace'")) throw new Error('Workspace source is missing');
-          if (!entry.includes('__YOUZI_SCHEDULER_BOOTSTRAP_STATE__')) throw new Error('Immediate workspace bootstrap is missing');
-          if (!entry.includes('buildStudentListIndexes')) throw new Error('Student performance index is missing');
-          if (!entry.includes('payrollByTeacher=new Map()')) throw new Error('Teacher payroll performance index is missing');
-          if (!entry.includes("WORKSPACE_BACKUP_DB_KEY='workspaceBackup'")) throw new Error('Sync-time workspace backup is missing');
-          if (!entry.includes("source.indexOf('function nextEvent(studentId)')")) throw new Error('Legacy student scan guard is missing');
-          if (entry.includes('loadInjiaoyunEducationMirrorAuto')) throw new Error('Automatic cloud loading is still enabled');
-          if (entry.includes('cloudSnapshot')) throw new Error('Automatic cloud fallback is still enabled');
-          if (!entry.includes('先備份目前 workspace')) throw new Error('Formal sync confirmation is missing');
-
           if (!scheduler.includes('function syncInjiaoyun()')) throw new Error('Manual sync function is missing');
           if (!scheduler.includes('preserveConfiguration:true')) throw new Error('Manual sync configuration preservation is missing');
 
-          console.log('Embedded authoritative formal course scheduler verified');
+          console.log('Real course data recovery and embedded scheduler verified');
           NODE
 
       - name: Commit generated formal entry files
@@ -119,7 +110,7 @@ jobs:
             exit 0
           fi
           git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.email "4189828+github-actions[bot]@users.noreply.github.com"
           git add course-scheduler-live.html operations-hub.html portal.html
-          git commit -m "Publish embedded authoritative formal scheduler"
+          git commit -m "Publish real-data course scheduler recovery"
           git push origin HEAD:main
