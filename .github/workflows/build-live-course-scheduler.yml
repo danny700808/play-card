@@ -13,12 +13,20 @@ on:
       - "operations-course-inline-template.html"
       - "operations-course-inline-runtime.js"
       - "operations-phase1.js"
-      - "operations-mobile-course-fix-v1.js"
-      - "operations-mobile-course-dense-v1.css"
       - "portal.html"
       - "operations-hub.html"
       - "course-center.html"
+      - "teacher-course-portal.html"
+      - "student-course-portal.html"
+      - "room-booking.html"
+      - "course-portal-admin.html"
+      - "course-portal-common.js"
+      - "course-portal.css"
+      - "teacher-home.html"
+      - "index.html"
+      - "functions/coursePortal.js"
       - ".github/scripts/build-inline-course-workspace.cjs"
+      - ".github/scripts/refine-course-portals.cjs"
       - ".github/workflows/build-live-course-scheduler.yml"
   workflow_dispatch:
 
@@ -41,7 +49,10 @@ jobs:
       - name: Build one desktop and mobile course workspace
         run: node .github/scripts/build-inline-course-workspace.cjs
 
-      - name: Verify fast students, today-first calendar, and overview controls
+      - name: Refine teacher student and rental portals
+        run: node .github/scripts/refine-course-portals.cjs
+
+      - name: Verify internal workspace and external portals
         run: |
           node - <<'NODE'
           const fs = require('fs');
@@ -56,11 +67,19 @@ jobs:
           const portal = fs.readFileSync('portal.html', 'utf8');
           const hub = fs.readFileSync('operations-hub.html', 'utf8');
           const center = fs.readFileSync('course-center.html', 'utf8');
+          const teacherPortal = fs.readFileSync('teacher-course-portal.html', 'utf8');
+          const portalCommon = fs.readFileSync('course-portal-common.js', 'utf8');
+          const portalCss = fs.readFileSync('course-portal.css', 'utf8');
+          const portalBackend = fs.readFileSync('functions/coursePortal.js', 'utf8');
+          const teacherHome = fs.readFileSync('teacher-home.html', 'utf8');
+          const login = fs.readFileSync('index.html', 'utf8');
 
           new vm.Script(controller, { filename: 'operations-course-inline.js' });
           new vm.Script(runtime, { filename: 'operations-course-inline-runtime.js' });
           new vm.Script(scheduler, { filename: 'course-scheduler.js' });
           new vm.Script(operations, { filename: 'operations-phase1.js' });
+          new vm.Script(portalCommon, { filename: 'course-portal-common.js' });
+          new vm.Script(portalBackend, { filename: 'functions/coursePortal.js' });
 
           if (!operations.includes('YouziOperationsCourseInline.mount(content,courseView)')) throw new Error('Operations center does not mount the inline course workspace');
           if (operations.includes('<iframe id="opsCourseFrame"')) throw new Error('Legacy course iframe is still present');
@@ -102,7 +121,7 @@ jobs:
           if (runtime.includes('for(var offset=0;offset<=180;offset++){var found=')) throw new Error('Per-student 180-day scan is still enabled');
           if (!runtime.includes("if(data.view==='calendar'){state.currentDate=todayKey()")) throw new Error('Course calendar does not reset to today');
 
-          if (!operations.includes("data-action=\"overview-current-month\"")) throw new Error('Direct current-month button is missing');
+          if (!operations.includes('data-action="overview-current-month"')) throw new Error('Direct current-month button is missing');
           if (!operations.includes("if(action==='overview-current-month')")) throw new Error('Direct current-month action is missing');
           const previousIndex = operations.indexOf('← 前一天');
           const todayIndex = operations.indexOf('<b>今天</b>');
@@ -122,44 +141,46 @@ jobs:
           if (!template.includes('data-settings-tab="rooms"') || !template.includes('data-settings-tab="subjects"') || !template.includes('data-settings-tab="fees"')) throw new Error('Course settings are incomplete');
 
           const requiredFunctions = [
-            'function bindRoomReorder',
-            'function bindFeeReorder',
-            'function setAttendance',
-            'function eventAction',
-            'function openTeacherPayroll',
-            'function openPolicy',
-            'function syncInjiaoyun',
-            'function submitSchedule',
-            'function submitTuition',
-            'function submitTransaction'
+            'function bindRoomReorder','function bindFeeReorder','function setAttendance',
+            'function eventAction','function openTeacherPayroll','function openPolicy',
+            'function syncInjiaoyun','function submitSchedule','function submitTuition','function submitTransaction'
           ];
           for (const marker of requiredFunctions) {
             if (!scheduler.includes(marker) || !runtime.includes(marker)) throw new Error(`Full scheduler function is missing: ${marker}`);
           }
           if (!schedulerCss.includes('@media(max-width:860px)')) throw new Error('Responsive compact course layout is missing');
 
+          if (!teacherPortal.includes('id="teacherQuickHome"')) throw new Error('Static teacher quick actions are missing');
+          if (!teacherPortal.includes('teacher-bottom-tabs')) throw new Error('Teacher bottom navigation is missing');
+          if (!teacherPortal.includes("section: 'schedule'") || !teacherPortal.includes("section: 'payroll'")) throw new Error('Teacher portal does not load schedule and payroll separately');
+          if (teacherPortal.includes("window.matchMedia('(max-width: 760px)').matches")) throw new Error('A duplicate mobile-only teacher schedule remains');
+          if (!teacherPortal.includes('index.html?return=teacher-course-portal.html')) throw new Error('Employee teacher login bridge is missing');
+          if (portalCommon.includes('installTeacherApprovedLayout') || portalCommon.includes('__YOUZI_TEACHER_WEEK_MEDIA_FIXED__')) throw new Error('Common runtime still creates a second teacher layout');
+          if (!portalCommon.includes('sessionFingerprint') || !portalCommon.includes('dataCache.v3')) throw new Error('Portal cache is not isolated by session');
+          if (!portalCss.includes('teacher portal fixed shell v7') || !portalCss.includes('position:sticky') || !portalCss.includes('position:fixed')) throw new Error('Sticky teacher axes or fixed bottom navigation is missing');
+          if (!portalBackend.includes("section === 'payroll'") || !portalBackend.includes("section === 'all'")) throw new Error('Teacher callable section loading is missing');
+          if (!teacherHome.includes('teacher-course-portal.html?from=employee')) throw new Error('Teacher home course entry is missing');
+          for (const path of ['teacher-course-portal.html','student-course-portal.html','room-booking.html']) {
+            if (!login.includes(`href="${path}"`)) throw new Error(`Public login entry is missing: ${path}`);
+          }
+          if (!login.includes('safeLoginReturnTarget')) throw new Error('Safe teacher return after login is missing');
+
           if (!center.includes("location.replace('portal.html#'+(map[view]||'course-calendar'))")) throw new Error('Old course-center address does not return to the operations center');
-          for (const obsolete of [
-            'course-scheduler-full-bootstrap.js',
-            'course-scheduler-standalone.css',
-            'operations-mobile-course-fix-v1.js',
-            'operations-mobile-course-dense-v1.css',
-            '.github/scripts/restore-full-course-center.cjs'
-          ]) {
+          for (const obsolete of ['course-scheduler-full-bootstrap.js','course-scheduler-standalone.css','operations-mobile-course-fix-v1.js','operations-mobile-course-dense-v1.css','.github/scripts/restore-full-course-center.cjs']) {
             if (fs.existsSync(obsolete)) throw new Error(`Obsolete duplicate course layer still exists: ${obsolete}`);
           }
 
-          console.log('Fast unified course workspace and overview controls verified');
+          console.log('Unified internal workspace and external course portals verified');
           NODE
 
       - name: Commit generated unified course files
         run: |
           if git diff --quiet; then
-            echo "Unified course workspace files are already current."
+            echo "Unified course workspace and portals are already current."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "Publish fast students and corrected date controls"
+          git commit -m "Publish unified course workspace and external portals"
           git push origin HEAD:main
