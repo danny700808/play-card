@@ -47,15 +47,16 @@ jobs:
           if (html.includes('<script src="course-scheduler.js')) throw new Error('Scheduler must be loaded only after data is ready');
           if (!entry.includes("CLOUD_FUNCTION = 'loadInjiaoyunEducationMirrorAuto'")) throw new Error('Direct cloud fallback missing');
           if (!entry.includes("type: 'youzi-course-snapshot-request'")) throw new Error('Parent snapshot request missing');
-          if (!simpleFull.includes('完整課表使用營運總覽同一份資料')) throw new Error('Direct simple full schedule renderer missing');
-          if (!persistence.includes("isDirectCalendar(value)")) throw new Error('Course persistence does not bypass the legacy calendar iframe');
+          if (!simpleFull.includes("DB_NAME = 'youzi-course-scheduler'")) throw new Error('Full schedule does not read the saved course database');
+          if (!simpleFull.includes('目前顯示上次成功保存的課表')) throw new Error('Saved-data display rule missing');
+          if (!persistence.includes('isDirectCalendar(value)')) throw new Error('Course persistence does not bypass the legacy calendar iframe');
           if (route.includes("'course-calendar': 'calendar'")) throw new Error('Legacy iframe router still owns the full calendar');
           for (const source of [hub, portal]) {
-            if (!source.includes('operations-course-simple-full-v1.js?v=20260729-simple-full-v1')) throw new Error('Direct simple full schedule script missing');
+            if (!source.includes('operations-course-simple-full-v1.js?v=20260729-simple-full-v2')) throw new Error('Database-backed full schedule script missing');
             if (!source.includes('operations-course-live-route-v1.js?v=20260729-direct-calendar-v1')) throw new Error('Direct calendar route cache version missing');
             if (!source.includes('operations-course-persistence-v1.js?v=20260729-direct-calendar-v1')) throw new Error('Direct calendar persistence cache version missing');
           }
-          console.log('Live scheduler and direct simple full schedule verified');
+          console.log('Live scheduler and database-backed full schedule verified');
           NODE
 
       - name: Commit generated files
