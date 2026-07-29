@@ -24,6 +24,7 @@ on:
       - "course-portal.css"
       - "teacher-home.html"
       - "index.html"
+      - "app.js"
       - "functions/coursePortal.js"
       - ".github/scripts/build-inline-course-workspace.cjs"
       - ".github/scripts/refine-course-portals.cjs"
@@ -52,7 +53,7 @@ jobs:
       - name: Refine teacher student and rental portals
         run: node .github/scripts/refine-course-portals.cjs
 
-      - name: Verify internal workspace and external portals
+      - name: Verify internal workspace and teacher app shell
         run: |
           node - <<'NODE'
           const fs = require('fs');
@@ -71,8 +72,8 @@ jobs:
           const portalCommon = fs.readFileSync('course-portal-common.js', 'utf8');
           const portalCss = fs.readFileSync('course-portal.css', 'utf8');
           const portalBackend = fs.readFileSync('functions/coursePortal.js', 'utf8');
-          const teacherHome = fs.readFileSync('teacher-home.html', 'utf8');
           const login = fs.readFileSync('index.html', 'utf8');
+          const app = fs.readFileSync('app.js', 'utf8');
 
           new vm.Script(controller, { filename: 'operations-course-inline.js' });
           new vm.Script(runtime, { filename: 'operations-course-inline-runtime.js' });
@@ -80,6 +81,7 @@ jobs:
           new vm.Script(operations, { filename: 'operations-phase1.js' });
           new vm.Script(portalCommon, { filename: 'course-portal-common.js' });
           new vm.Script(portalBackend, { filename: 'functions/coursePortal.js' });
+          new vm.Script(app, { filename: 'app.js' });
 
           if (!operations.includes('YouziOperationsCourseInline.mount(content,courseView)')) throw new Error('Operations center does not mount the inline course workspace');
           if (operations.includes('<iframe id="opsCourseFrame"')) throw new Error('Legacy course iframe is still present');
@@ -96,13 +98,13 @@ jobs:
               if (!source.includes(`href="${href}" data-view="${view}"`)) throw new Error(`In-place course navigation is missing: ${view}`);
             }
             if (!source.includes('operations-course-inline.js?v=20260729-operations-inline-course-v4')) throw new Error('Unified course controller v4 is missing');
-            if (source.includes('location.replace(\'course-scheduler.html')) throw new Error('Course navigation still leaves the operations center');
+            if (source.includes("location.replace('course-scheduler.html")) throw new Error('Course navigation still leaves the operations center');
             if (source.includes('course-scheduler.html?view=')) throw new Error('Standalone course links are still enabled');
             if (source.includes('operations-mobile-course-fix-v1.js')) throw new Error('Duplicate mobile course JavaScript is still enabled');
             if (source.includes('operations-mobile-course-dense-v1.css')) throw new Error('Obsolete second mobile course layout is still enabled');
           }
 
-          if (!controller.includes('attachShadow({ mode: \'open\' })')) throw new Error('Shadow-root isolation is missing');
+          if (!controller.includes("attachShadow({ mode: 'open' })")) throw new Error('Shadow-root isolation is missing');
           if (!controller.includes("WORKSPACE_KEY = 'workspace'")) throw new Error('Workspace source is missing');
           if (!controller.includes("LATEST_KEY = 'latest'")) throw new Error('Latest source is missing');
           if (!controller.includes('isDemo')) throw new Error('Demo-data rejection is missing');
@@ -150,27 +152,28 @@ jobs:
           }
           if (!schedulerCss.includes('@media(max-width:860px)')) throw new Error('Responsive compact course layout is missing');
 
-          if (!teacherPortal.includes('id="teacherQuickHome"')) throw new Error('Static teacher quick actions are missing');
+          if (teacherPortal.includes('teacherQuickHome') || teacherPortal.includes('data-teacher-quick')) throw new Error('Duplicate top teacher shortcuts remain');
           if (!teacherPortal.includes('teacher-bottom-tabs')) throw new Error('Teacher bottom navigation is missing');
+          if (!teacherPortal.includes('id="teacherMoreBtn"') || !teacherPortal.includes('id="teacherMoreBackdrop"')) throw new Error('Teacher Other bottom sheet is missing');
+          if (!teacherPortal.includes('profile.html') || !teacherPortal.includes('contract.html') || !teacherPortal.includes('announcements.html') || !teacherPortal.includes('task.html') || !teacherPortal.includes('teacher-goods.html') || !teacherPortal.includes('forms-hub.html')) throw new Error('Teacher Other actions are incomplete');
           if (!teacherPortal.includes("section: 'schedule'") || !teacherPortal.includes("section: 'payroll'")) throw new Error('Teacher portal does not load schedule and payroll separately');
           if (teacherPortal.includes("window.matchMedia('(max-width: 760px)').matches")) throw new Error('A duplicate mobile-only teacher schedule remains');
-          if (!teacherPortal.includes('index.html?return=teacher-course-portal.html')) throw new Error('Employee teacher login bridge is missing');
+          if (!teacherPortal.includes('href="index.html"')) throw new Error('Employee teacher login bridge is missing');
           if (portalCommon.includes('installTeacherApprovedLayout') || portalCommon.includes('__YOUZI_TEACHER_WEEK_MEDIA_FIXED__')) throw new Error('Common runtime still creates a second teacher layout');
-          if (!portalCommon.includes('sessionFingerprint') || !portalCommon.includes('dataCache.v3')) throw new Error('Portal cache is not isolated by session');
-          if (!portalCss.includes('teacher portal fixed shell v7') || !portalCss.includes('position:sticky') || !portalCss.includes('position:fixed')) throw new Error('Sticky teacher axes or fixed bottom navigation is missing');
+          if (!portalCommon.includes('sessionFingerprint') || !portalCommon.includes('dataCache.v4')) throw new Error('Portal cache is not isolated by session');
+          if (!portalCss.includes('teacher portal app shell v8') || !portalCss.includes('grid-template-columns:repeat(5') || !portalCss.includes('.teacher-more-sheet') || !portalCss.includes('position:sticky') || !portalCss.includes('position:fixed')) throw new Error('Teacher fixed axes, five tabs, or Other sheet style is missing');
           if (!portalBackend.includes("section === 'payroll'") || !portalBackend.includes("section === 'all'")) throw new Error('Teacher callable section loading is missing');
-          if (!teacherHome.includes('teacher-course-portal.html?from=employee')) throw new Error('Teacher home course entry is missing');
+          if (!app.includes("teacher-course-portal.html?from=employee")) throw new Error('External teacher login does not open the course portal directly');
           for (const path of ['teacher-course-portal.html','student-course-portal.html','room-booking.html']) {
             if (!login.includes(`href="${path}"`)) throw new Error(`Public login entry is missing: ${path}`);
           }
-          if (!login.includes('safeLoginReturnTarget')) throw new Error('Safe teacher return after login is missing');
 
           if (!center.includes("location.replace('portal.html#'+(map[view]||'course-calendar'))")) throw new Error('Old course-center address does not return to the operations center');
           for (const obsolete of ['course-scheduler-full-bootstrap.js','course-scheduler-standalone.css','operations-mobile-course-fix-v1.js','operations-mobile-course-dense-v1.css','.github/scripts/restore-full-course-center.cjs']) {
             if (fs.existsSync(obsolete)) throw new Error(`Obsolete duplicate course layer still exists: ${obsolete}`);
           }
 
-          console.log('Unified internal workspace and external course portals verified');
+          console.log('Unified internal workspace and teacher app shell verified');
           NODE
 
       - name: Commit generated unified course files
@@ -182,5 +185,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "Publish unified course workspace and external portals"
+          git commit -m "Publish teacher course app with five fixed tabs"
           git push origin HEAD:main
