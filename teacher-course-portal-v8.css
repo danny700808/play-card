@@ -12,6 +12,9 @@ body.teacher-course-app.teacher-more-open{overflow:hidden}
 .teacher-course-app .summary strong{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .employee-login-bridge{display:grid;gap:8px;margin-top:14px;padding:12px;border:1px solid var(--line);border-radius:14px;background:#f7faf8}
 .employee-login-bridge span{font-weight:900}.employee-login-bridge small{color:var(--muted);line-height:1.55}.employee-login-bridge.employee-recognized{border-color:#b8dccc;background:#edf8f3}
+.teacher-session-loading{max-width:540px;margin:7vh auto 0;display:flex;align-items:center;gap:14px}
+.teacher-session-loading strong{display:block;font-size:17px}.teacher-session-loading p{margin:3px 0 0;color:var(--muted);font-size:13px;line-height:1.55}
+.teacher-session-spinner{width:28px;height:28px;flex:0 0 auto;border:3px solid #cce6db;border-right-color:var(--green);border-radius:50%;animation:teacherSpin .7s linear infinite}
 .teacher-course-app .teacher-bottom-tabs{position:fixed;left:50%;bottom:0;z-index:50;width:min(440px,100%);transform:translateX(-50%);display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:3px;margin:0;padding:7px 6px calc(7px + env(safe-area-inset-bottom));border-top:1px solid var(--line);background:rgba(244,247,243,.97);backdrop-filter:blur(12px);overflow:visible}
 .teacher-course-app .teacher-bottom-tabs .btn{min-height:44px;padding:5px 2px;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:11px;white-space:normal;text-align:center}
 .teacher-course-app .teacher-bottom-tabs .btn span{font-size:13px;line-height:1}.teacher-course-app .teacher-bottom-tabs .btn b{font-size:11px;line-height:1.15}
@@ -39,6 +42,7 @@ body.teacher-course-app.teacher-more-open{overflow:hidden}
 .teacher-course-app .availability-suggestions{display:grid;gap:7px;max-height:260px;overflow:auto}
 .teacher-course-app .availability-option{display:grid;gap:3px;width:100%;padding:10px;border:1px solid var(--line);border-radius:12px;background:#fff;text-align:left;color:var(--ink)}
 .teacher-course-app .availability-option.selected{border-color:var(--green);background:var(--green-soft)}
+@keyframes teacherSpin{to{transform:rotate(360deg)}}
 @keyframes teacherSheetUp{from{transform:translateY(24px);opacity:.7}to{transform:translateY(0);opacity:1}}
 @media(min-width:761px){
   body.teacher-course-app{padding-bottom:0}
