@@ -2,10 +2,11 @@
 
 const fs = require('fs');
 
-const VERSION = '20260729-operations-inline-course-v2';
+const VERSION = '20260729-operations-inline-course-v3';
 const schedulerHtmlPath = 'course-scheduler.html';
 const schedulerJsPath = 'course-scheduler.js';
 const operationsPath = 'operations-phase1.js';
+const controllerPath = 'operations-course-inline.js';
 const portalPaths = ['portal.html', 'operations-hub.html'];
 
 function replaceRequired(source, pattern, replacement, label) {
@@ -79,6 +80,18 @@ function buildRuntime() {
     'immediate inline initialization'
   );
   fs.writeFileSync('operations-course-inline-runtime.js', source);
+}
+
+function patchController() {
+  let source = fs.readFileSync(controllerPath, 'utf8');
+  source = source.replace(/var VERSION = '[^']+';/, `var VERSION = '${VERSION}';`);
+  source = source.replace(/\n  var PIN_KEYS = \[[\s\S]*?\n  \];\n/, '\n');
+  source = source.replace(/\n  function readStoredPin\(\) \{[\s\S]*?\n  \}\n\n  async function readSavedMirror\(\) \{[\s\S]*?\n  \}\n/, '\n');
+  source = source.replace(/\n    var mirror = await readSavedMirror\(\);[\s\S]*?\n    return null;/, '\n    return null;');
+  if (source.includes('readSavedMirror') || source.includes('YouziCoursePreviewData.load')) {
+    throw new Error('Automatic mirror loading remains in the inline controller.');
+  }
+  fs.writeFileSync(controllerPath, source);
 }
 
 function patchOperations() {
@@ -168,6 +181,8 @@ function patchPortal(path) {
     if (!replaced) throw new Error(`Unable to locate ${view} course navigation in ${path}`);
   }
 
+  source = source.replace(/\s*<link rel="stylesheet" href="operations-mobile-course-dense-v1\.css\?v=[^"]+">\s*/g, '\n');
+  source = source.replace(/\s*<script src="operations-mobile-course-fix-v1\.js\?v=[^"]+"><\/script>\s*/g, '\n');
   source = source.replace(/\s*<script src="operations-course-inline\.js\?v=[^"]+"><\/script>\s*/g, '\n');
   const operationsTag = /<script src="operations-phase1\.js\?v=[^"]+"><\/script>/;
   if (!operationsTag.test(source)) throw new Error(`Unable to locate operations-phase1.js in ${path}`);
@@ -203,6 +218,7 @@ function writeLegacyRedirect() {
 
 buildTemplate();
 buildRuntime();
+patchController();
 patchOperations();
 portalPaths.forEach(patchPortal);
 writeLegacyRedirect();
@@ -210,9 +226,11 @@ writeLegacyRedirect();
 for (const obsolete of [
   'course-scheduler-full-bootstrap.js',
   'course-scheduler-standalone.css',
+  'operations-mobile-course-fix-v1.js',
+  'operations-mobile-course-dense-v1.css',
   '.github/scripts/restore-full-course-center.cjs'
 ]) {
   if (fs.existsSync(obsolete)) fs.unlinkSync(obsolete);
 }
 
-console.log('Built the complete in-place course workspace without iframe or page navigation.');
+console.log('Built one desktop/mobile course workspace with manual-only Injiaoyun updates.');
