@@ -138,17 +138,130 @@
   global.YouziCourseLocalRecoveryReady = recover().catch(function () { return false; });
 })(window);
 
+(function receiveOperationsSnapshot(global) {
+  'use strict';
+
+  var DB_NAME = 'youzi-course-scheduler';
+  var STORE_NAME = 'formalSnapshots';
+  var FORMAL_KEY = 'latest';
+  var WORKSPACE_KEY = 'workspace';
+  var CACHE_KEY = 'youzi.courseScheduler.formalCache.v1';
+  var RELOAD_KEY = 'youzi.courseScheduler.parentSnapshotFingerprint.v2';
+
+  function hasRows(source, key) {
+    return Boolean(source && Array.isArray(source[key]) && source[key].length);
+  }
+
+  function meaningful(source) {
+    if (!source || Number(source.version) !== 3) return false;
+    var hasSchedule = ['events', 'recurringRules', 'fixedCourses', 'temporaryCourses', 'roomRentals']
+      .some(function (key) { return hasRows(source, key); });
+    return hasRows(source, 'rooms') && hasSchedule;
+  }
+
+  function fingerprint(source) {
+    var meta = source && (source.sandboxMeta || source.dataMeta) || {};
+    return [
+      String(meta.baselineRunId || meta.runId || ''),
+      String((source.events || []).length),
+      String((source.recurringRules || []).length),
+      String((source.rooms || []).length),
+      String(meta.updatedAt || meta.loadedAt || '')
+    ].join('|');
+  }
+
+  function openDatabase() {
+    return new Promise(function (resolve, reject) {
+      if (!global.indexedDB) { resolve(null); return; }
+      var request = global.indexedDB.open(DB_NAME, 1);
+      request.onupgradeneeded = function () {
+        var db = request.result;
+        if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME);
+      };
+      request.onsuccess = function () { resolve(request.result); };
+      request.onerror = function () { reject(request.error || new Error('IndexedDB open failed')); };
+    });
+  }
+
+  async function saveSnapshot(source) {
+    if (!meaningful(source)) return false;
+    var workspace = JSON.parse(JSON.stringify(source));
+    workspace.readOnly = false;
+    workspace.dataMode = 'sandbox';
+    workspace.clipboard = null;
+    var formal = JSON.parse(JSON.stringify(source));
+    formal.readOnly = true;
+    formal.dataMode = 'migration';
+    formal.clipboard = null;
+
+    try { global.localStorage.setItem(CACHE_KEY, JSON.stringify(formal)); } catch (_) {}
+
+    var db = await openDatabase();
+    if (db) {
+      await new Promise(function (resolve, reject) {
+        var transaction = db.transaction(STORE_NAME, 'readwrite');
+        var store = transaction.objectStore(STORE_NAME);
+        store.put(formal, FORMAL_KEY);
+        store.put(workspace, WORKSPACE_KEY);
+        transaction.oncomplete = resolve;
+        transaction.onerror = function () { reject(transaction.error || new Error('IndexedDB write failed')); };
+        transaction.onabort = function () { reject(transaction.error || new Error('IndexedDB write aborted')); };
+      });
+      db.close();
+    }
+
+    var nextFingerprint = fingerprint(source);
+    var previousFingerprint = '';
+    try { previousFingerprint = global.sessionStorage.getItem(RELOAD_KEY) || ''; } catch (_) {}
+    if (nextFingerprint && previousFingerprint !== nextFingerprint) {
+      try { global.sessionStorage.setItem(RELOAD_KEY, nextFingerprint); } catch (_) {}
+      global.location.reload();
+      return true;
+    }
+
+    try {
+      global.dispatchEvent(new CustomEvent('youzi-course-auto-data-ready', { detail: { snapshot: workspace } }));
+    } catch (_) {}
+    return true;
+  }
+
+  function onMessage(event) {
+    if (event.origin !== global.location.origin) return;
+    var data = event.data || {};
+    if (data.type !== 'youzi-course-snapshot-response') return;
+    saveSnapshot(data.snapshot).catch(function (error) {
+      try { console.error('[full scheduler snapshot bridge]', error); } catch (_) {}
+    });
+  }
+
+  function requestSnapshot() {
+    if (!global.parent || global.parent === global) return;
+    try {
+      global.parent.postMessage({ type: 'youzi-course-snapshot-request' }, global.location.origin);
+    } catch (_) {}
+  }
+
+  global.addEventListener('message', onMessage);
+  if (global.document.readyState === 'loading') {
+    global.document.addEventListener('DOMContentLoaded', requestSnapshot);
+  } else {
+    requestSnapshot();
+  }
+  global.setTimeout(requestSnapshot, 100);
+  global.setTimeout(requestSnapshot, 450);
+})(window);
+
 (function loadAutomaticCourseBootstrap() {
   'use strict';
   if (window.__YOUZI_COURSE_AUTO_BOOTSTRAP_REQUESTED__) return;
   window.__YOUZI_COURSE_AUTO_BOOTSTRAP_REQUESTED__ = true;
-  var bootstrap = 'course-data-auto-bootstrap-v1.js?v=20260729-auto-cloud-v4';
-  var gate = 'course-scheduler-startup-gate-v1.js?v=20260729-full-scheduler-v2';
-  var scheduler = 'course-scheduler.js?v=20260729-full-scheduler-v3';
+  var bootstrap = 'course-data-auto-bootstrap-v1.js?v=20260729-auto-cloud-v5';
+  var gate = 'course-scheduler-startup-gate-v1.js?v=20260729-full-scheduler-v3';
+  var scheduler = 'course-scheduler.js?v=20260729-full-scheduler-v4';
   if (document.readyState === 'loading') {
-    document.write('<script src="' + bootstrap + '"><\\/script>');
-    document.write('<script src="' + gate + '"><\\/script>');
-    document.write('<script src="' + scheduler + '"><\\/script>');
+    document.write('<script src="' + bootstrap + '"><\/script>');
+    document.write('<script src="' + gate + '"><\/script>');
+    document.write('<script src="' + scheduler + '"><\/script>');
     return;
   }
   var script = document.createElement('script');
