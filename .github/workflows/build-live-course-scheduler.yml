@@ -29,10 +29,17 @@ jobs:
         run: |
           node - <<'NODE'
           const fs = require('fs');
+          const vm = require('vm');
           const html = fs.readFileSync('course-scheduler-live.html', 'utf8');
           const entry = fs.readFileSync('course-scheduler-live-entry-v1.js', 'utf8');
           const hub = fs.readFileSync('operations-hub.html', 'utf8');
           const portal = fs.readFileSync('portal.html', 'utf8');
+          const simpleFull = fs.readFileSync('operations-course-simple-full-v1.js', 'utf8');
+          const persistence = fs.readFileSync('operations-course-persistence-v1.js', 'utf8');
+          const route = fs.readFileSync('operations-course-live-route-v1.js', 'utf8');
+          new vm.Script(simpleFull, { filename: 'operations-course-simple-full-v1.js' });
+          new vm.Script(persistence, { filename: 'operations-course-persistence-v1.js' });
+          new vm.Script(route, { filename: 'operations-course-live-route-v1.js' });
           if (!html.includes('course-scheduler-live-entry-v1.js?v=20260729-live-full-scheduler-v2')) throw new Error('Live scheduler entry missing');
           if (html.includes('course-scheduler-startup-gate-v1.js')) throw new Error('Legacy startup gate must not be loaded');
           if (html.includes('course-data-auto-bootstrap-v1.js')) throw new Error('Legacy auto reload bootstrap must not be loaded');
@@ -40,10 +47,15 @@ jobs:
           if (html.includes('<script src="course-scheduler.js')) throw new Error('Scheduler must be loaded only after data is ready');
           if (!entry.includes("CLOUD_FUNCTION = 'loadInjiaoyunEducationMirrorAuto'")) throw new Error('Direct cloud fallback missing');
           if (!entry.includes("type: 'youzi-course-snapshot-request'")) throw new Error('Parent snapshot request missing');
+          if (!simpleFull.includes('完整課表使用營運總覽同一份資料')) throw new Error('Direct simple full schedule renderer missing');
+          if (!persistence.includes("isDirectCalendar(value)")) throw new Error('Course persistence does not bypass the legacy calendar iframe');
+          if (route.includes("'course-calendar': 'calendar'")) throw new Error('Legacy iframe router still owns the full calendar');
           for (const source of [hub, portal]) {
-            if (!source.includes('operations-course-live-route-v1.js?v=20260729-live-full-scheduler-v2')) throw new Error('Operations live route cache version missing');
+            if (!source.includes('operations-course-simple-full-v1.js?v=20260729-simple-full-v1')) throw new Error('Direct simple full schedule script missing');
+            if (!source.includes('operations-course-live-route-v1.js?v=20260729-direct-calendar-v1')) throw new Error('Direct calendar route cache version missing');
+            if (!source.includes('operations-course-persistence-v1.js?v=20260729-direct-calendar-v1')) throw new Error('Direct calendar persistence cache version missing');
           }
-          console.log('Live scheduler page verified');
+          console.log('Live scheduler and direct simple full schedule verified');
           NODE
 
       - name: Commit generated files
