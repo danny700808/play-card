@@ -43,8 +43,11 @@ assert(commonSource.includes('coursePortalSendEmailOtp'), '入口缺少 Email �
 assert(commonSource.includes('coursePortalVerifyEmailOtp'), '入口缺少 Email 驗證碼確認流程');
 assert(commonSource.includes('coursePortalStartLineLogin'), '入口缺少 LINE 快速登入');
 assert(commonSource.includes('result.authorizationUrl'), 'LINE 登入仍未直接導向 OAuth');
-assert(commonSource.includes('coursePortalCompleteLineRegistration'), '入口缺少 LINE 首次登入綁定');
+assert(commonSource.includes('coursePortalCompleteLineRegistration'), '入口缺少 LINE 首次登入');
+assert(commonSource.includes("purpose: 'account'"), '一般註冊／登入未使用統一帳號流程');
 assert(!commonSource.includes('請用已綁定的 LINE 傳送這段快速登入文字'), 'LINE 登入仍停留在複製文字舊流程');
+assert(!commonSource.includes('複製綁定文字'), '入口程式仍保留複製綁定文字');
+assert(!commonSource.includes('renderLineAction'), '入口程式仍保留舊 LINE 文字綁定畫面');
 
 for (const file of pages) {
   const html = fs.readFileSync(path.join(root, file), 'utf8');
@@ -64,20 +67,17 @@ for (const file of pages) {
   const html = fs.readFileSync(path.join(root, file), 'utf8');
   assert(html.includes('data-auth-view'), `${file} 缺少統一登入畫面`);
   assert(html.includes('id="sessionLoading"'), `${file} 缺少登入狀態確認畫面`);
-  assert(html.includes('data-first-use-form'), `${file} 缺少首次使用驗證`);
-  if (file !== 'course-portal-admin.html') {
-    assert(html.includes('使用 LINE 登入／註冊'), `${file} 缺少直接 LINE 登入`);
-    assert(!html.includes('data-line-login-result'), `${file} 仍保留 LINE 複製文字結果框`);
-  }
+  assert(html.includes('data-auth-choice-list'), `${file} 缺少兩種登入方式`);
+  assert(html.includes('data-line-login'), `${file} 缺少 LINE 優先登入`);
+  assert(html.includes('data-regular-auth-form'), `${file} 缺少一般註冊／登入`);
+  assert(html.includes('data-line-setup-form'), `${file} 缺少 LINE 首次資料表單`);
+  assert(html.includes('一般註冊／登入'), `${file} 一般方式標示不清楚`);
+  assert(html.includes('使用 LINE 繼續'), `${file} 缺少清楚的 LINE 按鈕`);
+  assert(!html.includes('data-email-login-form'), `${file} 仍保留分離的 Email 登入`);
+  assert(!html.includes('data-renter-contact-form'), `${file} 仍保留姓名電話臨時登入`);
+  assert(!html.includes('data-show-first-use'), `${file} 仍保留額外的第一次使用入口`);
+  assert(!html.includes('data-bind-result'), `${file} 仍保留舊綁定結果框`);
 });
-['teacher-course-portal.html', 'student-course-portal.html'].forEach((file) => {
-  const html = fs.readFileSync(path.join(root, file), 'utf8');
-  assert(html.includes('data-email-login-form'), `${file} 缺少 Email 快速登入`);
-});
-assert(
-  fs.readFileSync(path.join(root, 'room-booking.html'), 'utf8').includes('data-renter-contact-form'),
-  '租用入口缺少姓名＋電話臨時登入'
-);
 
 const teacherPortal = fs.readFileSync(path.join(root, 'teacher-course-portal.html'), 'utf8');
 assert(teacherPortal.includes('value="single_move"'), '老師入口缺少單次調課');
@@ -120,13 +120,11 @@ assert(!schedulerHtml.includes('半透明＝請假／停課'), '課表圖例仍�
 
 const backend = fs.readFileSync(path.join(root, 'functions/coursePortal.js'), 'utf8');
 [
-  'coursePortalStartBinding',
   'coursePortalSendEmailOtp',
   'coursePortalVerifyEmailOtp',
   'coursePortalStartLineLogin',
   'coursePortalCompleteLineRegistration',
   'coursePortalLineLoginCallback',
-  'coursePortalRenterContactLogin',
   'coursePortalExchangeAccess',
   'coursePortalTeacherData',
   'coursePortalStudentData',
@@ -140,19 +138,22 @@ const backend = fs.readFileSync(path.join(root, 'functions/coursePortal.js'), 'u
   'coursePortalAdminBindingAction',
   'coursePortalStudentReminderDaily'
 ].forEach((name) => assert(backend.includes(name), `缺少後端函式 ${name}`));
-assert(backend.includes("where('lineUserId', '==', session.lineUserId)"), '租用紀錄未限制為目前 LINE 使用者');
+assert(backend.includes("where('ownerKey', '==', sessionOwnerKey(session))"), '租用紀錄未限制為目前登入帳號');
 assert(backend.includes('只能取消自己預約的教室'), '取消租用缺少本人權限檢查');
 assert(backend.includes('const EMAIL_OTP_TTL_MS = 180 * 1000'), 'Email 四碼驗證碼不是 180 秒');
 assert(backend.includes('EMAIL_OTP_MAX_ATTEMPTS = 5'), 'Email 驗證碼缺少五次輸入限制');
+assert(backend.includes("source.purpose === 'account'"), '一般註冊／登入驗證後未直接建立工作階段');
+assert(backend.includes('authAccountId'), '一般登入缺少獨立帳號識別');
+assert(backend.includes("authMethod: 'email-otp'"), '一般登入未建立 Email 驗證工作階段');
 assert(backend.includes('taipeiDateTimeMillis(row.date, row.endTime) > Date.now()'), '租用進行中無法取消');
 assert(backend.includes('course-portal-booking-${id}-reminder'), '租用缺少開始前一小時提醒');
 assert(backend.includes("action === 'delete'"), '後台綁定管理缺少刪除登入資料');
-assert(backend.includes("authMethod: 'renter-name-phone'"), '租用入口缺少姓名＋電話臨時登入');
 assert(backend.includes("const LINE_LOGIN_CHANNEL_SECRET = defineSecret('LINE_LOGIN_CHANNEL_SECRET')"), 'LINE Channel secret 未使用後端密鑰');
 assert(backend.includes("bot_prompt: 'aggressive'"), 'LINE 登入未顯示加入官方帳號流程');
 assert(backend.includes('https://api.line.me/friendship/v1/status'), 'LINE 登入未確認好友狀態');
 assert(backend.includes("authMethod: 'line-oauth'"), 'LINE OAuth 登入未建立正式工作階段');
 assert(backend.includes('LINE_OAUTH_STATE_TTL_MS'), 'LINE OAuth 缺少短效 state 驗證');
+assert(backend.includes("clean(row.lineUserId) &&\n      clean(row.lineUserId) !== lineUserId"), '一般帳號會錯誤阻擋同一人改用 LINE 登入');
 assert(commonSource.includes('global.sessionStorage'), '租用借用裝置登入沒有使用瀏覽階段儲存');
 assert(backend.includes("id: 'guzheng'"), '租用用途缺少古箏');
 assert(backend.includes("id: 'recording'"), '租用用途缺少錄音室');
