@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#24735c">
   <title>課務入口與 LINE 綁定管理｜柚子樂器</title>
-  <link rel="stylesheet" href="course-portal.css?v=20260730-auth-v1">
+  <link rel="stylesheet" href="course-portal.css?v=20260730-line-oauth-v2">
 </head>
 <body>
   <main class="portal-shell">
@@ -41,7 +41,7 @@
   <script src="config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="course-portal-common.js?v=20260730-auth-v1"></script>
+  <script src="course-portal-common.js?v=20260730-line-oauth-v2"></script>
   <script>
   (function () {
     const P = window.CoursePortal;
@@ -59,7 +59,7 @@
       document.getElementById('bindingList').innerHTML = visible.length ? visible.map((row) => `
         <article class="list-row">
           <strong>${P.escapeHtml(label(row))}</strong>
-          <span class="binding-meta"><b>${P.escapeHtml(row.lineDisplayName || 'LINE 名稱未取得')}</b><small>${P.escapeHtml(row.relationship || row.type)}</small></span>
+          <span class="binding-meta"><b>${P.escapeHtml(row.lineDisplayName || 'LINE 名稱未取得')}</b><small>${P.escapeHtml(row.relationship || row.type)}・${row.lineFriendFlag === true ? '可接收 LINE 提醒' : (row.lineFriendFlag === false ? '尚未加入官方帳號' : '好友狀態尚未確認')}</small></span>
           <span class="binding-meta"><b>${P.escapeHtml(row.email || '尚未設定 Email')}</b><small>${row.emailVerified ? 'Email 已驗證' : '舊帳號／Email 尚未驗證'}</small></span>
           <span class="binding-meta"><span class="badge ${row.status === 'active' ? '' : 'danger'}">${row.status === 'active' ? '使用中' : '已停用'}</span><small>${Number(row.activeSessionCount || 0)} 台裝置登入中</small></span>
           <span class="binding-actions">
