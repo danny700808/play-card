@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 
-const VERSION = '20260730-piano-equipment-v1';
+const VERSION = '20260730-mobile-rental-teacher-v1';
 const schedulerHtmlPath = 'course-scheduler.html';
 const schedulerJsPath = 'course-scheduler.js';
 const operationsPath = 'operations-phase1.js';
@@ -118,9 +118,9 @@ function buildRuntime() {
   );
   source = replaceRequired(
     source,
-    '    restoreFormalDatabase();',
-    '    if(!window.__YOUZI_COURSE_INLINE_MODE__)restoreFormalDatabase();',
-    'disable duplicate startup restore'
+    '    if(window.__YOUZI_COURSE_INLINE_MODE__)refreshPortalRentals();else restoreFormalDatabase().then(refreshPortalRentals);',
+    '    refreshPortalRentals();',
+    'refresh portal rentals without duplicate startup restore'
   );
   source = replaceRequired(
     source,
