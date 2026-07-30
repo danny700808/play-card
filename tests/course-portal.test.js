@@ -91,11 +91,18 @@ new vm.Script(rentalSource, { filename: 'room-booking-v2.js' });
 new vm.Script(rentalSettingsSource, { filename: 'course-portal-settings-v2.js' });
 new vm.Script(teacherRoomRulesSource, { filename: 'teacher-room-rules-v1.js' });
 assert(rentalSource.includes('rental-room-equipment'), '租用教室卡片缺少鋼琴類型標示');
-assert(rentalSource.includes('excludeDigitalPiano'), '鋼琴租用缺少排除電鋼琴選項');
+[
+  '不指定',
+  '排除電鋼琴',
+  '指定平台鋼琴',
+  '指定直立鋼琴'
+].forEach((label) => assert(rentalSource.includes(label), `鋼琴租用缺少「${label}」選項`));
+assert(rentalSource.includes('name="pianoType"'), '鋼琴條件未使用互斥單選');
 assert(rentalSource.includes('allowGuzhengMove'), '古箏租用缺少自行搬運選項');
 assert(rentalSource.includes('drumType'), '練鼓租用缺少鼓種篩選');
 assert(rentalSource.includes('data-retry-rental'), '租用資料失敗時缺少重新讀取按鈕');
 assert(rentalSettingsSource.includes('data-use-rate'), '租用用途設定缺少每小時固定費用');
+assert(rentalSettingsSource.includes('data-room-piano'), '教室租用設定缺少鋼琴設備種類');
 assert(teacherRoomRulesSource.includes('需自行從展演空間搬古箏'), '老師調課缺少 KAWAI 古箏搬運提醒');
 
 const schedulerHtml = fs.readFileSync(path.join(root, 'course-scheduler.html'), 'utf8');
@@ -110,6 +117,10 @@ assert(!schedulerHtml.includes('loadMigratedDataBtn'), '不應保留另外載入
 assert(schedulerSource.includes("var WORKSPACE_DB_KEY='workspace'"), '操作資料未使用 IndexedDB 工作區');
 assert(schedulerSource.includes('storeWorkspaceDatabase(state)'), '操作後未自動儲存工作區');
 assert(schedulerSource.includes('workspaceFromFormal'), '同步後未由最新音教雲資料重建工作區');
+assert(schedulerSource.includes("['digital_piano','電鋼琴']"), '教室設定缺少電鋼琴');
+assert(schedulerSource.includes("['grand_piano','平台鋼琴']"), '教室設定缺少平台鋼琴');
+assert(schedulerSource.includes("['upright_piano','直立鋼琴']"), '教室設定缺少直立鋼琴');
+assert(schedulerSource.includes('saveRoomSettings'), '教室設備沒有同步到租用設定');
 assert(schedulerSource.includes('slotCoverageClass(events,room.id,min)'), '有課區間未隱藏內部半小時格線');
 assert(schedulerSource.includes('collapseFinalSlotLayers'), '同一教室時段未套用最後成立資料');
 assert(schedulerSource.includes('修改租用金額／資料'), '租用明細缺少金額修改入口');
@@ -125,6 +136,10 @@ assert(
   deployWorkflow.includes('functions:coursePortalRentalUseSettings'),
   'Firebase 部署清單漏掉租用用途讀取功能'
 );
+assert(
+  deployWorkflow.includes('functions:coursePortalAdminSaveRoomEquipment'),
+  'Firebase 部署清單漏掉教室設備同步功能'
+);
 [
   'coursePortalSendEmailOtp',
   'coursePortalVerifyEmailOtp',
@@ -138,6 +153,7 @@ assert(
   'coursePortalCreateRoomBooking',
   'coursePortalRentalMyBookings',
   'coursePortalCancelRoomBooking',
+  'coursePortalAdminSaveRoomEquipment',
   'coursePortalTeacherAction',
   'coursePortalTeacherLessonState',
   'coursePortalUpdateStudentReminder',
@@ -166,11 +182,17 @@ assert(backend.includes("id: 'recording'"), '租用用途缺少錄音室');
 assert(backend.includes('hourlyRate: 300'), '錄音用途未設定每小時 NT$300');
 assert(backend.includes("if (/錄音室|錄音/.test(clean(room && room.name))) return 100;"), '錄音室其他用途未固定為每小時 NT$100');
 assert(backend.includes('data.excludeDigitalPiano'), '後端缺少排除電鋼琴規則');
+assert(backend.includes('data.pianoType'), '後端缺少鋼琴種類篩選');
 assert(backend.includes('data.allowGuzhengMove'), '後端缺少 KAWAI 古箏搬運接受規則');
 assert(backend.includes('data.drumType'), '後端缺少鼓種篩選規則');
 assert(backend.includes("return '電鋼琴'"), '團練室／展演空間缺少電鋼琴分類');
 assert(backend.includes("return '平台鋼琴'"), 'YAMAHA 平台教室／5號鋼琴缺少平台鋼琴分類');
 assert(backend.includes("return '直立鋼琴'"), 'KAWAI 教室／YAMAHA 直立鋼琴缺少直立鋼琴分類');
+assert(backend.includes("mirrorRows('fixedCourses')"), '租用空檔未讀取固定課表');
+assert(backend.includes("mirrorRows('temporaryCourses')"), '租用空檔未讀取臨時課表');
+assert(backend.includes("mirrorRows('roomRentals')"), '租用空檔未讀取既有租用');
+assert(backend.includes("event.roomId === id && event.date === date"), '租用查詢未依教室與日期排除有課時段');
+assert(backend.includes('overlaps(startTime, endTime, event.startTime, event.endTime)'), '租用查詢未檢查課程時段重疊');
 
 const portalCss = fs.readFileSync(path.join(root, 'course-portal.css'), 'utf8');
 assert(portalCss.includes('@media (max-width: 760px)'), '外部入口缺少手機版樣式');
