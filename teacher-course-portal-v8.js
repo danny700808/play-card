@@ -412,32 +412,12 @@
     const result = await invoke('coursePortalExchangeAccess', { accessToken: access });
     if (result.role !== 'teacher') throw new Error('這個登入連結不屬於老師入口。');
     setSession(result.sessionToken);
+    if (result.reminderReady === false) {
+      toast('LINE 登入成功；請將柚子樂器官方帳號加入好友，才能收到提醒。', 'error');
+    }
     params.delete('access');
     history.replaceState({}, '', `${location.pathname}${params.toString() ? `?${params}` : ''}`);
     return result.sessionToken;
-  }
-
-  async function startBinding(form, button) {
-    loading(button, true, '產生中…');
-    try {
-      const fields = Object.fromEntries(new FormData(form).entries());
-      const result = await invoke('coursePortalStartBinding', Object.assign({ type: 'teacher' }, fields));
-      const box = document.querySelector('[data-bind-result]');
-      box.classList.remove('hidden');
-      box.innerHTML = `<strong>請把下面整段文字傳給柚子樂器官方 LINE：</strong><code>${escapeHtml(result.bindText)}</code><div class="grid two"><button class="btn soft" type="button" id="copyBindText">複製綁定文字</button><a class="btn primary" href="${escapeHtml(result.lineUrl)}">開啟官方 LINE</a></div><small>貼上送出後，開啟官方 LINE 回覆的登入連結。本連結有效 20 分鐘。</small>`;
-      document.getElementById('copyBindText').addEventListener('click', async (event) => {
-        try {
-          await navigator.clipboard.writeText(result.bindText);
-          event.currentTarget.textContent = '已複製';
-        } catch (_) {
-          toast('請長按綁定文字後複製。');
-        }
-      });
-    } catch (error) {
-      toast(error.message, 'error');
-    } finally {
-      loading(button, false);
-    }
   }
 
   function sourceRow() {
