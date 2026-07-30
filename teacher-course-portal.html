@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#24735c">
   <title>老師課務入口｜柚子樂器</title>
   <link rel="stylesheet" href="course-portal.css?v=20260730-auth-two-path-v1">
-  <link rel="stylesheet" href="teacher-course-portal-v8.css?v=20260730-mobile-rental-teacher-v1">
+  <link rel="stylesheet" href="teacher-course-portal-v8.css?v=20260730-teacher-flow-v3">
   <link rel="stylesheet" href="portal-clean-ui-v1.css?v=20260730-auth-two-path-v1">
 </head>
 <body class="teacher-course-app clean-portal-ui">
@@ -75,10 +75,16 @@
         <div class="section-title"><h2>課表</h2></div>
         <div class="toolbar teacher-week-toolbar">
           <button class="btn" id="prevWeek" type="button">上一週</button>
-          <button class="btn soft" id="thisWeek" type="button">本週</button>
-          <button class="btn" id="nextWeek" type="button">下一週</button>
           <input id="weekPicker" type="date" aria-label="選擇要查看的星期">
-          <span class="badge" id="weekRange"></span>
+          <button class="btn" id="nextWeek" type="button">下一週</button>
+        </div>
+        <div class="teacher-flow-banner hidden" id="teacherFlowBanner" aria-live="polite">
+          <div><strong id="teacherFlowTitle"></strong><span id="teacherFlowDetail"></span></div>
+          <button type="button" id="cancelTeacherFlow">取消</button>
+          <div class="teacher-operation-progress hidden" id="teacherOperationProgress"><span></span></div>
+        </div>
+        <div class="teacher-legend" id="teacherLegend" aria-label="課表顏色說明">
+          <span><i class="fixed"></i>固定課</span><span><i class="single"></i>調課</span><span><i class="extra"></i>加課</span><span><i class="gift"></i>贈課</span><span><i class="rental"></i>租用</span><span><i class="trial"></i>體驗</span><span><i class="leave"></i>請假</span><span><i class="absent"></i>曠課</span><span><i class="attended"></i>已簽到</span><span><i class="cancelled"></i>取消／調走</span><span><i class="pending"></i>待補排</span><span><i class="conflict"></i>衝突</span><span><i class="group"></i>雙／團</span>
         </div>
         <div class="week-scroll"><div class="week-grid" id="weekGrid"></div></div>
       </section>
@@ -116,7 +122,7 @@
     <section class="teacher-quick-sheet" role="dialog" aria-modal="true" aria-labelledby="teacherQuickTitle">
       <div class="teacher-more-handle" aria-hidden="true"></div>
       <div class="section-title">
-        <div><h2 id="teacherQuickTitle">選擇操作</h2><p class="muted" id="teacherQuickSubtitle"></p></div>
+        <div><h2 id="teacherQuickTitle">選擇操作</h2><div class="muted teacher-quick-subtitle" id="teacherQuickSubtitle"></div></div>
         <button class="btn" id="closeTeacherQuick" type="button">關閉</button>
       </div>
       <div class="teacher-quick-actions" id="teacherQuickActions"></div>
@@ -125,44 +131,11 @@
 
   <div class="modal hidden" id="bonusRequestModal"><section class="card modal-panel"><div class="section-title"><h2>教材／商品獎金申請</h2><button class="btn" id="closeBonusRequest" type="button">關閉</button></div><form class="stack" id="bonusRequestForm"><input type="hidden" name="studentId"><input type="hidden" name="studentName"><div class="field"><label>學生</label><input id="bonusStudentName" readonly></div><div class="field"><label>申請內容</label><textarea name="description" rows="4" placeholder="例如：協助學生購買鋼琴教材一本" required></textarea></div><div class="field"><label>照片（可直接拍照或從相簿選擇）</label><input id="bonusPhoto" type="file" accept="image/*" capture="environment"><small class="muted">照片只作為主管確認依據。</small></div><button class="btn primary" type="submit">送出申請</button></form></section></div>
 
-  <div class="modal hidden" id="actionModal">
-    <section class="card modal-panel">
-      <div class="section-title"><h2>安排課程</h2><button class="btn" type="button" id="closeModal">關閉</button></div>
-      <form class="stack" id="actionForm">
-        <input type="hidden" name="sourceEventId">
-        <input type="hidden" name="sourceCourseId">
-        <input type="hidden" name="sourceDate">
-        <div class="grid two">
-          <div class="field"><label>操作</label><select name="action" id="actionType"><option value="extra_lesson">增加一堂課</option><option value="teacher_gift">老師免費送一堂</option><option value="single_move">單次調課</option><option value="permanent_move">永久調課</option></select></div>
-          <div class="field hidden" id="sourceLessonField"><label>要移動的原課程</label><select id="actionSourceLesson"></select></div>
-          <div class="field"><label>學生</label><select name="studentId" id="actionStudent" required></select></div>
-          <div class="field"><label>科目</label><select name="subjectId" id="actionSubject"></select></div>
-          <div class="field"><label>教室</label><select name="roomId" id="actionRoom" required></select></div>
-          <div class="field"><label>日期</label><input name="date" id="actionDate" type="date" required></div>
-          <div class="field"><label>時間</label><div class="grid two"><input name="startTime" id="actionStart" type="time" required><input name="endTime" id="actionEnd" type="time" required></div></div>
-        </div>
-        <section class="quick-availability hidden" id="quickAvailability">
-          <div class="section-title"><div><h3>可直接調入的位置</h3><p class="muted">只顯示老師沒有課、且有合適空教室的時間。</p></div><button class="btn soft" id="reloadAvailability" type="button">重新找空位</button></div>
-          <div class="availability-suggestions" id="availabilitySuggestions"></div>
-        </section>
-        <div class="field"><label>備註</label><input name="note" placeholder="選填"></div>
-        <div class="notice" id="giftNotice">「老師免費送一堂」不向學生收費，也不列入老師薪資。</div>
-        <button class="btn primary" type="submit">確認並儲存</button>
-        <div class="teacher-lesson-state-actions hidden" id="lessonStateActions">
-          <button class="btn soft" type="button" data-lesson-state="leave">學生請假</button><button class="btn" type="button" data-late-attendance>補簽到</button>
-          <button class="btn danger hidden" id="cancelPortalLesson" type="button" data-lesson-state="cancel_change">取消此次安排</button>
-          <button class="btn danger" type="button" data-lesson-state="absent">標示曠課</button>
-        </div>
-      </form>
-    </section>
-  </div>
-
   <script src="config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
   <script src="course-portal-common.js?v=20260730-auth-two-path-v1"></script>
   <script src="teacher-course-session-v8.js?v=20260730-auth-two-path-v1"></script>
-  <script src="teacher-course-portal-v8.js?v=20260730-mobile-rental-teacher-v1"></script>
-  <script src="teacher-room-rules-v1.js?v=20260730-teacher-equipment-v2"></script>
+  <script src="teacher-course-portal-v8.js?v=20260730-teacher-flow-v3"></script>
 </body>
 </html>

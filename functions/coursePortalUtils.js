@@ -39,6 +39,7 @@ function courseSourceIds(row) {
     source.__id,
     source.sourceCourseId,
     source.fixedCourseId,
+    source.seriesId,
     source.courseId,
     source.scheduleId
   ].map(clean).filter(Boolean))];

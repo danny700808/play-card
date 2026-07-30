@@ -4,11 +4,23 @@
   var FUNCTION_REGION='us-central1';
   var LOAD_FUNCTION_NAME='loadInjiaoyunEducationMirror';
   var SYNC_FUNCTION_NAME='syncInjiaoyunEducationMirrorNow';
+  var GUZHENG_RESOURCE_ID='equipment:guzheng';
 
   function clean(value){return String(value==null?'':value).trim();}
   function numberOf(value){var parsed=Number(value);return Number.isFinite(parsed)?parsed:0;}
   function array(value){return Array.isArray(value)?value:[];}
   function unique(values){return Array.from(new Set(array(values).map(clean).filter(Boolean)));}
+  function sharedResourceIdsFor(row){
+    row=row||{};
+    var ids=unique(array(row.resourceIds).concat(array(row.sharedResourceIds)));
+    var subject=row.subject&&typeof row.subject==='object'?row.subject:{};
+    var marker=[
+      row.useType,row.rentalUseType,row.purposeType,row.useName,row.purpose,row.title,
+      row.subjectId,row.subjectName,subject.id,subject.name
+    ].map(clean).join(' ').toLowerCase();
+    if(/guzheng|古箏/.test(marker))ids.push(GUZHENG_RESOURCE_ID);
+    return unique(ids);
+  }
   function safeId(prefix,value,index){return clean(value)||(prefix+'_'+String(index+1));}
   function dateKey(value){
     var text=clean(value),match=text.match(/^(\d{4}-\d{2}-\d{2})/);
@@ -99,7 +111,11 @@
     var rows=[],seen=new Set();
     function add(room,index){
       room=room||{};var id=safeId('room',room.id,index);if(seen.has(id))return;seen.add(id);
-      rows.push({id:id,name:clean(room.name)||('教室 '+(index+1)),publicName:clean(room.publicName),note:clean(room.note),rentalFee:numberOf(room.rentalFee),sort:numberOf(room.sort)||rows.length+1,active:room.active!==false,policies:room.policies&&typeof room.policies==='object'?room.policies:{},capacity:numberOf(room.capacity),rentalUseTypes:unique(room.rentalUseTypes||room.useTypes),rentalEquipment:unique(room.rentalEquipment||room.equipment),pianoType:clean(room.pianoType)});
+      var normalized={id:id,name:clean(room.name)||('教室 '+(index+1)),publicName:clean(room.publicName),note:clean(room.note),rentalFee:numberOf(room.rentalFee),sort:numberOf(room.sort)||rows.length+1,active:room.active!==false,policies:room.policies&&typeof room.policies==='object'?room.policies:{},capacity:numberOf(room.capacity),allowedSubjectIds:unique(room.allowedSubjectIds||room.subjectIds),rentalEquipment:unique(room.rentalEquipment||room.equipment),pianoType:clean(room.pianoType),roomRulesVersion:numberOf(room.roomRulesVersion),roomKind:clean(room.roomKind||room.kind)};
+      if(room.roomRulesVersion===1||Array.isArray(room.rentalUseTypes)||Array.isArray(room.useTypes))normalized.rentalUseTypes=unique(room.rentalUseTypes||room.useTypes);
+      if(room.roomRulesVersion===1||typeof room.rentable==='boolean')normalized.rentable=room.rentable!==false;
+      if(room.roomRulesVersion===1||typeof room.teacherSchedulable==='boolean')normalized.teacherSchedulable=room.teacherSchedulable!==false;
+      rows.push(normalized);
     }
     array(payload.rooms).forEach(add);
     array(payload.fixedCourses).concat(array(payload.temporaryCourses),array(payload.roomRentals)).forEach(function(row,index){if(clean(row.roomId)&&!seen.has(clean(row.roomId)))add({id:row.roomId,name:row.roomName},1000+index);});
@@ -158,26 +174,39 @@
     };
   }
 
+  function portalVisualType(course){
+    var action=clean(course&&course.portalAction),type=clean(course&&course.type);
+    if(action==='permanent_move'||action==='permanent_room_exception')return 'fixed';
+    if(['single_move','extra_lesson','teacher_gift'].indexOf(action)>=0)return 'single';
+    if(type==='teacher_gift'||type==='temporary')return 'single';
+    return ['fixed','single','rental','trial'].indexOf(type)>=0?type:'fixed';
+  }
+
   function courseEvent(course,date,status,resolvePeriod){
-    return {id:safeId('course',course.id,0)+'@'+date,sourceCourseId:clean(course.id),seriesId:clean(course.id),date:date,roomId:clean(course.roomId),start:clean(course.start),duration:Math.max(30,numberOf(course.duration)||60),type:clean(course.type)||'fixed',frequency:numberOf(course.frequencyWeeks)>=2?'biweekly':course.type==='fixed'?'weekly':'once',studentIds:unique(course.studentIds),teacherId:clean(course.teacherId),subjectId:clean(course.subjectId),tuitionPeriodId:resolvePeriod(course),clientName:'',rentalFee:0,status:clean(status)||'scheduled',note:clean(course.note),readOnly:true,source:'injiaoyun-migration'};
+    var action=clean(course.portalAction),special=course.specialLesson===true||action==='teacher_gift'||clean(course.type)==='teacher_gift',type=portalVisualType(course);
+    return {id:safeId('course',course.id,0)+'@'+date,sourceCourseId:clean(course.id),seriesId:clean(course.seriesId||course.fixedCourseId||course.id),date:date,roomId:clean(course.roomId),start:clean(course.start||course.startTime),duration:Math.max(30,numberOf(course.duration||course.durationMinutes)||60),type:type,portalAction:action,specialLesson:special,specialLessonPrice:numberOf(course.specialLessonPrice),specialTeacherPay:numberOf(course.specialTeacherPay),frequency:numberOf(course.frequencyWeeks)>=2?'biweekly':type==='fixed'?'weekly':'once',studentIds:unique(course.studentIds),teacherId:clean(course.teacherId),subjectId:clean(course.subjectId),subjectName:clean(course.subjectName),resourceIds:sharedResourceIdsFor(course),tuitionPeriodId:resolvePeriod(course),clientName:'',rentalFee:0,status:clean(status)||'scheduled',note:clean(course.note),readOnly:true,source:'injiaoyun-migration'};
   }
 
   // 請假要保留成半透明藍色固定課；只有真正取消／停課才不顯示。
   function cancelledCourseStatus(status){
-    var value=clean(status).toLowerCase();
+    var value=clean(status&&typeof status==='object'?status.status:status).toLowerCase();
     return ['cancel','cancelled','canceled','suspended','stopped','inactive','取消','停課'].indexOf(value)>=0;
+  }
+
+  function scheduleStatusValue(status){
+    return clean(status&&typeof status==='object'?status.status:status)||'scheduled';
   }
 
   function fixedCourseEvents(course,rangeStart,rangeEnd,resolvePeriod){
     var events=[],statuses=course.statusByDate||{},allStatusDates=Object.keys(statuses).map(dateKey).filter(Boolean).sort(),start=recurringAnchorDate(course.date,allStatusDates),step=numberOf(course.frequencyWeeks)>=2?14:7;
-    if(!start||!clean(course.start)||!clean(course.roomId))return events;
+    if(!start||!clean(course.start||course.startTime)||!clean(course.roomId))return events;
     var recurrenceEnd=dateKey(course.recurrenceEndDate),stop=recurrenceEnd||(
       course.active===false?(dateKey(course.stopDate)||allStatusDates[allStatusDates.length-1]||start):rangeEnd
     ),cursor=start,guard=0;
     if(stop<start)stop=start;
     while(cursor<rangeStart&&guard<1500){cursor=shiftDate(cursor,step);guard++;}
     while(cursor<=rangeEnd&&cursor<=stop&&guard<1700){
-      var status=statuses[cursor]||'scheduled';
+      var status=scheduleStatusValue(statuses[cursor]);
       if(!cancelledCourseStatus(status))events.push(courseEvent(course,cursor,status,resolvePeriod));
       cursor=shiftDate(cursor,step);guard++;
     }
@@ -207,6 +236,10 @@
       studentIds:[],
       teacherId:'',
       subjectId:'',
+      subjectName:'',
+      useType:clean(row.useType||row.rentalUseType||row.purposeType),
+      useName:clean(row.useName),
+      resourceIds:sharedResourceIdsFor(row),
       tuitionPeriodId:'',
       clientName:clean(row.clientName||row.renterName||row.ownerName||row.useName)||'教室租用',
       rentalFee:numberOf(row.amount||row.rentalFee),
@@ -220,14 +253,21 @@
   function normalizeEvents(payload,periods,rangeStart,rangeEnd){
     var resolvePeriod=periodResolver(periods),events=[];
     array(payload.fixedCourses).forEach(function(row){events=events.concat(fixedCourseEvents(row,rangeStart,rangeEnd,resolvePeriod));});
-    array(payload.temporaryCourses).filter(function(row){return row.active!==false;}).forEach(function(row){var date=dateKey(row.date);if(date&&clean(row.start)&&clean(row.roomId)&&date>=rangeStart&&date<=rangeEnd)events.push(courseEvent(row,date,clean(row.statusByDate&&row.statusByDate[date])||'scheduled',resolvePeriod));});
+    array(payload.temporaryCourses).filter(function(row){return row.active!==false;}).forEach(function(row){var date=dateKey(row.date);if(date&&clean(row.start||row.startTime)&&clean(row.roomId)&&date>=rangeStart&&date<=rangeEnd)events.push(courseEvent(row,date,scheduleStatusValue(row.statusByDate&&row.statusByDate[date]||row.status),resolvePeriod));});
     array(payload.roomRentals).forEach(function(row,index){var event=normalizeRentalEvent(row,index,rangeStart,rangeEnd);if(event)events.push(event);});
-    var auditedEvents=array(payload.events).map(function(row,index){return Object.assign({id:safeId('event',row.id,index),seriesId:'',date:'',roomId:'',start:'',duration:60,type:'fixed',frequency:'once',studentIds:[],teacherId:'',subjectId:'',tuitionPeriodId:'',clientName:'',rentalFee:0,note:'',status:'scheduled',readOnly:true},row,{date:dateKey(row.date),start:clean(row.start),studentIds:unique(row.studentIds),tuitionPeriodId:clean(row.tuitionPeriodId)});});
+    var auditedEvents=array(payload.events).map(function(row,index){
+      var normalized=Object.assign({id:safeId('event',row.id,index),seriesId:'',date:'',roomId:'',start:'',duration:60,type:'fixed',frequency:'once',studentIds:[],teacherId:'',subjectId:'',tuitionPeriodId:'',clientName:'',rentalFee:0,note:'',status:'scheduled',readOnly:true},row,{date:dateKey(row.date),start:clean(row.start||row.startTime),studentIds:unique(row.studentIds),tuitionPeriodId:clean(row.tuitionPeriodId)});
+      normalized.portalAction=clean(row.portalAction);
+      normalized.specialLesson=row.specialLesson===true||normalized.portalAction==='teacher_gift'||clean(row.type)==='teacher_gift';
+      normalized.type=portalVisualType(row);
+      normalized.resourceIds=sharedResourceIdsFor(normalized);
+      return normalized;
+    });
     var coveredDates=unique(array(payload.dataQuality&&payload.dataQuality.auditCoveredDates).map(dateKey).filter(Boolean));
     if(!coveredDates.length&&auditedEvents.length)coveredDates=unique(auditedEvents.map(function(row){return row.date;}));
     if(coveredDates.length){
       var coveredSet=new Set(coveredDates);
-      events=events.filter(function(row){return !coveredSet.has(row.date);}).concat(auditedEvents);
+      events=events.filter(function(row){return !coveredSet.has(row.date)||clean(row.source)==='course-portal';}).concat(auditedEvents);
     }
     events=events.filter(function(row){return row.date&&row.roomId&&row.start&&row.date>=rangeStart&&row.date<=rangeEnd&&!cancelledCourseStatus(row.status);});
     // 有效固定課即使被請假、單堂或租用覆蓋仍保留；只在畫面上重疊，不可從資料刪除。
@@ -292,6 +332,16 @@
     var result=await call('coursePortalAdminSaveRoomEquipment',{
       adminPin:pin,
       roomId:roomId,
+      publicName:clean(options.publicName),
+      note:clean(options.note),
+      rentalFee:Number(options.rentalFee||0),
+      capacity:Math.max(1,Number(options.capacity||1)),
+      active:options.active!==false,
+      rentable:options.rentable!==false,
+      teacherSchedulable:options.teacherSchedulable!==false,
+      allowedSubjectIds:unique(options.allowedSubjectIds),
+      rentalUseTypes:unique(options.rentalUseTypes),
+      policies:options.policies&&typeof options.policies==='object'?options.policies:{},
       pianoType:clean(options.pianoType)||'none',
       equipment:unique(options.equipment)
     });

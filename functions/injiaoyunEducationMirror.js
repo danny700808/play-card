@@ -29,10 +29,11 @@ const db = admin.firestore();
 const FieldValue = admin.firestore.FieldValue;
 const Timestamp = admin.firestore.Timestamp;
 const FUNCTION_REGION = 'us-central1';
-const VERSION = '2026.07.28-v9-reuse-fresh-audit-sync';
+const VERSION = '2026.07.30-v12-full-convergence-fence';
 const MANUAL_SYNC_PIN = defineSecret('INJIAOYUN_MANUAL_SYNC_PIN');
 const SETTINGS_REF = db.collection('opsSettings').doc('injiaoyunEducationMirror');
 const OPERATIONS_SYNC_REF = db.collection('opsSettings').doc('injiaoyunCloudSync');
+const COURSE_PORTAL_SCHEDULE_VERSION_REF = db.collection('coursePortalRuntime').doc('scheduleVersion');
 const AUDIT_JOB_REGION = 'asia-east1';
 const AUDIT_JOB_NAME = 'injiaoyun-course-audit-0723-0724-v4';
 const CLOUD_PLATFORM_SCOPE = 'https://www.googleapis.com/auth/cloud-platform';
@@ -66,6 +67,182 @@ const MIRROR_TYPES = Object.freeze({
 
 function clean(value) {
   return String(value == null ? '' : value).trim();
+}
+
+function syncOwnerMatches(settings, schedule, syncOwner) {
+  const owner = clean(syncOwner);
+  return Boolean(
+    owner &&
+    clean(settings && settings.syncOwner) === owner &&
+    clean(schedule && schedule.syncOwner) === owner
+  );
+}
+
+function normalizedSyncScope(value) {
+  return clean(value).toLowerCase() === 'recent' ? 'recent' : 'full';
+}
+
+function fullConvergenceIsRequired(settings, schedule) {
+  return Boolean(
+    settings && settings.fullConvergenceRequired === true ||
+    schedule && schedule.fullConvergenceRequired === true
+  );
+}
+
+function syncReservationDirective(current, schedule, sourceVersion, syncScope, nowMillis) {
+  const scope = normalizedSyncScope(syncScope);
+  const fullRequired = fullConvergenceIsRequired(current, schedule);
+  if (
+    !fullRequired &&
+    clean(current && current.sourceVersion) === clean(sourceVersion) &&
+    clean(current && current.status).toLowerCase() === 'success'
+  ) return 'current';
+  const lockUntil = current && current.lockUntil && typeof current.lockUntil.toMillis === 'function'
+    ? current.lockUntil.toMillis()
+    : 0;
+  if (
+    clean(current && current.status).toLowerCase() === 'running' &&
+    lockUntil > Number(nowMillis || 0)
+  ) return 'running';
+  if (scope === 'recent' && fullRequired) return 'full-required';
+  return 'accept';
+}
+
+function activeSyncOwnerMatches(settings, schedule, syncOwner, sourceVersion, syncScope) {
+  const expectedSourceVersion = clean(sourceVersion);
+  const expectedScope = normalizedSyncScope(syncScope);
+  return Boolean(
+    syncOwnerMatches(settings, schedule, syncOwner) &&
+    clean(settings && settings.status).toLowerCase() === 'running' &&
+    schedule && schedule.syncing === true &&
+    expectedSourceVersion &&
+    clean(settings && settings.pendingSourceVersion) === expectedSourceVersion &&
+    clean(schedule && schedule.pendingSourceVersion) === expectedSourceVersion &&
+    clean(settings && settings.syncScope) === expectedScope &&
+    clean(schedule && schedule.syncScope) === expectedScope
+  );
+}
+
+function convergenceOwnerForState(settings, schedule) {
+  const activeOwner = clean(settings && settings.syncOwner);
+  const activeSourceVersion = clean(settings && settings.pendingSourceVersion);
+  const activeScope = normalizedSyncScope(settings && settings.syncScope);
+  if (activeSyncOwnerMatches(settings, schedule, activeOwner, activeSourceVersion, activeScope)) {
+    return { owner: activeOwner, sourceVersion: activeSourceVersion, active: true };
+  }
+  if (
+    clean(settings && settings.status).toLowerCase() === 'running' ||
+    schedule && schedule.syncing === true
+  ) return null;
+  const settingsOwner = clean(settings && (settings.lastFinalizedOwner || settings.syncOwner));
+  const scheduleOwner = clean(schedule && (schedule.lastFinalizedOwner || schedule.syncOwner));
+  const settingsSourceVersion = clean(
+    settings && (settings.lastFinalizedSourceVersion || settings.sourceVersion)
+  );
+  const scheduleSourceVersion = clean(
+    (schedule && schedule.lastFinalizedSourceVersion) || settingsSourceVersion
+  );
+  if (
+    !settingsOwner ||
+    settingsOwner !== scheduleOwner ||
+    !settingsSourceVersion ||
+    settingsSourceVersion !== scheduleSourceVersion
+  ) return null;
+  return { owner: settingsOwner, sourceVersion: settingsSourceVersion, active: false };
+}
+
+function applyOwnedSyncFinalization(
+  transaction,
+  settings,
+  schedule,
+  syncOwner,
+  sourceVersion,
+  syncScope,
+  trigger,
+  status,
+  settingsUpdates
+) {
+  const owner = clean(syncOwner);
+  const finalizedSourceVersion = clean(sourceVersion);
+  const finalizedScope = normalizedSyncScope(syncScope);
+  if (
+    !activeSyncOwnerMatches(
+      settings,
+      schedule,
+      owner,
+      finalizedSourceVersion,
+      finalizedScope
+    )
+  ) return false;
+  if (finalizedScope === 'recent' && fullConvergenceIsRequired(settings, schedule)) return false;
+  const succeeded = clean(status).toLowerCase() === 'success';
+  const finalSettings = Object.assign({}, settingsUpdates || {}, {
+    syncOwner: '',
+    syncScope: '',
+    pendingSourceVersion: '',
+    lastFinalizedOwner: owner,
+    lastFinalizedSourceVersion: finalizedSourceVersion,
+    lastFinalizedSyncScope: finalizedScope
+  });
+  const finalSchedule = {
+    version: Number(schedule && schedule.version || 0) + 1,
+    syncOwner: '',
+    syncScope: '',
+    pendingSourceVersion: '',
+    lastFinalizedOwner: owner,
+    lastFinalizedSourceVersion: finalizedSourceVersion,
+    lastFinalizedSyncScope: finalizedScope,
+    syncing: false,
+    syncingUntil: Timestamp.fromMillis(0),
+    writesBlocked: !succeeded,
+    integrityStatus: succeeded ? 'healthy' : 'error',
+    lastSyncStatus: clean(status) || (succeeded ? 'success' : 'error'),
+    updatedAt: FieldValue.serverTimestamp(),
+    updatedBy: `injiaoyun-mirror:${clean(trigger) || 'sync'}`
+  };
+  // 部分 full 寫入即使失敗也可能留下混合資料；只有 full 成功才能解除強制完整收斂。
+  if (succeeded && finalizedScope === 'full') {
+    finalSettings.fullConvergenceRequired = false;
+    finalSchedule.fullConvergenceRequired = false;
+  }
+  transaction.set(SETTINGS_REF, finalSettings, { merge: true });
+  transaction.set(COURSE_PORTAL_SCHEDULE_VERSION_REF, finalSchedule, { merge: true });
+  return true;
+}
+
+async function markCoursePortalScheduleUpdated(
+  trigger,
+  status = 'success',
+  syncOwner,
+  sourceVersion,
+  syncScope,
+  settingsUpdates
+) {
+  const owner = clean(syncOwner);
+  if (!owner) return { finalized: false, reason: 'missing-owner' };
+  return db.runTransaction(async (transaction) => {
+    const [settingsSnapshot, scheduleSnapshot] = await Promise.all([
+      transaction.get(SETTINGS_REF),
+      transaction.get(COURSE_PORTAL_SCHEDULE_VERSION_REF)
+    ]);
+    const settings = settingsSnapshot.exists ? settingsSnapshot.data() || {} : {};
+    const schedule = scheduleSnapshot.exists ? scheduleSnapshot.data() || {} : {};
+    const finalized = applyOwnedSyncFinalization(
+      transaction,
+      settings,
+      schedule,
+      owner,
+      sourceVersion,
+      syncScope,
+      trigger,
+      status,
+      settingsUpdates
+    );
+    return {
+      finalized,
+      reason: finalized ? 'finalized' : 'owner-changed'
+    };
+  });
 }
 
 function dateKey(value) {
@@ -240,6 +417,69 @@ async function waitForMirrorIdle(timeoutMs = 120000) {
   throw new Error('前一批資料仍在套用中，請稍後再按一次同步。');
 }
 
+async function requeueMirrorConvergenceAfterFailure(trigger) {
+  return db.runTransaction(async (transaction) => {
+    const [settingsSnapshot, scheduleSnapshot] = await Promise.all([
+      transaction.get(SETTINGS_REF),
+      transaction.get(COURSE_PORTAL_SCHEDULE_VERSION_REF)
+    ]);
+    const settings = settingsSnapshot.exists ? settingsSnapshot.data() || {} : {};
+    const schedule = scheduleSnapshot.exists ? scheduleSnapshot.data() || {} : {};
+    const convergenceOwner = convergenceOwnerForState(settings, schedule);
+    if (!convergenceOwner) return false;
+    transaction.set(SETTINGS_REF, {
+      convergenceQueued: true,
+      convergenceQueuedForOwner: convergenceOwner.owner,
+      convergenceQueuedForSourceVersion: convergenceOwner.sourceVersion,
+      convergenceQueuedAt: FieldValue.serverTimestamp(),
+      convergenceQueuedBy: `${clean(trigger) || 'queued-convergence'}:retry-after-error`
+    }, { merge: true });
+    return true;
+  });
+}
+
+async function runQueuedMirrorConvergence(trigger, syncOwner, sourceVersion) {
+  const owner = clean(syncOwner);
+  const expectedSourceVersion = clean(sourceVersion);
+  if (!owner || !expectedSourceVersion) return null;
+  const queued = await db.runTransaction(async (transaction) => {
+    const [settingsSnapshot, scheduleSnapshot] = await Promise.all([
+      transaction.get(SETTINGS_REF),
+      transaction.get(COURSE_PORTAL_SCHEDULE_VERSION_REF)
+    ]);
+    const settings = settingsSnapshot.exists ? settingsSnapshot.data() || {} : {};
+    const schedule = scheduleSnapshot.exists ? scheduleSnapshot.data() || {} : {};
+    if (settings.convergenceQueued !== true) return null;
+    const convergenceOwner = convergenceOwnerForState(settings, schedule);
+    if (!convergenceOwner || convergenceOwner.active) return null;
+    const queuedOwner = clean(settings.convergenceQueuedForOwner);
+    const queuedSourceVersion = clean(settings.convergenceQueuedForSourceVersion);
+    if (
+      convergenceOwner.owner !== owner ||
+      convergenceOwner.sourceVersion !== expectedSourceVersion
+    ) return null;
+    if (queuedOwner && queuedOwner !== owner) return null;
+    if (queuedSourceVersion && queuedSourceVersion !== expectedSourceVersion) return null;
+    transaction.set(SETTINGS_REF, {
+      convergenceQueued: false,
+      convergenceQueuedForOwner: '',
+      convergenceQueuedForSourceVersion: '',
+      convergenceStartedAt: FieldValue.serverTimestamp(),
+      convergenceTrigger: clean(trigger) || 'queued-convergence'
+    }, { merge: true });
+    return true;
+  });
+  if (!queued) return null;
+  try {
+    return await syncLatestMirror(`${clean(trigger) || 'sync'}:queued-convergence`);
+  } catch (error) {
+    await requeueMirrorConvergenceAfterFailure(trigger).catch((requeueError) => {
+      console.error('[course portal queued convergence requeue failed]', requeueError);
+    });
+    throw error;
+  }
+}
+
 async function auditRefreshRange(endDate) {
   const selectedEndDate = dateKey(endDate);
   if (!selectedEndDate) throw new Error('同步日期格式不正確。');
@@ -334,20 +574,43 @@ function sourceHash(value) {
   return crypto.createHash('sha256').update(JSON.stringify(value), 'utf8').digest('hex');
 }
 
-async function commitOperations(operations) {
+function syncOwnershipError() {
+  const error = new Error('這批同步已由較新的工作接手，停止寫入舊資料。');
+  error.code = 'sync-owner-changed';
+  return error;
+}
+
+async function commitOperations(operations, syncContext) {
+  const owner = clean(syncContext && syncContext.syncOwner);
+  const sourceVersion = clean(syncContext && syncContext.sourceVersion);
+  const syncScope = normalizedSyncScope(syncContext && syncContext.syncScope);
   let commits = 0;
+  const chunks = [];
   for (let offset = 0; offset < operations.length; offset += BATCH_SIZE) {
-    const batch = db.batch();
-    operations.slice(offset, offset + BATCH_SIZE).forEach((operation) => {
-      batch.set(operation.ref, operation.data, { merge: true });
+    chunks.push(operations.slice(offset, offset + BATCH_SIZE));
+  }
+  if (!chunks.length) chunks.push([]);
+  for (const chunk of chunks) {
+    await db.runTransaction(async (transaction) => {
+      const [settingsSnapshot, scheduleSnapshot] = await Promise.all([
+        transaction.get(SETTINGS_REF),
+        transaction.get(COURSE_PORTAL_SCHEDULE_VERSION_REF)
+      ]);
+      const settings = settingsSnapshot.exists ? settingsSnapshot.data() || {} : {};
+      const schedule = scheduleSnapshot.exists ? scheduleSnapshot.data() || {} : {};
+      if (!activeSyncOwnerMatches(settings, schedule, owner, sourceVersion, syncScope)) {
+        throw syncOwnershipError();
+      }
+      chunk.forEach((operation) => {
+        transaction.set(operation.ref, operation.data, { merge: true });
+      });
     });
-    await batch.commit();
-    commits += 1;
+    if (chunk.length) commits += 1;
   }
   return commits;
 }
 
-async function syncType(type, collectionName, rows, runId) {
+async function syncType(type, collectionName, rows, runId, syncContext) {
   const collection = db.collection(collectionName);
   const snapshot = await collection.get();
   const existing = new Map(snapshot.docs.map((doc) => [clean(doc.data() && doc.data().sourceId), {
@@ -412,12 +675,12 @@ async function syncType(type, collectionName, rows, runId) {
     if (shouldDeactivate && prior.data.sourceActive !== false) deactivated += 1;
   });
 
-  const commits = await commitOperations(operations);
+  const commits = await commitOperations(operations, syncContext);
   return { sourceCount: rows.length, created, updated, unchanged, missing, deactivated, writes: operations.length, commits };
 }
 
 // 日表核對每次只抓指定日期範圍；範圍外的歷史事件要保留，範圍內則以本次舊系統結果完整覆蓋。
-async function syncScopedEvents(collectionName, rows, auditRunId, coveredDates) {
+async function syncScopedEvents(collectionName, rows, auditRunId, coveredDates, syncContext) {
   const collection = db.collection(collectionName);
   const snapshot = await collection.get();
   const existing = new Map(snapshot.docs.map((doc) => [clean((doc.data() || {}).sourceId), {
@@ -480,7 +743,7 @@ async function syncScopedEvents(collectionName, rows, auditRunId, coveredDates) 
     if (prior.data.sourceActive !== false) deactivated += 1;
   });
 
-  const commits = await commitOperations(operations);
+  const commits = await commitOperations(operations, syncContext);
   return { sourceCount: rows.length, created, updated, unchanged, missing, deactivated, writes: operations.length, commits };
 }
 
@@ -507,7 +770,7 @@ async function snapshotForDates(collectionName, coveredDates) {
   }
 }
 
-async function syncRowsFromSnapshot(type, collectionName, rows, runId, snapshot, options = {}) {
+async function syncRowsFromSnapshot(type, collectionName, rows, runId, snapshot, options = {}, syncContext) {
   const collection = db.collection(collectionName);
   const covered = new Set((options.coveredDates || []).map(dateKey).filter(Boolean));
   const existing = new Map((snapshot && snapshot.docs || []).map((doc) => [clean((doc.data() || {}).sourceId), {
@@ -573,7 +836,7 @@ async function syncRowsFromSnapshot(type, collectionName, rows, runId, snapshot,
     });
   }
 
-  const commits = await commitOperations(operations);
+  const commits = await commitOperations(operations, syncContext);
   return { sourceCount: rows.length, created, updated, unchanged, missing, deactivated, writes: operations.length, commits };
 }
 
@@ -616,8 +879,19 @@ async function syncRecentMirror(startDate, endDate, preferredAuditRunId, trigger
   const operationsSettings = operationsSnapshot.exists ? operationsSnapshot.data() || {} : {};
   const operationsVersion = `${clean(operationsSettings.lastEndDateKey)}:${timestampMillis(operationsSettings.lastSucceededAt)}`;
   const sourceVersion = `${migrationRunId}|${auditInfo.runId}|${operationsVersion}|${VERSION}|${EDUCATION_PREVIEW_VERSION}`;
-  const reservation = await reserveSync(sourceVersion, trigger);
+  const reservation = await reserveSync(sourceVersion, trigger, 'recent');
   if (!reservation.accepted) {
+    if (reservation.reason === 'full-required') {
+      return syncLatestMirror(`${clean(trigger) || 'recent-sync'}:full-convergence-required`);
+    }
+    if (reservation.reason === 'current' || reservation.reason === 'current-repaired') {
+      const converged = await runQueuedMirrorConvergence(
+        trigger,
+        reservation.finalizedOwner,
+        sourceVersion
+      );
+      if (converged) return converged;
+    }
     return {
       ok: true,
       status: reservation.reason,
@@ -626,6 +900,7 @@ async function syncRecentMirror(startDate, endDate, preferredAuditRunId, trigger
       summary: reservation.current && reservation.current.summary || {}
     };
   }
+  const syncContext = { syncOwner: reservation.syncOwner, sourceVersion, syncScope: 'recent' };
 
   try {
     const audit = await latestAuditSchedule(auditInfo.runId);
@@ -691,7 +966,9 @@ async function syncRecentMirror(startDate, endDate, preferredAuditRunId, trigger
         MIRROR_TYPES.tuitionPeriods,
         periods,
         migrationRunId,
-        periodSnapshot
+        periodSnapshot,
+        {},
+        syncContext
       ),
       attendance: await syncRowsFromSnapshot(
         'attendance',
@@ -699,7 +976,8 @@ async function syncRecentMirror(startDate, endDate, preferredAuditRunId, trigger
         recentAttendance,
         audit.runId,
         attendanceSnapshot,
-        { coveredDates, deactivateMissing: true }
+        { coveredDates, deactivateMissing: true },
+        syncContext
       ),
       teacherPayroll: await syncRowsFromSnapshot(
         'teacherPayroll',
@@ -707,7 +985,8 @@ async function syncRecentMirror(startDate, endDate, preferredAuditRunId, trigger
         recentPayroll,
         audit.runId,
         payrollSnapshot,
-        { coveredDates, deactivateMissing: true }
+        { coveredDates, deactivateMissing: true },
+        syncContext
       ),
       roomRentals: await syncRowsFromSnapshot(
         'roomRentals',
@@ -715,7 +994,8 @@ async function syncRecentMirror(startDate, endDate, preferredAuditRunId, trigger
         recentRentals,
         audit.runId,
         rentalSnapshot,
-        { coveredDates, deactivateMissing: false }
+        { coveredDates, deactivateMissing: true },
+        syncContext
       ),
       events: await syncRowsFromSnapshot(
         'events',
@@ -723,7 +1003,8 @@ async function syncRecentMirror(startDate, endDate, preferredAuditRunId, trigger
         recentEvents,
         audit.runId,
         eventSnapshot,
-        { coveredDates, deactivateMissing: true }
+        { coveredDates, deactivateMissing: true },
+        syncContext
       )
     };
     const summary = Object.values(results).reduce((total, row) => {
@@ -767,26 +1048,45 @@ async function syncRecentMirror(startDate, endDate, preferredAuditRunId, trigger
         Number(previousCounts.attendance || 0) - currentAttendance.length + recentAttendance.length
       );
     }
-    await SETTINGS_REF.set({
-      status: 'success',
-      sourceRunId: migrationRunId,
-      auditRunId: audit.runId,
+    const finalization = await markCoursePortalScheduleUpdated(
+      trigger,
+      'success',
+      reservation.syncOwner,
       sourceVersion,
-      pendingRunId: '',
-      pendingSourceVersion: '',
-      completedAt: FieldValue.serverTimestamp(),
-      lockUntil: Timestamp.fromMillis(0),
-      summary,
-      typeResults,
-      sourceCounts,
-      dataQuality,
-      auditCoveredDates,
-      version: VERSION
-    }, { merge: true });
+      'recent',
+      {
+        status: 'success',
+        sourceRunId: migrationRunId,
+        auditRunId: audit.runId,
+        sourceVersion,
+        pendingRunId: '',
+        pendingSourceVersion: '',
+        completedAt: FieldValue.serverTimestamp(),
+        lockUntil: Timestamp.fromMillis(0),
+        summary,
+        typeResults,
+        sourceCounts,
+        dataQuality,
+        auditCoveredDates,
+        version: VERSION
+      }
+    );
+    if (!finalization.finalized) {
+      return {
+        ok: true,
+        status: 'superseded',
+        runId: migrationRunId,
+        auditRunId: audit.runId,
+        summary,
+        typeResults: results
+      };
+    }
     await db.collection('opsEducationSyncRuns').doc(documentId('syncRun', sourceVersion)).set({
       runId: migrationRunId,
       auditRunId: audit.runId,
       sourceVersion,
+      syncOwner: reservation.syncOwner,
+      syncScope: 'recent',
       status: 'success',
       trigger: clean(trigger) || 'manual-recent-delta',
       refreshStartDate: selectedStartDate,
@@ -795,7 +1095,18 @@ async function syncRecentMirror(startDate, endDate, preferredAuditRunId, trigger
       typeResults: results,
       completedAt: FieldValue.serverTimestamp(),
       version: VERSION
-    }, { merge: true });
+    }, { merge: true }).catch((syncError) => {
+      console.error('[education mirror sync run log failed after success]', syncError);
+    });
+    const converged = await runQueuedMirrorConvergence(
+      trigger,
+      reservation.syncOwner,
+      sourceVersion
+    ).catch((syncError) => {
+      console.error('[course portal queued convergence failed after success]', syncError);
+      return null;
+    });
+    if (converged) return converged;
     return {
       ok: true,
       status: 'success',
@@ -806,43 +1117,163 @@ async function syncRecentMirror(startDate, endDate, preferredAuditRunId, trigger
     };
   } catch (error) {
     const message = clean(error && error.message || error).slice(0, 1000);
-    await SETTINGS_REF.set({
-      status: 'error',
-      pendingRunId: '',
-      pendingSourceVersion: '',
-      failedAt: FieldValue.serverTimestamp(),
-      lockUntil: Timestamp.fromMillis(0),
-      lastError: message,
-      version: VERSION
-    }, { merge: true });
+    const finalization = await markCoursePortalScheduleUpdated(
+      `${trigger}:error`,
+      'error',
+      reservation.syncOwner,
+      sourceVersion,
+      'recent',
+      {
+        status: 'error',
+        pendingRunId: '',
+        pendingSourceVersion: '',
+        failedAt: FieldValue.serverTimestamp(),
+        lockUntil: Timestamp.fromMillis(0),
+        lastError: message,
+        version: VERSION
+      }
+    ).catch((syncError) => {
+      console.error('[course portal schedule sync unlock failed]', syncError);
+      return null;
+    });
+    if (finalization && finalization.finalized) {
+      const recovered = await runQueuedMirrorConvergence(
+        `${trigger}:error-recovery`,
+        reservation.syncOwner,
+        sourceVersion
+      ).catch((syncError) => {
+        console.error('[course portal queued convergence failed]', syncError);
+        return null;
+      });
+      if (recovered) return recovered;
+    }
     throw error;
   }
 }
 
-async function reserveSync(sourceVersion, trigger) {
+async function reserveSync(sourceVersion, trigger, syncScope = 'full') {
   const now = Timestamp.now();
+  const scope = normalizedSyncScope(syncScope);
+  const syncOwner = `injiaoyun-mirror:${crypto.randomUUID()}`;
   return db.runTransaction(async (transaction) => {
-    const snapshot = await transaction.get(SETTINGS_REF);
+    const [snapshot, scheduleSnapshot] = await Promise.all([
+      transaction.get(SETTINGS_REF),
+      transaction.get(COURSE_PORTAL_SCHEDULE_VERSION_REF)
+    ]);
     const current = snapshot.exists ? snapshot.data() || {} : {};
-    const lockUntil = current.lockUntil && typeof current.lockUntil.toMillis === 'function'
-      ? current.lockUntil.toMillis()
-      : 0;
-    if (clean(current.sourceVersion) === sourceVersion && clean(current.status) === 'success') {
-      return { accepted: false, reason: 'current', current };
+    const schedule = scheduleSnapshot.exists ? scheduleSnapshot.data() || {} : {};
+    const fullRequired = fullConvergenceIsRequired(current, schedule);
+    const directive = syncReservationDirective(
+      current,
+      schedule,
+      sourceVersion,
+      scope,
+      now.toMillis()
+    );
+    if (directive === 'current') {
+      const currentOwner = clean(current.syncOwner);
+      const scheduleOwner = clean(schedule.syncOwner);
+      const finalizedOwner = clean(current.lastFinalizedOwner || currentOwner);
+      const scheduleKnownOwner = clean(scheduleOwner || schedule.lastFinalizedOwner);
+      const scheduleKnownSourceVersion = clean(
+        schedule.pendingSourceVersion || schedule.lastFinalizedSourceVersion
+      );
+      // 舊版成功狀態沒有 owner；只要 schedule 也沒有 owner，仍可修復遺漏的解鎖。
+      // schedule 已有不同 owner 時代表較新的同步已接手，舊狀態不可解除它的封鎖。
+      const repairOwnerMatches = (
+        (!scheduleKnownOwner || Boolean(finalizedOwner && finalizedOwner === scheduleKnownOwner)) &&
+        (!scheduleKnownSourceVersion || scheduleKnownSourceVersion === sourceVersion)
+      );
+      if (
+        repairOwnerMatches &&
+        (
+          schedule.writesBlocked === true ||
+          schedule.syncing === true ||
+          clean(schedule.integrityStatus).toLowerCase() !== 'healthy'
+        )
+      ) {
+        const scheduleVersion = Number(schedule.version || 0);
+        const repairUpdates = {
+          version: scheduleVersion + 1,
+          syncing: false,
+          syncingUntil: Timestamp.fromMillis(0),
+          writesBlocked: false,
+          integrityStatus: 'healthy',
+          lastSyncStatus: 'success',
+          updatedAt: FieldValue.serverTimestamp(),
+          updatedBy: `injiaoyun-mirror:${clean(trigger) || 'sync'}:repair-completed-sync`
+        };
+        if (finalizedOwner || scheduleKnownOwner) {
+          const repairedOwner = finalizedOwner || scheduleKnownOwner;
+          repairUpdates.syncOwner = '';
+          repairUpdates.syncScope = '';
+          repairUpdates.pendingSourceVersion = '';
+          repairUpdates.lastFinalizedOwner = repairedOwner;
+          repairUpdates.lastFinalizedSourceVersion = sourceVersion;
+          if (currentOwner) {
+            transaction.set(SETTINGS_REF, {
+              syncOwner: '',
+              syncScope: '',
+              pendingSourceVersion: '',
+              lastFinalizedOwner: repairedOwner,
+              lastFinalizedSourceVersion: sourceVersion
+            }, { merge: true });
+          }
+        }
+        transaction.set(COURSE_PORTAL_SCHEDULE_VERSION_REF, repairUpdates, { merge: true });
+        return { accepted: false, reason: 'current-repaired', current, finalizedOwner };
+      }
+      return { accepted: false, reason: 'current', current, finalizedOwner };
     }
-    if (clean(current.status) === 'running' && lockUntil > now.toMillis()) {
+    if (directive === 'running') {
+      transaction.set(SETTINGS_REF, {
+        convergenceQueued: true,
+        convergenceQueuedForOwner: clean(current.syncOwner),
+        convergenceQueuedForSourceVersion: clean(current.pendingSourceVersion),
+        convergenceQueuedAt: FieldValue.serverTimestamp(),
+        convergenceQueuedBy: clean(trigger) || 'automatic'
+      }, { merge: true });
       return { accepted: false, reason: 'running', current };
     }
+    if (directive === 'full-required') {
+      return { accepted: false, reason: 'full-required', current };
+    }
+    const preserveQueuedConvergence = (
+      scope === 'full' &&
+      fullRequired &&
+      current.convergenceQueued === true
+    );
     transaction.set(SETTINGS_REF, {
       status: 'running',
       trigger: clean(trigger) || 'automatic',
       pendingSourceVersion: sourceVersion,
+      syncOwner,
+      syncScope: scope,
+      fullConvergenceRequired: scope === 'full' ? true : fullRequired,
+      convergenceQueued: preserveQueuedConvergence,
+      convergenceQueuedForOwner: preserveQueuedConvergence ? syncOwner : '',
+      convergenceQueuedForSourceVersion: preserveQueuedConvergence ? sourceVersion : '',
       startedAt: now,
       lockUntil: Timestamp.fromMillis(now.toMillis() + LOCK_MS),
       lastError: '',
       version: VERSION
     }, { merge: true });
-    return { accepted: true, current };
+    const scheduleVersion = Number(schedule.version || 0);
+    transaction.set(COURSE_PORTAL_SCHEDULE_VERSION_REF, {
+      version: scheduleVersion + 1,
+      syncOwner,
+      syncScope: scope,
+      pendingSourceVersion: sourceVersion,
+      fullConvergenceRequired: scope === 'full' ? true : fullRequired,
+      syncing: true,
+      syncingUntil: Timestamp.fromMillis(now.toMillis() + LOCK_MS),
+      writesBlocked: true,
+      integrityStatus: 'syncing',
+      lastSyncStatus: 'running',
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedBy: `injiaoyun-mirror:${clean(trigger) || 'sync'}:start`
+    }, { merge: true });
+    return { accepted: true, current, syncOwner, syncScope: scope };
   });
 }
 
@@ -953,8 +1384,16 @@ async function syncLatestMirror(trigger = 'automatic') {
   const operationsSettings = operationsSnapshot.exists ? operationsSnapshot.data() || {} : {};
   const operationsVersion = `${clean(operationsSettings.lastEndDateKey)}:${timestampMillis(operationsSettings.lastSucceededAt)}`;
   const sourceVersion = `${migrationRunId}|${auditInfo.runId}|${operationsVersion}|${VERSION}|${EDUCATION_PREVIEW_VERSION}`;
-  const reservation = await reserveSync(sourceVersion, trigger);
+  const reservation = await reserveSync(sourceVersion, trigger, 'full');
   if (!reservation.accepted) {
+    if (reservation.reason === 'current' || reservation.reason === 'current-repaired') {
+      const converged = await runQueuedMirrorConvergence(
+        trigger,
+        reservation.finalizedOwner,
+        sourceVersion
+      );
+      if (converged) return converged;
+    }
     return {
       ok: true,
       status: reservation.reason,
@@ -963,6 +1402,7 @@ async function syncLatestMirror(trigger = 'automatic') {
       summary: reservation.current && reservation.current.summary || {}
     };
   }
+  const syncContext = { syncOwner: reservation.syncOwner, sourceVersion, syncScope: 'full' };
 
   try {
     // 只有來源版本真的改變時才讀取完整 audit 子集合，避免每次開頁都重抓全部歷史資料。
@@ -980,13 +1420,20 @@ async function syncLatestMirror(trigger = 'automatic') {
     const results = {};
     for (const [type, collectionName] of Object.entries(MIRROR_TYPES)) {
       if (type === 'events') {
-        results[type] = await syncScopedEvents(collectionName, audit.events, audit.runId, audit.coveredDates);
+        results[type] = await syncScopedEvents(
+          collectionName,
+          audit.events,
+          audit.runId,
+          audit.coveredDates,
+          syncContext
+        );
       } else {
         results[type] = await syncType(
           type,
           collectionName,
           type === 'attendance' ? reconciledAttendance : (Array.isArray(preview[type]) ? preview[type] : []),
-          migrationRunId
+          migrationRunId,
+          syncContext
         );
       }
     }
@@ -1008,33 +1455,63 @@ async function syncLatestMirror(trigger = 'automatic') {
       auditCountsByDate: audit.countsByDate || {},
       auditScheduleVersion: EDUCATION_PREVIEW_VERSION
     });
-    await SETTINGS_REF.set({
-      status: 'success',
-      sourceRunId: migrationRunId,
-      auditRunId: audit.runId,
+    const finalization = await markCoursePortalScheduleUpdated(
+      trigger,
+      'success',
+      reservation.syncOwner,
       sourceVersion,
-      pendingRunId: '',
-      pendingSourceVersion: '',
-      completedAt: FieldValue.serverTimestamp(),
-      lockUntil: Timestamp.fromMillis(0),
-      summary,
-      typeResults: results,
-      sourceCounts: Object.assign({}, preview.counts || {}, { events: audit.events.length }),
-      dataQuality,
-      auditCoveredDates,
-      version: VERSION
-    }, { merge: true });
+      'full',
+      {
+        status: 'success',
+        sourceRunId: migrationRunId,
+        auditRunId: audit.runId,
+        sourceVersion,
+        pendingRunId: '',
+        pendingSourceVersion: '',
+        completedAt: FieldValue.serverTimestamp(),
+        lockUntil: Timestamp.fromMillis(0),
+        summary,
+        typeResults: results,
+        sourceCounts: Object.assign({}, preview.counts || {}, { events: audit.events.length }),
+        dataQuality,
+        auditCoveredDates,
+        version: VERSION
+      }
+    );
+    if (!finalization.finalized) {
+      return {
+        ok: true,
+        status: 'superseded',
+        runId: migrationRunId,
+        auditRunId: audit.runId,
+        summary,
+        typeResults: results
+      };
+    }
     await db.collection('opsEducationSyncRuns').doc(documentId('syncRun', sourceVersion)).set({
       runId: migrationRunId,
       auditRunId: audit.runId,
       sourceVersion,
+      syncOwner: reservation.syncOwner,
+      syncScope: 'full',
       status: 'success',
       trigger: clean(trigger) || 'automatic',
       summary,
       typeResults: results,
       completedAt: FieldValue.serverTimestamp(),
       version: VERSION
-    }, { merge: true });
+    }, { merge: true }).catch((syncError) => {
+      console.error('[education mirror sync run log failed after success]', syncError);
+    });
+    const converged = await runQueuedMirrorConvergence(
+      trigger,
+      reservation.syncOwner,
+      sourceVersion
+    ).catch((syncError) => {
+      console.error('[course portal queued convergence failed after success]', syncError);
+      return null;
+    });
+    if (converged) return converged;
     return {
       ok: true,
       status: 'success',
@@ -1045,15 +1522,36 @@ async function syncLatestMirror(trigger = 'automatic') {
     };
   } catch (error) {
     const message = clean(error && error.message || error).slice(0, 1000);
-    await SETTINGS_REF.set({
-      status: 'error',
-      pendingRunId: '',
-      pendingSourceVersion: '',
-      failedAt: FieldValue.serverTimestamp(),
-      lockUntil: Timestamp.fromMillis(0),
-      lastError: message,
-      version: VERSION
-    }, { merge: true });
+    const finalization = await markCoursePortalScheduleUpdated(
+      `${trigger}:error`,
+      'error',
+      reservation.syncOwner,
+      sourceVersion,
+      'full',
+      {
+        status: 'error',
+        pendingRunId: '',
+        pendingSourceVersion: '',
+        failedAt: FieldValue.serverTimestamp(),
+        lockUntil: Timestamp.fromMillis(0),
+        lastError: message,
+        version: VERSION
+      }
+    ).catch((syncError) => {
+      console.error('[course portal schedule sync unlock failed]', syncError);
+      return null;
+    });
+    if (finalization && finalization.finalized) {
+      const recovered = await runQueuedMirrorConvergence(
+        `${trigger}:error-recovery`,
+        reservation.syncOwner,
+        sourceVersion
+      ).catch((syncError) => {
+        console.error('[course portal queued convergence failed]', syncError);
+        return null;
+      });
+      if (recovered) return recovered;
+    }
     throw error;
   }
 }
@@ -1222,16 +1720,22 @@ function registerInjiaoyunEducationMirror(exportsObject) {
 
 module.exports = {
   MIRROR_TYPES,
+  activeSyncOwnerMatches,
+  applyOwnedSyncFinalization,
   auditCoversRange,
   auditIsRecent,
   auditRefreshRange,
+  convergenceOwnerForState,
   dateKey,
+  fullConvergenceIsRequired,
   readMirrorPayload,
   reconcileAuditedAttendance,
   refreshTuitionUsage,
   registerInjiaoyunEducationMirror,
   runAuditForRange,
   sourceHash,
+  syncReservationDirective,
+  syncOwnerMatches,
   syncRecentMirror,
   syncLatestMirror
 };

@@ -2,6 +2,7 @@
 
 const assert = require('assert');
 const fs = require('fs');
+const Module = require('module');
 const path = require('path');
 const vm = require('vm');
 
@@ -24,6 +25,11 @@ assert.deepStrictEqual(
   courseSourceIds({ id: 'audit-event', sourceCourseId: 'fixed-course-5' }),
   ['audit-event', 'fixed-course-5'],
   '日表事件必須能以原固定課 ID 取代同時段固定課，避免請假後仍重複占用教室'
+);
+assert.deepStrictEqual(
+  courseSourceIds({ id: 'audit-series-event', seriesId: 'fixed-course-6' }),
+  ['audit-series-event', 'fixed-course-6'],
+  '日表事件只保留 seriesId 時仍必須能追溯原固定課系列'
 );
 
 const pages = [
@@ -93,12 +99,33 @@ for (const file of pages) {
 });
 
 const teacherPortal = fs.readFileSync(path.join(root, 'teacher-course-portal.html'), 'utf8');
-assert(teacherPortal.includes('value="single_move"'), '老師入口缺少單次調課');
-assert(teacherPortal.includes('value="permanent_move"'), '老師入口缺少永久調課');
+const teacherSource = fs.readFileSync(path.join(root, 'teacher-course-portal-v8.js'), 'utf8');
+const teacherCss = fs.readFileSync(path.join(root, 'teacher-course-portal-v8.css'), 'utf8');
+new vm.Script(teacherSource, { filename: 'teacher-course-portal-v8.js' });
+assert(teacherSource.includes('data-quick-action="single_move"'), '老師入口缺少單次調課');
+assert(teacherSource.includes('data-quick-action="permanent_move"'), '老師入口缺少永久調課');
+assert(teacherSource.includes('coursePortalTeacherSlotOptions'), '老師入口缺少先選空位再選課程的即時查詢');
+assert(teacherSource.includes('data-target-browse'), '老師入口缺少從空白時段調入課程');
+assert(teacherSource.includes('data-planner-room'), '老師入口缺少在課表原地選教室');
+assert(teacherSource.includes('data-confirm-permanent'), '永久調課缺少衝突日期確認');
+assert(teacherSource.includes('includePayroll: activeTab === \'payroll\''), '薪資資料沒有延後到薪資頁查詢');
+assert(!teacherSource.includes("getElementById('actionModal')"), '老師入口仍會跳回舊電腦版大表單');
+assert(!teacherSource.includes("getElementById('actionForm')"), '老師入口仍依賴已刪除的舊調課表單');
 assert(teacherPortal.includes('id="teacherQuickBackdrop"'), '老師課表缺少點選後的快速操作選單');
 assert(teacherPortal.includes('id="weekPicker"'), '老師課表缺少直接選擇星期');
+assert(teacherPortal.includes('id="teacherFlowBanner"'), '老師課表缺少原地操作狀態');
+assert(teacherPortal.includes('id="teacherLegend"'), '老師課表缺少完整圖例');
+assert(teacherPortal.includes('<i class="rental"></i>租用'), '老師課表圖例缺少教室租用');
+assert(!teacherPortal.includes('id="actionModal"'), '老師入口仍保留舊電腦版調課表單');
+assert(!teacherPortal.includes('id="thisWeek"'), '老師日期列仍保留重複的本週按鈕');
+assert(!teacherPortal.includes('id="weekRange"'), '老師日期列仍保留重複的週範圍');
+assert(!teacherPortal.includes('teacher-room-rules-v1.js'), '老師入口仍載入依賴舊表單的規則程式');
+assert(teacherCss.includes('grid-template-columns:repeat(5,minmax(0,1fr))'), '老師底部五個功能沒有固定同一排');
 assert(!teacherPortal.includes('teacher-summary-grid'), '老師入口仍保留多餘的上方統計卡');
 assert(!portalLanding.includes('老師調課入口'), '老師調課不可誤拆成第四個入口');
+assert(!commonSource.includes('installTeacherApprovedLayout'), '共用程式仍會插入老師上方快捷鍵');
+assert(!commonSource.includes('teacherQuickHome'), '共用程式仍會插入重複的老師常用功能');
+assert(!commonSource.includes('global.matchMedia ='), '老師入口仍會覆寫瀏覽器滑動行為');
 
 const rentalSource = fs.readFileSync(path.join(root, 'room-booking-v2.js'), 'utf8');
 const rentalSettingsSource = fs.readFileSync(path.join(root, 'course-portal-settings-v2.js'), 'utf8');
@@ -121,13 +148,16 @@ assert(!rentalSource.includes('間可租</small>'), '租用開始時間仍顯示
 assert(!rentalSource.includes('個時段</em>'), '租用日期仍顯示多餘的時段數量');
 assert(rentalSource.includes('slot.past'), '一般租用畫面未屏蔽當天已過時間');
 assert(rentalSource.includes('day.past'), '一般租用畫面未屏蔽過去日期');
+assert(rentalSource.includes('roomRequestId += 1'), '切換租用條件時沒有讓舊教室查詢失效');
+assert(rentalSource.includes("role !== 'student'"), '非學生仍會看到學生半價選項');
+assert(rentalSource.includes('Promise.all([loadRentalData(), loadBookings()])'), '租用首屏仍以串行方式載入');
 assert(rentalSettingsSource.includes('data-use-rate'), '租用用途設定缺少每小時固定費用');
 assert(rentalSettingsSource.includes('data-room-piano'), '教室租用設定缺少鋼琴設備種類');
-assert(teacherRoomRulesSource.includes('需自行從展演空間搬古箏'), '老師調課缺少 KAWAI 古箏搬運提醒');
 
 const schedulerHtml = fs.readFileSync(path.join(root, 'course-scheduler.html'), 'utf8');
 const schedulerSource = fs.readFileSync(path.join(root, 'course-scheduler.js'), 'utf8');
 const schedulerCss = fs.readFileSync(path.join(root, 'course-scheduler.css'), 'utf8');
+const schedulerDataSource = fs.readFileSync(path.join(root, 'course-scheduler-data.js'), 'utf8');
 assert(schedulerHtml.includes('id="dataModePanel"'), '排課頁缺少資料同步面板');
 assert(schedulerHtml.includes('id="syncInjiaoyunBtn"'), '排課頁缺少單一同步按鈕');
 assert(!schedulerHtml.includes('sandboxLogBtn'), '不應保留測試紀錄按鈕');
@@ -150,9 +180,610 @@ assert(schedulerCss.includes('.slot.event-from-prev{border-top-color:transparent
 assert(schedulerCss.includes('.slot.event-to-next{border-bottom-color:transparent}'), '跨半小時課程仍會顯示內部下格線');
 assert(!schedulerCss.includes('.event.leave,.event.absent,.event.cancelled{opacity:.38'), '請假／曠課卡片不可再以透明浮水印顯示');
 assert(!schedulerHtml.includes('半透明＝請假／停課'), '課表圖例仍誤導為半透明狀態');
+assert(schedulerHtml.includes('老師贈課'), '桌面課表圖例缺少老師贈課');
+assert(schedulerHtml.includes('雙人／團體'), '桌面課表圖例缺少雙人／團體課');
+assert(schedulerHtml.includes('取消／調走'), '桌面課表圖例缺少取消／調走');
+assert(schedulerHtml.includes('曠課不扣學生堂數但仍列入老師薪資'), '桌面說明與曠課薪資規則不一致');
+assert(schedulerSource.includes("return status==='leave'||status==='cancelled'"), '桌面課表仍錯把曠課視為釋出教室');
+assert(schedulerDataSource.includes('course.start||course.startTime'), '桌面課表無法讀取入口建立的 startTime');
+assert(schedulerDataSource.includes("typeof status==='object'?status.status:status"), '桌面課表無法讀取物件格式的請假／取消狀態');
+
+const schedulerSandbox = {
+  window: {},
+  console,
+  Date,
+  Set,
+  Map,
+  Number,
+  String,
+  Object,
+  Array,
+  Math,
+  Promise
+};
+vm.createContext(schedulerSandbox);
+new vm.Script(schedulerDataSource, { filename: 'course-scheduler-data.js' }).runInContext(schedulerSandbox);
+const normalizedPortalState = schedulerSandbox.window.YouziCoursePreviewData.buildState({
+  rooms: [{ id: 'room-1', name: '展演空間', active: true }],
+  subjects: [{ id: 'subject-1', name: '鋼琴', active: true }],
+  teachers: [{ id: 'teacher-1', name: '老師', active: true }],
+  students: [{ id: 'student-1', name: '學生', active: true }],
+  fixedCourses: [{
+    id: 'portal-fixed',
+    date: '2026-07-30',
+    startTime: '18:00',
+    endTime: '19:00',
+    roomId: 'room-1',
+    teacherId: 'teacher-1',
+    studentIds: ['student-1'],
+    subjectId: 'subject-1',
+    statusByDate: { '2026-07-30': { status: 'leave' } }
+  }]
+}, '2026-07-30');
+assert(
+  normalizedPortalState.events.some((row) => row.sourceCourseId === 'portal-fixed' && row.start === '18:00' && row.status === 'leave'),
+  '桌面課表沒有正確顯示入口建立的課程與請假狀態'
+);
+const normalizedGuzhengState = schedulerSandbox.window.YouziCoursePreviewData.buildState({
+  rooms: [
+    { id: 'room-show', name: '展演空間', active: true },
+    { id: 'room-kawai', name: 'KAWAI 教室', active: true }
+  ],
+  subjects: [{ id: 'subject-guzheng', name: '古箏', active: true }],
+  fixedCourses: [{
+    id: 'guzheng-course',
+    active: true,
+    date: '2026-07-30',
+    recurrenceEndDate: '2026-07-30',
+    startTime: '18:00',
+    endTime: '19:00',
+    roomId: 'room-show',
+    subjectId: 'subject-guzheng',
+    subjectName: '古箏'
+  }],
+  roomRentals: [{
+    id: 'guzheng-rental',
+    active: true,
+    date: '2026-07-30',
+    startTime: '18:00',
+    endTime: '19:00',
+    roomId: 'room-kawai',
+    useType: 'guzheng',
+    useName: '古箏'
+  }]
+}, '2026-07-30');
+const normalizedGuzhengCourse = normalizedGuzhengState.events.find((row) => row.sourceCourseId === 'guzheng-course');
+const normalizedGuzhengRental = normalizedGuzhengState.events.find((row) => row.portalBookingId === 'guzheng-rental');
+assert(normalizedGuzhengCourse.resourceIds.includes('equipment:guzheng'), '古箏課程未標記共用古箏資源');
+assert.strictEqual(normalizedGuzhengRental.useType, 'guzheng', '桌面租用資料遺失古箏用途');
+assert(normalizedGuzhengRental.resourceIds.includes('equipment:guzheng'), '古箏租用未標記共用古箏資源');
+assert(schedulerSource.includes('eventSharedResourceIds(other)'), '桌面課表未檢查不同教室的古箏共用資源衝突');
 
 const backend = fs.readFileSync(path.join(root, 'functions/coursePortal.js'), 'utf8');
+const mirrorSource = fs.readFileSync(path.join(root, 'functions/injiaoyunEducationMirror.js'), 'utf8');
 const deployWorkflow = fs.readFileSync(path.join(root, '.github/workflows/deploy-course-portal-auth.yml'), 'utf8');
+
+function backendFixtureDocument(id, data) {
+  return {
+    id,
+    exists: true,
+    data: () => data
+  };
+}
+
+function backendFixtureValue(source, field) {
+  return String(field || '').split('.').reduce((value, key) => (
+    value == null ? undefined : value[key]
+  ), source);
+}
+
+function createBackendFixtureDb(state) {
+  class FixtureQuery {
+    constructor(name, filters = []) {
+      this.name = name;
+      this.filters = filters;
+    }
+
+    where(field, operator, expected) {
+      return new FixtureQuery(this.name, this.filters.concat({ field, operator, expected }));
+    }
+
+    async get() {
+      const rows = (state.collections[this.name] || []).filter((entry) => (
+        this.filters.every(({ field, operator, expected }) => {
+          const actual = backendFixtureValue(entry.data, field);
+          if (operator === '==') return actual === expected;
+          if (operator === '>=') return actual >= expected;
+          if (operator === '<=') return actual <= expected;
+          if (operator === 'in') return Array.isArray(expected) && expected.includes(actual);
+          throw new Error(`unsupported fixture query operator: ${operator}`);
+        })
+      ));
+      const docs = rows.map((entry) => backendFixtureDocument(entry.id, entry.data));
+      return { docs, size: docs.length, empty: docs.length === 0 };
+    }
+  }
+
+  return {
+    collection(name) {
+      return new FixtureQuery(name);
+    }
+  };
+}
+
+function loadBackendForScheduleTests(state) {
+  const backendPath = path.join(root, 'functions/coursePortal.js');
+  const fixtureDb = createBackendFixtureDb(state);
+  const fakeFirestore = () => fixtureDb;
+  fakeFirestore.FieldValue = {
+    serverTimestamp: () => 'fixture-server-time',
+    increment: (value) => value,
+    delete: () => 'fixture-delete'
+  };
+  fakeFirestore.Timestamp = {
+    fromDate: (value) => value
+  };
+  const FakeHttpsError = class extends Error {
+    constructor(code, message) {
+      super(message);
+      this.code = code;
+    }
+  };
+  const firebaseAdmin = {
+    apps: [{}],
+    initializeApp() {},
+    firestore: fakeFirestore
+  };
+  const originalLoad = Module._load;
+  Module._load = function fixtureModuleLoad(request, parent, isMain) {
+    if (request === 'firebase-admin') return firebaseAdmin;
+    if (request === 'firebase-functions/v2/https') {
+      return {
+        HttpsError: FakeHttpsError,
+        onCall: (options, handler) => handler || options,
+        onRequest: (options, handler) => handler || options
+      };
+    }
+    if (request === 'firebase-functions/v2/scheduler') {
+      return { onSchedule: (options, handler) => handler || options };
+    }
+    if (request === 'firebase-functions/params') {
+      return { defineSecret: () => ({ value: () => '' }) };
+    }
+    return originalLoad.call(this, request, parent, isMain);
+  };
+  try {
+    const fixtureModule = new Module(backendPath, module);
+    fixtureModule.filename = backendPath;
+    fixtureModule.paths = Module._nodeModulePaths(path.dirname(backendPath));
+    fixtureModule._compile(
+      `${backend}\n` +
+      'module.exports.__testScheduleBundle = scheduleBundle;\n' +
+      'module.exports.__testAssertScheduleWritable = assertScheduleWritable;\n',
+      backendPath
+    );
+    return fixtureModule.exports;
+  } finally {
+    Module._load = originalLoad;
+  }
+}
+
+function mirrorFixture(source) {
+  return {
+    sourceActive: true,
+    source
+  };
+}
+
+function scheduleFixtureCollections(overrides = {}) {
+  return Object.assign({
+    opsEducationMirrorRooms: [],
+    opsEducationMirrorSubjects: [],
+    opsEducationMirrorStudents: [],
+    opsEducationMirrorTeachers: [],
+    opsEducationMirrorEvents: [],
+    opsEducationMirrorFixedCourses: [],
+    opsEducationMirrorTemporaryCourses: [],
+    opsEducationMirrorRoomRentals: [],
+    coursePortalScheduleChanges: [],
+    coursePortalRoomBookings: [],
+    coursePortalRoomSettings: []
+  }, overrides);
+}
+
+async function runBackendScheduleRegressionTests() {
+  const failures = [];
+  const check = (callback) => {
+    try {
+      callback();
+    } catch (error) {
+      failures.push(error);
+    }
+  };
+  const sharedMirrors = {
+    opsEducationMirrorRooms: [
+      { id: 'room-old', data: mirrorFixture({ id: 'room-old', name: '舊教室', active: true }) },
+      { id: 'room-new', data: mirrorFixture({ id: 'room-new', name: '新教室', active: true }) }
+    ],
+    opsEducationMirrorSubjects: [
+      { id: 'subject-piano', data: mirrorFixture({ id: 'subject-piano', name: '鋼琴', active: true }) }
+    ],
+    opsEducationMirrorStudents: [
+      { id: 'student-1', data: mirrorFixture({ id: 'student-1', name: '學生', active: true }) }
+    ],
+    opsEducationMirrorTeachers: [
+      { id: 'teacher-1', data: mirrorFixture({ id: 'teacher-1', name: '老師', active: true }) }
+    ]
+  };
+  const fixedCourse = {
+    id: 'fixed-1',
+    active: true,
+    date: '2026-07-01',
+    startTime: '18:00',
+    endTime: '19:00',
+    recurrenceEndDate: '2026-08-31',
+    frequencyWeeks: 1,
+    roomId: 'room-old',
+    teacherId: 'teacher-1',
+    studentIds: ['student-1'],
+    subjectId: 'subject-piano'
+  };
+  const oldPermanent = {
+    id: 'permanent-old',
+    active: true,
+    action: 'permanent_move',
+    sourceCourseId: 'fixed-1',
+    sourceDate: '2026-07-15',
+    cutoverDate: '2026-07-15',
+    anchorDate: '2026-07-16',
+    frequencyWeeks: 1,
+    createdAtText: '2026-07-01T10:00:00+08:00',
+    event: Object.assign({}, fixedCourse, {
+      id: 'permanent-old-event',
+      date: '2026-07-16',
+      roomId: 'room-old',
+      fixedCourseId: 'fixed-1',
+      seriesId: 'fixed-1'
+    })
+  };
+  const newPermanent = {
+    id: 'permanent-new',
+    active: true,
+    action: 'permanent_move',
+    sourceCourseId: 'fixed-1',
+    sourceDate: '2026-07-15',
+    cutoverDate: '2026-07-15',
+    anchorDate: '2026-07-16',
+    frequencyWeeks: 1,
+    createdAtText: '2026-07-02T10:00:00+08:00',
+    event: Object.assign({}, fixedCourse, {
+      id: 'permanent-new-event',
+      date: '2026-07-16',
+      roomId: 'room-new',
+      fixedCourseId: 'fixed-1',
+      seriesId: 'fixed-1'
+    })
+  };
+  const duplicatePermanentState = {
+    collections: scheduleFixtureCollections(Object.assign({}, sharedMirrors, {
+      opsEducationMirrorFixedCourses: [
+        { id: 'fixed-1', data: mirrorFixture(fixedCourse) }
+      ],
+      coursePortalScheduleChanges: [
+        { id: 'permanent-old', data: oldPermanent },
+        { id: 'permanent-new', data: newPermanent }
+      ]
+    }))
+  };
+  const duplicatePermanentBackend = loadBackendForScheduleTests(duplicatePermanentState);
+  const expiredSync = { toMillis: () => Date.now() - 60 * 1000 };
+  const scheduleSnapshot = (data) => ({ exists: true, data: () => data });
+  check(() => {
+    assert.throws(
+      () => duplicatePermanentBackend.__testAssertScheduleWritable(scheduleSnapshot({
+        syncing: true,
+        syncingUntil: expiredSync,
+        writesBlocked: true,
+        integrityStatus: 'syncing'
+      })),
+      (error) => error && error.code === 'aborted',
+      '同步逾時後 writesBlocked=true 仍必須拒絕課表寫入'
+    );
+  });
+  check(() => {
+    assert.throws(
+      () => duplicatePermanentBackend.__testAssertScheduleWritable(scheduleSnapshot({
+        syncing: false,
+        syncingUntil: expiredSync,
+        writesBlocked: false,
+        integrityStatus: 'error'
+      })),
+      (error) => error && error.code === 'aborted',
+      '同步逾時後 integrityStatus=error 仍必須拒絕課表寫入'
+    );
+  });
+  check(() => {
+    assert.doesNotThrow(
+      () => duplicatePermanentBackend.__testAssertScheduleWritable(scheduleSnapshot({
+        syncing: false,
+        syncingUntil: expiredSync,
+        writesBlocked: false,
+        integrityStatus: 'healthy',
+        lastSyncStatus: 'success'
+      })),
+      '只有同步成功並解除 writesBlocked 後才應恢復課表寫入'
+    );
+  });
+  const duplicateBundle = await duplicatePermanentBackend.__testScheduleBundle(
+    '2026-07-15',
+    '2026-07-31',
+    'teacher-1'
+  );
+  const permanentOccurrences = duplicateBundle.events.filter((row) => (
+    row.portalAction === 'permanent_move' && row.fixedCourseId === 'fixed-1'
+  ));
+  check(() => {
+    assert.deepStrictEqual(
+      permanentOccurrences.map((row) => `${row.date}|${row.roomId}`),
+      [
+        '2026-07-16|room-new',
+        '2026-07-23|room-new',
+        '2026-07-30|room-new'
+      ],
+      '同一 cutover 的舊 permanent_move 未被新版取代，造成固定系列雙展開'
+    );
+  });
+
+  const canonicalAuditEvent = Object.assign({}, fixedCourse, {
+    id: 'audit_fixed_1_2026_07_22',
+    sourceCourseId: 'fixed-1',
+    seriesId: 'fixed-1',
+    date: '2026-07-22'
+  });
+  const movedTimePermanent = Object.assign({}, newPermanent, {
+    id: 'permanent-time',
+    event: Object.assign({}, newPermanent.event, {
+      id: 'permanent-time-event',
+      startTime: '19:00',
+      endTime: '20:00'
+    })
+  });
+  const canonicalAuditState = {
+    collections: scheduleFixtureCollections(Object.assign({}, sharedMirrors, {
+      opsEducationMirrorFixedCourses: [
+        { id: 'fixed-1', data: mirrorFixture(fixedCourse) }
+      ],
+      opsEducationMirrorEvents: [
+        { id: canonicalAuditEvent.id, data: mirrorFixture(canonicalAuditEvent) }
+      ],
+      coursePortalScheduleChanges: [
+        { id: movedTimePermanent.id, data: movedTimePermanent }
+      ]
+    }))
+  };
+  const canonicalAuditBackend = loadBackendForScheduleTests(canonicalAuditState);
+  const canonicalAuditBundle = await canonicalAuditBackend.__testScheduleBundle(
+    '2026-07-22',
+    '2026-07-23',
+    'teacher-1'
+  );
+  check(() => {
+    assert.deepStrictEqual(
+      canonicalAuditBundle.events
+        .filter((row) => row.fixedCourseId === 'fixed-1')
+        .map((row) => `${row.date}|${row.startTime}-${row.endTime}|${row.roomId}`),
+      ['2026-07-23|19:00-20:00|room-new'],
+      '永久調課 cutover 後仍保留 id 不同、但 sourceCourseId／seriesId 相同的舊正式事件'
+    );
+  });
+
+  const seriesOnlyStatusEvent = Object.assign({}, fixedCourse, {
+    id: 'audit_series_only_absent',
+    seriesId: 'fixed-1',
+    date: '2026-07-22',
+    status: 'absent'
+  });
+  const seriesOnlyStatusState = {
+    collections: scheduleFixtureCollections(Object.assign({}, sharedMirrors, {
+      opsEducationMirrorFixedCourses: [
+        { id: 'fixed-1', data: mirrorFixture(fixedCourse) }
+      ],
+      opsEducationMirrorEvents: [
+        { id: seriesOnlyStatusEvent.id, data: mirrorFixture(seriesOnlyStatusEvent) }
+      ],
+      coursePortalScheduleChanges: [
+        { id: movedTimePermanent.id, data: movedTimePermanent }
+      ]
+    }))
+  };
+  const seriesOnlyStatusBackend = loadBackendForScheduleTests(seriesOnlyStatusState);
+  const seriesOnlyStatusBundle = await seriesOnlyStatusBackend.__testScheduleBundle(
+    '2026-07-22',
+    '2026-07-23',
+    'teacher-1'
+  );
+  check(() => {
+    const movedStatusEvents = seriesOnlyStatusBundle.events.filter((row) =>
+      row.fixedCourseId === 'fixed-1'
+    );
+    assert.strictEqual(movedStatusEvents.length, 1, 'seriesId-only audit status 造成永久系列遺失或重複');
+    assert.strictEqual(
+      movedStatusEvents[0].status,
+      'absent',
+      'seriesId-only canonical status 未映射到 cutover 後的新永久系列'
+    );
+  });
+
+  const seriesOnlyCancelledEvent = Object.assign({}, fixedCourse, {
+    id: 'audit_series_only_cancelled',
+    seriesId: 'fixed-1',
+    date: '2026-07-22',
+    status: 'cancelled'
+  });
+  const seriesOnlyCancelledState = {
+    collections: scheduleFixtureCollections(Object.assign({}, sharedMirrors, {
+      opsEducationMirrorFixedCourses: [
+        { id: 'fixed-1', data: mirrorFixture(fixedCourse) }
+      ],
+      opsEducationMirrorEvents: [
+        { id: seriesOnlyCancelledEvent.id, data: mirrorFixture(seriesOnlyCancelledEvent) }
+      ],
+      coursePortalScheduleChanges: [
+        { id: movedTimePermanent.id, data: movedTimePermanent }
+      ]
+    }))
+  };
+  const seriesOnlyCancelledBackend = loadBackendForScheduleTests(seriesOnlyCancelledState);
+  const seriesOnlyCancelledBundle = await seriesOnlyCancelledBackend.__testScheduleBundle(
+    '2026-07-22',
+    '2026-07-23',
+    'teacher-1'
+  );
+  check(() => {
+    assert.strictEqual(
+      seriesOnlyCancelledBundle.events.filter((row) => row.fixedCourseId === 'fixed-1').length,
+      0,
+      'seriesId-only cancelled canonical tombstone 未抑制 cutover 後的新永久 occurrence'
+    );
+  });
+
+  const appendPayload = {
+    rooms: [{ id: 'room-old', name: '舊教室', active: true }, { id: 'room-new', name: '新教室', active: true }],
+    fixedCourses: [Object.assign({}, fixedCourse, {
+      exceptions: {
+        '2026-07-23': { status: 'absent' }
+      }
+    })],
+    temporaryCourses: [],
+    roomRentals: [],
+    events: []
+  };
+  const appended = await duplicatePermanentBackend.appendCoursePortalData(appendPayload);
+  const appendedPermanent = appended.fixedCourses.filter((row) => row.portalAction === 'permanent_move');
+  check(() => {
+    assert.strictEqual(appendedPermanent.length, 1, '同一 cutover 的舊 permanent_move 仍被匯出為第二個固定系列');
+    assert.strictEqual(appendedPermanent[0].roomId, 'room-new', '同一 cutover 沒有保留最新 permanent_move');
+    assert.strictEqual(
+      normalizeScheduleStatus(appendedPermanent[0].statusByDate['2026-07-23']),
+      'absent',
+      '永久系列沒有承接原 fixedCourse 的 statusByDate／exceptions'
+    );
+  });
+
+  const lessonStatus = {
+    id: 'absence-1',
+    active: true,
+    action: 'lesson_status',
+    sourceCourseId: 'fixed-1',
+    sourceEventId: 'fixed-1@2026-07-22',
+    sourceDate: '2026-07-22',
+    event: {
+      id: 'absence-event-1',
+      date: '2026-07-22',
+      fixedCourseId: 'fixed-1',
+      roomId: 'room-old',
+      teacherId: 'teacher-1',
+      studentIds: ['student-1'],
+      subjectId: 'subject-piano',
+      startTime: '18:00',
+      endTime: '19:00',
+      status: 'absent'
+    }
+  };
+  const absenceState = {
+    collections: scheduleFixtureCollections(Object.assign({}, sharedMirrors, {
+      opsEducationMirrorFixedCourses: [
+        { id: 'fixed-1', data: mirrorFixture(fixedCourse) }
+      ],
+      coursePortalScheduleChanges: [
+        { id: 'permanent-new', data: newPermanent },
+        { id: 'absence-1', data: lessonStatus }
+      ]
+    }))
+  };
+  const absenceBackend = loadBackendForScheduleTests(absenceState);
+  const absenceBundle = await absenceBackend.__testScheduleBundle(
+    '2026-07-22',
+    '2026-07-24',
+    'teacher-1'
+  );
+  const movedAbsence = absenceBundle.events.filter((row) => (
+    row.fixedCourseId === 'fixed-1' && row.date === '2026-07-23'
+  ));
+  check(() => {
+    assert.strictEqual(movedAbsence.length, 1, '永久系列的 lesson_status 例外被移除或重複展開');
+    assert.strictEqual(movedAbsence[0].status, 'absent', '永久系列遺失 lesson_status 的曠課狀態');
+  });
+
+  const cancelledCanonical = Object.assign({}, fixedCourse, {
+    id: 'canonical-cancelled',
+    sourceCourseId: 'fixed-1',
+    fixedCourseId: 'fixed-1',
+    date: '2026-07-29',
+    status: 'cancelled'
+  });
+  const staleTemporary = Object.assign({}, fixedCourse, {
+    id: 'stale-temporary',
+    sourceId: 'canonical-cancelled',
+    sourceCourseId: 'fixed-1',
+    fixedCourseId: 'fixed-1',
+    date: '2026-07-29',
+    type: 'temporary',
+    status: 'scheduled'
+  });
+  const staleRental = {
+    id: 'stale-rental',
+    sourceId: 'canonical-cancelled',
+    sourceCourseId: 'fixed-1',
+    date: '2026-07-29',
+    startTime: '18:00',
+    endTime: '19:00',
+    roomId: 'room-old',
+    type: 'rental',
+    status: 'scheduled'
+  };
+  const tombstoneState = {
+    collections: scheduleFixtureCollections(Object.assign({}, sharedMirrors, {
+      opsEducationMirrorFixedCourses: [
+        { id: 'fixed-1', data: mirrorFixture(fixedCourse) }
+      ],
+      opsEducationMirrorEvents: [
+        { id: 'canonical-cancelled', data: mirrorFixture(cancelledCanonical) }
+      ],
+      opsEducationMirrorTemporaryCourses: [
+        { id: 'stale-temporary', data: mirrorFixture(staleTemporary) }
+      ],
+      opsEducationMirrorRoomRentals: [
+        { id: 'stale-rental', data: mirrorFixture(staleRental) }
+      ]
+    }))
+  };
+  const tombstoneBackend = loadBackendForScheduleTests(tombstoneState);
+  const tombstoneBundle = await tombstoneBackend.__testScheduleBundle(
+    '2026-07-29',
+    '2026-07-29',
+    'teacher-1'
+  );
+  check(() => {
+    assert.strictEqual(
+      tombstoneBundle.events.filter((row) => (
+        row.date === '2026-07-29' &&
+        (row.fixedCourseId === 'fixed-1' || row.sourceId === 'canonical-cancelled')
+      )).length,
+      0,
+      'cancelled canonical event 被舊 active temporary／rental 副本復活'
+    );
+  });
+  check(() => {
+    assert(
+      permanentHorizonCoversSeries,
+      '有結束日的永久系列只檢查 364 天，之後的既有衝突可能形成雙占用'
+    );
+  });
+  if (failures.length) {
+    assert.fail(failures.map((error) => error.message).join('\n'));
+  }
+}
 assert(
   deployWorkflow.includes('functions:coursePortalRentalUseSettings'),
   'Firebase 部署清單漏掉租用用途讀取功能'
@@ -169,6 +800,7 @@ assert(
   'coursePortalLineLoginCallback',
   'coursePortalExchangeAccess',
   'coursePortalTeacherData',
+  'coursePortalTeacherSlotOptions',
   'coursePortalStudentData',
   'coursePortalRentalAvailability',
   'coursePortalCreateRoomBooking',
@@ -182,12 +814,16 @@ assert(
   'coursePortalAdminBindingAction',
   'coursePortalStudentReminderDaily'
 ].forEach((name) => assert(backend.includes(name), `缺少後端函式 ${name}`));
+assert(deployWorkflow.includes('functions:coursePortalTeacherSlotOptions'), '部署清單漏掉老師目標時段查詢');
 assert(backend.includes("where('ownerKey', '==', sessionOwnerKey(session))"), '租用紀錄未限制為目前登入帳號');
 assert(backend.includes('只能取消自己預約的教室'), '取消租用缺少本人權限檢查');
 assert(backend.includes('const EMAIL_OTP_TTL_MS = 180 * 1000'), 'Email 四碼驗證碼不是 180 秒');
 assert(backend.includes('EMAIL_OTP_MAX_ATTEMPTS = 5'), 'Email 驗證碼缺少五次輸入限制');
 assert(backend.includes("source.purpose === 'account'"), '一般註冊／登入驗證後未直接建立工作階段');
 assert(backend.includes('authAccountId'), '一般登入缺少獨立帳號識別');
+assert(backend.includes('const regularIdentity = await resolveRegularIdentity(identity)'), 'LINE 首次登入沒有合併同一人的 Email 帳號鍵');
+assert(backend.includes('authAccountId: source.authAccountId'), 'LINE 一次性登入碼交換時遺失帳號鍵');
+assert(backend.includes('sharedBindingAuthAccountId(type, bindings)'), 'LINE 多筆綁定未使用穩定帳號鍵');
 assert(backend.includes("authMethod: 'email-otp'"), '一般登入未建立 Email 驗證工作階段');
 assert(backend.includes('taipeiDateTimeMillis(row.date, row.endTime) > Date.now()'), '租用進行中無法取消');
 assert(backend.includes('course-portal-booking-${id}-reminder'), '租用缺少開始前一小時提醒');
@@ -199,27 +835,140 @@ assert(backend.includes("authMethod: 'line-oauth'"), 'LINE OAuth 登入未建立
 assert(backend.includes('LINE_OAUTH_STATE_TTL_MS'), 'LINE OAuth 缺少短效 state 驗證');
 assert(backend.includes("clean(row.lineUserId) &&\n      clean(row.lineUserId) !== lineUserId"), '一般帳號會錯誤阻擋同一人改用 LINE 登入');
 assert(commonSource.includes('global.sessionStorage'), '租用借用裝置登入沒有使用瀏覽階段儲存');
+assert(backend.includes('姓名加電話快速登入已停用'), '後端仍允許只用姓名電話登入');
+assert(!commonSource.includes('coursePortalRenterContactLogin'), '前端仍會呼叫已停用的姓名電話登入');
 assert(backend.includes("id: 'guzheng'"), '租用用途缺少古箏');
 assert(backend.includes("id: 'recording'"), '租用用途缺少錄音室');
 assert(backend.includes('hourlyRate: 300'), '錄音用途未設定每小時 NT$300');
 assert(backend.includes("if (/錄音室|錄音/.test(clean(room && room.name))) return 100;"), '錄音室其他用途未固定為每小時 NT$100');
+assert(schedulerSource.includes("['guzheng','古箏']"), '教室設定缺少古箏用途');
+assert(schedulerSource.includes("['recording','錄音室']"), '教室設定缺少錄音用途');
+assert(schedulerSource.includes('data-policy-rental-use'), '教室設定沒有保存可租用途');
+assert(backend.includes('function rentalUseAllowsRoom'), '後端未以教室用途限制租用搜尋');
 assert(backend.includes('data.excludeDigitalPiano'), '後端缺少排除電鋼琴規則');
 assert(backend.includes('data.pianoType'), '後端缺少鋼琴種類篩選');
 assert(backend.includes('data.allowGuzhengMove'), '後端缺少 KAWAI 古箏搬運接受規則');
+assert(teacherSource.includes('data-guzheng-move-confirm'), '老師選用 KAWAI 教室時缺少古箏搬運確認');
+assert(teacherSource.includes('context.payload.allowGuzhengMove = true'), '老師確認搬運後沒有傳送古箏搬運許可');
+assert(backend.includes('KAWAI 教室沒有固定放置古箏'), '老師儲存時沒有再次驗證 KAWAI 古箏搬運');
 assert(backend.includes('data.drumType'), '後端缺少鼓種篩選規則');
 assert(backend.includes("return '電鋼琴'"), '團練室／展演空間缺少電鋼琴分類');
 assert(backend.includes("return '平台鋼琴'"), 'YAMAHA 平台教室／5號鋼琴缺少平台鋼琴分類');
 assert(backend.includes("return '直立鋼琴'"), 'KAWAI 教室／YAMAHA 直立鋼琴缺少直立鋼琴分類');
 assert(backend.includes("mirrorRows('fixedCourses')"), '租用空檔未讀取固定課表');
-assert(backend.includes("mirrorRows('temporaryCourses')"), '租用空檔未讀取臨時課表');
-assert(backend.includes("mirrorRows('roomRentals')"), '租用空檔未讀取既有租用');
-assert(backend.includes("event.roomId === id && event.date === date"), '租用查詢未依教室與日期排除有課時段');
+assert(backend.includes("mirrorRowsByDateRange('temporaryCourses'"), '租用空檔未依日期讀取臨時課表');
+assert(backend.includes("mirrorRowsByDateRange('roomRentals'"), '租用空檔未依日期讀取既有租用');
+assert(backend.includes('scheduleChangeDocsByDateRange(startDate, endDate)'), '課表查詢仍會讀取全部歷史異動');
+assert(backend.includes("collection.where('event.date', '>=', startDate).where('event.date', '<=', endDate)"), '課表異動未依新時段日期查詢');
+assert(backend.includes("collection.where('sourceDate', '>=', startDate).where('sourceDate', '<=', endDate)"), '課表異動未依原課程日期查詢');
+assert(backend.includes('overlappingEvents.some((event) => event.roomId === id)'), '租用查詢未依教室與日期排除有課時段');
 assert(backend.includes('overlaps(startTime, endTime, event.startTime, event.endTime)'), '租用查詢未檢查課程時段重疊');
+assert(backend.includes("const GUZHENG_RESOURCE_ID = 'equipment:guzheng'"), '古箏未建成跨教室共用資源');
+assert(backend.includes('sharedEquipmentLockRows'), '古箏共用資源缺少最後寫入鎖');
+assert(backend.includes('sharedResourceConflict(blockers, requestedResourceIds)'), '老師調課未檢查跨教室古箏衝突');
+assert(backend.includes('function scheduleResourceConflicts(events)'), '後台缺少 room／teacher／student／equipment 30 分鐘衝突掃描');
+assert(backend.includes('coursePortalAdminScheduleConflictAudit'), '後台缺少可執行的課表衝突檢查入口');
 assert(backend.includes('row.durationMinutes || row.duration || row.minutes || 60'), '老師課表未依課程長度計算結束時間');
 assert(backend.includes('courseSourceIds(row).forEach'), '日表事件未依原固定課 ID 排除重複占用');
-assert(backend.includes("!['leave', 'absent', 'cancelled'].includes(status)"), '請假、曠課或取消仍會占用教室');
+assert(backend.includes('exactSourceRows.forEach'), '已取消的日表資料未保留 tombstone，固定課可能被重新展開');
+assert(
+  backend.includes("return !['leave', 'cancelled', 'pending_conflict'].includes(status)"),
+  '請假／取消／待補排未釋出，或曠課被錯誤釋出'
+);
+assert(backend.includes('function isRoomRentalEvent(event)'), '老師課務未區分教室租用與學生課程');
+assert(teacherSource.includes("if (isRental)"), '老師手機版仍會對租用顯示請假／曠課操作');
 assert(backend.includes('publicRentalSlotIsPast(date, startTime)'), '一般租用後端未封鎖過去時段');
 assert(backend.includes('availableSlotCount: slots.filter((slot) => !slot.past'), '當天已過時間仍被計入可租時段');
+assert(backend.includes("session.role === 'student'"), '學生半價未在後端確認登入角色');
+assert(backend.includes('exactTarget = data.exactTarget === true'), '老師點特定時段仍會搜尋整週資料');
+assert(backend.includes('event.studentIds.some((studentId) => studentIds.includes(studentId))'), '老師儲存時未檢查每位學生衝突');
+assert(backend.includes("throw new HttpsError('aborted'"), '多人同時操作時缺少版本衝突保護');
+assert(backend.includes('assertScheduleWritable(versionSnapshot)'), '課表同步進行中仍可寫入租用或調課');
+assert(backend.includes("!['extra_lesson', 'teacher_gift'].includes(clean(preview.action))"), '調課取消可能在已釋出的原位置復活並造成雙訂');
+assert(backend.includes("source.studentIds.length > 1"), '團體課單一學生請假仍會錯誤釋出整間教室');
+assert(backend.includes('cutoverDate:'), '永久調課缺少原系列切換日');
+assert(backend.includes('anchorDate:'), '永久調課缺少新系列起算日');
+assert(backend.includes('handledPermanentExceptions'), '永久調課後的舊單次例外未映射到新週期，可能重複上課');
+assert(backend.includes('futureException'), '永久調課未攔截尚未整理的未來調課／請假例外');
+const permanentHorizonCoversSeries = !backend.includes(
+    "const horizonEnd = recurrenceEndDate && recurrenceEndDate < addDays(date, 364)\n" +
+    '      ? recurrenceEndDate\n' +
+    '      : addDays(date, 364);'
+);
+assert(teacherSource.includes('row.recurring === true'), '老師入口仍從一般來源 ID 猜測固定課');
+assert(schedulerDataSource.includes('rentalUseTypes:unique(options.rentalUseTypes)'), '桌面教室用途未同步到入口設定');
+assert(schedulerDataSource.includes('room.roomRulesVersion===1||Array.isArray(room.rentalUseTypes)'), '舊教室空用途清單仍會被誤認為管理者刻意關閉');
+assert(schedulerSource.includes("if(!explicitRules||typeof room.rentable!=='boolean')"), '載入伺服器教室設定時會覆寫明確的可租用狀態');
+assert(schedulerDataSource.includes("policies:options.policies&&typeof options.policies==='object'?options.policies:{}"), '桌面教室開放時段未同步到入口設定');
+assert(backend.includes('payload.rooms = payload.rooms.map'), '音教雲教室資料未合併入口設定');
+[
+  'rentable',
+  'teacherSchedulable',
+  'allowedSubjectIds',
+  'rentalUseTypes',
+  'rentalEquipment',
+  'pianoType',
+  'policies',
+  'roomRulesVersion'
+].forEach((field) => assert(backend.includes(`'${field}'`), `教室設定合併缺少 ${field}`));
+assert(mirrorSource.includes('COURSE_PORTAL_SCHEDULE_VERSION_REF'), '音教雲同步沒有連動課表版本');
+assert(mirrorSource.includes('async function markCoursePortalScheduleUpdated'), '音教雲同步缺少課表版本更新程序');
+assert(mirrorSource.includes('syncing: true'), '音教雲同步開始前沒有鎖住課表寫入');
+assert(mirrorSource.includes('syncing: false'), '音教雲同步完成或失敗後沒有解除課表鎖');
+assert(mirrorSource.includes('syncingUntil'), '音教雲同步鎖缺少逾時保護');
+assert(mirrorSource.includes('{ coveredDates, deactivateMissing: true }'), '近期權威日表沒有停用已刪除的舊租用／事件');
+const reserveSyncSource = mirrorSource.slice(
+  mirrorSource.indexOf('async function reserveSync('),
+  mirrorSource.indexOf('function reconcileAuditedAttendance(')
+);
+assert(
+  reserveSyncSource.includes("if (directive === 'running')"),
+  '同步已在 running 時沒有辨識仍有效的同步鎖'
+);
+assert(
+  reserveSyncSource.includes('transaction.set(SETTINGS_REF, {\n        convergenceQueued: true,'),
+  '同步已在 running 時沒有以同一交易寫入 convergenceQueued'
+);
+assert(
+  reserveSyncSource.includes("return { accepted: false, reason: 'running', current };"),
+  '同步已在 running 時仍可能啟動第二批同步'
+);
+const queuedConvergenceSource = mirrorSource.slice(
+  mirrorSource.indexOf('async function runQueuedMirrorConvergence('),
+  mirrorSource.indexOf('async function auditRefreshRange(')
+);
+assert(
+  queuedConvergenceSource.includes('if (settings.convergenceQueued !== true) return null;'),
+  '排隊收斂沒有先確認 convergenceQueued'
+);
+assert(
+  queuedConvergenceSource.includes('convergenceQueued: false'),
+  '開始排隊收斂前沒有清除 convergenceQueued，可能重複執行'
+);
+assert(
+  queuedConvergenceSource.includes("return await syncLatestMirror(`${clean(trigger) || 'sync'}:queued-convergence`);"),
+  '排隊收斂沒有重新執行最新鏡像同步'
+);
+assert(
+  queuedConvergenceSource.includes('requeueMirrorConvergenceAfterFailure(trigger)'),
+  'queued child 在 reserve 前失敗時沒有恢復 convergence queue'
+);
+assert(
+  (mirrorSource.match(
+    /const converged = await runQueuedMirrorConvergence\(\s*trigger,\s*reservation\.syncOwner,\s*sourceVersion\s*\)/g
+  ) || []).length >= 2,
+  '完整同步與近期差異同步成功後沒有以目前 owner 執行 queued convergence'
+);
+assert(
+  (mirrorSource.match(/markCoursePortalScheduleUpdated\(\s*trigger,\s*'success',\s*reservation\.syncOwner/g) || []).length >= 2,
+  '完整同步與近期差異同步未以各自 owner 更新課表版本'
+);
+assert(
+  mirrorSource.includes('!activeSyncOwnerMatches(') &&
+    mirrorSource.includes('finalizedScope') &&
+    mirrorSource.includes('return { accepted: true, current, syncOwner, syncScope: scope };'),
+  '同步解鎖沒有驗證 active owner/source/scope，或 accepted reservation 沒有回傳 owner'
+);
 
 const portalCss = fs.readFileSync(path.join(root, 'course-portal.css'), 'utf8');
 assert(portalCss.includes('@media (max-width: 760px)'), '外部入口缺少手機版樣式');
@@ -235,4 +984,11 @@ assert(rules.includes('match /coursePortalLineLoginCodes/{document=**} { allow r
 assert(rules.includes('match /coursePortalLineOAuthStates/{document=**} { allow read, write: if false; }'));
 assert(rules.includes('match /coursePortalLineSetupTokens/{document=**} { allow read, write: if false; }'));
 
-console.log('course portal tests passed');
+runBackendScheduleRegressionTests()
+  .then(() => {
+    console.log('course portal tests passed');
+  })
+  .catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
