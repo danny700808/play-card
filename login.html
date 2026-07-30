@@ -18,6 +18,8 @@
     .external-entry-link{width:100%;min-height:44px;display:flex;align-items:center;justify-content:center;text-decoration:none;text-align:center;padding:8px 6px}
     .external-entry-link:last-child:nth-child(odd){grid-column:1/-1}
     .password-rule{margin-top:6px;font-size:13px;line-height:1.7;color:#6b7280}
+    .login-choice-intro{text-align:center;margin:0 0 12px}.login-choice-intro strong{display:block;color:#17352c;font-size:18px}.login-choice-intro span{display:block;margin-top:3px;color:#687970;font-size:13px;line-height:1.55}
+    .login-method-list{display:grid;gap:9px}.login-method-card{display:block;min-width:0;border:1px solid #d7e4dd;border-radius:15px;padding:13px;background:#fff;color:#17352c;text-decoration:none}.login-method-line{border-color:#94cbb3;background:#edf9f3;box-shadow:0 0 0 2px rgba(36,115,92,.06)}.login-method-heading{display:flex;align-items:center;gap:10px}.login-method-icon{display:grid;place-items:center;flex:0 0 auto;width:42px;height:42px;border-radius:12px;background:#24735c;color:#fff;font-size:12px;font-weight:950}.login-method-icon.email{background:#eef3f0;color:#315246}.login-method-copy{min-width:0;flex:1}.login-method-copy strong{display:block;font-size:17px}.login-method-copy small{display:block;margin-top:2px;color:#62756d;font-size:12px;line-height:1.5}.login-method-tag{align-self:flex-start;border-radius:999px;padding:4px 8px;background:#24735c;color:#fff;font-size:11px;font-weight:900}.line-login-cta{display:flex;align-items:center;justify-content:center;min-height:44px;margin-top:11px;border-radius:11px;background:#24735c;color:#fff;font-size:15px;font-weight:900}.login-scope-note{display:block;margin-top:8px;color:#49665b;font-size:11px;line-height:1.55}.auth-method-divider{display:flex;align-items:center;gap:10px;color:#7a8a82;font-size:12px;font-weight:850}.auth-method-divider:before,.auth-method-divider:after{content:"";height:1px;flex:1;background:#dbe5df}.login-method-email .field:first-of-type{margin-top:13px}.login-method-email .login-actions-stack{margin-top:2px}
   </style>
 </head>
 <body class="yz-login-page">
@@ -33,39 +35,64 @@
       <div id="msg" class="message"></div>
 
       <div id="loginPanel" class="auth-panel">
-        <div class="field">
-          <label>Email</label>
-          <input id="email" type="email" placeholder="請輸入 Email">
+        <div class="login-choice-intro">
+          <strong>選擇登入方式</strong>
+          <span>LINE 最快；既有管理者與員工帳號仍可使用 Email／密碼。</span>
         </div>
-
-        <div class="field">
-          <label>密碼</label>
-          <div class="password-wrap">
-            <input id="password" type="password" placeholder="請輸入密碼">
-            <button type="button" class="eye" id="eyeBtn">👁</button>
-          </div>
-        </div>
-
-        <div class="remember-row">
-          <label class="remember-label"><input id="rememberLogin" type="checkbox" checked> <span>記住帳號密碼</span></label>
-        </div>
-
-        <div class="login-actions-stack">
-          <button class="btn login-main-btn" id="loginBtn">登入</button>
-          <div class="auth-sub-actions">
-            <button class="btn secondary" id="forgotBtn" type="button">忘記密碼</button>
-            <button class="btn secondary" id="resetBtn" type="button">重設密碼</button>
-            <a href="register-type.html" class="btn btn-link">前往註冊</a>
-          </div>
-          <div class="external-entry-zone">
-            <div class="external-entry-title">其他入口</div>
-            <div class="external-entry-grid">
-              <a href="student-course-portal.html" class="btn secondary external-entry-link">學生／家長入口</a>
-              <a href="room-booking.html" class="btn secondary external-entry-link">教室租用入口</a>
-              <a href="teacher-course-portal.html" class="btn secondary external-entry-link">老師入口</a>
-              <a href="teacher-apply.html" class="btn secondary external-entry-link">應聘履歷投遞</a>
-              <a href="rental-order.html" class="btn secondary external-entry-link">設備租賃申請</a>
+        <div class="login-method-list">
+          <a class="login-method-card login-method-line" data-primary-login-method="line" href="course-portal.html">
+            <div class="login-method-heading">
+              <span class="login-method-icon">LINE</span>
+              <span class="login-method-copy"><strong>LINE 登入</strong><small>老師、學生／家長與教室租用</small></span>
+              <span class="login-method-tag">推薦</span>
             </div>
+            <span class="line-login-cta">使用 LINE 繼續</span>
+            <span class="login-scope-note">已有課務登入會直接進入；否則下一步選擇老師、學生／家長或租用。管理者後台不使用此登入。</span>
+          </a>
+
+          <div class="auth-method-divider"><span>或</span></div>
+
+          <section class="login-method-card login-method-email" data-primary-login-method="email-password">
+            <div class="login-method-heading">
+              <span class="login-method-icon email">@</span>
+              <span class="login-method-copy"><strong>Email／密碼登入</strong><small>原管理者、員工與既有帳號</small></span>
+            </div>
+            <div class="field">
+              <label>Email</label>
+              <input id="email" type="email" autocomplete="username" placeholder="請輸入 Email">
+            </div>
+
+            <div class="field">
+              <label>密碼</label>
+              <div class="password-wrap">
+                <input id="password" type="password" autocomplete="current-password" placeholder="請輸入密碼">
+                <button type="button" class="eye" id="eyeBtn" aria-label="顯示或隱藏密碼">👁</button>
+              </div>
+            </div>
+
+            <div class="remember-row">
+              <label class="remember-label"><input id="rememberLogin" type="checkbox" checked> <span>記住帳號密碼</span></label>
+            </div>
+
+            <div class="login-actions-stack">
+              <button class="btn login-main-btn" id="loginBtn">登入</button>
+              <div class="auth-sub-actions">
+                <button class="btn secondary" id="forgotBtn" type="button">忘記密碼</button>
+                <button class="btn secondary" id="resetBtn" type="button">重設密碼</button>
+                <a href="register-type.html" class="btn btn-link">前往註冊</a>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div class="external-entry-zone">
+          <div class="external-entry-title">其他服務入口</div>
+          <div class="external-entry-grid">
+            <a href="student-course-portal.html" class="btn secondary external-entry-link">學生／家長入口</a>
+            <a href="room-booking.html" class="btn secondary external-entry-link">教室租用入口</a>
+            <a href="teacher-course-portal.html" class="btn secondary external-entry-link">老師入口</a>
+            <a href="teacher-apply.html" class="btn secondary external-entry-link">應聘履歷投遞</a>
+            <a href="rental-order.html" class="btn secondary external-entry-link">設備租賃申請</a>
           </div>
         </div>
       </div>
@@ -134,6 +161,29 @@
       forgot: qs('#forgotPanel'),
       reset: qs('#resetPanel')
     };
+    const loginReturnPages = new Set([
+      'profile.html',
+      'contract.html',
+      'announcements.html',
+      'task.html',
+      'teacher-goods.html',
+      'forms-hub.html'
+    ]);
+
+    function requestedLoginTarget(){
+      const value = String(new URLSearchParams(window.location.search).get('next') || '').trim().toLowerCase();
+      return loginReturnPages.has(value) ? value : '';
+    }
+
+    function redirectToLoginTarget(target){
+      try {
+        if (window.top && window.top !== window) {
+          window.top.location.replace(target);
+          return;
+        }
+      } catch (e) {}
+      window.location.replace(target);
+    }
 
     applySavedLogin();
 
@@ -235,9 +285,14 @@
           setMsg(msg, '登入成功，正在進入系統...');
           progress.done('登入成功', 0, true);
           saveUser(r.user);
-          const target = loginDestination(r.user);
+          const requestedTarget = requestedLoginTarget();
+          const target = requestedTarget || loginDestination(r.user);
           btn.dataset.resumeTarget = target;
-          redirectAfterLogin(r.user);
+          if (requestedTarget) {
+            redirectToLoginTarget(target);
+          } else {
+            redirectAfterLogin(r.user);
+          }
           setTimeout(() => {
             if (document.visibilityState === 'hidden') return;
             progress.reset('進入系統');
