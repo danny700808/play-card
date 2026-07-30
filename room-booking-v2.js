@@ -15,7 +15,7 @@
   let roomData = null;
   let selectedRoom = null;
   let myBookings = [];
-  let excludeDigitalPiano = false;
+  let pianoType = 'any';
   let allowGuzhengMove = false;
   let drumType = '';
 
@@ -110,14 +110,15 @@
   }
 
   function resetPreference() {
-    excludeDigitalPiano = false;
+    pianoType = 'any';
     allowGuzhengMove = false;
     drumType = '';
   }
 
   function preferencePayload() {
     return {
-      excludeDigitalPiano,
+      pianoType,
+      excludeDigitalPiano: pianoType === 'exclude_digital',
       allowGuzhengMove,
       drumType
     };
@@ -129,10 +130,12 @@
     if (selectedUse === 'piano') {
       content = `
         <h3>鋼琴類型</h3>
-        <label class="rental-preference-toggle">
-          <input type="checkbox" data-preference="exclude-digital" ${excludeDigitalPiano ? 'checked' : ''}>
-          <span><strong>排除電鋼琴</strong></span>
-        </label>
+        <div class="rental-preference-options">
+          <label><input type="radio" name="pianoType" value="any" ${pianoType === 'any' ? 'checked' : ''}> 不指定</label>
+          <label><input type="radio" name="pianoType" value="exclude_digital" ${pianoType === 'exclude_digital' ? 'checked' : ''}> 排除電鋼琴</label>
+          <label><input type="radio" name="pianoType" value="grand_piano" ${pianoType === 'grand_piano' ? 'checked' : ''}> 指定平台鋼琴</label>
+          <label><input type="radio" name="pianoType" value="upright_piano" ${pianoType === 'upright_piano' ? 'checked' : ''}> 指定直立鋼琴</label>
+        </div>
       `;
     } else if (selectedUse === 'guzheng') {
       content = `
@@ -355,8 +358,8 @@
   });
 
   document.getElementById('rentalPreference').addEventListener('change', (event) => {
-    if (event.target.matches('[data-preference="exclude-digital"]')) {
-      excludeDigitalPiano = event.target.checked;
+    if (event.target.matches('input[name="pianoType"]')) {
+      pianoType = event.target.value;
     } else if (event.target.matches('[data-preference="allow-guzheng-move"]')) {
       allowGuzhengMove = event.target.checked;
     } else if (event.target.matches('input[name="drumType"]')) {
