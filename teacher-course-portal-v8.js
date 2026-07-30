@@ -250,7 +250,7 @@
       days.forEach((day, dayIndex) => {
         const rows = uniqueEvents(events.filter((event) => event.date === day && event.startTime < slotEnd && slotStart < event.endTime));
         html += `<div class="week-cell" style="grid-column:${dayIndex + 2};grid-row:${gridRow}">`;
-        if (!rows.length && new Date(`${day}T12:00:00`).getDay() !== 2) html += `<button class="empty-slot" type="button" data-empty="${day}|${slotStart}|${slotEnd}">空堂</button>`;
+        if (!rows.length && new Date(`${day}T12:00:00`).getDay() !== 1) html += `<button class="empty-slot" type="button" data-empty="${day}|${slotStart}|${slotEnd}">空堂</button>`;
         else if (!rows.length) html += '<span class="closed-slot">公休</span>';
         html += '</div>';
       });
