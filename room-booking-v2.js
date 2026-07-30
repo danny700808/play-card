@@ -18,10 +18,25 @@
   let pianoType = 'any';
   let allowGuzhengMove = false;
   let drumType = '';
+  let pendingStart = '';
 
   const bindView = document.getElementById('publicBindView');
   const bookingView = document.getElementById('bookingView');
   const confirmBackdrop = document.getElementById('rentalConfirmBackdrop');
+  const initialParams = new URLSearchParams(location.search);
+  const initialDate = clean(initialParams.get('date'));
+  const initialDuration = Number(initialParams.get('duration'));
+  if (/^\d{4}-\d{2}-\d{2}$/.test(initialDate)) {
+    selectedDate = initialDate;
+    weekStart = initialDate;
+  }
+  if (/^\d{2}:\d{2}$/.test(clean(initialParams.get('start')))) {
+    pendingStart = clean(initialParams.get('start')).slice(0, 5);
+  }
+  if ([30, 60, 90, 120, 150, 180, 210, 240, 270, 300].includes(initialDuration)) {
+    durationMinutes = initialDuration;
+  }
+  if (clean(initialParams.get('use'))) selectedUse = clean(initialParams.get('use'));
 
   function todayKey() {
     const date = new Date();
@@ -76,7 +91,7 @@
   async function loadUses() {
     const result = await P.call('coursePortalRentalUseSettings', {});
     const items = result.items || [];
-    if (!selectedUse && items[0]) selectedUse = items[0].id;
+    if (!items.some((row) => row.id === selectedUse) && items[0]) selectedUse = items[0].id;
     document.getElementById('rentalUseGrid').innerHTML = items.map((row) => `
       <button class="rental-use-card ${row.id === selectedUse ? 'active' : ''}" type="button" data-use="${P.escapeHtml(row.id)}">
         <span>${P.escapeHtml(row.icon || iconFor(row))}</span>
@@ -130,7 +145,7 @@
     if (selectedUse === 'piano') {
       content = `
         <h3>鋼琴類型</h3>
-        <div class="rental-preference-options">
+        <div class="rental-preference-options piano-options">
           <label><input type="radio" name="pianoType" value="any" ${pianoType === 'any' ? 'checked' : ''}> 不指定</label>
           <label><input type="radio" name="pianoType" value="exclude_digital" ${pianoType === 'exclude_digital' ? 'checked' : ''}> 排除電鋼琴</label>
           <label><input type="radio" name="pianoType" value="grand_piano" ${pianoType === 'grand_piano' ? 'checked' : ''}> 指定平台鋼琴</label>
@@ -148,7 +163,7 @@
     } else if (selectedUse === 'drums') {
       content = `
         <h3>是否指定鼓種？</h3>
-        <div class="rental-preference-options">
+        <div class="rental-preference-options drum-options">
           <label><input type="radio" name="drumType" value="" ${!drumType ? 'checked' : ''}> 不指定</label>
           <label><input type="radio" name="drumType" value="acoustic_drums" ${drumType === 'acoustic_drums' ? 'checked' : ''}> 傳統鼓</label>
           <label><input type="radio" name="drumType" value="electronic_drums" ${drumType === 'electronic_drums' ? 'checked' : ''}> 電子鼓</label>
@@ -177,7 +192,7 @@
         <button class="btn date-chip ${day.date === selectedDate ? 'active' : ''}" type="button" data-date="${day.date}" ${day.closed ? 'disabled' : ''}>
           <strong>週${weekday}</strong>
           <small>${date.getMonth() + 1}/${date.getDate()}</small>
-          <em>${day.closed ? '公休' : `${day.availableSlotCount} 個時段`}</em>
+          ${day.closed ? '<em>公休</em>' : ''}
         </button>
       `;
     }).join('');
@@ -198,12 +213,13 @@
     node.innerHTML = rows.map((slot) => `
       <button class="rental-slot ${slot.startTime === selectedStart ? 'selected' : ''}" type="button" data-slot="${slot.startTime}">
         <strong>${P.escapeHtml(slot.startTime)}～${P.escapeHtml(slot.endTime)}</strong>
-        <small>${slot.availableCount} 間可租</small>
       </button>
     `).join('') || '<div class="rental-empty">這一天沒有符合的連續時段。</div>';
   }
 
   async function loadBoard() {
+    const requestedStart = pendingStart;
+    pendingStart = '';
     selectedStart = '';
     selectedRoom = null;
     document.getElementById('roomStep').classList.add('hidden');
@@ -218,8 +234,15 @@
       if (!(boardData.days || []).some((day) => day.date === selectedDate && !day.closed)) {
         selectedDate = ((boardData.days || []).find((day) => !day.closed) || {}).date || weekStart;
       }
+      const selectedDay = (boardData.days || []).find((day) => day.date === selectedDate);
+      if (requestedStart && selectedDay && (selectedDay.slots || []).some((slot) =>
+        slot.startTime === requestedStart && slot.availableCount > 0
+      )) {
+        selectedStart = requestedStart;
+      }
       renderDates();
       renderSlots();
+      if (selectedStart) await loadRooms();
     } catch (error) {
       document.getElementById('rentalBoard').innerHTML = '<div class="rental-empty">讀取失敗。</div>';
       P.toast(error.message, 'error');
