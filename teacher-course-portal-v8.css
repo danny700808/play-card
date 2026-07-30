@@ -25,6 +25,7 @@ body.teacher-course-app.teacher-more-open{overflow:hidden}
 .teacher-course-app .section-title h2{font-size:15px}.teacher-course-app .section-title p,.teacher-course-app .muted{font-size:11px}
 .teacher-roster-search{display:flex;margin:2px 0 9px}.teacher-roster-search input{width:min(360px,100%);min-height:36px;padding:7px 10px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);font:inherit}.teacher-roster-search input:focus{border-color:var(--green);outline:2px solid rgba(36,115,92,.14)}.teacher-roster-empty{padding:16px 8px;text-align:center}
 .teacher-course-app .teacher-roster-row{grid-template-columns:minmax(100px,1fr) minmax(110px,1fr) auto}
+.teacher-roster-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px}.teacher-roster-actions .btn{min-height:34px;padding:6px 9px}
 .teacher-course-app .payroll-row{grid-template-columns:minmax(95px,1fr) minmax(80px,1fr) minmax(145px,1.2fr) minmax(120px,1fr) auto}
 .teacher-more-backdrop{position:fixed;inset:0;z-index:90;display:flex;align-items:flex-end;justify-content:center;padding:12px;background:rgba(15,35,29,.42);backdrop-filter:blur(3px)}
 .teacher-more-sheet{width:min(440px,100%);max-height:min(78dvh,660px);overflow:auto;border-radius:24px 24px 18px 18px;background:#fff;border:1px solid var(--line);box-shadow:0 -20px 55px rgba(20,55,44,.22);padding:10px 14px calc(16px + env(safe-area-inset-bottom));animation:teacherSheetUp .2s ease-out}
@@ -43,6 +44,7 @@ body.teacher-course-app.teacher-more-open{overflow:hidden}
 .teacher-quick-actions button.danger{border-color:#efc6c3;background:#fff5f4;color:#9f3f37}
 .teacher-course-app .modal{z-index:100}
 .teacher-course-app .modal-panel{max-height:88dvh}
+.teacher-stop-warning{display:grid;gap:7px;padding:14px;border:1px solid #efc6c3;border-radius:13px;background:#fff7f6}.teacher-stop-warning strong{font-size:20px;color:#8f312d}.teacher-stop-warning p{margin:0;color:var(--muted);line-height:1.7}.teacher-stop-confirm{width:100%;min-height:46px;margin-top:12px;background:#fff4f3}
 .teacher-course-app .availability-suggestions{display:grid;gap:7px;max-height:260px;overflow:auto}
 .teacher-course-app .availability-option{display:grid;gap:3px;width:100%;padding:10px;border:1px solid var(--line);border-radius:12px;background:#fff;text-align:left;color:var(--ink)}
 .teacher-course-app .availability-option.selected{border-color:var(--green);background:var(--green-soft)}
@@ -77,6 +79,6 @@ body.teacher-course-app.teacher-more-open{overflow:hidden}
   .teacher-course-app .portal-head .danger{min-height:36px;padding:6px 9px;font-size:11px}
   .teacher-course-app .week-scroll{scroll-padding-left:48px}
   .teacher-course-app .week-grid{grid-template-columns:var(--teacher-time-column,48px) repeat(7,var(--teacher-day-width,116px));grid-auto-rows:30px}
-  .teacher-course-app .teacher-roster-row,.teacher-course-app .payroll-row{grid-template-columns:1fr}
+  .teacher-course-app .teacher-roster-row,.teacher-course-app .payroll-row{grid-template-columns:1fr}.teacher-roster-actions{justify-content:flex-start}
   .teacher-more-grid{grid-template-columns:1fr 1fr}
 }

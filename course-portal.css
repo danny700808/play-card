@@ -51,6 +51,7 @@ a { color: inherit; }
 .btn.primary { background: var(--green); color: #fff; border-color: var(--green); }
 .btn.soft { background: var(--green-soft); color: var(--green); border-color: #cce6db; }
 .btn.danger { color: var(--red); border-color: #e9c4c4; }
+.danger-text { color: var(--red); }
 .btn:disabled { opacity: .65; cursor: wait; }
 .btn.is-loading::before {
   content: ""; width: 15px; height: 15px; border: 2px solid currentColor; border-right-color: transparent;

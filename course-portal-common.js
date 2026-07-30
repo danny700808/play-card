@@ -135,7 +135,7 @@
     }
     const result = await invoke(name, data);
     if (cacheable) writeDataCache(name, data, result);
-    else if (/Action|State|Booking|Binding|Exchange|StartBinding|Registration/.test(name)) clearDataCache();
+    else if (/Action|State|Booking|Binding|Exchange|StartBinding|Registration|PhoneAccess|UpdateStudent|StopStudent|Suspension/.test(name)) clearDataCache();
     return result;
   }
 
@@ -319,9 +319,19 @@
     }
 
     async function requestRegularOtp(form, button) {
-      loading(button, true, '寄送中…');
+      loading(button, true, role === 'student' ? '確認中…' : '寄送中…');
       try {
         const fields = Object.fromEntries(new FormData(form).entries());
+        if (role === 'student' && !clean(fields.email)) {
+          const result = await call('coursePortalStudentPhoneAccess', fields);
+          if (result.role !== role || !result.sessionToken) {
+            throw new Error('學生登入資料不完整，請重新操作。');
+          }
+          setSession(role, result.sessionToken);
+          toast('資料確認完成，正在開啟學生入口。');
+          global.location.reload();
+          return;
+        }
         const result = await call('coursePortalSendEmailOtp', Object.assign({
           type: role,
           purpose: 'account'

@@ -43,6 +43,12 @@ assert(source.includes('function teacherRawName()'), '老師原始姓名未與�
 assert(source.includes("const normalizedTeacherName = rowTeacherName.replace(/老師$/, '')"), '老師姓名搜尋未兼容有無「老師」稱謂');
 assert(source.includes('studentName.includes(query)') && source.includes('rowTeacherName.includes(query)'), '搜尋未同時比對學生與老師姓名');
 assert(source.includes('找不到符合「${escapeHtml(rosterQuery)}」的學生或老師。'), '搜尋無結果時缺少清楚提示');
+assert(html.includes('id="studentEditModal"'), '學生頁缺少姓名電話修改視窗');
+assert(source.includes('coursePortalTeacherUpdateStudent'), '學生姓名電話修改沒有送到後端');
+assert(html.includes('id="studentStopModal"') && html.includes('再次確認停課'), '學生停課缺少二次確認視窗');
+assert(source.includes('coursePortalTeacherStopStudent') && source.includes('confirmed: true'), '學生停課沒有送出明確確認');
+assert(html.includes('id="payrollMonth" type="month" min="2026-07"'), '薪資查詢未限制民國 115 年 7 月起');
+assert(source.includes("PAYROLL_MIN_MONTH = '2026-07'"), '薪資月份前端沒有再次驗證最早月份');
 
 const tabs = html.slice(html.indexOf('<nav class="tabs teacher-bottom-tabs"'), html.indexOf('</nav>'));
 assert.strictEqual((tabs.match(/<(?:button|a)\b/g) || []).length, 5, '老師頁底部必須維持五個功能頁籤');

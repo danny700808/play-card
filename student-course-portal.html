@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#24735c">
   <title>學生與家長入口｜柚子樂器</title>
-  <link rel="stylesheet" href="course-portal.css?v=20260730-auth-two-path-v1">
-  <link rel="stylesheet" href="portal-clean-ui-v1.css?v=20260730-auth-two-path-v1">
+  <link rel="stylesheet" href="course-portal.css?v=20260730-student-phone-v1">
+  <link rel="stylesheet" href="portal-clean-ui-v1.css?v=20260730-student-phone-v1">
 </head>
 <body class="clean-portal-ui">
   <main class="portal-shell">
@@ -38,10 +38,9 @@
           <form class="stack auth-regular-form" data-regular-auth-form>
             <div class="field"><label>學生姓名</label><input name="name" autocomplete="name" placeholder="請輸入學生姓名" required></div>
             <div class="field"><label>登記電話</label><input name="phone" inputmode="tel" autocomplete="tel" placeholder="學生資料中的電話" required></div>
-            <div class="field"><label>Email</label><input name="email" type="email" autocomplete="email" placeholder="用來接收四碼驗證碼" required></div>
             <button class="btn auth-regular-submit" type="submit">使用一般方式繼續</button>
           </form>
-          <small class="auth-security-note">第一次會自動建立帳號；Email 四碼確認後直接進入。</small>
+          <small class="auth-security-note">只要學生姓名與登記電話相符即可，不需要填寫 Email。</small>
         </article>
       </div>
       <section class="auth-line-setup hidden" data-line-setup-panel>
@@ -49,7 +48,6 @@
         <form class="stack" data-line-setup-form>
           <div class="field"><label>學生姓名</label><input name="name" autocomplete="name" required></div>
           <div class="field"><label>登記電話</label><input name="phone" inputmode="tel" autocomplete="tel" required></div>
-          <div class="field"><label>Email</label><input name="email" type="email" autocomplete="email" required></div>
           <button class="btn primary" type="submit">確認並進入學生入口</button>
         </form>
       </section>
@@ -106,7 +104,7 @@
   <script src="config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="course-portal-common.js?v=20260730-auth-two-path-v1"></script>
+  <script src="course-portal-common.js?v=20260730-student-phone-v1"></script>
   <script>
   (function () {
     const P = window.CoursePortal;

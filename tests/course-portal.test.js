@@ -63,6 +63,7 @@ assert(commonSource.includes('coursePortalVerifyEmailOtp'), '入口缺少 Email 
 assert(commonSource.includes('coursePortalStartLineLogin'), '入口缺少 LINE 快速登入');
 assert(commonSource.includes('result.authorizationUrl'), 'LINE 登入仍未直接導向 OAuth');
 assert(commonSource.includes('coursePortalCompleteLineRegistration'), '入口缺少 LINE 首次登入');
+assert(commonSource.includes('coursePortalStudentPhoneAccess'), '學生／家長入口沒有姓名＋電話註冊流程');
 assert(commonSource.includes("purpose: 'account'"), '一般註冊／登入未使用統一帳號流程');
 assert(!commonSource.includes('請用已綁定的 LINE 傳送這段快速登入文字'), 'LINE 登入仍停留在複製文字舊流程');
 assert(!commonSource.includes('複製綁定文字'), '入口程式仍保留複製綁定文字');
@@ -101,6 +102,8 @@ for (const file of pages) {
 const teacherPortal = fs.readFileSync(path.join(root, 'teacher-course-portal.html'), 'utf8');
 const teacherSource = fs.readFileSync(path.join(root, 'teacher-course-portal-v8.js'), 'utf8');
 const teacherCss = fs.readFileSync(path.join(root, 'teacher-course-portal-v8.css'), 'utf8');
+const studentPortal = fs.readFileSync(path.join(root, 'student-course-portal.html'), 'utf8');
+const adminPortal = fs.readFileSync(path.join(root, 'course-portal-admin.html'), 'utf8');
 new vm.Script(teacherSource, { filename: 'teacher-course-portal-v8.js' });
 assert(teacherSource.includes('data-quick-action="single_move"'), '老師入口缺少單次調課');
 assert(teacherSource.includes('data-quick-action="permanent_move"'), '老師入口缺少永久調課');
@@ -127,6 +130,25 @@ assert(!portalLanding.includes('老師調課入口'), '老師調課不可誤拆�
 assert(!commonSource.includes('installTeacherApprovedLayout'), '共用程式仍會插入老師上方快捷鍵');
 assert(!commonSource.includes('teacherQuickHome'), '共用程式仍會插入重複的老師常用功能');
 assert(!commonSource.includes('global.matchMedia ='), '老師入口仍會覆寫瀏覽器滑動行為');
+const studentRegularForm = studentPortal.slice(
+  studentPortal.indexOf('data-regular-auth-form'),
+  studentPortal.indexOf('</form>', studentPortal.indexOf('data-regular-auth-form'))
+);
+const studentLineSetupForm = studentPortal.slice(
+  studentPortal.indexOf('data-line-setup-form'),
+  studentPortal.indexOf('</form>', studentPortal.indexOf('data-line-setup-form'))
+);
+assert(!studentRegularForm.includes('name="email"'), '學生／家長一般註冊仍強制填 Email');
+assert(!studentLineSetupForm.includes('name="email"'), '學生／家長 LINE 首次註冊仍強制填 Email');
+assert(studentRegularForm.includes('name="name"') && studentRegularForm.includes('name="phone"'), '學生／家長註冊不是只保留姓名與電話');
+assert(teacherPortal.includes('id="studentEditModal"'), '老師端缺少學生姓名電話修改視窗');
+assert(teacherPortal.includes('id="studentStopModal"') && teacherPortal.includes('再次確認停課'), '老師端停課缺少二次確認');
+assert(teacherPortal.includes('min="2026-07"'), '老師薪資月份未限制為民國 115 年 7 月起');
+assert(teacherSource.includes('coursePortalTeacherUpdateStudent'), '老師修改學生資料未連接後端');
+assert(teacherSource.includes('coursePortalTeacherStopStudent'), '老師停課未連接後端');
+assert(teacherSource.includes('confirmed: true'), '老師停課未傳送二次確認結果');
+assert(adminPortal.includes('停課學費未繳清'), '管理者頁缺少停課學費未繳清專區');
+assert(adminPortal.includes('coursePortalAdminSuspensionAction'), '管理者欠費簽核未連接後端');
 
 const rentalSource = fs.readFileSync(path.join(root, 'room-booking-v2.js'), 'utf8');
 const rentalHtml = fs.readFileSync(path.join(root, 'room-booking.html'), 'utf8');
@@ -417,7 +439,9 @@ function scheduleFixtureCollections(overrides = {}) {
     opsEducationMirrorRoomRentals: [],
     coursePortalScheduleChanges: [],
     coursePortalRoomBookings: [],
-    coursePortalRoomSettings: []
+    coursePortalRoomSettings: [],
+    coursePortalStudentProfiles: [],
+    coursePortalStudentSuspensions: []
   }, overrides);
 }
 
@@ -618,6 +642,70 @@ async function runBackendScheduleRegressionTests() {
       '',
       '租用頁可能把全形 Email 當成歡迎姓名'
     );
+  });
+  const suspensionBackend = loadBackendForScheduleTests({
+    collections: scheduleFixtureCollections(Object.assign({}, sharedMirrors, {
+      opsEducationMirrorFixedCourses: [
+        { id: 'fixed-1', data: mirrorFixture(fixedCourse) }
+      ],
+      coursePortalStudentSuspensions: [{
+        id: 'stop-1',
+        data: {
+          status: 'active',
+          teacherId: 'teacher-1',
+          studentId: 'student-1',
+          effectiveDate: '2026-07-22'
+        }
+      }]
+    }))
+  });
+  const suspensionBundle = await suspensionBackend.__testScheduleBundle(
+    '2026-07-15',
+    '2026-07-29',
+    'teacher-1'
+  );
+  check(() => {
+    assert(
+      suspensionBundle.events.some((row) => row.fixedCourseId === 'fixed-1' && row.date === '2026-07-15'),
+      '停課生效日前的既有課程被錯誤移除'
+    );
+    assert(
+      !suspensionBundle.events.some((row) => row.fixedCourseId === 'fixed-1' && row.date >= '2026-07-22'),
+      '老師完成停課後，生效日之後的課程仍會出現在課表'
+    );
+  });
+  const groupSuspensionBackend = loadBackendForScheduleTests({
+    collections: scheduleFixtureCollections(Object.assign({}, sharedMirrors, {
+      opsEducationMirrorStudents: sharedMirrors.opsEducationMirrorStudents.concat([
+        { id: 'student-2', data: mirrorFixture({ id: 'student-2', name: '同班學生', active: true }) }
+      ]),
+      opsEducationMirrorFixedCourses: [{
+        id: 'fixed-group',
+        data: mirrorFixture(Object.assign({}, fixedCourse, {
+          id: 'fixed-group',
+          studentIds: ['student-1', 'student-2']
+        }))
+      }],
+      coursePortalStudentSuspensions: [{
+        id: 'stop-group-1',
+        data: {
+          status: 'active',
+          teacherId: 'teacher-1',
+          studentId: 'student-1',
+          effectiveDate: '2026-07-22'
+        }
+      }]
+    }))
+  });
+  const groupSuspensionBundle = await groupSuspensionBackend.__testScheduleBundle(
+    '2026-07-22',
+    '2026-07-22',
+    'teacher-1'
+  );
+  check(() => {
+    const groupEvent = groupSuspensionBundle.events.find((row) => row.fixedCourseId === 'fixed-group');
+    assert(groupEvent, '團體課其中一位學生停課時，整堂課被錯誤取消');
+    assert.deepStrictEqual(groupEvent.studentIds, ['student-2'], '團體課停課後沒有只移除指定學生');
   });
   const expiredSync = { toMillis: () => Date.now() - 60 * 1000 };
   const scheduleSnapshot = (data) => ({ exists: true, data: () => data });
@@ -936,6 +1024,7 @@ assert(
   'Firebase 部署清單漏掉教室設備同步功能'
 );
 [
+  'coursePortalStudentPhoneAccess',
   'coursePortalSendEmailOtp',
   'coursePortalVerifyEmailOtp',
   'coursePortalStartLineLogin',
@@ -953,11 +1042,20 @@ assert(
   'coursePortalAdminRoomBookings',
   'coursePortalTeacherAction',
   'coursePortalTeacherLessonState',
+  'coursePortalTeacherUpdateStudent',
+  'coursePortalTeacherStopStudent',
   'coursePortalUpdateStudentReminder',
   'coursePortalAdminBindingAction',
+  'coursePortalAdminSuspensionAction',
   'coursePortalStudentReminderDaily'
 ].forEach((name) => assert(backend.includes(name), `缺少後端函式 ${name}`));
 assert(deployWorkflow.includes('functions:coursePortalTeacherSlotOptions'), '部署清單漏掉老師目標時段查詢');
+[
+  'functions:coursePortalStudentPhoneAccess',
+  'functions:coursePortalTeacherUpdateStudent',
+  'functions:coursePortalTeacherStopStudent',
+  'functions:coursePortalAdminSuspensionAction'
+].forEach((name) => assert(deployWorkflow.includes(name), `Firebase 部署清單漏掉 ${name}`));
 assert(backend.includes("where('ownerKey', '==', sessionOwnerKey(session))"), '租用紀錄未限制為目前登入帳號');
 assert(backend.includes('只能取消自己預約的教室'), '取消租用缺少本人權限檢查');
 assert(backend.includes('const EMAIL_OTP_TTL_MS = 180 * 1000'), 'Email 四碼驗證碼不是 180 秒');
@@ -968,6 +1066,10 @@ assert(backend.includes('const regularIdentity = await resolveRegularIdentity(id
 assert(backend.includes('authAccountId: source.authAccountId'), 'LINE 一次性登入碼交換時遺失帳號鍵');
 assert(backend.includes('sharedBindingAuthAccountId(type, bindings)'), 'LINE 多筆綁定未使用穩定帳號鍵');
 assert(backend.includes("authMethod: 'email-otp'"), '一般登入未建立 Email 驗證工作階段');
+assert(backend.includes("authMethod: 'student-name-phone'"), '學生／家長姓名電話註冊未建立正式工作階段');
+assert(backend.includes("const TEACHER_PAYROLL_MIN_MONTH = '2026-07'"), '老師薪資後端未限制民國 115 年 7 月起');
+assert(backend.includes("db.collection('coursePortalStudentProfiles')"), '老師修改學生資料沒有保存同步覆寫資料');
+assert(backend.includes("db.collection('coursePortalStudentSuspensions')"), '老師停課沒有建立管理者追蹤資料');
 assert(backend.includes('taipeiDateTimeMillis(row.date, row.endTime) > Date.now()'), '租用進行中無法取消');
 assert(backend.includes('course-portal-booking-${id}-reminder'), '租用缺少開始前一小時提醒');
 assert(backend.includes("action === 'delete'"), '後台綁定管理缺少刪除登入資料');

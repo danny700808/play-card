@@ -9,6 +9,7 @@
   const SESSION_KEY = 'youzi.coursePortal.teacher.session.v1';
   const CACHE_PREFIX = 'youzi.teacherCourseApp.v8.';
   const CACHE_TTL = 90 * 1000;
+  const PAYROLL_MIN_MONTH = '2026-07';
 
   const bindView = document.getElementById('bindView');
   const appView = document.getElementById('appView');
@@ -16,7 +17,7 @@
 
   let token = '';
   let weekStart = monday();
-  let payrollMonth = monthKey();
+  let payrollMonth = monthKey() < PAYROLL_MIN_MONTH ? PAYROLL_MIN_MONTH : monthKey();
   let activeTab = 'schedule';
   let data = emptyData();
   let rosterQuery = '';
@@ -479,8 +480,42 @@
         rowTeacherName ? `授課老師 ${rowTeacherName}` : '',
         `手機末四碼 ${clean(student.phoneLast4) || '未提供'}`
       ].filter(Boolean).join('・');
-      return `<article class="list-row teacher-roster-row"><strong>${escapeHtml(student.name)}</strong><span>${escapeHtml(detail)}</span><span><button class="btn soft" type="button" data-student-action="${escapeHtml(student.id)}">增加課程</button> <button class="btn" type="button" data-bonus-student="${escapeHtml(student.id)}" data-bonus-name="${escapeHtml(student.name)}">教材／商品</button></span></article>`;
+      return `<article class="list-row teacher-roster-row"><strong>${escapeHtml(student.name)}</strong><span>${escapeHtml(detail)}</span><span class="teacher-roster-actions"><button class="btn soft" type="button" data-student-action="${escapeHtml(student.id)}">增加課程</button><button class="btn" type="button" data-edit-student="${escapeHtml(student.id)}">修改資料</button><button class="btn" type="button" data-bonus-student="${escapeHtml(student.id)}" data-bonus-name="${escapeHtml(student.name)}">教材／商品</button><button class="btn danger" type="button" data-stop-student="${escapeHtml(student.id)}">停課</button></span></article>`;
     }).join('');
+  }
+
+  function rosterStudent(studentId) {
+    return data.roster.find((row) => clean(row.id) === clean(studentId)) || null;
+  }
+
+  function openStudentEdit(studentId) {
+    const student = rosterStudent(studentId);
+    if (!student) return;
+    const form = document.getElementById('studentEditForm');
+    form.elements.studentId.value = student.id;
+    form.elements.name.value = student.name || '';
+    form.elements.phone.value = student.phone || '';
+    document.getElementById('studentEditModal').classList.remove('hidden');
+    requestAnimationFrame(() => form.elements.name.focus());
+  }
+
+  function closeStudentEdit() {
+    document.getElementById('studentEditModal').classList.add('hidden');
+  }
+
+  function openStudentStop(studentId) {
+    const student = rosterStudent(studentId);
+    if (!student) return;
+    const button = document.getElementById('confirmStudentStop');
+    button.dataset.studentId = student.id;
+    document.getElementById('stopStudentName').textContent = student.name || '這位學生';
+    document.getElementById('studentStopModal').classList.remove('hidden');
+  }
+
+  function closeStudentStop() {
+    const button = document.getElementById('confirmStudentStop');
+    delete button.dataset.studentId;
+    document.getElementById('studentStopModal').classList.add('hidden');
   }
 
   function renderPayroll() {
@@ -1149,7 +1184,16 @@
   weekViewport.addEventListener('scroll', scheduleWeekGroupSnap, { passive: true });
   weekViewport.addEventListener('scrollend', snapWeekScrollToGroup);
   global.addEventListener('resize', () => requestAnimationFrame(updateWeekViewport));
-  document.getElementById('loadPayroll').addEventListener('click', () => { payrollMonth = document.getElementById('payrollMonth').value || monthKey(); load(true); });
+  document.getElementById('loadPayroll').addEventListener('click', () => {
+    const selected = document.getElementById('payrollMonth').value || monthKey();
+    if (selected < PAYROLL_MIN_MONTH) {
+      document.getElementById('payrollMonth').value = PAYROLL_MIN_MONTH;
+      toast('薪資查詢僅開放民國 115 年 7 月起的資料。', 'error');
+      return;
+    }
+    payrollMonth = selected;
+    load(true);
+  });
   document.getElementById('teacherMoreBtn').addEventListener('click', openMore);
   document.getElementById('closeTeacherMore').addEventListener('click', closeMore);
   document.getElementById('teacherMoreBackdrop').addEventListener('click', (event) => { if (event.target.id === 'teacherMoreBackdrop') closeMore(); });
@@ -1162,6 +1206,8 @@
     if (event.key === 'Escape') {
       closeMore();
       closeQuick();
+      closeStudentEdit();
+      closeStudentStop();
     }
   });
 
@@ -1340,13 +1386,69 @@
   document.getElementById('rosterList').addEventListener('click', (event) => {
     const button = event.target.closest('[data-student-action]');
     if (button) beginAddFlow('extra_lesson', { studentIds: [button.dataset.studentAction] });
+    const edit = event.target.closest('[data-edit-student]');
+    if (edit) openStudentEdit(edit.dataset.editStudent);
+    const stop = event.target.closest('[data-stop-student]');
+    if (stop) openStudentStop(stop.dataset.stopStudent);
     const bonus=event.target.closest('[data-bonus-student]');
     if(bonus){const form=document.getElementById('bonusRequestForm');form.elements.studentId.value=bonus.dataset.bonusStudent;form.elements.studentName.value=bonus.dataset.bonusName;document.getElementById('bonusStudentName').value=bonus.dataset.bonusName;document.getElementById('bonusRequestModal').classList.remove('hidden');}
+  });
+  document.getElementById('closeStudentEdit').addEventListener('click', closeStudentEdit);
+  document.getElementById('studentEditModal').addEventListener('click', (event) => {
+    if (event.target.id === 'studentEditModal') closeStudentEdit();
+  });
+  document.getElementById('studentEditForm').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const button = event.submitter;
+    loading(button, true, '同步中…');
+    try {
+      const form = event.currentTarget;
+      const result = await invoke('coursePortalTeacherUpdateStudent', {
+        sessionToken: token,
+        studentId: form.elements.studentId.value,
+        name: form.elements.name.value,
+        phone: form.elements.phone.value
+      });
+      clearCache();
+      closeStudentEdit();
+      toast(result.message || '學生資料已同步更新。');
+      await load(true);
+    } catch (error) {
+      toast(error.message, 'error');
+    } finally {
+      loading(button, false);
+    }
+  });
+  document.getElementById('closeStudentStop').addEventListener('click', closeStudentStop);
+  document.getElementById('studentStopModal').addEventListener('click', (event) => {
+    if (event.target.id === 'studentStopModal') closeStudentStop();
+  });
+  document.getElementById('confirmStudentStop').addEventListener('click', async (event) => {
+    const button = event.currentTarget;
+    const studentId = clean(button.dataset.studentId);
+    if (!studentId) return;
+    loading(button, true, '停課處理中…');
+    try {
+      const result = await invoke('coursePortalTeacherStopStudent', {
+        sessionToken: token,
+        studentId,
+        confirmed: true
+      });
+      clearCache();
+      closeStudentStop();
+      toast(result.message || '停課已完成。');
+      await load(true);
+    } catch (error) {
+      toast(error.message, 'error');
+    } finally {
+      loading(button, false);
+    }
   });
   document.getElementById('closeBonusRequest').addEventListener('click',()=>document.getElementById('bonusRequestModal').classList.add('hidden'));
   document.getElementById('bonusRequestForm').addEventListener('submit',async(event)=>{event.preventDefault();const button=event.submitter;loading(button,true,'送出中…');try{const form=event.currentTarget;let photoData='';const file=document.getElementById('bonusPhoto').files[0];if(file){photoData=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result||''));reader.onerror=reject;reader.readAsDataURL(file);});}const result=await invoke('coursePortalTeacherBonusRequest',{sessionToken:token,studentId:form.elements.studentId.value,studentName:form.elements.studentName.value,description:form.elements.description.value,photoData});document.getElementById('bonusRequestModal').classList.add('hidden');form.reset();toast(result.message||'申請已送出。');}catch(error){toast(error.message,'error');}finally{loading(button,false);}});
 
   logoutBtn.addEventListener('click', () => { setSession(''); location.reload(); });
+  document.getElementById('payrollMonth').min = PAYROLL_MIN_MONTH;
   document.getElementById('payrollMonth').value = payrollMonth;
 
   (async function init() {

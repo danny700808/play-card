@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#24735c">
   <title>老師課務入口｜柚子樂器</title>
   <link rel="stylesheet" href="course-portal.css?v=20260730-auth-two-path-v1">
-  <link rel="stylesheet" href="teacher-course-portal-v8.css?v=20260730-teacher-mobile-v4">
+  <link rel="stylesheet" href="teacher-course-portal-v8.css?v=20260730-student-tools-v1">
   <link rel="stylesheet" href="portal-clean-ui-v1.css?v=20260730-auth-two-path-v1">
 </head>
 <body class="teacher-course-app clean-portal-ui">
@@ -98,7 +98,7 @@
 
       <section class="card tab-panel hidden" data-panel="payroll">
         <div class="section-title"><div><h2>薪資查詢</h2><p class="muted">選擇月份後才更新該月份；不會重新讀取其他頁面。</p></div></div>
-        <div class="toolbar"><div class="field"><label>月份</label><input id="payrollMonth" type="month"></div><button class="btn primary" id="loadPayroll" type="button">查詢</button></div>
+        <div class="toolbar"><div class="field"><label>月份</label><input id="payrollMonth" type="month" min="2026-07"></div><button class="btn primary" id="loadPayroll" type="button">查詢</button></div>
         <div class="list" id="payrollList"></div>
       </section>
     </section>
@@ -133,11 +133,34 @@
 
   <div class="modal hidden" id="bonusRequestModal"><section class="card modal-panel"><div class="section-title"><h2>教材／商品獎金申請</h2><button class="btn" id="closeBonusRequest" type="button">關閉</button></div><form class="stack" id="bonusRequestForm"><input type="hidden" name="studentId"><input type="hidden" name="studentName"><div class="field"><label>學生</label><input id="bonusStudentName" readonly></div><div class="field"><label>申請內容</label><textarea name="description" rows="4" placeholder="例如：協助學生購買鋼琴教材一本" required></textarea></div><div class="field"><label>照片（可直接拍照或從相簿選擇）</label><input id="bonusPhoto" type="file" accept="image/*" capture="environment"><small class="muted">照片只作為主管確認依據。</small></div><button class="btn primary" type="submit">送出申請</button></form></section></div>
 
+  <div class="modal hidden" id="studentEditModal">
+    <section class="card modal-panel">
+      <div class="section-title"><div><h2>修改學生資料</h2><p class="muted">儲存後會同步更新學生入口與管理者資料。</p></div><button class="btn" id="closeStudentEdit" type="button">關閉</button></div>
+      <form class="stack" id="studentEditForm">
+        <input type="hidden" name="studentId">
+        <div class="field"><label>學生姓名</label><input name="name" autocomplete="name" required></div>
+        <div class="field"><label>電話</label><input name="phone" inputmode="tel" autocomplete="tel" required></div>
+        <button class="btn primary" type="submit">儲存並同步</button>
+      </form>
+    </section>
+  </div>
+
+  <div class="modal hidden" id="studentStopModal">
+    <section class="card modal-panel">
+      <div class="section-title"><div><h2>再次確認停課</h2><p class="muted">學生停課後，後續課程會停止顯示。</p></div><button class="btn" id="closeStudentStop" type="button">取消</button></div>
+      <div class="teacher-stop-warning">
+        <strong id="stopStudentName">—</strong>
+        <p>若仍有未繳學費，系統會自動送到管理者專用的「停課學費未繳清」區塊。</p>
+      </div>
+      <button class="btn danger teacher-stop-confirm" id="confirmStudentStop" type="button">確認辦理停課</button>
+    </section>
+  </div>
+
   <script src="config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
   <script src="course-portal-common.js?v=20260730-auth-two-path-v1"></script>
   <script src="teacher-course-session-v8.js?v=20260730-auth-two-path-v1"></script>
-  <script src="teacher-course-portal-v8.js?v=20260730-teacher-mobile-v4"></script>
+  <script src="teacher-course-portal-v8.js?v=20260730-student-tools-v1"></script>
 </body>
 </html>

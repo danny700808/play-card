@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#24735c">
   <title>課務入口帳號管理｜柚子樂器</title>
-  <link rel="stylesheet" href="course-portal.css?v=20260730-auth-two-path-v1">
+  <link rel="stylesheet" href="course-portal.css?v=20260730-student-management-v1">
 </head>
 <body>
   <main class="portal-shell">
@@ -28,6 +28,13 @@
       </div>
       <div class="notice">「停用」可日後恢復；「刪除登入資料」會清除 LINE／一般登入、驗證碼與裝置登入，讓本人重新註冊。老師、學生、課程、租用與帳務歷史不會刪除。</div>
     </section>
+    <section class="card">
+      <div class="section-title">
+        <div><h2>停課學費未繳清</h2><p class="muted">老師辦理停課後，有未結清學費的學生會集中在這裡。</p></div>
+        <span class="badge danger" id="suspensionBadge">0 筆</span>
+      </div>
+      <div class="list" id="suspensionList"><p class="muted">請先輸入管理密碼。</p></div>
+    </section>
     <section class="card binding-admin-card">
       <nav class="tabs">
         <button class="btn active" type="button" data-filter="all">全部</button>
@@ -41,11 +48,12 @@
   <script src="config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="course-portal-common.js?v=20260730-auth-two-path-v1"></script>
+  <script src="course-portal-common.js?v=20260730-student-management-v1"></script>
   <script>
   (function () {
     const P = window.CoursePortal;
     let rows = [];
+    let unpaidSuspensions = [];
     let filter = 'all';
 
     function label(row) {
@@ -68,7 +76,7 @@
         <article class="list-row">
           <strong>${P.escapeHtml(label(row))}</strong>
           <span class="binding-meta"><b>${P.escapeHtml(loginMethod(row))}</b><small>${row.lineDisplayName ? P.escapeHtml(row.lineDisplayName) : '未使用 LINE'}${row.lineDisplayName ? `・${row.lineFriendFlag === true ? '可接收提醒' : '尚未開啟 LINE 提醒'}` : ''}</small></span>
-          <span class="binding-meta"><b>${P.escapeHtml(row.email || '尚未設定 Email')}</b><small>${row.emailVerified ? 'Email 已驗證' : 'Email 尚未驗證'}</small></span>
+          <span class="binding-meta"><b>${P.escapeHtml(row.email || (row.type === 'student' ? '學生／家長免填 Email' : '尚未設定 Email'))}</b><small>${row.emailVerified ? 'Email 已驗證' : (row.type === 'student' && !row.email ? '姓名＋電話登入' : 'Email 尚未驗證')}</small></span>
           <span class="binding-meta"><span class="badge ${row.status === 'active' ? '' : 'danger'}">${row.status === 'active' ? '使用中' : '已停用'}</span><small>${Number(row.activeSessionCount || 0)} 台裝置登入中</small></span>
           <span class="binding-actions">
             <button class="btn ${row.status === 'active' ? 'danger' : 'soft'}" type="button" data-id="${P.escapeHtml(row.id)}" data-type="${P.escapeHtml(row.type)}" data-action="${row.status === 'active' ? 'revoke' : 'restore'}">${row.status === 'active' ? '停用' : '恢復'}</button>
@@ -77,13 +85,27 @@
         </article>`).join('') : '<p class="muted">目前沒有登入帳號。</p>';
     }
 
+    function renderSuspensions() {
+      document.getElementById('suspensionBadge').textContent = `${unpaidSuspensions.length} 筆`;
+      document.getElementById('suspensionList').innerHTML = unpaidSuspensions.length ? unpaidSuspensions.map((row) => `
+        <article class="list-row">
+          <strong>${P.escapeHtml(row.studentName || row.studentId || '學生')}</strong>
+          <span>授課老師：${P.escapeHtml(row.teacherName || row.teacherId || '未提供')}</span>
+          <span>停課日：${P.escapeHtml(row.effectiveDate || '未提供')}</span>
+          <strong class="danger-text">尚未繳清 ${P.money(row.currentUnpaidAmount)}</strong>
+          <span><button class="btn primary" type="button" data-suspension-id="${P.escapeHtml(row.id)}">確認已繳清</button></span>
+        </article>`).join('') : '<p class="muted">目前沒有停課後尚未繳清的學費。</p>';
+    }
+
     async function load() {
       const button = document.getElementById('loadBtn');
       P.loading(button, true, '讀取中…');
       try {
         const result = await P.call('coursePortalAdminData', { adminPin: document.getElementById('adminPin').value });
         rows = result.bindings || [];
+        unpaidSuspensions = result.unpaidSuspensions || [];
         render();
+        renderSuspensions();
       } catch (error) { P.toast(error.message, 'error'); }
       finally { P.loading(button, false); }
     }
@@ -108,6 +130,22 @@
           action: button.dataset.action
         });
         P.toast(button.dataset.action === 'delete' ? '登入資料已刪除，可重新註冊。' : '帳號狀態已更新。');
+        await load();
+      } catch (error) { P.toast(error.message, 'error'); }
+      finally { P.loading(button, false); }
+    });
+    document.getElementById('suspensionList').addEventListener('click', async (event) => {
+      const button = event.target.closest('[data-suspension-id]');
+      if (!button) return;
+      if (!confirm('確定這位學生的停課學費已經繳清？確認後會從此區塊移除。')) return;
+      P.loading(button, true, '確認中…');
+      try {
+        await P.call('coursePortalAdminSuspensionAction', {
+          adminPin: document.getElementById('adminPin').value,
+          id: button.dataset.suspensionId,
+          action: 'settle'
+        });
+        P.toast('已確認繳清。');
         await load();
       } catch (error) { P.toast(error.message, 'error'); }
       finally { P.loading(button, false); }

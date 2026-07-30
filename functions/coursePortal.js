@@ -29,6 +29,7 @@ const EMAIL_OTP_MAX_ATTEMPTS = 5;
 const LINE_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 const LINE_SETUP_TTL_MS = 20 * 60 * 1000;
 const PORTAL_SESSION_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+const TEACHER_PAYROLL_MIN_MONTH = '2026-07';
 const ALLOWED_ORIGINS = [
   'https://danny700808.github.io',
   'https://www.mingtinghuang.com',
@@ -486,6 +487,25 @@ function sourceActive(row) {
   ].includes(clean(value).toLowerCase());
 }
 
+function studentPhoneAccountId(phone) {
+  return hash(`student-phone-account|${normalizePhone(phone)}`);
+}
+
+async function mergeStudentProfileOverrides(rows) {
+  const snapshot = await db.collection('coursePortalStudentProfiles').get();
+  const overrides = new Map(snapshot.docs.map((doc) => [doc.id, doc.data() || {}]));
+  return rows.map((row) => {
+    const override = overrides.get(sourceId(row));
+    if (!override || override.active === false) return row;
+    const next = Object.assign({}, row);
+    const name = clean(override.name);
+    const phone = normalizePhone(override.phone);
+    if (name) next.name = name;
+    if (phone) next.phone = phone;
+    return next;
+  });
+}
+
 function firstArray(row, keys) {
   for (const key of keys) {
     if (Array.isArray(row && row[key])) return row[key].map(clean).filter(Boolean);
@@ -495,9 +515,10 @@ function firstArray(row, keys) {
 
 async function mirrorRows(type) {
   const snapshot = await db.collection(MIRROR[type]).where('sourceActive', '==', true).get();
-  return snapshot.docs
+  const rows = snapshot.docs
     .map((doc) => Object.assign({ __id: doc.id }, jsonValue((doc.data() || {}).source) || {}))
     .filter(Boolean);
+  return type === 'students' ? mergeStudentProfileOverrides(rows) : rows;
 }
 
 async function mirrorRowsByDateRange(type, startDate, endDate, options = {}) {
@@ -679,12 +700,16 @@ async function prepareBindingIdentity(data) {
   const name = clean(data.name);
   const phone = normalizePhone(data.phone);
   const email = normalizeEmail(data.email);
-  assertInput(name, '姓名');
-  assertInput(phone, '電話');
-  assertInput(email, 'Email');
-  if (!validEmail(email)) throw new HttpsError('invalid-argument', 'Email 格式不正確。');
   if (!['teacher', 'student', 'renter'].includes(type)) {
     throw new HttpsError('invalid-argument', '不支援的入口類型。');
+  }
+  assertInput(name, '姓名');
+  assertInput(phone, '電話');
+  if (type !== 'student') {
+    assertInput(email, 'Email');
+  }
+  if (email && !validEmail(email)) {
+    throw new HttpsError('invalid-argument', 'Email 格式不正確。');
   }
 
   if (type === 'teacher') {
@@ -700,13 +725,6 @@ async function prepareBindingIdentity(data) {
   }
   if (type === 'student') {
     const student = await findPerson('students', name, phone);
-    const registeredEmail = sourceEmail(student);
-    if (!registeredEmail) {
-      throw new HttpsError('failed-precondition', '學生資料尚未登記 Email，請先由管理者補上後再註冊。');
-    }
-    if (registeredEmail !== email) {
-      throw new HttpsError('permission-denied', 'Email 與學生登記資料不符，請確認後再試。');
-    }
     return {
       type,
       targetId: sourceId(student),
@@ -774,7 +792,11 @@ async function resolveRegularIdentity(identity) {
   const type = clean(identity.type);
   const targetField = identityTargetField(type);
   const targetId = identityTargetId(identity);
-  const authAccountId = regularAccountId(type, identity.email);
+  const phoneOnlyStudent = type === 'student' && !validEmail(identity.email);
+  const fallbackAuthAccountId = phoneOnlyStudent
+    ? studentPhoneAccountId(identity.phone)
+    : regularAccountId(type, identity.email);
+  const phoneHash = hash(normalizePhone(identity.phone));
   const snapshot = await db.collection(bindingCollection(type))
     .where(targetField, '==', targetId)
     .get();
@@ -783,8 +805,12 @@ async function resolveRegularIdentity(identity) {
     __ref: doc.ref
   }, doc.data() || {}));
   const sameAccount = rows.filter((row) =>
-    clean(row.authAccountId) === authAccountId ||
-    normalizeEmail(row.emailNormalized || row.email) === normalizeEmail(identity.email)
+    clean(row.authAccountId) === fallbackAuthAccountId ||
+    (
+      validEmail(identity.email) &&
+      normalizeEmail(row.emailNormalized || row.email) === normalizeEmail(identity.email)
+    ) ||
+    (phoneOnlyStudent && clean(row.phoneHash) === phoneHash)
   );
   if (sameAccount.some((row) => clean(row.status) === 'revoked')) {
     throw new HttpsError('permission-denied', '這個入口帳號目前已停用，請聯絡柚子樂器協助恢復。');
@@ -793,7 +819,7 @@ async function resolveRegularIdentity(identity) {
     clean(row.status) === 'active' && clean(row.lineUserId)
   ) || sameAccount.find((row) => clean(row.status) === 'active') || null;
   return {
-    authAccountId,
+    authAccountId: clean(active && active.authAccountId) || fallbackAuthAccountId,
     bindingId: clean(active && active.__id),
     lineUserId: clean(active && active.lineUserId)
   };
@@ -1062,6 +1088,55 @@ async function completeRegularAccount(source) {
     ok: true,
     purpose: 'account',
     role: type,
+    sessionToken: issued.sessionToken,
+    expiresAt: issued.expiresAt.toDate().toISOString()
+  };
+}
+
+async function studentPhoneAccess(data) {
+  const identity = await prepareBindingIdentity(Object.assign({}, data, {
+    type: 'student',
+    email: ''
+  }));
+  await consumeRateLimit('student-name-phone-access', identity.phone);
+  const regularIdentity = await resolveRegularIdentity(identity);
+  const authAccountId = regularIdentity.authAccountId || studentPhoneAccountId(identity.phone);
+  const bindingId = clean(regularIdentity.bindingId) || hash([
+    'student-name-phone',
+    authAccountId,
+    identity.targetId
+  ].join('|'));
+  const bindingRef = db.collection('coursePortalStudentBindings').doc(bindingId);
+  const existing = await bindingRef.get();
+  const previous = existing.exists ? existing.data() || {} : {};
+  if (clean(previous.status) === 'revoked') {
+    throw new HttpsError('permission-denied', '這個入口帳號目前已停用，請聯絡柚子樂器協助恢復。');
+  }
+  await bindingRef.set({
+    type: 'student',
+    studentId: clean(identity.targetId),
+    name: clean(identity.name),
+    phoneHash: hash(normalizePhone(identity.phone)),
+    authAccountId,
+    authProvider: clean(previous.lineUserId) ? 'line-login+name-phone' : 'name-phone',
+    relationship: clean(data.relationship) || clean(previous.relationship) || '本人／家長',
+    status: 'active',
+    reminderLastLesson: previous.reminderLastLesson !== false,
+    reminderPayment: previous.reminderPayment !== false,
+    registeredAt: previous.registeredAt || FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp()
+  }, { merge: true });
+  const issued = await issueSession({
+    type: 'student',
+    lineUserId: clean(previous.lineUserId || regularIdentity.lineUserId),
+    authAccountId,
+    targetId: clean(identity.targetId),
+    renterId: '',
+    authMethod: 'student-name-phone'
+  });
+  return {
+    ok: true,
+    role: 'student',
     sessionToken: issued.sessionToken,
     expiresAt: issued.expiresAt.toDate().toISOString()
   };
@@ -1491,15 +1566,19 @@ async function completeLineRegistration(data) {
     lineVerified: true,
     authAccountId,
     authProvider: 'line-login',
-    email: normalizeEmail(identity.email),
-    emailNormalized: normalizeEmail(identity.email),
-    emailVerified: false,
+    name: clean(identity.name),
+    phoneHash: hash(normalizePhone(identity.phone)),
     status: 'active',
     updatedAt: FieldValue.serverTimestamp(),
     boundAt: FieldValue.serverTimestamp(),
     reminderLastLesson: true,
     reminderPayment: true
   };
+  if (validEmail(identity.email)) {
+    payload.email = normalizeEmail(identity.email);
+    payload.emailNormalized = normalizeEmail(identity.email);
+    payload.emailVerified = false;
+  }
   if (type === 'teacher') payload.teacherId = targetId;
   if (type === 'student') {
     payload.studentId = targetId;
@@ -2310,8 +2389,47 @@ function indexById(rows) {
   }, {});
 }
 
+async function activeStudentSuspensions() {
+  const snapshot = await db.collection('coursePortalStudentSuspensions')
+    .where('status', '==', 'active')
+    .get();
+  return snapshot.docs.map((doc) => Object.assign({
+    id: doc.id
+  }, jsonValue(doc.data()) || {}));
+}
+
+function suspensionAppliesToEvent(suspension, row) {
+  const effectiveDate = dateKey(
+    suspension.effectiveDate ||
+    suspension.stopDate ||
+    suspension.requestedAtText
+  );
+  return clean(suspension.teacherId) === eventTeacherId(row) &&
+    eventStudentIds(row).includes(clean(suspension.studentId)) &&
+    (!effectiveDate || eventDate(row) >= effectiveDate);
+}
+
+function applyStudentSuspensions(row, suspensions) {
+  const originalStudentIds = eventStudentIds(row);
+  if (!originalStudentIds.length) return row;
+  const retainedStudentIds = originalStudentIds.filter((studentId) =>
+    !(suspensions || []).some((suspension) =>
+      clean(suspension.studentId) === studentId &&
+      suspensionAppliesToEvent(suspension, row)
+    )
+  );
+  if (retainedStudentIds.length === originalStudentIds.length) return row;
+  if (!retainedStudentIds.length) return null;
+  return Object.assign({}, row, {
+    studentId: retainedStudentIds.length === 1 ? retainedStudentIds[0] : '',
+    studentIds: retainedStudentIds,
+    students: retainedStudentIds,
+    student_ids: retainedStudentIds
+  });
+}
+
 async function scheduleBundle(startDate, endDate, ownTeacherId) {
-  const [rooms, subjects, students, teachers, events, fixed, temporary, rentals, changes] = await Promise.all([
+  const [rooms, subjects, students, teachers, events, fixed, temporary, rentals, changes, suspensions] = await Promise.all([
     mirrorRows('rooms'),
     mirrorRows('subjects'),
     mirrorRows('students'),
@@ -2320,7 +2438,8 @@ async function scheduleBundle(startDate, endDate, ownTeacherId) {
     mirrorRows('fixedCourses'),
     mirrorRowsByDateRange('temporaryCourses', startDate, endDate),
     mirrorRowsByDateRange('roomRentals', startDate, endDate),
-    scheduleChangeDocsByDateRange(startDate, endDate)
+    scheduleChangeDocsByDateRange(startDate, endDate),
+    activeStudentSuspensions()
   ]);
   const maps = {
     rooms: indexById(rooms),
@@ -2626,7 +2745,8 @@ async function scheduleBundle(startDate, endDate, ownTeacherId) {
       }
     }
   });
-  const validBase = base.filter((row) =>
+  const validBase = base.map((row) => applyStudentSuspensions(row, suspensions)).filter((row) =>
+    row &&
     eventDate(row) >= startDate &&
     eventDate(row) <= endDate &&
     validPortalTime(eventStart(row)) &&
@@ -2642,6 +2762,7 @@ async function scheduleBundle(startDate, endDate, ownTeacherId) {
     fixedCourses: activeFixedRows,
     temporaryCourses: temporary.filter((row) => !livePortalSource(row)),
     scheduleChanges: overlay,
+    suspensions,
     maps,
     resourceEvents,
     resourceConflicts: scheduleResourceConflicts(resourceEvents),
@@ -2655,6 +2776,9 @@ async function teacherPortalData(data) {
   if (!start) throw new HttpsError('invalid-argument', '週起始日期格式錯誤。');
   const end = addDays(start, 6);
   const month = clean(data.month).match(/^\d{4}-\d{2}$/) ? clean(data.month) : start.slice(0, 7);
+  if (data.includePayroll === true && month < TEACHER_PAYROLL_MIN_MONTH) {
+    throw new HttpsError('failed-precondition', '老師薪資查詢僅開放民國 115 年 7 月起的資料。');
+  }
   const [bundle, roomSettingsSnapshot] = await Promise.all([
     scheduleBundle(start, end, session.teacherId),
     db.collection('coursePortalRoomSettings').get()
@@ -2664,15 +2788,26 @@ async function teacherPortalData(data) {
   const teacher = bundle.maps.teachers[session.teacherId];
   if (!teacher) throw new HttpsError('not-found', '找不到這個老師帳號的資料。');
   const ownEvents = bundle.events.filter((row) => row.teacherId === session.teacherId);
+  const stoppedStudentIds = new Set((bundle.suspensions || [])
+    .filter((row) => clean(row.teacherId) === session.teacherId)
+    .map((row) => clean(row.studentId))
+    .filter(Boolean));
   const studentIds = [...new Set(
     [...bundle.fixedCourses, ...bundle.temporaryCourses]
       .filter((row) => eventTeacherId(row) === session.teacherId)
       .flatMap(eventStudentIds)
       .concat(ownEvents.flatMap((row) => row.studentIds))
-  )];
+  )].filter((studentId) => !stoppedStudentIds.has(studentId));
   const roster = studentIds.map((id) => {
     const student = bundle.maps.students[id] || {};
-    return { id, name: clean(student.name), phoneLast4: normalizePhone(sourcePhone(student)).slice(-4) };
+    const phone = normalizePhone(sourcePhone(student));
+    return {
+      id,
+      name: clean(student.name),
+      phone,
+      phoneLast4: phone.slice(-4),
+      teacherName: clean(teacher.name)
+    };
   }).filter((row) => row.name);
   const includePayroll = data.includePayroll === true;
   const [payroll, adjustments, portalAdjustmentsSnap] = includePayroll
@@ -2710,6 +2845,148 @@ async function teacherPortalData(data) {
     result.adjustments = adjustments.concat(portalAdjustments).filter((row) => clean(row.month || row.payrollMonth || eventDate(row).slice(0, 7)) === month);
   }
   return result;
+}
+
+async function teacherOwnsStudent(teacherId, studentId) {
+  const [fixedCourses, temporaryCourses] = await Promise.all([
+    mirrorRows('fixedCourses'),
+    mirrorRows('temporaryCourses')
+  ]);
+  return [...fixedCourses, ...temporaryCourses].some((row) =>
+    eventTeacherId(row) === clean(teacherId) &&
+    eventStudentIds(row).includes(clean(studentId))
+  );
+}
+
+function tuitionOutstandingAmount(row) {
+  const expected = Number(
+    row.expectedAmount ||
+    row.tuitionAmount ||
+    row.courseAmount ||
+    row.feeAmount ||
+    row.amount ||
+    0
+  );
+  const paid = Number(
+    row.paidAmount ||
+    row.receivedAmount ||
+    row.paid ||
+    row.received ||
+    0
+  );
+  return Math.max(0, expected - paid);
+}
+
+async function teacherUpdateStudent(data) {
+  const session = await requireSession(data, ['teacher']);
+  const studentId = clean(data.studentId);
+  const name = clean(data.name);
+  const phone = normalizePhone(data.phone);
+  assertInput(studentId, '學生');
+  assertInput(name, '學生姓名');
+  assertInput(phone, '學生電話');
+  if (!/^\d{8,15}$/.test(phone)) {
+    throw new HttpsError('invalid-argument', '學生電話格式不正確。');
+  }
+  if (!(await teacherOwnsStudent(session.teacherId, studentId))) {
+    throw new HttpsError('permission-denied', '只能修改目前由您授課的學生資料。');
+  }
+  const students = await mirrorRows('students');
+  if (!students.some((row) => sourceId(row) === studentId)) {
+    throw new HttpsError('not-found', '找不到這位學生。');
+  }
+  const bindingSnapshot = await db.collection('coursePortalStudentBindings')
+    .where('studentId', '==', studentId)
+    .get();
+  const batch = db.batch();
+  batch.set(db.collection('coursePortalStudentProfiles').doc(studentId), {
+    studentId,
+    name,
+    phone,
+    active: true,
+    updatedByTeacherId: session.teacherId,
+    updatedAt: FieldValue.serverTimestamp(),
+    updatedAtText: nowText()
+  }, { merge: true });
+  bindingSnapshot.docs.forEach((doc) => {
+    batch.set(doc.ref, {
+      name,
+      phoneHash: hash(phone),
+      updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+  });
+  await batch.commit();
+  return {
+    ok: true,
+    studentId,
+    name,
+    phone,
+    message: '學生姓名與電話已同步更新。'
+  };
+}
+
+async function teacherStopStudent(data) {
+  const session = await requireSession(data, ['teacher']);
+  const studentId = clean(data.studentId);
+  assertInput(studentId, '學生');
+  if (data.confirmed !== true) {
+    throw new HttpsError('failed-precondition', '請先完成停課確認。');
+  }
+  if (!(await teacherOwnsStudent(session.teacherId, studentId))) {
+    throw new HttpsError('permission-denied', '只能辦理由您授課的學生停課。');
+  }
+  const [students, teachers, periods] = await Promise.all([
+    mirrorRows('students'),
+    mirrorRows('teachers'),
+    mirrorRowsByField('tuitionPeriods', 'studentId', studentId)
+  ]);
+  const student = students.find((row) => sourceId(row) === studentId) || {};
+  const teacher = teachers.find((row) => sourceId(row) === session.teacherId) || {};
+  if (!sourceId(student)) throw new HttpsError('not-found', '找不到這位學生。');
+  const relatedPeriods = periods.filter((row) =>
+    !eventTeacherId(row) || eventTeacherId(row) === session.teacherId
+  );
+  const unpaidAmount = relatedPeriods.reduce((sum, row) => sum + tuitionOutstandingAmount(row), 0);
+  const suspensionId = hash(`teacher-stop|${session.teacherId}|${studentId}`);
+  const suspensionRef = db.collection('coursePortalStudentSuspensions').doc(suspensionId);
+  const existing = await suspensionRef.get();
+  if (existing.exists && clean(existing.data().status) === 'active') {
+    return {
+      ok: true,
+      suspensionId,
+      unpaidAmount: Number(existing.data().unpaidAmountAtStop || unpaidAmount),
+      message: '這位學生已完成停課登記。'
+    };
+  }
+  const batch = db.batch();
+  batch.set(suspensionRef, {
+    suspensionId,
+    status: 'active',
+    studentId,
+    studentName: clean(student.name),
+    teacherId: session.teacherId,
+    teacherName: clean(teacher.name),
+    effectiveDate: currentTaipeiDay(),
+    unpaidAmountAtStop: unpaidAmount,
+    requestedBy: 'teacher',
+    requestedAt: FieldValue.serverTimestamp(),
+    requestedAtText: nowText(),
+    updatedAt: FieldValue.serverTimestamp()
+  }, { merge: true });
+  batch.set(scheduleVersionRef(), {
+    version: FieldValue.increment(1),
+    updatedAt: FieldValue.serverTimestamp(),
+    updatedBy: 'teacher-student-stop'
+  }, { merge: true });
+  await batch.commit();
+  return {
+    ok: true,
+    suspensionId,
+    unpaidAmount,
+    message: unpaidAmount > 0
+      ? '停課已完成，未繳學費已送到管理者專用區。'
+      : '停課已完成，目前沒有未繳學費。'
+  };
 }
 
 async function teacherAvailability(data) {
@@ -4467,14 +4744,15 @@ async function adminRoomBookings() {
 }
 
 async function adminData() {
-  const [teachers, students, renters, teacherRows, studentRows, renterRows, sessions] = await Promise.all([
+  const [teachers, students, renters, teacherRows, studentRows, renterRows, sessions, suspensionSnapshot] = await Promise.all([
     db.collection('coursePortalTeacherBindings').get(),
     db.collection('coursePortalStudentBindings').get(),
     db.collection('coursePortalRenterBindings').get(),
     mirrorRows('teachers'),
     mirrorRows('students'),
     db.collection('coursePortalRenters').get(),
-    db.collection('coursePortalSessions').get()
+    db.collection('coursePortalSessions').get(),
+    db.collection('coursePortalStudentSuspensions').where('status', '==', 'active').get()
   ]);
   const teacherMap = indexById(teacherRows);
   const studentMap = indexById(studentRows);
@@ -4528,7 +4806,45 @@ async function adminData() {
       reminderPayment: row.reminderPayment !== false
     };
   });
-  return { ok: true, bindings: [...map(teachers), ...map(students), ...map(renters)] };
+  const suspensionRows = suspensionSnapshot.docs.map((doc) => Object.assign({
+    id: doc.id
+  }, jsonValue(doc.data()) || {}));
+  const suspensionStudentIds = [...new Set(suspensionRows.map((row) => clean(row.studentId)).filter(Boolean))];
+  const periodGroups = await Promise.all(suspensionStudentIds.map((studentId) =>
+    mirrorRowsByField('tuitionPeriods', 'studentId', studentId)
+  ));
+  const periodsByStudent = new Map(suspensionStudentIds.map((studentId, index) => [
+    studentId,
+    periodGroups[index] || []
+  ]));
+  const unpaidSuspensions = suspensionRows.map((row) => {
+    const studentId = clean(row.studentId);
+    const teacherId = clean(row.teacherId);
+    const periods = periodsByStudent.get(studentId) || [];
+    const relatedPeriods = periods.filter((period) =>
+      !eventTeacherId(period) || eventTeacherId(period) === teacherId
+    );
+    const currentUnpaidAmount = relatedPeriods.length
+      ? relatedPeriods.reduce((sum, period) => sum + tuitionOutstandingAmount(period), 0)
+      : Number(row.unpaidAmountAtStop || 0);
+    return {
+      id: clean(row.id),
+      studentId,
+      studentName: clean(studentMap[studentId] && studentMap[studentId].name) || clean(row.studentName),
+      teacherId,
+      teacherName: clean(teacherMap[teacherId] && teacherMap[teacherId].name) || clean(row.teacherName),
+      effectiveDate: dateKey(row.effectiveDate),
+      requestedAtText: clean(row.requestedAtText),
+      unpaidAmountAtStop: Number(row.unpaidAmountAtStop || 0),
+      currentUnpaidAmount,
+      paymentStatus: clean(row.paymentStatus || 'pending')
+    };
+  }).filter((row) => row.paymentStatus !== 'settled' && row.currentUnpaidAmount > 0);
+  return {
+    ok: true,
+    bindings: [...map(teachers), ...map(students), ...map(renters)],
+    unpaidSuspensions
+  };
 }
 
 async function commitOperations(operations) {
@@ -4646,6 +4962,26 @@ async function adminBindingAction(data) {
   return { ok: true, status };
 }
 
+async function adminSuspensionAction(data) {
+  const id = clean(data.id);
+  const action = clean(data.action);
+  if (!id || action !== 'settle') {
+    throw new HttpsError('invalid-argument', '停課學費簽核資料不完整。');
+  }
+  const ref = db.collection('coursePortalStudentSuspensions').doc(id);
+  const snapshot = await ref.get();
+  if (!snapshot.exists || clean(snapshot.data().status) !== 'active') {
+    throw new HttpsError('not-found', '找不到這筆停課資料。');
+  }
+  await ref.set({
+    paymentStatus: 'settled',
+    settledAt: FieldValue.serverTimestamp(),
+    settledAtText: nowText(),
+    updatedAt: FieldValue.serverTimestamp()
+  }, { merge: true });
+  return { ok: true, id, message: '已確認學費繳清。' };
+}
+
 async function dailyStudentReminders(pushLineMessage) {
   if (typeof pushLineMessage !== 'function') return;
   const [bindings, periods, students] = await Promise.all([
@@ -4678,12 +5014,25 @@ async function dailyStudentReminders(pushLineMessage) {
 
 async function appendCoursePortalData(payload) {
   if (!payload || typeof payload !== 'object') return payload;
-  const [changes, bookings, roomSettings] = await Promise.all([
+  const [changes, bookings, roomSettings, studentProfiles, suspensions] = await Promise.all([
     db.collection('coursePortalScheduleChanges').where('active', '==', true).get(),
     db.collection('coursePortalRoomBookings').where('active', '==', true).get(),
-    db.collection('coursePortalRoomSettings').get()
+    db.collection('coursePortalRoomSettings').get(),
+    db.collection('coursePortalStudentProfiles').get(),
+    db.collection('coursePortalStudentSuspensions').where('status', '==', 'active').get()
   ]);
   const roomSettingsMap = new Map(roomSettings.docs.map((doc) => [doc.id, jsonValue(doc.data()) || {}]));
+  const studentProfileMap = new Map(studentProfiles.docs.map((doc) => [doc.id, jsonValue(doc.data()) || {}]));
+  if (Array.isArray(payload.students)) {
+    payload.students = payload.students.map((student) => {
+      const profile = studentProfileMap.get(sourceId(student));
+      if (!profile || profile.active === false) return student;
+      const merged = Object.assign({}, student);
+      if (clean(profile.name)) merged.name = clean(profile.name);
+      if (normalizePhone(profile.phone)) merged.phone = normalizePhone(profile.phone);
+      return merged;
+    });
+  }
   if (Array.isArray(payload.rooms)) {
     payload.rooms = payload.rooms.map((room) => {
       const setting = roomSettingsMap.get(sourceId(room));
@@ -4846,6 +5195,8 @@ async function appendCoursePortalData(payload) {
     changes: changeRows.length,
     bookings: bookings.size,
     roomSettings: roomSettings.size,
+    studentProfiles: studentProfiles.size,
+    studentSuspensions: suspensions.size,
     mergedAt: new Date().toISOString()
   };
   return payload;
@@ -4860,6 +5211,7 @@ function registerCoursePortal(exportsObject, helpers = {}) {
   }, options), async (request) => handler(request && request.data || {}, request));
 
   exportsObject.coursePortalStartBinding = callable(startBinding);
+  exportsObject.coursePortalStudentPhoneAccess = callable(studentPhoneAccess);
   exportsObject.coursePortalSendEmailOtp = callable((data) => sendEmailOtp(data, {
     sendEmail: helpers.sendEmail
   }));
@@ -4887,6 +5239,8 @@ function registerCoursePortal(exportsObject, helpers = {}) {
   exportsObject.coursePortalTeacherAction = callable(teacherAction, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalTeacherLessonState = callable(teacherLessonState, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalTeacherLateAttendance = callable(teacherLateAttendance, { timeoutSeconds: 180, memory: '1GiB' });
+  exportsObject.coursePortalTeacherUpdateStudent = callable(teacherUpdateStudent, { timeoutSeconds: 180, memory: '1GiB' });
+  exportsObject.coursePortalTeacherStopStudent = callable(teacherStopStudent, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalTeacherBonusRequest = callable(teacherBonusRequest, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalRentalUseSettings = callable(publicRentalSettings);
   exportsObject.coursePortalAdminRentalSettingsData = callable(async (data, request) => {
@@ -4910,6 +5264,10 @@ function registerCoursePortal(exportsObject, helpers = {}) {
   exportsObject.coursePortalAdminBindingAction = callable(async (data, request) => {
     assertAdminPin(request);
     return adminBindingAction(data);
+  }, { secrets: [ADMIN_PIN] });
+  exportsObject.coursePortalAdminSuspensionAction = callable(async (data, request) => {
+    assertAdminPin(request);
+    return adminSuspensionAction(data);
   }, { secrets: [ADMIN_PIN] });
   exportsObject.coursePortalStudentReminderDaily = onSchedule({
     schedule: '0 10 * * *',
