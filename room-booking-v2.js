@@ -87,6 +87,28 @@
     renderPreference();
   }
 
+  function showRentalLoadFailure(error) {
+    const raw = clean(error && error.message);
+    const message = raw && raw !== 'internal'
+      ? raw
+      : '租用資料暫時無法讀取，請按「重新讀取」。';
+    document.getElementById('rentalUseGrid').innerHTML = `
+      <button class="btn soft" type="button" data-retry-rental>重新讀取租用資料</button>
+    `;
+    document.getElementById('rentalBoard').innerHTML =
+      '<div class="rental-empty">登入已完成，租用資料尚未載入。</div>';
+    P.toast(message, 'error');
+  }
+
+  async function loadRentalData() {
+    try {
+      await loadUses();
+      await loadBoard();
+    } catch (error) {
+      showRentalLoadFailure(error);
+    }
+  }
+
   function resetPreference() {
     excludeDigitalPiano = false;
     allowGuzhengMove = false;
@@ -309,18 +331,20 @@
   async function openBooking(nextRole, nextToken) {
     role = nextRole;
     token = nextToken;
-    const initialBookings = await P.call('coursePortalRentalMyBookings', { sessionToken: token });
-    myBookings = initialBookings.bookings || [];
     showBooking(true);
     renderDurations();
-    renderBookings();
-    await loadUses();
-    await loadBoard();
+    await loadBookings();
+    await loadRentalData();
   }
 
   P.installAuth({ role: 'renter', authViewId: 'publicBindView' });
 
   document.getElementById('rentalUseGrid').addEventListener('click', (event) => {
+    const retry = event.target.closest('[data-retry-rental]');
+    if (retry) {
+      loadRentalData();
+      return;
+    }
     const button = event.target.closest('[data-use]');
     if (!button) return;
     selectedUse = button.dataset.use;
