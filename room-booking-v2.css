@@ -184,7 +184,17 @@ body.rental-booking-v2 {
 }
 
 .rental-booking-v2 .date-chip em {
-  display: none;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.rental-booking-v2 .date-chip.is-past,
+.rental-slot.is-past {
+  border-color: #d7ddda;
+  background: #edf0ee;
+  color: #8a928e;
+  box-shadow: none;
 }
 
 .rental-board {
@@ -208,6 +218,11 @@ body.rental-booking-v2 {
 
 .rental-slot strong {
   font-size: 13px;
+}
+
+.rental-slot small {
+  font-size: 10px;
+  font-weight: 750;
 }
 
 .rental-slot.selected {
