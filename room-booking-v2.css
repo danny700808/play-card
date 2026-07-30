@@ -38,13 +38,13 @@ body.rental-booking-v2 {
 
 .rental-use-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 9px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
 }
 
 .rental-use-card {
-  min-height: 112px;
-  padding: 10px 8px;
+  min-height: 78px;
+  padding: 7px 5px;
   border: 1px solid var(--line);
   border-radius: 16px;
   background: #fff;
@@ -53,13 +53,13 @@ body.rental-booking-v2 {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 3px;
   font-weight: 900;
-  font-size: 17px;
+  font-size: 14px;
 }
 
 .rental-use-card > span {
-  font-size: 28px;
+  font-size: 22px;
 }
 
 .rental-use-card small {
@@ -120,16 +120,25 @@ body.rental-booking-v2 {
   margin-bottom: 8px;
 }
 
+.rental-preference-options.piano-options {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.rental-preference-options.drum-options {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .rental-preference-options label {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  min-height: 44px;
-  padding: 7px;
+  min-height: 40px;
+  padding: 6px 4px;
   border: 1px solid var(--line);
   border-radius: 11px;
   background: #fff;
+  font-size: 13px;
   font-weight: 800;
 }
 
@@ -174,6 +183,10 @@ body.rental-booking-v2 {
   gap: 2px;
 }
 
+.rental-booking-v2 .date-chip em {
+  display: none;
+}
+
 .rental-board {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -181,7 +194,7 @@ body.rental-booking-v2 {
 }
 
 .rental-slot {
-  min-height: 64px;
+  min-height: 46px;
   border: 1px solid var(--line);
   border-radius: 13px;
   background: #fff;
@@ -190,16 +203,11 @@ body.rental-booking-v2 {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
+  gap: 0;
 }
 
 .rental-slot strong {
-  font-size: 15px;
-}
-
-.rental-slot small {
-  font-size: 11px;
-  color: var(--muted);
+  font-size: 13px;
 }
 
 .rental-slot.selected {
@@ -358,10 +366,6 @@ body.rental-booking-v2 {
 
   .rental-step-title {
     font-size: 18px;
-  }
-
-  .rental-preference-options {
-    grid-template-columns: 1fr;
   }
 
   .rental-booking-v2 .rental-history-row {
