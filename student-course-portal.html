@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#24735c">
   <title>學生與家長入口｜柚子樂器</title>
-  <link rel="stylesheet" href="course-portal.css?v=20260730-line-oauth-v2">
-  <link rel="stylesheet" href="portal-clean-ui-v1.css?v=20260730-line-oauth-v2">
+  <link rel="stylesheet" href="course-portal.css?v=20260730-auth-two-path-v1">
+  <link rel="stylesheet" href="portal-clean-ui-v1.css?v=20260730-auth-two-path-v1">
 </head>
 <body class="clean-portal-ui">
   <main class="portal-shell">
@@ -16,31 +16,46 @@
     </header>
 
     <section class="card bind-box hidden" id="bindView" data-auth-view>
-      <div class="section-title"><h2>登入學生入口</h2></div>
-      <div class="auth-login-stack">
-        <button class="btn primary auth-line-button" type="button" data-line-login>使用 LINE 登入／註冊</button>
-        <p class="auth-line-hint">第一次完成綁定後，同一手機會直接進入，並可接收課程與繳費提醒。</p>
-        <div class="auth-divider"><span>或使用 Email</span></div>
-        <form class="stack" data-email-login-form>
-          <div class="field"><label>Email</label><input name="email" type="email" autocomplete="email" required></div>
-          <button class="btn" type="submit">寄送四碼驗證碼</button>
-        </form>
-        <div class="auth-help-row">
-          <button class="btn soft" type="button" data-show-first-use aria-expanded="false">第一次使用／建立帳號</button>
-        </div>
-        <div class="auth-otp-panel hidden" data-otp-panel></div>
+      <div class="section-title auth-title">
+        <div><h2>學生／家長登入</h2><p class="muted">選擇一種方式即可，第一次使用也從這裡開始。</p></div>
       </div>
-      <section class="auth-first-use hidden" data-first-use-panel>
-        <div class="section-title"><h3>第一次使用</h3></div>
-        <form class="stack" id="bindForm" data-first-use-form>
+      <div class="auth-choice-list" data-auth-choice-list>
+        <article class="auth-choice auth-choice-line">
+          <div class="auth-choice-heading">
+            <span class="auth-choice-icon">LINE</span>
+            <div><h3>LINE 快速登入</h3><p>最快、最方便，也能接收課程與繳費提醒。</p></div>
+            <span class="auth-recommended">推薦</span>
+          </div>
+          <button class="btn primary auth-line-button" type="button" data-line-login>使用 LINE 繼續</button>
+          <small>第一次會請您填一次基本資料；以後按 LINE 就能進入。</small>
+        </article>
+        <div class="auth-divider"><span>或</span></div>
+        <article class="auth-choice auth-choice-regular">
+          <div class="auth-choice-heading">
+            <span class="auth-choice-icon auth-choice-icon-plain">一般</span>
+            <div><h3>一般註冊／登入</h3><p>不使用 LINE，也可以安全登入。</p></div>
+          </div>
+          <form class="stack auth-regular-form" data-regular-auth-form>
+            <div class="field"><label>學生姓名</label><input name="name" autocomplete="name" placeholder="請輸入學生姓名" required></div>
+            <div class="field"><label>登記電話</label><input name="phone" inputmode="tel" autocomplete="tel" placeholder="學生資料中的電話" required></div>
+            <div class="field"><label>Email</label><input name="email" type="email" autocomplete="email" placeholder="用來接收四碼驗證碼" required></div>
+            <div class="field"><label>您的身分</label><select name="relationship"><option>本人</option><option>父親</option><option>母親</option><option>家長</option><option>其他照顧者</option></select></div>
+            <button class="btn auth-regular-submit" type="submit">使用一般方式繼續</button>
+          </form>
+          <small class="auth-security-note">第一次會自動建立帳號；Email 四碼確認後直接進入。</small>
+        </article>
+      </div>
+      <section class="auth-line-setup hidden" data-line-setup-panel>
+        <div class="section-title"><div><h3>完成 LINE 第一次登入</h3><p class="muted">LINE 身分已確認，只需要填這一次。</p></div></div>
+        <form class="stack" data-line-setup-form>
           <div class="field"><label>學生姓名</label><input name="name" autocomplete="name" required></div>
           <div class="field"><label>登記電話</label><input name="phone" inputmode="tel" autocomplete="tel" required></div>
           <div class="field"><label>Email</label><input name="email" type="email" autocomplete="email" required></div>
           <div class="field"><label>您的身分</label><select name="relationship"><option>本人</option><option>父親</option><option>母親</option><option>家長</option><option>其他照顧者</option></select></div>
-          <button class="btn primary" type="submit">寄送四碼驗證碼</button>
+          <button class="btn primary" type="submit">確認並進入學生入口</button>
         </form>
-        <div class="bind-result hidden" data-bind-result></div>
       </section>
+      <div class="auth-otp-panel hidden" data-otp-panel></div>
     </section>
 
     <section class="card portal-session-card" id="sessionLoading" aria-live="polite">
@@ -80,7 +95,7 @@
         <div class="list" id="attendanceList"></div>
       </section>
       <section class="card tab-panel hidden" data-panel="reminders">
-        <div class="section-title"><div><h2>LINE 提醒</h2><p class="muted">每位家長可各自決定是否接收，不會影響其他綁定者。</p></div></div>
+        <div class="section-title"><div><h2>LINE 提醒</h2><p class="muted">每位家長可各自決定是否接收，不會影響其他家長。</p></div></div>
         <form class="stack" id="reminderForm">
           <label class="switch-row"><span><strong>最後一堂提醒</strong><small class="muted">本期剩最後一堂時提醒</small></span><input type="checkbox" name="reminderLastLesson"></label>
           <label class="switch-row"><span><strong>學費提醒</strong><small class="muted">有尚未繳清的期別時提醒</small></span><input type="checkbox" name="reminderPayment"></label>
@@ -93,7 +108,7 @@
   <script src="config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="course-portal-common.js?v=20260730-line-oauth-v2"></script>
+  <script src="course-portal-common.js?v=20260730-auth-two-path-v1"></script>
   <script>
   (function () {
     const P = window.CoursePortal;
@@ -161,7 +176,7 @@
     async function load(requested) {
       try {
         data = await P.call('coursePortalStudentData', { sessionToken: token, studentId: requested || '' });
-        if (!data.students.length) throw new Error('目前沒有已綁定的學生。');
+        if (!data.students.length) throw new Error('目前沒有可查看的學生資料。');
         studentId = requested || studentId || data.students[0].id;
         document.getElementById('studentSelect').innerHTML = data.students.map((row) => `<option value="${P.escapeHtml(row.id)}">${P.escapeHtml(row.name)}</option>`).join('');
         document.getElementById('studentSelect').value = studentId;
@@ -188,9 +203,8 @@
     });
     document.getElementById('addStudentBinding').addEventListener('click', () => {
       showBound(false);
-      document.querySelector('[data-bind-result]').classList.add('hidden');
-      const firstUseButton = document.querySelector('[data-show-first-use]');
-      if (firstUseButton && firstUseButton.getAttribute('aria-expanded') !== 'true') firstUseButton.click();
+      const regularName = document.querySelector('[data-regular-auth-form] input[name="name"]');
+      if (regularName) regularName.focus();
     });
     document.querySelectorAll('[data-tab]').forEach((button) => button.addEventListener('click', () => {
       document.querySelectorAll('[data-tab]').forEach((node) => node.classList.toggle('active', node === button));
