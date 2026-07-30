@@ -19,6 +19,7 @@
   let payrollMonth = monthKey();
   let activeTab = 'schedule';
   let data = emptyData();
+  let quickContext = null;
 
   function emptyData() {
     return {
@@ -71,6 +72,11 @@
   function monthKey() {
     const date = new Date();
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+  }
+
+  function todayKey() {
+    const date = new Date();
+    return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
   }
 
   function monday(value) {
@@ -245,6 +251,9 @@
 
   function renderWeek() {
     const grid = document.getElementById('weekGrid');
+    const scroll = grid.parentElement;
+    const priorWeek = grid.dataset.week || '';
+    const priorScrollLeft = scroll.scrollLeft;
     const days = Array.from({ length: 7 }, (_, index) => addDays(weekStart, index));
     const events = uniqueEvents((data.events || []).filter((event) => event.own));
     const startHour = Number(data.hours.start || 10);
@@ -253,7 +262,7 @@
     let html = '<div class="week-cell head week-corner" style="grid-column:1;grid-row:1"></div>';
 
     days.forEach((day, dayIndex) => {
-      html += `<div class="week-cell head" style="grid-column:${dayIndex + 2};grid-row:1">${escapeHtml(dayLabel(day))}</div>`;
+      html += `<div class="week-cell head week-day-head" data-day-head="${escapeHtml(day)}" style="grid-column:${dayIndex + 2};grid-row:1">${escapeHtml(dayLabel(day))}</div>`;
     });
 
     for (let minute = startHour * 60, slotIndex = 0; minute < endHour * 60; minute += 30, slotIndex += 1) {
@@ -287,12 +296,22 @@
     });
 
     grid.innerHTML = html;
+    grid.dataset.week = weekStart;
     document.getElementById('weekRange').textContent = `${days[0]} ～ ${days[6]}`;
-    document.getElementById('lessonCount').textContent = events.length;
+    document.getElementById('weekPicker').value = weekStart;
+    requestAnimationFrame(() => {
+      if (priorWeek === weekStart) {
+        scroll.scrollLeft = priorScrollLeft;
+        return;
+      }
+      const focusDay = days.includes(todayKey()) ? todayKey() : days[0];
+      const head = grid.querySelector(`[data-day-head="${focusDay}"]`);
+      const stickyWidth = matchMedia('(max-width:520px)').matches ? 48 : 58;
+      if (head) scroll.scrollLeft = Math.max(0, head.offsetLeft - stickyWidth);
+    });
   }
 
   function renderRoster() {
-    document.getElementById('studentCount').textContent = data.roster.length;
     document.getElementById('rosterBadge').textContent = `${data.roster.length} 位`;
     document.getElementById('rosterList').innerHTML = data.roster.length ? data.roster.map((student) => `<article class="list-row teacher-roster-row"><strong>${escapeHtml(student.name)}</strong><span>手機末四碼 ${escapeHtml(student.phoneLast4 || '未提供')}</span><span><button class="btn soft" type="button" data-student-action="${escapeHtml(student.id)}">增加課程</button> <button class="btn" type="button" data-bonus-student="${escapeHtml(student.id)}" data-bonus-name="${escapeHtml(student.name)}">教材／商品</button></span></article>`).join('') : '<p class="muted">目前沒有可顯示的學生。</p>';
   }
@@ -300,7 +319,6 @@
   function renderPayroll() {
     const rows = data.payroll || [];
     const adjustments = data.adjustments || [];
-    document.getElementById('payrollCount').textContent = rows.length + adjustments.length;
     const valueOf = (row, keys, fallback = '') => {
       for (const key of keys) if (row[key] !== undefined && row[key] !== null && row[key] !== '') return row[key];
       return fallback;
@@ -332,7 +350,6 @@
   }
 
   function renderAll() {
-    document.getElementById('teacherName').textContent = data.teacher.name || '老師';
     renderWeek();
     renderRoster();
     renderPayroll();
@@ -392,17 +409,130 @@
     document.body.classList.remove('teacher-more-open');
   }
 
+  function closeQuick() {
+    const node = document.getElementById('teacherQuickBackdrop');
+    node.classList.add('hidden');
+    node.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('teacher-more-open');
+    quickContext = null;
+  }
+
+  function lessonActionDefaults(row, action) {
+    return {
+      action,
+      sourceEventId: row.sourceId || row.id,
+      sourceCourseId: row.fixedCourseId || row.sourceId || row.id,
+      sourceDate: row.date,
+      studentId: (row.studentIds || [])[0] || '',
+      subjectId: row.subjectId,
+      roomId: row.roomId,
+      date: row.date,
+      startTime: row.startTime,
+      endTime: row.endTime,
+      portalAction: row.portalAction,
+      portalChangeId: row.portalChangeId
+    };
+  }
+
+  function openQuickForLesson(row) {
+    quickContext = { type: 'lesson', row };
+    document.getElementById('teacherQuickTitle').textContent = (row.studentNames || []).join('、') || '這堂課';
+    document.getElementById('teacherQuickSubtitle').textContent = `${dayLabel(row.date)} ${row.startTime}～${row.endTime}`;
+    document.getElementById('teacherQuickActions').innerHTML = `
+      <button class="primary" type="button" data-quick-action="single_move">單次調課</button>
+      <button type="button" data-quick-action="permanent_move">永久調課</button>
+      <button type="button" data-quick-action="extra_lesson">增加一堂課</button>
+      <button type="button" data-quick-action="teacher_gift">免費贈送一堂</button>
+      <button type="button" data-quick-state="leave">學生請假</button>
+      <button class="danger" type="button" data-quick-state="absent">標示曠課</button>
+      <button type="button" data-quick-late>補簽到</button>
+      ${row.portalChangeId ? '<button class="danger" type="button" data-quick-state="cancel_change">取消此次安排</button>' : ''}
+    `;
+    const node = document.getElementById('teacherQuickBackdrop');
+    node.classList.remove('hidden');
+    node.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('teacher-more-open');
+  }
+
+  function openQuickForEmpty(date, startTime) {
+    const endTime = timeText(timeMinutes(startTime) + 60);
+    quickContext = { type: 'empty', date, startTime, endTime };
+    document.getElementById('teacherQuickTitle').textContent = '安排這個時段';
+    document.getElementById('teacherQuickSubtitle').textContent = `${dayLabel(date)} ${startTime}～${endTime}`;
+    document.getElementById('teacherQuickActions').innerHTML = `
+      <button class="primary" type="button" data-quick-action="extra_lesson">安排學生／增加課程</button>
+      <button type="button" data-quick-action="teacher_gift">免費贈送一堂</button>
+      <a href="room-booking.html?from=teacher&amp;use=other&amp;date=${encodeURIComponent(date)}&amp;start=${encodeURIComponent(startTime)}&amp;duration=60">租用教室</a>
+    `;
+    const node = document.getElementById('teacherQuickBackdrop');
+    node.classList.remove('hidden');
+    node.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('teacher-more-open');
+  }
+
+  async function updateLessonState(row, state, button, note) {
+    const messages = {
+      leave: '確定標示學生請假？這個教室時段會釋出。',
+      absent: '確定標示曠課？本堂仍會列入老師薪資。',
+      cancel_change: '確定取消這次由老師新增、贈送或調整的安排？'
+    };
+    if (!row || !confirm(messages[state])) return;
+    loading(button, true, '處理中…');
+    try {
+      const result = await invoke('coursePortalTeacherLessonState', {
+        sessionToken: token,
+        state,
+        sourceEventId: row.sourceId || row.id,
+        sourceCourseId: row.fixedCourseId || row.sourceId || row.id,
+        sourceDate: row.date,
+        portalChangeId: row.portalChangeId,
+        note: clean(note)
+      });
+      closeQuick();
+      document.getElementById('actionModal').classList.add('hidden');
+      clearCache();
+      toast(result.message || '課程狀態已更新。');
+      await load(true);
+    } catch (error) {
+      toast(error.message, 'error');
+    } finally {
+      loading(button, false);
+    }
+  }
+
+  async function updateLateAttendance(row, button) {
+    if (!row || !confirm('補簽到會收取行政處理費 NT$50，並直接列入本月薪資扣款。確定要補簽到嗎？')) return;
+    loading(button, true, '補簽中…');
+    try {
+      const result = await invoke('coursePortalTeacherLateAttendance', {
+        sessionToken: token,
+        sourceEventId: row.sourceId || row.id,
+        sourceCourseId: row.fixedCourseId || row.sourceId || row.id,
+        sourceDate: row.date
+      });
+      closeQuick();
+      document.getElementById('actionModal').classList.add('hidden');
+      clearCache();
+      toast(result.message || '補簽到已完成。');
+      await load(true);
+    } catch (error) {
+      toast(error.message, 'error');
+    } finally {
+      loading(button, false);
+    }
+  }
+
   function prefillEmployee() {
     let employee = null;
     try { employee = JSON.parse(localStorage.getItem('employeeUser') || 'null'); } catch (_) {}
     if (!employee) return;
     const identity = clean(employee.identityType).toLowerCase();
     if (identity && identity !== 'external') return;
-    const form = document.getElementById('bindForm');
-    form.elements.name.value = form.elements.name.value || employee.name || employee.displayName || '';
-    form.elements.phone.value = form.elements.phone.value || employee.phone || employee.mobile || employee.tel || '';
-    form.elements.email.value = form.elements.email.value || employee.email || employee.loginEmail || '';
-    document.getElementById('employeeLoginBridge').classList.add('employee-recognized');
+    document.querySelectorAll('[data-regular-auth-form],[data-line-setup-form]').forEach((form) => {
+      if (form.elements.name) form.elements.name.value = form.elements.name.value || employee.name || employee.displayName || '';
+      if (form.elements.phone) form.elements.phone.value = form.elements.phone.value || employee.phone || employee.mobile || employee.tel || '';
+      if (form.elements.email) form.elements.email.value = form.elements.email.value || employee.email || employee.loginEmail || '';
+    });
   }
 
   async function exchangeAccess() {
@@ -502,27 +632,64 @@
   document.getElementById('prevWeek').addEventListener('click', () => { weekStart = addDays(weekStart, -7); load(true); });
   document.getElementById('nextWeek').addEventListener('click', () => { weekStart = addDays(weekStart, 7); load(true); });
   document.getElementById('thisWeek').addEventListener('click', () => { weekStart = monday(); load(true); });
+  document.getElementById('weekPicker').addEventListener('change', (event) => {
+    if (!event.target.value) return;
+    weekStart = monday(event.target.value);
+    load(true);
+  });
   document.getElementById('loadPayroll').addEventListener('click', () => { payrollMonth = document.getElementById('payrollMonth').value || monthKey(); load(true); });
   document.getElementById('teacherMoreBtn').addEventListener('click', openMore);
   document.getElementById('closeTeacherMore').addEventListener('click', closeMore);
   document.getElementById('teacherMoreBackdrop').addEventListener('click', (event) => { if (event.target.id === 'teacherMoreBackdrop') closeMore(); });
-  document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeMore(); });
+  document.getElementById('closeTeacherQuick').addEventListener('click', closeQuick);
+  document.getElementById('teacherQuickBackdrop').addEventListener('click', (event) => {
+    if (event.target.id === 'teacherQuickBackdrop') closeQuick();
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      closeMore();
+      closeQuick();
+    }
+  });
 
   document.getElementById('weekGrid').addEventListener('click', (event) => {
     const empty = event.target.closest('[data-empty]');
     const lesson = event.target.closest('[data-event]');
     if (empty) {
       const parts = empty.dataset.empty.split('|');
-      fillAction({ action: 'extra_lesson', date: parts[0], startTime: parts[1], endTime: parts[2] });
+      openQuickForEmpty(parts[0], parts[1]);
     }
     if (lesson) {
       const row = (data.events || []).find((item) => item.id === lesson.dataset.event);
-      if (row) fillAction({
-        action: 'single_move', sourceEventId: row.sourceId || row.id, sourceCourseId: row.fixedCourseId || row.sourceId || row.id, sourceDate: row.date,
-        studentId: (row.studentIds || [])[0] || '', subjectId: row.subjectId, roomId: row.roomId,
-        date: row.date, startTime: row.startTime, endTime: row.endTime,
-        portalAction: row.portalAction, portalChangeId: row.portalChangeId
-      });
+      if (row) openQuickForLesson(row);
+    }
+  });
+
+  document.getElementById('teacherQuickActions').addEventListener('click', async (event) => {
+    const actionButton = event.target.closest('[data-quick-action]');
+    const stateButton = event.target.closest('[data-quick-state]');
+    const lateButton = event.target.closest('[data-quick-late]');
+    if (!quickContext) return;
+    if (actionButton) {
+      const action = actionButton.dataset.quickAction;
+      const options = quickContext.type === 'lesson'
+        ? lessonActionDefaults(quickContext.row, action)
+        : {
+          action,
+          date: quickContext.date,
+          startTime: quickContext.startTime,
+          endTime: quickContext.endTime
+        };
+      closeQuick();
+      fillAction(options);
+      return;
+    }
+    if (stateButton && quickContext.type === 'lesson') {
+      await updateLessonState(quickContext.row, stateButton.dataset.quickState, stateButton, '');
+      return;
+    }
+    if (lateButton && quickContext.type === 'lesson') {
+      await updateLateAttendance(quickContext.row, lateButton);
     }
   });
 
@@ -570,49 +737,13 @@
   document.getElementById('lessonStateActions').addEventListener('click', async (event) => {
     const lateButton=event.target.closest('[data-late-attendance]');
     if(lateButton){
-      const form=document.getElementById('actionForm');
-      if(!confirm('補簽到會收取行政處理費 NT$50，並直接列入本月薪資扣款。確定要補簽到嗎？'))return;
-      loading(lateButton,true,'補簽中…');
-      try{
-        const result=await invoke('coursePortalTeacherLateAttendance',{sessionToken:token,sourceEventId:form.elements.sourceEventId.value,sourceCourseId:form.elements.sourceCourseId.value,sourceDate:form.elements.sourceDate.value});
-        document.getElementById('actionModal').classList.add('hidden');
-        clearCache();
-        toast(result.message||'補簽到已完成。');
-        await load(true);
-      }catch(error){toast(error.message,'error');}
-      finally{loading(lateButton,false);}
+      await updateLateAttendance(sourceRow(), lateButton);
       return;
     }
     const button = event.target.closest('[data-lesson-state]');
     if (!button) return;
-    const state = button.dataset.lessonState;
-    const messages = {
-      leave: '確定標示學生請假？這個教室時段會釋出。',
-      absent: '確定標示曠課？本堂仍會列入老師薪資。',
-      cancel_change: '確定取消這次由老師新增、贈送或調整的安排？'
-    };
-    if (!confirm(messages[state])) return;
     const form = document.getElementById('actionForm');
-    loading(button, true, '處理中…');
-    try {
-      const result = await invoke('coursePortalTeacherLessonState', {
-        sessionToken: token,
-        state,
-        sourceEventId: form.elements.sourceEventId.value,
-        sourceCourseId: form.elements.sourceCourseId.value,
-        sourceDate: form.elements.sourceDate.value,
-        portalChangeId: form.dataset.portalChangeId,
-        note: form.elements.note.value
-      });
-      document.getElementById('actionModal').classList.add('hidden');
-      clearCache();
-      toast(result.message || '課程狀態已更新。');
-      await load(true);
-    } catch (error) {
-      toast(error.message, 'error');
-    } finally {
-      loading(button, false);
-    }
+    await updateLessonState(sourceRow(), button.dataset.lessonState, button, form.elements.note.value);
   });
 
   logoutBtn.addEventListener('click', () => { setSession(''); location.reload(); });
