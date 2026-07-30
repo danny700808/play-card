@@ -135,7 +135,7 @@
     }
     const result = await invoke(name, data);
     if (cacheable) writeDataCache(name, data, result);
-    else if (/Action|State|Booking|Binding|Exchange|StartBinding/.test(name)) clearDataCache();
+    else if (/Action|State|Booking|Binding|Exchange|StartBinding|Registration/.test(name)) clearDataCache();
     return result;
   }
 
@@ -242,6 +242,9 @@
       const result = await call('coursePortalExchangeAccess', { accessToken: access });
       if (result.role !== role) throw new Error('這個登入連結不屬於目前入口。');
       setSession(role, result.sessionToken);
+      if (result.reminderReady === false) {
+        toast('LINE 登入成功；請將柚子樂器官方帳號加入好友，才能收到課程與租用提醒。', 'error');
+      }
       params.delete('access');
       const suffix = params.toString();
       global.history.replaceState({}, '', `${global.location.pathname}${suffix ? `?${suffix}` : ''}`);
@@ -308,11 +311,20 @@
     const firstUseForm = authView.querySelector('[data-first-use-form]');
     const renterContactForm = authView.querySelector('[data-renter-contact-form]');
     const otpPanel = authView.querySelector('[data-otp-panel]');
-    const lineResult = authView.querySelector('[data-line-login-result]');
     const bindResult = authView.querySelector('[data-bind-result]');
+    const authParams = new URLSearchParams(global.location.search);
+    const lineSetupToken = clean(authParams.get('lineSetup'));
+    const lineError = clean(authParams.get('lineError'));
     let countdownTimer = 0;
     let pendingChallenge = '';
     let pendingPurpose = '';
+
+    function removeAuthQuery(name) {
+      const params = new URLSearchParams(global.location.search);
+      params.delete(name);
+      const suffix = params.toString();
+      global.history.replaceState({}, '', `${global.location.pathname}${suffix ? `?${suffix}` : ''}`);
+    }
 
     function showFirstUse(active) {
       if (firstUsePanel) firstUsePanel.classList.toggle('hidden', !active);
@@ -389,23 +401,50 @@
 
     const lineButton = authView.querySelector('[data-line-login]');
     if (lineButton) lineButton.addEventListener('click', async () => {
-      loading(lineButton, true, '產生中…');
+      loading(lineButton, true, '正在前往 LINE…');
       try {
         const result = await call('coursePortalStartLineLogin', { type: role });
-        renderLineAction(lineResult, result, '請用已綁定的 LINE 傳送這段快速登入文字：');
+        if (!result.authorizationUrl) throw new Error('LINE 登入網址建立失敗，請稍後再試。');
+        global.location.assign(result.authorizationUrl);
       } catch (error) {
         toast(error.message, 'error');
-      } finally {
         loading(lineButton, false);
+      } finally {
+        if (document.visibilityState === 'visible') loading(lineButton, false);
       }
     });
     if (loginForm) loginForm.addEventListener('submit', (event) => {
       event.preventDefault();
       requestOtp(event.currentTarget, 'login', event.submitter);
     });
-    if (firstUseForm) firstUseForm.addEventListener('submit', (event) => {
+    if (firstUseForm) firstUseForm.addEventListener('submit', async (event) => {
       event.preventDefault();
-      requestOtp(event.currentTarget, 'bind', event.submitter);
+      if (!lineSetupToken) {
+        requestOtp(event.currentTarget, 'bind', event.submitter);
+        return;
+      }
+      const button = event.submitter;
+      loading(button, true, '完成綁定中…');
+      try {
+        const fields = Object.fromEntries(new FormData(event.currentTarget).entries());
+        const result = await call('coursePortalCompleteLineRegistration', Object.assign({
+          type: role,
+          setupToken: lineSetupToken
+        }, fields));
+        if (result.role !== role || !result.sessionToken) {
+          throw new Error('LINE 登入資料不完整，請重新操作。');
+        }
+        setSession(role, result.sessionToken);
+        removeAuthQuery('lineSetup');
+        toast(result.reminderReady === false
+          ? '登入完成；請將柚子樂器官方帳號加入好友，才能收到提醒。'
+          : 'LINE 綁定完成，正在開啟。', result.reminderReady === false ? 'error' : '');
+        global.location.reload();
+      } catch (error) {
+        toast(error.message, 'error');
+      } finally {
+        loading(button, false);
+      }
     });
     if (renterContactForm && role === 'renter') {
       renterContactForm.addEventListener('submit', async (event) => {
@@ -430,7 +469,29 @@
     if (firstUseButton) firstUseButton.addEventListener('click', () => {
       showFirstUse(firstUsePanel ? firstUsePanel.classList.contains('hidden') : false);
     });
-    showFirstUse(false);
+    if (lineError) {
+      toast(lineError, 'error');
+      removeAuthQuery('lineError');
+    }
+    if (lineSetupToken && firstUsePanel && firstUseForm) {
+      const loginStack = authView.querySelector('.auth-login-stack');
+      if (loginStack) loginStack.classList.add('hidden');
+      const title = firstUsePanel.querySelector('.section-title h3');
+      if (title) title.textContent = '完成第一次 LINE 登入';
+      const submit = firstUseForm.querySelector('button[type="submit"]');
+      if (submit) submit.textContent = '確認並完成 LINE 登入';
+      let notice = firstUsePanel.querySelector('[data-line-setup-notice]');
+      if (!notice) {
+        notice = document.createElement('div');
+        notice.className = 'auth-line-setup-notice';
+        notice.setAttribute('data-line-setup-notice', '');
+        notice.textContent = 'LINE 身分已確認。請只填這一次基本資料；完成後，同一手機會直接進入，換手機也只需再按 LINE 登入。';
+        firstUsePanel.insertBefore(notice, firstUseForm);
+      }
+      showFirstUse(true);
+    } else {
+      showFirstUse(false);
+    }
   }
 
   function installPortalRuntimeStyle() {
