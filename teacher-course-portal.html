@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#24735c">
   <title>老師課務入口｜柚子樂器</title>
   <link rel="stylesheet" href="course-portal.css?v=20260730-auth-two-path-v1">
-  <link rel="stylesheet" href="teacher-course-portal-v8.css?v=20260730-auth-two-path-v1">
+  <link rel="stylesheet" href="teacher-course-portal-v8.css?v=20260730-mobile-rental-teacher-v1">
   <link rel="stylesheet" href="portal-clean-ui-v1.css?v=20260730-auth-two-path-v1">
 </head>
 <body class="teacher-course-app clean-portal-ui">
@@ -63,27 +63,21 @@
     </section>
 
     <section class="hidden" id="appView" data-app-view>
-      <div class="summary-grid teacher-summary-grid">
-        <article class="summary"><span>老師</span><strong id="teacherName">—</strong></article>
-        <article class="summary"><span>本週課堂</span><strong id="lessonCount">0</strong></article>
-        <article class="summary"><span>學生</span><strong id="studentCount">0</strong></article>
-        <article class="summary"><span>本月薪資資料</span><strong id="payrollCount">0</strong></article>
-      </div>
-
       <nav class="tabs teacher-bottom-tabs" aria-label="老師課務功能">
-        <button class="btn active" type="button" data-tab="schedule"><span>表</span><b>課表</b></button>
-        <button class="btn" type="button" data-tab="students"><span>生</span><b>學生</b></button>
-        <button class="btn" type="button" data-tab="payroll"><span>薪</span><b>薪資</b></button>
-        <a class="btn soft" href="room-booking.html?from=teacher"><span>租</span><b>租用</b></a>
-        <button class="btn" id="teacherMoreBtn" type="button"><span>⋯</span><b>其他</b></button>
+        <button class="btn active" type="button" data-tab="schedule">課表</button>
+        <button class="btn" type="button" data-tab="students">學生</button>
+        <button class="btn" type="button" data-tab="payroll">薪資</button>
+        <a class="btn soft" href="room-booking.html?from=teacher">租用</a>
+        <button class="btn" id="teacherMoreBtn" type="button">其他</button>
       </nav>
 
       <section class="card tab-panel" data-panel="schedule">
-        <div class="section-title"><div><h2>本週課表</h2><p class="muted">日期列與左側時間固定；課表可上下、左右滑動。</p></div></div>
+        <div class="section-title"><h2>課表</h2></div>
         <div class="toolbar teacher-week-toolbar">
           <button class="btn" id="prevWeek" type="button">上一週</button>
           <button class="btn soft" id="thisWeek" type="button">本週</button>
           <button class="btn" id="nextWeek" type="button">下一週</button>
+          <input id="weekPicker" type="date" aria-label="選擇要查看的星期">
           <span class="badge" id="weekRange"></span>
         </div>
         <div class="week-scroll"><div class="week-grid" id="weekGrid"></div></div>
@@ -115,6 +109,17 @@
         <a href="forms-hub.html"><span>表</span><b>表格</b><small>集點卡與證明申請</small></a>
       </div>
       <p class="teacher-more-note">這些功能使用原本的老師帳號，不會重新載入或覆蓋課表資料。</p>
+    </section>
+  </div>
+
+  <div class="teacher-quick-backdrop hidden" id="teacherQuickBackdrop" aria-hidden="true">
+    <section class="teacher-quick-sheet" role="dialog" aria-modal="true" aria-labelledby="teacherQuickTitle">
+      <div class="teacher-more-handle" aria-hidden="true"></div>
+      <div class="section-title">
+        <div><h2 id="teacherQuickTitle">選擇操作</h2><p class="muted" id="teacherQuickSubtitle"></p></div>
+        <button class="btn" id="closeTeacherQuick" type="button">關閉</button>
+      </div>
+      <div class="teacher-quick-actions" id="teacherQuickActions"></div>
     </section>
   </div>
 
@@ -157,7 +162,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
   <script src="course-portal-common.js?v=20260730-auth-two-path-v1"></script>
   <script src="teacher-course-session-v8.js?v=20260730-auth-two-path-v1"></script>
-  <script src="teacher-course-portal-v8.js?v=20260730-auth-two-path-v1"></script>
+  <script src="teacher-course-portal-v8.js?v=20260730-mobile-rental-teacher-v1"></script>
   <script src="teacher-room-rules-v1.js?v=20260730-teacher-equipment-v2"></script>
 </body>
 </html>
