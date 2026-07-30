@@ -102,7 +102,7 @@ jobs:
         run: |
           set -euo pipefail
           firebase deploy --project youzi-c1b74 --non-interactive --force \
-            --only "firestore:rules,functions:lineWebhook,functions:coursePortalStartBinding,functions:coursePortalSendEmailOtp,functions:coursePortalVerifyEmailOtp,functions:coursePortalStartLineLogin,functions:coursePortalCompleteLineRegistration,functions:coursePortalLineLoginCallback,functions:coursePortalRenterContactLogin,functions:coursePortalExchangeAccess,functions:coursePortalTeacherData,functions:coursePortalStudentData,functions:coursePortalRentalDayBoard,functions:coursePortalRentalWeekBoard,functions:coursePortalRentalAvailability,functions:coursePortalCreateRoomBooking,functions:coursePortalRentalMyBookings,functions:coursePortalCancelRoomBooking,functions:coursePortalAdminData,functions:coursePortalAdminBindingAction"
+            --only "firestore:rules,functions:lineWebhook,functions:coursePortalStartBinding,functions:coursePortalSendEmailOtp,functions:coursePortalVerifyEmailOtp,functions:coursePortalStartLineLogin,functions:coursePortalCompleteLineRegistration,functions:coursePortalLineLoginCallback,functions:coursePortalRenterContactLogin,functions:coursePortalExchangeAccess,functions:coursePortalTeacherData,functions:coursePortalStudentData,functions:coursePortalRentalUseSettings,functions:coursePortalRentalDayBoard,functions:coursePortalRentalWeekBoard,functions:coursePortalRentalAvailability,functions:coursePortalCreateRoomBooking,functions:coursePortalRentalMyBookings,functions:coursePortalCancelRoomBooking,functions:coursePortalAdminData,functions:coursePortalAdminBindingAction"
 
       - name: Remove temporary credentials
         if: always()
