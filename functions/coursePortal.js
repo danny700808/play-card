@@ -181,7 +181,22 @@ async function rentalUseOptions(rooms = []) {
   })).filter((row) => row.active);
 }
 
-function rentalUseAllowsRoom(options, useType, roomId) {
+function rentalUseAllowsRoom(options, useType, roomId, room, setting = {}) {
+  const selectedUseType = clean(useType);
+  if (
+    setting.roomRulesVersion === 1 &&
+    Object.prototype.hasOwnProperty.call(setting, 'rentalUseTypes') &&
+    Array.isArray(setting.rentalUseTypes)
+  ) {
+    return setting.rentalUseTypes.map(clean).includes(selectedUseType);
+  }
+  if (
+    room &&
+    Object.prototype.hasOwnProperty.call(room, 'rentalUseTypes') &&
+    Array.isArray(room.rentalUseTypes)
+  ) {
+    return room.rentalUseTypes.map(clean).includes(selectedUseType);
+  }
   const selected = (options || []).find((row) => row.id === clean(useType));
   return Boolean(selected && selected.roomIds.includes(clean(roomId)));
 }
@@ -223,9 +238,55 @@ function bookingLockRows(date, roomId, startTime, endTime) {
   const rows = [];
   for (let minute = timeMinutes(startTime); minute < timeMinutes(endTime); minute += 30) {
     const slot = String(Math.floor(minute / 60)).padStart(2, '0') + ':' + String(minute % 60).padStart(2, '0');
-    rows.push({ id: hash(['room-lock', date, roomId, slot].join('|')), slot });
+    rows.push({ id: hash(['room-lock', date, roomId, slot].join('|')), slot, roomId, resourceId: '' });
   }
   return rows;
+}
+
+function sharedEquipmentLockRows(date, resourceIds, startTime, endTime) {
+  const rows = [];
+  [...new Set((resourceIds || []).map(clean).filter(Boolean))].forEach((resourceId) => {
+    for (let minute = timeMinutes(startTime); minute < timeMinutes(endTime); minute += 30) {
+      const slot = String(Math.floor(minute / 60)).padStart(2, '0') + ':' + String(minute % 60).padStart(2, '0');
+      rows.push({
+        id: hash(['equipment-lock', date, resourceId, slot].join('|')),
+        slot,
+        roomId: '',
+        resourceId
+      });
+    }
+  });
+  return rows;
+}
+
+function scheduleVersionRef() {
+  return db.collection('coursePortalRuntime').doc('scheduleVersion');
+}
+
+async function readScheduleVersion() {
+  const snapshot = await scheduleVersionRef().get();
+  return Number(snapshot.exists && snapshot.data().version || 0);
+}
+
+function scheduleSyncInProgress(snapshot) {
+  if (!snapshot || !snapshot.exists) return false;
+  const row = snapshot.data() || {};
+  return row.syncing === true && asMillis(row.syncingUntil) > Date.now();
+}
+
+function assertScheduleWritable(snapshot) {
+  if (scheduleSyncInProgress(snapshot)) {
+    throw new HttpsError('aborted', '課表正在同步最新資料，請稍候再試。');
+  }
+  if (snapshot && snapshot.exists) {
+    const row = snapshot.data() || {};
+    if (row.writesBlocked === true || clean(row.integrityStatus).toLowerCase() === 'error') {
+      throw new HttpsError(
+        'aborted',
+        '上一批課表同步未完整完成，為避免重複排課目前暫停儲存；請由管理者重新同步成功後再試。'
+      );
+    }
+  }
 }
 
 function clean(value) {
@@ -369,7 +430,10 @@ function sourceEmail(row) {
 function sourceActive(row) {
   const value = row && (row.active != null ? row.active : row.status);
   if (value == null || value === '') return true;
-  return !['false', '停用', '離職', '註銷', 'inactive', 'disabled'].includes(clean(value).toLowerCase());
+  return ![
+    'false', '停用', '離職', '註銷', '停課', '取消', '已取消', '完成',
+    'inactive', 'disabled', 'stopped', 'completed', 'cancelled', 'canceled'
+  ].includes(clean(value).toLowerCase());
 }
 
 function firstArray(row, keys) {
@@ -386,11 +450,94 @@ async function mirrorRows(type) {
     .filter(Boolean);
 }
 
+async function mirrorRowsByDateRange(type, startDate, endDate, options = {}) {
+  const includeInactive = options.includeInactive === true;
+  const dates = [];
+  for (let key = dateKey(startDate), guard = 0; key && key <= endDate && guard < 3700; key = addDays(key, 1), guard += 1) {
+    dates.push(key);
+  }
+  if (!dates.length) return [];
+  try {
+    const chunks = [];
+    for (let offset = 0; offset < dates.length; offset += 30) chunks.push(dates.slice(offset, offset + 30));
+    const snapshots = await Promise.all(chunks.map((chunk) =>
+      db.collection(MIRROR[type]).where('source.date', 'in', chunk).get()
+    ));
+    const rows = new Map();
+    snapshots.forEach((snapshot) => snapshot.docs.forEach((doc) => {
+      const envelope = doc.data() || {};
+      if (!includeInactive && envelope.sourceActive === false) return;
+      const source = jsonValue(envelope.source) || {};
+      rows.set(doc.id, Object.assign({
+        __id: doc.id,
+        __mirrorActive: envelope.sourceActive !== false,
+        __mirrorUpdatedAt: asMillis(envelope.sourceUpdatedAt || envelope.updatedAt)
+      }, source));
+    }));
+    return [...rows.values()];
+  } catch (error) {
+    console.warn('[course portal date range fallback]', type, clean(error && error.message));
+    const snapshot = includeInactive
+      ? await db.collection(MIRROR[type]).get()
+      : await db.collection(MIRROR[type]).where('sourceActive', '==', true).get();
+    return snapshot.docs.map((doc) => {
+      const envelope = doc.data() || {};
+      if (!includeInactive && envelope.sourceActive === false) return null;
+      const source = jsonValue(envelope.source) || {};
+      return Object.assign({
+        __id: doc.id,
+        __mirrorActive: envelope.sourceActive !== false,
+        __mirrorUpdatedAt: asMillis(envelope.sourceUpdatedAt || envelope.updatedAt)
+      }, source);
+    }).filter((row) => {
+      const key = row && eventDate(row);
+      return key >= startDate && key <= endDate;
+    });
+  }
+}
+
 async function mirrorRowsByField(type, field, value) {
-  const snapshot = await db.collection(MIRROR[type]).where('sourceActive', '==', true).get();
-  return snapshot.docs
-    .map((doc) => Object.assign({ __id: doc.id }, jsonValue((doc.data() || {}).source) || {}))
-    .filter((row) => clean(row[field]) === clean(value));
+  const collection = db.collection(MIRROR[type]);
+  try {
+    const snapshot = await collection
+      .where('sourceActive', '==', true)
+      .where(`source.${field}`, '==', clean(value))
+      .get();
+    return snapshot.docs
+      .map((doc) => Object.assign({ __id: doc.id }, jsonValue((doc.data() || {}).source) || {}));
+  } catch (error) {
+    console.warn('[course portal field query fallback]', type, field, clean(error && error.message));
+    const snapshot = await collection.where('sourceActive', '==', true).get();
+    return snapshot.docs
+      .map((doc) => Object.assign({ __id: doc.id }, jsonValue((doc.data() || {}).source) || {}))
+      .filter((row) => clean(row[field]) === clean(value));
+  }
+}
+
+async function scheduleChangeDocsByDateRange(startDate, endDate) {
+  const collection = db.collection('coursePortalScheduleChanges');
+  try {
+    const snapshots = await Promise.all([
+      collection.where('event.date', '>=', startDate).where('event.date', '<=', endDate).get(),
+      collection.where('sourceDate', '>=', startDate).where('sourceDate', '<=', endDate).get(),
+      collection.where('action', '==', 'permanent_move').get()
+    ]);
+    const docs = new Map();
+    snapshots.forEach((snapshot) => snapshot.docs.forEach((doc) => {
+      const row = doc.data() || {};
+      if (row.active === false) return;
+      if (
+        clean(row.action) === 'permanent_move' &&
+        dateKey(row.cutoverDate || row.sourceDate || row.effectiveDate || row.event && row.event.date) > endDate
+      ) return;
+      docs.set(doc.id, doc);
+    }));
+    return [...docs.values()];
+  } catch (error) {
+    console.warn('[course portal schedule change range fallback]', clean(error && error.message));
+    const snapshot = await collection.where('active', '==', true).get();
+    return snapshot.docs;
+  }
 }
 
 function assertInput(value, label) {
@@ -493,7 +640,10 @@ async function prepareBindingIdentity(data) {
   if (type === 'teacher') {
     const teacher = await findPerson('teachers', name, phone);
     const registeredEmail = sourceEmail(teacher);
-    if (registeredEmail && registeredEmail !== email) {
+    if (!registeredEmail) {
+      throw new HttpsError('failed-precondition', '老師資料尚未登記 Email，請先由管理者補上後再註冊。');
+    }
+    if (registeredEmail !== email) {
       throw new HttpsError('permission-denied', 'Email 與老師登記資料不符，請確認後再試。');
     }
     return { type, targetId: sourceId(teacher), name, phone, email, relationship: '', renterId: '' };
@@ -501,7 +651,10 @@ async function prepareBindingIdentity(data) {
   if (type === 'student') {
     const student = await findPerson('students', name, phone);
     const registeredEmail = sourceEmail(student);
-    if (registeredEmail && registeredEmail !== email) {
+    if (!registeredEmail) {
+      throw new HttpsError('failed-precondition', '學生資料尚未登記 Email，請先由管理者補上後再註冊。');
+    }
+    if (registeredEmail !== email) {
       throw new HttpsError('permission-denied', 'Email 與學生登記資料不符，請確認後再試。');
     }
     return {
@@ -515,7 +668,20 @@ async function prepareBindingIdentity(data) {
   }
 
   const renterId = hash(`${normalizeName(name)}|${phone}`).slice(0, 32);
-  return { type, targetId: '', renterId, name, phone, email, relationship: '' };
+  const renterSnapshot = await db.collection('coursePortalRenters').doc(renterId).get();
+  let existingEmailVerified = false;
+  if (renterSnapshot.exists) {
+    const renter = renterSnapshot.data() || {};
+    if (renter.active === false) {
+      throw new HttpsError('permission-denied', '這個租用帳號目前已停用，請聯絡柚子樂器。');
+    }
+    const registeredEmail = sourceEmail(renter);
+    if (registeredEmail && registeredEmail !== email) {
+      throw new HttpsError('permission-denied', 'Email 與既有租用帳號不符，請使用原 Email 登入或請管理者協助。');
+    }
+    existingEmailVerified = renter.emailVerified === true;
+  }
+  return { type, targetId: '', renterId, name, phone, email, relationship: '', existingEmailVerified };
 }
 
 function bindingCollection(type) {
@@ -538,6 +704,22 @@ function regularAccountId(type, email) {
   return hash(`regular-account|${clean(type)}|${normalizeEmail(email)}`);
 }
 
+function bindingAuthAccountId(type, binding) {
+  const explicit = clean(binding && binding.authAccountId);
+  if (explicit) return explicit;
+  const email = normalizeEmail(binding && (binding.emailNormalized || binding.email));
+  return validEmail(email) ? regularAccountId(type, email) : '';
+}
+
+function sharedBindingAuthAccountId(type, bindings) {
+  const accountIds = [...new Set(
+    (bindings || []).map((binding) => bindingAuthAccountId(type, binding)).filter(Boolean)
+  )];
+  // 同一位家長可能綁多位學生且各有不同 Email。這種情況維持以 LINE
+  // 使用者作為租用擁有者，避免任取第一筆而讓每次登入落到不同帳號。
+  return accountIds.length === 1 ? accountIds[0] : '';
+}
+
 async function resolveRegularIdentity(identity) {
   const type = clean(identity.type);
   const targetField = identityTargetField(type);
@@ -557,7 +739,9 @@ async function resolveRegularIdentity(identity) {
   if (sameAccount.some((row) => clean(row.status) === 'revoked')) {
     throw new HttpsError('permission-denied', '這個入口帳號目前已停用，請聯絡柚子樂器協助恢復。');
   }
-  const active = sameAccount.find((row) => clean(row.status) === 'active') || null;
+  const active = sameAccount.find((row) =>
+    clean(row.status) === 'active' && clean(row.lineUserId)
+  ) || sameAccount.find((row) => clean(row.status) === 'active') || null;
   return {
     authAccountId,
     bindingId: clean(active && active.__id),
@@ -970,54 +1154,20 @@ async function startLineLogin(data) {
 }
 
 async function renterContactLogin(data) {
-  const name = clean(data.name);
-  const phone = normalizePhone(data.phone);
-  assertInput(name, '姓名');
-  assertInput(phone, '電話');
-  await consumeRateLimit('renter-contact-login', phone);
-
-  const renterId = hash(`${normalizeName(name)}|${phone}`).slice(0, 32);
-  const [renterSnapshot, bindingSnapshot] = await Promise.all([
-    db.collection('coursePortalRenters').doc(renterId).get(),
-    db.collection('coursePortalRenterBindings').where('renterId', '==', renterId).get()
-  ]);
-  const renter = renterSnapshot.exists ? renterSnapshot.data() || {} : null;
-  const bindings = bindingSnapshot.docs
-    .map((doc) => doc.data() || {})
-    .filter((row) => clean(row.status) === 'active' && clean(row.lineUserId));
-  const lineUserIds = [...new Set(bindings.map((row) => clean(row.lineUserId)).filter(Boolean))];
-  if (
-    !renter ||
-    renter.active === false ||
-    normalizeName(renter.name) !== normalizeName(name) ||
-    !phoneMatches(renter.phone, phone) ||
-    lineUserIds.length !== 1
-  ) {
-    throw new HttpsError('permission-denied', '姓名或電話不正確，或這筆租用帳號尚未完成註冊。');
-  }
-
-  const issued = await issueSession({
-    type: 'renter',
-    lineUserId: lineUserIds[0],
-    renterId,
-    authMethod: 'renter-name-phone',
-    ttlMs: 8 * 60 * 60 * 1000
-  });
-  return {
-    ok: true,
-    role: 'renter',
-    sessionToken: issued.sessionToken,
-    temporary: true,
-    expiresAt: issued.expiresAt.toDate().toISOString()
-  };
+  void data;
+  throw new HttpsError(
+    'failed-precondition',
+    '姓名加電話快速登入已停用；請使用 LINE 登入，或以姓名、電話及 Email 接收四碼驗證碼。'
+  );
 }
 
-async function issueAccessToken({ type, lineUserId, targetId, renterId, authMethod, lineFriendFlag }) {
+async function issueAccessToken({ type, lineUserId, authAccountId, targetId, renterId, authMethod, lineFriendFlag }) {
   const raw = randomToken(32);
   const expiresAt = Timestamp.fromMillis(Date.now() + 10 * 60 * 1000);
   await db.collection('coursePortalAccessTokens').doc(hash(raw)).set({
     type,
     lineUserId,
+    authAccountId: clean(authAccountId),
     targetId: clean(targetId),
     renterId: clean(renterId),
     authMethod: clean(authMethod) || 'line',
@@ -1178,6 +1328,7 @@ async function lineLoginCallback(req, res) {
       const accessToken = await issueAccessToken({
         type,
         lineUserId: profile.lineUserId,
+        authAccountId: sharedBindingAuthAccountId(type, bindings),
         targetId: type === 'teacher' ? clean(binding.teacherId) : (type === 'student' ? clean(binding.studentId) : ''),
         renterId: type === 'renter' ? clean(binding.renterId) : '',
         authMethod: 'line-oauth',
@@ -1246,6 +1397,10 @@ async function completeLineRegistration(data) {
   }
 
   const identity = await prepareBindingIdentity(Object.assign({}, data, { type }));
+  // LINE 與 Email 是兩種登入方法，不是兩個人。帳號鍵只能由伺服器依
+  // 已核對的角色、內部對象與 Email 產生，不能採信前端傳入的值。
+  const regularIdentity = await resolveRegularIdentity(identity);
+  const authAccountId = regularIdentity.authAccountId;
   await consumeRateLimit(`line-oauth-setup-${type}`, identity.phone);
   const lineUserId = clean(setup.lineUserId);
   const targetId = clean(identity.targetId);
@@ -1284,6 +1439,7 @@ async function completeLineRegistration(data) {
     linePictureUrl: clean(setup.linePictureUrl),
     lineFriendFlag: setup.lineFriendFlag === true,
     lineVerified: true,
+    authAccountId,
     authProvider: 'line-login',
     email: normalizeEmail(identity.email),
     emailNormalized: normalizeEmail(identity.email),
@@ -1314,7 +1470,8 @@ async function completeLineRegistration(data) {
         phone: normalizePhone(identity.phone),
         email: normalizeEmail(identity.email),
         emailNormalized: normalizeEmail(identity.email),
-        emailVerified: false,
+        // 後來加用 LINE 不得把原本已通過四碼驗證的 Email 降級。
+        emailVerified: identity.existingEmailVerified === true,
         source: 'line-login-registration',
         active: true,
         updatedAt: FieldValue.serverTimestamp(),
@@ -1333,6 +1490,7 @@ async function completeLineRegistration(data) {
   const issued = await issueSession({
     type,
     lineUserId,
+    authAccountId,
     targetId,
     renterId,
     authMethod: 'line-oauth-registration'
@@ -1391,6 +1549,7 @@ async function handleCoursePortalLineEvent(event, helpers = {}) {
     const access = await issueAccessToken({
       type,
       lineUserId,
+      authAccountId: sharedBindingAuthAccountId(type, active),
       targetId: type === 'teacher' ? clean(binding.teacherId) : (type === 'student' ? clean(binding.studentId) : ''),
       renterId: type === 'renter' ? clean(binding.renterId) : '',
       authMethod: 'line-login'
@@ -1427,6 +1586,7 @@ async function handleCoursePortalLineEvent(event, helpers = {}) {
   const payload = {
     type,
     lineUserId,
+    authAccountId: regularAccountId(type, row.email),
     lineDisplayName: clean(profile.displayName),
     email: normalizeEmail(row.email),
     emailNormalized: normalizeEmail(row.email),
@@ -1450,6 +1610,7 @@ async function handleCoursePortalLineEvent(event, helpers = {}) {
   const access = await issueAccessToken({
     type,
     lineUserId,
+    authAccountId: payload.authAccountId,
     targetId: clean(row.targetId),
     renterId: clean(row.renterId),
     authMethod: 'line-binding'
@@ -1477,6 +1638,7 @@ async function exchangeAccessToken(data) {
   const issued = await issueSession({
     type: source.type,
     lineUserId: source.lineUserId,
+    authAccountId: source.authAccountId,
     targetId: source.targetId,
     renterId: source.renterId,
     authMethod: source.authMethod || 'line'
@@ -1522,13 +1684,14 @@ function eventDate(row) {
 }
 
 function eventStart(row) {
-  return clean(row.startTime || row.timeStart || row.beginTime || row.start || '10:00').slice(0, 5);
+  return clean(row.startTime || row.timeStart || row.beginTime || row.start).slice(0, 5);
 }
 
 function eventEnd(row) {
   const explicit = clean(row.endTime || row.timeEnd || row.finishTime || row.end).slice(0, 5);
   if (explicit) return explicit;
   const start = eventStart(row);
+  if (!start) return '';
   const duration = Math.max(30, Number(row.durationMinutes || row.duration || row.minutes || 60));
   const end = timeMinutes(start) + duration;
   return String(Math.floor(end / 60)).padStart(2, '0') + ':' + String(end % 60).padStart(2, '0');
@@ -1552,31 +1715,273 @@ function eventSubjectId(row) {
   return clean(row.subjectId || row.subject_id || row.courseId);
 }
 
+const GUZHENG_RESOURCE_ID = 'equipment:guzheng';
+
+function subjectUsesGuzheng(subjectId, maps = {}) {
+  const id = clean(subjectId).toLowerCase();
+  const subject = maps.subjects && maps.subjects[subjectId] || {};
+  const name = clean(subject.name || subject.subjectName || subject.title).toLowerCase();
+  return id === 'guzheng' || /古箏/.test(name);
+}
+
+function eventUsesGuzheng(row, maps = {}) {
+  const useType = clean(row && (row.useType || row.rentalUseType || row.purposeType)).toLowerCase();
+  const description = clean(row && (row.useName || row.subjectName || row.purpose || row.title)).toLowerCase();
+  return useType === 'guzheng' ||
+    /古箏/.test(description) ||
+    subjectUsesGuzheng(eventSubjectId(row || {}), maps);
+}
+
+function eventSharedResourceIds(row, maps = {}) {
+  const explicit = firstArray(row || {}, ['resourceIds', 'sharedResourceIds']).map(clean).filter(Boolean);
+  if (eventUsesGuzheng(row, maps)) explicit.push(GUZHENG_RESOURCE_ID);
+  return [...new Set(explicit)];
+}
+
+function sharedResourceConflict(events, resourceIds) {
+  const requested = new Set((resourceIds || []).map(clean).filter(Boolean));
+  if (!requested.size) return false;
+  return (events || []).some((event) =>
+    (event.resourceIds || []).some((resourceId) => requested.has(clean(resourceId)))
+  );
+}
+
+function requestedRentalResourceIds(data) {
+  return clean(data && data.useType).toLowerCase() === 'guzheng'
+    ? [GUZHENG_RESOURCE_ID]
+    : [];
+}
+
+function requestedSubjectResourceIds(subjectId, bundle) {
+  return subjectUsesGuzheng(subjectId, bundle && bundle.maps || {})
+    ? [GUZHENG_RESOURCE_ID]
+    : [];
+}
+
 function overlaps(aStart, aEnd, bStart, bEnd) {
   return timeMinutes(aStart) < timeMinutes(bEnd) && timeMinutes(bStart) < timeMinutes(aEnd);
 }
 
+function validPortalTime(value, halfHourOnly = false) {
+  const match = clean(value).match(/^([01]\d|2[0-3]):([0-5]\d)$/);
+  if (!match) return false;
+  return !halfHourOnly || ['00', '30'].includes(match[2]);
+}
+
+function assertPortalInterval(startTime, endTime) {
+  if (!validPortalTime(startTime, true) || !validPortalTime(endTime, true)) {
+    throw new HttpsError('invalid-argument', '時間必須以 30 分鐘為單位。');
+  }
+  const duration = timeMinutes(endTime) - timeMinutes(startTime);
+  if (duration < 30 || duration > 300 || duration % 30 !== 0) {
+    throw new HttpsError('invalid-argument', '結束時間必須晚於開始時間，且最長為 5 小時。');
+  }
+  return duration;
+}
+
+function safeFrequencyWeeks(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 1) return 1;
+  return Math.min(52, Math.max(1, Math.floor(parsed)));
+}
+
+function daysBetween(left, right) {
+  const start = dateKey(left);
+  const end = dateKey(right);
+  if (!start || !end) return NaN;
+  return Math.round(
+    (new Date(`${end}T12:00:00+08:00`).getTime() -
+      new Date(`${start}T12:00:00+08:00`).getTime()) / 86400000
+  );
+}
+
+function permanentLineage(row) {
+  return clean(row && (
+    row.sourceCourseId ||
+    row.sourceEventId ||
+    row.event && (row.event.fixedCourseId || row.event.seriesId)
+  ));
+}
+
+function permanentCutover(row) {
+  return dateKey(row && (
+    row.cutoverDate ||
+    row.sourceDate ||
+    row.effectiveDate ||
+    row.event && eventDate(row.event)
+  ));
+}
+
+function permanentAnchor(row) {
+  return dateKey(row && (
+    row.anchorDate ||
+    row.event && eventDate(row.event) ||
+    row.effectiveDate ||
+    permanentCutover(row)
+  ));
+}
+
+function changeOrderValue(row) {
+  return Math.max(
+    asMillis(row && row.updatedAt),
+    asMillis(row && row.createdAt),
+    asMillis(row && row.createdAtText)
+  );
+}
+
+function effectivePermanentChanges(rows) {
+  const latest = new Map();
+  (rows || []).filter((row) => clean(row && row.action) === 'permanent_move' && row.event).forEach((row) => {
+    const lineage = permanentLineage(row);
+    const cutover = permanentCutover(row);
+    if (!lineage || !cutover) return;
+    const key = `${lineage}|${cutover}`;
+    const current = latest.get(key);
+    if (
+      !current ||
+      changeOrderValue(row) > changeOrderValue(current) ||
+      (
+        changeOrderValue(row) === changeOrderValue(current) &&
+        clean(row.__id || row.id).localeCompare(clean(current.__id || current.id)) > 0
+      )
+    ) latest.set(key, row);
+  });
+  return [...latest.values()].sort((left, right) =>
+    permanentLineage(left).localeCompare(permanentLineage(right)) ||
+    permanentCutover(left).localeCompare(permanentCutover(right)) ||
+    changeOrderValue(left) - changeOrderValue(right) ||
+    clean(left.__id || left.id).localeCompare(clean(right.__id || right.id))
+  );
+}
+
+function translateRecurringStatusMap(statusByDate, cutoverDate, anchorDate, frequencyWeeks) {
+  const source = statusByDate && typeof statusByDate === 'object' ? statusByDate : {};
+  const cutover = dateKey(cutoverDate);
+  const anchor = dateKey(anchorDate);
+  const stepDays = safeFrequencyWeeks(frequencyWeeks) * 7;
+  if (!cutover || !anchor) return Object.assign({}, source);
+  return Object.entries(source).reduce((result, [rawDate, value]) => {
+    const key = dateKey(rawDate);
+    if (!key) return result;
+    if (key < cutover) {
+      result[key] = value;
+      return result;
+    }
+    const delta = daysBetween(cutover, key);
+    if (delta >= 0 && delta % stepDays === 0) {
+      result[addDays(anchor, delta)] = value;
+    } else {
+      // 有些舊資料已用調整後的實際日期記錄例外；非原週期日不可直接丟棄。
+      result[key] = value;
+    }
+    return result;
+  }, {});
+}
+
+function scheduleOccurrenceActive(row) {
+  return row && row.__mirrorActive !== false &&
+    normalizeScheduleStatus(row.status || 'scheduled') !== 'cancelled' &&
+    sourceActive(row);
+}
+
 function eventBlocksResource(event) {
   const status = normalizeScheduleStatus(event && event.status);
-  return !['leave', 'absent', 'cancelled'].includes(status);
+  // 請假、取消或已調走才會釋出空間。曠課時老師仍可能在原教室等待，
+  // 因此曠課仍占用老師與教室，避免同時再排入另一堂課。
+  return !['leave', 'cancelled', 'pending_conflict'].includes(status);
+}
+
+function scheduleResourceConflicts(events) {
+  const slots = new Map();
+  (events || []).filter(eventBlocksResource).forEach((event) => {
+    const identity = [
+      clean(event.fixedCourseId || event.seriesId || event.sourceId || event.id),
+      clean(event.date),
+      clean(event.startTime),
+      clean(event.endTime)
+    ].join('|');
+    const resources = [
+      clean(event.roomId) ? `room:${clean(event.roomId)}` : '',
+      clean(event.teacherId) ? `teacher:${clean(event.teacherId)}` : '',
+      ...(event.studentIds || []).map((id) => clean(id) ? `student:${clean(id)}` : ''),
+      ...(event.resourceIds || []).map(clean)
+    ].filter(Boolean);
+    for (let minute = timeMinutes(event.startTime); minute < timeMinutes(event.endTime); minute += 30) {
+      const slot = String(Math.floor(minute / 60)).padStart(2, '0') + ':' + String(minute % 60).padStart(2, '0');
+      resources.forEach((resource) => {
+        const key = `${event.date}|${slot}|${resource}`;
+        if (!slots.has(key)) slots.set(key, new Map());
+        slots.get(key).set(identity, clean(event.id || event.sourceId));
+      });
+    }
+  });
+  return [...slots.entries()].filter(([, identities]) => identities.size > 1).slice(0, 500).map(([key, identities]) => {
+    const [date, slot, ...resourceParts] = key.split('|');
+    const resource = resourceParts.join('|');
+    return { date, slot, resource, eventIds: [...identities.values()].filter(Boolean) };
+  });
+}
+
+function isRoomRentalEvent(event) {
+  const type = clean(event && event.type).toLowerCase();
+  const action = clean(event && event.portalAction).toLowerCase();
+  return ['rental', 'room_rental'].includes(type) ||
+    ['rental', 'room_booking'].includes(action);
 }
 
 function publicRentalSlotIsPast(date, startTime) {
   return taipeiDateTimeMillis(date, startTime) <= Date.now();
 }
 
+function roomPolicyForSlot(room, setting, date, startTime) {
+  const day = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][weekday(date)];
+  const policies = setting && setting.policies || room && room.policies || {};
+  return policies && policies[day] && policies[day][startTime] || {};
+}
+
+function roomAllowsInterval(room, setting, date, startTime, endTime, subjectId, mode) {
+  for (let minute = timeMinutes(startTime); minute < timeMinutes(endTime); minute += 30) {
+    const slot = String(Math.floor(minute / 60)).padStart(2, '0') + ':' + String(minute % 60).padStart(2, '0');
+    const policy = roomPolicyForSlot(room, setting, date, slot);
+    if (mode === 'rental' ? policy.blockRental === true : policy.blockSchedule === true) return false;
+    if (
+      mode !== 'rental' &&
+      Array.isArray(policy.subjectIds) &&
+      policy.subjectIds.length &&
+      !policy.subjectIds.map(clean).includes(clean(subjectId))
+    ) return false;
+  }
+  return true;
+}
+
 function roomSupportsSubject(room, subjectId, bundle, setting = {}) {
   if (!subjectId) return true;
   const subject = clean(bundle.maps.subjects[subjectId] && bundle.maps.subjects[subjectId].name).toLowerCase();
   const roomName = clean(room.name).toLowerCase();
-  if (/爵士鼓|電子鼓|傳統鼓|鼓組/.test(subject)) return /鼓|展演|團練/.test(roomName);
-  if (/古箏/.test(subject)) return /展演|kawai|卡哇伊/.test(roomName);
-  if (/鋼琴|電子琴|keyboard|piano/.test(subject)) return /鋼琴|平台|yamaha|kawai|卡哇伊|琴房|展演|團練/.test(roomName);
   const configured = firstArray(setting, ['allowedSubjectIds']);
   const sourceConfigured = firstArray(room, ['allowedSubjectIds', 'subjectIds']);
   const allowed = configured.length ? configured : sourceConfigured;
-  if (allowed.length) return allowed.includes(subjectId);
+  if (allowed.length && !allowed.includes(subjectId)) return false;
+  const profile = rentalRoomProfile(room, setting);
+  if (/爵士鼓|電子鼓|傳統鼓|鼓組/.test(subject)) {
+    return profile.equipment.some((item) => ['acoustic_drums', 'electronic_drums'].includes(item)) ||
+      /鼓|展演|團練/.test(roomName);
+  }
+  if (/古箏/.test(subject)) {
+    return profile.equipment.includes('guzheng') || /展演|kawai|卡哇伊/.test(roomName);
+  }
+  if (/鋼琴|電子琴|keyboard|piano/.test(subject)) {
+    if (normalizePianoType(setting.pianoType || setting.pianoEquipmentType) === 'none') return false;
+    return profile.equipment.includes('piano') || Boolean(configuredPianoType(room, setting)) ||
+      /鋼琴|平台|yamaha|kawai|卡哇伊|琴房|展演|團練/.test(roomName);
+  }
+  if (allowed.length) return true;
   return true;
+}
+
+function roomRequiresGuzhengMove(room, subjectId, bundle) {
+  const subject = clean(bundle.maps.subjects[subjectId] && bundle.maps.subjects[subjectId].name).toLowerCase();
+  return /古箏/.test(subject) && /kawai|卡哇伊/i.test(clean(room && room.name));
 }
 
 function normalizePianoType(value) {
@@ -1695,29 +2100,69 @@ function rentalRoomMatch(room, setting, data) {
   return { compatible: false, level: '', profile, reason: '不適合這項用途' };
 }
 
-function publicEvent(row, maps, ownTeacherId) {
-  const teacherId = eventTeacherId(row);
-  const studentIds = eventStudentIds(row);
-  const isOwn = Boolean(ownTeacherId && teacherId === ownTeacherId);
+function resourceEvent(row, maps = {}, recurringLineages = new Set()) {
+  const seriesCandidateId = clean(
+    row.seriesId ||
+    row.fixedCourseId ||
+    row.sourceCourseId ||
+    row.courseId ||
+    row.scheduleId
+  );
+  const recurring = row.recurring === true ||
+    recurringLineages.has(seriesCandidateId) ||
+    (
+      clean(row.type || row.kind).toLowerCase() === 'fixed' &&
+      recurringLineages.has(clean(row.fixedCourseId || row.seriesId || sourceId(row)))
+    );
   return {
     id: sourceId(row),
     sourceId: sourceId(row),
-    fixedCourseId: clean(row.fixedCourseId || row.sourceCourseId || row.courseId || row.scheduleId),
+    fixedCourseId: clean(row.fixedCourseId || row.sourceCourseId || row.seriesId || row.courseId || row.scheduleId),
+    seriesId: clean(row.seriesId || row.fixedCourseId || row.sourceCourseId || row.courseId || row.scheduleId),
+    recurring,
     date: eventDate(row),
     startTime: eventStart(row),
     endTime: eventEnd(row),
     roomId: eventRoomId(row),
-    roomName: clean(maps.rooms[eventRoomId(row)] && maps.rooms[eventRoomId(row)].name),
-    teacherId,
-    teacherName: isOwn ? clean(maps.teachers[teacherId] && maps.teachers[teacherId].name) : '',
-    studentIds: isOwn ? studentIds : [],
-    studentNames: isOwn ? studentIds.map((id) => clean(maps.students[id] && maps.students[id].name)).filter(Boolean) : [],
+    teacherId: eventTeacherId(row),
+    studentIds: [...new Set(eventStudentIds(row))],
     subjectId: eventSubjectId(row),
-    subjectName: clean(maps.subjects[eventSubjectId(row)] && maps.subjects[eventSubjectId(row)].name),
-    status: clean(row.status || 'scheduled'),
+    status: normalizeScheduleStatus(row.status || 'scheduled'),
     type: clean(row.type || row.kind || 'lesson'),
     portalAction: clean(row.portalAction),
     portalChangeId: clean(row.portalChangeId),
+    requestedRoomId: clean(row.requestedRoomId),
+    pendingReason: clean(row.pendingReason),
+    resourceIds: eventSharedResourceIds(row, maps)
+  };
+}
+
+function publicEvent(row, maps, ownTeacherId, recurringLineages = new Set()) {
+  const resource = resourceEvent(row, maps, recurringLineages);
+  const isOwn = Boolean(ownTeacherId && resource.teacherId === ownTeacherId);
+  return {
+    id: resource.id,
+    sourceId: resource.sourceId,
+    fixedCourseId: resource.fixedCourseId,
+    seriesId: resource.seriesId,
+    recurring: resource.recurring,
+    date: resource.date,
+    startTime: resource.startTime,
+    endTime: resource.endTime,
+    roomId: resource.roomId,
+    roomName: clean(maps.rooms[resource.roomId] && maps.rooms[resource.roomId].name),
+    teacherId: resource.teacherId,
+    teacherName: isOwn ? clean(maps.teachers[resource.teacherId] && maps.teachers[resource.teacherId].name) : '',
+    studentIds: isOwn ? resource.studentIds : [],
+    studentNames: isOwn ? resource.studentIds.map((id) => clean(maps.students[id] && maps.students[id].name)).filter(Boolean) : [],
+    subjectId: resource.subjectId,
+    subjectName: clean(maps.subjects[resource.subjectId] && maps.subjects[resource.subjectId].name),
+    status: resource.status,
+    type: resource.type,
+    portalAction: resource.portalAction,
+    portalChangeId: resource.portalChangeId,
+    requestedRoomId: resource.requestedRoomId,
+    pendingReason: resource.pendingReason,
     own: isOwn,
     busy: !isOwn
   };
@@ -1737,11 +2182,11 @@ async function scheduleBundle(startDate, endDate, ownTeacherId) {
     mirrorRows('subjects'),
     mirrorRows('students'),
     mirrorRows('teachers'),
-    mirrorRows('events'),
+    mirrorRowsByDateRange('events', startDate, endDate, { includeInactive: true }),
     mirrorRows('fixedCourses'),
-    mirrorRows('temporaryCourses'),
-    mirrorRows('roomRentals'),
-    db.collection('coursePortalScheduleChanges').where('active', '==', true).get()
+    mirrorRowsByDateRange('temporaryCourses', startDate, endDate),
+    mirrorRowsByDateRange('roomRentals', startDate, endDate),
+    scheduleChangeDocsByDateRange(startDate, endDate)
   ]);
   const maps = {
     rooms: indexById(rooms),
@@ -1749,23 +2194,92 @@ async function scheduleBundle(startDate, endDate, ownTeacherId) {
     students: indexById(students),
     teachers: indexById(teachers)
   };
-  const exact = [...events, ...temporary, ...rentals]
-    .filter((row) => eventDate(row) >= startDate && eventDate(row) <= endDate);
+  const livePortalSource = (row) => /^course-portal/i.test(clean(row && row.source));
+  // 入口建立的資料以 live change 為唯一準據；同步進 mirror 的舊副本一律不再
+  // 參與即時占用，這樣取消後不會等下一次音教雲同步才釋出。
+  const inRangeExact = (row) =>
+    !livePortalSource(row) &&
+    eventDate(row) >= startDate &&
+    eventDate(row) <= endDate &&
+    eventStart(row) &&
+    eventEnd(row);
+  const canonicalEvents = events.filter(inRangeExact);
+  const canonicalKeys = new Set();
+  canonicalEvents.forEach((row) => {
+    courseSourceIds(row).forEach((id) => canonicalKeys.add(`${id}|${eventDate(row)}`));
+  });
+  // 正式日表 events 是同課同日的唯一準據。即使時間已改、業務狀態已取消，
+  // 都必須蓋過 temporaryCourses / roomRentals 的舊副本；因此優先鍵不含時間。
+  const selectedCanonicalKeys = new Set();
+  const selectedCanonical = canonicalEvents
+    .filter(scheduleOccurrenceActive)
+    .slice()
+    .sort((left, right) =>
+      Number(right.__mirrorUpdatedAt || asMillis(right.updatedAt)) -
+        Number(left.__mirrorUpdatedAt || asMillis(left.updatedAt)) ||
+      sourceId(right).localeCompare(sourceId(left))
+    )
+    .filter((row) => {
+      const keys = courseSourceIds(row).map((id) => `${id}|${eventDate(row)}`);
+      if (keys.some((key) => selectedCanonicalKeys.has(key))) return false;
+      keys.forEach((key) => selectedCanonicalKeys.add(key));
+      return true;
+    });
+  const canonicalStatusByKey = new Map();
+  selectedCanonical.forEach((row) => {
+    courseSourceIds(row).forEach((id) => {
+      canonicalStatusByKey.set(`${id}|${eventDate(row)}`, normalizeScheduleStatus(row.status || 'scheduled'));
+    });
+  });
+  canonicalEvents.forEach((row) => {
+    courseSourceIds(row).forEach((id) => {
+      const key = `${id}|${eventDate(row)}`;
+      if (!canonicalStatusByKey.has(key)) canonicalStatusByKey.set(key, 'cancelled');
+    });
+  });
+  const lowerExactRows = [...temporary, ...rentals].filter(inRangeExact).filter((row) =>
+    !courseSourceIds(row).some((id) => canonicalKeys.has(`${id}|${eventDate(row)}`))
+  );
+  const exactSourceRows = [...canonicalEvents, ...lowerExactRows];
+  const exactCandidates = [...selectedCanonical, ...lowerExactRows.filter(scheduleOccurrenceActive)];
+  // 日表 events 是指定日期的最新真相，優先於 temporaryCourses / roomRentals
+  // 中可能仍殘留的同一來源副本。以所有來源 id + 日期時間建立別名，避免同一堂
+  // 被重複算成兩個占用事件。
+  const exactAlias = new Set();
+  const exact = [];
+  exactCandidates.forEach((row) => {
+    const aliases = courseSourceIds(row).map((id) =>
+      `${id}|${eventDate(row)}|${eventStart(row)}|${eventEnd(row)}`
+    );
+    if (aliases.some((key) => exactAlias.has(key))) return;
+    exact.push(row);
+    aliases.forEach((key) => exactAlias.add(key));
+  });
   const exactKeys = new Set();
-  exact.forEach((row) => {
+  // 取消／停課的日表列本身不占用，但仍是固定課該日期的 tombstone；
+  // 必須阻止 recurring expansion 把它重新生回來。
+  exactSourceRows.forEach((row) => {
     courseSourceIds(row).forEach((id) => exactKeys.add(`${id}|${eventDate(row)}`));
   });
   const expanded = [];
-  fixed.forEach((row) => {
+  fixed.filter((row) => !livePortalSource(row)).forEach((row) => {
     const start = eventDate(row);
-    if (!start) return;
-    const finalDate = dateKey(row.endDate || row.recurrenceEndDate) || endDate;
-    const interval = Math.max(1, Number(row.frequencyWeeks || row.intervalWeeks || 1));
-    for (let key = start; key <= endDate && key <= finalDate; key = addDays(key, interval * 7)) {
-      if (key < startDate) continue;
+    if (!start || !eventStart(row) || !eventEnd(row)) return;
+    const explicitEnd = dateKey(row.endDate || row.recurrenceEndDate);
+    const stopDate = dateKey(row.stopDate || row.stoppedAtDate || row.inactiveDate);
+    const finalDate = explicitEnd && stopDate
+      ? [explicitEnd, stopDate].sort()[0]
+      : (explicitEnd || stopDate || (sourceActive(row) ? endDate : start));
+    const interval = safeFrequencyWeeks(row.frequencyWeeks || row.intervalWeeks);
+    const stepDays = interval * 7;
+    const elapsedDays = Math.max(0, Math.floor(
+      (new Date(`${startDate}T12:00:00+08:00`).getTime() - new Date(`${start}T12:00:00+08:00`).getTime()) / 86400000
+    ));
+    let key = elapsedDays ? addDays(start, Math.ceil(elapsedDays / stepDays) * stepDays) : start;
+    for (; key <= endDate && key <= finalDate; key = addDays(key, stepDays)) {
       const statusByDate = row.statusByDate || row.exceptions || {};
       const status = normalizeScheduleStatus(statusByDate[key]);
-      if (['cancelled', 'leave', 'absent'].includes(status)) continue;
+      if (status === 'cancelled') continue;
       const clone = Object.assign({}, row, {
         date: key,
         status: status === 'scheduled' ? clean(row.status || 'scheduled') : status,
@@ -1775,58 +2289,229 @@ async function scheduleBundle(startDate, endDate, ownTeacherId) {
       if (!exactKeys.has(`${sourceId(row)}|${key}`)) expanded.push(clone);
     }
   });
-  const overlay = changes.docs.map((doc) => Object.assign({ __id: doc.id }, jsonValue(doc.data()) || {}));
+  const overlay = changes.map((doc) => Object.assign({ __id: doc.id }, jsonValue(doc.data()) || {}));
   const removed = new Set(overlay.filter((row) => ['single_move', 'cancel', 'lesson_status'].includes(row.action))
     .flatMap((row) => [
       `${clean(row.sourceEventId)}|${dateKey(row.sourceDate)}`,
       `${clean(row.sourceCourseId)}|${dateKey(row.sourceDate)}`
     ]));
-  const permanent = overlay.filter((row) => row.action === 'permanent_move' && row.event);
+  const activeFixedRows = fixed.filter((row) => !livePortalSource(row) && sourceActive(row));
+  const activeFixedByLineage = new Map(activeFixedRows.map((row) => [sourceId(row), row]));
+  const permanent = effectivePermanentChanges(overlay).filter((row) => {
+    if (row.action !== 'permanent_move' || !row.event) return false;
+    const lineage = permanentLineage(row);
+    return activeFixedByLineage.has(lineage);
+  });
+  const effectivePermanentIds = new Set(permanent.map((row) => clean(row.__id || row.id)));
+  const recurringLineages = new Set(
+    activeFixedRows.map(sourceId).filter(Boolean)
+  );
+  permanent.forEach((row) => {
+    const lineage = permanentLineage(row);
+    if (lineage) recurringLineages.add(lineage);
+  });
+  const permanentStatusById = new Map();
+  const permanentByLineage = new Map();
+  permanent.forEach((row) => {
+    const lineage = permanentLineage(row);
+    if (!permanentByLineage.has(lineage)) permanentByLineage.set(lineage, []);
+    permanentByLineage.get(lineage).push(row);
+  });
+  permanentByLineage.forEach((rows, lineage) => {
+    const sourceSeries = activeFixedByLineage.get(lineage) || {};
+    let statusByDate = Object.assign({}, sourceSeries.statusByDate || sourceSeries.exceptions || {});
+    canonicalStatusByKey.forEach((status, key) => {
+      const separator = key.lastIndexOf('|');
+      if (separator < 0 || key.slice(0, separator) !== lineage) return;
+      statusByDate[key.slice(separator + 1)] = { status, source: 'canonical-event' };
+    });
+    rows.slice().sort((left, right) =>
+      permanentCutover(left).localeCompare(permanentCutover(right)) ||
+      changeOrderValue(left) - changeOrderValue(right)
+    ).forEach((row) => {
+      const frequencyWeeks = safeFrequencyWeeks(row.frequencyWeeks || row.event.frequencyWeeks || row.intervalWeeks);
+      statusByDate = translateRecurringStatusMap(
+        statusByDate,
+        permanentCutover(row),
+        permanentAnchor(row),
+        frequencyWeeks
+      );
+      permanentStatusById.set(clean(row.__id || row.id), Object.assign({}, statusByDate));
+    });
+  });
+  const occurrenceIds = (row) => [...new Set([
+    ...courseSourceIds(row),
+    clean(row && row.seriesId),
+    clean(row && row.sourceEventId),
+    clean(row && row.portalChangeId)
+  ].filter(Boolean))];
+  const permanentMatchesOccurrence = (change, row) => {
+    const changeIds = new Set([
+      ...occurrenceIds(change),
+      ...occurrenceIds(change && change.event),
+      permanentLineage(change)
+    ].filter(Boolean));
+    return occurrenceIds(row).some((id) => changeIds.has(id));
+  };
+  const removedOccurrence = (row, key) => occurrenceIds(row).some((id) => removed.has(`${id}|${key}`));
   const base = [...exact, ...expanded].filter((row) =>
-    !removed.has(`${clean(row.fixedCourseId || sourceId(row))}|${eventDate(row)}`) &&
-    !removed.has(`${sourceId(row)}|${eventDate(row)}`) &&
+    !removedOccurrence(row, eventDate(row)) &&
     !permanent.some((change) =>
-      clean(change.sourceCourseId || change.sourceEventId) === clean(row.fixedCourseId || sourceId(row)) &&
-      eventDate(row) >= dateKey(change.sourceDate || change.effectiveDate)
+      permanentMatchesOccurrence(change, row) &&
+      eventDate(row) >= dateKey(change.cutoverDate || change.sourceDate || change.effectiveDate)
     )
   );
-  overlay.forEach((row) => {
+  const handledPermanentExceptions = new Set();
+  [...overlay].sort((left, right) => {
+    const actionOrder =
+      (clean(left.action) === 'permanent_move' ? 0 : 1) -
+      (clean(right.action) === 'permanent_move' ? 0 : 1);
+    if (actionOrder) return actionOrder;
+    if (clean(left.action) === 'permanent_move') {
+      return permanentLineage(left).localeCompare(permanentLineage(right)) ||
+        permanentCutover(left).localeCompare(permanentCutover(right)) ||
+        changeOrderValue(left) - changeOrderValue(right);
+    }
+    return changeOrderValue(left) - changeOrderValue(right);
+  }).forEach((row) => {
     if (row.action === 'permanent_move' && row.event) {
-      for (let key = eventDate(row.event); key && key <= endDate; key = addDays(key, 7)) {
-        if (key < startDate || (row.pendingDates || []).includes(key)) continue;
-        const occurrenceStatus = overlay.some((change) =>
-          change.action === 'lesson_status' &&
-          dateKey(change.sourceDate) === key &&
+      if (!effectivePermanentIds.has(clean(row.__id || row.id))) return;
+      const lineage = permanentLineage(row);
+      const cutoverDate = permanentCutover(row);
+      const anchorDate = permanentAnchor(row);
+      const intervalWeeks = safeFrequencyWeeks(row.frequencyWeeks || row.event.frequencyWeeks || row.intervalWeeks);
+      const nextPermanent = permanent
+        .filter((other) =>
+          other.__id !== row.__id &&
+          permanentLineage(other) === lineage &&
+          permanentCutover(other) > cutoverDate
+        )
+        .sort((left, right) =>
+          permanentCutover(left).localeCompare(permanentCutover(right))
+        )[0];
+      const sourceSeries = activeFixedByLineage.get(lineage) || {};
+      const sourceEnd = dateKey(sourceSeries.recurrenceEndDate || sourceSeries.endDate);
+      const storedEnd = dateKey(row.recurrenceEndDate || row.endDate || row.event.recurrenceEndDate || row.event.endDate);
+      const rowEnd = sourceEnd && storedEnd
+        ? [sourceEnd, storedEnd].sort()[0]
+        : (sourceEnd || storedEnd || endDate);
+      const finalDate = nextPermanent
+        ? [rowEnd, addDays(permanentCutover(nextPermanent), -1)].sort()[0]
+        : rowEnd;
+      for (let key = anchorDate; key && key <= endDate && key <= finalDate; key = addDays(key, intervalWeeks * 7)) {
+        if (key < startDate) continue;
+        const storedPending = (row.pendingDates || []).includes(key);
+        const stepDays = intervalWeeks * 7;
+        const matchingException = overlay.find((change) => {
+          if (!['single_move', 'lesson_status', 'cancel'].includes(clean(change.action))) return false;
+          const changeLineage = clean(change.sourceCourseId || change.event && (change.event.fixedCourseId || change.event.seriesId));
+          const exceptionDate = dateKey(change.sourceDate);
+          if (changeLineage !== lineage || !exceptionDate || exceptionDate < cutoverDate) return false;
+          const deltaDays = Math.round(
+            (new Date(`${exceptionDate}T12:00:00+08:00`).getTime() -
+              new Date(`${cutoverDate}T12:00:00+08:00`).getTime()) / 86400000
+          );
+          return deltaDays >= 0 && deltaDays % stepDays === 0 && addDays(anchorDate, deltaDays) === key;
+        });
+        if (matchingException && ['single_move', 'cancel'].includes(clean(matchingException.action))) {
+          // 單次調課稍後仍會加入它自己的 target event；這裡只抑制對應的新固定 occurrence。
+          if (clean(matchingException.action) === 'cancel') handledPermanentExceptions.add(matchingException.__id);
+          continue;
+        }
+        const occurrenceId = `${row.__id}@${key}`;
+        const occurrence = Object.assign({}, row.event, {
+          id: occurrenceId,
+          fixedCourseId: lineage,
+          seriesId: lineage,
+          frequencyWeeks: intervalWeeks,
+          date: key,
+          portalChangeId: row.__id
+        });
+        const inheritedStatus = normalizeScheduleStatus(
+          (permanentStatusById.get(clean(row.__id || row.id)) || {})[key]
+        );
+        if (inheritedStatus === 'cancelled') continue;
+        if (inheritedStatus !== 'scheduled') occurrence.status = inheritedStatus;
+        let matchedLessonStatus = false;
+        if (matchingException && clean(matchingException.action) === 'lesson_status') {
+          occurrence.status = normalizeScheduleStatus(matchingException.event && matchingException.event.status);
+          occurrence.paymentStatus = clean(matchingException.event && matchingException.event.paymentStatus);
+          occurrence.teacherPayable = matchingException.event && matchingException.event.teacherPayable === true;
+          handledPermanentExceptions.add(matchingException.__id);
+          matchedLessonStatus = true;
+        }
+        if (!matchedLessonStatus && removedOccurrence(occurrence, key)) continue;
+        const roomId = clean((row.roomOverrides || {})[key] || row.event.roomId);
+        const candidate = Object.assign(occurrence, {
+          roomId,
+          portalAction: row.action,
+          __id: occurrenceId
+        });
+        const candidateResources = eventSharedResourceIds(candidate, maps);
+        const dynamicConflict = !storedPending && eventBlocksResource(candidate) && base.find((other) =>
+          eventDate(other) === key &&
+          eventBlocksResource(other) &&
+          overlaps(eventStart(candidate), eventEnd(candidate), eventStart(other), eventEnd(other)) &&
           (
-            clean(change.sourceCourseId) === clean(row.sourceCourseId || row.sourceEventId) ||
-            clean(change.sourceEventId) === clean(row.event.id)
+            eventRoomId(other) === roomId ||
+            eventTeacherId(other) === eventTeacherId(candidate) ||
+            eventStudentIds(other).some((studentId) => eventStudentIds(candidate).includes(studentId)) ||
+            sharedResourceConflict(
+              [Object.assign({}, resourceEvent(other, maps, recurringLineages), {
+                resourceIds: eventSharedResourceIds(other, maps)
+              })],
+              candidateResources
+            )
           )
         );
-        if (occurrenceStatus) continue;
-        const roomId = clean((row.roomOverrides || {})[key] || row.event.roomId);
-        base.push(Object.assign({}, row.event, {
-          date: key,
-          roomId,
-          __id: `${row.__id}@${key}`,
-          portalAction: row.action,
-          portalChangeId: row.__id
-        }));
+        if (storedPending || dynamicConflict) {
+          base.push(Object.assign({}, candidate, {
+            roomId: '',
+            requestedRoomId: roomId,
+            status: 'pending_conflict',
+            pendingReason: storedPending ? '建立永久調課時已有衝突' : '目前課表已有衝突，請重新安排'
+          }));
+        } else {
+          base.push(candidate);
+        }
       }
-    } else if (row.event && eventDate(row.event) >= startDate && eventDate(row.event) <= endDate) {
-      base.push(Object.assign({
+    } else if (
+      !handledPermanentExceptions.has(row.__id) &&
+      row.event &&
+      eventDate(row.event) >= startDate &&
+      eventDate(row.event) <= endDate
+    ) {
+      const target = Object.assign({
         __id: row.__id,
         portalAction: clean(row.action),
         portalChangeId: row.__id
-      }, row.event));
+      }, row.event);
+      // 後續再次調課時，以前一次 overlay event id 精準移除舊位置。
+      if (!removed.has(`${sourceId(target)}|${eventDate(target)}`) || row.action === 'lesson_status') {
+        base.push(target);
+      }
     }
   });
+  const validBase = base.filter((row) =>
+    eventDate(row) >= startDate &&
+    eventDate(row) <= endDate &&
+    validPortalTime(eventStart(row)) &&
+    validPortalTime(eventEnd(row)) &&
+    timeMinutes(eventEnd(row)) > timeMinutes(eventStart(row))
+  );
+  const resourceEvents = validBase.map((row) => resourceEvent(row, maps, recurringLineages));
   return {
     rooms,
     subjects,
     students,
     teachers,
+    fixedCourses: activeFixedRows,
+    temporaryCourses: temporary.filter((row) => !livePortalSource(row)),
+    scheduleChanges: overlay,
     maps,
-    events: base.map((row) => publicEvent(row, maps, ownTeacherId))
+    resourceEvents,
+    resourceConflicts: scheduleResourceConflicts(resourceEvents),
+    events: validBase.map((row) => publicEvent(row, maps, ownTeacherId, recurringLineages))
   };
 }
 
@@ -1836,13 +2521,17 @@ async function teacherPortalData(data) {
   if (!start) throw new HttpsError('invalid-argument', '週起始日期格式錯誤。');
   const end = addDays(start, 6);
   const month = clean(data.month).match(/^\d{4}-\d{2}$/) ? clean(data.month) : start.slice(0, 7);
-  const bundle = await scheduleBundle(start, end, session.teacherId);
+  const [bundle, roomSettingsSnapshot] = await Promise.all([
+    scheduleBundle(start, end, session.teacherId),
+    db.collection('coursePortalRoomSettings').get()
+  ]);
+  const roomSettingsMap = {};
+  roomSettingsSnapshot.docs.forEach((doc) => { roomSettingsMap[doc.id] = doc.data() || {}; });
   const teacher = bundle.maps.teachers[session.teacherId];
   if (!teacher) throw new HttpsError('not-found', '找不到這個老師帳號的資料。');
   const ownEvents = bundle.events.filter((row) => row.teacherId === session.teacherId);
-  const [allFixed, allTemporary] = await Promise.all([mirrorRows('fixedCourses'), mirrorRows('temporaryCourses')]);
   const studentIds = [...new Set(
-    [...allFixed, ...allTemporary]
+    [...bundle.fixedCourses, ...bundle.temporaryCourses]
       .filter((row) => eventTeacherId(row) === session.teacherId)
       .flatMap(eventStudentIds)
       .concat(ownEvents.flatMap((row) => row.studentIds))
@@ -1851,13 +2540,16 @@ async function teacherPortalData(data) {
     const student = bundle.maps.students[id] || {};
     return { id, name: clean(student.name), phoneLast4: normalizePhone(sourcePhone(student)).slice(-4) };
   }).filter((row) => row.name);
-  const [payroll, adjustments, portalAdjustmentsSnap] = await Promise.all([
-    mirrorRowsByField('teacherPayroll', 'teacherId', session.teacherId),
-    mirrorRowsByField('teacherAdjustments', 'teacherId', session.teacherId),
-    db.collection('coursePortalTeacherAdjustments').where('teacherId','==',session.teacherId).get()
-  ]);
+  const includePayroll = data.includePayroll === true;
+  const [payroll, adjustments, portalAdjustmentsSnap] = includePayroll
+    ? await Promise.all([
+      mirrorRowsByField('teacherPayroll', 'teacherId', session.teacherId),
+      mirrorRowsByField('teacherAdjustments', 'teacherId', session.teacherId),
+      db.collection('coursePortalTeacherAdjustments').where('teacherId','==',session.teacherId).get()
+    ])
+    : [[], [], { docs: [] }];
   const portalAdjustments=portalAdjustmentsSnap.docs.map(doc=>Object.assign({__id:doc.id},jsonValue(doc.data())||{}));
-  return {
+  const result = {
     ok: true,
     teacher: {
       id: session.teacherId,
@@ -1867,31 +2559,38 @@ async function teacherPortalData(data) {
     },
     week: { start, end },
     hours: { start: 10, end: 21, closedWeekday: 1 },
-    rooms: bundle.rooms.map((room) => ({
+    rooms: bundle.rooms.filter(sourceActive).map((room) => ({
       id: sourceId(room),
-      name: clean(room.name),
-      equipmentLabel: roomEquipmentLabel(room),
+      name: rentalRoomProfile(room, roomSettingsMap[sourceId(room)] || {}).publicName,
+      equipmentLabel: roomEquipmentLabel(room, roomSettingsMap[sourceId(room)] || {}),
       rentalFee: Number(room.rentalFee || room.price || 0),
-      allowedSubjectIds: firstArray(room, ['allowedSubjectIds', 'subjectIds'])
+      allowedSubjectIds: firstArray(roomSettingsMap[sourceId(room)] || {}, ['allowedSubjectIds'])
+        .concat(firstArray(room, ['allowedSubjectIds', 'subjectIds']))
     })),
     subjects: bundle.subjects.map((subject) => ({ id: sourceId(subject), name: clean(subject.name) })),
     events: bundle.events,
-    roster,
-    payroll: payroll.filter((row) => clean(row.month || row.payrollMonth || eventDate(row).slice(0, 7)) === month),
-    adjustments: adjustments.concat(portalAdjustments).filter((row) => clean(row.month || row.payrollMonth || eventDate(row).slice(0, 7)) === month)
+    roster
   };
+  if (includePayroll) {
+    result.payroll = payroll.filter((row) => clean(row.month || row.payrollMonth || eventDate(row).slice(0, 7)) === month);
+    result.adjustments = adjustments.concat(portalAdjustments).filter((row) => clean(row.month || row.payrollMonth || eventDate(row).slice(0, 7)) === month);
+  }
+  return result;
 }
 
 async function teacherAvailability(data) {
   const session = await requireSession(data, ['teacher']);
-  const startDate = dateKey(data.startDate || data.date);
-  if (!startDate) throw new HttpsError('invalid-argument', '開始日期格式錯誤。');
-  const days = Math.min(28, Math.max(7, Number(data.days || 14)));
-  const endDate = addDays(startDate, days - 1);
-  const startTime = clean(data.sourceStartTime || data.startTime).slice(0, 5);
-  const endTime = clean(data.sourceEndTime || data.endTime).slice(0, 5);
-  const duration = Math.max(30, timeMinutes(endTime) - timeMinutes(startTime) || Number(data.durationMinutes || 60));
-  const subjectId = clean(data.subjectId);
+  const requestedStartDate = dateKey(data.startDate || data.date);
+  if (!requestedStartDate) throw new HttpsError('invalid-argument', '開始日期格式錯誤。');
+  const startDate = requestedStartDate < currentTaipeiDay() ? currentTaipeiDay() : requestedStartDate;
+  const exactTarget = data.exactTarget === true;
+  const exactDate = exactTarget ? dateKey(data.date || data.startDate) : '';
+  const exactStartTime = exactTarget ? clean(data.startTime).slice(0, 5) : '';
+  if (exactTarget && (!exactDate || !validPortalTime(exactStartTime, true) || publicRentalSlotIsPast(exactDate, exactStartTime))) {
+    throw new HttpsError('invalid-argument', '請選擇尚未開始的 30 分鐘時段。');
+  }
+  const days = exactTarget ? 1 : Math.min(28, Math.max(7, Number(data.days || 14)));
+  const endDate = exactTarget ? exactDate : addDays(startDate, days - 1);
   const sourceEventId = clean(data.sourceEventId);
   const sourceCourseId = clean(data.sourceCourseId);
   const sourceDate = dateKey(data.sourceDate);
@@ -1902,39 +2601,220 @@ async function teacherAvailability(data) {
   ]);
   const roomSettingsMap = {};
   roomSettingsSnapshot.docs.forEach((doc) => { roomSettingsMap[doc.id] = doc.data() || {}; });
+  let source = bundle.resourceEvents.find((event) =>
+    event.teacherId === session.teacherId &&
+    event.date === sourceDate &&
+    (
+      event.id === sourceEventId ||
+      event.sourceId === sourceEventId ||
+      event.fixedCourseId === sourceCourseId ||
+      event.seriesId === sourceCourseId
+    )
+  );
+  if (!source && sourceDate && (sourceDate < startDate || sourceDate > endDate)) {
+    const sourceBundle = await scheduleBundle(sourceDate, sourceDate, session.teacherId);
+    source = sourceBundle.resourceEvents.find((event) =>
+      event.teacherId === session.teacherId &&
+      (
+        event.id === sourceEventId ||
+        event.sourceId === sourceEventId ||
+        event.fixedCourseId === sourceCourseId ||
+        event.seriesId === sourceCourseId
+      )
+    );
+  }
+  if ((sourceEventId || sourceCourseId) && !source) {
+    throw new HttpsError('not-found', '找不到可調動的原課程，請重新整理課表。');
+  }
+  if (source && isRoomRentalEvent(source)) {
+    throw new HttpsError('failed-precondition', '教室租用不是課程，不能從老師調課功能移動。');
+  }
+  if (source && normalizeScheduleStatus(source.status) !== 'scheduled') {
+    throw new HttpsError('failed-precondition', '請假、曠課或已取消的課程不能再調動。');
+  }
+  if (source && publicRentalSlotIsPast(source.date, source.startTime)) {
+    throw new HttpsError('failed-precondition', '已開始或已結束的課程不能再調課。');
+  }
+  const sourceStartTime = source ? source.startTime : clean(data.sourceStartTime || data.startTime).slice(0, 5);
+  const sourceEndTime = source ? source.endTime : clean(data.sourceEndTime || data.endTime).slice(0, 5);
+  const duration = source
+    ? assertPortalInterval(sourceStartTime, sourceEndTime)
+    : Math.min(300, Math.max(30, Number(data.durationMinutes || 60)));
+  if (!Number.isFinite(duration) || duration % 30 !== 0) {
+    throw new HttpsError('invalid-argument', '課程長度必須以 30 分鐘為單位。');
+  }
+  const subjectId = source ? source.subjectId : clean(data.subjectId);
+  const targetStudentIds = source
+    ? source.studentIds
+    : [...new Set(firstArray(data, ['studentIds']).concat(clean(data.studentId) ? [clean(data.studentId)] : []))];
+  if (!subjectId) throw new HttpsError('invalid-argument', '請先選擇課程科目。');
+  if (!bundle.maps.subjects[subjectId] || !sourceActive(bundle.maps.subjects[subjectId])) {
+    throw new HttpsError('failed-precondition', '這個授課科目已停用或不存在。');
+  }
+  if (!targetStudentIds.length) throw new HttpsError('invalid-argument', '請先選擇學生。');
   const compatibleRooms = bundle.rooms.filter(sourceActive).filter((room) =>
     roomKind(room, roomSettingsMap[sourceId(room)] || {}) === 'normal' &&
     roomTeacherSchedulable(room, roomSettingsMap[sourceId(room)] || {}) &&
     roomSupportsSubject(room, subjectId, bundle, roomSettingsMap[sourceId(room)] || {})
   );
   const slots = [];
-  for (let offset = 0; offset < days; offset += 1) {
-    const date = addDays(startDate, offset);
+  const dates = exactTarget
+    ? [exactDate]
+    : Array.from({ length: days }, (_, offset) => addDays(startDate, offset));
+  for (const date of dates) {
     const window = businessWindow(policy, date);
     if (window.closed) continue;
-    for (let minute = window.startMinutes; minute + duration <= window.endMinutes; minute += 30) {
+    const candidateMinutes = exactTarget
+      ? [timeMinutes(exactStartTime)]
+      : Array.from(
+        { length: Math.max(0, Math.floor((window.endMinutes - duration - window.startMinutes) / 30) + 1) },
+        (_, index) => window.startMinutes + index * 30
+      );
+    for (const minute of candidateMinutes) {
+      if (minute < window.startMinutes || minute + duration > window.endMinutes) continue;
       const slotStart = `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`;
       const slotEndMinute = minute + duration;
       const slotEnd = `${String(Math.floor(slotEndMinute / 60)).padStart(2, '0')}:${String(slotEndMinute % 60).padStart(2, '0')}`;
-      const blockers = bundle.events.filter((event) => {
+      if (publicRentalSlotIsPast(date, slotStart)) continue;
+      const blockers = bundle.resourceEvents.filter((event) => {
         const sourceMatch = event.date === sourceDate && (
           event.id === sourceEventId || event.sourceId === sourceEventId ||
-          event.fixedCourseId === sourceCourseId
+          event.fixedCourseId === sourceCourseId || event.seriesId === sourceCourseId
         );
-        return eventBlocksResource(event) && !sourceMatch && overlaps(slotStart, slotEnd, event.startTime, event.endTime);
+        return event.date === date &&
+          eventBlocksResource(event) &&
+          !sourceMatch &&
+          overlaps(slotStart, slotEnd, event.startTime, event.endTime);
       });
-      if (blockers.some((event) => event.teacherId === session.teacherId)) continue;
+      if (sharedResourceConflict(blockers, requestedSubjectResourceIds(subjectId, bundle))) continue;
+      if (
+        blockers.some((event) =>
+          event.teacherId === session.teacherId ||
+          event.studentIds.some((studentId) => targetStudentIds.includes(studentId))
+        )
+      ) continue;
       const rooms = compatibleRooms.filter((room) =>
+        roomAllowsInterval(
+          room,
+          roomSettingsMap[sourceId(room)] || {},
+          date,
+          slotStart,
+          slotEnd,
+          subjectId,
+          'schedule'
+        ) &&
         !blockers.some((event) => event.roomId === sourceId(room))
       ).map((room) => ({
         id: sourceId(room),
-        name: clean(room.name),
-        equipmentLabel: roomEquipmentLabel(room)
+        name: rentalRoomProfile(room, roomSettingsMap[sourceId(room)] || {}).publicName,
+        equipmentLabel: roomEquipmentLabel(room, roomSettingsMap[sourceId(room)] || {}),
+        requiresGuzhengMove: roomRequiresGuzhengMove(room, subjectId, bundle)
       }));
       if (rooms.length) slots.push({ date, startTime: slotStart, endTime: slotEnd, rooms });
     }
   }
-  return { ok: true, startDate, endDate, durationMinutes: duration, slots };
+  return {
+    ok: true,
+    startDate,
+    endDate,
+    durationMinutes: duration,
+    source: source ? publicEvent(source, bundle.maps, session.teacherId) : null,
+    slots
+  };
+}
+
+async function teacherSlotOptions(data) {
+  const session = await requireSession(data, ['teacher']);
+  const targetDate = dateKey(data.date || data.targetDate);
+  const targetStartTime = clean(data.startTime || data.targetStartTime).slice(0, 5);
+  if (!targetDate || !validPortalTime(targetStartTime, true)) {
+    throw new HttpsError('invalid-argument', '請選擇有效的日期與 30 分鐘時段。');
+  }
+  if (publicRentalSlotIsPast(targetDate, targetStartTime)) {
+    throw new HttpsError('failed-precondition', '不能把課程調到已經過去的時間。');
+  }
+  const today = currentTaipeiDay();
+  const candidateEnd = addDays(today, 28);
+  const [candidateBundle, policy, roomSettingsSnapshot] = await Promise.all([
+    scheduleBundle(today, candidateEnd, session.teacherId),
+    rentalPolicySettings(),
+    db.collection('coursePortalRoomSettings').get()
+  ]);
+  const targetBundle = targetDate >= today && targetDate <= candidateEnd
+    ? candidateBundle
+    : await scheduleBundle(targetDate, targetDate, session.teacherId);
+  const roomSettingsMap = {};
+  roomSettingsSnapshot.docs.forEach((doc) => { roomSettingsMap[doc.id] = doc.data() || {}; });
+  const window = businessWindow(policy, targetDate);
+  if (window.closed) throw new HttpsError('failed-precondition', '這一天公休，不能調入課程。');
+  const seen = new Set();
+  const candidates = candidateBundle.resourceEvents.filter((event) => {
+    const key = `${event.id}|${event.date}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return event.teacherId === session.teacherId &&
+      normalizeScheduleStatus(event.status) === 'scheduled' &&
+      !isRoomRentalEvent(event) &&
+      event.studentIds.length > 0 &&
+      Boolean(event.subjectId) &&
+      !publicRentalSlotIsPast(event.date, event.startTime);
+  }).map((source) => {
+    const duration = timeMinutes(source.endTime) - timeMinutes(source.startTime);
+    if (duration < 30 || duration > 300 || duration % 30 !== 0) return null;
+    const targetEndMinute = timeMinutes(targetStartTime) + duration;
+    const targetEndTime = String(Math.floor(targetEndMinute / 60)).padStart(2, '0') + ':' +
+      String(targetEndMinute % 60).padStart(2, '0');
+    if (timeMinutes(targetStartTime) < window.startMinutes || targetEndMinute > window.endMinutes) return null;
+    if (source.date === targetDate && source.startTime === targetStartTime) return null;
+    const sourceMatch = (event) => event.date === source.date && (
+      event.id === source.id ||
+      event.sourceId === source.sourceId ||
+      (source.fixedCourseId && event.fixedCourseId === source.fixedCourseId)
+    );
+    const blockers = targetBundle.resourceEvents.filter((event) =>
+      event.date === targetDate &&
+      eventBlocksResource(event) &&
+      !sourceMatch(event) &&
+      overlaps(targetStartTime, targetEndTime, event.startTime, event.endTime)
+    );
+    if (sharedResourceConflict(blockers, requestedSubjectResourceIds(source.subjectId, targetBundle))) return null;
+    if (
+      blockers.some((event) =>
+        event.teacherId === session.teacherId ||
+        event.studentIds.some((studentId) => source.studentIds.includes(studentId))
+      )
+    ) return null;
+    const rooms = targetBundle.rooms.filter(sourceActive).filter((room) => {
+      const id = sourceId(room);
+      const setting = roomSettingsMap[id] || {};
+      return roomKind(room, setting) === 'normal' &&
+        roomTeacherSchedulable(room, setting) &&
+        roomSupportsSubject(room, source.subjectId, targetBundle, setting) &&
+        roomAllowsInterval(room, setting, targetDate, targetStartTime, targetEndTime, source.subjectId, 'schedule') &&
+        !blockers.some((event) => event.roomId === id);
+    }).map((room) => ({
+      id: sourceId(room),
+      name: rentalRoomProfile(room, roomSettingsMap[sourceId(room)] || {}).publicName,
+      equipmentLabel: roomEquipmentLabel(room, roomSettingsMap[sourceId(room)] || {}),
+      requiresGuzhengMove: roomRequiresGuzhengMove(room, source.subjectId, targetBundle)
+    }));
+    if (!rooms.length) return null;
+    const publicSource = publicEvent(source, candidateBundle.maps, session.teacherId);
+    return Object.assign(publicSource, {
+      durationMinutes: duration,
+      targetEndTime,
+      rooms
+    });
+  }).filter(Boolean).slice(0, 120);
+  const rooms = new Map();
+  candidates.forEach((candidate) => candidate.rooms.forEach((room) => rooms.set(room.id, room)));
+  return {
+    ok: true,
+    targetDate,
+    targetStartTime,
+    rooms: [...rooms.values()].sort((left, right) => left.name.localeCompare(right.name, 'zh-Hant')),
+    candidateLessons: candidates
+  };
 }
 
 async function studentPortalData(data) {
@@ -1944,14 +2824,20 @@ async function studentPortalData(data) {
   const requested = clean(data.studentId);
   if (requested && !currentIds.includes(requested)) throw new HttpsError('permission-denied', '沒有這位學生的查看權限。');
   const studentIds = requested ? [requested] : currentIds;
-  const [students, periods, attendance, events, teachers, subjects] = await Promise.all([
+  const today = currentTaipeiDay();
+  const [students, periodsByStudent, attendanceByStudent, events, teachers, subjects] = await Promise.all([
     mirrorRows('students'),
-    mirrorRows('tuitionPeriods'),
-    mirrorRows('attendance'),
-    mirrorRows('events'),
+    Promise.all(studentIds.map((id) => mirrorRowsByField('tuitionPeriods', 'studentId', id))),
+    Promise.all(studentIds.map((id) => mirrorRowsByField('attendance', 'studentId', id))),
+    mirrorRowsByDateRange('events', today, addDays(today, 120)),
     mirrorRows('teachers'),
     mirrorRows('subjects')
   ]);
+  const uniqueRows = (groups) => [...new Map(
+    groups.flat().map((row) => [sourceId(row), row])
+  ).values()];
+  const periods = uniqueRows(periodsByStudent);
+  const attendance = uniqueRows(attendanceByStudent);
   const maps = { teachers: indexById(teachers), subjects: indexById(subjects) };
   const allowed = new Set(studentIds);
   const selectedStudents = students.filter((row) => allowed.has(sourceId(row))).map((row) => ({
@@ -1993,9 +2879,7 @@ async function studentPortalData(data) {
       teacherName: clean(maps.teachers[eventTeacherId(row)] && maps.teachers[eventTeacherId(row)].name)
     })),
     upcoming: events.filter((row) =>
-      eventDate(row) >= new Intl.DateTimeFormat('en-CA', {
-        timeZone: TAIPEI, year: 'numeric', month: '2-digit', day: '2-digit'
-      }).format(new Date()) &&
+      eventDate(row) >= today &&
       eventStudentIds(row).some((id) => allowed.has(id))
     ).slice(0, 30).map((row) => ({
       id: sourceId(row),
@@ -2036,11 +2920,15 @@ async function rentalAvailability(data) {
   const date = dateKey(data.date);
   const startTime = clean(data.startTime).slice(0, 5);
   const policy = await rentalPolicySettings();
-  const duration = Math.min(policy.maxDurationMinutes, Math.max(30, Number(data.durationMinutes || 60)));
+  const requestedDuration = Number(data.durationMinutes == null ? 60 : data.durationMinutes);
+  if (!Number.isFinite(requestedDuration) || requestedDuration < 30 || requestedDuration % 30 !== 0) {
+    throw new HttpsError('invalid-argument', '租用時間必須以 30 分鐘為單位。');
+  }
+  const duration = Math.min(policy.maxDurationMinutes, requestedDuration);
   const startMinutes = timeMinutes(startTime);
   const endMinutes = startMinutes + duration;
   const endTime = String(Math.floor(endMinutes / 60)).padStart(2, '0') + ':' + String(endMinutes % 60).padStart(2, '0');
-  if (!date || !startTime) throw new HttpsError('invalid-argument', '請選擇日期與時間。');
+  if (!date || !validPortalTime(startTime, true)) throw new HttpsError('invalid-argument', '請選擇 30 分鐘整點的日期與時間。');
   if (publicRentalSlotIsPast(date, startTime)) {
     throw new HttpsError('failed-precondition', '一般租用只能預約尚未開始的時段。');
   }
@@ -2056,33 +2944,44 @@ async function rentalAvailability(data) {
   if (!selectedUse) throw new HttpsError('invalid-argument', '請選擇租用用途。');
   const settingsMap = {};
   roomSettings.docs.forEach((doc) => { settingsMap[doc.id] = doc.data() || {}; });
-  const studentRate = data.studentDiscountRequested === true || clean(data.studentDiscountRequested).toLowerCase() === 'true';
+  const discountRequested = data.studentDiscountRequested === true ||
+    clean(data.studentDiscountRequested).toLowerCase() === 'true';
+  const studentRate = discountRequested &&
+    session.role === 'student' &&
+    (await activeStudentIdsForSession(session)).length > 0;
+  const overlappingEvents = bundle.resourceEvents.filter((event) =>
+    eventBlocksResource(event) && event.date === date &&
+    overlaps(startTime, endTime, event.startTime, event.endTime)
+  );
+  const sharedEquipmentBusy = sharedResourceConflict(overlappingEvents, requestedRentalResourceIds(data));
   const rooms = bundle.rooms.filter(sourceActive).map((room) => {
     const id = sourceId(room);
     const setting = settingsMap[id] || {};
-    const blocked = bundle.events.some((event) =>
-      eventBlocksResource(event) && event.roomId === id && event.date === date &&
-      overlaps(startTime, endTime, event.startTime, event.endTime)
-    );
+    const blocked = overlappingEvents.some((event) => event.roomId === id);
     const profile = rentalRoomProfile(room, setting);
     const rentable = roomRentable(room, setting);
-    const categoryAllowed = rentalUseAllowsRoom(useOptions, data.useType, id);
+    const categoryAllowed = rentalUseAllowsRoom(useOptions, data.useType, id, room, setting);
     const preferenceAllowed = rentalPreferenceAllowsRoom(room, setting, data);
+    const policyAllowed = roomAllowsInterval(room, setting, date, startTime, endTime, '', 'rental');
     const baseFee = effectiveRentalFee(room, setting, selectedUse);
-    const available = !blocked && rentable && categoryAllowed && preferenceAllowed;
+    const available = !blocked && !sharedEquipmentBusy && rentable && categoryAllowed && preferenceAllowed && policyAllowed;
     const equipmentLabel = roomEquipmentLabel(room, setting);
     return {
       id,
       name: profile.publicName,
       kind: roomKind(room, setting),
       available,
-      reason: blocked
+      reason: sharedEquipmentBusy
+        ? '古箏在這個時段已被使用'
+        : (blocked
         ? '時段已被使用'
         : (!rentable
           ? '不開放租用'
           : (!categoryAllowed
             ? '不屬於這個用途'
-            : (!preferenceAllowed ? '已依設備條件排除' : ''))),
+            : (!preferenceAllowed
+              ? '已依設備條件排除'
+              : (!policyAllowed ? '這個時段不開放租用' : ''))))),
       matchLevel: 'best',
       capacity: profile.capacity,
       equipment: profile.equipment,
@@ -2110,11 +3009,19 @@ async function rentalDayBoard(data) {
   const date = dateKey(data.date);
   if (!date) throw new HttpsError('invalid-argument', '請選擇日期。');
   const policy = await rentalPolicySettings();
-  const duration = Math.min(policy.maxDurationMinutes, Math.max(30, Number(data.durationMinutes || 60)));
+  const requestedDuration = Number(data.durationMinutes == null ? 60 : data.durationMinutes);
+  if (!Number.isFinite(requestedDuration) || requestedDuration < 30 || requestedDuration % 30 !== 0) {
+    throw new HttpsError('invalid-argument', '租用時間必須以 30 分鐘為單位。');
+  }
+  const duration = Math.min(policy.maxDurationMinutes, requestedDuration);
   const window = businessWindow(policy, date);
   const bundle = await scheduleBundle(date, date, session.role === 'teacher' ? session.teacherId : '');
   const roomSettings = await db.collection('coursePortalRoomSettings').get();
   const useOptions = await rentalUseOptions(bundle.rooms);
+  const selectedUseType = useOptions.some((row) => row.id === clean(data.useType))
+    ? clean(data.useType)
+    : clean(useOptions[0] && useOptions[0].id);
+  const effectiveData = Object.assign({}, data, { useType: selectedUseType });
   const settingsMap = {};
   roomSettings.docs.forEach((doc) => { settingsMap[doc.id] = doc.data() || {}; });
   const slots = [];
@@ -2125,35 +3032,51 @@ async function rentalDayBoard(data) {
       const endMinute = minute + duration;
       const endTime = String(Math.floor(endMinute / 60)).padStart(2, '0') + ':' + String(endMinute % 60).padStart(2, '0');
       const past = publicRentalSlotIsPast(date, startTime);
-      const availableRooms = past ? [] : bundle.rooms.filter(sourceActive).filter((room) => {
+      if (past) continue;
+      const overlappingEvents = bundle.resourceEvents.filter((event) =>
+        eventBlocksResource(event) && event.date === date &&
+        overlaps(startTime, endTime, event.startTime, event.endTime)
+      );
+      const sharedEquipmentBusy = sharedResourceConflict(
+        overlappingEvents,
+        requestedRentalResourceIds(effectiveData)
+      );
+      const availableRooms = bundle.rooms.filter(sourceActive).filter((room) => {
         const id = sourceId(room);
         const setting = settingsMap[id] || {};
         if (
           !roomRentable(room, setting) ||
-          !rentalUseAllowsRoom(useOptions, data.useType, id) ||
-          !rentalPreferenceAllowsRoom(room, setting, data)
+          !rentalUseAllowsRoom(useOptions, selectedUseType, id, room, setting) ||
+          !rentalPreferenceAllowsRoom(room, setting, effectiveData) ||
+          !roomAllowsInterval(room, setting, date, startTime, endTime, '', 'rental')
         ) return false;
-        return !bundle.events.some((event) =>
-          eventBlocksResource(event) && event.roomId === id && event.date === date &&
-          overlaps(startTime, endTime, event.startTime, event.endTime)
-        );
+        return !sharedEquipmentBusy && !overlappingEvents.some((event) => event.roomId === id);
       }).map((room) => ({ id: sourceId(room), name: rentalRoomProfile(room, settingsMap[sourceId(room)] || {}).publicName }));
       slots.push({ startTime, endTime, past, availableCount: availableRooms.length, rooms: availableRooms.slice(0, 8) });
     }
   }
-  return { ok: true, date, closed: window.closed, past: dayPast, role: session.role, useOptions, slots };
+  return { ok: true, date, closed: window.closed, past: dayPast, role: session.role, selectedUseType, useOptions, slots };
 }
 
 async function rentalWeekBoard(data) {
   const session = await requireSession(data, ['student', 'renter', 'teacher']);
-  const startDate = dateKey(data.startDate || data.date);
-  if (!startDate) throw new HttpsError('invalid-argument', '請選擇週起始日期。');
+  const requestedStartDate = dateKey(data.startDate || data.date);
+  if (!requestedStartDate) throw new HttpsError('invalid-argument', '請選擇週起始日期。');
+  const startDate = requestedStartDate < currentTaipeiDay() ? currentTaipeiDay() : requestedStartDate;
   const endDate = addDays(startDate, 6);
   const policy = await rentalPolicySettings();
-  const duration = Math.min(policy.maxDurationMinutes, Math.max(30, Number(data.durationMinutes || 60)));
+  const requestedDuration = Number(data.durationMinutes == null ? 60 : data.durationMinutes);
+  if (!Number.isFinite(requestedDuration) || requestedDuration < 30 || requestedDuration % 30 !== 0) {
+    throw new HttpsError('invalid-argument', '租用時間必須以 30 分鐘為單位。');
+  }
+  const duration = Math.min(policy.maxDurationMinutes, requestedDuration);
   const bundle = await scheduleBundle(startDate, endDate, session.role === 'teacher' ? session.teacherId : '');
   const roomSettings = await db.collection('coursePortalRoomSettings').get();
   const useOptions = await rentalUseOptions(bundle.rooms);
+  const selectedUseType = useOptions.some((row) => row.id === clean(data.useType))
+    ? clean(data.useType)
+    : clean(useOptions[0] && useOptions[0].id);
+  const effectiveData = Object.assign({}, data, { useType: selectedUseType });
   const settingsMap = {};
   roomSettings.docs.forEach((doc) => { settingsMap[doc.id] = doc.data() || {}; });
   const days = [];
@@ -2168,18 +3091,25 @@ async function rentalWeekBoard(data) {
         const endMinute = minute + duration;
         const endTime = String(Math.floor(endMinute / 60)).padStart(2, '0') + ':' + String(endMinute % 60).padStart(2, '0');
         const past = publicRentalSlotIsPast(date, startTime);
-        const rooms = past ? [] : bundle.rooms.filter(sourceActive).filter((room) => {
+        if (past) continue;
+        const overlappingEvents = bundle.resourceEvents.filter((event) =>
+          eventBlocksResource(event) && event.date === date &&
+          overlaps(startTime, endTime, event.startTime, event.endTime)
+        );
+        const sharedEquipmentBusy = sharedResourceConflict(
+          overlappingEvents,
+          requestedRentalResourceIds(effectiveData)
+        );
+        const rooms = bundle.rooms.filter(sourceActive).filter((room) => {
           const id = sourceId(room);
           const setting = settingsMap[id] || {};
           if (
             !roomRentable(room, setting) ||
-            !rentalUseAllowsRoom(useOptions, data.useType, id) ||
-            !rentalPreferenceAllowsRoom(room, setting, data)
+            !rentalUseAllowsRoom(useOptions, selectedUseType, id, room, setting) ||
+            !rentalPreferenceAllowsRoom(room, setting, effectiveData) ||
+            !roomAllowsInterval(room, setting, date, startTime, endTime, '', 'rental')
           ) return false;
-          return !bundle.events.some((event) =>
-            eventBlocksResource(event) && event.roomId === id && event.date === date &&
-            overlaps(startTime, endTime, event.startTime, event.endTime)
-          );
+          return !sharedEquipmentBusy && !overlappingEvents.some((event) => event.roomId === id);
         }).map((room) => ({ id: sourceId(room), name: rentalRoomProfile(room, settingsMap[sourceId(room)] || {}).publicName }));
         slots.push({ startTime, endTime, past, availableCount: rooms.length, rooms: rooms.slice(0, 8) });
       }
@@ -2192,11 +3122,22 @@ async function rentalWeekBoard(data) {
       slots
     });
   }
-  return { ok: true, startDate, endDate, role: session.role, durationMinutes: duration, useOptions, businessHours: policy.businessHours, days };
+  return {
+    ok: true,
+    startDate,
+    endDate,
+    role: session.role,
+    durationMinutes: duration,
+    selectedUseType,
+    useOptions,
+    businessHours: policy.businessHours,
+    days
+  };
 }
 
 async function createRoomBooking(data) {
   const session = await requireSession(data, ['student', 'renter', 'teacher']);
+  const expectedVersion = await readScheduleVersion();
   const availability = await rentalAvailability(data);
   if (publicRentalSlotIsPast(availability.date, availability.startTime)) {
     throw new HttpsError('failed-precondition', '只能預約尚未開始的時段。');
@@ -2204,10 +3145,18 @@ async function createRoomBooking(data) {
   const room = availability.rooms.find((item) => item.id === clean(data.roomId));
   if (!room || !room.available) throw new HttpsError('failed-precondition', room && room.reason || '這間教室目前不能預約。');
   const id = db.collection('coursePortalRoomBookings').doc().id;
-  const studentIds = session.role === 'student' ? await activeStudentIdsForSession(session) : [];
+  // 學生身分只用來判斷折扣；租用本身不等於任何一位綁定學生正在上課。
+  // 否則家長綁了多位子女時，一筆租用會錯誤阻擋所有子女的課程。
+  const studentIds = [];
   const ownerKey = sessionOwnerKey(session);
   if (!ownerKey) throw new HttpsError('unauthenticated', '登入資料不完整，請重新登入。');
-  const locks = bookingLockRows(availability.date, room.id, availability.startTime, availability.endTime);
+  const locks = bookingLockRows(availability.date, room.id, availability.startTime, availability.endTime)
+    .concat(sharedEquipmentLockRows(
+      availability.date,
+      requestedRentalResourceIds(data),
+      availability.startTime,
+      availability.endTime
+    ));
   const booking = {
     id,
     type: 'room_rental',
@@ -2228,7 +3177,7 @@ async function createRoomBooking(data) {
     teacherId: clean(session.teacherId),
     renterId: clean(session.renterId),
     studentIds,
-    studentDiscountRequested: data.studentDiscountRequested === true || clean(data.studentDiscountRequested).toLowerCase() === 'true',
+    studentDiscountRequested: room.priceType === '柚子學生半價',
     ownerKey,
     lineUserId: clean(session.lineUserId),
     authAccountId: clean(session.authAccountId),
@@ -2245,24 +3194,61 @@ async function createRoomBooking(data) {
   };
   const bookingRef = db.collection('coursePortalRoomBookings').doc(id);
   const changeRef = db.collection('coursePortalScheduleChanges').doc('rental-' + id);
+  const versionRef = scheduleVersionRef();
   await db.runTransaction(async (tx) => {
+    if (publicRentalSlotIsPast(availability.date, availability.startTime)) {
+      throw new HttpsError('failed-precondition', '這個時段已經開始，請重新選擇。');
+    }
     const lockRefs = locks.map((row) => db.collection('coursePortalRoomLocks').doc(row.id));
-    for (const ref of lockRefs) {
-      const snap = await tx.get(ref);
-      if (snap.exists && snap.data().active !== false) {
+    const [versionSnapshot, ...lockSnapshots] = await Promise.all([
+      tx.get(versionRef),
+      ...lockRefs.map((ref) => tx.get(ref))
+    ]);
+    assertScheduleWritable(versionSnapshot);
+    const currentVersion = Number(versionSnapshot.exists && versionSnapshot.data().version || 0);
+    if (currentVersion !== expectedVersion) {
+      throw new HttpsError('aborted', '課表剛剛有更新，請重新確認可租教室。');
+    }
+    const activeLocks = lockSnapshots.filter((snapshot) => snapshot.exists && snapshot.data().active !== false);
+    const lockBookings = [];
+    for (const lockSnapshot of activeLocks) {
+      const lock = lockSnapshot.data() || {};
+      lockBookings.push({
+        lockSnapshot,
+        bookingSnapshot: clean(lock.bookingId)
+          ? await tx.get(db.collection('coursePortalRoomBookings').doc(clean(lock.bookingId)))
+          : null
+      });
+    }
+    const staleLocks = [];
+    lockBookings.forEach(({ lockSnapshot, bookingSnapshot }) => {
+      const lock = lockSnapshot.data() || {};
+      const prior = bookingSnapshot && bookingSnapshot.exists ? bookingSnapshot.data() || {} : null;
+      const expired = asMillis(lock.endAt) && asMillis(lock.endAt) <= Date.now();
+      const inactive = !prior || prior.active === false || clean(prior.status) === 'cancelled';
+      if (expired || inactive) staleLocks.push(lockSnapshot.ref);
+      else {
         throw new HttpsError('already-exists', '這個時段剛剛已被其他人預約，請重新選擇。');
       }
-    }
+    });
+    staleLocks.forEach((ref) => tx.delete(ref));
     tx.set(bookingRef, booking);
     tx.set(changeRef, { action: 'room_booking', active: true, event: booking, createdAt: FieldValue.serverTimestamp() });
     lockRefs.forEach((ref, index) => tx.set(ref, {
       active: true,
       bookingId: id,
       date: availability.date,
-      roomId: room.id,
+      roomId: locks[index].roomId,
+      resourceId: locks[index].resourceId,
       slot: locks[index].slot,
+      endAt: Timestamp.fromMillis(taipeiDateTimeMillis(availability.date, availability.endTime)),
       createdAt: FieldValue.serverTimestamp()
     }));
+    tx.set(versionRef, {
+      version: currentVersion + 1,
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedBy: sessionOwnerKey(session)
+    }, { merge: true });
   });
   const reminderAt = Math.max(Date.now(), taipeiDateTimeMillis(booking.date, booking.startTime) - 60 * 60 * 1000);
   if (clean(session.lineUserId)) {
@@ -2352,16 +3338,16 @@ async function cancelRoomBooking(data) {
   if (!bookingId) throw new HttpsError('invalid-argument', '缺少租用紀錄。');
   const bookingRef = db.collection('coursePortalRoomBookings').doc(bookingId);
   const changeRef = db.collection('coursePortalScheduleChanges').doc(`rental-${bookingId}`);
+  const versionRef = scheduleVersionRef();
   await db.runTransaction(async (tx) => {
-    const snapshot = await tx.get(bookingRef);
+    const [snapshot, versionSnapshot] = await Promise.all([tx.get(bookingRef), tx.get(versionRef)]);
+    assertScheduleWritable(versionSnapshot);
     if (!snapshot.exists) throw new HttpsError('not-found', '找不到這筆租用紀錄。');
     const booking = snapshot.data() || {};
-    const sameOwner = clean(booking.ownerKey)
-      ? clean(booking.ownerKey) === sessionOwnerKey(session)
-      : (
-        (clean(booking.lineUserId) && clean(booking.lineUserId) === clean(session.lineUserId)) ||
-        (clean(booking.authAccountId) && clean(booking.authAccountId) === clean(session.authAccountId))
-      );
+    const sameOwner =
+      (clean(booking.ownerKey) && clean(booking.ownerKey) === sessionOwnerKey(session)) ||
+      (clean(booking.lineUserId) && clean(booking.lineUserId) === clean(session.lineUserId)) ||
+      (clean(booking.authAccountId) && clean(booking.authAccountId) === clean(session.authAccountId));
     if (!sameOwner) {
       throw new HttpsError('permission-denied', '只能取消自己預約的教室。');
     }
@@ -2387,13 +3373,22 @@ async function cancelRoomBooking(data) {
     (Array.isArray(booking.lockIds) ? booking.lockIds : []).forEach((lockId) => {
       tx.delete(db.collection('coursePortalRoomLocks').doc(clean(lockId)));
     });
+    const currentVersion = Number(versionSnapshot.exists && versionSnapshot.data().version || 0);
+    tx.set(versionRef, {
+      version: currentVersion + 1,
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedBy: sessionOwnerKey(session)
+    }, { merge: true });
   });
   await db.collection('notificationQueue').doc(`course-portal-booking-${bookingId}-reminder`).set({
     status: '已取消',
     active: false,
     cancelledAt: FieldValue.serverTimestamp(),
     cancelledAtText: nowText()
-  }, { merge: true });
+  }, { merge: true }).catch((error) => {
+    // 租用取消已在交易中完成；提醒佇列屬次要資料，失敗不能讓使用者誤以為沒取消。
+    console.error('[course portal rental reminder cancellation failed]', bookingId, error);
+  });
   return { ok: true, bookingId, status: 'cancelled' };
 }
 
@@ -2404,17 +3399,69 @@ async function teacherLessonState(data) {
   if (state === 'cancel_change') {
     if (!portalChangeId) throw new HttpsError('invalid-argument', '這堂課不是老師新增或調整的課程。');
     const ref = db.collection('coursePortalScheduleChanges').doc(portalChangeId);
-    const snapshot = await ref.get();
-    const row = snapshot.exists ? snapshot.data() || {} : null;
-    if (!row || row.active === false || clean(row.createdByTeacherId) !== clean(session.teacherId)) {
-      throw new HttpsError('permission-denied', '只能取消自己新增或調整的課程。');
+    const versionRef = scheduleVersionRef();
+    const expectedVersion = await readScheduleVersion();
+    const [previewSnapshot, activeChangesSnapshot] = await Promise.all([
+      ref.get(),
+      db.collection('coursePortalScheduleChanges').where('active', '==', true).get()
+    ]);
+    const preview = previewSnapshot.exists ? previewSnapshot.data() || {} : null;
+    if (!preview || clean(preview.createdByTeacherId) !== clean(session.teacherId)) {
+      throw new HttpsError('permission-denied', '只能取消自己新增的課程。');
     }
-    await ref.set({
-      active: false,
-      cancelledAt: FieldValue.serverTimestamp(),
-      cancelledAtText: nowText(),
-      cancelledByTeacherId: session.teacherId
-    }, { merge: true });
+    if (!['extra_lesson', 'teacher_gift'].includes(clean(preview.action))) {
+      throw new HttpsError(
+        'failed-precondition',
+        '為避免原教室已被租用或排入其他課程，調課、請假與固定變更不能直接復原；請重新安排，或由管理者確認後處理。'
+      );
+    }
+    const dependencyIds = new Set([
+      clean(preview.event && preview.event.id),
+      clean(preview.sourceCourseId),
+      clean(preview.id),
+      portalChangeId
+    ].filter(Boolean));
+    const dependent = activeChangesSnapshot.docs.find((doc) => {
+      if (doc.id === portalChangeId) return false;
+      const row = doc.data() || {};
+      return dependencyIds.has(clean(row.sourceEventId)) ||
+        dependencyIds.has(clean(row.sourceCourseId));
+    });
+    if (dependent) {
+      throw new HttpsError('failed-precondition', '這堂新增課後面還有調課或固定變更，請先由管理者處理後續安排。');
+    }
+    await db.runTransaction(async (tx) => {
+      const [snapshot, versionSnapshot] = await Promise.all([tx.get(ref), tx.get(versionRef)]);
+      assertScheduleWritable(versionSnapshot);
+      const row = snapshot.exists ? snapshot.data() || {} : null;
+      if (!row || row.active === false || clean(row.createdByTeacherId) !== clean(session.teacherId)) {
+        throw new HttpsError('permission-denied', '只能取消自己新增或調整的課程。');
+      }
+      if (!['extra_lesson', 'teacher_gift'].includes(clean(row.action))) {
+        throw new HttpsError(
+          'failed-precondition',
+          '為避免原教室已被租用或排入其他課程，調課、請假與固定變更不能直接復原；請重新安排，或由管理者確認後處理。'
+        );
+      }
+      if (row.event && publicRentalSlotIsPast(row.event.date, row.event.startTime)) {
+        throw new HttpsError('failed-precondition', '已經開始或結束的課程不能再取消安排。');
+      }
+      const currentVersion = Number(versionSnapshot.exists && versionSnapshot.data().version || 0);
+      if (currentVersion !== expectedVersion) {
+        throw new HttpsError('aborted', '課表剛剛有更新，請重新整理後再取消。');
+      }
+      tx.set(ref, {
+        active: false,
+        cancelledAt: FieldValue.serverTimestamp(),
+        cancelledAtText: nowText(),
+        cancelledByTeacherId: session.teacherId
+      }, { merge: true });
+      tx.set(versionRef, {
+        version: currentVersion + 1,
+        updatedAt: FieldValue.serverTimestamp(),
+        updatedBy: session.teacherId
+      }, { merge: true });
+    });
     return { ok: true, state: 'cancelled', message: '此次安排已取消。' };
   }
 
@@ -2427,6 +3474,7 @@ async function teacherLessonState(data) {
   if (!sourceDate || (!sourceEventId && !sourceCourseId)) {
     throw new HttpsError('invalid-argument', '缺少原課程資料。');
   }
+  const expectedVersion = await readScheduleVersion();
   const bundle = await scheduleBundle(sourceDate, sourceDate, session.teacherId);
   const source = bundle.events.find((event) =>
     event.teacherId === session.teacherId &&
@@ -2439,31 +3487,41 @@ async function teacherLessonState(data) {
     )
   );
   if (!source) throw new HttpsError('not-found', '找不到這堂課，請重新整理後再試。');
+  if (isRoomRentalEvent(source)) {
+    throw new HttpsError('failed-precondition', '教室租用不是學生課程，不能標示請假或曠課。');
+  }
+  if (source.studentIds.length > 1) {
+    throw new HttpsError('failed-precondition', '團體課需逐位記錄學生狀態，不能用整堂請假／曠課，以免誤釋出仍在上課的教室。');
+  }
+  if (state === 'absent' && normalizeScheduleStatus(source.status) === 'leave') {
+    throw new HttpsError(
+      'failed-precondition',
+      '請假後教室可能已重新排入其他使用，不能直接改回曠課；請由管理者確認空間後處理。'
+    );
+  }
+  if (['attended', 'cancelled'].includes(normalizeScheduleStatus(source.status))) {
+    throw new HttpsError('failed-precondition', '已簽到或已取消的課程不能再改成請假或曠課。');
+  }
 
-  const activeChanges = await db.collection('coursePortalScheduleChanges').where('active', '==', true).get();
-  const id = db.collection('coursePortalScheduleChanges').doc().id;
-  const batch = db.batch();
-  activeChanges.docs.forEach((doc) => {
+  const lineage = clean(source.fixedCourseId || sourceCourseId || source.sourceId || sourceEventId);
+  const id = `lesson-status-${hash([
+    session.teacherId,
+    lineage,
+    sourceDate
+  ].join('|'))}`;
+  const changeRef = db.collection('coursePortalScheduleChanges').doc(id);
+  const activeChanges = await scheduleChangeDocsByDateRange(sourceDate, sourceDate);
+  const priorStatusRefs = activeChanges.filter((doc) => {
     const row = doc.data() || {};
-    if (
-      doc.id === portalChangeId &&
-      clean(row.action) !== 'permanent_move' &&
-      clean(row.createdByTeacherId) === clean(session.teacherId)
-    ) {
-      batch.set(doc.ref, { active: false, supersededAt: FieldValue.serverTimestamp() }, { merge: true });
-    }
-    if (
-      row.action === 'lesson_status' &&
+    return doc.id !== id &&
+      clean(row.action) === 'lesson_status' &&
       clean(row.createdByTeacherId) === clean(session.teacherId) &&
       dateKey(row.sourceDate) === sourceDate &&
       (
-        clean(row.sourceCourseId) === clean(source.fixedCourseId || sourceCourseId) ||
+        clean(row.sourceCourseId) === lineage ||
         clean(row.sourceEventId) === clean(source.sourceId || sourceEventId)
-      )
-    ) {
-      batch.set(doc.ref, { active: false, supersededAt: FieldValue.serverTimestamp() }, { merge: true });
-    }
-  });
+      );
+  }).map((doc) => doc.ref);
   const event = {
     id: randomToken(12),
     date: sourceDate,
@@ -2481,7 +3539,7 @@ async function teacherLessonState(data) {
     teacherPayable: state === 'absent',
     note: clean(data.note)
   };
-  batch.set(db.collection('coursePortalScheduleChanges').doc(id), {
+  const changePayload = {
     id,
     action: 'lesson_status',
     active: true,
@@ -2492,8 +3550,40 @@ async function teacherLessonState(data) {
     createdByTeacherId: session.teacherId,
     createdAt: FieldValue.serverTimestamp(),
     createdAtText: nowText()
+  };
+  const versionRef = scheduleVersionRef();
+  await db.runTransaction(async (tx) => {
+    const [versionSnapshot, changeSnapshot, ...priorSnapshots] = await Promise.all([
+      tx.get(versionRef),
+      tx.get(changeRef),
+      ...priorStatusRefs.map((ref) => tx.get(ref))
+    ]);
+    assertScheduleWritable(versionSnapshot);
+    const currentVersion = Number(versionSnapshot.exists && versionSnapshot.data().version || 0);
+    if (currentVersion !== expectedVersion) {
+      throw new HttpsError('aborted', '課表剛剛有更新，已停止這次操作；請重新整理後再確認。');
+    }
+    priorSnapshots.forEach((snapshot) => {
+      if (snapshot.exists && snapshot.data().active !== false) {
+        tx.set(snapshot.ref, {
+          active: false,
+          supersededBy: id,
+          supersededAt: FieldValue.serverTimestamp()
+        }, { merge: true });
+      }
+    });
+    tx.set(changeRef, Object.assign({}, changePayload, {
+      createdAt: changeSnapshot.exists
+        ? (changeSnapshot.data().createdAt || FieldValue.serverTimestamp())
+        : FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp()
+    }));
+    tx.set(versionRef, {
+      version: currentVersion + 1,
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedBy: session.teacherId
+    }, { merge: true });
   });
-  await batch.commit();
   return {
     ok: true,
     id,
@@ -2505,9 +3595,6 @@ async function teacherLessonState(data) {
 async function teacherAction(data) {
   const session = await requireSession(data, ['teacher']);
   const action = clean(data.action);
-  if (!['revoke', 'restore', 'delete'].includes(action)) {
-    throw new HttpsError('invalid-argument', '不支援的帳號操作。');
-  }
   if (!['single_move', 'permanent_move', 'extra_lesson', 'teacher_gift'].includes(action)) {
     throw new HttpsError('invalid-argument', '不支援的課務操作。');
   }
@@ -2515,51 +3602,173 @@ async function teacherAction(data) {
   const startTime = clean(data.startTime).slice(0, 5);
   const endTime = clean(data.endTime).slice(0, 5);
   const roomId = clean(data.roomId);
-  const studentId = clean(data.studentId);
-  const subjectId = clean(data.subjectId);
-  if (!date || !startTime || !endTime || !roomId || !studentId) {
-    throw new HttpsError('invalid-argument', '請完整選擇學生、日期、時間與教室。');
+  if (!date || !roomId) {
+    throw new HttpsError('invalid-argument', '請完整選擇日期、時間與教室。');
   }
-  const policy = await rentalPolicySettings();
+  assertPortalInterval(startTime, endTime);
+  if (publicRentalSlotIsPast(date, startTime)) {
+    throw new HttpsError('failed-precondition', '不能新增或調課到已經過去的時間。');
+  }
+  const expectedVersion = await readScheduleVersion();
+  const operationId = clean(data.operationId) || randomToken(18);
+  const id = `teacher-${hash(`${session.teacherId}|${operationId}`)}`;
+  const changeRef = db.collection('coursePortalScheduleChanges').doc(id);
+  const existing = await changeRef.get();
+  if (existing.exists && clean(existing.data().createdByTeacherId) === clean(session.teacherId)) {
+    const prior = existing.data() || {};
+    return {
+      ok: true,
+      duplicate: true,
+      id,
+      event: jsonValue(prior.event),
+      pendingDates: jsonValue(prior.pendingDates || []),
+      message: '這次操作已經完成，不會重複建立。'
+    };
+  }
+
+  const [policy, bundle, roomSettingsSnapshot] = await Promise.all([
+    rentalPolicySettings(),
+    scheduleBundle(date, date, session.teacherId),
+    db.collection('coursePortalRoomSettings').get()
+  ]);
   const window = businessWindow(policy, date);
-  if (window.closed) throw new HttpsError('failed-precondition', '星期一為公休日。');
+  if (window.closed) throw new HttpsError('failed-precondition', '這一天公休，不能安排課程。');
   if (timeMinutes(startTime) < window.startMinutes || timeMinutes(endTime) > window.endMinutes) {
     throw new HttpsError('failed-precondition', '所選時間不在營業時間內。');
   }
-  const bundle = await scheduleBundle(date, date, session.teacherId);
-  const roomSettingsSnapshot = await db.collection('coursePortalRoomSettings').get();
   const roomSettingsMap = {};
   roomSettingsSnapshot.docs.forEach((doc) => { roomSettingsMap[doc.id] = doc.data() || {}; });
+  const sourceEventId = clean(data.sourceEventId);
+  const requestedSourceCourseId = clean(data.sourceCourseId);
+  const sourceDate = dateKey(data.sourceDate);
+  const moving = action === 'single_move' || action === 'permanent_move';
+  let source = null;
+  let sourceBundle = null;
+  let sourceSeries = null;
+  if (moving) {
+    if (!sourceDate || (!sourceEventId && !requestedSourceCourseId)) {
+      throw new HttpsError('invalid-argument', '缺少要調動的原課程。');
+    }
+    sourceBundle = sourceDate === date ? bundle : await scheduleBundle(sourceDate, sourceDate, session.teacherId);
+    source = sourceBundle.resourceEvents.find((event) =>
+      event.teacherId === session.teacherId &&
+      event.date === sourceDate &&
+      (
+        event.id === sourceEventId ||
+        event.sourceId === sourceEventId ||
+        event.fixedCourseId === requestedSourceCourseId ||
+        event.seriesId === requestedSourceCourseId
+      )
+    );
+    if (!source) throw new HttpsError('not-found', '找不到這堂原課程，請重新整理後再試。');
+    if (isRoomRentalEvent(source)) {
+      throw new HttpsError('failed-precondition', '教室租用不能用課程調課功能移動，請到租用入口取消後重新預約。');
+    }
+    if (normalizeScheduleStatus(source.status) !== 'scheduled') {
+      throw new HttpsError('failed-precondition', '請假、曠課或已取消的課程不能再調動。');
+    }
+    if (publicRentalSlotIsPast(source.date, source.startTime)) {
+      throw new HttpsError('failed-precondition', '已經開始或結束的課程不能再調動。');
+    }
+    sourceSeries = sourceBundle.fixedCourses.find((row) =>
+      sourceId(row) === clean(source.fixedCourseId || source.seriesId || requestedSourceCourseId)
+    ) || (sourceBundle.scheduleChanges.find((row) =>
+      clean(row.__id) === clean(source.portalChangeId) ||
+      clean(row.sourceCourseId) === clean(source.fixedCourseId || source.seriesId)
+    ) || {}).event || null;
+    if (action === 'permanent_move' && (!source.recurring || !sourceSeries || !sourceActive(sourceSeries))) {
+      throw new HttpsError('failed-precondition', '這堂不是仍有效的固定課，不能套用「之後固定調課」；請改用只調這一次。');
+    }
+    if (action === 'permanent_move' && clean(source.portalAction) === 'single_move') {
+      throw new HttpsError('failed-precondition', '這堂已是單次調課結果；請從尚未調整的固定課堂次開始設定之後固定調課。');
+    }
+  }
+
+  const studentIds = moving
+    ? source.studentIds
+    : [...new Set(firstArray(data, ['studentIds']).concat(clean(data.studentId) ? [clean(data.studentId)] : []))];
+  const subjectId = moving ? source.subjectId : clean(data.subjectId);
+  if (!studentIds.length || !subjectId) {
+    throw new HttpsError('invalid-argument', '請完整選擇學生與課程科目。');
+  }
+  if (!bundle.maps.subjects[subjectId] || !sourceActive(bundle.maps.subjects[subjectId])) {
+    throw new HttpsError('failed-precondition', '這個授課科目已停用或不存在。');
+  }
+  if (!moving) {
+    const temporaryForTeacher = await mirrorRowsByField('temporaryCourses', 'teacherId', session.teacherId);
+    const ownStudentIds = new Set(
+      [...bundle.fixedCourses, ...temporaryForTeacher]
+        .filter((row) => eventTeacherId(row) === session.teacherId && sourceActive(row))
+        .flatMap(eventStudentIds)
+        .map(clean)
+        .filter(Boolean)
+    );
+    if (!studentIds.every((studentId) => ownStudentIds.has(studentId))) {
+      throw new HttpsError('permission-denied', '老師只能操作目前仍在自己名單中的學生。');
+    }
+  }
+  const teacher = bundle.maps.teachers[session.teacherId] || {};
+  const teacherSubjects = firstArray(teacher, ['subjectIds', 'subjects']);
+  if (teacherSubjects.length && !teacherSubjects.includes(subjectId)) {
+    throw new HttpsError('permission-denied', '這個科目不在老師可授課的項目中。');
+  }
+
   const selectedRoom = bundle.rooms.find((room) => sourceId(room) === roomId);
-  if (!selectedRoom || !roomTeacherSchedulable(selectedRoom, roomSettingsMap[roomId] || {})) {
+  const selectedRoomSetting = roomSettingsMap[roomId] || {};
+  if (
+    !selectedRoom ||
+    !sourceActive(selectedRoom) ||
+    roomKind(selectedRoom, selectedRoomSetting) !== 'normal' ||
+    !roomTeacherSchedulable(selectedRoom, selectedRoomSetting)
+  ) {
     throw new HttpsError('failed-precondition', '這個教室不開放老師排課。');
   }
-  if (!roomSupportsSubject(selectedRoom, subjectId, bundle, roomSettingsMap[roomId] || {})) {
+  if (!roomSupportsSubject(selectedRoom, subjectId, bundle, selectedRoomSetting)) {
     throw new HttpsError('failed-precondition', '這個教室不適合所選樂器，請改選其他教室。');
   }
-  const [allFixed, allTemporary] = await Promise.all([mirrorRows('fixedCourses'), mirrorRows('temporaryCourses')]);
-  const ownStudent = [...allFixed, ...allTemporary].some((row) =>
-    eventTeacherId(row) === session.teacherId && eventStudentIds(row).includes(studentId)
-  ) || bundle.events.some((event) =>
-    event.teacherId === session.teacherId && event.studentIds.includes(studentId)
+  if (roomRequiresGuzhengMove(selectedRoom, subjectId, bundle) && !flagTrue(data.allowGuzhengMove)) {
+    throw new HttpsError('failed-precondition', 'KAWAI 教室沒有固定放置古箏；請確認願意自行從展演空間搬運後再儲存。');
+  }
+  if (!roomAllowsInterval(selectedRoom, selectedRoomSetting, date, startTime, endTime, subjectId, 'schedule')) {
+    throw new HttpsError('failed-precondition', '這個教室在所選時段不開放這項課程。');
+  }
+
+  const lineage = moving
+    ? clean(source.fixedCourseId || source.seriesId || requestedSourceCourseId || source.id)
+    : '';
+  const ignoredSource = (event) => Boolean(source) && event.date === source.date && (
+    event.id === source.id ||
+    event.sourceId === source.sourceId ||
+    (lineage && (event.fixedCourseId === lineage || event.seriesId === lineage))
   );
-  if (!ownStudent) throw new HttpsError('permission-denied', '老師只能操作自己的學生。');
-  const sourceEventId = clean(data.sourceEventId);
-  const sourceCourseId = clean(data.sourceCourseId);
-  const sourceDate = dateKey(data.sourceDate);
-  const ignoredSource = (event) => event.date === sourceDate && (
-    event.id === sourceEventId || event.sourceId === sourceEventId || event.fixedCourseId === sourceCourseId
-  );
-  const conflict = bundle.events.find((event) =>
-    eventBlocksResource(event) && !ignoredSource(event) && overlaps(startTime, endTime, event.startTime, event.endTime) &&
-    (event.roomId === roomId || event.teacherId === session.teacherId)
+  const requestedResourceIds = requestedSubjectResourceIds(subjectId, bundle);
+  const conflict = bundle.resourceEvents.find((event) =>
+    event.date === date &&
+    eventBlocksResource(event) &&
+    !ignoredSource(event) &&
+    overlaps(startTime, endTime, event.startTime, event.endTime) &&
+    (
+      event.roomId === roomId ||
+      event.teacherId === session.teacherId ||
+      event.studentIds.some((studentId) => studentIds.includes(studentId)) ||
+      sharedResourceConflict([event], requestedResourceIds)
+    )
   );
   if (conflict) {
+    const studentConflict = conflict.studentIds.find((studentId) => studentIds.includes(studentId));
+    const studentName = studentConflict && clean(bundle.maps.students[studentConflict] && bundle.maps.students[studentConflict].name);
     throw new HttpsError(
       'already-exists',
-      conflict.teacherId === session.teacherId ? '老師在這個時段已有課程。' : '所選教室時段已被使用。'
+      sharedResourceConflict([conflict], requestedResourceIds)
+        ? '古箏在這個時段已被其他課程或租用使用。'
+        : (conflict.roomId === roomId
+        ? `「${clean(selectedRoom.name) || '所選教室'}」在這個時段已被使用。`
+        : (conflict.teacherId === session.teacherId
+          ? '老師在這個時段已有課程。'
+          : `${studentName || '所選學生'}在這個時段已有課程。`))
     );
   }
+
   const event = {
     id: randomToken(12),
     date,
@@ -2567,87 +3776,249 @@ async function teacherAction(data) {
     endTime,
     roomId,
     teacherId: session.teacherId,
-    studentId,
-    studentIds: [studentId],
+    studentId: studentIds[0],
+    studentIds,
     subjectId,
-    type: action === 'teacher_gift' ? 'teacher_gift' : 'temporary',
+    fixedCourseId: moving ? lineage : '',
+    seriesId: action === 'permanent_move' ? lineage : '',
+    recurring: action === 'permanent_move',
+    type: action === 'permanent_move' ? 'fixed' : 'single',
+    portalAction: action,
+    specialLesson: action === 'teacher_gift',
     status: 'scheduled',
     paymentStatus: action === 'teacher_gift' ? 'teacher_gift_no_charge' : clean(data.paymentStatus || 'not_applicable'),
     teacherPayable: action !== 'teacher_gift',
     note: clean(data.note)
   };
-  const id = db.collection('coursePortalScheduleChanges').doc().id;
   const roomOverrides = {};
+  const requestedRoomOverrides = data.roomOverrides && typeof data.roomOverrides === 'object'
+    ? data.roomOverrides
+    : {};
   const pendingDates = [];
+  const permanentConflicts = [];
+  let supersededPermanentRefs = [];
+  let validatedThrough = '';
+  let frequencyWeeks = safeFrequencyWeeks(sourceSeries && (sourceSeries.frequencyWeeks || sourceSeries.intervalWeeks));
+  let recurrenceEndDate = dateKey(sourceSeries && (sourceSeries.recurrenceEndDate || sourceSeries.endDate));
   if (action === 'permanent_move') {
-    const horizonEnd = addDays(date, 364);
+    const activeChangeSnapshot = await db.collection('coursePortalScheduleChanges').where('active', '==', true).get();
+    supersededPermanentRefs = activeChangeSnapshot.docs.filter((doc) => {
+      const row = doc.data() || {};
+      return clean(row.action) === 'permanent_move' &&
+        permanentLineage(row) === lineage &&
+        permanentCutover(row) === sourceDate;
+    }).map((doc) => doc.ref);
+    const futureException = activeChangeSnapshot.docs.find((doc) => {
+      const row = doc.data() || {};
+      const rowLineage = permanentLineage(row);
+      const rowCutover = permanentCutover(row);
+      if (
+        clean(row.action) === 'permanent_move' &&
+        rowLineage === lineage &&
+        rowCutover === sourceDate
+      ) return false;
+      if (doc.id === clean(source.portalChangeId) && rowCutover < sourceDate) return false;
+      return rowLineage === lineage &&
+        rowCutover >= sourceDate &&
+        ['single_move', 'lesson_status', 'cancel', 'permanent_move'].includes(clean(row.action));
+    });
+    if (futureException) {
+      throw new HttpsError(
+        'failed-precondition',
+        '這門固定課在之後已有單次調課、請假／曠課或其他固定變更；為避免同一週重複上課，請先由管理者整理未來例外。'
+      );
+    }
+    const latestAnchorDate = addDays(sourceDate, frequencyWeeks * 7 - 1);
+    if (date < sourceDate || date > latestAnchorDate) {
+      throw new HttpsError(
+        'failed-precondition',
+        `新的固定時段必須落在原堂 ${sourceDate} 到 ${latestAnchorDate} 之間，避免中間課程重複或漏排。`
+      );
+    }
+    if (recurrenceEndDate && date > recurrenceEndDate) {
+      throw new HttpsError('failed-precondition', '新的固定時段已超過這門固定課的結束日期。');
+    }
+    const maximumFullValidationEnd = addDays(date, 3650);
+    const horizonEnd = recurrenceEndDate && recurrenceEndDate <= maximumFullValidationEnd
+      ? recurrenceEndDate
+      : addDays(date, 364);
+    validatedThrough = horizonEnd;
     const future = await scheduleBundle(date, horizonEnd, session.teacherId);
-    const compatibleRooms = future.rooms.filter(sourceActive).filter((room) =>
-      roomKind(room, roomSettingsMap[sourceId(room)] || {}) === 'normal' &&
-      roomTeacherSchedulable(room, roomSettingsMap[sourceId(room)] || {}) &&
-      roomSupportsSubject(room, event.subjectId, future, roomSettingsMap[sourceId(room)] || {})
-    );
-    for (let occurrence = date; occurrence <= horizonEnd; occurrence = addDays(occurrence, 7)) {
-      const blockers = future.events.filter((row) => {
-        const sourceMatch = row.fixedCourseId === sourceCourseId || row.id === sourceEventId || row.sourceId === sourceEventId;
-        return eventBlocksResource(row) && !sourceMatch && row.date === occurrence && overlaps(startTime, endTime, row.startTime, row.endTime);
+    for (let occurrence = date; occurrence <= horizonEnd; occurrence = addDays(occurrence, frequencyWeeks * 7)) {
+      const blockers = future.resourceEvents.filter((row) => {
+        const sourceMatch = lineage &&
+          (row.fixedCourseId === lineage || row.seriesId === lineage) &&
+          !['single_move', 'extra_lesson', 'teacher_gift', 'lesson_status'].includes(clean(row.portalAction));
+        return eventBlocksResource(row) &&
+          !sourceMatch &&
+          row.date === occurrence &&
+          overlaps(startTime, endTime, row.startTime, row.endTime);
       });
-      if (blockers.some((row) => row.teacherId === session.teacherId)) {
-        pendingDates.push(occurrence);
+      const teacherOrStudentBusy = blockers.some((row) =>
+        row.teacherId === session.teacherId ||
+        row.studentIds.some((studentId) => studentIds.includes(studentId))
+      );
+      const sharedEquipmentBusy = sharedResourceConflict(blockers, requestedResourceIds);
+      const roomBusy = blockers.some((row) => row.roomId === roomId);
+      const policyBlocked = !roomAllowsInterval(
+        selectedRoom,
+        selectedRoomSetting,
+        occurrence,
+        startTime,
+        endTime,
+        subjectId,
+        'schedule'
+      );
+      if (!teacherOrStudentBusy && !sharedEquipmentBusy && !roomBusy && !policyBlocked) continue;
+      const alternatives = teacherOrStudentBusy || sharedEquipmentBusy
+        ? []
+        : future.rooms.filter(sourceActive).filter((room) => {
+          const alternativeId = sourceId(room);
+          const setting = roomSettingsMap[alternativeId] || {};
+          return roomKind(room, setting) === 'normal' &&
+            roomTeacherSchedulable(room, setting) &&
+            roomSupportsSubject(room, subjectId, future, setting) &&
+            roomAllowsInterval(room, setting, occurrence, startTime, endTime, subjectId, 'schedule') &&
+            !blockers.some((row) => row.roomId === alternativeId);
+        }).map((room) => ({
+          id: sourceId(room),
+          name: rentalRoomProfile(room, roomSettingsMap[sourceId(room)] || {}).publicName,
+          equipmentLabel: roomEquipmentLabel(room, roomSettingsMap[sourceId(room)] || {}),
+          requiresGuzhengMove: roomRequiresGuzhengMove(room, subjectId, future)
+        }));
+      const requestedOverrideId = clean(requestedRoomOverrides[occurrence]);
+      if (requestedOverrideId) {
+        const requestedAlternative = alternatives.find((room) => room.id === requestedOverrideId);
+        if (!requestedAlternative) {
+          throw new HttpsError('failed-precondition', `${occurrence} 選擇的替代教室已不可用，請重新確認。`);
+        }
+        if (requestedAlternative.requiresGuzhengMove && !flagTrue(data.allowGuzhengMove)) {
+          throw new HttpsError('failed-precondition', `${occurrence} 選擇 KAWAI 教室時，需先確認願意自行搬運古箏。`);
+        }
+        roomOverrides[occurrence] = requestedOverrideId;
         continue;
       }
-      if (!blockers.some((row) => row.roomId === roomId)) continue;
-      const alternative = compatibleRooms.find((room) =>
-        !blockers.some((row) => row.roomId === sourceId(room))
-      );
-      if (alternative) roomOverrides[occurrence] = sourceId(alternative);
-      else pendingDates.push(occurrence);
+      permanentConflicts.push({
+        date: occurrence,
+        reason: teacherOrStudentBusy
+          ? '老師或學生已有課程'
+          : (sharedEquipmentBusy
+            ? '古箏已被使用'
+            : (policyBlocked ? '教室時段不開放' : '教室已被使用')),
+        alternativeRooms: alternatives
+      });
     }
+    if (permanentConflicts.length && data.confirmPermanentConflicts !== true) {
+      return {
+        ok: false,
+        requiresConfirmation: true,
+        operationId,
+        conflicts: permanentConflicts,
+        message: `後續有 ${permanentConflicts.length} 個日期發生衝突；確認後這些日期會保留為待補排，不會自動換教室。`
+      };
+    }
+    permanentConflicts.forEach((row) => pendingDates.push(row.date));
+    event.frequencyWeeks = frequencyWeeks;
+    event.recurrenceEndDate = recurrenceEndDate;
   }
   const changePayload = {
     id,
+    operationId,
     action,
     active: true,
-    sourceEventId,
+    sourceEventId: source ? source.id : '',
     sourceDate,
-    sourceCourseId,
-    effectiveDate: action === 'permanent_move' ? date : '',
+    sourceCourseId: lineage,
+    effectiveDate: action === 'permanent_move' ? sourceDate : '',
+    cutoverDate: action === 'permanent_move' ? sourceDate : '',
+    anchorDate: action === 'permanent_move' ? date : '',
+    frequencyWeeks,
+    recurrenceEndDate,
+    validatedThrough,
     event,
     roomOverrides,
     pendingDates,
+    permanentConflicts,
     createdByTeacherId: session.teacherId,
     createdAt: FieldValue.serverTimestamp(),
     createdAtText: nowText()
   };
-  let cleanedFutureCount = 0;
-  if (action === 'permanent_move') {
-    const activeChanges = await db.collection('coursePortalScheduleChanges').where('active', '==', true).get();
-    const batch = db.batch();
-    activeChanges.docs.forEach((doc) => {
-      const row = doc.data() || {};
-      const rowEvent = row.event || {};
-      const rowDate = dateKey(rowEvent.date || row.sourceDate || row.effectiveDate);
-      const sameStudent = eventStudentIds(rowEvent).includes(studentId);
-      const sameSubject = !event.subjectId || eventSubjectId(rowEvent) === event.subjectId;
-      if (
-        clean(row.createdByTeacherId) === clean(session.teacherId) &&
-        ['single_move', 'extra_lesson', 'teacher_gift', 'lesson_status'].includes(clean(row.action)) &&
-        rowDate >= date &&
-        sameStudent &&
-        sameSubject
-      ) {
-        cleanedFutureCount += 1;
-        batch.set(doc.ref, {
-          active: false,
-          supersededBy: id,
-          supersededAt: FieldValue.serverTimestamp()
-        }, { merge: true });
+
+  const lockRows = bookingLockRows(date, roomId, startTime, endTime)
+    .concat(sharedEquipmentLockRows(date, requestedResourceIds, startTime, endTime));
+  const versionRef = scheduleVersionRef();
+  const transactionResult = await db.runTransaction(async (tx) => {
+    if (publicRentalSlotIsPast(date, startTime)) {
+      throw new HttpsError('failed-precondition', '這個時段已經開始，請重新選擇。');
+    }
+    const snapshots = await Promise.all([
+      tx.get(versionRef),
+      tx.get(changeRef),
+      ...lockRows.map((row) => tx.get(db.collection('coursePortalRoomLocks').doc(row.id))),
+      ...supersededPermanentRefs.map((ref) => tx.get(ref))
+    ]);
+    const [versionSnapshot, changeSnapshot] = snapshots;
+    const lockSnapshots = snapshots.slice(2, 2 + lockRows.length);
+    const supersededPermanentSnapshots = snapshots.slice(2 + lockRows.length);
+    assertScheduleWritable(versionSnapshot);
+    if (changeSnapshot.exists) {
+      return { duplicate: true, change: jsonValue(changeSnapshot.data()) || {} };
+    }
+    const currentVersion = Number(versionSnapshot.exists && versionSnapshot.data().version || 0);
+    if (currentVersion !== expectedVersion) {
+      throw new HttpsError('aborted', '課表剛剛有更新，已停止這次操作；請重新確認空位。');
+    }
+    const activeLocks = lockSnapshots.filter((snapshot) => snapshot.exists && snapshot.data().active !== false);
+    const bookingSnapshots = [];
+    for (const lockSnapshot of activeLocks) {
+      const lock = lockSnapshot.data() || {};
+      if (clean(lock.bookingId)) {
+        bookingSnapshots.push({
+          lockSnapshot,
+          snapshot: await tx.get(db.collection('coursePortalRoomBookings').doc(clean(lock.bookingId)))
+        });
+      } else {
+        bookingSnapshots.push({ lockSnapshot, snapshot: null });
       }
+    }
+    const staleLocks = [];
+    bookingSnapshots.forEach(({ lockSnapshot, snapshot }) => {
+      const lock = lockSnapshot.data() || {};
+      const booking = snapshot && snapshot.exists ? snapshot.data() || {} : null;
+      const expired = asMillis(lock.endAt) && asMillis(lock.endAt) <= Date.now();
+      const inactive = !booking || booking.active === false || clean(booking.status) === 'cancelled';
+      if (expired || inactive) staleLocks.push(lockSnapshot.ref);
+      else throw new HttpsError('already-exists', '這個教室時段剛剛已被租用，請重新選擇。');
     });
-    batch.set(db.collection('coursePortalScheduleChanges').doc(id), changePayload);
-    await batch.commit();
-  } else {
-    await db.collection('coursePortalScheduleChanges').doc(id).set(changePayload);
+    staleLocks.forEach((ref) => tx.delete(ref));
+    supersededPermanentSnapshots.forEach((snapshot) => {
+      if (!snapshot.exists || snapshot.data().active === false) return;
+      tx.set(snapshot.ref, {
+        active: false,
+        supersededBy: id,
+        supersededAt: FieldValue.serverTimestamp()
+      }, { merge: true });
+    });
+    tx.set(changeRef, changePayload);
+    tx.set(versionRef, {
+      version: currentVersion + 1,
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedBy: session.teacherId
+    }, { merge: true });
+    return { duplicate: false };
+  });
+  if (transactionResult && transactionResult.duplicate) {
+    const prior = transactionResult.change || {};
+    return {
+      ok: true,
+      duplicate: true,
+      id,
+      event: prior.event || {},
+      roomOverrides: prior.roomOverrides || {},
+      pendingDates: prior.pendingDates || [],
+      operationId,
+      message: '這次操作已經完成，不會重複建立。'
+    };
   }
   return {
     ok: true,
@@ -2655,14 +4026,10 @@ async function teacherAction(data) {
     event,
     roomOverrides,
     pendingDates,
-    cleanedFutureCount,
+    operationId,
     message: pendingDates.length
-      ? `永久調課已建立；已清除 ${cleanedFutureCount} 筆後續臨時安排，另有 ${pendingDates.length} 個特殊日期待補排。`
-      : (Object.keys(roomOverrides).length
-        ? `永久調課已建立；已清除 ${cleanedFutureCount} 筆後續臨時安排，${Object.keys(roomOverrides).length} 個單次衝突日期已自動改用其他教室。`
-        : (action === 'permanent_move'
-          ? `永久調課已建立；已清除 ${cleanedFutureCount} 筆後續臨時安排。`
-          : '課程已儲存。'))
+      ? `永久調課已建立；${pendingDates.length} 個衝突日期已保留為待補排，沒有自動更換教室。`
+      : (action === 'permanent_move' ? '永久調課已建立。' : '課程已儲存。')
   };
 }
 
@@ -2677,6 +4044,8 @@ async function teacherLateAttendance(data){
   const bundle=await scheduleBundle(sourceDate,sourceDate,session.teacherId);
   const event=bundle.events.find(row=>row.teacherId===session.teacherId&&row.date===sourceDate&&(row.id===sourceEventId||row.sourceId===sourceEventId||row.fixedCourseId===sourceCourseId));
   if(!event)throw new HttpsError('not-found','找不到這堂課。');
+  if(isRoomRentalEvent(event))throw new HttpsError('failed-precondition','教室租用不是學生課程，不能補簽到。');
+  if(!['scheduled','absent'].includes(normalizeScheduleStatus(event.status)))throw new HttpsError('failed-precondition','請假、已簽到或已取消的課程不能補簽到。');
   const key=hash(['late-attendance',session.teacherId,sourceDate,sourceEventId||sourceCourseId].join('|'));
   const requestRef=db.collection('coursePortalLateAttendance').doc(key);
   const adjustmentRef=db.collection('coursePortalTeacherAdjustments').doc(key);
@@ -2747,6 +4116,20 @@ async function adminRentalSettingsData() {
   };
 }
 
+async function adminScheduleConflictAudit(data) {
+  const startDate = dateKey(data && data.startDate) || currentTaipeiDay();
+  const days = Math.min(120, Math.max(1, Number(data && data.days || 35)));
+  const endDate = addDays(startDate, days - 1);
+  const bundle = await scheduleBundle(startDate, endDate, '');
+  return {
+    ok: true,
+    startDate,
+    endDate,
+    conflictCount: bundle.resourceConflicts.length,
+    conflicts: bundle.resourceConflicts
+  };
+}
+
 async function adminSaveRentalSettings(data) {
   const rooms = await mirrorRows('rooms');
   const allowed = new Set(rooms.map(sourceId));
@@ -2798,10 +4181,18 @@ async function adminSaveRentalSettings(data) {
       rentalFee: Math.max(0, Number(row.rentalFee || 0)),
       rentable: row.rentable === true,
       teacherSchedulable: row.teacherSchedulable !== false,
+      rentalUseTypes: items.filter((item) =>
+        item.active !== false && item.roomIds.includes(id)
+      ).map((item) => item.id),
       updatedAt: FieldValue.serverTimestamp(),
       updatedAtText: nowText()
     }, { merge: true });
   });
+  batch.set(scheduleVersionRef(), {
+    version: FieldValue.increment(1),
+    updatedAt: FieldValue.serverTimestamp(),
+    updatedBy: 'admin-rental-settings'
+  }, { merge: true });
   await batch.commit();
   return adminRentalSettingsData();
 }
@@ -2829,12 +4220,58 @@ async function adminSaveRoomEquipment(data) {
       .filter((value) => !['piano', 'digital_piano', 'grand_piano', 'upright_piano'].includes(value))
       .concat(pianoType === 'none' ? [] : ['piano', pianoType])
   )];
-  await db.collection('coursePortalRoomSettings').doc(roomId).set({
+  const policies = {};
+  const policyInput = data.policies && typeof data.policies === 'object' ? data.policies : {};
+  ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'].forEach((day) => {
+    const dayInput = policyInput[day] && typeof policyInput[day] === 'object' ? policyInput[day] : {};
+    policies[day] = {};
+    Object.keys(dayInput).forEach((time) => {
+      if (!validPortalTime(time, true)) return;
+      const slot = dayInput[time] || {};
+      policies[day][time] = {
+        blockSchedule: slot.blockSchedule === true,
+        blockRental: slot.blockRental === true,
+        subjectIds: Array.isArray(slot.subjectIds) ? slot.subjectIds.map(clean).filter(Boolean) : []
+      };
+    });
+  });
+  const active = data.active !== false;
+  const setting = {
+    roomRulesVersion: 1,
+    active,
     pianoType,
     rentalEquipment: equipment,
     updatedAt: FieldValue.serverTimestamp(),
     updatedAtText: nowText()
+  };
+  if (data.publicName !== undefined) setting.publicName = clean(data.publicName);
+  if (data.note !== undefined) setting.note = clean(data.note);
+  if (data.rentalFee !== undefined) setting.rentalFee = Math.max(0, Number(data.rentalFee || 0));
+  if (data.capacity !== undefined) setting.capacity = Math.max(1, Number(data.capacity || 1));
+  if (data.allowedSubjectIds !== undefined) {
+    setting.allowedSubjectIds = Array.isArray(data.allowedSubjectIds)
+      ? data.allowedSubjectIds.map(clean).filter(Boolean)
+      : [];
+  }
+  if (data.rentalUseTypes !== undefined || data.useTypes !== undefined) {
+    const publicUseTypes = new Set(RENTAL_USE_OPTIONS.map((row) => row.id));
+    setting.rentalUseTypes = [...new Set(
+      firstArray(data, ['rentalUseTypes', 'useTypes'])
+        .map((value) => ['guitar', 'teaching'].includes(clean(value)) ? 'other' : clean(value))
+        .filter((value) => publicUseTypes.has(value))
+    )];
+  }
+  if (data.policies !== undefined) setting.policies = policies;
+  setting.rentable = active && data.rentable !== false;
+  setting.teacherSchedulable = active && data.teacherSchedulable !== false;
+  const batch = db.batch();
+  batch.set(db.collection('coursePortalRoomSettings').doc(roomId), setting, { merge: true });
+  batch.set(scheduleVersionRef(), {
+    version: FieldValue.increment(1),
+    updatedAt: FieldValue.serverTimestamp(),
+    updatedBy: 'admin-room-equipment'
   }, { merge: true });
+  await batch.commit();
   return {
     ok: true,
     roomId,
@@ -2957,6 +4394,9 @@ async function adminBindingAction(data) {
   const id = clean(data.id);
   if (!['teacher', 'student', 'renter'].includes(type) || !id) throw new HttpsError('invalid-argument', '登入資料不完整。');
   const action = clean(data.action);
+  if (!['revoke', 'restore', 'delete'].includes(action)) {
+    throw new HttpsError('invalid-argument', '不支援的帳號操作。');
+  }
   const bindingRef = db.collection(bindingCollection(type)).doc(id);
   const bindingSnapshot = await bindingRef.get();
   if (!bindingSnapshot.exists) throw new HttpsError('not-found', '找不到這筆登入資料。');
@@ -3084,12 +4524,46 @@ async function dailyStudentReminders(pushLineMessage) {
 
 async function appendCoursePortalData(payload) {
   if (!payload || typeof payload !== 'object') return payload;
-  const [changes, bookings] = await Promise.all([
+  const [changes, bookings, roomSettings] = await Promise.all([
     db.collection('coursePortalScheduleChanges').where('active', '==', true).get(),
-    db.collection('coursePortalRoomBookings').where('active', '==', true).get()
+    db.collection('coursePortalRoomBookings').where('active', '==', true).get(),
+    db.collection('coursePortalRoomSettings').get()
   ]);
+  const roomSettingsMap = new Map(roomSettings.docs.map((doc) => [doc.id, jsonValue(doc.data()) || {}]));
+  if (Array.isArray(payload.rooms)) {
+    payload.rooms = payload.rooms.map((room) => {
+      const setting = roomSettingsMap.get(sourceId(room));
+      if (!setting) return room;
+      const merged = Object.assign({}, room);
+      if (clean(setting.publicName)) {
+        merged.name = clean(setting.publicName);
+        merged.publicName = clean(setting.publicName);
+      }
+      [
+        'note',
+        'rentalFee',
+        'capacity',
+        'active',
+        'rentable',
+        'teacherSchedulable',
+        'allowedSubjectIds',
+        'rentalUseTypes',
+        'rentalEquipment',
+        'pianoType',
+        'kind',
+        'roomKind',
+        'policies',
+        'roomRulesVersion'
+      ].forEach((key) => {
+        if (Object.prototype.hasOwnProperty.call(setting, key)) merged[key] = setting[key];
+      });
+      return merged;
+    });
+  }
   const changeRows = changes.docs.map((doc) => Object.assign({ id: doc.id }, jsonValue(doc.data()) || {}));
-  const removed = new Set(changeRows.filter((row) => row.action === 'single_move' || row.action === 'cancel')
+  const removed = new Set(changeRows.filter((row) =>
+    ['single_move', 'cancel', 'lesson_status'].includes(clean(row.action))
+  )
     .flatMap((row) => [
       `${clean(row.sourceEventId)}|${dateKey(row.sourceDate)}`,
       `${clean(row.sourceCourseId)}|${dateKey(row.sourceDate)}`
@@ -3097,55 +4571,114 @@ async function appendCoursePortalData(payload) {
   if (Array.isArray(payload.events)) {
     payload.events = payload.events.filter((row) =>
       !removed.has(`${sourceId(row)}|${eventDate(row)}`) &&
-      !removed.has(`${clean(row.fixedCourseId || row.courseId || row.scheduleId)}|${eventDate(row)}`)
+      !removed.has(`${clean(row.fixedCourseId || row.sourceCourseId || row.courseId || row.scheduleId)}|${eventDate(row)}`)
     );
   }
   payload.fixedCourses = Array.isArray(payload.fixedCourses) ? payload.fixedCourses : [];
-  changeRows.filter((row) => row.action === 'single_move' || row.action === 'cancel').forEach((row) => {
+  changeRows.filter((row) =>
+    ['single_move', 'cancel', 'lesson_status'].includes(clean(row.action))
+  ).forEach((row) => {
     const course = payload.fixedCourses.find((item) =>
       sourceId(item) === clean(row.sourceCourseId || row.sourceEventId)
     );
     if (!course || !dateKey(row.sourceDate)) return;
+    const status = row.action === 'lesson_status'
+      ? normalizeScheduleStatus(row.event && row.event.status)
+      : 'cancelled';
     course.statusByDate = Object.assign({}, course.statusByDate || {}, {
-      [dateKey(row.sourceDate)]: { status: 'cancelled', source: 'course-portal' }
-    });
-  });
-  changeRows.filter((row) => row.action === 'permanent_move' && row.event).forEach((row) => {
-    const courseId = clean(row.sourceCourseId || row.sourceEventId);
-    const course = payload.fixedCourses.find((item) => sourceId(item) === courseId);
-    const sourceDate = dateKey(row.sourceDate || row.effectiveDate);
-    if (course && sourceDate) {
-      course.recurrenceEndDate = addDays(sourceDate, -1);
-      course.endDate = addDays(sourceDate, -1);
-    }
-    const statusByDate = {};
-    (row.pendingDates || []).forEach((key) => { statusByDate[key] = { status: 'cancelled', source: 'course-portal-pending' }; });
-    Object.keys(row.roomOverrides || {}).forEach((key) => { statusByDate[key] = { status: 'cancelled', source: 'course-portal-room-override' }; });
-    payload.fixedCourses.push(Object.assign({}, course || {}, row.event, {
-      id: row.id,
-      startDate: eventDate(row.event),
-      date: eventDate(row.event),
-      frequencyWeeks: 1,
-      statusByDate,
-      source: 'course-portal',
-      portalAction: 'permanent_move'
-    }));
-    Object.keys(row.roomOverrides || {}).forEach((key) => {
-      payload.temporaryCourses = Array.isArray(payload.temporaryCourses) ? payload.temporaryCourses : [];
-      payload.temporaryCourses.push(Object.assign({}, row.event, {
-        id: `${row.id}-room-${key}`,
-        date: key,
-        roomId: row.roomOverrides[key],
-        type: 'temporary',
-        source: 'course-portal',
-        portalAction: 'permanent_room_exception'
-      }));
+      [dateKey(row.sourceDate)]: { status, source: 'course-portal' }
     });
   });
   payload.temporaryCourses = Array.isArray(payload.temporaryCourses) ? payload.temporaryCourses : [];
+  const permanentGroups = new Map();
+  effectivePermanentChanges(changeRows).forEach((row) => {
+    const lineage = permanentLineage(row);
+    if (!lineage) return;
+    if (!permanentGroups.has(lineage)) permanentGroups.set(lineage, []);
+    permanentGroups.get(lineage).push(row);
+  });
+  permanentGroups.forEach((rows, lineage) => {
+    const course = payload.fixedCourses.find((item) => sourceId(item) === lineage);
+    // 底層固定課已停用或不存在時，不再把舊 portal 變更復活成無期限幽靈課程。
+    if (!course || !sourceActive(course)) return;
+    const originalEndDate = dateKey(course.recurrenceEndDate || course.endDate);
+    const courseTemplate = Object.assign({}, course, {
+      statusByDate: Object.assign({}, course.statusByDate || course.exceptions || {})
+    });
+    let activeStatusByDate = Object.assign({}, courseTemplate.statusByDate);
+    const ordered = rows.map((row) => Object.assign({}, row, {
+      __cutoverDate: dateKey(row.cutoverDate || row.sourceDate || row.effectiveDate),
+      __anchorDate: dateKey(row.anchorDate || eventDate(row.event) || row.effectiveDate)
+    })).filter((row) =>
+      row.__cutoverDate &&
+      row.__anchorDate &&
+      (!originalEndDate || row.__cutoverDate <= originalEndDate)
+    ).sort((left, right) => left.__cutoverDate.localeCompare(right.__cutoverDate));
+    if (!ordered.length) return;
+    course.recurrenceEndDate = addDays(ordered[0].__cutoverDate, -1);
+    course.endDate = addDays(ordered[0].__cutoverDate, -1);
+    ordered.forEach((row, index) => {
+      const nextCutover = ordered[index + 1] && ordered[index + 1].__cutoverDate;
+      const storedEnd = dateKey(row.recurrenceEndDate || row.event.recurrenceEndDate || originalEndDate);
+      const endCandidates = [
+        originalEndDate,
+        storedEnd,
+        nextCutover ? addDays(nextCutover, -1) : ''
+      ].filter(Boolean).sort();
+      const segmentEnd = endCandidates[0] || '';
+      if (segmentEnd && row.__anchorDate > segmentEnd) return;
+      const frequencyWeeks = safeFrequencyWeeks(row.frequencyWeeks || row.event.frequencyWeeks);
+      activeStatusByDate = translateRecurringStatusMap(
+        activeStatusByDate,
+        row.__cutoverDate,
+        row.__anchorDate,
+        frequencyWeeks
+      );
+      const statusByDate = Object.assign({}, activeStatusByDate);
+      (row.pendingDates || []).forEach((key) => {
+        statusByDate[key] = { status: 'pending_conflict', source: 'course-portal-pending' };
+      });
+      Object.keys(row.roomOverrides || {}).forEach((key) => {
+        statusByDate[key] = { status: 'cancelled', source: 'course-portal-room-override' };
+      });
+      payload.fixedCourses.push(Object.assign({}, courseTemplate, row.event, {
+        id: row.id,
+        startDate: row.__anchorDate,
+        date: row.__anchorDate,
+        start: eventStart(row.event),
+        duration: Math.max(30, timeMinutes(eventEnd(row.event)) - timeMinutes(eventStart(row.event))),
+        type: 'fixed',
+        recurring: true,
+        frequencyWeeks,
+        recurrenceEndDate: segmentEnd,
+        endDate: segmentEnd,
+        statusByDate,
+        source: 'course-portal',
+        portalAction: 'permanent_move',
+        cutoverDate: row.__cutoverDate,
+        anchorDate: row.__anchorDate
+      }));
+      Object.keys(row.roomOverrides || {}).forEach((key) => {
+        payload.temporaryCourses.push(Object.assign({}, row.event, {
+          id: `${row.id}-room-${key}`,
+          date: key,
+          start: eventStart(row.event),
+          duration: Math.max(30, timeMinutes(eventEnd(row.event)) - timeMinutes(eventStart(row.event))),
+          roomId: row.roomOverrides[key],
+          type: 'temporary',
+          source: 'course-portal',
+          portalAction: 'permanent_room_exception'
+        }));
+      });
+    });
+  });
   changeRows.filter((row) => row.event && !['room_booking', 'permanent_move'].includes(row.action)).forEach((row) => {
     payload.temporaryCourses.push(Object.assign({}, row.event, {
       id: row.id,
+      start: eventStart(row.event),
+      duration: Math.max(30, timeMinutes(eventEnd(row.event)) - timeMinutes(eventStart(row.event))),
+      type: 'single',
+      specialLesson: clean(row.action) === 'teacher_gift',
       portalAction: row.action,
       source: 'course-portal'
     }));
@@ -3158,6 +4691,7 @@ async function appendCoursePortalData(payload) {
   payload.portalMeta = {
     changes: changeRows.length,
     bookings: bookings.size,
+    roomSettings: roomSettings.size,
     mergedAt: new Date().toISOString()
   };
   return payload;
@@ -3188,6 +4722,7 @@ function registerCoursePortal(exportsObject, helpers = {}) {
   exportsObject.coursePortalExchangeAccess = callable(exchangeAccessToken);
   exportsObject.coursePortalTeacherData = callable(teacherPortalData, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalTeacherAvailability = callable(teacherAvailability, { timeoutSeconds: 180, memory: '1GiB' });
+  exportsObject.coursePortalTeacherSlotOptions = callable(teacherSlotOptions, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalStudentData = callable(studentPortalData, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalRentalDayBoard = callable(rentalDayBoard, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalRentalWeekBoard = callable(rentalWeekBoard, { timeoutSeconds: 180, memory: '1GiB' });
@@ -3204,6 +4739,10 @@ function registerCoursePortal(exportsObject, helpers = {}) {
     assertAdminPin(request);
     return adminRentalSettingsData();
   }, { secrets: [ADMIN_PIN] });
+  exportsObject.coursePortalAdminScheduleConflictAudit = callable(async (data, request) => {
+    assertAdminPin(request);
+    return adminScheduleConflictAudit(data);
+  }, { secrets: [ADMIN_PIN], timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalAdminSaveRentalSettings = callable(async (data,request)=>{assertAdminPin(request);return adminSaveRentalSettings(data);},{secrets:[ADMIN_PIN]});
   exportsObject.coursePortalAdminSaveRoomEquipment = callable(async (data,request)=>{assertAdminPin(request);return adminSaveRoomEquipment(data);},{secrets:[ADMIN_PIN]});
   exportsObject.coursePortalAdminRoomBookings = callable(async (data,request)=>{assertAdminPin(request);return adminRoomBookings();},{secrets:[ADMIN_PIN]});
