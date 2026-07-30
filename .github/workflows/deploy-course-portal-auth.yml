@@ -24,6 +24,9 @@ on:
       - "functions/coursePortal.js"
       - "functions/index.js"
       - "firestore.rules"
+      - "tests/course-portal.test.js"
+      - "tests/room-booking-v2.test.js"
+      - "tests/teacher-course-portal-mobile.test.js"
       - ".github/workflows/deploy-course-portal-auth.yml"
   workflow_dispatch:
 
@@ -59,6 +62,8 @@ jobs:
           node --check room-booking-v2.js
           node --check teacher-course-portal-v8.js
           node tests/course-portal.test.js
+          node tests/room-booking-v2.test.js
+          node tests/teacher-course-portal-mobile.test.js
 
       - name: Install Functions dependencies
         working-directory: functions
