@@ -42,3 +42,15 @@ test('successful login redirects immediately and exposes a retry navigation', ()
     assert.doesNotMatch(source, /setTimeout\(\(\) => redirectAfterLogin/);
   }
 });
+
+test('login pages group all public portals under other entries', () => {
+  for (const file of ['index.html', 'login.html']) {
+    const source = read(file);
+    assert.match(source, /href="student-course-portal\.html"[^>]*>學生／家長入口</);
+    assert.match(source, /href="room-booking\.html"[^>]*>教室租用入口</);
+    assert.match(source, /href="teacher-course-portal\.html"[^>]*>老師入口</);
+    assert.match(source, /href="teacher-apply\.html"[^>]*>應聘履歷投遞</);
+    assert.match(source, /href="rental-order\.html"[^>]*>設備租賃申請</);
+    assert.match(source, /class="external-entry-grid"/);
+  }
+});

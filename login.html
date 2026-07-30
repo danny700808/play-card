@@ -14,7 +14,9 @@
     body.yz-login-page .auth-sub-actions .btn,body.yz-login-page .auth-sub-actions .btn-link{width:100%;min-height:38px!important;margin-top:0;padding:6px 3px!important;display:flex;align-items:center;justify-content:center;text-decoration:none;background:#fff!important;color:#17252f!important;border:1px solid #dbe4e9!important;border-radius:10px!important;font-size:12px!important;white-space:nowrap}
     .external-entry-zone{margin-top:16px;padding-top:14px;border-top:1px solid #dbe5dd;text-align:center}
     .external-entry-title{font-size:13px;font-weight:900;color:#6b7a6f;letter-spacing:.08em;margin-bottom:8px}
-    .teacher-apply-entry{width:100%;display:flex;align-items:center;justify-content:center;text-decoration:none}
+    .external-entry-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+    .external-entry-link{width:100%;min-height:44px;display:flex;align-items:center;justify-content:center;text-decoration:none;text-align:center;padding:8px 6px}
+    .external-entry-link:last-child:nth-child(odd){grid-column:1/-1}
     .password-rule{margin-top:6px;font-size:13px;line-height:1.7;color:#6b7280}
   </style>
 </head>
@@ -57,8 +59,13 @@
           </div>
           <div class="external-entry-zone">
             <div class="external-entry-title">其他入口</div>
-            <a href="teacher-apply.html" class="btn secondary teacher-apply-entry">應聘履歷投遞</a>
-            <a href="rental-order.html" class="btn secondary teacher-apply-entry" style="margin-top:10px">設備租賃申請</a>
+            <div class="external-entry-grid">
+              <a href="student-course-portal.html" class="btn secondary external-entry-link">學生／家長入口</a>
+              <a href="room-booking.html" class="btn secondary external-entry-link">教室租用入口</a>
+              <a href="teacher-course-portal.html" class="btn secondary external-entry-link">老師入口</a>
+              <a href="teacher-apply.html" class="btn secondary external-entry-link">應聘履歷投遞</a>
+              <a href="rental-order.html" class="btn secondary external-entry-link">設備租賃申請</a>
+            </div>
           </div>
         </div>
       </div>
