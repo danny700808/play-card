@@ -103,7 +103,7 @@ async function rentalUseOptions(rooms = []) {
     id: clean(row.id) || ('use-' + (index + 1)),
     name: clean(row.name) || ('用途 ' + (index + 1)),
     icon: clean(row.icon) || (defaults[index] && defaults[index].icon) || '🎵',
-    roomIds: Array.isArray(row.roomIds) ? row.roomIds.map(clean).filter(Boolean) : [],
+    roomIds: Array.isArray(row.roomIds) && row.roomIds.length ? row.roomIds.map(clean).filter(Boolean) : ((defaults.find((item) => item.id === clean(row.id)) || {}).roomIds || []),
     active: row.active !== false
   })).filter((row) => row.active);
 }
