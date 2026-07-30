@@ -82,6 +82,9 @@ for (const file of pages) {
 const teacherPortal = fs.readFileSync(path.join(root, 'teacher-course-portal.html'), 'utf8');
 assert(teacherPortal.includes('value="single_move"'), '老師入口缺少單次調課');
 assert(teacherPortal.includes('value="permanent_move"'), '老師入口缺少永久調課');
+assert(teacherPortal.includes('id="teacherQuickBackdrop"'), '老師課表缺少點選後的快速操作選單');
+assert(teacherPortal.includes('id="weekPicker"'), '老師課表缺少直接選擇星期');
+assert(!teacherPortal.includes('teacher-summary-grid'), '老師入口仍保留多餘的上方統計卡');
 assert(!portalLanding.includes('老師調課入口'), '老師調課不可誤拆成第四個入口');
 
 const rentalSource = fs.readFileSync(path.join(root, 'room-booking-v2.js'), 'utf8');
@@ -101,6 +104,8 @@ assert(rentalSource.includes('name="pianoType"'), '鋼琴條件未使用互斥�
 assert(rentalSource.includes('allowGuzhengMove'), '古箏租用缺少自行搬運選項');
 assert(rentalSource.includes('drumType'), '練鼓租用缺少鼓種篩選');
 assert(rentalSource.includes('data-retry-rental'), '租用資料失敗時缺少重新讀取按鈕');
+assert(!rentalSource.includes('間可租</small>'), '租用開始時間仍顯示多餘的教室數量');
+assert(!rentalSource.includes('個時段</em>'), '租用日期仍顯示多餘的時段數量');
 assert(rentalSettingsSource.includes('data-use-rate'), '租用用途設定缺少每小時固定費用');
 assert(rentalSettingsSource.includes('data-room-piano'), '教室租用設定缺少鋼琴設備種類');
 assert(teacherRoomRulesSource.includes('需自行從展演空間搬古箏'), '老師調課缺少 KAWAI 古箏搬運提醒');
@@ -121,6 +126,7 @@ assert(schedulerSource.includes("['digital_piano','電鋼琴']"), '教室設定�
 assert(schedulerSource.includes("['grand_piano','平台鋼琴']"), '教室設定缺少平台鋼琴');
 assert(schedulerSource.includes("['upright_piano','直立鋼琴']"), '教室設定缺少直立鋼琴');
 assert(schedulerSource.includes('saveRoomSettings'), '教室設備沒有同步到租用設定');
+assert(schedulerSource.includes('refreshPortalRentals'), '正式課表未自動更新入口成立或取消的租用');
 assert(schedulerSource.includes('slotCoverageClass(events,room.id,min)'), '有課區間未隱藏內部半小時格線');
 assert(schedulerSource.includes('collapseFinalSlotLayers'), '同一教室時段未套用最後成立資料');
 assert(schedulerSource.includes('修改租用金額／資料'), '租用明細缺少金額修改入口');
@@ -154,6 +160,7 @@ assert(
   'coursePortalRentalMyBookings',
   'coursePortalCancelRoomBooking',
   'coursePortalAdminSaveRoomEquipment',
+  'coursePortalAdminRoomBookings',
   'coursePortalTeacherAction',
   'coursePortalTeacherLessonState',
   'coursePortalUpdateStudentReminder',
@@ -193,6 +200,7 @@ assert(backend.includes("mirrorRows('temporaryCourses')"), '租用空檔未讀�
 assert(backend.includes("mirrorRows('roomRentals')"), '租用空檔未讀取既有租用');
 assert(backend.includes("event.roomId === id && event.date === date"), '租用查詢未依教室與日期排除有課時段');
 assert(backend.includes('overlaps(startTime, endTime, event.startTime, event.endTime)'), '租用查詢未檢查課程時段重疊');
+assert(backend.includes('row.durationMinutes || row.duration || row.minutes || 60'), '老師課表未依課程長度計算結束時間');
 
 const portalCss = fs.readFileSync(path.join(root, 'course-portal.css'), 'utf8');
 assert(portalCss.includes('@media (max-width: 760px)'), '外部入口缺少手機版樣式');
