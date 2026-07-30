@@ -6,24 +6,21 @@ body.teacher-course-app.teacher-more-open{overflow:hidden}
 .teacher-course-app .portal-head p{font-size:12px;margin-top:1px}
 .teacher-course-app .brand-mark{width:36px;height:36px;border-radius:11px}
 .teacher-course-app .card{padding:11px;border-radius:13px;box-shadow:none}
-.teacher-course-app .teacher-summary-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-bottom:8px}
-.teacher-course-app .summary{padding:8px 6px;border-radius:11px;min-width:0}
-.teacher-course-app .summary span{font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.teacher-course-app .summary strong{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .employee-login-bridge{display:grid;gap:8px;margin-top:14px;padding:12px;border:1px solid var(--line);border-radius:14px;background:#f7faf8}
 .employee-login-bridge span{font-weight:900}.employee-login-bridge small{color:var(--muted);line-height:1.55}.employee-login-bridge.employee-recognized{border-color:#b8dccc;background:#edf8f3}
 .teacher-session-loading{max-width:540px;margin:7vh auto 0;display:flex;align-items:center;gap:14px}
 .teacher-session-loading strong{display:block;font-size:17px}.teacher-session-loading p{margin:3px 0 0;color:var(--muted);font-size:13px;line-height:1.55}
 .teacher-session-spinner{width:28px;height:28px;flex:0 0 auto;border:3px solid #cce6db;border-right-color:var(--green);border-radius:50%;animation:teacherSpin .7s linear infinite}
 .teacher-course-app .teacher-bottom-tabs{position:fixed;left:50%;bottom:0;z-index:50;width:min(440px,100%);transform:translateX(-50%);display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:3px;margin:0;padding:7px 6px calc(7px + env(safe-area-inset-bottom));border-top:1px solid var(--line);background:rgba(244,247,243,.97);backdrop-filter:blur(12px);overflow:visible}
-.teacher-course-app .teacher-bottom-tabs .btn{min-height:44px;padding:5px 2px;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:11px;white-space:normal;text-align:center}
-.teacher-course-app .teacher-bottom-tabs .btn span{font-size:13px;line-height:1}.teacher-course-app .teacher-bottom-tabs .btn b{font-size:11px;line-height:1.15}
+.teacher-course-app .teacher-bottom-tabs .btn{min-height:40px;padding:5px 2px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:850;white-space:nowrap;text-align:center}
 .teacher-course-app .teacher-bottom-tabs button.active{background:var(--ink);color:#fff}
-.teacher-course-app .teacher-week-toolbar{align-items:center}
+.teacher-course-app .teacher-week-toolbar{align-items:center;gap:6px}
+.teacher-course-app .teacher-week-toolbar input{width:142px;min-height:38px;padding:6px 8px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);font:inherit}
 .teacher-course-app .teacher-week-toolbar .badge{margin-left:auto}
-.teacher-course-app .week-scroll{position:relative;max-height:calc(100dvh - 205px);overflow:auto;overscroll-behavior:contain;touch-action:pan-x pan-y pinch-zoom;scrollbar-gutter:stable;border-radius:13px}
+.teacher-course-app .week-scroll{position:relative;max-height:calc(100dvh - 205px);overflow:auto;overscroll-behavior:contain;touch-action:pan-x pan-y pinch-zoom;scrollbar-gutter:stable;border-radius:13px;scroll-snap-type:x mandatory;scroll-padding-left:58px}
 .teacher-course-app .week-grid{min-width:840px;grid-template-columns:58px repeat(7,1fr)}
 .teacher-course-app .week-cell.head{position:sticky;top:0;z-index:4;background:#f0f5f2}
+.teacher-course-app .week-cell.head.week-day-head{scroll-snap-align:start;scroll-snap-stop:always}
 .teacher-course-app .week-cell.time{position:sticky;left:0;z-index:3;background:#f8faf8}
 .teacher-course-app .week-cell.week-corner{position:sticky;top:0;left:0;z-index:6;background:#e7f0eb}
 .teacher-course-app .section-title h2{font-size:15px}.teacher-course-app .section-title p,.teacher-course-app .muted{font-size:11px}
@@ -37,6 +34,12 @@ body.teacher-course-app.teacher-more-open{overflow:hidden}
 .teacher-more-grid a>span{grid-row:1/span 2;display:grid;place-items:center;width:38px;height:38px;border-radius:12px;background:var(--green-soft);color:var(--green);font-weight:900}
 .teacher-more-grid a>b{font-size:14px}.teacher-more-grid a>small{color:var(--muted);font-size:10px;line-height:1.3}
 .teacher-more-note{margin:12px 2px 0;color:var(--muted);font-size:11px;line-height:1.55}
+.teacher-quick-backdrop{position:fixed;inset:0;z-index:95;display:flex;align-items:flex-end;justify-content:center;padding:12px;background:rgba(15,35,29,.42);backdrop-filter:blur(3px)}
+.teacher-quick-sheet{width:min(440px,100%);border-radius:24px 24px 18px 18px;background:#fff;border:1px solid var(--line);box-shadow:0 -20px 55px rgba(20,55,44,.22);padding:10px 14px calc(16px + env(safe-area-inset-bottom));animation:teacherSheetUp .2s ease-out}
+.teacher-quick-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.teacher-quick-actions button,.teacher-quick-actions a{display:flex;align-items:center;justify-content:center;min-height:46px;padding:8px;border:1px solid var(--line);border-radius:12px;background:#f8fbf9;color:var(--ink);font-size:13px;font-weight:850;text-align:center;text-decoration:none}
+.teacher-quick-actions button.primary{border-color:var(--green);background:var(--green-soft);color:var(--green)}
+.teacher-quick-actions button.danger{border-color:#efc6c3;background:#fff5f4;color:#9f3f37}
 .teacher-course-app .modal{z-index:100}
 .teacher-course-app .modal-panel{max-height:88dvh}
 .teacher-course-app .availability-suggestions{display:grid;gap:7px;max-height:260px;overflow:auto}
@@ -48,15 +51,17 @@ body.teacher-course-app.teacher-more-open{overflow:hidden}
   body.teacher-course-app{padding-bottom:0}
   .teacher-course-app .portal-shell{padding:20px}
   .teacher-course-app .teacher-bottom-tabs{position:static;transform:none;width:100%;grid-template-columns:repeat(5,minmax(0,1fr));padding:0;border:0;background:transparent;backdrop-filter:none;margin-bottom:16px}
-  .teacher-course-app .teacher-bottom-tabs .btn{min-height:44px;flex-direction:row;font-size:14px}
-  .teacher-course-app .teacher-bottom-tabs .btn span,.teacher-course-app .teacher-bottom-tabs .btn b{font-size:14px}
+  .teacher-course-app .teacher-bottom-tabs .btn{min-height:44px;font-size:14px}
   .teacher-course-app .week-scroll{max-height:calc(100vh - 245px)}
 }
 @media(max-width:520px){
   .teacher-course-app .portal-head{align-items:flex-start}
   .teacher-course-app .portal-head .danger{min-height:36px;padding:6px 9px;font-size:11px}
   .teacher-course-app .teacher-week-toolbar{display:grid;grid-template-columns:repeat(3,1fr)}
-  .teacher-course-app .teacher-week-toolbar .badge{grid-column:1/-1;margin:0;justify-self:start}
+  .teacher-course-app .teacher-week-toolbar input{grid-column:1/2;width:100%;min-width:0}
+  .teacher-course-app .teacher-week-toolbar .badge{grid-column:2/-1;margin:0;justify-self:stretch;align-items:center}
+  .teacher-course-app .week-scroll{scroll-padding-left:48px}
+  .teacher-course-app .week-grid{width:max-content;min-width:0;grid-template-columns:48px repeat(7,minmax(128px,calc(100vw - 82px)))}
   .teacher-course-app .teacher-roster-row,.teacher-course-app .payroll-row{grid-template-columns:1fr}
   .teacher-more-grid{grid-template-columns:1fr 1fr}
 }
