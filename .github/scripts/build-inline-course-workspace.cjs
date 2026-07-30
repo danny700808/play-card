@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 
-const VERSION = '20260729-operations-inline-course-v4';
+const VERSION = '20260730-piano-equipment-v1';
 const schedulerHtmlPath = 'course-scheduler.html';
 const schedulerJsPath = 'course-scheduler.js';
 const operationsPath = 'operations-phase1.js';
