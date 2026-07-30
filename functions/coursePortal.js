@@ -409,7 +409,7 @@ async function consumeRateLimit(kind, identity) {
   await db.runTransaction(async (tx) => {
     const snapshot = await tx.get(ref);
     const count = Number(snapshot.exists && snapshot.data().count || 0);
-    if (count >= 8) throw new HttpsError('resource-exhausted', '今天嘗試次數過多，請聯絡管理者協助綁定。');
+    if (count >= 8) throw new HttpsError('resource-exhausted', '今天嘗試次數過多，請聯絡管理者協助登入。');
     tx.set(ref, {
       kind,
       count: count + 1,
@@ -428,7 +428,7 @@ async function findPerson(type, name, phone) {
     phoneMatches(sourcePhone(row), phone)
   );
   if (!matches.length) throw new HttpsError('not-found', '姓名與電話找不到相符資料，請確認輸入內容或請管理者協助。');
-  if (matches.length > 1) throw new HttpsError('failed-precondition', '找到多筆相同資料，請由管理者確認後綁定。');
+  if (matches.length > 1) throw new HttpsError('failed-precondition', '找到多筆相同資料，請由管理者確認後再登入。');
   return matches[0];
 }
 
@@ -519,6 +519,47 @@ function bindingCollection(type) {
   return 'coursePortalRenterBindings';
 }
 
+function identityTargetField(type) {
+  if (type === 'teacher') return 'teacherId';
+  if (type === 'student') return 'studentId';
+  return 'renterId';
+}
+
+function identityTargetId(identity) {
+  return identity.type === 'renter' ? clean(identity.renterId) : clean(identity.targetId);
+}
+
+function regularAccountId(type, email) {
+  return hash(`regular-account|${clean(type)}|${normalizeEmail(email)}`);
+}
+
+async function resolveRegularIdentity(identity) {
+  const type = clean(identity.type);
+  const targetField = identityTargetField(type);
+  const targetId = identityTargetId(identity);
+  const authAccountId = regularAccountId(type, identity.email);
+  const snapshot = await db.collection(bindingCollection(type))
+    .where(targetField, '==', targetId)
+    .get();
+  const rows = snapshot.docs.map((doc) => Object.assign({
+    __id: doc.id,
+    __ref: doc.ref
+  }, doc.data() || {}));
+  const sameAccount = rows.filter((row) =>
+    clean(row.authAccountId) === authAccountId ||
+    normalizeEmail(row.emailNormalized || row.email) === normalizeEmail(identity.email)
+  );
+  if (sameAccount.some((row) => clean(row.status) === 'revoked')) {
+    throw new HttpsError('permission-denied', '這個入口帳號目前已停用，請聯絡柚子樂器協助恢復。');
+  }
+  const active = sameAccount.find((row) => clean(row.status) === 'active') || null;
+  return {
+    authAccountId,
+    bindingId: clean(active && active.__id),
+    lineUserId: clean(active && active.lineUserId)
+  };
+}
+
 async function findEmailLoginAccount(type, email) {
   if (!['teacher', 'student', 'renter'].includes(type)) return null;
   const snapshot = await db.collection(bindingCollection(type))
@@ -526,20 +567,28 @@ async function findEmailLoginAccount(type, email) {
     .get();
   const rows = snapshot.docs
     .map((doc) => Object.assign({ __id: doc.id }, doc.data() || {}))
-    .filter((row) => clean(row.status) === 'active' && clean(row.lineUserId) && row.emailVerified === true);
-  const lineIds = [...new Set(rows.map((row) => clean(row.lineUserId)).filter(Boolean))];
-  if (lineIds.length !== 1) return null;
-  const row = rows.find((item) => clean(item.lineUserId) === lineIds[0]) || {};
+    .filter((row) => clean(row.status) === 'active' && row.emailVerified === true);
+  const accountKeys = [...new Set(rows.map((row) =>
+    clean(row.authAccountId) || (clean(row.lineUserId) ? `line:${clean(row.lineUserId)}` : '')
+  ).filter(Boolean))];
+  if (accountKeys.length !== 1) return null;
+  const row = rows.find((item) =>
+    (clean(item.authAccountId) || (clean(item.lineUserId) ? `line:${clean(item.lineUserId)}` : '')) === accountKeys[0]
+  ) || {};
   return {
     type,
-    lineUserId: lineIds[0],
+    lineUserId: clean(row.lineUserId),
+    authAccountId: clean(row.authAccountId),
     targetId: type === 'teacher' ? clean(row.teacherId) : (type === 'student' ? clean(row.studentId) : ''),
     renterId: type === 'renter' ? clean(row.renterId) : ''
   };
 }
 
 async function sendEmailOtp(data, helpers = {}) {
-  const purpose = clean(data.purpose).toLowerCase() === 'login' ? 'login' : 'bind';
+  const requestedPurpose = clean(data.purpose).toLowerCase();
+  const purpose = requestedPurpose === 'account'
+    ? 'account'
+    : (requestedPurpose === 'login' ? 'login' : 'bind');
   const type = clean(data.type).toLowerCase();
   if (!['teacher', 'student', 'renter'].includes(type)) {
     throw new HttpsError('invalid-argument', '不支援的入口類型。');
@@ -550,9 +599,15 @@ async function sendEmailOtp(data, helpers = {}) {
   if (!validEmail(email)) throw new HttpsError('invalid-argument', 'Email 格式不正確。');
   await consumeRateLimit(`email-otp-${purpose}-${type}`, email);
 
-  const identity = purpose === 'bind'
-    ? await prepareBindingIdentity(data)
-    : await findEmailLoginAccount(type, email);
+  let identity = null;
+  if (purpose === 'account' || purpose === 'bind') {
+    identity = await prepareBindingIdentity(data);
+    if (purpose === 'account') {
+      identity = Object.assign(identity, await resolveRegularIdentity(identity));
+    }
+  } else {
+    identity = await findEmailLoginAccount(type, email);
+  }
   const challenge = randomToken(32);
   const code = randomEmailOtp();
   const expiresAt = Timestamp.fromMillis(Date.now() + EMAIL_OTP_TTL_MS);
@@ -570,6 +625,8 @@ async function sendEmailOtp(data, helpers = {}) {
   };
   if (identity) {
     payload.lineUserId = clean(identity.lineUserId);
+    payload.authAccountId = clean(identity.authAccountId);
+    payload.bindingId = clean(identity.bindingId);
     payload.targetId = clean(identity.targetId);
     payload.renterId = clean(identity.renterId);
     payload.name = clean(identity.name);
@@ -590,7 +647,7 @@ async function sendEmailOtp(data, helpers = {}) {
       await helpers.sendEmail({
         channel: 'email',
         targetEmail: email,
-        title: `柚子樂器${purpose === 'login' ? '登入' : '首次綁定'}驗證碼`,
+        title: `柚子樂器${purpose === 'bind' ? '首次驗證' : '登入'}驗證碼`,
         body: [
           `您的四碼驗證碼是：${code}`,
           '',
@@ -610,17 +667,65 @@ async function sendEmailOtp(data, helpers = {}) {
     challengeToken: challenge,
     expiresInSeconds: Math.floor(EMAIL_OTP_TTL_MS / 1000),
     maskedEmail: maskedEmail(email),
-    message: '若資料相符，四碼驗證碼會寄到這個 Email。'
+    message: '四碼驗證碼已寄到您的 Email。'
   };
 }
 
-async function issueSession({ type, lineUserId, targetId, renterId, authMethod, ttlMs }) {
+async function activeStudentIdsForAccount(authAccountId) {
+  if (!clean(authAccountId)) return [];
+  const snapshot = await db.collection('coursePortalStudentBindings')
+    .where('authAccountId', '==', clean(authAccountId))
+    .where('status', '==', 'active')
+    .get();
+  return [...new Set(snapshot.docs.map((doc) => clean(doc.data().studentId)).filter(Boolean))];
+}
+
+async function activeStudentBindingsForSession(session) {
+  const queries = [];
+  if (clean(session && session.lineUserId)) {
+    queries.push(
+      db.collection('coursePortalStudentBindings')
+        .where('lineUserId', '==', clean(session.lineUserId))
+        .where('status', '==', 'active')
+        .get()
+    );
+  }
+  if (clean(session && session.authAccountId)) {
+    queries.push(
+      db.collection('coursePortalStudentBindings')
+        .where('authAccountId', '==', clean(session.authAccountId))
+        .where('status', '==', 'active')
+        .get()
+    );
+  }
+  const snapshots = await Promise.all(queries);
+  return [...new Map(snapshots.flatMap((snapshot) => snapshot.docs).map((doc) => [
+    doc.id,
+    Object.assign({ __id: doc.id, __ref: doc.ref }, doc.data() || {})
+  ])).values()];
+}
+
+async function activeStudentIdsForSession(session) {
+  const bindings = await activeStudentBindingsForSession(session);
+  return [...new Set(bindings.map((row) => clean(row.studentId)).filter(Boolean))];
+}
+
+function sessionOwnerKey(session) {
+  const authAccountId = clean(session && session.authAccountId);
+  const lineUserId = clean(session && session.lineUserId);
+  if (authAccountId) return `account:${authAccountId}`;
+  if (lineUserId) return `line:${lineUserId}`;
+  return '';
+}
+
+async function issueSession({ type, lineUserId, authAccountId, targetId, renterId, authMethod, ttlMs }) {
   const session = randomToken(36);
   const sessionTtlMs = Math.max(30 * 60 * 1000, Number(ttlMs || PORTAL_SESSION_TTL_MS));
   const expiresAt = Timestamp.fromMillis(Date.now() + sessionTtlMs);
   const sessionPayload = {
     role: type,
     lineUserId: clean(lineUserId),
+    authAccountId: clean(authAccountId),
     teacherId: type === 'teacher' ? clean(targetId) : '',
     renterId: type === 'renter' ? clean(renterId) : '',
     authMethod: clean(authMethod) || 'line',
@@ -632,10 +737,95 @@ async function issueSession({ type, lineUserId, targetId, renterId, authMethod, 
     expiresAt
   };
   if (type === 'student') {
-    sessionPayload.studentIds = await activeStudentIdsForLine(lineUserId);
+    const [lineStudentIds, accountStudentIds] = await Promise.all([
+      clean(lineUserId) ? activeStudentIdsForLine(lineUserId) : [],
+      clean(authAccountId) ? activeStudentIdsForAccount(authAccountId) : []
+    ]);
+    sessionPayload.studentIds = [...new Set([
+      ...lineStudentIds,
+      ...accountStudentIds,
+      clean(targetId)
+    ].filter(Boolean))];
   }
   await db.collection('coursePortalSessions').doc(hash(session)).set(sessionPayload);
   return { sessionToken: session, expiresAt };
+}
+
+async function completeRegularAccount(source) {
+  const type = clean(source.type);
+  const targetId = clean(source.targetId);
+  const renterId = clean(source.renterId);
+  const authAccountId = clean(source.authAccountId) || regularAccountId(type, source.email);
+  const collection = db.collection(bindingCollection(type));
+  const generatedBindingId = hash([
+    'regular-login',
+    type,
+    authAccountId,
+    type === 'renter' ? renterId : targetId
+  ].join('|'));
+  const bindingId = clean(source.bindingId) || generatedBindingId;
+  const bindingRef = collection.doc(bindingId);
+  const existing = await bindingRef.get();
+  const previous = existing.exists ? existing.data() || {} : {};
+  if (clean(previous.status) === 'revoked') {
+    throw new HttpsError('permission-denied', '這個入口帳號目前已停用，請聯絡柚子樂器協助恢復。');
+  }
+
+  const payload = {
+    type,
+    authAccountId,
+    authProvider: clean(previous.lineUserId) ? 'line-login+email' : 'email-otp',
+    name: clean(source.name),
+    phoneHash: hash(normalizePhone(source.phone)),
+    email: normalizeEmail(source.email),
+    emailNormalized: normalizeEmail(source.email),
+    emailVerified: true,
+    emailVerifiedAt: FieldValue.serverTimestamp(),
+    status: 'active',
+    updatedAt: FieldValue.serverTimestamp(),
+    registeredAt: previous.registeredAt || FieldValue.serverTimestamp()
+  };
+  if (type === 'teacher') payload.teacherId = targetId;
+  if (type === 'student') {
+    payload.studentId = targetId;
+    payload.relationship = clean(source.relationship) || '本人';
+  }
+  if (type === 'renter') payload.renterId = renterId;
+
+  const batch = db.batch();
+  if (type === 'renter') {
+    batch.set(db.collection('coursePortalRenters').doc(renterId), {
+      renterId,
+      name: clean(source.name),
+      phone: normalizePhone(source.phone),
+      email: normalizeEmail(source.email),
+      emailNormalized: normalizeEmail(source.email),
+      emailVerified: true,
+      emailVerifiedAt: FieldValue.serverTimestamp(),
+      source: 'regular-registration',
+      active: true,
+      updatedAt: FieldValue.serverTimestamp(),
+      createdAtText: nowText()
+    }, { merge: true });
+  }
+  batch.set(bindingRef, payload, { merge: true });
+  await batch.commit();
+
+  const issued = await issueSession({
+    type,
+    lineUserId: clean(previous.lineUserId || source.lineUserId),
+    authAccountId,
+    targetId,
+    renterId,
+    authMethod: 'email-otp'
+  });
+  return {
+    ok: true,
+    purpose: 'account',
+    role: type,
+    sessionToken: issued.sessionToken,
+    expiresAt: issued.expiresAt.toDate().toISOString()
+  };
 }
 
 async function verifyEmailOtp(data) {
@@ -678,10 +868,14 @@ async function verifyEmailOtp(data) {
   if (!source || source.decoy) {
     throw new HttpsError('permission-denied', '驗證碼不正確或帳號資料不相符。');
   }
+  if (source.purpose === 'account') {
+    return completeRegularAccount(source);
+  }
   if (source.purpose === 'login') {
     const result = await issueSession({
       type: source.type,
       lineUserId: source.lineUserId,
+      authAccountId: source.authAccountId,
       targetId: source.targetId,
       renterId: source.renterId,
       authMethod: 'email-otp'
@@ -794,7 +988,7 @@ async function renterContactLogin(data) {
     !phoneMatches(renter.phone, phone) ||
     lineUserIds.length !== 1
   ) {
-    throw new HttpsError('permission-denied', '姓名或電話不正確，或這筆租用帳號尚未完成第一次綁定。');
+    throw new HttpsError('permission-denied', '姓名或電話不正確，或這筆租用帳號尚未完成註冊。');
   }
 
   const issued = await issueSession({
@@ -1061,10 +1255,12 @@ async function completeLineRegistration(data) {
       throw new HttpsError('permission-denied', '這個入口帳號目前已停用，請聯絡柚子樂器協助恢復。');
     }
     const claimed = conflictRows.some((row) =>
-      clean(row.status) === 'active' && clean(row.lineUserId) !== lineUserId
+      clean(row.status) === 'active' &&
+      clean(row.lineUserId) &&
+      clean(row.lineUserId) !== lineUserId
     );
     if (claimed) {
-      throw new HttpsError('already-exists', '這筆資料已綁定其他 LINE，請由管理者刪除舊綁定後再試。');
+      throw new HttpsError('already-exists', '這筆資料已由其他 LINE 帳號使用，請由管理者刪除舊登入資料後再試。');
     }
   }
 
@@ -1270,7 +1466,7 @@ async function exchangeAccessToken(data) {
   const source = snapshot.exists ? snapshot.data() || {} : null;
   const acceptedStatuses = ['active', 'used', 'exchanged'];
   if (!source || !acceptedStatuses.includes(clean(source.status)) || asMillis(source.expiresAt) < Date.now()) {
-    throw new HttpsError('permission-denied', '登入連結已逾時，請重新取得綁定連結。');
+    throw new HttpsError('permission-denied', '登入連結已逾時，請重新登入。');
   }
 
   const issued = await issueSession({
@@ -1303,7 +1499,7 @@ async function requireSession(data, allowedRoles) {
   const snapshot = await ref.get();
   const session = snapshot.exists ? snapshot.data() || {} : null;
   if (!session || session.status !== 'active' || asMillis(session.expiresAt) < Date.now()) {
-    throw new HttpsError('unauthenticated', '登入狀態已到期，請重新登入；不需要重新綁定。');
+    throw new HttpsError('unauthenticated', '登入狀態已到期，請重新登入。');
   }
   if (allowedRoles && !allowedRoles.includes(session.role)) {
     throw new HttpsError('permission-denied', '這個帳號沒有此頁面權限。');
@@ -1578,7 +1774,7 @@ async function teacherPortalData(data) {
   const month = clean(data.month).match(/^\d{4}-\d{2}$/) ? clean(data.month) : start.slice(0, 7);
   const bundle = await scheduleBundle(start, end, session.teacherId);
   const teacher = bundle.maps.teachers[session.teacherId];
-  if (!teacher) throw new HttpsError('not-found', '找不到已綁定老師資料。');
+  if (!teacher) throw new HttpsError('not-found', '找不到這個老師帳號的資料。');
   const ownEvents = bundle.events.filter((row) => row.teacherId === session.teacherId);
   const [allFixed, allTemporary] = await Promise.all([mirrorRows('fixedCourses'), mirrorRows('temporaryCourses')]);
   const studentIds = [...new Set(
@@ -1679,18 +1875,18 @@ async function teacherAvailability(data) {
 
 async function studentPortalData(data) {
   const session = await requireSession(data, ['student']);
-  const currentIds = await activeStudentIdsForLine(session.lineUserId);
+  const sessionBindings = await activeStudentBindingsForSession(session);
+  const currentIds = [...new Set(sessionBindings.map((row) => clean(row.studentId)).filter(Boolean))];
   const requested = clean(data.studentId);
   if (requested && !currentIds.includes(requested)) throw new HttpsError('permission-denied', '沒有這位學生的查看權限。');
   const studentIds = requested ? [requested] : currentIds;
-  const [students, periods, attendance, events, teachers, subjects, bindings] = await Promise.all([
+  const [students, periods, attendance, events, teachers, subjects] = await Promise.all([
     mirrorRows('students'),
     mirrorRows('tuitionPeriods'),
     mirrorRows('attendance'),
     mirrorRows('events'),
     mirrorRows('teachers'),
-    mirrorRows('subjects'),
-    db.collection('coursePortalStudentBindings').where('lineUserId', '==', session.lineUserId).where('status', '==', 'active').get()
+    mirrorRows('subjects')
   ]);
   const maps = { teachers: indexById(teachers), subjects: indexById(subjects) };
   const allowed = new Set(studentIds);
@@ -1702,8 +1898,7 @@ async function studentPortalData(data) {
   return {
     ok: true,
     students: selectedStudents,
-    bindings: bindings.docs.map((doc) => {
-      const row = doc.data() || {};
+    bindings: sessionBindings.map((row) => {
       return {
         studentId: clean(row.studentId),
         relationship: clean(row.relationship),
@@ -1755,20 +1950,15 @@ async function updateStudentReminder(data) {
   const session = await requireSession(data, ['student']);
   const studentId = clean(data.studentId);
   if (!studentId) throw new HttpsError('invalid-argument', '請選擇學生。');
-  const allowed = await activeStudentIdsForLine(session.lineUserId);
+  const sessionBindings = await activeStudentBindingsForSession(session);
+  const allowed = [...new Set(sessionBindings.map((row) => clean(row.studentId)).filter(Boolean))];
   if (!allowed.includes(studentId)) {
     throw new HttpsError('permission-denied', '沒有這位學生的提醒設定權限。');
   }
-  const snapshot = await db.collection('coursePortalStudentBindings')
-    .where('lineUserId', '==', session.lineUserId)
-    .get();
-  const targets = snapshot.docs.filter((doc) => {
-    const row = doc.data() || {};
-    return clean(row.studentId) === studentId && clean(row.status) === 'active';
-  });
-  if (!targets.length) throw new HttpsError('not-found', '找不到這位學生的有效綁定。');
+  const targets = sessionBindings.filter((row) => clean(row.studentId) === studentId);
+  if (!targets.length) throw new HttpsError('not-found', '找不到這位學生的有效登入帳號。');
   const batch = db.batch();
-  targets.forEach((doc) => batch.set(doc.ref, {
+  targets.forEach((row) => batch.set(row.__ref, {
     reminderLastLesson: data.reminderLastLesson !== false,
     reminderPayment: data.reminderPayment !== false,
     updatedAt: FieldValue.serverTimestamp()
@@ -1937,7 +2127,9 @@ async function createRoomBooking(data) {
   const room = availability.rooms.find((item) => item.id === clean(data.roomId));
   if (!room || !room.available) throw new HttpsError('failed-precondition', room && room.reason || '這間教室目前不能預約。');
   const id = db.collection('coursePortalRoomBookings').doc().id;
-  const studentIds = session.role === 'student' ? await activeStudentIdsForLine(session.lineUserId) : [];
+  const studentIds = session.role === 'student' ? await activeStudentIdsForSession(session) : [];
+  const ownerKey = sessionOwnerKey(session);
+  if (!ownerKey) throw new HttpsError('unauthenticated', '登入資料不完整，請重新登入。');
   const locks = bookingLockRows(availability.date, room.id, availability.startTime, availability.endTime);
   const booking = {
     id,
@@ -1958,7 +2150,9 @@ async function createRoomBooking(data) {
     renterId: clean(session.renterId),
     studentIds,
     studentDiscountRequested: data.studentDiscountRequested === true || clean(data.studentDiscountRequested).toLowerCase() === 'true',
-    lineUserId: session.lineUserId,
+    ownerKey,
+    lineUserId: clean(session.lineUserId),
+    authAccountId: clean(session.authAccountId),
     amount: room.price,
     unitFee: room.unitFee,
     equipmentLabel: clean(room.equipmentLabel),
@@ -1992,41 +2186,55 @@ async function createRoomBooking(data) {
     }));
   });
   const reminderAt = Math.max(Date.now(), taipeiDateTimeMillis(booking.date, booking.startTime) - 60 * 60 * 1000);
-  await db.collection('notificationQueue').doc(`course-portal-booking-${id}-reminder`).set({
-    queueId: `course-portal-booking-${id}-reminder`,
-    channel: 'line',
-    targetLineUserId: session.lineUserId,
-    title: '教室租用提醒',
-    body: [
-      `您預約的「${booking.roomName}」將於 ${booking.date} ${booking.startTime} 開始。`,
-      `用途：${booking.useName || '教室租用'}`,
-      `時間：${booking.startTime}～${booking.endTime}`,
-      `如不使用，可在結束前進入租用頁取消：${PORTAL_BASE}/room-booking.html`
-    ].join('\n'),
-    message: [
-      `教室租用提醒`,
-      `您預約的「${booking.roomName}」將於 ${booking.date} ${booking.startTime} 開始。`,
-      `時間：${booking.startTime}～${booking.endTime}`,
-      `如不使用，可在結束前進入租用頁取消：${PORTAL_BASE}/room-booking.html`
-    ].join('\n'),
-    bookingId: id,
-    source: 'course-portal-room-booking',
-    status: '待發送',
-    scheduledAt: Timestamp.fromMillis(reminderAt),
-    createdAt: FieldValue.serverTimestamp(),
-    createdAtText: nowText()
-  }, { merge: true }).catch((error) => {
-    console.error('[course portal rental reminder queue failed]', id, error);
-  });
+  if (clean(session.lineUserId)) {
+    await db.collection('notificationQueue').doc(`course-portal-booking-${id}-reminder`).set({
+      queueId: `course-portal-booking-${id}-reminder`,
+      channel: 'line',
+      targetLineUserId: session.lineUserId,
+      title: '教室租用提醒',
+      body: [
+        `您預約的「${booking.roomName}」將於 ${booking.date} ${booking.startTime} 開始。`,
+        `用途：${booking.useName || '教室租用'}`,
+        `時間：${booking.startTime}～${booking.endTime}`,
+        `如不使用，可在結束前進入租用頁取消：${PORTAL_BASE}/room-booking.html`
+      ].join('\n'),
+      message: [
+        `教室租用提醒`,
+        `您預約的「${booking.roomName}」將於 ${booking.date} ${booking.startTime} 開始。`,
+        `時間：${booking.startTime}～${booking.endTime}`,
+        `如不使用，可在結束前進入租用頁取消：${PORTAL_BASE}/room-booking.html`
+      ].join('\n'),
+      bookingId: id,
+      source: 'course-portal-room-booking',
+      status: '待發送',
+      scheduledAt: Timestamp.fromMillis(reminderAt),
+      createdAt: FieldValue.serverTimestamp(),
+      createdAtText: nowText()
+    }, { merge: true }).catch((error) => {
+      console.error('[course portal rental reminder queue failed]', id, error);
+    });
+  }
   return { ok: true, booking: jsonValue(booking) };
 }
 
 async function rentalMyBookings(data) {
   const session = await requireSession(data, ['student', 'renter', 'teacher']);
-  const snapshot = await db.collection('coursePortalRoomBookings')
-    .where('lineUserId', '==', session.lineUserId)
-    .get();
-  const bookings = snapshot.docs.map((doc) => {
+  const bookingQueries = [
+    db.collection('coursePortalRoomBookings').where('ownerKey', '==', sessionOwnerKey(session)).get()
+  ];
+  if (clean(session.lineUserId)) {
+    bookingQueries.push(
+      db.collection('coursePortalRoomBookings').where('lineUserId', '==', clean(session.lineUserId)).get()
+    );
+  }
+  if (clean(session.authAccountId)) {
+    bookingQueries.push(
+      db.collection('coursePortalRoomBookings').where('authAccountId', '==', clean(session.authAccountId)).get()
+    );
+  }
+  const bookingSnapshots = await Promise.all(bookingQueries);
+  const bookingDocs = [...new Map(bookingSnapshots.flatMap((snapshot) => snapshot.docs).map((doc) => [doc.id, doc])).values()];
+  const bookings = bookingDocs.map((doc) => {
     const row = jsonValue(doc.data()) || {};
     return {
       id: doc.id,
@@ -2069,7 +2277,13 @@ async function cancelRoomBooking(data) {
     const snapshot = await tx.get(bookingRef);
     if (!snapshot.exists) throw new HttpsError('not-found', '找不到這筆租用紀錄。');
     const booking = snapshot.data() || {};
-    if (clean(booking.lineUserId) !== clean(session.lineUserId)) {
+    const sameOwner = clean(booking.ownerKey)
+      ? clean(booking.ownerKey) === sessionOwnerKey(session)
+      : (
+        (clean(booking.lineUserId) && clean(booking.lineUserId) === clean(session.lineUserId)) ||
+        (clean(booking.authAccountId) && clean(booking.authAccountId) === clean(session.authAccountId))
+      );
+    if (!sameOwner) {
       throw new HttpsError('permission-denied', '只能取消自己預約的教室。');
     }
     if (booking.active === false || clean(booking.status) === 'cancelled') {
@@ -2213,7 +2427,7 @@ async function teacherAction(data) {
   const session = await requireSession(data, ['teacher']);
   const action = clean(data.action);
   if (!['revoke', 'restore', 'delete'].includes(action)) {
-    throw new HttpsError('invalid-argument', '不支援的綁定操作。');
+    throw new HttpsError('invalid-argument', '不支援的帳號操作。');
   }
   if (!['single_move', 'permanent_move', 'extra_lesson', 'teacher_gift'].includes(action)) {
     throw new HttpsError('invalid-argument', '不支援的課務操作。');
@@ -2533,14 +2747,27 @@ async function adminData() {
   const renterMap = {};
   renterRows.docs.forEach((doc) => { renterMap[doc.id] = doc.data() || {}; });
   const activeSessionsByLine = {};
+  const activeSessionsByAccount = {};
   sessions.docs.forEach((doc) => {
     const row = doc.data() || {};
     const lineUserId = clean(row.lineUserId);
-    if (!lineUserId || clean(row.status) !== 'active' || asMillis(row.expiresAt) < Date.now()) return;
-    activeSessionsByLine[lineUserId] = Number(activeSessionsByLine[lineUserId] || 0) + 1;
+    const authAccountId = clean(row.authAccountId);
+    if (clean(row.status) !== 'active' || asMillis(row.expiresAt) < Date.now()) return;
+    if (lineUserId) {
+      activeSessionsByLine[lineUserId] = activeSessionsByLine[lineUserId] || new Set();
+      activeSessionsByLine[lineUserId].add(doc.id);
+    }
+    if (authAccountId) {
+      activeSessionsByAccount[authAccountId] = activeSessionsByAccount[authAccountId] || new Set();
+      activeSessionsByAccount[authAccountId].add(doc.id);
+    }
   });
   const map = (snapshot) => snapshot.docs.map((doc) => {
     const row = doc.data() || {};
+    const activeSessionIds = new Set([
+      ...((activeSessionsByLine[clean(row.lineUserId)] || new Set())),
+      ...((activeSessionsByAccount[clean(row.authAccountId)] || new Set()))
+    ]);
     const targetName = row.type === 'teacher'
       ? clean(teacherMap[clean(row.teacherId)] && teacherMap[clean(row.teacherId)].name)
       : (row.type === 'student'
@@ -2562,7 +2789,7 @@ async function adminData() {
       studentId: clean(row.studentId),
       renterId: clean(row.renterId),
       boundAt: jsonValue(row.boundAt),
-      activeSessionCount: Number(activeSessionsByLine[clean(row.lineUserId)] || 0),
+      activeSessionCount: activeSessionIds.size,
       reminderLastLesson: row.reminderLastLesson !== false,
       reminderPayment: row.reminderPayment !== false
     };
@@ -2585,13 +2812,14 @@ async function commitOperations(operations) {
 async function adminBindingAction(data) {
   const type = clean(data.type);
   const id = clean(data.id);
-  if (!['teacher', 'student', 'renter'].includes(type) || !id) throw new HttpsError('invalid-argument', '綁定資料不完整。');
+  if (!['teacher', 'student', 'renter'].includes(type) || !id) throw new HttpsError('invalid-argument', '登入資料不完整。');
   const action = clean(data.action);
   const bindingRef = db.collection(bindingCollection(type)).doc(id);
   const bindingSnapshot = await bindingRef.get();
-  if (!bindingSnapshot.exists) throw new HttpsError('not-found', '找不到這筆綁定資料。');
+  if (!bindingSnapshot.exists) throw new HttpsError('not-found', '找不到這筆登入資料。');
   const row = bindingSnapshot.data() || {};
   const lineUserId = clean(row.lineUserId);
+  const authAccountId = clean(row.authAccountId);
 
   if (action === 'delete') {
     const collections = [
@@ -2603,11 +2831,17 @@ async function adminBindingAction(data) {
       'coursePortalLineOAuthStates',
       'coursePortalLineSetupTokens'
     ];
-    const snapshots = lineUserId
+    const lineSnapshots = lineUserId
       ? await Promise.all(collections.map((name) => db.collection(name).where('lineUserId', '==', lineUserId).get()))
       : [];
+    const accountSnapshots = authAccountId
+      ? await Promise.all([
+        db.collection('coursePortalSessions').where('authAccountId', '==', authAccountId).get(),
+        db.collection('coursePortalEmailOtps').where('authAccountId', '==', authAccountId).get()
+      ])
+      : [];
     const operations = [{ action: 'delete', ref: bindingRef }];
-    snapshots.forEach((snapshot) => snapshot.docs.forEach((doc) => {
+    [...lineSnapshots, ...accountSnapshots].forEach((snapshot) => snapshot.docs.forEach((doc) => {
       operations.push({ action: 'delete', ref: doc.ref });
     }));
     const email = normalizeEmail(row.email);
@@ -2622,7 +2856,7 @@ async function adminBindingAction(data) {
           operations.push({ action: 'delete', ref: doc.ref });
         }
       }));
-      ['bind', 'login'].forEach((purpose) => {
+      ['bind', 'login', 'account'].forEach((purpose) => {
         const kind = `email-otp-${purpose}-${type}`;
         operations.push({
           action: 'delete',
@@ -2658,8 +2892,15 @@ async function adminBindingAction(data) {
     updatedAt: FieldValue.serverTimestamp()
   }, { merge: true });
   if (status === 'revoked') {
-    const sessions = await db.collection('coursePortalSessions').where('lineUserId', '==', lineUserId).get();
-    await commitOperations(sessions.docs.map((doc) => ({
+    const sessionSnapshots = await Promise.all([
+      lineUserId
+        ? db.collection('coursePortalSessions').where('lineUserId', '==', lineUserId).get()
+        : Promise.resolve({ docs: [] }),
+      authAccountId
+        ? db.collection('coursePortalSessions').where('authAccountId', '==', authAccountId).get()
+        : Promise.resolve({ docs: [] })
+    ]);
+    await commitOperations(sessionSnapshots.flatMap((snapshot) => snapshot.docs).map((doc) => ({
       action: 'set',
       ref: doc.ref,
       data: { status: 'revoked', revokedAt: FieldValue.serverTimestamp() }
@@ -2681,6 +2922,7 @@ async function dailyStudentReminders(pushLineMessage) {
   }).format(new Date());
   for (const doc of bindings.docs) {
     const binding = doc.data() || {};
+    if (!clean(binding.lineUserId)) continue;
     const studentId = clean(binding.studentId);
     const studentPeriods = periods.filter((row) => clean(row.studentId) === studentId && !['closed', 'completed'].includes(clean(row.status).toLowerCase()));
     const lastLesson = studentPeriods.find((row) => Number(row.lessonCount || 4) - Number(row.usedCount || 0) === 1);
