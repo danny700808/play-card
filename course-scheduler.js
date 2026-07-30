@@ -832,6 +832,44 @@
 
   function clearMigrationPin(){try{sessionStorage.removeItem(PIN_KEY);}catch(_){}}
 
+  function mergePortalRentals(target,result){
+    if(!target||target.version!==3)return target;
+    result=result||{};
+    var bookingIds=new Set((result.bookingIds||[]).map(clean).filter(Boolean));
+    target.events=(target.events||[]).filter(function(row){
+      if(row.type!=='rental')return true;
+      if(clean(row.source)==='course-portal')return false;
+      return !bookingIds.has(clean(row.id));
+    }).concat(clone(result.events||[]));
+    if(!target.dataMeta||typeof target.dataMeta!=='object')target.dataMeta={};
+    target.dataMeta.portalBookingsUpdatedAt=clean(result.updatedAt)||new Date().toISOString();
+    return normalizeState(target);
+  }
+
+  async function refreshPortalRentals(){
+    var pin=storedMigrationPin();
+    if(!pin||!state||!window.YouziCoursePreviewData||typeof window.YouziCoursePreviewData.loadPortalRentals!=='function')return false;
+    try{
+      var result=await window.YouziCoursePreviewData.loadPortalRentals({manualSyncPin:pin});
+      if(formalState&&formalState.version===3){
+        formalState=mergePortalRentals(formalState,result);
+        formalState.readOnly=true;
+        formalState.dataMode='migration';
+      }
+      state=mergePortalRentals(state,result);
+      if(state.dataMode==='sandbox')state.readOnly=false;
+      if(formalState&&formalState.version===3)await storeSynchronizedDatabases(formalState,state);
+      else await storeWorkspaceDatabase(state);
+      updateModeUI();
+      if(currentView==='calendar')renderCalendar();
+      return true;
+    }catch(error){
+      var message=clean(error&&error.message);
+      if(message.indexOf('密碼')>=0||message.indexOf('permission-denied')>=0)clearMigrationPin();
+      return false;
+    }
+  }
+
   function preserveWorkspaceConfiguration(target,previous){
     if(!previous||previous.dataMode==='empty')return target;
     target.settings=clone(previous.settings||target.settings||{});
@@ -974,7 +1012,7 @@
     try{localStorage.removeItem('youzi.courseScheduler.sandbox.v1');localStorage.removeItem('youzi.courseScheduler.sandboxUndo.v1');localStorage.removeItem('youzi.courseScheduler.lastMode.v1');}catch(_){}
     embeddedMode=urlOption('embed')==='1';document.body.classList.toggle('embedded-in-operations',embeddedMode);requestPersistentStorage();
     state=loadInitialState();if(!formalState&&state.readOnly&&state.dataMode!=='empty')formalState=clone(state);bindEvents();refreshFormOptions();updateModeUI();switchView(requestedView());
-    restoreFormalDatabase();
+    if(window.__YOUZI_COURSE_INLINE_MODE__)refreshPortalRentals();else restoreFormalDatabase().then(refreshPortalRentals);
     if(window.__YOUZI_COURSE_SCHEDULER_TEST__===true)window.YouziCourseSchedulerTest={snapshot:function(){return clone(state);},eventsForDate:function(date){return clone(eventsForDate(date));},effectiveEventsForDate:function(date){return clone(effectiveEventsForDate(date));},storeFormalCache:function(source){return storeFormalCache(source);},readFormalDatabase:readFormalDatabase,storeFormalDatabase:storeFormalDatabase,readWorkspaceDatabase:readWorkspaceDatabase,storeWorkspaceDatabase:storeWorkspaceDatabase,restoreFormalDatabase:restoreFormalDatabase};
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
