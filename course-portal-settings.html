@@ -1,1 +1,45 @@
-<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>租用分類與老師獎金管理</title><link rel="stylesheet" href="course-portal.css"></head><body><main class="portal-shell"><header class="portal-head"><div class="head-title"><span class="brand-mark">設</span><div><h1>租用與老師申請設定</h1><p>租用分類、教室勾稽與獎金核定</p></div></div></header><section class="card"><div class="field"><label>管理密碼</label><input id="pin" type="password"></div></section><section class="card"><div class="section-title"><div><h2>租用分類</h2><p class="muted">每個分類可自行命名並勾選可使用的教室。</p></div><button class="btn" id="addUse">新增分類</button></div><div id="useRows" class="list"></div><button class="btn primary" id="saveUses">儲存租用分類</button></section><section class="card"><div class="section-title"><h2>教材／商品獎金申請</h2><button class="btn" id="loadRequests">讀取申請</button></div><div id="requests" class="list"></div></section></main><script src="config.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script><script src="course-portal-common.js"></script><script>(function(){const P=CoursePortal;let rooms=[],items=[];async function load(){const [settings,availability]=await Promise.all([P.call('coursePortalRentalUseSettings',{}),P.call('coursePortalRentalAvailability',{sessionToken:P.getSession('teacher')||P.getSession('student')||P.getSession('renter'),date:new Date().toISOString().slice(0,10),startTime:'10:00',durationMinutes:30,useType:''}).catch(()=>({rooms:[]}))]);items=settings.items||[];rooms=(availability.rooms||[]).map(r=>({id:r.id,name:r.name}));render();}function render(){document.getElementById('useRows').innerHTML=items.map((row,i)=>'<article class="list-row"><input data-name="'+i+'" value="'+P.escapeHtml(row.name)+'"><div>'+rooms.map(room=>'<label style="display:inline-block;margin:4px 10px 4px 0"><input type="checkbox" data-room="'+i+'|'+P.escapeHtml(room.id)+'" '+((row.roomIds||[]).includes(room.id)?'checked':'')+'> '+P.escapeHtml(room.name)+'</label>').join('')+'</div><button class="btn danger" data-remove="'+i+'">刪除</button></article>').join('');}document.getElementById('addUse').onclick=()=>{items.push({id:'use-'+Date.now(),name:'新分類',roomIds:[],active:true});render();};document.getElementById('useRows').onclick=e=>{const b=e.target.closest('[data-remove]');if(b){items.splice(Number(b.dataset.remove),1);render();}};document.getElementById('saveUses').onclick=async()=>{document.querySelectorAll('[data-name]').forEach(n=>items[Number(n.dataset.name)].name=n.value);items.forEach((row,i)=>row.roomIds=[...document.querySelectorAll('[data-room^="'+i+'|"]:checked')].map(n=>n.dataset.room.split('|')[1]));await P.call('coursePortalAdminSaveRentalSettings',{adminPin:pin.value,items});P.toast('已儲存');};document.getElementById('loadRequests').onclick=async()=>{const r=await P.call('coursePortalAdminBonusRequests',{adminPin:pin.value});requests.innerHTML=(r.requests||[]).map(row=>'<article class="list-row"><strong>'+P.escapeHtml(row.teacherName||'老師')+'／'+P.escapeHtml(row.studentName||'學生')+'</strong><span>'+P.escapeHtml(row.description)+'</span>'+(row.photoData?'<img src="'+row.photoData+'" style="max-width:160px;max-height:120px">':'')+'<div><input type="number" min="1" placeholder="核定獎金" data-amount="'+row.id+'"><button class="btn primary" data-approve="'+row.id+'">核定</button></div></article>').join('')||'<p class="muted">沒有申請。</p>';};document.getElementById('requests').onclick=async e=>{const b=e.target.closest('[data-approve]');if(!b)return;const input=document.querySelector('[data-amount="'+b.dataset.approve+'"]');await P.call('coursePortalAdminApproveBonus',{adminPin:pin.value,id:b.dataset.approve,amount:input.value});P.toast('已核定');b.disabled=true;};load().catch(()=>{});})();</script></body></html>
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#24735c">
+  <title>租用與教室設定｜柚子樂器</title>
+  <link rel="stylesheet" href="course-portal.css?v=20260730-rental-settings-v2">
+  <link rel="stylesheet" href="course-portal-settings-v2.css?v=20260730-rental-settings-v2">
+</head>
+<body class="portal-settings-v2 clean-portal-ui">
+  <main class="portal-shell">
+    <header class="portal-head"><div class="head-title"><span class="brand-mark">設</span><div><h1>租用與教室設定</h1></div></div></header>
+    <section class="card"><div class="toolbar"><div class="field" style="flex:1"><label>管理密碼</label><input id="pin" type="password"></div><button class="btn primary" id="loadSettings" type="button">讀取設定</button></div></section>
+
+    <section class="card settings-section">
+      <div class="section-title"><h2>營業時間</h2></div>
+      <div id="businessRows"></div>
+      <div class="notice">結束時間代表所有課程與租用必須在該時間前結束。例如 21:00 表示最晚到晚上 9 點。</div>
+    </section>
+
+    <section class="card settings-section">
+      <div class="section-title"><h2>教室規則與租金</h2></div>
+      <div id="roomRows"><p class="muted">請先讀取設定。</p></div>
+    </section>
+
+    <section class="card settings-section">
+      <div class="section-title"><h2>租用用途</h2><button class="btn" id="addUse" type="button">新增用途</button></div>
+      <div id="useRows"><p class="muted">請先讀取設定。</p></div>
+    </section>
+
+    <div class="settings-save-bar"><button class="btn primary" id="saveSettings" type="button">儲存全部設定</button></div>
+
+    <section class="card settings-section" style="margin-top:14px">
+      <div class="section-title"><h2>教材／商品獎金申請</h2><button class="btn" id="loadRequests" type="button">讀取申請</button></div>
+      <div id="requests"><p class="muted">尚未讀取。</p></div>
+    </section>
+  </main>
+  <script src="config.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
+  <script src="course-portal-common.js?v=20260730-rental-settings-v2"></script>
+  <script src="course-portal-settings-v2.js?v=20260730-rental-settings-v2"></script>
+</body>
+</html>
