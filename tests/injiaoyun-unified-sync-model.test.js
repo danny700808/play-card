@@ -6,10 +6,16 @@ const {
   mergeEducationDailyRentals
 } = require('../functions/injiaoyunEducationPreview');
 const {
+  activeSyncOwnerMatches,
+  applyOwnedSyncFinalization,
   auditCoversRange,
   auditIsRecent,
+  convergenceOwnerForState,
+  fullConvergenceIsRequired,
   reconcileAuditedAttendance,
-  refreshTuitionUsage
+  refreshTuitionUsage,
+  syncReservationDirective,
+  syncOwnerMatches
 } = require('../functions/injiaoyunEducationMirror');
 const {
   validStudioId
@@ -37,6 +43,243 @@ assert.strictEqual(auditIsRecent({
 assert.strictEqual(auditIsRecent({
   completedAt: { toMillis: () => Date.now() - (31 * 60 * 1000) }
 }), false, '超過 30 分鐘的核對結果不可直接沿用');
+
+function attemptSyncFinalization(status, requestedOwner, settingsOwner, scheduleOwner, overrides = {}) {
+  const sourceVersion = 'source-v1';
+  const syncScope = overrides.syncScope || 'full';
+  const writes = [];
+  const transaction = {
+    set(ref, data, options) {
+      writes.push({ path: ref.path, data, options });
+    }
+  };
+  const applied = applyOwnedSyncFinalization(
+    transaction,
+    Object.assign({
+      syncOwner: settingsOwner,
+      syncScope,
+      status: 'running',
+      pendingSourceVersion: sourceVersion
+    }, overrides.settings || {}),
+    Object.assign({
+      syncOwner: scheduleOwner,
+      syncScope,
+      syncing: true,
+      pendingSourceVersion: sourceVersion,
+      version: 41
+    }, overrides.schedule || {}),
+    requestedOwner,
+    sourceVersion,
+    syncScope,
+    'owner-race-test',
+    status,
+    { status }
+  );
+  return { applied, writes };
+}
+
+assert.strictEqual(
+  syncOwnerMatches({ syncOwner: 'owner-b' }, { syncOwner: 'owner-b' }, 'owner-a'),
+  false,
+  '舊 owner 不可通過同步終態檢查'
+);
+['success', 'error'].forEach((status) => {
+  const stale = attemptSyncFinalization(status, 'owner-a', 'owner-b', 'owner-b');
+  assert.strictEqual(stale.applied, false, `舊 owner 的 ${status} finalize 必須 no-op`);
+  assert.deepStrictEqual(stale.writes, [], `舊 owner 的 ${status} finalize 不可覆寫新同步狀態或封鎖`);
+});
+const ownedSuccess = attemptSyncFinalization('success', 'owner-b', 'owner-b', 'owner-b');
+assert.strictEqual(ownedSuccess.applied, true, '目前 owner 應可完成同步');
+assert.strictEqual(ownedSuccess.writes.length, 2, '同步終態與 schedule 解鎖必須在同一交易一起寫入');
+assert.strictEqual(ownedSuccess.writes[0].data.status, 'success');
+assert.strictEqual(ownedSuccess.writes[0].data.syncOwner, '');
+assert.strictEqual(ownedSuccess.writes[0].data.lastFinalizedOwner, 'owner-b');
+assert.strictEqual(ownedSuccess.writes[1].data.syncOwner, '');
+assert.strictEqual(ownedSuccess.writes[1].data.lastFinalizedOwner, 'owner-b');
+assert.strictEqual(ownedSuccess.writes[1].data.writesBlocked, false);
+assert.strictEqual(ownedSuccess.writes[1].data.version, 42);
+const alreadyFinalized = attemptSyncFinalization(
+  'error',
+  'owner-b',
+  '',
+  '',
+  {
+    settings: { status: 'success', pendingSourceVersion: '', lastFinalizedOwner: 'owner-b' },
+    schedule: { syncing: false, pendingSourceVersion: '', lastFinalizedOwner: 'owner-b' }
+  }
+);
+assert.strictEqual(alreadyFinalized.applied, false, '成功後的第二次 error finalize 必須 no-op');
+assert.deepStrictEqual(alreadyFinalized.writes, [], '成功終態不可被後續 catch 改寫成 error');
+assert.strictEqual(
+  activeSyncOwnerMatches(
+    { syncOwner: 'owner-b', syncScope: 'full', status: 'running', pendingSourceVersion: 'source-old' },
+    { syncOwner: 'owner-b', syncScope: 'full', syncing: true, pendingSourceVersion: 'source-old' },
+    'owner-b',
+    'source-new',
+    'full'
+  ),
+  false,
+  'owner 相同但 pending source 不同時仍不可寫入'
+);
+assert.strictEqual(
+  activeSyncOwnerMatches(
+    { syncOwner: 'owner-b', syncScope: 'full', status: 'success', pendingSourceVersion: 'source-v1' },
+    { syncOwner: 'owner-b', syncScope: 'full', syncing: true, pendingSourceVersion: 'source-v1' },
+    'owner-b',
+    'source-v1',
+    'full'
+  ),
+  false,
+  '已完成的 SETTINGS 不可再次 finalize'
+);
+assert.strictEqual(
+  activeSyncOwnerMatches(
+    { syncOwner: 'owner-b', syncScope: 'full', status: 'running', pendingSourceVersion: 'source-v1' },
+    { syncOwner: 'owner-b', syncScope: 'full', syncing: false, pendingSourceVersion: 'source-v1' },
+    'owner-b',
+    'source-v1',
+    'full'
+  ),
+  false,
+  'schedule 已非 syncing 時不可 finalize'
+);
+assert.deepStrictEqual(
+  convergenceOwnerForState(
+    { syncOwner: 'owner-c', syncScope: 'full', status: 'running', pendingSourceVersion: 'source-c' },
+    { syncOwner: 'owner-c', syncScope: 'full', syncing: true, pendingSourceVersion: 'source-c' }
+  ),
+  { owner: 'owner-c', sourceVersion: 'source-c', active: true },
+  'queued child 失敗後應能把 queue 改綁目前 active owner'
+);
+assert.deepStrictEqual(
+  convergenceOwnerForState(
+    {
+      syncOwner: '',
+      status: 'success',
+      sourceVersion: 'source-b',
+      lastFinalizedOwner: 'owner-b',
+      lastFinalizedSourceVersion: 'source-b'
+    },
+    {
+      syncOwner: '',
+      syncing: false,
+      lastFinalizedOwner: 'owner-b',
+      lastFinalizedSourceVersion: 'source-b'
+    }
+  ),
+  { owner: 'owner-b', sourceVersion: 'source-b', active: false },
+  'queued child 在 reserve 前失敗時應恢復到最後完成 owner'
+);
+assert.strictEqual(
+  convergenceOwnerForState(
+    { status: 'success', lastFinalizedOwner: 'owner-a', lastFinalizedSourceVersion: 'source-a' },
+    { syncing: false, lastFinalizedOwner: 'owner-b', lastFinalizedSourceVersion: 'source-b' }
+  ),
+  null,
+  'SETTINGS 與 schedule 終態不一致時不可重新排 queue'
+);
+const expiredPartialFull = {
+  status: 'running',
+  sourceVersion: 'source-v1',
+  fullConvergenceRequired: true,
+  lockUntil: { toMillis: () => 100 }
+};
+const partialFullSchedule = { fullConvergenceRequired: true };
+assert.strictEqual(
+  fullConvergenceIsRequired(expiredPartialFull, partialFullSchedule),
+  true,
+  'full 一開始即須留下強制完整收斂旗標'
+);
+assert.strictEqual(
+  syncReservationDirective(
+    expiredPartialFull,
+    partialFullSchedule,
+    'source-v1',
+    'recent',
+    200
+  ),
+  'full-required',
+  '過期 partial full 後不可讓 recent 接手'
+);
+assert.strictEqual(
+  syncReservationDirective(
+    { status: 'success', sourceVersion: 'source-v1', fullConvergenceRequired: true },
+    { fullConvergenceRequired: true },
+    'source-v1',
+    'full',
+    200
+  ),
+  'accept',
+  '同 sourceVersion 仍有 full-required 時必須真正重跑 full'
+);
+assert.strictEqual(
+  syncReservationDirective(
+    { status: 'success', sourceVersion: 'source-v1', fullConvergenceRequired: false },
+    { fullConvergenceRequired: false },
+    'source-v1',
+    'full',
+    200
+  ),
+  'current',
+  '完整成功且沒有 full-required 時才可沿用 current'
+);
+const fullSuccess = attemptSyncFinalization(
+  'success',
+  'owner-full',
+  'owner-full',
+  'owner-full',
+  {
+    syncScope: 'full',
+    settings: { fullConvergenceRequired: true },
+    schedule: { fullConvergenceRequired: true }
+  }
+);
+assert.strictEqual(fullSuccess.applied, true, 'full success 應可 finalize');
+assert.strictEqual(fullSuccess.writes[0].data.fullConvergenceRequired, false);
+assert.strictEqual(fullSuccess.writes[1].data.fullConvergenceRequired, false);
+const fullError = attemptSyncFinalization(
+  'error',
+  'owner-full',
+  'owner-full',
+  'owner-full',
+  {
+    syncScope: 'full',
+    settings: { fullConvergenceRequired: true },
+    schedule: { fullConvergenceRequired: true }
+  }
+);
+assert.strictEqual(fullError.applied, true, 'full error 應記錄終態但保持強制收斂');
+assert.strictEqual(
+  Object.prototype.hasOwnProperty.call(fullError.writes[0].data, 'fullConvergenceRequired'),
+  false,
+  'full error 不得清除 fullConvergenceRequired'
+);
+const recentBlocked = attemptSyncFinalization(
+  'success',
+  'owner-recent',
+  'owner-recent',
+  'owner-recent',
+  {
+    syncScope: 'recent',
+    settings: { fullConvergenceRequired: true },
+    schedule: { fullConvergenceRequired: true }
+  }
+);
+assert.strictEqual(recentBlocked.applied, false, 'full-required 期間 recent 不可解除寫入封鎖');
+assert.deepStrictEqual(recentBlocked.writes, [], '被拒的 recent finalize 不可寫入任何終態');
+const recentSuccess = attemptSyncFinalization(
+  'success',
+  'owner-recent',
+  'owner-recent',
+  'owner-recent',
+  { syncScope: 'recent' }
+);
+assert.strictEqual(recentSuccess.applied, true);
+assert.strictEqual(
+  Object.prototype.hasOwnProperty.call(recentSuccess.writes[0].data, 'fullConvergenceRequired'),
+  false,
+  'recent success 不得清除 fullConvergenceRequired'
+);
 
 const periods = [{
   id: 'period_old',
