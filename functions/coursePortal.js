@@ -1521,7 +1521,12 @@ function eventStart(row) {
 }
 
 function eventEnd(row) {
-  return clean(row.endTime || row.timeEnd || row.finishTime || row.end || '11:00').slice(0, 5);
+  const explicit = clean(row.endTime || row.timeEnd || row.finishTime || row.end).slice(0, 5);
+  if (explicit) return explicit;
+  const start = eventStart(row);
+  const duration = Math.max(30, Number(row.durationMinutes || row.duration || row.minutes || 60));
+  const end = timeMinutes(start) + duration;
+  return String(Math.floor(end / 60)).padStart(2, '0') + ':' + String(end % 60).padStart(2, '0');
 }
 
 function eventTeacherId(row) {
@@ -2815,6 +2820,31 @@ function assertAdminPin(request) {
   if (!expected || !safeEqual(value, expected)) throw new HttpsError('permission-denied', '管理密碼錯誤。');
 }
 
+async function adminRoomBookings() {
+  const snapshot = await db.collection('coursePortalRoomBookings').get();
+  const bookings = snapshot.docs.map((doc) => {
+    const row = jsonValue(doc.data()) || {};
+    return {
+      id: doc.id,
+      date: dateKey(row.date),
+      startTime: eventStart(row),
+      endTime: eventEnd(row),
+      durationMinutes: Math.max(30, Number(row.durationMinutes || row.duration ||
+        (timeMinutes(eventEnd(row)) - timeMinutes(eventStart(row))) || 60)),
+      roomId: clean(row.roomId),
+      roomName: clean(row.roomName),
+      useType: clean(row.useType),
+      useName: clean(row.useName),
+      purpose: clean(row.purpose),
+      amount: Number(row.amount || row.rentalFee || 0),
+      status: clean(row.status || (row.active === false ? 'cancelled' : 'confirmed')),
+      active: row.active !== false,
+      source: 'course-portal'
+    };
+  }).filter((row) => row.date && row.startTime && row.roomId);
+  return { ok: true, bookings, updatedAt: new Date().toISOString() };
+}
+
 async function adminData() {
   const [teachers, students, renters, teacherRows, studentRows, renterRows, sessions] = await Promise.all([
     db.collection('coursePortalTeacherBindings').get(),
@@ -3146,6 +3176,7 @@ function registerCoursePortal(exportsObject, helpers = {}) {
   }, { secrets: [ADMIN_PIN] });
   exportsObject.coursePortalAdminSaveRentalSettings = callable(async (data,request)=>{assertAdminPin(request);return adminSaveRentalSettings(data);},{secrets:[ADMIN_PIN]});
   exportsObject.coursePortalAdminSaveRoomEquipment = callable(async (data,request)=>{assertAdminPin(request);return adminSaveRoomEquipment(data);},{secrets:[ADMIN_PIN]});
+  exportsObject.coursePortalAdminRoomBookings = callable(async (data,request)=>{assertAdminPin(request);return adminRoomBookings();},{secrets:[ADMIN_PIN]});
   exportsObject.coursePortalAdminBonusRequests = callable(async (data,request)=>{assertAdminPin(request);return adminBonusRequests();},{secrets:[ADMIN_PIN]});
   exportsObject.coursePortalAdminApproveBonus = callable(async (data,request)=>{assertAdminPin(request);return adminApproveBonus(data);},{secrets:[ADMIN_PIN]});
   exportsObject.coursePortalUpdateStudentReminder = callable(updateStudentReminder);
