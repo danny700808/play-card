@@ -14,15 +14,16 @@ body.teacher-course-app.teacher-more-open{overflow:hidden}
 .teacher-course-app .teacher-bottom-tabs{position:fixed;left:50%;bottom:0;z-index:50;width:min(440px,100%);transform:translateX(-50%);display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:3px;margin:0;padding:7px 6px calc(7px + env(safe-area-inset-bottom));border-top:1px solid var(--line);background:rgba(244,247,243,.97);backdrop-filter:blur(12px);overflow:visible}
 .teacher-course-app .teacher-bottom-tabs .btn{min-height:40px;padding:5px 2px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:850;white-space:nowrap;text-align:center}
 .teacher-course-app .teacher-bottom-tabs button.active{background:var(--ink);color:#fff}
-.teacher-course-app .teacher-week-toolbar{align-items:center;gap:6px}
-.teacher-course-app .teacher-week-toolbar input{width:142px;min-height:38px;padding:6px 8px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);font:inherit}
+.teacher-course-app .teacher-week-toolbar{display:grid;grid-template-columns:repeat(2,minmax(90px,140px));align-items:center;justify-content:start;gap:6px}
 .teacher-course-app .week-scroll{position:relative;max-height:calc(100dvh - 205px);overflow:auto;overscroll-behavior:contain;touch-action:pan-x pan-y pinch-zoom;scrollbar-gutter:stable;border-radius:13px;scroll-snap-type:x mandatory;scroll-padding-left:58px}
 .teacher-course-app .week-grid{min-width:840px;grid-template-columns:58px repeat(7,1fr);grid-auto-rows:32px}
 .teacher-course-app .week-cell.head{position:sticky;top:0;z-index:4;background:#f0f5f2}
-.teacher-course-app .week-cell.head.week-day-head{scroll-snap-align:start;scroll-snap-stop:always}
+.teacher-course-app .week-cell.head.week-day-head{scroll-snap-align:none}
+.teacher-course-app .week-cell.head.week-day-group-start{scroll-snap-align:start;scroll-snap-stop:always}
 .teacher-course-app .week-cell.time{position:sticky;left:0;z-index:3;background:#f8faf8}
 .teacher-course-app .week-cell.week-corner{position:sticky;top:0;left:0;z-index:6;background:#e7f0eb}
 .teacher-course-app .section-title h2{font-size:15px}.teacher-course-app .section-title p,.teacher-course-app .muted{font-size:11px}
+.teacher-roster-search{display:flex;margin:2px 0 9px}.teacher-roster-search input{width:min(360px,100%);min-height:36px;padding:7px 10px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);font:inherit}.teacher-roster-search input:focus{border-color:var(--green);outline:2px solid rgba(36,115,92,.14)}.teacher-roster-empty{padding:16px 8px;text-align:center}
 .teacher-course-app .teacher-roster-row{grid-template-columns:minmax(100px,1fr) minmax(110px,1fr) auto}
 .teacher-course-app .payroll-row{grid-template-columns:minmax(95px,1fr) minmax(80px,1fr) minmax(145px,1.2fr) minmax(120px,1fr) auto}
 .teacher-more-backdrop{position:fixed;inset:0;z-index:90;display:flex;align-items:flex-end;justify-content:center;padding:12px;background:rgba(15,35,29,.42);backdrop-filter:blur(3px)}
@@ -66,13 +67,16 @@ body.teacher-course-app.teacher-more-open{overflow:hidden}
   .teacher-course-app .teacher-bottom-tabs .btn{min-height:44px;font-size:14px}
   .teacher-course-app .week-scroll{max-height:calc(100vh - 245px)}
 }
+@media(max-width:760px){
+  .teacher-course-app .teacher-week-toolbar{grid-template-columns:repeat(2,minmax(0,1fr));width:100%}
+  .teacher-course-app .week-scroll{scroll-padding-left:58px}
+  .teacher-course-app .week-grid{width:max-content;min-width:0;grid-template-columns:var(--teacher-time-column,58px) repeat(7,var(--teacher-day-width,140px));}
+}
 @media(max-width:520px){
   .teacher-course-app .portal-head{align-items:flex-start}
   .teacher-course-app .portal-head .danger{min-height:36px;padding:6px 9px;font-size:11px}
-  .teacher-course-app .teacher-week-toolbar{display:grid;grid-template-columns:78px minmax(0,1fr) 78px}
-  .teacher-course-app .teacher-week-toolbar input{width:100%;min-width:0}
   .teacher-course-app .week-scroll{scroll-padding-left:48px}
-  .teacher-course-app .week-grid{width:max-content;min-width:0;grid-template-columns:48px repeat(7,minmax(128px,calc(100vw - 82px)));grid-auto-rows:30px}
+  .teacher-course-app .week-grid{grid-template-columns:var(--teacher-time-column,48px) repeat(7,var(--teacher-day-width,116px));grid-auto-rows:30px}
   .teacher-course-app .teacher-roster-row,.teacher-course-app .payroll-row{grid-template-columns:1fr}
   .teacher-more-grid{grid-template-columns:1fr 1fr}
 }

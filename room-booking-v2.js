@@ -21,6 +21,10 @@
   let pendingStart = '';
   let boardRequestId = 0;
   let roomRequestId = 0;
+  const recordingUsageRates = Object.freeze({
+    general_room: 100,
+    studio_recording: 300
+  });
 
   const bindView = document.getElementById('publicBindView');
   const bookingView = document.getElementById('bookingView');
@@ -69,6 +73,17 @@
     return `${Math.floor(value / 60)} 小時 ${value % 60} 分`;
   }
 
+  function renderWelcomeName(value) {
+    const name = clean(value).normalize('NFKC');
+    const digits = name.replace(/\D/g, '');
+    const sensitive = name.length > 60 ||
+      /[@\r\n]/.test(name) ||
+      /[\p{Cc}\p{Cf}]/u.test(name) ||
+      digits.length >= 8;
+    document.getElementById('rentalHeaderTitle').textContent =
+      name && !sensitive ? `教室租用｜歡迎 ${name}` : '教室租用';
+  }
+
   function showBooking(active) {
     bindView.classList.toggle('hidden', active);
     bookingView.classList.toggle('hidden', !active);
@@ -93,13 +108,18 @@
   function renderUses(items) {
     items = Array.isArray(items) ? items : [];
     if (!items.some((row) => row.id === selectedUse) && items[0]) selectedUse = items[0].id;
-    document.getElementById('rentalUseGrid').innerHTML = items.map((row) => `
+    document.getElementById('rentalUseGrid').innerHTML = items.map((row) => {
+      const priceRange = clean(row.priceRangeText) ||
+        (row.id === 'recording' ? 'NT$100–300／小時' : '');
+      return `
       <button class="rental-use-card ${row.id === selectedUse ? 'active' : ''}" type="button" data-use="${P.escapeHtml(row.id)}">
         <span>${P.escapeHtml(row.icon || iconFor(row))}</span>
         <b>${P.escapeHtml(row.name)}</b>
+        ${priceRange ? `<small class="rental-use-price">${P.escapeHtml(priceRange)}</small>` : ''}
         ${row.description ? `<small>${P.escapeHtml(row.description)}</small>` : ''}
       </button>
-    `).join('') || '<div class="rental-empty">目前沒有可租用途。</div>';
+    `;
+    }).join('') || '<div class="rental-empty">目前沒有可租用途。</div>';
     renderPreference();
   }
 
@@ -243,6 +263,7 @@
       }, preferencePayload()));
       if (requestId !== boardRequestId) return;
       role = boardData.role || role;
+      renderWelcomeName(boardData.displayName);
       weekStart = boardData.startDate || weekStart;
       selectedUse = boardData.selectedUseType || selectedUse;
       renderUses(boardData.useOptions || []);
@@ -257,10 +278,7 @@
       }
       renderDates();
       renderSlots();
-      const studentRateLabel = document.querySelector('input[name="rentalRate"][value="student"]');
-      if (studentRateLabel && studentRateLabel.closest('label')) {
-        studentRateLabel.closest('label').classList.toggle('hidden', role !== 'student');
-      }
+      renderRateChoice();
       if (selectedStart) await loadRooms();
     } catch (error) {
       if (isAuthError(error)) throw error;
@@ -277,7 +295,7 @@
       <button class="rental-room-card" type="button" data-room="${P.escapeHtml(room.id)}">
         <b>${P.escapeHtml(room.name)}</b>
         ${equipment ? `<span class="rental-room-equipment">${P.escapeHtml(equipment)}</span>` : ''}
-        <strong class="rental-room-price">${P.money(room.price)}</strong>
+        <strong class="rental-room-price">${selectedUse === 'recording' ? 'NT$100–300／小時' : P.money(room.price)}</strong>
       </button>
     `;
     }).join('') || '<div class="rental-empty">這段時間沒有符合條件的教室。</div>';
@@ -322,12 +340,33 @@
     return Boolean(selected && selected.value === 'student');
   }
 
+  function renderRateChoice() {
+    const recording = selectedUse === 'recording';
+    const student = role === 'student';
+    document.getElementById('rentalRateSection').classList.toggle('hidden', recording && !student);
+    document.getElementById('studentRateLabel').classList.toggle('hidden', role !== 'student');
+    document.getElementById('rentalRateHeading').textContent =
+      recording ? '學生折扣（選填）' : '租用價格';
+    document.getElementById('generalRateText').textContent =
+      recording ? '不使用學生折扣' : '一般租用';
+  }
+
+  function selectedRecordingUsage() {
+    const selected = document.querySelector('input[name="recordingUsage"]:checked');
+    return selectedUse === 'recording' && selected ? clean(selected.value) : '';
+  }
+
   function estimatePrice() {
     if (!selectedRoom) return 0;
+    const recordingUsage = selectedRecordingUsage();
+    if (selectedUse === 'recording' && !recordingUsage) return null;
+    const unitFee = selectedUse === 'recording'
+      ? Number(recordingUsageRates[recordingUsage] || 0)
+      : Number(selectedRoom.unitFee || 0);
     const rate = rateIsStudent()
       ? Number(roomData && roomData.studentDiscountRate || 0.5)
       : 1;
-    return Math.round(Number(selectedRoom.unitFee || 0) * durationMinutes / 60 * rate);
+    return Math.round(unitFee * durationMinutes / 60 * rate);
   }
 
   function updateConfirm() {
@@ -340,12 +379,19 @@
     document.getElementById('confirmRoom').textContent = equipment
       ? `${selectedRoom.name}（${equipment}）`
       : selectedRoom.name;
-    document.getElementById('confirmPrice').textContent = P.money(estimatePrice());
+    const price = estimatePrice();
+    document.getElementById('confirmPrice').textContent =
+      price == null ? '請先選擇錄音室使用方式' : P.money(price);
   }
 
   function openConfirm(room) {
     selectedRoom = room;
     document.querySelector('input[name="rentalRate"][value="general"]').checked = true;
+    document.querySelectorAll('input[name="recordingUsage"]').forEach((node) => {
+      node.checked = false;
+    });
+    document.getElementById('recordingUsageChoice').classList.toggle('hidden', selectedUse !== 'recording');
+    renderRateChoice();
     document.getElementById('bookingNote').value = '';
     updateConfirm();
     confirmBackdrop.classList.remove('hidden');
@@ -361,7 +407,7 @@
     node.innerHTML = myBookings.length ? myBookings.map((row) => `
       <article class="list-row rental-history-row">
         <strong>${P.escapeHtml(row.date)} ${P.escapeHtml(row.startTime)}～${P.escapeHtml(row.endTime)}</strong>
-        <span>${P.escapeHtml(row.roomName || '教室')}${row.useName ? `・${P.escapeHtml(row.useName)}` : ''}</span>
+        <span>${P.escapeHtml(row.roomName || '教室')}${row.useName ? `・${P.escapeHtml(row.useName)}` : ''}${row.recordingUsageName ? `（${P.escapeHtml(row.recordingUsageName)}）` : ''}</span>
         <strong>${P.money(row.amount)}</strong>
         <span>${row.canCancel ? `<button class="btn danger" type="button" data-cancel="${P.escapeHtml(row.id)}">取消</button>` : '已完成'}</span>
       </article>
@@ -384,10 +430,7 @@
     token = nextToken;
     showBooking(true);
     renderDurations();
-    const studentRateLabel = document.querySelector('input[name="rentalRate"][value="student"]');
-    if (studentRateLabel && studentRateLabel.closest('label')) {
-      studentRateLabel.closest('label').classList.toggle('hidden', role !== 'student');
-    }
+    renderRateChoice();
     await Promise.all([loadRentalData(), loadBookings()]);
   }
 
@@ -457,6 +500,9 @@
   document.querySelectorAll('input[name="rentalRate"]').forEach((node) => {
     node.addEventListener('change', updateConfirm);
   });
+  document.querySelectorAll('input[name="recordingUsage"]').forEach((node) => {
+    node.addEventListener('change', updateConfirm);
+  });
   document.getElementById('closeRentalConfirm').addEventListener('click', closeConfirm);
   confirmBackdrop.addEventListener('click', (event) => {
     if (event.target === confirmBackdrop) closeConfirm();
@@ -464,6 +510,13 @@
 
   document.getElementById('confirmBookingBtn').addEventListener('click', async (event) => {
     if (!selectedRoom) return;
+    const recordingUsage = selectedRecordingUsage();
+    if (selectedUse === 'recording' && !recordingUsage) {
+      P.toast('請先選擇一般教室使用或錄音室錄音使用。', 'error');
+      const firstChoice = document.querySelector('input[name="recordingUsage"]');
+      if (firstChoice) firstChoice.focus();
+      return;
+    }
     const button = event.currentTarget;
     P.loading(button, true, '預約中…');
     try {
@@ -474,6 +527,7 @@
         startTime: selectedStart,
         durationMinutes,
         useType: selectedUse,
+        recordingUsage,
         studentDiscountRequested: rateIsStudent(),
         purpose: clean(document.getElementById('bookingNote').value)
       }, preferencePayload()));

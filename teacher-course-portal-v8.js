@@ -19,9 +19,11 @@
   let payrollMonth = monthKey();
   let activeTab = 'schedule';
   let data = emptyData();
+  let rosterQuery = '';
   let quickContext = null;
   let planner = null;
   let availabilityRequestId = 0;
+  let weekSnapTimer = 0;
 
   function emptyData() {
     return {
@@ -241,6 +243,61 @@
     if (!data.hours) data.hours = { start: 10, end: 21 };
   }
 
+  function teacherRawName() {
+    return clean(data.teacher && (data.teacher.name || data.teacher.teacherName));
+  }
+
+  function teacherDisplayName() {
+    return teacherRawName().replace(/老師$/, '');
+  }
+
+  function renderHeader() {
+    const name = teacherDisplayName();
+    document.getElementById('teacherWelcomeTitle').textContent = name
+      ? `老師課務｜歡迎 ${name}老師`
+      : '老師課務';
+  }
+
+  function updateWeekViewport() {
+    const grid = document.getElementById('weekGrid');
+    const scroll = grid && grid.parentElement;
+    const mobile = global.matchMedia && global.matchMedia('(max-width: 760px)').matches;
+    if (!grid || !scroll || !mobile) {
+      if (grid) {
+        grid.style.removeProperty('--teacher-day-width');
+        grid.style.removeProperty('--teacher-time-column');
+      }
+      return;
+    }
+    const stickyWidth = global.matchMedia('(max-width: 520px)').matches ? 48 : 58;
+    const dayWidth = Math.max(1, scroll.clientWidth - stickyWidth) / 2;
+    grid.style.setProperty('--teacher-time-column', `${stickyWidth}px`);
+    grid.style.setProperty('--teacher-day-width', `${dayWidth}px`);
+  }
+
+  function snapWeekScrollToGroup() {
+    const grid = document.getElementById('weekGrid');
+    const scroll = grid && grid.parentElement;
+    const mobile = global.matchMedia && global.matchMedia('(max-width: 760px)').matches;
+    const dayWidth = Number.parseFloat(grid && grid.style.getPropertyValue('--teacher-day-width'));
+    if (!grid || !scroll || !mobile || !Number.isFinite(dayWidth) || dayWidth <= 0) return;
+    const maxScroll = Math.max(0, scroll.scrollWidth - scroll.clientWidth);
+    const targets = [0, dayWidth * 2, dayWidth * 4, maxScroll]
+      .map((value) => Math.min(maxScroll, Math.max(0, value)))
+      .filter((value, index, rows) => index === 0 || Math.abs(value - rows[index - 1]) > 1);
+    const target = targets.reduce((nearest, value) => (
+      Math.abs(value - scroll.scrollLeft) < Math.abs(nearest - scroll.scrollLeft) ? value : nearest
+    ), targets[0] || 0);
+    if (Math.abs(target - scroll.scrollLeft) > 1) {
+      scroll.scrollTo({ left: target, behavior: 'smooth' });
+    }
+  }
+
+  function scheduleWeekGroupSnap() {
+    global.clearTimeout(weekSnapTimer);
+    weekSnapTimer = global.setTimeout(snapWeekScrollToGroup, 140);
+  }
+
   function uniqueEvents(rows) {
     const found = new Map();
     (rows || []).forEach((event) => {
@@ -328,7 +385,8 @@
     let html = '<div class="week-cell head week-corner" style="grid-column:1;grid-row:1"></div>';
 
     days.forEach((day, dayIndex) => {
-      html += `<div class="week-cell head week-day-head" data-day-head="${escapeHtml(day)}" style="grid-column:${dayIndex + 2};grid-row:1">${escapeHtml(dayLabel(day))}</div>`;
+      const groupStart = dayIndex % 2 === 0 ? ' week-day-group-start' : '';
+      html += `<div class="week-cell head week-day-head${groupStart}" data-day-head="${escapeHtml(day)}" data-day-group="${Math.floor(dayIndex / 2)}" style="grid-column:${dayIndex + 2};grid-row:1">${escapeHtml(dayLabel(day))}</div>`;
     });
 
     for (let minute = startHour * 60, slotIndex = 0; minute < endHour * 60; minute += 30, slotIndex += 1) {
@@ -372,22 +430,57 @@
 
     grid.innerHTML = html;
     grid.dataset.week = weekStart;
-    document.getElementById('weekPicker').value = weekStart;
     requestAnimationFrame(() => {
+      updateWeekViewport();
       if (priorWeek === weekStart) {
         scroll.scrollLeft = priorScrollLeft;
         return;
       }
-      const focusDay = days.includes(todayKey()) ? todayKey() : days[0];
-      const head = grid.querySelector(`[data-day-head="${focusDay}"]`);
-      const stickyWidth = matchMedia('(max-width:520px)').matches ? 48 : 58;
-      if (head) scroll.scrollLeft = Math.max(0, head.offsetLeft - stickyWidth);
+      const todayIndex = days.indexOf(todayKey());
+      if (!priorWeek && todayIndex >= 0) {
+        const groupIndex = Math.floor(todayIndex / 2);
+        const groupHead = grid.querySelector(`.week-day-head[data-day-group="${groupIndex}"]`);
+        const timeColumn = grid.querySelector('.week-corner');
+        const target = groupHead
+          ? groupHead.offsetLeft - (timeColumn ? timeColumn.offsetWidth : 0)
+          : 0;
+        const maxScroll = Math.max(0, scroll.scrollWidth - scroll.clientWidth);
+        scroll.scrollLeft = Math.min(maxScroll, Math.max(0, target));
+        return;
+      }
+      scroll.scrollLeft = 0;
     });
   }
 
   function renderRoster() {
-    document.getElementById('rosterBadge').textContent = `${data.roster.length} 位`;
-    document.getElementById('rosterList').innerHTML = data.roster.length ? data.roster.map((student) => `<article class="list-row teacher-roster-row"><strong>${escapeHtml(student.name)}</strong><span>手機末四碼 ${escapeHtml(student.phoneLast4 || '未提供')}</span><span><button class="btn soft" type="button" data-student-action="${escapeHtml(student.id)}">增加課程</button> <button class="btn" type="button" data-bonus-student="${escapeHtml(student.id)}" data-bonus-name="${escapeHtml(student.name)}">教材／商品</button></span></article>`).join('') : '<p class="muted">目前沒有可顯示的學生。</p>';
+    const query = clean(rosterQuery).toLocaleLowerCase('zh-Hant');
+    const teacherName = teacherRawName();
+    const rows = data.roster.filter((student) => {
+      if (!query) return true;
+      const studentName = clean(student && student.name).toLocaleLowerCase('zh-Hant');
+      const rowTeacherName = clean(student && student.teacherName || teacherName).toLocaleLowerCase('zh-Hant');
+      const normalizedTeacherName = rowTeacherName.replace(/老師$/, '');
+      return studentName.includes(query)
+        || rowTeacherName.includes(query)
+        || normalizedTeacherName.includes(query);
+    });
+    document.getElementById('rosterBadge').textContent = query
+      ? `${rows.length}/${data.roster.length} 位`
+      : `${data.roster.length} 位`;
+    if (!rows.length) {
+      document.getElementById('rosterList').innerHTML = query
+        ? `<p class="muted teacher-roster-empty">找不到符合「${escapeHtml(rosterQuery)}」的學生或老師。</p>`
+        : '<p class="muted teacher-roster-empty">目前沒有可顯示的學生。</p>';
+      return;
+    }
+    document.getElementById('rosterList').innerHTML = rows.map((student) => {
+      const rowTeacherName = clean(student && student.teacherName || teacherName);
+      const detail = [
+        rowTeacherName ? `授課老師 ${rowTeacherName}` : '',
+        `手機末四碼 ${clean(student.phoneLast4) || '未提供'}`
+      ].filter(Boolean).join('・');
+      return `<article class="list-row teacher-roster-row"><strong>${escapeHtml(student.name)}</strong><span>${escapeHtml(detail)}</span><span><button class="btn soft" type="button" data-student-action="${escapeHtml(student.id)}">增加課程</button> <button class="btn" type="button" data-bonus-student="${escapeHtml(student.id)}" data-bonus-name="${escapeHtml(student.name)}">教材／商品</button></span></article>`;
+    }).join('');
   }
 
   function renderPayroll() {
@@ -424,6 +517,7 @@
   }
 
   function renderAll() {
+    renderHeader();
     renderWeek();
     renderRoster();
     renderPayroll();
@@ -473,6 +567,7 @@
     document.querySelectorAll('[data-panel]').forEach((node) => node.classList.toggle('hidden', node.dataset.panel !== activeTab));
     const panel = document.querySelector(`[data-panel="${activeTab}"]`);
     if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (activeTab === 'schedule') requestAnimationFrame(updateWeekViewport);
   }
 
   function openMore() {
@@ -1046,11 +1141,14 @@
   document.querySelectorAll('[data-tab]').forEach((button) => button.addEventListener('click', () => activateTab(button.dataset.tab)));
   document.getElementById('prevWeek').addEventListener('click', () => { weekStart = addDays(weekStart, -7); load(true); });
   document.getElementById('nextWeek').addEventListener('click', () => { weekStart = addDays(weekStart, 7); load(true); });
-  document.getElementById('weekPicker').addEventListener('change', (event) => {
-    if (!event.target.value) return;
-    weekStart = monday(event.target.value);
-    load(true);
+  document.getElementById('rosterSearch').addEventListener('input', (event) => {
+    rosterQuery = clean(event.target.value);
+    renderRoster();
   });
+  const weekViewport = document.querySelector('[data-two-day-viewport]');
+  weekViewport.addEventListener('scroll', scheduleWeekGroupSnap, { passive: true });
+  weekViewport.addEventListener('scrollend', snapWeekScrollToGroup);
+  global.addEventListener('resize', () => requestAnimationFrame(updateWeekViewport));
   document.getElementById('loadPayroll').addEventListener('click', () => { payrollMonth = document.getElementById('payrollMonth').value || monthKey(); load(true); });
   document.getElementById('teacherMoreBtn').addEventListener('click', openMore);
   document.getElementById('closeTeacherMore').addEventListener('click', closeMore);

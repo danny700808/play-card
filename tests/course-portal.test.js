@@ -112,7 +112,8 @@ assert(teacherSource.includes('includePayroll: activeTab === \'payroll\''), '薪
 assert(!teacherSource.includes("getElementById('actionModal')"), '老師入口仍會跳回舊電腦版大表單');
 assert(!teacherSource.includes("getElementById('actionForm')"), '老師入口仍依賴已刪除的舊調課表單');
 assert(teacherPortal.includes('id="teacherQuickBackdrop"'), '老師課表缺少點選後的快速操作選單');
-assert(teacherPortal.includes('id="weekPicker"'), '老師課表缺少直接選擇星期');
+assert(!teacherPortal.includes('id="weekPicker"'), '老師課表不應顯示日期／星期選擇器');
+assert(teacherPortal.includes('id="prevWeek"') && teacherPortal.includes('id="nextWeek"'), '老師課表缺少前後週控制');
 assert(teacherPortal.includes('id="teacherFlowBanner"'), '老師課表缺少原地操作狀態');
 assert(teacherPortal.includes('id="teacherLegend"'), '老師課表缺少完整圖例');
 assert(teacherPortal.includes('<i class="rental"></i>租用'), '老師課表圖例缺少教室租用');
@@ -128,6 +129,7 @@ assert(!commonSource.includes('teacherQuickHome'), '共用程式仍會插入重�
 assert(!commonSource.includes('global.matchMedia ='), '老師入口仍會覆寫瀏覽器滑動行為');
 
 const rentalSource = fs.readFileSync(path.join(root, 'room-booking-v2.js'), 'utf8');
+const rentalHtml = fs.readFileSync(path.join(root, 'room-booking.html'), 'utf8');
 const rentalSettingsSource = fs.readFileSync(path.join(root, 'course-portal-settings-v2.js'), 'utf8');
 const teacherRoomRulesSource = fs.readFileSync(path.join(root, 'teacher-room-rules-v1.js'), 'utf8');
 new vm.Script(rentalSource, { filename: 'room-booking-v2.js' });
@@ -151,6 +153,17 @@ assert(rentalSource.includes('day.past'), '一般租用畫面未屏蔽過去日�
 assert(rentalSource.includes('roomRequestId += 1'), '切換租用條件時沒有讓舊教室查詢失效');
 assert(rentalSource.includes("role !== 'student'"), '非學生仍會看到學生半價選項');
 assert(rentalSource.includes('Promise.all([loadRentalData(), loadBookings()])'), '租用首屏仍以串行方式載入');
+assert(rentalHtml.includes('id="rentalHeaderTitle"'), '租用頁標題缺少登入姓名顯示位置');
+assert(rentalSource.includes('renderWelcomeName(boardData.displayName)'), '租用頁沒有顯示後端確認的登入姓名');
+assert(rentalSource.includes("normalize('NFKC')") && rentalSource.includes('/[@\\r\\n]/.test(name)'), '租用頁標題缺少全形 Email／電話防誤顯示保護');
+assert(rentalHtml.includes('一般教室使用 <b>NT$100/小時</b>'), '錄音室確認缺少一般教室使用價格選項');
+assert(rentalHtml.includes('錄音室錄音使用 <b>NT$300/小時</b>'), '錄音室確認缺少錄音使用價格選項');
+assert(!/name="recordingUsage"[^>]*checked/.test(rentalHtml), '錄音室使用方式不可預先代選');
+assert(rentalSource.includes('NT$100–300／小時'), '錄音室用途卡或教室卡未顯示 NT$100–300 價格範圍');
+assert(rentalSource.includes('recordingUsage,'), '錄音室使用方式未送往後端');
+assert(rentalSource.includes("selectedUse === 'recording' && !recordingUsage"), '前端未阻擋未選錄音室使用方式的預約');
+assert(rentalSource.includes("classList.toggle('hidden', recording && !student)"), '錄音室非學生確認仍顯示重複的一般租用價格組');
+assert(rentalSource.includes("recording ? '學生折扣（選填）' : '租用價格'"), '錄音室學生半價未標成獨立折扣');
 assert(rentalSettingsSource.includes('data-use-rate'), '租用用途設定缺少每小時固定費用');
 assert(rentalSettingsSource.includes('data-room-piano'), '教室租用設定缺少鋼琴設備種類');
 
@@ -288,6 +301,18 @@ function createBackendFixtureDb(state) {
       return new FixtureQuery(this.name, this.filters.concat({ field, operator, expected }));
     }
 
+    doc(id) {
+      const collectionName = this.name;
+      return {
+        async get() {
+          const entry = (state.collections[collectionName] || []).find((row) => row.id === id);
+          return entry
+            ? backendFixtureDocument(entry.id, entry.data)
+            : { id, exists: false, data: () => undefined };
+        }
+      };
+    }
+
     async get() {
       const rows = (state.collections[this.name] || []).filter((entry) => (
         this.filters.every(({ field, operator, expected }) => {
@@ -359,7 +384,12 @@ function loadBackendForScheduleTests(state) {
     fixtureModule._compile(
       `${backend}\n` +
       'module.exports.__testScheduleBundle = scheduleBundle;\n' +
-      'module.exports.__testAssertScheduleWritable = assertScheduleWritable;\n',
+      'module.exports.__testAssertScheduleWritable = assertScheduleWritable;\n' +
+      'module.exports.__testRecordingRentalSelection = recordingRentalSelection;\n' +
+      'module.exports.__testRentalAmount = rentalAmount;\n' +
+      'module.exports.__testEffectiveRentalFee = effectiveRentalFee;\n' +
+      'module.exports.__testSafeRentalDisplayName = safeRentalDisplayName;\n' +
+      'module.exports.__testRentalSessionDisplayName = rentalSessionDisplayName;\n',
       backendPath
     );
     return fixtureModule.exports;
@@ -469,6 +499,29 @@ async function runBackendScheduleRegressionTests() {
       opsEducationMirrorFixedCourses: [
         { id: 'fixed-1', data: mirrorFixture(fixedCourse) }
       ],
+      coursePortalRenters: [
+        { id: 'renter-1', data: { name: '林租客', phone: '0912345678', email: 'renter@example.com' } }
+      ],
+      coursePortalTeacherBindings: [
+        {
+          id: 'teacher-binding-wrong',
+          data: {
+            status: 'active',
+            authAccountId: 'account-teacher',
+            teacherId: 'teacher-2',
+            name: '其他老師'
+          }
+        },
+        {
+          id: 'teacher-binding-exact',
+          data: {
+            status: 'active',
+            authAccountId: 'account-teacher',
+            teacherId: 'teacher-1',
+            name: '王老師'
+          }
+        }
+      ],
       coursePortalScheduleChanges: [
         { id: 'permanent-old', data: oldPermanent },
         { id: 'permanent-new', data: newPermanent }
@@ -476,6 +529,96 @@ async function runBackendScheduleRegressionTests() {
     }))
   };
   const duplicatePermanentBackend = loadBackendForScheduleTests(duplicatePermanentState);
+  const [renterDisplayName, teacherDisplayName, studentDisplayName] = await Promise.all([
+    duplicatePermanentBackend.__testRentalSessionDisplayName({
+      role: 'renter',
+      renterId: 'renter-1',
+      authAccountId: 'account-renter'
+    }),
+    duplicatePermanentBackend.__testRentalSessionDisplayName({
+      role: 'teacher',
+      teacherId: 'teacher-1',
+      authAccountId: 'account-teacher'
+    }),
+    duplicatePermanentBackend.__testRentalSessionDisplayName({
+      role: 'student',
+      studentIds: ['student-1'],
+      authAccountId: 'account-student'
+    })
+  ]);
+  check(() => {
+    assert.strictEqual(renterDisplayName, '林租客', '一般或 LINE 租用登入未保留已註冊姓名');
+    assert.strictEqual(teacherDisplayName, '王老師', '老師租用頁未優先使用目前 teacherId 的綁定姓名');
+    assert.strictEqual(studentDisplayName, '學生', '學生租用頁缺少 mirror 姓名 fallback');
+    const general = duplicatePermanentBackend.__testRecordingRentalSelection({
+      useType: 'recording',
+      recordingUsage: 'general_room'
+    }, true);
+    const studio = duplicatePermanentBackend.__testRecordingRentalSelection({
+      useType: 'recording',
+      recordingUsage: 'studio_recording'
+    }, true);
+    assert.strictEqual(general.hourlyRate, 100, '一般教室使用未套用每小時 NT$100');
+    assert.strictEqual(studio.hourlyRate, 300, '錄音室錄音使用未套用每小時 NT$300');
+    assert.strictEqual(
+      duplicatePermanentBackend.__testEffectiveRentalFee({}, {}, { id: 'recording', hourlyRate: 300 }),
+      null,
+      '錄音室未選使用方式時仍預先顯示固定 NT$300'
+    );
+    assert.strictEqual(
+      duplicatePermanentBackend.__testEffectiveRentalFee({}, {}, { id: 'recording', hourlyRate: 300 }, general),
+      100,
+      '後端未依一般教室使用選項重算單價'
+    );
+    assert.strictEqual(
+      duplicatePermanentBackend.__testRentalAmount(general.hourlyRate, 90),
+      150,
+      '一般教室使用未依 90 分鐘租期重算'
+    );
+    assert.strictEqual(
+      duplicatePermanentBackend.__testRentalAmount(studio.hourlyRate, 90, 0.5),
+      225,
+      '錄音室錄音使用未在依租期重算後保留學生半價'
+    );
+    assert.throws(
+      () => duplicatePermanentBackend.__testRecordingRentalSelection({ useType: 'recording' }, true),
+      (error) => error && error.code === 'invalid-argument',
+      '後端仍接受未選錄音室使用方式的預約'
+    );
+    assert.throws(
+      () => duplicatePermanentBackend.__testRecordingRentalSelection({
+        useType: 'recording',
+        recordingUsage: 'general'
+      }, true),
+      (error) => error && error.code === 'invalid-argument',
+      '後端仍接受偽造的錄音室使用方式'
+    );
+    assert.strictEqual(
+      duplicatePermanentBackend.__testSafeRentalDisplayName('王小明'),
+      '王小明',
+      '租用頁未保留有效登入姓名'
+    );
+    assert.strictEqual(
+      duplicatePermanentBackend.__testSafeRentalDisplayName('user@example.com'),
+      '',
+      '租用頁可能把 Email 當成歡迎姓名'
+    );
+    assert.strictEqual(
+      duplicatePermanentBackend.__testSafeRentalDisplayName('0912-345-678'),
+      '',
+      '租用頁可能把電話當成歡迎姓名'
+    );
+    assert.strictEqual(
+      duplicatePermanentBackend.__testSafeRentalDisplayName('０９１２３４５６７８'),
+      '',
+      '租用頁可能把全形電話當成歡迎姓名'
+    );
+    assert.strictEqual(
+      duplicatePermanentBackend.__testSafeRentalDisplayName('user＠example.com'),
+      '',
+      '租用頁可能把全形 Email 當成歡迎姓名'
+    );
+  });
   const expiredSync = { toMillis: () => Date.now() - 60 * 1000 };
   const scheduleSnapshot = (data) => ({ exists: true, data: () => data });
   check(() => {
@@ -841,6 +984,11 @@ assert(backend.includes("id: 'guzheng'"), '租用用途缺少古箏');
 assert(backend.includes("id: 'recording'"), '租用用途缺少錄音室');
 assert(backend.includes('hourlyRate: 300'), '錄音用途未設定每小時 NT$300');
 assert(backend.includes("if (/錄音室|錄音/.test(clean(room && room.name))) return 100;"), '錄音室其他用途未固定為每小時 NT$100');
+assert(backend.includes('recordingRentalSelection(data, true)'), '建立錄音室預約前未強制驗證使用方式');
+assert(backend.includes('recordingUsage: clean(recordingSelection && recordingSelection.id)'), '成立預約未保存錄音室使用方式');
+assert(backend.includes('displayName: await displayNamePromise'), '租用週表未回傳已驗證的登入姓名');
+assert(backend.includes("const teachers = await mirrorRows('teachers')"), '老師租用頁歡迎姓名缺少 mirror fallback');
+assert(backend.includes("const students = await mirrorRows('students')"), '學生租用頁歡迎姓名缺少 mirror fallback');
 assert(schedulerSource.includes("['guzheng','古箏']"), '教室設定缺少古箏用途');
 assert(schedulerSource.includes("['recording','錄音室']"), '教室設定缺少錄音用途');
 assert(schedulerSource.includes('data-policy-rental-use'), '教室設定沒有保存可租用途');

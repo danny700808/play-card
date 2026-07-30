@@ -7,6 +7,11 @@ body.rental-booking-v2 {
   padding: 12px 10px 40px;
 }
 
+.rental-booking-v2 #rentalHeaderTitle {
+  font-size: clamp(18px, 4.5vw, 25px);
+  line-height: 1.25;
+}
+
 .rental-booking-v2 .portal-head p,
 .rental-booking-v2 .section-title p {
   display: none;
@@ -64,6 +69,13 @@ body.rental-booking-v2 {
 
 .rental-use-card small {
   display: none;
+}
+
+.rental-use-card small.rental-use-price {
+  display: block;
+  color: var(--green);
+  font-size: 11px;
+  font-weight: 900;
 }
 
 .rental-use-card.active {
@@ -312,11 +324,57 @@ body.rental-booking-v2 {
   gap: 12px;
 }
 
+.rental-recording-choice {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 11px;
+  border: 1px solid #c9ddd5;
+  border-radius: 14px;
+  background: #f5faf7;
+}
+
+.rental-recording-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.rental-recording-options label {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 5px 8px;
+  min-height: 58px;
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.rental-recording-options label b {
+  grid-column: 2;
+  color: var(--green);
+}
+
+.rental-recording-options label:has(input:checked) {
+  border-color: var(--green);
+  background: var(--green-soft);
+  box-shadow: 0 0 0 2px rgba(36, 115, 92, .08);
+}
+
+.rental-rate-section {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
 .rental-rate-choice {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
-  margin-top: 10px;
 }
 
 .rental-rate-choice label {
@@ -380,6 +438,10 @@ body.rental-booking-v2 {
   }
 
   .rental-booking-v2 .rental-history-row {
+    grid-template-columns: 1fr;
+  }
+
+  .rental-recording-options {
     grid-template-columns: 1fr;
   }
 }

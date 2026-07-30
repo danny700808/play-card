@@ -10,6 +10,19 @@ on:
       - "teacher-course-session-v8.js"
       - "teacher-course-portal-v8.css"
       - "teacher-home.html"
+      - "profile.html"
+      - "contract.html"
+      - "announcements.html"
+      - "task.html"
+      - "teacher-goods.html"
+      - "forms-hub.html"
+      - "teacher-more-auth-bridge.js"
+      - "teacher-more-pages.css"
+      - "index.html"
+      - "login.html"
+      - "tests/login-clean-ui.test.js"
+      - "tests/teacher-course-portal-mobile.test.js"
+      - "tests/teacher-more-pages.test.js"
       - ".github/workflows/verify-teacher-course-app.yml"
   workflow_dispatch:
 
@@ -31,6 +44,10 @@ jobs:
         run: |
           node --check teacher-course-portal-v8.js
           node --check teacher-course-session-v8.js
+          node --check teacher-more-auth-bridge.js
+          node tests/login-clean-ui.test.js
+          node tests/teacher-course-portal-mobile.test.js
+          node tests/teacher-more-pages.test.js
 
       - name: Verify one teacher app shell
         run: |
@@ -50,7 +67,8 @@ jobs:
           if ((html.match(/teacher-bottom-tabs/g) || []).length !== 1) throw new Error('Teacher bottom navigation must exist exactly once');
           if (html.includes('teacherQuickHome') || html.includes('data-teacher-quick')) throw new Error('Duplicate top teacher shortcuts remain');
           if (!html.includes('id="teacherMoreBackdrop"')) throw new Error('Other bottom sheet is missing');
-          if (!html.includes('id="teacherQuickBackdrop"') || !html.includes('id="weekPicker"')) throw new Error('Teacher quick actions or week picker is missing');
+          if (!html.includes('id="teacherQuickBackdrop"')) throw new Error('Teacher quick actions are missing');
+          if (html.includes('id="weekPicker"') || runtime.includes("getElementById('weekPicker')")) throw new Error('Obsolete teacher date picker remains');
           for (const path of ['profile.html','contract.html','announcements.html','task.html','teacher-goods.html','forms-hub.html']) {
             if (!html.includes(`href="${path}"`)) throw new Error(`Other action is missing: ${path}`);
           }

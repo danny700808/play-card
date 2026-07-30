@@ -1,0 +1,448 @@
+:root {
+  --teacher-more-bg: #f4f7f3;
+  --teacher-more-card: #fff;
+  --teacher-more-line: #d8e4de;
+  --teacher-more-ink: #17352c;
+  --teacher-more-muted: #62756d;
+  --teacher-more-green: #24735c;
+  --teacher-more-green-dark: #185b47;
+  --teacher-more-green-soft: #eaf6f0;
+}
+
+body.teacher-utility-page {
+  --bg: var(--teacher-more-bg);
+  --card: var(--teacher-more-card);
+  --line: var(--teacher-more-line);
+  --text: var(--teacher-more-ink);
+  --muted: var(--teacher-more-muted);
+  --brand: var(--teacher-more-green);
+  --brand2: var(--teacher-more-green-dark);
+  --main: var(--teacher-more-green);
+  --main-dark: var(--teacher-more-green-dark);
+  margin: 0;
+  background: var(--teacher-more-bg) !important;
+  color: var(--teacher-more-ink);
+  font-family: "Noto Sans TC", "Microsoft JhengHei", system-ui, -apple-system,
+    BlinkMacSystemFont, "Segoe UI", sans-serif;
+  overflow-x: hidden;
+}
+
+body.teacher-utility-page .container,
+body.teacher-utility-page main,
+body.teacher-utility-page .goods-page,
+body.teacher-utility-page .forms-wrap {
+  width: min(760px, 100%);
+  max-width: 100%;
+  margin-inline: auto;
+  padding: 12px 10px 36px;
+}
+
+body.teacher-utility-page .card,
+body.teacher-utility-page .contract-card,
+body.teacher-utility-page .goods-panel,
+body.teacher-utility-page .forms-head,
+body.teacher-utility-page .form-card,
+body.teacher-utility-page .announcement-section-card,
+body.teacher-utility-page .cardx,
+body.teacher-utility-page .item-card,
+body.teacher-utility-page .record-card,
+body.teacher-utility-page .goods-card {
+  min-width: 0;
+  border: 1px solid var(--teacher-more-line);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: none;
+}
+
+body.teacher-utility-page .card,
+body.teacher-utility-page .contract-card,
+body.teacher-utility-page .goods-panel,
+body.teacher-utility-page .forms-head,
+body.teacher-utility-page .announcement-section-card {
+  padding: 12px;
+  margin-bottom: 10px;
+}
+
+body.teacher-utility-page h1,
+body.teacher-utility-page .title,
+body.teacher-utility-page .forms-title {
+  color: var(--teacher-more-ink);
+  font-size: 20px;
+  line-height: 1.3;
+}
+
+body.teacher-utility-page h2,
+body.teacher-utility-page .section-title,
+body.teacher-utility-page .announcement-section-title,
+body.teacher-utility-page .goods-panel-title,
+body.teacher-utility-page .form-card-title {
+  color: var(--teacher-more-ink);
+  font-size: 16px;
+  line-height: 1.4;
+}
+
+body.teacher-utility-page h3,
+body.teacher-utility-page .cardx h3,
+body.teacher-utility-page .goods-name,
+body.teacher-utility-page .item-title {
+  color: var(--teacher-more-ink);
+  font-size: 17px;
+  line-height: 1.45;
+}
+
+body.teacher-utility-page .welcome,
+body.teacher-utility-page .tips,
+body.teacher-utility-page .helper,
+body.teacher-utility-page .forms-sub,
+body.teacher-utility-page .form-card-desc,
+body.teacher-utility-page .goods-sub,
+body.teacher-utility-page .meta,
+body.teacher-utility-page .muted-mini,
+body.teacher-utility-page .tiny-help {
+  color: var(--teacher-more-muted);
+}
+
+body.teacher-utility-page .btn,
+body.teacher-utility-page button.btn,
+body.teacher-utility-page a.btn {
+  min-height: 42px;
+  padding: 8px 12px;
+  border: 1px solid var(--teacher-more-green);
+  border-radius: 11px;
+  background: var(--teacher-more-green);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 850;
+  line-height: 1.3;
+  text-align: center;
+  cursor: pointer;
+}
+
+body.teacher-utility-page .btn.secondary,
+body.teacher-utility-page button.btn.secondary,
+body.teacher-utility-page a.btn.secondary {
+  border-color: var(--teacher-more-line);
+  background: #fff;
+  color: var(--teacher-more-ink);
+}
+
+body.teacher-utility-page .btn.danger,
+body.teacher-utility-page button.btn.danger {
+  border-color: #e8c5c2;
+  background: #fff5f4;
+  color: #923e38;
+}
+
+body.teacher-utility-page input,
+body.teacher-utility-page select,
+body.teacher-utility-page textarea {
+  min-width: 0;
+  max-width: 100%;
+  border-color: #cbd9d2;
+  border-radius: 11px;
+}
+
+body.teacher-utility-page img,
+body.teacher-utility-page video,
+body.teacher-utility-page audio,
+body.teacher-utility-page canvas,
+body.teacher-utility-page iframe,
+body.teacher-utility-page object,
+body.teacher-utility-page embed {
+  max-width: 100%;
+}
+
+body.teacher-utility-page .file-link,
+body.teacher-utility-page .asset-list a,
+body.teacher-utility-page .meta,
+body.teacher-utility-page .info-value,
+body.teacher-utility-page .requirement,
+body.teacher-utility-page .item-content,
+body.teacher-utility-page .reply-box {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+body.utility-profile .info-row,
+body.utility-profile .teach-row,
+body.utility-task .upload-box,
+body.utility-task .summary-box,
+body.utility-goods .mini-form,
+body.utility-announcements .media-box,
+body.utility-announcements .reply-box {
+  border-color: var(--teacher-more-line);
+  background: #f8fbf9;
+}
+
+body.utility-announcements .image-grid a {
+  display: grid;
+  place-items: center;
+  min-height: 120px;
+  background: #fff;
+}
+
+body.utility-announcements .image-grid img {
+  width: 100%;
+  height: auto;
+  max-height: 360px;
+  object-fit: contain;
+  background: #fff;
+}
+
+body.utility-announcements .file-link span:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+body.utility-goods .goods-tabs {
+  gap: 6px;
+}
+
+body.utility-goods .goods-tabs button {
+  min-width: 0;
+  padding-inline: 5px;
+}
+
+body.utility-goods .goods-img,
+body.utility-goods .image-preview {
+  background: #f8fbf9;
+}
+
+body.utility-goods .goods-img img,
+body.utility-goods .image-preview img {
+  object-fit: contain;
+}
+
+body.utility-forms .forms-grid {
+  gap: 10px;
+}
+
+body.utility-forms .form-card {
+  min-height: 112px;
+  padding: 14px;
+}
+
+body.utility-contract .container {
+  width: min(1180px, 100%) !important;
+  max-width: 1180px !important;
+}
+
+body.utility-contract .contract-shell {
+  grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+  gap: 10px;
+}
+
+body.utility-contract .contract-item {
+  display: block;
+  width: 100%;
+  color: inherit;
+  font: inherit;
+  line-height: 1.55;
+  text-align: left;
+}
+
+body.utility-contract .contract-item .helper {
+  display: block;
+  margin-top: 4px;
+}
+
+body.utility-contract .preview-shell {
+  max-width: 100%;
+  overflow: visible;
+}
+
+body.utility-contract .preview-page {
+  width: 210mm;
+  max-width: 100%;
+  min-height: 297mm;
+  overflow: visible;
+  border-radius: 10px;
+}
+
+body.utility-contract .preview-body,
+body.utility-contract .official-sign-card .line {
+  overflow-wrap: anywhere;
+}
+
+body.utility-contract .stamp-box img,
+body.utility-contract .signature-box img {
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+body.utility-contract .seam-stamp-half img {
+  flex: 0 0 36mm;
+  width: 36mm;
+  height: 36mm;
+  max-width: none;
+  max-height: none;
+  object-fit: contain;
+}
+
+.teacher-more-auth-boundary {
+  width: min(560px, 100%);
+  margin: max(24px, 6vh) auto;
+  padding: 18px;
+  border: 1px solid #bcd8cb;
+  border-radius: 18px;
+  background: #fff;
+  color: var(--teacher-more-ink);
+  box-shadow: 0 14px 36px rgba(24, 72, 55, .08);
+}
+
+.teacher-more-auth-boundary-mark {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  margin-bottom: 12px;
+  border-radius: 13px;
+  background: var(--teacher-more-green-soft);
+  color: var(--teacher-more-green);
+  font-weight: 950;
+}
+
+.teacher-more-auth-boundary h1 {
+  margin: 0 0 7px;
+  font-size: 20px;
+}
+
+.teacher-more-auth-boundary p {
+  margin: 0;
+  color: var(--teacher-more-muted);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.teacher-more-auth-boundary-note {
+  margin-top: 12px !important;
+  padding: 10px;
+  border-radius: 12px;
+  background: var(--teacher-more-green-soft);
+  color: #245c49 !important;
+  font-weight: 750;
+}
+
+.teacher-more-auth-boundary-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.teacher-more-auth-boundary-actions a {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--teacher-more-green);
+  border-radius: 11px;
+  background: var(--teacher-more-green);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 850;
+  text-align: center;
+  text-decoration: none;
+}
+
+.teacher-more-auth-boundary-actions a.secondary {
+  border-color: var(--teacher-more-line);
+  background: #fff;
+  color: var(--teacher-more-ink);
+}
+
+@media screen and (max-width: 1050px) {
+  body.utility-contract .contract-shell {
+    grid-template-columns: 1fr;
+  }
+
+  body.utility-contract .preview-page {
+    width: 100%;
+    min-height: 0;
+    padding: 22px 18px 36px;
+  }
+
+  body.utility-contract .seam-stamp-half.page1 {
+    top: auto;
+    bottom: 18px;
+  }
+
+  body.utility-contract .seam-stamp-half.page2 {
+    top: 18px;
+  }
+}
+
+@media (max-width: 560px) {
+  body.teacher-utility-page .container,
+  body.teacher-utility-page main,
+  body.teacher-utility-page .goods-page,
+  body.teacher-utility-page .forms-wrap {
+    padding: 9px 8px 28px;
+  }
+
+  body.teacher-utility-page .btn-row,
+  body.teacher-utility-page .actions,
+  body.utility-announcements .reply-actions,
+  body.utility-goods .card-actions,
+  body.utility-goods .goods-search {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  body.teacher-utility-page .btn-row .btn,
+  body.teacher-utility-page .actions .btn,
+  body.utility-announcements .reply-actions .btn,
+  body.utility-goods .goods-search .btn {
+    width: 100% !important;
+  }
+
+  body.utility-task .rec-line {
+    grid-template-columns: 1fr;
+  }
+
+  body.utility-task .rec-buttons {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  body.utility-announcements .image-grid {
+    grid-template-columns: 1fr;
+  }
+
+  body.utility-contract .official-sign-grid {
+    grid-template-columns: 1fr;
+  }
+
+  body.utility-contract .signature-box {
+    width: 100%;
+    max-width: 4.4cm;
+  }
+
+  .teacher-more-auth-boundary-actions {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media print {
+  body.utility-contract .container {
+    width: auto !important;
+    max-width: none !important;
+    padding: 0 !important;
+  }
+
+  body.utility-contract .preview-page {
+    width: 210mm !important;
+    max-width: none !important;
+    min-height: 297mm !important;
+    padding: 12mm 11mm !important;
+    overflow: visible !important;
+  }
+
+  body.utility-contract .seam-stamp-half {
+    display: flex;
+  }
+}

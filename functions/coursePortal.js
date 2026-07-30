@@ -100,7 +100,56 @@ function effectiveRoomFee(room, setting = {}) {
   return defaultRoomFee(room);
 }
 
-function effectiveRentalFee(room, setting = {}, useOption = {}) {
+const RECORDING_RENTAL_OPTIONS = Object.freeze([
+  Object.freeze({
+    id: 'general_room',
+    name: '一般教室使用',
+    hourlyRate: 100
+  }),
+  Object.freeze({
+    id: 'studio_recording',
+    name: '錄音室錄音使用',
+    hourlyRate: 300
+  })
+]);
+
+function recordingRentalSelection(data, required = false) {
+  const useType = clean(data && data.useType);
+  const selectionId = clean(data && data.recordingUsage);
+  if (useType !== 'recording') {
+    if (selectionId) {
+      throw new HttpsError('invalid-argument', '只有錄音室用途可以選擇錄音室使用方式。');
+    }
+    return null;
+  }
+  if (!selectionId) {
+    if (required) {
+      throw new HttpsError(
+        'invalid-argument',
+        '請選擇「一般教室使用 NT$100/小時」或「錄音室錄音使用 NT$300/小時」。'
+      );
+    }
+    return null;
+  }
+  const selection = RECORDING_RENTAL_OPTIONS.find((row) => row.id === selectionId);
+  if (!selection) {
+    throw new HttpsError('invalid-argument', '錄音室使用方式無效，請重新選擇。');
+  }
+  return selection;
+}
+
+function rentalAmount(unitFee, durationMinutes, discountRate = 1) {
+  return Math.round(
+    Math.max(0, Number(unitFee) || 0) *
+    Math.max(0, Number(durationMinutes) || 0) / 60 *
+    Math.max(0, Number(discountRate) || 0)
+  );
+}
+
+function effectiveRentalFee(room, setting = {}, useOption = {}, recordingSelection = null) {
+  if (clean(useOption.id) === 'recording') {
+    return recordingSelection ? recordingSelection.hourlyRate : null;
+  }
   if (useOption.hourlyRate !== undefined && useOption.hourlyRate !== null && useOption.hourlyRate !== '') {
     return Math.max(0, Number(useOption.hourlyRate) || 0);
   }
@@ -173,6 +222,7 @@ async function rentalUseOptions(rooms = []) {
     name: clean(row.name) || ('用途 ' + (index + 1)),
     icon: clean(row.icon) || (defaults[index] && defaults[index].icon) || '🎵',
     description: clean(row.description),
+    priceRangeText: clean(row.id) === 'recording' ? 'NT$100–300／小時' : '',
     roomIds: Array.isArray(row.roomIds) && row.roomIds.length ? row.roomIds.map(clean).filter(Boolean) : ((defaults.find((item) => item.id === clean(row.id)) || {}).roomIds || []),
     hourlyRate: row.hourlyRate === undefined || row.hourlyRate === null || row.hourlyRate === ''
       ? null
@@ -1679,6 +1729,90 @@ async function requireSession(data, allowedRoles) {
   return session;
 }
 
+function safeRentalDisplayName(value) {
+  const name = clean(value).normalize('NFKC');
+  if (!name || name.length > 60 || /[@\r\n]/.test(name) || /[\p{Cc}\p{Cf}]/u.test(name)) return '';
+  const digits = name.replace(/\D/g, '');
+  if (digits.length >= 8) return '';
+  return name;
+}
+
+async function rentalSessionDisplayName(session) {
+  const directName = safeRentalDisplayName(session && (session.displayName || session.name));
+  if (directName) return directName;
+  try {
+    if (clean(session && session.role) === 'renter' && clean(session.renterId)) {
+      const renterSnapshot = await db.collection('coursePortalRenters').doc(clean(session.renterId)).get();
+      const renter = renterSnapshot.exists ? renterSnapshot.data() || {} : {};
+      const renterName = safeRentalDisplayName(renter.name || renter.displayName);
+      if (renterName) return renterName;
+    }
+
+    let bindings = [];
+    if (clean(session && session.role) === 'student') {
+      bindings = await activeStudentBindingsForSession(session);
+    } else {
+      const role = clean(session && session.role);
+      const collection = db.collection(bindingCollection(role));
+      const queries = [];
+      if (clean(session && session.authAccountId)) {
+        queries.push(collection.where('authAccountId', '==', clean(session.authAccountId)).get());
+      }
+      if (clean(session && session.lineUserId)) {
+        queries.push(collection.where('lineUserId', '==', clean(session.lineUserId)).get());
+      }
+      if (role === 'teacher' && clean(session.teacherId)) {
+        queries.push(collection.where('teacherId', '==', clean(session.teacherId)).get());
+      }
+      if (role === 'renter' && clean(session.renterId)) {
+        queries.push(collection.where('renterId', '==', clean(session.renterId)).get());
+      }
+      const snapshots = await Promise.all(queries);
+      bindings = [...new Map(snapshots.flatMap((snapshot) => snapshot.docs).map((doc) => [
+        doc.id,
+        Object.assign({ __id: doc.id }, doc.data() || {})
+      ])).values()];
+    }
+    const active = bindings.filter((row) => clean(row.status || 'active') === 'active');
+    const role = clean(session && session.role);
+    const exactBindings = role === 'teacher' && clean(session.teacherId)
+      ? active.filter((row) => clean(row.teacherId) === clean(session.teacherId))
+      : (role === 'renter' && clean(session.renterId)
+        ? active.filter((row) => clean(row.renterId) === clean(session.renterId))
+        : active);
+    const preferredBindings = exactBindings.length ? exactBindings : active;
+    const registeredName = preferredBindings
+      .map((row) => safeRentalDisplayName(row.name || row.displayName))
+      .find(Boolean);
+    if (registeredName) return registeredName;
+    const lineDisplayName = preferredBindings
+      .map((row) => safeRentalDisplayName(row.lineDisplayName))
+      .find(Boolean);
+    if (lineDisplayName) return lineDisplayName;
+
+    if (clean(session && session.role) === 'teacher' && clean(session.teacherId)) {
+      const teachers = await mirrorRows('teachers');
+      const teacher = teachers.find((row) => sourceId(row) === clean(session.teacherId)) || {};
+      return safeRentalDisplayName(teacher.name || teacher.displayName || teacher.teacherName);
+    }
+    if (clean(session && session.role) === 'student') {
+      const studentIds = [...new Set([
+        ...(Array.isArray(session.studentIds) ? session.studentIds : []),
+        ...active.map((row) => row.studentId)
+      ].map(clean).filter(Boolean))];
+      if (studentIds.length) {
+        const students = await mirrorRows('students');
+        const student = students.find((row) => studentIds.includes(sourceId(row))) || {};
+        return safeRentalDisplayName(student.name || student.displayName || student.studentName);
+      }
+    }
+    return '';
+  } catch (error) {
+    console.warn('[course portal rental display name]', clean(error && error.message));
+    return '';
+  }
+}
+
 function eventDate(row) {
   return dateKey(row.date || row.courseDate || row.startDate || row.lessonDate);
 }
@@ -2942,6 +3076,10 @@ async function rentalAvailability(data) {
   const useOptions = await rentalUseOptions(bundle.rooms);
   const selectedUse = useOptions.find((row) => row.id === clean(data.useType));
   if (!selectedUse) throw new HttpsError('invalid-argument', '請選擇租用用途。');
+  const recordingSelection = recordingRentalSelection({
+    useType: selectedUse.id,
+    recordingUsage: data.recordingUsage
+  });
   const settingsMap = {};
   roomSettings.docs.forEach((doc) => { settingsMap[doc.id] = doc.data() || {}; });
   const discountRequested = data.studentDiscountRequested === true ||
@@ -2963,7 +3101,7 @@ async function rentalAvailability(data) {
     const categoryAllowed = rentalUseAllowsRoom(useOptions, data.useType, id, room, setting);
     const preferenceAllowed = rentalPreferenceAllowsRoom(room, setting, data);
     const policyAllowed = roomAllowsInterval(room, setting, date, startTime, endTime, '', 'rental');
-    const baseFee = effectiveRentalFee(room, setting, selectedUse);
+    const baseFee = effectiveRentalFee(room, setting, selectedUse, recordingSelection);
     const available = !blocked && !sharedEquipmentBusy && rentable && categoryAllowed && preferenceAllowed && policyAllowed;
     const equipmentLabel = roomEquipmentLabel(room, setting);
     return {
@@ -2987,7 +3125,10 @@ async function rentalAvailability(data) {
       equipment: profile.equipment,
       equipmentLabel,
       unitFee: baseFee,
-      price: Math.round(baseFee * duration / 60 * (studentRate ? policy.studentDiscountRate : 1)),
+      price: baseFee == null
+        ? null
+        : rentalAmount(baseFee, duration, studentRate ? policy.studentDiscountRate : 1),
+      priceRangeText: selectedUse.id === 'recording' ? 'NT$100–300／小時' : '',
       priceType: studentRate ? '柚子學生半價' : '一般價格'
     };
   });
@@ -2999,6 +3140,9 @@ async function rentalAvailability(data) {
     durationMinutes: duration,
     businessHours: policy.businessHours,
     useOptions,
+    recordingUsageOptions: selectedUse.id === 'recording'
+      ? RECORDING_RENTAL_OPTIONS.map((row) => Object.assign({}, row))
+      : [],
     studentDiscountRate: policy.studentDiscountRate,
     rooms: rooms.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'))
   };
@@ -3060,6 +3204,7 @@ async function rentalDayBoard(data) {
 
 async function rentalWeekBoard(data) {
   const session = await requireSession(data, ['student', 'renter', 'teacher']);
+  const displayNamePromise = rentalSessionDisplayName(session);
   const requestedStartDate = dateKey(data.startDate || data.date);
   if (!requestedStartDate) throw new HttpsError('invalid-argument', '請選擇週起始日期。');
   const startDate = requestedStartDate < currentTaipeiDay() ? currentTaipeiDay() : requestedStartDate;
@@ -3127,6 +3272,7 @@ async function rentalWeekBoard(data) {
     startDate,
     endDate,
     role: session.role,
+    displayName: await displayNamePromise,
     durationMinutes: duration,
     selectedUseType,
     useOptions,
@@ -3137,6 +3283,7 @@ async function rentalWeekBoard(data) {
 
 async function createRoomBooking(data) {
   const session = await requireSession(data, ['student', 'renter', 'teacher']);
+  const recordingSelection = recordingRentalSelection(data, true);
   const expectedVersion = await readScheduleVersion();
   const availability = await rentalAvailability(data);
   if (publicRentalSlotIsPast(availability.date, availability.startTime)) {
@@ -3168,6 +3315,8 @@ async function createRoomBooking(data) {
     purpose: clean(data.purpose),
     useType: clean(data.useType),
     useName: clean((availability.useOptions.find((row) => row.id === clean(data.useType)) || {}).name),
+    recordingUsage: clean(recordingSelection && recordingSelection.id),
+    recordingUsageName: clean(recordingSelection && recordingSelection.name),
     pianoType: clean(data.pianoType).toLowerCase() ||
       (flagTrue(data.excludeDigitalPiano) ? 'exclude_digital' : 'any'),
     excludeDigitalPiano: flagTrue(data.excludeDigitalPiano),
@@ -3260,9 +3409,10 @@ async function createRoomBooking(data) {
       body: [
         `您預約的「${booking.roomName}」將於 ${booking.date} ${booking.startTime} 開始。`,
         `用途：${booking.useName || '教室租用'}`,
+        booking.recordingUsageName ? `錄音室使用方式：${booking.recordingUsageName}` : '',
         `時間：${booking.startTime}～${booking.endTime}`,
         `如不使用，可在結束前進入租用頁取消：${PORTAL_BASE}/room-booking.html`
-      ].join('\n'),
+      ].filter(Boolean).join('\n'),
       message: [
         `教室租用提醒`,
         `您預約的「${booking.roomName}」將於 ${booking.date} ${booking.startTime} 開始。`,
@@ -3311,6 +3461,8 @@ async function rentalMyBookings(data) {
       purpose: clean(row.purpose),
       useType: clean(row.useType),
       useName: clean(row.useName),
+      recordingUsage: clean(row.recordingUsage),
+      recordingUsageName: clean(row.recordingUsageName),
       amount: Number(row.amount || 0),
       paymentStatus: clean(row.paymentStatus),
       status: clean(row.status || (row.active === false ? 'cancelled' : 'confirmed')),
@@ -4302,6 +4454,8 @@ async function adminRoomBookings() {
       roomName: clean(row.roomName),
       useType: clean(row.useType),
       useName: clean(row.useName),
+      recordingUsage: clean(row.recordingUsage),
+      recordingUsageName: clean(row.recordingUsageName),
       purpose: clean(row.purpose),
       amount: Number(row.amount || row.rentalFee || 0),
       status: clean(row.status || (row.active === false ? 'cancelled' : 'confirmed')),

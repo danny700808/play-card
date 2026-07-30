@@ -24,14 +24,16 @@
     @media(max-width:640px){.forms-wrap{padding:14px 12px 28px}.forms-grid{grid-template-columns:1fr}.forms-title{font-size:26px}.form-card{padding:18px 16px;border-radius:20px;min-height:120px}.form-card-title{font-size:22px}}
   </style>
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
+  <link rel="stylesheet" href="teacher-more-pages.css?v=20260730-teacher-more-v1">
+  <script src="teacher-more-auth-bridge.js?v=20260730-teacher-more-v1"></script>
 </head>
-<body onload="initPage()">
+<body class="teacher-utility-page utility-forms" onload="initPage()">
   <div class="yz-global-nav" data-yz-global-nav>
     <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
     <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
   </div>
 
-  <div class="forms-wrap">
+  <div class="forms-wrap" data-teacher-utility-root>
     <section class="forms-head">
       <div class="forms-top">
         <div>
@@ -71,13 +73,9 @@
   <script src="certificate-common.js?v=certificates-20260530-previewfit"></script>
   <script>
     async function initPage(){
+      if(window.YZTeacherMoreAuth && window.YZTeacherMoreAuth.blockIfPortalOnly({title:'表格'})) return;
       const user = requireLogin();
       if(!user) return;
-      const back = document.getElementById('backHomeBtn');
-      if(back){
-        back.href = (typeof userHomeHref === 'function') ? userHomeHref(user) : 'dashboard.html';
-        back.textContent = (typeof userHomeLabel === 'function') ? userHomeLabel(user) : '回首頁';
-      }
       try{
         if(window.YZCertificate && typeof YZCertificate.counts === 'function'){
           const c = await YZCertificate.counts({own:true});
