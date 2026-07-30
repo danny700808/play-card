@@ -94,6 +94,7 @@ assert(rentalSource.includes('rental-room-equipment'), '租用教室卡片缺少
 assert(rentalSource.includes('excludeDigitalPiano'), '鋼琴租用缺少排除電鋼琴選項');
 assert(rentalSource.includes('allowGuzhengMove'), '古箏租用缺少自行搬運選項');
 assert(rentalSource.includes('drumType'), '練鼓租用缺少鼓種篩選');
+assert(rentalSource.includes('data-retry-rental'), '租用資料失敗時缺少重新讀取按鈕');
 assert(rentalSettingsSource.includes('data-use-rate'), '租用用途設定缺少每小時固定費用');
 assert(teacherRoomRulesSource.includes('需自行從展演空間搬古箏'), '老師調課缺少 KAWAI 古箏搬運提醒');
 
@@ -119,6 +120,11 @@ assert(!schedulerCss.includes('.event.leave,.event.absent,.event.cancelled{opaci
 assert(!schedulerHtml.includes('半透明＝請假／停課'), '課表圖例仍誤導為半透明狀態');
 
 const backend = fs.readFileSync(path.join(root, 'functions/coursePortal.js'), 'utf8');
+const deployWorkflow = fs.readFileSync(path.join(root, '.github/workflows/deploy-course-portal-auth.yml'), 'utf8');
+assert(
+  deployWorkflow.includes('functions:coursePortalRentalUseSettings'),
+  'Firebase 部署清單漏掉租用用途讀取功能'
+);
 [
   'coursePortalSendEmailOtp',
   'coursePortalVerifyEmailOtp',
