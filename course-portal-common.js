@@ -167,30 +167,6 @@
     toast.timer = setTimeout(() => node.classList.remove('show'), 4200);
   }
 
-  async function copyText(value, button) {
-    const text = clean(value);
-    if (!text) return;
-    try {
-      await global.navigator.clipboard.writeText(text);
-    } catch (_) {
-      const area = document.createElement('textarea');
-      area.value = text;
-      area.setAttribute('readonly', '');
-      area.style.position = 'fixed';
-      area.style.opacity = '0';
-      document.body.appendChild(area);
-      area.select();
-      document.execCommand('copy');
-      area.remove();
-    }
-    if (button) {
-      const original = button.textContent;
-      button.textContent = '已複製';
-      setTimeout(() => { button.textContent = original; }, 1800);
-    }
-    toast('LINE 文字已複製，請貼到柚子樂器官方 LINE。');
-  }
-
   function finishSessionResolution() {
     document.body.classList.remove('portal-session-resolving');
     const loadingView = document.getElementById('sessionLoading');
@@ -259,44 +235,6 @@
     }
   }
 
-  async function startBinding(type, form) {
-    const fields = Object.fromEntries(new FormData(form).entries());
-    const result = await call('coursePortalStartBinding', Object.assign({ type }, fields));
-    const box = form.parentElement.querySelector('[data-bind-result]');
-    if (box) {
-      box.classList.remove('hidden');
-      box.innerHTML = [
-        '<strong>請把下面整段文字傳給柚子樂器官方 LINE：</strong>',
-        `<code>${escapeHtml(result.bindText)}</code>`,
-        '<div class="grid two">',
-        '<button class="btn soft" type="button" data-copy-bind>複製綁定文字</button>',
-        `<a class="btn primary" href="${escapeHtml(result.lineUrl)}">開啟官方 LINE</a>`,
-        '</div>',
-        '<small>貼上送出後，請開啟官方 LINE 回覆的登入連結。本連結有效 20 分鐘。</small>'
-      ].join('');
-      const copyButton = box.querySelector('[data-copy-bind]');
-      if (copyButton) copyButton.addEventListener('click', () => copyText(result.bindText, copyButton));
-    }
-    return result;
-  }
-
-  function renderLineAction(box, result, heading) {
-    if (!box) return;
-    const text = clean(result.loginText || result.bindText);
-    box.classList.remove('hidden');
-    box.innerHTML = [
-      `<strong>${escapeHtml(heading || '請到官方 LINE 完成確認：')}</strong>`,
-      `<code>${escapeHtml(text)}</code>`,
-      '<div class="grid two">',
-      '<button class="btn soft" type="button" data-copy-auth-text>複製文字</button>',
-      `<a class="btn primary" href="${escapeHtml(result.lineUrl)}">開啟官方 LINE</a>`,
-      '</div>',
-      '<small>把整段文字送出後，請開啟官方 LINE 回覆的登入連結。</small>'
-    ].join('');
-    const copyButton = box.querySelector('[data-copy-auth-text]');
-    if (copyButton) copyButton.addEventListener('click', () => copyText(text, copyButton));
-  }
-
   function installAuth(options) {
     options = options || {};
     const role = clean(options.role);
@@ -306,18 +244,16 @@
     if (authView.dataset.authInstalled === 'true') return;
     authView.dataset.authInstalled = 'true';
 
-    const loginForm = authView.querySelector('[data-email-login-form]');
-    const firstUsePanel = authView.querySelector('[data-first-use-panel]');
-    const firstUseForm = authView.querySelector('[data-first-use-form]');
-    const renterContactForm = authView.querySelector('[data-renter-contact-form]');
+    const choiceList = authView.querySelector('[data-auth-choice-list]');
+    const regularForm = authView.querySelector('[data-regular-auth-form]');
+    const lineSetupPanel = authView.querySelector('[data-line-setup-panel]');
+    const lineSetupForm = authView.querySelector('[data-line-setup-form]');
     const otpPanel = authView.querySelector('[data-otp-panel]');
-    const bindResult = authView.querySelector('[data-bind-result]');
     const authParams = new URLSearchParams(global.location.search);
     const lineSetupToken = clean(authParams.get('lineSetup'));
     const lineError = clean(authParams.get('lineError'));
     let countdownTimer = 0;
     let pendingChallenge = '';
-    let pendingPurpose = '';
 
     function removeAuthQuery(name) {
       const params = new URLSearchParams(global.location.search);
@@ -326,24 +262,19 @@
       global.history.replaceState({}, '', `${global.location.pathname}${suffix ? `?${suffix}` : ''}`);
     }
 
-    function showFirstUse(active) {
-      if (firstUsePanel) firstUsePanel.classList.toggle('hidden', !active);
-      const button = authView.querySelector('[data-show-first-use]');
-      if (button) button.setAttribute('aria-expanded', active ? 'true' : 'false');
-    }
-
-    function renderOtp(result, purpose) {
+    function renderOtp(result) {
       if (!otpPanel) return;
       pendingChallenge = clean(result.challengeToken);
-      pendingPurpose = purpose;
       let seconds = Number(result.expiresInSeconds || 180);
       otpPanel.classList.remove('hidden');
       otpPanel.innerHTML = [
         '<form class="stack auth-otp-form">',
-        `<div class="field"><label>輸入寄到 ${escapeHtml(result.maskedEmail || '您的 Email')} 的四碼驗證碼</label>`,
+        '<div class="auth-otp-heading"><strong>請查看您的 Email</strong><span>輸入四碼後就會直接進入，不會再要求其他步驟。</span></div>',
+        `<div class="field"><label>寄到 ${escapeHtml(result.maskedEmail || '您的 Email')} 的四碼驗證碼</label>`,
         '<input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{4}" maxlength="4" placeholder="0000" required></div>',
         '<div class="auth-otp-meta">有效時間：<strong data-otp-countdown>180 秒</strong></div>',
-        '<button class="btn primary" type="submit">確認驗證碼</button>',
+        '<div class="grid two"><button class="btn primary" type="submit">確認並登入</button>',
+        '<button class="btn soft" type="button" data-otp-back>返回修改資料</button></div>',
         '</form>'
       ].join('');
       const countdown = otpPanel.querySelector('[data-otp-countdown]');
@@ -357,7 +288,14 @@
       };
       tick();
       countdownTimer = setInterval(tick, 1000);
+      const backButton = otpPanel.querySelector('[data-otp-back]');
+      if (backButton) backButton.addEventListener('click', () => {
+        clearInterval(countdownTimer);
+        otpPanel.classList.add('hidden');
+        if (regularForm) regularForm.querySelector('input[name="email"]').focus();
+      });
       otpPanel.querySelector('input[name="code"]').focus();
+      otpPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       otpPanel.querySelector('form').addEventListener('submit', async (event) => {
         event.preventDefault();
         const button = event.submitter;
@@ -368,15 +306,10 @@
             code: event.currentTarget.elements.code.value
           });
           clearInterval(countdownTimer);
-          if (pendingPurpose === 'login') {
-            if (verified.role !== role || !verified.sessionToken) throw new Error('登入資料不完整，請重新操作。');
-            setSession(role, verified.sessionToken);
-            toast('驗證成功，正在開啟。');
-            global.location.reload();
-            return;
-          }
-          otpPanel.classList.add('hidden');
-          renderLineAction(bindResult, verified, 'Email 已驗證，最後到官方 LINE 完成一次綁定：');
+          if (verified.role !== role || !verified.sessionToken) throw new Error('登入資料不完整，請重新操作。');
+          setSession(role, verified.sessionToken);
+          toast('驗證成功，正在開啟。');
+          global.location.reload();
         } catch (error) {
           toast(error.message, 'error');
         } finally {
@@ -385,12 +318,15 @@
       });
     }
 
-    async function requestOtp(form, purpose, button) {
+    async function requestRegularOtp(form, button) {
       loading(button, true, '寄送中…');
       try {
         const fields = Object.fromEntries(new FormData(form).entries());
-        const result = await call('coursePortalSendEmailOtp', Object.assign({ type: role, purpose }, fields));
-        renderOtp(result, purpose);
+        const result = await call('coursePortalSendEmailOtp', Object.assign({
+          type: role,
+          purpose: 'account'
+        }, fields));
+        renderOtp(result);
         toast(result.message || '四碼驗證碼已寄出。');
       } catch (error) {
         toast(error.message, 'error');
@@ -413,18 +349,14 @@
         if (document.visibilityState === 'visible') loading(lineButton, false);
       }
     });
-    if (loginForm) loginForm.addEventListener('submit', (event) => {
+    if (regularForm) regularForm.addEventListener('submit', (event) => {
       event.preventDefault();
-      requestOtp(event.currentTarget, 'login', event.submitter);
+      requestRegularOtp(event.currentTarget, event.submitter);
     });
-    if (firstUseForm) firstUseForm.addEventListener('submit', async (event) => {
+    if (lineSetupForm) lineSetupForm.addEventListener('submit', async (event) => {
       event.preventDefault();
-      if (!lineSetupToken) {
-        requestOtp(event.currentTarget, 'bind', event.submitter);
-        return;
-      }
       const button = event.submitter;
-      loading(button, true, '完成綁定中…');
+      loading(button, true, '正在完成…');
       try {
         const fields = Object.fromEntries(new FormData(event.currentTarget).entries());
         const result = await call('coursePortalCompleteLineRegistration', Object.assign({
@@ -438,7 +370,7 @@
         removeAuthQuery('lineSetup');
         toast(result.reminderReady === false
           ? '登入完成；請將柚子樂器官方帳號加入好友，才能收到提醒。'
-          : 'LINE 綁定完成，正在開啟。', result.reminderReady === false ? 'error' : '');
+          : 'LINE 登入完成，正在開啟。', result.reminderReady === false ? 'error' : '');
         global.location.reload();
       } catch (error) {
         toast(error.message, 'error');
@@ -446,51 +378,15 @@
         loading(button, false);
       }
     });
-    if (renterContactForm && role === 'renter') {
-      renterContactForm.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        const button = event.submitter;
-        loading(button, true, '登入中…');
-        try {
-          const fields = Object.fromEntries(new FormData(event.currentTarget).entries());
-          const result = await call('coursePortalRenterContactLogin', fields);
-          if (!result.sessionToken) throw new Error('登入資料不完整，請重新操作。');
-          setSession('renter', result.sessionToken, { temporary: true });
-          toast('登入成功，正在開啟租用頁。');
-          global.location.reload();
-        } catch (error) {
-          toast(error.message, 'error');
-        } finally {
-          loading(button, false);
-        }
-      });
-    }
-    const firstUseButton = authView.querySelector('[data-show-first-use]');
-    if (firstUseButton) firstUseButton.addEventListener('click', () => {
-      showFirstUse(firstUsePanel ? firstUsePanel.classList.contains('hidden') : false);
-    });
     if (lineError) {
       toast(lineError, 'error');
       removeAuthQuery('lineError');
     }
-    if (lineSetupToken && firstUsePanel && firstUseForm) {
-      const loginStack = authView.querySelector('.auth-login-stack');
-      if (loginStack) loginStack.classList.add('hidden');
-      const title = firstUsePanel.querySelector('.section-title h3');
-      if (title) title.textContent = '完成第一次 LINE 登入';
-      const submit = firstUseForm.querySelector('button[type="submit"]');
-      if (submit) submit.textContent = '確認並完成 LINE 登入';
-      let notice = firstUsePanel.querySelector('[data-line-setup-notice]');
-      if (!notice) {
-        notice = document.createElement('div');
-        notice.className = 'auth-line-setup-notice';
-        notice.setAttribute('data-line-setup-notice', '');
-        notice.textContent = 'LINE 身分已確認。請只填這一次基本資料；完成後，同一手機會直接進入，換手機也只需再按 LINE 登入。';
-        firstUsePanel.insertBefore(notice, firstUseForm);
-      }
-      showFirstUse(true);
-    } else {
-      showFirstUse(false);
+    if (choiceList) choiceList.classList.toggle('hidden', Boolean(lineSetupToken));
+    if (lineSetupPanel) lineSetupPanel.classList.toggle('hidden', !lineSetupToken);
+    if (lineSetupToken && lineSetupForm) {
+      const firstInput = lineSetupForm.querySelector('input');
+      if (firstInput) setTimeout(() => firstInput.focus(), 100);
     }
   }
 
@@ -578,7 +474,6 @@
     addDays,
     call,
     clean,
-    copyText,
     escapeHtml,
     exchangeAccess,
     getSession,
@@ -587,7 +482,6 @@
     money,
     setSession,
     installAuth,
-    startBinding,
     toast
   };
 })(window);
