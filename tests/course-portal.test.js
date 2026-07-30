@@ -6,12 +6,25 @@ const path = require('path');
 const vm = require('vm');
 
 const root = path.resolve(__dirname, '..');
-const { normalizePhone, phoneMatches } = require('../functions/coursePortalUtils');
+const {
+  normalizePhone,
+  phoneMatches,
+  normalizeScheduleStatus,
+  courseSourceIds
+} = require('../functions/coursePortalUtils');
 
 assert.strictEqual(normalizePhone('+886 912-345-678'), '0912345678');
 assert.strictEqual(normalizePhone('0912 345 678'), '0912345678');
 assert.strictEqual(phoneMatches('+886912345678', '0912345678'), true);
 assert.strictEqual(phoneMatches('0912345678', '0987654321'), false);
+assert.strictEqual(normalizeScheduleStatus({ status: '已請假' }), 'leave');
+assert.strictEqual(normalizeScheduleStatus('缺席'), 'absent');
+assert.strictEqual(normalizeScheduleStatus('已取消'), 'cancelled');
+assert.deepStrictEqual(
+  courseSourceIds({ id: 'audit-event', sourceCourseId: 'fixed-course-5' }),
+  ['audit-event', 'fixed-course-5'],
+  '日表事件必須能以原固定課 ID 取代同時段固定課，避免請假後仍重複占用教室'
+);
 
 const pages = [
   'teacher-course-portal.html',
@@ -106,6 +119,8 @@ assert(rentalSource.includes('drumType'), '練鼓租用缺少鼓種篩選');
 assert(rentalSource.includes('data-retry-rental'), '租用資料失敗時缺少重新讀取按鈕');
 assert(!rentalSource.includes('間可租</small>'), '租用開始時間仍顯示多餘的教室數量');
 assert(!rentalSource.includes('個時段</em>'), '租用日期仍顯示多餘的時段數量');
+assert(rentalSource.includes('slot.past'), '一般租用畫面未屏蔽當天已過時間');
+assert(rentalSource.includes('day.past'), '一般租用畫面未屏蔽過去日期');
 assert(rentalSettingsSource.includes('data-use-rate'), '租用用途設定缺少每小時固定費用');
 assert(rentalSettingsSource.includes('data-room-piano'), '教室租用設定缺少鋼琴設備種類');
 assert(teacherRoomRulesSource.includes('需自行從展演空間搬古箏'), '老師調課缺少 KAWAI 古箏搬運提醒');
@@ -201,6 +216,10 @@ assert(backend.includes("mirrorRows('roomRentals')"), '租用空檔未讀取既�
 assert(backend.includes("event.roomId === id && event.date === date"), '租用查詢未依教室與日期排除有課時段');
 assert(backend.includes('overlaps(startTime, endTime, event.startTime, event.endTime)'), '租用查詢未檢查課程時段重疊');
 assert(backend.includes('row.durationMinutes || row.duration || row.minutes || 60'), '老師課表未依課程長度計算結束時間');
+assert(backend.includes('courseSourceIds(row).forEach'), '日表事件未依原固定課 ID 排除重複占用');
+assert(backend.includes("!['leave', 'absent', 'cancelled'].includes(status)"), '請假、曠課或取消仍會占用教室');
+assert(backend.includes('publicRentalSlotIsPast(date, startTime)'), '一般租用後端未封鎖過去時段');
+assert(backend.includes('availableSlotCount: slots.filter((slot) => !slot.past'), '當天已過時間仍被計入可租時段');
 
 const portalCss = fs.readFileSync(path.join(root, 'course-portal.css'), 'utf8');
 assert(portalCss.includes('@media (max-width: 760px)'), '外部入口缺少手機版樣式');
