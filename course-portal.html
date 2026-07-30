@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#24735c">
   <title>柚子樂器課務服務入口</title>
-  <link rel="stylesheet" href="course-portal.css?v=20260727-mobile-v6">
+  <link rel="stylesheet" href="course-portal.css?v=20260730-line-oauth-v2">
 </head>
 <body>
   <main class="portal-shell">
@@ -29,7 +29,34 @@
         <span class="btn primary">進入</span>
       </a>
     </section>
-    <p class="notice" style="margin-top:16px">所有入口都會透過 LINE 完成身分綁定。姓名與電話只用於比對，不會當成永久登入密碼。</p>
+    <p class="notice" id="portalEntryNotice" style="margin-top:16px">所有入口都可使用 LINE 安全登入；第一次確認後，同一手機會直接進入。</p>
   </main>
+  <script>
+  (function () {
+    const params = new URLSearchParams(location.search);
+    const error = (params.get('lineError') || '').trim();
+    if (error) {
+      document.getElementById('portalEntryNotice').textContent = error;
+      params.delete('lineError');
+      history.replaceState({}, '', location.pathname + (params.toString() ? '?' + params.toString() : ''));
+      return;
+    }
+    if (params.get('choose') === '1') return;
+    const roles = [
+      ['teacher', 'teacher-course-portal.html'],
+      ['student', 'student-course-portal.html'],
+      ['renter', 'room-booking.html']
+    ];
+    for (const role of roles) {
+      const key = 'youzi.coursePortal.' + role[0] + '.session.v1';
+      let token = '';
+      try { token = sessionStorage.getItem(key) || localStorage.getItem(key) || ''; } catch (_) {}
+      if (token) {
+        location.replace(role[1]);
+        return;
+      }
+    }
+  })();
+  </script>
 </body>
 </html>
