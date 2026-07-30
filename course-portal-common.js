@@ -398,77 +398,11 @@
       .portal-session-card{max-width:540px;margin:7vh auto 0;display:flex;align-items:center;gap:14px}
       .portal-session-card p{margin:3px 0 0;color:var(--muted)}
       .portal-session-spinner{width:28px;height:28px;flex:0 0 auto;border:3px solid #cce6db;border-right-color:var(--green);border-radius:50%;animation:spin .7s linear infinite}
-      .teacher-quick-card{margin-bottom:12px;padding:10px}
-      .teacher-quick-card h2{margin:0 0 7px;font-size:14px}
-      .teacher-quick-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
-      .teacher-quick-grid .btn{min-height:50px;padding:7px 4px;font-size:11px;line-height:1.25}
-      .teacher-quick-grid .btn b{display:block;font-size:13px}
-      @media(max-width:760px){
-        body.teacher-approved-mobile .portal-shell{width:100%;max-width:440px;padding:8px 8px calc(76px + env(safe-area-inset-bottom))}
-        body.teacher-approved-mobile .portal-head{margin-bottom:7px}
-        body.teacher-approved-mobile .portal-head h1{font-size:17px}
-        body.teacher-approved-mobile .portal-head p{font-size:11px;margin-top:1px}
-        body.teacher-approved-mobile .brand-mark{width:34px;height:34px;border-radius:10px}
-        body.teacher-approved-mobile .card{padding:9px;border-radius:11px;box-shadow:none}
-        body.teacher-approved-mobile .summary-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;margin-bottom:7px}
-        body.teacher-approved-mobile .summary{padding:7px 6px;border-radius:11px;min-width:0}
-        body.teacher-approved-mobile .summary span{font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-        body.teacher-approved-mobile .summary strong{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-        body.teacher-approved-mobile #appView>.tabs{position:fixed;left:50%;bottom:0;z-index:30;width:min(440px,100%);transform:translateX(-50%);display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;margin:0;padding:7px 8px calc(7px + env(safe-area-inset-bottom));border-top:1px solid var(--line);background:rgba(244,247,243,.96);backdrop-filter:blur(12px)}
-        body.teacher-approved-mobile #appView>.tabs .btn{min-height:38px;padding:5px 3px;font-size:11px;white-space:normal;text-align:center}
-        body.teacher-approved-mobile .mobile-day-tabs{display:none!important}
-        body.teacher-approved-mobile .week-grid,body.teacher-approved-mobile .week-grid.mobile-day{min-width:840px;grid-template-columns:58px repeat(7,1fr)}
-        body.teacher-approved-mobile .week-scroll{overflow-x:auto;overscroll-behavior-inline:contain;touch-action:pan-x pan-y pinch-zoom}
-        body.teacher-approved-mobile .section-title h2{font-size:14px}
-        body.teacher-approved-mobile .section-title p,body.teacher-approved-mobile .muted{font-size:11px}
-      }
     `;
     document.head.appendChild(style);
   }
 
-  function installTeacherApprovedLayout() {
-    if (!/teacher-course-portal\.html$/i.test(global.location.pathname)) return;
-    document.body.classList.add('teacher-approved-mobile');
-    const nativeMatchMedia = global.matchMedia && global.matchMedia.bind(global);
-    if (nativeMatchMedia && !global.__YOUZI_TEACHER_WEEK_MEDIA_FIXED__) {
-      global.__YOUZI_TEACHER_WEEK_MEDIA_FIXED__ = true;
-      global.matchMedia = function (query) {
-        if (String(query).replace(/\s/g, '') === '(max-width:760px)') {
-          return { matches: false, media: query, onchange: null, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {}, dispatchEvent() { return false; } };
-        }
-        return nativeMatchMedia(query);
-      };
-    }
-    const appView = document.getElementById('appView');
-    if (!appView || document.getElementById('teacherQuickHome')) return;
-    const tabs = appView.querySelector('.tabs');
-    const quick = document.createElement('section');
-    quick.id = 'teacherQuickHome';
-    quick.className = 'card teacher-quick-card';
-    quick.innerHTML = '<h2>常用功能</h2><div class="teacher-quick-grid">' +
-      '<button class="btn primary" type="button" data-teacher-quick="schedule"><b>1</b>本週課表</button>' +
-      '<button class="btn primary" type="button" data-teacher-quick="students"><b>2</b>我的學生</button>' +
-      '<button class="btn primary" type="button" data-teacher-quick="payroll"><b>3</b>薪資查詢</button>' +
-      '<button class="btn" type="button" data-teacher-quick="extra"><b>4</b>增加課程</button>' +
-      '<button class="btn" type="button" data-teacher-quick="move"><b>5</b>老師調課</button>' +
-      '<a class="btn" href="room-booking.html?from=teacher"><b>6</b>租用教室</a>' +
-      '</div>';
-    appView.insertBefore(quick, tabs || appView.firstChild);
-    quick.addEventListener('click', (event) => {
-      const button = event.target.closest('[data-teacher-quick]');
-      if (!button) return;
-      const target = ['students','payroll'].includes(button.dataset.teacherQuick) ? button.dataset.teacherQuick : 'schedule';
-      const tab = appView.querySelector(`[data-tab="${target}"]`);
-      if (tab) tab.click();
-      const panel = appView.querySelector(`[data-panel="${target}"]`);
-      if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      if (button.dataset.teacherQuick === 'extra') toast('請在課表點空堂，即可選學生增加一堂。');
-      if (button.dataset.teacherQuick === 'move') toast('請點原課程，即可選擇單次調課或永久調課。');
-    });
-  }
-
   installPortalRuntimeStyle();
-  installTeacherApprovedLayout();
 
   global.CoursePortal = {
     addDays,
